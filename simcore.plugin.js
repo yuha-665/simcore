@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.42.0
+//@version 0.42.1
 //@display-name SimCore (시뮬 엔진) v0.42 클릭 조작
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.42.1 ────────────────────────────────────────────────
+// 새 템플릿 '대장간 — 무쇠와 장부' — v0.39~0.42 신기능 총집합. 한 봇에서 전부 만져 볼 수 있다:
+// 금고 whenArmed(입금/출금 버튼 턴에만 개방 — 이중 장부 구조 차단), 단조 판정(액션 check +
+// 랜덤 이벤트 check 공유, stoked 이점 소모), 갈림길 2결(귀족 의뢰: 조건·잠긴 선택지·타임아웃 3 /
+// 떠돌이 행상: 랜덤·타임아웃 2), 클릭 조작은 범례·선택지에 자동 적용.
+// 엔진 변경 없음 — 템플릿·문서·테스트만.
 //
 // ── v0.42 ──────────────────────────────────────────────────
 // 클릭 조작 — 상태창 안 범례·갈림길 선택지가 진짜 버튼이 된다. 이 플러그인의 최약점(조작)을
@@ -8211,6 +8218,217 @@ const DAILY = {
   },
 };
 
+// ── 대장간 ──────────────────────────────────────────────────
+// v0.39~0.42 신기능 총집합 — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다.
+// 배울 점: ① whenArmed(액션 잠금)로 이중 장부를 구조로 막는 법 — 금고는 입금/출금 버튼이
+//             눌린 턴에만 열리고, 평소 서사의 돈은 전부 지갑으로 귀속된다
+//          ② 액션 판정(벼려낸다)과 이벤트 판정(밤샘 주문)이 check 하나(ck_forge)를 나눠 쓰는 법
+//          ③ 갈림길 두 결 — 조건 이벤트(귀족 의뢰: 잠긴 선택지·타임아웃 3, 조건 이벤트엔
+//             쿨다운이 없으므로 문턱 변수 noble_next를 스스로 올려 재발동을 제어)와
+//             랜덤 이벤트(떠돌이 행상: 타임아웃 2, 안 고르면 마지막 항목)
+//          ④ 등급 effects가 roll/total을 읽어 "얼마나 잘 굴렸는지"가 값(공임)이 되게 하는 법
+//          ⑤ 상태창 범례·선택지는 v0.42 클릭 조작으로 그대로 버튼이 된다 — 별도 설정 없음
+const SMITH = {
+  simcore: '0.1',
+  meta: { name: '대장간 — 무쇠와 장부', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'money', label: '지갑', type: 'int', init: 800, min: 0, format: '{v}G',
+      desc: '품속의 돈. 서사에서 벌고 쓰는 돈은 전부 여기다.' },
+    { id: 'vault', label: '공방 금고', type: 'int', init: 200, min: 0, format: '{v}G',
+      desc: '공방 운영비. 입금/출금 버튼이 눌린 턴에만 기록이 열린다 — 평소 오간 돈은 지갑 쪽이다.' },
+    { id: 'iron', label: '무쇠', type: 'int', init: 6, min: 0, max: 20 },
+    { id: 'skill', label: '솜씨', type: 'int', init: 12, min: 3, max: 20 },
+    { id: 'stamina', label: '체력', type: 'int', init: 8, min: 0, max: 10 },
+    { id: 'fame', label: '평판', type: 'int', init: 0, min: 0, max: 100 },
+    { id: 'noble_next', label: '다음 귀족 의뢰', type: 'int', init: 25, min: 0, format: '평판 {v}',
+      desc: '평판이 이 문턱을 넘으면 귀족 의뢰가 온다. 의뢰를 처리하면 문턱이 다시 올라간다.' },
+    { id: 'dc', label: '난이도', type: 'int', init: 13, min: 5, max: 30,
+      desc: '지금 맡은 일감의 제작 난이도. 편자면 10, 보통 주문 13, 까다로우면 17, 명장급 20.' },
+    { id: 'stoked', label: '화로 달굼', type: 'bool', init: false,
+      desc: '켜져 있으면 다음 단조를 두 번 굴려 좋은 눈을 쓴다. 한 번 벼려내면 식는다.' },
+    { id: 'queue', label: '주문서', type: 'list', init: [], maxItems: 8, itemMaxLength: 24,
+      desc: '맡아 둔 주문. 완성해 넘겼으면 지워라.' },
+    { id: 'masterwork', label: '대표작', type: 'text', init: '', maxLength: 40,
+      desc: '공방의 이름을 알린 물건. 걸작이 나왔을 때만 적는다.' },
+  ],
+  derived: [
+    { id: 'skill_mod', label: '솜씨 보정', expr: 'floor((skill - 10) / 2)' },
+    { id: 'rank', label: '공방 등급', expr: 'fame >= 80 ? "명장" : (fame >= 50 ? "장인" : (fame >= 20 ? "숙련공" : "견습"))' },
+    { id: 'queue_n', label: '밀린 주문', expr: 'count(queue)' },
+  ],
+  // 단조 판정 하나를 액션(벼려낸다)과 랜덤 이벤트(밤샘 주문)가 나눠 쓴다.
+  // 굴림식이 stoked(화로 달굼)를 읽고, 끄는 건 각 사용처의 effects 몫 — 굴림 뒤에 적용되므로 안전.
+  checks: [
+    { id: 'ck_forge', label: '단조 판정', roll: 'stoked ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'skill_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '손이 기억하는 것 이상의 물건이 나왔다 — 걸작의 탄생을 극적으로 그려라.',
+          effects: [{ set: 'fame', expr: 'min(fame + 3, 100)' }, { set: 'money', expr: 'money + 100 + total * 2' }] },
+        { when: 'roll == 1', label: '대실패', inject: '쇠가 갈라지고 불똥이 튄다 — 재료를 하나 더 날리고 소문까지 나는 대실패로 그려라.',
+          effects: [{ set: 'iron', expr: 'max(iron - 1, 0)' }, { set: 'fame', expr: 'max(fame - 1, 0)' }] },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'money', expr: 'money + 30 + total * 2' }, { set: 'fame', expr: 'min(fame + 1, 100)' }] },
+        { label: '실패', inject: '두들길수록 모양이 어긋난다. 오늘 화로는 대답이 없다.' },
+      ] },
+  ],
+  rules: {
+    onTurn: [
+      { set: 'stamina', expr: 'min(stamina + 1, 10)' },
+    ],
+    events: [
+      // 갈림길(조건 이벤트) — 평판이 문턱(noble_next)을 넘으면 열린다. 두 번째 선택지는
+      // 평판 50까지 잠겨(🔒) 있고, 3턴 안에 안 고르면 마지막 항목(정중히 거절)이 자동 결정된다.
+      // 조건 이벤트에 쿨다운은 없다 — 재발동 제어는 조건을 스스로 닫는 것으로 한다:
+      // 어느 쪽을 골라도(타임아웃 포함) 문턱이 현재 평판 +25로 올라가 다음 의뢰가 밀려난다.
+      { id: 'noble_offer', when: 'fame >= noble_next', timeout: 3,
+        notify: '남작가의 시종이 공방 문을 두드린다. 예장검 한 자루 — 맡을지 정할 때까지 대답을 기다리겠다고 한다.',
+        choices: [
+          { label: '의뢰를 받는다', inject: '격이 다른 일감이다. 실패가 허락되지 않는다.',
+            effects: [{ list: 'queue', add: ['남작가의 예장검'] }, { set: 'dc', expr: '17' }, { set: 'noble_next', expr: 'fame + 25' }] },
+          { label: '웃돈을 부른다', when: 'fame >= 50', inject: '시종의 눈썹이 올라가지만, 명성이 값을 증명한다.',
+            effects: [{ set: 'money', expr: 'money + 150' }, { list: 'queue', add: ['남작가의 예장검'] }, { set: 'dc', expr: '19' }, { set: 'noble_next', expr: 'fame + 25' }] },
+          { label: '정중히 거절한다',
+            effects: [{ set: 'noble_next', expr: 'fame + 25' }] },
+        ] },
+      // 문턱이 0이 아니라 1인 이유: 매 턴 회복(+1)이 이벤트 판정보다 먼저 돌아서
+      // 액션으로 0까지 떨어져도 판정 시점엔 이미 1이다 — 0으로 걸면 영영 안 터진다.
+      // (재발동 제어도 조건 자신이 한다 — 회복 효과가 조건을 닫는다)
+      { id: 'burnout', when: 'stamina <= 1',
+        effects: [{ set: 'stamina', expr: '3' }],
+        notify: '팔이 완전히 풀렸다. 망치를 놓고 한참을 주저앉아 쉬었다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.25,
+      table: [
+        // 갈림길(랜덤 이벤트) — 2턴 안에 안 고르면 마지막 항목(손을 내젓는다)으로 흘러간다.
+        { id: 'peddler', weight: 2, cooldown: 6, timeout: 2,
+          notify: '떠돌이 행상이 공방 앞에 수레를 세운다. 무쇠 두 덩이를 싸게 넘기겠다고 한다.',
+          choices: [
+            { label: '무쇠 두 덩이를 산다', when: 'money >= 80',
+              effects: [{ set: 'money', expr: 'max(money - 80, 0)' }, { set: 'iron', expr: 'min(iron + 2, 20)' }] },
+            { label: '소문을 듣는다', inject: '행상이 이웃 마을 소식과 철값 이야기를 늘어놓는다.' },
+            { label: '손을 내젓는다' },
+          ] },
+        // 이벤트 판정 — check를 달면 그 자리에서 굴리고 [판정] 줄이 다음 전송에 통지로 합류한다.
+        { id: 'rush_order', weight: 1, cooldown: 8, when: 'iron >= 1', check: 'ck_forge',
+          effects: [{ set: 'iron', expr: 'max(iron - 1, 0)' }, { set: 'stamina', expr: 'max(stamina - 1, 0)' }, { set: 'stoked', expr: '0' }],
+          notify: '한밤중에 문을 두드리는 급한 주문 — 부러진 편자를 그 자리에서 두들겨 냈다.' },
+        // 새 일감이 들어오면 주문서가 늘고 난이도가 새로 잡힌다 (동네 주문은 벼려낼 때 하나씩 지워진다)
+        { id: 'walk_in', weight: 2, cooldown: 4, when: 'queue_n < 6',
+          effects: [{ list: 'queue', add: ['동네 주문'] }, { set: 'dc', expr: 'rand(9, 16)' }],
+          notify: '동네 손님이 주문을 맡기고 갔다. 주문서가 한 장 늘었다.' },
+        { id: 'iron_scrap', weight: 1, cooldown: 7, when: 'iron < 20',
+          effects: [{ set: 'iron', expr: 'min(iron + 1, 20)' }],
+          notify: '헐린 헛간에서 쓸 만한 무쇠 조각을 주워 왔다.' },
+        { id: 'ember_luck', weight: 1, cooldown: 6, when: 'not stoked',
+          effects: [{ set: 'stoked', expr: '1' }],
+          notify: '밤새 화로의 불씨가 살아 있었다. 첫 망치질이 가볍게 나갈 것 같다.' },
+        // 소문은 평판을 올리고 귀족의 관심(다음 의뢰 문턱)을 조금 앞당긴다 — 문턱이 오르기만 하면
+        // 평판이 상한에 붙은 뒤 의뢰가 영영 끊긴다. 이 역방향이 있어야 장기전에서도 의뢰가 돈다.
+        { id: 'praise', weight: 2, cooldown: 5,
+          effects: [{ set: 'fame', expr: 'min(fame + 2, 100)' }, { set: 'noble_next', expr: 'max(noble_next - 1, 25)' }],
+          notify: '지난번 손님이 공방 소문을 내고 다닌다. 어깨가 조금 펴진다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'craft_rule', when: 'iron >= 1',
+      text: '[제작] 물건의 완성도는 [판정]이 정한다. 판정 줄이 없는 턴에 결과를 단정하지 말고, 화로 앞의 긴장만 그려라.' },
+    { id: 'tired', when: 'stamina <= 2',
+      text: '[상태] 체력 {stamina}/10. 망치를 드는 팔이 무겁다 — 지친 기색이 묘사에 배어나야 한다.' },
+    { id: 'backlog', when: 'queue_n >= 3',
+      text: '[압박] 주문이 {queue_n}건 밀려 있다. 손님의 독촉이 장면 어딘가에 묻어나야 한다.' },
+  ],
+  actions: [
+    // 벼려내면 동네 주문이 하나 지워진다 — 남작가의 예장검 같은 특별 주문은 보조 AI가 지운다(queue desc).
+    { id: 'forge', label: '🔨 벼려낸다', mode: 'oneshot', when: 'iron >= 1 and stamina >= 2', check: 'ck_forge',
+      inject: '[행동] 화로 앞에 서서 쇠를 두들긴다.',
+      effects: [{ set: 'iron', expr: 'max(iron - 1, 0)' }, { set: 'stamina', expr: 'max(stamina - 2, 0)' },
+        { set: 'stoked', expr: '0' }, { list: 'queue', remove: ['동네 주문'] }] },
+    { id: 'stoke', label: '🔥 화로를 달군다', mode: 'oneshot', when: 'not stoked and money >= 10', cooldown: 3,
+      inject: '[행동] 숯을 들이붓고 풀무를 밟아 화로를 하얗게 달군다.',
+      effects: [{ set: 'stoked', expr: '1' }, { set: 'money', expr: 'max(money - 10, 0)' }, { set: 'stamina', expr: 'max(stamina - 1, 0)' }] },
+    { id: 'polish', label: '🪞 다듬질', mode: 'hold', when: 'stamina >= 2',
+      inject: '[지속] 틈틈이 진열품을 다듬어 광을 낸다.',
+      effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }, { set: 'stamina', expr: 'max(stamina - 1, 0)' }] },
+    // 입금/출금 — 효과가 없다. 액수는 장면이 정하고 기록은 보조 AI가 한다.
+    // 대신 이 버튼이 눌린 턴에만 금고(vault)의 기록이 열린다 (updater.allow의 whenArmed).
+    { id: 'deposit', label: '💰 금고에 넣는다', mode: 'oneshot', when: 'money >= 1',
+      inject: '[행동] 지갑의 돈을 금고로 옮긴다. 얼마를 옮겼는지 장면에서 정해 말하라.' },
+    { id: 'withdraw', label: '💸 금고에서 꺼낸다', mode: 'oneshot', when: 'vault >= 1',
+      inject: '[행동] 금고에서 돈을 꺼내 지갑에 챙긴다. 얼마를 꺼냈는지 장면에서 정해 말하라.' },
+  ],
+  updater: {
+    allow: [
+      { id: 'money', maxGain: 300, maxLoss: 300 },
+      // 액션 잠금(v0.39) — 입금/출금이 무장·발동된 턴에만 이 변수가 보조 AI에게 열린다
+      { id: 'vault', maxDelta: 500, whenArmed: ['deposit', 'withdraw'] },
+      { id: 'iron', maxDelta: 4 },
+      { id: 'stamina', maxDelta: 3 },
+      { id: 'fame', maxDelta: 5 },
+      { id: 'dc', maxDelta: 8 },
+      { id: 'queue' },
+      { id: 'masterwork', maxLength: 40 },
+    ],
+    guide: '돈은 장부가 둘이다 — 서사에서 벌고 쓴 돈은 전부 지갑(money)에 적어라. '
+      + '금고(vault)는 입금/출금 행동이 있던 턴에만 열리며, 그때는 옮긴 액수만큼 지갑과 금고를 함께 움직여라. '
+      + '물건의 완성도는 판정이 정한다 — 성패를 네가 정하지 마라.',
+  },
+  promptState: {
+    template: '[공방] 지갑 {money}G | 금고 {vault}G | 무쇠 {iron} | 체력 {stamina}/10\n'
+      + '솜씨 {skill}({skill_mod}) | 평판 {fame} ({rank}) | 난이도 {dc}{stoked ? " | 🔥화로 달궈짐" : ""}\n'
+      + '주문서: {queue:tags}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '장부', items: [
+        { var: 'money' },
+        { var: 'vault' },
+      ] },
+      { label: '공방', items: [
+        { var: 'iron', bar: { max: 20 } },
+        { var: 'stamina', bar: { max: 10 }, color: 'stamina <= 2 ? "#c0392b" : "#27ae60"' },
+        { var: 'stoked', showWhen: 'stoked' },
+        { var: 'dc' },
+      ] },
+      { label: '명성', items: [
+        { var: 'fame', bar: { max: 100 } },
+        { var: 'rank' },
+        { var: 'noble_next', showWhen: 'fame < noble_next' },
+        { var: 'queue' },
+        { var: 'masterwork', showWhen: 'masterwork != ""' },
+      ] },
+    ],
+    // 화로가 있는 어둠 — 그을린 쇠 위에 잉걸불 주황
+    customCSS: `.sim-status { background:#191310; border:1px solid #513c28; border-radius:5px; color:#e3d5c4; }
+.sim-status summary { color:#e08840; letter-spacing:.07em; }
+.sim-group { border-left:2px solid #513c28; padding-left:9px; }
+.sim-group-label { color:#b08968; font-size:.8em; letter-spacing:.12em; }
+.sim-label { color:#95826d; opacity:1; }
+.sim-value { color:#f6ead9; font-weight:700; }
+.sim-badge, .sim-tag { background:#2a1f16; color:#e0a558; border:1px solid #513c28; border-radius:3px; }
+.sim-bar { background:#120d0a; height:9px; border:1px solid #3a2b1d; border-radius:2px; }
+.sim-action { border-color:#6b4a2c; color:#e8b47c; border-radius:3px; background:#241a12; }
+.sim-action.sim-armed { border-color:#e08840; background:#38220f; color:#ffc98a; }
+.sim-log { color:#8a7563; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'novice', label: '견습 공방', set: {} },
+      { id: 'famed', label: '이름난 공방', set: { skill: 16, fame: 45, money: 1500, vault: 800, iron: 12, stamina: 10 } },
+      { id: 'broke', label: '맨주먹 재기', set: { skill: 14, fame: 10, money: 60, vault: 0, iron: 2 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['skill', 'money', 'iron', 'fame'],
+      instruction: '[최초 설정] 아직 공방의 첫 장면이 정해지지 않았다. 유저와 짧게 대화하며 어떤 대장간인지(전문 분야, 솜씨, 형편)를 정하고, 정해지면 상황을 정리해 서술하라.',
+      guide: '유저가 말한 형편에 맞게 솜씨(10~16)와 재산을 정하라. 화려한 시작보다 두들길 이유가 있는 시작이 좋다.',
+    },
+  },
+};
+
 const TEMPLATES = {
   blank: { label: '빈 스키마 (최소)', schema: BLANK },
   daily: { label: '일상 — 하루의 기록 (날짜·시간·날씨·소지품)', schema: DAILY },
@@ -8223,9 +8441,10 @@ const TEMPLATES = {
   romance: { label: '연애 — 관계 시뮬 (호감도·단계 전이·기억)', schema: ROMANCE },
   trpg: { label: 'TRPG — 주사위 판정 (d20·능력보정·이점)', schema: TRPG },
   vtuber: { label: '버튜버 — 방송 운영 (동접·화제성·번아웃·논란)', schema: VTUBER },
+  smith: { label: '대장간 — 무쇠와 장부 (금고 잠금·단조 판정·주문 갈림길)', schema: SMITH },
 };
 
-module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER };
+module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH };
 
 });
 

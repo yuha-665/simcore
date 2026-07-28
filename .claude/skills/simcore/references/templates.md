@@ -1,4 +1,4 @@
-# 내장 템플릿 11종 실측표
+# 내장 템플릿 12종 실측표
 
 `SimCore.require('templates').TEMPLATES` 에서 뽑은 값. **가이드나 배포글에 예시를 쓸 때 여기서
 고를 것** — 지어내면 유저 화면과 안 맞는다.
@@ -29,6 +29,7 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | romance | 9 | 1 | 6 | 3/6/4 | 6 | 3 | 3 | 3 | ○ | 35 |
 | trpg | 11 | 4 | 5 | 2/3/3 | 3 | 6 | 4 | 3 | ○ | 22 |
 | vtuber | 17 | 9 | 8 | 8/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
+| smith | 11 | 3 | 8 | 1/2/6 | 3 | 5 | 3 | 3 | ○ | 25 |
 
 **`cmd`(채팅 명령)는 전 템플릿 0개.** 액션은 다 들어있는데 명령은 하나도 없다 — 가이드에서
 이 대비를 반드시 짚어야 한다. 템플릿 사용자는 우상단 버튼은 이미 보고 있지만 `/명령`은 존재조차 모른다.
@@ -49,19 +50,24 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | romance | `day` `stage` `confessed` | 카운터 / 관계 단계 / 플래그 |
 | trpg | `str` `dex` `wit` `cha` `adv` `dmg` | **캐릭터 시트 + 판정 부속.** 판정 결과 자체(roll/total/grade)는 v0.40부터 변수가 아니라 meta — 뺄 것도 없이 원천 차단 |
 | vtuber | `day` `subs` `stream_hours` `editor` `concept` `trend_seed` `burnout` `in_scandal` `career_over` | 카운터 / 규칙 산출값 / 플래그 |
+| smith | `skill` `stoked` `noble_next` | 캐릭터 시트 / 판정 소모품(액션·이벤트가 관리) / 의뢰 문턱(선택이 올린다) |
 
 패턴: **카운터 · 주사위/판정값 · 이벤트 플래그 · 플레이어가 고르는 정책 · 숨긴 정답**은 안 연다.
 
 ⚠ 규칙이 쓰는 변수와 allow는 **규칙이 있는 템플릿 전부에서 겹친다** (estate `food`, rpg `hp` …).
 "규칙이 쓰면 빼라"가 아니라 "서사에 안 나타나면 빼라"가 기준이다.
 
-`whenArmed`(액션 잠금, v0.39)는 **어느 템플릿도 안 쓴다** — 다른 모듈과 장부가 겹치는 봇을 위한
-옵트인이다. 템플릿은 장부가 하나라 필요가 없다.
+`whenArmed`(액션 잠금, v0.39)는 **smith만** — 장부가 둘인 유일한 템플릿이다
+(`vault`를 `deposit`/`withdraw` 버튼 턴에만 개방). 나머지는 장부가 하나라 필요가 없다.
 
-`checks`(판정, v0.40)는 **trpg만 5종** (ck_str/dex/wit/cha/attack). v0.39까지 변수 5개
-(roll/total/grade/checking/roll_pending) + 규칙으로 손조립하던 것의 일급화 — vars 16→11.
+`checks`(판정, v0.40)는 **trpg 5종** (ck_str/dex/wit/cha/attack — 변수 5개 손조립의 일급화,
+vars 16→11) + **smith 1종** (ck_forge — 액션과 랜덤 이벤트가 하나를 나눠 쓰는 예시).
 
-`choices`(갈림길, v0.41)는 **daily만 1종** (stray_cat 길고양이, timeout 2) — 랜덤 표에 있다.
+`choices`(갈림길, v0.41)는 **daily 1종** (stray_cat 길고양이, timeout 2 — 랜덤 표) +
+**smith 2종** (noble_offer 조건 이벤트: 잠긴 선택지·문턱 재발동 제어 / peddler 랜덤: timeout 2).
+
+**smith는 v0.39~0.42 신기능 총집합** — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다
+(클릭 조작은 어느 템플릿이든 범례·선택지에 자동).
 
 ## 자주 인용하는 실물 예시
 
@@ -124,11 +130,31 @@ onTurn      dmg = 0 (피해량은 판정 턴에만 의미 — 지시문이 눌�
 ```
 회귀: 구판(v0.39 손조립)과 같은 시드에서 굴림·등급·피해·반격·기력 **시드별 동일값 800/800** 확인.
 
-### hold(지속형) 액션 — 둘뿐
+### smith — 신기능 총집합 (v0.42.1)
+```
+whenArmed   allow의 vault 에 whenArmed: ['deposit','withdraw'] — 입금/출금 버튼이 눌린 턴에만
+            보조 AI에게 열린다. 두 액션은 effects 없이 inject 만("얼마를 옮겼는지 장면에서 정해
+            말하라") — 액수는 서사가 정하고 기록은 보조가, 귀속은 버튼이 정한다
+ck_forge    roll 'stoked ? max(rand(1,20), rand(1,20)) : rand(1,20)'   mod skill_mod   vs dc
+            대성공 → fame+3, money += 100+total*2 / 대실패 → iron-1, fame-1
+            성공 → money += 30+total*2, fame+1 / 실패(기본)
+            🔨 벼려낸다(액션 check) 와 rush_order(랜덤 이벤트 check) 가 같은 판정을 공유
+갈림길       noble_offer(조건: fame >= noble_next, timeout 3): 받는다 / 웃돈(when fame>=50 — 🔒
+            예시) / 정중히 거절(마지막 = 타임아웃 자동). 조건 이벤트엔 쿨다운이 없으므로 세 선택지
+            전부 noble_next = fame+25 로 문턱을 올려 재발동을 스스로 제어 — 이 패턴이 정석이다
+            peddler(랜덤, timeout 2): 무쇠를 산다(when money>=80) / 소문(inject만) / 손을 내젓는다
+주문 회전    walk_in(랜덤)이 '동네 주문' 추가 + dc 재추첨 → 🔨 벼려낸다의 effects 가 remove 로 하나씩
+            처리. 남작가의 예장검은 보조 AI가 지운다(queue desc)
+과로         burnout: when 'stamina <= 1' — 매 턴 회복(+1)이 이벤트 판정보다 먼저 돌아서
+            0으로 걸면 영영 안 터진다. 문턱 1 + 회복 효과로 조건을 스스로 닫는다
+```
+
+### hold(지속형) 액션 — 셋
 ```
 estate  🛡 순찰 강화     gold = gold - 20        "[지속 정책] 병사들이 순찰을 강화하고 있다."
 vtuber  🔴 풀타임 방송   when not burnout
                         stream_hours = min(stream_hours+3, 10) / energy = energy - 4
+smith   🪞 다듬질        when stamina >= 2       fame+1 / stamina-1  (매 턴 회복 +1과 상쇄)
 ```
 
 ### survival — presets (3단계 난이도의 모범)
@@ -152,6 +178,7 @@ vtuber  🔴 풀타임 방송   when not burnout
 | trpg | 판정 / 상태 / 능력치 |
 | vtuber | 채널 / 방송 / 컨디션 / 수익 / 팬 |
 | daily | 지금 / 소지 |
+| smith | 장부 / 공방 / 명성 |
 
 ## 밸런스 감각 (진단 규격서에서)
 

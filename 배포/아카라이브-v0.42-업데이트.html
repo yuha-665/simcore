@@ -1,0 +1,223 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.38 &nbsp;→&nbsp; v0.42</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+<b style="color:#e0a94a;">주사위</b>가 생기고, <b style="color:#e0a94a;">갈림길</b>이 생기고, 그걸 전부 <b style="color:#e0a94a;">눌러서</b> 조작합니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+지금까지가 상태를 <b style="color:#dbe2ea;">지키는</b> 업데이트였다면, 이번엔 <b style="color:#dbe2ea;">노는 방법</b>이 늘었습니다.
+그리고 다른 상태창 모듈과 같이 쓸 때 돈이 새던 것도 구조로 막았습니다.
+</p>
+
+<!-- ─────────── v0.39 액션 잠금 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.39</span>
+    <span style="font-size:19px;font-weight:600;">액션 잠금 — 버튼을 켠 턴에만 열리는 변수</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  제보에서 출발했습니다. 대장간 경영 봇을 <b style="color:#dbe2ea;">다른 상태창 모듈과 같이</b> 쓰는데,
+  개인 지갑은 그쪽 모듈이 관리하고 대장간 운영자금은 SimCore가 관리합니다. 그런데
+  <b style="color:#fff;">입금 액션을 안 눌러도 대장간 자금이 자꾸 늘어납니다.</b>
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  보조 AI 입장이 되어 보면 당연한 일입니다. 서사에 &quot;500골드를 벌었다&quot;가 나왔는데,
+  이 AI가 아는 장부는 <b style="color:#dbe2ea;">대장간 금고 하나뿐</b>이에요. 개인 지갑은 남의 모듈 것이라 보이지도 않습니다.
+  돈이 벌렸으니 아는 장부에 적는 수밖에요. <b style="color:#dbe2ea;">상한을 걸어도 소용없습니다 — 상한은 크기를 막지 귀속을 못 정합니다.</b>
+  지시문으로 타이르는 것도 확률이고, 영어로 채팅하면 그마저 어긋납니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">평소 턴</span>
+   서사에 무슨 돈 얘기가 나와도 → 금고는 <span style="color:#c98a7a;">아예 안 보임</span> (못 건드림)
+
+<span style="color:#8b98a9;">💰 입금 버튼을 켠 턴</span>
+   금고가 보조 AI에게 열림 → <span style="color:#a8d5a2;">옮긴 액수만큼 기록</span> → 다음 턴 다시 잠김</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  변수에 <b style="color:#dbe2ea;">액션을 문지기로</b> 세우는 기능입니다. 지정한 액션 버튼이
+  <b style="color:#dbe2ea;">무장 중이거나 방금 발동된 턴에만</b> 보조 AI가 그 변수를 만질 수 있습니다.
+  버튼은 어느 언어로 채팅해도 버튼이라, 지시문과 달리 <b style="color:#dbe2ea;">확률이 아니라 구조</b>로 막힙니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  거는 곳: <b style="color:#dbe2ea;">봇 편집 → AI 설정 → 허용 변수</b>의 <b style="color:#dbe2ea;">[액션 잠금]</b> 칸에 액션 id를 적으면 끝.
+  쉼표로 여러 개 걸 수 있고(하나만 무장돼도 열림), 낱말 잠금(v0.37)과 같이 걸면 둘 다 만족해야 열립니다.
+  돈처럼 AI가 자꾸 멋대로 만지는 변수에 특효입니다.
+  </p>
+</div>
+
+<!-- ─────────── v0.40 판정 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.40</span>
+    <span style="font-size:19px;font-weight:600;">판정 — 주사위는 시스템이 굴린다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  TRPG식 판정입니다. AI에게 &quot;주사위를 굴려라&quot;라고 하면 <b style="color:#fff;">굴리는 척하면서 결과를 자기가 정합니다.</b>
+  성공이 어울리는 장면이면 성공이 나와요. 이제 굴림·보정·목표치·등급이 한 덩어리로 시스템 것이 됩니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">⚔ 공격 버튼을 켜고 전송하면, 같은 턴 서사에 이 줄이 실려 갑니다</span>
+
+   <span style="color:#e0a94a;">[판정]</span> 공격 판정: 14 + 2 = 16 vs 13 → <span style="color:#a8d5a2;">성공</span>
+
+<span style="color:#8b98a9;">눈이 20이면 대성공 — 피해 주사위가 2배로 구르고, AI에겐
+"압도적인 일격으로 그려라"는 연출 지시가 따라붙습니다. 1이면 반격까지 맞습니다.</span></pre>
+
+  <div style="color:#a9b4c2;font-size:14px;margin-bottom:14px;">
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">결과를 AI가 못 뒤집습니다.</b> 판정 결과는 변수가 아니라 시스템 기록이라, 보조 AI에게 열어 줄 방법 자체가 없습니다.</div>
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">리롤해도 같은 눈이 나옵니다.</b> 마음에 안 드는 대실패를 리롤로 세탁할 수 없습니다.</div>
+    <div>— 능력 보정은 변수를 그대로 읽습니다. <b style="color:#dbe2ea;">근력이 오르면 판정도 같이 강해집니다.</b></div>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">TRPG 템플릿이 이걸로 전부 다시 짜였습니다</b> — 능력 판정 4종 + 공격 판정.
+  구버전에서 변수 다섯 개와 규칙으로 손조립하던 것이 판정 다섯 줄이 됐고, 굴림값은 구판과 시드까지 같습니다.
+  이벤트에도 달 수 있어서, 보조 AI가 &quot;여긴 판정이 필요한 상황&quot;이라고 판단하면 시스템이 대신 굴려 주는 배선도 됩니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  만드는 곳: <b style="color:#dbe2ea;">봇 편집 → 판정 탭</b>. [판정 추가]를 누르면 d20 + 대성공/대실패/성공/실패
+  네 등급이 뼈대로 나오고, <b style="color:#dbe2ea;">[🎲 액션 버튼 만들기]</b> 한 번이면 실행 버튼까지 생깁니다.
+  자세한 건 가이드 8탄에서.
+  </p>
+</div>
+
+<!-- ─────────── v0.41 갈림길 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.41</span>
+    <span style="font-size:19px;font-weight:600;">갈림길 — 이벤트가 선택지를 내밀고 기다린다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  액션이 <b style="color:#dbe2ea;">상시 동사</b>(언제든 휴식·공격)라면, 갈림길은 <b style="color:#dbe2ea;">이 순간의 선택</b>입니다.
+  이벤트가 터지면서 선택지 몇 개를 내밀고, 유저가 고를 때까지 서사가 그 자리에 머뭅니다.
+  </p>
+
+  <p style="margin:0 0 7px;color:#8b98a9;font-size:13px;">일상 템플릿에 실제로 들어 있는 갈림길입니다. 상태창에 이렇게 뜹니다.</p>
+  <div style="background:#0d1117;border:1px solid #2a323d;border-radius:6px;padding:14px 16px;margin:0 0 14px;">
+    <div style="color:#a9b4c2;font-size:14px;margin-bottom:9px;">골목에서 야윈 길고양이가 따라온다. 어떻게 할지 정할 때까지 계속 곁을 맴돈다.</div>
+    <div style="font-size:14px;margin:3px 0;color:#dbe2ea;">1. 쓰다듬어 준다</div>
+    <div style="font-size:14px;margin:3px 0;color:#dbe2ea;">2. 먹이를 사서 준다</div>
+    <div style="font-size:14px;margin:3px 0;color:#dbe2ea;">3. 모른 척 지나친다</div>
+    <div style="color:#8b98a9;font-size:12.5px;margin-top:8px;">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1) · 2턴 안에 안 고르면 마지막 항목</div>
+  </div>
+
+  <div style="color:#a9b4c2;font-size:14px;margin-bottom:14px;">
+    <div style="margin-bottom:6px;">— 고르는 법은 둘: <b style="color:#dbe2ea;">선택지를 그냥 누르거나</b>(아래 v0.42), 채팅에 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/선택 2</code> 또는 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/선택 먹이</code>.</div>
+    <div style="margin-bottom:6px;">— 선택지에 <b style="color:#dbe2ea;">조건</b>을 걸 수 있습니다. 돈이 모자라면 &quot;먹이를 사서 준다&quot;가 <b style="color:#dbe2ea;">🔒 잠김</b>으로 뜨고 안 눌립니다.</div>
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">타임아웃</b>이 지나면 맨 마지막 항목으로 자동 결정됩니다. &quot;선택하지 않는 것도 선택&quot;이라서요.</div>
+    <div>— 기다리는 동안 <b style="color:#dbe2ea;">그 선택지들이 만질 변수는 보조 AI에서 잠깐 빠집니다.</b> 서사가 결과를 앞질러 굳혀 버리는 걸 막습니다.</div>
+  </div>
+
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  만드는 곳: <b style="color:#dbe2ea;">봇 편집 → 규칙·이벤트 탭</b>, 아무 이벤트에서나
+  <b style="color:#dbe2ea;">[⌛ 갈림길로 만들기]</b>를 누르면 그 이벤트가 갈림길이 됩니다.
+  조건 이벤트·랜덤 이벤트 어느 쪽이든요. 자세한 건 가이드 9탄에서.
+  </p>
+</div>
+
+<!-- ─────────── v0.42 클릭 조작 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.42</span>
+    <span style="font-size:19px;font-weight:600;">클릭 조작 — 상태창이 진짜 버튼이 된다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  정정부터 하겠습니다. 지난 글에서 <b style="color:#dbe2ea;">&quot;메시지 안 버튼은 리수가 클릭 정보를 안 넘겨 줘서 만들 수가 없다&quot;</b>고
+  했는데, <b style="color:#fff;">절반만 사실이었습니다.</b> 리수는 <b style="color:#dbe2ea;">어느 버튼</b>이 눌렸는지는 안 넘겨 주지만
+  <b style="color:#dbe2ea;">어느 좌표</b>가 눌렸는지는 넘겨 줍니다. 그리고 우리 버튼이 화면 어디에 있는지는 우리가 잴 수 있어요.
+  그 둘을 맞춰 보면 — 버튼이 됩니다.
+  </p>
+
+  <div style="color:#a9b4c2;font-size:14px;margin-bottom:14px;">
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">상태창 아래 액션 범례</b>가 눌립니다. 우상단 버튼과 똑같은 무장/해제 토글이에요. 이제 범례가 설명서가 아니라 <b style="color:#dbe2ea;">이름 달린 큰 버튼</b>입니다.</div>
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">갈림길 선택지</b>가 눌립니다. /선택을 칠 필요 없이 &quot;2. 먹이를 사서 준다&quot;를 누르면 됩니다. 잠긴(🔒) 항목은 안 눌립니다.</div>
+    <div>— <b style="color:#dbe2ea;">입력창 위에 조작줄</b>이 생깁니다. 무장해 둔 액션과 걸려 있는 갈림길이 칩으로 떠서, &quot;지금 전송하면 뭐가 반영되나&quot;가 항상 보입니다. 무장 칩은 누르면 해제돼요. 보여줄 게 없으면 사라집니다.</div>
+  </div>
+
+  <div style="background:#0d1117;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <div style="font-size:14px;color:#8b98a9;margin-bottom:6px;">권한 확인창이 한 번 뜹니다</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    클릭 좌표를 재려면 리수가 <b style="color:#dbe2ea;">메인 화면 접근 권한</b>을 물어봅니다 — SimCore 봇을 쓸 때 딱 한 번,
+    안 쓰는 분께는 아예 안 뜹니다. <b style="color:#dbe2ea;">허용하면 클릭 조작이 켜지고, 거부해도 아무것도 안 깨집니다</b> —
+    우상단 버튼과 /선택 명령은 지금까지처럼 그대로 동작합니다.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── v0.42.1 대장간 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.42.1</span>
+    <span style="font-size:18px;font-weight:600;">새 템플릿: 대장간 — 무쇠와 장부</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  위의 넷을 <b style="color:#dbe2ea;">한 봇에서 전부</b> 만져 볼 수 있는 12번째 템플릿입니다.
+  [새로 만들기]에서 <b style="color:#dbe2ea;">대장간</b>을 고르면 됩니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.95;color:#dbe2ea;"><span style="color:#e0a94a;">액션 잠금</span>   공방 금고는 💰입금/💸출금 버튼을 켠 턴에만 움직인다
+<span style="color:#e0a94a;">판정</span>        🔨 벼려낸다 = 단조 판정 (d20+솜씨 vs 난이도, 🔥화로를 달구면 이점)
+<span style="color:#e0a94a;">갈림길</span>      평판이 오르면 귀족 의뢰(선택지 하나는 🔒), 랜덤으로 떠돌이 행상
+<span style="color:#e0a94a;">클릭</span>        위의 전부가 상태창에서 눌린다</pre>
+
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  시작 프리셋에서 <b style="color:#dbe2ea;">이름난 공방</b>을 고르면 평판이 높은 상태로 시작해서
+  귀족 의뢰 갈림길이 금방 뜹니다. 잠긴 선택지(🔒)가 뭔지도 바로 볼 수 있어요.
+  </p>
+</div>
+
+<!-- ─────────── 정리 ─────────── -->
+<div style="border-top:2px solid #e0a94a;padding-top:18px;margin-top:14px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:12px;">줄여서</div>
+<pre style="background:#161b22;border-radius:4px;padding:16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#e0a94a;">v0.39</span>    <span style="color:#7fc7d9;">액션 잠금</span> — 버튼을 켠 턴에만 열리는 변수
+         <span style="color:#8b98a9;">— 다른 상태창 모듈과 병용할 때 돈이 새던 것, 구조로 차단</span>
+<span style="color:#e0a94a;">v0.40</span>    <span style="color:#7fc7d9;">판정</span> — 주사위는 시스템이 굴린다. AI가 못 뒤집고 리롤해도 같은 눈
+<span style="color:#e0a94a;">v0.41</span>    <span style="color:#7fc7d9;">갈림길</span> — 이벤트가 선택지를 내밀고 기다린다. 🔒조건 · 타임아웃
+<span style="color:#e0a94a;">v0.42</span>    <span style="color:#7fc7d9;">클릭 조작</span> — 범례·선택지가 진짜 버튼 + 입력창 위 조작줄
+         <span style="color:#8b98a9;">— 권한 확인 1회, 거부해도 기존 방식 그대로</span>
+<span style="color:#e0a94a;">v0.42.1</span>  새 템플릿 <span style="color:#7fc7d9;">대장간</span> — 위의 전부가 든 시식 코너</pre>
+
+  <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:14px;">
+    <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    <b style="color:#dbe2ea;">쓰던 봇은 아무것도 안 바뀝니다.</b> 판정·갈림길·액션 잠금은 전부 옵트인이고,
+    클릭 조작만 알아서 켜집니다(기존 봇의 범례도 눌리게 되는 것뿐).<br><br>
+    새 기능은 이번에 올린 <b style="color:#dbe2ea;">가이드 8탄(판정)·9탄(갈림길)</b>에 만드는 법을 다 적어 뒀습니다.
+    둘 다 다른 탭들처럼 <b style="color:#dbe2ea;">규격 내보내기</b>가 있어서, 어려우면 AI한테 던지고 JSON을 받아
+    붙여넣으면 됩니다. 감 잡기용 실물은 <b style="color:#dbe2ea;">TRPG 템플릿(판정 5종)</b>과
+    <b style="color:#dbe2ea;">대장간 템플릿(전부 다)</b>에 있습니다.
+    </p>
+  </div>
+
+  <div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;">
+    <div style="font-size:14px;color:#8b98a9;margin-bottom:6px;">루아 브리지를 쓰고 계셨다면</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    다시 임포트한 뒤 <b style="color:#dbe2ea;">[루아 브리지 설치/갱신]</b>을 한 번 눌러 주세요.
+    판정·갈림길·액션 잠금이 브리지 쪽에도 들어가서, 갱신 전 브리지는 낡음으로 잡힙니다.
+    </p>
+  </div>
+</div>
+
+</div>

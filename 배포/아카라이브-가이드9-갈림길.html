@@ -1,0 +1,171 @@
+<p><strong><span style="font-size:36px;">0. 액션이랑 뭐가 다른가</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">4탄에서 배운 액션은 <strong>상시 동사</strong>임. 휴식&middot;공격&middot;순찰 &mdash; 유저가 <strong>아무 때나</strong> 골라서 판을 흔드는 것.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">갈림길은 반대로 <strong>그 순간에만 있는 선택</strong>임. 이벤트가 터지면서 &quot;어떻게 할래?&quot;를 물어보고, <strong>유저가 고를 때까지 기다림.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">일상 템플릿에 실제로 들어있는 걸로 보면 바로 감 옴. 랜덤 이벤트로 길고양이가 나타나면 상태창에 이게 뜸:</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>골목에서 야윈 길고양이가 따라온다. 어떻게 할지 정할 때까지 계속 곁을 맴돈다.</p>
+	<p><strong>1.</strong> 쓰다듬어 준다</p>
+	<p><strong>2.</strong> 먹이를 사서 준다</p>
+	<p><strong>3.</strong> 모른 척 지나친다</p>
+</blockquote>
+
+<p><br></p>
+
+<p>[스샷: 상태창에 뜬 갈림길 선택지]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">고르는 법은 두 가지. <strong>선택지를 그냥 누르거나</strong>(v0.42부터 진짜 버튼임), 채팅에 <strong>/선택 2</strong> 또는 <strong>/선택 먹이</strong> 치면 됨. 고르면 다음 전송에서 효과가 들어가고 AI한테 &quot;[선택] 먹이를 사서 준다&quot;가 실려 감.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 만들기 &mdash; 버튼 하나임</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">갈림길은 별도 탭이 아니라 <strong>이벤트의 속성</strong>임. <strong>봇 편집 &gt; 규칙&middot;이벤트 탭</strong>에서 아무 이벤트(조건&middot;랜덤 둘 다 됨) 블록 안에 있는 이 버튼을 누르면 됨:</span></p>
+
+<p><br></p>
+
+<blockquote><p><strong>[⌛ 갈림길로 만들기]</strong> &mdash; 터지면 선택지를 내밀고 유저가 /선택으로 고를 때까지 기다린다</p></blockquote>
+
+<p><br></p>
+
+<p>[스샷: 이벤트 블록 안 갈림길 편집 화면]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">선택지마다 채우는 건 네 칸인데 전부 아는 거임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>선택지 이름</strong> &nbsp;유저한테 보이는 그 줄<br>
+- <strong>조건</strong> &nbsp;거짓이면 <strong>🔒 잠김</strong>으로 뜨고 못 고름 (액션의 사용 조건과 동일)<br>
+- <strong>효과</strong> &nbsp;3탄에서 배운 그 효과 &mdash; 골랐을 때만 적용됨<br>
+- <strong>AI 전달문</strong> &nbsp;골랐을 때 AI한테 덧붙는 문장 (&quot;[선택] 이름&quot;은 자동으로 나감)</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">길고양이 두 번째 선택지가 좋은 예시임: 조건 <strong>money &gt;= 3000</strong>, 효과 <strong>money = money - 3000</strong>. 돈이 없으면 잠기고, 고르면 실제로 빠져나감. <strong>없는 돈으로 먹이를 사는 게 구조적으로 불가능</strong>한 거임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 타임아웃 &mdash; 안 고르는 것도 선택이다</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">선택지 아래 <strong>타임아웃</strong> 칸에 턴 수를 적으면, 그만큼 지나도록 안 고를 때 <strong>맨 마지막 항목이 자동으로 결정됨.</strong> 길고양이는 2턴임 &mdash; 두 턴 무시하면 &quot;모른 척 지나친다&quot;로 흘러가고, 고양이는 떠남.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ 그래서 마지막 항목이 중요함</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">마지막 항목 = 방치했을 때 벌어지는 일임. 두 가지만 지키면 됨.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>마지막엔 조건 걸지 말 것</strong> &nbsp;&mdash; 잠긴 채로 타임아웃되면 아무 효과 없이 지나가 버림</p>
+	<p><strong>마지막은 &quot;외면한다&quot;류로</strong> &nbsp;&mdash; 지갑 터는 선택지를 마지막에 두면 방치가 곧 강제 지출이 됨</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">타임아웃을 비우면 고를 때까지 무한정 기다리는데, 유저가 갈림길 뜬 걸 못 보고 지나가면 <strong>영원히 걸려 있음.</strong> 웬만하면 2~3턴 넣는 걸 추천함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 알아두면 좋은 규칙 두 개</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>① 갈림길은 한 번에 하나만 걸림.</strong> 하나가 걸려 있는 동안 다른 갈림길 이벤트는 발동을 미룸(일반 이벤트는 정상 동작). 선택지 잔뜩 쌓여서 뭐가 뭔지 모르게 되는 일이 없음.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>② 기다리는 동안 그 선택지들이 만질 변수는 보조 AI에서 잠깐 빠짐.</strong> &quot;먹이를 살까 말까&quot; 고민하는 동안 서사가 먼저 돈을 깎아버리면 선택이 의미가 없어지니까. 고르고 나면 다시 열림.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 실물 구경 &mdash; 대장간 템플릿</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>대장간 템플릿</strong>에 갈림길이 두 결 다 들어있음. 시작 프리셋에서 <strong>이름난 공방</strong>을 고르면 금방 봄.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>귀족 의뢰</strong> (조건 이벤트) &nbsp;평판이 문턱을 넘으면 남작가 시종이 찾아옴</p>
+	<p>&nbsp; 1. 의뢰를 받는다 &nbsp;/ &nbsp;2. 웃돈을 부른다 <strong>(평판 50까지 🔒)</strong> &nbsp;/ &nbsp;3. 정중히 거절한다</p>
+	<p><strong>떠돌이 행상</strong> (랜덤 이벤트, 타임아웃 2) &nbsp;무쇠를 싸게 팔겠다는 행상</p>
+	<p>&nbsp; 1. 무쇠 두 덩이를 산다 (money &gt;= 80) &nbsp;/ &nbsp;2. 소문을 듣는다 &nbsp;/ &nbsp;3. 손을 내젓는다</p>
+</blockquote>
+
+<p><br></p>
+
+<p>[스샷: 대장간 귀족 의뢰 갈림길 — 잠긴 선택지 포함]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">귀족 의뢰에서 볼 게 하나 더 있음. <strong>조건 이벤트를 갈림길로 쓸 때의 재발동 문제</strong>인데 &mdash; 조건 이벤트는 조건이 참인 동안 계속 터지려고 함. 그래서 대장간은 <strong>어느 쪽을 골라도 문턱 변수가 &quot;현재 평판 + 25&quot;로 올라가게</strong> 해놨음. 고르는 순간 조건이 스스로 닫히는 거임. 조건 이벤트로 갈림길 만들 거면 <strong>선택지 효과가 조건을 닫게</strong> 설계하셈 &mdash; 안 그러면 거절해도 다음 턴에 또 찾아옴.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. 이것도 AI한테 시키면 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>규칙&middot;이벤트 탭 맨 위</strong> 규격 내보내기에 갈림길 규격도 같이 들어감.</span></p>
+
+<p><br></p>
+
+<blockquote><p>이 봇 랜덤 이벤트 중에 하나를 갈림길로 바꿔줘. 선택지 3개, 하나는 조건 걸어서 잠기게 하고, 타임아웃 2턴으로</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">받은 JSON 붙여넣고 <strong>[📥 가져오기]</strong> &rarr; <strong>[설치/업데이트]</strong>.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>만들기</strong> &nbsp;규칙&middot;이벤트 탭 &rarr; 이벤트 블록의 [⌛ 갈림길로 만들기]</p>
+	<p><strong>고르기</strong> &nbsp;선택지 클릭 또는 /선택 번호&middot;이름 &rarr; 다음 전송에서 집행</p>
+	<p><strong>조건</strong> &nbsp;거짓이면 🔒 잠김. 번호는 유지됨</p>
+	<p><strong>타임아웃</strong> &nbsp;지나면 맨 마지막 항목 자동 &mdash; 마지막은 조건 없는 &quot;외면한다&quot;류로</p>
+	<p><strong>동시 1개</strong> &nbsp;걸려 있는 동안 다른 갈림길은 대기, 관련 변수는 보조 AI 제외</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기까지가 v0.42 신기능 편임. 판정(8탄)이랑 갈림길(9탄) 다 넣었으면 <strong>🔬 진단</strong> 한 번 돌리는 거 잊지 마셈 &mdash; 못 터지는 갈림길, 안 굴러가는 판정도 잡아줌.</span></p>

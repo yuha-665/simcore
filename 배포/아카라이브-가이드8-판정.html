@@ -1,0 +1,201 @@
+<p><strong><span style="font-size:36px;">0. AI한테 주사위를 맡기면 안 되는 이유</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">TRPG풍 봇 만들어본 사람은 다 겪어봤을 거임. 프롬프트에 &quot;d20을 굴려서 판정해라&quot;라고 적으면 AI가 <strong>굴리는 척하면서 결과를 지가 정함.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">성공이 어울리는 장면이면 성공이 나옴. 긴장감 있어야 할 것 같으면 실패가 나옴. 그건 주사위가 아니라 <strong>연출</strong>임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 진짜로 랜덤하게 굴렸다 쳐도, <strong>리롤하면 결과가 바뀜.</strong> 대실패 떴을 때 리롤 한 번이면 세탁 끝. 긴장이고 뭐고 없는 거임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 v0.40부터 <strong>주사위를 시스템이 굴림.</strong> AI는 결과를 통보받고 서사만 씀.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>결과를 AI가 못 뒤집음</strong> &nbsp;&mdash; 판정 결과는 변수가 아니라 시스템 기록이라 보조 AI한테 열어줄 방법 자체가 없음</p>
+	<p><strong>리롤해도 같은 눈</strong> &nbsp;&mdash; 같은 턴을 다시 굴리면 같은 결과가 나옴. 세탁 불가</p>
+	<p><strong>능력치 연동</strong> &nbsp;&mdash; 보정식이 변수를 그대로 읽어서, 근력이 오르면 판정도 같이 강해짐</p>
+</blockquote>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 어떻게 생겼나 먼저 보기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>TRPG 템플릿</strong>이나 <strong>대장간 템플릿</strong>으로 새 봇 만들면 바로 볼 수 있음. TRPG에서 <strong>⚔ 공격</strong> 버튼 켜고 아무 말이나 보내면:</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>[판정]</strong> 공격 판정: 14 + 2 = 16 vs 13 &rarr; <strong>성공</strong></p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이 줄이 <strong>같은 턴 서사에 실려 감.</strong> AI는 이 결과를 받아서 명중 장면을 씀. 굴린 눈(14) + 근력 보정(+2) = 합계(16)가 목표치(13)를 넘어서 성공 &mdash; 계산이 다 보임.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 판정 결과가 반영된 서사 + 상태창 변화 로그의 🎲 줄]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">상태창 변화 로그에도 <strong>🎲 줄</strong>로 남고, 눈이 20이면 대성공(피해 주사위 2배 + &quot;압도적인 일격으로 그려라&quot; 연출 지시), 1이면 대실패(반격까지 맞음)임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 판정 탭 뜯어보기</span></strong></p>
+
+<p><br></p>
+
+<p><strong>봇 편집 &gt; 판정 탭</strong>으로 들어가면 됨.</p>
+
+<p><br></p>
+
+<p>[스샷: 판정 탭 전체]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">대장간 템플릿에 들어있는 실제 판정임.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>id</strong> &nbsp;ck_forge &nbsp;/ &nbsp;<strong>표시 이름</strong> &nbsp;단조 판정</p>
+	<p><strong>굴림식</strong> &nbsp;stoked ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)</p>
+	<p><strong>보정식</strong> &nbsp;skill_mod</p>
+	<p><strong>목표치</strong> &nbsp;dc</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">칸 세 개가 전부임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>굴림식</strong> &nbsp;주사위 자체. <strong>rand()는 여기서만 쓸 수 있음.</strong> 위 예시는 &quot;화로를 달궈놨으면(stoked) 두 번 굴려 좋은 눈&quot; &mdash; 이점 굴림임<br>
+- <strong>보정식</strong> &nbsp;능력치 보너스. 변수&middot;파생을 읽음. 비우면 0<br>
+- <strong>목표치</strong> &nbsp;넘어야 하는 값. 숫자(13)도 되고 변수(dc)도 됨. 비우면 목표치 없는 판정</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그 아래가 <strong>등급</strong>임. 위에서부터 <strong>조건이 처음 맞는 등급 하나</strong>가 걸림.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>대성공</strong> &nbsp;roll == 20 &nbsp;&rarr; &nbsp;평판 +3, 공임 두둑 &nbsp;/ &nbsp;연출 지시 &quot;걸작의 탄생을 극적으로 그려라&quot;</p>
+	<p><strong>대실패</strong> &nbsp;roll == 1 &nbsp;&rarr; &nbsp;무쇠 하나 더 날림, 평판 -1</p>
+	<p><strong>성공</strong> &nbsp;total &gt;= vs &nbsp;&rarr; &nbsp;공임 + 평판 +1</p>
+	<p><strong>실패</strong> &nbsp;(조건 없음 &mdash; 나머지 전부)</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">등급의 조건이랑 효과에서는 <strong>roll(굴린 눈) / mod(보정) / total(합계) / vs(목표치)</strong>를 그냥 변수처럼 쓸 수 있음. 그래서 &quot;성공하면 공임 = 30 + total&times;2&quot; 같은 것도 됨 &mdash; <strong>얼마나 잘 굴렸는지가 값이 되는 거임.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>연출 지시</strong>는 그 등급일 때만 AI한테 덧붙는 문장임. 3탄의 AI 통지랑 같은 결인데 등급별로 다르게 나가는 것.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ 맨 마지막 등급엔 조건을 달지 마셈</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">등급은 첫 매치라서, 전부 조건이 달려 있는데 아무것도 안 맞으면 <strong>등급 없는 판정</strong>이 됨. 마지막은 조건 비운 &quot;실패&quot;로 두는 게 정석임. [판정 추가] 누르면 나오는 뼈대가 이미 그렇게 돼 있음 &mdash; 뼈대 순서 안 건드리는 게 젤 편함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 실행 통로는 세 개</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>① 액션 버튼</strong> &mdash; 제일 기본. 판정 블록 아래 <strong>[🎲 액션 버튼 만들기]</strong> 누르면 실행 버튼이 자동으로 생김. 4탄에서 배운 그 액션임 &mdash; 버튼 켜고 전송하면 <strong>같은 턴에</strong> 굴러서 서사에 반영됨.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 판정 블록 아래 🎲 액션 버튼 만들기]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>② 기존 액션에 달기</strong> &mdash; 액션 탭의 <strong>판정</strong> 칸에서 고르면 됨. TRPG의 ⚔ 공격이 이 방식임: 공격 액션이 기력을 깎으면서 공격 판정을 굴림.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>③ 이벤트에 달기</strong> &mdash; 이벤트에도 판정 칸이 있음. 이벤트가 터질 때 굴러서 <strong>[판정] 줄이 다음 전송에 통지로 합류</strong>함. TRPG 템플릿이 이걸로 재밌는 걸 함: 보조 AI가 &quot;여긴 판정이 필요한 상황&quot;이라고 깃발을 켜면 &rarr; 이벤트가 반응해서 <strong>시스템이 대신 굴려 줌.</strong> 유저가 버튼을 깜빡해도 판정이 빠지지 않는 배선임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 이점(어드밴티지) 패턴</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&quot;다음 판정 한 번을 유리하게&quot; 같은 소모성 버프는 이렇게 만듦. TRPG&middot;대장간 둘 다 이 구조임.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>1)</strong> 참/거짓 변수를 하나 둠 &nbsp;(TRPG는 adv, 대장간은 stoked)</p>
+	<p><strong>2)</strong> 굴림식이 그걸 읽음 &nbsp;&mdash; &nbsp;adv ? max(rand(1,20), rand(1,20)) : rand(1,20)</p>
+	<p><strong>3)</strong> 끄는 건 <strong>액션의 효과</strong>에 둠 &nbsp;&mdash; &nbsp;adv = 0</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&quot;굴리기 전에 꺼지면 이점이 날아가는 거 아님?&quot; 싶을 텐데 <strong>순서가 정해져 있음: 굴림 &rarr; 등급 효과 &rarr; 액션 자체 효과.</strong> 굴림식이 이점을 먼저 읽고 나서 꺼지니까 안전함. 끄는 걸 등급 효과에 넣으면 실패 등급에서만 꺼지는 식으로 구멍 나니까 <strong>액션 효과에 두는 게 정석임.</strong></span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. 이것도 AI한테 시키면 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">다른 탭들이랑 똑같음. <strong>판정 탭 맨 위</strong>에 규격 내보내기가 있음.</span></p>
+
+<p><br></p>
+
+<blockquote><p>이 봇에 어울리는 판정 2~3개 만들어줘. 능력치 보정이랑 등급별 효과&middot;연출 지시까지 채워주고, 실행할 액션 버튼도 같이</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">받은 JSON 붙여넣고 <strong>[📥 가져오기]</strong> &rarr; <strong>[설치/업데이트]</strong>.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>구조</strong> &nbsp;굴림식(rand는 여기만) + 보정식 + 목표치 + 등급들(첫 매치)</p>
+	<p><strong>등급</strong> &nbsp;조건&middot;효과에서 roll / mod / total / vs 사용 가능. 마지막은 조건 없이</p>
+	<p><strong>실행</strong> &nbsp;액션 버튼(같은 턴) 또는 이벤트(다음 전송에 통지)</p>
+	<p><strong>보장</strong> &nbsp;AI가 못 뒤집음 &middot; 리롤해도 같은 눈</p>
+	<p><strong>이점</strong> &nbsp;굴림식이 읽고, 끄는 건 액션 효과에</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">주사위가 생겼으니 다음은 <strong>선택지</strong>임. 이벤트가 &quot;어떻게 할래?&quot;를 물어보고 기다리게 만드는 것 &mdash; 9탄에서.</span></p>

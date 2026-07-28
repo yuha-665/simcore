@@ -1,0 +1,9164 @@
+//@name simcore
+//@api 3.0
+//@version 0.38.2
+//@display-name SimCore (시뮬 엔진) v0.38.2 일상 템플릿
+//@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
+//
+// SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
+// 빌드: node build.js → dist/simcore.plugin.js
+//
+// ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.38.2 ────────────────────────────────────────────────
+// 템플릿 열 개가 전부 "관리할 판"이 있는 것들이었다. 그냥 일상물에 상태창만 붙이고 싶은 사람이
+// 고를 게 없었다 — 제일 가벼운 rpg도 HP·레벨·인벤토리를 들고 온다.
+// - **일상 템플릿(daily)**: 날짜·시간·날씨·위치·소지금·소지품 여섯 개만. 랜덤 사건은 수치를
+//   굴리는 대신 **서사에 소재를 던진다**(누굴 만난다·가벼운 소동·날씨가 바뀐다).
+//   ⚠ 매 턴 자동 처리를 일부러 비웠다. 일상물에서 한 턴은 하루도 한 시간도 아니라서,
+//     카페에서 세 턴 떠들었다고 저녁이 되면 안 된다. 시간·날짜는 유저가 버튼으로 넘긴다.
+//     그래서 day는 allow에서 뺐다 — 카운터를 AI에게 안 맡기는 원칙은 그대로 지킨다.
+// - 진단 오탐: `writerMap`이 **'새 시작'(시작 프리셋)도 "값을 바꾸는 곳"으로 세고 있었다.**
+//   최초설정과 똑같이 시작값만 정하는 곳인데 그쪽만 제외돼 있었다 → 프리셋에서 한 번 정하고
+//   그 뒤로는 AI만 만지는 값이 전부 "안 움직임"으로 신고됐다. trpg의 능력치 넷처럼 **일부러**
+//   고정해 둔 것까지 포함해서. 실측 6개 템플릿 12건이 오탐이었다(전체 90 → 78).
+//   시뮬이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다. v0.31과 같은 부류의 사고다.
+//
+// ── v0.38.1 ────────────────────────────────────────────────
+// v0.37의 mentions는 엔진과 검증에만 있고 **편집기에 칸이 없었다.** AI 설정 탭은 규격
+// 내보내기도 없으니(TAB_SLICES에 ai 슬라이스가 없다) JSON을 손으로 고치는 것 말고는
+// 넣을 방법이 아예 없었다 — 기능은 있는데 아무도 못 쓰는 상태였다. v0.35의 cmd와 같은 사고다.
+// - 허용 변수 행에 [등장할 때만] 체크 + [낱말] 칸. 켜고 비우면 true(변수 이름을 낱말로).
+//
+// ── v0.38 ──────────────────────────────────────────────────
+// 상태창이 길어지면 그룹을 여러 개 두게 되는데, 그게 전부 세로로 쌓여서 한 화면에 안 들어왔다.
+// 탭으로 나누고 싶다는 얘기가 나왔고, 만들어 보니 **CSS만으로는 불가능**했다 —
+// 클릭 토글에는 <input>이나 <details> 같은 실제 요소가 필요한데 CSS는 요소를 못 만든다.
+// 그래서 배치를 스키마 옵션으로 올린다.
+// - `statusUI.layout: 'stack'|'tabs'|'accordion'|'popover'`. auto 모드 groups가 그대로 바뀐다.
+//   제작자는 한 줄만 고르면 되고 HTML도 CSS도 안 쓴다.
+// - 전부 JS 없이 돈다. 메시지 안 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨 어느 것이
+//   눌렸는지 알 수가 없다 — 탭은 라디오+라벨, 팝업은 tabindex+:focus-within으로 짰다.
+//   새니타이저 기본 허용 목록에 있는 것만 썼다(input/label/details/summary, type·checked·id·
+//   for·name·tabindex·open). 리수는 class만 x-risu-로 바꾸고 CSS 선택자도 같이 바꿔 주므로
+//   `:checked ~`나 id 선택자는 그대로 산다.
+// - ⚠ 상태창은 마커가 달린 **모든 메시지마다** 그려진다. id를 고정하면 같은 id가 열 개 생기고
+//   `<label for>`은 문서에서 처음 만난 것을 집는다 → 최신 메시지의 탭을 눌렀는데 맨 위
+//   메시지가 바뀐다. 그래서 메시지 번호를 id·name에 섞는다(`{uid}` 자리표시자로 템플릿에도 공개).
+//   아코디언·팝업은 id를 안 써서 이 문제가 없다 — 모바일에서도 이쪽이 안전하다.
+// - 알려진 한계: 새 턴이 와서 최신 메시지가 다시 그려지면 그 메시지의 탭 선택은 첫 탭으로
+//   돌아간다(선택은 DOM 상태고 다시 그리면 마크업의 checked가 이긴다). 지난 메시지는 그대로다.
+//
+// ── v0.37.2 ────────────────────────────────────────────────
+// "심코어는 되는데 모듈 상태창이 죽었다", "다른 플러그인이 안 돈다" 두 제보.
+// 둘 다 우리가 남의 프롬프트에 끼어들고 있었다.
+// 리수는 beforeRequest 리플레이서를 `replacer(formated, model)`로 부르는데, 이 `model`은
+// 'model'만이 아니라 'submodel'·'memory'·'emotion'·'translate'·'otherAx' 전부다.
+// 즉 **앱에서 나가는 모든 LLM 요청**에 이 훅이 걸린다. 우리는 두 번째 인자를 안 보고 있었다.
+// - 모듈의 루아 axLLM은 'otherAx'다. 거기에 우리 상태 블록이 system으로 얹히니
+//   "<eomg> 태그 JSON만 내라"는 지시와 "이 영지 상태를 갱신하라"가 한 프롬프트에서 싸운다
+//   → 모듈이 받는 건 쓰레기 → 태그도 상태창도 안 나온다. 다른 플러그인도 똑같다.
+// - 더 나쁜 건 onSend를 같이 불렀다는 것이다. sendIndex는 message.length-1이라 응답이
+//   저장된 뒤에 도는 모듈 호출에선 값이 하나 밀린다 → 새 pre 스냅샷 + 송신 페이즈 한 번 더
+//   = 남의 보조 호출이 우리 시뮬레이션의 턴을 몰래 넘기고 있었다.
+// - 이제 주입·onSend·turnBusy는 type === 'model'일 때만 한다. 마커 지우기는 전 타입 유지 —
+//   ⟦simcore:N⟧이 모듈의 줄번호나 번역문에 새어 나가면 안 되니까.
+// - loadForCurrentChar()를 try 안으로 넣었다. 리플레이서 호출부엔 try/catch가 없어서
+//   여기서 한 번 던지면 앱의 모든 요청이 실패한다.
+//
+// ── v0.37.1 ────────────────────────────────────────────────
+// 보조모델을 버텍스(Gemini)로 걸면 죽고 LLM Gateway로 걸면 되는 제보 —
+// 같은 모델, 같은 백엔드(게이트웨이도 버텍스로 물려 있었다), 프로바이더만 달랐다.
+//   테스트 결과: 실패 — 호출 예외: Cannot read properties of undefined (reading 'role')
+// 원인은 우리가 보내는 모양이다. 보조모델 호출을 **system 한 통**으로만 보내고 있었는데,
+// 구글 계열은 system을 contents가 아니라 systemInstruction으로 빼낸다 → contents가 빈 배열 →
+// 리수 요청 빌더가 없는 원소의 role을 읽고 죽는다. OpenAI 호환(게이트웨이)은 system-only를
+// 그대로 넘겨서 안 죽었을 뿐, 우리 쪽이 맞은 적은 없었다.
+// - system 뒤에 짧은 user 턴을 붙인다(AUX_NUDGE). 직접 호출·루아 브리지 양쪽 다 —
+//   axLLM도 같은 한 통짜리였으므로 브리지로 우회해도 똑같이 죽었을 것이다.
+// - ⚠ 브리지 지문은 **스키마만** 해싱한다. 생성되는 루아가 바뀌어도 스키마가 그대로면
+//   이미 설치된 낡은 브리지가 영영 노후로 안 잡힌다 → BRIDGE_GEN을 지문에 섞었다.
+//   생성 코드를 고칠 때마다 올릴 것.
+//
+// ── v0.37 ──────────────────────────────────────────────────
+// 보조 모델에게 늘 스물여섯 명의 호감도를 열어 두고 있었다. 등장하지도 않은 사람의 값이
+// 분위기상 ±1씩 밀리면 상한은 아무 도움이 안 된다 — 상한은 크기를 막지 빈도를 못 막는다.
+// 안 보여 주는 게 유일한 방법인데, allow에 조건식을 달아 봐야 소용이 없다:
+// "이번 턴에 그 사람이 나왔나"는 변수가 아니라 **서사 원문**에만 있는 정보라서다.
+// - `mentions` — 로어북 키워드와 같은 방식. 이번 턴 글에 그 말이 있어야 그 변수가 열린다.
+//   `true`면 변수의 label을 낱말로 쓴다(인물 호감도는 label이 곧 이름이라 한 글자면 끝난다).
+// - **프롬프트와 적용이 같은 함수로 같은 글을 본다**(auxAllowList). 안 보여 준 변수를
+//   나중에 받아 주면 거르는 의미가 없다 — outputPhase/applyChangesToState에 seenText를 넘긴다.
+// - ⚠ 한국어는 이름이 서로 겹치고("릴리아나" 안에 "리아나") 조사가 붙어 단어 경계를 못 쓴다.
+//   그냥 부분일치로 두면 릴리아나가 나올 때마다 리아나 백작까지 열렸다(실측). 그래서
+//   **더 긴 낱말에 통째로 가려진 자리는 안 친다.** 걸린 자리가 전부 그렇다면 등장한 게 아니다.
+//   똑같은 낱말을 둘이 쓰는 것만 검증 경고 — 그건 갈릴 방법이 없다.
+// - ⚠ 루아 브리지는 설치 시점에 자리표시자로 템플릿을 한 번 굽는다. 거기서 거르면 '⟦NARR⟧'에
+//   이름이 없어 mentions 변수가 영영 닫힌 채 박힌다 → 브리지 경로는 `allowAll: true`로 끈다.
+//
+// 실측(베리디아, 인물 26명): 조정 가능 변수 70개 → 등장 없으면 44개, 한 명 나오면 45개.
+//
+// ── v0.36.1 ────────────────────────────────────────────────
+// 명령 모음집의 칩이 글자가 통째로 안 보였다. 원인이 둘 겹쳤다.
+// - 칩을 `<code>`로 감쌌다. 상태창은 리스의 메시지 렌더를 타므로 마크다운/테마 CSS가
+//   code에 자기 색을 먹인다 — 봇 CSS 탓이 아니라 어느 봇에서나 난다. `<span>`으로 바꿨다.
+//   (플러그인이 채팅에 내보내는 HTML에서 code를 쓰던 곳은 여기 하나뿐이었다. 회귀 테스트로 막아 뒀다)
+// - 그리고 **배경을 칠해 놓고 글자색을 안 정했다.** 바깥에서 들어온 색이 배경과 겹치면 그대로 사라진다.
+//   color:inherit을 준다 — 밝은 장부든 어두운 밀서든 그 상태창의 본문 색을 따라간다.
+//   배경을 칠하면 글자색도 같이 정한다, 가 규칙이다.
+//
+// ── v0.36 ──────────────────────────────────────────────────
+// v0.35의 구멍: 명령 이름은 **제작자가** 변수마다 붙이는데, 그걸 붙일 자리도 볼 자리도 없었다.
+// 편집기 변수 탭에는 cmd 칸이 아예 없어서 JSON을 손으로 고쳐야 했고, 유저 쪽은 자기가 쓰는 봇에
+// 무슨 명령이 있는지 알 방법이 전혀 없었다. 기능은 있는데 아무도 못 쓰는 상태였다.
+// - **명령 탭 신설.** 변수를 골라 이름을 붙이면 그 이름의 명령이 열린다. 문법은 안 적는다 —
+//   `commandSpecs()`가 타입에서 뽑아 그 자리에 보여준다(목록이면 등록/제거 두 줄, enum이면 선택지).
+//   ⚠ 슬라이스가 `merge: 'cmd'`인 이유: 명령은 별도 배열이 아니라 변수에 붙은 속성이라,
+//     다른 탭처럼 통째로 갈아끼우면 명령 하나 붙이려다 변수·파생이 통째로 날아간다.
+//     AI에게도 vars 원문 대신 `[{var, cmd}]` 배정표만 내보내고, 받은 것도 배정만 얹는다.
+// - **상태창 `{commands}`.** 제작자가 박은 자리에 접이식 명령 모음집이 그려진다.
+//   패널에 넣는 건 답이 아니다 — 배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유다.
+//   그룹 모드는 배치를 플러그인이 정하므로 맨 아래 자동으로 붙인다(자리표시자를 박을 데가 없다).
+//   명령이 하나도 없으면 껍데기도 안 그린다. 명령을 열어 놓고 {commands}가 없으면 명령 탭이 경고한다.
+// - `commands`라는 id의 변수는 자리표시자를 가린다 → 검증 경고.
+//
+// ── v0.35.1 ────────────────────────────────────────────────
+// 목록 제거가 완전일치라서 사람이 아무것도 못 지우고 있었다. `/계약- 헤세 상단 양모`로는
+// `"헤세 상단 양모 +12 @1093"`이 안 지워진다 — 금액이야 안다 쳐도 `@1093`은 v0.34가 굳힌
+// 값이라 유저가 알 방법이 없다. 바로 위 v0.35 주석이 그 문법을 예시로 적어 놓고 있었다.
+// - 완전일치 → 앞머리 → 부분일치 순으로 좁힌다. 하나로 안 좁혀지면 안 지우고 후보를 보여준다
+//   (여럿 중 아무거나 지우는 건 조용히 틀리는 것보다 나쁘다).
+// - 확인 문구가 유저가 친 말이 아니라 **실제로 지워진 항목**을 되돌려 준다.
+// - '없음'과 '여럿'을 구분해서 이유를 말한다. 예전엔 둘 다 "바뀐 것 없음"이었다.
+// ※ AI 쪽 remove는 그대로 완전일치다. 목록 현재값을 보고 쓰니 맞출 수 있고,
+//   거기까지 느슨하게 하면 서사가 엉뚱한 계약을 지우는 사고가 조용히 난다.
+//
+// ── v0.35 ──────────────────────────────────────────────────
+// 지속 효과를 누가 등록하느냐의 문제. 서사만 읽는 보조 모델은 "상단과 이야기했다"와
+// "계약이 성사됐다"를 구분하지 못하고, 지속 효과는 한 번 잘못 들어가면 매일 복리로 어긋난다.
+// 그렇다고 제작자가 미리 다 적어 둘 수도 없다 — 어떤 계약을 맺을지는 플레이가 정한다.
+//
+// 그래서 유저가 등록하게 했다. 문제는 배포받은 유저는 플러그인 패널을 안 연다는 것이고,
+// 상태창 안의 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨서 구조적으로 못 쓴다(v0.11에서 확인).
+// 남은 통로가 채팅 입력창이었고, 여기가 오히려 버튼보다 낫다 —
+// 버튼은 미리 정해둔 것만 누르지만 계약 이름과 금액은 그 자리에서 적어야 하는 값이다.
+// - 변수에 `cmd`를 달면 열린다: `/계약 헤세 상단 양모 +12 @+1080`, `/계약- 헤세 상단 양모`
+//   숫자는 부호가 있으면 증감, 없으면 지정. text/enum은 대입. 상대 기한도 여기서 굳는다.
+// - 명령 줄은 지우지 않고 `(시스템: …)` 확인 문구로 바꾼다. 지우면 ① 유저 메시지가 통째로
+//   비어 빈 턴이 되고 ② 모델이 등록 사실을 몰라 그에 맞게 서술하지 못한다.
+// - 모르는 명령은 손대지 않는다. 유저가 그냥 `/`로 시작하는 말을 썼을 수 있다.
+//   거부(enum 밖 등)와 "변화 없음"은 구분해서 이유를 돌려준다 — 조용히 삼키면 유저가 못 고친다.
+//
+// ── v0.34 ──────────────────────────────────────────────────
+// v0.33의 기한은 절대값이라 보조 AI에게 "지금 경과일 12 + 1080 = 1092"라는 산술을 시키고 있었다.
+// 그건 이 플러그인이 없애려고 만든 바로 그 종류의 일이고, 틀려도 조용하다 —
+// 3000년에 끝나는 계약이 생겨도 아무도 모른다.
+// - `@+숫자` (상대) 를 추가되는 순간 `@절대값`으로 굳힌다. 모델은 "3년 = @+1080"만 알면 된다.
+//   기준 시각은 그 목록의 onTurn expire 식을 그대로 쓴다 — 등록과 만료를 같은 시계로 재야 어긋나지 않는다.
+//   굳히지 못하면(expire 규칙이 없으면) 손대지 않는다. `@+N`은 `@숫자` 패턴에 안 걸려 무기한이 될 뿐이다.
+//
+// ※ 함께 확인한 것: 보조 모델 호출은 runLLMModel({mode:'submodel', messages:[system 한 통]})이라
+//   **로어북·캐릭터 카드·페르소나가 하나도 안 들어간다.** 들어가는 건 조정 가능 변수 + 현재값 +
+//   이번 턴 서사 + 유저 발화 + (contextTurns>1이면) 앞선 턴 원문뿐이다.
+//   그래서 변수 desc에 "로어북 표기를 따르라" 같은 지시를 쓰면 못 보는 걸 맞추라는 말이 된다.
+//   보조 모델이 이름을 아는 경로는 서사 원문뿐이다.
+//
+// ── v0.33 ──────────────────────────────────────────────────
+// 등록부에 기한을 붙였다. "3년 계약"이 3년 뒤에 스스로 끝나야 하는데, v0.32는 서사가
+// 파기해 주기 전까지 영원히 살아 있었다.
+// - 항목의 `@숫자` = 끝나는 시점. onTurn의 `{ "list": "계약", "expire": "day" }`가 지난 것을 뺀다.
+//   **남은 일수가 아니라 끝나는 날**인 이유가 둘 있다. ① 남은 일수면 매 턴 항목 전부를 1씩
+//   깎아야 하는데 미니 표현식엔 반복문이 없어 애초에 불가능하다. ② 절대값이면 날짜를
+//   며칠씩 건너뛰어도 저절로 맞는다 — days_passed와 공짜로 맞물린다.
+// - itemValue()가 `@숫자`를 먼저 떼어낸다. 안 그러면 "성벽 부역 @450"이 하루 450짜리
+//   수입으로 잡힌다 — 기한만 있고 금액이 없는 항목이 제일 흔한데 거기서 대형 사고가 난다.
+//
+// ── v0.32 ──────────────────────────────────────────────────
+// 서사가 만들어 내는 지속 효과 — 무역 계약, 조약, 저주, 부역. "하루 12G씩 들어온다"를
+// 40턴 동안 잊지 않고 더하는 건 AI가 제일 못하는 일이고, 시스템이 제일 잘하는 일이다.
+// 그런데 어떤 계약이 맺어질지는 제작 시점에 알 수 없어서 스키마에 미리 적어 둘 수가 없다.
+//
+// 처음엔 state에 mods[] 레지스트리를 새로 파고 updater에 채널을 하나 더 여는 설계를 봤다.
+// 세이브 마이그레이션·프롬프트 규약·UI가 전부 딸려 오는 큰 공사다. 그런데 필요한 것을
+// 하나씩 따져 보니 목록(list) 변수가 이미 전부 갖고 있었다 — AI는 {"add"/"remove"} 연산을
+// 이미 할 줄 알고, 저장·내보내기·칩 렌더·검증도 그대로 쓴다. 없는 건 딱 둘이었다.
+// - `sum(목록[, "거르개"])` — 항목 **맨 끝**의 숫자를 더한다. ["양모 계약 +12","제분소 5"] → 17.
+//   "아무 데나 있는 마지막 숫자"로 하면 "양모 계약 12 (30일)"이 30으로 조용히 잘못 잡힌다.
+//   끝을 강제하면 그런 항목은 0이 되고 패널이 '숫자 없음'으로 띄운다 — 드러나게 실패하는 쪽이 낫다.
+// - 패널의 목록 변수를 항목별 칩 + ✕ 로 바꿨다. 서사로 맺은 계약을 서사로 파기했을 때
+//   사용자가 직접 지우는 자리다. (그전엔 통짜 텍스트 입력이라 coerce가 배열이 아니라며
+//   전부 '거부됨'을 냈다 — 목록 변수는 패널에서 아예 손을 못 대고 있었다.)
+//
+// ── v0.31 ──────────────────────────────────────────────────
+// 한 봇에 두 가지 플레이가 들어 있는 경우(영지 운영 / 왕궁 시종). 상태창을 통째로
+// 갈아끼울 방법이 없었다 — 그룹 방식엔 showWhen이 있는데 템플릿 모드는 통짜 하나뿐이었다.
+// - `statusUI.templates: [{ id, when, template }]` — 조건이 참인 첫 번째만 그린다.
+//   그린 것을 `.sim-tpl-<id>`로 감싸고 그 템플릿의 <style>도 같은 선택자에 가둔다.
+//   두 템플릿이 `.status-modal-window`를 똑같이 정의해도 서로를 덮어쓰지 않는다
+//   (여기가 핵심이다 — 안 그러면 어두운 밀서 CSS가 밝은 영지 장부까지 물들인다).
+//   맨 뒤에 조건 없는 하나를 두라고 검증에서 권한다. 전부 조건부면 상태창이 통째로 사라진다.
+// - 진단 오탐 두 종을 잡았다. 둘 다 "시뮬레이션이 못 보는 것"을 결함으로 신고한 경우다:
+//   ① 보조 AI만 값을 바꾸는 변수를 '안 움직임'으로 신고했다. 진단에는 AI가 없으니
+//      안 움직이는 게 당연하다. 서술을 AI에게 맡긴 봇에서 33건 중 20건이 이 오탐이었다.
+//      이제 몇 개를 못 쟀는지만 🔵로 알린다 — 건너뛴 걸 말 안 하면 다 봤다고 읽힌다.
+//   ② '임계 돌파' 패턴(`when: "... and not collapsed"` + 그 이벤트가 collapsed를 세움)에서,
+//      이벤트가 안 뜨면 플래그도 안 움직인다 → "그 플래그 때문에 안 뜬다"고 거꾸로 짚었다.
+//      원인과 결과가 순환한 것. 이벤트가 스스로 세우는 값은 게이트 후보에서 뺀다.
+//
+// ── v0.30 ──────────────────────────────────────────────────
+// 시작 프리셋도 AI에게 맡길 수 있게 했다. 그런데 프리셋은 "만들어 주는" 것보다
+// "정말 난이도가 맞나"가 훨씬 어려운 문제다 — 라벨에 어려움이라고 써 놓고
+// 실제로는 더 오래 사는 판이 흔하다.
+// - 새 시작 탭에 [프리셋 내보내기/가져오기]. setup.ai(최초설정)는 건드리지 않고
+//   presets만 갈아끼운다 — 통째로 바꾸면 지침·가이드가 조용히 날아간다.
+// - 진단이 프리셋마다 판을 굴린다. 같은 시드를 프리셋 전체에 재사용(짝비교)해서
+//   시드 운이 아니라 시작값 차이만 남긴다.
+//   · 이름과 실제 순서가 뒤집히면 🟡 — 차이가 오차범위를 넘을 때만 신고한다.
+//   · 셋 다 사실상 같은 판이면 🟡 (이름만 난이도).
+//   · 어떤 프리셋에만 있고 다른 프리셋엔 없는 키는 🟡 — 그 값은 시작값 그대로 새어 나간다.
+// - writerMap이 프리셋 키를 `p.vars`로 읽고 있었다(실제 필드는 `p.set`).
+//   프리셋으로만 정해지는 변수가 "아무도 안 바꾸는 변수"로 오신고되고 있었다.
+//
+// ── v0.29 ──────────────────────────────────────────────────
+// 설치가 끝난 봇으로 들어가도 액션 버튼과 상태창이 안 붙던 문제. 착각이 아니라 실제였다.
+// API v3에 캐릭터/채팅 전환 이벤트가 없어서 로드 시점이 셋뿐이었다 —
+// 플러그인 부팅 / beforeRequest / 패널 열기. 그래서 "메시지를 한 번 보내거나
+// 패널을 한 번 열어야" 붙었고, 첫 인상이 '설치했는데 아무 일도 안 일어난다'가 됐다.
+// - 캐릭터/채팅 인덱스만 1.5초마다 얕게 확인하고, 실제로 바뀐 순간에만 로드한다.
+//   ('스키마 없음'은 정착 상태라 재시도하지 않는다 — 대부분의 캐릭터에서 폴링이 헛돈다.)
+// - 턴이 도는 중(beforeRequest~output)에는 세션을 갈아끼우지 않는다. 생성이 취소돼
+//   output이 안 오는 경우를 대비해 2분이 지나면 잠금이 스스로 풀린다.
+// - 언로드 시 타이머 정리.
+//
+// ── v0.28 ──────────────────────────────────────────────────
+// - notify 없는 미발동 이벤트를 🔵 안전장치로 분리. 규격서가 "값 자르기" 패턴에서
+//   "플레이어에게 알릴 게 없으므로 notify를 넣지 않는다"고 가르쳐 놓고,
+//   그렇게 만든 걸 죽은 이벤트라고 신고하고 있었다. 이런 건 안 뜨는 게 성공이다.
+// - 전부 끝까지 살아남으면 기여도 표의 차이가 전부 0으로 깔린다. 그게 액션 탓이 아니라
+//   판이 짧은 탓이라는 걸 표 위에 적는다 — 안 그러면 멀쩡한 액션을 의심하게 된다.
+//
+// ── v0.27 ──────────────────────────────────────────────────
+// 같은 봇이 60턴에선 지적 6건, 120턴에선 0건이 나왔다. 굶주림·전멸·부 2900 같은 조건은
+// 짧은 판에서는 원래 안 온다 — 그런데 진단은 그걸 "죽은 이벤트"라고 부르며 결함처럼 신고했다.
+// - 미발동 항목이 있으면 판을 두 배로 늘려 시드 2개만 더 굴려 본다. 거기서 뜨면
+//   🟡 죽은 이벤트가 아니라 🔵 후반부 이벤트로 부르고, 몇 턴으로 늘리면 되는지 알려준다.
+//   AI 수정 요청으로도 안 넘긴다 — 고칠 게 없으니까.
+// - 영영 도달 못 하는 것(문턱이 아예 범위 밖)은 그대로 🟡로 남는다. 이 둘을 섞으면
+//   진짜 결함이 후반부 콘텐츠에 파묻힌다.
+// - 보고서 맨 위에 "N개는 판이 짧아서 못 본 것"이라고 미리 알린다.
+//
+// ── v0.26 ──────────────────────────────────────────────────
+// 함정 액션 지적이 시드 운을 사실로 신고하고 있었다. 실측하니 120턴 봇에서
+// 6시드 95% 신뢰구간이 ±18턴 — "-12턴 함정"으로 신고된 액션이 36시드에서 +25턴이었다.
+// - 기여도를 시드별 짝차이로 모아 신뢰구간을 함께 낸다. 구간이 0을 걸치면 지적하지 않고,
+//   표에도 "시드 운과 구분 안 됨"이라고 적는다. 이 한 줄이 유령 지적의 대부분을 없앤다.
+// - 기여도 측정만 시드를 12쌍으로 올린다 (여기가 진단에서 제일 시끄러운 부분).
+// - `impactExempt: true` — 일부러 대가를 치르게 만든 버튼(장기 적출 같은)을 지적에서 뺀다.
+//   수명으로 재는 한 그런 버튼은 영영 🔴이고, 경고를 따라 버프하면 안 쓰면 손해인 버튼이 된다.
+// - 글 복사본의 표 제목이 옛 측정 방식("그 액션만 계속 썼을 때")으로 남아 있던 것 수정.
+//   이걸 읽은 사람은 측정을 실제와 다르게 이해하게 된다.
+// - 수명 말고 다른 축: 결과 편차(시드마다 딴판인가), 이벤트 커버리지, 붕괴 원인 분포.
+//   수명이 천장에 닿은 봇은 평균만 봐서는 구분이 안 된다.
+//
+// ── v0.25 ──────────────────────────────────────────────────
+// - 장르 템플릿 10종째: 버튜버 — 방송 운영.
+//   동시 접속 → 후원 → 수익 사슬, 유행이 매 턴 바뀌는 외부 환경(랜덤 숫자 + 파생 이름),
+//   체력·멘탈·논란의 3중 트레이드오프, 번아웃과 논란의 시한폭탄.
+//   방치하면 6시드 전부 은퇴하고 액션을 쓰면 전부 살아남는다 — 템플릿 중 유일.
+// - 진단 수정: 지속 정책(hold) 액션의 기여도를 잘못 재던 문제.
+//   한 번 켜면 계속 켜져 있는데도 매 턴 그 버튼만 다시 골라, [있음] 판이
+//   "다른 액션을 하나도 안 쓴 판"이 되는 바람에 멀쩡한 hold 액션이 함정으로 신고됐다.
+//
+// ── v0.24 ──────────────────────────────────────────────────
+// - 🔬 진단 탭: 스키마를 실제로 N턴 × M시드 굴려 "문법은 맞지만 게임이 안 되는" 문제를 찾는다.
+//   영영 안 뜨는 이벤트(몇 %까지 도달했는지 수치로), 한 번도 못 누르는 액션,
+//   아무도 안 바꾸는 변수, 누르면 손해인 버튼, 매 턴 도배되는 이벤트, 경계값 함정.
+// - 진단 결과를 그 문제를 고칠 탭의 AI 수정 요청으로 그대로 내보낸다 (탭별로 분리).
+// - 가져오기가 "고친 것만" 받아 나머지를 날리는 사고를 막는다:
+//   프롬프트에 현재 항목 개수를 체크섬으로 박고, 가져온 뒤 개수가 급감하면 경고한다.
+//
+// ── v0.23 ──────────────────────────────────────────────────
+// - 탭별 AI 생성: 변수 / 액션 / 규칙·이벤트 탭에서 규격을 내보내 AI에게 맡기고
+//   받은 JSON을 그 탭에만 가져온다. 반드시 **변수 탭부터** — 다른 탭 프롬프트에는
+//   확정된 변수 계약표가 함께 실려 나가 없는 변수를 지어내지 못한다.
+// - 변수를 갈아끼우면 어느 탭이 깨졌는지 짚어 준다 (다시 내보낼 탭 / 손으로 고칠 탭).
+// - 스키마 통째로 AI에게 맡기기 + 검증 오류 되돌려주기 (JSON 탭).
+// - 장르 템플릿 9종 + 템플릿별 CSS 스킨.
+// - 액션 버튼: 아이콘 칸이 글리프 하나뿐이라 상태를 글자 추가가 아닌 글리프 교체로 표시.
+
+
+const SimCore = (() => {
+  const mods = {};
+  const cache = {};
+  const define = (name, fn) => { mods[name] = fn; };
+  const requireFn = (name) => {
+    const key = name.replace(/^\.\//, '').replace(/^\.\.\/core\//, '').replace(/\.js$/, '');
+    if (cache[key]) return cache[key].exports;
+    const fn = mods[key];
+    if (!fn) throw new Error('module not found: ' + name);
+    const module = { exports: {} };
+    cache[key] = module;
+    fn(requireFn, module, module.exports);
+    return module.exports;
+  };
+  return { define, require: requireFn };
+})();
+SimCore.define("expr", function (require, module, exports) {
+// SimCore 미니 표현식 언어 — 파서 + 평가기
+// 지원: 숫자/문자열 리터럴, 변수 참조, + - * / %, 비교(== != > < >= <=),
+//       and/or/not, 3항(?:), 괄호, 함수 round/floor/ceil/abs/min/max/clamp/rand
+// 비지원(의도적): 대입, 루프, 프로퍼티 접근, 임의 함수 — 카드는 코드가 아니다.
+
+const FUNCS = {
+  round: (a) => Math.round(a),
+  floor: (a) => Math.floor(a),
+  ceil: (a) => Math.ceil(a),
+  abs: (a) => Math.abs(a),
+  min: (...xs) => Math.min(...xs),
+  max: (...xs) => Math.max(...xs),
+  clamp: (v, lo, hi) => Math.min(Math.max(v, lo), hi),
+  // rand는 평가 컨텍스트의 rng를 사용 (시드 RNG 주입)
+  // count/has/sum은 목록(list) 인자를 받으므로 evalAst에서 직접 처리
+};
+
+const FUNC_ARITY = {
+  round: [1, 1], floor: [1, 1], ceil: [1, 1], abs: [1, 1],
+  min: [2, Infinity], max: [2, Infinity], clamp: [3, 3], rand: [2, 2],
+  count: [1, 1], has: [2, 2], sum: [1, 2],
+};
+
+/**
+ * 목록 항목의 기한 표시 `@숫자` — 그 항목이 끝나는 시점(보통 절대 경과일).
+ * 남은 일수가 아니라 **끝나는 날**을 적는 이유: 남은 일수로 하면 매 턴 전부 1씩 깎아야 하는데
+ * 미니 표현식엔 반복문이 없어 애초에 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞는다.
+ * @returns {number|null}
+ */
+function itemExpiry(s) {
+  const m = String(s).match(/@(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+/**
+ * 목록 항목에서 숫자를 뽑는다 — sum()의 파싱 규칙이자, 패널이 항목별 값을 보여줄 때 쓰는 것과 같은 함수.
+ *
+ * 규칙은 딱 하나: **숫자가 항목 맨 끝에 있어야 한다.** ("양모 계약 +12" → 12)
+ * "아무 데나 있는 마지막 숫자"로 하면 "양모 계약 12 (30일)"이 30으로 조용히 잘못 잡힌다.
+ * 끝을 강제하면 그런 항목은 아예 0이 되고, 패널이 '숫자 없음'으로 표시해 눈에 띈다.
+ * 조용히 틀리는 것보다 드러나게 실패하는 쪽이 낫다.
+ *
+ * 기한 표시는 먼저 떼어낸다. 안 그러면 "성벽 부역 @450"이 하루 450짜리 수입으로 잡힌다.
+ * @returns {number|null} 숫자가 없으면 null
+ */
+function itemValue(s) {
+  const m = String(s).replace(/@\d+(?:\.\d+)?/g, '').match(/([+-]?\d+(?:\.\d+)?)\s*$/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// ── 토크나이저 ──────────────────────────────────────────────
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  const push = (type, value) => tokens.push({ type, value, pos: i });
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    // 숫자
+    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] || ''))) {
+      let j = i, seenDot = false;
+      while (j < src.length && (/[0-9]/.test(src[j]) || (src[j] === '.' && !seenDot))) {
+        if (src[j] === '.') seenDot = true;
+        j++;
+      }
+      push('num', parseFloat(src.slice(i, j)));
+      i = j; continue;
+    }
+    // 문자열 ('...' 또는 "...")
+    if (c === "'" || c === '"') {
+      let j = i + 1, buf = '';
+      while (j < src.length && src[j] !== c) {
+        if (src[j] === '\\' && j + 1 < src.length) { buf += src[j + 1]; j += 2; }
+        else { buf += src[j]; j++; }
+      }
+      if (j >= src.length) throw new ExprError(`닫히지 않은 문자열 (위치 ${i})`);
+      push('str', buf);
+      i = j + 1; continue;
+    }
+    // 식별자 / 키워드
+    if (/[A-Za-z_가-힣]/.test(c)) {
+      let j = i;
+      while (j < src.length && /[A-Za-z0-9_가-힣]/.test(src[j])) j++;
+      const word = src.slice(i, j);
+      if (word === 'and' || word === 'or' || word === 'not') push('op', word);
+      else if (word === 'true') push('num', 1);
+      else if (word === 'false') push('num', 0);
+      else push('ident', word);
+      i = j; continue;
+    }
+    // 연산자
+    const two = src.slice(i, i + 2);
+    if (['==', '!=', '>=', '<='].includes(two)) { push('op', two); i += 2; continue; }
+    if ('+-*/%<>()?:,'.includes(c)) { push(c === '(' || c === ')' || c === ',' ? c : 'op', c); i++; continue; }
+    throw new ExprError(`알 수 없는 문자 '${c}' (위치 ${i})`);
+  }
+  push('eof', null);
+  return tokens;
+}
+
+// ── 파서 (Pratt) ────────────────────────────────────────────
+// AST: {t:'num'|'str'|'var'|'bin'|'un'|'ternary'|'call', ...}
+
+const BIN_PREC = {
+  'or': 1, 'and': 2,
+  '==': 3, '!=': 3, '>': 3, '<': 3, '>=': 3, '<=': 3,
+  '+': 4, '-': 4,
+  '*': 5, '/': 5, '%': 5,
+};
+
+class ExprError extends Error {}
+
+function parse(src) {
+  const tokens = tokenize(src);
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  const expect = (type) => {
+    const t = next();
+    if (t.type !== type) throw new ExprError(`'${type}' 필요, '${t.value ?? t.type}' 발견 (위치 ${t.pos})`);
+    return t;
+  };
+
+  function parsePrimary() {
+    const t = next();
+    if (t.type === 'num') return { t: 'num', v: t.value };
+    if (t.type === 'str') return { t: 'str', v: t.value };
+    if (t.type === 'ident') {
+      if (peek().type === '(') {
+        next(); // (
+        const args = [];
+        if (peek().type !== ')') {
+          args.push(parseExpr(0));
+          while (peek().type === ',') { next(); args.push(parseExpr(0)); }
+        }
+        expect(')');
+        if (!(t.value in FUNC_ARITY)) throw new ExprError(`알 수 없는 함수 '${t.value}'`);
+        const [lo, hi] = FUNC_ARITY[t.value];
+        if (args.length < lo || args.length > hi)
+          throw new ExprError(`${t.value}() 인자 개수 오류 (${args.length}개)`);
+        return { t: 'call', fn: t.value, args };
+      }
+      return { t: 'var', name: t.value };
+    }
+    if (t.type === 'op' && (t.value === '-' || t.value === 'not')) {
+      return { t: 'un', op: t.value, e: parsePrimary() };
+    }
+    if (t.type === '(') {
+      const e = parseExpr(0);
+      expect(')');
+      return e;
+    }
+    throw new ExprError(`예상치 못한 토큰 '${t.value ?? t.type}' (위치 ${t.pos})`);
+  }
+
+  function parseExpr(minPrec) {
+    let left = parsePrimary();
+    for (;;) {
+      const t = peek();
+      if (t.type === 'op' && t.value === '?' ) {
+        if (minPrec > 0) break;
+        next();
+        const a = parseExpr(0);
+        const colon = next();
+        if (!(colon.type === 'op' && colon.value === ':'))
+          throw new ExprError(`3항 연산자에 ':' 필요 (위치 ${colon.pos})`);
+        const b = parseExpr(0);
+        left = { t: 'ternary', c: left, a, b };
+        continue;
+      }
+      if (t.type !== 'op' || !(t.value in BIN_PREC)) break;
+      const prec = BIN_PREC[t.value];
+      if (prec < minPrec) break;
+      next();
+      const right = parseExpr(prec + 1);
+      left = { t: 'bin', op: t.value, l: left, r: right };
+    }
+    return left;
+  }
+
+  const ast = parseExpr(0);
+  expect('eof');
+  return ast;
+}
+
+// ── 평가기 ──────────────────────────────────────────────────
+// env: { lookup(name) -> value | undefined, rng: () => [0,1) }
+
+function truthy(v) {
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v !== '' && v !== 'false' && v !== '0';
+  if (Array.isArray(v)) return v.length > 0;
+  return false;
+}
+
+function asNum(v, ctx) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  if (typeof v === 'string' && v !== '' && !isNaN(Number(v))) return Number(v);
+  throw new ExprError(`숫자가 필요한 곳에 '${v}' (${ctx})`);
+}
+
+function evalAst(ast, env) {
+  switch (ast.t) {
+    case 'num': return ast.v;
+    case 'str': return ast.v;
+    case 'var': {
+      const v = env.lookup(ast.name);
+      if (v === undefined) throw new ExprError(`알 수 없는 변수 '${ast.name}'`);
+      return typeof v === 'boolean' ? (v ? 1 : 0) : v;
+    }
+    case 'un': {
+      const v = evalAst(ast.e, env);
+      if (ast.op === '-') return -asNum(v, '단항 -');
+      return truthy(v) ? 0 : 1; // not
+    }
+    case 'ternary':
+      return truthy(evalAst(ast.c, env)) ? evalAst(ast.a, env) : evalAst(ast.b, env);
+    case 'call': {
+      const args = ast.args.map((a) => evalAst(a, env));
+      if (ast.fn === 'rand') {
+        const [lo, hi] = [asNum(args[0], 'rand'), asNum(args[1], 'rand')];
+        if (!env.rng) throw new ExprError('rand()를 지원하지 않는 컨텍스트');
+        return Math.floor(env.rng() * (hi - lo + 1)) + lo; // 정수 [lo, hi]
+      }
+      if (ast.fn === 'count') {
+        const v = args[0];
+        if (Array.isArray(v)) return v.length;
+        if (typeof v === 'string') return v.length;
+        return asNum(v, 'count');
+      }
+      if (ast.fn === 'has') {
+        const [arr, item] = args;
+        if (Array.isArray(arr)) return arr.includes(String(item)) ? 1 : 0;
+        if (typeof arr === 'string') return arr.includes(String(item)) ? 1 : 0;
+        return 0;
+      }
+      if (ast.fn === 'sum') {
+        const [arr, filter] = args;
+        if (!Array.isArray(arr)) return 0;
+        const f = args.length > 1 ? String(filter) : null;
+        let total = 0;
+        for (const it of arr) {
+          const s = String(it);
+          if (f && !s.includes(f)) continue;
+          total += itemValue(s) ?? 0;
+        }
+        return total;
+      }
+      return FUNCS[ast.fn](...args.map((v, i) => asNum(v, `${ast.fn}() 인자${i + 1}`)));
+    }
+    case 'bin': {
+      const op = ast.op;
+      if (op === 'and') return truthy(evalAst(ast.l, env)) ? (truthy(evalAst(ast.r, env)) ? 1 : 0) : 0;
+      if (op === 'or') return truthy(evalAst(ast.l, env)) ? 1 : (truthy(evalAst(ast.r, env)) ? 1 : 0);
+      const l = evalAst(ast.l, env);
+      const r = evalAst(ast.r, env);
+      if (op === '==') return eq(l, r) ? 1 : 0;
+      if (op === '!=') return eq(l, r) ? 0 : 1;
+      if (op === '+' && (typeof l === 'string' || typeof r === 'string')) return String(l) + String(r);
+      const ln = asNum(l, `'${op}' 좌변`), rn = asNum(r, `'${op}' 우변`);
+      switch (op) {
+        case '+': return ln + rn;
+        case '-': return ln - rn;
+        case '*': return ln * rn;
+        case '/': return rn === 0 ? 0 : ln / rn; // 0 나눗셈은 0 (봇이 죽는 것보다 낫다)
+        case '%': return rn === 0 ? 0 : ln % rn;
+        case '>': return ln > rn ? 1 : 0;
+        case '<': return ln < rn ? 1 : 0;
+        case '>=': return ln >= rn ? 1 : 0;
+        case '<=': return ln <= rn ? 1 : 0;
+      }
+    }
+  }
+  throw new ExprError(`평가 불가 노드: ${ast.t}`);
+}
+
+function eq(l, r) {
+  if (typeof l === 'string' || typeof r === 'string') return String(l) === String(r);
+  return asNum(l, '==') === asNum(r, '==');
+}
+
+// ── 공개 API ────────────────────────────────────────────────
+
+const cache = new Map();
+
+/** 표현식 컴파일 (파스 에러는 여기서 던져짐 — 스키마 검증 시 사용) */
+function compile(src) {
+  if (!cache.has(src)) cache.set(src, parse(src));
+  const ast = cache.get(src);
+  return (lookup, rng) => evalAst(ast, { lookup, rng });
+}
+
+/** 원샷 평가 */
+function evaluate(src, lookup, rng) {
+  return compile(src)(lookup, rng);
+}
+
+/** 표현식이 참조하는 변수 이름 목록 (스키마 검증용) */
+function referencedVars(src) {
+  const names = new Set();
+  (function walk(n) {
+    if (n.t === 'var') names.add(n.name);
+    if (n.t === 'bin') { walk(n.l); walk(n.r); }
+    if (n.t === 'un') walk(n.e);
+    if (n.t === 'ternary') { walk(n.c); walk(n.a); walk(n.b); }
+    if (n.t === 'call') n.args.forEach(walk);
+  })(parse(src));
+  return [...names];
+}
+
+module.exports = { compile, evaluate, referencedVars, ExprError, truthy, itemValue, itemExpiry };
+
+});
+
+SimCore.define("rng", function (require, module, exports) {
+// 시드 결정적 RNG — 리롤 안정 랜덤의 기반
+// seedFrom(chatId, msgIndex)로 만든 시드는 같은 턴이면 항상 같은 난수열을 낸다.
+
+function hashStr(s) {
+  let h = 2166136261 >>> 0; // FNV-1a
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** (chatId, 메시지 인덱스, 용도 라벨) → 결정적 rng 함수 */
+function seededRng(chatId, msgIndex, label = '') {
+  return mulberry32(hashStr(`${chatId}::${msgIndex}::${label}`));
+}
+
+/** 비결정 rng (rerollStableRng: false 옵션용) — 호스트가 Math.random 주입 */
+function makeUnstableRng(random = Math.random) {
+  return () => random();
+}
+
+module.exports = { seededRng, makeUnstableRng, hashStr };
+
+});
+
+SimCore.define("store", function (require, module, exports) {
+// 스냅샷 저장소 — 리롤/삭제 안전성의 기반.
+// backend: { get(k)->string|null, set(k,v), remove(k), keys()->string[] } (전부 동기 or Promise)
+// 리스 어댑터에서는 pluginStorage, 테스트/플레이그라운드에서는 Map 백엔드.
+
+class MapBackend {
+  constructor() { this.m = new Map(); }
+  get(k) { return this.m.has(k) ? this.m.get(k) : null; }
+  set(k, v) { this.m.set(k, v); }
+  remove(k) { this.m.delete(k); }
+  keys() { return [...this.m.keys()]; }
+}
+
+class SnapshotStore {
+  /** prefix 예: `sim:${chaId}:${chatId}` */
+  constructor(backend, prefix, keepN = 60) {
+    this.b = backend;
+    this.p = prefix;
+    this.keepN = keepN;
+  }
+
+  _k(phase, index) { return `${this.p}:${phase}:${index}`; }
+
+  async save(phase, index, state) {
+    await this.b.set(this._k(phase, index), JSON.stringify(state));
+    await this._prune();
+  }
+
+  async load(phase, index) {
+    const raw = await this.b.get(this._k(phase, index));
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  /** index 이하에서 가장 최근의 해당 phase 스냅샷 (메시지 삭제 복구용) */
+  async latestAtOrBelow(phase, index) {
+    const re = new RegExp(`^${escapeRe(this.p)}:${phase}:(\\d+)$`);
+    let best = -1;
+    for (const k of await this.b.keys()) {
+      const m = k.match(re);
+      if (m) {
+        const i = parseInt(m[1], 10);
+        if (i <= index && i > best) best = i;
+      }
+    }
+    return best >= 0 ? { index: best, state: await this.load(phase, best) } : null;
+  }
+
+  async _prune() {
+    const re = new RegExp(`^${escapeRe(this.p)}:(pre|send|out):(\\d+)$`);
+    const entries = [];
+    for (const k of await this.b.keys()) {
+      const m = k.match(re);
+      if (m) entries.push({ k, index: parseInt(m[2], 10) });
+    }
+    if (entries.length <= this.keepN * 3) return;
+    entries.sort((a, b) => b.index - a.index);
+    const cutoff = new Set(entries.slice(0, this.keepN * 3).map((e) => e.k));
+    for (const e of entries) if (!cutoff.has(e.k)) await this.b.remove(e.k);
+  }
+}
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/**
+ * 항목을 limit개씩 동시에 처리한다 (진행 콜백 지원).
+ * 리스 어댑터에서 백엔드 호출 하나하나가 샌드박스 iframe 왕복이라, 순차로 돌리면
+ * 스냅샷 수에 비례해 눈에 띄게 느려진다. 묶어서 동시에 던지면 왕복 지연이 겹쳐 사라진다.
+ */
+async function mapLimited(items, limit, fn, onTick) {
+  const out = [];
+  let done = 0;
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const res = await Promise.all(chunk.map((it) => fn(it)));
+    out.push(...res);
+    done += chunk.length;
+    if (onTick) onTick(done, items.length);
+  }
+  return out;
+}
+
+module.exports = { SnapshotStore, MapBackend, mapLimited };
+
+});
+
+SimCore.define("validate", function (require, module, exports) {
+// 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
+
+const { compile, referencedVars, ExprError } = require('./expr');
+
+const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
+const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
+  'round', 'floor', 'ceil', 'abs', 'min', 'max', 'clamp', 'rand', 'count', 'has', 'sum']);
+
+function validateSchema(schema) {
+  const errors = [];
+  const warnings = [];
+  const err = (path, msg) => errors.push({ path, msg });
+  const warn = (path, msg) => warnings.push({ path, msg });
+
+  if (!schema || typeof schema !== 'object') {
+    return { ok: false, errors: [{ path: '$', msg: '스키마가 JSON 객체가 아님' }], warnings };
+  }
+  if (schema.simcore !== '0.1') warn('$.simcore', `지원 버전은 0.1 (현재: ${schema.simcore})`);
+
+  // ── vars ──
+  const vars = Array.isArray(schema.vars) ? schema.vars : [];
+  if (!vars.length) err('$.vars', '변수가 하나도 정의되지 않음');
+  const ids = new Set();
+  const cmdNames = new Set();
+  for (let i = 0; i < vars.length; i++) {
+    const v = vars[i], p = `$.vars[${i}]`;
+    if (!v.id || !ID_RE.test(v.id)) { err(p, `잘못된 id: '${v.id}' (영문자/숫자/_, 영문자 시작)`); continue; }
+    if (RESERVED.has(v.id)) err(p, `'${v.id}'는 예약어라 변수 id로 쓸 수 없음`);
+    if (ids.has(v.id)) err(p, `중복된 id: '${v.id}'`);
+    ids.add(v.id);
+    if (!VAR_TYPES.includes(v.type)) err(p, `알 수 없는 type: '${v.type}'`);
+    if (v.type === 'enum') {
+      if (!Array.isArray(v.enum) || v.enum.length < 2) err(p, 'enum 타입은 enum 배열(2개 이상) 필요');
+      else if (v.init !== undefined && !v.enum.includes(v.init)) err(p, `init '${v.init}'이 enum 목록에 없음`);
+    }
+    if ((v.type === 'int' || v.type === 'float')) {
+      if (v.init !== undefined && typeof v.init !== 'number') err(p, 'init은 숫자여야 함');
+      if (v.min != null && v.max != null && v.min > v.max) err(p, 'min > max');
+      if (v.init !== undefined && v.min != null && v.init < v.min) err(p, 'init < min');
+      if (v.init !== undefined && v.max != null && v.init > v.max) err(p, 'init > max');
+    }
+    if (v.type === 'bool' && v.init !== undefined && typeof v.init !== 'boolean')
+      err(p, 'bool의 init은 true/false여야 함');
+    if (v.type === 'text') {
+      if (v.init !== undefined && typeof v.init !== 'string') err(p, 'text의 init은 문자열이어야 함');
+      if (v.maxLength != null && (typeof v.maxLength !== 'number' || v.maxLength < 1))
+        err(p, 'maxLength는 양수여야 함');
+    }
+    // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
+    // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
+    if (v.id === 'commands') {
+      warn(p, `'commands'는 상태창 자리표시자 {commands}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
+    }
+    if (v.cmd != null) {
+      if (typeof v.cmd !== 'string' || !v.cmd.trim()) err(p, 'cmd는 비어있지 않은 문자열이어야 함');
+      else if (/[\s\/-]/.test(v.cmd)) err(p, `cmd '${v.cmd}'에 공백·'/'·'-'는 쓸 수 없음`);
+      else if (cmdNames.has(v.cmd)) err(p, `중복된 cmd: '${v.cmd}'`);
+      else cmdNames.add(v.cmd);
+    }
+    if (v.type === 'list') {
+      if (v.init !== undefined && !Array.isArray(v.init)) err(p, 'list의 init은 배열이어야 함');
+      if (Array.isArray(v.init) && v.init.some((x) => typeof x !== 'string')) err(p, 'list 항목은 전부 문자열');
+      if (v.maxItems != null && (typeof v.maxItems !== 'number' || v.maxItems < 1)) err(p, 'maxItems는 양수');
+      if (v.itemMaxLength != null && (typeof v.itemMaxLength !== 'number' || v.itemMaxLength < 1)) err(p, 'itemMaxLength는 양수');
+    }
+  }
+
+  // ── derived ──
+  const derived = Array.isArray(schema.derived) ? schema.derived : [];
+  const allIds = new Set(ids);
+  for (let i = 0; i < derived.length; i++) {
+    const d = derived[i], p = `$.derived[${i}]`;
+    if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
+    if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
+    allIds.add(d.id);
+    checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
+  }
+
+  const listIds = new Set(vars.filter((v) => v.type === 'list').map((v) => v.id));
+  const checkSet = (rule, p) => {
+    // 목록 효과 { list, add, remove, expire }
+    if (rule.list !== undefined) {
+      if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
+      if (rule.add != null && !Array.isArray(rule.add)) err(p, 'add는 배열이어야 함');
+      if (rule.remove != null && !Array.isArray(rule.remove)) err(p, 'remove는 배열이어야 함');
+      if (rule.expire != null) {
+        if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
+        else checkExpr(rule.expire, p + '.expire', allIds, err, { allowRand: false });
+      }
+      if (rule.add == null && rule.remove == null && rule.expire == null)
+        warn(p, 'add/remove/expire가 모두 없는 list 효과');
+      return;
+    }
+    if (!ids.has(rule.set)) err(p, `set 대상 '${rule.set}'이 vars에 없음 (derived는 set 불가)`);
+    else if (listIds.has(rule.set)) err(p, `목록 '${rule.set}'은 수식 set 불가 — list 효과(add/remove)를 사용`);
+    checkExpr(rule.expr, p + '.expr', allIds, err, { allowRand: true });
+  };
+
+  // ── rules ──
+  const rules = schema.rules || {};
+  (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  const eventIds = new Set();
+  (rules.events || []).forEach((e, i) => {
+    const p = `$.rules.events[${i}]`;
+    if (!e.id) err(p, '이벤트 id 필요');
+    else if (eventIds.has(e.id)) err(p, `중복 이벤트 id: '${e.id}'`);
+    else eventIds.add(e.id);
+    checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
+    (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
+    if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
+  });
+  const re = rules.randomEvents;
+  if (re) {
+    if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 필요');
+    (re.table || []).forEach((e, i) => {
+      const p = `$.rules.randomEvents.table[${i}]`;
+      if (!e.id) err(p, '이벤트 id 필요');
+      else if (eventIds.has(e.id)) err(p, `중복 이벤트 id: '${e.id}'`);
+      else eventIds.add(e.id);
+      if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
+      if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
+      (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
+    });
+  }
+
+  // ── updater ──
+  const up = schema.updater || {};
+  if (up.contextTurns != null
+      && (typeof up.contextTurns !== 'number' || !Number.isInteger(up.contextTurns)
+          || up.contextTurns < 1 || up.contextTurns > 5))
+    err('$.updater.contextTurns', '보조모델에 보낼 최근 대화 턴 수는 1~5 사이 정수여야 함');
+  const varById = Object.fromEntries(vars.map((v) => [v.id, v]));
+  (up.allow || []).forEach((a, i) => {
+    const p = `$.updater.allow[${i}]`;
+    const v = varById[a.id];
+    if (!v) { err(p, `allow 대상 '${a.id}'이 vars에 없음`); return; }
+    // 한도를 거는 쪽이 오히려 드물다. 변수 자체에 min/max가 있으면 값이 이미 묶여 있으므로
+    // 경고하지 않는다 — 안 그러면 숫자 변수 수만큼 경고가 쏟아져 진짜 지적이 묻힌다.
+    // 위아래 어느 쪽으로도 막혀 있지 않은 변수만 남긴다.
+    if ((v.type === 'int' || v.type === 'float')
+        && a.maxDelta == null && a.maxGain == null && a.maxLoss == null
+        && v.min == null && v.max == null)
+      warn(p, `숫자형 '${a.id}'은 범위(min/max)도 증감 한도(maxDelta)도 없습니다 — AI가 어떤 값으로도 바꿀 수 있습니다`);
+    for (const capKey of ['maxDelta', 'maxGain', 'maxLoss']) {
+      if (a[capKey] != null && (typeof a[capKey] !== 'number' || a[capKey] < 0))
+        err(p, `${capKey}는 0 이상의 숫자여야 함`);
+    }
+    // mentions — 이번 턴 글에 그 낱말이 있을 때만 열어 준다 (로어북 키워드와 같은 방식)
+    if (a.mentions != null) {
+      if (a.mentions === true) {
+        if (!v.label) err(p, `mentions: true는 label을 낱말로 씁니다 — '${a.id}'에 label이 없습니다`);
+        else if (v.label.length <= 1)
+          warn(p, `'${v.label}'은 한 글자라 아무 문장에나 걸립니다 — mentions에 더 긴 말을 직접 적으세요`);
+      } else {
+        const keys = [].concat(a.mentions);
+        if (!keys.length || keys.some((k) => typeof k !== 'string' || !k.trim()))
+          err(p, 'mentions는 true이거나 비어있지 않은 문자열(또는 그 배열)이어야 함');
+        else if (keys.some((k) => k.trim().length <= 1))
+          warn(p, `${p}의 낱말 중 한 글자짜리가 있습니다 — 아무 문장에나 걸립니다`);
+      }
+    }
+    // (text의 maxLength 미지정은 기본 200자가 적용되는 정상 동작이라 경고하지 않음)
+  });
+
+  // 한 낱말이 다른 낱말 안에 들어 있는 건 auxAllowList가 '가려짐'으로 처리하므로 결함이 아니다.
+  // 진짜 문제는 **똑같은 낱말**이다 — 어느 쪽을 열지 가릴 방법이 없어 둘이 늘 함께 열린다.
+  {
+    const seenKey = new Map();
+    for (const a of (up.allow || [])) {
+      if (!a.mentions) continue;
+      const v = varById[a.id];
+      const keys = (a.mentions === true ? [v?.label] : [].concat(a.mentions))
+        .filter((k) => typeof k === 'string' && k.trim());
+      for (const k of keys) {
+        const key = k.trim().toLowerCase();
+        if (seenKey.has(key) && seenKey.get(key) !== a.id) {
+          warn('$.updater.allow', `'${k}'를 ${seenKey.get(key)}와 ${a.id}가 함께 씁니다`
+            + ' — 갈릴 방법이 없어 늘 같이 열립니다. 한쪽을 다르게 적으세요');
+        } else seenKey.set(key, a.id);
+      }
+    }
+  }
+
+  // ── promptState / statusUI ──
+  if (schema.promptState?.template) {
+    checkTemplateRefs(schema.promptState.template, '$.promptState.template', allIds, err);
+  }
+  if (typeof schema.promptState?.eventPriority === 'string') {
+    checkTemplateRefs(schema.promptState.eventPriority, '$.promptState.eventPriority', allIds, err);
+  }
+  const ui = schema.statusUI || {};
+  if (ui.mode === 'template') {
+    // <style> 블록은 CSS이므로 자리표시자 검사에서 제외 (통짜 붙여넣기 지원)
+    const stripStyle = (s) => String(s).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    const conds = Array.isArray(ui.templates) ? ui.templates : [];
+    if (!conds.length && (typeof ui.template !== 'string' || !ui.template.trim()))
+      err('$.statusUI.template', '템플릿 모드인데 template이 비어 있음');
+    if (typeof ui.template === 'string' && ui.template.trim())
+      checkTemplateRefs(stripStyle(ui.template), '$.statusUI.template', allIds, err);
+
+    const tplIds = new Set();
+    let sawUnconditional = false;
+    conds.forEach((t, i) => {
+      const p = `$.statusUI.templates[${i}]`;
+      if (!t || typeof t !== 'object') { err(p, '객체가 아님'); return; }
+      // id는 CSS 클래스(.sim-tpl-<id>)가 되므로 반드시 안전한 이름이어야 한다
+      if (!t.id || !ID_RE.test(t.id)) err(p, `잘못된 템플릿 id: '${t.id}' (영문자로 시작, 영문·숫자·_만)`);
+      else if (tplIds.has(t.id)) err(p, `중복 템플릿 id: '${t.id}'`);
+      else tplIds.add(t.id);
+      if (typeof t.template !== 'string' || !t.template.trim()) err(p, 'template이 비어 있음');
+      else checkTemplateRefs(stripStyle(t.template), p + '.template', allIds, err);
+      if (t.when != null && String(t.when).trim()) {
+        checkExpr(t.when, p + '.when', allIds, err, { allowRand: false });
+        if (sawUnconditional) warn(p, '조건 없는 템플릿보다 뒤에 있어 영원히 안 뜸 — 위로 올리세요');
+      } else if (sawUnconditional) {
+        warn(p, '조건 없는 템플릿이 이미 위에 있어 영원히 안 뜸');
+      } else {
+        sawUnconditional = true;
+      }
+    });
+    // 어떤 조건도 안 맞을 때 그릴 게 없으면 상태창이 통째로 사라진다
+    if (conds.length && !sawUnconditional && !(typeof ui.template === 'string' && ui.template.trim()))
+      warn('$.statusUI.templates', '전부 조건부입니다 — 어느 조건도 안 맞는 순간엔 상태창이 안 보입니다. 조건 없는 템플릿을 맨 뒤에 하나 두세요');
+  }
+  // 배치 — 탭·팝업은 두 장부터 의미가 있다. 한 장이면 조용히 쌓기로 되돌아가므로 알려 준다.
+  if (ui.layout != null) {
+    if (!['stack', 'tabs', 'accordion', 'popover'].includes(ui.layout))
+      err('$.statusUI.layout', `layout은 stack|tabs|accordion|popover (현재: '${ui.layout}')`);
+    else if (ui.mode === 'template')
+      warn('$.statusUI.layout', '템플릿 모드에서는 배치를 제작자가 정하므로 layout이 무시됩니다');
+    else if (['tabs', 'popover'].includes(ui.layout)) {
+      const shown = (ui.groups || []).filter((g) => (g.visibility ?? 'show') !== 'hidden');
+      if (shown.length < 2)
+        warn('$.statusUI.layout', `${ui.layout}는 보이는 그룹이 둘 이상일 때 동작합니다 (현재 ${shown.length}개) — 지금은 그냥 쌓입니다`);
+      if (shown.some((g) => !g.label))
+        warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
+    }
+  }
+  (ui.groups || []).forEach((g, i) => {
+    if (g.visibility != null && !['show', 'collapsed', 'hidden'].includes(g.visibility))
+      err(`$.statusUI.groups[${i}]`, `visibility는 show|collapsed|hidden (현재: '${g.visibility}')`);
+    if (g.showWhen != null) checkExpr(g.showWhen, `$.statusUI.groups[${i}].showWhen`, allIds, err, { allowRand: false });
+    (g.items || []).forEach((it, j) => {
+      const p = `$.statusUI.groups[${i}].items[${j}]`;
+      if (!allIds.has(it.var)) err(p, `표시 대상 '${it.var}'이 정의되지 않음`);
+      if (it.showWhen != null) checkExpr(it.showWhen, p + '.showWhen', allIds, err, { allowRand: false });
+      if (it.bar?.max != null) checkExpr(String(it.bar.max), p + '.bar.max', allIds, err, { allowRand: false });
+      if (it.color != null) checkExpr(it.color, p + '.color', allIds, err, { allowRand: false });
+    });
+  });
+
+  // ── directives (상태 지시문) ──
+  const dirIds = new Set();
+  (schema.directives || []).forEach((d, i) => {
+    const p = `$.directives[${i}]`;
+    if (!d.id) err(p, '지시문 id 필요');
+    else if (dirIds.has(d.id)) err(p, `중복 지시문 id: '${d.id}'`);
+    else dirIds.add(d.id);
+    checkExpr(d.when, p + '.when', allIds, err, { allowRand: false });
+    if (typeof d.text !== 'string' || !d.text.trim()) err(p, '지시문 내용(text) 필요');
+    else checkTemplateRefs(d.text, p + '.text', allIds, err);
+  });
+
+  // ── setup ──
+  const setup = schema.setup;
+  if (setup) {
+    const presetIds = new Set();
+    (setup.presets || []).forEach((p, i) => {
+      const path = `$.setup.presets[${i}]`;
+      if (!p.id) err(path, '프리셋 id 필요');
+      else if (presetIds.has(p.id)) err(path, `중복 프리셋 id: '${p.id}'`);
+      else presetIds.add(p.id);
+      if (!p.label) warn(path, 'label 없음 — id가 버튼에 표시됨');
+      for (const [id, val] of Object.entries(p.set || {})) {
+        const v = varById[id];
+        if (!v) { err(path, `set 대상 '${id}'이 vars에 없음`); continue; }
+        if ((v.type === 'int' || v.type === 'float') && typeof val !== 'number') err(path, `'${id}'는 숫자여야 함`);
+        if (v.type === 'enum' && !v.enum?.includes(val)) err(path, `'${id}' 값 '${val}'이 enum 목록에 없음`);
+        if (v.type === 'bool' && typeof val !== 'boolean') err(path, `'${id}'는 true/false여야 함`);
+        if (v.type === 'list' && !Array.isArray(val)) err(path, `'${id}'는 배열이어야 함`);
+      }
+    });
+    if (setup.ai) {
+      (setup.ai.vars || []).forEach((id, i) => {
+        if (!ids.has(id)) err(`$.setup.ai.vars[${i}]`, `'${id}'이 vars에 없음`);
+      });
+      if (setup.ai.enabled && setup.ai.vars && setup.ai.vars.length === 0)
+        warn('$.setup.ai.vars', '빈 배열 — AI가 아무 변수도 설정할 수 없음');
+    }
+  }
+
+  // ── actions ──
+  const actionIds = new Set();
+  (schema.actions || []).forEach((a, i) => {
+    const p = `$.actions[${i}]`;
+    if (!a.id || !ID_RE.test(a.id)) err(p, `잘못된 액션 id: '${a.id}'`);
+    else if (actionIds.has(a.id)) err(p, `중복 액션 id: '${a.id}'`);
+    else actionIds.add(a.id);
+    if (a.mode && !['oneshot', 'hold'].includes(a.mode)) err(p, `mode는 oneshot|hold (현재: '${a.mode}')`);
+    if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
+    (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
+    if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+  });
+
+  return { ok: errors.length === 0, errors, warnings };
+}
+
+function checkExpr(src, path, knownIds, err, { allowRand }) {
+  if (typeof src !== 'string' || !src.trim()) { err(path, '표현식 필요'); return; }
+  try {
+    compile(src); // 문법 검사
+    for (const name of referencedVars(src)) {
+      if (!knownIds.has(name)) err(path, `알 수 없는 변수 '${name}'`);
+    }
+    if (!allowRand && /\brand\s*\(/.test(src)) err(path, '이 위치에서는 rand() 사용 불가');
+  } catch (e) {
+    if (e instanceof ExprError) err(path, `표현식 오류: ${e.message}`);
+    else throw e;
+  }
+}
+
+// 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
+// uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
+const RESERVED_SLOTS = new Set(['commands', 'uid']);
+
+// {id} / {expr ? a : b} 템플릿 참조 검사
+function checkTemplateRefs(tpl, path, knownIds, err) {
+  const re = /\{([^{}]+)\}/g;
+  let m;
+  while ((m = re.exec(tpl))) {
+    const inner = m[1].trim().replace(/:tags$/, ''); // {id:tags} 필터 접미사 제거 후 검사
+    if (RESERVED_SLOTS.has(inner)) continue;
+    try {
+      compile(inner);
+      for (const name of referencedVars(inner)) {
+        if (!knownIds.has(name)) err(path, `템플릿의 알 수 없는 변수 '${name}'`);
+      }
+    } catch (e) {
+      err(path, `템플릿 '{${inner}}' 해석 불가: ${e.message}`);
+    }
+  }
+}
+
+module.exports = { validateSchema };
+
+});
+
+SimCore.define("engine", function (require, module, exports) {
+// SimCore 엔진 — 턴 처리의 심장. 전부 순수 함수 (호스트 의존성 없음).
+//
+// 상태(state) 구조:
+// {
+//   vars: { id: value, ... },                // 스키마 vars의 현재 값
+//   meta: {
+//     turn: 0,                               // 엔진 내부 턴 카운터 (output 처리 횟수)
+//     armed: { actionId: true },             // 무장된 액션
+//     actionLastUsed: { actionId: turn },    // 액션 쿨다운 기준점
+//     eventLastFired: { eventId: turn },     // 이벤트 쿨다운 기준점
+//     firedOnce: { eventId: true },          // once 이벤트 기록
+//     pendingNotifies: [ '...' ],            // 다음 전송에 실릴 이벤트 통지
+//   }
+// }
+
+const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
+
+const DEFAULT_TEXT_MAXLEN = 200;
+const DEFAULT_SYSTEM_GUIDE =
+  '수치·상태는 시스템이 관리한다. 본문에 상태창이나 수치 표를 직접 쓰지 말고 서사에만 집중하라.';
+
+/**
+ * 이벤트가 발동한 턴에만 덧붙는 충돌 해소 규칙.
+ * 이벤트는 엔진이 이미 확정하고 수치까지 반영한 사실이라, 서사가 이를 무시하면
+ * 숫자와 이야기가 어긋난다. 그렇다고 "유저 입력보다 무조건 우선"이라고 하면
+ * 모델이 유저 행동을 통째로 버려 조작감이 사라진다. 그래서
+ * "사건은 확정, 유저 행동은 시도" 로 층을 나눠 둘 다 살린다.
+ */
+const DEFAULT_EVENT_PRIORITY =
+  '※ 위 [이벤트]는 시스템이 이미 확정해 수치까지 반영한 사실이다. 일어나지 않은 것처럼 쓰거나 미루지 말고 이번 서사에 반드시 드러내라. '
+  + '유저의 행동과 양립하지 않으면, 유저의 행동은 그대로 "시도"하게 두되 그 결과를 이 사건이 바꾸도록 전개하라 '
+  + '(유저의 행동 자체를 없던 일로 만들지는 마라).';
+
+// ── 초기화 ──────────────────────────────────────────────────
+
+function initState(schema) {
+  const vars = {};
+  for (const v of schema.vars) {
+    vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
+  }
+  return {
+    vars,
+    meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
+  };
+}
+
+/** AI 최초설정이 아직 필요한 상태인가 */
+function isSetupPending(schema, state) {
+  return !!schema.setup?.ai?.enabled && !state.meta.setupDone && state.meta.turn === 0;
+}
+
+/** 프리셋 적용 (새 시작 전용 — 진행 중 채팅에 쓰면 수치가 덮어써짐) */
+function applyPreset(schema, prevState, presetId) {
+  const preset = (schema.setup?.presets || []).find((p) => p.id === presetId);
+  if (!preset) return { state: prevState, applied: false };
+  const state = reconcileState(schema, clone(prevState));
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  for (const [id, val] of Object.entries(preset.set || {})) {
+    const def = varById[id];
+    if (!def) continue;
+    const to = coerce(def, val);
+    if (to !== undefined) state.vars[id] = to;
+  }
+  return { state, applied: true };
+}
+
+const DEFAULT_LIST_MAX_ITEMS = 20;
+const DEFAULT_LIST_ITEM_MAXLEN = 40;
+
+function defaultInit(v) {
+  switch (v.type) {
+    case 'int': case 'float': return v.min ?? 0;
+    case 'text': return '';
+    case 'bool': return false;
+    case 'enum': return v.enum[0];
+    case 'list': return [];
+  }
+}
+
+function clone(state) {
+  return JSON.parse(JSON.stringify(state));
+}
+
+/**
+ * 스키마 업데이트 호환: 구버전 세이브에 없는 변수는 init으로 채우고,
+ * 스키마에서 사라진 변수는 보존하되 무시한다 (파괴적 삭제 금지).
+ * 모든 페이즈 진입 시 clone 직후 호출된다.
+ */
+function reconcileState(schema, state) {
+  state.vars = state.vars || {};
+  for (const v of schema.vars) {
+    if (!(v.id in state.vars)) state.vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
+  }
+  const m = (state.meta = state.meta || {});
+  m.turn = m.turn ?? 0;
+  m.setupDone = m.setupDone ?? false;
+  m.armed = m.armed || {};
+  m.actionLastUsed = m.actionLastUsed || {};
+  m.eventLastFired = m.eventLastFired || {};
+  m.firedOnce = m.firedOnce || {};
+  m.pendingNotifies = m.pendingNotifies || [];
+  return state;
+}
+
+// ── 조회 (vars + derived, 순환 감지) ─────────────────────────
+
+function makeLookup(schema, vars) {
+  const derivedById = Object.fromEntries((schema.derived || []).map((d) => [d.id, d]));
+  const memo = {};
+  const computing = new Set();
+  const lookup = (name) => {
+    if (name in vars) return vars[name];
+    const d = derivedById[name];
+    if (!d) return undefined;
+    if (name in memo) return memo[name];
+    if (computing.has(name)) throw new Error(`derived 순환 참조: '${name}'`);
+    computing.add(name);
+    const val = evaluate(d.expr, lookup, null);
+    computing.delete(name);
+    memo[name] = val;
+    return val;
+  };
+  return lookup;
+}
+
+// ── 값 강제(coerce) & set 규칙 적용 ─────────────────────────
+
+function coerce(varDef, value) {
+  switch (varDef.type) {
+    case 'int': {
+      let n = Math.round(Number(value) || 0);
+      if (varDef.min != null) n = Math.max(n, varDef.min);
+      if (varDef.max != null) n = Math.min(n, varDef.max);
+      return n;
+    }
+    case 'float': {
+      let n = Number(value) || 0;
+      if (varDef.min != null) n = Math.max(n, varDef.min);
+      if (varDef.max != null) n = Math.min(n, varDef.max);
+      return n;
+    }
+    case 'bool':
+      return typeof value === 'boolean' ? value : truthy(value);
+    case 'enum':
+      return varDef.enum.includes(value) ? value : undefined; // undefined = 거부
+    case 'text': {
+      const s = String(value);
+      const cap = varDef.maxLength ?? DEFAULT_TEXT_MAXLEN;
+      return s.length > cap ? s.slice(0, cap) : s;
+    }
+    case 'list': {
+      let arr;
+      if (Array.isArray(value)) arr = value;
+      else if (typeof value === 'string') arr = value.split(',').map((s) => s.trim()).filter(Boolean);
+      else return undefined;
+      const itemCap = varDef.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN;
+      const maxItems = varDef.maxItems ?? DEFAULT_LIST_MAX_ITEMS;
+      return arr.map((x) => String(x).slice(0, itemCap)).filter(Boolean).slice(0, maxItems);
+    }
+  }
+}
+
+/**
+ * 목록 항목의 상대 기한 `@+N`을 절대 기한 `@(지금+N)`으로 굳힌다.
+ *
+ * 왜 필요한가: 기한은 절대값이어야 한다(매 턴 전부 1씩 깎을 방법이 없다). 그런데 절대값을
+ * 보조 모델에게 직접 쓰게 하면 "지금 경과일 12에 1080을 더해서 1092"라는 산술을 시키게 된다.
+ * 그건 이 플러그인이 없애려고 만든 바로 그 종류의 일이다. 모델은 "3년"만 알면 되고("@+1080"),
+ * 날짜로 굳히는 건 시스템이 한다.
+ *
+ * 기준 시각은 그 목록을 만료시키는 onTurn 규칙의 expire 식을 그대로 쓴다 —
+ * 등록과 만료를 같은 시계로 재야 어긋나지 않는다. 규칙이 없으면 손대지 않고,
+ * 굳지 않은 `@+N`은 itemExpiry의 `@숫자` 패턴에 안 걸려 그냥 무기한이 된다 (안전한 실패).
+ */
+function resolveRelativeExpiry(schema, state, listId, items, rng) {
+  if (!Array.isArray(items) || !items.some((s) => /@\+\d/.test(String(s)))) return items;
+  const rule = (schema.rules?.onTurn || []).find((r) => r.list === listId && r.expire);
+  if (!rule) return items;
+  let now;
+  try { now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng)); }
+  catch { return items; }
+  if (!isFinite(now)) return items;
+  return items.map((s) => String(s).replace(/@\+(\d+(?:\.\d+)?)/g,
+    (_, n) => '@' + Math.round(now + parseFloat(n))));
+}
+
+/** 목록 add/remove 연산 적용 (중복 추가 허용 — '회복약'을 2개 가질 수 있음) */
+function applyListOps(varDef, current, ops) {
+  let arr = Array.isArray(current) ? [...current] : [];
+  for (const item of [].concat(ops?.remove ?? [])) {
+    const idx = arr.indexOf(String(item));
+    if (idx >= 0) arr.splice(idx, 1);
+  }
+  for (const item of [].concat(ops?.add ?? [])) {
+    if (item != null && String(item).trim()) arr.push(String(item).trim());
+  }
+  return coerce(varDef, arr);
+}
+
+function applySets(schema, state, rules, rng, changeLog, source) {
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  for (const rule of rules || []) {
+    // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
+    if (rule.list) {
+      const def = varById[rule.list];
+      if (!def || def.type !== 'list') continue;
+      const from = state.vars[rule.list];
+      // expire: 항목의 `@숫자`가 이 값보다 작아지면 만료 — 기한이 다한 계약·부역이 스스로 빠진다.
+      // (`@`가 없는 항목은 무기한이라 건드리지 않는다)
+      let base = from;
+      if (rule.expire) {
+        const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
+        if (isFinite(now) && Array.isArray(from)) {
+          base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });
+        }
+      }
+      const ops = rule.add
+        ? { ...rule, add: resolveRelativeExpiry(schema, state, rule.list, [].concat(rule.add), rng) }
+        : rule;
+      const to = applyListOps(def, base, ops);
+      if (to !== undefined && JSON.stringify(to) !== JSON.stringify(from)) {
+        state.vars[rule.list] = to;
+        changeLog.push({ id: rule.list, from, to, source });
+      }
+      continue;
+    }
+    const def = varById[rule.set];
+    if (!def) continue; // 검증 단계에서 걸러지지만 방어
+    if (def.type === 'list') continue; // 목록은 수식 set 불가 (list 효과 사용)
+    const lookup = makeLookup(schema, state.vars);
+    const raw = evaluate(rule.expr, lookup, rng);
+    const from = state.vars[rule.set];
+    const to = coerce(def, def.type === 'bool' ? truthy(raw) : raw);
+    if (to === undefined) continue;
+    if (to !== from) {
+      state.vars[rule.set] = to;
+      changeLog.push({ id: rule.set, from, to, source });
+    }
+  }
+}
+
+// ── ① 전송 단계 (beforeRequest) ──────────────────────────────
+// 반환: { state, promptBlock, consumedActions, changeLog }
+
+function sendPhase(schema, prevState, { rng } = {}) {
+  const state = reconcileState(schema, clone(prevState));
+  const changeLog = [];
+  const injects = [];
+  const consumedActions = [];
+
+  // 1. 무장 액션 effects (결정적) + inject 수집
+  for (const action of schema.actions || []) {
+    if (!state.meta.armed[action.id]) continue;
+    if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
+    applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
+    if (action.inject) injects.push(action.inject);
+    consumedActions.push(action.id);
+    if ((action.mode || 'oneshot') === 'oneshot') {
+      delete state.meta.armed[action.id];
+      state.meta.actionLastUsed[action.id] = state.meta.turn;
+    }
+  }
+
+  // 2. 직전 턴 이벤트 통지 합류
+  const notifies = state.meta.pendingNotifies.splice(0);
+
+  // 3. 상태 블록 렌더
+  const lookup = makeLookup(schema, state.vars);
+  const ps = schema.promptState || {};
+  const lines = [];
+  if (ps.template) lines.push(renderTemplate(ps.template, lookup));
+  const showEvents = ps.includeEvents !== false && notifies.length > 0;
+  if (showEvents) {
+    for (const n of notifies) lines.push(`[이벤트] ${n}`);
+    // 충돌 해소 규칙은 이벤트가 실제로 있는 턴에만 붙인다 (없는 턴에 넣어봐야 토큰 낭비 + 헛된 편향)
+    if (ps.eventPriority !== false) {
+      lines.push(renderTemplate(
+        typeof ps.eventPriority === 'string' && ps.eventPriority.trim()
+          ? ps.eventPriority : DEFAULT_EVENT_PRIORITY, lookup));
+    }
+  }
+  for (const inj of injects) lines.push(inj);
+
+  // 3.5 상태 지시문: 조건을 만족하는 동안 매 턴 주입 (세션 0 중에는 제외)
+  const activeDirectives = [];
+  if (!isSetupPending(schema, state)) {
+    for (const d of schema.directives || []) {
+      try {
+        if (truthy(evaluate(d.when, lookup, null))) {
+          lines.push(renderTemplate(d.text, lookup));
+          activeDirectives.push(d.id);
+        }
+      } catch { /* 검증 단계에서 걸러지지만 방어 */ }
+    }
+  }
+
+  if (isSetupPending(schema, state)) {
+    lines.push(schema.setup.ai.instruction ||
+      '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
+  }
+  lines.push(ps.systemGuide || DEFAULT_SYSTEM_GUIDE);
+
+  return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives };
+}
+
+// ── ②' 최초설정 응답 단계 — 절대값 적용, 정기 틱·이벤트 없음 ──
+// values: { id: 절대값 }  (델타 아님)
+function setupPhase(schema, prevState, values, reasons) {
+  const state = reconcileState(schema, clone(prevState));
+  const changeLog = [];
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const allowed = new Set(schema.setup?.ai?.vars ?? schema.vars.map((v) => v.id));
+  for (const [id, proposed] of Object.entries(values || {})) {
+    const def = varById[id];
+    if (!def || !allowed.has(id)) continue;
+    const from = state.vars[id];
+    const to = coerce(def, def.type === 'bool' ? truthy(proposed) : proposed);
+    if (to === undefined || to === from) continue;
+    if (def.type === 'list' && JSON.stringify(to) === JSON.stringify(from)) continue;
+    state.vars[id] = to;
+    changeLog.push({ id, from, to, source: 'setup', reason: reasons?.[id] });
+  }
+  state.meta.setupDone = true; // 값이 비어도 설정 단계는 소비됨 (재시도는 리롤로)
+  return { state, changeLog, firedEvents: [] };
+}
+
+/** 최초설정용 보조 모델 프롬프트 — 절대값 + 허용 범위 명세 */
+function buildSetupPrompt(schema, state, narrative) {
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const ids = schema.setup?.ai?.vars ?? schema.vars.map((v) => v.id);
+  const specs = ids.map((id) => {
+    const v = varById[id];
+    if (!v) return null;
+    const d = v.desc ? ` — ${v.desc}` : '';
+    const base = `- ${id} (${v.label ?? id}`;
+    if (v.type === 'int' || v.type === 'float') {
+      const range = [v.min != null ? `최소 ${v.min}` : null, v.max != null ? `최대 ${v.max}` : null].filter(Boolean).join(', ');
+      return `${base}, 숫자${range ? ', ' + range : ''}): 기본값 ${JSON.stringify(v.init)}${d}`;
+    }
+    if (v.type === 'enum') return `${base}, 선택): 다음 중 하나: ${v.enum.join(' | ')} (기본 ${JSON.stringify(v.init)})${d}`;
+    if (v.type === 'bool') return `${base}, 참/거짓): 기본 ${JSON.stringify(v.init ?? false)}${d}`;
+    if (v.type === 'list') return `${base}, 목록): 문자열 배열로 제시 (최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개, 기본 ${JSON.stringify(v.init ?? [])})${d}`;
+    return `${base}, 텍스트 ${v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내): 기본 ${JSON.stringify(v.init ?? '')}${d}`;
+  }).filter(Boolean).join('\n');
+
+  return [
+    '너는 시뮬레이션 초기 설정 관리자다. 아래 대화에서 확정된 시작 상황을 읽고 각 변수의 초기값을 JSON으로 출력하라.',
+    '',
+    '[설정 가능 변수]', specs, '',
+    '[시작 상황 대화]', narrative, '',
+    '[규칙]',
+    '- 대화에서 정해진 내용을 우선 반영하고, 언급되지 않은 변수는 기본값을 유지하거나 상황에 맞게 자연스럽게 정하라.',
+    '- 절대값으로 제시하라 (델타 아님).',
+    schema.setup?.ai?.guide ? `- ${schema.setup.ai.guide}` : null,
+    '',
+    '출력 형식 (JSON만, 다른 텍스트 금지):',
+    '{"values": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
+  ].filter((x) => x !== null).join('\n');
+}
+
+/**
+ * 응답 텍스트에서 JSON 객체 추출 (관대하게).
+ * 추론 모델의 <Thoughts>...</Thoughts> 서두, 코드펜스, 앞뒤 잡담을 전부 견딘다.
+ * requiredKey가 있으면 그 키를 가진 첫 객체를 우선하고, 없으면 첫 파싱 성공 객체.
+ */
+function extractJsonObject(text, requiredKey) {
+  if (typeof text !== 'string') return null;
+  // 추론(thinking) 블록 제거 — Gemini 등이 JSON 앞에 사고 과정을 뱉는 경우
+  let src = text.replace(/<Thoughts>[\s\S]*?<\/Thoughts>/gi, '')
+                .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+  // 코드펜스 안 JSON 우선
+  const fence = src.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidates = fence ? [fence[1], src, text] : [src, text];
+  let fallback = null;
+  for (const cand of candidates) {
+    // 균형 잡힌 { } 블록 스캔 (문자열/이스케이프 인지)
+    for (let start = cand.indexOf('{'); start !== -1; start = cand.indexOf('{', start + 1)) {
+      let depth = 0, inStr = false, esc = false;
+      for (let i = start; i < cand.length; i++) {
+        const ch = cand[i];
+        if (esc) { esc = false; continue; }
+        if (inStr) {
+          if (ch === '\\') esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') inStr = true;
+        else if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            try {
+              const obj = JSON.parse(cand.slice(start, i + 1));
+              if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+                if (!requiredKey || requiredKey in obj) return obj;
+                if (!fallback) fallback = obj;
+              }
+            } catch { /* 다음 후보로 */ }
+            break;
+          }
+        }
+      }
+    }
+    if (fallback) break; // 이 후보 텍스트에서 뭐라도 건졌으면 다음 후보는 안 봄
+  }
+  return fallback;
+}
+
+/** 최초설정 응답 파싱 */
+function parseSetupResponse(text) {
+  const obj = extractJsonObject(text, 'values');
+  if (!obj) return null;
+  return { values: obj.values || {}, reasons: obj.reasons || {} };
+}
+
+// ── ② 응답 단계 (afterRequest/output) ────────────────────────
+// changes: 보조 모델 제안 { id: number(델타) | string | bool }
+// reasons: { id: '사유' } (선택)
+// 반환: { state, changeLog, firedEvents }
+
+/** 보조 모델 델타만 적용 (캡·검증) — outputPhase 내부와 지연 소급 적용에서 공용 */
+function applyChangesToState(schema, prevState, changes, reasons, seenText = null) {
+  const state = reconcileState(schema, clone(prevState));
+  const changeLog = [];
+  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  return { state, changeLog };
+}
+
+/** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
+function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const allowById = Object.fromEntries(auxAllowList(schema, seenText).map((a) => [a.id, a]));
+  for (const [id, proposed] of Object.entries(changes || {})) {
+    const def = varById[id];
+    const allow = allowById[id];
+    if (!def || !allow) continue; // 허용 목록 밖 → 무시
+    const from = state.vars[id];
+    let to;
+    if (def.type === 'int' || def.type === 'float') {
+      let delta = Number(proposed);
+      if (!isFinite(delta) || delta === 0) continue;
+      const gainCap = allow.maxGain ?? allow.maxDelta;
+      const lossCap = allow.maxLoss ?? allow.maxDelta;
+      if (delta > 0 && gainCap != null) delta = Math.min(gainCap, delta);
+      if (delta < 0 && lossCap != null) delta = Math.max(-lossCap, delta);
+      to = coerce(def, from + delta);
+    } else if (def.type === 'text') {
+      const cap = allow.maxLength ?? def.maxLength ?? DEFAULT_TEXT_MAXLEN;
+      to = coerce({ ...def, maxLength: cap }, proposed);
+    } else if (def.type === 'list') {
+      // {"add": [...], "remove": [...]} 연산만 허용 (전체 교체 금지 — 아이템 증발 방지)
+      if (typeof proposed !== 'object' || proposed === null || Array.isArray(proposed)) continue;
+      // 보조 모델이 "@+1080"(3년)이라고만 써도 여기서 실제 날짜로 굳는다 — 산술은 시스템 몫
+      const ops = proposed.add
+        ? { ...proposed, add: resolveRelativeExpiry(schema, state, id, [].concat(proposed.add)) }
+        : proposed;
+      to = applyListOps(def, from, ops);
+    } else {
+      to = coerce(def, proposed); // enum(목록 밖 거부) / bool
+    }
+    if (to === undefined || to === from) continue;
+    if (def.type === 'list' && JSON.stringify(to) === JSON.stringify(from)) continue;
+    state.vars[id] = to;
+    changeLog.push({ id, from, to, source: 'llm', reason: reasons?.[id] });
+  }
+}
+
+// ── ② 응답 단계 (afterRequest/output) ────────────────────────
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null } = {}) {
+  const state = reconcileState(schema, clone(sendState));
+  const changeLog = [];
+  const firedEvents = [];
+
+  // 5. 보조 모델 델타 적용
+  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+
+  // 6. 정기 틱
+  applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
+
+  // 7. 조건 이벤트
+  for (const ev of schema.rules?.events || []) {
+    if (ev.once && state.meta.firedOnce[ev.id]) continue;
+    const lookup = makeLookup(schema, state.vars);
+    if (!truthy(evaluate(ev.when, lookup, null))) continue;
+    applySets(schema, state, ev.effects, rng, changeLog, `event:${ev.id}`);
+    if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (ev.once) state.meta.firedOnce[ev.id] = true;
+    state.meta.eventLastFired[ev.id] = state.meta.turn;
+    firedEvents.push(ev.id);
+  }
+
+  // 8. 랜덤 이벤트 추첨
+  const re = schema.rules?.randomEvents;
+  if (re && rng && rng() < (re.chancePerTurn ?? 0)) {
+    const eligible = (re.table || []).filter((ev) => {
+      if (ev.cooldown != null) {
+        const last = state.meta.eventLastFired[ev.id];
+        if (last != null && state.meta.turn - last < ev.cooldown) return false;
+      }
+      if (ev.when) {
+        const lookup = makeLookup(schema, state.vars);
+        if (!truthy(evaluate(ev.when, lookup, null))) return false;
+      }
+      return true;
+    });
+    const total = eligible.reduce((s, e) => s + (e.weight ?? 1), 0);
+    if (total > 0) {
+      let roll = rng() * total;
+      for (const ev of eligible) {
+        roll -= ev.weight ?? 1;
+        if (roll <= 0) {
+          applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+          if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+          state.meta.eventLastFired[ev.id] = state.meta.turn;
+          firedEvents.push(ev.id);
+          break;
+        }
+      }
+    }
+  }
+
+  // 9. 턴 카운터
+  state.meta.turn += 1;
+
+  return { state, changeLog, firedEvents };
+}
+
+// ── 액션 토글 ───────────────────────────────────────────────
+
+function toggleAction(schema, prevState, actionId) {
+  const state = reconcileState(schema, clone(prevState));
+  const action = (schema.actions || []).find((a) => a.id === actionId);
+  if (!action) return { state, armed: false, blocked: '알 수 없는 액션' };
+  if (state.meta.armed[actionId]) {
+    delete state.meta.armed[actionId];
+    return { state, armed: false };
+  }
+  const avail = actionAvailability(schema, state, action);
+  if (!avail.ok) return { state, armed: false, blocked: avail.reason };
+  state.meta.armed[actionId] = true;
+  return { state, armed: true };
+}
+
+function actionAvailability(schema, state, action) {
+  if (action.cooldown != null) {
+    const last = state.meta.actionLastUsed[action.id];
+    if (last != null && state.meta.turn - last < action.cooldown) {
+      return { ok: false, reason: `쿨다운 (${action.cooldown - (state.meta.turn - last)}턴 남음)` };
+    }
+  }
+  if (action.when) {
+    const lookup = makeLookup(schema, state.vars);
+    if (!truthy(evaluate(action.when, lookup, null))) return { ok: false, reason: '조건 미충족' };
+  }
+  return { ok: true };
+}
+
+// ── 템플릿 & 보조 모델 프롬프트 ─────────────────────────────
+
+/**
+ * @param extras 수식이 아니라 미리 만들어 둔 조각 (예: {commands}).
+ *   변수보다 **먼저** 본다 — 같은 이름의 변수가 있으면 검증이 경고로 잡는다.
+ */
+function renderTemplate(tpl, lookup, extras = null) {
+  return tpl.replace(/\{([^{}]+)\}/g, (_, inner) => {
+    try {
+      let expr = inner.trim();
+      if (extras && Object.prototype.hasOwnProperty.call(extras, expr)) return extras[expr];
+      let filter = null;
+      const m = expr.match(/^(.*?):(tags)$/); // {inventory:tags} → 칩 목록 HTML
+      if (m) { expr = m[1].trim(); filter = m[2]; }
+      const v = evaluate(expr, lookup, null);
+      if (filter === 'tags') {
+        const arr = Array.isArray(v) ? v : [String(v)];
+        return arr.length
+          ? arr.map((x) => `<span class="sim-tag">${escapeHtml(String(x))}</span>`).join('')
+          : '<span class="sim-empty">없음</span>';
+      }
+      if (Array.isArray(v)) return v.length ? v.join(', ') : '(없음)';
+      return String(v);
+    } catch {
+      return `{${inner}}`;
+    }
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** 보조 모델에 보낼 프롬프트 생성 (어댑터가 LLM 호출에 사용) */
+/** 최근 대화를 보조모델용 한 덩어리 텍스트로. 비면 빈 문자열 (프롬프트에서 통째로 빠진다) */
+function formatHistory(msgs) {
+  const lines = (msgs || [])
+    .filter((m) => m && typeof m.text === 'string' && m.text.trim())
+    .map((m) => `${m.role === 'user' ? '유저' : '상대'}: ${m.text.trim()}`);
+  return lines.length ? '[앞선 대화 흐름 — 참고용]\n' + lines.join('\n') : '';
+}
+
+/**
+ * 이번 턴에 실제로 열어 줄 변수만 골라낸다 — 로어북 키워드와 같은 방식이다.
+ *
+ * ⚠ `updater.allow`에는 조건식(when)을 못 단다. 달아 봐야 소용도 없다 —
+ *   "이번 턴에 그 사람이 나왔나"는 변수가 아니라 **서사 원문**에만 있는 정보라서다.
+ *   그래서 조건이 아니라 낱말로 건다: `mentions`에 적은 말이 이번 턴 글에 있어야 열린다.
+ *   (`mentions: true`면 그 변수의 label을 낱말로 쓴다 — 인물 호감도는 label이 곧 이름이다)
+ *
+ * 왜 하는가: 인물이 스물여섯이면 매 턴 스물여섯 줄이 나가고, 모델은 그걸 전부
+ * "건드려도 되는 것"으로 읽는다. 등장하지도 않은 사람의 호감도가 분위기상 ±1씩 움직이면
+ * 상한도 소용이 없다 — 상한은 크기를 막지 빈도를 못 막는다.
+ *
+ * @param text 이번 턴 서사 + 유저 발화 (+ 배경 대화). 비워 두면 거르지 않는다(구버전 호환).
+ */
+function auxAllowList(schema, text) {
+  const allow = schema.updater?.allow || [];
+  if (text == null) return allow;
+  const hay = String(text).toLowerCase();
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const keysOf = (a) => (a.mentions === true ? [varById[a.id]?.label ?? a.id] : [].concat(a.mentions))
+    .filter((k) => typeof k === 'string' && k.trim()).map((k) => k.toLowerCase());
+
+  // 이번 글에 실제로 등장한 낱말 전부. 아래 '가려짐' 판정의 재료다.
+  const present = [];
+  for (const a of allow) {
+    if (!a.mentions) continue;
+    for (const k of keysOf(a)) if (hay.includes(k)) present.push(k);
+  }
+
+  // ⚠ 한국어는 이름이 서로 겹치고("릴리아나" 안에 "리아나"가 있다) 조사가 붙어 단어 경계를 못 쓴다.
+  //   그냥 부분일치로 두면 릴리아나가 나올 때마다 리아나 백작까지 열린다.
+  //   그래서 **더 긴 낱말에 통째로 가려진 자리는 안 친다.** 걸린 자리가 전부 그렇다면 등장한 게 아니다.
+  //   ("리아나 백작이 왔다"는 릴리아나가 없으니 그대로 걸리고, "릴리아나가 왔다"는 가려져 안 걸린다)
+  const reallyIn = (k) => {
+    const longer = present.filter((o) => o.length > k.length && o.includes(k));
+    if (!longer.length) return hay.includes(k);
+    for (let i = hay.indexOf(k); i >= 0; i = hay.indexOf(k, i + 1)) {
+      const covered = longer.some((o) => {
+        for (let j = hay.indexOf(o); j >= 0; j = hay.indexOf(o, j + 1)) {
+          if (j <= i && j + o.length >= i + k.length) return true;
+        }
+        return false;
+      });
+      if (!covered) return true;   // 가려지지 않은 자리가 하나라도 있으면 진짜 등장이다
+    }
+    return false;
+  };
+
+  return allow.filter((a) => !a.mentions || keysOf(a).some(reallyIn));
+}
+
+/**
+ * @param historyText formatHistory()의 결과 (선택). 이번 턴 판단의 배경 맥락으로만 쓴다
+ * @param opts.allowAll mentions 필터를 끈다. 루아 브리지는 서사 자리에 자리표시자를 박아
+ *   **설치 시점에 한 번** 템플릿을 굽기 때문에, 여기서 거르면 mentions 변수가 영영 닫힌다.
+ */
+function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = {}) {
+  const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  // 프롬프트와 적용이 같은 함수로 같은 글을 봐야 어긋나지 않는다.
+  // 안 보여 준 변수를 나중에 받아 주면 거르는 의미가 없어진다.
+  const allow = auxAllowList(schema,
+    opts.allowAll ? null : [narrative, userText, historyText].filter(Boolean).join('\n'));
+  const specs = allow.map((a) => {
+    const v = varById[a.id];
+    if (!v) return null;
+    const cur = JSON.stringify(state.vars[a.id]);
+    const desc = v.desc ? ` — ${v.desc}` : '';
+    if (v.type === 'int' || v.type === 'float') {
+      const gainCap = a.maxGain ?? a.maxDelta;
+      const lossCap = a.maxLoss ?? a.maxDelta;
+      const capDesc = (gainCap != null || lossCap != null)
+        ? `증가 최대 +${gainCap ?? '무제한'}, 감소 최대 -${lossCap ?? '무제한'}`
+        : '한도 무제한';
+      return `- ${a.id} (${v.label ?? a.id}, 숫자): 현재 ${cur}. 변화량(델타)으로 제시. ${capDesc}${desc}`;
+    }
+    if (v.type === 'enum')
+      return `- ${a.id} (${v.label ?? a.id}, 선택): 현재 ${cur}. 다음 중 하나로만: ${v.enum.join(' | ')}${desc}`;
+    if (v.type === 'bool')
+      return `- ${a.id} (${v.label ?? a.id}, 참/거짓): 현재 ${cur}. true 또는 false로 제시${desc}`;
+    if (v.type === 'list')
+      return `- ${a.id} (${v.label ?? a.id}, 목록): 현재 ${cur}. {"add": ["얻은 것"], "remove": ["잃은 것"]} 연산으로만 제시 (전체 교체 금지, 최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개)${desc}`;
+    return `- ${a.id} (${v.label ?? a.id}, 텍스트): 현재 ${cur}. 새 값 전체를 제시 (${a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내)${desc}`;
+  }).filter(Boolean).join('\n');
+
+  return [
+    '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
+    '',
+    '[조정 가능 변수]', specs, '',
+    historyText || null, historyText ? '' : null,
+    userText ? '[유저의 행동/발화]' : null, userText || null, userText ? '' : null,
+    '[이번 턴 서사]', narrative, '',
+    '[규칙]',
+    '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
+    historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
+    '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
+    schema.updater?.guide ? `- ${schema.updater.guide}` : null,
+    '',
+    '출력 형식 (JSON만, 다른 텍스트 금지):',
+    '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
+    '변화가 없으면 {"changes": {}, "reasons": {}}',
+  ].filter((x) => x !== null).join('\n');
+}
+
+// ── 채팅 명령 ────────────────────────────────────────────────
+// 배포받은 유저는 플러그인 패널을 안 연다. 그런데 "이번에 맺은 계약"처럼 제작자가 미리
+// 알 수 없는 것은 누군가 손으로 넣어야 한다. 액션 버튼으로는 안 된다 — 버튼은 미리 정해둔
+// 것만 누를 수 있고, 계약 이름과 금액은 유저가 그 자리에서 적어야 하는 값이다.
+// 그래서 채팅 입력창에 치는 명령으로 받는다. 변수에 `cmd`를 달아 두면 열린다.
+//
+//   /계약 헤세 상단 양모 +12 @+1080   목록에 추가 (int면 델타, text/enum이면 대입)
+//   /계약- 헤세 상단 양모             목록에서 제거
+//
+// 명령 줄은 모델에게 가기 전에 확인 문구로 바뀐다. 지우지 않는 이유는 두 가지다:
+// ① 유저 메시지가 통째로 비면 빈 턴이 된다 ② 모델이 등록 사실을 알아야 그에 맞게 서술한다.
+const CMD_LINE_RE = /^[ \t]*\/([^\s\/-][^\s-]*)(-?)[ \t]*(.*)$/;
+
+/**
+ * 이 스키마가 열어 둔 채팅 명령 목록.
+ *
+ * ⚠ 명령 이름은 플러그인이 아니라 **제작자**가 변수마다 붙인다. 그래서 유저는 자기가 쓰는 봇에
+ *   무슨 명령이 있는지 알 방법이 없었다 — 상태창 {commands}와 편집기 명령 탭이 여기서 같이 읽어
+ *   서로 어긋나지 않게 한다. 문법은 손으로 적는 게 아니라 **변수 타입이 정한다.**
+ */
+function commandSpecs(schema) {
+  return (schema.vars || []).filter((v) => v.cmd).map((v) => {
+    const c = `/${v.cmd}`;
+    const en = v.enum || [];
+    const usage = v.type === 'list'
+      ? [[`${c} 내용`, '목록에 넣는다'], [`${c}- 내용 일부`, '목록에서 뺀다 — 일부만 써도 찾는다']]
+      : (v.type === 'int' || v.type === 'float')
+        ? [[`${c} +5`, '지금 값에서 더하거나 뺀다 (-5도 같다)'], [`${c} 30`, '부호가 없으면 그 값으로 지정한다']]
+        : v.type === 'enum'
+          ? [[`${c} ${en.slice(0, 3).join(' / ')}${en.length > 3 ? ' / …' : ''}`, '선택지 중 하나로 바꾼다']]
+          : v.type === 'bool'
+            ? [[`${c} on`, '켠다 (끄려면 off / 0 / false)']]
+            : [[`${c} 내용`, '적은 그대로 넣는다']];
+    return { cmd: v.cmd, id: v.id, label: v.label ?? v.id, type: v.type, usage };
+  });
+}
+
+/**
+ * 제거 명령의 인자를 실제 항목에 맞춘다.
+ *
+ * ⚠ 목록 제거는 완전일치라서, 유저가 친 `/계약- 헤세 상단 양모`로는
+ *   `"헤세 상단 양모 +12 @1093"`이 안 지워졌다. 금액이야 안다 쳐도 `@1093`은
+ *   시스템이 굳힌 값이라 유저가 알 방법이 없다 — 제거가 사실상 막혀 있었다.
+ *   (AI는 목록 현재값을 보고 쓰니 완전일치로 충분하다. 사람만 못 맞춘다.)
+ *
+ * 완전일치 → 앞머리 → 부분일치 순으로 좁힌다. 하나로 안 좁혀지면 후보를 돌려주고
+ * 부르는 쪽이 되묻는다 — 여럿 중 아무거나 지우는 건 조용히 틀리는 것보다도 나쁘다.
+ * @returns {string|string[]|null} 항목 하나 / 후보 여럿 / 없음
+ */
+function matchListItem(list, arg) {
+  const arr = Array.isArray(list) ? list : [];
+  const a = String(arg).trim();
+  if (arr.includes(a)) return a;
+  const norm = (s) => String(s).replace(/\s+/g, '').toLowerCase();
+  const na = norm(a);
+  if (!na) return null;
+  for (const pick of [arr.filter((it) => norm(it).startsWith(na)),
+    arr.filter((it) => norm(it).includes(na))]) {
+    if (pick.length === 1) return pick[0];
+    if (pick.length > 1) return pick;
+  }
+  return null;
+}
+
+/** 이 목록이 어딘가에서 sum()으로 합산되는가 — 그렇다면 항목 끝의 숫자가 의미를 갖는다 */
+function isSummedList(schema, id) {
+  const re = new RegExp(`sum\\s*\\(\\s*${id}\\b`);
+  const exprs = [
+    ...(schema.derived || []).map((d) => d.expr),
+    ...(schema.rules?.onTurn || []).map((r) => r.expr || r.expire),
+    ...(schema.rules?.events || []).flatMap((e) => [e.when, ...(e.effects || []).map((f) => f.expr)]),
+    ...(schema.directives || []).map((d) => d.when),
+    ...(schema.actions || []).flatMap((a) => [a.when, ...(a.effects || []).map((f) => f.expr)]),
+  ];
+  return exprs.some((e) => typeof e === 'string' && re.test(e));
+}
+
+/**
+ * 유저 입력에서 채팅 명령을 뽑아 적용한다. 순수 함수 — state를 직접 고치지 않고 새 vars를 돌려준다.
+ * 모르는 명령은 손대지 않는다 (유저가 그냥 '/'로 시작하는 말을 썼을 수 있다).
+ * @returns {{ text: string, applied: Array, vars: object }}
+ */
+function applyChatCommands(schema, state, text, rng) {
+  const byCmd = {};
+  for (const v of schema.vars) if (v.cmd) byCmd[v.cmd] = v;
+  if (!Object.keys(byCmd).length || !text || !text.includes('/')) {
+    return { text, applied: [], vars: state.vars };
+  }
+  const vars = { ...state.vars };
+  const applied = [];
+  const out = text.split('\n').map((line) => {
+    const m = line.match(CMD_LINE_RE);
+    if (!m) return line;
+    const [, cmd, minus, argRaw] = m;
+    const def = byCmd[cmd];
+    if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
+    const arg = argRaw.trim();
+    const from = vars[def.id];
+    let to, how, removed = null;
+    if (def.type === 'list') {
+      if (!arg) return line;
+      if (minus) {
+        // 유저는 항목을 글자까지 외우고 있지 않다. 앞머리만 맞아도 찾아 준다.
+        const hit = matchListItem(from, arg);
+        if (hit === null) {
+          return `(시스템: ${def.label ?? def.id} — '${arg}'와 맞는 항목이 없음)`;
+        }
+        if (Array.isArray(hit)) {
+          return `(시스템: ${def.label ?? def.id} — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}`
+            + '. 지울 것 하나만 가려지게 더 적어 주세요)';
+        }
+        removed = hit;
+        to = applyListOps(def, from, { remove: [hit] }); how = '제거';
+      } else {
+        const add = resolveRelativeExpiry(schema, { vars }, def.id, [arg], rng);
+        to = applyListOps(def, from, { add }); how = '등록';
+      }
+    } else if (def.type === 'int' || def.type === 'float') {
+      const n = Number(arg.replace(/\s/g, ''));
+      if (!isFinite(n)) return line;
+      // 부호를 붙였으면 증감, 안 붙였으면 그 값으로 지정
+      to = coerce(def, /^[+-]/.test(arg.trim()) ? Number(from) + n : n);
+      how = /^[+-]/.test(arg.trim()) ? '조정' : '지정';
+    } else {
+      if (!arg && def.type !== 'text') return line;
+      to = coerce(def, def.type === 'bool' ? truthy(arg) : arg);
+      how = '지정';
+    }
+    // 거부와 '변화 없음'은 다르다. 거부는 왜 거부됐는지 말해 줘야 유저가 고칠 수 있다.
+    if (to === undefined) {
+      const why = def.type === 'enum' ? `${def.enum.join(' | ')} 중 하나여야 함` : '값을 받아들일 수 없음';
+      return `(시스템: ${def.label ?? def.id} — '${arg}' 거부됨, ${why})`;
+    }
+    if (JSON.stringify(to) === JSON.stringify(from)) {
+      return `(시스템: ${def.label ?? def.id} — 바뀐 것 없음)`;
+    }
+    // sum()으로 합산되는 목록에 숫자 없는 항목이 들어가면 조용히 0이 된다.
+    // "나무 +12G"처럼 단위를 붙이는 건 사람이 제일 자연스럽게 저지르는 실수다.
+    // 등록되는 그 순간 눈앞에서 알려 줘야 고칠 수 있다.
+    if (def.type === 'list' && !minus && isSummedList(schema, def.id) && itemValue(arg) === null) {
+      vars[def.id] = to;
+      applied.push({ id: def.id, from, to, how: '등록' });
+      return `(시스템: ${def.label ?? def.id} 등록 — ${arg}`
+        + ` ⚠ 끝이 숫자가 아니라 합산에서 0으로 잡힙니다. 단위를 빼고 "… +12"처럼 숫자로 끝내세요)`;
+    }
+    vars[def.id] = to;
+    applied.push({ id: def.id, from, to, how });
+    // 목록은 방금 건드린 항목만 보여준다. 제거는 유저가 친 말이 아니라
+    // **실제로 지워진 항목**을 되돌려 준다 — 앞머리만 쳤을 때 뭐가 지워졌는지 확인할 자리다.
+    const shown = Array.isArray(to)
+      ? (minus ? (removed ?? arg) : (to[to.length - 1] ?? arg))
+      : String(to);
+    return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
+  }).join('\n');
+  return { text: out, applied, vars };
+}
+
+/** 보조 모델 응답 파싱 (관대하게: <Thoughts> 서두/코드펜스/앞뒤 잡담 허용) */
+function parseAuxResponse(text) {
+  const obj = extractJsonObject(text, 'changes');
+  if (!obj) return null;
+  return { changes: obj.changes || {}, reasons: obj.reasons || {} };
+}
+
+module.exports = {
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
+  sendPhase, outputPhase, toggleAction, actionAvailability,
+  renderTemplate, buildAuxPrompt, auxAllowList, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
+  isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
+  DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
+};
+
+});
+
+SimCore.define("render", function (require, module, exports) {
+// 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
+// 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
+
+const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs } = require('./engine');
+const { evaluate, truthy } = require('./expr');
+
+// 내장 테마 — .sim-status 하위 오버라이드
+const THEMES = {
+  clean: '',
+  parchment: `
+.sim-status{background:rgba(233,221,196,.09);border-color:#8a6d3b66}
+.sim-status summary{color:#c9a86a}
+.sim-bar-fill{background:#a8865a}
+.sim-badge{background:#8a6d3b33}
+.sim-action{border-color:#8a6d3b88}
+.sim-action.sim-armed{border-color:#c9a86a;background:#8a6d3b33}`,
+  terminal: `
+.sim-status{background:#04110a;border-color:#1f5c3d;font-family:ui-monospace,monospace}
+.sim-status summary{color:#4ade80}
+.sim-value,.sim-label{color:#86efac}
+.sim-bar{background:#14351f}
+.sim-bar-fill{background:#22c55e}
+.sim-badge{background:#14351f;color:#86efac}
+.sim-action{border-color:#1f5c3d;color:#86efac}
+.sim-action.sim-armed{border-color:#22c55e;background:#14351f}`,
+  card: `
+.sim-status{background:rgba(91,141,239,.06);border:none;box-shadow:0 2px 12px rgba(0,0,0,.25);border-radius:14px}
+.sim-group{background:rgba(128,128,128,.08);border-radius:10px;padding:8px 10px}
+.sim-bar-fill{background:linear-gradient(90deg,#5b8def,#8b5bef)}`,
+};
+
+/** 상태창용 전체 CSS (기본 + 테마 + 스코프된 커스텀) — 메시지 내 <style> 자체 포함용 */
+function buildStatusCss(schema) {
+  const ui = schema?.statusUI || {};
+  const theme = THEMES[ui.theme] ?? '';
+  let custom = ui.customCSS ? scopeCss(ui.customCSS) : '';
+  if (ui.mode === 'template') {
+    if (ui.template) {
+      const embedded = extractTemplateParts(ui.template).css;
+      if (embedded.trim()) custom += '\n' + scopeCss(embedded);
+    }
+    // 여기서 state를 볼 수 없으니 어느 템플릿이 뜰지 모른다 → 전부 싣되, 각자 자기 id 껍데기에 가둔다.
+    // 그래서 두 템플릿이 `.status-modal-window`를 똑같이 정의해도 서로를 덮어쓰지 않는다.
+    for (const t of (ui.templates || [])) {
+      if (!t?.template) continue;
+      const embedded = extractTemplateParts(t.template).css;
+      if (!embedded.trim()) continue;
+      custom += '\n' + (t.id ? scopeCss(embedded, `.sim-status .sim-tpl-${t.id}`) : scopeCss(embedded));
+    }
+  }
+  return BASE_CSS + layoutCss(ui) + theme + '\n' + custom;
+}
+
+const BASE_CSS = `
+.sim-status{border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:.92em;line-height:1.5}
+.sim-status summary{cursor:pointer;font-weight:600;opacity:.85}
+.sim-group{margin-top:8px}
+.sim-group-label{font-weight:600;opacity:.7;font-size:.85em;margin-bottom:4px}
+.sim-row{display:flex;align-items:center;gap:8px;margin:3px 0}
+.sim-label{min-width:5.5em;opacity:.75}
+.sim-value{font-variant-numeric:tabular-nums}
+.sim-bar{display:block;flex:1;height:8px;border-radius:4px;background:rgba(128,128,128,.25);overflow:hidden;min-width:60px}
+.sim-bar-fill{display:block;height:100%;border-radius:4px;background:#5b8def;transition:width .3s}
+.sim-badge{display:inline-block;padding:1px 8px;border-radius:8px;background:rgba(128,128,128,.2);font-size:.85em}
+.sim-tags{display:flex;flex-wrap:wrap;gap:4px;flex:1;justify-content:flex-end}
+.sim-tag{display:inline-block;padding:1px 8px;border-radius:8px;background:rgba(128,128,128,.18);border:1px solid rgba(128,128,128,.25);font-size:.83em}
+.sim-empty{opacity:.45;font-size:.85em}
+.sim-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.sim-action-hint{flex-basis:100%;font-size:.78em;opacity:.55;margin-bottom:1px}
+.sim-action{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.4);font-size:.88em;background:transparent}
+.sim-action-glyph{font-size:1.15em;line-height:1}
+.sim-action-state{font-size:.85em;opacity:.7}
+.sim-action.sim-armed{border-color:#5b8def;background:rgba(91,141,239,.15);font-weight:600}
+.sim-action.sim-disabled{opacity:.45}
+.sim-log{margin-top:8px;font-size:.82em;opacity:.7}
+.sim-log-item{margin:1px 0}
+.sim-cmds{margin-top:10px;border-top:1px solid rgba(128,128,128,.25);padding-top:7px;font-size:.9em}
+.sim-cmds-open{cursor:pointer;opacity:.75;font-size:.88em;font-weight:600;list-style:none}
+.sim-cmds-hint{opacity:.6;font-size:.82em;margin:5px 0 7px}
+.sim-cmds-body{display:flex;flex-direction:column;gap:7px}
+.sim-cmd-name{font-size:.8em;opacity:.6;margin-bottom:2px}
+.sim-cmd-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin:1px 0}
+/* 배경을 칠했으면 글자색도 반드시 같이 정한다. 안 그러면 바깥 테마가 넣은 색과 겹쳐 글자가 사라진다.
+   inherit이라 밝은 장부든 어두운 밀서든 그 상태창의 본문 색을 그대로 따라간다. */
+.sim-cmd-syntax{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em;color:inherit;
+  padding:1px 7px;border-radius:6px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);white-space:nowrap}
+.sim-cmd-why{opacity:.6;font-size:.82em}
+
+/* ── 배치(statusUI.layout) ── 전부 JS 없이 CSS만으로 전환된다.
+   메시지 안 버튼은 리스가 클릭 이벤트의 target을 잘라내서 스크립트로는 못 받는다. */
+.sim-tabin{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+.sim-tabbar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
+.sim-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
+  border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}
+.sim-panel{display:none}
+/* 자리별 :checked 규칙은 그룹 수만큼 layoutCss()가 찍어 낸다 */
+.sim-acc{margin-top:6px;border:1px solid rgba(128,128,128,.22);border-radius:8px;padding:5px 9px}
+.sim-acc>summary{font-weight:600;opacity:.75;font-size:.88em}
+.sim-pops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sim-pop{position:relative;outline:none}
+.sim-pop-btn{display:inline-block;cursor:pointer;padding:3px 11px;border-radius:8px;
+  border:1px solid rgba(128,128,128,.4);font-size:.88em;font-weight:600}
+.sim-pop:focus-within .sim-pop-btn{background:rgba(128,128,128,.18)}
+/* 팝업은 본문 위로 떠서 뒤가 비치면 안 된다 → 배경을 칠하고 글자색도 같이 정한다.
+   Canvas/CanvasText는 시스템 색이라 밝은 테마·어두운 테마를 스스로 따라간다.
+   봇 CSS에서 --sim-pop-bg / --sim-pop-fg로 덮어쓸 수 있다. */
+.sim-pop-body{display:none;position:absolute;z-index:5;top:calc(100% + 5px);left:0;
+  min-width:min(17em,72vw);max-width:min(24em,88vw);max-height:50vh;overflow:auto;
+  padding:9px 11px;border:1px solid rgba(128,128,128,.4);border-radius:10px;
+  background:var(--sim-pop-bg,Canvas);color:var(--sim-pop-fg,CanvasText);box-shadow:0 6px 22px rgba(0,0,0,.34)}
+.sim-pop:focus-within .sim-pop-body{display:block}
+`;
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * 라벨에서 대표 글리프 하나를 뽑는다.
+ * 리스의 플로팅 버튼은 아이콘 칸이 한 칸으로 고정돼 있고 style/class가 제거돼 넓힐 수가 없다.
+ * 두 글자를 넣으면 둘째 글자가 버튼 밖으로 흘러나오므로 무조건 한 칸으로 줄여야 한다.
+ * 상태창 범례도 같은 글리프를 써야 짝이 맞으므로 여기(공용 모듈)에 둔다.
+ * 정규식 유니코드 속성(\p{...})은 구형 엔진에서 파싱 단계에 터져 파일 전체를 죽일 수 있어 코드포인트를 직접 본다.
+ */
+/** 그림문자(이모지·기호)인가 — 라벨이 아이콘으로 시작하는지 판정용 */
+function isPictograph(ch) {
+  const c = String(ch ?? '').codePointAt(0);
+  if (c === undefined) return false;
+  return (c >= 0x1f000 && c <= 0x1faff) || (c >= 0x2600 && c <= 0x27bf)
+    || (c >= 0x2b00 && c <= 0x2bff) || (c >= 0x2190 && c <= 0x21ff)
+    || (c >= 0x23f0 && c <= 0x23ff) || c === 0x203c || c === 0x2049;
+}
+
+function actionGlyph(label) {
+  const s = String(label ?? '').trim();
+  if (!s) return '•';
+  const chars = [...s];
+  const isRegional = (ch) => {
+    const c = ch.codePointAt(0);
+    return c >= 0x1f1e6 && c <= 0x1f1ff;
+  };
+  // 국기는 지역표시자 두 개가 모여 한 글자다 (🇰 + 🇷 = 🇰🇷) — 반쪽만 남기면 빈 네모가 뜬다
+  if (isRegional(chars[0]) && chars[1] && isRegional(chars[1])) return chars[0] + chars[1];
+  // 뒤따르는 결합 문자를 흡수한다: 변이 선택자(⚙️), 키캡(1️⃣), ZWJ 조합(🧑‍🍳).
+  // 이모지가 아니면 결합 문자가 따라오지 않으므로 자연히 첫 글자 하나만 남는다.
+  let out = chars[0], i = 1;
+  while (i < chars.length) {
+    const c = chars[i];
+    if (c === '️' || c === '︎' || c === '⃣') { out += c; i += 1; continue; }
+    if (c === '‍' && chars[i + 1] !== undefined) { out += c + chars[i + 1]; i += 2; continue; }
+    break;
+  }
+  return out;
+}
+
+/**
+ * 상태창 HTML 생성
+ * @param changeLog outputPhase의 changeLog (변화 로그 표시용, null 가능)
+ * @param actionStates [{id,label,armed,disabled,reason}] (액션 버튼, null이면 생략)
+ */
+/**
+ * 상태창의 {commands} 자리에 들어가는 명령 모음집.
+ *
+ * 여기 두는 이유: 명령 이름은 제작자가 정하는데 유저가 그걸 알 곳이 없었다.
+ * 패널에 넣는 건 답이 안 된다 — 배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유다.
+ * 그래서 유저가 늘 보는 화면에 두되, **자리와 노출 여부는 제작자가 정한다**(자리표시자를 안 박으면 안 나온다).
+ */
+function commandsHtml(schema) {
+  const specs = engineCommandSpecs(schema);
+  if (!specs.length) return '';
+  const rows = specs.map((s) => {
+    const lines = s.usage.map(([syntax, why]) =>
+      // ⚠ <code>를 쓰면 안 된다. 상태창은 리스의 메시지 렌더를 타므로 마크다운/테마 CSS가
+      //   code에 자기 색을 먹인다 — 여기서 배경만 칠해 두면 글자색이 그쪽 것이 되어
+      //   배경과 같은 색으로 겹쳐 통째로 안 보인다(실제로 그렇게 났다). span은 그 규칙에 안 걸린다.
+      `<div class="sim-cmd-line"><span class="sim-cmd-syntax">${esc(syntax)}</span>`
+      + `<span class="sim-cmd-why">${esc(why)}</span></div>`).join('');
+    return `<div class="sim-cmd"><div class="sim-cmd-name">${esc(s.label)}</div>${lines}</div>`;
+  }).join('');
+  return `<details class="sim-cmds"><summary class="sim-cmds-open">⌨ 채팅창에 칠 수 있는 명령 ${specs.length}가지</summary>`
+    + `<div class="sim-cmds-hint">서사가 알아서 반영합니다. 아래는 <b>AI가 잘못 넣었을 때 직접 고치는</b> 용도예요.</div>`
+    + `<div class="sim-cmds-body">${rows}</div></details>`;
+}
+
+function renderStatusHtml(schema, state, changeLog = null, actionStates = null, opts = {}) {
+  const ui = schema.statusUI || {};
+  const lookup = makeLookup(schema, state.vars);
+  // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.
+  // 라디오/체크박스로 탭을 짤 때 id·name에 반드시 섞어야 메시지끼리 안 엉킨다.
+  const uid = String(opts.uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
+  const extras = { commands: commandsHtml(schema), uid };
+  // 파생 변수도 포함 (표시 이름·포맷 조회용)
+  const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
+
+  let inner = '';
+
+  if (ui.mode === 'template' && (ui.template || (ui.templates || []).length)) {
+    // 조건부 템플릿: 조건이 참인 첫 번째 것만 그린다 (한 봇에 두 가지 플레이가 있을 때).
+    // 그린 것을 자기 id 클래스로 감싸는 게 핵심 — 두 템플릿이 똑같은 클래스명을 써도
+    // CSS가 각자 자기 껍데기 안으로 갇혀서 서로를 덮어쓰지 않는다.
+    const pick = pickTemplate(ui, lookup);
+    if (pick) {
+      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras);
+      inner = pick.id ? `<div class="sim-tpl-${esc(pick.id)}">${html}</div>` : html;
+    }
+  } else {
+    const panes = [];
+    for (const g of ui.groups || []) {
+      const visibility = g.visibility ?? 'show'; // 'show' | 'collapsed' | 'hidden'
+      if (visibility === 'hidden') continue; // 내부관리용 — 채팅 상태창에서 제외 (패널에서만)
+      if (g.showWhen && !truthy(evalSafe(g.showWhen, lookup) ?? 0)) continue; // 조건부 그룹
+      let rows = '';
+      for (const it of g.items || []) {
+        if (it.showWhen && !truthy(evalSafe(it.showWhen, lookup) ?? 0)) continue; // 조건부 항목
+        const def = varById[it.var];
+        const val = lookup(it.var);
+        if (val === undefined) continue;
+        const label = esc(it.label || def?.label || it.var); // 빈 문자열 라벨은 id로 폴백
+        let valueHtml;
+        if (def?.type === 'list' || Array.isArray(val)) {
+          const items = Array.isArray(val) ? val : [];
+          valueHtml = items.length
+            ? `<span class="sim-tags">${items.map((x) => `<span class="sim-tag">${esc(x)}</span>`).join('')}</span>`
+            : `<span class="sim-empty">비어 있음</span>`;
+        } else if (def?.type === 'bool') {
+          valueHtml = `<span class="sim-badge">${truthy(val) ? 'ON' : 'OFF'}</span>`;
+        } else if (def?.type === 'enum' || def?.type === 'text' || typeof val === 'string') {
+          valueHtml = `<span class="sim-badge">${esc(val)}</span>`;
+        } else {
+          const fmt = def?.format ? def.format.replace('{v}', fmtNum(val)) : fmtNum(val);
+          valueHtml = `<span class="sim-value">${esc(fmt)}</span>`;
+        }
+        let barHtml = '';
+        if (it.bar) {
+          const max = Math.max(1, numOr(evalSafe(String(it.bar.max ?? 100), lookup), 100));
+          const pct = Math.max(0, Math.min(100, (numOr(val, 0) / max) * 100));
+          let color = '';
+          if (it.color) {
+            const c = evalSafe(it.color, lookup);
+            if (typeof c === 'string') color = `;background:${esc(c)}`;
+          }
+          barHtml = `<span class="sim-bar"><span class="sim-bar-fill" style="width:${pct.toFixed(1)}%${color}"></span></span>`;
+        }
+        rows += `<div class="sim-row"><span class="sim-label">${label}</span>${barHtml}${valueHtml}</div>`;
+      }
+      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
+    }
+    inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
+    // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
+    // (템플릿 모드는 반대다: 제작자가 {commands}를 박은 자리에만 나온다)
+    inner += extras.commands;
+  }
+
+  // 액션 범례 — 실행은 화면 우상단 플로팅 버튼이 한다.
+  // 그 버튼의 아이콘 칸에는 글리프가 딱 하나만 들어가서 '🔥'만 보이므로,
+  // 여기서 글리프와 전체 라벨을 짝지어 보여주지 않으면 무슨 버튼인지 알 길이 없다.
+  // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다)
+  if (actionStates && actionStates.length) {
+    inner += `<div class="sim-actions">`;
+    inner += `<span class="sim-action-hint">화면 우상단 버튼으로 실행</span>`;
+    for (const a of actionStates) {
+      const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ');
+      const title = a.disabled && a.reason ? ` title="${esc(a.reason)}"` : '';
+      // 라벨이 이모지로 시작하면 그게 곧 버튼 아이콘이다 → 배지로 떼어내고 본문에서는 지운다.
+      // (안 지우면 '🔥 🔥 화로 최대'처럼 두 번 나온다)
+      const lead = actionGlyph(a.label);
+      const hasIcon = isPictograph(lead);
+      const text = hasIcon ? (String(a.label).trim().slice(lead.length).trim() || a.label) : String(a.label);
+      // 이모지가 없는 라벨은 버튼에 첫 글자가 뜬다. 그건 라벨 앞글자와 같으므로
+      // 배지를 또 달면 '휴 휴식'이 된다 — 상태 표시가 있을 때만 배지를 붙인다.
+      const badge = a.disabled ? '🔒' : (a.armed ? '✅' : (hasIcon ? lead : ''));
+      const tail = a.armed ? ' <span class="sim-action-state">발동 대기</span>'
+        : (a.disabled && a.reason ? ` <span class="sim-action-state">${esc(a.reason)}</span>` : '');
+      inner += `<span class="${cls}"${title}>`
+        + (badge ? `<span class="sim-action-glyph">${esc(badge)}</span>` : '')
+        + `${esc(text)}${tail}</span>`;
+    }
+    inner += `</div>`;
+  }
+
+  // 변화 로그
+  if (changeLog && changeLog.length) {
+    const items = changeLog
+      .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:') || c.source?.startsWith('action:'))
+      .map((c) => {
+        const def = varById[c.id];
+        const name = def?.label ?? c.id;
+        let diff;
+        if (typeof c.to === 'number' && typeof c.from === 'number') {
+          diff = `${c.to - c.from > 0 ? '+' : ''}${fmtNum(c.to - c.from)}`;
+        } else if (Array.isArray(c.to) || Array.isArray(c.from)) {
+          const fromArr = Array.isArray(c.from) ? c.from : [];
+          const toArr = Array.isArray(c.to) ? c.to : [];
+          const counted = (arr) => arr.reduce((m, x) => (m[x] = (m[x] || 0) + 1, m), {});
+          const fc = counted(fromArr), tc = counted(toArr);
+          const parts = [];
+          for (const k of new Set([...fromArr, ...toArr])) {
+            const d = (tc[k] || 0) - (fc[k] || 0);
+            if (d > 0) parts.push(`+${esc(k)}${d > 1 ? '×' + d : ''}`);
+            if (d < 0) parts.push(`-${esc(k)}${d < -1 ? '×' + -d : ''}`);
+          }
+          diff = parts.join(', ') || '변화 없음';
+        } else {
+          diff = `${esc(String(c.from))} → ${esc(String(c.to))}`;
+        }
+        return `<div class="sim-log-item">${esc(name)} ${diff}${c.reason ? ` — ${esc(c.reason)}` : ''}</div>`;
+      }).join('');
+    if (items) inner += `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
+  }
+
+  const title = esc(schema.meta?.name ?? '상태');
+  const body = ui.collapsible !== false
+    ? `<details open><summary>${title}</summary>${inner}</details>`
+    : inner;
+  const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
+  return `${styleTag}<div class="sim-status">${body}</div>`;
+}
+
+/**
+ * 커스텀 CSS를 .sim-status 하위로 강제 스코핑.
+ * 주석 제거 후 중괄호 단위로 파싱 — @keyframes 내부(from/to/%)는 스코핑하지 않고,
+ * @media/@supports/@container는 통과시키되 내부 셀렉터는 스코핑한다.
+ */
+function scopeCss(css, prefix = '.sim-status') {
+  css = String(css).replace(/\/\*[\s\S]*?\*\//g, ''); // 주석 제거
+  const scopeSel = (sel) => sel.split(',').map((s) => {
+    s = s.trim();
+    if (!s) return s;
+    if (s.startsWith(prefix)) return s;
+    return `${prefix} ${s}`;
+  }).filter(Boolean).join(', ');
+
+  let out = '';
+  let buf = '';
+  const stack = []; // 'kf'(keyframes: 스코핑 금지) | 'wrap'(media 등) | 'rule'
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '{') {
+      const head = buf.trim();
+      buf = '';
+      if (head.startsWith('@')) {
+        const isKf = /^@(-webkit-)?keyframes/i.test(head);
+        stack.push(isKf ? 'kf' : 'wrap');
+        out += head + '{';
+      } else {
+        const inKf = stack.includes('kf');
+        stack.push('rule');
+        out += (inKf ? head : scopeSel(head)) + '{';
+      }
+    } else if (c === '}') {
+      out += buf.trim() + '}';
+      buf = '';
+      stack.pop();
+    } else {
+      buf += c;
+    }
+  }
+  out += buf.trim();
+  return out;
+}
+
+/**
+ * 그룹들을 배치 방식대로 그린다. 'stack'(기본)은 예전 그대로.
+ *
+ * 탭·팝업은 **순수 CSS로만** 동작해야 한다 — 메시지 안의 버튼은 리스가 클릭 이벤트에서
+ * target을 잘라 넘겨서 JS로는 어느 것이 눌렸는지 알 수가 없다(§메인 DOM 클릭 주석 참고).
+ * 그래서 탭은 라디오+라벨, 팝업은 tabindex+:focus-within으로 만든다. 둘 다 새니타이저
+ * 기본 허용 목록에 있는 것만 쓴다(input/label/details/summary + type·checked·id·for·name·tabindex).
+ *
+ * ⚠ uid가 핵심이다. 상태창은 마커가 달린 **모든 메시지마다** 그려지므로 id를 고정해 버리면
+ * 메시지 열 개에 같은 id가 열 개 생기고, `<label for>`은 문서에서 처음 만난 것을 집는다
+ * → 최신 메시지의 탭을 눌렀는데 맨 위 메시지의 탭이 바뀐다. 라디오 name도 같이 묶여
+ * 다른 메시지의 선택이 풀린다. 그래서 메시지 인덱스를 id·name에 섞는다.
+ * (아코디언·팝업은 id를 안 쓰므로 이 문제에서 자유롭다)
+ */
+function layoutGroups(panes, layout, uid) {
+  if (!panes.length) return '';
+  const u = String(uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
+
+  // 탭·팝업은 두 장 이상일 때만 의미가 있다 — 한 장짜리 탭바는 잡음이라 쌓기로 되돌린다.
+  if (layout === 'tabs' && panes.length > 1) {
+    let h = '<div class="sim-tabs">';
+    // 입력·탭바·패널이 모두 형제여야 `:checked ~`가 닿는다 (그래서 input을 앞에 몰아 둔다)
+    panes.forEach((p, i) => {
+      h += `<input class="sim-tabin sim-tabin-${i}" type="radio" name="simtab-${u}"`
+        + ` id="simtab-${u}-${i}"${i === 0 ? ' checked' : ''}>`;
+    });
+    h += '<div class="sim-tabbar">';
+    panes.forEach((p, i) => {
+      h += `<label class="sim-tab sim-tab-${i}" for="simtab-${u}-${i}">${esc(p.label)}</label>`;
+    });
+    h += '</div><div class="sim-panels">';
+    panes.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
+    return h + '</div></div>';
+  }
+
+  if (layout === 'accordion') {
+    // 첫 장만 펼쳐 둔다. 여러 장을 동시에 펼쳐 볼 수 있는 게 탭과 다른 점이다.
+    return panes.map((p, i) =>
+      `<details class="sim-group sim-acc"${i === 0 ? ' open' : ''}>`
+      + `<summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`).join('');
+  }
+
+  if (layout === 'popover' && panes.length > 1) {
+    return '<div class="sim-pops">' + panes.map((p) =>
+      `<div class="sim-pop" tabindex="0"><span class="sim-pop-btn">${esc(p.label)}</span>`
+      + `<div class="sim-pop-body">${p.rows}</div></div>`).join('') + '</div>';
+  }
+
+  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다)
+  return panes.map((p) => p.collapsed
+    ? `<details class="sim-group"><summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`
+    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`
+  ).join('');
+}
+
+/**
+ * 탭은 몇 장이 될지 스키마마다 다르므로 `:checked ~` 규칙을 그룹 수만큼 찍어 낸다.
+ * nth-of-type 대신 자리별 클래스를 쓴다 — 조건부 그룹(showWhen)으로 장수가 줄어도
+ * 입력과 패널이 같은 번호로 짝지어져 어긋나지 않는다.
+ */
+function layoutCss(ui) {
+  if ((ui.layout ?? 'stack') !== 'tabs') return '';
+  const n = (ui.groups || []).length;
+  let css = '';
+  for (let i = 0; i < n; i++) {
+    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:rgba(128,128,128,.14);border-color:rgba(128,128,128,.28)}\n`;
+    css += `.sim-tabin-${i}:checked ~ .sim-panels .sim-panel-${i}{display:block}\n`;
+  }
+  return css;
+}
+
+/**
+ * 다중 패널 템플릿 뼈대를 그 봇의 **실제 변수로 채워서** 뽑아낸다.
+ * `layout` 옵션이 손 안 대고 쓰는 길이라면 이쪽은 뜯어고치려는 사람을 위한 출발점이다.
+ * 빈 예제를 주면 결국 변수명을 하나하나 갈아 끼워야 하므로, 그 일을 여기서 대신 한다.
+ *
+ * 클래스는 `mp-`를 쓴다 — 기본 상태창 CSS(.sim-*)와 안 부딪혀야 마음대로 뜯어고칠 수 있다.
+ * 임베드된 <style>은 저장될 때 .sim-status 아래로 자동 스코핑된다.
+ */
+function multiPanelTemplate(schema, kind = 'tabs') {
+  const ui = schema?.statusUI || {};
+  const varById = Object.fromEntries(
+    [...(schema?.vars || []), ...(schema?.derived || [])].map((v) => [v.id, v]));
+
+  let panes = (ui.groups || [])
+    .filter((g) => (g.visibility ?? 'show') !== 'hidden')
+    .map((g) => ({ label: g.label || '분류', ids: (g.items || []).map((it) => it.var).filter((id) => varById[id]) }))
+    .filter((p) => p.ids.length);
+  if (!panes.length) {
+    // 그룹을 안 만들어 둔 봇 — 변수를 여섯 개씩 끊어 임시로 나눠 준다 (이름은 고쳐 쓰라고 남긴다)
+    const ids = (schema?.vars || []).map((v) => v.id);
+    for (let i = 0; i < ids.length; i += 6) panes.push({ label: `${Math.floor(i / 6) + 1}쪽`, ids: ids.slice(i, i + 6) });
+  }
+  if (!panes.length) panes = [{ label: '상태', ids: [] }];
+
+  const rows = (ids) => ids.map((id) => {
+    const d = varById[id];
+    const val = d?.type === 'list' ? `{${id}:tags}` : `{${id}}`;
+    return `    <div class="mp-row"><span class="mp-k">${esc(d?.label ?? id)}</span><span class="mp-v">${val}</span></div>`;
+  }).join('\n') || '    <div class="mp-row"><span class="mp-k">(항목을 넣으세요)</span></div>';
+
+  const base = `.mp-row{display:flex;justify-content:space-between;gap:10px;margin:3px 0}
+.mp-k{opacity:.72}
+.mp-v{font-variant-numeric:tabular-nums;font-weight:600}`;
+
+  if (kind === 'accordion') {
+    return `<style>
+${base}
+.mp-acc{margin-top:6px;border:1px solid rgba(128,128,128,.24);border-radius:8px;padding:5px 10px}
+.mp-acc>summary{cursor:pointer;font-weight:600;opacity:.78;font-size:.9em}
+</style>
+${panes.map((p, i) => `<details class="mp-acc"${i === 0 ? ' open' : ''}>
+  <summary>${esc(p.label)}</summary>
+${rows(p.ids)}
+</details>`).join('\n')}`;
+  }
+
+  if (kind === 'popover') {
+    return `<style>
+${base}
+.mp-pops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.mp-pop{position:relative;outline:none}
+.mp-btn{display:inline-block;cursor:pointer;padding:3px 11px;border-radius:8px;
+  border:1px solid rgba(128,128,128,.4);font-size:.88em;font-weight:600}
+.mp-pop:focus-within .mp-btn{background:rgba(128,128,128,.18)}
+/* 본문이 글 위로 뜨므로 배경과 글자색을 함께 정한다. Canvas/CanvasText는 시스템 색이라
+   밝은 테마·어두운 테마를 스스로 따라간다 — 고정색을 쓰고 싶으면 여기만 바꾸면 된다. */
+.mp-body{display:none;position:absolute;z-index:5;top:calc(100% + 5px);left:0;
+  min-width:min(16em,72vw);max-width:min(24em,88vw);max-height:50vh;overflow:auto;
+  padding:9px 11px;border:1px solid rgba(128,128,128,.4);border-radius:10px;
+  background:Canvas;color:CanvasText;box-shadow:0 6px 22px rgba(0,0,0,.34)}
+.mp-pop:focus-within .mp-body{display:block}
+</style>
+<div class="mp-pops">
+${panes.map((p) => `  <div class="mp-pop" tabindex="0"><span class="mp-btn">${esc(p.label)}</span>
+    <div class="mp-body">
+${rows(p.ids)}
+    </div>
+  </div>`).join('\n')}
+</div>`;
+  }
+
+  // tabs — 라디오가 탭바·패널과 형제여야 `:checked ~`가 닿는다.
+  // ⚠ name·id에 {uid}가 반드시 들어가야 한다. 상태창은 메시지마다 그려지므로
+  //   고정 id를 쓰면 최신 메시지의 탭을 눌렀는데 맨 위 메시지가 바뀐다.
+  const rulesCss = panes.map((p, i) =>
+    `.mp-in-${i}:checked ~ .mp-bar .mp-tab-${i}{opacity:1;background:rgba(128,128,128,.14);border-color:rgba(128,128,128,.28)}
+.mp-in-${i}:checked ~ .mp-panels .mp-panel-${i}{display:block}`).join('\n');
+  return `<style>
+${base}
+.mp-in{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+.mp-bar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
+.mp-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
+  border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}
+.mp-panel{display:none}
+${rulesCss}
+</style>
+<div class="mp-tabs">
+${panes.map((p, i) => `  <input class="mp-in mp-in-${i}" type="radio" name="mp{uid}" id="mp{uid}-${i}"${i === 0 ? ' checked' : ''}>`).join('\n')}
+  <div class="mp-bar">
+${panes.map((p, i) => `    <label class="mp-tab mp-tab-${i}" for="mp{uid}-${i}">${esc(p.label)}</label>`).join('\n')}
+  </div>
+  <div class="mp-panels">
+${panes.map((p, i) => `    <div class="mp-panel mp-panel-${i}">
+${rows(p.ids)}
+    </div>`).join('\n')}
+  </div>
+</div>`;
+}
+
+/**
+ * 지금 그릴 템플릿 하나를 고른다.
+ * `templates[]`에서 조건이 참인 첫 번째, 없으면 조건 없는 것, 그것도 없으면 `template`(구버전 필드).
+ * 조건 평가가 터지면 그 항목만 건너뛴다 — 상태창이 통째로 사라지는 것보다 낫다.
+ */
+function pickTemplate(ui, lookup) {
+  for (const t of (ui.templates || [])) {
+    if (!t || !t.template) continue;
+    if (!t.when) return t;
+    try { if (truthy(evalSafe(t.when, lookup) ?? 0)) return t; } catch (e) { /* 다음 것으로 */ }
+  }
+  return ui.template ? { id: null, template: ui.template } : null;
+}
+
+/** 템플릿에서 <style> 블록을 분리 — AI 결과물 통짜 붙여넣기 지원 */
+function extractTemplateParts(template) {
+  let css = '';
+  const html = String(template ?? '').replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (m, c) => {
+    css += c + '\n';
+    return '';
+  });
+  return { html, css };
+}
+
+function evalSafe(src, lookup) {
+  try { return evaluate(src, lookup, null); } catch { return undefined; }
+}
+function numOr(v, d) { const n = Number(v); return isFinite(n) ? n : d; }
+function fmtNum(n) {
+  return Number.isInteger(n) ? n.toLocaleString('en-US') : (Math.round(n * 100) / 100).toLocaleString('en-US');
+}
+
+module.exports = { renderStatusHtml, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
+  layoutGroups, layoutCss, multiPanelTemplate, BASE_CSS, THEMES };
+
+});
+
+SimCore.define("session", function (require, module, exports) {
+// SimSession — 호스트(리스 어댑터/플레이그라운드/테스트)가 쓰는 오케스트레이터.
+// 파이프라인 시점과 스냅샷 규약을 한 곳에 고정한다:
+//
+//   [무장 토글]  current.meta.armed 수정 (턴 사이, UI에서)
+//   [전송 U]     base = pre:U (있으면=리롤) ?? current
+//                pre:U 저장 → sendPhase(base) → send:U 저장 → current 갱신
+//   [응답 C=U+1] outputPhase(send:U 상태) → out:C 저장 → current 갱신
+//
+// 리롤: 같은 U/C 키로 다시 돌므로 base가 같아 멱등. 랜덤은 (chatId, 인덱스) 시드로 고정.
+// 삭제: 전송 시 U가 과거로 돌아가면 pre:U가 이미 있어 그 시점 상태로 자연 복원.
+
+const engine = require('./engine');
+const { SnapshotStore, mapLimited } = require('./store');
+const IO_CONCURRENCY = 12; // 샌드박스 브리지 동시 요청 수 (너무 키우면 브리지가 밀린다)
+const { seededRng, makeUnstableRng } = require('./rng');
+
+class SimSession {
+  /**
+   * @param schema 검증된 스키마
+   * @param backend 스냅샷 백엔드 (MapBackend | pluginStorage 어댑터)
+   * @param opts { chatId, prefix, stableRng=true, random=Math.random }
+   */
+  constructor(schema, backend, opts = {}) {
+    this.schema = schema;
+    this.chatId = opts.chatId ?? 'chat';
+    this.stableRng = opts.stableRng !== false && schema.rerollStableRng !== false;
+    this.random = opts.random ?? Math.random;
+    this.store = new SnapshotStore(backend, opts.prefix ?? `sim:${this.chatId}`, opts.keepN ?? 60);
+    this.current = null; // 마지막으로 확정된 라이브 상태
+  }
+
+  _rng(index, label) {
+    return this.stableRng ? seededRng(this.chatId, index, label) : makeUnstableRng(this.random);
+  }
+
+  /** 채팅 로드/최초 시작. latestOutIndex = 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) */
+  async init(latestOutIndex = -1) {
+    if (latestOutIndex >= 0) {
+      const found = await this.store.latestAtOrBelow('out', latestOutIndex);
+      if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
+    }
+    this.current = engine.initState(this.schema);
+    return this.current;
+  }
+
+  /** 액션 토글 (턴 사이). 반환 { armed, blocked? } */
+  toggle(actionId) {
+    const r = engine.toggleAction(this.schema, this.current, actionId);
+    this.current = r.state;
+    return r;
+  }
+
+  /**
+   * 전송 시점 (beforeRequest). sendIndex = 이번에 추가된 유저 메시지의 인덱스
+   * (리롤이면 지난번과 같은 값이 다시 들어온다)
+   * 반환 { promptBlock, state, changeLog, consumedActions }
+   */
+  async onSend(sendIndex) {
+    const existingPre = await this.store.load('pre', sendIndex);
+    const base = existingPre ?? this.current ?? engine.initState(this.schema);
+    if (!existingPre) await this.store.save('pre', sendIndex, base);
+    const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send') });
+    await this.store.save('send', sendIndex, r.state);
+    this.current = r.state;
+    return r;
+  }
+
+  /**
+   * 응답 시점 (afterRequest/output). outIndex = 이번 char 메시지 인덱스 (= sendIndex + 1)
+   * auxText: 보조 모델의 원문 응답 (null이면 변화 없음으로 처리)
+   * 반환 { state, changeLog, firedEvents, auxParsed }
+   */
+  async onOutput(outIndex, auxText, seenText = null) {
+    const sendState = (await this.store.load('send', outIndex - 1)) ?? this.current;
+    const parsed = engine.parseAuxResponse(auxText) ?? { changes: {}, reasons: {} };
+    const r = engine.outputPhase(this.schema, sendState, parsed.changes, parsed.reasons, {
+      rng: this._rng(outIndex, 'output'),
+      seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
+    });
+    await this.store.save('out', outIndex, r.state);
+    this.current = r.state;
+    return { ...r, auxParsed: parsed };
+  }
+
+  /** 보조 모델 프롬프트 (호스트가 LLM 호출에 사용). 전송 후 상태 기준 */
+  getAuxPrompt(narrative, userText) {
+    return engine.buildAuxPrompt(this.schema, this.current, narrative, userText);
+  }
+
+  // ── 최초 설정 (세션 0) ──────────────────────────────────
+
+  /** 이번 응답을 최초설정으로 처리해야 하나 (send:U 상태 기준으로 판단) */
+  async isSetupTurn(outIndex) {
+    const sendState = (await this.store.load('send', outIndex - 1)) ?? this.current;
+    return engine.isSetupPending(this.schema, sendState);
+  }
+
+  getSetupPrompt(narrative) {
+    return engine.buildSetupPrompt(this.schema, this.current, narrative);
+  }
+
+  /** 최초설정 응답 처리 — 절대값 적용, 틱 없음. 리롤 규약은 onOutput과 동일 */
+  async onSetupOutput(outIndex, auxText) {
+    const sendState = (await this.store.load('send', outIndex - 1)) ?? this.current;
+    const parsed = engine.parseSetupResponse(auxText) ?? { values: {}, reasons: {} };
+    const r = engine.setupPhase(this.schema, sendState, parsed.values, parsed.reasons);
+    await this.store.save('out', outIndex, r.state);
+    this.current = r.state;
+    return { ...r, auxParsed: parsed };
+  }
+
+  /** 프리셋 적용 (새 시작 시점에) */
+  applyPreset(presetId) {
+    const r = engine.applyPreset(this.schema, this.current, presetId);
+    this.current = r.state;
+    return r.applied;
+  }
+
+  /** 완전 초기화: 이 채팅의 스냅샷 전부 삭제 + 초기 상태로 */
+  async resetAll(onProgress = null) {
+    const prefix = this.store.p + ':';
+    const mine = (await this.store.b.keys()).filter((k) => k.startsWith(prefix));
+    onProgress?.(0, mine.length, '스냅샷 삭제 중');
+    await mapLimited(mine, IO_CONCURRENCY, (k) => this.store.b.remove(k),
+      (d, t) => onProgress?.(d, t, '스냅샷 삭제 중'));
+    this.current = engine.initState(this.schema);
+    return this.current;
+  }
+
+  /**
+   * 세이브 데이터 내보내기: 현재 상태 + 이 채팅의 모든 스냅샷
+   * @param onProgress (done, total, phase) — 스냅샷이 많으면 오래 걸리므로 진행 보고
+   */
+  async exportData(lastOutIndex = -1, onProgress = null) {
+    const snapshots = {};
+    const prefix = this.store.p + ':';
+    onProgress?.(0, 1, '스냅샷 목록 확인 중');
+    const mine = (await this.store.b.keys()).filter((k) => k.startsWith(prefix));
+    onProgress?.(0, mine.length, '스냅샷 읽는 중');
+    const vals = await mapLimited(mine, IO_CONCURRENCY, (k) => this.store.b.get(k),
+      (d, t) => onProgress?.(d, t, '스냅샷 읽는 중'));
+    mine.forEach((k, i) => { snapshots[k.slice(prefix.length)] = vals[i]; });
+    return {
+      simcoreSave: 1,
+      schemaName: this.schema.meta?.name ?? null,
+      schema: this.schema, // 스키마 동봉 — 캐릭터의 스키마가 날아가도 세이브만으로 완전 복구 가능
+      chatId: this.chatId,
+      lastOutIndex,
+      current: this.current,
+      snapshots,
+    };
+  }
+
+  /**
+   * 세이브 데이터 가져오기.
+   * 같은 채팅으로 되돌리는 경우(백업 복원)에는 메시지 인덱스가 그대로 맞으므로 스냅샷 이력을
+   * 통째로 되살려 리롤·삭제 복원까지 유지한다.
+   * 다른 채팅으로 이식하는 경우에는 저장된 인덱스가 이 채팅의 메시지 번호와 무관하므로
+   * 기존 스냅샷을 비우고 현재 채팅의 마지막 char 메시지 위치에 상태를 앵커한다.
+   * (안 그러면 이 채팅이 길어져 저장된 인덱스에 도달하는 순간 과거 스냅샷이 되살아나
+   *  상태가 통째로 과거로 튄다.)
+   * @param anchorIndex 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1)
+   * @param onProgress (done, total, phase)
+   */
+  async importData(data, anchorIndex = -1, onProgress = null) {
+    if (!data || data.simcoreSave !== 1 || !data.current?.vars) return false;
+    const sameChat = !!data.chatId && data.chatId === this.chatId;
+    const prefix = this.store.p + ':';
+    if (sameChat) {
+      const entries = Object.entries(data.snapshots || {})
+        .filter(([suffix]) => /^(pre|send|out):\d+$/.test(suffix));
+      onProgress?.(0, entries.length, '스냅샷 복원 중');
+      await mapLimited(entries, IO_CONCURRENCY, ([suffix, raw]) => this.store.b.set(prefix + suffix, raw),
+        (d, t) => onProgress?.(d, t, '스냅샷 복원 중'));
+      this.current = engine.reconcileState(this.schema, JSON.parse(JSON.stringify(data.current)));
+    } else {
+      onProgress?.(0, 1, '기존 스냅샷 정리 중');
+      const mine = (await this.store.b.keys()).filter((k) => k.startsWith(prefix));
+      await mapLimited(mine, IO_CONCURRENCY, (k) => this.store.b.remove(k),
+        (d, t) => onProgress?.(d, t, '기존 스냅샷 정리 중'));
+      this.current = engine.reconcileState(this.schema, JSON.parse(JSON.stringify(data.current)));
+      onProgress?.(0, 1, '상태 앵커 저장 중');
+      await this.store.save('out', Math.max(0, anchorIndex), this.current);
+      onProgress?.(1, 1, '상태 앵커 저장 중');
+    }
+    return { ok: true, sameChat };
+  }
+
+  /**
+   * CBS 미러(chat.scriptstate)에서 상태 복구 — 스냅샷이 없는 채팅(다른 기기에서
+   * 가져온 채팅 등)용 최후 수단. 변수 값만 복원되고 쿨다운·대기 이벤트는 초기화된다.
+   */
+  restoreFromMirror(scriptstate) {
+    const state = require('./engine').initState(this.schema);
+    let restored = 0;
+    for (const v of this.schema.vars) {
+      const raw = scriptstate?.['$' + v.id];
+      if (raw == null || raw === 'null') continue;
+      let val = raw;
+      if (v.type === 'int' || v.type === 'float') { val = Number(raw); if (!isFinite(val)) continue; }
+      else if (v.type === 'bool') val = raw === 'true' || raw === '1';
+      const to = require('./engine').coerce(v, val);
+      if (to === undefined) continue;
+      state.vars[v.id] = to;
+      restored++;
+    }
+    // 엔진 턴 근사: turn 계열 변수가 있으면 그걸 따라감 (없으면 0에서 재시작)
+    if (typeof state.vars.turn === 'number') state.meta.turn = Math.max(0, state.vars.turn - 1);
+    this.current = state;
+    return restored;
+  }
+
+  /** 수동 보정 (플러그인 패널). outIndex 스냅샷을 덮어써 리롤과 정합 유지 */
+  async manualSet(outIndex, varId, value) {
+    const def = this.schema.vars.find((v) => v.id === varId);
+    if (!def) return false;
+    const to = engine.coerce(def, value);
+    if (to === undefined) return false;
+    this.current.vars[varId] = to;
+    await this.store.save('out', outIndex, this.current);
+    return true;
+  }
+}
+
+module.exports = { SimSession };
+
+});
+
+SimCore.define("diagnose", function (require, module, exports) {
+// 스키마를 실제로 N턴 굴려 "문법은 맞지만 게임이 안 되는" 문제를 찾는다.
+// 검증기(validate)는 형태만 본다. 여기서 보는 건 도달 가능성·균형·죽은 콘텐츠다.
+//
+// 순수 함수라 DOM이 필요 없다 — 편집기·테스트·플레이그라운드 어디서든 같은 결과가 나온다.
+
+const engine = require('./engine');
+const { validateSchema } = require('./validate');
+const { seededRng } = require('./rng');
+
+const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+// `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
+const CMP = /([a-zA-Z_][a-zA-Z0-9_]*)\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)/g;
+
+/** 검증 오류 경로 → 그 문제를 고칠 탭 */
+function tabOfPath(path) {
+  const p = String(path || '');
+  if (/^\$\.(vars|derived)\b/.test(p)) return 'vars';
+  if (/^\$\.(rules|directives)\b/.test(p)) return 'rules';
+  if (/^\$\.actions\b/.test(p)) return 'actions';
+  if (/^\$\.(statusUI|promptState)\b/.test(p)) return 'status';
+  if (/^\$\.setup\.presets\b/.test(p)) return 'presets';
+  return null;
+}
+
+/** 붕괴 판정에 쓸 변수 고르기 — 스키마가 패배 조건을 선언하지 않으므로 관례로 찾는다 */
+function pickLoseVar(schema) {
+  const b = schema.vars.find((v) => v.type === 'bool' && /lost|collapse|dead|over|fail|ruin|defeat|gameover/i.test(v.id));
+  return b ? b.id : null;
+}
+
+/** 그 변수를 바꾸는 주체들 (onTurn/이벤트/랜덤/액션/AI/최초설정) */
+function writerMap(schema) {
+  const w = {};
+  const add = (id, who) => { if (id) (w[id] = w[id] || new Set()).add(who); };
+  for (const r of (schema.rules?.onTurn || [])) add(r.set ?? r.list, 'onTurn');
+  for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '이벤트');
+  for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
+  for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
+  for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
+  for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
+  for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
+  return w;
+}
+
+/**
+ * 조건이 왜 안 걸렸는지 수치로 설명한다.
+ * `wealth >= 2000` 인데 관측 최고가 1833이면 "92%까지만 도달" 이라고 말해 준다.
+ * 여러 항이 있으면 가장 안 닿은 항을 고른다 — 그게 진짜 병목이다.
+ */
+function bottleneck(when, obs) {
+  if (!when) return null;
+  let worst = null;
+  CMP.lastIndex = 0;
+  let m;
+  while ((m = CMP.exec(when))) {
+    const [, id, op, numS] = m;
+    const o = obs[id];
+    if (!o || !isFinite(o.max)) continue;
+    const need = Number(numS);
+    const got = (op === '>=' || op === '>') ? o.max : o.min;
+    const reached = (op === '>=') ? got >= need : (op === '>') ? got > need
+      : (op === '<=') ? got <= need : got < need;
+    if (reached) continue;
+    // 진행률: 큰 값을 향하는 조건은 got/need, 작은 값을 향하는 조건은 여유분 기준
+    const pct = (op === '>=' || op === '>')
+      ? (need === 0 ? 0 : Math.max(0, Math.round((got / need) * 100)))
+      : null;
+    const cand = { id, op, need, got, pct };
+    if (!worst || (pct != null && worst.pct != null && pct < worst.pct) || worst.pct == null) worst = cand;
+  }
+  return worst;
+}
+
+/** 이 조건이 "한 번도 안 바뀐 enum/설정값"에 갇혀 있는가 (죽은 게 아니라 다른 설정에서만 뜨는 것) */
+/**
+ * @param selfSets 이 이벤트가 스스로 세우는 값들. 반드시 빼야 한다 —
+ *   규격서가 가르치는 '임계 돌파' 패턴(`when: "... and not collapsed"` + `effects: collapsed = 1`)에서,
+ *   이벤트가 안 뜨면 그 플래그도 안 움직인다. 그걸 근거로 "이 플래그 때문에 안 뜬다"고 하면
+ *   원인과 결과가 뒤집힌 채 순환한다. 그 플래그는 false로 시작하므로 막고 있는 게 아니다.
+ */
+function gatedBySetting(when, schema, writers, moved, selfSets = null) {
+  if (!when) return null;
+  for (const v of schema.vars) {
+    if (v.type !== 'enum' && v.type !== 'bool') continue;
+    if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
+    if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
+    if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
+    const byPlayer = [...(writers[v.id] || [])].some((s) => s === '액션' || s === '새 시작' || s === '최초설정');
+    return { id: v.id, label: v.label ?? v.id, init: v.init, byPlayer };
+  }
+  return null;
+}
+
+/**
+ * @param schema 검증을 통과한 스키마
+ * @param opts { turns=60, runs=6, actionImpact=true }
+ * @returns { ran, findings:[{sev,tag,text}], stats }
+ */
+function diagnose(schema, opts = {}) {
+  const turns = Math.max(5, opts.turns ?? 60);
+  const runs = Math.max(1, opts.runs ?? 6);
+  const findings = [];
+  // tab: 이 문제를 고칠 탭. 진단 결과를 그 탭의 AI 수정 요청에 그대로 실어 보내는 데 쓴다.
+  const add = (sev, tag, text, tab = null) => findings.push({ sev, tag, text, tab });
+  const stats = { turns, runs };
+
+  // ── 0. 형태 검증부터 ──
+  const v = validateSchema(schema);
+  for (const e of v.errors) add('high', '검증', `${e.path} — ${e.msg}`, tabOfPath(e.path));
+  for (const w of v.warnings) add('mid', '검증', `${w.path} — ${w.msg}`, tabOfPath(w.path));
+  if (!v.ok) return { ran: false, findings, stats };
+
+  const ACT = schema.actions || [];
+  const EV = schema.rules?.events || [];
+  const RND = schema.rules?.randomEvents?.table || [];
+  const allEv = [...EV, ...RND];
+  const writers = writerMap(schema);
+  const loseVar = pickLoseVar(schema);
+  stats.loseVar = loseVar;
+
+  // ── 1. 아무도 안 바꾸는 변수 ──
+  const frozen = schema.vars.filter((x) => !writers[x.id]);
+  for (const x of frozen) {
+    add('high', '고정 변수',
+      `'${x.id}'(${x.label ?? ''})를 바꾸는 곳이 하나도 없습니다 — 시작값 ${JSON.stringify(x.init)}에서 영원히 고정됩니다. `
+      + '계산으로 정해지는 값이면 파생 변수로 빼고, 아니면 규칙·액션·새 시작 중 한 곳에서 set 하세요.', 'vars');
+  }
+  const frozenIds = new Set(frozen.map((x) => x.id));
+  for (const d of (schema.derived || [])) {
+    const refs = [...new Set(String(d.expr).match(ID_TOKEN) || [])].filter((n) => schema.vars.some((x) => x.id === n));
+    if (refs.length && refs.every((n) => frozenIds.has(n))) {
+      add('mid', '고정 변수', `파생 '${d.id}'는 고정 변수(${refs.join(', ')})만 참조합니다 — 값이 절대 변하지 않습니다.`, 'vars');
+    }
+  }
+
+  // ── 2. 실제로 굴린다 ──
+  const obs = {};                          // id → {min,max}  (vars + derived 전부)
+  const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id)];
+  const note = (id, n) => {
+    if (typeof n !== 'number' || !isFinite(n)) return;
+    const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
+    if (n < o.min) o.min = n;
+    if (n > o.max) o.max = n;
+  };
+  const moved = new Set();                 // 값이 한 번이라도 변한 변수
+
+  // 패배 변수를 실제로 세우는 이벤트들 — 붕괴 원인을 이름으로 돌려주기 위해 미리 뽑아 둔다
+  const loseSetters = new Set(loseVar
+    ? allEv.filter((e) => (e.effects || []).some((f) => f.set === loseVar)).map((e) => e.id) : []);
+
+  /**
+   * @param opts.preset 이 프리셋을 적용하고 시작한다 (난이도 비교용)
+   * @param opts.quiet  관측 범위(obs)와 '값이 움직였다'(moved) 집계에 넣지 않는다.
+   *   프리셋 판과 두 배로 늘린 판은 기준 판이 아니다. 여기서 본 값을 섞으면
+   *   "그 조건은 60턴 안에 안 온다"는 진단이 조용히 틀어진다.
+   */
+  function sim(seed, policy, nTurns = turns, opts = {}) {
+    let st = engine.initState(schema);
+    if (opts.preset) {
+      const p = engine.applyPreset(schema, st, opts.preset);
+      if (p.applied) st = p.state;
+    }
+    const start = { ...st.vars };
+    const fired = {}, everAvail = {};
+    let lost = null, lostBy = null, lostAt = null;
+    const hist = [{ ...st.vars }];
+    for (let i = 0; i < nTurns; i++) {
+      let avail = [];
+      try { avail = ACT.filter((a) => engine.actionAvailability(schema, st, a).ok); } catch (e) { /* 조건 평가 실패는 무시 */ }
+      for (const a of avail) everAvail[a.id] = true;
+      const pick = policy ? policy(avail, st, i, seed) : null;
+      if (pick) { const t = engine.toggleAction(schema, st, pick.id); if (t.armed) st = t.state; }
+      st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
+      const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
+      st = o.state;
+      for (const id of o.firedEvents) fired[id] = (fired[id] || 0) + 1;
+      if (!opts.quiet) {
+        const look = engine.makeLookup(schema, st.vars);
+        for (const id of trackIds) {
+          let n; try { n = look(id); } catch (e) { continue; }
+          note(id, n);
+          if (id in start && JSON.stringify(st.vars[id]) !== JSON.stringify(start[id])) moved.add(id);
+        }
+      }
+      hist.push({ ...st.vars });
+      if (lost === null && loseVar && st.vars[loseVar]) {
+        lost = i + 1;
+        lostBy = o.firedEvents.find((id) => loseSetters.has(id)) ?? null;
+        // 붕괴 순간에 바닥까지 간 자원 — "무엇이 떨어져서 죽었나".
+        // 처음부터 min이던 값(습격까지 0, 부상자 0 같은 대기 카운터)은 고갈이 아니라 평상시다.
+        lostAt = schema.vars
+          .filter((x) => (x.type === 'int' || x.type === 'float')
+            && x.min != null && x.init !== x.min && st.vars[x.id] <= x.min)
+          .map((x) => x.label ?? x.id);
+      }
+    }
+    return { st, fired, everAvail, hist, lost, lostBy, lostAt };
+  }
+
+  // 정책 전환 버튼(효과가 enum/bool만 바꾸는 것 — 노동력 배분, 난방 출력 같은 것)은
+  // 매 턴 눌러 대면 플레이가 아니라 고장이다. 배분을 하루걸러 통째로 뒤집는 영지는 굶어 죽는다.
+  // 그대로 두면 "액션을 쓸수록 빨리 죽는다"가 뜨는데, 그건 액션 탓이 아니라 자동 플레이어 탓이다.
+  // 국면 전환은 가끔 하는 것이므로 5턴에 한 번만 후보에 넣는다.
+  const NUMERIC_IDS = new Set(schema.vars.filter((x) => x.type !== 'enum' && x.type !== 'bool').map((x) => x.id));
+  const isPolicySwitch = (a) => (a.effects || []).length > 0
+    && (a.effects || []).every((f) => !NUMERIC_IDS.has(f.set ?? f.list));
+  const POLICY_IDS = new Set(ACT.filter(isPolicySwitch).map((a) => a.id));
+  const randomPolicy = (av, st, i, seed) => {
+    const pool = (i % 5 === 0) ? av : av.filter((a) => !POLICY_IDS.has(a.id));
+    const use = pool.length ? pool : av;
+    return use.length ? use[Math.floor(seededRng(seed, i, 'pick')() * use.length)] : null;
+  };
+  let idle, play;
+  try {
+    idle = Array.from({ length: runs }, (_, k) => sim(`idle${k}`, null));
+    play = ACT.length ? Array.from({ length: runs }, (_, k) => sim(`play${k}`, randomPolicy)) : idle;
+  } catch (e) {
+    add('high', '실행', `시뮬레이션이 중단됐습니다 — ${e.message}`);
+    return { ran: false, findings, stats };
+  }
+
+  const survOf = (rs) => rs.filter((r) => r.lost === null).length;
+  const lifeOf = (rs) => rs.reduce((s, r) => s + (r.lost ?? turns), 0) / rs.length;
+  stats.idleSurvive = survOf(idle);
+  stats.playSurvive = survOf(play);
+  stats.idleLife = lifeOf(idle);
+  stats.playLife = lifeOf(play);
+
+  // 수명 하나로는 "천장에 닿았다"는 것밖에 못 본다. 시드마다 딴판인 게 정상인 봇에서
+  // 정말 봐야 할 건 결과가 갈리는 폭과, 무엇 때문에 무너지는지의 분포다.
+  {
+    const lives = play.map((r) => r.lost ?? turns);
+    const m = lives.reduce((s, x) => s + x, 0) / lives.length;
+    stats.playSpread = Math.sqrt(lives.reduce((s, x) => s + (x - m) ** 2, 0) / Math.max(1, lives.length - 1));
+    stats.playRange = [Math.min(...lives), Math.max(...lives)];
+
+    // 원인을 두 가지로 묶어 보고 더 잘게 갈리는 쪽을 쓴다.
+    // 패배 이벤트가 하나뿐인 봇(멘탈 0 = 은퇴 같은)에서는 이벤트 이름이 아무것도 말해주지 않는다.
+    // 그럴 땐 "그 순간 무엇이 바닥이었나"가 진짜 원인이다.
+    const dead = [...idle, ...play].filter((r) => r.lost !== null);
+    const tally = (keyOf) => {
+      const c = {};
+      for (const r of dead) { const k = keyOf(r); c[k] = (c[k] || 0) + 1; }
+      return Object.entries(c).sort((a, b) => b[1] - a[1]);
+    };
+    const byEvent = tally((r) => (r.lostBy
+      ? (allEv.find((e) => e.id === r.lostBy)?.notify?.slice(0, 30) ?? r.lostBy) : '원인 불명'));
+    const byDrain = tally((r) => (r.lostAt?.length ? `${r.lostAt.slice(0, 2).join('·')} 바닥` : '원인 불명'));
+    stats.lossCauses = byDrain.length > byEvent.length ? byDrain : byEvent;
+
+    const everFiredAll = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
+    stats.eventCoverage = allEv.length ? [everFiredAll.size, allEv.length] : null;
+
+    // 한 원인이 8할이면 나머지 위협은 장식이다.
+    // 단, 애초에 패배 경로를 하나만 만든 봇(멘탈 0 = 은퇴)은 정상 설계이므로 건드리지 않는다 —
+    // "다른 위협이 판을 못 끝낸다"는 말은 다른 위협이 있을 때만 성립한다.
+    const totalLosses = stats.lossCauses.reduce((s, [, n]) => s + n, 0);
+    if (loseSetters.size >= 2 && totalLosses >= 4 && stats.lossCauses[0][1] / totalLosses >= 0.8) {
+      add('low', '붕괴 편중',
+        `무너지는 이유가 사실상 하나뿐입니다 — "${stats.lossCauses[0][0]}"가 ${stats.lossCauses[0][1]}/${totalLosses}. `
+        + '다른 위협들은 실제로는 판을 끝내지 못하고 있습니다.');
+    }
+    if (stats.eventCoverage && stats.eventCoverage[0] / stats.eventCoverage[1] < 0.6) {
+      add('low', '이벤트 커버리지',
+        `이벤트 ${stats.eventCoverage[1]}개 중 ${stats.eventCoverage[0]}개만 실제로 떴습니다 `
+        + `(${Math.round(stats.eventCoverage[0] / stats.eventCoverage[1] * 100)}%). 나머지는 플레이어가 볼 일이 거의 없습니다.`);
+    }
+  }
+
+  if (loseVar) {
+    if (stats.playSurvive === 0 && ACT.length) {
+      add('high', '난이도', `액션을 눌러도 ${runs}시드 전부 붕괴했습니다 (평균 ${stats.playLife.toFixed(0)}턴). `
+        + '플레이어가 이길 방법이 없습니다 — 자원 생산을 늘리거나 위협을 낮추세요.');
+    } else if (stats.idleSurvive === runs && stats.playSurvive === runs) {
+      add('mid', '난이도', '아무것도 안 해도 전부 생존합니다 — 긴장이 없습니다. 매 턴 소모나 위협을 키우세요.');
+    }
+    if (ACT.length && stats.playLife < stats.idleLife - turns * 0.05) {
+      add('mid', '난이도', `액션을 쓸수록 더 빨리 죽습니다 (방치 ${stats.idleLife.toFixed(0)}턴 → 플레이 ${stats.playLife.toFixed(0)}턴). `
+        + '아래 액션별 기여도에서 🔴 표시된 것들을 보세요.');
+    }
+  } else {
+    add('low', '난이도', '패배를 나타내는 bool 변수를 찾지 못해 생존율을 재지 못했습니다 (예: collapsed, colony_lost).'
+      + ((schema.setup?.presets || []).length >= 2
+        ? ' 프리셋 난이도도 같은 이유로 못 쟀습니다 — 판이 끝나는 조건이 있어야 "어느 쪽이 더 어려운지"를 잴 수 있습니다.' : ''));
+  }
+
+  // ── 2.4 프리셋이 정말 난이도인가 ──
+  // 라벨에 '어려움'이라고 써 놓고 실제로는 더 오래 사는 판이 흔하다. 시작값을 여러 개 동시에
+  // 미는 순간 사람 머리로는 합이 안 잡히기 때문이다. 이름이 아니라 실제 수명으로 줄을 세운다.
+  {
+    const PRESETS = schema.setup?.presets || [];
+    stats.presetCount = PRESETS.length;
+
+    // (a) 시뮬레이션 없이 잡히는 것 — 시작값이 완전히 같은 두 프리셋.
+    //     ⚠ "어떤 프리셋에만 있는 키"는 결함이 아니다. 안 적은 칸은 기본 시작값으로 간다는 뜻이고,
+    //     기준선 프리셋을 `set: {}`로 두거나 '폐허'에서만 환자 수를 세우는 건 멀쩡한 설계다.
+    //     그걸 구멍이라고 신고하면 규격서가 권하는 형태를 규격서가 나무라는 꼴이 된다.
+    //     시작값 차이가 진짜 의미 있는지는 아래에서 실제로 굴려서 잰다.
+    if (PRESETS.length >= 2) {
+      const seen = new Map();
+      const dups = [];
+      for (const p of PRESETS) {
+        const key = JSON.stringify(Object.entries(p.set || {}).sort((a, b) => (a[0] < b[0] ? -1 : 1)));
+        if (seen.has(key)) dups.push([seen.get(key), p.label ?? p.id]);
+        else seen.set(key, p.label ?? p.id);
+      }
+      if (dups.length) {
+        add('mid', '프리셋 중복',
+          dups.map(([a, b]) => `'${a}'와 '${b}'`).join(', ')
+          + '가 시작값이 한 글자도 다르지 않습니다 — 이름만 둘이고 판은 하나입니다.', 'presets');
+      }
+    }
+
+    // (b) 실제로 굴려 본다. 시드를 프리셋 전체에 재사용하는 게 핵심 —
+    //     같은 난수를 맞고 시작값만 다르게 하지 않으면 시드 운이 차이를 통째로 덮는다.
+    if (loseVar && PRESETS.length >= 2) {
+      const probe = PRESETS.slice(0, 6);
+      if (probe.length < PRESETS.length) {
+        add('low', '시작 프리셋', `프리셋이 ${PRESETS.length}개라 앞 6개만 굴려 봤습니다 `
+          + `(${PRESETS.slice(6).map((p) => `'${p.label ?? p.id}'`).join(', ')}는 확인하지 않았습니다).`, null);
+      }
+      const measure = (policy, tag) => probe.map((p) => {
+        const lives = Array.from({ length: runs }, (_, k) =>
+          sim(`preset${tag}${k}`, policy, turns, { preset: p.id, quiet: true }))
+          .map((r) => r.lost ?? turns);
+        const m = lives.reduce((s, x) => s + x, 0) / lives.length;
+        const sd = Math.sqrt(lives.reduce((s, x) => s + (x - m) ** 2, 0) / Math.max(1, lives.length - 1));
+        return {
+          id: p.id, label: p.label ?? p.id, life: m,
+          ci: lives.length > 1 ? 1.96 * sd / Math.sqrt(lives.length) : Infinity,
+          survive: lives.filter((x) => x >= turns).length,
+        };
+      });
+      try {
+        stats.presetMode = 'play';
+        stats.presetLives = measure(ACT.length ? randomPolicy : null, 'p');
+        // 아무 프리셋으로도 안 죽으면 수명이 전부 최대치로 붙어 비교가 성립하지 않는다.
+        // 그럴 땐 방치 기준으로 다시 잰다 — "손 놓고 있었을 때 얼마나 버티는 시작인가"도
+        // 어엿한 난이도이고, 이쪽에서는 갈리는 봇이 많다.
+        if (ACT.length && stats.presetLives.every((r) => r.survive === runs)) {
+          const idleLives = measure(null, 'i');
+          if (idleLives.some((r) => r.survive < runs)) {
+            stats.presetLives = idleLives;
+            stats.presetMode = 'idle';
+          }
+        }
+      } catch (e) { stats.presetLives = null; }
+      const MODE = stats.presetMode === 'idle' ? '방치했을 때 기준' : '액션을 쓰며 놀았을 때 기준';
+
+      const L = stats.presetLives;
+      if (L && L.length >= 2) {
+        // 라벨에서 의도한 난이도 순서를 읽는다. 이름을 안 붙였으면 순서를 따질 근거가 없으므로 넘어간다.
+        const RANK = [
+          [/악몽|지옥|파멸|불가능|nightmare|impossible|extreme/i, 4],
+          [/어려|하드|hard|혹독|가혹|고난|험난|극한/i, 3],
+          [/보통|노멀|normal|표준|기본|standard/i, 2],
+          [/쉬|이지|easy|입문|평화|관대|여유|casual|무난/i, 1],
+        ];
+        const rankOf = (s) => (RANK.find(([re]) => re.test(String(s)))?.[1]) ?? 0;
+        const ranked = L.map((r) => ({ ...r, rank: rankOf(r.label) })).filter((r) => r.rank);
+        const flips = [];
+        for (const a of ranked) for (const b of ranked) {
+          if (a.rank >= b.rank) continue;            // a가 더 쉬운 쪽이어야 한다
+          const gap = b.life - a.life;               // 어려운 쪽이 더 오래 버티면 역전
+          if (gap > a.ci + b.ci && gap >= 1) flips.push([a, b, gap]);
+        }
+        if (flips.length) {
+          add('mid', '난이도 역전',
+            flips.map(([a, b, gap]) => `'${b.label}'(${b.life.toFixed(0)}턴)이 '${a.label}'(${a.life.toFixed(0)}턴)보다 `
+              + `${gap.toFixed(0)}턴 더 오래 버팁니다`).join(', ')
+            + ` — 이름과 실제가 뒤집혔습니다 (${MODE}, ${runs}시드 짝비교). `
+            + '시작값을 여러 개 동시에 밀면 합이 반대로 나오는 일이 흔합니다. '
+            + '어려운 쪽의 비축·완충을 더 깎거나, 쉬운 쪽에 준 페널티를 되돌리세요.', 'presets');
+        }
+
+        // 전부 끝까지 살아남는 판에서는 수명이 전부 최대치라 비교 자체가 성립하지 않는다.
+        // 그건 프리셋 탓이 아니라 판이 안 끝나는 탓이고, 이미 위에서 '난이도'로 신고했다.
+        const anyLoss = L.some((r) => r.survive < runs);
+        const hi = L.reduce((a, b) => (a.life >= b.life ? a : b));
+        const lo = L.reduce((a, b) => (a.life <= b.life ? a : b));
+        if (anyLoss && hi.life - lo.life <= Math.max(hi.ci, lo.ci, 1)) {
+          add('mid', '프리셋 무의미',
+            `프리셋 ${L.length}개의 수명이 사실상 같습니다 — ${MODE} (`
+            + L.map((r) => `${r.label} ${r.life.toFixed(0)}턴±${r.ci === Infinity ? '?' : r.ci.toFixed(1)}`).join(' / ')
+            + '). 이름만 다르고 판은 같습니다 — 한 축만 조금 밀어서는 차이가 안 납니다. '
+            + '비축(자원 시작량)·완충(게이지 여유)·국면(enum/bool을 나쁜 쪽으로 시작) 중 최소 두 축을 함께 미세요.', 'presets');
+        }
+      }
+    }
+
+    if (!PRESETS.length && !schema.setup?.ai?.enabled) {
+      add('low', '시작 프리셋',
+        '시작 프리셋이 없습니다 — 모든 플레이어가 똑같은 시작값으로 시작합니다. '
+        + '난이도나 배경을 2~3개 만들어 두면 새 채팅 시작 시 패널에서 골라 누를 수 있습니다.', 'presets');
+    }
+  }
+
+  // ── 2.5 판을 두 배로 늘려 한 번 더 굴려 본다 ──
+  // 굶주림·전멸·부 2900 같은 조건은 60턴 안에 갈 일이 없다. 그런데 진단은 그걸
+  // "죽은 이벤트"라고 부르며 결함처럼 신고했다 — 같은 봇이 60턴에선 5건, 120턴에선 0건.
+  // 판이 짧아서 안 닿은 것과 영영 못 닿는 것은 전혀 다른 얘기이므로 구분해서 말해야 한다.
+  // 시드는 적게(2개), 대신 판을 길게. 미발동 항목이 있을 때만 돌린다.
+  const longTurns = turns * 2;
+  let firedLong = null, availLong = null;
+  const probeLong = () => {
+    if (firedLong) return;
+    firedLong = new Set(); availLong = new Set();
+    try {
+      const rs = [sim('long0', null, longTurns, { quiet: true }),
+        ...(ACT.length ? [sim('long1', randomPolicy, longTurns, { quiet: true })] : [])];
+      for (const r of rs) {
+        for (const id of Object.keys(r.fired)) firedLong.add(id);
+        for (const id of Object.keys(r.everAvail)) availLong.add(id);
+      }
+    } catch (e) { /* 길게 굴리다 터지면 그냥 확인 없이 간다 */ }
+  };
+  // 짧은 판에서 못 본 것을 긴 판에서는 봤는가
+  const onlyLonger = (id, kind) => {
+    probeLong();
+    return kind === 'action' ? availLong.has(id) : firedLong.has(id);
+  };
+  const laterNote = `${turns}턴 안에는 여기까지 가지 않을 뿐이고, ${longTurns}턴으로 늘리면 실제로 뜹니다 — `
+    + '판이 짧아서지 결함이 아닙니다. 이 봇의 후반부까지 보려면 진단 턴 수를 올리세요.';
+
+  // ── 3. 죽은 이벤트 ──
+  const everFired = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
+  stats.deadEvents = 0;
+  for (const e of allEv) {
+    if (everFired.has(e.id)) continue;
+    stats.deadEvents++;
+    const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets);
+    if (gate) {
+      add(gate.byPlayer ? 'low' : 'mid', '설정 의존',
+        `'${e.id}'는 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 뜨지 않습니다`
+        + (gate.byPlayer ? ' (다른 설정에서는 뜹니다 — 정상)' : ' — 그런데 그 값을 바꿀 수단이 없습니다.'), gate.byPlayer ? null : 'vars');
+      continue;
+    }
+    const b = bottleneck(e.when, obs);
+    const where = b
+      ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
+        + (b.pct != null ? ` (${b.pct}%)` : '')
+      : `조건: ${e.when ?? '(없음)'}`;
+    if (onlyLonger(e.id, 'event')) {
+      stats.deadEvents--;                        // 죽은 게 아니라 아직 안 온 것
+      stats.lateEvents = (stats.lateEvents ?? 0) + 1;
+      add('low', '후반부 이벤트', `'${e.id}'는 ${turns}턴 안에 안 떴습니다 — ${where}. ${laterNote}`, null);
+      continue;
+    }
+    // notify 없는 이벤트는 규격서가 가르치는 "값 자르기" — 범위를 벗어난 값을 되돌리는 안전장치다.
+    // 이건 안 뜨는 게 성공이다. 뜬다는 건 다른 규칙이 말도 안 되는 값을 만들었다는 뜻이니까.
+    // 우리가 쓰라고 가르친 패턴을 우리가 결함으로 신고하면 안 된다.
+    if (!e.notify) {
+      stats.deadEvents--;
+      stats.guardEvents = (stats.guardEvents ?? 0) + 1;
+      add('low', '안전장치', `'${e.id}'는 한 번도 안 떴습니다 — ${where}. `
+        + '통지문(notify)이 없는 걸로 보아 값을 되돌리는 안전장치입니다. '
+        + '이런 건 안 뜨는 게 정상입니다 (뜬다면 다른 규칙이 범위 밖 값을 만들었다는 뜻). 고치지 마세요.', null);
+      continue;
+    }
+    add('mid', '죽은 이벤트', `'${e.id}' 미발동 — ${where}`
+      + (b ? '. 문턱을 내리거나 그 값을 올릴 경로를 주세요.' : ''), 'rules');
+  }
+
+  // ── 4. 도배되는 이벤트 ──
+  for (const e of EV) {
+    if (e.once) continue;
+    const avg = idle.reduce((s, r) => s + (r.fired[e.id] || 0), 0) / runs;
+    if (avg > turns * 0.5) {
+      add('mid', '도배', `'${e.id}'이 평균 ${avg.toFixed(0)}/${turns}턴 발동합니다 — `
+        + '효과가 조건을 해소하지 못해 매 턴 반복됩니다. 효과에서 조건 변수를 되돌리거나 `once: true`를 쓰세요.', 'rules');
+    }
+  }
+
+  // ── 5. 액션 ──
+  if (ACT.length) {
+    const everAvail = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail)));
+    for (const a of ACT) {
+      if (everAvail.has(a.id)) continue;
+      const b = bottleneck(a.when, obs);
+      const where = b
+        ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
+          + (b.pct != null ? ` (${b.pct}%)` : '')
+        : `조건: ${a.when ?? '(없음)'}`;
+      if (onlyLonger(a.id, 'action')) {
+        stats.lateActions = (stats.lateActions ?? 0) + 1;
+        add('low', '후반부 액션',
+          `'${a.label ?? a.id}'는 ${turns}턴 안에 열리지 않았습니다 — ${where}. ${laterNote}`, null);
+        continue;
+      }
+      add('high', '못 쓰는 액션',
+        `'${a.label ?? a.id}'를 한 번도 쓸 수 없었습니다 — ${where}`, 'actions');
+    }
+
+    if (opts.actionImpact !== false && loseVar && ACT.length > 1) {
+      // 기여도는 "그 액션만 계속 쓰기 vs 방치"로 재면 안 된다.
+      // 한 버튼만 누르는 건 플레이 방식 자체를 왜곡해서, 방치가 강한 봇에서는
+      // 멀쩡한 액션도 전부 함정으로 나오고 숫자가 ±20턴씩 튄다.
+      // → 대신 "이 버튼이 있을 때 vs 이 버튼만 빼고 나머지는 그대로일 때"를 잰다.
+      //   그게 '이 버튼이 있어서 이득인가'라는 질문에 실제로 답하는 방식이다.
+      // 두 판을 나란히 돌린다. 나머지 액션은 양쪽 다 똑같이 쓰고, 이 버튼의 유무만 다르다.
+      //   [있음] 쓸 수 있으면 이 버튼을 쓰고, 못 쓰면 나머지 중 하나
+      //   [없음] 이 버튼은 아예 없고 나머지 중 하나
+      // 순수 leave-one-out은 이 버튼이 1/N 확률로만 눌려 신호가 묻힌다. 이렇게 하면
+      // 주변 플레이는 현실적으로 유지하면서 이 버튼의 영향만 또렷해진다.
+      const rest = (av, a, seed, i) => {
+        const ok = av.filter((x) => x.id !== a.id);
+        return ok.length ? ok[Math.floor(seededRng(seed, i, 'pick')() * ok.length)] : null;
+      };
+      // 정책 전환 액션(효과가 enum/bool만 바꾸는 것)은 이 방식으로 평가할 수 없다.
+      // 가치가 전적으로 "언제 누르냐"에 달려 있는데 자동 플레이어는 그 판단을 못 한다.
+      // 넣어 두면 멀쩡한 작업 배분 버튼이 전부 함정으로 신고된다.
+
+      // 지속 정책(hold)은 한 번 켜면 계속 켜져 있다. 그런데도 매 턴 그 버튼을 다시 고르면
+      // [있음] 판이 "40턴 내내 이 버튼만 누르고 다른 액션은 하나도 안 쓴 판"이 되어,
+      // 멀쩡한 hold 액션이 전부 함정으로 신고된다. 무장된 뒤로는 평소처럼 놀게 둔다.
+      const onPick = (a) => (av, st, i, seed) => {
+        if ((a.mode || 'oneshot') === 'hold' && st.meta?.armed?.[a.id]) return rest(av, a, seed, i);
+        return av.find((x) => x.id === a.id) || rest(av, a, seed, i);
+      };
+
+      // 시드 운이 그대로 숫자로 새어 나온다. 실측하면 6시드일 때 95% 신뢰구간이 ±7턴쯤이라,
+      // "10턴 손해"라는 지적이 사실은 시드 운인 경우가 흔했다. 두 가지로 막는다.
+      //   ① 이 측정만 시드를 더 쓴다 (다른 진단은 6시드로 충분하다).
+      //   ② 짝지은 차이의 신뢰구간을 같이 내고, 구간이 0쪽으로 걸치면 지적하지 않는다.
+      // 두 판이 같은 시드(`on${k}`)를 쓰는 건 공통 난수(paired) 기법이다 — 시드 운이
+      // 양쪽에서 상쇄돼 분산이 최대 9배까지 줄어든다. 이건 예전부터 이렇게 돌고 있었다.
+      const impactRuns = Math.max(runs, opts.impactRuns ?? 12);
+      const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+      const ci95 = (xs) => {
+        if (xs.length < 2) return Infinity;
+        const m = mean(xs);
+        const sd = Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / (xs.length - 1));
+        return 1.96 * sd / Math.sqrt(xs.length);
+      };
+
+      const impact = [];
+      for (const a of ACT) {
+        if (ACT.length < 2) break;
+        if (isPolicySwitch(a)) continue;
+        let paired;
+        try {
+          paired = Array.from({ length: impactRuns }, (_, k) => {
+            const seed = `on${k}`;
+            const on = sim(seed, onPick(a));
+            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i));
+            return (on.lost ?? turns) - (off.lost ?? turns);
+          });
+        } catch (e) { continue; }
+        impact.push({ id: a.id, label: a.label ?? a.id, delta: mean(paired), ci: ci95(paired),
+          n: impactRuns, exempt: !!a.impactExempt });
+      }
+      impact.sort((p, q) => q.delta - p.delta);
+      stats.actionImpact = impact;
+      stats.impactRuns = impactRuns;
+      // 전부 끝까지 살아남으면 두 판의 수명이 똑같이 `turns`라 차이가 0으로 깔린다.
+      // 표가 전부 "구분 안 됨"으로 나오는 게 액션 탓이 아니라 판이 짧아서라는 걸 알려야 한다.
+      stats.impactSaturated = stats.playSurvive === runs
+        && impact.length > 0 && impact.every((it) => Math.abs(it.delta) <= it.ci);
+      stats.actionSkipped = ACT.filter(isPolicySwitch).map((a) => a.label ?? a.id);
+      // 짧은 판에서 시드 편차를 함정으로 오인하지 않도록 최소 3턴 + 판 길이의 8%를 넘어야 지적한다.
+      const trapLine = Math.max(3, turns * 0.08);
+      for (const it of impact) {
+        // 의도적으로 대가를 치르게 만든 버튼(장기 적출 같은)은 수명으로 재면 영영 🔴다.
+        // 스키마에서 `impactExempt: true`를 달아 두면 표에는 남기되 지적은 하지 않는다.
+        if (it.exempt) continue;
+        // 신뢰구간의 낙관적인 끝(delta + ci)까지 손해여야 지적한다.
+        // 이 한 줄이 "고쳐도 다음 진단에 또 뜨는" 유령 지적의 대부분을 없앤다.
+        if (it.delta + it.ci < -trapLine) {
+          add('mid', '함정 액션',
+            `'${it.label}'를 빼면 오히려 ${(-it.delta).toFixed(1)}턴(±${it.ci.toFixed(1)}) 더 오래 삽니다 — `
+            + '이 버튼은 있는 것 자체가 손해입니다. 반대급부를 줄이거나, 이득을 키우거나, 쓸 조건을 좁히세요. '
+            + '일부러 대가를 치르게 만든 버튼이면 스키마에 `impactExempt: true`를 달아 이 지적을 끄세요.', 'actions');
+        }
+      }
+    }
+  }
+
+  // ── 6. 수치의 움직임 ──
+  // 시뮬레이션에는 보조 AI가 없다. 그래서 AI(updater.allow)나 최초설정만이 건드리는 값은
+  // 여기서 절대 안 움직이는 게 당연하다 — 그걸 결함으로 신고하면, 서술을 AI에게 맡긴 봇일수록
+  // 보고서가 오탐으로 뒤덮인다(실측: 33건 중 20건). 안 움직이는 게 아니라 잴 수가 없는 것이다.
+  // ⚠ '새 시작'(시작 프리셋)도 여기서 빼야 한다. 최초설정과 똑같이 **시작값만** 정하는 곳이지
+  // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
+  // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
+  // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션']);
+  const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
+  let aiOnlyStill = 0;
+  for (const x of schema.vars) {
+    if (frozenIds.has(x.id)) continue;
+    const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
+    if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
+      if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
+      add('mid', '안 움직임', `'${x.id}'가 ${turns}턴 내내 ${JSON.stringify(x.init)}에서 안 변했습니다 — `
+        + `바꾸는 곳(${[...(writers[x.id] || [])].join(', ')})의 조건이 한 번도 안 걸렸습니다.`,
+      [...(writers[x.id] || [])].every((who) => who === '액션') ? 'actions' : 'rules');
+      continue;
+    }
+    if (!simCanMove(x.id)) continue; // 아래 단조 검사도 마찬가지 이유로 성립하지 않는다
+    if (x.type !== 'int' && x.type !== 'float') continue;
+    if (/^(day|turn|week|month|year|round)$/i.test(x.id)) continue;
+    let down = true, up = true;
+    for (const r of [...idle, ...play]) {
+      for (let i = 1; i < r.hist.length; i++) {
+        if (r.hist[i][x.id] > r.hist[i - 1][x.id]) down = false;
+        if (r.hist[i][x.id] < r.hist[i - 1][x.id]) up = false;
+      }
+    }
+    if (down) add('mid', '단조 자원', `'${x.id}'(${x.label ?? ''})가 줄기만 합니다 — 늘리는 경로가 없어 반드시 바닥납니다.`, 'rules');
+    else if (up) add('low', '단조 자원', `'${x.id}'(${x.label ?? ''})가 늘기만 합니다 — 줄어드는 경로가 없어 무한히 커집니다.`, 'rules');
+    // 끝에 어디 있느냐보다 "판의 대부분을 그 끝에서 보내느냐"가 문제다.
+    // 시작값이 곧 하한인 자원(포로 0 등)이 매번 지적으로 뜨면 고쳐도 안 사라지는 잡음이 된다.
+    const all = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
+    const frac = (n) => all.filter((v2) => v2 === n).length / all.length;
+    if (x.max != null && frac(x.max) > 0.8) {
+      add('low', '눌어붙음', `'${x.id}'가 판의 ${Math.round(frac(x.max) * 100)}%를 최대치 ${x.max}에서 보냅니다 — 그 구간에서 수치가 의미를 잃습니다.`, 'rules');
+    }
+    if (x.min != null && x.init !== x.min && frac(x.min) > 0.8) {
+      add('low', '눌어붙음', `'${x.id}'가 판의 ${Math.round(frac(x.min) * 100)}%를 최소치 ${x.min}에서 보냅니다 — 그 구간에서 수치가 의미를 잃습니다.`, 'rules');
+    }
+  }
+  // 건너뛴 걸 말하지 않으면 "전부 확인했다"로 읽힌다.
+  stats.aiOnlyVars = aiOnlyStill;
+  if (aiOnlyStill) {
+    add('low', '측정 불가',
+      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하는 항목이라 이 진단으로는 움직임을 잴 수 없습니다 `
+      + '(시뮬레이션에는 AI가 없습니다). 결함이라는 뜻이 아니라 확인 대상이 아니라는 뜻입니다 — '
+      + '실제로 갱신되는지는 채팅을 몇 턴 돌려서 눈으로 보세요.', null);
+  }
+
+  // ── 7. 시작값 = 조건 경계 ──
+  const initOf = Object.fromEntries(schema.vars.map((x) => [x.id, x.init]));
+  const scan = (when, where, tab) => {
+    if (!when) return;
+    CMP.lastIndex = 0;
+    let m;
+    while ((m = CMP.exec(when))) {
+      const [, id, op, numS] = m;
+      const n = Number(numS);
+      if (typeof initOf[id] !== 'number' || initOf[id] !== n) continue;
+      if ((op !== '<' && op !== '>')) continue;                 // <= / >= 는 경계에서 참이라 함정이 아니다
+      // 바꾸는 곳이 있으면 "첫 턴에만 거짓"일 뿐이다. `prisoners > 0`에 시작값 0처럼
+      // 지극히 정상적인 설계가 매번 지적으로 뜨면, 고쳐도 사라지지 않는 잡음이 된다.
+      if ((writers[id]?.size ?? 0) > 0) continue;
+      add('high', '경계값',
+        `${where}: \`${id} ${op} ${n}\` 인데 시작값이 정확히 ${n}이고 아무도 그 값을 바꾸지 않습니다 — 영영 거짓입니다.`, tab);
+    }
+  };
+  for (const e of EV) scan(e.when, `이벤트 '${e.id}'`, 'rules');
+  for (const e of RND) scan(e.when, `랜덤 '${e.id}'`, 'rules');
+  for (const a of ACT) scan(a.when, `액션 '${a.id}'`, 'actions');
+  for (const d of (schema.directives || [])) scan(d.when, `지시문 '${d.id}'`, 'rules');
+
+  // ── 8. 상태창 노출 ──
+  // 그룹은 { items:[{var}] } 형태다. 옛 { vars:[id] } 형태도 함께 받아 준다.
+  const shown = new Set((schema.statusUI?.groups || []).flatMap((g) => [
+    ...(g.items || []).map((it) => (typeof it === 'string' ? it : it?.var)),
+    ...(g.vars || []),
+  ]).filter(Boolean));
+  const tmpl = JSON.stringify(schema.statusUI ?? {}) + (schema.promptState?.template ?? '');
+  const inTmpl = new Set((tmpl.match(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g) || []).map((s) => s.slice(1, -1)));
+  const hidden = schema.vars.filter((x) => !shown.has(x.id) && !inTmpl.has(x.id));
+  if (hidden.length) {
+    add('low', '표시 안 됨', `상태창에 안 보이는 변수 ${hidden.length}개: ${hidden.map((x) => x.id).join(', ')} — `
+      + '내부용이면 정상이고, 플레이어가 알아야 할 값이면 상태창 탭에서 추가하세요.', 'status');
+  }
+
+  stats.high = findings.filter((f) => f.sev === 'high').length;
+  stats.mid = findings.filter((f) => f.sev === 'mid').length;
+  stats.low = findings.filter((f) => f.sev === 'low').length;
+  return { ran: true, findings, stats };
+}
+
+/** 지적 하나를 회차 사이에서 같은 것으로 알아보기 위한 열쇠 (수치는 매번 달라지므로 뺀다) */
+function findingKey(f) {
+  const id = /'([^']+)'/.exec(f.text);
+  return `${f.tag}|${id ? id[1] : f.text.slice(0, 30)}`;
+}
+
+/**
+ * 두 진단 결과를 비교한다.
+ * "고쳐도 비슷하게 나온다"는 느낌의 정체를 밝혀 준다 — 실제로 뭐가 사라지고 뭐가 남았는지.
+ */
+function compareDiagnoses(prev, curr) {
+  if (!prev?.ran || !curr?.ran) return null;
+  const pk = new Set(prev.findings.map(findingKey));
+  const ck = new Set(curr.findings.map(findingKey));
+  const fixed = prev.findings.filter((f) => !ck.has(findingKey(f)));
+  const fresh = curr.findings.filter((f) => !pk.has(findingKey(f)));
+  const stayed = curr.findings.filter((f) => pk.has(findingKey(f)));
+  const d = (k) => (curr.stats[k] ?? 0) - (prev.stats[k] ?? 0);
+  return {
+    fixed, fresh, stayed,
+    delta: { high: d('high'), mid: d('mid'), low: d('low'), deadEvents: d('deadEvents') },
+    survive: prev.stats.loseVar && curr.stats.loseVar
+      ? { idle: [prev.stats.idleSurvive, curr.stats.idleSurvive],
+        play: [prev.stats.playSurvive, curr.stats.playSurvive],
+        idleLife: [prev.stats.idleLife, curr.stats.idleLife],
+        playLife: [prev.stats.playLife, curr.stats.playLife] }
+      : null,
+  };
+}
+
+module.exports = { diagnose, writerMap, bottleneck, pickLoseVar, findingKey, compareDiagnoses };
+
+});
+
+SimCore.define("editor", function (require, module, exports) {
+// SimCore 블록 편집기 — 코딩 없이 스키마를 행 단위로 만드는 공용 DOM 컴포넌트.
+// 플러그인 패널(iframe)과 플레이그라운드 양쪽에서 사용. 프레임워크 없음.
+//
+// createSchemaEditor(container, schema, { onChange }) →
+//   { getSchema(), setSchema(s), validateNow(), destroy() }
+
+const { validateSchema } = require('./validate');
+const { renderStatusHtml, THEMES, multiPanelTemplate } = require('./render');
+const engine = require('./engine');
+const { TEMPLATES } = require('./templates');
+const { diagnose, compareDiagnoses } = require('./diagnose');
+
+const CSS = `
+.sce { font-size: 13px; }
+.sce * { box-sizing: border-box; }
+.sce .sce-tabs { display:flex; gap:2px; flex-wrap:wrap; border-bottom:2px solid #24304a; margin-bottom:12px; }
+.sce .sce-tab { padding:6px 12px; cursor:pointer; border:1px solid transparent; border-bottom:none;
+  border-radius:8px 8px 0 0; color:#a7b4cc; background:transparent; font-size:13px; }
+.sce .sce-tab.on { color:#fff; border-color:#3d5384; background:rgba(84,120,214,.22); font-weight:600; }
+.sce .sce-block { border:1px solid #2e3d60; border-left:3px solid #3d5384; border-radius:10px;
+  padding:8px 10px; margin-bottom:8px; background:rgba(91,141,239,.05); }
+.sce .sce-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:4px 0; }
+.sce .sce-row > label { color:#9fb0cd; font-size:12px; }
+.sce .sce-pair { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
+.sce .sce-pair > label { color:#9fb0cd; font-size:12px; }
+.sce input, .sce select, .sce textarea { background:#0a101f; color:#e6ebf5; border:1px solid #35486e;
+  border-radius:6px; padding:4px 8px; font-size:12.5px; }
+.sce input:focus, .sce textarea:focus { border-color:#5b8def; outline:none; }
+.sce input[type=checkbox] { width:auto; }
+.sce input.sce-w-s { width:70px; } .sce input.sce-w-m { width:110px; } .sce input.sce-w-l { width:100%; flex:1; min-width:140px; }
+.sce textarea { width:100%; min-height:56px; font-family:ui-monospace,monospace; resize:vertical; }
+.sce .sce-btn { background:#1c2740; color:#dfe7f5; border:1px solid #3d5384; border-radius:7px;
+  padding:4px 10px; cursor:pointer; font-size:12.5px; }
+.sce .sce-btn:hover { background:#24345c; border-color:#5b8def; }
+.sce .sce-btn.sce-add { border-style:dashed; border-color:#3d5384; color:#9db8e8; width:100%; margin-top:2px; }
+.sce .sce-btn.sce-add:hover { color:#cfe0ff; }
+.sce .sce-btn.sce-mini { padding:2px 7px; font-size:12px; }
+.sce .sce-btn.sce-danger { color:#d99aa6; }
+.sce .sce-btn.sce-danger:hover { border-color:#d9596f; background:#331722; color:#f2aab6; }
+.sce .sce-grip { display:flex; gap:2px; margin-left:auto; }
+.sce .sce-sub { margin-left:14px; padding-left:10px; border-left:2px solid #3d538466; }
+.sce .sce-hint { color:#aebdd8; font-size:11.5px; margin:2px 0 6px; }
+.sce .sce-report { font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; margin-top:8px; }
+.sce .sce-err { color:#ff7b7b; font-weight:600; } .sce .sce-warn { color:#ffd166; } .sce .sce-ok { color:#6fdb8c; font-weight:600; }
+.sce .sce-tag { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; letter-spacing:.02em;
+  background:#26304a; color:#9db8e8; border:1px solid #3a4560; }
+.sce .sce-preview { margin-top:10px; }
+.sce .sce-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.sce .sce-chip { display:flex; align-items:center; gap:4px; border:1px solid #35486e; border-radius:8px; padding:3px 8px; font-size:12px; color:#dfe7f5; }
+.sce h4 { margin:16px 0 6px; font-size:12.5px; color:#9db8e8; padding-left:8px; border-left:3px solid #3d5384; }
+.sce .sce-swatches { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.sce .sce-swatch { width:20px !important; height:20px !important; min-width:0 !important;
+  border-radius:6px !important; border:1px solid rgba(0,0,0,.4) !important;
+  cursor:pointer; padding:0 !important; flex:none; }
+.sce .sce-swatch.on { outline:2px solid #fff !important; outline-offset:1px; }
+.sce input[type=color] { width:30px !important; height:24px !important; min-width:0 !important;
+  padding:1px !important; border-radius:6px !important; background:transparent !important; cursor:pointer; }
+.sce .sce-colorbox { display:flex; flex-direction:column; gap:4px; margin:4px 0; padding:6px 8px;
+  border:1px dashed #3d538488; border-radius:8px; }
+`;
+
+const VAR_TYPES = [
+  ['int', '정수'], ['float', '실수'], ['text', '텍스트'], ['bool', 'ON/OFF'], ['enum', '선택지'],
+  ['list', '목록 (아이템)'],
+];
+
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el[k] = v;
+    else if (v !== undefined && v !== null) el.setAttribute(k, v);
+  }
+  for (const c of children.flat()) {
+    if (c == null) continue;
+    el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return el;
+}
+
+// 값 바인딩 입력 (blur/변경 시 콜백 — 타이핑 중 리렌더로 포커스 잃지 않게)
+function bindInput(value, apply, { cls = 'sce-w-m', ph = '', type = 'text', title = '' } = {}) {
+  const el = h('input', { class: cls, placeholder: ph, type, title });
+  el.value = value ?? '';
+  el.onchange = () => apply(el.value);
+  return el;
+}
+function bindArea(value, apply, ph = '') {
+  const el = h('textarea', { placeholder: ph });
+  el.value = value ?? '';
+  el.onchange = () => apply(el.value);
+  return el;
+}
+function bindCheck(value, apply, label) {
+  const cb = h('input', { type: 'checkbox' });
+  cb.checked = !!value;
+  cb.onchange = () => apply(cb.checked);
+  return h('label', { class: 'sce-chip', style: 'cursor:pointer' }, cb, label);
+}
+function bindSelect(value, options, apply) {
+  const el = h('select', {}, ...options.map(([v, l]) => h('option', { value: v }, l)));
+  el.value = value ?? options[0][0];
+  el.onchange = () => apply(el.value);
+  return el;
+}
+
+/**
+ * '복사해서 AI에게 붙여넣기' 위젯.
+ * 샌드박스 iframe에서는 클립보드 API가 막힐 수 있어, 실패하면 전체 선택된 textarea로 떨어진다.
+ * @param buildText 눌렀을 때 만들 텍스트 (오래 걸릴 수 있으므로 클릭 시점에 만든다)
+ * @param extra 버튼 옆에 같이 놓을 컨트롤 (예: 예제 고르는 드롭다운)
+ */
+function copyWidget(btnLabel, hint, buildText, extra = []) {
+  const note = h('div', { class: 'sce-hint' }, hint);
+  const out = h('textarea', { style: 'display:none;height:190px' });
+  const btn = h('button', { class: 'sce-btn', onclick: async () => {
+    let text;
+    try { text = buildText(); }
+    catch (e) { note.textContent = `만들지 못했습니다 — ${e.message}`; return; }
+    if (!text) { note.textContent = '복사할 내용이 없습니다.'; return; }
+    out.value = text;
+    out.style.display = '';
+    out.focus();
+    out.select();
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch (e) { /* 샌드박스 차단 */ }
+    if (!copied) { try { copied = document.execCommand('copy'); } catch (e) { /* 폴백도 실패 */ } }
+    const kb = (text.length / 1024).toFixed(1);
+    note.textContent = copied
+      ? `✓ 복사됐습니다 (${kb}KB) — AI 사이트에 붙여넣으세요.`
+      : `아래 칸이 전체 선택돼 있습니다 (${kb}KB) — Ctrl+C로 복사하세요.`;
+  } }, btnLabel);
+  return {
+    mount(parent) {
+      parent.appendChild(note);
+      parent.appendChild(h('div', { class: 'sce-row' }, btn, ...extra));
+      parent.appendChild(out);
+    },
+  };
+}
+
+/**
+ * 외부 AI에게 상태창 CSS를 맡길 때 통째로 넘기는 규격서.
+ * 클래스 계약(고정)과 이 봇의 실제 렌더 결과(가변)를 함께 넘겨야
+ * AI가 없는 클래스를 지어내지 않는다.
+ */
+const CSS_SPEC_CLASSES = [
+  ['.sim-status', '상태창 전체를 감싸는 바깥 상자 (여기에 배경·테두리·폰트를 건다)'],
+  ['.sim-status summary', '접기/펼치기 헤더 줄'],
+  ['.sim-group', '그룹 한 덩어리'],
+  ['.sim-group-label', '그룹 제목'],
+  ['.sim-row', '항목 한 줄 (이름 + 게이지 + 값)'],
+  ['.sim-label', '항목 이름'],
+  ['.sim-value', '숫자 값'],
+  ['.sim-bar', '게이지 배경 트랙'],
+  ['.sim-bar-fill', '게이지 채워진 부분 (너비는 인라인 style로 들어오니 건드리지 말 것)'],
+  ['.sim-badge', '선택지(enum)·ON/OFF 값 배지'],
+  ['.sim-tags / .sim-tag', '목록형 변수의 칩 묶음 / 칩 하나'],
+  ['.sim-empty', '빈 목록일 때의 회색 안내'],
+  ['.sim-actions', '액션 범례가 놓이는 줄 (실행 버튼은 화면 우상단에 따로 뜬다)'],
+  ['.sim-action-hint', '범례 위의 작은 안내 문구'],
+  ['.sim-action', '범례 항목 하나 (.sim-armed = 발동 대기, .sim-disabled = 잠김)'],
+  ['.sim-action-glyph', '범례 앞의 아이콘 — 우상단 버튼에 뜨는 그 글리프'],
+  ['.sim-action-state', '범례 뒤의 상태 문구 (발동 대기 / 쿨다운 사유)'],
+  ['.sim-log / .sim-log-item', '이번 턴 변화 로그'],
+];
+
+function buildCssSpecPrompt(schema) {
+  let skeleton = '(스키마에 오류가 있어 실제 구조를 못 뽑았습니다 — 위 클래스 목록만 보고 만들어 주세요)';
+  try {
+    const v = validateSchema(schema);
+    if (v.ok) {
+      const html = renderStatusHtml(schema, engine.initState(schema), null,
+        (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
+        { includeStyle: false });
+      skeleton = html.length > 4000 ? html.slice(0, 4000) + '\n... (이하 같은 구조 반복)' : html;
+    }
+  } catch (e) { /* 규격만으로도 충분히 만들 수 있다 */ }
+
+  return [
+    '아래 규격에 맞는 CSS를 만들어 주세요. RisuAI용 시뮬레이션 플러그인(SimCore)의 상태창 스킨입니다.',
+    '',
+    '## 내가 원하는 분위기',
+    '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")',
+    '',
+    '## 반드시 지킬 것',
+    '- **CSS만** 출력하세요. HTML·JS·설명 없이 스타일 규칙만.',
+    '- 모든 선택자는 시스템이 자동으로 `.sim-status` 안쪽으로 제한합니다.',
+    '  `body`, `html`, `*`, `:root` 같은 바깥 선택자는 무시되니 쓰지 마세요.',
+    '- 외부 리소스 금지: `@import`, `url(http...)`, 웹폰트 링크 전부 차단됩니다.',
+    '  `font-family`는 기기에 이미 있는 폰트만 지정하세요.',
+    '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
+    '- `@keyframes`와 `animation`, `transition`은 쓸 수 있습니다.',
+    '- 아래 목록에 **없는 클래스는 만들지 마세요.** 존재하지 않아서 아무 효과가 없습니다.',
+    '- 밝은 테마/어두운 테마 어느 쪽에서도 글씨가 읽히도록 배경색과 글자색을 같이 지정하세요.',
+    '',
+    '## 쓸 수 있는 클래스 (이게 전부입니다)',
+    ...CSS_SPEC_CLASSES.map(([sel, desc]) => `- \`${sel}\` — ${desc}`),
+    '',
+    '## 이 봇의 실제 상태창 구조',
+    '```html',
+    skeleton,
+    '```',
+  ].join('\n');
+}
+
+// ── 스키마를 통째로 AI에게 맡기는 경로 ──────────────────────────
+// CSS 규격서의 확장판. 다른 점은 두 가지다.
+//  ① 규칙이 훨씬 많아서 산문으로 다 적으면 AI가 뒷부분을 흘린다 → 완성된 템플릿을 예제로 같이 준다.
+//  ② 검증기를 통과해도 게임이 죽어 있을 수 있다 → 밸런스 지침을 따로 못박는다.
+
+const SCHEMA_HARD_RULES = [
+  '- `id`(vars/derived/actions/events)는 영문자로 시작하고 영문자·숫자·`_`만 씁니다. 한글 id는 거부됩니다.',
+  '- id는 서로 겹치면 안 됩니다. derived의 id도 vars와 겹칠 수 없습니다.',
+  '- 변수 타입은 `int` `float` `text` `bool` `enum` `list` 여섯 가지뿐입니다.',
+  '- `enum`은 `enum` 배열이 2개 이상이어야 하고 `init`이 그 목록 안에 있어야 합니다.',
+  '- `int`/`float`은 `init`이 숫자여야 하고 `min` ≤ `init` ≤ `max` 여야 합니다.',
+  '- `list`의 `init`은 문자열 배열입니다. **수식으로 대입할 수 없고** `{ "list": "아이디", "add": [...], "remove": [...] }` 형태로만 바꿉니다.',
+  '- `derived`는 계산 전용입니다. 효과의 `set` 대상이 될 수 없습니다.',
+  '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다.',
+  '- `updater.allow[].id`도 `vars`에 있어야 하며, 숫자형에는 `maxDelta`를 주는 것이 좋습니다(없으면 AI가 무제한으로 바꿉니다).',
+  '- `updater.contextTurns`는 1~5 정수입니다.',
+  '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
+  '- JSON에는 주석을 쓸 수 없습니다(`//` 금지).',
+];
+
+const SCHEMA_EXPR_RULES = [
+  '연산자: `+ - * / %`, 비교 `== != > < >= <=`, 논리 `and` `or` `not`, 삼항 `조건 ? A : B`, 괄호',
+  '함수: `round(x)` `floor(x)` `ceil(x)` `abs(x)` `min(a,b,...)` `max(a,b,...)` `clamp(값,최소,최대)` `rand(최소,최대)` `count(목록)` `has(목록,"항목")` `sum(목록[,"거르개"])`',
+  '`sum(목록)`은 항목 **맨 끝의 숫자**를 더합니다 — `["양모 계약 +12", "제분소 5"]` → 17. '
+  + '끝에 숫자가 없는 항목은 0입니다. 둘째 인자를 주면 그 글자가 든 항목만 셉니다: `sum(계약, "교역")`.',
+  '목록 항목의 `@숫자`는 **기한**입니다(`"성벽 부역 @450 -4"`). 합산에서는 무시되고, '
+  + 'onTurn의 `{ "list": "계약", "expire": "day" }`가 그 값보다 지난 항목을 스스로 뺍니다. '
+  + '`@+숫자`로 쓰면(`"@+1080"` = 1080일 뒤) 추가되는 순간 시스템이 절대값으로 굳힙니다 — '
+  + '보조 AI에게 "지금 날짜 + 기간"을 계산시키지 마세요. 그게 이 플러그인이 없애려는 일입니다.',
+  '문자열 비교는 큰따옴표: `stage == "친구"`',
+  '**`rand()`는 효과(effects)에서만** 씁니다. 조건(`when`)과 `derived`에는 쓸 수 없습니다.',
+  '  → 주사위가 필요하면 "효과에서 굴려 변수에 담고 → 그 변수로 분기"하는 2단 구조를 쓰세요.',
+  '대입·반복문·점 접근(`a.b`)·배열 인덱싱은 없습니다. 목록은 `count`/`has`/`sum`으로만 다룹니다.',
+];
+
+const SCHEMA_BALANCE_RULES = [
+  '- **이벤트 조건이 실제로 도달 가능한지 역산하세요.** 리스크가 턴당 +2인데 발동선이 70이면 35턴이 걸립니다. 대부분의 플레이는 그 전에 끝납니다.',
+  '- **시작값이 조건 경계와 같으면 영영 안 걸립니다.** 조건이 `press < 50`인데 시작값이 정확히 50이면 그 이벤트는 죽은 이벤트입니다.',
+  '- 매 턴 소모가 있으면 `시작 비축량 ÷ 턴당 소모`를 계산해 몇 턴 버티는지 확인하세요. 너무 짧으면 첫 턴부터 파국입니다.',
+  '- `once: true`가 없는 이벤트는 조건이 참인 동안 매 턴 발동합니다. **효과가 조건을 해소하도록** 짜거나 `once`를 쓰세요.',
+  '- 액션에는 반대급부를 두세요. 하나를 얻으면 하나를 잃어야 선택이 의미를 가집니다.',
+  '- 파생 변수로 계산 사슬을 만드세요(예: 유동인구 → 수요 → 판매량 → 매출 → 순익). 그래야 수치 하나가 세계 전체를 흔듭니다.',
+];
+
+function schemaLanguageTable() {
+  return [
+    '| 필드 | 누가 읽나 | 어떤 언어로 |',
+    '|---|---|---|',
+    '| `vars[].label`, `enum` 값, `statusUI` 그룹 이름, `actions[].label` | **플레이어** (화면의 상태창) | 한국어 |',
+    '| 모든 `id` | 아무도 (내부 식별자) | 영문 필수 |',
+    '| `promptState.template`, `directives[].text`, `updater.guide`, `events[].notify`, `actions[].inject` | **AI 모델** | 영어 권장 — 토큰이 크게 줄고 지시 이해도가 올라갑니다 |',
+    '',
+    '※ 모델에게 가는 문구가 영어여도 모델은 한국어로 서술합니다. 걱정하지 마세요.',
+    '※ `actions[].label`은 화면에 뜨므로 한국어로 쓰되, **반드시 이모지 하나로 시작**하세요 (예: `🔥 화로 최대`). 실행 버튼에는 그 이모지만 표시됩니다.',
+  ].join('\n');
+}
+
+function buildSchemaSpecPrompt(exampleKey, includeValidator) {
+  const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
+  const parts = [
+    '아래 규격에 맞는 시뮬레이션 스키마(JSON)를 만들어 주세요.',
+    'RisuAI용 SimCore 플러그인이 이 JSON을 읽어서 상태창을 그리고 규칙·이벤트를 굴립니다.',
+    '',
+    '## 내가 만들 봇',
+    '(여기를 채우세요 — 세계관과 주인공, 추적하고 싶은 수치, 일어나면 좋을 사건,',
+    ' 플레이어가 누를 수 있는 행동, 상태창에 보이고 싶은 것)',
+    '',
+    '## 출력 형식',
+    '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`',
+    '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
+    '',
+    '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
+    schemaLanguageTable(),
+    '',
+    '## 절대 규칙 (어기면 설치가 거부됩니다)',
+    ...SCHEMA_HARD_RULES,
+    '',
+    '## 수식 언어',
+    ...SCHEMA_EXPR_RULES.map((s) => '- ' + s),
+    '',
+    '## 밸런스 — 문법이 맞아도 게임이 죽을 수 있습니다',
+    '검증기는 문법만 봅니다. 아래는 검증을 통과하고도 실제로는 아무 일도 안 일어나게 만드는 함정들입니다.',
+    ...SCHEMA_BALANCE_RULES,
+    '',
+    `## 예제 — "${ex.label}". 이 구조를 그대로 따라가세요`,
+    '```json',
+    JSON.stringify(ex.schema, null, 2),
+    '```',
+  ];
+  if (includeValidator) {
+    parts.push('',
+      '## 부록: 검증기 원문',
+      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다.',
+      '```js',
+      String(validateSchema),
+      '```');
+  }
+  return parts.join('\n');
+}
+
+/** 검증 실패를 AI에게 되돌려주는 프롬프트 — 이 왕복이 있어야 실제로 굴러간다 */
+function buildFixPrompt(schema, v) {
+  const parts = [
+    '방금 준 스키마를 SimCore 검증기에 넣었더니 아래 문제가 나왔습니다.',
+    '고쳐서 **전체 JSON을 다시** 주세요 (일부만 주지 말고 통째로).',
+    '',
+  ];
+  if (v.errors.length) {
+    parts.push('## 오류 — 반드시 전부 해결해야 설치됩니다',
+      ...v.errors.map((e) => `- \`${e.path}\` — ${e.msg}`), '');
+  }
+  if (v.warnings.length) {
+    parts.push('## 경고 — 고치면 좋습니다',
+      ...v.warnings.map((w) => `- \`${w.path}\` — ${w.msg}`), '');
+  }
+  if (!v.errors.length && !v.warnings.length) {
+    parts.push('## 문법 오류는 없습니다', '아래 스키마를 다시 검토해서 개선할 점만 제안해 주세요.', '');
+  }
+  parts.push('경로 표기는 JSON 위치입니다. 예를 들어 `$.actions[0].effects[1].expr`는',
+    '`actions` 배열의 첫 번째 액션 안 `effects` 배열의 두 번째 항목의 `expr` 필드입니다.',
+    '',
+    '## 현재 스키마',
+    '```json',
+    JSON.stringify(schema, null, 2),
+    '```');
+  return parts.join('\n');
+}
+
+// ── 탭 단위로 AI에게 맡기기 ──────────────────────────────────
+// 스키마를 통째로 만들게 하면 변수를 지어내면서 동시에 일관되게 써야 해서 오류가 쏟아진다.
+// 탭 하나만 맡기면 "이미 정의된 변수 목록"을 계약으로 줄 수 있어 그 오류가 원천적으로 사라진다.
+
+const EVENT_PATTERNS = [
+  ['임계 돌파', '선을 넘으면 상태 플래그를 켠다. 되돌아오는 조건(회복)을 같이 만들지 않으면 영구 상태가 된다.',
+    '{ "id": "riot", "when": "discontent >= 85 and not collapsed",\n'
+    + '  "effects": [{ "set": "collapsed", "expr": "1" }],\n'
+    + '  "notify": "군중이 화로 앞을 점거했다. 통제가 무너졌다." }'],
+  ['시한폭탄', '수치가 조용히 쌓이다 선을 넘으면 터진다. 효과에서 값을 낮춰 리셋해야 다시 쌓인다.',
+    '{ "id": "scandal_breaks", "when": "risk >= 70 and not in_scandal",\n'
+    + '  "effects": [{ "set": "in_scandal", "expr": "1" }, { "set": "risk", "expr": "55" }],\n'
+    + '  "notify": "의혹이 1면에 터졌다." }'],
+  ['고갈', '자원이 바닥나면 정책(enum)을 강제로 바꾼다. 플레이어의 선택권을 시스템이 뺏는 순간이라 임팩트가 크다.',
+    '{ "id": "fuel_out", "when": "coal <= 0 and heat != \\"정지\\"",\n'
+    + '  "effects": [{ "set": "heat", "expr": "\\"정지\\"" }],\n'
+    + '  "notify": "석탄이 바닥났다. 화로가 꺼지고 온기가 빠르게 빠져나간다." }'],
+  ['소비·해소', '효과가 조건 자체를 지운다. 이렇게 안 짜면 조건이 참인 동안 매 턴 반복 발동한다.',
+    '{ "id": "bill_passed", "when": "bill_result == \\"가결\\"",\n'
+    + '  "effects": [{ "set": "capital", "expr": "min(100, capital + 10)" },\n'
+    + '              { "set": "bill_result", "expr": "\\"없음\\"" }],\n'
+    + '  "notify": "법안이 본회의를 통과했다." }'],
+  ['회복', '대가를 치르고 나쁜 상태를 푼다. 임계 돌파와 짝을 이룬다.',
+    '{ "id": "scandal_over", "when": "in_scandal and capital >= 70",\n'
+    + '  "effects": [{ "set": "in_scandal", "expr": "0" }, { "set": "capital", "expr": "capital - 25" }],\n'
+    + '  "notify": "정치 자본을 쏟아부어 의혹을 덮었다. 대가는 적지 않았다." }'],
+  ['이정표', '`"once": true` — 조건을 처음 만족할 때 딱 한 번만. 달성·전환점을 알릴 때 쓴다.',
+    '{ "id": "survived", "once": true, "when": "day >= 30 and not collapsed",\n'
+    + '  "notify": "기온이 처음으로 올라갔다. 최악의 겨울을 넘겼다." }'],
+  ['기한 만료(목록)', '`expire`는 목록에서 항목의 `@숫자`가 이 값보다 지난 것을 스스로 뺀다. '
+    + '서사가 등록한 한시 법령·계약·부역·저주가 기한이 다하면 알아서 사라진다 — `@`가 없는 항목은 무기한이라 안 건드린다. '
+    + 'onTurn에 한 줄 둬도 되고, 예시처럼 목록이 비어 있지 않을 때만 도는 이벤트로 둬도 된다.\n'
+    + '⚠ 기준은 **이 턴이 끝나는 시점**으로 쓸 것. onTurn 맨 앞에서 `"day"`라고 적으면 아직 안 올라간 값으로 '
+    + '판정해 한 턴 늦게 빠진다. 하루씩 도는 봇이면 `"day + 1"`, 며칠씩 건너뛰는 봇이면 `"day + 흐른날수"`처럼. '
+    + '(`{"set":"day",...}` 뒤에 두면 `"day"` 그대로도 맞다.)',
+    '{ "id": "law_expiry", "when": "count(laws) > 0",\n'
+    + '  "effects": [{ "list": "laws", "expire": "day + 1" }] }'],
+  ['값 자르기', '범위를 벗어난 값을 되돌린다. 플레이어에게 알릴 게 없으므로 notify를 넣지 않는다.',
+    '{ "id": "hp_cap", "when": "hp > max_hp",\n'
+    + '  "effects": [{ "set": "hp", "expr": "max_hp" }] }'],
+];
+
+const ACTION_PATTERNS = [
+  ['자원 전환', '가진 것을 주고 다른 것을 얻는다. 가장 기본형.',
+    '{ "id": "restock", "label": "📦 발주", "mode": "oneshot", "cooldown": 1,\n'
+    + '  "inject": "[경영 결정] 재고를 채워 넣는다.",\n'
+    + '  "effects": [{ "set": "stock", "expr": "stock + 60" }, { "set": "cash", "expr": "cash - 360" }] }'],
+  ['트레이드오프', '한쪽을 얻으면 반대쪽을 잃는다. 선택을 아프게 만드는 핵심 장치.',
+    '{ "id": "meet_biz", "label": "🤝 재계 회동", "mode": "oneshot", "cooldown": 3,\n'
+    + '  "inject": "[정치 행동] 재계 인사들과 자리를 갖는다.",\n'
+    + '  "effects": [{ "set": "biz", "expr": "min(100, biz + 10)" }, { "set": "labor", "expr": "max(0, labor - 6)" }] }'],
+  ['판정(주사위)', 'rand()는 조건에 못 쓴다 → **효과에서 굴려 변수에 담고, 그 변수로 등급을 매기는 2단 구조**를 쓴다.',
+    '{ "id": "submit_bill", "label": "📜 법안 표결", "mode": "oneshot", "cooldown": 3, "when": "capital >= 15",\n'
+    + '  "inject": "[정치 행동] 법안을 본회의에 올린다. 표결 결과는 상태창의 판정을 따르라.",\n'
+    + '  "effects": [{ "set": "bill_roll", "expr": "rand(1, 100)" },\n'
+    + '              { "set": "bill_result", "expr": "bill_roll <= bill_odds ? \\"가결\\" : \\"부결\\"" }] }'],
+  ['정책 전환', 'enum 값을 갈아끼워 파생 사슬 전체를 흔든다. 수치가 아니라 국면이 바뀐다.',
+    '{ "id": "stoke", "label": "🔥 화로 최대", "mode": "oneshot", "when": "coal > 0",\n'
+    + '  "inject": "[결정] 화로 출력을 최대로 올린다.",\n'
+    + '  "effects": [{ "set": "heat", "expr": "\\"최대\\"" }] }'],
+  ['지속', '`"mode": "hold"` — 다시 끌 때까지 매 턴 효과가 적용된다. 유지비가 드는 정책에 쓴다.',
+    '{ "id": "patrol", "label": "🛡 순찰 강화", "mode": "hold",\n'
+    + '  "inject": "[지속 정책] 병사들이 순찰을 강화하고 있다.",\n'
+    + '  "effects": [{ "set": "gold", "expr": "gold - 20" }] }'],
+  ['소모(목록)', '목록 변수는 수식으로 못 바꾼다. `list`/`remove`/`add` 형태를 쓴다.',
+    '{ "id": "potion", "label": "🧪 회복약 사용", "mode": "oneshot", "when": "has(inventory, \'회복약\')",\n'
+    + '  "inject": "[플레이어 액션] 회복약을 마신다.",\n'
+    + '  "effects": [{ "list": "inventory", "remove": ["회복약"] },\n'
+    + '              { "set": "hp", "expr": "min(hp + 50, max_hp)" }] }'],
+];
+
+// 난이도는 "숫자를 크게/작게"가 아니다. 자원만 반토막 내면 어려워지는 게 아니라 판이 짧아질 뿐이고,
+// 플레이어는 똑같은 판을 더 조급하게 볼 뿐이다. 판이 기울어 있어야 다른 이야기가 나온다.
+const PRESET_PATTERNS = [
+  ['비축 — 며칠 버티나', '자원 시작량. 가장 손쉬운 축이지만 **이것만 만지면 난이도가 아니라 길이가 바뀝니다.** '
+    + '`시작량 ÷ 턴당 소모`로 몇 턴 버티는지 계산하고 정하세요.',
+    '{ "id": "mild", "label": "🌤 온화한 겨울",\n'
+    + '  "set": { "coal": 520, "food": 300, "hope": 70 } }'],
+  ['완충 — 붕괴선까지의 거리', '게이지 시작값. 붕괴 조건이 `hope <= 0`이면 시작 희망이 그대로 여유 턴입니다. '
+    + '70 → 45로 낮추면 실수 한 번이 치명적이 됩니다. 수치 총량은 그대로인데 체감은 완전히 달라집니다.',
+    '{ "id": "harsh", "label": "🥶 혹한",\n'
+    + '  "set": { "coal": 300, "food": 180, "hope": 45 } }'],
+  ['국면 — 이미 기울어진 판', 'enum/bool을 나쁜 쪽으로 시작시킵니다. **가장 강하고 가장 재미있는 축입니다** — '
+    + '첫 턴부터 이야기가 생기고, 플레이어가 "왜 이런 상황인지"를 스스로 채웁니다. '
+    + '예고 변수(습격까지 N턴)를 미리 켜 두거나 지속 상태(한파 잔여 6일)를 걸어 두는 것도 여기 들어갑니다.',
+    '{ "id": "aftermath", "label": "🔥 폭동 직후",\n'
+    + '  "set": { "coal": 300, "food": 180, "hope": 45,\n'
+    + '           "heat": "정지", "ration": "절반", "sick": 6, "discontent": 55 } }'],
+  ['규모 — 아예 다른 판', '직원·인구처럼 산출과 소모를 동시에 키우는 값. 어려워지는 게 아니라 **다른 게임**이 됩니다. '
+    + '난이도가 아니라 배경 선택에 쓰세요.',
+    '{ "id": "metro", "label": "🏙 역세권 대형점",\n'
+    + '  "set": { "cash": 9000, "staff": 4, "district": "역세권" } }'],
+  ['배경 — 난이도가 아닌 것', '출신·컨셉만 바꾸는 프리셋. **난이도와 섞지 마세요** — 플레이어는 하나만 고를 수 있어서, '
+    + '섞어 놓으면 "어려움 + 아이돌 컨셉"을 만들 수 없습니다. 한 스키마에서는 한쪽 기준으로만 나누세요.',
+    '{ "id": "idol", "label": "🎀 아이돌 지망",\n'
+    + '  "set": { "concept": "노래", "subs": 80, "funds": 30 } }'],
+];
+
+const PRESET_FIELD_SPEC = [
+  '| 필드 | 설명 |',
+  '|---|---|',
+  '| `id` | 영문 id. 프리셋끼리 겹치면 안 됩니다 |',
+  '| `label` | 버튼에 **그대로 전부** 표시됩니다. 이모지 + 짧은 이름으로 (예: `🥶 혹한`). 액션 버튼과 달리 글자까지 보입니다 |',
+  '| `set` | `{ "변수id": 값 }` 형태. 여기 적은 변수만 바뀌고 나머지는 원래 시작값 그대로입니다 |',
+  '',
+  '**`set`의 값은 수식이 아니라 값입니다.** `"coal * 2"`, `"coal + 100"` 같은 건 문자열로 취급돼 거부됩니다.',
+  '타입이 정확해야 합니다 — `int`/`float`은 따옴표 없는 숫자, `enum`은 **선택지 목록 안에 있는 문자열**,',
+  '`bool`은 `true`/`false`, `list`는 배열, `text`는 문자열. `min`/`max` 범위도 지켜야 합니다.',
+  '**파생 변수는 지정할 수 없습니다** (계산 결과라서). 재료가 되는 변수를 바꾸세요.',
+  '`turn`/`day` 같은 진행 카운터는 엔진이 관리하니 건드리지 마세요.',
+];
+
+const PRESET_BALANCE_RULES = [
+  '- **적지 않은 변수는 원래 시작값으로 갑니다.** 이건 결함이 아니라 기능입니다 — 기준선 프리셋은 `"set": {}`로 비워 두는 게 가장 정직하고, 특정 프리셋에서만 의미 있는 값(폐허에서만 생기는 환자 수 같은)은 그 프리셋에만 적으면 됩니다. 다만 **난이도를 가르는 핵심 변수**는 프리셋마다 빠짐없이 적으세요. 그게 빠지면 기본값이 사다리를 벗어나 순서가 뒤집힙니다.',
+  '- **기준선("보통")은 현재 시작값과 똑같이 두세요.** 그래야 나머지를 어느 쪽으로 얼마나 밀었는지 한눈에 보이고, 밸런스를 다시 잡을 때 기준이 흔들리지 않습니다.',
+  '- **이름만 다르고 값이 같은 프리셋을 만들지 마세요.** 플레이어는 골랐다고 생각하는데 실제로는 아무것도 안 고른 게 됩니다.',
+  '- **한 축만 반으로 깎지 마세요.** 자원만 반토막 내면 어려워지는 게 아니라 판이 짧아집니다. 비축·완충·국면을 조금씩 같이 미는 편이 훨씬 다른 판이 됩니다.',
+  '- 쉬움과 어려움의 격차는 **버티는 턴 수로 2배 안쪽**이 무난합니다. 3배가 넘어가면 어려움은 아무도 못 넘기고 쉬움은 아무 일도 안 일어납니다.',
+  '- **3~4개면 충분합니다.** 버튼이 한 줄에 늘어서므로 6개가 넘으면 고르기 전에 지칩니다.',
+  '- 라벨에 난이도 이름을 넣었다면 [🔬 진단] 탭에서 실제로 굴려 순서를 확인하세요. 시작값을 여러 개 동시에 밀면 합이 반대로 나오는 일이 정말 흔합니다 — 진단이 프리셋마다 판을 굴려 수명을 재고, 이름과 실제가 뒤집혔으면 잡아 줍니다.',
+];
+
+// 변수는 다른 모든 탭의 전제라 가장 먼저 만들어야 한다.
+// 변수 없이 규칙부터 맡기면 AI가 이름을 지어내고, 가져오기에서 수백 건이 한꺼번에 터진다.
+const VAR_PATTERNS = [
+  ['자원 (비축 → 소모)', '매 턴 줄어드는 저장고. **늘리는 경로를 반드시 같이 계획하세요** — 액션이든 랜덤이벤트든. 소모만 있는 자원은 예외 없이 바닥나고 세계가 무너집니다.',
+    '{ "id": "coal", "label": "석탄", "type": "int", "min": 0, "init": 400 }'],
+  ['정책 (선택지)', 'enum. 플레이어가 갈아끼우면 파생 사슬 전체가 흔들립니다. 시뮬레이션의 조종간이라 1~3개는 꼭 두세요.',
+    '{ "id": "heat", "label": "난방 출력", "type": "enum",\n'
+    + '  "enum": ["정지", "약", "보통", "최대"], "init": "보통" }'],
+  ['게이지 (0~100)', '민심·사기처럼 오르내리는 값. `min`/`max`를 반드시 주고 규칙에서 `clamp()`로 가둡니다.',
+    '{ "id": "hope", "label": "희망", "type": "int", "min": 0, "max": 100, "init": 60 }'],
+  ['지속 상태 (두 개가 한 쌍)', '"지금 무엇이" + "몇 턴 남았나". 이 둘이 있어야 며칠 가는 이상 기후·버프·디버프를 만들 수 있습니다. onTurn에서 잔여를 1씩 깎고, 0이 되면 이벤트로 해제하세요.',
+    '{ "id": "condition", "label": "지역 이상", "type": "enum",\n'
+    + '  "enum": ["없음", "한파", "폭염", "역병"], "init": "없음" },\n'
+    + '{ "id": "condition_left", "label": "이상 잔여일", "type": "int", "min": 0, "init": 0 }'],
+  ['지속 효과 등록부 (목록 + sum)', '계약·조약·저주·부역처럼 **서사가 만들어 내는 지속 효과**를 담는 자리입니다. '
+    + '어떤 계약이 생길지는 미리 알 수 없으니 스키마에 다 적어 둘 수 없습니다. 대신 목록 하나를 열어 두고, '
+    + 'AI가 성사된 그 턴에 `{"add": ["헤세 상단 양모 계약 +12"]}`로 등록하면 `sum()`이 매 턴 알아서 더합니다. '
+    + '파기되면 `remove`로 빼면 그만이고, 사용자도 패널에서 ✕로 지울 수 있습니다. '
+    + '**항목 끝에 숫자를 두는 것이 규칙입니다** — 없으면 0으로 셉니다. '
+    + '쓰는 쪽은 파생에서 `"expr": "tax + sum(contracts)"`, onTurn에서 `{"set":"gold","expr":"max(0, gold + income)"}` 식입니다.\n'
+    + '기한이 있으면 항목에 `@끝나는날`을 넣고(`"성벽 부역 @450 -4"`) onTurn에 '
+    + '`{"list":"contracts","expire":"day"}`를 두세요 — 그날이 지나면 스스로 빠집니다. `@`가 없으면 무기한입니다. '
+    + '**남은 일수가 아니라 끝나는 시점**을 적는 이유는, 남은 일수면 매 턴 전부 1씩 깎아야 하는데 '
+    + '미니 표현식엔 반복문이 없어 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞기 때문입니다.\n'
+    + '단 **보조 AI에게는 `@+기간`으로 쓰게 하세요**(`"@+1080"`). 추가되는 순간 시스템이 '
+    + '위 expire 식으로 절대값을 계산해 굳힙니다. "지금 경과일 + 1080"을 모델에게 시키면 틀리고, '
+    + '틀려도 조용합니다 — 3000년에 끝나는 계약이 생겨도 아무도 모릅니다.',
+    '{ "id": "contracts", "label": "지속 계약", "type": "list", "init": [], "maxItems": 8,\n'
+    + '  "desc": "매일 들어오는 수입원. \\"이름 +숫자\\" 형태로 끝에 일당을 적는다. 기한이 있으면 \\"@끝나는경과일\\"을 앞에 넣는다." }'],
+  ['예고 (두 개가 한 쌍)', '"무엇이 오나" + "몇 턴 뒤". 다가오는 위협을 미리 알려 준비할 시간을 주는 장치. 도착하면 이벤트에서 처리하고 둘 다 초기화합니다.',
+    '{ "id": "raid_kind", "label": "예고된 습격", "type": "enum",\n'
+    + '  "enum": ["없음", "도적", "군대"], "init": "없음" },\n'
+    + '{ "id": "raid_in", "label": "습격까지", "type": "int", "min": 0, "init": 0 }'],
+  ['플래그', 'bool. 한 번 켜지면 세계의 규칙이 바뀌는 분기점. **끄는 조건도 같이 설계하세요** — 없으면 영구 상태가 됩니다.',
+    '{ "id": "collapsed", "label": "통제 붕괴", "type": "bool", "init": false }'],
+  ['목록', 'list. 소지품·시행 법령처럼 늘었다 줄었다 하는 것. **수식으로 못 바꾸고** `count()`/`has()`/`sum()`으로만 읽습니다.',
+    '{ "id": "laws", "label": "시행 법령", "type": "list", "init": [], "maxItems": 6 }'],
+  ['파생 사슬 — 가장 중요합니다', '읽기 전용 계산값. 정책 → 중간값 → 최종값으로 이어 붙이면 **수치 하나가 세계 전체를 흔듭니다.** 계산으로 정해지는 값은 상태 변수로 만들지 말고 전부 여기로 빼세요.',
+    '{ "id": "heat_out", "label": "화로 출력",\n'
+    + '  "expr": "heat == \\"최대\\" ? 3 : (heat == \\"보통\\" ? 2 : (heat == \\"약\\" ? 1 : 0))" },\n'
+    + '{ "id": "indoor", "label": "실내 온도",\n'
+    + '  "expr": "temp + heat_out * 9 + shelter * 2", "format": "{v}°C" },\n'
+    + '{ "id": "coal_burn", "label": "일 석탄소모", "expr": "heat_out * 14 + 5" }'],
+];
+
+const VAR_FIELD_SPEC = [
+  '| 필드 | 설명 |',
+  '|---|---|',
+  '| `id` | 수식에서 쓰는 이름. **영문자로 시작, 영문·숫자·`_`만.** 한글 id는 거부됩니다 |',
+  '| `label` | 상태창에 보이는 이름 — **한국어로** 쓰세요 |',
+  '| `type` | `int` `float` `text` `bool` `enum` `list` 여섯 가지뿐 |',
+  '| `init` | 시작값. 타입에 맞아야 합니다 |',
+  '| `min` `max` | 숫자형 범위 (선택이지만 되도록 주세요) |',
+  '| `enum` | enum 전용. **2개 이상**이고 `init`이 그 안에 있어야 합니다 |',
+  '| `maxItems` | list 전용, 최대 개수 |',
+  '| `maxLength` | text 전용, 최대 글자수 |',
+  '| `format` | 상태창 표시 형식. `{v}` 자리에 값이 들어갑니다 (예: `{v}G`, `{v}°C`, `{v}명`) |',
+  '| `desc` | (선택) 이 항목이 무슨 뜻인지 AI에게 알려주는 한 줄 |',
+  '',
+  '파생 변수(`derived`)는 `{ "id", "label", "expr" }`(+ 선택 `format`)만 씁니다.',
+  '**읽기 전용**이라 `set` 대상이 될 수 없고 `rand()`도 쓸 수 없습니다.',
+];
+
+const VAR_BALANCE_RULES = [
+  '- **어디서도 값이 바뀌지 않는 변수를 만들지 마세요.** 규칙·액션·랜덤이벤트 중 최소 하나가 그 변수를 `set` 하도록 계획하고, 계산으로만 정해지는 값은 처음부터 파생 변수로 만드세요. (실제 사고: 기온을 목표치로 수렴시키는 변수를 만들어 놓고 그 목표치를 아무도 바꾸지 않아, 기온이 60턴 내내 시작값에서 1도 움직이지 않고 계절 시스템 전체가 죽은 적이 있습니다.)',
+  '- **줄어들기만 하는 자원은 반드시 무너집니다.** 자원마다 늘어나는 경로를 하나 이상 정해 두세요. 생산 수단이 없으면 몇 턴 뒤 전멸이 확정입니다.',
+  '- 시작값을 조건 경계와 똑같이 두지 마세요. 조건이 `temp < 20`인데 시작값이 정확히 20이면 그 조건은 영영 거짓입니다.',
+  '- 매 턴 소모가 있으면 `시작 비축량 ÷ 턴당 소모`로 몇 턴 버티는지 계산하세요. 20~40턴이 무난합니다.',
+  '- **10~15개로 시작하세요.** 상태 변수는 매 턴 프롬프트에 실립니다. 30개가 넘으면 토큰도 화면도 감당이 안 됩니다. 계산으로 나오는 값은 전부 파생으로 빼세요.',
+  '- 숫자에는 되도록 `min`/`max`를 주세요. 없으면 값이 무한히 커지거나 음수로 내려갑니다.',
+];
+
+const EDITOR_ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/; // validate 모듈의 ID_RE와 같은 규칙 (모듈 경계라 재선언)
+
+/** 다른 탭이 실제로 참조 중인 변수 id — 변수 탭에서 지우면 그쪽이 깨진다 */
+function idsUsedElsewhere(schema) {
+  const rest = JSON.stringify({
+    rules: schema.rules, directives: schema.directives, actions: schema.actions,
+    updater: schema.updater, promptState: schema.promptState,
+    statusUI: schema.statusUI, setup: schema.setup,
+  });
+  const out = [];
+  for (const v of [...(schema.vars || []), ...(schema.derived || [])]) {
+    if (!v || !EDITOR_ID_RE.test(v.id || '')) continue; // id가 성하지 않으면 정규식을 만들지 않는다
+    if (new RegExp(`\\b${v.id}\\b`).test(rest)) out.push(v.id);
+  }
+  return out;
+}
+
+/** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
+function varContractTable(schema) {
+  const rows = ['| id | 이름 | 타입 | 범위 / 선택지 | 시작값 |', '|---|---|---|---|---|'];
+  for (const v of (schema.vars || [])) {
+    let range = '';
+    if (v.type === 'enum') range = (v.enum || []).join(' / ');
+    else if (v.type === 'int' || v.type === 'float') {
+      range = v.min != null && v.max != null ? `${v.min} ~ ${v.max}`
+        : v.min != null ? `${v.min} 이상` : v.max != null ? `${v.max} 이하` : '제한 없음';
+    } else if (v.type === 'list') range = `최대 ${v.maxItems ?? 20}개`;
+    else if (v.type === 'text') range = v.maxLength ? `${v.maxLength}자 이내` : '';
+    rows.push(`| \`${v.id}\` | ${v.label ?? v.id} | ${v.type} | ${range} | ${JSON.stringify(v.init)} |`);
+  }
+  const out = [rows.join('\n')];
+  if ((schema.derived || []).length) {
+    out.push('',
+      '### 파생 변수 — **읽기 전용**입니다. 조건에는 쓸 수 있지만 `set` 대상이 될 수 없습니다.',
+      '| id | 이름 | 계산식 |', '|---|---|---|',
+      ...schema.derived.map((d) => `| \`${d.id}\` | ${d.label ?? d.id} | \`${d.expr}\` |`));
+  }
+  return out.join('\n');
+}
+
+const TAB_SLICES = {
+  vars: { keys: ['vars', 'derived'], label: '변수' },
+  // ⚠ 명령은 별도 배열이 아니라 **변수에 붙은 속성**(cmd)이다. 그래서 다른 탭처럼 통째로
+  //   갈아끼우면 변수·파생이 통째로 날아간다. merge를 주면 cmd 배정만 기존 vars에 얹는다.
+  commands: { keys: ['vars'], merge: 'cmd', label: '명령' },
+  actions: { keys: ['actions'], label: '액션' },
+  rules: { keys: ['rules', 'directives'], label: '규칙·이벤트' },
+  // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
+  // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
+  presets: { keys: ['setup'], sub: 'presets', label: '시작 프리셋' },
+};
+
+/**
+ * 이 탭이 지금 담고 있는 항목 수.
+ * AI에게 체크섬으로 준다 — 고친 것만 돌려주는 습성을 막는 가장 확실한 장치다.
+ * (가져오기는 탭을 통째로 갈아끼우므로, 일부만 오면 나머지가 조용히 사라진다.)
+ */
+function tabItemCounts(schema, tabKey) {
+  const out = [];
+  const push = (path, arr) => { if (Array.isArray(arr)) out.push([path, arr.length]); };
+  if (tabKey === 'vars') { push('vars', schema.vars); push('derived', schema.derived); }
+  else if (tabKey === 'commands') push('commands', (schema.vars || []).filter((v) => v.cmd));
+  else if (tabKey === 'actions') push('actions', schema.actions);
+  else if (tabKey === 'presets') push('setup.presets', schema.setup?.presets);
+  else if (tabKey === 'rules') {
+    push('rules.onTurn', schema.rules?.onTurn);
+    push('rules.events', schema.rules?.events);
+    push('rules.randomEvents.table', schema.rules?.randomEvents?.table);
+    push('directives', schema.directives);
+  }
+  return out;
+}
+
+/**
+ * @param opts.findings 진단 결과 (있으면 "고쳐 주세요" 모드로 바뀐다)
+ * @param opts.stats    진단 통계 (생존율 등 — 균형 판단 재료로 함께 넘긴다)
+ */
+function buildTabExportPrompt(schema, tabKey, opts = {}) {
+  const slice = TAB_SLICES[tabKey];
+  if (!slice) throw new Error(`알 수 없는 탭: ${tabKey}`);
+  const current = {};
+  if (slice.merge) {
+    // 변수 전체가 아니라 "어느 변수에 어떤 이름을 붙였나"만 내보낸다.
+    // vars를 통째로 실어 보내면 AI가 그걸 고쳐서 돌려주고, 가져오기에서 변수가 날아간다.
+    current.commands = (schema.vars || []).filter((v) => v[slice.merge])
+      .map((v) => ({ var: v.id, cmd: v[slice.merge] }));
+  } else if (slice.sub) current[slice.sub] = schema[slice.keys[0]]?.[slice.sub] ?? [];
+  else for (const k of slice.keys) if (schema[k] !== undefined) current[k] = schema[k];
+  // 🔵는 "확인만 해보세요" 수준이라 AI에게 보내지 않는다.
+  // 고칠 게 아닌 걸 고치라고 하면 멀쩡한 설계를 건드려 오히려 나빠지고, 목록이 영영 안 줄어든다.
+  const fixes = (opts.findings || []).filter((f) => f.tab === tabKey && f.sev !== 'low');
+  const fixMode = fixes.length > 0;
+  const counts = tabItemCounts(schema, tabKey);
+
+  const head = [
+    fixMode
+      ? `RisuAI용 SimCore 시뮬레이션 스키마의 **${slice.label}**에서 아래 문제들을 고쳐 주세요.`
+      : `RisuAI용 SimCore 시뮬레이션 스키마의 **${slice.label}** 부분만 만들어 주세요.`,
+    '',
+  ];
+
+  if (fixMode) {
+    const s = opts.stats;
+    head.push('## 진단에서 나온 문제 — 이걸 고쳐 주세요',
+      s ? `이 스키마를 실제로 ${s.turns}턴 × ${s.runs}시드 굴려 본 결과입니다.`
+        + (s.loseVar ? ` (아무것도 안 했을 때 생존 ${s.idleSurvive}/${s.runs}, 액션을 쓰면 ${s.playSurvive}/${s.runs})` : '')
+        : '이 스키마를 실제로 굴려 본 결과입니다.',
+      '');
+    fixes.forEach((f, i) => {
+      head.push(`${i + 1}. ${f.sev === 'high' ? '🔴' : f.sev === 'mid' ? '🟡' : '🔵'} **[${f.tag}]** ${f.text}`);
+    });
+    head.push('',
+      '고치는 방법이 이 탭 밖에 있다고 판단되면(예: 자원을 늘리려면 액션이 필요하다면) '
+      + 'JSON 대신 그 사실을 먼저 알려주세요.',
+      '',
+      '## 추가 요청',
+      '(고쳤으면 하는 게 더 있으면 여기에 쓰세요 — 없으면 비워두면 됩니다)',
+      '');
+  } else {
+    const WANT = {
+      vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
+      presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
+    };
+    head.push('## 내가 원하는 것',
+      WANT[tabKey] ?? '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
+      '');
+  }
+
+  head.push('## 출력 형식',
+    `- **JSON 하나만** 출력하세요. 최상위 키는 ${(slice.sub ? [slice.sub] : slice.keys).map((k) => `\`"${k}"\``).join(', ')} 입니다.`,
+    '- 설명은 코드펜스 밖에 쓰지 마세요.',
+    '',
+    '## ⚠ 반드시 이 탭 전체를 다시 주세요',
+    '가져오기는 이 탭을 **통째로 갈아끼웁니다.** 고친 항목만 보내면 **나머지가 전부 사라집니다.**',
+    '손대지 않은 항목도 원문 그대로 옮겨 담아 한 세트로 돌려주세요.',
+    ...(tabKey === 'presets'
+      ? ['(갈아끼워지는 건 프리셋 목록뿐입니다. 같은 탭의 AI 최초설정은 그대로 남습니다.)'] : []),
+    '',
+    '지금 이 탭에 들어 있는 개수입니다 — 출력하기 전에 세어서 맞는지 확인하세요:',
+    ...counts.map(([p, n]) => `- \`${p}\` **${n}개**`),
+    '(의도적으로 추가하거나 지운 만큼은 달라져도 됩니다. 그 경우 무엇을 왜 바꿨는지 코드펜스 밖에 한 줄로 적어주세요.)',
+    '');
+
+  if (tabKey === 'vars') {
+    // 변수 탭은 계약을 "받는" 쪽이 아니라 "만드는" 쪽이라 제약이 아니라 규격을 준다
+    head.push('## 변수 하나는 이렇게 생겼습니다', ...VAR_FIELD_SPEC, '');
+    const used = idsUsedElsewhere(schema);
+    if (used.length) {
+      head.push('## ⚠ 지금 다른 탭(규칙·액션·상태창)이 쓰고 있는 변수',
+        '아래 id를 지우거나 이름을 바꾸면 **그쪽이 전부 깨집니다.** 남겨두거나, 정말 바꿔야 한다면 JSON 대신 그 사실을 먼저 알려주세요.',
+        '`' + used.join('`, `') + '`', '');
+    }
+  } else {
+    head.push('## 이미 정의된 변수 — **여기 있는 것만** 쓸 수 있습니다',
+      '없는 이름을 쓰면 검증에서 거부됩니다. 새 변수가 필요하면 JSON 대신 그 사실을 먼저 알려주세요.',
+      varContractTable(schema), '');
+  }
+
+  // 프리셋·명령은 수식을 아예 못 쓴다. 수식 규칙을 같이 주면 쓸 수 있다고 착각해서 `"coal * 2"`를 보낸다.
+  // (명령은 정하는 게 '어느 변수에 어떤 이름'뿐이라 조건식이 낄 자리가 없다)
+  if (tabKey !== 'presets' && tabKey !== 'commands') {
+    head.push('## 수식 규칙',
+      ...SCHEMA_EXPR_RULES.map((s) => '- ' + s),
+      '');
+  }
+
+  const body = [];
+  if (tabKey === 'vars') {
+    body.push('## 변수는 이 9가지 역할 중 하나입니다',
+      '`vars`는 세계의 현재 상태, `derived`는 그것들로 자동 계산되는 값입니다.',
+      '');
+    for (const [name, why, ex] of VAR_PATTERNS) {
+      body.push(`### ${name}`, why, '```json', ex, '```', '');
+    }
+  } else if (tabKey === 'rules') {
+    body.push('## 이벤트는 이 7가지 형태 중 하나입니다',
+      '`rules.events`는 위에서부터 차례로 검사되고, 조건이 참이면 효과가 적용된 뒤 파생 변수가 다시 계산됩니다.',
+      '');
+    for (const [name, why, ex] of EVENT_PATTERNS) {
+      body.push(`### ${name}`, why, '```json', ex, '```', '');
+    }
+    body.push('## 나머지 두 종류',
+      '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
+      '- `rules.randomEvents` — `chancePerTurn`(0~1) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
+      '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
+      '');
+  } else if (tabKey === 'commands') {
+    body.push('## 채팅 명령이 뭔가',
+      '플레이어가 **채팅 입력창에 직접 치는 한 줄**입니다. `/계약 헤세 상단 양모 +12` 처럼요.',
+      '상태는 평소에 보조 모델이 서사를 읽고 알아서 갱신합니다. 명령은 그게 **틀렸을 때 고치는 통로**입니다.',
+      '',
+      '변수 하나에 이름 하나를 붙이면 그 이름의 명령이 생깁니다. 안 붙인 변수에는 명령이 없습니다.',
+      '**문법은 정하지 마세요** — 변수 타입이 이미 정합니다. 여러분이 정하는 건 이름뿐입니다.',
+      '',
+      '| 변수 타입 | 자동으로 생기는 문법 |',
+      '|---|---|',
+      '| `list` | `/이름 내용` 등록 · `/이름- 일부` 제거 |',
+      '| `int` `float` | `/이름 +5` 증감 · `/이름 30` 지정 |',
+      '| `enum` | `/이름 선택지` |',
+      '| `text` | `/이름 내용` |',
+      '| `bool` | `/이름 on` |',
+      '',
+      '## 어디에 붙이나 — 이게 이 탭의 전부입니다',
+      '- **유저가 눈으로 보고 틀린 걸 알아챌 수 있는 것**에만 붙이세요. 상태창에 안 나오는 값은 틀려도 모릅니다.',
+      '- **틀리면 복리로 어긋나는 것**이 1순위입니다 — 지속 수입·계약·봉급처럼 매일 더해지는 목록.',
+      '- **호감도·평판**처럼 서사와 어긋나면 바로 거슬리는 수치도 좋습니다.',
+      '- 붙이지 마세요: 시스템이 매 턴 계산하는 값(날짜·소비·수확), 파생 변수(계산 결과라 못 씁니다),',
+      '  그리고 난이도 손잡이처럼 판 도중에 바뀌면 안 되는 값.',
+      '- **5~10개면 충분합니다.** 전부에 붙이면 유저가 목록을 읽지 않습니다.',
+      '',
+      '## 이름 규칙',
+      '- 공백 · `/` · `-` 를 쓸 수 없습니다. 겹쳐도 안 됩니다.',
+      '- **짧고 그 봇의 말로.** 영지물이면 `계약`·`금`, 현대물이면 `잔고`·`스트레스`.',
+      '  변수 id가 영문이어도 명령 이름은 한글로 다세요 — 유저가 치는 글자입니다.',
+      '- 유저가 평소에 쓸 법한 문장의 첫 낱말은 피하세요. 명령으로 오인될 일은 없지만',
+      '  (`/`로 시작해야 하니까) 헷갈리는 이름은 안내가 어려워집니다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '```json',
+      '{ "commands": [',
+      '  { "var": "contracts", "cmd": "계약" },',
+      '  { "var": "gold", "cmd": "금" },',
+      '  { "var": "bond_livia", "cmd": "호감" }',
+      '] }',
+      '```',
+      '`var`는 **아래 변수 계약표에 있는 id 그대로** 써야 합니다. 없는 id를 쓰면 가져오기가 거부됩니다.',
+      '여기 안 적힌 변수는 명령이 떨어집니다 — 남길 것도 전부 포함해서 한 세트로 주세요.',
+      '');
+  } else if (tabKey === 'presets') {
+    body.push('## 프리셋이 뭔가',
+      '플레이어가 **새 채팅을 시작할 때** 패널에서 한 번 누르는 버튼입니다. 누르면 `set`에 적은 변수들이',
+      '그 값으로 한꺼번에 세팅됩니다. 적지 않은 변수는 원래 시작값 그대로 갑니다.',
+      '(진행 중인 채팅에서 누르면 지금 수치가 덮어써지므로, 시작 시점 전용입니다.)',
+      '',
+      '## 프리셋 하나는 이렇게 생겼습니다',
+      ...PRESET_FIELD_SPEC,
+      '');
+    body.push('## 난이도를 만드는 축은 이 5가지입니다',
+      '**앞의 세 축(비축·완충·국면)이 난이도이고, 뒤의 둘은 난이도가 아닙니다.**',
+      '어려움을 만들라는 요청을 받으면 세 축을 조금씩 함께 미세요 — 한 축만 크게 깎는 건 거의 항상 나쁜 답입니다.',
+      '',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**을 씁니다(혹한 생존·카페 경영). 형태만 보고,',
+      '이름은 반드시 위 계약표에 있는 것으로 바꿔 쓰세요.',
+      '');
+    for (const [name, why, ex] of PRESET_PATTERNS) {
+      body.push(`### ${name}`, why, '```json', ex, '```', '');
+    }
+  } else {
+    body.push('## 액션은 이 6가지 형태 중 하나입니다',
+      '액션은 플레이어가 화면 우상단 버튼으로 누릅니다. 누르면 무장(ON)되고 다음 전송에 효과가 적용됩니다.',
+      '`label`은 **반드시 이모지 하나로 시작**하세요 — 버튼에는 그 이모지만 표시됩니다.',
+      '`inject`는 그 턴에 메인 모델에게 전달되는 문장입니다.',
+      '');
+    for (const [name, why, ex] of ACTION_PATTERNS) {
+      body.push(`### ${name}`, why, '```json', ex, '```', '');
+    }
+    body.push('## 필드',
+      '- `mode`: `"oneshot"`(누른 턴에 1회) 또는 `"hold"`(끌 때까지 매 턴)',
+      '- `when`: 사용 조건. 거짓이면 버튼이 잠깁니다(생략하면 항상 가능)',
+      '- `cooldown`: 재사용까지 기다릴 턴 수',
+      '');
+  }
+
+  const BALANCE = { vars: VAR_BALANCE_RULES, presets: PRESET_BALANCE_RULES };
+  const tail = [
+    '## 균형 잡기',
+    ...(BALANCE[tabKey] ?? SCHEMA_BALANCE_RULES),
+    '',
+    `## 지금 이 봇의 ${slice.label} (여기서 출발하세요)`,
+    '```json',
+    JSON.stringify(current, null, 2),
+    '```',
+  ];
+
+  if (tabKey === 'presets' && schema.setup?.ai?.enabled) {
+    // 최초설정이 켜져 있으면 보조 AI가 첫 턴에 값을 다시 정한다. 겹치는 변수는 프리셋이 진 것처럼 보인다.
+    const ov = (schema.setup.ai.vars || []);
+    tail.push('',
+      '## ⚠ 이 봇은 AI 최초설정이 켜져 있습니다',
+      `첫 대화에서 AI가 ${ov.length ? '`' + ov.join('`, `') + '`' : '일부 변수'}를 직접 정합니다. `
+      + '프리셋으로 그 변수를 세팅해도 AI가 덮어씁니다.',
+      '난이도는 **AI가 건드리지 않는 변수**로 만드세요. 위 목록에 없는 것들입니다.');
+  }
+
+  if (tabKey === 'vars') {
+    // 변수는 모든 탭의 전제다. 순서와 "대화를 잇지 말 것"을 여기서 못박지 않으면
+    // 다음 탭에서 AI가 기억에 의존해 표에 없는 변수를 슬쩍 만들어 낸다.
+    tail.push('',
+      '## 이 다음에 할 일 (중요)',
+      '1. 위 JSON을 SimCore 편집기의 **변수 탭**에 가져오기 합니다.',
+      '2. 그 다음 **액션 탭**과 **규칙·이벤트 탭**에서 각각 [내보내기]를 누르세요.',
+      '   → 방금 확정한 변수표가 그 프롬프트에 자동으로 실려 나갑니다.',
+      '3. **이 대화를 이어서 쓰지 말고, 새 대화에 그 프롬프트를 붙여넣으세요.**',
+      '   대화를 이어가면 AI가 기억에 의존해 표에 없는 변수를 슬쩍 만들어 냅니다.');
+  }
+  return [...head, ...body, ...tail].join('\n');
+}
+
+/**
+ * AI가 준 조각에서 이 탭이 받는 키만 골라낸다.
+ * 통째로 갈아끼우는 작업이라 호출부에서 반드시 되돌리기를 준비해야 한다.
+ * @param schema sub 슬라이스(프리셋)에서 나머지 형제 키를 보존하는 데만 쓴다
+ */
+function pickTabFragment(tabKey, frag, schema) {
+  const slice = TAB_SLICES[tabKey];
+  if (!slice) throw new Error(`알 수 없는 탭: ${tabKey}`);
+  // AI가 배열만 던져주는 일이 잦다 — 첫 키에 담아 준다
+  if (Array.isArray(frag)) frag = { [slice.merge ? 'commands' : (slice.sub ?? slice.keys[0])]: frag };
+  if (!frag || typeof frag !== 'object') throw new Error('JSON 객체가 아닙니다');
+
+  // merge 슬라이스: 배정만 얹는다. vars 배열 자체는 절대 갈아끼우지 않는다 —
+  // 여기서 통째로 바꾸면 명령 하나 붙이려다 변수·파생이 통째로 사라진다.
+  if (slice.merge) {
+    const arr = Array.isArray(frag.commands) ? frag.commands : null;
+    if (!arr) throw new Error('"commands" 배열이 없습니다');
+    const byId = {};
+    for (const c of arr) {
+      const id = c && (c.var ?? c.id);
+      const name = c && c.cmd;
+      if (!id || !name) continue;
+      if (!(schema?.vars || []).some((v) => v.id === id)) throw new Error(`'${id}'은 없는 변수입니다`);
+      byId[id] = String(name).trim();
+    }
+    // 목록에서 빠진 변수는 명령을 뗀다 — 그래야 "지워 달라"가 통한다.
+    return {
+      vars: (schema?.vars ?? []).map((v) => {
+        const next = { ...v };
+        if (byId[v.id]) next[slice.merge] = byId[v.id];
+        else delete next[slice.merge];
+        return next;
+      }),
+    };
+  }
+
+  // sub 슬라이스는 한 키만 갈아끼우고 형제(setup.ai 등)는 원문 그대로 둔다.
+  // { presets: [...] }와 { setup: { presets: [...] } } 둘 다 온다.
+  if (slice.sub) {
+    const host = slice.keys[0];
+    const arr = Array.isArray(frag[slice.sub]) ? frag[slice.sub]
+      : Array.isArray(frag[host]?.[slice.sub]) ? frag[host][slice.sub] : null;
+    if (!arr) throw new Error(`"${slice.sub}" 배열이 없습니다`);
+    return { [host]: { ...(schema?.[host] ?? {}), [slice.sub]: arr } };
+  }
+
+  // 스키마를 통째로 준 경우에도 이 탭 몫만 뽑아 쓴다
+  const picked = {};
+  for (const k of slice.keys) if (frag[k] !== undefined) picked[k] = frag[k];
+  if (!Object.keys(picked).length) {
+    throw new Error(`${slice.keys.map((k) => `"${k}"`).join(' 또는 ')} 키가 없습니다`);
+  }
+  return picked;
+}
+
+// 행 이동/삭제 버튼 묶음
+function grip(list, i, rerender) {
+  const move = (d) => {
+    const j = i + d;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    rerender();
+  };
+  return h('span', { class: 'sce-grip' },
+    h('button', { class: 'sce-btn sce-mini', onclick: () => move(-1), title: '위로' }, '▲'),
+    h('button', { class: 'sce-btn sce-mini', onclick: () => move(1), title: '아래로' }, '▼'),
+    h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { list.splice(i, 1); rerender(); }, title: '삭제' }, '✕'),
+  );
+}
+
+function addBtn(label, onclick) {
+  return h('button', { class: 'sce-btn sce-add', onclick }, '+ ' + label);
+}
+
+// 라벨+입력을 한 덩어리로 (줄바꿈 시 함께 이동)
+function pair(label, el, title = '') {
+  return h('span', { class: 'sce-pair', title }, h('label', {}, label), el);
+}
+
+// 변수 타입 변경 시 init을 새 타입으로 변환 + 이전 타입의 잔재 필드 정리
+// (정수→텍스트 전환 후 "init은 문자열이어야 함" 검증 에러가 나던 문제의 근본 수정)
+function changeVarType(v, newType) {
+  v.type = newType;
+  if (newType === 'int' || newType === 'float') {
+    const n = Number(v.init);
+    v.init = isFinite(n) ? (newType === 'int' ? Math.round(n) : n) : 0;
+    delete v.enum; delete v.maxLength; delete v.maxItems; delete v.itemMaxLength;
+  } else if (newType === 'text') {
+    v.init = typeof v.init === 'string' ? v.init : (v.init != null && typeof v.init !== 'object' ? String(v.init) : '');
+    delete v.min; delete v.max; delete v.format; delete v.enum; delete v.maxItems; delete v.itemMaxLength;
+  } else if (newType === 'bool') {
+    v.init = v.init === true;
+    delete v.min; delete v.max; delete v.format; delete v.enum; delete v.maxLength; delete v.maxItems; delete v.itemMaxLength;
+  } else if (newType === 'enum') {
+    v.enum = Array.isArray(v.enum) && v.enum.length ? v.enum : [];
+    v.init = v.enum.includes(v.init) ? v.init : v.enum[0];
+    delete v.min; delete v.max; delete v.format; delete v.maxLength; delete v.maxItems; delete v.itemMaxLength;
+  } else if (newType === 'list') {
+    v.init = Array.isArray(v.init) ? v.init : [];
+    delete v.min; delete v.max; delete v.format; delete v.enum; delete v.maxLength;
+  }
+}
+
+// ── 색 빌더: 팔레트 딸깍 ↔ 수식 문자열 변환 ─────────────────
+const PALETTE = [
+  '#e74c3c', '#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#1abc9c',
+  '#5b8def', '#8b5bef', '#e84393', '#95a5a6',
+];
+const HEX_RE = '#[0-9a-fA-F]{3,8}';
+
+function parseColorSpec(color, varId) {
+  if (!color) return { mode: 'auto' };
+  const s = String(color);
+  let m = s.match(new RegExp("^\\s*'(" + HEX_RE + ")'\\s*$"));
+  if (m) return { mode: 'solid', solid: m[1] };
+  const vid = varId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  m = s.match(new RegExp('^\\s*' + vid + "\\s*<\\s*\\(?([^?]+?)\\)?\\s*\\*\\s*([\\d.]+)\\s*\\?\\s*'(" + HEX_RE + ")'\\s*:\\s*'(" + HEX_RE + ")'\\s*$"));
+  if (m) return { mode: 'threshold', kind: 'pct', value: Math.round(parseFloat(m[2]) * 100),
+    danger: m[3], ok: m[4] };
+  m = s.match(new RegExp('^\\s*' + vid + "\\s*<\\s*([\\d.]+)\\s*\\?\\s*'(" + HEX_RE + ")'\\s*:\\s*'(" + HEX_RE + ")'\\s*$"));
+  if (m) return { mode: 'threshold', kind: 'abs', value: parseFloat(m[1]), danger: m[2], ok: m[3] };
+  return { mode: 'expr', raw: s };
+}
+
+function buildColorSpec(spec, varId, maxExpr) {
+  if (spec.mode === 'auto') return undefined;
+  if (spec.mode === 'solid') return "'" + spec.solid + "'";
+  if (spec.mode === 'threshold') {
+    if (spec.kind === 'pct') return varId + ' < (' + (maxExpr || 100) + ') * ' + (spec.value / 100) + " ? '" + spec.danger + "' : '" + spec.ok + "'";
+    return varId + ' < ' + spec.value + " ? '" + spec.danger + "' : '" + spec.ok + "'";
+  }
+  return spec.raw;
+}
+
+// 스와치 줄 + 커스텀 색 선택기
+function swatchPicker(current, onPick) {
+  const wrap = h('span', { class: 'sce-swatches' });
+  for (const c of PALETTE) {
+    wrap.appendChild(h('button', {
+      class: 'sce-swatch' + ((current || '').toLowerCase() === c ? ' on' : ''),
+      style: 'background:' + c + ' !important',
+      title: c,
+      onclick: () => onPick(c),
+    }));
+  }
+  const custom = h('input', { type: 'color', title: '직접 고르기' });
+  if (current && /^#[0-9a-fA-F]{6}$/.test(current)) custom.value = current;
+  custom.onchange = () => onPick(custom.value);
+  wrap.appendChild(custom);
+  return wrap;
+}
+
+// 게이지 색 빌더 전체 UI
+// 수식(고급) 모드는 색 문자열만으로는 구분이 안 되므로 (단색/위험 전환 문자열도 유효한 수식)
+// 사용자가 고른 모드를 아이템 객체 기준으로 기억한다 (스키마에는 남지 않음)
+const colorModeOverride = new WeakMap();
+function colorBuilder(it, varId, rerender) {
+  let spec = parseColorSpec(it.color, varId);
+  if (colorModeOverride.get(it) === 'expr' && spec.mode !== 'expr') {
+    spec = { mode: 'expr', raw: it.color ?? '' };
+  }
+  const write = (s) => { it.color = buildColorSpec(s, varId, it.bar?.max); rerender(); };
+  const box = h('div', { class: 'sce-colorbox' });
+  box.appendChild(h('div', { class: 'sce-row' },
+    pair('색', bindSelect(spec.mode, [
+      ['auto', '기본색'], ['solid', '단색'], ['threshold', '위험 전환'], ['expr', '수식 (고급)'],
+    ], (m) => {
+      if (m === 'expr') { colorModeOverride.set(it, 'expr'); rerender(); return; }
+      colorModeOverride.delete(it);
+      if (m === 'auto') write({ mode: 'auto' });
+      else if (m === 'solid') write({ mode: 'solid', solid: spec.solid ?? spec.ok ?? '#5b8def' });
+      else write({ mode: 'threshold', kind: spec.kind ?? 'pct',
+        value: spec.value ?? 30, danger: spec.danger ?? '#c0392b', ok: spec.ok ?? spec.solid ?? '#27ae60' });
+    })),
+  ));
+  if (spec.mode === 'solid') {
+    box.appendChild(h('div', { class: 'sce-row' },
+      swatchPicker(spec.solid, (c) => write({ ...spec, solid: c }))));
+  } else if (spec.mode === 'threshold') {
+    box.appendChild(h('div', { class: 'sce-row' },
+      pair('기준', bindInput(spec.value, (x) => write({ ...spec, value: Number(x) || 0 }), { cls: 'sce-w-s' })),
+      bindSelect(spec.kind, [['pct', '% (최대 대비)'], ['abs', '값 이하']], (k) => write({ ...spec, kind: k })),
+    ));
+    box.appendChild(h('div', { class: 'sce-row' },
+      pair('위험색', swatchPicker(spec.danger, (c) => write({ ...spec, danger: c })))));
+    box.appendChild(h('div', { class: 'sce-row' },
+      pair('평상색', swatchPicker(spec.ok, (c) => write({ ...spec, ok: c })))));
+  } else if (spec.mode === 'expr') {
+    box.appendChild(h('div', { class: 'sce-row' },
+      bindInput(it.color, (x) => { it.color = x || undefined; rerender(); },
+        { cls: 'sce-w-l', ph: "loyalty < 30 ? '#c0392b' : '#27ae60'" })));
+  }
+  return box;
+}
+
+// 효과 행 목록 — 수식 효과 {set, expr} + 아이템 효과 {list, add, remove}
+function effectRows(schema, effects, rerender) {
+  const wrap = h('div', { class: 'sce-sub' });
+  const nonListVars = schema.vars.filter((v) => v.type !== 'list');
+  const listVars = schema.vars.filter((v) => v.type === 'list');
+  const varOpts = nonListVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+  const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+  effects.forEach((ef, i) => {
+    if (ef.list !== undefined) {
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
+        pair('추가', bindInput((ef.add || []).join(', '), (x) => {
+          ef.add = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
+        }, { cls: 'sce-w-m', ph: '회복약' })),
+        pair('제거', bindInput((ef.remove || []).join(', '), (x) => {
+          ef.remove = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
+        }, { cls: 'sce-w-m', ph: '녹슨 검' })),
+        grip(effects, i, rerender),
+      ));
+      return;
+    }
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindSelect(ef.set, varOpts.length ? varOpts : [['', '(변수 없음)']], (v) => { ef.set = v; rerender(); }),
+      h('span', {}, '='),
+      bindInput(ef.expr, (v) => { ef.expr = v; rerender(); }, { cls: 'sce-w-l', ph: '수식 예: gold + 100, loyalty - 5' }),
+      grip(effects, i, rerender),
+    ));
+  });
+  const btnRow = h('div', { class: 'sce-row' });
+  btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+    effects.push({ set: nonListVars[0]?.id ?? '', expr: '' });
+    rerender();
+  } }, '+ 수치 효과'));
+  if (listVars.length) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ list: listVars[0].id, add: [], remove: [] });
+      rerender();
+    } }, '+ 아이템 효과'));
+  }
+  wrap.appendChild(btnRow);
+  return wrap;
+}
+
+function createSchemaEditor(container, initialSchema, { onChange } = {}) {
+  let schema = JSON.parse(JSON.stringify(initialSchema));
+  let activeTab = 'vars';
+  let destroyed = false;
+
+  // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
+  function normalize() {
+    schema.simcore = schema.simcore || '0.1';
+    schema.meta = schema.meta || {};
+    schema.vars = schema.vars || [];
+    schema.derived = schema.derived || [];
+    schema.directives = schema.directives || [];
+    schema.rules = schema.rules || {};
+    schema.rules.onTurn = schema.rules.onTurn || [];
+    schema.rules.events = schema.rules.events || [];
+    schema.rules.randomEvents = schema.rules.randomEvents || { chancePerTurn: 0, table: [] };
+    schema.rules.randomEvents.table = schema.rules.randomEvents.table || [];
+    schema.updater = schema.updater || { model: 'aux', allow: [] };
+    schema.updater.allow = schema.updater.allow || [];
+    schema.promptState = schema.promptState || { position: 'history_end', template: '', includeEvents: true };
+    schema.statusUI = schema.statusUI || { mode: 'auto', groups: [] };
+    schema.statusUI.groups = schema.statusUI.groups || [];
+    schema.actions = schema.actions || [];
+    schema.setup = schema.setup || {};
+    schema.setup.presets = schema.setup.presets || [];
+    schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
+  }
+  normalize();
+
+  const style = h('style', {}, CSS);
+  const root = h('div', { class: 'sce' });
+  container.appendChild(style);
+  container.appendChild(root);
+
+  const TABS = [
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
+    ['actions', '액션'], ['setup', '새 시작'], ['ai', 'AI 설정'],
+    ['diag', '🔬 진단'], ['json', 'JSON'],
+  ];
+
+  function emit() {
+    if (onChange) onChange(JSON.parse(JSON.stringify(schema)));
+  }
+
+  function rerender() {
+    if (destroyed) return;
+    normalize();
+    emit();
+    render();
+  }
+
+  // ── 탭: 변수 ──────────────────────────────────────────────
+  function tabVars() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('vars'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '상태창에 들어갈 항목들. 행 추가로 자유롭게 — 타입에 따라 AI 갱신 방식이 달라진다 (숫자=증감, 텍스트=재작성, 선택지=교체).'));
+    schema.vars.forEach((v, i) => {
+      const rows = [
+        h('div', { class: 'sce-row' },
+          bindInput(v.id, (x) => { v.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: gold)' }),
+          bindInput(v.label, (x) => { v.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 자금)' }),
+          bindSelect(v.type, VAR_TYPES, (x) => { changeVarType(v, x); rerender(); }),
+          grip(schema.vars, i, rerender),
+        ),
+      ];
+      const detail = h('div', { class: 'sce-row' });
+      if (v.type === 'int' || v.type === 'float') {
+        detail.append(
+          pair('시작값', bindInput(v.init, (x) => { v.init = num(x); rerender(); }, { cls: 'sce-w-s' })),
+          pair('최소', bindInput(v.min, (x) => { v.min = numOrNull(x); rerender(); }, { cls: 'sce-w-s', ph: '없음' })),
+          pair('최대', bindInput(v.max, (x) => { v.max = numOrNull(x); rerender(); }, { cls: 'sce-w-s', ph: '없음' })),
+          pair('표시 형식', bindInput(v.format, (x) => { v.format = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '{v}G → 1,000G' }),
+            '상태창 표시용. {v} 자리에 값이 들어감 (예: {v}G, {v}명, {v}개월차). 비우면 숫자만'),
+        );
+      } else if (v.type === 'text') {
+        detail.append(
+          pair('시작값', bindInput(v.init, (x) => { v.init = x; rerender(); }, { cls: 'sce-w-l' })),
+          pair('최대 글자', bindInput(v.maxLength, (x) => { v.maxLength = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '200' })),
+        );
+      } else if (v.type === 'bool') {
+        detail.append(bindCheck(v.init, (x) => { v.init = x; rerender(); }, '시작 시 ON'));
+      } else if (v.type === 'enum') {
+        detail.append(
+          pair('선택지', bindInput((v.enum || []).join(', '), (x) => { v.enum = x.split(',').map((s) => s.trim()).filter(Boolean); rerender(); }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (쉼표 구분)' })),
+          pair('시작값', bindInput(v.init, (x) => { v.init = x; rerender(); }, { cls: 'sce-w-s' })),
+        );
+      } else if (v.type === 'list') {
+        detail.append(
+          pair('시작 아이템', bindInput((Array.isArray(v.init) ? v.init : []).join(', '),
+            (x) => { v.init = x.split(',').map((s) => s.trim()).filter(Boolean); rerender(); },
+            { cls: 'sce-w-l', ph: '빵, 물통 (쉼표 구분, 비워도 됨)' })),
+          pair('최대 개수', bindInput(v.maxItems, (x) => { v.maxItems = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '20' })),
+          pair('아이템 글자수', bindInput(v.itemMaxLength, (x) => { v.itemMaxLength = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '40' })),
+        );
+      }
+      rows.push(detail);
+      rows.push(h('div', { class: 'sce-row' },
+        pair('설명', bindInput(v.desc, (x) => { v.desc = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '(선택) AI에게 알려줄 이 항목의 의미 — 예: 남은 식량을 일수로 표기 (0이면 굶주림)' }),
+          'AI가 이 변수를 언제/어떻게 갱신해야 하는지 알려주는 설명. 빈칸으로 방치되는 변수에 특히 유용'),
+      ));
+      wrap.appendChild(h('div', { class: 'sce-block' }, ...rows));
+    });
+    wrap.appendChild(addBtn('변수 추가', () => {
+      schema.vars.push({ id: 'var' + (schema.vars.length + 1), label: '', type: 'int', init: 0 });
+      rerender();
+    }));
+
+    wrap.appendChild(h('h4', {}, '파생 변수 (자동 계산 — AI도 규칙도 직접 못 바꿈)'));
+    schema.derived.forEach((d, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' }, h('div', { class: 'sce-row' },
+        bindInput(d.id, (x) => { d.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
+        bindInput(d.label, (x) => { d.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
+        h('span', {}, '='),
+        bindInput(d.expr, (x) => { d.expr = x; rerender(); }, { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
+        grip(schema.derived, i, rerender),
+      )));
+    });
+    wrap.appendChild(addBtn('파생 변수 추가', () => { schema.derived.push({ id: 'calc' + (schema.derived.length + 1), expr: '0' }); rerender(); }));
+    return wrap;
+  }
+
+  // ── 탭: 상태창 ────────────────────────────────────────────
+  // 뼈대 덮어쓰기 확인용 — rerender()가 DOM을 새로 만들므로 tabStatus 밖에 둬야 살아남는다
+  let tplArm = null;
+  function tabStatus() {
+    const ui = schema.statusUI;
+    const wrap = h('div');
+    const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+                    ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`])];
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('표시 방식', bindSelect(ui.mode ?? 'auto', [
+        ['auto', '자동 구성 (그룹/항목)'], ['template', '커스텀 HTML 템플릿 (고급)'],
+      ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
+        '자동: 아래 그룹/항목으로 엔진이 구성. 템플릿: HTML을 직접 짜고 {변수id}로 값을 꽂음 — 팝업/특수 레이아웃용'),
+      pair('테마', bindSelect(ui.theme ?? 'clean', Object.keys(THEMES).map((t) => [t, t]), (x) => { ui.theme = x; rerender(); })),
+      bindCheck(ui.collapsible !== false, (x) => { ui.collapsible = x; rerender(); }, '접을 수 있게'),
+    ));
+    if ((ui.mode ?? 'auto') !== 'template') {
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        pair('그룹 배치', bindSelect(ui.layout ?? 'stack', [
+          ['stack', '쌓기 (기본)'], ['tabs', '탭 — 한 번에 한 장'],
+          ['accordion', '접기/펼치기 — 여러 장 동시에'], ['popover', '버튼 팝업 — 눌러야 뜸'],
+        ], (x) => { ui.layout = x === 'stack' ? undefined : x; rerender(); }),
+          '그룹이 여럿일 때 어떻게 보여줄지. 탭·팝업은 그룹이 둘 이상이어야 동작한다 (하나면 그냥 쌓인다).'),
+      ));
+      if (['tabs', 'popover'].includes(ui.layout)) {
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '전환은 CSS만으로 돈다 — 메시지 안의 버튼은 리스가 클릭 정보를 잘라내서 스크립트로는 못 받기 때문. '
+          + '그래서 탭 선택은 새 턴이 와서 최신 메시지가 다시 그려지면 첫 탭으로 돌아간다 (지난 메시지는 그대로 남는다).'));
+      }
+    }
+
+    if (ui.mode === 'template') {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        'AI가 만들어준 결과물을 <style> 포함 통째로 이 칸에 붙여넣어도 됨 — CSS는 자동 분리·스코핑됨. ' +
+        'HTML 안에 {변수id}가 실제 값으로 치환되고, 목록은 {변수id:tags}로 칩 렌더. ' +
+        '팝업(체크박스 토글) 구조 가능. 팁: 팝업형이면 "접을 수 있게" 끄기.'));
+      wrap.appendChild(bindArea(ui.template, (x) => { ui.template = x; rerender(); },
+        '<div class="my-ledger">\n  <b>재정:</b> {gold}G | <b>사기:</b> {morale_grade}\n  <div>{facilities:tags}</div>\n</div>'));
+
+      // 다중 패널 뼈대 — 빈 예제를 주면 결국 변수명을 하나씩 갈아 끼워야 하므로,
+      // 이 봇의 그룹·변수로 채워서 뽑아 준다. 그대로 써도 되고 뜯어고쳐도 된다.
+      // 확인은 패널 자체 UI로 받는다 — 호스트 대화상자(alertConfirm)는 패널이 전체화면일 때
+      // 우리 iframe에 덮여 안 보이고, 샌드박스에서는 네이티브 confirm도 막힐 수 있다.
+      // 그래서 이미 쓴 게 있으면 한 번 더 눌러야 덮어쓴다.
+      const putTpl = (kind) => () => {
+        if (ui.template && ui.template.trim() && tplArm !== kind) { tplArm = kind; rerender(); return; }
+        tplArm = null;
+        ui.template = multiPanelTemplate(schema, kind);
+        rerender();
+      };
+      const tplBtn = (kind, label) => addBtn(tplArm === kind ? `정말 덮어쓸까요? — ${label}` : label, putTpl(kind));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '여러 패널로 나누고 싶으면 아래에서 뼈대를 뽑아 쓰세요 — 이 봇의 그룹·변수가 이미 채워져 나옵니다. '
+        + '탭은 {uid}(이 상태창이 그려진 메시지 번호)를 라디오 id·name에 씁니다. '
+        + '빼면 메시지끼리 탭이 엉켜서 최신 글의 탭을 눌렀는데 맨 위 글이 바뀝니다. '
+        + '그냥 쓰기만 할 거면 표시 방식을 "자동 구성"으로 두고 [그룹 배치]에서 고르는 쪽이 간단합니다.'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        tplBtn('tabs', '탭 뼈대 넣기'),
+        tplBtn('accordion', '접기/펼치기 뼈대'),
+        tplBtn('popover', '버튼 팝업 뼈대'),
+      ));
+
+      // ── 조건부 템플릿: 한 봇에 두 가지 플레이가 있을 때 상태창을 통째로 갈아끼운다 ──
+      ui.templates = ui.templates || [];
+      wrap.appendChild(h('h4', {}, '조건부 템플릿 (한 봇에 여러 판이 있을 때)'));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '조건이 참인 첫 번째 것만 그려진다. 예: 영지 운영이면 A, 왕궁 시종이면 B. '
+        + '각 템플릿의 <style>은 자기 id 껍데기(.sim-tpl-<id>) 안으로 자동 격리되므로, '
+        + '두 템플릿이 똑같은 클래스명을 써도 서로를 덮어쓰지 않는다. '
+        + '위 칸(조건 없는 기본 템플릿)은 어느 조건도 안 맞을 때의 보험으로 남겨두면 좋다.'));
+      ui.templates.forEach((t, i) => {
+        wrap.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('id', bindInput(t.id, (x) => { t.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: 'estate' }),
+              'CSS 격리에 쓰이는 이름 — 영문·숫자·_만'),
+            pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '(비우면 항상 — 맨 뒤에 두세요) mode == "영지"' })),
+            grip(ui.templates, i, rerender),
+          ),
+          bindArea(t.template, (x) => { t.template = x; rerender(); },
+            '<style>.ledger{...}</style>\n<div class="ledger">{gold}G</div>'),
+        ));
+      });
+      wrap.appendChild(addBtn('조건부 템플릿 추가', () => {
+        ui.templates.push({ id: 'tpl' + (ui.templates.length + 1), when: '', template: '' });
+        rerender();
+      }));
+    } else {
+
+    ui.groups.forEach((g, gi) => {
+      const block = h('div', { class: 'sce-block' });
+      block.appendChild(h('div', { class: 'sce-row' },
+        pair('그룹', bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-m', ph: '그룹 이름 (예: 내정)' })),
+        pair('표시', bindSelect(g.visibility ?? 'show', [
+          ['show', '보임'], ['collapsed', '접힘 (펼쳐서 봄)'], ['hidden', '숨김 — 내부관리용'],
+        ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); }),
+          '숨김: 채팅 상태창엔 안 나오고 규칙·AI·패널에서만 관리되는 내부 수치'),
+        pair('표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '(비우면 항상)' }),
+          '조건이 참일 때만 이 그룹이 상태창에 등장. 예: famine / curse > 0'),
+        grip(ui.groups, gi, rerender),
+      ));
+      g.items = g.items || [];
+      const sub = h('div', { class: 'sce-sub' });
+      g.items.forEach((it, ii) => {
+        const row = h('div', { class: 'sce-row' },
+          bindSelect(it.var, allIds.length ? allIds : [['', '(변수 없음)']], (x) => { it.var = x; rerender(); }),
+          bindCheck(!!it.bar, (x) => { if (x) it.bar = it.bar || { max: 100 }; else delete it.bar; rerender(); }, '게이지'),
+          pair('조건', bindInput(it.showWhen, (x) => { it.showWhen = x || undefined; rerender(); },
+            { cls: 'sce-w-m', ph: '(항상)' }),
+            '조건이 참일 때만 이 항목이 표시. 예: famine, hp < max_hp'),
+        );
+        if (it.bar) {
+          row.append(
+            pair('최대', bindInput(it.bar.max, (x) => {
+              it.bar.max = x;
+              // % 기준 위험 전환 색은 최대값을 수식에 품고 있으므로 같이 재생성
+              const spec = parseColorSpec(it.color, it.var);
+              if (spec.mode === 'threshold' && spec.kind === 'pct') {
+                it.color = buildColorSpec(spec, it.var, x);
+              }
+              rerender();
+            }, { cls: 'sce-w-m', ph: '100 또는 수식 (예: max_hp)' })),
+          );
+        }
+        row.appendChild(grip(g.items, ii, rerender));
+        sub.appendChild(row);
+        if (it.bar) sub.appendChild(colorBuilder(it, it.var, rerender));
+      });
+      sub.appendChild(addBtn('항목', () => { g.items.push({ var: schema.vars[0]?.id ?? '' }); rerender(); }));
+      block.appendChild(sub);
+      wrap.appendChild(block);
+    });
+    wrap.appendChild(addBtn('그룹 추가', () => { ui.groups.push({ label: '', items: [] }); rerender(); }));
+
+    // 자동 배치: 아직 상태창에 없는 변수·파생을 한 번에 채워넣기
+    const usedIds = new Set(ui.groups.flatMap((g2) => (g2.items || []).map((it) => it.var)));
+    const missing = [
+      ...schema.vars.filter((v) => !usedIds.has(v.id)),
+      ...schema.derived.filter((d) => !usedIds.has(d.id)).map((d) => ({ ...d, _derived: true })),
+    ];
+    const autoBtn = h('button', { class: 'sce-btn sce-add', onclick: () => {
+      if (!missing.length) return;
+      let target = ui.groups[ui.groups.length - 1];
+      if (!target) { target = { label: '상태', items: [] }; ui.groups.push(target); }
+      target.items = target.items || [];
+      for (const v of missing) {
+        const item = { var: v.id };
+        // 최소·최대가 모두 잡힌 숫자 변수는 게이지 자동 설정
+        if (!v._derived && (v.type === 'int' || v.type === 'float') && v.min != null && v.max != null) {
+          item.bar = { max: v.max };
+        }
+        target.items.push(item);
+      }
+      rerender();
+    } }, missing.length
+      ? `⚡ 빠진 변수 자동 배치 (${missing.length}개 — 마지막 그룹에 추가)`
+      : '⚡ 자동 배치 — 모든 변수가 이미 배치됨');
+    if (!missing.length) { autoBtn.disabled = true; autoBtn.style.opacity = .45; }
+    wrap.appendChild(autoBtn);
+    } // end auto mode
+
+    wrap.appendChild(h('h4', {}, 'CSS 레시피 — 딸깍하면 아래 커스텀 CSS에 채워짐 (이어서 수정 가능)'));
+    const RECIPES = [
+      ['양피지 장부', `.sim-status { background:#f3ead3; border:1px solid #b09b6b; color:#4a3a26; font-family:Georgia,'Nanum Myeongjo',serif; }
+.sim-status summary { color:#6b512f; }
+.sim-group { border-bottom:1px dashed #cbb98d; padding-bottom:6px; }
+.sim-group-label { color:#8a6d45; letter-spacing:.08em; }
+.sim-label { color:#6b5638; opacity:1; }
+.sim-value { color:#9c2f21; font-weight:700; }
+.sim-badge, .sim-tag { background:#45351d; color:#f0e6cf; border:none; }
+.sim-bar { background:#ddd0ae; }
+.sim-bar-fill { background:#9c2f21; }
+.sim-action { border-color:#8a6d45; color:#6b512f; }
+.sim-log { color:#7a6a4c; }`],
+      ['한밤 유리', `.sim-status { background:rgba(20,28,48,.75); border:1px solid rgba(120,160,255,.25); border-radius:16px; backdrop-filter:blur(6px); box-shadow:0 8px 24px rgba(0,0,0,.35); }
+.sim-status summary { color:#9db8e8; }
+.sim-group { background:rgba(91,141,239,.07); border-radius:10px; padding:6px 8px; }
+.sim-badge, .sim-tag { background:rgba(91,141,239,.18); border:1px solid rgba(91,141,239,.3); }
+.sim-bar { background:rgba(91,141,239,.15); }
+.sim-bar-fill { background:linear-gradient(90deg,#5b8def,#9d6bef); }`],
+      ['로얄 골드', `.sim-status { background:#151310; border:1px solid #8a6d3b; color:#e8ddc4; }
+.sim-status summary { color:#d4af37; letter-spacing:.06em; }
+.sim-group-label { color:#d4af37; border-bottom:1px solid #3a3325; }
+.sim-value { color:#f1e3b8; }
+.sim-badge, .sim-tag { background:#2a2418; color:#d4af37; border:1px solid #8a6d3b66; }
+.sim-bar { background:#2a2418; }
+.sim-bar-fill { background:linear-gradient(90deg,#8a6d3b,#d4af37); }
+.sim-action { border-color:#8a6d3b; color:#d4af37; }`],
+      ['벚꽃', `.sim-status { background:#fff5f7; border:1px solid #f3c1cf; color:#5c4046; }
+.sim-status summary { color:#d16a8a; }
+.sim-group-label { color:#c25c7d; }
+.sim-value { color:#b03a5e; font-weight:600; }
+.sim-badge, .sim-tag { background:#fbe3ea; color:#a34565; border:1px solid #f3c1cf; }
+.sim-bar { background:#f8dde5; }
+.sim-bar-fill { background:linear-gradient(90deg,#f199b4,#d16a8a); }`],
+      ['픽셀 레트로', `.sim-status { background:#0b1020; border:2px solid #4a5aef; border-radius:0; color:#cdd6ff; font-family:'Galmuri11','DungGeunMo',monospace; }
+.sim-status summary { color:#7f8cff; }
+.sim-group-label { color:#ffd166; }
+.sim-bar { background:#1c2440; border-radius:0; height:10px; border:1px solid #4a5aef55; }
+.sim-bar-fill { border-radius:0; background:#4ade80; }
+.sim-badge, .sim-tag { border-radius:0; background:#1c2440; border:1px solid #4a5aef88; }
+.sim-action { border-radius:0; }`],
+    ];
+    const recipeRow = h('div', { class: 'sce-row' });
+    for (const [name, css] of RECIPES) {
+      recipeRow.appendChild(h('button', { class: 'sce-btn', onclick: () => { ui.customCSS = css; rerender(); } }, name));
+    }
+    recipeRow.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => { ui.customCSS = undefined; rerender(); } }, 'CSS 지우기'));
+    wrap.appendChild(recipeRow);
+
+    // 직접 CSS를 짜는 대신, 규격서를 통째로 복사해 외부 AI에 맡기는 경로.
+    copyWidget('📋 AI에게 요청할 CSS 규격 복사',
+      '원하는 디자인이 레시피에 없으면 — 아래 버튼으로 규격서를 복사해서 아무 AI 사이트에 붙여넣고 '
+      + '"이런 분위기로 만들어줘"라고만 하세요. 받아온 CSS를 아래 칸에 넣으면 끝입니다.',
+      () => buildCssSpecPrompt(schema),
+    ).mount(wrap);
+
+    wrap.appendChild(h('h4', {}, '커스텀 CSS (자동으로 상태창 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
+    wrap.appendChild(bindArea(ui.customCSS, (x) => { ui.customCSS = x || undefined; rerender(); },
+      '.sim-status { border-color: gold; }\n.sim-bar-fill { background: crimson; }'));
+
+    // 미리보기
+    wrap.appendChild(h('h4', {}, '미리보기 (시작값 기준)'));
+    const pv = h('div', { class: 'sce-preview' });
+    try {
+      const v = validateSchema(schema);
+      if (v.ok) {
+        // uid는 메시지 번호와 겹치지 않는 값으로 — 미리보기와 채팅의 탭이 서로를 건드리면 안 된다
+        pv.innerHTML = renderStatusHtml(schema, engine.initState(schema), null,
+          (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
+          { includeStyle: true, uid: 'pv' });
+      } else {
+        pv.textContent = '스키마 오류를 먼저 해결하면 미리보기가 표시됩니다';
+        pv.className += ' sce-warn';
+      }
+    } catch (e) {
+      pv.textContent = '미리보기 실패: ' + e.message;
+    }
+    wrap.appendChild(pv);
+    return wrap;
+  }
+
+  // ── 탭: 규칙·이벤트 ───────────────────────────────────────
+  // ── 탭 하나만 떼어 AI에게 맡기는 도구 (내보내기 → 붙여넣기 → 되돌리기) ──
+  let tabUndo = null; // { tabKey, label, before } — 통째로 갈아끼우므로 한 단계 되돌리기가 필수
+  let tabAiMsg = null; // { tabKey, text } — rerender를 건너뛰고 살아남아야 하는 가져오기 결과 안내
+
+  // 검증 오류 경로 → 그 오류가 속한 탭. 변수를 갈아끼웠을 때 어디를 고쳐야 하는지 알려준다.
+  const PATH_TABS = [
+    [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
+    [/^\$\.actions\b/, '액션', true],
+    [/^\$\.(statusUI|promptState)\b/, '상태창', false],
+    [/^\$\.updater\b/, 'AI 설정', false],
+    [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
+    [/^\$\.setup\b/, '새 시작', false],
+  ];
+
+  // 변수를 갈아끼우면 그 변수를 쓰던 다른 탭이 조용히 깨진다. 검증기에 물어 사라진 이름과 깨진 탭을 뽑는다.
+  function breakageAfterVarImport() {
+    const missing = new Set();
+    const aiReady = new Set(), manual = new Set();
+    for (const e of validateSchema(schema).errors) {
+      if (!/알 수 없는 변수|vars에 없음|정의되지 않음/.test(e.msg)) continue;
+      const m = /'([a-zA-Z_][a-zA-Z0-9_]*)'/.exec(e.msg);
+      if (m) missing.add(m[1]);
+      const hit = PATH_TABS.find(([re]) => re.test(e.path || ''));
+      if (hit) (hit[2] ? aiReady : manual).add(hit[1]);
+    }
+    return { missing: [...missing], aiReady: [...aiReady], manual: [...manual] };
+  }
+
+  function tabAiTools(tabKey) {
+    const slice = TAB_SLICES[tabKey];
+    const wrap = h('div', { class: 'sce-block' });
+    wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+
+    copyWidget(`📤 ${slice.label} 규격 내보내기`,
+      tabKey === 'vars'
+        ? '**가장 먼저 하는 탭입니다.** 변수는 액션·규칙·상태창 전부의 전제라, 여기부터 확정해야 나머지 탭이 '
+          + '"이 변수만 써라"는 계약을 받을 수 있습니다. 순서를 건너뛰면 가져오기에서 오류가 수백 건 터집니다.'
+        : '이 탭 몫만 떼어내 AI에게 맡깁니다. **이미 정의된 변수 목록이 함께 나가서** 없는 변수를 지어내지 못하고, '
+          + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
+      () => buildTabExportPrompt(schema, tabKey),
+    ).mount(wrap);
+
+    const note = h('div', { class: 'sce-hint' },
+      (tabAiMsg && tabAiMsg.tabKey === tabKey) ? tabAiMsg.text
+        : 'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
+    if (tabAiMsg && tabAiMsg.tabKey === tabKey && tabAiMsg.warn) note.className += ' sce-warn';
+    const area = h('textarea', { style: 'height:130px', placeholder: `{ "${slice.keys[0]}": [ ... ] }` });
+    const row = h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn', onclick: () => {
+        const raw = String(area.value).trim();
+        if (!raw) { note.textContent = '붙여넣은 내용이 없습니다.'; return; }
+        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+        let frag;
+        try { frag = JSON.parse(fenced ? fenced[1] : raw); }
+        catch (e) { note.textContent = `JSON 파싱 실패 — ${e.message}`; return; }
+        let picked;
+        try { picked = pickTabFragment(tabKey, frag, schema); }
+        catch (e) { note.textContent = `가져오기 실패 — ${e.message}`; return; }
+        const beforeCounts = tabItemCounts(schema, tabKey);
+        tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
+        Object.assign(schema, JSON.parse(JSON.stringify(picked)));
+        normalize();
+        const afterCounts = tabItemCounts(schema, tabKey);
+        const counts = afterCounts.map(([p, n]) => `${p} ${n}개`).join(', ');
+        let text = `✓ 가져왔습니다${counts ? ` — ${counts}` : ''}.`;
+        let warn = false;
+
+        // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
+        const lost = afterCounts
+          .map(([p, n], i) => [p, beforeCounts[i]?.[1] ?? 0, n])
+          .filter(([, was, now]) => was >= 4 && now < was * 0.6);
+        if (lost.length) {
+          warn = true;
+          text = `⚠ 가져왔지만 항목이 크게 줄었습니다 — `
+            + lost.map(([p, was, now]) => `${p} ${was}개 → ${now}개`).join(', ')
+            + '. AI가 고친 것만 돌려준 것 같습니다. 의도한 게 아니면 [↩ 되돌리기]를 누르고, '
+            + 'AI에게 "손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.';
+        } else if (tabKey === 'vars') {
+          const b = breakageAfterVarImport();
+          if (b.missing.length) {
+            warn = true;
+            text += ` 다만 다른 탭이 쓰던 변수 ${b.missing.length}개가 사라졌습니다 (${b.missing.join(', ')}).`;
+            if (b.aiReady.length) text += ` ${b.aiReady.join('·')} 탭은 [내보내기]로 다시 만들면 됩니다.`;
+            if (b.manual.length) text += ` ${b.manual.join('·')} 탭은 직접 고쳐야 합니다.`;
+          } else {
+            text += ' 이제 액션 탭과 규칙·이벤트 탭에서 내보내기를 하면 이 변수표가 함께 나갑니다.';
+          }
+        }
+        tabAiMsg = { tabKey, text, warn };
+        rerender(); // 아래 검증 리포트가 바로 갱신된다 — 오류가 있으면 [②]로 AI에게 돌려주면 된다
+      } }, '📥 가져오기'),
+    );
+    if (tabUndo && tabUndo.tabKey === tabKey) {
+      row.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => {
+        schema = tabUndo.before;
+        tabUndo = null;
+        tabAiMsg = { tabKey, text: '↩ 가져오기 전으로 되돌렸습니다.', warn: false };
+        rerender();
+      } }, '↩ 가져오기 되돌리기'));
+    }
+    wrap.appendChild(note);
+    wrap.appendChild(area);
+    wrap.appendChild(row);
+    return wrap;
+  }
+
+  function tabRules() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('rules'));
+    wrap.appendChild(h('h4', {}, '매 턴 자동 처리 (수입·소비 같은 정기 틱)'));
+    wrap.appendChild(effectRows(schema, schema.rules.onTurn, rerender));
+
+    wrap.appendChild(h('h4', {}, '상태 지시문 — 조건을 만족하는 동안 매 턴 AI에게 전달'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '이벤트(발동 순간 1회 통지)와 달리, 조건이 참인 동안 계속 주입되는 지시/정보. ' +
+      '예: 호감도 30 미만이면 "차갑게 대하라", 허기 20 이하면 "매우 배가 고픈 상태다". {변수id}로 값 삽입 가능.'));
+    schema.directives.forEach((d, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(d.id, (x) => { d.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '지시문id' }),
+          pair('조건', bindInput(d.when, (x) => { d.when = x; rerender(); }, { cls: 'sce-w-l', ph: 'affection < 30 / hunger <= 20' })),
+          grip(schema.directives, i, rerender),
+        ),
+        bindArea(d.text, (x) => { d.text = x; rerender(); },
+          '예: {{char}}는 아직 마음을 열지 않았다. 차갑고 퉁명스럽게 대하라. (현재 호감도 {affection})'),
+      ));
+    });
+    wrap.appendChild(addBtn('상태 지시문', () => {
+      schema.directives.push({ id: 'directive' + (schema.directives.length + 1), when: '', text: '' });
+      rerender();
+    }));
+
+    wrap.appendChild(h('h4', {}, '조건 이벤트 (조건을 만족하면 자동 발동)'));
+    schema.rules.events.forEach((ev, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '이벤트id' }),
+          pair('조건', bindInput(ev.when, (x) => { ev.when = x; rerender(); }, { cls: 'sce-w-l', ph: 'food <= 0 and not famine' })),
+          bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
+          grip(schema.rules.events, i, rerender),
+        ),
+        effectRows(schema, ev.effects = ev.effects || [], rerender),
+        h('div', { class: 'sce-row' },
+          pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '다음 턴에 AI에게 전달될 서술 (예: 기근이 시작되었다...)' })),
+        ),
+      ));
+    });
+    wrap.appendChild(addBtn('조건 이벤트', () => { schema.rules.events.push({ id: 'event' + (schema.rules.events.length + 1), when: '', effects: [] }); rerender(); }));
+
+    const re = schema.rules.randomEvents;
+    wrap.appendChild(h('h4', {}, '랜덤 이벤트'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('턴당 발동 확률', bindInput(Math.round((re.chancePerTurn ?? 0) * 100), (x) => { re.chancePerTurn = Math.max(0, Math.min(100, num(x))) / 100; rerender(); }, { cls: 'sce-w-s' })),
+      h('span', {}, '%'),
+    ));
+    re.table.forEach((ev, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '이벤트id' }),
+          pair('가중치', bindInput(ev.weight ?? 1, (x) => { ev.weight = num(x) || 1; rerender(); }, { cls: 'sce-w-s' })),
+          pair('쿨다운', bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '턴' })),
+          grip(re.table, i, rerender),
+        ),
+        h('div', { class: 'sce-row' },
+          pair('조건', bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+        ),
+        effectRows(schema, ev.effects = ev.effects || [], rerender),
+        h('div', { class: 'sce-row' },
+          pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '산적이 상단을 습격했다...' })),
+        ),
+      ));
+    });
+    wrap.appendChild(addBtn('랜덤 이벤트', () => { re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 }); rerender(); }));
+    return wrap;
+  }
+
+  // ── 탭: 명령 ──────────────────────────────────────────────
+  // 상태는 보조 모델이 알아서 갱신한다. 여기서 여는 건 **그게 틀렸을 때 유저가 고치는 통로**다.
+  // 명령 이름은 제작자가 정하므로, 유저가 그걸 볼 자리(상태창 {commands})까지 이 탭이 안내한다.
+  function tabCommands() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('commands'));
+
+    const withCmd = schema.vars.filter((v) => v.cmd);
+    const free = schema.vars.filter((v) => !v.cmd);
+
+    wrap.appendChild(h('h4', {}, `채팅 명령 (${withCmd.length}개)`));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '유저가 채팅 입력창에 치는 한 줄. 변수에 이름을 붙이면 그 이름의 명령이 생긴다 — '
+      + '안 붙이면 그 변수엔 명령이 없다. 문법은 적을 필요가 없다, 변수 타입이 정한다. '
+      + '공백·"/"·"-"는 이름에 못 쓰고 겹쳐도 안 된다. 파생 변수에는 못 단다(계산 결과라서).'));
+
+    if (!withCmd.length) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+        '아직 하나도 없습니다 — 이 봇에는 채팅 명령이 없는 상태입니다. '
+        + '틀리면 매일 복리로 어긋나는 것(지속 수입·계약·봉급)부터 하나 열어 두시길 권합니다.'));
+    }
+
+    for (const v of withCmd) {
+      const spec = engine.commandSpecs(schema).find((s) => s.id === v.id);
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          h('span', { class: 'sce-w-m' }, `${v.label ?? v.id} (${v.type})`),
+          h('span', {}, '/'),
+          bindInput(v.cmd, (x) => {
+            const t = String(x).trim();
+            if (t) v.cmd = t; else delete v.cmd;
+            rerender();
+          }, { cls: 'sce-w-m', ph: '명령 이름' }),
+          h('button', { class: 'sce-btn sce-mini sce-danger', title: '명령 떼기',
+            onclick: () => { delete v.cmd; rerender(); } }, '✕'),
+        ),
+        h('div', { class: 'sce-hint' },
+          (spec ? spec.usage.map(([syn, why]) => `${syn}  —  ${why}`).join('\n') : '')),
+      ));
+    }
+
+    // 붙일 변수 고르기. 목록형을 위로 올린다 — 계약·봉급처럼 틀리면 복리로 어긋나는 게 여기 있다.
+    const pick = h('select', { class: 'sce-w-l' });
+    pick.appendChild(h('option', { value: '' }, '— 명령을 붙일 변수 —'));
+    for (const v of [...free].sort((a, b) => (a.type === 'list' ? -1 : 0) - (b.type === 'list' ? -1 : 0))) {
+      pick.appendChild(h('option', { value: v.id }, `${v.label ?? v.id} (${v.id} · ${v.type})`));
+    }
+    wrap.appendChild(h('div', { class: 'sce-row' }, pick,
+      h('button', { class: 'sce-btn', onclick: () => {
+        const v = schema.vars.find((x) => x.id === pick.value);
+        if (!v) return;
+        // 라벨을 그대로 이름으로 쓰면 공백이 들어가 검증에서 막힌다 — 첫 낱말만 쓴다.
+        const base = String(v.label ?? v.id).trim().split(/\s+/)[0].replace(/[\/-]/g, '') || v.id;
+        const taken = new Set(schema.vars.filter((x) => x.cmd).map((x) => x.cmd));
+        let name = base, n = 2;
+        while (taken.has(name)) name = base + (n++);
+        v.cmd = name;
+        rerender();
+      } }, '＋ 명령 열기')));
+
+    // 유저가 이걸 볼 자리. 이 안내가 없으면 명령을 만들어 놓고 아무도 모르는 상태가 그대로 남는다.
+    wrap.appendChild(h('h4', {}, '유저가 이 목록을 보는 자리'));
+    const tplMode = (schema.statusUI?.mode === 'template');
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      tplMode
+        ? '상태창 템플릿에서 원하는 자리에 {commands} 를 넣으면 접이식 명령 목록이 그려집니다. '
+          + '안 넣으면 안 나옵니다 — 유저는 무슨 명령이 있는지 알 방법이 없어집니다.'
+        : '지금은 그룹 모드라 상태창 맨 아래에 자동으로 붙습니다. 템플릿 모드로 바꾸면 '
+          + '{commands} 를 넣은 자리에만 나옵니다.'));
+    if (tplMode) {
+      const has = (schema.statusUI.templates || []).some((t) => String(t.template || '').includes('{commands}'))
+        || String(schema.statusUI.template || '').includes('{commands}');
+      if (withCmd.length && !has) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '⚠ 명령을 열어 뒀는데 상태창 어디에도 {commands} 가 없습니다. 지금은 유저가 명령의 존재를 알 수 없습니다.'));
+      }
+    }
+    return wrap;
+  }
+
+  // ── 탭: 액션 ──────────────────────────────────────────────
+  function tabActions() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('actions'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '실행 버튼은 화면 우상단에 뜬다 (메시지 안의 버튼은 리스가 클릭을 넘겨주지 않아 동작하지 않는다). '
+      + '그 버튼 칸에는 글리프가 하나만 들어가므로 라벨을 이모지로 시작하면 알아보기 좋다 — 예: 🔥 화로 최대. '
+      + '상태창에는 글리프와 라벨을 짝지은 범례가 나온다. 누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용.'));
+    schema.actions.forEach((a, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
+          bindInput(a.label, (x) => { a.label = x; rerender(); }, { cls: 'sce-w-m', ph: '버튼 이름' }),
+          bindSelect(a.mode ?? 'oneshot', [['oneshot', '1회성'], ['hold', '지속형']], (x) => { a.mode = x; rerender(); }),
+          pair('쿨다운', bindInput(a.cooldown, (x) => { a.cooldown = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '턴' })),
+          grip(schema.actions, i, rerender),
+        ),
+        h('div', { class: 'sce-row' },
+          pair('사용 조건', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' })),
+        ),
+        h('div', { class: 'sce-row' },
+          pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
+        ),
+        effectRows(schema, a.effects = a.effects || [], rerender),
+      ));
+    });
+    wrap.appendChild(addBtn('액션 추가', () => { schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] }); rerender(); }));
+    return wrap;
+  }
+
+  // ── 탭: 새 시작 ───────────────────────────────────────────
+  function tabSetup() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('presets'));
+    wrap.appendChild(h('h4', {}, '시작 프리셋 (플레이어가 고르는 난이도/배경 세트)'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '새 채팅을 시작할 때 패널에서 한 번 누르는 버튼. 여기 적은 변수만 그 값으로 세팅되고 나머지는 시작값 그대로 간다. '
+      + '값만 쓸 수 있고 수식은 안 된다. 난이도 이름을 붙였다면 [🔬 진단]에서 실제로 굴려 순서가 맞는지 확인할 것.'));
+    schema.setup.presets.forEach((p, i) => {
+      const block = h('div', { class: 'sce-block' });
+      block.appendChild(h('div', { class: 'sce-row' },
+        bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
+        bindInput(p.label, (x) => { p.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
+        grip(schema.setup.presets, i, rerender),
+      ));
+      p.set = p.set || {};
+      const entries = Object.entries(p.set);
+      const sub = h('div', { class: 'sce-sub' });
+      entries.forEach(([id, val], ei) => {
+        sub.appendChild(h('div', { class: 'sce-row' },
+          bindSelect(id, schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]), (nid) => {
+            delete p.set[id]; p.set[nid] = val; rerender();
+          }),
+          h('span', {}, '='),
+          bindInput(typeof val === 'string' ? val : JSON.stringify(val), (x) => {
+            p.set[id] = smartVal(schema, id, x); rerender();
+          }, { cls: 'sce-w-l' }),
+          h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { delete p.set[id]; rerender(); } }, '✕'),
+        ));
+      });
+      sub.appendChild(addBtn('시작값', () => {
+        const unused = schema.vars.find((v) => !(v.id in p.set));
+        if (unused) { p.set[unused.id] = unused.init ?? 0; rerender(); }
+      }));
+      block.appendChild(sub);
+      wrap.appendChild(block);
+    });
+    wrap.appendChild(addBtn('프리셋 추가', () => { schema.setup.presets.push({ id: 'preset' + (schema.setup.presets.length + 1), label: '', set: {} }); rerender(); }));
+
+    const ai = schema.setup.ai;
+    wrap.appendChild(h('h4', {}, 'AI 최초설정 (세션 0 — 첫 대화로 시작 상황을 정함)'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindCheck(ai.enabled, (x) => { ai.enabled = x; rerender(); }, '사용'),
+    ));
+    if (ai.enabled) {
+      ai.vars = ai.vars || [];
+      wrap.appendChild(h('div', { class: 'sce-hint' }, 'AI가 정할 수 있는 변수 선택:'));
+      const chips = h('div', { class: 'sce-chips' });
+      for (const v of schema.vars) {
+        chips.appendChild(bindCheck(ai.vars.includes(v.id), (on) => {
+          if (on && !ai.vars.includes(v.id)) ai.vars.push(v.id);
+          if (!on) ai.vars = ai.vars.filter((x) => x !== v.id);
+          rerender();
+        }, v.label ?? v.id));
+      }
+      wrap.appendChild(chips);
+      wrap.appendChild(h('h4', {}, '설정 대화 중 메인 AI에게 줄 지침'));
+      wrap.appendChild(bindArea(ai.instruction, (x) => { ai.instruction = x || undefined; rerender(); },
+        '[최초 설정 진행 중] 유저와 함께 시작 상황을 정하는 대화를 하라...'));
+      wrap.appendChild(h('h4', {}, '값 결정 가이드 (보조 AI용)'));
+      wrap.appendChild(bindArea(ai.guide, (x) => { ai.guide = x || undefined; rerender(); },
+        '유저가 명시한 값은 그대로, 나머지는 배경에 어울리게 정하라.'));
+    }
+    return wrap;
+  }
+
+  // ── 탭: AI 설정 (프롬프트 + 보조 모델) ────────────────────
+  function tabAi() {
+    const wrap = h('div');
+    const ps = schema.promptState;
+    wrap.appendChild(h('h4', {}, 'AI에게 매 턴 보낼 상태 요약 (자리표시자 {변수id})'));
+    wrap.appendChild(bindArea(ps.template, (x) => { ps.template = x; rerender(); },
+      '[영지 현황 — {turn}개월차]\\n자금 {gold}G | 식량 {food} ...'));
+    wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+      const line = (v) => {
+        const name = v.label || v.id;
+        if (v.format) return name + ' ' + v.format.replace('{v}', '{' + v.id + '}');
+        return name + ' {' + v.id + '}';
+      };
+      ps.template = '[' + (schema.meta?.name ?? '현재 상태') + ']\n'
+        + schema.vars.map(line).join(' | ')
+        + (schema.derived.length ? '\n' + schema.derived.map(line).join(' | ') : '');
+      rerender();
+    } }, '⚡ 변수로 자동 생성 (지금 내용 덮어씀 — 생성 후 다듬기 권장)'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindCheck(ps.includeEvents !== false, (x) => { ps.includeEvents = x; rerender(); }, '이벤트 통지 포함'),
+      bindCheck(ps.eventPriority !== false, (x) => { ps.eventPriority = x ? undefined : false; rerender(); },
+        '이벤트 우선 규칙 붙이기'),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '이벤트가 발동한 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙이 자동으로 붙는다 — '
+      + '서사가 이벤트를 무시해 수치와 어긋나는 걸 막는다. 아래에 직접 쓰면 그 문구로 대체된다.'));
+    wrap.appendChild(bindArea(typeof ps.eventPriority === 'string' ? ps.eventPriority : '',
+      (x) => { ps.eventPriority = x.trim() ? x : undefined; rerender(); },
+      '(비우면 기본 문구 사용)'));
+    wrap.appendChild(h('h4', {}, '메인 AI 지침 (비우면 기본: "수치는 시스템이 관리, 서사에 집중")'));
+    wrap.appendChild(bindArea(ps.systemGuide, (x) => { ps.systemGuide = x || undefined; rerender(); }, ''));
+
+    wrap.appendChild(h('h4', {}, '보조 AI에게 함께 보낼 최근 대화'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindSelect(String(schema.updater.contextTurns ?? 1),
+        [['1', '1턴 — 이번 턴만 (기본, 가장 저렴)'], ['2', '2턴'], ['3', '3턴 — 권장'], ['4', '4턴'], ['5', '5턴 — 맥락 최대, 토큰 많이 씀']],
+        (x) => { const n = parseInt(x, 10); schema.updater.contextTurns = n > 1 ? n : undefined; rerender(); })));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '앞선 대화를 같이 보내면 "아까 준 선물" 같은 맥락을 보조 AI가 이해해 판단이 정확해진다. '
+      + '다만 턴마다 토큰을 더 쓰고, 이미 반영한 변화를 다시 셀 위험도 조금 생긴다 (그러지 말라는 지시는 자동으로 붙는다).'));
+
+    wrap.appendChild(h('h4', {}, '보조 AI가 조정할 수 있는 변수와 한도'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '숫자형은 턴당 최대 증감폭, 텍스트는 최대 글자수. 목록에 없는 변수는 AI가 절대 못 건드림.'));
+    const allow = schema.updater.allow;
+    allow.forEach((a, i) => {
+      const def = schema.vars.find((v) => v.id === a.id);
+      const row = h('div', { class: 'sce-row' },
+        bindSelect(a.id, schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]), (x) => { a.id = x; rerender(); }),
+      );
+      if (def && (def.type === 'int' || def.type === 'float')) {
+        row.append(
+          pair('증가 한도', bindInput(a.maxGain ?? a.maxDelta, (x) => {
+            const v2 = numOrNull(x);
+            a.maxGain = v2 ?? undefined;
+            if (a.maxLoss === undefined && a.maxDelta != null) a.maxLoss = a.maxDelta;
+            delete a.maxDelta;
+            rerender();
+          }, { cls: 'sce-w-s', ph: '무제한' }),
+            '보조 AI가 한 턴에 올릴 수 있는 최대치 — +5천만을 불러도 이 값까지만 적용'),
+          pair('감소 한도', bindInput(a.maxLoss ?? a.maxDelta, (x) => {
+            const v2 = numOrNull(x);
+            a.maxLoss = v2 ?? undefined;
+            if (a.maxGain === undefined && a.maxDelta != null) a.maxGain = a.maxDelta;
+            delete a.maxDelta;
+            rerender();
+          }, { cls: 'sce-w-s', ph: '무제한' }),
+            '한 턴에 잃을 수 있는 최대치'),
+        );
+      } else if (def && def.type === 'text') {
+        row.append(pair('최대 글자', bindInput(a.maxLength, (x) => { a.maxLength = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '기본 200' }),
+          '비우면 기본 200자. 짧은 항목(장비 이름 등)은 30~50 권장'));
+      }
+      // 등장 낱말(mentions) — 켜면 그 말이 이번 턴 글에 있을 때만 보조 AI에게 열린다.
+      // 켜기만 하고 낱말을 비우면 true(=변수 이름을 낱말로 씀). 인물 호감도는 label이 곧 이름이라 그게 맞다.
+      const onMention = a.mentions != null;
+      row.append(bindCheck(onMention, (on) => {
+        if (on) a.mentions = true; else delete a.mentions;
+        rerender();
+      }, '등장할 때만'));
+      if (onMention) {
+        row.append(pair('낱말', bindInput(a.mentions === true ? '' : [].concat(a.mentions).join(', '),
+          (x) => {
+            const keys = String(x).split(',').map((s) => s.trim()).filter(Boolean);
+            a.mentions = keys.length ? keys : true;
+            rerender();
+          }, { cls: 'sce-w-m', ph: def?.label ? `${def.label} (비우면 이 이름)` : '(비우면 변수 이름)' }),
+          '이번 턴 서사에 이 말이 나왔을 때만 보조 AI가 이 변수를 볼 수 있다. 쉼표로 여러 개. '
+          + '별명이 있으면 같이 적을 것 — 짧은 이름이 긴 이름 안에 들어 있으면 긴 쪽이 이긴다.'));
+      }
+      row.appendChild(grip(allow, i, rerender));
+      wrap.appendChild(h('div', { class: 'sce-block' }, row));
+    });
+    wrap.appendChild(addBtn('허용 변수', () => {
+      const unused = schema.vars.find((v) => !allow.some((a) => a.id === v.id));
+      allow.push({ id: (unused ?? schema.vars[0])?.id ?? '', maxDelta: unused?.type === 'int' ? 100 : undefined });
+      rerender();
+    }));
+    const missingAllow = schema.vars.filter((v) => !allow.some((a) => a.id === v.id));
+    if (missingAllow.length) {
+      wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+        for (const v of missingAllow) {
+          const entry = { id: v.id };
+          if (v.type === 'text') entry.maxLength = v.maxLength;
+          allow.push(entry);
+        }
+        rerender();
+      } }, `⚡ 빠진 변수 모두 추가 (${missingAllow.length}개 — 숫자 한도는 직접 채우는 걸 권장)`));
+    }
+    wrap.appendChild(h('h4', {}, '보조 AI 추가 지시'));
+    wrap.appendChild(bindArea(schema.updater.guide, (x) => { schema.updater.guide = x || undefined; rerender(); },
+      '서사에 명시된 변화만 반영...'));
+    return wrap;
+  }
+
+  // ── 탭: JSON ──────────────────────────────────────────────
+  function tabJson() {
+    const wrap = h('div');
+
+    // ── AI에게 통째로 맡기는 경로 ──
+    wrap.appendChild(h('h4', {}, '① AI에게 스키마 만들게 하기'));
+    let exampleKey = 'business';
+    let withValidator = true;
+    const exSelect = bindSelect(exampleKey,
+      Object.entries(TEMPLATES).filter(([k]) => k !== 'blank').map(([k, t]) => [k, '예제: ' + t.label.split(' (')[0]]),
+      (x) => { exampleKey = x; });
+    const valCheck = bindCheck(withValidator, (x) => { withValidator = x; }, '검증기 원문 첨부 (정확도↑, 길이↑)');
+    copyWidget('📋 AI에게 요청할 스키마 규격 복사',
+      '봇 설정을 AI에게 설명하고 이 규격서를 붙여넣으면 스키마를 통째로 만들어 줍니다. '
+      + '받아온 JSON을 아래 칸에 붙여넣고 [JSON → 편집기 반영]을 누르세요. '
+      + '모델에게 가는 문구를 영어로 쓰게 되어 있어 토큰도 절약됩니다.',
+      () => buildSchemaSpecPrompt(exampleKey, withValidator),
+      [exSelect, valCheck],
+    ).mount(wrap);
+
+    // ── 검증 실패를 되돌려주는 경로 ──
+    wrap.appendChild(h('h4', {}, '② 오류를 AI에게 돌려주기'));
+    const v = validateSchema(schema);
+    copyWidget('📋 검증 결과를 AI에게 돌려주기',
+      v.ok
+        ? `지금 스키마는 유효합니다${v.warnings.length ? ` (경고 ${v.warnings.length}개)` : ''}. 그래도 개선점을 물어보고 싶으면 누르세요.`
+        : `오류 ${v.errors.length}개 — 이 버튼으로 오류 목록과 현재 스키마를 함께 복사해서 AI에게 그대로 주면 고쳐 줍니다. 통과할 때까지 반복하세요.`,
+      () => buildFixPrompt(schema, validateSchema(schema)),
+    ).mount(wrap);
+
+    // ── 원본 편집 ──
+    wrap.appendChild(h('h4', {}, '③ 스키마 원본'));
+    wrap.appendChild(h('div', { class: 'sce-hint' }, '여기 붙여넣고 [반영]하면 편집기에 로드됩니다.'));
+    const area = h('textarea', { id: 'sce-json', style: 'min-height:300px' });
+    area.value = JSON.stringify(schema, null, 2);
+    wrap.appendChild(area);
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn', onclick: () => {
+        // AI가 코드펜스를 붙여 주는 일이 잦다 — 벗겨내고 파싱한다
+        const raw = String(area.value).trim();
+        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const src = fenced ? fenced[1] : raw;
+        try { schema = JSON.parse(src); rerender(); }
+        catch (e) { reportEl.innerHTML = `<div class="sce-err">JSON 파싱 실패: ${escText(e.message)}</div>`; }
+      } }, 'JSON → 편집기 반영'),
+      h('button', { class: 'sce-btn', onclick: () => { area.value = JSON.stringify(schema, null, 2); } }, '편집기 → JSON 갱신'),
+    ));
+    return wrap;
+  }
+
+  // ── 탭: 진단 ──────────────────────────────────────────────
+  // 검증기는 "형태가 맞나"만 본다. 여기서 보는 건 "게임이 되나"다 —
+  // 실제로 N턴 굴려 죽은 이벤트·못 쓰는 액션·안 움직이는 수치를 찾는다.
+  let diagResult = null;   // 마지막 결과 (탭을 옮겨도 유지)
+  let diagPrev = null;     // 직전 회차 — "고쳤는데 왜 또 비슷하지?"에 답하려면 비교가 필요하다
+  let diagTurns = 60, diagRuns = 6;
+
+  const SEV = { high: ['🔴', '반드시 고쳐야 함'], mid: ['🟡', '고치는 게 좋음'], low: ['🔵', '확인만 해보세요'] };
+
+  function tabDiag() {
+    const wrap = h('div');
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '스키마를 실제로 여러 번 굴려 봅니다. 문법 오류가 아니라 **게임이 성립하는지**를 봅니다 — '
+      + '영영 안 뜨는 이벤트, 한 번도 못 누르는 액션, 아무도 안 바꾸는 변수, 눌렀을 때 오히려 손해인 버튼 같은 것들. '
+      + '변수·액션·규칙을 AI에게 맡겼다면 내보내기 전에 꼭 한 번 돌려 보세요.'));
+
+    const turnsIn = bindInput(diagTurns, (x) => { diagTurns = Math.max(5, num(x)); }, { cls: 'sce-w-s' });
+    const runsIn = bindInput(diagRuns, (x) => { diagRuns = Math.max(1, num(x)); }, { cls: 'sce-w-s' });
+    const status = h('div', { class: 'sce-hint' }, diagResult ? '' : '아직 실행하지 않았습니다.');
+    const out = h('div');
+
+    const runBtn = h('button', { class: 'sce-btn sce-add', onclick: () => {
+      status.textContent = '굴리는 중…';
+      status.className = 'sce-hint';
+      // 무거운 작업이라 버튼 눌린 게 먼저 그려지도록 한 틱 넘긴다
+      setTimeout(() => {
+        const t0 = Date.now();
+        const before = diagResult;
+        try { diagResult = diagnose(schema, { turns: diagTurns, runs: diagRuns }); }
+        catch (e) { diagResult = before; status.textContent = `진단 실패 — ${e.message}`; status.className = 'sce-hint sce-warn'; return; }
+        diagResult.stats.ms = Date.now() - t0;
+        // 턴/시드가 같아야 숫자를 나란히 놓고 볼 수 있다
+        diagPrev = (before?.ran && before.stats.turns === diagTurns && before.stats.runs === diagRuns) ? before : null;
+        render();
+      }, 0);
+    } }, '🔬 진단 실행');
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      runBtn, pair('턴 수', turnsIn, '한 판을 몇 턴까지 굴릴지'), pair('시드 수', runsIn, '운 편차를 보려면 여러 번')));
+    wrap.appendChild(status);
+
+    if (diagResult) {
+      const { ran, findings, stats } = diagResult;
+      const line = [];
+      if (stats.loseVar) {
+        line.push(`방치 생존 ${stats.idleSurvive}/${stats.runs}(평균 ${stats.idleLife.toFixed(0)}턴)`);
+        if (stats.playSurvive !== undefined) line.push(`플레이 생존 ${stats.playSurvive}/${stats.runs}(평균 ${stats.playLife.toFixed(0)}턴)`);
+        line.push(`패배 판정: ${stats.loseVar}`);
+        // 수명 평균만 보면 천장에 닿은 봇이 다 똑같아 보인다. 갈리는 폭을 같이 보여준다.
+        if (stats.playSpread != null && stats.playRange) {
+          line.push(`결과 편차 ±${stats.playSpread.toFixed(0)}턴 (${stats.playRange[0]}~${stats.playRange[1]})`);
+        }
+      }
+      if (stats.eventCoverage) line.push(`이벤트 ${stats.eventCoverage[0]}/${stats.eventCoverage[1]}종 발동`);
+      else if (stats.deadEvents) line.push(`안 뜬 이벤트 ${stats.deadEvents}종`);
+      line.push(`${stats.ms}ms`);
+      const late = (stats.lateEvents ?? 0) + (stats.lateActions ?? 0);
+      out.appendChild(h('div', { class: 'sce-block' },
+        h('div', {}, ran
+          ? `🔴 ${stats.high}  🟡 ${stats.mid}  🔵 ${stats.low}   —   ${stats.turns}턴 × ${stats.runs}시드`
+          : '스키마 오류부터 고쳐야 굴려볼 수 있습니다'),
+        h('div', { class: 'sce-hint' }, line.join(' · ')),
+        // 짧은 판에서 진단하면 후반부 콘텐츠가 통째로 "안 뜬 것"이 된다. 그걸 결함으로
+        // 착각하지 않도록, 몇 개가 그런 경우인지 맨 위에서 미리 말해 준다.
+        ...(late ? [h('div', { class: 'sce-hint' },
+          `🔵 ${late}개는 ${stats.turns}턴이 짧아서 못 본 것뿐입니다 — `
+          + `${stats.turns * 2}턴으로 다시 돌리면 사라집니다. 이 봇의 후반부까지 보려면 턴 수를 올리세요.`)] : [])));
+
+      // ── 직전 회차와 비교 ──
+      // "고쳐도 계속 비슷하게 나온다"는 느낌은 대개 착각이다. 실제로 뭐가 없어졌는지 보여준다.
+      const cmp = compareDiagnoses(diagPrev, diagResult);
+      if (cmp) {
+        const sign = (n) => (n > 0 ? `+${n}` : String(n));
+        const box = h('div', { class: 'sce-block' });
+        box.appendChild(h('h4', {}, '📊 직전 진단과 비교'));
+        box.appendChild(h('div', {},
+          `🔴 ${sign(cmp.delta.high)}  🟡 ${sign(cmp.delta.mid)}  🔵 ${sign(cmp.delta.low)}`
+          + (cmp.delta.deadEvents ? `  ·  안 뜬 이벤트 ${sign(cmp.delta.deadEvents)}종` : '')));
+        if (cmp.survive) {
+          box.appendChild(h('div', {},
+            `방치 생존 ${cmp.survive.idle[0]} → ${cmp.survive.idle[1]}`
+            + ` (평균 ${cmp.survive.idleLife[0].toFixed(0)} → ${cmp.survive.idleLife[1].toFixed(0)}턴)`
+            + `  ·  플레이 생존 ${cmp.survive.play[0]} → ${cmp.survive.play[1]}`
+            + ` (평균 ${cmp.survive.playLife[0].toFixed(0)} → ${cmp.survive.playLife[1].toFixed(0)}턴)`));
+        }
+        box.appendChild(h('div', { class: cmp.fixed.length ? 'sce-ok' : 'sce-hint' },
+          `✓ 해결됨 ${cmp.fixed.length}건`
+          + (cmp.fixed.length ? `: ${cmp.fixed.slice(0, 6).map((f) => f.tag + (/'([^']+)'/.exec(f.text)?.[1] ? ` ${/'([^']+)'/.exec(f.text)[1]}` : '')).join(', ')}`
+            + (cmp.fixed.length > 6 ? ` 외 ${cmp.fixed.length - 6}건` : '') : '')));
+        box.appendChild(h('div', { class: cmp.fresh.length ? 'sce-warn' : 'sce-hint' },
+          `${cmp.fresh.length ? '⚠' : '·'} 새로 생김 ${cmp.fresh.length}건`
+          + (cmp.fresh.length ? `: ${cmp.fresh.slice(0, 6).map((f) => f.tag + (/'([^']+)'/.exec(f.text)?.[1] ? ` ${/'([^']+)'/.exec(f.text)[1]}` : '')).join(', ')}` : '')));
+        box.appendChild(h('div', { class: 'sce-hint' },
+          `그대로 남음 ${cmp.stayed.length}건`
+          + (cmp.stayed.length ? ' — 이건 그 탭에서 못 고치는 문제일 수 있습니다. 아래 목록에서 해결 방법이 다른 탭에 있는지 보세요.' : '')));
+        out.appendChild(box);
+      }
+
+      if (ran && !findings.length) {
+        out.appendChild(h('div', { class: 'sce-ok' }, '✓ 걸린 게 없습니다. 이대로 내보내도 좋습니다.'));
+      }
+      for (const sev of ['high', 'mid', 'low']) {
+        const group = findings.filter((f) => f.sev === sev);
+        if (!group.length) continue;
+        const [icon, label] = SEV[sev];
+        out.appendChild(h('h4', {}, `${icon} ${label} (${group.length})`));
+        for (const f of group) {
+          out.appendChild(h('div', { class: 'sce-block' },
+            h('div', { class: 'sce-row' }, h('span', { class: 'sce-tag' }, f.tag)),
+            h('div', {}, f.text)));
+        }
+      }
+
+      // ── 진단 결과를 그대로 AI에게 넘기기 ──
+      // 탭별로 나눠 보내는 게 핵심이다. 한꺼번에 고치라고 하면 변수를 지어내면서 전부 어긋난다.
+      if (ran && findings.length) {
+        out.appendChild(h('h4', {}, '🤖 이 결과로 AI에게 수정 요청하기'));
+        out.appendChild(h('div', { class: 'sce-hint' },
+          '탭마다 따로 보내세요. 그 탭의 변수 계약표·패턴·현재 내용이 문제 목록과 함께 나가고, '
+          + '"손대지 않은 것까지 전부 포함해 한 세트로 달라"는 지시와 현재 항목 개수가 박혀 나갑니다. '
+          + '받은 JSON은 해당 탭의 [가져오기]에 붙여넣으면 됩니다. '
+          + '🔵는 고칠 거리가 아니라 확인 사항이라 보내지 않습니다 — 억지로 고치게 하면 멀쩡한 설계가 망가집니다.'));
+
+        const byTab = {};
+        for (const f of findings) if (f.tab && f.sev !== 'low') (byTab[f.tab] = byTab[f.tab] || []).push(f);
+        let anyBtn = false;
+        for (const key of Object.keys(TAB_SLICES)) {
+          const group = byTab[key];
+          if (!group?.length) continue;
+          anyBtn = true;
+          const hi = group.filter((f) => f.sev === 'high').length;
+          copyWidget(`📤 ${TAB_SLICES[key].label} 수정 요청 복사 (${group.length}건${hi ? `, 🔴 ${hi}` : ''})`,
+            group.map((f) => `· [${f.tag}] ${f.text}`).join('\n'),
+            () => buildTabExportPrompt(schema, key, { findings, stats: diagResult.stats }),
+          ).mount(out);
+        }
+
+        const orphan = findings.filter((f) => !f.tab || !TAB_SLICES[f.tab]);
+        if (orphan.length) {
+          out.appendChild(h('div', { class: 'sce-hint' },
+            `AI 내보내기가 없는 탭이거나 여러 탭에 걸친 지적 ${orphan.length}건은 직접 고쳐야 합니다: `
+            + [...new Set(orphan.map((f) => f.tag))].join(', ')));
+        }
+        if (!anyBtn) out.appendChild(h('div', { class: 'sce-hint' }, '특정 탭으로 넘길 수 있는 지적이 없습니다.'));
+
+        copyWidget('📋 진단 결과 전체를 글로 복사',
+          '어디든 붙여넣을 수 있는 사람이 읽는 형태입니다. 메모하거나 남에게 보여줄 때 쓰세요.',
+          () => [
+            `# ${schema.meta?.name ?? '시뮬레이션'} 진단 (${stats.turns}턴 × ${stats.runs}시드)`,
+            stats.loseVar ? `방치 생존 ${stats.idleSurvive}/${stats.runs}(평균 ${stats.idleLife.toFixed(0)}턴)`
+              + ` · 플레이 생존 ${stats.playSurvive}/${stats.runs}(평균 ${stats.playLife.toFixed(0)}턴)`
+              + (stats.playSpread != null ? ` · 결과 편차 ±${stats.playSpread.toFixed(0)}턴 (${stats.playRange[0]}~${stats.playRange[1]})` : '') : '',
+            stats.eventCoverage ? `이벤트 커버리지 ${stats.eventCoverage[0]}/${stats.eventCoverage[1]}종`
+              + ` (${Math.round(stats.eventCoverage[0] / stats.eventCoverage[1] * 100)}%)` : '',
+            stats.presetLives?.length
+              ? `프리셋 수명 (${stats.presetMode === 'idle' ? '방치 기준' : '플레이 기준'}): `
+                + stats.presetLives.map((p) => `${p.label} ${p.life.toFixed(0)}턴±${p.ci === Infinity ? '?' : p.ci.toFixed(1)}`
+                  + ` 생존 ${p.survive}/${stats.runs}`).join(' · ') : '',
+            (stats.lateEvents ?? 0) + (stats.lateActions ?? 0)
+              ? `🔵 ${(stats.lateEvents ?? 0) + (stats.lateActions ?? 0)}개는 ${stats.turns}턴이 짧아서 못 본 것입니다`
+                + ` (${stats.turns * 2}턴이면 뜹니다)` : '',
+            ...(stats.lossCauses?.length
+              ? ['', '## 붕괴 원인 분포', ...stats.lossCauses.map(([k, n]) => `- ${k} — ${n}회`)] : []),
+            '',
+            ...['high', 'mid', 'low'].flatMap((sev) => {
+              const g = findings.filter((f) => f.sev === sev);
+              if (!g.length) return [];
+              return [`## ${SEV[sev][0]} ${SEV[sev][1]} (${g.length})`,
+                ...g.map((f) => `- [${f.tag}] ${f.text}`), ''];
+            }),
+            ...(stats.actionImpact?.length
+              ? [`## 액션별 기여도 (그 버튼이 있을 때 vs 없을 때 수명 차이, ${stats.impactRuns}시드 짝비교)`,
+                '±는 95% 신뢰구간입니다. 폭이 값보다 크면 시드 운과 구분되지 않으니 고치지 마세요.',
+                ...(stats.impactSaturated
+                  ? [`⚠ ${stats.turns}턴에서는 어느 쪽으로 놀아도 전부 살아남아 이 표가 아무것도 구분하지 못합니다`
+                    + ` — ${stats.turns * 2}턴 이상으로 다시 돌리세요.`] : []),
+                ...stats.actionImpact.map((a) => `- ${a.label}: ${a.delta >= 0 ? '+' : ''}${a.delta.toFixed(1)}턴 (±${a.ci.toFixed(1)})`
+                  + (Math.abs(a.delta) <= a.ci ? ' ← 0과 구분 안 됨' : ''))]
+              : []),
+          ].filter((x) => x !== '').join('\n'),
+        ).mount(out);
+      }
+
+      if (diagResult.stats.actionImpact?.length) {
+        out.appendChild(h('h4', {}, '액션별 기여도 (그 버튼이 있을 때 vs 없을 때 수명 차이)'));
+        out.appendChild(h('div', { class: 'sce-hint' },
+          `나머지 액션은 양쪽 판에서 똑같이 쓰고, 이 버튼의 유무만 다르게 ${diagResult.stats.impactRuns}쌍을 돌린 결과입니다 `
+          + '(같은 시드로 짝지어 굴려 시드 운을 상쇄합니다). +면 있어서 이득, −면 있는 게 손해. '
+          + '±는 95% 신뢰구간 — 이 폭이 값보다 크면 시드 운과 구분되지 않는다는 뜻이니 그 줄은 고치지 마세요.'
+          + (diagResult.stats.actionSkipped?.length
+            ? ` 정책 전환 버튼(${diagResult.stats.actionSkipped.join(', ')})은 언제 누르냐가 전부라 자동 평가에서 제외했습니다.`
+            : '')));
+        if (diagResult.stats.impactSaturated) {
+          out.appendChild(h('div', { class: 'sce-hint' },
+            `⚠ ${diagResult.stats.turns}턴에서는 어느 쪽으로 놀아도 전부 끝까지 살아남아, 이 표가 아무것도 구분하지 못합니다. `
+            + `액션 기여도를 보려면 판이 실제로 끝나는 길이(${diagResult.stats.turns * 2}턴 이상)로 다시 돌리세요.`));
+        }
+        const tbl = h('div', { class: 'sce-block' });
+        for (const it of diagResult.stats.actionImpact) {
+          const noisy = Math.abs(it.delta) <= it.ci;
+          const mark = noisy ? '　'
+            : it.delta > diagResult.stats.turns * 0.05 ? '🟢'
+              : it.delta < -diagResult.stats.turns * 0.05 ? '🔴' : '　';
+          tbl.appendChild(h('div', { class: noisy ? 'sce-hint' : '' },
+            `${mark} ${it.label} — 수명 ${it.delta >= 0 ? '+' : ''}${it.delta.toFixed(1)}턴 ±${it.ci.toFixed(1)}`
+            + (noisy ? ' (시드 운과 구분 안 됨)' : '')
+            + (it.exempt ? ' · 지적 제외됨' : '')));
+        }
+        out.appendChild(tbl);
+      }
+
+      // ── 프리셋이 정말 난이도인가 ──
+      // 라벨은 만드는 사람 머릿속이고, 이 표는 실제로 굴려 본 결과다. 둘이 어긋나는 일이 흔하다.
+      if (diagResult.stats.presetLives?.length) {
+        const ps = diagResult.stats.presetLives;
+        out.appendChild(h('h4', {}, '프리셋별 실제 난이도'));
+        out.appendChild(h('div', { class: 'sce-hint' },
+          `프리셋마다 판을 새로 굴려 몇 턴에 무너지는지 잰 결과입니다 — `
+          + `${diagResult.stats.presetMode === 'idle' ? '아무 액션도 안 썼을 때' : '액션을 무작위로 쓰며 놀았을 때'} 기준, `
+          + `${diagResult.stats.runs}시드를 프리셋 전체에 똑같이 재사용했습니다(짝비교). `
+          + '±는 95% 신뢰구간 — 두 프리셋의 구간이 겹치면 그 둘은 사실상 같은 난이도입니다.'));
+        const tbl = h('div', { class: 'sce-block' });
+        const longest = ps.reduce((a, b) => (a.life >= b.life ? a : b)).life;
+        const shortest = ps.reduce((a, b) => (a.life <= b.life ? a : b)).life;
+        for (const p of ps) {
+          const mark = ps.length < 2 || longest === shortest ? '　'
+            : p.life === longest ? '🟢' : p.life === shortest ? '🔴' : '　';
+          tbl.appendChild(h('div', {},
+            `${mark} ${p.label} — ${p.life.toFixed(0)}턴 ±${p.ci === Infinity ? '?' : p.ci.toFixed(1)}`
+            + ` · 끝까지 생존 ${p.survive}/${diagResult.stats.runs}`));
+        }
+        out.appendChild(tbl);
+      }
+    }
+    wrap.appendChild(out);
+    return wrap;
+  }
+
+  // ── 프레임 ────────────────────────────────────────────────
+  const reportEl = h('div', { class: 'sce-report' });
+
+  function render() {
+    root.innerHTML = '';
+    const tabs = h('div', { class: 'sce-tabs' });
+    for (const [key, label] of TABS) {
+      tabs.appendChild(h('button', {
+        class: 'sce-tab' + (activeTab === key ? ' on' : ''),
+        onclick: () => { activeTab = key; render(); },
+      }, label));
+    }
+    root.appendChild(tabs);
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
+      setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
+    root.appendChild(body);
+
+    // 라이브 검증 리포트
+    const v = validateSchema(schema);
+    let html = '';
+    for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
+    for (const w of v.warnings) html += `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`;
+    if (v.ok) html += `<div class="sce-ok">✓ 스키마 유효${v.warnings.length ? ` (경고 ${v.warnings.length})` : ''}</div>`;
+    reportEl.innerHTML = html;
+    root.appendChild(reportEl);
+  }
+
+  function escText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function num(x) { const n = Number(x); return isFinite(n) ? n : 0; }
+  function numOrNull(x) { if (x === '' || x == null) return null; const n = Number(x); return isFinite(n) ? n : null; }
+  function smartVal(sch, id, raw) {
+    const def = sch.vars.find((v) => v.id === id);
+    if (!def) return raw;
+    if (def.type === 'int' || def.type === 'float') return num(raw);
+    if (def.type === 'bool') return raw === 'true' || raw === '1' || raw === 'ON';
+    return raw;
+  }
+
+  render();
+
+  return {
+    getSchema: () => JSON.parse(JSON.stringify(schema)),
+    setSchema: (s) => { schema = JSON.parse(JSON.stringify(s)); rerender(); },
+    validateNow: () => validateSchema(schema),
+    destroy: () => { destroyed = true; container.innerHTML = ''; },
+  };
+}
+
+module.exports = { createSchemaEditor };
+
+});
+
+SimCore.define("templates", function (require, module, exports) {
+// 내장 스키마 템플릿 — "새 스키마" 시작점. 전부 validateSchema를 통과해야 한다 (테스트로 보장).
+
+const BLANK = {
+  simcore: '0.1',
+  meta: { name: '새 시뮬레이션' },
+  vars: [{ id: 'hp', label: '체력', type: 'int', init: 100, min: 0, max: 100 }],
+  statusUI: { mode: 'auto', groups: [{ label: '상태', items: [{ var: 'hp', bar: { max: 100 } }] }] },
+  promptState: { position: 'history_end', template: '[상태] 체력 {hp}/100', includeEvents: true },
+  updater: { model: 'aux', allow: [{ id: 'hp', maxDelta: 30 }] },
+};
+
+const RPG = {
+  simcore: '0.1',
+  meta: { name: 'RPG 모험 기록' },
+  vars: [
+    { id: 'level', label: '레벨', type: 'int', init: 1, min: 1, format: 'Lv.{v}' },
+    { id: 'exp', label: '경험치', type: 'int', init: 0, min: 0 },
+    { id: 'hp', label: 'HP', type: 'int', init: 100, min: 0 },
+    { id: 'mp', label: 'MP', type: 'int', init: 50, min: 0 },
+    { id: 'gold', label: '골드', type: 'int', init: 50, min: 0, format: '{v}G' },
+    { id: 'weapon', label: '무기', type: 'text', init: '낡은 단검', maxLength: 30 },
+    { id: 'armor', label: '방어구', type: 'text', init: '여행자 옷', maxLength: 30 },
+    { id: 'inventory', label: '소지품', type: 'list', init: ['빵', '물통'], maxItems: 15, itemMaxLength: 30 },
+    { id: 'location', label: '위치', type: 'text', init: '시작 마을', maxLength: 50 },
+    { id: 'condition', label: '상태', type: 'text', init: '건강함', maxLength: 40 },
+  ],
+  derived: [
+    { id: 'max_hp', label: '최대 HP', expr: '80 + level * 20' },
+    { id: 'max_mp', label: '최대 MP', expr: '40 + level * 10' },
+    { id: 'exp_need', label: '필요 경험치', expr: 'level * 100' },
+  ],
+  rules: {
+    onTurn: [],
+    events: [
+      {
+        id: 'levelup',
+        when: 'exp >= exp_need',
+        effects: [
+          { set: 'exp', expr: 'exp - exp_need' },
+          { set: 'level', expr: 'level + 1' },
+          { set: 'hp', expr: 'max_hp' },
+          { set: 'mp', expr: 'max_mp' },
+        ],
+        notify: '레벨 업! 몸에 힘이 차오르며 상처가 아문다.',
+      },
+      { id: 'hp_cap', when: 'hp > max_hp', effects: [{ set: 'hp', expr: 'max_hp' }] },
+      { id: 'mp_cap', when: 'mp > max_mp', effects: [{ set: 'mp', expr: 'max_mp' }] },
+      {
+        id: 'downed',
+        when: 'hp <= 0',
+        effects: [{ set: 'condition', expr: "'빈사 — 즉시 치료가 필요하다'" }],
+        notify: '치명상을 입고 쓰러졌다. 이대로면 위험하다.',
+      },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.15,
+      table: [
+        { id: 'find_item', weight: 2, cooldown: 4,
+          effects: [{ list: 'inventory', add: ['반짝이는 돌'] }],
+          notify: '길가에서 무언가 반짝이는 것을 주웠다.' },
+        { id: 'wanderer', weight: 2, cooldown: 5,
+          notify: '수상한 방랑 상인이 말을 걸어온다.' },
+        { id: 'ambush', weight: 1, cooldown: 6,
+          notify: '적의 기습이다! 전투를 피할 수 없다.' },
+      ],
+    },
+  },
+  directives: [
+    {
+      id: 'badly_hurt',
+      when: 'hp <= max_hp * 0.25',
+      text: '[상태] 심각한 부상 상태다 (HP {hp}/{max_hp}). 모든 행동과 대사에 고통과 쇠약함이 묻어나야 한다.',
+    },
+    {
+      id: 'broke',
+      when: 'gold <= 10',
+      text: '[상태] 수중에 돈이 거의 없다 ({gold}G). 궁핍함이 선택지에 영향을 줘야 한다.',
+    },
+  ],
+  updater: {
+    model: 'aux',
+    allow: [
+      { id: 'hp', maxDelta: 60 },
+      { id: 'mp', maxDelta: 40 },
+      { id: 'exp', maxDelta: 80 },
+      { id: 'gold', maxDelta: 300 },
+      { id: 'weapon', maxLength: 30 },
+      { id: 'armor', maxLength: 30 },
+      { id: 'inventory' },
+      { id: 'location', maxLength: 50 },
+      { id: 'condition', maxLength: 40 },
+    ],
+    guide: '전투·획득·상실이 서사에 명시된 경우만 반영. 경험치는 전투/성취의 규모에 비례하게.',
+  },
+  promptState: {
+    position: 'history_end',
+    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n상태: {condition}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto',
+    theme: 'card',
+    collapsible: true,
+    groups: [
+      { label: '전투', items: [
+        { var: 'hp', bar: { max: 'max_hp' }, color: "hp < max_hp * 0.3 ? '#c0392b' : '#e74c3c'" },
+        { var: 'mp', bar: { max: 'max_mp' }, color: "'#5b8def'" },
+        { var: 'condition' },
+      ]},
+      { label: '성장', items: [
+        { var: 'level' },
+        { var: 'exp', bar: { max: 'exp_need' }, color: "'#8b5bef'" },
+      ]},
+      { label: '소지', items: [
+        { var: 'gold' }, { var: 'weapon' }, { var: 'armor' }, { var: 'inventory' },
+      ]},
+      { label: '위치', items: [{ var: 'location' }] },
+    ],
+    // 가죽 장정 모험일지 — 어두운 갈색 가죽에 황동 각인
+    customCSS: `.sim-status { background:linear-gradient(180deg,#241a12,#1a120c); border:1px solid #6b4f2a; border-radius:6px; color:#e3d5bd; font-family:Georgia,'Nanum Myeongjo',serif; box-shadow:inset 0 0 24px rgba(0,0,0,.5); }
+.sim-status summary { color:#d9a441; letter-spacing:.05em; }
+.sim-group { background:transparent; border-top:1px solid #3b2b19; padding:6px 0 0; border-radius:0; }
+.sim-group-label { color:#c08b3e; letter-spacing:.1em; }
+.sim-label { color:#a08c6c; opacity:1; }
+.sim-value { color:#f3e6cc; font-weight:700; }
+.sim-badge, .sim-tag { background:#332415; color:#e0b76a; border:1px solid #6b4f2a; border-radius:3px; }
+.sim-bar { background:#150e08; border:1px solid #3b2b19; height:10px; border-radius:2px; }
+.sim-action { border-color:#6b4f2a; color:#e0b76a; border-radius:3px; background:#2a1d11; }
+.sim-action.sim-armed { border-color:#d9a441; background:#3b2b19; }
+.sim-log { color:#8a7657; }`,
+  },
+  actions: [
+    {
+      id: 'rest', label: '🏕 휴식', mode: 'oneshot', cooldown: 2,
+      inject: '[플레이어 액션] 모닥불을 피우고 휴식을 취한다.',
+      effects: [
+        { set: 'hp', expr: 'min(hp + round(max_hp * 0.5), max_hp)' },
+        { set: 'mp', expr: 'min(mp + round(max_mp * 0.5), max_mp)' },
+      ],
+    },
+    {
+      id: 'potion', label: '🧪 회복약 사용', mode: 'oneshot', when: "has(inventory, '회복약')",
+      inject: '[플레이어 액션] 회복약을 마신다.',
+      effects: [
+        { list: 'inventory', remove: ['회복약'] },
+        { set: 'hp', expr: 'min(hp + 50, max_hp)' },
+      ],
+    },
+  ],
+  setup: {
+    presets: [
+      { id: 'novice', label: '신참 모험가', set: {} },
+      { id: 'veteran', label: '베테랑 용병', set: {
+        level: 5, gold: 500, weapon: '강철 장검', armor: '사슬 갑옷',
+        inventory: ['회복약', '회복약', '낡은 지도'],
+      } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['level', 'gold', 'weapon', 'armor', 'inventory', 'location', 'condition'],
+      instruction: '[최초 설정 진행 중] 아직 모험이 시작되지 않았다. 유저와 함께 캐릭터의 배경(출신, 직업, 장비, 시작 장소 등)을 정하는 대화를 하라. 충분히 정해지면 시작 장면을 서술하라.',
+      guide: '유저가 명시한 설정은 그대로, 나머지는 배경에 어울리게. 시작 소지품은 3~6개가 적당.',
+    },
+  },
+};
+
+// 영지 시뮬 (설계 문서 8절 예제) — 테스트 픽스처와 공유
+const ESTATE = {
+  simcore: '0.1',
+  meta: { name: '변경백령 시뮬레이션', author: 'Yu' },
+  vars: [
+    { id: 'turn', label: '경과', type: 'int', init: 1, min: 1, format: '{v}개월차' },
+    { id: 'gold', label: '자금', type: 'int', init: 1000, min: 0, format: '{v}G' },
+    { id: 'food', label: '식량', type: 'int', init: 500, min: 0 },
+    { id: 'population', label: '인구', type: 'int', init: 300, min: 0 },
+    { id: 'loyalty', label: '민심', type: 'int', init: 50, min: 0, max: 100 },
+    { id: 'military', label: '병력', type: 'int', init: 50, min: 0 },
+    { id: 'famine', label: '기근', type: 'bool', init: false },
+    { id: 'situation', label: '정세', type: 'text', init: '평온함', maxLength: 80 },
+    { id: 'season', label: '계절', type: 'enum', init: '봄', enum: ['봄', '여름', '가을', '겨울'] },
+  ],
+  derived: [
+    { id: 'net_income', label: '월 수지', expr: 'round(population * 0.3) - military * 2' },
+    { id: 'food_need', label: '식량 소비', expr: 'round(population * 0.2)' },
+  ],
+  rules: {
+    onTurn: [
+      { set: 'turn', expr: 'turn + 1' },
+      { set: 'gold', expr: 'gold + net_income' },
+      { set: 'food', expr: 'food - food_need' },
+    ],
+    events: [
+      {
+        id: 'famine_start',
+        when: 'food <= 0 and not famine',
+        effects: [
+          { set: 'famine', expr: '1' },
+          { set: 'loyalty', expr: 'loyalty - 10' },
+          { set: 'population', expr: 'population - round(population * 0.05)' },
+        ],
+        notify: '식량이 바닥나 기근이 시작되었다. 민심이 떨어지고 주민이 영지를 떠나고 있다.',
+      },
+      {
+        id: 'famine_end',
+        when: 'food > food_need * 2 and famine',
+        effects: [{ set: 'famine', expr: '0' }],
+        notify: '식량 사정이 나아져 기근이 끝났다.',
+      },
+      {
+        id: 'revolt',
+        when: 'loyalty <= 10',
+        effects: [{ set: 'loyalty', expr: '25' }, { set: 'military', expr: 'military - 10' }],
+        notify: '민심이 바닥나 폭동이 일어났다! 진압 과정에서 병력을 잃었다.',
+      },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.25,
+      table: [
+        { id: 'bandits', weight: 3, when: 'military < 150', cooldown: 6,
+          effects: [{ set: 'gold', expr: 'gold - rand(50, 150)' }],
+          notify: '산적 무리가 상단을 습격해 자금을 약탈해 갔다.' },
+        { id: 'merchant', weight: 2, cooldown: 4,
+          notify: '이국의 대상단이 영지를 방문했다. 교역의 기회다.' },
+      ],
+    },
+  },
+  setup: {
+    presets: [
+      { id: 'standard', label: '평범한 변경백', set: {} },
+      { id: 'rich', label: '부유한 상업령', set: { gold: 5000, food: 800, population: 500, military: 30, situation: '상인들로 붐빔' } },
+      { id: 'ruined', label: '몰락한 폐허령', set: { gold: 100, food: 100, population: 80, loyalty: 25, military: 10, situation: '폐허 속 재건 시작' } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['gold', 'food', 'population', 'loyalty', 'military', 'situation', 'season'],
+      instruction: '[최초 설정 진행 중] 아직 영지 시뮬레이션이 시작되지 않았다. 유저와 함께 영지의 배경(지역, 재정, 인구, 병력 등)을 정하는 대화를 하라. 유저의 묘사가 충분하면 확정된 시작 상황을 정리해 서술하라.',
+      guide: '유저가 명시한 값은 그대로, 나머지는 배경 서사에 어울리게 정하라.',
+    },
+  },
+  directives: [
+    {
+      id: 'famine_mood',
+      when: 'famine',
+      text: '[상태] 기근이 계속되고 있다. 거리의 굶주림, 흉흉한 민심, 영주를 향한 원망이 묘사에 배어나야 한다.',
+    },
+    {
+      id: 'low_treasury',
+      when: 'gold < 100',
+      text: '[상태] 금고가 거의 바닥났다 ({gold}G). 지출이 필요한 상황에서 재정 압박이 드러나야 한다.',
+    },
+  ],
+  updater: {
+    model: 'aux',
+    allow: [
+      { id: 'gold', maxDelta: 500 },
+      { id: 'food', maxDelta: 300 },
+      { id: 'population', maxDelta: 50 },
+      { id: 'loyalty', maxDelta: 15 },
+      { id: 'military', maxDelta: 100 },
+      { id: 'situation', maxLength: 80 },
+      { id: 'season' },
+    ],
+    guide: '서사에 명시된 변화만 반영. 정기 수입/소비는 시스템이 따로 계산하니 중복 반영 금지.',
+  },
+  promptState: {
+    position: 'history_end',
+    template: "[영지 현황 — {turn}개월차 · {season}]\n자금 {gold}G (월 수지 {net_income}G) | 식량 {food} (월 소비 {food_need}) | 인구 {population} | 민심 {loyalty}/100 | 병력 {military}\n정세: {situation}{famine ? ' | ⚠ 기근 진행 중' : ''}",
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto',
+    theme: 'clean',
+    collapsible: true,
+    groups: [
+      { label: '내정', items: [
+        { var: 'turn' }, { var: 'gold' },
+        { var: 'food', bar: { max: 'food_need * 5' } },
+        { var: 'loyalty', bar: { max: 100 }, color: "loyalty < 30 ? '#c0392b' : '#27ae60'" },
+        { var: 'population' },
+      ]},
+      { label: '군사', items: [{ var: 'military' }] },
+      { label: '상황', items: [{ var: 'season' }, { var: 'situation' }, { var: 'famine', showWhen: 'famine' }] },
+    ],
+    // 석조 집무실 — 이끼 낀 화강암에 밀랍 인장
+    customCSS: `.sim-status { background:#1b201c; border:1px solid #3d4a3f; border-radius:4px; color:#d2dbd2; }
+.sim-status summary { color:#9cb79f; letter-spacing:.06em; }
+.sim-group { border-left:3px solid #3d4a3f; padding-left:10px; }
+.sim-group-label { color:#a8bda9; font-size:.8em; letter-spacing:.12em; }
+.sim-label { color:#8b9a8c; opacity:1; }
+.sim-value { color:#eef3ee; font-weight:700; }
+.sim-badge, .sim-tag { background:#252c26; color:#b6c9b7; border:1px solid #3d4a3f; border-radius:2px; }
+.sim-bar { background:#141814; height:9px; border-radius:1px; border:1px solid #2c352d; }
+.sim-bar-fill { border-radius:0; }
+.sim-action { border-color:#4a5a4c; color:#b6c9b7; border-radius:2px; }
+.sim-action.sim-armed { border-color:#8c2f22; background:#2a1c19; color:#e0a99f; }
+.sim-log { color:#7b8a7c; }`,
+  },
+  actions: [
+    {
+      id: 'tax', label: '💰 특별 징세', mode: 'oneshot', when: 'turn >= 2', cooldown: 3,
+      inject: '[플레이어 액션] 영주는 이번 달 특별 징세를 단행한다.',
+      effects: [
+        { set: 'gold', expr: 'gold + round(population * 0.5)' },
+        { set: 'loyalty', expr: 'loyalty - 5' },
+      ],
+    },
+    {
+      id: 'patrol', label: '🛡 순찰 강화', mode: 'hold',
+      inject: '[지속 정책] 병사들이 순찰을 강화하고 있다.',
+      effects: [{ set: 'gold', expr: 'gold - 20' }],
+    },
+  ],
+};
+
+// ── 추리 ──────────────────────────────────────────────────────
+// 배울 점: ① 목록(list) 변수를 단서 수집에 쓰는 법  ② 파생 변수로 진척도를 만드는 법
+//          ③ 지시문으로 "스포일러 금지" 같은 연출 규칙을 거는 법
+//          ④ 상태창에는 숨기고 모델에게만 알려주는 변수(truth) 다루는 법
+const MYSTERY = {
+  simcore: '0.1',
+  meta: { name: '추리 — 사건 수사', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'scene', label: '경과', type: 'int', init: 1, min: 1, format: '{v}번째 장면' },
+    { id: 'clues', label: '확보 단서', type: 'list', init: [], maxItems: 12, itemMaxLength: 40,
+      desc: '수사로 확인된 사실만. 추측이나 가설은 넣지 않는다.' },
+    { id: 'suspects', label: '용의선상', type: 'list', init: [], maxItems: 8, itemMaxLength: 24,
+      desc: '현재 의심받는 인물. 혐의가 풀리면 remove로 뺀다.' },
+    { id: 'trust', label: '조력자 신뢰', type: 'int', init: 50, min: 0, max: 100,
+      desc: '주변 인물이 주인공에게 협조하는 정도.' },
+    { id: 'pressure', label: '외압', type: 'int', init: 10, min: 0, max: 100,
+      desc: '시간·윗선의 압박. 100에 닿으면 수사가 무너진다.' },
+    { id: 'place', label: '현재 장소', type: 'text', init: '사건 현장', maxLength: 40 },
+    { id: 'phase', label: '국면', type: 'enum', init: '조사', enum: ['조사', '추궁', '대치', '해결'] },
+    { id: 'truth', label: '진상(비공개)', type: 'text', init: '', maxLength: 200,
+      desc: '범인과 수법. 유저 상태창에는 띄우지 않고 모델에게만 넘긴다.' },
+    { id: 'solved', label: '해결', type: 'bool', init: false },
+  ],
+  // 파생 변수 = 다른 변수로 그때그때 계산되는 읽기 전용 값. 저장되지 않고 set 할 수도 없다.
+  derived: [
+    { id: 'clue_count', label: '단서 수', expr: 'count(clues)' },
+    { id: 'progress', label: '수사 진척', expr: 'clamp(round(clue_count * 100 / 8), 0, 100)' },
+  ],
+  rules: {
+    // onTurn = 매 턴 무조건 실행되는 정기 계산 (시간 경과, 자연 증감)
+    onTurn: [
+      { set: 'scene', expr: 'scene + 1' },
+      { set: 'pressure', expr: 'pressure + 3' },
+    ],
+    // events = 조건(when)이 참이 되는 순간 발동. once:true면 딱 한 번만.
+    // ⚠ notify가 이 이벤트에서 메인 모델로 가는 유일한 통로다. 없으면 모델은 발동 사실을 모른다.
+    events: [
+      { id: 'to_press', once: true, when: 'phase == "조사" and clue_count >= 3',
+        effects: [{ set: 'phase', expr: '"추궁"' }],
+        notify: '단서가 어느 정도 모였다. 이제 관계자를 직접 추궁할 수 있다.' },
+      { id: 'to_face', once: true, when: 'phase == "추궁" and clue_count >= 6',
+        effects: [{ set: 'phase', expr: '"대치"' }],
+        notify: '결정적 정황이 드러났다. 범인과 마주할 때다.' },
+      { id: 'solve', once: true, when: 'clue_count >= 8 and not solved',
+        effects: [{ set: 'phase', expr: '"해결"' }, { set: 'solved', expr: '1' }],
+        notify: '흩어져 있던 단서가 하나로 이어졌다. 진상을 밝힐 수 있다.' },
+      { id: 'forced_end', once: true, when: 'pressure >= 100 and not solved',
+        effects: [{ set: 'trust', expr: 'trust - 20' }],
+        notify: '외압이 한계를 넘었다. 수사가 강제로 덮일 위기다.' },
+    ],
+    // randomEvents = 매 턴 chancePerTurn 확률로 "무언가 일어날지" 먼저 굴리고,
+    // 일어나면 조건을 통과한 항목들 중 weight에 비례해 하나를 뽑는다.
+    // weight 3은 weight 1보다 3배 자주 뽑힌다 (확률이 아니라 상대 비중).
+    randomEvents: {
+      chancePerTurn: 0.3,
+      table: [
+        { id: 'witness', weight: 3, cooldown: 3,
+          effects: [{ set: 'trust', expr: 'trust + 5' }],
+          notify: '뜻밖의 목격자가 나타나 진술을 남겼다.' },
+        { id: 'tamper', weight: 2, when: 'clue_count >= 2', cooldown: 4,
+          effects: [{ set: 'pressure', expr: 'pressure + 12' }],
+          notify: '누군가 증거에 손을 댔다. 수사가 한층 어려워졌다.' },
+        { id: 'anon_tip', weight: 2, cooldown: 5,
+          notify: '익명의 제보가 도착했다. 내용을 확인해야 한다.' },
+        { id: 'reporters', weight: 1, when: 'pressure < 80', cooldown: 6,
+          effects: [{ set: 'pressure', expr: 'pressure + 8' }, { set: 'trust', expr: 'trust - 5' }],
+          notify: '기자들이 몰려들어 사건이 세간에 퍼졌다.' },
+      ],
+    },
+  },
+  // 지시문 = 조건이 참인 동안 매 턴 메인 모델에게 주는 연출 지침. 추리물의 핵심 장치.
+  directives: [
+    { id: 'no_spoiler', when: 'not solved',
+      text: '[연출 지시] 진상을 직접 서술하지 마라. 단서는 묘사·대사·정황으로만 흘리고 추론은 유저가 하게 둔다.' },
+    { id: 'pressure_high', when: 'pressure >= 70',
+      text: '[분위기] 외압 {pressure}/100. 시간이 없다는 감각, 윗선의 간섭, 초조함이 장면에 배어야 한다.' },
+    { id: 'face_off', when: 'phase == "대치"',
+      text: '[국면] 대치 단계다. 확보한 단서 {clue_count}개를 근거로 범인을 몰아붙이는 긴장된 대화를 중심에 둔다.' },
+    { id: 'low_trust', when: 'trust <= 20',
+      text: '[관계] 주변이 비협조적이다. 질문에 얼버무리거나 말을 돌리는 반응을 보여라.' },
+  ],
+  actions: [
+    { id: 'interrogate', label: '🔍 추궁', mode: 'oneshot', when: 'phase != "조사"', cooldown: 2,
+      inject: '[플레이어 행동] 주인공이 상대를 정면으로 추궁한다.',
+      effects: [{ set: 'pressure', expr: 'pressure + 5' }, { set: 'trust', expr: 'trust - 3' }] },
+    { id: 'resurvey', label: '🕯 현장 재조사', mode: 'oneshot', cooldown: 3,
+      inject: '[플레이어 행동] 주인공이 현장을 다시 살핀다. 놓친 것이 있을지도 모른다.',
+      effects: [{ set: 'pressure', expr: 'pressure + 2' }] },
+    { id: 'ask_help', label: '🤝 조력 요청', mode: 'oneshot', cooldown: 4,
+      inject: '[플레이어 행동] 주인공이 조력자에게 도움을 청한다.',
+      effects: [{ set: 'trust', expr: 'trust + 8' }] },
+  ],
+  updater: {
+    allow: [
+      { id: 'clues' }, { id: 'suspects' },
+      { id: 'trust', maxDelta: 15 }, { id: 'pressure', maxDelta: 15 },
+      { id: 'place', maxLength: 40 }, { id: 'phase' },
+    ],
+    guide: '단서는 서사에서 실제로 확인된 것만 add하라. 주인공의 추측·가설은 넣지 마라.',
+  },
+  promptState: {
+    template: '[수사 현황 — {scene}번째 장면 · {phase}]\n'
+      + '장소 {place} | 단서 {clue_count}개 (진척 {progress}%) | 조력자 신뢰 {trust}/100 | 외압 {pressure}/100\n'
+      + '확보 단서: {clues:tags}\n용의선상: {suspects:tags}\n'
+      + '[진상 — 절대 직접 서술 금지] {truth}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '수사', items: [
+        { var: 'scene' }, { var: 'phase' },
+        { var: 'progress', bar: { max: 100 } },
+        { var: 'clues' },
+      ] },
+      { label: '인물', items: [
+        { var: 'trust', bar: { max: 100 }, color: 'trust < 30 ? "#c0392b" : "#27ae60"' },
+        { var: 'suspects' },
+      ] },
+      { label: '상황', items: [
+        { var: 'place' },
+        { var: 'pressure', bar: { max: 100 }, color: 'pressure >= 70 ? "#c0392b" : "#5b8def"' },
+      ] },
+    ],
+    // 사건 파일 — 누렇게 뜬 서류에 타자기 활자, 붉은 스탬프
+    customCSS: `.sim-status { background:#efe8d8; border:1px solid #b5a888; border-radius:2px; color:#2e2a22; font-family:'Courier New',ui-monospace,monospace; box-shadow:2px 3px 0 rgba(0,0,0,.18); }
+.sim-status summary { color:#7a2e22; letter-spacing:.1em; }
+.sim-group { border-bottom:1px dashed #b5a888; padding-bottom:6px; }
+.sim-group-label { color:#7a2e22; letter-spacing:.14em; }
+.sim-label { color:#5c5344; opacity:1; }
+.sim-value { color:#1d1a14; font-weight:700; }
+.sim-badge, .sim-tag { background:#e0d6bd; color:#4a3b28; border:1px solid #a3906f; border-radius:0; }
+.sim-bar { background:#ddd3ba; border:1px solid #b5a888; height:8px; border-radius:0; }
+.sim-bar-fill { border-radius:0; }
+.sim-action { border-color:#8c7f63; color:#4a3b28; border-radius:0; background:#e6dcc6; }
+.sim-action.sim-armed { border-color:#7a2e22; color:#7a2e22; background:#f0dcd6; }
+.sim-log { color:#6b6152; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'locked_room', label: '밀실 살인', set: { place: '잠긴 서재', pressure: 20 } },
+      { id: 'missing', label: '실종 사건', set: { place: '마지막 목격 장소', pressure: 35, trust: 40 } },
+      { id: 'serial', label: '연쇄 사건', set: { place: '세 번째 현장', pressure: 55, trust: 35 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['place', 'suspects', 'truth', 'trust', 'pressure'],
+      instruction: '[최초 설정] 아직 수사가 시작되지 않았다. 유저와 함께 사건의 배경(피해자, 현장, 관계자)을 정하는 대화를 하라. 윤곽이 잡히면 확정된 사건 개요를 정리해 서술하라.',
+      guide: 'truth에는 범인과 수법을 구체적으로 적되, 서술에는 절대 드러내지 마라.',
+    },
+  },
+};
+
+// ── 경영 ──────────────────────────────────────────────────────
+// 배울 점: ① 파생 변수를 이어 붙여 경제 공식을 만드는 법 (수요→판매→매출→순익)
+//          ② onTurn으로 매달 정산을 자동화하는 법  ③ 선택지(enum)가 수치에 영향을 주게 하는 법
+const BUSINESS = {
+  simcore: '0.1',
+  meta: { name: '경영 — 가게 운영', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'month', label: '경과', type: 'int', init: 1, min: 1, format: '{v}개월차' },
+    { id: 'cash', label: '자금', type: 'int', init: 3000, format: '{v}만원' },
+    { id: 'staff', label: '직원', type: 'int', init: 2, min: 0, max: 20, format: '{v}명' },
+    { id: 'reputation', label: '평판', type: 'int', init: 40, min: 0, max: 100 },
+    { id: 'stock', label: '재고', type: 'int', init: 80, min: 0 },
+    { id: 'price', label: '판매가', type: 'int', init: 12, min: 1, max: 100, format: '{v}천원',
+      desc: '올리면 마진이 늘지만 수요가 준다.' },
+    { id: 'quality', label: '품질', type: 'int', init: 55, min: 0, max: 100 },
+    { id: 'district', label: '상권', type: 'enum', init: '변두리', enum: ['변두리', '번화가', '역세권'],
+      desc: '유동인구와 임대료를 동시에 결정한다.' },
+    { id: 'signature', label: '대표 상품', type: 'text', init: '', maxLength: 40 },
+    { id: 'crisis', label: '자금난', type: 'bool', init: false },
+  ],
+  // 파생 변수는 서로를 참조할 수 있다 (순환만 아니면 된다).
+  // foot_traffic → demand → sold → revenue → profit 으로 이어지는 계산 사슬.
+  derived: [
+    { id: 'foot_traffic', label: '유동인구', expr: 'district == "역세권" ? 60 : (district == "번화가" ? 40 : 15)' },
+    { id: 'rent', label: '월 임대료', expr: 'district == "역세권" ? 900 : (district == "번화가" ? 600 : 300)' },
+    { id: 'demand', label: '월 수요', expr: 'clamp(round(reputation * 1.5 + quality * 0.5 + foot_traffic - (price - 10) * 4), 0, 250)' },
+    { id: 'sold', label: '판매량', expr: 'min(demand, stock)' },
+    { id: 'revenue', label: '매출', expr: 'sold * price' },
+    { id: 'wages', label: '인건비', expr: 'staff * 220' },
+    { id: 'profit', label: '월 순익', expr: 'revenue - wages - rent' },
+  ],
+  rules: {
+    // 순서가 중요하다 — 규칙은 위에서부터 차례로 적용되고, 그때마다 파생 변수가 다시 계산된다.
+    // 재고를 먼저 깎으면 판매량(sold)이 달라져 매출이 틀어지므로 자금 정산을 먼저 한다.
+    onTurn: [
+      { set: 'cash', expr: 'cash + profit' },
+      { set: 'stock', expr: 'stock - sold' },
+      { set: 'reputation', expr: 'clamp(reputation + (quality >= 65 ? 3 : (quality <= 35 ? -4 : 0)), 0, 100)' },
+      { set: 'month', expr: 'month + 1' },
+    ],
+    events: [
+      { id: 'stockout', when: 'stock <= 0',
+        effects: [{ set: 'reputation', expr: 'reputation - 3' }],
+        notify: '재고가 바닥났다. 헛걸음한 손님들이 발길을 돌린다.' },
+      { id: 'deficit', when: 'cash < 0 and not crisis',
+        effects: [{ set: 'crisis', expr: '1' }],
+        notify: '통장이 마이너스로 돌아섰다. 자금난이 시작됐다.' },
+      { id: 'recovered', when: 'cash >= 1000 and crisis',
+        effects: [{ set: 'crisis', expr: '0' }],
+        notify: '자금 사정이 안정을 되찾았다.' },
+      { id: 'famous', once: true, when: 'reputation >= 85',
+        notify: '가게가 지역 명소로 자리 잡았다. 줄이 늘어서기 시작한다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.3,
+      table: [
+        { id: 'influencer', weight: 3, when: 'quality >= 60', cooldown: 5,
+          effects: [{ set: 'reputation', expr: 'reputation + 12' }],
+          notify: '인플루언서가 다녀간 뒤 후기가 퍼졌다.' },
+        { id: 'inspection', weight: 2, when: 'quality < 50', cooldown: 6,
+          effects: [{ set: 'cash', expr: 'cash - 300' }, { set: 'reputation', expr: 'reputation - 8' }],
+          notify: '위생 점검에서 지적을 받아 과태료를 물었다.' },
+        { id: 'rush', weight: 3, cooldown: 3,
+          effects: [{ set: 'cash', expr: 'cash + round(price * 8)' }, { set: 'stock', expr: 'stock - 8' }],
+          notify: '단체 손님이 몰려 잠깐 정신없이 바빴다.' },
+        { id: 'quit', weight: 2, when: 'staff >= 2', cooldown: 6,
+          effects: [{ set: 'staff', expr: 'staff - 1' }],
+          notify: '직원 하나가 그만두겠다는 말을 남겼다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'crisis_mood', when: 'crisis',
+      text: '[상태] 자금난이다 (잔고 {cash}만원). 결제 압박, 미뤄둔 대금, 초조함이 장면에 드러나야 한다.' },
+    { id: 'empty_shelf', when: 'stock <= 0',
+      text: '[상태] 팔 물건이 없다. 빈 진열대와 돌아서는 손님을 묘사하라.' },
+    { id: 'busy', when: 'reputation >= 75',
+      text: '[상태] 평판이 높아 손님이 붐빈다 (월 수요 {demand}). 활기와 바쁨이 배경에 깔려야 한다.' },
+  ],
+  actions: [
+    { id: 'restock', label: '📦 발주', mode: 'oneshot', cooldown: 1,
+      inject: '[경영 결정] 재고를 채워 넣는다.',
+      effects: [{ set: 'stock', expr: 'stock + 60' }, { set: 'cash', expr: 'cash - 360' }] },
+    { id: 'promote', label: '📣 홍보', mode: 'oneshot', cooldown: 3,
+      inject: '[경영 결정] 홍보에 예산을 쓴다.',
+      effects: [{ set: 'cash', expr: 'cash - 400' }, { set: 'reputation', expr: 'reputation + 6' }] },
+    { id: 'hire', label: '🧑‍🍳 채용', mode: 'oneshot', when: 'cash >= 500', cooldown: 4,
+      inject: '[경영 결정] 사람을 새로 뽑는다.',
+      effects: [{ set: 'staff', expr: 'staff + 1' }, { set: 'cash', expr: 'cash - 500' }] },
+    { id: 'improve', label: '⭐ 품질 개선', mode: 'oneshot', cooldown: 2,
+      inject: '[경영 결정] 재료와 공정에 더 신경을 쓴다.',
+      effects: [{ set: 'quality', expr: 'quality + 8' }, { set: 'cash', expr: 'cash - 300' }] },
+  ],
+  updater: {
+    allow: [
+      { id: 'cash', maxDelta: 500 }, { id: 'reputation', maxDelta: 12 },
+      { id: 'stock', maxDelta: 50 }, { id: 'quality', maxDelta: 10 },
+      { id: 'staff', maxDelta: 2 }, { id: 'signature', maxLength: 40 },
+    ],
+    guide: '월 정산(매출·인건비·임대료)은 시스템이 자동 계산하니 중복 반영하지 마라. 서사에 나온 돌발 수입·지출만 반영하라.',
+  },
+  promptState: {
+    template: '[가게 현황 — {month}개월차 · {district}]\n'
+      + '자금 {cash}만원 (월 순익 {profit}) | 재고 {stock} | 판매가 {price}천원 | 품질 {quality} | 평판 {reputation}/100 | 직원 {staff}명\n'
+      + '이번 달 예상: 수요 {demand} → 판매 {sold} → 매출 {revenue} (인건비 {wages}, 임대료 {rent})\n'
+      + '대표 상품: {signature}{crisis ? " | ⚠ 자금난" : ""}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '재무', items: [
+        { var: 'month' }, { var: 'cash' }, { var: 'profit' },
+        { var: 'crisis', showWhen: 'crisis' },
+      ] },
+      { label: '영업', items: [
+        { var: 'stock' }, { var: 'price' }, { var: 'demand' },
+        { var: 'quality', bar: { max: 100 } },
+        { var: 'reputation', bar: { max: 100 }, color: 'reputation < 30 ? "#c0392b" : "#27ae60"' },
+      ] },
+      { label: '가게', items: [{ var: 'district' }, { var: 'staff' }, { var: 'signature' }] },
+    ],
+    // 회계 장부 — 크림색 장부지에 초록 괘선
+    customCSS: `.sim-status { background:#f4f6ef; border:1px solid #b9c4ac; border-radius:3px; color:#26301f; }
+.sim-status summary { color:#2f6b3a; letter-spacing:.05em; }
+.sim-group { border-bottom:1px solid #d8e0cf; padding-bottom:6px; }
+.sim-group-label { color:#2f6b3a; font-size:.82em; letter-spacing:.1em; }
+.sim-label { color:#5d6b53; opacity:1; }
+.sim-value { color:#16210f; font-weight:700; }
+.sim-badge, .sim-tag { background:#e4ebd9; color:#3a5c2e; border:1px solid #b9c4ac; border-radius:2px; }
+.sim-bar { background:#e0e6d6; height:8px; border-radius:2px; }
+.sim-action { border-color:#8fa683; color:#2f6b3a; border-radius:3px; background:#eaf0e2; }
+.sim-action.sim-armed { border-color:#2f6b3a; background:#dce9d3; }
+.sim-log { color:#6a7860; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'small', label: '변두리 소자본', set: { cash: 3000, staff: 1, district: '변두리', quality: 50 } },
+      { id: 'mid', label: '번화가 진입', set: { cash: 6000, staff: 3, district: '번화가', reputation: 50 } },
+      { id: 'allin', label: '역세권 올인', set: { cash: 9000, staff: 4, district: '역세권', quality: 70, reputation: 30 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['cash', 'staff', 'district', 'signature', 'quality', 'price'],
+      instruction: '[최초 설정] 아직 개업 전이다. 유저와 함께 업종, 상권, 대표 상품, 초기 자본을 정하는 대화를 하라. 정해지면 개업 직전 상황을 정리해 서술하라.',
+      guide: '유저가 말한 업종과 컨셉에 맞게 값을 정하라.',
+    },
+  },
+};
+
+// ── 연애 ──────────────────────────────────────────────────────
+// 배울 점: ① enum으로 관계 단계를 만들고 이벤트로 전이시키는 법
+//          ② maxGain/maxLoss를 비대칭으로 줘서 "천천히 쌓이고 빨리 식게" 만드는 법
+//          ③ 단계마다 다른 지시문으로 모델의 호칭·거리감을 통제하는 법
+const ROMANCE = {
+  simcore: '0.1',
+  meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
+    { id: 'affection', label: '호감도', type: 'int', init: 10, min: 0, max: 100 },
+    { id: 'tension', label: '설렘', type: 'int', init: 0, min: 0, max: 100,
+      desc: '순간적인 두근거림. 시간이 지나면 가라앉는다.' },
+    { id: 'jealousy', label: '질투', type: 'int', init: 0, min: 0, max: 100 },
+    { id: 'stage', label: '관계', type: 'enum', init: '타인', enum: ['타인', '지인', '친구', '썸', '연인'] },
+    { id: 'mood', label: '상대 기분', type: 'enum', init: '보통', enum: ['가라앉음', '보통', '밝음'] },
+    { id: 'place', label: '장소', type: 'text', init: '학교 복도', maxLength: 40 },
+    { id: 'memories', label: '함께한 기억', type: 'list', init: [], maxItems: 15, itemMaxLength: 40,
+      desc: '둘 사이에 실제로 있었던 일. 나중에 대화에서 다시 꺼내 쓴다.' },
+    { id: 'confessed', label: '고백함', type: 'bool', init: false },
+  ],
+  derived: [
+    { id: 'closeness', label: '친밀도', expr: 'clamp(round(affection * 0.7 + count(memories) * 3), 0, 100)' },
+  ],
+  rules: {
+    onTurn: [
+      { set: 'day', expr: 'day + 1' },
+      { set: 'tension', expr: 'max(tension - 3, 0)' },
+      { set: 'jealousy', expr: 'max(jealousy - 2, 0)' },
+    ],
+    // 관계 단계는 호감도가 문턱을 넘을 때 자동으로 올라간다.
+    // once를 쓰지 않은 이유: 사이가 나빠져 단계가 내려갔다가 다시 올라올 수 있어야 하기 때문.
+    events: [
+      { id: 'to_acq', when: 'affection >= 15 and stage == "타인"',
+        effects: [{ set: 'stage', expr: '"지인"' }],
+        notify: '이제 서로 얼굴과 이름을 아는 사이가 되었다.' },
+      { id: 'to_friend', when: 'affection >= 35 and stage == "지인"',
+        effects: [{ set: 'stage', expr: '"친구"' }],
+        notify: '스스럼없이 말을 걸 수 있는 사이가 되었다.' },
+      { id: 'to_crush', when: 'affection >= 60 and stage == "친구"',
+        effects: [{ set: 'stage', expr: '"썸"' }],
+        notify: '친구라 부르기엔 애매한 공기가 흐르기 시작했다.' },
+      { id: 'ready', once: true, when: 'affection >= 75 and not confessed',
+        notify: '마음을 전해도 좋을 만큼 분위기가 무르익었다.' },
+      { id: 'to_lover', when: 'confessed and stage != "연인"',
+        effects: [{ set: 'stage', expr: '"연인"' }],
+        notify: '두 사람은 마침내 연인이 되었다.' },
+      { id: 'drift', when: 'affection <= 5 and stage != "타인"',
+        effects: [{ set: 'stage', expr: '"지인"' }, { set: 'mood', expr: '"가라앉음"' }],
+        notify: '사이가 눈에 띄게 서먹해졌다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.35,
+      table: [
+        { id: 'rain', weight: 2, cooldown: 5,
+          effects: [{ set: 'tension', expr: 'tension + 15' }],
+          notify: '갑작스러운 비로 좁은 처마 밑에 둘만 남았다.' },
+        { id: 'interrupt', weight: 2, when: 'tension >= 30', cooldown: 4,
+          effects: [{ set: 'tension', expr: 'tension - 15' }],
+          notify: '결정적인 순간에 친구가 끼어들어 분위기가 흩어졌다.' },
+        { id: 'gift_recv', weight: 2, when: 'stage != "타인"', cooldown: 6,
+          effects: [{ set: 'affection', expr: 'affection + 5' }, { set: 'mood', expr: '"밝음"' }],
+          notify: '상대가 작은 선물을 건넸다.' },
+        { id: 'rival', weight: 1, when: 'affection >= 40', cooldown: 8,
+          effects: [{ set: 'jealousy', expr: 'jealousy + 25' }],
+          notify: '상대의 곁에 낯선 사람이 보였다.' },
+      ],
+    },
+  },
+  // 단계별 지시문 — 연애 시뮬의 핵심. 모델이 관계 단계를 건너뛰고 들이대는 걸 막는다.
+  directives: [
+    { id: 'stage_stranger', when: 'stage == "타인" or stage == "지인"',
+      text: '[관계 지시] 아직 가까운 사이가 아니다. 존댓말 혹은 서먹한 말투, 조심스러운 거리감을 유지하라. 스킨십·애칭 금지.' },
+    { id: 'stage_crush', when: 'stage == "썸"',
+      text: '[관계 지시] 연인은 아니다. 확신 대신 망설임, 우연을 가장한 접근, 말끝을 흐리는 여운으로 그려라.' },
+    { id: 'stage_lover', when: 'stage == "연인"',
+      text: '[관계 지시] 연인 사이다. 호칭과 말투에 편안함과 애정이 묻어나야 한다.' },
+    { id: 'high_tension', when: 'tension >= 60',
+      text: '[분위기] 설렘 {tension}/100. 시선이 오래 머물고 말이 자꾸 끊기는, 공기가 달아오른 장면으로.' },
+    { id: 'jealous', when: 'jealousy >= 50',
+      text: '[감정] 질투가 짙다. 티내지 않으려다 새어 나오는 가시 돋친 말투를 섞어라.' },
+    { id: 'recall', when: 'count(memories) >= 3',
+      text: '[연속성] 함께한 기억({memories:tags})을 대화에서 자연스럽게 다시 꺼내 쓰라.' },
+  ],
+  actions: [
+    { id: 'talk', label: '💬 말 걸기', mode: 'oneshot', cooldown: 1,
+      inject: '[플레이어 행동] 먼저 말을 건넨다.',
+      effects: [{ set: 'tension', expr: 'tension + 3' }] },
+    { id: 'give_gift', label: '🎁 선물', mode: 'oneshot', cooldown: 3,
+      inject: '[플레이어 행동] 준비해 온 선물을 건넨다.',
+      effects: [{ set: 'affection', expr: 'affection + 5' }, { set: 'mood', expr: '"밝음"' }] },
+    { id: 'confess', label: '💗 고백', mode: 'oneshot', when: 'affection >= 70 and not confessed',
+      inject: '[플레이어 행동] 용기를 내어 마음을 고백한다.',
+      effects: [{ set: 'confessed', expr: '1' }, { set: 'tension', expr: '100' }] },
+  ],
+  updater: {
+    allow: [
+      // 호감은 천천히 오르고 빨리 식는다 — maxGain보다 maxLoss를 크게 준다.
+      { id: 'affection', maxGain: 8, maxLoss: 15 },
+      { id: 'tension', maxDelta: 20 },
+      { id: 'jealousy', maxDelta: 20 },
+      { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
+    ],
+    guide: '기억(memories)에는 실제로 있었던 사건만 한 줄로 add하라. 호감도는 상대의 반응이 뚜렷할 때만 움직여라.',
+  },
+  promptState: {
+    template: '[관계 현황 — {day}일차 · {stage}]\n'
+      + '장소 {place} | 호감 {affection}/100 | 설렘 {tension} | 친밀 {closeness} | 상대 기분 {mood}'
+      + '{jealousy >= 30 ? " | 질투 " + jealousy : ""}\n'
+      + '함께한 기억: {memories:tags}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '관계', items: [
+        { var: 'day' }, { var: 'stage' },
+        { var: 'affection', bar: { max: 100 }, color: 'affection >= 60 ? "#e0559b" : "#5b8def"' },
+        { var: 'closeness', bar: { max: 100 } },
+      ] },
+      { label: '감정', items: [
+        { var: 'tension', bar: { max: 100 } },
+        { var: 'jealousy', bar: { max: 100 }, showWhen: 'jealousy > 0' },
+        { var: 'mood' },
+      ] },
+      { label: '기록', items: [{ var: 'place' }, { var: 'memories' }] },
+    ],
+    // 노을 편지지 — 크림빛 종이에 로즈 잉크
+    customCSS: `.sim-status { background:linear-gradient(180deg,#fff6f3,#fdeae6); border:1px solid #f0c4bb; border-radius:14px; color:#5a3b3a; box-shadow:0 3px 10px rgba(214,146,140,.18); }
+.sim-status summary { color:#d0687a; letter-spacing:.04em; }
+.sim-group { background:rgba(255,255,255,.55); border-radius:10px; padding:7px 9px; }
+.sim-group-label { color:#c2596c; font-size:.83em; letter-spacing:.08em; }
+.sim-label { color:#8a6b6b; opacity:1; }
+.sim-value { color:#4a2c2c; font-weight:700; }
+.sim-badge, .sim-tag { background:#fce0e4; color:#b04b60; border:1px solid #f2c3cb; }
+.sim-bar { background:#f7dcdc; height:9px; }
+.sim-bar-fill { background:linear-gradient(90deg,#f4a6b8,#e0559b); }
+.sim-action { border-color:#eeb6bd; color:#c2596c; background:#fff2f3; }
+.sim-action.sim-armed { border-color:#e0559b; background:#fbdde5; }
+.sim-log { color:#9b7d7d; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'classmate', label: '같은 반 친구', set: { stage: '지인', affection: 20, place: '교실' } },
+      { id: 'firstmeet', label: '초면', set: { stage: '타인', affection: 5, place: '거리' } },
+      { id: 'reunion', label: '재회', set: { stage: '친구', affection: 40, place: '오랜만의 약속 장소' } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['place', 'affection', 'stage', 'mood'],
+      instruction: '[최초 설정] 아직 이야기가 시작되지 않았다. 유저와 함께 상대 인물과 두 사람의 관계, 첫 장면의 배경을 정하는 대화를 하라. 정해지면 첫 만남 직전 상황을 정리해 서술하라.',
+      guide: '유저가 정한 관계 설정에 맞는 단계와 호감도로 시작하라.',
+    },
+  },
+};
+
+// ── TRPG ──────────────────────────────────────────────────────
+// 배울 점: ① rand()로 주사위를 굴리는 법  ② 굴린 값을 이어받아 등급을 매기는 법
+//          ③ rand()는 조건식에 못 쓰므로 "굴려서 변수에 넣고 → 그 변수로 분기"하는 2단 구조
+//          ④ 액션 판정은 전송 단계에서 굴러 모델이 같은 턴에 결과를 보고 쓴다는 점
+const TRPG = {
+  simcore: '0.1',
+  meta: { name: 'TRPG — 주사위 판정', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'str', label: '근력', type: 'int', init: 14, min: 3, max: 20 },
+    { id: 'dex', label: '민첩', type: 'int', init: 12, min: 3, max: 20 },
+    { id: 'wit', label: '지력', type: 'int', init: 10, min: 3, max: 20 },
+    { id: 'cha', label: '매력', type: 'int', init: 10, min: 3, max: 20 },
+    { id: 'hp', label: 'HP', type: 'int', init: 20, min: 0, max: 40 },
+    { id: 'stamina', label: '기력', type: 'int', init: 6, min: 0, max: 10 },
+    { id: 'dc', label: '난이도', type: 'int', init: 13, min: 5, max: 30,
+      desc: '이번 상황의 판정 난이도. 쉬우면 10, 보통 13, 어려우면 17, 지극히 어려우면 20.' },
+    { id: 'checking', label: '판정 대상', type: 'text', init: '', maxLength: 40 },
+    { id: 'roll', label: '주사위', type: 'int', init: 0, min: 0, max: 20 },
+    { id: 'total', label: '판정값', type: 'int', init: 0, min: 0, max: 60 },
+    { id: 'grade', label: '판정 결과', type: 'enum', init: '없음',
+      enum: ['없음', '대성공', '성공', '실패', '대실패'] },
+    { id: 'dmg', label: '피해량', type: 'int', init: 0, min: 0, max: 99 },
+    { id: 'adv', label: '이점 대기', type: 'bool', init: false,
+      desc: '켜져 있으면 다음 판정을 두 번 굴려 높은 눈을 쓴다. 쓰면 꺼진다.' },
+    { id: 'roll_pending', label: '미반영 판정', type: 'bool', init: false,
+      desc: '방금 굴린 결과를 아직 서사에 반영하지 않았다는 표시.' },
+    { id: 'need_roll', label: '판정 요청', type: 'bool', init: false,
+      desc: '서사상 판정이 필요한데 유저가 버튼을 누르지 않았을 때 켠다. 시스템이 대신 굴린다.' },
+    { id: 'conditions', label: '상태', type: 'list', init: [], maxItems: 6, itemMaxLength: 20 },
+  ],
+  // 능력 보정 = (능력치 - 10) / 2 를 내림. D&D식 계산을 한 줄로 못 박아 둔다.
+  derived: [
+    { id: 'str_mod', label: '근력 보정', expr: 'floor((str - 10) / 2)' },
+    { id: 'dex_mod', label: '민첩 보정', expr: 'floor((dex - 10) / 2)' },
+    { id: 'wit_mod', label: '지력 보정', expr: 'floor((wit - 10) / 2)' },
+    { id: 'cha_mod', label: '매력 보정', expr: 'floor((cha - 10) / 2)' },
+  ],
+  rules: {
+    // 모델이 결과를 읽고 서술을 끝낸 뒤에 미반영 표시를 내린다.
+    // (정기 계산은 조건 이벤트보다 먼저 돌므로, 아래 do_roll이 다시 켜는 것과 충돌하지 않는다)
+    onTurn: [
+      { set: 'roll_pending', expr: '0' },
+      { set: 'stamina', expr: 'min(stamina + 1, 10)' },
+    ],
+    events: [
+      // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 여기서 대신 굴린다.
+      // ⚠ rand()는 조건식(when)에 쓸 수 없다. 그래서 이렇게 효과에서 굴려 변수에 담고,
+      //    분기는 그 변수를 읽는 방식으로 짠다.
+      { id: 'do_roll', when: 'need_roll',
+        effects: [
+          { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+          { set: 'total', expr: 'roll + str_mod' },
+          { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+          { set: 'adv', expr: '0' },
+          { set: 'need_roll', expr: '0' },
+          { set: 'roll_pending', expr: '1' },
+        ],
+        notify: '판정이 필요한 상황이라 주사위를 굴렸다.' },
+      { id: 'downed', when: 'hp <= 0',
+        effects: [{ list: 'conditions', add: ['빈사'] }, { set: 'hp', expr: '1' }],
+        notify: '치명상을 입고 쓰러졌다. 간신히 숨만 붙어 있다.' },
+      { id: 'exhausted', when: 'stamina <= 0',
+        effects: [{ list: 'conditions', add: ['탈진'] }],
+        notify: '기력이 바닥났다. 몸이 말을 듣지 않는다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.22,
+      table: [
+        { id: 'ambush', weight: 3, cooldown: 4,
+          effects: [{ set: 'hp', expr: 'hp - rand(1, 6)' }],
+          notify: '기습을 당했다. 미처 피하지 못하고 한 대 맞았다.' },
+        { id: 'find', weight: 2, cooldown: 5,
+          effects: [{ set: 'stamina', expr: 'min(stamina + 3, 10)' }],
+          notify: '쉴 만한 자리를 찾아 잠시 숨을 돌렸다.' },
+        { id: 'omen', weight: 1, cooldown: 8,
+          effects: [{ set: 'adv', expr: '1' }],
+          notify: '기묘한 행운의 조짐이 스쳤다. 다음 시도가 유리하게 풀릴 것 같다.' },
+      ],
+    },
+  },
+  // TRPG의 생명선 — 모델이 주사위 결과를 뒤집지 못하게 막는다.
+  directives: [
+    { id: 'respect_dice', when: 'roll_pending',
+      text: '[판정 결과 — 반드시 따를 것] {checking} 판정: 주사위 {roll}, 합계 {total} vs 난이도 {dc} → {grade}. '
+        + '이 결과대로 서술하라. 성공을 실패로, 실패를 성공으로 뒤집지 마라. '
+        + '{grade == "대성공" ? "기대 이상의 성과를 극적으로 그려라." : ""}'
+        + '{grade == "대실패" ? "단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라." : ""}' },
+    { id: 'dmg_note', when: 'roll_pending and dmg > 0',
+      text: '[피해] 이번 공격으로 {dmg}의 피해를 입혔다. 수치를 본문에 적지 말고 타격의 무게로 묘사하라.' },
+    { id: 'hurt', when: 'hp <= 6',
+      text: '[상태] HP {hp}/40. 숨이 가쁘고 시야가 흐려지는, 한 대만 더 맞으면 무너질 몸 상태를 묘사하라.' },
+    { id: 'ask_roll', when: 'not roll_pending',
+      text: '[판정 안내] 성패가 갈릴 행동이 나오면 결과를 임의로 정하지 말고, 판정이 필요하다는 것만 드러내라. '
+        + '수치 판정은 시스템이 처리한다.' },
+  ],
+  actions: [
+    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot',
+      inject: '[판정] 힘으로 밀어붙인다.',
+      effects: [
+        { set: 'checking', expr: '"근력"' },
+        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+        { set: 'total', expr: 'roll + str_mod' },
+        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
+      ] },
+    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot',
+      inject: '[판정] 재빠르게 움직인다.',
+      effects: [
+        { set: 'checking', expr: '"민첩"' },
+        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+        { set: 'total', expr: 'roll + dex_mod' },
+        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
+      ] },
+    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot',
+      inject: '[판정] 상황을 읽고 머리를 쓴다.',
+      effects: [
+        { set: 'checking', expr: '"지력"' },
+        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+        { set: 'total', expr: 'roll + wit_mod' },
+        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
+      ] },
+    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot',
+      inject: '[판정] 말과 태도로 상대를 움직인다.',
+      effects: [
+        { set: 'checking', expr: '"매력"' },
+        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+        { set: 'total', expr: 'roll + cha_mod' },
+        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
+      ] },
+    // 공격은 판정에 더해 피해 주사위(2d8/1d8)와 대실패 반격까지 한 번에 굴린다.
+    { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1',
+      inject: '[판정] 무기를 들어 공격한다.',
+      effects: [
+        { set: 'checking', expr: '"공격"' },
+        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
+        { set: 'total', expr: 'roll + str_mod' },
+        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
+        { set: 'dmg', expr: 'grade == "대성공" ? rand(1, 8) + rand(1, 8) + str_mod : (grade == "성공" ? rand(1, 8) + str_mod : 0)' },
+        { set: 'hp', expr: 'grade == "대실패" ? hp - rand(1, 4) : hp' },
+        { set: 'stamina', expr: 'stamina - 1' },
+        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
+      ] },
+    { id: 'focus', label: '✨ 집중 (다음 판정 이점)', mode: 'oneshot', when: 'not adv', cooldown: 4,
+      inject: '[행동] 호흡을 가다듬고 다음 순간에 집중한다.',
+      effects: [{ set: 'adv', expr: '1' }, { set: 'stamina', expr: 'stamina - 1' }] },
+  ],
+  updater: {
+    allow: [
+      { id: 'dc', maxDelta: 8 }, { id: 'need_roll' },
+      { id: 'hp', maxDelta: 10 }, { id: 'stamina', maxDelta: 3 },
+      { id: 'checking', maxLength: 40 }, { id: 'conditions' },
+    ],
+    guide: '주사위와 판정 등급(roll/total/grade)은 시스템이 굴린다. 절대 건드리지 마라. '
+      + '서사에 성패가 갈릴 시도가 나왔는데 아직 판정이 없으면 need_roll을 true로, dc는 상황 난이도에 맞게 정하라.',
+  },
+  promptState: {
+    template: '[캐릭터] HP {hp}/40 | 기력 {stamina}/10 | 근력 {str}({str_mod}) 민첩 {dex}({dex_mod}) 지력 {wit}({wit_mod}) 매력 {cha}({cha_mod})\n'
+      + '상태: {conditions:tags}{adv ? " | ✨이점 대기" : ""}\n'
+      + '[직전 판정] {checking} — 주사위 {roll} + 보정 = {total} vs 난이도 {dc} → {grade}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '판정', items: [
+        { var: 'roll' }, { var: 'total' }, { var: 'grade' }, { var: 'dc' },
+        { var: 'dmg', showWhen: 'dmg > 0' },
+      ] },
+      { label: '상태', items: [
+        { var: 'hp', bar: { max: 40 }, color: 'hp <= 8 ? "#c0392b" : "#27ae60"' },
+        { var: 'stamina', bar: { max: 10 } },
+        { var: 'conditions' },
+        { var: 'adv', showWhen: 'adv' },
+      ] },
+      { label: '능력치', visibility: 'collapsed', items: [
+        { var: 'str' }, { var: 'dex' }, { var: 'wit' }, { var: 'cha' },
+      ] },
+    ],
+    // 룰북 석판 — 짙은 남보라 위에 주사위 금색
+    customCSS: `.sim-status { background:#15121f; border:1px solid #3d3357; border-radius:5px; color:#d6d0e6; }
+.sim-status summary { color:#c9a84c; letter-spacing:.08em; }
+.sim-group { border-left:2px solid #3d3357; padding-left:9px; }
+.sim-group-label { color:#a08ad0; font-size:.8em; letter-spacing:.13em; }
+.sim-label { color:#8b83a6; opacity:1; }
+.sim-value { color:#f2ecff; font-weight:700; }
+.sim-badge, .sim-tag { background:#221c33; color:#c9a84c; border:1px solid #3d3357; border-radius:3px; }
+.sim-bar { background:#100d18; height:9px; border:1px solid #2a2340; border-radius:2px; }
+.sim-action { border-color:#4a3f6b; color:#bda6f0; border-radius:3px; background:#1d1830; }
+.sim-action.sim-armed { border-color:#c9a84c; background:#2a2136; color:#e8cf86; }
+.sim-log { color:#7a7291; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'fighter', label: '전사 (근력형)', set: { str: 16, dex: 12, wit: 9, cha: 10, hp: 26, stamina: 8 } },
+      { id: 'rogue', label: '도적 (민첩형)', set: { str: 10, dex: 16, wit: 13, cha: 12, hp: 18, stamina: 7 } },
+      { id: 'mage', label: '학자 (지력형)', set: { str: 8, dex: 11, wit: 17, cha: 13, hp: 14, stamina: 5 } },
+      { id: 'bard', label: '유랑객 (매력형)', set: { str: 10, dex: 13, wit: 12, cha: 16, hp: 16, stamina: 6 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['str', 'dex', 'wit', 'cha', 'hp', 'checking'],
+      instruction: '[최초 설정] 아직 모험이 시작되지 않았다. 유저와 함께 캐릭터(직업, 성격, 특기)와 첫 장면을 정하는 대화를 하라. 정해지면 능력치를 배분하고 상황을 정리해 서술하라.',
+      guide: '능력치 합이 대략 46~50이 되게 배분하라. 주력 능력은 16 이상, 약점은 10 이하로 뚜렷하게 만들어라.',
+    },
+  },
+};
+
+// ── 생존 ──────────────────────────────────────────────────────
+// 배울 점: ① 소비가 생산을 앞지르는 "고갈 압박"을 수치로 세우는 법
+//          ② 정책(enum) 하나가 파생 사슬 전체를 흔들게 배선하는 법 (난방 → 실내온도 & 연료소모 동시에)
+//          ③ 파국(붕괴)을 이벤트로 잠가서 AI가 얼버무리지 못하게 만드는 법
+const SURVIVAL = {
+  simcore: '0.1',
+  meta: { name: '생존 — 혹한의 정착지', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
+    { id: 'temp', label: '외부 기온', type: 'int', init: -20, min: -60, max: 10, format: '{v}°C',
+      desc: '매일 1도씩 떨어진다. 한파가 오면 더 내려간다.' },
+    { id: 'coal', label: '석탄', type: 'int', init: 400, min: 0 },
+    { id: 'food', label: '식량', type: 'int', init: 380, min: 0 },
+    { id: 'people', label: '생존자', type: 'int', init: 40, min: 0, format: '{v}명' },
+    { id: 'sick', label: '환자', type: 'int', init: 0, min: 0, format: '{v}명' },
+    { id: 'hope', label: '희망', type: 'int', init: 60, min: 0, max: 100 },
+    { id: 'discontent', label: '불만', type: 'int', init: 15, min: 0, max: 100 },
+    { id: 'heat', label: '난방 출력', type: 'enum', init: '보통', enum: ['정지', '약', '보통', '최대'],
+      desc: '올리면 따뜻하지만 석탄이 훨씬 빨리 준다.' },
+    { id: 'ration', label: '배급', type: 'enum', init: '정상', enum: ['중단', '절반', '정상', '넉넉히'],
+      desc: '줄이면 식량이 오래 가지만 불만과 환자가 는다.' },
+    { id: 'shelter', label: '단열', type: 'int', init: 1, min: 1, max: 5, format: '{v}단계' },
+    { id: 'laws', label: '시행 법령', type: 'list', init: [], maxItems: 6 },
+    { id: 'collapsed', label: '통제 붕괴', type: 'bool', init: false },
+  ],
+  // 난방 정책 하나가 실내온도와 석탄소모를 동시에 흔든다 — 이게 트레이드오프의 뼈대다.
+  derived: [
+    { id: 'heat_out', label: '화로 출력', expr: 'heat == "최대" ? 3 : (heat == "보통" ? 2 : (heat == "약" ? 1 : 0))' },
+    { id: 'indoor', label: '실내 온도', expr: 'temp + heat_out * 9 + shelter * 2', format: '{v}°C' },
+    { id: 'cold_grade', label: '체감',
+      expr: 'indoor < -15 ? "치명적" : (indoor < -5 ? "혹한" : (indoor < 5 ? "쌀쌀함" : "견딜 만함"))' },
+    { id: 'coal_burn', label: '일 석탄소모', expr: 'heat_out * 14 + 5' },
+    { id: 'food_need', label: '일 식량소모',
+      expr: 'round(people * (ration == "넉넉히" ? 1.5 : (ration == "정상" ? 1 : (ration == "절반" ? 0.5 : 0))))' },
+    { id: 'coal_left', label: '석탄 잔여', expr: 'coal_burn > 0 ? floor(coal / coal_burn) : 99', format: '{v}일분' },
+    { id: 'food_left', label: '식량 잔여', expr: 'food_need > 0 ? floor(food / food_need) : 99', format: '{v}일분' },
+    { id: 'workforce', label: '가용 인력', expr: 'max(0, people - sick)', format: '{v}명' },
+  ],
+  rules: {
+    // 순서 주의 — 소모를 먼저 반영한 뒤 그 결과(추위·굶주림)로 사람이 상한다.
+    onTurn: [
+      { set: 'coal', expr: 'max(0, coal - coal_burn)' },
+      { set: 'food', expr: 'max(0, food - food_need)' },
+      { set: 'sick', expr: 'clamp(sick + (indoor < -15 ? round(people * 0.10) : (indoor < -5 ? round(people * 0.04) : -2)), 0, people)' },
+      { set: 'discontent', expr: 'clamp(discontent + (ration == "중단" ? 9 : (ration == "절반" ? 4 : (ration == "넉넉히" ? -3 : 0))) + (indoor < -5 ? 3 : 0), 0, 100)' },
+      { set: 'hope', expr: 'clamp(hope + (((cold_grade == "견딜 만함") and (food > 0)) ? 2 : -3), 0, 100)' },
+      { set: 'temp', expr: 'max(-60, temp - 1)' },
+      { set: 'day', expr: 'day + 1' },
+    ],
+    events: [
+      { id: 'fuel_out', when: 'coal <= 0 and heat != "정지"',
+        effects: [{ set: 'heat', expr: '"정지"' }],
+        notify: '석탄이 바닥났다. 화로가 꺼지고 온기가 빠르게 빠져나간다.' },
+      { id: 'starving', when: 'food <= 0',
+        effects: [{ set: 'discontent', expr: 'discontent + 7' }, { set: 'hope', expr: 'hope - 5' }],
+        notify: '배급할 식량이 없다. 빈 그릇을 든 줄이 말없이 흩어진다.' },
+      { id: 'freeze_death', when: 'indoor < -20 and people > 0',
+        effects: [{ set: 'people', expr: 'max(0, people - max(1, round(people * 0.05)))' },
+                  { set: 'hope', expr: 'hope - 8' }],
+        notify: '밤사이 얼어 죽은 사람이 나왔다.' },
+      // 효과가 조건 자체를 해소하도록 짜면 쿨다운 없이도 매턴 반복되지 않는다.
+      { id: 'epidemic', when: 'people > 0 and sick >= round(people * 0.35)',
+        effects: [{ set: 'people', expr: 'max(0, people - 2)' },
+                  { set: 'sick', expr: 'round(sick * 0.5)' },
+                  { set: 'discontent', expr: 'discontent + 10' }],
+        notify: '환자가 너무 많다. 병이 정착지 전체로 번지고 있다.' },
+      { id: 'riot', when: 'discontent >= 85 and not collapsed',
+        effects: [{ set: 'collapsed', expr: '1' }],
+        notify: '군중이 화로 앞을 점거했다. 통제가 무너졌다.' },
+      { id: 'despair', when: 'hope <= 0 and not collapsed',
+        effects: [{ set: 'collapsed', expr: '1' }],
+        notify: '아무도 더는 명령을 듣지 않는다. 정착지가 스스로 무너졌다.' },
+      { id: 'survived', once: true, when: 'day >= 30 and not collapsed',
+        effects: [{ set: 'hope', expr: 'min(100, hope + 20)' }],
+        notify: '기온이 처음으로 올라갔다. 최악의 겨울을 넘겼다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.35,
+      table: [
+        { id: 'coldsnap', weight: 3, cooldown: 4,
+          effects: [{ set: 'temp', expr: 'max(-60, temp - rand(4, 9))' }],
+          notify: '한파가 몰아쳤다. 창틀에 서리가 두껍게 앉는다.' },
+        { id: 'refugees', weight: 2, when: 'people < 80', cooldown: 5,
+          effects: [{ set: 'people', expr: 'people + rand(3, 8)' }, { set: 'food', expr: 'max(0, food - 20)' }],
+          notify: '얼어붙은 지평선에서 생존자 무리가 걸어 들어왔다.' },
+        { id: 'salvage', weight: 3, cooldown: 3,
+          effects: [{ set: 'coal', expr: 'coal + rand(40, 90)' }],
+          notify: '무너진 창고 아래에서 쓸 만한 석탄을 파냈다.' },
+        { id: 'breakdown', weight: 2, when: 'heat != "정지"', cooldown: 4,
+          effects: [{ set: 'coal', expr: 'max(0, coal - rand(30, 70))' }, { set: 'discontent', expr: 'discontent + 5' }],
+          notify: '증기 배관이 터졌다. 수리하는 동안 석탄이 헛되이 탔다.' },
+        { id: 'sermon', weight: 2, when: 'hope < 60', cooldown: 5,
+          effects: [{ set: 'hope', expr: 'min(100, hope + 10)' }, { set: 'discontent', expr: 'max(0, discontent - 6)' }],
+          notify: '누군가 사람들 앞에서 봄 이야기를 했다. 오랜만에 웃음이 돌았다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'deadly_cold', when: 'indoor < -15',
+      text: '[상태] 실내조차 {indoor}°C다. 입김, 성에, 곱은 손가락 — 추위가 장면의 전면에 나와야 한다.' },
+    { id: 'hungry', when: 'food <= 0',
+      text: '[상태] 식량이 없다. 배고픔과 그로 인한 다툼이 드러나야 한다.' },
+    { id: 'unrest', when: 'discontent >= 65 and not collapsed',
+      text: '[상태] 불만 {discontent}. 대놓고 항의하는 사람이 생겼고, 시선이 곱지 않다.' },
+    { id: 'broken', when: 'collapsed',
+      text: '[상태] 통제가 무너졌다. 명령이 먹히지 않는다는 사실을 전제로 서술하라.' },
+  ],
+  actions: [
+    { id: 'stoke', label: '🔥 화로 최대', mode: 'oneshot', when: 'coal > 0',
+      inject: '[결정] 화로 출력을 최대로 올린다.',
+      effects: [{ set: 'heat', expr: '"최대"' }] },
+    { id: 'save_fuel', label: '🧊 화로 절약', mode: 'oneshot',
+      inject: '[결정] 화로 출력을 낮춘다. 추위를 견디기로 했다.',
+      effects: [{ set: 'heat', expr: '"약"' }] },
+    { id: 'mine', label: '⛏ 채탄 작업', mode: 'oneshot', cooldown: 2, when: 'workforce >= 5',
+      inject: '[결정] 인력을 채탄에 투입한다. 추위 속 노동이다.',
+      effects: [{ set: 'coal', expr: 'coal + round(workforce * 2.5)' },
+                { set: 'sick', expr: 'min(people, sick + 2)' },
+                { set: 'discontent', expr: 'discontent + 3' }] },
+    { id: 'insulate', label: '🏠 단열 보강', mode: 'oneshot', cooldown: 3, when: 'shelter < 5 and coal >= 60',
+      inject: '[결정] 거주구 단열을 보강한다.',
+      effects: [{ set: 'shelter', expr: 'shelter + 1' }, { set: 'coal', expr: 'coal - 60' }] },
+    { id: 'half_ration', label: '🥣 배급 절반', mode: 'oneshot',
+      inject: '[결정] 배급을 절반으로 줄인다.',
+      effects: [{ set: 'ration', expr: '"절반"' }] },
+    { id: 'full_ration', label: '🍖 배급 정상화', mode: 'oneshot',
+      inject: '[결정] 배급을 정상으로 되돌린다.',
+      effects: [{ set: 'ration', expr: '"정상"' }] },
+  ],
+  updater: {
+    allow: [
+      { id: 'hope', maxDelta: 10 }, { id: 'discontent', maxDelta: 10 },
+      { id: 'sick', maxDelta: 5 }, { id: 'people', maxDelta: 3 },
+      { id: 'coal', maxDelta: 60 }, { id: 'food', maxDelta: 60 },
+      { id: 'temp', maxDelta: 8 }, { id: 'laws' },
+    ],
+    guide: '매일의 석탄·식량 소모와 기온 하락은 시스템이 자동 계산한다 — 절대 중복 반영하지 마라. '
+      + '서사에서 새로 벌어진 일(발견한 물자, 사고, 새 법령, 사망)만 반영하라.',
+  },
+  promptState: {
+    template: '[정착지 — {day}일차]\n'
+      + '외부 {temp}°C / 실내 {indoor}°C ({cold_grade}) | 난방 {heat} | 배급 {ration} | 단열 {shelter}\n'
+      + '석탄 {coal} ({coal_left} 남음) | 식량 {food} ({food_left} 남음)\n'
+      + '생존자 {people}명 (환자 {sick}) | 희망 {hope}/100 | 불만 {discontent}/100{collapsed ? " | ⚠ 통제 붕괴" : ""}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '기온', items: [
+        { var: 'day' }, { var: 'temp' }, { var: 'indoor' }, { var: 'cold_grade' },
+      ] },
+      { label: '비축', items: [
+        { var: 'coal' }, { var: 'coal_left' }, { var: 'food' }, { var: 'food_left' },
+      ] },
+      { label: '사람', items: [
+        { var: 'people' }, { var: 'sick' },
+        { var: 'hope', bar: { max: 100 }, color: 'hope <= 25 ? "#c0392b" : "#27ae60"' },
+        { var: 'discontent', bar: { max: 100 }, color: 'discontent >= 70 ? "#c0392b" : "#5b8def"' },
+      ] },
+      { label: '정책', visibility: 'collapsed', items: [
+        { var: 'heat' }, { var: 'ration' }, { var: 'shelter' }, { var: 'laws' },
+      ] },
+    ],
+    customCSS: `.sim-status { background:linear-gradient(180deg,#0e141b,#141b24); border:1px solid #2c3d4d; color:#c6d4e0; }
+.sim-status summary { color:#7fb3d5; letter-spacing:.06em; }
+.sim-group { border-left:2px solid #2c3d4d; padding-left:9px; }
+.sim-group-label { color:#8fa9bd; font-size:.78em; letter-spacing:.14em; }
+.sim-label { color:#8296a8; opacity:1; }
+.sim-value { color:#e6f0f8; font-weight:700; }
+.sim-badge, .sim-tag { background:#1b2733; color:#9ec9e2; border:1px solid #2c3d4d; border-radius:3px; }
+.sim-bar { background:#161f29; border:1px solid #24323f; border-radius:2px; height:9px; }
+.sim-bar-fill { border-radius:0; }
+.sim-action { border-color:#365068; color:#9ec9e2; border-radius:3px; }
+.sim-action.sim-armed { border-color:#7fb3d5; background:#1b2733; }
+.sim-log { color:#6d8296; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'early', label: '초겨울 — 여유 있게 시작', set: { temp: -12, coal: 500, food: 480, people: 45, hope: 70 } },
+      { id: 'harsh', label: '한겨울 — 이미 빠듯함', set: { temp: -28, coal: 260, food: 230, people: 38, hope: 50, discontent: 30 } },
+      { id: 'ruin', label: '폐허 — 남은 게 거의 없음', set: { temp: -34, coal: 120, food: 90, people: 22, sick: 5, hope: 30, discontent: 45 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['people', 'coal', 'food', 'temp', 'hope', 'laws'],
+      instruction: '[최초 설정] 아직 정착지가 자리 잡지 않았다. 유저와 함께 이곳이 어디이고 왜 여기 모였는지, 누가 이끄는지를 정하는 대화를 하라. 윤곽이 잡히면 정착지의 상황을 정리해 서술하라.',
+      guide: '생존자는 20~50명 사이로 잡아라. 물자는 넉넉하게 주지 마라 — 이 시뮬은 부족한 상태에서 시작해야 의미가 있다.',
+    },
+  },
+};
+
+// ── 정치 ──────────────────────────────────────────────────────
+// 배울 점: ① 여러 세력의 지지를 따로 굴리고 하나로 묶어 판단 근거를 만드는 법
+//          ② 확률(파생)과 주사위(변수)를 비교해 가결/부결을 내는 2단 구조
+//          ③ 리스크가 조용히 쌓이다 터지는 "시한폭탄" 패턴
+const POLITICS = {
+  simcore: '0.1',
+  meta: { name: '정치 — 지지율과 파벌', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'week', label: '경과', type: 'int', init: 1, min: 1, format: '{v}주차' },
+    { id: 'approval', label: '지지율', type: 'int', init: 45, min: 0, max: 100, format: '{v}%' },
+    { id: 'capital', label: '정치 자본', type: 'int', init: 50, min: 0, max: 100,
+      desc: '설득·무마에 쓰는 소모 자원. 쓰면 줄고 시간이 지나면 회복된다.' },
+    { id: 'funds', label: '정치 자금', type: 'int', init: 300, min: 0, format: '{v}백만' },
+    { id: 'biz', label: '재계', type: 'int', init: 40, min: 0, max: 100 },
+    { id: 'labor', label: '노동계', type: 'int', init: 40, min: 0, max: 100 },
+    { id: 'press', label: '언론', type: 'int', init: 50, min: 0, max: 100 },
+    { id: 'party', label: '당내', type: 'int', init: 55, min: 0, max: 100 },
+    { id: 'econ', label: '경제 기조', type: 'enum', init: '균형', enum: ['성장 우선', '균형', '분배 우선'],
+      desc: '어느 쪽으로 기울든 반대편이 등을 돌린다.' },
+    { id: 'risk', label: '스캔들 리스크', type: 'int', init: 10, min: 0, max: 100 },
+    { id: 'bill', label: '추진 법안', type: 'text', init: '', maxLength: 40 },
+    { id: 'bill_roll', label: '표결 주사위', type: 'int', init: 0, min: 0, max: 100 },
+    { id: 'bill_result', label: '표결 결과', type: 'enum', init: '없음', enum: ['없음', '가결', '부결'] },
+    { id: 'pledges', label: '공약', type: 'list', init: [], maxItems: 8 },
+    { id: 'in_scandal', label: '스캔들 진행 중', type: 'bool', init: false },
+    { id: 'ousted', label: '실각', type: 'bool', init: false },
+  ],
+  derived: [
+    { id: 'coalition', label: '연합 지지', expr: 'round((biz + labor + press + party) / 4)' },
+    { id: 'bill_odds', label: '가결선',
+      expr: 'clamp(round(coalition * 0.55 + capital * 0.3 + approval * 0.15), 5, 95)', format: '{v}%' },
+    { id: 'standing', label: '입지',
+      expr: 'approval >= 65 ? "탄탄함" : (approval >= 45 ? "무난함" : (approval >= 25 ? "흔들림" : "붕괴 직전"))' },
+    // 가장 낮은 세력을 이름으로 되돌려준다 — AI에게 "어디를 달래야 하는지" 알려주는 힌트.
+    { id: 'weakest', label: '가장 냉담한 쪽',
+      expr: 'min(biz, labor, press, party) == biz ? "재계" : (min(biz, labor, press, party) == labor ? "노동계"'
+        + ' : (min(biz, labor, press, party) == press ? "언론" : "당내"))' },
+  ],
+  rules: {
+    onTurn: [
+      // 지지율은 세력 연합 쪽으로 천천히 끌려간다 — 여론은 관성이 있다.
+      { set: 'approval', expr: 'clamp(approval + (coalition > approval ? 2 : -2) + (in_scandal ? -3 : 0), 0, 100)' },
+      { set: 'capital', expr: 'clamp(capital + (in_scandal ? -2 : 3), 0, 100)' },
+      // 아무것도 안 해도 20주쯤이면 터진다 — 뇌관은 시간이지, 실수가 아니다.
+      { set: 'risk', expr: 'clamp(risk + (in_scandal ? 0 : (econ == "성장 우선" ? 4 : (econ == "분배 우선" ? 2 : 3))), 0, 100)' },
+      { set: 'week', expr: 'week + 1' },
+    ],
+    events: [
+      { id: 'scandal_breaks', when: 'risk >= 70 and not in_scandal',
+        effects: [{ set: 'in_scandal', expr: '1' }, { set: 'approval', expr: 'approval - 12' },
+                  { set: 'press', expr: 'press - 10' }, { set: 'risk', expr: '55' }],
+        notify: '의혹이 1면에 터졌다. 해명 요구가 빗발친다.' },
+      { id: 'scandal_over', when: 'in_scandal and capital >= 70',
+        effects: [{ set: 'in_scandal', expr: '0' }, { set: 'capital', expr: 'capital - 25' },
+                  { set: 'risk', expr: 'max(0, risk - 35)' }],
+        notify: '정치 자본을 쏟아부어 의혹을 덮었다. 대가는 적지 않았다.' },
+      // 표결 결과를 소비하고 "없음"으로 되돌린다 — 안 그러면 매턴 다시 발동한다.
+      { id: 'bill_passed', when: 'bill_result == "가결"',
+        effects: [{ set: 'capital', expr: 'min(100, capital + 10)' },
+                  { set: 'approval', expr: 'clamp(approval + 4, 0, 100)' },
+                  { set: 'bill_result', expr: '"없음"' }],
+        notify: '법안이 본회의를 통과했다.' },
+      { id: 'bill_failed', when: 'bill_result == "부결"',
+        effects: [{ set: 'capital', expr: 'max(0, capital - 8)' },
+                  { set: 'party', expr: 'max(0, party - 6)' },
+                  { set: 'bill_result', expr: '"없음"' }],
+        notify: '법안이 부결됐다. 당내에서 책임론이 나온다.' },
+      { id: 'no_confidence', when: 'approval < 20 and party < 30 and not ousted',
+        effects: [{ set: 'ousted', expr: '1' }],
+        notify: '당이 등을 돌렸다. 사퇴 요구가 공식화됐다.' },
+      { id: 'landslide', once: true, when: 'approval >= 75',
+        effects: [{ set: 'capital', expr: 'min(100, capital + 15)' }],
+        notify: '지지율이 압도적이다. 반대파가 목소리를 낮췄다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.35,
+      table: [
+        { id: 'expose', weight: 3, when: 'press < 60', cooldown: 4,
+          effects: [{ set: 'risk', expr: 'min(100, risk + rand(10, 25))' }],
+          notify: '한 매체가 뒤를 캐고 다닌다는 말이 들려온다.' },
+        { id: 'strike', weight: 2, when: 'labor < 45', cooldown: 5,
+          effects: [{ set: 'approval', expr: 'max(0, approval - rand(3, 8))' },
+                    { set: 'biz', expr: 'max(0, biz - 4)' }],
+          notify: '총파업이 시작됐다. 도심이 멈췄다.' },
+        { id: 'donation', weight: 2, when: 'biz >= 50', cooldown: 5,
+          effects: [{ set: 'funds', expr: 'funds + rand(80, 200)' }, { set: 'risk', expr: 'min(100, risk + 8)' }],
+          notify: '재계에서 후원이 들어왔다. 받는 순간 약점도 같이 생겼다.' },
+        { id: 'poll_bump', weight: 3, cooldown: 3,
+          effects: [{ set: 'approval', expr: 'clamp(approval + rand(2, 7), 0, 100)' }],
+          notify: '여론조사에서 반등이 나왔다.' },
+        { id: 'gaffe', weight: 2, cooldown: 4,
+          effects: [{ set: 'approval', expr: 'max(0, approval - rand(2, 6))' },
+                    { set: 'press', expr: 'max(0, press - 5)' }],
+          notify: '실언이 잘려 나가 온종일 돌아다녔다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'scandal_mode', when: 'in_scandal',
+      text: '[상태] 스캔들 한복판이다. 어디를 가도 카메라와 질문이 따라붙고, 참모들은 방어 논리를 짜고 있다.' },
+    { id: 'collapsing', when: 'approval < 25 and not ousted',
+      text: '[상태] 지지율 {approval}%. 당내에서도 등을 돌리는 기색이 역력하고, 사람들이 거리를 두기 시작했다.' },
+    { id: 'bill_verdict', when: 'bill_result != "없음"',
+      text: '[표결] 법안 "{bill}" — 주사위 {bill_roll} vs 가결선 {bill_odds} → {bill_result}. '
+        + '이 결과는 이미 확정됐다. 뒤집지 말고 그대로 묘사하라.' },
+    { id: 'courting', when: 'coalition < 40',
+      text: '[상태] 어느 쪽도 확실한 우군이 아니다. 특히 {weakest} 쪽이 가장 냉담하다.' },
+    { id: 'fallen', when: 'ousted',
+      text: '[상태] 실각했다. 더 이상 권한이 없다는 사실을 전제로 서술하라.' },
+  ],
+  actions: [
+    { id: 'presser', label: '📢 기자회견', mode: 'oneshot', cooldown: 2, when: 'capital >= 10',
+      inject: '[정치 행동] 직접 카메라 앞에 선다.',
+      effects: [{ set: 'approval', expr: 'clamp(approval + 5, 0, 100)' },
+                { set: 'press', expr: 'min(100, press + 4)' },
+                { set: 'capital', expr: 'capital - 10' }] },
+    { id: 'meet_biz', label: '🤝 재계 회동', mode: 'oneshot', cooldown: 3,
+      inject: '[정치 행동] 재계 인사들과 자리를 갖는다.',
+      effects: [{ set: 'biz', expr: 'min(100, biz + 10)' }, { set: 'labor', expr: 'max(0, labor - 6)' },
+                { set: 'funds', expr: 'funds + 60' }, { set: 'risk', expr: 'min(100, risk + 5)' }] },
+    { id: 'meet_labor', label: '✊ 노동계 회동', mode: 'oneshot', cooldown: 3,
+      inject: '[정치 행동] 노동계 대표들을 만난다.',
+      effects: [{ set: 'labor', expr: 'min(100, labor + 10)' }, { set: 'biz', expr: 'max(0, biz - 6)' },
+                { set: 'approval', expr: 'clamp(approval + 2, 0, 100)' }] },
+    { id: 'whip', label: '🏛 당내 단속', mode: 'oneshot', cooldown: 3, when: 'capital >= 12',
+      inject: '[정치 행동] 당내 반발을 직접 눌러 앉힌다.',
+      effects: [{ set: 'party', expr: 'min(100, party + 12)' }, { set: 'capital', expr: 'capital - 12' }] },
+    // rand()는 조건식엔 못 쓴다 → 굴려서 변수에 담고, 그 변수로 등급을 매기는 2단 구조.
+    { id: 'submit_bill', label: '📜 법안 표결', mode: 'oneshot', cooldown: 3, when: 'capital >= 15',
+      inject: '[정치 행동] 법안을 본회의에 올린다. 표결 결과는 상태창의 판정을 따르라.',
+      effects: [{ set: 'bill_roll', expr: 'rand(1, 100)' },
+                { set: 'bill_result', expr: 'bill_roll <= bill_odds ? "가결" : "부결"' },
+                { set: 'capital', expr: 'capital - 15' }] },
+    { id: 'spend', label: '💰 자금 투입', mode: 'oneshot', cooldown: 4, when: 'funds >= 150',
+      inject: '[정치 행동] 자금을 조직 정비와 홍보에 쏟는다.',
+      effects: [{ set: 'funds', expr: 'funds - 150' }, { set: 'capital', expr: 'min(100, capital + 14)' },
+                { set: 'risk', expr: 'min(100, risk + 6)' }] },
+  ],
+  updater: {
+    allow: [
+      { id: 'approval', maxDelta: 10 }, { id: 'capital', maxDelta: 12 },
+      { id: 'biz', maxDelta: 10 }, { id: 'labor', maxDelta: 10 },
+      { id: 'press', maxDelta: 10 }, { id: 'party', maxDelta: 10 },
+      { id: 'risk', maxDelta: 15 }, { id: 'funds', maxDelta: 200 },
+      { id: 'bill', maxLength: 40 }, { id: 'pledges' },
+    ],
+    guide: '주간 지지율 수렴·정치자본 회복·리스크 누적은 시스템이 자동 계산한다. 중복 반영하지 마라. '
+      + '표결 결과는 절대 바꾸지 마라. 서사에서 새로 벌어진 일만 반영하라.',
+  },
+  promptState: {
+    template: '[정국 — {week}주차]\n'
+      + '지지율 {approval}% ({standing}) | 정치 자본 {capital} | 자금 {funds}백만 | 스캔들 리스크 {risk}\n'
+      + '재계 {biz} · 노동계 {labor} · 언론 {press} · 당내 {party} (연합 {coalition}, 가결선 {bill_odds})\n'
+      + '기조 {econ} | 추진 법안: {bill}{in_scandal ? " | ⚠ 스캔들 진행 중" : ""}{ousted ? " | ⚠ 실각" : ""}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '여론', items: [
+        { var: 'week' },
+        { var: 'approval', bar: { max: 100 }, color: 'approval < 30 ? "#c0392b" : "#27ae60"' },
+        { var: 'standing' },
+        { var: 'risk', bar: { max: 100 }, color: 'risk >= 65 ? "#c0392b" : "#5b8def"' },
+      ] },
+      { label: '세력', items: [
+        { var: 'biz', bar: { max: 100 } }, { var: 'labor', bar: { max: 100 } },
+        { var: 'press', bar: { max: 100 } }, { var: 'party', bar: { max: 100 } },
+        { var: 'weakest' },
+      ] },
+      { label: '자원', items: [
+        { var: 'capital', bar: { max: 100 } }, { var: 'funds' }, { var: 'econ' },
+      ] },
+      { label: '입법', visibility: 'collapsed', items: [
+        { var: 'bill' }, { var: 'bill_odds' },
+        { var: 'bill_result', showWhen: 'bill_result != "없음"' },
+        { var: 'pledges' },
+      ] },
+    ],
+    customCSS: `.sim-status { background:#0f131c; border:1px solid #2a3550; color:#d3dae8; }
+.sim-status summary { color:#c9a227; letter-spacing:.08em; }
+.sim-group { border-bottom:1px solid #1e2740; padding-bottom:7px; }
+.sim-group-label { color:#c9a227; font-size:.78em; letter-spacing:.14em; }
+.sim-label { color:#8792ab; opacity:1; }
+.sim-value { color:#f0f3f9; font-weight:700; }
+.sim-badge, .sim-tag { background:#1a2136; color:#d8c07a; border:1px solid #3a4560; }
+.sim-bar { background:#161c2c; height:8px; border-radius:1px; }
+.sim-bar-fill { border-radius:1px; }
+.sim-action { border-color:#3d4a6b; color:#d8c07a; border-radius:2px; }
+.sim-action.sim-armed { border-color:#c9a227; background:#1a2136; }
+.sim-log { color:#6f7c96; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'rookie', label: '초선 — 기반이 없음', set: { approval: 38, capital: 35, funds: 150, biz: 30, labor: 45, press: 45, party: 40 } },
+      { id: 'incumbent', label: '현직 — 무난한 출발', set: { approval: 52, capital: 55, funds: 400, biz: 50, labor: 40, press: 50, party: 60 } },
+      { id: 'crisis', label: '위기 — 이미 흔들리는 중', set: { approval: 27, capital: 30, funds: 200, biz: 35, labor: 30, press: 25, party: 35, risk: 45 } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['bill', 'pledges', 'econ', 'approval', 'press'],
+      instruction: '[최초 설정] 아직 임기가 시작되지 않았다. 유저와 함께 어떤 자리이고 어떤 나라·도시이며 무엇을 걸고 당선됐는지 정하는 대화를 하라. 정해지면 정국 상황을 정리해 서술하라.',
+      guide: '공약은 3~5개로 구체적으로 잡아라. 서로 충돌하는 공약을 최소 하나는 넣어라 — 그래야 선택이 아프다.',
+    },
+  },
+};
+
+// ── 버튜버 ────────────────────────────────────────────────────
+// 배울 점: ① 랜덤 숫자(trend_seed)를 굴리고 파생으로 이름을 붙여
+//             "매 턴 판이 바뀌는 외부 환경"을 만드는 법 — enum에 직접 랜덤 대입할 방법이 없을 때의 정석
+//          ② 절대량이 아니라 비율(engagement)로 판정해, 채널이 커져도 압박이 그대로 유지되게 하는 법
+//          ③ 지속 정책(hold)에 `when` 안전장치를 걸어 켜 놓고 잊은 플레이어가 그대로 죽지 않게 하는 법
+//          ④ 액션 비용을 조건부로 줘서(편집자 유무) 같은 버튼의 값이 상황에 따라 달라지게 하는 법
+const VTUBER = {
+  simcore: '0.1',
+  meta: { name: '버튜버 — 방송 운영', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
+    { id: 'nickname', label: '활동명', type: 'text', init: '', maxLength: 20 },
+    { id: 'subs', label: '구독자', type: 'int', init: 120, min: 0, format: '{v}명' },
+    { id: 'funds', label: '수익금', type: 'int', init: 50, min: 0, format: '{v}만원' },
+    { id: 'hype', label: '화제성', type: 'int', init: 20, min: 0, max: 100,
+      desc: '알고리즘 노출도. 가만두면 매일 식는다.' },
+    { id: 'energy', label: '체력', type: 'int', init: 80, min: 0, max: 100 },
+    { id: 'mental', label: '멘탈', type: 'int', init: 70, min: 0, max: 100 },
+    { id: 'heat', label: '논란 지수', type: 'int', init: 5, min: 0, max: 100,
+      desc: '조용히 쌓이다 45를 넘으면 터진다.' },
+    { id: 'stream_hours', label: '방송 시간', type: 'int', init: 4, min: 3, max: 10, format: '{v}시간' },
+    { id: 'editor', label: '편집자', type: 'int', init: 0, min: 0, max: 3, format: '{v}명' },
+    { id: 'concept', label: '내 컨셉', type: 'enum', init: '잡담',
+      enum: ['잡담', '게임', '노래', 'ASMR', '버라이어티'] },
+    { id: 'trend_seed', label: '유행 주사위', type: 'int', init: 2, min: 1, max: 5,
+      desc: '알고리즘이 미는 장르. 랜덤 이벤트가 굴린다.' },
+    { id: 'catchphrase', label: '인사말', type: 'text', init: '', maxLength: 40 },
+    { id: 'regulars', label: '단골', type: 'list', init: [], maxItems: 8 },
+    { id: 'burnout', label: '번아웃', type: 'bool', init: false },
+    { id: 'in_scandal', label: '논란 진행 중', type: 'bool', init: false },
+    { id: 'career_over', label: '활동 종료', type: 'bool', init: false },
+  ],
+  derived: [
+    // enum에는 랜덤을 직접 넣을 수 없다. 숫자를 굴리고(trend_seed) 여기서 이름을 붙인다.
+    { id: 'trend', label: '이번 유행',
+      expr: 'trend_seed == 1 ? "잡담" : (trend_seed == 2 ? "게임" : (trend_seed == 3 ? "노래" : (trend_seed == 4 ? "ASMR" : "버라이어티")))' },
+    { id: 'fit', label: '유행 적중', expr: 'concept == trend ? 30 : 8' },
+    { id: 'condition', label: '컨디션', expr: 'round((energy + mental) / 2)' },
+    // 컨디션은 더하기가 아니라 곱하기다 — 그래야 채널이 커져도 몸 상태가 계속 아프다.
+    { id: 'ccv', label: '동시 접속',
+      expr: 'clamp(round(subs * (0.04 + hype * 0.0012 + fit * 0.002) * (0.5 + condition * 0.01) * (burnout ? 0.55 : 1) + stream_hours * 0.5), 0, 999999)' },
+    // 구독자 대비 동접률. 채널이 커져도 이 값은 안 커진다 —
+    // "지금 잘 하고 있나"를 규모와 무관하게 재는 지표라, 멘탈 판정의 기준이 된다.
+    { id: 'engagement', label: '시청률', expr: 'round(ccv * 100 / max(subs, 1))' },
+    // 동접은 "지금 몇 명이 보고 있나", 후원은 "오늘 총 얼마"다 — 그래서 방송 시간에 비례한다.
+    { id: 'donation', label: '오늘 후원', expr: 'round(ccv * 0.2 * stream_hours / 4)' },
+    { id: 'cost', label: '오늘 지출', expr: '12 + editor * 20 + round(subs * 0.006)' },
+    { id: 'net', label: '오늘 순익', expr: 'donation - cost' },
+    { id: 'tier', label: '채널 규모',
+      expr: 'subs >= 5000 ? "대형" : (subs >= 1000 ? "중견" : (subs >= 300 ? "소형" : "신입"))' },
+  ],
+  rules: {
+    // 순서가 중요하다 — 정산(funds)과 유입(subs)을 먼저 끝내야 그 턴의 동접 기준으로 계산된다.
+    onTurn: [
+      { set: 'funds', expr: 'funds + net' },
+      { set: 'subs', expr: 'subs + round(ccv * 0.25 * (0.5 + stream_hours / 8)) - round(subs * 0.012)' },
+      { set: 'energy', expr: 'clamp(energy - round(stream_hours * 1.4) - (editor == 0 ? 5 : 1) + 12, 0, 100)' },
+      // 멘탈이 유일한 패배 경로다. 깎는 축이 셋(반응 없음 / 논란 / 생활고)이라
+      // 채널이 아무리 커져도 관리를 놓으면 무너진다.
+      { set: 'mental', expr: 'clamp(mental + (engagement < 8 ? -4 : (engagement >= 15 ? 2 : 0))'
+        + ' + (heat >= 40 ? -4 : 0) + (funds <= 0 ? -3 : 0) - (burnout ? 4 : 0), 0, 100)' },
+      { set: 'hype', expr: 'clamp(hype - 4 + editor * 2, 0, 100)' },
+      { set: 'heat', expr: 'clamp(heat - 1, 0, 100)' },
+      { set: 'stream_hours', expr: 'max(stream_hours - 2, 3)' },
+      { set: 'day', expr: 'day + 1' },
+    ],
+    events: [
+      // 번아웃은 방송 시간을 강제로 최소치로 되돌린다 — 안 그러면 빠져나올 길이 없다.
+      { id: 'burnout_on', when: 'energy <= 20 and not burnout',
+        effects: [{ set: 'burnout', expr: '1' }, { set: 'stream_hours', expr: '3' }],
+        notify: '눈을 떠도 몸이 안 움직인다. 방송 켜는 것 자체가 버거워졌다.' },
+      { id: 'burnout_off', when: 'energy >= 40 and burnout',
+        effects: [{ set: 'burnout', expr: '0' }],
+        notify: '오랜만에 푹 자고 일어났다. 다시 마이크를 켤 만해졌다.' },
+      { id: 'scandal_start', when: 'heat >= 45 and not in_scandal',
+        effects: [{ set: 'in_scandal', expr: '1' }, { set: 'mental', expr: 'mental - 12' },
+          { set: 'hype', expr: 'hype + 18' }, { set: 'subs', expr: 'subs - round(subs * 0.06)' }],
+        notify: '논란이 커뮤니티 메인에 걸렸다. 알림이 멈추지 않는다.' },
+      { id: 'scandal_end', when: 'heat <= 20 and in_scandal',
+        effects: [{ set: 'in_scandal', expr: '0' }],
+        notify: '화제가 식었다. 채팅창이 다시 평소로 돌아왔다.' },
+      { id: 'first_300', once: true, when: 'subs >= 300',
+        notify: '구독자 300명. 이름을 아는 사람들이 생기기 시작했다.' },
+      { id: 'first_1k', once: true, when: 'subs >= 1000',
+        notify: '구독자 1000명을 넘겼다. 이제 취미라고 말하기 어려워졌다.' },
+      { id: 'quit', when: 'mental <= 0 and not career_over',
+        effects: [{ set: 'career_over', expr: '1' }],
+        notify: '더는 못 하겠다. 마지막 방송을 켤 힘도 남지 않았다.' },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.4,
+      table: [
+        // 판을 통째로 흔드는 이벤트. 내 컨셉과 맞으면 노출이 뛰고, 어긋나면 채팅이 한산해진다.
+        { id: 'trend_shift', weight: 4, cooldown: 3,
+          effects: [{ set: 'trend_seed', expr: 'rand(1, 5)' }],
+          notify: '알고리즘이 미는 장르가 바뀌었다. 추천란 풍경이 달라졌다.' },
+        { id: 'raid', weight: 3, when: 'subs >= 200', cooldown: 5,
+          effects: [{ set: 'hype', expr: 'hype + 15' }, { set: 'subs', expr: 'subs + round(subs * 0.04)' }],
+          notify: '방송을 마친 다른 스트리머가 시청자를 통째로 몰아줬다.' },
+        { id: 'clip_viral', weight: 2, when: 'hype >= 45', cooldown: 6,
+          effects: [{ set: 'subs', expr: 'subs + round(subs * 0.12) + 20' }, { set: 'hype', expr: 'hype + 20' }],
+          notify: '잘라 올린 클립 하나가 알고리즘을 탔다.' },
+        { id: 'troll', weight: 3, cooldown: 3,
+          effects: [{ set: 'mental', expr: 'mental - 6' }, { set: 'heat', expr: 'heat + 10' }],
+          notify: '악질 채팅이 붙었다. 지워도 계속 새 계정으로 들어온다.' },
+        { id: 'editor_quit', weight: 2, when: 'editor >= 1', cooldown: 6,
+          effects: [{ set: 'editor', expr: 'editor - 1' }, { set: 'hype', expr: 'hype - 5' }],
+          notify: '편집자가 그만두겠다고 연락해 왔다. 밀린 영상이 그대로 남았다.' },
+        { id: 'whale', weight: 2, cooldown: 4,
+          effects: [{ set: 'funds', expr: 'funds + round(20 + ccv * 0.5)' }, { set: 'mental', expr: 'mental + 4' }],
+          notify: '익명의 큰 후원이 들어왔다. 읽어주는 목소리가 떨렸다.' },
+        { id: 'tech_fail', weight: 2, cooldown: 5,
+          effects: [{ set: 'funds', expr: 'funds - 40' }, { set: 'hype', expr: 'hype - 6' }],
+          notify: '장비가 말썽이다. 방송이 끊기고 수리비가 나갔다.' },
+        { id: 'sponsor', weight: 2, when: 'subs >= 500 and heat < 40', cooldown: 8,
+          effects: [{ set: 'funds', expr: 'funds + round(subs * 0.06)' }],
+          notify: '광고 제안 메일이 왔다. 조건이 나쁘지 않다.' },
+        { id: 'slander', weight: 2, when: 'heat >= 25', cooldown: 7,
+          effects: [{ set: 'heat', expr: 'heat + 18' }, { set: 'mental', expr: 'mental - 9' },
+            { set: 'hype', expr: 'hype + 12' }],
+          notify: '저격 영상이 올라왔다. 조회수만 빠르게 오르고 있다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'trend_hit', when: 'concept == trend',
+      text: '[분위기] 지금 유행({trend})이 내 컨셉과 맞아떨어졌다. 채팅이 빠르게 올라가고 처음 보는 닉네임이 계속 들어온다.' },
+    { id: 'trend_miss', when: 'concept != trend',
+      text: '[분위기] 유행은 {trend} 쪽에 가 있고 내 방송은 {concept}이다. 동접 {ccv}명, 채팅은 한산하다.' },
+    { id: 'low_energy', when: 'energy <= 25',
+      text: '[상태] 체력이 바닥이다. 목소리에 힘이 없고 리액션이 반 박자 늦으며 말이 자꾸 끊긴다.' },
+    { id: 'burnt', when: 'burnout',
+      text: '[상태] 번아웃이다. 방송 켜는 것 자체가 버겁고, 즐거운 척하는 게 티가 난다.' },
+    { id: 'scandal_dir', when: 'in_scandal',
+      text: '[상태] 논란 진행 중(논란 지수 {heat}). 채팅창에 해명 요구와 저격이 섞여 올라온다. 실수 하나가 바로 캡처된다.' },
+    { id: 'big_name', when: 'subs >= 5000',
+      text: '[위치] 대형 채널이다. 말 한마디가 커뮤니티에 옮겨지고 기사가 된다. 방송 밖에서도 알아보는 사람이 있다.' },
+    { id: 'call_regulars', when: 'count(regulars) >= 3',
+      text: '[연속성] 매번 오는 단골들({regulars:tags})의 닉네임을 읽어주고 지난 방송 이야기를 이어가라.' },
+  ],
+  actions: [
+    // 지속 정책(hold): 켜 두면 매 턴 적용된다. onTurn이 매 턴 시간을 되돌리므로
+    // 켜면 서서히 늘고 끄면 서서히 줄어든다. `when`이 안전장치다 — 번아웃이 오면
+    // 켜져 있어도 효과가 멈춰, 켜 놓고 잊은 플레이어가 그대로 죽지 않는다.
+    { id: 'go_hard', label: '🔴 풀타임 방송', mode: 'hold', when: 'not burnout',
+      inject: '[지속 정책] 잠을 줄이고 방송 시간을 계속 늘리고 있다.',
+      effects: [{ set: 'stream_hours', expr: 'min(stream_hours + 3, 10)' },
+        { set: 'energy', expr: 'energy - 4' }] },
+    { id: 'rest_day', label: '💤 휴방', mode: 'oneshot', cooldown: 2,
+      inject: '[플레이어 행동] 오늘은 방송을 쉰다.',
+      effects: [{ set: 'energy', expr: 'energy + 28' }, { set: 'mental', expr: 'mental + 10' },
+        { set: 'hype', expr: 'hype - 6' }] },
+    // 비용이 조건부다 — 편집자를 뽑아 두면 같은 버튼이 훨씬 싸진다.
+    { id: 'make_clips', label: '✂️ 클립 편집', mode: 'oneshot', cooldown: 3,
+      inject: '[플레이어 행동] 하이라이트를 잘라 숏폼으로 올린다.',
+      effects: [{ set: 'hype', expr: 'hype + 16' },
+        { set: 'energy', expr: 'energy - (editor >= 1 ? 2 : 6)' }] },
+    // 화제성을 논란과 맞바꾸는 버튼 — 이게 있어야 사과 방송이 쓸모를 갖는다.
+    // `when`으로 스스로를 막는다: 이미 논란 중이면 더 세게 못 지른다.
+    // 이 조건이 없으면 눌리는 대로 논란이 쌓여 결국 "누르면 손해인 버튼"이 된다.
+    { id: 'edgy', label: '🌶 자극적인 방송', mode: 'oneshot', when: 'heat < 30', cooldown: 4,
+      inject: '[플레이어 행동] 선을 살짝 넘는 콘텐츠로 화제를 만든다.',
+      effects: [{ set: 'hype', expr: 'hype + 26' }, { set: 'subs', expr: 'subs + round(subs * 0.04)' },
+        { set: 'funds', expr: 'funds + round(ccv * 0.5)' },
+        { set: 'heat', expr: 'heat + 11' }] },
+    { id: 'collab', label: '🤝 합방', mode: 'oneshot', when: 'subs >= 150', cooldown: 5,
+      inject: '[플레이어 행동] 다른 스트리머와 합방을 잡는다.',
+      effects: [{ set: 'hype', expr: 'hype + 18' }, { set: 'subs', expr: 'subs + round(subs * 0.05) + 10' },
+        { set: 'energy', expr: 'energy - 6' }, { set: 'mental', expr: 'mental + 3' },
+        { set: 'heat', expr: 'heat + 4' }] },
+    // 파생 값(trend)을 그대로 변수에 대입한다 — 유행을 좇는 대신 기존 팬을 잃는다.
+    { id: 'switch_concept', label: '🎯 컨셉 전환', mode: 'oneshot', when: 'concept != trend', cooldown: 6,
+      inject: '[플레이어 행동] 지금 뜨는 장르로 방송 컨셉을 갈아탄다.',
+      effects: [{ set: 'concept', expr: 'trend' }, { set: 'hype', expr: 'hype + 8' },
+        { set: 'subs', expr: 'subs - round(subs * 0.05)' }] },
+    { id: 'hire_editor', label: '🧑‍💻 편집자 고용', mode: 'oneshot', when: 'funds >= 80 and editor < 3', cooldown: 4,
+      inject: '[플레이어 행동] 편집을 맡길 사람을 구한다.',
+      effects: [{ set: 'editor', expr: 'editor + 1' }, { set: 'funds', expr: 'funds - 80' }] },
+    { id: 'apologize', label: '🙇 사과 방송', mode: 'oneshot', when: 'heat >= 25', cooldown: 4,
+      inject: '[플레이어 행동] 카메라 앞에서 고개를 숙인다.',
+      effects: [{ set: 'heat', expr: 'heat - 40' }, { set: 'mental', expr: 'mental - 6' },
+        { set: 'hype', expr: 'hype + 6' }] },
+  ],
+  updater: {
+    // 구독자·동접은 allow에 넣지 않는다 — 시스템이 계산하는 결과값이라
+    // 모델이 손대면 사슬 전체가 어긋난다. 서사가 흔들 수 있는 건 감정과 평판뿐이다.
+    allow: [
+      { id: 'mental', maxDelta: 12 }, { id: 'energy', maxDelta: 15 },
+      { id: 'heat', maxDelta: 18 }, { id: 'hype', maxDelta: 12 },
+      { id: 'funds', maxDelta: 60 },
+      { id: 'regulars' }, { id: 'catchphrase', maxLength: 40 }, { id: 'nickname', maxLength: 20 },
+    ],
+    guide: '구독자·동접·후원액은 시스템이 계산하니 절대 건드리지 마라. 방송 중 실제로 벌어진 일(악플, 실언, 응원, 큰 후원)만 멘탈·논란 지수에 반영하라. 단골(regulars)에는 여러 번 등장한 시청자 닉네임만 add하라.',
+  },
+  promptState: {
+    template: '[방송 현황 — {day}일차 · {tier} 채널 · {nickname}]\n'
+      + '구독자 {subs}명 | 오늘 동접 {ccv}명 | 화제성 {hype}/100 | 수익금 {funds}만원 (오늘 {net})\n'
+      + '컨셉 {concept} / 유행 {trend}{concept == trend ? " ✅적중" : " ❌빗나감"} | 방송 {stream_hours}시간'
+      + '{editor > 0 ? " | 편집자 " + editor + "명" : ""}\n'
+      + '체력 {energy} | 멘탈 {mental} | 논란 {heat}/100'
+      + '{in_scandal ? " ⚠논란 중" : ""}{burnout ? " 🔥번아웃" : ""}\n'
+      + '단골: {regulars:tags}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '채널', items: [
+        { var: 'day' }, { var: 'tier' }, { var: 'subs' }, { var: 'ccv' },
+      ] },
+      { label: '방송', items: [
+        { var: 'concept' }, { var: 'trend' }, { var: 'stream_hours' },
+        { var: 'hype', bar: { max: 100 }, color: 'hype >= 50 ? "#ff2d95" : "#5f6bff"' },
+      ] },
+      { label: '컨디션', items: [
+        { var: 'energy', bar: { max: 100 }, color: 'energy <= 25 ? "#ff4d4d" : "#20e3b2"' },
+        { var: 'mental', bar: { max: 100 }, color: 'mental <= 30 ? "#ff4d4d" : "#20e3b2"' },
+        { var: 'heat', bar: { max: 100 }, color: 'heat >= 50 ? "#ff4d4d" : "#8a93b8"' },
+        { var: 'burnout', showWhen: 'burnout' },
+        { var: 'in_scandal', showWhen: 'in_scandal' },
+        { var: 'career_over', showWhen: 'career_over' },
+      ] },
+      { label: '수익', visibility: 'collapsed', items: [
+        { var: 'funds' }, { var: 'net' }, { var: 'donation' }, { var: 'editor' },
+      ] },
+      { label: '팬', visibility: 'collapsed', items: [
+        { var: 'nickname' }, { var: 'catchphrase' }, { var: 'regulars' },
+      ] },
+    ],
+    // 방송 오버레이 — 자정의 모니터 불빛. 남색 바탕에 네온 핑크
+    customCSS: `.sim-status { background:#0f1020; border:1px solid #2a2d55; border-radius:10px; color:#e6e8ff; }
+.sim-status summary { color:#ff2d95; letter-spacing:.08em; text-transform:uppercase; }
+.sim-group-label { color:#5f6bff; font-size:.78em; letter-spacing:.12em; }
+.sim-label { color:#8a93b8; opacity:1; }
+.sim-value { color:#ffffff; font-weight:700; }
+.sim-badge, .sim-tag { background:#1b1d3a; color:#ff8ec6; border:1px solid #3a3f75; border-radius:999px; }
+.sim-bar { background:#1b1d3a; height:6px; border-radius:999px; }
+.sim-action { border-color:#3a3f75; color:#c9cdf0; border-radius:999px; background:#171935; }
+.sim-action.sim-armed { border-color:#ff2d95; background:#2a1030; color:#ff8ec6; }
+.sim-log { color:#6f76a8; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'rookie', label: '신입 — 방구석에서 시작', set: { subs: 120, funds: 50, hype: 20, concept: '잡담', energy: 80, mental: 70 } },
+      { id: 'gamer', label: '게임 채널 — 이미 자리는 잡음', set: { subs: 900, funds: 200, hype: 35, concept: '게임', trend_seed: 2 } },
+      { id: 'comeback', label: '복귀 — 과거 논란이 남아 있음', set: { subs: 4000, funds: 300, hype: 15, mental: 45, heat: 35, concept: '노래' } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['nickname', 'catchphrase', 'concept', 'subs', 'regulars'],
+      instruction: '[최초 설정] 아직 데뷔 전이다. 유저와 함께 활동명, 캐릭터 컨셉(외형·설정·말투), 주력 콘텐츠, 첫 인사말을 정하는 대화를 하라. 정해지면 데뷔 방송 직전 상황을 정리해 서술하라.',
+      guide: '구독자는 처음이면 100~300명 사이로 잡아라. 단골(regulars)은 데뷔 전이면 비워 두고, 이미 활동 중인 설정이면 2~3명만 넣어라.',
+    },
+  },
+};
+
+// 일상물 — 가장 가벼운 템플릿. 관리할 수치가 없는 봇(현대 일상·학원·동거물)에 그대로 얹는 용도.
+// 다른 템플릿과 달리 "이기고 지는 판"이 없다. 그래서 설계가 반대로 간다:
+//   · 매 턴 자동 처리(틱)를 아예 두지 않는다. 일상물에서 한 턴은 하루도 한 시간도 아니다 —
+//     카페에서 세 턴을 떠들었다고 저녁이 되면 안 된다.
+//   · 대신 시간·날짜는 **유저가 버튼으로** 넘긴다(액션). 카운터를 AI에게 안 맡기는 원칙은 지키되,
+//     넘기는 시점만 사람이 정하는 것이다.
+//   · 랜덤 이벤트는 수치를 굴리는 게 아니라 **서사에 소재를 던지는** 쪽에 가깝다.
+const DAILY = {
+  simcore: '0.1',
+  meta: { name: '일상 — 하루의 기록', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'day', label: '날짜', type: 'int', init: 1, min: 1, format: '{v}일차',
+      desc: '[💤 하루를 마친다] 버튼으로만 넘어간다. AI는 못 건드린다.' },
+    { id: 'time', label: '시간', type: 'enum', init: '아침', enum: ['새벽', '아침', '낮', '저녁', '밤'] },
+    { id: 'weather', label: '날씨', type: 'enum', init: '맑음', enum: ['맑음', '흐림', '비', '눈', '바람'] },
+    { id: 'place', label: '위치', type: 'text', init: '집', maxLength: 40 },
+    { id: 'money', label: '소지금', type: 'int', init: 50000, min: 0, format: '{v}원' },
+    { id: 'bag', label: '소지품', type: 'list', init: ['지갑', '휴대폰', '열쇠'],
+      maxItems: 15, itemMaxLength: 30 },
+  ],
+  rules: {
+    // 틱 없음 — 위 주석 참고. 시간이 저절로 흐르면 대화가 성립하지 않는다.
+    onTurn: [],
+    events: [],
+    randomEvents: {
+      chancePerTurn: 0.3,
+      table: [
+        // ── 사람 ──
+        { id: 'meet_known', weight: 3, cooldown: 3,
+          notify: '아는 얼굴과 마주쳤다. 반가운 쪽일 수도, 피하고 싶은 쪽일 수도 있다.' },
+        { id: 'meet_stranger', weight: 2, cooldown: 4,
+          notify: '낯선 사람이 말을 걸어온다. 길을 묻는 것일 수도, 다른 용건일 수도 있다.' },
+        { id: 'someone_calls', weight: 2, cooldown: 4,
+          notify: '연락이 왔다. 누구에게서 온 것인지는 이 장면의 흐름에 맞게 정하라.' },
+        // ── 가벼운 사건 ──
+        { id: 'small_trouble', weight: 2, cooldown: 3,
+          notify: '사소한 소동이 벌어졌다. 크게 위험하지는 않지만 그냥 지나치기도 애매하다.' },
+        { id: 'small_find', weight: 2, cooldown: 4,
+          notify: '뭔가를 얻게 되었다. 주웠거나, 받았거나, 사게 되었다 — 소지품에 남을 만한 것.' },
+        { id: 'small_spend', weight: 2, cooldown: 3, when: 'money >= 5000',
+          effects: [{ set: 'money', expr: 'max(money - rand(1000, 9000), 0)' }],
+          notify: '예상 못 한 지출이 생겼다. 얼마가 나갔는지는 상태창에 이미 반영되어 있다.' },
+        { id: 'small_gain', weight: 1, cooldown: 6,
+          effects: [{ set: 'money', expr: 'money + rand(3000, 15000)' }],
+          notify: '돈이 조금 생겼다. 받은 것인지 찾은 것인지는 장면에 맞게 정하라.' },
+        // ── 날씨 ── 바뀔 때만 후보에 오르게 when으로 막는다 (같은 날씨로 "바뀌었다"고 알리면 이상하다)
+        { id: 'sky_rain', weight: 2, cooldown: 5, when: 'weather != "비" and weather != "눈"',
+          effects: [{ set: 'weather', expr: '"비"' }],
+          notify: '빗방울이 떨어지기 시작했다.' },
+        { id: 'sky_clear', weight: 3, cooldown: 4, when: 'weather != "맑음"',
+          effects: [{ set: 'weather', expr: '"맑음"' }],
+          notify: '구름이 걷히고 볕이 든다.' },
+        { id: 'sky_cloud', weight: 2, cooldown: 4, when: 'weather != "흐림"',
+          effects: [{ set: 'weather', expr: '"흐림"' }],
+          notify: '하늘이 무겁게 흐려졌다.' },
+        { id: 'sky_wind', weight: 1, cooldown: 6, when: 'weather != "바람"',
+          effects: [{ set: 'weather', expr: '"바람"' }],
+          notify: '바람이 세게 불기 시작했다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'bad_weather', when: 'weather == "비" or weather == "눈"',
+      text: '[상태] 궂은 날씨({weather})다. 젖은 옷, 우산, 실내로 피하는 선택 같은 것이 묘사에 배어나야 한다.' },
+    { id: 'late_hour', when: 'time == "밤" or time == "새벽"',
+      text: '[상태] 늦은 시각({time})이다. 문을 닫은 가게, 인적이 드문 거리, 피로 같은 것을 고려하라.' },
+    { id: 'broke', when: 'money < 5000',
+      text: '[상태] 수중에 {money}원밖에 없다. 돈이 드는 선택은 부담스럽게 다뤄라.' },
+  ],
+  actions: [
+    { id: 'pass_time', label: '🕐 시간을 보낸다', mode: 'oneshot',
+      inject: '[플레이어 액션] 시간이 흘러 다음 때가 되었다.',
+      effects: [{ set: 'time',
+        expr: 'time == "새벽" ? "아침" : time == "아침" ? "낮" : time == "낮" ? "저녁" : time == "저녁" ? "밤" : "새벽"' }] },
+    { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot',
+      inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 이튿날 아침부터 시작한다.',
+      effects: [{ set: 'day', expr: 'day + 1' }, { set: 'time', expr: '"아침"' }] },
+  ],
+  updater: {
+    model: 'aux',
+    // day는 일부러 뺐다 — 날짜는 버튼으로만 넘어간다. AI에게 열어 두면 서사가 "며칠 뒤"라고
+    // 흘리는 순간 날짜가 튀고, 그 뒤로는 며칠째인지 아무도 못 맞춘다.
+    allow: [
+      { id: 'time' },
+      { id: 'weather' },
+      { id: 'place', maxLength: 40 },
+      { id: 'money', maxGain: 50000, maxLoss: 50000 },
+      { id: 'bag' },
+    ],
+    guide: '서사에 실제로 나온 변화만 반영하라. 시간대는 장면이 분명히 넘어갔을 때만 옮기고, '
+      + '"조금 뒤" 정도로는 옮기지 마라. 소지품은 손에 넣거나 잃은 것이 서술됐을 때만 add/remove 하라.',
+  },
+  promptState: {
+    template: '[{day}일차 · {time} · {weather}]\n위치 {place} | 소지금 {money}원\n소지품: {bag:tags}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '지금', items: [{ var: 'day' }, { var: 'time' }, { var: 'weather' }, { var: 'place' }] },
+      { label: '소지', items: [{ var: 'money' }, { var: 'bag' }] },
+    ],
+    // 모눈 메모지 — 옅은 종이에 연필 선
+    customCSS: `.sim-status { background:#fbfaf6; border:1px solid #ddd8c8; border-radius:6px; color:#4a4740;
+  background-image:linear-gradient(#eae5d6 1px,transparent 1px); background-size:100% 1.9em; }
+.sim-status summary { color:#8a7f66; letter-spacing:.06em; }
+.sim-group-label { color:#9a8f76; font-size:.82em; letter-spacing:.1em; }
+.sim-label { color:#6b665a; }
+.sim-value { color:#3d3a33; }
+.sim-badge { background:#ece7d8; color:#5c5749; }
+.sim-tag { background:#f3efe2; border-color:#ddd8c8; color:#5c5749; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'plain', label: '평범한 하루', set: {} },
+      { id: 'weekend', label: '여유로운 주말', set: { time: '낮', place: '단골 카페', money: 120000, weather: '맑음' } },
+      { id: 'tight', label: '빠듯한 월말', set: { money: 7000, weather: '비', place: '자취방' } },
+    ],
+    ai: {
+      enabled: true,
+      vars: ['time', 'weather', 'place', 'money', 'bag'],
+      instruction: '[최초 설정 진행 중] 유저와 짧게 대화하며 오늘이 어떤 날인지 정하라. '
+        + '어디서 시작하는지, 지금 몇 시쯤인지, 주머니 사정은 어떤지 정도면 충분하다. 길게 끌지 마라.',
+      guide: '유저가 말한 것은 그대로 반영하고, 말하지 않은 것은 그 장면에 자연스러운 값으로 정하라. '
+        + '소지품은 그 사람이 당연히 들고 다닐 만한 것 서너 개면 된다.',
+    },
+  },
+};
+
+const TEMPLATES = {
+  blank: { label: '빈 스키마 (최소)', schema: BLANK },
+  daily: { label: '일상 — 하루의 기록 (날짜·시간·날씨·소지품)', schema: DAILY },
+  rpg: { label: 'RPG 모험 기록 (HP/MP·레벨·인벤토리)', schema: RPG },
+  estate: { label: '영지 시뮬레이션 (자원 관리)', schema: ESTATE },
+  mystery: { label: '추리 — 사건 수사 (단서·용의자·스포일러 차단)', schema: MYSTERY },
+  business: { label: '경영 — 가게 운영 (수요·매출·정산 자동화)', schema: BUSINESS },
+  survival: { label: '생존 — 혹한의 정착지 (자원 고갈·정책 트레이드오프)', schema: SURVIVAL },
+  politics: { label: '정치 — 지지율과 파벌 (세력 관리·법안 표결)', schema: POLITICS },
+  romance: { label: '연애 — 관계 시뮬 (호감도·단계 전이·기억)', schema: ROMANCE },
+  trpg: { label: 'TRPG — 주사위 판정 (d20·능력보정·이점)', schema: TRPG },
+  vtuber: { label: '버튜버 — 방송 운영 (동접·화제성·번아웃·논란)', schema: VTUBER },
+};
+
+module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER };
+
+});
+
+
+(async () => {
+  const { validateSchema } = SimCore.require('validate');
+  const { SimSession } = SimCore.require('session');
+  const { renderStatusHtml, actionGlyph } = SimCore.require('render');
+  const { createSchemaEditor } = SimCore.require('editor');
+  const { TEMPLATES } = SimCore.require('templates');
+  const engine = SimCore.require('engine');
+  const { itemValue, itemExpiry } = SimCore.require('expr');
+
+  const MARKER_RE = /⟦simcore:(\d+)⟧/g;
+  const SCHEMA_LORE_COMMENT = '⚙simcore';
+
+  // 보조 모델에 붙이는 짧은 유저 턴. system 한 통만 보내면 안 되는 프로바이더가 있다.
+  // 구글 계열(버텍스 Gemini)은 system을 contents가 아니라 systemInstruction으로 빼내므로
+  // system만 보내면 contents가 빈 배열이 되고, 리수의 요청 빌더가 마지막/첫 원소의 role을
+  // 읽다가 `Cannot read properties of undefined (reading 'role')`로 죽는다.
+  // OpenAI 호환 엔드포인트(LLM Gateway 포함)는 system-only를 그대로 넘겨서 안 죽는다 —
+  // 같은 모델·같은 백엔드인데 프로바이더만 바꾸면 되던 이유가 이것이다.
+  // 내용은 프롬프트와 안 싸우게 중립으로 둔다 (연결 테스트·초기설정에도 같이 쓰인다).
+  const AUX_NUDGE = '위 지시에 따라 답하라.';
+
+  // ── 보조 모델 호출 (형식 자동 탐지 + 진단) ─────────────────
+  // [live-test] runLLMModel의 실제 인자/반환 형식이 불명확하므로 여러 형식을 순차 시도하고
+  //             결과를 lastAux에 기록해 패널 [엔진 정보]에 표시한다.
+  let lastAux = { status: '아직 호출 안 됨', raw: '', applied: 0 };
+
+  async function streamToText(s) {
+    try {
+      const reader = s.getReader();
+      const dec = new TextDecoder();
+      let out = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        out += typeof value === 'string' ? value : dec.decode(value);
+      }
+      return out;
+    } catch { return null; }
+  }
+
+  async function extractLLMText(res) {
+    if (res == null) return null;
+    if (typeof res === 'string') return res;
+    let c = res.content ?? res.result ?? res.text ?? res.message ?? null;
+    if (c && typeof c === 'object' && typeof c.getReader === 'function') c = await streamToText(c);
+    if (typeof c === 'string' && c.trim()) return c;
+    return null;
+  }
+
+  async function callAuxLLM(promptText, maxTokens) {
+    // 확정 시그니처 (리스 소스 requestChatDataMain / plugin API 기준):
+    //   runLLMModel({ mode, messages, staticModel?, allowPlugins? }) → { type:'success'|'fail', result }
+    // - mode: 'submodel' = 보조모델 (그 외 'model'|'memory'|'emotion'|'otherAx'|'translate')
+    // - allowPlugins: true — 보조모델이 플러그인 프로바이더(pluginmodel:::)일 때
+    //   기본값이 차단(재귀 IPC 루프 가드)이라 명시적으로 허용해야 함.
+    //   ("Plugin calls are blocked by the caller." 의 실제 원인이 이 가드였음)
+    try {
+      const res = await Risuai.runLLMModel({
+        mode: 'submodel',
+        messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
+        allowPlugins: true,
+      });
+      const text = await extractLLMText(res);
+      console.log('[simcore] runLLMModel(submodel) →', res?.type,
+        text ? text.slice(0, 150) : JSON.stringify(res)?.slice(0, 150));
+      if (res && res.type === 'fail') {
+        if (text && /blocked by the caller/i.test(text)) {
+          // allowPlugins:true 에도 차단이면 구버전 리스 (allowPlugins 미지원) — 루아 브리지로
+          await setAuxPath('bridge'); // auto 모드는 다음 턴부터 브리지 경유로 전환된다
+          const hasBridge = hasLuaBridge(await Risuai.getCharacter().catch(() => null));
+          lastAux = {
+            status: hasBridge
+              ? '이 환경은 플러그인 직접 호출이 차단됨 → 루아 브리지 경유로 자동 전환 (다음 턴부터 정상 갱신)'
+              : '이 환경은 플러그인 직접 호출이 차단됨 — [봇 편집]의 [루아 브리지 설치/갱신]을 눌러야 수치가 갱신된다',
+            raw: text.slice(0, 200), applied: lastAux.applied,
+          };
+          return { blocked: true };
+        }
+        lastAux = { status: `보조모델 호출 실패: ${(text || '').slice(0, 120)}`, raw: (text || '').slice(0, 200), applied: 0 };
+        return null;
+      }
+      if (text) {
+        await setAuxPath('direct'); // 직접 호출이 되는 환경으로 확정
+        lastAux = { status: '호출 성공 (submodel)', raw: text.slice(0, 200), applied: lastAux.applied };
+        return text;
+      }
+      lastAux = { status: `호출됐지만 텍스트 추출 실패 (${typeof res})`, raw: JSON.stringify(res)?.slice(0, 200) ?? '', applied: 0 };
+    } catch (e) {
+      console.log('[simcore] runLLMModel 예외:', e.message);
+      lastAux = { status: `호출 예외: ${e.message}`, raw: '', applied: 0 };
+    }
+    return null;
+  }
+
+  // ── 보조모델 경로 자동 판별 (배포 대비) ────────────────────
+  // 배포 시나리오: 제작자가 [카드 + 세이브]를 배포하고, 받은 사람은 임포트만 하고 논다.
+  // 카드에는 스키마·루아 브리지·LLA가 실려 가지만 aux_model_mode는 플러그인 설정이라
+  // 안 실려 간다. 받는 사람 환경이 차단인지 아닌지는 사람마다 다른데 그걸 수동으로
+  // 맞추라고 할 수는 없다 → 직접 호출을 한 번 시도해보고 차단이면 브리지로 굳힌다.
+  // 판정 결과는 pluginStorage(기기 로컬)에 남긴다. 카드가 아니라 환경의 속성이므로.
+  const AUX_PATH_KEY = 'sim:auxpath';
+  let auxPathCache = undefined; // 'direct' | 'bridge' | null(미판정)
+
+  async function getAuxPath() {
+    if (auxPathCache === undefined) {
+      try { auxPathCache = (await Risuai.pluginStorage.getItem(AUX_PATH_KEY)) || null; }
+      catch { auxPathCache = null; }
+    }
+    return auxPathCache;
+  }
+
+  async function setAuxPath(v) {
+    if (auxPathCache === v) return;
+    auxPathCache = v;
+    try { await Risuai.pluginStorage.setItem(AUX_PATH_KEY, v); } catch {}
+    console.log('[simcore] 보조모델 경로 판정:', v === 'bridge' ? '차단 → 루아 브리지' : '직접 호출 가능');
+  }
+
+  /**
+   * 이번 턴에 쓸 경로를 결정한다.
+   * 설정값이 aux/lua/off면 그 지시를 따르고, auto(기본)면 판정 결과를 따른다.
+   * 아직 판정 전이면 직접 호출을 시도해본다 — 차단이면 그 자리에서 브리지로 굳는다.
+   * @returns 'aux' | 'lua' | 'off'
+   */
+  async function resolveAuxMode() {
+    const arg = (await Risuai.getArgument('aux_model_mode')) || 'auto';
+    if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
+    return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * 파이프라인 밖에서 보조 모델을 재시도 호출 (차단 우회).
+   * 성공 시 onText 콜백으로 결과 전달. 최대 4회, 1초 후 시작 + 1.5초 간격.
+   */
+  function scheduleDeferredAux(promptText, maxTokens, onText, label) {
+    setTimeout(async () => {
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const r = await callAuxLLM(promptText, maxTokens);
+        if (typeof r === 'string' && r) {
+          console.log(`[simcore] 지연 호출 성공 (${label}, ${attempt}차 시도)`);
+          lastAux.status = `지연 호출 성공 (${label}, ${attempt}차 시도)`;
+          try { await onText(r); } catch (e) { console.log('[simcore] 지연 적용 오류:', e.message); }
+          return;
+        }
+        await sleep(1500);
+      }
+      console.log(`[simcore] 지연 호출 실패 (${label}) — 이번 턴 수치 변화 없음`);
+      lastAux.status = `지연 호출도 차단/실패 (${label}) — 이 환경은 플러그인 LLM 호출이 전면 차단된 것으로 보임. `
+        + `[봇 편집]에서 [루아 브리지 설치] 후 플러그인 설정 aux_model_mode를 lua로 바꾸면 우회된다`;
+    }, 1000);
+  }
+
+  // ── 루아 브리지 (플러그인 LLM 호출이 전면 차단된 환경용 폴백) ──
+  // 원리: 루아 트리거의 axLLM은 리스가 허용하는 경로다 (유저 실측으로 확인됨).
+  //   설치 시 캐릭터에 Lua onOutput 트리거를 심는다. 트리거는 채팅 변수로 받은
+  //   지시(simcore_bridge/simcore_expect)에 따라 보조 모델을 호출하고 결과를
+  //   simcore_aux_result/simcore_aux_seq 채팅 변수에 남긴다.
+  //   플러그인은 output 이후 채팅 변수를 폴링해 결과를 회수, 상태에 소급 적용한다.
+  const LUA_BRIDGE_COMMENT = 'simcore-bridge';
+
+  /** 보조모델에 함께 보낼 최근 대화 턴 수 (1 = 이번 턴만). 1~5로 묶는다 */
+  function clampContextTurns(v) {
+    const n = Math.round(Number(v));
+    return isFinite(n) ? Math.min(5, Math.max(1, n)) : 1;
+  }
+
+  function luaLongString(s) {
+    let eq = 2;
+    while (s.includes(']' + '='.repeat(eq) + ']')) eq++;
+    const b = '='.repeat(eq);
+    return '[' + b + '[\n' + s + '\n]' + b + ']';
+  }
+
+  /**
+   * 브리지 코드는 스키마에서 생성된다(프롬프트 템플릿·변수 목록이 루아 안에 박힌다).
+   * 그래서 스키마가 바뀌면 반드시 다시 만들어야 한다. 어느 스키마로 구운 코드인지
+   * 서명으로 남겨 두고, 어긋나면 경고한다 — 배포된 카드에서 특히 중요하다.
+   */
+  // 생성되는 루아 코드 자체가 바뀌면 올린다. 지문은 스키마만 해싱하므로 이게 없으면
+  // 스키마가 그대로인 한 이미 설치된 (낡은) 브리지가 영영 노후로 안 잡힌다.
+  //   2 — axLLM에 user 턴 추가 (버텍스에서 system 한 통만 보내면 죽는 문제)
+  const BRIDGE_GEN = 2;
+
+  function schemaFingerprint(sch) {
+    const src = JSON.stringify({ g: BRIDGE_GEN, v: (sch.vars || []).map((v) => [v.id, v.type, v.label]),
+      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1 });
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  const BRIDGE_SIG_RE = /--\s*simcore-schema:\s*([0-9a-z]+)/;
+
+  /** 설치된 브리지가 현재 스키마로 구워진 것인지 (없으면 null) */
+  function bridgeSchemaSig(char) {
+    const t = (char?.triggerscript || []).find((x) => x.comment === LUA_BRIDGE_COMMENT);
+    const code = t?.effect?.[0]?.code;
+    const m = typeof code === 'string' ? code.match(BRIDGE_SIG_RE) : null;
+    return m ? m[1] : null;
+  }
+
+  function bridgeIsStale(char, sch) {
+    if (!hasLuaBridge(char) || !sch) return false;
+    const got = bridgeSchemaSig(char);
+    return got === null || got !== schemaFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
+  }
+
+  function buildLuaBridgeCode(sch) {
+    // 프롬프트 본문은 JS 빌더를 그대로 재사용하고, 현재값 자리만 ⟦cur:id⟧ 자리표시로 채워
+    // 루아가 실행 시점에 채팅 변수(미러)로 치환한다 → 빌더 이원화로 인한 드리프트 방지
+    const fake = { vars: {}, meta: {} };
+    for (const v of sch.vars) fake.vars[v.id] = '⟦cur:' + v.id + '⟧';
+    const ctxTurns = clampContextTurns(sch.updater?.contextTurns);
+    // 맥락 자리는 루아가 실행 시점에 채운다. 1턴이면 아예 자리를 만들지 않는다.
+    // 자리표시자로 굽는 템플릿이라 mentions 필터를 끈다 — 켜 두면 '⟦NARR⟧'에 이름이 없어
+    // 인물 호감도가 통째로 닫힌 채 루아에 박힌다. 브리지 모드는 거르지 않는 게 규약이다.
+    const deltaT = engine.buildAuxPrompt(sch, fake, '⟦NARR⟧', '⟦USER⟧', ctxTurns > 1 ? '⟦HIST⟧' : '',
+      { allowAll: true });
+    const setupT = engine.buildSetupPrompt(sch, fake, '⟦NARR⟧');
+    const ids = sch.vars.map((v) => "'" + v.id + "'").join(', ');
+    return [
+      '-- SimCore 루아 브리지 — 플러그인이 자동 생성/갱신 (직접 수정 금지)',
+      '-- simcore-schema: ' + schemaFingerprint(sch),
+      '-- 플러그인의 보조모델 호출이 차단된 환경에서 axLLM으로 대신 호출해',
+      '-- 결과를 채팅 변수에 남긴다. 캐릭터의 LLA(low level access) 체크 필요.',
+      'local SIMCORE_DELTA_T = ' + luaLongString(deltaT),
+      'local SIMCORE_SETUP_T = ' + luaLongString(setupT),
+      'local SIMCORE_IDS = { ' + ids + ' }',
+      'local SIMCORE_CTX = ' + ctxTurns + '  -- 보조모델에 함께 보낼 최근 대화 턴 수',
+      '',
+      'local function simcoreFill(id, tpl)',
+      '  for _, vid in ipairs(SIMCORE_IDS) do',
+      "    local val = getChatVar(id, vid)",
+      "    if val == nil or val == 'null' then val = '?' end",
+      '    tpl = string.gsub(tpl, \'"⟦cur:\' .. vid .. \'⟧"\', function() return val end)',
+      '  end',
+      '  return tpl',
+      'end',
+      '',
+      'onOutput = async(function(id)',
+      "  if getChatVar(id, 'simcore_bridge') ~= 'on' then return end",
+      "  local expect = getChatVar(id, 'simcore_expect')",
+      '  local tpl = SIMCORE_DELTA_T',
+      "  if expect == 'setup' then tpl = SIMCORE_SETUP_T end",
+      "  local narr, user, hist = '', '', ''",
+      '  local m = getChat(id, -1)',
+      '  if m ~= nil and m.data ~= nil then narr = m.data end',
+      '  local uidx = nil',
+      '  for i = 2, 8 do',
+      '    local mm = getChat(id, -i)',
+      '    if mm == nil then break end',
+      "    if mm.role == 'user' then user = mm.data or ''; uidx = i; break end",
+      '  end',
+      '  if uidx ~= nil and SIMCORE_CTX > 1 then',
+      '    local parts = {}',
+      '    for i = uidx + (SIMCORE_CTX - 1) * 2, uidx + 1, -1 do',
+      '      local mm = getChat(id, -i)',
+      '      if mm ~= nil and mm.data ~= nil and mm.data ~= \'\' then',
+      "        local who = '상대: '",
+      "        if mm.role == 'user' then who = '유저: ' end",
+      "        parts[#parts + 1] = who .. string.gsub(mm.data, '⟦simcore:%d+⟧', '')",
+      '      end',
+      '    end',
+      "    if #parts > 0 then hist = '[앞선 대화 흐름 — 참고용]\\n' .. table.concat(parts, '\\n') end",
+      '  end',
+      "  narr = string.gsub(narr, '⟦simcore:%d+⟧', '')",
+      '  local prompt = simcoreFill(id, tpl)',
+      "  prompt = string.gsub(prompt, '⟦NARR⟧', function() return narr end)",
+      "  prompt = string.gsub(prompt, '⟦USER⟧', function() return user end)",
+      "  prompt = string.gsub(prompt, '⟦HIST⟧', function() return hist end)",
+      '  local okc, res = pcall(function()',
+      "    return axLLM(id, { { role = 'system', content = prompt },",
+      "                        { role = 'user', content = '" + AUX_NUDGE + "' } })",
+      '  end)',
+      "  local seq = tonumber(getChatVar(id, 'simcore_aux_seq')) or 0",
+      '  if okc and res ~= nil and res.success then',
+      "    setChatVar(id, 'simcore_aux_result', res.result)",
+      "    setChatVar(id, 'simcore_aux_err', '')",
+      '  else',
+      "    local msg = 'axLLM 실패'",
+      '    if not okc then msg = tostring(res) elseif res ~= nil then msg = tostring(res.result) end',
+      "    setChatVar(id, 'simcore_aux_result', '')",
+      "    setChatVar(id, 'simcore_aux_err', msg)",
+      '  end',
+      "  setChatVar(id, 'simcore_aux_seq', tostring(seq + 1))",
+      'end)',
+    ].join('\n');
+  }
+
+  function installLuaBridgeOn(char, sch) {
+    const code = buildLuaBridgeCode(sch);
+    char.triggerscript = char.triggerscript || [];
+    const existing = char.triggerscript.find((t) => t.comment === LUA_BRIDGE_COMMENT);
+    if (existing) existing.effect = [{ type: 'triggerlua', code }];
+    else char.triggerscript.push({
+      comment: LUA_BRIDGE_COMMENT, type: 'output', conditions: [],
+      effect: [{ type: 'triggerlua', code }], lowLevelAccess: true,
+    });
+    char.lowLevelAccess = true; // [live-test] 프로그램적 설정이 UI 체크와 동일하게 먹는지 확인
+  }
+
+  function hasLuaBridge(char) {
+    return (char?.triggerscript || []).some((t) => t.comment === LUA_BRIDGE_COMMENT);
+  }
+
+  // 전송 직전에 브리지 제어 변수 기록 — 루아 onOutput은 이 값을 보고 동작 여부/모드를 정한다
+  async function writeBridgeControl(chaIdx, chatIdx) {
+    try {
+      const mode = await resolveAuxMode();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      if (!chat) return;
+      chat.scriptstate = chat.scriptstate || {};
+      chat.scriptstate['$simcore_bridge'] = mode === 'lua' ? 'on' : 'off';
+      chat.scriptstate['$simcore_expect'] =
+        (session && engine.isSetupPending(schema, session.current)) ? 'setup' : 'delta';
+      await Risuai.setChatToIndex(chaIdx, chatIdx, chat);
+    } catch (e) {
+      console.log('[simcore] 브리지 제어 기록 실패:', e.message);
+    }
+  }
+
+  // 루아 브리지 결과 폴링 → 상태 소급 적용 (지연 호출과 같은 멱등 규약: out 스냅샷 덮어쓰기)
+  let luaPollTimer = null;
+  function pollLuaBridge(outIndex, isSetup, baseSeq) {
+    if (luaPollTimer) clearInterval(luaPollTimer);
+    let tries = 0;
+    lastAux = { status: '루아 브리지 응답 대기 중...', raw: '', applied: 0 };
+    luaPollTimer = setInterval(async () => {
+      tries++;
+      try {
+        const ca = await Risuai.getCurrentCharacterIndex();
+        const ci = await Risuai.getCurrentChatIndex();
+        const chat = await Risuai.getChatFromIndex(ca, ci);
+        const ss = chat?.scriptstate || {};
+        const seq = ss['$simcore_aux_seq'] ?? null;
+        if (seq !== baseSeq) {
+          clearInterval(luaPollTimer); luaPollTimer = null;
+          const text = ss['$simcore_aux_result'] || '';
+          const err = ss['$simcore_aux_err'] || '';
+          if (!text) {
+            lastAux = { status: `루아 브리지 호출 실패: ${err || '빈 응답'} — 캐릭터의 LLA 체크 확인`, raw: String(err).slice(0, 200), applied: 0 };
+            return;
+          }
+          if (isSetup) {
+            const r = await session.onSetupOutput(outIndex, text);
+            lastChangeLog = r.changeLog;
+            lastAux = { status: '루아 브리지 최초설정 적용', raw: text.slice(0, 200), applied: r.changeLog.length };
+          } else {
+            const parsed = engine.parseAuxResponse(text);
+            if (!parsed) {
+              lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
+              return;
+            }
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons);
+            session.current = amended.state;
+            await session.store.save('out', outIndex, amended.state);
+            lastChangeLog = [...lastChangeLog, ...amended.changeLog];
+            lastAux = { status: '루아 브리지 델타 적용', raw: text.slice(0, 200), applied: amended.changeLog.length };
+            console.log('[simcore] 루아 브리지 적용:', amended.changeLog.length + '건',
+              amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
+          }
+          await mirrorVars(ca, ci);
+        } else if (tries >= 25) {
+          clearInterval(luaPollTimer); luaPollTimer = null;
+          lastAux.status = '루아 브리지 응답 없음 (30초) — 캐릭터에 브리지가 설치됐는지, LLA(low level access) 체크가 켜졌는지 확인';
+        }
+      } catch (e) {
+        console.log('[simcore] 브리지 폴링 오류:', e.message);
+      }
+    }, 1200);
+  }
+
+  // ── 스키마 로드 ───────────────────────────────────────────
+  let session = null;
+  let schema = null;
+  let lastChangeLog = [];
+  let charKey = null;
+  let currentChaId = null; // 현재 선택된 캐릭터 식별자 (편집기 오염 방지용 — 스키마 유무와 무관하게 항상 갱신)
+  // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
+  // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
+  let turnBusy = false;
+  let turnBusyAt = 0;
+  let panelStatus = { state: 'init', charName: null, report: null }; // 패널 표시용
+  // 플로팅 액션 버튼 상태 (구현은 아래 '액션 = 화면 우상단 플로팅 버튼' 절)
+  const ACTION_BTN_PREFIX = 'simcore:act:';
+  let actionBtnIds = new Set(); // 현재 등록돼 있는 버튼 id
+  let actionBtnSig = null;      // 마지막으로 반영한 액션 상태 서명 (불필요한 재등록 방지)
+
+  // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 플로팅 버튼을 현재 상태에 맞춘다
+  async function loadForCurrentChar() {
+    try { await loadForCurrentCharInner(); }
+    finally {
+      try { await syncActionButtons(); }
+      catch (e) { console.log('[simcore] 액션 버튼 갱신 실패:', e.message); }
+    }
+  }
+
+  async function loadForCurrentCharInner() {
+    const char = await Risuai.getCharacter();
+    if (!char) { session = null; schema = null; currentChaId = null; panelStatus = { state: 'no-char' }; return; }
+    currentChaId = char.chaId ?? char.name;
+    const lore = (char.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+    if (!lore) {
+      session = null; schema = null;
+      panelStatus = { state: 'no-schema', charName: char.name };
+      return;
+    }
+    let parsed;
+    try { parsed = JSON.parse(lore.content); }
+    catch (e) {
+      console.log('[simcore] 스키마 JSON 파싱 실패:', e.message);
+      session = null;
+      panelStatus = { state: 'parse-error', charName: char.name, report: [{ path: '$', msg: 'JSON 파싱 실패: ' + e.message }] };
+      return;
+    }
+
+    const v = validateSchema(parsed);
+    if (!v.ok) {
+      console.log('[simcore] 스키마 검증 실패:');
+      for (const err of v.errors) console.log(`  - ${err.path}: ${err.msg}`);
+      session = null;
+      panelStatus = { state: 'invalid', charName: char.name, report: v.errors, warnings: v.warnings };
+      return;
+    }
+    for (const w of v.warnings) console.log(`[simcore] 경고 ${w.path}: ${w.msg}`);
+    panelStatus = { state: 'ok', charName: char.name, warnings: v.warnings };
+
+    const chatIdx = await Risuai.getCurrentChatIndex();
+    const chaIdx = await Risuai.getCurrentCharacterIndex();
+    const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+    const chatId = chat?.id ?? `${char.chaId}:${chatIdx}`;
+    const key = `${char.chaId}:${chatId}`;
+    if (session && charKey === key) return; // 이미 로드됨
+    charKey = key;
+    schema = parsed;
+
+    // pluginStorage를 SnapshotStore 백엔드로 감싼다
+    const backend = {
+      get: (k) => Risuai.pluginStorage.getItem(k),
+      set: (k, v2) => Risuai.pluginStorage.setItem(k, v2),
+      remove: (k) => Risuai.pluginStorage.removeItem(k),
+      keys: () => Risuai.pluginStorage.keys(),
+    };
+    session = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
+
+    // 마지막 char 메시지 인덱스에서 상태 복원
+    const msgs = chat?.message ?? [];
+    let lastCharIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'char') { lastCharIdx = i; break; }
+    }
+    await session.init(lastCharIdx);
+    console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
+  }
+
+  await loadForCurrentChar();
+
+  // ── 캐릭터/채팅 전환 감지 ─────────────────────────────────
+  // API v3에는 전환 이벤트가 없다. 그래서 v0.28까지는 로드 시점이 셋뿐이었다:
+  // 플러그인 부팅 / beforeRequest / 패널 열기. 결과적으로 설치가 끝난 봇으로 들어가도
+  // "메시지를 한 번 보내거나 패널을 한 번 열기" 전에는 액션 버튼도 상태창도 안 붙었다.
+  // 설치는 됐는데 아무 일도 안 일어나는 것처럼 보이는 게 이것 때문이다.
+  //
+  // 인덱스 두 개만 얕게 폴링하고, 실제로 바뀐 순간에만 무거운 로드를 돌린다.
+  // (loadForCurrentChar 자체도 같은 키면 조기 반환하지만, 그 전에 getCharacter +
+  //  getChatFromIndex를 이미 부르므로 여기서 먼저 걸러야 의미가 있다.)
+  const readSwitchSig = async () => {
+    try { return `${await Risuai.getCurrentCharacterIndex()}:${await Risuai.getCurrentChatIndex()}`; }
+    catch (e) { return null; }           // 아직 준비 전이거나 캐릭터가 없음
+  };
+  let lastSwitchSig = await readSwitchSig();   // 방금 로드한 위치가 기준선 (여기서 또 로드하지 않는다)
+  const switchTick = async () => {
+    // 생성이 취소되면 output이 안 와서 플래그가 영영 안 풀린다 — 2분이면 그 턴은 죽은 것으로 본다
+    if (turnBusy && Date.now() - turnBusyAt < 120000) return;
+    turnBusy = false;
+    const sig = await readSwitchSig();
+    if (sig === null) return;
+    // 부팅이 리스보다 빨라 캐릭터를 못 읽은 경우엔 위치가 그대로여도 다시 시도한다.
+    // ('스키마 없음'은 정착된 상태라 재시도하지 않는다 — 안 그러면 대부분의 캐릭터에서
+    //  1.5초마다 무거운 로드가 계속 돈다.)
+    if (sig === lastSwitchSig && panelStatus.state !== 'no-char') return;
+    lastSwitchSig = sig;
+    try { charKey = null; await loadForCurrentChar(); }  // 채팅이 바뀌면 세션도 새로 잡아야 한다
+    catch (e) { console.log('[simcore] 전환 감지 로드 실패:', e.message); }
+  };
+  const switchTimer = setInterval(switchTick, 1500);
+
+  // ── ① 전송: 상태 주입 (beforeRequest) ─────────────────────
+  // ── ⓪ 유저 입력: 채팅 명령 ───────────────────────────────
+  // 배포받은 유저가 플러그인 패널을 열지 않고도 상태를 고칠 수 있는 유일한 통로.
+  // 상태창 안의 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨서 구조적으로 못 쓴다.
+  // [live-test] 'input' 훅이 유저 메시지 저장 전에 걸리는지, 반환값이 실제로 반영되는지 확인 필요.
+  await Risuai.addRisuScriptHandler('input', async (content) => {
+    try {
+      if (!content || !content.includes('/')) return content;
+      await loadForCurrentChar();
+      if (!session || !schema) return content;
+      const r = engine.applyChatCommands(schema, session.current, content);
+      if (!r.applied.length) return content;
+      session.current.vars = r.vars;
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      if (panelBuilt) renderPanel();
+      console.log('[simcore] 채팅 명령', r.applied.map((a) => `${a.id} ${a.how}`).join(', '));
+      return r.text;
+    } catch (e) {
+      console.log('[simcore] 채팅 명령 오류:', e.message);
+      return content;
+    }
+  });
+
+  // ⚠ 이 훅은 메인 생성에만 걸리는 게 아니다. 리수는 앱에서 나가는 **모든** 요청에
+  // `replacer(formated, model)`로 부르고, model은 'model'|'submodel'|'memory'|'emotion'|
+  // 'translate'|'otherAx' 중 하나다. 즉 모듈의 루아 axLLM('otherAx')도, 다른 플러그인의
+  // runLLMModel도, 번역·요약도 전부 여기를 지나간다. type을 안 보면 남의 프롬프트에
+  // 우리 상태 블록을 얹어 그 기능을 죽이고, onSend까지 불러 우리 턴을 몰래 넘기게 된다.
+  await Risuai.addRisuReplacer('beforeRequest', async (messages, type) => {
+    // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
+    // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
+    for (const m of messages ?? []) {
+      if (m && typeof m.content === 'string') m.content = m.content.replace(MARKER_RE, '').trimEnd();
+    }
+    if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
+
+    turnBusy = true; turnBusyAt = Date.now();
+    try {
+      // 호출부(리수 request.ts)에 try/catch가 없다 — 여기서 던지면 요청 자체가 죽는다
+      await loadForCurrentChar();
+      if (!session) { turnBusy = false; return messages; }
+
+      // sendIndex = 현재 채팅의 메시지 수 - 1 (방금 추가된 유저 메시지)
+      // [live-test] 리롤 시 이 값이 원래 전송과 같게 나오는지 확인 (마지막 char 제거 후 재전송이므로 같아야 함)
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const sendIndex = Math.max(0, (chat?.message?.length ?? 1) - 1);
+
+      const r = await session.onSend(sendIndex);
+      lastChangeLog = r.changeLog;
+      messages.push({ role: 'system', content: r.promptBlock });
+      await mirrorVars(chaIdx, chatIdx);
+      await writeBridgeControl(chaIdx, chatIdx);
+    } catch (e) {
+      console.log('[simcore] beforeRequest 오류:', e.message);
+    }
+    return messages;
+  });
+
+  // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
+  await Risuai.addRisuScriptHandler('output', async (content) => {
+    if (!session) { turnBusy = false; return content; }
+    try {
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      // outIndex = 이번에 저장될 char 메시지 인덱스
+      // [live-test] output 핸들러 시점에 메시지가 이미 배열에 있는지/없는지 확인해 ±1 보정
+      const outIndex = chat?.message?.length ?? 0;
+      const mode = await resolveAuxMode();
+      const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
+
+      // 최초설정 턴: 절대값 세팅 경로 (정기 틱·이벤트 없음)
+      if (await session.isSetupTurn(outIndex)) {
+        if (mode === 'lua') {
+          // 루아 브리지가 setup 프롬프트로 호출 중 — 결과를 폴링해 적용 (설정 소비는 그때)
+          lastOutIndex = outIndex;
+          pollLuaBridge(outIndex, true, baseSeq);
+          return content + `\n\n⟦simcore:${outIndex}⟧`;
+        }
+        let setupText = null;
+        if (mode !== 'off') {
+          setupText = await callAuxLLM(session.getSetupPrompt(content), 500);
+        }
+        if (setupText && setupText.blocked) {
+          // 차단됨: 설정을 소비하지 않고 파이프라인 밖에서 재시도
+          const setupPrompt = session.getSetupPrompt(content);
+          scheduleDeferredAux(setupPrompt, 500, async (text) => {
+            const r = await session.onSetupOutput(outIndex, text);
+            lastChangeLog = r.changeLog;
+            lastAux.applied = r.changeLog.length;
+            const ca = await Risuai.getCurrentCharacterIndex();
+            const ci = await Risuai.getCurrentChatIndex();
+            await mirrorVars(ca, ci);
+            console.log('[simcore] 최초설정 지연 적용:', r.changeLog.length, '개 변수');
+          }, '최초설정');
+          lastOutIndex = outIndex;
+          return content + `\n\n⟦simcore:${outIndex}⟧`;
+        }
+        const r = await session.onSetupOutput(outIndex, typeof setupText === 'string' ? setupText : null);
+        lastChangeLog = r.changeLog;
+        lastOutIndex = outIndex;
+        await mirrorVars(chaIdx, chatIdx);
+        console.log('[simcore] 최초설정 적용:', r.changeLog.length, '개 변수');
+        return content + `\n\n⟦simcore:${outIndex}⟧`;
+      }
+
+      let auxText = null;
+      // 프롬프트를 만들 때 본 글. 델타를 받을 때 같은 글로 같은 필터를 돌려야 어긋나지 않는다.
+      // (aux 경로에서만 채워진다 — 브리지 모드는 필터를 안 쓰므로 null 그대로 둔다)
+      let seenText = null;
+      const allowCount = schema.updater?.allow?.length ?? 0;
+      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount });
+      if (mode === 'off') {
+        lastAux = { status: '호출 건너뜀 — 설정값이 off', raw: '', applied: 0 };
+      } else if (allowCount === 0) {
+        lastAux = { status: '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)', raw: '', applied: 0 };
+      }
+      if (mode === 'aux' && allowCount > 0) {
+        // 유저의 이번 입력도 델타 판정 근거에 포함 ("500골드를 기부한다" 같은 의지 반영)
+        const msgs = chat?.message ?? [];
+        let lastUserText = null, lastUserIdx = -1;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'user') { lastUserText = msgs[i].data; lastUserIdx = i; break; }
+        }
+        // 앞선 대화 맥락 — 스키마가 정한 턴 수만큼 (1 = 이번 턴만, 지금까지의 동작)
+        const ctxTurns = clampContextTurns(schema.updater?.contextTurns);
+        let historyText = '';
+        if (ctxTurns > 1 && lastUserIdx > 0) {
+          const back = (ctxTurns - 1) * 2;
+          historyText = engine.formatHistory(
+            msgs.slice(Math.max(0, lastUserIdx - back), lastUserIdx)
+              .map((m) => ({ role: m.role, text: m.data })));
+        }
+        // 프롬프트를 만들 때 본 글과 델타를 받을 때 보는 글이 같아야 한다 (mentions 필터 기준)
+        seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
+        const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
+        auxText = await callAuxLLM(auxPrompt, 400);
+        if (auxText && auxText.blocked) {
+          // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용
+          scheduleDeferredAux(auxPrompt, 400, async (text) => {
+            const parsed = engine.parseAuxResponse(text);
+            if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText);
+            session.current = amended.state;
+            await session.store.save('out', outIndex, amended.state);
+            lastChangeLog = [...lastChangeLog, ...amended.changeLog];
+            lastAux.applied = amended.changeLog.length;
+            const ca = await Risuai.getCurrentCharacterIndex();
+            const ci = await Risuai.getCurrentChatIndex();
+            await mirrorVars(ca, ci);
+            console.log('[simcore] 델타 지연 적용:', amended.changeLog.length + '건',
+              amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
+          }, '델타');
+          auxText = null; // 즉시 경로에서는 변화 없이 진행 (틱·이벤트는 아래에서 정상 처리)
+        } else if (typeof auxText === 'string' && !engine.parseAuxResponse(auxText)) {
+          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도. 원문:', auxText.slice(0, 200));
+          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', 400);
+          auxText = typeof retry === 'string' ? retry : null;
+        }
+        if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
+      }
+
+      const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
+      lastChangeLog = r.changeLog;
+      lastOutIndex = outIndex;
+      lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
+        r.changeLog.map((c) => c.id).join(', ') || '(없음)',
+        '/ 보조 파싱:', r.auxParsed ? Object.keys(r.auxParsed.changes).length + '개 제안' : '실패');
+      await mirrorVars(chaIdx, chatIdx);
+      await syncActionButtons(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 버튼 갱신
+      // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
+      if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
+      return content + `\n\n⟦simcore:${outIndex}⟧`;
+    } catch (e) {
+      console.log('[simcore] output 오류:', e.message);
+      return content;
+    } finally {
+      turnBusy = false;                  // 실패해도 반드시 풀어야 전환 감지가 영영 멈추지 않는다
+    }
+  });
+
+  // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
+  await Risuai.addRisuScriptHandler('display', (content) => {
+    if (!session || !content.includes('⟦simcore:')) return content;
+    return content.replace(MARKER_RE, (_, idxStr) => {
+      try {
+        // 마지막 메시지의 마커만 실시간 상태, 과거 마커는 해당 시점 스냅샷
+        // [live-test] 과거 스냅샷 렌더는 async가 필요하므로 v0.1은 최신 상태로 통일,
+        //             과거 메시지 상태창은 v0.2에서 (display 핸들러의 async 지원 여부 확인)
+        // CSS는 메시지에 자체 포함 (mainDom 권한 불필요)
+        // 액션은 '범례'로 넣는다 — 우상단 버튼은 글리프 하나만 보여줄 수 있어서
+        // 여기서 글리프↔라벨을 짝지어주지 않으면 무슨 버튼인지 알 수가 없다.
+        // (클릭은 여전히 우상단 버튼 몫: 메시지 안 버튼은 리스가 target을 잘라내 동작하지 않는다)
+        // idxStr = 이 마커가 박힌 메시지 번호. 탭의 라디오 id·name에 섞여 메시지끼리
+        // 서로의 탭을 건드리는 걸 막는다 (같은 id가 여럿이면 label[for]은 첫 번째만 집는다).
+        return renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
+          { includeStyle: true, uid: idxStr });
+      } catch (e) {
+        console.log('[simcore] display 오류:', e.message);
+        return '';
+      }
+    });
+  });
+
+  // (상태창 CSS는 메시지 내 <style>로 자체 포함되므로 메인 DOM 스타일 주입 불필요)
+
+  // ── 액션 = 화면 우상단 플로팅 버튼 ─────────────────────────
+  // 왜 상태창 안의 <button>이 아니라 여기냐:
+  // 리스가 플러그인에 메인 DOM 클릭을 넘길 때 이벤트 객체를 잘라서 준다. 전달되는 필드는
+  // type/clientX/clientY/button/buttons/수식키뿐이고 **target이 없다**. 그래서 document
+  // 클릭 위임으로는 "어느 버튼이 눌렸는지"를 알 방법이 없어 상태창 내 버튼은 구조적으로
+  // 동작하지 않는다 (v0.11까지 실제로 죽어 있었음). registerButton(location:'action')은
+  // 리스가 직접 onclick을 걸어주는 네이티브 콜백이라 우회 없이 확실히 동작하고,
+  // 메시지 밖이라 봇의 커스텀 CSS와도 충돌하지 않는다.
+  // (상태 변수 ACTION_BTN_PREFIX/actionBtnIds/actionBtnSig는 위 '스키마 로드' 절에 선언 —
+  //  최초 loadForCurrentChar()가 이 지점보다 먼저 실행되므로 TDZ를 피하려면 앞에 있어야 한다)
+
+  /**
+   * 액션 사용 가능 여부 (방어형).
+   * 조건식이 지금 상태에 없는 변수를 참조하면 평가기가 예외를 던진다. 그대로 두면 버튼 갱신이나
+   * 패널 렌더 전체가 죽으므로, 그 액션 하나만 '사용 불가'로 낮추고 이유를 보여준다.
+   */
+  function safeAvailability(a) {
+    try { return engine.actionAvailability(schema, session.current, a); }
+    catch (e) { return { ok: false, reason: `조건식 오류 — ${e.message}` }; }
+  }
+
+  /**
+   * 액션의 현재 상태. 우상단 버튼과 상태창 범례가 같은 값을 봐야 짝이 맞으므로 한 곳에서 만든다.
+   * (actionGlyph는 render 모듈이 갖고 있다 — 범례도 같은 글리프를 써야 하기 때문)
+   */
+  function currentActionStates() {
+    if (!session || !schema) return [];
+    return (schema.actions || []).map((a) => {
+      const avail = safeAvailability(a);
+      return {
+        id: a.id,
+        label: a.label ?? a.id,
+        armed: !!session.current.meta.armed[a.id],
+        disabled: !avail.ok,
+        reason: avail.reason ?? '',
+      };
+    });
+  }
+
+  async function syncActionButtons() {
+    const states = currentActionStates();
+    const sig = JSON.stringify(states);
+    if (sig === actionBtnSig) return; // 변화 없음 — 재등록 생략
+    actionBtnSig = sig;
+
+    const wanted = new Set();
+    for (const st of states) {
+      const btnId = ACTION_BTN_PREFIX + st.id;
+      wanted.add(btnId);
+      // 아이콘 칸에는 글리프가 딱 하나 들어간다. 폭도 높이도 고정이라 두 글자를 넣으면
+      // 둘째 글자가 알약 밖으로 삐져나온다(1차 시도는 라벨 전체를 넣어 세로로 쏟아졌고,
+      // 2차 시도는 '● 🔥'처럼 두 글자를 넣어 아래로 흘렀다).
+      // → 상태는 글자를 '더하는' 대신 글리프를 '바꿔서' 표시한다.
+      //   어느 액션인지는 상태창 범례가 같은 글리프로 짝을 지어 알려준다(renderStatusHtml).
+      const icon = st.disabled ? '🔒' : (st.armed ? '✅' : actionGlyph(st.label));
+      await Risuai.registerButton(
+        { name: st.label, icon: escapeText(icon), iconType: 'html', location: 'action', id: btnId },
+        () => { onActionButton(st.id); },
+      );
+    }
+    for (const old of actionBtnIds) {
+      if (!wanted.has(old)) { try { await Risuai.unregisterUIPart(old); } catch {} }
+    }
+    actionBtnIds = wanted;
+  }
+
+  async function onActionButton(actionId) {
+    if (!session) return;
+    const r = session.toggle(actionId);
+    console.log('[simcore] 액션', actionId, r.armed ? '무장 ●' : '해제', r.blocked ? `(차단: ${r.blocked})` : '');
+    if (r.blocked) {
+      try { await Risuai.alert(`'${actionId}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
+    }
+    await syncActionButtons();
+    if (panelBuilt) renderPanel();
+  }
+
+  /** 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) — 상태 앵커·복원 기준점 */
+  async function lastCharIndex(chaIdx, chatIdx) {
+    try {
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const msgs = chat?.message ?? [];
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'char') return i;
+    } catch {}
+    return -1;
+  }
+
+  // ── CBS 호환 미러링: chat.scriptstate['$'+id] ─────────────
+  async function mirrorVars(chaIdx, chatIdx) {
+    try {
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      if (!chat) return;
+      chat.scriptstate = chat.scriptstate || {};
+      for (const [id, val] of Object.entries(session.current.vars)) {
+        chat.scriptstate['$' + id] = String(val); // 채팅 변수는 문자열 규약
+      }
+      await Risuai.setChatToIndex(chaIdx, chatIdx, chat);
+    } catch (e) {
+      console.log('[simcore] 미러링 실패:', e.message);
+    }
+  }
+
+  // ── 관리 패널 (플러그인 자체 iframe UI — 제약 없는 DOM) ────
+  let lastOutIndex = -1;
+  let panelBuilt = false;
+
+  function buildPanelSkeleton() {
+    if (panelBuilt) return;
+    panelBuilt = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      #sc-root { position:fixed !important; inset:0 !important; overflow:auto !important;
+        background:#0e1526 !important; color:#e6ebf5 !important; z-index:2147483000 !important;
+        font-family: system-ui, 'Apple SD Gothic Neo', sans-serif !important; font-size:14px !important;
+        line-height:1.55 !important; text-align:left !important; }
+      #sc-root * { box-sizing:border-box; }
+      #sc-root .wrap { max-width:760px; margin:0 auto; padding:16px 16px 80px; }
+      #sc-root h1 { font-size:16px; color:#ffffff; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+      #sc-root h2 { font-size:13.5px; color:#9db8e8; margin:22px 0 10px; padding-left:9px;
+        border-left:3px solid #5b8def; letter-spacing:.02em; }
+      #sc-root button { background:#1c2740 !important; color:#dfe7f5 !important; border:1px solid #3d5384 !important;
+        border-radius:8px !important; padding:5px 12px !important; cursor:pointer !important; font-size:13px !important; }
+      #sc-root button:hover { background:#24345c !important; border-color:#5b8def !important; }
+      #sc-root button.primary { background:#3660d9 !important; border-color:#6b93f2 !important; color:#ffffff !important; font-weight:600; }
+      #sc-root button.primary:hover { background:#4370e8 !important; }
+      #sc-root button.danger { background:#331722 !important; border-color:#8f3a4c !important; color:#f2aab6 !important; }
+      #sc-root button.danger:hover { background:#4a1f2e !important; border-color:#d9596f !important; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:4px; }
+      #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:1px 4px 1px 8px;
+        border:1px solid #3d5384; border-radius:999px; background:#16203a; font-size:12.5px; white-space:nowrap; }
+      #sc-root .chip .num { color:#8fd6a8; font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { color:#7d8aa5; font-size:11.5px; }
+      #sc-root .chip button { padding:0 5px !important; font-size:12px !important; line-height:1.4 !important;
+        border:none !important; background:transparent !important; color:#8a99b5 !important; border-radius:999px !important; }
+      #sc-root .chip button:hover { background:#4a1f2e !important; color:#f2aab6 !important; }
+      #sc-root .chip-sum { color:#9db8e8; font-size:12px; margin-left:2px; }
+      #sc-root button.armed { border-color:#6b93f2 !important; background:rgba(91,141,239,.28) !important; color:#fff !important; }
+      #sc-root .sc-maintabs { display:flex; gap:4px; border-bottom:2px solid #24304a; margin-bottom:14px; }
+      #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
+        border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }
+      #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
+      #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
+      #sc-root .status-warn { color:#ffd166; }
+      #sc-root table { width:100%; border-collapse:collapse; font-size:13px; }
+      #sc-root th { color:#9db8e8; font-weight:600; }
+      #sc-root td, #sc-root th { padding:6px 8px; border-bottom:1px solid #24304a; text-align:left; }
+      #sc-root input, #sc-root textarea, #sc-root select { background:#0a101f !important; color:#e6ebf5 !important;
+        border:1px solid #35486e !important; border-radius:6px !important; padding:4px 8px !important; font-size:13px !important; }
+      #sc-root input:focus, #sc-root textarea:focus { border-color:#5b8def !important; outline:none !important; }
+      #sc-root input { width:130px; }
+      #sc-root .report { font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; margin-top:6px; }
+      #sc-root .muted { color:#a7b4cc; font-size:12px; }
+      #sc-root .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+      #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
+      #sc-root button:disabled { opacity:.45 !important; cursor:progress !important; }
+      #sc-root .sc-help { max-width:920px; line-height:1.7; }
+      #sc-root .sc-help h3 { color:#9db8e8; font-size:15px; margin:22px 0 6px; padding-top:14px; border-top:1px solid #24304a; }
+      #sc-root .sc-help h3:first-of-type { border-top:none; padding-top:0; }
+      #sc-root .sc-help p { margin:6px 0; }
+      #sc-root .sc-help ul { margin:6px 0; padding-left:20px; }
+      #sc-root .sc-help li { margin:5px 0; }
+      #sc-root .sc-help b { color:#dfe7f5; }
+      #sc-root .sc-flow, #sc-root .sc-code { background:#0a101f; border:1px solid #24304a; border-left:3px solid #3d5384;
+        border-radius:6px; padding:10px 12px; margin:8px 0; font-family:ui-monospace,monospace; font-size:12px;
+        line-height:1.6; white-space:pre-wrap; overflow-x:auto; color:#cfe0ff; }
+      #sc-root .sc-code-i { font-family:ui-monospace,monospace; font-size:12px; background:#0a101f;
+        border:1px solid #24304a; border-radius:4px; padding:1px 5px; color:#cfe0ff; }
+      #sc-root .sc-note { background:rgba(91,141,239,.10); border-left:3px solid #5b8def;
+        border-radius:6px; padding:9px 12px; margin:8px 0; font-size:13px; }
+      #sc-root .sc-check { display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
+      #sc-root .sc-check input { width:auto !important; cursor:pointer; }
+      #sc-root .sc-prog { margin-top:8px; }
+      #sc-root .sc-prog-label { font-size:12px; color:#9db8e8; margin-bottom:4px; display:flex; gap:8px; align-items:center; }
+      #sc-root .sc-prog-bar { height:8px; background:#16203a; border:1px solid #35486e; border-radius:99px; overflow:hidden; }
+      #sc-root .sc-prog-fill { height:100%; background:linear-gradient(90deg,#3660d9,#6b93f2); width:0%; transition:width .12s linear; }
+      #sc-root .sc-prog-fill.indet { width:35% !important; animation:sc-slide 1s ease-in-out infinite alternate; }
+      @keyframes sc-slide { from { margin-left:0%; } to { margin-left:65%; } }
+      #sc-root .sc-spin { display:inline-block; width:11px; height:11px; border:2px solid #3d5384;
+        border-top-color:#6b93f2; border-radius:50%; animation:sc-rot .7s linear infinite; }
+      @keyframes sc-rot { to { transform:rotate(360deg); } }
+    `;
+    document.head.appendChild(style);
+    const root = document.createElement('div');
+    root.id = 'sc-root';
+    root.style.cssText = 'position:fixed;inset:0;background:#0e1526;color:#e6ebf5;overflow:auto;z-index:2147483000;';
+    root.innerHTML = `
+      <div class="wrap">
+        <h1>SimCore
+          <span class="row">
+            <button id="sc-reload">스키마 다시 읽기</button>
+            <button id="sc-close" class="primary">닫기</button>
+          </span>
+        </h1>
+        <div id="sc-status"></div>
+        <div class="sc-maintabs">
+          <button class="sc-maintab on" data-page="play">현황</button>
+          <button class="sc-maintab" data-page="edit">봇 편집</button>
+          <button class="sc-maintab" data-page="save">세이브</button>
+          <button class="sc-maintab" data-page="help">도움말</button>
+        </div>
+
+        <div class="sc-page on" id="sc-page-play">
+          <h2>새 시작</h2>
+          <div class="muted">프리셋은 새 채팅 시작 전에 고르는 걸 권장. AI 최초설정이 켜진 스키마는 첫 턴 대화로 시작 상황을 정한다.</div>
+          <div id="sc-presets" class="row">-</div>
+          <div class="row"><button id="sc-resetall" class="danger">상태 완전 초기화 (스냅샷 삭제)</button></div>
+          <h2>상태 변수 (수동 보정)</h2>
+          <div id="sc-vars" class="muted">스키마 로드 후 표시</div>
+          <h2>액션 무장</h2>
+          <div id="sc-actions" class="muted">-</div>
+          <h2>엔진 정보</h2>
+          <div class="row">
+            <button id="sc-auxtest">보조 모델 연결 테스트</button>
+            <span class="muted">버튼 클릭 시점에 직접 호출해 차단 여부를 확정 진단</span>
+          </div>
+          <div id="sc-info" class="report muted"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-edit">
+          <div class="muted">블록 편집기로 봇의 시뮬 규칙을 만들고, 아래 버튼으로 현재 캐릭터에 설치. 카드를 내보내면 스키마도 같이 나간다.</div>
+          <div class="row">
+            <button id="sc-install" class="primary">현재 캐릭터에 설치/업데이트</button>
+            <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
+            <button id="sc-copy">현재 캐릭터 스키마 불러오기</button>
+            <button id="sc-schema-restore">백업 복원</button>
+            <select id="sc-template"></select>
+            <button id="sc-new">템플릿에서 새로 만들기</button>
+          </div>
+          <div class="row">
+            <button id="sc-luabridge">루아 브리지 설치/갱신</button>
+            <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
+            <span class="muted">플러그인의 보조모델 호출이 차단된 환경용 우회로 — 설치 후 플러그인 설정 aux_model_mode를 lua로</span>
+          </div>
+          <div id="sc-editor-warn"></div>
+          <div id="sc-schema-report" class="report"></div>
+          <div id="sc-editor" style="margin-top:10px"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-save">
+          <h2>세이브 데이터 — 상태 백업/이동</h2>
+          <div class="muted">스냅샷 전체를 파일로 내보내거나 가져와. 스냅샷이 없는 채팅(다른 기기에서 가져온 채팅)은 [미러에서 복원]으로 변수 값만이라도 되살릴 수 있어.</div>
+          <div class="row">
+            <button id="sc-export">세이브 내보내기</button>
+            <button id="sc-import">세이브 가져오기</button>
+            <button id="sc-mirror">미러에서 복원</button>
+            <input type="file" id="sc-import-file" accept=".json" style="display:none">
+          </div>
+          <div class="row">
+            <label class="sc-check"><input type="checkbox" id="sc-import-schema" checked>
+              가져올 때 동봉된 스키마도 함께 복원</label>
+          </div>
+          <div class="muted">체크 시 세이브에 들어 있는 스키마(변수·규칙·이벤트·액션)까지 되돌린다 — 기존 스키마는 자동 백업되니
+            [봇 편집]의 [백업 복원]으로 되돌릴 수 있어. 해제하면 지금 스키마를 그대로 두고 변수 값만 가져온다.</div>
+          <div id="sc-save-report" class="report"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-help">
+          <h2>개념 정리 — 이것만 알면 된다</h2>
+          <div class="muted">아래 개념이 헷갈리면 [봇 편집] → [템플릿에서 새로 만들기]로 장르 템플릿을 열어
+            실제로 어떻게 쓰였는지 보는 게 제일 빠르다.</div>
+
+          <div class="sc-help">
+            <h3>흐름 — 한 턴에 무슨 일이 일어나나</h3>
+            <pre class="sc-flow">유저 입력
+  ↓  ① 전송 전: 상태 블록 + 지시문 + 지난 턴 이벤트 통지를 <b>메인 모델</b>에 붙여 보냄
+메인 모델이 서사를 씀
+  ↓  ② 응답 후: 그 서사를 <b>보조 모델</b>에 보내 "무엇이 얼마나 변했나"를 JSON으로 받음
+  ↓  ③ 엔진이 계산: 보조모델 델타 → 정기 계산 → 조건 이벤트 → 랜덤 이벤트
+상태 갱신 · 상태창 표시</pre>
+            <div class="sc-note">⚠ <b>규칙·이벤트의 조건식과 가중치는 어느 모델에도 전달되지 않는다.</b>
+              전부 플러그인이 자바스크립트로 계산한다. 모델이 알 수 있는 건 <b>결과</b>뿐이다 —
+              이벤트가 일어난 걸 모델에게 알리고 싶으면 반드시 <b>notify</b>를 써야 한다.</div>
+
+            <h3>변수 (vars)</h3>
+            <p>실제로 저장되는 값. 여섯 종류.</p>
+            <ul>
+              <li><b>정수/실수</b> — 체력, 돈처럼 오르내리는 수. 보조모델은 <b>증감량</b>으로 답한다 (−5, +100).</li>
+              <li><b>텍스트</b> — 한 줄 설명. 보조모델이 <b>새 값 전체</b>로 갈아끼운다.</li>
+              <li><b>참/거짓</b> — 켜짐/꺼짐 상태 (기근 중인가?).</li>
+              <li><b>선택지</b> — 정해둔 목록 중 하나 (봄/여름/가을/겨울). 목록 밖 값은 거부된다.</li>
+              <li><b>목록</b> — 인벤토리, 단서처럼 여러 개. <b>추가/제거</b>로만 바뀌어 통째로 증발하지 않는다.</li>
+            </ul>
+
+            <h3>파생 변수 (derived)</h3>
+            <p>다른 변수로 <b>그때그때 계산되는 읽기 전용 값</b>. 저장되지 않고, 규칙으로 직접 바꿀 수도 없다.
+              "인구가 늘면 세수도 자동으로 는다" 같은 관계를 한 줄로 못 박아 두는 용도다.</p>
+            <pre class="sc-code">월세수  = round(인구 * 0.3)      ← 인구가 바뀌면 자동으로 따라 바뀜
+순익   = 매출 - 인건비 - 임대료   ← 파생끼리 이어 붙일 수도 있다</pre>
+            <div class="sc-note">파생을 쓰면 규칙이 짧아진다. 매 턴 "자금 = 자금 + round(인구*0.3) - 병력*2"라고
+              길게 쓰는 대신 "자금 = 자금 + 순익"으로 끝난다.</div>
+
+            <h3>규칙 · 이벤트 (rules)</h3>
+            <ul>
+              <li><b>정기 계산(onTurn)</b> — 매 턴 <b>무조건</b> 실행. 시간 경과, 이자, 식량 소비 같은 것.
+                위에서부터 차례로 적용되고 <b>순서가 결과를 바꾼다</b>.</li>
+              <li><b>조건 이벤트(events)</b> — <b>when</b>이 참이 되는 순간 발동. 조건이 계속 참이면 매 턴 또 발동하므로,
+                한 번만 터뜨리려면 <b>once</b>를 켜거나 "발동하면 조건이 거짓이 되도록" 설계한다.
+                <br>예: <span class="sc-code-i">기근 시작</span>은 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span> — 발동하며 기근을 켜니 다음 턴엔 조건이 거짓.</li>
+              <li><b>랜덤 이벤트(randomEvents)</b> — 예측 불가능한 사건.</li>
+            </ul>
+
+            <h3>가중치 (weight) — 랜덤 이벤트 뽑는 법</h3>
+            <p>두 단계로 굴린다.</p>
+            <pre class="sc-flow">1단계: 이번 턴에 랜덤 이벤트가 일어날까?
+        → <b>chancePerTurn</b> 확률로 결정 (0.3 = 30%)
+2단계: 일어난다면 어느 것?
+        → 조건(when)·재사용 대기(cooldown)를 통과한 것들 중 <b>weight에 비례</b>해 하나</pre>
+            <pre class="sc-code">산적 습격  weight 3  ┐
+행상인 방문 weight 2  ├ 합 6 → 산적 3/6(50%), 행상인 2/6(33%), 역병 1/6(17%)
+역병      weight 1  ┘</pre>
+            <div class="sc-note">가중치는 <b>확률이 아니라 상대 비중</b>이다. 3은 1보다 3배 자주 나온다는 뜻일 뿐,
+              합이 100이 될 필요도 없다. <b>cooldown</b>은 "한 번 나오면 N턴은 다시 안 나옴"이다.</div>
+
+            <h3>지시문 (directives)</h3>
+            <p>조건이 참인 <b>동안 계속</b> 메인 모델에게 주는 연출 지침. 수치를 바꾸지 않고 <b>글의 방향만</b> 잡는다.
+              이벤트의 notify가 "일어난 일을 한 번 알리는" 것이라면, 지시문은 "그런 상태니까 이렇게 써라"를 매 턴 반복한다.</p>
+            <pre class="sc-code">조건: 기근            → "굶주림과 흉흉한 민심이 묘사에 배어야 한다"
+조건: 관계 == "썸"    → "연인이 아니다. 확신 대신 망설임으로 그려라"
+조건: 진상 미공개      → "범인을 직접 말하지 마라. 단서만 흘려라"</pre>
+
+            <h3>액션 (actions)</h3>
+            <p>유저가 누르는 버튼. 화면 <b>우상단</b>에 뜬다. 누르면 바로 실행되는 게 아니라
+              <b>무장(●)</b> 상태가 되고, <b>다음 메시지를 보낼 때</b> 효과가 적용되며 AI 전달문이 함께 나간다.</p>
+            <ul>
+              <li><b>1회성</b> — 한 번 쓰면 무장이 풀린다. <b>지속</b> — 끌 때까지 매 턴 적용된다.</li>
+              <li><b>조건(when)</b>이 거짓이거나 <b>쿨다운</b> 중이면 🔒로 잠긴다.</li>
+            </ul>
+
+            <h3>AI 설정 (updater) — 보조 모델이 건드릴 수 있는 범위</h3>
+            <p>여기 <b>등록한 변수만</b> 보조 모델이 바꿀 수 있다. 등록 안 한 변수는 규칙·이벤트·액션만 건드린다.</p>
+            <ul>
+              <li><b>증감 한도</b>를 꼭 줘라. 없으면 모델이 "골드 −999999"를 제안해도 그대로 먹는다.</li>
+              <li><b>얻는 한도 / 잃는 한도</b>를 따로 줄 수 있다. 연애 템플릿은 호감을 <span class="sc-code-i">최대 +8 / 최대 −15</span>로 줘서
+                "천천히 쌓이고 빨리 식게" 만든다.</li>
+              <li>정기 계산으로 이미 처리하는 건 <b>안내문</b>에 "중복 반영 금지"라고 적어라.</li>
+            </ul>
+
+            <h3>상태창 vs 프롬프트 — 누가 보나</h3>
+            <table>
+              <tr><th>항목</th><th>보는 쪽</th><th>쓰임</th></tr>
+              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 붙는 표. 숨기고 싶은 값은 빼면 된다</td></tr>
+              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>모델이 현재 상황을 알게 하는 블록</td></tr>
+              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>이 변수를 언제 얼마나 움직여야 하는지 힌트</td></tr>
+            </table>
+            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 이 차이를 쓴 예다 —
+              프롬프트에는 넣어 모델이 알게 하고, 상태창에서는 빼서 유저에게는 감춘다.</div>
+
+            <h3>수식에서 쓸 수 있는 것</h3>
+            <pre class="sc-code">+ - * / %        비교: == != &gt; &lt; &gt;= &lt;=      and  or  not
+조건 ? 참값 : 거짓값
+round() floor() ceil() abs() min(a,b) max(a,b) clamp(값,최소,최대)
+rand(최소,최대)   ← 규칙·이벤트 효과에서만. 조건식에는 못 쓴다
+count(목록)  has(목록, "항목")</pre>
+            <div class="sc-note">대입·반복문·함수 정의는 없다. 봇 설정은 코드가 아니라 <b>표</b>여야 하기 때문이다.</div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // 메인 탭 전환
+    for (const tab of root.querySelectorAll('.sc-maintab')) {
+      tab.onclick = () => {
+        for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
+        for (const p of root.querySelectorAll('.sc-page')) p.classList.toggle('on', p.id === 'sc-page-' + tab.dataset.page);
+        if (tab.dataset.page === 'edit') ensureEditor();
+      };
+    }
+
+    document.getElementById('sc-close').onclick = () => Risuai.hideContainer();
+    document.getElementById('sc-reload').onclick = async () => { charKey = null; await loadForCurrentChar(); renderPanel(); };
+    document.getElementById('sc-resetall').onclick = async () => {
+      if (!session) return;
+      const rep = document.getElementById('sc-status');
+      await withProgress(rep, ['sc-resetall', 'sc-reload'], '상태 초기화 중',
+        (progress) => session.resetAll(progress));
+      lastOutIndex = -1;
+      lastChangeLog = [];
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      await syncActionButtons();
+      renderPanel();
+    };
+
+    // ── 봇 편집: 블록 편집기 + 설치 ──
+    /**
+     * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
+     * 기존 스키마를 다른 내용으로 덮어쓸 때는 pluginStorage에 자동 백업을 남긴다
+     * (캐릭터당 최근 5개, 키: sim:schema-backup:<chaId>:<ts>).
+     */
+    async function installSchemaToCurrentChar(parsed) {
+      const char = await Risuai.getCharacter();
+      if (!char) return { ok: false, msg: '캐릭터가 선택되지 않음' };
+      char.globalLore = char.globalLore || [];
+      const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      const content = JSON.stringify(parsed);
+      let backedUp = false;
+      if (existing && existing.content !== content) {
+        try {
+          const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
+          await Risuai.pluginStorage.setItem(bk, existing.content);
+          const keys = (await Risuai.pluginStorage.keys())
+            .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
+          for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
+          backedUp = true;
+        } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+      }
+      if (existing) existing.content = content;
+      else char.globalLore.push({
+        comment: SCHEMA_LORE_COMMENT, key: ' __simcore_never__', secondkey: '',
+        insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
+      });
+      if (hasLuaBridge(char)) installLuaBridgeOn(char, parsed); // 브리지 자동 동기화 (허용 목록/변수 변경 반영)
+      await Risuai.setCharacter(char);
+      charKey = null;
+      await loadForCurrentChar();
+      return { ok: true, backedUp };
+    }
+    document.getElementById('sc-install').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      if (!editor) return;
+      const parsed = editor.getSchema();
+      const v = validateSchema(parsed);
+      if (!v.ok) {
+        rep.innerHTML = v.errors.map((x) => `<div class="status-bad">✗ ${escapeText(x.path)} — ${escapeText(x.msg)}</div>`).join('');
+        return;
+      }
+      const r = await installSchemaToCurrentChar(parsed);
+      if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
+      // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
+      editorChaId = currentChaId;
+      editorLoadedSig = sig(parsed);
+      rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
+      renderPanel();
+    };
+    // 자동 백업에서 편집기로 복원 (바로 설치하지 않고 검토 후 [설치]를 누르게 함)
+    document.getElementById('sc-schema-restore').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      const char = await Risuai.getCharacter();
+      if (!char) return;
+      const prefix = `sim:schema-backup:${char.chaId ?? char.name}:`;
+      const keys = (await Risuai.pluginStorage.keys()).filter((k) => k.startsWith(prefix)).sort();
+      if (!keys.length) { rep.innerHTML = '<span class="status-warn">이 캐릭터의 스키마 자동 백업이 없음</span>'; return; }
+      const latest = keys[keys.length - 1];
+      try {
+        const parsed = JSON.parse(await Risuai.pluginStorage.getItem(latest));
+        loadIntoEditor(parsed);
+        const when = new Date(parseInt(latest.slice(prefix.length), 10)).toLocaleString();
+        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [설치]를 눌러야 적용됨 (백업 ${keys.length}개 보유)</span>`;
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">백업 해석 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    document.getElementById('sc-uninstall').onclick = async () => {
+      const char = await Risuai.getCharacter();
+      if (!char?.globalLore) return;
+      // 제거 전에도 자동 백업 (제거 → 새 설치 흐름에서 이전 스키마가 영영 사라지는 사고 방지)
+      const removing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      if (removing) {
+        try { await Risuai.pluginStorage.setItem(`sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`, removing.content); }
+        catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+      }
+      char.globalLore = char.globalLore.filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
+      char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      await Risuai.setCharacter(char);
+      charKey = null; session = null; schema = null;
+      await loadForCurrentChar();
+      renderPanel();
+    };
+    document.getElementById('sc-copy').onclick = async () => {
+      const char = await Risuai.getCharacter();
+      const lore = (char?.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      if (!lore) return;
+      try { loadIntoEditor(JSON.parse(lore.content)); renderPanel(); } catch {}
+    };
+    const tplSelect = document.getElementById('sc-template');
+    for (const [key, t] of Object.entries(TEMPLATES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = t.label;
+      tplSelect.appendChild(opt);
+    }
+    document.getElementById('sc-new').onclick = () => {
+      const t = TEMPLATES[tplSelect.value];
+      if (!t) return;
+      ensureEditor();
+      editor.setSchema(JSON.parse(JSON.stringify(t.schema))); // 기준선은 갱신하지 않음 → '설치본과 다름' 경고가 뜬다
+      renderPanel();
+    };
+
+    // ── 보조 모델 연결 테스트 (유저 제스처 컨텍스트에서의 차단 여부 확정 진단) ──
+    document.getElementById('sc-auxtest').onclick = async () => {
+      lastAux = { status: '테스트 호출 중...', raw: '', applied: lastAux.applied };
+      renderPanel();
+      const r = await callAuxLLM('연결 테스트다. 정확히 {"ok":true} 만 출력하라.', 60);
+      if (r && r.blocked) {
+        lastAux.status = '테스트 결과: 차단됨 — 버튼 클릭 시점에도 차단이므로 이 환경은 플러그인 LLM 호출 전면 차단. '
+          + '[봇 편집]의 [루아 브리지 설치] + aux_model_mode=lua 사용을 권장';
+      } else if (typeof r === 'string') {
+        lastAux.status = '테스트 결과: 성공 — 플러그인 호출 자체는 허용됨 (자동 갱신이 안 되면 다시 알려줘)';
+      } else {
+        lastAux.status = '테스트 결과: 실패 — ' + lastAux.status;
+      }
+      renderPanel();
+    };
+
+    // ── 루아 브리지 설치/제거 ──
+    document.getElementById('sc-luabridge').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      if (!schema) { rep.innerHTML = '<span class="status-bad">먼저 스키마를 캐릭터에 설치해야 함</span>'; return; }
+      const char = await Risuai.getCharacter();
+      if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+      installLuaBridgeOn(char, schema);
+      await Risuai.setCharacter(char);
+      rep.innerHTML = '<span class="status-ok">✓ 루아 브리지 설치/갱신 완료 — 이제 플러그인 설정에서 aux_model_mode를 lua로 바꾸면 '
+        + '다음 턴부터 루아 경로(axLLM)로 변수 갱신이 돈다. 캐릭터의 LLA(low level access) 체크는 자동으로 켰지만, '
+        + '캐릭터 설정 → Scripts에서 켜져 있는지 한번 확인해줘.</span>';
+    };
+    document.getElementById('sc-luabridge-rm').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      const char = await Risuai.getCharacter();
+      if (!char) return;
+      char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      await Risuai.setCharacter(char);
+      rep.innerHTML = '<span class="status-ok">✓ 루아 브리지 제거됨</span>';
+    };
+
+    // ── 세이브 ──
+    const SAVE_BTNS = ['sc-export', 'sc-import', 'sc-mirror'];
+    document.getElementById('sc-export').onclick = async () => {
+      if (!session) return;
+      const rep = document.getElementById('sc-save-report');
+      try {
+        const data = await withProgress(rep, SAVE_BTNS, '세이브 내보내는 중',
+          (progress) => session.exportData(lastOutIndex, progress));
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `simcore-save-${(schema.meta?.name ?? 'save').replace(/[^\w가-힣-]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const n = Object.keys(data.snapshots || {}).length;
+        rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 — 스냅샷 ${n}개, 스키마 동봉됨</span>`;
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    document.getElementById('sc-import').onclick = () => document.getElementById('sc-import-file').click();
+    document.getElementById('sc-import-file').onchange = async (ev) => {
+      const rep = document.getElementById('sc-save-report');
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        if (!data || data.simcoreSave !== 1 || !data.current?.vars) {
+          rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return;
+        }
+        // ① 스키마: 세이브에 동봉돼 있고 설치본과 다르면 함께 복원한다.
+        //    (상태만 되돌리고 스키마는 그대로 두면 "가져왔는데 아무것도 안 변한다"가 된다)
+        const saved = data.schema && validateSchema(data.schema).ok ? data.schema : null;
+        let schemaNote = '';
+        if (!session) {
+          if (!saved) {
+            rep.innerHTML = '<span class="status-bad">이 캐릭터에 스키마가 없어서 가져올 수 없음 — 먼저 [봇 편집]에서 스키마를 설치해줘'
+              + ' (이 세이브에는 스키마가 동봉되지 않은 구버전 형식)</span>';
+            return;
+          }
+          const r = await installSchemaToCurrentChar(saved);
+          if (!r.ok || !session) {
+            rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
+          }
+          if (editor) loadIntoEditor(saved); // 봇 편집 탭도 복원본을 보게
+          schemaNote = ' · 동봉 스키마 설치됨';
+        } else if (saved && JSON.stringify(saved) !== JSON.stringify(schema)) {
+          // 확인은 이 패널 안의 체크박스로 받는다.
+          // (호스트의 alertConfirm은 메인 앱 DOM에 뜨는데 이 패널이 fullscreen으로 그 위를 덮고 있어서
+          //  화면에 보이지도, 누를 수도 없다 — 실제로 늘 '취소'로 떨어져 스키마가 복원되지 않았다)
+          const yes = !!document.getElementById('sc-import-schema')?.checked;
+          if (yes) {
+            const r = await installSchemaToCurrentChar(saved);
+            if (!r.ok || !session) {
+              rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
+            }
+            // 스키마를 통째로 되돌렸으니 [봇 편집]의 변수·규칙·이벤트도 복원본으로 교체.
+            // (편집기가 옛 내용을 들고 있으면 다음 [설치]에서 방금 복원한 걸 다시 날린다)
+            if (editor) loadIntoEditor(saved);
+            schemaNote = ' · 동봉 스키마로 복원됨 (봇 편집 탭도 갱신)';
+          } else {
+            // 스키마를 안 바꾸면 세이브의 변수 중 현재 스키마에 없는 것은 갈 곳이 없다.
+            // (상태는 reconcileState로 정합화되므로 깨지진 않지만, 값이 무시된다는 건 알려야 한다)
+            const curIds = new Set((schema.vars || []).map((v) => v.id));
+            const orphan = Object.keys(data.current.vars).filter((id) => !curIds.has(id));
+            schemaNote = orphan.length
+              ? ` · ⚠ 스키마는 현재 것 유지 — 세이브의 변수 ${orphan.length}개(${orphan.slice(0, 3).join(', ')}${orphan.length > 3 ? '…' : ''})가 현재 스키마에 없어 표시되지 않음`
+              : ' · 스키마는 현재 것 유지';
+          }
+        }
+
+        // ② 상태: 스키마 설치로 세션이 새로 만들어졌을 수 있으므로 반드시 이 뒤에 적용
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        const anchor = await lastCharIndex(chaIdx, chatIdx);
+        const res = await withProgress(rep, SAVE_BTNS, '세이브 가져오는 중',
+          (progress) => session.importData(data, anchor, progress));
+        if (!res || !res.ok) { rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return; }
+        lastOutIndex = res.sameChat && typeof data.lastOutIndex === 'number' ? data.lastOutIndex : anchor;
+        await mirrorVars(chaIdx, chatIdx);
+        await syncActionButtons();
+        rep.innerHTML = `<span class="status-ok">✓ 가져오기 완료 — 엔진 턴 ${session.current?.meta?.turn ?? '?'}, 변수 ${Object.keys(session.current?.vars ?? {}).length}개`
+          + `${res.sameChat ? ' (같은 채팅: 스냅샷 이력까지 복원)' : ` (다른 채팅: ${anchor < 0 ? '첫 메시지' : anchor + '번 메시지'}에 상태 앵커)`}`
+          + `${escapeText(schemaNote)}</span>`;
+        renderPanel();
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">가져오기 실패: ${escapeText(e.message)}</span>`;
+      }
+      ev.target.value = '';
+    };
+    document.getElementById('sc-mirror').onclick = async () => {
+      const rep = document.getElementById('sc-save-report');
+      if (!session) return;
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const n = session.restoreFromMirror(chat?.scriptstate || {});
+      rep.innerHTML = n > 0
+        ? `<span class="status-ok">✓ 변수 ${n}개 복원 (쿨다운·대기 이벤트는 초기화됨)</span>`
+        : '<span class="status-warn">미러에 복원할 값이 없음</span>';
+      renderPanel();
+    };
+  }
+
+  // 블록 편집기 (봇 편집 탭 첫 진입 시 생성)
+  let editor = null;
+  let editorChaId = null;      // 편집기 내용이 어느 캐릭터 기준인지
+  let editorLoadedSig = null;  // 편집기에 불러온 시점의 내용 서명 (이후 손댔는지 판정용)
+  const BLANK_SCHEMA = () => ({
+    simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
+  });
+  const sig = (o) => { try { return JSON.stringify(o); } catch { return null; } };
+  const editorSig = () => { try { return editor ? sig(editor.getSchema()) : null; } catch { return null; } };
+  /** 편집기 내용이 불러온 뒤 사용자 손을 탔는가 */
+  function editorIsDirty() {
+    return !!editor && editorLoadedSig !== null && editorSig() !== editorLoadedSig;
+  }
+  /** 편집기에 스키마를 싣고 기준선을 갱신 */
+  function loadIntoEditor(next) {
+    ensureEditor();
+    const copy = JSON.parse(JSON.stringify(next));
+    editor.setSchema(copy);
+    editorChaId = currentChaId;
+    editorLoadedSig = sig(copy);
+  }
+  function ensureEditor() {
+    if (editor) return;
+    const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    editor = createSchemaEditor(document.getElementById('sc-editor'), base, {});
+    editorChaId = currentChaId;
+    editorLoadedSig = sig(base);
+  }
+  /**
+   * ⚠ 사고 방지 (2026-07-24 영지봇 스키마 소실 사건): 편집기는 전역이라 캐릭터를 바꾸거나
+   * 설치본이 교체돼도(세이브 가져오기 등) 이전 내용이 그대로 남는다. 그 상태로 [설치]를
+   * 누르면 현재 캐릭터의 스키마가 엉뚱한 내용으로 덮여 날아간다.
+   * - 캐릭터가 바뀌었으면: 무조건 현재 설치본으로 되돌린다 (남의 봇 내용을 들고 있을 이유가 없다).
+   * - 같은 캐릭터인데 설치본이 바뀌었으면: 편집기를 손대지 않은 상태일 때만 따라간다.
+   *   손댄 상태면 작업물을 지우지 않고, 대신 renderPanel이 경고 배너를 띄운다.
+   */
+  function syncEditorToChar() {
+    if (!editor) return;
+    if (editorChaId !== currentChaId) { loadIntoEditor(schema ?? BLANK_SCHEMA()); return; }
+    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorLoadedSig) {
+      loadIntoEditor(schema ?? BLANK_SCHEMA());
+    }
+  }
+
+  function escapeText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * 오래 걸리는 작업(세이브 내보내기/가져오기/초기화)을 진행 표시와 함께 실행한다.
+   * 스냅샷 하나하나가 샌드박스 브리지 왕복이라 수십~수백 건이면 체감될 만큼 걸린다.
+   * 그동안 버튼을 잠가 중복 실행을 막고, 멈춘 것처럼 보이지 않게 진행률을 그린다.
+   * @param fn (progress) => Promise — progress(done, total, phase)
+   */
+  async function withProgress(reportEl, buttonIds, title, fn) {
+    const btns = buttonIds.map((id) => document.getElementById(id)).filter(Boolean);
+    const prevDisabled = btns.map((b) => b.disabled);
+    btns.forEach((b) => { b.disabled = true; });
+    reportEl.innerHTML =
+      `<div class="sc-prog">
+         <div class="sc-prog-label"><span class="sc-spin"></span><span id="sc-prog-text">${escapeText(title)}</span></div>
+         <div class="sc-prog-bar"><div class="sc-prog-fill indet" id="sc-prog-fill"></div></div>
+       </div>`;
+    const textEl = document.getElementById('sc-prog-text');
+    const fillEl = document.getElementById('sc-prog-fill');
+    let lastPaint = 0;
+    const progress = (done, total, phase) => {
+      if (!textEl || !fillEl) return;
+      const now = Date.now();
+      // 진행률 100%나 국면 전환은 항상, 그 외엔 60ms 간격으로만 다시 그린다 (렌더가 작업을 방해하지 않게)
+      if (now - lastPaint < 60 && done !== total) return;
+      lastPaint = now;
+      if (total > 1) {
+        const pct = Math.round((done / total) * 100);
+        fillEl.classList.remove('indet');
+        fillEl.style.width = pct + '%';
+        textEl.textContent = `${phase || title} — ${done}/${total} (${pct}%)`;
+      } else {
+        fillEl.classList.add('indet');
+        fillEl.style.width = '';
+        textEl.textContent = phase || title;
+      }
+    };
+    try {
+      return await fn(progress);
+    } finally {
+      btns.forEach((b, i) => { b.disabled = prevDisabled[i]; });
+    }
+  }
+
+  function renderPanel() {
+    buildPanelSkeleton();
+    const st = document.getElementById('sc-status');
+    const stateMsg = {
+      'no-char': ['선택된 캐릭터 없음', 'status-warn'],
+      'no-schema': [`'${panelStatus.charName}' 캐릭터에 SimCore 스키마 없음 — 아래 [스키마 관리]에서 JSON을 붙여넣고 설치하면 된다`, 'status-warn'],
+      'parse-error': [`'${panelStatus.charName}' 스키마 JSON 파싱 실패`, 'status-bad'],
+      'invalid': [`'${panelStatus.charName}' 스키마 검증 실패`, 'status-bad'],
+      'ok': [`'${panelStatus.charName}' — ${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'init': ['초기화 중', 'muted'],
+    }[panelStatus.state] || ['?', 'muted'];
+    let html = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`;
+    for (const e of panelStatus.report || []) html += `<div class="report status-bad">✗ ${e.path} — ${e.msg}</div>`;
+    for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
+    st.innerHTML = html;
+
+    // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게
+    const warnEl = document.getElementById('sc-editor-warn');
+    if (warnEl) {
+      const cur = editorSig();
+      const installed = sig(schema ?? BLANK_SCHEMA());
+      if (editor && cur !== null && cur !== installed) {
+        let what = '';
+        try {
+          const eS = editor.getSchema();
+          what = `편집기: '${eS.meta?.name ?? '이름 없음'}' 변수 ${(eS.vars || []).length}개`
+            + ` / 설치본: '${schema?.meta?.name ?? '없음'}' 변수 ${(schema?.vars || []).length}개`;
+        } catch {}
+        warnEl.innerHTML = '<div class="report status-warn">⚠ 편집기 내용이 이 캐릭터에 설치된 스키마와 다름 — '
+          + '지금 [현재 캐릭터에 설치/업데이트]를 누르면 설치본이 이 내용으로 덮어써진다. '
+          + '설치본을 보려면 [현재 캐릭터 스키마 불러오기]를 눌러줘.<br>'
+          + escapeText(what) + '</div>';
+      } else {
+        warnEl.innerHTML = '';
+      }
+    }
+
+    const varsDiv = document.getElementById('sc-vars');
+    const actionsDiv = document.getElementById('sc-actions');
+    const infoDiv = document.getElementById('sc-info');
+    const presetsDiv = document.getElementById('sc-presets');
+    if (!session) {
+      varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
+      infoDiv.textContent = ''; presetsDiv.textContent = '-';
+      return;
+    }
+
+    // 프리셋 버튼
+    presetsDiv.innerHTML = '';
+    const presets = schema.setup?.presets || [];
+    if (!presets.length) presetsDiv.innerHTML = '<span class="muted">정의된 프리셋 없음</span>';
+    for (const p of presets) {
+      const btn = document.createElement('button');
+      btn.textContent = p.label ?? p.id;
+      btn.onclick = async () => {
+        session.applyPreset(p.id);
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        await mirrorVars(chaIdx, chatIdx);
+        renderPanel();
+      };
+      presetsDiv.appendChild(btn);
+    }
+    if (engine.isSetupPending(schema, session.current)) {
+      const note = document.createElement('div');
+      note.className = 'muted';
+      note.textContent = '⏳ AI 최초설정 대기 중 — 첫 대화에서 시작 상황이 확정되면 자동으로 값이 잡힌다';
+      presetsDiv.appendChild(note);
+    }
+
+    // 변수 테이블
+    varsDiv.innerHTML = '';
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>변수</th><th>현재값</th><th>수정</th><th></th></tr>';
+    // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 + 다시 그리기
+    const commitVars = async () => {
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      renderPanel();
+    };
+
+    for (const v of schema.vars) {
+      const tr = document.createElement('tr');
+      const cur = session.current.vars[v.id];
+      const nameCell = `<td>${v.label ?? v.id} <span class="muted">(${v.id})</span></td>`;
+
+      // 목록은 통짜 텍스트로 못 고친다(coerce가 배열만 받는다). 항목별 ✕ + 추가 칸으로 낸다.
+      // 서사로 맺은 계약을 서사로 파기했을 때 사용자가 직접 지우는 자리이기도 하다.
+      if (v.type === 'list') {
+        const items = Array.isArray(cur) ? cur : [];
+        tr.innerHTML = nameCell;
+        const tdCur = document.createElement('td');
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        if (!items.length) chips.innerHTML = '<span class="muted">(비어 있음)</span>';
+        items.forEach((it, i) => {
+          const val = itemValue(it);
+          const exp = itemExpiry(it);
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.innerHTML = `<span>${escapeText(String(it))}</span>`
+            + (val === null ? '<span class="nonum">숫자 없음</span>'
+              : `<span class="num">${val > 0 ? '+' : ''}${val}</span>`)
+            + (exp === null ? '' : `<span class="nonum">기한 ${exp}</span>`);
+          const x = document.createElement('button');
+          x.textContent = '✕';
+          x.title = '이 항목 제거';
+          x.onclick = async () => {
+            const next = items.slice();
+            next.splice(i, 1);
+            session.current.vars[v.id] = next;
+            await commitVars();
+          };
+          chip.appendChild(x);
+          chips.appendChild(chip);
+        });
+        tdCur.appendChild(chips);
+        if (items.some((it) => itemValue(it) !== null)) {
+          const s = items.reduce((a, it) => a + (itemValue(it) ?? 0), 0);
+          const tot = document.createElement('div');
+          tot.className = 'chip-sum';
+          tot.textContent = `sum() = ${s}`;
+          tdCur.appendChild(tot);
+        }
+        tr.appendChild(tdCur);
+
+        const tdAdd = document.createElement('td');
+        const addIn = document.createElement('input');
+        addIn.placeholder = '항목 추가 (끝에 숫자)';
+        tdAdd.appendChild(addIn);
+        const tdAddBtn = document.createElement('td');
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '추가';
+        addBtn.onclick = async () => {
+          const text = addIn.value.trim();
+          if (!text) return;
+          const to = engine.applyListOps(v, items, { add: [text] });
+          if (to === undefined || JSON.stringify(to) === JSON.stringify(items)) {
+            addBtn.textContent = '거부됨'; setTimeout(() => (addBtn.textContent = '추가'), 1000); return;
+          }
+          session.current.vars[v.id] = to;
+          await commitVars();
+        };
+        tdAddBtn.appendChild(addBtn);
+        tr.appendChild(tdAdd);
+        tr.appendChild(tdAddBtn);
+        table.appendChild(tr);
+        continue;
+      }
+
+      tr.innerHTML = nameCell + `<td>${escapeText(String(cur))}</td>`;
+      const tdIn = document.createElement('td');
+      const input = document.createElement('input');
+      input.value = String(cur);
+      tdIn.appendChild(input);
+      const tdBtn = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.textContent = '적용';
+      btn.onclick = async () => {
+        let val = input.value;
+        if (v.type === 'int' || v.type === 'float') val = Number(val);
+        if (v.type === 'bool') val = val === 'true' || val === '1';
+        const to = engine.coerce(v, val);
+        if (to === undefined) { btn.textContent = '거부됨'; setTimeout(() => (btn.textContent = '적용'), 1000); return; }
+        session.current.vars[v.id] = to;
+        await commitVars();
+      };
+      tdBtn.appendChild(btn);
+      tr.appendChild(tdIn);
+      tr.appendChild(tdBtn);
+      table.appendChild(tr);
+    }
+    varsDiv.appendChild(table);
+
+    // 액션 토글
+    actionsDiv.innerHTML = '';
+    if (!(schema.actions || []).length) actionsDiv.textContent = '정의된 액션 없음';
+    for (const a of schema.actions || []) {
+      const avail = safeAvailability(a);
+      const btn = document.createElement('button');
+      const armed = !!session.current.meta.armed[a.id];
+      btn.textContent = a.label + (armed ? ' ●' : '');
+      btn.className = armed ? 'armed' : '';
+      btn.style.marginRight = '6px';
+      if (!avail.ok && !armed) { btn.disabled = true; btn.title = avail.reason; btn.style.opacity = .4; }
+      btn.onclick = () => { session.toggle(a.id); syncActionButtons(); renderPanel(); };
+      actionsDiv.appendChild(btn);
+    }
+
+    infoDiv.textContent =
+      `엔진 턴: ${session.current.meta.turn} / 마지막 출력 인덱스: ${lastOutIndex}\n` +
+      `대기 중 이벤트 통지: ${session.current.meta.pendingNotifies.length}건\n` +
+      `무장: ${Object.keys(session.current.meta.armed).join(', ') || '없음'}\n` +
+      `── 보조 모델 진단 ──\n` +
+      `상태: ${lastAux.status}\n` +
+      `마지막 턴 적용: ${lastAux.applied}건\n` +
+      `현재 스키마의 허용 변수: ${schema?.updater?.allow?.length ?? 0}개\n` +
+      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '');
+    // 모드/브리지 상태는 비동기로 뒤에 덧붙임
+    Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
+      .then(([m, char, resolved, path]) => {
+        const pathTxt = path === 'bridge' ? '차단 확인됨 → 브리지 경유'
+          : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
+        let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
+        if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
+        infoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
+          + `\n환경 판정: ${pathTxt}`
+          + `\n루아 브리지: ${bridgeTxt}`;
+      }).catch(() => {});
+  }
+
+  async function openPanel() {
+    await loadForCurrentChar();
+    syncEditorToChar(); // 캐릭터가 바뀌었으면 편집기를 현재 캐릭터 설치본으로 (오염된 설치 사고 방지)
+    renderPanel();
+    await Risuai.showContainer('fullscreen');
+  }
+
+  // 진입점: 채팅 버튼 + 설정 메뉴 양쪽에 등록
+  try {
+    await Risuai.registerButton({ name: 'SimCore', icon: '⚙️', iconType: 'html', location: 'chat' }, openPanel);
+    await Risuai.registerSetting('SimCore 관리 패널', openPanel, '⚙️', 'html');
+  } catch (e) {
+    console.log('[simcore] UI 등록 실패:', e.message);
+  }
+
+  await Risuai.onUnload(() => {
+    clearInterval(switchTimer);
+    if (luaPollTimer) clearInterval(luaPollTimer);
+    console.log('[simcore] 언로드');
+  });
+  console.log('[simcore] 플러그인 초기화 완료 — 채팅 화면의 ⚙️ 버튼 또는 설정 메뉴에서 패널 열기');
+})();

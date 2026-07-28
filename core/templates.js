@@ -771,9 +771,11 @@ const ROMANCE = {
 };
 
 // ── TRPG ──────────────────────────────────────────────────────
-// 배울 점: ① rand()로 주사위를 굴리는 법  ② 굴린 값을 이어받아 등급을 매기는 법
-//          ③ rand()는 조건식에 못 쓰므로 "굴려서 변수에 넣고 → 그 변수로 분기"하는 2단 구조
-//          ④ 액션 판정은 전송 단계에서 굴러 모델이 같은 턴에 결과를 보고 쓴다는 점
+// 배울 점: ① checks(판정)로 주사위를 일급으로 쓰는 법 — 굴림·보정·등급·연출 지시가 한 덩어리
+//          ② 소모성 변수(이점 adv)는 굴림식이 읽고, 끄는 건 액션 effects에 두는 분업
+//          ③ 이벤트에 check를 달면 "AI가 판정이 필요하다고 하면 시스템이 대신 굴리는" 배선이 된다
+//          ④ 판정 결과는 변수가 아니라 시스템 기록(meta)이라 보조 AI가 뒤집을 방법이 없다
+//          (v0.39까지는 roll/total/grade 변수 5개 + 규칙으로 손조립했다 — 그 패턴의 일급화)
 const TRPG = {
   simcore: '0.1',
   meta: { name: 'TRPG — 주사위 판정', author: 'SimCore 템플릿' },
@@ -786,16 +788,10 @@ const TRPG = {
     { id: 'stamina', label: '기력', type: 'int', init: 6, min: 0, max: 10 },
     { id: 'dc', label: '난이도', type: 'int', init: 13, min: 5, max: 30,
       desc: '이번 상황의 판정 난이도. 쉬우면 10, 보통 13, 어려우면 17, 지극히 어려우면 20.' },
-    { id: 'checking', label: '판정 대상', type: 'text', init: '', maxLength: 40 },
-    { id: 'roll', label: '주사위', type: 'int', init: 0, min: 0, max: 20 },
-    { id: 'total', label: '판정값', type: 'int', init: 0, min: 0, max: 60 },
-    { id: 'grade', label: '판정 결과', type: 'enum', init: '없음',
-      enum: ['없음', '대성공', '성공', '실패', '대실패'] },
-    { id: 'dmg', label: '피해량', type: 'int', init: 0, min: 0, max: 99 },
+    { id: 'dmg', label: '피해량', type: 'int', init: 0, min: 0, max: 99,
+      desc: '이번 공격이 입힌 피해. 판정이 정하고, 다음 턴에 0으로 돌아간다.' },
     { id: 'adv', label: '이점 대기', type: 'bool', init: false,
       desc: '켜져 있으면 다음 판정을 두 번 굴려 높은 눈을 쓴다. 쓰면 꺼진다.' },
-    { id: 'roll_pending', label: '미반영 판정', type: 'bool', init: false,
-      desc: '방금 굴린 결과를 아직 서사에 반영하지 않았다는 표시.' },
     { id: 'need_roll', label: '판정 요청', type: 'bool', init: false,
       desc: '서사상 판정이 필요한데 유저가 버튼을 누르지 않았을 때 켠다. 시스템이 대신 굴린다.' },
     { id: 'conditions', label: '상태', type: 'list', init: [], maxItems: 6, itemMaxLength: 20 },
@@ -807,25 +803,68 @@ const TRPG = {
     { id: 'wit_mod', label: '지력 보정', expr: 'floor((wit - 10) / 2)' },
     { id: 'cha_mod', label: '매력 보정', expr: 'floor((cha - 10) / 2)' },
   ],
+  // 판정 — 굴림·보정·목표치·등급이 한 덩어리. 결과 줄([판정])과 등급 연출 지시는 엔진이 주입한다.
+  // 굴림식이 adv(이점)를 읽는다 — 끄는 건 각 액션의 effects 몫 (굴림이 끝난 뒤에 적용되므로 안전).
+  checks: [
+    { id: 'ck_str', label: '근력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'str_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_dex', label: '민첩 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'dex_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_wit', label: '지력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'wit_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_cha', label: '매력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'cha_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    // 공격은 등급 효과로 피해 주사위(2d8/1d8)와 대실패 반격까지 굴린다 — roll/total을 효과에서도 쓸 수 있다
+    { id: 'ck_attack', label: '공격 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'str_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '압도적인 일격이다 — 극적으로 그려라.',
+          effects: [{ set: 'dmg', expr: 'rand(1, 8) + rand(1, 8) + str_mod' }] },
+        { when: 'roll == 1', label: '대실패', inject: '빈틈을 내주고 반격까지 허용한 대실패로 그려라.',
+          effects: [{ set: 'hp', expr: 'hp - rand(1, 4)' }] },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'dmg', expr: 'rand(1, 8) + str_mod' }] },
+        { label: '실패' },
+      ] },
+  ],
   rules: {
-    // 모델이 결과를 읽고 서술을 끝낸 뒤에 미반영 표시를 내린다.
-    // (정기 계산은 조건 이벤트보다 먼저 돌므로, 아래 do_roll이 다시 켜는 것과 충돌하지 않는다)
+    // 피해량은 판정이 정한 그 턴에만 의미가 있다 — 다음 턴 정산에서 0으로 되돌린다.
     onTurn: [
-      { set: 'roll_pending', expr: '0' },
+      { set: 'dmg', expr: '0' },
       { set: 'stamina', expr: 'min(stamina + 1, 10)' },
     ],
     events: [
-      // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 여기서 대신 굴린다.
-      // ⚠ rand()는 조건식(when)에 쓸 수 없다. 그래서 이렇게 효과에서 굴려 변수에 담고,
-      //    분기는 그 변수를 읽는 방식으로 짠다.
-      { id: 'do_roll', when: 'need_roll',
+      // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 시스템이 대신 굴린다.
+      // check를 달면 굴림·등급은 판정이 처리하고, 이벤트 effects는 뒷정리(이점 소모·깃발 내리기)만 한다.
+      // (예전처럼 근력 기준으로 굴린다 — 결과 줄은 다음 전송에 통지로 합류한다)
+      { id: 'do_roll', when: 'need_roll', check: 'ck_str',
         effects: [
-          { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-          { set: 'total', expr: 'roll + str_mod' },
-          { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
           { set: 'adv', expr: '0' },
           { set: 'need_roll', expr: '0' },
-          { set: 'roll_pending', expr: '1' },
         ],
         notify: '판정이 필요한 상황이라 주사위를 굴렸다.' },
       { id: 'downed', when: 'hp <= 0',
@@ -850,71 +889,34 @@ const TRPG = {
       ],
     },
   },
-  // TRPG의 생명선 — 모델이 주사위 결과를 뒤집지 못하게 막는다.
+  // "판정 결과를 따르라"는 지시문이 아니라 엔진이 붙인다 — [판정] 줄이 있는 턴에만 판정 규칙 줄이 따라온다.
   directives: [
-    { id: 'respect_dice', when: 'roll_pending',
-      text: '[판정 결과 — 반드시 따를 것] {checking} 판정: 주사위 {roll}, 합계 {total} vs 난이도 {dc} → {grade}. '
-        + '이 결과대로 서술하라. 성공을 실패로, 실패를 성공으로 뒤집지 마라. '
-        + '{grade == "대성공" ? "기대 이상의 성과를 극적으로 그려라." : ""}'
-        + '{grade == "대실패" ? "단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라." : ""}' },
-    { id: 'dmg_note', when: 'roll_pending and dmg > 0',
+    { id: 'dmg_note', when: 'dmg > 0',
       text: '[피해] 이번 공격으로 {dmg}의 피해를 입혔다. 수치를 본문에 적지 말고 타격의 무게로 묘사하라.' },
     { id: 'hurt', when: 'hp <= 6',
       text: '[상태] HP {hp}/40. 숨이 가쁘고 시야가 흐려지는, 한 대만 더 맞으면 무너질 몸 상태를 묘사하라.' },
-    { id: 'ask_roll', when: 'not roll_pending',
-      text: '[판정 안내] 성패가 갈릴 행동이 나오면 결과를 임의로 정하지 말고, 판정이 필요하다는 것만 드러내라. '
-        + '수치 판정은 시스템이 처리한다.' },
+    { id: 'ask_roll', when: 'not need_roll',
+      text: '[판정 안내] 성패가 갈릴 행동인데 [판정] 결과가 함께 제시되지 않았다면, 결과를 임의로 정하지 말고 '
+        + '판정이 필요하다는 것만 드러내라. 수치 판정은 시스템이 처리한다.' },
   ],
+  // 판정 달린 액션 — 굴림·등급은 check가 맡고, effects에는 뒷정리(이점 소모·기력 소비)만 남는다.
+  // 액션 effects는 굴림이 끝난 뒤 적용되므로 여기서 adv를 꺼도 이번 굴림에는 이미 반영돼 있다.
   actions: [
-    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot',
-      inject: '[판정] 힘으로 밀어붙인다.',
-      effects: [
-        { set: 'checking', expr: '"근력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + str_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot',
-      inject: '[판정] 재빠르게 움직인다.',
-      effects: [
-        { set: 'checking', expr: '"민첩"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + dex_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot',
-      inject: '[판정] 상황을 읽고 머리를 쓴다.',
-      effects: [
-        { set: 'checking', expr: '"지력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + wit_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot',
-      inject: '[판정] 말과 태도로 상대를 움직인다.',
-      effects: [
-        { set: 'checking', expr: '"매력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + cha_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    // 공격은 판정에 더해 피해 주사위(2d8/1d8)와 대실패 반격까지 한 번에 굴린다.
-    { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1',
-      inject: '[판정] 무기를 들어 공격한다.',
-      effects: [
-        { set: 'checking', expr: '"공격"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + str_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'dmg', expr: 'grade == "대성공" ? rand(1, 8) + rand(1, 8) + str_mod : (grade == "성공" ? rand(1, 8) + str_mod : 0)' },
-        { set: 'hp', expr: 'grade == "대실패" ? hp - rand(1, 4) : hp' },
-        { set: 'stamina', expr: 'stamina - 1' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
+    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot', check: 'ck_str',
+      inject: '[행동] 힘으로 밀어붙인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot', check: 'ck_dex',
+      inject: '[행동] 재빠르게 움직인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot', check: 'ck_wit',
+      inject: '[행동] 상황을 읽고 머리를 쓴다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot', check: 'ck_cha',
+      inject: '[행동] 말과 태도로 상대를 움직인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1', check: 'ck_attack',
+      inject: '[행동] 무기를 들어 공격한다.',
+      effects: [{ set: 'stamina', expr: 'stamina - 1' }, { set: 'adv', expr: '0' }] },
     { id: 'focus', label: '✨ 집중 (다음 판정 이점)', mode: 'oneshot', when: 'not adv', cooldown: 4,
       inject: '[행동] 호흡을 가다듬고 다음 순간에 집중한다.',
       effects: [{ set: 'adv', expr: '1' }, { set: 'stamina', expr: 'stamina - 1' }] },
@@ -923,29 +925,27 @@ const TRPG = {
     allow: [
       { id: 'dc', maxDelta: 8 }, { id: 'need_roll' },
       { id: 'hp', maxDelta: 10 }, { id: 'stamina', maxDelta: 3 },
-      { id: 'checking', maxLength: 40 }, { id: 'conditions' },
+      { id: 'conditions' },
     ],
-    guide: '주사위와 판정 등급(roll/total/grade)은 시스템이 굴린다. 절대 건드리지 마라. '
+    guide: '주사위 판정은 시스템이 굴린다 — 결과를 절대 정하지 마라. '
       + '서사에 성패가 갈릴 시도가 나왔는데 아직 판정이 없으면 need_roll을 true로, dc는 상황 난이도에 맞게 정하라.',
   },
   promptState: {
     template: '[캐릭터] HP {hp}/40 | 기력 {stamina}/10 | 근력 {str}({str_mod}) 민첩 {dex}({dex_mod}) 지력 {wit}({wit_mod}) 매력 {cha}({cha_mod})\n'
-      + '상태: {conditions:tags}{adv ? " | ✨이점 대기" : ""}\n'
-      + '[직전 판정] {checking} — 주사위 {roll} + 보정 = {total} vs 난이도 {dc} → {grade}',
+      + '상태: {conditions:tags}{adv ? " | ✨이점 대기" : ""} | 난이도 {dc}',
     includeEvents: true,
   },
   statusUI: {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '판정', items: [
-        { var: 'roll' }, { var: 'total' }, { var: 'grade' }, { var: 'dc' },
-        { var: 'dmg', showWhen: 'dmg > 0' },
+        { var: 'dc' },
+        { var: 'adv', showWhen: 'adv' },
       ] },
       { label: '상태', items: [
         { var: 'hp', bar: { max: 40 }, color: 'hp <= 8 ? "#c0392b" : "#27ae60"' },
         { var: 'stamina', bar: { max: 10 } },
         { var: 'conditions' },
-        { var: 'adv', showWhen: 'adv' },
       ] },
       { label: '능력치', visibility: 'collapsed', items: [
         { var: 'str' }, { var: 'dex' }, { var: 'wit' }, { var: 'cha' },
@@ -973,7 +973,7 @@ const TRPG = {
     ],
     ai: {
       enabled: true,
-      vars: ['str', 'dex', 'wit', 'cha', 'hp', 'checking'],
+      vars: ['str', 'dex', 'wit', 'cha', 'hp'],
       instruction: '[최초 설정] 아직 모험이 시작되지 않았다. 유저와 함께 캐릭터(직업, 성격, 특기)와 첫 장면을 정하는 대화를 하라. 정해지면 능력치를 배분하고 상황을 정리해 서술하라.',
       guide: '능력치 합이 대략 46~50이 되게 배분하라. 주력 능력은 16 이상, 약점은 10 이하로 뚜렷하게 만들어라.',
     },

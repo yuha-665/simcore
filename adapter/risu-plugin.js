@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.39.0
-//@display-name SimCore (시뮬 엔진) v0.39 액션 잠금
+//@version 0.40.0
+//@display-name SimCore (시뮬 엔진) v0.40 판정(완벽 주사위)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.40 ──────────────────────────────────────────────────
+// checks(판정) — "완벽 주사위". docs/design-주사위-선택지.md §1의 구현.
+// trpg가 변수 5개+규칙으로 손조립하던 판정 패턴의 일급화: 굴림은 엔진이 하고 AI는 서사만 쓴다.
+// - `checks[]: { id, label, roll, mod?, vs?, grades[] }`. roll만 rand 허용(굴림은 한 번),
+//   등급은 위에서부터 첫 매치(when 없으면 기본 등급), when/effects에서 roll/mod/total/vs 사용 가능.
+//   등급별 effects(피해 주사위·반격)와 inject(연출 지시)까지 한 덩어리.
+// - 트리거는 기존 통로 재사용: `actions[].check`(무장 → 전송 시 굴림, 같은 턴 서사에 반영)와
+//   `events[].check`/`randomEvents.table[].check`(발동 시 굴림, 결과는 통지로 다음 전송 합류 —
+//   trpg의 need_roll "시스템이 대신 굴리기"가 이 배선이다). 순서는 굴림 → 등급 효과 → 액션/이벤트
+//   자체 효과 — 굴림식이 이점(adv) 같은 소모성 변수를 읽으므로, 끄는 정리는 자체 effects에 둔다.
+// - 결과는 vars가 아니라 meta.lastCheck에 남는다 — 설계 문서의 "판정 결과 변수 allow 금지(오류)"를
+//   검증이 아니라 구조로 달성: 보조 AI의 allow에 올릴 형태 자체가 없다. 시드 rng라 리롤해도 같은 눈.
+// - [판정] 줄이 있는 턴에만 판정 규칙 줄이 붙는다(promptState.checkGuide로 끄거나 대체) —
+//   eventPriority와 같은 절약 원칙. 상태창엔 {lastcheck} 자리표시자 + 변화 로그 🎲 줄.
+// - 편집기 [판정] 탭 신설 + 액션 행에 판정 선택 칸 + [🎲 액션 버튼 만들기] (기능은 반드시 칸과
+//   함께 — v0.35 cmd·v0.37 mentions 3호 사고 방지). AI 내보내기 슬라이스(checks)도 함께.
+// - trpg 템플릿을 checks 5종으로 재작성 (vars 16→11: roll/total/grade/checking/roll_pending 삭제).
+//   같은 시드에서 예전 손조립과 굴림·등급·피해 분포가 일치함을 회귀 테스트로 확인.
+//   부수 수정: 예전 do_roll이 직전 판정의 checking 라벨을 그대로 보여주던 문제는 구조적으로 소멸.
+// - 진단 writerMap에 '판정' 기록자 추가 — 등급 효과로만 움직이는 변수(trpg dmg)가
+//   "안 움직임" 오탐으로 잡히지 않게. (전 템플릿 재진단으로 오탐 0 확인)
 //
 // ── v0.39 ──────────────────────────────────────────────────
 // 대장간 봇의 진짜 뿌리는 낱말이 아니라 **이중 장부**였다 — 한 서사에 지갑이 두 개(개인 돈은

@@ -31,6 +31,12 @@ const DEFAULT_EVENT_PRIORITY =
   + '유저의 행동과 양립하지 않으면, 유저의 행동은 그대로 "시도"하게 두되 그 결과를 이 사건이 바꾸도록 전개하라 '
   + '(유저의 행동 자체를 없던 일로 만들지는 마라).';
 
+// 판정([판정] 줄)이 실제로 있는 턴에만 덧붙는다 — eventPriority와 같은 절약 원칙.
+// 이 한 줄이 없으면 모델이 "17이 나왔지만 아슬아슬하게 실패했다"처럼 결과를 뒤집어 쓴다.
+const DEFAULT_CHECK_GUIDE =
+  '※ 위 [판정]은 시스템이 주사위로 확정한 결과다. 성공을 실패로, 실패를 성공으로 뒤집어 서술하지 마라. '
+  + '수치를 본문에 나열하지 말고 그 결과의 무게를 장면으로 그려라.';
+
 // ── 초기화 ──────────────────────────────────────────────────
 
 function initState(schema) {
@@ -100,6 +106,7 @@ function reconcileState(schema, state) {
   m.firedOnce = m.firedOnce || {};
   m.pendingNotifies = m.pendingNotifies || [];
   m.firedThisSend = m.firedThisSend || {}; // 이번 전송에서 발동한 액션 (whenArmed 게이트용, 다음 전송에서 리셋)
+  m.lastCheck = m.lastCheck ?? null; // 마지막 판정 결과 — vars가 아니라 여기 산다 (AI가 못 만진다)
   return state;
 }
 
@@ -198,7 +205,8 @@ function applyListOps(varDef, current, ops) {
   return coerce(varDef, arr);
 }
 
-function applySets(schema, state, rules, rng, changeLog, source) {
+// overlay: 판정 등급 효과에서 roll/mod/total/vs를 임시 식별자로 여는 데 쓴다 (변수보다 우선)
+function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   for (const rule of rules || []) {
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -228,7 +236,8 @@ function applySets(schema, state, rules, rng, changeLog, source) {
     const def = varById[rule.set];
     if (!def) continue; // 검증 단계에서 걸러지지만 방어
     if (def.type === 'list') continue; // 목록은 수식 set 불가 (list 효과 사용)
-    const lookup = makeLookup(schema, state.vars);
+    const base = makeLookup(schema, state.vars);
+    const lookup = overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base;
     const raw = evaluate(rule.expr, lookup, rng);
     const from = state.vars[rule.set];
     const to = coerce(def, def.type === 'bool' ? truthy(raw) : raw);
@@ -238,6 +247,42 @@ function applySets(schema, state, rules, rng, changeLog, source) {
       changeLog.push({ id: rule.set, from, to, source });
     }
   }
+}
+
+// ── 판정 (checks) — "완벽 주사위" ────────────────────────────
+// 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 vars가 아니라 meta.lastCheck에
+// 남는다 — 보조 AI의 allow에 올릴 수 있는 형태가 아예 아니어서, 모델이 판정 결과를 고쳐 쓰는
+// 사고가 구조적으로 불가능하다 (설계 문서의 "allow 금지"를 검증이 아니라 구조로 달성).
+// 같은 시드 rng를 받으므로 리롤해도 같은 굴림이다.
+// 등급은 위에서부터 첫 매치, when 없는 등급은 항상 참(기본 등급).
+// 등급의 when/effects에서는 roll/mod/total(/vs)이 임시 식별자로 열린다 — 변수보다 우선.
+function rollCheck(schema, state, check, rng, changeLog) {
+  const lookup = makeLookup(schema, state.vars);
+  let roll, mod, vs = null;
+  try {
+    roll = Number(evaluate(check.roll, lookup, rng)); // rand가 허용되는 유일한 굴림 자리
+    mod = check.mod != null ? Number(evaluate(String(check.mod), lookup, null)) : 0;
+    if (check.vs != null) vs = typeof check.vs === 'number' ? check.vs : Number(evaluate(String(check.vs), lookup, null));
+  } catch { return null; } // 검증 단계에서 걸러지지만 방어
+  if (!isFinite(roll) || !isFinite(mod)) return null;
+  if (vs != null && !isFinite(vs)) vs = null;
+  const total = roll + mod;
+  const overlay = { roll, mod, total };
+  if (vs != null) overlay.vs = vs;
+  const ov = (n) => (n in overlay ? overlay[n] : lookup(n));
+  let grade = null;
+  for (const g of check.grades || []) {
+    if (!g.when) { grade = g; break; }
+    try { if (truthy(evaluate(g.when, ov, null))) { grade = g; break; } }
+    catch { /* 이 등급만 건너뛴다 — 방어 */ }
+  }
+  const summary = `${roll}${mod ? (mod > 0 ? ` + ${mod} = ${total}` : ` - ${-mod} = ${total}`) : ''}`
+    + `${vs != null ? ` vs ${vs}` : ''} → ${grade ? grade.label : '(등급 없음)'}`;
+  const label = check.label ?? check.id;
+  if (grade) applySets(schema, state, grade.effects, rng, changeLog, `check:${check.id}`, overlay);
+  state.meta.lastCheck = { id: check.id, label, roll, mod, total, vs, grade: grade ? grade.label : null, summary, turn: state.meta.turn };
+  changeLog.push({ id: label, from: null, to: summary, source: `check:${check.id}` });
+  return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
@@ -254,11 +299,22 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
   // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
   state.meta.firedThisSend = {};
+  const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
     if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
+    // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
+    // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
+    let checkResult = null;
+    if (action.check && checkById[action.check]) {
+      checkResult = rollCheck(schema, state, checkById[action.check], rng, changeLog);
+    }
     applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
     if (action.inject) injects.push(action.inject);
+    if (checkResult) {
+      injects.push(checkResult.line);
+      if (checkResult.inject) injects.push(checkResult.inject);
+    }
     consumedActions.push(action.id);
     state.meta.firedThisSend[action.id] = true;
     if ((action.mode || 'oneshot') === 'oneshot') {
@@ -277,7 +333,8 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (ps.template) lines.push(renderTemplate(ps.template, lookup));
   const showEvents = ps.includeEvents !== false && notifies.length > 0;
   if (showEvents) {
-    for (const n of notifies) lines.push(`[이벤트] ${n}`);
+    // 이벤트가 굴린 판정 결과([판정] 줄)는 통지로 실려 오지만 이벤트가 아니다 — 태그를 겹치지 않는다
+    for (const n of notifies) lines.push(String(n).startsWith('[판정]') ? n : `[이벤트] ${n}`);
     // 충돌 해소 규칙은 이벤트가 실제로 있는 턴에만 붙인다 (없는 턴에 넣어봐야 토큰 낭비 + 헛된 편향)
     if (ps.eventPriority !== false) {
       lines.push(renderTemplate(
@@ -286,6 +343,14 @@ function sendPhase(schema, prevState, { rng } = {}) {
     }
   }
   for (const inj of injects) lines.push(inj);
+
+  // 3.4 판정 규칙 줄 — [판정]이 실제로 있는 턴에만 (액션이 방금 굴렸든, 이벤트 통지로 실려 왔든).
+  // includeEvents가 꺼져 통지가 안 나간 턴에는 규칙 줄도 안 붙인다 — 없는 줄에 대한 규칙이 된다.
+  const hasCheckLine = injects.concat(showEvents ? notifies : []).some((s) => String(s).startsWith('[판정]'));
+  if (hasCheckLine && ps.checkGuide !== false) {
+    lines.push(typeof ps.checkGuide === 'string' && ps.checkGuide.trim()
+      ? renderTemplate(ps.checkGuide, lookup) : DEFAULT_CHECK_GUIDE);
+  }
 
   // 3.5 상태 지시문: 조건을 만족하는 동안 매 턴 주입 (세션 0 중에는 제외)
   const activeDirectives = [];
@@ -486,12 +551,21 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
 
   // 7. 조건 이벤트
+  // 판정 달린 이벤트: 굴림·등급 효과는 지금 적용되고, [판정] 줄은 통지에 실려 다음 전송에 합류한다.
+  // 순서는 액션과 같다 — 굴림이 먼저(굴림식이 소모성 변수를 읽는다), 이벤트 자체 효과가 나중.
+  const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const ev of schema.rules?.events || []) {
     if (ev.once && state.meta.firedOnce[ev.id]) continue;
     const lookup = makeLookup(schema, state.vars);
     if (!truthy(evaluate(ev.when, lookup, null))) continue;
+    let checkResult = null;
+    if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
     applySets(schema, state, ev.effects, rng, changeLog, `event:${ev.id}`);
     if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (checkResult) {
+      state.meta.pendingNotifies.push(checkResult.line);
+      if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+    }
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -517,8 +591,14 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       for (const ev of eligible) {
         roll -= ev.weight ?? 1;
         if (roll <= 0) {
+          let checkResult = null;
+          if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
           applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
           if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+          if (checkResult) {
+            state.meta.pendingNotifies.push(checkResult.line);
+            if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+          }
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
           break;
@@ -887,7 +967,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

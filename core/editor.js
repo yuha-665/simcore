@@ -574,6 +574,7 @@ const TAB_SLICES = {
   //   갈아끼우면 변수·파생이 통째로 날아간다. merge를 주면 cmd 배정만 기존 vars에 얹는다.
   commands: { keys: ['vars'], merge: 'cmd', label: '명령' },
   actions: { keys: ['actions'], label: '액션' },
+  checks: { keys: ['checks'], label: '판정' },
   rules: { keys: ['rules', 'directives'], label: '규칙·이벤트' },
   // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
   // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
@@ -591,6 +592,7 @@ function tabItemCounts(schema, tabKey) {
   if (tabKey === 'vars') { push('vars', schema.vars); push('derived', schema.derived); }
   else if (tabKey === 'commands') push('commands', (schema.vars || []).filter((v) => v.cmd));
   else if (tabKey === 'actions') push('actions', schema.actions);
+  else if (tabKey === 'checks') push('checks', schema.checks);
   else if (tabKey === 'presets') push('setup.presets', schema.setup?.presets);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -650,6 +652,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     const WANT = {
       vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
+      checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
     };
     head.push('## 내가 원하는 것',
       WANT[tabKey] ?? '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
@@ -776,6 +779,35 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     for (const [name, why, ex] of PRESET_PATTERNS) {
       body.push(`### ${name}`, why, '```json', ex, '```', '');
     }
+  } else if (tabKey === 'checks') {
+    body.push('## 판정이 뭔가',
+      '주사위 판정입니다. **굴림은 시스템이 하고, AI는 결과를 받아 서사만 씁니다.**',
+      '결과는 변수가 아니라 시스템 기록에 남아 보조 AI가 건드릴 수 없고, 리롤해도 같은 눈이 나옵니다.',
+      '실행은 액션 버튼에 답니다 (액션의 `check` 필드에 판정 id).',
+      '',
+      '## 판정 하나는 이렇게 생겼습니다',
+      '```json',
+      '{ "checks": [ {',
+      '  "id": "attack", "label": "공격 판정",',
+      '  "roll": "rand(1, 20)",',
+      '  "mod": "floor((str - 10) / 2)",',
+      '  "vs": "dc",',
+      '  "grades": [',
+      '    { "when": "roll == 20", "label": "대성공", "inject": "기대 이상의 성과를 극적으로 그려라." },',
+      '    { "when": "roll == 1", "label": "대실패", "inject": "단순 실패가 아니라 상황을 악화시켜라." },',
+      '    { "when": "total >= vs", "label": "성공" },',
+      '    { "label": "실패" }',
+      '  ]',
+      '} ] }',
+      '```',
+      '',
+      '## 규칙',
+      '- `roll`(굴림식)에서만 `rand()`를 쓸 수 있습니다. `mod`·`vs`·등급 `when`에서는 금지 — 굴림은 한 번입니다.',
+      '- 등급은 **위에서부터 첫 매치**입니다. 맨 마지막에는 `when` 없는 기본 등급을 두세요.',
+      '- 등급의 `when`과 `effects` 수식에서는 `roll`(굴린 눈)·`mod`(보정)·`total`(합계)·`vs`(목표치)를 그대로 쓸 수 있습니다.',
+      '- 등급 `effects`는 이벤트 효과와 같은 형식입니다 (예: 대실패에 `{ "set": "hp", "expr": "hp - rand(1, 4)" }`).',
+      '- 등급 `inject`는 그 등급일 때 AI에게 덧붙는 연출 지시입니다 (선택).',
+      '');
   } else {
     body.push('## 액션은 이 6가지 형태 중 하나입니다',
       '액션은 플레이어가 화면 우상단 버튼으로 누릅니다. 누르면 무장(ON)되고 다음 전송에 효과가 적용됩니다.',
@@ -1088,6 +1120,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     schema.statusUI = schema.statusUI || { mode: 'auto', groups: [] };
     schema.statusUI.groups = schema.statusUI.groups || [];
     schema.actions = schema.actions || [];
+    schema.checks = schema.checks || [];
     schema.setup = schema.setup || {};
     schema.setup.presets = schema.setup.presets || [];
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
@@ -1101,7 +1134,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
 
   const TABS = [
     ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
-    ['actions', '액션'], ['setup', '새 시작'], ['ai', 'AI 설정'],
+    ['actions', '액션'], ['checks', '판정'], ['setup', '새 시작'], ['ai', 'AI 설정'],
     ['diag', '🔬 진단'], ['json', 'JSON'],
   ];
 
@@ -1707,6 +1740,13 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         ),
         h('div', { class: 'sce-row' },
           pair('사용 조건', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' })),
+          // 판정(check) — 이 버튼을 켠 턴에 그 판정을 굴려 [판정] 결과 줄을 서사에 함께 준다
+          pair('판정', bindSelect(a.check ?? '',
+            [['', '(없음)'], ...schema.checks.map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) a.check = x; else delete a.check; rerender(); }),
+            schema.checks.length
+              ? '버튼을 켠 턴에 이 판정을 굴린다. 굴림식·등급은 [판정] 탭에서'
+              : '아직 판정이 없다 — [판정] 탭에서 먼저 만들 것'),
         ),
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
@@ -1715,6 +1755,86 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       ));
     });
     wrap.appendChild(addBtn('액션 추가', () => { schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] }); rerender(); }));
+    return wrap;
+  }
+
+  // ── 탭: 판정 ──────────────────────────────────────────────
+  // "완벽 주사위" — 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 변수가 아니라
+  // 시스템 기록(meta.lastCheck)에 남아 보조 AI가 건드릴 방법이 없고, 시드 굴림이라 리롤해도 같은 눈이다.
+  function tabChecks() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('checks'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '주사위 판정. 실행은 액션 버튼에 단다 — 아래 [🎲 액션 버튼 만들기]를 누르거나 [액션] 탭에서 '
+      + '판정 칸에 고르면 된다. 버튼을 켠 턴에 시스템이 굴려 [판정] 결과 줄이 같은 턴 서사에 반영된다. '
+      + '등급은 위에서부터 첫 매치 — 맨 마지막에 조건 없는 기본 등급을 둘 것. '
+      + '등급의 조건·효과에서는 roll(굴린 눈)·mod(보정)·total(합계)·vs(목표치)를 그대로 쓸 수 있다. '
+      + '결과는 AI가 못 건드리고, 리롤해도 같은 눈이 나온다.'));
+    schema.checks.forEach((c, i) => {
+      const hasBtn = (schema.actions || []).some((a) => a.check === c.id);
+      const block = h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(c.id, (x) => { c.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: attack)' }),
+          bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 공격 판정)' }),
+          grip(schema.checks, i, rerender),
+        ),
+        h('div', { class: 'sce-row' },
+          pair('굴림식', bindInput(c.roll, (x) => { c.roll = x; rerender(); }, { cls: 'sce-w-m', ph: 'rand(1, 20)' }),
+            '주사위 자체. rand()는 여기서만 허용된다. 이점 굴림은 adv ? max(rand(1,20), rand(1,20)) : rand(1,20) 식으로'),
+          pair('보정식', bindInput(c.mod, (x) => { c.mod = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비우면 0) str_mod' }),
+            '능력치 보너스. 변수·파생을 읽는다. rand 불가'),
+          pair('목표치', bindInput(c.vs, (x) => {
+            const t = String(x).trim();
+            if (!t) { c.vs = undefined; } else { const n = Number(t); c.vs = isFinite(n) && String(n) === t ? n : t; }
+            rerender();
+          }, { cls: 'sce-w-s', ph: 'dc 또는 13' }),
+            '넘어야 하는 값. 숫자나 수식. 비우면 목표치 없는 판정. 등급 조건에서 vs로 읽는다'),
+        ),
+      );
+      c.grades = c.grades || [];
+      c.grades.forEach((g, gi) => {
+        block.appendChild(h('div', { class: 'sce-sub' },
+          h('div', { class: 'sce-row' },
+            pair('조건', bindInput(g.when, (x) => { g.when = String(x).trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '(비우면 항상 — 기본 등급) roll == 20' })),
+            bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-s', ph: '등급 이름' }),
+            grip(c.grades, gi, rerender),
+          ),
+          effectRows(schema, g.effects = g.effects || [], rerender),
+          h('div', { class: 'sce-row' },
+            pair('연출 지시', bindInput(g.inject, (x) => { g.inject = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '(선택) 이 등급일 때 AI에게 덧붙는 지시 — 예: 기대 이상의 성과를 극적으로 그려라.' })),
+          ),
+        ));
+      });
+      block.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+          c.grades.push({ label: '등급' + (c.grades.length + 1) });
+          rerender();
+        } }, '+ 등급'),
+        h('button', { class: 'sce-btn', style: 'flex:1', disabled: hasBtn || undefined, onclick: () => {
+          if ((schema.actions || []).some((a) => a.check === c.id)) return;
+          const taken = new Set(schema.actions.map((a) => a.id));
+          let id = 'roll_' + (c.id || 'check'), n = 2;
+          while (taken.has(id)) id = 'roll_' + (c.id || 'check') + (n++);
+          schema.actions.push({ id, label: '🎲 ' + (c.label || c.id || '판정'), mode: 'oneshot', check: c.id, effects: [] });
+          rerender();
+        } }, hasBtn ? '✓ 액션 버튼 있음' : '🎲 액션 버튼 만들기'),
+      ));
+      wrap.appendChild(block);
+    });
+    wrap.appendChild(addBtn('판정 추가', () => {
+      schema.checks.push({
+        id: 'check' + (schema.checks.length + 1), label: '', roll: 'rand(1, 20)', vs: 13,
+        grades: [
+          { when: 'roll == 20', label: '대성공' },
+          { when: 'roll == 1', label: '대실패' },
+          { when: 'total >= vs', label: '성공' },
+          { label: '실패' },
+        ],
+      });
+      rerender();
+    }));
     return wrap;
   }
 
@@ -2218,7 +2338,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     }
     root.appendChild(tabs);
     const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
+      checks: tabChecks, setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
     root.appendChild(body);
 
     // 라이브 검증 리포트

@@ -49,8 +49,8 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands') {
-      warn(p, `'commands'는 상태창 자리표시자 {commands}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
+    if (v.id === 'commands' || v.id === 'lastcheck') {
+      warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
       if (typeof v.cmd !== 'string' || !v.cmd.trim()) err(p, 'cmd는 비어있지 않은 문자열이어야 함');
@@ -78,7 +78,14 @@ function validateSchema(schema) {
   }
 
   const listIds = new Set(vars.filter((v) => v.type === 'list').map((v) => v.id));
-  const checkSet = (rule, p) => {
+  // 판정 id는 여기서 미리 모은다 — 이벤트·액션의 check 참조 검사가 checks 구조 검증보다 먼저 돈다
+  const checkIds = new Set((Array.isArray(schema.checks) ? schema.checks : []).map((c) => c.id).filter(Boolean));
+  const checkRef = (x, p) => {
+    if (x.check != null && (typeof x.check !== 'string' || !checkIds.has(x.check)))
+      err(p, `check '${x.check}'가 checks(판정)에 없음`);
+  };
+  // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
+  const checkSet = (rule, p, exprIds = allIds) => {
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -86,7 +93,7 @@ function validateSchema(schema) {
       if (rule.remove != null && !Array.isArray(rule.remove)) err(p, 'remove는 배열이어야 함');
       if (rule.expire != null) {
         if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
-        else checkExpr(rule.expire, p + '.expire', allIds, err, { allowRand: false });
+        else checkExpr(rule.expire, p + '.expire', exprIds, err, { allowRand: false });
       }
       if (rule.add == null && rule.remove == null && rule.expire == null)
         warn(p, 'add/remove/expire가 모두 없는 list 효과');
@@ -94,7 +101,7 @@ function validateSchema(schema) {
     }
     if (!ids.has(rule.set)) err(p, `set 대상 '${rule.set}'이 vars에 없음 (derived는 set 불가)`);
     else if (listIds.has(rule.set)) err(p, `목록 '${rule.set}'은 수식 set 불가 — list 효과(add/remove)를 사용`);
-    checkExpr(rule.expr, p + '.expr', allIds, err, { allowRand: true });
+    checkExpr(rule.expr, p + '.expr', exprIds, err, { allowRand: true });
   };
 
   // ── rules ──
@@ -109,6 +116,7 @@ function validateSchema(schema) {
     checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
     (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
+    checkRef(e, p);
   });
   const re = rules.randomEvents;
   if (re) {
@@ -122,6 +130,7 @@ function validateSchema(schema) {
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
+      checkRef(e, p);
     });
   }
 
@@ -217,6 +226,9 @@ function validateSchema(schema) {
   }
   if (typeof schema.promptState?.eventPriority === 'string') {
     checkTemplateRefs(schema.promptState.eventPriority, '$.promptState.eventPriority', allIds, err);
+  }
+  if (typeof schema.promptState?.checkGuide === 'string') {
+    checkTemplateRefs(schema.promptState.checkGuide, '$.promptState.checkGuide', allIds, err);
   }
   const ui = schema.statusUI || {};
   if (ui.mode === 'template') {
@@ -330,7 +342,53 @@ function validateSchema(schema) {
     if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+    checkRef(a, p);
   });
+
+  // ── checks (판정 — "완벽 주사위") ──
+  // 결과(roll/total/grade)는 변수가 아니라 meta에 남으므로 updater.allow에 올릴 수 있는
+  // 형태 자체가 없다 — "판정 결과 변수 allow 금지"는 검증이 아니라 구조로 달성된다.
+  {
+    const seen = new Set();
+    (Array.isArray(schema.checks) ? schema.checks : []).forEach((c, i) => {
+      const p = `$.checks[${i}]`;
+      if (!c.id || !ID_RE.test(c.id)) err(p, `잘못된 판정 id: '${c.id}'`);
+      else if (seen.has(c.id)) err(p, `중복 판정 id: '${c.id}'`);
+      else {
+        seen.add(c.id);
+        if (allIds.has(c.id)) err(p, `판정 id '${c.id}'가 변수/파생과 겹침 — 다른 이름을 쓸 것`);
+      }
+      if (!c.label) warn(p, 'label 없음 — [판정] 줄과 상태창에 id가 그대로 표시됨');
+      // roll은 rand가 허용되는 유일한 굴림 자리. mod/vs/등급 조건에는 금지 (완벽 주사위 — 굴림은 한 번)
+      checkExpr(c.roll, p + '.roll', allIds, err, { allowRand: true });
+      if (c.mod != null) checkExpr(String(c.mod), p + '.mod', allIds, err, { allowRand: false });
+      if (c.vs != null && typeof c.vs !== 'number') checkExpr(String(c.vs), p + '.vs', allIds, err, { allowRand: false });
+      const gradeIds = new Set([...allIds, 'roll', 'mod', 'total', ...(c.vs != null ? ['vs'] : [])]);
+      const grades = Array.isArray(c.grades) ? c.grades : [];
+      if (!grades.length) err(p, 'grades(등급) 1개 이상 필요');
+      let sawCatchAll = false;
+      grades.forEach((g, gi) => {
+        const gp = `${p}.grades[${gi}]`;
+        if (!g.label) err(gp, '등급 label 필요');
+        if (sawCatchAll) warn(gp, '조건 없는 등급(기본 결과)보다 뒤에 있어 영원히 안 나옴 — 위로 올리세요');
+        if (!g.when) sawCatchAll = true;
+        else checkExpr(g.when, gp + '.when', gradeIds, err, { allowRand: false });
+        (g.effects || []).forEach((r, j) => checkSet(r, `${gp}.effects[${j}]`, gradeIds));
+        if (g.inject != null && typeof g.inject !== 'string') err(gp, 'inject는 문자열');
+      });
+      if (grades.length && !sawCatchAll)
+        warn(p, '조건 없는 등급이 없습니다 — 어느 조건도 안 맞으면 판정이 등급 없이 끝납니다. 맨 뒤에 기본 등급(예: 실패)을 두세요');
+      if (c.vs == null && grades.some((g) => g.when && /\bvs\b/.test(g.when)))
+        err(p, '등급 조건이 vs를 쓰는데 판정에 vs(목표치)가 없음');
+    });
+    // 판정이 있는 스키마에서 roll/mod/total/vs 이름의 변수는 등급식 안에서 판정값에 가려진다
+    if (seen.size) {
+      for (const shadowed of ['roll', 'mod', 'total', 'vs']) {
+        if (allIds.has(shadowed))
+          warn('$.checks', `변수/파생 '${shadowed}'는 판정 등급식 안에서 판정값에 가려집니다 — 헷갈리지 않게 다른 이름을 권합니다`);
+      }
+    }
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -351,7 +409,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
-const RESERVED_SLOTS = new Set(['commands', 'uid']);
+// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열).
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

@@ -1,7 +1,7 @@
 # SimCore 스키마 레퍼런스
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
-· `updater` · `promptState` · `statusUI` · `setup`
+· `checks` · `updater` · `promptState` · `statusUI` · `setup`
 
 ---
 
@@ -82,6 +82,35 @@
 
 ---
 
+## checks — 판정 ("완벽 주사위", v0.40)
+
+굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 변수가 아니라 시스템 기록(meta.lastCheck)에
+남아 **보조 AI가 건드릴 형태 자체가 없고**(설계 문서의 "allow 금지"를 구조로 달성), 시드 굴림이라
+**리롤해도 같은 눈**이다.
+
+| 필드 | |
+|---|---|
+| `id` / `label` | id가 vars/derived와 겹치면 오류. label이 [판정] 줄·상태창에 나온다 |
+| `roll` | 굴림식 (필수). **rand()가 허용되는 유일한 자리** — 이점 굴림: `adv ? max(rand(1,20), rand(1,20)) : rand(1,20)` |
+| `mod` | 보정식 (기본 0). 변수·파생을 읽는다. rand 불가 |
+| `vs` | 목표치 — 숫자 또는 식 (없어도 됨). rand 불가 |
+| `grades[]` | `{ when?, label, effects[], inject? }` — **위에서부터 첫 매치**. when 없으면 항상 참(기본 등급). 기본 등급이 없으면 경고, 기본 등급 뒤의 등급은 도달 불가 경고 |
+
+- 등급의 `when`/`effects` 수식은 `roll`·`mod`·`total`(=roll+mod)·`vs`를 임시 식별자로 쓴다
+  (변수보다 우선 — 같은 이름의 변수가 있으면 "가려짐" 경고. vs 없는 판정에서 vs를 쓰면 오류)
+- `inject` = 그 등급일 때 덧붙는 연출 지시 (예: "기대 이상의 성과를 극적으로 그려라")
+- **트리거는 기존 통로 재사용**: `actions[].check` — 무장 → 전송 시 굴림, **같은 턴** 서사 반영.
+  `events[].check`·`randomEvents.table[].check` — 발동 시 굴림, [판정] 줄은 통지로 **다음 전송** 합류
+  (trpg need_roll의 "시스템이 대신 굴리기" 배선)
+- **순서: 굴림 → 등급 effects → 액션/이벤트 자체 effects.** 굴림식이 이점(adv) 같은 소모성 변수를
+  읽으므로, 그걸 끄는 정리는 자체 effects에 둔다 (굴림이 끝난 뒤 적용되므로 안전)
+- [판정] 줄이 있는 턴에만 판정 규칙 줄("뒤집어 서술하지 마라")이 자동으로 붙는다 —
+  `promptState.checkGuide`: false로 끄거나 문자열로 대체({변수} 가능). eventPriority와 같은 원칙
+- 프롬프트 줄 순서: 액션 `inject`(의도) → `[판정] 라벨: 14 + 2 = 16 vs 13 → 성공`(결과) → 등급 `inject`(연출)
+- 상태창: `{lastcheck}` 자리표시자(판정 전엔 빈 문자열) + 변화 로그에 🎲 줄
+
+---
+
 ## updater — 보조 AI 설정
 
 | 필드 | |
@@ -149,7 +178,7 @@
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
 | `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
 | `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` |
-| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{commands}` · `{uid}` |
+| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{commands}` · `{uid}` · `{lastcheck}` |
 | `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리 |
 
 - `tabs`/`popover`는 **보이는 그룹이 2개 이상**일 때만 동작 (아니면 조용히 stack)

@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.39.0
-//@display-name SimCore (시뮬 엔진) v0.39 액션 잠금
+//@version 0.40.0
+//@display-name SimCore (시뮬 엔진) v0.40 판정(완벽 주사위)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.40 ──────────────────────────────────────────────────
+// checks(판정) — "완벽 주사위". docs/design-주사위-선택지.md §1의 구현.
+// trpg가 변수 5개+규칙으로 손조립하던 판정 패턴의 일급화: 굴림은 엔진이 하고 AI는 서사만 쓴다.
+// - `checks[]: { id, label, roll, mod?, vs?, grades[] }`. roll만 rand 허용(굴림은 한 번),
+//   등급은 위에서부터 첫 매치(when 없으면 기본 등급), when/effects에서 roll/mod/total/vs 사용 가능.
+//   등급별 effects(피해 주사위·반격)와 inject(연출 지시)까지 한 덩어리.
+// - 트리거는 기존 통로 재사용: `actions[].check`(무장 → 전송 시 굴림, 같은 턴 서사에 반영)와
+//   `events[].check`/`randomEvents.table[].check`(발동 시 굴림, 결과는 통지로 다음 전송 합류 —
+//   trpg의 need_roll "시스템이 대신 굴리기"가 이 배선이다). 순서는 굴림 → 등급 효과 → 액션/이벤트
+//   자체 효과 — 굴림식이 이점(adv) 같은 소모성 변수를 읽으므로, 끄는 정리는 자체 effects에 둔다.
+// - 결과는 vars가 아니라 meta.lastCheck에 남는다 — 설계 문서의 "판정 결과 변수 allow 금지(오류)"를
+//   검증이 아니라 구조로 달성: 보조 AI의 allow에 올릴 형태 자체가 없다. 시드 rng라 리롤해도 같은 눈.
+// - [판정] 줄이 있는 턴에만 판정 규칙 줄이 붙는다(promptState.checkGuide로 끄거나 대체) —
+//   eventPriority와 같은 절약 원칙. 상태창엔 {lastcheck} 자리표시자 + 변화 로그 🎲 줄.
+// - 편집기 [판정] 탭 신설 + 액션 행에 판정 선택 칸 + [🎲 액션 버튼 만들기] (기능은 반드시 칸과
+//   함께 — v0.35 cmd·v0.37 mentions 3호 사고 방지). AI 내보내기 슬라이스(checks)도 함께.
+// - trpg 템플릿을 checks 5종으로 재작성 (vars 16→11: roll/total/grade/checking/roll_pending 삭제).
+//   같은 시드에서 예전 손조립과 굴림·등급·피해 분포가 일치함을 회귀 테스트로 확인.
+//   부수 수정: 예전 do_roll이 직전 판정의 checking 라벨을 그대로 보여주던 문제는 구조적으로 소멸.
+// - 진단 writerMap에 '판정' 기록자 추가 — 등급 효과로만 움직이는 변수(trpg dmg)가
+//   "안 움직임" 오탐으로 잡히지 않게. (전 템플릿 재진단으로 오탐 0 확인)
 //
 // ── v0.39 ──────────────────────────────────────────────────
 // 대장간 봇의 진짜 뿌리는 낱말이 아니라 **이중 장부**였다 — 한 서사에 지갑이 두 개(개인 돈은
@@ -823,8 +845,8 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands') {
-      warn(p, `'commands'는 상태창 자리표시자 {commands}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
+    if (v.id === 'commands' || v.id === 'lastcheck') {
+      warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
       if (typeof v.cmd !== 'string' || !v.cmd.trim()) err(p, 'cmd는 비어있지 않은 문자열이어야 함');
@@ -852,7 +874,14 @@ function validateSchema(schema) {
   }
 
   const listIds = new Set(vars.filter((v) => v.type === 'list').map((v) => v.id));
-  const checkSet = (rule, p) => {
+  // 판정 id는 여기서 미리 모은다 — 이벤트·액션의 check 참조 검사가 checks 구조 검증보다 먼저 돈다
+  const checkIds = new Set((Array.isArray(schema.checks) ? schema.checks : []).map((c) => c.id).filter(Boolean));
+  const checkRef = (x, p) => {
+    if (x.check != null && (typeof x.check !== 'string' || !checkIds.has(x.check)))
+      err(p, `check '${x.check}'가 checks(판정)에 없음`);
+  };
+  // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
+  const checkSet = (rule, p, exprIds = allIds) => {
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -860,7 +889,7 @@ function validateSchema(schema) {
       if (rule.remove != null && !Array.isArray(rule.remove)) err(p, 'remove는 배열이어야 함');
       if (rule.expire != null) {
         if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
-        else checkExpr(rule.expire, p + '.expire', allIds, err, { allowRand: false });
+        else checkExpr(rule.expire, p + '.expire', exprIds, err, { allowRand: false });
       }
       if (rule.add == null && rule.remove == null && rule.expire == null)
         warn(p, 'add/remove/expire가 모두 없는 list 효과');
@@ -868,7 +897,7 @@ function validateSchema(schema) {
     }
     if (!ids.has(rule.set)) err(p, `set 대상 '${rule.set}'이 vars에 없음 (derived는 set 불가)`);
     else if (listIds.has(rule.set)) err(p, `목록 '${rule.set}'은 수식 set 불가 — list 효과(add/remove)를 사용`);
-    checkExpr(rule.expr, p + '.expr', allIds, err, { allowRand: true });
+    checkExpr(rule.expr, p + '.expr', exprIds, err, { allowRand: true });
   };
 
   // ── rules ──
@@ -883,6 +912,7 @@ function validateSchema(schema) {
     checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
     (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
+    checkRef(e, p);
   });
   const re = rules.randomEvents;
   if (re) {
@@ -896,6 +926,7 @@ function validateSchema(schema) {
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
+      checkRef(e, p);
     });
   }
 
@@ -991,6 +1022,9 @@ function validateSchema(schema) {
   }
   if (typeof schema.promptState?.eventPriority === 'string') {
     checkTemplateRefs(schema.promptState.eventPriority, '$.promptState.eventPriority', allIds, err);
+  }
+  if (typeof schema.promptState?.checkGuide === 'string') {
+    checkTemplateRefs(schema.promptState.checkGuide, '$.promptState.checkGuide', allIds, err);
   }
   const ui = schema.statusUI || {};
   if (ui.mode === 'template') {
@@ -1104,7 +1138,53 @@ function validateSchema(schema) {
     if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+    checkRef(a, p);
   });
+
+  // ── checks (판정 — "완벽 주사위") ──
+  // 결과(roll/total/grade)는 변수가 아니라 meta에 남으므로 updater.allow에 올릴 수 있는
+  // 형태 자체가 없다 — "판정 결과 변수 allow 금지"는 검증이 아니라 구조로 달성된다.
+  {
+    const seen = new Set();
+    (Array.isArray(schema.checks) ? schema.checks : []).forEach((c, i) => {
+      const p = `$.checks[${i}]`;
+      if (!c.id || !ID_RE.test(c.id)) err(p, `잘못된 판정 id: '${c.id}'`);
+      else if (seen.has(c.id)) err(p, `중복 판정 id: '${c.id}'`);
+      else {
+        seen.add(c.id);
+        if (allIds.has(c.id)) err(p, `판정 id '${c.id}'가 변수/파생과 겹침 — 다른 이름을 쓸 것`);
+      }
+      if (!c.label) warn(p, 'label 없음 — [판정] 줄과 상태창에 id가 그대로 표시됨');
+      // roll은 rand가 허용되는 유일한 굴림 자리. mod/vs/등급 조건에는 금지 (완벽 주사위 — 굴림은 한 번)
+      checkExpr(c.roll, p + '.roll', allIds, err, { allowRand: true });
+      if (c.mod != null) checkExpr(String(c.mod), p + '.mod', allIds, err, { allowRand: false });
+      if (c.vs != null && typeof c.vs !== 'number') checkExpr(String(c.vs), p + '.vs', allIds, err, { allowRand: false });
+      const gradeIds = new Set([...allIds, 'roll', 'mod', 'total', ...(c.vs != null ? ['vs'] : [])]);
+      const grades = Array.isArray(c.grades) ? c.grades : [];
+      if (!grades.length) err(p, 'grades(등급) 1개 이상 필요');
+      let sawCatchAll = false;
+      grades.forEach((g, gi) => {
+        const gp = `${p}.grades[${gi}]`;
+        if (!g.label) err(gp, '등급 label 필요');
+        if (sawCatchAll) warn(gp, '조건 없는 등급(기본 결과)보다 뒤에 있어 영원히 안 나옴 — 위로 올리세요');
+        if (!g.when) sawCatchAll = true;
+        else checkExpr(g.when, gp + '.when', gradeIds, err, { allowRand: false });
+        (g.effects || []).forEach((r, j) => checkSet(r, `${gp}.effects[${j}]`, gradeIds));
+        if (g.inject != null && typeof g.inject !== 'string') err(gp, 'inject는 문자열');
+      });
+      if (grades.length && !sawCatchAll)
+        warn(p, '조건 없는 등급이 없습니다 — 어느 조건도 안 맞으면 판정이 등급 없이 끝납니다. 맨 뒤에 기본 등급(예: 실패)을 두세요');
+      if (c.vs == null && grades.some((g) => g.when && /\bvs\b/.test(g.when)))
+        err(p, '등급 조건이 vs를 쓰는데 판정에 vs(목표치)가 없음');
+    });
+    // 판정이 있는 스키마에서 roll/mod/total/vs 이름의 변수는 등급식 안에서 판정값에 가려진다
+    if (seen.size) {
+      for (const shadowed of ['roll', 'mod', 'total', 'vs']) {
+        if (allIds.has(shadowed))
+          warn('$.checks', `변수/파생 '${shadowed}'는 판정 등급식 안에서 판정값에 가려집니다 — 헷갈리지 않게 다른 이름을 권합니다`);
+      }
+    }
+  }
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -1125,7 +1205,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
-const RESERVED_SLOTS = new Set(['commands', 'uid']);
+// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열).
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {
@@ -1182,6 +1263,12 @@ const DEFAULT_EVENT_PRIORITY =
   '※ 위 [이벤트]는 시스템이 이미 확정해 수치까지 반영한 사실이다. 일어나지 않은 것처럼 쓰거나 미루지 말고 이번 서사에 반드시 드러내라. '
   + '유저의 행동과 양립하지 않으면, 유저의 행동은 그대로 "시도"하게 두되 그 결과를 이 사건이 바꾸도록 전개하라 '
   + '(유저의 행동 자체를 없던 일로 만들지는 마라).';
+
+// 판정([판정] 줄)이 실제로 있는 턴에만 덧붙는다 — eventPriority와 같은 절약 원칙.
+// 이 한 줄이 없으면 모델이 "17이 나왔지만 아슬아슬하게 실패했다"처럼 결과를 뒤집어 쓴다.
+const DEFAULT_CHECK_GUIDE =
+  '※ 위 [판정]은 시스템이 주사위로 확정한 결과다. 성공을 실패로, 실패를 성공으로 뒤집어 서술하지 마라. '
+  + '수치를 본문에 나열하지 말고 그 결과의 무게를 장면으로 그려라.';
 
 // ── 초기화 ──────────────────────────────────────────────────
 
@@ -1252,6 +1339,7 @@ function reconcileState(schema, state) {
   m.firedOnce = m.firedOnce || {};
   m.pendingNotifies = m.pendingNotifies || [];
   m.firedThisSend = m.firedThisSend || {}; // 이번 전송에서 발동한 액션 (whenArmed 게이트용, 다음 전송에서 리셋)
+  m.lastCheck = m.lastCheck ?? null; // 마지막 판정 결과 — vars가 아니라 여기 산다 (AI가 못 만진다)
   return state;
 }
 
@@ -1350,7 +1438,8 @@ function applyListOps(varDef, current, ops) {
   return coerce(varDef, arr);
 }
 
-function applySets(schema, state, rules, rng, changeLog, source) {
+// overlay: 판정 등급 효과에서 roll/mod/total/vs를 임시 식별자로 여는 데 쓴다 (변수보다 우선)
+function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   for (const rule of rules || []) {
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -1380,7 +1469,8 @@ function applySets(schema, state, rules, rng, changeLog, source) {
     const def = varById[rule.set];
     if (!def) continue; // 검증 단계에서 걸러지지만 방어
     if (def.type === 'list') continue; // 목록은 수식 set 불가 (list 효과 사용)
-    const lookup = makeLookup(schema, state.vars);
+    const base = makeLookup(schema, state.vars);
+    const lookup = overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base;
     const raw = evaluate(rule.expr, lookup, rng);
     const from = state.vars[rule.set];
     const to = coerce(def, def.type === 'bool' ? truthy(raw) : raw);
@@ -1390,6 +1480,42 @@ function applySets(schema, state, rules, rng, changeLog, source) {
       changeLog.push({ id: rule.set, from, to, source });
     }
   }
+}
+
+// ── 판정 (checks) — "완벽 주사위" ────────────────────────────
+// 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 vars가 아니라 meta.lastCheck에
+// 남는다 — 보조 AI의 allow에 올릴 수 있는 형태가 아예 아니어서, 모델이 판정 결과를 고쳐 쓰는
+// 사고가 구조적으로 불가능하다 (설계 문서의 "allow 금지"를 검증이 아니라 구조로 달성).
+// 같은 시드 rng를 받으므로 리롤해도 같은 굴림이다.
+// 등급은 위에서부터 첫 매치, when 없는 등급은 항상 참(기본 등급).
+// 등급의 when/effects에서는 roll/mod/total(/vs)이 임시 식별자로 열린다 — 변수보다 우선.
+function rollCheck(schema, state, check, rng, changeLog) {
+  const lookup = makeLookup(schema, state.vars);
+  let roll, mod, vs = null;
+  try {
+    roll = Number(evaluate(check.roll, lookup, rng)); // rand가 허용되는 유일한 굴림 자리
+    mod = check.mod != null ? Number(evaluate(String(check.mod), lookup, null)) : 0;
+    if (check.vs != null) vs = typeof check.vs === 'number' ? check.vs : Number(evaluate(String(check.vs), lookup, null));
+  } catch { return null; } // 검증 단계에서 걸러지지만 방어
+  if (!isFinite(roll) || !isFinite(mod)) return null;
+  if (vs != null && !isFinite(vs)) vs = null;
+  const total = roll + mod;
+  const overlay = { roll, mod, total };
+  if (vs != null) overlay.vs = vs;
+  const ov = (n) => (n in overlay ? overlay[n] : lookup(n));
+  let grade = null;
+  for (const g of check.grades || []) {
+    if (!g.when) { grade = g; break; }
+    try { if (truthy(evaluate(g.when, ov, null))) { grade = g; break; } }
+    catch { /* 이 등급만 건너뛴다 — 방어 */ }
+  }
+  const summary = `${roll}${mod ? (mod > 0 ? ` + ${mod} = ${total}` : ` - ${-mod} = ${total}`) : ''}`
+    + `${vs != null ? ` vs ${vs}` : ''} → ${grade ? grade.label : '(등급 없음)'}`;
+  const label = check.label ?? check.id;
+  if (grade) applySets(schema, state, grade.effects, rng, changeLog, `check:${check.id}`, overlay);
+  state.meta.lastCheck = { id: check.id, label, roll, mod, total, vs, grade: grade ? grade.label : null, summary, turn: state.meta.turn };
+  changeLog.push({ id: label, from: null, to: summary, source: `check:${check.id}` });
+  return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
@@ -1406,11 +1532,22 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
   // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
   state.meta.firedThisSend = {};
+  const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
     if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
+    // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
+    // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
+    let checkResult = null;
+    if (action.check && checkById[action.check]) {
+      checkResult = rollCheck(schema, state, checkById[action.check], rng, changeLog);
+    }
     applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
     if (action.inject) injects.push(action.inject);
+    if (checkResult) {
+      injects.push(checkResult.line);
+      if (checkResult.inject) injects.push(checkResult.inject);
+    }
     consumedActions.push(action.id);
     state.meta.firedThisSend[action.id] = true;
     if ((action.mode || 'oneshot') === 'oneshot') {
@@ -1429,7 +1566,8 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (ps.template) lines.push(renderTemplate(ps.template, lookup));
   const showEvents = ps.includeEvents !== false && notifies.length > 0;
   if (showEvents) {
-    for (const n of notifies) lines.push(`[이벤트] ${n}`);
+    // 이벤트가 굴린 판정 결과([판정] 줄)는 통지로 실려 오지만 이벤트가 아니다 — 태그를 겹치지 않는다
+    for (const n of notifies) lines.push(String(n).startsWith('[판정]') ? n : `[이벤트] ${n}`);
     // 충돌 해소 규칙은 이벤트가 실제로 있는 턴에만 붙인다 (없는 턴에 넣어봐야 토큰 낭비 + 헛된 편향)
     if (ps.eventPriority !== false) {
       lines.push(renderTemplate(
@@ -1438,6 +1576,14 @@ function sendPhase(schema, prevState, { rng } = {}) {
     }
   }
   for (const inj of injects) lines.push(inj);
+
+  // 3.4 판정 규칙 줄 — [판정]이 실제로 있는 턴에만 (액션이 방금 굴렸든, 이벤트 통지로 실려 왔든).
+  // includeEvents가 꺼져 통지가 안 나간 턴에는 규칙 줄도 안 붙인다 — 없는 줄에 대한 규칙이 된다.
+  const hasCheckLine = injects.concat(showEvents ? notifies : []).some((s) => String(s).startsWith('[판정]'));
+  if (hasCheckLine && ps.checkGuide !== false) {
+    lines.push(typeof ps.checkGuide === 'string' && ps.checkGuide.trim()
+      ? renderTemplate(ps.checkGuide, lookup) : DEFAULT_CHECK_GUIDE);
+  }
 
   // 3.5 상태 지시문: 조건을 만족하는 동안 매 턴 주입 (세션 0 중에는 제외)
   const activeDirectives = [];
@@ -1638,12 +1784,21 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
 
   // 7. 조건 이벤트
+  // 판정 달린 이벤트: 굴림·등급 효과는 지금 적용되고, [판정] 줄은 통지에 실려 다음 전송에 합류한다.
+  // 순서는 액션과 같다 — 굴림이 먼저(굴림식이 소모성 변수를 읽는다), 이벤트 자체 효과가 나중.
+  const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const ev of schema.rules?.events || []) {
     if (ev.once && state.meta.firedOnce[ev.id]) continue;
     const lookup = makeLookup(schema, state.vars);
     if (!truthy(evaluate(ev.when, lookup, null))) continue;
+    let checkResult = null;
+    if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
     applySets(schema, state, ev.effects, rng, changeLog, `event:${ev.id}`);
     if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (checkResult) {
+      state.meta.pendingNotifies.push(checkResult.line);
+      if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+    }
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -1669,8 +1824,14 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       for (const ev of eligible) {
         roll -= ev.weight ?? 1;
         if (roll <= 0) {
+          let checkResult = null;
+          if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
           applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
           if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+          if (checkResult) {
+            state.meta.pendingNotifies.push(checkResult.line);
+            if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+          }
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
           break;
@@ -2039,7 +2200,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -2238,7 +2399,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.
   // 라디오/체크박스로 탭을 짤 때 id·name에 반드시 섞어야 메시지끼리 안 엉킨다.
   const uid = String(opts.uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
-  const extras = { commands: commandsHtml(schema), uid };
+  // {lastcheck} = 마지막 판정 한 줄 (예: "근력 판정: 14 + 2 = 16 vs 13 → 성공"). 판정 전에는 빈 문자열.
+  const lc = state.meta?.lastCheck;
+  const extras = { commands: commandsHtml(schema), uid,
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '' };
   // 파생 변수도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
 
@@ -2331,8 +2495,13 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // 변화 로그
   if (changeLog && changeLog.length) {
     const items = changeLog
-      .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:') || c.source?.startsWith('action:'))
+      .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
       .map((c) => {
+        // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
+        if (c.source?.startsWith('check:')) {
+          return `<div class="sim-log-item">🎲 ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
+        }
         const def = varById[c.id];
         const name = def?.label ?? c.id;
         let diff;
@@ -2884,6 +3053,7 @@ function writerMap(schema) {
   for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '이벤트');
   for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
   for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
+  for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
@@ -3432,7 +3602,7 @@ function diagnose(schema, opts = {}) {
   // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
   // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
   // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
-  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션']);
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정']);
   const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
   let aiOnlyStill = 0;
   for (const x of schema.vars) {
@@ -4131,6 +4301,7 @@ const TAB_SLICES = {
   //   갈아끼우면 변수·파생이 통째로 날아간다. merge를 주면 cmd 배정만 기존 vars에 얹는다.
   commands: { keys: ['vars'], merge: 'cmd', label: '명령' },
   actions: { keys: ['actions'], label: '액션' },
+  checks: { keys: ['checks'], label: '판정' },
   rules: { keys: ['rules', 'directives'], label: '규칙·이벤트' },
   // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
   // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
@@ -4148,6 +4319,7 @@ function tabItemCounts(schema, tabKey) {
   if (tabKey === 'vars') { push('vars', schema.vars); push('derived', schema.derived); }
   else if (tabKey === 'commands') push('commands', (schema.vars || []).filter((v) => v.cmd));
   else if (tabKey === 'actions') push('actions', schema.actions);
+  else if (tabKey === 'checks') push('checks', schema.checks);
   else if (tabKey === 'presets') push('setup.presets', schema.setup?.presets);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -4207,6 +4379,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     const WANT = {
       vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
+      checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
     };
     head.push('## 내가 원하는 것',
       WANT[tabKey] ?? '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
@@ -4333,6 +4506,35 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     for (const [name, why, ex] of PRESET_PATTERNS) {
       body.push(`### ${name}`, why, '```json', ex, '```', '');
     }
+  } else if (tabKey === 'checks') {
+    body.push('## 판정이 뭔가',
+      '주사위 판정입니다. **굴림은 시스템이 하고, AI는 결과를 받아 서사만 씁니다.**',
+      '결과는 변수가 아니라 시스템 기록에 남아 보조 AI가 건드릴 수 없고, 리롤해도 같은 눈이 나옵니다.',
+      '실행은 액션 버튼에 답니다 (액션의 `check` 필드에 판정 id).',
+      '',
+      '## 판정 하나는 이렇게 생겼습니다',
+      '```json',
+      '{ "checks": [ {',
+      '  "id": "attack", "label": "공격 판정",',
+      '  "roll": "rand(1, 20)",',
+      '  "mod": "floor((str - 10) / 2)",',
+      '  "vs": "dc",',
+      '  "grades": [',
+      '    { "when": "roll == 20", "label": "대성공", "inject": "기대 이상의 성과를 극적으로 그려라." },',
+      '    { "when": "roll == 1", "label": "대실패", "inject": "단순 실패가 아니라 상황을 악화시켜라." },',
+      '    { "when": "total >= vs", "label": "성공" },',
+      '    { "label": "실패" }',
+      '  ]',
+      '} ] }',
+      '```',
+      '',
+      '## 규칙',
+      '- `roll`(굴림식)에서만 `rand()`를 쓸 수 있습니다. `mod`·`vs`·등급 `when`에서는 금지 — 굴림은 한 번입니다.',
+      '- 등급은 **위에서부터 첫 매치**입니다. 맨 마지막에는 `when` 없는 기본 등급을 두세요.',
+      '- 등급의 `when`과 `effects` 수식에서는 `roll`(굴린 눈)·`mod`(보정)·`total`(합계)·`vs`(목표치)를 그대로 쓸 수 있습니다.',
+      '- 등급 `effects`는 이벤트 효과와 같은 형식입니다 (예: 대실패에 `{ "set": "hp", "expr": "hp - rand(1, 4)" }`).',
+      '- 등급 `inject`는 그 등급일 때 AI에게 덧붙는 연출 지시입니다 (선택).',
+      '');
   } else {
     body.push('## 액션은 이 6가지 형태 중 하나입니다',
       '액션은 플레이어가 화면 우상단 버튼으로 누릅니다. 누르면 무장(ON)되고 다음 전송에 효과가 적용됩니다.',
@@ -4645,6 +4847,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     schema.statusUI = schema.statusUI || { mode: 'auto', groups: [] };
     schema.statusUI.groups = schema.statusUI.groups || [];
     schema.actions = schema.actions || [];
+    schema.checks = schema.checks || [];
     schema.setup = schema.setup || {};
     schema.setup.presets = schema.setup.presets || [];
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
@@ -4658,7 +4861,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
 
   const TABS = [
     ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
-    ['actions', '액션'], ['setup', '새 시작'], ['ai', 'AI 설정'],
+    ['actions', '액션'], ['checks', '판정'], ['setup', '새 시작'], ['ai', 'AI 설정'],
     ['diag', '🔬 진단'], ['json', 'JSON'],
   ];
 
@@ -5264,6 +5467,13 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         ),
         h('div', { class: 'sce-row' },
           pair('사용 조건', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' })),
+          // 판정(check) — 이 버튼을 켠 턴에 그 판정을 굴려 [판정] 결과 줄을 서사에 함께 준다
+          pair('판정', bindSelect(a.check ?? '',
+            [['', '(없음)'], ...schema.checks.map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) a.check = x; else delete a.check; rerender(); }),
+            schema.checks.length
+              ? '버튼을 켠 턴에 이 판정을 굴린다. 굴림식·등급은 [판정] 탭에서'
+              : '아직 판정이 없다 — [판정] 탭에서 먼저 만들 것'),
         ),
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
@@ -5272,6 +5482,86 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       ));
     });
     wrap.appendChild(addBtn('액션 추가', () => { schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] }); rerender(); }));
+    return wrap;
+  }
+
+  // ── 탭: 판정 ──────────────────────────────────────────────
+  // "완벽 주사위" — 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 변수가 아니라
+  // 시스템 기록(meta.lastCheck)에 남아 보조 AI가 건드릴 방법이 없고, 시드 굴림이라 리롤해도 같은 눈이다.
+  function tabChecks() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('checks'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '주사위 판정. 실행은 액션 버튼에 단다 — 아래 [🎲 액션 버튼 만들기]를 누르거나 [액션] 탭에서 '
+      + '판정 칸에 고르면 된다. 버튼을 켠 턴에 시스템이 굴려 [판정] 결과 줄이 같은 턴 서사에 반영된다. '
+      + '등급은 위에서부터 첫 매치 — 맨 마지막에 조건 없는 기본 등급을 둘 것. '
+      + '등급의 조건·효과에서는 roll(굴린 눈)·mod(보정)·total(합계)·vs(목표치)를 그대로 쓸 수 있다. '
+      + '결과는 AI가 못 건드리고, 리롤해도 같은 눈이 나온다.'));
+    schema.checks.forEach((c, i) => {
+      const hasBtn = (schema.actions || []).some((a) => a.check === c.id);
+      const block = h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(c.id, (x) => { c.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: attack)' }),
+          bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 공격 판정)' }),
+          grip(schema.checks, i, rerender),
+        ),
+        h('div', { class: 'sce-row' },
+          pair('굴림식', bindInput(c.roll, (x) => { c.roll = x; rerender(); }, { cls: 'sce-w-m', ph: 'rand(1, 20)' }),
+            '주사위 자체. rand()는 여기서만 허용된다. 이점 굴림은 adv ? max(rand(1,20), rand(1,20)) : rand(1,20) 식으로'),
+          pair('보정식', bindInput(c.mod, (x) => { c.mod = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비우면 0) str_mod' }),
+            '능력치 보너스. 변수·파생을 읽는다. rand 불가'),
+          pair('목표치', bindInput(c.vs, (x) => {
+            const t = String(x).trim();
+            if (!t) { c.vs = undefined; } else { const n = Number(t); c.vs = isFinite(n) && String(n) === t ? n : t; }
+            rerender();
+          }, { cls: 'sce-w-s', ph: 'dc 또는 13' }),
+            '넘어야 하는 값. 숫자나 수식. 비우면 목표치 없는 판정. 등급 조건에서 vs로 읽는다'),
+        ),
+      );
+      c.grades = c.grades || [];
+      c.grades.forEach((g, gi) => {
+        block.appendChild(h('div', { class: 'sce-sub' },
+          h('div', { class: 'sce-row' },
+            pair('조건', bindInput(g.when, (x) => { g.when = String(x).trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '(비우면 항상 — 기본 등급) roll == 20' })),
+            bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-s', ph: '등급 이름' }),
+            grip(c.grades, gi, rerender),
+          ),
+          effectRows(schema, g.effects = g.effects || [], rerender),
+          h('div', { class: 'sce-row' },
+            pair('연출 지시', bindInput(g.inject, (x) => { g.inject = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '(선택) 이 등급일 때 AI에게 덧붙는 지시 — 예: 기대 이상의 성과를 극적으로 그려라.' })),
+          ),
+        ));
+      });
+      block.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+          c.grades.push({ label: '등급' + (c.grades.length + 1) });
+          rerender();
+        } }, '+ 등급'),
+        h('button', { class: 'sce-btn', style: 'flex:1', disabled: hasBtn || undefined, onclick: () => {
+          if ((schema.actions || []).some((a) => a.check === c.id)) return;
+          const taken = new Set(schema.actions.map((a) => a.id));
+          let id = 'roll_' + (c.id || 'check'), n = 2;
+          while (taken.has(id)) id = 'roll_' + (c.id || 'check') + (n++);
+          schema.actions.push({ id, label: '🎲 ' + (c.label || c.id || '판정'), mode: 'oneshot', check: c.id, effects: [] });
+          rerender();
+        } }, hasBtn ? '✓ 액션 버튼 있음' : '🎲 액션 버튼 만들기'),
+      ));
+      wrap.appendChild(block);
+    });
+    wrap.appendChild(addBtn('판정 추가', () => {
+      schema.checks.push({
+        id: 'check' + (schema.checks.length + 1), label: '', roll: 'rand(1, 20)', vs: 13,
+        grades: [
+          { when: 'roll == 20', label: '대성공' },
+          { when: 'roll == 1', label: '대실패' },
+          { when: 'total >= vs', label: '성공' },
+          { label: '실패' },
+        ],
+      });
+      rerender();
+    }));
     return wrap;
   }
 
@@ -5775,7 +6065,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     }
     root.appendChild(tabs);
     const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
+      checks: tabChecks, setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
     root.appendChild(body);
 
     // 라이브 검증 리포트
@@ -6587,9 +6877,11 @@ const ROMANCE = {
 };
 
 // ── TRPG ──────────────────────────────────────────────────────
-// 배울 점: ① rand()로 주사위를 굴리는 법  ② 굴린 값을 이어받아 등급을 매기는 법
-//          ③ rand()는 조건식에 못 쓰므로 "굴려서 변수에 넣고 → 그 변수로 분기"하는 2단 구조
-//          ④ 액션 판정은 전송 단계에서 굴러 모델이 같은 턴에 결과를 보고 쓴다는 점
+// 배울 점: ① checks(판정)로 주사위를 일급으로 쓰는 법 — 굴림·보정·등급·연출 지시가 한 덩어리
+//          ② 소모성 변수(이점 adv)는 굴림식이 읽고, 끄는 건 액션 effects에 두는 분업
+//          ③ 이벤트에 check를 달면 "AI가 판정이 필요하다고 하면 시스템이 대신 굴리는" 배선이 된다
+//          ④ 판정 결과는 변수가 아니라 시스템 기록(meta)이라 보조 AI가 뒤집을 방법이 없다
+//          (v0.39까지는 roll/total/grade 변수 5개 + 규칙으로 손조립했다 — 그 패턴의 일급화)
 const TRPG = {
   simcore: '0.1',
   meta: { name: 'TRPG — 주사위 판정', author: 'SimCore 템플릿' },
@@ -6602,16 +6894,10 @@ const TRPG = {
     { id: 'stamina', label: '기력', type: 'int', init: 6, min: 0, max: 10 },
     { id: 'dc', label: '난이도', type: 'int', init: 13, min: 5, max: 30,
       desc: '이번 상황의 판정 난이도. 쉬우면 10, 보통 13, 어려우면 17, 지극히 어려우면 20.' },
-    { id: 'checking', label: '판정 대상', type: 'text', init: '', maxLength: 40 },
-    { id: 'roll', label: '주사위', type: 'int', init: 0, min: 0, max: 20 },
-    { id: 'total', label: '판정값', type: 'int', init: 0, min: 0, max: 60 },
-    { id: 'grade', label: '판정 결과', type: 'enum', init: '없음',
-      enum: ['없음', '대성공', '성공', '실패', '대실패'] },
-    { id: 'dmg', label: '피해량', type: 'int', init: 0, min: 0, max: 99 },
+    { id: 'dmg', label: '피해량', type: 'int', init: 0, min: 0, max: 99,
+      desc: '이번 공격이 입힌 피해. 판정이 정하고, 다음 턴에 0으로 돌아간다.' },
     { id: 'adv', label: '이점 대기', type: 'bool', init: false,
       desc: '켜져 있으면 다음 판정을 두 번 굴려 높은 눈을 쓴다. 쓰면 꺼진다.' },
-    { id: 'roll_pending', label: '미반영 판정', type: 'bool', init: false,
-      desc: '방금 굴린 결과를 아직 서사에 반영하지 않았다는 표시.' },
     { id: 'need_roll', label: '판정 요청', type: 'bool', init: false,
       desc: '서사상 판정이 필요한데 유저가 버튼을 누르지 않았을 때 켠다. 시스템이 대신 굴린다.' },
     { id: 'conditions', label: '상태', type: 'list', init: [], maxItems: 6, itemMaxLength: 20 },
@@ -6623,25 +6909,68 @@ const TRPG = {
     { id: 'wit_mod', label: '지력 보정', expr: 'floor((wit - 10) / 2)' },
     { id: 'cha_mod', label: '매력 보정', expr: 'floor((cha - 10) / 2)' },
   ],
+  // 판정 — 굴림·보정·목표치·등급이 한 덩어리. 결과 줄([판정])과 등급 연출 지시는 엔진이 주입한다.
+  // 굴림식이 adv(이점)를 읽는다 — 끄는 건 각 액션의 effects 몫 (굴림이 끝난 뒤에 적용되므로 안전).
+  checks: [
+    { id: 'ck_str', label: '근력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'str_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_dex', label: '민첩 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'dex_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_wit', label: '지력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'wit_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    { id: 'ck_cha', label: '매력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'cha_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
+        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
+        { when: 'total >= vs', label: '성공' },
+        { label: '실패' },
+      ] },
+    // 공격은 등급 효과로 피해 주사위(2d8/1d8)와 대실패 반격까지 굴린다 — roll/total을 효과에서도 쓸 수 있다
+    { id: 'ck_attack', label: '공격 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'str_mod', vs: 'dc',
+      grades: [
+        { when: 'roll == 20', label: '대성공', inject: '압도적인 일격이다 — 극적으로 그려라.',
+          effects: [{ set: 'dmg', expr: 'rand(1, 8) + rand(1, 8) + str_mod' }] },
+        { when: 'roll == 1', label: '대실패', inject: '빈틈을 내주고 반격까지 허용한 대실패로 그려라.',
+          effects: [{ set: 'hp', expr: 'hp - rand(1, 4)' }] },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'dmg', expr: 'rand(1, 8) + str_mod' }] },
+        { label: '실패' },
+      ] },
+  ],
   rules: {
-    // 모델이 결과를 읽고 서술을 끝낸 뒤에 미반영 표시를 내린다.
-    // (정기 계산은 조건 이벤트보다 먼저 돌므로, 아래 do_roll이 다시 켜는 것과 충돌하지 않는다)
+    // 피해량은 판정이 정한 그 턴에만 의미가 있다 — 다음 턴 정산에서 0으로 되돌린다.
     onTurn: [
-      { set: 'roll_pending', expr: '0' },
+      { set: 'dmg', expr: '0' },
       { set: 'stamina', expr: 'min(stamina + 1, 10)' },
     ],
     events: [
-      // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 여기서 대신 굴린다.
-      // ⚠ rand()는 조건식(when)에 쓸 수 없다. 그래서 이렇게 효과에서 굴려 변수에 담고,
-      //    분기는 그 변수를 읽는 방식으로 짠다.
-      { id: 'do_roll', when: 'need_roll',
+      // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 시스템이 대신 굴린다.
+      // check를 달면 굴림·등급은 판정이 처리하고, 이벤트 effects는 뒷정리(이점 소모·깃발 내리기)만 한다.
+      // (예전처럼 근력 기준으로 굴린다 — 결과 줄은 다음 전송에 통지로 합류한다)
+      { id: 'do_roll', when: 'need_roll', check: 'ck_str',
         effects: [
-          { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-          { set: 'total', expr: 'roll + str_mod' },
-          { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
           { set: 'adv', expr: '0' },
           { set: 'need_roll', expr: '0' },
-          { set: 'roll_pending', expr: '1' },
         ],
         notify: '판정이 필요한 상황이라 주사위를 굴렸다.' },
       { id: 'downed', when: 'hp <= 0',
@@ -6666,71 +6995,34 @@ const TRPG = {
       ],
     },
   },
-  // TRPG의 생명선 — 모델이 주사위 결과를 뒤집지 못하게 막는다.
+  // "판정 결과를 따르라"는 지시문이 아니라 엔진이 붙인다 — [판정] 줄이 있는 턴에만 판정 규칙 줄이 따라온다.
   directives: [
-    { id: 'respect_dice', when: 'roll_pending',
-      text: '[판정 결과 — 반드시 따를 것] {checking} 판정: 주사위 {roll}, 합계 {total} vs 난이도 {dc} → {grade}. '
-        + '이 결과대로 서술하라. 성공을 실패로, 실패를 성공으로 뒤집지 마라. '
-        + '{grade == "대성공" ? "기대 이상의 성과를 극적으로 그려라." : ""}'
-        + '{grade == "대실패" ? "단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라." : ""}' },
-    { id: 'dmg_note', when: 'roll_pending and dmg > 0',
+    { id: 'dmg_note', when: 'dmg > 0',
       text: '[피해] 이번 공격으로 {dmg}의 피해를 입혔다. 수치를 본문에 적지 말고 타격의 무게로 묘사하라.' },
     { id: 'hurt', when: 'hp <= 6',
       text: '[상태] HP {hp}/40. 숨이 가쁘고 시야가 흐려지는, 한 대만 더 맞으면 무너질 몸 상태를 묘사하라.' },
-    { id: 'ask_roll', when: 'not roll_pending',
-      text: '[판정 안내] 성패가 갈릴 행동이 나오면 결과를 임의로 정하지 말고, 판정이 필요하다는 것만 드러내라. '
-        + '수치 판정은 시스템이 처리한다.' },
+    { id: 'ask_roll', when: 'not need_roll',
+      text: '[판정 안내] 성패가 갈릴 행동인데 [판정] 결과가 함께 제시되지 않았다면, 결과를 임의로 정하지 말고 '
+        + '판정이 필요하다는 것만 드러내라. 수치 판정은 시스템이 처리한다.' },
   ],
+  // 판정 달린 액션 — 굴림·등급은 check가 맡고, effects에는 뒷정리(이점 소모·기력 소비)만 남는다.
+  // 액션 effects는 굴림이 끝난 뒤 적용되므로 여기서 adv를 꺼도 이번 굴림에는 이미 반영돼 있다.
   actions: [
-    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot',
-      inject: '[판정] 힘으로 밀어붙인다.',
-      effects: [
-        { set: 'checking', expr: '"근력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + str_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot',
-      inject: '[판정] 재빠르게 움직인다.',
-      effects: [
-        { set: 'checking', expr: '"민첩"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + dex_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot',
-      inject: '[판정] 상황을 읽고 머리를 쓴다.',
-      effects: [
-        { set: 'checking', expr: '"지력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + wit_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot',
-      inject: '[판정] 말과 태도로 상대를 움직인다.',
-      effects: [
-        { set: 'checking', expr: '"매력"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + cha_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
-    // 공격은 판정에 더해 피해 주사위(2d8/1d8)와 대실패 반격까지 한 번에 굴린다.
-    { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1',
-      inject: '[판정] 무기를 들어 공격한다.',
-      effects: [
-        { set: 'checking', expr: '"공격"' },
-        { set: 'roll', expr: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)' },
-        { set: 'total', expr: 'roll + str_mod' },
-        { set: 'grade', expr: 'roll == 20 ? "대성공" : (roll == 1 ? "대실패" : (total >= dc ? "성공" : "실패"))' },
-        { set: 'dmg', expr: 'grade == "대성공" ? rand(1, 8) + rand(1, 8) + str_mod : (grade == "성공" ? rand(1, 8) + str_mod : 0)' },
-        { set: 'hp', expr: 'grade == "대실패" ? hp - rand(1, 4) : hp' },
-        { set: 'stamina', expr: 'stamina - 1' },
-        { set: 'adv', expr: '0' }, { set: 'roll_pending', expr: '1' },
-      ] },
+    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot', check: 'ck_str',
+      inject: '[행동] 힘으로 밀어붙인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot', check: 'ck_dex',
+      inject: '[행동] 재빠르게 움직인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot', check: 'ck_wit',
+      inject: '[행동] 상황을 읽고 머리를 쓴다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot', check: 'ck_cha',
+      inject: '[행동] 말과 태도로 상대를 움직인다.',
+      effects: [{ set: 'adv', expr: '0' }] },
+    { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1', check: 'ck_attack',
+      inject: '[행동] 무기를 들어 공격한다.',
+      effects: [{ set: 'stamina', expr: 'stamina - 1' }, { set: 'adv', expr: '0' }] },
     { id: 'focus', label: '✨ 집중 (다음 판정 이점)', mode: 'oneshot', when: 'not adv', cooldown: 4,
       inject: '[행동] 호흡을 가다듬고 다음 순간에 집중한다.',
       effects: [{ set: 'adv', expr: '1' }, { set: 'stamina', expr: 'stamina - 1' }] },
@@ -6739,29 +7031,27 @@ const TRPG = {
     allow: [
       { id: 'dc', maxDelta: 8 }, { id: 'need_roll' },
       { id: 'hp', maxDelta: 10 }, { id: 'stamina', maxDelta: 3 },
-      { id: 'checking', maxLength: 40 }, { id: 'conditions' },
+      { id: 'conditions' },
     ],
-    guide: '주사위와 판정 등급(roll/total/grade)은 시스템이 굴린다. 절대 건드리지 마라. '
+    guide: '주사위 판정은 시스템이 굴린다 — 결과를 절대 정하지 마라. '
       + '서사에 성패가 갈릴 시도가 나왔는데 아직 판정이 없으면 need_roll을 true로, dc는 상황 난이도에 맞게 정하라.',
   },
   promptState: {
     template: '[캐릭터] HP {hp}/40 | 기력 {stamina}/10 | 근력 {str}({str_mod}) 민첩 {dex}({dex_mod}) 지력 {wit}({wit_mod}) 매력 {cha}({cha_mod})\n'
-      + '상태: {conditions:tags}{adv ? " | ✨이점 대기" : ""}\n'
-      + '[직전 판정] {checking} — 주사위 {roll} + 보정 = {total} vs 난이도 {dc} → {grade}',
+      + '상태: {conditions:tags}{adv ? " | ✨이점 대기" : ""} | 난이도 {dc}',
     includeEvents: true,
   },
   statusUI: {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '판정', items: [
-        { var: 'roll' }, { var: 'total' }, { var: 'grade' }, { var: 'dc' },
-        { var: 'dmg', showWhen: 'dmg > 0' },
+        { var: 'dc' },
+        { var: 'adv', showWhen: 'adv' },
       ] },
       { label: '상태', items: [
         { var: 'hp', bar: { max: 40 }, color: 'hp <= 8 ? "#c0392b" : "#27ae60"' },
         { var: 'stamina', bar: { max: 10 } },
         { var: 'conditions' },
-        { var: 'adv', showWhen: 'adv' },
       ] },
       { label: '능력치', visibility: 'collapsed', items: [
         { var: 'str' }, { var: 'dex' }, { var: 'wit' }, { var: 'cha' },
@@ -6789,7 +7079,7 @@ const TRPG = {
     ],
     ai: {
       enabled: true,
-      vars: ['str', 'dex', 'wit', 'cha', 'hp', 'checking'],
+      vars: ['str', 'dex', 'wit', 'cha', 'hp'],
       instruction: '[최초 설정] 아직 모험이 시작되지 않았다. 유저와 함께 캐릭터(직업, 성격, 특기)와 첫 장면을 정하는 대화를 하라. 정해지면 능력치를 배분하고 상황을 정리해 서술하라.',
       guide: '능력치 합이 대략 46~50이 되게 배분하라. 주력 능력은 16 이상, 약점은 10 이하로 뚜렷하게 만들어라.',
     },

@@ -188,7 +188,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.
   // 라디오/체크박스로 탭을 짤 때 id·name에 반드시 섞어야 메시지끼리 안 엉킨다.
   const uid = String(opts.uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
-  const extras = { commands: commandsHtml(schema), uid };
+  // {lastcheck} = 마지막 판정 한 줄 (예: "근력 판정: 14 + 2 = 16 vs 13 → 성공"). 판정 전에는 빈 문자열.
+  const lc = state.meta?.lastCheck;
+  const extras = { commands: commandsHtml(schema), uid,
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '' };
   // 파생 변수도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
 
@@ -281,8 +284,13 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // 변화 로그
   if (changeLog && changeLog.length) {
     const items = changeLog
-      .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:') || c.source?.startsWith('action:'))
+      .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
       .map((c) => {
+        // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
+        if (c.source?.startsWith('check:')) {
+          return `<div class="sim-log-item">🎲 ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
+        }
         const def = varById[c.id];
         const name = def?.label ?? c.id;
         let diff;

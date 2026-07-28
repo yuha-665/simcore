@@ -27,7 +27,7 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | survival | 13 | 8 | 8 | 7/7/5 | 4 | 6 | 3 | 4 | ○ | 35 |
 | politics | 16 | 4 | 10 | 4/6/5 | 5 | 6 | 3 | 4 | ○ | 35 |
 | romance | 9 | 1 | 6 | 3/6/4 | 6 | 3 | 3 | 3 | ○ | 35 |
-| trpg | 16 | 4 | 6 | 2/3/3 | 4 | 6 | 4 | 3 | ○ | 22 |
+| trpg | 11 | 4 | 5 | 2/3/3 | 3 | 6 | 4 | 3 | ○ | 22 |
 | vtuber | 17 | 9 | 8 | 8/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
 
 **`cmd`(채팅 명령)는 전 템플릿 0개.** 액션은 다 들어있는데 명령은 하나도 없다 — 가이드에서
@@ -47,7 +47,7 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | survival | `day` `heat` `ration` `shelter` `collapsed` | 카운터 / 플레이어 정책 / 플래그 |
 | politics | `week` `econ` `bill_roll` `bill_result` `in_scandal` `ousted` | 카운터 / **주사위·판정** / 플래그 |
 | romance | `day` `stage` `confessed` | 카운터 / 관계 단계 / 플래그 |
-| trpg | `str` `dex` `wit` `cha` `roll` `total` `grade` `dmg` `adv` `roll_pending` | **캐릭터 시트 + 판정 전체** |
+| trpg | `str` `dex` `wit` `cha` `adv` `dmg` | **캐릭터 시트 + 판정 부속.** 판정 결과 자체(roll/total/grade)는 v0.40부터 변수가 아니라 meta — 뺄 것도 없이 원천 차단 |
 | vtuber | `day` `subs` `stream_hours` `editor` `concept` `trend_seed` `burnout` `in_scandal` `career_over` | 카운터 / 규칙 산출값 / 플래그 |
 
 패턴: **카운터 · 주사위/판정값 · 이벤트 플래그 · 플레이어가 고르는 정책 · 숨긴 정답**은 안 연다.
@@ -57,6 +57,9 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 
 `whenArmed`(액션 잠금, v0.39)는 **어느 템플릿도 안 쓴다** — 다른 모듈과 장부가 겹치는 봇을 위한
 옵트인이다. 템플릿은 장부가 하나라 필요가 없다.
+
+`checks`(판정, v0.40)는 **trpg만 5종** (ck_str/dex/wit/cha/attack). v0.39까지 변수 5개
+(roll/total/grade/checking/roll_pending) + 규칙으로 손조립하던 것의 일급화 — vars 16→11.
 
 ## 자주 인용하는 실물 예시
 
@@ -102,6 +105,20 @@ vars       day(버튼 전용) · time(5단계 enum) · weather(5종) · place ·
 시간 전이   time == "새벽" ? "아침" : time == "아침" ? "낮" : … (중첩 삼항)
 ```
 관리할 수치가 없는 봇(현대 일상·학원·동거물)에 상태창만 얹고 싶을 때 고른다.
+
+### trpg — checks (v0.40 판정)
+```
+ck_attack   roll 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)'   mod str_mod   vs dc
+등급         대성공(roll==20)  → dmg = 2d8+str_mod · inject "압도적인 일격…"
+            대실패(roll==1)   → hp -= 1d4 (반격) · inject "반격까지 허용한 대실패…"
+            성공(total>=vs)   → dmg = 1d8+str_mod
+            실패(기본 — when 없음)
+액션         ⚔ 공격 = check: ck_attack + inject "[행동] 무기를 들어 공격한다."
+            + effects [stamina-1, adv=0]  ← 정리는 액션 몫 (굴림이 adv를 먼저 읽는다)
+이벤트       do_roll (when need_roll, check: ck_str) — 보조 AI가 판정을 요청하면 시스템이 대신 굴린다
+onTurn      dmg = 0 (피해량은 판정 턴에만 의미 — 지시문이 눌어붙지 않게)
+```
+회귀: 구판(v0.39 손조립)과 같은 시드에서 굴림·등급·피해·반격·기력 **시드별 동일값 800/800** 확인.
 
 ### hold(지속형) 액션 — 둘뿐
 ```

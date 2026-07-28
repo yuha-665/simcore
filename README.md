@@ -33,8 +33,10 @@ docs/                    설계 문서 (미구현 초안 포함)
 
 ## 다음 작업
 
-- [ ] `docs/design-주사위-선택지.md` 검토 → `checks`(판정 프리미티브) / `choices`(선택지) 구현.
-      구현 순서·제약 조건이 문서에 있다 — 특히 판정 결과 변수의 allow 금지(오류로), 편집기 탭 동반 신설.
+- [x] `checks`(판정) — **v0.40에서 구현.** trpg를 checks 5종으로 재작성, 구판과 시드별 동일값 회귀
+      800/800. "판정 결과 변수 allow 금지"는 결과를 변수가 아니라 meta에 둬서 구조로 달성.
+- [ ] `choices`(선택지) — `docs/design-주사위-선택지.md` §2. 명령 파이프라인·이벤트·상태창 세 곳을
+      건드리는 더 큰 작업. pending 규칙(보조모델 갱신은 멈추지 않는다 등)이 문서에 있다.
 
 ## 베리디아 남작령
 
@@ -141,7 +143,7 @@ node estate-vars.js        # → 영지-변수상태창-신안.json 재생성 + 
 node build.js && cmp dist/simcore.plugin.js simcore.plugin.js   # 소스↔번들 바이트 일치
 node test/run-tests.js                                          # 코어 단위 (통과 84)
 cd 테스트
-for f in test-*.js; do node "$f"; done      # 28개 파일 / 단언 1430개
+for f in test-*.js; do node "$f"; done      # 29개 파일 / 단언 1480개
 node npc-check.js                            # 배역·고용 흐름 눈으로 확인
 ```
 

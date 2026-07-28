@@ -1,13 +1,42 @@
 //@name simcore
 //@api 3.0
-//@version 0.38.2
-//@display-name SimCore (시뮬 엔진) v0.38.2 일상 템플릿
+//@version 0.39.0
+//@display-name SimCore (시뮬 엔진) v0.39 액션 잠금
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.39 ──────────────────────────────────────────────────
+// 대장간 봇의 진짜 뿌리는 낱말이 아니라 **이중 장부**였다 — 한 서사에 지갑이 두 개(개인 돈은
+// 남의 모듈, 가게 돈은 우리)인데 보조 AI는 우리 장부밖에 몰라서, 개인 쇼핑까지 가게 금고에
+// 적는다. 낱말 잠금은 어휘 규약이라 확률이고 언어 종속이다. 유저 제안: "액션을 켜고 있을 때만
+// 그 변수가 수정되게" — 버튼은 어느 언어로 채팅해도 버튼이다.
+// - `allow[].whenArmed: 액션id | [액션id...]` — 그 액션이 무장 중(hold)이거나 이번 전송에서
+//   발동(oneshot)된 턴에만 보조 AI에게 열린다. 하나만 열려도 개방.
+// - `meta.firedThisSend` 추가: oneshot은 전송 시 무장이 풀려 armed만으로는 "방금 발동"을
+//   모른다 → 전송마다 리셋되는 발동 기록을 둔다. 지연 소급·루아 브리지 소급(다음 전송 전까지)
+//   에서도 게이트가 그대로 걸리고, 리롤은 pre 스냅샷 재계산이라 안전하다.
+// - 브리지 템플릿은 설치 시점에 굽으므로 프롬프트에서는 못 거른다 — 적용 시점(applyChanges)에서
+//   상태 기반으로 거른다. mentions(텍스트 기반)와 달리 브리지에서도 결정적으로 작동한다.
+// - 편집기 [AI 설정] 허용 변수 행에 [액션 잠금] 칸 (기능은 반드시 칸과 함께 — v0.35/v0.37 교훈).
+// - 낱말+액션을 같이 걸면 둘 다 만족해야 열린다. 침묵 경고는 액션 잠금 변수를 제외한다
+//   (버튼을 안 눌러 닫힌 건 정상이라서).
+//
+// ── v0.38.3 ────────────────────────────────────────────────
+// 실측 사고(대장간 봇): funds의 mentions에 "골드"가 있었다. 이 봇은 재고·의뢰 포맷이
+// "원가 N골드"라 골드가 안 나오는 턴이 없다 → 잠금이 항상 열림 + maxDelta 12자리 → 돈 자동 증식.
+// 반대 방향 함정도 있다: 한국어 낱말 + 영어 채팅이면 그 변수는 **조용히 영영 안 열린다** —
+// 에러가 없는 실패라 원인 찾기가 제일 힘들다. 잘못 쓰면 양쪽으로 터지는 부품이라 안전망 3겹:
+// - 검증기: 낱말이 어떤 변수의 표시 형식("{v}골드")에 들어 있으면 경고 — 매 턴 찍히는
+//   단위라 사실상 항상 열린다. (템플릿 11종 오탐 0 확인)
+// - 패널 [현황]: mentions 변수가 6턴 연속 한 번도 안 열리면 경고 — 침묵 실패를 소리 나게.
+//   (aux 직접 경로 전용. 브리지는 mentions 필터를 안 쓰므로 해당 없음)
+// - 편집기 낱말 칸 도움말: 채팅 언어로 적을 것·다국어 병기·단위 낱말 금지.
+// 설계 노트: mentions는 선택 장비다. 안 쓰면 항상 열림(= "AI가 알아서")이 기본이고,
+// 다국어 봇은 mentions 없이 캡(maxGain/maxLoss)으로만 제어하는 쪽이 맞다.
 //
 // ── v0.38.2 ────────────────────────────────────────────────
 // 템플릿 열 개가 전부 "관리할 판"이 있는 것들이었다. 그냥 일상물에 상태창만 붙이고 싶은 사람이
@@ -905,6 +934,34 @@ function validateSchema(schema) {
         else if (keys.some((k) => k.trim().length <= 1))
           warn(p, `${p}의 낱말 중 한 글자짜리가 있습니다 — 아무 문장에나 걸립니다`);
       }
+      // 낱말이 어떤 변수의 format 단위 문자열에 들어 있으면 사실상 항상 열린다 —
+      // 상태창이 매 턴 그 단위를 찍고("70골드"), 모델도 같은 단위로 값을 말하기 때문이다.
+      // (실측 사고: 대장간 봇 — funds의 낱말 "골드"가 "{v}골드" 포맷에 포함 → 매 턴 개방 → 돈 자동 증식)
+      {
+        const mentionKeys = (a.mentions === true ? [v.label] : [].concat(a.mentions))
+          .filter((k) => typeof k === 'string' && k.trim());
+        const fmtOwners = vars.concat(schema.derived || []).filter((x) => typeof x.format === 'string');
+        for (const k of mentionKeys) {
+          const hit = fmtOwners.find((x) => x.format.toLowerCase().includes(k.trim().toLowerCase()));
+          if (hit) {
+            warn(p, `낱말 '${k.trim()}'이 '${hit.id}'의 표시 형식('${hit.format}')에 들어 있습니다`
+              + ` — 상태창이 매 턴 이 단위를 찍으므로 사실상 항상 열립니다. 거래가 실제로 일어났을 때만 나오는 표현으로 바꾸세요`);
+            break; // 변수당 한 번이면 충분 — 경고 폭주 방지
+          }
+        }
+      }
+    }
+    // whenArmed(액션 잠금) — 그 액션이 무장·발동된 턴에만 보조 AI에게 열린다
+    if (a.whenArmed != null) {
+      const ids = [].concat(a.whenArmed);
+      const actionIds = new Set((schema.actions || []).map((x) => x.id));
+      if (!ids.length || ids.some((k) => typeof k !== 'string' || !k.trim()))
+        err(p, 'whenArmed는 액션 id 문자열(또는 그 배열)이어야 함');
+      else {
+        for (const k of ids) {
+          if (!actionIds.has(k)) err(p, `whenArmed의 '${k}'가 actions에 없음`);
+        }
+      }
     }
     // (text의 maxLength 미지정은 기본 200자가 적용되는 정상 동작이라 경고하지 않음)
   });
@@ -1194,6 +1251,7 @@ function reconcileState(schema, state) {
   m.eventLastFired = m.eventLastFired || {};
   m.firedOnce = m.firedOnce || {};
   m.pendingNotifies = m.pendingNotifies || [];
+  m.firedThisSend = m.firedThisSend || {}; // 이번 전송에서 발동한 액션 (whenArmed 게이트용, 다음 전송에서 리셋)
   return state;
 }
 
@@ -1344,12 +1402,17 @@ function sendPhase(schema, prevState, { rng } = {}) {
   const consumedActions = [];
 
   // 1. 무장 액션 effects (결정적) + inject 수집
+  // firedThisSend: whenArmed 게이트의 기준. oneshot은 여기서 무장이 풀리므로 armed만으로는
+  // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
+  // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
+  state.meta.firedThisSend = {};
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
     if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
     applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
     if (action.inject) injects.push(action.inject);
     consumedActions.push(action.id);
+    state.meta.firedThisSend[action.id] = true;
     if ((action.mode || 'oneshot') === 'oneshot') {
       delete state.meta.armed[action.id];
       state.meta.actionLastUsed[action.id] = state.meta.turn;
@@ -1524,7 +1587,9 @@ function applyChangesToState(schema, prevState, changes, reasons, seenText = nul
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
 function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
-  const allowById = Object.fromEntries(auxAllowList(schema, seenText).map((a) => [a.id, a]));
+  // state를 같이 넘겨 whenArmed 게이트를 적용 시점에도 강제한다 —
+  // 브리지·지연 소급(seenText 없음)에서도 액션 잠금만은 결정적으로 걸린다
+  const allowById = Object.fromEntries(auxAllowList(schema, seenText, state).map((a) => [a.id, a]));
   for (const [id, proposed] of Object.entries(changes || {})) {
     const def = varById[id];
     const allow = allowById[id];
@@ -1704,10 +1769,20 @@ function formatHistory(msgs) {
  * "건드려도 되는 것"으로 읽는다. 등장하지도 않은 사람의 호감도가 분위기상 ±1씩 움직이면
  * 상한도 소용이 없다 — 상한은 크기를 막지 빈도를 못 막는다.
  *
- * @param text 이번 턴 서사 + 유저 발화 (+ 배경 대화). 비워 두면 거르지 않는다(구버전 호환).
+ * @param text 이번 턴 서사 + 유저 발화 (+ 배경 대화). 비워 두면 낱말 필터를 거르지 않는다(구버전 호환).
+ * @param state 현재 상태 (선택). 주면 whenArmed(액션 잠금) 게이트도 적용한다 —
+ *   그 액션이 무장 중이거나 이번 전송에서 발동한 턴에만 열린다. 낱말과 달리 언어 무관·결정적이라
+ *   "개인 지갑과 대장간 금고" 같은 이중 장부 상황에서 귀속 오류를 원천 차단한다.
  */
-function auxAllowList(schema, text) {
-  const allow = schema.updater?.allow || [];
+function actionGateOpen(state, ids) {
+  const m = state?.meta || {};
+  return [].concat(ids).some((id) => (m.armed && m.armed[id]) || (m.firedThisSend && m.firedThisSend[id]));
+}
+
+function auxAllowList(schema, text, state = null) {
+  let allow = schema.updater?.allow || [];
+  // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
+  if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
   if (text == null) return allow;
   const hay = String(text).toLowerCase();
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
@@ -1752,8 +1827,11 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   // 프롬프트와 적용이 같은 함수로 같은 글을 봐야 어긋나지 않는다.
   // 안 보여 준 변수를 나중에 받아 주면 거르는 의미가 없어진다.
+  // allowAll(루아 브리지 템플릿 굽기)에서는 state도 안 넘긴다 — 설치 시점의 무장 상태로
+  // 굳어버리면 whenArmed 변수가 템플릿에서 영영 빠진다. 브리지의 게이트는 적용 시점에 걸린다.
   const allow = auxAllowList(schema,
-    opts.allowAll ? null : [narrative, userText, historyText].filter(Boolean).join('\n'));
+    opts.allowAll ? null : [narrative, userText, historyText].filter(Boolean).join('\n'),
+    opts.allowAll ? null : state);
   const specs = allow.map((a) => {
     const v = varById[a.id];
     if (!v) return null;
@@ -1962,7 +2040,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
   sendPhase, outputPhase, toggleAction, actionAvailability,
-  renderTemplate, buildAuxPrompt, auxAllowList, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };
@@ -5351,7 +5429,24 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
             rerender();
           }, { cls: 'sce-w-m', ph: def?.label ? `${def.label} (비우면 이 이름)` : '(비우면 변수 이름)' }),
           '이번 턴 서사에 이 말이 나왔을 때만 보조 AI가 이 변수를 볼 수 있다. 쉼표로 여러 개. '
-          + '별명이 있으면 같이 적을 것 — 짧은 이름이 긴 이름 안에 들어 있으면 긴 쪽이 이긴다.'));
+          + '별명이 있으면 같이 적을 것 — 짧은 이름이 긴 이름 안에 들어 있으면 긴 쪽이 이긴다. '
+          + '⚠ 채팅 언어의 낱말이어야 한다 — 영어로도 놀 봇이면 두 언어를 다 적을 것 (예: 골드, gold). '
+          + '"골드"처럼 매 턴 상태창에 찍히는 단위 말은 넣지 말 것 (항상 열려서 잠금이 무의미해진다).'));
+      }
+      // 액션 잠금(whenArmed) — 그 액션이 무장·발동된 턴에만 보조 AI에게 열린다.
+      // 낱말과 달리 채팅 언어와 무관·결정적. "개인 지갑 vs 가게 금고" 같은 이중 장부에 특효.
+      {
+        const actionOpts = (schema.actions || []).map((x) => x.id).join(', ');
+        row.append(pair('액션 잠금', bindInput([].concat(a.whenArmed || []).join(', '),
+          (x) => {
+            const ids = String(x).split(',').map((s) => s.trim()).filter(Boolean);
+            if (ids.length) a.whenArmed = ids.length === 1 ? ids[0] : ids; else delete a.whenArmed;
+            rerender();
+          }, { cls: 'sce-w-m', ph: '액션 id (비우면 잠금 없음)' }),
+          '적으면 그 액션 버튼이 무장 중이거나 방금 발동된 턴에만 보조 AI가 이 변수를 고칠 수 있다. '
+          + '쉼표로 여러 개 (하나만 무장돼도 열림). 낱말 잠금과 달리 어떤 언어로 채팅해도 똑같이 작동한다. '
+          + '돈처럼 AI가 자꾸 멋대로 만지는 변수에 걸어두면, 유저가 버튼을 켠 턴에만 움직인다.'
+          + (actionOpts ? ` 현재 액션: ${actionOpts}` : ' (⚠ 아직 액션이 없다 — [액션] 탭에서 먼저 만들 것)')));
       }
       row.appendChild(grip(allow, i, rerender));
       wrap.appendChild(h('div', { class: 'sce-block' }, row));
@@ -7634,6 +7729,33 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
 
+  // ── mentions 침묵 실패 감지 ────────────────────────────────
+  // 한국어 낱말 + 영어 채팅처럼 낱말이 채팅 언어와 어긋나면 그 변수는 조용히 영영 안 열린다.
+  // 에러가 없는 실패라 원인 찾기가 제일 힘든 유형 → 연속 미개방을 세서 패널에서 소리 나게 한다.
+  // (aux 직접 호출 경로 전용 — 루아 브리지는 mentions 필터를 안 쓰므로 셀 것도 없다)
+  const MENTION_WARN_TURNS = 6;
+  let mentionGate = { turns: 0, opened: {} }; // opened[id] = 열린 횟수 (세션 로드마다 리셋)
+
+  function trackMentionGates(seenText) {
+    try {
+      const gated = (schema?.updater?.allow || []).filter((a) => a.mentions);
+      if (!gated.length || seenText == null) return;
+      mentionGate.turns++;
+      const open = new Set(engine.auxAllowList(schema, seenText).map((a) => a.id));
+      for (const a of gated) if (open.has(a.id)) mentionGate.opened[a.id] = (mentionGate.opened[a.id] || 0) + 1;
+    } catch (e) { console.log('[simcore] mentions 추적 실패:', e.message); }
+  }
+
+  function mentionGateWarning() {
+    const gated = (schema?.updater?.allow || []).filter((a) => a.mentions);
+    if (!gated.length || mentionGate.turns < MENTION_WARN_TURNS) return '';
+    // whenArmed(액션 잠금)가 같이 걸린 변수는 제외 — 액션을 안 눌러서 닫혀 있는 건 정상이다
+    const silent = gated.filter((a) => !a.whenArmed && !(mentionGate.opened[a.id] > 0)).map((a) => a.id);
+    if (!silent.length) return '';
+    return `\n⚠ 낱말 잠금(mentions) 변수 ${silent.join(', ')} — 최근 ${mentionGate.turns}턴 동안 한 번도 안 열림.`
+      + ` 낱말이 채팅 언어와 맞는지 확인할 것 (영챗이면 '골드' 대신 'gold'도 병기)`;
+  }
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /**
@@ -7941,6 +8063,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     if (session && charKey === key) return; // 이미 로드됨
     charKey = key;
     schema = parsed;
+    mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
 
     // pluginStorage를 SnapshotStore 백엔드로 감싼다
     const backend = {
@@ -8133,6 +8256,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         }
         // 프롬프트를 만들 때 본 글과 델타를 받을 때 보는 글이 같아야 한다 (mentions 필터 기준)
         seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
+        trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         auxText = await callAuxLLM(auxPrompt, 400);
         if (auxText && auxText.blocked) {
@@ -9126,7 +9250,8 @@ count(목록)  has(목록, "항목")</pre>
       `상태: ${lastAux.status}\n` +
       `마지막 턴 적용: ${lastAux.applied}건\n` +
       `현재 스키마의 허용 변수: ${schema?.updater?.allow?.length ?? 0}개\n` +
-      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '');
+      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '') +
+      mentionGateWarning();
     // 모드/브리지 상태는 비동기로 뒤에 덧붙임
     Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
       .then(([m, char, resolved, path]) => {

@@ -1,0 +1,9 @@
+node_modules/
+package.json
+package-lock.json
+dist/
+playground.html
+test/generated-bridge.lua
+tools/extracted-shim.txt
+*.png
+*backup*

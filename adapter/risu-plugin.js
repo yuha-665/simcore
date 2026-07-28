@@ -1,0 +1,2004 @@
+//@name simcore
+//@api 3.0
+//@version 0.39.0
+//@display-name SimCore (시뮬 엔진) v0.39 액션 잠금
+//@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
+//
+// SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
+// 빌드: node build.js → dist/simcore.plugin.js
+//
+// ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.39 ──────────────────────────────────────────────────
+// 대장간 봇의 진짜 뿌리는 낱말이 아니라 **이중 장부**였다 — 한 서사에 지갑이 두 개(개인 돈은
+// 남의 모듈, 가게 돈은 우리)인데 보조 AI는 우리 장부밖에 몰라서, 개인 쇼핑까지 가게 금고에
+// 적는다. 낱말 잠금은 어휘 규약이라 확률이고 언어 종속이다. 유저 제안: "액션을 켜고 있을 때만
+// 그 변수가 수정되게" — 버튼은 어느 언어로 채팅해도 버튼이다.
+// - `allow[].whenArmed: 액션id | [액션id...]` — 그 액션이 무장 중(hold)이거나 이번 전송에서
+//   발동(oneshot)된 턴에만 보조 AI에게 열린다. 하나만 열려도 개방.
+// - `meta.firedThisSend` 추가: oneshot은 전송 시 무장이 풀려 armed만으로는 "방금 발동"을
+//   모른다 → 전송마다 리셋되는 발동 기록을 둔다. 지연 소급·루아 브리지 소급(다음 전송 전까지)
+//   에서도 게이트가 그대로 걸리고, 리롤은 pre 스냅샷 재계산이라 안전하다.
+// - 브리지 템플릿은 설치 시점에 굽으므로 프롬프트에서는 못 거른다 — 적용 시점(applyChanges)에서
+//   상태 기반으로 거른다. mentions(텍스트 기반)와 달리 브리지에서도 결정적으로 작동한다.
+// - 편집기 [AI 설정] 허용 변수 행에 [액션 잠금] 칸 (기능은 반드시 칸과 함께 — v0.35/v0.37 교훈).
+// - 낱말+액션을 같이 걸면 둘 다 만족해야 열린다. 침묵 경고는 액션 잠금 변수를 제외한다
+//   (버튼을 안 눌러 닫힌 건 정상이라서).
+//
+// ── v0.38.3 ────────────────────────────────────────────────
+// 실측 사고(대장간 봇): funds의 mentions에 "골드"가 있었다. 이 봇은 재고·의뢰 포맷이
+// "원가 N골드"라 골드가 안 나오는 턴이 없다 → 잠금이 항상 열림 + maxDelta 12자리 → 돈 자동 증식.
+// 반대 방향 함정도 있다: 한국어 낱말 + 영어 채팅이면 그 변수는 **조용히 영영 안 열린다** —
+// 에러가 없는 실패라 원인 찾기가 제일 힘들다. 잘못 쓰면 양쪽으로 터지는 부품이라 안전망 3겹:
+// - 검증기: 낱말이 어떤 변수의 표시 형식("{v}골드")에 들어 있으면 경고 — 매 턴 찍히는
+//   단위라 사실상 항상 열린다. (템플릿 11종 오탐 0 확인)
+// - 패널 [현황]: mentions 변수가 6턴 연속 한 번도 안 열리면 경고 — 침묵 실패를 소리 나게.
+//   (aux 직접 경로 전용. 브리지는 mentions 필터를 안 쓰므로 해당 없음)
+// - 편집기 낱말 칸 도움말: 채팅 언어로 적을 것·다국어 병기·단위 낱말 금지.
+// 설계 노트: mentions는 선택 장비다. 안 쓰면 항상 열림(= "AI가 알아서")이 기본이고,
+// 다국어 봇은 mentions 없이 캡(maxGain/maxLoss)으로만 제어하는 쪽이 맞다.
+//
+// ── v0.38.2 ────────────────────────────────────────────────
+// 템플릿 열 개가 전부 "관리할 판"이 있는 것들이었다. 그냥 일상물에 상태창만 붙이고 싶은 사람이
+// 고를 게 없었다 — 제일 가벼운 rpg도 HP·레벨·인벤토리를 들고 온다.
+// - **일상 템플릿(daily)**: 날짜·시간·날씨·위치·소지금·소지품 여섯 개만. 랜덤 사건은 수치를
+//   굴리는 대신 **서사에 소재를 던진다**(누굴 만난다·가벼운 소동·날씨가 바뀐다).
+//   ⚠ 매 턴 자동 처리를 일부러 비웠다. 일상물에서 한 턴은 하루도 한 시간도 아니라서,
+//     카페에서 세 턴 떠들었다고 저녁이 되면 안 된다. 시간·날짜는 유저가 버튼으로 넘긴다.
+//     그래서 day는 allow에서 뺐다 — 카운터를 AI에게 안 맡기는 원칙은 그대로 지킨다.
+// - 진단 오탐: `writerMap`이 **'새 시작'(시작 프리셋)도 "값을 바꾸는 곳"으로 세고 있었다.**
+//   최초설정과 똑같이 시작값만 정하는 곳인데 그쪽만 제외돼 있었다 → 프리셋에서 한 번 정하고
+//   그 뒤로는 AI만 만지는 값이 전부 "안 움직임"으로 신고됐다. trpg의 능력치 넷처럼 **일부러**
+//   고정해 둔 것까지 포함해서. 실측 6개 템플릿 12건이 오탐이었다(전체 90 → 78).
+//   시뮬이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다. v0.31과 같은 부류의 사고다.
+//
+// ── v0.38.1 ────────────────────────────────────────────────
+// v0.37의 mentions는 엔진과 검증에만 있고 **편집기에 칸이 없었다.** AI 설정 탭은 규격
+// 내보내기도 없으니(TAB_SLICES에 ai 슬라이스가 없다) JSON을 손으로 고치는 것 말고는
+// 넣을 방법이 아예 없었다 — 기능은 있는데 아무도 못 쓰는 상태였다. v0.35의 cmd와 같은 사고다.
+// - 허용 변수 행에 [등장할 때만] 체크 + [낱말] 칸. 켜고 비우면 true(변수 이름을 낱말로).
+//
+// ── v0.38 ──────────────────────────────────────────────────
+// 상태창이 길어지면 그룹을 여러 개 두게 되는데, 그게 전부 세로로 쌓여서 한 화면에 안 들어왔다.
+// 탭으로 나누고 싶다는 얘기가 나왔고, 만들어 보니 **CSS만으로는 불가능**했다 —
+// 클릭 토글에는 <input>이나 <details> 같은 실제 요소가 필요한데 CSS는 요소를 못 만든다.
+// 그래서 배치를 스키마 옵션으로 올린다.
+// - `statusUI.layout: 'stack'|'tabs'|'accordion'|'popover'`. auto 모드 groups가 그대로 바뀐다.
+//   제작자는 한 줄만 고르면 되고 HTML도 CSS도 안 쓴다.
+// - 전부 JS 없이 돈다. 메시지 안 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨 어느 것이
+//   눌렸는지 알 수가 없다 — 탭은 라디오+라벨, 팝업은 tabindex+:focus-within으로 짰다.
+//   새니타이저 기본 허용 목록에 있는 것만 썼다(input/label/details/summary, type·checked·id·
+//   for·name·tabindex·open). 리수는 class만 x-risu-로 바꾸고 CSS 선택자도 같이 바꿔 주므로
+//   `:checked ~`나 id 선택자는 그대로 산다.
+// - ⚠ 상태창은 마커가 달린 **모든 메시지마다** 그려진다. id를 고정하면 같은 id가 열 개 생기고
+//   `<label for>`은 문서에서 처음 만난 것을 집는다 → 최신 메시지의 탭을 눌렀는데 맨 위
+//   메시지가 바뀐다. 그래서 메시지 번호를 id·name에 섞는다(`{uid}` 자리표시자로 템플릿에도 공개).
+//   아코디언·팝업은 id를 안 써서 이 문제가 없다 — 모바일에서도 이쪽이 안전하다.
+// - 알려진 한계: 새 턴이 와서 최신 메시지가 다시 그려지면 그 메시지의 탭 선택은 첫 탭으로
+//   돌아간다(선택은 DOM 상태고 다시 그리면 마크업의 checked가 이긴다). 지난 메시지는 그대로다.
+//
+// ── v0.37.2 ────────────────────────────────────────────────
+// "심코어는 되는데 모듈 상태창이 죽었다", "다른 플러그인이 안 돈다" 두 제보.
+// 둘 다 우리가 남의 프롬프트에 끼어들고 있었다.
+// 리수는 beforeRequest 리플레이서를 `replacer(formated, model)`로 부르는데, 이 `model`은
+// 'model'만이 아니라 'submodel'·'memory'·'emotion'·'translate'·'otherAx' 전부다.
+// 즉 **앱에서 나가는 모든 LLM 요청**에 이 훅이 걸린다. 우리는 두 번째 인자를 안 보고 있었다.
+// - 모듈의 루아 axLLM은 'otherAx'다. 거기에 우리 상태 블록이 system으로 얹히니
+//   "<eomg> 태그 JSON만 내라"는 지시와 "이 영지 상태를 갱신하라"가 한 프롬프트에서 싸운다
+//   → 모듈이 받는 건 쓰레기 → 태그도 상태창도 안 나온다. 다른 플러그인도 똑같다.
+// - 더 나쁜 건 onSend를 같이 불렀다는 것이다. sendIndex는 message.length-1이라 응답이
+//   저장된 뒤에 도는 모듈 호출에선 값이 하나 밀린다 → 새 pre 스냅샷 + 송신 페이즈 한 번 더
+//   = 남의 보조 호출이 우리 시뮬레이션의 턴을 몰래 넘기고 있었다.
+// - 이제 주입·onSend·turnBusy는 type === 'model'일 때만 한다. 마커 지우기는 전 타입 유지 —
+//   ⟦simcore:N⟧이 모듈의 줄번호나 번역문에 새어 나가면 안 되니까.
+// - loadForCurrentChar()를 try 안으로 넣었다. 리플레이서 호출부엔 try/catch가 없어서
+//   여기서 한 번 던지면 앱의 모든 요청이 실패한다.
+//
+// ── v0.37.1 ────────────────────────────────────────────────
+// 보조모델을 버텍스(Gemini)로 걸면 죽고 LLM Gateway로 걸면 되는 제보 —
+// 같은 모델, 같은 백엔드(게이트웨이도 버텍스로 물려 있었다), 프로바이더만 달랐다.
+//   테스트 결과: 실패 — 호출 예외: Cannot read properties of undefined (reading 'role')
+// 원인은 우리가 보내는 모양이다. 보조모델 호출을 **system 한 통**으로만 보내고 있었는데,
+// 구글 계열은 system을 contents가 아니라 systemInstruction으로 빼낸다 → contents가 빈 배열 →
+// 리수 요청 빌더가 없는 원소의 role을 읽고 죽는다. OpenAI 호환(게이트웨이)은 system-only를
+// 그대로 넘겨서 안 죽었을 뿐, 우리 쪽이 맞은 적은 없었다.
+// - system 뒤에 짧은 user 턴을 붙인다(AUX_NUDGE). 직접 호출·루아 브리지 양쪽 다 —
+//   axLLM도 같은 한 통짜리였으므로 브리지로 우회해도 똑같이 죽었을 것이다.
+// - ⚠ 브리지 지문은 **스키마만** 해싱한다. 생성되는 루아가 바뀌어도 스키마가 그대로면
+//   이미 설치된 낡은 브리지가 영영 노후로 안 잡힌다 → BRIDGE_GEN을 지문에 섞었다.
+//   생성 코드를 고칠 때마다 올릴 것.
+//
+// ── v0.37 ──────────────────────────────────────────────────
+// 보조 모델에게 늘 스물여섯 명의 호감도를 열어 두고 있었다. 등장하지도 않은 사람의 값이
+// 분위기상 ±1씩 밀리면 상한은 아무 도움이 안 된다 — 상한은 크기를 막지 빈도를 못 막는다.
+// 안 보여 주는 게 유일한 방법인데, allow에 조건식을 달아 봐야 소용이 없다:
+// "이번 턴에 그 사람이 나왔나"는 변수가 아니라 **서사 원문**에만 있는 정보라서다.
+// - `mentions` — 로어북 키워드와 같은 방식. 이번 턴 글에 그 말이 있어야 그 변수가 열린다.
+//   `true`면 변수의 label을 낱말로 쓴다(인물 호감도는 label이 곧 이름이라 한 글자면 끝난다).
+// - **프롬프트와 적용이 같은 함수로 같은 글을 본다**(auxAllowList). 안 보여 준 변수를
+//   나중에 받아 주면 거르는 의미가 없다 — outputPhase/applyChangesToState에 seenText를 넘긴다.
+// - ⚠ 한국어는 이름이 서로 겹치고("릴리아나" 안에 "리아나") 조사가 붙어 단어 경계를 못 쓴다.
+//   그냥 부분일치로 두면 릴리아나가 나올 때마다 리아나 백작까지 열렸다(실측). 그래서
+//   **더 긴 낱말에 통째로 가려진 자리는 안 친다.** 걸린 자리가 전부 그렇다면 등장한 게 아니다.
+//   똑같은 낱말을 둘이 쓰는 것만 검증 경고 — 그건 갈릴 방법이 없다.
+// - ⚠ 루아 브리지는 설치 시점에 자리표시자로 템플릿을 한 번 굽는다. 거기서 거르면 '⟦NARR⟧'에
+//   이름이 없어 mentions 변수가 영영 닫힌 채 박힌다 → 브리지 경로는 `allowAll: true`로 끈다.
+//
+// 실측(베리디아, 인물 26명): 조정 가능 변수 70개 → 등장 없으면 44개, 한 명 나오면 45개.
+//
+// ── v0.36.1 ────────────────────────────────────────────────
+// 명령 모음집의 칩이 글자가 통째로 안 보였다. 원인이 둘 겹쳤다.
+// - 칩을 `<code>`로 감쌌다. 상태창은 리스의 메시지 렌더를 타므로 마크다운/테마 CSS가
+//   code에 자기 색을 먹인다 — 봇 CSS 탓이 아니라 어느 봇에서나 난다. `<span>`으로 바꿨다.
+//   (플러그인이 채팅에 내보내는 HTML에서 code를 쓰던 곳은 여기 하나뿐이었다. 회귀 테스트로 막아 뒀다)
+// - 그리고 **배경을 칠해 놓고 글자색을 안 정했다.** 바깥에서 들어온 색이 배경과 겹치면 그대로 사라진다.
+//   color:inherit을 준다 — 밝은 장부든 어두운 밀서든 그 상태창의 본문 색을 따라간다.
+//   배경을 칠하면 글자색도 같이 정한다, 가 규칙이다.
+//
+// ── v0.36 ──────────────────────────────────────────────────
+// v0.35의 구멍: 명령 이름은 **제작자가** 변수마다 붙이는데, 그걸 붙일 자리도 볼 자리도 없었다.
+// 편집기 변수 탭에는 cmd 칸이 아예 없어서 JSON을 손으로 고쳐야 했고, 유저 쪽은 자기가 쓰는 봇에
+// 무슨 명령이 있는지 알 방법이 전혀 없었다. 기능은 있는데 아무도 못 쓰는 상태였다.
+// - **명령 탭 신설.** 변수를 골라 이름을 붙이면 그 이름의 명령이 열린다. 문법은 안 적는다 —
+//   `commandSpecs()`가 타입에서 뽑아 그 자리에 보여준다(목록이면 등록/제거 두 줄, enum이면 선택지).
+//   ⚠ 슬라이스가 `merge: 'cmd'`인 이유: 명령은 별도 배열이 아니라 변수에 붙은 속성이라,
+//     다른 탭처럼 통째로 갈아끼우면 명령 하나 붙이려다 변수·파생이 통째로 날아간다.
+//     AI에게도 vars 원문 대신 `[{var, cmd}]` 배정표만 내보내고, 받은 것도 배정만 얹는다.
+// - **상태창 `{commands}`.** 제작자가 박은 자리에 접이식 명령 모음집이 그려진다.
+//   패널에 넣는 건 답이 아니다 — 배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유다.
+//   그룹 모드는 배치를 플러그인이 정하므로 맨 아래 자동으로 붙인다(자리표시자를 박을 데가 없다).
+//   명령이 하나도 없으면 껍데기도 안 그린다. 명령을 열어 놓고 {commands}가 없으면 명령 탭이 경고한다.
+// - `commands`라는 id의 변수는 자리표시자를 가린다 → 검증 경고.
+//
+// ── v0.35.1 ────────────────────────────────────────────────
+// 목록 제거가 완전일치라서 사람이 아무것도 못 지우고 있었다. `/계약- 헤세 상단 양모`로는
+// `"헤세 상단 양모 +12 @1093"`이 안 지워진다 — 금액이야 안다 쳐도 `@1093`은 v0.34가 굳힌
+// 값이라 유저가 알 방법이 없다. 바로 위 v0.35 주석이 그 문법을 예시로 적어 놓고 있었다.
+// - 완전일치 → 앞머리 → 부분일치 순으로 좁힌다. 하나로 안 좁혀지면 안 지우고 후보를 보여준다
+//   (여럿 중 아무거나 지우는 건 조용히 틀리는 것보다 나쁘다).
+// - 확인 문구가 유저가 친 말이 아니라 **실제로 지워진 항목**을 되돌려 준다.
+// - '없음'과 '여럿'을 구분해서 이유를 말한다. 예전엔 둘 다 "바뀐 것 없음"이었다.
+// ※ AI 쪽 remove는 그대로 완전일치다. 목록 현재값을 보고 쓰니 맞출 수 있고,
+//   거기까지 느슨하게 하면 서사가 엉뚱한 계약을 지우는 사고가 조용히 난다.
+//
+// ── v0.35 ──────────────────────────────────────────────────
+// 지속 효과를 누가 등록하느냐의 문제. 서사만 읽는 보조 모델은 "상단과 이야기했다"와
+// "계약이 성사됐다"를 구분하지 못하고, 지속 효과는 한 번 잘못 들어가면 매일 복리로 어긋난다.
+// 그렇다고 제작자가 미리 다 적어 둘 수도 없다 — 어떤 계약을 맺을지는 플레이가 정한다.
+//
+// 그래서 유저가 등록하게 했다. 문제는 배포받은 유저는 플러그인 패널을 안 연다는 것이고,
+// 상태창 안의 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨서 구조적으로 못 쓴다(v0.11에서 확인).
+// 남은 통로가 채팅 입력창이었고, 여기가 오히려 버튼보다 낫다 —
+// 버튼은 미리 정해둔 것만 누르지만 계약 이름과 금액은 그 자리에서 적어야 하는 값이다.
+// - 변수에 `cmd`를 달면 열린다: `/계약 헤세 상단 양모 +12 @+1080`, `/계약- 헤세 상단 양모`
+//   숫자는 부호가 있으면 증감, 없으면 지정. text/enum은 대입. 상대 기한도 여기서 굳는다.
+// - 명령 줄은 지우지 않고 `(시스템: …)` 확인 문구로 바꾼다. 지우면 ① 유저 메시지가 통째로
+//   비어 빈 턴이 되고 ② 모델이 등록 사실을 몰라 그에 맞게 서술하지 못한다.
+// - 모르는 명령은 손대지 않는다. 유저가 그냥 `/`로 시작하는 말을 썼을 수 있다.
+//   거부(enum 밖 등)와 "변화 없음"은 구분해서 이유를 돌려준다 — 조용히 삼키면 유저가 못 고친다.
+//
+// ── v0.34 ──────────────────────────────────────────────────
+// v0.33의 기한은 절대값이라 보조 AI에게 "지금 경과일 12 + 1080 = 1092"라는 산술을 시키고 있었다.
+// 그건 이 플러그인이 없애려고 만든 바로 그 종류의 일이고, 틀려도 조용하다 —
+// 3000년에 끝나는 계약이 생겨도 아무도 모른다.
+// - `@+숫자` (상대) 를 추가되는 순간 `@절대값`으로 굳힌다. 모델은 "3년 = @+1080"만 알면 된다.
+//   기준 시각은 그 목록의 onTurn expire 식을 그대로 쓴다 — 등록과 만료를 같은 시계로 재야 어긋나지 않는다.
+//   굳히지 못하면(expire 규칙이 없으면) 손대지 않는다. `@+N`은 `@숫자` 패턴에 안 걸려 무기한이 될 뿐이다.
+//
+// ※ 함께 확인한 것: 보조 모델 호출은 runLLMModel({mode:'submodel', messages:[system 한 통]})이라
+//   **로어북·캐릭터 카드·페르소나가 하나도 안 들어간다.** 들어가는 건 조정 가능 변수 + 현재값 +
+//   이번 턴 서사 + 유저 발화 + (contextTurns>1이면) 앞선 턴 원문뿐이다.
+//   그래서 변수 desc에 "로어북 표기를 따르라" 같은 지시를 쓰면 못 보는 걸 맞추라는 말이 된다.
+//   보조 모델이 이름을 아는 경로는 서사 원문뿐이다.
+//
+// ── v0.33 ──────────────────────────────────────────────────
+// 등록부에 기한을 붙였다. "3년 계약"이 3년 뒤에 스스로 끝나야 하는데, v0.32는 서사가
+// 파기해 주기 전까지 영원히 살아 있었다.
+// - 항목의 `@숫자` = 끝나는 시점. onTurn의 `{ "list": "계약", "expire": "day" }`가 지난 것을 뺀다.
+//   **남은 일수가 아니라 끝나는 날**인 이유가 둘 있다. ① 남은 일수면 매 턴 항목 전부를 1씩
+//   깎아야 하는데 미니 표현식엔 반복문이 없어 애초에 불가능하다. ② 절대값이면 날짜를
+//   며칠씩 건너뛰어도 저절로 맞는다 — days_passed와 공짜로 맞물린다.
+// - itemValue()가 `@숫자`를 먼저 떼어낸다. 안 그러면 "성벽 부역 @450"이 하루 450짜리
+//   수입으로 잡힌다 — 기한만 있고 금액이 없는 항목이 제일 흔한데 거기서 대형 사고가 난다.
+//
+// ── v0.32 ──────────────────────────────────────────────────
+// 서사가 만들어 내는 지속 효과 — 무역 계약, 조약, 저주, 부역. "하루 12G씩 들어온다"를
+// 40턴 동안 잊지 않고 더하는 건 AI가 제일 못하는 일이고, 시스템이 제일 잘하는 일이다.
+// 그런데 어떤 계약이 맺어질지는 제작 시점에 알 수 없어서 스키마에 미리 적어 둘 수가 없다.
+//
+// 처음엔 state에 mods[] 레지스트리를 새로 파고 updater에 채널을 하나 더 여는 설계를 봤다.
+// 세이브 마이그레이션·프롬프트 규약·UI가 전부 딸려 오는 큰 공사다. 그런데 필요한 것을
+// 하나씩 따져 보니 목록(list) 변수가 이미 전부 갖고 있었다 — AI는 {"add"/"remove"} 연산을
+// 이미 할 줄 알고, 저장·내보내기·칩 렌더·검증도 그대로 쓴다. 없는 건 딱 둘이었다.
+// - `sum(목록[, "거르개"])` — 항목 **맨 끝**의 숫자를 더한다. ["양모 계약 +12","제분소 5"] → 17.
+//   "아무 데나 있는 마지막 숫자"로 하면 "양모 계약 12 (30일)"이 30으로 조용히 잘못 잡힌다.
+//   끝을 강제하면 그런 항목은 0이 되고 패널이 '숫자 없음'으로 띄운다 — 드러나게 실패하는 쪽이 낫다.
+// - 패널의 목록 변수를 항목별 칩 + ✕ 로 바꿨다. 서사로 맺은 계약을 서사로 파기했을 때
+//   사용자가 직접 지우는 자리다. (그전엔 통짜 텍스트 입력이라 coerce가 배열이 아니라며
+//   전부 '거부됨'을 냈다 — 목록 변수는 패널에서 아예 손을 못 대고 있었다.)
+//
+// ── v0.31 ──────────────────────────────────────────────────
+// 한 봇에 두 가지 플레이가 들어 있는 경우(영지 운영 / 왕궁 시종). 상태창을 통째로
+// 갈아끼울 방법이 없었다 — 그룹 방식엔 showWhen이 있는데 템플릿 모드는 통짜 하나뿐이었다.
+// - `statusUI.templates: [{ id, when, template }]` — 조건이 참인 첫 번째만 그린다.
+//   그린 것을 `.sim-tpl-<id>`로 감싸고 그 템플릿의 <style>도 같은 선택자에 가둔다.
+//   두 템플릿이 `.status-modal-window`를 똑같이 정의해도 서로를 덮어쓰지 않는다
+//   (여기가 핵심이다 — 안 그러면 어두운 밀서 CSS가 밝은 영지 장부까지 물들인다).
+//   맨 뒤에 조건 없는 하나를 두라고 검증에서 권한다. 전부 조건부면 상태창이 통째로 사라진다.
+// - 진단 오탐 두 종을 잡았다. 둘 다 "시뮬레이션이 못 보는 것"을 결함으로 신고한 경우다:
+//   ① 보조 AI만 값을 바꾸는 변수를 '안 움직임'으로 신고했다. 진단에는 AI가 없으니
+//      안 움직이는 게 당연하다. 서술을 AI에게 맡긴 봇에서 33건 중 20건이 이 오탐이었다.
+//      이제 몇 개를 못 쟀는지만 🔵로 알린다 — 건너뛴 걸 말 안 하면 다 봤다고 읽힌다.
+//   ② '임계 돌파' 패턴(`when: "... and not collapsed"` + 그 이벤트가 collapsed를 세움)에서,
+//      이벤트가 안 뜨면 플래그도 안 움직인다 → "그 플래그 때문에 안 뜬다"고 거꾸로 짚었다.
+//      원인과 결과가 순환한 것. 이벤트가 스스로 세우는 값은 게이트 후보에서 뺀다.
+//
+// ── v0.30 ──────────────────────────────────────────────────
+// 시작 프리셋도 AI에게 맡길 수 있게 했다. 그런데 프리셋은 "만들어 주는" 것보다
+// "정말 난이도가 맞나"가 훨씬 어려운 문제다 — 라벨에 어려움이라고 써 놓고
+// 실제로는 더 오래 사는 판이 흔하다.
+// - 새 시작 탭에 [프리셋 내보내기/가져오기]. setup.ai(최초설정)는 건드리지 않고
+//   presets만 갈아끼운다 — 통째로 바꾸면 지침·가이드가 조용히 날아간다.
+// - 진단이 프리셋마다 판을 굴린다. 같은 시드를 프리셋 전체에 재사용(짝비교)해서
+//   시드 운이 아니라 시작값 차이만 남긴다.
+//   · 이름과 실제 순서가 뒤집히면 🟡 — 차이가 오차범위를 넘을 때만 신고한다.
+//   · 셋 다 사실상 같은 판이면 🟡 (이름만 난이도).
+//   · 어떤 프리셋에만 있고 다른 프리셋엔 없는 키는 🟡 — 그 값은 시작값 그대로 새어 나간다.
+// - writerMap이 프리셋 키를 `p.vars`로 읽고 있었다(실제 필드는 `p.set`).
+//   프리셋으로만 정해지는 변수가 "아무도 안 바꾸는 변수"로 오신고되고 있었다.
+//
+// ── v0.29 ──────────────────────────────────────────────────
+// 설치가 끝난 봇으로 들어가도 액션 버튼과 상태창이 안 붙던 문제. 착각이 아니라 실제였다.
+// API v3에 캐릭터/채팅 전환 이벤트가 없어서 로드 시점이 셋뿐이었다 —
+// 플러그인 부팅 / beforeRequest / 패널 열기. 그래서 "메시지를 한 번 보내거나
+// 패널을 한 번 열어야" 붙었고, 첫 인상이 '설치했는데 아무 일도 안 일어난다'가 됐다.
+// - 캐릭터/채팅 인덱스만 1.5초마다 얕게 확인하고, 실제로 바뀐 순간에만 로드한다.
+//   ('스키마 없음'은 정착 상태라 재시도하지 않는다 — 대부분의 캐릭터에서 폴링이 헛돈다.)
+// - 턴이 도는 중(beforeRequest~output)에는 세션을 갈아끼우지 않는다. 생성이 취소돼
+//   output이 안 오는 경우를 대비해 2분이 지나면 잠금이 스스로 풀린다.
+// - 언로드 시 타이머 정리.
+//
+// ── v0.28 ──────────────────────────────────────────────────
+// - notify 없는 미발동 이벤트를 🔵 안전장치로 분리. 규격서가 "값 자르기" 패턴에서
+//   "플레이어에게 알릴 게 없으므로 notify를 넣지 않는다"고 가르쳐 놓고,
+//   그렇게 만든 걸 죽은 이벤트라고 신고하고 있었다. 이런 건 안 뜨는 게 성공이다.
+// - 전부 끝까지 살아남으면 기여도 표의 차이가 전부 0으로 깔린다. 그게 액션 탓이 아니라
+//   판이 짧은 탓이라는 걸 표 위에 적는다 — 안 그러면 멀쩡한 액션을 의심하게 된다.
+//
+// ── v0.27 ──────────────────────────────────────────────────
+// 같은 봇이 60턴에선 지적 6건, 120턴에선 0건이 나왔다. 굶주림·전멸·부 2900 같은 조건은
+// 짧은 판에서는 원래 안 온다 — 그런데 진단은 그걸 "죽은 이벤트"라고 부르며 결함처럼 신고했다.
+// - 미발동 항목이 있으면 판을 두 배로 늘려 시드 2개만 더 굴려 본다. 거기서 뜨면
+//   🟡 죽은 이벤트가 아니라 🔵 후반부 이벤트로 부르고, 몇 턴으로 늘리면 되는지 알려준다.
+//   AI 수정 요청으로도 안 넘긴다 — 고칠 게 없으니까.
+// - 영영 도달 못 하는 것(문턱이 아예 범위 밖)은 그대로 🟡로 남는다. 이 둘을 섞으면
+//   진짜 결함이 후반부 콘텐츠에 파묻힌다.
+// - 보고서 맨 위에 "N개는 판이 짧아서 못 본 것"이라고 미리 알린다.
+//
+// ── v0.26 ──────────────────────────────────────────────────
+// 함정 액션 지적이 시드 운을 사실로 신고하고 있었다. 실측하니 120턴 봇에서
+// 6시드 95% 신뢰구간이 ±18턴 — "-12턴 함정"으로 신고된 액션이 36시드에서 +25턴이었다.
+// - 기여도를 시드별 짝차이로 모아 신뢰구간을 함께 낸다. 구간이 0을 걸치면 지적하지 않고,
+//   표에도 "시드 운과 구분 안 됨"이라고 적는다. 이 한 줄이 유령 지적의 대부분을 없앤다.
+// - 기여도 측정만 시드를 12쌍으로 올린다 (여기가 진단에서 제일 시끄러운 부분).
+// - `impactExempt: true` — 일부러 대가를 치르게 만든 버튼(장기 적출 같은)을 지적에서 뺀다.
+//   수명으로 재는 한 그런 버튼은 영영 🔴이고, 경고를 따라 버프하면 안 쓰면 손해인 버튼이 된다.
+// - 글 복사본의 표 제목이 옛 측정 방식("그 액션만 계속 썼을 때")으로 남아 있던 것 수정.
+//   이걸 읽은 사람은 측정을 실제와 다르게 이해하게 된다.
+// - 수명 말고 다른 축: 결과 편차(시드마다 딴판인가), 이벤트 커버리지, 붕괴 원인 분포.
+//   수명이 천장에 닿은 봇은 평균만 봐서는 구분이 안 된다.
+//
+// ── v0.25 ──────────────────────────────────────────────────
+// - 장르 템플릿 10종째: 버튜버 — 방송 운영.
+//   동시 접속 → 후원 → 수익 사슬, 유행이 매 턴 바뀌는 외부 환경(랜덤 숫자 + 파생 이름),
+//   체력·멘탈·논란의 3중 트레이드오프, 번아웃과 논란의 시한폭탄.
+//   방치하면 6시드 전부 은퇴하고 액션을 쓰면 전부 살아남는다 — 템플릿 중 유일.
+// - 진단 수정: 지속 정책(hold) 액션의 기여도를 잘못 재던 문제.
+//   한 번 켜면 계속 켜져 있는데도 매 턴 그 버튼만 다시 골라, [있음] 판이
+//   "다른 액션을 하나도 안 쓴 판"이 되는 바람에 멀쩡한 hold 액션이 함정으로 신고됐다.
+//
+// ── v0.24 ──────────────────────────────────────────────────
+// - 🔬 진단 탭: 스키마를 실제로 N턴 × M시드 굴려 "문법은 맞지만 게임이 안 되는" 문제를 찾는다.
+//   영영 안 뜨는 이벤트(몇 %까지 도달했는지 수치로), 한 번도 못 누르는 액션,
+//   아무도 안 바꾸는 변수, 누르면 손해인 버튼, 매 턴 도배되는 이벤트, 경계값 함정.
+// - 진단 결과를 그 문제를 고칠 탭의 AI 수정 요청으로 그대로 내보낸다 (탭별로 분리).
+// - 가져오기가 "고친 것만" 받아 나머지를 날리는 사고를 막는다:
+//   프롬프트에 현재 항목 개수를 체크섬으로 박고, 가져온 뒤 개수가 급감하면 경고한다.
+//
+// ── v0.23 ──────────────────────────────────────────────────
+// - 탭별 AI 생성: 변수 / 액션 / 규칙·이벤트 탭에서 규격을 내보내 AI에게 맡기고
+//   받은 JSON을 그 탭에만 가져온다. 반드시 **변수 탭부터** — 다른 탭 프롬프트에는
+//   확정된 변수 계약표가 함께 실려 나가 없는 변수를 지어내지 못한다.
+// - 변수를 갈아끼우면 어느 탭이 깨졌는지 짚어 준다 (다시 내보낼 탭 / 손으로 고칠 탭).
+// - 스키마 통째로 AI에게 맡기기 + 검증 오류 되돌려주기 (JSON 탭).
+// - 장르 템플릿 9종 + 템플릿별 CSS 스킨.
+// - 액션 버튼: 아이콘 칸이 글리프 하나뿐이라 상태를 글자 추가가 아닌 글리프 교체로 표시.
+
+(async () => {
+  const { validateSchema } = SimCore.require('validate');
+  const { SimSession } = SimCore.require('session');
+  const { renderStatusHtml, actionGlyph } = SimCore.require('render');
+  const { createSchemaEditor } = SimCore.require('editor');
+  const { TEMPLATES } = SimCore.require('templates');
+  const engine = SimCore.require('engine');
+  const { itemValue, itemExpiry } = SimCore.require('expr');
+
+  const MARKER_RE = /⟦simcore:(\d+)⟧/g;
+  const SCHEMA_LORE_COMMENT = '⚙simcore';
+
+  // 보조 모델에 붙이는 짧은 유저 턴. system 한 통만 보내면 안 되는 프로바이더가 있다.
+  // 구글 계열(버텍스 Gemini)은 system을 contents가 아니라 systemInstruction으로 빼내므로
+  // system만 보내면 contents가 빈 배열이 되고, 리수의 요청 빌더가 마지막/첫 원소의 role을
+  // 읽다가 `Cannot read properties of undefined (reading 'role')`로 죽는다.
+  // OpenAI 호환 엔드포인트(LLM Gateway 포함)는 system-only를 그대로 넘겨서 안 죽는다 —
+  // 같은 모델·같은 백엔드인데 프로바이더만 바꾸면 되던 이유가 이것이다.
+  // 내용은 프롬프트와 안 싸우게 중립으로 둔다 (연결 테스트·초기설정에도 같이 쓰인다).
+  const AUX_NUDGE = '위 지시에 따라 답하라.';
+
+  // ── 보조 모델 호출 (형식 자동 탐지 + 진단) ─────────────────
+  // [live-test] runLLMModel의 실제 인자/반환 형식이 불명확하므로 여러 형식을 순차 시도하고
+  //             결과를 lastAux에 기록해 패널 [엔진 정보]에 표시한다.
+  let lastAux = { status: '아직 호출 안 됨', raw: '', applied: 0 };
+
+  async function streamToText(s) {
+    try {
+      const reader = s.getReader();
+      const dec = new TextDecoder();
+      let out = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        out += typeof value === 'string' ? value : dec.decode(value);
+      }
+      return out;
+    } catch { return null; }
+  }
+
+  async function extractLLMText(res) {
+    if (res == null) return null;
+    if (typeof res === 'string') return res;
+    let c = res.content ?? res.result ?? res.text ?? res.message ?? null;
+    if (c && typeof c === 'object' && typeof c.getReader === 'function') c = await streamToText(c);
+    if (typeof c === 'string' && c.trim()) return c;
+    return null;
+  }
+
+  async function callAuxLLM(promptText, maxTokens) {
+    // 확정 시그니처 (리스 소스 requestChatDataMain / plugin API 기준):
+    //   runLLMModel({ mode, messages, staticModel?, allowPlugins? }) → { type:'success'|'fail', result }
+    // - mode: 'submodel' = 보조모델 (그 외 'model'|'memory'|'emotion'|'otherAx'|'translate')
+    // - allowPlugins: true — 보조모델이 플러그인 프로바이더(pluginmodel:::)일 때
+    //   기본값이 차단(재귀 IPC 루프 가드)이라 명시적으로 허용해야 함.
+    //   ("Plugin calls are blocked by the caller." 의 실제 원인이 이 가드였음)
+    try {
+      const res = await Risuai.runLLMModel({
+        mode: 'submodel',
+        messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
+        allowPlugins: true,
+      });
+      const text = await extractLLMText(res);
+      console.log('[simcore] runLLMModel(submodel) →', res?.type,
+        text ? text.slice(0, 150) : JSON.stringify(res)?.slice(0, 150));
+      if (res && res.type === 'fail') {
+        if (text && /blocked by the caller/i.test(text)) {
+          // allowPlugins:true 에도 차단이면 구버전 리스 (allowPlugins 미지원) — 루아 브리지로
+          await setAuxPath('bridge'); // auto 모드는 다음 턴부터 브리지 경유로 전환된다
+          const hasBridge = hasLuaBridge(await Risuai.getCharacter().catch(() => null));
+          lastAux = {
+            status: hasBridge
+              ? '이 환경은 플러그인 직접 호출이 차단됨 → 루아 브리지 경유로 자동 전환 (다음 턴부터 정상 갱신)'
+              : '이 환경은 플러그인 직접 호출이 차단됨 — [봇 편집]의 [루아 브리지 설치/갱신]을 눌러야 수치가 갱신된다',
+            raw: text.slice(0, 200), applied: lastAux.applied,
+          };
+          return { blocked: true };
+        }
+        lastAux = { status: `보조모델 호출 실패: ${(text || '').slice(0, 120)}`, raw: (text || '').slice(0, 200), applied: 0 };
+        return null;
+      }
+      if (text) {
+        await setAuxPath('direct'); // 직접 호출이 되는 환경으로 확정
+        lastAux = { status: '호출 성공 (submodel)', raw: text.slice(0, 200), applied: lastAux.applied };
+        return text;
+      }
+      lastAux = { status: `호출됐지만 텍스트 추출 실패 (${typeof res})`, raw: JSON.stringify(res)?.slice(0, 200) ?? '', applied: 0 };
+    } catch (e) {
+      console.log('[simcore] runLLMModel 예외:', e.message);
+      lastAux = { status: `호출 예외: ${e.message}`, raw: '', applied: 0 };
+    }
+    return null;
+  }
+
+  // ── 보조모델 경로 자동 판별 (배포 대비) ────────────────────
+  // 배포 시나리오: 제작자가 [카드 + 세이브]를 배포하고, 받은 사람은 임포트만 하고 논다.
+  // 카드에는 스키마·루아 브리지·LLA가 실려 가지만 aux_model_mode는 플러그인 설정이라
+  // 안 실려 간다. 받는 사람 환경이 차단인지 아닌지는 사람마다 다른데 그걸 수동으로
+  // 맞추라고 할 수는 없다 → 직접 호출을 한 번 시도해보고 차단이면 브리지로 굳힌다.
+  // 판정 결과는 pluginStorage(기기 로컬)에 남긴다. 카드가 아니라 환경의 속성이므로.
+  const AUX_PATH_KEY = 'sim:auxpath';
+  let auxPathCache = undefined; // 'direct' | 'bridge' | null(미판정)
+
+  async function getAuxPath() {
+    if (auxPathCache === undefined) {
+      try { auxPathCache = (await Risuai.pluginStorage.getItem(AUX_PATH_KEY)) || null; }
+      catch { auxPathCache = null; }
+    }
+    return auxPathCache;
+  }
+
+  async function setAuxPath(v) {
+    if (auxPathCache === v) return;
+    auxPathCache = v;
+    try { await Risuai.pluginStorage.setItem(AUX_PATH_KEY, v); } catch {}
+    console.log('[simcore] 보조모델 경로 판정:', v === 'bridge' ? '차단 → 루아 브리지' : '직접 호출 가능');
+  }
+
+  /**
+   * 이번 턴에 쓸 경로를 결정한다.
+   * 설정값이 aux/lua/off면 그 지시를 따르고, auto(기본)면 판정 결과를 따른다.
+   * 아직 판정 전이면 직접 호출을 시도해본다 — 차단이면 그 자리에서 브리지로 굳는다.
+   * @returns 'aux' | 'lua' | 'off'
+   */
+  async function resolveAuxMode() {
+    const arg = (await Risuai.getArgument('aux_model_mode')) || 'auto';
+    if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
+    return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
+  }
+
+  // ── mentions 침묵 실패 감지 ────────────────────────────────
+  // 한국어 낱말 + 영어 채팅처럼 낱말이 채팅 언어와 어긋나면 그 변수는 조용히 영영 안 열린다.
+  // 에러가 없는 실패라 원인 찾기가 제일 힘든 유형 → 연속 미개방을 세서 패널에서 소리 나게 한다.
+  // (aux 직접 호출 경로 전용 — 루아 브리지는 mentions 필터를 안 쓰므로 셀 것도 없다)
+  const MENTION_WARN_TURNS = 6;
+  let mentionGate = { turns: 0, opened: {} }; // opened[id] = 열린 횟수 (세션 로드마다 리셋)
+
+  function trackMentionGates(seenText) {
+    try {
+      const gated = (schema?.updater?.allow || []).filter((a) => a.mentions);
+      if (!gated.length || seenText == null) return;
+      mentionGate.turns++;
+      const open = new Set(engine.auxAllowList(schema, seenText).map((a) => a.id));
+      for (const a of gated) if (open.has(a.id)) mentionGate.opened[a.id] = (mentionGate.opened[a.id] || 0) + 1;
+    } catch (e) { console.log('[simcore] mentions 추적 실패:', e.message); }
+  }
+
+  function mentionGateWarning() {
+    const gated = (schema?.updater?.allow || []).filter((a) => a.mentions);
+    if (!gated.length || mentionGate.turns < MENTION_WARN_TURNS) return '';
+    // whenArmed(액션 잠금)가 같이 걸린 변수는 제외 — 액션을 안 눌러서 닫혀 있는 건 정상이다
+    const silent = gated.filter((a) => !a.whenArmed && !(mentionGate.opened[a.id] > 0)).map((a) => a.id);
+    if (!silent.length) return '';
+    return `\n⚠ 낱말 잠금(mentions) 변수 ${silent.join(', ')} — 최근 ${mentionGate.turns}턴 동안 한 번도 안 열림.`
+      + ` 낱말이 채팅 언어와 맞는지 확인할 것 (영챗이면 '골드' 대신 'gold'도 병기)`;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /**
+   * 파이프라인 밖에서 보조 모델을 재시도 호출 (차단 우회).
+   * 성공 시 onText 콜백으로 결과 전달. 최대 4회, 1초 후 시작 + 1.5초 간격.
+   */
+  function scheduleDeferredAux(promptText, maxTokens, onText, label) {
+    setTimeout(async () => {
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const r = await callAuxLLM(promptText, maxTokens);
+        if (typeof r === 'string' && r) {
+          console.log(`[simcore] 지연 호출 성공 (${label}, ${attempt}차 시도)`);
+          lastAux.status = `지연 호출 성공 (${label}, ${attempt}차 시도)`;
+          try { await onText(r); } catch (e) { console.log('[simcore] 지연 적용 오류:', e.message); }
+          return;
+        }
+        await sleep(1500);
+      }
+      console.log(`[simcore] 지연 호출 실패 (${label}) — 이번 턴 수치 변화 없음`);
+      lastAux.status = `지연 호출도 차단/실패 (${label}) — 이 환경은 플러그인 LLM 호출이 전면 차단된 것으로 보임. `
+        + `[봇 편집]에서 [루아 브리지 설치] 후 플러그인 설정 aux_model_mode를 lua로 바꾸면 우회된다`;
+    }, 1000);
+  }
+
+  // ── 루아 브리지 (플러그인 LLM 호출이 전면 차단된 환경용 폴백) ──
+  // 원리: 루아 트리거의 axLLM은 리스가 허용하는 경로다 (유저 실측으로 확인됨).
+  //   설치 시 캐릭터에 Lua onOutput 트리거를 심는다. 트리거는 채팅 변수로 받은
+  //   지시(simcore_bridge/simcore_expect)에 따라 보조 모델을 호출하고 결과를
+  //   simcore_aux_result/simcore_aux_seq 채팅 변수에 남긴다.
+  //   플러그인은 output 이후 채팅 변수를 폴링해 결과를 회수, 상태에 소급 적용한다.
+  const LUA_BRIDGE_COMMENT = 'simcore-bridge';
+
+  /** 보조모델에 함께 보낼 최근 대화 턴 수 (1 = 이번 턴만). 1~5로 묶는다 */
+  function clampContextTurns(v) {
+    const n = Math.round(Number(v));
+    return isFinite(n) ? Math.min(5, Math.max(1, n)) : 1;
+  }
+
+  function luaLongString(s) {
+    let eq = 2;
+    while (s.includes(']' + '='.repeat(eq) + ']')) eq++;
+    const b = '='.repeat(eq);
+    return '[' + b + '[\n' + s + '\n]' + b + ']';
+  }
+
+  /**
+   * 브리지 코드는 스키마에서 생성된다(프롬프트 템플릿·변수 목록이 루아 안에 박힌다).
+   * 그래서 스키마가 바뀌면 반드시 다시 만들어야 한다. 어느 스키마로 구운 코드인지
+   * 서명으로 남겨 두고, 어긋나면 경고한다 — 배포된 카드에서 특히 중요하다.
+   */
+  // 생성되는 루아 코드 자체가 바뀌면 올린다. 지문은 스키마만 해싱하므로 이게 없으면
+  // 스키마가 그대로인 한 이미 설치된 (낡은) 브리지가 영영 노후로 안 잡힌다.
+  //   2 — axLLM에 user 턴 추가 (버텍스에서 system 한 통만 보내면 죽는 문제)
+  const BRIDGE_GEN = 2;
+
+  function schemaFingerprint(sch) {
+    const src = JSON.stringify({ g: BRIDGE_GEN, v: (sch.vars || []).map((v) => [v.id, v.type, v.label]),
+      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1 });
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36);
+  }
+
+  const BRIDGE_SIG_RE = /--\s*simcore-schema:\s*([0-9a-z]+)/;
+
+  /** 설치된 브리지가 현재 스키마로 구워진 것인지 (없으면 null) */
+  function bridgeSchemaSig(char) {
+    const t = (char?.triggerscript || []).find((x) => x.comment === LUA_BRIDGE_COMMENT);
+    const code = t?.effect?.[0]?.code;
+    const m = typeof code === 'string' ? code.match(BRIDGE_SIG_RE) : null;
+    return m ? m[1] : null;
+  }
+
+  function bridgeIsStale(char, sch) {
+    if (!hasLuaBridge(char) || !sch) return false;
+    const got = bridgeSchemaSig(char);
+    return got === null || got !== schemaFingerprint(sch); // 서명 없는 구버전 브리지도 노후로 본다
+  }
+
+  function buildLuaBridgeCode(sch) {
+    // 프롬프트 본문은 JS 빌더를 그대로 재사용하고, 현재값 자리만 ⟦cur:id⟧ 자리표시로 채워
+    // 루아가 실행 시점에 채팅 변수(미러)로 치환한다 → 빌더 이원화로 인한 드리프트 방지
+    const fake = { vars: {}, meta: {} };
+    for (const v of sch.vars) fake.vars[v.id] = '⟦cur:' + v.id + '⟧';
+    const ctxTurns = clampContextTurns(sch.updater?.contextTurns);
+    // 맥락 자리는 루아가 실행 시점에 채운다. 1턴이면 아예 자리를 만들지 않는다.
+    // 자리표시자로 굽는 템플릿이라 mentions 필터를 끈다 — 켜 두면 '⟦NARR⟧'에 이름이 없어
+    // 인물 호감도가 통째로 닫힌 채 루아에 박힌다. 브리지 모드는 거르지 않는 게 규약이다.
+    const deltaT = engine.buildAuxPrompt(sch, fake, '⟦NARR⟧', '⟦USER⟧', ctxTurns > 1 ? '⟦HIST⟧' : '',
+      { allowAll: true });
+    const setupT = engine.buildSetupPrompt(sch, fake, '⟦NARR⟧');
+    const ids = sch.vars.map((v) => "'" + v.id + "'").join(', ');
+    return [
+      '-- SimCore 루아 브리지 — 플러그인이 자동 생성/갱신 (직접 수정 금지)',
+      '-- simcore-schema: ' + schemaFingerprint(sch),
+      '-- 플러그인의 보조모델 호출이 차단된 환경에서 axLLM으로 대신 호출해',
+      '-- 결과를 채팅 변수에 남긴다. 캐릭터의 LLA(low level access) 체크 필요.',
+      'local SIMCORE_DELTA_T = ' + luaLongString(deltaT),
+      'local SIMCORE_SETUP_T = ' + luaLongString(setupT),
+      'local SIMCORE_IDS = { ' + ids + ' }',
+      'local SIMCORE_CTX = ' + ctxTurns + '  -- 보조모델에 함께 보낼 최근 대화 턴 수',
+      '',
+      'local function simcoreFill(id, tpl)',
+      '  for _, vid in ipairs(SIMCORE_IDS) do',
+      "    local val = getChatVar(id, vid)",
+      "    if val == nil or val == 'null' then val = '?' end",
+      '    tpl = string.gsub(tpl, \'"⟦cur:\' .. vid .. \'⟧"\', function() return val end)',
+      '  end',
+      '  return tpl',
+      'end',
+      '',
+      'onOutput = async(function(id)',
+      "  if getChatVar(id, 'simcore_bridge') ~= 'on' then return end",
+      "  local expect = getChatVar(id, 'simcore_expect')",
+      '  local tpl = SIMCORE_DELTA_T',
+      "  if expect == 'setup' then tpl = SIMCORE_SETUP_T end",
+      "  local narr, user, hist = '', '', ''",
+      '  local m = getChat(id, -1)',
+      '  if m ~= nil and m.data ~= nil then narr = m.data end',
+      '  local uidx = nil',
+      '  for i = 2, 8 do',
+      '    local mm = getChat(id, -i)',
+      '    if mm == nil then break end',
+      "    if mm.role == 'user' then user = mm.data or ''; uidx = i; break end",
+      '  end',
+      '  if uidx ~= nil and SIMCORE_CTX > 1 then',
+      '    local parts = {}',
+      '    for i = uidx + (SIMCORE_CTX - 1) * 2, uidx + 1, -1 do',
+      '      local mm = getChat(id, -i)',
+      '      if mm ~= nil and mm.data ~= nil and mm.data ~= \'\' then',
+      "        local who = '상대: '",
+      "        if mm.role == 'user' then who = '유저: ' end",
+      "        parts[#parts + 1] = who .. string.gsub(mm.data, '⟦simcore:%d+⟧', '')",
+      '      end',
+      '    end',
+      "    if #parts > 0 then hist = '[앞선 대화 흐름 — 참고용]\\n' .. table.concat(parts, '\\n') end",
+      '  end',
+      "  narr = string.gsub(narr, '⟦simcore:%d+⟧', '')",
+      '  local prompt = simcoreFill(id, tpl)',
+      "  prompt = string.gsub(prompt, '⟦NARR⟧', function() return narr end)",
+      "  prompt = string.gsub(prompt, '⟦USER⟧', function() return user end)",
+      "  prompt = string.gsub(prompt, '⟦HIST⟧', function() return hist end)",
+      '  local okc, res = pcall(function()',
+      "    return axLLM(id, { { role = 'system', content = prompt },",
+      "                        { role = 'user', content = '" + AUX_NUDGE + "' } })",
+      '  end)',
+      "  local seq = tonumber(getChatVar(id, 'simcore_aux_seq')) or 0",
+      '  if okc and res ~= nil and res.success then',
+      "    setChatVar(id, 'simcore_aux_result', res.result)",
+      "    setChatVar(id, 'simcore_aux_err', '')",
+      '  else',
+      "    local msg = 'axLLM 실패'",
+      '    if not okc then msg = tostring(res) elseif res ~= nil then msg = tostring(res.result) end',
+      "    setChatVar(id, 'simcore_aux_result', '')",
+      "    setChatVar(id, 'simcore_aux_err', msg)",
+      '  end',
+      "  setChatVar(id, 'simcore_aux_seq', tostring(seq + 1))",
+      'end)',
+    ].join('\n');
+  }
+
+  function installLuaBridgeOn(char, sch) {
+    const code = buildLuaBridgeCode(sch);
+    char.triggerscript = char.triggerscript || [];
+    const existing = char.triggerscript.find((t) => t.comment === LUA_BRIDGE_COMMENT);
+    if (existing) existing.effect = [{ type: 'triggerlua', code }];
+    else char.triggerscript.push({
+      comment: LUA_BRIDGE_COMMENT, type: 'output', conditions: [],
+      effect: [{ type: 'triggerlua', code }], lowLevelAccess: true,
+    });
+    char.lowLevelAccess = true; // [live-test] 프로그램적 설정이 UI 체크와 동일하게 먹는지 확인
+  }
+
+  function hasLuaBridge(char) {
+    return (char?.triggerscript || []).some((t) => t.comment === LUA_BRIDGE_COMMENT);
+  }
+
+  // 전송 직전에 브리지 제어 변수 기록 — 루아 onOutput은 이 값을 보고 동작 여부/모드를 정한다
+  async function writeBridgeControl(chaIdx, chatIdx) {
+    try {
+      const mode = await resolveAuxMode();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      if (!chat) return;
+      chat.scriptstate = chat.scriptstate || {};
+      chat.scriptstate['$simcore_bridge'] = mode === 'lua' ? 'on' : 'off';
+      chat.scriptstate['$simcore_expect'] =
+        (session && engine.isSetupPending(schema, session.current)) ? 'setup' : 'delta';
+      await Risuai.setChatToIndex(chaIdx, chatIdx, chat);
+    } catch (e) {
+      console.log('[simcore] 브리지 제어 기록 실패:', e.message);
+    }
+  }
+
+  // 루아 브리지 결과 폴링 → 상태 소급 적용 (지연 호출과 같은 멱등 규약: out 스냅샷 덮어쓰기)
+  let luaPollTimer = null;
+  function pollLuaBridge(outIndex, isSetup, baseSeq) {
+    if (luaPollTimer) clearInterval(luaPollTimer);
+    let tries = 0;
+    lastAux = { status: '루아 브리지 응답 대기 중...', raw: '', applied: 0 };
+    luaPollTimer = setInterval(async () => {
+      tries++;
+      try {
+        const ca = await Risuai.getCurrentCharacterIndex();
+        const ci = await Risuai.getCurrentChatIndex();
+        const chat = await Risuai.getChatFromIndex(ca, ci);
+        const ss = chat?.scriptstate || {};
+        const seq = ss['$simcore_aux_seq'] ?? null;
+        if (seq !== baseSeq) {
+          clearInterval(luaPollTimer); luaPollTimer = null;
+          const text = ss['$simcore_aux_result'] || '';
+          const err = ss['$simcore_aux_err'] || '';
+          if (!text) {
+            lastAux = { status: `루아 브리지 호출 실패: ${err || '빈 응답'} — 캐릭터의 LLA 체크 확인`, raw: String(err).slice(0, 200), applied: 0 };
+            return;
+          }
+          if (isSetup) {
+            const r = await session.onSetupOutput(outIndex, text);
+            lastChangeLog = r.changeLog;
+            lastAux = { status: '루아 브리지 최초설정 적용', raw: text.slice(0, 200), applied: r.changeLog.length };
+          } else {
+            const parsed = engine.parseAuxResponse(text);
+            if (!parsed) {
+              lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
+              return;
+            }
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons);
+            session.current = amended.state;
+            await session.store.save('out', outIndex, amended.state);
+            lastChangeLog = [...lastChangeLog, ...amended.changeLog];
+            lastAux = { status: '루아 브리지 델타 적용', raw: text.slice(0, 200), applied: amended.changeLog.length };
+            console.log('[simcore] 루아 브리지 적용:', amended.changeLog.length + '건',
+              amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
+          }
+          await mirrorVars(ca, ci);
+        } else if (tries >= 25) {
+          clearInterval(luaPollTimer); luaPollTimer = null;
+          lastAux.status = '루아 브리지 응답 없음 (30초) — 캐릭터에 브리지가 설치됐는지, LLA(low level access) 체크가 켜졌는지 확인';
+        }
+      } catch (e) {
+        console.log('[simcore] 브리지 폴링 오류:', e.message);
+      }
+    }, 1200);
+  }
+
+  // ── 스키마 로드 ───────────────────────────────────────────
+  let session = null;
+  let schema = null;
+  let lastChangeLog = [];
+  let charKey = null;
+  let currentChaId = null; // 현재 선택된 캐릭터 식별자 (편집기 오염 방지용 — 스키마 유무와 무관하게 항상 갱신)
+  // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
+  // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
+  let turnBusy = false;
+  let turnBusyAt = 0;
+  let panelStatus = { state: 'init', charName: null, report: null }; // 패널 표시용
+  // 플로팅 액션 버튼 상태 (구현은 아래 '액션 = 화면 우상단 플로팅 버튼' 절)
+  const ACTION_BTN_PREFIX = 'simcore:act:';
+  let actionBtnIds = new Set(); // 현재 등록돼 있는 버튼 id
+  let actionBtnSig = null;      // 마지막으로 반영한 액션 상태 서명 (불필요한 재등록 방지)
+
+  // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 플로팅 버튼을 현재 상태에 맞춘다
+  async function loadForCurrentChar() {
+    try { await loadForCurrentCharInner(); }
+    finally {
+      try { await syncActionButtons(); }
+      catch (e) { console.log('[simcore] 액션 버튼 갱신 실패:', e.message); }
+    }
+  }
+
+  async function loadForCurrentCharInner() {
+    const char = await Risuai.getCharacter();
+    if (!char) { session = null; schema = null; currentChaId = null; panelStatus = { state: 'no-char' }; return; }
+    currentChaId = char.chaId ?? char.name;
+    const lore = (char.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+    if (!lore) {
+      session = null; schema = null;
+      panelStatus = { state: 'no-schema', charName: char.name };
+      return;
+    }
+    let parsed;
+    try { parsed = JSON.parse(lore.content); }
+    catch (e) {
+      console.log('[simcore] 스키마 JSON 파싱 실패:', e.message);
+      session = null;
+      panelStatus = { state: 'parse-error', charName: char.name, report: [{ path: '$', msg: 'JSON 파싱 실패: ' + e.message }] };
+      return;
+    }
+
+    const v = validateSchema(parsed);
+    if (!v.ok) {
+      console.log('[simcore] 스키마 검증 실패:');
+      for (const err of v.errors) console.log(`  - ${err.path}: ${err.msg}`);
+      session = null;
+      panelStatus = { state: 'invalid', charName: char.name, report: v.errors, warnings: v.warnings };
+      return;
+    }
+    for (const w of v.warnings) console.log(`[simcore] 경고 ${w.path}: ${w.msg}`);
+    panelStatus = { state: 'ok', charName: char.name, warnings: v.warnings };
+
+    const chatIdx = await Risuai.getCurrentChatIndex();
+    const chaIdx = await Risuai.getCurrentCharacterIndex();
+    const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+    const chatId = chat?.id ?? `${char.chaId}:${chatIdx}`;
+    const key = `${char.chaId}:${chatId}`;
+    if (session && charKey === key) return; // 이미 로드됨
+    charKey = key;
+    schema = parsed;
+    mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
+
+    // pluginStorage를 SnapshotStore 백엔드로 감싼다
+    const backend = {
+      get: (k) => Risuai.pluginStorage.getItem(k),
+      set: (k, v2) => Risuai.pluginStorage.setItem(k, v2),
+      remove: (k) => Risuai.pluginStorage.removeItem(k),
+      keys: () => Risuai.pluginStorage.keys(),
+    };
+    session = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
+
+    // 마지막 char 메시지 인덱스에서 상태 복원
+    const msgs = chat?.message ?? [];
+    let lastCharIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'char') { lastCharIdx = i; break; }
+    }
+    await session.init(lastCharIdx);
+    console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
+  }
+
+  await loadForCurrentChar();
+
+  // ── 캐릭터/채팅 전환 감지 ─────────────────────────────────
+  // API v3에는 전환 이벤트가 없다. 그래서 v0.28까지는 로드 시점이 셋뿐이었다:
+  // 플러그인 부팅 / beforeRequest / 패널 열기. 결과적으로 설치가 끝난 봇으로 들어가도
+  // "메시지를 한 번 보내거나 패널을 한 번 열기" 전에는 액션 버튼도 상태창도 안 붙었다.
+  // 설치는 됐는데 아무 일도 안 일어나는 것처럼 보이는 게 이것 때문이다.
+  //
+  // 인덱스 두 개만 얕게 폴링하고, 실제로 바뀐 순간에만 무거운 로드를 돌린다.
+  // (loadForCurrentChar 자체도 같은 키면 조기 반환하지만, 그 전에 getCharacter +
+  //  getChatFromIndex를 이미 부르므로 여기서 먼저 걸러야 의미가 있다.)
+  const readSwitchSig = async () => {
+    try { return `${await Risuai.getCurrentCharacterIndex()}:${await Risuai.getCurrentChatIndex()}`; }
+    catch (e) { return null; }           // 아직 준비 전이거나 캐릭터가 없음
+  };
+  let lastSwitchSig = await readSwitchSig();   // 방금 로드한 위치가 기준선 (여기서 또 로드하지 않는다)
+  const switchTick = async () => {
+    // 생성이 취소되면 output이 안 와서 플래그가 영영 안 풀린다 — 2분이면 그 턴은 죽은 것으로 본다
+    if (turnBusy && Date.now() - turnBusyAt < 120000) return;
+    turnBusy = false;
+    const sig = await readSwitchSig();
+    if (sig === null) return;
+    // 부팅이 리스보다 빨라 캐릭터를 못 읽은 경우엔 위치가 그대로여도 다시 시도한다.
+    // ('스키마 없음'은 정착된 상태라 재시도하지 않는다 — 안 그러면 대부분의 캐릭터에서
+    //  1.5초마다 무거운 로드가 계속 돈다.)
+    if (sig === lastSwitchSig && panelStatus.state !== 'no-char') return;
+    lastSwitchSig = sig;
+    try { charKey = null; await loadForCurrentChar(); }  // 채팅이 바뀌면 세션도 새로 잡아야 한다
+    catch (e) { console.log('[simcore] 전환 감지 로드 실패:', e.message); }
+  };
+  const switchTimer = setInterval(switchTick, 1500);
+
+  // ── ① 전송: 상태 주입 (beforeRequest) ─────────────────────
+  // ── ⓪ 유저 입력: 채팅 명령 ───────────────────────────────
+  // 배포받은 유저가 플러그인 패널을 열지 않고도 상태를 고칠 수 있는 유일한 통로.
+  // 상태창 안의 버튼은 리스가 클릭 이벤트에서 target을 잘라 넘겨서 구조적으로 못 쓴다.
+  // [live-test] 'input' 훅이 유저 메시지 저장 전에 걸리는지, 반환값이 실제로 반영되는지 확인 필요.
+  await Risuai.addRisuScriptHandler('input', async (content) => {
+    try {
+      if (!content || !content.includes('/')) return content;
+      await loadForCurrentChar();
+      if (!session || !schema) return content;
+      const r = engine.applyChatCommands(schema, session.current, content);
+      if (!r.applied.length) return content;
+      session.current.vars = r.vars;
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      if (panelBuilt) renderPanel();
+      console.log('[simcore] 채팅 명령', r.applied.map((a) => `${a.id} ${a.how}`).join(', '));
+      return r.text;
+    } catch (e) {
+      console.log('[simcore] 채팅 명령 오류:', e.message);
+      return content;
+    }
+  });
+
+  // ⚠ 이 훅은 메인 생성에만 걸리는 게 아니다. 리수는 앱에서 나가는 **모든** 요청에
+  // `replacer(formated, model)`로 부르고, model은 'model'|'submodel'|'memory'|'emotion'|
+  // 'translate'|'otherAx' 중 하나다. 즉 모듈의 루아 axLLM('otherAx')도, 다른 플러그인의
+  // runLLMModel도, 번역·요약도 전부 여기를 지나간다. type을 안 보면 남의 프롬프트에
+  // 우리 상태 블록을 얹어 그 기능을 죽이고, onSend까지 불러 우리 턴을 몰래 넘기게 된다.
+  await Risuai.addRisuReplacer('beforeRequest', async (messages, type) => {
+    // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
+    // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
+    for (const m of messages ?? []) {
+      if (m && typeof m.content === 'string') m.content = m.content.replace(MARKER_RE, '').trimEnd();
+    }
+    if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
+
+    turnBusy = true; turnBusyAt = Date.now();
+    try {
+      // 호출부(리수 request.ts)에 try/catch가 없다 — 여기서 던지면 요청 자체가 죽는다
+      await loadForCurrentChar();
+      if (!session) { turnBusy = false; return messages; }
+
+      // sendIndex = 현재 채팅의 메시지 수 - 1 (방금 추가된 유저 메시지)
+      // [live-test] 리롤 시 이 값이 원래 전송과 같게 나오는지 확인 (마지막 char 제거 후 재전송이므로 같아야 함)
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const sendIndex = Math.max(0, (chat?.message?.length ?? 1) - 1);
+
+      const r = await session.onSend(sendIndex);
+      lastChangeLog = r.changeLog;
+      messages.push({ role: 'system', content: r.promptBlock });
+      await mirrorVars(chaIdx, chatIdx);
+      await writeBridgeControl(chaIdx, chatIdx);
+    } catch (e) {
+      console.log('[simcore] beforeRequest 오류:', e.message);
+    }
+    return messages;
+  });
+
+  // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
+  await Risuai.addRisuScriptHandler('output', async (content) => {
+    if (!session) { turnBusy = false; return content; }
+    try {
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      // outIndex = 이번에 저장될 char 메시지 인덱스
+      // [live-test] output 핸들러 시점에 메시지가 이미 배열에 있는지/없는지 확인해 ±1 보정
+      const outIndex = chat?.message?.length ?? 0;
+      const mode = await resolveAuxMode();
+      const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
+
+      // 최초설정 턴: 절대값 세팅 경로 (정기 틱·이벤트 없음)
+      if (await session.isSetupTurn(outIndex)) {
+        if (mode === 'lua') {
+          // 루아 브리지가 setup 프롬프트로 호출 중 — 결과를 폴링해 적용 (설정 소비는 그때)
+          lastOutIndex = outIndex;
+          pollLuaBridge(outIndex, true, baseSeq);
+          return content + `\n\n⟦simcore:${outIndex}⟧`;
+        }
+        let setupText = null;
+        if (mode !== 'off') {
+          setupText = await callAuxLLM(session.getSetupPrompt(content), 500);
+        }
+        if (setupText && setupText.blocked) {
+          // 차단됨: 설정을 소비하지 않고 파이프라인 밖에서 재시도
+          const setupPrompt = session.getSetupPrompt(content);
+          scheduleDeferredAux(setupPrompt, 500, async (text) => {
+            const r = await session.onSetupOutput(outIndex, text);
+            lastChangeLog = r.changeLog;
+            lastAux.applied = r.changeLog.length;
+            const ca = await Risuai.getCurrentCharacterIndex();
+            const ci = await Risuai.getCurrentChatIndex();
+            await mirrorVars(ca, ci);
+            console.log('[simcore] 최초설정 지연 적용:', r.changeLog.length, '개 변수');
+          }, '최초설정');
+          lastOutIndex = outIndex;
+          return content + `\n\n⟦simcore:${outIndex}⟧`;
+        }
+        const r = await session.onSetupOutput(outIndex, typeof setupText === 'string' ? setupText : null);
+        lastChangeLog = r.changeLog;
+        lastOutIndex = outIndex;
+        await mirrorVars(chaIdx, chatIdx);
+        console.log('[simcore] 최초설정 적용:', r.changeLog.length, '개 변수');
+        return content + `\n\n⟦simcore:${outIndex}⟧`;
+      }
+
+      let auxText = null;
+      // 프롬프트를 만들 때 본 글. 델타를 받을 때 같은 글로 같은 필터를 돌려야 어긋나지 않는다.
+      // (aux 경로에서만 채워진다 — 브리지 모드는 필터를 안 쓰므로 null 그대로 둔다)
+      let seenText = null;
+      const allowCount = schema.updater?.allow?.length ?? 0;
+      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount });
+      if (mode === 'off') {
+        lastAux = { status: '호출 건너뜀 — 설정값이 off', raw: '', applied: 0 };
+      } else if (allowCount === 0) {
+        lastAux = { status: '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)', raw: '', applied: 0 };
+      }
+      if (mode === 'aux' && allowCount > 0) {
+        // 유저의 이번 입력도 델타 판정 근거에 포함 ("500골드를 기부한다" 같은 의지 반영)
+        const msgs = chat?.message ?? [];
+        let lastUserText = null, lastUserIdx = -1;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'user') { lastUserText = msgs[i].data; lastUserIdx = i; break; }
+        }
+        // 앞선 대화 맥락 — 스키마가 정한 턴 수만큼 (1 = 이번 턴만, 지금까지의 동작)
+        const ctxTurns = clampContextTurns(schema.updater?.contextTurns);
+        let historyText = '';
+        if (ctxTurns > 1 && lastUserIdx > 0) {
+          const back = (ctxTurns - 1) * 2;
+          historyText = engine.formatHistory(
+            msgs.slice(Math.max(0, lastUserIdx - back), lastUserIdx)
+              .map((m) => ({ role: m.role, text: m.data })));
+        }
+        // 프롬프트를 만들 때 본 글과 델타를 받을 때 보는 글이 같아야 한다 (mentions 필터 기준)
+        seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
+        trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
+        const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
+        auxText = await callAuxLLM(auxPrompt, 400);
+        if (auxText && auxText.blocked) {
+          // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용
+          scheduleDeferredAux(auxPrompt, 400, async (text) => {
+            const parsed = engine.parseAuxResponse(text);
+            if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText);
+            session.current = amended.state;
+            await session.store.save('out', outIndex, amended.state);
+            lastChangeLog = [...lastChangeLog, ...amended.changeLog];
+            lastAux.applied = amended.changeLog.length;
+            const ca = await Risuai.getCurrentCharacterIndex();
+            const ci = await Risuai.getCurrentChatIndex();
+            await mirrorVars(ca, ci);
+            console.log('[simcore] 델타 지연 적용:', amended.changeLog.length + '건',
+              amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
+          }, '델타');
+          auxText = null; // 즉시 경로에서는 변화 없이 진행 (틱·이벤트는 아래에서 정상 처리)
+        } else if (typeof auxText === 'string' && !engine.parseAuxResponse(auxText)) {
+          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도. 원문:', auxText.slice(0, 200));
+          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', 400);
+          auxText = typeof retry === 'string' ? retry : null;
+        }
+        if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
+      }
+
+      const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
+      lastChangeLog = r.changeLog;
+      lastOutIndex = outIndex;
+      lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
+        r.changeLog.map((c) => c.id).join(', ') || '(없음)',
+        '/ 보조 파싱:', r.auxParsed ? Object.keys(r.auxParsed.changes).length + '개 제안' : '실패');
+      await mirrorVars(chaIdx, chatIdx);
+      await syncActionButtons(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 버튼 갱신
+      // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
+      if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
+      return content + `\n\n⟦simcore:${outIndex}⟧`;
+    } catch (e) {
+      console.log('[simcore] output 오류:', e.message);
+      return content;
+    } finally {
+      turnBusy = false;                  // 실패해도 반드시 풀어야 전환 감지가 영영 멈추지 않는다
+    }
+  });
+
+  // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
+  await Risuai.addRisuScriptHandler('display', (content) => {
+    if (!session || !content.includes('⟦simcore:')) return content;
+    return content.replace(MARKER_RE, (_, idxStr) => {
+      try {
+        // 마지막 메시지의 마커만 실시간 상태, 과거 마커는 해당 시점 스냅샷
+        // [live-test] 과거 스냅샷 렌더는 async가 필요하므로 v0.1은 최신 상태로 통일,
+        //             과거 메시지 상태창은 v0.2에서 (display 핸들러의 async 지원 여부 확인)
+        // CSS는 메시지에 자체 포함 (mainDom 권한 불필요)
+        // 액션은 '범례'로 넣는다 — 우상단 버튼은 글리프 하나만 보여줄 수 있어서
+        // 여기서 글리프↔라벨을 짝지어주지 않으면 무슨 버튼인지 알 수가 없다.
+        // (클릭은 여전히 우상단 버튼 몫: 메시지 안 버튼은 리스가 target을 잘라내 동작하지 않는다)
+        // idxStr = 이 마커가 박힌 메시지 번호. 탭의 라디오 id·name에 섞여 메시지끼리
+        // 서로의 탭을 건드리는 걸 막는다 (같은 id가 여럿이면 label[for]은 첫 번째만 집는다).
+        return renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
+          { includeStyle: true, uid: idxStr });
+      } catch (e) {
+        console.log('[simcore] display 오류:', e.message);
+        return '';
+      }
+    });
+  });
+
+  // (상태창 CSS는 메시지 내 <style>로 자체 포함되므로 메인 DOM 스타일 주입 불필요)
+
+  // ── 액션 = 화면 우상단 플로팅 버튼 ─────────────────────────
+  // 왜 상태창 안의 <button>이 아니라 여기냐:
+  // 리스가 플러그인에 메인 DOM 클릭을 넘길 때 이벤트 객체를 잘라서 준다. 전달되는 필드는
+  // type/clientX/clientY/button/buttons/수식키뿐이고 **target이 없다**. 그래서 document
+  // 클릭 위임으로는 "어느 버튼이 눌렸는지"를 알 방법이 없어 상태창 내 버튼은 구조적으로
+  // 동작하지 않는다 (v0.11까지 실제로 죽어 있었음). registerButton(location:'action')은
+  // 리스가 직접 onclick을 걸어주는 네이티브 콜백이라 우회 없이 확실히 동작하고,
+  // 메시지 밖이라 봇의 커스텀 CSS와도 충돌하지 않는다.
+  // (상태 변수 ACTION_BTN_PREFIX/actionBtnIds/actionBtnSig는 위 '스키마 로드' 절에 선언 —
+  //  최초 loadForCurrentChar()가 이 지점보다 먼저 실행되므로 TDZ를 피하려면 앞에 있어야 한다)
+
+  /**
+   * 액션 사용 가능 여부 (방어형).
+   * 조건식이 지금 상태에 없는 변수를 참조하면 평가기가 예외를 던진다. 그대로 두면 버튼 갱신이나
+   * 패널 렌더 전체가 죽으므로, 그 액션 하나만 '사용 불가'로 낮추고 이유를 보여준다.
+   */
+  function safeAvailability(a) {
+    try { return engine.actionAvailability(schema, session.current, a); }
+    catch (e) { return { ok: false, reason: `조건식 오류 — ${e.message}` }; }
+  }
+
+  /**
+   * 액션의 현재 상태. 우상단 버튼과 상태창 범례가 같은 값을 봐야 짝이 맞으므로 한 곳에서 만든다.
+   * (actionGlyph는 render 모듈이 갖고 있다 — 범례도 같은 글리프를 써야 하기 때문)
+   */
+  function currentActionStates() {
+    if (!session || !schema) return [];
+    return (schema.actions || []).map((a) => {
+      const avail = safeAvailability(a);
+      return {
+        id: a.id,
+        label: a.label ?? a.id,
+        armed: !!session.current.meta.armed[a.id],
+        disabled: !avail.ok,
+        reason: avail.reason ?? '',
+      };
+    });
+  }
+
+  async function syncActionButtons() {
+    const states = currentActionStates();
+    const sig = JSON.stringify(states);
+    if (sig === actionBtnSig) return; // 변화 없음 — 재등록 생략
+    actionBtnSig = sig;
+
+    const wanted = new Set();
+    for (const st of states) {
+      const btnId = ACTION_BTN_PREFIX + st.id;
+      wanted.add(btnId);
+      // 아이콘 칸에는 글리프가 딱 하나 들어간다. 폭도 높이도 고정이라 두 글자를 넣으면
+      // 둘째 글자가 알약 밖으로 삐져나온다(1차 시도는 라벨 전체를 넣어 세로로 쏟아졌고,
+      // 2차 시도는 '● 🔥'처럼 두 글자를 넣어 아래로 흘렀다).
+      // → 상태는 글자를 '더하는' 대신 글리프를 '바꿔서' 표시한다.
+      //   어느 액션인지는 상태창 범례가 같은 글리프로 짝을 지어 알려준다(renderStatusHtml).
+      const icon = st.disabled ? '🔒' : (st.armed ? '✅' : actionGlyph(st.label));
+      await Risuai.registerButton(
+        { name: st.label, icon: escapeText(icon), iconType: 'html', location: 'action', id: btnId },
+        () => { onActionButton(st.id); },
+      );
+    }
+    for (const old of actionBtnIds) {
+      if (!wanted.has(old)) { try { await Risuai.unregisterUIPart(old); } catch {} }
+    }
+    actionBtnIds = wanted;
+  }
+
+  async function onActionButton(actionId) {
+    if (!session) return;
+    const r = session.toggle(actionId);
+    console.log('[simcore] 액션', actionId, r.armed ? '무장 ●' : '해제', r.blocked ? `(차단: ${r.blocked})` : '');
+    if (r.blocked) {
+      try { await Risuai.alert(`'${actionId}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
+    }
+    await syncActionButtons();
+    if (panelBuilt) renderPanel();
+  }
+
+  /** 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) — 상태 앵커·복원 기준점 */
+  async function lastCharIndex(chaIdx, chatIdx) {
+    try {
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const msgs = chat?.message ?? [];
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'char') return i;
+    } catch {}
+    return -1;
+  }
+
+  // ── CBS 호환 미러링: chat.scriptstate['$'+id] ─────────────
+  async function mirrorVars(chaIdx, chatIdx) {
+    try {
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      if (!chat) return;
+      chat.scriptstate = chat.scriptstate || {};
+      for (const [id, val] of Object.entries(session.current.vars)) {
+        chat.scriptstate['$' + id] = String(val); // 채팅 변수는 문자열 규약
+      }
+      await Risuai.setChatToIndex(chaIdx, chatIdx, chat);
+    } catch (e) {
+      console.log('[simcore] 미러링 실패:', e.message);
+    }
+  }
+
+  // ── 관리 패널 (플러그인 자체 iframe UI — 제약 없는 DOM) ────
+  let lastOutIndex = -1;
+  let panelBuilt = false;
+
+  function buildPanelSkeleton() {
+    if (panelBuilt) return;
+    panelBuilt = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      #sc-root { position:fixed !important; inset:0 !important; overflow:auto !important;
+        background:#0e1526 !important; color:#e6ebf5 !important; z-index:2147483000 !important;
+        font-family: system-ui, 'Apple SD Gothic Neo', sans-serif !important; font-size:14px !important;
+        line-height:1.55 !important; text-align:left !important; }
+      #sc-root * { box-sizing:border-box; }
+      #sc-root .wrap { max-width:760px; margin:0 auto; padding:16px 16px 80px; }
+      #sc-root h1 { font-size:16px; color:#ffffff; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+      #sc-root h2 { font-size:13.5px; color:#9db8e8; margin:22px 0 10px; padding-left:9px;
+        border-left:3px solid #5b8def; letter-spacing:.02em; }
+      #sc-root button { background:#1c2740 !important; color:#dfe7f5 !important; border:1px solid #3d5384 !important;
+        border-radius:8px !important; padding:5px 12px !important; cursor:pointer !important; font-size:13px !important; }
+      #sc-root button:hover { background:#24345c !important; border-color:#5b8def !important; }
+      #sc-root button.primary { background:#3660d9 !important; border-color:#6b93f2 !important; color:#ffffff !important; font-weight:600; }
+      #sc-root button.primary:hover { background:#4370e8 !important; }
+      #sc-root button.danger { background:#331722 !important; border-color:#8f3a4c !important; color:#f2aab6 !important; }
+      #sc-root button.danger:hover { background:#4a1f2e !important; border-color:#d9596f !important; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:4px; }
+      #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:1px 4px 1px 8px;
+        border:1px solid #3d5384; border-radius:999px; background:#16203a; font-size:12.5px; white-space:nowrap; }
+      #sc-root .chip .num { color:#8fd6a8; font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { color:#7d8aa5; font-size:11.5px; }
+      #sc-root .chip button { padding:0 5px !important; font-size:12px !important; line-height:1.4 !important;
+        border:none !important; background:transparent !important; color:#8a99b5 !important; border-radius:999px !important; }
+      #sc-root .chip button:hover { background:#4a1f2e !important; color:#f2aab6 !important; }
+      #sc-root .chip-sum { color:#9db8e8; font-size:12px; margin-left:2px; }
+      #sc-root button.armed { border-color:#6b93f2 !important; background:rgba(91,141,239,.28) !important; color:#fff !important; }
+      #sc-root .sc-maintabs { display:flex; gap:4px; border-bottom:2px solid #24304a; margin-bottom:14px; }
+      #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
+        border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }
+      #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
+      #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
+      #sc-root .status-warn { color:#ffd166; }
+      #sc-root table { width:100%; border-collapse:collapse; font-size:13px; }
+      #sc-root th { color:#9db8e8; font-weight:600; }
+      #sc-root td, #sc-root th { padding:6px 8px; border-bottom:1px solid #24304a; text-align:left; }
+      #sc-root input, #sc-root textarea, #sc-root select { background:#0a101f !important; color:#e6ebf5 !important;
+        border:1px solid #35486e !important; border-radius:6px !important; padding:4px 8px !important; font-size:13px !important; }
+      #sc-root input:focus, #sc-root textarea:focus { border-color:#5b8def !important; outline:none !important; }
+      #sc-root input { width:130px; }
+      #sc-root .report { font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; margin-top:6px; }
+      #sc-root .muted { color:#a7b4cc; font-size:12px; }
+      #sc-root .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+      #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
+      #sc-root button:disabled { opacity:.45 !important; cursor:progress !important; }
+      #sc-root .sc-help { max-width:920px; line-height:1.7; }
+      #sc-root .sc-help h3 { color:#9db8e8; font-size:15px; margin:22px 0 6px; padding-top:14px; border-top:1px solid #24304a; }
+      #sc-root .sc-help h3:first-of-type { border-top:none; padding-top:0; }
+      #sc-root .sc-help p { margin:6px 0; }
+      #sc-root .sc-help ul { margin:6px 0; padding-left:20px; }
+      #sc-root .sc-help li { margin:5px 0; }
+      #sc-root .sc-help b { color:#dfe7f5; }
+      #sc-root .sc-flow, #sc-root .sc-code { background:#0a101f; border:1px solid #24304a; border-left:3px solid #3d5384;
+        border-radius:6px; padding:10px 12px; margin:8px 0; font-family:ui-monospace,monospace; font-size:12px;
+        line-height:1.6; white-space:pre-wrap; overflow-x:auto; color:#cfe0ff; }
+      #sc-root .sc-code-i { font-family:ui-monospace,monospace; font-size:12px; background:#0a101f;
+        border:1px solid #24304a; border-radius:4px; padding:1px 5px; color:#cfe0ff; }
+      #sc-root .sc-note { background:rgba(91,141,239,.10); border-left:3px solid #5b8def;
+        border-radius:6px; padding:9px 12px; margin:8px 0; font-size:13px; }
+      #sc-root .sc-check { display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
+      #sc-root .sc-check input { width:auto !important; cursor:pointer; }
+      #sc-root .sc-prog { margin-top:8px; }
+      #sc-root .sc-prog-label { font-size:12px; color:#9db8e8; margin-bottom:4px; display:flex; gap:8px; align-items:center; }
+      #sc-root .sc-prog-bar { height:8px; background:#16203a; border:1px solid #35486e; border-radius:99px; overflow:hidden; }
+      #sc-root .sc-prog-fill { height:100%; background:linear-gradient(90deg,#3660d9,#6b93f2); width:0%; transition:width .12s linear; }
+      #sc-root .sc-prog-fill.indet { width:35% !important; animation:sc-slide 1s ease-in-out infinite alternate; }
+      @keyframes sc-slide { from { margin-left:0%; } to { margin-left:65%; } }
+      #sc-root .sc-spin { display:inline-block; width:11px; height:11px; border:2px solid #3d5384;
+        border-top-color:#6b93f2; border-radius:50%; animation:sc-rot .7s linear infinite; }
+      @keyframes sc-rot { to { transform:rotate(360deg); } }
+    `;
+    document.head.appendChild(style);
+    const root = document.createElement('div');
+    root.id = 'sc-root';
+    root.style.cssText = 'position:fixed;inset:0;background:#0e1526;color:#e6ebf5;overflow:auto;z-index:2147483000;';
+    root.innerHTML = `
+      <div class="wrap">
+        <h1>SimCore
+          <span class="row">
+            <button id="sc-reload">스키마 다시 읽기</button>
+            <button id="sc-close" class="primary">닫기</button>
+          </span>
+        </h1>
+        <div id="sc-status"></div>
+        <div class="sc-maintabs">
+          <button class="sc-maintab on" data-page="play">현황</button>
+          <button class="sc-maintab" data-page="edit">봇 편집</button>
+          <button class="sc-maintab" data-page="save">세이브</button>
+          <button class="sc-maintab" data-page="help">도움말</button>
+        </div>
+
+        <div class="sc-page on" id="sc-page-play">
+          <h2>새 시작</h2>
+          <div class="muted">프리셋은 새 채팅 시작 전에 고르는 걸 권장. AI 최초설정이 켜진 스키마는 첫 턴 대화로 시작 상황을 정한다.</div>
+          <div id="sc-presets" class="row">-</div>
+          <div class="row"><button id="sc-resetall" class="danger">상태 완전 초기화 (스냅샷 삭제)</button></div>
+          <h2>상태 변수 (수동 보정)</h2>
+          <div id="sc-vars" class="muted">스키마 로드 후 표시</div>
+          <h2>액션 무장</h2>
+          <div id="sc-actions" class="muted">-</div>
+          <h2>엔진 정보</h2>
+          <div class="row">
+            <button id="sc-auxtest">보조 모델 연결 테스트</button>
+            <span class="muted">버튼 클릭 시점에 직접 호출해 차단 여부를 확정 진단</span>
+          </div>
+          <div id="sc-info" class="report muted"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-edit">
+          <div class="muted">블록 편집기로 봇의 시뮬 규칙을 만들고, 아래 버튼으로 현재 캐릭터에 설치. 카드를 내보내면 스키마도 같이 나간다.</div>
+          <div class="row">
+            <button id="sc-install" class="primary">현재 캐릭터에 설치/업데이트</button>
+            <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
+            <button id="sc-copy">현재 캐릭터 스키마 불러오기</button>
+            <button id="sc-schema-restore">백업 복원</button>
+            <select id="sc-template"></select>
+            <button id="sc-new">템플릿에서 새로 만들기</button>
+          </div>
+          <div class="row">
+            <button id="sc-luabridge">루아 브리지 설치/갱신</button>
+            <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
+            <span class="muted">플러그인의 보조모델 호출이 차단된 환경용 우회로 — 설치 후 플러그인 설정 aux_model_mode를 lua로</span>
+          </div>
+          <div id="sc-editor-warn"></div>
+          <div id="sc-schema-report" class="report"></div>
+          <div id="sc-editor" style="margin-top:10px"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-save">
+          <h2>세이브 데이터 — 상태 백업/이동</h2>
+          <div class="muted">스냅샷 전체를 파일로 내보내거나 가져와. 스냅샷이 없는 채팅(다른 기기에서 가져온 채팅)은 [미러에서 복원]으로 변수 값만이라도 되살릴 수 있어.</div>
+          <div class="row">
+            <button id="sc-export">세이브 내보내기</button>
+            <button id="sc-import">세이브 가져오기</button>
+            <button id="sc-mirror">미러에서 복원</button>
+            <input type="file" id="sc-import-file" accept=".json" style="display:none">
+          </div>
+          <div class="row">
+            <label class="sc-check"><input type="checkbox" id="sc-import-schema" checked>
+              가져올 때 동봉된 스키마도 함께 복원</label>
+          </div>
+          <div class="muted">체크 시 세이브에 들어 있는 스키마(변수·규칙·이벤트·액션)까지 되돌린다 — 기존 스키마는 자동 백업되니
+            [봇 편집]의 [백업 복원]으로 되돌릴 수 있어. 해제하면 지금 스키마를 그대로 두고 변수 값만 가져온다.</div>
+          <div id="sc-save-report" class="report"></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-help">
+          <h2>개념 정리 — 이것만 알면 된다</h2>
+          <div class="muted">아래 개념이 헷갈리면 [봇 편집] → [템플릿에서 새로 만들기]로 장르 템플릿을 열어
+            실제로 어떻게 쓰였는지 보는 게 제일 빠르다.</div>
+
+          <div class="sc-help">
+            <h3>흐름 — 한 턴에 무슨 일이 일어나나</h3>
+            <pre class="sc-flow">유저 입력
+  ↓  ① 전송 전: 상태 블록 + 지시문 + 지난 턴 이벤트 통지를 <b>메인 모델</b>에 붙여 보냄
+메인 모델이 서사를 씀
+  ↓  ② 응답 후: 그 서사를 <b>보조 모델</b>에 보내 "무엇이 얼마나 변했나"를 JSON으로 받음
+  ↓  ③ 엔진이 계산: 보조모델 델타 → 정기 계산 → 조건 이벤트 → 랜덤 이벤트
+상태 갱신 · 상태창 표시</pre>
+            <div class="sc-note">⚠ <b>규칙·이벤트의 조건식과 가중치는 어느 모델에도 전달되지 않는다.</b>
+              전부 플러그인이 자바스크립트로 계산한다. 모델이 알 수 있는 건 <b>결과</b>뿐이다 —
+              이벤트가 일어난 걸 모델에게 알리고 싶으면 반드시 <b>notify</b>를 써야 한다.</div>
+
+            <h3>변수 (vars)</h3>
+            <p>실제로 저장되는 값. 여섯 종류.</p>
+            <ul>
+              <li><b>정수/실수</b> — 체력, 돈처럼 오르내리는 수. 보조모델은 <b>증감량</b>으로 답한다 (−5, +100).</li>
+              <li><b>텍스트</b> — 한 줄 설명. 보조모델이 <b>새 값 전체</b>로 갈아끼운다.</li>
+              <li><b>참/거짓</b> — 켜짐/꺼짐 상태 (기근 중인가?).</li>
+              <li><b>선택지</b> — 정해둔 목록 중 하나 (봄/여름/가을/겨울). 목록 밖 값은 거부된다.</li>
+              <li><b>목록</b> — 인벤토리, 단서처럼 여러 개. <b>추가/제거</b>로만 바뀌어 통째로 증발하지 않는다.</li>
+            </ul>
+
+            <h3>파생 변수 (derived)</h3>
+            <p>다른 변수로 <b>그때그때 계산되는 읽기 전용 값</b>. 저장되지 않고, 규칙으로 직접 바꿀 수도 없다.
+              "인구가 늘면 세수도 자동으로 는다" 같은 관계를 한 줄로 못 박아 두는 용도다.</p>
+            <pre class="sc-code">월세수  = round(인구 * 0.3)      ← 인구가 바뀌면 자동으로 따라 바뀜
+순익   = 매출 - 인건비 - 임대료   ← 파생끼리 이어 붙일 수도 있다</pre>
+            <div class="sc-note">파생을 쓰면 규칙이 짧아진다. 매 턴 "자금 = 자금 + round(인구*0.3) - 병력*2"라고
+              길게 쓰는 대신 "자금 = 자금 + 순익"으로 끝난다.</div>
+
+            <h3>규칙 · 이벤트 (rules)</h3>
+            <ul>
+              <li><b>정기 계산(onTurn)</b> — 매 턴 <b>무조건</b> 실행. 시간 경과, 이자, 식량 소비 같은 것.
+                위에서부터 차례로 적용되고 <b>순서가 결과를 바꾼다</b>.</li>
+              <li><b>조건 이벤트(events)</b> — <b>when</b>이 참이 되는 순간 발동. 조건이 계속 참이면 매 턴 또 발동하므로,
+                한 번만 터뜨리려면 <b>once</b>를 켜거나 "발동하면 조건이 거짓이 되도록" 설계한다.
+                <br>예: <span class="sc-code-i">기근 시작</span>은 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span> — 발동하며 기근을 켜니 다음 턴엔 조건이 거짓.</li>
+              <li><b>랜덤 이벤트(randomEvents)</b> — 예측 불가능한 사건.</li>
+            </ul>
+
+            <h3>가중치 (weight) — 랜덤 이벤트 뽑는 법</h3>
+            <p>두 단계로 굴린다.</p>
+            <pre class="sc-flow">1단계: 이번 턴에 랜덤 이벤트가 일어날까?
+        → <b>chancePerTurn</b> 확률로 결정 (0.3 = 30%)
+2단계: 일어난다면 어느 것?
+        → 조건(when)·재사용 대기(cooldown)를 통과한 것들 중 <b>weight에 비례</b>해 하나</pre>
+            <pre class="sc-code">산적 습격  weight 3  ┐
+행상인 방문 weight 2  ├ 합 6 → 산적 3/6(50%), 행상인 2/6(33%), 역병 1/6(17%)
+역병      weight 1  ┘</pre>
+            <div class="sc-note">가중치는 <b>확률이 아니라 상대 비중</b>이다. 3은 1보다 3배 자주 나온다는 뜻일 뿐,
+              합이 100이 될 필요도 없다. <b>cooldown</b>은 "한 번 나오면 N턴은 다시 안 나옴"이다.</div>
+
+            <h3>지시문 (directives)</h3>
+            <p>조건이 참인 <b>동안 계속</b> 메인 모델에게 주는 연출 지침. 수치를 바꾸지 않고 <b>글의 방향만</b> 잡는다.
+              이벤트의 notify가 "일어난 일을 한 번 알리는" 것이라면, 지시문은 "그런 상태니까 이렇게 써라"를 매 턴 반복한다.</p>
+            <pre class="sc-code">조건: 기근            → "굶주림과 흉흉한 민심이 묘사에 배어야 한다"
+조건: 관계 == "썸"    → "연인이 아니다. 확신 대신 망설임으로 그려라"
+조건: 진상 미공개      → "범인을 직접 말하지 마라. 단서만 흘려라"</pre>
+
+            <h3>액션 (actions)</h3>
+            <p>유저가 누르는 버튼. 화면 <b>우상단</b>에 뜬다. 누르면 바로 실행되는 게 아니라
+              <b>무장(●)</b> 상태가 되고, <b>다음 메시지를 보낼 때</b> 효과가 적용되며 AI 전달문이 함께 나간다.</p>
+            <ul>
+              <li><b>1회성</b> — 한 번 쓰면 무장이 풀린다. <b>지속</b> — 끌 때까지 매 턴 적용된다.</li>
+              <li><b>조건(when)</b>이 거짓이거나 <b>쿨다운</b> 중이면 🔒로 잠긴다.</li>
+            </ul>
+
+            <h3>AI 설정 (updater) — 보조 모델이 건드릴 수 있는 범위</h3>
+            <p>여기 <b>등록한 변수만</b> 보조 모델이 바꿀 수 있다. 등록 안 한 변수는 규칙·이벤트·액션만 건드린다.</p>
+            <ul>
+              <li><b>증감 한도</b>를 꼭 줘라. 없으면 모델이 "골드 −999999"를 제안해도 그대로 먹는다.</li>
+              <li><b>얻는 한도 / 잃는 한도</b>를 따로 줄 수 있다. 연애 템플릿은 호감을 <span class="sc-code-i">최대 +8 / 최대 −15</span>로 줘서
+                "천천히 쌓이고 빨리 식게" 만든다.</li>
+              <li>정기 계산으로 이미 처리하는 건 <b>안내문</b>에 "중복 반영 금지"라고 적어라.</li>
+            </ul>
+
+            <h3>상태창 vs 프롬프트 — 누가 보나</h3>
+            <table>
+              <tr><th>항목</th><th>보는 쪽</th><th>쓰임</th></tr>
+              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 붙는 표. 숨기고 싶은 값은 빼면 된다</td></tr>
+              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>모델이 현재 상황을 알게 하는 블록</td></tr>
+              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>이 변수를 언제 얼마나 움직여야 하는지 힌트</td></tr>
+            </table>
+            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 이 차이를 쓴 예다 —
+              프롬프트에는 넣어 모델이 알게 하고, 상태창에서는 빼서 유저에게는 감춘다.</div>
+
+            <h3>수식에서 쓸 수 있는 것</h3>
+            <pre class="sc-code">+ - * / %        비교: == != &gt; &lt; &gt;= &lt;=      and  or  not
+조건 ? 참값 : 거짓값
+round() floor() ceil() abs() min(a,b) max(a,b) clamp(값,최소,최대)
+rand(최소,최대)   ← 규칙·이벤트 효과에서만. 조건식에는 못 쓴다
+count(목록)  has(목록, "항목")</pre>
+            <div class="sc-note">대입·반복문·함수 정의는 없다. 봇 설정은 코드가 아니라 <b>표</b>여야 하기 때문이다.</div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // 메인 탭 전환
+    for (const tab of root.querySelectorAll('.sc-maintab')) {
+      tab.onclick = () => {
+        for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
+        for (const p of root.querySelectorAll('.sc-page')) p.classList.toggle('on', p.id === 'sc-page-' + tab.dataset.page);
+        if (tab.dataset.page === 'edit') ensureEditor();
+      };
+    }
+
+    document.getElementById('sc-close').onclick = () => Risuai.hideContainer();
+    document.getElementById('sc-reload').onclick = async () => { charKey = null; await loadForCurrentChar(); renderPanel(); };
+    document.getElementById('sc-resetall').onclick = async () => {
+      if (!session) return;
+      const rep = document.getElementById('sc-status');
+      await withProgress(rep, ['sc-resetall', 'sc-reload'], '상태 초기화 중',
+        (progress) => session.resetAll(progress));
+      lastOutIndex = -1;
+      lastChangeLog = [];
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      await syncActionButtons();
+      renderPanel();
+    };
+
+    // ── 봇 편집: 블록 편집기 + 설치 ──
+    /**
+     * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
+     * 기존 스키마를 다른 내용으로 덮어쓸 때는 pluginStorage에 자동 백업을 남긴다
+     * (캐릭터당 최근 5개, 키: sim:schema-backup:<chaId>:<ts>).
+     */
+    async function installSchemaToCurrentChar(parsed) {
+      const char = await Risuai.getCharacter();
+      if (!char) return { ok: false, msg: '캐릭터가 선택되지 않음' };
+      char.globalLore = char.globalLore || [];
+      const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      const content = JSON.stringify(parsed);
+      let backedUp = false;
+      if (existing && existing.content !== content) {
+        try {
+          const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
+          await Risuai.pluginStorage.setItem(bk, existing.content);
+          const keys = (await Risuai.pluginStorage.keys())
+            .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
+          for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
+          backedUp = true;
+        } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+      }
+      if (existing) existing.content = content;
+      else char.globalLore.push({
+        comment: SCHEMA_LORE_COMMENT, key: ' __simcore_never__', secondkey: '',
+        insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
+      });
+      if (hasLuaBridge(char)) installLuaBridgeOn(char, parsed); // 브리지 자동 동기화 (허용 목록/변수 변경 반영)
+      await Risuai.setCharacter(char);
+      charKey = null;
+      await loadForCurrentChar();
+      return { ok: true, backedUp };
+    }
+    document.getElementById('sc-install').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      if (!editor) return;
+      const parsed = editor.getSchema();
+      const v = validateSchema(parsed);
+      if (!v.ok) {
+        rep.innerHTML = v.errors.map((x) => `<div class="status-bad">✗ ${escapeText(x.path)} — ${escapeText(x.msg)}</div>`).join('');
+        return;
+      }
+      const r = await installSchemaToCurrentChar(parsed);
+      if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
+      // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
+      editorChaId = currentChaId;
+      editorLoadedSig = sig(parsed);
+      rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
+      renderPanel();
+    };
+    // 자동 백업에서 편집기로 복원 (바로 설치하지 않고 검토 후 [설치]를 누르게 함)
+    document.getElementById('sc-schema-restore').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      const char = await Risuai.getCharacter();
+      if (!char) return;
+      const prefix = `sim:schema-backup:${char.chaId ?? char.name}:`;
+      const keys = (await Risuai.pluginStorage.keys()).filter((k) => k.startsWith(prefix)).sort();
+      if (!keys.length) { rep.innerHTML = '<span class="status-warn">이 캐릭터의 스키마 자동 백업이 없음</span>'; return; }
+      const latest = keys[keys.length - 1];
+      try {
+        const parsed = JSON.parse(await Risuai.pluginStorage.getItem(latest));
+        loadIntoEditor(parsed);
+        const when = new Date(parseInt(latest.slice(prefix.length), 10)).toLocaleString();
+        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [설치]를 눌러야 적용됨 (백업 ${keys.length}개 보유)</span>`;
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">백업 해석 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    document.getElementById('sc-uninstall').onclick = async () => {
+      const char = await Risuai.getCharacter();
+      if (!char?.globalLore) return;
+      // 제거 전에도 자동 백업 (제거 → 새 설치 흐름에서 이전 스키마가 영영 사라지는 사고 방지)
+      const removing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      if (removing) {
+        try { await Risuai.pluginStorage.setItem(`sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`, removing.content); }
+        catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+      }
+      char.globalLore = char.globalLore.filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
+      char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      await Risuai.setCharacter(char);
+      charKey = null; session = null; schema = null;
+      await loadForCurrentChar();
+      renderPanel();
+    };
+    document.getElementById('sc-copy').onclick = async () => {
+      const char = await Risuai.getCharacter();
+      const lore = (char?.globalLore || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+      if (!lore) return;
+      try { loadIntoEditor(JSON.parse(lore.content)); renderPanel(); } catch {}
+    };
+    const tplSelect = document.getElementById('sc-template');
+    for (const [key, t] of Object.entries(TEMPLATES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = t.label;
+      tplSelect.appendChild(opt);
+    }
+    document.getElementById('sc-new').onclick = () => {
+      const t = TEMPLATES[tplSelect.value];
+      if (!t) return;
+      ensureEditor();
+      editor.setSchema(JSON.parse(JSON.stringify(t.schema))); // 기준선은 갱신하지 않음 → '설치본과 다름' 경고가 뜬다
+      renderPanel();
+    };
+
+    // ── 보조 모델 연결 테스트 (유저 제스처 컨텍스트에서의 차단 여부 확정 진단) ──
+    document.getElementById('sc-auxtest').onclick = async () => {
+      lastAux = { status: '테스트 호출 중...', raw: '', applied: lastAux.applied };
+      renderPanel();
+      const r = await callAuxLLM('연결 테스트다. 정확히 {"ok":true} 만 출력하라.', 60);
+      if (r && r.blocked) {
+        lastAux.status = '테스트 결과: 차단됨 — 버튼 클릭 시점에도 차단이므로 이 환경은 플러그인 LLM 호출 전면 차단. '
+          + '[봇 편집]의 [루아 브리지 설치] + aux_model_mode=lua 사용을 권장';
+      } else if (typeof r === 'string') {
+        lastAux.status = '테스트 결과: 성공 — 플러그인 호출 자체는 허용됨 (자동 갱신이 안 되면 다시 알려줘)';
+      } else {
+        lastAux.status = '테스트 결과: 실패 — ' + lastAux.status;
+      }
+      renderPanel();
+    };
+
+    // ── 루아 브리지 설치/제거 ──
+    document.getElementById('sc-luabridge').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      if (!schema) { rep.innerHTML = '<span class="status-bad">먼저 스키마를 캐릭터에 설치해야 함</span>'; return; }
+      const char = await Risuai.getCharacter();
+      if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+      installLuaBridgeOn(char, schema);
+      await Risuai.setCharacter(char);
+      rep.innerHTML = '<span class="status-ok">✓ 루아 브리지 설치/갱신 완료 — 이제 플러그인 설정에서 aux_model_mode를 lua로 바꾸면 '
+        + '다음 턴부터 루아 경로(axLLM)로 변수 갱신이 돈다. 캐릭터의 LLA(low level access) 체크는 자동으로 켰지만, '
+        + '캐릭터 설정 → Scripts에서 켜져 있는지 한번 확인해줘.</span>';
+    };
+    document.getElementById('sc-luabridge-rm').onclick = async () => {
+      const rep = document.getElementById('sc-schema-report');
+      const char = await Risuai.getCharacter();
+      if (!char) return;
+      char.triggerscript = (char.triggerscript || []).filter((t) => t.comment !== LUA_BRIDGE_COMMENT);
+      await Risuai.setCharacter(char);
+      rep.innerHTML = '<span class="status-ok">✓ 루아 브리지 제거됨</span>';
+    };
+
+    // ── 세이브 ──
+    const SAVE_BTNS = ['sc-export', 'sc-import', 'sc-mirror'];
+    document.getElementById('sc-export').onclick = async () => {
+      if (!session) return;
+      const rep = document.getElementById('sc-save-report');
+      try {
+        const data = await withProgress(rep, SAVE_BTNS, '세이브 내보내는 중',
+          (progress) => session.exportData(lastOutIndex, progress));
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `simcore-save-${(schema.meta?.name ?? 'save').replace(/[^\w가-힣-]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const n = Object.keys(data.snapshots || {}).length;
+        rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 — 스냅샷 ${n}개, 스키마 동봉됨</span>`;
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    document.getElementById('sc-import').onclick = () => document.getElementById('sc-import-file').click();
+    document.getElementById('sc-import-file').onchange = async (ev) => {
+      const rep = document.getElementById('sc-save-report');
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        if (!data || data.simcoreSave !== 1 || !data.current?.vars) {
+          rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return;
+        }
+        // ① 스키마: 세이브에 동봉돼 있고 설치본과 다르면 함께 복원한다.
+        //    (상태만 되돌리고 스키마는 그대로 두면 "가져왔는데 아무것도 안 변한다"가 된다)
+        const saved = data.schema && validateSchema(data.schema).ok ? data.schema : null;
+        let schemaNote = '';
+        if (!session) {
+          if (!saved) {
+            rep.innerHTML = '<span class="status-bad">이 캐릭터에 스키마가 없어서 가져올 수 없음 — 먼저 [봇 편집]에서 스키마를 설치해줘'
+              + ' (이 세이브에는 스키마가 동봉되지 않은 구버전 형식)</span>';
+            return;
+          }
+          const r = await installSchemaToCurrentChar(saved);
+          if (!r.ok || !session) {
+            rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
+          }
+          if (editor) loadIntoEditor(saved); // 봇 편집 탭도 복원본을 보게
+          schemaNote = ' · 동봉 스키마 설치됨';
+        } else if (saved && JSON.stringify(saved) !== JSON.stringify(schema)) {
+          // 확인은 이 패널 안의 체크박스로 받는다.
+          // (호스트의 alertConfirm은 메인 앱 DOM에 뜨는데 이 패널이 fullscreen으로 그 위를 덮고 있어서
+          //  화면에 보이지도, 누를 수도 없다 — 실제로 늘 '취소'로 떨어져 스키마가 복원되지 않았다)
+          const yes = !!document.getElementById('sc-import-schema')?.checked;
+          if (yes) {
+            const r = await installSchemaToCurrentChar(saved);
+            if (!r.ok || !session) {
+              rep.innerHTML = `<span class="status-bad">세이브의 스키마 설치 실패: ${escapeText(r.msg || '세션 생성 안 됨')}</span>`; return;
+            }
+            // 스키마를 통째로 되돌렸으니 [봇 편집]의 변수·규칙·이벤트도 복원본으로 교체.
+            // (편집기가 옛 내용을 들고 있으면 다음 [설치]에서 방금 복원한 걸 다시 날린다)
+            if (editor) loadIntoEditor(saved);
+            schemaNote = ' · 동봉 스키마로 복원됨 (봇 편집 탭도 갱신)';
+          } else {
+            // 스키마를 안 바꾸면 세이브의 변수 중 현재 스키마에 없는 것은 갈 곳이 없다.
+            // (상태는 reconcileState로 정합화되므로 깨지진 않지만, 값이 무시된다는 건 알려야 한다)
+            const curIds = new Set((schema.vars || []).map((v) => v.id));
+            const orphan = Object.keys(data.current.vars).filter((id) => !curIds.has(id));
+            schemaNote = orphan.length
+              ? ` · ⚠ 스키마는 현재 것 유지 — 세이브의 변수 ${orphan.length}개(${orphan.slice(0, 3).join(', ')}${orphan.length > 3 ? '…' : ''})가 현재 스키마에 없어 표시되지 않음`
+              : ' · 스키마는 현재 것 유지';
+          }
+        }
+
+        // ② 상태: 스키마 설치로 세션이 새로 만들어졌을 수 있으므로 반드시 이 뒤에 적용
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        const anchor = await lastCharIndex(chaIdx, chatIdx);
+        const res = await withProgress(rep, SAVE_BTNS, '세이브 가져오는 중',
+          (progress) => session.importData(data, anchor, progress));
+        if (!res || !res.ok) { rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return; }
+        lastOutIndex = res.sameChat && typeof data.lastOutIndex === 'number' ? data.lastOutIndex : anchor;
+        await mirrorVars(chaIdx, chatIdx);
+        await syncActionButtons();
+        rep.innerHTML = `<span class="status-ok">✓ 가져오기 완료 — 엔진 턴 ${session.current?.meta?.turn ?? '?'}, 변수 ${Object.keys(session.current?.vars ?? {}).length}개`
+          + `${res.sameChat ? ' (같은 채팅: 스냅샷 이력까지 복원)' : ` (다른 채팅: ${anchor < 0 ? '첫 메시지' : anchor + '번 메시지'}에 상태 앵커)`}`
+          + `${escapeText(schemaNote)}</span>`;
+        renderPanel();
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">가져오기 실패: ${escapeText(e.message)}</span>`;
+      }
+      ev.target.value = '';
+    };
+    document.getElementById('sc-mirror').onclick = async () => {
+      const rep = document.getElementById('sc-save-report');
+      if (!session) return;
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+      const n = session.restoreFromMirror(chat?.scriptstate || {});
+      rep.innerHTML = n > 0
+        ? `<span class="status-ok">✓ 변수 ${n}개 복원 (쿨다운·대기 이벤트는 초기화됨)</span>`
+        : '<span class="status-warn">미러에 복원할 값이 없음</span>';
+      renderPanel();
+    };
+  }
+
+  // 블록 편집기 (봇 편집 탭 첫 진입 시 생성)
+  let editor = null;
+  let editorChaId = null;      // 편집기 내용이 어느 캐릭터 기준인지
+  let editorLoadedSig = null;  // 편집기에 불러온 시점의 내용 서명 (이후 손댔는지 판정용)
+  const BLANK_SCHEMA = () => ({
+    simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
+  });
+  const sig = (o) => { try { return JSON.stringify(o); } catch { return null; } };
+  const editorSig = () => { try { return editor ? sig(editor.getSchema()) : null; } catch { return null; } };
+  /** 편집기 내용이 불러온 뒤 사용자 손을 탔는가 */
+  function editorIsDirty() {
+    return !!editor && editorLoadedSig !== null && editorSig() !== editorLoadedSig;
+  }
+  /** 편집기에 스키마를 싣고 기준선을 갱신 */
+  function loadIntoEditor(next) {
+    ensureEditor();
+    const copy = JSON.parse(JSON.stringify(next));
+    editor.setSchema(copy);
+    editorChaId = currentChaId;
+    editorLoadedSig = sig(copy);
+  }
+  function ensureEditor() {
+    if (editor) return;
+    const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    editor = createSchemaEditor(document.getElementById('sc-editor'), base, {});
+    editorChaId = currentChaId;
+    editorLoadedSig = sig(base);
+  }
+  /**
+   * ⚠ 사고 방지 (2026-07-24 영지봇 스키마 소실 사건): 편집기는 전역이라 캐릭터를 바꾸거나
+   * 설치본이 교체돼도(세이브 가져오기 등) 이전 내용이 그대로 남는다. 그 상태로 [설치]를
+   * 누르면 현재 캐릭터의 스키마가 엉뚱한 내용으로 덮여 날아간다.
+   * - 캐릭터가 바뀌었으면: 무조건 현재 설치본으로 되돌린다 (남의 봇 내용을 들고 있을 이유가 없다).
+   * - 같은 캐릭터인데 설치본이 바뀌었으면: 편집기를 손대지 않은 상태일 때만 따라간다.
+   *   손댄 상태면 작업물을 지우지 않고, 대신 renderPanel이 경고 배너를 띄운다.
+   */
+  function syncEditorToChar() {
+    if (!editor) return;
+    if (editorChaId !== currentChaId) { loadIntoEditor(schema ?? BLANK_SCHEMA()); return; }
+    if (!editorIsDirty() && sig(schema ?? BLANK_SCHEMA()) !== editorLoadedSig) {
+      loadIntoEditor(schema ?? BLANK_SCHEMA());
+    }
+  }
+
+  function escapeText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * 오래 걸리는 작업(세이브 내보내기/가져오기/초기화)을 진행 표시와 함께 실행한다.
+   * 스냅샷 하나하나가 샌드박스 브리지 왕복이라 수십~수백 건이면 체감될 만큼 걸린다.
+   * 그동안 버튼을 잠가 중복 실행을 막고, 멈춘 것처럼 보이지 않게 진행률을 그린다.
+   * @param fn (progress) => Promise — progress(done, total, phase)
+   */
+  async function withProgress(reportEl, buttonIds, title, fn) {
+    const btns = buttonIds.map((id) => document.getElementById(id)).filter(Boolean);
+    const prevDisabled = btns.map((b) => b.disabled);
+    btns.forEach((b) => { b.disabled = true; });
+    reportEl.innerHTML =
+      `<div class="sc-prog">
+         <div class="sc-prog-label"><span class="sc-spin"></span><span id="sc-prog-text">${escapeText(title)}</span></div>
+         <div class="sc-prog-bar"><div class="sc-prog-fill indet" id="sc-prog-fill"></div></div>
+       </div>`;
+    const textEl = document.getElementById('sc-prog-text');
+    const fillEl = document.getElementById('sc-prog-fill');
+    let lastPaint = 0;
+    const progress = (done, total, phase) => {
+      if (!textEl || !fillEl) return;
+      const now = Date.now();
+      // 진행률 100%나 국면 전환은 항상, 그 외엔 60ms 간격으로만 다시 그린다 (렌더가 작업을 방해하지 않게)
+      if (now - lastPaint < 60 && done !== total) return;
+      lastPaint = now;
+      if (total > 1) {
+        const pct = Math.round((done / total) * 100);
+        fillEl.classList.remove('indet');
+        fillEl.style.width = pct + '%';
+        textEl.textContent = `${phase || title} — ${done}/${total} (${pct}%)`;
+      } else {
+        fillEl.classList.add('indet');
+        fillEl.style.width = '';
+        textEl.textContent = phase || title;
+      }
+    };
+    try {
+      return await fn(progress);
+    } finally {
+      btns.forEach((b, i) => { b.disabled = prevDisabled[i]; });
+    }
+  }
+
+  function renderPanel() {
+    buildPanelSkeleton();
+    const st = document.getElementById('sc-status');
+    const stateMsg = {
+      'no-char': ['선택된 캐릭터 없음', 'status-warn'],
+      'no-schema': [`'${panelStatus.charName}' 캐릭터에 SimCore 스키마 없음 — 아래 [스키마 관리]에서 JSON을 붙여넣고 설치하면 된다`, 'status-warn'],
+      'parse-error': [`'${panelStatus.charName}' 스키마 JSON 파싱 실패`, 'status-bad'],
+      'invalid': [`'${panelStatus.charName}' 스키마 검증 실패`, 'status-bad'],
+      'ok': [`'${panelStatus.charName}' — ${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'init': ['초기화 중', 'muted'],
+    }[panelStatus.state] || ['?', 'muted'];
+    let html = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`;
+    for (const e of panelStatus.report || []) html += `<div class="report status-bad">✗ ${e.path} — ${e.msg}</div>`;
+    for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
+    st.innerHTML = html;
+
+    // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게
+    const warnEl = document.getElementById('sc-editor-warn');
+    if (warnEl) {
+      const cur = editorSig();
+      const installed = sig(schema ?? BLANK_SCHEMA());
+      if (editor && cur !== null && cur !== installed) {
+        let what = '';
+        try {
+          const eS = editor.getSchema();
+          what = `편집기: '${eS.meta?.name ?? '이름 없음'}' 변수 ${(eS.vars || []).length}개`
+            + ` / 설치본: '${schema?.meta?.name ?? '없음'}' 변수 ${(schema?.vars || []).length}개`;
+        } catch {}
+        warnEl.innerHTML = '<div class="report status-warn">⚠ 편집기 내용이 이 캐릭터에 설치된 스키마와 다름 — '
+          + '지금 [현재 캐릭터에 설치/업데이트]를 누르면 설치본이 이 내용으로 덮어써진다. '
+          + '설치본을 보려면 [현재 캐릭터 스키마 불러오기]를 눌러줘.<br>'
+          + escapeText(what) + '</div>';
+      } else {
+        warnEl.innerHTML = '';
+      }
+    }
+
+    const varsDiv = document.getElementById('sc-vars');
+    const actionsDiv = document.getElementById('sc-actions');
+    const infoDiv = document.getElementById('sc-info');
+    const presetsDiv = document.getElementById('sc-presets');
+    if (!session) {
+      varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
+      infoDiv.textContent = ''; presetsDiv.textContent = '-';
+      return;
+    }
+
+    // 프리셋 버튼
+    presetsDiv.innerHTML = '';
+    const presets = schema.setup?.presets || [];
+    if (!presets.length) presetsDiv.innerHTML = '<span class="muted">정의된 프리셋 없음</span>';
+    for (const p of presets) {
+      const btn = document.createElement('button');
+      btn.textContent = p.label ?? p.id;
+      btn.onclick = async () => {
+        session.applyPreset(p.id);
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        await mirrorVars(chaIdx, chatIdx);
+        renderPanel();
+      };
+      presetsDiv.appendChild(btn);
+    }
+    if (engine.isSetupPending(schema, session.current)) {
+      const note = document.createElement('div');
+      note.className = 'muted';
+      note.textContent = '⏳ AI 최초설정 대기 중 — 첫 대화에서 시작 상황이 확정되면 자동으로 값이 잡힌다';
+      presetsDiv.appendChild(note);
+    }
+
+    // 변수 테이블
+    varsDiv.innerHTML = '';
+    const table = document.createElement('table');
+    table.innerHTML = '<tr><th>변수</th><th>현재값</th><th>수정</th><th></th></tr>';
+    // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 + 다시 그리기
+    const commitVars = async () => {
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+      renderPanel();
+    };
+
+    for (const v of schema.vars) {
+      const tr = document.createElement('tr');
+      const cur = session.current.vars[v.id];
+      const nameCell = `<td>${v.label ?? v.id} <span class="muted">(${v.id})</span></td>`;
+
+      // 목록은 통짜 텍스트로 못 고친다(coerce가 배열만 받는다). 항목별 ✕ + 추가 칸으로 낸다.
+      // 서사로 맺은 계약을 서사로 파기했을 때 사용자가 직접 지우는 자리이기도 하다.
+      if (v.type === 'list') {
+        const items = Array.isArray(cur) ? cur : [];
+        tr.innerHTML = nameCell;
+        const tdCur = document.createElement('td');
+        const chips = document.createElement('div');
+        chips.className = 'chips';
+        if (!items.length) chips.innerHTML = '<span class="muted">(비어 있음)</span>';
+        items.forEach((it, i) => {
+          const val = itemValue(it);
+          const exp = itemExpiry(it);
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.innerHTML = `<span>${escapeText(String(it))}</span>`
+            + (val === null ? '<span class="nonum">숫자 없음</span>'
+              : `<span class="num">${val > 0 ? '+' : ''}${val}</span>`)
+            + (exp === null ? '' : `<span class="nonum">기한 ${exp}</span>`);
+          const x = document.createElement('button');
+          x.textContent = '✕';
+          x.title = '이 항목 제거';
+          x.onclick = async () => {
+            const next = items.slice();
+            next.splice(i, 1);
+            session.current.vars[v.id] = next;
+            await commitVars();
+          };
+          chip.appendChild(x);
+          chips.appendChild(chip);
+        });
+        tdCur.appendChild(chips);
+        if (items.some((it) => itemValue(it) !== null)) {
+          const s = items.reduce((a, it) => a + (itemValue(it) ?? 0), 0);
+          const tot = document.createElement('div');
+          tot.className = 'chip-sum';
+          tot.textContent = `sum() = ${s}`;
+          tdCur.appendChild(tot);
+        }
+        tr.appendChild(tdCur);
+
+        const tdAdd = document.createElement('td');
+        const addIn = document.createElement('input');
+        addIn.placeholder = '항목 추가 (끝에 숫자)';
+        tdAdd.appendChild(addIn);
+        const tdAddBtn = document.createElement('td');
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '추가';
+        addBtn.onclick = async () => {
+          const text = addIn.value.trim();
+          if (!text) return;
+          const to = engine.applyListOps(v, items, { add: [text] });
+          if (to === undefined || JSON.stringify(to) === JSON.stringify(items)) {
+            addBtn.textContent = '거부됨'; setTimeout(() => (addBtn.textContent = '추가'), 1000); return;
+          }
+          session.current.vars[v.id] = to;
+          await commitVars();
+        };
+        tdAddBtn.appendChild(addBtn);
+        tr.appendChild(tdAdd);
+        tr.appendChild(tdAddBtn);
+        table.appendChild(tr);
+        continue;
+      }
+
+      tr.innerHTML = nameCell + `<td>${escapeText(String(cur))}</td>`;
+      const tdIn = document.createElement('td');
+      const input = document.createElement('input');
+      input.value = String(cur);
+      tdIn.appendChild(input);
+      const tdBtn = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.textContent = '적용';
+      btn.onclick = async () => {
+        let val = input.value;
+        if (v.type === 'int' || v.type === 'float') val = Number(val);
+        if (v.type === 'bool') val = val === 'true' || val === '1';
+        const to = engine.coerce(v, val);
+        if (to === undefined) { btn.textContent = '거부됨'; setTimeout(() => (btn.textContent = '적용'), 1000); return; }
+        session.current.vars[v.id] = to;
+        await commitVars();
+      };
+      tdBtn.appendChild(btn);
+      tr.appendChild(tdIn);
+      tr.appendChild(tdBtn);
+      table.appendChild(tr);
+    }
+    varsDiv.appendChild(table);
+
+    // 액션 토글
+    actionsDiv.innerHTML = '';
+    if (!(schema.actions || []).length) actionsDiv.textContent = '정의된 액션 없음';
+    for (const a of schema.actions || []) {
+      const avail = safeAvailability(a);
+      const btn = document.createElement('button');
+      const armed = !!session.current.meta.armed[a.id];
+      btn.textContent = a.label + (armed ? ' ●' : '');
+      btn.className = armed ? 'armed' : '';
+      btn.style.marginRight = '6px';
+      if (!avail.ok && !armed) { btn.disabled = true; btn.title = avail.reason; btn.style.opacity = .4; }
+      btn.onclick = () => { session.toggle(a.id); syncActionButtons(); renderPanel(); };
+      actionsDiv.appendChild(btn);
+    }
+
+    infoDiv.textContent =
+      `엔진 턴: ${session.current.meta.turn} / 마지막 출력 인덱스: ${lastOutIndex}\n` +
+      `대기 중 이벤트 통지: ${session.current.meta.pendingNotifies.length}건\n` +
+      `무장: ${Object.keys(session.current.meta.armed).join(', ') || '없음'}\n` +
+      `── 보조 모델 진단 ──\n` +
+      `상태: ${lastAux.status}\n` +
+      `마지막 턴 적용: ${lastAux.applied}건\n` +
+      `현재 스키마의 허용 변수: ${schema?.updater?.allow?.length ?? 0}개\n` +
+      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '') +
+      mentionGateWarning();
+    // 모드/브리지 상태는 비동기로 뒤에 덧붙임
+    Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
+      .then(([m, char, resolved, path]) => {
+        const pathTxt = path === 'bridge' ? '차단 확인됨 → 브리지 경유'
+          : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
+        let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
+        if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
+        infoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
+          + `\n환경 판정: ${pathTxt}`
+          + `\n루아 브리지: ${bridgeTxt}`;
+      }).catch(() => {});
+  }
+
+  async function openPanel() {
+    await loadForCurrentChar();
+    syncEditorToChar(); // 캐릭터가 바뀌었으면 편집기를 현재 캐릭터 설치본으로 (오염된 설치 사고 방지)
+    renderPanel();
+    await Risuai.showContainer('fullscreen');
+  }
+
+  // 진입점: 채팅 버튼 + 설정 메뉴 양쪽에 등록
+  try {
+    await Risuai.registerButton({ name: 'SimCore', icon: '⚙️', iconType: 'html', location: 'chat' }, openPanel);
+    await Risuai.registerSetting('SimCore 관리 패널', openPanel, '⚙️', 'html');
+  } catch (e) {
+    console.log('[simcore] UI 등록 실패:', e.message);
+  }
+
+  await Risuai.onUnload(() => {
+    clearInterval(switchTimer);
+    if (luaPollTimer) clearInterval(luaPollTimer);
+    console.log('[simcore] 언로드');
+  });
+  console.log('[simcore] 플러그인 초기화 완료 — 채팅 화면의 ⚙️ 버튼 또는 설정 메뉴에서 패널 열기');
+})();

@@ -1,6 +1,6 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스. 스키마 필드, 편집기 UI 구조, 내장 템플릿 9종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격을 담는다. simcore.plugin.js를 고치거나, 베리디아 남작령 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스. 스키마 필드, 편집기 UI 구조, 내장 템플릿 11종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격을 담는다. simcore.plugin.js를 고치거나, 베리디아 남작령 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
@@ -12,19 +12,27 @@ description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의
 
 | | |
 |---|---|
-| **작업 파일 = 빌드 산출물** | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것도 **이것** |
-| 테스트 | `E:\0.리수봇\simcore\테스트\test-*.js` — 전부 돌려 `N passed, 0 failed` 확인 |
-| 베리디아 봇 | `E:\0.리수봇\simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
-| 배포글 | `E:\0.리수봇\simcore\배포\*.html` |
-| ⚠ 손대지 말 것 | `E:\0.리수봇\플러그인\simcore.plugin.js` (옛 사본), `simcore\이전판\` |
+| **소스** (v0.39부터 로컬에 있음) | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 10개) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
+| 테스트 | `simcore\테스트\test-*.js` (로컬 실측 28종) + `test\run-tests.js` (코어 단위, Node만 필요) |
+| 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
+| 배포글 | `simcore\배포\*.html` |
+| 임포트용 사본 | `E:\0.리수봇\플러그인\simcore.plugin.js` — 번들 갱신 시 여기도 같이 교체 |
+| ⚠ 손대지 말 것 | `simcore\이전판\` (백업), `dist\`·`playground.html` (빌드 산출물) |
 
-소스(`core/*`)는 cowork 환경에만 있다. 로컬에서는 **번들을 직접 수정**한다.
-cowork에서 재빌드하게 되면 로컬 수정분을 소스에도 포팅해야 한다.
+**소스를 고쳤으면** `node build.js` → `dist\simcore.plugin.js`를 번들 자리에 복사.
+**번들을 직접 고쳤으면** `node tools/unbundle.js simcore.plugin.js`로 소스에 역반영 →
+`node build.js` → `cmp dist/simcore.plugin.js simcore.plugin.js` 바이트 일치 확인. (상세: `SOURCES.md`)
+
+`E:\0.리수봇\simcore`는 **`yuha-665/simcore`(비공개) 리포 그 자체**다 — 고치면 커밋·푸시까지.
+회사 clone(`C:\claude\simcore`)·cowork(GitHub 커넥터)에서는 같은 경로를 리포 루트 기준으로 읽는다.
 
 ## 고치고 나면 반드시
 
 ```bash
-cd E:/0.리수봇/simcore && node --check simcore.plugin.js          # 문법
+cd E:/0.리수봇/simcore
+node build.js && cmp dist/simcore.plugin.js simcore.plugin.js      # 소스↔번들 일치
+node test/run-tests.js                                             # 코어 단위 (통과 N / 실패 0)
 cd 테스트 && for f in test-*.js; do node "$f"; done                # 전부 0 failed
 cd ../베리디아 && node estate-vars.js                              # 검증: 통과 / 미치환 없음
 ```
@@ -41,7 +49,7 @@ cd ../베리디아 && node estate-vars.js                              # 검증:
 |---|---|
 | [references/schema.md](references/schema.md) | 스키마 전 필드 · 타입 · 검증 규칙 · 표현식 문법 |
 | [references/editor.md](references/editor.md) | 편집기 9개 탭의 UI 라벨과 가져오기 동작 (`TAB_SLICES`) |
-| [references/templates.md](references/templates.md) | 내장 템플릿 9종 실측표 — 뭘 열고 뭘 닫았나 |
+| [references/templates.md](references/templates.md) | 내장 템플릿 11종 실측표 — 뭘 열고 뭘 닫았나 |
 | [references/risu-facts.md](references/risu-facts.md) | 리수 내부 확정 사실 (소스맵 검증) — 여기 어긋나면 조용히 깨진다 |
 | [references/publishing.md](references/publishing.md) | 아카라이브 배포글·가이드 시리즈 규격과 현황 |
 

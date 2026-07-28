@@ -1,0 +1,210 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.36 &nbsp;→&nbsp; v0.38</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── 꼭 읽어야 하는 것 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:10px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">먼저</span>
+    <span style="font-size:19px;font-weight:600;">쓰고 계셨다면 지금 올려 주세요</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#fff;">SimCore가 다른 플러그인·모듈의 보조 모델 호출을 망가뜨리고 있었습니다.</b>
+  v0.37.2에서 고쳤습니다. 짚은 분들 덕에 찾았습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  리수는 <b style="color:#dbe2ea;">앱에서 나가는 모든 요청</b>에 플러그인의 프롬프트 훅을 걸어 줍니다 —
+  메인 생성만이 아니라 <b style="color:#dbe2ea;">번역·요약·감정·기타 보조 호출까지 전부</b>요.
+  SimCore는 그게 어떤 요청인지 안 보고 자기 상태 블록을 얹고 있었습니다.
+  </p>
+<pre style="background:#12161d;border-radius:4px;padding:13px 16px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#8b98a9;">모듈이 보조모델에게 보내려던 것</span>
+   "이 서사에 감정 태그를 달아라. JSON 배열만 출력."
+
+<span style="color:#8b98a9;">실제로 나간 것</span>
+   "이 서사에 감정 태그를 달아라. JSON 배열만 출력."
+   <span style="color:#c98a7a;">+ "지금 영지 상태는 이렇다. 바뀐 값을 changes로 내라."</span>  <span style="color:#8b98a9;">← 우리가 얹은 것</span>
+
+<span style="color:#8b98a9;">받은 것</span>
+   <span style="color:#c98a7a;">둘 중 뭘 하라는 건지 모르는 답 → 모듈은 아무것도 못 얻는다</span></pre>
+  <div style="color:#a9b4c2;font-size:14px;">
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">모듈이 보조 모델에게 시키던 일</b>(감정 이미지 태그 같은 것)이 안 되던 것.</div>
+    <div style="margin-bottom:6px;">— 보조 모델을 쓰는 <b style="color:#dbe2ea;">다른 플러그인이 안 돌던 것</b>도 같은 원인입니다.</div>
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">번역기</b>도 지나갑니다. 번역 프롬프트에 영지 장부가 딸려 갔습니다.</div>
+    <div>— 반대로 그쪽 보조 호출이 <b style="color:#fff;">SimCore의 턴을 몰래 한 칸씩 넘기고</b> 있었습니다. 하루가 두 번 가는 식으로요.</div>
+  </div>
+  <div style="height:1px;background:#4a3535;margin:16px 0;"></div>
+  <p style="margin:0;color:#8b98a9;font-size:13.5px;">
+  이제 우리 블록은 <b style="color:#dbe2ea;">메인 생성에만</b> 실립니다.
+  모듈·플러그인 쪽은 손댈 것이 없습니다 — SimCore만 다시 임포트하시면 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+상태창이 길어지면 <b style="color:#e0a94a;">탭으로 나눠 담습니다.</b>
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+그리고 보조 모델에게는 <b style="color:#dbe2ea;">이번 턴에 실제로 나온 것만</b> 열어 줍니다 —
+스물여섯 명의 호감도를 매 턴 통째로 보여 주던 걸 그만뒀습니다.
+</p>
+
+<!-- ─────────── v0.38 배치 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.38</span>
+    <span style="font-size:19px;font-weight:600;">상태창을 여러 장으로 나눈다</span>
+  </div>
+
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  변수가 늘면 상태창이 세로로 한없이 길어집니다. 영지·인물·탐사·창고를 다 켜 두면
+  <b style="color:#dbe2ea;">상태창 하나가 화면을 넘깁니다.</b> 이제 그룹을 탭으로 접어 담을 수 있습니다.
+  </p>
+
+  <p style="margin:0 0 7px;color:#8b98a9;font-size:13px;">이렇게 보입니다.</p>
+  <div style="background:#0d1117;border:1px solid #2a323d;border-radius:6px;padding:14px 16px;margin:0 0 16px;">
+    <div style="color:#8b98a9;font-size:13px;font-weight:600;margin-bottom:10px;">▾ 베리디아 남작령</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid #2a323d;margin-bottom:11px;">
+      <span style="padding:5px 13px;margin-bottom:-1px;border:1px solid #2a323d;border-bottom:none;border-radius:7px 7px 0 0;background:#1d242e;font-size:14px;font-weight:600;color:#dbe2ea;">영지</span>
+      <span style="padding:5px 13px;font-size:14px;color:#8b98a9;">인물</span>
+      <span style="padding:5px 13px;font-size:14px;color:#8b98a9;">탐사</span>
+      <span style="padding:5px 13px;font-size:14px;color:#8b98a9;">창고</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:10px;margin:4px 0;font-size:14px;"><span style="color:#a9b4c2;">주민</span><span style="font-family:ui-monospace,Consolas,monospace;font-weight:600;">154</span></div>
+    <div style="display:flex;justify-content:space-between;gap:10px;margin:4px 0;font-size:14px;"><span style="color:#a9b4c2;">금화</span><span style="font-family:ui-monospace,Consolas,monospace;font-weight:600;">1,240</span></div>
+    <div style="display:flex;justify-content:space-between;gap:10px;margin:4px 0;font-size:14px;"><span style="color:#a9b4c2;">하루 수지</span><span style="font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#a8d5a2;">+384</span></div>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">고르는 건 넷입니다. <b style="color:#dbe2ea;">봇 편집 → 상태창 → [그룹 배치]</b>에서 하나 고르면 끝이에요.</p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 16px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.95;color:#dbe2ea;"><span style="color:#e0a94a;">쌓기</span>        지금까지 그대로 — 전부 세로로
+<span style="color:#e0a94a;">탭</span>          한 번에 한 장. 그룹 이름이 곧 탭 이름
+<span style="color:#e0a94a;">접기/펼치기</span>  <span style="color:#a8d5a2;">여러 장을 동시에 펴 둘 수 있다</span>
+<span style="color:#e0a94a;">버튼 팝업</span>    평소엔 버튼만. 누르면 그 장이 떠오른다</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰던 봇은 아무것도 안 바뀝니다.</b> 고르지 않으면 예전 그대로 쌓입니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <div style="font-size:14px;color:#8b98a9;margin-bottom:6px;">알고 쓰셔야 하는 것 하나</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    전환은 <b style="color:#dbe2ea;">CSS만으로 돕니다.</b> 리수는 메시지 안의 버튼을 누를 때
+    어느 것이 눌렸는지를 플러그인에 안 넘겨 줘서, 스크립트로는 애초에 만들 수가 없어요.
+    그 대가로 <b style="color:#dbe2ea;">새 턴이 오면 맨 아래 메시지의 탭 선택이 첫 탭으로 돌아갑니다.</b>
+    (지난 메시지들은 그대로 남습니다.)<br><br>
+    그게 거슬리시면 <b style="color:#a8d5a2;">접기/펼치기</b>를 쓰세요 — 여러 장을 동시에 볼 수 있어서
+    애초에 왔다 갔다 할 일이 적고, 모바일에서도 이쪽이 더 확실합니다.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── v0.37 mentions ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.37</span>
+    <span style="font-size:19px;font-weight:600;">등장한 것만 연다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  보조 모델에게 매 턴 <b style="color:#fff;">스물여섯 명의 호감도를 전부 열어 두고</b> 있었습니다.
+  그 턴에 나오지도 않은 사람의 값이 분위기에 밀려 ±1씩 움직입니다. 상한을 걸어도 소용없어요 —
+  <b style="color:#dbe2ea;">상한은 크기를 막지 횟수를 못 막습니다.</b>
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">이번 턴 서사 — 리비아만 나온다</span>
+   …리비아는 장부를 덮고 창가로 갔다.
+
+<span style="color:#8b98a9;">v0.36까지 보조 모델이 받던 목록</span>
+   호감_리비아 47   호감_카일 30   호감_마르타 22   호감_에런 18
+   호감_요한 25   호감_세실 41   <span style="color:#c98a7a;">… 스물여섯 줄</span>   <span style="color:#8b98a9;">← 안 나온 사람도 만질 수 있다</span>
+
+<span style="color:#a8d5a2;">v0.37부터</span>
+   호감_리비아 47                                  <span style="color:#8b98a9;">← 나온 사람만</span></pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  로어북 키워드와 같은 방식입니다. 변수에 이름을 걸어 두면
+  <b style="color:#dbe2ea;">그 이름이 이번 턴 서사에 실제로 나왔을 때만</b> 보조 모델에게 열립니다.
+  안 나온 값은 아예 못 건드리니 흔들릴 수가 없습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  이름이 서로 겹칠 때는 <b style="color:#dbe2ea;">긴 쪽이 이깁니다.</b>
+  &quot;리비아&quot;와 &quot;리비아 부인&quot;이 다른 사람이면, &quot;리비아 부인&quot;이 나온 문장이
+  &quot;리비아&quot;를 같이 열어 버리지 않게요.
+  </p>
+</div>
+
+<!-- ─────────── v0.37.1 버텍스 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.37.1</span>
+    <span style="font-size:18px;font-weight:600;">보조 모델을 버텍스로 걸면 죽던 문제</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  보조 모델을 <b style="color:#dbe2ea;">버텍스(Gemini)</b>로 잡으면 이 오류가 났습니다.
+  같은 모델을 LLM Gateway로 돌려 잡으면 멀쩡했고요 — <b style="color:#fff;">뒤에 붙은 백엔드는 똑같은데도요.</b>
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:12px 15px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.8;color:#c98a7a;">테스트 결과: 실패 — 호출 예외: Cannot read properties of undefined (reading 'role')</pre>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  프로바이더 탓이 아니라 <b style="color:#dbe2ea;">우리가 보내는 모양이 틀렸던 것</b>입니다.
+  보조 호출을 system 한 통으로만 보내고 있었는데, 구글 계열은 system을 본문에서 빼내 따로 담습니다 →
+  <b style="color:#dbe2ea;">본문이 빈 채로 나가고</b> 리수가 없는 걸 읽다 죽습니다.
+  OpenAI 호환 쪽은 그냥 넘겨 줘서 안 죽었을 뿐, 우리가 맞은 적은 없었습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  이제 짧은 유저 턴을 하나 붙여 보냅니다. 직접 호출·루아 브리지 양쪽 다요.
+  <b style="color:#a8d5a2;">제보해 주신 분이 고친 버전으로 확인해 주셨습니다.</b>
+  버텍스로 걸었다가 안 돼서 접으셨던 분은 이제 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── 정리 ─────────── -->
+<div style="border-top:2px solid #e0a94a;padding-top:18px;margin-top:14px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:12px;">줄여서</div>
+<pre style="background:#161b22;border-radius:4px;padding:16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#e0a94a;">v0.37</span>    보조 모델에게 <span style="color:#7fc7d9;">이번 턴에 나온 것만</span> 연다
+         <span style="color:#8b98a9;">— 안 나온 사람의 호감도가 분위기에 밀려 흔들리던 것</span>
+<span style="color:#e0a94a;">v0.37.1</span>  보조 모델을 <span style="color:#7fc7d9;">버텍스</span>로 걸면 죽던 것
+<span style="color:#e0a94a;">v0.37.2</span>  <span style="color:#c98a7a;">우리가 다른 플러그인·모듈·번역기의 프롬프트를 오염시키던 것</span>
+         <span style="color:#8b98a9;">— 반대로 그쪽 호출이 우리 턴을 몰래 넘기던 것도 같이</span>
+<span style="color:#e0a94a;">v0.38</span>    상태창 <span style="color:#7fc7d9;">그룹 배치</span> — 탭 · 접기/펼치기 · 버튼 팝업
+         <span style="color:#8b98a9;">— 고르지 않으면 예전 그대로입니다</span></pre>
+
+  <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:14px;">
+    <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    <b style="color:#dbe2ea;">배치는 한 줄입니다.</b> 상태창 탭에서 [그룹 배치]만 고르면 되고 HTML도 CSS도 안 씁니다.
+    직접 짜고 싶으시면 표시 방식을 <b style="color:#dbe2ea;">커스텀 HTML 템플릿</b>으로 두고
+    <b style="color:#dbe2ea;">[탭 뼈대 넣기]</b>를 누르세요 —
+    빈 예제가 아니라 <b style="color:#a8d5a2;">그 봇의 그룹·변수가 이미 채워진</b> HTML이 나옵니다.<br><br>
+    뼈대 안의 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">{uid}</code>는
+    <b style="color:#fff;">지우면 안 됩니다.</b> 상태창은 메시지마다 그려지는데 그게 없으면
+    <b style="color:#dbe2ea;">맨 아래 글의 탭을 눌렀는데 맨 위 글의 탭이 바뀝니다.</b>
+    같은 이름표가 화면에 여러 개 생기기 때문이에요. {uid}가 그 메시지 번호입니다.<br><br>
+    <span style="color:#8b98a9;">(접기/펼치기와 버튼 팝업은 이름표를 안 써서 이 문제가 아예 없습니다.)</span>
+    </p>
+  </div>
+
+  <div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;">
+    <div style="font-size:14px;color:#8b98a9;margin-bottom:6px;">루아 브리지를 쓰고 계셨다면</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    다시 임포트한 뒤 <b style="color:#dbe2ea;">[루아 브리지 설치/갱신]</b>을 한 번 눌러 주세요.
+    브리지 쪽에도 같은 버텍스 수정이 들어갔는데, 이미 깔린 브리지는 스키마가 그대로면
+    낡은 걸 계속 쓰고 있었습니다. 이제 그것도 낡음으로 잡힙니다.
+    </p>
+  </div>
+</div>
+
+</div>

@@ -1,0 +1,259 @@
+<p><strong><span style="font-size:36px;">0. AI가 틀렸을 때</span></strong></p>
+
+<p><br></p>
+
+<p>2탄에서 AI한테 변수를 맡겼고, 3탄에서 시스템이 정산하게 했고, 4탄에서 유저가 버튼으로 개입하게 만들었음.</p>
+
+<p><br></p>
+
+<p>근데 아직 구멍이 하나 있음. <strong>AI가 잘못 넣었을 때 고칠 방법이 없음.</strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">보조 모델은 서사만 읽음. 대부분 잘하는데 딱 한 종류를 자주 틀림 &mdash; <strong>아직 얘기 중인 것과 이미 정해진 것을 구분하는 일.</strong></span></p>
+
+<p><br></p>
+
+<blockquote><p>&hellip;상인은 하루 열두 냥을 불렀다. 남작은 잔을 내려놓고, 며칠 생각해 보겠다고 했다.</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">아직 <strong>계약이 아닌데</strong> AI가 계약 목록에 등록해버렸다고 치자. 이거 놔두면 <strong>맺지도 않은 계약에서 매일 돈이 들어옴.</strong> 3탄에서 배운 매 턴 자동 처리가 성실하게 돌기 때문임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이런 건 <strong>빨리 안 고치면 복리로 어긋남.</strong> 40턴 지나면 뭐가 맞는 값인지 아무도 모름.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 채팅창에 <strong>한 줄 쳐서 바로 고치는</strong> 기능이 있음.</span></p>
+
+<p><br></p>
+
+<blockquote><p>/계약- 양모</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">패널 안 열고, 편집기 안 들어가고, 채팅 치던 자리에서 그냥 침.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 근데 이거 기본으로 안 켜져 있음</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">중요한 부분임. <strong>템플릿 9개 전부 명령이 0개로 나옴.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">액션은 템플릿에 이미 들어있어서 아무것도 안 해도 버튼이 떴는데, <strong>명령은 안 그럼.</strong> 플러그인이 정해놓은 고정 명령 같은 건 없고, <strong>봇 제작자가 변수마다 이름을 붙여야</strong> 그 이름의 명령이 생김.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 <strong>/계약</strong> 같은 건 정해진 이름이 아님. 현대물이면 <strong>/잔고</strong>, 학원물이면 <strong>/친밀도</strong>가 되는 식임. 제작자가 아무 데도 안 붙였으면 <strong>그 봇엔 명령이 하나도 없음.</strong></span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 명령 붙이기</span></strong></p>
+
+<p><br></p>
+
+<p><strong>봇 편집 &gt; 명령 탭</strong>으로 들어감.</p>
+
+<p><br></p>
+
+<p>[스샷: 명령 탭 전체]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">아래쪽 <strong>[— 명령을 붙일 변수 —]</strong> 에서 변수를 고르고, 이름만 적으면 끝임.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 변수 고르고 이름 적는 부분]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>문법은 적을 필요가 없음.</strong> 변수 타입이 알아서 정해줌. 이름만 붙이면 그 아래에 쓰는 법이 바로 뜸.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>목록</strong> &nbsp;<strong>/계약 내용</strong> &mdash; 목록에 넣는다<br>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<strong>/계약- 내용 일부</strong> &mdash; 목록에서 뺀다</p>
+	<p><strong>숫자</strong> &nbsp;<strong>/금 +5</strong> &mdash; 지금 값에서 더하거나 뺀다 (-5도 됨)<br>&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;<strong>/금 30</strong> &mdash; 부호가 없으면 그 값으로 지정</p>
+	<p><strong>선택지</strong> &nbsp;<strong>/날씨 맑음 / 비 / 눈</strong> &mdash; 선택지 중 하나로</p>
+	<p><strong>ON/OFF</strong> &nbsp;<strong>/기근 on</strong> &mdash; 켠다 (끄려면 off / 0 / false)</p>
+	<p><strong>텍스트</strong> &nbsp;<strong>/위치 내용</strong> &mdash; 적은 그대로 넣는다</p>
+</blockquote>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">이름 규칙 세 개만</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>공백 / &quot;/&quot; / &quot;-&quot;</strong> 는 이름에 못 씀 (인자랑 구분이 안 됨)<br>
+- 이름이 <strong>겹치면</strong> 안 됨<br>
+- <strong>파생 변수</strong>엔 못 닮 (계산 결과라서)</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 뭐부터 열어야 하나</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">전부 다 열 필요 없음. 기준은 하나임.</span></p>
+
+<p><br></p>
+
+<blockquote><p><strong>틀렸을 때 복리로 어긋나는 것부터.</strong></p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>지속 수입&middot;계약&middot;봉급</strong> 같은 목록 &nbsp;&rarr; &nbsp;<strong>1순위.</strong> 잘못 등록되면 매 턴 돈이 새거나 빠짐<br>
+- <strong>금화&middot;식량</strong> 같은 재고 &nbsp;&rarr; &nbsp;2순위. 한 번 어긋나면 계속 어긋남<br>
+- <strong>기분&middot;날씨</strong> 같은 건 &nbsp;&rarr; &nbsp;굳이 안 열어도 됨. 다음 턴에 AI가 알아서 덮어씀</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">명령 탭도 <strong>목록형 변수를 맨 위로 올려서</strong> 보여줌. 거기가 제일 급한 자리라서 그럼.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 목록에서 뺄 땐 일부만 쳐도 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이게 은근히 중요함. 목록에 실제로 들어가 있는 값이 이렇게 생겼다고 치자.</span></p>
+
+<p><br></p>
+
+<blockquote><p>헤세 상단 양모 +12 @1093</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">뒤에 붙은 <strong>@1093</strong>은 시스템이 굳힌 날짜값이라 <strong>유저가 알 방법이 없음.</strong> 이걸 다 맞춰 쳐야 지워진다면 사실상 못 지우는 거임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 <strong>일부만 쳐도 찾아줌.</strong></span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>/계약- 양모</strong></p>
+	<p>&rarr; (시스템: 지속 수입 제거 &mdash; 헤세 상단 양모 +12 @1093)</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 <strong>여러 개가 걸리면 아무거나 안 지움.</strong> 후보를 보여주고 되물어봄. 조용히 엉뚱한 걸 지우는 게 제일 나쁘기 때문임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">확인 문구도 <strong>유저가 친 말이 아니라 실제로 지워진 항목</strong>을 돌려줌. 그래야 맞게 지워졌는지 알 수 있음.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. ⚠ 이걸 빠뜨리면 아무도 못 씀</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">명령을 아무리 잘 열어놔도, <strong>유저는 그 봇에 무슨 명령이 있는지 알 방법이 없음.</strong> 이름은 제작자가 마음대로 정한 거니까.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 상태창에 <strong>{commands}</strong> 를 박아둬야 함. 그 자리에 <strong>접이식 명령 모음집</strong>이 그려짐.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 상태창 아래 접힌 명령 모음집 / 펼친 모습]</p>
+
+<p><br></p>
+
+<blockquote>
+	<p>▸ ⌨ 채팅창에 칠 수 있는 명령 13가지 &nbsp; &nbsp;&larr; 평소엔 접혀서 한 줄</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">펴면 그 봇의 명령이 문법까지 전부 나옴. <strong>유저가 명령의 존재를 알 수 있는 자리는 여기뿐임.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">2탄에서 배운 <strong>커스텀 HTML 템플릿</strong>을 쓰고 있으면 원하는 위치에 <strong>{commands}</strong> 를 직접 박으면 되고, <strong>자동 구성(그룹)</strong>을 쓰고 있으면 <strong>맨 아래에 알아서 붙으니까 아무것도 안 해도 됨.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">명령을 열어놨는데 <strong>{commands}</strong> 가 없으면 명령 탭이 이렇게 경고해줌.</span></p>
+
+<p><br></p>
+
+<blockquote><p>⚠ 명령을 열어 뒀는데 상태창 어디에도 {commands} 가 없습니다. 지금은 유저가 명령의 존재를 알 수 없습니다.</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">참고로 <strong>commands</strong> 라는 id의 변수를 만들면 이 자리표시자를 가려버려서 명령 모음집이 안 나옴. 검증이 경고해주긴 하는데 그냥 그 이름을 피하는 게 편함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">6. 이것도 AI한테 시킬 수 있음</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">명령 탭에도 규격 내보내기가 있음. &quot;어떤 변수에 무슨 이름을 붙일지&quot;를 AI가 짜줌.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 명령 탭 맨 위 내보내기 버튼]</p>
+
+<p><br></p>
+
+<blockquote><p>이 봇에서 유저가 직접 고칠 만한 변수에 명령 이름 붙여줘. 짧고 직관적인 한국어로</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">받은 거 붙여넣고 <strong>[📥 가져오기]</strong> &rarr; <strong>[설치/업데이트]</strong>.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기는 다른 탭이랑 다르게 <strong>이름 배정만 얹히고 변수 자체는 안 건드림</strong>. 명령이 별도 목록이 아니라 변수에 붙은 속성이라서 그럼. 그래서 3탄&middot;4탄에서 겪은 &quot;나머지가 날아가는&quot; 사고가 여기선 안 남.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>명령은 기본이 0개</strong> &nbsp;제작자가 변수에 이름을 붙여야 생김</p>
+	<p><strong>문법은 자동</strong> &nbsp;변수 타입이 정함. 이름만 붙이면 됨</p>
+	<p><strong>1순위는 목록</strong> &nbsp;계약&middot;수입처럼 틀리면 복리로 어긋나는 것부터</p>
+	<p><strong>{commands} 필수</strong> &nbsp;없으면 유저가 명령의 존재를 모름</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기까지 하면 <strong>한 바퀴가 다 돌았음.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">AI가 서사 읽고 값을 바꾸고(2탄), 시스템이 매 턴 정산하고(3탄), 유저가 버튼으로 개입하고(4탄), <strong>틀리면 한 줄로 고침(5탄).</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">남은 건 <strong>새 시작</strong> 탭 &mdash; 난이도 프리셋이랑 첫 턴 세팅임. 그건 다음에.</span></p>

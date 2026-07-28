@@ -1,0 +1,668 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "베리디아 영토"
+  },
+  "vars": [
+    {
+      "id": "day",
+      "label": "경과일",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "scouts",
+      "label": "척후 인력",
+      "type": "int",
+      "init": 3,
+      "min": 0,
+      "format": "{v}조"
+    },
+    {
+      "id": "supply",
+      "label": "탐사 물자",
+      "type": "int",
+      "init": 40,
+      "min": 0
+    },
+    {
+      "id": "ruin_seed",
+      "label": "(내부) 폐허 원인",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "id": "ruin_known",
+      "label": "원인 규명",
+      "type": "bool",
+      "init": false
+    },
+    {
+      "id": "decay",
+      "label": "(내부) 황폐도",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "dread",
+      "label": "땅의 흉흉함",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "z_north",
+      "label": "북부 면도날 능선",
+      "type": "enum",
+      "enum": [
+        "미탐사",
+        "표면",
+        "심층"
+      ],
+      "init": "미탐사"
+    },
+    {
+      "id": "v_north",
+      "label": "(내부) 북부 면도날 능선 매장물",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "z_west",
+      "label": "서부 속삭이는 숲",
+      "type": "enum",
+      "enum": [
+        "미탐사",
+        "표면",
+        "심층"
+      ],
+      "init": "미탐사"
+    },
+    {
+      "id": "v_west",
+      "label": "(내부) 서부 속삭이는 숲 매장물",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "z_south",
+      "label": "남부 잿빛 평야",
+      "type": "enum",
+      "enum": [
+        "미탐사",
+        "표면",
+        "심층"
+      ],
+      "init": "미탐사"
+    },
+    {
+      "id": "v_south",
+      "label": "(내부) 남부 잿빛 평야 매장물",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "z_east",
+      "label": "동부 붉은 강",
+      "type": "enum",
+      "enum": [
+        "미탐사",
+        "표면",
+        "심층"
+      ],
+      "init": "미탐사"
+    },
+    {
+      "id": "v_east",
+      "label": "(내부) 동부 붉은 강 매장물",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "z_center",
+      "label": "중앙 폐허 마을",
+      "type": "enum",
+      "enum": [
+        "미탐사",
+        "표면",
+        "심층"
+      ],
+      "init": "미탐사"
+    },
+    {
+      "id": "v_center",
+      "label": "(내부) 중앙 폐허 마을 매장물",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    }
+  ],
+  "derived": [
+    {
+      "id": "ruin_cause",
+      "label": "버려진 이유",
+      "expr": "ruin_known ? (ruin_seed == 1 ? \"역병\" : (ruin_seed == 2 ? \"전란\" : (ruin_seed == 3 ? \"마물 범람\" : (ruin_seed == 4 ? \"대기근\" : (\"저주\"))))) : \"알 수 없음\""
+    },
+    {
+      "id": "decay_txt",
+      "label": "폐허 상태",
+      "expr": "decay >= 3 ? \"형체만 남음\" : (decay == 2 ? \"심하게 상함\" : \"손볼 만함\")"
+    },
+    {
+      "id": "explored",
+      "label": "탐사 진척",
+      "expr": "(z_north != \"미탐사\" ? 1 : 0) + (z_west != \"미탐사\" ? 1 : 0) + (z_south != \"미탐사\" ? 1 : 0) + (z_east != \"미탐사\" ? 1 : 0) + (z_center != \"미탐사\" ? 1 : 0)"
+    },
+    {
+      "id": "deep",
+      "label": "심층 규명",
+      "expr": "(z_north == \"심층\" ? 1 : 0) + (z_west == \"심층\" ? 1 : 0) + (z_south == \"심층\" ? 1 : 0) + (z_east == \"심층\" ? 1 : 0) + (z_center == \"심층\" ? 1 : 0)"
+    },
+    {
+      "id": "v_north_txt",
+      "label": "북부 면도날 능선 발견물",
+      "expr": "z_north == \"심층\" ? (v_north == 1 ? \"영구동토 빙동\" : (v_north == 2 ? \"버려진 은맥\" : (\"고대 성채터\"))) : \"미확인\""
+    },
+    {
+      "id": "v_west_txt",
+      "label": "서부 속삭이는 숲 발견물",
+      "expr": "z_west == \"심층\" ? (v_west == 1 ? \"실버우드 군락\" : (v_west == 2 ? \"유령누에 서식지\" : (\"마녀의 약초원\"))) : \"미확인\""
+    },
+    {
+      "id": "v_south_txt",
+      "label": "남부 잿빛 평야 발견물",
+      "expr": "z_south == \"심층\" ? (v_south == 1 ? \"화산 흑토층\" : (v_south == 2 ? \"대규모 매장지\" : (\"옛 전장의 무구\"))) : \"미확인\""
+    },
+    {
+      "id": "v_east_txt",
+      "label": "동부 붉은 강 발견물",
+      "expr": "z_east == \"심층\" ? (v_east == 1 ? \"적점토 광상\" : (v_east == 2 ? \"사금 여울\" : (\"침몰한 상선단\"))) : \"미확인\""
+    },
+    {
+      "id": "v_center_txt",
+      "label": "중앙 폐허 마을 발견물",
+      "expr": "z_center == \"심층\" ? (v_center == 1 ? \"심층 대수층\" : (v_center == 2 ? \"지하 납골당\" : (\"옛 영주의 금고\"))) : \"미확인\""
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "set": "day",
+        "expr": "day + 1"
+      }
+    ],
+    "events": [
+      {
+        "id": "roll_land",
+        "when": "ruin_seed == 0",
+        "effects": [
+          {
+            "set": "ruin_seed",
+            "expr": "rand(1, 5)"
+          },
+          {
+            "set": "decay",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "v_north",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "v_west",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "v_south",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "v_east",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "v_center",
+            "expr": "rand(1, 3)"
+          },
+          {
+            "set": "dread",
+            "expr": "15 + decay * 12"
+          }
+        ]
+      },
+      {
+        "id": "found_north",
+        "once": true,
+        "when": "z_north == \"심층\"",
+        "notify": "북부 면도날 능선의 표면 아래가 드러났다: {v_north_txt}. 이것이 이 구역의 성격을 정한다."
+      },
+      {
+        "id": "found_west",
+        "once": true,
+        "when": "z_west == \"심층\"",
+        "notify": "서부 속삭이는 숲의 표면 아래가 드러났다: {v_west_txt}. 이것이 이 구역의 성격을 정한다."
+      },
+      {
+        "id": "found_south",
+        "once": true,
+        "when": "z_south == \"심층\"",
+        "notify": "남부 잿빛 평야의 표면 아래가 드러났다: {v_south_txt}. 이것이 이 구역의 성격을 정한다."
+      },
+      {
+        "id": "found_east",
+        "once": true,
+        "when": "z_east == \"심층\"",
+        "notify": "동부 붉은 강의 표면 아래가 드러났다: {v_east_txt}. 이것이 이 구역의 성격을 정한다."
+      },
+      {
+        "id": "found_center",
+        "once": true,
+        "when": "z_center == \"심층\"",
+        "notify": "중앙 폐허 마을의 표면 아래가 드러났다: {v_center_txt}. 이것이 이 구역의 성격을 정한다."
+      }
+    ]
+  },
+  "directives": [
+    {
+      "id": "d_north",
+      "when": "z_north != \"미탐사\"",
+      "text": "[북부 면도날 능선] 화강암·석회암. 심층: {v_north_txt}."
+    },
+    {
+      "id": "d_west",
+      "when": "z_west != \"미탐사\"",
+      "text": "[서부 속삭이는 숲] 목재·약초·사냥감. 심층: {v_west_txt}."
+    },
+    {
+      "id": "d_south",
+      "when": "z_south != \"미탐사\"",
+      "text": "[남부 잿빛 평야] 평탄한 개간지. 심층: {v_south_txt}."
+    },
+    {
+      "id": "d_east",
+      "when": "z_east != \"미탐사\"",
+      "text": "[동부 붉은 강] 수운·어로. 심층: {v_east_txt}."
+    },
+    {
+      "id": "d_center",
+      "when": "z_center != \"미탐사\"",
+      "text": "[중앙 폐허 마을] 무너진 성벽·오염된 우물. 심층: {v_center_txt}."
+    },
+    {
+      "id": "unknown_land",
+      "when": "explored <= 2",
+      "text": "[상태] 이 땅의 대부분은 아직 지도에 없다. 등장인물은 가 보지 않은 구역에 대해 아는 척하지 말 것 — 소문과 추측으로만 말하라."
+    },
+    {
+      "id": "ruin_mystery",
+      "when": "not ruin_known",
+      "text": "[상태] 왜 이 땅이 버려졌는지 아직 아무도 모른다. 그 이유를 단정하지 말고, 어긋나는 흔적만 흘려라."
+    },
+    {
+      "id": "ruin_revealed",
+      "when": "ruin_known",
+      "text": "[상태] 이 땅이 버려진 이유가 밝혀졌다: {ruin_cause}. 폐허는 {decay_txt}. 이제 그것이 모든 장면의 배경이다."
+    },
+    {
+      "id": "dread_high",
+      "when": "dread >= 60",
+      "text": "[상태] 파헤칠수록 땅이 흉흉해진다. 척후들이 돌아오지 않는 밤이 늘고, 사람들이 수군거린다."
+    }
+  ],
+  "actions": [
+    {
+      "id": "scout_north",
+      "label": "🔍 북부 면도날 능선 정찰",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "z_north == \"미탐사\" and scouts >= 1 and supply >= 8",
+      "inject": "[탐사] 척후조를 북부 면도날 능선으로 보낸다. 무엇이 있는지는 가 봐야 안다.",
+      "effects": [
+        {
+          "set": "z_north",
+          "expr": "\"표면\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 8)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 4, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "dig_north",
+      "label": "⛏ 북부 면도날 능선 정밀조사",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "z_north == \"표면\" and supply >= 15",
+      "inject": "[탐사] 북부 면도날 능선을 파고든다. 표면 아래에 무엇이 있는지 확인한다.",
+      "effects": [
+        {
+          "set": "z_north",
+          "expr": "\"심층\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 15)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 8, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "scout_west",
+      "label": "🔍 서부 속삭이는 숲 정찰",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "z_west == \"미탐사\" and scouts >= 1 and supply >= 8",
+      "inject": "[탐사] 척후조를 서부 속삭이는 숲으로 보낸다. 무엇이 있는지는 가 봐야 안다.",
+      "effects": [
+        {
+          "set": "z_west",
+          "expr": "\"표면\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 8)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 4, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "dig_west",
+      "label": "⛏ 서부 속삭이는 숲 정밀조사",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "z_west == \"표면\" and supply >= 15",
+      "inject": "[탐사] 서부 속삭이는 숲을 파고든다. 표면 아래에 무엇이 있는지 확인한다.",
+      "effects": [
+        {
+          "set": "z_west",
+          "expr": "\"심층\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 15)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 8, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "scout_south",
+      "label": "🔍 남부 잿빛 평야 정찰",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "z_south == \"미탐사\" and scouts >= 1 and supply >= 8",
+      "inject": "[탐사] 척후조를 남부 잿빛 평야으로 보낸다. 무엇이 있는지는 가 봐야 안다.",
+      "effects": [
+        {
+          "set": "z_south",
+          "expr": "\"표면\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 8)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 4, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "dig_south",
+      "label": "⛏ 남부 잿빛 평야 정밀조사",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "z_south == \"표면\" and supply >= 15",
+      "inject": "[탐사] 남부 잿빛 평야을 파고든다. 표면 아래에 무엇이 있는지 확인한다.",
+      "effects": [
+        {
+          "set": "z_south",
+          "expr": "\"심층\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 15)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 8, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "scout_east",
+      "label": "🔍 동부 붉은 강 정찰",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "z_east == \"미탐사\" and scouts >= 1 and supply >= 8",
+      "inject": "[탐사] 척후조를 동부 붉은 강으로 보낸다. 무엇이 있는지는 가 봐야 안다.",
+      "effects": [
+        {
+          "set": "z_east",
+          "expr": "\"표면\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 8)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 4, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "dig_east",
+      "label": "⛏ 동부 붉은 강 정밀조사",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "z_east == \"표면\" and supply >= 15",
+      "inject": "[탐사] 동부 붉은 강을 파고든다. 표면 아래에 무엇이 있는지 확인한다.",
+      "effects": [
+        {
+          "set": "z_east",
+          "expr": "\"심층\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 15)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 8, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "scout_center",
+      "label": "🔍 중앙 폐허 마을 정찰",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "z_center == \"미탐사\" and scouts >= 1 and supply >= 8",
+      "inject": "[탐사] 척후조를 중앙 폐허 마을으로 보낸다. 무엇이 있는지는 가 봐야 안다.",
+      "effects": [
+        {
+          "set": "z_center",
+          "expr": "\"표면\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 8)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 4, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "dig_center",
+      "label": "⛏ 중앙 폐허 마을 정밀조사",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "z_center == \"표면\" and supply >= 15",
+      "inject": "[탐사] 중앙 폐허 마을을 파고든다. 표면 아래에 무엇이 있는지 확인한다.",
+      "effects": [
+        {
+          "set": "z_center",
+          "expr": "\"심층\""
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 15)"
+        },
+        {
+          "set": "dread",
+          "expr": "clamp(dread + 8, 0, 100)"
+        }
+      ]
+    },
+    {
+      "id": "trace_ruin",
+      "label": "📜 폐허의 원인 추적",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "when": "deep >= 2 and not ruin_known and supply >= 12",
+      "inject": "[탐사] 흩어진 단서를 모아 이 땅이 왜 버려졌는지 밝힌다.",
+      "effects": [
+        {
+          "set": "ruin_known",
+          "expr": "1"
+        },
+        {
+          "set": "supply",
+          "expr": "max(0, supply - 12)"
+        }
+      ]
+    },
+    {
+      "id": "resupply",
+      "label": "📦 물자 보급",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "inject": "[영지 결정] 남은 것을 긁어모아 탐사 물자를 마련한다.",
+      "effects": [
+        {
+          "set": "supply",
+          "expr": "supply + 20"
+        }
+      ]
+    }
+  ],
+  "statusUI": {
+    "mode": "auto",
+    "groups": [
+      {
+        "label": "탐사",
+        "items": [
+          {
+            "var": "day"
+          },
+          {
+            "var": "scouts"
+          },
+          {
+            "var": "supply"
+          },
+          {
+            "var": "dread",
+            "bar": {
+              "max": 100
+            }
+          }
+        ]
+      },
+      {
+        "label": "영토",
+        "items": [
+          {
+            "var": "z_north"
+          },
+          {
+            "var": "z_west"
+          },
+          {
+            "var": "z_south"
+          },
+          {
+            "var": "z_east"
+          },
+          {
+            "var": "z_center"
+          }
+        ]
+      },
+      {
+        "label": "발견물",
+        "showWhen": "deep >= 1",
+        "items": [
+          {
+            "var": "v_north_txt",
+            "showWhen": "z_north == \"심층\""
+          },
+          {
+            "var": "v_west_txt",
+            "showWhen": "z_west == \"심층\""
+          },
+          {
+            "var": "v_south_txt",
+            "showWhen": "z_south == \"심층\""
+          },
+          {
+            "var": "v_east_txt",
+            "showWhen": "z_east == \"심층\""
+          },
+          {
+            "var": "v_center_txt",
+            "showWhen": "z_center == \"심층\""
+          }
+        ]
+      },
+      {
+        "label": "규명",
+        "items": [
+          {
+            "var": "ruin_cause"
+          },
+          {
+            "var": "decay_txt"
+          }
+        ]
+      }
+    ]
+  },
+  "promptState": {
+    "template": "[베리디아 {day}일차] 척후 {scouts}조 · 물자 {supply} · 탐사 {explored}/5구역(심층 {deep}) · 흉흉함 {dread}"
+  },
+  "setup": {
+    "presets": []
+  }
+}

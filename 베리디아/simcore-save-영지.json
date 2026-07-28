@@ -1,0 +1,411 @@
+{
+  "simcoreSave": 1,
+  "schemaName": "새 시뮬레이션",
+  "schema": {
+    "simcore": "0.1",
+    "meta": {
+      "name": "새 시뮬레이션"
+    },
+    "vars": [
+      {
+        "id": "date",
+        "label": "연도",
+        "type": "text",
+        "init": "1499년 3월 1일"
+      },
+      {
+        "id": "time",
+        "label": "시간",
+        "type": "text",
+        "init": "🕗아침",
+        "format": "{v}G"
+      },
+      {
+        "id": "var3",
+        "label": "계절",
+        "type": "text",
+        "init": "🍀봄"
+      },
+      {
+        "id": "var4",
+        "label": "날씨",
+        "type": "text",
+        "init": "☀️맑음"
+      },
+      {
+        "id": "var5",
+        "label": "위치",
+        "type": "text",
+        "init": "",
+        "desc": "(현재위치서술)"
+      },
+      {
+        "id": "var6",
+        "label": "재해",
+        "type": "text",
+        "init": ""
+      },
+      {
+        "id": "var7",
+        "label": "명성",
+        "type": "int",
+        "init": 0,
+        "format": "{v}"
+      },
+      {
+        "id": "var8",
+        "label": "식량",
+        "type": "int",
+        "init": 0,
+        "format": "{v}일",
+        "desc": "식량은 일 단위로 변경"
+      },
+      {
+        "id": "var9",
+        "label": "식수",
+        "type": "int",
+        "init": 0,
+        "format": "{v}일",
+        "desc": "식수는 일 단위로 변경"
+      },
+      {
+        "id": "var10",
+        "label": "재정",
+        "type": "int",
+        "init": 0,
+        "format": "{v}G"
+      },
+      {
+        "id": "var11",
+        "label": "자원",
+        "type": "list",
+        "init": [
+          "목재 100"
+        ]
+      },
+      {
+        "id": "var12",
+        "label": "시설",
+        "type": "list",
+        "init": [
+          "무너진 병영",
+          "잡초 연병장",
+          "폐허 대장간",
+          "오염된 우물"
+        ]
+      },
+      {
+        "id": "var13",
+        "label": "사기",
+        "type": "text",
+        "init": "절망"
+      },
+      {
+        "id": "var14",
+        "label": "보건",
+        "type": "text",
+        "init": "열악함"
+      },
+      {
+        "id": "var15",
+        "label": "노동력",
+        "type": "text",
+        "init": "없음"
+      },
+      {
+        "id": "var16",
+        "label": "군사",
+        "type": "text",
+        "init": "없음"
+      },
+      {
+        "id": "var17",
+        "label": "외부보안",
+        "type": "text",
+        "init": "매우 취약"
+      },
+      {
+        "id": "var18",
+        "label": "내부보안",
+        "type": "text",
+        "init": "매우 취약"
+      },
+      {
+        "id": "var19",
+        "label": "고용인",
+        "type": "text",
+        "init": "",
+        "desc": "영지에 고용된 메인 히로인 캐릭터들을 표시"
+      },
+      {
+        "id": "var20",
+        "label": "⚠️ 긴급 통지",
+        "type": "text",
+        "init": "",
+        "desc": "현재 긴박한 중요 내용 등을 표시"
+      }
+    ],
+    "statusUI": {
+      "mode": "template",
+      "groups": [
+        {
+          "label": "Veridia Ledger",
+          "items": [
+            {
+              "var": "date"
+            },
+            {
+              "var": "time"
+            },
+            {
+              "var": "var3"
+            },
+            {
+              "var": "var4"
+            },
+            {
+              "var": "var5"
+            },
+            {
+              "var": "var6"
+            },
+            {
+              "var": "var7"
+            },
+            {
+              "var": "var8"
+            },
+            {
+              "var": "var9"
+            },
+            {
+              "var": "var10"
+            },
+            {
+              "var": "var11"
+            },
+            {
+              "var": "var12"
+            },
+            {
+              "var": "var13"
+            },
+            {
+              "var": "var14"
+            },
+            {
+              "var": "var15"
+            },
+            {
+              "var": "var16"
+            },
+            {
+              "var": "var17"
+            },
+            {
+              "var": "var18"
+            },
+            {
+              "var": "var19"
+            },
+            {
+              "var": "var20"
+            }
+          ]
+        }
+      ],
+      "collapsible": false,
+      "theme": "clean",
+      "customCSS": "@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br, .status-full-list br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n/* 확장된 리스트 섹션 (시설 & 고용) — 플러그인이 어떤 태그로 칩을 뱉든 대응 */\n.status-full-list {\n    grid-column: span 2; padding: 10px; background: rgba(255, 255, 255, 0.3);\n    border-radius: 4px; margin-top: 5px; min-height: 40px;\n    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;\n}\n.status-full-list ul, .status-full-list ol { display: contents; list-style: none; padding: 0; margin: 0; }\n.status-full-list li,\n.status-full-list > span,\n.status-full-list > div,\n.status-full-list > p {\n    background: #4a2c2a; color: #f0e5d1; padding: 2px 10px; border-radius: 4px;\n    font-size: 0.85em; line-height: 1.7; margin: 0; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);\n}\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }",
+      "template": "<input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{var3}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{var4}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{var5}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{var6}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{var7}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{var10}G</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{var8}일</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{var9}일</span></div><div class=\"status-entry status-span2\"><span>자원:</span> <span class=\"val\">{var11}</span></div><div class=\"status-section-title\">🏗️ 보유 시설 및 인프라</div><div class=\"status-full-list\">{var12:tags}</div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{var13}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{var14}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{var15}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{var16}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{var17}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{var18}</span></div><div class=\"status-section-title\">👯 메이드 및 핵심 고용인 현황</div><div class=\"status-full-list\" style=\"background: rgba(74, 44, 42, 0.05);\">{var19:tags}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{var20}</div></div></div></div>"
+    },
+    "derived": [],
+    "directives": [],
+    "rules": {
+      "onTurn": [],
+      "events": [],
+      "randomEvents": {
+        "chancePerTurn": 0.05,
+        "table": []
+      }
+    },
+    "updater": {
+      "model": "aux",
+      "allow": [
+        {
+          "id": "date"
+        },
+        {
+          "id": "time"
+        },
+        {
+          "id": "var3"
+        },
+        {
+          "id": "var4"
+        },
+        {
+          "id": "var6"
+        },
+        {
+          "id": "var5"
+        },
+        {
+          "id": "var8"
+        },
+        {
+          "id": "var7",
+          "maxGain": 100
+        },
+        {
+          "id": "var9"
+        },
+        {
+          "id": "var10"
+        },
+        {
+          "id": "var11"
+        },
+        {
+          "id": "var12"
+        },
+        {
+          "id": "var13"
+        },
+        {
+          "id": "var14"
+        },
+        {
+          "id": "var15"
+        },
+        {
+          "id": "var16"
+        },
+        {
+          "id": "var17"
+        },
+        {
+          "id": "var18"
+        },
+        {
+          "id": "var19"
+        },
+        {
+          "id": "var20"
+        }
+      ]
+    },
+    "promptState": {
+      "position": "history_end",
+      "template": "[새 시뮬레이션]\n연도 {date} | 시간 {time}G | 계절 {var3} | 날씨 {var4} | 위치 {var5} | 재해 {var6} | 명성 {var7} | 식량 {var8}일 | 식수 {var9}일 | 재정 {var10}G | 자원 {var11} | 시설 {var12} | 사기 {var13} | 보건 {var14} | 노동력 {var15} | 군사 {var16} | 외부보안 {var17} | 내부보안 {var18} | 고용인 {var19} | ⚠️ 긴급 통지 {var20}",
+      "includeEvents": true
+    },
+    "actions": [],
+    "setup": {
+      "presets": [
+        {
+          "id": "preset1",
+          "label": "노말",
+          "set": {}
+        }
+      ],
+      "ai": {
+        "enabled": false,
+        "vars": []
+      }
+    }
+  },
+  "chatId": "c3adbc35-abe1-4038-971c-99b6a5fa1deb",
+  "lastOutIndex": -1,
+  "current": {
+    "vars": {
+      "date": "1499년 3월 2일",
+      "time": "🌄아침",
+      "var3": "🍀봄",
+      "var4": "☀️맑음",
+      "var5": "속삭이는 숲",
+      "var6": "",
+      "var7": 0,
+      "var8": 0,
+      "var9": 0,
+      "var10": 0,
+      "var11": [
+        "목재 100"
+      ],
+      "var12": [
+        "무너진 병영",
+        "잡초 연병장",
+        "폐허 대장간",
+        "오염된 우물"
+      ],
+      "var13": "의욕적",
+      "var14": "열악함",
+      "var15": "재건 동원 중 (110명)",
+      "var16": "없음",
+      "var17": "매우 취약",
+      "var18": "매우 취약",
+      "var19": "아데레 (책사)",
+      "var20": ""
+    },
+    "meta": {
+      "turn": 15,
+      "setupDone": false,
+      "armed": {},
+      "actionLastUsed": {},
+      "eventLastFired": {},
+      "firedOnce": {},
+      "pendingNotifies": []
+    }
+  },
+  "snapshots": {
+    "pre:0": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":0,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:0": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":0,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:1": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":1,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:2": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":1,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:2": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":1,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:3": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":2,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:4": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":2,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:4": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":2,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:5": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":3,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:6": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":3,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:6": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":3,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:7": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":4,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:8": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":4,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:8": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":4,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:9": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":5,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:10": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":5,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:10": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":5,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:11": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":6,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:12": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":6,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:12": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":6,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:13": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":7,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:14": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":7,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:14": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":7,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:15": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":8,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:16": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":8,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:16": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":8,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:17": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":9,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:18": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":9,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:18": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":9,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:19": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":10,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:20": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":10,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:20": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":10,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:21": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":11,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:22": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":11,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:22": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":11,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:23": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":12,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:24": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":12,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:24": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":12,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:25": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"빛바랜 언덕의 저택 2층\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":13,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:25": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":13,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:25": "{\"vars\":{\"date\":\"1499년 3월 1일\",\"time\":\"🕗아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":13,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:26": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"빛바랜 언덕의 저택 2층\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":13,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:26": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"빛바랜 언덕의 저택 2층\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":13,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:27": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"중앙 광장\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":14,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:27": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"빛바랜 언덕의 저택 2층\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":14,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:27": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"빛바랜 언덕의 저택 2층\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":14,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "pre:28": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"중앙 광장\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":14,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "send:28": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌅새벽\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"중앙 광장\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"절망\",\"var14\":\"열악함\",\"var15\":\"없음\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"\",\"var20\":\"\"},\"meta\":{\"turn\":14,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}",
+    "out:29": "{\"vars\":{\"date\":\"1499년 3월 2일\",\"time\":\"🌄아침\",\"var3\":\"🍀봄\",\"var4\":\"☀️맑음\",\"var5\":\"속삭이는 숲\",\"var6\":\"\",\"var7\":0,\"var8\":0,\"var9\":0,\"var10\":0,\"var11\":[\"목재 100\"],\"var12\":[\"무너진 병영\",\"잡초 연병장\",\"폐허 대장간\",\"오염된 우물\"],\"var13\":\"의욕적\",\"var14\":\"열악함\",\"var15\":\"재건 동원 중 (110명)\",\"var16\":\"없음\",\"var17\":\"매우 취약\",\"var18\":\"매우 취약\",\"var19\":\"아데레 (책사)\",\"var20\":\"\"},\"meta\":{\"turn\":15,\"setupDone\":false,\"armed\":{},\"actionLastUsed\":{},\"eventLastFired\":{},\"firedOnce\":{},\"pendingNotifies\":[]}}"
+  }
+}

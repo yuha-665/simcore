@@ -1,0 +1,94 @@
+const __P = (...p) => require('path').resolve(__dirname, ...p);
+// 편집기 동기화(syncEditorToChar / dirty 판정) 검증
+// 플러그인 본문의 편집기 절을 그대로 떼어내 목 환경에서 실행한다.
+const fs = require('fs');
+const path = require('path');
+const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
+const s = src.indexOf('  let editor = null;\n  let editorChaId');
+const e = src.indexOf('  function escapeText(s)');
+if (s < 0 || e < 0) { console.log('FAIL: 편집기 절을 못 찾음'); process.exit(1); }
+const body = src.slice(s, e)
+  .replace("createSchemaEditor(document.getElementById('sc-editor'), base, {})",
+           'createSchemaEditor(base)');
+
+const TESTS = `
+const A = { simcore:'0.1', meta:{name:'영지'},  vars:[{id:'food',type:'int'}], statusUI:{mode:'auto',groups:[]} };
+const B = { simcore:'0.1', meta:{name:'RPG'},   vars:[{id:'hp',type:'int'}],   statusUI:{mode:'auto',groups:[]} };
+const C = { simcore:'0.1', meta:{name:'다른봇'}, vars:[{id:'x',type:'int'}],    statusUI:{mode:'auto',groups:[]} };
+const R = []; const ck = (n,c,x='') => R.push([c,n,x]);
+const name = () => editorContent && editorContent.meta.name;
+
+// 1. 캐릭터 A에서 편집기 최초 생성
+schema = A; currentChaId = 'chaA';
+ensureEditor();
+ck('최초 생성 시 설치본 로드', name() === '영지', name());
+ck('갓 로드된 편집기는 dirty 아님', !editorIsDirty());
+
+// 2. 템플릿을 편집기에 불러옴 (설치는 안 함)
+editor.setSchema(JSON.parse(JSON.stringify(B)));
+ck('템플릿 로드하면 dirty', editorIsDirty());
+ck('설치본은 그대로', schema.meta.name === '영지');
+
+// 3. 같은 캐릭터에서 패널 재오픈 → 작업물 보존
+syncEditorToChar();
+ck('dirty면 패널 재오픈해도 작업물 보존', name() === 'RPG', name());
+
+// 4. ★ 사용자 시나리오: 세이브 가져오기로 설치본이 영지로 복원됨
+schema = A;
+loadIntoEditor(schema);
+ck('스키마 복원 시 편집기도 복원본', name() === '영지', name());
+ck('복원 직후 dirty 아님', !editorIsDirty());
+
+// 5. 편집기 깨끗한 상태에서 설치본만 바뀜 → 따라감
+schema = B;
+syncEditorToChar();
+ck('편집기 깨끗하면 설치본 변경을 따라감', name() === 'RPG', name());
+
+// 6. 편집기 손댄 상태에서 설치본 바뀜 → 작업물 보존
+editor.setSchema(Object.assign({}, B, { meta:{name:'작업중'} }));
+schema = A;
+syncEditorToChar();
+ck('편집기 dirty면 설치본 바뀌어도 보존', name() === '작업중', name());
+
+// 7. ★ 어제 사고 재현 방지: 다른 캐릭터로 전환 → 남의 내용 강제 폐기
+currentChaId = 'chaB'; schema = C;
+syncEditorToChar();
+ck('캐릭터 전환 시 남의 편집 내용 폐기', name() === '다른봇', name());
+ck('전환 후 dirty 아님', !editorIsDirty());
+
+// 8. 스키마 없는 캐릭터로 전환
+currentChaId = 'chaC'; schema = null;
+syncEditorToChar();
+ck('스키마 없는 캐릭터 → 빈 스키마', name() === '새 시뮬레이션' && editorContent.vars.length === 0, name());
+
+// 9. [설치] 버튼 경로: 설치 후 기준선 갱신 → dirty 해제
+schema = A; currentChaId = 'chaA';
+loadIntoEditor(A);
+editor.setSchema(Object.assign({}, A, { meta:{name:'영지v2'} }));
+ck('수정하면 dirty', editorIsDirty());
+const parsed = editor.getSchema();
+schema = parsed; editorChaId = currentChaId; editorLoadedSig = sig(parsed);
+ck('설치 후 dirty 해제', !editorIsDirty());
+
+let p=0,f=0;
+for (const [ok,n,x] of R) { console.log(ok?'PASS':'FAIL', n, ok?'':'→ '+x); ok?p++:f++; }
+console.log('\\n' + p + ' passed, ' + f + ' failed');
+process.exit(f?1:0);
+`;
+
+const harness = `
+let editorContent = null;
+const createSchemaEditor = (base) => {
+  editorContent = JSON.parse(JSON.stringify(base));
+  return {
+    getSchema: () => JSON.parse(JSON.stringify(editorContent)),
+    setSchema: (x) => { editorContent = JSON.parse(JSON.stringify(x)); },
+  };
+};
+let schema = null, currentChaId = null;
+${body}
+${TESTS}
+`;
+const out = path.join(__dirname, '_editorsync_gen.js');
+fs.writeFileSync(out, harness, 'utf8');
+require(out);

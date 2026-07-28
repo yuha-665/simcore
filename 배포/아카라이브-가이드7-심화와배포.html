@@ -1,0 +1,325 @@
+<p><strong><span style="font-size:36px;">0. 마지막 편</span></strong></p>
+
+<p><br></p>
+
+<p>6탄까지 하면 봇은 다 굴러감. 이번 편은 두 덩어리임.</p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>앞부분</strong> &nbsp;보조 AI를 더 정확하게 만드는 설정 3개</p>
+	<p><strong>뒷부분</strong> &nbsp;만든 걸 백업하고, 옮기고, 남한테 넘기는 법</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">앞부분은 <strong>봇 편집 &gt; AI 설정 탭</strong> 하나에 다 있음. 2탄에서 허용 변수만 보고 지나갔던 그 탭임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 등장할 때만 열기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">NPC 호감도를 스무 명쯤 만들어놨다고 치자. 지금은 <strong>매 턴 스무 명 전부가 보조 AI한테 열려 있음.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그럼 이번 턴에 리비아만 나왔는데도 카일&middot;마르타&middot;에런 호감도가 <strong>분위기에 밀려서 &plusmn;1씩 움직임.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">2탄에서 배운 <strong>증가/감소 한도</strong>로는 이걸 못 막음. <strong>한도는 크기를 막지 횟수를 못 막기 때문임.</strong> 1씩 스무 번이면 20임.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">해결: [등장할 때만] 체크</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: AI 설정 탭 - 허용 변수 행의 [등장할 때만] 체크와 낱말 칸]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">허용 변수마다 체크박스가 하나 있음. 켜면 <strong>그 이름이 이번 턴 서사에 실제로 나왔을 때만</strong> 보조 AI가 그 변수를 볼 수 있음. 안 나오면 아예 안 보이니까 <strong>흔들릴 수가 없음.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">로어북 키워드랑 완전히 같은 방식이라고 보면 됨.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>체크만 하고 낱말 칸을 비우면</strong> &nbsp;변수 이름을 낱말로 씀<br>&nbsp; &nbsp;&rarr; 호감_리비아의 이름이 &quot;리비아&quot;면 그게 그대로 낱말이 됨</p>
+	<p><br></p>
+	<p><strong>낱말 칸에 적으면</strong> &nbsp;그 말들로 씀. 쉼표로 여러 개<br>&nbsp; &nbsp;&rarr; <strong>리비아, 리비아 부인, 집사</strong> 처럼 별명까지 같이</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이름이 서로 겹칠 때는 <strong>긴 쪽이 이김.</strong> &quot;리아나&quot;랑 &quot;릴리아나&quot;가 다른 사람이어도, 릴리아나가 나온 문장이 리아나까지 같이 열지 않음.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">뭐에 걸면 좋냐면</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>인물 호감도</strong> &nbsp;1순위. 사람 수만큼 변수가 늘어나는 게 여기라서<br>
+- <strong>특정 장소&middot;세력 관련 수치</strong> &nbsp;그 이름이 나올 때만 의미 있는 것<br>
+- <strong>금화&middot;식량 같은 공용 수치</strong> &nbsp;걸면 안 됨. 이름 없이도 늘 바뀌는 값이라 닫아두면 갱신이 멈춤</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">한 글자 이름은 조심. &quot;검&quot; 같은 걸 낱말로 쓰면 아무 문장에나 걸림. 이런 건 검증이 경고해줌.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 보조 AI에게 함께 보낼 최근 대화</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: AI 설정 탭 - 최근 대화 턴 수 선택]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">보조 AI는 기본적으로 <strong>이번 턴 서사만</strong> 봄. 그래서 이런 걸 놓침.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>2턴 전</strong> &nbsp;남작이 리비아에게 은목걸이를 건넸다.</p>
+	<p><strong>이번 턴</strong> &nbsp;&hellip;리비아는 <strong>아까 받은 것</strong>을 만지작거리며 말했다.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&quot;아까 받은 것&quot;이 뭔지 모르니 판단이 어긋남. 앞 대화를 같이 보내주면 해결됨.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>1턴</strong> &nbsp;이번 턴만 (기본, 가장 저렴)</p>
+	<p><strong>3턴</strong> &nbsp;권장</p>
+	<p><strong>5턴</strong> &nbsp;맥락 최대, 토큰 많이 씀</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">공짜는 아님. <strong>턴마다 토큰을 더 씀.</strong> 그리고 이미 반영한 변화를 다시 셀 위험이 조금 생기는데, 그러지 말라는 지시는 자동으로 붙어서 나감.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">호감도&middot;관계 위주 봇이면 <strong>3턴</strong> 권장. 수치 관리 위주(영지&middot;서바이벌)면 1턴으로 둬도 별 차이 없음.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 보조 AI 추가 지시</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: AI 설정 탭 맨 아래 - 보조 AI 추가 지시 칸]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">탭 맨 아래에 빈 칸이 하나 있음. <strong>보조 AI한테만</strong> 전달되는 지시임. 메인 AI는 이걸 안 봄.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기에 쓰면 좋은 건 &quot;<strong>이 봇에서 이런 실수를 하지 마라</strong>&quot; 같은 거임.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>서사에 명시된 변화만 반영하라. 추측하지 마라.</p>
+	<p>협상 중인 것과 체결된 것을 구분하라. &quot;생각해 보겠다&quot;는 아직 계약이 아니다.</p>
+	<p>인물이 죽거나 떠났다는 서술이 없으면 명단에서 빼지 마라.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ 여기 쓰면 안 되는 것</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">보조 AI 호출에는 <strong>로어북도, 캐릭터 카드도, 페르소나도 하나도 안 들어감.</strong> 들어가는 건 허용 변수 목록이랑 현재값, 이번 턴 서사, 유저 발화뿐임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 이런 걸 적으면 <strong>못 보는 걸 맞추라는 말</strong>이 됨.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>&quot;로어북의 인물 표기를 따르라&quot; &nbsp;(X &mdash; 로어북을 못 봄)</p>
+	<p>&quot;캐릭터 설정에 맞게 판단하라&quot; &nbsp;(X &mdash; 카드를 못 봄)</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">보조 AI가 이름을 아는 경로는 <strong>서사 원문뿐임.</strong> 이거 모르고 지시를 길게 쓰는 사람이 많은데, 길게 쓴다고 좋아지는 게 아니라 <strong>못 지키는 지시만 늘어남.</strong></span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 세이브 &mdash; 상태 백업하고 옮기기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기부터는 <strong>플러그인 패널 &gt; 세이브 데이터</strong> 화면임.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 세이브 데이터 화면 전체]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">버튼이 셋임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>세이브 내보내기</strong> &nbsp;스냅샷 전체를 파일로. 매 턴 상태가 이력으로 쌓여 있어서 통째로 나감<br>
+- <strong>세이브 가져오기</strong> &nbsp;그 파일을 되돌림<br>
+- <strong>미러에서 복원</strong> &nbsp;스냅샷이 없는 채팅용 (다른 기기에서 가져온 채팅 같은 것). 이력은 못 살리고 <strong>변수 값만</strong> 되살림</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">기기를 옮기거나, 뭔가 크게 꼬였을 때 되돌리는 용도임. 리롤을 많이 하는 사람은 중요한 지점에서 한 번씩 뽑아두면 편함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. ★ 세이브가 곧 배포 수단임</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이게 이 편에서 제일 중요한 부분임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">세이브 파일에는 <strong>변수 값만 들어있는 게 아니라 스키마가 통째로 동봉됨.</strong> 변수&middot;규칙&middot;이벤트&middot;액션&middot;상태창 전부.</span></p>
+
+<p><br></p>
+
+<p>[스샷: &quot;가져올 때 동봉된 스키마도 함께 복원&quot; 체크박스]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">가져오기 화면에 이 체크박스가 있음.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>체크 O</strong> &nbsp;세이브 안의 스키마까지 통째로 복원 &mdash; <strong>남이 만든 봇 설정을 그대로 받는 것</strong></p>
+	<p><strong>체크 X</strong> &nbsp;지금 스키마는 그대로 두고 <strong>변수 값만</strong> 가져옴</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">즉 <strong>세이브 파일 하나 주면 내가 만든 시뮬 설정이 통째로 넘어감.</strong> 3탄 이벤트, 4탄 액션, 5탄 명령, 6탄 프리셋까지 전부.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 <strong>캐릭터 카드를 내보내도 스키마가 같이 나감.</strong> 봇을 배포하는 사람은 이쪽이 편함 &mdash; 카드만 올리면 받는 사람은 아무것도 안 해도 됨.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">덮어쓰기가 걱정되면</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">체크하고 가져오면 <strong>지금 스키마가 갈아엎어짐.</strong> 근데 <strong>이전 스키마는 자동으로 백업됨.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">봇 편집 화면의 <strong>[백업 복원]</strong>으로 되돌릴 수 있음. 설치할 때마다 자동으로 백업이 쌓이니까(최근 5개) 웬만하면 살릴 수 있음.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 봇 편집 화면의 [백업 복원] 버튼]</p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">6. 배포할 때 안내할 것</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">봇을 남한테 넘길 때 <strong>이건 꼭 같이 적어줘야 함.</strong></span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>1.</strong> SimCore 플러그인을 먼저 설치해야 함 (안 깔면 상태창이 아예 안 뜸)</p>
+	<p><strong>2.</strong> 봇 들어가서 <strong>[현재 캐릭터에 설치/업데이트]</strong> 한 번</p>
+	<p><strong>3.</strong> 새 채팅 시작 전에 <strong>[새 시작]</strong>에서 프리셋 고르기</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">2번을 안 알려주면 &quot;상태창이 안 떠요&quot; 문의가 계속 옴. 카드에 스키마가 실려 와도 <strong>설치 버튼은 한 번 눌러야 함.</strong></span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">보조 모델이 막힌 환경이면</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">환경에 따라 플러그인이 보조 모델을 직접 못 부르는 경우가 있음. 그러면 상태가 자동 갱신이 안 됨.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이럴 땐 봇 편집의 <strong>[루아 브리지 설치/갱신]</strong>을 누르면 우회됨. 1탄에서 설치할 때 같이 눌렀던 그 버튼임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">지금 내 환경이 되는지 안 되는지는 <strong>[새 시작] 화면의 [보조 모델 연결 테스트]</strong>로 확인하면 됨. 버튼 누른 그 시점에 실제로 호출해봐서 알려줌.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 보조 모델 연결 테스트 버튼과 결과]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">⚠ 스키마를 고쳤으면 브리지도 <strong>다시 눌러서 갱신</strong>해야 함. 안 맞으면 봇 편집 화면이 경고해줌.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>등장할 때만</strong> &nbsp;인물 호감도에 걸면 안 나온 사람이 안 흔들림</p>
+	<p><strong>최근 대화</strong> &nbsp;관계 위주 봇은 3턴 권장, 수치 위주면 1턴</p>
+	<p><strong>추가 지시</strong> &nbsp;보조 AI는 로어북&middot;카드를 못 봄. 서사 원문뿐</p>
+	<p><strong>세이브</strong> &nbsp;스키마가 동봉됨 &mdash; 파일 하나가 곧 배포 수단</p>
+	<p><strong>배포</strong> &nbsp;받는 사람에게 [설치/업데이트] 누르라고 꼭 알려줄 것</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기까지가 전부임. 정리하면 이렇게 됨.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>1탄</strong> 설치하고 템플릿으로 시작 &nbsp;&middot;&nbsp; <strong>2탄</strong> 변수&middot;디자인&middot;AI 설정</p>
+	<p><strong>3탄</strong> 규칙과 이벤트 &nbsp;&middot;&nbsp; <strong>4탄</strong> 액션 &nbsp;&middot;&nbsp; <strong>5탄</strong> 명령</p>
+	<p><strong>6탄</strong> 새 시작 &nbsp;&middot;&nbsp; <strong>7탄</strong> 심화와 배포</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이제 캐릭터 시트에서 <strong>&quot;랭크 C, 스킬 뭐, 장비 뭐&quot;</strong> 같은 거 다 지우고 플러그인한테 짬때려도 됨. 0탄에서 한 말이 그 뜻이었음.</span></p>

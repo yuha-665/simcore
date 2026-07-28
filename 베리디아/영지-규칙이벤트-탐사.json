@@ -1,0 +1,351 @@
+{
+  "rules": {
+    "onTurn": [
+      {
+        "list": "contracts",
+        "expire": "day + span"
+      },
+      {
+        "set": "food",
+        "expr": "max(0, food + surplus * span)"
+      },
+      {
+        "set": "water",
+        "expr": "max(0, water + water_bal * span)"
+      },
+      {
+        "set": "gold",
+        "expr": "max(0, gold + net_gold * span)"
+      },
+      {
+        "set": "health",
+        "expr": "clamp(health + (food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) * span, 0, 100)"
+      },
+      {
+        "set": "morale",
+        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "unrest",
+        "expr": "clamp(unrest + ((guard_men + army < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0) + (gold <= 0 and army > 0 ? 2 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "fame",
+        "expr": "clamp(fame + ((surplus > 4 ? 2 : 0) - (unrest >= 60 ? 2 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "pop",
+        "expr": "max(0, pop + ((surplus > 4 and fame >= 12 ? round(min(surplus * 0.2, 5)) : 0) - (food <= 0 ? round(pop * 0.04) : 0) - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5))"
+      },
+      {
+        "set": "exp_n",
+        "expr": "exp_n >= 110 ? exp_n : (exp_n >= 100 ? 109 + max(1, rand(0, 3)) : (explore_dir == \"북 산맥\" ? min(100, exp_n + round(scout_men * 0.6) * span) : exp_n))"
+      },
+      {
+        "set": "exp_w",
+        "expr": "exp_w >= 110 ? exp_w : (exp_w >= 100 ? 109 + max(1, rand(0, 3)) : (explore_dir == \"서 숲\" ? min(100, exp_w + round(scout_men * 0.6) * span) : exp_w))"
+      },
+      {
+        "set": "exp_s",
+        "expr": "exp_s >= 110 ? exp_s : (exp_s >= 100 ? 109 + max(1, rand(0, 3)) : (explore_dir == \"남 평원\" ? min(100, exp_s + round(scout_men * 0.6) * span) : exp_s))"
+      },
+      {
+        "set": "exp_e",
+        "expr": "exp_e >= 110 ? exp_e : (exp_e >= 100 ? 109 + max(1, rand(0, 3)) : (explore_dir == \"동 강가\" ? min(100, exp_e + round(scout_men * 0.6) * span) : exp_e))"
+      },
+      {
+        "set": "day",
+        "expr": "day + span"
+      },
+      {
+        "set": "disaster_days",
+        "expr": "max(0, disaster_days - span)"
+      },
+      {
+        "set": "disaster",
+        "expr": "disaster_days <= 0 ? \"\" : disaster"
+      },
+      {
+        "set": "appt_in",
+        "expr": "appt == \"\" ? 0 : (appt_in > 0 and appt_in - span < 0 ? 0 : max(-1, appt_in - span))"
+      },
+      {
+        "set": "appt",
+        "expr": "appt_in < 0 ? \"\" : appt"
+      },
+      {
+        "set": "appt_in",
+        "expr": "appt == \"\" ? 0 : appt_in"
+      },
+      {
+        "set": "days_passed",
+        "expr": "0"
+      }
+    ],
+    "events": [
+      {
+        "id": "find_n_1",
+        "once": true,
+        "when": "exp_n == 110",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "화강암 노두"
+            ]
+          }
+        ],
+        "notify": "[화강암 노두] 척후가 능선 남면에서 드러난 화강암 벽을 찾았다. 캐낼 수만 있으면 성벽을 쌓을 돌이다."
+      },
+      {
+        "id": "find_n_2",
+        "once": true,
+        "when": "exp_n == 111",
+        "effects": [
+          {
+            "list": "facilities",
+            "add": [
+              "얼음 동굴"
+            ]
+          }
+        ],
+        "notify": "[얼음 동굴] 바위 틈으로 찬 바람이 새어 나왔다. 안쪽은 한여름에도 얼음이 녹지 않는다. 곳간으로 쓸 수 있다."
+      },
+      {
+        "id": "find_n_3",
+        "once": true,
+        "when": "exp_n == 112",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "고블린 둥지 위치도"
+            ]
+          },
+          {
+            "set": "threat",
+            "expr": "clamp(threat + 25, 0, 100)"
+          }
+        ],
+        "notify": "[고블린 큰 둥지] 능선 너머에 고블린 무리가 자리를 잡고 있었다. 수가 예상보다 훨씬 많다. 위치는 알아냈으나 알아낸 만큼 무섭다."
+      },
+      {
+        "id": "find_w_1",
+        "once": true,
+        "when": "exp_w == 110",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "은목 군락"
+            ]
+          }
+        ],
+        "notify": "[은목 군락] 도끼날이 튕겨 나가는 나무가 있었다. 은빛이 도는 결에 쇠처럼 단단하다."
+      },
+      {
+        "id": "find_w_2",
+        "once": true,
+        "when": "exp_w == 111",
+        "effects": [
+          {
+            "list": "facilities",
+            "add": [
+              "약초 골짜기"
+            ]
+          },
+          {
+            "set": "health",
+            "expr": "clamp(health + 8, 0, 100)"
+          }
+        ],
+        "notify": "[약초 골짜기] 볕이 드는 골짜기 하나가 통째로 약초밭이었다. 상처에 붙일 것과 열을 내릴 것이 함께 자란다."
+      },
+      {
+        "id": "find_w_3",
+        "once": true,
+        "when": "exp_w == 112",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "거미 서식지 표시"
+            ]
+          },
+          {
+            "set": "threat",
+            "expr": "clamp(threat + 20, 0, 100)"
+          }
+        ],
+        "notify": "[거대 거미 둥지] 나무 사이에 사람 키만 한 거미줄이 걸려 있었다. 돌아온 척후는 셋 중 둘이었다."
+      },
+      {
+        "id": "find_s_1",
+        "once": true,
+        "when": "exp_s == 110",
+        "effects": [
+          {
+            "list": "facilities",
+            "add": [
+              "흑토 경작지"
+            ]
+          },
+          {
+            "set": "arable",
+            "expr": "min(12, arable + 3)"
+          }
+        ],
+        "notify": "[화산재 흑토] 잿더미를 걷어내자 검은 흙이 나왔다. 손에 쥐면 기름지게 뭉친다. 이 땅은 죽은 게 아니라 덮여 있었다."
+      },
+      {
+        "id": "find_s_2",
+        "once": true,
+        "when": "exp_s == 111",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "소금 평원"
+            ]
+          }
+        ],
+        "notify": "[소금 평원] 바람에 마른 흰 껍질이 지평선까지 깔려 있었다. 소금이다. 먹을 것은 못 되어도 팔 것은 된다."
+      },
+      {
+        "id": "find_s_3",
+        "once": true,
+        "when": "exp_s == 112",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "녹슨 무구 더미"
+            ]
+          },
+          {
+            "set": "health",
+            "expr": "clamp(health - 6, 0, 100)"
+          }
+        ],
+        "notify": "[옛 전장] 재 아래에서 나온 것은 흙이 아니라 사람이었다. 무구는 쓸 만한 것이 섞여 있었지만, 파낸 자들이 그날 밤부터 앓았다."
+      },
+      {
+        "id": "find_e_1",
+        "once": true,
+        "when": "exp_e == 110",
+        "effects": [
+          {
+            "list": "facilities",
+            "add": [
+              "지류 취수장"
+            ]
+          },
+          {
+            "set": "wells",
+            "expr": "min(5, wells + 1)"
+          }
+        ],
+        "notify": "[맑은 지류] 본류에서 갈라진 물길 하나가 자갈밭을 지나며 걸러져 있었다. 떠 마셔도 배탈이 나지 않는다."
+      },
+      {
+        "id": "find_e_2",
+        "once": true,
+        "when": "exp_e == 111",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "점토층"
+            ]
+          }
+        ],
+        "notify": "[점토층] 강바닥을 파자 차진 점토가 나왔다. 구우면 벽돌이 되고, 빚으면 그릇이 된다."
+      },
+      {
+        "id": "find_e_3",
+        "once": true,
+        "when": "exp_e == 112",
+        "effects": [
+          {
+            "list": "stock",
+            "add": [
+              "리자드맨 부락 위치도"
+            ]
+          },
+          {
+            "set": "threat",
+            "expr": "clamp(threat + 18, 0, 100)"
+          }
+        ],
+        "notify": "[리자드맨 부락] 갈대밭 안쪽에 말뚝 울타리가 서 있었다. 사람의 것이 아니다. 저쪽도 이쪽을 보고 있었다."
+      }
+    ]
+  },
+  "directives": [
+    {
+      "id": "famine",
+      "when": "food <= 0",
+      "text": "[PRIORITY] The granary is empty and people go hungry today. This is the center of the scene, not background."
+    },
+    {
+      "id": "thirst",
+      "when": "water <= 0",
+      "text": "[PRIORITY] There is no drinking water. Thirst outruns hunger; this outranks everything else today."
+    },
+    {
+      "id": "phase_survive",
+      "when": "phase == \"연명\"",
+      "text": "[TONE] Still bare survival. Do not speak of rebuilding or prosperity — getting through today is the whole of it."
+    },
+    {
+      "id": "morale_good",
+      "when": "morale >= 60 and food_days > 10",
+      "text": "[TONE] Things are genuinely good right now. Do not render it stingily — good days are rare here."
+    },
+    {
+      "id": "disaster_on",
+      "when": "disaster_days > 0",
+      "text": "[ONGOING] {disaster} — {disaster_days} more days to run. Do not write it as resolved before it ends."
+    },
+    {
+      "id": "fest_today",
+      "when": "fest_in == 0",
+      "text": "[TODAY — {fest}] {fest_desc} Build the scene around this day. If the holding is in a bad way, it is observed badly."
+    },
+    {
+      "id": "fest_soon",
+      "when": "fest_in >= 1 and fest_in <= 10",
+      "text": "[UPCOMING] {fest_when} is {fest} — {fest_in} days out. {fest_desc}"
+    },
+    {
+      "id": "tribute_due",
+      "when": "fest == \"세납일\" and fest_in <= 12",
+      "text": "[TRIBUTE] Tribute day is {fest_in} days off. {tribute} is owed; the treasury holds {gold}."
+    },
+    {
+      "id": "appt_due",
+      "when": "appt != \"\" and appt_in <= 0",
+      "text": "[SCHEDULED] Today was set aside for this — {appt}. If it is put off, show why."
+    },
+    {
+      "id": "appt_near",
+      "when": "appt != \"\" and appt_in >= 1 and appt_in <= 3",
+      "text": "[SCHEDULED] {appt_in} days out — {appt}."
+    },
+    {
+      "id": "scouting_on",
+      "when": "explore_dir != \"없음\"",
+      "text": "[SCOUTING] Scouts are working {explore_dir} — {scouting} of the ground covered. What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. Do not let them find the thing itself until the system says they have."
+    },
+    {
+      "id": "scouting_close",
+      "when": "explore_dir != \"없음\" and scouting != \"이미 끝난 곳\" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)",
+      "text": "[SCOUTING] They are close to whatever is out there. The fragments are starting to line up."
+    },
+    {
+      "id": "no_numbers",
+      "when": "day >= 0",
+      "text": "[WRITING RULE] The figures above are your basis for judgment only. Never transcribe numbers or tables into the prose. Not \"food 781\" but \"the granary will hold two months\" — render them as something a person would feel. Never write against the figures: no feasting while they starve, no one following gladly when morale is on the floor."
+    }
+  ]
+}

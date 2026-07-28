@@ -1,0 +1,505 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "베리디아 연대기"
+  },
+  "vars": [
+    {
+      "id": "mode",
+      "label": "플레이",
+      "type": "enum",
+      "enum": [
+        "영지",
+        "시종"
+      ],
+      "init": "영지",
+      "desc": "지금 어느 판을 굴리고 있는지. 이 값 하나가 상태창·프롬프트·버튼을 통째로 바꾼다."
+    },
+    {
+      "id": "day",
+      "label": "경과일",
+      "type": "int",
+      "init": 1,
+      "min": 1
+    },
+    {
+      "id": "season",
+      "label": "계절",
+      "type": "enum",
+      "enum": [
+        "🍀 봄",
+        "🌻 여름",
+        "🍂 가을",
+        "⛄ 겨울"
+      ],
+      "init": "🍀 봄"
+    },
+    {
+      "id": "place",
+      "label": "위치",
+      "type": "text",
+      "init": "베리디아 성채",
+      "maxLength": 30
+    },
+    {
+      "id": "fame",
+      "label": "영지 명성",
+      "type": "int",
+      "init": 30,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "food",
+      "label": "식량 비축",
+      "type": "int",
+      "init": 400,
+      "min": 0
+    },
+    {
+      "id": "funds",
+      "label": "가용 자금",
+      "type": "int",
+      "init": 1200,
+      "min": 0,
+      "format": "{v}G"
+    },
+    {
+      "id": "morale",
+      "label": "영지 사기",
+      "type": "int",
+      "init": 55,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "labor",
+      "label": "가용 노동력",
+      "type": "int",
+      "init": 120,
+      "min": 0,
+      "format": "{v}명"
+    },
+    {
+      "id": "army",
+      "label": "상비 군사력",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "format": "{v}명"
+    },
+    {
+      "id": "ruined",
+      "label": "영지 붕괴",
+      "type": "bool",
+      "init": false
+    },
+    {
+      "id": "cass_fav",
+      "label": "카산드라 평가",
+      "type": "int",
+      "init": 40,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "orelia_fav",
+      "label": "Orelia 평가",
+      "type": "int",
+      "init": 35,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "lili_fav",
+      "label": "Liliana 평가",
+      "type": "int",
+      "init": 50,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "purse",
+      "label": "개인 자금",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "format": "{v}G"
+    },
+    {
+      "id": "servant_rep",
+      "label": "시종 평판",
+      "type": "int",
+      "init": 45,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "intel",
+      "label": "정보망 밀도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "exposed",
+      "label": "정체 발각",
+      "type": "bool",
+      "init": false
+    }
+  ],
+  "derived": [
+    {
+      "id": "food_days",
+      "label": "식량 잔여",
+      "expr": "floor(food / max(1, round(labor * 0.08 + army * 0.1)))",
+      "format": "{v}일"
+    },
+    {
+      "id": "stability",
+      "label": "영지 안정도",
+      "expr": "round((morale + fame) / 2)"
+    },
+    {
+      "id": "court_avg",
+      "label": "왕궁 총평",
+      "expr": "round((cass_fav + orelia_fav + lili_fav) / 3)"
+    },
+    {
+      "id": "weakest",
+      "label": "가장 낮은 평가",
+      "expr": "cass_fav <= orelia_fav and cass_fav <= lili_fav ? \"카산드라\" : (orelia_fav <= lili_fav ? \"Orelia\" : \"Liliana\")"
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "set": "day",
+        "expr": "day + 1"
+      },
+      {
+        "set": "food",
+        "expr": "mode == \"영지\" ? max(0, food - round(labor * 0.08 + army * 0.1)) : food"
+      },
+      {
+        "set": "morale",
+        "expr": "mode == \"영지\" ? clamp(morale + (food <= 0 ? -8 : 1), 0, 100) : morale"
+      },
+      {
+        "set": "purse",
+        "expr": "mode == \"시종\" ? max(0, purse - 2) : purse"
+      },
+      {
+        "set": "servant_rep",
+        "expr": "mode == \"시종\" ? clamp(servant_rep + (court_avg >= 50 ? 1 : -1), 0, 100) : servant_rep"
+      }
+    ],
+    "events": [
+      {
+        "id": "famine",
+        "when": "mode == \"영지\" and food <= 0 and morale <= 10 and not ruined",
+        "effects": [
+          {
+            "set": "ruined",
+            "expr": "1"
+          }
+        ],
+        "notify": "곳간이 비고 영민이 흩어졌다. 영지는 더 이상 유지되지 않는다."
+      },
+      {
+        "id": "unmasked",
+        "when": "mode == \"시종\" and servant_rep <= 0 and not exposed",
+        "effects": [
+          {
+            "set": "exposed",
+            "expr": "1"
+          }
+        ],
+        "notify": "시종의 정체가 왕궁에 드러났다."
+      },
+      {
+        "id": "to_palace",
+        "when": "mode == \"시종\" and place == \"베리디아 성채\"",
+        "effects": [
+          {
+            "set": "place",
+            "expr": "\"왕궁 서쪽 별궁\""
+          }
+        ],
+        "notify": "왕도로 향했다. 이제 무대는 왕궁이다."
+      },
+      {
+        "id": "to_estate",
+        "when": "mode == \"영지\" and place == \"왕궁 서쪽 별궁\"",
+        "effects": [
+          {
+            "set": "place",
+            "expr": "\"베리디아 성채\""
+          }
+        ],
+        "notify": "영지로 돌아왔다."
+      }
+    ]
+  },
+  "directives": [
+    {
+      "id": "ledger_estate",
+      "when": "mode == \"영지\"",
+      "text": "[Veridia Ledger — 영지 운영] 매 응답 끝에 영지 장부를 출력하라. 명성 {fame} · 식량 {food}({food_days}) · 자금 {funds} · 사기 {morale} · 노동력 {labor} · 군사 {army}. 수치는 숫자 대신 서술 척도(매우 낮음/안정/높음)로 옮겨 적어라."
+    },
+    {
+      "id": "ledger_court",
+      "when": "mode == \"시종\"",
+      "text": "[Royal Secret Ledger — 왕가 시종] 매 응답 끝에 왕궁 장부를 출력하라. 카산드라 {cass_fav} · Orelia {orelia_fav} · Liliana {lili_fav} · 개인자금 {purse} · 시종평판 {servant_rep} · 정보망 {intel}. 전부 한 줄로, 줄바꿈 없이 출력하라. 지금 가장 경계해야 할 인물은 {weakest}다."
+    },
+    {
+      "id": "estate_crisis",
+      "when": "mode == \"영지\" and food_days <= 3",
+      "text": "[상태] 곳간이 사흘치도 남지 않았다. 굶주림이 장면 전면에 나와야 한다."
+    }
+  ],
+  "actions": [
+    {
+      "id": "go_court",
+      "label": "👑 왕도로 향한다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "mode == \"영지\" and not ruined",
+      "inject": "[전환] 영지를 대리인에게 맡기고 왕도로 향한다.",
+      "effects": [
+        {
+          "set": "mode",
+          "expr": "\"시종\""
+        }
+      ]
+    },
+    {
+      "id": "go_estate",
+      "label": "🏰 영지로 돌아간다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "mode == \"시종\" and not exposed",
+      "inject": "[전환] 왕궁을 떠나 영지로 돌아간다.",
+      "effects": [
+        {
+          "set": "mode",
+          "expr": "\"영지\""
+        }
+      ]
+    },
+    {
+      "id": "levy",
+      "label": "💰 징세",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "mode == \"영지\"",
+      "inject": "[영지 결정] 특별 징세를 단행한다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "funds + 300"
+        },
+        {
+          "set": "morale",
+          "expr": "max(0, morale - 8)"
+        }
+      ]
+    },
+    {
+      "id": "buy_grain",
+      "label": "🌾 곡물 매입",
+      "mode": "oneshot",
+      "cooldown": 1,
+      "when": "mode == \"영지\" and funds >= 200",
+      "inject": "[영지 결정] 상인에게서 곡물을 사들인다.",
+      "effects": [
+        {
+          "set": "food",
+          "expr": "food + 250"
+        },
+        {
+          "set": "funds",
+          "expr": "funds - 200"
+        }
+      ]
+    },
+    {
+      "id": "flatter",
+      "label": "🌹 비위 맞추기",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "mode == \"시종\"",
+      "inject": "[시종 행동] 가장 낮은 평가를 주는 인물의 비위를 맞춘다.",
+      "effects": [
+        {
+          "set": "cass_fav",
+          "expr": "weakest == \"카산드라\" ? min(100, cass_fav + 12) : cass_fav"
+        },
+        {
+          "set": "orelia_fav",
+          "expr": "weakest == \"Orelia\" ? min(100, orelia_fav + 12) : orelia_fav"
+        },
+        {
+          "set": "lili_fav",
+          "expr": "weakest == \"Liliana\" ? min(100, lili_fav + 12) : lili_fav"
+        },
+        {
+          "set": "purse",
+          "expr": "max(0, purse - 15)"
+        }
+      ]
+    },
+    {
+      "id": "eavesdrop",
+      "label": "🕯 엿듣기",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "mode == \"시종\"",
+      "inject": "[시종 행동] 별궁 복도에서 대화를 엿듣는다.",
+      "effects": [
+        {
+          "set": "intel",
+          "expr": "min(100, intel + 15)"
+        },
+        {
+          "set": "servant_rep",
+          "expr": "max(0, servant_rep - 4)"
+        }
+      ]
+    }
+  ],
+  "statusUI": {
+    "mode": "auto",
+    "groups": [
+      {
+        "label": "",
+        "items": [
+          {
+            "var": "mode"
+          },
+          {
+            "var": "day"
+          },
+          {
+            "var": "season"
+          },
+          {
+            "var": "place"
+          }
+        ]
+      },
+      {
+        "label": "영지",
+        "showWhen": "mode == \"영지\"",
+        "items": [
+          {
+            "var": "fame",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "food"
+          },
+          {
+            "var": "food_days"
+          },
+          {
+            "var": "funds"
+          },
+          {
+            "var": "morale",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "labor"
+          },
+          {
+            "var": "army"
+          }
+        ]
+      },
+      {
+        "label": "왕궁",
+        "showWhen": "mode == \"시종\"",
+        "items": [
+          {
+            "var": "cass_fav",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "orelia_fav",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "lili_fav",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "purse"
+          },
+          {
+            "var": "servant_rep",
+            "bar": {
+              "max": 100
+            }
+          },
+          {
+            "var": "intel",
+            "bar": {
+              "max": 100
+            }
+          }
+        ]
+      },
+      {
+        "label": "경고",
+        "showWhen": "food_days <= 3 or servant_rep <= 15",
+        "items": [
+          {
+            "var": "food_days",
+            "label": "⚠ 굶주림 임박",
+            "showWhen": "mode == \"영지\""
+          },
+          {
+            "var": "servant_rep",
+            "label": "⚠ 발각 임박",
+            "showWhen": "mode == \"시종\""
+          }
+        ]
+      }
+    ]
+  },
+  "promptState": {
+    "template": "[베리디아 연대기] {day}일차 · {season} · {place}"
+  },
+  "setup": {
+    "presets": [
+      {
+        "id": "estate",
+        "label": "🏰 영지 운영으로 시작",
+        "set": {
+          "mode": "영지",
+          "place": "베리디아 성채"
+        }
+      },
+      {
+        "id": "court",
+        "label": "👑 왕가 시종으로 시작",
+        "set": {
+          "mode": "시종",
+          "place": "왕궁 서쪽 별궁"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,2753 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "베리디아 남작령"
+  },
+  "vars": [
+    {
+      "id": "days_passed",
+      "label": "이번에 흐른 날",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 14,
+      "desc": "Days elapsed this response, if more than one. \"Three days later\" = 3, \"next week\" = 7. Leave it alone for a single day. Date and season advance by this on their own."
+    },
+    {
+      "id": "time",
+      "label": "시각",
+      "type": "enum",
+      "init": "🕗아침",
+      "enum": [
+        "🌅새벽",
+        "🕗아침",
+        "🕛낮",
+        "🕗저녁",
+        "🌙밤"
+      ]
+    },
+    {
+      "id": "weather",
+      "label": "날씨",
+      "type": "enum",
+      "init": "☀️맑음",
+      "enum": [
+        "☀️맑음",
+        "⛅흐림",
+        "🌧비",
+        "⛈폭풍우",
+        "❄️눈",
+        "🌫안개",
+        "🔥폭염",
+        "🥶한파"
+      ]
+    },
+    {
+      "id": "location",
+      "label": "위치",
+      "type": "text",
+      "init": "베리디아 성채",
+      "maxLength": 24
+    },
+    {
+      "id": "disaster",
+      "label": "진행 중인 재해",
+      "type": "text",
+      "init": "",
+      "maxLength": 40,
+      "desc": "Name of the disaster currently underway; empty string if none. Start a new one only when disaster_days is 0."
+    },
+    {
+      "id": "disaster_days",
+      "label": "재해 잔여",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 30,
+      "desc": "How many more days the disaster runs. The system counts it down and clears it at 0. Set it only at the start."
+    },
+    {
+      "id": "day",
+      "label": "경과일",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "부임 후 며칠째인지. 날짜·계절·축일이 전부 여기서 계산된다. 시스템이 센다. 손대지 말 것."
+    },
+    {
+      "id": "appt",
+      "label": "예정",
+      "type": "text",
+      "init": "",
+      "maxLength": 60,
+      "desc": "One thing set to happen. e.g. \"Count's envoy arrives\". The system deletes it once the day has passed."
+    },
+    {
+      "id": "appt_in",
+      "label": "예정까지",
+      "type": "int",
+      "init": 0,
+      "min": -1,
+      "max": 60,
+      "desc": "How many days off appt is. Tomorrow = 1, three days = 3. Do not log something happening today — just narrate it. The system counts down; 0 is the day."
+    },
+    {
+      "id": "pop",
+      "label": "주민",
+      "type": "int",
+      "init": 110,
+      "min": 0,
+      "format": "{v}명"
+    },
+    {
+      "id": "health",
+      "label": "보건",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "morale",
+      "label": "사기",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "labor_policy",
+      "label": "노동 배분",
+      "type": "enum",
+      "enum": [
+        "생존 우선",
+        "재건 우선",
+        "방비 우선",
+        "개척 우선"
+      ],
+      "init": "생존 우선"
+    },
+    {
+      "id": "food",
+      "label": "식량",
+      "type": "int",
+      "init": 1200,
+      "min": 0,
+      "desc": "Unit is person-days; one resident eats 1 per day. The system settles this every turn — do not deduct it yourself."
+    },
+    {
+      "id": "water",
+      "label": "식수",
+      "type": "int",
+      "init": 500,
+      "min": 0,
+      "desc": "Unit is person-days."
+    },
+    {
+      "id": "gold",
+      "label": "재정",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "format": "{v}G",
+      "cmd": "금"
+    },
+    {
+      "id": "contracts",
+      "label": "지속 수입",
+      "type": "list",
+      "init": [],
+      "maxItems": 8,
+      "itemMaxLength": 48,
+      "cmd": "계약",
+      "desc": "What comes in or goes out every day: trade deals, market dues, infrastructure revenue, levies. The per-day number MUST come last — \"헤세 상단 양모 계약 +12\", \"제분소 5\", \"성벽 보수 부담 -4\". For a fixed term add \"@+days\" (a year is 360 days), e.g. a 3-year deal is \"@+1080\" — the system dates it. No @ means indefinite. No trailing number counts as 0. Never add an entry already listed."
+    },
+    {
+      "id": "supply",
+      "label": "수입",
+      "type": "list",
+      "init": [],
+      "maxItems": 6,
+      "itemMaxLength": 32,
+      "cmd": "수입",
+      "desc": "Standing deliveries of goods coming IN, paid for automatically out of the treasury. Every entry MUST begin with 식량 or 식수 and end with the amount arriving per day — \"식량 헤세 상단 밀 40\", \"식수 강물 수레 25\". Nothing else belongs here: a one-off purchase moves food or gold directly, and money owed with no goods attached is a contract. Never write the cost — the system prices it. Remove the line when the arrangement ends."
+    },
+    {
+      "id": "stock",
+      "label": "보유 물자",
+      "type": "list",
+      "init": [
+        "목재 100"
+      ],
+      "maxItems": 10,
+      "cmd": "물자",
+      "desc": "Things stacked in store, with how much. Not places — places go in the lists below."
+    },
+    {
+      "id": "houses",
+      "label": "주거",
+      "type": "list",
+      "init": [
+        "남은 오두막 90",
+        "성채 헛간 30"
+      ],
+      "maxItems": 8,
+      "itemMaxLength": 32,
+      "cmd": "주거",
+      "desc": "Where people sleep. The number MUST come last and is how many it houses — \"장옥 60\", \"흙집 12\". Their sum is the hard ceiling on population: nobody new settles once it is reached."
+    },
+    {
+      "id": "infra",
+      "label": "인프라",
+      "type": "list",
+      "init": [
+        "무너진 병영",
+        "잡초 연병장",
+        "폐허 대장간",
+        "오염된 우물"
+      ],
+      "maxItems": 14,
+      "itemMaxLength": 24,
+      "cmd": "인프라",
+      "desc": "What keeps the holding running — water works, baths, chapel, forge, walls, roads, storage. Name only, no number. Wells and channels belong here; when one is finished raise wells too."
+    },
+    {
+      "id": "farms",
+      "label": "경작지",
+      "type": "list",
+      "init": [
+        "묵은 밭 4"
+      ],
+      "maxItems": 8,
+      "itemMaxLength": 28,
+      "cmd": "경작지",
+      "desc": "Ground that FEEDS people — fields, orchards, pasture, fishing waters, mushroom caves. The number MUST come last: how much it adds to farmland quality (a cleared plot ~1, a whole reclaimed valley ~4). Their sum drives the harvest, so never write one without a number."
+    },
+    {
+      "id": "sites",
+      "label": "자원지",
+      "type": "list",
+      "init": [],
+      "maxItems": 8,
+      "itemMaxLength": 28,
+      "cmd": "자원지",
+      "desc": "Places that yield goods to SELL — mines, quarries, salt flats, clay beds, silk groves. The number MUST come last: gold per day once it is actually being worked, 0 while it is only known about. Their sum is added to daily income."
+    },
+    {
+      "id": "route",
+      "label": "막힌 길",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "북 산길",
+        "동 강길",
+        "남 가도",
+        "서 숲길"
+      ],
+      "desc": "Which road is impassable right now. Set it back to \"없음\" the moment the narration says it is cleared — soldiers driving off the bandits, a thaw, a bridge rebuilt. It does not have to run its full term."
+    },
+    {
+      "id": "route_days",
+      "label": "통행 재개까지",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 120,
+      "desc": "Days the closure is expected to last. The system counts it down and reopens the road at zero."
+    },
+    {
+      "id": "blight",
+      "label": "농지 피해",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 8
+    },
+    {
+      "id": "wells",
+      "label": "식수원",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5,
+      "desc": "How many usable wells and channels stand. At 0, water must be hauled from the river. Raise it only together with a matching entry in infra."
+    },
+    {
+      "id": "explore_dir",
+      "label": "탐사 방향",
+      "type": "enum",
+      "cmd": "탐사",
+      "enum": [
+        "없음",
+        "북 산맥",
+        "서 숲",
+        "남 평원",
+        "동 강가"
+      ],
+      "init": "없음",
+      "desc": "Where the scouts are currently working. Set it when the narration sends them somewhere; \"없음\" means they are kept home."
+    },
+    {
+      "id": "exp_n",
+      "label": "북 탐사",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 114
+    },
+    {
+      "id": "exp_w",
+      "label": "서 탐사",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 114
+    },
+    {
+      "id": "exp_s",
+      "label": "남 탐사",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 114
+    },
+    {
+      "id": "exp_e",
+      "label": "동 탐사",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 114
+    },
+    {
+      "id": "f_n",
+      "label": "북 발견",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "id": "f_w",
+      "label": "서 발견",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "id": "f_s",
+      "label": "남 발견",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "id": "f_e",
+      "label": "동 발견",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
+      "id": "o_n",
+      "label": "북 시작점",
+      "type": "int",
+      "init": -1,
+      "min": -1,
+      "max": 4
+    },
+    {
+      "id": "o_w",
+      "label": "서 시작점",
+      "type": "int",
+      "init": -1,
+      "min": -1,
+      "max": 4
+    },
+    {
+      "id": "o_s",
+      "label": "남 시작점",
+      "type": "int",
+      "init": -1,
+      "min": -1,
+      "max": 4
+    },
+    {
+      "id": "o_e",
+      "label": "동 시작점",
+      "type": "int",
+      "init": -1,
+      "min": -1,
+      "max": 4
+    },
+    {
+      "id": "army",
+      "label": "상비군",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "format": "{v}명"
+    },
+    {
+      "id": "unrest",
+      "label": "내부 불안",
+      "type": "int",
+      "init": 15,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "threat",
+      "label": "외부 위협",
+      "type": "int",
+      "init": 40,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "fame",
+      "label": "명성",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100,
+      "desc": "Standing among the folk of Veridia itself. What other domains think is rel_* — do not move both for the same event."
+    },
+    {
+      "id": "rel_n",
+      "label": "북 모르웬 백작",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "rel_e",
+      "label": "동 리아나 백작",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "rel_s",
+      "label": "남 발레리우스 백작",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "rel_w",
+      "label": "서 실바나 후작",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "rel_cap",
+      "label": "왕도 알라릭 여왕",
+      "type": "int",
+      "init": 10,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "ally",
+      "label": "동행",
+      "type": "text",
+      "init": "아데레",
+      "maxLength": 16,
+      "desc": "The one who came along from the exile road. Change only if they leave or are replaced."
+    },
+    {
+      "id": "ally_role",
+      "label": "직임",
+      "type": "text",
+      "init": "책사",
+      "maxLength": 12,
+      "desc": "The post the companion holds here. e.g. 책사(advisor), 집사(steward), 호위(guard)."
+    },
+    {
+      "id": "b_adere",
+      "label": "아데레",
+      "type": "int",
+      "init": 40,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_alaric",
+      "label": "알라릭 여왕",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_cassandra",
+      "label": "카산드라",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_orelia",
+      "label": "오렐리아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_liliana",
+      "label": "릴리아나",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_eleonora",
+      "label": "엘레오노라",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_silvana",
+      "label": "실바나",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_valerius",
+      "label": "발레리우스",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_liana",
+      "label": "리아나",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_morwen",
+      "label": "모르웬",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_stella",
+      "label": "스텔라",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_celestia",
+      "label": "셀레스티아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_lapis",
+      "label": "라피스",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_beatrix",
+      "label": "베아트릭스",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_philia",
+      "label": "필리아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_serie",
+      "label": "세리에",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_livia",
+      "label": "리비아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_fiora",
+      "label": "피오라",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_meryl",
+      "label": "메릴",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_clarice",
+      "label": "클라리스",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_cassia",
+      "label": "카시아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_lulu",
+      "label": "룰루",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_lara",
+      "label": "라라",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_yustina",
+      "label": "유스티나",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_algeria",
+      "label": "알제리아",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "b_lirica",
+      "label": "리리카",
+      "type": "int",
+      "init": 0,
+      "min": -50,
+      "max": 100
+    },
+    {
+      "id": "hire_mult",
+      "label": "고용 시세",
+      "type": "int",
+      "init": 100,
+      "min": 40,
+      "max": 400,
+      "format": "{v}%"
+    },
+    {
+      "id": "hardship",
+      "label": "시련",
+      "type": "int",
+      "init": 55,
+      "min": 0,
+      "max": 100,
+      "format": "{v}"
+    },
+    {
+      "id": "pw_cass",
+      "label": "카산드라 세력",
+      "type": "int",
+      "init": 52,
+      "min": 5,
+      "max": 100
+    },
+    {
+      "id": "pw_orel",
+      "label": "오렐리아 세력",
+      "type": "int",
+      "init": 46,
+      "min": 5,
+      "max": 100
+    },
+    {
+      "id": "pw_lili",
+      "label": "릴리아나 세력",
+      "type": "int",
+      "init": 41,
+      "min": 5,
+      "max": 100
+    },
+    {
+      "id": "lead_who",
+      "label": "(내부) 이번 턴 선두",
+      "type": "text",
+      "init": "카산드라",
+      "maxLength": 8
+    },
+    {
+      "id": "stance",
+      "label": "지지",
+      "type": "enum",
+      "cmd": "지지",
+      "enum": [
+        "중립",
+        "카산드라",
+        "오렐리아",
+        "릴리아나"
+      ],
+      "init": "중립",
+      "desc": "Which claimant the Baron backs. Change it only when the narration shows him actually committing — a letter sent, a word given before witnesses, levies promised. Wondering aloud is not backing."
+    },
+    {
+      "id": "exposed",
+      "label": "드러난 정도",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100,
+      "desc": "How widely known his allegiance is. The system moves it; leave it alone unless the narration shows it deliberately announced or deliberately buried."
+    },
+    {
+      "id": "corps",
+      "label": "군단·수녀",
+      "type": "list",
+      "init": [],
+      "maxItems": 16,
+      "itemMaxLength": 24,
+      "cmd": "군단",
+      "desc": "Maids and sisters actually serving here, hired from the roster. Format is ONLY \"Name wage\" with the daily wage last — \"리비아 8\", \"스텔라 4\". No role, no description. Their sum is paid out of the treasury every day, so an entry without a number is a free servant and that is wrong."
+    },
+    {
+      "id": "staff",
+      "label": "현지 고용인",
+      "type": "list",
+      "init": [],
+      "maxItems": 12,
+      "itemMaxLength": 30,
+      "cmd": "고용",
+      "desc": "Local people taken on at the holding — never a maid or a sister, they go in corps. Format is ONLY \"Name · role\" — \"요한 · 목수\", \"톰 · 마구간지기\". No individual wage: their keep is already counted in the daily upkeep. Spell the name exactly as the narration spells it. Do not list passers-by."
+    },
+    {
+      "id": "contacts",
+      "label": "아는 사람 · 조직",
+      "type": "list",
+      "init": [],
+      "maxItems": 10,
+      "itemMaxLength": 32,
+      "cmd": "인맥",
+      "desc": "Everyone met OUTSIDE the holding — merchants, envoys, orders, houses, other domains. Format is ONLY \"Name · one clause\": \"헤세 상단 · 곡물\", \"케빈 상단장 · 강 무역\". Never describe appearance or history — the lorebook holds that. Spell names exactly as the narration does; reuse the existing entry rather than adding a second spelling of the same party. Add on first real dealing, not on a name being mentioned. Remove when the tie is broken."
+    },
+    {
+      "id": "focus",
+      "label": "집중 목표",
+      "type": "text",
+      "init": "사람들을 굶기지 않는 것",
+      "maxLength": 60
+    },
+    {
+      "id": "alert",
+      "label": "긴급 통지",
+      "type": "text",
+      "init": "",
+      "maxLength": 120
+    }
+  ],
+  "derived": [
+    {
+      "id": "span",
+      "label": "흐른 날",
+      "expr": "max(1, days_passed)"
+    },
+    {
+      "id": "yday",
+      "label": "연중일",
+      "expr": "(day + 60) % 360"
+    },
+    {
+      "id": "year",
+      "label": "연도",
+      "expr": "1499 + floor((day + 60) / 360)"
+    },
+    {
+      "id": "month",
+      "label": "월",
+      "expr": "floor(yday / 30) + 1"
+    },
+    {
+      "id": "dom",
+      "label": "일",
+      "expr": "yday % 30 + 1"
+    },
+    {
+      "id": "date",
+      "label": "날짜",
+      "expr": "year + \"년 \" + month + \"월 \" + dom + \"일\""
+    },
+    {
+      "id": "season",
+      "label": "계절",
+      "expr": "month >= 12 or month <= 2 ? \"⛄겨울\" : (month <= 5 ? \"🍀봄\" : (month <= 8 ? \"🌻여름\" : \"🍂가을\"))"
+    },
+    {
+      "id": "nmonth",
+      "label": "다음 달",
+      "expr": "month % 12 + 1"
+    },
+    {
+      "id": "fest_md",
+      "label": "이달 축일일",
+      "expr": "month == 1 ? 15 : (month == 2 ? 5 : (month == 3 ? 10 : (month == 4 ? 22 : (month == 5 ? 15 : (month == 6 ? 8 : (month == 7 ? 20 : (month == 8 ? 12 : (month == 9 ? 25 : (month == 10 ? 10 : (month == 11 ? 1 : (28)))))))))))"
+    },
+    {
+      "id": "fest_nmd",
+      "label": "다음달 축일일",
+      "expr": "nmonth == 1 ? 15 : (nmonth == 2 ? 5 : (nmonth == 3 ? 10 : (nmonth == 4 ? 22 : (nmonth == 5 ? 15 : (nmonth == 6 ? 8 : (nmonth == 7 ? 20 : (nmonth == 8 ? 12 : (nmonth == 9 ? 25 : (nmonth == 10 ? 10 : (nmonth == 11 ? 1 : (28)))))))))))"
+    },
+    {
+      "id": "fest_month",
+      "label": "축일 달",
+      "expr": "fest_md >= dom ? month : nmonth"
+    },
+    {
+      "id": "fest_dom",
+      "label": "축일 날짜",
+      "expr": "fest_md >= dom ? fest_md : fest_nmd"
+    },
+    {
+      "id": "fest_in",
+      "label": "축일까지",
+      "expr": "fest_md >= dom ? fest_md - dom : 30 - dom + fest_nmd"
+    },
+    {
+      "id": "fest",
+      "label": "다음 축일",
+      "expr": "fest_month == 1 ? \"한밤절\" : (fest_month == 2 ? \"잿날\" : (fest_month == 3 ? \"파종절\" : (fest_month == 4 ? \"강신제\" : (fest_month == 5 ? \"초록절\" : (fest_month == 6 ? \"성 알드릭 축일\" : (fest_month == 7 ? \"화톳날\" : (fest_month == 8 ? \"기우절\" : (fest_month == 9 ? \"수확제\" : (fest_month == 10 ? \"세납일\" : (fest_month == 11 ? \"위령절\" : (\"긴밤제\")))))))))))"
+    },
+    {
+      "id": "fest_desc",
+      "label": "축일 설명",
+      "expr": "fest_month == 1 ? \"한 해에서 밤이 가장 긴 무렵. 불을 끄지 않고 새운다. 이 밤에 화로가 꺼진 집은 한 해 내내 입에 오른다.\" : (fest_month == 2 ? \"겨울에 죽은 이를 태워 보내는 날. 언 땅에 묻지 못한 시신이 이날 한꺼번에 화장된다.\" : (fest_month == 3 ? \"첫 씨앗을 뿌리는 날. 영주가 첫 고랑을 파는 것이 관례다. 남작이 흙을 만지는 걸 사람들이 지켜본다.\" : (fest_month == 4 ? \"봄비를 부르는 날. 강물을 떠다 밭에 뿌린다. 비가 오면 길조, 안 오면 흉흉한 말이 돈다.\" : (fest_month == 5 ? \"겨우내 굶은 뒤 처음 푸른 것을 먹는 날. 나물 한 줌이라도 온 마을이 나눈다.\" : (fest_month == 6 ? \"변경을 지키다 죽은 기사 성인의 날. 무기를 손질하고 젊은 사내들이 겨룬다.\" : (fest_month == 7 ? \"낮이 가장 긴 날. 밤새 언덕마다 불을 피운다. 불이 크면 그 영지가 산다는 말이 있다.\" : (fest_month == 8 ? \"가뭄이 드는 달, 비를 비는 날. 이날까지 비가 없으면 가을을 포기하는 이야기가 나온다.\" : (fest_month == 9 ? \"한 해 가장 큰 축일. 사흘간 일을 멈춘다. 곳간이 비어 있어도 사람들은 잔치를 기대한다.\" : (fest_month == 10 ? \"백작령에 세를 바치는 날. 축일이 아니라 두려운 날이다. 못 내면 문책이 오고, 그것이 다음 겨울을 정한다.\" : (fest_month == 11 ? \"죽은 자를 기리는 밤. 전쟁에서 죽은 이가 많은 땅이라 이 밤은 유난히 길다.\" : (\"한 해의 끝. 남은 것을 헤아리고 겨울을 셈한다. 이날 곳간을 열어 보이는 것이 관례다.\")))))))))))"
+    },
+    {
+      "id": "fest_when",
+      "label": "축일 일자",
+      "expr": "fest_month + \"월 \" + fest_dom + \"일\""
+    },
+    {
+      "id": "found_n",
+      "label": "칼날 능선",
+      "expr": "f_n >= 5 ? \"다 훑음 (5곳)\" : ((f_n == 0 ? \"미탐사\" : f_n + \"곳 발견\") + (exp_n >= 100 ? \" · 정리 중\" : (exp_n > 0 ? \" · 훑는 중 \" + exp_n + \"%\" : \"\")))"
+    },
+    {
+      "id": "found_w",
+      "label": "속삭이는 숲",
+      "expr": "f_w >= 5 ? \"다 훑음 (5곳)\" : ((f_w == 0 ? \"미탐사\" : f_w + \"곳 발견\") + (exp_w >= 100 ? \" · 정리 중\" : (exp_w > 0 ? \" · 훑는 중 \" + exp_w + \"%\" : \"\")))"
+    },
+    {
+      "id": "found_s",
+      "label": "잿빛 평원",
+      "expr": "f_s >= 5 ? \"다 훑음 (5곳)\" : ((f_s == 0 ? \"미탐사\" : f_s + \"곳 발견\") + (exp_s >= 100 ? \" · 정리 중\" : (exp_s > 0 ? \" · 훑는 중 \" + exp_s + \"%\" : \"\")))"
+    },
+    {
+      "id": "found_e",
+      "label": "강가",
+      "expr": "f_e >= 5 ? \"다 훑음 (5곳)\" : ((f_e == 0 ? \"미탐사\" : f_e + \"곳 발견\") + (exp_e >= 100 ? \" · 정리 중\" : (exp_e > 0 ? \" · 훑는 중 \" + exp_e + \"%\" : \"\")))"
+    },
+    {
+      "id": "finds",
+      "label": "발견 총계",
+      "expr": "f_n + f_w + f_s + f_e"
+    },
+    {
+      "id": "survey",
+      "label": "영토 파악",
+      "expr": "round(finds * 100 / 20) + \"%\""
+    },
+    {
+      "id": "scouting",
+      "label": "탐사 진척",
+      "expr": "explore_dir == \"북 산맥\" ? (f_n >= 5 ? \"훑을 만큼 훑은 곳\" : (exp_n >= 100 ? \"정리 중\" : exp_n + \"%\")) : (explore_dir == \"서 숲\" ? (f_w >= 5 ? \"훑을 만큼 훑은 곳\" : (exp_w >= 100 ? \"정리 중\" : exp_w + \"%\")) : (explore_dir == \"남 평원\" ? (f_s >= 5 ? \"훑을 만큼 훑은 곳\" : (exp_s >= 100 ? \"정리 중\" : exp_s + \"%\")) : (explore_dir == \"동 강가\" ? (f_e >= 5 ? \"훑을 만큼 훑은 곳\" : (exp_e >= 100 ? \"정리 중\" : exp_e + \"%\")) : (\"보내지 않음\"))))"
+    },
+    {
+      "id": "ally_bond",
+      "label": "유대",
+      "expr": "ally == \"아데레\" ? b_adere : (ally == \"알라릭 여왕\" ? b_alaric : (ally == \"카산드라\" ? b_cassandra : (ally == \"오렐리아\" ? b_orelia : (ally == \"릴리아나\" ? b_liliana : (ally == \"엘레오노라\" ? b_eleonora : (ally == \"실바나\" ? b_silvana : (ally == \"발레리우스\" ? b_valerius : (ally == \"리아나\" ? b_liana : (ally == \"모르웬\" ? b_morwen : (ally == \"스텔라\" ? b_stella : (ally == \"셀레스티아\" ? b_celestia : (ally == \"라피스\" ? b_lapis : (ally == \"베아트릭스\" ? b_beatrix : (ally == \"필리아\" ? b_philia : (ally == \"세리에\" ? b_serie : (ally == \"리비아\" ? b_livia : (ally == \"피오라\" ? b_fiora : (ally == \"메릴\" ? b_meryl : (ally == \"클라리스\" ? b_clarice : (ally == \"카시아\" ? b_cassia : (ally == \"룰루\" ? b_lulu : (ally == \"라라\" ? b_lara : (ally == \"유스티나\" ? b_yustina : (ally == \"알제리아\" ? b_algeria : (ally == \"리리카\" ? b_lirica : (0))))))))))))))))))))))))))"
+    },
+    {
+      "id": "bond_txt",
+      "label": "유대",
+      "expr": "ally_bond >= 80 ? \"한 몸처럼\" : (ally_bond >= 60 ? \"믿는다\" : (ally_bond >= 40 ? \"데면데면\" : (ally_bond >= 20 ? \"서먹함\" : (ally_bond >= 1 ? \"남남\" : (\"척졌다\")))))"
+    },
+    {
+      "id": "bond0_raw",
+      "expr": "(b_adere != 0 ? \"아데레 \" + b_adere + \" \" : \"\") + (b_alaric != 0 ? \"알라릭 여왕 \" + b_alaric + \" \" : \"\") + (b_cassandra != 0 ? \"카산드라 \" + b_cassandra + \" \" : \"\") + (b_orelia != 0 ? \"오렐리아 \" + b_orelia + \" \" : \"\") + (b_liliana != 0 ? \"릴리아나 \" + b_liliana + \" \" : \"\")"
+    },
+    {
+      "id": "bond0",
+      "label": "왕가와 동행",
+      "expr": "bond0_raw == \"\" ? \"—\" : bond0_raw"
+    },
+    {
+      "id": "bond1_raw",
+      "expr": "(b_eleonora != 0 ? \"엘레오노라 \" + b_eleonora + \" \" : \"\") + (b_silvana != 0 ? \"실바나 \" + b_silvana + \" \" : \"\") + (b_valerius != 0 ? \"발레리우스 \" + b_valerius + \" \" : \"\") + (b_liana != 0 ? \"리아나 \" + b_liana + \" \" : \"\") + (b_morwen != 0 ? \"모르웬 \" + b_morwen + \" \" : \"\")"
+    },
+    {
+      "id": "bond1",
+      "label": "귀족",
+      "expr": "bond1_raw == \"\" ? \"—\" : bond1_raw"
+    },
+    {
+      "id": "bond2_raw",
+      "expr": "(b_stella != 0 ? \"스텔라(초급) \" + b_stella + \" \" : \"\") + (b_celestia != 0 ? \"셀레스티아(중급) \" + b_celestia + \" \" : \"\") + (b_lapis != 0 ? \"라피스(상급) \" + b_lapis + \" \" : \"\") + (b_beatrix != 0 ? \"베아트릭스 \" + b_beatrix + \" \" : \"\")"
+    },
+    {
+      "id": "bond2",
+      "label": "광휘회",
+      "expr": "bond2_raw == \"\" ? \"—\" : bond2_raw"
+    },
+    {
+      "id": "bond3_raw",
+      "expr": "(b_philia != 0 ? \"필리아(초급) \" + b_philia + \" \" : \"\") + (b_serie != 0 ? \"세리에(초급) \" + b_serie + \" \" : \"\") + (b_livia != 0 ? \"리비아(중급) \" + b_livia + \" \" : \"\") + (b_fiora != 0 ? \"피오라(중급) \" + b_fiora + \" \" : \"\") + (b_meryl != 0 ? \"메릴(중급) \" + b_meryl + \" \" : \"\") + (b_clarice != 0 ? \"클라리스(상급) \" + b_clarice + \" \" : \"\") + (b_cassia != 0 ? \"카시아(상급) \" + b_cassia + \" \" : \"\") + (b_lulu != 0 ? \"룰루(상급) \" + b_lulu + \" \" : \"\") + (b_lara != 0 ? \"라라(상급) \" + b_lara + \" \" : \"\") + (b_yustina != 0 ? \"유스티나(정예) \" + b_yustina + \" \" : \"\") + (b_algeria != 0 ? \"알제리아(정예) \" + b_algeria + \" \" : \"\") + (b_lirica != 0 ? \"리리카(정예) \" + b_lirica + \" \" : \"\")"
+    },
+    {
+      "id": "bond3",
+      "label": "메이드군단",
+      "expr": "bond3_raw == \"\" ? \"—\" : bond3_raw"
+    },
+    {
+      "id": "pw_cass_txt",
+      "expr": "pw_cass >= 80 ? \"압도적\" : (pw_cass >= 62 ? \"우세\" : (pw_cass >= 45 ? \"대등\" : (pw_cass >= 28 ? \"열세\" : (\"미미\"))))"
+    },
+    {
+      "id": "pw_orel_txt",
+      "expr": "pw_orel >= 80 ? \"압도적\" : (pw_orel >= 62 ? \"우세\" : (pw_orel >= 45 ? \"대등\" : (pw_orel >= 28 ? \"열세\" : (\"미미\"))))"
+    },
+    {
+      "id": "pw_lili_txt",
+      "expr": "pw_lili >= 80 ? \"압도적\" : (pw_lili >= 62 ? \"우세\" : (pw_lili >= 45 ? \"대등\" : (pw_lili >= 28 ? \"열세\" : (\"미미\"))))"
+    },
+    {
+      "id": "frontrunner",
+      "label": "선두",
+      "expr": "pw_cass >= pw_orel and pw_cass >= pw_lili ? \"카산드라\" : (pw_orel >= pw_lili ? \"오렐리아\" : \"릴리아나\")"
+    },
+    {
+      "id": "my_weight",
+      "label": "내 지지의 무게",
+      "expr": "min(100, round(fame * 0.45 + min(army, 120) * 0.25 + min(gold, 3000) * 0.006 + rel_cap * 0.15))"
+    },
+    {
+      "id": "weight_txt",
+      "label": "조정에서의 무게",
+      "expr": "my_weight >= 70 ? \"판을 흔든다\" : (my_weight >= 45 ? \"셈에 들어간다\" : (my_weight >= 22 ? \"이름은 나온다\" : (my_weight >= 8 ? \"변방 하나\" : (\"아무도 안 찾는다\"))))"
+    },
+    {
+      "id": "exposed_txt",
+      "label": "알려진 정도",
+      "expr": "stance == \"중립\" ? (exposed >= 40 ? \"줄을 안 선다는 것 자체가 알려졌다\" : \"눈에 안 띈다\") : exposed >= 75 ? \"공공연하다\" : (exposed >= 45 ? \"소문이 돈다\" : (exposed >= 20 ? \"눈치챈 자가 있다\" : (\"아직 조용하다\")))"
+    },
+    {
+      "id": "court_txt",
+      "label": "계승 판세",
+      "expr": "\"카산드라 \" + pw_cass_txt + \" · 오렐리아 \" + pw_orel_txt + \" · 릴리아나 \" + pw_lili_txt + \" | 선두 \" + frontrunner + \" | 내 지지 \" + stance + \"(\" + weight_txt + \")\""
+    },
+    {
+      "id": "bond_known",
+      "label": "아는 얼굴",
+      "expr": "((b_adere != 0 ? 1 : 0) + (b_alaric != 0 ? 1 : 0) + (b_cassandra != 0 ? 1 : 0) + (b_orelia != 0 ? 1 : 0) + (b_liliana != 0 ? 1 : 0) + (b_eleonora != 0 ? 1 : 0) + (b_silvana != 0 ? 1 : 0) + (b_valerius != 0 ? 1 : 0) + (b_liana != 0 ? 1 : 0) + (b_morwen != 0 ? 1 : 0) + (b_stella != 0 ? 1 : 0) + (b_celestia != 0 ? 1 : 0) + (b_lapis != 0 ? 1 : 0) + (b_beatrix != 0 ? 1 : 0) + (b_philia != 0 ? 1 : 0) + (b_serie != 0 ? 1 : 0) + (b_livia != 0 ? 1 : 0) + (b_fiora != 0 ? 1 : 0) + (b_meryl != 0 ? 1 : 0) + (b_clarice != 0 ? 1 : 0) + (b_cassia != 0 ? 1 : 0) + (b_lulu != 0 ? 1 : 0) + (b_lara != 0 ? 1 : 0) + (b_yustina != 0 ? 1 : 0) + (b_algeria != 0 ? 1 : 0) + (b_lirica != 0 ? 1 : 0)) + \"/26\""
+    },
+    {
+      "id": "fee_J",
+      "expr": "round(400 * hire_mult * 0.01 * (1.3 - fame * 0.006))"
+    },
+    {
+      "id": "wage_J",
+      "expr": "round(4 * hire_mult * 0.01)"
+    },
+    {
+      "id": "fee_I",
+      "expr": "round(1200 * hire_mult * 0.01 * (1.3 - fame * 0.006))"
+    },
+    {
+      "id": "wage_I",
+      "expr": "round(8 * hire_mult * 0.01)"
+    },
+    {
+      "id": "fee_S",
+      "expr": "round(3000 * hire_mult * 0.01 * (1.3 - fame * 0.006))"
+    },
+    {
+      "id": "wage_S",
+      "expr": "round(15 * hire_mult * 0.01)"
+    },
+    {
+      "id": "fee_E",
+      "expr": "round(8000 * hire_mult * 0.01 * (1.3 - fame * 0.006))"
+    },
+    {
+      "id": "wage_E",
+      "expr": "round(30 * hire_mult * 0.01)"
+    },
+    {
+      "id": "payroll",
+      "label": "봉급 총액",
+      "expr": "sum(corps)"
+    },
+    {
+      "id": "hire_open",
+      "label": "부를 수 있는 등급",
+      "expr": "fame >= 75 ? \"정예까지\" : (fame >= 50 ? \"상급까지\" : (fame >= 25 ? \"중급까지\" : (fame >= 0 ? \"초급까지\" : (\"아무도\"))))"
+    },
+    {
+      "id": "hire_txt",
+      "label": "몸값",
+      "expr": "\"초급 \" + fee_J + \"(일 \" + wage_J + \")\" + (fame >= 25 ? \" · 중급 \" + fee_I + \"(일 \" + wage_I + \")\" : \"\") + (fame >= 50 ? \" · 상급 \" + fee_S + \"(일 \" + wage_S + \")\" : \"\") + (fame >= 75 ? \" · 정예 \" + fee_E + \"(일 \" + wage_E + \")\" : \"\")"
+    },
+    {
+      "id": "retinue",
+      "label": "사람",
+      "expr": "count(staff) + 1",
+      "format": "{v}명"
+    },
+    {
+      "id": "appt_txt",
+      "label": "예정",
+      "expr": "appt == \"\" ? \"없음\" : (appt_in <= 0 ? appt + \" — 오늘\" : appt + \" — \" + appt_in + \"일 뒤\")"
+    },
+    {
+      "id": "arable",
+      "label": "경작 적성",
+      "expr": "max(0, min(12, sum(farms)) - blight)"
+    },
+    {
+      "id": "farm_txt",
+      "label": "경작지 상태",
+      "expr": "blight > 0 ? \"적성 \" + arable + \" — 밭이 상했다(-\" + blight + \")\" : \"적성 \" + arable"
+    },
+    {
+      "id": "extract",
+      "label": "자원지 산출",
+      "expr": "sum(sites)"
+    },
+    {
+      "id": "cap",
+      "label": "수용 한계",
+      "expr": "sum(houses)",
+      "format": "{v}명"
+    },
+    {
+      "id": "crowd",
+      "label": "수용률",
+      "expr": "round(pop * 100 / max(1, cap))"
+    },
+    {
+      "id": "crowd_txt",
+      "label": "거처",
+      "expr": "crowd >= 130 ? \"터져 나감\" : (crowd >= 105 ? \"포화 — 더 못 받는다\" : (crowd >= 85 ? \"빠듯함\" : (crowd >= 55 ? \"여유\" : (\"텅 빔\"))))"
+    },
+    {
+      "id": "able",
+      "label": "가용 노동력",
+      "expr": "round(pop * (0.38 + health * 0.0035))",
+      "format": "{v}명"
+    },
+    {
+      "id": "farm_men",
+      "label": "경작",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.6 : (labor_policy == \"재건 우선\" ? 0.35 : (labor_policy == \"방비 우선\" ? 0.35 : (0.35)))))",
+      "format": "{v}명"
+    },
+    {
+      "id": "build_men",
+      "label": "건설",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.4 : (labor_policy == \"방비 우선\" ? 0.15 : (0.15)))))",
+      "format": "{v}명"
+    },
+    {
+      "id": "guard_men",
+      "label": "경비",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.2 : (labor_policy == \"재건 우선\" ? 0.2 : (labor_policy == \"방비 우선\" ? 0.45 : (0.2)))))",
+      "format": "{v}명"
+    },
+    {
+      "id": "scout_men",
+      "label": "탐사",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.05 : (labor_policy == \"방비 우선\" ? 0.05 : (0.3)))))",
+      "format": "{v}명"
+    },
+    {
+      "id": "efficiency",
+      "label": "능률",
+      "expr": "clamp(35 + health * 0.45 + morale * 0.2, 20, 100)"
+    },
+    {
+      "id": "weather_farm",
+      "label": "날씨 영향(경작)",
+      "expr": "weather == \"⛈폭풍우\" ? 0.55 : (weather == \"🥶한파\" or weather == \"❄️눈\" ? 0.6 : (weather == \"🔥폭염\" ? 0.75 : (weather == \"🌧비\" ? 1.1 : (weather == \"☀️맑음\" ? 1.05 : 0.95))))"
+    },
+    {
+      "id": "season_farm",
+      "label": "계절 영향",
+      "expr": "season == \"⛄겨울\" ? 0.4 : (season == \"🍂가을\" ? 1.35 : (season == \"🌻여름\" ? 1.05 : 0.85))"
+    },
+    {
+      "id": "weather_water",
+      "label": "날씨 영향(취수)",
+      "expr": "weather == \"🌧비\" or weather == \"⛈폭풍우\" ? 1.35 : (weather == \"🔥폭염\" ? 0.8 : 1)"
+    },
+    {
+      "id": "harvest",
+      "label": "일 수확",
+      "expr": "round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)"
+    },
+    {
+      "id": "draw_water",
+      "label": "일 취수",
+      "expr": "round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)"
+    },
+    {
+      "id": "eaten",
+      "label": "일 소비",
+      "expr": "pop + army"
+    },
+    {
+      "id": "sup_food",
+      "label": "식량 유입",
+      "expr": "route == \"없음\" ? sum(supply, \"식량\") : 0"
+    },
+    {
+      "id": "sup_water",
+      "label": "식수 유입",
+      "expr": "route == \"없음\" ? sum(supply, \"식수\") : 0"
+    },
+    {
+      "id": "import_cost",
+      "label": "수입 대금",
+      "expr": "round(sup_food * 0.8 + sup_water * 0.5)"
+    },
+    {
+      "id": "grown",
+      "label": "자체 생산 수지",
+      "expr": "harvest - eaten"
+    },
+    {
+      "id": "drawn",
+      "label": "자체 취수 수지",
+      "expr": "draw_water - eaten"
+    },
+    {
+      "id": "surplus",
+      "label": "식량 수지",
+      "expr": "grown + sup_food"
+    },
+    {
+      "id": "water_bal",
+      "label": "식수 수지",
+      "expr": "drawn + sup_water"
+    },
+    {
+      "id": "food_days",
+      "label": "식량 잔여",
+      "expr": "surplus >= 0 ? 99 : floor(food / max(1, 0 - surplus))"
+    },
+    {
+      "id": "water_days",
+      "label": "식수 잔여",
+      "expr": "water_bal >= 0 ? 99 : floor(water / max(1, 0 - water_bal))"
+    },
+    {
+      "id": "tax_mult",
+      "label": "징세 효율",
+      "expr": "clamp(0.3 + morale * 0.006 + (100 - unrest) * 0.002, 0.2, 1.15)"
+    },
+    {
+      "id": "tax",
+      "label": "인구세",
+      "expr": "round(pop * 0.2 * tax_mult)"
+    },
+    {
+      "id": "sold",
+      "label": "잉여 판매",
+      "expr": "grown > 0 ? round(grown * 0.5) : 0"
+    },
+    {
+      "id": "deals",
+      "label": "계약 수입",
+      "expr": "sum(contracts)"
+    },
+    {
+      "id": "deals_net",
+      "label": "실수령 계약",
+      "expr": "route == \"없음\" ? deals : round(deals * 0.4)"
+    },
+    {
+      "id": "income",
+      "label": "일 수입",
+      "expr": "tax + sold + deals_net + extract"
+    },
+    {
+      "id": "route_txt",
+      "label": "길",
+      "expr": "route == \"없음\" ? \"모두 열림\" : route + \" 막힘 (\" + route_days + \"일)\""
+    },
+    {
+      "id": "upkeep",
+      "label": "일 지출",
+      "expr": "round(army * 1.2) + round(pop * 0.05) + payroll + import_cost"
+    },
+    {
+      "id": "net_gold",
+      "label": "재정 수지",
+      "expr": "income - upkeep"
+    },
+    {
+      "id": "tribute",
+      "label": "세납액",
+      "expr": "round(pop * 1.5 + fame * 2 + 30)"
+    },
+    {
+      "id": "gold_txt",
+      "label": "재정 사정",
+      "expr": "net_gold < 0 and gold <= 0 ? \"빈 금고 — 급료가 밀린다\" : (net_gold < 0 ? \"축내는 중\" : (net_gold > 0 ? \"쌓이는 중\" : \"겨우 맞는다\"))"
+    },
+    {
+      "id": "morale_txt",
+      "label": "사기",
+      "expr": "morale >= 80 ? \"드높음\" : (morale >= 60 ? \"견실함\" : (morale >= 40 ? \"보통\" : (morale >= 25 ? \"흔들림\" : (morale >= 10 ? \"불안\" : (\"절망\")))))"
+    },
+    {
+      "id": "health_txt",
+      "label": "보건",
+      "expr": "health >= 80 ? \"양호\" : (health >= 60 ? \"무난함\" : (health >= 40 ? \"보통\" : (health >= 25 ? \"나쁨\" : (\"열악함\"))))"
+    },
+    {
+      "id": "labor_txt",
+      "label": "노동력",
+      "expr": "able >= 300 ? \"풍부\" : (able >= 150 ? \"넉넉함\" : (able >= 80 ? \"보통\" : (able >= 40 ? \"부족\" : (able >= 15 ? \"태부족\" : (\"없음\")))))"
+    },
+    {
+      "id": "army_txt",
+      "label": "군사",
+      "expr": "army >= 200 ? \"강건\" : (army >= 80 ? \"상당함\" : (army >= 30 ? \"미약\" : (army >= 10 ? \"이름뿐\" : (\"없음\"))))"
+    },
+    {
+      "id": "sec_out_txt",
+      "label": "외부보안",
+      "expr": "threat >= 75 ? \"매우 취약\" : (threat >= 55 ? \"취약\" : (threat >= 35 ? \"불안\" : (threat >= 15 ? \"보통\" : (\"안정\"))))"
+    },
+    {
+      "id": "sec_in_txt",
+      "label": "내부보안",
+      "expr": "unrest >= 75 ? \"매우 취약\" : (unrest >= 55 ? \"취약\" : (unrest >= 35 ? \"불안\" : (unrest >= 15 ? \"보통\" : (\"안정\"))))"
+    },
+    {
+      "id": "fame_txt",
+      "label": "명성",
+      "expr": "fame >= 80 ? \"드높음\" : (fame >= 55 ? \"알려짐\" : (fame >= 30 ? \"들리는 정도\" : (fame >= 10 ? \"미미함\" : (\"무명\"))))"
+    },
+    {
+      "id": "diff_txt",
+      "label": "난이도",
+      "expr": "(hardship >= 75 ? \"가혹\" : (hardship >= 45 ? \"보통\" : (\"온건\"))) + \" (시련 \" + hardship + \" · 시세 \" + hire_mult + \"%)\""
+    },
+    {
+      "id": "rel_n_txt",
+      "expr": "rel_n >= 85 ? \"동맹\" : (rel_n >= 65 ? \"우호\" : (rel_n >= 45 ? \"거래 상대\" : (rel_n >= 25 ? \"관망\" : (rel_n >= 10 ? \"이름만 앎\" : (\"미인지\")))))"
+    },
+    {
+      "id": "rel_e_txt",
+      "expr": "rel_e >= 85 ? \"동맹\" : (rel_e >= 65 ? \"우호\" : (rel_e >= 45 ? \"거래 상대\" : (rel_e >= 25 ? \"관망\" : (rel_e >= 10 ? \"이름만 앎\" : (\"미인지\")))))"
+    },
+    {
+      "id": "rel_s_txt",
+      "expr": "rel_s >= 85 ? \"동맹\" : (rel_s >= 65 ? \"우호\" : (rel_s >= 45 ? \"거래 상대\" : (rel_s >= 25 ? \"관망\" : (rel_s >= 10 ? \"이름만 앎\" : (\"미인지\")))))"
+    },
+    {
+      "id": "rel_w_txt",
+      "expr": "rel_w >= 85 ? \"동맹\" : (rel_w >= 65 ? \"우호\" : (rel_w >= 45 ? \"거래 상대\" : (rel_w >= 25 ? \"관망\" : (rel_w >= 10 ? \"이름만 앎\" : (\"미인지\")))))"
+    },
+    {
+      "id": "rel_cap_txt",
+      "expr": "rel_cap >= 85 ? \"동맹\" : (rel_cap >= 65 ? \"우호\" : (rel_cap >= 45 ? \"거래 상대\" : (rel_cap >= 25 ? \"관망\" : (rel_cap >= 10 ? \"이름만 앎\" : (\"미인지\")))))"
+    },
+    {
+      "id": "neighbors",
+      "label": "이웃",
+      "expr": "\"북 모르웬 백작 5일 \" + rel_n_txt + \" | \" + \"동 리아나 백작 강 4일·길 7일 \" + rel_e_txt + \" | \" + \"남 발레리우스 백작 3일 \" + rel_s_txt + \" | \" + \"서 실바나 후작 6일 \" + rel_w_txt + \" | \" + \"왕도 알라릭 여왕 14일 \" + rel_cap_txt"
+    },
+    {
+      "id": "rel_top",
+      "label": "가장 아는 쪽",
+      "expr": "max(max(max(rel_n, rel_e), max(rel_s, rel_w)), rel_cap)"
+    },
+    {
+      "id": "food_txt",
+      "label": "식량 사정",
+      "expr": "food <= 0 ? \"바닥 — 오늘 굶는다\" : (food_days <= 3 ? \"사흘치도 없다\" : (surplus >= 0 ? \"자급된다\" : \"축내는 중\"))"
+    },
+    {
+      "id": "water_txt",
+      "label": "식수 사정",
+      "expr": "water <= 0 ? \"바닥 — 오늘 마실 물이 없다\" : (water_days <= 3 ? \"사흘치도 없다\" : (water_bal >= 0 ? \"자급된다\" : \"축내는 중\"))"
+    },
+    {
+      "id": "phase",
+      "label": "국면",
+      "expr": "pop >= 400 ? \"번성\" : (pop >= 220 ? \"성장\" : (grown > 0 and drawn > 0 ? \"자립\" : \"연명\"))"
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "list": "contracts",
+        "expire": "day + span"
+      },
+      {
+        "set": "food",
+        "expr": "max(0, food + surplus * span)"
+      },
+      {
+        "set": "water",
+        "expr": "max(0, water + water_bal * span)"
+      },
+      {
+        "set": "gold",
+        "expr": "max(0, gold + net_gold * span)"
+      },
+      {
+        "set": "health",
+        "expr": "clamp(health + (food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) * span, 0, 100)"
+      },
+      {
+        "set": "morale",
+        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "unrest",
+        "expr": "clamp(unrest + ((guard_men + army < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0) + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "fame",
+        "expr": "clamp(fame + ((surplus > 4 ? 2 : 0) - (unrest >= 60 ? 2 : 0)) * span, 0, 100)"
+      },
+      {
+        "set": "pop",
+        "expr": "max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0) - (food <= 0 ? round(pop * 0.04) : 0) - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5))"
+      },
+      {
+        "set": "o_n",
+        "expr": "o_n >= 0 ? o_n : (exp_n >= 100 ? max(0, rand(0, 5) - 1) : -1)"
+      },
+      {
+        "set": "o_w",
+        "expr": "o_w >= 0 ? o_w : (exp_w >= 100 ? max(0, rand(0, 5) - 1) : -1)"
+      },
+      {
+        "set": "o_s",
+        "expr": "o_s >= 0 ? o_s : (exp_s >= 100 ? max(0, rand(0, 5) - 1) : -1)"
+      },
+      {
+        "set": "o_e",
+        "expr": "o_e >= 0 ? o_e : (exp_e >= 100 ? max(0, rand(0, 5) - 1) : -1)"
+      },
+      {
+        "set": "exp_n",
+        "expr": "exp_n >= 110 ? 0 : (exp_n >= 100 ? 110 + (f_n == 0 ? o_n : (f_n - 1 < o_n ? f_n - 1 : f_n)) : (explore_dir == \"북 산맥\" ? min(100, exp_n + round(scout_men * (0.6 + f_n * 0.1)) * span) : exp_n))"
+      },
+      {
+        "set": "exp_w",
+        "expr": "exp_w >= 110 ? 0 : (exp_w >= 100 ? 110 + (f_w == 0 ? o_w : (f_w - 1 < o_w ? f_w - 1 : f_w)) : (explore_dir == \"서 숲\" ? min(100, exp_w + round(scout_men * (0.6 + f_w * 0.1)) * span) : exp_w))"
+      },
+      {
+        "set": "exp_s",
+        "expr": "exp_s >= 110 ? 0 : (exp_s >= 100 ? 110 + (f_s == 0 ? o_s : (f_s - 1 < o_s ? f_s - 1 : f_s)) : (explore_dir == \"남 평원\" ? min(100, exp_s + round(scout_men * (0.6 + f_s * 0.1)) * span) : exp_s))"
+      },
+      {
+        "set": "exp_e",
+        "expr": "exp_e >= 110 ? 0 : (exp_e >= 100 ? 110 + (f_e == 0 ? o_e : (f_e - 1 < o_e ? f_e - 1 : f_e)) : (explore_dir == \"동 강가\" ? min(100, exp_e + round(scout_men * (0.6 + f_e * 0.1)) * span) : exp_e))"
+      },
+      {
+        "set": "day",
+        "expr": "day + span"
+      },
+      {
+        "set": "disaster_days",
+        "expr": "max(0, disaster_days - span)"
+      },
+      {
+        "set": "blight",
+        "expr": "max(0, blight - span)"
+      },
+      {
+        "set": "disaster",
+        "expr": "disaster_days <= 0 ? \"\" : disaster"
+      },
+      {
+        "set": "route_days",
+        "expr": "route == \"없음\" ? 0 : max(0, route_days - span)"
+      },
+      {
+        "set": "route",
+        "expr": "route_days <= 0 ? \"없음\" : route"
+      },
+      {
+        "set": "appt_in",
+        "expr": "appt == \"\" ? 0 : (appt_in > 0 and appt_in - span < 0 ? 0 : max(-1, appt_in - span))"
+      },
+      {
+        "set": "appt",
+        "expr": "appt_in < 0 ? \"\" : appt"
+      },
+      {
+        "set": "appt_in",
+        "expr": "appt == \"\" ? 0 : appt_in"
+      },
+      {
+        "set": "lead_who",
+        "expr": "pw_cass >= pw_orel and pw_cass >= pw_lili ? \"카산드라\" : (pw_orel >= pw_lili ? \"오렐리아\" : \"릴리아나\")"
+      },
+      {
+        "set": "pw_cass",
+        "expr": "clamp(pw_cass + ((lead_who == \"카산드라\" ? -2 : 1) + (stance == \"카산드라\" ? round(my_weight * 0.05) : (stance == \"중립\" ? 0 : 0 - round(my_weight * 0.025)))) * min(span, 2), 5, 100)"
+      },
+      {
+        "set": "pw_orel",
+        "expr": "clamp(pw_orel + ((lead_who == \"오렐리아\" ? -2 : 1) + (stance == \"오렐리아\" ? round(my_weight * 0.05) : (stance == \"중립\" ? 0 : 0 - round(my_weight * 0.025)))) * min(span, 2), 5, 100)"
+      },
+      {
+        "set": "pw_lili",
+        "expr": "clamp(pw_lili + ((lead_who == \"릴리아나\" ? -2 : 1) + (stance == \"릴리아나\" ? round(my_weight * 0.05) : (stance == \"중립\" ? 0 : 0 - round(my_weight * 0.025)))) * min(span, 2), 5, 100)"
+      },
+      {
+        "set": "b_cassandra",
+        "expr": "clamp(b_cassandra + (stance == \"카산드라\" ? (b_cassandra >= 40 ? 0 : 1) : (stance == \"중립\" or exposed < 40 ? 0 : (b_cassandra <= -20 ? 0 : -1))) * min(span, 2), -50, 100)"
+      },
+      {
+        "set": "b_orelia",
+        "expr": "clamp(b_orelia + (stance == \"오렐리아\" ? (b_orelia >= 40 ? 0 : 1) : (stance == \"중립\" or exposed < 40 ? 0 : (b_orelia <= -20 ? 0 : -1))) * min(span, 2), -50, 100)"
+      },
+      {
+        "set": "b_liliana",
+        "expr": "clamp(b_liliana + (stance == \"릴리아나\" ? (b_liliana >= 40 ? 0 : 1) : (stance == \"중립\" or exposed < 40 ? 0 : (b_liliana <= -20 ? 0 : -1))) * min(span, 2), -50, 100)"
+      },
+      {
+        "set": "exposed",
+        "expr": "clamp(exposed + (stance == \"중립\" ? (day >= 60 ? 1 : -2) : 4) * min(span, 2), 0, 100)"
+      },
+      {
+        "set": "days_passed",
+        "expr": "0"
+      }
+    ],
+    "events": [
+      {
+        "id": "find_n_1",
+        "once": true,
+        "when": "exp_n == 110",
+        "effects": [
+          {
+            "set": "f_n",
+            "expr": "f_n + 1"
+          }
+        ],
+        "notify": "[탐사 · 북 산맥] 칼날 능선에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_n_2",
+        "once": true,
+        "when": "exp_n == 111",
+        "effects": [
+          {
+            "set": "f_n",
+            "expr": "f_n + 1"
+          }
+        ],
+        "notify": "[탐사 · 북 산맥] 칼날 능선에서 거기 사는 것과 마주쳤다. 무엇이 몇이나 있는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다."
+      },
+      {
+        "id": "find_n_3",
+        "once": true,
+        "when": "exp_n == 112",
+        "effects": [
+          {
+            "set": "f_n",
+            "expr": "f_n + 1"
+          }
+        ],
+        "notify": "[탐사 · 북 산맥] 칼날 능선에서 사람 손이 닿았던 자리가 나왔다. 누가 만들었고 왜 버려졌는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 버려진 이유가 이 발견의 절반이다."
+      },
+      {
+        "id": "find_n_4",
+        "once": true,
+        "when": "exp_n == 113",
+        "effects": [
+          {
+            "set": "f_n",
+            "expr": "f_n + 1"
+          }
+        ],
+        "notify": "[탐사 · 북 산맥] 칼날 능선에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_n_5",
+        "once": true,
+        "when": "exp_n == 114",
+        "effects": [
+          {
+            "set": "f_n",
+            "expr": "f_n + 1"
+          }
+        ],
+        "notify": "[탐사 · 북 산맥] 칼날 능선에서 거기 사는 것과 마주쳤다. 무엇이 몇이나 있는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다."
+      },
+      {
+        "id": "find_w_1",
+        "once": true,
+        "when": "exp_w == 110",
+        "effects": [
+          {
+            "set": "f_w",
+            "expr": "f_w + 1"
+          }
+        ],
+        "notify": "[탐사 · 서 숲] 속삭이는 숲에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_w_2",
+        "once": true,
+        "when": "exp_w == 111",
+        "effects": [
+          {
+            "set": "f_w",
+            "expr": "f_w + 1"
+          }
+        ],
+        "notify": "[탐사 · 서 숲] 속삭이는 숲에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_w_3",
+        "once": true,
+        "when": "exp_w == 112",
+        "effects": [
+          {
+            "set": "f_w",
+            "expr": "f_w + 1"
+          }
+        ],
+        "notify": "[탐사 · 서 숲] 속삭이는 숲에서 사람 손이 닿았던 자리가 나왔다. 누가 만들었고 왜 버려졌는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 버려진 이유가 이 발견의 절반이다."
+      },
+      {
+        "id": "find_w_4",
+        "once": true,
+        "when": "exp_w == 113",
+        "effects": [
+          {
+            "set": "f_w",
+            "expr": "f_w + 1"
+          }
+        ],
+        "notify": "[탐사 · 서 숲] 속삭이는 숲에서 거기 사는 것과 마주쳤다. 무엇이 몇이나 있는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다."
+      },
+      {
+        "id": "find_w_5",
+        "once": true,
+        "when": "exp_w == 114",
+        "effects": [
+          {
+            "set": "f_w",
+            "expr": "f_w + 1"
+          }
+        ],
+        "notify": "[탐사 · 서 숲] 속삭이는 숲에서 땅 자체가 쓸모인 자리를 찾았다. 고갯길인지 여울인지 바람 막힌 골짜기인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_s_1",
+        "once": true,
+        "when": "exp_s == 110",
+        "effects": [
+          {
+            "set": "f_s",
+            "expr": "f_s + 1"
+          }
+        ],
+        "notify": "[탐사 · 남 평원] 잿빛 평원에서 땅 자체가 쓸모인 자리를 찾았다. 고갯길인지 여울인지 바람 막힌 골짜기인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_s_2",
+        "once": true,
+        "when": "exp_s == 111",
+        "effects": [
+          {
+            "set": "f_s",
+            "expr": "f_s + 1"
+          }
+        ],
+        "notify": "[탐사 · 남 평원] 잿빛 평원에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_s_3",
+        "once": true,
+        "when": "exp_s == 112",
+        "effects": [
+          {
+            "set": "f_s",
+            "expr": "f_s + 1"
+          }
+        ],
+        "notify": "[탐사 · 남 평원] 잿빛 평원에서 땅 자체가 쓸모인 자리를 찾았다. 고갯길인지 여울인지 바람 막힌 골짜기인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_s_4",
+        "once": true,
+        "when": "exp_s == 113",
+        "effects": [
+          {
+            "set": "f_s",
+            "expr": "f_s + 1"
+          }
+        ],
+        "notify": "[탐사 · 남 평원] 잿빛 평원에서 사람 손이 닿았던 자리가 나왔다. 누가 만들었고 왜 버려졌는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 버려진 이유가 이 발견의 절반이다."
+      },
+      {
+        "id": "find_s_5",
+        "once": true,
+        "when": "exp_s == 114",
+        "effects": [
+          {
+            "set": "f_s",
+            "expr": "f_s + 1"
+          }
+        ],
+        "notify": "[탐사 · 남 평원] 잿빛 평원에서 거기 사는 것과 마주쳤다. 무엇이 몇이나 있는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다."
+      },
+      {
+        "id": "find_e_1",
+        "once": true,
+        "when": "exp_e == 110",
+        "effects": [
+          {
+            "set": "f_e",
+            "expr": "f_e + 1"
+          }
+        ],
+        "notify": "[탐사 · 동 강가] 강가에서 땅 자체가 쓸모인 자리를 찾았다. 고갯길인지 여울인지 바람 막힌 골짜기인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_e_2",
+        "once": true,
+        "when": "exp_e == 111",
+        "effects": [
+          {
+            "set": "f_e",
+            "expr": "f_e + 1"
+          }
+        ],
+        "notify": "[탐사 · 동 강가] 강가에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_e_3",
+        "once": true,
+        "when": "exp_e == 112",
+        "effects": [
+          {
+            "set": "f_e",
+            "expr": "f_e + 1"
+          }
+        ],
+        "notify": "[탐사 · 동 강가] 강가에서 캐거나 베거나 걷어 낼 것이 나왔다. 무엇이고 어디에 쓰는 것인지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다."
+      },
+      {
+        "id": "find_e_4",
+        "once": true,
+        "when": "exp_e == 113",
+        "effects": [
+          {
+            "set": "f_e",
+            "expr": "f_e + 1"
+          }
+        ],
+        "notify": "[탐사 · 동 강가] 강가에서 거기 사는 것과 마주쳤다. 무엇이 몇이나 있는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다."
+      },
+      {
+        "id": "find_e_5",
+        "once": true,
+        "when": "exp_e == 114",
+        "effects": [
+          {
+            "set": "f_e",
+            "expr": "f_e + 1"
+          }
+        ],
+        "notify": "[탐사 · 동 강가] 강가에서 사람 손이 닿았던 자리가 나왔다. 누가 만들었고 왜 버려졌는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 버려진 이유가 이 발견의 절반이다."
+      }
+    ],
+    "randomEvents": {
+      "chancePerTurn": 0.075,
+      "table": [
+        {
+          "id": "road_ice",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and (month >= 12 or month <= 2)",
+          "effects": [
+            {
+              "set": "route",
+              "expr": "\"동 강길\""
+            },
+            {
+              "set": "route_days",
+              "expr": "10 + rand(0, 8)"
+            }
+          ],
+          "notify": "[강이 얼었다] 나루에 배가 얼어붙었다. 하류에서 오던 것이 이제 안 온다. 녹기 전까지는 어느 쪽으로도 짐이 못 움직인다."
+        },
+        {
+          "id": "road_snow",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and (month >= 11 or month <= 3)",
+          "effects": [
+            {
+              "set": "route",
+              "expr": "\"북 산길\""
+            },
+            {
+              "set": "route_days",
+              "expr": "8 + rand(0, 10)"
+            }
+          ],
+          "notify": "[고개가 닫혔다] 밤새 눈이 고개를 메웠다. 북쪽은 봄까지 남의 나라다."
+        },
+        {
+          "id": "road_bandit",
+          "weight": 3,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012))",
+          "effects": [
+            {
+              "set": "route",
+              "expr": "\"남 가도\""
+            },
+            {
+              "set": "route_days",
+              "expr": "4 + rand(0, 6)"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 6, 0, 100)"
+            }
+          ],
+          "notify": "[가도에 앉았다] 짐수레가 털렸다. 한 무리가 포장도로 길목을 잡고 통행세를 받는다. 이건 저절로 안 풀린다 — 쫓아내면 그날로 길이 열린다."
+        },
+        {
+          "id": "road_wood",
+          "weight": 2,
+          "cooldown": 36,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 68 - hardship * 0.23",
+          "effects": [
+            {
+              "set": "route",
+              "expr": "\"서 숲길\""
+            },
+            {
+              "set": "route_days",
+              "expr": "5 + rand(0, 8)"
+            }
+          ],
+          "notify": "[숲길이 삼켜졌다] 서쪽으로 간 짐꾼이 돌아오지 않았다. 숲이 길을 지운 건지 무언가가 지키는 건지 모른다."
+        },
+        {
+          "id": "road_flood",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 4 and month <= 8 and weather != \"☀️맑음\"",
+          "effects": [
+            {
+              "set": "route",
+              "expr": "\"동 강길\""
+            },
+            {
+              "set": "route_days",
+              "expr": "4 + rand(0, 6)"
+            }
+          ],
+          "notify": "[강이 넘쳤다] 물이 둔치를 삼키고 갈대밭까지 올라왔다. 나루 자리를 다시 찾아야 한다."
+        },
+        {
+          "id": "refugees",
+          "weight": 3,
+          "cooldown": 25,
+          "when": "disaster == \"\" and route == \"없음\" and fame >= 2 + hardship * 0.16 and food > 200 and crowd < 125",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "pop + min(round(cap * 0.12) + rand(0, 8), 30)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 3, 0, 100)"
+            }
+          ],
+          "notify": "[사람이 들어왔다] 남쪽 길로 한 무리가 걸어 들어왔다. 여기가 사람을 받는다는 말을 듣고 왔다고 한다. 재울 자리가 있는지는 그들이 알 바 아니다."
+        },
+        {
+          "id": "peddler",
+          "weight": 3,
+          "cooldown": 20,
+          "when": "disaster == \"\" and route == \"없음\" and rel_top >= 15",
+          "effects": [],
+          "notify": "[봇짐장수가 들렀다] 길을 잘못 든 장사치 하나가 하룻밤 묵어 간다. 팔 것과 살 것이 있다면 오늘이다 — 계약이 성사되면 그 조건을 적어라."
+        },
+        {
+          "id": "raid",
+          "weight": 3,
+          "cooldown": 22,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 80 - hardship * 0.35 and guard_men + army * 2 < round(pop * 0.15)",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat + 8, 0, 100)"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 8, 0, 100)"
+            }
+          ],
+          "notify": "[변두리가 털렸다] 외곽 집 몇 채가 밤사이 비었다. 사람이 상했는지 도망친 건지는 아침에 안다. 경비가 모자라다는 걸 저쪽이 먼저 알아챘다."
+        },
+        {
+          "id": "plague",
+          "weight": 2,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and health <= 20 + hardship * 0.4 and crowd >= 85",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"열병\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "8 + rand(0, 10)"
+            },
+            {
+              "set": "health",
+              "expr": "clamp(health - 10, 0, 100)"
+            }
+          ],
+          "notify": "[열이 돈다] 한 집에서 시작한 것이 사흘 만에 옆집으로 갔다. 사람이 붙어 자니 막을 방법이 없다."
+        },
+        {
+          "id": "drought",
+          "weight": 2,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 6 and month <= 8 and wells <= 0 + hardship * 0.02",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"가뭄\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "12 + rand(0, 14)"
+            }
+          ],
+          "notify": "[비가 그쳤다] 논둑이 갈라지기 시작했다. 강까지 물을 이고 나르는 줄이 길어진다."
+        },
+        {
+          "id": "assessor",
+          "weight": 3,
+          "cooldown": 50,
+          "when": "disaster == \"\" and route == \"없음\" and rel_top >= 30 and rel_top < 70",
+          "effects": [],
+          "notify": "[누가 보러 왔다] 이웃 영지 사람이 볼일 없이 마을을 한 바퀴 돌고 갔다. 세는 눈이었다. 어느 쪽에서 왔고 무엇을 세고 갔는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "storm",
+          "weight": 3,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and (month >= 3 and month <= 5 or month >= 9 and month <= 11)",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"큰바람\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "2 + rand(0, 3)"
+            },
+            {
+              "set": "food",
+              "expr": "max(0, food - round(pop * 0.6))"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 5, 0, 100)"
+            }
+          ],
+          "notify": "[밤새 바람이 불었다] 사람은 상하지 않았지만 세워 둔 것 몇 가지가 견디지 못했다. 무엇이 무너지고 무엇이 젖었는지는 이 영지에 실제로 서 있는 것들 중에서 골라라 — 물길을 냈다면 물길이 넘칠 수도 있고, 아직 아무것도 없다면 없는 대로 무너질 것이 있다."
+        },
+        {
+          "id": "hail",
+          "weight": 3,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 5 and month <= 8 and sum(farms) > 0",
+          "effects": [
+            {
+              "set": "blight",
+              "expr": "min(8, blight + 3 + rand(0, 3))"
+            }
+          ],
+          "notify": "[우박이 왔다] 한나절 만에 이삭이 다 누웠다. 밭이 없어진 건 아니지만 올해 그 자리에서 나올 것은 크게 줄었다. 몇 이랑이 살아남았는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "frost",
+          "weight": 2,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 3 and month <= 4 and sum(farms) > 0",
+          "effects": [
+            {
+              "set": "blight",
+              "expr": "min(8, blight + 2 + rand(0, 3))"
+            }
+          ],
+          "notify": "[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다."
+        },
+        {
+          "id": "wildfire",
+          "weight": 2,
+          "cooldown": 50,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 6 and month <= 8 and weather == \"☀️맑음\"",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"들불\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "3 + rand(0, 4)"
+            },
+            {
+              "set": "threat",
+              "expr": "clamp(threat - 6, 0, 100)"
+            }
+          ],
+          "notify": "[들에 불이 붙었다] 마른 풀을 타고 번진다. 사람을 붙여 불길을 끊어야 한다. 탄 자리에서 무엇이 쫓겨 나왔는지는 이번 장면에서 정하라 — 짐승도 불은 피한다."
+        },
+        {
+          "id": "coldsnap",
+          "weight": 2,
+          "cooldown": 50,
+          "when": "disaster == \"\" and route == \"없음\" and (month >= 12 or month <= 2) and crowd >= 90",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"한파\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "4 + rand(0, 5)"
+            },
+            {
+              "set": "health",
+              "expr": "clamp(health - 8, 0, 100)"
+            }
+          ],
+          "notify": "[숨이 얼 만큼 춥다] 땔감이 모자라고 방 하나에 너무 여럿이 잔다. 노인과 아이부터 앓기 시작했다."
+        },
+        {
+          "id": "foul_water",
+          "weight": 3,
+          "cooldown": 35,
+          "when": "disaster == \"\" and route == \"없음\" and wells <= 0 and health <= 25 + hardship * 0.45",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "\"배앓이\""
+            },
+            {
+              "set": "disaster_days",
+              "expr": "5 + rand(0, 6)"
+            },
+            {
+              "set": "health",
+              "expr": "clamp(health - 7, 0, 100)"
+            }
+          ],
+          "notify": "[강물 탓이다] 마을 절반이 같은 날 배를 잡았다. 오염된 우물을 두고 강물을 길어 온 대가다. 끓여 먹으라는 말은 지키는 사람만 지킨다."
+        },
+        {
+          "id": "murrain",
+          "weight": 2,
+          "cooldown": 55,
+          "when": "disaster == \"\" and route == \"없음\" and sum(farms) >= 4",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "max(0, food - round(pop * 0.8))"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 4, 0, 100)"
+            }
+          ],
+          "notify": "[짐승이 쓰러진다] 기르던 것들 사이에 병이 돌아 사흘 만에 퍼졌다. 죽은 것은 먹을 수 없어 태운다. 무엇을 치던 자리에서 시작됐는지는 경작지 목록에 있는 것 중에서 골라라."
+        },
+        {
+          "id": "goblin_raid",
+          "weight": 2,
+          "cooldown": 24,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 70 - hardship * 0.3 and guard_men + army * 2 < round(pop * 0.18)",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "max(0, food - round(pop * 0.5))"
+            },
+            {
+              "set": "threat",
+              "expr": "clamp(threat + 6, 0, 100)"
+            }
+          ],
+          "notify": "[북쪽에서 내려왔다] 고블린 한 떼가 밤에 곳간을 뒤졌다. 싸움이랄 것도 없이 지고 갔다. 한 번 성공한 자리는 다시 온다."
+        },
+        {
+          "id": "harpy",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 75 - hardship * 0.3 and month >= 4 and month <= 9",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "max(0, pop - (1 + rand(0, 2)))"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 6, 0, 100)"
+            }
+          ],
+          "notify": "[하늘에서 왔다] 능선 쪽에서 그림자가 돌더니 들에 있던 사람을 채 갔다. 활이 닿지 않는 높이였다. 누가 없어졌는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "orc_scout",
+          "weight": 2,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 80 - hardship * 0.25",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat + 10, 0, 100)"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 6, 0, 100)"
+            }
+          ],
+          "notify": "[재 너머에서 봤다] 남쪽 평원에 오크 척후가 다녀갔다. 약탈이 아니라 세러 온 것이다. 세고 갔다는 건 뒤에 본대가 있다는 뜻이다."
+        },
+        {
+          "id": "nest_near",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 50 - hardship * 0.2",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat + 12, 0, 100)"
+            }
+          ],
+          "notify": "[가까이에 자리를 잡았다] 마을에서 반나절도 안 되는 곳에 무언가가 둥지를 틀었다. 척후가 찾은 먼 곳이 아니라 코앞이다. 무엇이 어디에 자리 잡았는지 이번 장면에서 정하고 이름을 붙여라 — 치우면 없어지고, 두면 커진다."
+        },
+        {
+          "id": "bumper",
+          "weight": 3,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 9 and month <= 10 and sum(farms) >= 2 + hardship * 0.06 and blight <= 0",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "food + round(pop * 2.5)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 8, 0, 100)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 3, 0, 100)"
+            }
+          ],
+          "notify": "[올해는 잘 됐다] 걷어 보니 예상보다 훨씬 많다. 이런 해는 자주 오지 않는다는 걸 늙은이들이 안다."
+        },
+        {
+          "id": "wanderer",
+          "weight": 3,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and fame >= 4 + hardship * 0.18 and crowd < 110",
+          "effects": [],
+          "notify": "[손을 가진 사람이 왔다] 떠돌던 장인 하나가 여기서 겨울을 나겠다고 한다. 무엇을 다루는 사람이고 왜 떠돌았는지 이번 장면에서 정하고, 눌러앉기로 하면 현지 고용인에 올려라."
+        },
+        {
+          "id": "pilgrims",
+          "weight": 2,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and fest_in <= 3 and fame >= 0 + hardship * 0.12",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 6, 0, 100)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 2, 0, 100)"
+            },
+            {
+              "set": "gold",
+              "expr": "gold + 20 + rand(0, 40)"
+            }
+          ],
+          "notify": "[축일을 쇠러 왔다] 인근에서 사람들이 걸어 들어왔다. 폐허라도 축일은 축일이라고. 쓰고 간 돈보다, 여기가 사람 사는 곳으로 보였다는 게 크다."
+        },
+        {
+          "id": "windfall",
+          "weight": 2,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and build_men >= 2 + hardship * 0.14",
+          "effects": [
+            {
+              "set": "gold",
+              "expr": "gold + 120 + rand(0, 260)"
+            }
+          ],
+          "notify": "[땅에서 나왔다] 터를 파던 인부가 항아리를 깼는데 안에 옛 주화가 들어 있었다. 누가 왜 묻었는지는 아무도 모른다."
+        },
+        {
+          "id": "envoy",
+          "weight": 3,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and my_weight >= 15 and stance == \"중립\"",
+          "effects": [],
+          "notify": "[사절이 왔다] 왕도에서 온 사람이 남작을 따로 청했다. 세 왕녀 중 누가 보냈고 무엇을 약속하는지, 그리고 그 대가로 무엇을 요구하는지는 이번 장면에서 정하라. 지금 판세와 이쪽의 무게를 보고 어울리는 쪽이 보냈을 것이다. 답을 그 자리에서 줄 필요는 없다."
+        },
+        {
+          "id": "leak",
+          "weight": 3,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and stance != \"중립\" and exposed >= 25 and exposed < 75",
+          "effects": [
+            {
+              "set": "exposed",
+              "expr": "clamp(exposed + 20, 0, 100)"
+            }
+          ],
+          "notify": "[말이 돌았다] 남작이 누구 편인지가 이제 궁정 밖에서도 오르내린다. 누구 입에서 나갔는지는 이번 장면에서 정하라 — 밀서를 나른 자일 수도, 자랑을 한 식솔일 수도 있다. 반대편에 선 쪽이 이걸 모를 리 없다."
+        },
+        {
+          "id": "court_turn",
+          "weight": 2,
+          "cooldown": 55,
+          "when": "disaster == \"\" and route == \"없음\" and day >= 40",
+          "effects": [
+            {
+              "set": "pw_cass",
+              "expr": "clamp(pw_cass + rand(0, 16) - 8, 5, 100)"
+            },
+            {
+              "set": "pw_orel",
+              "expr": "clamp(pw_orel + rand(0, 16) - 8, 5, 100)"
+            },
+            {
+              "set": "pw_lili",
+              "expr": "clamp(pw_lili + rand(0, 16) - 8, 5, 100)"
+            }
+          ],
+          "notify": "[왕도에서 무슨 일이 있었다] 소식이 열흘 늦게 닿았다. 판세가 눈에 띄게 움직였는데 무엇 때문인지는 여기까지 정확히 오지 않는다. 어느 쪽이 웃고 어느 쪽이 다쳤는지는 위 세력 수치를 보고 읽어라 — 이유는 지어내되 숫자와 어긋나면 안 된다."
+        },
+        {
+          "id": "summons",
+          "weight": 2,
+          "cooldown": 70,
+          "when": "disaster == \"\" and route == \"없음\" and rel_cap >= 35 and my_weight >= 25",
+          "effects": [
+            {
+              "set": "appt",
+              "expr": "\"왕도 소환 — 알현\""
+            },
+            {
+              "set": "appt_in",
+              "expr": "14 + rand(0, 7)"
+            }
+          ],
+          "notify": "[부름을 받았다] 왕도에서 소환장이 왔다. 길이 십사 일이니 떠날 채비를 해야 하고, 떠나 있는 동안 영지는 누가 볼 것인지도 정해야 한다. 왜 지금 부르는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "sister_visit",
+          "weight": 2,
+          "cooldown": 50,
+          "when": "disaster == \"\" and route == \"없음\" and health <= 55 and count(corps) <= 0 and rel_cap >= 0 + hardship * 0.1",
+          "effects": [
+            {
+              "set": "health",
+              "expr": "clamp(health + 10, 0, 100)"
+            },
+            {
+              "set": "b_stella",
+              "expr": "clamp(b_stella + 4, -50, 100)"
+            }
+          ],
+          "notify": "[광휘회에서 지나갔다] 순회 중이던 자매 하나가 하루 묵으며 앓는 이들을 봐 주었다. 고용이 아니라 지나는 길이었고, 내일이면 간다."
+        }
+      ]
+    }
+  },
+  "directives": [
+    {
+      "id": "famine",
+      "when": "food <= 0",
+      "text": "[PRIORITY] The granary is empty and people go hungry today. This is the center of the scene, not background."
+    },
+    {
+      "id": "thirst",
+      "when": "water <= 0",
+      "text": "[PRIORITY] There is no drinking water. Thirst outruns hunger; this outranks everything else today."
+    },
+    {
+      "id": "starving_soon",
+      "when": "food > 0 and food_days <= 5",
+      "text": "[HUNGER] {food_days} days of food left and the fields do not cover what is eaten. Nothing is coming from outside. What is left is the ground itself — the river, the woods, roots, snares, whatever the folk of a hungry country already know how to eat. That is work, not luck: it costs hands, it takes days, and someone has to decide who goes. A place that actually starts feeding people is a new entry in the farmland list."
+    },
+    {
+      "id": "phase_survive",
+      "when": "phase == \"연명\"",
+      "text": "[TONE] Still bare survival. Do not speak of rebuilding or prosperity — getting through today is the whole of it."
+    },
+    {
+      "id": "morale_good",
+      "when": "morale >= 60 and food_days > 10",
+      "text": "[TONE] Things are genuinely good right now. Do not render it stingily — good days are rare here."
+    },
+    {
+      "id": "disaster_on",
+      "when": "disaster_days > 0",
+      "text": "[ONGOING] {disaster} — {disaster_days} more days to run. Do not write it as resolved before it ends."
+    },
+    {
+      "id": "fest_today",
+      "when": "fest_in == 0",
+      "text": "[TODAY — {fest}] {fest_desc} Build the scene around this day. If the holding is in a bad way, it is observed badly."
+    },
+    {
+      "id": "fest_soon",
+      "when": "fest_in >= 1 and fest_in <= 10",
+      "text": "[UPCOMING] {fest_when} is {fest} — {fest_in} days out. {fest_desc}"
+    },
+    {
+      "id": "tribute_due",
+      "when": "fest == \"세납일\" and fest_in <= 12",
+      "text": "[TRIBUTE] Tribute day is {fest_in} days off. {tribute} is owed; the treasury holds {gold}."
+    },
+    {
+      "id": "appt_due",
+      "when": "appt != \"\" and appt_in <= 0",
+      "text": "[SCHEDULED] Today was set aside for this — {appt}. If it is put off, show why."
+    },
+    {
+      "id": "appt_near",
+      "when": "appt != \"\" and appt_in >= 1 and appt_in <= 3",
+      "text": "[SCHEDULED] {appt_in} days out — {appt}."
+    },
+    {
+      "id": "scouting_on",
+      "when": "explore_dir != \"없음\"",
+      "text": "[SCOUTING] Scouts are working {explore_dir} — {scouting} of the ground covered. What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. Do not let them find the thing itself until the system says they have."
+    },
+    {
+      "id": "scouting_close",
+      "when": "explore_dir != \"없음\" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)",
+      "text": "[SCOUTING] They are close to whatever is out there. The fragments are starting to line up."
+    },
+    {
+      "id": "route_shut",
+      "when": "route != \"없음\"",
+      "text": "[ROUTE CLOSED] {route} has been impassable and is expected to stay shut about {route_days} more days. Nothing moves along it in either direction — no cart, no envoy, no letter. Standing trade on that road pays a fraction meanwhile ({deals_net} against {deals} a day). Whoever insists on travelling it takes a real risk. It can be opened early by doing something about the cause, not by waiting."
+    },
+    {
+      "id": "hire_ready",
+      "when": "gold >= fee_J",
+      "text": "[RECRUITMENT] The treasury could cover a request to the Academy now — {hire_txt} in gold, and at this reputation they will release {hire_open}. Only the named graduates exist; the Corps does not send nameless girls, and nobody arrives until the Baron actually sends the request and the fee. The Sisterhood works the same way but calls the fee a donation."
+    },
+    {
+      "id": "wages_unpaid",
+      "when": "gold <= 0 and count(corps) > 0",
+      "text": "[UNPAID] The treasury is empty and {payroll} a day in wages is owed to trained professionals with somewhere else to go. They do not walk out on the first missed day. They notice, and they talk to each other."
+    },
+    {
+      "id": "hire_locked",
+      "when": "gold < fee_J and fame < 25",
+      "text": "[RECRUITMENT] Neither the Academy nor the Cathedral would send anyone here yet — no name to speak of and nothing in the treasury. A junior would cost about {fee_J}. Anyone who serves at Veridia right now serves for reasons of their own."
+    },
+    {
+      "id": "supply_cut",
+      "when": "route != \"없음\" and count(supply) > 0",
+      "text": "[SUPPLY CUT] The road is shut, so the standing deliveries have stopped — nothing is arriving. The granary is still what it was this morning; the shortfall shows up over the days ahead, not today. People who are used to the carts coming will notice before the figures do."
+    },
+    {
+      "id": "housing_full",
+      "when": "pop >= cap",
+      "text": "[HOUSING] Every roof is taken — {pop} people to {cap} places. Nobody new stays, whatever draws them here. The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out."
+    },
+    {
+      "id": "unknown_land",
+      "when": "rel_top < 25",
+      "text": "[ISOLATION] No neighbouring domain has any reason to look here — {neighbors}. Nothing arrives by chance: no caravan takes this road, no envoy, no relief. Whoever appears was sent for, is lost, is fleeing, or wants something. Never solve a shortage with a passing stranger."
+    },
+    {
+      "id": "known_land",
+      "when": "rel_top >= 25",
+      "text": "[OUTSIDE] Veridia is on other maps now — {neighbors}. Attention runs both ways: it brings offers, and it brings people who come to assess what is here."
+    },
+    {
+      "id": "event_detail",
+      "when": "day >= 0",
+      "text": "[EVENT DETAIL] A system notice fixes only two things: what kind of thing happened, and what it already cost in figures. Everything else is yours — which building, which field, whose door, what it looked like and who saw it. Choose from what this holding actually has: the infra, houses, farms, sites and people listed above. Never damage or invoke something that has never been built here. If a channel was dug, a storm can burst it; if there is no channel, the same storm has to find something else to ruin."
+    },
+    {
+      "id": "no_numbers",
+      "when": "day >= 0",
+      "text": "[WRITING RULE] The figures above are your basis for judgment only. Never transcribe numbers or tables into the prose. Not \"food 781\" but \"the granary will hold two months\" — render them as something a person would feel. Never write against the figures: no feasting while they starve, no one following gladly when morale is on the floor."
+    }
+  ],
+  "actions": [],
+  "updater": {
+    "model": "aux",
+    "allow": [
+      {
+        "id": "time"
+      },
+      {
+        "id": "weather"
+      },
+      {
+        "id": "location"
+      },
+      {
+        "id": "disaster"
+      },
+      {
+        "id": "focus"
+      },
+      {
+        "id": "alert"
+      },
+      {
+        "id": "stock"
+      },
+      {
+        "id": "corps"
+      },
+      {
+        "id": "houses"
+      },
+      {
+        "id": "infra"
+      },
+      {
+        "id": "farms"
+      },
+      {
+        "id": "sites"
+      },
+      {
+        "id": "staff"
+      },
+      {
+        "id": "contacts"
+      },
+      {
+        "id": "rel_n",
+        "maxDelta": 8
+      },
+      {
+        "id": "rel_e",
+        "maxDelta": 8
+      },
+      {
+        "id": "rel_s",
+        "maxDelta": 8
+      },
+      {
+        "id": "rel_w",
+        "maxDelta": 8
+      },
+      {
+        "id": "rel_cap",
+        "maxDelta": 8
+      },
+      {
+        "id": "ally"
+      },
+      {
+        "id": "ally_role"
+      },
+      {
+        "id": "b_adere",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_alaric",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_cassandra",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_orelia",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_liliana",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_eleonora",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_silvana",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_valerius",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_liana",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_morwen",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_stella",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_celestia",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_lapis",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_beatrix",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_philia",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_serie",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_livia",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_fiora",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_meryl",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_clarice",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_cassia",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_lulu",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_lara",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_yustina",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_algeria",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "b_lirica",
+        "maxDelta": 8,
+        "mentions": true
+      },
+      {
+        "id": "appt"
+      },
+      {
+        "id": "appt_in"
+      },
+      {
+        "id": "contracts"
+      },
+      {
+        "id": "supply"
+      },
+      {
+        "id": "labor_policy"
+      },
+      {
+        "id": "disaster_days",
+        "maxDelta": 14
+      },
+      {
+        "id": "days_passed"
+      },
+      {
+        "id": "route"
+      },
+      {
+        "id": "route_days",
+        "maxDelta": 40
+      },
+      {
+        "id": "stance"
+      },
+      {
+        "id": "exposed",
+        "maxDelta": 15
+      },
+      {
+        "id": "explore_dir"
+      },
+      {
+        "id": "food",
+        "maxGain": 400,
+        "maxLoss": 300
+      },
+      {
+        "id": "water",
+        "maxGain": 300,
+        "maxLoss": 200
+      },
+      {
+        "id": "gold",
+        "maxGain": 500,
+        "maxLoss": 7000
+      },
+      {
+        "id": "pop",
+        "maxDelta": 20
+      },
+      {
+        "id": "army",
+        "maxDelta": 30
+      },
+      {
+        "id": "wells",
+        "maxDelta": 1
+      },
+      {
+        "id": "health",
+        "maxDelta": 12
+      },
+      {
+        "id": "morale",
+        "maxDelta": 15
+      },
+      {
+        "id": "unrest",
+        "maxDelta": 20
+      },
+      {
+        "id": "threat",
+        "maxDelta": 20
+      },
+      {
+        "id": "fame",
+        "maxDelta": 10
+      }
+    ],
+    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
+  },
+  "promptState": {
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "includeEvents": true
+  },
+  "statusUI": {
+    "mode": "template",
+    "collapsible": false,
+    "templates": [
+      {
+        "id": "estate",
+        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br, .status-full-list br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n/* 확장된 리스트 섹션 (시설 & 고용) — 플러그인이 어떤 태그로 칩을 뱉든 대응 */\n.status-full-list {\n    grid-column: span 2; padding: 10px; background: rgba(255, 255, 255, 0.3);\n    border-radius: 4px; margin-top: 5px; min-height: 40px;\n    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;\n}\n.status-full-list ul, .status-full-list ol { display: contents; list-style: none; padding: 0; margin: 0; }\n.status-full-list li,\n.status-full-list > span,\n.status-full-list > div,\n.status-full-list > p {\n    background: #4a2c2a; color: #f0e5d1; padding: 2px 10px; border-radius: 4px;\n    font-size: 0.85em; line-height: 1.7; margin: 0; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);\n}\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style><input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사 — 영토 파악 {survey} ({finds})</div><div class=\"status-entry\"><span>북 · 칼날 능선:</span> <span class=\"val\">{found_n}</span></div><div class=\"status-entry\"><span>서 · 속삭이는 숲:</span> <span class=\"val\">{found_w}</span></div><div class=\"status-entry\"><span>남 · 잿빛 평원:</span> <span class=\"val\">{found_s}</span></div><div class=\"status-entry\"><span>동 · 강가:</span> <span class=\"val\">{found_e}</span></div><div class=\"status-entry status-span2\"><span>척후 파견:</span> <span class=\"val\">{explore_dir} ({scouting}) — 탐사 인원 {scout_men}</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-span2\" style=\"padding:4px 8px; opacity:.85; font-size:.92em;\">{fest_desc}</div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-full-list\">{houses:tags}</div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>수입 (식량 +{sup_food} · 식수 +{sup_water}, 대금 {import_cost}/일):</span></div><div class=\"status-full-list\">{supply:tags}</div><div class=\"status-entry status-span2\"><span>지속 수입 ({deals}/일):</span></div><div class=\"status-full-list\">{contracts:tags}</div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>보유 물자:</span> <span class=\"val\">{stock}</span></div><div class=\"status-section-title\">🌾 경작지 — {farm_txt}</div><div class=\"status-full-list\">{farms:tags}</div><div class=\"status-section-title\">⛏️ 자원지 — 산출 {extract}/일</div><div class=\"status-full-list\">{sites:tags}</div><div class=\"status-section-title\">🏗️ 인프라 — 식수원 {wells}</div><div class=\"status-full-list\">{infra:tags}</div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">👑 왕위 계승 — 선두 {frontrunner}</div><div class=\"status-entry\"><span>카산드라:</span> <span class=\"val\">{pw_cass_txt}</span></div><div class=\"status-entry\"><span>오렐리아:</span> <span class=\"val\">{pw_orel_txt}</span></div><div class=\"status-entry\"><span>릴리아나:</span> <span class=\"val\">{pw_lili_txt}</span></div><div class=\"status-entry\"><span>내 지지:</span> <span class=\"val\">{stance}</span></div><div class=\"status-entry status-span2\"><span>조정에서의 무게:</span> <span class=\"val\">{weight_txt} · {exposed_txt}</span></div><div class=\"status-section-title\">🗺️ 주변 영지 우호도</div><div class=\"status-entry\"><span>북 · 모르웬 백작 (5일):</span> <span class=\"val\">{rel_n_txt}</span></div><div class=\"status-entry\"><span>동 · 리아나 백작 (강 4일·길 7일):</span> <span class=\"val\">{rel_e_txt}</span></div><div class=\"status-entry\"><span>남 · 발레리우스 백작 (3일):</span> <span class=\"val\">{rel_s_txt}</span></div><div class=\"status-entry\"><span>서 · 실바나 후작 (6일):</span> <span class=\"val\">{rel_w_txt}</span></div><div class=\"status-entry\"><span>왕도 · 알라릭 여왕 (14일):</span> <span class=\"val\">{rel_cap_txt}</span></div><div class=\"status-section-title\">👯 메이드 및 핵심 고용인 현황</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-section-title\">💗 인물 호감도 ({bond_known})</div><div class=\"status-entry status-span2\"><span>아카데미 · 대성당:</span> <span class=\"val\">{hire_open} 응한다 — {hire_txt}</span></div><div class=\"status-entry status-span2\"><span>군단 · 수녀 (봉급 {payroll}/일):</span></div><div class=\"status-full-list\">{corps:tags}</div><div class=\"status-entry status-span2\"><span>왕가 · 동행:</span> <span class=\"val\">{bond0}</span></div><div class=\"status-entry status-span2\"><span>귀족:</span> <span class=\"val\">{bond1}</span></div><div class=\"status-entry status-span2\"><span>광휘회:</span> <span class=\"val\">{bond2}</span></div><div class=\"status-entry status-span2\"><span>메이드군단:</span> <span class=\"val\">{bond3}</span></div><div class=\"status-full-list\" style=\"background: rgba(74, 44, 42, 0.05);\">{staff:tags}</div><div class=\"status-section-title\">🤝 교역 상대 · 인맥</div><div class=\"status-entry status-span2\"><span>내다 팔 것:</span> <span class=\"val\">{sites} · {stock}</span></div><div class=\"status-full-list\">{contacts:tags}</div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\">{commands}</div></div></div></div>"
+      }
+    ]
+  },
+  "setup": {
+    "presets": [
+      {
+        "id": "normal",
+        "label": "🌾 보통 — 그래도 사람이 산다",
+        "set": {
+          "pop": 110,
+          "houses": [
+            "남은 오두막 90",
+            "성채 헛간 30"
+          ],
+          "food": 1600,
+          "water": 1500,
+          "gold": 120,
+          "health": 28,
+          "morale": 35,
+          "unrest": 12,
+          "threat": 34,
+          "farms": [
+            "묵은 밭 4",
+            "개울가 채마밭 1"
+          ],
+          "wells": 1,
+          "infra": [
+            "무너진 병영",
+            "잡초 연병장",
+            "폐허 대장간",
+            "마을 우물"
+          ],
+          "stock": [
+            "목재 100",
+            "보리 씨 20"
+          ],
+          "route": "없음",
+          "route_days": 0,
+          "rel_cap": 10,
+          "hardship": 35,
+          "hire_mult": 80,
+          "focus": "겨울이 오기 전에 밭을 늘리는 것"
+        }
+      },
+      {
+        "id": "hard",
+        "label": "💀 절망 — 사흘",
+        "set": {
+          "pop": 70,
+          "food": 210,
+          "water": 210,
+          "gold": 0,
+          "health": 12,
+          "morale": 12,
+          "unrest": 30,
+          "threat": 78,
+          "farms": [],
+          "wells": 0,
+          "houses": [
+            "성한 오두막 25",
+            "성채 헛간 20"
+          ],
+          "infra": [
+            "불탄 병영",
+            "잡초 연병장",
+            "무너진 대장간",
+            "오염된 우물",
+            "메워진 수로"
+          ],
+          "stock": [
+            "그을린 목재 30"
+          ],
+          "route": "북 산길",
+          "route_days": 14,
+          "rel_cap": 5,
+          "hardship": 85,
+          "hire_mult": 150,
+          "focus": "사흘 안에 먹을 것을 구하는 것",
+          "alert": "곳간에 사흘치. 밭은 죽었고 우물은 못 쓴다."
+        }
+      }
+    ],
+    "ai": {
+      "enabled": false,
+      "vars": []
+    }
+  }
+}

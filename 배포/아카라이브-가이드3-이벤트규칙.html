@@ -1,0 +1,316 @@
+<p><strong><span style="font-size:36px;">0. 이게 왜 필요함?</span></strong></p>
+
+<p><br></p>
+
+<p>2탄까지 하면 <strong>서사 → 상태</strong>는 완성됨. AI가 글을 읽고 알아서 값을 바꿔주는 거임.</p>
+
+<p><br></p>
+
+<p>근데 AI가 <strong>죽어도 못 하는 게</strong> 하나 있음.</p>
+
+<p><br></p>
+
+<blockquote><p>40턴 동안 매일 식량 3씩 빠짐없이 빼기</p></blockquote>
+
+<p><br></p>
+
+<p>이건 사람도 못 함. AI는 한 번 어긋나면 그 다음부터 계속 어긋나는데, 문제는 <strong>아무도 눈치를 못 챈다는 것.</strong> 40턴쯤 지나면 식량이 몇이어야 맞는지 아무도 모름.</p>
+
+<p><br></p>
+
+<p>그래서 이런 건 AI한테 안 맡기고 <strong>시스템이 직접 계산</strong>하게 해야 함. 그게 <strong>규칙·이벤트 탭</strong>임.</p>
+
+<p><br></p>
+
+<p>[스샷: 봇 편집 &gt; 규칙·이벤트 탭 들어간 화면]</p>
+
+<p><br></p>
+
+<p>이 탭에 4가지가 있고, 위에서부터 순서대로 보면 됨.</p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 매 턴 자동 처리</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">가장 쉽고 효과는 제일 큼. <strong>조건 없이 매 턴 무조건</strong> 굴러가는 계산임.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 매 턴 자동 처리 (수입·소비 같은 정기 틱) 영역]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">영지 템플릿에 들어있는 실제 예시임.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>경과 &nbsp;= &nbsp;turn + 1</p>
+	<p>금화 &nbsp;= &nbsp;gold + net_income</p>
+	<p>식량 &nbsp;= &nbsp;food - food_need</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">날짜가 하루 가고, 수입이 금고에 들어오고, 인구가 먹을 만큼 식량이 빠짐. 이거 세 줄이면 <strong>영지 경영의 뼈대가 끝남.</strong></span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ 여기서 제일 많이 틀리는 것</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">왼쪽은 <strong>바꿀 변수</strong>, 오른쪽은 <strong>새 값을 만드는 식</strong>임. += 가 아니라 = 라는 게 핵심.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>금화를 10 늘리고 싶다 → &nbsp;<strong>gold + 10</strong> &nbsp;(O)</p>
+	<p>금화를 10 늘리고 싶다 → &nbsp;<strong>10</strong> &nbsp;(X — 매 턴 금화가 10으로 고정됨)</p>
+</blockquote>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 상태 지시문 (이게 진짜 중요함)</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: 상태 지시문 영역]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">여기까지는 전부 <strong>서사 → 상태</strong> 방향이었음. 근데 지시문은 <strong>방향이 반대</strong>임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">숫자를 바꾸는 게 아니라, <strong>조건이 참인 동안 AI한테 문장을 계속 넣어줌.</strong></span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>조건</strong> &nbsp;famine</p>
+	<p><strong>내용</strong> &nbsp;[상태] 기근이 계속되고 있다. 거리의 굶주림, 흉흉한 민심, 영주를 향한 원망이 묘사에 배어나야 한다.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이게 없으면 어떻게 되냐면 —</span></p>
+
+<p><br></p>
+
+<blockquote><p>식량 0에 기근 상태인데 AI는 여전히 풍요로운 저녁 식탁을 묘사함</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">상태창 숫자랑 서사가 따로 노는 그 현상. 상태창만 붙이고 이걸 안 해서 생기는 거임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">내용 안에 <strong>{변수id}</strong>를 쓰면 실제 값이 박혀서 나감. 예를 들어 <strong>&quot;금고가 거의 바닥났다 ({gold}G)&quot;</strong> 이렇게 쓰면 AI가 지금 금액을 알고 씀.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">호감도형 상태창 쓰는 사람은 이게 더 중요함. <strong>호감도 30 미만이면 &quot;아직 마음을 열지 않았다. 차갑고 퉁명스럽게 대하라&quot;</strong> 같은 걸 걸어두면, 호감도가 그냥 장식이 아니라 실제로 말투를 바꾸는 숫자가 됨.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 조건 이벤트</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: 조건 이벤트 영역]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">조건이 <strong>참이 되는 순간</strong> 한 번 발동함. 지시문이 &quot;계속 깔리는 것&quot;이면 이건 &quot;터지는 것&quot;.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>id</strong> &nbsp;famine_start</p>
+	<p><strong>조건</strong> &nbsp;food &lt;= 0 and not famine</p>
+	<p><strong>효과</strong> &nbsp;기근 = 1 &nbsp;/ &nbsp;민심 = loyalty - 10 &nbsp;/ &nbsp;인구 = population - round(population * 0.05)</p>
+	<p><strong>AI 통지</strong> &nbsp;식량이 바닥나 기근이 시작되었다. 민심이 떨어지고 주민이 영지를 떠나고 있다.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>AI 통지</strong>에 쓴 문장은 다음 턴에 AI한테 전달됨. 그래서 AI가 &quot;아 기근 터졌구나&quot; 하고 그 상황을 써줌. 이거 비워두면 숫자만 조용히 바뀌고 서사는 아무 일 없었다는 듯이 흘러감.</span></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ and not ○○ 이거 꼭 붙여야 함</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">조건을 <strong>food &lt;= 0</strong> 만 써두면 어떻게 되냐면, 식량이 0인 동안 <strong>매 턴 기근이 새로 시작됨.</strong> 매 턴 민심 -10에 인구 5%씩 증발함.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 &quot;<strong>아직 기근이 아닐 때만</strong>&quot;이라는 뜻으로 <strong>and not famine</strong>을 붙이는 거임. 그리고 끝나는 이벤트를 따로 하나 더 만들어야 함.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>id</strong> &nbsp;famine_end</p>
+	<p><strong>조건</strong> &nbsp;food &gt; food_need * 2 and famine</p>
+	<p><strong>효과</strong> &nbsp;기근 = 0</p>
+	<p><strong>AI 통지</strong> &nbsp;식량 사정이 나아져 기근이 끝났다.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">시작 이벤트 / 끝 이벤트를 <strong>짝으로 만드는 게 기본</strong>이라고 외워두면 편함. 딱 한 번만 터지면 되는 거(예: 첫 만남)는 <strong>[1회만]</strong> 체크박스를 켜면 됨.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 랜덤 이벤트</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: 랜덤 이벤트 영역]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">아무 일도 안 일어나면 심심하니까 확률로 사건을 굴리는 거임. 맨 위에 <strong>턴당 발동 확률</strong>이 있음 (영지 템플릿은 25%).</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>id</strong> &nbsp;bandits &nbsp;/ &nbsp;<strong>가중치</strong> 3 &nbsp;/ &nbsp;<strong>쿨다운</strong> 6</p>
+	<p><strong>조건</strong> &nbsp;military &lt; 150</p>
+	<p><strong>효과</strong> &nbsp;금화 = gold - rand(50, 150)</p>
+	<p><strong>AI 통지</strong> &nbsp;산적 무리가 상단을 습격해 자금을 약탈해 갔다.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">칸 세 개만 이해하면 됨.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>가중치</strong> &nbsp;클수록 자주 뽑힘. 3이면 1짜리보다 3배 잘 걸림<br>
+- <strong>쿨다운</strong> &nbsp;한 번 터지면 몇 턴 동안 안 나올지. 안 넣으면 연속으로 터짐<br>
+- <strong>조건</strong> &nbsp;비우면 항상 후보. 위 예시는 <strong>군사력이 낮을 때만</strong> 산적이 옴</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">조건을 잘 걸어두는 게 포인트임. 군사 키워놨는데 산적이 계속 털어가면 유저 입장에선 <strong>키운 의미가 없어짐.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 <strong>rand(50, 150)</strong> 처럼 효과 안에서도 주사위를 굴릴 수 있음.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. 어려우면? 이것도 AI한테 시키면 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">2탄이랑 완전 똑같은 방식임. 조건식 문법 같은 거 외울 필요 없음.</span></p>
+
+<p><br></p>
+
+<p><strong>1단계.</strong> 규칙·이벤트 탭 맨 위에 <strong>[규격 내보내기]</strong> 버튼이 있음. 눌러서 통째로 복사.</p>
+
+<p><br></p>
+
+<p>[스샷: 규칙·이벤트 탭 맨 위 내보내기 버튼]</p>
+
+<p><br></p>
+
+<p><strong>2단계.</strong> AI한테 붙여넣고 요청하면 됨.</p>
+
+<p><br></p>
+
+<blockquote><p>이 봇에 매 턴 식량이 줄어드는 규칙이랑, 식량 떨어지면 기근 터지는 이벤트 만들어줘. 랜덤 사건도 5개쯤 넣어줘</p></blockquote>
+
+<p><br></p>
+
+<p><strong>3단계.</strong> 받은 JSON을 아래 칸에 붙여넣고 <strong>[📥 가져오기]</strong>.</p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:20px;">⚠ AI가 자주 하는 짓 하나</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">AI한테 &quot;이벤트 하나만 고쳐줘&quot; 하면 <strong>고친 그거 하나만</strong> 돌려주는 경우가 많음. 근데 가져오기는 통째로 갈아끼우는 방식이라, 그러면 나머지가 전부 날아감.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">다행히 플러그인이 잡아줌. 항목이 확 줄면 <strong>&quot;⚠ 가져왔지만 항목이 크게 줄었습니다&quot;</strong> 경고가 뜸. 그럴 땐 <strong>[↩ 가져오기 되돌리기]</strong> 누르고 AI한테 다시 요청하면 됨.</span></p>
+
+<p><br></p>
+
+<blockquote><p>손대지 않은 항목까지 전부 포함해서 한 세트로 다시 줘</p></blockquote>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">6. 다 넣었으면 🔬 진단 돌려보기</span></strong></p>
+
+<p><br></p>
+
+<p>[스샷: 진단 탭 + 진단 실행 버튼]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">규칙은 넣는 순간 밸런스가 깨지기 쉬움. 근데 이건 <strong>실제로 몇십 턴 굴려보기 전에는 절대 모름.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그래서 <strong>🔬 진단</strong> 탭이 있음. 턴 수랑 시드 수 정하고 <strong>[🔬 진단 실행]</strong> 누르면 봇을 실제로 여러 판 굴려보고 문제를 잡아줌.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">초보가 제일 많이 하는 실수 두 개가 이걸로 바로 잡힘.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>영영 안 뜨는 이벤트</strong> &nbsp;리스크가 턴당 +2인데 발동선이 70이면 35턴 걸림. 대부분의 플레이는 그 전에 끝나서 그 이벤트는 없는 거나 마찬가지임<br>
+- <strong>아무도 안 바꾸는 변수</strong> &nbsp;만들어만 놓고 어디서도 안 건드리는 변수. 상태창에 계속 시작값 그대로 떠 있음</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&quot;왜 아무 일도 안 일어나지?&quot; 싶으면 십중팔구 이 둘 중 하나임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>매 턴 자동</strong> &nbsp;조건 없이 매 턴 계산 (날짜·수입·소모)</p>
+	<p><strong>상태 지시문</strong> &nbsp;조건이 참인 <strong>동안 계속</strong> AI한테 문장 주입</p>
+	<p><strong>조건 이벤트</strong> &nbsp;조건이 참이 되는 <strong>순간 한 번</strong> 발동</p>
+	<p><strong>랜덤 이벤트</strong> &nbsp;확률로 굴리는 사건 (가중치·쿨다운·조건)</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">헷갈리면 이렇게 기억하면 됨.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>이벤트는 &quot;터지는 것&quot;, 지시문은 &quot;깔리는 것&quot;.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">기근이 <strong>시작될 때</strong> 한 번 알리는 게 이벤트고, 기근인 <strong>동안 내내</strong> 분위기를 깔아주는 게 지시문임. 둘 다 있어야 상태창 숫자랑 서사가 같이 굴러감.</span></p>

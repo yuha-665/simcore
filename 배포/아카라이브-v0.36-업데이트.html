@@ -1,0 +1,512 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.29 &nbsp;→&nbsp; v0.36</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+평소처럼 RP만 하시면, <b style="color:#e0a94a;">서사를 읽고 AI가 알아서 관리합니다.</b>
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+계약이 맺어지면 계약을 등록하고, 사이가 좋아지면 호감도를 올리고, 기한이 되면 알아서 지웁니다.
+<b style="color:#dbe2ea;">유저가 손댈 일은 AI가 틀렸을 때뿐이고</b>, 그때 채팅창에 한 줄 치면 고쳐집니다.
+<span style="color:#8b98a9;">(그 한 줄은 봇마다 다릅니다 — 아래 장면 2에서 설명합니다.)</span>
+</p>
+
+<!-- ─────────── 장면 1 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:10px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;">장면 1</span>
+    <span style="font-size:19px;font-weight:600;">아무것도 안 해도 되는 경우 &nbsp;<span style="color:#8b98a9;font-weight:400;font-size:16px;">— 거의 다 여기 해당합니다</span></span>
+  </div>
+
+  <p style="margin:0 0 6px;color:#8b98a9;font-size:13px;">유저는 평소처럼 칩니다. 명령어 같은 건 모릅니다.</p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13.5px;line-height:1.8;color:#dbe2ea;">헤세 상단 사람을 만나 양털 거래 이야기를 꺼내 본다</pre>
+
+  <p style="margin:0 0 6px;color:#8b98a9;font-size:13px;">메인 모델이 장면을 씁니다.</p>
+  <div style="border-left:2px solid #3a4553;padding:6px 0 6px 14px;margin:0 0 14px;color:#a9b4c2;font-style:italic;">
+  …흥정은 길지 않았다. 하루 열두 냥, 삼 년.<br>
+  상인이 먼저 손을 내밀었고 남작이 인장을 눌렀다. 리비아는 그 광경을 문가에서 지켜보고 있었다.
+  </div>
+
+  <p style="margin:0 0 6px;color:#8b98a9;font-size:13px;">그러면 보조 모델이 <b style="color:#a8d5a2;">그 서사를 읽고 알아서 반영합니다.</b></p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 16px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">지속 수입  <span style="color:#a8d5a2;">+ "헤세 상단 양모 +12 @1093"</span>   <span style="color:#8b98a9;">계약이 목록에 올라간다</span>
+인맥      <span style="color:#a8d5a2;">+ "헤세 상단 · 양모"</span>            <span style="color:#8b98a9;">처음 거래한 상대는 명단에</span>
+호감_리비아 <span style="color:#a8d5a2;">45 → 47</span>                     <span style="color:#8b98a9;">지켜본 사람의 마음도 조금</span></pre>
+
+  <p style="margin:0 0 10px;font-size:16px;">그리고 이 다음부터는 <b style="color:#e0a94a;">아무도 신경 안 씁니다.</b></p>
+  <div style="color:#a9b4c2;">
+    <div style="margin-bottom:7px;">— 매일 금고에 12가 들어옵니다. <b style="color:#dbe2ea;">AI가 세는 게 아니라 시스템이 더합니다.</b></div>
+    <div style="margin-bottom:7px;">— 서사가 &quot;일주일 뒤&quot;로 건너뛰면 <b style="color:#dbe2ea;">7일치가 한 번에</b> 정산됩니다.</div>
+    <div style="margin-bottom:7px;">— 3년이 지나면 계약이 <b style="color:#dbe2ea;">저절로 사라집니다.</b> 아무도 기억할 필요가 없습니다.</div>
+    <div>— 상태창에는 계약 목록과 하루 수입이 계속 떠 있습니다.</div>
+  </div>
+
+  <div style="height:1px;background:#2a323d;margin:18px 0;"></div>
+  <p style="margin:0;color:#a9b4c2;">
+  <b style="color:#fff;">v0.29까지는 이 정산이 전부 AI 몫이었습니다.</b>
+  그리고 AI는 이걸 못 합니다 — 40턴 동안 매일 12를 빠짐없이 더하는 건 사람도 못 하는 일이니까요.
+  한 번 어긋나면 그 다음부터 매일 복리로 어긋나고, 아무도 눈치채지 못합니다.
+  </p>
+</div>
+
+<!-- ─────────── 장면 2 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:10px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;">장면 2</span>
+    <span style="font-size:19px;font-weight:600;">AI가 실수했을 때 &nbsp;<span style="color:#8b98a9;font-weight:400;font-size:16px;">— 여기가 이번 업데이트의 핵심</span></span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  보조 모델은 <b style="color:#dbe2ea;">서사만 읽습니다.</b> 대부분은 잘하는데, 딱 한 종류를 잘 틀립니다 —
+  <b style="color:#fff;">아직 얘기 중인 것과 이미 정해진 것을 구분하는 일</b>입니다.
+  </p>
+
+  <div style="border-left:2px solid #3a4553;padding:6px 0 6px 14px;margin:0 0 12px;color:#a9b4c2;font-style:italic;">
+  …상인은 하루 열두 냥을 불렀다. 남작은 잔을 내려놓고, 며칠 생각해 보겠다고 했다.
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  아직 <b style="color:#c98a7a;">계약이 아닌데</b> 보조 모델이 등록해 버렸다고 칩시다.
+  이걸 놔두면 <b style="color:#fff;">맺지도 않은 계약에서 매일 12가 들어옵니다.</b>
+  상태창에 계약이 떠 있으니 유저 눈에는 보이고요. 그럼 채팅창에 한 줄 칩니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;margin:0 0 16px;">
+    <div style="font-size:14px;color:#e0a94a;margin-bottom:6px;">⚠ 먼저 — 명령 이름은 봇마다 다릅니다</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    아래 <code style="font-family:ui-monospace,Consolas,monospace;">/계약</code> ·
+    <code style="font-family:ui-monospace,Consolas,monospace;">/금</code> ·
+    <code style="font-family:ui-monospace,Consolas,monospace;">/호감</code>은
+    <b style="color:#dbe2ea;">제 봇(베리디아 남작령)에서 쓰는 이름</b>입니다.
+    플러그인이 정해 놓은 고정 명령이 아니라, <b style="color:#dbe2ea;">봇 제작자가 변수마다 직접 붙이는 이름</b>이에요 —
+    현대물이면 <code style="font-family:ui-monospace,Consolas,monospace;">/잔고</code>,
+    학원물이면 <code style="font-family:ui-monospace,Consolas,monospace;">/친밀도</code>가 되는 식입니다.<br><br>
+    <b style="color:#c98a7a;">제작자가 아무 변수에도 안 달아 뒀으면 그 봇에는 명령이 하나도 없습니다.</b>
+    v0.35 전에 만들어진 봇은 전부 여기 해당합니다 — 플러그인만 올린다고 열리는 게 아니라
+    <b style="color:#dbe2ea;">봇 쪽에 한 줄이 들어가야</b> 합니다.<br><br>
+    <b style="color:#a8d5a2;">쓰시는 봇에 뭐가 있는지는 상태창 아래를 보세요.</b>
+    v0.36부터 접힌 목록이 하나 붙습니다 — 펴면 그 봇의 명령이 전부 나옵니다.
+    </p>
+<pre style="background:#12161d;border-radius:4px;padding:12px 14px;margin:12px 0 0;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#8b98a9;">▸</span> ⌨ 채팅창에 칠 수 있는 명령 13가지        <span style="color:#8b98a9;">← 평소엔 접혀서 한 줄</span>
+
+<span style="color:#8b98a9;">▾ 펴면</span>
+   <span style="color:#8b98a9;">서사가 알아서 반영합니다. 아래는 AI가 잘못 넣었을 때 직접 고치는 용도예요.</span>
+   <span style="color:#a8d5a2;">지속 수입</span>
+      <span style="color:#e0a94a;">/계약 내용</span>         목록에 넣는다
+      <span style="color:#e0a94a;">/계약- 내용 일부</span>    목록에서 뺀다 — 일부만 써도 찾는다
+   <span style="color:#a8d5a2;">재정</span>
+      <span style="color:#e0a94a;">/금 +5</span>             지금 값에서 더하거나 뺀다</pre>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 8px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#e0a94a;">/계약-</span> 양모
+   <span style="color:#8b98a9;">→ (시스템: 지속 수입 제거 — 헤세 상단 양모 +12 @1093)</span></pre>
+  <p style="margin:0 0 18px;color:#8b98a9;font-size:14px;">
+  이름 전체를 안 외워도 됩니다. 일부만 쳐도 찾아 주고, 여럿 걸리면 안 지우고 되물어 봅니다.
+  </p>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;"><b style="color:#dbe2ea;">금액이 틀렸을 때</b>는 지우고 다시 넣습니다.</p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#e0a94a;">/계약-</span> 양모
+<span style="color:#e0a94a;">/계약</span> 헤세 상단 양모 +8 @+1080     <span style="color:#8b98a9;">하루 8냥, 3년(1080일)</span></pre>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;"><b style="color:#dbe2ea;">호감도가 서사와 안 맞을 때</b>도 마찬가지입니다.</p>
+  <div style="border-left:2px solid #3a4553;padding:6px 0 6px 14px;margin:0 0 10px;color:#a9b4c2;font-style:italic;">
+  …리비아는 끝내 목소리를 높였고, 문을 닫고 나가 버렸다.
+  </div>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#8b98a9;">그런데 호감도가 2밖에 안 빠졌다면</span>
+<span style="color:#e0a94a;">/호감</span> -15
+   <span style="color:#8b98a9;">→ (시스템: 리비아 호감 조정 — 32)</span></pre>
+
+  <div style="background:#0d1117;border-left:3px solid #a8d5a2;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    <b style="color:#a8d5a2;">쓴 줄은 사라지지 않고 확인 문구로 바뀌어서 모델에게 그대로 갑니다.</b>
+    그래서 ① 명령만 친 메시지도 빈 턴이 되지 않고, ② 모델이 계약이 취소된 걸 알고 다음 장면을 씁니다.<br>
+    <span style="color:#8b98a9;">모르는 명령은 건드리지 않습니다 — <code style="font-family:ui-monospace,Consolas,monospace;">그는 계약/합의를 원했다</code> 같은 평범한 문장을 잡아먹으면 안 되니까요.</span>
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── 누가 무엇을 하나 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:28px;">
+  <div style="font-size:18px;font-weight:600;margin-bottom:12px;">정리하면, 한 턴에 이런 일이 벌어집니다</div>
+<pre style="background:#0d1117;border-radius:4px;padding:16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2.1;color:#dbe2ea;"><span style="color:#8b98a9;">유저</span>       평소처럼 RP를 친다  <span style="color:#8b98a9;">(고칠 게 있으면 이때 /명령 한 줄)</span>
+   <span style="color:#8b98a9;">↓</span>
+<span style="color:#8b98a9;">메인 모델</span>   장면을 쓴다
+   <span style="color:#8b98a9;">↓</span>
+<span style="color:#a8d5a2;">보조 모델</span>   그 장면을 읽고 <span style="color:#a8d5a2;">무엇이 달라졌는지 뽑아낸다</span>   <span style="color:#8b98a9;">← 자동</span>
+   <span style="color:#8b98a9;">↓</span>
+<span style="color:#e0a94a;">시스템</span>     매일 정산 · 기한 만료 · 상태창 갱신     <span style="color:#8b98a9;">← 자동</span></pre>
+  <p style="margin:0;color:#a9b4c2;">
+  중요한 건 <b style="color:#fff;">보조 모델은 &quot;무엇이 달라졌나&quot;만 말한다</b>는 겁니다.
+  <b style="color:#dbe2ea;">계산은 절대 안 시킵니다.</b>
+  하루 12씩 40일이면 얼마인지, 3년 뒤가 며칠째인지 — 그런 건 전부 시스템이 합니다.
+  AI가 잘하는 일(읽고 판단하기)과 못하는 일(빠짐없이 더하기)을 갈라 놓은 게 이 플러그인의 전부입니다.
+  </p>
+</div>
+
+<!-- ─────────── 이런 데 씁니다 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:20px;margin-bottom:28px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">계약에만 쓰이는 건 아닙니다</div>
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  &quot;한 번 정해지면 그 뒤로 매일 반복되는 것&quot;이면 전부 같은 구조로 들어갑니다.
+  </p>
+  <div style="color:#a9b4c2;line-height:2;">
+    <div><b style="color:#dbe2ea;">고용인 봉급</b> — 메이드를 셋 고용하면 매일 봉급이 금고에서 빠집니다</div>
+    <div><b style="color:#dbe2ea;">시설 수입</b> — 제분소를 지으면 그날부터 하루 5씩</div>
+    <div><b style="color:#dbe2ea;">부역·상납</b> — 겨울 동안만 하루 -4, 봄이 오면 저절로 끝남</div>
+    <div><b style="color:#dbe2ea;">저주·중독</b> — 30일간 매일 체력 -2</div>
+    <div><b style="color:#dbe2ea;">임대료·구독</b> — 현대물이면 월세, 판타지면 용병단 유지비</div>
+  </div>
+</div>
+
+<!-- ═══════════ 기능 설명 ═══════════ -->
+<div style="font-size:22px;font-weight:700;margin-bottom:4px;">그래서 뭐가 추가된 건가</div>
+<div style="color:#8b98a9;margin-bottom:18px;">일곱 판이 올라갔는데, 뒤의 다섯 판은 사실 <b style="color:#a9b4c2;">위 두 장면</b>을 만들려고 한 겁니다.</div>
+
+<!-- ── 0.32 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.32</span>
+    <span style="font-size:18px;font-weight:600;">목록에 적어 두면 그게 곧 수치가 된다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  제일 큰 문제는 <b style="color:#fff;">어떤 계약이 맺어질지 봇 만들 때는 알 수가 없다</b>는 것이었습니다.
+  &quot;헤세 상단 양모 계약&quot;을 미리 적어 둘 수는 없잖아요. 플레이가 만들어 내는 거니까요.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  그래서 <b style="color:#dbe2ea;">목록 변수</b>를 쓰기로 했습니다. AI가 목록에 줄을 하나씩 넣으면,
+  <b style="color:#dbe2ea;">각 줄 맨 끝의 숫자를 전부 더하는</b> 기능이 그걸 수치로 만듭니다. 그게 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">sum()</code>입니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 10px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">계약 목록에 이렇게 쌓이면</span>
+[ <span style="color:#a8d5a2;">"헤세 상단 양모 +12"</span>, <span style="color:#a8d5a2;">"제분소 5"</span>, <span style="color:#a8d5a2;">"성벽 부역 -4"</span> ]
+
+<span style="color:#8b98a9;">맨 끝 숫자만 골라서</span>   12 + 5 + (-4)   <span style="color:#e0a94a;">= 13</span>  <span style="color:#8b98a9;">← 하루 수입</span></pre>
+
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  봇 만드는 쪽은 <b style="color:#dbe2ea;">두 줄만 적으면 됩니다.</b> 하나는 &quot;합계를 하루 수입이라 부르자&quot;,
+  하나는 &quot;매 턴 금고에 그만큼 더해라&quot;. 그 뒤로는 목록에 뭐가 들어오든 알아서 굴러갑니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">{ "id": <span style="color:#a8d5a2;">"하루수입"</span>, "expr": <span style="color:#7fc7d9;">"sum(계약)"</span> }
+{ "set": <span style="color:#a8d5a2;">"금고"</span>, "expr": <span style="color:#7fc7d9;">"금고 + 하루수입 * 흐른날수"</span> }</pre>
+
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  갈래를 나누고 싶으면 <b style="color:#dbe2ea;">거르개</b>를 붙입니다. 글자가 들어 있기만 하면 걸립니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 16px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">수입 [ <span style="color:#a8d5a2;">"<span style="color:#e0a94a;">식량</span> 헤세 상단 밀 40"</span>, <span style="color:#a8d5a2;">"<span style="color:#e0a94a;">식수</span> 강물 수레 25"</span> ]
+
+<span style="color:#7fc7d9;">sum(수입, <span style="color:#e0a94a;">"식량"</span>)</span> <span style="color:#e0a94a;">= 40</span>      <span style="color:#7fc7d9;">sum(수입, <span style="color:#e0a94a;">"식수"</span>)</span> <span style="color:#e0a94a;">= 25</span></pre>
+
+  <div style="background:#0d1117;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:12px 16px;">
+    <div style="font-size:13px;color:#c98a7a;margin-bottom:4px;">숫자를 왜 하필 맨 끝에서만 읽나</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+    &quot;아무 데나 있는 마지막 숫자&quot;로 하면 <code style="font-family:ui-monospace,Consolas,monospace;color:#c98a7a;">&quot;양모 계약 12 (30일)&quot;</code>이
+    <b style="color:#dbe2ea;">하루 30짜리 수입으로 조용히 잘못 잡힙니다.</b>
+    맨 끝으로 못박아 두면 그런 줄은 그냥 0이 되고, 패널이 &#39;숫자 없음&#39;이라고 띄웁니다.
+    <b style="color:#dbe2ea;">틀리게 굴러가는 것보다 눈에 띄게 멈추는 쪽이 낫습니다.</b>
+    </p>
+  </div>
+
+  <p style="margin:14px 0 0;color:#8b98a9;font-size:14px;">
+  덤으로 패널의 목록이 <b>항목별 칩 + ✕</b>로 바뀌었습니다. 채팅 명령 말고 마우스로 지우고 싶을 때 쓰는 자리입니다.
+  </p>
+</div>
+
+<!-- ── 0.33 / 0.34 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.33 · v0.34</span>
+    <span style="font-size:18px;font-weight:600;">&quot;3년 계약&quot;이 3년 뒤에 스스로 끝나게</span>
+  </div>
+
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  v0.32까지는 한 번 등록된 계약이 <b style="color:#fff;">영원히 살아 있었습니다.</b>
+  서사가 &quot;계약이 끝났다&quot;고 말해 주고 누군가 손으로 지우기 전까지요.
+  그래서 항목에 <b style="color:#dbe2ea;">기한</b>을 적을 수 있게 했습니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 10px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#a8d5a2;">"헤세 상단 양모 +12 <span style="color:#e0a94a;">@1093</span>"</span>   <span style="color:#8b98a9;">← 경과일 1093일째에 끝난다</span>
+
+<span style="color:#8b98a9;">봇에 한 줄 적어 두면 그날 저절로 빠진다</span>
+{ "list": <span style="color:#a8d5a2;">"계약"</span>, "expire": <span style="color:#7fc7d9;">"경과일"</span> }</pre>
+
+  <p style="margin:0 0 16px;color:#a9b4c2;">
+  <b style="color:#fff;">&quot;앞으로 며칠&quot;이 아니라 &quot;끝나는 날&quot;로 적는 게 핵심입니다.</b>
+  남은 일수로 적으면 매 턴 모든 항목을 1씩 깎아야 하는데, 더 중요하게는
+  <b style="color:#dbe2ea;">서사가 &quot;한 달 뒤&quot;로 훌쩍 건너뛸 때 계산이 깨집니다.</b>
+  끝나는 날로 박아 두면 며칠을 건너뛰든 저절로 맞습니다.
+  </p>
+
+  <div style="height:1px;background:#2a323d;margin:0 0 16px;"></div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  그런데 v0.33에는 구멍이 하나 있었습니다. 지금이 12일째인데 3년 계약을 맺으면
+  누군가 <b style="color:#c98a7a;">12 + 1080 = 1092</b>를 계산해야 하고, 그 누군가가 <b style="color:#fff;">AI였습니다.</b>
+  이 플러그인이 없애려고 만든 바로 그 종류의 일이고, <b style="color:#dbe2ea;">틀려도 아무도 모릅니다</b> —
+  3000년에 끝나는 계약이 생겨도 화면에는 아무 표시가 안 나니까요.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  그래서 v0.34에서 <b style="color:#dbe2ea;">더하기를 시스템이 하게</b> 바꿨습니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">AI가 쓰는 건 이것만</span>    <span style="color:#a8d5a2;">"헤세 상단 양모 +12 <span style="color:#7fc7d9;">@+1080</span>"</span>   <span style="color:#8b98a9;">3년 = 1080일</span>
+<span style="color:#8b98a9;">등록되는 건 이것</span>      <span style="color:#a8d5a2;">"헤세 상단 양모 +12 <span style="color:#e0a94a;">@1093</span>"</span>    <span style="color:#8b98a9;">날짜 계산은 시스템이</span></pre>
+</div>
+
+<!-- ── 0.35 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.35</span>
+    <span style="font-size:18px;font-weight:600;">채팅창에서 고친다 &nbsp;<span style="color:#8b98a9;font-weight:400;font-size:15px;">(장면 2)</span></span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  AI가 대부분 잘해 주지만, <b style="color:#fff;">틀렸을 때 고칠 방법이 없으면 그 판은 거기서 망가집니다.</b>
+  문제는 <b style="color:#dbe2ea;">배포받은 유저는 플러그인 패널을 안 연다</b>는 것이었습니다.
+  상태창 안에 버튼을 넣는 건 리스 구조상 불가능하고요.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  남은 통로가 채팅 입력창이었는데, <b style="color:#e0a94a;">여기가 오히려 버튼보다 낫습니다.</b>
+  버튼은 미리 정해 둔 것만 누를 수 있지만, 계약 이름과 금액은 <b style="color:#dbe2ea;">그 자리에서 적어야 하는 값</b>이니까요.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;margin:0 0 16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    <b style="color:#e0a94a;">명령은 봇마다 따로 열어 줘야 합니다.</b>
+    플러그인이 <code style="font-family:ui-monospace,Consolas,monospace;">/계약</code> 같은 걸 미리 갖고 있는 게 아니라,
+    <b style="color:#dbe2ea;">변수에 이름을 붙이면 그 이름의 명령이 생기는</b> 구조입니다.
+    안 붙이면 그 봇엔 명령이 없습니다.
+    </p>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  변수에 이름 하나를 붙이면 됩니다. <b style="color:#dbe2ea;">명령 탭</b>에서 클릭으로 붙일 수 있고요(v0.36, 바로 아래).
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">{ "id": <span style="color:#a8d5a2;">"contracts"</span>, "type": <span style="color:#a8d5a2;">"list"</span>, <span style="color:#e0a94a;">"cmd": "계약"</span> }   <span style="color:#8b98a9;">→ /계약</span>
+{ "id": <span style="color:#a8d5a2;">"gold"</span>,      "type": <span style="color:#a8d5a2;">"int"</span>,  <span style="color:#e0a94a;">"cmd": "잔고"</span> }   <span style="color:#8b98a9;">→ /잔고</span></pre>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  그럼 유저가 이렇게 쓸 수 있게 됩니다. (아래는 <b style="color:#dbe2ea;">베리디아에서 붙인 이름</b>으로 든 예시입니다)
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#8b98a9;">목록 변수에 붙인 경우</span>
+<span style="color:#e0a94a;">/계약-</span> 양모                      <span style="color:#8b98a9;">잘못 등록된 것 지우기 (일부만 쳐도 됨)</span>
+<span style="color:#e0a94a;">/계약</span> 헤세 상단 양모 +12 @+1080   <span style="color:#8b98a9;">직접 넣기</span>
+
+<span style="color:#8b98a9;">숫자 변수에 붙인 경우</span>
+<span style="color:#e0a94a;">/금</span> +500                        <span style="color:#8b98a9;">부호가 있으면 더하고 빼기</span>
+<span style="color:#e0a94a;">/금</span> 500                         <span style="color:#8b98a9;">부호가 없으면 그 값으로 지정</span>
+<span style="color:#e0a94a;">/호감</span> -15                       <span style="color:#8b98a9;">호감도처럼 오르내리는 값도 같은 방식</span>
+
+<span style="color:#8b98a9;">글자·선택지 변수에 붙인 경우</span>
+<span style="color:#e0a94a;">/지지</span> 릴리아나                    <span style="color:#8b98a9;">그대로 대입 (선택지 밖이면 거부)</span></pre>
+
+  <div style="background:#0d1117;border-left:3px solid #a8d5a2;border-radius:0 4px 4px 0;padding:12px 16px;">
+    <div style="font-size:13px;color:#a8d5a2;margin-bottom:6px;">안 되면 왜 안 되는지 그 자리에서 말해 줍니다</div>
+    <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+    조용히 삼키면 유저는 고칠 방법이 없습니다. 특히 첫 번째는 사람이 제일 자연스럽게 저지르는 실수예요 —
+    단위를 붙이면 합산에서 0으로 잡힙니다.
+    </p>
+<pre style="background:#12161d;border-radius:4px;padding:12px 14px;margin:0;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.85;color:#dbe2ea;"><span style="color:#e0a94a;">/계약</span> 목재 판매 <span style="color:#c98a7a;">+12G</span>
+  <span style="color:#c98a7a;">⚠ 끝이 숫자가 아니라 합산에서 0으로 잡힙니다.
+     단위를 빼고 "… +12"처럼 숫자로 끝내세요</span>
+
+<span style="color:#e0a94a;">/계약-</span> 헤세 상단
+  <span style="color:#c98a7a;">'헤세 상단'에 여럿이 걸립니다: 헤세 상단 양모 +12 / 헤세 상단 아마 +6
+     지울 것 하나만 가려지게 더 적어 주세요</span>
+
+<span style="color:#e0a94a;">/지지</span> 아무개
+  <span style="color:#c98a7a;">'아무개' 거부됨, 중립 | 카산드라 | 오렐리아 중 하나여야 함</span></pre>
+  </div>
+</div>
+
+<!-- ── 0.36 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:28px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.36</span>
+    <span style="font-size:18px;font-weight:600;">명령을 <b style="color:#e0a94a;">만드는 자리</b>와 <b style="color:#e0a94a;">보는 자리</b></span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  v0.35를 내놓고 보니 구멍이 둘이었습니다. <b style="color:#fff;">기능은 있는데 아무도 못 쓰는 상태</b>였어요.
+  </p>
+  <div style="color:#a9b4c2;margin:0 0 16px;">
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">제작자</b>는 편집기에 입력칸이 없어서 JSON을 손으로 고쳐야 했고,</div>
+    <div>— <b style="color:#dbe2ea;">유저</b>는 자기가 쓰는 봇에 무슨 명령이 있는지 <b style="color:#c98a7a;">알 방법이 아예 없었습니다.</b></div>
+  </div>
+
+  <div style="height:1px;background:#2a323d;margin:0 0 16px;"></div>
+
+  <div style="font-size:16px;font-weight:600;margin-bottom:8px;">① 명령 탭 — 클릭으로 붙인다</div>
+  <p style="margin:0 0 10px;color:#a9b4c2;">
+  변수를 고르고 이름을 붙이면 끝입니다. <b style="color:#dbe2ea;">문법은 적을 필요가 없습니다</b> —
+  변수 타입에서 뽑아 그 자리에 보여 줍니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">[변수]</span> <span style="color:#e0a94a;">[명령]</span> <span style="color:#8b98a9;">[상태창] [규칙·이벤트] [액션] [새 시작] [AI 설정] [🔬 진단] [JSON]</span>
+
+  지속 수입 (list)   /[<span style="color:#e0a94a;">계약</span>    ] ✕
+       <span style="color:#8b98a9;">/계약 내용        목록에 넣는다
+       /계약- 내용 일부   목록에서 뺀다 — 일부만 써도 찾는다</span>
+
+  <span style="color:#8b98a9;">［— 명령을 붙일 변수 —          ▾］  ＋ 명령 열기</span></pre>
+  <p style="margin:0 0 16px;color:#a9b4c2;">
+  <b style="color:#dbe2ea;">AI에게 맡기기도 됩니다.</b> &quot;이 봇 변수 보고 어디에 명령을 열지 정해줘&quot;를 따로 부탁할 수 있어요 —
+  붙일 기준(눈에 보이는 값에만, 복리로 어긋나는 것부터, 5~10개면 충분)까지 프롬프트에 실려 나갑니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:600;margin-bottom:8px;">② 상태창에 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">{commands}</code> — 유저가 보는 자리</div>
+  <p style="margin:0 0 10px;color:#a9b4c2;">
+  상태창 템플릿 원하는 자리에 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">{commands}</code>를 박으면
+  접이식 목록이 그려집니다. 평소엔 한 줄이고, 펴면 그 봇의 명령이 전부 나옵니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  <b style="color:#fff;">패널에 넣지 않은 이유가 있습니다.</b>
+  배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유였으니까요.
+  거기 넣으면 같은 문제를 한 겹 더 쌓는 것뿐입니다.
+  </p>
+  <div style="color:#a9b4c2;">
+    <div style="margin-bottom:6px;">— 상태창을 직접 짜는 봇이면 <b style="color:#dbe2ea;">제작자가 자리를 정합니다.</b> 안 박으면 안 나옵니다.</div>
+    <div style="margin-bottom:6px;">— 자동 상태창이면 <b style="color:#dbe2ea;">맨 아래 알아서 붙습니다.</b> 박을 자리가 없으니까요.</div>
+    <div style="margin-bottom:6px;">— 명령이 하나도 없으면 껍데기도 안 그립니다.</div>
+    <div>— <b style="color:#dbe2ea;">명령은 열어 놓고 자리표시자를 안 박았으면 명령 탭이 경고합니다</b> — 그게 딱 v0.35의 그 구멍이라서요.</div>
+  </div>
+</div>
+
+<!-- ─────────── 어디에 넣나 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:20px;margin-bottom:28px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:8px;">봇 만드시는 분께 — 호감도는 목록에 넣으면 안 됩니다</div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  제일 먼저 밟을 지뢰라 따로 적어 둡니다.
+  목록 줄 끝에 숫자를 다는 게 편하다 보니 호감도도 <code style="font-family:ui-monospace,Consolas,monospace;color:#c98a7a;">[&quot;리비아 45&quot;]</code>처럼 넣고 싶어지는데,
+  <b style="color:#fff;">그러면 반드시 어긋납니다.</b>
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;">
+  목록 항목을 고치려면 <b style="color:#dbe2ea;">글자까지 똑같이 맞춰서 지웠다가 다시 넣어야 하고</b>,
+  매 턴 움직이는 값에는 그게 못 버팁니다.
+  기준은 하나입니다 — <b style="color:#e0a94a;">한 번 정해지면 안 변하는 값이냐, 매 턴 움직이는 값이냐.</b>
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#a8d5a2;">안 변하는 값</span>    봉급 · 수용 인원 · 계약 금액   <span style="color:#8b98a9;">→</span> 목록 + <span style="color:#7fc7d9;">sum()</span>
+<span style="color:#e0a94a;">매 턴 변하는 값</span>  호감도 · 사기 · 명성 · 체력    <span style="color:#8b98a9;">→</span> 숫자 변수
+
+{ "id": <span style="color:#a8d5a2;">"호감_리비아"</span>, "type": <span style="color:#a8d5a2;">"int"</span>, "min": -50, "max": 100, <span style="color:#e0a94a;">"cmd": "호감"</span> }</pre>
+</div>
+
+<!-- ─────────── 나머지 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:4px;">나머지 두 판</div>
+<div style="color:#8b98a9;margin-bottom:18px;">계약과는 상관없는, 봇 만드는 쪽 편의 기능입니다.</div>
+
+<!-- ── 0.31 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.31</span>
+    <span style="font-size:18px;font-weight:600;">상황에 따라 상태창을 통째로 갈아끼운다</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  한 봇에 두 가지 플레이가 들어 있는 경우가 있습니다 — 영지에 있을 땐 <b style="color:#dbe2ea;">영지 장부</b>,
+  왕궁에 올라가면 <b style="color:#dbe2ea;">궁정 밀서</b>. 예전엔 상태창이 통짜 하나뿐이라
+  둘을 한 화면에 욱여넣거나 포기해야 했습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  이제 여러 개를 적어 두고 조건을 달면, <b style="color:#fff;">조건이 맞는 첫 번째 것만</b> 그려집니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">"templates": [
+  { "when": <span style="color:#7fc7d9;">"위치 == 왕궁"</span>, ... }   <span style="color:#8b98a9;">어두운 밀서 디자인</span>
+  { <span style="color:#8b98a9;">조건 없음</span>,              ... }   <span style="color:#8b98a9;">밝은 장부 디자인 — 나머지 전부</span>
+]</pre>
+  <p style="margin:0;color:#a9b4c2;">
+  <b style="color:#fff;">여기서 진짜 어려운 건 CSS였습니다.</b>
+  두 상태창이 각자 자기 디자인을 들고 있는데, 그냥 두면 어두운 밀서 CSS가
+  밝은 장부까지 물들여 버립니다. 그래서 각 상태창의 스타일을 <b style="color:#dbe2ea;">자기 껍데기 안에만 갇히게</b> 만들었습니다.
+  이름이 겹쳐도 서로 안 건드립니다.<br>
+  <span style="color:#8b98a9;font-size:14px;">맨 뒤에는 조건 없는 걸 하나 두세요. 전부 조건부면 아무것도 안 맞을 때 상태창이 통째로 사라집니다. (검증에서 알려 줍니다.)</span>
+  </p>
+</div>
+
+<!-- ── 0.30 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.30</span>
+    <span style="font-size:18px;font-weight:600;">난이도 이름이 실제와 맞는지 굴려서 확인해 준다</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  시작 프리셋(새 채팅 시작할 때 고르는 난이도·배경 버튼)을 AI에게 맡겨 만들 수 있게 했습니다.
+  그런데 프리셋은 만드는 것보다 <b style="color:#fff;">정말 난이도가 맞나</b>가 훨씬 어렵습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  라벨에 &quot;어려움&quot;이라고 써 놓고 <b style="color:#c98a7a;">실제로는 더 오래 사는 판</b>이 정말 흔합니다.
+  시작값을 여러 개 동시에 밀면 사람 머리로는 합이 안 잡히거든요.
+  식량을 반으로 깎으면서 인구도 줄였는데, 인구가 줄어서 오히려 덜 굶는 식입니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  그래서 <b style="color:#dbe2ea;">🔬 진단</b>이 프리셋마다 판을 실제로 굴려 봅니다.
+  같은 난수를 모든 프리셋에 똑같이 먹여서, <b>운이 아니라 시작값 차이만</b> 남게 비교합니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:14px 16px;margin:0 0 10px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.95;color:#dbe2ea;"><span style="color:#e0a94a;">🟡</span> '절망'(88턴)이 '보통'(71턴)보다 17턴 더 버팁니다 <span style="color:#c98a7a;">— 이름과 실제가 뒤집혔습니다</span>
+<span style="color:#e0a94a;">🟡</span> 프리셋 3개의 수명이 사실상 같습니다 <span style="color:#c98a7a;">— 이름만 다르고 판은 하나입니다</span>
+<span style="color:#e0a94a;">🟡</span> '절망'에만 있고 다른 프리셋엔 없는 항목이 있습니다</pre>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  마지막 것이 특히 잘 걸립니다. 어려움 쪽에만 <code style="font-family:ui-monospace,Consolas,monospace;">우물 0개</code>를 적고 보통 쪽엔 안 적으면,
+  보통은 기본값을 쓰는 게 아니라 <b style="color:#dbe2ea;">난이도 사다리 밖으로 나가 버립니다.</b>
+  </p>
+</div>
+
+<!-- ── 진단 오탐 ── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:28px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 8px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.31</span>
+    <span style="font-size:18px;font-weight:600;">진단이 멀쩡한 걸 결함이라 부르던 문제</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  진단은 봇을 실제로 여러 판 굴려 보고 문제를 잡아 주는 기능인데,
+  <b style="color:#fff;">거기엔 AI가 없습니다.</b> 그래서 AI만 건드리는 변수는 당연히 안 움직이는데,
+  그걸 &quot;아무도 안 바꾸는 변수&quot;라고 신고하고 있었습니다.
+  서술을 AI에게 많이 맡긴 봇에서 <b style="color:#e0a94a;">33건 중 20건</b>이 이 오탐이었습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  이제는 <b style="color:#dbe2ea;">몇 개를 못 쟀는지만 알려 줍니다.</b>
+  건너뛴 걸 말 안 하면 다 봤다고 읽히니까요.
+  (하나 더: 이벤트가 스스로 세우는 플래그를 &quot;그 플래그 때문에 이벤트가 안 뜬다&quot;고 거꾸로 짚던 것도 고쳤습니다.)
+  </p>
+</div>
+
+<!-- ─────────── 정리 ─────────── -->
+<div style="border-top:2px solid #e0a94a;padding-top:18px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:12px;">줄여서</div>
+<pre style="background:#161b22;border-radius:4px;padding:16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#e0a94a;">v0.30</span>  프리셋 만들기 + 난이도가 이름과 맞는지 굴려서 검증
+<span style="color:#e0a94a;">v0.31</span>  상황별 상태창 여러 개 (CSS 격리) · 진단 오탐 정리
+<span style="color:#e0a94a;">v0.32</span>  AI가 목록에 적으면 그게 수치가 된다 <span style="color:#7fc7d9;">sum()</span>
+<span style="color:#e0a94a;">v0.33</span>  계약에 기한이 달리면 그날 저절로 사라진다
+<span style="color:#e0a94a;">v0.34</span>  날짜 계산을 AI에게 안 시킨다 — <span style="color:#7fc7d9;">@+1080</span>만 쓰면 시스템이 굳힌다
+<span style="color:#e0a94a;">v0.35</span>  AI가 틀렸을 때 채팅창에서 <span style="color:#7fc7d9;">/명령</span> 한 줄로 정정
+       <span style="color:#8b98a9;">— 명령 이름은 봇 제작자가 변수마다 붙입니다. 안 붙이면 없습니다</span>
+<span style="color:#e0a94a;">v0.36</span>  <span style="color:#7fc7d9;">명령 탭</span> 신설 (AI에게 맡기기 포함) + 상태창 <span style="color:#7fc7d9;">{commands}</span> 모음집
+       <span style="color:#8b98a9;">— 유저가 "이 봇에 무슨 명령이 있나"를 볼 자리가 생겼습니다</span></pre>
+
+  <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;">
+    <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께 — 이건 알고 계시는 게 좋습니다</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+    상태를 갱신하는 보조 모델 호출에는 <b style="color:#dbe2ea;">로어북도, 캐릭터 카드도, 페르소나도 하나도 안 들어갑니다.</b>
+    들어가는 건 조정 가능한 변수 목록과 현재값, 이번 턴 서사, 유저 발화뿐입니다.<br>
+    그래서 변수 설명에 &quot;로어북 표기를 따르라&quot; 같은 걸 적으면 <b>못 보는 걸 맞추라는 말</b>이 됩니다.
+    보조 모델이 이름을 아는 경로는 <b style="color:#dbe2ea;">서사 원문뿐</b>이에요.
+    </p>
+  </div>
+</div>
+
+</div>

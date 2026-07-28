@@ -146,8 +146,11 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('문서 클릭 리스너', src.includes("addEventListener('click'"), '');
   ck('★ 캡처 단계 등록 (조작줄처럼 버블이 막히는 영역 면역)', src.includes('onDocClick(ev); }, true)'), '');
   ck('제안 클릭 실패 가시화 (조용한 무반응 금지)', src.includes('sugNotice'), '');
-  ck('플러그인 프로바이더 전송 차단 = 1회 안내 + 표시 전용', src.includes("includes('plugin-based model')")
+  ck('플러그인 프로바이더 전송 차단 = 클립보드 복사 강등', src.includes("includes('plugin-based model')")
+    && src.includes('navigator.clipboard.writeText'), '');
+  ck('복사 모드 힌트 + 복사 불가 폴백', src.includes('누르면 복사 — 입력창에 붙여넣기')
     && src.includes('보고 따라 입력'), '');
+  ck('제안 갈리면 ✓ 리셋', src.includes('lastSugSig'), '');
   ck('진단에 상태창·조작줄 존재 카운트', src.includes('[data-plugin-chat-panel]'), '');
   ck('히트 셀렉터', src.includes('[class*="sim-hit"]'), '');
   ck('클릭 액션 = 우상단 버튼 경로 재사용', src.includes('onActionButton(hit.id)'), '');

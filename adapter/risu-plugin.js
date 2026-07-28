@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.43.2
+//@version 0.43.3
 //@display-name SimCore (시뮬 엔진) v0.43 다음 행동 제안
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.43.3 ────────────────────────────────────────────────
+// 제안 칩 클립보드 강등 — 전송이 막힌 환경(플러그인 프로바이더 모델·권한 거부·API 부재)의
+// 칩 클릭 = **문장 복사** (✓ 표시 + 힌트 "붙여넣기", 첫 회 1번 안내). "입력창에 담아주기"는
+// 리수가 플러그인에 안 열어줘서(입력값=컴포넌트 로컬 상태, v3 API 전수 확인) 복사가 근사치다.
+// 플러그인 iframe에서 클립보드까지 막히면 1회 안내 후 표시 전용 폴백. [live-test] 복사 가부.
 //
 // ── v0.43.2 ────────────────────────────────────────────────
 // [진단 확정] 실기 제보 판독: 클릭 기계는 전 구간 정상 (캡처 수신 → 후보 탐색 → 명중 → 디스패치,
@@ -1319,44 +1325,63 @@
   }
 
   // 제안 칩 클릭 (v0.43) — 그 문장을 유저 메시지로 바로 전송한다 (공식 sendChat API, 전용 권한 1회).
-  // 실패는 조용히 죽이지 않는다 — "눌렀는데 아무 일도 없음"이 최악의 증상이라, 사유를 남기고 알린다.
-  let sendChatDenied = false;
-  let sugNotice = null; // 진단용 — 마지막 제안 클릭의 결말
+  // 전송이 막힌 환경(플러그인 프로바이더 메인 모델·권한 거부·API 부재)에서는 **클립보드 복사**로
+  // 강등한다 (v0.43.3) — "담아주기" API가 리수에 없어서, 복사 + 붙여넣기가 가장 가까운 근사치다.
+  // 클립보드까지 막힌 iframe 환경이면 1회 안내 후 표시 전용. 실패는 조용히 죽이지 않는다.
+  let sendChatDenied = false;      // 전송 불가 확정 → 클릭 = 복사 모드
+  let sugClipboardBlocked = false; // 복사도 불가 확정 → 표시 전용
+  let sugCopied = -1;              // 방금 복사된 제안 번호 (칩에 ✓ 표시)
+  let lastSugSig = '';             // 제안 목록 서명 — 갈리면 ✓ 리셋
+  let sugNotice = null;            // 진단용 — 마지막 제안 클릭의 결말
+  async function copySuggestion(idx, text, firstTime) {
+    try {
+      await navigator.clipboard.writeText(text);
+      sugCopied = idx;
+      sugNotice = '복사됨';
+      console.log('[simcore] 제안 복사:', text);
+      if (firstTime) {
+        try { await Risuai.alert('이 환경에선 리수가 플러그인의 자동 전송을 막아서, 대신 문장을 복사해 드려요 — 입력창에 붙여넣어 쓰세요.'); } catch {}
+      }
+      try { await updateControlStrip(); } catch {}
+    } catch (e) {
+      sugClipboardBlocked = true;
+      sugNotice = '복사 불가: ' + e.message;
+      console.log('[simcore] 클립보드 접근 불가:', e.message);
+      try { await Risuai.alert('전송도 클립보드도 막힌 환경이라 자동으로 못 옮겨요 — 칩의 문장을 보고 따라 입력해 주세요.'); } catch {}
+      try { await updateControlStrip(); } catch {}
+    }
+  }
   async function onSuggestionClick(idx) {
     const sug = session?.current?.meta?.suggestions || [];
     const text = sug[idx];
     if (!text) return;
-    if (typeof Risuai.sendChat !== 'function') {
-      sugNotice = '전송 API 없음 (이 리수 버전)';
-      if (!sendChatDenied) {
-        sendChatDenied = true;
-        try { await Risuai.alert('이 리수 버전에는 플러그인 전송 API(sendChat)가 없어 칩으로 바로 보낼 수 없어요 — 칩의 문장을 직접 입력해 주세요.'); } catch {}
-      }
+    if (sendChatDenied) {
+      if (!sugClipboardBlocked) await copySuggestion(idx, text, false);
       return;
     }
-    if (sendChatDenied) return;
+    if (typeof Risuai.sendChat !== 'function') {
+      sendChatDenied = true;
+      sugNotice = '전송 API 없음 (이 리수 버전)';
+      await copySuggestion(idx, text, true);
+      return;
+    }
     try {
       console.log('[simcore] 제안 전송 시도:', text);
       const ok = await Risuai.sendChat(text);
       if (ok === false) {
         sendChatDenied = true;
         sugNotice = '전송 권한 거부됨';
-        try { await Risuai.alert('전송 권한이 거부되어 제안을 바로 보낼 수 없어요 — 칩의 문장을 직접 입력해 주세요. (리수 설정 → 플러그인 → simcore 방패 아이콘으로 권한 초기화 가능)'); } catch {}
+        await copySuggestion(idx, text, true);
         return;
       }
       sugNotice = '전송됨';
       console.log('[simcore] 제안 전송:', text);
     } catch (e) {
       // 메인 모델이 플러그인 프로바이더(게이트웨이류)면 리수가 플러그인 전송을 정책적으로 막는다.
-      // 이 환경에선 자동 전송이 원천 불가 — 1회 설명하고 칩은 "보고 따라 치는" 용도로 남긴다.
       if (String(e.message).includes('plugin-based model')) {
         sendChatDenied = true;
-        sugNotice = '전송 차단 (메인 모델이 플러그인 프로바이더)';
-        try { await syncActionButtons(); } catch {} // 조작줄 힌트를 "따라 입력"으로 갱신
-        try {
-          await Risuai.alert('메인 모델을 플러그인 프로바이더(게이트웨이류)로 쓰고 있어서, 리수가 플러그인의 자동 전송을 막아요. '
-            + '제안 칩은 그대로 보이니 마음에 드는 문장을 따라 입력해 주세요.');
-        } catch {}
+        sugNotice = '전송 차단 (플러그인 프로바이더 모델)';
+        await copySuggestion(idx, text, true);
         return;
       }
       // 생성 중(doingChat) 등 일시적 실패 — 진단 줄에만 남긴다
@@ -1412,15 +1437,23 @@
         html += '<span style="opacity:.6;font-size:.8em">전송하면 반영 · 누르면 해제</span></div>';
       }
       // 다음 행동 제안 (v0.43) — 보조 AI가 만든 "다음 인풋" 후보. 누르면 그대로 전송된다.
-      // 전송이 막힌 환경(플러그인 프로바이더 메인 모델 등)에선 표시 전용으로 바뀐다.
+      // 전송이 막힌 환경은 클릭 = 복사(✓ 표시), 클립보드까지 막히면 표시 전용 (v0.43.3).
       const sugs = session.current.meta.suggestions || [];
+      // 제안이 갈리면 ✓(복사됨) 표시를 리셋한다 — 지난 턴 표시가 새 칩에 남으면 안 된다
+      const sugSig = sugs.join('|');
+      if (sugSig !== lastSugSig) { lastSugSig = sugSig; sugCopied = -1; }
       if (sugs.length) {
+        const dead = sendChatDenied && sugClipboardBlocked; // 아무 조작도 못 하는 환경
         html += '<div><span style="opacity:.65;font-size:.8em">💡 다음 행동</span> ';
         sugs.forEach((t, i) => {
-          const cls = sendChatDenied ? '' : ` class="sim-hit sim-hitsug-${i}"`;
-          html += `<span${cls} style="${chip}${sendChatDenied ? ';cursor:default' : ''}">${escapeText(t)}</span>`;
+          const cls = dead ? '' : ` class="sim-hit sim-hitsug-${i}"`;
+          const mark = sendChatDenied && sugCopied === i ? '✓ ' : '';
+          html += `<span${cls} style="${chip}${dead ? ';cursor:default' : ''}${mark ? ';border-color:#7fc78a' : ''}">${mark}${escapeText(t)}</span>`;
         });
-        html += `<span style="opacity:.6;font-size:.8em">${sendChatDenied ? '전송이 막힌 환경 — 보고 따라 입력' : '누르면 그대로 전송'}</span></div>`;
+        const hint = dead ? '전송·복사가 막힌 환경 — 보고 따라 입력'
+          : sendChatDenied ? '누르면 복사 — 입력창에 붙여넣기'
+          : '누르면 그대로 전송';
+        html += `<span style="opacity:.6;font-size:.8em">${hint}</span></div>`;
       }
       await Risuai.setChatPanel(html || null, { id: 'simcore-strip' });
     } catch (e) { console.log('[simcore] 조작줄 갱신 실패:', e.message); }

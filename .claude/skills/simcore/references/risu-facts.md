@@ -119,7 +119,11 @@ replacer/db/provider는 3일마다 재확인(periodically), mainDom/sendChat은 
 `Risuai.sendChat(message)` — **유저 메시지를 넣고 생성까지 돌리는 공식 API** ('sendChat' 권한).
 생성 중(doingChat)이면 throw, 권한 거부면 false. ⚠ **메인 모델이 플러그인 프로바이더**(`pluginmodel:::`,
 게이트웨이류)면 "Sending chat with plugin-based model is currently blocked"로 **정책 차단(throw)** —
-그 환경에선 자동 전송이 원천 불가라 표시 전용으로 강등할 것 (v0.43.2 실기 확정).
+그 환경에선 자동 전송이 원천 불가 — **클립보드 복사로 강등**할 것 (v0.43.3; 입력창 채우기 API는
+플러그인에 없다 — 입력값은 채팅 화면 컴포넌트 로컬 상태고 v3 API 전수 확인에도 setInput류 부재.
+네이티브 자동 제안의 chat.suggestMessages는 주입 가능하지만 UI가 useAutoSuggestions ON일 때만
+뜨고 자체 생성이 덮어써서 실용 불가). 플러그인 iframe의 navigator.clipboard는 환경 따라 막힐 수
+있으니 try + 표시 전용 폴백.
 SimCore v0.43 제안 칩(누르면 그대로 전송)이 이것이다.
 
 클릭 없이 가는 다른 통로:

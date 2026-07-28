@@ -19,7 +19,7 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | id | vars | derived | allow | 틱/이벤트/랜덤 | 지시문 | 액션 | 프리셋 | 그룹 | 최초설정 | 랜덤% |
 |---|--:|--:|--:|---|--:|--:|--:|--:|:-:|--:|
 | blank | 1 | 0 | 1 | 0/0/0 | 0 | 0 | 0 | 1 | ✕ | 0 |
-| daily | 6 | 0 | 5 | 0/0/11 | 3 | 2 | 3 | 2 | ○ | 30 |
+| daily | 6 | 0 | 5 | 0/0/12 | 3 | 2 | 3 | 2 | ○ | 30 |
 | rpg | 10 | 3 | 9 | 0/4/3 | 2 | 2 | 2 | 4 | ○ | 15 |
 | estate | 9 | 2 | 7 | 3/3/2 | 2 | 2 | 3 | 3 | ○ | 25 |
 | mystery | 9 | 2 | 6 | 2/4/4 | 4 | 3 | 3 | 3 | ○ | 30 |
@@ -61,6 +61,8 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 `checks`(판정, v0.40)는 **trpg만 5종** (ck_str/dex/wit/cha/attack). v0.39까지 변수 5개
 (roll/total/grade/checking/roll_pending) + 규칙으로 손조립하던 것의 일급화 — vars 16→11.
 
+`choices`(갈림길, v0.41)는 **daily만 1종** (stray_cat 길고양이, timeout 2) — 랜덤 표에 있다.
+
 ## 자주 인용하는 실물 예시
 
 ### estate — rules
@@ -98,9 +100,11 @@ allow 한도     hp 60 / mp 40 / exp 80 / gold 300 / weapon·armor 30자 / locat
            카페에서 세 턴 떠들었다고 저녁이 되면 안 된다.
            시간·날짜는 유저가 버튼으로 넘긴다 (🕐 시간을 보낸다 / 💤 하루를 마친다)
 vars       day(버튼 전용) · time(5단계 enum) · weather(5종) · place · money · bag
-랜덤(30%)  11종 · 사람 3(만남·낯선이·연락) / 사건 4(소동·습득·지출·수입) / 날씨 4
+랜덤(30%)  12종 · 사람 3(만남·낯선이·연락) / 사건 4(소동·습득·지출·수입) / 날씨 4 / 갈림길 1
            → 대부분 effects 없이 notify만. 수치를 굴리는 대신 **서사에 소재를 던진다**
            날씨 이벤트는 `when: weather != "비"` 로 같은 날씨 재알림을 막는다
+갈림길      stray_cat(길고양이, timeout 2): 쓰다듬는다(inject만) / 먹이를 사준다(when money≥3000,
+           money-3000) / 모른 척 지나친다(마지막 — 조건 없음, 타임아웃 자동 결정용)
 지시문 3   궂은 날씨 / 늦은 시각 / 수중에 돈 없음
 시간 전이   time == "새벽" ? "아침" : time == "아침" ? "낮" : … (중첩 삼항)
 ```

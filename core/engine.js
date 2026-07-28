@@ -37,6 +37,12 @@ const DEFAULT_CHECK_GUIDE =
   '※ 위 [판정]은 시스템이 주사위로 확정한 결과다. 성공을 실패로, 실패를 성공으로 뒤집어 서술하지 마라. '
   + '수치를 본문에 나열하지 말고 그 결과의 무게를 장면으로 그려라.';
 
+// 갈림길이 걸려 있는 동안 매 전송 덧붙는다 — 지시문은 AI가 모르는 것만 말한다는 원칙대로,
+// 선택지 내용은 안 싣는다(그건 유저 상태창의 것이다). 모델이 대신 골라 버리는 것만 막는다.
+const DEFAULT_CHOICE_WAIT =
+  '[선택 대기] 유저에게 선택지가 제시되어 있고 아직 고르지 않았다. 대신 선택하거나 재촉하지 말고, '
+  + '어느 쪽으로도 결과를 확정하지 않는 서술을 하라.';
+
 // ── 초기화 ──────────────────────────────────────────────────
 
 function initState(schema) {
@@ -107,7 +113,16 @@ function reconcileState(schema, state) {
   m.pendingNotifies = m.pendingNotifies || [];
   m.firedThisSend = m.firedThisSend || {}; // 이번 전송에서 발동한 액션 (whenArmed 게이트용, 다음 전송에서 리셋)
   m.lastCheck = m.lastCheck ?? null; // 마지막 판정 결과 — vars가 아니라 여기 산다 (AI가 못 만진다)
+  m.pendingChoice = m.pendingChoice ?? null; // 걸려 있는 갈림길 { id, turn } — 동시 1개 상한
+  m.pendingChoicePick = m.pendingChoicePick ?? null; // /선택으로 고른 번호 (0기준) — 다음 전송에서 집행
   return state;
+}
+
+/** 갈림길(choices 달린 이벤트)을 id로 찾는다 — 조건 이벤트·랜덤 표 양쪽에서 */
+function findChoiceEvent(schema, id) {
+  const all = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])];
+  const ev = all.find((e) => e.id === id);
+  return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
 // ── 조회 (vars + derived, 순환 감지) ─────────────────────────
@@ -299,6 +314,22 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
   // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
   state.meta.firedThisSend = {};
+
+  // 0.5 갈림길 집행 — /선택은 명령 시점에 기록만 하고(pendingChoicePick) 여기서 집행한다.
+  // 효과식엔 rand가 올 수 있고 변화 로그·시드 rng가 필요한데, 그건 전송 단계의 것들이라서다.
+  // 리롤은 pre 스냅샷(기록 포함)에서 재계산되므로 같은 결과가 나온다.
+  if (state.meta.pendingChoice && state.meta.pendingChoicePick != null) {
+    const ev = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    const c = ev?.choices?.[state.meta.pendingChoicePick];
+    if (c) {
+      applySets(schema, state, c.effects, rng, changeLog, `choice:${ev.id}`);
+      injects.push(`[선택] ${c.label}`);
+      if (c.inject) injects.push(c.inject);
+    }
+    state.meta.pendingChoice = null;
+    state.meta.pendingChoicePick = null;
+  }
+
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
@@ -363,6 +394,11 @@ function sendPhase(schema, prevState, { rng } = {}) {
         }
       } catch { /* 검증 단계에서 걸러지지만 방어 */ }
     }
+  }
+
+  // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
+  if (state.meta.pendingChoice && findChoiceEvent(schema, state.meta.pendingChoice.id)) {
+    lines.push(DEFAULT_CHOICE_WAIT);
   }
 
   if (isSetupPending(schema, state)) {
@@ -550,12 +586,38 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
 
+  // 6.5 갈림길 타임아웃 — 제시된 지 timeout턴이 지나도록 안 고르면 **마지막 항목**이 자동 결정된다
+  // (마지막은 "외면한다"류의 조건 없는 항목을 두는 게 규격 — 조건이 있고 거짓이면 효과 없이 지나간다)
+  if (state.meta.pendingChoice) {
+    const pcEv = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    if (!pcEv) {
+      state.meta.pendingChoice = null; // 스키마에서 사라진 갈림길 — 방어
+      state.meta.pendingChoicePick = null;
+    } else if (pcEv.timeout != null && state.meta.turn - state.meta.pendingChoice.turn >= pcEv.timeout) {
+      const last = pcEv.choices[pcEv.choices.length - 1];
+      let ok = true;
+      if (last.when) { try { ok = truthy(evaluate(last.when, makeLookup(schema, state.vars), null)); } catch { ok = false; } }
+      if (ok) {
+        applySets(schema, state, last.effects, rng, changeLog, `choice:${pcEv.id}`);
+        state.meta.pendingNotifies.push(`[선택] ${last.label} (정하지 않아 그렇게 흘러갔다)`);
+        if (last.inject) state.meta.pendingNotifies.push(last.inject);
+      } else {
+        state.meta.pendingNotifies.push('선택의 순간이 지나갔다.');
+      }
+      state.meta.pendingChoice = null;
+      state.meta.pendingChoicePick = null;
+    }
+  }
+
   // 7. 조건 이벤트
   // 판정 달린 이벤트: 굴림·등급 효과는 지금 적용되고, [판정] 줄은 통지에 실려 다음 전송에 합류한다.
   // 순서는 액션과 같다 — 굴림이 먼저(굴림식이 소모성 변수를 읽는다), 이벤트 자체 효과가 나중.
+  // 갈림길(choices) 이벤트는 발동하면서 pendingChoice로 들어간다 — 동시 1개 상한이라,
+  // 하나가 걸려 있는 동안 다른 갈림길은 (자기 자신 포함) 발동을 미룬다. 일반 이벤트는 정상.
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const ev of schema.rules?.events || []) {
     if (ev.once && state.meta.firedOnce[ev.id]) continue;
+    if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) continue;
     const lookup = makeLookup(schema, state.vars);
     if (!truthy(evaluate(ev.when, lookup, null))) continue;
     let checkResult = null;
@@ -566,6 +628,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingNotifies.push(checkResult.line);
       if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
     }
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+      state.meta.pendingChoicePick = null;
+    }
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -575,6 +641,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   const re = schema.rules?.randomEvents;
   if (re && rng && rng() < (re.chancePerTurn ?? 0)) {
     const eligible = (re.table || []).filter((ev) => {
+      // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
+      if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
       if (ev.cooldown != null) {
         const last = state.meta.eventLastFired[ev.id];
         if (last != null && state.meta.turn - last < ev.cooldown) return false;
@@ -598,6 +666,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
           if (checkResult) {
             state.meta.pendingNotifies.push(checkResult.line);
             if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+          }
+          if (Array.isArray(ev.choices) && ev.choices.length) {
+            state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+            state.meta.pendingChoicePick = null;
           }
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
@@ -711,6 +783,14 @@ function auxAllowList(schema, text, state = null) {
   let allow = schema.updater?.allow || [];
   // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
   if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
+  // 갈림길 대기 중엔 그 선택지들이 만질 변수만 잠깐 뺀다 — 서사가 결과를 앞질러 굳히는 것을 막는다.
+  // 전부 잠그면 선택과 무관한 값(호감도 등)까지 얼어붙으므로, 해당 변수만이다.
+  if (state?.meta?.pendingChoice) {
+    const ev = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    const frozen = new Set((ev?.choices || [])
+      .flatMap((c) => (c.effects || []).map((f) => f.set ?? f.list)).filter(Boolean));
+    if (frozen.size) allow = allow.filter((a) => !frozen.has(a.id));
+  }
   if (text == null) return allow;
   const hay = String(text).toLowerCase();
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
@@ -886,15 +966,46 @@ function isSummedList(schema, id) {
 function applyChatCommands(schema, state, text, rng) {
   const byCmd = {};
   for (const v of schema.vars) if (v.cmd) byCmd[v.cmd] = v;
-  if (!Object.keys(byCmd).length || !text || !text.includes('/')) {
-    return { text, applied: [], vars: state.vars };
+  // /선택은 변수 명령이 아니라 갈림길(choices) 내장 명령 — 갈림길이 있는 스키마면 항상 열린다
+  const hasChoices = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])]
+    .some((e) => Array.isArray(e.choices) && e.choices.length);
+  if ((!Object.keys(byCmd).length && !hasChoices) || !text || !text.includes('/')) {
+    return { text, applied: [], vars: state.vars, pick: null };
   }
   const vars = { ...state.vars };
   const applied = [];
+  let pick = null;
   const out = text.split('\n').map((line) => {
     const m = line.match(CMD_LINE_RE);
     if (!m) return line;
     const [, cmd, minus, argRaw] = m;
+    // 갈림길 선택 — 기록만 한다. 집행(효과·주입)은 다음 전송 단계의 것 (rand·변화 로그·리롤 안정)
+    if (cmd === '선택' && !byCmd['선택'] && hasChoices) {
+      const arg = argRaw.trim();
+      const pc = state.meta?.pendingChoice;
+      const ev = pc ? findChoiceEvent(schema, pc.id) : null;
+      if (!ev) return '(시스템: 지금 고를 선택지가 없음)';
+      const labels = ev.choices.map((c) => String(c.label ?? ''));
+      let idx = -1;
+      if (/^\d+$/.test(arg)) idx = Number(arg) - 1;
+      else if (arg) {
+        const hit = matchListItem(labels, arg);
+        if (Array.isArray(hit)) return `(시스템: 선택 — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}. 번호로 고르세요)`;
+        if (hit !== null) idx = labels.indexOf(hit);
+      }
+      if (idx < 0 || idx >= labels.length) {
+        return `(시스템: 선택 — 이렇게 고르세요: ${labels.map((l, i) => `/선택 ${i + 1} (${l})`).join(' · ')})`;
+      }
+      const c = ev.choices[idx];
+      if (c.when) {
+        let ok = true;
+        try { ok = truthy(evaluate(c.when, makeLookup(schema, vars), null)); } catch { ok = false; }
+        if (!ok) return `(시스템: 선택 — '${c.label}'은 지금 고를 수 없음 🔒)`;
+      }
+      pick = idx;
+      applied.push({ id: `choice:${ev.id}`, from: null, to: c.label, how: '선택' });
+      return `(시스템: 선택 — ${idx + 1}. ${c.label})`;
+    }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
     const arg = argRaw.trim();
@@ -955,7 +1066,7 @@ function applyChatCommands(schema, state, text, rng) {
       : String(to);
     return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
   }).join('\n');
-  return { text: out, applied, vars };
+  return { text: out, applied, vars, pick };
 }
 
 /** 보조 모델 응답 파싱 (관대하게: <Thoughts> 서두/코드펜스/앞뒤 잡담 허용) */
@@ -967,7 +1078,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

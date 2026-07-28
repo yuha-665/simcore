@@ -717,6 +717,20 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- `rules.randomEvents` — `chancePerTurn`(0~1) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
+      '',
+      '## 갈림길 (이벤트에 choices 달기 — 선택형 이벤트)',
+      '이벤트에 `choices`를 달면 터지는 순간 유저에게 선택지를 내밀고, 고를 때까지 기다립니다.',
+      '```json',
+      '{ "id": "bandit_raid", "when": "...", "notify": "산적이 마을 어귀에 나타났다.", "timeout": 3,',
+      '  "choices": [',
+      '    { "label": "토벌대를 보낸다", "effects": [{ "set": "military", "expr": "military - 20" }] },',
+      '    { "label": "금화로 무마한다", "when": "gold >= 100", "effects": [{ "set": "gold", "expr": "gold - 100" }] },',
+      '    { "label": "외면한다" }',
+      '  ] }',
+      '```',
+      '- 선택지는 2~4개. **맨 마지막은 조건(when) 없는 항목**으로 — 타임아웃이 지나면 마지막이 자동 결정됩니다.',
+      '- `when`이 거짓인 선택지는 잠김(🔒)으로 표시만 되고 고를 수 없습니다.',
+      '- 효과가 큰 결정에만 쓰세요 — 잦으면 흐름이 계속 끊깁니다.',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -1610,6 +1624,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '다음 턴에 AI에게 전달될 서술 (예: 기근이 시작되었다...)' })),
         ),
+        choiceEditor(ev),
       ));
     });
     wrap.appendChild(addBtn('조건 이벤트', () => { schema.rules.events.push({ id: 'event' + (schema.rules.events.length + 1), when: '', effects: [] }); rerender(); }));
@@ -1635,10 +1650,58 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '산적이 상단을 습격했다...' })),
         ),
+        choiceEditor(ev),
       ));
     });
     wrap.appendChild(addBtn('랜덤 이벤트', () => { re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 }); rerender(); }));
     return wrap;
+  }
+
+  // 갈림길(choices) 편집 — 이벤트의 속성이라 별도 탭이 아니라 이벤트 블록 안에 붙는다.
+  // (조건 이벤트·랜덤 이벤트 공용)
+  function choiceEditor(ev) {
+    const box = h('div', { class: 'sce-sub' });
+    if (!Array.isArray(ev.choices)) {
+      box.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
+        ev.choices = [{ label: '', effects: [] }, { label: '', effects: [] }];
+        ev.timeout = ev.timeout ?? 3;
+        rerender();
+      } }, '⌛ 갈림길로 만들기 — 터지면 선택지를 내밀고 유저가 /선택으로 고를 때까지 기다린다'));
+      return box;
+    }
+    box.appendChild(h('div', { class: 'sce-hint' },
+      '이 이벤트는 갈림길이다: 터지면 상태창에 선택지가 뜨고, 유저가 채팅에 /선택 번호 를 칠 때까지 기다린다. '
+      + '기다리는 동안 이 선택지들이 만질 변수는 보조 AI에서 빠진다(결과 선점 방지). '
+      + '타임아웃이 지나면 맨 마지막 항목이 자동 결정되므로, 마지막은 조건 없는 "외면한다"류로 둘 것.'));
+    ev.choices.forEach((c, ci) => {
+      box.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          h('span', { class: 'sce-w-s' }, `${ci + 1}.`),
+          bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '선택지 이름 (예: 토벌대를 보낸다)' }),
+          pair('조건', bindInput(c.when, (x) => { c.when = String(x).trim() || undefined; rerender(); },
+            { cls: 'sce-w-m', ph: '(비우면 항상) gold >= 100' }),
+            '거짓이면 잠김(🔒)으로 표시되고 고를 수 없다. 번호는 유지된다'),
+          grip(ev.choices, ci, rerender),
+        ),
+        effectRows(schema, c.effects = c.effects || [], rerender),
+        h('div', { class: 'sce-row' },
+          pair('AI 전달문', bindInput(c.inject, (x) => { c.inject = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '(선택) 고른 턴에 AI에게 덧붙는 문장 — "[선택] 이름"은 자동으로 나간다' })),
+        ),
+      ));
+    });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+        ev.choices.push({ label: '', effects: [] }); rerender();
+      } }, '+ 선택지'),
+      pair('타임아웃', bindInput(ev.timeout, (x) => { ev.timeout = numOrNull(x) ?? undefined; rerender(); },
+        { cls: 'sce-w-s', ph: '턴' }),
+        '안 고르고 이만큼 지나면 마지막 항목 자동. 비우면 고를 때까지 무한정 기다린다 (비추)'),
+      h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        delete ev.choices; delete ev.timeout; rerender();
+      } }, '갈림길 떼기'),
+    ));
+    return box;
   }
 
   // ── 탭: 명령 ──────────────────────────────────────────────

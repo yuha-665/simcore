@@ -37,6 +37,8 @@ function writerMap(schema) {
   for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
   for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
   for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
+  for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
+    for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
@@ -585,7 +587,7 @@ function diagnose(schema, opts = {}) {
   // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
   // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
   // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
-  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정']);
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
   const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
   let aiOnlyStill = 0;
   for (const x of schema.vars) {

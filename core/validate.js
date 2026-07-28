@@ -56,7 +56,11 @@ function validateSchema(schema) {
       if (typeof v.cmd !== 'string' || !v.cmd.trim()) err(p, 'cmd는 비어있지 않은 문자열이어야 함');
       else if (/[\s\/-]/.test(v.cmd)) err(p, `cmd '${v.cmd}'에 공백·'/'·'-'는 쓸 수 없음`);
       else if (cmdNames.has(v.cmd)) err(p, `중복된 cmd: '${v.cmd}'`);
-      else cmdNames.add(v.cmd);
+      else {
+        cmdNames.add(v.cmd);
+        // '/선택'은 갈림길(choices) 내장 명령 — 변수가 이 이름을 쓰면 갈림길 선택이 막힌다
+        if (v.cmd === '선택') warn(p, `'선택'은 갈림길 선택 명령(/선택)이 쓰는 이름입니다 — 다른 이름을 권합니다`);
+      }
     }
     if (v.type === 'list') {
       if (v.init !== undefined && !Array.isArray(v.init)) err(p, 'list의 init은 배열이어야 함');
@@ -83,6 +87,36 @@ function validateSchema(schema) {
   const checkRef = (x, p) => {
     if (x.check != null && (typeof x.check !== 'string' || !checkIds.has(x.check)))
       err(p, `check '${x.check}'가 checks(판정)에 없음`);
+  };
+  // 갈림길(choices) — 이벤트의 속성. 터지면 pending으로 들어가 유저가 /선택으로 고른다.
+  const checkChoices = (e, p) => {
+    if (e.choices == null) {
+      if (e.timeout != null) warn(p, 'timeout은 choices(갈림길)와 함께 쓰는 값입니다 — choices가 없어 무시됩니다');
+      return;
+    }
+    if (!Array.isArray(e.choices) || !e.choices.length) { err(p, 'choices는 비어있지 않은 배열이어야 함'); return; }
+    if (e.choices.length === 1) warn(p, '선택지가 하나뿐입니다 — 갈림길이 아닙니다. 둘 이상을 두거나 choices를 빼세요');
+    e.choices.forEach((c, ci) => {
+      const cp = `${p}.choices[${ci}]`;
+      if (!c.label || typeof c.label !== 'string' || !c.label.trim()) err(cp, '선택지 label 필요');
+      if (c.when != null) checkExpr(c.when, cp + '.when', allIds, err, { allowRand: false });
+      (c.effects || []).forEach((r, j) => checkSet(r, `${cp}.effects[${j}]`));
+      if (c.inject != null && typeof c.inject !== 'string') err(cp, 'inject는 문자열');
+    });
+    const last = e.choices[e.choices.length - 1];
+    if (last && last.when)
+      warn(p, '마지막 선택지에 조건(when)이 있습니다 — 타임아웃 자동 결정은 마지막 항목을 고르는데, '
+        + '잠겨 있으면 아무 효과 없이 지나갑니다. 마지막은 조건 없는 항목("외면한다"류)을 권합니다');
+    if (e.timeout == null)
+      warn(p, 'timeout이 없습니다 — 고를 때까지 다른 갈림길이 전부 막히고, 선택지가 만질 변수는 보조 AI에서 계속 빠집니다. 2~4턴을 권합니다');
+    else if (typeof e.timeout !== 'number' || !Number.isInteger(e.timeout) || e.timeout < 1)
+      err(p, 'timeout은 1 이상의 정수여야 함');
+    const seen = new Set();
+    for (const c of e.choices) {
+      const k = String(c.label ?? '').trim();
+      if (k && seen.has(k)) { warn(p, `선택지 라벨 '${k}'이 겹칩니다 — /선택 이름 매칭이 모호해집니다 (번호로는 됩니다)`); break; }
+      seen.add(k);
+    }
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
@@ -117,6 +151,7 @@ function validateSchema(schema) {
     (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
     checkRef(e, p);
+    checkChoices(e, p);
   });
   const re = rules.randomEvents;
   if (re) {
@@ -131,6 +166,7 @@ function validateSchema(schema) {
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
+      checkChoices(e, p);
     });
   }
 
@@ -263,6 +299,16 @@ function validateSchema(schema) {
     // 어떤 조건도 안 맞을 때 그릴 게 없으면 상태창이 통째로 사라진다
     if (conds.length && !sawUnconditional && !(typeof ui.template === 'string' && ui.template.trim()))
       warn('$.statusUI.templates', '전부 조건부입니다 — 어느 조건도 안 맞는 순간엔 상태창이 안 보입니다. 조건 없는 템플릿을 맨 뒤에 하나 두세요');
+    // 갈림길이 있는 봇의 템플릿 모드 — {choices}가 없으면 유저는 무슨 선택지가 있는지 알 길이 없다
+    // (그룹 모드는 자동으로 붙으므로 해당 없음)
+    {
+      const hasChoiceEvents = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
+        .some((e) => Array.isArray(e.choices) && e.choices.length);
+      const hasSlot = (typeof ui.template === 'string' && ui.template.includes('{choices}'))
+        || conds.some((t) => String(t.template || '').includes('{choices}'));
+      if (hasChoiceEvents && !hasSlot)
+        warn('$.statusUI.template', '갈림길(choices) 이벤트가 있는데 템플릿 어디에도 {choices}가 없습니다 — 선택의 순간이 와도 유저는 선택지를 볼 수 없습니다');
+    }
   }
   // 배치 — 탭·팝업은 두 장부터 의미가 있다. 한 장이면 조용히 쌓기로 되돌아가므로 알려 준다.
   if (ui.layout != null) {
@@ -409,8 +455,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
-// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck']);
+// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

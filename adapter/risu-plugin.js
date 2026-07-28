@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.40.0
-//@display-name SimCore (시뮬 엔진) v0.40 판정(완벽 주사위)
+//@version 0.41.0
+//@display-name SimCore (시뮬 엔진) v0.41 판정·갈림길
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.41 ──────────────────────────────────────────────────
+// choices(갈림길) — docs/design-주사위-선택지.md §2의 구현. actions가 상시 동사라면
+// 이것은 "이 순간의 갈림길": 이벤트가 터지면서 선택지 2~4개를 내밀고, 고를 때까지 기다린다.
+// - `rules.events[]`·`randomEvents.table[]`에 `choices: [{label, when?, effects?, inject?}]`
+//   + `timeout`. 발동하면 pending으로 들어간다 — 동시 1개 상한(스택 없음), 걸린 동안 다른
+//   갈림길은 발동을 미루고 일반 이벤트는 정상.
+// - 입력 통로는 채팅 명령 하나: `/선택 2` 또는 `/선택 이름`(완전일치→앞머리→부분일치 —
+//   목록 제거와 같은 매칭). 상태창 안 버튼은 리스가 클릭 target을 잘라 구조적으로 불가.
+//   명령 시점엔 **기록만** 하고(pendingChoicePick) 집행은 다음 전송 단계에서 한다 —
+//   효과식엔 rand가 올 수 있고 변화 로그·시드가 필요한데 그건 전송의 것들이라서. 리롤도
+//   pre 스냅샷(기록 포함)에서 재계산돼 같은 결과가 나온다.
+// - 기다리는 동안: ① 보조모델 갱신은 멈추지 않는다 — 그 선택지들이 만질 변수만 allow에서
+//   뺀다(서사가 결과를 앞질러 굳히는 것만 막으면 된다). ② 매 전송 [선택 대기] 한 줄 —
+//   선택지 내용은 안 싣는다(모델이 대신 골라 버리는 것만 막는다). ③ 같은 이벤트 재발동 금지.
+// - 타임아웃이 지나면 **마지막 항목** 자동 결정("외면한다"류를 마지막에 두는 게 규격 —
+//   마지막에 when이 있으면 검증이 경고하고, 잠겨 있으면 효과 없이 지나간다).
+// - 상태창: 그룹 모드는 자동으로 선택지 블록(번호·잠김 🔒·/선택 안내), 템플릿 모드는
+//   {choices} 자리에만. 번호는 배열 순서 고정 — 지난 메시지의 상태창과 어긋나지 않게.
+// - 편집기: 이벤트 블록마다 [⌛ 갈림길로 만들기] → 선택지·조건·효과·타임아웃 칸.
+//   AI 내보내기는 rules 슬라이스에 자동 동승(이벤트의 속성이라 별도 슬라이스 불필요).
+// - daily 템플릿에 예시 1종(길고양이). 진단 writerMap에 '선택' 기록자 추가.
 //
 // ── v0.40 ──────────────────────────────────────────────────
 // checks(판정) — "완벽 주사위". docs/design-주사위-선택지.md §1의 구현.
@@ -866,6 +888,8 @@
       const r = engine.applyChatCommands(schema, session.current, content);
       if (!r.applied.length) return content;
       session.current.vars = r.vars;
+      // /선택은 기록만 — 집행은 다음 전송 단계(sendPhase)가 한다. pre 스냅샷에 실려 리롤에도 산다.
+      if (r.pick != null) session.current.meta = { ...session.current.meta, pendingChoicePick: r.pick };
       if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();

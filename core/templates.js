@@ -1680,6 +1680,16 @@ const DAILY = {
         { id: 'small_gain', weight: 1, cooldown: 6,
           effects: [{ set: 'money', expr: 'money + rand(3000, 15000)' }],
           notify: '돈이 조금 생겼다. 받은 것인지 찾은 것인지는 장면에 맞게 정하라.' },
+        // ── 갈림길(choices) 예시 — 터지면 유저가 /선택으로 고를 때까지 기다린다 (v0.41).
+        //    마지막 항목은 조건 없이 — 2턴 안에 안 고르면 그게 자동 결정된다.
+        { id: 'stray_cat', weight: 1, cooldown: 8, timeout: 2,
+          notify: '골목에서 야윈 길고양이가 따라온다. 어떻게 할지 정할 때까지 계속 곁을 맴돈다.',
+          choices: [
+            { label: '쓰다듬어 준다', inject: '손끝에 닿은 고양이가 낯을 가리면서도 떠나지 않는다.' },
+            { label: '먹이를 사서 준다', when: 'money >= 3000',
+              effects: [{ set: 'money', expr: 'money - 3000' }] },
+            { label: '모른 척 지나친다' },
+          ] },
         // ── 날씨 ── 바뀔 때만 후보에 오르게 when으로 막는다 (같은 날씨로 "바뀌었다"고 알리면 이상하다)
         { id: 'sky_rain', weight: 2, cooldown: 5, when: 'weather != "비" and weather != "눈"',
           effects: [{ set: 'weather', expr: '"비"' }],

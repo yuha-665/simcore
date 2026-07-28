@@ -1,7 +1,7 @@
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs } = require('./engine');
+const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 
 // 내장 테마 — .sim-status 하위 오버라이드
@@ -66,6 +66,11 @@ const BASE_CSS = `
 .sim-tag{display:inline-block;padding:1px 8px;border-radius:8px;background:rgba(128,128,128,.18);border:1px solid rgba(128,128,128,.25);font-size:.83em}
 .sim-empty{opacity:.45;font-size:.85em}
 .sim-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.sim-choices{margin-top:8px;padding:7px 10px;border:1px solid rgba(200,160,80,.5);border-radius:7px}
+.sim-choices-title{font-weight:700;font-size:.88em;opacity:.85;margin-bottom:4px}
+.sim-choice{padding:2px 0;font-size:.92em}
+.sim-choice.sim-locked{opacity:.45}
+.sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
 .sim-action-hint{flex-basis:100%;font-size:.78em;opacity:.55;margin-bottom:1px}
 .sim-action{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.4);font-size:.88em;background:transparent}
 .sim-action-glyph{font-size:1.15em;line-height:1}
@@ -165,6 +170,28 @@ function actionGlyph(label) {
  * 패널에 넣는 건 답이 안 된다 — 배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유다.
  * 그래서 유저가 늘 보는 화면에 두되, **자리와 노출 여부는 제작자가 정한다**(자리표시자를 안 박으면 안 나온다).
  */
+/**
+ * 걸려 있는 갈림길의 선택지 목록. 번호는 배열 순서 그대로라 어느 메시지의 상태창에서 봐도 같다.
+ * 조건(when)이 거짓인 항목은 🔒로 잠가 두되 번호는 유지한다 — 번호가 밀리면 지난 메시지와 어긋난다.
+ * (상태창 안 버튼은 리스가 클릭 target을 잘라 구조적으로 못 쓴다 — 그래서 /선택 채팅 명령이 통로다)
+ */
+function choicesHtml(schema, state) {
+  const pc = state.meta?.pendingChoice;
+  if (!pc) return '';
+  const ev = findChoiceEvent(schema, pc.id);
+  if (!ev) return '';
+  const lookup = makeLookup(schema, state.vars);
+  let out = '<div class="sim-choices"><div class="sim-choices-title">⌛ 선택의 순간</div>';
+  ev.choices.forEach((c, i) => {
+    let locked = false;
+    if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
+  });
+  out += '<div class="sim-choices-hint">채팅에 /선택 번호 를 치면 골라진다 (예: /선택 1)'
+    + (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '') + '</div></div>';
+  return out;
+}
+
 function commandsHtml(schema) {
   const specs = engineCommandSpecs(schema);
   if (!specs.length) return '';
@@ -191,7 +218,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // {lastcheck} = 마지막 판정 한 줄 (예: "근력 판정: 14 + 2 = 16 vs 13 → 성공"). 판정 전에는 빈 문자열.
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid,
-    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '' };
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
+    choices: choicesHtml(schema, state) };
   // 파생 변수도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
 
@@ -250,7 +278,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     }
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
-    // (템플릿 모드는 반대다: 제작자가 {commands}를 박은 자리에만 나온다)
+    // (템플릿 모드는 반대다: 제작자가 {commands}/{choices}를 박은 자리에만 나온다)
+    inner += extras.choices;
     inner += extras.commands;
   }
 

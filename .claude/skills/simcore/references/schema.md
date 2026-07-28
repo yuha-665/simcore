@@ -42,6 +42,8 @@
 | `effects[]` | `{ set, expr }` 또는 `{ list, add[], remove[] }` |
 | `notify` | 다음 턴에 AI에게 전달될 서술 |
 | `once` | true면 딱 한 번만 |
+| `check` | 판정 id (v0.40) — 발동 시 굴리고 [판정] 줄은 통지로 다음 전송 합류 |
+| `choices[]` / `timeout` | 갈림길 (v0.41) — 아래 절 |
 
 ⚠ **시작/끝 이벤트를 짝으로 만든다.** `food <= 0`만 쓰면 식량이 0인 동안 매 턴 재발동한다.
 `food <= 0 and not famine` / `food > food_need * 2 and famine` 식으로 플래그를 끼운다.
@@ -49,6 +51,25 @@
 ### `rules.randomEvents`
 `chancePerTurn` (0~1) + `table[]`. 표 항목은 events와 같고 `weight`(양수) · `cooldown`(턴) 추가.
 `when`을 비우면 항상 후보.
+
+### 갈림길 — `choices[]` (v0.41, 조건·랜덤 이벤트 공통)
+
+이벤트에 `choices: [{ label, when?, effects?, inject? }]`를 달면 **터지면서 선택지를 내밀고
+유저가 고를 때까지 기다린다** (actions = 상시 동사, choices = 이 순간의 갈림길).
+
+- 입력 통로는 **`/선택 번호` 또는 `/선택 이름`** 채팅 명령 하나 (앞머리 매칭. 상태창 안 버튼은
+  리수가 클릭 target을 잘라 구조적으로 불가). 명령은 **기록만** 하고 집행은 다음 전송 단계 —
+  효과식의 rand·변화 로그·리롤 안정이 거기 있다. 고르면 `[선택] 라벨` + `inject`가 주입된다
+- **동시 1개 상한.** 걸린 동안 다른 갈림길(자기 포함)은 발동을 미루고, 일반 이벤트는 정상
+- **대기 중**: 보조 AI는 멈추지 않는다 — 그 선택지들이 만질 변수만 allow에서 잠깐 빠진다
+  (결과 선점 방지). 매 전송 `[선택 대기]` 한 줄이 붙는데 선택지 내용은 안 싣는다
+- **`timeout`턴 안 고르면 맨 마지막 항목이 자동 결정** — 마지막은 조건 없는 "외면한다"류로
+  둘 것 (마지막에 when이 있으면 경고, 잠겨 있으면 효과 없이 지나간다). timeout 없으면 경고
+- 선택지 `when`이 거짓이면 잠김(🔒) 표시만 되고 번호는 유지된다 (지난 메시지의 상태창과
+  어긋나지 않게 번호는 배열 순서 고정)
+- 상태창: 그룹 모드는 자동 블록, 템플릿 모드는 `{choices}` 자리 (없으면 경고).
+  변수 cmd에 '선택'을 쓰면 경고 (내장 명령과 충돌)
+- 이벤트 자체 `effects`는 발동 즉시(플래그 세우기 등), 선택지 `effects`는 고른 뒤 — 역할이 다르다
 
 ---
 
@@ -178,7 +199,7 @@
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
 | `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
 | `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` |
-| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{commands}` · `{uid}` · `{lastcheck}` |
+| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{commands}` · `{uid}` · `{lastcheck}` · `{choices}` |
 | `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리 |
 
 - `tabs`/`popover`는 **보이는 그룹이 2개 이상**일 때만 동작 (아니면 조용히 stack)

@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.40.0
-//@display-name SimCore (시뮬 엔진) v0.40 판정(완벽 주사위)
+//@version 0.41.0
+//@display-name SimCore (시뮬 엔진) v0.41 판정·갈림길
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.41 ──────────────────────────────────────────────────
+// choices(갈림길) — docs/design-주사위-선택지.md §2의 구현. actions가 상시 동사라면
+// 이것은 "이 순간의 갈림길": 이벤트가 터지면서 선택지 2~4개를 내밀고, 고를 때까지 기다린다.
+// - `rules.events[]`·`randomEvents.table[]`에 `choices: [{label, when?, effects?, inject?}]`
+//   + `timeout`. 발동하면 pending으로 들어간다 — 동시 1개 상한(스택 없음), 걸린 동안 다른
+//   갈림길은 발동을 미루고 일반 이벤트는 정상.
+// - 입력 통로는 채팅 명령 하나: `/선택 2` 또는 `/선택 이름`(완전일치→앞머리→부분일치 —
+//   목록 제거와 같은 매칭). 상태창 안 버튼은 리스가 클릭 target을 잘라 구조적으로 불가.
+//   명령 시점엔 **기록만** 하고(pendingChoicePick) 집행은 다음 전송 단계에서 한다 —
+//   효과식엔 rand가 올 수 있고 변화 로그·시드가 필요한데 그건 전송의 것들이라서. 리롤도
+//   pre 스냅샷(기록 포함)에서 재계산돼 같은 결과가 나온다.
+// - 기다리는 동안: ① 보조모델 갱신은 멈추지 않는다 — 그 선택지들이 만질 변수만 allow에서
+//   뺀다(서사가 결과를 앞질러 굳히는 것만 막으면 된다). ② 매 전송 [선택 대기] 한 줄 —
+//   선택지 내용은 안 싣는다(모델이 대신 골라 버리는 것만 막는다). ③ 같은 이벤트 재발동 금지.
+// - 타임아웃이 지나면 **마지막 항목** 자동 결정("외면한다"류를 마지막에 두는 게 규격 —
+//   마지막에 when이 있으면 검증이 경고하고, 잠겨 있으면 효과 없이 지나간다).
+// - 상태창: 그룹 모드는 자동으로 선택지 블록(번호·잠김 🔒·/선택 안내), 템플릿 모드는
+//   {choices} 자리에만. 번호는 배열 순서 고정 — 지난 메시지의 상태창과 어긋나지 않게.
+// - 편집기: 이벤트 블록마다 [⌛ 갈림길로 만들기] → 선택지·조건·효과·타임아웃 칸.
+//   AI 내보내기는 rules 슬라이스에 자동 동승(이벤트의 속성이라 별도 슬라이스 불필요).
+// - daily 템플릿에 예시 1종(길고양이). 진단 writerMap에 '선택' 기록자 추가.
 //
 // ── v0.40 ──────────────────────────────────────────────────
 // checks(판정) — "완벽 주사위". docs/design-주사위-선택지.md §1의 구현.
@@ -852,7 +874,11 @@ function validateSchema(schema) {
       if (typeof v.cmd !== 'string' || !v.cmd.trim()) err(p, 'cmd는 비어있지 않은 문자열이어야 함');
       else if (/[\s\/-]/.test(v.cmd)) err(p, `cmd '${v.cmd}'에 공백·'/'·'-'는 쓸 수 없음`);
       else if (cmdNames.has(v.cmd)) err(p, `중복된 cmd: '${v.cmd}'`);
-      else cmdNames.add(v.cmd);
+      else {
+        cmdNames.add(v.cmd);
+        // '/선택'은 갈림길(choices) 내장 명령 — 변수가 이 이름을 쓰면 갈림길 선택이 막힌다
+        if (v.cmd === '선택') warn(p, `'선택'은 갈림길 선택 명령(/선택)이 쓰는 이름입니다 — 다른 이름을 권합니다`);
+      }
     }
     if (v.type === 'list') {
       if (v.init !== undefined && !Array.isArray(v.init)) err(p, 'list의 init은 배열이어야 함');
@@ -879,6 +905,36 @@ function validateSchema(schema) {
   const checkRef = (x, p) => {
     if (x.check != null && (typeof x.check !== 'string' || !checkIds.has(x.check)))
       err(p, `check '${x.check}'가 checks(판정)에 없음`);
+  };
+  // 갈림길(choices) — 이벤트의 속성. 터지면 pending으로 들어가 유저가 /선택으로 고른다.
+  const checkChoices = (e, p) => {
+    if (e.choices == null) {
+      if (e.timeout != null) warn(p, 'timeout은 choices(갈림길)와 함께 쓰는 값입니다 — choices가 없어 무시됩니다');
+      return;
+    }
+    if (!Array.isArray(e.choices) || !e.choices.length) { err(p, 'choices는 비어있지 않은 배열이어야 함'); return; }
+    if (e.choices.length === 1) warn(p, '선택지가 하나뿐입니다 — 갈림길이 아닙니다. 둘 이상을 두거나 choices를 빼세요');
+    e.choices.forEach((c, ci) => {
+      const cp = `${p}.choices[${ci}]`;
+      if (!c.label || typeof c.label !== 'string' || !c.label.trim()) err(cp, '선택지 label 필요');
+      if (c.when != null) checkExpr(c.when, cp + '.when', allIds, err, { allowRand: false });
+      (c.effects || []).forEach((r, j) => checkSet(r, `${cp}.effects[${j}]`));
+      if (c.inject != null && typeof c.inject !== 'string') err(cp, 'inject는 문자열');
+    });
+    const last = e.choices[e.choices.length - 1];
+    if (last && last.when)
+      warn(p, '마지막 선택지에 조건(when)이 있습니다 — 타임아웃 자동 결정은 마지막 항목을 고르는데, '
+        + '잠겨 있으면 아무 효과 없이 지나갑니다. 마지막은 조건 없는 항목("외면한다"류)을 권합니다');
+    if (e.timeout == null)
+      warn(p, 'timeout이 없습니다 — 고를 때까지 다른 갈림길이 전부 막히고, 선택지가 만질 변수는 보조 AI에서 계속 빠집니다. 2~4턴을 권합니다');
+    else if (typeof e.timeout !== 'number' || !Number.isInteger(e.timeout) || e.timeout < 1)
+      err(p, 'timeout은 1 이상의 정수여야 함');
+    const seen = new Set();
+    for (const c of e.choices) {
+      const k = String(c.label ?? '').trim();
+      if (k && seen.has(k)) { warn(p, `선택지 라벨 '${k}'이 겹칩니다 — /선택 이름 매칭이 모호해집니다 (번호로는 됩니다)`); break; }
+      seen.add(k);
+    }
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
@@ -913,6 +969,7 @@ function validateSchema(schema) {
     (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
     checkRef(e, p);
+    checkChoices(e, p);
   });
   const re = rules.randomEvents;
   if (re) {
@@ -927,6 +984,7 @@ function validateSchema(schema) {
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
+      checkChoices(e, p);
     });
   }
 
@@ -1059,6 +1117,16 @@ function validateSchema(schema) {
     // 어떤 조건도 안 맞을 때 그릴 게 없으면 상태창이 통째로 사라진다
     if (conds.length && !sawUnconditional && !(typeof ui.template === 'string' && ui.template.trim()))
       warn('$.statusUI.templates', '전부 조건부입니다 — 어느 조건도 안 맞는 순간엔 상태창이 안 보입니다. 조건 없는 템플릿을 맨 뒤에 하나 두세요');
+    // 갈림길이 있는 봇의 템플릿 모드 — {choices}가 없으면 유저는 무슨 선택지가 있는지 알 길이 없다
+    // (그룹 모드는 자동으로 붙으므로 해당 없음)
+    {
+      const hasChoiceEvents = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
+        .some((e) => Array.isArray(e.choices) && e.choices.length);
+      const hasSlot = (typeof ui.template === 'string' && ui.template.includes('{choices}'))
+        || conds.some((t) => String(t.template || '').includes('{choices}'));
+      if (hasChoiceEvents && !hasSlot)
+        warn('$.statusUI.template', '갈림길(choices) 이벤트가 있는데 템플릿 어디에도 {choices}가 없습니다 — 선택의 순간이 와도 유저는 선택지를 볼 수 없습니다');
+    }
   }
   // 배치 — 탭·팝업은 두 장부터 의미가 있다. 한 장이면 조용히 쌓기로 되돌아가므로 알려 준다.
   if (ui.layout != null) {
@@ -1205,8 +1273,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
-// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck']);
+// lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {
@@ -1269,6 +1337,12 @@ const DEFAULT_EVENT_PRIORITY =
 const DEFAULT_CHECK_GUIDE =
   '※ 위 [판정]은 시스템이 주사위로 확정한 결과다. 성공을 실패로, 실패를 성공으로 뒤집어 서술하지 마라. '
   + '수치를 본문에 나열하지 말고 그 결과의 무게를 장면으로 그려라.';
+
+// 갈림길이 걸려 있는 동안 매 전송 덧붙는다 — 지시문은 AI가 모르는 것만 말한다는 원칙대로,
+// 선택지 내용은 안 싣는다(그건 유저 상태창의 것이다). 모델이 대신 골라 버리는 것만 막는다.
+const DEFAULT_CHOICE_WAIT =
+  '[선택 대기] 유저에게 선택지가 제시되어 있고 아직 고르지 않았다. 대신 선택하거나 재촉하지 말고, '
+  + '어느 쪽으로도 결과를 확정하지 않는 서술을 하라.';
 
 // ── 초기화 ──────────────────────────────────────────────────
 
@@ -1340,7 +1414,16 @@ function reconcileState(schema, state) {
   m.pendingNotifies = m.pendingNotifies || [];
   m.firedThisSend = m.firedThisSend || {}; // 이번 전송에서 발동한 액션 (whenArmed 게이트용, 다음 전송에서 리셋)
   m.lastCheck = m.lastCheck ?? null; // 마지막 판정 결과 — vars가 아니라 여기 산다 (AI가 못 만진다)
+  m.pendingChoice = m.pendingChoice ?? null; // 걸려 있는 갈림길 { id, turn } — 동시 1개 상한
+  m.pendingChoicePick = m.pendingChoicePick ?? null; // /선택으로 고른 번호 (0기준) — 다음 전송에서 집행
   return state;
+}
+
+/** 갈림길(choices 달린 이벤트)을 id로 찾는다 — 조건 이벤트·랜덤 표 양쪽에서 */
+function findChoiceEvent(schema, id) {
+  const all = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])];
+  const ev = all.find((e) => e.id === id);
+  return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
 // ── 조회 (vars + derived, 순환 감지) ─────────────────────────
@@ -1532,6 +1615,22 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
   // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
   state.meta.firedThisSend = {};
+
+  // 0.5 갈림길 집행 — /선택은 명령 시점에 기록만 하고(pendingChoicePick) 여기서 집행한다.
+  // 효과식엔 rand가 올 수 있고 변화 로그·시드 rng가 필요한데, 그건 전송 단계의 것들이라서다.
+  // 리롤은 pre 스냅샷(기록 포함)에서 재계산되므로 같은 결과가 나온다.
+  if (state.meta.pendingChoice && state.meta.pendingChoicePick != null) {
+    const ev = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    const c = ev?.choices?.[state.meta.pendingChoicePick];
+    if (c) {
+      applySets(schema, state, c.effects, rng, changeLog, `choice:${ev.id}`);
+      injects.push(`[선택] ${c.label}`);
+      if (c.inject) injects.push(c.inject);
+    }
+    state.meta.pendingChoice = null;
+    state.meta.pendingChoicePick = null;
+  }
+
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
@@ -1596,6 +1695,11 @@ function sendPhase(schema, prevState, { rng } = {}) {
         }
       } catch { /* 검증 단계에서 걸러지지만 방어 */ }
     }
+  }
+
+  // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
+  if (state.meta.pendingChoice && findChoiceEvent(schema, state.meta.pendingChoice.id)) {
+    lines.push(DEFAULT_CHOICE_WAIT);
   }
 
   if (isSetupPending(schema, state)) {
@@ -1783,12 +1887,38 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
 
+  // 6.5 갈림길 타임아웃 — 제시된 지 timeout턴이 지나도록 안 고르면 **마지막 항목**이 자동 결정된다
+  // (마지막은 "외면한다"류의 조건 없는 항목을 두는 게 규격 — 조건이 있고 거짓이면 효과 없이 지나간다)
+  if (state.meta.pendingChoice) {
+    const pcEv = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    if (!pcEv) {
+      state.meta.pendingChoice = null; // 스키마에서 사라진 갈림길 — 방어
+      state.meta.pendingChoicePick = null;
+    } else if (pcEv.timeout != null && state.meta.turn - state.meta.pendingChoice.turn >= pcEv.timeout) {
+      const last = pcEv.choices[pcEv.choices.length - 1];
+      let ok = true;
+      if (last.when) { try { ok = truthy(evaluate(last.when, makeLookup(schema, state.vars), null)); } catch { ok = false; } }
+      if (ok) {
+        applySets(schema, state, last.effects, rng, changeLog, `choice:${pcEv.id}`);
+        state.meta.pendingNotifies.push(`[선택] ${last.label} (정하지 않아 그렇게 흘러갔다)`);
+        if (last.inject) state.meta.pendingNotifies.push(last.inject);
+      } else {
+        state.meta.pendingNotifies.push('선택의 순간이 지나갔다.');
+      }
+      state.meta.pendingChoice = null;
+      state.meta.pendingChoicePick = null;
+    }
+  }
+
   // 7. 조건 이벤트
   // 판정 달린 이벤트: 굴림·등급 효과는 지금 적용되고, [판정] 줄은 통지에 실려 다음 전송에 합류한다.
   // 순서는 액션과 같다 — 굴림이 먼저(굴림식이 소모성 변수를 읽는다), 이벤트 자체 효과가 나중.
+  // 갈림길(choices) 이벤트는 발동하면서 pendingChoice로 들어간다 — 동시 1개 상한이라,
+  // 하나가 걸려 있는 동안 다른 갈림길은 (자기 자신 포함) 발동을 미룬다. 일반 이벤트는 정상.
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   for (const ev of schema.rules?.events || []) {
     if (ev.once && state.meta.firedOnce[ev.id]) continue;
+    if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) continue;
     const lookup = makeLookup(schema, state.vars);
     if (!truthy(evaluate(ev.when, lookup, null))) continue;
     let checkResult = null;
@@ -1799,6 +1929,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingNotifies.push(checkResult.line);
       if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
     }
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+      state.meta.pendingChoicePick = null;
+    }
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -1808,6 +1942,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   const re = schema.rules?.randomEvents;
   if (re && rng && rng() < (re.chancePerTurn ?? 0)) {
     const eligible = (re.table || []).filter((ev) => {
+      // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
+      if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
       if (ev.cooldown != null) {
         const last = state.meta.eventLastFired[ev.id];
         if (last != null && state.meta.turn - last < ev.cooldown) return false;
@@ -1831,6 +1967,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
           if (checkResult) {
             state.meta.pendingNotifies.push(checkResult.line);
             if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+          }
+          if (Array.isArray(ev.choices) && ev.choices.length) {
+            state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+            state.meta.pendingChoicePick = null;
           }
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
@@ -1944,6 +2084,14 @@ function auxAllowList(schema, text, state = null) {
   let allow = schema.updater?.allow || [];
   // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
   if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
+  // 갈림길 대기 중엔 그 선택지들이 만질 변수만 잠깐 뺀다 — 서사가 결과를 앞질러 굳히는 것을 막는다.
+  // 전부 잠그면 선택과 무관한 값(호감도 등)까지 얼어붙으므로, 해당 변수만이다.
+  if (state?.meta?.pendingChoice) {
+    const ev = findChoiceEvent(schema, state.meta.pendingChoice.id);
+    const frozen = new Set((ev?.choices || [])
+      .flatMap((c) => (c.effects || []).map((f) => f.set ?? f.list)).filter(Boolean));
+    if (frozen.size) allow = allow.filter((a) => !frozen.has(a.id));
+  }
   if (text == null) return allow;
   const hay = String(text).toLowerCase();
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
@@ -2119,15 +2267,46 @@ function isSummedList(schema, id) {
 function applyChatCommands(schema, state, text, rng) {
   const byCmd = {};
   for (const v of schema.vars) if (v.cmd) byCmd[v.cmd] = v;
-  if (!Object.keys(byCmd).length || !text || !text.includes('/')) {
-    return { text, applied: [], vars: state.vars };
+  // /선택은 변수 명령이 아니라 갈림길(choices) 내장 명령 — 갈림길이 있는 스키마면 항상 열린다
+  const hasChoices = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])]
+    .some((e) => Array.isArray(e.choices) && e.choices.length);
+  if ((!Object.keys(byCmd).length && !hasChoices) || !text || !text.includes('/')) {
+    return { text, applied: [], vars: state.vars, pick: null };
   }
   const vars = { ...state.vars };
   const applied = [];
+  let pick = null;
   const out = text.split('\n').map((line) => {
     const m = line.match(CMD_LINE_RE);
     if (!m) return line;
     const [, cmd, minus, argRaw] = m;
+    // 갈림길 선택 — 기록만 한다. 집행(효과·주입)은 다음 전송 단계의 것 (rand·변화 로그·리롤 안정)
+    if (cmd === '선택' && !byCmd['선택'] && hasChoices) {
+      const arg = argRaw.trim();
+      const pc = state.meta?.pendingChoice;
+      const ev = pc ? findChoiceEvent(schema, pc.id) : null;
+      if (!ev) return '(시스템: 지금 고를 선택지가 없음)';
+      const labels = ev.choices.map((c) => String(c.label ?? ''));
+      let idx = -1;
+      if (/^\d+$/.test(arg)) idx = Number(arg) - 1;
+      else if (arg) {
+        const hit = matchListItem(labels, arg);
+        if (Array.isArray(hit)) return `(시스템: 선택 — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}. 번호로 고르세요)`;
+        if (hit !== null) idx = labels.indexOf(hit);
+      }
+      if (idx < 0 || idx >= labels.length) {
+        return `(시스템: 선택 — 이렇게 고르세요: ${labels.map((l, i) => `/선택 ${i + 1} (${l})`).join(' · ')})`;
+      }
+      const c = ev.choices[idx];
+      if (c.when) {
+        let ok = true;
+        try { ok = truthy(evaluate(c.when, makeLookup(schema, vars), null)); } catch { ok = false; }
+        if (!ok) return `(시스템: 선택 — '${c.label}'은 지금 고를 수 없음 🔒)`;
+      }
+      pick = idx;
+      applied.push({ id: `choice:${ev.id}`, from: null, to: c.label, how: '선택' });
+      return `(시스템: 선택 — ${idx + 1}. ${c.label})`;
+    }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
     const arg = argRaw.trim();
@@ -2188,7 +2367,7 @@ function applyChatCommands(schema, state, text, rng) {
       : String(to);
     return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
   }).join('\n');
-  return { text: out, applied, vars };
+  return { text: out, applied, vars, pick };
 }
 
 /** 보조 모델 응답 파싱 (관대하게: <Thoughts> 서두/코드펜스/앞뒤 잡담 허용) */
@@ -2200,7 +2379,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -2212,7 +2391,7 @@ SimCore.define("render", function (require, module, exports) {
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs } = require('./engine');
+const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 
 // 내장 테마 — .sim-status 하위 오버라이드
@@ -2277,6 +2456,11 @@ const BASE_CSS = `
 .sim-tag{display:inline-block;padding:1px 8px;border-radius:8px;background:rgba(128,128,128,.18);border:1px solid rgba(128,128,128,.25);font-size:.83em}
 .sim-empty{opacity:.45;font-size:.85em}
 .sim-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.sim-choices{margin-top:8px;padding:7px 10px;border:1px solid rgba(200,160,80,.5);border-radius:7px}
+.sim-choices-title{font-weight:700;font-size:.88em;opacity:.85;margin-bottom:4px}
+.sim-choice{padding:2px 0;font-size:.92em}
+.sim-choice.sim-locked{opacity:.45}
+.sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
 .sim-action-hint{flex-basis:100%;font-size:.78em;opacity:.55;margin-bottom:1px}
 .sim-action{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.4);font-size:.88em;background:transparent}
 .sim-action-glyph{font-size:1.15em;line-height:1}
@@ -2376,6 +2560,28 @@ function actionGlyph(label) {
  * 패널에 넣는 건 답이 안 된다 — 배포받은 유저가 패널을 안 여는 게 애초에 채팅 명령을 만든 이유다.
  * 그래서 유저가 늘 보는 화면에 두되, **자리와 노출 여부는 제작자가 정한다**(자리표시자를 안 박으면 안 나온다).
  */
+/**
+ * 걸려 있는 갈림길의 선택지 목록. 번호는 배열 순서 그대로라 어느 메시지의 상태창에서 봐도 같다.
+ * 조건(when)이 거짓인 항목은 🔒로 잠가 두되 번호는 유지한다 — 번호가 밀리면 지난 메시지와 어긋난다.
+ * (상태창 안 버튼은 리스가 클릭 target을 잘라 구조적으로 못 쓴다 — 그래서 /선택 채팅 명령이 통로다)
+ */
+function choicesHtml(schema, state) {
+  const pc = state.meta?.pendingChoice;
+  if (!pc) return '';
+  const ev = findChoiceEvent(schema, pc.id);
+  if (!ev) return '';
+  const lookup = makeLookup(schema, state.vars);
+  let out = '<div class="sim-choices"><div class="sim-choices-title">⌛ 선택의 순간</div>';
+  ev.choices.forEach((c, i) => {
+    let locked = false;
+    if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
+  });
+  out += '<div class="sim-choices-hint">채팅에 /선택 번호 를 치면 골라진다 (예: /선택 1)'
+    + (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '') + '</div></div>';
+  return out;
+}
+
 function commandsHtml(schema) {
   const specs = engineCommandSpecs(schema);
   if (!specs.length) return '';
@@ -2402,7 +2608,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // {lastcheck} = 마지막 판정 한 줄 (예: "근력 판정: 14 + 2 = 16 vs 13 → 성공"). 판정 전에는 빈 문자열.
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid,
-    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '' };
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
+    choices: choicesHtml(schema, state) };
   // 파생 변수도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
 
@@ -2461,7 +2668,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     }
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
-    // (템플릿 모드는 반대다: 제작자가 {commands}를 박은 자리에만 나온다)
+    // (템플릿 모드는 반대다: 제작자가 {commands}/{choices}를 박은 자리에만 나온다)
+    inner += extras.choices;
     inner += extras.commands;
   }
 
@@ -3054,6 +3262,8 @@ function writerMap(schema) {
   for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
   for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
   for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
+  for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
+    for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
@@ -3602,7 +3812,7 @@ function diagnose(schema, opts = {}) {
   // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
   // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
   // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
-  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정']);
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
   const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
   let aiOnlyStill = 0;
   for (const x of schema.vars) {
@@ -4444,6 +4654,20 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- `rules.randomEvents` — `chancePerTurn`(0~1) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
+      '',
+      '## 갈림길 (이벤트에 choices 달기 — 선택형 이벤트)',
+      '이벤트에 `choices`를 달면 터지는 순간 유저에게 선택지를 내밀고, 고를 때까지 기다립니다.',
+      '```json',
+      '{ "id": "bandit_raid", "when": "...", "notify": "산적이 마을 어귀에 나타났다.", "timeout": 3,',
+      '  "choices": [',
+      '    { "label": "토벌대를 보낸다", "effects": [{ "set": "military", "expr": "military - 20" }] },',
+      '    { "label": "금화로 무마한다", "when": "gold >= 100", "effects": [{ "set": "gold", "expr": "gold - 100" }] },',
+      '    { "label": "외면한다" }',
+      '  ] }',
+      '```',
+      '- 선택지는 2~4개. **맨 마지막은 조건(when) 없는 항목**으로 — 타임아웃이 지나면 마지막이 자동 결정됩니다.',
+      '- `when`이 거짓인 선택지는 잠김(🔒)으로 표시만 되고 고를 수 없습니다.',
+      '- 효과가 큰 결정에만 쓰세요 — 잦으면 흐름이 계속 끊깁니다.',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -5337,6 +5561,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '다음 턴에 AI에게 전달될 서술 (예: 기근이 시작되었다...)' })),
         ),
+        choiceEditor(ev),
       ));
     });
     wrap.appendChild(addBtn('조건 이벤트', () => { schema.rules.events.push({ id: 'event' + (schema.rules.events.length + 1), when: '', effects: [] }); rerender(); }));
@@ -5362,10 +5587,58 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '산적이 상단을 습격했다...' })),
         ),
+        choiceEditor(ev),
       ));
     });
     wrap.appendChild(addBtn('랜덤 이벤트', () => { re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 }); rerender(); }));
     return wrap;
+  }
+
+  // 갈림길(choices) 편집 — 이벤트의 속성이라 별도 탭이 아니라 이벤트 블록 안에 붙는다.
+  // (조건 이벤트·랜덤 이벤트 공용)
+  function choiceEditor(ev) {
+    const box = h('div', { class: 'sce-sub' });
+    if (!Array.isArray(ev.choices)) {
+      box.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
+        ev.choices = [{ label: '', effects: [] }, { label: '', effects: [] }];
+        ev.timeout = ev.timeout ?? 3;
+        rerender();
+      } }, '⌛ 갈림길로 만들기 — 터지면 선택지를 내밀고 유저가 /선택으로 고를 때까지 기다린다'));
+      return box;
+    }
+    box.appendChild(h('div', { class: 'sce-hint' },
+      '이 이벤트는 갈림길이다: 터지면 상태창에 선택지가 뜨고, 유저가 채팅에 /선택 번호 를 칠 때까지 기다린다. '
+      + '기다리는 동안 이 선택지들이 만질 변수는 보조 AI에서 빠진다(결과 선점 방지). '
+      + '타임아웃이 지나면 맨 마지막 항목이 자동 결정되므로, 마지막은 조건 없는 "외면한다"류로 둘 것.'));
+    ev.choices.forEach((c, ci) => {
+      box.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          h('span', { class: 'sce-w-s' }, `${ci + 1}.`),
+          bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '선택지 이름 (예: 토벌대를 보낸다)' }),
+          pair('조건', bindInput(c.when, (x) => { c.when = String(x).trim() || undefined; rerender(); },
+            { cls: 'sce-w-m', ph: '(비우면 항상) gold >= 100' }),
+            '거짓이면 잠김(🔒)으로 표시되고 고를 수 없다. 번호는 유지된다'),
+          grip(ev.choices, ci, rerender),
+        ),
+        effectRows(schema, c.effects = c.effects || [], rerender),
+        h('div', { class: 'sce-row' },
+          pair('AI 전달문', bindInput(c.inject, (x) => { c.inject = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '(선택) 고른 턴에 AI에게 덧붙는 문장 — "[선택] 이름"은 자동으로 나간다' })),
+        ),
+      ));
+    });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+        ev.choices.push({ label: '', effects: [] }); rerender();
+      } }, '+ 선택지'),
+      pair('타임아웃', bindInput(ev.timeout, (x) => { ev.timeout = numOrNull(x) ?? undefined; rerender(); },
+        { cls: 'sce-w-s', ph: '턴' }),
+        '안 고르고 이만큼 지나면 마지막 항목 자동. 비우면 고를 때까지 무한정 기다린다 (비추)'),
+      h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        delete ev.choices; delete ev.timeout; rerender();
+      } }, '갈림길 떼기'),
+    ));
+    return box;
   }
 
   // ── 탭: 명령 ──────────────────────────────────────────────
@@ -7786,6 +8059,16 @@ const DAILY = {
         { id: 'small_gain', weight: 1, cooldown: 6,
           effects: [{ set: 'money', expr: 'money + rand(3000, 15000)' }],
           notify: '돈이 조금 생겼다. 받은 것인지 찾은 것인지는 장면에 맞게 정하라.' },
+        // ── 갈림길(choices) 예시 — 터지면 유저가 /선택으로 고를 때까지 기다린다 (v0.41).
+        //    마지막 항목은 조건 없이 — 2턴 안에 안 고르면 그게 자동 결정된다.
+        { id: 'stray_cat', weight: 1, cooldown: 8, timeout: 2,
+          notify: '골목에서 야윈 길고양이가 따라온다. 어떻게 할지 정할 때까지 계속 곁을 맴돈다.',
+          choices: [
+            { label: '쓰다듬어 준다', inject: '손끝에 닿은 고양이가 낯을 가리면서도 떠나지 않는다.' },
+            { label: '먹이를 사서 준다', when: 'money >= 3000',
+              effects: [{ set: 'money', expr: 'money - 3000' }] },
+            { label: '모른 척 지나친다' },
+          ] },
         // ── 날씨 ── 바뀔 때만 후보에 오르게 when으로 막는다 (같은 날씨로 "바뀌었다"고 알리면 이상하다)
         { id: 'sky_rain', weight: 2, cooldown: 5, when: 'weather != "비" and weather != "눈"',
           effects: [{ set: 'weather', expr: '"비"' }],
@@ -8419,6 +8702,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       const r = engine.applyChatCommands(schema, session.current, content);
       if (!r.applied.length) return content;
       session.current.vars = r.vars;
+      // /선택은 기록만 — 집행은 다음 전송 단계(sendPhase)가 한다. pre 스냅샷에 실려 리롤에도 산다.
+      if (r.pick != null) session.current.meta = { ...session.current.meta, pendingChoicePick: r.pick };
       if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();

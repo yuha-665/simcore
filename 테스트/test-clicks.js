@@ -144,6 +144,8 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 {
   ck('getRootDocument 사용', src.includes('Risuai.getRootDocument()'), '');
   ck('문서 클릭 리스너', src.includes("addEventListener('click'"), '');
+  ck('★ 캡처 단계 등록 (조작줄처럼 버블이 막히는 영역 면역)', src.includes('onDocClick(ev); }, true)'), '');
+  ck('제안 클릭 실패 가시화 (조용한 무반응 금지)', src.includes('sugNotice'), '');
   ck('히트 셀렉터', src.includes('[class*="sim-hit"]'), '');
   ck('클릭 액션 = 우상단 버튼 경로 재사용', src.includes('onActionButton(hit.id)'), '');
   ck('클릭 선택 = pickChoice 공용', src.includes('engine.pickChoice(schema, session.current, idx)'), '');

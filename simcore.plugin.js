@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.43.0
+//@version 0.43.1
 //@display-name SimCore (시뮬 엔진) v0.43 다음 행동 제안
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.43.1 ────────────────────────────────────────────────
+// [수정] 조작줄(제안 칩 등) 클릭 무반응 제보 대응.
+// - 클릭 리스너를 **캡처 단계**로 등록 — document 캡처는 이벤트 경로의 맨 앞이라, 입력창 위
+//   조작줄처럼 중간에서 버블이 막힐 수 있는 영역의 클릭도 반드시 잡힌다 (SafeDocument가
+//   options.capture를 통과시키는 것 소스 확인). 우리는 읽기만 하므로 앱 동작에 영향 없음.
+// - 제안 클릭의 실패를 가시화: sendChat API 부재(다른 리수 버전)/권한 거부 → 1회 알림,
+//   결말을 sugNotice로 남겨 패널 진단 줄에 표시. "눌렀는데 아무 일도 없음"을 없앤다.
+// - 진단 줄: 마지막 클릭 기록을 상태와 무관하게 표시 (기록 있음 = 리스너는 산다는 뜻).
 //
 // ── v0.43 ──────────────────────────────────────────────────
 // [수정·중요] v0.42 클릭 조작이 실기에서 무반응이던 것 — 원인 둘 다 소스맵으로 확정.
@@ -9360,9 +9369,12 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       return;
     }
     try {
-      await hitDoc.addEventListener('click', (ev) => { onDocClick(ev); });
+      // 캡처 단계(true)로 등록한다 — document 캡처 리스너는 이벤트 경로에서 **가장 먼저** 불리므로,
+      // 입력창·조작줄처럼 중간 어딘가가 버블을 삼키는 영역의 클릭도 반드시 잡힌다.
+      // (SafeDocument.addEventListener는 options의 capture를 그대로 통과시킨다 — 소스 확인)
+      await hitDoc.addEventListener('click', (ev) => { onDocClick(ev); }, true);
       hitState = 'on';
-      console.log('[simcore] 클릭 조작 켜짐 — 상태창 범례·선택지를 직접 누를 수 있다');
+      console.log('[simcore] 클릭 조작 켜짐 — 상태창 범례·선택지·제안 칩을 직접 누를 수 있다');
     } catch (e) { hitDoc = null; hitState = 'error'; console.log('[simcore] 클릭 리스너 등록 실패:', e.message); }
   }
 
@@ -9399,21 +9411,38 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   }
 
   // 제안 칩 클릭 (v0.43) — 그 문장을 유저 메시지로 바로 전송한다 (공식 sendChat API, 전용 권한 1회).
-  // 생성 중이거나 권한이 거부되면 보내지 않는다 — 칩은 어차피 눈으로 보고 따라 칠 수 있다.
+  // 실패는 조용히 죽이지 않는다 — "눌렀는데 아무 일도 없음"이 최악의 증상이라, 사유를 남기고 알린다.
   let sendChatDenied = false;
+  let sugNotice = null; // 진단용 — 마지막 제안 클릭의 결말
   async function onSuggestionClick(idx) {
     const sug = session?.current?.meta?.suggestions || [];
     const text = sug[idx];
-    if (!text || sendChatDenied) return;
+    if (!text) return;
+    if (typeof Risuai.sendChat !== 'function') {
+      sugNotice = '전송 API 없음 (이 리수 버전)';
+      if (!sendChatDenied) {
+        sendChatDenied = true;
+        try { await Risuai.alert('이 리수 버전에는 플러그인 전송 API(sendChat)가 없어 칩으로 바로 보낼 수 없어요 — 칩의 문장을 직접 입력해 주세요.'); } catch {}
+      }
+      return;
+    }
+    if (sendChatDenied) return;
     try {
+      console.log('[simcore] 제안 전송 시도:', text);
       const ok = await Risuai.sendChat(text);
       if (ok === false) {
         sendChatDenied = true;
+        sugNotice = '전송 권한 거부됨';
         try { await Risuai.alert('전송 권한이 거부되어 제안을 바로 보낼 수 없어요 — 칩의 문장을 직접 입력해 주세요. (리수 설정 → 플러그인 → simcore 방패 아이콘으로 권한 초기화 가능)'); } catch {}
         return;
       }
+      sugNotice = '전송됨';
       console.log('[simcore] 제안 전송:', text);
-    } catch (e) { console.log('[simcore] 제안 전송 불가:', e.message); } // 생성 중 등 — 조용히 무시
+    } catch (e) {
+      // 생성 중(doingChat)이면 조용히 넘기고, 그 외는 진단 줄에 남긴다
+      sugNotice = '실패: ' + e.message;
+      console.log('[simcore] 제안 전송 불가:', e.message);
+    }
   }
 
   // 클릭으로 갈림길 고르기 — /선택 명령과 같은 검증(pickChoice)·같은 기록 경로.
@@ -10192,7 +10221,7 @@ count(목록)  has(목록, "항목")</pre>
         denied: '꺼짐 — mainDom 권한 없음 (거부했었다면 리수 설정 → 플러그인 → simcore 방패 아이콘으로 초기화)',
         error: '오류 — 콘솔 로그 확인' }[hitState] || hitState;
       const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개 ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
-      hitStateEl.textContent = `클릭 조작: ${label}${hitState === 'on' ? lc : ''}`;
+      hitStateEl.textContent = `클릭 조작: ${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
     }
     const presetsDiv = document.getElementById('sc-presets');
     if (!session) {

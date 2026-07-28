@@ -89,7 +89,9 @@ SafeClassArray — `__classType: 'REMOTE_REQUIRED'`)는 게스트에 **REMOTE_RE
 buttons, altKey, ctrlKey, shiftKey, metaKey}`, 키보드는 `{type, key, code, repeat, 수식키}`만 준다
 — **`target` 없음**. `SafeElement.addEventListener`는 `this.#element`가 아니라 전역 `document`에
 리스너를 건다 (문서 이벤트: click·mouse 계열 즉시 / 키 입력: 0~99ms 랜덤 지연 후 전달 —
-그 밖의 타입은 throw).
+그 밖의 타입은 throw). options의 **capture가 그대로 통과**된다 — document 캡처 리스너는 이벤트
+경로의 맨 앞이라 **어디서 버블을 삼켜도 반드시 먼저 본다** (입력창 위 조작줄 클릭이 안 잡히던
+v0.43.0 증상의 해법 — 히트테스트 리스너는 캡처로 걸 것).
 
 "어느 버튼이 눌렸는지"는 못 받지만 **그 좌표에 우리 버튼이 있는지는 잴 수 있다**:
 `Risuai.getRootDocument()`(mainDom 권한, 아래 절) → `querySelectorAll` + `getBoundingClientRect()`

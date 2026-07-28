@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.43.1
+//@version 0.43.2
 //@display-name SimCore (시뮬 엔진) v0.43 다음 행동 제안
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.43.2 ────────────────────────────────────────────────
+// [진단 확정] 실기 제보 판독: 클릭 기계는 전 구간 정상 (캡처 수신 → 후보 탐색 → 명중 → 디스패치,
+//   제안 칩 명중까지 성공). 실체는 둘 — ① sendChat이 "plugin-based model is currently blocked"로
+//   throw: **메인 모델이 플러그인 프로바이더면 리수가 플러그인 전송을 정책 차단**한다. 이 환경에선
+//   자동 전송이 원천 불가 → 1회 알림 + 칩을 표시 전용으로 전환(힌트 "보고 따라 입력").
+//   ② "후보 0개"는 빈 채팅(상태창·조작줄 미렌더) 시점의 클릭 — 진단 줄에 상태창·조작줄 존재
+//   카운트를 추가해 다음부터 진단 줄이 스스로 판독되게 했다.
 //
 // ── v0.43.1 ────────────────────────────────────────────────
 // [수정] 조작줄(제안 칩 등) 클릭 무반응 제보 대응.
@@ -9392,7 +9400,16 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       if ((ev.button ?? 0) !== 0) return;
       const els = await hitDoc.querySelectorAll('[class*="sim-hit"]');
       const n = typeof els.length === 'function' ? await els.length() : els.length;
-      hitLastClick = { x: ev.clientX, y: ev.clientY, cand: n, hit: null };
+      // 진단 보강: 후보가 0일 때 "상태창/조작줄이 화면에 있기나 한가"까지 같이 남긴다 —
+      // 빈 채팅에서 눌러 보고 "안 된다"로 읽는 사고를 진단 줄이 스스로 걸러 준다
+      let stCnt = -1, stripCnt = -1;
+      try {
+        const st = await hitDoc.querySelectorAll('[class*="sim-status"]');
+        stCnt = typeof st.length === 'function' ? await st.length() : st.length;
+        const sp = await hitDoc.querySelectorAll('[data-plugin-chat-panel]');
+        stripCnt = typeof sp.length === 'function' ? await sp.length() : sp.length;
+      } catch {}
+      hitLastClick = { x: ev.clientX, y: ev.clientY, cand: n, st: stCnt, strip: stripCnt, hit: null };
       for (let i = 0; i < n; i++) {
         const el = typeof els.at === 'function' ? await els.at(i) : els[i];
         if (!el) continue;
@@ -9439,7 +9456,19 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       sugNotice = '전송됨';
       console.log('[simcore] 제안 전송:', text);
     } catch (e) {
-      // 생성 중(doingChat)이면 조용히 넘기고, 그 외는 진단 줄에 남긴다
+      // 메인 모델이 플러그인 프로바이더(게이트웨이류)면 리수가 플러그인 전송을 정책적으로 막는다.
+      // 이 환경에선 자동 전송이 원천 불가 — 1회 설명하고 칩은 "보고 따라 치는" 용도로 남긴다.
+      if (String(e.message).includes('plugin-based model')) {
+        sendChatDenied = true;
+        sugNotice = '전송 차단 (메인 모델이 플러그인 프로바이더)';
+        try { await syncActionButtons(); } catch {} // 조작줄 힌트를 "따라 입력"으로 갱신
+        try {
+          await Risuai.alert('메인 모델을 플러그인 프로바이더(게이트웨이류)로 쓰고 있어서, 리수가 플러그인의 자동 전송을 막아요. '
+            + '제안 칩은 그대로 보이니 마음에 드는 문장을 따라 입력해 주세요.');
+        } catch {}
+        return;
+      }
+      // 생성 중(doingChat) 등 일시적 실패 — 진단 줄에만 남긴다
       sugNotice = '실패: ' + e.message;
       console.log('[simcore] 제안 전송 불가:', e.message);
     }
@@ -9492,13 +9521,15 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         html += '<span style="opacity:.6;font-size:.8em">전송하면 반영 · 누르면 해제</span></div>';
       }
       // 다음 행동 제안 (v0.43) — 보조 AI가 만든 "다음 인풋" 후보. 누르면 그대로 전송된다.
+      // 전송이 막힌 환경(플러그인 프로바이더 메인 모델 등)에선 표시 전용으로 바뀐다.
       const sugs = session.current.meta.suggestions || [];
       if (sugs.length) {
         html += '<div><span style="opacity:.65;font-size:.8em">💡 다음 행동</span> ';
         sugs.forEach((t, i) => {
-          html += `<span class="sim-hit sim-hitsug-${i}" style="${chip}">${escapeText(t)}</span>`;
+          const cls = sendChatDenied ? '' : ` class="sim-hit sim-hitsug-${i}"`;
+          html += `<span${cls} style="${chip}${sendChatDenied ? ';cursor:default' : ''}">${escapeText(t)}</span>`;
         });
-        html += '<span style="opacity:.6;font-size:.8em">누르면 그대로 전송</span></div>';
+        html += `<span style="opacity:.6;font-size:.8em">${sendChatDenied ? '전송이 막힌 환경 — 보고 따라 입력' : '누르면 그대로 전송'}</span></div>`;
       }
       await Risuai.setChatPanel(html || null, { id: 'simcore-strip' });
     } catch (e) { console.log('[simcore] 조작줄 갱신 실패:', e.message); }
@@ -10220,7 +10251,7 @@ count(목록)  has(목록, "항목")</pre>
       const label = { idle: '아직 시도 안 함', pending: '패널이 닫히면 켜기를 시도', on: '✓ 켜짐',
         denied: '꺼짐 — mainDom 권한 없음 (거부했었다면 리수 설정 → 플러그인 → simcore 방패 아이콘으로 초기화)',
         error: '오류 — 콘솔 로그 확인' }[hitState] || hitState;
-      const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개 ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
+      const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개(상태창 ${hitLastClick.st ?? '?'}·조작줄 ${hitLastClick.strip ?? '?'}) ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
       hitStateEl.textContent = `클릭 조작: ${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
     }
     const presetsDiv = document.getElementById('sc-presets');

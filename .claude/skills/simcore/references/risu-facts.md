@@ -117,7 +117,9 @@ SafeElement에 있는 것(전부 프록시 경유 await): appendChild/remove류,
 replacer/db/provider는 3일마다 재확인(periodically), mainDom/sendChat은 1회 영구.
 
 `Risuai.sendChat(message)` — **유저 메시지를 넣고 생성까지 돌리는 공식 API** ('sendChat' 권한).
-생성 중(doingChat)이거나 메인 모델이 플러그인 프로바이더면 throw, 권한 거부면 false.
+생성 중(doingChat)이면 throw, 권한 거부면 false. ⚠ **메인 모델이 플러그인 프로바이더**(`pluginmodel:::`,
+게이트웨이류)면 "Sending chat with plugin-based model is currently blocked"로 **정책 차단(throw)** —
+그 환경에선 자동 전송이 원천 불가라 표시 전용으로 강등할 것 (v0.43.2 실기 확정).
 SimCore v0.43 제안 칩(누르면 그대로 전송)이 이것이다.
 
 클릭 없이 가는 다른 통로:

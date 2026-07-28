@@ -71,6 +71,10 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+/* 클릭 조작(v0.42) — 어댑터가 좌표 히트테스트로 이 클래스가 붙은 자리를 진짜 버튼으로 만든다.
+   mainDom 권한이 없으면 그냥 표시용 범례다 (기존 동작 그대로) */
+.sim-hit{cursor:pointer}
+.sim-hit:hover{filter:brightness(1.25)}
 .sim-action-hint{flex-basis:100%;font-size:.78em;opacity:.55;margin-bottom:1px}
 .sim-action{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.4);font-size:.88em;background:transparent}
 .sim-action-glyph{font-size:1.15em;line-height:1}
@@ -185,11 +189,26 @@ function choicesHtml(schema, state) {
   ev.choices.forEach((c, i) => {
     let locked = false;
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
-    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
+    // 잠긴 항목에는 히트 클래스를 안 붙인다 — 눌러도 안 되는 걸 버튼처럼 보이게 하지 않는다
+    const hit = locked ? '' : ` sim-hit sim-hitchoice-${i}`;
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
   });
-  out += '<div class="sim-choices-hint">채팅에 /선택 번호 를 치면 골라진다 (예: /선택 1)'
+  out += '<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)'
     + (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '') + '</div></div>';
   return out;
+}
+
+/**
+ * 히트 클래스 해독 — 어댑터의 좌표 히트테스트가 명중한 요소에서 "무슨 버튼인지"를 읽는다.
+ * 메시지 파이프라인은 class에 x-risu- 접두를 붙이므로 붙었든 안 붙었든(조작줄) 다 잡는다.
+ */
+function decodeHitClass(className) {
+  const s = String(className ?? '');
+  let m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitact-([A-Za-z_][A-Za-z0-9_]*)/);
+  if (m) return { kind: 'action', id: m[1] };
+  m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitchoice-(\d+)/);
+  if (m) return { kind: 'choice', idx: Number(m[1]) };
+  return null;
 }
 
 function commandsHtml(schema) {
@@ -289,9 +308,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다)
   if (actionStates && actionStates.length) {
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">화면 우상단 버튼으로 실행</span>`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (우상단 버튼과 같다)</span>`;
     for (const a of actionStates) {
-      const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ');
+      // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
+      const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;
+      const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ') + hit;
       const title = a.disabled && a.reason ? ` title="${esc(a.reason)}"` : '';
       // 라벨이 이모지로 시작하면 그게 곧 버튼 아이콘이다 → 배지로 떼어내고 본문에서는 지운다.
       // (안 지우면 '🔥 🔥 화로 최대'처럼 두 번 나온다)
@@ -599,4 +620,4 @@ function fmtNum(n) {
 }
 
 module.exports = { renderStatusHtml, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
-  layoutGroups, layoutCss, multiPanelTemplate, BASE_CSS, THEMES };
+  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };

@@ -107,7 +107,7 @@ ck('★ 템플릿 라벨은 전부 글리프 1개로 압축됨',
   const html = renderStatusHtml(T, st, null, mk(), { includeStyle: false });
 
   ck('범례가 상태창에 렌더됨', html.includes('sim-actions'), '');
-  ck('안내 문구가 붙음', html.includes('화면 우상단 버튼으로 실행'), '');
+  ck('안내 문구가 붙음', html.includes('눌러서 무장 (우상단 버튼과 같다)'), '');
   ck('★ 범례에 라벨 전체가 나옴 (아이콘 뜻을 알 수 있음)',
     html.includes('화로 최대') && html.includes('채탄 작업') && html.includes('단열 보강'), '');
   ck('★ 범례 글리프가 우상단 버튼 글리프와 같음',

@@ -125,6 +125,25 @@ function findChoiceEvent(schema, id) {
   return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
+/**
+ * 갈림길 선택 검증 — /선택 명령과 클릭 조작이 같은 눈으로 봐야 어긋나지 않는다.
+ * 상태는 바꾸지 않는다 (기록은 부르는 쪽이, 집행은 전송 단계가).
+ * @returns {{ ok: boolean, label?: string, reason?: string, locked?: boolean }}
+ */
+function pickChoice(schema, state, idx) {
+  const pc = state.meta?.pendingChoice;
+  const ev = pc ? findChoiceEvent(schema, pc.id) : null;
+  if (!ev) return { ok: false, reason: '지금 고를 선택지가 없음' };
+  const c = ev.choices[idx];
+  if (!c) return { ok: false, reason: `1~${ev.choices.length} 사이 번호가 아님` };
+  if (c.when) {
+    let pass = true;
+    try { pass = truthy(evaluate(c.when, makeLookup(schema, state.vars), null)); } catch { pass = false; }
+    if (!pass) return { ok: false, reason: `'${c.label}'은 지금 고를 수 없음 🔒`, locked: true };
+  }
+  return { ok: true, label: c.label };
+}
+
 // ── 조회 (vars + derived, 순환 감지) ─────────────────────────
 
 function makeLookup(schema, vars) {
@@ -996,15 +1015,12 @@ function applyChatCommands(schema, state, text, rng) {
       if (idx < 0 || idx >= labels.length) {
         return `(시스템: 선택 — 이렇게 고르세요: ${labels.map((l, i) => `/선택 ${i + 1} (${l})`).join(' · ')})`;
       }
-      const c = ev.choices[idx];
-      if (c.when) {
-        let ok = true;
-        try { ok = truthy(evaluate(c.when, makeLookup(schema, vars), null)); } catch { ok = false; }
-        if (!ok) return `(시스템: 선택 — '${c.label}'은 지금 고를 수 없음 🔒)`;
-      }
+      // 명령 앞줄이 변수를 바꿨을 수 있으니 지금까지의 vars로 검증한다 (클릭 조작과 같은 검증기)
+      const v = pickChoice(schema, { meta: state.meta, vars }, idx);
+      if (!v.ok) return `(시스템: 선택 — ${v.reason})`;
       pick = idx;
-      applied.push({ id: `choice:${ev.id}`, from: null, to: c.label, how: '선택' });
-      return `(시스템: 선택 — ${idx + 1}. ${c.label})`;
+      applied.push({ id: `choice:${ev.id}`, from: null, to: v.label, how: '선택' });
+      return `(시스템: 선택 — ${idx + 1}. ${v.label})`;
     }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
@@ -1078,7 +1094,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

@@ -1,13 +1,34 @@
 //@name simcore
 //@api 3.0
-//@version 0.41.0
-//@display-name SimCore (시뮬 엔진) v0.41 판정·갈림길
+//@version 0.42.0
+//@display-name SimCore (시뮬 엔진) v0.42 클릭 조작
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.42 ──────────────────────────────────────────────────
+// 클릭 조작 — 상태창 안 범례·갈림길 선택지가 진짜 버튼이 된다. 이 플러그인의 최약점(조작)을
+// 정면으로 푼 것. "메시지 안 버튼은 구조적으로 불가"는 절반만 사실이었다:
+// 리수는 클릭의 target을 잘라 넘기지만 **clientX/Y는 남기고**, SafeElement에는
+// getBoundingClientRect가 있다 — "어디를 눌렀는지"는 못 받아도 "그 좌표에 우리 버튼이
+// 있는지"는 우리가 잴 수 있다 (좌표 히트테스트, getRootDocument + document click 위임).
+// - render가 액션 범례에 sim-hitact-<id>, 선택지에 sim-hitchoice-<n> 클래스를 심고,
+//   어댑터가 문서 클릭마다 그 사각형들과 좌표를 대조한다. 잠긴 항목엔 안 심는다.
+//   메시지 파이프라인의 x-risu- 클래스 접두는 decodeHitClass가 양쪽 다 읽는다.
+//   지난 메시지의 같은 버튼도 같은 논리 버튼 — 어느 것에 맞아도 결과가 같아 첫 명중만 쓴다.
+//   접힌 상태창은 사각형이 0×0이라 자연히 안 맞는다.
+// - 클릭 = 기존 경로 재사용: 범례 클릭은 우상단 버튼과 같은 토글(onActionButton),
+//   선택지 클릭은 /선택과 같은 검증(engine.pickChoice 공용)·같은 기록(pendingChoicePick).
+//   새 상태 의미론이 없다 — 리롤 안정도 그대로.
+// - 조작줄(setChatPanel 'simcore-strip'): 입력창 위 도킹 패널에 무장 액션·갈림길 요약.
+//   클릭 피드백이자 "전송하면 뭐가 반영되나"의 답. 여기 칩들도 같은 히트테스트로 눌린다
+//   (setChatPanel은 기본 DOMPurify만 타서 클래스 접두가 없다). 보여줄 게 없으면 패널 제거.
+// - mainDom 권한 확인창 1회 필요 (심코어 봇이 로드될 때만 요청 — 안 쓰는 유저에겐 안 뜬다).
+//   거부하면 조용히 꺼지고 우상단 버튼·/선택 명령은 그대로 동작한다.
+// - 우리 전체화면 패널이 떠 있는 동안은 히트테스트를 쉰다 (panelVisible 가드).
 //
 // ── v0.41 ──────────────────────────────────────────────────
 // choices(갈림길) — docs/design-주사위-선택지.md §2의 구현. actions가 상시 동사라면
@@ -1426,6 +1447,25 @@ function findChoiceEvent(schema, id) {
   return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
+/**
+ * 갈림길 선택 검증 — /선택 명령과 클릭 조작이 같은 눈으로 봐야 어긋나지 않는다.
+ * 상태는 바꾸지 않는다 (기록은 부르는 쪽이, 집행은 전송 단계가).
+ * @returns {{ ok: boolean, label?: string, reason?: string, locked?: boolean }}
+ */
+function pickChoice(schema, state, idx) {
+  const pc = state.meta?.pendingChoice;
+  const ev = pc ? findChoiceEvent(schema, pc.id) : null;
+  if (!ev) return { ok: false, reason: '지금 고를 선택지가 없음' };
+  const c = ev.choices[idx];
+  if (!c) return { ok: false, reason: `1~${ev.choices.length} 사이 번호가 아님` };
+  if (c.when) {
+    let pass = true;
+    try { pass = truthy(evaluate(c.when, makeLookup(schema, state.vars), null)); } catch { pass = false; }
+    if (!pass) return { ok: false, reason: `'${c.label}'은 지금 고를 수 없음 🔒`, locked: true };
+  }
+  return { ok: true, label: c.label };
+}
+
 // ── 조회 (vars + derived, 순환 감지) ─────────────────────────
 
 function makeLookup(schema, vars) {
@@ -2297,15 +2337,12 @@ function applyChatCommands(schema, state, text, rng) {
       if (idx < 0 || idx >= labels.length) {
         return `(시스템: 선택 — 이렇게 고르세요: ${labels.map((l, i) => `/선택 ${i + 1} (${l})`).join(' · ')})`;
       }
-      const c = ev.choices[idx];
-      if (c.when) {
-        let ok = true;
-        try { ok = truthy(evaluate(c.when, makeLookup(schema, vars), null)); } catch { ok = false; }
-        if (!ok) return `(시스템: 선택 — '${c.label}'은 지금 고를 수 없음 🔒)`;
-      }
+      // 명령 앞줄이 변수를 바꿨을 수 있으니 지금까지의 vars로 검증한다 (클릭 조작과 같은 검증기)
+      const v = pickChoice(schema, { meta: state.meta, vars }, idx);
+      if (!v.ok) return `(시스템: 선택 — ${v.reason})`;
       pick = idx;
-      applied.push({ id: `choice:${ev.id}`, from: null, to: c.label, how: '선택' });
-      return `(시스템: 선택 — ${idx + 1}. ${c.label})`;
+      applied.push({ id: `choice:${ev.id}`, from: null, to: v.label, how: '선택' });
+      return `(시스템: 선택 — ${idx + 1}. ${v.label})`;
     }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
@@ -2379,7 +2416,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -2461,6 +2498,10 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+/* 클릭 조작(v0.42) — 어댑터가 좌표 히트테스트로 이 클래스가 붙은 자리를 진짜 버튼으로 만든다.
+   mainDom 권한이 없으면 그냥 표시용 범례다 (기존 동작 그대로) */
+.sim-hit{cursor:pointer}
+.sim-hit:hover{filter:brightness(1.25)}
 .sim-action-hint{flex-basis:100%;font-size:.78em;opacity:.55;margin-bottom:1px}
 .sim-action{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:8px;border:1px solid rgba(128,128,128,.4);font-size:.88em;background:transparent}
 .sim-action-glyph{font-size:1.15em;line-height:1}
@@ -2575,11 +2616,26 @@ function choicesHtml(schema, state) {
   ev.choices.forEach((c, i) => {
     let locked = false;
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
-    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
+    // 잠긴 항목에는 히트 클래스를 안 붙인다 — 눌러도 안 되는 걸 버튼처럼 보이게 하지 않는다
+    const hit = locked ? '' : ` sim-hit sim-hitchoice-${i}`;
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
   });
-  out += '<div class="sim-choices-hint">채팅에 /선택 번호 를 치면 골라진다 (예: /선택 1)'
+  out += '<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)'
     + (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '') + '</div></div>';
   return out;
+}
+
+/**
+ * 히트 클래스 해독 — 어댑터의 좌표 히트테스트가 명중한 요소에서 "무슨 버튼인지"를 읽는다.
+ * 메시지 파이프라인은 class에 x-risu- 접두를 붙이므로 붙었든 안 붙었든(조작줄) 다 잡는다.
+ */
+function decodeHitClass(className) {
+  const s = String(className ?? '');
+  let m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitact-([A-Za-z_][A-Za-z0-9_]*)/);
+  if (m) return { kind: 'action', id: m[1] };
+  m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitchoice-(\d+)/);
+  if (m) return { kind: 'choice', idx: Number(m[1]) };
+  return null;
 }
 
 function commandsHtml(schema) {
@@ -2679,9 +2735,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다)
   if (actionStates && actionStates.length) {
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">화면 우상단 버튼으로 실행</span>`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (우상단 버튼과 같다)</span>`;
     for (const a of actionStates) {
-      const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ');
+      // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
+      const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;
+      const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ') + hit;
       const title = a.disabled && a.reason ? ` title="${esc(a.reason)}"` : '';
       // 라벨이 이모지로 시작하면 그게 곧 버튼 아이콘이다 → 배지로 떼어내고 본문에서는 지운다.
       // (안 지우면 '🔥 🔥 화로 최대'처럼 두 번 나온다)
@@ -2989,7 +3047,7 @@ function fmtNum(n) {
 }
 
 module.exports = { renderStatusHtml, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
-  layoutGroups, layoutCss, multiPanelTemplate, BASE_CSS, THEMES };
+  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };
 
 });
 
@@ -8175,7 +8233,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 (async () => {
   const { validateSchema } = SimCore.require('validate');
   const { SimSession } = SimCore.require('session');
-  const { renderStatusHtml, actionGlyph } = SimCore.require('render');
+  const { renderStatusHtml, actionGlyph, decodeHitClass } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
   const engine = SimCore.require('engine');
@@ -8595,6 +8653,9 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     finally {
       try { await syncActionButtons(); }
       catch (e) { console.log('[simcore] 액션 버튼 갱신 실패:', e.message); }
+      // 클릭 조작은 심코어 봇이 실제로 로드됐을 때 한 번만 켠다 — 권한 확인창이
+      // 심코어를 안 쓰는 유저에게까지 뜨면 안 된다
+      if (session) { try { await initClickControls(); } catch (e) { console.log('[simcore] 클릭 조작 초기화 실패:', e.message); } }
     }
   }
 
@@ -8944,6 +9005,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   }
 
   async function syncActionButtons() {
+    // 조작줄은 무장 외에 갈림길 상태도 보므로, 버튼 시그니처와 무관하게 항상 함께 갱신한다
+    await updateControlStrip();
     const states = currentActionStates();
     const sig = JSON.stringify(states);
     if (sig === actionBtnSig) return; // 변화 없음 — 재등록 생략
@@ -8961,7 +9024,9 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       const icon = st.disabled ? '🔒' : (st.armed ? '✅' : actionGlyph(st.label));
       await Risuai.registerButton(
         { name: st.label, icon: escapeText(icon), iconType: 'html', location: 'action', id: btnId },
-        () => { onActionButton(st.id); },
+        // 프로미스를 돌려줘야 클릭 처리가 클릭 단위로 직렬화된다 — 조작줄 갱신(await)이
+        // 늘어난 v0.42부터는 던져두기(fire-and-forget)면 지연 재등록이 다음 동작과 경합한다
+        () => onActionButton(st.id),
       );
     }
     for (const old of actionBtnIds) {
@@ -8979,6 +9044,99 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     }
     await syncActionButtons();
     if (panelBuilt) renderPanel();
+  }
+
+  // ── 클릭 조작 (v0.42) — 상태창 범례·갈림길 선택지를 진짜 버튼으로 ──────────
+  // 리스는 메시지 안 클릭의 target을 잘라 넘기지만 clientX/Y는 남기고, SafeElement에는
+  // getBoundingClientRect가 있다. "어디를 눌렀는지"는 못 받아도 **그 좌표에 우리 버튼이
+  // 있는지는 우리가 잴 수 있다** — render가 심어 둔 sim-hit 클래스의 사각형과 클릭 좌표를
+  // 대조한다 (지난 메시지의 같은 버튼도 같은 논리 버튼이라 어느 것에 맞아도 결과가 같다).
+  // mainDom 권한(1회 확인창)이 필요하고, 거부하면 조용히 꺼진다 — 범례는 표시용으로 남고
+  // 우상단 버튼·/선택 명령은 그대로 동작한다.
+  let hitDoc = null;
+  let hitInitDone = false;
+  async function initClickControls() {
+    if (hitInitDone) return;
+    hitInitDone = true;
+    try { hitDoc = await Risuai.getRootDocument(); } catch { hitDoc = null; }
+    if (!hitDoc) {
+      console.log('[simcore] 클릭 조작 꺼짐 (mainDom 권한 없음) — 우상단 버튼·/선택 명령은 그대로 동작');
+      return;
+    }
+    try {
+      await hitDoc.addEventListener('click', (ev) => { onDocClick(ev); });
+      console.log('[simcore] 클릭 조작 켜짐 — 상태창 범례·선택지를 직접 누를 수 있다');
+    } catch (e) { hitDoc = null; console.log('[simcore] 클릭 리스너 등록 실패:', e.message); }
+  }
+
+  async function onDocClick(ev) {
+    try {
+      if (!session || !schema || !hitDoc || panelVisible) return; // 우리 전체화면 패널이 덮는 동안은 무시
+      if (ev.button !== 0) return;
+      const els = hitDoc.querySelectorAll('[class*="sim-hit"]');
+      const n = els.length();
+      for (let i = 0; i < n; i++) {
+        const el = els.at(i);
+        const r = el.getBoundingClientRect();
+        if (!r || r.width <= 0 || r.height <= 0) continue; // 접혀 있거나 화면에 없는 요소
+        if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) continue;
+        const hit = decodeHitClass(el.getClassName());
+        if (!hit) continue;
+        if (hit.kind === 'action') await onActionButton(hit.id);
+        else if (hit.kind === 'choice') await onChoiceClick(hit.idx);
+        return; // 첫 명중 하나만
+      }
+    } catch (e) { console.log('[simcore] 클릭 처리 오류:', e.message); }
+  }
+
+  // 클릭으로 갈림길 고르기 — /선택 명령과 같은 검증(pickChoice)·같은 기록 경로.
+  // 기록만 하고 집행은 다음 전송이 한다 (효과식 rand·변화 로그·리롤 안정이 거기 있다).
+  async function onChoiceClick(idx) {
+    const v = engine.pickChoice(schema, session.current, idx);
+    if (!v.ok) { try { await Risuai.alert(`선택 — ${v.reason}`); } catch {} return; }
+    session.current.meta = { ...session.current.meta, pendingChoicePick: idx };
+    if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+    console.log('[simcore] 갈림길 클릭 선택:', idx + 1, v.label);
+    await syncActionButtons();
+    if (panelBuilt) renderPanel();
+  }
+
+  // ── 조작줄 — 입력창 위 도킹 패널 (setChatPanel) ─────────────────────────
+  // 무장된 액션·걸린 갈림길을 항상 보이는 자리에 요약한다. 클릭 피드백이자
+  // "지금 전송하면 뭐가 반영되나"의 답. 여기 칩들도 같은 히트테스트로 눌린다
+  // (setChatPanel은 class에 x-risu- 접두가 안 붙는다 — decodeHitClass가 양쪽 다 읽는다).
+  // 보여줄 게 없으면 패널 자체를 없앤다 (null = 제거).
+  async function updateControlStrip() {
+    try {
+      if (!session || !schema) { await Risuai.setChatPanel(null, { id: 'simcore-strip' }); return; }
+      const armed = currentActionStates().filter((s) => s.armed);
+      const pc = session.current.meta.pendingChoice;
+      const ev = pc ? engine.findChoiceEvent(schema, pc.id) : null;
+      const pick = session.current.meta.pendingChoicePick;
+      const chip = 'display:inline-block;margin:2px 4px 2px 0;padding:2px 9px;border:1px solid rgba(128,128,128,.45);border-radius:9px;font-size:.85em;cursor:pointer';
+      let html = '';
+      if (ev) {
+        html += '<div><span style="opacity:.65;font-size:.8em">⌛ 선택</span> ';
+        ev.choices.forEach((c, i) => {
+          const ok = engine.pickChoice(schema, session.current, i).ok;
+          const picked = pick === i;
+          const cls = picked || !ok ? '' : ` class="sim-hit sim-hitchoice-${i}"`;
+          const mark = picked ? '✅ ' : (ok ? '' : '🔒 ');
+          const extra = picked ? ';border-color:#7fc78a;cursor:default' : (ok ? '' : ';opacity:.45;cursor:default');
+          html += `<span${cls} style="${chip}${extra}">${mark}${i + 1}. ${escapeText(String(c.label ?? ''))}</span>`;
+        });
+        html += pick != null ? '<span style="opacity:.6;font-size:.8em">전송하면 반영</span>' : '';
+        html += '</div>';
+      }
+      if (armed.length) {
+        html += '<div><span style="opacity:.65;font-size:.8em">⚡ 무장</span> ';
+        for (const s of armed) {
+          html += `<span class="sim-hit sim-hitact-${s.id}" style="${chip};border-color:#c8a050">${escapeText(s.label)} ✕</span>`;
+        }
+        html += '<span style="opacity:.6;font-size:.8em">전송하면 반영 · 누르면 해제</span></div>';
+      }
+      await Risuai.setChatPanel(html || null, { id: 'simcore-strip' });
+    } catch (e) { console.log('[simcore] 조작줄 갱신 실패:', e.message); }
   }
 
   /** 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) — 상태 앵커·복원 기준점 */
@@ -9009,6 +9167,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   // ── 관리 패널 (플러그인 자체 iframe UI — 제약 없는 DOM) ────
   let lastOutIndex = -1;
   let panelBuilt = false;
+  let panelVisible = false; // 전체화면 패널이 떠 있는 동안은 클릭 히트테스트를 쉰다
 
   function buildPanelSkeleton() {
     if (panelBuilt) return;
@@ -9273,7 +9432,7 @@ count(목록)  has(목록, "항목")</pre>
       };
     }
 
-    document.getElementById('sc-close').onclick = () => Risuai.hideContainer();
+    document.getElementById('sc-close').onclick = () => { panelVisible = false; Risuai.hideContainer(); };
     document.getElementById('sc-reload').onclick = async () => { charKey = null; await loadForCurrentChar(); renderPanel(); };
     document.getElementById('sc-resetall').onclick = async () => {
       if (!session) return;
@@ -9844,6 +10003,7 @@ count(목록)  has(목록, "항목")</pre>
     await loadForCurrentChar();
     syncEditorToChar(); // 캐릭터가 바뀌었으면 편집기를 현재 캐릭터 설치본으로 (오염된 설치 사고 방지)
     renderPanel();
+    panelVisible = true;
     await Risuai.showContainer('fullscreen');
   }
 

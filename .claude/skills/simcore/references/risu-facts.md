@@ -72,20 +72,31 @@ ADD_ATTR: ['allow','allowfullscreen','frameborder','scrolling','risu-ctrl','risu
 같은 id가 여럿이면 `<label for>`은 문서에서 처음 만난 것을 집는다 → 최신 메시지의 탭이 맨 위 글을 건드린다.
 메시지 번호를 섞을 것(SimCore는 `{uid}`).
 
-## ★ 메인 DOM 클릭은 target을 못 받는다
+## ★ 메인 DOM 클릭은 target을 못 받는다 — 그러나 좌표 히트테스트로 우회된다 (v0.42)
 
 리수가 플러그인에 이벤트를 넘길 때 `trimEvent`로 잘라 `{type, clientX, clientY, button, buttons, 수식키}`만 준다
-— **`target` 없음**. 게다가 `SafeElement.addEventListener`는 `this.#element`가 아니라 전역 `document`에
-리스너를 건다(리수 쪽 버그).
+— **`target` 없음**. `SafeElement.addEventListener`는 `this.#element`가 아니라 전역 `document`에
+리스너를 건다 (허용 이벤트: click·mouse·pointer·scroll 계열, 키 입력은 지연 랜덤 후 전달).
 
-**따라서 메시지·패널 안의 HTML 버튼은 어느 것이 눌렸는지 알 수 없어 구조적으로 동작 불가.**
+"어느 버튼이 눌렸는지"는 못 받지만 **그 좌표에 우리 버튼이 있는지는 잴 수 있다**:
+`Risuai.getRootDocument()`(mainDom 권한 확인창 1회, 거부 시 null) → `querySelectorAll` +
+`getBoundingClientRect()` + 클릭 clientX/Y 대조. **SimCore v0.42가 이 길로 상태창 범례·갈림길
+선택지를 진짜 버튼으로 만들었다** (`sim-hit*` 클래스 + `decodeHitClass` — 메시지 파이프라인의
+x-risu- 접두까지 해독). 주의: 접힌/숨은 요소는 rect 0×0이라 자연히 제외되고, 상태창은 메시지마다
+그려지므로 같은 논리 버튼이 여럿 명중할 수 있다 — 첫 명중 하나만 쓸 것. 우리 iframe 패널이
+떠 있는 동안은 쉬어야 한다.
 
-대안:
+클릭 없이 가는 다른 통로:
 1. `registerButton({ location: 'action'|'chat'|'hamburger', id })` — 리수가 직접 onclick을 건다.
    `'action'`은 화면 우상단 고정 세로 스택(`fixed top-4 right-4`), **icon만 렌더되고 name은 안 보인다**
-   → 라벨을 `icon`(iconType:'html')에 담되 style/class 속성은 제거된다
-2. `setChatPanel(html, {id, className})` — 입력창 위 도킹 패널. DOMPurify 통과라 표시 전용
-3. 최후수단: clientX/Y + `getBoundingClientRect` 좌표 히트테스트
+   → 라벨을 `icon`(iconType:'html')에 담되 style/class 속성은 제거된다.
+   `'chat'`은 **입력창 옆 드롭다운 메뉴 항목** — 아이콘+이름이 그대로 보인다 (SimCore 패널 진입점이 이것).
+   `'hamburger'`도 메뉴 항목.
+2. `setChatPanel(html, {id, className})` — 입력창 위 도킹 패널. **기본 DOMPurify만 타서 class가
+   x-risu-로 재작성되지 않는다** (메시지와 다름). 표시 전용이지만 히트테스트와 결합하면 눌린다
+   — SimCore v0.42 조작줄(simcore-strip)이 이 조합이다. content에 null을 주면 패널 제거.
+3. 앱 내부에는 `alertSelect`(선택 다이얼로그)가 있지만 **플러그인 API에는 미노출** —
+   노출된 것은 alert/alertConfirm/alertError뿐.
 
 ## alert / alertConfirm
 

@@ -72,19 +72,51 @@ ADD_ATTR: ['allow','allowfullscreen','frameborder','scrolling','risu-ctrl','risu
 같은 id가 여럿이면 `<label for>`은 문서에서 처음 만난 것을 집는다 → 최신 메시지의 탭이 맨 위 글을 건드린다.
 메시지 번호를 섞을 것(SimCore는 `{uid}`).
 
-## ★ 메인 DOM 클릭은 target을 못 받는다 — 그러나 좌표 히트테스트로 우회된다 (v0.42)
+## ★ 플러그인이 받는 DOM 객체는 RPC 프록시다 — 모든 메서드가 Promise (v0.43 사고 교훈)
 
-리수가 플러그인에 이벤트를 넘길 때 `trimEvent`로 잘라 `{type, clientX, clientY, button, buttons, 수식키}`만 준다
+플러그인은 게스트(iframe)에서 돌고, 호스트 API가 주는 클래스 인스턴스(SafeDocument·SafeElement·
+SafeClassArray — `__classType: 'REMOTE_REQUIRED'`)는 게스트에 **REMOTE_REF 프록시**로 도착한다
+(`apiV3/factory.ts`). 프록시는 **모든 프로퍼티 접근이 원격 호출 함수**가 된다:
+
+- `els.length()` · `els.at(i)` · `el.getClassName()` · `el.getBoundingClientRect()` — **전부 await 필수**
+- 반환값 중 REMOTE_REQUIRED 클래스는 또 프록시로, DOMRect 같은 직렬화 가능 객체는 실값으로 온다
+- ⚠ v0.42가 이걸 동기값처럼 다뤄 **클릭이 전부 조용히 무산**됐다 (`i < Promise` = false).
+  테스트 목은 반드시 **비동기 메서드로만** 만들 것 (test-clicks가 그렇게 재작성됨)
+
+## ★ 메인 DOM 클릭은 target을 못 받는다 — 그러나 좌표 히트테스트로 우회된다 (v0.42, v0.43 수정)
+
+리수가 플러그인에 이벤트를 넘길 때 `trimEvent`로 잘라 마우스는 `{type, clientX, clientY, button,
+buttons, altKey, ctrlKey, shiftKey, metaKey}`, 키보드는 `{type, key, code, repeat, 수식키}`만 준다
 — **`target` 없음**. `SafeElement.addEventListener`는 `this.#element`가 아니라 전역 `document`에
-리스너를 건다 (허용 이벤트: click·mouse·pointer·scroll 계열, 키 입력은 지연 랜덤 후 전달).
+리스너를 건다 (문서 이벤트: click·mouse 계열 즉시 / 키 입력: 0~99ms 랜덤 지연 후 전달 —
+그 밖의 타입은 throw).
 
 "어느 버튼이 눌렸는지"는 못 받지만 **그 좌표에 우리 버튼이 있는지는 잴 수 있다**:
-`Risuai.getRootDocument()`(mainDom 권한 확인창 1회, 거부 시 null) → `querySelectorAll` +
-`getBoundingClientRect()` + 클릭 clientX/Y 대조. **SimCore v0.42가 이 길로 상태창 범례·갈림길
-선택지를 진짜 버튼으로 만들었다** (`sim-hit*` 클래스 + `decodeHitClass` — 메시지 파이프라인의
-x-risu- 접두까지 해독). 주의: 접힌/숨은 요소는 rect 0×0이라 자연히 제외되고, 상태창은 메시지마다
-그려지므로 같은 논리 버튼이 여럿 명중할 수 있다 — 첫 명중 하나만 쓸 것. 우리 iframe 패널이
-떠 있는 동안은 쉬어야 한다.
+`Risuai.getRootDocument()`(mainDom 권한, 아래 절) → `querySelectorAll` + `getBoundingClientRect()`
++ 클릭 clientX/Y 대조 — 위 절대로 **전 단계 await**. **SimCore v0.42~0.43이 이 길로 상태창
+범례·갈림길 선택지·제안 칩을 진짜 버튼으로 만들었다** (`sim-hit*` 클래스 + `decodeHitClass` —
+메시지 파이프라인의 x-risu- 접두까지 해독). 주의: 접힌/숨은 요소는 rect 0×0이라 자연히 제외되고,
+상태창은 메시지마다 그려지므로 같은 논리 버튼이 여럿 명중할 수 있다 — 첫 명중 하나만 쓸 것.
+우리 iframe 패널이 떠 있는 동안은 쉬어야 한다.
+
+SafeElement에 있는 것(전부 프록시 경유 await): appendChild/remove류, `textContent()`/`setTextContent`,
+`setAttribute`(**x- 접두만 허용**), `setStyle(prop, val)`, add/remove/hasClass, `getClassName()`,
+`querySelectorAll` → SafeClassArray(`at(i)`·`length()` — 메서드다), `getBoundingClientRect()`.
+**입력창 value를 채우는 API는 없다** — "입력에 넣기"는 불가, 대신 sendChat(아래)으로 바로 보낸다.
+
+## ★ 플러그인 권한 — 거부가 영구 저장된다 (mainDom·sendChat 등 6종)
+
+`fetchLogs / db / mainDom / replacer / provider / sendChat` 6종. 확인창은 **alertConfirm**이라
+아래 절의 함정이 그대로 적용된다 — **우리 전체화면 패널이 떠 있을 때 권한을 요청하면 창이 가려져
+자동 falsy = 거부로 저장된다** (v0.42 실기 무반응의 절반). 허용/거부 모두
+`(플러그인 이름, 권한)` 키로 **영구 저장**되고, 거부되면 그 뒤로는 **창 없이 즉시 null/false** —
+플러그인 쪽에서 다시 물을 방법이 없다. 푸는 길은 리수 **설정 → 플러그인 → 해당 플러그인 줄의
+방패(🛡) 아이콘 = 권한 초기화** 뿐 (재임포트로는 안 풀린다 — 이름 기준 키).
+replacer/db/provider는 3일마다 재확인(periodically), mainDom/sendChat은 1회 영구.
+
+`Risuai.sendChat(message)` — **유저 메시지를 넣고 생성까지 돌리는 공식 API** ('sendChat' 권한).
+생성 중(doingChat)이거나 메인 모델이 플러그인 프로바이더면 throw, 권한 거부면 false.
+SimCore v0.43 제안 칩(누르면 그대로 전송)이 이것이다.
 
 클릭 없이 가는 다른 통로:
 1. `registerButton({ location: 'action'|'chat'|'hamburger', id })` — 리수가 직접 onclick을 건다.
@@ -96,7 +128,7 @@ x-risu- 접두까지 해독). 주의: 접힌/숨은 요소는 rect 0×0이라 �
    x-risu-로 재작성되지 않는다** (메시지와 다름). 표시 전용이지만 히트테스트와 결합하면 눌린다
    — SimCore v0.42 조작줄(simcore-strip)이 이 조합이다. content에 null을 주면 패널 제거.
 3. 앱 내부에는 `alertSelect`(선택 다이얼로그)가 있지만 **플러그인 API에는 미노출** —
-   노출된 것은 alert/alertConfirm/alertError뿐.
+   대화상자는 alert/alertConfirm/alertError뿐. 전송은 `sendChat`(권한 절 참고)이 따로 있다.
 
 ## alert / alertConfirm
 

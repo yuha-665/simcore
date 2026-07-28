@@ -27,12 +27,13 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | survival | 13 | 8 | 8 | 7/7/5 | 4 | 6 | 3 | 4 | ○ | 35 |
 | politics | 16 | 4 | 10 | 4/6/5 | 5 | 6 | 3 | 4 | ○ | 35 |
 | romance | 9 | 1 | 6 | 3/6/4 | 6 | 3 | 3 | 3 | ○ | 35 |
-| trpg | 11 | 4 | 5 | 2/3/3 | 3 | 6 | 4 | 3 | ○ | 22 |
+| trpg | 12 | 4 | 6 | 2/3/3 | 3 | 3 | 4 | 3 | ○ | 22 |
 | vtuber | 17 | 9 | 8 | 8/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
 | smith | 11 | 3 | 8 | 1/2/6 | 3 | 5 | 3 | 3 | ○ | 25 |
 
-**`cmd`(채팅 명령)는 전 템플릿 0개.** 액션은 다 들어있는데 명령은 하나도 없다 — 가이드에서
-이 대비를 반드시 짚어야 한다. 템플릿 사용자는 우상단 버튼은 이미 보고 있지만 `/명령`은 존재조차 모른다.
+**`cmd`(채팅 명령)는 trpg의 `/능력` 하나뿐** (v0.43 — check_stat 즉석 지정, 상시 판정과 한 세트).
+나머지 11종은 0개다. 가이드에서 이 대비를 반드시 짚어야 한다 — 템플릿 사용자는 우상단 버튼은
+이미 보고 있지만 `/명령`은 존재조차 모른다.
 
 **`layout`은 전 템플릿 미지정(=stack).** v0.38 기능이 기본으로는 안 보인다.
 
@@ -60,13 +61,16 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 `whenArmed`(액션 잠금, v0.39)는 **smith만** — 장부가 둘인 유일한 템플릿이다
 (`vault`를 `deposit`/`withdraw` 버튼 턴에만 개방). 나머지는 장부가 하나라 필요가 없다.
 
-`checks`(판정, v0.40)는 **trpg 5종** (ck_str/dex/wit/cha/attack — 변수 5개 손조립의 일급화,
-vars 16→11) + **smith 1종** (ck_forge — 액션과 랜덤 이벤트가 하나를 나눠 쓰는 예시).
+`checks`(판정, v0.40)는 **trpg 2종** (ck_free 자유 판정 + ck_attack — v0.43에서 능력 판정
+4종을 ck_free 하나로 통합, 능력 선택은 check_stat enum이 담당) + **smith 1종** (ck_forge —
+액션과 랜덤 이벤트가 하나를 나눠 쓰는 예시).
+
+`suggest`(다음 행동 제안, v0.43)는 **smith만** — 매 턴 보조 응답에 얹혀 와 조작줄 칩이 된다.
 
 `choices`(갈림길, v0.41)는 **daily 1종** (stray_cat 길고양이, timeout 2 — 랜덤 표) +
 **smith 2종** (noble_offer 조건 이벤트: 잠긴 선택지·문턱 재발동 제어 / peddler 랜덤: timeout 2).
 
-**smith는 v0.39~0.42 신기능 총집합** — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다
+**smith는 v0.39~0.43 신기능 총집합** — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다
 (클릭 조작은 어느 템플릿이든 범례·선택지에 자동).
 
 ## 자주 인용하는 실물 예시
@@ -116,8 +120,13 @@ vars       day(버튼 전용) · time(5단계 enum) · weather(5종) · place ·
 ```
 관리할 수치가 없는 봇(현대 일상·학원·동거물)에 상태창만 얹고 싶을 때 고른다.
 
-### trpg — checks (v0.40 판정)
+### trpg — checks (v0.40 판정 · v0.43 상시 판정)
 ```
+🎲 상시 판정  auto_roll (hold) + check: ck_free — 켜 둔 동안 **매 전송마다** 굴린다
+ck_free     roll 'adv ? …' (이점 공용)   vs dc
+            mod 'check_stat == "근력" ? str_mod : (… ? dex_mod : (… ? wit_mod : cha_mod))'
+            → 능력 선택은 enum 변수 check_stat: 보조 AI가 장면 따라 유지 + /능력 으로 즉석 지정
+              (명령은 전송 시점에 먼저 적용 — 같은 턴 굴림에 반영)
 ck_attack   roll 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)'   mod str_mod   vs dc
 등급         대성공(roll==20)  → dmg = 2d8+str_mod · inject "압도적인 일격…"
             대실패(roll==1)   → hp -= 1d4 (반격) · inject "반격까지 허용한 대실패…"
@@ -149,12 +158,13 @@ ck_forge    roll 'stoked ? max(rand(1,20), rand(1,20)) : rand(1,20)'   mod skill
             0으로 걸면 영영 안 터진다. 문턱 1 + 회복 효과로 조건을 스스로 닫는다
 ```
 
-### hold(지속형) 액션 — 셋
+### hold(지속형) 액션 — 넷
 ```
 estate  🛡 순찰 강화     gold = gold - 20        "[지속 정책] 병사들이 순찰을 강화하고 있다."
 vtuber  🔴 풀타임 방송   when not burnout
                         stream_hours = min(stream_hours+3, 10) / energy = energy - 4
 smith   🪞 다듬질        when stamina >= 2       fame+1 / stamina-1  (매 턴 회복 +1과 상쇄)
+trpg    🎲 상시 판정     check: ck_free          hold+check = 켜 둔 동안 매 턴 굴림 (v0.43)
 ```
 
 ### survival — presets (3단계 난이도의 모범)

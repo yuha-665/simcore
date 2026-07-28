@@ -2008,6 +2008,25 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       '앞선 대화를 같이 보내면 "아까 준 선물" 같은 맥락을 보조 AI가 이해해 판단이 정확해진다. '
       + '다만 턴마다 토큰을 더 쓰고, 이미 반영한 변화를 다시 셀 위험도 조금 생긴다 (그러지 말라는 지시는 자동으로 붙는다).'));
 
+    // 다음 행동 제안 (v0.43) — 보조 응답에 얹혀 오는 옵트인 기능. 스키마 키는 suggest 하나.
+    wrap.appendChild(h('h4', {}, '다음 행동 제안'));
+    if (!schema.suggest) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '켜면 매 턴 보조 AI가 "유저가 다음에 입력할 만한 행동" 2~4개를 만들어 입력창 위 조작줄에 칩으로 띄운다. '
+        + '칩을 누르면 그 문장이 그대로 전송된다 (전송 권한 확인 1회, 거부해도 표시는 된다). '
+        + '상태 갱신과 같은 보조 호출에 얹혀 가서 추가 호출 비용이 없다. 루아 브리지 모드에서는 아직 안 뜬다.'));
+      wrap.appendChild(addBtn('다음 행동 제안 켜기', () => { schema.suggest = { count: 3 }; rerender(); }));
+    } else {
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        pair('개수', bindSelect(String(schema.suggest.count ?? 3), [['2', '2개'], ['3', '3개 (기본)'], ['4', '4개']],
+          (x) => { schema.suggest.count = parseInt(x, 10); rerender(); })),
+        h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { delete schema.suggest; rerender(); } }, '제안 끄기'),
+      ));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '제안 지침 (선택) — 제안의 결을 정한다. 예: "공방 일과에 어울리는 행동으로, 하나는 뜻밖의 것을 섞어라."'));
+      wrap.appendChild(bindArea(schema.suggest.guide, (x) => { schema.suggest.guide = x.trim() ? x : undefined; rerender(); }, '(비우면 기본 지침만)'));
+    }
+
     wrap.appendChild(h('h4', {}, '보조 AI가 조정할 수 있는 변수와 한도'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '숫자형은 턴당 최대 증감폭, 텍스트는 최대 글자수. 목록에 없는 변수는 AI가 절대 못 건드림.'));

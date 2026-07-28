@@ -256,6 +256,24 @@ function validateSchema(schema) {
     }
   }
 
+  // ── suggest (다음 행동 제안, v0.43) ──
+  if (schema.suggest != null) {
+    if (typeof schema.suggest !== 'object' || Array.isArray(schema.suggest)) {
+      err('$.suggest', 'suggest는 객체여야 함 — { count, guide }');
+    } else {
+      const sg = schema.suggest;
+      if (sg.count != null && (!Number.isInteger(sg.count) || sg.count < 2 || sg.count > 4))
+        err('$.suggest.count', '제안 개수는 2~4 사이 정수여야 함');
+      if (sg.guide != null && typeof sg.guide !== 'string')
+        err('$.suggest.guide', '제안 지침은 문자열이어야 함');
+      if (typeof sg.guide === 'string' && sg.guide.length > 400)
+        warn('$.suggest.guide', '제안 지침이 400자를 넘습니다 — 매 턴 보조 프롬프트에 실리는 글입니다');
+      // 제안은 보조 AI 응답에 실려 온다 — 보조 AI가 아예 안 도는 봇이면 영영 안 뜬다
+      if (!schema.updater || !(schema.updater.allow || []).length)
+        warn('$.suggest', '다음 행동 제안은 보조 AI 응답에 실려 옵니다 — 허용 변수(updater.allow)가 없으면 보조 AI가 돌지 않아 제안도 뜨지 않습니다');
+    }
+  }
+
   // ── promptState / statusUI ──
   if (schema.promptState?.template) {
     checkTemplateRefs(schema.promptState.template, '$.promptState.template', allIds, err);

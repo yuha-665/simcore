@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.42.1
-//@display-name SimCore (시뮬 엔진) v0.42 클릭 조작
+//@version 0.43.0
+//@display-name SimCore (시뮬 엔진) v0.43 다음 행동 제안
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.43 ──────────────────────────────────────────────────
+// [수정·중요] v0.42 클릭 조작이 실기에서 무반응이던 것 — 원인 둘 다 소스맵으로 확정.
+//   ① 플러그인은 게스트에서 돌고 getRootDocument의 반환물은 RPC 프록시라 **모든 메서드가
+//      Promise**인데, 히트 루프가 동기값처럼 다뤄 매 클릭 조용히 무산 (테스트 목이 동기라 못 잡음
+//      → test-clicks를 비동기 목으로 재작성). 전부 await + 실물/프록시 양쪽 형태 방어.
+//   ② 권한 확인창이 alertConfirm이라 우리 전체화면 패널이 떠 있으면 창이 가려져 자동 falsy =
+//      **거부로 영구 저장** (리수가 기억). 이제 패널 열림 중엔 시도하지 않고 닫힐 때로 미룬다.
+//      이미 저장된 거부는 리수 설정 → 플러그인 → simcore 방패 아이콘(권한 초기화)으로만 풀림 —
+//      패널에 [클릭 조작 다시 연결] + 상태 표시(sc-hitstate) 추가.
+// 다음 행동 제안 (suggest) — 매 턴 보조 AI가 "유저가 다음에 입력할 만한 행동" 2~4개를 만들어
+//   입력창 위 조작줄에 칩으로 띄운다. 누르면 그 문장이 그대로 전송(공식 sendChat API, 전용 권한
+//   1회, 거부 시 표시 전용). 상태 갱신과 **같은 보조 호출에 얹혀 가서 추가 호출이 없다**
+//   (buildAuxPrompt가 "suggest" 배열을 함께 요구, outputPhase/브리지·지연 소급 전부 반영).
+//   스키마 `suggest: {count?, guide?}` 옵트인 — AI 설정 탭에서 켠다. 전송하면 소거(전송 단계).
+//   결과는 vars가 아니라 meta.suggestions — 보조가 상태를 오염시킬 통로가 아니다.
+// trpg 재편 — "주사위 상시 활성화": 능력 판정 버튼 4개를 🎲 상시 판정(지속형) 하나로 통합.
+//   판정 능력(check_stat)은 보조 AI가 장면에 맞게 유지하고, /능력 명령으로 즉석 지정도 된다
+//   (명령은 전송 시점에 먼저 적용되므로 같은 턴 굴림에 반영). 대장간에 suggest 예시 탑재.
 //
 // ── v0.42.1 ────────────────────────────────────────────────
 // 새 템플릿 '대장간 — 무쇠와 장부' — v0.39~0.42 신기능 총집합. 한 봇에서 전부 만져 볼 수 있다:
@@ -768,7 +787,7 @@
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -777,6 +796,7 @@
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
           }
           await mirrorVars(ca, ci);
+          try { await syncActionButtons(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
         } else if (tries >= 25) {
           clearInterval(luaPollTimer); luaPollTimer = null;
           lastAux.status = '루아 브리지 응답 없음 (30초) — 캐릭터에 브리지가 설치됐는지, LLA(low level access) 체크가 켜졌는지 확인';
@@ -1056,7 +1076,7 @@
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -1064,6 +1084,7 @@
             const ca = await Risuai.getCurrentCharacterIndex();
             const ci = await Risuai.getCurrentChatIndex();
             await mirrorVars(ca, ci);
+            try { await syncActionButtons(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
             console.log('[simcore] 델타 지연 적용:', amended.changeLog.length + '건',
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
           }, '델타');
@@ -1209,40 +1230,81 @@
   // 대조한다 (지난 메시지의 같은 버튼도 같은 논리 버튼이라 어느 것에 맞아도 결과가 같다).
   // mainDom 권한(1회 확인창)이 필요하고, 거부하면 조용히 꺼진다 — 범례는 표시용으로 남고
   // 우상단 버튼·/선택 명령은 그대로 동작한다.
+  // ⚠ 플러그인은 게스트(iframe)에서 돌고, getRootDocument가 주는 것은 RPC 프록시다 —
+  //   프록시의 **모든 메서드 호출이 Promise를 반환**한다 (프로퍼티 접근 자체가 원격 호출 함수가 된다).
+  //   v0.42가 이걸 동기값처럼 다뤄 매 클릭이 조용히 무산됐다. 전부 await + 양쪽 형태 방어.
+  // ⚠ 권한 확인창은 alertConfirm이다 — 우리 전체화면 패널이 떠 있는 동안 부르면 창이 패널에
+  //   가려져 자동 falsy = **거부로 영구 저장**된다 (리수가 거부를 기억한다). 패널이 닫혀 있을
+  //   때만 시도하고, 걸려 있으면 패널 닫힐 때로 미룬다. 이미 저장된 거부는 플러그인이 못 풀며,
+  //   리수 설정 → 플러그인 → simcore 줄의 방패 아이콘(권한 초기화)으로만 풀린다.
   let hitDoc = null;
-  let hitInitDone = false;
+  let hitState = 'idle'; // idle | pending(패널 닫히면 시도) | on | denied | error
+  let hitLastClick = null; // 진단용 — 마지막으로 받은 클릭 { x, y, cand, hit }
   async function initClickControls() {
-    if (hitInitDone) return;
-    hitInitDone = true;
+    if (hitState === 'on') return;
+    if (panelVisible) { hitState = 'pending'; return; } // 권한창이 패널에 가려 자동 거부되는 사고 방지
     try { hitDoc = await Risuai.getRootDocument(); } catch { hitDoc = null; }
     if (!hitDoc) {
-      console.log('[simcore] 클릭 조작 꺼짐 (mainDom 권한 없음) — 우상단 버튼·/선택 명령은 그대로 동작');
+      hitState = 'denied';
+      console.log('[simcore] 클릭 조작 꺼짐 (mainDom 권한 없음) — 우상단 버튼·/선택 명령은 그대로 동작. '
+        + '거부한 적이 있다면 리수 설정 → 플러그인 → simcore의 방패 아이콘(권한 초기화) 후 재시도');
       return;
     }
     try {
       await hitDoc.addEventListener('click', (ev) => { onDocClick(ev); });
+      hitState = 'on';
       console.log('[simcore] 클릭 조작 켜짐 — 상태창 범례·선택지를 직접 누를 수 있다');
-    } catch (e) { hitDoc = null; console.log('[simcore] 클릭 리스너 등록 실패:', e.message); }
+    } catch (e) { hitDoc = null; hitState = 'error'; console.log('[simcore] 클릭 리스너 등록 실패:', e.message); }
+  }
+
+  // RPC 프록시(메서드형)와 실물 DOM(프로퍼티형) 어느 쪽이 와도 읽히게 — 환경이 갈려도 죽지 않는다
+  async function safeCall(obj, method, prop) {
+    try {
+      if (typeof obj[method] === 'function') return await obj[method]();
+      return prop != null ? obj[prop] : undefined;
+    } catch { return prop != null ? obj[prop] : undefined; }
   }
 
   async function onDocClick(ev) {
     try {
       if (!session || !schema || !hitDoc || panelVisible) return; // 우리 전체화면 패널이 덮는 동안은 무시
-      if (ev.button !== 0) return;
-      const els = hitDoc.querySelectorAll('[class*="sim-hit"]');
-      const n = els.length();
+      if ((ev.button ?? 0) !== 0) return;
+      const els = await hitDoc.querySelectorAll('[class*="sim-hit"]');
+      const n = typeof els.length === 'function' ? await els.length() : els.length;
+      hitLastClick = { x: ev.clientX, y: ev.clientY, cand: n, hit: null };
       for (let i = 0; i < n; i++) {
-        const el = els.at(i);
-        const r = el.getBoundingClientRect();
-        if (!r || r.width <= 0 || r.height <= 0) continue; // 접혀 있거나 화면에 없는 요소
+        const el = typeof els.at === 'function' ? await els.at(i) : els[i];
+        if (!el) continue;
+        const r = await el.getBoundingClientRect();
+        if (!r || !(r.width > 0) || !(r.height > 0)) continue; // 접혀 있거나 화면에 없는 요소
         if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) continue;
-        const hit = decodeHitClass(el.getClassName());
+        const hit = decodeHitClass(await safeCall(el, 'getClassName', 'className'));
         if (!hit) continue;
+        hitLastClick.hit = hit;
         if (hit.kind === 'action') await onActionButton(hit.id);
         else if (hit.kind === 'choice') await onChoiceClick(hit.idx);
+        else if (hit.kind === 'suggest') await onSuggestionClick(hit.idx);
         return; // 첫 명중 하나만
       }
     } catch (e) { console.log('[simcore] 클릭 처리 오류:', e.message); }
+  }
+
+  // 제안 칩 클릭 (v0.43) — 그 문장을 유저 메시지로 바로 전송한다 (공식 sendChat API, 전용 권한 1회).
+  // 생성 중이거나 권한이 거부되면 보내지 않는다 — 칩은 어차피 눈으로 보고 따라 칠 수 있다.
+  let sendChatDenied = false;
+  async function onSuggestionClick(idx) {
+    const sug = session?.current?.meta?.suggestions || [];
+    const text = sug[idx];
+    if (!text || sendChatDenied) return;
+    try {
+      const ok = await Risuai.sendChat(text);
+      if (ok === false) {
+        sendChatDenied = true;
+        try { await Risuai.alert('전송 권한이 거부되어 제안을 바로 보낼 수 없어요 — 칩의 문장을 직접 입력해 주세요. (리수 설정 → 플러그인 → simcore 방패 아이콘으로 권한 초기화 가능)'); } catch {}
+        return;
+      }
+      console.log('[simcore] 제안 전송:', text);
+    } catch (e) { console.log('[simcore] 제안 전송 불가:', e.message); } // 생성 중 등 — 조용히 무시
   }
 
   // 클릭으로 갈림길 고르기 — /선택 명령과 같은 검증(pickChoice)·같은 기록 경로.
@@ -1290,6 +1352,15 @@
           html += `<span class="sim-hit sim-hitact-${s.id}" style="${chip};border-color:#c8a050">${escapeText(s.label)} ✕</span>`;
         }
         html += '<span style="opacity:.6;font-size:.8em">전송하면 반영 · 누르면 해제</span></div>';
+      }
+      // 다음 행동 제안 (v0.43) — 보조 AI가 만든 "다음 인풋" 후보. 누르면 그대로 전송된다.
+      const sugs = session.current.meta.suggestions || [];
+      if (sugs.length) {
+        html += '<div><span style="opacity:.65;font-size:.8em">💡 다음 행동</span> ';
+        sugs.forEach((t, i) => {
+          html += `<span class="sim-hit sim-hitsug-${i}" style="${chip}">${escapeText(t)}</span>`;
+        });
+        html += '<span style="opacity:.6;font-size:.8em">누르면 그대로 전송</span></div>';
       }
       await Risuai.setChatPanel(html || null, { id: 'simcore-strip' });
     } catch (e) { console.log('[simcore] 조작줄 갱신 실패:', e.message); }
@@ -1433,6 +1504,10 @@
           <div class="row">
             <button id="sc-auxtest">보조 모델 연결 테스트</button>
             <span class="muted">버튼 클릭 시점에 직접 호출해 차단 여부를 확정 진단</span>
+          </div>
+          <div class="row">
+            <button id="sc-hitretry">클릭 조작 다시 연결</button>
+            <span id="sc-hitstate" class="muted">-</span>
           </div>
           <div id="sc-info" class="report muted"></div>
         </div>
@@ -1588,7 +1663,11 @@ count(목록)  has(목록, "항목")</pre>
       };
     }
 
-    document.getElementById('sc-close').onclick = () => { panelVisible = false; Risuai.hideContainer(); };
+    document.getElementById('sc-close').onclick = () => {
+      panelVisible = false; Risuai.hideContainer();
+      // 패널이 떠 있어 미뤘던 클릭 초기화를 이제 시도한다 (권한창이 가려지지 않는 시점)
+      if (hitState === 'pending') setTimeout(() => { initClickControls().catch(() => {}); }, 400);
+    };
     document.getElementById('sc-reload').onclick = async () => { charKey = null; await loadForCurrentChar(); renderPanel(); };
     document.getElementById('sc-resetall').onclick = async () => {
       if (!session) return;
@@ -1724,6 +1803,23 @@ count(목록)  has(목록, "항목")</pre>
         lastAux.status = '테스트 결과: 실패 — ' + lastAux.status;
       }
       renderPanel();
+    };
+
+    // ── 클릭 조작 다시 연결 (v0.43) ──
+    // 권한 확인창(alertConfirm)은 이 패널 뒤에 뜨면 자동 거부로 저장되므로, 반드시 패널을
+    // 먼저 닫고 나서 시도한다. 이미 거부가 저장돼 있으면 창 없이 즉시 null — 그건 리수 설정의
+    // 방패 아이콘(권한 초기화)으로만 풀 수 있어 안내만 한다.
+    document.getElementById('sc-hitretry').onclick = async () => {
+      panelVisible = false;
+      await Risuai.hideContainer();
+      setTimeout(async () => {
+        hitState = 'idle';
+        try { await initClickControls(); } catch {}
+        const msg = hitState === 'on'
+          ? '클릭 조작 켜짐 — 상태창의 액션 범례·갈림길 선택지를 직접 누를 수 있어요.'
+          : '클릭 조작을 켜지 못했어요 (권한 없음). 방금 권한 창에서 거부했거나 이전에 거부한 적이 있다면, 리수 설정 → 플러그인 → simcore 줄의 방패 아이콘(권한 초기화)을 누른 뒤 다시 시도해 주세요.';
+        try { await Risuai.alert(msg); } catch {}
+      }, 400);
     };
 
     // ── 루아 브리지 설치/제거 ──
@@ -1981,6 +2077,14 @@ count(목록)  has(목록, "항목")</pre>
     const varsDiv = document.getElementById('sc-vars');
     const actionsDiv = document.getElementById('sc-actions');
     const infoDiv = document.getElementById('sc-info');
+    const hitStateEl = document.getElementById('sc-hitstate');
+    if (hitStateEl) {
+      const label = { idle: '아직 시도 안 함', pending: '패널이 닫히면 켜기를 시도', on: '✓ 켜짐',
+        denied: '꺼짐 — mainDom 권한 없음 (거부했었다면 리수 설정 → 플러그인 → simcore 방패 아이콘으로 초기화)',
+        error: '오류 — 콘솔 로그 확인' }[hitState] || hitState;
+      const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개 ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
+      hitStateEl.textContent = `클릭 조작: ${label}${hitState === 'on' ? lc : ''}`;
+    }
     const presetsDiv = document.getElementById('sc-presets');
     if (!session) {
       varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';

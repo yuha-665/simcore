@@ -1,5 +1,6 @@
 const __P = (...p) => require('path').resolve(__dirname, ...p);
-// TRPG 템플릿 실물 검증 — v0.40에서 checks(판정) 기반으로 재작성됨.
+// TRPG 템플릿 실물 검증 — v0.40에서 checks(판정) 기반, v0.43에서 상시 판정(🎲 hold)으로 재편.
+// 능력 판정 버튼 4개 → 상시 판정 1개: 능력 선택은 check_stat(enum)이, 즉석 지정은 /능력 명령이 맡는다.
 // 마지막 절은 v0.39까지의 손조립 판정(변수 5개+규칙)과 같은 시드에서 같은 값이 나오는지 재는 회귀다.
 const fs = require('fs');
 const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
@@ -31,41 +32,52 @@ const armSend = (st, id, seed) =>
     T.vars.map((v) => v.id).join(','));
   ck('allow에도 판정 결과가 없다 (구조적으로 불가능)',
     !T.updater.allow.some((a) => gone.includes(a.id)), JSON.stringify(T.updater.allow));
-  ck('판정 5종 정의됨', (T.checks || []).length === 5, String((T.checks || []).length));
+  ck('판정 2종 정의됨 (자유 판정 + 공격)', (T.checks || []).length === 2, String((T.checks || []).length));
+  ck('상시 판정은 지속형(hold)', T.actions.find((a) => a.id === 'auto_roll')?.mode === 'hold');
 }
 
-// ── 액션 판정: 같은 턴에 모델이 결과를 본다 ──
+// ── 상시 판정: 켜면 같은 턴에 모델이 결과를 본다 ──
 {
-  const s = armSend(fresh(), 'check_str', 3);
+  const s = armSend(fresh(), 'auto_roll', 3);
   const lc = s.state.meta.lastCheck;
   ck('d20 범위', lc.roll >= 1 && lc.roll <= 20, String(lc.roll));
-  ck('합계 = 눈 + 근력보정', lc.total === lc.roll + 2, `${lc.total} vs ${lc.roll}+2`);
+  ck('합계 = 눈 + 근력보정 (기본 능력)', lc.total === lc.roll + 2, `${lc.total} vs ${lc.roll}+2`);
   const exp = lc.roll === 20 ? '대성공' : lc.roll === 1 ? '대실패' : (lc.total >= 13 ? '성공' : '실패');
   ck('등급 분류 정확', lc.grade === exp, `${lc.grade} / roll ${lc.roll} total ${lc.total}`);
   ck('모델 프롬프트에 [판정] 결과 실림',
-    s.promptBlock.includes(`[판정] 근력 판정: ${lc.roll} + 2 = ${lc.total} vs 13 → ${lc.grade}`), s.promptBlock);
+    s.promptBlock.includes(`[판정] 판정: ${lc.roll} + 2 = ${lc.total} vs 13 → ${lc.grade}`), s.promptBlock);
   ck('★ 판정 규칙 줄 자동 부착 (뒤집기 금지)', s.promptBlock.includes('뒤집어 서술하지 마라'), s.promptBlock);
   ck('의도([행동])가 결과([판정])보다 먼저',
-    s.promptBlock.indexOf('[행동] 힘으로 밀어붙인다.') < s.promptBlock.indexOf('[판정] 근력 판정'), s.promptBlock);
+    s.promptBlock.indexOf('[행동] 이번 시도를 판정에 부친다.') < s.promptBlock.indexOf('[판정] 판정'), s.promptBlock);
 }
 
-// ── 능력별로 다른 보정이 적용되는가 ──
+// ── 판정 능력(check_stat)이 보정을 갈아끼운다 — 버튼 하나로 네 능력 ──
 {
   const st = engine.initState(T);
-  const a = armSend(st, 'check_dex', 4).state.meta.lastCheck;   // 민첩12 → +1
-  const b = armSend(st, 'check_cha', 4).state.meta.lastCheck;   // 매력10 → 0
-  ck('민첩 판정은 민첩 보정(+1)', a.total === a.roll + 1, `${a.total} vs ${a.roll}+1`);
-  ck('매력 판정은 매력 보정(0)', b.total === b.roll + 0, `${b.total} vs ${b.roll}`);
+  const dex = engine.clone(st); dex.vars.check_stat = '민첩';   // 민첩12 → +1
+  const cha = engine.clone(st); cha.vars.check_stat = '매력';   // 매력10 → 0
+  const a = armSend(dex, 'auto_roll', 4).state.meta.lastCheck;
+  const b = armSend(cha, 'auto_roll', 4).state.meta.lastCheck;
+  ck('민첩이면 민첩 보정(+1)', a.total === a.roll + 1, `${a.total} vs ${a.roll}+1`);
+  ck('매력이면 매력 보정(0)', b.total === b.roll + 0, `${b.total} vs ${b.roll}`);
   ck('같은 시드면 눈도 같다', a.roll === b.roll, `${a.roll} vs ${b.roll}`);
+  // /능력 명령은 전송 시점에 먼저 적용된다 — 같은 턴 굴림에 반영 (상시 버튼과 한 세트)
+  const r = engine.applyChatCommands(T, st, '/능력 지력' + String.fromCharCode(10) + '서고의 기록을 뒤진다');
+  ck('/능력 명령으로 즉석 지정', r.applied.length === 1 && r.vars.check_stat === '지력', JSON.stringify(r.vars));
 }
 
-// ── 판정 규칙 줄은 판정 턴에만 ──
+// ── 상시(hold): 켜 둔 동안 매 턴 굴리고, 끄면 규칙 줄도 사라진다 ──
 {
-  const s1 = armSend(fresh(), 'check_str', 6);
+  const s1 = armSend(fresh(), 'auto_roll', 6);
+  const r1 = s1.state.meta.lastCheck.roll;
   const out = engine.outputPhase(T, s1.state, {}, {}, { rng: seededRng('c', 6, 'out') });
   const s2 = engine.sendPhase(T, out.state, { rng: seededRng('c', 7, 'send') });
-  ck('다음 턴엔 규칙 줄 사라짐', !s2.promptBlock.includes('뒤집어 서술하지'), s2.promptBlock);
-  ck('판정 안내 지시문은 상시', s2.activeDirectives.includes('ask_roll'), JSON.stringify(s2.activeDirectives));
+  ck('켜 둔 동안 다음 턴도 굴린다 (상시)', s2.state.meta.lastCheck.turn === s2.state.meta.turn
+    && s2.promptBlock.includes('[판정] 판정:'), s2.promptBlock);
+  const off = engine.toggleAction(T, out.state, 'auto_roll').state; // 끈다
+  const s3 = engine.sendPhase(T, off, { rng: seededRng('c', 8, 'send') });
+  ck('끄면 규칙 줄 사라짐', !s3.promptBlock.includes('뒤집어 서술하지'), s3.promptBlock);
+  ck('판정 안내 지시문은 상시', s3.activeDirectives.includes('ask_roll'), JSON.stringify(s3.activeDirectives));
 }
 
 // ── 보조모델이 판정을 요청하는 경로 (need_roll → 이벤트가 check를 굴린다) ──
@@ -77,23 +89,23 @@ const armSend = (st, id, seed) =>
   ck('난이도 델타도 적용됨', out.state.vars.dc === 17, String(out.state.vars.dc));
   const pn = out.state.meta.pendingNotifies;
   ck('통지에 서술 + [판정] 줄', pn.some((n) => n === '판정이 필요한 상황이라 주사위를 굴렸다.')
-    && pn.some((n) => n.startsWith('[판정] 근력 판정:')), JSON.stringify(pn));
+    && pn.some((n) => n.startsWith('[판정] 판정:')), JSON.stringify(pn));
   const s = engine.sendPhase(T, out.state, { rng: seededRng('c', 10, 'send') });
   ck('다음 턴 프롬프트에 결과 + 규칙 줄',
-    s.promptBlock.includes('[판정] 근력 판정:') && s.promptBlock.includes('뒤집어 서술하지 마라'), s.promptBlock);
+    s.promptBlock.includes('[판정] 판정:') && s.promptBlock.includes('뒤집어 서술하지 마라'), s.promptBlock);
 }
 
 // ── 이점: 두 번 굴려 높은 눈 ──
 {
   let plain = 0, adv = 0, n = 1500;
   for (let i = 0; i < n; i++) {
-    plain += armSend(fresh(), 'check_str', i).state.meta.lastCheck.roll;
+    plain += armSend(fresh(), 'auto_roll', i).state.meta.lastCheck.roll;
     const withAdv = fresh(); withAdv.vars.adv = true;
-    adv += armSend(withAdv, 'check_str', i).state.meta.lastCheck.roll;
+    adv += armSend(withAdv, 'auto_roll', i).state.meta.lastCheck.roll;
   }
   const p = plain / n, a = adv / n;
   ck('이점 평균이 확실히 높음 (10.5 → 13.8 기대)', a > p + 2.5, `일반 ${p.toFixed(2)} / 이점 ${a.toFixed(2)}`);
-  const used = (() => { const s = fresh(); s.vars.adv = true; return armSend(s, 'check_str', 1); })();
+  const used = (() => { const s = fresh(); s.vars.adv = true; return armSend(s, 'auto_roll', 1); })();
   ck('이점은 쓰면 소모됨 (액션 효과 — 굴림 뒤에 적용)', used.state.vars.adv === false);
 }
 
@@ -142,7 +154,7 @@ const armSend = (st, id, seed) =>
 {
   const c = {};
   for (let i = 0; i < 4000; i++) {
-    const r = armSend(fresh(), 'check_str', i).state.meta.lastCheck.roll;
+    const r = armSend(fresh(), 'auto_roll', i).state.meta.lastCheck.roll;
     c[r] = (c[r] || 0) + 1;
   }
   const faces = Object.keys(c).map(Number).sort((a, b) => a - b);
@@ -154,8 +166,8 @@ const armSend = (st, id, seed) =>
 
 // ── 리롤 안정성 ──
 {
-  const a = armSend(fresh(), 'check_str', 42).state.meta.lastCheck.roll;
-  const b = armSend(fresh(), 'check_str', 42).state.meta.lastCheck.roll;
+  const a = armSend(fresh(), 'auto_roll', 42).state.meta.lastCheck.roll;
+  const b = armSend(fresh(), 'auto_roll', 42).state.meta.lastCheck.roll;
   ck('같은 턴 리롤 = 같은 눈 (세이브스커밍 차단)', a === b, `${a} vs ${b}`);
 }
 

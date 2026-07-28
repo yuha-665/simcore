@@ -33,11 +33,16 @@ const tests = [
     { changes: { hp: 2 }, reasons: {} }],
   // 9. changes 키 없는 JSON만 있음 → fallback으로라도 잡되 changes는 빈 객체
   ['no-changes-key', '{"values":{"hp":5}}', { changes: {}, reasons: {} }],
+  // 10. 다음 행동 제안(v0.43) — 같은 응답에 suggest 배열이 실려 온다
+  ['with-suggest', '{"changes":{"hp":1},"reasons":{},"suggest":["쉰다","싸운다"]}',
+    { changes: { hp: 1 }, reasons: {}, suggest: ['쉰다', '싸운다'] }],
 ];
 
 let pass = 0, fail = 0;
 for (const [name, input, expected] of tests) {
-  const r = parseAuxResponse(input);
+  const raw = parseAuxResponse(input);
+  // suggest는 v0.43에서 추가된 통과 필드 — 없으면(null) 비교에서 접는다
+  const r = raw && { changes: raw.changes, reasons: raw.reasons, ...(raw.suggest != null ? { suggest: raw.suggest } : {}) };
   const ok = JSON.stringify(r) === JSON.stringify(expected);
   console.log((ok ? 'PASS' : 'FAIL'), name.padEnd(18), '→', JSON.stringify(r));
   ok ? pass++ : fail++;

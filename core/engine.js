@@ -115,7 +115,21 @@ function reconcileState(schema, state) {
   m.lastCheck = m.lastCheck ?? null; // 마지막 판정 결과 — vars가 아니라 여기 산다 (AI가 못 만진다)
   m.pendingChoice = m.pendingChoice ?? null; // 걸려 있는 갈림길 { id, turn } — 동시 1개 상한
   m.pendingChoicePick = m.pendingChoicePick ?? null; // /선택으로 고른 번호 (0기준) — 다음 전송에서 집행
+  m.suggestions = m.suggestions || []; // 다음 행동 제안 (v0.43) — 보조 AI가 만들고, 전송하면 비워진다
   return state;
+}
+
+/**
+ * 다음 행동 제안(schema.suggest) 정리 — 보조 AI가 준 배열을 표시 가능한 형태로 다듬는다.
+ * 스키마에 suggest가 없으면 무조건 빈 배열 (기능 자체가 옵트인).
+ */
+function sanitizeSuggestions(schema, arr) {
+  if (!schema.suggest || !Array.isArray(arr)) return [];
+  const count = Math.min(Math.max(schema.suggest.count ?? 3, 2), 4);
+  return arr.filter((s) => typeof s === 'string')
+    .map((s) => s.trim().replace(/\s+/g, ' ').slice(0, 80))
+    .filter(Boolean)
+    .slice(0, count);
 }
 
 /** 갈림길(choices 달린 이벤트)을 id로 찾는다 — 조건 이벤트·랜덤 표 양쪽에서 */
@@ -333,6 +347,7 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 같은 사이클의 output(즉시·지연·브리지 소급 모두)에서 "방금 발동했다"를 알 수 없다.
   // 다음 sendPhase에서 통째로 리셋 → 리롤은 pre 스냅샷에서 재계산되므로 안전.
   state.meta.firedThisSend = {};
+  state.meta.suggestions = []; // 다음 행동 제안은 이번 입력으로 소비됐다 — 보조 AI가 새로 채운다
 
   // 0.5 갈림길 집행 — /선택은 명령 시점에 기록만 하고(pendingChoicePick) 여기서 집행한다.
   // 효과식엔 rand가 올 수 있고 변화 로그·시드 rng가 필요한데, 그건 전송 단계의 것들이라서다.
@@ -545,10 +560,11 @@ function parseSetupResponse(text) {
 // 반환: { state, changeLog, firedEvents }
 
 /** 보조 모델 델타만 적용 (캡·검증) — outputPhase 내부와 지연 소급 적용에서 공용 */
-function applyChangesToState(schema, prevState, changes, reasons, seenText = null) {
+function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   return { state, changeLog };
 }
 
@@ -594,13 +610,15 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
   // 5. 보조 모델 델타 적용
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
+  if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -893,10 +911,15 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
     '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
     schema.updater?.guide ? `- ${schema.updater.guide}` : null,
+    // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
+    schema.suggest ? '' : null,
+    schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
     '',
     '출력 형식 (JSON만, 다른 텍스트 금지):',
-    '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
-    '변화가 없으면 {"changes": {}, "reasons": {}}',
+    schema.suggest
+      ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
+      : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
+    schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}',
   ].filter((x) => x !== null).join('\n');
 }
 
@@ -1089,11 +1112,11 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {} };
+  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null };
 }
 
 module.exports = {
-  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry,
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,

@@ -4,7 +4,7 @@
 <div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
   <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
   <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
-  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.38 &nbsp;→&nbsp; v0.42</div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.38 &nbsp;→&nbsp; v0.43</div>
 </div>
 
 <!-- ─────────── 처음 보는 사람용 ─────────── -->
@@ -160,9 +160,51 @@
     <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
     클릭 좌표를 재려면 리수가 <b style="color:#dbe2ea;">메인 화면 접근 권한</b>을 물어봅니다 — SimCore 봇을 쓸 때 딱 한 번,
     안 쓰는 분께는 아예 안 뜹니다. <b style="color:#dbe2ea;">허용하면 클릭 조작이 켜지고, 거부해도 아무것도 안 깨집니다</b> —
-    우상단 버튼과 /선택 명령은 지금까지처럼 그대로 동작합니다.
+    우상단 버튼과 /선택 명령은 지금까지처럼 그대로 동작합니다.<br><br>
+    실수로 거부했다면: 리수 <b style="color:#dbe2ea;">설정 → 플러그인 → simcore 줄의 방패(🛡) 아이콘</b>이 권한 초기화입니다.
+    누르고 나서 심코어 패널의 <b style="color:#dbe2ea;">[클릭 조작 다시 연결]</b>을 누르면 다시 물어봅니다.
     </p>
   </div>
+</div>
+
+<!-- ─────────── v0.43 다음 행동 제안 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.43</span>
+    <span style="font-size:19px;font-weight:600;">다음 행동 제안 — 매 턴, 다음 인풋 후보가 뜬다</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  켜 두면 매 턴 응답이 끝날 때 <b style="color:#dbe2ea;">&quot;다음에 뭘 할까&quot; 후보 2~4개</b>가
+  입력창 위 조작줄에 칩으로 뜹니다. <b style="color:#dbe2ea;">누르면 그 문장이 그대로 전송</b>돼요.
+  상태창의 수치와 상황을 아는 보조 AI가 만들기 때문에, 지금 판에 맞는 제안이 나옵니다.
+  </p>
+
+  <div style="background:#0d1117;border:1px solid #2a323d;border-radius:6px;padding:12px 14px;margin:0 0 14px;">
+    <div style="color:#8b98a9;font-size:12px;margin-bottom:7px;">💡 다음 행동</div>
+    <span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 10px;border:1px solid #3a4553;border-radius:9px;font-size:13px;color:#dbe2ea;">화로를 달구고 예장검에 손을 댄다</span>
+    <span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 10px;border:1px solid #3a4553;border-radius:9px;font-size:13px;color:#dbe2ea;">행상에게 무쇠 값을 물어본다</span>
+    <span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 10px;border:1px solid #3a4553;border-radius:9px;font-size:13px;color:#dbe2ea;">오늘 번 돈을 금고에 옮긴다</span>
+  </div>
+
+  <div style="color:#a9b4c2;font-size:14px;margin-bottom:14px;">
+    <div style="margin-bottom:6px;">— <b style="color:#dbe2ea;">추가 비용이 없습니다.</b> 상태를 갱신하는 그 보조 호출에 얹혀 옵니다 — 호출이 늘지 않아요.</div>
+    <div style="margin-bottom:6px;">— 켜는 곳: <b style="color:#dbe2ea;">봇 편집 → AI 설정 → [다음 행동 제안 켜기]</b>. 봇마다 켜고 끄는 옵트인이고, 제안의 결을 정하는 지침도 적을 수 있습니다.</div>
+    <div>— 칩을 처음 누를 때 <b style="color:#dbe2ea;">전송 권한 확인이 한 번</b> 뜹니다. 거부해도 칩은 보이니 따라 치면 됩니다.</div>
+  </div>
+
+  <div style="height:1px;background:#2a323d;margin:14px 0;"></div>
+
+  <p style="margin:0 0 10px;color:#a9b4c2;">
+  그리고 <b style="color:#dbe2ea;">TRPG 템플릿의 주사위가 상시형이 됐습니다.</b> 능력 판정 버튼
+  4개(근력/민첩/지력/매력)를 <b style="color:#e0a94a;">🎲 상시 판정</b> 하나로 합쳤어요 —
+  지속형이라 <b style="color:#dbe2ea;">켜 두면 매 행동마다 주사위가 구릅니다.</b>
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  어느 능력으로 구르는지는 보조 AI가 장면을 보고 정하고(힘쓰면 근력, 재빠르면 민첩…),
+  급하면 채팅에 <code style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/능력 민첩</code>이라고 치면
+  그 턴부터 바로 바뀝니다. 순수 대화 장면에선 버튼을 끄면 조용해집니다.
+  </p>
 </div>
 
 <!-- ─────────── v0.42.1 대장간 ─────────── -->
@@ -173,8 +215,8 @@
   </div>
 
   <p style="margin:0 0 12px;color:#a9b4c2;">
-  위의 넷을 <b style="color:#dbe2ea;">한 봇에서 전부</b> 만져 볼 수 있는 12번째 템플릿입니다.
-  [새로 만들기]에서 <b style="color:#dbe2ea;">대장간</b>을 고르면 됩니다.
+  위의 전부를 <b style="color:#dbe2ea;">한 봇에서</b> 만져 볼 수 있는 12번째 템플릿입니다.
+  [새로 만들기]에서 <b style="color:#dbe2ea;">대장간</b>을 고르면 됩니다. 다음 행동 제안도 여기 켜져 있어요.
   </p>
 
 <pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 12px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.95;color:#dbe2ea;"><span style="color:#e0a94a;">액션 잠금</span>   공방 금고는 💰입금/💸출금 버튼을 켠 턴에만 움직인다
@@ -197,7 +239,9 @@
 <span style="color:#e0a94a;">v0.41</span>    <span style="color:#7fc7d9;">갈림길</span> — 이벤트가 선택지를 내밀고 기다린다. 🔒조건 · 타임아웃
 <span style="color:#e0a94a;">v0.42</span>    <span style="color:#7fc7d9;">클릭 조작</span> — 범례·선택지가 진짜 버튼 + 입력창 위 조작줄
          <span style="color:#8b98a9;">— 권한 확인 1회, 거부해도 기존 방식 그대로</span>
-<span style="color:#e0a94a;">v0.42.1</span>  새 템플릿 <span style="color:#7fc7d9;">대장간</span> — 위의 전부가 든 시식 코너</pre>
+<span style="color:#e0a94a;">v0.42.1</span>  새 템플릿 <span style="color:#7fc7d9;">대장간</span> — 위의 전부가 든 시식 코너
+<span style="color:#e0a94a;">v0.43</span>    <span style="color:#7fc7d9;">다음 행동 제안</span> — 매 턴 다음 인풋 후보 칩, 누르면 그대로 전송 (추가 비용 0)
+         + TRPG 주사위 <span style="color:#7fc7d9;">상시 판정</span>으로 통합 (버튼 4개 → 1개, /능력 즉석 지정)</pre>
 
   <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:14px;">
     <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께</div>
@@ -205,6 +249,7 @@
     <b style="color:#dbe2ea;">쓰던 봇은 아무것도 안 바뀝니다.</b> 판정·갈림길·액션 잠금은 전부 옵트인이고,
     클릭 조작만 알아서 켜집니다(기존 봇의 범례도 눌리게 되는 것뿐).<br><br>
     새 기능은 이번에 올린 <b style="color:#dbe2ea;">가이드 8탄(판정)·9탄(갈림길)</b>에 만드는 법을 다 적어 뒀습니다.
+    다음 행동 제안은 <b style="color:#dbe2ea;">AI 설정 탭에서 켜기 버튼 하나</b>입니다.<br><br>
     둘 다 다른 탭들처럼 <b style="color:#dbe2ea;">규격 내보내기</b>가 있어서, 어려우면 AI한테 던지고 JSON을 받아
     붙여넣으면 됩니다. 감 잡기용 실물은 <b style="color:#dbe2ea;">TRPG 템플릿(판정 5종)</b>과
     <b style="color:#dbe2ea;">대장간 템플릿(전부 다)</b>에 있습니다.

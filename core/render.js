@@ -208,6 +208,8 @@ function decodeHitClass(className) {
   if (m) return { kind: 'action', id: m[1] };
   m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitchoice-(\d+)/);
   if (m) return { kind: 'choice', idx: Number(m[1]) };
+  m = s.match(/(?:^|\s)(?:x-risu-)?sim-hitsug-(\d+)/); // 다음 행동 제안 칩 (v0.43, 조작줄 전용)
+  if (m) return { kind: 'suggest', idx: Number(m[1]) };
   return null;
 }
 

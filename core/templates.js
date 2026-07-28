@@ -772,9 +772,13 @@ const ROMANCE = {
 
 // ── TRPG ──────────────────────────────────────────────────────
 // 배울 점: ① checks(판정)로 주사위를 일급으로 쓰는 법 — 굴림·보정·등급·연출 지시가 한 덩어리
-//          ② 소모성 변수(이점 adv)는 굴림식이 읽고, 끄는 건 액션 effects에 두는 분업
-//          ③ 이벤트에 check를 달면 "AI가 판정이 필요하다고 하면 시스템이 대신 굴리는" 배선이 된다
-//          ④ 판정 결과는 변수가 아니라 시스템 기록(meta)이라 보조 AI가 뒤집을 방법이 없다
+//          ② "주사위 상시 활성화" — 지속형(hold) 액션에 check를 달면 켜 둔 동안 매 턴 굴린다.
+//             어느 능력으로 구르는지는 enum 변수(check_stat) 하나가 정한다: 보정식이 그걸 읽고,
+//             보조 AI가 장면에 맞게 유지하며, /능력 명령으로 즉석 지정도 된다 (명령은 전송 시점에
+//             먼저 적용되므로 같은 턴 굴림에 반영). 버튼 4개를 1개로 줄이는 통합 패턴
+//          ③ 소모성 변수(이점 adv)는 굴림식이 읽고, 끄는 건 액션 effects에 두는 분업
+//          ④ 이벤트에 check를 달면 "AI가 판정이 필요하다고 하면 시스템이 대신 굴리는" 배선이 된다
+//          ⑤ 판정 결과는 변수가 아니라 시스템 기록(meta)이라 보조 AI가 뒤집을 방법이 없다
 //          (v0.39까지는 roll/total/grade 변수 5개 + 규칙으로 손조립했다 — 그 패턴의 일급화)
 const TRPG = {
   simcore: '0.1',
@@ -792,6 +796,8 @@ const TRPG = {
       desc: '이번 공격이 입힌 피해. 판정이 정하고, 다음 턴에 0으로 돌아간다.' },
     { id: 'adv', label: '이점 대기', type: 'bool', init: false,
       desc: '켜져 있으면 다음 판정을 두 번 굴려 높은 눈을 쓴다. 쓰면 꺼진다.' },
+    { id: 'check_stat', label: '판정 능력', type: 'enum', init: '근력', enum: ['근력', '민첩', '지력', '매력'], cmd: '능력',
+      desc: '상시 판정이 어느 능력으로 구르는지. 지금 장면의 시도에 맞는 능력으로 유지하라 — 힘쓰기는 근력, 재빠른 움직임은 민첩, 추리·지식은 지력, 설득·언변은 매력.' },
     { id: 'need_roll', label: '판정 요청', type: 'bool', init: false,
       desc: '서사상 판정이 필요한데 유저가 버튼을 누르지 않았을 때 켠다. 시스템이 대신 굴린다.' },
     { id: 'conditions', label: '상태', type: 'list', init: [], maxItems: 6, itemMaxLength: 20 },
@@ -806,32 +812,11 @@ const TRPG = {
   // 판정 — 굴림·보정·목표치·등급이 한 덩어리. 결과 줄([판정])과 등급 연출 지시는 엔진이 주입한다.
   // 굴림식이 adv(이점)를 읽는다 — 끄는 건 각 액션의 effects 몫 (굴림이 끝난 뒤에 적용되므로 안전).
   checks: [
-    { id: 'ck_str', label: '근력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
-      mod: 'str_mod', vs: 'dc',
-      grades: [
-        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
-        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
-        { when: 'total >= vs', label: '성공' },
-        { label: '실패' },
-      ] },
-    { id: 'ck_dex', label: '민첩 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
-      mod: 'dex_mod', vs: 'dc',
-      grades: [
-        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
-        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
-        { when: 'total >= vs', label: '성공' },
-        { label: '실패' },
-      ] },
-    { id: 'ck_wit', label: '지력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
-      mod: 'wit_mod', vs: 'dc',
-      grades: [
-        { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
-        { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
-        { when: 'total >= vs', label: '성공' },
-        { label: '실패' },
-      ] },
-    { id: 'ck_cha', label: '매력 판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
-      mod: 'cha_mod', vs: 'dc',
+    // 자유 판정 — 어느 능력으로 구를지는 check_stat(enum)이 정한다. 보정식이 그걸 읽으므로
+    // 버튼 하나로 네 능력을 다 감당한다. 능력은 보조 AI가 장면 따라 유지 + /능력 으로 즉석 지정.
+    { id: 'ck_free', label: '판정', roll: 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)',
+      mod: 'check_stat == "근력" ? str_mod : (check_stat == "민첩" ? dex_mod : (check_stat == "지력" ? wit_mod : cha_mod))',
+      vs: 'dc',
       grades: [
         { when: 'roll == 20', label: '대성공', inject: '기대 이상의 성과다 — 극적으로 그려라.' },
         { when: 'roll == 1', label: '대실패', inject: '단순한 실패가 아니라 상황을 악화시키는 대실패로 그려라.' },
@@ -860,8 +845,8 @@ const TRPG = {
     events: [
       // 보조 모델이 "판정이 필요하다"고 판단하면 need_roll을 켠다 → 시스템이 대신 굴린다.
       // check를 달면 굴림·등급은 판정이 처리하고, 이벤트 effects는 뒷정리(이점 소모·깃발 내리기)만 한다.
-      // (예전처럼 근력 기준으로 굴린다 — 결과 줄은 다음 전송에 통지로 합류한다)
-      { id: 'do_roll', when: 'need_roll', check: 'ck_str',
+      // (능력은 check_stat 기준 — 결과 줄은 다음 전송에 통지로 합류한다)
+      { id: 'do_roll', when: 'need_roll', check: 'ck_free',
         effects: [
           { set: 'adv', expr: '0' },
           { set: 'need_roll', expr: '0' },
@@ -902,17 +887,10 @@ const TRPG = {
   // 판정 달린 액션 — 굴림·등급은 check가 맡고, effects에는 뒷정리(이점 소모·기력 소비)만 남는다.
   // 액션 effects는 굴림이 끝난 뒤 적용되므로 여기서 adv를 꺼도 이번 굴림에는 이미 반영돼 있다.
   actions: [
-    { id: 'check_str', label: '💪 근력 판정', mode: 'oneshot', check: 'ck_str',
-      inject: '[행동] 힘으로 밀어붙인다.',
-      effects: [{ set: 'adv', expr: '0' }] },
-    { id: 'check_dex', label: '🤸 민첩 판정', mode: 'oneshot', check: 'ck_dex',
-      inject: '[행동] 재빠르게 움직인다.',
-      effects: [{ set: 'adv', expr: '0' }] },
-    { id: 'check_wit', label: '🧠 지력 판정', mode: 'oneshot', check: 'ck_wit',
-      inject: '[행동] 상황을 읽고 머리를 쓴다.',
-      effects: [{ set: 'adv', expr: '0' }] },
-    { id: 'check_cha', label: '💬 매력 판정', mode: 'oneshot', check: 'ck_cha',
-      inject: '[행동] 말과 태도로 상대를 움직인다.',
+    // 상시 판정 — 켜 두면 매 전송마다 굴린다 ("행동마다 주사위"). 순수 대화 턴엔 꺼 두면 된다.
+    // 능력 선택은 check_stat 몫이라 버튼은 하나면 된다.
+    { id: 'auto_roll', label: '🎲 상시 판정', mode: 'hold', check: 'ck_free',
+      inject: '[행동] 이번 시도를 판정에 부친다.',
       effects: [{ set: 'adv', expr: '0' }] },
     { id: 'attack', label: '⚔ 공격', mode: 'oneshot', when: 'stamina >= 1', check: 'ck_attack',
       inject: '[행동] 무기를 들어 공격한다.',
@@ -923,11 +901,12 @@ const TRPG = {
   ],
   updater: {
     allow: [
-      { id: 'dc', maxDelta: 8 }, { id: 'need_roll' },
+      { id: 'dc', maxDelta: 8 }, { id: 'need_roll' }, { id: 'check_stat' },
       { id: 'hp', maxDelta: 10 }, { id: 'stamina', maxDelta: 3 },
       { id: 'conditions' },
     ],
     guide: '주사위 판정은 시스템이 굴린다 — 결과를 절대 정하지 마라. '
+      + '판정 능력(check_stat)은 지금 장면의 시도에 맞게 유지하라 (힘쓰기 근력 / 몸놀림 민첩 / 추리 지력 / 언변 매력). '
       + '서사에 성패가 갈릴 시도가 나왔는데 아직 판정이 없으면 need_roll을 true로, dc는 상황 난이도에 맞게 정하라.',
   },
   promptState: {
@@ -939,6 +918,7 @@ const TRPG = {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '판정', items: [
+        { var: 'check_stat' },
         { var: 'dc' },
         { var: 'adv', showWhen: 'adv' },
       ] },
@@ -1784,9 +1764,12 @@ const DAILY = {
 //             랜덤 이벤트(떠돌이 행상: 타임아웃 2, 안 고르면 마지막 항목)
 //          ④ 등급 effects가 roll/total을 읽어 "얼마나 잘 굴렸는지"가 값(공임)이 되게 하는 법
 //          ⑤ 상태창 범례·선택지는 v0.42 클릭 조작으로 그대로 버튼이 된다 — 별도 설정 없음
+//          ⑥ suggest(다음 행동 제안, v0.43) — 매 턴 보조 AI가 다음 인풋 후보를 조작줄에 띄운다
 const SMITH = {
   simcore: '0.1',
   meta: { name: '대장간 — 무쇠와 장부', author: 'SimCore 템플릿' },
+  // 다음 행동 제안 (v0.43) — 상태 갱신과 같은 보조 호출에 얹혀 온다. 입력창 위 조작줄에 칩으로 뜬다.
+  suggest: { count: 3, guide: '공방 일과에 어울리는 행동으로, 하나는 뜻밖의 것을 섞어라.' },
   vars: [
     { id: 'money', label: '지갑', type: 'int', init: 800, min: 0, format: '{v}G',
       desc: '품속의 돈. 서사에서 벌고 쓰는 돈은 전부 여기다.' },
@@ -1995,7 +1978,7 @@ const TEMPLATES = {
   survival: { label: '생존 — 혹한의 정착지 (자원 고갈·정책 트레이드오프)', schema: SURVIVAL },
   politics: { label: '정치 — 지지율과 파벌 (세력 관리·법안 표결)', schema: POLITICS },
   romance: { label: '연애 — 관계 시뮬 (호감도·단계 전이·기억)', schema: ROMANCE },
-  trpg: { label: 'TRPG — 주사위 판정 (d20·능력보정·이점)', schema: TRPG },
+  trpg: { label: 'TRPG — 주사위 판정 (상시 판정·능력 연동·이점)', schema: TRPG },
   vtuber: { label: '버튜버 — 방송 운영 (동접·화제성·번아웃·논란)', schema: VTUBER },
   smith: { label: '대장간 — 무쇠와 장부 (금고 잠금·단조 판정·주문 갈림길)', schema: SMITH },
 };

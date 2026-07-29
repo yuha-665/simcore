@@ -311,4 +311,24 @@ function referencedVars(src) {
   return [...names];
 }
 
-module.exports = { compile, evaluate, referencedVars, ExprError, truthy, itemValue, itemExpiry };
+/**
+ * 식 안의 변수 참조를 새 이름으로 (패치 충돌 개명용 — patch.js).
+ * 토큰 단위라 문자열 리터럴 속 같은 글자("gold")나 다른 식별자(gold2)는 안 건드린다.
+ * 정규식 치환으로 하면 has(목록, "gold")의 따옴표 안까지 바뀌는 사고가 난다.
+ */
+function renameVar(src, oldId, newId) {
+  const s = String(src);
+  let tokens;
+  try { tokens = tokenize(s); }
+  catch (e) { return s; }   // 깨진 식은 손대지 않는다 — 어차피 병합 후 검증이 잡는다
+  let out = '', last = 0;
+  for (const t of tokens) {
+    if (t.type === 'ident' && t.value === oldId) {
+      out += s.slice(last, t.pos) + newId;
+      last = t.pos + oldId.length;
+    }
+  }
+  return out + s.slice(last);
+}
+
+module.exports = { compile, evaluate, referencedVars, renameVar, ExprError, truthy, itemValue, itemExpiry };

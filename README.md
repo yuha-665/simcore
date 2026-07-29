@@ -7,7 +7,7 @@
 
 ```
 simcore.plugin.js        플러그인 본체 (리수에 임포트하는 파일) — node build.js 산출물과 바이트 일치
-core/  adapter/          소스 (엔진 모듈 10개 + 리수 어댑터 — 버전·체인지로그는 adapter/risu-plugin.js)
+core/  adapter/          소스 (엔진 모듈 11개 + 리수 어댑터 — 버전·체인지로그는 adapter/risu-plugin.js)
 build.js  tools/         번들러 + 역추출기(unbundle.js) — 워크플로는 SOURCES.md
 test/                    코어 단위 테스트 (node test/run-tests.js — Node만 있으면 됨)
 테스트/                   회귀 테스트 33종 (로컬 실측 — 번들을 직접 물고 돈다)

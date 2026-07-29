@@ -238,6 +238,37 @@ const baseJson = JSON.stringify(BASE);
   ck('renameVar: 깨진 식은 그대로', renameVar('gold +* @', 'gold', 'g') === 'gold +* @', '');
 }
 
+// ── 편집기 계층: 수정 요청 프롬프트(② 내보내기) — test-tabai와 같은 추출 방식 ──
+{
+  const { TEMPLATES } = SC.require('templates');
+  const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
+  const M = new Function('validateSchema', 'TEMPLATES',
+    seg + '\nreturn { buildPatchExportPrompt, patchIdDigest };')(validateSchema, TEMPLATES);
+
+  const S = snap();
+  S.statusUI = { mode: 'custom', template: '<div>ZZZ_CSS_MARKER</div>', groups: [] };
+  const pr = M.buildPatchExportPrompt(S);
+  ck('프롬프트: 패치 형식 명세 포함', pr.includes('patchVersion') && pr.includes('"add"'), '');
+  ck('프롬프트: add/update/remove 규칙 설명', pr.includes('새 id를 지으세요') && pr.includes('통째로 다시') && pr.includes('명시적으로 지워달라고 한 것만'), '');
+  ck('★ 기존 id 다이제스트 동봉 (변수·이벤트·액션·판정)',
+    pr.includes('`gold`') && pr.includes('`broke`') && pr.includes('`work`') && pr.includes('`luck`'), '');
+  ck('다이제스트에 이벤트 when 실림', pr.includes('gold < 1 and not famine'), '');
+  ck('★ 상태창 내용은 안 실림 (다이제스트가 가벼운 이유)', !pr.includes('ZZZ_CSS_MARKER'), '');
+  ck('미지원 섹션 안내', pr.includes('statusUI') && pr.includes('못 다룹니다'), '');
+  ck('평평한 섹션 키 안내', pr.includes('`randomEvents`') && pr.includes('`allow`'), '');
+  ck('allow 판단 기준 경고 (판정값·플래그 금지)', pr.includes('allow에 넣지 마세요'), '');
+  ck('수식·절대 규칙 동봉', pr.includes('수식 언어') && pr.includes('절대 규칙'), '');
+  ck('통짜 규격서보다 가벼움', pr.length < 12 * 1024, (pr.length / 1024).toFixed(1) + 'KB');
+
+  const dg = M.patchIdDigest(S);
+  ck('다이제스트: 랜덤·갈림길 표기 준비', typeof dg === 'string' && dg.includes('### 변수'), '');
+
+  // 번들 배선 스모크 — 편집기 ② 섹션이 실제로 실려 있는지 (빌드 누락 감지)
+  ck('★ 번들에 ② 섹션 문자열 존재', src.includes('② AI에게 스키마 고치게 하기'), '');
+  ck('번들에 패치 검사 버튼 존재', src.includes('🔍 패치 검사'), '');
+  ck('어댑터 버전 v0.44', src.includes('//@version 0.44'), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

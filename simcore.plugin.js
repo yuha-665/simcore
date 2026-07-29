@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.43.3
-//@display-name SimCore (시뮬 엔진) v0.43 다음 행동 제안
+//@version 0.44
+//@display-name SimCore (시뮬 엔진) v0.44 AI 부분 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.44 ──────────────────────────────────────────────────
+// AI 왕복 패치 — "고치게 하기". 통짜 재생성 없이 바꿀 부분만 받는다.
+// 배경: "AI 규격 내보내기로 받아온 걸 가져오면 통으로 바뀌어 일부 수정이 안 된다" 제보.
+// - core/patch.js 신규: add/update/remove 선언 분리 (조용한 upsert 금지). add가 기존 id와
+//   겹치면 정지 → 교체/개명/건너뛰기 선택. 개명은 패치 전체 파급 (식·효과 대상·갈림길·
+//   판정 등급·지시문 {자리표시자}·액션의 check 참조 — expr.js renameVar, 토큰 기반이라
+//   문자열 리터럴 안전). 적용은 원자적 — 병합 후 validateSchema 통과 못 하면 전무.
+//   1급 사고 패턴: 공홈 새 챗이 이전 패치를 모르고 같은 id를 재생성 → 우연 충돌 → 정지가 정답.
+// - 편집기 JSON 탭에 ② "AI에게 스키마 고치게 하기": 수정 요청 규격 복사(기존 id 다이제스트
+//   동봉 — 상태창 CSS는 안 실어 통짜보다 가볍다) → 패치 검사(계획·충돌 선택·삭제는 기본
+//   해제) → 원자 적용 + 되돌리기 1슬롯. 기존 ①(통짜 생성)은 그대로, ②③은 ③④로 밀림.
+// - 미지원 섹션(statusUI·onTurn·setup)은 파싱 단계에서 "통 교체 경로를 쓰세요" 안내.
 //
 // ── v0.43.3 ────────────────────────────────────────────────
 // 제안 칩 클립보드 강등 — 전송이 막힌 환경(플러그인 프로바이더 모델·권한 거부·API 부재)의
@@ -4521,6 +4534,7 @@ const { renderStatusHtml, THEMES, multiPanelTemplate } = require('./render');
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
+const patchMod = require('./patch');
 
 const CSS = `
 .sce { font-size: 13px; }
@@ -4844,6 +4858,78 @@ function buildFixPrompt(schema, v) {
     JSON.stringify(schema, null, 2),
     '```');
   return parts.join('\n');
+}
+
+// ── AI 왕복 패치 — "고치게 하기" 내보내기 ────────────────────
+// 통짜 재생성(①)과 달리 바꿀 부분만 받는다. AI가 실수해도 가져오기의 병합 검증(patch.js)이
+// 정지시키므로, 여기서 할 일은 둘뿐이다 — (1) 기존 id를 전부 알려 우연 충돌을 줄이고
+// (2) 출력 형식을 못박는 것. 스키마 통짜 대신 다이제스트를 보내는 이유: 베리디아급이면
+// 절반이 상태창 HTML/CSS라, 참조에 필요한 것만 추리면 붙여넣기 부담과 실수 확률이 같이 준다.
+
+function patchIdDigest(schema) {
+  const out = ['### 변수', varContractTable(schema)];
+  const evs = [...(schema.rules?.events || []),
+    ...((schema.rules?.randomEvents?.table || []).map((e) => ({ ...e, _rnd: true })))];
+  if (evs.length) {
+    out.push('', '### 이벤트 (events / randomEvents)',
+      ...evs.map((e) => `- \`${e.id}\`${e._rnd ? ' (랜덤)' : ''}${e.choices ? ' (갈림길)' : ''}`
+        + (e.when ? ` — when: \`${e.when}\`` : '')));
+  }
+  const idLine = (label, arr, extra = () => '') => {
+    if ((arr || []).length) out.push('', `### ${label}`, ...arr.map((x) => `- \`${x.id}\`${extra(x)}`));
+  };
+  idLine('액션 (actions)', schema.actions, (a) => a.label ? ` — ${a.label}` : '');
+  idLine('판정 (checks)', schema.checks, (c) => c.label ? ` — ${c.label}` : '');
+  idLine('지시문 (directives)', schema.directives, (d) => d.when ? ` — when: \`${d.when}\`` : '');
+  if ((schema.updater?.allow || []).length) {
+    out.push('', '### AI 허용 변수 (allow)',
+      '- ' + schema.updater.allow.map((a) => `\`${a.id}\``).join(', '));
+  }
+  return out.join('\n');
+}
+
+function buildPatchExportPrompt(schema) {
+  return [
+    '지금 쓰고 있는 SimCore 시뮬레이션 스키마에 **부분 수정**을 하려 합니다.',
+    '스키마 전체를 다시 만들지 말고, 바꿀 부분만 담은 **패치 JSON 하나**를 출력하세요.',
+    '',
+    '## 내가 원하는 것',
+    '(여기를 채우세요 — 예: "산적 습격 이벤트 추가. 경계가 5 이상이면 발동, 금화를 뺏김"',
+    ' / "노역 액션 보상을 30으로" / "안 쓰는 명성 변수 지워줘")',
+    '',
+    '## 패치 형식',
+    '```json',
+    '{',
+    '  "patchVersion": 1,',
+    '  "add":    { "vars": [ { "id": "raid_alert", "label": "산적 경계", "type": "int", "init": 0, "min": 0, "max": 10 } ],',
+    '              "events": [ { "id": "bandit_raid", "when": "raid_alert >= 5", "effects": [ { "set": "gold", "expr": "max(0, gold - 50)" } ], "notify": "Bandits raid the village." } ] },',
+    '  "update": { "actions": [ { "id": "work", "label": "⚒ 노역", "mode": "oneshot", "effects": [ { "set": "gold", "expr": "gold + 30" } ] } ] },',
+    '  "remove": { "vars": ["fame"] }',
+    '}',
+    '```',
+    '- `add` = 새로 만드는 항목. **아래 "이미 있는 id"와 겹치면 안 됩니다** — 뜻이 비슷해도 반드시 새 id를 지으세요.',
+    '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, 항목을 **통째로 다시** 씁니다 — 바꿀 필드만 주면 나머지 필드가 사라집니다.',
+    '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
+    '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
+    '- 상태창(statusUI)·onTurn·setup·meta는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
+    '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
+    '- 새 이벤트에는 시작/끝 짝을 고려하세요 — `once` 없이 조건만 두면 조건이 참인 동안 매 턴 재발동합니다.',
+    '',
+    '## 이미 있는 id — 이 목록과 겹치는 add는 가져오기에서 정지됩니다',
+    patchIdDigest(schema),
+    '',
+    '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
+    schemaLanguageTable(),
+    '',
+    '## 절대 규칙 (어기면 가져오기가 거부됩니다)',
+    ...SCHEMA_HARD_RULES,
+    '',
+    '## 수식 언어',
+    ...SCHEMA_EXPR_RULES.map((s) => '- ' + s),
+    '',
+    '**패치 JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
+  ].join('\n');
 }
 
 // ── 탭 단위로 AI에게 맡기기 ──────────────────────────────────
@@ -6631,6 +6717,13 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
   }
 
   // ── 탭: JSON ──────────────────────────────────────────────
+  // ② AI 왕복 패치 상태 — 탭을 옮겨도 유지된다 (진단 탭의 diagResult와 같은 이유)
+  let patchText = '';      // 붙여넣은 패치 원문
+  let patchPlan = null;    // [패치 검사] 결과 { patch, plan } — 적용 전 계획
+  let patchChoices = {};   // 충돌 해소 선택('cf:키'), 개명 id('rn:키'), 삭제 체크('rm:섹션:id')
+  let patchBackup = null;  // 적용 직전 스키마 — 되돌리기 1슬롯
+  let patchReport = null;  // 마지막 적용 내역 (rerender를 넘어 보여줘야 해서 상태로)
+
   function tabJson() {
     const wrap = h('div');
 
@@ -6650,8 +6743,156 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       [exSelect, valCheck],
     ).mount(wrap);
 
+    // ── AI에게 부분 수정을 맡기는 경로 (왕복 패치) ──
+    // 통짜 재생성은 안 고칠 부분까지 다시 쓰게 해서 위험하다. 여기는 바꿀 부분만 받아
+    // patch.js가 병합한다 — add 충돌은 정지 후 선택, 적용은 원자적(전체 아니면 전무).
+    wrap.appendChild(h('h4', {}, '② AI에게 스키마 고치게 하기 (부분 수정)'));
+
+    if (patchReport) {
+      const rep = patchReport;
+      const lines = [];
+      if (rep.added.length) lines.push(`추가 ${rep.added.length} (${rep.added.join(', ')})`);
+      if (rep.updated.length) lines.push(`교체 ${rep.updated.length} (${rep.updated.join(', ')})`);
+      if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
+      if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', {}, `✅ 패치 적용됨 — ${lines.join(' · ') || '변화 없음'}`),
+        ...(rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`)),
+        h('div', { class: 'sce-row' },
+          patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
+            schema = patchBackup; patchBackup = null; patchReport = null; rerender();
+          } }, '↩ 되돌리기 (적용 전으로)') : null,
+          h('button', { class: 'sce-btn', onclick: () => { patchReport = null; rerender(); } }, '확인'),
+        )));
+    }
+
+    copyWidget('📋 수정 요청 규격 복사',
+      '지금 스키마의 id 목록과 패치 형식을 함께 복사합니다. AI에게 무엇을 바꾸고 싶은지 설명하고 '
+      + '이걸 붙여넣으면, 바꿀 부분만 담긴 패치 JSON이 옵니다. 받아온 걸 아래 칸에 붙여넣고 '
+      + '[패치 검사]를 누르세요. 처음부터 통째로 만들 때는 ①, 이미 있는 봇을 고칠 때는 여기입니다.',
+      () => buildPatchExportPrompt(schema),
+    ).mount(wrap);
+
+    const pArea = h('textarea', { style: 'min-height:120px',
+      placeholder: 'AI가 준 패치 JSON을 여기에 — 코드펜스(```)째 붙여넣어도 됩니다' });
+    pArea.value = patchText;
+    pArea.oninput = () => { patchText = pArea.value; };
+    wrap.appendChild(pArea);
+    const planBox = h('div');
+
+    const renderPlanBox = () => {
+      planBox.replaceChildren();
+      if (!patchPlan) return;
+      const { patch, plan } = patchPlan;
+      const box = h('div', { class: 'sce-block' });
+
+      if (plan.errors.length) {
+        box.append(h('div', { class: 'sce-err' }, '패치를 적용할 수 없습니다:'),
+          ...plan.errors.map((e) => h('div', { class: 'sce-err' }, `- ${e}`)),
+          h('div', { class: 'sce-hint' },
+            'AI가 헛짚은 것일 수 있습니다 — 위의 [수정 요청 규격 복사]를 다시 복사해 AI에게 주고, 오류 문구를 함께 전달하세요.'));
+        planBox.appendChild(box);
+        return;
+      }
+
+      const secLabel = (s) => patchMod.SECTIONS[s]?.label ?? s;
+      const entryName = (e) => e.label ?? e.notify ?? e.text ?? '';
+      box.appendChild(h('div', {},
+        `계획: 추가 ${plan.summary.add} · 교체 ${plan.summary.update} · 삭제 후보 ${plan.summary.remove} · 충돌 ${plan.summary.conflicts}`));
+      for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
+
+      const conflictKeys = new Set(plan.conflicts.map((c) => `${c.section}:${c.id}`));
+      for (const o of plan.ops) {
+        if (o.op === 'remove') continue;                       // 삭제는 아래 체크 목록에서
+        if (o.op === 'add' && conflictKeys.has(`${o.section}:${o.id}`)) continue;  // 충돌은 충돌 블록에서
+        const mark = o.op === 'add' ? '＋' : '✎';
+        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} \`${o.id}\` ${entryName(o.entry)}`));
+      }
+
+      // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
+      for (const c of plan.conflicts) {
+        const cf = `cf:${c.key}`, rn = `rn:${c.key}`;
+        const mode = patchChoices[cf] ?? 'skip';
+        const OPT_LABEL = { replace: '기존을 교체', rename: '새 id로 추가', skip: '건너뛰기 (기본)' };
+        const sel = bindSelect(mode, c.options.map((o) => [o, OPT_LABEL[o]]),
+          (x) => { patchChoices[cf] = x; renderPlanBox(); });
+        const row = h('div', { class: 'sce-row' },
+          h('span', {}, `⚠ 충돌: ${c.reason}`), sel);
+        if (mode === 'rename') {
+          const suggested = patchChoices[rn] ?? patchMod.suggestFreeId(schema, patch, c.section, c.id);
+          patchChoices[rn] = suggested;
+          row.appendChild(pair('새 id', bindInput(suggested, (x) => { patchChoices[rn] = x.trim(); }, { cls: 'sce-w-m' }),
+            '패치 안에서 이 id를 참조하는 식·효과도 함께 바뀝니다'));
+        }
+        const exName = entryName(c.existing), inName = entryName(c.incoming);
+        box.appendChild(h('div', { class: 'sce-block' }, row,
+          h('div', { class: 'sce-hint' },
+            `기존: ${exName || '(이름 없음)'} ↔ 새것: ${inName || '(이름 없음)'}`
+            + (exName && inName && exName !== inName ? ' — 이름이 달라 서로 다른 항목일 가능성이 높습니다' : ''))));
+      }
+
+      // 삭제 — 기본 해제. AI가 시키지도 않은 삭제를 끼워 넣는 것을 사람 눈으로 거른다.
+      const removeOps = plan.ops.filter((o) => o.op === 'remove');
+      if (removeOps.length) {
+        box.appendChild(h('div', { class: 'sce-hint' }, '삭제 후보 — 체크한 것만 지워집니다 (기본 해제):'));
+        for (const o of removeOps) {
+          const key = `rm:${o.section}:${o.id}`;
+          box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
+            `삭제: ${secLabel(o.section)} \`${o.id}\` ${entryName(o.previous)}`)));
+        }
+      }
+
+      // 직전 적용 시도의 실패 사유 — 계획·충돌 선택 UI는 남겨서 고르고 다시 시도할 수 있게
+      for (const e of (patchPlan.applyErrors || []))
+        box.appendChild(h('div', { class: 'sce-err' }, `✖ ${e}`));
+
+      box.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-add', onclick: () => {
+          // 체크 안 된 remove는 패치에서 뺀다
+          const p2 = JSON.parse(JSON.stringify(patch));
+          for (const [sec, ids] of Object.entries(p2.remove || {}))
+            p2.remove[sec] = ids.filter((id) => patchChoices[`rm:${sec}:${id}`]);
+          const resolutions = {};
+          for (const c of plan.conflicts) {
+            const m = patchChoices[`cf:${c.key}`] ?? 'skip';
+            resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
+          }
+          const r = patchMod.applyPatch(schema, p2, resolutions);
+          if (!r.ok) {
+            patchPlan.applyErrors = r.errors;
+            renderPlanBox();
+            return;
+          }
+          patchBackup = JSON.parse(JSON.stringify(schema));
+          patchReport = r.applied;
+          patchText = ''; patchPlan = null; patchChoices = {};
+          schema = r.schema;
+          rerender();
+        } }, '✅ 패치 적용'),
+        h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; renderPlanBox(); } }, '취소'),
+      ));
+      planBox.appendChild(box);
+    };
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn', onclick: () => {
+        const parsed = patchMod.parsePatch(patchText);
+        if (!parsed.ok) {
+          patchPlan = { patch: null, plan: { errors: parsed.errors, warnings: [], ops: [], conflicts: [], summary: { add: 0, update: 0, remove: 0, conflicts: 0 } } };
+          patchChoices = {};
+          renderPlanBox();
+          return;
+        }
+        patchPlan = { patch: parsed.patch, plan: patchMod.planPatch(schema, parsed.patch) };
+        patchChoices = {};
+        renderPlanBox();
+      } }, '🔍 패치 검사'),
+    ));
+    wrap.appendChild(planBox);
+    renderPlanBox();
+
     // ── 검증 실패를 되돌려주는 경로 ──
-    wrap.appendChild(h('h4', {}, '② 오류를 AI에게 돌려주기'));
+    wrap.appendChild(h('h4', {}, '③ 오류를 AI에게 돌려주기'));
     const v = validateSchema(schema);
     copyWidget('📋 검증 결과를 AI에게 돌려주기',
       v.ok
@@ -6661,7 +6902,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     ).mount(wrap);
 
     // ── 원본 편집 ──
-    wrap.appendChild(h('h4', {}, '③ 스키마 원본'));
+    wrap.appendChild(h('h4', {}, '④ 스키마 원본'));
     wrap.appendChild(h('div', { class: 'sce-hint' }, '여기 붙여넣고 [반영]하면 편집기에 로드됩니다.'));
     const area = h('textarea', { id: 'sce-json', style: 'min-height:300px' });
     area.value = JSON.stringify(schema, null, 2);

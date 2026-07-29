@@ -10,7 +10,7 @@ simcore.plugin.js        플러그인 본체 (리수에 임포트하는 파일) 
 core/  adapter/          소스 (엔진 모듈 11개 + 리수 어댑터 — 버전·체인지로그는 adapter/risu-plugin.js)
 build.js  tools/         번들러 + 역추출기(unbundle.js) — 워크플로는 SOURCES.md
 test/                    코어 단위 테스트 (node test/run-tests.js — Node만 있으면 됨)
-테스트/                   회귀 테스트 34종 (로컬 실측 — 번들을 직접 물고 돈다)
+테스트/                   회귀 테스트 35종 (로컬 실측 — 번들을 직접 물고 돈다)
 베리디아/                 "베리디아 남작령" 봇 (생성기 + 산출물)
 배포/                     아카라이브 패치글·가이드 시리즈 HTML
 docs/                    설계 문서 (미구현 초안 포함)
@@ -52,7 +52,13 @@ docs/                    설계 문서 (미구현 초안 포함)
       경고 접기(147→8줄) + 경계 넘는 낱말만 경고, 편집기 경고 4건부터 details 접기, 상태창
       [⚡ 접두사로 그룹 묶어 배치]·그룹 [합치기], 왕복 규격에 항목 전문 동봉 + 같은 id
       remove+add 금지 명시, 충돌·삭제 일괄 버튼 (v0.44.2), 상태창 제목 칸 + 숫자 대응표→enum 린트
-      (v0.44.3). 테스트 34파일/1777단언.
+      (v0.44.3).
+- [x] **v0.45 변수 정리 마법사** — 쓰이는 변수의 ✕가 정리 계획을 먼저 보이고, 참조를 전 구간에서
+      걷어낸다 (파생 재귀 캐스케이드·allow·setup·onTurn·이벤트/랜덤·지시문·액션·판정·상태창·
+      promptState). 원자적 + 되돌리기 1슬롯. **변수 삭제가 원천 불가능했던 이유**: 참조가 패치
+      미지원 영역(onTurn·promptState·setup)에도 있어 왕복 패치로는 못 지웠다.
+      함께: 진단→AI 수정 요청을 패치 경로로(통 교체는 전면 재작성용 강등), or 조건 병목 오판 수정
+      (제일 먼 갈래→가장 가까운 갈래). 테스트 35파일/1817단언.
 
 ## 베리디아 남작령
 
@@ -159,7 +165,7 @@ node estate-vars.js        # → 영지-변수상태창-신안.json 재생성 + 
 node build.js && cmp dist/simcore.plugin.js simcore.plugin.js   # 소스↔번들 바이트 일치
 node test/run-tests.js                                          # 코어 단위 (통과 84)
 cd 테스트
-for f in test-*.js; do node "$f"; done      # 34개 파일 / 단언 1777개
+for f in test-*.js; do node "$f"; done      # 35개 파일 / 단언 1817개
 node npc-check.js                            # 배역·고용 흐름 눈으로 확인
 ```
 

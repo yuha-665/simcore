@@ -5,6 +5,7 @@
 //   { getSchema(), setSchema(s), validateNow(), destroy() }
 
 const { validateSchema } = require('./validate');
+const { referencedVars } = require('./expr');
 const { renderStatusHtml, THEMES, multiPanelTemplate } = require('./render');
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
@@ -365,14 +366,29 @@ function patchIdDigest(schema) {
   return out.join('\n');
 }
 
-function buildPatchExportPrompt(schema) {
+function buildPatchExportPrompt(schema, opts = {}) {
+  // 🔵(low)는 "확인만 해보세요" 수준이라 보내지 않는다 — 고칠 게 아닌 걸 고치게 하면 설계가 망가진다
+  const fixes = (opts.findings || []).filter((f) => f.sev !== 'low');
+  const s = opts.stats;
+  const want = fixes.length
+    ? ['## 진단에서 나온 문제 — 이걸 고치는 패치를 주세요',
+      s ? `이 스키마를 실제로 ${s.turns}턴 × ${s.runs}시드 굴려 본 결과입니다.` : '',
+      ...fixes.map((f, i) => `${i + 1}. ${f.sev === 'high' ? '🔴' : '🟡'} **[${f.tag}]** ${f.text}`),
+      '',
+      '- 한 지적이 여러 탭에 걸쳐도 됩니다 — 패치는 섹션을 자유롭게 넘나듭니다.',
+      '- **고칠 자리가 상태창·매 턴 정산(onTurn)·새 시작이면 패치로 못 다룹니다** — 그 사실을 JSON 대신 말로 알려주세요.',
+      '- 진단은 보조 AI를 안 돌리고 굴린 결과라, **AI가 바꾸는 변수는 "안 움직임"으로 잘못 나옵니다.**',
+      '  그런 지적은 고치지 말고 그렇다고 말해 주세요.']
+    : ['## 내가 원하는 것',
+      '(여기를 채우세요 — 예: "산적 습격 이벤트 추가. 경계가 5 이상이면 발동, 금화를 뺏김"',
+      ' / "노역 액션 보상을 30으로" / "안 쓰는 명성 변수 지워줘")'];
   return [
-    '지금 쓰고 있는 SimCore 시뮬레이션 스키마에 **부분 수정**을 하려 합니다.',
+    fixes.length
+      ? '지금 쓰고 있는 SimCore 시뮬레이션 스키마의 문제를 **부분 수정**으로 고치려 합니다.'
+      : '지금 쓰고 있는 SimCore 시뮬레이션 스키마에 **부분 수정**을 하려 합니다.',
     '스키마 전체를 다시 만들지 말고, 바꿀 부분만 담은 **패치 JSON 하나**를 출력하세요.',
     '',
-    '## 내가 원하는 것',
-    '(여기를 채우세요 — 예: "산적 습격 이벤트 추가. 경계가 5 이상이면 발동, 금화를 뺏김"',
-    ' / "노역 액션 보상을 30으로" / "안 쓰는 명성 변수 지워줘")',
+    ...want,
     '',
     '## 패치 형식',
     '```json',
@@ -623,6 +639,176 @@ function idsUsedElsewhere(schema) {
     if (new RegExp(`\\b${v.id}\\b`).test(rest)) out.push(v.id);
   }
   return out;
+}
+
+// ── 변수 정리 (v0.45) ────────────────────────────────────────
+// 변수 하나를 지우려면 그걸 쓰는 자리를 **전부** 같이 치워야 한다. 그 자리들이 규칙·상태창·
+// 프롬프트 요약·새 시작에 흩어져 있어서, 왕복 패치로는 손댈 수 없는 영역(onTurn·promptState·
+// setup)까지 걸린다 — 실전에서 "죽은 템플릿 잔재 층 지우기"가 사실상 불가능했던 이유다.
+// 그래서 편집기가 직접 훑어 정리한다. 규율은 패치와 같다: 계획을 먼저 보이고, 병합 결과가
+// 검증을 통과할 때만 적용한다.
+
+/** 식이 지울 id를 건드리나 (토큰 기반 — 문자열 리터럴 안의 같은 낱말에 안 속는다) */
+function exprHits(expr, doomed) {
+  if (typeof expr !== 'string' || !expr.trim()) return false;
+  try { return referencedVars(expr).some((id) => doomed.has(id)); } catch { return false; }
+}
+
+/**
+ * 템플릿에서 {지울변수} 자리표시자를 걷어낸다.
+ * dropEmpty면 값이 하나도 안 남는 줄은 줄째 버린다 ("호감도 {affection}" 같은 요약 줄).
+ * 상태창 HTML에는 쓰지 않는다 — 줄을 버리면 여는 태그만 남을 수 있다.
+ */
+function stripPlaceholders(text, doomed, dropEmpty = false) {
+  if (typeof text !== 'string') return { text, hit: false };
+  const PH = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g;
+  let hit = false;
+  const out = [];
+  for (const line of text.split('\n')) {
+    const after = line.replace(PH, (m, id) => (doomed.has(id) ? '' : m));
+    if (after === line) { out.push(line); continue; }
+    hit = true;
+    if (!dropEmpty || /\{[a-zA-Z_][a-zA-Z0-9_]*\}/.test(after)) out.push(after);
+  }
+  return { text: out.join('\n'), hit };
+}
+
+/**
+ * 변수(들)를 지우면서 그 참조를 함께 걷어낸 스키마를 만든다.
+ * @returns { schema, notes[], doomed[], errors[] } — errors가 있으면 적용하면 안 된다
+ */
+function planVarPurge(schema0, rootIds) {
+  const schema = JSON.parse(JSON.stringify(schema0));
+  const notes = [];
+  const note = (where, what) => notes.push(`${where} — ${what}`);
+
+  // 1) 캐스케이드: 지울 변수를 쓰는 파생은 계산이 불가능해지므로 같이 지운다 (고정점까지)
+  const doomed = new Set(rootIds);
+  for (let pass = 0; pass < 20; pass++) {
+    let grew = false;
+    for (const d of (schema.derived || [])) {
+      if (doomed.has(d.id)) continue;
+      if (exprHits(d.expr, doomed)) { doomed.add(d.id); grew = true; note('파생 변수', `'${d.id}'(${d.label ?? ''})도 함께 — 지울 값을 계산에 쓰고 있음`); }
+    }
+    if (!grew) break;
+  }
+  // 판정은 굴림식이 무너지면 통째로 못 쓴다 — 그 판정을 가리키던 곳도 뒤에서 정리한다
+  const deadChecks = new Set();
+  for (const c of (schema.checks || [])) {
+    if (exprHits(c.roll, doomed) || exprHits(c.mod, doomed) || exprHits(c.vs, doomed)) deadChecks.add(c.id);
+  }
+
+  const dropEffects = (arr, where) => (arr || []).filter((f) => {
+    const hit = doomed.has(f.set) || doomed.has(f.list) || exprHits(f.expr, doomed) || exprHits(f.expire, doomed);
+    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list})`);
+    return !hit;
+  });
+
+  // 2) 변수·파생 본체
+  schema.vars = (schema.vars || []).filter((v) => !doomed.has(v.id));
+  schema.derived = (schema.derived || []).filter((d) => !doomed.has(d.id));
+
+  // 3) AI 허용·새 시작
+  if (schema.updater?.allow) {
+    const before = schema.updater.allow.length;
+    schema.updater.allow = schema.updater.allow.filter((a) => !doomed.has(a.id));
+    if (schema.updater.allow.length !== before) note('AI 설정', `허용 변수 ${before - schema.updater.allow.length}개`);
+  }
+  if (schema.setup?.ai?.vars) {
+    const before = schema.setup.ai.vars.length;
+    schema.setup.ai.vars = schema.setup.ai.vars.filter((id) => !doomed.has(id));
+    if (schema.setup.ai.vars.length !== before) note('새 시작', `AI 최초설정 대상 ${before - schema.setup.ai.vars.length}개`);
+  }
+  for (const p of (schema.setup?.presets || [])) {
+    for (const id of Object.keys(p.set || {})) if (doomed.has(id)) { delete p.set[id]; note('새 시작', `프리셋 '${p.label ?? p.id ?? ''}'의 ${id}`); }
+  }
+
+  // 4) 규칙
+  const rules = schema.rules || {};
+  if (rules.onTurn) {
+    const before = rules.onTurn.length;
+    rules.onTurn = dropEffects(rules.onTurn, '규칙 · 매 턴 정산');
+    if (rules.onTurn.length !== before) note('규칙', `매 턴 정산 ${before - rules.onTurn.length}줄`);
+  }
+  const purgeEventList = (list, where) => (list || []).filter((e) => {
+    if (exprHits(e.when, doomed)) { note(where, `'${e.id}' 통째로 — 발동 조건이 지울 값을 봄`); return false; }
+    e.effects = dropEffects(e.effects, `${where} '${e.id}'`);
+    if (e.choices) {
+      e.choices = e.choices.filter((c) => {
+        if (exprHits(c.when, doomed)) { note(where, `'${e.id}'의 선택지 '${c.label}'`); return false; }
+        c.effects = dropEffects(c.effects, `${where} '${e.id}' 선택지`);
+        return true;
+      });
+      if (!e.choices.length) delete e.choices;
+    }
+    if (deadChecks.has(e.check)) { delete e.check; note(where, `'${e.id}'의 판정 연결`); }
+    const n = stripPlaceholders(e.notify, doomed);
+    if (n.hit) { e.notify = n.text; note(where, `'${e.id}' 통지문의 자리표시자`); }
+    return true;
+  });
+  if (rules.events) rules.events = purgeEventList(rules.events, '규칙 · 이벤트');
+  if (rules.randomEvents?.table) rules.randomEvents.table = purgeEventList(rules.randomEvents.table, '규칙 · 랜덤 이벤트');
+
+  // 5) 지시문 · 액션 · 판정
+  schema.directives = (schema.directives || []).filter((d) => {
+    if (exprHits(d.when, doomed)) { note('지시문', `'${d.id}' 통째로 — 조건이 지울 값을 봄`); return false; }
+    const t = stripPlaceholders(d.text, doomed, true);
+    if (t.hit) { d.text = t.text; note('지시문', `'${d.id}'의 자리표시자`); }
+    return true;
+  });
+  schema.actions = (schema.actions || []).filter((a) => {
+    if (exprHits(a.when, doomed)) { note('액션', `'${a.label ?? a.id}' 통째로 — 사용 조건이 지울 값을 봄`); return false; }
+    a.effects = dropEffects(a.effects, `액션 '${a.label ?? a.id}'`);
+    if (deadChecks.has(a.check)) { delete a.check; note('액션', `'${a.label ?? a.id}'의 판정 연결`); }
+    return true;
+  });
+  schema.checks = (schema.checks || []).filter((c) => {
+    if (deadChecks.has(c.id)) { note('판정', `'${c.label ?? c.id}' 통째로 — 굴림식이 지울 값을 씀`); return false; }
+    c.grades = (c.grades || []).filter((g) => {
+      if (exprHits(g.when, doomed)) { note('판정', `'${c.id}'의 등급 '${g.label}'`); return false; }
+      g.effects = dropEffects(g.effects, `판정 '${c.id}' 등급`);
+      return true;
+    });
+    return true;
+  });
+
+  // 6) 상태창 · 프롬프트 요약 (자리표시자 계열)
+  const ui = schema.statusUI;
+  if (ui) {
+    for (const g of (ui.groups || [])) {
+      const before = (g.items || []).length;
+      g.items = (g.items || []).filter((it) => {
+        if (doomed.has(it.var)) return false;
+        if (exprHits(it.showWhen, doomed)) { delete it.showWhen; note('상태창', `'${it.var}' 항목의 표시 조건`); }
+        if (it.bar && exprHits(String(it.bar.max), doomed)) { delete it.bar; note('상태창', `'${it.var}' 항목의 게이지 최대값`); }
+        return true;
+      });
+      if (g.items.length !== before) note('상태창', `'${g.label || '이름 없는 그룹'}'에서 항목 ${before - g.items.length}개`);
+      if (exprHits(g.showWhen, doomed)) { delete g.showWhen; note('상태창', `'${g.label}' 그룹의 표시 조건`); }
+    }
+    const emptied = (ui.groups || []).filter((g) => !(g.items || []).length);
+    if (emptied.length) {
+      ui.groups = (ui.groups || []).filter((g) => (g.items || []).length);
+      note('상태창', `비게 된 그룹 ${emptied.length}개`);
+    }
+    const tp = stripPlaceholders(ui.template, doomed);
+    if (tp.hit) { ui.template = tp.text; note('상태창', '커스텀 템플릿의 자리표시자'); }
+    if (ui.templates) {
+      ui.templates = ui.templates.filter((t) => {
+        if (exprHits(t.when, doomed)) { note('상태창', `조건부 템플릿 '${t.id}' 통째로`); return false; }
+        const r = stripPlaceholders(t.template, doomed);
+        if (r.hit) { t.template = r.text; note('상태창', `조건부 템플릿 '${t.id}'의 자리표시자`); }
+        return true;
+      });
+    }
+  }
+  if (schema.promptState?.template) {
+    const r = stripPlaceholders(schema.promptState.template, doomed, true);
+    if (r.hit) { schema.promptState.template = r.text; note('AI 설정', '상태 요약의 자리표시자 (값이 안 남는 줄은 줄째)'); }
+  }
+
+  const v = validateSchema(schema);
+  return { schema, notes, doomed: [...doomed], errors: v.errors.map((e) => `${e.path}: ${e.msg}`) };
 }
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
@@ -1025,8 +1211,8 @@ function pickTabFragment(tabKey, frag, schema) {
   return picked;
 }
 
-// 행 이동/삭제 버튼 묶음
-function grip(list, i, rerender) {
+// 행 이동/삭제 버튼 묶음. onDelete를 주면 삭제를 그쪽이 가로챈다 (변수 탭의 참조 정리)
+function grip(list, i, rerender, onDelete) {
   const move = (d) => {
     const j = i + d;
     if (j < 0 || j >= list.length) return;
@@ -1036,7 +1222,8 @@ function grip(list, i, rerender) {
   return h('span', { class: 'sce-grip' },
     h('button', { class: 'sce-btn sce-mini', onclick: () => move(-1), title: '위로' }, '▲'),
     h('button', { class: 'sce-btn sce-mini', onclick: () => move(1), title: '아래로' }, '▼'),
-    h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { list.splice(i, 1); rerender(); }, title: '삭제' }, '✕'),
+    h('button', { class: 'sce-btn sce-mini sce-danger', title: '삭제',
+      onclick: () => { if (onDelete && onDelete() === false) return; list.splice(i, 1); rerender(); } }, '✕'),
   );
 }
 
@@ -1213,6 +1400,8 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
   let activeTab = 'vars';
   let destroyed = false;
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
+  // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
+  let purge = null, purgeDone = null, purgeBackup = null;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -1267,13 +1456,65 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     wrap.appendChild(tabAiTools('vars'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '상태창에 들어갈 항목들. 행 추가로 자유롭게 — 타입에 따라 AI 갱신 방식이 달라진다 (숫자=증감, 텍스트=재작성, 선택지=교체).'));
+
+    // 정리 계획 — 쓰이는 변수를 지우려 할 때만 뜬다. 확인해야 실제로 지운다 (패치와 같은 규율)
+    if (purge) {
+      const { id, label, plan } = purge;
+      const box = h('div', { class: 'sce-block' });
+      box.appendChild(h('div', { class: 'sce-warn' },
+        `⚠ '${label}'(${id})는 다른 곳에서 쓰이고 있습니다 — 같이 정리할 자리 ${plan.notes.length}군데:`));
+      const list = h('div');
+      for (const n of plan.notes) list.appendChild(h('div', { class: 'sce-hint' }, `· ${n}`));
+      box.appendChild(plan.notes.length > 6
+        ? h('details', { class: 'sce-fold' }, h('summary', {}, `${plan.notes.length}군데 — 눌러서 펼치기`), list)
+        : list);
+      if (plan.doomed.length > 1) {
+        box.appendChild(h('div', { class: 'sce-hint' },
+          `함께 사라지는 항목: ${plan.doomed.join(', ')} (지울 값을 계산에 쓰는 파생은 남길 수 없습니다)`));
+      }
+      box.appendChild(h('div', { class: 'sce-hint' },
+        '자리표시자만 걷어낸 문장은 앞뒤 말이 어색하게 남을 수 있습니다 (예: "호감 {값} · 기분 {값}" → "호감 · 기분 {값}"). '
+        + '적용 뒤 그 탭에서 한 번 훑어보세요.'));
+      if (plan.errors.length) {
+        box.append(h('div', { class: 'sce-err' }, '정리해도 검증을 통과하지 못합니다 — 지울 수 없습니다:'),
+          ...plan.errors.slice(0, 8).map((e) => h('div', { class: 'sce-err' }, `- ${e}`)),
+          h('div', { class: 'sce-hint' }, '자동으로 못 걷어내는 자리가 남아 있습니다. 그 탭에서 먼저 손보고 다시 시도하세요.'));
+      }
+      box.appendChild(h('div', { class: 'sce-row' },
+        plan.errors.length ? null : h('button', { class: 'sce-btn sce-danger', onclick: () => {
+          purgeBackup = JSON.parse(JSON.stringify(schema));
+          schema = plan.schema;
+          purge = null; purgeDone = `'${label}' 및 참조 ${plan.notes.length}군데를 정리했습니다.`;
+          rerender();
+        } }, '🧹 정리하고 지우기'),
+        h('button', { class: 'sce-btn', onclick: () => { purge = null; rerender(); } }, '취소'),
+      ));
+      wrap.appendChild(box);
+    }
+    if (purgeDone) {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-ok' }, `✅ ${purgeDone}`),
+        h('div', { class: 'sce-row' },
+          purgeBackup ? h('button', { class: 'sce-btn', onclick: () => {
+            schema = purgeBackup; purgeBackup = null; purgeDone = null; rerender();
+          } }, '↩ 되돌리기') : null,
+          h('button', { class: 'sce-btn', onclick: () => { purgeDone = null; rerender(); } }, '확인'))));
+    }
     schema.vars.forEach((v, i) => {
       const rows = [
         h('div', { class: 'sce-row' },
           bindInput(v.id, (x) => { v.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: gold)' }),
           bindInput(v.label, (x) => { v.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 자금)' }),
           bindSelect(v.type, VAR_TYPES, (x) => { changeVarType(v, x); rerender(); }),
-          grip(schema.vars, i, rerender),
+          // 쓰이는 변수를 그냥 지우면 규칙·상태창·프롬프트가 조용히 깨진다 → 정리 계획을 먼저 보인다
+          grip(schema.vars, i, rerender, () => {
+            if (!v.id) return true;
+            const plan = planVarPurge(schema, [v.id]);
+            if (!plan.notes.length && !plan.errors.length) return true; // 아무 데도 안 쓰임 — 그냥 지운다
+            purge = { id: v.id, label: v.label ?? v.id, plan };
+            rerender();
+            return false;
+          }),
         ),
       ];
       const detail = h('div', { class: 'sce-row' });
@@ -2627,11 +2868,22 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       // 탭별로 나눠 보내는 게 핵심이다. 한꺼번에 고치라고 하면 변수를 지어내면서 전부 어긋난다.
       if (ran && findings.length) {
         out.appendChild(h('h4', {}, '🤖 이 결과로 AI에게 수정 요청하기'));
+
+        // 권장 경로 — 패치 (v0.45). 통 교체는 항목 100개짜리 봇에서 AI가 하나만 빠뜨려도 그게 삭제다.
+        const fixable = findings.filter((f) => f.sev !== 'low');
+        if (fixable.length) {
+          copyWidget(`📤 수정 패치 요청 복사 (${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? `, 🔴 ${fixable.filter((f) => f.sev === 'high').length}` : ''}) — 권장`,
+            '문제 목록 전체와 지금 봇의 항목 전문을 함께 복사합니다. 받은 패치 JSON은 '
+            + 'JSON 탭 ②의 [패치 검사]에 붙여넣으면 됩니다 — 바꿀 부분만 병합되고, 나머지는 손대지 않습니다. '
+            + '🔵는 고칠 거리가 아니라 확인 사항이라 보내지 않습니다.',
+            () => buildPatchExportPrompt(schema, { findings, stats: diagResult.stats }),
+          ).mount(out);
+        }
+
         out.appendChild(h('div', { class: 'sce-hint' },
-          '탭마다 따로 보내세요. 그 탭의 변수 계약표·패턴·현재 내용이 문제 목록과 함께 나가고, '
-          + '"손대지 않은 것까지 전부 포함해 한 세트로 달라"는 지시와 현재 항목 개수가 박혀 나갑니다. '
-          + '받은 JSON은 해당 탭의 [가져오기]에 붙여넣으면 됩니다. '
-          + '🔵는 고칠 거리가 아니라 확인 사항이라 보내지 않습니다 — 억지로 고치게 하면 멀쩡한 설계가 망가집니다.'));
+          '아래는 예전 방식(탭 통 교체)입니다 — 그 탭을 **전면 재작성**할 때만 쓰세요. '
+          + '"손대지 않은 것까지 전부 포함해 한 세트로 달라"는 지시가 박혀 나가지만, 항목이 많은 봇에서는 '
+          + 'AI가 하나만 빠뜨려도 그게 곧 삭제입니다. 부분 수정이면 위의 패치를 쓰세요.'));
 
         const byTab = {};
         for (const f of findings) if (f.tab && f.sev !== 'low') (byTab[f.tab] = byTab[f.tab] || []).push(f);

@@ -45,13 +45,45 @@ function writerMap(schema) {
   return w;
 }
 
+/** 괄호 깊이 0의 ` or `로 조건을 갈라낸다 — 서로 대안인 갈래들 */
+function orBranches(when) {
+  const out = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < when.length; i++) {
+    const c = when[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (depth === 0 && when.startsWith(' or ', i)) {
+      out.push(when.slice(start, i));
+      i += 3; start = i + 1;
+    }
+  }
+  out.push(when.slice(start));
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+
 /**
  * 조건이 왜 안 걸렸는지 수치로 설명한다.
  * `wealth >= 2000` 인데 관측 최고가 1833이면 "92%까지만 도달" 이라고 말해 준다.
- * 여러 항이 있으면 가장 안 닿은 항을 고른다 — 그게 진짜 병목이다.
+ *
+ * `and`로 묶인 항은 전부 만족해야 하므로 **가장 안 닿은 항**이 병목이다.
+ * 반대로 `or`로 갈린 갈래는 하나만 되면 되므로 **가장 가까운 갈래**가 병목이다 —
+ * 여기를 구분하지 않으면 8인 봇의 `a >= 60 or b >= 60 or …`에서 제일 먼 사람을 짚고
+ * "얘 호감을 올리세요"라고 엉뚱한 처방을 낸다 (실측 사고, v0.45).
  */
 function bottleneck(when, obs) {
   if (!when) return null;
+  const branches = orBranches(when);
+  if (branches.length > 1) {
+    let best = null;
+    for (const b of branches) {
+      const r = bottleneck(b, obs);
+      if (!r) return null;                       // 이미 닿은 갈래가 있다 — 병목이 아니다
+      if (!best || (r.pct != null && (best.pct == null || r.pct > best.pct))) best = r;
+    }
+    if (best) best.ofBranches = branches.length;
+    return best;
+  }
   let worst = null;
   CMP.lastIndex = 0;
   let m;
@@ -443,6 +475,7 @@ function diagnose(schema, opts = {}) {
     const where = b
       ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
         + (b.pct != null ? ` (${b.pct}%)` : '')
+        + (b.ofBranches ? ` — ${b.ofBranches}갈래(or) 중 가장 가까운 것` : '')
       : `조건: ${e.when ?? '(없음)'}`;
     if (onlyLonger(e.id, 'event')) {
       stats.deadEvents--;                        // 죽은 게 아니라 아직 안 온 것
@@ -484,6 +517,7 @@ function diagnose(schema, opts = {}) {
       const where = b
         ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
           + (b.pct != null ? ` (${b.pct}%)` : '')
+          + (b.ofBranches ? ` — ${b.ofBranches}갈래(or) 중 가장 가까운 것` : '')
         : `조건: ${a.when ?? '(없음)'}`;
       if (onlyLonger(a.id, 'action')) {
         stats.lateActions = (stats.lateActions ?? 0) + 1;

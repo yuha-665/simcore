@@ -4,7 +4,7 @@
 <div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
   <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
   <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
-  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.43 &nbsp;→&nbsp; v0.44.3</div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.43 &nbsp;→&nbsp; v0.45</div>
 </div>
 
 <!-- ─────────── 처음 보는 사람용 ─────────── -->
@@ -25,7 +25,7 @@
 만드는 건 원래 됐습니다(규격 내보내기). 문제는 그 다음이었어요 — 이벤트 하나 넣자고 스키마 전체를
 다시 받아 통째로 갈아끼우는 건, 잘 되던 부분까지 걸고 하는 도박이니까요. 이제 그거 안 해도 됩니다.
 그리고 올리기 전에 이걸로 <b style="color:#dbe2ea;">실제 봇 하나를 통째로 개조</b>해 보면서 걸린 것들을
-전부 고쳐서(v0.44.1–3), 그 보정까지 묶어서 나갑니다.
+전부 고쳐서(v0.44.1–0.45), 그 보정까지 묶어서 나갑니다.
 </p>
 
 <!-- ─────────── v0.44 본문 ─────────── -->
@@ -100,7 +100,7 @@
 <!-- ─────────── v0.44.1–3 실전 보정 ─────────── -->
 <div style="background:#161b22;border:1px solid #2a3140;border-radius:6px;padding:20px 22px;margin-bottom:18px;">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.44.1–3</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.44.1–0.45</span>
     <span style="font-size:16px;font-weight:600;color:#dbe2ea;">올리기 전에 실전 개조를 한 판 돌렸습니다</span>
   </div>
   <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
@@ -142,12 +142,29 @@
   참고로 충돌이 수십 개 뜨면 대개 <b style="color:#dbe2ea;">옛 규격으로 만든 패치</b>라는 신호예요 —
   일괄 교체보다 규격을 새로 복사해서 재요청하는 쪽이 안전합니다 (검사 화면에도 이 안내가 뜹니다).
   </p>
-  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
   <b style="color:#e0a94a;">&quot;계절 0&quot; 사고.</b> AI가
   <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">&quot;계절 (0겨울 1봄 2여름 3가을)&quot;</span>처럼
   변수를 숫자 코드로 만들어서 상태창에 <b style="color:#dbe2ea;">0</b>이 떡하니 뜨는 일이 있었습니다.
   검증기가 이제 이 패턴을 잡아서 <b style="color:#dbe2ea;">&quot;선택지(enum) 타입이 정답&quot;</b>이라고 알려줍니다 —
   고치면 0 대신 <b style="color:#dbe2ea;">겨울</b>이 뜹니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">안 쓰는 변수를 못 지우던 문제 (v0.45).</b> 이게 제일 컸습니다 —
+  템플릿에서 시작한 봇에는 <b style="color:#dbe2ea;">안 쓰게 된 변수들이 남아 있는데</b>,
+  그걸 지우려 하면 그 변수를 쓰는 자리가 규칙&middot;상태창&middot;프롬프트 요약&middot;새 시작에 흩어져 있어서
+  <b style="color:#fff;">어느 방법으로도 지울 수가 없었습니다.</b>
+  이제 변수 탭에서 <b style="color:#dbe2ea;">✕</b>를 누르면 &quot;이 변수를 쓰는 곳 N군데&quot; 목록이 먼저 뜨고,
+  <b style="color:#dbe2ea;">[🧹 정리하고 지우기]</b> 한 번이면 그 자리들까지 같이 치웁니다.
+  계산에 그 값을 쓰던 자동 계산 항목도 딸려 나오고, 정리한 결과가 검증을 통과하지 못하면
+  <b style="color:#dbe2ea;">아무것도 안 지웁니다</b> (되돌리기도 한 번 남습니다).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">진단 두 가지 (v0.45).</b> 진단의 <b style="color:#dbe2ea;">[AI에게 수정 요청]</b>이
+  이제 <b style="color:#dbe2ea;">패치</b>로 나갑니다 — 예전엔 탭을 통째로 다시 받아야 해서, 항목이 많은 봇이면
+  AI가 하나만 빠뜨려도 그게 삭제였거든요. 그리고 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">A 또는 B 또는 C</span>
+  형태의 조건에서 진단이 <b style="color:#dbe2ea;">제일 먼 갈래</b>를 짚어 엉뚱한 처방을 내던 것도 고쳤습니다
+  (하나만 되면 되는 조건이니, 이제 <b style="color:#dbe2ea;">가장 가까운 갈래</b>를 알려줍니다).
   </p>
 </div>
 
@@ -157,7 +174,7 @@
 <pre style="background:#161b22;border-radius:4px;padding:16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#e0a94a;">v0.44</span>    <span style="color:#7fc7d9;">AI 왕복 패치</span> — 봇 수정을 AI에게. 바꿀 부분만 받아서 검사하고 병합
          <span style="color:#8b98a9;">— 겹치면 정지 후 선택 · 삭제는 기본 꺼짐 · 전부 아니면 전무 + 되돌리기</span>
          <span style="color:#8b98a9;">— 위치: 봇 편집 → JSON 탭 → ② (통짜로 새로 만들 땐 여전히 ①)</span>
-<span style="color:#e0a94a;">v0.44.1–3</span> <span style="color:#7fc7d9;">실전 보정</span> — 인물 묶음 경고 접기 · 접두사 일괄 배치·그룹 합치기 · 규격 전문 동봉 · 일괄 버튼 · 제목 칸·enum 린트</pre>
+<span style="color:#e0a94a;">v0.44.1–0.45</span> <span style="color:#7fc7d9;">실전 보정</span> — 인물 묶음 경고 접기 · 접두사 일괄 배치·그룹 합치기 · 규격 전문 동봉 · 일괄 버튼 · 제목 칸·enum 린트</pre>
 
   <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;">
     <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께</div>

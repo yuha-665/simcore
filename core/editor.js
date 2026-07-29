@@ -1433,6 +1433,18 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         pair('표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
           { cls: 'sce-w-m', ph: '(비우면 항상)' }),
           '조건이 참일 때만 이 그룹이 상태창에 등장. 예: famine / curse > 0'),
+        // 그룹 통째 합치기 — 항목을 드롭다운으로 하나씩 옮기다 눈 빠진다는 제보 (v0.44.2)
+        ui.groups.length >= 2 ? pair('합치기', bindSelect('', [['', '↪ 다른 그룹으로…'],
+          ...ui.groups.map((g2, i2) => [String(i2), `${i2 + 1}. ${g2.label || '(이름 없음)'}`])
+            .filter(([i2]) => i2 !== '' && Number(i2) !== gi)],
+          (x) => {
+            if (x === '') return;
+            const target = ui.groups[Number(x)];
+            target.items = (target.items || []).concat(g.items || []);
+            ui.groups.splice(gi, 1);
+            rerender();
+          }),
+          '이 그룹의 항목 전부를 고른 그룹 끝에 붙이고, 이 그룹은 없앰') : null,
         grip(ui.groups, gi, rerender),
       ));
       g.items = g.items || [];
@@ -2350,6 +2362,26 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       }
 
       // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
+      // 셋 이상이면 일괄 버튼 — 실전에서 충돌 수십 개를 하나씩 고르다 눈 빠진다는 제보.
+      if (plan.conflicts.length >= 3) {
+        const setAll = (mode) => {
+          for (const c of plan.conflicts) {
+            if (!c.options.includes(mode)) continue;
+            patchChoices[`cf:${c.key}`] = mode;
+            if (mode !== 'rename') delete patchChoices[`rn:${c.key}`];
+          }
+          renderPlanBox();
+        };
+        box.appendChild(h('div', { class: 'sce-row' },
+          h('span', { class: 'sce-hint' }, `충돌 ${plan.conflicts.length}건 일괄:`),
+          h('button', { class: 'sce-btn', onclick: () => setAll('replace') }, '전부 교체'),
+          h('button', { class: 'sce-btn', onclick: () => setAll('rename') }, '전부 새 id'),
+          h('button', { class: 'sce-btn', onclick: () => setAll('skip') }, '전부 건너뛰기'),
+        ));
+        box.appendChild(h('div', { class: 'sce-hint' },
+          '충돌이 이렇게 많으면 낡은 규격으로 만든 패치일 수 있습니다 — 이미 있는 걸 AI가 add로 다시 낸 것. '
+          + '전부 교체하기 전에, [수정 요청 규격 복사]를 새로 해서 재요청하는 쪽이 안전할 때가 많습니다.'));
+      }
       for (const c of plan.conflicts) {
         const cf = `cf:${c.key}`, rn = `rn:${c.key}`;
         const mode = patchChoices[cf] ?? 'skip';
@@ -2375,6 +2407,16 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       const removeOps = plan.ops.filter((o) => o.op === 'remove');
       if (removeOps.length) {
         box.appendChild(h('div', { class: 'sce-hint' }, '삭제 후보 — 체크한 것만 지워집니다 (기본 해제):'));
+        if (removeOps.length >= 3) {
+          const setRm = (v) => {
+            for (const o of removeOps) patchChoices[`rm:${o.section}:${o.id}`] = v;
+            renderPlanBox();
+          };
+          box.appendChild(h('div', { class: 'sce-row' },
+            h('button', { class: 'sce-btn', onclick: () => setRm(true) }, '전체 체크'),
+            h('button', { class: 'sce-btn', onclick: () => setRm(false) }, '전체 해제'),
+          ));
+        }
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
           box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },

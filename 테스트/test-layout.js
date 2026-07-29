@@ -209,6 +209,8 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('★ 편집기에 접두사 묶음 배치 버튼이 있다', src.includes('접두사로 그룹 묶어 배치'), '');
   ck('묶음 그룹은 기본 접힘으로 만든다', /visibility: 'collapsed',\s*\n\s*items: arr\.map\(mkItem\)/.test(src), '');
   ck('접두사 없는 나머지는 기타 그룹으로', src.includes("label: '기타', items: rest.map(mkItem)"), '');
+  ck('★ 그룹 통째 합치기 셀렉트가 있다 (v0.44.2)',
+    src.includes('↪ 다른 그룹으로…') && src.includes('고른 그룹 끝에 붙이고'), '');
 }
 
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──

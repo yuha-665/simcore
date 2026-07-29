@@ -1,13 +1,21 @@
 //@name simcore
 //@api 3.0
-//@version 0.44.1
-//@display-name SimCore (시뮬 엔진) v0.44.1 AI 부분 수정
+//@version 0.44.2
+//@display-name SimCore (시뮬 엔진) v0.44.2 AI 부분 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.44.2 ────────────────────────────────────────────────
+// 일괄 처리 — "일일이 선택하다 눈 빠진다" 제보 3건.
+// - [패치] 충돌 3건부터 일괄 버튼 (전부 교체 / 전부 새 id / 전부 건너뛰기) + "충돌이 많으면
+//   낡은 규격 신호 — 재내보내기가 안전" 힌트. rename 일괄 시 제안 id는 렌더가 항목별로 채움.
+// - [패치] 삭제 후보 3건부터 [전체 체크]/[전체 해제].
+// - [상태창] 그룹 행에 [합치기] 셀렉트 — 이 그룹 항목 전부를 고른 그룹 끝에 붙이고 이 그룹 제거.
+//   (탭 8·9 중복 "현재 시각" 병합 같은 정리를 항목 드롭다운 노가다 없이)
 //
 // ── v0.44.1 ────────────────────────────────────────────────
 // 실전 보정 — 맨션봇(입주자 8명 × 수치 6개) 왕복 개조 실기에서 나온 4건.
@@ -6025,6 +6033,18 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         pair('표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
           { cls: 'sce-w-m', ph: '(비우면 항상)' }),
           '조건이 참일 때만 이 그룹이 상태창에 등장. 예: famine / curse > 0'),
+        // 그룹 통째 합치기 — 항목을 드롭다운으로 하나씩 옮기다 눈 빠진다는 제보 (v0.44.2)
+        ui.groups.length >= 2 ? pair('합치기', bindSelect('', [['', '↪ 다른 그룹으로…'],
+          ...ui.groups.map((g2, i2) => [String(i2), `${i2 + 1}. ${g2.label || '(이름 없음)'}`])
+            .filter(([i2]) => i2 !== '' && Number(i2) !== gi)],
+          (x) => {
+            if (x === '') return;
+            const target = ui.groups[Number(x)];
+            target.items = (target.items || []).concat(g.items || []);
+            ui.groups.splice(gi, 1);
+            rerender();
+          }),
+          '이 그룹의 항목 전부를 고른 그룹 끝에 붙이고, 이 그룹은 없앰') : null,
         grip(ui.groups, gi, rerender),
       ));
       g.items = g.items || [];
@@ -6942,6 +6962,26 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       }
 
       // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
+      // 셋 이상이면 일괄 버튼 — 실전에서 충돌 수십 개를 하나씩 고르다 눈 빠진다는 제보.
+      if (plan.conflicts.length >= 3) {
+        const setAll = (mode) => {
+          for (const c of plan.conflicts) {
+            if (!c.options.includes(mode)) continue;
+            patchChoices[`cf:${c.key}`] = mode;
+            if (mode !== 'rename') delete patchChoices[`rn:${c.key}`];
+          }
+          renderPlanBox();
+        };
+        box.appendChild(h('div', { class: 'sce-row' },
+          h('span', { class: 'sce-hint' }, `충돌 ${plan.conflicts.length}건 일괄:`),
+          h('button', { class: 'sce-btn', onclick: () => setAll('replace') }, '전부 교체'),
+          h('button', { class: 'sce-btn', onclick: () => setAll('rename') }, '전부 새 id'),
+          h('button', { class: 'sce-btn', onclick: () => setAll('skip') }, '전부 건너뛰기'),
+        ));
+        box.appendChild(h('div', { class: 'sce-hint' },
+          '충돌이 이렇게 많으면 낡은 규격으로 만든 패치일 수 있습니다 — 이미 있는 걸 AI가 add로 다시 낸 것. '
+          + '전부 교체하기 전에, [수정 요청 규격 복사]를 새로 해서 재요청하는 쪽이 안전할 때가 많습니다.'));
+      }
       for (const c of plan.conflicts) {
         const cf = `cf:${c.key}`, rn = `rn:${c.key}`;
         const mode = patchChoices[cf] ?? 'skip';
@@ -6967,6 +7007,16 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       const removeOps = plan.ops.filter((o) => o.op === 'remove');
       if (removeOps.length) {
         box.appendChild(h('div', { class: 'sce-hint' }, '삭제 후보 — 체크한 것만 지워집니다 (기본 해제):'));
+        if (removeOps.length >= 3) {
+          const setRm = (v) => {
+            for (const o of removeOps) patchChoices[`rm:${o.section}:${o.id}`] = v;
+            renderPlanBox();
+          };
+          box.appendChild(h('div', { class: 'sce-row' },
+            h('button', { class: 'sce-btn', onclick: () => setRm(true) }, '전체 체크'),
+            h('button', { class: 'sce-btn', onclick: () => setRm(false) }, '전체 해제'),
+          ));
+        }
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
           box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },

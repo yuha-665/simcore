@@ -1342,6 +1342,13 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
                     ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`])];
     wrap.appendChild(h('div', { class: 'sce-row' },
+      // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
+      // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
+      pair('제목', bindInput(schema.meta?.name, (x) => {
+        schema.meta = schema.meta || {};
+        schema.meta.name = x.trim() || undefined; rerender();
+      }, { cls: 'sce-w-m', ph: '(비우면 "상태")' }),
+        '상태창 머리글 + 메인 AI 상태 블록 제목 + 진단 리포트 제목'),
       pair('표시 방식', bindSelect(ui.mode ?? 'auto', [
         ['auto', '자동 구성 (그룹/항목)'], ['template', '커스텀 HTML 템플릿 (고급)'],
       ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),

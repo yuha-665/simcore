@@ -4,6 +4,17 @@ const { compile, referencedVars, ExprError } = require('./expr');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+// 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
+// 한 자리 숫자+낱말 짝이 **서로 다른 숫자로 3개 이상**이어야 잡는다 ("201호"·"2층 3호"류 오탐 방지).
+function codebookDigits(label) {
+  if (typeof label !== 'string') return 0;
+  const re = /(?<![0-9가-힣a-zA-Z])([0-9])[=:]?[가-힣a-zA-Z]/g;
+  const digits = new Set();
+  let m;
+  while ((m = re.exec(label))) digits.add(m[1]);
+  return digits.size;
+}
 const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
   'round', 'floor', 'ceil', 'abs', 'min', 'max', 'clamp', 'rand', 'count', 'has', 'sum']);
 
@@ -39,6 +50,10 @@ function validateSchema(schema) {
       if (v.min != null && v.max != null && v.min > v.max) err(p, 'min > max');
       if (v.init !== undefined && v.min != null && v.init < v.min) err(p, 'init < min');
       if (v.init !== undefined && v.max != null && v.init > v.max) err(p, 'init > max');
+      if (codebookDigits(v.label) >= 3) {
+        warn(p, `라벨에 숫자 대응표가 보입니다 ('${v.label}') — 이 용도는 enum 타입이 정답입니다. `
+          + `type: "enum", enum: ["겨울","봄",…]으로 바꾸면 화면과 보조 AI 양쪽에 숫자 대신 낱말이 갑니다`);
+      }
     }
     if (v.type === 'bool' && v.init !== undefined && typeof v.init !== 'boolean')
       err(p, 'bool의 init은 true/false여야 함');
@@ -79,6 +94,10 @@ function validateSchema(schema) {
     if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
     allIds.add(d.id);
     checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
+    if (codebookDigits(d.label) >= 3) {
+      warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `
+        + `조건식으로 "겨울"·"봄" 같은 문자열을 돌려주게 바꾸면 화면에 숫자 대신 낱말이 뜹니다`);
+    }
   }
 
   const listIds = new Set(vars.filter((v) => v.type === 'list').map((v) => v.id));
@@ -250,7 +269,7 @@ function validateSchema(schema) {
       const keys = [...new Set((a.mentions === true ? [v?.label] : [].concat(a.mentions))
         .filter((k) => typeof k === 'string' && k.trim())
         .map((k) => k.trim().toLowerCase()))];
-      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join(' ') });
+      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join('\u0000') });
     }
     const bySig = new Map(); // 낱말 집합 서명 → 그 집합을 그대로 쓰는 변수 id들
     for (const e of entries) {
@@ -259,7 +278,7 @@ function validateSchema(schema) {
     }
     for (const [sig, ids] of bySig) {
       if (ids.length < 2) continue;
-      const words = sig.split(' ');
+      const words = sig.split('\u0000');
       const wordStr = words.slice(0, 3).map((w) => `'${w}'`).join('·')
         + (words.length > 3 ? ` 외 ${words.length - 3}낱말` : '');
       warn('$.updater.allow', `${wordStr}을 ${ids[0]} 등 ${ids.length}개 변수가 같이 씁니다 — 늘 함께 열립니다.`

@@ -208,5 +208,26 @@ eq('★ 기한만 있는 항목은 합산 0', evaluate('sum(x)', () => ['성벽 
   ck('expire 수식의 없는 변수도 잡는다', !v.ok, JSON.stringify(v.errors));
 }
 
+// ── 숫자 대응표 린트 (v0.44.3) — AI가 enum 대신 int+코드북 라벨로 만드는 상습 실수 ──
+{
+  const mk = (vars, derived = []) => validateSchema({ simcore: '0.1', vars, derived, rules: {} });
+  const lint = (v) => v.warnings.filter((w) => /대응표/.test(w.msg));
+
+  const p1 = mk([{ id: 's', label: '계절 (0겨울 1봄 2여름 3가을)', type: 'int', init: 0, min: 0, max: 3 }]);
+  ck('★ int + 대응표 라벨을 잡고 enum을 권한다', lint(p1).length === 1 && /enum/.test(lint(p1)[0].msg),
+    JSON.stringify(p1.warnings));
+  const p2 = mk([{ id: 'm', label: '월', type: 'int', init: 1, min: 1, max: 12 }],
+    [{ id: 'ph', label: '단계 (0안면 1친구 2연인)', expr: 'floor(m / 4)' }]);
+  ck('★ 파생 라벨의 대응표도 잡고 문자열 반환을 권한다', lint(p2).length === 1 && /낱말/.test(lint(p2)[0].msg), '');
+  const n1 = mk([
+    { id: 'a', label: '201 노조미 · 호감도', type: 'int', init: 0, min: 0, max: 100 },
+    { id: 'b', label: '2층 3호 창고', type: 'int', init: 0, min: 0, max: 9 },
+    { id: 'c', label: '04:30-14:00 베이커리 수입', type: 'int', init: 0, min: 0 },
+  ]);
+  ck('방 번호·층수·시간대 라벨은 오탐 안 낸다 (숫자 3종 미만)', lint(n1).length === 0, JSON.stringify(lint(n1)));
+  const n2 = mk([{ id: 's', label: '계절', type: 'enum', enum: ['겨울', '봄', '여름', '가을'], init: '겨울' }]);
+  ck('enum으로 이미 고친 건 조용하다', lint(n2).length === 0, '');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

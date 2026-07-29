@@ -211,6 +211,8 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('접두사 없는 나머지는 기타 그룹으로', src.includes("label: '기타', items: rest.map(mkItem)"), '');
   ck('★ 그룹 통째 합치기 셀렉트가 있다 (v0.44.2)',
     src.includes('↪ 다른 그룹으로…') && src.includes('고른 그룹 끝에 붙이고'), '');
+  ck('★ 상태창 탭에 제목(meta.name) 칸이 있다 (v0.44.3 — 유일한 입력 경로)',
+    src.includes("pair('제목'") && src.includes('schema.meta.name = x.trim() || undefined'), '');
 }
 
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──

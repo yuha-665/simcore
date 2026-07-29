@@ -1,13 +1,23 @@
 //@name simcore
 //@api 3.0
-//@version 0.44.2
-//@display-name SimCore (시뮬 엔진) v0.44.2 AI 부분 수정
+//@version 0.44.3
+//@display-name SimCore (시뮬 엔진) v0.44.3 AI 부분 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.44.3 ────────────────────────────────────────────────
+// 실전 보정 계속 (맨션봇 개조 이틀차).
+// - [상태창] 제목(meta.name) 입력칸 — 상태창 머리글·상태 블록 제목이 이것인데, meta는
+//   패치·탭별 내보내기 둘 다 미지원이라 지금까지 JSON 직접 수정이 유일했다 (제보로 발견).
+// - [검증기] 숫자 대응표 린트 — "계절 (0겨울 1봄 2여름 3가을)" 같은 int+코드북 라벨을 잡아
+//   enum(변수)·문자열 반환(파생)을 권고. 한 자리 숫자+낱말 짝이 서로 다른 숫자로 3개
+//   이상일 때만 (201호·2층 3호·시간대 오탐 방지 — 템플릿 12종+베리디아 오탐 0 확인).
+// - [위생] validate.js의 생 NUL 바이트(낱말 집합 구분자)를 U+0000 이스케이프 표기로 — grep이 바이너리
+//   취급하던 문제. 구분자가 NUL인 이유: '료 씨'처럼 낱말 안에 공백이 있어 공백 구분은 불가.
 //
 // ── v0.44.2 ────────────────────────────────────────────────
 // 일괄 처리 — "일일이 선택하다 눈 빠진다" 제보 3건.
@@ -946,6 +956,17 @@ const { compile, referencedVars, ExprError } = require('./expr');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+// 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
+// 한 자리 숫자+낱말 짝이 **서로 다른 숫자로 3개 이상**이어야 잡는다 ("201호"·"2층 3호"류 오탐 방지).
+function codebookDigits(label) {
+  if (typeof label !== 'string') return 0;
+  const re = /(?<![0-9가-힣a-zA-Z])([0-9])[=:]?[가-힣a-zA-Z]/g;
+  const digits = new Set();
+  let m;
+  while ((m = re.exec(label))) digits.add(m[1]);
+  return digits.size;
+}
 const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
   'round', 'floor', 'ceil', 'abs', 'min', 'max', 'clamp', 'rand', 'count', 'has', 'sum']);
 
@@ -981,6 +1002,10 @@ function validateSchema(schema) {
       if (v.min != null && v.max != null && v.min > v.max) err(p, 'min > max');
       if (v.init !== undefined && v.min != null && v.init < v.min) err(p, 'init < min');
       if (v.init !== undefined && v.max != null && v.init > v.max) err(p, 'init > max');
+      if (codebookDigits(v.label) >= 3) {
+        warn(p, `라벨에 숫자 대응표가 보입니다 ('${v.label}') — 이 용도는 enum 타입이 정답입니다. `
+          + `type: "enum", enum: ["겨울","봄",…]으로 바꾸면 화면과 보조 AI 양쪽에 숫자 대신 낱말이 갑니다`);
+      }
     }
     if (v.type === 'bool' && v.init !== undefined && typeof v.init !== 'boolean')
       err(p, 'bool의 init은 true/false여야 함');
@@ -1021,6 +1046,10 @@ function validateSchema(schema) {
     if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
     allIds.add(d.id);
     checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
+    if (codebookDigits(d.label) >= 3) {
+      warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `
+        + `조건식으로 "겨울"·"봄" 같은 문자열을 돌려주게 바꾸면 화면에 숫자 대신 낱말이 뜹니다`);
+    }
   }
 
   const listIds = new Set(vars.filter((v) => v.type === 'list').map((v) => v.id));
@@ -1192,7 +1221,7 @@ function validateSchema(schema) {
       const keys = [...new Set((a.mentions === true ? [v?.label] : [].concat(a.mentions))
         .filter((k) => typeof k === 'string' && k.trim())
         .map((k) => k.trim().toLowerCase()))];
-      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join(' ') });
+      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join('\u0000') });
     }
     const bySig = new Map(); // 낱말 집합 서명 → 그 집합을 그대로 쓰는 변수 id들
     for (const e of entries) {
@@ -1201,7 +1230,7 @@ function validateSchema(schema) {
     }
     for (const [sig, ids] of bySig) {
       if (ids.length < 2) continue;
-      const words = sig.split(' ');
+      const words = sig.split('\u0000');
       const wordStr = words.slice(0, 3).map((w) => `'${w}'`).join('·')
         + (words.length > 3 ? ` 외 ${words.length - 3}낱말` : '');
       warn('$.updater.allow', `${wordStr}을 ${ids[0]} 등 ${ids.length}개 변수가 같이 씁니다 — 늘 함께 열립니다.`
@@ -5942,6 +5971,13 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
                     ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`])];
     wrap.appendChild(h('div', { class: 'sce-row' },
+      // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
+      // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
+      pair('제목', bindInput(schema.meta?.name, (x) => {
+        schema.meta = schema.meta || {};
+        schema.meta.name = x.trim() || undefined; rerender();
+      }, { cls: 'sce-w-m', ph: '(비우면 "상태")' }),
+        '상태창 머리글 + 메인 AI 상태 블록 제목 + 진단 리포트 제목'),
       pair('표시 방식', bindSelect(ui.mode ?? 'auto', [
         ['auto', '자동 구성 (그룹/항목)'], ['template', '커스텀 HTML 템플릿 (고급)'],
       ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),

@@ -51,7 +51,8 @@ docs/                    설계 문서 (미구현 초안 포함)
       (core/patch.js, JSON 탭 ②). **v0.44.1 실전 보정** (맨션봇 9인 개조 실기): mentions 인물 묶음
       경고 접기(147→8줄) + 경계 넘는 낱말만 경고, 편집기 경고 4건부터 details 접기, 상태창
       [⚡ 접두사로 그룹 묶어 배치]·그룹 [합치기], 왕복 규격에 항목 전문 동봉 + 같은 id
-      remove+add 금지 명시, 충돌·삭제 일괄 버튼 (v0.44.2). 테스트 34파일/1772단언.
+      remove+add 금지 명시, 충돌·삭제 일괄 버튼 (v0.44.2), 상태창 제목 칸 + 숫자 대응표→enum 린트
+      (v0.44.3). 테스트 34파일/1777단언.
 
 ## 베리디아 남작령
 
@@ -158,7 +159,7 @@ node estate-vars.js        # → 영지-변수상태창-신안.json 재생성 + 
 node build.js && cmp dist/simcore.plugin.js simcore.plugin.js   # 소스↔번들 바이트 일치
 node test/run-tests.js                                          # 코어 단위 (통과 84)
 cd 테스트
-for f in test-*.js; do node "$f"; done      # 34개 파일 / 단언 1768개
+for f in test-*.js; do node "$f"; done      # 34개 파일 / 단언 1777개
 node npc-check.js                            # 배역·고용 흐름 눈으로 확인
 ```
 

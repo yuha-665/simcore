@@ -192,6 +192,25 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
     multiPanelTemplate({ statusUI: {} }, 'accordion').includes('항목을 넣으세요'), '');
 }
 
+// ── 접두사 묶음 배치 (v0.44.1) — 다인 봇 그룹 손조립 노가다 제거 ──
+{
+  const seg = src.slice(src.indexOf('function commonLabelPrefix'), src.indexOf('const TAB_SLICES'));
+  const clp = new Function(seg + '\nreturn commonLabelPrefix;')();
+  ck('★ 라벨 공통 앞부분이 그룹 제목이 된다 ("노조미 호감"+"노조미 기분" → "노조미")',
+    clp([{ label: '노조미 호감' }, { label: '노조미 기분' }]) === '노조미', clp([{ label: '노조미 호감' }, { label: '노조미 기분' }]));
+  ck('공백 없는 라벨도 된다 ("히로미호감"+"히로미기분" → "히로미")',
+    clp([{ label: '히로미호감' }, { label: '히로미기분' }]) === '히로미', '');
+  ck('낱말 중간에서 안 끊는다 ("노조미 호감"+"노조미 호위" → "노조미")',
+    clp([{ label: '노조미 호감' }, { label: '노조미 호위' }]) === '노조미', '');
+  ck('공통이 없으면 빈값 (접두사 id로 폴백하게)', clp([{ label: '가나다' }, { label: '라마바' }]) === '', '');
+  ck('라벨이 하나라도 비면 빈값', clp([{ label: '' }, { label: '노조미 호감' }]) === '', '');
+  ck('한 글자 공통은 버린다', clp([{ label: '노가' }, { label: '노나' }]) === '', '');
+
+  ck('★ 편집기에 접두사 묶음 배치 버튼이 있다', src.includes('접두사로 그룹 묶어 배치'), '');
+  ck('묶음 그룹은 기본 접힘으로 만든다', /visibility: 'collapsed',\s*\n\s*items: arr\.map\(mkItem\)/.test(src), '');
+  ck('접두사 없는 나머지는 기타 그룹으로', src.includes("label: '기타', items: rest.map(mkItem)"), '');
+}
+
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──
 {
   ck('★ 표시 핸들러가 마커의 메시지 번호를 uid로 넘긴다', /includeStyle: true, uid: idxStr/.test(src), '');

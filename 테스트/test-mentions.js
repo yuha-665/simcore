@@ -102,10 +102,22 @@ const open = (t) => engine.auxAllowList(S, t).map((a) => a.id);
   N.vars[1].label = '';
   ck('label 없이 mentions:true는 거부', !validateSchema(N).ok, '');
 
+  // v0.44.1 — 낱말 집합이 완전히 같은 변수들은 "인물 묶음"으로 보고 묶음당 경고 1줄로 접는다.
+  // (실전: 입주자 8명 × 수치 6개 봇에서 인물당 수십 줄, 총 147줄이 쏟아져 오류를 가렸다)
   const D = JSON.parse(JSON.stringify(S));
-  D.updater.allow[2].mentions = ['리비아'];              // b_livia와 같은 낱말
+  D.updater.allow[2].mentions = ['리비아'];              // b_livia와 같은 낱말 집합
+  D.updater.allow[3].mentions = ['리비아'];              // 셋이 같은 집합이어도 —
   const dv = validateSchema(D);
-  ck('★ 똑같은 낱말을 둘이 쓰면 경고', dv.warnings.some((w) => /함께 씁니다/.test(w.msg)), JSON.stringify(dv.warnings));
+  const clusterWarns = dv.warnings.filter((w) => /같이 씁니다/.test(w.msg));
+  ck('★ 똑같은 낱말 집합은 묶음당 경고 1줄 (3개 변수 = 1줄)', clusterWarns.length === 1, JSON.stringify(dv.warnings));
+  ck('묶음 경고가 변수 수를 밝힌다', clusterWarns.some((w) => /3개 변수/.test(w.msg)), JSON.stringify(clusterWarns));
+  ck('묶음 경고에 "묶음이면 정상" 안내', clusterWarns.some((w) => /묶음이면 정상/.test(w.msg)), '');
+
+  // 서로 다른 묶음에 걸친 낱말 — 이 낱말 하나가 남의 묶음까지 열므로 진짜 겹침으로 경고
+  const X = JSON.parse(JSON.stringify(S));
+  X.updater.allow[4].mentions = ['무명', '리비아'];       // b_noface가 리비아의 낱말을 침범
+  const xv = validateSchema(X);
+  ck('★ 묶음 경계를 넘는 낱말은 경고', xv.warnings.some((w) => /걸쳐 있습니다/.test(w.msg)), JSON.stringify(xv.warnings));
 
   // 겹치는 이름은 가려짐으로 처리되므로 경고하지 않는다 (릴리아나 ⊃ 리아나)
   ck('겹치는 이름은 경고하지 않는다', !validateSchema(S).warnings.some((w) => /안에 들어/.test(w.msg)),

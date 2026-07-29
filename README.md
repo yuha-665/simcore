@@ -10,7 +10,7 @@ simcore.plugin.js        플러그인 본체 (리수에 임포트하는 파일) 
 core/  adapter/          소스 (엔진 모듈 11개 + 리수 어댑터 — 버전·체인지로그는 adapter/risu-plugin.js)
 build.js  tools/         번들러 + 역추출기(unbundle.js) — 워크플로는 SOURCES.md
 test/                    코어 단위 테스트 (node test/run-tests.js — Node만 있으면 됨)
-테스트/                   회귀 테스트 33종 (로컬 실측 — 번들을 직접 물고 돈다)
+테스트/                   회귀 테스트 34종 (로컬 실측 — 번들을 직접 물고 돈다)
 베리디아/                 "베리디아 남작령" 봇 (생성기 + 산출물)
 배포/                     아카라이브 패치글·가이드 시리즈 HTML
 docs/                    설계 문서 (미구현 초안 포함)
@@ -47,6 +47,10 @@ docs/                    설계 문서 (미구현 초안 포함)
       다음 행동 제안(suggest — aux 피기백·sendChat 칩), trpg 상시 판정 재편(버튼 4→1 + /능력).
       **실기 확인 완료 (2026-07-28)**: 범례 클릭=무장 토글 ✓, 조작줄 칩 ✓, 제안 칩은 플러그인
       프로바이더 환경이라 표시 전용 전환 ✓ (리수 정책 차단 — v0.43.2). 남은 것: 아카라이브 게시.
+- [x] **v0.44 AI 왕복 패치** — add/update/remove 병합 + 충돌 3지선다(개명 파급) + 원자 적용/되돌리기
+      (core/patch.js, JSON 탭 ②). **v0.44.1 실전 보정** (맨션봇 9인 개조 실기): mentions 인물 묶음
+      경고 접기(147→8줄) + 경계 넘는 낱말만 경고, 편집기 경고 4건부터 details 접기, 상태창
+      [⚡ 접두사로 그룹 묶어 배치], 왕복 규격에 항목 전문 동봉 + 같은 id remove+add 금지 명시.
 
 ## 베리디아 남작령
 
@@ -153,7 +157,7 @@ node estate-vars.js        # → 영지-변수상태창-신안.json 재생성 + 
 node build.js && cmp dist/simcore.plugin.js simcore.plugin.js   # 소스↔번들 바이트 일치
 node test/run-tests.js                                          # 코어 단위 (통과 84)
 cd 테스트
-for f in test-*.js; do node "$f"; done      # 33개 파일 / 단언 1659개
+for f in test-*.js; do node "$f"; done      # 34개 파일 / 단언 1768개
 node npc-check.js                            # 배역·고용 흐름 눈으로 확인
 ```
 

@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.44
-//@display-name SimCore (시뮬 엔진) v0.44 AI 부분 수정
+//@version 0.44.1
+//@display-name SimCore (시뮬 엔진) v0.44.1 AI 부분 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.44.1 ────────────────────────────────────────────────
+// 실전 보정 — 맨션봇(입주자 8명 × 수치 6개) 왕복 개조 실기에서 나온 4건.
+// - [검증기] 인물 묶음 오탐 접기: mentions 낱말 집합이 완전히 같은 변수들(한 인물의
+//   호감·기분·위치…)은 묶음당 경고 1줄 ("묶음이면 정상"). 147줄 → 8줄. 서로 다른 묶음에
+//   걸친 낱말만 진짜 겹침으로 경고 (그 낱말 하나가 남의 묶음까지 열어버리므로).
+// - [편집기] 경고 4건부터 접기(details) — 라이브 검증 리포트·패치 적용 보고 둘 다.
+//   오류는 항상 펼침. 경고 벽이 오류를 가리는 것 방지.
+// - [상태창] "접두사로 그룹 묶어 배치" — noz_* 같은 id 접두사별로 그룹 자동 생성
+//   (제목=라벨 공통 앞부분, 기본 접힘). 다인 봇 그룹 손조립 노가다 제거.
+// - [왕복] 다이제스트에 이벤트·액션·판정·지시문·allow **전문** 동봉 — 본문을 모르면 AI가
+//   update를 겁내 remove+add(같은 id, 거부됨)로 우회하는 실사고 방지. 규칙에 "같은 id
+//   remove+add 금지, 갈아엎기도 update로" + "인물 묶음 mentions 공유는 정상" 명시.
 //
 // ── v0.44 ──────────────────────────────────────────────────
 // AI 왕복 패치 — "고치게 하기". 통짜 재생성 없이 바꿀 부분만 받는다.
@@ -1159,21 +1172,46 @@ function validateSchema(schema) {
   });
 
   // 한 낱말이 다른 낱말 안에 들어 있는 건 auxAllowList가 '가려짐'으로 처리하므로 결함이 아니다.
-  // 진짜 문제는 **똑같은 낱말**이다 — 어느 쪽을 열지 가릴 방법이 없어 둘이 늘 함께 열린다.
+  // 문제가 될 수 있는 건 **똑같은 낱말**이다 — 어느 쪽을 열지 가릴 방법이 없어 늘 함께 열린다.
+  // 단, 한 인물의 변수 묶음(호감·기분·위치…)이 낱말을 공유하는 건 정상 설계다. 그래서
+  // 낱말 집합이 완전히 같은 변수들은 묶음당 한 줄로 접고(인물당 5~6개면 수백 줄이 나온다),
+  // 서로 다른 묶음에 걸친 낱말만 진짜 겹침으로 경고한다.
   {
-    const seenKey = new Map();
+    const entries = [];
     for (const a of (up.allow || [])) {
       if (!a.mentions) continue;
       const v = varById[a.id];
-      const keys = (a.mentions === true ? [v?.label] : [].concat(a.mentions))
-        .filter((k) => typeof k === 'string' && k.trim());
-      for (const k of keys) {
-        const key = k.trim().toLowerCase();
-        if (seenKey.has(key) && seenKey.get(key) !== a.id) {
-          warn('$.updater.allow', `'${k}'를 ${seenKey.get(key)}와 ${a.id}가 함께 씁니다`
-            + ' — 갈릴 방법이 없어 늘 같이 열립니다. 한쪽을 다르게 적으세요');
-        } else seenKey.set(key, a.id);
+      const keys = [...new Set((a.mentions === true ? [v?.label] : [].concat(a.mentions))
+        .filter((k) => typeof k === 'string' && k.trim())
+        .map((k) => k.trim().toLowerCase()))];
+      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join(' ') });
+    }
+    const bySig = new Map(); // 낱말 집합 서명 → 그 집합을 그대로 쓰는 변수 id들
+    for (const e of entries) {
+      if (!bySig.has(e.sig)) bySig.set(e.sig, []);
+      bySig.get(e.sig).push(e.id);
+    }
+    for (const [sig, ids] of bySig) {
+      if (ids.length < 2) continue;
+      const words = sig.split(' ');
+      const wordStr = words.slice(0, 3).map((w) => `'${w}'`).join('·')
+        + (words.length > 3 ? ` 외 ${words.length - 3}낱말` : '');
+      warn('$.updater.allow', `${wordStr}을 ${ids[0]} 등 ${ids.length}개 변수가 같이 씁니다 — 늘 함께 열립니다.`
+        + ' 한 인물·주제 묶음이면 정상이고, 무관한 변수라면 낱말을 나누세요');
+    }
+    // 묶음 경계를 넘는 낱말 — 이 낱말 하나가 서로 다른 묶음을 전부 열어버린다
+    const byWord = new Map(); // 낱말 → { sigs, ids }
+    for (const e of entries) {
+      for (const k of e.keys) {
+        if (!byWord.has(k)) byWord.set(k, { sigs: new Set(), ids: [] });
+        const slot = byWord.get(k);
+        slot.sigs.add(e.sig); slot.ids.push(e.id);
       }
+    }
+    for (const [k, slot] of byWord) {
+      if (slot.sigs.size < 2) continue;
+      warn('$.updater.allow', `'${k}'가 서로 다른 묶음의 변수 ${slot.ids.length}개(${slot.ids.slice(0, 2).join(', ')} …)에 걸쳐 있습니다`
+        + ' — 이 낱말이 나오면 그 변수들이 전부 함께 열립니다. 의도가 아니면 한쪽을 다르게 적으세요');
     }
   }
 
@@ -4597,6 +4635,8 @@ const CSS = `
 .sce .sce-hint { color:#aebdd8; font-size:11.5px; margin:2px 0 6px; }
 .sce .sce-report { font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; margin-top:8px; }
 .sce .sce-err { color:#ff7b7b; font-weight:600; } .sce .sce-warn { color:#ffd166; } .sce .sce-ok { color:#6fdb8c; font-weight:600; }
+.sce details.sce-fold { margin:4px 0; } .sce details.sce-fold > summary { cursor:pointer; user-select:none; }
+.sce details.sce-fold > div { margin-left:12px; }
 .sce .sce-tag { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; letter-spacing:.02em;
   background:#26304a; color:#9db8e8; border:1px solid #3a4560; }
 .sce .sce-preview { margin-top:10px; }
@@ -4895,25 +4935,25 @@ function buildFixPrompt(schema, v) {
 // (2) 출력 형식을 못박는 것. 스키마 통짜 대신 다이제스트를 보내는 이유: 베리디아급이면
 // 절반이 상태창 HTML/CSS라, 참조에 필요한 것만 추리면 붙여넣기 부담과 실수 확률이 같이 준다.
 
+// 이벤트·액션·판정·지시문·allow는 **전문**을 실어 보낸다 — update가 항목 통 교체라, 기존
+// 본문을 모르면 AI가 update를 겁내 remove+add로 우회하다 가져오기에서 막힌다 (실전 사고).
+// 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
   const out = ['### 변수', varContractTable(schema)];
+  const body = (e) => { const { _rnd, ...b } = e; return '`' + JSON.stringify(b) + '`'; };
   const evs = [...(schema.rules?.events || []),
     ...((schema.rules?.randomEvents?.table || []).map((e) => ({ ...e, _rnd: true })))];
   if (evs.length) {
-    out.push('', '### 이벤트 (events / randomEvents)',
-      ...evs.map((e) => `- \`${e.id}\`${e._rnd ? ' (랜덤)' : ''}${e.choices ? ' (갈림길)' : ''}`
-        + (e.when ? ` — when: \`${e.when}\`` : '')));
+    out.push('', '### 이벤트 (events / randomEvents) — update로 고칠 땐 이 전문을 바탕으로 다시 쓰세요',
+      ...evs.map((e) => `- ${e._rnd ? '(랜덤) ' : ''}${body(e)}`));
   }
-  const idLine = (label, arr, extra = () => '') => {
-    if ((arr || []).length) out.push('', `### ${label}`, ...arr.map((x) => `- \`${x.id}\`${extra(x)}`));
+  const fullLine = (label, arr) => {
+    if ((arr || []).length) out.push('', `### ${label}`, ...arr.map((x) => `- ${body(x)}`));
   };
-  idLine('액션 (actions)', schema.actions, (a) => a.label ? ` — ${a.label}` : '');
-  idLine('판정 (checks)', schema.checks, (c) => c.label ? ` — ${c.label}` : '');
-  idLine('지시문 (directives)', schema.directives, (d) => d.when ? ` — when: \`${d.when}\`` : '');
-  if ((schema.updater?.allow || []).length) {
-    out.push('', '### AI 허용 변수 (allow)',
-      '- ' + schema.updater.allow.map((a) => `\`${a.id}\``).join(', '));
-  }
+  fullLine('액션 (actions)', schema.actions);
+  fullLine('판정 (checks)', schema.checks);
+  fullLine('지시문 (directives)', schema.directives);
+  fullLine('AI 허용 변수 (allow)', schema.updater?.allow);
   return out.join('\n');
 }
 
@@ -4938,15 +4978,19 @@ function buildPatchExportPrompt(schema) {
     '```',
     '- `add` = 새로 만드는 항목. **아래 "이미 있는 id"와 겹치면 안 됩니다** — 뜻이 비슷해도 반드시 새 id를 지으세요.',
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, 항목을 **통째로 다시** 씁니다 — 바꿀 필드만 주면 나머지 필드가 사라집니다.',
+    '  기존 본문은 아래 다이제스트에 전문이 있으니, 그걸 바탕으로 고쳐 쓰세요.',
+    '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`로 전문을 다시 쓰면 결과가 같습니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
+    '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
+    '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
     '- 새 이벤트에는 시작/끝 짝을 고려하세요 — `once` 없이 조건만 두면 조건이 참인 동안 매 턴 재발동합니다.',
     '',
-    '## 이미 있는 id — 이 목록과 겹치는 add는 가져오기에서 정지됩니다',
+    '## 이미 있는 항목 — add가 이 id들과 겹치면 가져오기에서 정지되고, update는 이 전문을 기준으로 다시 씁니다',
     patchIdDigest(schema),
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -5194,6 +5238,23 @@ function varContractTable(schema) {
       ...schema.derived.map((d) => `| \`${d.id}\` | ${d.label ?? d.id} | \`${d.expr}\` |`));
   }
   return out.join('\n');
+}
+
+/** 변수 묶음의 라벨 공통 접두사 — "노조미 호감"·"노조미 기분" → "노조미". 그룹 제목 자동 짓기용 */
+function commonLabelPrefix(vars) {
+  const labels = vars.map((v) => v.label || '');
+  if (labels.some((l) => !l)) return '';
+  let p = labels[0];
+  for (const l of labels.slice(1)) {
+    let i = 0;
+    while (i < p.length && i < l.length && p[i] === l[i]) i++;
+    p = p.slice(0, i);
+    if (!p) return '';
+  }
+  // 낱말 중간에서 끊긴 접두사("노조미 호"…)는 마지막 공백까지 물러난다
+  const cut = p.includes(' ') ? p.slice(0, p.lastIndexOf(' ')) : p;
+  const t = cut.trim();
+  return t.length >= 2 ? t : '';
 }
 
 const TAB_SLICES = {
@@ -5743,6 +5804,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
   let schema = JSON.parse(JSON.stringify(initialSchema));
   let activeTab = 'vars';
   let destroyed = false;
+  let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -6004,25 +6066,58 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       ...schema.vars.filter((v) => !usedIds.has(v.id)),
       ...schema.derived.filter((d) => !usedIds.has(d.id)).map((d) => ({ ...d, _derived: true })),
     ];
+    // 최소·최대가 모두 잡힌 숫자 변수는 게이지 자동 설정
+    const mkItem = (v) => {
+      const item = { var: v.id };
+      if (!v._derived && (v.type === 'int' || v.type === 'float') && v.min != null && v.max != null) {
+        item.bar = { max: v.max };
+      }
+      return item;
+    };
     const autoBtn = h('button', { class: 'sce-btn sce-add', onclick: () => {
       if (!missing.length) return;
       let target = ui.groups[ui.groups.length - 1];
       if (!target) { target = { label: '상태', items: [] }; ui.groups.push(target); }
       target.items = target.items || [];
-      for (const v of missing) {
-        const item = { var: v.id };
-        // 최소·최대가 모두 잡힌 숫자 변수는 게이지 자동 설정
-        if (!v._derived && (v.type === 'int' || v.type === 'float') && v.min != null && v.max != null) {
-          item.bar = { max: v.max };
-        }
-        target.items.push(item);
-      }
+      for (const v of missing) target.items.push(mkItem(v));
       rerender();
     } }, missing.length
       ? `⚡ 빠진 변수 자동 배치 (${missing.length}개 — 마지막 그룹에 추가)`
       : '⚡ 자동 배치 — 모든 변수가 이미 배치됨');
     if (!missing.length) { autoBtn.disabled = true; autoBtn.style.opacity = .45; }
     wrap.appendChild(autoBtn);
+
+    // 접두사 묶음 배치 — noz_aff·noz_mood처럼 접두사를 공유하는 변수들을 인물·주제별 그룹으로.
+    // 다인 봇(입주자 8명 × 수치 6개 = 그룹 8개 손조립)의 노가다를 없앤다.
+    const buckets = new Map(); // 접두사 → 변수들
+    for (const v of missing) {
+      const m = /^([a-zA-Z][a-zA-Z0-9]*)_./.exec(v.id);
+      if (!m) continue;
+      const key = m[1].toLowerCase();
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(v);
+    }
+    for (const [k, arr] of [...buckets]) if (arr.length < 2) buckets.delete(k);
+    if (buckets.size >= 2) {
+      wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+        const placed = new Set();
+        for (const [pre, arr] of buckets) {
+          const g = {
+            label: commonLabelPrefix(arr) || pre,
+            visibility: 'collapsed',
+            items: arr.map(mkItem),
+          };
+          for (const v of arr) placed.add(v.id);
+          ui.groups.push(g);
+        }
+        const rest = missing.filter((v) => !placed.has(v.id));
+        if (rest.length) ui.groups.push({ label: '기타', items: rest.map(mkItem) });
+        rerender();
+      } }, `⚡ 접두사로 그룹 묶어 배치 (${buckets.size}묶음 — ${[...buckets.keys()].slice(0, 3).map((k) => k + '_*').join(', ')}${buckets.size > 3 ? ' …' : ''})`));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '같은 접두사(noz_… 등)를 쓰는 변수끼리 그룹 하나씩 만들어 넣습니다. 그룹 제목은 라벨의 공통 앞부분'
+        + '("노조미 호감"·"노조미 기분" → "노조미")에서 따오고, 기본 접힘으로 둡니다. 그룹이 많으면 위 [그룹 배치]에서 탭·아코디언을 고르세요.'));
+    }
     } // end auto mode
 
     wrap.appendChild(h('h4', {}, 'CSS 레시피 — 딸깍하면 아래 커스텀 CSS에 채워짐 (이어서 수정 가능)'));
@@ -6785,9 +6880,14 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       if (rep.updated.length) lines.push(`교체 ${rep.updated.length} (${rep.updated.join(', ')})`);
       if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
       if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
+      const repWarns = (rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`));
       wrap.appendChild(h('div', { class: 'sce-block' },
         h('div', {}, `✅ 패치 적용됨 — ${lines.join(' · ') || '변화 없음'}`),
-        ...(rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`)),
+        ...(repWarns.length > 3
+          ? [h('details', { class: 'sce-fold' },
+              h('summary', { class: 'sce-warn' }, `⚠ 경고 ${repWarns.length}건 — 눌러서 펼치기`),
+              ...repWarns)]
+          : repWarns),
         h('div', { class: 'sce-row' },
           patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
             schema = patchBackup; patchBackup = null; patchReport = null; rerender();
@@ -7208,13 +7308,18 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       checks: tabChecks, setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
     root.appendChild(body);
 
-    // 라이브 검증 리포트
+    // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
     const v = validateSchema(schema);
     let html = '';
     for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
-    for (const w of v.warnings) html += `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`;
+    const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
+    if (v.warnings.length > 3) {
+      html += `<details class="sce-fold"${reportWarnOpen ? ' open' : ''}><summary class="sce-warn">⚠ 경고 ${v.warnings.length}건 — 눌러서 펼치기</summary>${wHtml}</details>`;
+    } else html += wHtml;
     if (v.ok) html += `<div class="sce-ok">✓ 스키마 유효${v.warnings.length ? ` (경고 ${v.warnings.length})` : ''}</div>`;
     reportEl.innerHTML = html;
+    const fold = reportEl.querySelector('details.sce-fold');
+    if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
     root.appendChild(reportEl);
   }
 

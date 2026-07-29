@@ -238,21 +238,46 @@ function validateSchema(schema) {
   });
 
   // 한 낱말이 다른 낱말 안에 들어 있는 건 auxAllowList가 '가려짐'으로 처리하므로 결함이 아니다.
-  // 진짜 문제는 **똑같은 낱말**이다 — 어느 쪽을 열지 가릴 방법이 없어 둘이 늘 함께 열린다.
+  // 문제가 될 수 있는 건 **똑같은 낱말**이다 — 어느 쪽을 열지 가릴 방법이 없어 늘 함께 열린다.
+  // 단, 한 인물의 변수 묶음(호감·기분·위치…)이 낱말을 공유하는 건 정상 설계다. 그래서
+  // 낱말 집합이 완전히 같은 변수들은 묶음당 한 줄로 접고(인물당 5~6개면 수백 줄이 나온다),
+  // 서로 다른 묶음에 걸친 낱말만 진짜 겹침으로 경고한다.
   {
-    const seenKey = new Map();
+    const entries = [];
     for (const a of (up.allow || [])) {
       if (!a.mentions) continue;
       const v = varById[a.id];
-      const keys = (a.mentions === true ? [v?.label] : [].concat(a.mentions))
-        .filter((k) => typeof k === 'string' && k.trim());
-      for (const k of keys) {
-        const key = k.trim().toLowerCase();
-        if (seenKey.has(key) && seenKey.get(key) !== a.id) {
-          warn('$.updater.allow', `'${k}'를 ${seenKey.get(key)}와 ${a.id}가 함께 씁니다`
-            + ' — 갈릴 방법이 없어 늘 같이 열립니다. 한쪽을 다르게 적으세요');
-        } else seenKey.set(key, a.id);
+      const keys = [...new Set((a.mentions === true ? [v?.label] : [].concat(a.mentions))
+        .filter((k) => typeof k === 'string' && k.trim())
+        .map((k) => k.trim().toLowerCase()))];
+      if (keys.length) entries.push({ id: a.id, keys, sig: [...keys].sort().join(' ') });
+    }
+    const bySig = new Map(); // 낱말 집합 서명 → 그 집합을 그대로 쓰는 변수 id들
+    for (const e of entries) {
+      if (!bySig.has(e.sig)) bySig.set(e.sig, []);
+      bySig.get(e.sig).push(e.id);
+    }
+    for (const [sig, ids] of bySig) {
+      if (ids.length < 2) continue;
+      const words = sig.split(' ');
+      const wordStr = words.slice(0, 3).map((w) => `'${w}'`).join('·')
+        + (words.length > 3 ? ` 외 ${words.length - 3}낱말` : '');
+      warn('$.updater.allow', `${wordStr}을 ${ids[0]} 등 ${ids.length}개 변수가 같이 씁니다 — 늘 함께 열립니다.`
+        + ' 한 인물·주제 묶음이면 정상이고, 무관한 변수라면 낱말을 나누세요');
+    }
+    // 묶음 경계를 넘는 낱말 — 이 낱말 하나가 서로 다른 묶음을 전부 열어버린다
+    const byWord = new Map(); // 낱말 → { sigs, ids }
+    for (const e of entries) {
+      for (const k of e.keys) {
+        if (!byWord.has(k)) byWord.set(k, { sigs: new Set(), ids: [] });
+        const slot = byWord.get(k);
+        slot.sigs.add(e.sig); slot.ids.push(e.id);
       }
+    }
+    for (const [k, slot] of byWord) {
+      if (slot.sigs.size < 2) continue;
+      warn('$.updater.allow', `'${k}'가 서로 다른 묶음의 변수 ${slot.ids.length}개(${slot.ids.slice(0, 2).join(', ')} …)에 걸쳐 있습니다`
+        + ' — 이 낱말이 나오면 그 변수들이 전부 함께 열립니다. 의도가 아니면 한쪽을 다르게 적으세요');
     }
   }
 

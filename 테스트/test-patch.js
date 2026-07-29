@@ -284,8 +284,12 @@ const baseJson = JSON.stringify(BASE);
   ck('프롬프트: 패치 형식 명세 포함', pr.includes('patchVersion') && pr.includes('"add"'), '');
   ck('프롬프트: add/update/remove 규칙 설명', pr.includes('새 id를 지으세요') && pr.includes('통째로 다시') && pr.includes('명시적으로 지워달라고 한 것만'), '');
   ck('★ 기존 id 다이제스트 동봉 (변수·이벤트·액션·판정)',
-    pr.includes('`gold`') && pr.includes('`broke`') && pr.includes('`work`') && pr.includes('`luck`'), '');
+    pr.includes('`gold`') && pr.includes('"id":"broke"') && pr.includes('"id":"work"') && pr.includes('"id":"luck"'), '');
   ck('다이제스트에 이벤트 when 실림', pr.includes('gold < 1 and not famine'), '');
+  ck('★ 다이제스트에 항목 전문 실림 (effects까지) — update가 장님이 되지 않게 (v0.44.1)',
+    pr.includes('"set":"famine"') && pr.includes('"maxGain":100'), '');
+  ck('★ 같은 id remove+add 금지 규칙 명시 (v0.44.1)', pr.includes('`remove`와 `add`에 함께 넣지'), '');
+  ck('인물 묶음 mentions 공유는 정상이라고 명시 (v0.44.1)', pr.includes('mentions 낱말을 공유'), '');
   ck('★ 상태창 내용은 안 실림 (다이제스트가 가벼운 이유)', !pr.includes('ZZZ_CSS_MARKER'), '');
   ck('미지원 섹션 안내', pr.includes('statusUI') && pr.includes('못 다룹니다'), '');
   ck('평평한 섹션 키 안내', pr.includes('`randomEvents`') && pr.includes('`allow`'), '');
@@ -299,7 +303,9 @@ const baseJson = JSON.stringify(BASE);
   // 번들 배선 스모크 — 편집기 ② 섹션이 실제로 실려 있는지 (빌드 누락 감지)
   ck('★ 번들에 ② 섹션 문자열 존재', src.includes('② AI에게 스키마 고치게 하기'), '');
   ck('번들에 패치 검사 버튼 존재', src.includes('🔍 패치 검사'), '');
-  ck('어댑터 버전 v0.44', src.includes('//@version 0.44'), '');
+  ck('★ 번들에 경고 접기(details) 존재 — 경고 벽이 오류를 가리지 않게 (v0.44.1)',
+    src.includes('sce-fold') && src.includes('눌러서 펼치기'), '');
+  ck('어댑터 버전 v0.44.1', src.includes('//@version 0.44.1'), '');
 }
 
 let p = 0, f = 0;

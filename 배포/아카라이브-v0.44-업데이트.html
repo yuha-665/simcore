@@ -4,7 +4,7 @@
 <div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
   <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
   <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
-  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.43 &nbsp;→&nbsp; v0.44</div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.43 &nbsp;→&nbsp; v0.44.1</div>
 </div>
 
 <!-- ─────────── 처음 보는 사람용 ─────────── -->
@@ -95,12 +95,43 @@
   </p>
 </div>
 
+<!-- ─────────── v0.44.1 실전 보정 ─────────── -->
+<div style="background:#161b22;border:1px solid #2a3140;border-radius:6px;padding:20px 22px;margin-bottom:18px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.44.1</span>
+    <span style="font-size:16px;font-weight:600;color:#dbe2ea;">실전에서 바로 나온 보정 셋</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  올리기 전에 <b style="color:#dbe2ea;">등장인물 9명짜리 봇을 이 기능으로 직접 개조</b>해 봤는데, 바로 세 가지가 걸렸습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">1. 경고 147줄 사태.</b> 인물마다 호감·기분·위치 변수를 두고 이름을 걸었더니,
+  검증기가 &quot;같은 낱말을 같이 씁니다&quot;를 <b style="color:#dbe2ea;">조합마다 한 줄씩</b> 쏟아냈습니다.
+  이제 한 인물의 변수 묶음은 <b style="color:#dbe2ea;">묶음당 한 줄</b>로 접고 (&quot;묶음이면 정상&quot;이라고 알려줌),
+  진짜 문제 — <b style="color:#dbe2ea;">한 낱말이 서로 다른 인물의 변수까지 여는 경우</b> — 만 경고합니다.
+  덤으로 경고가 4건을 넘으면 접혀서, 경고 벽에 오류가 파묻히는 일도 없습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">2. 상태창 손조립 노가다.</b> 인물 8명 × 수치 6개면 그룹 8개에 항목 48개를 손으로 끼워야 했습니다.
+  상태창 탭에 <b style="color:#dbe2ea;">[⚡ 접두사로 그룹 묶어 배치]</b>가 생겼습니다 — 변수 id가
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">noz_호감</span>·<span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">noz_기분</span>처럼
+  접두사를 공유하면 인물별 그룹을 자동으로 만들어 넣습니다 (제목도 라벨에서 따오고, 기본 접힘).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">3. AI가 update를 겁내는 문제.</b> 규격에 기존 항목의 <b style="color:#dbe2ea;">id만</b> 실려 가니,
+  AI가 &quot;본문을 모르니 update하면 날아가겠지&quot;라며 삭제+재추가로 우회하다 검사에서 막혔습니다.
+  이제 이벤트·액션 등의 <b style="color:#dbe2ea;">전문이 규격에 같이 실려</b> AI가 보고 고쳐 쓰고,
+  우회 금지도 규격에 못박았습니다.
+  </p>
+</div>
+
 <!-- ─────────── 정리 ─────────── -->
 <div style="border-top:2px solid #e0a94a;padding-top:18px;margin-top:14px;">
   <div style="font-size:17px;font-weight:600;margin-bottom:12px;">줄여서</div>
 <pre style="background:#161b22;border-radius:4px;padding:16px;margin:0 0 18px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:2;color:#dbe2ea;"><span style="color:#e0a94a;">v0.44</span>    <span style="color:#7fc7d9;">AI 왕복 패치</span> — 봇 수정을 AI에게. 바꿀 부분만 받아서 검사하고 병합
          <span style="color:#8b98a9;">— 겹치면 정지 후 선택 · 삭제는 기본 꺼짐 · 전부 아니면 전무 + 되돌리기</span>
-         <span style="color:#8b98a9;">— 위치: 봇 편집 → JSON 탭 → ② (통짜로 새로 만들 땐 여전히 ①)</span></pre>
+         <span style="color:#8b98a9;">— 위치: 봇 편집 → JSON 탭 → ② (통짜로 새로 만들 땐 여전히 ①)</span>
+<span style="color:#e0a94a;">v0.44.1</span>  <span style="color:#7fc7d9;">실전 보정</span> — 인물 묶음 경고 접기 · 상태창 접두사 일괄 배치 · 규격에 전문 동봉</pre>
 
   <div style="background:#161b22;border-left:3px solid #c98a7a;border-radius:0 4px 4px 0;padding:14px 18px;">
     <div style="font-size:14px;color:#c98a7a;margin-bottom:6px;">봇 만드시는 분께</div>

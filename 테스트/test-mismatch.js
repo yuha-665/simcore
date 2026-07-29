@@ -11,8 +11,8 @@ const sessionMod = (() => { for (const n of ['session', 'simsession', 'plugin'])
 const SimSession = sessionMod && sessionMod.SimSession;
 if (!SimSession) { console.log('SKIP'); process.exit(0); }
 
-// 실제 유저 세이브
-const save = JSON.parse(fs.readFileSync('E:/0.리수봇/simcore-save-영지 봇 .json', 'utf8'));
+// 실제 유저 세이브 (리포에 커밋된 영지 세이브 — 재현 조건인 var11 보유·inventory 부재 동일)
+const save = JSON.parse(fs.readFileSync(__P('../베리디아/simcore-save-영지.json'), 'utf8'));
 
 // 가져오기 시점에 설치돼 있던 RPG 계열 스키마 (inventory 참조가 핵심)
 const RPG = {

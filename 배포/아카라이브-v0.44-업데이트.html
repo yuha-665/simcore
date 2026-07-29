@@ -24,6 +24,8 @@
 <p style="margin:0 0 24px;color:#a9b4c2;">
 만드는 건 원래 됐습니다(규격 내보내기). 문제는 그 다음이었어요 — 이벤트 하나 넣자고 스키마 전체를
 다시 받아 통째로 갈아끼우는 건, 잘 되던 부분까지 걸고 하는 도박이니까요. 이제 그거 안 해도 됩니다.
+그리고 올리기 전에 이걸로 <b style="color:#dbe2ea;">실제 봇 하나를 통째로 개조</b>해 보면서 걸린 것들을
+전부 고쳐서(v0.44.1–3), 그 보정까지 묶어서 나갑니다.
 </p>
 
 <!-- ─────────── v0.44 본문 ─────────── -->
@@ -95,48 +97,57 @@
   </p>
 </div>
 
-<!-- ─────────── v0.44.1 실전 보정 ─────────── -->
+<!-- ─────────── v0.44.1–3 실전 보정 ─────────── -->
 <div style="background:#161b22;border:1px solid #2a3140;border-radius:6px;padding:20px 22px;margin-bottom:18px;">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">v0.44.1–3</span>
-    <span style="font-size:16px;font-weight:600;color:#dbe2ea;">실전에서 바로 나온 보정들</span>
+    <span style="font-size:16px;font-weight:600;color:#dbe2ea;">올리기 전에 실전 개조를 한 판 돌렸습니다</span>
   </div>
   <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  올리기 전에 <b style="color:#dbe2ea;">등장인물 9명짜리 봇을 이 기능으로 직접 개조</b>해 봤는데, 걸리는 것마다 바로 고쳤습니다.
+  이 기능이 진짜 쓸만한지 보려고, <b style="color:#dbe2ea;">남이 만든 등장인물 9명짜리 봇</b>을 왕복 패치만으로
+  맨션 경영+연애 시뮬로 개조해 봤습니다. 변수 100개짜리 스키마가 한방 생성 → 패치 몇 번으로 굴러가는 데까지는
+  갔는데, 그 과정에서 걸린 게 꽤 있었고 — <b style="color:#dbe2ea;">전부 고쳐서 이번 판에 같이 들어 있습니다.</b>
   </p>
+
+  <!-- 스샷: 개조 완성된 봇의 탭 상태창 (인물 8명 탭 + 게이지 + 하단 액션 범례) -->
+
   <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  <b style="color:#e0a94a;">1. 경고 147줄 사태.</b> 인물마다 호감·기분·위치 변수를 두고 이름을 걸었더니,
-  검증기가 &quot;같은 낱말을 같이 씁니다&quot;를 <b style="color:#dbe2ea;">조합마다 한 줄씩</b> 쏟아냈습니다.
+  <b style="color:#e0a94a;">경고 147줄 사태.</b> 인물마다 호감·기분·위치 변수를 두고 이름(mentions)을 걸었더니,
+  검증기가 &quot;같은 낱말을 같이 씁니다&quot;를 <b style="color:#dbe2ea;">조합마다 한 줄씩</b> — 147줄을 쏟아냈습니다.
   이제 한 인물의 변수 묶음은 <b style="color:#dbe2ea;">묶음당 한 줄</b>로 접고 (&quot;묶음이면 정상&quot;이라고 알려줌),
   진짜 문제 — <b style="color:#dbe2ea;">한 낱말이 서로 다른 인물의 변수까지 여는 경우</b> — 만 경고합니다.
   덤으로 경고가 4건을 넘으면 접혀서, 경고 벽에 오류가 파묻히는 일도 없습니다.
   </p>
+
+  <!-- 스샷: 검증 리포트가 "⚠ 경고 8건 — 눌러서 펼치기"로 접힌 모습 -->
+
   <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  <b style="color:#e0a94a;">2. 상태창 손조립 노가다.</b> 인물 8명 × 수치 6개면 그룹 8개에 항목 48개를 손으로 끼워야 했습니다.
-  상태창 탭에 <b style="color:#dbe2ea;">[⚡ 접두사로 그룹 묶어 배치]</b>가 생겼습니다 — 변수 id가
+  <b style="color:#e0a94a;">상태창 손조립 노가다.</b> 인물 8명 × 수치 6개면 그룹 8개에 항목 48개를 손으로 끼워야 했습니다.
+  이제 세 개로 끝납니다 — <b style="color:#dbe2ea;">[⚡ 접두사로 그룹 묶어 배치]</b>는 변수 id가
   <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">noz_호감</span>·<span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">noz_기분</span>처럼
-  접두사를 공유하면 인물별 그룹을 자동으로 만들어 넣습니다 (제목도 라벨에서 따오고, 기본 접힘).
+  접두사를 공유하면 인물별 그룹을 자동 생성하고 (제목도 라벨에서 따옴, 기본 접힘),
+  그룹의 <b style="color:#dbe2ea;">[합치기]</b>는 겹친 그룹을 항목 하나씩 옮기지 않고 통째로 병합하고,
+  <b style="color:#dbe2ea;">[제목]</b> 칸은 상태창 머리글을 바꿔줍니다 (전엔 이것만 JSON을 직접 뒤져야 했어요).
   </p>
-  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  <b style="color:#e0a94a;">3. AI가 update를 겁내는 문제.</b> 규격에 기존 항목의 <b style="color:#dbe2ea;">id만</b> 실려 가니,
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">AI가 update를 겁내는 문제.</b> 규격에 기존 항목의 <b style="color:#dbe2ea;">id만</b> 실려 가니,
   AI가 &quot;본문을 모르니 update하면 날아가겠지&quot;라며 삭제+재추가로 우회하다 검사에서 막혔습니다.
   이제 이벤트·액션 등의 <b style="color:#dbe2ea;">전문이 규격에 같이 실려</b> AI가 보고 고쳐 쓰고,
   우회 금지도 규격에 못박았습니다.
   </p>
-  <p style="margin:12px 0 0;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  <b style="color:#e0a94a;">4. 일일이 고르다 눈 빠지는 문제.</b> 충돌이 3건을 넘으면
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">일일이 고르다 눈 빠지는 문제.</b> 충돌이 3건을 넘으면
   <b style="color:#dbe2ea;">[전부 교체] [전부 새 id] [전부 건너뛰기]</b> 일괄 버튼이,
   삭제 후보에는 <b style="color:#dbe2ea;">[전체 체크]/[전체 해제]</b>가 뜹니다.
-  상태창 그룹에도 <b style="color:#dbe2ea;">[합치기]</b>가 생겨서, 겹친 그룹을 항목 하나씩 옮기지 않고 통째로 병합합니다.
   참고로 충돌이 수십 개 뜨면 대개 <b style="color:#dbe2ea;">옛 규격으로 만든 패치</b>라는 신호예요 —
   일괄 교체보다 규격을 새로 복사해서 재요청하는 쪽이 안전합니다 (검사 화면에도 이 안내가 뜹니다).
   </p>
-  <p style="margin:12px 0 0;color:#a9b4c2;font-size:14px;line-height:1.8;">
-  <b style="color:#e0a94a;">5. 자잘한 것 둘.</b> 상태창 머리글(봇 제목)이 편집기 어디에도 칸이 없어서 JSON을 직접 뒤져야 했는데,
-  <b style="color:#dbe2ea;">상태창 탭 맨 위에 [제목] 칸</b>이 생겼습니다. 그리고 AI가
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.8;">
+  <b style="color:#e0a94a;">&quot;계절 0&quot; 사고.</b> AI가
   <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">&quot;계절 (0겨울 1봄 2여름 3가을)&quot;</span>처럼
-  숫자 코드로 변수를 만들어 화면에 <b style="color:#dbe2ea;">0</b>이 뜨는 사고 — 검증기가 이제 이 패턴을 잡아서
-  <b style="color:#dbe2ea;">&quot;선택지(enum) 타입이 정답&quot;</b>이라고 알려줍니다.
+  변수를 숫자 코드로 만들어서 상태창에 <b style="color:#dbe2ea;">0</b>이 떡하니 뜨는 일이 있었습니다.
+  검증기가 이제 이 패턴을 잡아서 <b style="color:#dbe2ea;">&quot;선택지(enum) 타입이 정답&quot;</b>이라고 알려줍니다 —
+  고치면 0 대신 <b style="color:#dbe2ea;">겨울</b>이 뜹니다.
   </p>
 </div>
 

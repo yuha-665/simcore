@@ -238,6 +238,39 @@ const baseJson = JSON.stringify(BASE);
   ck('renameVar: 깨진 식은 그대로', renameVar('gold +* @', 'gold', 'g') === 'gold +* @', '');
 }
 
+// ── ★ 랜덤 이벤트 발동률 (감사에서 잡힌 결함의 회귀) ──
+// AI가 스키마 모양대로 chancePerTurn까지 올바르게 보내면 조용히 버려져서,
+// "AI가 맞게 해도 검증 실패"라는 최악의 경로가 있었다.
+{
+  const S = snap();
+  delete S.rules.randomEvents;   // 랜덤 이벤트가 없던 봇
+
+  const noChance = P.applyPatch(S, P.parsePatch({ add: { randomEvents: [{ id: 'rnd1', effects: [], notify: 'x' }] } }).patch);
+  ck('★ 첫 랜덤인데 발동률 없음 → 해법이 담긴 오류', !noChance.ok && noChance.errors[0].includes('randomEventsChance'), noChance.errors.join(' / '));
+
+  const nested = P.parsePatch({ add: { rules: { randomEvents: { chancePerTurn: 0.25, table: [{ id: 'rnd1', effects: [], notify: 'x' }] } } } });
+  ck('★ 스키마 모양의 chancePerTurn을 버리지 않고 받음', nested.ok && nested.patch.randomEventsChance === 0.25, JSON.stringify(nested.patch));
+  const r1 = P.applyPatch(S, nested.patch);
+  ck('★ 첫 랜덤 + 발동률 동봉 → 적용 성공', r1.ok && r1.schema.rules.randomEvents.chancePerTurn === 0.25 && r1.schema.rules.randomEvents.table.length === 1, JSON.stringify(r1.errors));
+
+  const flat = P.parsePatch({ randomEventsChance: 0.05, add: { randomEvents: [{ id: 'rnd1', effects: [], notify: 'x' }] } });
+  ck('평평한 randomEventsChance도 받음', flat.ok && flat.patch.randomEventsChance === 0.05, '');
+
+  const only = P.parsePatch({ randomEventsChance: 0.02 });
+  ck('발동률만 바꾸는 패치도 성립', only.ok, JSON.stringify(only.errors));
+  const S2 = snap(); S2.rules.randomEvents = { chancePerTurn: 0.3, table: [] };
+  const r2 = P.applyPatch(S2, only.patch);
+  ck('발동률만 갱신', r2.ok && r2.schema.rules.randomEvents.chancePerTurn === 0.02, '');
+
+  ck('발동률 범위 검사 (1.5 거부)', !P.parsePatch({ randomEventsChance: 1.5 }).ok, '');
+}
+
+// ── AI 실수 1순위: add 없이 최상위 섹션 — 안내가 있어야 함 ──
+{
+  const p = P.parsePatch({ vars: [{ id: 'mana', type: 'int', init: 0 }] });
+  ck('★ 최상위 섹션 오류에 add 안내 포함', !p.ok && p.errors[0].includes('add 안에'), p.errors.join(' / '));
+}
+
 // ── 편집기 계층: 수정 요청 프롬프트(② 내보내기) — test-tabai와 같은 추출 방식 ──
 {
   const { TEMPLATES } = SC.require('templates');

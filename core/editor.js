@@ -386,6 +386,7 @@ function buildPatchExportPrompt(schema) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, 항목을 **통째로 다시** 씁니다 — 바꿀 필드만 주면 나머지 필드가 사라집니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
+    '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
@@ -2274,6 +2275,8 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       const entryName = (e) => e.label ?? e.notify ?? e.text ?? '';
       box.appendChild(h('div', {},
         `계획: 추가 ${plan.summary.add} · 교체 ${plan.summary.update} · 삭제 후보 ${plan.summary.remove} · 충돌 ${plan.summary.conflicts}`));
+      if (patch.randomEventsChance != null)
+        box.appendChild(h('div', {}, `⚙ 랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
       for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
 
       const conflictKeys = new Set(plan.conflicts.map((c) => `${c.section}:${c.id}`));
@@ -2281,7 +2284,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         if (o.op === 'remove') continue;                       // 삭제는 아래 체크 목록에서
         if (o.op === 'add' && conflictKeys.has(`${o.section}:${o.id}`)) continue;  // 충돌은 충돌 블록에서
         const mark = o.op === 'add' ? '＋' : '✎';
-        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} \`${o.id}\` ${entryName(o.entry)}`));
+        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} ${o.id} ${entryName(o.entry)}`));
       }
 
       // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
@@ -2313,7 +2316,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
           box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
-            `삭제: ${secLabel(o.section)} \`${o.id}\` ${entryName(o.previous)}`)));
+            `삭제: ${secLabel(o.section)} ${o.id} ${entryName(o.previous)}`)));
         }
       }
 

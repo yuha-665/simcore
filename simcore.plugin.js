@@ -1504,13 +1504,22 @@ function parsePatch(raw) {
     return { ok: false, errors: [`지원하지 않는 patchVersion: ${obj.patchVersion} (지원: 1)`] };
 
   for (const k of Object.keys(obj)) {
-    if (!['patchVersion', 'add', 'update', 'remove'].includes(k))
-      err(`패치 최상위에는 add/update/remove만 옵니다 — '${k}'는 알 수 없음`);
+    if (!['patchVersion', 'add', 'update', 'remove', 'randomEventsChance'].includes(k))
+      err(`패치 최상위에는 add/update/remove만 옵니다 — '${k}'는 알 수 없음`
+        + (SECTION_KEYS.includes(k) ? ` (새 항목이면 add 안에, 기존 수정이면 update 안에 넣으세요)` : ''));
   }
 
   const patch = { add: {}, update: {}, remove: {} };
+  // 랜덤 이벤트 발동률 — 섹션이 아니라 randomEvents의 설정값이다. 첫 랜덤 이벤트를
+  // 패치로 추가할 때 이게 없으면 병합 결과가 검증(0~1 필요)에서 무조건 죽으므로 받아준다.
+  const takeChance = (v, where) => {
+    if (v == null) return;
+    if (typeof v !== 'number' || v < 0 || v > 1) { err(`${where}: randomEvents 발동률은 0~1 숫자여야 함 (현재: ${JSON.stringify(v)})`); return; }
+    patch.randomEventsChance = v;
+  };
+  takeChance(obj.randomEventsChance, 'randomEventsChance');
   for (const op of ['add', 'update']) {
-    const m = normalizeSectionMap(obj[op], op, err);
+    const m = normalizeSectionMap(obj[op], op, err, takeChance);
     for (const [key, entries] of Object.entries(m)) {
       const seen = new Set();
       const list = [];
@@ -1538,13 +1547,16 @@ function parsePatch(raw) {
   }
 
   if (errors.length) return { ok: false, errors };
-  if (!Object.keys(patch.add).length && !Object.keys(patch.update).length && !Object.keys(patch.remove).length)
+  if (!Object.keys(patch.add).length && !Object.keys(patch.update).length && !Object.keys(patch.remove).length
+      && patch.randomEventsChance == null)
     return { ok: false, errors: ['패치에 적용할 작업이 없음 (add/update/remove 전부 비어 있음)'] };
   return { ok: true, patch };
 }
 
 // 섹션 표기는 평평한 키가 기본이되, AI가 스키마 모양(rules.events 등)을 따라 해도 받아준다.
-function normalizeSectionMap(rawOp, opName, err) {
+// takeChance: rules.randomEvents.chancePerTurn이 실려 오면 조용히 버리지 않고 패치에 담는다
+// — 안 담으면 "AI가 올바르게 보냈는데 우리가 버려서 검증 실패"라는 최악의 경로가 생긴다.
+function normalizeSectionMap(rawOp, opName, err, takeChance) {
   const out = {};
   if (rawOp == null) return out;
   if (typeof rawOp !== 'object' || Array.isArray(rawOp)) { err(`${opName}은 {섹션: [...]} 객체여야 함`); return out; }
@@ -1558,10 +1570,13 @@ function normalizeSectionMap(rawOp, opName, err) {
       put('events', v.events, 'rules.events');
       const re = v.randomEvents;
       put('randomEvents', Array.isArray(re) ? re : (re && re.table), 'rules.randomEvents.table');
+      if (re && !Array.isArray(re) && takeChance) takeChance(re.chancePerTurn, `${opName}.rules.randomEvents.chancePerTurn`);
       for (const rk of Object.keys(v)) {
         if (rk === 'onTurn') err(`${opName}.rules.onTurn: onTurn은 id가 없어 패치 병합 미지원 — 통 교체 경로를 쓰세요`);
         else if (!['events', 'randomEvents'].includes(rk)) err(`${opName}.rules.${rk}: 알 수 없는 섹션`);
       }
+    } else if (k === 'randomEventsChance') {
+      if (takeChance) takeChance(v, `${opName}.randomEventsChance`);
     } else if (k === 'updater' && v && typeof v === 'object') {
       put('allow', v.allow, 'updater.allow');
     } else if (SECTION_KEYS.includes(k)) {
@@ -1656,6 +1671,11 @@ function planPatch(schema, patch) {
       ops.push({ op: 'remove', section: key, id, previous: existing[key].get(id) });
     }
   }
+
+  // 첫 랜덤 이벤트인데 발동률이 없으면 병합 결과가 검증에서 무조건 죽는다 — 여기서 먼저, 해법과 함께
+  if (((patch.add || {}).randomEvents || []).length
+      && !(schema.rules && schema.rules.randomEvents) && patch.randomEventsChance == null)
+    err('이 스키마엔 랜덤 이벤트가 처음이라 발동률이 없음 — 패치 최상위에 "randomEventsChance": 0.1 처럼 턴당 발동률(0~1)을 함께 주세요');
 
   const count = (op) => ops.filter((o) => o.op === op).length;
   return {
@@ -1804,6 +1824,15 @@ function applyPatch(schema, patch0, resolutions = {}) {
       applied.removed.push(`${o.section}:${o.id}`);
     }
     setList(merged, o.section, list);
+  }
+
+  // 랜덤 이벤트 발동률 — 섹션 밖 설정값이라 ops와 별도로 얹는다
+  if (patch.randomEventsChance != null) {
+    const rules = merged.rules = merged.rules || {};
+    const re = rules.randomEvents = rules.randomEvents || {};
+    re.chancePerTurn = patch.randomEventsChance;
+    if (!Array.isArray(re.table)) re.table = [];
+    applied.updated.push(`randomEvents 발동률 → ${patch.randomEventsChance}`);
   }
 
   // 원자성의 마지막 관문 — 병합 결과가 통짜 검증을 못 넘으면 아무것도 적용하지 않는다
@@ -4911,6 +4940,7 @@ function buildPatchExportPrompt(schema) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, 항목을 **통째로 다시** 씁니다 — 바꿀 필드만 주면 나머지 필드가 사라집니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
+    '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
@@ -6799,6 +6829,8 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
       const entryName = (e) => e.label ?? e.notify ?? e.text ?? '';
       box.appendChild(h('div', {},
         `계획: 추가 ${plan.summary.add} · 교체 ${plan.summary.update} · 삭제 후보 ${plan.summary.remove} · 충돌 ${plan.summary.conflicts}`));
+      if (patch.randomEventsChance != null)
+        box.appendChild(h('div', {}, `⚙ 랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
       for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
 
       const conflictKeys = new Set(plan.conflicts.map((c) => `${c.section}:${c.id}`));
@@ -6806,7 +6838,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         if (o.op === 'remove') continue;                       // 삭제는 아래 체크 목록에서
         if (o.op === 'add' && conflictKeys.has(`${o.section}:${o.id}`)) continue;  // 충돌은 충돌 블록에서
         const mark = o.op === 'add' ? '＋' : '✎';
-        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} \`${o.id}\` ${entryName(o.entry)}`));
+        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} ${o.id} ${entryName(o.entry)}`));
       }
 
       // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
@@ -6838,7 +6870,7 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
           box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
-            `삭제: ${secLabel(o.section)} \`${o.id}\` ${entryName(o.previous)}`)));
+            `삭제: ${secLabel(o.section)} ${o.id} ${entryName(o.previous)}`)));
         }
       }
 

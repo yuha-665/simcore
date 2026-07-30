@@ -1,13 +1,19 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.7
-//@display-name SimCore (시뮬 엔진) v0.47.7 삼층 구조
+//@version 0.47.8
+//@display-name SimCore (시뮬 엔진) v0.47.8 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.8 ────────────────────────────────────────────────
+// 편집기 탭 선택 표시 복구 — 패널 전역 #sc-root button !important 가 id 특이도로 편집기
+// .sce-tab.on / .sce-danger / .sce-add 스타일을 눌러 죽이고 있었다 (실기 제보: 창작/결과/
+// 진단·심층 탭 어느 걸 눌렀는지 안 보임). 플레이그라운드(패널 밖)에선 정상이라 여태 은폐.
+// 패널 CSS에 #sc-root .sce 특이도 오버라이드 추가 — 선택 탭은 사이드바와 같은 파란색.
 //
 // ── v0.47.7 ────────────────────────────────────────────────
 // 모델 id 자동 읽기 — 설정 화면은 표시명만 보여줘서 [직접 지정]에 넣을 id를 유저가 알 수
@@ -11699,6 +11705,16 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-root .chip button:hover { background:#4a1f2e !important; color:#f2aab6 !important; }
       #sc-root .chip-sum { color:#9db8e8; font-size:12px; margin-left:2px; }
       #sc-root button.armed { border-color:#6b93f2 !important; background:rgba(91,141,239,.28) !important; color:#fff !important; }
+      /* 편집기(.sce) 버튼류 — 위 #sc-root button !important 전역 규칙이 id 특이도로 편집기
+         탭 선택 표시·위험 버튼 색을 눌러 죽인다 (실기 제보: 어느 탭을 눌렀는지 안 보임). 여기서 되살린다 */
+      #sc-root .sce .sce-tab { background:transparent !important; border:1px solid transparent !important;
+        border-bottom:none !important; border-radius:8px 8px 0 0 !important; color:#a7b4cc !important; }
+      #sc-root .sce .sce-tab.on { color:#fff !important; background:#3660d9 !important;
+        border-color:#6b93f2 !important; font-weight:600; }
+      #sc-root .sce .sce-btn.sce-add { border-style:dashed !important; color:#9db8e8 !important; }
+      #sc-root .sce .sce-btn.sce-add:hover { color:#cfe0ff !important; }
+      #sc-root .sce .sce-btn.sce-danger { color:#d99aa6 !important; }
+      #sc-root .sce .sce-btn.sce-danger:hover { border-color:#d9596f !important; background:#331722 !important; color:#f2aab6 !important; }
       #sc-root .sc-maintabs { display:flex; gap:4px; border-bottom:2px solid #24304a; margin-bottom:14px; }
       #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
         border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }

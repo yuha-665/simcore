@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.48.0
+//@version 0.48.1
 //@display-name SimCore (시뮬 엔진) v0.48 에셋 팩
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.48.1 ────────────────────────────────────────────────
+// 🎨 에셋 작업영역 신설 (3단계 편집기 UI, 유저 제안: "사이드바에 아예 에셋 작업영역을") —
+// 사이드바 7항목: 현황 / ✨AI에게 맡기기 / 🧾JSON 작업대 / 🎨에셋 팩 / 🧰심층 편집 / 세이브 / 도움말.
+// - [팩 카드] 켜짐 토글·id·출처·구분자·출력 태그·게이트·고정 인물 + 칸(슬롯) 행 편집,
+//   예시 출력 미리보기 (format 오타를 눈으로 잡는 자리).
+// - [🔍 자동 감지] additionalAssets 실물 이름에서 구분자·칸·어휘를 읽어 팩 초안 생성
+//   (detectSlotsFromNames — 구분자가 이름 30% 미만이면 포기, 틀린 초안이 더 해롭다).
+// - [실존 진단] packCoverage = 필수 조합 대비 실존 수 + 빠진 예시 (4000개 초과는 열거 생략).
+// - [📋 모듈 지침 가져오기] 배포문 원문 → AI 변환(buildPackImportPrompt) → 검증 통과 시만
+//   원자 반영 (오류 늘면 통째 되돌림). AI 없는 호스트는 복사 요청서 옆문.
+// - 팩 0개면 schema.assets 자체를 걷는다 — "없음 = 꺼짐" 유지, 기존 봇 무영향.
 //
 // ── v0.48.0 ────────────────────────────────────────────────
 // 에셋 팩 배선 (2단계, 설계 docs/design-에셋-슬롯.md) — 이미지 태그 자동화가 실제로 돈다.
@@ -1925,6 +1937,7 @@
             <div class="sc-navdiv"></div>
             <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI에게 맡기기</button>
             <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 작업대</button>
+            <button class="sc-maintab" data-page="edit" data-floor="assets">🎨 에셋 팩</button>
             <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 심층 편집</button>
             <div class="sc-navdiv"></div>
             <button class="sc-maintab" data-page="save">💾 세이브</button>
@@ -2444,6 +2457,8 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
+        getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

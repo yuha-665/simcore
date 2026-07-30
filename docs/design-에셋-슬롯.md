@@ -5,8 +5,11 @@
 > 사다리/두 모드 지시문, validate `$.assets` 절, test-assets) → ✅ 2단계 배선 (v0.48 —
 > aux 피기백 `buildAuxPrompt`+`parseAuxResponse.image`, output 본문 맨 앞 1장
 > `resolveImageTag`, main 주입문 `sendPhase` 합류, additionalAssets 실존 Set
-> [live-test]. 루아 브리지·지연 적용 턴 = 이미지 생략, retro 제약). **3단계 편집기
-> UI(팩 카드·자동 감지·모듈 지침 가져오기·진단) 남음.**
+> [live-test]. 루아 브리지·지연 적용 턴 = 이미지 생략, retro 제약) → ✅ 3단계 편집기 UI
+> (v0.48.1 — 사이드바 🎨 에셋 팩 층 신설: 팩 카드·켜짐 토글·칸 행·예시 출력 미리보기,
+> 🔍 자동 감지 detectSlotsFromNames, 실존 진단 packCoverage, 📋 모듈 지침 AI 변환
+> buildPackImportPrompt 원자 반영. 팩 0개 = assets 키 자체 제거). **잔여: 템플릿 실물
+> 예시 + 가이드 원고 + 실기 확인([live-test] additionalAssets).**
 > **2차 논의(회사 노트북)**: 모듈 배포 생태계 문제가 새 축으로 들어와 레지스트리 단위를
 > **팩**으로 쪼갰다 (§귀속). 유저 판단 — "이건 만들기 전에 어떻게 관리할지가 가장 중요",
 > "감정 태그 목록이 전부 다를 거 생각하면 그룹화로 묶어줄 수 있는 ID를 생성해서 거기에 모아야".

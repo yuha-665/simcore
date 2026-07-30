@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.48.0
+//@version 0.48.1
 //@display-name SimCore (시뮬 엔진) v0.48 에셋 팩
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.48.1 ────────────────────────────────────────────────
+// 🎨 에셋 작업영역 신설 (3단계 편집기 UI, 유저 제안: "사이드바에 아예 에셋 작업영역을") —
+// 사이드바 7항목: 현황 / ✨AI에게 맡기기 / 🧾JSON 작업대 / 🎨에셋 팩 / 🧰심층 편집 / 세이브 / 도움말.
+// - [팩 카드] 켜짐 토글·id·출처·구분자·출력 태그·게이트·고정 인물 + 칸(슬롯) 행 편집,
+//   예시 출력 미리보기 (format 오타를 눈으로 잡는 자리).
+// - [🔍 자동 감지] additionalAssets 실물 이름에서 구분자·칸·어휘를 읽어 팩 초안 생성
+//   (detectSlotsFromNames — 구분자가 이름 30% 미만이면 포기, 틀린 초안이 더 해롭다).
+// - [실존 진단] packCoverage = 필수 조합 대비 실존 수 + 빠진 예시 (4000개 초과는 열거 생략).
+// - [📋 모듈 지침 가져오기] 배포문 원문 → AI 변환(buildPackImportPrompt) → 검증 통과 시만
+//   원자 반영 (오류 늘면 통째 되돌림). AI 없는 호스트는 복사 요청서 옆문.
+// - 팩 0개면 schema.assets 자체를 걷는다 — "없음 = 꺼짐" 유지, 기존 봇 무영향.
 //
 // ── v0.48.0 ────────────────────────────────────────────────
 // 에셋 팩 배선 (2단계, 설계 docs/design-에셋-슬롯.md) — 이미지 태그 자동화가 실제로 돈다.
@@ -5065,6 +5077,7 @@ const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
+const { composeName, renderTag } = require('./assets');
 
 const CSS = `
 .sce { font-size: 13px; }
@@ -6432,6 +6445,92 @@ function changeVarType(v, newType) {
   }
 }
 
+// ── 에셋 팩: 실물 이름에서 슬롯 구조 감지 (🎨 층) ────────────
+// "Hiromi_angry_apron" 무리에서 구분자·칸 수·칸별 어휘를 읽어 팩 초안을 만든다.
+// 감지는 초안일 뿐 — format(출력 방언)은 봇의 표시 정규식에 맞게 사람이 확정한다.
+function detectSlotsFromNames(names) {
+  const clean = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))];
+  if (clean.length < 2) return null;
+  let sep = null, sepRows = [];
+  for (const s of ['_', '-', '.', ' ']) {
+    const rows = clean.filter((n) => n.includes(s));
+    if (rows.length > sepRows.length) { sep = s; sepRows = rows; }
+  }
+  // 구분자가 소수 이름에만 있으면 명명 규약이 아니라 우연 — 감지 포기 (틀린 초안이 더 해롭다)
+  if (!sep || sepRows.length < Math.max(2, clean.length * 0.3)) return null;
+  const rows = sepRows.map((n) => n.split(sep).filter((p) => p !== ''));
+  const minCols = Math.min(...rows.map((r) => r.length));
+  const maxCols = Math.max(...rows.map((r) => r.length));
+  const cols = [];
+  for (let c = 0; c < maxCols; c++) {
+    const values = [...new Set(rows.map((r) => r[c]).filter((v) => v != null))];
+    cols.push({ values, optional: c >= minCols });
+  }
+  return { sep, cols, covered: rows.length, total: clean.length };
+}
+
+// 감지 결과 → 팩 초안. 칸 이름은 관례 추정(0=인물, 1=감정)이고 사람이 고친다.
+function packDraftFromDetect(det, packId) {
+  const ids = ['who', 'emo'], labels = ['인물', '감정'];
+  return {
+    id: packId, source: '자동 감지', sep: det.sep, format: '<img="{name}">',
+    slots: det.cols.map((c, i) => ({
+      id: ids[i] ?? 'slot' + (i + 1), label: labels[i] ?? '칸 ' + (i + 1),
+      values: c.values, ...(c.optional ? { optional: true } : {}),
+    })),
+  };
+}
+
+// 팩의 필수 칸 정조합 실존 커버리지 — "없는 조합"을 배포 전에 보는 진단.
+// nameSet 없으면(대조 불가 환경) 조합 수만 센다. 조합이 너무 많으면 열거를 포기한다(capped).
+function packCoverage(pack, nameSet) {
+  const req = (pack.slots || []).filter((s) => !s.optional);
+  let combos = 1;
+  for (const s of req) combos *= Math.max(1, (s.values || []).length);
+  if (!nameSet || !req.length) return { combos, exist: null, missing: [] };
+  if (combos > 4000) return { combos, exist: null, missing: [], capped: true };
+  let acc = [{}];
+  for (const s of req) {
+    const next = [];
+    for (const c of acc) for (const v of s.values || []) next.push({ ...c, [s.id]: v });
+    if (next.length) acc = next;
+  }
+  let exist = 0; const missing = [];
+  for (const c of acc) {
+    const name = composeName(pack, c);
+    if (name && nameSet.has(name)) exist++;
+    else if (name && missing.length < 6) missing.push(name);
+  }
+  return { combos: acc.length, exist, missing };
+}
+
+// ── 에셋 팩: 모듈 지침 원문 → 팩 JSON 변환 프롬프트 (임포터) ──
+// 자동 감지가 못 읽는 환경이나 모듈 배포문(수동 키워드 목록 + 지침 문단)을 팩으로 옮긴다.
+function buildPackImportPrompt(pasteText) {
+  return [
+    '너는 SimCore 에셋 팩 변환기다. 아래는 어떤 봇/모듈의 이미지 삽입 지침 원문이다.',
+    '이 지침이 요구하는 이미지 태그 규약을 SimCore 팩 선언(JSON)으로 변환하라.',
+    '',
+    '팩 스키마:',
+    '{"packs": [{ "id": "영문id", "source": "출처 표기", "sep": "구분자(기본 _)",',
+    '  "format": "출력 태그 원형 — {name} 자리에 조합된 이름 (예: <img=\\"{name}\\">)",',
+    '  "chars": ["(선택) 태그가 캐릭터 고정인 단일 캐릭 모듈이면 담당 인물"],',
+    '  "when": "(선택) 성인 등 조건부 어휘 게이트 — 비워 두면 항상 열림",',
+    '  "slots": [{ "id": "who", "label": "인물", "values": ["..."] },',
+    '            { "id": "emo", "label": "감정", "values": ["..."], "fallback": "중립값" },',
+    '            { "id": "wear", "label": "의상", "values": ["..."], "optional": true }] }]}',
+    '',
+    '규칙:',
+    '- 지침에 실제로 나열된 어휘만 values에 담아라. 지어내지 마라.',
+    '- 인물명이 이름 조합의 일부면 who 칸으로, 태그 자체가 캐릭터 고정이면 chars로.',
+    '- 성인/조건부 어휘는 별도 팩으로 쪼개라. when은 비워 둬라 (변수 연결은 사람이 한다).',
+    '- 출력 태그의 실제 문법(format)은 지침 원문의 예시에서 그대로 베껴라.',
+    '- 출력은 JSON 하나만. 다른 텍스트 금지.',
+    '',
+    '[지침 원문]', pasteText,
+  ].join('\n');
+}
+
 // ── 색 빌더: 팔레트 딸깍 ↔ 수식 문자열 변환 ─────────────────
 const PALETTE = [
   '#e74c3c', '#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#1abc9c',
@@ -6570,7 +6669,7 @@ function effectRows(schema, effects, rerender) {
 function createSchemaEditor(container, initialSchema, opts = {}) {
   const { onChange, ai, floor, onRequestFloor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
   // onRequestFloor(f): 편집기 안에서 층 이동이 필요할 때 호스트에게 부탁 — 사이드바 하이라이트까지 같이 옮기라고
-  // floor: 'top'|'json'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
+  // floor: 'top'|'json'|'assets'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
   // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
   let floorView = floor ?? null;
   let schema = JSON.parse(JSON.stringify(initialSchema));
@@ -6579,6 +6678,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
+  // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets), 안내문, 임포터 입력/진행
+  let assetNames = null, assetNote = null, assetImportText = '', assetBusy = false, assetsOpen = false;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -6602,6 +6703,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     schema.setup = schema.setup || {};
     schema.setup.presets = schema.setup.presets || [];
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
+    // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지
+    if (schema.assets && !(schema.assets.packs || []).length) delete schema.assets;
   }
   normalize();
 
@@ -8723,6 +8826,190 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 프레임 ────────────────────────────────────────────────
   const reportEl = h('div', { class: 'sce-report' });
 
+  // ── 🎨 에셋 층 — 팩 카드·자동 감지·모듈 지침 변환·실존 진단 ──
+  // 팩이 없으면 기능 꺼짐 = schema.assets 자체가 없는 상태를 유지한다 (기존 봇 무영향).
+  function ensureAssets() {
+    if (!schema.assets) schema.assets = { packs: [] };
+    schema.assets.packs = schema.assets.packs || [];
+    return schema.assets;
+  }
+
+  async function loadAssetNames() {
+    if (!ai || !ai.getAssetNames) {
+      assetNote = '이 환경은 에셋 목록을 읽을 수 없다 (플레이그라운드 등) — 어휘는 손으로 넣어야 한다.';
+      rerender(); return null;
+    }
+    try {
+      const names = await ai.getAssetNames();
+      if (!names || !names.length) {
+        assetNote = '캐릭터에서 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        rerender(); return null;
+      }
+      assetNames = names.map(String);
+      return assetNames;
+    } catch (e) { assetNote = '에셋 읽기 실패: ' + e.message; rerender(); return null; }
+  }
+
+  function assetsFloor() {
+    const box = h('div', { class: 'sce-block sce-top' });
+    box.appendChild(h('h4', { style: 'margin-top:2px' }, '🎨 에셋 팩 — 이미지 태그 자동화'));
+    box.appendChild(h('div', { class: 'sce-hint' },
+      '매 턴 손으로 싣던 이미지 지침(인물×감정 곱셈 목록)을 팩 선언으로 대체한다. ' +
+      '보조가 인물·감정만 고르면 조합·실존 대조·폴백은 시스템이 한다. 팩이 없으면 기능 꺼짐 — 기존 봇은 아무것도 안 바뀐다.'));
+
+    const a = schema.assets;
+    if (a && a.packs && a.packs.length) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        pair('삽입 주체', bindSelect(a.by ?? 'aux', [
+          ['aux', '보조가 고름 — 상태 갱신에 얹혀 추가 비용 0 (권장)'],
+          ['main', '메인 모델이 직접 — 주입문이 매 턴 전송에 합류'],
+        ], (x) => { if (x === 'aux') delete a.by; else a.by = x; rerender(); }),
+        'aux는 실존 대조·폴백까지 돌고, main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
+    }
+
+    const tools = h('div', { class: 'sce-row' });
+    tools.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
+      assetNote = null;
+      const names = await loadAssetNames();
+      if (!names) return;
+      const det = detectSlotsFromNames(names);
+      if (!det) { assetNote = `이름 ${names.length}개에서 공통 구분자를 못 찾았다 — 칸을 손으로 만들어야 한다.`; rerender(); return; }
+      const A = ensureAssets();
+      A.packs.push(packDraftFromDetect(det, 'pack' + (A.packs.length + 1)));
+      assetNote = `구분자 '${det.sep}' 기준 ${det.covered}/${det.total}개 이름에서 칸 ${det.cols.length}개 감지 — ` +
+        '출력 태그(format)는 봇의 표시 규약에 맞게 꼭 손볼 것.';
+      rerender();
+    } }, '🔍 에셋에서 자동 감지'));
+    tools.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
+      assetNote = null;
+      if (await loadAssetNames()) rerender();
+    } }, '📇 실존 대조 새로고침'));
+    box.appendChild(tools);
+    if (assetNote) box.appendChild(h('div', { class: 'sce-warn' }, assetNote));
+    if (assetNames) box.appendChild(h('div', { class: 'sce-hint' },
+      `실물 에셋 ${assetNames.length}개 읽음 — 팩 카드마다 실존 커버리지가 표시된다.`));
+
+    const packs = (a && a.packs) || [];
+    const nameSet = assetNames ? new Set(assetNames) : null;
+    packs.forEach((p, i) => {
+      const card = h('div', { class: 'sce-block' });
+      card.appendChild(h('div', { class: 'sce-row' },
+        bindCheck(p.enabled !== false, (x) => { if (x) delete p.enabled; else p.enabled = false; rerender(); }, '켜짐'),
+        bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: mansion)' }),
+        pair('출처', bindInput(p.source, (x) => { p.source = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '모듈/봇 이름 — 어디서 온 팩인지' })),
+        grip(packs, i, rerender),
+      ));
+      card.appendChild(h('div', { class: 'sce-row' },
+        pair('구분자', bindInput(p.sep ?? '_', (x) => { if (x === '_' || x === '') delete p.sep; else p.sep = x; rerender(); }, { cls: 'sce-w-s', ph: '_' })),
+        pair('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
+          { cls: 'sce-w-l', ph: '<img="{name}"> — {name}에 조합 이름' }),
+          '봇의 표시 정규식이 알아듣는 문법 그대로. {name} 외에 {칸id}도 자리표시자로 쓸 수 있다'),
+      ));
+      card.appendChild(h('div', { class: 'sce-row' },
+        pair('게이트', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '(선택) nsfw_on — 닫히면 통째 제외' }),
+          '조건식이 참일 때만 팩이 열린다. 성인 어휘 팩을 쪼개 두면 대부분의 턴에서 토큰이 통째로 빠진다'),
+        pair('고정 인물', bindInput((p.chars || []).join(', '), (x) => {
+          const v = x.split(',').map((s) => s.trim()).filter(Boolean);
+          if (v.length) p.chars = v; else delete p.chars; rerender();
+        }, { cls: 'sce-w-m', ph: '(선택) 단일 캐릭 모듈용, 쉼표 구분' }),
+          '이름 조합에 인물 칸이 없는 팩은 여기 적은 인물로 라우팅된다'),
+      ));
+      (p.slots || []).forEach((s, j) => {
+        card.appendChild(h('div', { class: 'sce-row' },
+          bindInput(s.id, (x) => { s.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '칸id (who/emo)' }),
+          bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '표시명' }),
+          pair('어휘', bindInput((s.values || []).join(', '), (x) => {
+            s.values = x.split(',').map((t) => t.trim()).filter(Boolean); rerender();
+          }, { cls: 'sce-w-l', ph: 'angry, smile, neutral (쉼표 구분)' })),
+          bindCheck(!!s.optional, (x) => { if (x) s.optional = true; else delete s.optional; rerender(); }, '생략 가능'),
+          pair('폴백', bindInput(s.fallback, (x) => { s.fallback = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: 'neutral' }),
+            '정조합이 실존하지 않을 때 이 값으로 강등해 재시도 (인물 칸에는 안 씀)'),
+          grip(p.slots, j, rerender),
+        ));
+      });
+      card.appendChild(addBtn('칸 추가', () => {
+        p.slots = p.slots || [];
+        p.slots.push({ id: 'slot' + (p.slots.length + 1), values: [] });
+        rerender();
+      }));
+
+      // 미리보기 — 각 칸의 첫 어휘로 조합한 출력 실물 (format 오타를 눈으로 잡는 자리)
+      const first = {};
+      for (const s of p.slots || []) if ((s.values || []).length) first[s.id] = s.values[0];
+      const prevName = composeName(p, first);
+      if (prevName) card.appendChild(h('div', { class: 'sce-hint' }, `예시 출력: ${renderTag(p, prevName, first)}`));
+
+      const cov = packCoverage(p, nameSet);
+      if (cov.exist != null) {
+        const line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존` +
+          (cov.missing.length ? ` — 빠진 예: ${cov.missing.join(', ')}${cov.combos - cov.exist > cov.missing.length ? ' …' : ''}` : '');
+        card.appendChild(h('div', { class: cov.exist === cov.combos ? 'sce-ok' : 'sce-warn' },
+          (cov.exist === cov.combos ? '✓ ' : '⚠ ') + line));
+      } else if (cov.capped) {
+        card.appendChild(h('div', { class: 'sce-warn' },
+          `⚠ 필수 조합이 ${cov.combos}개 — 너무 많아 대조를 생략했다 (어휘를 줄이거나 칸을 생략 가능으로)`));
+      } else if (!nameSet) {
+        card.appendChild(h('div', { class: 'sce-hint' },
+          `필수 조합 ${cov.combos}개 — [📇 실존 대조 새로고침]을 누르면 실물과 대조해 준다`));
+      }
+      box.appendChild(card);
+    });
+    box.appendChild(addBtn('팩 추가 (빈 카드)', () => {
+      const A = ensureAssets();
+      A.packs.push({ id: 'pack' + (A.packs.length + 1), format: '<img="{name}">',
+        slots: [{ id: 'who', label: '인물', values: [] }, { id: 'emo', label: '감정', values: [] }] });
+      rerender();
+    }));
+
+    // 임포터 — 모듈 배포문(키워드 목록 + 삽입 문법)을 팩 선언으로
+    box.appendChild(h('h4', {}, '📋 모듈 지침 가져오기'));
+    box.appendChild(h('div', { class: 'sce-hint' },
+      '모듈/봇이 들고 온 이미지 지침 원문을 붙여넣으면 팩 선언으로 변환한다. 변환 결과는 검증을 통과해야 반영된다.'));
+    const ta = bindArea(assetImportText, (x) => { assetImportText = x; }, '여기에 지침 원문 붙여넣기…');
+    box.appendChild(ta);
+    if (ai && ai.generate) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: async () => {
+          if (assetBusy) return;
+          assetImportText = ta.value;
+          if (!assetImportText.trim()) { assetNote = '붙여넣은 지침이 없다.'; rerender(); return; }
+          assetBusy = true; assetNote = null; rerender();
+          try {
+            const r = await ai.generate(buildPackImportPrompt(assetImportText));
+            const text = typeof r === 'string' ? r : null;
+            if (!text) {
+              assetNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
+              return;
+            }
+            const noFence = text.replace(/```[a-z]*\n?/g, '');
+            const jsonStr = noFence.slice(noFence.indexOf('{'), noFence.lastIndexOf('}') + 1);
+            let obj = null;
+            try { obj = JSON.parse(jsonStr); } catch { assetNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
+            const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
+            if (!got || !got.length) { assetNote = '변환 결과에 팩이 없다.'; return; }
+            // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율)
+            const backup = JSON.parse(JSON.stringify(schema));
+            const before = validateSchema(schema).errors.length;
+            ensureAssets().packs.push(...got);
+            const after = validateSchema(schema);
+            if (after.errors.length > before) {
+              schema = backup;
+              assetNote = '변환 결과가 검증 실패 — 반영 안 함: ' + after.errors.slice(0, 3).map((e) => e.msg).join(' / ');
+            } else {
+              assetImportText = '';
+              assetNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`;
+            }
+          } finally { assetBusy = false; rerender(); }
+        } }, assetBusy ? '⏳ 변환 중…' : '✨ AI로 팩 변환')));
+    } else {
+      box.appendChild(copyWidget('📋 변환 요청서 복사', '외부 AI에게 붙여넣고, 받은 JSON의 packs를 손으로 반영',
+        () => buildPackImportPrompt(ta.value)));
+    }
+    return box;
+  }
+
   function deepTabs() {
     const tabs = h('div', { class: 'sce-tabs' });
     for (const [key, label] of TABS) {
@@ -8766,6 +9053,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (floorView === 'json') {
         root.appendChild(tabJson());
         root.appendChild(reportEl);
+      } else if (floorView === 'assets') {
+        root.appendChild(assetsFloor());
+        root.appendChild(reportEl);
       } else if (floorView === 'deep') {
         root.appendChild(deepTabs());
         root.appendChild(deepBody());
@@ -8785,6 +9075,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     jsonFloor.open = jsonOpen;
     jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
     root.appendChild(jsonFloor);
+
+    const assetFold = h('details', { class: 'sce-lower' },
+      h('summary', {}, '🎨 에셋 팩 — 이미지 태그 자동화'),
+      assetsFloor());
+    assetFold.open = assetsOpen;
+    assetFold.addEventListener('toggle', () => { assetsOpen = assetFold.open; });
+    root.appendChild(assetFold);
 
     const lower = h('details', { class: 'sce-lower' },
       h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
@@ -8810,13 +9107,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   return {
     getSchema: () => JSON.parse(JSON.stringify(schema)),
     setSchema: (s) => { schema = JSON.parse(JSON.stringify(s)); rerender(); },
-    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'deep'|null(스택형)
+    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'assets'|'deep'|null(스택형)
     validateNow: () => validateSchema(schema),
     destroy: () => { destroyed = true; container.innerHTML = ''; },
   };
 }
 
-module.exports = { createSchemaEditor };
+module.exports = { createSchemaEditor, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt };
 
 });
 
@@ -12128,6 +12425,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
             <div class="sc-navdiv"></div>
             <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI에게 맡기기</button>
             <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 작업대</button>
+            <button class="sc-maintab" data-page="edit" data-floor="assets">🎨 에셋 팩</button>
             <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 심층 편집</button>
             <div class="sc-navdiv"></div>
             <button class="sc-maintab" data-page="save">💾 세이브</button>
@@ -12647,6 +12945,8 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
+        getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

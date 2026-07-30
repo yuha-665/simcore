@@ -209,6 +209,35 @@ const E = SC.require('engine');
   ck('image 없으면 null', E.parseAuxResponse('{"changes":{}}').image === null, '');
 }
 
+// ── 3단계: 🎨 에셋 층 — 감지·커버리지·임포터 (순수 헬퍼) ──
+const ED = SC.require('editor');
+{
+  const det = ED.detectSlotsFromNames(['Hiromi_angry', 'Hiromi_smile', 'Seiko_neutral', 'Hiromi_smile_apron']);
+  ck('★ 자동 감지: 구분자', det && det.sep === '_', JSON.stringify(det));
+  ck('자동 감지: 칸 어휘 열 단위 합집합', det.cols[0].values.includes('Hiromi') && det.cols[1].values.includes('neutral'), '');
+  ck('★ 자동 감지: 넘치는 열은 생략 가능 칸', det.cols[2] && det.cols[2].optional === true, '');
+  ck('구분자 없는 무리는 감지 포기 (틀린 초안이 더 해롭다)', ED.detectSlotsFromNames(['alpha', 'beta', 'gamma']) === null, '');
+  const draft = ED.packDraftFromDetect(det, 'p1');
+  ck('초안 칸 이름 관례 (who/emo)', draft.slots[0].id === 'who' && draft.slots[1].id === 'emo', '');
+
+  const S = snap();
+  const cov = ED.packCoverage(S.assets.packs[0], new Set(['Hiromi_angry', 'Hiromi_smile', 'Seiko_neutral']));
+  ck('★ 실존 커버리지: 필수 6조합 중 3실존', cov.combos === 6 && cov.exist === 3, JSON.stringify(cov));
+  ck('빠진 조합 예시 제공', cov.missing.includes('Hiromi_neutral'), cov.missing.join(','));
+  ck('대조 불가 환경은 조합 수만', ED.packCoverage(S.assets.packs[0], null).exist === null, '');
+
+  const ip = ED.buildPackImportPrompt('인물: A, B / 감정: happy');
+  ck('임포터 프롬프트 = 팩 스키마 + 원문', ip.includes('"packs"') && ip.includes('인물: A, B'), '');
+  ck('임포터: 지어내기 금지 지시', ip.includes('지어내지 마라'), '');
+}
+
+// 번들 배선 (3단계)
+{
+  ck('★ 사이드바에 에셋 작업영역', src.includes('data-floor="assets"') && src.includes('🎨 에셋 팩'), '');
+  ck('편집기 assets 층 분기', src.includes("floorView === 'assets'"), '');
+  ck('★ 호스트 getAssetNames 주입 (output 삽입과 같은 읽기 경로)', src.includes('getAssetNames'), '');
+}
+
 // ── 배선 (2단계): 가짜 리스 실부팅 — 보조가 image를 얹어 보내면 본문 맨 앞에 1장 ──
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function bootLive() {

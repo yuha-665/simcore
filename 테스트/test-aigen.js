@@ -121,9 +121,19 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('번들: 통짜 반영 확인·되돌리기', src.includes('편집기에 반영') && src.includes('↩ 되돌리기 (반영 전으로)'), '');
   ck('★ 어댑터: getBotContext 배선 + ⚙simcore 제외', src.includes('getBotContextForEditor')
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
-  ck('★ 어댑터: 생성은 callAuxLLM(submodel) — 자기 정산 함정 가드',
-    src.includes('generate: (promptText) => callAuxLLM(promptText'), '');
+  ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',
+    src.includes('generate: (promptText) => callGenLLM(promptText)'), '');
   ck('어댑터 버전 v0.46', src.includes('//@version 0.46'), '');
+
+  // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
+  ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')
+    && src.includes('메인 모델 (대화용 그대로)') && src.includes('직접 지정 (실험적)'), '');
+  ck('번들: 모델 선택은 기기 로컬 저장 (sim:genmodel)', src.includes("'sim:genmodel'"), '');
+  ck('★ 번들: 메인 경로는 GEN_SENTINEL + 무개입 통과 분기',
+    src.includes('⟦simcore:gen⟧') && src.includes('m.content.split(GEN_SENTINEL)'), '');
+  ck('번들: 기본값은 여전히 보조 (검증 안 된 경로를 기본으로 안 씀)',
+    src.includes("{ choice: 'aux', staticId: '' }"), '');
+  ck('번들: static 빈 id는 보조로 폴백', src.includes("gm.choice === 'static' && !gm.staticId.trim()"), '');
 }
 
 let p = 0, f = 0;

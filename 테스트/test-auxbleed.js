@@ -103,6 +103,25 @@ async function boot() {
     !bled.some((m) => String(m.content).includes('⟦simcore:')), JSON.stringify(bled[0]?.content));
   ck('메인 생성에서도 마커는 지워진다', !main.some((m) => String(m.content).includes('⟦simcore:')), '');
 
+  // ── 내장 AI 생성의 메인 모델 경로 (v0.46.1): 자기 요청은 주입·정산 없이 통과 ──
+  // callGenLLM('main')은 mode:'model'로 쏘되 GEN_SENTINEL을 달아 보낸다. 이 센티널을
+  // beforeRequest가 못 알아보면 자기 요청에 상태 블록을 얹고 턴을 몰래 넘긴다 (자기 정산 함정).
+  {
+    const SENT = src.match(/const GEN_SENTINEL = '([^']+)'/)?.[1];
+    ck('★ GEN_SENTINEL 상수가 소스에 있다', !!SENT, '');
+    const before = writes.length;
+    const gen = await hooks.beforeRequest(
+      [{ role: 'system', content: SENT + '\n스키마 생성 규격서…' }, { role: 'user', content: '위 지시에 따라 답하라.' }],
+      'model');
+    ck('★ 자기 생성 요청에는 상태 블록을 얹지 않는다', gen.length === 2,
+      gen.map((m) => m.role).join(',') + ` (${gen.length}통)`);
+    ck('★ 자기 생성 요청은 정산을 돌리지 않는다 (mirrorVars 미실행)', writes.length === before,
+      `쓰기 ${before} → ${writes.length}`);
+    ck('센티널은 전송 전에 지워진다', !gen.some((m) => String(m.content).includes(SENT)), '');
+    ck('프롬프트 본문은 보존된다', String(gen[0].content).includes('스키마 생성 규격서'), gen[0].content);
+    // 센티널이 없는 진짜 턴은 여전히 정산 대상 — 위 '메인 생성' 케이스가 이미 증명
+  }
+
   // ── 이상한 입력이 와도 요청을 죽이지 않는다 (호출부에 try/catch가 없다) ──
   let threw = null;
   try {

@@ -451,8 +451,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
 // 규격 복붙 왕복(공홈 다녀오기)을 플러그인 안으로 접는다. 프롬프트는 위 복붙용 빌더를
 // 그대로 재사용한다 — 복붙용 문서가 곧 API 요청 본문 (설계: docs/design-내장-AI-생성.md).
 // 호출 자체는 어댑터가 opts.ai.generate로 주입한다 — 코어는 리수 API를 모른다.
-// ⚠ 자기 정산 함정: 주입되는 generate는 반드시 보조 모델(submodel) 경로여야 한다.
-//   mode:'model'로 쏘면 우리 자신의 beforeRequest가 진짜 턴으로 알고 정산까지 돈다 (v0.37.2의 거울상).
+// ⚠ 자기 정산 함정: 주입되는 generate는 정산에 안 걸리는 경로여야 한다 — submodel이거나,
+//   'model'이면 자기 식별표(GEN_SENTINEL)를 달아 어댑터 beforeRequest가 무개입 통과시키는 경로만.
+//   식별 없는 mode:'model'은 우리 beforeRequest가 진짜 턴으로 알고 정산까지 돈다 (v0.37.2의 거울상).
 
 function schemaIsBlank(s) {
   const n = (a) => (a || []).length;
@@ -2601,6 +2602,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiReq = '';           // 요청 문구
   let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
   let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
+  let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
@@ -2772,6 +2774,41 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     renderCtxLine();
     fetchBotCtx().then(() => { if (!destroyed) renderCtxLine(); });
     box.appendChild(ctxLine);
+
+    // 생성 모델 슬롯 — 보조는 번역·요약용 싼 모델이 꽂힌 자리라, 스키마 생성엔 급이 다른
+    // 모델이 필요할 수 있다. 어느 걸로 쏠지는 유저가 고른다 (기기 로컬 저장, 어댑터 몫).
+    if (ai && ai.getGenModel && ai.setGenModel) {
+      const gmLine = h('div', { class: 'sce-row' });
+      const renderGmLine = () => {
+        gmLine.replaceChildren();
+        if (aiGenModel === undefined) return;
+        const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
+        gmLine.appendChild(bindSelect(aiGenModel.choice, [
+          ['aux', '보조 모델 (기본)'],
+          ['main', '메인 모델 (대화용 그대로)'],
+          ['static', '직접 지정 (실험적)'],
+        ], (x) => { aiGenModel.choice = x; save(); renderGmLine(); }));
+        if (aiGenModel.choice === 'static') {
+          gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
+            { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
+        }
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+          aiGenModel.choice === 'aux'
+            ? '보조가 번역·요약용 싼 모델이면 생성 품질이 낮습니다 — 결과가 계속 거부되면 메인 모델로 바꿔보세요'
+            : aiGenModel.choice === 'main'
+              ? '대화에 쓰는 그 모델로 보냅니다 — 품질은 가장 좋고, 그만큼 토큰이 듭니다'
+              : '보조 자리에 다른 모델을 꽂아 쏩니다'));
+      };
+      renderGmLine();
+      if (aiGenModel === undefined) {
+        Promise.resolve(ai.getGenModel())
+          .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
+          .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
+          .then(() => { if (!destroyed) renderGmLine(); });
+      }
+      box.appendChild(gmLine);
+    }
 
     if (ai && ai.generate) {
       box.appendChild(h('div', { class: 'sce-row' },

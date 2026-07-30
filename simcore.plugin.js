@@ -1,13 +1,23 @@
 //@name simcore
 //@api 3.0
-//@version 0.46
-//@display-name SimCore (시뮬 엔진) v0.46 AI에게 맡기기
+//@version 0.46.1
+//@display-name SimCore (시뮬 엔진) v0.46.1 AI에게 맡기기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.46.1 ────────────────────────────────────────────────
+// 생성 모델 슬롯 — "submodel로 스키마 생성하면 망한다" (공홈 피드백, 배포 전 반영).
+// - [편집기] 위층에 생성 모델 선택: 보조(기본) / 메인 모델 / 직접 지정(staticModel, 실험적).
+//   보조는 번역·요약용 싼 모델이 꽂힌 자리라 스키마 생성엔 급이 다른 모델이 필요하다.
+//   선택은 pluginStorage(기기 로컬) — 봇이 아니라 유저 환경의 속성.
+// - [어댑터] 메인 모델 경로 = mode:'model' + GEN_SENTINEL(⟦simcore:gen⟧) 자기 식별 —
+//   beforeRequest가 센티널을 보면 상태 주입·정산 없이 통과 + 센티널 제거 후 전송.
+//   센티널 없는 'model' 호출은 여전히 절대 금지. static은 리수가 staticModel을 무시하면
+//   보조 모델로 조용히 폴백 (망가지진 않음, [live-test]).
 //
 // ── v0.46 ──────────────────────────────────────────────────
 // 내장 AI 생성 + 이층 구조 (설계: docs/design-내장-AI-생성.md, design-접근성.md §2).
@@ -5146,8 +5156,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
 // 규격 복붙 왕복(공홈 다녀오기)을 플러그인 안으로 접는다. 프롬프트는 위 복붙용 빌더를
 // 그대로 재사용한다 — 복붙용 문서가 곧 API 요청 본문 (설계: docs/design-내장-AI-생성.md).
 // 호출 자체는 어댑터가 opts.ai.generate로 주입한다 — 코어는 리수 API를 모른다.
-// ⚠ 자기 정산 함정: 주입되는 generate는 반드시 보조 모델(submodel) 경로여야 한다.
-//   mode:'model'로 쏘면 우리 자신의 beforeRequest가 진짜 턴으로 알고 정산까지 돈다 (v0.37.2의 거울상).
+// ⚠ 자기 정산 함정: 주입되는 generate는 정산에 안 걸리는 경로여야 한다 — submodel이거나,
+//   'model'이면 자기 식별표(GEN_SENTINEL)를 달아 어댑터 beforeRequest가 무개입 통과시키는 경로만.
+//   식별 없는 mode:'model'은 우리 beforeRequest가 진짜 턴으로 알고 정산까지 돈다 (v0.37.2의 거울상).
 
 function schemaIsBlank(s) {
   const n = (a) => (a || []).length;
@@ -7296,6 +7307,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiReq = '';           // 요청 문구
   let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
   let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
+  let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
@@ -7467,6 +7479,41 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     renderCtxLine();
     fetchBotCtx().then(() => { if (!destroyed) renderCtxLine(); });
     box.appendChild(ctxLine);
+
+    // 생성 모델 슬롯 — 보조는 번역·요약용 싼 모델이 꽂힌 자리라, 스키마 생성엔 급이 다른
+    // 모델이 필요할 수 있다. 어느 걸로 쏠지는 유저가 고른다 (기기 로컬 저장, 어댑터 몫).
+    if (ai && ai.getGenModel && ai.setGenModel) {
+      const gmLine = h('div', { class: 'sce-row' });
+      const renderGmLine = () => {
+        gmLine.replaceChildren();
+        if (aiGenModel === undefined) return;
+        const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
+        gmLine.appendChild(bindSelect(aiGenModel.choice, [
+          ['aux', '보조 모델 (기본)'],
+          ['main', '메인 모델 (대화용 그대로)'],
+          ['static', '직접 지정 (실험적)'],
+        ], (x) => { aiGenModel.choice = x; save(); renderGmLine(); }));
+        if (aiGenModel.choice === 'static') {
+          gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
+            { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
+        }
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+          aiGenModel.choice === 'aux'
+            ? '보조가 번역·요약용 싼 모델이면 생성 품질이 낮습니다 — 결과가 계속 거부되면 메인 모델로 바꿔보세요'
+            : aiGenModel.choice === 'main'
+              ? '대화에 쓰는 그 모델로 보냅니다 — 품질은 가장 좋고, 그만큼 토큰이 듭니다'
+              : '보조 자리에 다른 모델을 꽂아 쏩니다'));
+      };
+      renderGmLine();
+      if (aiGenModel === undefined) {
+        Promise.resolve(ai.getGenModel())
+          .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
+          .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
+          .then(() => { if (!destroyed) renderGmLine(); });
+      }
+      box.appendChild(gmLine);
+    }
 
     if (ai && ai.generate) {
       box.appendChild(h('div', { class: 'sce-row' },
@@ -10188,6 +10235,71 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
 
+  // ── 생성 모델 슬롯 (내장 AI 생성 전용) ─────────────────────
+  // 보조 모델(submodel)은 번역·요약용 싼 모델이 꽂혀 있는 자리인데, 스키마 생성은 이
+  // 생태계에서 가장 길고 어려운 출력이다 — 첫 시도가 쓰레기면 기능이 거기서 죽는다 (공홈 피드백).
+  // 어느 모델로 생성할지는 봇이 아니라 기기·유저의 속성이므로 pluginStorage(로컬)에 둔다.
+  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static', staticId }
+  // 메인 모델 경로의 자기 요청 식별표 — beforeRequest가 이걸 보면 주입·정산 없이 통과시킨다.
+  // (⟦simcore:N⟧ 마커와 다른 꼴이라 기존 MARKER_RE 제거에 안 걸린다 — 전용 분기에서 지운다)
+  const GEN_SENTINEL = '⟦simcore:gen⟧';
+
+  async function getGenModel() {
+    try {
+      const raw = await Risuai.pluginStorage.getItem(GEN_MODEL_KEY);
+      const v = raw ? JSON.parse(raw) : null;
+      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static')) {
+        return { choice: v.choice, staticId: String(v.staticId || '') };
+      }
+    } catch { /* 깨진 저장값은 기본값으로 */ }
+    return { choice: 'aux', staticId: '' };
+  }
+
+  async function setGenModel(v) {
+    try {
+      await Risuai.pluginStorage.setItem(GEN_MODEL_KEY,
+        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '' }));
+    } catch (e) { console.log('[simcore] 생성 모델 저장 실패:', e.message); }
+  }
+
+  /**
+   * 내장 AI 생성 호출 — 편집기 위층의 generate가 이걸 탄다.
+   * - aux(기본): callAuxLLM 그대로 (차단 감지·경로 판정 포함)
+   * - main: mode:'model' + GEN_SENTINEL — 우리 beforeRequest는 센티널을 보고 무개입 통과.
+   *   ⚠ 센티널 없는 'model' 호출은 여전히 절대 금지 (자기 정산 함정, v0.37.2의 거울상).
+   *   [live-test] 다른 플러그인의 'model' 리플레이서는 그대로 탄다 / 응답이 output 핸들러를
+   *   타지 않는지(채팅에 안 실리므로 안 탈 것) 확인.
+   * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
+   *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
+   */
+  async function callGenLLM(promptText) {
+    const gm = await getGenModel();
+    if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
+      return callAuxLLM(promptText, 8000);
+    }
+    try {
+      const req = gm.choice === 'main'
+        ? { mode: 'model',
+            messages: [{ role: 'system', content: GEN_SENTINEL + '\n' + promptText }, { role: 'user', content: AUX_NUDGE }],
+            allowPlugins: true }
+        : { mode: 'submodel', staticModel: gm.staticId.trim(),
+            messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
+            allowPlugins: true };
+      const res = await Risuai.runLLMModel(req);
+      const text = await extractLLMText(res);
+      console.log(`[simcore] 생성 호출(${gm.choice}) →`, res?.type,
+        text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
+      if (res && res.type === 'fail') {
+        if (text && /blocked by the caller/i.test(text)) return { blocked: true };
+        return null;
+      }
+      return (typeof text === 'string' && text.trim()) ? text : null;
+    } catch (e) {
+      console.log('[simcore] 생성 호출 예외:', e.message);
+      return null;
+    }
+  }
+
   // ── mentions 침묵 실패 감지 ────────────────────────────────
   // 한국어 낱말 + 영어 채팅처럼 낱말이 채팅 언어와 어긋나면 그 변수는 조용히 영영 안 열린다.
   // 에러가 없는 실패라 원인 찾기가 제일 힘든 유형 → 연속 미개방을 세서 패널에서 소리 나게 한다.
@@ -10619,6 +10731,18 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       if (m && typeof m.content === 'string') m.content = m.content.replace(MARKER_RE, '').trimEnd();
     }
     if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
+
+    // 내장 AI 생성의 메인 모델 경로(callGenLLM 'main') — 우리가 만든 요청이다.
+    // 상태 블록도 정산(onSend·turnBusy)도 없이 통과시킨다. 이게 없으면 자기 요청을
+    // 진짜 턴으로 알고 턴을 몰래 넘긴다 (v0.37.2 자기 정산 함정의 거울상).
+    if ((messages ?? []).some((m) => m && typeof m.content === 'string' && m.content.includes(GEN_SENTINEL))) {
+      for (const m of messages) {
+        if (m && typeof m.content === 'string' && m.content.includes(GEN_SENTINEL)) {
+          m.content = m.content.split(GEN_SENTINEL).join('').trim(); // 식별표는 모델에게 안 보낸다
+        }
+      }
+      return messages;
+    }
 
     turnBusy = true; turnBusyAt = Date.now();
     try {
@@ -11712,10 +11836,13 @@ count(목록)  has(목록, "항목")</pre>
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
       ai: {
-        // ⚠ 자기 정산 함정 — 반드시 보조 모델(callAuxLLM = submodel). mode:'model' 금지:
-        //   우리 자신의 beforeRequest가 이 호출을 진짜 턴으로 알고 정산까지 돌린다 (v0.37.2의 거울상).
-        generate: (promptText) => callAuxLLM(promptText, 8000),
+        // ⚠ 자기 정산 함정 — callGenLLM만 쓸 것. 'main' 선택 시에도 GEN_SENTINEL로
+        //   우리 beforeRequest가 자기 요청을 알아보고 무개입 통과한다.
+        //   센티널 없는 mode:'model' 직접 호출은 여전히 절대 금지 (v0.37.2의 거울상).
+        generate: (promptText) => callGenLLM(promptText),
         getBotContext: getBotContextForEditor,
+        getGenModel,
+        setGenModel,
       },
     });
     editorChaId = currentChaId;

@@ -42,6 +42,71 @@ let lastAux = { status: '', raw: '', applied: 0 };
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
 
+  // ── 생성 모델 슬롯 (내장 AI 생성 전용) ─────────────────────
+  // 보조 모델(submodel)은 번역·요약용 싼 모델이 꽂혀 있는 자리인데, 스키마 생성은 이
+  // 생태계에서 가장 길고 어려운 출력이다 — 첫 시도가 쓰레기면 기능이 거기서 죽는다 (공홈 피드백).
+  // 어느 모델로 생성할지는 봇이 아니라 기기·유저의 속성이므로 pluginStorage(로컬)에 둔다.
+  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static', staticId }
+  // 메인 모델 경로의 자기 요청 식별표 — beforeRequest가 이걸 보면 주입·정산 없이 통과시킨다.
+  // (⟦simcore:N⟧ 마커와 다른 꼴이라 기존 MARKER_RE 제거에 안 걸린다 — 전용 분기에서 지운다)
+  const GEN_SENTINEL = '⟦simcore:gen⟧';
+
+  async function getGenModel() {
+    try {
+      const raw = await Risuai.pluginStorage.getItem(GEN_MODEL_KEY);
+      const v = raw ? JSON.parse(raw) : null;
+      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static')) {
+        return { choice: v.choice, staticId: String(v.staticId || '') };
+      }
+    } catch { /* 깨진 저장값은 기본값으로 */ }
+    return { choice: 'aux', staticId: '' };
+  }
+
+  async function setGenModel(v) {
+    try {
+      await Risuai.pluginStorage.setItem(GEN_MODEL_KEY,
+        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '' }));
+    } catch (e) { console.log('[simcore] 생성 모델 저장 실패:', e.message); }
+  }
+
+  /**
+   * 내장 AI 생성 호출 — 편집기 위층의 generate가 이걸 탄다.
+   * - aux(기본): callAuxLLM 그대로 (차단 감지·경로 판정 포함)
+   * - main: mode:'model' + GEN_SENTINEL — 우리 beforeRequest는 센티널을 보고 무개입 통과.
+   *   ⚠ 센티널 없는 'model' 호출은 여전히 절대 금지 (자기 정산 함정, v0.37.2의 거울상).
+   *   [live-test] 다른 플러그인의 'model' 리플레이서는 그대로 탄다 / 응답이 output 핸들러를
+   *   타지 않는지(채팅에 안 실리므로 안 탈 것) 확인.
+   * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
+   *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
+   */
+  async function callGenLLM(promptText) {
+    const gm = await getGenModel();
+    if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
+      return callAuxLLM(promptText, 8000);
+    }
+    try {
+      const req = gm.choice === 'main'
+        ? { mode: 'model',
+            messages: [{ role: 'system', content: GEN_SENTINEL + '\n' + promptText }, { role: 'user', content: AUX_NUDGE }],
+            allowPlugins: true }
+        : { mode: 'submodel', staticModel: gm.staticId.trim(),
+            messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
+            allowPlugins: true };
+      const res = await Risuai.runLLMModel(req);
+      const text = await extractLLMText(res);
+      console.log(`[simcore] 생성 호출(${gm.choice}) →`, res?.type,
+        text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
+      if (res && res.type === 'fail') {
+        if (text && /blocked by the caller/i.test(text)) return { blocked: true };
+        return null;
+      }
+      return (typeof text === 'string' && text.trim()) ? text : null;
+    } catch (e) {
+      console.log('[simcore] 생성 호출 예외:', e.message);
+      return null;
+    }
+  }
+
   // ── mentions 침묵 실패 감지 ────────────────────────────────
   // 한국어 낱말 + 영어 채팅처럼 낱말이 채팅 언어와 어긋나면 그 변수는 조용히 영영 안 열린다.
   // 에러가 없는 실패라 원인 찾기가 제일 힘든 유형 → 연속 미개방을 세서 패널에서 소리 나게 한다.

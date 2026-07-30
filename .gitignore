@@ -7,3 +7,8 @@ test/generated-bridge.lua
 tools/extracted-shim.txt
 *.png
 *backup*
+
+# 개인 데이터 — 봇 카드·세이브·탭 내보내기는 리포에 안 들어간다
+simcore-save-*.json
+*.charx
+선라이즈맨션-패치/

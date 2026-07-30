@@ -1,13 +1,30 @@
 //@name simcore
 //@api 3.0
-//@version 0.51.0
-//@display-name SimCore (시뮬 엔진) v0.51 템플릿 시간 전환
+//@version 0.52.0
+//@display-name SimCore (시뮬 엔진) v0.52 진단 오탐 억제
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.52.0 ────────────────────────────────────────────────
+// 진단 오탐 억제 — 맨션봇 진단이 47건을 냈는데 29건이 시뮬레이션의 구조적 사각지대였다.
+// 더 나쁜 건 **올바른 수정이 지적을 늘렸다는 것**: 시설 위기를 규격서가 시키는 대로 래치 짝으로
+// 고쳤더니 지적이 44 → 47로 불었다 (경보 플래그 5 + 회복 이벤트 4가 전부 "안 뜸/안 움직임").
+// 진단이 좋은 설계를 벌주면 아무도 그 설계를 안 쓴다. 사각지대를 이름 붙여 걷어낸다.
+// - [설정 의존] `updater.allow`를 본다. 보조 AI가 세우는 bool에 걸린 이벤트에 대고
+//   "그 값을 바꿀 수단이 없습니다"라고 **사실이 아닌 말**을 하고 있었다 (실측: confessed).
+// - [AI 담당 문턱] 죽은 이벤트·못 쓰는 액션의 병목 변수를 AI가 **그 방향으로** 미는지 본다.
+//   맞으면 등급을 내리고 "문턱을 내리지 마세요"라고 말한다 — 시키는 대로 내리면 실제
+//   플레이에서 관계가 폭주한다. 방향까지 보는 건 `maxGain: 0`(시설은 깎이기만)이 흔해서다.
+// - [연쇄] 안 뜬 이벤트**만이** 세우는 플래그에 막힌 이벤트·변수는 같은 문제의 그림자다.
+//   원인 하나가 지적 셋이 되던 것을 한 줄로 접는다. 판정은 문자열이 아니라 실제 평가로 —
+//   래치 짝은 `not 경보`와 `경보`를 정반대로 쓰므로 이름만 보면 원인까지 지워진다.
+// - [임시 변수] 한 효과 묶음에서 세웠다가 같은 묶음에서 시작값으로 되돌리는 계산용 변수
+//   (수금의 pay_tmp)는 스냅샷에 늘 0으로만 남아 '안 움직임'이 원리적으로 오탐이다.
+// - [안 움직임] AI도 함께 담당하는 값이면 low로 내리고 그 사실을 덧붙인다.
 //
 // ── v0.51.0 ────────────────────────────────────────────────
 // 템플릿 시간 전환 — v0.50에서 "예제가 규칙을 이긴다"를 원칙으로 세웠는데 정작 템플릿 셋이
@@ -4816,6 +4833,69 @@ function writerMap(schema) {
   return w;
 }
 
+/**
+ * 보조 AI(updater.allow)가 이 값을 **그 방향으로** 밀 수 있는가.
+ *
+ * 시뮬레이션에는 보조 AI가 없다. 그래서 AI가 움직이는 값에 걸린 문턱은 시작값 근처에서 멈춘
+ * 채로 관측되고, 진단은 그걸 "죽은 이벤트, 문턱을 내리세요"라고 신고한다 — 그대로 따르면
+ * 실제 플레이에서 관계가 폭주한다.
+ *
+ * 셋을 같이 본다.
+ *   **방향** — `maxGain: 0`(시설 게이지는 깎이기만)처럼 한쪽만 열린 값이 흔하다.
+ *              깎이기만 하는 값의 `>= 45`는 AI도 못 만든다.
+ *   **범위** — 선언한 상·하한 밖의 문턱(상한 100인 값의 `> 100`)은 누가 밀어도 안 닿는다.
+ *   **사거리** — 한 턴에 미는 한도가 선언돼 있으면 판 길이만큼 곱해 본다. `coal >= 99999`는
+ *              maxDelta 60으로 25턴을 다 써도 1500이라, AI가 있어도 영영 못 가는 진짜 죽은 조건이다.
+ */
+function inRange(schema, id, op, need) {
+  const x = schema.vars.find((v) => v.id === id);
+  if (!x) return true;
+  if (op === '>=') return x.max == null || need <= x.max;
+  if (op === '>') return x.max == null || need < x.max;
+  if (op === '<=') return x.min == null || need >= x.min;
+  if (op === '<') return x.min == null || need > x.min;
+  return true;
+}
+
+function aiGated(schema, b, turns) {
+  if (!b) return false;
+  const a = (schema.updater?.allow || []).find((x) => x.id === b.id);
+  if (!a) return false;
+  const up = b.op === '>=' || b.op === '>';
+  const cap = (up ? a.maxGain : a.maxLoss) ?? a.maxDelta;
+  if (cap === 0) return false;
+  if (!inRange(schema, b.id, b.op, b.need)) return false;
+  if (typeof cap === 'number' && isFinite(cap) && Math.abs(b.need - b.got) > Math.abs(cap) * turns) return false;
+  return true;
+}
+
+/**
+ * `when`이 이 변수 **하나 때문에** 막혀 있는가 — 그 값만 뒤집으면 참이 되는가.
+ *
+ * 이름이 조건에 나오는지만 보면 `not flag`(막지 않음)와 `flag`(막음)를 구분하지 못한다.
+ * 래치 짝에서는 위기 쪽이 `not 경보`, 회복 쪽이 `경보`라 같은 이름을 정반대로 쓰므로,
+ * 문자열로 판단하면 위기 이벤트까지 "경보에 막혔다"고 오인한다. 그래서 실제로 굴려서 본다.
+ */
+function blockedBy(when, states, schema, v) {
+  if (!when) return false;
+  for (const vars of states) {
+    let look;
+    try { look = engine.makeLookup(schema, vars); } catch (e) { continue; }
+    let cur;
+    try { cur = look(v.id); } catch (e) { continue; }
+    let other;
+    if (typeof cur === 'boolean') other = !cur;
+    else if (v.type === 'enum') other = (v.enum || []).find((x) => x !== cur);
+    else continue;
+    if (other === undefined || other === cur) continue;
+    try {
+      if (truthy(evaluate(when, look, null))) continue;                    // 이미 참이면 막힌 게 아니다
+      if (truthy(evaluate(when, (n) => (n === v.id ? other : look(n)), null))) return true;
+    } catch (e) { continue; }
+  }
+  return false;
+}
+
 /** 괄호 깊이 0의 ` or `로 조건을 갈라낸다 — 서로 대안인 갈래들 */
 function orBranches(when) {
   const out = [];
@@ -4891,8 +4971,10 @@ function gatedBySetting(when, schema, writers, moved, selfSets = null) {
     if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
     if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
     if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
-    const byPlayer = [...(writers[v.id] || [])].some((s) => s === '액션' || s === '새 시작' || s === '최초설정');
-    return { id: v.id, label: v.label ?? v.id, init: v.init, byPlayer };
+    const who = writers[v.id] || new Set();
+    const byPlayer = [...who].some((s) => s === '액션' || s === '새 시작' || s === '최초설정');
+    // 보조 AI가 세우는 값이면 "바꿀 수단이 없다"는 말은 사실이 아니다 — 시뮬에 AI가 없을 뿐이다.
+    return { id: v.id, label: v.label ?? v.id, init: v.init, byPlayer, byAI: who.has('AI') };
   }
   return null;
 }
@@ -4923,6 +5005,25 @@ function diagnose(schema, opts = {}) {
   const writers = writerMap(schema);
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;
+
+  // 한 효과 묶음 안에서 세웠다가 **같은 묶음에서 시작값으로 되돌리는** 계산용 임시 변수.
+  // (맨션봇 `pay_tmp`: 여덟 집을 도는 수금 액션이 min(미납, 소지금)을 담았다가 마지막에 0으로.)
+  // 턴이 끝난 뒤의 스냅샷에는 되돌린 값만 남으므로 '안 움직임'이 원리적으로 오탐이다.
+  const SCRATCH = new Set();
+  for (const g of [
+    ...(schema.rules?.events || []).map((e) => e.effects || []),
+    ...(schema.rules?.randomEvents?.table || []).map((e) => e.effects || []),
+    ...(schema.actions || []).map((a) => a.effects || []),
+  ]) {
+    const count = {}, last = {};
+    for (const f of g) { if (!f.set) continue; count[f.set] = (count[f.set] || 0) + 1; last[f.set] = f; }
+    for (const [id, n] of Object.entries(count)) {
+      if (n < 2 || last[id].expr == null) continue;
+      const x = schema.vars.find((y) => y.id === id);
+      if (x && String(last[id].expr).trim() === JSON.stringify(x.init)) SCRATCH.add(id);
+    }
+  }
+  stats.scratchVars = SCRATCH.size;
 
   // ── 1. 아무도 안 바꾸는 변수 ──
   const frozen = schema.vars.filter((x) => !writers[x.id]);
@@ -5267,6 +5368,16 @@ function diagnose(schema, opts = {}) {
 
   // ── 3. 죽은 이벤트 ──
   const everFired = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
+  // 안 뜬 이벤트**만이** 세우는 값 — 그 값에 걸린 것들은 별개의 문제가 아니라 같은 문제의 그림자다.
+  // 래치 짝을 제대로 만든 봇일수록 손해를 본다: 위기가 안 뜨면 → 경보가 안 켜지고 → 회복도 안 뜨고
+  // → 경보 변수도 '안 움직임'. 하나짜리 원인이 지적 셋이 된다 (실측: 맨션봇 시설 4종 = 12건).
+  const finalStates = [...idle, ...play].map((r) => r.st.vars);
+  const deadOnlyVars = new Set(schema.vars.filter((x) => {
+    const w = writers[x.id];
+    if (!w || w.size !== 1 || !w.has('이벤트')) return false;
+    const setters = allEv.filter((o) => (o.effects || []).some((f) => (f.set ?? f.list) === x.id));
+    return setters.length > 0 && setters.every((o) => !everFired.has(o.id));
+  }).map((x) => x.id));
   stats.deadEvents = 0;
   for (const e of allEv) {
     if (everFired.has(e.id)) continue;
@@ -5274,9 +5385,24 @@ function diagnose(schema, opts = {}) {
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
     const gate = gatedBySetting(e.when, schema, writers, moved, selfSets);
     if (gate) {
-      add(gate.byPlayer ? 'low' : 'mid', '설정 의존',
+      const excused = gate.byPlayer || gate.byAI;
+      add(excused ? 'low' : 'mid', '설정 의존',
         `'${e.id}'는 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 뜨지 않습니다`
-        + (gate.byPlayer ? ' (다른 설정에서는 뜹니다 — 정상)' : ' — 그런데 그 값을 바꿀 수단이 없습니다.'), gate.byPlayer ? null : 'vars');
+        + (gate.byPlayer ? ' (다른 설정에서는 뜹니다 — 정상)'
+          : gate.byAI ? ' — 이 값은 보조 AI가 서사를 보고 세웁니다. 시뮬레이션에는 AI가 없어 '
+            + '영영 시작값인 것이고, 결함이 아닙니다.'
+            : ' — 그런데 그 값을 바꿀 수단이 없습니다.'), excused ? null : 'vars');
+      continue;
+    }
+    // 안 뜬 이벤트가 세워 줘야 하는 플래그에 막혀 있다 — 원인은 그쪽 하나다.
+    const via = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
+    if (via) {
+      stats.deadEvents--;
+      stats.cascadeEvents = (stats.cascadeEvents ?? 0) + 1;
+      const src = allEv.filter((o) => o.id !== e.id && (o.effects || []).some((f) => (f.set ?? f.list) === via.id));
+      add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) 켜져야 뜨는데, 그 값을 세우는 `
+        + `${src.length ? `이벤트(${src.map((o) => `'${o.id}'`).join(', ')})가` : '이벤트가'} 안 떴습니다 — `
+        + '따로 고칠 것이 아니라 그쪽 하나가 원인입니다.', null);
       continue;
     }
     const b = bottleneck(e.when, obs);
@@ -5300,6 +5426,16 @@ function diagnose(schema, opts = {}) {
       add('low', '안전장치', `'${e.id}'는 한 번도 안 떴습니다 — ${where}. `
         + '통지문(notify)이 없는 걸로 보아 값을 되돌리는 안전장치입니다. '
         + '이런 건 안 뜨는 게 정상입니다 (뜬다면 다른 규칙이 범위 밖 값을 만들었다는 뜻). 고치지 마세요.', null);
+      continue;
+    }
+    // 문턱에 걸린 값을 보조 AI가 그 방향으로 밀 수 있는가 — 그렇다면 관측 범위가 증거가 못 된다.
+    // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
+    if (aiGated(schema, b, turns)) {
+      stats.deadEvents--;
+      stats.aiGated = (stats.aiGated ?? 0) + 1;
+      add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 `
+        + '서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — '
+        + '**문턱을 내리지 마세요.** 실제 플레이에서 정말 안 뜨는지는 채팅을 몇 턴 돌려서 보세요.', null);
       continue;
     }
     add('mid', '죽은 이벤트', `'${e.id}' 미발동 — ${where}`
@@ -5341,6 +5477,13 @@ function diagnose(schema, opts = {}) {
         stats.lateActions = (stats.lateActions ?? 0) + 1;
         add('low', '후반부 액션',
           `'${a.label ?? a.id}'는 ${turns}턴 안에 열리지 않았습니다 — ${where}. ${laterNote}`, null);
+        continue;
+      }
+      if (aiGated(schema, b, turns)) {
+        stats.aiGated = (stats.aiGated ?? 0) + 1;
+        add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
+          + `다만 '${b.id}'은(는) 보조 AI가 서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 `
+          + '시작값 근처에 머뭅니다 — **여는 조건을 낮추지 마세요.**', null);
         continue;
       }
       add('high', '못 쓰는 액션',
@@ -5441,18 +5584,25 @@ function diagnose(schema, opts = {}) {
   // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
   const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
   const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
-  let aiOnlyStill = 0;
+  let aiOnlyStill = 0, cascadeStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
     // 시간 진행 입구는 엔진이 매 턴 소비 후 0으로 되돌리는 우편함 — 관측 시점엔 늘 0이라
     // "안 움직임"이 원리적으로 오탐이다. 실제 배선은 시간 흐름(날짜 이벤트)으로 이미 검증된다.
     if (TCFG && (x.id === SKIP_DAY || x.id === SKIP_MIN)) continue;
+    // 효과 안에서 세웠다 되돌리는 계산용 임시 변수도 같은 이유로 잴 수 없다.
+    if (SCRATCH.has(x.id)) { aiOnlyStill++; continue; }
     const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
     if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
-      add('mid', '안 움직임', `'${x.id}'가 ${turns}턴 내내 ${JSON.stringify(x.init)}에서 안 변했습니다 — `
-        + `바꾸는 곳(${[...(writers[x.id] || [])].join(', ')})의 조건이 한 번도 안 걸렸습니다.`,
-      [...(writers[x.id] || [])].every((who) => who === '액션') ? 'actions' : 'rules');
+      // 안 뜬 이벤트만이 세우는 플래그 — 원인은 그 이벤트 쪽이고 이미 3번에서 말했다.
+      if (deadOnlyVars.has(x.id)) { cascadeStill++; continue; }
+      const w = [...(writers[x.id] || [])];
+      const aiToo = w.includes('AI');
+      add(aiToo ? 'low' : 'mid', '안 움직임', `'${x.id}'가 ${turns}턴 내내 ${JSON.stringify(x.init)}에서 안 변했습니다 — `
+        + `바꾸는 곳(${w.join(', ')})의 조건이 한 번도 안 걸렸습니다.`
+        + (aiToo ? ' 다만 보조 AI도 이 값을 바꾸는데 시뮬레이션에는 AI가 없으니, 실제 플레이에서는 움직일 수 있습니다.' : ''),
+      aiToo ? null : (w.every((who) => who === '액션') ? 'actions' : 'rules'));
       continue;
     }
     if (!simCanMove(x.id)) continue; // 아래 단조 검사도 마찬가지 이유로 성립하지 않는다
@@ -5482,9 +5632,15 @@ function diagnose(schema, opts = {}) {
   stats.aiOnlyVars = aiOnlyStill;
   if (aiOnlyStill) {
     add('low', '측정 불가',
-      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하는 항목이라 이 진단으로는 움직임을 잴 수 없습니다 `
-      + '(시뮬레이션에는 AI가 없습니다). 결함이라는 뜻이 아니라 확인 대상이 아니라는 뜻입니다 — '
+      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하거나 효과 안에서만 쓰이는 항목이라 `
+      + '이 진단으로는 움직임을 잴 수 없습니다 (시뮬레이션에는 AI가 없습니다). '
+      + '결함이라는 뜻이 아니라 확인 대상이 아니라는 뜻입니다 — '
       + '실제로 갱신되는지는 채팅을 몇 턴 돌려서 눈으로 보세요.', null);
+  }
+  stats.cascadeVars = cascadeStill;
+  if (cascadeStill) {
+    add('low', '연쇄', `변수 ${cascadeStill}개는 위에서 '안 떴다'고 신고한 이벤트만이 세우는 값이라 `
+      + '함께 안 움직였습니다 — 따로 고칠 것이 아니라 그 이벤트가 뜨면 같이 풀립니다.', null);
   }
 
   // ── 7. 시작값 = 조건 경계 ──

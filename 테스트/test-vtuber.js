@@ -237,7 +237,8 @@ function run(T, turns, { vars, policy } = {}) {
 // ── AI에게 주는 권한 ──
 {
   const allowed = new Set(V.updater.allow.map((a) => a.id));
-  for (const id of ['subs', 'ccv', 'day', 'editor', 'career_over'])
+  // day는 v0.51에서 변수 자체가 사라졌다 (time 섹션이 굴리는 읽기 전용 값) — 남은 결과값들만 본다
+  for (const id of ['subs', 'ccv', 'editor', 'career_over'])
     ck(`★ '${id}'는 AI에게 안 준다 (시스템이 계산하는 결과값)`, !allowed.has(id), '');
   for (const id of ['mental', 'heat', 'hype', 'regulars'])
     ck(`'${id}'는 AI가 서사에 맞춰 흔들 수 있다`, allowed.has(id), '');

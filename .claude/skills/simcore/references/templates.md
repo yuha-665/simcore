@@ -19,16 +19,16 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | id | vars | derived | allow | 틱/이벤트/랜덤 | 지시문 | 액션 | 프리셋 | 그룹 | 최초설정 | 랜덤% |
 |---|--:|--:|--:|---|--:|--:|--:|--:|:-:|--:|
 | blank | 1 | 0 | 1 | 0/0/0 | 0 | 0 | 0 | 1 | ✕ | 0 |
-| daily | 6 | 0 | 5 | 0/0/12 | 3 | 2 | 3 | 2 | ○ | 30 |
+| daily | 5 | 1 | 5 | 0/0/12 | 3 | 2 | 3 | 2 | ○ | 30 |
 | rpg | 10 | 3 | 9 | 0/4/3 | 2 | 2 | 2 | 4 | ○ | 15 |
 | estate | 9 | 2 | 7 | 3/3/2 | 2 | 2 | 3 | 3 | ○ | 25 |
 | mystery | 9 | 2 | 6 | 2/4/4 | 4 | 3 | 3 | 3 | ○ | 30 |
 | business | 10 | 7 | 6 | 4/4/4 | 3 | 4 | 3 | 3 | ○ | 30 |
-| survival | 13 | 8 | 8 | 7/7/5 | 4 | 6 | 3 | 4 | ○ | 35 |
+| survival | 12 | 9 | 8 | 6/7/5 | 4 | 6 | 3 | 4 | ○ | 35 |
 | politics | 16 | 4 | 10 | 4/6/5 | 5 | 6 | 3 | 4 | ○ | 35 |
-| romance | 9 | 1 | 6 | 3/6/4 | 6 | 3 | 3 | 3 | ○ | 35 |
+| romance | 10 | 1 | 8 | 2/6/4 | 6 | 4 | 3 | 3 | ○ | 35 |
 | trpg | 12 | 4 | 6 | 2/3/3 | 3 | 3 | 4 | 3 | ○ | 22 |
-| vtuber | 17 | 9 | 8 | 8/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
+| vtuber | 16 | 10 | 8 | 7/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
 | smith | 11 | 3 | 8 | 1/2/6 | 3 | 5 | 3 | 3 | ○ | 25 |
 
 **`cmd`(채팅 명령)는 trpg의 `/능력` 하나뿐** (v0.43 — check_stat 즉석 지정, 상시 판정과 한 세트).
@@ -41,16 +41,16 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 
 | 템플릿 | 뺀 것 | 왜 |
 |---|---|---|
-| daily | `day` | **버튼으로만** 넘어간다 (`💤 하루를 마친다`). AI에게 열면 "며칠 뒤"에 날짜가 튄다 |
+| daily | (`skip_day` 자체를 안 만듦) | **날짜는 버튼으로만** (`💤`). v0.51부터 변수를 아예 안 둬서 구조로 막는다 — AI는 `skip_min`(그날 안에서 흐른 분)만 보고한다 |
 | rpg | `level` | exp에서 규칙이 올려 준다 |
 | estate | `turn` `famine` | 카운터 / 이벤트 플래그 |
 | mystery | `scene` `truth` `solved` | 카운터 / **숨긴 정답** / 진행 플래그 |
 | business | `month` `price` `district` `crisis` | 카운터 / 플레이어 정책 / 플래그 |
-| survival | `day` `heat` `ration` `shelter` `collapsed` | 카운터 / 플레이어 정책 / 플래그 |
+| survival | `heat` `ration` `shelter` `collapsed` | 카운터 / 플레이어 정책 / 플래그 |
 | politics | `week` `econ` `bill_roll` `bill_result` `in_scandal` `ousted` | 카운터 / **주사위·판정** / 플래그 |
-| romance | `day` `stage` `confessed` | 카운터 / 관계 단계 / 플래그 |
+| romance | `stage` `confessed` | 카운터 / 관계 단계 / 플래그 |
 | trpg | `str` `dex` `wit` `cha` `adv` `dmg` | **캐릭터 시트 + 판정 부속.** 판정 결과 자체(roll/total/grade)는 v0.40부터 변수가 아니라 meta — 뺄 것도 없이 원천 차단 |
-| vtuber | `day` `subs` `stream_hours` `editor` `concept` `trend_seed` `burnout` `in_scandal` `career_over` | 카운터 / 규칙 산출값 / 플래그 |
+| vtuber | `subs` `stream_hours` `editor` `concept` `trend_seed` `burnout` `in_scandal` `career_over` | 카운터 / 규칙 산출값 / 플래그 |
 | smith | `skill` `stoked` `noble_next` | 캐릭터 시트 / 판정 소모품(액션·이벤트가 관리) / 의뢰 문턱(선택이 올린다) |
 
 패턴: **카운터 · 주사위/판정값 · 이벤트 플래그 · 플레이어가 고르는 정책 · 숨긴 정답**은 안 연다.
@@ -72,6 +72,20 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 
 **smith는 v0.39~0.43 신기능 총집합** — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다
 (클릭 조작은 어느 템플릿이든 범례·선택지에 자동).
+
+## 시간 체계를 쓰는 템플릿 (v0.49~0.51)
+
+| 템플릿 | advance | start | 표시 | 진행 입구 |
+|---|---|---|---|---|
+| romance | explicit | 2026-03-02 08:30 (월) | M월 D일 / HH:mm | skip_day(≤7) · skip_min(≤720) + 🌙 |
+| daily | explicit | 2026-05-18 08:00 (월) | M월 D일 / HH:mm | skip_min(≤240)만 + 🕐 2시간 · 💤 다음 08:00 |
+| survival | perTurn | 2026-12-01 07:00 (화) | M월 D일 | 없음 (턴마다 하루) |
+| vtuber | perTurn | 2026-03-02 20:00 (월) | M월 D일 | 없음 (턴마다 하루) |
+
+표시용 "N일차"는 perTurn 쪽에서 파생 `day_no = elapsed + 1` (+format `{v}일차`)로 만든다 —
+파생이라 읽기 전용이고 epoch 하나에서 나오므로 옛 `day` 변수처럼 따로 놀 수가 없다.
+남은 손 카운터는 business `month`·politics `week` 둘뿐 (perTurn이 1일/턴 고정이라 표현 불가 —
+알려진 한계, docs/ai-mistakes.md). `test-timetpl.js`가 이 둘을 예외 처리하므로 셋째가 생기면 잡힌다.
 
 ## 자주 인용하는 실물 예시
 
@@ -104,19 +118,27 @@ allow 한도     hp 60 / mp 40 / exp 80 / gold 300 / weapon·armor 30자 / locat
 그룹          전투 / 성장 / 소지 / 위치
 ```
 
-### daily — 유일하게 틱이 없는 템플릿
+### daily — 유일하게 틱이 없는 템플릿 (v0.51에서 진짜 시계로)
 ```
 설계 반전   매 턴 자동 처리를 일부러 비웠다. 일상물에서 한 턴은 하루도 한 시간도 아니다 —
            카페에서 세 턴 떠들었다고 저녁이 되면 안 된다.
-           시간·날짜는 유저가 버튼으로 넘긴다 (🕐 시간을 보낸다 / 💤 하루를 마친다)
-vars       day(버튼 전용) · time(5단계 enum) · weather(5종) · place · money · bag
+time       start 2026-05-18 08:00(월) · advance explicit · M월 D일 / HH:mm
+           옛 시간대 enum(새벽~밤)을 걷고 때(tod)를 hour에서 파생 — 세는 곳이 하나면 안 어긋난다.
+           그 전에는 "낮→저녁"에 버튼이 필요했고 그 사이 두 시간을 표현할 방법이 없었다.
+액션        🕐 시간을 보낸다 = skip_min 120 · 💤 하루를 마친다 = ((1919 - hour*60 - minute) % 1440) + 1
+           → **지금이 몇 시든 다음 08:00** (새벽 3시에 눌러도 같은 날 아침.
+             skip_day=1이면 시각이 그대로라 새벽에 잠들면 이튿날도 새벽에 깬다)
+skip_day    **일부러 안 만들었다** — "날짜는 버튼으로만"이라는 선언을 구조로 굳힌 것.
+           AI는 skip_min만 보고하고 캡 240분이라 한 번에 하루를 못 넘긴다
+startAt     프리셋이 시작 시각을 정한다 (주말=토 13:00 / 월말=29일) — 시계는 예약 키라 set 불가
+vars       weather(5종) · place · money · bag · skip_min | 파생 tod(때)
 랜덤(30%)  12종 · 사람 3(만남·낯선이·연락) / 사건 4(소동·습득·지출·수입) / 날씨 4 / 갈림길 1
            → 대부분 effects 없이 notify만. 수치를 굴리는 대신 **서사에 소재를 던진다**
            날씨 이벤트는 `when: weather != "비"` 로 같은 날씨 재알림을 막는다
 갈림길      stray_cat(길고양이, timeout 2): 쓰다듬는다(inject만) / 먹이를 사준다(when money≥3000,
            money-3000) / 모른 척 지나친다(마지막 — 조건 없음, 타임아웃 자동 결정용)
-지시문 3   궂은 날씨 / 늦은 시각 / 수중에 돈 없음
-시간 전이   time == "새벽" ? "아침" : time == "아침" ? "낮" : … (중첩 삼항)
+지시문 3   궂은 날씨 / 늦은 시각(when hour >= 21 or hour < 5) / 수중에 돈 없음
+때 파생     hour < 5 ? "새벽" : (hour < 11 ? "아침" : (hour < 17 ? "낮" : (hour < 21 ? "저녁" : "밤")))
 ```
 관리할 수치가 없는 봇(현대 일상·학원·동거물)에 상태창만 얹고 싶을 때 고른다.
 

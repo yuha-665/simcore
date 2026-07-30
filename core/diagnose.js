@@ -749,7 +749,10 @@ function diagnose(schema, opts = {}) {
   ]).filter(Boolean));
   const tmpl = JSON.stringify(schema.statusUI ?? {}) + (schema.promptState?.template ?? '');
   const inTmpl = new Set((tmpl.match(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g) || []).map((s) => s.slice(1, -1)));
-  const hidden = schema.vars.filter((x) => !shown.has(x.id) && !inTmpl.has(x.id));
+  // 시간 진행 입구는 엔진이 소비 후 0으로 되돌리는 우편함이라 상태창에 늘 0으로만 뜬다 —
+  // "안 보인다"가 아니라 보일 값이 아니다 ('안 움직임' 면제와 같은 이유).
+  const hidden = schema.vars.filter((x) => !shown.has(x.id) && !inTmpl.has(x.id)
+    && !(TCFG && (x.id === SKIP_DAY || x.id === SKIP_MIN)));
   if (hidden.length) {
     add('low', '표시 안 됨', `상태창에 안 보이는 변수 ${hidden.length}개: ${hidden.map((x) => x.id).join(', ')} — `
       + '내부용이면 정상이고, 플레이어가 알아야 할 값이면 상태창 탭에서 추가하세요.', 'status');

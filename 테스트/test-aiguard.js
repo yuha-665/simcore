@@ -161,7 +161,7 @@ const BASE = {
     for (const f of d.findings) if (f.tag === 'once 재발 눌림') bad.push(`${k}:${f.text.slice(0, 40)}`);
   }
   ck('★ 전 템플릿에 새 지적 0', bad.length === 0, J(bad));
-  ck('어댑터 버전 v0.50', src.includes('//@version 0.50'), '');
+  ck('어댑터 버전은 0.50 이상', /\/\/@version 0\.(5[0-9]|[6-9]\d)/.test(src), '');
 }
 
 let p = 0, f = 0;

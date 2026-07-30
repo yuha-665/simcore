@@ -986,11 +986,15 @@ const TRPG = {
 // 배울 점: ① 소비가 생산을 앞지르는 "고갈 압박"을 수치로 세우는 법
 //          ② 정책(enum) 하나가 파생 사슬 전체를 흔들게 배선하는 법 (난방 → 실내온도 & 연료소모 동시에)
 //          ③ 파국(붕괴)을 이벤트로 잠가서 AI가 얼버무리지 못하게 만드는 법
+//          ④ **1턴 = 1일이 장르 문법인 봇**의 시간 처리 — `advance: "perTurn"` (v0.51).
+//             옛 `onTurn day+1`과 동작은 같지만 날짜가 epoch 하나에서 나와 어긋날 수 없고,
+//             진짜 달력이라 요일·월이 덤으로 생긴다. 표시용 "N일차"는 파생으로 만든다.
 const SURVIVAL = {
   simcore: '0.1',
   meta: { name: '생존 — 혹한의 정착지', author: 'SimCore 템플릿' },
+  // 초겨울에 정착. 일지 한 장 = 하루라 진행은 perTurn — 이 장르에서는 그게 옳다.
+  time: { start: '2026-12-01 07:00', advance: 'perTurn', format: { date: 'M월 D일' } },
   vars: [
-    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
     { id: 'temp', label: '외부 기온', type: 'int', init: -20, min: -60, max: 10, format: '{v}°C',
       desc: '매일 1도씩 떨어진다. 한파가 오면 더 내려간다.' },
     { id: 'coal', label: '석탄', type: 'int', init: 400, min: 0 },
@@ -1009,6 +1013,9 @@ const SURVIVAL = {
   ],
   // 난방 정책 하나가 실내온도와 석탄소모를 동시에 흔든다 — 이게 트레이드오프의 뼈대다.
   derived: [
+    // 표시·조건용 "N일차" — 시작일이 elapsed 0이므로 +1. 파생이라 읽기 전용이고,
+    // 값이 epoch 하나에서 나오므로 옛 day 변수처럼 따로 놀 수가 없다.
+    { id: 'day_no', label: '경과', expr: 'elapsed + 1', format: '{v}일차' },
     { id: 'heat_out', label: '화로 출력', expr: 'heat == "최대" ? 3 : (heat == "보통" ? 2 : (heat == "약" ? 1 : 0))' },
     { id: 'indoor', label: '실내 온도', expr: 'temp + heat_out * 9 + shelter * 2', format: '{v}°C' },
     { id: 'cold_grade', label: '체감',
@@ -1029,7 +1036,7 @@ const SURVIVAL = {
       { set: 'discontent', expr: 'clamp(discontent + (ration == "중단" ? 9 : (ration == "절반" ? 4 : (ration == "넉넉히" ? -3 : 0))) + (indoor < -5 ? 3 : 0), 0, 100)' },
       { set: 'hope', expr: 'clamp(hope + (((cold_grade == "견딜 만함") and (food > 0)) ? 2 : -3), 0, 100)' },
       { set: 'temp', expr: 'max(-60, temp - 1)' },
-      { set: 'day', expr: 'day + 1' },
+      // ⚠ 여기에 day+1을 두지 않는다 — 날짜는 time 섹션(perTurn)이 스스로 넘긴다.
     ],
     events: [
       { id: 'fuel_out', when: 'coal <= 0 and heat != "정지"',
@@ -1054,7 +1061,9 @@ const SURVIVAL = {
       { id: 'despair', when: 'hope <= 0 and not collapsed',
         effects: [{ set: 'collapsed', expr: '1' }],
         notify: '아무도 더는 명령을 듣지 않는다. 정착지가 스스로 무너졌다.' },
-      { id: 'survived', once: true, when: 'day >= 30 and not collapsed',
+      // once가 맞는 자리 — "겨울을 넘겼다"는 다시 오지 않는 일회성 전개다.
+      // (오르내리는 게이지의 문턱이면 once가 아니라 경보 플래그 래치 짝을 쓴다)
+      { id: 'survived', once: true, when: 'day_no >= 30 and not collapsed',
         effects: [{ set: 'hope', expr: 'min(100, hope + 20)' }],
         notify: '기온이 처음으로 올라갔다. 최악의 겨울을 넘겼다.' },
     ],
@@ -1122,7 +1131,7 @@ const SURVIVAL = {
       + '서사에서 새로 벌어진 일(발견한 물자, 사고, 새 법령, 사망)만 반영하라.',
   },
   promptState: {
-    template: '[정착지 — {day}일차]\n'
+    template: '[정착지 — {date} · {day_no}일차]\n'
       + '외부 {temp}°C / 실내 {indoor}°C ({cold_grade}) | 난방 {heat} | 배급 {ration} | 단열 {shelter}\n'
       + '석탄 {coal} ({coal_left} 남음) | 식량 {food} ({food_left} 남음)\n'
       + '생존자 {people}명 (환자 {sick}) | 희망 {hope}/100 | 불만 {discontent}/100{collapsed ? " | ⚠ 통제 붕괴" : ""}',
@@ -1132,7 +1141,7 @@ const SURVIVAL = {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '기온', items: [
-        { var: 'day' }, { var: 'temp' }, { var: 'indoor' }, { var: 'cold_grade' },
+        { var: 'date' }, { var: 'day_no' }, { var: 'temp' }, { var: 'indoor' }, { var: 'cold_grade' },
       ] },
       { label: '비축', items: [
         { var: 'coal' }, { var: 'coal_left' }, { var: 'food' }, { var: 'food_left' },
@@ -1390,8 +1399,10 @@ const POLITICS = {
 const VTUBER = {
   simcore: '0.1',
   meta: { name: '버튜버 — 방송 운영', author: 'SimCore 템플릿' },
+  // 한 턴 = 하루치 방송이라 perTurn. 진짜 달력이라 요일이 생긴다 —
+  // "주말 방송", "월요일 새벽 편집" 같은 서술의 근거가 공짜로 따라온다.
+  time: { start: '2026-03-02 20:00', advance: 'perTurn', format: { date: 'M월 D일' } },
   vars: [
-    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
     { id: 'nickname', label: '활동명', type: 'text', init: '', maxLength: 20 },
     { id: 'subs', label: '구독자', type: 'int', init: 120, min: 0, format: '{v}명' },
     { id: 'funds', label: '수익금', type: 'int', init: 50, min: 0, format: '{v}만원' },
@@ -1414,6 +1425,8 @@ const VTUBER = {
     { id: 'career_over', label: '활동 종료', type: 'bool', init: false },
   ],
   derived: [
+    // 표시용 "N일차" — 날짜는 epoch 하나가 굴리고, 세는 이름만 파생으로 붙인다
+    { id: 'day_no', label: '경과', expr: 'elapsed + 1', format: '{v}일차' },
     // enum에는 랜덤을 직접 넣을 수 없다. 숫자를 굴리고(trend_seed) 여기서 이름을 붙인다.
     { id: 'trend', label: '이번 유행',
       expr: 'trend_seed == 1 ? "잡담" : (trend_seed == 2 ? "게임" : (trend_seed == 3 ? "노래" : (trend_seed == 4 ? "ASMR" : "버라이어티")))' },
@@ -1445,7 +1458,7 @@ const VTUBER = {
       { set: 'hype', expr: 'clamp(hype - 4 + editor * 2, 0, 100)' },
       { set: 'heat', expr: 'clamp(heat - 1, 0, 100)' },
       { set: 'stream_hours', expr: 'max(stream_hours - 2, 3)' },
-      { set: 'day', expr: 'day + 1' },
+      // ⚠ day+1 없음 — 날짜는 time 섹션(perTurn)이 넘긴다
     ],
     events: [
       // 번아웃은 방송 시간을 강제로 최소치로 되돌린다 — 안 그러면 빠져나올 길이 없다.
@@ -1576,7 +1589,7 @@ const VTUBER = {
     guide: '구독자·동접·후원액은 시스템이 계산하니 절대 건드리지 마라. 방송 중 실제로 벌어진 일(악플, 실언, 응원, 큰 후원)만 멘탈·논란 지수에 반영하라. 단골(regulars)에는 여러 번 등장한 시청자 닉네임만 add하라.',
   },
   promptState: {
-    template: '[방송 현황 — {day}일차 · {tier} 채널 · {nickname}]\n'
+    template: '[방송 현황 — {date}({weekday}) · {day_no}일차 · {tier} 채널 · {nickname}]\n'
       + '구독자 {subs}명 | 오늘 동접 {ccv}명 | 화제성 {hype}/100 | 수익금 {funds}만원 (오늘 {net})\n'
       + '컨셉 {concept} / 유행 {trend}{concept == trend ? " ✅적중" : " ❌빗나감"} | 방송 {stream_hours}시간'
       + '{editor > 0 ? " | 편집자 " + editor + "명" : ""}\n'
@@ -1589,7 +1602,7 @@ const VTUBER = {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '채널', items: [
-        { var: 'day' }, { var: 'tier' }, { var: 'subs' }, { var: 'ccv' },
+        { var: 'date' }, { var: 'day_no' }, { var: 'tier' }, { var: 'subs' }, { var: 'ccv' },
       ] },
       { label: '방송', items: [
         { var: 'concept' }, { var: 'trend' }, { var: 'stream_hours' },
@@ -1644,18 +1657,37 @@ const VTUBER = {
 //   · 대신 시간·날짜는 **유저가 버튼으로** 넘긴다(액션). 카운터를 AI에게 안 맡기는 원칙은 지키되,
 //     넘기는 시점만 사람이 정하는 것이다.
 //   · 랜덤 이벤트는 수치를 굴리는 게 아니라 **서사에 소재를 던지는** 쪽에 가깝다.
+//
+// v0.51: 시간대 enum(새벽~밤)을 **진짜 시계**로 바꿨다. 옛 구조는 "낮"에서 "저녁"으로 가는 데
+// 버튼을 눌러야 했고 그 사이의 두 시간을 표현할 방법이 없었다. 이제 분 단위로 흐르고,
+// 때(새벽·아침·낮·저녁·밤)는 시각에서 파생된다 — 세는 곳이 하나면 어긋날 수가 없다.
 const DAILY = {
   simcore: '0.1',
   meta: { name: '일상 — 하루의 기록', author: 'SimCore 템플릿' },
+  // 명시적 진행 — 저절로 흐르지 않는다. 장면이 실제로 소비한 시간만 보조가 보고하고,
+  // 하루는 [💤] 버튼으로만 넘어간다 (이 템플릿의 원래 원칙 그대로).
+  time: {
+    start: '2026-05-18 08:00',
+    advance: 'explicit',
+    format: { date: 'M월 D일', clock: 'HH:mm' },
+  },
   vars: [
-    { id: 'day', label: '날짜', type: 'int', init: 1, min: 1, format: '{v}일차',
-      desc: '[💤 하루를 마친다] 버튼으로만 넘어간다. AI는 못 건드린다.' },
-    { id: 'time', label: '시간', type: 'enum', init: '아침', enum: ['새벽', '아침', '낮', '저녁', '밤'] },
     { id: 'weather', label: '날씨', type: 'enum', init: '맑음', enum: ['맑음', '흐림', '비', '눈', '바람'] },
     { id: 'place', label: '위치', type: 'text', init: '집', maxLength: 40 },
     { id: 'money', label: '소지금', type: 'int', init: 50000, min: 0, format: '{v}원' },
     { id: 'bag', label: '소지품', type: 'list', init: ['지갑', '휴대폰', '열쇠'],
       maxItems: 15, itemMaxLength: 30 },
+    // 시간 진행 입구 — 엔진이 매 턴 소비하고 0으로 되돌린다. 규칙은 여기 desc에 쓴다
+    // (지시문은 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽는다).
+    // skip_day를 안 두는 것이 이 템플릿의 선언이다 — 날짜는 버튼으로만 넘어간다.
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+      desc: '이번 장면에서 실제로 흐른 시간(분). 대화 한 토막이면 5~20, 식사·이동이면 30~90, '
+        + '반나절을 보냈으면 240까지. 아무 일도 없었으면 0. 하루를 넘기지는 마라 — 그건 [💤] 버튼의 몫이다.' },
+  ],
+  derived: [
+    // 때는 시각에서 나온다 — 옛 enum 변수를 대체. 세는 곳이 하나뿐이라 시각과 어긋날 수 없다.
+    { id: 'tod', label: '때',
+      expr: 'hour < 5 ? "새벽" : (hour < 11 ? "아침" : (hour < 17 ? "낮" : (hour < 21 ? "저녁" : "밤")))' },
   ],
   rules: {
     // 틱 없음 — 위 주석 참고. 시간이 저절로 흐르면 대화가 성립하지 않는다.
@@ -1711,42 +1743,45 @@ const DAILY = {
   directives: [
     { id: 'bad_weather', when: 'weather == "비" or weather == "눈"',
       text: '[상태] 궂은 날씨({weather})다. 젖은 옷, 우산, 실내로 피하는 선택 같은 것이 묘사에 배어나야 한다.' },
-    { id: 'late_hour', when: 'time == "밤" or time == "새벽"',
-      text: '[상태] 늦은 시각({time})이다. 문을 닫은 가게, 인적이 드문 거리, 피로 같은 것을 고려하라.' },
+    { id: 'late_hour', when: 'hour >= 21 or hour < 5',
+      text: '[상태] 늦은 시각({clock}, {tod})이다. 문을 닫은 가게, 인적이 드문 거리, 피로 같은 것을 고려하라.' },
     { id: 'broke', when: 'money < 5000',
       text: '[상태] 수중에 {money}원밖에 없다. 돈이 드는 선택은 부담스럽게 다뤄라.' },
   ],
   actions: [
     { id: 'pass_time', label: '🕐 시간을 보낸다', mode: 'oneshot',
-      inject: '[플레이어 액션] 시간이 흘러 다음 때가 되었다.',
-      effects: [{ set: 'time',
-        expr: 'time == "새벽" ? "아침" : time == "아침" ? "낮" : time == "낮" ? "저녁" : time == "저녁" ? "밤" : "새벽"' }] },
+      inject: '[플레이어 액션] 두어 시간이 흘렀다. 그 사이에 있었던 일부터 이어서 그려라.',
+      effects: [{ set: 'skip_min', expr: '120' }] },
+    // 지금이 몇 시든 **다음 08:00까지**를 분으로 계산한다 — 새벽 3시에 눌러도 같은 날 아침이 된다.
+    // (`skip_day = 1`로 하면 시각이 그대로라 새벽에 잠들면 이튿날도 새벽에 깬다)
     { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot',
       inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 이튿날 아침부터 시작한다.',
-      effects: [{ set: 'day', expr: 'day + 1' }, { set: 'time', expr: '"아침"' }] },
+      effects: [{ set: 'skip_min', expr: '((1919 - hour * 60 - minute) % 1440) + 1' }] },
   ],
   updater: {
     model: 'aux',
-    // day는 일부러 뺐다 — 날짜는 버튼으로만 넘어간다. AI에게 열어 두면 서사가 "며칠 뒤"라고
-    // 흘리는 순간 날짜가 튀고, 그 뒤로는 며칠째인지 아무도 못 맞춘다.
+    // 날짜를 넘기는 권한은 일부러 안 준다 — skip_day 변수 자체가 없다. AI에게 열어 두면
+    // 서사가 "며칠 뒤"라고 흘리는 순간 날짜가 튀고, 그 뒤로는 며칠째인지 아무도 못 맞춘다.
+    // 대신 **그날 안에서 흐른 분**은 보고하게 한다 — 그건 서사만 아는 정보다.
     allow: [
-      { id: 'time' },
+      { id: 'skip_min', maxGain: 240 },
       { id: 'weather' },
       { id: 'place', maxLength: 40 },
       { id: 'money', maxGain: 50000, maxLoss: 50000 },
       { id: 'bag' },
     ],
-    guide: '서사에 실제로 나온 변화만 반영하라. 시간대는 장면이 분명히 넘어갔을 때만 옮기고, '
-      + '"조금 뒤" 정도로는 옮기지 마라. 소지품은 손에 넣거나 잃은 것이 서술됐을 때만 add/remove 하라.',
+    guide: '서사에 실제로 나온 변화만 반영하라. 흐른 시간은 장면이 실제로 소비한 만큼만 보고하고, '
+      + '"조금 뒤" 정도면 10~20분이다. 소지품은 손에 넣거나 잃은 것이 서술됐을 때만 add/remove 하라.',
   },
   promptState: {
-    template: '[{day}일차 · {time} · {weather}]\n위치 {place} | 소지금 {money}원\n소지품: {bag:tags}',
+    template: '[{date}({weekday}) {clock} · {tod} · {weather}]\n위치 {place} | 소지금 {money}원\n소지품: {bag:tags}',
     includeEvents: true,
   },
   statusUI: {
     mode: 'auto', collapsible: true,
     groups: [
-      { label: '지금', items: [{ var: 'day' }, { var: 'time' }, { var: 'weather' }, { var: 'place' }] },
+      { label: '지금', items: [{ var: 'date' }, { var: 'weekday' }, { var: 'clock' }, { var: 'tod' },
+        { var: 'weather' }, { var: 'place' }] },
       { label: '소지', items: [{ var: 'money' }, { var: 'bag' }] },
     ],
     // 모눈 메모지 — 옅은 종이에 연필 선
@@ -1760,16 +1795,21 @@ const DAILY = {
 .sim-tag { background:#f3efe2; border-color:#ddd8c8; color:#5c5749; }`,
   },
   setup: {
+    // startAt — 시간 체계가 켜져 있으면 **시작 시각도 배경의 일부**다.
+    // 시계는 예약 키라 set으로 못 건드리므로 이 칸이 통로 (v0.51).
     presets: [
       { id: 'plain', label: '평범한 하루', set: {} },
-      { id: 'weekend', label: '여유로운 주말', set: { time: '낮', place: '단골 카페', money: 120000, weather: '맑음' } },
-      { id: 'tight', label: '빠듯한 월말', set: { money: 7000, weather: '비', place: '자취방' } },
+      { id: 'weekend', label: '여유로운 주말', startAt: '2026-05-16 13:00',
+        set: { place: '단골 카페', money: 120000, weather: '맑음' } },
+      { id: 'tight', label: '빠듯한 월말', startAt: '2026-05-29 08:00',
+        set: { money: 7000, weather: '비', place: '자취방' } },
     ],
     ai: {
       enabled: true,
-      vars: ['time', 'weather', 'place', 'money', 'bag'],
+      vars: ['weather', 'place', 'money', 'bag'],
       instruction: '[최초 설정 진행 중] 유저와 짧게 대화하며 오늘이 어떤 날인지 정하라. '
-        + '어디서 시작하는지, 지금 몇 시쯤인지, 주머니 사정은 어떤지 정도면 충분하다. 길게 끌지 마라.',
+        + '어디서 시작하는지, 주머니 사정은 어떤지 정도면 충분하다. 길게 끌지 마라. '
+        + '시각은 시스템이 관리하니 정하려 들지 마라 — 시작 시각은 [새 시작] 프리셋이 정한다.',
       guide: '유저가 말한 것은 그대로 반영하고, 말하지 않은 것은 그 장면에 자연스러운 값으로 정하라. '
         + '소지품은 그 사람이 당연히 들고 다닐 만한 것 서너 개면 된다.',
     },

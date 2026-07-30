@@ -92,11 +92,17 @@ function validateSchema(schema) {
   // 시간 노출 파생(date/clock/…)은 조건식·템플릿에서 변수처럼 쓰인다 —
   // 파생·규칙 검사보다 먼저 이름을 등록해야 `hour >= 22` 같은 식이 통과한다.
   const tcfg = timeConfig(schema);
-  if (tcfg) for (const n of tcfg.expose) allIds.add(n);
+  const exposedNames = new Set(tcfg ? tcfg.expose : []);
+  for (const n of exposedNames) allIds.add(n);
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
-    if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
+    // 시간 노출 이름과의 충돌은 "중복"이라고만 하면 원인을 못 찾는다 —
+    // 파생 목록에는 하나뿐이라 유저가 아무리 봐도 짝을 못 찾는다 (실측: 변수 탭 통째 교체 후).
+    if (exposedNames.has(d.id)) {
+      err(p, `'${d.id}'는 시간 체계가 이미 쓰는 이름입니다 — 파생 이름을 바꾸거나, `
+        + `[시간] 탭의 노출 목록에서 '${d.id}'를 빼세요 (직접 계산하는 달력을 쓰려면 시간 체계를 끄세요)`);
+    } else if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
     allIds.add(d.id);
     checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
     if (codebookDigits(d.label) >= 3) {
@@ -140,7 +146,8 @@ function validateSchema(schema) {
             err('$.time.expose', `'${n}'은 노출 가능한 이름이 아님 — 가능: ${EXPOSABLE.join(', ')}`);
         }
       }
-      // 이름 충돌 — 노출 파생은 변수처럼 쓰이므로 같은 이름의 변수가 있으면 어느 쪽인지 알 수 없다
+      // 이름 충돌 — 노출 파생은 변수처럼 쓰이므로 같은 이름의 변수가 있으면 어느 쪽인지 알 수 없다.
+      // (파생과의 충돌은 위 derived 검사가 그 자리에서 더 구체적으로 알려 준다)
       if (tcfg) {
         for (const n of tcfg.expose) {
           if (ids.has(n))
@@ -518,6 +525,13 @@ function validateSchema(schema) {
       else if (presetIds.has(p.id)) err(path, `중복 프리셋 id: '${p.id}'`);
       else presetIds.add(p.id);
       if (!p.label) warn(path, 'label 없음 — id가 버튼에 표시됨');
+      // startAt — 이 프리셋으로 시작할 때의 작중 시각 (시간 체계 전용)
+      if (p.startAt != null) {
+        if (typeof p.startAt !== 'string') err(path, 'startAt은 "YYYY-MM-DD HH:mm" 문자열이어야 함');
+        else if (!tcfg) warn(path, 'startAt(시작 시점)은 시간 체계(time)를 켠 봇에서만 적용됩니다 — 지금은 무시됩니다');
+        else if (!parseStart(p.startAt, tcfg.calendar))
+          err(path, `startAt '${p.startAt}'을 시작 시점으로 읽을 수 없음 — "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 함`);
+      }
       for (const [id, val] of Object.entries(p.set || {})) {
         const v = varById[id];
         if (!v) { err(path, `set 대상 '${id}'이 vars에 없음`); continue; }

@@ -620,17 +620,19 @@ const EVENT_PATTERNS = [
     '{ "id": "scandal_over", "when": "in_scandal and capital >= 70",\n'
     + '  "effects": [{ "set": "in_scandal", "expr": "0" }, { "set": "capital", "expr": "capital - 25" }],\n'
     + '  "notify": "정치 자본을 쏟아부어 의혹을 덮었다. 대가는 적지 않았다." }'],
-  ['이정표', '`"once": true` — 조건을 처음 만족할 때 딱 한 번만. 달성·전환점을 알릴 때 쓴다.',
-    '{ "id": "survived", "once": true, "when": "day >= 30 and not collapsed",\n'
+  ['이정표', '`"once": true` — 조건을 처음 만족할 때 딱 한 번만. **다시는 안 오는 전개**에만 쓴다 '
+    + '(겨울을 넘김, 첫 고백, 최초 발견). 오르내리는 게이지의 문턱에 once를 쓰면 두 번째부터 영영 침묵한다 — '
+    + '그런 자리는 위 [임계 돌파]+[회복] 짝(경보 플래그를 켜고 끄는 래치)이 정답이다.',
+    '{ "id": "survived", "once": true, "when": "day_no >= 30 and not collapsed",\n'
     + '  "notify": "기온이 처음으로 올라갔다. 최악의 겨울을 넘겼다." }'],
   ['기한 만료(목록)', '`expire`는 목록에서 항목의 `@숫자`가 이 값보다 지난 것을 스스로 뺀다. '
     + '서사가 등록한 한시 법령·계약·부역·저주가 기한이 다하면 알아서 사라진다 — `@`가 없는 항목은 무기한이라 안 건드린다. '
     + 'onTurn에 한 줄 둬도 되고, 예시처럼 목록이 비어 있지 않을 때만 도는 이벤트로 둬도 된다.\n'
-    + '⚠ 기준은 **이 턴이 끝나는 시점**으로 쓸 것. onTurn 맨 앞에서 `"day"`라고 적으면 아직 안 올라간 값으로 '
-    + '판정해 한 턴 늦게 빠진다. 하루씩 도는 봇이면 `"day + 1"`, 며칠씩 건너뛰는 봇이면 `"day + 흐른날수"`처럼. '
-    + '(`{"set":"day",...}` 뒤에 두면 `"day"` 그대로도 맞다.)',
+    + '기준은 **이 턴이 끝나는 시점**이어야 한다. 시간 체계(time)를 켰다면 `"elapsed"`가 그대로 정답이다 — '
+    + '엔진이 onTurn·이벤트보다 **먼저** 시간을 굳히므로 이미 이번 턴이 반영된 값이다. '
+    + '(시간 체계 없이 직접 만든 카운터라면 아직 안 올라간 값이라 `"day + 1"`처럼 더해 줘야 한 턴 늦게 빠지지 않는다.)',
     '{ "id": "law_expiry", "when": "count(laws) > 0",\n'
-    + '  "effects": [{ "list": "laws", "expire": "day + 1" }] }'],
+    + '  "effects": [{ "list": "laws", "expire": "elapsed" }] }'],
   ['값 자르기', '범위를 벗어난 값을 되돌린다. 플레이어에게 알릴 게 없으므로 notify를 넣지 않는다.',
     '{ "id": "hp_cap", "when": "hp > max_hp",\n'
     + '  "effects": [{ "set": "hp", "expr": "max_hp" }] }'],
@@ -2696,6 +2698,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       block.appendChild(h('div', { class: 'sce-row' },
         bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
         bindInput(p.label, (x) => { p.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
+        // 시간 체계가 켜져 있으면 시계도 시작값의 일부다 — "주말 오후에 시작" 같은 배경 프리셋용.
+        // epoch은 set으로 못 건드리는 예약 키라 이 칸이 유일한 통로다.
+        schema.time ? pair('시작 시점', bindInput(p.startAt, (x) => {
+          p.startAt = x.trim() || undefined; rerender();
+        }, { cls: 'sce-w-m', ph: `(비우면 ${schema.time.start})` }),
+        '이 프리셋으로 시작할 때의 작중 날짜·시각. "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"') : null,
         grip(schema.setup.presets, i, rerender),
       ));
       p.set = p.set || {};

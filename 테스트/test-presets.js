@@ -334,7 +334,7 @@ const tagsOf = (s, o = { turns: 40, runs: 6 }) => diagnose(s, o).findings.map((f
   ck('프리셋 적용이 성공한다', r.applied);
   ck('★ 값이 실제로 바뀐다', r.state.vars.coal !== before && r.state.vars.coal === 120,
     `${before} → ${r.state.vars.coal}`);
-  ck('안 적은 변수는 시작값 그대로', r.state.vars.day === st.vars.day);
+  ck('안 적은 변수는 시작값 그대로', r.state.vars.shelter === st.vars.shelter);
   ck('없는 프리셋은 무시된다', engine.applyPreset(s, st, 'nope').applied === false);
 }
 

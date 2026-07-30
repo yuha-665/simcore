@@ -89,7 +89,7 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
 {
   // (5) 매 턴 도배되는 이벤트 (조건을 해소하지 않음)
   const s = cp(TEMPLATES.survival.schema);
-  s.rules.events.unshift({ id: 'spam', when: 'day >= 1', effects: [{ set: 'hope', expr: 'hope' }], notify: '또' });
+  s.rules.events.unshift({ id: 'spam', when: 'day_no >= 1', effects: [{ set: 'hope', expr: 'hope' }], notify: '또' });
   ck('★ 매 턴 도배되는 이벤트를 잡는다', has(diagnose(s, FAST), /'spam'.*도배|'spam'.*매 턴 반복/), '');
 }
 {
@@ -251,7 +251,7 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
   //   같은 봇이 60턴에선 "죽은 이벤트 5건", 120턴에선 0건이 나와 사용자가 혼란스러워했다.
   //   굶주림·전멸 같은 조건은 짧은 판에서는 원래 안 온다 — 결함이 아니라 판 길이 문제다.
   const s = cp(TEMPLATES.survival.schema);
-  s.rules.events.push({ id: 'late_milestone', once: true, when: 'day >= 55',
+  s.rules.events.push({ id: 'late_milestone', once: true, when: 'day_no >= 55',
     effects: [{ set: 'hope', expr: 'hope' }], notify: '오래 버텼다.' });
   s.rules.events.push({ id: 'never_ever', when: 'coal >= 999999',
     effects: [{ set: 'hope', expr: 'hope' }], notify: 'x' });
@@ -280,7 +280,7 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
 
   // 액션도 같은 처리
   const s2 = cp(TEMPLATES.survival.schema);
-  s2.actions.push({ id: 'late_btn', label: '🕰 후반 전용', mode: 'oneshot', when: 'day >= 55',
+  s2.actions.push({ id: 'late_btn', label: '🕰 후반 전용', mode: 'oneshot', when: 'day_no >= 55',
     inject: 'x', effects: [{ set: 'hope', expr: 'hope' }] });
   const r2 = diagnose(s2, { turns: 30, runs: 4 });
   const laF = r2.findings.find((f) => /후반 전용/.test(f.text));

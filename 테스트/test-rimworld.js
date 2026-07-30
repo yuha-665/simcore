@@ -185,6 +185,10 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
     vars: [...VARS, { id: 'temp_target', label: '계절 목표기온', type: 'int', min: -60, max: 60, init: 20 }],
     derived: DERIVED,
   }));
+  // 장르를 통째로 갈아탈 때는 [시간] 탭도 같이 정리한다 — 이 봇은 자체 60일 달력(day·season·year)을
+  // 쓰므로 물려받은 시간 체계의 노출 이름과 부딪힌다. 변수 탭 가져오기는 time 섹션을 안 건드리므로
+  // (그게 맞다 — 시간은 [시간] 탭의 것이다) 여기서 끈다. 안 끄면 검증이 그 사실을 정확히 알려 준다.
+  delete afterVars.time;
   ck('2단계: 변수가 실제로 갈아끼워짐',
     afterVars.vars.some((v) => v.id === 'wealth') && !afterVars.vars.some((v) => v.id === 'coal'), '');
 

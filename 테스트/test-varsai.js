@@ -250,7 +250,9 @@ const S = TEMPLATES.survival.schema;
     st = engine.sendPhase(grown, st, { rng: seededRng('v', i, 's') }).state;
     st = engine.outputPhase(grown, st, {}, {}, { rng: seededRng('v', i, 'o') }).state;
   }
-  ck('★ 12턴을 에러 없이 돈다', st.vars.day === 13, `day=${st.vars.day}`);
+  // 날짜는 time 섹션(perTurn)이 굴린다 — 12턴 = 12일 경과 (v0.51: 옛 day 변수 대체)
+  ck('★ 12턴을 에러 없이 돈다', engine.makeLookup(grown, st.vars)('day_no') === 13,
+    `day_no=${engine.makeLookup(grown, st.vars)('day_no')}`);
 }
 
 let p = 0, f = 0;

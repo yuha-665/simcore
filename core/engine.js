@@ -15,7 +15,8 @@
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
-const { timeConfig, exposedValues, MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
+const { timeConfig, exposedValues, parseStart, epochFrom,
+  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -73,6 +74,14 @@ function applyPreset(schema, prevState, presetId) {
   if (!preset) return { state: prevState, applied: false };
   const state = reconcileState(schema, clone(prevState));
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  // 시작 시점(startAt) — 시간 체계가 켜져 있으면 **시계도 시작값의 일부**다.
+  // epoch은 스키마 vars가 아니라 엔진 예약 키라 set으로는 못 건드리는데, "주말 오후에 시작"
+  // 같은 배경 프리셋은 그게 정확히 필요한 것이라 여기만 따로 연다 (실측: daily 템플릿의 주말 판).
+  const tcfg = timeConfig(schema);
+  if (tcfg && preset.startAt) {
+    const parts = parseStart(preset.startAt, tcfg.calendar);
+    if (parts) state.vars[EPOCH_KEY] = epochFrom(parts, tcfg.calendar);
+  }
   for (const [id, val] of Object.entries(preset.set || {})) {
     const def = varById[id];
     if (!def) continue;

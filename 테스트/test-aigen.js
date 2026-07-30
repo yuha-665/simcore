@@ -123,7 +123,15 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
   ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',
     src.includes('generate: (promptText) => callGenLLM(promptText)'), '');
-  ck('어댑터 버전 v0.46', src.includes('//@version 0.46'), '');
+  ck('어댑터 버전 v0.47', src.includes('//@version 0.47'), '');
+
+  // ── 삼층 구조 + 사이드바 (v0.47) ──
+  ck('★ 번들: 2층 JSON 작업대 존재', src.includes('🧾 JSON 작업대'), '');
+  ck('★ 번들: 3층에서 진단·JSON 탭 제거', !src.includes("['diag'") && !src.includes("['json'"), '');
+  ck('★ 번들: 진단이 1층으로 (실전 진단 접기)', src.includes('실전 진단 — 굴려서'), '');
+  ck('★ 번들: 진단 → 바로 고쳐달라기 직결 버튼', src.includes('이 결과로 바로 고쳐달라기'), '');
+  ck('번들: 직결 경로도 findings 모드 프롬프트', src.includes('findings: diag.findings'), '');
+  ck('★ 패널: 사이드바 + 반응형 폴백', src.includes('sc-side') && src.includes('@media (min-width: 920px)'), '');
 
   // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
   ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')

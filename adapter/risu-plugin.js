@@ -1,13 +1,24 @@
 //@name simcore
 //@api 3.0
-//@version 0.46.1
-//@display-name SimCore (시뮬 엔진) v0.46.1 AI에게 맡기기
+//@version 0.47
+//@display-name SimCore (시뮬 엔진) v0.47 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47 ──────────────────────────────────────────────────
+// 삼층 구조 + 사이드바 (실기 첫 화면을 보고 같은 날 결정).
+// - [편집기] 이층 → 삼층: 1층 = ✨ AI에게 맡기기 + 🔬 진단(이사 옴), 2층 = 🧾 JSON 작업대
+//   (통짜·패치·오류 돌려주기·원본 — 실사용 1순위라 독립 층), 3층 = 심층 편집 탭 8개.
+//   진단을 1층에 둔 이유: 굴려서 찾고 → 그 자리에서 바로 고쳐달라고 보내는 루프 완결.
+// - [편집기] 진단 결과에 [✨ 이 결과로 바로 고쳐달라기] — 복사 왕복 없이 내장 생성으로
+//   직결 (buildPatchExportPrompt findings 모드 + 봇 컨텍스트). 계획·충돌 확인은 동일.
+// - [패널] 사이드바 내비 — 넓은 화면(920px+)에서 현황/봇 편집/세이브/도움말이 좌측 세로
+//   내비로, 콘텐츠 폭 760 → 1360. 좁은 화면은 기존 상단 탭 그대로 (모바일에서 변수
+//   보정하러 들어온 유저를 깨지 않는다). CSS 미디어쿼리만 — 구조 동일.
 //
 // ── v0.46.1 ────────────────────────────────────────────────
 // 생성 모델 슬롯 — "submodel로 스키마 생성하면 망한다" (공홈 피드백, 배포 전 반영).
@@ -1687,6 +1698,20 @@
       #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
         border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }
       #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
+      #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
+      /* 넓은 화면 = 사이드바 내비 (데스크톱에서 노는 좌우 여백 활용).
+         좁은 화면 = 위 기본값 그대로 상단 탭 — 모바일에서 변수 보정하러 들어온 유저를 깨지 않는다. */
+      @media (min-width: 920px) {
+        #sc-root .wrap { max-width:1360px; display:grid; grid-template-columns:190px minmax(0,1fr);
+          gap:4px 28px; align-items:start; }
+        #sc-root .sc-side { position:sticky; top:16px; }
+        #sc-root h1 { flex-direction:column; align-items:stretch; }
+        #sc-root .sc-maintabs { flex-direction:column; gap:5px; border-bottom:none;
+          border-right:2px solid #24304a; padding-right:12px; margin-bottom:0; }
+        #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:9px !important;
+          text-align:left !important; padding:8px 12px !important; }
+        #sc-root .sc-maintab.on { border-color:#6b93f2 !important; }
+      }
       #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
       #sc-root .status-warn { color:#ffd166; }
       #sc-root table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -1733,19 +1758,22 @@
     root.style.cssText = 'position:fixed;inset:0;background:#0e1526;color:#e6ebf5;overflow:auto;z-index:2147483000;';
     root.innerHTML = `
       <div class="wrap">
-        <h1>SimCore
-          <span class="row">
-            <button id="sc-reload">스키마 다시 읽기</button>
-            <button id="sc-close" class="primary">닫기</button>
-          </span>
-        </h1>
-        <div id="sc-status"></div>
-        <div class="sc-maintabs">
-          <button class="sc-maintab on" data-page="play">현황</button>
-          <button class="sc-maintab" data-page="edit">봇 편집</button>
-          <button class="sc-maintab" data-page="save">세이브</button>
-          <button class="sc-maintab" data-page="help">도움말</button>
+        <div class="sc-side">
+          <h1>SimCore
+            <span class="row">
+              <button id="sc-reload">스키마 다시 읽기</button>
+              <button id="sc-close" class="primary">닫기</button>
+            </span>
+          </h1>
+          <div class="sc-maintabs">
+            <button class="sc-maintab on" data-page="play">현황</button>
+            <button class="sc-maintab" data-page="edit">봇 편집</button>
+            <button class="sc-maintab" data-page="save">세이브</button>
+            <button class="sc-maintab" data-page="help">도움말</button>
+          </div>
         </div>
+        <div class="sc-main">
+        <div id="sc-status"></div>
 
         <div class="sc-page on" id="sc-page-play">
           <h2>새 시작</h2>
@@ -1905,6 +1933,7 @@ rand(최소,최대)   ← 규칙·이벤트 효과에서만. 조건식에는 못
 count(목록)  has(목록, "항목")</pre>
             <div class="sc-note">대입·반복문·함수 정의는 없다. 봇 설정은 코드가 아니라 <b>표</b>여야 하기 때문이다.</div>
           </div>
+        </div>
         </div>
       </div>
     `;

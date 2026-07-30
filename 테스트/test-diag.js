@@ -17,7 +17,8 @@ const has = (r, re) => hit(r, re).length > 0;
 
 // ── 모듈이 붙었는가 ──
 ck('diagnose 모듈이 로드됨', typeof diagnose === 'function', '');
-ck('편집기에 진단 탭이 등록됨', src.includes("['diag', '🔬 진단']") && src.includes('diag: tabDiag'), '');
+// v0.47부터 진단은 3층 탭이 아니라 1층(AI에게 맡기기 곁)의 접기로 들어간다
+ck('편집기 1층에 진단이 등록됨', src.includes('실전 진단 — 굴려서') && src.includes('tabDiag()'), '');
 ck('진단 탭 함수가 있음', src.includes('function tabDiag()'), '');
 ck('편집기가 diagnose를 require함', src.includes("require('./diagnose')"), '');
 

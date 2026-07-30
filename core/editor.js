@@ -1514,10 +1514,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   container.appendChild(style);
   container.appendChild(root);
 
+  // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
     ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
     ['actions', '액션'], ['checks', '판정'], ['setup', '새 시작'], ['ai', 'AI 설정'],
-    ['diag', '🔬 진단'], ['json', 'JSON'],
   ];
 
   function emit() {
@@ -2607,7 +2607,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
   let patchSource = 'json'; // 패치 계획·적용 UI를 어느 층에 그릴까: 'top'(위층 생성) | 'json'(② 붙여넣기)
-  let lowerOpen = false;    // 아래층(탭 10개) 접힘 상태 — rerender에도 유지
+  // 삼층 구조의 접힘 상태 — rerender에도 유지
+  let diagOpen = false;     // 1층 안의 진단 접기
+  let jsonOpen = false;     // 2층 (JSON 작업대)
+  let lowerOpen = false;    // 3층 (심층 편집 탭 8개)
 
   async function fetchBotCtx() {
     if (aiBotCtx !== undefined) return aiBotCtx;
@@ -2616,10 +2619,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return aiBotCtx;
   }
 
-  async function runAiGenerate() {
+  // diag = { findings, stats } — 진단 결과에서 바로 부를 때. 요청 문구 대신 문제 목록이 실린다.
+  async function runAiGenerate(diag = null) {
     if (!ai || !ai.generate || aiGen.busy) return;
     const req = aiReq.trim();
-    if (!req) { aiGen.note = '먼저 위 칸에 원하는 걸 적어주세요.'; rerender(); return; }
+    if (!diag && !req) { aiGen.note = '먼저 위 칸에 원하는 걸 적어주세요.'; rerender(); return; }
     const mySeq = ++aiGen.seq;
     aiGen.busy = true; aiGen.note = null; aiGen.raw = null;
     aiFull = null; aiFullReport = null;
@@ -2629,7 +2633,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
     if (aiGen.seq !== mySeq || destroyed) return;
 
-    const blank = schemaIsBlank(schema);
+    const blank = !diag && schemaIsBlank(schema); // 진단은 스키마가 있어야 돌았으니 항상 패치 모드
     const stripFence = (raw) => {
       const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
       return (m ? m[1] : String(raw)).trim();
@@ -2652,7 +2656,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return { ok: true, patch: p.patch, plan };
     };
 
-    const prompt = buildAiRequestPrompt(schema, req, ctxText);
+    const prompt = diag
+      ? buildPatchExportPrompt(schema, { findings: diag.findings, stats: diag.stats, botCtx: ctxText })
+      : buildAiRequestPrompt(schema, req, ctxText);
     let fatal = null, text = null, got = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       const p = attempt === 0 ? prompt
@@ -2839,11 +2845,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 같은 프롬프트 빌더를 쓰므로 [✨ 생성]과 내용이 똑같다.
     copyWidget('📋 복사해서 다른 AI에게',
       '위 요청과 봇 설정이 담긴 규격서를 복사해 웹 AI(GPT·클로드 등)에 붙여넣으세요. '
-      + '받은 JSON은 🧰 아래층 → JSON 탭에 붙여넣으면 됩니다 (패치는 ②, 통짜 스키마는 ④).',
+      + '받은 JSON은 🧾 JSON 작업대에 붙여넣으면 됩니다 (패치는 ②, 통짜 스키마는 ④).',
       () => {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
       }).mount(box);
+
+    // 진단도 1층 — 실제로 굴려 문제를 찾고, 그 자리에서 바로 고쳐달라고 보낸다.
+    // "AI가 걷고 diff가 난간" 루프가 1층 안에서 완결되게 (빈 스키마는 굴릴 게 없어 숨김).
+    if (!blank) {
+      const openCnt = diagResult && diagResult.findings
+        ? diagResult.findings.filter((f) => f.sev !== 'low').length : null;
+      const diagFold = h('details', { class: 'sce-fold' },
+        h('summary', {}, `🔬 실전 진단 — 굴려서 죽은 이벤트·안 움직이는 수치 찾기${openCnt != null ? ` (지난 결과 ${openCnt}건)` : ''}`),
+        tabDiag());
+      diagFold.open = diagOpen;
+      diagFold.addEventListener('toggle', () => { diagOpen = diagFold.open; });
+      box.appendChild(diagFold);
+    }
 
     return box;
   }
@@ -3215,10 +3234,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
         // 권장 경로 — 패치 (v0.45). 통 교체는 항목 100개짜리 봇에서 AI가 하나만 빠뜨려도 그게 삭제다.
         const fixable = findings.filter((f) => f.sev !== 'low');
+
+        // 직결 경로 (v0.47) — 복사 왕복 없이 그 자리에서 생성. 계획·충돌 확인은 똑같이 거친다.
+        if (fixable.length && ai && ai.generate) {
+          out.appendChild(h('div', { class: 'sce-row' },
+            h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => runAiGenerate({ findings, stats: diagResult.stats }) },
+              `✨ 이 결과로 바로 고쳐달라기 (${fixable.length}건)`),
+            h('span', { class: 'sce-hint', style: 'margin:0' },
+              '위 생성 모델로 패치를 받아 옵니다 — 결과는 맨 위 계획 상자에 뜹니다.')));
+        }
+
         if (fixable.length) {
           copyWidget(`📤 수정 패치 요청 복사 (${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? `, 🔴 ${fixable.filter((f) => f.sev === 'high').length}` : ''}) — 권장`,
             '문제 목록 전체와 지금 봇의 항목 전문을 함께 복사합니다. 받은 패치 JSON은 '
-            + 'JSON 탭 ②의 [패치 검사]에 붙여넣으면 됩니다 — 바꿀 부분만 병합되고, 나머지는 손대지 않습니다. '
+            + '🧾 JSON 작업대 ②의 [패치 검사]에 붙여넣으면 됩니다 — 바꿀 부분만 병합되고, 나머지는 손대지 않습니다. '
             + '🔵는 고칠 거리가 아니라 확인 사항이라 보내지 않습니다.',
             () => buildPatchExportPrompt(schema, { findings, stats: diagResult.stats }),
           ).mount(out);
@@ -3349,8 +3378,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function render() {
     root.innerHTML = '';
-    // ── 이층 구조 (docs/design-접근성.md §2) — 위층 = AI에게 맡기기, 아래층 = 기존 탭 접힘 ──
+    // ── 삼층 구조 (docs/design-접근성.md §2) ──
+    // 1층 = AI에게 맡기기 + 진단 (요청과 난간이 한 화면), 2층 = JSON 작업대 (실사용 1순위),
+    // 3층 = 심층 편집 탭. 층은 접힘일 뿐 같은 스키마·같은 rerender — 어느 층에서 고쳐도 다 반영된다.
     root.appendChild(topFloor());
+
+    const v = validateSchema(schema);
+
+    // 2층 — 통짜·패치·오류 돌려주기·원본
+    const jsonFloor = h('details', { class: 'sce-lower' },
+      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
+      tabJson());
+    jsonFloor.open = jsonOpen;
+    jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
+    root.appendChild(jsonFloor);
 
     const tabs = h('div', { class: 'sce-tabs' });
     for (const [key, label] of TABS) {
@@ -3360,10 +3401,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }, label));
     }
     const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      checks: tabChecks, setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
+      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
 
     // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
-    const v = validateSchema(schema);
     let html = '';
     for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
     const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
@@ -3375,9 +3415,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const fold = reportEl.querySelector('details.sce-fold');
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
 
-    // 아래층 — 없애는 게 아니라 접는 것. 위층에서 적용된 결과가 같은 스키마로 그대로 반영된다.
+    // 3층 — 없애는 게 아니라 접는 것. 위층에서 적용된 결과가 같은 스키마로 그대로 반영된다.
     const lower = h('details', { class: 'sce-lower' },
-      h('summary', {}, `🧰 직접 만지기 — 세부 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
+      h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
       tabs, body, reportEl);
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });

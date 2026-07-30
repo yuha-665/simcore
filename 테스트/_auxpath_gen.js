@@ -102,7 +102,13 @@ let lastAux = { status: '', raw: '', applied: 0 };
         text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
       if (res && res.type === 'fail') {
         if (text && /blocked by the caller/i.test(text)) return { blocked: true };
-        return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}` };
+        let err = `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}`;
+        // [실기 확정 2026-07-30] mode:'model'은 리수가 유저 API 키를 안 붙인다 (Claude 공식 API에서
+        // x-api-key 누락으로 확인). 요청 자체는 나갔으므로 센티널 bypass는 정상 — 인증만 빠짐.
+        if (gm.choice === 'main' && /x-api-key|authentication_error|api.?key/i.test(text || '')) {
+          err += ' — 이 환경은 플러그인의 메인 모델 호출에 인증이 안 붙습니다. [직접 지정]에 모델 id를 넣어보거나, 리수 설정의 보조 모델을 상위 모델로 바꾸는 것이 확실합니다.';
+        }
+        return { error: err };
       }
       if (typeof text === 'string' && text.trim()) return text;
       return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 응답에서 텍스트를 못 뽑음 (${typeof res}): ${JSON.stringify(res)?.slice(0, 120) ?? ''}` };

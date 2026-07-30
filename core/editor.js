@@ -3066,10 +3066,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
         gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
           aiGenModel.choice === 'aux'
-            ? '보조가 번역·요약용 싼 모델이면 생성 품질이 낮습니다 — 결과가 계속 거부되면 메인 모델로 바꿔보세요'
+            ? '보조가 번역·요약용 싼 모델이면 생성 품질이 낮습니다 — 결과가 계속 거부되면 상위 모델을 꽂아보세요'
             : aiGenModel.choice === 'main'
-              ? '대화에 쓰는 그 모델로 보냅니다 — 품질은 가장 좋고, 그만큼 토큰이 듭니다'
-              : '보조 자리에 다른 모델을 꽂아 쏩니다'));
+              ? '대화 모델로 보냅니다 — 단 일부 환경(Claude 공식 API 등)은 인증이 안 붙어 실패합니다. 실패하면 [직접 지정]으로.'
+              : '보조 자리에 이 모델을 꽂아 쏩니다 — 리수 모델 설정에 보이는 id를 그대로'));
       };
       renderGmLine();
       if (aiGenModel === undefined) {

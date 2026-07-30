@@ -1,13 +1,19 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.5
-//@display-name SimCore (시뮬 엔진) v0.47.5 삼층 구조
+//@version 0.47.6
+//@display-name SimCore (시뮬 엔진) v0.47.6 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.6 ────────────────────────────────────────────────
+// 메인 모델 경로 실기 결과 반영 — 인증 실패 확정 (Claude 공식 API에서 x-api-key 누락).
+// 리수가 플러그인發 mode:'model' 호출에 유저 키를 안 붙인다. 요청은 파이프라인을 정상
+// 통과했으므로 센티널 bypass 자체는 검증됨 (자기 정산 없음). 인증 실패 감지 시 정조준
+// 안내([직접 지정] 또는 보조 모델 상위 교체) 부착. 직접 지정 힌트에 모델 id 안내.
 //
 // ── v0.47.5 ────────────────────────────────────────────────
 // 생성 실패 사유를 화면까지 — "이동은 했는데 아무것도 안 옴" (실기 제보, 메인 모델 경로).
@@ -758,7 +764,13 @@
         text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
       if (res && res.type === 'fail') {
         if (text && /blocked by the caller/i.test(text)) return { blocked: true };
-        return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}` };
+        let err = `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}`;
+        // [실기 확정 2026-07-30] mode:'model'은 리수가 유저 API 키를 안 붙인다 (Claude 공식 API에서
+        // x-api-key 누락으로 확인). 요청 자체는 나갔으므로 센티널 bypass는 정상 — 인증만 빠짐.
+        if (gm.choice === 'main' && /x-api-key|authentication_error|api.?key/i.test(text || '')) {
+          err += ' — 이 환경은 플러그인의 메인 모델 호출에 인증이 안 붙습니다. [직접 지정]에 모델 id를 넣어보거나, 리수 설정의 보조 모델을 상위 모델로 바꾸는 것이 확실합니다.';
+        }
+        return { error: err };
       }
       if (typeof text === 'string' && text.trim()) return text;
       return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 응답에서 텍스트를 못 뽑음 (${typeof res}): ${JSON.stringify(res)?.slice(0, 120) ?? ''}` };

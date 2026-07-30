@@ -168,6 +168,9 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
     && src.includes('🔎 리수에서 id 읽기'), '');
   ck('★ 패널: 편집기 탭 선택 표시 오버라이드 (v0.47.8)',
     src.includes('#sc-root .sce .sce-tab.on') && src.includes('#sc-root .sce .sce-btn.sce-danger'), '');
+  ck('★ 말로 시키기 점프 (v0.47.9) — 2·3층 → 1층 한 클릭', src.includes('function jumpToMake')
+    && src.includes('✨ 말로 시키기') && src.includes('onRequestFloor: (f)'), '');
+  ck('점프 안내: 3층엔 패치가 더 안전 명시', src.includes('통 교체는 AI가 하나만 빠뜨려도 그게 삭제'), '');
 
   // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
   ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')

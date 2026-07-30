@@ -1515,7 +1515,8 @@ function effectRows(schema, effects, rerender) {
 }
 
 function createSchemaEditor(container, initialSchema, opts = {}) {
-  const { onChange, ai, floor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  const { onChange, ai, floor, onRequestFloor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  // onRequestFloor(f): 편집기 안에서 층 이동이 필요할 때 호스트에게 부탁 — 사이드바 하이라이트까지 같이 옮기라고
   // floor: 'top'|'json'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
   // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
   let floorView = floor ?? null;
@@ -2019,6 +2020,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
       () => buildTabExportPrompt(schema, tabKey),
     ).mount(wrap);
+    wrap.appendChild(jumpRow('부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
 
     const note = h('div', { class: 'sce-hint' },
       (tabAiMsg && tabAiMsg.tabKey === tabKey) ? tabAiMsg.text
@@ -2639,6 +2641,21 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let jsonOpen = false;     // 2층 (JSON 작업대)
   let lowerOpen = false;    // 3층 (심층 편집 탭 8개)
 
+  // 2·3층의 복붙 도구 곁에서 "복붙 없이 하려면 이쪽" — 입구는 1층 하나로 유지하고 이동만 공짜로.
+  // (같은 다이렉트 버튼을 층마다 또 깔면 접근성 진단 때의 'AI 입구 13개' 문제로 되돌아간다)
+  function jumpToMake() {
+    topTab = 'make';
+    if (floorView && onRequestFloor) { onRequestFloor('top'); return; } // 호스트가 사이드바와 함께 전환
+    if (floorView) floorView = 'top';
+    rerender();
+  }
+
+  function jumpRow(hint) {
+    return h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-mini', onclick: () => jumpToMake() }, '✨ 말로 시키기'),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, hint));
+  }
+
   async function fetchBotCtx() {
     if (aiBotCtx !== undefined) return aiBotCtx;
     if (!ai || !ai.getBotContext) { aiBotCtx = null; return null; }
@@ -3157,6 +3174,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       () => buildSchemaSpecPrompt(exampleKey, withValidator),
       [exSelect, valCheck],
     ).mount(wrap);
+    if (schemaIsBlank(schema)) {
+      wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기에서 말로 시키면 통짜를 직접 만들어 옵니다.'));
+    }
 
     // ── AI에게 부분 수정을 맡기는 경로 (왕복 패치) ──
     // 통짜 재생성은 안 고칠 부분까지 다시 쓰게 해서 위험하다. 여기는 바꿀 부분만 받아
@@ -3174,6 +3194,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + '[패치 검사]를 누르세요. 처음부터 통째로 만들 때는 ①, 이미 있는 봇을 고칠 때는 여기입니다.',
       () => buildPatchExportPrompt(schema),
     ).mount(wrap);
+    wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기에서 말로 시키면 같은 패치가 직접 옵니다.'));
 
     const pArea = h('textarea', { style: 'min-height:120px',
       placeholder: 'AI가 준 패치 JSON을 여기에 — 코드펜스(```)째 붙여넣어도 됩니다' });
@@ -3365,6 +3386,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : `오류 ${v.errors.length}개 — 이 버튼으로 오류 목록과 현재 스키마를 함께 복사해서 AI에게 그대로 주면 고쳐 줍니다. 통과할 때까지 반복하세요.`,
       () => buildFixPrompt(schema, validateSchema(schema)),
     ).mount(wrap);
+    if (!v.ok) wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기의 🩹 칩이 오류 목록을 한 번에 보냅니다.'));
 
     // ── 원본 편집 ──
     wrap.appendChild(h('h4', {}, '④ 스키마 원본'));

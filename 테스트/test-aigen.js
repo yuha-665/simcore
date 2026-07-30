@@ -12,8 +12,9 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 
 // 편집기 계층 추출 — test-patch와 같은 방식
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const M = new Function('validateSchema', 'TEMPLATES',
-  seg + '\nreturn { schemaIsBlank, assembleBotContext, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt };')(validateSchema, TEMPLATES);
+const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
+  seg + '\nreturn { schemaIsBlank, assembleBotContext, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt };')(
+  validateSchema, TEMPLATES, SC.require('time').timeConfig);
 
 // 실험대 — 항목이 있는 스키마 (패치 모드 판별용)
 const BASE = {

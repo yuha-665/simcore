@@ -6,7 +6,8 @@
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
-const { timeConfig, MIN_PER_DAY, EPOCH_KEY } = require('./time');
+const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
+const { evaluate, truthy } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -197,6 +198,12 @@ function diagnose(schema, opts = {}) {
   const loseSetters = new Set(loseVar
     ? allEv.filter((e) => (e.effects || []).some((f) => f.set === loseVar)).map((e) => e.id) : []);
 
+  // once 오남용 관측 — once 이벤트가 발동한 뒤 조건이 풀렸다가 **다시 참이 되면**(재교차)
+  // 그건 일회성 전개가 아니라 반복 상태 알림이다. 두 번째부터 조용히 눌린다 (실측: 맨션봇
+  // 시설 위기 — once라 재고장이 침묵). 계속 참인 채로 머무는 건 정상(달성 이정표)이라 안 센다.
+  const ONCE_EVS = allEv.filter((e) => e.once && e.when);
+  const onceRecross = {};                  // id → 재교차 관측 횟수 (기준 판 전체 합산)
+
   /**
    * @param opts.preset 이 프리셋을 적용하고 시작한다 (난이도 비교용)
    * @param opts.quiet  관측 범위(obs)와 '값이 움직였다'(moved) 집계에 넣지 않는다.
@@ -211,6 +218,7 @@ function diagnose(schema, opts = {}) {
     }
     const start = { ...st.vars };
     const fired = {}, everAvail = {};
+    const onceSeen = {};                 // once 재교차 추적 — 판마다 새로 (직전 참/거짓 상태)
     let lost = null, lostBy = null, lostAt = null;
     const hist = [{ ...st.vars }];
     for (let i = 0; i < nTurns; i++) {
@@ -225,6 +233,19 @@ function diagnose(schema, opts = {}) {
       // 명시적 시간 진행의 하루/턴 가정 — outputPhase 뒤에 굳혀야 다음 턴의 이벤트가 새 날짜를 본다
       if (TCFG && TCFG.advance === 'explicit') {
         st.vars[EPOCH_KEY] = (typeof st.vars[EPOCH_KEY] === 'number' ? st.vars[EPOCH_KEY] : TCFG.startEpoch) + MIN_PER_DAY;
+      }
+      // once 재교차 관측 — 발동 후 조건이 거짓→참으로 다시 넘어오는 순간을 센다 (기준 판만)
+      if (!opts.quiet && ONCE_EVS.length) {
+        const look = engine.makeLookup(schema, st.vars);
+        for (const ev of ONCE_EVS) {
+          if (!st.meta.firedOnce[ev.id]) continue;
+          let t = false;
+          try { t = truthy(evaluate(ev.when, look, null)); } catch (e) { continue; }
+          if (ev.id in onceSeen) {
+            if (!onceSeen[ev.id] && t) onceRecross[ev.id] = (onceRecross[ev.id] || 0) + 1;
+          }
+          onceSeen[ev.id] = t; // 첫 관측(발동 직후)은 기준선만 기록 — 이어지는 참은 정상
+        }
       }
       for (const id of o.firedEvents) fired[id] = (fired[id] || 0) + 1;
       if (!opts.quiet) {
@@ -526,6 +547,16 @@ function diagnose(schema, opts = {}) {
     }
   }
 
+  // ── 4.5 once에 눌린 재발 ──
+  // 발동 후 조건이 풀렸다가 다시 참이 된 once 이벤트 — 반복 상황인데 두 번째부터 침묵한다.
+  // "계속 참"(달성 이정표)은 안 세므로 survived·ready류 정상 설계는 안 걸린다.
+  for (const [id, n] of Object.entries(onceRecross)) {
+    add('mid', 'once 재발 눌림',
+      `'${id}'는 once인데, 발동한 뒤 조건이 풀렸다가 다시 참이 되는 것이 ${n}회 관측됐습니다 — `
+      + '두 번째부터는 아무 알림 없이 눌립니다. 반복될 수 있는 상태 알림이면 once 대신 '
+      + '경보 플래그 래치 짝(터질 때 플래그 켬 · 회복 이벤트가 끔)을 쓰세요.', 'rules');
+  }
+
   // ── 5. 액션 ──
   if (ACT.length) {
     const everAvail = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail)));
@@ -644,6 +675,9 @@ function diagnose(schema, opts = {}) {
   let aiOnlyStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
+    // 시간 진행 입구는 엔진이 매 턴 소비 후 0으로 되돌리는 우편함 — 관측 시점엔 늘 0이라
+    // "안 움직임"이 원리적으로 오탐이다. 실제 배선은 시간 흐름(날짜 이벤트)으로 이미 검증된다.
+    if (TCFG && (x.id === SKIP_DAY || x.id === SKIP_MIN)) continue;
     const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
     if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }

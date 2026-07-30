@@ -275,8 +275,8 @@ const baseJson = JSON.stringify(BASE);
 {
   const { TEMPLATES } = SC.require('templates');
   const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-  const M = new Function('validateSchema', 'TEMPLATES',
-    seg + '\nreturn { buildPatchExportPrompt, patchIdDigest };')(validateSchema, TEMPLATES);
+  const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
+    seg + '\nreturn { buildPatchExportPrompt, patchIdDigest };')(validateSchema, TEMPLATES, SC.require('time').timeConfig);
 
   const S = snap();
   S.statusUI = { mode: 'custom', template: '<div>ZZZ_CSS_MARKER</div>', groups: [] };

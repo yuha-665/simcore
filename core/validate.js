@@ -223,6 +223,25 @@ function validateSchema(schema) {
   // ── rules ──
   const rules = schema.rules || {};
   (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
+  // 그 날 내내 매 턴 발동한다 (실측: 맨션봇 급여일 중복 지급). 진단 시뮬은 하루=1턴을 가정해
+  // 이 사고를 못 보므로 정적 린트가 유일한 방어선이다. 랜덤 표는 추첨+쿨다운이 빈도를 이미
+  // 조절하므로 조건 이벤트만 본다 (계절 분위기 랜덤까지 잡으면 정상 설계를 나무라게 된다).
+  if (tcfg && tcfg.advance === 'explicit' && tcfg.expose.length) {
+    const eqRe = new RegExp(`\\b(${tcfg.expose.join('|')})\\s*==`);
+    (rules.events || []).forEach((e, i) => {
+      if (!e.when || e.once) return;
+      const m = String(e.when).match(eqRe);
+      if (!m) return;
+      let whenVars = [];
+      try { whenVars = referencedVars(e.when).filter((n) => ids.has(n)); } catch { return; }
+      // 효과가 조건 속 변수를 만지면 래치로 본다 (rent_billed 패턴)
+      if ((e.effects || []).some((f) => whenVars.includes(f.set))) return;
+      warn(`$.rules.events[${i}]`, `'${e.id}'의 시간 등호 조건(\`${m[1]} ==\`)은 그 날(시각) 내내 참입니다 — `
+        + '명시적 진행에서는 하루가 여러 턴이라 매 턴 발동합니다. '
+        + '경보 플래그 래치(when에 "and not 플래그" + 효과로 플래그 세움)나 "마지막 처리 월" 기록 변수로 막으세요');
+    });
+  }
   const eventIds = new Set();
   (rules.events || []).forEach((e, i) => {
     const p = `$.rules.events[${i}]`;
@@ -471,7 +490,22 @@ function validateSchema(schema) {
     else dirIds.add(d.id);
     checkExpr(d.when, p + '.when', allIds, err, { allowRand: false });
     if (typeof d.text !== 'string' || !d.text.trim()) err(p, '지시문 내용(text) 필요');
-    else checkTemplateRefs(d.text, p + '.text', allIds, err);
+    else {
+      checkTemplateRefs(d.text, p + '.text', allIds, err);
+      // 지시문이 보조 담당 변수를 본문에서 직접 다루라고 지시 — 지시문은 메인 모델 전용이라
+      // 그 규칙을 정작 상태를 갱신하는 보조 AI가 못 읽는다 (실측: day_gate가 day_advance
+      // 세우기를 지시문에 적어 날짜가 계속 튐). {자리표시자}는 표시용이라 제외하고,
+      // stage처럼 산문에 자연히 나오는 일반 영단어 id는 오탐이 커서 '_' 든 id만 본다.
+      const bare = d.text.replace(/\{[^{}]*\}/g, '');
+      const hit = (up.allow || []).map((a) => a.id)
+        .filter((x) => typeof x === 'string' && x.includes('_'))
+        .find((x) => new RegExp(`\\b${x}\\b`).test(bare));
+      if (hit) {
+        warn(p, `지시문 '${d.id}'가 보조 AI 담당 변수 '${hit}'를 직접 조작하라고 지시하는 것으로 보입니다 — `
+          + '지시문은 메인 모델 전용이라, 상태를 갱신하는 보조 AI는 이 규칙을 영영 못 읽습니다. '
+          + `그 규칙은 '${hit}'의 desc(설명)나 updater.guide로 옮기세요`);
+      }
+    }
   });
 
   // ── setup ──

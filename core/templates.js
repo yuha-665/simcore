@@ -619,11 +619,19 @@ const BUSINESS = {
 // 배울 점: ① enum으로 관계 단계를 만들고 이벤트로 전이시키는 법
 //          ② maxGain/maxLoss를 비대칭으로 줘서 "천천히 쌓이고 빨리 식게" 만드는 법
 //          ③ 단계마다 다른 지시문으로 모델의 호칭·거리감을 통제하는 법
+//          ④ 시간 체계(time) — 장면 단위 RP에서 날짜·시각을 다루는 표준형 (v0.50).
+//             예전의 `onTurn day+1`은 출력 하나 = 하루가 되어 장면 RP를 부쉈다.
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
+  // 개학 직후의 월요일 아침. 진행은 명시적 — 보조가 장면의 흐른 시간을 보고하고,
+  // 하루는 🌙 버튼 또는 "다음 날" 도약(skip_day)으로만 넘어간다.
+  time: {
+    start: '2026-03-02 08:30',
+    advance: 'explicit',
+    format: { date: 'M월 D일', clock: 'HH:mm' },
+  },
   vars: [
-    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
     { id: 'affection', label: '호감도', type: 'int', init: 10, min: 0, max: 100 },
     { id: 'tension', label: '설렘', type: 'int', init: 0, min: 0, max: 100,
       desc: '순간적인 두근거림. 시간이 지나면 가라앉는다.' },
@@ -634,13 +642,20 @@ const ROMANCE = {
     { id: 'memories', label: '함께한 기억', type: 'list', init: [], maxItems: 15, itemMaxLength: 40,
       desc: '둘 사이에 실제로 있었던 일. 나중에 대화에서 다시 꺼내 쓴다.' },
     { id: 'confessed', label: '고백함', type: 'bool', init: false },
+    // 시간 진행 입구 — 엔진이 매 턴 소비 후 0으로 되돌린다. 규칙은 desc에 산다
+    // (지시문은 메인 전용이라 상태를 갱신하는 보조 AI가 못 읽는다 — 실측 사고).
+    { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
+      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+      desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 데이트·수업이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
   ],
   derived: [
     { id: 'closeness', label: '친밀도', expr: 'clamp(round(affection * 0.7 + count(memories) * 3), 0, 100)' },
   ],
   rules: {
+    // ⚠ onTurn에 day+1을 넣지 않는다 — 날짜는 time 섹션이 관리한다.
+    //   설렘·질투 감쇠는 "장면이 넘어가면 가라앉는다"라 턴 단위가 맞다.
     onTurn: [
-      { set: 'day', expr: 'day + 1' },
       { set: 'tension', expr: 'max(tension - 3, 0)' },
       { set: 'jealousy', expr: 'max(jealousy - 2, 0)' },
     ],
@@ -708,6 +723,11 @@ const ROMANCE = {
     { id: 'confess', label: '💗 고백', mode: 'oneshot', when: 'affection >= 70 and not confessed',
       inject: '[플레이어 행동] 용기를 내어 마음을 고백한다.',
       effects: [{ set: 'confessed', expr: '1' }, { set: 'tension', expr: '100' }] },
+    // 하루 마무리 — 지금이 몇 시든 "다음 08:00까지"를 분으로 계산해 굳힌다.
+    // 자정 전에 누르면 이튿날 아침, 새벽에 누르면 같은 날 아침이 된다.
+    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1,
+      inject: '[시간] 오늘은 여기까지다. 다음 장면은 이튿날 아침에서 시작하라.',
+      effects: [{ set: 'skip_min', expr: '((1919 - hour * 60 - minute) % 1440) + 1' }] },
   ],
   updater: {
     allow: [
@@ -716,11 +736,13 @@ const ROMANCE = {
       { id: 'tension', maxDelta: 20 },
       { id: 'jealousy', maxDelta: 20 },
       { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
+      // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
+      { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
     ],
     guide: '기억(memories)에는 실제로 있었던 사건만 한 줄로 add하라. 호감도는 상대의 반응이 뚜렷할 때만 움직여라.',
   },
   promptState: {
-    template: '[관계 현황 — {day}일차 · {stage}]\n'
+    template: '[관계 현황 — {date} ({weekday}) {clock} · {stage}]\n'
       + '장소 {place} | 호감 {affection}/100 | 설렘 {tension} | 친밀 {closeness} | 상대 기분 {mood}'
       + '{jealousy >= 30 ? " | 질투 " + jealousy : ""}\n'
       + '함께한 기억: {memories:tags}',
@@ -730,7 +752,7 @@ const ROMANCE = {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '관계', items: [
-        { var: 'day' }, { var: 'stage' },
+        { var: 'date' }, { var: 'clock' }, { var: 'stage' },
         { var: 'affection', bar: { max: 100 }, color: 'affection >= 60 ? "#e0559b" : "#5b8def"' },
         { var: 'closeness', bar: { max: 100 } },
       ] },

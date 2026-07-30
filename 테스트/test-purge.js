@@ -145,7 +145,8 @@ const baseJson = JSON.stringify(BASE);
 // ── 진단 → AI 요청이 패치 경로로 (v0.45) ──
 {
   const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-  const M = new Function('validateSchema', 'TEMPLATES', seg + '\nreturn { buildPatchExportPrompt };')(validateSchema, TEMPLATES);
+  const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
+    seg + '\nreturn { buildPatchExportPrompt };')(validateSchema, TEMPLATES, SC.require('time').timeConfig);
   const findings = [
     { sev: 'high', tag: '고정 변수', text: "'confessed'를 바꾸는 곳이 하나도 없습니다", tab: 'vars' },
     { sev: 'mid', tag: '죽은 이벤트', text: "'to_acq' 미발동", tab: 'rules' },

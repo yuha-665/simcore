@@ -295,9 +295,34 @@ const SCHEMA_BALANCE_RULES = [
   '- **이벤트 조건이 실제로 도달 가능한지 역산하세요.** 리스크가 턴당 +2인데 발동선이 70이면 35턴이 걸립니다. 대부분의 플레이는 그 전에 끝납니다.',
   '- **시작값이 조건 경계와 같으면 영영 안 걸립니다.** 조건이 `press < 50`인데 시작값이 정확히 50이면 그 이벤트는 죽은 이벤트입니다.',
   '- 매 턴 소모가 있으면 `시작 비축량 ÷ 턴당 소모`를 계산해 몇 턴 버티는지 확인하세요. 너무 짧으면 첫 턴부터 파국입니다.',
-  '- `once: true`가 없는 이벤트는 조건이 참인 동안 매 턴 발동합니다. **효과가 조건을 해소하도록** 짜거나 `once`를 쓰세요.',
   '- 액션에는 반대급부를 두세요. 하나를 얻으면 하나를 잃어야 선택이 의미를 가집니다.',
   '- 파생 변수로 계산 사슬을 만드세요(예: 유동인구 → 수요 → 판매량 → 매출 → 순익). 그래야 수치 하나가 세계 전체를 흔듭니다.',
+];
+
+// 반복 이벤트 패턴 — once 오남용은 실측 사고다 (맨션봇 시설 위기: once라 두 번째 고장부터 침묵).
+// 예전 문구는 "매 턴 재발동"을 경고하며 해법으로 once만 이름을 댔고, AI는 배운 유일한 도구를
+// 그대로 썼다. 규격서의 예제는 AI가 베끼는 코퍼스다 — 패턴 선택 규칙과 래치 실물을 같이 준다.
+const SCHEMA_EVENT_PATTERN_RULES = [
+  '- 조건 이벤트는 조건이 참인 동안 **매 턴** 발동하고, 조건 이벤트에는 쿨다운이 없습니다. 반복을 막는 길은 셋뿐입니다:',
+  '  ① 효과가 조건을 스스로 해소 — `when: "storm"` + 효과에서 `storm = false`',
+  '  ② `once: true` — **다시는 안 오는 일회성 전개 전용** (첫 고백, 최초 발견, 사망).',
+  '     오르내리는 게이지의 문턱에 쓰면 **두 번째 위기부터 영영 침묵**합니다. 그런 곳엔 쓰지 마세요.',
+  '  ③ **래치 짝** — "터지고, 회복되고, 또 터질 수 있는" 상태 알림의 정답. bool 경보 변수를 하나 두고:',
+  '     `{ "id": "boiler_crisis", "when": "boiler <= 15 and not boiler_alert", "effects": [{ "set": "boiler_alert", "expr": "true" }], "notify": "..." }`',
+  '     `{ "id": "boiler_ok", "when": "boiler >= 40 and boiler_alert", "effects": [{ "set": "boiler_alert", "expr": "false" }], "notify": "..." }`',
+  '     문턱을 15/40처럼 벌려야 경계값 근처에서 켜졌다 꺼졌다 파닥거리지 않습니다.',
+];
+
+// 시간 진행 — onTurn day+1 복제는 규격서에 참고할 패턴이 없어서 생긴 사고다 (설계: docs/design-시간.md)
+const SCHEMA_TIME_RULES = [
+  '- **onTurn에 `day + 1`을 넣지 마세요** — 출력 하나가 하루가 되어 장면 단위 RP를 부숩니다.',
+  '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
+  '  `date` `clock` `weekday` `season` `month` `dom` `hour` `minute` `elapsed`(경과일)를',
+  '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
+  '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
+  '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
+  '- **시간 등호 조건은 래치가 필요합니다.** `dom == 5`(급여일)는 그 날의 모든 턴에 참이라',
+  '  래치 없이는 매 턴 지급됩니다. 위 래치 짝이나 "마지막 지급 월" 기록 변수로 막으세요.',
 ];
 
 function schemaLanguageTable() {
@@ -346,6 +371,12 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '## 밸런스 — 문법이 맞아도 게임이 죽을 수 있습니다',
     '검증기는 문법만 봅니다. 아래는 검증을 통과하고도 실제로는 아무 일도 안 일어나게 만드는 함정들입니다.',
     ...SCHEMA_BALANCE_RULES,
+    '',
+    '## 반복 이벤트 — once인가 래치인가',
+    ...SCHEMA_EVENT_PATTERN_RULES,
+    '',
+    '## 시간 진행',
+    ...SCHEMA_TIME_RULES,
     '',
     `## 예제 — "${ex.label}". 이 구조를 그대로 따라가세요`,
     '```json',
@@ -402,6 +433,15 @@ function buildFixPrompt(schema, v) {
 // 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
   const out = ['### 변수', varContractTable(schema)];
+  // 시간 체계가 켜진 봇 — 노출 이름은 조건식에 쓸 수 있는 읽기 전용 값이다. 다이제스트에
+  // 안 실으면 AI가 기존 조건식에서 눈치로 배워야 한다 (실측: 시설 패치 때 운 좋게 통했다).
+  const tcfg = timeConfig(schema);
+  if (tcfg) {
+    out.push('', '### 시간 체계 (읽기 전용 — 조건식·자리표시자에 변수처럼 사용 가능)',
+      `- 사용 가능한 이름: ${tcfg.expose.map((n) => `\`${n}\``).join(' ')}`,
+      `- 시작 \`${schema.time.start}\` · 진행 ${tcfg.advance === 'explicit' ? '명시적(skip_day/skip_min 소비)' : '턴마다 하루'} · 달력 ${tcfg.calendar}`,
+      '- 이 이름들은 `set` 대상이 될 수 없고, `time` 섹션 자체도 패치로 못 다룹니다 (편집기 [시간] 탭 전용).');
+  }
   const body = (e) => { const { _rnd, ...b } = e; return '`' + JSON.stringify(b) + '`'; };
   const evs = [...(schema.rules?.events || []),
     ...((schema.rules?.randomEvents?.table || []).map((e) => ({ ...e, _rnd: true })))];
@@ -470,7 +510,10 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
     '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
-    '- 새 이벤트에는 시작/끝 짝을 고려하세요 — `once` 없이 조건만 두면 조건이 참인 동안 매 턴 재발동합니다.',
+    '',
+    '## 반복 이벤트 — once인가 래치인가',
+    ...SCHEMA_EVENT_PATTERN_RULES,
+    ...(schema.time ? ['', '## 시간 진행', ...SCHEMA_TIME_RULES] : []),
     '',
     '## 이미 있는 항목 — add가 이 id들과 겹치면 가져오기에서 정지되고, update는 이 전문을 기준으로 다시 씁니다',
     patchIdDigest(schema),

@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.49.0
-//@display-name SimCore (시뮬 엔진) v0.49 시간 체계
+//@version 0.50.0
+//@display-name SimCore (시뮬 엔진) v0.50 AI 제작 다듬기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.50.0 ────────────────────────────────────────────────
+// AI 제작 다듬기 — 맨션봇 도그푸딩에서 채집한 생성 AI 실수를 규격서·린트·진단·템플릿
+// 네 겹으로 막는다. 실수 목록과 원칙: docs/ai-mistakes.md.
+// - [규격서] "반복 이벤트 — once인가 래치인가" 절 신설 (SCHEMA_EVENT_PATTERN_RULES):
+//   조건 이벤트는 쿨다운이 없고 매 턴 발동한다는 사실 + 해법 3종(자기 해소·once는 일회성
+//   전개 전용·래치 짝 예제). 예전 문구는 해법으로 once만 이름을 대서 오남용을 직접 유발했다.
+// - [규격서] "시간 진행" 절 (SCHEMA_TIME_RULES): onTurn day+1 금지, time 섹션 노출 이름,
+//   skip 규칙은 desc(지시문은 메인 전용), 시간 등호엔 래치. 패치 다이제스트에도 시간 체계
+//   블록 동봉 — AI가 기존 조건식에서 눈치로 배우던 것을 명시.
+// - [린트] 시간 등호 무래치: explicit 진행 + 조건 이벤트 when에 노출 이름 `==` + 효과가
+//   조건 변수를 안 만짐 → 경고 (실측: 급여일 매 턴 중복 지급 — 진단 시뮬은 하루=1턴
+//   가정이라 원리적으로 못 보는 사각지대, 정적 린트가 유일한 방어선).
+// - [린트] 지시문→보조 변수: directives.text가 allow에 있는 '_' 포함 id를 지목하면 경고
+//   (실측: day_gate 채널 오배치). {자리표시자}는 표시용이라 제외, 일반 영단어 id는 오탐 방지로 제외.
+// - [진단] once 재발 눌림: once 이벤트 발동 후 조건이 거짓→참으로 재교차하면 지적 —
+//   "계속 참"(달성 이정표)은 안 세므로 survived류 정상 설계는 안 걸린다.
+// - [템플릿] romance를 time 섹션 실물로 교체 — onTurn day+1 제거(3종 중 유일하게 틀린 곳),
+//   skip_day/skip_min + 🌙 하루 마무리(다음 08:00 수식) + 상태창 date/clock. 예제가 곧 코퍼스다.
 //
 // ── v0.49.0 ────────────────────────────────────────────────
 // 시간·날짜 1급 지원 (core/time.js, 설계 docs/design-시간.md — 선라이즈 맨션 실전에서
@@ -1557,6 +1576,25 @@ function validateSchema(schema) {
   // ── rules ──
   const rules = schema.rules || {};
   (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
+  // 그 날 내내 매 턴 발동한다 (실측: 맨션봇 급여일 중복 지급). 진단 시뮬은 하루=1턴을 가정해
+  // 이 사고를 못 보므로 정적 린트가 유일한 방어선이다. 랜덤 표는 추첨+쿨다운이 빈도를 이미
+  // 조절하므로 조건 이벤트만 본다 (계절 분위기 랜덤까지 잡으면 정상 설계를 나무라게 된다).
+  if (tcfg && tcfg.advance === 'explicit' && tcfg.expose.length) {
+    const eqRe = new RegExp(`\\b(${tcfg.expose.join('|')})\\s*==`);
+    (rules.events || []).forEach((e, i) => {
+      if (!e.when || e.once) return;
+      const m = String(e.when).match(eqRe);
+      if (!m) return;
+      let whenVars = [];
+      try { whenVars = referencedVars(e.when).filter((n) => ids.has(n)); } catch { return; }
+      // 효과가 조건 속 변수를 만지면 래치로 본다 (rent_billed 패턴)
+      if ((e.effects || []).some((f) => whenVars.includes(f.set))) return;
+      warn(`$.rules.events[${i}]`, `'${e.id}'의 시간 등호 조건(\`${m[1]} ==\`)은 그 날(시각) 내내 참입니다 — `
+        + '명시적 진행에서는 하루가 여러 턴이라 매 턴 발동합니다. '
+        + '경보 플래그 래치(when에 "and not 플래그" + 효과로 플래그 세움)나 "마지막 처리 월" 기록 변수로 막으세요');
+    });
+  }
   const eventIds = new Set();
   (rules.events || []).forEach((e, i) => {
     const p = `$.rules.events[${i}]`;
@@ -1805,7 +1843,22 @@ function validateSchema(schema) {
     else dirIds.add(d.id);
     checkExpr(d.when, p + '.when', allIds, err, { allowRand: false });
     if (typeof d.text !== 'string' || !d.text.trim()) err(p, '지시문 내용(text) 필요');
-    else checkTemplateRefs(d.text, p + '.text', allIds, err);
+    else {
+      checkTemplateRefs(d.text, p + '.text', allIds, err);
+      // 지시문이 보조 담당 변수를 본문에서 직접 다루라고 지시 — 지시문은 메인 모델 전용이라
+      // 그 규칙을 정작 상태를 갱신하는 보조 AI가 못 읽는다 (실측: day_gate가 day_advance
+      // 세우기를 지시문에 적어 날짜가 계속 튐). {자리표시자}는 표시용이라 제외하고,
+      // stage처럼 산문에 자연히 나오는 일반 영단어 id는 오탐이 커서 '_' 든 id만 본다.
+      const bare = d.text.replace(/\{[^{}]*\}/g, '');
+      const hit = (up.allow || []).map((a) => a.id)
+        .filter((x) => typeof x === 'string' && x.includes('_'))
+        .find((x) => new RegExp(`\\b${x}\\b`).test(bare));
+      if (hit) {
+        warn(p, `지시문 '${d.id}'가 보조 AI 담당 변수 '${hit}'를 직접 조작하라고 지시하는 것으로 보입니다 — `
+          + '지시문은 메인 모델 전용이라, 상태를 갱신하는 보조 AI는 이 규칙을 영영 못 읽습니다. '
+          + `그 규칙은 '${hit}'의 desc(설명)나 updater.guide로 옮기세요`);
+      }
+    }
   });
 
   // ── setup ──
@@ -4677,7 +4730,8 @@ SimCore.define("diagnose", function (require, module, exports) {
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
-const { timeConfig, MIN_PER_DAY, EPOCH_KEY } = require('./time');
+const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
+const { evaluate, truthy } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -4868,6 +4922,12 @@ function diagnose(schema, opts = {}) {
   const loseSetters = new Set(loseVar
     ? allEv.filter((e) => (e.effects || []).some((f) => f.set === loseVar)).map((e) => e.id) : []);
 
+  // once 오남용 관측 — once 이벤트가 발동한 뒤 조건이 풀렸다가 **다시 참이 되면**(재교차)
+  // 그건 일회성 전개가 아니라 반복 상태 알림이다. 두 번째부터 조용히 눌린다 (실측: 맨션봇
+  // 시설 위기 — once라 재고장이 침묵). 계속 참인 채로 머무는 건 정상(달성 이정표)이라 안 센다.
+  const ONCE_EVS = allEv.filter((e) => e.once && e.when);
+  const onceRecross = {};                  // id → 재교차 관측 횟수 (기준 판 전체 합산)
+
   /**
    * @param opts.preset 이 프리셋을 적용하고 시작한다 (난이도 비교용)
    * @param opts.quiet  관측 범위(obs)와 '값이 움직였다'(moved) 집계에 넣지 않는다.
@@ -4882,6 +4942,7 @@ function diagnose(schema, opts = {}) {
     }
     const start = { ...st.vars };
     const fired = {}, everAvail = {};
+    const onceSeen = {};                 // once 재교차 추적 — 판마다 새로 (직전 참/거짓 상태)
     let lost = null, lostBy = null, lostAt = null;
     const hist = [{ ...st.vars }];
     for (let i = 0; i < nTurns; i++) {
@@ -4896,6 +4957,19 @@ function diagnose(schema, opts = {}) {
       // 명시적 시간 진행의 하루/턴 가정 — outputPhase 뒤에 굳혀야 다음 턴의 이벤트가 새 날짜를 본다
       if (TCFG && TCFG.advance === 'explicit') {
         st.vars[EPOCH_KEY] = (typeof st.vars[EPOCH_KEY] === 'number' ? st.vars[EPOCH_KEY] : TCFG.startEpoch) + MIN_PER_DAY;
+      }
+      // once 재교차 관측 — 발동 후 조건이 거짓→참으로 다시 넘어오는 순간을 센다 (기준 판만)
+      if (!opts.quiet && ONCE_EVS.length) {
+        const look = engine.makeLookup(schema, st.vars);
+        for (const ev of ONCE_EVS) {
+          if (!st.meta.firedOnce[ev.id]) continue;
+          let t = false;
+          try { t = truthy(evaluate(ev.when, look, null)); } catch (e) { continue; }
+          if (ev.id in onceSeen) {
+            if (!onceSeen[ev.id] && t) onceRecross[ev.id] = (onceRecross[ev.id] || 0) + 1;
+          }
+          onceSeen[ev.id] = t; // 첫 관측(발동 직후)은 기준선만 기록 — 이어지는 참은 정상
+        }
       }
       for (const id of o.firedEvents) fired[id] = (fired[id] || 0) + 1;
       if (!opts.quiet) {
@@ -5197,6 +5271,16 @@ function diagnose(schema, opts = {}) {
     }
   }
 
+  // ── 4.5 once에 눌린 재발 ──
+  // 발동 후 조건이 풀렸다가 다시 참이 된 once 이벤트 — 반복 상황인데 두 번째부터 침묵한다.
+  // "계속 참"(달성 이정표)은 안 세므로 survived·ready류 정상 설계는 안 걸린다.
+  for (const [id, n] of Object.entries(onceRecross)) {
+    add('mid', 'once 재발 눌림',
+      `'${id}'는 once인데, 발동한 뒤 조건이 풀렸다가 다시 참이 되는 것이 ${n}회 관측됐습니다 — `
+      + '두 번째부터는 아무 알림 없이 눌립니다. 반복될 수 있는 상태 알림이면 once 대신 '
+      + '경보 플래그 래치 짝(터질 때 플래그 켬 · 회복 이벤트가 끔)을 쓰세요.', 'rules');
+  }
+
   // ── 5. 액션 ──
   if (ACT.length) {
     const everAvail = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail)));
@@ -5315,6 +5399,9 @@ function diagnose(schema, opts = {}) {
   let aiOnlyStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
+    // 시간 진행 입구는 엔진이 매 턴 소비 후 0으로 되돌리는 우편함 — 관측 시점엔 늘 0이라
+    // "안 움직임"이 원리적으로 오탐이다. 실제 배선은 시간 흐름(날짜 이벤트)으로 이미 검증된다.
+    if (TCFG && (x.id === SKIP_DAY || x.id === SKIP_MIN)) continue;
     const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
     if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
@@ -5730,9 +5817,34 @@ const SCHEMA_BALANCE_RULES = [
   '- **이벤트 조건이 실제로 도달 가능한지 역산하세요.** 리스크가 턴당 +2인데 발동선이 70이면 35턴이 걸립니다. 대부분의 플레이는 그 전에 끝납니다.',
   '- **시작값이 조건 경계와 같으면 영영 안 걸립니다.** 조건이 `press < 50`인데 시작값이 정확히 50이면 그 이벤트는 죽은 이벤트입니다.',
   '- 매 턴 소모가 있으면 `시작 비축량 ÷ 턴당 소모`를 계산해 몇 턴 버티는지 확인하세요. 너무 짧으면 첫 턴부터 파국입니다.',
-  '- `once: true`가 없는 이벤트는 조건이 참인 동안 매 턴 발동합니다. **효과가 조건을 해소하도록** 짜거나 `once`를 쓰세요.',
   '- 액션에는 반대급부를 두세요. 하나를 얻으면 하나를 잃어야 선택이 의미를 가집니다.',
   '- 파생 변수로 계산 사슬을 만드세요(예: 유동인구 → 수요 → 판매량 → 매출 → 순익). 그래야 수치 하나가 세계 전체를 흔듭니다.',
+];
+
+// 반복 이벤트 패턴 — once 오남용은 실측 사고다 (맨션봇 시설 위기: once라 두 번째 고장부터 침묵).
+// 예전 문구는 "매 턴 재발동"을 경고하며 해법으로 once만 이름을 댔고, AI는 배운 유일한 도구를
+// 그대로 썼다. 규격서의 예제는 AI가 베끼는 코퍼스다 — 패턴 선택 규칙과 래치 실물을 같이 준다.
+const SCHEMA_EVENT_PATTERN_RULES = [
+  '- 조건 이벤트는 조건이 참인 동안 **매 턴** 발동하고, 조건 이벤트에는 쿨다운이 없습니다. 반복을 막는 길은 셋뿐입니다:',
+  '  ① 효과가 조건을 스스로 해소 — `when: "storm"` + 효과에서 `storm = false`',
+  '  ② `once: true` — **다시는 안 오는 일회성 전개 전용** (첫 고백, 최초 발견, 사망).',
+  '     오르내리는 게이지의 문턱에 쓰면 **두 번째 위기부터 영영 침묵**합니다. 그런 곳엔 쓰지 마세요.',
+  '  ③ **래치 짝** — "터지고, 회복되고, 또 터질 수 있는" 상태 알림의 정답. bool 경보 변수를 하나 두고:',
+  '     `{ "id": "boiler_crisis", "when": "boiler <= 15 and not boiler_alert", "effects": [{ "set": "boiler_alert", "expr": "true" }], "notify": "..." }`',
+  '     `{ "id": "boiler_ok", "when": "boiler >= 40 and boiler_alert", "effects": [{ "set": "boiler_alert", "expr": "false" }], "notify": "..." }`',
+  '     문턱을 15/40처럼 벌려야 경계값 근처에서 켜졌다 꺼졌다 파닥거리지 않습니다.',
+];
+
+// 시간 진행 — onTurn day+1 복제는 규격서에 참고할 패턴이 없어서 생긴 사고다 (설계: docs/design-시간.md)
+const SCHEMA_TIME_RULES = [
+  '- **onTurn에 `day + 1`을 넣지 마세요** — 출력 하나가 하루가 되어 장면 단위 RP를 부숩니다.',
+  '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
+  '  `date` `clock` `weekday` `season` `month` `dom` `hour` `minute` `elapsed`(경과일)를',
+  '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
+  '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
+  '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
+  '- **시간 등호 조건은 래치가 필요합니다.** `dom == 5`(급여일)는 그 날의 모든 턴에 참이라',
+  '  래치 없이는 매 턴 지급됩니다. 위 래치 짝이나 "마지막 지급 월" 기록 변수로 막으세요.',
 ];
 
 function schemaLanguageTable() {
@@ -5781,6 +5893,12 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '## 밸런스 — 문법이 맞아도 게임이 죽을 수 있습니다',
     '검증기는 문법만 봅니다. 아래는 검증을 통과하고도 실제로는 아무 일도 안 일어나게 만드는 함정들입니다.',
     ...SCHEMA_BALANCE_RULES,
+    '',
+    '## 반복 이벤트 — once인가 래치인가',
+    ...SCHEMA_EVENT_PATTERN_RULES,
+    '',
+    '## 시간 진행',
+    ...SCHEMA_TIME_RULES,
     '',
     `## 예제 — "${ex.label}". 이 구조를 그대로 따라가세요`,
     '```json',
@@ -5837,6 +5955,15 @@ function buildFixPrompt(schema, v) {
 // 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
   const out = ['### 변수', varContractTable(schema)];
+  // 시간 체계가 켜진 봇 — 노출 이름은 조건식에 쓸 수 있는 읽기 전용 값이다. 다이제스트에
+  // 안 실으면 AI가 기존 조건식에서 눈치로 배워야 한다 (실측: 시설 패치 때 운 좋게 통했다).
+  const tcfg = timeConfig(schema);
+  if (tcfg) {
+    out.push('', '### 시간 체계 (읽기 전용 — 조건식·자리표시자에 변수처럼 사용 가능)',
+      `- 사용 가능한 이름: ${tcfg.expose.map((n) => `\`${n}\``).join(' ')}`,
+      `- 시작 \`${schema.time.start}\` · 진행 ${tcfg.advance === 'explicit' ? '명시적(skip_day/skip_min 소비)' : '턴마다 하루'} · 달력 ${tcfg.calendar}`,
+      '- 이 이름들은 `set` 대상이 될 수 없고, `time` 섹션 자체도 패치로 못 다룹니다 (편집기 [시간] 탭 전용).');
+  }
   const body = (e) => { const { _rnd, ...b } = e; return '`' + JSON.stringify(b) + '`'; };
   const evs = [...(schema.rules?.events || []),
     ...((schema.rules?.randomEvents?.table || []).map((e) => ({ ...e, _rnd: true })))];
@@ -5905,7 +6032,10 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
     '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
-    '- 새 이벤트에는 시작/끝 짝을 고려하세요 — `once` 없이 조건만 두면 조건이 참인 동안 매 턴 재발동합니다.',
+    '',
+    '## 반복 이벤트 — once인가 래치인가',
+    ...SCHEMA_EVENT_PATTERN_RULES,
+    ...(schema.time ? ['', '## 시간 진행', ...SCHEMA_TIME_RULES] : []),
     '',
     '## 이미 있는 항목 — add가 이 id들과 겹치면 가져오기에서 정지되고, update는 이 전문을 기준으로 다시 씁니다',
     patchIdDigest(schema),
@@ -10256,11 +10386,19 @@ const BUSINESS = {
 // 배울 점: ① enum으로 관계 단계를 만들고 이벤트로 전이시키는 법
 //          ② maxGain/maxLoss를 비대칭으로 줘서 "천천히 쌓이고 빨리 식게" 만드는 법
 //          ③ 단계마다 다른 지시문으로 모델의 호칭·거리감을 통제하는 법
+//          ④ 시간 체계(time) — 장면 단위 RP에서 날짜·시각을 다루는 표준형 (v0.50).
+//             예전의 `onTurn day+1`은 출력 하나 = 하루가 되어 장면 RP를 부쉈다.
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
+  // 개학 직후의 월요일 아침. 진행은 명시적 — 보조가 장면의 흐른 시간을 보고하고,
+  // 하루는 🌙 버튼 또는 "다음 날" 도약(skip_day)으로만 넘어간다.
+  time: {
+    start: '2026-03-02 08:30',
+    advance: 'explicit',
+    format: { date: 'M월 D일', clock: 'HH:mm' },
+  },
   vars: [
-    { id: 'day', label: '경과', type: 'int', init: 1, min: 1, format: '{v}일차' },
     { id: 'affection', label: '호감도', type: 'int', init: 10, min: 0, max: 100 },
     { id: 'tension', label: '설렘', type: 'int', init: 0, min: 0, max: 100,
       desc: '순간적인 두근거림. 시간이 지나면 가라앉는다.' },
@@ -10271,13 +10409,20 @@ const ROMANCE = {
     { id: 'memories', label: '함께한 기억', type: 'list', init: [], maxItems: 15, itemMaxLength: 40,
       desc: '둘 사이에 실제로 있었던 일. 나중에 대화에서 다시 꺼내 쓴다.' },
     { id: 'confessed', label: '고백함', type: 'bool', init: false },
+    // 시간 진행 입구 — 엔진이 매 턴 소비 후 0으로 되돌린다. 규칙은 desc에 산다
+    // (지시문은 메인 전용이라 상태를 갱신하는 보조 AI가 못 읽는다 — 실측 사고).
+    { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
+      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+      desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 데이트·수업이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
   ],
   derived: [
     { id: 'closeness', label: '친밀도', expr: 'clamp(round(affection * 0.7 + count(memories) * 3), 0, 100)' },
   ],
   rules: {
+    // ⚠ onTurn에 day+1을 넣지 않는다 — 날짜는 time 섹션이 관리한다.
+    //   설렘·질투 감쇠는 "장면이 넘어가면 가라앉는다"라 턴 단위가 맞다.
     onTurn: [
-      { set: 'day', expr: 'day + 1' },
       { set: 'tension', expr: 'max(tension - 3, 0)' },
       { set: 'jealousy', expr: 'max(jealousy - 2, 0)' },
     ],
@@ -10345,6 +10490,11 @@ const ROMANCE = {
     { id: 'confess', label: '💗 고백', mode: 'oneshot', when: 'affection >= 70 and not confessed',
       inject: '[플레이어 행동] 용기를 내어 마음을 고백한다.',
       effects: [{ set: 'confessed', expr: '1' }, { set: 'tension', expr: '100' }] },
+    // 하루 마무리 — 지금이 몇 시든 "다음 08:00까지"를 분으로 계산해 굳힌다.
+    // 자정 전에 누르면 이튿날 아침, 새벽에 누르면 같은 날 아침이 된다.
+    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1,
+      inject: '[시간] 오늘은 여기까지다. 다음 장면은 이튿날 아침에서 시작하라.',
+      effects: [{ set: 'skip_min', expr: '((1919 - hour * 60 - minute) % 1440) + 1' }] },
   ],
   updater: {
     allow: [
@@ -10353,11 +10503,13 @@ const ROMANCE = {
       { id: 'tension', maxDelta: 20 },
       { id: 'jealousy', maxDelta: 20 },
       { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
+      // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
+      { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
     ],
     guide: '기억(memories)에는 실제로 있었던 사건만 한 줄로 add하라. 호감도는 상대의 반응이 뚜렷할 때만 움직여라.',
   },
   promptState: {
-    template: '[관계 현황 — {day}일차 · {stage}]\n'
+    template: '[관계 현황 — {date} ({weekday}) {clock} · {stage}]\n'
       + '장소 {place} | 호감 {affection}/100 | 설렘 {tension} | 친밀 {closeness} | 상대 기분 {mood}'
       + '{jealousy >= 30 ? " | 질투 " + jealousy : ""}\n'
       + '함께한 기억: {memories:tags}',
@@ -10367,7 +10519,7 @@ const ROMANCE = {
     mode: 'auto', collapsible: true,
     groups: [
       { label: '관계', items: [
-        { var: 'day' }, { var: 'stage' },
+        { var: 'date' }, { var: 'clock' }, { var: 'stage' },
         { var: 'affection', bar: { max: 100 }, color: 'affection >= 60 ? "#e0559b" : "#5b8def"' },
         { var: 'closeness', bar: { max: 100 } },
       ] },

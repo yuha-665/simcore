@@ -30,7 +30,7 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore']);
+const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time']);
 
 function getList(schema, key) {
   switch (key) {

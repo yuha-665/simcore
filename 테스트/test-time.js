@@ -1,0 +1,245 @@
+const __P = (...p) => require('path').resolve(__dirname, ...p);
+// v0.49 시간·날짜 1급 지원 (core/time.js, 설계 docs/design-시간.md)
+//
+// 배경(실측): 선라이즈 맨션 봇 — 날짜를 day/clock_h/clock_m/sim_* 정수 여러 개로 쪼개
+// 손조립했더니 아웃풋마다 하루가 튀었다. LLM은 날짜를 텍스트 한 덩어리로 다루는데
+// 개별 정수는 각자 따로 움직여서다. 해법: 내부는 분 단위 epoch 정수 **하나**, 표시는 포맷.
+const fs = require('fs');
+const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
+(0, eval)(src.slice(src.indexOf('const SimCore = (() => {'), src.indexOf('(async () => {')) + '\n;globalThis.__SC = SimCore;');
+const SC = globalThis.__SC;
+const time = SC.require('time');
+const engine = SC.require('engine');
+const { validateSchema } = SC.require('validate');
+const { renderStatusHtml } = SC.require('render');
+const { diagnose } = SC.require('diagnose');
+const { parsePatch, planPatch } = SC.require('patch');
+const { TEMPLATES } = SC.require('templates');
+
+const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
+const J = JSON.stringify;
+
+// ── 1. 달력 산술 (순수 함수) ──────────────────────────────────
+{
+  const p = time.parseStart('2026-04-01 07:30');
+  ck('시작 시점 파싱', J(p) === J({ y: 2026, m: 4, d: 1, h: 7, mi: 30 }), J(p));
+  ck('시각 생략은 00:00', J(time.parseStart('2026-04-01')) === J({ y: 2026, m: 4, d: 1, h: 0, mi: 0 }), '');
+  ck('존재하지 않는 날짜 거부 (2월 30일)', time.parseStart('2026-02-30') === null, '');
+  ck('형식 오류 거부', time.parseStart('작년 봄') === null && time.parseStart('2026/04/01') === null, '');
+
+  const cal = time.calendarOf(time.epochFrom(p));
+  ck('★ epoch 왕복 (분까지)', J(cal) === J({ y: 2026, m: 4, d: 1, h: 7, mi: 30, wd: 2 }), J(cal));
+  ck('★ 요일 — 2026-04-01은 수요일', cal.wd === 2 && time.DEFAULT_WEEKDAYS[cal.wd] === '수', '');
+
+  // 윤년: 2024는 윤년(2/29 존재), 2026은 평년, 2000은 윤년, 1900은 평년 (100/400 규칙)
+  ck('윤년 규칙', time.isLeap(2024) && !time.isLeap(2026) && time.isLeap(2000) && !time.isLeap(1900), '');
+  const leap = time.calendarOf(time.epochFrom(time.parseStart('2024-02-28')) + time.MIN_PER_DAY);
+  ck('★ 윤년 월말: 2024-02-28 +1일 = 02-29', leap.m === 2 && leap.d === 29, J(leap));
+  const noleap = time.calendarOf(time.epochFrom(time.parseStart('2026-02-28')) + time.MIN_PER_DAY);
+  ck('평년 월말: 2026-02-28 +1일 = 03-01', noleap.m === 3 && noleap.d === 1, J(noleap));
+  const yearEnd = time.calendarOf(time.epochFrom(time.parseStart('2026-12-31 23:59')) + 1);
+  ck('★ 연말 자정 넘김: 12-31 23:59 +1분 = 이듬해 01-01 00:00',
+    yearEnd.y === 2027 && yearEnd.m === 1 && yearEnd.d === 1 && yearEnd.h === 0 && yearEnd.mi === 0, J(yearEnd));
+
+  // 자릿수 — fmtNum(콤마만)으로는 영영 못 만들던 07:05 (설계 문제 진단 §2)
+  const c2 = time.calendarOf(time.epochFrom(time.parseStart('2026-04-01 07:05')));
+  ck('★ 자릿수는 포맷이 책임진다 — 07:05', time.formatClock('HH:mm', c2) === '07:05', time.formatClock('HH:mm', c2));
+  ck('날짜 포맷 토큰', time.formatDate('YYYY-MM-DD', c2) === '2026-04-01'
+    && time.formatDate('YY/M/D', c2) === '26/4/1'
+    && time.formatDate('M월 D일', c2) === '4월 1일', '');
+  ck('시각 포맷 토큰', time.formatClock('H시 m분', c2) === '7시 5분', '');
+
+  // flat30 판타지 달력 — 한 달 30일 × 12달 = 360일 (베리디아 체계)
+  const f = time.calendarOf(time.epochFrom(time.parseStart('0100-01-30', 'flat30'), 'flat30') + time.MIN_PER_DAY, 'flat30');
+  ck('flat30 월말: 1-30 +1일 = 2-1', f.m === 2 && f.d === 1, J(f));
+  ck('flat30은 2월 30일이 실재한다', time.parseStart('0100-02-30', 'flat30') !== null, '');
+  ck('flat30 연말: 12-30 +1일 = 이듬해 1-1',
+    (() => { const x = time.calendarOf(time.epochFrom(time.parseStart('0100-12-30', 'flat30'), 'flat30') + time.MIN_PER_DAY, 'flat30');
+      return x.y === 101 && x.m === 1 && x.d === 1; })(), '');
+}
+
+// ── 2. 스키마 통합 — 실험대: 맨션형 봇 ────────────────────────
+const BASE = {
+  simcore: '0.1', meta: { name: '시간 실험대' },
+  time: {
+    start: '2026-04-01 07:30', advance: 'explicit',
+    format: { date: 'YYYY-MM-DD', clock: 'HH:mm' },
+  },
+  vars: [
+    { id: 'gold', label: '자금', type: 'int', init: 100, min: 0 },
+    { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30 },
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440 },
+  ],
+  derived: [{ id: 'night', label: '밤', expr: 'hour >= 22 or hour < 6' }],
+  rules: {
+    events: [
+      { id: 'rent', when: 'dom == 1 and elapsed > 0', once: true, notify: '월세일이다.', effects: [{ set: 'gold', expr: 'max(gold - 30, 0)' }] },
+      { id: 'weekend', when: 'weekday == "토"', once: true, notify: '주말이다.', effects: [] },
+    ],
+  },
+  updater: { allow: [{ id: 'gold', maxDelta: 50 }, { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 }] },
+  actions: [{ id: 'end_day', label: '🌙 하루를 마친다', effects: [{ set: 'skip_day', expr: '1' }, { set: 'skip_min', expr: '0' }] }],
+  statusUI: { groups: [{ label: '시간', items: [{ var: 'date' }, { var: 'clock' }, { var: 'weekday' }, { var: 'gold' }] }] },
+  promptState: { template: '[{date} ({weekday}) {clock}] 자금 {gold}' },
+};
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+{
+  const v = validateSchema(BASE);
+  ck('★ 검증 통과 — 노출 이름을 조건식·템플릿·상태창에서 변수처럼', v.ok, J(v.errors));
+
+  let st = engine.initState(BASE);
+  ck('초기 epoch = 시작 시점', st.vars.time_epoch === time.epochFrom(time.parseStart('2026-04-01 07:30')), '');
+  const look = engine.makeLookup(BASE, st.vars);
+  ck('노출 파생 조회', look('date') === '2026-04-01' && look('clock') === '07:30' && look('weekday') === '수'
+    && look('dom') === 1 && look('elapsed') === 0 && look('season') === '봄', '');
+  ck('일반 파생이 노출 이름을 참조', look('night') === 0, String(look('night')));
+
+  // 보조 보고 경로: skip_min 델타 → outputPhase 소비 → 시각 전진 + 0 리셋
+  let o = engine.outputPhase(BASE, st, { skip_min: 90 }, {}, {});
+  ck('★ 보조 보고 90분 → 09:00', engine.makeLookup(BASE, o.state.vars)('clock') === '09:00', '');
+  ck('소비 후 skip_min = 0', o.state.vars.skip_min === 0, '');
+  ck('epoch 변화가 로그에 남는다 (source: time)', o.changeLog.some((c) => c.id === 'time_epoch' && c.source === 'time'), '');
+
+  // 버튼 경로: 🌙 무장 → sendPhase에서 소비 → **이번 프롬프트의 날짜가 이미 새 날**
+  let t = engine.toggleAction(BASE, o.state, 'end_day');
+  const send = engine.sendPhase(BASE, t.state, {});
+  ck('★ 🌙 버튼 하루는 그 턴 프롬프트에 바로 반영', send.promptBlock.includes('[2026-04-02'), send.promptBlock.split('\n')[0]);
+  ck('버튼 소비 후 skip_day = 0', send.state.vars.skip_day === 0, '');
+
+  // 며칠 도약: "3일 뒤" — AI는 3만 말하면 된다 (4320분 산술은 시스템 몫)
+  o = engine.outputPhase(BASE, send.state, { skip_day: 3 }, {}, {});
+  ck('★ 며칠 도약 (skip_day 3)', engine.makeLookup(BASE, o.state.vars)('date') === '2026-04-05', '');
+  ck('maxGain 캡이 도약에도 걸린다 (+30 제안 → +7)',
+    (() => { const x = engine.outputPhase(BASE, o.state, { skip_day: 30 }, {}, {});
+      return engine.makeLookup(BASE, x.state.vars)('date') === '2026-04-12'; })(), '');
+
+  // 날짜 조건 이벤트 — 토요일이 오면 주말, 5/1이 되면 월세
+  // (04-05에서 +6 = 04-11 토 · 그다음 +7씩 두 번 = 04-25 · +6 = 05-01)
+  const sat = engine.outputPhase(BASE, o.state, { skip_day: 6 }, {}, {}); // 04-05 → 04-11 (토)
+  ck('★ weekday 조건 이벤트 발동', sat.firedEvents.includes('weekend'),
+    engine.makeLookup(BASE, sat.state.vars)('date') + ' ' + engine.makeLookup(BASE, sat.state.vars)('weekday'));
+  let cur = engine.outputPhase(BASE, sat.state, { skip_day: 7 }, {}, {}); // → 04-18
+  cur = engine.outputPhase(BASE, cur.state, { skip_day: 7 }, {}, {});     // → 04-25
+  const may = engine.outputPhase(BASE, cur.state, { skip_day: 6 }, {}, {}); // → 05-01
+  ck('★ dom == 1 월세 이벤트 발동 + 효과', may.firedEvents.includes('rent') && may.state.vars.gold < 100,
+    engine.makeLookup(BASE, may.state.vars)('date'));
+
+  // 음수 진행은 무시 — 시간이 뒤로 가면 목록 기한이 어긋난다
+  const neg = engine.outputPhase(BASE, may.state, { skip_min: -600 }, {}, {});
+  ck('음수 진행 무시', neg.state.vars.time_epoch === may.state.vars.time_epoch, '');
+
+  // 세이브 왕복 + 진행 중 세이브에 나중에 켜기
+  const saved = JSON.parse(JSON.stringify(may.state));
+  ck('세이브 왕복 — epoch 정수 하나 그대로', saved.vars.time_epoch === may.state.vars.time_epoch, '');
+  const oldSave = { vars: { gold: 70 }, meta: { turn: 12 } }; // time 없던 시절 세이브
+  const rec = engine.reconcileState(BASE, clone(oldSave));
+  ck('★ 구세이브에 시간 켜기 — 시작 시점부터', rec.vars.time_epoch === time.epochFrom(time.parseStart('2026-04-01 07:30')), '');
+
+  // 상태창 — 노출 파생이 라벨과 함께 그려진다
+  const html = renderStatusHtml(BASE, may.state, null, null);
+  ck('★ 상태창에 날짜·시각·요일', html.includes('날짜') && html.includes('2026-05-01') && html.includes('시각'), '');
+}
+
+// ── 3. time 없는 봇은 아무것도 안 바뀐다 (옵트인) ─────────────
+{
+  const plain = clone(BASE);
+  delete plain.time;
+  plain.derived = []; // hour 참조 제거
+  plain.rules.events = [];
+  plain.promptState = { template: '자금 {gold}' };
+  plain.statusUI = { groups: [{ label: '재정', items: [{ var: 'gold' }] }] };
+  const v = validateSchema(plain);
+  ck('time 없으면 검증 그대로', v.ok, J(v.errors));
+  const st = engine.initState(plain);
+  ck('★ time 없으면 time_epoch 자체가 없다', !('time_epoch' in st.vars), '');
+  const o = engine.outputPhase(plain, st, { skip_min: 90 }, {}, {});
+  ck('time 없으면 skip 변수도 그냥 변수', o.state.vars.skip_min === 90, '');
+}
+
+// ── 4. 검증 — 이름 충돌·형식·입구 ────────────────────────────
+{
+  const bad = clone(BASE);
+  bad.vars.push({ id: 'date', label: '수제 날짜', type: 'text', init: '' });
+  const v = validateSchema(bad);
+  ck('★ 노출 이름과 변수 충돌 거부', !v.ok && v.errors.some((e) => e.msg.includes("'date'")), J(v.errors));
+
+  const bad2 = clone(BASE);
+  bad2.time.start = '2026-13-01';
+  ck('불가능한 시작 시점 거부', !validateSchema(bad2).ok, '');
+
+  const bad3 = clone(BASE);
+  bad3.time.format = { clock: '시각' }; // 토큰 없음
+  ck('토큰 없는 시각 형식 거부', !validateSchema(bad3).ok, '');
+
+  const bad4 = clone(BASE);
+  bad4.vars = bad4.vars.filter((x) => !x.id.startsWith('skip_'));
+  bad4.updater.allow = bad4.updater.allow.filter((a) => !a.id.startsWith('skip_'));
+  bad4.actions = [];
+  const v4 = validateSchema(bad4);
+  ck('★ explicit인데 진행 입구 없음 → 경고', v4.ok && v4.warnings.some((w) => w.msg.includes('입구')), J(v4.warnings));
+
+  const bad5 = clone(BASE);
+  bad5.vars.find((x) => x.id === 'skip_day').type = 'bool';
+  bad5.vars.find((x) => x.id === 'skip_day').init = false;
+  ck('skip_day가 int가 아니면 오류 (bool 플래그는 캡을 못 건다)', !validateSchema(bad5).ok, '');
+
+  const bad6 = clone(BASE);
+  bad6.vars.push({ id: 'time_epoch', label: '예약 키 침범', type: 'int', init: 0 });
+  ck('time_epoch 예약 키 침범 거부', !validateSchema(bad6).ok, '');
+
+  const bad7 = clone(BASE);
+  bad7.time.expose = ['date', 'timestamp'];
+  ck('모르는 노출 이름 거부', !validateSchema(bad7).ok, '');
+}
+
+// ── 5. 진단 — explicit이면 하루/턴 가정 (가장 중요한 함정) ────
+{
+  const d = diagnose(BASE, { turns: 40, runs: 2, actionImpact: false });
+  ck('★ 진단이 시간 가정을 명시한다', d.findings.some((f) => f.tag === '시간 가정'), '');
+  // 하루/턴 가정 덕에 rent(5/1)·weekend(토)가 40턴 안에 뜬다 — 죽은 이벤트 오탐 0
+  ck('★ 날짜 이벤트가 죽은 이벤트로 오탐되지 않는다',
+    !d.findings.some((f) => f.tag === '죽은 이벤트' && (f.text.includes("'rent'") || f.text.includes("'weekend'"))),
+    J(d.findings.filter((f) => f.tag === '죽은 이벤트').map((f) => f.text)));
+
+  // perTurn(구형)은 소비 배선만으로 하루가 간다 — 진단 가정 불필요
+  const pt = clone(BASE);
+  pt.time.advance = 'perTurn';
+  const d2 = diagnose(pt, { turns: 40, runs: 2, actionImpact: false });
+  ck('perTurn은 시간 가정 문구 없음', !d2.findings.some((f) => f.tag === '시간 가정'), '');
+  ck('perTurn도 날짜 이벤트 오탐 없음',
+    !d2.findings.some((f) => f.tag === '죽은 이벤트' && f.text.includes("'rent'")), '');
+}
+
+// ── 6. 패치 경계 — time 섹션은 왕복 패치 미지원 ───────────────
+{
+  const r = parsePatch(J({ patchVersion: 1, add: { time: { start: '2030-01-01' } } }));
+  ck('★ 패치로 time 섹션 못 만진다 (파싱 단계에서 미지원 안내)',
+    r.ok === false && r.errors.some((e) => e.includes('time') && e.includes('미지원')), J(r.errors));
+}
+
+// ── 7. 번들 — 편집기 시간 탭이 실려 있다 ─────────────────────
+{
+  ck('★ 번들: 시간 탭', src.includes("['time', '시간']") && src.includes('🕐 시간 체계 켜기'), '');
+  ck('번들: 진행 입구 생성 버튼', src.includes('진행 입구 만들기'), '');
+  ck('번들: 🌙 액션 추가 버튼', src.includes("'하루를 마친다' 액션 추가"), '');
+  ck('번들: 옛 날짜 변수 정리 마법사 연계', src.includes('옛 날짜 변수 정리'), '');
+  ck("번들: desc가 규칙의 자리라는 안내 (지시문은 메인 전용)", src.includes('보조 AI가 못 읽는다'), '');
+  ck('어댑터 버전 v0.49', src.includes('//@version 0.49'), '');
+}
+
+// ── 8. 전 템플릿 오탐 0 — time 없는 기존 봇은 진단이 안 바뀐다 ──
+{
+  let changed = 0;
+  for (const [key, t] of Object.entries(TEMPLATES)) {
+    if (t.schema.time) continue; // 아직 time 쓰는 템플릿 없음 — 생기면 별도 확인
+    const d = diagnose(t.schema, { turns: 30, runs: 2, actionImpact: false });
+    if (d.findings.some((f) => f.tag === '시간 가정')) changed++;
+  }
+  ck('★ time 없는 전 템플릿에 시간 가정 지적 0', changed === 0, String(changed));
+}
+
+let p = 0, f = 0;
+for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
+console.log(`\n${p} passed, ${f} failed`);
+process.exit(f ? 1 : 0);

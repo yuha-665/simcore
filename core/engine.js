@@ -15,6 +15,7 @@
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
+const { timeConfig, exposedValues, MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -51,6 +52,10 @@ function initState(schema) {
   for (const v of schema.vars) {
     vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
+  // 시간 체계(schema.time) — 내부 저장은 epoch(분) 정수 하나. 스키마 vars가 아니라
+  // 엔진 예약 키라 allow에 올릴 수 없고, 보조 AI가 날짜를 직접 만질 방법이 없다.
+  const tcfg = timeConfig(schema);
+  if (tcfg) vars[EPOCH_KEY] = tcfg.startEpoch;
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -104,6 +109,9 @@ function reconcileState(schema, state) {
   for (const v of schema.vars) {
     if (!(v.id in state.vars)) state.vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
+  // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
+  const tcfg = timeConfig(schema);
+  if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -165,8 +173,20 @@ function makeLookup(schema, vars) {
   const derivedById = Object.fromEntries((schema.derived || []).map((d) => [d.id, d]));
   const memo = {};
   const computing = new Set();
+  // 시간 노출 파생 (date/clock/weekday/…) — epoch 하나에서 전부 계산된다.
+  // epoch이 같은 동안 캐시 — applySets가 규칙마다 lookup을 새로 만들어도 값은 한 번만 계산.
+  const tcfg = timeConfig(schema);
+  let tEpoch, tVals = null;
+  const timeVal = (name) => {
+    if (!tcfg || !tcfg.expose.includes(name)) return undefined;
+    const e = vars[EPOCH_KEY];
+    if (tVals === null || e !== tEpoch) { tEpoch = e; tVals = exposedValues(tcfg, e); }
+    return tVals[name];
+  };
   const lookup = (name) => {
     if (name in vars) return vars[name];
+    const tv = timeVal(name);
+    if (tv !== undefined) return tv;
     const d = derivedById[name];
     if (!d) return undefined;
     if (name in memo) return memo[name];
@@ -298,6 +318,31 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
   }
 }
 
+// ── 시간 진행 소비 ──────────────────────────────────────────
+// skip_day/skip_min에 쌓인 진행량을 epoch에 굳히고 0으로 되돌린다.
+// 두 곳에서 부른다: 전송 단계(액션 효과 직후 — 🌙 버튼이 굳힌 하루가 이번 프롬프트의
+// 날짜에 바로 반영되어야 AI가 이튿날 아침을 쓴다)와 응답 단계(보조 델타 직후 —
+// 보조가 "이 장면에서 1시간 흘렀다"고 보고한 것은 다음 전송부터 반영되면 된다).
+// 양쪽 다 소비 후 0으로 리셋하므로 이중 계산은 없다.
+function consumeTimeSkips(schema, state, changeLog, { perTurnTick = false } = {}) {
+  const cfg = timeConfig(schema);
+  if (!cfg) return;
+  let addMin = 0;
+  const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
+  const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
+  // 음수는 안 센다 — 시간이 뒤로 가면 목록 기한(@숫자)이 전부 어긋난다
+  if (hasDay) addMin += Math.max(0, Number(state.vars[SKIP_DAY]) || 0) * MIN_PER_DAY;
+  if (hasMin) addMin += Math.max(0, Number(state.vars[SKIP_MIN]) || 0);
+  if (perTurnTick && cfg.advance === 'perTurn') addMin += MIN_PER_DAY; // 구 호환: 1턴 = 1일
+  if (addMin > 0) {
+    const from = state.vars[EPOCH_KEY];
+    state.vars[EPOCH_KEY] = from + addMin;
+    changeLog.push({ id: EPOCH_KEY, from, to: state.vars[EPOCH_KEY], source: 'time' });
+  }
+  if (hasDay && state.vars[SKIP_DAY] !== 0) state.vars[SKIP_DAY] = 0;
+  if (hasMin && state.vars[SKIP_MIN] !== 0) state.vars[SKIP_MIN] = 0;
+}
+
 // ── 판정 (checks) — "완벽 주사위" ────────────────────────────
 // 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 vars가 아니라 meta.lastCheck에
 // 남는다 — 보조 AI의 allow에 올릴 수 있는 형태가 아예 아니어서, 모델이 판정 결과를 고쳐 쓰는
@@ -388,6 +433,10 @@ function sendPhase(schema, prevState, { rng } = {}) {
       state.meta.actionLastUsed[action.id] = state.meta.turn;
     }
   }
+
+  // 1.5 시간 진행 소비 — 액션(🌙 하루를 마친다 등)이 굳힌 진행량을 지금 반영해야
+  // 아래 상태 블록의 날짜가 새 날로 나가고, AI가 이튿날 장면을 쓴다
+  consumeTimeSkips(schema, state, changeLog);
 
   // 2. 직전 턴 이벤트 통지 합류
   const notifies = state.meta.pendingNotifies.splice(0);
@@ -627,6 +676,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
+
+  // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
+  // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
+  consumeTimeSkips(schema, state, changeLog, { perTurnTick: true });
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -1131,7 +1184,7 @@ function parseAuxResponse(text) {
 }
 
 module.exports = {
-  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions,
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,

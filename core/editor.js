@@ -13,6 +13,7 @@ const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
 const { composeName, renderTag } = require('./assets');
+const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
 .sce { font-size: 13px; }
@@ -1651,7 +1652,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
     ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
-    ['actions', '액션'], ['checks', '판정'], ['setup', '새 시작'], ['ai', 'AI 설정'],
+    ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
   function emit() {
@@ -1796,7 +1797,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ui = schema.statusUI;
     const wrap = h('div');
     const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-                    ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`])];
+                    ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`]),
+                    // 시간 노출 파생 — 시간 체계가 켜져 있으면 날짜·시각도 상태창 항목이 된다
+                    ...(timeConfig(schema)?.expose ?? []).map((n) => [n, `${EXPOSED_LABELS[n]} (${n}, 시간)`])];
     wrap.appendChild(h('div', { class: 'sce-row' },
       // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
       // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
@@ -2490,6 +2493,149 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       });
       rerender();
     }));
+    return wrap;
+  }
+
+  // ── 탭: 시간 (설계: docs/design-시간.md) ──────────────────
+  // 봇들이 손으로 다시 만들던 day/clock_h/sim_* 계열을 대체한다. 내부는 분 단위 정수
+  // 하나(time_epoch)라 "정수 여러 개가 따로 노는" 날짜 사고가 구조적으로 안 난다.
+  const LEGACY_TIME_RE = /^(day|days|date|clock|clock_h|clock_m|hour|minute|week|weekday|month|year|season|time_of_day)$|^sim_(year|month|dom|day|season|week)/;
+
+  function tabTime() {
+    const wrap = h('div');
+    const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
+
+    if (!schema.time) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '날짜·시각을 시스템이 관리하게 한다. 요일·윤년·월별 일수·자릿수(07:05)는 엔진이 계산하고, '
+        + 'AI는 "며칠/몇 분 지났나"만 답한다 — 날짜 산술을 안 시킨다. '
+        + '켜면 date · clock · weekday · season · month · dom · hour · elapsed 같은 이름을 '
+        + '조건식({when})과 상태창({date})에서 변수처럼 바로 쓸 수 있다.'));
+      if (legacy.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          `이 봇에는 손으로 만든 날짜 변수가 있습니다 (${legacy.map((v) => v.id).join(', ')}) — `
+          + '켠 뒤 아래 정리 마법사로 걷어내면 노출 이름과의 충돌도 함께 풀립니다.'));
+      }
+      wrap.appendChild(addBtn('🕐 시간 체계 켜기', () => {
+        schema.time = { start: '2026-01-01 09:00', advance: 'explicit', format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const T = schema.time;
+    T.format = T.format || {};
+    const cfg = timeConfig(schema);
+
+    // 시작 시점 미리보기 — 포맷·달력·요일 설정이 실제로 어떻게 보일지 그 자리에서 확인
+    {
+      const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
+    }
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
+        { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
+      pair('진행', bindSelect(T.advance ?? 'explicit', [
+        ['explicit', '명시적 — 버튼·보고로만'], ['perTurn', '턴마다 하루 (구형)'],
+      ], (x) => { T.advance = x; rerender(); }),
+        '명시적: skip_day/skip_min에 쌓인 만큼만 흐른다. 턴마다 하루: 메시지 하나 = 하루 (장면 단위 RP를 부수므로 생존물 외 비권장)'),
+      pair('달력', bindSelect(T.calendar ?? 'gregorian', [
+        ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
+      ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
+        { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),
+      pair('시각 형식', bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
+        { cls: 'sce-w-m', ph: 'HH:mm' }), '토큰: HH H mm m — 예: "H시 m분". 자릿수는 형식이 책임진다 (07:05)'),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('요일', bindInput((T.weekdays || []).join(', '), (x) => {
+        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+        T.weekdays = a.length ? a : undefined; rerender();
+      }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일 (비우면 기본) — 첫 칸이 월요일' })),
+      pair('계절', bindInput((T.seasons || []).join(', '), (x) => {
+        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+        T.seasons = a.length ? a : undefined; rerender();
+      }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (비우면 기본)' })),
+    ));
+
+    // 노출 이름 — 체크한 것만 조건식·상태창에서 변수처럼 열린다
+    wrap.appendChild(h('h4', {}, '노출 이름 (조건식·상태창에서 변수처럼 쓴다)'));
+    const exposeRow = h('div', { class: 'sce-row' });
+    for (const n of EXPOSABLE) {
+      exposeRow.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
+        const cur = new Set(cfg.expose);
+        if (on) cur.add(n); else cur.delete(n);
+        T.expose = EXPOSABLE.filter((k) => cur.has(k));
+        rerender();
+      }, `${EXPOSED_LABELS[n]}(${n})`));
+    }
+    wrap.appendChild(exposeRow);
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '예: 이벤트 조건 `dom == 1`(매달 1일), `weekday == "토"`, `hour >= 22`. '
+      + '상태창 항목·템플릿에는 {date} {clock}처럼 꽂는다. 같은 이름의 변수가 있으면 검증이 알려 준다.'));
+
+    // 진행 입구 — explicit이면 skip 변수가 있어야 시간이 흐른다
+    if ((T.advance ?? 'explicit') === 'explicit') {
+      wrap.appendChild(h('h4', {}, '진행 입구'));
+      const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
+      const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
+      if (!hasDay && !hasMin) {
+        wrap.appendChild(h('div', { class: 'sce-warn' },
+          `⚠ ${SKIP_DAY}/${SKIP_MIN} 변수가 없어 시간이 흐를 입구가 없습니다.`));
+        wrap.appendChild(addBtn(`진행 입구 만들기 — ${SKIP_DAY}·${SKIP_MIN} 변수 + AI 허용`, () => {
+          schema.vars.push(
+            { id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
+              desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
+            { id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+              desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 식사·외출이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
+          );
+          schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 }, { id: SKIP_MIN, maxGain: 720 });
+          rerender();
+        }));
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '⚠ 진행 규칙은 변수의 "설명"(desc)에 산다 — 지시문(directives)은 메인 AI 전용이라 상태를 갱신하는 보조 AI가 못 읽는다.'));
+      } else {
+        wrap.appendChild(h('div', { class: 'sce-ok' },
+          `✓ 진행 입구: ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')} `
+          + '(엔진이 매 턴 소비 후 0으로 되돌린다)'));
+        const hasEndDay = (schema.actions || []).some((a) =>
+          (a.effects || []).some((f) => f.set === SKIP_DAY));
+        if (hasDay && !hasEndDay) {
+          wrap.appendChild(addBtn("🌙 '하루를 마친다' 액션 추가", () => {
+            schema.actions.push({
+              id: 'end_day', label: '🌙 하루를 마친다',
+              effects: [{ set: SKIP_DAY, expr: '1' }, ...(hasMin ? [{ set: SKIP_MIN, expr: '0' }] : [])],
+              inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
+            });
+            rerender();
+          }));
+        }
+      }
+    }
+
+    // 옛 날짜 변수 정리 — v0.45 정리 마법사 재사용 (참조까지 함께 걷는다)
+    if (legacy.length) {
+      wrap.appendChild(h('h4', {}, '옛 날짜 변수 정리'));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        `손으로 만든 날짜 변수가 남아 있습니다: ${legacy.map((v) => `${v.id}(${v.label ?? ''})`).join(', ')} — `
+        + '시간 체계와 겹치면 노출 이름 충돌이 나고, 안 겹쳐도 두 시계가 따로 돕니다.'));
+      wrap.appendChild(addBtn('🧹 정리 마법사로 한꺼번에 지우기 (변수 탭에서 확인 후 적용)', () => {
+        const ids = legacy.map((v) => v.id);
+        const plan = planVarPurge(schema, ids);
+        purge = { id: ids[0], label: ids.join(', '), plan };
+        activeTab = 'vars';
+        rerender();
+      }));
+    }
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기'),
+      h('span', { class: 'sce-hint' }, '꺼도 세이브의 time_epoch는 그대로 남는다 — 다시 켜면 이어진다.'),
+    ));
     return wrap;
   }
 
@@ -3958,7 +4104,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function deepBody() {
     return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+      checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 
   // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)

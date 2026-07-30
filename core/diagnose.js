@@ -6,6 +6,7 @@
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
+const { timeConfig, MIN_PER_DAY, EPOCH_KEY } = require('./time');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -168,9 +169,22 @@ function diagnose(schema, opts = {}) {
     }
   }
 
+  // 시간 체계(explicit) 봇 — 시뮬에는 보조 AI가 없어 skip_day가 영영 0이고, 그대로 두면
+  // 월세(dom == 1)·계절 이벤트가 전부 "죽은 이벤트"로 오탐된다 (설계 문서의 가장 중요한 함정).
+  // 그래서 진단은 **턴마다 하루**가 지난다고 가정하고 굴린다.
+  const TCFG = timeConfig(schema);
+  if (TCFG && TCFG.advance === 'explicit') {
+    stats.timeAssumed = '1일/턴';
+    add('low', '시간 가정',
+      '시간 진행이 명시적(explicit)이라 시뮬레이션에서는 시간이 저절로 안 흐릅니다 — '
+      + '이 진단은 턴마다 하루가 지난다고 가정하고 굴렸습니다. 실제 플레이 속도가 다르면 '
+      + '날짜 조건 이벤트의 발동 시점도 그만큼 다릅니다.', null);
+  }
+
   // ── 2. 실제로 굴린다 ──
   const obs = {};                          // id → {min,max}  (vars + derived 전부)
-  const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id)];
+  const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id),
+    ...(TCFG ? TCFG.expose : [])];
   const note = (id, n) => {
     if (typeof n !== 'number' || !isFinite(n)) return;
     const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
@@ -208,6 +222,10 @@ function diagnose(schema, opts = {}) {
       st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
       const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
       st = o.state;
+      // 명시적 시간 진행의 하루/턴 가정 — outputPhase 뒤에 굳혀야 다음 턴의 이벤트가 새 날짜를 본다
+      if (TCFG && TCFG.advance === 'explicit') {
+        st.vars[EPOCH_KEY] = (typeof st.vars[EPOCH_KEY] === 'number' ? st.vars[EPOCH_KEY] : TCFG.startEpoch) + MIN_PER_DAY;
+      }
       for (const id of o.firedEvents) fired[id] = (fired[id] || 0) + 1;
       if (!opts.quiet) {
         const look = engine.makeLookup(schema, st.vars);

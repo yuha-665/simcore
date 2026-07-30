@@ -3,6 +3,7 @@
 
 const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
+const { exposedDefs } = require('./time');
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -241,8 +242,9 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state) };
-  // 파생 변수도 포함 (표시 이름·포맷 조회용)
-  const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
+  // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
+  const varById = Object.fromEntries(
+    [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let inner = '';
 
@@ -501,7 +503,7 @@ function layoutCss(ui) {
 function multiPanelTemplate(schema, kind = 'tabs') {
   const ui = schema?.statusUI || {};
   const varById = Object.fromEntries(
-    [...(schema?.vars || []), ...(schema?.derived || [])].map((v) => [v.id, v]));
+    [...(schema?.vars || []), ...(schema?.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let panes = (ui.groups || [])
     .filter((g) => (g.visibility ?? 'show') !== 'hidden')

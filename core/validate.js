@@ -1,6 +1,7 @@
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -88,6 +89,10 @@ function validateSchema(schema) {
   // ── derived ──
   const derived = Array.isArray(schema.derived) ? schema.derived : [];
   const allIds = new Set(ids);
+  // 시간 노출 파생(date/clock/…)은 조건식·템플릿에서 변수처럼 쓰인다 —
+  // 파생·규칙 검사보다 먼저 이름을 등록해야 `hour >= 22` 같은 식이 통과한다.
+  const tcfg = timeConfig(schema);
+  if (tcfg) for (const n of tcfg.expose) allIds.add(n);
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -97,6 +102,64 @@ function validateSchema(schema) {
     if (codebookDigits(d.label) >= 3) {
       warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `
         + `조건식으로 "겨울"·"봄" 같은 문자열을 돌려주게 바꾸면 화면에 숫자 대신 낱말이 뜹니다`);
+    }
+  }
+
+  // ── time (시간 체계 — 설계: docs/design-시간.md) ──
+  if (schema.time != null) {
+    const T = schema.time;
+    if (typeof T !== 'object' || Array.isArray(T)) err('$.time', 'time은 객체여야 함');
+    else {
+      const calendar = T.calendar ?? 'gregorian';
+      if (!['gregorian', 'flat30'].includes(calendar))
+        err('$.time.calendar', `calendar는 gregorian(실제 달력) | flat30(한 달 30일 × 12달) (현재: '${T.calendar}')`);
+      if (T.start == null) err('$.time.start', 'start 필요 — "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"');
+      else if (!parseStart(T.start, calendar === 'flat30' ? 'flat30' : 'gregorian'))
+        err('$.time.start', `'${T.start}'를 시작 시점으로 읽을 수 없음 — "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 함`);
+      if (T.advance != null && !['explicit', 'perTurn'].includes(T.advance))
+        err('$.time.advance', `advance는 explicit(명시적 진행만) | perTurn(턴마다 하루) (현재: '${T.advance}')`);
+      if (T.format != null) {
+        if (typeof T.format !== 'object' || Array.isArray(T.format)) err('$.time.format', 'format은 객체 — { date, clock }');
+        else {
+          if (T.format.date != null && (typeof T.format.date !== 'string' || !/YYYY|YY|MM|M|DD|D/.test(T.format.date)))
+            err('$.time.format.date', `날짜 형식에 YYYY/YY/MM/M/DD/D 토큰이 하나도 없음 (현재: '${T.format.date}')`);
+          if (T.format.clock != null && (typeof T.format.clock !== 'string' || !/HH|H|mm|m/.test(T.format.clock)))
+            err('$.time.format.clock', `시각 형식에 HH/H/mm/m 토큰이 하나도 없음 (현재: '${T.format.clock}')`);
+        }
+      }
+      if (T.weekdays != null && (!Array.isArray(T.weekdays) || T.weekdays.length !== 7
+          || T.weekdays.some((w) => typeof w !== 'string' || !w.trim())))
+        err('$.time.weekdays', '요일은 7개짜리 문자열 배열이어야 함 — 첫 칸이 월요일');
+      if (T.seasons != null && (!Array.isArray(T.seasons) || T.seasons.length !== 4
+          || T.seasons.some((s) => typeof s !== 'string' || !s.trim())))
+        err('$.time.seasons', '계절은 4개짜리 문자열 배열이어야 함 — 봄·여름·가을·겨울 순');
+      if (T.expose != null) {
+        if (!Array.isArray(T.expose)) err('$.time.expose', 'expose는 이름 배열이어야 함');
+        else for (const n of T.expose) {
+          if (!EXPOSABLE.includes(n))
+            err('$.time.expose', `'${n}'은 노출 가능한 이름이 아님 — 가능: ${EXPOSABLE.join(', ')}`);
+        }
+      }
+      // 이름 충돌 — 노출 파생은 변수처럼 쓰이므로 같은 이름의 변수가 있으면 어느 쪽인지 알 수 없다
+      if (tcfg) {
+        for (const n of tcfg.expose) {
+          if (ids.has(n))
+            err('$.time.expose', `노출 이름 '${n}'이 변수와 겹칩니다 — 변수를 지우거나(정리 마법사) expose에서 빼세요`);
+        }
+      }
+      if (ids.has(EPOCH_KEY))
+        err('$.vars', `'${EPOCH_KEY}'는 시간 체계가 쓰는 예약 키입니다 — 변수 id를 바꾸세요`);
+      // 진행 입구 — explicit인데 skip 변수가 하나도 없으면 시간이 영영 안 흐른다
+      const skipDefs = vars.filter((v) => v.id === SKIP_DAY || v.id === SKIP_MIN);
+      if ((T.advance ?? 'explicit') === 'explicit' && !skipDefs.length)
+        warn('$.time', `advance가 explicit인데 ${SKIP_DAY}/${SKIP_MIN} 변수가 없습니다 — 시간을 진행할 입구가 없어 `
+          + '날짜가 영영 멈춥니다. int 변수를 만들어 allow에 올리거나(보조가 보고) 액션 효과로 굳히세요');
+      for (const sv of skipDefs) {
+        if (sv.type !== 'int')
+          err(`$.vars`, `'${sv.id}'는 시간 진행 입구라 int여야 합니다 (현재: ${sv.type}) — 엔진이 매 턴 소비 후 0으로 되돌립니다`);
+        else if (sv.min == null || sv.min < 0)
+          warn('$.vars', `'${sv.id}'에 min: 0을 권합니다 — 음수 진행은 무시되지만 화면에는 음수가 남습니다`);
+      }
     }
   }
 

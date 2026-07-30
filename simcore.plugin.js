@@ -1,13 +1,30 @@
 //@name simcore
 //@api 3.0
-//@version 0.48.1
-//@display-name SimCore (시뮬 엔진) v0.48 에셋 팩
+//@version 0.49.0
+//@display-name SimCore (시뮬 엔진) v0.49 시간 체계
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.49.0 ────────────────────────────────────────────────
+// 시간·날짜 1급 지원 (core/time.js, 설계 docs/design-시간.md — 선라이즈 맨션 실전에서
+// "아웃풋마다 날짜가 튄다" 제보로 시작). 스키마 `time` 섹션 옵트인, 없으면 아무 변화 없음.
+// - [내부 정수 하나] 세이브의 vars.time_epoch(분 단위, 엔진 예약 키) 하나만 저장 —
+//   day/clock_h/clock_m/sim_* 정수 여러 개가 따로 놀던 사고가 구조적으로 안 난다.
+// - [노출 파생] date/clock/weekday/season/year/month/dom/hour/minute/elapsed —
+//   조건식(`dom == 1`, `weekday == "토"`)·상태창({date})에서 변수처럼. 요일·윤년·월별
+//   일수·자릿수(07:05)는 엔진이 계산. calendar: gregorian | flat30(판타지 360일).
+// - [진행은 양으로] skip_day(일)·skip_min(분)을 엔진이 매 턴 소비 → epoch에 굳히고 0으로.
+//   일·분 분리라 AI에게 날짜 산술(3일=4320분)을 안 시킨다. 전송 단계(🌙 버튼)와
+//   응답 단계(보조 보고) 양쪽에서 소비 — 버튼으로 넘긴 하루는 그 턴의 프롬프트에 바로 반영.
+// - [진단 오탐 방지] explicit 진행이면 시뮬에 시간이 안 흘러 날짜 이벤트가 전부 죽은
+//   이벤트로 오탐된다 → 진단이 턴마다 하루를 가정하고 굴리고, 가정 사실을 리포트에 명시.
+// - [편집기 시간 탭] 켜기/끄기·시작 시점 미리보기·포맷·요일/계절·노출 체크박스·
+//   진행 입구 생성(skip 변수+allow)·🌙 액션 추가·옛 날짜 변수 정리(정리 마법사 연계).
+// - [패치 경계] time 섹션은 왕복 패치 미지원(UNSUPPORTED) — 편집기·JSON에서만.
 //
 // ── v0.48.1 ────────────────────────────────────────────────
 // 🎨 에셋 작업영역 신설 (3단계 편집기 UI, 유저 제안: "사이드바에 아예 에셋 작업영역을") —
@@ -1097,10 +1114,228 @@ module.exports = { SnapshotStore, MapBackend, mapLimited };
 
 });
 
+SimCore.define("time", function (require, module, exports) {
+// 시간·날짜 1급 지원 — epoch(분)↔달력 순수 함수 + 포맷터 (설계: docs/design-시간.md)
+//
+// 원칙: 내부는 정수 하나(분 단위 epoch), 표시는 포맷이 책임진다. 달력 산술(윤년·월별
+// 일수·요일)은 전부 여기서 한다 — AI에게도, 제작자의 파생식에게도 날짜 계산을 안 시킨다.
+//
+// epoch 기준: 그레고리력은 1970-01-01 00:00 = 0 (그 전은 음수).
+// flat30(판타지 달력: 한 달 30일 × 12달 = 360일)은 0001-01-01 00:00 = 0.
+// 저장은 세이브의 vars.time_epoch 한 칸 — 스키마 vars가 아니라 엔진이 관리하는 예약 키다.
+
+const MIN_PER_DAY = 1440;
+
+// 스키마에 안 적었을 때의 기본값들 — 검증·엔진·편집기가 같은 것을 봐야 어긋나지 않는다
+const DEFAULT_WEEKDAYS = ['월', '화', '수', '목', '금', '토', '일']; // [0] = 월요일 고정
+const DEFAULT_SEASONS = ['봄', '여름', '가을', '겨울'];              // 3~5월 / 6~8 / 9~11 / 12~2
+const DEFAULT_DATE_FMT = 'YYYY-MM-DD';
+const DEFAULT_CLOCK_FMT = 'HH:mm';
+const DEFAULT_EXPOSE = ['date', 'clock', 'weekday', 'season', 'month', 'dom', 'hour', 'minute', 'elapsed'];
+const EXPOSABLE = ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'hour', 'minute', 'elapsed'];
+
+// 진행 입구 — 이 이름의 int 변수가 있으면 엔진이 매 턴 소비한다 (설계 §진행 — 두 입구)
+const SKIP_DAY = 'skip_day';
+const SKIP_MIN = 'skip_min';
+const EPOCH_KEY = 'time_epoch';
+
+// ── 달력 산술 (그레고리력: Howard Hinnant civil-from-days, 음수 안전) ──
+
+function daysFromCivil(y, m, d) {
+  y -= m <= 2 ? 1 : 0;
+  const era = Math.floor(y / 400);
+  const yoe = y - era * 400;
+  const doy = Math.floor((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return era * 146097 + doe - 719468;
+}
+
+function civilFromDays(z) {
+  z += 719468;
+  const era = Math.floor(z / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor((doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365);
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp + (mp < 10 ? 3 : -9);
+  return { y: yoe + era * 400 + (m <= 2 ? 1 : 0), m, d };
+}
+
+function isLeap(y) {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function daysInMonth(y, m, calendar) {
+  if (calendar === 'flat30') return 30;
+  return [31, isLeap(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+}
+
+// ── 시작 시점 파싱 ──────────────────────────────────────────
+
+/**
+ * "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" → { y, m, d, h, mi } / 형식이 틀리면 null.
+ * 시각을 안 적으면 00:00. 존재하지 않는 날짜(2월 30일 등)도 null — 검증이 그대로 알려 준다.
+ */
+function parseStart(str, calendar = 'gregorian') {
+  const m = String(str ?? '').trim()
+    .match(/^(\d{1,4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?$/);
+  if (!m) return null;
+  const [, ys, ms, ds, hs, mis] = m;
+  const y = Number(ys), mo = Number(ms), d = Number(ds);
+  const h = hs != null ? Number(hs) : 0, mi = mis != null ? Number(mis) : 0;
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1 || d > daysInMonth(y, mo, calendar)) return null;
+  if (h > 23 || mi > 59) return null;
+  return { y, m: mo, d, h, mi };
+}
+
+/** 달력 성분 → epoch 분 */
+function epochFrom(parts, calendar = 'gregorian') {
+  const days = calendar === 'flat30'
+    ? (parts.y - 1) * 360 + (parts.m - 1) * 30 + (parts.d - 1)
+    : daysFromCivil(parts.y, parts.m, parts.d);
+  return days * MIN_PER_DAY + parts.h * 60 + parts.mi;
+}
+
+/** epoch 분 → 달력 성분 { y, m, d, h, mi, wd } (wd: 0=월 … 6=일) */
+function calendarOf(epoch, calendar = 'gregorian') {
+  const days = Math.floor(epoch / MIN_PER_DAY);
+  const rem = epoch - days * MIN_PER_DAY; // floor라 음수 epoch에서도 0~1439
+  let y, m, d;
+  if (calendar === 'flat30') {
+    const yd = Math.floor(days / 360);
+    const doy = days - yd * 360;
+    y = yd + 1; m = Math.floor(doy / 30) + 1; d = (doy % 30) + 1;
+  } else {
+    ({ y, m, d } = civilFromDays(days));
+  }
+  // 1970-01-01은 목요일 — 월요일 기준 인덱스로 3. flat30은 0001-01-01을 월요일로 친다.
+  const wd = calendar === 'flat30'
+    ? ((days % 7) + 7) % 7
+    : ((days % 7) + 7 + 3) % 7;
+  return { y, m, d, h: Math.floor(rem / 60), mi: rem % 60, wd };
+}
+
+// ── 포맷터 — 자릿수는 여기가 책임진다 (fmtNum의 콤마와 무관) ──
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+const DATE_TOKEN = /YYYY|YY|MM|M|DD|D/g;
+const CLOCK_TOKEN = /HH|H|mm|m/g;
+
+function formatDate(fmt, cal) {
+  return String(fmt).replace(DATE_TOKEN, (t) => {
+    switch (t) {
+      case 'YYYY': return String(cal.y).padStart(4, '0');
+      case 'YY': return pad2(((cal.y % 100) + 100) % 100);
+      case 'MM': return pad2(cal.m);
+      case 'M': return String(cal.m);
+      case 'DD': return pad2(cal.d);
+      case 'D': return String(cal.d);
+    }
+    return t;
+  });
+}
+
+function formatClock(fmt, cal) {
+  return String(fmt).replace(CLOCK_TOKEN, (t) => {
+    switch (t) {
+      case 'HH': return pad2(cal.h);
+      case 'H': return String(cal.h);
+      case 'mm': return pad2(cal.mi);
+      case 'm': return String(cal.mi);
+    }
+    return t;
+  });
+}
+
+// ── 스키마 time 섹션 해석 ───────────────────────────────────
+
+/** 스키마의 time 섹션을 기본값 채워 돌려준다. time이 없으면 null — 아무것도 안 바뀐다. */
+function timeConfig(schema) {
+  const t = schema?.time;
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return null;
+  const calendar = t.calendar === 'flat30' ? 'flat30' : 'gregorian';
+  const parts = parseStart(t.start, calendar) ?? { y: 2026, m: 1, d: 1, h: 9, mi: 0 };
+  return {
+    calendar,
+    start: parts,
+    startEpoch: epochFrom(parts, calendar),
+    advance: t.advance === 'perTurn' ? 'perTurn' : 'explicit',
+    dateFmt: typeof t.format?.date === 'string' ? t.format.date : DEFAULT_DATE_FMT,
+    clockFmt: typeof t.format?.clock === 'string' ? t.format.clock : DEFAULT_CLOCK_FMT,
+    weekdays: Array.isArray(t.weekdays) && t.weekdays.length === 7 ? t.weekdays.map(String) : DEFAULT_WEEKDAYS,
+    seasons: Array.isArray(t.seasons) && t.seasons.length === 4 ? t.seasons.map(String) : DEFAULT_SEASONS,
+    expose: Array.isArray(t.expose)
+      ? t.expose.filter((n) => EXPOSABLE.includes(n))
+      : DEFAULT_EXPOSE,
+  };
+}
+
+/** 월 → 계절 인덱스 (0봄 1여름 2가을 3겨울) */
+function seasonIndex(month) {
+  if (month >= 3 && month <= 5) return 0;
+  if (month >= 6 && month <= 8) return 1;
+  if (month >= 9 && month <= 11) return 2;
+  return 3;
+}
+
+/**
+ * 노출 파생 전부 계산 — makeLookup·상태창·진단이 같은 것을 본다.
+ * @param cfg timeConfig() 결과
+ * @param epoch 현재 epoch 분 (vars.time_epoch)
+ */
+function exposedValues(cfg, epoch) {
+  const e = typeof epoch === 'number' && isFinite(epoch) ? epoch : cfg.startEpoch;
+  const cal = calendarOf(e, cfg.calendar);
+  const all = {
+    date: formatDate(cfg.dateFmt, cal),
+    clock: formatClock(cfg.clockFmt, cal),
+    weekday: cfg.weekdays[cal.wd],
+    season: cfg.seasons[seasonIndex(cal.m)],
+    year: cal.y,
+    month: cal.m,
+    dom: cal.d,
+    hour: cal.h,
+    minute: cal.mi,
+    elapsed: Math.floor(e / MIN_PER_DAY) - Math.floor(cfg.startEpoch / MIN_PER_DAY),
+  };
+  const out = {};
+  for (const n of cfg.expose) out[n] = all[n];
+  return out;
+}
+
+/** 상태창·편집기용 노출 파생 의사 정의 — label과 type만 있으면 렌더러가 나머지를 안다 */
+const EXPOSED_LABELS = {
+  date: '날짜', clock: '시각', weekday: '요일', season: '계절', year: '연도',
+  month: '월', dom: '일', hour: '시', minute: '분', elapsed: '경과일',
+};
+
+function exposedDefs(schema) {
+  const cfg = timeConfig(schema);
+  if (!cfg) return [];
+  return cfg.expose.map((n) => ({
+    id: n,
+    label: EXPOSED_LABELS[n] ?? n,
+    type: ['date', 'clock', 'weekday', 'season'].includes(n) ? 'text' : 'int',
+  }));
+}
+
+module.exports = {
+  MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
+  DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS,
+  parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex,
+  formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
+};
+
+});
+
 SimCore.define("validate", function (require, module, exports) {
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -1188,6 +1423,10 @@ function validateSchema(schema) {
   // ── derived ──
   const derived = Array.isArray(schema.derived) ? schema.derived : [];
   const allIds = new Set(ids);
+  // 시간 노출 파생(date/clock/…)은 조건식·템플릿에서 변수처럼 쓰인다 —
+  // 파생·규칙 검사보다 먼저 이름을 등록해야 `hour >= 22` 같은 식이 통과한다.
+  const tcfg = timeConfig(schema);
+  if (tcfg) for (const n of tcfg.expose) allIds.add(n);
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -1197,6 +1436,64 @@ function validateSchema(schema) {
     if (codebookDigits(d.label) >= 3) {
       warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `
         + `조건식으로 "겨울"·"봄" 같은 문자열을 돌려주게 바꾸면 화면에 숫자 대신 낱말이 뜹니다`);
+    }
+  }
+
+  // ── time (시간 체계 — 설계: docs/design-시간.md) ──
+  if (schema.time != null) {
+    const T = schema.time;
+    if (typeof T !== 'object' || Array.isArray(T)) err('$.time', 'time은 객체여야 함');
+    else {
+      const calendar = T.calendar ?? 'gregorian';
+      if (!['gregorian', 'flat30'].includes(calendar))
+        err('$.time.calendar', `calendar는 gregorian(실제 달력) | flat30(한 달 30일 × 12달) (현재: '${T.calendar}')`);
+      if (T.start == null) err('$.time.start', 'start 필요 — "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"');
+      else if (!parseStart(T.start, calendar === 'flat30' ? 'flat30' : 'gregorian'))
+        err('$.time.start', `'${T.start}'를 시작 시점으로 읽을 수 없음 — "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 함`);
+      if (T.advance != null && !['explicit', 'perTurn'].includes(T.advance))
+        err('$.time.advance', `advance는 explicit(명시적 진행만) | perTurn(턴마다 하루) (현재: '${T.advance}')`);
+      if (T.format != null) {
+        if (typeof T.format !== 'object' || Array.isArray(T.format)) err('$.time.format', 'format은 객체 — { date, clock }');
+        else {
+          if (T.format.date != null && (typeof T.format.date !== 'string' || !/YYYY|YY|MM|M|DD|D/.test(T.format.date)))
+            err('$.time.format.date', `날짜 형식에 YYYY/YY/MM/M/DD/D 토큰이 하나도 없음 (현재: '${T.format.date}')`);
+          if (T.format.clock != null && (typeof T.format.clock !== 'string' || !/HH|H|mm|m/.test(T.format.clock)))
+            err('$.time.format.clock', `시각 형식에 HH/H/mm/m 토큰이 하나도 없음 (현재: '${T.format.clock}')`);
+        }
+      }
+      if (T.weekdays != null && (!Array.isArray(T.weekdays) || T.weekdays.length !== 7
+          || T.weekdays.some((w) => typeof w !== 'string' || !w.trim())))
+        err('$.time.weekdays', '요일은 7개짜리 문자열 배열이어야 함 — 첫 칸이 월요일');
+      if (T.seasons != null && (!Array.isArray(T.seasons) || T.seasons.length !== 4
+          || T.seasons.some((s) => typeof s !== 'string' || !s.trim())))
+        err('$.time.seasons', '계절은 4개짜리 문자열 배열이어야 함 — 봄·여름·가을·겨울 순');
+      if (T.expose != null) {
+        if (!Array.isArray(T.expose)) err('$.time.expose', 'expose는 이름 배열이어야 함');
+        else for (const n of T.expose) {
+          if (!EXPOSABLE.includes(n))
+            err('$.time.expose', `'${n}'은 노출 가능한 이름이 아님 — 가능: ${EXPOSABLE.join(', ')}`);
+        }
+      }
+      // 이름 충돌 — 노출 파생은 변수처럼 쓰이므로 같은 이름의 변수가 있으면 어느 쪽인지 알 수 없다
+      if (tcfg) {
+        for (const n of tcfg.expose) {
+          if (ids.has(n))
+            err('$.time.expose', `노출 이름 '${n}'이 변수와 겹칩니다 — 변수를 지우거나(정리 마법사) expose에서 빼세요`);
+        }
+      }
+      if (ids.has(EPOCH_KEY))
+        err('$.vars', `'${EPOCH_KEY}'는 시간 체계가 쓰는 예약 키입니다 — 변수 id를 바꾸세요`);
+      // 진행 입구 — explicit인데 skip 변수가 하나도 없으면 시간이 영영 안 흐른다
+      const skipDefs = vars.filter((v) => v.id === SKIP_DAY || v.id === SKIP_MIN);
+      if ((T.advance ?? 'explicit') === 'explicit' && !skipDefs.length)
+        warn('$.time', `advance가 explicit인데 ${SKIP_DAY}/${SKIP_MIN} 변수가 없습니다 — 시간을 진행할 입구가 없어 `
+          + '날짜가 영영 멈춥니다. int 변수를 만들어 allow에 올리거나(보조가 보고) 액션 효과로 굳히세요');
+      for (const sv of skipDefs) {
+        if (sv.type !== 'int')
+          err(`$.vars`, `'${sv.id}'는 시간 진행 입구라 int여야 합니다 (현재: ${sv.type}) — 엔진이 매 턴 소비 후 0으로 되돌립니다`);
+        else if (sv.min == null || sv.min < 0)
+          warn('$.vars', `'${sv.id}'에 min: 0을 권합니다 — 음수 진행은 무시되지만 화면에는 음수가 남습니다`);
+      }
     }
   }
 
@@ -1914,7 +2211,7 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore']);
+const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time']);
 
 function getList(schema, key) {
   switch (key) {
@@ -2332,6 +2629,7 @@ SimCore.define("engine", function (require, module, exports) {
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
+const { timeConfig, exposedValues, MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -2368,6 +2666,10 @@ function initState(schema) {
   for (const v of schema.vars) {
     vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
+  // 시간 체계(schema.time) — 내부 저장은 epoch(분) 정수 하나. 스키마 vars가 아니라
+  // 엔진 예약 키라 allow에 올릴 수 없고, 보조 AI가 날짜를 직접 만질 방법이 없다.
+  const tcfg = timeConfig(schema);
+  if (tcfg) vars[EPOCH_KEY] = tcfg.startEpoch;
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -2421,6 +2723,9 @@ function reconcileState(schema, state) {
   for (const v of schema.vars) {
     if (!(v.id in state.vars)) state.vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
+  // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
+  const tcfg = timeConfig(schema);
+  if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -2482,8 +2787,20 @@ function makeLookup(schema, vars) {
   const derivedById = Object.fromEntries((schema.derived || []).map((d) => [d.id, d]));
   const memo = {};
   const computing = new Set();
+  // 시간 노출 파생 (date/clock/weekday/…) — epoch 하나에서 전부 계산된다.
+  // epoch이 같은 동안 캐시 — applySets가 규칙마다 lookup을 새로 만들어도 값은 한 번만 계산.
+  const tcfg = timeConfig(schema);
+  let tEpoch, tVals = null;
+  const timeVal = (name) => {
+    if (!tcfg || !tcfg.expose.includes(name)) return undefined;
+    const e = vars[EPOCH_KEY];
+    if (tVals === null || e !== tEpoch) { tEpoch = e; tVals = exposedValues(tcfg, e); }
+    return tVals[name];
+  };
   const lookup = (name) => {
     if (name in vars) return vars[name];
+    const tv = timeVal(name);
+    if (tv !== undefined) return tv;
     const d = derivedById[name];
     if (!d) return undefined;
     if (name in memo) return memo[name];
@@ -2615,6 +2932,31 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
   }
 }
 
+// ── 시간 진행 소비 ──────────────────────────────────────────
+// skip_day/skip_min에 쌓인 진행량을 epoch에 굳히고 0으로 되돌린다.
+// 두 곳에서 부른다: 전송 단계(액션 효과 직후 — 🌙 버튼이 굳힌 하루가 이번 프롬프트의
+// 날짜에 바로 반영되어야 AI가 이튿날 아침을 쓴다)와 응답 단계(보조 델타 직후 —
+// 보조가 "이 장면에서 1시간 흘렀다"고 보고한 것은 다음 전송부터 반영되면 된다).
+// 양쪽 다 소비 후 0으로 리셋하므로 이중 계산은 없다.
+function consumeTimeSkips(schema, state, changeLog, { perTurnTick = false } = {}) {
+  const cfg = timeConfig(schema);
+  if (!cfg) return;
+  let addMin = 0;
+  const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
+  const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
+  // 음수는 안 센다 — 시간이 뒤로 가면 목록 기한(@숫자)이 전부 어긋난다
+  if (hasDay) addMin += Math.max(0, Number(state.vars[SKIP_DAY]) || 0) * MIN_PER_DAY;
+  if (hasMin) addMin += Math.max(0, Number(state.vars[SKIP_MIN]) || 0);
+  if (perTurnTick && cfg.advance === 'perTurn') addMin += MIN_PER_DAY; // 구 호환: 1턴 = 1일
+  if (addMin > 0) {
+    const from = state.vars[EPOCH_KEY];
+    state.vars[EPOCH_KEY] = from + addMin;
+    changeLog.push({ id: EPOCH_KEY, from, to: state.vars[EPOCH_KEY], source: 'time' });
+  }
+  if (hasDay && state.vars[SKIP_DAY] !== 0) state.vars[SKIP_DAY] = 0;
+  if (hasMin && state.vars[SKIP_MIN] !== 0) state.vars[SKIP_MIN] = 0;
+}
+
 // ── 판정 (checks) — "완벽 주사위" ────────────────────────────
 // 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 vars가 아니라 meta.lastCheck에
 // 남는다 — 보조 AI의 allow에 올릴 수 있는 형태가 아예 아니어서, 모델이 판정 결과를 고쳐 쓰는
@@ -2705,6 +3047,10 @@ function sendPhase(schema, prevState, { rng } = {}) {
       state.meta.actionLastUsed[action.id] = state.meta.turn;
     }
   }
+
+  // 1.5 시간 진행 소비 — 액션(🌙 하루를 마친다 등)이 굳힌 진행량을 지금 반영해야
+  // 아래 상태 블록의 날짜가 새 날로 나가고, AI가 이튿날 장면을 쓴다
+  consumeTimeSkips(schema, state, changeLog);
 
   // 2. 직전 턴 이벤트 통지 합류
   const notifies = state.meta.pendingNotifies.splice(0);
@@ -2944,6 +3290,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
+
+  // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
+  // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
+  consumeTimeSkips(schema, state, changeLog, { perTurnTick: true });
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -3448,7 +3798,7 @@ function parseAuxResponse(text) {
 }
 
 module.exports = {
-  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions,
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
@@ -3463,6 +3813,7 @@ SimCore.define("render", function (require, module, exports) {
 
 const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
+const { exposedDefs } = require('./time');
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -3701,8 +4052,9 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state) };
-  // 파생 변수도 포함 (표시 이름·포맷 조회용)
-  const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
+  // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
+  const varById = Object.fromEntries(
+    [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let inner = '';
 
@@ -3961,7 +4313,7 @@ function layoutCss(ui) {
 function multiPanelTemplate(schema, kind = 'tabs') {
   const ui = schema?.statusUI || {};
   const varById = Object.fromEntries(
-    [...(schema?.vars || []), ...(schema?.derived || [])].map((v) => [v.id, v]));
+    [...(schema?.vars || []), ...(schema?.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
 
   let panes = (ui.groups || [])
     .filter((g) => (g.visibility ?? 'show') !== 'hidden')
@@ -4325,6 +4677,7 @@ SimCore.define("diagnose", function (require, module, exports) {
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
+const { timeConfig, MIN_PER_DAY, EPOCH_KEY } = require('./time');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -4487,9 +4840,22 @@ function diagnose(schema, opts = {}) {
     }
   }
 
+  // 시간 체계(explicit) 봇 — 시뮬에는 보조 AI가 없어 skip_day가 영영 0이고, 그대로 두면
+  // 월세(dom == 1)·계절 이벤트가 전부 "죽은 이벤트"로 오탐된다 (설계 문서의 가장 중요한 함정).
+  // 그래서 진단은 **턴마다 하루**가 지난다고 가정하고 굴린다.
+  const TCFG = timeConfig(schema);
+  if (TCFG && TCFG.advance === 'explicit') {
+    stats.timeAssumed = '1일/턴';
+    add('low', '시간 가정',
+      '시간 진행이 명시적(explicit)이라 시뮬레이션에서는 시간이 저절로 안 흐릅니다 — '
+      + '이 진단은 턴마다 하루가 지난다고 가정하고 굴렸습니다. 실제 플레이 속도가 다르면 '
+      + '날짜 조건 이벤트의 발동 시점도 그만큼 다릅니다.', null);
+  }
+
   // ── 2. 실제로 굴린다 ──
   const obs = {};                          // id → {min,max}  (vars + derived 전부)
-  const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id)];
+  const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id),
+    ...(TCFG ? TCFG.expose : [])];
   const note = (id, n) => {
     if (typeof n !== 'number' || !isFinite(n)) return;
     const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
@@ -4527,6 +4893,10 @@ function diagnose(schema, opts = {}) {
       st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
       const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
       st = o.state;
+      // 명시적 시간 진행의 하루/턴 가정 — outputPhase 뒤에 굳혀야 다음 턴의 이벤트가 새 날짜를 본다
+      if (TCFG && TCFG.advance === 'explicit') {
+        st.vars[EPOCH_KEY] = (typeof st.vars[EPOCH_KEY] === 'number' ? st.vars[EPOCH_KEY] : TCFG.startEpoch) + MIN_PER_DAY;
+      }
       for (const id of o.firedEvents) fired[id] = (fired[id] || 0) + 1;
       if (!opts.quiet) {
         const look = engine.makeLookup(schema, st.vars);
@@ -5078,6 +5448,7 @@ const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
 const { composeName, renderTag } = require('./assets');
+const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
 .sce { font-size: 13px; }
@@ -6716,7 +7087,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
     ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
-    ['actions', '액션'], ['checks', '판정'], ['setup', '새 시작'], ['ai', 'AI 설정'],
+    ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
   function emit() {
@@ -6861,7 +7232,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ui = schema.statusUI;
     const wrap = h('div');
     const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-                    ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`])];
+                    ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`]),
+                    // 시간 노출 파생 — 시간 체계가 켜져 있으면 날짜·시각도 상태창 항목이 된다
+                    ...(timeConfig(schema)?.expose ?? []).map((n) => [n, `${EXPOSED_LABELS[n]} (${n}, 시간)`])];
     wrap.appendChild(h('div', { class: 'sce-row' },
       // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
       // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
@@ -7555,6 +7928,149 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       });
       rerender();
     }));
+    return wrap;
+  }
+
+  // ── 탭: 시간 (설계: docs/design-시간.md) ──────────────────
+  // 봇들이 손으로 다시 만들던 day/clock_h/sim_* 계열을 대체한다. 내부는 분 단위 정수
+  // 하나(time_epoch)라 "정수 여러 개가 따로 노는" 날짜 사고가 구조적으로 안 난다.
+  const LEGACY_TIME_RE = /^(day|days|date|clock|clock_h|clock_m|hour|minute|week|weekday|month|year|season|time_of_day)$|^sim_(year|month|dom|day|season|week)/;
+
+  function tabTime() {
+    const wrap = h('div');
+    const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
+
+    if (!schema.time) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '날짜·시각을 시스템이 관리하게 한다. 요일·윤년·월별 일수·자릿수(07:05)는 엔진이 계산하고, '
+        + 'AI는 "며칠/몇 분 지났나"만 답한다 — 날짜 산술을 안 시킨다. '
+        + '켜면 date · clock · weekday · season · month · dom · hour · elapsed 같은 이름을 '
+        + '조건식({when})과 상태창({date})에서 변수처럼 바로 쓸 수 있다.'));
+      if (legacy.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          `이 봇에는 손으로 만든 날짜 변수가 있습니다 (${legacy.map((v) => v.id).join(', ')}) — `
+          + '켠 뒤 아래 정리 마법사로 걷어내면 노출 이름과의 충돌도 함께 풀립니다.'));
+      }
+      wrap.appendChild(addBtn('🕐 시간 체계 켜기', () => {
+        schema.time = { start: '2026-01-01 09:00', advance: 'explicit', format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const T = schema.time;
+    T.format = T.format || {};
+    const cfg = timeConfig(schema);
+
+    // 시작 시점 미리보기 — 포맷·달력·요일 설정이 실제로 어떻게 보일지 그 자리에서 확인
+    {
+      const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
+    }
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
+        { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
+      pair('진행', bindSelect(T.advance ?? 'explicit', [
+        ['explicit', '명시적 — 버튼·보고로만'], ['perTurn', '턴마다 하루 (구형)'],
+      ], (x) => { T.advance = x; rerender(); }),
+        '명시적: skip_day/skip_min에 쌓인 만큼만 흐른다. 턴마다 하루: 메시지 하나 = 하루 (장면 단위 RP를 부수므로 생존물 외 비권장)'),
+      pair('달력', bindSelect(T.calendar ?? 'gregorian', [
+        ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
+      ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
+        { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),
+      pair('시각 형식', bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
+        { cls: 'sce-w-m', ph: 'HH:mm' }), '토큰: HH H mm m — 예: "H시 m분". 자릿수는 형식이 책임진다 (07:05)'),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('요일', bindInput((T.weekdays || []).join(', '), (x) => {
+        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+        T.weekdays = a.length ? a : undefined; rerender();
+      }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일 (비우면 기본) — 첫 칸이 월요일' })),
+      pair('계절', bindInput((T.seasons || []).join(', '), (x) => {
+        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+        T.seasons = a.length ? a : undefined; rerender();
+      }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (비우면 기본)' })),
+    ));
+
+    // 노출 이름 — 체크한 것만 조건식·상태창에서 변수처럼 열린다
+    wrap.appendChild(h('h4', {}, '노출 이름 (조건식·상태창에서 변수처럼 쓴다)'));
+    const exposeRow = h('div', { class: 'sce-row' });
+    for (const n of EXPOSABLE) {
+      exposeRow.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
+        const cur = new Set(cfg.expose);
+        if (on) cur.add(n); else cur.delete(n);
+        T.expose = EXPOSABLE.filter((k) => cur.has(k));
+        rerender();
+      }, `${EXPOSED_LABELS[n]}(${n})`));
+    }
+    wrap.appendChild(exposeRow);
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '예: 이벤트 조건 `dom == 1`(매달 1일), `weekday == "토"`, `hour >= 22`. '
+      + '상태창 항목·템플릿에는 {date} {clock}처럼 꽂는다. 같은 이름의 변수가 있으면 검증이 알려 준다.'));
+
+    // 진행 입구 — explicit이면 skip 변수가 있어야 시간이 흐른다
+    if ((T.advance ?? 'explicit') === 'explicit') {
+      wrap.appendChild(h('h4', {}, '진행 입구'));
+      const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
+      const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
+      if (!hasDay && !hasMin) {
+        wrap.appendChild(h('div', { class: 'sce-warn' },
+          `⚠ ${SKIP_DAY}/${SKIP_MIN} 변수가 없어 시간이 흐를 입구가 없습니다.`));
+        wrap.appendChild(addBtn(`진행 입구 만들기 — ${SKIP_DAY}·${SKIP_MIN} 변수 + AI 허용`, () => {
+          schema.vars.push(
+            { id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
+              desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
+            { id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+              desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 식사·외출이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
+          );
+          schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 }, { id: SKIP_MIN, maxGain: 720 });
+          rerender();
+        }));
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '⚠ 진행 규칙은 변수의 "설명"(desc)에 산다 — 지시문(directives)은 메인 AI 전용이라 상태를 갱신하는 보조 AI가 못 읽는다.'));
+      } else {
+        wrap.appendChild(h('div', { class: 'sce-ok' },
+          `✓ 진행 입구: ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')} `
+          + '(엔진이 매 턴 소비 후 0으로 되돌린다)'));
+        const hasEndDay = (schema.actions || []).some((a) =>
+          (a.effects || []).some((f) => f.set === SKIP_DAY));
+        if (hasDay && !hasEndDay) {
+          wrap.appendChild(addBtn("🌙 '하루를 마친다' 액션 추가", () => {
+            schema.actions.push({
+              id: 'end_day', label: '🌙 하루를 마친다',
+              effects: [{ set: SKIP_DAY, expr: '1' }, ...(hasMin ? [{ set: SKIP_MIN, expr: '0' }] : [])],
+              inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
+            });
+            rerender();
+          }));
+        }
+      }
+    }
+
+    // 옛 날짜 변수 정리 — v0.45 정리 마법사 재사용 (참조까지 함께 걷는다)
+    if (legacy.length) {
+      wrap.appendChild(h('h4', {}, '옛 날짜 변수 정리'));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        `손으로 만든 날짜 변수가 남아 있습니다: ${legacy.map((v) => `${v.id}(${v.label ?? ''})`).join(', ')} — `
+        + '시간 체계와 겹치면 노출 이름 충돌이 나고, 안 겹쳐도 두 시계가 따로 돕니다.'));
+      wrap.appendChild(addBtn('🧹 정리 마법사로 한꺼번에 지우기 (변수 탭에서 확인 후 적용)', () => {
+        const ids = legacy.map((v) => v.id);
+        const plan = planVarPurge(schema, ids);
+        purge = { id: ids[0], label: ids.join(', '), plan };
+        activeTab = 'vars';
+        rerender();
+      }));
+    }
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기'),
+      h('span', { class: 'sce-hint' }, '꺼도 세이브의 time_epoch는 그대로 남는다 — 다시 켜면 이어진다.'),
+    ));
     return wrap;
   }
 
@@ -9023,7 +9539,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function deepBody() {
     return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+      checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 
   // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)

@@ -1,0 +1,140 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.45 &nbsp;→&nbsp; v0.47</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+이제 <b style="color:#e0a94a;">복사-붙여넣기 왕복도 안 합니다</b> — 입력창에 말하면 플러그인이 직접 AI를 불러서 만들어 옵니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+지난 판(v0.44)에서 "고치는 것도 AI에게"까지 왔는데, 그래도 규격서 복사해서 AI 사이트 다녀오는 왕복은 남아 있었죠.
+리수를 쓰는 사람은 어차피 모델이 연결돼 있는데 왜 밖을 다녀와야 하나 싶어서 — 안으로 접었습니다.
+화면도 그 김에 갈아엎었고요.
+</p>
+
+<!-- ─────────── ① AI에게 맡기기 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">AI에게 맡기기 — 말하면 끝</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">봇 편집 맨 위 입력창에 원하는 걸 적고 [✨ 생성] — 그게 전부입니다</span>
+   "산적 습격 이벤트 추가해줘. 경계가 5 이상이면 발동하고 금화를 뺏기게"
+
+<span style="color:#8b98a9;">스키마가 없는 봇이면 통째로 만들어 오고, 있으면 바꿀 부분만 패치로 옵니다</span>
+   계획: 추가 2 · 교체 0 · 삭제 후보 0 · 충돌 0   → [✅ 패치 적용]</pre>
+
+  <!-- 스샷: 창작 탭 — 입력창 + 생성 버튼 + 계획 상자 뜬 상태 -->
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">키 입력도 없습니다.</b> 리수에 이미 연결된 보조 모델을 그대로 씁니다.
+  봇 설명·로어북도 자동으로 같이 실려 가서, 세계관을 다시 설명 안 해도 됩니다.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">망칠 방법이 없습니다.</b> v0.44의 안전장치가 그대로 밑에 깔려 있습니다 —
+  적용 전에 계획을 보여주고, 겹치면 멈춰서 물어보고, 검증 못 넘으면 아무것도 안 바뀌고, 되돌리기 한 번이 항상 남습니다.
+  AI가 쓰레기를 보내와도 스키마는 멀쩡합니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  API 없이 공홈 구독(GPT·클로드 웹)을 쓰시는 분은 <b style="color:#dbe2ea;">[📋 복사해서 다른 AI에게]</b>가
+  그대로 있습니다. 내용물이 생성 버튼과 똑같은 규격서라 결과도 똑같습니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 화면 개편 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">화면 개편</span>
+    <span style="font-size:19px;font-weight:600;">사이드바 + 3구역 — 스크롤 지옥 끝</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  탭 10개가 한 페이지에 늘어서 있던 편집기를 <b style="color:#dbe2ea;">목적별 3구역</b>으로 나눴습니다.
+  넓은 화면에선 왼쪽 사이드바로, 폰에서는 지금까지처럼 상단 탭으로 나옵니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">✨ AI에게 맡기기   <span style="color:#8b98a9;">← 기본. 말로 시키고, 눈으로 확인하고, 굴려보는 곳</span>
+🧾 JSON 작업대     <span style="color:#8b98a9;">← 복붙 왕복파의 홈그라운드 (통짜·패치·오류 돌려주기·원본)</span>
+🧰 심층 편집       <span style="color:#8b98a9;">← 변수·이벤트·액션을 손으로 직접 만지는 곳</span></pre>
+
+  <!-- 스샷: 사이드바 전체 화면 (6항목 보이게) -->
+
+  <p style="margin:0;color:#a9b4c2;">
+  세 구역은 같은 스키마를 보는 다른 창문일 뿐이라, 어디서 고치든 나머지에 즉시 반영됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ③ 결과를 눈으로 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">만든 걸 바로 눈으로 — 창작 · 결과 · 진단</span>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">👁 결과 탭</b> — 지금 스키마가 그리는 <b style="color:#dbe2ea;">상태창 미리보기</b>가 항상 떠 있고,
+  그 아래 <b style="color:#dbe2ea;">만들어진 것들 도감</b>이 이벤트·액션·판정을 사람 말로 풀어줍니다.
+  발동 조건이 뭔지, 뭘 얻고 잃는지 — JSON 안 읽어도 됩니다.
+  </p>
+
+  <!-- 스샷: 결과 탭 — 미리보기 + 도감 -->
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">🔬 진단 탭</b> — 스키마를 실제로 수십 턴 굴려서 영영 안 뜨는 이벤트, 한 번도 못 누르는 액션 같은 걸 찾아내는 건
+  전부터 있었는데, 이제 결과 옆에 <b style="color:#dbe2ea;">[✨ 이 결과로 바로 고쳐달라기]</b>가 붙었습니다.
+  찾은 문제를 그 자리에서 AI에게 던지고, 패치가 오면 확인하고 적용. 왕복 끝.
+  </p>
+
+  <!-- 스샷: 진단 결과 + 바로 고쳐달라기 버튼 -->
+</div>
+
+<!-- ─────────── ④ 꾸미기 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">상태창 꾸미기도 말로</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">🎨 스킨만   "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트"  → 색·폰트만 갈아입음
+🖼 배치까지  "왼쪽에 초상화 칸, 오른쪽 수치 2열, 하단에 계약 칩" → 상태창을 통째로 새로 그림</pre>
+
+  <p style="margin:0;color:#a9b4c2;">
+  한 줄 적고 생성 누르면 바로 위 미리보기에 적용됩니다. 마음에 안 들면 <b style="color:#dbe2ea;">[↩ 되돌리기]</b> 한 번.
+  배치 쪽은 AI가 없는 변수를 갖다 쓰면 <b style="color:#dbe2ea;">적용 자체가 거부</b>되니 여기도 망가질 일은 없습니다.
+  </p>
+
+  <!-- 스샷: CSS 생성 전/후 미리보기 비교 -->
+</div>
+
+<!-- ─────────── 자잘한 것 ─────────── -->
+<div style="background:#161b22;border:1px solid #2a3140;border-radius:6px;padding:20px 22px;margin-bottom:18px;">
+  <div style="font-size:16px;font-weight:600;margin-bottom:12px;color:#dbe2ea;">그 외</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">생성 모델 선택</b> — 기본은 보조 모델. 보조에 번역용 싼 모델을 꽂아두신 분은
+  스키마 생성이 부실할 수 있으니, 그때만 잠깐 상위 모델로 바꾸거나 [직접 지정]을 쓰세요.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">실패하면 이유가 보입니다</b> — 생성이 안 될 때 "왜 안 되는지"가 화면에 그대로 뜹니다. 조용히 삼키지 않습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">호환</b> — 기존 봇·세이브 전부 그대로 돕니다. v0.43 시절 세이브 파일로 직접 확인했습니다.
+  </p>
+</div>
+
+</div>

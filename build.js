@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CORE = ['expr', 'rng', 'store', 'validate', 'patch', 'engine', 'render', 'session', 'diagnose', 'editor', 'templates'];
+const CORE = ['expr', 'rng', 'store', 'validate', 'assets', 'patch', 'engine', 'render', 'session', 'diagnose', 'editor', 'templates'];
 const read = (p) => fs.readFileSync(path.join(__dirname, p), 'utf8');
 
 // ── CJS → 브라우저 심 ──────────────────────────────────────

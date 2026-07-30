@@ -498,6 +498,65 @@ function validateSchema(schema) {
     }
   }
 
+  // ── assets (에셋 팩 — 이미지 태그 자동화) ─────────────────
+  // 없으면 아무것도 안 바뀐다. 설계: docs/design-에셋-슬롯.md
+  if (schema.assets != null) {
+    const A = schema.assets;
+    if (typeof A !== 'object' || Array.isArray(A)) err('$.assets', 'assets는 객체여야 함');
+    else {
+      if (A.by != null && !['aux', 'main'].includes(A.by)) err('$.assets.by', "by는 'aux' 또는 'main'");
+      if (!Array.isArray(A.packs)) err('$.assets.packs', 'packs 배열이 필요함');
+      const packIds = new Set();
+      const claim = new Map(); // 인물 → 먼저 담당을 선언한 팩 id (조용한 덮어쓰기 금지)
+      (Array.isArray(A.packs) ? A.packs : []).forEach((pk, i) => {
+        const p = `$.assets.packs[${i}]`;
+        if (!pk || typeof pk !== 'object') { err(p, '팩은 객체여야 함'); return; }
+        if (!pk.id || !ID_RE.test(pk.id)) err(p, `잘못된 팩 id: '${pk.id}' (영문자/숫자/_, 영문자 시작)`);
+        else if (packIds.has(pk.id)) err(p, `중복된 팩 id: '${pk.id}'`);
+        else packIds.add(pk.id);
+        if (pk.sep != null && typeof pk.sep !== 'string') err(p + '.sep', 'sep(구분자)는 문자열이어야 함');
+        if (typeof pk.format !== 'string' || !pk.format.includes('{'))
+          err(p + '.format', 'format 필요 — {name} 또는 {칸id} 자리표시자를 포함한 출력 문자열');
+        if (!pk.source) warn(p, 'source(출처)가 없습니다 — 모듈을 뗀 뒤 어느 팩이 고아인지 알 수 없게 됩니다');
+        if (pk.when != null) checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
+        if (pk.chars != null && (!Array.isArray(pk.chars) || pk.chars.some((c) => typeof c !== 'string')))
+          err(p + '.chars', 'chars는 문자열 배열이어야 함');
+
+        const slots = Array.isArray(pk.slots) ? pk.slots : [];
+        if (!slots.length) err(p + '.slots', '칸(slots)이 최소 1개 필요');
+        const slotIds = new Set();
+        slots.forEach((s, si) => {
+          const sp = `${p}.slots[${si}]`;
+          if (!s || !s.id || !ID_RE.test(s.id)) { err(sp, `잘못된 칸 id: '${s && s.id}'`); return; }
+          if (slotIds.has(s.id)) err(sp, `중복된 칸 id: '${s.id}'`);
+          slotIds.add(s.id);
+          if (!Array.isArray(s.values) || !s.values.length || s.values.some((v) => typeof v !== 'string' || !v.trim()))
+            err(sp + '.values', '값 목록(values)은 비어있지 않은 문자열 배열이어야 함');
+          else if (s.fallback != null && !s.values.includes(s.fallback))
+            warn(sp, `fallback '${s.fallback}'이 values 목록에 없습니다 — 폴백도 실물 이름 규칙을 따라야 대조를 통과합니다`);
+        });
+
+        // format 자리표시자 — {name} 또는 이 팩의 칸 id만
+        if (typeof pk.format === 'string') {
+          for (const m of pk.format.matchAll(/\{([a-zA-Z0-9_]+)\}/g)) {
+            if (m[1] !== 'name' && !slotIds.has(m[1]))
+              err(p + '.format', `'{${m[1]}}'는 이 팩의 칸 id도 {name}도 아닙니다`);
+          }
+        }
+
+        // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선
+        const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
+        const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
+        if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
+        for (const c of owns) {
+          if (claim.has(c) && claim.get(c) !== pk.id)
+            warn(p, `인물 '${c}'는 팩 '${claim.get(c)}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
+          else claim.set(c, pk.id);
+        }
+      });
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 

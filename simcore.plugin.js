@@ -1,13 +1,19 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.1
-//@display-name SimCore (시뮬 엔진) v0.47.1 삼층 구조
+//@version 0.47.2
+//@display-name SimCore (시뮬 엔진) v0.47.2 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.2 ────────────────────────────────────────────────
+// 1층 내부 3탭 — 접기 나열(미리보기/도감/진단)이 전부 같은 줄 모양이라 스캔이 안 된다는
+// 피드백. ✍ 창작(요청·생성·계획) / 👁 결과(미리보기·CSS·도감, 항상 펼침) / 🔬 진단으로 분할.
+// 창작 탭에 생성 중 ⏳·계획 대기 ● 배지, 진단 탭에 지난 결과 건수. 생성 완료 시 결과가
+// 뜨는 탭으로 자동 이동 (패치→창작, CSS→결과). 빈 스키마는 탭 없이 창작만.
 //
 // ── v0.47.1 ────────────────────────────────────────────────
 // 1층 결과 창구 — 만드는 화면만 있고 결과 볼 창구가 없었다 (유저 진단).
@@ -7320,7 +7326,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiFullReport = null;  // 통짜 반영 내역 문구
   let patchSource = 'json'; // 패치 계획·적용 UI를 어느 층에 그릴까: 'top'(위층 생성) | 'json'(② 붙여넣기)
   // 삼층 구조의 접힘 상태 — rerender에도 유지
-  let diagOpen = false;     // 1층 안의 진단 접기
   let jsonOpen = false;     // 2층 (JSON 작업대)
   let lowerOpen = false;    // 3층 (심층 편집 탭 8개)
 
@@ -7404,12 +7409,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       patchChoices = {};
       patchSource = 'top';
     }
+    topTab = 'make'; // 계획·실패 안내가 창작 탭에 뜬다 — 진단 탭에서 시켰어도 결과가 보이게
     rerender();
   }
 
   // ── 1층 결과 창구 — 만들었으면 바로 눈으로 확인한다 (미리보기·CSS·도감) ──
-  let previewOpen = true;   // 상태창 미리보기 (기본 펼침 — 눈 피드백이 목적이므로)
-  let catalogOpen = false;  // 만들어진 것들 도감
+  // 접기 나열은 전부 같은 줄 모양이라 스캔이 안 된다는 피드백 → 1층 안을 3탭으로 (창작/결과/진단)
+  let topTab = 'make';      // 'make' | 'result' | 'diag'
   let cssReq = '';          // CSS 분위기 요청 문구
   let cssGen = { busy: false, seq: 0, note: null };
   let cssBackup = null;     // { css } — CSS 생성 적용 직전 customCSS (되돌리기 1슬롯)
@@ -7442,6 +7448,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     try { res = await ai.generate(buildCssSpecPrompt(schema, cssReq)); } catch { /* 아래 실패 처리 */ }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
+    topTab = 'result'; // 적용 결과·실패 안내가 결과 탭에 뜬다
     if (typeof res !== 'string' || !res.trim()) {
       cssGen.note = res && res.blocked
         ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 CSS 규격 복사]로 우회하세요.'
@@ -7535,6 +7542,61 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const box = h('div', { class: 'sce-block sce-top' });
     box.appendChild(h('h4', { style: 'margin-top:2px' }, '✨ AI에게 맡기기'));
     const blank = schemaIsBlank(schema);
+
+    // 1층 내부 탭 — 창작(시키기) / 결과(보기) / 진단(굴리기). 빈 스키마는 보여줄 결과가 없어 창작만.
+    if (!blank) {
+      const diagCnt = diagResult && diagResult.findings
+        ? diagResult.findings.filter((f) => f.sev !== 'low').length : null;
+      const bar = h('div', { class: 'sce-tabs' });
+      for (const [key, label] of [
+        ['make', `✍ 창작${aiGen.busy ? ' ⏳' : (patchSource === 'top' && patchPlan) ? ' ●' : ''}`],
+        ['result', '👁 결과'],
+        ['diag', `🔬 진단${diagCnt != null ? ` (${diagCnt})` : ''}`],
+      ]) {
+        bar.appendChild(h('button', {
+          class: 'sce-tab' + (topTab === key ? ' on' : ''),
+          onclick: () => { topTab = key; render(); },
+        }, label));
+      }
+      box.appendChild(bar);
+    }
+
+    // 👁 결과 — 상태창 미리보기 + CSS 커스텀 + 만들어진 것들 도감
+    if (!blank && topTab === 'result') {
+      box.appendChild(h('div', { class: 'sce-hint' },
+        '지금 스키마가 그리는 상태창입니다 — 창작·심층 어디서 고치든 즉시 갱신됩니다.'));
+      box.appendChild(statusPreviewEl('pv1'));
+      const cssRow = h('div', { class: 'sce-row' });
+      cssRow.appendChild(bindInput(cssReq, (x) => { cssReq = x; },
+        { cls: 'sce-w-l', ph: '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
+      if (ai && ai.generate) {
+        cssRow.appendChild(cssGen.busy
+          ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
+          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, '🎨 CSS 생성'));
+      }
+      if (cssBackup) {
+        cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+          schema.statusUI.customCSS = cssBackup.css; cssBackup = null; cssGen.note = null; rerender();
+        } }, '↩ 스킨 되돌리기'));
+      }
+      box.appendChild(cssRow);
+      if (cssGen.busy) box.appendChild(h('div', { class: 'sce-hint' }, '⏳ CSS 생성 중…'));
+      else if (cssGen.note) box.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
+      copyWidget('📋 CSS 규격 복사',
+        '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
+        + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+        () => buildCssSpecPrompt(schema, cssReq)).mount(box);
+      box.appendChild(h('h4', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'));
+      box.appendChild(catalogView());
+      return box;
+    }
+
+    // 🔬 진단 — 굴려서 찾고, 고쳐달라기는 창작 탭 계획 상자로 이어진다
+    if (!blank && topTab === 'diag') {
+      box.appendChild(tabDiag());
+      return box;
+    }
+
     box.appendChild(h('div', { class: 'sce-hint' },
       blank
         ? '아직 스키마가 없습니다 — 원하는 봇을 말하면 AI가 통째로 만들어 옵니다. 검증을 통과해야만 반영되니 부담 없이 시키세요.'
@@ -7677,45 +7739,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (patchPlan) box.appendChild(planBoxUI());
     }
 
-    // ── 결과 창구 — 만든 걸 바로 눈으로 (빈 스키마는 보여줄 게 없어 숨김) ──
-    if (!blank) {
-      // 👁 상태창 미리보기 + CSS 커스텀 — 시각 피드백이 목적이라 기본 펼침
-      const pvBody = h('div');
-      pvBody.appendChild(statusPreviewEl('pv1'));
-      const cssRow = h('div', { class: 'sce-row' });
-      cssRow.appendChild(bindInput(cssReq, (x) => { cssReq = x; },
-        { cls: 'sce-w-l', ph: '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
-      if (ai && ai.generate) {
-        cssRow.appendChild(cssGen.busy
-          ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
-          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, '🎨 CSS 생성'));
-      }
-      if (cssBackup) {
-        cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
-          schema.statusUI.customCSS = cssBackup.css; cssBackup = null; cssGen.note = null; rerender();
-        } }, '↩ 스킨 되돌리기'));
-      }
-      pvBody.appendChild(cssRow);
-      if (cssGen.busy) pvBody.appendChild(h('div', { class: 'sce-hint' }, '⏳ CSS 생성 중…'));
-      else if (cssGen.note) pvBody.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
-      copyWidget('📋 CSS 규격 복사',
-        '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
-        + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
-        () => buildCssSpecPrompt(schema, cssReq)).mount(pvBody);
-      const pvFold = h('details', { class: 'sce-fold' },
-        h('summary', {}, '👁 상태창 미리보기 — 지금 스키마가 그리는 화면'), pvBody);
-      pvFold.open = previewOpen;
-      pvFold.addEventListener('toggle', () => { previewOpen = pvFold.open; });
-      box.appendChild(pvFold);
-
-      // 📖 만들어진 것들 — 액션·이벤트가 실제로 어떻게 굴러가게 돼 있는지 사람 말로
-      const cataFold = h('details', { class: 'sce-fold' },
-        h('summary', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'), catalogView());
-      cataFold.open = catalogOpen;
-      cataFold.addEventListener('toggle', () => { catalogOpen = cataFold.open; });
-      box.appendChild(cataFold);
-    }
-
     // 옆문 — API 크레딧 없이 공홈(웹 AI) 구독을 쓰는 유저의 경로. 강등이 아니라 병행 —
     // 같은 프롬프트 빌더를 쓰므로 [✨ 생성]과 내용이 똑같다.
     copyWidget('📋 복사해서 다른 AI에게',
@@ -7725,19 +7748,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
       }).mount(box);
-
-    // 진단도 1층 — 실제로 굴려 문제를 찾고, 그 자리에서 바로 고쳐달라고 보낸다.
-    // "AI가 걷고 diff가 난간" 루프가 1층 안에서 완결되게 (빈 스키마는 굴릴 게 없어 숨김).
-    if (!blank) {
-      const openCnt = diagResult && diagResult.findings
-        ? diagResult.findings.filter((f) => f.sev !== 'low').length : null;
-      const diagFold = h('details', { class: 'sce-fold' },
-        h('summary', {}, `🔬 실전 진단 — 굴려서 죽은 이벤트·안 움직이는 수치 찾기${openCnt != null ? ` (지난 결과 ${openCnt}건)` : ''}`),
-        tabDiag());
-      diagFold.open = diagOpen;
-      diagFold.addEventListener('toggle', () => { diagOpen = diagFold.open; });
-      box.appendChild(diagFold);
-    }
 
     return box;
   }
@@ -8116,7 +8126,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => runAiGenerate({ findings, stats: diagResult.stats }) },
               `✨ 이 결과로 바로 고쳐달라기 (${fixable.length}건)`),
             h('span', { class: 'sce-hint', style: 'margin:0' },
-              '위 생성 모델로 패치를 받아 옵니다 — 결과는 맨 위 계획 상자에 뜹니다.')));
+              '창작 탭의 생성 모델로 패치를 받아 옵니다 — 도착하면 ✍ 창작 탭으로 이동합니다.')));
         }
 
         if (fixable.length) {

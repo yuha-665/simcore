@@ -127,14 +127,15 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
 
   // ── 삼층 구조 + 사이드바 (v0.47) ──
   ck('★ 번들: 2층 JSON 작업대 존재', src.includes('🧾 JSON 작업대'), '');
-  ck('★ 번들: 3층에서 진단·JSON 탭 제거', !src.includes("['diag'") && !src.includes("['json'"), '');
-  ck('★ 번들: 진단이 1층으로 (실전 진단 접기)', src.includes('실전 진단 — 굴려서'), '');
+  ck('★ 번들: 3층에서 진단·JSON 탭 제거 (바디 맵 기준)',
+    !src.includes('diag: tabDiag') && !src.includes('json: tabJson'), '');
+  ck('★ 번들: 1층 내부 3탭 (창작/결과/진단)', src.includes('✍ 창작') && src.includes('👁 결과') && src.includes('🔬 진단'), '');
   ck('★ 번들: 진단 → 바로 고쳐달라기 직결 버튼', src.includes('이 결과로 바로 고쳐달라기'), '');
   ck('번들: 직결 경로도 findings 모드 프롬프트', src.includes('findings: diag.findings'), '');
   ck('★ 패널: 사이드바 + 반응형 폴백', src.includes('sc-side') && src.includes('@media (min-width: 920px)'), '');
 
-  // ── 1층 결과 창구 (v0.47.1) — 미리보기·CSS 직결·도감 ──
-  ck('★ 번들: 1층 상태창 미리보기 (기본 펼침)', src.includes('👁 상태창 미리보기'), '');
+  // ── 1층 결과 창구 (v0.47.1~2) — 미리보기·CSS 직결·도감 ──
+  ck('★ 번들: 결과 탭 미리보기 안내', src.includes('지금 스키마가 그리는 상태창'), '');
   ck('번들: 미리보기 렌더러 공유 (statusPreviewEl)', src.includes('function statusPreviewEl'), '');
   ck('★ 번들: CSS 직결 생성 + 되돌리기', src.includes('🎨 CSS 생성') && src.includes('↩ 스킨 되돌리기'), '');
   ck('번들: CSS 응답 방어 (펜스·style 껍데기 제거)', src.includes("css.replace(/<\\/?style[^>]*>/g, '')"), '');

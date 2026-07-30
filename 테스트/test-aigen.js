@@ -137,10 +137,19 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   // ── 1층 결과 창구 (v0.47.1~2) — 미리보기·CSS 직결·도감 ──
   ck('★ 번들: 결과 탭 미리보기 안내', src.includes('지금 스키마가 그리는 상태창'), '');
   ck('번들: 미리보기 렌더러 공유 (statusPreviewEl)', src.includes('function statusPreviewEl'), '');
-  ck('★ 번들: CSS 직결 생성 + 되돌리기', src.includes('🎨 CSS 생성') && src.includes('↩ 스킨 되돌리기'), '');
+  ck('★ 번들: CSS 직결 생성 + 되돌리기', src.includes('runCssGenerate') && src.includes('↩ 꾸미기 되돌리기'), '');
   ck('번들: CSS 응답 방어 (펜스·style 껍데기 제거)', src.includes("css.replace(/<\\/?style[^>]*>/g, '')"), '');
   ck('★ 번들: 만들어진 것들 도감', src.includes('📖 만들어진 것들') && src.includes('function catalogView'), '');
   ck('번들: CSS 규격서에 분위기 문구 주입', src.includes('buildCssSpecPrompt(schema, cssReq)'), '');
+
+  // ── 꾸미기 2모드 (v0.47.3) — 스킨 / 배치까지 ──
+  ck('★ 번들: 스킨·배치 모드 선택', src.includes('🎨 스킨만') && src.includes('🖼 배치까지'), '');
+  ck('★ 번들: 배치 규격서 (자리표시자 계약 + uid 격리)',
+    src.includes('function buildLayoutSpecPrompt') && src.includes('id="tab1-{uid}"'), '');
+  ck('★ 번들: 배치 적용은 원자적 (새 오류 → 통째 되돌림)',
+    src.includes('생성된 템플릿이 검증에서 거부됐습니다'), '');
+  ck('번들: 되돌리기는 mode·template·customCSS 세 값 복원', src.includes('↩ 꾸미기 되돌리기'), '');
+  ck('번들: 커스텀 봇에서 스킨 헛손질 경고', src.includes('스킨 CSS(자동 배치 클래스 기준)가 힘을 못'), '');
 
   // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
   ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')

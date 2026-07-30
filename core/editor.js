@@ -216,6 +216,44 @@ function buildCssSpecPrompt(schema, styleReq = '') {
   ].join('\n');
 }
 
+// ── 배치까지 AI에게 맡기는 규격서 (커스텀 템플릿 통째) ─────────
+// 스킨 규격(위)과 달리 클래스는 자유, 대신 {자리표시자} 계약이 생명이다 —
+// 목록에 없는 자리표시자는 검증기가 거부하므로 "실패해도 안전"이 여기서도 성립한다.
+function buildLayoutSpecPrompt(schema, styleReq = '') {
+  const ph = [
+    ...(schema.vars || []).map((v) =>
+      `- \`{${v.id}}\` — ${v.label ?? v.id} (${v.type}${v.type === 'list' ? `, 목록이라 \`{${v.id}:tags}\`로 칩 렌더 가능` : ''})`),
+    ...(schema.derived || []).map((d) => `- \`{${d.id}}\` — ${d.label ?? d.id} (자동 계산)`),
+  ];
+  const cur = schema.statusUI?.mode === 'template' && (schema.statusUI.template || '').trim();
+  return [
+    'RisuAI용 SimCore 플러그인의 상태창을 **HTML 템플릿 + CSS로 통째로** 만들어 주세요.',
+    '채팅 메시지마다 이 HTML이 그려지고, {자리표시자}가 실제 값으로 치환됩니다.',
+    '',
+    '## 내가 원하는 분위기·배치',
+    String(styleReq || '').trim()
+      || '(여기에 적으세요 — 예: "왼쪽에 칭호 칸, 오른쪽에 수치 2열, 하단에 계약 목록 칩")',
+    '',
+    '## 반드시 지킬 것',
+    '- 출력은 **`<style>` 블록 하나 + HTML**만. 코드펜스 밖에 설명을 덧붙이지 마세요.',
+    '- CSS는 시스템이 이 상태창 범위로 자동 격리합니다. 클래스명은 자유롭게 지어도 됩니다.',
+    '- 외부 리소스 금지: `@import`, `url(http...)`, 웹폰트 링크. `font-family`는 기기 폰트만.',
+    '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
+    '- **아래 목록에 없는 {자리표시자}를 쓰면 설치가 거부됩니다.** 꾸밈용 텍스트는 그냥 글자로 쓰세요.',
+    '- 탭·팝업 같은 전환은 체크박스/라디오 + CSS로만 (JS 불가). 라디오·체크박스의 `id`/`name`에는',
+    '  반드시 `{uid}`를 섞으세요 (예: `id="tab1-{uid}"`) — 메시지마다 상태창이 새로 그려져서, 없으면 서로 엉킵니다.',
+    '- 밝은 테마/어두운 테마 어느 쪽에서도 읽히도록 배경색과 글자색을 같이 지정하세요.',
+    '',
+    '## 쓸 수 있는 자리표시자 (이게 전부입니다)',
+    ...ph,
+    '',
+    cur
+      ? ['## 지금 쓰는 템플릿 — 이걸 바탕으로 고쳐도, 완전히 새로 만들어도 됩니다',
+        '```html', cur, '```'].join('\n')
+      : '(지금은 자동 배치를 쓰고 있습니다 — 위 자리표시자로 자유롭게 구성하세요.)',
+  ].join('\n');
+}
+
 // ── 스키마를 통째로 AI에게 맡기는 경로 ──────────────────────────
 // CSS 규격서의 확장판. 다른 점은 두 가지다.
 //  ① 규칙이 훨씬 많아서 산문으로 다 적으면 AI가 뒷부분을 흘린다 → 완성된 템플릿을 예제로 같이 준다.
@@ -2684,9 +2722,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 1층 결과 창구 — 만들었으면 바로 눈으로 확인한다 (미리보기·CSS·도감) ──
   // 접기 나열은 전부 같은 줄 모양이라 스캔이 안 된다는 피드백 → 1층 안을 3탭으로 (창작/결과/진단)
   let topTab = 'make';      // 'make' | 'result' | 'diag'
-  let cssReq = '';          // CSS 분위기 요청 문구
+  let cssReq = '';          // 꾸미기 요청 문구 (분위기·배치)
+  let cssMode = 'skin';     // 'skin' = customCSS만 | 'layout' = 커스텀 템플릿 통째
   let cssGen = { busy: false, seq: 0, note: null };
-  let cssBackup = null;     // { css } — CSS 생성 적용 직전 customCSS (되돌리기 1슬롯)
+  let cssBackup = null;     // { mode, template, customCSS } — 꾸미기 적용 직전 상태 (되돌리기 1슬롯)
 
   function statusPreviewEl(uid) {
     // uid는 채팅 메시지 번호·다른 미리보기와 겹치지 않게 — 접기 상태가 서로를 건드리면 안 된다
@@ -2709,32 +2748,66 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   async function runCssGenerate() {
     if (!ai || !ai.generate || cssGen.busy) return;
+    const layout = cssMode === 'layout';
     const mySeq = ++cssGen.seq;
     cssGen.busy = true; cssGen.note = null;
     rerender();
     let res = null;
-    try { res = await ai.generate(buildCssSpecPrompt(schema, cssReq)); } catch { /* 아래 실패 처리 */ }
+    try {
+      res = await ai.generate(layout ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq));
+    } catch { /* 아래 실패 처리 */ }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
     topTab = 'result'; // 적용 결과·실패 안내가 결과 탭에 뜬다
     if (typeof res !== 'string' || !res.trim()) {
       cssGen.note = res && res.blocked
-        ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 CSS 규격 복사]로 우회하세요.'
-        : '⚠ 호출 실패 — 생성 모델을 확인하거나 [📋 CSS 규격 복사]를 쓰세요.';
+        ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 규격 복사]로 우회하세요.'
+        : '⚠ 호출 실패 — 생성 모델을 확인하거나 [📋 규격 복사]를 쓰세요.';
       rerender(); return;
     }
-    let css = res.trim();
-    const m = css.match(/```(?:css)?\s*([\s\S]*?)```/);
-    if (m) css = m[1].trim();
-    css = css.replace(/<\/?style[^>]*>/g, '').trim(); // <style> 껍데기째 주는 모델 방어
-    if (!css || !css.includes('{')) {
-      cssGen.note = '⚠ CSS로 보이지 않는 응답입니다 — 앞부분: ' + css.slice(0, 80);
+    const ui = schema.statusUI;
+    const takeBackup = () => { cssBackup = { mode: ui.mode, template: ui.template, customCSS: ui.customCSS }; };
+
+    if (!layout) {
+      let css = res.trim();
+      const m = css.match(/```(?:css)?\s*([\s\S]*?)```/);
+      if (m) css = m[1].trim();
+      css = css.replace(/<\/?style[^>]*>/g, '').trim(); // <style> 껍데기째 주는 모델 방어
+      if (!css || !css.includes('{')) {
+        cssGen.note = '⚠ CSS로 보이지 않는 응답입니다 — 앞부분: ' + css.slice(0, 80);
+        rerender(); return;
+      }
+      // 적용은 즉시, 안전은 이중으로 — 스코핑(.sim-status 제한)은 렌더러가 자동으로 하고, 되돌리기 1슬롯
+      takeBackup();
+      ui.customCSS = css;
+      cssGen.note = '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
       rerender(); return;
     }
-    // 적용은 즉시, 안전은 이중으로 — 스코핑(.sim-status 제한)은 렌더러가 자동으로 하고, 되돌리기 1슬롯
-    cssBackup = { css: schema.statusUI.customCSS };
-    schema.statusUI.customCSS = css;
-    cssGen.note = '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
+
+    // 배치까지 — 커스텀 템플릿 통째. <style>은 렌더러가 자동 분리·격리하므로 통으로 넣는다.
+    let tpl = res.trim();
+    const mh = tpl.match(/```(?:html)?\s*([\s\S]*?)```/);
+    if (mh) tpl = mh[1].trim();
+    if (!/[<][a-zA-Z]/.test(tpl)) {
+      cssGen.note = '⚠ HTML 템플릿으로 보이지 않는 응답입니다 — 앞부분: ' + tpl.slice(0, 80);
+      rerender(); return;
+    }
+    // 원자 적용 — 자리표시자 계약은 검증기가 지킨다. 새 오류가 생기면 통째로 되돌린다.
+    const beforeErrs = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
+    takeBackup();
+    ui.mode = 'template';
+    ui.template = tpl;
+    const after = validateSchema(schema);
+    const fresh = after.errors.filter((e) => !beforeErrs.has(e.path + '|' + e.msg));
+    if (fresh.length) {
+      ui.mode = cssBackup.mode; ui.template = cssBackup.template; ui.customCSS = cssBackup.customCSS;
+      cssBackup = null;
+      cssGen.note = '⚠ 생성된 템플릿이 검증에서 거부됐습니다 (스키마는 안 바뀜) — '
+        + fresh.slice(0, 3).map((e) => e.msg).join(' / ')
+        + '. 다시 시키거나 더 강한 생성 모델을 쓰세요.';
+      rerender(); return;
+    }
+    cssGen.note = '✅ 배치가 적용됐습니다 — 아래 미리보기가 새 상태창입니다. 세부 수정은 3층 상태창 탭에서.';
     rerender();
   }
 
@@ -2834,26 +2907,44 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(h('div', { class: 'sce-hint' },
         '지금 스키마가 그리는 상태창입니다 — 창작·심층 어디서 고치든 즉시 갱신됩니다.'));
       box.appendChild(statusPreviewEl('pv1'));
+      // 꾸미기 — 스킨(색·폰트)과 배치(템플릿 통째) 둘 다 자동화 영역. 손조립은 3층 몫.
+      const layoutMode = cssMode === 'layout';
       const cssRow = h('div', { class: 'sce-row' });
+      cssRow.appendChild(bindSelect(cssMode, [
+        ['skin', '🎨 스킨만 — 색·폰트·질감'],
+        ['layout', '🖼 배치까지 — 템플릿 통째'],
+      ], (x) => { cssMode = x; rerender(); }));
       cssRow.appendChild(bindInput(cssReq, (x) => { cssReq = x; },
-        { cls: 'sce-w-l', ph: '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
+        { cls: 'sce-w-l', ph: layoutMode
+          ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
+          : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
       if (ai && ai.generate) {
         cssRow.appendChild(cssGen.busy
           ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
-          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, '🎨 CSS 생성'));
+          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, layoutMode ? '🖼 생성' : '🎨 생성'));
       }
       if (cssBackup) {
         cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
-          schema.statusUI.customCSS = cssBackup.css; cssBackup = null; cssGen.note = null; rerender();
-        } }, '↩ 스킨 되돌리기'));
+          schema.statusUI.mode = cssBackup.mode;
+          schema.statusUI.template = cssBackup.template;
+          schema.statusUI.customCSS = cssBackup.customCSS;
+          cssBackup = null; cssGen.note = null; rerender();
+        } }, '↩ 꾸미기 되돌리기'));
       }
       box.appendChild(cssRow);
-      if (cssGen.busy) box.appendChild(h('div', { class: 'sce-hint' }, '⏳ CSS 생성 중…'));
+      if (!layoutMode && schema.statusUI.mode === 'template') {
+        box.appendChild(h('div', { class: 'sce-warn' },
+          '⚠ 이 봇은 커스텀 템플릿을 쓰고 있어 스킨 CSS(자동 배치 클래스 기준)가 힘을 못 씁니다 — [🖼 배치까지]를 쓰세요.'));
+      }
+      if (cssGen.busy) box.appendChild(h('div', { class: 'sce-hint' }, layoutMode ? '⏳ 배치 생성 중… (수십 초 걸릴 수 있음)' : '⏳ CSS 생성 중…'));
       else if (cssGen.note) box.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
-      copyWidget('📋 CSS 규격 복사',
-        '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
-        + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
-        () => buildCssSpecPrompt(schema, cssReq)).mount(box);
+      copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
+        layoutMode
+          ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사합니다 — 웹 AI에게 주고, 받은 HTML은 '
+            + '3층 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style> 자동 분리).'
+          : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
+            + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+        () => (cssMode === 'layout' ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq))).mount(box);
       box.appendChild(h('h4', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'));
       box.appendChild(catalogView());
       return box;

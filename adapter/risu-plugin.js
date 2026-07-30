@@ -1,13 +1,29 @@
 //@name simcore
 //@api 3.0
-//@version 0.45
-//@display-name SimCore (시뮬 엔진) v0.45 AI 부분 수정
+//@version 0.46
+//@display-name SimCore (시뮬 엔진) v0.46 AI에게 맡기기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.46 ──────────────────────────────────────────────────
+// 내장 AI 생성 + 이층 구조 (설계: docs/design-내장-AI-생성.md, design-접근성.md §2).
+// - [편집기] 위층 "✨ AI에게 맡기기" — 요청 입력창 하나로 규격 복붙 왕복(공홈 다녀오기)을
+//   플러그인 안으로 접었다. 리수가 이미 들고 있는 보조 모델(runLLMModel submodel)을 직접
+//   호출하므로 유저는 키 입력조차 필요 없다. 봇 설명·로어북 자동 동봉(상한 20KB, 실측 KB
+//   표시, ⚙simcore 항목은 제외 — 다이제스트로 이미 실림). 모드 자동 판별: 스키마가 비어
+//   있으면 통짜 생성(검증 통과 시에만, 확인 후 반영), 있으면 부분 패치(기존 계획·충돌·
+//   원자 적용 UI 그대로). 형식 불합격은 오류 첨부 1회 자동 재시도, 그래도 실패면 원문 표시.
+//   ⚠ 생성 호출은 반드시 submodel — 'model'로 쏘면 우리 beforeRequest가 진짜 턴으로 알고
+//   정산까지 돈다 (v0.37.2 자기 정산 함정의 거울상).
+// - [편집기] 이층 구조 — 위층이 기본 화면, 기존 탭 10개는 "🧰 직접 만지기"로 접힘.
+//   없애는 게 아니라 접는 것: 같은 스키마·같은 rerender라 위층에서 적용한 결과가 아래층에
+//   그대로 보인다. 접힘 머리에 검증 오류 수 표기.
+// - [편집기] 복붙 경로는 옆문으로 병행 — [📋 복사해서 다른 AI에게]가 같은 프롬프트 빌더를
+//   써서 [✨ 생성]과 내용이 똑같다. API 크레딧 없이 공홈(웹 AI) 구독 쓰는 유저의 경로.
 //
 // ── v0.45 ──────────────────────────────────────────────────
 // 맨션봇 개조 실전이 드러낸 구조적 구멍 3건.
@@ -2121,10 +2137,33 @@ count(목록)  has(목록, "항목")</pre>
     editorChaId = currentChaId;
     editorLoadedSig = sig(copy);
   }
+  // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
+  // ⚙simcore(스키마) 항목은 뺀다 — 생성 프롬프트에 다이제스트로 이미 실리므로 이중 전송 금지.
+  async function getBotContextForEditor() {
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) return null;
+      return {
+        name: char.name || '',
+        desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
+        lore: (char.globalLore || [])
+          .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
+          .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+      };
+    } catch { return null; }
+  }
+
   function ensureEditor() {
     if (editor) return;
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
-    editor = createSchemaEditor(document.getElementById('sc-editor'), base, {});
+    editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
+      ai: {
+        // ⚠ 자기 정산 함정 — 반드시 보조 모델(callAuxLLM = submodel). mode:'model' 금지:
+        //   우리 자신의 beforeRequest가 이 호출을 진짜 턴으로 알고 정산까지 돌린다 (v0.37.2의 거울상).
+        generate: (promptText) => callAuxLLM(promptText, 8000),
+        getBotContext: getBotContextForEditor,
+      },
+    });
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);
   }

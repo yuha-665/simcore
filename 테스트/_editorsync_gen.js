@@ -28,6 +28,22 @@ let schema = null, currentChaId = null;
     editorChaId = currentChaId;
     editorLoadedSig = sig(copy);
   }
+  // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
+  // ⚙simcore(스키마) 항목은 뺀다 — 생성 프롬프트에 다이제스트로 이미 실리므로 이중 전송 금지.
+  async function getBotContextForEditor() {
+    try {
+      const char = await Risuai.getCharacter();
+      if (!char) return null;
+      return {
+        name: char.name || '',
+        desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
+        lore: (char.globalLore || [])
+          .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
+          .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+      };
+    } catch { return null; }
+  }
+
   function ensureEditor() {
     if (editor) return;
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();

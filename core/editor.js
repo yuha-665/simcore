@@ -1,8 +1,9 @@
 // SimCore 블록 편집기 — 코딩 없이 스키마를 행 단위로 만드는 공용 DOM 컴포넌트.
 // 플러그인 패널(iframe)과 플레이그라운드 양쪽에서 사용. 프레임워크 없음.
 //
-// createSchemaEditor(container, schema, { onChange }) →
+// createSchemaEditor(container, schema, { onChange, ai }) →
 //   { getSchema(), setSchema(s), validateNow(), destroy() }
+// ai = { generate(prompt), getBotContext() } — 내장 AI 생성(위층)용 호스트 주입. 없으면 복사 옆문만 뜬다.
 
 const { validateSchema } = require('./validate');
 const { referencedVars } = require('./expr');
@@ -61,6 +62,11 @@ const CSS = `
   padding:1px !important; border-radius:6px !important; background:transparent !important; cursor:pointer; }
 .sce .sce-colorbox { display:flex; flex-direction:column; gap:4px; margin:4px 0; padding:6px 8px;
   border:1px dashed #3d538488; border-radius:8px; }
+.sce .sce-top { border-left-color:#8f6fd0; background:rgba(159,111,239,.07); }
+.sce details.sce-lower { margin-top:14px; }
+.sce details.sce-lower > summary { cursor:pointer; user-select:none; color:#9db8e8; font-weight:600;
+  padding:7px 6px; border:1px solid #2e3d60; border-radius:10px; background:rgba(91,141,239,.05); }
+.sce details.sce-lower[open] > summary { border-radius:10px 10px 0 0; margin-bottom:10px; }
 `;
 
 const VAR_TYPES = [
@@ -266,15 +272,21 @@ function schemaLanguageTable() {
   ].join('\n');
 }
 
-function buildSchemaSpecPrompt(exampleKey, includeValidator) {
+function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
+  // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
   const parts = [
     '아래 규격에 맞는 시뮬레이션 스키마(JSON)를 만들어 주세요.',
     'RisuAI용 SimCore 플러그인이 이 JSON을 읽어서 상태창을 그리고 규칙·이벤트를 굴립니다.',
     '',
     '## 내가 만들 봇',
-    '(여기를 채우세요 — 세계관과 주인공, 추적하고 싶은 수치, 일어나면 좋을 사건,',
-    ' 플레이어가 누를 수 있는 행동, 상태창에 보이고 싶은 것)',
+    ...(gen && gen.request
+      ? [gen.request]
+      : ['(여기를 채우세요 — 세계관과 주인공, 추적하고 싶은 수치, 일어나면 좋을 사건,',
+        ' 플레이어가 누를 수 있는 행동, 상태창에 보이고 싶은 것)']),
+    ...(gen && gen.botCtx
+      ? ['', '## 이 봇의 실제 설정 (자동 동봉) — 세계관·인물·수치의 소재를 여기서 얻으세요', gen.botCtx]
+      : []),
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
@@ -379,9 +391,11 @@ function buildPatchExportPrompt(schema, opts = {}) {
       '- **고칠 자리가 상태창·매 턴 정산(onTurn)·새 시작이면 패치로 못 다룹니다** — 그 사실을 JSON 대신 말로 알려주세요.',
       '- 진단은 보조 AI를 안 돌리고 굴린 결과라, **AI가 바꾸는 변수는 "안 움직임"으로 잘못 나옵니다.**',
       '  그런 지적은 고치지 말고 그렇다고 말해 주세요.']
-    : ['## 내가 원하는 것',
-      '(여기를 채우세요 — 예: "산적 습격 이벤트 추가. 경계가 5 이상이면 발동, 금화를 뺏김"',
-      ' / "노역 액션 보상을 30으로" / "안 쓰는 명성 변수 지워줘")'];
+    : opts.request
+      ? ['## 내가 원하는 것', opts.request]
+      : ['## 내가 원하는 것',
+        '(여기를 채우세요 — 예: "산적 습격 이벤트 추가. 경계가 5 이상이면 발동, 금화를 뺏김"',
+        ' / "노역 액션 보상을 30으로" / "안 쓰는 명성 변수 지워줘")'];
   return [
     fixes.length
       ? '지금 쓰고 있는 SimCore 시뮬레이션 스키마의 문제를 **부분 수정**으로 고치려 합니다.'
@@ -389,6 +403,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '스키마 전체를 다시 만들지 말고, 바꿀 부분만 담은 **패치 JSON 하나**를 출력하세요.',
     '',
     ...want,
+    ...(opts.botCtx
+      ? ['', '## 이 봇의 실제 설정 (자동 동봉) — 세계관·인물 참고용. 스키마 항목의 기준은 아래 다이제스트입니다', opts.botCtx]
+      : []),
     '',
     '## 패치 형식',
     '```json',
@@ -428,6 +445,68 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '',
     '**패치 JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
   ].join('\n');
+}
+
+// ── 내장 AI 생성 (위층) ──────────────────────────────────────
+// 규격 복붙 왕복(공홈 다녀오기)을 플러그인 안으로 접는다. 프롬프트는 위 복붙용 빌더를
+// 그대로 재사용한다 — 복붙용 문서가 곧 API 요청 본문 (설계: docs/design-내장-AI-생성.md).
+// 호출 자체는 어댑터가 opts.ai.generate로 주입한다 — 코어는 리수 API를 모른다.
+// ⚠ 자기 정산 함정: 주입되는 generate는 반드시 보조 모델(submodel) 경로여야 한다.
+//   mode:'model'로 쏘면 우리 자신의 beforeRequest가 진짜 턴으로 알고 정산까지 돈다 (v0.37.2의 거울상).
+
+function schemaIsBlank(s) {
+  const n = (a) => (a || []).length;
+  return !s || n(s.vars) + n(s.derived) + n(s.directives) + n(s.actions) + n(s.checks)
+    + n(s.rules && s.rules.onTurn) + n(s.rules && s.rules.events)
+    + n(s.rules && s.rules.randomEvents && s.rules.randomEvents.table)
+    + n(s.updater && s.updater.allow) + n(s.statusUI && s.statusUI.groups)
+    + n(s.setup && s.setup.presets) === 0;
+}
+
+const BOT_CTX_CAP = 20 * 1024; // 바이트 — 로어북이 수십 KB인 봇 방어
+
+function byteLen(s) { return new TextEncoder().encode(String(s)).length; }
+
+/**
+ * 봇 설명·로어북을 생성 프롬프트에 동봉할 덩어리로 조립.
+ * ⚙simcore 항목은 제외 — 스키마는 다이제스트로 이미 실리므로 이중 전송 금지
+ * (어댑터도 거르지만 여기서 한 번 더).
+ */
+function assembleBotContext(ctx, cap = BOT_CTX_CAP) {
+  if (!ctx) return { text: '', bytes: 0, truncated: false };
+  const pieces = [];
+  let used = 0, truncated = false;
+  const push = (piece) => {
+    const b = byteLen(piece) + 2;
+    if (used + b > cap) {
+      if (!pieces.length) { // 첫 덩어리(대개 설명)가 혼자 상한 초과 — 앞부분만 싣는다
+        let t = piece;
+        while (byteLen(t) > cap) t = t.slice(0, Math.floor(t.length * 0.9));
+        pieces.push(t); used = cap;
+      }
+      truncated = true;
+      return false;
+    }
+    pieces.push(piece); used += b;
+    return true;
+  };
+  if ((ctx.name || '').trim()) push(`### 봇 이름\n${String(ctx.name).trim()}`);
+  if ((ctx.desc || '').trim()) push(`### 봇 설명 (description)\n${String(ctx.desc).trim()}`);
+  for (const l of ctx.lore || []) {
+    const nm = String(l.name || '');
+    if (nm.includes('⚙simcore')) continue;
+    if (!(l.content || '').trim()) continue;
+    if (!push(`### 로어북: ${nm || '(이름 없음)'}\n${String(l.content).trim()}`)) break;
+  }
+  const text = pieces.join('\n\n');
+  return { text, bytes: byteLen(text), truncated };
+}
+
+/** 위층 생성 프롬프트 — 스키마가 비어 있으면 통짜 생성, 있으면 부분 패치. 유저는 구분을 몰라도 된다 */
+function buildAiRequestPrompt(schema, request, botCtxText) {
+  return schemaIsBlank(schema)
+    ? buildSchemaSpecPrompt('business', true, { request, botCtx: botCtxText })
+    : buildPatchExportPrompt(schema, { request, botCtx: botCtxText });
 }
 
 // ── 탭 단위로 AI에게 맡기기 ──────────────────────────────────
@@ -1395,7 +1474,8 @@ function effectRows(schema, effects, rerender) {
   return wrap;
 }
 
-function createSchemaEditor(container, initialSchema, { onChange } = {}) {
+function createSchemaEditor(container, initialSchema, opts = {}) {
+  const { onChange, ai } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
   let schema = JSON.parse(JSON.stringify(initialSchema));
   let activeTab = 'vars';
   let destroyed = false;
@@ -2517,6 +2597,220 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
   let patchBackup = null;  // 적용 직전 스키마 — 되돌리기 1슬롯
   let patchReport = null;  // 마지막 적용 내역 (rerender를 넘어 보여줘야 해서 상태로)
 
+  // ── 위층 (AI에게 맡기기) 상태 — docs/design-내장-AI-생성.md ──
+  let aiReq = '';           // 요청 문구
+  let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
+  let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
+  let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
+  let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
+  let aiFullReport = null;  // 통짜 반영 내역 문구
+  let patchSource = 'json'; // 패치 계획·적용 UI를 어느 층에 그릴까: 'top'(위층 생성) | 'json'(② 붙여넣기)
+  let lowerOpen = false;    // 아래층(탭 10개) 접힘 상태 — rerender에도 유지
+
+  async function fetchBotCtx() {
+    if (aiBotCtx !== undefined) return aiBotCtx;
+    if (!ai || !ai.getBotContext) { aiBotCtx = null; return null; }
+    try { aiBotCtx = (await ai.getBotContext()) || null; } catch { aiBotCtx = null; }
+    return aiBotCtx;
+  }
+
+  async function runAiGenerate() {
+    if (!ai || !ai.generate || aiGen.busy) return;
+    const req = aiReq.trim();
+    if (!req) { aiGen.note = '먼저 위 칸에 원하는 걸 적어주세요.'; rerender(); return; }
+    const mySeq = ++aiGen.seq;
+    aiGen.busy = true; aiGen.note = null; aiGen.raw = null;
+    aiFull = null; aiFullReport = null;
+    rerender();
+
+    let ctxText = '';
+    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (aiGen.seq !== mySeq || destroyed) return;
+
+    const blank = schemaIsBlank(schema);
+    const stripFence = (raw) => {
+      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+      return (m ? m[1] : String(raw)).trim();
+    };
+    // 응답 검사 — 패치는 parsePatch+planPatch, 통짜는 JSON+validateSchema까지 통과해야 합격.
+    // 불합격이어도 안전하다는 게 이 설계의 핵심 — 쓰레기는 여기서 멈추고 스키마는 안 변한다.
+    const inspect = (text) => {
+      if (blank) {
+        let obj;
+        try { obj = JSON.parse(stripFence(text)); }
+        catch (e) { return { ok: false, errors: ['JSON 파싱 실패: ' + e.message] }; }
+        const v = validateSchema(obj);
+        if (!v.ok) return { ok: false, errors: v.errors.map((e) => `${e.path} — ${e.msg}`) };
+        return { ok: true, full: { schema: obj, warnings: v.warnings } };
+      }
+      const p = patchMod.parsePatch(text);
+      if (!p.ok) return { ok: false, errors: p.errors };
+      const plan = patchMod.planPatch(schema, p.patch);
+      if (plan.errors.length) return { ok: false, errors: plan.errors };
+      return { ok: true, patch: p.patch, plan };
+    };
+
+    const prompt = buildAiRequestPrompt(schema, req, ctxText);
+    let fatal = null, text = null, got = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const p = attempt === 0 ? prompt
+        // 형식 불합격 1회 자동 재시도 — 오류를 첨부해 다시 (aux JSON 재시도와 같은 규율)
+        : prompt + '\n\n──\n방금 응답이 형식 검사에서 거부되었습니다:\n'
+          + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
+          + '\n설명 없이, 형식에 맞는 JSON 하나만 다시 출력하세요.';
+      let res = null;
+      try { res = await ai.generate(p); } catch { /* 호출 실패는 아래에서 fatal 처리 */ }
+      if (aiGen.seq !== mySeq || destroyed) return; // 취소됨 — 결과를 버린다
+      if (typeof res !== 'string' || !res.trim()) { fatal = res && res.blocked ? 'blocked' : 'fail'; break; }
+      text = res;
+      got = inspect(res);
+      if (got.ok) break;
+    }
+
+    aiGen.busy = false;
+    if (fatal === 'blocked') {
+      aiGen.note = '⚠ 이 환경은 플러그인의 LLM 직접 호출이 차단되어 있습니다 — [📋 복사해서 다른 AI에게]로 우회하세요.';
+    } else if (fatal) {
+      aiGen.note = '⚠ 보조 모델 호출에 실패했습니다 — 리수 설정의 보조 모델을 확인하거나, [📋 복사해서 다른 AI에게]를 쓰세요.';
+    } else if (!got.ok) {
+      aiGen.note = '⚠ 두 번 모두 형식 검사를 통과하지 못했습니다 — 보조 모델이 이 작업에는 약할 수 있습니다. '
+        + '아래 원문을 확인하거나, [📋 복사해서 다른 AI에게]로 더 강한 모델에 맡기세요. 첫 오류: ' + got.errors[0];
+      aiGen.raw = text;
+    } else if (blank) {
+      aiFull = got.full; // 반영은 사람이 누른다 — 요약·경고를 보여주고 확인받는다
+    } else {
+      patchText = text;
+      patchPlan = { patch: got.patch, plan: got.plan };
+      patchChoices = {};
+      patchSource = 'top';
+    }
+    rerender();
+  }
+
+  function topFloor() {
+    const box = h('div', { class: 'sce-block sce-top' });
+    box.appendChild(h('h4', { style: 'margin-top:2px' }, '✨ AI에게 맡기기'));
+    const blank = schemaIsBlank(schema);
+    box.appendChild(h('div', { class: 'sce-hint' },
+      blank
+        ? '아직 스키마가 없습니다 — 원하는 봇을 말하면 AI가 통째로 만들어 옵니다. 검증을 통과해야만 반영되니 부담 없이 시키세요.'
+        : '원하는 걸 말하면 바꿀 부분만 담은 패치가 옵니다 — 적용 전에 계획을 보여주고, 충돌이 있으면 멈춰서 물어봅니다.'));
+
+    // 통짜 생성 결과 — 반영 전 확인 상자
+    if (aiFull) {
+      const s2 = aiFull.schema;
+      const cnt = (a) => (a || []).length;
+      const summary = `변수 ${cnt(s2.vars)} · 이벤트 ${cnt(s2.rules && s2.rules.events)
+        + cnt(s2.rules && s2.rules.randomEvents && s2.rules.randomEvents.table)}`
+        + ` · 액션 ${cnt(s2.actions)} · 판정 ${cnt(s2.checks)} · 지시문 ${cnt(s2.directives)}`;
+      const warns = (aiFull.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w.path} — ${w.msg}`));
+      box.appendChild(h('div', { class: 'sce-block' },
+        h('div', {}, `📦 스키마가 도착했습니다 — ${summary}`),
+        ...(warns.length > 3
+          ? [h('details', { class: 'sce-fold' },
+              h('summary', { class: 'sce-warn' }, `⚠ 경고 ${warns.length}건 — 눌러서 펼치기`), ...warns)]
+          : warns),
+        h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => {
+            patchBackup = JSON.parse(JSON.stringify(schema));
+            schema = aiFull.schema;
+            aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}. 아래층 탭에서 세부를 다듬을 수 있습니다.`;
+            aiFull = null;
+            lowerOpen = true; // 무엇이 생겼는지 바로 보이게
+            rerender();
+          } }, '✅ 편집기에 반영'),
+          h('button', { class: 'sce-btn', onclick: () => { aiFull = null; rerender(); } }, '버리기'),
+        )));
+    }
+    if (aiFullReport) {
+      box.appendChild(h('div', { class: 'sce-block' },
+        h('div', {}, aiFullReport),
+        h('div', { class: 'sce-row' },
+          patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
+            schema = patchBackup; patchBackup = null; aiFullReport = null; rerender();
+          } }, '↩ 되돌리기 (반영 전으로)') : null,
+          h('button', { class: 'sce-btn', onclick: () => { aiFullReport = null; rerender(); } }, '확인'),
+        )));
+    }
+
+    const area = h('textarea', { style: 'min-height:64px',
+      placeholder: blank
+        ? '예: 겨울 영지 경영 봇. 식량·민심·온기를 추적하고, 식량이 떨어지면 폭동이 일어나게'
+        : '예: 산적 습격 이벤트 추가해줘. 경계가 5 이상이면 발동하고 금화를 뺏기게' });
+    area.value = aiReq;
+    area.oninput = () => { aiReq = area.value; };
+    box.appendChild(area);
+
+    // 프리셋 칩 — 검증 오류가 있으면 그걸 고쳐달라는 요청을 한 번에 채운다
+    if (!blank) {
+      const v0 = validateSchema(schema);
+      if (v0.errors.length) {
+        box.appendChild(h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn sce-mini', onclick: () => {
+            aiReq = '아래 검증 오류를 전부 고쳐줘:\n' + v0.errors.map((e) => `- ${e.path} — ${e.msg}`).join('\n');
+            area.value = aiReq;
+          } }, `🩹 검증 오류 ${v0.errors.length}건 고쳐달라고 적기`)));
+      }
+    }
+
+    // 봇 컨텍스트 동봉 + 전송 크기 실측 (copyWidget이 이미 하는 것과 같은 예의)
+    const ctxLine = h('div', { class: 'sce-row' });
+    const renderCtxLine = () => {
+      ctxLine.replaceChildren();
+      if (!ai || !ai.getBotContext) return;
+      if (aiBotCtx === undefined) { ctxLine.appendChild(h('span', { class: 'sce-hint' }, '봇 설정 읽는 중…')); return; }
+      const a = assembleBotContext(aiBotCtx);
+      if (a.text) {
+        ctxLine.appendChild(bindCheck(aiCtxOn, (x) => { aiCtxOn = x; renderCtxLine(); },
+          `봇 설명·로어북 함께 보냄 (${(a.bytes / 1024).toFixed(1)}KB${a.truncated ? ' — 상한 20KB 초과분은 생략' : ''})`));
+      } else {
+        ctxLine.appendChild(h('span', { class: 'sce-hint' }, '동봉할 봇 설명·로어북이 없습니다 — 요청 문구만 보냅니다.'));
+      }
+      const total = byteLen(buildAiRequestPrompt(schema, aiReq, aiCtxOn && a.text ? a.text : ''));
+      ctxLine.appendChild(h('span', { class: 'sce-hint' }, `· 요청서 전체 약 ${Math.max(1, Math.round(total / 1024))}KB`));
+    };
+    renderCtxLine();
+    fetchBotCtx().then(() => { if (!destroyed) renderCtxLine(); });
+    box.appendChild(ctxLine);
+
+    if (ai && ai.generate) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        aiGen.busy
+          ? h('button', { class: 'sce-btn', onclick: () => { aiGen.seq++; aiGen.busy = false; rerender(); } }, '✋ 취소')
+          : h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => runAiGenerate() }, '✨ 생성')));
+    }
+    if (aiGen.busy) {
+      box.appendChild(h('div', { class: 'sce-hint' },
+        '⏳ 생성 중… 보조 모델이 쓰고 있습니다. 수십 초 걸릴 수 있고, 다른 탭을 보고 있어도 끝나면 결과가 여기 남습니다.'));
+    } else if (aiGen.note) {
+      box.appendChild(h('div', { class: 'sce-warn' }, aiGen.note));
+    }
+    if (aiGen.raw && !aiGen.busy) {
+      const rawArea = h('textarea', { style: 'height:110px', readonly: 'readonly' });
+      rawArea.value = aiGen.raw;
+      box.appendChild(h('details', { class: 'sce-fold' }, h('summary', {}, 'AI가 보낸 원문 — 눌러서 펼치기'), rawArea));
+    }
+
+    // 생성 결과의 계획·적용 — ②(붙여넣기)와 같은 UI, 같은 규율
+    if (patchSource === 'top') {
+      const rb = patchReportBox();
+      if (rb) box.appendChild(rb);
+      if (patchPlan) box.appendChild(planBoxUI());
+    }
+
+    // 옆문 — API 크레딧 없이 공홈(웹 AI) 구독을 쓰는 유저의 경로. 강등이 아니라 병행 —
+    // 같은 프롬프트 빌더를 쓰므로 [✨ 생성]과 내용이 똑같다.
+    copyWidget('📋 복사해서 다른 AI에게',
+      '위 요청과 봇 설정이 담긴 규격서를 복사해 웹 AI(GPT·클로드 등)에 붙여넣으세요. '
+      + '받은 JSON은 🧰 아래층 → JSON 탭에 붙여넣으면 됩니다 (패치는 ②, 통짜 스키마는 ④).',
+      () => {
+        const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
+        return buildAiRequestPrompt(schema, aiReq, a.text);
+      }).mount(box);
+
+    return box;
+  }
+
   function tabJson() {
     const wrap = h('div');
 
@@ -2541,27 +2835,9 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     // patch.js가 병합한다 — add 충돌은 정지 후 선택, 적용은 원자적(전체 아니면 전무).
     wrap.appendChild(h('h4', {}, '② AI에게 스키마 고치게 하기 (부분 수정)'));
 
-    if (patchReport) {
-      const rep = patchReport;
-      const lines = [];
-      if (rep.added.length) lines.push(`추가 ${rep.added.length} (${rep.added.join(', ')})`);
-      if (rep.updated.length) lines.push(`교체 ${rep.updated.length} (${rep.updated.join(', ')})`);
-      if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
-      if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
-      const repWarns = (rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`));
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', {}, `✅ 패치 적용됨 — ${lines.join(' · ') || '변화 없음'}`),
-        ...(repWarns.length > 3
-          ? [h('details', { class: 'sce-fold' },
-              h('summary', { class: 'sce-warn' }, `⚠ 경고 ${repWarns.length}건 — 눌러서 펼치기`),
-              ...repWarns)]
-          : repWarns),
-        h('div', { class: 'sce-row' },
-          patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
-            schema = patchBackup; patchBackup = null; patchReport = null; rerender();
-          } }, '↩ 되돌리기 (적용 전으로)') : null,
-          h('button', { class: 'sce-btn', onclick: () => { patchReport = null; rerender(); } }, '확인'),
-        )));
+    if (patchSource === 'json') {
+      const rb = patchReportBox();
+      if (rb) wrap.appendChild(rb);
     }
 
     copyWidget('📋 수정 요청 규격 복사',
@@ -2576,6 +2852,25 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     pArea.value = patchText;
     pArea.oninput = () => { patchText = pArea.value; };
     wrap.appendChild(pArea);
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn', onclick: () => {
+        const parsed = patchMod.parsePatch(patchText);
+        patchPlan = parsed.ok
+          ? { patch: parsed.patch, plan: patchMod.planPatch(schema, parsed.patch) }
+          : { patch: null, plan: { errors: parsed.errors, warnings: [], ops: [], conflicts: [], summary: { add: 0, update: 0, remove: 0, conflicts: 0 } } };
+        patchChoices = {};
+        patchSource = 'json';
+        rerender();
+      } }, '🔍 패치 검사'),
+    ));
+    if (patchSource === 'json' && patchPlan) wrap.appendChild(planBoxUI());
+
+    appendJsonTail(wrap);
+    return wrap;
+  }
+
+  // ── 패치 계획·충돌·적용 UI — ②(붙여넣기)와 위층(✨ 생성)이 공유. 상태는 인스턴스 공통 ──
+  function planBoxUI() {
     const planBox = h('div');
 
     const renderPlanBox = () => {
@@ -2699,28 +2994,40 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
           schema = r.schema;
           rerender();
         } }, '✅ 패치 적용'),
-        h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; renderPlanBox(); } }, '취소'),
+        h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; rerender(); } }, '취소'),
       ));
       planBox.appendChild(box);
     };
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn', onclick: () => {
-        const parsed = patchMod.parsePatch(patchText);
-        if (!parsed.ok) {
-          patchPlan = { patch: null, plan: { errors: parsed.errors, warnings: [], ops: [], conflicts: [], summary: { add: 0, update: 0, remove: 0, conflicts: 0 } } };
-          patchChoices = {};
-          renderPlanBox();
-          return;
-        }
-        patchPlan = { patch: parsed.patch, plan: patchMod.planPatch(schema, parsed.patch) };
-        patchChoices = {};
-        renderPlanBox();
-      } }, '🔍 패치 검사'),
-    ));
-    wrap.appendChild(planBox);
     renderPlanBox();
+    return planBox;
+  }
 
+  function patchReportBox() {
+    if (!patchReport) return null;
+    const rep = patchReport;
+    const lines = [];
+    if (rep.added.length) lines.push(`추가 ${rep.added.length} (${rep.added.join(', ')})`);
+    if (rep.updated.length) lines.push(`교체 ${rep.updated.length} (${rep.updated.join(', ')})`);
+    if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
+    if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
+    const repWarns = (rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`));
+    return h('div', { class: 'sce-block' },
+      h('div', {}, `✅ 패치 적용됨 — ${lines.join(' · ') || '변화 없음'}`),
+      ...(repWarns.length > 3
+        ? [h('details', { class: 'sce-fold' },
+            h('summary', { class: 'sce-warn' }, `⚠ 경고 ${repWarns.length}건 — 눌러서 펼치기`),
+            ...repWarns)]
+        : repWarns),
+      h('div', { class: 'sce-row' },
+        patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
+          schema = patchBackup; patchBackup = null; patchReport = null; rerender();
+        } }, '↩ 되돌리기 (적용 전으로)') : null,
+        h('button', { class: 'sce-btn', onclick: () => { patchReport = null; rerender(); } }, '확인'),
+      ));
+  }
+
+  function appendJsonTail(wrap) {
     // ── 검증 실패를 되돌려주는 경로 ──
     wrap.appendChild(h('h4', {}, '③ 오류를 AI에게 돌려주기'));
     const v = validateSchema(schema);
@@ -3005,6 +3312,9 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
 
   function render() {
     root.innerHTML = '';
+    // ── 이층 구조 (docs/design-접근성.md §2) — 위층 = AI에게 맡기기, 아래층 = 기존 탭 접힘 ──
+    root.appendChild(topFloor());
+
     const tabs = h('div', { class: 'sce-tabs' });
     for (const [key, label] of TABS) {
       tabs.appendChild(h('button', {
@@ -3012,10 +3322,8 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
         onclick: () => { activeTab = key; render(); },
       }, label));
     }
-    root.appendChild(tabs);
     const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
       checks: tabChecks, setup: tabSetup, ai: tabAi, diag: tabDiag, json: tabJson }[activeTab]();
-    root.appendChild(body);
 
     // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
     const v = validateSchema(schema);
@@ -3029,7 +3337,14 @@ function createSchemaEditor(container, initialSchema, { onChange } = {}) {
     reportEl.innerHTML = html;
     const fold = reportEl.querySelector('details.sce-fold');
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
-    root.appendChild(reportEl);
+
+    // 아래층 — 없애는 게 아니라 접는 것. 위층에서 적용된 결과가 같은 스키마로 그대로 반영된다.
+    const lower = h('details', { class: 'sce-lower' },
+      h('summary', {}, `🧰 직접 만지기 — 세부 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
+      tabs, body, reportEl);
+    lower.open = lowerOpen;
+    lower.addEventListener('toggle', () => { lowerOpen = lower.open; });
+    root.appendChild(lower);
   }
 
   function escText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }

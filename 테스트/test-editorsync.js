@@ -7,9 +7,10 @@ const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
 const s = src.indexOf('  let editor = null;\n  let editorChaId');
 const e = src.indexOf('  function escapeText(s)');
 if (s < 0 || e < 0) { console.log('FAIL: 편집기 절을 못 찾음'); process.exit(1); }
+// v0.46부터 ai 옵션이 붙어 호출이 여러 줄 — 닫는 });까지 통째로 목 호출로 치환
 const body = src.slice(s, e)
-  .replace("createSchemaEditor(document.getElementById('sc-editor'), base, {})",
-           'createSchemaEditor(base)');
+  .replace(/createSchemaEditor\(document\.getElementById\('sc-editor'\), base, \{[\s\S]*?\}\);/,
+           'createSchemaEditor(base);');
 
 const TESTS = `
 const A = { simcore:'0.1', meta:{name:'영지'},  vars:[{id:'food',type:'int'}], statusUI:{mode:'auto',groups:[]} };

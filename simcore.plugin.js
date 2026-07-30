@@ -7934,7 +7934,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 시간 (설계: docs/design-시간.md) ──────────────────
   // 봇들이 손으로 다시 만들던 day/clock_h/sim_* 계열을 대체한다. 내부는 분 단위 정수
   // 하나(time_epoch)라 "정수 여러 개가 따로 노는" 날짜 사고가 구조적으로 안 난다.
-  const LEGACY_TIME_RE = /^(day|days|date|clock|clock_h|clock_m|hour|minute|week|weekday|month|year|season|time_of_day)$|^sim_(year|month|dom|day|season|week)/;
+  // day_advance·day_skip·clock_prev처럼 접두 파생형도 잡는다 (실측: 맨션봇의 자정 넘김 배선 3종)
+  const LEGACY_TIME_RE = /^(days|date|hour|minute|week|weekday|month|year|season|time_of_day)$|^(day|clock)(_|$)|^sim_(year|month|dom|day|season|week)/;
 
   function tabTime() {
     const wrap = h('div');

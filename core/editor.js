@@ -2693,9 +2693,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
           + '\n설명 없이, 형식에 맞는 JSON 하나만 다시 출력하세요.';
       let res = null;
-      try { res = await ai.generate(p); } catch { /* 호출 실패는 아래에서 fatal 처리 */ }
+      try { res = await ai.generate(p); } catch (e) { res = { error: '호출 예외: ' + e.message }; }
       if (aiGen.seq !== mySeq || destroyed) return; // 취소됨 — 결과를 버린다
-      if (typeof res !== 'string' || !res.trim()) { fatal = res && res.blocked ? 'blocked' : 'fail'; break; }
+      if (typeof res !== 'string' || !res.trim()) {
+        fatal = res && res.blocked ? 'blocked'
+          : { msg: (res && res.error) || '원인 불명 — 콘솔(F12)의 [simcore] 생성 호출 로그를 확인하세요' };
+        break;
+      }
       text = res;
       got = inspect(res);
       if (got.ok) break;
@@ -2705,7 +2709,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (fatal === 'blocked') {
       aiGen.note = '⚠ 이 환경은 플러그인의 LLM 직접 호출이 차단되어 있습니다 — [📋 복사해서 다른 AI에게]로 우회하세요.';
     } else if (fatal) {
-      aiGen.note = '⚠ 보조 모델 호출에 실패했습니다 — 리수 설정의 보조 모델을 확인하거나, [📋 복사해서 다른 AI에게]를 쓰세요.';
+      aiGen.note = '⚠ 생성 호출 실패 — ' + fatal.msg
+        + ' · 생성 모델을 바꾸거나 [📋 복사해서 다른 AI에게]를 쓰세요.';
     } else if (!got.ok) {
       aiGen.note = '⚠ 두 번 모두 형식 검사를 통과하지 못했습니다 — 보조 모델이 이 작업에는 약할 수 있습니다. '
         + '아래 원문을 확인하거나, [📋 복사해서 다른 AI에게]로 더 강한 모델에 맡기세요. 첫 오류: ' + got.errors[0];
@@ -2758,14 +2763,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     let res = null;
     try {
       res = await ai.generate(layout ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq));
-    } catch { /* 아래 실패 처리 */ }
+    } catch (e) { res = { error: '호출 예외: ' + e.message }; }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
     topTab = 'result'; // 적용 결과·실패 안내가 결과 탭에 뜬다
     if (typeof res !== 'string' || !res.trim()) {
       cssGen.note = res && res.blocked
         ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 규격 복사]로 우회하세요.'
-        : '⚠ 호출 실패 — 생성 모델을 확인하거나 [📋 규격 복사]를 쓰세요.';
+        : '⚠ 호출 실패 — ' + ((res && res.error) || '원인 불명') + ' · 생성 모델을 바꾸거나 [📋 규격 복사]를 쓰세요.';
       rerender(); return;
     }
     const ui = schema.statusUI;

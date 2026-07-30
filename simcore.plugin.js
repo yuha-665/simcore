@@ -1,13 +1,20 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.4
-//@display-name SimCore (시뮬 엔진) v0.47.4 삼층 구조
+//@version 0.47.5
+//@display-name SimCore (시뮬 엔진) v0.47.5 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.5 ────────────────────────────────────────────────
+// 생성 실패 사유를 화면까지 — "이동은 했는데 아무것도 안 옴" (실기 제보, 메인 모델 경로).
+// - [어댑터] callGenLLM 실패가 null 대신 { error: 사유 }로 — 리수 fail 응답 원문·예외
+//   메시지·경로(메인/직접/보조=lastAux.status)까지 실어 나른다.
+// - [편집기] 창작·꾸미기 실패 안내가 그 사유를 그대로 표시 ("보조 모델 확인" 두루뭉술 제거).
+//   원인 불명일 때만 콘솔 F12 안내.
 //
 // ── v0.47.4 ────────────────────────────────────────────────
 // 층 = 사이드 내비 — 2·3층이 1층 밑에 접혀 깔려 스크롤 압박 + 존재감 실종 (유저).
@@ -7445,9 +7452,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
           + '\n설명 없이, 형식에 맞는 JSON 하나만 다시 출력하세요.';
       let res = null;
-      try { res = await ai.generate(p); } catch { /* 호출 실패는 아래에서 fatal 처리 */ }
+      try { res = await ai.generate(p); } catch (e) { res = { error: '호출 예외: ' + e.message }; }
       if (aiGen.seq !== mySeq || destroyed) return; // 취소됨 — 결과를 버린다
-      if (typeof res !== 'string' || !res.trim()) { fatal = res && res.blocked ? 'blocked' : 'fail'; break; }
+      if (typeof res !== 'string' || !res.trim()) {
+        fatal = res && res.blocked ? 'blocked'
+          : { msg: (res && res.error) || '원인 불명 — 콘솔(F12)의 [simcore] 생성 호출 로그를 확인하세요' };
+        break;
+      }
       text = res;
       got = inspect(res);
       if (got.ok) break;
@@ -7457,7 +7468,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (fatal === 'blocked') {
       aiGen.note = '⚠ 이 환경은 플러그인의 LLM 직접 호출이 차단되어 있습니다 — [📋 복사해서 다른 AI에게]로 우회하세요.';
     } else if (fatal) {
-      aiGen.note = '⚠ 보조 모델 호출에 실패했습니다 — 리수 설정의 보조 모델을 확인하거나, [📋 복사해서 다른 AI에게]를 쓰세요.';
+      aiGen.note = '⚠ 생성 호출 실패 — ' + fatal.msg
+        + ' · 생성 모델을 바꾸거나 [📋 복사해서 다른 AI에게]를 쓰세요.';
     } else if (!got.ok) {
       aiGen.note = '⚠ 두 번 모두 형식 검사를 통과하지 못했습니다 — 보조 모델이 이 작업에는 약할 수 있습니다. '
         + '아래 원문을 확인하거나, [📋 복사해서 다른 AI에게]로 더 강한 모델에 맡기세요. 첫 오류: ' + got.errors[0];
@@ -7510,14 +7522,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     let res = null;
     try {
       res = await ai.generate(layout ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq));
-    } catch { /* 아래 실패 처리 */ }
+    } catch (e) { res = { error: '호출 예외: ' + e.message }; }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
     topTab = 'result'; // 적용 결과·실패 안내가 결과 탭에 뜬다
     if (typeof res !== 'string' || !res.trim()) {
       cssGen.note = res && res.blocked
         ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 규격 복사]로 우회하세요.'
-        : '⚠ 호출 실패 — 생성 모델을 확인하거나 [📋 규격 복사]를 쓰세요.';
+        : '⚠ 호출 실패 — ' + ((res && res.error) || '원인 불명') + ' · 생성 모델을 바꾸거나 [📋 규격 복사]를 쓰세요.';
       rerender(); return;
     }
     const ui = schema.statusUI;
@@ -10630,10 +10642,14 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
    * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
    *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
    */
+  // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
+  // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
   async function callGenLLM(promptText) {
     const gm = await getGenModel();
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
-      return callAuxLLM(promptText, 8000);
+      const r = await callAuxLLM(promptText, 8000);
+      if (r === null) return { error: `보조 경로: ${lastAux.status}` };
+      return r; // 문자열 또는 { blocked }
     }
     try {
       const req = gm.choice === 'main'
@@ -10649,12 +10665,13 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
       if (res && res.type === 'fail') {
         if (text && /blocked by the caller/i.test(text)) return { blocked: true };
-        return null;
+        return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}` };
       }
-      return (typeof text === 'string' && text.trim()) ? text : null;
+      if (typeof text === 'string' && text.trim()) return text;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 응답에서 텍스트를 못 뽑음 (${typeof res}): ${JSON.stringify(res)?.slice(0, 120) ?? ''}` };
     } catch (e) {
       console.log('[simcore] 생성 호출 예외:', e.message);
-      return null;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 예외: ${e.message}` };
     }
   }
 

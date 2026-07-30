@@ -1,13 +1,20 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.4
-//@display-name SimCore (시뮬 엔진) v0.47.4 삼층 구조
+//@version 0.47.5
+//@display-name SimCore (시뮬 엔진) v0.47.5 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.5 ────────────────────────────────────────────────
+// 생성 실패 사유를 화면까지 — "이동은 했는데 아무것도 안 옴" (실기 제보, 메인 모델 경로).
+// - [어댑터] callGenLLM 실패가 null 대신 { error: 사유 }로 — 리수 fail 응답 원문·예외
+//   메시지·경로(메인/직접/보조=lastAux.status)까지 실어 나른다.
+// - [편집기] 창작·꾸미기 실패 안내가 그 사유를 그대로 표시 ("보조 모델 확인" 두루뭉술 제거).
+//   원인 불명일 때만 콘솔 F12 안내.
 //
 // ── v0.47.4 ────────────────────────────────────────────────
 // 층 = 사이드 내비 — 2·3층이 1층 밑에 접혀 깔려 스크롤 압박 + 존재감 실종 (유저).
@@ -728,10 +735,14 @@
    * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
    *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
    */
+  // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
+  // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
   async function callGenLLM(promptText) {
     const gm = await getGenModel();
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
-      return callAuxLLM(promptText, 8000);
+      const r = await callAuxLLM(promptText, 8000);
+      if (r === null) return { error: `보조 경로: ${lastAux.status}` };
+      return r; // 문자열 또는 { blocked }
     }
     try {
       const req = gm.choice === 'main'
@@ -747,12 +758,13 @@
         text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
       if (res && res.type === 'fail') {
         if (text && /blocked by the caller/i.test(text)) return { blocked: true };
-        return null;
+        return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}` };
       }
-      return (typeof text === 'string' && text.trim()) ? text : null;
+      if (typeof text === 'string' && text.trim()) return text;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 응답에서 텍스트를 못 뽑음 (${typeof res}): ${JSON.stringify(res)?.slice(0, 120) ?? ''}` };
     } catch (e) {
       console.log('[simcore] 생성 호출 예외:', e.message);
-      return null;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 예외: ${e.message}` };
     }
   }
 

@@ -79,10 +79,14 @@ let lastAux = { status: '', raw: '', applied: 0 };
    * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
    *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
    */
+  // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
+  // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
   async function callGenLLM(promptText) {
     const gm = await getGenModel();
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
-      return callAuxLLM(promptText, 8000);
+      const r = await callAuxLLM(promptText, 8000);
+      if (r === null) return { error: `보조 경로: ${lastAux.status}` };
+      return r; // 문자열 또는 { blocked }
     }
     try {
       const req = gm.choice === 'main'
@@ -98,12 +102,13 @@ let lastAux = { status: '', raw: '', applied: 0 };
         text ? text.slice(0, 120) : JSON.stringify(res)?.slice(0, 120));
       if (res && res.type === 'fail') {
         if (text && /blocked by the caller/i.test(text)) return { blocked: true };
-        return null;
+        return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 실패: ${(text || JSON.stringify(res) || '').slice(0, 140)}` };
       }
-      return (typeof text === 'string' && text.trim()) ? text : null;
+      if (typeof text === 'string' && text.trim()) return text;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 응답에서 텍스트를 못 뽑음 (${typeof res}): ${JSON.stringify(res)?.slice(0, 120) ?? ''}` };
     } catch (e) {
       console.log('[simcore] 생성 호출 예외:', e.message);
-      return null;
+      return { error: `${gm.choice === 'main' ? '메인 모델' : '직접 지정'} 호출 예외: ${e.message}` };
     }
   }
 

@@ -158,6 +158,11 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('번들: 스택형 폴백 유지 (플레이그라운드용 접기 2·3층)', src.includes('🧾 JSON 작업대 — 통짜 생성')
     && src.includes('🧰 직접 만지기 — 심층 편집 탭'), '');
 
+  // ── 실패 사유 표면화 (v0.47.5) ──
+  ck('★ 어댑터: 생성 실패가 { error: 사유 }로', src.includes('보조 경로: ${lastAux.status}')
+    && src.includes('호출 예외: ${e.message}'), '');
+  ck('★ 편집기: 실패 사유를 화면에 그대로', src.includes('생성 호출 실패 — ') && src.includes('fatal.msg'), '');
+
   // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
   ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')
     && src.includes('메인 모델 (대화용 그대로)') && src.includes('직접 지정 (실험적)'), '');

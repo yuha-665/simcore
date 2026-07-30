@@ -218,7 +218,9 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──
 {
   ck('★ 표시 핸들러가 마커의 메시지 번호를 uid로 넘긴다', /includeStyle: true, uid: idxStr/.test(src), '');
-  ck('편집기 미리보기는 메시지와 안 겹치는 uid를 쓴다', /includeStyle: true, uid: 'pv'/.test(src), '');
+  // v0.47.1부터 미리보기는 공유 함수(statusPreviewEl)로 — 상태창 탭 'pv', 1층 'pv1' 서로도 안 겹침
+  ck('편집기 미리보기는 메시지와 안 겹치는 uid를 쓴다',
+    /includeStyle: true, uid \}/.test(src) && src.includes("statusPreviewEl('pv')") && src.includes("statusPreviewEl('pv1')"), '');
   ck('편집기에 배치 고르는 칸이 있다', src.includes("pair('그룹 배치'"), '');
   ck('편집기에서 뼈대를 뽑을 수 있다', src.includes("tplBtn('tabs'") && src.includes("tplBtn('popover'"), '');
   ck('★ 뼈대 덮어쓰기는 패널 UI로 확인받는다 (호스트 대화상자는 패널에 가려 못 쓴다)',

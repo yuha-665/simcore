@@ -1,13 +1,23 @@
 //@name simcore
 //@api 3.0
-//@version 0.47
-//@display-name SimCore (시뮬 엔진) v0.47 삼층 구조
+//@version 0.47.1
+//@display-name SimCore (시뮬 엔진) v0.47.1 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.1 ────────────────────────────────────────────────
+// 1층 결과 창구 — 만드는 화면만 있고 결과 볼 창구가 없었다 (유저 진단).
+// - [편집기] 👁 상태창 미리보기 — 1층에 기본 펼침. 상태창 탭과 같은 렌더러(공유 함수화),
+//   rerender에 물려 있어 뭘 고치든 즉시 갱신. 빈 스키마는 숨김.
+// - [편집기] 🎨 CSS 직결 생성 — 분위기 한 줄 → 생성 모델 → customCSS 즉시 적용 →
+//   미리보기로 바로 확인. 스코핑(.sim-status 제한)은 기존 렌더러가 하고, 되돌리기 1슬롯.
+//   복사 옆문([📋 CSS 규격 복사], 분위기 문구 동봉) 병행. <style> 껍데기·코드펜스 방어.
+// - [편집기] 📖 만들어진 것들 — 이벤트·액션·판정·지시문·매턴 정산을 사람 말로 풀어낸
+//   도감 (발동 조건·효과·통지까지). AI가 만들어준 게 뭔지 JSON 안 읽고 확인하는 용도.
 //
 // ── v0.47 ──────────────────────────────────────────────────
 // 삼층 구조 + 사이드바 (실기 첫 화면을 보고 같은 날 결정).
@@ -4892,7 +4902,7 @@ const CSS_SPEC_CLASSES = [
   ['.sim-log / .sim-log-item', '이번 턴 변화 로그'],
 ];
 
-function buildCssSpecPrompt(schema) {
+function buildCssSpecPrompt(schema, styleReq = '') {
   let skeleton = '(스키마에 오류가 있어 실제 구조를 못 뽑았습니다 — 위 클래스 목록만 보고 만들어 주세요)';
   try {
     const v = validateSchema(schema);
@@ -4908,7 +4918,8 @@ function buildCssSpecPrompt(schema) {
     '아래 규격에 맞는 CSS를 만들어 주세요. RisuAI용 시뮬레이션 플러그인(SimCore)의 상태창 스킨입니다.',
     '',
     '## 내가 원하는 분위기',
-    '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")',
+    String(styleReq || '').trim()
+      || '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")',
     '',
     '## 반드시 지킬 것',
     '- **CSS만** 출력하세요. HTML·JS·설명 없이 스타일 규칙만.',
@@ -6645,24 +6656,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(bindArea(ui.customCSS, (x) => { ui.customCSS = x || undefined; rerender(); },
       '.sim-status { border-color: gold; }\n.sim-bar-fill { background: crimson; }'));
 
-    // 미리보기
+    // 미리보기 — 1층 결과 창구와 같은 렌더러 (uid만 다르게, 접기 상태가 서로를 건드리면 안 된다)
     wrap.appendChild(h('h4', {}, '미리보기 (시작값 기준)'));
-    const pv = h('div', { class: 'sce-preview' });
-    try {
-      const v = validateSchema(schema);
-      if (v.ok) {
-        // uid는 메시지 번호와 겹치지 않는 값으로 — 미리보기와 채팅의 탭이 서로를 건드리면 안 된다
-        pv.innerHTML = renderStatusHtml(schema, engine.initState(schema), null,
-          (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
-          { includeStyle: true, uid: 'pv' });
-      } else {
-        pv.textContent = '스키마 오류를 먼저 해결하면 미리보기가 표시됩니다';
-        pv.className += ' sce-warn';
-      }
-    } catch (e) {
-      pv.textContent = '미리보기 실패: ' + e.message;
-    }
-    wrap.appendChild(pv);
+    wrap.appendChild(statusPreviewEl('pv'));
     return wrap;
   }
 
@@ -7411,6 +7407,130 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
   }
 
+  // ── 1층 결과 창구 — 만들었으면 바로 눈으로 확인한다 (미리보기·CSS·도감) ──
+  let previewOpen = true;   // 상태창 미리보기 (기본 펼침 — 눈 피드백이 목적이므로)
+  let catalogOpen = false;  // 만들어진 것들 도감
+  let cssReq = '';          // CSS 분위기 요청 문구
+  let cssGen = { busy: false, seq: 0, note: null };
+  let cssBackup = null;     // { css } — CSS 생성 적용 직전 customCSS (되돌리기 1슬롯)
+
+  function statusPreviewEl(uid) {
+    // uid는 채팅 메시지 번호·다른 미리보기와 겹치지 않게 — 접기 상태가 서로를 건드리면 안 된다
+    const pv = h('div', { class: 'sce-preview' });
+    try {
+      const v = validateSchema(schema);
+      if (v.ok) {
+        pv.innerHTML = renderStatusHtml(schema, engine.initState(schema), null,
+          (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
+          { includeStyle: true, uid });
+      } else {
+        pv.textContent = '스키마 오류를 먼저 해결하면 미리보기가 표시됩니다';
+        pv.className += ' sce-warn';
+      }
+    } catch (e) {
+      pv.textContent = '미리보기 실패: ' + e.message;
+    }
+    return pv;
+  }
+
+  async function runCssGenerate() {
+    if (!ai || !ai.generate || cssGen.busy) return;
+    const mySeq = ++cssGen.seq;
+    cssGen.busy = true; cssGen.note = null;
+    rerender();
+    let res = null;
+    try { res = await ai.generate(buildCssSpecPrompt(schema, cssReq)); } catch { /* 아래 실패 처리 */ }
+    if (cssGen.seq !== mySeq || destroyed) return;
+    cssGen.busy = false;
+    if (typeof res !== 'string' || !res.trim()) {
+      cssGen.note = res && res.blocked
+        ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — [📋 CSS 규격 복사]로 우회하세요.'
+        : '⚠ 호출 실패 — 생성 모델을 확인하거나 [📋 CSS 규격 복사]를 쓰세요.';
+      rerender(); return;
+    }
+    let css = res.trim();
+    const m = css.match(/```(?:css)?\s*([\s\S]*?)```/);
+    if (m) css = m[1].trim();
+    css = css.replace(/<\/?style[^>]*>/g, '').trim(); // <style> 껍데기째 주는 모델 방어
+    if (!css || !css.includes('{')) {
+      cssGen.note = '⚠ CSS로 보이지 않는 응답입니다 — 앞부분: ' + css.slice(0, 80);
+      rerender(); return;
+    }
+    // 적용은 즉시, 안전은 이중으로 — 스코핑(.sim-status 제한)은 렌더러가 자동으로 하고, 되돌리기 1슬롯
+    cssBackup = { css: schema.statusUI.customCSS };
+    schema.statusUI.customCSS = css;
+    cssGen.note = '✅ 적용됐습니다 — 아래 미리보기가 새 스킨입니다.';
+    rerender();
+  }
+
+  function catalogView() {
+    const wrap = h('div');
+    const fmtE = (e) => {
+      if (e == null || typeof e !== 'object') return String(e);
+      if (e.set) return `${e.set} ← ${e.expr}`;
+      if (e.list) {
+        const ops = [];
+        if (e.add) ops.push(`추가 ${JSON.stringify(e.add)}`);
+        if (e.remove) ops.push(`제거 ${JSON.stringify(e.remove)}`);
+        if (e.expire) ops.push(`기한만료 기준 ${e.expire}`);
+        return `목록 ${e.list}: ${ops.join(', ') || '(변경 없음)'}`;
+      }
+      return JSON.stringify(e);
+    };
+    const line = (icon, title, subs) => h('div', { style: 'margin:2px 0 8px' },
+      h('div', {}, `${icon} ${title}`),
+      ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-hint', style: 'margin:0 0 0 20px' }, s)));
+
+    const evs = schema.rules.events || [];
+    const rndChance = schema.rules.randomEvents?.chancePerTurn || 0;
+    const rnd = schema.rules.randomEvents?.table || [];
+    if (evs.length + rnd.length) {
+      wrap.appendChild(h('h4', {}, `이벤트 ${evs.length + rnd.length}개`));
+      for (const e of evs) wrap.appendChild(line('⚡', `${e.id}${e.once ? ' — 딱 한 번' : ''}`, [
+        e.when ? `발동: ${e.when}` : null,
+        (e.effects || []).length ? `효과: ${e.effects.map(fmtE).join(' · ')}` : null,
+        e.notify ? `통지: ${e.notify}` : null,
+      ]));
+      for (const e of rnd) wrap.appendChild(line('🎲', `${e.id} — 랜덤${rndChance ? ` (턴당 ${Math.round(rndChance * 100)}%)` : ''}`, [
+        e.when ? `조건: ${e.when}` : null,
+        (e.effects || []).length ? `효과: ${e.effects.map(fmtE).join(' · ')}` : null,
+        e.notify ? `통지: ${e.notify}` : null,
+      ]));
+    }
+    if ((schema.actions || []).length) {
+      wrap.appendChild(h('h4', {}, `액션 ${schema.actions.length}개`));
+      for (const a of schema.actions) wrap.appendChild(line('🔘', `${a.label ?? a.id}${a.mode ? ` (${a.mode})` : ''}`, [
+        a.when ? `조건: ${a.when}` : null,
+        (a.effects || []).length ? `효과: ${a.effects.map(fmtE).join(' · ')}` : null,
+        a.check ? `연결 판정: ${a.check}` : null,
+        a.inject ? `서사 지시: ${a.inject}` : null,
+      ]));
+    }
+    if ((schema.checks || []).length) {
+      wrap.appendChild(h('h4', {}, `판정 ${schema.checks.length}개`));
+      for (const c of schema.checks) wrap.appendChild(line('🎯', c.label ?? c.id, [
+        `굴림: ${c.roll}`,
+        (c.grades || []).length ? `${c.grades.length}단계: ${c.grades.map((g) => g.label ?? '(이름 없음)').join(' / ')}` : null,
+      ]));
+    }
+    if ((schema.directives || []).length) {
+      wrap.appendChild(h('h4', {}, `지시문 ${schema.directives.length}개`));
+      for (const d of schema.directives) wrap.appendChild(line('📣', d.id, [
+        d.when ? `켜짐: ${d.when}` : null,
+        d.text ? `지시: ${d.text}` : null,
+      ]));
+    }
+    if ((schema.rules.onTurn || []).length) {
+      wrap.appendChild(h('h4', {}, '매 턴 정산'));
+      wrap.appendChild(line('🔁', `${schema.rules.onTurn.length}건`,
+        schema.rules.onTurn.map((e) => fmtE(e))));
+    }
+    if (!wrap.childNodes.length) {
+      wrap.appendChild(h('div', { class: 'sce-hint' }, '아직 만들어진 이벤트·액션·판정이 없습니다 — 위 입력창에 시켜보세요.'));
+    }
+    return wrap;
+  }
+
   function topFloor() {
     const box = h('div', { class: 'sce-block sce-top' });
     box.appendChild(h('h4', { style: 'margin-top:2px' }, '✨ AI에게 맡기기'));
@@ -7555,6 +7675,45 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const rb = patchReportBox();
       if (rb) box.appendChild(rb);
       if (patchPlan) box.appendChild(planBoxUI());
+    }
+
+    // ── 결과 창구 — 만든 걸 바로 눈으로 (빈 스키마는 보여줄 게 없어 숨김) ──
+    if (!blank) {
+      // 👁 상태창 미리보기 + CSS 커스텀 — 시각 피드백이 목적이라 기본 펼침
+      const pvBody = h('div');
+      pvBody.appendChild(statusPreviewEl('pv1'));
+      const cssRow = h('div', { class: 'sce-row' });
+      cssRow.appendChild(bindInput(cssReq, (x) => { cssReq = x; },
+        { cls: 'sce-w-l', ph: '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
+      if (ai && ai.generate) {
+        cssRow.appendChild(cssGen.busy
+          ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
+          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, '🎨 CSS 생성'));
+      }
+      if (cssBackup) {
+        cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+          schema.statusUI.customCSS = cssBackup.css; cssBackup = null; cssGen.note = null; rerender();
+        } }, '↩ 스킨 되돌리기'));
+      }
+      pvBody.appendChild(cssRow);
+      if (cssGen.busy) pvBody.appendChild(h('div', { class: 'sce-hint' }, '⏳ CSS 생성 중…'));
+      else if (cssGen.note) pvBody.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
+      copyWidget('📋 CSS 규격 복사',
+        '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
+        + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+        () => buildCssSpecPrompt(schema, cssReq)).mount(pvBody);
+      const pvFold = h('details', { class: 'sce-fold' },
+        h('summary', {}, '👁 상태창 미리보기 — 지금 스키마가 그리는 화면'), pvBody);
+      pvFold.open = previewOpen;
+      pvFold.addEventListener('toggle', () => { previewOpen = pvFold.open; });
+      box.appendChild(pvFold);
+
+      // 📖 만들어진 것들 — 액션·이벤트가 실제로 어떻게 굴러가게 돼 있는지 사람 말로
+      const cataFold = h('details', { class: 'sce-fold' },
+        h('summary', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'), catalogView());
+      cataFold.open = catalogOpen;
+      cataFold.addEventListener('toggle', () => { catalogOpen = cataFold.open; });
+      box.appendChild(cataFold);
     }
 
     // 옆문 — API 크레딧 없이 공홈(웹 AI) 구독을 쓰는 유저의 경로. 강등이 아니라 병행 —

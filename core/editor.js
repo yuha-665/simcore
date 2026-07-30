@@ -1515,7 +1515,10 @@ function effectRows(schema, effects, rerender) {
 }
 
 function createSchemaEditor(container, initialSchema, opts = {}) {
-  const { onChange, ai } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  const { onChange, ai, floor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  // floor: 'top'|'json'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
+  // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
+  let floorView = floor ?? null;
   let schema = JSON.parse(JSON.stringify(initialSchema));
   let activeTab = 'vars';
   let destroyed = false;
@@ -3620,23 +3623,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 프레임 ────────────────────────────────────────────────
   const reportEl = h('div', { class: 'sce-report' });
 
-  function render() {
-    root.innerHTML = '';
-    // ── 삼층 구조 (docs/design-접근성.md §2) ──
-    // 1층 = AI에게 맡기기 + 진단 (요청과 난간이 한 화면), 2층 = JSON 작업대 (실사용 1순위),
-    // 3층 = 심층 편집 탭. 층은 접힘일 뿐 같은 스키마·같은 rerender — 어느 층에서 고쳐도 다 반영된다.
-    root.appendChild(topFloor());
-
-    const v = validateSchema(schema);
-
-    // 2층 — 통짜·패치·오류 돌려주기·원본
-    const jsonFloor = h('details', { class: 'sce-lower' },
-      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
-      tabJson());
-    jsonFloor.open = jsonOpen;
-    jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
-    root.appendChild(jsonFloor);
-
+  function deepTabs() {
     const tabs = h('div', { class: 'sce-tabs' });
     for (const [key, label] of TABS) {
       tabs.appendChild(h('button', {
@@ -3644,10 +3631,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         onclick: () => { activeTab = key; render(); },
       }, label));
     }
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+    return tabs;
+  }
 
-    // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
+  function deepBody() {
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
+      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+  }
+
+  // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
+  function buildReport(v) {
     let html = '';
     for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
     const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
@@ -3658,11 +3651,44 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     reportEl.innerHTML = html;
     const fold = reportEl.querySelector('details.sce-fold');
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
+  }
 
-    // 3층 — 없애는 게 아니라 접는 것. 위층에서 적용된 결과가 같은 스키마로 그대로 반영된다.
+  function render() {
+    root.innerHTML = '';
+    // ── 삼층 구조 (docs/design-접근성.md §2) ──
+    // 1층 = AI에게 맡기기(창작/결과/진단), 2층 = JSON 작업대, 3층 = 심층 편집 탭.
+    // 층은 어떻게 나뉘어 보이든 같은 스키마·같은 rerender — 어느 층에서 고쳐도 다 반영된다.
+    const v = validateSchema(schema);
+    buildReport(v);
+
+    // 호스트 사이드 내비 모드 — 층 하나만 (v0.47.4: 2·3층을 사이드바로 승격, 스크롤 압박 제거)
+    if (floorView) {
+      if (floorView === 'json') {
+        root.appendChild(tabJson());
+        root.appendChild(reportEl);
+      } else if (floorView === 'deep') {
+        root.appendChild(deepTabs());
+        root.appendChild(deepBody());
+        root.appendChild(reportEl);
+      } else {
+        root.appendChild(topFloor());
+      }
+      return;
+    }
+
+    // 스택형 폴백 — 1층 + 2·3층 접기 (층 내비가 없는 호스트: 플레이그라운드 등)
+    root.appendChild(topFloor());
+
+    const jsonFloor = h('details', { class: 'sce-lower' },
+      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
+      tabJson());
+    jsonFloor.open = jsonOpen;
+    jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
+    root.appendChild(jsonFloor);
+
     const lower = h('details', { class: 'sce-lower' },
       h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
-      tabs, body, reportEl);
+      deepTabs(), deepBody(), reportEl);
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });
     root.appendChild(lower);
@@ -3684,6 +3710,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   return {
     getSchema: () => JSON.parse(JSON.stringify(schema)),
     setSchema: (s) => { schema = JSON.parse(JSON.stringify(s)); rerender(); },
+    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'deep'|null(스택형)
     validateNow: () => validateSchema(schema),
     destroy: () => { destroyed = true; container.innerHTML = ''; },
   };

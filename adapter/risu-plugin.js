@@ -1,13 +1,22 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.3
-//@display-name SimCore (시뮬 엔진) v0.47.3 삼층 구조
+//@version 0.47.4
+//@display-name SimCore (시뮬 엔진) v0.47.4 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.4 ────────────────────────────────────────────────
+// 층 = 사이드 내비 — 2·3층이 1층 밑에 접혀 깔려 스크롤 압박 + 존재감 실종 (유저).
+// - [패널] 사이드바 6항목: 📊 현황 / ✨ AI에게 맡기기 / 🧾 JSON 작업대 / 🧰 심층 편집 /
+//   💾 세이브 / ❓ 도움말. 편집 3항목은 같은 edit 페이지 + editor.setFloor(층)로 전환 —
+//   설치/제거/불러오기 버튼 줄은 세 층이 공유. 넓은 화면에서 구분선, 좁은 화면은 상단 탭.
+// - [편집기] setFloor('top'|'json'|'deep') API — 층 하나만 그리는 호스트 내비 모드.
+//   접기 없이 페이지 전체를 쓰므로 2·3층도 제 공간을 갖는다. 검증 리포트는 json·deep에.
+//   floor 옵션 없는 호스트(플레이그라운드)는 기존 스택형(1층+접기 2·3층) 그대로 폴백.
 //
 // ── v0.47.3 ────────────────────────────────────────────────
 // 결과 탭 꾸미기 2모드 — "커스텀도 자동화 영역" (유저). 손조립은 3층, 자동화는 1층.
@@ -1726,6 +1735,7 @@
         border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }
       #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
+      #sc-root .sc-navdiv { display:none; }
       /* 넓은 화면 = 사이드바 내비 (데스크톱에서 노는 좌우 여백 활용).
          좁은 화면 = 위 기본값 그대로 상단 탭 — 모바일에서 변수 보정하러 들어온 유저를 깨지 않는다. */
       @media (min-width: 920px) {
@@ -1738,6 +1748,7 @@
         #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:9px !important;
           text-align:left !important; padding:8px 12px !important; }
         #sc-root .sc-maintab.on { border-color:#6b93f2 !important; }
+        #sc-root .sc-navdiv { display:block; height:1px; background:#24304a; margin:5px 2px; }
       }
       #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
       #sc-root .status-warn { color:#ffd166; }
@@ -1793,10 +1804,14 @@
             </span>
           </h1>
           <div class="sc-maintabs">
-            <button class="sc-maintab on" data-page="play">현황</button>
-            <button class="sc-maintab" data-page="edit">봇 편집</button>
-            <button class="sc-maintab" data-page="save">세이브</button>
-            <button class="sc-maintab" data-page="help">도움말</button>
+            <button class="sc-maintab on" data-page="play">📊 현황</button>
+            <div class="sc-navdiv"></div>
+            <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI에게 맡기기</button>
+            <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 작업대</button>
+            <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 심층 편집</button>
+            <div class="sc-navdiv"></div>
+            <button class="sc-maintab" data-page="save">💾 세이브</button>
+            <button class="sc-maintab" data-page="help">❓ 도움말</button>
           </div>
         </div>
         <div class="sc-main">
@@ -1971,7 +1986,10 @@ count(목록)  has(목록, "항목")</pre>
       tab.onclick = () => {
         for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
         for (const p of root.querySelectorAll('.sc-page')) p.classList.toggle('on', p.id === 'sc-page-' + tab.dataset.page);
-        if (tab.dataset.page === 'edit') ensureEditor();
+        if (tab.dataset.page === 'edit') {
+          ensureEditor();
+          editor.setFloor(tab.dataset.floor || 'top'); // 층 = 사이드 내비 항목 (v0.47.4)
+        }
       };
     }
 
@@ -2309,6 +2327,7 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
       },
+      floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
     });
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);

@@ -1,13 +1,22 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.3
-//@display-name SimCore (시뮬 엔진) v0.47.3 삼층 구조
+//@version 0.47.4
+//@display-name SimCore (시뮬 엔진) v0.47.4 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.4 ────────────────────────────────────────────────
+// 층 = 사이드 내비 — 2·3층이 1층 밑에 접혀 깔려 스크롤 압박 + 존재감 실종 (유저).
+// - [패널] 사이드바 6항목: 📊 현황 / ✨ AI에게 맡기기 / 🧾 JSON 작업대 / 🧰 심층 편집 /
+//   💾 세이브 / ❓ 도움말. 편집 3항목은 같은 edit 페이지 + editor.setFloor(층)로 전환 —
+//   설치/제거/불러오기 버튼 줄은 세 층이 공유. 넓은 화면에서 구분선, 좁은 화면은 상단 탭.
+// - [편집기] setFloor('top'|'json'|'deep') API — 층 하나만 그리는 호스트 내비 모드.
+//   접기 없이 페이지 전체를 쓰므로 2·3층도 제 공간을 갖는다. 검증 리포트는 json·deep에.
+//   floor 옵션 없는 호스트(플레이그라운드)는 기존 스택형(1층+접기 2·3층) 그대로 폴백.
 //
 // ── v0.47.3 ────────────────────────────────────────────────
 // 결과 탭 꾸미기 2모드 — "커스텀도 자동화 영역" (유저). 손조립은 3층, 자동화는 1층.
@@ -6258,7 +6267,10 @@ function effectRows(schema, effects, rerender) {
 }
 
 function createSchemaEditor(container, initialSchema, opts = {}) {
-  const { onChange, ai } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  const { onChange, ai, floor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  // floor: 'top'|'json'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
+  // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
+  let floorView = floor ?? null;
   let schema = JSON.parse(JSON.stringify(initialSchema));
   let activeTab = 'vars';
   let destroyed = false;
@@ -8363,23 +8375,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 프레임 ────────────────────────────────────────────────
   const reportEl = h('div', { class: 'sce-report' });
 
-  function render() {
-    root.innerHTML = '';
-    // ── 삼층 구조 (docs/design-접근성.md §2) ──
-    // 1층 = AI에게 맡기기 + 진단 (요청과 난간이 한 화면), 2층 = JSON 작업대 (실사용 1순위),
-    // 3층 = 심층 편집 탭. 층은 접힘일 뿐 같은 스키마·같은 rerender — 어느 층에서 고쳐도 다 반영된다.
-    root.appendChild(topFloor());
-
-    const v = validateSchema(schema);
-
-    // 2층 — 통짜·패치·오류 돌려주기·원본
-    const jsonFloor = h('details', { class: 'sce-lower' },
-      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
-      tabJson());
-    jsonFloor.open = jsonOpen;
-    jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
-    root.appendChild(jsonFloor);
-
+  function deepTabs() {
     const tabs = h('div', { class: 'sce-tabs' });
     for (const [key, label] of TABS) {
       tabs.appendChild(h('button', {
@@ -8387,10 +8383,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         onclick: () => { activeTab = key; render(); },
       }, label));
     }
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
-      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+    return tabs;
+  }
 
-    // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
+  function deepBody() {
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
+      checks: tabChecks, setup: tabSetup, ai: tabAi }[activeTab]();
+  }
+
+  // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
+  function buildReport(v) {
     let html = '';
     for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
     const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
@@ -8401,11 +8403,44 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     reportEl.innerHTML = html;
     const fold = reportEl.querySelector('details.sce-fold');
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
+  }
 
-    // 3층 — 없애는 게 아니라 접는 것. 위층에서 적용된 결과가 같은 스키마로 그대로 반영된다.
+  function render() {
+    root.innerHTML = '';
+    // ── 삼층 구조 (docs/design-접근성.md §2) ──
+    // 1층 = AI에게 맡기기(창작/결과/진단), 2층 = JSON 작업대, 3층 = 심층 편집 탭.
+    // 층은 어떻게 나뉘어 보이든 같은 스키마·같은 rerender — 어느 층에서 고쳐도 다 반영된다.
+    const v = validateSchema(schema);
+    buildReport(v);
+
+    // 호스트 사이드 내비 모드 — 층 하나만 (v0.47.4: 2·3층을 사이드바로 승격, 스크롤 압박 제거)
+    if (floorView) {
+      if (floorView === 'json') {
+        root.appendChild(tabJson());
+        root.appendChild(reportEl);
+      } else if (floorView === 'deep') {
+        root.appendChild(deepTabs());
+        root.appendChild(deepBody());
+        root.appendChild(reportEl);
+      } else {
+        root.appendChild(topFloor());
+      }
+      return;
+    }
+
+    // 스택형 폴백 — 1층 + 2·3층 접기 (층 내비가 없는 호스트: 플레이그라운드 등)
+    root.appendChild(topFloor());
+
+    const jsonFloor = h('details', { class: 'sce-lower' },
+      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
+      tabJson());
+    jsonFloor.open = jsonOpen;
+    jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
+    root.appendChild(jsonFloor);
+
     const lower = h('details', { class: 'sce-lower' },
       h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
-      tabs, body, reportEl);
+      deepTabs(), deepBody(), reportEl);
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });
     root.appendChild(lower);
@@ -8427,6 +8462,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   return {
     getSchema: () => JSON.parse(JSON.stringify(schema)),
     setSchema: (s) => { schema = JSON.parse(JSON.stringify(s)); rerender(); },
+    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'deep'|null(스택형)
     validateNow: () => validateSchema(schema),
     destroy: () => { destroyed = true; container.innerHTML = ''; },
   };
@@ -11601,6 +11637,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         border-radius:9px 9px 0 0 !important; background:transparent !important; color:#a7b4cc !important; }
       #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
+      #sc-root .sc-navdiv { display:none; }
       /* 넓은 화면 = 사이드바 내비 (데스크톱에서 노는 좌우 여백 활용).
          좁은 화면 = 위 기본값 그대로 상단 탭 — 모바일에서 변수 보정하러 들어온 유저를 깨지 않는다. */
       @media (min-width: 920px) {
@@ -11613,6 +11650,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:9px !important;
           text-align:left !important; padding:8px 12px !important; }
         #sc-root .sc-maintab.on { border-color:#6b93f2 !important; }
+        #sc-root .sc-navdiv { display:block; height:1px; background:#24304a; margin:5px 2px; }
       }
       #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
       #sc-root .status-warn { color:#ffd166; }
@@ -11668,10 +11706,14 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
             </span>
           </h1>
           <div class="sc-maintabs">
-            <button class="sc-maintab on" data-page="play">현황</button>
-            <button class="sc-maintab" data-page="edit">봇 편집</button>
-            <button class="sc-maintab" data-page="save">세이브</button>
-            <button class="sc-maintab" data-page="help">도움말</button>
+            <button class="sc-maintab on" data-page="play">📊 현황</button>
+            <div class="sc-navdiv"></div>
+            <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI에게 맡기기</button>
+            <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 작업대</button>
+            <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 심층 편집</button>
+            <div class="sc-navdiv"></div>
+            <button class="sc-maintab" data-page="save">💾 세이브</button>
+            <button class="sc-maintab" data-page="help">❓ 도움말</button>
           </div>
         </div>
         <div class="sc-main">
@@ -11846,7 +11888,10 @@ count(목록)  has(목록, "항목")</pre>
       tab.onclick = () => {
         for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
         for (const p of root.querySelectorAll('.sc-page')) p.classList.toggle('on', p.id === 'sc-page-' + tab.dataset.page);
-        if (tab.dataset.page === 'edit') ensureEditor();
+        if (tab.dataset.page === 'edit') {
+          ensureEditor();
+          editor.setFloor(tab.dataset.floor || 'top'); // 층 = 사이드 내비 항목 (v0.47.4)
+        }
       };
     }
 
@@ -12184,6 +12229,7 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
       },
+      floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
     });
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);

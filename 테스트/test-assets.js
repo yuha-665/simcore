@@ -181,7 +181,111 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('검증기에 assets 절 존재', src.includes('$.assets.packs') || src.includes('잘못된 팩 id'), '');
 }
 
-let p = 0, f = 0;
-for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
-console.log(`\n${p} passed, ${f} failed`);
-process.exit(f ? 1 : 0);
+// ── 배선 (2단계): 엔진 프롬프트 합류 ──
+const E = SC.require('engine');
+{
+  const S = snap(); S.updater = { allow: [{ id: 'nsfw_on' }] };
+  const st = E.initState(S);
+  const p = E.buildAuxPrompt(S, st, '서사', '유저 발화');
+  ck('★ aux 프롬프트에 image 피기백 지시가 실린다 (추가 호출 0)',
+    p.includes('"image"') && p.includes('Hiromi'), '');
+  ck('닫힌 팩 어휘는 피기백 지시에도 없다', !p.includes('blush'), '');
+  const pAll = E.buildAuxPrompt(S, st, '서사', null, null, { allowAll: true });
+  ck('★ 브리지 템플릿 굽기(allowAll)에는 안 얹는다 (retro 제약)', !pAll.includes('"image"'), '');
+
+  const Sm = snap(); Sm.assets.by = 'main'; Sm.updater = { allow: [{ id: 'nsfw_on' }] };
+  ck('by:main이면 aux 프롬프트에는 없다',
+    !E.buildAuxPrompt(Sm, E.initState(Sm), '서사', null).includes('"image"'), '');
+  const S0 = snap(); delete S0.assets; S0.updater = { allow: [{ id: 'nsfw_on' }] };
+  ck('★ assets 없으면 aux 프롬프트 불변', !E.buildAuxPrompt(S0, E.initState(S0), '서사', null).includes('"image"'), '');
+
+  ck('★ by:main이면 전송 promptBlock에 주입문 합류',
+    E.sendPhase(Sm, E.initState(Sm)).promptBlock.includes('[Image tags]'), '');
+  ck('by:aux면 promptBlock에는 없다 (이중 지시 방지)',
+    !E.sendPhase(S, E.initState(S)).promptBlock.includes('[Image tags]'), '');
+
+  const parsed = E.parseAuxResponse('{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}');
+  ck('★ parseAuxResponse가 image 필드를 통과시킨다', parsed && parsed.image && parsed.image.who === 'Hiromi', JSON.stringify(parsed));
+  ck('image 없으면 null', E.parseAuxResponse('{"changes":{}}').image === null, '');
+}
+
+// ── 배선 (2단계): 가짜 리스 실부팅 — 보조가 image를 얹어 보내면 본문 맨 앞에 1장 ──
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function bootLive() {
+  const LORE = src.match(/const SCHEMA_LORE_COMMENT = '([^']+)'/)?.[1];
+  const SCHEMA = snap(); SCHEMA.updater = { allow: [{ id: 'nsfw_on' }] };
+  const world = {
+    auxResult: '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}',
+    chars: [{
+      chaId: 'c-sim', name: '에셋 봇', triggerscript: [],
+      globalLore: [{ comment: LORE, content: JSON.stringify(SCHEMA) }],
+      // [live-test] 실제 additionalAssets 항목 형태 확인 — 배열/객체 둘 다 받는다
+      additionalAssets: [['Hiromi_angry', 'a.png', 'png'], ['Seiko_neutral', 'b.png', 'png']],
+    }],
+    chats: { 'c-sim:0': { id: 'ch0', message: [{ role: 'user', data: '안녕' }] } },
+  };
+  const store = new Map();
+  global.Risuai = {
+    getCharacter: async () => world.chars[0],
+    setCharacter: async (c) => { world.chars[0] = c; },
+    getCurrentCharacterIndex: async () => 0,
+    getCurrentChatIndex: async () => 0,
+    getChatFromIndex: async () => world.chats['c-sim:0'],
+    setChatToIndex: async (_a, _b, c) => { world.chats['c-sim:0'] = c; },
+    registerButton: async () => {}, unregisterUIPart: async () => {}, registerSetting: async () => {},
+    addRisuReplacer: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
+    addRisuScriptHandler: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
+    showContainer: async () => {}, alert: async () => {},
+    getArgument: async () => 'aux',            // 보조 직접 호출 강제
+    onUnload: async (fn) => { global.__unload = fn; },
+    runLLMModel: async () => ({ type: 'success', result: world.auxResult }),
+    pluginStorage: {
+      getItem: async (k) => (store.has(k) ? store.get(k) : null),
+      setItem: async (k, v) => { store.set(k, v); },
+      removeItem: async (k) => { store.delete(k); },
+      keys: async () => [...store.keys()],
+    },
+  };
+  const el = () => new Proxy({ style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
+    children: [], appendChild() {}, append() {}, remove() {}, setAttribute() {}, addEventListener() {},
+    querySelector: () => null, querySelectorAll: () => [] }, { get: (t, k) => (k in t ? t[k] : undefined), set: () => true });
+  global.document = { createElement: el, getElementById: () => null, body: el(),
+    querySelector: () => null, querySelectorAll: () => [], head: el(), addEventListener() {} };
+  global.window = { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) };
+  (0, eval)(src);
+  await sleep(150);
+  return world;
+}
+
+(async () => {
+  const world = await bootLive();
+  const hooks = global.__hooks ?? {};
+  ck('실부팅: output 훅 등록', typeof hooks.output === 'function', Object.keys(hooks).join(','));
+
+  // 턴 1: 정조합 적중 → 본문 맨 앞 1장 + 마커 유지
+  await hooks.beforeRequest([{ role: 'user', content: '안녕' }], 'model');
+  const out1 = await hooks.output('히로미가 화를 냈다.');
+  ck('★ 실부팅: 이미지 태그가 본문 맨 앞에 1장', out1.startsWith('<img="Hiromi_angry">\n\n'), out1.slice(0, 60));
+  ck('실부팅: 마커는 그대로 뒤에 붙는다', /⟦simcore:1⟧$/.test(out1), out1.slice(-30));
+
+  // 턴 2: 모르는 인물 → 조용히 생략 (깨진 이미지 0)
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '첫 응답' }, { role: 'user', data: '다음' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Ghost","emo":"angry"}}';
+  await hooks.beforeRequest([{ role: 'user', content: '다음' }], 'model');
+  const out2 = await hooks.output('낯선 사람이 나타났다.');
+  ck('★ 실부팅: 모르는 인물은 태그 없이 본문 그대로', out2.startsWith('낯선 사람이'), out2.slice(0, 60));
+
+  // 턴 3: image:null (장면 초점 없음) → 생략
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '둘째 응답' }, { role: 'user', data: '셋' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":null}';
+  await hooks.beforeRequest([{ role: 'user', content: '셋' }], 'model');
+  const out3 = await hooks.output('조용한 오후다.');
+  ck('실부팅: image:null이면 생략', out3.startsWith('조용한 오후다'), out3.slice(0, 60));
+
+  if (global.__unload) global.__unload();
+
+  let p = 0, f = 0;
+  for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
+  console.log(`\n${p} passed, ${f} failed`);
+  process.exit(f ? 1 : 0);
+})();

@@ -123,7 +123,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
   ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',
     src.includes('generate: (promptText) => callGenLLM(promptText)'), '');
-  ck('어댑터 버전 v0.47', src.includes('//@version 0.47'), '');
+  ck('어댑터 버전 v0.48', src.includes('//@version 0.48'), '');
 
   // ── 삼층 구조 + 사이드바 (v0.47) ──
   ck('★ 번들: 2층 JSON 작업대 존재', src.includes('🧾 JSON 작업대'), '');

@@ -1,13 +1,28 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.9
-//@display-name SimCore (시뮬 엔진) v0.47.9 삼층 구조
+//@version 0.48.0
+//@display-name SimCore (시뮬 엔진) v0.48 에셋 팩
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.48.0 ────────────────────────────────────────────────
+// 에셋 팩 배선 (2단계, 설계 docs/design-에셋-슬롯.md) — 이미지 태그 자동화가 실제로 돈다.
+// - [aux 피기백] buildAuxPrompt가 auxImageSpec 지시를 얹어 상태 갱신 호출에 "image":
+//   {who, 감정…}을 같이 받는다 — 추가 LLM 호출 0. 보조는 인물·감정만 고르고 팩 선택·
+//   조합·실존 대조는 코어 몫 (auxImageSpec — 고를 것이 늘면 틀릴 것도 는다).
+// - [output 삽입] resolveImageTag: 갱신 후 상태로 게이트 판단 → resolveImage 폴백
+//   사다리 → 본문 맨 앞 1장. 실패는 조용히 생략 (깨진 이미지 태그가 최악).
+// - [실물 대조] getAssetNameSet = getCharacter().additionalAssets 이름 Set.
+//   [live-test] 항목이 [이름,경로,ext] 배열인지 {name} 객체인지 — 둘 다 받고, 못 읽으면
+//   대조 생략(정조합 신뢰)으로 진행.
+// - [main 모드] sendPhase promptBlock에 mainInjectionText 합류 — 손으로 쓰던 이미지
+//   지침 블록을 팩 선언에서 생성 (닫힌 팩 통째 제외, "확신 없으면 생략" 상시).
+// - [retro 제약] 루아 브리지 = 이미지 없음 (템플릿이 changes/reasons만 회수). 차단 후
+//   지연 적용 턴도 이미지 생략 (본문 이미 확정, 다음 턴부터 정상).
 //
 // ── v0.47.9 ────────────────────────────────────────────────
 // [✨ 말로 시키기] 점프 — "JSON·심층에서만 왕복해야 하는 게 애매하다" (유저). 다이렉트
@@ -2304,6 +2319,7 @@ SimCore.define("engine", function (require, module, exports) {
 // }
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
+const { mainInjectionText, auxImageSpec } = require('./assets');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -2723,6 +2739,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
   if (state.meta.pendingChoice && findChoiceEvent(schema, state.meta.pendingChoice.id)) {
     lines.push(DEFAULT_CHOICE_WAIT);
+  }
+
+  // 3.7 에셋 팩 주입문 (by:'main') — 손으로 쓰던 이미지 지침 블록을 팩 선언에서 생성.
+  // 닫힌 팩은 통째로 빠지므로 매 전송 다시 계산한다. 세션 0(최초설정)엔 안 붙인다.
+  if (!isSetupPending(schema, state)) {
+    const imgBlock = mainInjectionText(schema, lookup);
+    if (imgBlock) lines.push(imgBlock);
   }
 
   if (isSetupPending(schema, state)) {
@@ -3189,6 +3212,11 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     return `- ${a.id} (${v.label ?? a.id}, 텍스트): 현재 ${cur}. 새 값 전체를 제시 (${a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내)${desc}`;
   }).filter(Boolean).join('\n');
 
+  // 에셋 이미지 피기백 (by:'aux') — 상태 갱신 호출에 얹어 추가 비용 0으로 받는다.
+  // 브리지 템플릿 굽기(allowAll)에는 안 얹는다 — 브리지는 changes/reasons만 회수한다 (retro 제약).
+  const imgSpec = (!opts.allowAll && state)
+    ? auxImageSpec(schema, makeLookup(schema, state.vars)).instruction : '';
+
   return [
     '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
     '',
@@ -3210,6 +3238,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
       ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
       : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
     schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}',
+    imgSpec ? '' : null,
+    imgSpec || null,
   ].filter((x) => x !== null).join('\n');
 }
 
@@ -3402,7 +3432,7 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null };
+  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null, image: obj.image ?? null };
 }
 
 module.exports = {
@@ -10789,6 +10819,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   const { TEMPLATES } = SimCore.require('templates');
   const engine = SimCore.require('engine');
   const { itemValue, itemExpiry } = SimCore.require('expr');
+  const assetsMod = SimCore.require('assets');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -11467,6 +11498,39 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     return messages;
   });
 
+  // ── 에셋 이미지 (v0.48) ─────────────────────────────────
+  // 보조가 고른 {who, 감정…}을 팩 규약으로 조합해 실물과 대조한 뒤 본문 맨 앞에 1장 삽입.
+  // 실패(팩 없음·조합 없음)는 조용히 생략 — 깨진 이미지 태그가 본문에 나가는 것이 최악이다.
+
+  // 실물 에셋 이름 Set. [live-test] additionalAssets 항목이 [이름, 경로, ext] 배열인지
+  // {name,...} 객체인지 환경 확인 — 둘 다 받는다. 읽기 실패면 null(대조 생략, 정조합 신뢰).
+  async function getAssetNameSet() {
+    try {
+      const char = await Risuai.getCharacter();
+      const arr = char?.additionalAssets;
+      if (!Array.isArray(arr) || !arr.length) return null;
+      const set = new Set();
+      for (const a of arr) {
+        if (Array.isArray(a)) { if (a[0] != null) set.add(String(a[0])); }
+        else if (a && typeof a === 'object' && a.name != null) set.add(String(a.name));
+      }
+      return set.size ? set : null;
+    } catch { return null; }
+  }
+
+  /** 보조 응답의 image 필드 → 출력 태그 (실패 시 null — 삽입 생략) */
+  async function resolveImageTag(imageChoice) {
+    try {
+      if (!imageChoice || typeof imageChoice !== 'object' || !imageChoice.who) return null;
+      if ((schema.assets?.by ?? 'aux') !== 'aux' || !schema.assets?.packs?.length) return null;
+      const lookup = engine.makeLookup(schema, session.current.vars);
+      const res = assetsMod.resolveImage(schema, imageChoice, await getAssetNameSet(), lookup);
+      if (!res.ok) { console.log('[simcore] 이미지 생략:', res.reason, res.who ?? ''); return null; }
+      console.log('[simcore] 이미지 삽입:', res.name + (res.demoted ? ' (폴백 강등)' : ''));
+      return res.tag;
+    } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return null; }
+  }
+
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
@@ -11548,7 +11612,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         auxText = await callAuxLLM(auxPrompt, 400);
         if (auxText && auxText.blocked) {
-          // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용
+          // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
+          // 이미지는 소급 삽입 안 한다 — 본문은 이미 확정돼 나갔다 (다음 턴부터 정상)
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
@@ -11574,6 +11639,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       }
 
       const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
+      // 이미지 게이트(when)는 갱신 후 상태로 판단 — 이번 턴 서사가 반영된 값이 기준이다
+      const imgTag = mode === 'aux' ? await resolveImageTag(r.auxParsed?.image) : null;
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
@@ -11584,7 +11651,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       await syncActionButtons(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 버튼 갱신
       // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
       if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
-      return content + `\n\n⟦simcore:${outIndex}⟧`;
+      return (imgTag ? imgTag + '\n\n' : '') + content + `\n\n⟦simcore:${outIndex}⟧`;
     } catch (e) {
       console.log('[simcore] output 오류:', e.message);
       return content;

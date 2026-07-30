@@ -14,6 +14,7 @@
 // }
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
+const { mainInjectionText, auxImageSpec } = require('./assets');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -433,6 +434,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
   if (state.meta.pendingChoice && findChoiceEvent(schema, state.meta.pendingChoice.id)) {
     lines.push(DEFAULT_CHOICE_WAIT);
+  }
+
+  // 3.7 에셋 팩 주입문 (by:'main') — 손으로 쓰던 이미지 지침 블록을 팩 선언에서 생성.
+  // 닫힌 팩은 통째로 빠지므로 매 전송 다시 계산한다. 세션 0(최초설정)엔 안 붙인다.
+  if (!isSetupPending(schema, state)) {
+    const imgBlock = mainInjectionText(schema, lookup);
+    if (imgBlock) lines.push(imgBlock);
   }
 
   if (isSetupPending(schema, state)) {
@@ -899,6 +907,11 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     return `- ${a.id} (${v.label ?? a.id}, 텍스트): 현재 ${cur}. 새 값 전체를 제시 (${a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내)${desc}`;
   }).filter(Boolean).join('\n');
 
+  // 에셋 이미지 피기백 (by:'aux') — 상태 갱신 호출에 얹어 추가 비용 0으로 받는다.
+  // 브리지 템플릿 굽기(allowAll)에는 안 얹는다 — 브리지는 changes/reasons만 회수한다 (retro 제약).
+  const imgSpec = (!opts.allowAll && state)
+    ? auxImageSpec(schema, makeLookup(schema, state.vars)).instruction : '';
+
   return [
     '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
     '',
@@ -920,6 +933,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
       ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
       : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
     schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}',
+    imgSpec ? '' : null,
+    imgSpec || null,
   ].filter((x) => x !== null).join('\n');
 }
 
@@ -1112,7 +1127,7 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null };
+  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null, image: obj.image ?? null };
 }
 
 module.exports = {

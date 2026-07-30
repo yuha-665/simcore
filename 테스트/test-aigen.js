@@ -164,6 +164,8 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('★ 편집기: 실패 사유를 화면에 그대로', src.includes('생성 호출 실패 — ') && src.includes('fatal.msg'), '');
   ck('★ 어댑터: 메인 경로 인증 실패 정조준 안내 (실기 확정)',
     src.includes('x-api-key|authentication_error') && src.includes('인증이 안 붙습니다'), '');
+  ck('★ 모델 id 자동 읽기 (v0.47.7)', src.includes('async function getModelIds')
+    && src.includes('🔎 리수에서 id 읽기'), '');
 
   // ── 생성 모델 슬롯 (v0.46.1) — "submodel로 스키마 생성하면 망한다" 공홈 피드백 ──
   ck('★ 번들: 생성 모델 선택 UI (보조/메인/직접)', src.includes('생성 모델:')

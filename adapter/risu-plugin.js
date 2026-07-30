@@ -1,13 +1,19 @@
 //@name simcore
 //@api 3.0
-//@version 0.47.6
-//@display-name SimCore (시뮬 엔진) v0.47.6 삼층 구조
+//@version 0.47.7
+//@display-name SimCore (시뮬 엔진) v0.47.7 삼층 구조
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.47.7 ────────────────────────────────────────────────
+// 모델 id 자동 읽기 — 설정 화면은 표시명만 보여줘서 [직접 지정]에 넣을 id를 유저가 알 수
+// 없다 (실기 제보). [🔎 리수에서 id 읽기] 버튼 = getDatabase()의 aiModel/subModel을 읽어
+// 원클릭 채움 (읽기 API 없는 버전은 보조 상위 교체 우회 안내). [live-test] getDatabase
+// 접근 가능 여부 + staticModel이 그 id를 실제로 받는지.
 //
 // ── v0.47.6 ────────────────────────────────────────────────
 // 메인 모델 경로 실기 결과 반영 — 인증 실패 확정 (Claude 공식 API에서 x-api-key 누락).
@@ -741,6 +747,18 @@
    * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
    *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
    */
+  // [live-test] 리수 DB에서 메인·보조 모델의 내부 id를 읽는다 — 설정 화면은 표시명만 보여줘서
+  // 유저가 staticModel에 넣을 id를 알 방법이 없다. 읽기 API가 없는 버전이면 null.
+  async function getModelIds() {
+    try {
+      const db = await (Risuai.getDatabase ? Risuai.getDatabase() : null);
+      if (db && (db.aiModel || db.subModel)) {
+        return { main: String(db.aiModel || ''), sub: String(db.subModel || '') };
+      }
+    } catch (e) { console.log('[simcore] 모델 id 읽기 실패:', e.message); }
+    return null;
+  }
+
   // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
   // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
   async function callGenLLM(promptText) {
@@ -2350,6 +2368,7 @@ count(목록)  has(목록, "항목")</pre>
         getBotContext: getBotContextForEditor,
         getGenModel,
         setGenModel,
+        getModelIds,
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
     });

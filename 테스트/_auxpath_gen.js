@@ -79,6 +79,18 @@ let lastAux = { status: '', raw: '', applied: 0 };
    * - static: mode:'submodel' + staticModel 직접 지정. [live-test] staticModel 지원 범위 —
    *   리수가 무시하면 그냥 보조 모델로 간다 (조용한 폴백, 망가지진 않음).
    */
+  // [live-test] 리수 DB에서 메인·보조 모델의 내부 id를 읽는다 — 설정 화면은 표시명만 보여줘서
+  // 유저가 staticModel에 넣을 id를 알 방법이 없다. 읽기 API가 없는 버전이면 null.
+  async function getModelIds() {
+    try {
+      const db = await (Risuai.getDatabase ? Risuai.getDatabase() : null);
+      if (db && (db.aiModel || db.subModel)) {
+        return { main: String(db.aiModel || ''), sub: String(db.subModel || '') };
+      }
+    } catch (e) { console.log('[simcore] 모델 id 읽기 실패:', e.message); }
+    return null;
+  }
+
   // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
   // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
   async function callGenLLM(promptText) {

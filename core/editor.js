@@ -2630,6 +2630,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
   let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
+  let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
@@ -3063,6 +3064,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (aiGenModel.choice === 'static') {
           gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
             { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
+          // 설정 화면은 표시명만 보여줘서 id를 손으로 알 수 없다 — 리수 DB에서 직접 읽어다 채운다
+          if (ai.getModelIds && aiModelIds === undefined) {
+            gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
+              Promise.resolve(ai.getModelIds()).then((v) => { aiModelIds = v || null; })
+                .catch(() => { aiModelIds = null; })
+                .then(() => { if (!destroyed) renderGmLine(); });
+            } }, '🔎 리수에서 id 읽기'));
+          } else if (aiModelIds) {
+            for (const [k, label] of [['main', '메인'], ['sub', '보조']]) {
+              const id = aiModelIds[k];
+              if (!id) continue;
+              gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', title: id, onclick: () => {
+                aiGenModel.staticId = id; save(); renderGmLine();
+              } }, `${label}: ${id.length > 26 ? id.slice(0, 26) + '…' : id}`));
+            }
+          } else if (aiModelIds === null) {
+            gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+              'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
+          }
         }
         gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
           aiGenModel.choice === 'aux'

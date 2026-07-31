@@ -4199,6 +4199,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
             if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
+            // 변환 결과 청소 — AI가 "비워 둬라"를 빈 문자열/빈 배열로 내는 건 정상이니 여기서 걷는다
+            for (const g of got) {
+              if (!g || typeof g !== 'object') continue;
+              if (String(g.when ?? '').trim() === '') delete g.when;
+              if (Array.isArray(g.chars) && !g.chars.length) delete g.chars;
+            }
             // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율).
             // 기존 오류(예: 손으로 만들다 만 빈 팩 카드)는 늘어난 것이 아니므로 반영을 막지 않는다.
             const backup = JSON.parse(JSON.stringify(schema));

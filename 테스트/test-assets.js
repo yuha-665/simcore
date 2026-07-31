@@ -66,6 +66,12 @@ const Lon = mkLookup({ nsfw_on: true });
   const badWhen = snap(); badWhen.assets.packs[1].when = 'ghost_var > 3';
   ck('게이트 조건의 없는 변수 거부', !validateSchema(badWhen).ok, '');
 
+  // 임포터가 "비워 둬라"를 ""로 내는 건 정상 — packOpen(항상 열림)과 같은 해석이어야 한다.
+  // 실측: 검증기만 깐깐해서 "표현식 필요" 3연발로 변환 반영이 막혔다 (MIKU&BRS).
+  const emptyWhen = snap(); emptyWhen.assets.packs[1].when = '';
+  ck('★ 빈 when은 "항상 열림"으로 유효 (표현식 오류 아님)', validateSchema(emptyWhen).ok,
+    validateSchema(emptyWhen).errors.map((e) => e.msg).join('/'));
+
   const overlap = snap(); overlap.assets.packs[2].chars = ['Hiromi'];
   const vo = validateSchema(overlap);
   ck('★ 인물 중복 담당은 경고 + 먼저 선언 우선 안내', vo.ok

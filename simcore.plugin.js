@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.6
+//@version 0.54.7
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.7 ────────────────────────────────────────────────
+// 임포터-검증기 모순 — 변환 요청서는 "when은 비워 둬라"라고 시키고, AI는 시킨 대로
+// ""를 냈는데, 검증기가 빈 when에 "표현식 필요"를 내 변환 반영이 막혔다 (실측: MIKU&BRS).
+// 런타임 packOpen은 ""를 "항상 열림"으로 이미 잘 처리한다 — 검증기를 그 해석에 맞추고,
+// 임포터는 빈 when/chars를 반영 전에 걷어낸다. 시킨 대로 한 AI를 벌주지 않기.
 //
 // ── v0.54.6 ────────────────────────────────────────────────
 // verify:false — 실기 확정: 이 리수 빌드는 requestPluginPermission을 거쳐도 db가 잠겨 있어
@@ -2088,7 +2094,8 @@ function validateSchema(schema) {
         if (typeof pk.format !== 'string' || !pk.format.includes('{'))
           err(p + '.format', 'format 필요 — {name} 또는 {칸id} 자리표시자를 포함한 출력 문자열');
         if (!pk.source) warn(p, 'source(출처)가 없습니다 — 모듈을 뗀 뒤 어느 팩이 고아인지 알 수 없게 됩니다');
-        if (pk.when != null) checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
+        // 빈 when은 "항상 열림" — packOpen과 같은 해석. 임포터가 "비워 둬라"를 ""로 내는 게 정상이다
+        if (pk.when != null && String(pk.when).trim() !== '') checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
         if (pk.chars != null && (!Array.isArray(pk.chars) || pk.chars.some((c) => typeof c !== 'string')))
           err(p + '.chars', 'chars는 문자열 배열이어야 함');
 
@@ -10089,6 +10096,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
             if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
+            // 변환 결과 청소 — AI가 "비워 둬라"를 빈 문자열/빈 배열로 내는 건 정상이니 여기서 걷는다
+            for (const g of got) {
+              if (!g || typeof g !== 'object') continue;
+              if (String(g.when ?? '').trim() === '') delete g.when;
+              if (Array.isArray(g.chars) && !g.chars.length) delete g.chars;
+            }
             // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율).
             // 기존 오류(예: 손으로 만들다 만 빈 팩 카드)는 늘어난 것이 아니므로 반영을 막지 않는다.
             const backup = JSON.parse(JSON.stringify(schema));

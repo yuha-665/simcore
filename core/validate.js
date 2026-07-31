@@ -630,7 +630,8 @@ function validateSchema(schema) {
         if (typeof pk.format !== 'string' || !pk.format.includes('{'))
           err(p + '.format', 'format 필요 — {name} 또는 {칸id} 자리표시자를 포함한 출력 문자열');
         if (!pk.source) warn(p, 'source(출처)가 없습니다 — 모듈을 뗀 뒤 어느 팩이 고아인지 알 수 없게 됩니다');
-        if (pk.when != null) checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
+        // 빈 when은 "항상 열림" — packOpen과 같은 해석. 임포터가 "비워 둬라"를 ""로 내는 게 정상이다
+        if (pk.when != null && String(pk.when).trim() !== '') checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
         if (pk.chars != null && (!Array.isArray(pk.chars) || pk.chars.some((c) => typeof c !== 'string')))
           err(p + '.chars', 'chars는 문자열 배열이어야 함');
 

@@ -295,6 +295,20 @@ const ED = SC.require('editor');
   const ip = ED.buildPackImportPrompt('인물: A, B / 감정: happy');
   ck('임포터 프롬프트 = 팩 스키마 + 원문', ip.includes('"packs"') && ip.includes('인물: A, B'), '');
   ck('임포터: 지어내기 금지 지시', ip.includes('지어내지 마라'), '');
+
+  // 비용 추정 (v0.54.1) — "이 기능이 뭘 아끼나"를 숫자로
+  ck('토큰 추정: 영문 ~3.5자/tok', ED.estTokens('abcdefg') === 2, String(ED.estTokens('abcdefg')));
+  ck('토큰 추정: 한글 ~1.5자/tok', ED.estTokens('가나다') === 2, String(ED.estTokens('가나다')));
+  const names = ['Hiromi_angry', 'Hiromi_smile', 'Seiko_neutral', 'Hiromi_smile_apron'];
+  const cAux = ED.estAssetCost(S, names);
+  ck('★ 비용 추정: aux는 메인 +0, 보조에만 실림', cAux.main === 0 && cAux.aux > 0, JSON.stringify(cAux));
+  ck('기준선 = 통짜 목록(실물 이름 전부)', cAux.baseline > 0 && cAux.baseline === ED.estTokens(names.join('\n')), '');
+  const Sm2 = snap(); Sm2.assets.by = 'main';
+  const cMain = ED.estAssetCost(Sm2, null);
+  ck('비용 추정: main은 주입문이 메인에, 보조 +0', cMain.aux === 0 && cMain.main > 0, JSON.stringify(cMain));
+  ck('실물 목록 없으면 기준선 null (모르는 건 안 지어냄)', cMain.baseline === null, '');
+  const Sf2 = snap(); Sf2.assets.by = 'aux_flow';
+  ck('aux_flow도 메인 +0', ED.estAssetCost(Sf2, null).main === 0, '');
 }
 
 // 번들 배선 (3단계)

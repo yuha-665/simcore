@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.0
+//@version 0.54.1
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.1 ────────────────────────────────────────────────
+// 매 턴 비용 추정 (🎨 층) — "지침서 대비 얼마나 이득인지 체감하고 싶다"(실기 피드백).
+// 메인/보조에 각각 몇 tok이 나가는지 + 예전 방식(assetlist 통짜 덤프) 대비 절감률을
+// 팩 목록 아래 한 줄로. 토크나이저가 없어 ±30% 추정(CJK 1.5자/tok, 그 외 3.5자/tok)이고,
+// 손지침 문단은 알 수 없어 안 세므로 절감률은 보수적이다. 기준선은 실물 이름을 읽었을 때만
+// 계산한다 — 모르는 건 지어내지 않는다.
 //
 // ── v0.54.0 ────────────────────────────────────────────────
 // 에셋 실기 확인(단일봇)에서 나온 둘 — 유저 제안 "첫 1장은 두고, 보조가 서사대로도 넣게 3택".
@@ -5853,7 +5860,7 @@ const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
-const { composeName, renderTag, resolveInPack } = require('./assets');
+const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
@@ -7331,6 +7338,30 @@ function packCoverage(pack, nameSet) {
     }
   }
   return { combos: acc.length, exist, rescued, missing };
+}
+
+// ── 에셋 팩: 매 턴 비용 추정 — "이 기능이 뭘 아끼나"를 숫자로 보이게 ──
+// 토크나이저 없이 대략(±30%): CJK ≈ 1.5자/토큰, 그 외 ≈ 3.5자/토큰.
+// 기준선(예전 방식) = {{assetlist}} 통짜 덤프 — 실물 이름 전부를 매 턴 실었던 그것.
+// 손으로 쓰던 지침 문단은 알 수 없어 안 세므로 절감률은 보수적이다 (실제로는 더 이득).
+function estTokens(s) {
+  let cjk = 0, other = 0;
+  for (const ch of String(s || '')) {
+    if (/[ᄀ-ᇿ㄰-㆏가-힯一-鿿぀-ヿ]/.test(ch)) cjk++;
+    else other++;
+  }
+  return Math.round(cjk / 1.5 + other / 3.5);
+}
+
+// 게이트 팩은 lookup 없이는 닫힌 것으로 계산된다 — "항상 나가는 비용"이 기본 표시고,
+// 게이트가 열리는 턴의 추가분은 캡션으로만 말한다 (상태를 모르는 편집기에서 정직한 최소치).
+function estAssetCost(schema, assetNames) {
+  const by = schema?.assets?.by ?? 'aux';
+  const aux = by === 'main' ? 0 : estTokens(auxImageSpec(schema, null).instruction);
+  const main = by === 'main' ? estTokens(mainInjectionText(schema, null)) : 0;
+  const baseline = assetNames && assetNames.length
+    ? estTokens([...new Set(assetNames.map(String))].join('\n')) : null;
+  return { main, aux, baseline };
 }
 
 // ── 에셋 팩: 모듈 지침 원문 → 팩 JSON 변환 프롬프트 (임포터) ──
@@ -9872,6 +9903,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (assetNames) box.appendChild(h('div', { class: 'sce-hint' },
       `실물 에셋 ${assetNames.length}개 읽음 — 팩 카드마다 실존 커버리지가 표시된다.`));
 
+    // 매 턴 비용 추정 — 이 기능이 뭘 아끼는지 숫자로. 기준선은 예전 방식(assetlist 통짜 덤프)
+    if (a && a.packs && a.packs.length) {
+      const cost = estAssetCost(schema, assetNames);
+      let line = `📊 매 턴 비용(추정 ±30%): 메인 프롬프트 +${cost.main} tok · 보조 호출 +${cost.aux} tok`;
+      if (cost.baseline != null) {
+        const now = cost.main + cost.aux;
+        line += ` — 예전 방식(이름 ${assetNames.length}개 통짜 목록)이면 메인에 매 턴 ~${cost.baseline} tok`;
+        if (now < cost.baseline) line += `, 절감 ~${Math.round((1 - now / cost.baseline) * 100)}% (지침 문단 제외한 보수적 수치)`;
+      } else {
+        line += ' — [📇 실존 대조 새로고침]을 누르면 예전 방식(통짜 목록) 대비 절감률도 계산해 준다';
+      }
+      box.appendChild(h('div', { class: 'sce-hint' }, line + '. 게이트 팩 어휘는 열린 턴에만 추가된다.'));
+    }
+
     const packs = (a && a.packs) || [];
     const nameSet = assetNames ? new Set(assetNames) : null;
     packs.forEach((p, i) => {
@@ -10103,7 +10148,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   };
 }
 
-module.exports = { createSchemaEditor, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt };
+module.exports = { createSchemaEditor, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };
 
 });
 

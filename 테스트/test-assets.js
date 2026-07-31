@@ -347,14 +347,17 @@ async function bootLive(mutate) {
     // 모듈봇: 이미지가 모듈의 '추가 에셋'에 사는 경우 (실측: MIKU&BRS 모듈).
     // 활성 = 전역 enabledModules(m-on) ∪ 채팅 chat.modules(m-chat, 봇 개별 활성화).
     // 꺼진 모듈(m-off) 이름은 대조에 안 낀다.
-    getDatabase: async () => ({
-      enabledModules: ['m-on'],
-      modules: [
-        { id: 'm-on', name: '노조미 모듈', assets: [['happy', 'n1.png', 'png']] },
-        { id: 'm-chat', name: '개별 활성 모듈', assets: [['Seiko_smile', 's1.png', 'png']] },
-        { id: 'm-off', name: '꺼진 모듈', assets: [['Hiromi_smile', 'x.png', 'png']] },
-      ],
-    }),
+    getDatabase: async (keys) => {
+      if (world.dbArgBroken && keys) return null; // includeOnly 인자를 모르는 구버전 흉내
+      return {
+        enabledModules: ['m-on'],
+        modules: [
+          { id: 'm-on', name: '노조미 모듈', assets: [['happy', 'n1.png', 'png']] },
+          { id: 'm-chat', name: '개별 활성 모듈', assets: [['Seiko_smile', 's1.png', 'png']] },
+          { id: 'm-off', name: '꺼진 모듈', assets: [['Hiromi_smile', 'x.png', 'png']] },
+        ],
+      };
+    },
     setCharacter: async (c) => { world.chars[0] = c; },
     getCurrentCharacterIndex: async () => 0,
     getCurrentChatIndex: async () => 0,
@@ -430,6 +433,15 @@ async function bootLive(mutate) {
   await hooks.beforeRequest([{ role: 'user', content: '여섯' }], 'model');
   const out6 = await hooks.output('세이코가 웃었다.');
   ck('★ 실부팅: 채팅 개별 활성 모듈의 에셋도 대조 합류', out6.startsWith('<img="Seiko_smile">'), out6.slice(0, 60));
+
+  // 턴 7: includeOnly 인자를 모르는 구버전 리수 — 무인자 재호출 사다리로 살아남는다
+  world.dbArgBroken = true;
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '여섯째 응답' }, { role: 'user', data: '일곱' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Nozomi","emo":"happy"}}';
+  await hooks.beforeRequest([{ role: 'user', content: '일곱' }], 'model');
+  const out7 = await hooks.output('노조미가 또 웃었다.');
+  ck('★ 실부팅: getDatabase 인자 미지원 버전도 무인자 폴백으로 모듈 읽기', out7.startsWith('<char-noz emotion="happy">'), out7.slice(0, 60));
+  world.dbArgBroken = false;
 
   if (global.__unload) global.__unload();
 

@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.4
+//@version 0.54.5
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.5 ────────────────────────────────────────────────
+// db 권한 사다리 — 실측: getDatabase가 권한 팝업도 없이 조용히 null ("물어보는 게 안 떠서 막힘").
+// ① includeOnly 호출 → ② requestPluginPermission('db')로 팝업을 직접 띄우고 재시도
+// → ③ 인자 미지원 구버전 대비 무인자 호출. 권한 요청은 편집기 버튼 경로에서만(ask=true) —
+// 채팅 턴 중 팝업 금지. 전부 실패하면 "리수 설정 > 플러그인에서 권한 확인" 안내.
 //
 // ── v0.54.4 ────────────────────────────────────────────────
 // 모듈 에셋 2차 — v0.54.3이 실기에서 또 실패한 원인 둘 (실측: MIKU&BRS 개별 활성화).
@@ -1456,7 +1462,30 @@
     return out;
   }
 
-  async function getAssetSources() {
+  // db 읽기 사다리 (v0.54.5) — 실측: getDatabase가 권한 팝업도 없이 조용히 null을 준다.
+  // ① includeOnly로 호출 → ② (ask일 때만) requestPluginPermission('db')로 팝업을 직접 띄우고 재시도
+  // → ③ includeOnly 인자를 모르는 버전 대비 무인자 호출. ask는 편집기 버튼 경로에서만 true —
+  // 채팅 턴 중에 권한 팝업이 튀어나오면 안 된다.
+  async function readModulesDb(ask) {
+    const call = async (withArg) => {
+      try { return withArg ? await Risuai.getDatabase(['modules', 'enabledModules']) : await Risuai.getDatabase(); }
+      catch (e) { return { __err: (e && e.message) || 'getDatabase 실패' }; }
+    };
+    let db = await call(true);
+    if (db && db.__err) return db;
+    if ((!db || typeof db !== 'object') && ask && Risuai.requestPluginPermission) {
+      try { await Risuai.requestPluginPermission('db'); } catch { /* 권한 API 없음/실패 — 다음 사다리로 */ }
+      db = await call(true);
+      if (db && db.__err) return db;
+    }
+    if (!db || typeof db !== 'object') {
+      const full = await call(false);
+      if (full && typeof full === 'object' && !full.__err) db = full;
+    }
+    return db;
+  }
+
+  async function getAssetSources(ask) {
     const sources = []; // { label, names }
     let dbErr = null;
     try {
@@ -1465,9 +1494,11 @@
       if (n.length) sources.push({ label: '캐릭터', names: n });
     } catch { /* 캐릭터 접근 실패 — 모듈만으로도 진행 */ }
     try {
-      const db = await Risuai.getDatabase(['modules', 'enabledModules']);
-      if (!db || typeof db !== 'object') dbErr = 'db 권한 거부 또는 미지원';
-      else {
+      const db = await readModulesDb(ask);
+      if (db && db.__err) dbErr = db.__err;
+      else if (!db || typeof db !== 'object') {
+        dbErr = 'db 권한 거부 또는 미지원 — 팝업이 안 떴다면 리수 설정 > 플러그인에서 simcore의 권한을 확인';
+      } else {
         const active = new Set(Array.isArray(db.enabledModules) ? db.enabledModules : []);
         try {
           const chaIdx = await Risuai.getCurrentCharacterIndex();
@@ -1485,9 +1516,9 @@
     return { sources, dbErr };
   }
 
-  /** 대조용 Set — 출처 무관 합집합. 하나도 없으면 null(대조 생략, 정조합 신뢰). */
+  /** 대조용 Set — 출처 무관 합집합. 하나도 없으면 null(대조 생략, 정조합 신뢰). 권한 요청 없음. */
   async function getAssetNameSet() {
-    const { sources } = await getAssetSources();
+    const { sources } = await getAssetSources(false);
     const set = new Set();
     for (const s of sources) for (const n of s.names) set.add(n);
     return set.size ? set : null;
@@ -2653,8 +2684,9 @@ count(목록)  has(목록, "항목")</pre>
         getModelIds,
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },
-        // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4)
-        getAssetSources: () => getAssetSources(),
+        // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4).
+        // 버튼 경로라 ask=true — 권한 팝업을 여기서만 띄운다 (v0.54.5)
+        getAssetSources: () => getAssetSources(true),
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

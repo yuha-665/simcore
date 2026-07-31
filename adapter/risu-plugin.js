@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.53.0
-//@display-name SimCore (시뮬 엔진) v0.53 에셋 팩 마무리
+//@version 0.54.0
+//@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.0 ────────────────────────────────────────────────
+// 에셋 실기 확인(단일봇)에서 나온 둘 — 유저 제안 "첫 1장은 두고, 보조가 서사대로도 넣게 3택".
+// - [aux_flow 모드] 보조가 "images" 배열로 여러 장을 고르되, 위치를 서수("3번째 문단 뒤")가
+//   아니라 **본문 인용(앵커)**으로 답한다. 설계 때 다중 삽입을 접은 이유가 서수의 어긋남이었는데,
+//   인용은 본문에서 찾아지거나 못 찾으면 안 놓으면 그만이다 — 실존 대조와 같은 원리로,
+//   검증할 수 없는 답은 받지 않는다. 탐색 사다리: 정확 일치 → 공백 정규화 → 앞 12자.
+//   전패 시 첫 장을 맨 앞에 (aux 단일로 강등 — 이미지 없는 턴 방지). 3택: aux(맨 앞 1장,
+//   기본)/aux_flow(서사 위치 여러 장)/main(메인 직접).
+// - [커버리지 폴백 구제] 실기에서 632개 조합 중 128개 빠짐이 전부 ⚠로 몰렸다. 스파스
+//   매트릭스(의상별 감정 세트가 다름)는 정상 설계라, 빠진 조합마다 런타임과 같은 폴백
+//   사다리를 미리 돌려 "구제됨/실질 구멍"을 갈라 센다. ⚠의 근거는 실질 구멍만 —
+//   도구가 정상 설계를 벌주지 않기 (v0.52 원칙의 재적용). 폴백이 아예 없으면 힌트 한 줄.
 //
 // ── v0.53.0 ────────────────────────────────────────────────
 // 에셋 팩 마무리 — 코어(v0.48)·배선(v0.48)·편집기 UI(v0.48.1)에 이어 남아 있던
@@ -1427,6 +1440,30 @@
     } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return null; }
   }
 
+  /** 보조 응답의 images 배열 → 본문 서사 위치 삽입 (by: 'aux_flow', v0.54).
+   *  위치는 보조가 인용한 본문 구절(앵커)로 받는다 — 못 찾으면 그 장은 생략, 어긋난 위치가
+   *  나갈 통로가 없다. 한 장도 못 놓으면 첫 장을 맨 앞에 (aux 단일 모드로 강등). */
+  async function resolveImagesFlow(content, imageList) {
+    try {
+      if (!Array.isArray(imageList) || !imageList.length) return content;
+      if ((schema.assets?.by ?? 'aux') !== 'aux_flow' || !schema.assets?.packs?.length) return content;
+      const lookup = engine.makeLookup(schema, session.current.vars);
+      const assetSet = await getAssetNameSet();
+      const items = [];
+      for (const c of imageList.slice(0, 4)) {
+        const res = assetsMod.resolveImage(schema, c, assetSet, lookup);
+        if (!res.ok) { console.log('[simcore] 이미지 생략:', res.reason, res.who ?? ''); continue; }
+        items.push({ tag: res.tag, anchor: c && c.anchor, name: res.name + (res.demoted ? '(폴백)' : '') });
+      }
+      if (!items.length) return content;
+      const placed = assetsMod.placeImages(content, items);
+      console.log('[simcore] 이미지 서사 삽입:', `${placed.placed}장`
+        + (placed.dropped ? `, 앵커 못 찾음 ${placed.dropped}장` : '')
+        + (placed.demoted ? ' (맨 앞 강등)' : ''), '—', items.map((i) => i.name).join(', '));
+      return placed.text;
+    } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return content; }
+  }
+
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
@@ -1536,7 +1573,11 @@
 
       const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
       // 이미지 게이트(when)는 갱신 후 상태로 판단 — 이번 턴 서사가 반영된 값이 기준이다
-      const imgTag = mode === 'aux' ? await resolveImageTag(r.auxParsed?.image) : null;
+      let imgTag = null;
+      if (mode === 'aux') {
+        if ((schema.assets?.by ?? 'aux') === 'aux_flow') content = await resolveImagesFlow(content, r.auxParsed?.images);
+        else imgTag = await resolveImageTag(r.auxParsed?.image);
+      }
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;

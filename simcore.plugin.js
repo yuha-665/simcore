@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.53.0
-//@display-name SimCore (시뮬 엔진) v0.53 에셋 팩 마무리
+//@version 0.54.0
+//@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.0 ────────────────────────────────────────────────
+// 에셋 실기 확인(단일봇)에서 나온 둘 — 유저 제안 "첫 1장은 두고, 보조가 서사대로도 넣게 3택".
+// - [aux_flow 모드] 보조가 "images" 배열로 여러 장을 고르되, 위치를 서수("3번째 문단 뒤")가
+//   아니라 **본문 인용(앵커)**으로 답한다. 설계 때 다중 삽입을 접은 이유가 서수의 어긋남이었는데,
+//   인용은 본문에서 찾아지거나 못 찾으면 안 놓으면 그만이다 — 실존 대조와 같은 원리로,
+//   검증할 수 없는 답은 받지 않는다. 탐색 사다리: 정확 일치 → 공백 정규화 → 앞 12자.
+//   전패 시 첫 장을 맨 앞에 (aux 단일로 강등 — 이미지 없는 턴 방지). 3택: aux(맨 앞 1장,
+//   기본)/aux_flow(서사 위치 여러 장)/main(메인 직접).
+// - [커버리지 폴백 구제] 실기에서 632개 조합 중 128개 빠짐이 전부 ⚠로 몰렸다. 스파스
+//   매트릭스(의상별 감정 세트가 다름)는 정상 설계라, 빠진 조합마다 런타임과 같은 폴백
+//   사다리를 미리 돌려 "구제됨/실질 구멍"을 갈라 센다. ⚠의 근거는 실질 구멍만 —
+//   도구가 정상 설계를 벌주지 않기 (v0.52 원칙의 재적용). 폴백이 아예 없으면 힌트 한 줄.
 //
 // ── v0.53.0 ────────────────────────────────────────────────
 // 에셋 팩 마무리 — 코어(v0.48)·배선(v0.48)·편집기 UI(v0.48.1)에 이어 남아 있던
@@ -2019,7 +2032,8 @@ function validateSchema(schema) {
     const A = schema.assets;
     if (typeof A !== 'object' || Array.isArray(A)) err('$.assets', 'assets는 객체여야 함');
     else {
-      if (A.by != null && !['aux', 'main'].includes(A.by)) err('$.assets.by', "by는 'aux' 또는 'main'");
+      if (A.by != null && !['aux', 'aux_flow', 'main'].includes(A.by))
+        err('$.assets.by', "by는 'aux'(맨 앞 1장), 'aux_flow'(서사 위치 여러 장) 또는 'main'");
       if (!Array.isArray(A.packs)) err('$.assets.packs', 'packs 배열이 필요함');
       const packIds = new Set();
       const claim = new Map(); // 인물 → 먼저 담당을 선언한 팩 id (조용한 덮어쓰기 금지)
@@ -2194,19 +2208,17 @@ function renderTag(pack, name, choice) {
 }
 
 /**
- * 실존 대조 + 폴백 사다리 — 슬롯 방식의 유일한 약점(비어 있는 칸 조합)을 흡수한다.
+ * 실존 대조 + 폴백 사다리 (팩 단위) — 슬롯 방식의 유일한 약점(비어 있는 칸 조합)을 흡수한다.
  * 인물별 이미지 개수·감정 목록이 달라도 팩은 합집합 한 번만 선언하면 되는 이유.
  *
  * assetSet: 실물 에셋 이름 Set. null이면 대조 불가 환경 — 사다리 없이 정조합을 그대로 믿는다.
  * 사다리: ① 정조합 → ② optional 칸 제거 → ③ 폴백값 치환(칸의 fallback, who 제외)
- *         → ④ 폴백값 치환 + optional 제거 → 전부 실패면 삽입 생략(null).
+ *         → ④ 폴백값 치환 + optional 제거 → 전부 실패면 null (삽입 생략).
  * demoted = 정조합이 아닌 걸로 살아남았다는 표시 (폴백률 진단용).
+ * 라우팅과 분리해 둔 이유: 편집기 커버리지가 "이 빠진 조합, 폴백으로 구제되나"를 같은
+ * 사다리로 미리 재기 위해 (구제 여부가 다르게 계산되면 표시가 거짓말이 된다).
  */
-function resolveImage(schema, choice, assetSet, lookup) {
-  const who = choice && choice.who;
-  const pack = routePack(schema, who, lookup);
-  if (!pack) return { ok: false, reason: 'no-pack', who: who ?? null };
-
+function resolveInPack(pack, choice, assetSet) {
   const tryName = (c, dropOpt) => {
     const name = composeName(pack, c, dropOpt);
     if (!name) return null;
@@ -2234,8 +2246,84 @@ function resolveImage(schema, choice, assetSet, lookup) {
       if (name != null) { demoted = true; used = fb; }
     }
   }
-  if (name == null) return { ok: false, reason: 'no-asset', who, pack: pack.id };
-  return { ok: true, name, tag: renderTag(pack, name, used), pack: pack.id, demoted };
+  return name == null ? null : { name, used, demoted };
+}
+
+/** 라우팅 + 사다리 + 태그 렌더 — aux 모드의 한 장 해소 경로 */
+function resolveImage(schema, choice, assetSet, lookup) {
+  const who = choice && choice.who;
+  const pack = routePack(schema, who, lookup);
+  if (!pack) return { ok: false, reason: 'no-pack', who: who ?? null };
+  const r = resolveInPack(pack, choice, assetSet);
+  if (!r) return { ok: false, reason: 'no-asset', who, pack: pack.id };
+  return { ok: true, name: r.name, tag: renderTag(pack, r.name, r.used), pack: pack.id, demoted: r.demoted };
+}
+
+// ── 서사 위치 삽입 (by: 'aux_flow') ──────────────────────────
+// 위치를 서수("3번째 문단 뒤")가 아니라 본문 인용(앵커)으로 받는다 — 실존 대조와 같은 원리로,
+// 검증할 수 없는 답은 받지 않는다. 인용은 본문에서 찾아지거나, 못 찾으면 놓지 않으면 그만이다.
+
+/**
+ * 앵커 탐색 사다리 — ① 정확 일치 → ② 공백 정규화(보조가 줄바꿈을 뭉개 인용하는 경우)
+ * → ③ 정규화 앞 12자(인용 뒷부분이 어긋난 경우). 전부 실패면 -1.
+ */
+function findAnchor(content, anchor) {
+  if (!content || anchor == null) return -1;
+  const a = String(anchor).trim();
+  if (!a) return -1;
+  let i = content.indexOf(a);
+  if (i >= 0) return i;
+  const norm = (s) => s.replace(/\s+/g, ' ');
+  const nc = norm(content), na = norm(a);
+  i = nc.indexOf(na);
+  if (i < 0 && na.length >= 6) i = nc.indexOf(na.slice(0, 12));
+  return i < 0 ? -1 : mapNormIndex(content, i);
+}
+
+/** 공백 정규화된 문자열의 인덱스를 원본 인덱스로 역매핑 */
+function mapNormIndex(content, target) {
+  let n = 0, prevWs = false;
+  for (let i = 0; i < content.length; i++) {
+    const ws = /\s/.test(content[i]);
+    if (ws && prevWs) continue;
+    if (n === target) return i;
+    n++;
+    prevWs = ws;
+  }
+  return content.length;
+}
+
+/**
+ * 항목마다 앵커를 찾아 그 문단 바로 뒤에 태그를 놓는다.
+ * items = [{ tag, anchor }] (이미 resolveImage를 통과한 태그만).
+ * 못 찾은 항목은 생략하되, 한 장도 못 놓았는데 살아남은 항목이 있으면
+ * 첫 장을 맨 앞에 놓는다 (aux 단일 모드로 강등 — 이미지가 아예 없는 턴 방지).
+ * 반환 { text, placed, dropped, demoted } — demoted = 맨 앞 강등이 일어났다는 표시.
+ */
+function placeImages(content, items) {
+  const seen = new Set();
+  const uniq = (items || []).filter((x) => x && x.tag).slice(0, 4).filter((x) => {
+    const k = x.tag + '\n' + (x.anchor ?? ''); // 태그에 개행이 없으니 안전한 구분자
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  const points = [];
+  let dropped = 0;
+  uniq.forEach((it, idx) => {
+    const i = findAnchor(content, it.anchor);
+    if (i < 0) { dropped++; return; }
+    const para = content.indexOf('\n\n', i); // 앵커가 든 문단의 끝 (없으면 본문 끝)
+    points.push({ at: para >= 0 ? para : content.length, tag: it.tag, idx });
+  });
+  if (!points.length) {
+    if (uniq.length) return { text: uniq[0].tag + '\n\n' + content, placed: 1, dropped: uniq.length - 1, demoted: true };
+    return { text: content, placed: 0, dropped, demoted: false };
+  }
+  // 뒤에서부터 삽입해야 앞 인덱스가 안 밀린다. 같은 지점은 선언 순서가 본문 순서가 되게 역순 처리
+  points.sort((a, b) => b.at - a.at || b.idx - a.idx);
+  let text = content;
+  for (const p of points) text = text.slice(0, p.at) + '\n\n' + p.tag + text.slice(p.at);
+  return { text, placed: points.length, dropped, demoted: false };
 }
 
 /**
@@ -2261,12 +2349,15 @@ function mainInjectionText(schema, lookup) {
 }
 
 /**
- * aux 모드용 지시 조각 — 보조 응답 JSON에 "image" 필드를 얹어 받기 위한 스펙.
+ * aux 계열 모드용 지시 조각 — 보조 응답 JSON에 이미지 필드를 얹어 받기 위한 스펙.
  * 보조는 인물·감정만 고른다 (팩 선택·조합·대조는 SimCore 몫 — 고를 것이 늘면 틀릴 것도 는다).
+ * by:'aux'      → "image" 단일 객체 (맨 앞 1장)
+ * by:'aux_flow' → "images" 배열 + 앵커(본문 인용) — 위치까지 고르되 검증 가능한 형태로만
  * 반환: { instruction, whoValues, slotIds } — 팩이 없으면 instruction ''.
  */
 function auxImageSpec(schema, lookup) {
-  if ((schema?.assets?.by ?? 'aux') !== 'aux') return { instruction: '', whoValues: [], slotIds: [] };
+  const by = schema?.assets?.by ?? 'aux';
+  if (by !== 'aux' && by !== 'aux_flow') return { instruction: '', whoValues: [], slotIds: [] };
   const packs = openPacks(schema, lookup);
   if (!packs.length) return { instruction: '', whoValues: [], slotIds: [] };
   const whoValues = [...new Set(packs.flatMap((p) => packChars(p)))];
@@ -2280,18 +2371,29 @@ function auxImageSpec(schema, lookup) {
     }
   }
   const fields = ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)];
-  const lines = [
-    `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+  const vocab = [
     `who: one of [${whoValues.join(', ')}]`,
     ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
-    'If no clear scene focus, set "image": null.',
   ];
+  const lines = by === 'aux_flow'
+    ? [
+      `Also include "images": [{ ${fields.join(', ')}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
+      'anchor: a short quote (10-25 chars) copied EXACTLY, verbatim, from the narrative above. The image is inserted right after the paragraph containing it; if the quote is not found verbatim, that image is dropped.',
+      ...vocab,
+      'If no clear scene focus, set "images": [].',
+    ]
+    : [
+      `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+      ...vocab,
+      'If no clear scene focus, set "image": null.',
+    ];
   return { instruction: lines.join('\n'), whoValues, slotIds: [...slotVals.keys()] };
 }
 
 module.exports = {
   packOpen, openPacks, packChars, whoSlot, routePack,
-  composeName, renderTag, resolveImage, mainInjectionText, auxImageSpec,
+  composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
+  mainInjectionText, auxImageSpec,
 };
 
 });
@@ -3921,7 +4023,8 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null, image: obj.image ?? null };
+  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
+    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
 }
 
 module.exports = {
@@ -5750,7 +5853,7 @@ const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
-const { composeName, renderTag } = require('./assets');
+const { composeName, renderTag, resolveInPack } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
@@ -7202,25 +7305,32 @@ function packDraftFromDetect(det, packId) {
 
 // 팩의 필수 칸 정조합 실존 커버리지 — "없는 조합"을 배포 전에 보는 진단.
 // nameSet 없으면(대조 불가 환경) 조합 수만 센다. 조합이 너무 많으면 열거를 포기한다(capped).
+// 빠진 조합마다 런타임과 같은 폴백 사다리(resolveInPack)를 미리 돌려 "구제되나"를 갈라 센다 —
+// 스파스 매트릭스(의상별 감정 세트가 다름)는 정상 설계라, 폴백이 받아주는 조합까지 ⚠로
+// 몰아 세면 정상 봇이 영원히 경고를 보게 된다 (도구가 정상 설계를 벌주지 않기, v0.52 원칙).
+// missing 예시는 구제 안 되는 실질 구멍만 담는다 — 그게 폴백을 손볼 단서다.
 function packCoverage(pack, nameSet) {
   const req = (pack.slots || []).filter((s) => !s.optional);
   let combos = 1;
   for (const s of req) combos *= Math.max(1, (s.values || []).length);
-  if (!nameSet || !req.length) return { combos, exist: null, missing: [] };
-  if (combos > 4000) return { combos, exist: null, missing: [], capped: true };
+  if (!nameSet || !req.length) return { combos, exist: null, rescued: 0, missing: [] };
+  if (combos > 4000) return { combos, exist: null, rescued: 0, missing: [], capped: true };
   let acc = [{}];
   for (const s of req) {
     const next = [];
     for (const c of acc) for (const v of s.values || []) next.push({ ...c, [s.id]: v });
     if (next.length) acc = next;
   }
-  let exist = 0; const missing = [];
+  let exist = 0, rescued = 0; const missing = [];
   for (const c of acc) {
     const name = composeName(pack, c);
     if (name && nameSet.has(name)) exist++;
-    else if (name && missing.length < 6) missing.push(name);
+    else if (name) {
+      if (resolveInPack(pack, c, nameSet)) rescued++;
+      else if (missing.length < 6) missing.push(name);
+    }
   }
-  return { combos: acc.length, exist, missing };
+  return { combos: acc.length, exist, rescued, missing };
 }
 
 // ── 에셋 팩: 모듈 지침 원문 → 팩 JSON 변환 프롬프트 (임포터) ──
@@ -9732,10 +9842,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (a && a.packs && a.packs.length) {
       box.appendChild(h('div', { class: 'sce-row' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
-          ['aux', '보조가 고름 — 상태 갱신에 얹혀 추가 비용 0 (권장)'],
+          ['aux', '보조가 고름 — 맨 앞 1장, 추가 비용 0 (권장)'],
+          ['aux_flow', '보조가 고름 — 서사 위치에 여러 장 (본문 인용 앵커)'],
           ['main', '메인 모델이 직접 — 주입문이 매 턴 전송에 합류'],
         ], (x) => { if (x === 'aux') delete a.by; else a.by = x; rerender(); }),
-        'aux는 실존 대조·폴백까지 돌고, main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
+        'aux 계열은 실존 대조·폴백까지 돈다. aux_flow는 보조가 본문 문장을 인용해 자리를 잡고, ' +
+        '인용을 못 찾으면 그 장은 생략 — 어긋난 위치가 나갈 통로가 없다. main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
     }
 
     const tools = h('div', { class: 'sce-row' });
@@ -9814,10 +9926,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
       const cov = packCoverage(p, nameSet);
       if (cov.exist != null) {
-        const line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존` +
-          (cov.missing.length ? ` — 빠진 예: ${cov.missing.join(', ')}${cov.combos - cov.exist > cov.missing.length ? ' …' : ''}` : '');
-        card.appendChild(h('div', { class: cov.exist === cov.combos ? 'sce-ok' : 'sce-warn' },
-          (cov.exist === cov.combos ? '✓ ' : '⚠ ') + line));
+        // 실질 구멍 = 정조합도 없고 폴백 사다리도 못 받는 조합. 이것만 ⚠의 근거가 된다 —
+        // 폴백이 받아주는 빠짐은 스파스 매트릭스의 정상 모습이다.
+        const holes = cov.combos - cov.exist - cov.rescued;
+        let line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존`;
+        if (cov.rescued) line += `, 빠진 ${cov.combos - cov.exist}개 중 ${cov.rescued}개는 폴백 구제`;
+        if (holes > 0) line += ` — 실질 구멍 ${holes}개 (예: ${cov.missing.join(', ')}${holes > cov.missing.length ? ' …' : ''})`;
+        card.appendChild(h('div', { class: holes === 0 ? 'sce-ok' : 'sce-warn' },
+          (holes === 0 ? '✓ ' : '⚠ ') + line));
+        if (holes > 0 && !cov.rescued && (p.slots || []).every((s) => s.fallback == null))
+          card.appendChild(h('div', { class: 'sce-hint' },
+            '폴백이 하나도 없다 — 감정 칸에 "어떤 조합으로도 실존하는 값"을 폴백으로 주면 구멍 대부분이 구제된다.'));
       } else if (cov.capped) {
         card.appendChild(h('div', { class: 'sce-warn' },
           `⚠ 필수 조합이 ${cov.combos}개 — 너무 많아 대조를 생략했다 (어휘를 줄이거나 칸을 생략 가능으로)`));
@@ -12786,6 +12905,30 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return null; }
   }
 
+  /** 보조 응답의 images 배열 → 본문 서사 위치 삽입 (by: 'aux_flow', v0.54).
+   *  위치는 보조가 인용한 본문 구절(앵커)로 받는다 — 못 찾으면 그 장은 생략, 어긋난 위치가
+   *  나갈 통로가 없다. 한 장도 못 놓으면 첫 장을 맨 앞에 (aux 단일 모드로 강등). */
+  async function resolveImagesFlow(content, imageList) {
+    try {
+      if (!Array.isArray(imageList) || !imageList.length) return content;
+      if ((schema.assets?.by ?? 'aux') !== 'aux_flow' || !schema.assets?.packs?.length) return content;
+      const lookup = engine.makeLookup(schema, session.current.vars);
+      const assetSet = await getAssetNameSet();
+      const items = [];
+      for (const c of imageList.slice(0, 4)) {
+        const res = assetsMod.resolveImage(schema, c, assetSet, lookup);
+        if (!res.ok) { console.log('[simcore] 이미지 생략:', res.reason, res.who ?? ''); continue; }
+        items.push({ tag: res.tag, anchor: c && c.anchor, name: res.name + (res.demoted ? '(폴백)' : '') });
+      }
+      if (!items.length) return content;
+      const placed = assetsMod.placeImages(content, items);
+      console.log('[simcore] 이미지 서사 삽입:', `${placed.placed}장`
+        + (placed.dropped ? `, 앵커 못 찾음 ${placed.dropped}장` : '')
+        + (placed.demoted ? ' (맨 앞 강등)' : ''), '—', items.map((i) => i.name).join(', '));
+      return placed.text;
+    } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return content; }
+  }
+
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
@@ -12895,7 +13038,11 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 
       const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
       // 이미지 게이트(when)는 갱신 후 상태로 판단 — 이번 턴 서사가 반영된 값이 기준이다
-      const imgTag = mode === 'aux' ? await resolveImageTag(r.auxParsed?.image) : null;
+      let imgTag = null;
+      if (mode === 'aux') {
+        if ((schema.assets?.by ?? 'aux') === 'aux_flow') content = await resolveImagesFlow(content, r.auxParsed?.images);
+        else imgTag = await resolveImageTag(r.auxParsed?.image);
+      }
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;

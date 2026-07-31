@@ -175,6 +175,59 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('main 모드에서는 빈 스펙', AS.auxImageSpec({ assets: { by: 'main', packs: BASE.assets.packs } }, L).instruction === '', '');
 }
 
+// ── 서사 위치 삽입 (by:'aux_flow', v0.54) — 앵커 탐색 사다리 + 배치 ──
+// 위치를 서수가 아니라 본문 인용으로 받는 이유: 실존 대조와 같은 원리 —
+// 검증할 수 없는 답은 받지 않는다. 못 찾으면 안 놓으면 그만이다.
+{
+  const body = '히로미가 방으로 들어왔다.\n\n"뭐 하는 거야?" 세이코가 물었다.\n\n창밖에는 비가 내렸다.';
+  ck('앵커 ① 정확 일치', AS.findAnchor(body, '세이코가 물었다') > 0, '');
+  ck('앵커 ② 공백 정규화 (줄바꿈 뭉갠 인용)', AS.findAnchor('비가\n내렸다', '비가 내렸다') === 0, '');
+  ck('앵커 ③ 앞 12자 축약 (인용 뒷부분 어긋남)', AS.findAnchor(body, '창밖에는 비가 내렸다. 그날따라 유독 세차게') > 0, '');
+  ck('★ 없는 인용은 -1', AS.findAnchor(body, '전혀 없는 문장') === -1, '');
+  ck('빈 앵커는 -1', AS.findAnchor(body, '') === -1 && AS.findAnchor(body, null) === -1, '');
+
+  const two = AS.placeImages(body, [
+    { tag: '<img="Hiromi_angry">', anchor: '히로미가 방으로' },
+    { tag: '<img="Seiko_neutral">', anchor: '세이코가 물었다' },
+  ]);
+  const iH = two.text.indexOf('<img="Hiromi_angry">'), iS = two.text.indexOf('<img="Seiko_neutral">');
+  ck('★ 앵커 문단 바로 뒤 삽입, 서사 순서 유지', two.placed === 2 && iH > 0 && iS > iH, two.text);
+  ck('문단 경계 유지 (빈 줄로 감싸임)', two.text.includes('들어왔다.\n\n<img="Hiromi_angry">\n\n"뭐'), two.text.slice(0, 80));
+
+  const drop = AS.placeImages(body, [
+    { tag: '<img="Hiromi_angry">', anchor: '히로미가 방으로' },
+    { tag: '<img="Seiko_neutral">', anchor: '이 인용은 본문에 없다' },
+  ]);
+  ck('★ 못 찾은 장만 생략, 나머지는 정위치', drop.placed === 1 && drop.dropped === 1 && drop.text.includes('Hiromi_angry'), JSON.stringify(drop));
+
+  const front = AS.placeImages(body, [
+    { tag: '<img="Hiromi_angry">', anchor: '없는 문장 하나' },
+    { tag: '<img="Seiko_neutral">', anchor: '없는 문장 둘' },
+  ]);
+  ck('★ 전패 시 첫 장 맨 앞 강등 (이미지 없는 턴 방지)', front.demoted && front.text.startsWith('<img="Hiromi_angry">\n\n히로미'), front.text.slice(0, 50));
+
+  const dup = AS.placeImages(body, [
+    { tag: '<img="Hiromi_angry">', anchor: '히로미가 방으로' },
+    { tag: '<img="Hiromi_angry">', anchor: '히로미가 방으로' },
+  ]);
+  ck('같은 태그+앵커 중복 제거', dup.placed === 1, '');
+  ck('마지막 문단 앵커는 본문 끝에', AS.placeImages(body, [{ tag: '<T>', anchor: '비가 내렸다' }]).text.endsWith('<T>'), '');
+  ck('항목 없으면 본문 그대로', AS.placeImages(body, []).text === body, '');
+}
+
+// aux_flow 스펙 + 검증
+{
+  const S = snap(); S.assets.by = 'aux_flow';
+  ck('aux_flow 스키마 유효', validateSchema(S).ok, validateSchema(S).errors.map((e) => e.msg).join('/'));
+  const bad = snap(); bad.assets.by = 'ghost';
+  ck('잘못된 by 거부', !validateSchema(bad).ok, '');
+  const spec = AS.auxImageSpec(S, L);
+  ck('★ flow 스펙: images 배열 + 앵커 지시', spec.instruction.includes('"images"') && spec.instruction.includes('anchor'), '');
+  ck('flow 스펙: 그대로 베끼라는 지시(verbatim)', spec.instruction.includes('verbatim'), '');
+  ck('flow 스펙도 어휘 합집합·게이트 제외 동일', spec.instruction.includes('Hiromi') && !spec.instruction.includes('blush'), '');
+  ck('★ aux 단일 스펙에는 images 없음 (모드 혼선 방지)', !AS.auxImageSpec(snap(), L).instruction.includes('"images"'), '');
+}
+
 // ── 번들 배선 스모크 ──
 {
   ck('★ 번들에 assets 모듈 실림', src.includes("'assets'") || src.includes('resolveImage'), '');
@@ -207,6 +260,16 @@ const E = SC.require('engine');
   const parsed = E.parseAuxResponse('{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}');
   ck('★ parseAuxResponse가 image 필드를 통과시킨다', parsed && parsed.image && parsed.image.who === 'Hiromi', JSON.stringify(parsed));
   ck('image 없으면 null', E.parseAuxResponse('{"changes":{}}').image === null, '');
+
+  const pf = E.parseAuxResponse('{"changes":{},"reasons":{},"images":[{"who":"Hiromi","emo":"angry","anchor":"문장"}]}');
+  ck('★ parseAuxResponse가 images 배열을 통과시킨다', Array.isArray(pf.images) && pf.images[0].anchor === '문장', JSON.stringify(pf));
+  ck('images가 배열이 아니면 null', E.parseAuxResponse('{"changes":{},"images":"x"}').images === null, '');
+
+  const Sf = snap(); Sf.assets.by = 'aux_flow'; Sf.updater = { allow: [{ id: 'nsfw_on' }] };
+  ck('★ aux_flow도 보조 프롬프트에 피기백 (추가 호출 0 동일)',
+    E.buildAuxPrompt(Sf, E.initState(Sf), '서사', null).includes('"images"'), '');
+  ck('aux_flow도 promptBlock에는 없다 (메인 비용 0 유지)',
+    !E.sendPhase(Sf, E.initState(Sf)).promptBlock.includes('[Image tags]'), '');
 }
 
 // ── 3단계: 🎨 에셋 층 — 감지·커버리지·임포터 (순수 헬퍼) ──
@@ -223,7 +286,10 @@ const ED = SC.require('editor');
   const S = snap();
   const cov = ED.packCoverage(S.assets.packs[0], new Set(['Hiromi_angry', 'Hiromi_smile', 'Seiko_neutral']));
   ck('★ 실존 커버리지: 필수 6조합 중 3실존', cov.combos === 6 && cov.exist === 3, JSON.stringify(cov));
-  ck('빠진 조합 예시 제공', cov.missing.includes('Hiromi_neutral'), cov.missing.join(','));
+  ck('★ 폴백 구제 갈라 세기 (Seiko_angry/smile → Seiko_neutral)', cov.rescued === 2, JSON.stringify(cov));
+  ck('예시는 실질 구멍만 (Hiromi_neutral은 폴백 실물도 없음)', cov.missing.join(',') === 'Hiromi_neutral', cov.missing.join(','));
+  const noFb = JSON.parse(JSON.stringify(S.assets.packs[0])); delete noFb.slots[1].fallback;
+  ck('폴백 없으면 구제 0 (런타임 사다리와 같은 계산)', ED.packCoverage(noFb, new Set(['Hiromi_angry'])).rescued === 0, '');
   ck('대조 불가 환경은 조합 수만', ED.packCoverage(S.assets.packs[0], null).exist === null, '');
 
   const ip = ED.buildPackImportPrompt('인물: A, B / 감정: happy');
@@ -240,9 +306,10 @@ const ED = SC.require('editor');
 
 // ── 배선 (2단계): 가짜 리스 실부팅 — 보조가 image를 얹어 보내면 본문 맨 앞에 1장 ──
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function bootLive() {
+async function bootLive(mutate) {
   const LORE = src.match(/const SCHEMA_LORE_COMMENT = '([^']+)'/)?.[1];
   const SCHEMA = snap(); SCHEMA.updater = { allow: [{ id: 'nsfw_on' }] };
+  if (mutate) mutate(SCHEMA);
   const world = {
     auxResult: '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}',
     chars: [{
@@ -312,6 +379,33 @@ async function bootLive() {
   ck('실부팅: image:null이면 생략', out3.startsWith('조용한 오후다'), out3.slice(0, 60));
 
   if (global.__unload) global.__unload();
+
+  // ── 배선: aux_flow 실부팅 — 보조가 images 배열+앵커를 보내면 서사 위치에 여러 장 ──
+  {
+    const w2 = await bootLive((s) => { s.assets.by = 'aux_flow'; });
+    const hk = global.__hooks ?? {};
+    w2.chars[0].additionalAssets.push(['Hiromi_neutral', 'c.png', 'png']);
+    w2.auxResult = '{"changes":{},"reasons":{},"images":['
+      + '{"who":"Hiromi","emo":"angry","anchor":"히로미가 문을 박찼다"},'
+      + '{"who":"Seiko","emo":"neutral","anchor":"세이코는 조용히 고개를"},'
+      + '{"who":"Hiromi","emo":"angry","anchor":"본문에 없는 인용문"}]}';
+    await hk.beforeRequest([{ role: 'user', content: '가자' }], 'model');
+    const body = '히로미가 문을 박찼다.\n\n세이코는 조용히 고개를 저었다.\n\n비가 온다.';
+    const outF = await hk.output(body);
+    const iH = outF.indexOf('<img="Hiromi_angry">'), iS = outF.indexOf('<img="Seiko_neutral">');
+    ck('★ 실부팅 flow: 두 장이 앵커 문단 뒤에, 서사 순서대로', iH > 0 && iS > iH, outF.slice(0, 160));
+    ck('실부팅 flow: 앵커 문단 바로 뒤 배치', outF.includes('박찼다.\n\n<img="Hiromi_angry">\n\n세이코는'), outF.slice(0, 120));
+    ck('실부팅 flow: 못 찾은 인용 장은 생략 (2장만)', (outF.match(/<img=/g) || []).length === 2, '');
+    ck('실부팅 flow: 마커 유지', /⟦simcore:1⟧$/.test(outF), outF.slice(-30));
+
+    // 다음 턴: 전부 못 찾는 앵커 → 첫 장 맨 앞 강등
+    w2.chats['c-sim:0'].message.push({ role: 'char', data: '첫 응답' }, { role: 'user', data: '다음' });
+    w2.auxResult = '{"changes":{},"reasons":{},"images":[{"who":"Hiromi","emo":"angry","anchor":"어디에도 없는 문장"}]}';
+    await hk.beforeRequest([{ role: 'user', content: '다음' }], 'model');
+    const outD = await hk.output('평화로운 아침이다.');
+    ck('★ 실부팅 flow: 전패 시 맨 앞 강등', outD.startsWith('<img="Hiromi_angry">\n\n평화로운'), outD.slice(0, 60));
+    if (global.__unload) global.__unload();
+  }
 
   let p = 0, f = 0;
   for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }

@@ -615,7 +615,8 @@ function validateSchema(schema) {
     const A = schema.assets;
     if (typeof A !== 'object' || Array.isArray(A)) err('$.assets', 'assets는 객체여야 함');
     else {
-      if (A.by != null && !['aux', 'main'].includes(A.by)) err('$.assets.by', "by는 'aux' 또는 'main'");
+      if (A.by != null && !['aux', 'aux_flow', 'main'].includes(A.by))
+        err('$.assets.by', "by는 'aux'(맨 앞 1장), 'aux_flow'(서사 위치 여러 장) 또는 'main'");
       if (!Array.isArray(A.packs)) err('$.assets.packs', 'packs 배열이 필요함');
       const packIds = new Set();
       const claim = new Map(); // 인물 → 먼저 담당을 선언한 팩 id (조용한 덮어쓰기 금지)

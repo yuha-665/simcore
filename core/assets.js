@@ -75,19 +75,17 @@ function renderTag(pack, name, choice) {
 }
 
 /**
- * 실존 대조 + 폴백 사다리 — 슬롯 방식의 유일한 약점(비어 있는 칸 조합)을 흡수한다.
+ * 실존 대조 + 폴백 사다리 (팩 단위) — 슬롯 방식의 유일한 약점(비어 있는 칸 조합)을 흡수한다.
  * 인물별 이미지 개수·감정 목록이 달라도 팩은 합집합 한 번만 선언하면 되는 이유.
  *
  * assetSet: 실물 에셋 이름 Set. null이면 대조 불가 환경 — 사다리 없이 정조합을 그대로 믿는다.
  * 사다리: ① 정조합 → ② optional 칸 제거 → ③ 폴백값 치환(칸의 fallback, who 제외)
- *         → ④ 폴백값 치환 + optional 제거 → 전부 실패면 삽입 생략(null).
+ *         → ④ 폴백값 치환 + optional 제거 → 전부 실패면 null (삽입 생략).
  * demoted = 정조합이 아닌 걸로 살아남았다는 표시 (폴백률 진단용).
+ * 라우팅과 분리해 둔 이유: 편집기 커버리지가 "이 빠진 조합, 폴백으로 구제되나"를 같은
+ * 사다리로 미리 재기 위해 (구제 여부가 다르게 계산되면 표시가 거짓말이 된다).
  */
-function resolveImage(schema, choice, assetSet, lookup) {
-  const who = choice && choice.who;
-  const pack = routePack(schema, who, lookup);
-  if (!pack) return { ok: false, reason: 'no-pack', who: who ?? null };
-
+function resolveInPack(pack, choice, assetSet) {
   const tryName = (c, dropOpt) => {
     const name = composeName(pack, c, dropOpt);
     if (!name) return null;
@@ -115,8 +113,84 @@ function resolveImage(schema, choice, assetSet, lookup) {
       if (name != null) { demoted = true; used = fb; }
     }
   }
-  if (name == null) return { ok: false, reason: 'no-asset', who, pack: pack.id };
-  return { ok: true, name, tag: renderTag(pack, name, used), pack: pack.id, demoted };
+  return name == null ? null : { name, used, demoted };
+}
+
+/** 라우팅 + 사다리 + 태그 렌더 — aux 모드의 한 장 해소 경로 */
+function resolveImage(schema, choice, assetSet, lookup) {
+  const who = choice && choice.who;
+  const pack = routePack(schema, who, lookup);
+  if (!pack) return { ok: false, reason: 'no-pack', who: who ?? null };
+  const r = resolveInPack(pack, choice, assetSet);
+  if (!r) return { ok: false, reason: 'no-asset', who, pack: pack.id };
+  return { ok: true, name: r.name, tag: renderTag(pack, r.name, r.used), pack: pack.id, demoted: r.demoted };
+}
+
+// ── 서사 위치 삽입 (by: 'aux_flow') ──────────────────────────
+// 위치를 서수("3번째 문단 뒤")가 아니라 본문 인용(앵커)으로 받는다 — 실존 대조와 같은 원리로,
+// 검증할 수 없는 답은 받지 않는다. 인용은 본문에서 찾아지거나, 못 찾으면 놓지 않으면 그만이다.
+
+/**
+ * 앵커 탐색 사다리 — ① 정확 일치 → ② 공백 정규화(보조가 줄바꿈을 뭉개 인용하는 경우)
+ * → ③ 정규화 앞 12자(인용 뒷부분이 어긋난 경우). 전부 실패면 -1.
+ */
+function findAnchor(content, anchor) {
+  if (!content || anchor == null) return -1;
+  const a = String(anchor).trim();
+  if (!a) return -1;
+  let i = content.indexOf(a);
+  if (i >= 0) return i;
+  const norm = (s) => s.replace(/\s+/g, ' ');
+  const nc = norm(content), na = norm(a);
+  i = nc.indexOf(na);
+  if (i < 0 && na.length >= 6) i = nc.indexOf(na.slice(0, 12));
+  return i < 0 ? -1 : mapNormIndex(content, i);
+}
+
+/** 공백 정규화된 문자열의 인덱스를 원본 인덱스로 역매핑 */
+function mapNormIndex(content, target) {
+  let n = 0, prevWs = false;
+  for (let i = 0; i < content.length; i++) {
+    const ws = /\s/.test(content[i]);
+    if (ws && prevWs) continue;
+    if (n === target) return i;
+    n++;
+    prevWs = ws;
+  }
+  return content.length;
+}
+
+/**
+ * 항목마다 앵커를 찾아 그 문단 바로 뒤에 태그를 놓는다.
+ * items = [{ tag, anchor }] (이미 resolveImage를 통과한 태그만).
+ * 못 찾은 항목은 생략하되, 한 장도 못 놓았는데 살아남은 항목이 있으면
+ * 첫 장을 맨 앞에 놓는다 (aux 단일 모드로 강등 — 이미지가 아예 없는 턴 방지).
+ * 반환 { text, placed, dropped, demoted } — demoted = 맨 앞 강등이 일어났다는 표시.
+ */
+function placeImages(content, items) {
+  const seen = new Set();
+  const uniq = (items || []).filter((x) => x && x.tag).slice(0, 4).filter((x) => {
+    const k = x.tag + '\n' + (x.anchor ?? ''); // 태그에 개행이 없으니 안전한 구분자
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  const points = [];
+  let dropped = 0;
+  uniq.forEach((it, idx) => {
+    const i = findAnchor(content, it.anchor);
+    if (i < 0) { dropped++; return; }
+    const para = content.indexOf('\n\n', i); // 앵커가 든 문단의 끝 (없으면 본문 끝)
+    points.push({ at: para >= 0 ? para : content.length, tag: it.tag, idx });
+  });
+  if (!points.length) {
+    if (uniq.length) return { text: uniq[0].tag + '\n\n' + content, placed: 1, dropped: uniq.length - 1, demoted: true };
+    return { text: content, placed: 0, dropped, demoted: false };
+  }
+  // 뒤에서부터 삽입해야 앞 인덱스가 안 밀린다. 같은 지점은 선언 순서가 본문 순서가 되게 역순 처리
+  points.sort((a, b) => b.at - a.at || b.idx - a.idx);
+  let text = content;
+  for (const p of points) text = text.slice(0, p.at) + '\n\n' + p.tag + text.slice(p.at);
+  return { text, placed: points.length, dropped, demoted: false };
 }
 
 /**
@@ -142,12 +216,15 @@ function mainInjectionText(schema, lookup) {
 }
 
 /**
- * aux 모드용 지시 조각 — 보조 응답 JSON에 "image" 필드를 얹어 받기 위한 스펙.
+ * aux 계열 모드용 지시 조각 — 보조 응답 JSON에 이미지 필드를 얹어 받기 위한 스펙.
  * 보조는 인물·감정만 고른다 (팩 선택·조합·대조는 SimCore 몫 — 고를 것이 늘면 틀릴 것도 는다).
+ * by:'aux'      → "image" 단일 객체 (맨 앞 1장)
+ * by:'aux_flow' → "images" 배열 + 앵커(본문 인용) — 위치까지 고르되 검증 가능한 형태로만
  * 반환: { instruction, whoValues, slotIds } — 팩이 없으면 instruction ''.
  */
 function auxImageSpec(schema, lookup) {
-  if ((schema?.assets?.by ?? 'aux') !== 'aux') return { instruction: '', whoValues: [], slotIds: [] };
+  const by = schema?.assets?.by ?? 'aux';
+  if (by !== 'aux' && by !== 'aux_flow') return { instruction: '', whoValues: [], slotIds: [] };
   const packs = openPacks(schema, lookup);
   if (!packs.length) return { instruction: '', whoValues: [], slotIds: [] };
   const whoValues = [...new Set(packs.flatMap((p) => packChars(p)))];
@@ -161,16 +238,27 @@ function auxImageSpec(schema, lookup) {
     }
   }
   const fields = ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)];
-  const lines = [
-    `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+  const vocab = [
     `who: one of [${whoValues.join(', ')}]`,
     ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
-    'If no clear scene focus, set "image": null.',
   ];
+  const lines = by === 'aux_flow'
+    ? [
+      `Also include "images": [{ ${fields.join(', ')}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
+      'anchor: a short quote (10-25 chars) copied EXACTLY, verbatim, from the narrative above. The image is inserted right after the paragraph containing it; if the quote is not found verbatim, that image is dropped.',
+      ...vocab,
+      'If no clear scene focus, set "images": [].',
+    ]
+    : [
+      `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+      ...vocab,
+      'If no clear scene focus, set "image": null.',
+    ];
   return { instruction: lines.join('\n'), whoValues, slotIds: [...slotVals.keys()] };
 }
 
 module.exports = {
   packOpen, openPacks, packChars, whoSlot, routePack,
-  composeName, renderTag, resolveImage, mainInjectionText, auxImageSpec,
+  composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
+  mainInjectionText, auxImageSpec,
 };

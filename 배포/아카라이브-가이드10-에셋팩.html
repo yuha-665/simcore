@@ -61,7 +61,7 @@
 
 <p><br></p>
 
-<p><span style="font-size:14px;"><strong>[📇 실존 대조 새로고침]</strong> 누르면 팩이 선언한 조합 중 실물 에셋에 진짜 있는 게 몇 개인지 카드마다 표시됨. &quot;필수 조합 480개 중 462개 실존 &mdash; 빠진 예: Seiko_wink&quot; 이런 식. <strong>인물마다 표정 개수가 달라도 상관없음</strong> &mdash; 그건 아래 폴백이 알아서 처리함.</span></p>
+<p><span style="font-size:14px;"><strong>[📇 실존 대조 새로고침]</strong> 누르면 팩이 선언한 조합 중 실물 에셋에 진짜 있는 게 몇 개인지 카드마다 표시됨. &quot;필수 조합 480개 중 440개 실존, 빠진 40개 중 36개는 폴백 구제 &mdash; 실질 구멍 4개&quot; 이런 식. <strong>인물마다 표정 개수가 달라도 상관없음</strong> &mdash; 빠져도 폴백이 받아주는 조합은 정상으로 쳐 주고, <strong>폴백조차 없는 &quot;실질 구멍&quot;만 ⚠로</strong> 알려줌. 그게 폴백을 손볼 단서임.</span></p>
 
 <p><br></p>
 
@@ -93,23 +93,27 @@
 
 <p><br></p>
 
-<p><strong><span style="font-size:36px;">4. 두 모드 &mdash; 누가 고르는가</span></strong></p>
+<p><strong><span style="font-size:36px;">4. 세 모드 &mdash; 누가, 어디에 넣는가</span></strong></p>
 
 <p><br></p>
 
-<p><span style="font-size:14px;">팩이 하나라도 있으면 카드 위에 <strong>삽입 주체</strong> 선택이 뜸.</span></p>
+<p><span style="font-size:14px;">팩이 하나라도 있으면 카드 위에 <strong>삽입 주체</strong> 선택이 뜸. 세 가지임.</span></p>
 
 <p><br></p>
 
-<p><span style="font-size:14px;"><strong>보조가 고름 (aux, 기본&middot;권장)</strong> &mdash; 상태 갱신하러 어차피 도는 보조 AI가 &quot;이번 장면 주인공&middot;감정&quot;을 얹어서 답함. <strong>추가 LLM 호출 0, 메인 프롬프트에 실리는 목록 0.</strong> 실존 대조&middot;폴백까지 다 돌아서 깨진 이미지도 0. 대신 이미지는 <strong>메시지당 1장, 본문 맨 앞</strong>에 붙음.</span></p>
+<p><span style="font-size:14px;"><strong>① 보조가 고름 &mdash; 맨 앞 1장 (aux, 기본&middot;권장)</strong> &mdash; 상태 갱신하러 어차피 도는 보조 AI가 &quot;이번 장면 주인공&middot;감정&quot;을 얹어서 답함. <strong>추가 LLM 호출 0, 메인 프롬프트에 실리는 목록 0.</strong> 실존 대조&middot;폴백까지 다 돌아서 깨진 이미지도 0. 대신 이미지는 <strong>메시지당 1장, 본문 맨 앞</strong>에 붙음.</span></p>
 
 <p><br></p>
 
-<p><span style="font-size:14px;"><strong>메인 모델이 직접 (main)</strong> &mdash; 칸 목록 + 조합 규칙을 지시문으로 매 턴 메인 프롬프트에 실음. 지금 손으로 쓰던 지침 블록을 시스템이 대신 쓰는 거라 곱셈이 덧셈 되는 절감은 같음. <strong>문단 사이사이 여러 장</strong> 넣는 연출이 되는 대신, 실존 대조가 불가능해서 &quot;확신 없으면 태그 생략해라&quot; 지시로 버팀.</span></p>
+<p><span style="font-size:14px;"><strong>② 보조가 고름 &mdash; 서사 위치에 여러 장 (aux_flow)</strong> &mdash; 보조가 장면 전환마다 최대 3장을 고르는데, 각 장의 위치를 <strong>본문 문장을 그대로 인용</strong>해서 알려줌. 시스템이 그 인용을 본문에서 찾아 그 문단 바로 뒤에 삽입함. 인용을 못 찾으면 그 장은 안 넣음 &mdash; <strong>어긋난 위치에 이미지가 박히는 사고가 구조적으로 없음.</strong> 실존 대조&middot;폴백&middot;추가 호출 0은 ①과 동일. 문단마다 표정이 바뀌는 연출을 원하면 이걸로.</span></p>
 
 <p><br></p>
 
-<p><span style="font-size:14px;">문단마다 표정이 바뀌는 연출 밀도가 중요하면 main, 비용&middot;정확도가 중요하면 aux. ⚠ <strong>루아 브리지로 쓰는 봇은 보조 결과가 한 턴 늦게 적용되니까</strong>(suggest랑 같은 제약) 이미지도 한 턴 늦게 붙음 &mdash; 브리지 환경이면 main을 추천함.</span></p>
+<p><span style="font-size:14px;"><strong>③ 메인 모델이 직접 (main)</strong> &mdash; 칸 목록 + 조합 규칙을 지시문으로 매 턴 메인 프롬프트에 실음. 지금 손으로 쓰던 지침 블록을 시스템이 대신 쓰는 거라 곱셈이 덧셈 되는 절감은 같음. 배치가 완전 자유인 대신, 실존 대조가 불가능해서 &quot;확신 없으면 태그 생략해라&quot; 지시로 버팀.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">고르는 기준: 안정 최우선이면 ①, 연출 밀도까지 원하면 ②, 메인 모델의 감각에 전부 맡기고 싶으면 ③. ⚠ <strong>루아 브리지로 쓰는 봇은 보조 결과가 한 턴 늦게 적용되니까</strong>(suggest랑 같은 제약) ①②의 이미지도 한 턴 늦게 붙음 &mdash; 브리지 환경이면 ③을 추천함.</span></p>
 
 <p><br></p>
 
@@ -168,7 +172,7 @@
 <blockquote>
 	<p><strong>왜 씀</strong> &nbsp;매 턴 실리던 이미지 지침(인물&times;감정 곱셈 목록)이 팩 선언 하나로 대체됨 &mdash; 목록이 덧셈이 되고, 안 쓰는 팩은 통째로 빠짐</p>
 	<p><strong>만들기</strong> &nbsp;🎨 에셋 팩 층 &rarr; [🔍 에셋에서 자동 감지] &rarr; 칸 이름표 달고 출력 태그 확인</p>
-	<p><strong>모드</strong> &nbsp;aux(기본) = 보조가 골라서 추가 비용 0&middot;깨진 이미지 0, 맨 앞 1장 / main = 문단 사이 여러 장, 대신 목록이 매 턴 실림</p>
+	<p><strong>모드</strong> &nbsp;aux(기본) = 맨 앞 1장 / aux_flow = 보조가 본문을 인용해 서사 위치에 여러 장 / main = 자유 배치, 대신 목록이 매 턴 실림</p>
 	<p><strong>성인 어휘</strong> &nbsp;팩 따로 + 게이트(when)로 잠금 &mdash; 닫히면 통째 제외</p>
 	<p><strong>모듈 지침</strong> &nbsp;[📋 모듈 지침 가져오기]로 변환 &rarr; 원래 프로즈 블록은 삭제</p>
 	<p><strong>안전</strong> &nbsp;팩이 없으면 기능 자체가 꺼짐 &mdash; 기존 봇은 아무것도 안 바뀜</p>

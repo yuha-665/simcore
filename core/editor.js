@@ -12,7 +12,7 @@ const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
-const { composeName, renderTag } = require('./assets');
+const { composeName, renderTag, resolveInPack } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
@@ -1464,25 +1464,32 @@ function packDraftFromDetect(det, packId) {
 
 // 팩의 필수 칸 정조합 실존 커버리지 — "없는 조합"을 배포 전에 보는 진단.
 // nameSet 없으면(대조 불가 환경) 조합 수만 센다. 조합이 너무 많으면 열거를 포기한다(capped).
+// 빠진 조합마다 런타임과 같은 폴백 사다리(resolveInPack)를 미리 돌려 "구제되나"를 갈라 센다 —
+// 스파스 매트릭스(의상별 감정 세트가 다름)는 정상 설계라, 폴백이 받아주는 조합까지 ⚠로
+// 몰아 세면 정상 봇이 영원히 경고를 보게 된다 (도구가 정상 설계를 벌주지 않기, v0.52 원칙).
+// missing 예시는 구제 안 되는 실질 구멍만 담는다 — 그게 폴백을 손볼 단서다.
 function packCoverage(pack, nameSet) {
   const req = (pack.slots || []).filter((s) => !s.optional);
   let combos = 1;
   for (const s of req) combos *= Math.max(1, (s.values || []).length);
-  if (!nameSet || !req.length) return { combos, exist: null, missing: [] };
-  if (combos > 4000) return { combos, exist: null, missing: [], capped: true };
+  if (!nameSet || !req.length) return { combos, exist: null, rescued: 0, missing: [] };
+  if (combos > 4000) return { combos, exist: null, rescued: 0, missing: [], capped: true };
   let acc = [{}];
   for (const s of req) {
     const next = [];
     for (const c of acc) for (const v of s.values || []) next.push({ ...c, [s.id]: v });
     if (next.length) acc = next;
   }
-  let exist = 0; const missing = [];
+  let exist = 0, rescued = 0; const missing = [];
   for (const c of acc) {
     const name = composeName(pack, c);
     if (name && nameSet.has(name)) exist++;
-    else if (name && missing.length < 6) missing.push(name);
+    else if (name) {
+      if (resolveInPack(pack, c, nameSet)) rescued++;
+      else if (missing.length < 6) missing.push(name);
+    }
   }
-  return { combos: acc.length, exist, missing };
+  return { combos: acc.length, exist, rescued, missing };
 }
 
 // ── 에셋 팩: 모듈 지침 원문 → 팩 JSON 변환 프롬프트 (임포터) ──
@@ -3994,10 +4001,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (a && a.packs && a.packs.length) {
       box.appendChild(h('div', { class: 'sce-row' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
-          ['aux', '보조가 고름 — 상태 갱신에 얹혀 추가 비용 0 (권장)'],
+          ['aux', '보조가 고름 — 맨 앞 1장, 추가 비용 0 (권장)'],
+          ['aux_flow', '보조가 고름 — 서사 위치에 여러 장 (본문 인용 앵커)'],
           ['main', '메인 모델이 직접 — 주입문이 매 턴 전송에 합류'],
         ], (x) => { if (x === 'aux') delete a.by; else a.by = x; rerender(); }),
-        'aux는 실존 대조·폴백까지 돌고, main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
+        'aux 계열은 실존 대조·폴백까지 돈다. aux_flow는 보조가 본문 문장을 인용해 자리를 잡고, ' +
+        '인용을 못 찾으면 그 장은 생략 — 어긋난 위치가 나갈 통로가 없다. main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
     }
 
     const tools = h('div', { class: 'sce-row' });
@@ -4076,10 +4085,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
       const cov = packCoverage(p, nameSet);
       if (cov.exist != null) {
-        const line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존` +
-          (cov.missing.length ? ` — 빠진 예: ${cov.missing.join(', ')}${cov.combos - cov.exist > cov.missing.length ? ' …' : ''}` : '');
-        card.appendChild(h('div', { class: cov.exist === cov.combos ? 'sce-ok' : 'sce-warn' },
-          (cov.exist === cov.combos ? '✓ ' : '⚠ ') + line));
+        // 실질 구멍 = 정조합도 없고 폴백 사다리도 못 받는 조합. 이것만 ⚠의 근거가 된다 —
+        // 폴백이 받아주는 빠짐은 스파스 매트릭스의 정상 모습이다.
+        const holes = cov.combos - cov.exist - cov.rescued;
+        let line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존`;
+        if (cov.rescued) line += `, 빠진 ${cov.combos - cov.exist}개 중 ${cov.rescued}개는 폴백 구제`;
+        if (holes > 0) line += ` — 실질 구멍 ${holes}개 (예: ${cov.missing.join(', ')}${holes > cov.missing.length ? ' …' : ''})`;
+        card.appendChild(h('div', { class: holes === 0 ? 'sce-ok' : 'sce-warn' },
+          (holes === 0 ? '✓ ' : '⚠ ') + line));
+        if (holes > 0 && !cov.rescued && (p.slots || []).every((s) => s.fallback == null))
+          card.appendChild(h('div', { class: 'sce-hint' },
+            '폴백이 하나도 없다 — 감정 칸에 "어떤 조합으로도 실존하는 값"을 폴백으로 주면 구멍 대부분이 구제된다.'));
       } else if (cov.capped) {
         card.appendChild(h('div', { class: 'sce-warn' },
           `⚠ 필수 조합이 ${cov.combos}개 — 너무 많아 대조를 생략했다 (어휘를 줄이거나 칸을 생략 가능으로)`));

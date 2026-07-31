@@ -1189,7 +1189,8 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null, image: obj.image ?? null };
+  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
+    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
 }
 
 module.exports = {

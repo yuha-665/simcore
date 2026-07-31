@@ -1,13 +1,25 @@
 //@name simcore
 //@api 3.0
-//@version 0.52.0
-//@display-name SimCore (시뮬 엔진) v0.52 진단 오탐 억제
+//@version 0.53.0
+//@display-name SimCore (시뮬 엔진) v0.53 에셋 팩 마무리
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.53.0 ────────────────────────────────────────────────
+// 에셋 팩 마무리 — 코어(v0.48)·배선(v0.48)·편집기 UI(v0.48.1)에 이어 남아 있던
+// "예제와 원고"를 채운다. 예제는 곧 코퍼스다 (ai-mistakes.md 원칙 #1).
+// - 연애 템플릿에 에셋 팩 실물 예시: 인물 칸(Hana) + 감정 칸 6종 + 폴백(normal) 표준형.
+//   **꺼진 채(enabled: false) 배송** — 어휘가 실물 에셋 이름과 맞아야 작동하는 기능이라,
+//   템플릿 그대로 시작한 봇에 빈 image 스펙이 실리거나 깨진 태그가 나가는 일이 없게.
+//   켜기 전에는 보조 프롬프트에 흔적 0 (test-templates에 켬/끔 양쪽 확인 추가).
+// - 아카라이브 가이드 10탄(에셋 팩) 원고: 곱셈→덧셈, 자동 감지, 팩 카드 칸 풀이,
+//   aux/main 모드, 성인 팩 게이트, 모듈 지침 임포터, 연애 템플릿 실물 안내.
+// - 남은 것은 실기 확인([live-test])뿐 — getAssetNames(additionalAssets) 접근,
+//   aux 피기백 실동작, 클립보드 복사 가부. 코드 변경 없이 웹리스에서 눌러보면 된다.
 //
 // ── v0.52.0 ────────────────────────────────────────────────
 // 진단 오탐 억제 — 맨션봇 진단이 47건을 냈는데 29건이 시뮬레이션의 구조적 사각지대였다.
@@ -10600,6 +10612,9 @@ const BUSINESS = {
 //          ③ 단계마다 다른 지시문으로 모델의 호칭·거리감을 통제하는 법
 //          ④ 시간 체계(time) — 장면 단위 RP에서 날짜·시각을 다루는 표준형 (v0.50).
 //             예전의 `onTurn day+1`은 출력 하나 = 하루가 되어 장면 RP를 부쉈다.
+//          ⑤ 에셋 팩(assets) — 감정 이미지 자동 삽입의 표준형 (v0.53). 곱셈 목록(인물×감정)을
+//             칸 선언(인물+감정)으로 바꾸고, 조합·실존 대조·폴백은 시스템이 한다.
+//             예시 팩은 꺼진 채(enabled: false) 실려 있다 — 어휘를 자기 에셋 이름에 맞춘 뒤 켠다.
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
@@ -10755,6 +10770,28 @@ const ROMANCE = {
 .sim-action { border-color:#eeb6bd; color:#c2596c; background:#fff2f3; }
 .sim-action.sim-armed { border-color:#e0559b; background:#fbdde5; }
 .sim-log { color:#9b7d7d; }`,
+  },
+  // 에셋 팩 — 감정 이미지 자동 삽입의 실물 예시 (설계: docs/design-에셋-슬롯.md).
+  // 매 턴 손으로 싣던 이미지 지침(인물×감정 곱셈 목록)이 이 선언 하나로 대체된다.
+  // by: 'aux'(기본) = 보조 AI가 상태 갱신에 얹어 인물·감정만 고르고(추가 호출 0),
+  // 조합·실존 대조·폴백 사다리는 시스템 몫 — 없는 조합은 폴백 감정으로 강등되거나 조용히 생략된다.
+  // ⚠ 꺼진 채 실려 있다: 어휘가 실물 에셋 이름과 같아야 작동하므로, 캐릭터에 Hana_smile 형태의
+  // 에셋을 넣고 값을 맞춘 뒤(또는 편집기 🎨 층의 [🔍 에셋에서 자동 감지]로 새 팩을 만든 뒤) 켠다.
+  assets: {
+    packs: [
+      { id: 'partner', source: '이 봇 자체', enabled: false, sep: '_',
+        // format = 봇의 표시 규약 그대로. {name}에 조합 결과(예: Hana_smile)가 들어간다.
+        format: '<img="{name}">',
+        slots: [
+          // who 칸의 값 = 에셋 이름 앞부분이자 이 팩의 담당 인물. 인물이 늘면 값만 늘린다 —
+          // 감정 축은 공용이라 목록은 곱셈(인물×감정)이 아니라 덧셈(인물+감정)으로 는다.
+          { id: 'who', label: '인물', values: ['Hana'] },
+          // fallback: 정조합(Hana_shy)이 실물에 없을 때 이 값(Hana_normal)으로 강등해 재시도.
+          // 인물마다 감정 이미지 개수가 달라도 합집합 한 번만 선언하면 되는 이유.
+          { id: 'emo', label: '감정', fallback: 'normal',
+            values: ['normal', 'smile', 'shy', 'angry', 'sad', 'surprised'] },
+        ] },
+    ],
   },
   setup: {
     presets: [

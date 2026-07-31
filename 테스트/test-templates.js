@@ -105,6 +105,22 @@ for (const k of ['mystery', 'business', 'romance']) {
   ck('[romance] 전이 시 통지 발생', out.state.meta.pendingNotifies.length > 0, JSON.stringify(out.state.meta.pendingNotifies));
 }
 
+// 연애: 에셋 팩 실물 예시 — 꺼진 채 실려 있고, 꺼진 동안은 보조 프롬프트에 흔적이 없어야 한다
+{
+  const sch = TEMPLATES.romance.schema;
+  const pk = sch.assets?.packs?.[0];
+  ck('[romance] 에셋 팩 예시 존재', !!pk && pk.slots.some((s) => s.id === 'who'), JSON.stringify(pk));
+  ck('[romance] 예시 팩은 꺼진 상태로 배송', pk && pk.enabled === false, String(pk && pk.enabled));
+  const st = engine.initState(sch);
+  const prompt = engine.buildAuxPrompt(sch, st, '서사', '입력');
+  ck('[romance] 꺼진 팩은 보조 프롬프트에 안 실림', !prompt.includes('"image"'), prompt.slice(0, 200));
+  // 켜면 image 스펙이 합류한다 (원본은 안 건드리게 복제)
+  const on = JSON.parse(JSON.stringify(sch));
+  delete on.assets.packs[0].enabled;
+  const prompt2 = engine.buildAuxPrompt(on, engine.initState(on), '서사', '입력');
+  ck('[romance] 켜면 image 스펙 합류', prompt2.includes('"image"') && prompt2.includes('Hana'), prompt2.slice(-300));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

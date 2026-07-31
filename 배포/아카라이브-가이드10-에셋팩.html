@@ -1,0 +1,179 @@
+<p><strong><span style="font-size:36px;">0. 감정 이미지 봇, 매 턴 뭘 싣고 있는지 아는가</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">감정 이미지 쓰는 봇 열어보면 로어북에 이런 게 들어있음. <strong>{{assetlist}} 통짜 덤프</strong> &mdash; 인물 8명 &times; 표정 70종이면 <strong>560줄</strong>이 매 턴 프롬프트에 실림. 거기에 수동 키워드 목록 + &quot;이미지는 이렇게 넣어라&quot; 지침 문단까지 하면 <strong>턴마다 700~900토큰</strong>이 이미지 안내에만 나감.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">성인 키워드 목록은 대부분의 턴에서 완전한 낭비인데도 상시 실려 있고, 모듈 여러 개 붙이면 <strong>모듈마다 자기 이미지 규약을 프로즈로 들고 와서</strong> 문맥에서 서로 싸움. 같이 쓰면 찐빠 나는 이유가 이거임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">에셋 팩은 이걸 통째로 대체함. 핵심 아이디어는 하나임:</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>조합(인물&times;감정)을 칸(인물+감정)으로 바꾸면 목록이 곱셈에서 덧셈이 됨.</strong></p>
+	<p>8&times;70 = 560줄 &rarr; 8+70 = 78줄. 감정 축은 인물과 무관한 공용 축이라 한 번만 적으면 됨.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 <strong>조합&middot;삽입을 시스템이 소유하니까</strong> AI는 어느 모듈의 사설 규약도 배울 필요가 없음. AI는 &quot;이번 장면 주인공 = Hana / 감정 = shy&quot;만 고르고, <code>Hana_shy</code>로 붙이는 건 SimCore가 함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 개념 &mdash; 팩과 칸</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>팩(pack)</strong> = 이미지 규약 한 벌임. 구분자가 뭐고(<code>_</code>인지 <code>-</code>인지), 출력 태그가 뭐고(<code>&lt;img=&quot;...&quot;&gt;</code>인지 모듈 전용 태그인지), 어휘가 뭔지를 한 카드에 선언함. <strong>봇 자체 이미지가 팩 하나, 붙인 모듈이 팩 하나</strong> &mdash; 규약이 서로 달라도 팩이 각자 흡수하니까 안 싸움.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>칸(slot)</strong> = 에셋 이름의 조각임. <code>Hana_shy</code>라는 이름은 인물 칸(Hana) + 감정 칸(shy)이 구분자 <code>_</code>로 붙은 거. 칸을 몇 개로 쪼갤지는 자유임 &mdash; <code>인물_감정_의상</code> 3칸도 되고, 의상 칸은 &quot;생략 가능&quot;으로 두면 <code>인물_감정</code>도 유효함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 만들기 &mdash; 버튼 하나면 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">봇 편집 사이드바에서 <strong>🎨 에셋 팩</strong> 층으로 가면 됨. 캐릭터에 에셋이 이미 들어있으면:</span></p>
+
+<p><br></p>
+
+<blockquote><p><strong>[🔍 에셋에서 자동 감지]</strong> &mdash; 실물 에셋 이름을 읽어서 구분자&middot;칸 구조를 알아내고 팩 카드를 만들어 줌</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&quot;구분자 '_' 기준 78/80개 이름에서 칸 2개 감지&quot; 이런 식으로 뜸. 유저가 할 일은 <strong>칸마다 이름표 달기</strong>(1번 칸 = 인물, 2번 칸 = 감정)랑 <strong>출력 태그 확인</strong>뿐임. 출력 태그는 그 봇의 표시 정규식이 알아듣는 문법 그대로 적어야 함 &mdash; 미리보기에 &quot;예시 출력: &lt;img=&quot;Hana_normal&quot;&gt;&quot;가 떠서 눈으로 확인 가능.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 자동 감지로 만들어진 팩 카드]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>[📇 실존 대조 새로고침]</strong> 누르면 팩이 선언한 조합 중 실물 에셋에 진짜 있는 게 몇 개인지 카드마다 표시됨. &quot;필수 조합 480개 중 462개 실존 &mdash; 빠진 예: Seiko_wink&quot; 이런 식. <strong>인물마다 표정 개수가 달라도 상관없음</strong> &mdash; 그건 아래 폴백이 알아서 처리함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 팩 카드 칸 풀이</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">- <strong>켜짐</strong> &nbsp;체크 풀면 팩이 통째로 꺼짐. 모듈 잠깐 뗄 때 지우지 말고 이걸 끄셈<br>
+- <strong>출처</strong> &nbsp;이 팩이 어디서 왔는지 (&quot;맨션봇 자체&quot;, &quot;노조미 모듈 v1.2&quot;). 나중에 모듈 뗄 때 어느 팩이 고아인지 알려면 꼭 적어야 함<br>
+- <strong>구분자</strong> &nbsp;이름 조각 사이 문자. 기본 <code>_</code><br>
+- <strong>출력 태그</strong> &nbsp;<code>{name}</code> 자리에 조합 결과가 들어감. <code>{칸id}</code>도 자리표시자로 쓸 수 있어서 <code>&lt;char-noz emotion=&quot;{emo}&quot;&gt;</code> 같은 모듈 전용 문법도 그대로 됨<br>
+- <strong>게이트</strong> &nbsp;조건식이 참일 때만 팩이 열림 (5절)<br>
+- <strong>고정 인물</strong> &nbsp;이름에 인물 칸이 없는 단일 캐릭 모듈용 &mdash; 여기 적은 인물이 뜨면 이 팩으로 감</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">칸마다는 <strong>어휘</strong>(쉼표 구분 값 목록), <strong>생략 가능</strong>, <strong>폴백</strong>이 있음. 폴백이 물건임:</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>폴백 사다리</strong> &mdash; AI가 고른 조합(Hana_wink)이 실물에 없으면 &rarr; 같은 인물의 폴백 감정(Hana_normal)으로 강등 &rarr; 그것도 없으면 그 턴은 이미지 생략.</p>
+	<p><strong>깨진 이미지가 뜨는 일이 구조적으로 없음.</strong> 인물마다 표정 개수가 달라도 팩엔 합집합 한 번만 적으면 되는 이유이기도 함.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 두 모드 &mdash; 누가 고르는가</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">팩이 하나라도 있으면 카드 위에 <strong>삽입 주체</strong> 선택이 뜸.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>보조가 고름 (aux, 기본&middot;권장)</strong> &mdash; 상태 갱신하러 어차피 도는 보조 AI가 &quot;이번 장면 주인공&middot;감정&quot;을 얹어서 답함. <strong>추가 LLM 호출 0, 메인 프롬프트에 실리는 목록 0.</strong> 실존 대조&middot;폴백까지 다 돌아서 깨진 이미지도 0. 대신 이미지는 <strong>메시지당 1장, 본문 맨 앞</strong>에 붙음.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>메인 모델이 직접 (main)</strong> &mdash; 칸 목록 + 조합 규칙을 지시문으로 매 턴 메인 프롬프트에 실음. 지금 손으로 쓰던 지침 블록을 시스템이 대신 쓰는 거라 곱셈이 덧셈 되는 절감은 같음. <strong>문단 사이사이 여러 장</strong> 넣는 연출이 되는 대신, 실존 대조가 불가능해서 &quot;확신 없으면 태그 생략해라&quot; 지시로 버팀.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">문단마다 표정이 바뀌는 연출 밀도가 중요하면 main, 비용&middot;정확도가 중요하면 aux. ⚠ <strong>루아 브리지로 쓰는 봇은 보조 결과가 한 턴 늦게 적용되니까</strong>(suggest랑 같은 제약) 이미지도 한 턴 늦게 붙음 &mdash; 브리지 환경이면 main을 추천함.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. 성인 팩은 따로 만들어서 잠그셈</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">성인 키워드는 어휘만 다른 게 아니라 출력 형식까지 다른 경우가 있어서, <strong>같은 팩 안에서 거르지 말고 팩을 하나 더 만들어서</strong> 게이트로 잠그는 거임.</span></p>
+
+<p><br></p>
+
+<blockquote><p>게이트: <strong>nsfw_on</strong> &nbsp;(bool 변수든, 지속 액션 무장 상태든, 아무 조건식이나 됨)</p></blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">게이트가 닫히면 <strong>그 팩이 프롬프트에서 통째로 빠짐.</strong> 성인 어휘 45줄이 필요한 턴에만 실리는 거라 절감이 제일 큰 자리임. 조건 만들기 귀찮으면 지속(hold) 액션 하나 만들어서 켜고 끄는 게 제일 확실함 &mdash; 4탄에서 배운 그 무장 버튼임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">6. 남의 모듈 지침 옮기기 &mdash; 📋 모듈 지침 가져오기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이미 쓰던 봇이나 받아온 모듈엔 이미지 지침이 프로즈로 들어있을 거임. 🎨 층 아래 <strong>[📋 모듈 지침 가져오기]</strong>에 그 원문(키워드 목록 + 지침 문단)을 통째로 붙여넣고 <strong>[✨ AI로 팩 변환]</strong> 누르면 팩 선언으로 바꿔줌. 앱 내 AI가 없으면 <strong>[📋 변환 요청서 복사]</strong>로 외부 AI에 시키면 됨. 변환 결과는 검증 통과해야만 반영되니까 이상한 게 섞여 들어올 걱정은 안 해도 됨.</span></p>
+
+<p><br></p>
+
+<blockquote><p><strong>⚠ 변환했으면 로어북의 원래 지침 블록은 꼭 지우셈.</strong> 그대로 두면 시스템 주입이랑 이중으로 실려서 토큰만 두 배로 나감.</p></blockquote>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">7. 실물 구경 &mdash; 연애 템플릿</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>연애 템플릿</strong>에 예시 팩이 들어있음. 인물 칸(Hana) + 감정 칸 6종 + 폴백(normal)짜리 표준형인데, <strong>일부러 꺼진 채로 배송됨</strong> &mdash; 어휘가 실물 에셋 이름이랑 맞아야 작동하는 기능이라서. 캐릭터에 <code>Hana_smile</code> 형태로 에셋 넣고 어휘 맞춘 다음(또는 자동 감지로 새로 만든 다음) 켜짐 체크하면 됨.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 연애 템플릿 예시 팩 + 켜짐 체크]</p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>왜 씀</strong> &nbsp;매 턴 실리던 이미지 지침(인물&times;감정 곱셈 목록)이 팩 선언 하나로 대체됨 &mdash; 목록이 덧셈이 되고, 안 쓰는 팩은 통째로 빠짐</p>
+	<p><strong>만들기</strong> &nbsp;🎨 에셋 팩 층 &rarr; [🔍 에셋에서 자동 감지] &rarr; 칸 이름표 달고 출력 태그 확인</p>
+	<p><strong>모드</strong> &nbsp;aux(기본) = 보조가 골라서 추가 비용 0&middot;깨진 이미지 0, 맨 앞 1장 / main = 문단 사이 여러 장, 대신 목록이 매 턴 실림</p>
+	<p><strong>성인 어휘</strong> &nbsp;팩 따로 + 게이트(when)로 잠금 &mdash; 닫히면 통째 제외</p>
+	<p><strong>모듈 지침</strong> &nbsp;[📋 모듈 지침 가져오기]로 변환 &rarr; 원래 프로즈 블록은 삭제</p>
+	<p><strong>안전</strong> &nbsp;팩이 없으면 기능 자체가 꺼짐 &mdash; 기존 봇은 아무것도 안 바뀜</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">팩 만들었으면 카드의 <strong>실존 대조</strong> 줄 한 번 확인하는 거 잊지 마셈 &mdash; 선언한 조합이 실물에 몇 개나 있는지, 뭐가 빠졌는지 바로 보여줌.</span></p>

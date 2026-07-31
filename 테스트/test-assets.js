@@ -317,6 +317,7 @@ const ED = SC.require('editor');
   const ip = ED.buildPackImportPrompt('인물: A, B / 감정: happy');
   ck('임포터 프롬프트 = 팩 스키마 + 원문', ip.includes('"packs"') && ip.includes('인물: A, B'), '');
   ck('임포터: 지어내기 금지 지시', ip.includes('지어내지 마라'), '');
+  ck('임포터: 팩 최소화 기준 (형식·구분자·조건 같으면 합쳐라)', ip.includes('팩 수는 최소로'), '');
 
   // 비용 추정 (v0.54.1) — "이 기능이 뭘 아끼나"를 숫자로
   ck('토큰 추정: 영문 ~3.5자/tok', ED.estTokens('abcdefg') === 2, String(ED.estTokens('abcdefg')));

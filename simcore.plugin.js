@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.1
+//@version 0.54.2
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,11 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.2 ────────────────────────────────────────────────
+// 게이트 변형 팩 경고 억제 — 성인/임신처럼 같은 인물을 when이 다른 팩 여럿이 담당하는 것은
+// 설계 문서가 권하는 패턴인데 검증기가 "인물 중복 담당" 경고를 내고 있었다 (실측: 웬디 봇
+// 4팩 변환). 게이트까지 같을 때만 진짜 충돌로 경고한다 — 정상 설계를 벌주지 않기.
 //
 // ── v0.54.1 ────────────────────────────────────────────────
 // 매 턴 비용 추정 (🎨 층) — "지침서 대비 얼마나 이득인지 체감하고 싶다"(실기 피드백).
@@ -2080,14 +2085,18 @@ function validateSchema(schema) {
           }
         }
 
-        // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선
+        // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선.
+        // 단, 게이트(when)가 서로 다른 팩의 겹침은 의도된 변형(성인/임신 팩 패턴)이라
+        // 경고하지 않는다 — 정상 설계에 경고를 내면 아무도 그 설계를 안 쓴다 (v0.52 원칙).
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
         for (const c of owns) {
-          if (claim.has(c) && claim.get(c) !== pk.id)
-            warn(p, `인물 '${c}'는 팩 '${claim.get(c)}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
-          else claim.set(c, pk.id);
+          const prev = claim.get(c) || [];
+          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+          if (same) warn(p, `인물 '${c}'는 팩 '${same.id}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
+          prev.push({ id: pk.id, when: pk.when ?? '' });
+          claim.set(c, prev);
         }
       });
     }

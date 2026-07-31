@@ -656,14 +656,18 @@ function validateSchema(schema) {
           }
         }
 
-        // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선
+        // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선.
+        // 단, 게이트(when)가 서로 다른 팩의 겹침은 의도된 변형(성인/임신 팩 패턴)이라
+        // 경고하지 않는다 — 정상 설계에 경고를 내면 아무도 그 설계를 안 쓴다 (v0.52 원칙).
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
         for (const c of owns) {
-          if (claim.has(c) && claim.get(c) !== pk.id)
-            warn(p, `인물 '${c}'는 팩 '${claim.get(c)}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
-          else claim.set(c, pk.id);
+          const prev = claim.get(c) || [];
+          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+          if (same) warn(p, `인물 '${c}'는 팩 '${same.id}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
+          prev.push({ id: pk.id, when: pk.when ?? '' });
+          claim.set(c, prev);
         }
       });
     }

@@ -71,6 +71,13 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('★ 인물 중복 담당은 경고 + 먼저 선언 우선 안내', vo.ok
     && vo.warnings.some((w) => w.msg.includes('먼저 선언된 팩이 우선')), '');
 
+  // 게이트가 다른 변형 팩(성인/임신 패턴)의 인물 겹침은 의도된 공존 — 경고 없어야 한다.
+  // BASE 자체가 그 패턴이다: mansion(상시)과 mansion_nsfw(when)가 같은 인물을 담당.
+  ck('★ 게이트 다른 변형 팩 공존은 경고 없음 (성인/임신 변형 패턴)',
+    !validateSchema(snap()).warnings.some((w) => w.msg.includes('먼저 선언된 팩이 우선')), '');
+  const sameGate = snap(); sameGate.assets.packs[1].when = undefined; // nsfw 게이트 제거 → 진짜 충돌
+  ck('게이트까지 같으면 여전히 경고', validateSchema(sameGate).warnings.some((w) => w.msg.includes('먼저 선언된 팩이 우선')), '');
+
   const orphan = snap(); delete orphan.assets.packs[2].chars;
   ck('담당 인물 없는 팩은 경고 (라우팅 불가)', validateSchema(orphan).warnings.some((w) => w.msg.includes('라우팅되지')), '');
 

@@ -4005,9 +4005,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       rerender(); return null;
     }
     try {
+      // 출처 구성까지 주는 훅이 있으면 그걸로 — "왜 0개인가"를 말할 수 있다 (v0.54.4)
+      if (ai.getAssetSources) {
+        const r = await ai.getAssetSources();
+        const names = [...new Set((r.sources || []).flatMap((s) => s.names.map(String)))];
+        if (!names.length) {
+          assetNote = r.dbErr
+            ? `에셋 0개 — 모듈 접근 실패: ${r.dbErr}. 리수의 권한(db) 팝업에서 허용해야 모듈 에셋을 읽을 수 있다.`
+            : '캐릭터·활성 모듈 어디에도 추가 에셋이 없다. (모듈은 이 봇/채팅에서 활성화돼 있어야 보인다)';
+          rerender(); return null;
+        }
+        assetNames = names;
+        assetNote = '읽음: ' + (r.sources || []).map((s) => `${s.label} ${s.names.length}개`).join(' + ')
+          + (r.dbErr ? ` ⚠ 모듈 접근 실패: ${r.dbErr}` : '');
+        return assetNames;
+      }
       const names = await ai.getAssetNames();
       if (!names || !names.length) {
-        assetNote = '캐릭터·켜진 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        assetNote = '캐릭터·활성 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
         rerender(); return null;
       }
       assetNames = names.map(String);

@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.3
+//@version 0.54.4
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.4 ────────────────────────────────────────────────
+// 모듈 에셋 2차 — v0.54.3이 실기에서 또 실패한 원인 둘 (실측: MIKU&BRS 개별 활성화).
+// ① 봇 개별 활성화는 전역 enabledModules가 아니라 **채팅의 chat.modules**에 산다 (schemas.md).
+//    활성 = 전역 ∪ 채팅으로 합쳐 본다.
+// ② getDatabase는 db 권한 동의가 필요하고 거부되면 null인데 조용히 삼키고 있었다.
+//    출처별 수집(getAssetSources)으로 바꿔 편집기가 "읽음: 캐릭터 N개 + 모듈 X M개" 구성과
+//    실패 사유("db 권한 거부 — 팝업에서 허용 필요")를 그대로 말한다. 침묵 실패 금지.
 //
 // ── v0.54.3 ────────────────────────────────────────────────
 // 모듈 에셋 읽기 — 이미지가 모듈의 '추가 에셋'에 사는 모듈봇(실측: MIKU&BRS)은 캐릭터의
@@ -9871,9 +9879,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       rerender(); return null;
     }
     try {
+      // 출처 구성까지 주는 훅이 있으면 그걸로 — "왜 0개인가"를 말할 수 있다 (v0.54.4)
+      if (ai.getAssetSources) {
+        const r = await ai.getAssetSources();
+        const names = [...new Set((r.sources || []).flatMap((s) => s.names.map(String)))];
+        if (!names.length) {
+          assetNote = r.dbErr
+            ? `에셋 0개 — 모듈 접근 실패: ${r.dbErr}. 리수의 권한(db) 팝업에서 허용해야 모듈 에셋을 읽을 수 있다.`
+            : '캐릭터·활성 모듈 어디에도 추가 에셋이 없다. (모듈은 이 봇/채팅에서 활성화돼 있어야 보인다)';
+          rerender(); return null;
+        }
+        assetNames = names;
+        assetNote = '읽음: ' + (r.sources || []).map((s) => `${s.label} ${s.names.length}개`).join(' + ')
+          + (r.dbErr ? ` ⚠ 모듈 접근 실패: ${r.dbErr}` : '');
+        return assetNames;
+      }
       const names = await ai.getAssetNames();
       if (!names || !names.length) {
-        assetNote = '캐릭터·켜진 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        assetNote = '캐릭터·활성 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
         rerender(); return null;
       }
       assetNames = names.map(String);
@@ -12945,33 +12968,56 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   // 보조가 고른 {who, 감정…}을 팩 규약으로 조합해 실물과 대조한 뒤 본문 맨 앞에 1장 삽입.
   // 실패(팩 없음·조합 없음)는 조용히 생략 — 깨진 이미지 태그가 본문에 나가는 것이 최악이다.
 
-  // 실물 에셋 이름 Set. [live-test] additionalAssets 항목이 [이름, 경로, ext] 배열인지
-  // {name,...} 객체인지 환경 확인 — 둘 다 받는다. 읽기 실패면 null(대조 생략, 정조합 신뢰).
-  // v0.54.3: 모듈봇 지원 — 이미지가 모듈의 '추가 에셋'에 사는 봇(실측: MIKU&BRS 모듈)은
-  // 캐릭터만 봐서는 0개다. getDatabase 허용 키에 modules/enabledModules가 있어(plugins.md)
-  // 켜진 모듈의 assets를 합친다. enabledModules를 못 읽는 환경이면 모든 모듈을 합친다
-  // (이름이 남는 쪽이 대조를 덜 깨뜨린다). [live-test] 모듈 부착 시 enabledModules 반영 확인.
-  async function getAssetNameSet() {
-    const set = new Set();
-    const addArr = (arr) => {
-      if (!Array.isArray(arr)) return;
-      for (const a of arr) {
-        if (Array.isArray(a)) { if (a[0] != null) set.add(String(a[0])); }
-        else if (a && typeof a === 'object' && a.name != null) set.add(String(a.name));
-      }
-    };
+  // 실물 에셋 이름 수집 — 출처별로 나눠 담는다 (편집기가 구성·실패 사유를 보여줄 수 있게).
+  // [live-test] additionalAssets 항목이 [이름, 경로, ext] 배열인지 {name,...} 객체인지 — 둘 다 받는다.
+  // v0.54.3~4: 모듈봇 지원 — 이미지가 모듈의 '추가 에셋'에 사는 봇(실측: MIKU&BRS).
+  //   활성 모듈 = 전역 enabledModules ∪ 현재 채팅의 chat.modules (봇 개별 활성화는 채팅에 산다
+  //   — schemas.md. 실측: 전역만 봐서는 개별 활성화 모듈이 안 보였다).
+  //   getDatabase는 db 권한 동의가 필요하고 거부되면 null — 조용히 삼키지 말고 사유를 남긴다.
+  function collectAssetNames(arr) {
+    const out = [];
+    if (!Array.isArray(arr)) return out;
+    for (const a of arr) {
+      if (Array.isArray(a)) { if (a[0] != null) out.push(String(a[0])); }
+      else if (a && typeof a === 'object' && a.name != null) out.push(String(a.name));
+    }
+    return out;
+  }
+
+  async function getAssetSources() {
+    const sources = []; // { label, names }
+    let dbErr = null;
     try {
       const char = await Risuai.getCharacter();
-      addArr(char?.additionalAssets);
+      const n = collectAssetNames(char?.additionalAssets);
+      if (n.length) sources.push({ label: '캐릭터', names: n });
     } catch { /* 캐릭터 접근 실패 — 모듈만으로도 진행 */ }
     try {
       const db = await Risuai.getDatabase(['modules', 'enabledModules']);
-      const en = db?.enabledModules;
-      const on = Array.isArray(en) ? new Set(en) : null;
-      for (const m of db?.modules || []) {
-        if (m && (!on || on.has(m.id))) addArr(m.assets);
+      if (!db || typeof db !== 'object') dbErr = 'db 권한 거부 또는 미지원';
+      else {
+        const active = new Set(Array.isArray(db.enabledModules) ? db.enabledModules : []);
+        try {
+          const chaIdx = await Risuai.getCurrentCharacterIndex();
+          const chatIdx = await Risuai.getCurrentChatIndex();
+          const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+          for (const id of chat?.modules || []) active.add(id);
+        } catch { /* 채팅 접근 실패 — 전역 활성만으로 진행 */ }
+        for (const m of db.modules || []) {
+          if (!m || !active.has(m.id)) continue;
+          const n = collectAssetNames(m.assets);
+          if (n.length) sources.push({ label: `모듈 ${m.name ?? m.id}`, names: n });
+        }
       }
-    } catch { /* 모듈 접근 불가 환경 — 캐릭터 에셋만으로 진행 */ }
+    } catch (e) { dbErr = (e && e.message) || 'getDatabase 실패'; }
+    return { sources, dbErr };
+  }
+
+  /** 대조용 Set — 출처 무관 합집합. 하나도 없으면 null(대조 생략, 정조합 신뢰). */
+  async function getAssetNameSet() {
+    const { sources } = await getAssetSources();
+    const set = new Set();
+    for (const s of sources) for (const n of s.names) set.add(n);
     return set.size ? set : null;
   }
 
@@ -14135,6 +14181,8 @@ count(목록)  has(목록, "항목")</pre>
         getModelIds,
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },
+        // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4)
+        getAssetSources: () => getAssetSources(),
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

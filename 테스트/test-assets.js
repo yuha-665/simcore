@@ -339,17 +339,19 @@ async function bootLive(mutate) {
       // [live-test] 실제 additionalAssets 항목 형태 확인 — 배열/객체 둘 다 받는다
       additionalAssets: [['Hiromi_angry', 'a.png', 'png'], ['Seiko_neutral', 'b.png', 'png']],
     }],
-    chats: { 'c-sim:0': { id: 'ch0', message: [{ role: 'user', data: '안녕' }] } },
+    chats: { 'c-sim:0': { id: 'ch0', modules: ['m-chat'], message: [{ role: 'user', data: '안녕' }] } },
   };
   const store = new Map();
   global.Risuai = {
     getCharacter: async () => world.chars[0],
     // 모듈봇: 이미지가 모듈의 '추가 에셋'에 사는 경우 (실측: MIKU&BRS 모듈).
-    // 켜진 모듈(m-on)의 에셋만 합쳐져야 한다 — 꺼진 모듈(m-off) 이름은 대조에 안 낀다.
+    // 활성 = 전역 enabledModules(m-on) ∪ 채팅 chat.modules(m-chat, 봇 개별 활성화).
+    // 꺼진 모듈(m-off) 이름은 대조에 안 낀다.
     getDatabase: async () => ({
       enabledModules: ['m-on'],
       modules: [
         { id: 'm-on', name: '노조미 모듈', assets: [['happy', 'n1.png', 'png']] },
+        { id: 'm-chat', name: '개별 활성 모듈', assets: [['Seiko_smile', 's1.png', 'png']] },
         { id: 'm-off', name: '꺼진 모듈', assets: [['Hiromi_smile', 'x.png', 'png']] },
       ],
     }),
@@ -421,6 +423,13 @@ async function bootLive(mutate) {
   await hooks.beforeRequest([{ role: 'user', content: '다섯' }], 'model');
   const out5 = await hooks.output('히로미가 미소지었다.');
   ck('★ 실부팅: 꺼진 모듈의 에셋은 실존으로 안 친다 (렌더 안 될 이미지 차단)', out5.startsWith('히로미가'), out5.slice(0, 60));
+
+  // 턴 6: 봇 개별 활성화 모듈(chat.modules) — 전역 enabledModules에 없어도 활성으로 친다 (실측 MIKU&BRS)
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '다섯째 응답' }, { role: 'user', data: '여섯' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Seiko","emo":"smile"}}';
+  await hooks.beforeRequest([{ role: 'user', content: '여섯' }], 'model');
+  const out6 = await hooks.output('세이코가 웃었다.');
+  ck('★ 실부팅: 채팅 개별 활성 모듈의 에셋도 대조 합류', out6.startsWith('<img="Seiko_smile">'), out6.slice(0, 60));
 
   if (global.__unload) global.__unload();
 

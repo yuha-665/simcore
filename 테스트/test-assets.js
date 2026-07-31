@@ -319,6 +319,12 @@ const ED = SC.require('editor');
   ck('임포터: 지어내기 금지 지시', ip.includes('지어내지 마라'), '');
   ck('임포터: 팩 최소화 기준 (형식·구분자·조건 같으면 합쳐라)', ip.includes('팩 수는 최소로'), '');
 
+  // 추론 모델의 <Thoughts> 서두 — 보조 응답 파서와 같은 추출기로 견뎌야 한다 (실측: 변환 실패)
+  const thoughty = '<Thoughts> Analyzing {stuff} deeply... {"note": 1} </Thoughts>\n'
+    + '```json\n{"packs": [{"id": "p1", "format": "<img=\\"{name}\\">", "slots": []}]}\n```';
+  const ex = SC.require('engine').extractJsonObject(thoughty, 'packs');
+  ck('★ 변환 추출기: <Thoughts> 중괄호에 안 걸리고 packs JSON 회수', !!ex && Array.isArray(ex.packs) && ex.packs[0].id === 'p1', JSON.stringify(ex));
+
   // 비용 추정 (v0.54.1) — "이 기능이 뭘 아끼나"를 숫자로
   ck('토큰 추정: 영문 ~3.5자/tok', ED.estTokens('abcdefg') === 2, String(ED.estTokens('abcdefg')));
   ck('토큰 추정: 한글 ~1.5자/tok', ED.estTokens('가나다') === 2, String(ED.estTokens('가나다')));

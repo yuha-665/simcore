@@ -4195,10 +4195,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               assetImportNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
               return;
             }
-            const noFence = text.replace(/```[a-z]*\n?/g, '');
-            const jsonStr = noFence.slice(noFence.indexOf('{'), noFence.lastIndexOf('}') + 1);
-            let obj = null;
-            try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
+            // 추론 모델의 <Thoughts> 서두·코드펜스·잡담을 견디는 추출기 — 보조 응답 파서와 같은 것.
+            // 순진한 첫{ ~ 끝} 슬라이스는 Thoughts 안의 중괄호에 걸려 깨진다 (실측: MIKU&BRS 변환).
+            const obj = engine.extractJsonObject(text, 'packs');
+            if (!obj) { assetImportNote = '변환 응답에서 JSON을 못 찾았다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
             if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
             // 변환 결과 청소 — AI가 "비워 둬라"를 빈 문자열/빈 배열로 내는 건 정상이니 여기서 걷는다

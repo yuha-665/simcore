@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.8
+//@version 0.54.9
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.9 ────────────────────────────────────────────────
+// 임포터 JSON 추출 교체 — 추론 모델이 <Thoughts> 서두를 뱉으면 순진한 첫{~끝} 슬라이스가
+// Thoughts 안의 중괄호에 걸려 "JSON이 아니다"로 죽었다 (실측: MIKU&BRS 재변환).
+// 보조 응답 파서가 이미 쓰는 관대한 추출기(extractJsonObject, Thoughts 제거 + 균형 스캔)를
+// engine에서 export해 임포터도 같은 것을 쓴다. 같은 문제를 두 번 다르게 풀지 않기.
 //
 // ── v0.54.8 ────────────────────────────────────────────────
 // 임포터 팩 최소화 기준 — 실측: MIKU&BRS 변환이 근사-동일 팩 5개를 냈다. "성인은 쪼개라"만
@@ -4091,7 +4097,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
-  renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };
@@ -10097,10 +10103,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               assetImportNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
               return;
             }
-            const noFence = text.replace(/```[a-z]*\n?/g, '');
-            const jsonStr = noFence.slice(noFence.indexOf('{'), noFence.lastIndexOf('}') + 1);
-            let obj = null;
-            try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
+            // 추론 모델의 <Thoughts> 서두·코드펜스·잡담을 견디는 추출기 — 보조 응답 파서와 같은 것.
+            // 순진한 첫{ ~ 끝} 슬라이스는 Thoughts 안의 중괄호에 걸려 깨진다 (실측: MIKU&BRS 변환).
+            const obj = engine.extractJsonObject(text, 'packs');
+            if (!obj) { assetImportNote = '변환 응답에서 JSON을 못 찾았다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
             if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
             // 변환 결과 청소 — AI가 "비워 둬라"를 빈 문자열/빈 배열로 내는 건 정상이니 여기서 걷는다

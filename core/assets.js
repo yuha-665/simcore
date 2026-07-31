@@ -86,10 +86,14 @@ function renderTag(pack, name, choice) {
  * 사다리로 미리 재기 위해 (구제 여부가 다르게 계산되면 표시가 거짓말이 된다).
  */
 function resolveInPack(pack, choice, assetSet) {
+  // verify:false — 실존 대조를 끄고 정조합을 신뢰한다 (v0.54.6). 에셋이 모듈에 살아서
+  // 플러그인이 이름 목록을 못 읽는 환경(실측: db 권한 잠긴 리수)용. 이게 없으면 캐릭터
+  // 이름만 든 부분 Set이 모듈 조합을 전부 "없음"으로 걸러 이미지가 영영 안 나간다.
+  const set = pack.verify === false ? null : assetSet;
   const tryName = (c, dropOpt) => {
     const name = composeName(pack, c, dropOpt);
     if (!name) return null;
-    if (assetSet && !assetSet.has(name)) return null;
+    if (set && !set.has(name)) return null;
     return name;
   };
 

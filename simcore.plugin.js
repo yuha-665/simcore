@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.5
+//@version 0.54.6
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.6 ────────────────────────────────────────────────
+// verify:false — 실기 확정: 이 리수 빌드는 requestPluginPermission을 거쳐도 db가 잠겨 있어
+// 모듈 에셋 이름을 읽을 길이 없다. 팩 단위 '실존 대조' 체크를 끄면 조합을 검사 없이 신뢰한다.
+// 이게 없으면 더 나쁜 사고가 난다: 캐릭터 이름만 든 **부분 Set**이 모듈 팩의 조합을 전부
+// "실존하지 않음"으로 걸러 그 팩의 이미지가 영영 안 나간다. 커버리지 줄도 '대조 제외'로 표시.
 //
 // ── v0.54.5 ────────────────────────────────────────────────
 // db 권한 사다리 — 실측: getDatabase가 권한 팝업도 없이 조용히 null ("물어보는 게 안 떠서 막힘").
@@ -2258,10 +2264,14 @@ function renderTag(pack, name, choice) {
  * 사다리로 미리 재기 위해 (구제 여부가 다르게 계산되면 표시가 거짓말이 된다).
  */
 function resolveInPack(pack, choice, assetSet) {
+  // verify:false — 실존 대조를 끄고 정조합을 신뢰한다 (v0.54.6). 에셋이 모듈에 살아서
+  // 플러그인이 이름 목록을 못 읽는 환경(실측: db 권한 잠긴 리수)용. 이게 없으면 캐릭터
+  // 이름만 든 부분 Set이 모듈 조합을 전부 "없음"으로 걸러 이미지가 영영 안 나간다.
+  const set = pack.verify === false ? null : assetSet;
   const tryName = (c, dropOpt) => {
     const name = composeName(pack, c, dropOpt);
     if (!name) return null;
-    if (assetSet && !assetSet.has(name)) return null;
+    if (set && !set.has(name)) return null;
     return name;
   };
 
@@ -7352,6 +7362,8 @@ function packCoverage(pack, nameSet) {
   const req = (pack.slots || []).filter((s) => !s.optional);
   let combos = 1;
   for (const s of req) combos *= Math.max(1, (s.values || []).length);
+  // 대조 제외 팩 (verify:false) — 모듈 에셋을 못 읽는 환경. 조합 수만 알려준다
+  if (pack.verify === false) return { combos, exist: null, rescued: 0, missing: [], skipped: true };
   if (!nameSet || !req.length) return { combos, exist: null, rescued: 0, missing: [] };
   if (combos > 4000) return { combos, exist: null, rescued: 0, missing: [], capped: true };
   let acc = [{}];
@@ -9991,6 +10003,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           if (v.length) p.chars = v; else delete p.chars; rerender();
         }, { cls: 'sce-w-m', ph: '(선택) 단일 캐릭 모듈용, 쉼표 구분' }),
           '이름 조합에 인물 칸이 없는 팩은 여기 적은 인물로 라우팅된다'),
+        bindCheck(p.verify !== false, (x) => { if (x) delete p.verify; else p.verify = false; rerender(); }, '실존 대조'),
       ));
       (p.slots || []).forEach((s, j) => {
         card.appendChild(h('div', { class: 'sce-row' },
@@ -10018,7 +10031,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (prevName) card.appendChild(h('div', { class: 'sce-hint' }, `예시 출력: ${renderTag(p, prevName, first)}`));
 
       const cov = packCoverage(p, nameSet);
-      if (cov.exist != null) {
+      if (cov.skipped) {
+        card.appendChild(h('div', { class: 'sce-hint' },
+          `대조 제외 — 조합 ${cov.combos}개를 검사 없이 신뢰한다. 에셋이 모듈에 살아서 이름 목록을 못 읽는 환경용 ` +
+          '(어휘가 지침 그대로면 안전하지만, 오타 조합은 깨진 이미지로 나간다).'));
+      } else if (cov.exist != null) {
         // 실질 구멍 = 정조합도 없고 폴백 사다리도 못 받는 조합. 이것만 ⚠의 근거가 된다 —
         // 폴백이 받아주는 빠짐은 스파스 매트릭스의 정상 모습이다.
         const holes = cov.combos - cov.exist - cov.rescued;

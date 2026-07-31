@@ -152,6 +152,12 @@ const Lon = mkLookup({ nsfw_on: true });
 
   const noSet = AS.resolveImage(S, { who: 'Hiromi', emo: 'angry' }, null, L);
   ck('대조 불가 환경(Set 없음)은 정조합 그대로', noSet.ok && noSet.name === 'Hiromi_angry' && !noSet.demoted, '');
+
+  // verify:false (v0.54.6) — 에셋이 모듈에 살아 이름을 못 읽는 환경. 부분 Set(캐릭터만)이
+  // 모듈 조합을 전부 걸러버리는 사고를 팩 단위로 끈다.
+  const nv = snap(); nv.assets.packs[0].verify = false;
+  const rv = AS.resolveImage(nv, { who: 'Hiromi', emo: 'smile' }, assets, L);
+  ck('★ verify:false 팩은 부분 Set에 걸러지지 않고 정조합 신뢰', rv.ok && rv.name === 'Hiromi_smile' && !rv.demoted, JSON.stringify(rv));
 }
 
 // ── main 주입문 (Σ 덧셈 + 게이트 절감 + 생략 지시) ──
@@ -298,6 +304,9 @@ const ED = SC.require('editor');
   const noFb = JSON.parse(JSON.stringify(S.assets.packs[0])); delete noFb.slots[1].fallback;
   ck('폴백 없으면 구제 0 (런타임 사다리와 같은 계산)', ED.packCoverage(noFb, new Set(['Hiromi_angry'])).rescued === 0, '');
   ck('대조 불가 환경은 조합 수만', ED.packCoverage(S.assets.packs[0], null).exist === null, '');
+  const nvp = JSON.parse(JSON.stringify(S.assets.packs[0])); nvp.verify = false;
+  const covS = ED.packCoverage(nvp, new Set(['Hiromi_angry']));
+  ck('verify:false 팩은 커버리지 대조 생략(skipped)', covS.skipped === true && covS.exist === null, JSON.stringify(covS));
 
   const ip = ED.buildPackImportPrompt('인물: A, B / 감정: happy');
   ck('임포터 프롬프트 = 팩 스키마 + 원문', ip.includes('"packs"') && ip.includes('인물: A, B'), '');

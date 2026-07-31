@@ -1472,6 +1472,8 @@ function packCoverage(pack, nameSet) {
   const req = (pack.slots || []).filter((s) => !s.optional);
   let combos = 1;
   for (const s of req) combos *= Math.max(1, (s.values || []).length);
+  // 대조 제외 팩 (verify:false) — 모듈 에셋을 못 읽는 환경. 조합 수만 알려준다
+  if (pack.verify === false) return { combos, exist: null, rescued: 0, missing: [], skipped: true };
   if (!nameSet || !req.length) return { combos, exist: null, rescued: 0, missing: [] };
   if (combos > 4000) return { combos, exist: null, rescued: 0, missing: [], capped: true };
   let acc = [{}];
@@ -4111,6 +4113,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           if (v.length) p.chars = v; else delete p.chars; rerender();
         }, { cls: 'sce-w-m', ph: '(선택) 단일 캐릭 모듈용, 쉼표 구분' }),
           '이름 조합에 인물 칸이 없는 팩은 여기 적은 인물로 라우팅된다'),
+        bindCheck(p.verify !== false, (x) => { if (x) delete p.verify; else p.verify = false; rerender(); }, '실존 대조'),
       ));
       (p.slots || []).forEach((s, j) => {
         card.appendChild(h('div', { class: 'sce-row' },
@@ -4138,7 +4141,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (prevName) card.appendChild(h('div', { class: 'sce-hint' }, `예시 출력: ${renderTag(p, prevName, first)}`));
 
       const cov = packCoverage(p, nameSet);
-      if (cov.exist != null) {
+      if (cov.skipped) {
+        card.appendChild(h('div', { class: 'sce-hint' },
+          `대조 제외 — 조합 ${cov.combos}개를 검사 없이 신뢰한다. 에셋이 모듈에 살아서 이름 목록을 못 읽는 환경용 ` +
+          '(어휘가 지침 그대로면 안전하지만, 오타 조합은 깨진 이미지로 나간다).'));
+      } else if (cov.exist != null) {
         // 실질 구멍 = 정조합도 없고 폴백 사다리도 못 받는 조합. 이것만 ⚠의 근거가 된다 —
         // 폴백이 받아주는 빠짐은 스파스 매트릭스의 정상 모습이다.
         const holes = cov.combos - cov.exist - cov.rescued;

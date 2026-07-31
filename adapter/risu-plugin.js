@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.2
+//@version 0.54.3
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.3 ────────────────────────────────────────────────
+// 모듈 에셋 읽기 — 이미지가 모듈의 '추가 에셋'에 사는 모듈봇(실측: MIKU&BRS)은 캐릭터의
+// additionalAssets만 봐서는 0개라 자동 감지·실존 대조가 전부 죽었다. getDatabase 허용 키에
+// modules/enabledModules가 있어(plugins.md) 켜진 모듈의 assets를 합친다. 꺼진 모듈은
+// 제외 — 렌더되지 않을 이미지를 실존으로 치면 깨진 이미지가 나간다. [live-test] 모듈 부착
+// 방식별 enabledModules 반영 확인.
+// + 임포터 실패 사유를 [✨ AI로 팩 변환] 버튼 바로 아래에 표시 — 층 위쪽 안내와 섞여
+//   유저가 실패를 못 알아채던 문제(실측). 기존 오류(빈 팩 카드)가 남아 있으면 그것도 안내.
 //
 // ── v0.54.2 ────────────────────────────────────────────────
 // 게이트 변형 팩 경고 억제 — 성인/임신처럼 같은 인물을 when이 다른 팩 여럿이 담당하는 것은
@@ -1425,18 +1434,32 @@
 
   // 실물 에셋 이름 Set. [live-test] additionalAssets 항목이 [이름, 경로, ext] 배열인지
   // {name,...} 객체인지 환경 확인 — 둘 다 받는다. 읽기 실패면 null(대조 생략, 정조합 신뢰).
+  // v0.54.3: 모듈봇 지원 — 이미지가 모듈의 '추가 에셋'에 사는 봇(실측: MIKU&BRS 모듈)은
+  // 캐릭터만 봐서는 0개다. getDatabase 허용 키에 modules/enabledModules가 있어(plugins.md)
+  // 켜진 모듈의 assets를 합친다. enabledModules를 못 읽는 환경이면 모든 모듈을 합친다
+  // (이름이 남는 쪽이 대조를 덜 깨뜨린다). [live-test] 모듈 부착 시 enabledModules 반영 확인.
   async function getAssetNameSet() {
-    try {
-      const char = await Risuai.getCharacter();
-      const arr = char?.additionalAssets;
-      if (!Array.isArray(arr) || !arr.length) return null;
-      const set = new Set();
+    const set = new Set();
+    const addArr = (arr) => {
+      if (!Array.isArray(arr)) return;
       for (const a of arr) {
         if (Array.isArray(a)) { if (a[0] != null) set.add(String(a[0])); }
         else if (a && typeof a === 'object' && a.name != null) set.add(String(a.name));
       }
-      return set.size ? set : null;
-    } catch { return null; }
+    };
+    try {
+      const char = await Risuai.getCharacter();
+      addArr(char?.additionalAssets);
+    } catch { /* 캐릭터 접근 실패 — 모듈만으로도 진행 */ }
+    try {
+      const db = await Risuai.getDatabase(['modules', 'enabledModules']);
+      const en = db?.enabledModules;
+      const on = Array.isArray(en) ? new Set(en) : null;
+      for (const m of db?.modules || []) {
+        if (m && (!on || on.has(m.id))) addArr(m.assets);
+      }
+    } catch { /* 모듈 접근 불가 환경 — 캐릭터 에셋만으로 진행 */ }
+    return set.size ? set : null;
   }
 
   /** 보조 응답의 image 필드 → 출력 태그 (실패 시 null — 삽입 생략) */

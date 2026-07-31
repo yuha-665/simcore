@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.2
+//@version 0.54.3
 //@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.54.3 ────────────────────────────────────────────────
+// 모듈 에셋 읽기 — 이미지가 모듈의 '추가 에셋'에 사는 모듈봇(실측: MIKU&BRS)은 캐릭터의
+// additionalAssets만 봐서는 0개라 자동 감지·실존 대조가 전부 죽었다. getDatabase 허용 키에
+// modules/enabledModules가 있어(plugins.md) 켜진 모듈의 assets를 합친다. 꺼진 모듈은
+// 제외 — 렌더되지 않을 이미지를 실존으로 치면 깨진 이미지가 나간다. [live-test] 모듈 부착
+// 방식별 enabledModules 반영 확인.
+// + 임포터 실패 사유를 [✨ AI로 팩 변환] 버튼 바로 아래에 표시 — 층 위쪽 안내와 섞여
+//   유저가 실패를 못 알아채던 문제(실측). 기존 오류(빈 팩 카드)가 남아 있으면 그것도 안내.
 //
 // ── v0.54.2 ────────────────────────────────────────────────
 // 게이트 변형 팩 경고 억제 — 성인/임신처럼 같은 인물을 when이 다른 팩 여럿이 담당하는 것은
@@ -7547,8 +7556,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
-  // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets), 안내문, 임포터 입력/진행
-  let assetNames = null, assetNote = null, assetImportText = '', assetBusy = false, assetsOpen = false;
+  // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets+켜진 모듈), 안내문, 임포터 입력/진행.
+  // 임포터 안내는 따로(assetImportNote) — 실패 사유가 버튼 바로 아래 보여야 유저가 알아챈다 (실측).
+  let assetNames = null, assetNote = null, assetImportText = '', assetImportNote = null, assetBusy = false, assetsOpen = false;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -9863,7 +9873,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     try {
       const names = await ai.getAssetNames();
       if (!names || !names.length) {
-        assetNote = '캐릭터에서 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        assetNote = '캐릭터·켜진 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
         rerender(); return null;
       }
       assetNames = names.map(String);
@@ -10018,32 +10028,34 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: async () => {
           if (assetBusy) return;
           assetImportText = ta.value;
-          if (!assetImportText.trim()) { assetNote = '붙여넣은 지침이 없다.'; rerender(); return; }
-          assetBusy = true; assetNote = null; rerender();
+          if (!assetImportText.trim()) { assetImportNote = '붙여넣은 지침이 없다.'; rerender(); return; }
+          assetBusy = true; assetImportNote = null; rerender();
           try {
             const r = await ai.generate(buildPackImportPrompt(assetImportText));
             const text = typeof r === 'string' ? r : null;
             if (!text) {
-              assetNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
+              assetImportNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
               return;
             }
             const noFence = text.replace(/```[a-z]*\n?/g, '');
             const jsonStr = noFence.slice(noFence.indexOf('{'), noFence.lastIndexOf('}') + 1);
             let obj = null;
-            try { obj = JSON.parse(jsonStr); } catch { assetNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
+            try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
-            if (!got || !got.length) { assetNote = '변환 결과에 팩이 없다.'; return; }
-            // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율)
+            if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
+            // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율).
+            // 기존 오류(예: 손으로 만들다 만 빈 팩 카드)는 늘어난 것이 아니므로 반영을 막지 않는다.
             const backup = JSON.parse(JSON.stringify(schema));
             const before = validateSchema(schema).errors.length;
             ensureAssets().packs.push(...got);
             const after = validateSchema(schema);
             if (after.errors.length > before) {
               schema = backup;
-              assetNote = '변환 결과가 검증 실패 — 반영 안 함: ' + after.errors.slice(0, 3).map((e) => e.msg).join(' / ');
+              assetImportNote = '변환 결과가 검증 실패 — 반영 안 함: ' + after.errors.slice(0, 3).map((e) => e.msg).join(' / ');
             } else {
               assetImportText = '';
-              assetNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`;
+              assetImportNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`
+                + (before ? ' ⚠ 기존 오류가 남아 있다 — 설치 전에 위 팩 카드의 오류(빈 어휘 등)를 지워야 한다.' : '');
             }
           } finally { assetBusy = false; rerender(); }
         } }, assetBusy ? '⏳ 변환 중…' : '✨ AI로 팩 변환')));
@@ -10051,6 +10063,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(copyWidget('📋 변환 요청서 복사', '외부 AI에게 붙여넣고, 받은 JSON의 packs를 손으로 반영',
         () => buildPackImportPrompt(ta.value)));
     }
+    // 임포터 결과/실패 사유는 버튼 바로 아래 — 층 위쪽의 안내(assetNote)와 섞이면 못 알아챈다
+    if (assetImportNote) box.appendChild(h('div', {
+      class: assetImportNote.startsWith('팩 ') ? 'sce-ok' : 'sce-warn' }, assetImportNote));
     return box;
   }
 
@@ -12932,18 +12947,32 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 
   // 실물 에셋 이름 Set. [live-test] additionalAssets 항목이 [이름, 경로, ext] 배열인지
   // {name,...} 객체인지 환경 확인 — 둘 다 받는다. 읽기 실패면 null(대조 생략, 정조합 신뢰).
+  // v0.54.3: 모듈봇 지원 — 이미지가 모듈의 '추가 에셋'에 사는 봇(실측: MIKU&BRS 모듈)은
+  // 캐릭터만 봐서는 0개다. getDatabase 허용 키에 modules/enabledModules가 있어(plugins.md)
+  // 켜진 모듈의 assets를 합친다. enabledModules를 못 읽는 환경이면 모든 모듈을 합친다
+  // (이름이 남는 쪽이 대조를 덜 깨뜨린다). [live-test] 모듈 부착 시 enabledModules 반영 확인.
   async function getAssetNameSet() {
-    try {
-      const char = await Risuai.getCharacter();
-      const arr = char?.additionalAssets;
-      if (!Array.isArray(arr) || !arr.length) return null;
-      const set = new Set();
+    const set = new Set();
+    const addArr = (arr) => {
+      if (!Array.isArray(arr)) return;
       for (const a of arr) {
         if (Array.isArray(a)) { if (a[0] != null) set.add(String(a[0])); }
         else if (a && typeof a === 'object' && a.name != null) set.add(String(a.name));
       }
-      return set.size ? set : null;
-    } catch { return null; }
+    };
+    try {
+      const char = await Risuai.getCharacter();
+      addArr(char?.additionalAssets);
+    } catch { /* 캐릭터 접근 실패 — 모듈만으로도 진행 */ }
+    try {
+      const db = await Risuai.getDatabase(['modules', 'enabledModules']);
+      const en = db?.enabledModules;
+      const on = Array.isArray(en) ? new Set(en) : null;
+      for (const m of db?.modules || []) {
+        if (m && (!on || on.has(m.id))) addArr(m.assets);
+      }
+    } catch { /* 모듈 접근 불가 환경 — 캐릭터 에셋만으로 진행 */ }
+    return set.size ? set : null;
   }
 
   /** 보조 응답의 image 필드 → 출력 태그 (실패 시 null — 삽입 생략) */

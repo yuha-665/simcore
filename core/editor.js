@@ -1690,8 +1690,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
-  // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets), 안내문, 임포터 입력/진행
-  let assetNames = null, assetNote = null, assetImportText = '', assetBusy = false, assetsOpen = false;
+  // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets+켜진 모듈), 안내문, 임포터 입력/진행.
+  // 임포터 안내는 따로(assetImportNote) — 실패 사유가 버튼 바로 아래 보여야 유저가 알아챈다 (실측).
+  let assetNames = null, assetNote = null, assetImportText = '', assetImportNote = null, assetBusy = false, assetsOpen = false;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -4006,7 +4007,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     try {
       const names = await ai.getAssetNames();
       if (!names || !names.length) {
-        assetNote = '캐릭터에서 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        assetNote = '캐릭터·켜진 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
         rerender(); return null;
       }
       assetNames = names.map(String);
@@ -4161,32 +4162,34 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: async () => {
           if (assetBusy) return;
           assetImportText = ta.value;
-          if (!assetImportText.trim()) { assetNote = '붙여넣은 지침이 없다.'; rerender(); return; }
-          assetBusy = true; assetNote = null; rerender();
+          if (!assetImportText.trim()) { assetImportNote = '붙여넣은 지침이 없다.'; rerender(); return; }
+          assetBusy = true; assetImportNote = null; rerender();
           try {
             const r = await ai.generate(buildPackImportPrompt(assetImportText));
             const text = typeof r === 'string' ? r : null;
             if (!text) {
-              assetNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
+              assetImportNote = '변환 호출 실패' + (r && r.error ? ' — ' + r.error : (r && r.blocked ? ' — 차단됨' : ''));
               return;
             }
             const noFence = text.replace(/```[a-z]*\n?/g, '');
             const jsonStr = noFence.slice(noFence.indexOf('{'), noFence.lastIndexOf('}') + 1);
             let obj = null;
-            try { obj = JSON.parse(jsonStr); } catch { assetNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
+            try { obj = JSON.parse(jsonStr); } catch { assetImportNote = '변환 응답이 JSON이 아니다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
-            if (!got || !got.length) { assetNote = '변환 결과에 팩이 없다.'; return; }
-            // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율)
+            if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
+            // 원자 적용 — 붙여 보고 검증 오류가 늘면 통째 되돌린다 (배치 생성과 같은 규율).
+            // 기존 오류(예: 손으로 만들다 만 빈 팩 카드)는 늘어난 것이 아니므로 반영을 막지 않는다.
             const backup = JSON.parse(JSON.stringify(schema));
             const before = validateSchema(schema).errors.length;
             ensureAssets().packs.push(...got);
             const after = validateSchema(schema);
             if (after.errors.length > before) {
               schema = backup;
-              assetNote = '변환 결과가 검증 실패 — 반영 안 함: ' + after.errors.slice(0, 3).map((e) => e.msg).join(' / ');
+              assetImportNote = '변환 결과가 검증 실패 — 반영 안 함: ' + after.errors.slice(0, 3).map((e) => e.msg).join(' / ');
             } else {
               assetImportText = '';
-              assetNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`;
+              assetImportNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`
+                + (before ? ' ⚠ 기존 오류가 남아 있다 — 설치 전에 위 팩 카드의 오류(빈 어휘 등)를 지워야 한다.' : '');
             }
           } finally { assetBusy = false; rerender(); }
         } }, assetBusy ? '⏳ 변환 중…' : '✨ AI로 팩 변환')));
@@ -4194,6 +4197,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(copyWidget('📋 변환 요청서 복사', '외부 AI에게 붙여넣고, 받은 JSON의 packs를 손으로 반영',
         () => buildPackImportPrompt(ta.value)));
     }
+    // 임포터 결과/실패 사유는 버튼 바로 아래 — 층 위쪽의 안내(assetNote)와 섞이면 못 알아챈다
+    if (assetImportNote) box.appendChild(h('div', {
+      class: assetImportNote.startsWith('팩 ') ? 'sce-ok' : 'sce-warn' }, assetImportNote));
     return box;
   }
 

@@ -344,6 +344,15 @@ async function bootLive(mutate) {
   const store = new Map();
   global.Risuai = {
     getCharacter: async () => world.chars[0],
+    // 모듈봇: 이미지가 모듈의 '추가 에셋'에 사는 경우 (실측: MIKU&BRS 모듈).
+    // 켜진 모듈(m-on)의 에셋만 합쳐져야 한다 — 꺼진 모듈(m-off) 이름은 대조에 안 낀다.
+    getDatabase: async () => ({
+      enabledModules: ['m-on'],
+      modules: [
+        { id: 'm-on', name: '노조미 모듈', assets: [['happy', 'n1.png', 'png']] },
+        { id: 'm-off', name: '꺼진 모듈', assets: [['Hiromi_smile', 'x.png', 'png']] },
+      ],
+    }),
     setCharacter: async (c) => { world.chars[0] = c; },
     getCurrentCharacterIndex: async () => 0,
     getCurrentChatIndex: async () => 0,
@@ -398,6 +407,20 @@ async function bootLive(mutate) {
   await hooks.beforeRequest([{ role: 'user', content: '셋' }], 'model');
   const out3 = await hooks.output('조용한 오후다.');
   ck('실부팅: image:null이면 생략', out3.startsWith('조용한 오후다'), out3.slice(0, 60));
+
+  // 턴 4: 모듈봇 — 이미지가 켜진 모듈의 '추가 에셋'에 사는 경우 (실측: MIKU&BRS)
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '셋째 응답' }, { role: 'user', data: '넷' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Nozomi","emo":"happy"}}';
+  await hooks.beforeRequest([{ role: 'user', content: '넷' }], 'model');
+  const out4 = await hooks.output('노조미가 웃었다.');
+  ck('★ 실부팅: 켜진 모듈의 에셋도 대조에 합쳐진다', out4.startsWith('<char-noz emotion="happy">'), out4.slice(0, 60));
+
+  // 턴 5: 꺼진 모듈의 에셋 이름(Hiromi_smile)은 대조에 안 낀다 → 폴백도 실물 없음 → 생략
+  world.chats['c-sim:0'].message.push({ role: 'char', data: '넷째 응답' }, { role: 'user', data: '다섯' });
+  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"smile"}}';
+  await hooks.beforeRequest([{ role: 'user', content: '다섯' }], 'model');
+  const out5 = await hooks.output('히로미가 미소지었다.');
+  ck('★ 실부팅: 꺼진 모듈의 에셋은 실존으로 안 친다 (렌더 안 될 이미지 차단)', out5.startsWith('히로미가'), out5.slice(0, 60));
 
   if (global.__unload) global.__unload();
 

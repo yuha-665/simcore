@@ -23,6 +23,12 @@ const RPG = {
     { id: 'inventory', label: '소지품', type: 'list', init: ['빵', '물통'], maxItems: 15, itemMaxLength: 30 },
     { id: 'location', label: '위치', type: 'text', init: '시작 마을', maxLength: 50 },
     { id: 'condition', label: '상태', type: 'text', init: '건강함', maxLength: 40 },
+    // 편성표 재료 (v0.55 배울 점): 후보는 enum이 확정하고(제작자가 정한 인물만 — AI는 명사를 못 만든다),
+    // 보유는 list가 움직인다 (영입·이탈은 보조 AI 몫). 편성 자체는 우상단 [⚔️ 편성] 버튼의 팝업에서.
+    { id: 'allies', label: '동료', type: 'list', init: ['아린'], maxItems: 6, itemMaxLength: 12,
+      desc: '동행 중인 동료 이름 목록. 서사에서 동료를 영입하면 추가, 떠나면 제거.' },
+    { id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
+    { id: 'rear', label: '후위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
   ],
   derived: [
     { id: 'max_hp', label: '최대 HP', expr: '80 + level * 20' },
@@ -89,12 +95,14 @@ const RPG = {
       { id: 'inventory' },
       { id: 'location', maxLength: 50 },
       { id: 'condition', maxLength: 40 },
+      { id: 'allies' },
     ],
-    guide: '전투·획득·상실이 서사에 명시된 경우만 반영. 경험치는 전투/성취의 규모에 비례하게.',
+    guide: '전투·획득·상실이 서사에 명시된 경우만 반영. 경험치는 전투/성취의 규모에 비례하게. '
+      + '동료(allies)는 서사에서 정식으로 합류/이탈했을 때만 움직여라 — 편성(전위/후위)은 유저가 정한다.',
   },
   promptState: {
     position: 'history_end',
-    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n상태: {condition}',
+    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n상태: {condition}',
     includeEvents: true,
   },
   statusUI: {
@@ -114,6 +122,12 @@ const RPG = {
       { label: '소지', items: [
         { var: 'gold' }, { var: 'weapon' }, { var: 'armor' }, { var: 'inventory' },
       ]},
+      // 편성 결과가 상태창에 보이는 자리 — showWhen으로 "편성했을 때만" 분기 (v0.31 기능 그대로)
+      { label: '편성', items: [
+        { var: 'front', showWhen: 'front != "없음"' },
+        { var: 'rear', showWhen: 'rear != "없음"' },
+        { var: 'allies' },
+      ]},
       { label: '위치', items: [{ var: 'location' }] },
     ],
     // 가죽 장정 모험일지 — 어두운 갈색 가죽에 황동 각인
@@ -128,6 +142,16 @@ const RPG = {
 .sim-action { border-color:#6b4f2a; color:#e0b76a; border-radius:3px; background:#2a1d11; }
 .sim-action.sim-armed { border-color:#d9a441; background:#3b2b19; }
 .sim-log { color:#8a7657; }`,
+  },
+  // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
+  // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
+  party: {
+    label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
+    slots: [
+      { var: 'front', label: '전위' },
+      { var: 'rear', label: '후위' },
+    ],
+    note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
   },
   actions: [
     {

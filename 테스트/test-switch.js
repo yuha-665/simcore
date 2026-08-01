@@ -73,19 +73,25 @@ async function boot() {
   return { world, buttons, log, store };
 }
 
+// v0.55: 우상단에 붙는 건 이제 액션 버튼이 아니라 게임 패널 유틸 버튼(편성표)이다.
+// "전환만으로 UI가 붙는가"라는 검증 목적은 같고, 관측 대상만 바뀌었다.
 const SCHEMA = {
   simcore: '0.1', meta: { name: '전환 테스트' },
-  vars: [{ id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100 }],
+  vars: [
+    { id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100 },
+    { id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린'] },
+  ],
   actions: [{ id: 'heal', label: '💊 회복', mode: 'oneshot', effects: [{ set: 'hp', expr: 'min(100, hp + 10)' }] }],
+  party: { label: '편성', icon: '⚔️', empty: '없음', slots: [{ var: 'front' }] },
   statusUI: { mode: 'auto', groups: [{ label: '상태', items: [{ var: 'hp' }] }] },
 };
 
 (async () => {
   const { world, buttons } = await boot();
 
-  // ⚙️ 진입 버튼은 항상 있다 — 액션 버튼만 센다
-  const actionBtns = () => [...buttons.keys()].filter((k) => k !== 'SimCore');
-  ck('스키마 없는 캐릭터에서는 액션 버튼이 없다', actionBtns().length === 0, actionBtns().join(','));
+  // ⚙️ 진입 버튼은 항상 있다 — 유틸(게임 패널) 버튼만 센다
+  const utilBtns = () => [...buttons.keys()].filter((k) => k !== 'SimCore');
+  ck('스키마 없는 캐릭터에서는 유틸 버튼이 없다', utilBtns().length === 0, utilBtns().join(','));
   ck('진입 버튼(⚙️)은 스키마와 무관하게 항상 있다', buttons.has('SimCore'), [...buttons.keys()].join(','));
 
   // 심코어 봇에 스키마를 심고 그쪽으로 "전환"만 한다 (메시지 전송도, 패널 열기도 하지 않는다)
@@ -96,21 +102,23 @@ const SCHEMA = {
   world.chaIdx = 1;
 
   await sleep(2200);                 // 폴링 한 주기 이상
-  ck('★ 전환만 했는데 액션 버튼이 붙는다 (메시지 전송·패널 열기 없이)',
-    [...buttons.keys()].some((k) => /heal/.test(k)), [...buttons.keys()].join(','));
+  ck('★ 전환만 했는데 편성표 버튼이 붙는다 (메시지 전송·패널 열기 없이)',
+    buttons.has('simcore:util:party'), [...buttons.keys()].join(','));
+  ck('액션별 플로팅 버튼은 더 이상 안 붙는다 (v0.55 제거 확인)',
+    ![...buttons.keys()].some((k) => /heal/.test(k)), [...buttons.keys()].join(','));
 
   // 같은 캐릭터의 다른 채팅으로 이동 → 세션이 새로 잡혀야 한다
   const before = [...buttons.keys()].join(',');
   world.chatIdx = 1;
   await sleep(2200);
   ck('★ 채팅을 바꿔도 버튼이 유지된다 (세션 재로드 성공)',
-    [...buttons.keys()].some((k) => /heal/.test(k)), [...buttons.keys()].join(',') + ' (이전: ' + before + ')');
+    buttons.has('simcore:util:party'), [...buttons.keys()].join(',') + ' (이전: ' + before + ')');
 
   // 스키마 없는 캐릭터로 돌아가면 버튼이 걷힌다
   world.chaIdx = 0; world.chatIdx = 0;
   await sleep(2200);
   ck('★ 스키마 없는 캐릭터로 돌아가면 버튼이 걷힌다',
-    ![...buttons.keys()].some((k) => /heal/.test(k)), [...buttons.keys()].join(','));
+    !buttons.has('simcore:util:party'), [...buttons.keys()].join(','));
 
   // 폴링이 실제로 멈추는가
   if (global.__unload) global.__unload();

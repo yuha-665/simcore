@@ -1088,16 +1088,47 @@ function applyChatCommands(schema, state, text, rng) {
   // /선택은 변수 명령이 아니라 갈림길(choices) 내장 명령 — 갈림길이 있는 스키마면 항상 열린다
   const hasChoices = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])]
     .some((e) => Array.isArray(e.choices) && e.choices.length);
-  if ((!Object.keys(byCmd).length && !hasChoices) || !text || !text.includes('/')) {
-    return { text, applied: [], vars: state.vars, pick: null };
+  // /액션도 내장 — 우상단 플로팅 버튼이 v0.55에서 사라져서, 클릭 조작(mainDom)이 거부된
+  // 환경에서는 이 명령이 액션을 켜는 유일한 통로다. 상태창 범례가 이름을 보여준다.
+  const hasActions = (schema.actions || []).length > 0;
+  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions) || !text || !text.includes('/')) {
+    return { text, applied: [], vars: state.vars, pick: null, meta: null };
   }
   const vars = { ...state.vars };
   const applied = [];
   let pick = null;
+  let meta = null; // /액션이 무장을 바꿨을 때만 채워진다 — 호스트가 state.meta에 반영
   const out = text.split('\n').map((line) => {
     const m = line.match(CMD_LINE_RE);
     if (!m) return line;
     const [, cmd, minus, argRaw] = m;
+    // 액션 토글 — toggleAction과 같은 검증(쿨다운·when)을 그대로 탄다
+    if (cmd === '액션' && !byCmd['액션'] && hasActions) {
+      const arg = argRaw.trim();
+      const acts = schema.actions;
+      const labels = acts.map((a) => String(a.label ?? a.id));
+      const usage = () => {
+        const armedSet = (meta ?? state.meta)?.armed || {};
+        return `(시스템: 액션 — 이렇게 켜고 끕니다: ${acts.map((a) =>
+          `/액션 ${a.label ?? a.id}${armedSet[a.id] ? ' [켜짐]' : ''}`).join(' · ')})`;
+      };
+      if (!arg) return usage();
+      let idx = -1;
+      if (/^\d+$/.test(arg)) idx = Number(arg) - 1;
+      else {
+        const hit = matchListItem(labels, arg) ?? matchListItem(acts.map((a) => a.id), arg);
+        if (Array.isArray(hit)) return `(시스템: 액션 — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}. 더 길게 적어 주세요)`;
+        if (hit !== null) idx = labels.indexOf(hit) >= 0 ? labels.indexOf(hit) : acts.findIndex((a) => a.id === hit);
+      }
+      if (idx < 0 || idx >= acts.length) return usage();
+      const a = acts[idx];
+      // 명령 앞줄이 변수를 바꿨을 수 있으니 지금까지의 vars로 판정한다 (클릭 조작과 같은 검증기)
+      const r = toggleAction(schema, { ...state, vars: { ...vars }, meta: meta ?? state.meta }, a.id);
+      if (r.blocked) return `(시스템: 액션 ${a.label ?? a.id} — ${r.blocked})`;
+      meta = r.state.meta;
+      applied.push({ id: `action:${a.id}`, from: !r.armed, to: r.armed, how: r.armed ? '무장' : '해제' });
+      return `(시스템: 액션 ${a.label ?? a.id} — ${r.armed ? '켜짐 ●' : '꺼짐'})`;
+    }
     // 갈림길 선택 — 기록만 한다. 집행(효과·주입)은 다음 전송 단계의 것 (rand·변화 로그·리롤 안정)
     if (cmd === '선택' && !byCmd['선택'] && hasChoices) {
       const arg = argRaw.trim();
@@ -1182,7 +1213,7 @@ function applyChatCommands(schema, state, text, rng) {
       : String(to);
     return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
   }).join('\n');
-  return { text: out, applied, vars, pick };
+  return { text: out, applied, vars, pick, meta };
 }
 
 /** 보조 모델 응답 파싱 (관대하게: <Thoughts> 서두/코드펜스/앞뒤 잡담 허용) */

@@ -1,13 +1,29 @@
 //@name simcore
 //@api 3.0
-//@version 0.54.9
-//@display-name SimCore (시뮬 엔진) v0.54 에셋 서사 삽입
+//@version 0.55.0
+//@display-name SimCore (시뮬 엔진) v0.55 편성표
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.55.0 ────────────────────────────────────────────────
+// 편성표 — 게임 패널 1호 (설계 docs/design-편성표.md, 레코드 층 순서 2 "레코드 없이 지금 재료로").
+// - [사이드바 재편] 우상단 location:'action' 자리의 액션별 플로팅 버튼(v0.11~)을 걷어내고
+//   **게임 패널을 여는 유틸 버튼**에 내줬다 (유저 결정: "양쪽에 있을 필요 없다").
+//   액션 토글 통로 셋: 상태창 범례 클릭(v0.42) · 편집기 패널 · **/액션 채팅 명령(신설)** —
+//   /액션은 mainDom 권한이 거부된 환경의 폴백. /선택과 같은 내장 명령, toggleAction과 같은 검증.
+// - [게임 패널 #sc-game] 편집기와 같은 iframe 컨테이너를 쓰는 팝업(배경막+카드).
+//   우리 DOM이라 클릭이 온전하다 — 좌표 히트테스트의 격자 취약성이 여기엔 없다.
+//   제작자 CSS(schema.party.css)는 scopeCss로 #sc-game 범위에 가둬 주입.
+// - [편성표 core/party.js] 슬롯 = enum 변수(제작자가 후보 확정 — AI는 명사를 못 만든다),
+//   보유 = list 변수(roster — 영입해야 열림, `@기한`/끝숫자 꼬리 허용), 저장 = 그냥 변수라
+//   상태창 showWhen·지시문·프롬프트가 그대로 읽는다 (새 표시 문법 없음).
+//   중복 편성은 게임 표준대로: 이동(빈값 있으면) / 맞교환(없으면). 편집기 [편성표] 탭 신설.
+// - [진단] 슬롯 변수는 '편성'이 바꾸는 것으로 등록 — 고정 변수·안 움직임 오탐 방지 (v0.52 원칙).
+// - RPG 템플릿에 동료(allies)+전위/후위 예시 탑재. 테스트 test-party.js 38종.
 //
 // ── v0.54.9 ────────────────────────────────────────────────
 // 임포터 JSON 추출 교체 — 추론 모델이 <Thoughts> 서두를 뱉으면 순진한 첫{~끝} 슬라이스가
@@ -2149,6 +2165,49 @@ function validateSchema(schema) {
     }
   }
 
+  // ── party (편성표 — 게임 패널 1호) ─────────────────────────
+  // 슬롯 = enum 변수, 보유 = list 변수. 설계: docs/design-편성표.md
+  if (schema.party != null) {
+    const P = schema.party;
+    if (typeof P !== 'object' || Array.isArray(P)) err('$.party', 'party는 객체여야 함');
+    else {
+      const varById = {};
+      for (const v of vars) if (v && v.id) varById[v.id] = v;
+      const slots = Array.isArray(P.slots) ? P.slots : [];
+      if (!slots.length) err('$.party.slots', '슬롯(slots)이 최소 1개 필요');
+      const seen = new Set();
+      slots.forEach((s, i) => {
+        const p = `$.party.slots[${i}]`;
+        if (!s || typeof s !== 'object') { err(p, '슬롯은 객체여야 함'); return; }
+        const def = varById[s.var];
+        if (!def) { err(p, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
+        if (def.type !== 'enum') {
+          err(p, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
+          return;
+        }
+        if (seen.has(s.var)) err(p, `슬롯 변수 '${s.var}' 중복 — 슬롯마다 다른 변수를 쓰세요`);
+        seen.add(s.var);
+        // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
+        if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
+          err(p, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+        }
+      });
+      if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
+      if (P.roster != null) {
+        const r = varById[P.roster];
+        if (!r) err('$.party.roster', `보유 목록 '${P.roster}'가 vars에 없음`);
+        else if (r.type !== 'list') err('$.party.roster', `보유 목록 '${P.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
+      }
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
+        if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (P.empty == null && slots.length) {
+        warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
+          + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');
+      }
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -2462,6 +2521,132 @@ module.exports = {
   composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
   mainInjectionText, auxImageSpec,
 };
+
+});
+
+SimCore.define("party", function (require, module, exports) {
+// 편성표 — 게임 패널 1호 (설계: docs/design-편성표.md)
+//
+// 원칙: 편성표는 **레코드 없이 지금 재료로** 된다 (design-레코드.md 순서 2).
+//   슬롯 = enum 변수 (제작자가 값 목록을 확정 — AI는 명사를 못 만든다),
+//   보유 = list 변수 (roster — 영입/이탈은 AI·명령이 목록을 움직인다),
+//   표시 = statusUI의 when 분기 (v0.31부터 있던 기능).
+// 이 모듈은 순수 로직만 담는다 — DOM은 어댑터(#sc-game)가, 검증은 validate가 맡는다.
+//
+// 왜 슬롯마다 enum이 따로인가: "전위엔 전사만" 같은 슬롯별 제약이 enum 값 목록으로
+// 자연스럽게 표현된다. 후보가 같다면 같은 값 목록을 복사하면 될 뿐이다.
+
+/** 편성표 설정 (없거나 슬롯이 비면 null — 어댑터가 버튼 자체를 안 단다) */
+function partyConfig(schema) {
+  const p = schema?.party;
+  if (!p || typeof p !== 'object') return null;
+  if (!Array.isArray(p.slots) || !p.slots.length) return null;
+  return p;
+}
+
+/** 사이드바 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 */
+function partyButtonSpec(schema) {
+  const p = partyConfig(schema);
+  if (!p) return null;
+  return { label: p.label ?? '편성표', icon: p.icon ?? '⚔️' };
+}
+
+// roster(보유 목록) 항목 대조 — 목록 규약 흔적을 걷어내고 이름만 본다.
+// `@기한`(expire 마커)·끝자리 숫자(sum 규약)가 인명 뒤에 붙어 있어도 같은 사람으로 친다.
+function rosterName(item) {
+  return String(item).replace(/\s+@.*$/, '').replace(/\s+[+-]?\d+(?:\.\d+)?$/, '').trim();
+}
+function rosterHas(list, name) {
+  return (Array.isArray(list) ? list : []).some((it) => rosterName(it) === name);
+}
+
+/**
+ * 화면에 그릴 재료 한 벌. 상태를 건드리지 않는다.
+ * 반환: { label, icon, note, empty, unique, roster: {var,label,items}|null,
+ *         slots: [{ var, label, value, isEmpty, candidates: [{name, usedBy, locked}] }] }
+ *   usedBy — unique일 때 이 이름이 이미 앉아 있는 다른 슬롯 var (고르면 그쪽에서 이동해 온다)
+ *   locked — roster가 있는데 아직 보유하지 않은 이름 (표시는 하되 잠금 — "영입하면 열린다")
+ */
+function partyView(schema, state) {
+  const p = partyConfig(schema);
+  if (!p) return null;
+  const unique = p.unique !== false;
+  const empty = p.empty ?? null;
+  const byId = {};
+  for (const v of schema.vars || []) byId[v.id] = v;
+  const rosterDef = p.roster ? byId[p.roster] : null;
+  const rosterItems = rosterDef ? (state.vars[p.roster] ?? rosterDef.init ?? []) : null;
+  const seat = {}; // 이름 → 앉아 있는 슬롯 var
+  for (const s of p.slots) {
+    const val = state.vars[s.var];
+    if (val != null && val !== empty) seat[val] = s.var;
+  }
+  const slots = p.slots.map((s) => {
+    const def = byId[s.var] || {};
+    const value = state.vars[s.var] ?? def.init ?? null;
+    const isEmpty = empty != null && value === empty;
+    const candidates = (def.enum || [])
+      .filter((name) => name !== empty)
+      .map((name) => ({
+        name,
+        usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
+        locked: rosterItems != null && !rosterHas(rosterItems, name),
+      }));
+    return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+  });
+  return {
+    label: p.label ?? '편성표', icon: p.icon ?? '⚔️', note: p.note ?? null,
+    empty, unique,
+    roster: rosterDef
+      ? { var: p.roster, label: rosterDef.label ?? p.roster, items: (rosterItems || []).map(rosterName) }
+      : null,
+    slots,
+  };
+}
+
+/**
+ * 슬롯에 값 하나 앉히기. 상태를 바꾸지 않고 **바뀔 값만** 돌려준다 — 적용은 호스트 몫.
+ * unique 충돌은 게임 편성표의 표준대로 푼다: 이미 딴 슬롯에 앉아 있는 이름을 고르면
+ * **이동**(그 슬롯은 비움), 빈값이 없는 스키마면 **맞교환**(단, 상대 enum에 값이 있어야).
+ * 반환: { ok, changes: {var: value, ...}, moved?: {from} } | { ok: false, reason }
+ */
+function applyPartyPick(schema, state, slotVar, value) {
+  const view = partyView(schema, state);
+  if (!view) return { ok: false, reason: '편성표가 정의되지 않음' };
+  const slot = view.slots.find((s) => s.var === slotVar);
+  if (!slot) return { ok: false, reason: `'${slotVar}'는 편성 슬롯이 아님` };
+  const def = (schema.vars || []).find((v) => v.id === slotVar);
+
+  // 비우기 — roster와 무관하게 항상 허용
+  if (view.empty != null && value === view.empty) {
+    if (slot.value === value) return { ok: true, changes: {} };
+    return { ok: true, changes: { [slotVar]: value } };
+  }
+  if (!def?.enum?.includes(value)) {
+    return { ok: false, reason: `'${value}'는 ${slot.label} 후보에 없음` };
+  }
+  const cand = slot.candidates.find((c) => c.name === value);
+  if (cand?.locked) return { ok: false, reason: `'${value}'는 아직 보유하지 않음 (${view.roster?.label ?? '보유 목록'}에 없음)` };
+  if (slot.value === value) return { ok: true, changes: {} };
+
+  const changes = { [slotVar]: value };
+  if (cand?.usedBy) {
+    // 이동 또는 맞교환
+    const other = view.slots.find((s) => s.var === cand.usedBy);
+    const otherDef = (schema.vars || []).find((v) => v.id === cand.usedBy);
+    if (view.empty != null && otherDef?.enum?.includes(view.empty)) {
+      changes[cand.usedBy] = view.empty;                    // 이동 — 원래 자리는 비운다
+    } else if (slot.value != null && !slot.isEmpty && otherDef?.enum?.includes(slot.value)) {
+      changes[cand.usedBy] = slot.value;                    // 맞교환
+    } else {
+      return { ok: false, reason: `'${value}'는 이미 ${other?.label ?? cand.usedBy}에 편성됨 — 그쪽을 먼저 비우세요` };
+    }
+    return { ok: true, changes, moved: { from: cand.usedBy } };
+  }
+  return { ok: true, changes };
+}
+
+module.exports = { partyConfig, partyButtonSpec, partyView, applyPartyPick, rosterName, rosterHas };
 
 });
 
@@ -3989,16 +4174,47 @@ function applyChatCommands(schema, state, text, rng) {
   // /선택은 변수 명령이 아니라 갈림길(choices) 내장 명령 — 갈림길이 있는 스키마면 항상 열린다
   const hasChoices = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])]
     .some((e) => Array.isArray(e.choices) && e.choices.length);
-  if ((!Object.keys(byCmd).length && !hasChoices) || !text || !text.includes('/')) {
-    return { text, applied: [], vars: state.vars, pick: null };
+  // /액션도 내장 — 우상단 플로팅 버튼이 v0.55에서 사라져서, 클릭 조작(mainDom)이 거부된
+  // 환경에서는 이 명령이 액션을 켜는 유일한 통로다. 상태창 범례가 이름을 보여준다.
+  const hasActions = (schema.actions || []).length > 0;
+  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions) || !text || !text.includes('/')) {
+    return { text, applied: [], vars: state.vars, pick: null, meta: null };
   }
   const vars = { ...state.vars };
   const applied = [];
   let pick = null;
+  let meta = null; // /액션이 무장을 바꿨을 때만 채워진다 — 호스트가 state.meta에 반영
   const out = text.split('\n').map((line) => {
     const m = line.match(CMD_LINE_RE);
     if (!m) return line;
     const [, cmd, minus, argRaw] = m;
+    // 액션 토글 — toggleAction과 같은 검증(쿨다운·when)을 그대로 탄다
+    if (cmd === '액션' && !byCmd['액션'] && hasActions) {
+      const arg = argRaw.trim();
+      const acts = schema.actions;
+      const labels = acts.map((a) => String(a.label ?? a.id));
+      const usage = () => {
+        const armedSet = (meta ?? state.meta)?.armed || {};
+        return `(시스템: 액션 — 이렇게 켜고 끕니다: ${acts.map((a) =>
+          `/액션 ${a.label ?? a.id}${armedSet[a.id] ? ' [켜짐]' : ''}`).join(' · ')})`;
+      };
+      if (!arg) return usage();
+      let idx = -1;
+      if (/^\d+$/.test(arg)) idx = Number(arg) - 1;
+      else {
+        const hit = matchListItem(labels, arg) ?? matchListItem(acts.map((a) => a.id), arg);
+        if (Array.isArray(hit)) return `(시스템: 액션 — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}. 더 길게 적어 주세요)`;
+        if (hit !== null) idx = labels.indexOf(hit) >= 0 ? labels.indexOf(hit) : acts.findIndex((a) => a.id === hit);
+      }
+      if (idx < 0 || idx >= acts.length) return usage();
+      const a = acts[idx];
+      // 명령 앞줄이 변수를 바꿨을 수 있으니 지금까지의 vars로 판정한다 (클릭 조작과 같은 검증기)
+      const r = toggleAction(schema, { ...state, vars: { ...vars }, meta: meta ?? state.meta }, a.id);
+      if (r.blocked) return `(시스템: 액션 ${a.label ?? a.id} — ${r.blocked})`;
+      meta = r.state.meta;
+      applied.push({ id: `action:${a.id}`, from: !r.armed, to: r.armed, how: r.armed ? '무장' : '해제' });
+      return `(시스템: 액션 ${a.label ?? a.id} — ${r.armed ? '켜짐 ●' : '꺼짐'})`;
+    }
     // 갈림길 선택 — 기록만 한다. 집행(효과·주입)은 다음 전송 단계의 것 (rand·변화 로그·리롤 안정)
     if (cmd === '선택' && !byCmd['선택'] && hasChoices) {
       const arg = argRaw.trim();
@@ -4083,7 +4299,7 @@ function applyChatCommands(schema, state, text, rng) {
       : String(to);
     return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
   }).join('\n');
-  return { text: out, applied, vars, pick };
+  return { text: out, applied, vars, pick, meta };
 }
 
 /** 보조 모델 응답 파싱 (관대하게: <Thoughts> 서두/코드펜스/앞뒤 잡담 허용) */
@@ -4413,13 +4629,14 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     inner += extras.commands;
   }
 
-  // 액션 범례 — 실행은 화면 우상단 플로팅 버튼이 한다.
-  // 그 버튼의 아이콘 칸에는 글리프가 딱 하나만 들어가서 '🔥'만 보이므로,
-  // 여기서 글리프와 전체 라벨을 짝지어 보여주지 않으면 무슨 버튼인지 알 길이 없다.
-  // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다)
+  // 액션 범례 — v0.55부터 이게 액션의 정면이다 (우상단 플로팅 버튼은 게임 패널에 자리를 내줬다).
+  // 클릭 조작(v0.42, mainDom)이 켜져 있으면 여기가 진짜 버튼이고,
+  // 꺼져 있으면 표시용 범례 + /액션 명령이 토글을 맡는다.
+  // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다 —
+  //  그래서 버튼 태그가 아니라 좌표 히트테스트다)
   if (actionStates && actionStates.length) {
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (우상단 버튼과 같다)</span>`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
     for (const a of actionStates) {
       // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
       const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;
@@ -5012,6 +5229,9 @@ function writerMap(schema) {
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
+  // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만
+  // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
+  for (const s of (schema.party?.slots || [])) add(s.var, '편성');
   return w;
 }
 
@@ -7640,7 +7860,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['rules', '규칙·이벤트'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -8070,6 +8290,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   const PATH_TABS = [
     [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
     [/^\$\.actions\b/, '액션', true],
+    [/^\$\.party\b/, '편성표', false],
     [/^\$\.(statusUI|promptState)\b/, '상태창', false],
     [/^\$\.updater\b/, 'AI 설정', false],
     [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
@@ -8368,14 +8589,125 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+  // ── 탭: 편성표 ────────────────────────────────────────────
+  // 게임 패널 1호 (v0.55, 설계 docs/design-편성표.md). 슬롯 = enum 변수, 보유 = list 변수.
+  // 채팅 화면 우상단에 버튼이 생기고, 누르면 팝업에서 슬롯을 채운다 — 저장은 변수라서
+  // 상태창 when 분기·지시문·AI 프롬프트가 전부 그대로 읽는다 (새 표시 문법 없음).
+  function tabParty() {
+    const wrap = h('div');
+    const enums = schema.vars.filter((v) => v.type === 'enum');
+    const lists = schema.vars.filter((v) => v.type === 'list');
+
+    if (!schema.party) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '파티 편성표 — 채팅 화면 우상단에 버튼을 달고, 누르면 팝업에서 슬롯에 인물을 앉힙니다. '
+        + '슬롯 하나 = enum 변수 하나 (그 enum의 값 목록이 편성 후보), 보유 목록(list)을 지정하면 '
+        + '목록에 있는 인물만 고를 수 있습니다 (영입해야 열리는 구조). '
+        + '저장되는 건 변수 값이라 상태창·지시문·프롬프트의 조건 분기가 전부 그대로 읽습니다.'));
+      if (!enums.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '슬롯으로 쓸 enum 변수가 아직 없습니다 — [변수] 탭에서 먼저 만드세요. '
+          + '예: id "front", 타입 enum, 값 ["없음","아린","바크","셀레네"], 시작값 "없음".'));
+      }
+      wrap.appendChild(addBtn('편성표 만들기', () => {
+        schema.party = {
+          label: '편성표', icon: '⚔️', empty: '없음',
+          slots: enums.length ? [{ var: enums[0].id }] : [],
+        };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const P = schema.party;
+    P.slots = Array.isArray(P.slots) ? P.slots : [];
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
+      + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
+      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다).'));
+
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('버튼 이름', bindInput(P.label, (x) => { P.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '편성표' })),
+        pair('아이콘', bindInput(P.icon, (x) => { P.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '⚔️' }),
+          '우상단 버튼에 들어가는 글리프 하나'),
+        pair('빈값', bindInput(P.empty, (x) => { P.empty = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '없음' }),
+          '슬롯을 비울 때 넣는 값 — 각 슬롯 enum 목록에 이 값이 있어야 한다'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('보유 목록', bindSelect(P.roster ?? '',
+          [['', '(제한 없음 — enum 전체)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) P.roster = x; else delete P.roster; rerender(); }),
+          '지정하면 이 목록에 있는 이름만 편성 가능 — 영입(목록 추가)해야 열린다'),
+        bindCheck(P.unique !== false, (x) => { if (x) delete P.unique; else P.unique = false; rerender(); },
+          '중복 편성 금지 (이미 앉은 인물을 고르면 이동/맞교환)'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('설명', bindInput(P.note, (x) => { P.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단에 보이는 한 줄 (비워도 됨)' })),
+      ),
+    ));
+
+    wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+    if (!enums.length) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+        'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
+    }
+    P.slots.forEach((s, i) => {
+      const def = schema.vars.find((v) => v.id === s.var);
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          pair('변수', bindSelect(s.var ?? '',
+            enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+            (x) => { s.var = x; rerender(); }),
+            '이 슬롯이 저장되는 enum 변수'),
+          pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+          grip(P.slots, i, rerender),
+        ),
+        def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
+      ));
+    });
+    if (enums.length) {
+      wrap.appendChild(addBtn('슬롯 추가', () => {
+        const used = new Set(P.slots.map((s) => s.var));
+        const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
+        P.slots.push({ var: next.id });
+        rerender();
+      }));
+    }
+
+    // AI가 편성을 서사로 움직이게 할지 — 슬롯 변수를 allow에 넣으면 된다 (선택 사항)
+    const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
+    const aiMoved = P.slots.filter((s) => allowIds.has(s.var));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      aiMoved.length
+        ? `보조 AI도 슬롯을 움직일 수 있습니다 (${aiMoved.map((s) => s.var).join(', ')}가 [AI 설정] 허용 목록에 있음) — `
+          + '서사에서 "전위를 바꾼다"가 나오면 AI가 따라 바꿉니다. 원치 않으면 허용 목록에서 빼세요.'
+        : '지금은 유저만 편성을 바꿉니다 (슬롯 변수가 [AI 설정] 허용 목록에 없음) — '
+          + 'AI도 서사 따라 바꾸게 하려면 허용 목록에 슬롯 변수를 추가하세요.'));
+
+    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '쓸 수 있는 클래스: .scg-card(카드) .scg-title(제목) .scg-slot(슬롯 상자) .scg-slot-label '
+      + '.scg-slot-val(현재값) .scg-chip(후보 칩) .scg-chip.scg-on(현재 편성) .scg-chip.scg-locked(미보유) '
+      + '.scg-roster(보유 줄). 슬롯·칩에는 data-slot / data-val 속성이 있어 인물별 색도 됩니다 — '
+      + '예: .scg-chip[data-val="아린"] { border-color: gold; }'));
+    wrap.appendChild(bindArea(P.css, (x) => { P.css = x || undefined; rerender(); },
+      '.scg-card { background:#1a1030; border-color:#7a5cd0; }\n.scg-chip.scg-on { background:#7a5cd0; }'));
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 제거')));
+    return wrap;
+  }
+
   // ── 탭: 액션 ──────────────────────────────────────────────
   function tabActions() {
     const wrap = h('div');
     wrap.appendChild(tabAiTools('actions'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
-      '실행 버튼은 화면 우상단에 뜬다 (메시지 안의 버튼은 리스가 클릭을 넘겨주지 않아 동작하지 않는다). '
-      + '그 버튼 칸에는 글리프가 하나만 들어가므로 라벨을 이모지로 시작하면 알아보기 좋다 — 예: 🔥 화로 최대. '
-      + '상태창에는 글리프와 라벨을 짝지은 범례가 나온다. 누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용.'));
+      '켜고 끄는 자리는 상태창 아래 범례다 — 클릭 조작(권한 1회)이 켜져 있으면 범례를 직접 누르고, '
+      + '안 켜져 있으면 /액션 명령으로 토글한다 (예: /액션 공격). 라벨을 이모지로 시작하면 범례에서 알아보기 좋다 — 예: 🔥 화로 최대. '
+      + '누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용. '
+      + '(v0.55부터 우상단 플로팅 버튼은 없다 — 그 자리는 편성표 같은 게임 패널 버튼 몫이다.)'));
     schema.actions.forEach((a, i) => {
       wrap.appendChild(h('div', { class: 'sce-block' },
         h('div', { class: 'sce-row' },
@@ -10153,7 +10485,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function deepBody() {
-    return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 
@@ -10274,6 +10606,12 @@ const RPG = {
     { id: 'inventory', label: '소지품', type: 'list', init: ['빵', '물통'], maxItems: 15, itemMaxLength: 30 },
     { id: 'location', label: '위치', type: 'text', init: '시작 마을', maxLength: 50 },
     { id: 'condition', label: '상태', type: 'text', init: '건강함', maxLength: 40 },
+    // 편성표 재료 (v0.55 배울 점): 후보는 enum이 확정하고(제작자가 정한 인물만 — AI는 명사를 못 만든다),
+    // 보유는 list가 움직인다 (영입·이탈은 보조 AI 몫). 편성 자체는 우상단 [⚔️ 편성] 버튼의 팝업에서.
+    { id: 'allies', label: '동료', type: 'list', init: ['아린'], maxItems: 6, itemMaxLength: 12,
+      desc: '동행 중인 동료 이름 목록. 서사에서 동료를 영입하면 추가, 떠나면 제거.' },
+    { id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
+    { id: 'rear', label: '후위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
   ],
   derived: [
     { id: 'max_hp', label: '최대 HP', expr: '80 + level * 20' },
@@ -10340,12 +10678,14 @@ const RPG = {
       { id: 'inventory' },
       { id: 'location', maxLength: 50 },
       { id: 'condition', maxLength: 40 },
+      { id: 'allies' },
     ],
-    guide: '전투·획득·상실이 서사에 명시된 경우만 반영. 경험치는 전투/성취의 규모에 비례하게.',
+    guide: '전투·획득·상실이 서사에 명시된 경우만 반영. 경험치는 전투/성취의 규모에 비례하게. '
+      + '동료(allies)는 서사에서 정식으로 합류/이탈했을 때만 움직여라 — 편성(전위/후위)은 유저가 정한다.',
   },
   promptState: {
     position: 'history_end',
-    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n상태: {condition}',
+    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n상태: {condition}',
     includeEvents: true,
   },
   statusUI: {
@@ -10365,6 +10705,12 @@ const RPG = {
       { label: '소지', items: [
         { var: 'gold' }, { var: 'weapon' }, { var: 'armor' }, { var: 'inventory' },
       ]},
+      // 편성 결과가 상태창에 보이는 자리 — showWhen으로 "편성했을 때만" 분기 (v0.31 기능 그대로)
+      { label: '편성', items: [
+        { var: 'front', showWhen: 'front != "없음"' },
+        { var: 'rear', showWhen: 'rear != "없음"' },
+        { var: 'allies' },
+      ]},
       { label: '위치', items: [{ var: 'location' }] },
     ],
     // 가죽 장정 모험일지 — 어두운 갈색 가죽에 황동 각인
@@ -10379,6 +10725,16 @@ const RPG = {
 .sim-action { border-color:#6b4f2a; color:#e0b76a; border-radius:3px; background:#2a1d11; }
 .sim-action.sim-armed { border-color:#d9a441; background:#3b2b19; }
 .sim-log { color:#8a7657; }`,
+  },
+  // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
+  // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
+  party: {
+    label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
+    slots: [
+      { var: 'front', label: '전위' },
+      { var: 'rear', label: '후위' },
+    ],
+    note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
   },
   actions: [
     {
@@ -12329,12 +12685,13 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 (async () => {
   const { validateSchema } = SimCore.require('validate');
   const { SimSession } = SimCore.require('session');
-  const { renderStatusHtml, actionGlyph, decodeHitClass } = SimCore.require('render');
+  const { renderStatusHtml, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
   const engine = SimCore.require('engine');
   const { itemValue, itemExpiry } = SimCore.require('expr');
   const assetsMod = SimCore.require('assets');
+  const partyMod = SimCore.require('party');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -12806,7 +13163,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
           }
           await mirrorVars(ca, ci);
-          try { await syncActionButtons(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
+          try { await syncControls(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
         } else if (tries >= 25) {
           clearInterval(luaPollTimer); luaPollTimer = null;
           lastAux.status = '루아 브리지 응답 없음 (30초) — 캐릭터에 브리지가 설치됐는지, LLA(low level access) 체크가 켜졌는지 확인';
@@ -12828,17 +13185,26 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   let turnBusy = false;
   let turnBusyAt = 0;
   let panelStatus = { state: 'init', charName: null, report: null }; // 패널 표시용
-  // 플로팅 액션 버튼 상태 (구현은 아래 '액션 = 화면 우상단 플로팅 버튼' 절)
-  const ACTION_BTN_PREFIX = 'simcore:act:';
-  let actionBtnIds = new Set(); // 현재 등록돼 있는 버튼 id
-  let actionBtnSig = null;      // 마지막으로 반영한 액션 상태 서명 (불필요한 재등록 방지)
+  // 사이드바(우상단) 유틸 버튼 상태 (구현은 아래 '사이드바 = 게임 패널 launcher' 절).
+  // v0.55: 액션별 플로팅 버튼을 없애고 이 자리를 게임 UI(편성표 등) 여는 버튼에 내줬다 —
+  // 액션 토글은 상태창 범례 클릭(v0.42)·조작줄·/액션 명령이 담당한다.
+  const UTIL_BTN_PREFIX = 'simcore:util:';
+  let utilBtnIds = new Set(); // 현재 등록돼 있는 버튼 id
+  let utilBtnSig = null;      // 마지막으로 반영한 버튼 사양 서명 (불필요한 재등록 방지)
+  // 게임 패널(#sc-game) 상태 — 구현은 아래 '게임 패널' 절. 최초 loadForCurrentChar()가
+  // syncControls()를 부르므로 여기(실행 지점보다 앞)에 있어야 TDZ를 피한다.
+  let gameBuilt = false;
+  let gameVisible = false;
+  let gameKind = null;      // 'party' — 지금은 편성표뿐, 다음 패널(장비창 등)도 이 통로로
+  let gameNotice = null;    // 마지막 조작 결과 한 줄 (거부 이유 등)
+  let gameOpenSlot = null;  // 후보 목록이 펼쳐진 슬롯 var (아코디언 — 한 번에 하나)
 
-  // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 플로팅 버튼을 현재 상태에 맞춘다
+  // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
     try { await loadForCurrentCharInner(); }
     finally {
-      try { await syncActionButtons(); }
-      catch (e) { console.log('[simcore] 액션 버튼 갱신 실패:', e.message); }
+      try { await syncControls(); }
+      catch (e) { console.log('[simcore] 조작 UI 갱신 실패:', e.message); }
       // 클릭 조작은 심코어 봇이 실제로 로드됐을 때 한 번만 켠다 — 권한 확인창이
       // 심코어를 안 쓰는 유저에게까지 뜨면 안 된다
       if (session) { try { await initClickControls(); } catch (e) { console.log('[simcore] 클릭 조작 초기화 실패:', e.message); } }
@@ -12951,6 +13317,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       session.current.vars = r.vars;
       // /선택은 기록만 — 집행은 다음 전송 단계(sendPhase)가 한다. pre 스냅샷에 실려 리롤에도 산다.
       if (r.pick != null) session.current.meta = { ...session.current.meta, pendingChoicePick: r.pick };
+      // /액션이 무장을 바꿨으면 meta 통째로 반영 (toggleAction이 만든 새 meta)
+      if (r.meta) session.current.meta = r.pick != null ? { ...r.meta, pendingChoicePick: r.pick } : r.meta;
       if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
@@ -13226,7 +13594,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
             const ca = await Risuai.getCurrentCharacterIndex();
             const ci = await Risuai.getCurrentChatIndex();
             await mirrorVars(ca, ci);
-            try { await syncActionButtons(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
+            try { await syncControls(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
             console.log('[simcore] 델타 지연 적용:', amended.changeLog.length + '건',
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
           }, '델타');
@@ -13253,7 +13621,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',
         '/ 보조 파싱:', r.auxParsed ? Object.keys(r.auxParsed.changes).length + '개 제안' : '실패');
       await mirrorVars(chaIdx, chatIdx);
-      await syncActionButtons(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 버튼 갱신
+      await syncControls(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 조작 UI 갱신
       // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
       if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
       return (imgTag ? imgTag + '\n\n' : '') + content + `\n\n⟦simcore:${outIndex}⟧`;
@@ -13290,15 +13658,16 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 
   // (상태창 CSS는 메시지 내 <style>로 자체 포함되므로 메인 DOM 스타일 주입 불필요)
 
-  // ── 액션 = 화면 우상단 플로팅 버튼 ─────────────────────────
-  // 왜 상태창 안의 <button>이 아니라 여기냐:
-  // 리스가 플러그인에 메인 DOM 클릭을 넘길 때 이벤트 객체를 잘라서 준다. 전달되는 필드는
-  // type/clientX/clientY/button/buttons/수식키뿐이고 **target이 없다**. 그래서 document
-  // 클릭 위임으로는 "어느 버튼이 눌렸는지"를 알 방법이 없어 상태창 내 버튼은 구조적으로
-  // 동작하지 않는다 (v0.11까지 실제로 죽어 있었음). registerButton(location:'action')은
-  // 리스가 직접 onclick을 걸어주는 네이티브 콜백이라 우회 없이 확실히 동작하고,
-  // 메시지 밖이라 봇의 커스텀 CSS와도 충돌하지 않는다.
-  // (상태 변수 ACTION_BTN_PREFIX/actionBtnIds/actionBtnSig는 위 '스키마 로드' 절에 선언 —
+  // ── 사이드바 = 게임 패널 launcher (v0.55) ─────────────────────
+  // 우상단 registerButton(location:'action') 자리의 역사:
+  //   v0.11~v0.54 — 액션별 플로팅 버튼. 상태창 내 <button>이 구조적으로 죽어 있어서
+  //   (리스가 클릭 이벤트의 target을 잘라 넘긴다) 액션 토글의 유일한 통로였다.
+  //   v0.42 — 클릭 조작(좌표 히트테스트)이 생기며 상태창 범례가 진짜 버튼이 됐다.
+  //   v0.55 — 같은 버튼이 양쪽에 있을 이유가 없어져 플로팅 버튼을 걷어내고,
+  //   이 자리를 **게임 UI 패널(편성표 등)을 여는 유틸 버튼**에 내줬다.
+  // 액션 토글 통로 셋: ① 상태창 범례 클릭(mainDom) ② 편집기 패널 ③ /액션 채팅 명령
+  // (③이 v0.55 신설 — mainDom 권한이 거부된 환경의 폴백이다).
+  // (상태 변수 UTIL_BTN_PREFIX/utilBtnIds/utilBtnSig는 위 '스키마 로드' 절에 선언 —
   //  최초 loadForCurrentChar()가 이 지점보다 먼저 실행되므로 TDZ를 피하려면 앞에 있어야 한다)
 
   /**
@@ -13329,35 +13698,39 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     });
   }
 
-  async function syncActionButtons() {
-    // 조작줄은 무장 외에 갈림길 상태도 보므로, 버튼 시그니처와 무관하게 항상 함께 갱신한다
+  // 상태가 바뀔 때마다 부르는 종합 갱신 — 조작줄 + 유틸 버튼 + (열려 있으면) 게임 패널
+  async function syncControls() {
+    // 조작줄은 무장 외에 갈림길 상태도 보므로 항상 함께 갱신한다
     await updateControlStrip();
-    const states = currentActionStates();
-    const sig = JSON.stringify(states);
-    if (sig === actionBtnSig) return; // 변화 없음 — 재등록 생략
-    actionBtnSig = sig;
+    await syncUtilButtons();
+    if (gameVisible) { try { renderGamePanel(); } catch (e) { console.log('[simcore] 게임 패널 갱신 실패:', e.message); } }
+  }
 
+  async function syncUtilButtons() {
+    // 유틸 버튼은 스키마에 그 패널이 정의돼 있을 때만 단다 — 배포받은 유저에게
+    // 빈 패널 버튼이 보이면 안 된다. 사양이 안 바뀌면 재등록도 안 한다.
+    const specs = [];
+    if (session && schema) {
+      const p = partyMod.partyButtonSpec(schema);
+      if (p) specs.push({ key: 'party', ...p });
+    }
+    const sig = JSON.stringify(specs);
+    if (sig === utilBtnSig) return;
+    utilBtnSig = sig;
     const wanted = new Set();
-    for (const st of states) {
-      const btnId = ACTION_BTN_PREFIX + st.id;
+    for (const sp of specs) {
+      const btnId = UTIL_BTN_PREFIX + sp.key;
       wanted.add(btnId);
-      // 아이콘 칸에는 글리프가 딱 하나 들어간다. 폭도 높이도 고정이라 두 글자를 넣으면
-      // 둘째 글자가 알약 밖으로 삐져나온다(1차 시도는 라벨 전체를 넣어 세로로 쏟아졌고,
-      // 2차 시도는 '● 🔥'처럼 두 글자를 넣어 아래로 흘렀다).
-      // → 상태는 글자를 '더하는' 대신 글리프를 '바꿔서' 표시한다.
-      //   어느 액션인지는 상태창 범례가 같은 글리프로 짝을 지어 알려준다(renderStatusHtml).
-      const icon = st.disabled ? '🔒' : (st.armed ? '✅' : actionGlyph(st.label));
       await Risuai.registerButton(
-        { name: st.label, icon: escapeText(icon), iconType: 'html', location: 'action', id: btnId },
-        // 프로미스를 돌려줘야 클릭 처리가 클릭 단위로 직렬화된다 — 조작줄 갱신(await)이
-        // 늘어난 v0.42부터는 던져두기(fire-and-forget)면 지연 재등록이 다음 동작과 경합한다
-        () => onActionButton(st.id),
+        { name: sp.label, icon: escapeText(sp.icon), iconType: 'html', location: 'action', id: btnId },
+        // 프로미스를 돌려줘야 클릭 처리가 클릭 단위로 직렬화된다 (v0.42 교훈)
+        () => openGamePanel(sp.key),
       );
     }
-    for (const old of actionBtnIds) {
+    for (const old of utilBtnIds) {
       if (!wanted.has(old)) { try { await Risuai.unregisterUIPart(old); } catch {} }
     }
-    actionBtnIds = wanted;
+    utilBtnIds = wanted;
   }
 
   async function onActionButton(actionId) {
@@ -13367,7 +13740,205 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     if (r.blocked) {
       try { await Risuai.alert(`'${actionId}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
     }
-    await syncActionButtons();
+    await syncControls();
+    if (panelBuilt) renderPanel();
+  }
+
+  // ── 게임 패널 (#sc-game) — 유틸 버튼이 여는 팝업 UI (v0.55) ────────────
+  // 편집기(#sc-root)와 같은 iframe 컨테이너를 쓰지만 겉모습은 팝업이다:
+  // 어두운 배경막 + 가운데 카드. 컨테이너가 fullscreen 하나뿐이라(showContainer 사양)
+  // "팝업처럼 보이는 전체화면"으로 만든다. 우리 iframe 안이므로 클릭이 온전하다 —
+  // 좌표 히트테스트의 취약함(메인 DOM 격자 리렌더)이 여기엔 아예 없다.
+  // 제작자 CSS: schema.party.css를 #sc-game 범위로 가둬 주입한다 (상태창 customCSS와 같은 scopeCss).
+  // (상태 변수 gameBuilt/gameVisible/gameKind/gameNotice/gameOpenSlot은 위 '스키마 로드' 절에 선언)
+
+  function buildGameSkeleton() {
+    if (gameBuilt) return;
+    gameBuilt = true;
+    const style = document.createElement('style');
+    style.id = 'sc-game-base';
+    style.textContent = `
+      #sc-game { position:fixed; inset:0; z-index:2147483100; display:flex; align-items:center;
+        justify-content:center; padding:18px; background:rgba(6,10,20,.72);
+        font-family: system-ui, 'Apple SD Gothic Neo', sans-serif; font-size:14px; line-height:1.5;
+        color:#e6ebf5; text-align:left; }
+      #sc-game * { box-sizing:border-box; }
+      #sc-game .scg-card { width:min(440px, 100%); max-height:calc(100vh - 36px); overflow:auto;
+        background:#131b2e; border:1px solid #35486e; border-radius:14px; padding:16px 16px 14px;
+        box-shadow:0 18px 48px rgba(0,0,0,.5); }
+      #sc-game .scg-title { display:flex; align-items:center; gap:8px; font-size:15.5px; font-weight:700;
+        color:#fff; margin:0 0 4px; }
+      #sc-game .scg-title .scg-x { margin-left:auto; background:transparent; border:none; color:#8a99b5;
+        font-size:18px; cursor:pointer; padding:2px 8px; border-radius:8px; }
+      #sc-game .scg-title .scg-x:hover { background:#24345c; color:#fff; }
+      #sc-game .scg-note { color:#a7b4cc; font-size:12.5px; margin:0 0 10px; }
+      #sc-game .scg-slot { border:1px solid #2a3a5e; border-radius:10px; background:#0e1526;
+        margin-top:8px; overflow:hidden; }
+      #sc-game .scg-slot-row { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; }
+      #sc-game .scg-slot-row:hover { background:#16203a; }
+      #sc-game .scg-slot-label { color:#9db8e8; font-size:12px; letter-spacing:.04em; min-width:52px; }
+      #sc-game .scg-slot-val { font-weight:700; color:#f2ecff; }
+      #sc-game .scg-slot-val.scg-empty { color:#5d6b87; font-weight:400; }
+      #sc-game .scg-slot-arrow { margin-left:auto; color:#5d6b87; font-size:11px; }
+      #sc-game .scg-cands { display:flex; flex-wrap:wrap; gap:6px; padding:4px 12px 11px; }
+      #sc-game .scg-chip { border:1px solid #3d5384; border-radius:999px; background:#1c2740;
+        color:#dfe7f5; padding:4px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-chip:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scg-chip.scg-on { background:#3660d9; border-color:#6b93f2; color:#fff; font-weight:600; }
+      #sc-game .scg-chip.scg-used { border-style:dashed; color:#a7b4cc; }
+      #sc-game .scg-chip.scg-locked { opacity:.38; cursor:not-allowed; }
+      #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
+      #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
+      #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+    `;
+    document.head.appendChild(style);
+    const root = document.createElement('div');
+    root.id = 'sc-game';
+    root.style.display = 'none';
+    // 배경막 클릭 = 닫기 (카드 안 클릭은 stopPropagation)
+    root.addEventListener('click', (ev) => { if (ev.target === root) closeGamePanel(); });
+    document.body.appendChild(root);
+  }
+
+  // 제작자 CSS는 별도 <style>로 — 스키마가 바뀔 때마다 갈아끼운다. 상태창과 같은 scopeCss로
+  // #sc-game 밖(편집기·다른 패널)을 못 건드리게 가둔다.
+  function applyGameCss() {
+    let el = document.getElementById('sc-game-custom');
+    if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
+    const css = gameKind === 'party' ? schema?.party?.css : null;
+    el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
+  }
+
+  async function openGamePanel(kind) {
+    await loadForCurrentChar();
+    if (!session || !schema) {
+      try { await Risuai.alert('SimCore 봇이 아니거나 스키마를 읽지 못했어요.'); } catch {}
+      return;
+    }
+    buildGameSkeleton();
+    gameKind = kind;
+    gameNotice = null;
+    gameOpenSlot = null;
+    applyGameCss();
+    // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
+    const editorRoot = document.getElementById('sc-root');
+    if (editorRoot) editorRoot.style.display = 'none';
+    renderGamePanel();
+    document.getElementById('sc-game').style.display = 'flex';
+    gameVisible = true;
+    panelVisible = true; // 컨테이너가 화면을 덮는 동안 좌표 히트테스트는 쉰다 (편집기와 같은 규약)
+    await Risuai.showContainer('fullscreen');
+  }
+
+  function closeGamePanel() {
+    gameVisible = false;
+    panelVisible = false;
+    const el = document.getElementById('sc-game');
+    if (el) el.style.display = 'none';
+    Risuai.hideContainer();
+    // 패널이 떠 있어 미뤘던 클릭 초기화를 이제 시도한다 (편집기 닫기와 같은 규약)
+    if (hitState === 'pending') setTimeout(() => { initClickControls().catch(() => {}); }, 400);
+  }
+
+  function renderGamePanel() {
+    const root = document.getElementById('sc-game');
+    if (!root || !session || !schema) return;
+    if (gameKind === 'party') renderPartyPanel(root);
+  }
+
+  function renderPartyPanel(root) {
+    const view = partyMod.partyView(schema, session.current);
+    if (!view) { root.innerHTML = ''; return; }
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card';
+    card.addEventListener('click', (ev) => ev.stopPropagation());
+
+    const title = document.createElement('div');
+    title.className = 'scg-title';
+    title.append(Object.assign(document.createElement('span'), { textContent: `${view.icon} ${view.label}` }));
+    const x = Object.assign(document.createElement('button'), { className: 'scg-x', textContent: '✕', title: '닫기' });
+    x.onclick = () => closeGamePanel();
+    title.appendChild(x);
+    card.appendChild(title);
+    if (view.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: view.note }));
+
+    for (const slot of view.slots) {
+      const box = document.createElement('div');
+      box.className = 'scg-slot';
+      box.dataset.slot = slot.var;
+      box.dataset.val = slot.value ?? '';
+      const row = document.createElement('div');
+      row.className = 'scg-slot-row';
+      const open = gameOpenSlot === slot.var;
+      row.innerHTML = `<span class="scg-slot-label">${escapeText(slot.label)}</span>`
+        + `<span class="scg-slot-val${slot.isEmpty ? ' scg-empty' : ''}">${escapeText(slot.isEmpty ? '(비어 있음)' : String(slot.value ?? '—'))}</span>`
+        + `<span class="scg-slot-arrow">${open ? '▲' : '▼ 변경'}</span>`;
+      row.onclick = () => { gameOpenSlot = open ? null : slot.var; gameNotice = null; renderGamePanel(); };
+      box.appendChild(row);
+
+      if (open) {
+        const cands = document.createElement('div');
+        cands.className = 'scg-cands';
+        for (const c of slot.candidates) {
+          const chip = document.createElement('button');
+          chip.className = 'scg-chip'
+            + (c.name === slot.value ? ' scg-on' : '')
+            + (c.usedBy ? ' scg-used' : '')
+            + (c.locked ? ' scg-locked' : '');
+          chip.dataset.val = c.name;
+          chip.textContent = c.name;
+          if (c.locked) chip.title = `아직 보유하지 않음 — ${view.roster?.label ?? '보유 목록'}에 없어요`;
+          else if (c.usedBy) {
+            const from = view.slots.find((s) => s.var === c.usedBy);
+            chip.title = `${from?.label ?? c.usedBy}에서 이동해 와요`;
+          }
+          chip.onclick = () => onPartyPick(slot.var, c.name);
+          cands.appendChild(chip);
+        }
+        if (view.empty != null && !slot.isEmpty) {
+          const clear = Object.assign(document.createElement('button'),
+            { className: 'scg-chip scg-clear', textContent: '비우기' });
+          clear.onclick = () => onPartyPick(slot.var, view.empty);
+          cands.appendChild(clear);
+        }
+        box.appendChild(cands);
+      }
+      card.appendChild(box);
+    }
+
+    if (view.roster) {
+      card.appendChild(Object.assign(document.createElement('div'), {
+        className: 'scg-roster',
+        textContent: `${view.roster.label}: ${view.roster.items.length ? view.roster.items.join(', ') : '(없음)'}`,
+      }));
+    }
+    const notice = Object.assign(document.createElement('div'), { className: 'scg-notice' });
+    notice.textContent = gameNotice ?? '';
+    card.appendChild(notice);
+    root.appendChild(card);
+  }
+
+  async function onPartyPick(slotVar, value) {
+    if (!session || !schema) return;
+    const r = partyMod.applyPartyPick(schema, session.current, slotVar, value);
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    if (Object.keys(r.changes).length) {
+      Object.assign(session.current.vars, r.changes);
+      // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 (편집기 commitVars와 같은 규약)
+      try {
+        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        await mirrorVars(chaIdx, chatIdx);
+      } catch (e) { console.log('[simcore] 편성 저장 실패:', e.message); }
+      const moved = r.moved ? ` (${r.moved.from}에서 이동)` : '';
+      gameNotice = `✓ ${value === (schema.party?.empty ?? null) ? '비웠어요' : `${value} 편성${moved}`}`;
+      console.log('[simcore] 편성 변경:', JSON.stringify(r.changes));
+    }
+    gameOpenSlot = null;
+    renderGamePanel();
+    await updateControlStrip();
     if (panelBuilt) renderPanel();
   }
 
@@ -13523,7 +14094,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     session.current.meta = { ...session.current.meta, pendingChoicePick: idx };
     if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
     console.log('[simcore] 갈림길 클릭 선택:', idx + 1, v.label);
-    await syncActionButtons();
+    await syncControls();
     if (panelBuilt) renderPanel();
   }
 
@@ -13935,7 +14506,7 @@ count(목록)  has(목록, "항목")</pre>
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);
-      await syncActionButtons();
+      await syncControls();
       renderPanel();
     };
 
@@ -14179,7 +14750,7 @@ count(목록)  has(목록, "항목")</pre>
         if (!res || !res.ok) { rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return; }
         lastOutIndex = res.sameChat && typeof data.lastOutIndex === 'number' ? data.lastOutIndex : anchor;
         await mirrorVars(chaIdx, chatIdx);
-        await syncActionButtons();
+        await syncControls();
         rep.innerHTML = `<span class="status-ok">✓ 가져오기 완료 — 엔진 턴 ${session.current?.meta?.turn ?? '?'}, 변수 ${Object.keys(session.current?.vars ?? {}).length}개`
           + `${res.sameChat ? ' (같은 채팅: 스냅샷 이력까지 복원)' : ` (다른 채팅: ${anchor < 0 ? '첫 메시지' : anchor + '번 메시지'}에 상태 앵커)`}`
           + `${escapeText(schemaNote)}</span>`;
@@ -14526,7 +15097,7 @@ count(목록)  has(목록, "항목")</pre>
       btn.className = armed ? 'armed' : '';
       btn.style.marginRight = '6px';
       if (!avail.ok && !armed) { btn.disabled = true; btn.title = avail.reason; btn.style.opacity = .4; }
-      btn.onclick = () => { session.toggle(a.id); syncActionButtons(); renderPanel(); };
+      btn.onclick = () => { session.toggle(a.id); syncControls(); renderPanel(); };
       actionsDiv.appendChild(btn);
     }
 
@@ -14556,7 +15127,11 @@ count(목록)  has(목록, "항목")</pre>
   async function openPanel() {
     await loadForCurrentChar();
     syncEditorToChar(); // 캐릭터가 바뀌었으면 편집기를 현재 캐릭터 설치본으로 (오염된 설치 사고 방지)
+    // 게임 패널과 같은 컨테이너를 나눠 쓴다 — 떠 있으면 내리고 편집기 루트를 되살린다
+    if (gameVisible) { gameVisible = false; const g = document.getElementById('sc-game'); if (g) g.style.display = 'none'; }
     renderPanel();
+    const editorRoot = document.getElementById('sc-root');
+    if (editorRoot) editorRoot.style.display = '';
     panelVisible = true;
     await Risuai.showContainer('fullscreen');
   }

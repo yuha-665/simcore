@@ -306,13 +306,14 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     inner += extras.commands;
   }
 
-  // 액션 범례 — 실행은 화면 우상단 플로팅 버튼이 한다.
-  // 그 버튼의 아이콘 칸에는 글리프가 딱 하나만 들어가서 '🔥'만 보이므로,
-  // 여기서 글리프와 전체 라벨을 짝지어 보여주지 않으면 무슨 버튼인지 알 길이 없다.
-  // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다)
+  // 액션 범례 — v0.55부터 이게 액션의 정면이다 (우상단 플로팅 버튼은 게임 패널에 자리를 내줬다).
+  // 클릭 조작(v0.42, mainDom)이 켜져 있으면 여기가 진짜 버튼이고,
+  // 꺼져 있으면 표시용 범례 + /액션 명령이 토글을 맡는다.
+  // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다 —
+  //  그래서 버튼 태그가 아니라 좌표 히트테스트다)
   if (actionStates && actionStates.length) {
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (우상단 버튼과 같다)</span>`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
     for (const a of actionStates) {
       // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
       const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;

@@ -1732,7 +1732,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['rules', '규칙·이벤트'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['rules', '규칙·이벤트'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -2162,6 +2162,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   const PATH_TABS = [
     [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
     [/^\$\.actions\b/, '액션', true],
+    [/^\$\.party\b/, '편성표', false],
     [/^\$\.(statusUI|promptState)\b/, '상태창', false],
     [/^\$\.updater\b/, 'AI 설정', false],
     [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
@@ -2460,14 +2461,125 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+  // ── 탭: 편성표 ────────────────────────────────────────────
+  // 게임 패널 1호 (v0.55, 설계 docs/design-편성표.md). 슬롯 = enum 변수, 보유 = list 변수.
+  // 채팅 화면 우상단에 버튼이 생기고, 누르면 팝업에서 슬롯을 채운다 — 저장은 변수라서
+  // 상태창 when 분기·지시문·AI 프롬프트가 전부 그대로 읽는다 (새 표시 문법 없음).
+  function tabParty() {
+    const wrap = h('div');
+    const enums = schema.vars.filter((v) => v.type === 'enum');
+    const lists = schema.vars.filter((v) => v.type === 'list');
+
+    if (!schema.party) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '파티 편성표 — 채팅 화면 우상단에 버튼을 달고, 누르면 팝업에서 슬롯에 인물을 앉힙니다. '
+        + '슬롯 하나 = enum 변수 하나 (그 enum의 값 목록이 편성 후보), 보유 목록(list)을 지정하면 '
+        + '목록에 있는 인물만 고를 수 있습니다 (영입해야 열리는 구조). '
+        + '저장되는 건 변수 값이라 상태창·지시문·프롬프트의 조건 분기가 전부 그대로 읽습니다.'));
+      if (!enums.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '슬롯으로 쓸 enum 변수가 아직 없습니다 — [변수] 탭에서 먼저 만드세요. '
+          + '예: id "front", 타입 enum, 값 ["없음","아린","바크","셀레네"], 시작값 "없음".'));
+      }
+      wrap.appendChild(addBtn('편성표 만들기', () => {
+        schema.party = {
+          label: '편성표', icon: '⚔️', empty: '없음',
+          slots: enums.length ? [{ var: enums[0].id }] : [],
+        };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const P = schema.party;
+    P.slots = Array.isArray(P.slots) ? P.slots : [];
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
+      + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
+      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다).'));
+
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('버튼 이름', bindInput(P.label, (x) => { P.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '편성표' })),
+        pair('아이콘', bindInput(P.icon, (x) => { P.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '⚔️' }),
+          '우상단 버튼에 들어가는 글리프 하나'),
+        pair('빈값', bindInput(P.empty, (x) => { P.empty = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '없음' }),
+          '슬롯을 비울 때 넣는 값 — 각 슬롯 enum 목록에 이 값이 있어야 한다'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('보유 목록', bindSelect(P.roster ?? '',
+          [['', '(제한 없음 — enum 전체)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) P.roster = x; else delete P.roster; rerender(); }),
+          '지정하면 이 목록에 있는 이름만 편성 가능 — 영입(목록 추가)해야 열린다'),
+        bindCheck(P.unique !== false, (x) => { if (x) delete P.unique; else P.unique = false; rerender(); },
+          '중복 편성 금지 (이미 앉은 인물을 고르면 이동/맞교환)'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('설명', bindInput(P.note, (x) => { P.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단에 보이는 한 줄 (비워도 됨)' })),
+      ),
+    ));
+
+    wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+    if (!enums.length) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+        'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
+    }
+    P.slots.forEach((s, i) => {
+      const def = schema.vars.find((v) => v.id === s.var);
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          pair('변수', bindSelect(s.var ?? '',
+            enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+            (x) => { s.var = x; rerender(); }),
+            '이 슬롯이 저장되는 enum 변수'),
+          pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+          grip(P.slots, i, rerender),
+        ),
+        def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
+      ));
+    });
+    if (enums.length) {
+      wrap.appendChild(addBtn('슬롯 추가', () => {
+        const used = new Set(P.slots.map((s) => s.var));
+        const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
+        P.slots.push({ var: next.id });
+        rerender();
+      }));
+    }
+
+    // AI가 편성을 서사로 움직이게 할지 — 슬롯 변수를 allow에 넣으면 된다 (선택 사항)
+    const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
+    const aiMoved = P.slots.filter((s) => allowIds.has(s.var));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      aiMoved.length
+        ? `보조 AI도 슬롯을 움직일 수 있습니다 (${aiMoved.map((s) => s.var).join(', ')}가 [AI 설정] 허용 목록에 있음) — `
+          + '서사에서 "전위를 바꾼다"가 나오면 AI가 따라 바꿉니다. 원치 않으면 허용 목록에서 빼세요.'
+        : '지금은 유저만 편성을 바꿉니다 (슬롯 변수가 [AI 설정] 허용 목록에 없음) — '
+          + 'AI도 서사 따라 바꾸게 하려면 허용 목록에 슬롯 변수를 추가하세요.'));
+
+    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '쓸 수 있는 클래스: .scg-card(카드) .scg-title(제목) .scg-slot(슬롯 상자) .scg-slot-label '
+      + '.scg-slot-val(현재값) .scg-chip(후보 칩) .scg-chip.scg-on(현재 편성) .scg-chip.scg-locked(미보유) '
+      + '.scg-roster(보유 줄). 슬롯·칩에는 data-slot / data-val 속성이 있어 인물별 색도 됩니다 — '
+      + '예: .scg-chip[data-val="아린"] { border-color: gold; }'));
+    wrap.appendChild(bindArea(P.css, (x) => { P.css = x || undefined; rerender(); },
+      '.scg-card { background:#1a1030; border-color:#7a5cd0; }\n.scg-chip.scg-on { background:#7a5cd0; }'));
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 제거')));
+    return wrap;
+  }
+
   // ── 탭: 액션 ──────────────────────────────────────────────
   function tabActions() {
     const wrap = h('div');
     wrap.appendChild(tabAiTools('actions'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
-      '실행 버튼은 화면 우상단에 뜬다 (메시지 안의 버튼은 리스가 클릭을 넘겨주지 않아 동작하지 않는다). '
-      + '그 버튼 칸에는 글리프가 하나만 들어가므로 라벨을 이모지로 시작하면 알아보기 좋다 — 예: 🔥 화로 최대. '
-      + '상태창에는 글리프와 라벨을 짝지은 범례가 나온다. 누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용.'));
+      '켜고 끄는 자리는 상태창 아래 범례다 — 클릭 조작(권한 1회)이 켜져 있으면 범례를 직접 누르고, '
+      + '안 켜져 있으면 /액션 명령으로 토글한다 (예: /액션 공격). 라벨을 이모지로 시작하면 범례에서 알아보기 좋다 — 예: 🔥 화로 최대. '
+      + '누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용. '
+      + '(v0.55부터 우상단 플로팅 버튼은 없다 — 그 자리는 편성표 같은 게임 패널 버튼 몫이다.)'));
     schema.actions.forEach((a, i) => {
       wrap.appendChild(h('div', { class: 'sce-block' },
         h('div', { class: 'sce-row' },
@@ -4245,7 +4357,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function deepBody() {
-    return { vars: tabVars, commands: tabCommands, status: tabStatus, rules: tabRules, actions: tabActions,
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 

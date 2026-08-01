@@ -674,6 +674,49 @@ function validateSchema(schema) {
     }
   }
 
+  // ── party (편성표 — 게임 패널 1호) ─────────────────────────
+  // 슬롯 = enum 변수, 보유 = list 변수. 설계: docs/design-편성표.md
+  if (schema.party != null) {
+    const P = schema.party;
+    if (typeof P !== 'object' || Array.isArray(P)) err('$.party', 'party는 객체여야 함');
+    else {
+      const varById = {};
+      for (const v of vars) if (v && v.id) varById[v.id] = v;
+      const slots = Array.isArray(P.slots) ? P.slots : [];
+      if (!slots.length) err('$.party.slots', '슬롯(slots)이 최소 1개 필요');
+      const seen = new Set();
+      slots.forEach((s, i) => {
+        const p = `$.party.slots[${i}]`;
+        if (!s || typeof s !== 'object') { err(p, '슬롯은 객체여야 함'); return; }
+        const def = varById[s.var];
+        if (!def) { err(p, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
+        if (def.type !== 'enum') {
+          err(p, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
+          return;
+        }
+        if (seen.has(s.var)) err(p, `슬롯 변수 '${s.var}' 중복 — 슬롯마다 다른 변수를 쓰세요`);
+        seen.add(s.var);
+        // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
+        if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
+          err(p, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+        }
+      });
+      if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
+      if (P.roster != null) {
+        const r = varById[P.roster];
+        if (!r) err('$.party.roster', `보유 목록 '${P.roster}'가 vars에 없음`);
+        else if (r.type !== 'list') err('$.party.roster', `보유 목록 '${P.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
+      }
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
+        if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (P.empty == null && slots.length) {
+        warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
+          + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');
+      }
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 

@@ -1,6 +1,7 @@
 const __P = (...p) => require('path').resolve(__dirname, ...p);
-// 플로팅 액션 버튼의 아이콘 글리프 추출 검증
-// (아이콘 칸이 글리프 1개 폭이라 라벨 전체를 넣으면 세로로 쏟아진다)
+// 액션 글리프(actionGlyph) 추출 + 상태창 범례 검증
+// v0.54까지는 우상단 플로팅 버튼의 아이콘 규칙이었고, v0.55부터 버튼이 사라지며
+// 상태창 범례가 액션의 정면이 됐다 — 글리프 규칙은 범례가 그대로 물려받는다.
 const fs = require('fs');
 const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
 // actionGlyph는 render 모듈이 갖고 있다 (우상단 버튼과 상태창 범례가 같은 글리프를 써야 하므로)
@@ -52,13 +53,13 @@ ck('★ 템플릿 라벨은 전부 글리프 1개로 압축됨',
   ck('숫자를 줘도 안 터짐', actionGlyph(123) === '1', String(actionGlyph(123)));
 }
 
-// ── 버튼에 실제로 들어가는 최종 문자열 ──
-// 아이콘 칸은 글리프 하나만 담는다. 두 글자를 넣으면 둘째 글자가 알약 밖으로 흘러나온다.
+// ── 범례 배지에 실제로 들어가는 최종 글리프 ──
+// 배지 칸은 글리프 하나만 담는다. 두 글자를 넣으면 알약 밖으로 흘러나온다 (v0.11 교훈).
 {
-  // 실제 소스와 어긋나지 않게 못을 박아둔다
-  ck('★ 소스의 아이콘 조립식이 이 테스트와 같음',
-    src.includes("const icon = st.disabled ? '🔒' : (st.armed ? '✅' : actionGlyph(st.label));"),
-    '소스가 바뀌었으면 아래 mirror도 같이 고칠 것');
+  // 실제 소스와 어긋나지 않게 못을 박아둔다 — 범례 조립식(render.js)의 상태 글리프
+  ck('★ 소스의 범례 상태 글리프가 이 테스트와 같음',
+    src.includes("a.disabled ? '🔒' : (a.armed ? '✅'"),
+    '소스(render.js 범례)가 바뀌었으면 아래 mirror도 같이 고칠 것');
   const icon = (label, armed, ok) => (!ok ? '🔒' : (armed ? '✅' : actionGlyph(label)));
 
   // 화면에 몇 칸으로 보이는가 = 자소 묶음(grapheme) 수.
@@ -107,10 +108,10 @@ ck('★ 템플릿 라벨은 전부 글리프 1개로 압축됨',
   const html = renderStatusHtml(T, st, null, mk(), { includeStyle: false });
 
   ck('범례가 상태창에 렌더됨', html.includes('sim-actions'), '');
-  ck('안내 문구가 붙음', html.includes('눌러서 무장 (우상단 버튼과 같다)'), '');
+  ck('안내 문구가 붙음 — /액션 폴백 안내 (v0.55)', html.includes('눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)'), '');
   ck('★ 범례에 라벨 전체가 나옴 (아이콘 뜻을 알 수 있음)',
     html.includes('화로 최대') && html.includes('채탄 작업') && html.includes('단열 보강'), '');
-  ck('★ 범례 글리프가 우상단 버튼 글리프와 같음',
+  ck('★ 범례 글리프 = actionGlyph 규칙 (조작줄·/액션 안내와 같은 짝)',
     (T.actions || []).every((a) => html.includes(`<span class="sim-action-glyph">${actionGlyph(a.label)}</span>`)),
     (T.actions || []).map((a) => actionGlyph(a.label)).join(''));
   ck('★ 아이콘이 본문에서 중복되지 않음 (🔥 🔥 화로 최대 방지)',

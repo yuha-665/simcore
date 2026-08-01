@@ -44,6 +44,9 @@ function writerMap(schema) {
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
+  // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만
+  // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
+  for (const s of (schema.party?.slots || [])) add(s.var, '편성');
   return w;
 }
 

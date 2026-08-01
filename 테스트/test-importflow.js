@@ -64,7 +64,7 @@ async function runImport({ checkboxChecked, installedSchema }) {
   };
   const lastCharIndex = async () => 3;
   const mirrorVars = async () => {};
-  const syncActionButtons = async () => {};
+  const syncControls = async () => {};
   const renderPanel = () => {};
   const withProgress = async (_rep, _btns, _title, fn) => fn(() => {});
   const SAVE_BTNS = [];
@@ -73,7 +73,7 @@ async function runImport({ checkboxChecked, installedSchema }) {
   const fn = new Function(
     'document', 'schemaRef', 'sessionRef', 'editor', 'validateSchema', 'escapeText',
     'loadIntoEditor', 'installSchemaToCurrentChar', 'Risuai', 'lastCharIndex', 'mirrorVars',
-    'syncActionButtons', 'renderPanel', 'withProgress', 'SAVE_BTNS', 'ev', 'log',
+    'syncControls', 'renderPanel', 'withProgress', 'SAVE_BTNS', 'ev', 'log',
     `let schema = schemaRef.get(), session = sessionRef.get(), lastOutIndex = -1;
      const _install = installSchemaToCurrentChar;
      installSchemaToCurrentChar = async (p) => { const r = await _install(p); schema = schemaRef.get(); session = sessionRef.get(); return r; };
@@ -83,7 +83,7 @@ async function runImport({ checkboxChecked, installedSchema }) {
 
   await fn(document, { get: () => schema }, { get: () => session }, editor, validateSchema, escapeText,
     loadIntoEditor, installSchemaToCurrentChar, Risuai, lastCharIndex, mirrorVars,
-    syncActionButtons, renderPanel, withProgress, SAVE_BTNS, ev, log);
+    syncControls, renderPanel, withProgress, SAVE_BTNS, ev, log);
 
   log.reportHtml = els['sc-save-report'].innerHTML;
   return log;

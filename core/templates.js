@@ -29,6 +29,12 @@ const RPG = {
       desc: '동행 중인 동료 이름 목록. 서사에서 동료를 영입하면 추가, 떠나면 제거.' },
     { id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
     { id: 'rear', label: '후위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
+    // 수련 재료 (v0.58 배울 점): 스킬 = int 변수(레벨), 포인트는 레벨업 이벤트가 준다.
+    // 찍기는 [⚔️ 편성] 팝업의 수련 탭 — 선행 조건(requires)은 그냥 조건식이다.
+    { id: 'sp', label: '수련 포인트', type: 'int', init: 1, min: 0, max: 99,
+      desc: '레벨 업 때마다 1씩 쌓인다. 수련 탭에서 스킬을 찍는 데 쓴다.' },
+    { id: 'skill_sword', label: '검술', type: 'int', init: 0, min: 0, max: 5 },
+    { id: 'skill_heal', label: '치유술', type: 'int', init: 0, min: 0, max: 3 },
   ],
   derived: [
     { id: 'max_hp', label: '최대 HP', expr: '80 + level * 20' },
@@ -46,8 +52,9 @@ const RPG = {
           { set: 'level', expr: 'level + 1' },
           { set: 'hp', expr: 'max_hp' },
           { set: 'mp', expr: 'max_mp' },
+          { set: 'sp', expr: 'min(sp + 1, 99)' },
         ],
-        notify: '레벨 업! 몸에 힘이 차오르며 상처가 아문다.',
+        notify: '레벨 업! 몸에 힘이 차오르며 상처가 아문다. 수련 포인트를 1 얻었다.',
       },
       { id: 'hp_cap', when: 'hp > max_hp', effects: [{ set: 'hp', expr: 'max_hp' }] },
       { id: 'mp_cap', when: 'mp > max_mp', effects: [{ set: 'mp', expr: 'max_mp' }] },
@@ -102,7 +109,7 @@ const RPG = {
   },
   promptState: {
     position: 'history_end',
-    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n상태: {condition}',
+    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n수련: 검술 {skill_sword} · 치유술 {skill_heal} (SP {sp})\n상태: {condition}',
     includeEvents: true,
   },
   statusUI: {
@@ -128,6 +135,11 @@ const RPG = {
         { var: 'rear', showWhen: 'rear != "없음"' },
         { var: 'allies' },
       ]},
+      { label: '수련', items: [
+        { var: 'skill_sword', showWhen: 'skill_sword > 0', bar: { max: 5 } },
+        { var: 'skill_heal', showWhen: 'skill_heal > 0', bar: { max: 3 } },
+        { var: 'sp', showWhen: 'sp > 0' },
+      ]},
       { label: '위치', items: [{ var: 'location' }] },
     ],
     // 가죽 장정 모험일지 — 어두운 갈색 가죽에 황동 각인
@@ -143,18 +155,29 @@ const RPG = {
 .sim-action.sim-armed { border-color:#d9a441; background:#3b2b19; }
 .sim-log { color:#8a7657; }`,
   },
-  // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
+  // 편성표 (v0.55~) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
   // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
-  // actions(v0.56): 팝업에 기존 액션 버튼을 단다 — 액션이 이미 이벤트·규칙 배선이라 이 한 줄로
-  // "편성 창에서 야영"이 연결된다. 편성이 여럿이면(칸코레식 함대/수복/제작) tabs 배열로 확장.
+  // tabs(v0.56): 탭 = 편성 하나 또는 시설 하나 (칸코레식 함대/수복/제작).
+  // items(v0.58): 업그레이드 탭 — 스킬 = int 변수, 찍기 = 포인트 차감 + 레벨 +1.
+  //   선행 조건(requires)은 그냥 조건식이고, 비용은 숫자 또는 식(점증 비용)이다.
   party: {
     label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
-    slots: [
-      { var: 'front', label: '전위' },
-      { var: 'rear', label: '후위' },
-    ],
-    actions: ['rest'],
     note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
+    tabs: [
+      { id: 'main', label: '편성',
+        slots: [
+          { var: 'front', label: '전위' },
+          { var: 'rear', label: '후위' },
+        ],
+        actions: ['rest'] },
+      { id: 'train', label: '수련', points: 'sp',
+        items: [
+          { var: 'skill_sword', cost: 1, note: '검을 다루는 기술 — 레벨업으로 얻은 포인트로 찍는다.' },
+          { var: 'skill_heal', cost: 1, requires: 'skill_sword >= 2', requiresLabel: '검술 2 필요',
+            note: '몸을 다스리는 법은 검을 다룬 뒤에야 보인다.' },
+        ],
+        note: '레벨 업으로 얻은 수련 포인트를 쓴다. 한 번 찍으면 되돌릴 수 없다.' },
+    ],
   },
   actions: [
     {

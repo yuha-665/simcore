@@ -685,14 +685,15 @@ function validateSchema(schema) {
       for (const v of vars) if (v && v.id) varById[v.id] = v;
       const actionIds = new Set((Array.isArray(schema.actions) ? schema.actions : []).map((a) => a && a.id));
       const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
-      // 축약형(slots/actions 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
-      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length)) {
-        err('$.party', 'tabs와 최상위 slots/actions를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+      // 축약형(slots/actions/items 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
+      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length
+        || Array.isArray(P.items) && P.items.length)) {
+        err('$.party', 'tabs와 최상위 slots/actions/items를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
       }
       // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
       const tabs = hasTabs
         ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
-        : [{ t: { slots: P.slots, actions: P.actions, roster: undefined }, p: '$.party' }];
+        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, roster: undefined, points: P.points }, p: '$.party' }];
 
       const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
       const tabIds = new Set();
@@ -706,8 +707,9 @@ function validateSchema(schema) {
         }
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
-        if (!slots.length && !acts.length) {
-          err(p, '슬롯도 액션도 없는 탭 — slots(편성) 또는 actions(시설 버튼) 중 하나는 필요합니다');
+        const items = Array.isArray(t.items) ? t.items : [];
+        if (!slots.length && !acts.length && !items.length) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드) 중 하나는 필요합니다');
           continue;
         }
         anyContent = true;
@@ -738,6 +740,35 @@ function validateSchema(schema) {
           if (!r) err(`${p}.roster`, `보유 목록 '${t.roster}'가 vars에 없음`);
           else if (r.type !== 'list') err(`${p}.roster`, `보유 목록 '${t.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
         }
+        // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성(max 1). 항목 = int 변수 하나.
+        const tabPoints = t.points ?? P.points;
+        if (tabPoints != null) {
+          const pv = varById[tabPoints];
+          if (!pv) err(`${p}.points`, `포인트 변수 '${tabPoints}'가 vars에 없음`);
+          else if (pv.type !== 'int' && pv.type !== 'float') err(`${p}.points`, `포인트 변수 '${tabPoints}'는 숫자 타입이어야 함 (현재: ${pv.type})`);
+        }
+        items.forEach((it, i) => {
+          const ip = `${p}.items[${i}]`;
+          if (!it || typeof it !== 'object') { err(ip, '항목은 객체여야 함'); return; }
+          const def = varById[it.var];
+          if (!def) { err(ip, `항목 변수 '${it.var}'가 vars에 없음`); return; }
+          if (def.type !== 'int') { err(ip, `항목 변수 '${it.var}'는 int 타입이어야 함 (현재: ${def.type}) — 레벨은 정수입니다`); return; }
+          if (seen.has(it.var)) err(ip, `'${it.var}'가 다른 슬롯/항목과 겹침 — 변수 하나는 한 자리에만`);
+          seen.add(it.var);
+          if (it.max != null && (typeof it.max !== 'number' || it.max < 1)) err(ip, 'max는 1 이상 숫자');
+          if (it.max == null && def.max == null) {
+            warn(ip, `'${it.var}'에 max가 없습니다 (변수에도 상한 없음) — 무한히 찍을 수 있게 됩니다. 의도가 아니면 max를 정하세요`);
+          }
+          if (it.cost != null) {
+            if (typeof it.cost === 'string') checkExpr(it.cost, ip + '.cost', allIds, err, { allowRand: false });
+            else if (typeof it.cost !== 'number' || it.cost < 0) err(ip + '.cost', 'cost는 0 이상 숫자 또는 표현식');
+            const costly = typeof it.cost !== 'number' || it.cost > 0;
+            if (costly && tabPoints == null) {
+              err(ip, `비용이 있는데 포인트 변수(points)가 없습니다 — 탭이나 party에 points를 정하세요`);
+            }
+          }
+          if (it.requires != null) checkExpr(it.requires, ip + '.requires', allIds, err, { allowRand: false });
+        });
       }
       if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
 

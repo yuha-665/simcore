@@ -10,6 +10,11 @@
 // 시설 탭(수복·제작)도 있다. 탭의 버튼은 **기존 액션**을 가리킨다 — 액션이 이미
 // 이벤트·규칙·판정으로 배선돼 있으므로(effects/check/inject), 새 트리거 기계가 필요 없다.
 //
+// v0.58 업그레이드(items): 스킬트리·시설 레벨·특성 찍기. 레코드 문서가 "레코드 필요"로
+// 분류했던 것인데, "굴린 값을 계산에 안 쓴다"(범위 확정) 뒤에는 지금 재료로 된다 —
+// 스킬 = int 변수(레벨), 선행조건 = 조건식(`검술 >= 2`), 찍기 = 포인트 차감 + 레벨 +1.
+// max 1짜리 항목이 곧 특성(해금)이다. 비용은 숫자 또는 식(자기 레벨 참조 → 점증 비용).
+//
 // 왜 슬롯마다 enum이 따로인가: "전위엔 전사만" 같은 슬롯별 제약이 enum 값 목록으로
 // 자연스럽게 표현된다. 후보가 같다면 같은 값 목록을 복사하면 될 뿐이다.
 
@@ -26,14 +31,18 @@ function partyTabs(schema) {
       label: t.label ?? `탭${i + 1}`,
       note: t.note ?? null,
       roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
+      points: t.points ?? p.points ?? null,   // 탭별 포인트 자원 (스킬=SP, 시설=골드) — 없으면 공용
       slots: Array.isArray(t.slots) ? t.slots : [],
       actions: Array.isArray(t.actions) ? t.actions : [],
+      items: Array.isArray(t.items) ? t.items : [],
     }));
   }
   const slots = Array.isArray(p.slots) ? p.slots : [];
   const actions = Array.isArray(p.actions) ? p.actions : [];
-  if (!slots.length && !actions.length) return [];
-  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null, slots, actions }];
+  const items = Array.isArray(p.items) ? p.items : [];
+  if (!slots.length && !actions.length && !items.length) return [];
+  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null,
+    points: p.points ?? null, slots, actions, items }];
 }
 
 /** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
@@ -60,6 +69,40 @@ function rosterHas(list, name) {
 /** 편성표의 모든 슬롯 (탭 무관 평면 목록) — 검증·중복 자리 계산 공용 */
 function allSlots(schema) {
   return partyTabs(schema).flatMap((t) => t.slots);
+}
+
+/** 모든 업그레이드 항목 (탭 무관) — 검증·진단 writer 등록 공용 */
+function allItems(schema) {
+  return partyTabs(schema).flatMap((t) => t.items);
+}
+
+// 업그레이드 항목의 현재 모습 한 벌 — 뷰와 applyUpgrade가 같은 판정을 봐야 하므로 한 곳에서.
+// 반환: { level, max, maxed, cost, points, canBuy, locked, reason }
+function itemState(schema, state, tab, item) {
+  const { evaluate, truthy } = require('./expr');
+  const { makeLookup } = require('./engine');
+  const def = (schema.vars || []).find((v) => v.id === item.var);
+  const level = Number(state.vars[item.var] ?? def?.init ?? 0);
+  const max = item.max ?? def?.max ?? null;
+  const maxed = max != null && level >= max;
+  const lookup = makeLookup(schema, state.vars);
+  let cost = null, locked = false, reason = '';
+  if (!maxed) {
+    try {
+      cost = typeof item.cost === 'string' ? Math.ceil(Number(evaluate(item.cost, lookup, null))) : (item.cost ?? 0);
+      if (!isFinite(cost)) { locked = true; reason = '비용식 결과가 숫자가 아님'; cost = null; }
+    } catch (e) { locked = true; reason = `비용식 오류 — ${e.message}`; }
+    if (!locked && item.requires) {
+      try { if (!truthy(evaluate(item.requires, lookup, null))) { locked = true; reason = item.requiresLabel ?? '선행 조건 미충족'; } }
+      catch (e) { locked = true; reason = `조건식 오류 — ${e.message}`; }
+    }
+  }
+  const pointsVar = tab.points;
+  const points = pointsVar != null ? Number(state.vars[pointsVar] ?? 0) : null;
+  const short = !locked && !maxed && cost != null && points != null && points < cost;
+  if (short) { reason = '포인트 부족'; }
+  const canBuy = !maxed && !locked && !short && (cost == null || cost === 0 || points != null);
+  return { level, max, maxed, cost, points, canBuy, locked, reason };
 }
 
 /**
@@ -118,12 +161,24 @@ function partyView(schema, state, opts = {}) {
     const actions = t.actions.map((id) => stById[id]
       ?? { id, label: (schema.actions || []).find((a) => a.id === id)?.label ?? id,
         armed: !!state.meta?.armed?.[id], disabled: false, reason: '' });
+    // 업그레이드 항목 (v0.58) — 레벨·비용·잠금을 뷰와 applyUpgrade가 같은 계산으로 본다
+    const items = t.items.map((it) => {
+      const def = byId[it.var] || {};
+      return {
+        var: it.var, label: it.label ?? def.label ?? it.var, note: it.note ?? null,
+        ...itemState(schema, state, t, it),
+      };
+    });
+    const pointsDef = t.points ? byId[t.points] : null;
     return {
       id: t.id, label: t.label, note: t.note,
       roster: rosterDef
         ? { var: t.roster, label: rosterDef.label ?? t.roster, items: (rosterItems || []).map(rosterName) }
         : null,
-      slots, actions,
+      points: pointsDef
+        ? { var: t.points, label: pointsDef.label ?? t.points, value: Number(state.vars[t.points] ?? pointsDef.init ?? 0) }
+        : null,
+      slots, actions, items,
     };
   });
 
@@ -179,4 +234,25 @@ function applyPartyPick(schema, state, slotVar, value) {
   return { ok: true, changes };
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, partyView, applyPartyPick, rosterName, rosterHas };
+/**
+ * 업그레이드 찍기 (v0.58). 뷰와 같은 판정(itemState)을 거쳐 **바뀔 값만** 돌려준다.
+ * 내리기(환불)는 없다 — 게임 표준이고, 포인트 세탁 여지를 만들지 않는다.
+ * 반환: { ok, changes: { [item.var]: 레벨+1, [points]: 잔량-비용 } } | { ok: false, reason }
+ */
+function applyUpgrade(schema, state, itemVar) {
+  const tabs = partyTabs(schema);
+  for (const t of tabs) {
+    const item = t.items.find((it) => it.var === itemVar);
+    if (!item) continue;
+    const s = itemState(schema, state, t, item);
+    if (s.maxed) return { ok: false, reason: '이미 최대 레벨' };
+    if (s.locked) return { ok: false, reason: s.reason };
+    if (!s.canBuy) return { ok: false, reason: s.reason || '지금은 찍을 수 없음' };
+    const changes = { [item.var]: s.level + 1 };
+    if (s.cost != null && s.cost > 0 && t.points) changes[t.points] = s.points - s.cost;
+    return { ok: true, changes, level: s.level + 1 };
+  }
+  return { ok: false, reason: `'${itemVar}'는 업그레이드 항목이 아님` };
+}
+
+module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState };

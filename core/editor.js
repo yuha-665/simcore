@@ -2571,6 +2571,49 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return row;
     };
 
+    // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성(max 1). 항목 = int 변수 하나.
+    const ints = schema.vars.filter((v) => v.type === 'int');
+    const pointsSelect = (owner, hint) => pair('포인트', bindSelect(owner.points ?? '',
+      [['', hint], ...ints.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+      (x) => { if (x) owner.points = x; else delete owner.points; rerender(); }),
+      '업그레이드 비용을 치를 자원 (스킬=SP, 시설=골드). 비용 있는 항목엔 필수');
+    const itemBlocks = (owner) => {
+      const frag = h('div');
+      const list = () => (owner.items = Array.isArray(owner.items) ? owner.items : []);
+      (owner.items || []).forEach((it, i) => {
+        const def = schema.vars.find((v) => v.id === it.var);
+        frag.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('변수', bindSelect(it.var ?? '', ints.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+              (x) => { it.var = x; rerender(); }), '레벨이 저장되는 int 변수'),
+            pair('이름', bindInput(it.label, (x) => { it.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+            pair('최대', bindInput(it.max, (x) => { it.max = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: def?.max != null ? String(def.max) : '5' }),
+              'max 1이면 특성(해금)이 된다'),
+            pair('비용', bindInput(it.cost, (x) => {
+              const t = String(x).trim();
+              if (!t) { delete it.cost; }
+              else { const n = Number(t); it.cost = isFinite(n) ? n : t; }
+              rerender();
+            }, { cls: 'sce-w-m', ph: '1 또는 식: (skill+1)*10' }),
+              '숫자 또는 표현식 — 식은 현재 레벨을 참조해 점증 비용을 만든다'),
+            grip(owner.items, i, rerender),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('선행 조건', bindInput(it.requires, (x) => { it.requires = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 없음) skill_sword >= 2' })),
+            pair('조건 설명', bindInput(it.requiresLabel, (x) => { it.requiresLabel = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '검술 2 필요' }),
+              '잠겼을 때 보여줄 한 줄 — 비우면 "선행 조건 미충족"'),
+            pair('설명', bindInput(it.note, (x) => { it.note = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(팝업에 보이는 한 줄)' })),
+          ),
+        ));
+      });
+      if (ints.length) {
+        frag.appendChild(addBtn('업그레이드 항목 추가', () => { list().push({ var: ints[0].id, cost: 1 }); rerender(); }));
+      } else {
+        frag.appendChild(h('div', { class: 'sce-hint' }, '업그레이드 항목은 int 변수가 필요합니다 — [변수] 탭에서 먼저 만드세요 (예: skill_sword, init 0, max 5).'));
+      }
+      return frag;
+    };
+
     if (!enums.length) {
       wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
         'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
@@ -2580,12 +2623,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 단일 편성 (축약형)
       wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
       wrap.appendChild(slotBlocks(P.slots));
+      wrap.appendChild(h('h4', {}, `업그레이드 (${(P.items || []).length}개) — 스킬 레벨·시설·특성 찍기`));
+      wrap.appendChild(h('div', { class: 'sce-row' }, pointsSelect(P, '(포인트 없음)')));
+      wrap.appendChild(itemBlocks(P));
       wrap.appendChild(actionPicks(P));
       // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
       wrap.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {
-          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots, ...(P.actions ? { actions: P.actions } : {}) }];
-          delete P.slots; delete P.actions;
+          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots,
+            ...(P.actions ? { actions: P.actions } : {}),
+            ...(P.items ? { items: P.items } : {}),
+            ...(P.points ? { points: P.points } : {}) }];
+          delete P.slots; delete P.actions; delete P.items; delete P.points;
           rerender();
         } }, '🗂 탭 구조로 전환 (편성 여러 개 · 수복/제작 같은 시설 탭)')));
     } else {
@@ -2610,8 +2659,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ),
           h('div', { class: 'sce-row' },
             pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
+            pointsSelect(t, P.points ? `(공용 — ${P.points})` : '(포인트 없음)'),
           ),
           slotBlocks(t.slots),
+          h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
+          itemBlocks(t),
           actionPicks(t),
         ));
       });

@@ -230,6 +230,80 @@ const clone = (o) => JSON.parse(J(o));
   ck('빈 에셋 이름 오류', validateSchema(blank).errors.some((e) => /비어 있음/.test(e.msg)), '');
 }
 
+// ── 3.8 업그레이드 (v0.58) — 스킬트리·시설 레벨·특성 찍기 ────
+{
+  const SK = {
+    simcore: '0.1',
+    meta: { name: '수련 테스트' },
+    vars: [
+      { id: 'sp', label: 'SP', type: 'int', init: 4, min: 0, max: 99 },
+      { id: 'gold', label: '골드', type: 'int', init: 100, min: 0 },
+      { id: 'sword', label: '검술', type: 'int', init: 0, min: 0, max: 5 },
+      { id: 'heal', label: '치유술', type: 'int', init: 0, min: 0, max: 3 },
+      { id: 'trait_iron', label: '강철 체질', type: 'int', init: 0, min: 0, max: 1 },
+      { id: 'mine', label: '광산', type: 'int', init: 1, min: 0, max: 4 },
+    ],
+    party: {
+      label: '성장', icon: '📖', points: 'sp',
+      tabs: [
+        { id: 'skill', label: '스킬',
+          items: [
+            { var: 'sword', cost: 1 },
+            { var: 'heal', cost: 1, requires: 'sword >= 2', requiresLabel: '검술 2 필요' },
+            { var: 'trait_iron', cost: 2, note: 'max 1 = 특성' },
+          ] },
+        { id: 'estate', label: '영지', points: 'gold',
+          items: [{ var: 'mine', cost: '(mine + 1) * 30' }] },
+      ],
+    },
+  };
+  const v = validateSchema(SK);
+  ck('★ 업그레이드 스키마 검증 통과', v.ok, J(v.errors));
+
+  const state = engine.initState(SK);
+  const view = party.partyView(SK, state);
+  const skill = view.tabs[0];
+  ck('★ 포인트 헤더 — 탭별 자원', skill.points.label === 'SP' && skill.points.value === 4
+    && view.tabs[1].points.var === 'gold', J([skill.points, view.tabs[1].points]));
+  ck('항목 뷰 — 레벨·최대', skill.items[0].level === 0 && skill.items[0].max === 5, J(skill.items[0]));
+  ck('★ 선행 조건 잠금 + 제작자 문구', skill.items[1].locked && skill.items[1].reason === '검술 2 필요', J(skill.items[1]));
+  ck('비용식 — 현재 레벨 참조 (점증)', view.tabs[1].items[0].cost === 60, J(view.tabs[1].items[0].cost));
+
+  const r1 = party.applyUpgrade(SK, state, 'sword');
+  ck('★ 찍기 — 레벨 +1, 포인트 차감', r1.ok && r1.changes.sword === 1 && r1.changes.sp === 3, J(r1));
+  Object.assign(state.vars, r1.changes);
+  Object.assign(state.vars, party.applyUpgrade(SK, state, 'sword').changes);
+  const v2 = party.partyView(SK, state);
+  ck('검술 2 → 치유술 해금', !v2.tabs[0].items[1].locked, J(v2.tabs[0].items[1]));
+
+  const r2 = party.applyUpgrade(SK, state, 'trait_iron');
+  ck('특성(max 1) 찍기', r2.ok && r2.changes.trait_iron === 1, J(r2));
+  Object.assign(state.vars, r2.changes);
+  ck('SP 0 도달', state.vars.sp === 0, String(state.vars.sp));
+  const r3 = party.applyUpgrade(SK, state, 'heal');
+  ck('★ 포인트 부족 거부', !r3.ok && /포인트 부족/.test(r3.reason), J(r3));
+  const r4 = party.applyUpgrade(SK, state, 'trait_iron');
+  ck('최대 레벨 거부', !r4.ok && /최대 레벨/.test(r4.reason), J(r4));
+  const r5 = party.applyUpgrade(SK, state, 'mine');
+  ck('★ 영지 탭 — 골드로 시설 레벨', r5.ok && r5.changes.mine === 2 && r5.changes.gold === 40, J(r5));
+  ck('없는 항목 거부', !party.applyUpgrade(SK, state, 'hp').ok, '');
+
+  // 검증 — 새 오류들
+  const badVar = clone(SK);
+  badVar.party.tabs[0].items[0].var = 'nobody';
+  ck('없는 변수 오류', validateSchema(badVar).errors.some((e) => /vars에 없음/.test(e.msg)), '');
+  const notInt = clone(SK);
+  notInt.vars.push({ id: 'mood', label: '기분', type: 'text', init: '' });
+  notInt.party.tabs[0].items[0].var = 'mood';
+  ck('int 아니면 오류', validateSchema(notInt).errors.some((e) => /int 타입이어야/.test(e.msg)), '');
+  const noPts = clone(SK);
+  delete noPts.party.points; delete noPts.party.tabs[0].points;
+  ck('비용 있는데 포인트 없음 오류', validateSchema(noPts).errors.some((e) => /포인트 변수.*없습니다/.test(e.msg)), '');
+  const badReq = clone(SK);
+  badReq.party.tabs[0].items[1].requires = 'ghost >= 1';
+  ck('선행 조건의 없는 변수 오류', validateSchema(badReq).errors.some((e) => /알 수 없는 변수/.test(e.msg)), '');
+}
+
 // ── 4. /액션 내장 명령 — 플로팅 버튼 제거(v0.55)의 폴백 통로 ──
 {
   const schema = {

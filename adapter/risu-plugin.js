@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.57.0
-//@display-name SimCore (시뮬 엔진) v0.57 편성 초상
+//@version 0.58.0
+//@display-name SimCore (시뮬 엔진) v0.58 스킬·업그레이드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.58.0 ────────────────────────────────────────────────
+// 업그레이드(items) — 스킬창·스킬 레벨 찍기 (유저 제안: "영지로 치면 시설 레벨·정책·특성").
+// 레코드 문서가 "레코드 필요"로 분류했던 스킬트리인데, 범위 확정("굴린 값 계산 안 함") 뒤에는
+// 지금 재료로 된다: 스킬 = int 변수(레벨), 선행조건 = 조건식, 찍기 = 포인트 차감 + 레벨 +1.
+// - party 탭 종류 셋째: 탭 = 편성(slots) / 시설(actions) / **업그레이드(items)** — 버튼 하나에 통합.
+// - items[]: { var(int), max(생략 시 변수 max), cost(숫자|식 — 자기 레벨 참조 = 점증 비용),
+//   requires(조건식) + requiresLabel(잠금 사유 문구), note }. points(포인트 변수)는 탭별
+//   오버라이드 (스킬=SP, 시설=골드) — roster와 같은 규약. max 1 항목 = 특성(해금).
+// - 내리기(환불) 없음 — 게임 표준이고 포인트 세탁 여지를 안 만든다. 우리 iframe이라 클릭 온전.
+// - 뷰와 applyUpgrade가 같은 판정(itemState) — 화면과 실행이 어긋날 수 없다.
+// - 진단: 항목·포인트 변수 writer '편성' 등록 + 단조·눌어붙음 측정 제외 (팝업 소비는 시뮬 밖).
+// - RPG 템플릿: 수련 탭 (sp는 레벨업 이벤트가 지급, 치유술은 검술 2 선행). 테스트 78종.
 //
 // ── v0.57.0 ────────────────────────────────────────────────
 // 편성 초상 — 유저 제안: "봇의 대원 목록 패널처럼 편성표에도 캐릭터 에셋을". 봇 패널의
@@ -1942,6 +1955,20 @@
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
+      #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
+        border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
+      #sc-game .scg-item-name { font-weight:700; color:#f2ecff; }
+      #sc-game .scg-item-lv { color:#9db8e8; font-size:12px; font-variant-numeric:tabular-nums; }
+      #sc-game .scg-pips { letter-spacing:2px; font-size:11px; color:#5b8def; }
+      #sc-game .scg-pips .off { color:#2a3a5e; }
+      #sc-game .scg-cost { margin-left:auto; color:#ffd166; font-size:12px; font-variant-numeric:tabular-nums; }
+      #sc-game .scg-buy { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
+        padding:4px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-buy:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scg-buy:disabled { opacity:.4; cursor:not-allowed; }
+      #sc-game .scg-item-note { flex-basis:100%; color:#7d8aa5; font-size:11.5px; }
+      #sc-game .scg-maxed { color:#8fd6a8; font-size:12px; font-weight:700; }
       #sc-game .scg-face { width:38px; height:38px; border-radius:8px; object-fit:cover;
         border:1px solid #35486e; flex:0 0 auto; }
       #sc-game .scg-chip-face { width:20px; height:20px; border-radius:50%; object-fit:cover;
@@ -2155,6 +2182,52 @@
       card.appendChild(box);
     }
 
+    // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성 찍기. 우리 iframe이라 클릭이 온전하다.
+    if (tab.items.length) {
+      if (tab.points) {
+        card.appendChild(Object.assign(document.createElement('div'), {
+          className: 'scg-points',
+          textContent: `${tab.points.label}: ${tab.points.value}`,
+        }));
+      }
+      for (const it of tab.items) {
+        const row = document.createElement('div');
+        row.className = 'scg-item';
+        row.dataset.item = it.var;
+        const name = Object.assign(document.createElement('span'), { className: 'scg-item-name', textContent: it.label });
+        const lv = Object.assign(document.createElement('span'), {
+          className: 'scg-item-lv',
+          textContent: it.max != null ? `Lv ${it.level}/${it.max}` : `Lv ${it.level}`,
+        });
+        row.append(name, lv);
+        if (it.max != null && it.max <= 10) {
+          const pips = document.createElement('span');
+          pips.className = 'scg-pips';
+          pips.innerHTML = '●'.repeat(it.level) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`;
+          row.appendChild(pips);
+        }
+        if (it.maxed) {
+          row.appendChild(Object.assign(document.createElement('span'), { className: 'scg-cost scg-maxed', textContent: 'MAX' }));
+        } else {
+          if (it.cost != null && it.cost > 0) {
+            row.appendChild(Object.assign(document.createElement('span'), {
+              className: 'scg-cost', textContent: `비용 ${it.cost}${tab.points ? ` ${tab.points.label}` : ''}`,
+            }));
+          }
+          const buy = Object.assign(document.createElement('button'), { className: 'scg-buy', textContent: '＋ 찍기' });
+          if (!it.canBuy) { buy.disabled = true; buy.title = it.reason || '지금은 찍을 수 없음'; }
+          else buy.title = '레벨을 올린다 — 되돌릴 수 없음';
+          buy.onclick = () => onUpgradeClick(it.var);
+          row.appendChild(buy);
+        }
+        const noteBits = [it.note, (!it.maxed && it.locked && it.reason) ? `🔒 ${it.reason}` : null].filter(Boolean);
+        if (noteBits.length) {
+          row.appendChild(Object.assign(document.createElement('span'), { className: 'scg-item-note', textContent: noteBits.join(' · ') }));
+        }
+        card.appendChild(row);
+      }
+    }
+
     // 탭의 액션 버튼 (v0.56) — 기존 액션을 그대로 무장/해제한다. 액션이 이미 이벤트·규칙·
     // 판정으로 배선돼 있으므로(effects/check/inject) 이 칩 하나로 "출격·수복·제작"이 연결된다.
     if (tab.actions.length) {
@@ -2185,27 +2258,42 @@
     root.appendChild(card);
   }
 
+  // 게임 패널이 변수를 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러
+  // (편집기 commitVars와 같은 규약). 실패해도 화면은 갱신한다.
+  async function commitPanelChanges(changes, what) {
+    Object.assign(session.current.vars, changes);
+    try {
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+    } catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
+    console.log(`[simcore] ${what}:`, JSON.stringify(changes));
+    renderGamePanel();
+    await updateControlStrip();
+    if (panelBuilt) renderPanel();
+  }
+
   async function onPartyPick(slotVar, value) {
     if (!session || !schema) return;
     const r = partyMod.applyPartyPick(schema, session.current, slotVar, value);
     if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    gameOpenSlot = null;
     if (Object.keys(r.changes).length) {
-      Object.assign(session.current.vars, r.changes);
-      // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 (편집기 commitVars와 같은 규약)
-      try {
-        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
-        const chaIdx = await Risuai.getCurrentCharacterIndex();
-        const chatIdx = await Risuai.getCurrentChatIndex();
-        await mirrorVars(chaIdx, chatIdx);
-      } catch (e) { console.log('[simcore] 편성 저장 실패:', e.message); }
       const moved = r.moved ? ` (${r.moved.from}에서 이동)` : '';
       gameNotice = `✓ ${value === (schema.party?.empty ?? null) ? '비웠어요' : `${value} 편성${moved}`}`;
-      console.log('[simcore] 편성 변경:', JSON.stringify(r.changes));
-    }
-    gameOpenSlot = null;
-    renderGamePanel();
-    await updateControlStrip();
-    if (panelBuilt) renderPanel();
+      await commitPanelChanges(r.changes, '편성 변경');
+    } else renderGamePanel();
+  }
+
+  // 업그레이드 찍기 (v0.58) — 내리기 없음 (게임 표준·포인트 세탁 방지)
+  async function onUpgradeClick(itemVar) {
+    if (!session || !schema) return;
+    const r = partyMod.applyUpgrade(schema, session.current, itemVar);
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    const label = (schema.vars.find((v) => v.id === itemVar)?.label) ?? itemVar;
+    gameNotice = `✓ ${label} Lv ${r.level}`;
+    await commitPanelChanges(r.changes, '업그레이드');
   }
 
   // ── 클릭 조작 (v0.42) — 상태창 범례·갈림길 선택지를 진짜 버튼으로 ──────────

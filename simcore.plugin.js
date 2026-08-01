@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.57.0
-//@display-name SimCore (시뮬 엔진) v0.57 편성 초상
+//@version 0.58.0
+//@display-name SimCore (시뮬 엔진) v0.58 스킬·업그레이드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.58.0 ────────────────────────────────────────────────
+// 업그레이드(items) — 스킬창·스킬 레벨 찍기 (유저 제안: "영지로 치면 시설 레벨·정책·특성").
+// 레코드 문서가 "레코드 필요"로 분류했던 스킬트리인데, 범위 확정("굴린 값 계산 안 함") 뒤에는
+// 지금 재료로 된다: 스킬 = int 변수(레벨), 선행조건 = 조건식, 찍기 = 포인트 차감 + 레벨 +1.
+// - party 탭 종류 셋째: 탭 = 편성(slots) / 시설(actions) / **업그레이드(items)** — 버튼 하나에 통합.
+// - items[]: { var(int), max(생략 시 변수 max), cost(숫자|식 — 자기 레벨 참조 = 점증 비용),
+//   requires(조건식) + requiresLabel(잠금 사유 문구), note }. points(포인트 변수)는 탭별
+//   오버라이드 (스킬=SP, 시설=골드) — roster와 같은 규약. max 1 항목 = 특성(해금).
+// - 내리기(환불) 없음 — 게임 표준이고 포인트 세탁 여지를 안 만든다. 우리 iframe이라 클릭 온전.
+// - 뷰와 applyUpgrade가 같은 판정(itemState) — 화면과 실행이 어긋날 수 없다.
+// - 진단: 항목·포인트 변수 writer '편성' 등록 + 단조·눌어붙음 측정 제외 (팝업 소비는 시뮬 밖).
+// - RPG 템플릿: 수련 탭 (sp는 레벨업 이벤트가 지급, 치유술은 검술 2 선행). 테스트 78종.
 //
 // ── v0.57.0 ────────────────────────────────────────────────
 // 편성 초상 — 유저 제안: "봇의 대원 목록 패널처럼 편성표에도 캐릭터 에셋을". 봇 패널의
@@ -2215,14 +2228,15 @@ function validateSchema(schema) {
       for (const v of vars) if (v && v.id) varById[v.id] = v;
       const actionIds = new Set((Array.isArray(schema.actions) ? schema.actions : []).map((a) => a && a.id));
       const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
-      // 축약형(slots/actions 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
-      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length)) {
-        err('$.party', 'tabs와 최상위 slots/actions를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+      // 축약형(slots/actions/items 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
+      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length
+        || Array.isArray(P.items) && P.items.length)) {
+        err('$.party', 'tabs와 최상위 slots/actions/items를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
       }
       // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
       const tabs = hasTabs
         ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
-        : [{ t: { slots: P.slots, actions: P.actions, roster: undefined }, p: '$.party' }];
+        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, roster: undefined, points: P.points }, p: '$.party' }];
 
       const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
       const tabIds = new Set();
@@ -2236,8 +2250,9 @@ function validateSchema(schema) {
         }
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
-        if (!slots.length && !acts.length) {
-          err(p, '슬롯도 액션도 없는 탭 — slots(편성) 또는 actions(시설 버튼) 중 하나는 필요합니다');
+        const items = Array.isArray(t.items) ? t.items : [];
+        if (!slots.length && !acts.length && !items.length) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드) 중 하나는 필요합니다');
           continue;
         }
         anyContent = true;
@@ -2268,6 +2283,35 @@ function validateSchema(schema) {
           if (!r) err(`${p}.roster`, `보유 목록 '${t.roster}'가 vars에 없음`);
           else if (r.type !== 'list') err(`${p}.roster`, `보유 목록 '${t.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
         }
+        // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성(max 1). 항목 = int 변수 하나.
+        const tabPoints = t.points ?? P.points;
+        if (tabPoints != null) {
+          const pv = varById[tabPoints];
+          if (!pv) err(`${p}.points`, `포인트 변수 '${tabPoints}'가 vars에 없음`);
+          else if (pv.type !== 'int' && pv.type !== 'float') err(`${p}.points`, `포인트 변수 '${tabPoints}'는 숫자 타입이어야 함 (현재: ${pv.type})`);
+        }
+        items.forEach((it, i) => {
+          const ip = `${p}.items[${i}]`;
+          if (!it || typeof it !== 'object') { err(ip, '항목은 객체여야 함'); return; }
+          const def = varById[it.var];
+          if (!def) { err(ip, `항목 변수 '${it.var}'가 vars에 없음`); return; }
+          if (def.type !== 'int') { err(ip, `항목 변수 '${it.var}'는 int 타입이어야 함 (현재: ${def.type}) — 레벨은 정수입니다`); return; }
+          if (seen.has(it.var)) err(ip, `'${it.var}'가 다른 슬롯/항목과 겹침 — 변수 하나는 한 자리에만`);
+          seen.add(it.var);
+          if (it.max != null && (typeof it.max !== 'number' || it.max < 1)) err(ip, 'max는 1 이상 숫자');
+          if (it.max == null && def.max == null) {
+            warn(ip, `'${it.var}'에 max가 없습니다 (변수에도 상한 없음) — 무한히 찍을 수 있게 됩니다. 의도가 아니면 max를 정하세요`);
+          }
+          if (it.cost != null) {
+            if (typeof it.cost === 'string') checkExpr(it.cost, ip + '.cost', allIds, err, { allowRand: false });
+            else if (typeof it.cost !== 'number' || it.cost < 0) err(ip + '.cost', 'cost는 0 이상 숫자 또는 표현식');
+            const costly = typeof it.cost !== 'number' || it.cost > 0;
+            if (costly && tabPoints == null) {
+              err(ip, `비용이 있는데 포인트 변수(points)가 없습니다 — 탭이나 party에 points를 정하세요`);
+            }
+          }
+          if (it.requires != null) checkExpr(it.requires, ip + '.requires', allIds, err, { allowRand: false });
+        });
       }
       if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
 
@@ -2636,6 +2680,11 @@ SimCore.define("party", function (require, module, exports) {
 // 시설 탭(수복·제작)도 있다. 탭의 버튼은 **기존 액션**을 가리킨다 — 액션이 이미
 // 이벤트·규칙·판정으로 배선돼 있으므로(effects/check/inject), 새 트리거 기계가 필요 없다.
 //
+// v0.58 업그레이드(items): 스킬트리·시설 레벨·특성 찍기. 레코드 문서가 "레코드 필요"로
+// 분류했던 것인데, "굴린 값을 계산에 안 쓴다"(범위 확정) 뒤에는 지금 재료로 된다 —
+// 스킬 = int 변수(레벨), 선행조건 = 조건식(`검술 >= 2`), 찍기 = 포인트 차감 + 레벨 +1.
+// max 1짜리 항목이 곧 특성(해금)이다. 비용은 숫자 또는 식(자기 레벨 참조 → 점증 비용).
+//
 // 왜 슬롯마다 enum이 따로인가: "전위엔 전사만" 같은 슬롯별 제약이 enum 값 목록으로
 // 자연스럽게 표현된다. 후보가 같다면 같은 값 목록을 복사하면 될 뿐이다.
 
@@ -2652,14 +2701,18 @@ function partyTabs(schema) {
       label: t.label ?? `탭${i + 1}`,
       note: t.note ?? null,
       roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
+      points: t.points ?? p.points ?? null,   // 탭별 포인트 자원 (스킬=SP, 시설=골드) — 없으면 공용
       slots: Array.isArray(t.slots) ? t.slots : [],
       actions: Array.isArray(t.actions) ? t.actions : [],
+      items: Array.isArray(t.items) ? t.items : [],
     }));
   }
   const slots = Array.isArray(p.slots) ? p.slots : [];
   const actions = Array.isArray(p.actions) ? p.actions : [];
-  if (!slots.length && !actions.length) return [];
-  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null, slots, actions }];
+  const items = Array.isArray(p.items) ? p.items : [];
+  if (!slots.length && !actions.length && !items.length) return [];
+  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null,
+    points: p.points ?? null, slots, actions, items }];
 }
 
 /** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
@@ -2686,6 +2739,40 @@ function rosterHas(list, name) {
 /** 편성표의 모든 슬롯 (탭 무관 평면 목록) — 검증·중복 자리 계산 공용 */
 function allSlots(schema) {
   return partyTabs(schema).flatMap((t) => t.slots);
+}
+
+/** 모든 업그레이드 항목 (탭 무관) — 검증·진단 writer 등록 공용 */
+function allItems(schema) {
+  return partyTabs(schema).flatMap((t) => t.items);
+}
+
+// 업그레이드 항목의 현재 모습 한 벌 — 뷰와 applyUpgrade가 같은 판정을 봐야 하므로 한 곳에서.
+// 반환: { level, max, maxed, cost, points, canBuy, locked, reason }
+function itemState(schema, state, tab, item) {
+  const { evaluate, truthy } = require('./expr');
+  const { makeLookup } = require('./engine');
+  const def = (schema.vars || []).find((v) => v.id === item.var);
+  const level = Number(state.vars[item.var] ?? def?.init ?? 0);
+  const max = item.max ?? def?.max ?? null;
+  const maxed = max != null && level >= max;
+  const lookup = makeLookup(schema, state.vars);
+  let cost = null, locked = false, reason = '';
+  if (!maxed) {
+    try {
+      cost = typeof item.cost === 'string' ? Math.ceil(Number(evaluate(item.cost, lookup, null))) : (item.cost ?? 0);
+      if (!isFinite(cost)) { locked = true; reason = '비용식 결과가 숫자가 아님'; cost = null; }
+    } catch (e) { locked = true; reason = `비용식 오류 — ${e.message}`; }
+    if (!locked && item.requires) {
+      try { if (!truthy(evaluate(item.requires, lookup, null))) { locked = true; reason = item.requiresLabel ?? '선행 조건 미충족'; } }
+      catch (e) { locked = true; reason = `조건식 오류 — ${e.message}`; }
+    }
+  }
+  const pointsVar = tab.points;
+  const points = pointsVar != null ? Number(state.vars[pointsVar] ?? 0) : null;
+  const short = !locked && !maxed && cost != null && points != null && points < cost;
+  if (short) { reason = '포인트 부족'; }
+  const canBuy = !maxed && !locked && !short && (cost == null || cost === 0 || points != null);
+  return { level, max, maxed, cost, points, canBuy, locked, reason };
 }
 
 /**
@@ -2744,12 +2831,24 @@ function partyView(schema, state, opts = {}) {
     const actions = t.actions.map((id) => stById[id]
       ?? { id, label: (schema.actions || []).find((a) => a.id === id)?.label ?? id,
         armed: !!state.meta?.armed?.[id], disabled: false, reason: '' });
+    // 업그레이드 항목 (v0.58) — 레벨·비용·잠금을 뷰와 applyUpgrade가 같은 계산으로 본다
+    const items = t.items.map((it) => {
+      const def = byId[it.var] || {};
+      return {
+        var: it.var, label: it.label ?? def.label ?? it.var, note: it.note ?? null,
+        ...itemState(schema, state, t, it),
+      };
+    });
+    const pointsDef = t.points ? byId[t.points] : null;
     return {
       id: t.id, label: t.label, note: t.note,
       roster: rosterDef
         ? { var: t.roster, label: rosterDef.label ?? t.roster, items: (rosterItems || []).map(rosterName) }
         : null,
-      slots, actions,
+      points: pointsDef
+        ? { var: t.points, label: pointsDef.label ?? t.points, value: Number(state.vars[t.points] ?? pointsDef.init ?? 0) }
+        : null,
+      slots, actions, items,
     };
   });
 
@@ -2805,7 +2904,28 @@ function applyPartyPick(schema, state, slotVar, value) {
   return { ok: true, changes };
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, partyView, applyPartyPick, rosterName, rosterHas };
+/**
+ * 업그레이드 찍기 (v0.58). 뷰와 같은 판정(itemState)을 거쳐 **바뀔 값만** 돌려준다.
+ * 내리기(환불)는 없다 — 게임 표준이고, 포인트 세탁 여지를 만들지 않는다.
+ * 반환: { ok, changes: { [item.var]: 레벨+1, [points]: 잔량-비용 } } | { ok: false, reason }
+ */
+function applyUpgrade(schema, state, itemVar) {
+  const tabs = partyTabs(schema);
+  for (const t of tabs) {
+    const item = t.items.find((it) => it.var === itemVar);
+    if (!item) continue;
+    const s = itemState(schema, state, t, item);
+    if (s.maxed) return { ok: false, reason: '이미 최대 레벨' };
+    if (s.locked) return { ok: false, reason: s.reason };
+    if (!s.canBuy) return { ok: false, reason: s.reason || '지금은 찍을 수 없음' };
+    const changes = { [item.var]: s.level + 1 };
+    if (s.cost != null && s.cost > 0 && t.points) changes[t.points] = s.points - s.cost;
+    return { ok: true, changes, level: s.level + 1 };
+  }
+  return { ok: false, reason: `'${itemVar}'는 업그레이드 항목이 아님` };
+}
+
+module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState };
 
 });
 
@@ -5392,6 +5512,10 @@ function writerMap(schema) {
   // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
   // (v0.56부터 탭 구조 — 평면 목록은 party 모듈이 한 곳에서 정의한다)
   for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
+  // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
+  for (const t of require('./party').partyTabs(schema)) {
+    for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
+  }
   return w;
 }
 
@@ -5573,6 +5697,10 @@ function diagnose(schema, opts = {}) {
   const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) => partySlotIds.has(n));
   const partyGatedWriters = new Set(); // 편성 게이트 액션이 움직이는 변수 — 단조·눌어붙음 측정 불가
   for (const a of ACT) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
+  // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
+  for (const t of require('./party').partyTabs(schema)) {
+    for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
+  }
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;
 
@@ -8883,6 +9011,49 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return row;
     };
 
+    // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성(max 1). 항목 = int 변수 하나.
+    const ints = schema.vars.filter((v) => v.type === 'int');
+    const pointsSelect = (owner, hint) => pair('포인트', bindSelect(owner.points ?? '',
+      [['', hint], ...ints.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+      (x) => { if (x) owner.points = x; else delete owner.points; rerender(); }),
+      '업그레이드 비용을 치를 자원 (스킬=SP, 시설=골드). 비용 있는 항목엔 필수');
+    const itemBlocks = (owner) => {
+      const frag = h('div');
+      const list = () => (owner.items = Array.isArray(owner.items) ? owner.items : []);
+      (owner.items || []).forEach((it, i) => {
+        const def = schema.vars.find((v) => v.id === it.var);
+        frag.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('변수', bindSelect(it.var ?? '', ints.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+              (x) => { it.var = x; rerender(); }), '레벨이 저장되는 int 변수'),
+            pair('이름', bindInput(it.label, (x) => { it.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+            pair('최대', bindInput(it.max, (x) => { it.max = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: def?.max != null ? String(def.max) : '5' }),
+              'max 1이면 특성(해금)이 된다'),
+            pair('비용', bindInput(it.cost, (x) => {
+              const t = String(x).trim();
+              if (!t) { delete it.cost; }
+              else { const n = Number(t); it.cost = isFinite(n) ? n : t; }
+              rerender();
+            }, { cls: 'sce-w-m', ph: '1 또는 식: (skill+1)*10' }),
+              '숫자 또는 표현식 — 식은 현재 레벨을 참조해 점증 비용을 만든다'),
+            grip(owner.items, i, rerender),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('선행 조건', bindInput(it.requires, (x) => { it.requires = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 없음) skill_sword >= 2' })),
+            pair('조건 설명', bindInput(it.requiresLabel, (x) => { it.requiresLabel = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '검술 2 필요' }),
+              '잠겼을 때 보여줄 한 줄 — 비우면 "선행 조건 미충족"'),
+            pair('설명', bindInput(it.note, (x) => { it.note = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(팝업에 보이는 한 줄)' })),
+          ),
+        ));
+      });
+      if (ints.length) {
+        frag.appendChild(addBtn('업그레이드 항목 추가', () => { list().push({ var: ints[0].id, cost: 1 }); rerender(); }));
+      } else {
+        frag.appendChild(h('div', { class: 'sce-hint' }, '업그레이드 항목은 int 변수가 필요합니다 — [변수] 탭에서 먼저 만드세요 (예: skill_sword, init 0, max 5).'));
+      }
+      return frag;
+    };
+
     if (!enums.length) {
       wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
         'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
@@ -8892,12 +9063,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 단일 편성 (축약형)
       wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
       wrap.appendChild(slotBlocks(P.slots));
+      wrap.appendChild(h('h4', {}, `업그레이드 (${(P.items || []).length}개) — 스킬 레벨·시설·특성 찍기`));
+      wrap.appendChild(h('div', { class: 'sce-row' }, pointsSelect(P, '(포인트 없음)')));
+      wrap.appendChild(itemBlocks(P));
       wrap.appendChild(actionPicks(P));
       // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
       wrap.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {
-          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots, ...(P.actions ? { actions: P.actions } : {}) }];
-          delete P.slots; delete P.actions;
+          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots,
+            ...(P.actions ? { actions: P.actions } : {}),
+            ...(P.items ? { items: P.items } : {}),
+            ...(P.points ? { points: P.points } : {}) }];
+          delete P.slots; delete P.actions; delete P.items; delete P.points;
           rerender();
         } }, '🗂 탭 구조로 전환 (편성 여러 개 · 수복/제작 같은 시설 탭)')));
     } else {
@@ -8922,8 +9099,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ),
           h('div', { class: 'sce-row' },
             pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
+            pointsSelect(t, P.points ? `(공용 — ${P.points})` : '(포인트 없음)'),
           ),
           slotBlocks(t.slots),
+          h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
+          itemBlocks(t),
           actionPicks(t),
         ));
       });
@@ -10916,6 +11096,12 @@ const RPG = {
       desc: '동행 중인 동료 이름 목록. 서사에서 동료를 영입하면 추가, 떠나면 제거.' },
     { id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
     { id: 'rear', label: '후위', type: 'enum', init: '없음', enum: ['없음', '아린', '바크', '셀레네'] },
+    // 수련 재료 (v0.58 배울 점): 스킬 = int 변수(레벨), 포인트는 레벨업 이벤트가 준다.
+    // 찍기는 [⚔️ 편성] 팝업의 수련 탭 — 선행 조건(requires)은 그냥 조건식이다.
+    { id: 'sp', label: '수련 포인트', type: 'int', init: 1, min: 0, max: 99,
+      desc: '레벨 업 때마다 1씩 쌓인다. 수련 탭에서 스킬을 찍는 데 쓴다.' },
+    { id: 'skill_sword', label: '검술', type: 'int', init: 0, min: 0, max: 5 },
+    { id: 'skill_heal', label: '치유술', type: 'int', init: 0, min: 0, max: 3 },
   ],
   derived: [
     { id: 'max_hp', label: '최대 HP', expr: '80 + level * 20' },
@@ -10933,8 +11119,9 @@ const RPG = {
           { set: 'level', expr: 'level + 1' },
           { set: 'hp', expr: 'max_hp' },
           { set: 'mp', expr: 'max_mp' },
+          { set: 'sp', expr: 'min(sp + 1, 99)' },
         ],
-        notify: '레벨 업! 몸에 힘이 차오르며 상처가 아문다.',
+        notify: '레벨 업! 몸에 힘이 차오르며 상처가 아문다. 수련 포인트를 1 얻었다.',
       },
       { id: 'hp_cap', when: 'hp > max_hp', effects: [{ set: 'hp', expr: 'max_hp' }] },
       { id: 'mp_cap', when: 'mp > max_mp', effects: [{ set: 'mp', expr: 'max_mp' }] },
@@ -10989,7 +11176,7 @@ const RPG = {
   },
   promptState: {
     position: 'history_end',
-    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n상태: {condition}',
+    template: '[모험 기록 — Lv.{level} · {location}]\nHP {hp}/{max_hp} | MP {mp}/{max_mp} | EXP {exp}/{exp_need} | {gold}G\n장비: {weapon} / {armor}\n소지품: {inventory}\n동료: {allies} | 편성: 전위 {front} / 후위 {rear}\n수련: 검술 {skill_sword} · 치유술 {skill_heal} (SP {sp})\n상태: {condition}',
     includeEvents: true,
   },
   statusUI: {
@@ -11015,6 +11202,11 @@ const RPG = {
         { var: 'rear', showWhen: 'rear != "없음"' },
         { var: 'allies' },
       ]},
+      { label: '수련', items: [
+        { var: 'skill_sword', showWhen: 'skill_sword > 0', bar: { max: 5 } },
+        { var: 'skill_heal', showWhen: 'skill_heal > 0', bar: { max: 3 } },
+        { var: 'sp', showWhen: 'sp > 0' },
+      ]},
       { label: '위치', items: [{ var: 'location' }] },
     ],
     // 가죽 장정 모험일지 — 어두운 갈색 가죽에 황동 각인
@@ -11030,18 +11222,29 @@ const RPG = {
 .sim-action.sim-armed { border-color:#d9a441; background:#3b2b19; }
 .sim-log { color:#8a7657; }`,
   },
-  // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
+  // 편성표 (v0.55~) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
   // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
-  // actions(v0.56): 팝업에 기존 액션 버튼을 단다 — 액션이 이미 이벤트·규칙 배선이라 이 한 줄로
-  // "편성 창에서 야영"이 연결된다. 편성이 여럿이면(칸코레식 함대/수복/제작) tabs 배열로 확장.
+  // tabs(v0.56): 탭 = 편성 하나 또는 시설 하나 (칸코레식 함대/수복/제작).
+  // items(v0.58): 업그레이드 탭 — 스킬 = int 변수, 찍기 = 포인트 차감 + 레벨 +1.
+  //   선행 조건(requires)은 그냥 조건식이고, 비용은 숫자 또는 식(점증 비용)이다.
   party: {
     label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
-    slots: [
-      { var: 'front', label: '전위' },
-      { var: 'rear', label: '후위' },
-    ],
-    actions: ['rest'],
     note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
+    tabs: [
+      { id: 'main', label: '편성',
+        slots: [
+          { var: 'front', label: '전위' },
+          { var: 'rear', label: '후위' },
+        ],
+        actions: ['rest'] },
+      { id: 'train', label: '수련', points: 'sp',
+        items: [
+          { var: 'skill_sword', cost: 1, note: '검을 다루는 기술 — 레벨업으로 얻은 포인트로 찍는다.' },
+          { var: 'skill_heal', cost: 1, requires: 'skill_sword >= 2', requiresLabel: '검술 2 필요',
+            note: '몸을 다스리는 법은 검을 다룬 뒤에야 보인다.' },
+        ],
+        note: '레벨 업으로 얻은 수련 포인트를 쓴다. 한 번 찍으면 되돌릴 수 없다.' },
+    ],
   },
   actions: [
     {
@@ -14250,6 +14453,20 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
+      #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
+        border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
+      #sc-game .scg-item-name { font-weight:700; color:#f2ecff; }
+      #sc-game .scg-item-lv { color:#9db8e8; font-size:12px; font-variant-numeric:tabular-nums; }
+      #sc-game .scg-pips { letter-spacing:2px; font-size:11px; color:#5b8def; }
+      #sc-game .scg-pips .off { color:#2a3a5e; }
+      #sc-game .scg-cost { margin-left:auto; color:#ffd166; font-size:12px; font-variant-numeric:tabular-nums; }
+      #sc-game .scg-buy { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
+        padding:4px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-buy:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scg-buy:disabled { opacity:.4; cursor:not-allowed; }
+      #sc-game .scg-item-note { flex-basis:100%; color:#7d8aa5; font-size:11.5px; }
+      #sc-game .scg-maxed { color:#8fd6a8; font-size:12px; font-weight:700; }
       #sc-game .scg-face { width:38px; height:38px; border-radius:8px; object-fit:cover;
         border:1px solid #35486e; flex:0 0 auto; }
       #sc-game .scg-chip-face { width:20px; height:20px; border-radius:50%; object-fit:cover;
@@ -14463,6 +14680,52 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       card.appendChild(box);
     }
 
+    // 업그레이드 항목 (v0.58) — 스킬트리·시설 레벨·특성 찍기. 우리 iframe이라 클릭이 온전하다.
+    if (tab.items.length) {
+      if (tab.points) {
+        card.appendChild(Object.assign(document.createElement('div'), {
+          className: 'scg-points',
+          textContent: `${tab.points.label}: ${tab.points.value}`,
+        }));
+      }
+      for (const it of tab.items) {
+        const row = document.createElement('div');
+        row.className = 'scg-item';
+        row.dataset.item = it.var;
+        const name = Object.assign(document.createElement('span'), { className: 'scg-item-name', textContent: it.label });
+        const lv = Object.assign(document.createElement('span'), {
+          className: 'scg-item-lv',
+          textContent: it.max != null ? `Lv ${it.level}/${it.max}` : `Lv ${it.level}`,
+        });
+        row.append(name, lv);
+        if (it.max != null && it.max <= 10) {
+          const pips = document.createElement('span');
+          pips.className = 'scg-pips';
+          pips.innerHTML = '●'.repeat(it.level) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`;
+          row.appendChild(pips);
+        }
+        if (it.maxed) {
+          row.appendChild(Object.assign(document.createElement('span'), { className: 'scg-cost scg-maxed', textContent: 'MAX' }));
+        } else {
+          if (it.cost != null && it.cost > 0) {
+            row.appendChild(Object.assign(document.createElement('span'), {
+              className: 'scg-cost', textContent: `비용 ${it.cost}${tab.points ? ` ${tab.points.label}` : ''}`,
+            }));
+          }
+          const buy = Object.assign(document.createElement('button'), { className: 'scg-buy', textContent: '＋ 찍기' });
+          if (!it.canBuy) { buy.disabled = true; buy.title = it.reason || '지금은 찍을 수 없음'; }
+          else buy.title = '레벨을 올린다 — 되돌릴 수 없음';
+          buy.onclick = () => onUpgradeClick(it.var);
+          row.appendChild(buy);
+        }
+        const noteBits = [it.note, (!it.maxed && it.locked && it.reason) ? `🔒 ${it.reason}` : null].filter(Boolean);
+        if (noteBits.length) {
+          row.appendChild(Object.assign(document.createElement('span'), { className: 'scg-item-note', textContent: noteBits.join(' · ') }));
+        }
+        card.appendChild(row);
+      }
+    }
+
     // 탭의 액션 버튼 (v0.56) — 기존 액션을 그대로 무장/해제한다. 액션이 이미 이벤트·규칙·
     // 판정으로 배선돼 있으므로(effects/check/inject) 이 칩 하나로 "출격·수복·제작"이 연결된다.
     if (tab.actions.length) {
@@ -14493,27 +14756,42 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     root.appendChild(card);
   }
 
+  // 게임 패널이 변수를 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러
+  // (편집기 commitVars와 같은 규약). 실패해도 화면은 갱신한다.
+  async function commitPanelChanges(changes, what) {
+    Object.assign(session.current.vars, changes);
+    try {
+      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      await mirrorVars(chaIdx, chatIdx);
+    } catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
+    console.log(`[simcore] ${what}:`, JSON.stringify(changes));
+    renderGamePanel();
+    await updateControlStrip();
+    if (panelBuilt) renderPanel();
+  }
+
   async function onPartyPick(slotVar, value) {
     if (!session || !schema) return;
     const r = partyMod.applyPartyPick(schema, session.current, slotVar, value);
     if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    gameOpenSlot = null;
     if (Object.keys(r.changes).length) {
-      Object.assign(session.current.vars, r.changes);
-      // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 (편집기 commitVars와 같은 규약)
-      try {
-        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
-        const chaIdx = await Risuai.getCurrentCharacterIndex();
-        const chatIdx = await Risuai.getCurrentChatIndex();
-        await mirrorVars(chaIdx, chatIdx);
-      } catch (e) { console.log('[simcore] 편성 저장 실패:', e.message); }
       const moved = r.moved ? ` (${r.moved.from}에서 이동)` : '';
       gameNotice = `✓ ${value === (schema.party?.empty ?? null) ? '비웠어요' : `${value} 편성${moved}`}`;
-      console.log('[simcore] 편성 변경:', JSON.stringify(r.changes));
-    }
-    gameOpenSlot = null;
-    renderGamePanel();
-    await updateControlStrip();
-    if (panelBuilt) renderPanel();
+      await commitPanelChanges(r.changes, '편성 변경');
+    } else renderGamePanel();
+  }
+
+  // 업그레이드 찍기 (v0.58) — 내리기 없음 (게임 표준·포인트 세탁 방지)
+  async function onUpgradeClick(itemVar) {
+    if (!session || !schema) return;
+    const r = partyMod.applyUpgrade(schema, session.current, itemVar);
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    const label = (schema.vars.find((v) => v.id === itemVar)?.label) ?? itemVar;
+    gameNotice = `✓ ${label} Lv ${r.level}`;
+    await commitPanelChanges(r.changes, '업그레이드');
   }
 
   // ── 클릭 조작 (v0.42) — 상태창 범례·갈림길 선택지를 진짜 버튼으로 ──────────

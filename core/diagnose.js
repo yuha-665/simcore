@@ -48,6 +48,10 @@ function writerMap(schema) {
   // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
   // (v0.56부터 탭 구조 — 평면 목록은 party 모듈이 한 곳에서 정의한다)
   for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
+  // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
+  for (const t of require('./party').partyTabs(schema)) {
+    for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
+  }
   return w;
 }
 
@@ -229,6 +233,10 @@ function diagnose(schema, opts = {}) {
   const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) => partySlotIds.has(n));
   const partyGatedWriters = new Set(); // 편성 게이트 액션이 움직이는 변수 — 단조·눌어붙음 측정 불가
   for (const a of ACT) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
+  // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
+  for (const t of require('./party').partyTabs(schema)) {
+    for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
+  }
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;
 

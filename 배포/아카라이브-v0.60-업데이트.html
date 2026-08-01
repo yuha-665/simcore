@@ -1,0 +1,202 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.47 &nbsp;→&nbsp; v0.60</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+봇에 <b style="color:#e0a94a;">게임 화면이 생겼습니다</b> — 파티 편성, 스킬트리 찍기, 시설 관리를 팝업에서 직접 합니다. 날짜도 이제 시스템이 셉니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+쌓인 게 많아 요약만 추립니다. 큰 덩어리는 셋 — <b style="color:#dbe2ea;">편성표 게임 패널</b>(v0.55~59),
+<b style="color:#dbe2ea;">시간·날짜 1급 지원</b>(v0.49~51), <b style="color:#dbe2ea;">에셋 팩 실전 다듬기</b>(v0.48~54).
+그리고 밑바닥에서 진단이 조용히 똑똑해졌습니다.
+</p>
+
+<!-- ─────────── ① 편성표 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">편성표 — 채팅 화면에 게임 패널이 뜹니다</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;"><span style="color:#8b98a9;">채팅 우상단 [⚔️ 편성] 버튼 → 팝업 → 슬롯 눌러 인물 앉히기</span>
+   전위 [ 아린 ]   후위 [ 비어 있음 ]
+   후보: 아린 · 바크 · <span style="color:#8b98a9;">🔒셀레네 (아직 영입 안 됨)</span></pre>
+
+  <!-- 스샷: 편성 팝업 — 슬롯 + 후보 칩 (초상 있는 버전이면 더 좋음) -->
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">저장은 그냥 변수입니다.</b> 슬롯 하나 = enum 변수 하나라서, 편성 결과가
+  상태창 조건 분기·이벤트 조건·AI 프롬프트에 <b style="color:#dbe2ea;">그대로</b> 흘러갑니다. 새 문법이 없습니다.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">보유 목록과 연동됩니다.</b> 동료 목록(list 변수)을 지정하면 목록에 있는 인물만 편성 가능 —
+  서사에서 영입해야 자리가 열립니다. AI가 "손상" 목록으로 옮긴 함선은 출격 편성에서 자동으로 잠기는 식으로,
+  <b style="color:#dbe2ea;">서사와 편성이 저절로 맞물립니다.</b>
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  <b style="color:#e0a94a;">탭으로 늘어납니다 (칸코레식).</b> 편성 탭 여러 개 + 슬롯 없이 버튼만 있는
+  시설 탭(수복·제작·보급)을 자유로 구성합니다. 시설 버튼은 기존 액션에 연결되므로 이벤트·판정·규칙이 전부 그대로 걸립니다.
+  인물이 많으면 탭 바 대신 <b style="color:#dbe2ea;">🔍 검색+셀렉트</b>로 바꿀 수 있습니다.
+  </p>
+
+  <!-- 스샷: 탭 여러 개 있는 편성 팝업 (출격 편성 | 정비창 | 보급) -->
+</div>
+
+<!-- ─────────── ② 스킬트리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">스킬트리·시설 레벨·특성 — 포인트로 찍습니다</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">검술 ●●○○○ Lv.2   비용 1 SP   [+ 찍기]
+치유술 ○○○○○      <span style="color:#8b98a9;">🔒 검술 2 필요</span>
+<span style="color:#8b98a9;">SP 3 — 레벨 업 이벤트가 지급</span></pre>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  스킬 = int 변수(레벨), 선행 조건 = 조건식(<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;">검술 >= 2</span>),
+  찍기 = 포인트 차감 + 레벨 +1. 비용에 식을 쓰면 <b style="color:#dbe2ea;">레벨이 오를수록 비싸지는 점증 비용</b>도 됩니다.
+  최대 1레벨짜리는 곧 특성(해금)이고요.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  RPG 스킬창만이 아닙니다 — 영지물의 시설 레벨(포인트=골드), 정책·특성 찍기, 함대물의 개수(改修)…
+  <b style="color:#e0a94a;">"포인트 모아서 찍는 것"은 전부 이 재료로 만듭니다.</b> 파티원마다 탭을 하나씩 주면 인물별 스킬트리도 됩니다.
+  </p>
+
+  <!-- 스샷: 수련 탭 — 스킬 pips + 찍기 버튼 -->
+</div>
+
+<!-- ─────────── ③ 편성 연동 + 초상 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">편성이 화면 전체와 맞물립니다</span>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">편성된 애들만 보여주기.</b> 편성표가 있으면 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;">deployed</span>(지금 편성된 이름 목록)를
+  어느 조건식에서든 쓸 수 있습니다 — <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;">has(deployed, "아린")</span> 하나로
+  상태창은 편성된 인물 정보만 표시하고, 스킬 탭은 편성된 인물 것만 남고, 지시문은 "아린이 곁에 있다"를 서사에 흘립니다.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  <b style="color:#e0a94a;">초상.</b> 봇에 들어 있는 캐릭터 추가 에셋을 이름만 매핑해 주면
+  슬롯과 후보 칩에 <b style="color:#dbe2ea;">얼굴이 뜹니다.</b> 편집기에 에셋 이름 자동완성이 붙어 있습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  <b style="color:#e0a94a;">팝업 CSS 커스텀.</b> 제작자가 편성 팝업의 색·모양을 직접 입힐 수 있습니다.
+  인물별로 칩 색을 다르게 주는 것도 됩니다. (플러그인이 알아서 팝업 범위 안에 가둬서, 앱 화면은 못 깨뜨립니다)
+  </p>
+
+  <!-- 스샷: 초상 붙은 편성 팝업 + 커스텀 CSS 먹인 버전 -->
+</div>
+
+<!-- ─────────── ④ 시간·날짜 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">날짜가 이제 안 튑니다 — 시간·달력 1급 지원</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;">
+  "아웃풋마다 날짜가 튄다"는 제보에서 시작했습니다. 원인은 AI에게 날짜 산술을 시키는 것 자체 —
+  그래서 <b style="color:#e0a94a;">시계를 시스템이 가져갔습니다.</b> 내부에 정수 하나만 저장하고, 거기서 전부 계산합니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">{date} → 1461년 3월 7일 (토)   {clock} → 07:05   {season} → 봄
+<span style="color:#8b98a9;">조건식에서도 그대로:</span> weekday == "토"   hour >= 22   dom == 1 <span style="color:#8b98a9;">(월초 정산)</span></pre>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  요일·윤년·월별 일수까지 진짜 달력입니다. 판타지용 <b style="color:#dbe2ea;">360일 달력</b>(12개월×30일)도 고를 수 있고요.
+  하루가 저절로 가는 봇(생존물)과 버튼·서사로만 가는 봇(일상물) 둘 다 지원합니다 —
+  💤 잠들기 버튼이 "지금이 새벽 3시든 밤 11시든 <b style="color:#dbe2ea;">다음 날 아침 8시</b>"로 보내는 것도 됩니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  "주말 오후에 시작" 같은 시작 프리셋, 편집기 [시간] 탭(켜기·미리보기·옛 날짜 변수 정리)도 같이 들어갔습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 에셋 팩 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">개선</span>
+    <span style="font-size:19px;font-weight:600;">에셋 팩 — 실전에서 두들겨 다듬음</span>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  감정 이미지 자동 삽입(가이드 10탄에서 소개한 그 기능)이 실봇 여러 개를 거치며 여물었습니다.
+  <b style="color:#e0a94a;">추가 호출 0</b>으로 보조 AI가 상태 갱신하는 김에 이미지까지 고르는 구조는 그대로고 —
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">여러 장 삽입(aux_flow)</b> — 서사 위치에 맞춰 여러 장을 놓되, 위치를 "3번째 문단"이 아니라
+  <b style="color:#dbe2ea;">본문 인용</b>으로 받습니다. 못 찾으면 안 놓습니다 — 어긋난 위치에 박히는 일이 없습니다.<br>
+  · <b style="color:#dbe2ea;">모듈봇 지원</b> — 이미지가 모듈 에셋에 사는 봇(MIKU&amp;BRS류)도 읽습니다.<br>
+  · <b style="color:#dbe2ea;">모듈 지침 가져오기</b> — 남이 배포한 이미지 지침 문서를 붙여넣으면 AI가 팩으로 변환합니다.<br>
+  · <b style="color:#dbe2ea;">매 턴 비용 추정</b> — 지침서 통짜 덤프 대비 토큰 절감률을 팩 목록 아래에 보여줍니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  진단·실존 대조가 정상 설계(의상별로 감정 세트가 다른 스파스 구성 등)를 잘못 지적하던 것도 잡았습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑥ 진단 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">개선</span>
+    <span style="font-size:19px;font-weight:600;">진단이 거짓말을 안 하게 됐습니다</span>
+  </div>
+
+  <p style="margin:0 0 8px;color:#a9b4c2;">
+  진단은 스키마를 수십 턴 굴려 죽은 이벤트·못 쓰는 액션을 찾는 기능인데, 실봇 하나에서 지적 47건 중
+  29건이 오탐이었습니다. 더 나쁜 건 <b style="color:#e0a94a;">올바른 설계일수록 지적이 늘던 것</b> —
+  그래서 원칙을 세웠습니다: <b style="color:#dbe2ea;">"도구가 좋은 설계를 벌주면 아무도 그 설계를 안 쓴다."</b>
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · AI가 서사 따라 움직이는 변수, 편성해야 열리는 액션, 안전장치 이벤트는 이제 "고치지 마세요"라고 <b style="color:#dbe2ea;">이유와 함께</b> 말합니다.<br>
+  · 대신 <b style="color:#dbe2ea;">정말 죽은 경로</b>는 새로 잡습니다 — 수입이 없어 영영 못 찍는 스킬트리,
+  영입 경로가 없어 영영 잠긴 동료, 조건이 영영 거짓인 탭.<br>
+  · 급여일 매 턴 중복 지급 같은, 시뮬로는 원리적으로 못 보는 사고도 정적 검사로 막습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;">
+  AI에게 만들게 하는 규격서도 같이 자랐습니다 — 편성표·시간·반복 이벤트(once인가 래치인가)를 전부 가르치고,
+  AI가 실수해도 <b style="color:#dbe2ea;">적용 전에 막히고 원인이 보이게</b> 다이제스트를 보강했습니다.
+  </p>
+</div>
+
+<!-- ─────────── 자잘한 것 ─────────── -->
+<div style="background:#161b22;border:1px solid #2a3140;border-radius:6px;padding:20px 22px;margin-bottom:18px;">
+  <div style="font-size:16px;font-weight:600;margin-bottom:12px;color:#dbe2ea;">그 외</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">/액션 명령</b> — 채팅에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;">/액션 휴식</span>이라고 치면 액션이 토글됩니다.
+  화면 클릭 권한이 막힌 환경에서도 액션을 쓸 수 있는 뒷문입니다.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">템플릿 13종</b> — 함대물(편성 탭·정비창·보급 실물 예제)이 추가됐고, RPG에는 편성+스킬트리가 실렸습니다.
+  새로 만들 때 참고서로 쓰세요.
+  </p>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">우상단 버튼 정리</b> — 액션별 플로팅 버튼을 걷어냈습니다. 액션은 상태창 아래 범례에서 누르고,
+  우상단은 편성표 같은 게임 패널 버튼 자리가 됐습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">호환</b> — 기존 봇·세이브 전부 그대로 돕니다. 시간·편성표·에셋 팩은 전부 옵트인이라,
+  안 쓰는 봇에는 아무 변화가 없습니다.
+  </p>
+</div>
+
+</div>

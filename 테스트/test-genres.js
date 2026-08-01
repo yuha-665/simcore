@@ -264,7 +264,7 @@ for (const [key, T] of [['생존', S], ['정치', P]]) {
   }
   ck('전 템플릿 유효 + 무경고', !bad, bad);
   ck('신규 2종이 목록에 등록됨', !!TEMPLATES.survival && !!TEMPLATES.politics, '');
-  ck('템플릿 총 12종', Object.keys(TEMPLATES).length === 12, String(Object.keys(TEMPLATES).length));
+  ck('템플릿 총 13종 (v0.56.2 함대 추가)', Object.keys(TEMPLATES).length === 13, String(Object.keys(TEMPLATES).length));
 }
 
 let p = 0, f = 0;

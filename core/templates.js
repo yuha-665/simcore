@@ -2082,6 +2082,157 @@ const SMITH = {
   },
 };
 
+// ── 함대 — 편성과 출격 ────────────────────────────────────────
+// 배울 점 (v0.56 편성 탭의 표준 예제 — 실봇 변환 1호에서 구조만 일반화):
+//   ① 편성 탭 여러 개 — 출격 편성(슬롯) / 정비창(슬롯) / 보급(시설: 슬롯 없이 버튼만)
+//   ② 탭별 roster — 정비창은 '손상' 목록에 오른 함만 입거 (출격 탭은 공용 '가동' 목록)
+//   ③ 가동↔손상 목록은 보조 AI가 서사 따라 옮긴다 → 편성표 잠금이 저절로 따라온다
+//      ("한 함 = 한 자리"라 정비 중인 함은 출격 편성에 못 앉는다)
+//   ④ 편성 게이트 액션 — "기함을 정해야 출격"(when이 슬롯 변수를 봄). 진단은 이걸
+//      '편성 담당 문턱'으로 안내한다 (시뮬은 편성을 못 하므로 — 조건을 낮추지 말 것)
+//   ⑤ 함명은 enum이 확정한다 — AI는 명단 밖 이름을 만들 수 없다 (제작자가 후보를 정한다)
+const FLEET = {
+  simcore: '0.1',
+  meta: { name: '함대 — 편성과 출격', author: 'SimCore 템플릿' },
+  vars: [
+    { id: 'fuel', label: '연료', type: 'int', init: 600, min: 0, max: 999 },
+    { id: 'ammo', label: '탄약', type: 'int', init: 600, min: 0, max: 999 },
+    { id: 'parts', label: '자재', type: 'int', init: 40, min: 0, max: 99 },
+    { id: 'alert', label: '경계태세', type: 'enum', init: '평시', enum: ['평시', '경계', '전투'], cmd: '태세',
+      desc: '기지의 경계 단계. 적 함영이 보고되면 경계, 교전이 벌어지면 전투로.' },
+    { id: 'active', label: '가동', type: 'list', cmd: '가동', maxItems: 8, itemMaxLength: 12,
+      init: ['미리내', '놀', '해무', '별찌', '가람', '든바다'],
+      desc: '출격 가능한 함. 손상당하면 여기서 빼서 손상 목록으로 옮긴다.' },
+    { id: 'damaged', label: '손상', type: 'list', cmd: '손상', init: [], maxItems: 8, itemMaxLength: 12,
+      desc: '수리가 필요한 함. 수리가 끝나면 가동 목록으로 되돌린다.' },
+    { id: 'flag', label: '기함', type: 'enum', init: '없음',
+      enum: ['없음', '미리내', '놀', '해무', '별찌', '가람', '든바다'] },
+    { id: 'ship2', label: '2번함', type: 'enum', init: '없음',
+      enum: ['없음', '미리내', '놀', '해무', '별찌', '가람', '든바다'] },
+    { id: 'ship3', label: '3번함', type: 'enum', init: '없음',
+      enum: ['없음', '미리내', '놀', '해무', '별찌', '가람', '든바다'] },
+    { id: 'dock1', label: '정비석', type: 'enum', init: '없음',
+      enum: ['없음', '미리내', '놀', '해무', '별찌', '가람', '든바다'] },
+  ],
+  party: {
+    label: '편성', icon: '⚓', empty: '없음', roster: 'active',
+    note: '정비 중인 함은 출격 편성에 앉힐 수 없다 (한 함 = 한 자리).',
+    tabs: [
+      { id: 'sortie', label: '출격 편성',
+        slots: [{ var: 'flag', label: '기함' }, { var: 'ship2' }, { var: 'ship3' }],
+        actions: ['sortie'],
+        note: '가동 중인 함만 편성할 수 있다.' },
+      { id: 'dock', label: '정비창', roster: 'damaged',
+        slots: [{ var: 'dock1' }],
+        actions: ['repair'],
+        note: '손상 목록에 오른 함만 입거할 수 있다.' },
+      { id: 'supply', label: '보급', actions: ['resupply'],
+        note: '본부에 보급을 요청한다.' },
+    ],
+  },
+  actions: [
+    { id: 'sortie', label: '⚓ 출격', mode: 'oneshot',
+      when: "flag != '없음'",
+      inject: '[명령] 편성된 함대에 출격 명령이 떨어졌다. 임무 해역으로 향한다.',
+      effects: [
+        { set: 'fuel', expr: 'max(0, fuel - 40)' },
+        { set: 'ammo', expr: 'max(0, ammo - 40)' },
+      ] },
+    { id: 'repair', label: '🔧 수리 개시', mode: 'oneshot',
+      when: "parts >= 10 and dock1 != '없음'",
+      inject: '[명령] 정비창에 입거한 함의 수리를 개시한다. 자재를 소모해 손상부를 복구한다.',
+      effects: [{ set: 'parts', expr: 'max(0, parts - 10)' }] },
+    { id: 'resupply', label: '📦 보급 요청', mode: 'oneshot', cooldown: 6,
+      inject: '[명령] 본부에 보급을 요청했다. 며칠 안에 물자가 도착한다.',
+      effects: [
+        { set: 'fuel', expr: 'min(999, fuel + 250)' },
+        { set: 'ammo', expr: 'min(999, ammo + 250)' },
+        { set: 'parts', expr: 'min(99, parts + 15)' },
+      ] },
+  ],
+  rules: {
+    onTurn: [],
+    events: [],
+    randomEvents: {
+      chancePerTurn: 0.12,
+      table: [
+        { id: 'contact', weight: 2, cooldown: 5,
+          effects: [{ set: 'alert', expr: "'경계'" }],
+          notify: '초계에서 미확인 함영 보고 — 경계태세로 전환했다.' },
+        { id: 'supply_ship', weight: 2, cooldown: 6,
+          effects: [{ set: 'fuel', expr: 'min(999, fuel + 80)' }],
+          notify: '순회 보급선이 기지에 들러 연료를 나눠 주고 갔다.' },
+      ],
+    },
+  },
+  directives: [
+    { id: 'has_damaged', when: 'count(damaged) > 0',
+      text: '[상태] 수리 대기 중인 함이 있다: {damaged}. 손상의 여파와 빈 자리가 부대 분위기에 묻어나야 한다.' },
+    { id: 'low_fuel', when: 'fuel <= 120',
+      text: '[상태] 연료 잔량 {fuel} — 보급이 끊기면 발이 묶인다. 물자 부족의 긴장이 판단에 영향을 줘야 한다.' },
+  ],
+  updater: {
+    model: 'aux',
+    allow: [
+      { id: 'fuel', maxDelta: 100 },
+      { id: 'ammo', maxDelta: 100 },
+      { id: 'parts', maxDelta: 12 },
+      { id: 'alert' },
+      { id: 'active' },
+      { id: 'damaged' },
+    ],
+    guide: '전투·손상·수리·보급이 서사에 명시된 경우에만 반영하라. 함이 손상당하면 가동 목록에서 빼서 '
+      + '손상 목록에 넣고, 수리가 끝나면 되돌려라. 함명은 명단 그대로 쓰고 새 이름을 만들지 마라. '
+      + '출격 편성(기함·번함)은 지휘관이 정한다 — 바꾸지 마라.',
+  },
+  promptState: {
+    position: 'history_end',
+    template: '[함대 현황] 경계태세 {alert} | 연료 {fuel} · 탄약 {ammo} · 자재 {parts}\n'
+      + '출격 편성: 기함 {flag} / {ship2} / {ship3}\n정비창: {dock1} | 손상: {damaged}\n가동: {active}',
+    includeEvents: true,
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    groups: [
+      { label: '출격 편성', items: [
+        { var: 'flag', showWhen: "flag != '없음'" },
+        { var: 'ship2', showWhen: "ship2 != '없음'" },
+        { var: 'ship3', showWhen: "ship3 != '없음'" },
+      ] },
+      { label: '정비창', items: [
+        { var: 'dock1', showWhen: "dock1 != '없음'" },
+        { var: 'damaged', showWhen: 'count(damaged) > 0' },
+      ] },
+      { label: '자원', items: [
+        { var: 'fuel', bar: { max: 999 }, color: "fuel <= 120 ? '#c0392b' : '#4a7a5a'" },
+        { var: 'ammo', bar: { max: 999 }, color: "'#8a6d45'" },
+        { var: 'parts', bar: { max: 99 }, color: "'#5a7a8a'" },
+      ] },
+      { label: '태세', items: [{ var: 'alert' }, { var: 'active' }] },
+    ],
+    // 강철 관제실 — 짙은 강철색에 신호등 계기
+    customCSS: `.sim-status { background:#14181d; border:1px solid #3a4148; border-radius:3px; color:#c9cdd2; }
+.sim-status summary { color:#6fa8dc; letter-spacing:.12em; font-weight:700; }
+.sim-group { border-left:2px solid #3a4148; padding-left:9px; }
+.sim-group-label { color:#8a9199; letter-spacing:.16em; font-size:.8em; }
+.sim-label { color:#7a828a; opacity:1; }
+.sim-value { color:#e8ebee; font-weight:700; }
+.sim-badge, .sim-tag { background:#1d2329; color:#8fc1e8; border:1px solid #3a4148; border-radius:2px; }
+.sim-bar { background:#0d1013; height:9px; border:1px solid #2a3138; border-radius:1px; }
+.sim-action { border-color:#4a5158; color:#c9cdd2; border-radius:2px; background:#1d2329; }
+.sim-action.sim-armed { border-color:#6fa8dc; background:#1b2733; color:#a8d0f0; }
+.sim-log { color:#6a727a; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'first', label: '제1전대 선발 (미리내 기함)',
+        set: { flag: '미리내', ship2: '놀', ship3: '해무' } },
+      { id: 'blank', label: '미편성 — 직접 편성', set: {} },
+      { id: 'hard', label: '보급 끊긴 전선', set: { fuel: 200, ammo: 150, parts: 10 } },
+    ],
+  },
+};
+
 const TEMPLATES = {
   blank: { label: '빈 스키마 (최소)', schema: BLANK },
   daily: { label: '일상 — 하루의 기록 (날짜·시간·날씨·소지품)', schema: DAILY },
@@ -2095,6 +2246,7 @@ const TEMPLATES = {
   trpg: { label: 'TRPG — 주사위 판정 (상시 판정·능력 연동·이점)', schema: TRPG },
   vtuber: { label: '버튜버 — 방송 운영 (동접·화제성·번아웃·논란)', schema: VTUBER },
   smith: { label: '대장간 — 무쇠와 장부 (금고 잠금·단조 판정·주문 갈림길)', schema: SMITH },
+  fleet: { label: '함대 — 편성과 출격 (편성 탭·정비창·시설 버튼)', schema: FLEET },
 };
 
-module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH };
+module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH, FLEET };

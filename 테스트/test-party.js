@@ -203,6 +203,33 @@ const clone = (o) => JSON.parse(J(o));
   ck('★ 축약형 = 탭 1개로 정규화', tabs.length === 1 && tabs[0].slots.length === 2 && tabs[0].roster === 'allies', J(tabs));
 }
 
+// ── 3.7 초상 (v0.57) — 이름 → 에셋 이름 매핑 ─────────────────
+{
+  const P = clone(BASE);
+  P.party.portraits = { '아린': 'arin_profile', '바크': 'bark_profile.png' };
+  const v = validateSchema(P);
+  ck('★ portraits 검증 통과', v.ok, J(v.errors));
+
+  const state = engine.initState(P);
+  state.vars.front = '아린';
+  const view = party.partyView(P, state);
+  const slot = view.tabs[0].slots[0];
+  ck('★ 슬롯에 초상 이름 실림', slot.portrait === 'arin_profile', J(slot.portrait));
+  ck('후보 칩에도 실림', slot.candidates.find((c) => c.name === '바크').portrait === 'bark_profile.png', '');
+  ck('매핑 없는 인물은 null (글자 폴백)', slot.candidates.find((c) => c.name === '셀레네').portrait === null, '');
+  ck('빈 슬롯은 초상 없음', view.tabs[0].slots[1].portrait === null, '');
+
+  const typo = clone(P);
+  typo.party.portraits['셀레나'] = 'x';
+  ck('명단에 없는 이름은 경고 (오타 감지)', validateSchema(typo).warnings.some((w) => /오타이거나/.test(w.msg)), '');
+  const bad = clone(P);
+  bad.party.portraits = ['x'];
+  ck('배열이면 오류', validateSchema(bad).errors.some((e) => /객체여야/.test(e.msg)), '');
+  const blank = clone(P);
+  blank.party.portraits['아린'] = ' ';
+  ck('빈 에셋 이름 오류', validateSchema(blank).errors.some((e) => /비어 있음/.test(e.msg)), '');
+}
+
 // ── 4. /액션 내장 명령 — 플로팅 버튼 제거(v0.55)의 폴백 통로 ──
 {
   const schema = {

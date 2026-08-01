@@ -2631,6 +2631,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : '지금은 유저만 편성을 바꿉니다 (슬롯 변수가 [AI 설정] 허용 목록에 없음) — '
           + 'AI도 서사 따라 바꾸게 하려면 허용 목록에 슬롯 변수를 추가하세요.'));
 
+    // ── 초상 (v0.57) — 이름 → 캐릭터 에셋 이름. 슬롯·후보 칩에 얼굴이 뜬다 ──
+    {
+      const allNames = [...new Set(allFlatSlots()
+        .flatMap((s) => (schema.vars.find((v) => v.id === s.var)?.enum || []))
+        .filter((n) => n !== P.empty))];
+      if (allNames.length) {
+        const fold = h('details', { class: 'sce-fold' },
+          h('summary', {}, `🖼 초상 매핑 (${Object.keys(P.portraits || {}).filter((k) => P.portraits[k]).length}/${allNames.length}명)`));
+        fold.appendChild(h('div', { class: 'sce-hint' },
+          '인물별로 캐릭터 추가 에셋의 이름을 적으면 편성 팝업의 슬롯·후보 칩에 얼굴이 뜹니다 '
+          + '(확장자는 생략 가능 — leningrad_profile.png → leningrad_profile). '
+          + '비워 두면 그 인물은 이름만 표시됩니다. 에셋 이름은 봇 편집의 추가 에셋 탭에서 볼 수 있습니다.'));
+        const dl = h('datalist', { id: 'scep-portrait-assets' });
+        fold.appendChild(dl);
+        if (ai && ai.getAssetSources) {
+          const note = h('span', { class: 'sce-hint' }, '');
+          fold.appendChild(h('div', { class: 'sce-row' },
+            h('button', { class: 'sce-btn', onclick: async () => {
+              try {
+                const r = await ai.getAssetSources();
+                const names = [...new Set((r?.sources || []).flatMap((s) => s.names || []))];
+                dl.replaceChildren(...names.map((n) => h('option', { value: n })));
+                note.textContent = `에셋 ${names.length}개 읽음 — 입력 칸에서 자동완성됩니다.`;
+              } catch (e) { note.textContent = `에셋 읽기 실패 — ${e.message}`; }
+            } }, '🔎 에셋 이름 불러오기 (자동완성용)'), note));
+        }
+        for (const nm of allNames) {
+          fold.appendChild(h('div', { class: 'sce-row' },
+            h('span', { class: 'sce-w-m' }, nm),
+            (() => {
+              const inp = bindInput(P.portraits?.[nm], (x) => {
+                P.portraits = P.portraits || {};
+                const t = String(x).trim();
+                if (t) P.portraits[nm] = t; else delete P.portraits[nm];
+                if (!Object.keys(P.portraits).length) delete P.portraits;
+                rerender();
+              }, { cls: 'sce-w-l', ph: '(에셋 이름 — 비우면 글자만)' });
+              inp.setAttribute('list', 'scep-portrait-assets');
+              return inp;
+            })(),
+          ));
+        }
+        wrap.appendChild(fold);
+      }
+    }
+
     wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '쓸 수 있는 클래스: .scg-card(카드) .scg-title(제목) .scg-slot(슬롯 상자) .scg-slot-label '

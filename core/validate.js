@@ -750,6 +750,26 @@ function validateSchema(schema) {
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
       }
+      // 초상 (v0.57) — 이름 → 에셋 이름. 오타는 이미지가 조용히 안 뜨는 사고가 되므로 여기서 잡는다
+      if (P.portraits != null) {
+        if (typeof P.portraits !== 'object' || Array.isArray(P.portraits)) {
+          err('$.party.portraits', 'portraits는 { "이름": "에셋이름" } 객체여야 함');
+        } else {
+          const allNames = new Set();
+          for (const { t } of tabs) {
+            for (const s of (Array.isArray(t?.slots) ? t.slots : [])) {
+              const def = varById[s?.var];
+              for (const nm of (def?.enum || [])) allNames.add(nm);
+            }
+          }
+          for (const [nm, asset] of Object.entries(P.portraits)) {
+            if (typeof asset !== 'string' || !asset.trim()) err('$.party.portraits', `'${nm}'의 에셋 이름이 비어 있음`);
+            if (allNames.size && !allNames.has(nm)) {
+              warn('$.party.portraits', `'${nm}'은 어느 슬롯 후보에도 없는 이름입니다 — 오타이거나 명단에서 빠진 인물입니다`);
+            }
+          }
+        }
+      }
       if (P.empty == null && anySlot) {
         warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
           + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');

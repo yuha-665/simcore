@@ -1,13 +1,25 @@
 //@name simcore
 //@api 3.0
-//@version 0.56.2
-//@display-name SimCore (시뮬 엔진) v0.56 편성 탭
+//@version 0.57.0
+//@display-name SimCore (시뮬 엔진) v0.57 편성 초상
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.57.0 ────────────────────────────────────────────────
+// 편성 초상 — 유저 제안: "봇의 대원 목록 패널처럼 편성표에도 캐릭터 에셋을". 봇 패널의
+// {{raw::…}}는 메시지 렌더 전용이라 우리 iframe 팝업에서는 안 통한다 — 대신
+// party.portraits({ "이름": "에셋이름" }) 맵 + getCharacter().additionalAssets에서 이름 대조
+// + readImage(assetId)로 실물을 읽어 blob URL로 그린다 (한글 함명↔영문 에셋명은 자동
+// 유도가 안 되므로 명시 맵 — 근사매칭으로 돌아가지 않는다는 에셋 팩 원칙 그대로).
+// - 슬롯 38px 초상 + 후보 칩 20px 아바타. 로드 전 숨김 → 도착 시 표시.
+// - readImage가 없거나 막힌 환경(v0.54 db 전례)은 글자 폴백 + 콘솔 1회 안내. [live-test]
+// - 반환형 방어: Uint8Array/ArrayBuffer/데이터URL 문자열 전부 수용. 캐시는 chaId 키.
+// - 검증: portraits 오타(명단 밖 이름) 경고 — 이미지가 조용히 안 뜨는 사고를 미리 잡는다.
+// - 편집기 [편성표] 탭에 초상 매핑 접이식 + 에셋 이름 자동완성(getAssetSources datalist).
 //
 // ── v0.56.2 ────────────────────────────────────────────────
 // 내장 템플릿 13호 '함대 — 편성과 출격' — v0.56 편성 탭의 표준 예제 (유저 요청:
@@ -2268,6 +2280,26 @@ function validateSchema(schema) {
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
       }
+      // 초상 (v0.57) — 이름 → 에셋 이름. 오타는 이미지가 조용히 안 뜨는 사고가 되므로 여기서 잡는다
+      if (P.portraits != null) {
+        if (typeof P.portraits !== 'object' || Array.isArray(P.portraits)) {
+          err('$.party.portraits', 'portraits는 { "이름": "에셋이름" } 객체여야 함');
+        } else {
+          const allNames = new Set();
+          for (const { t } of tabs) {
+            for (const s of (Array.isArray(t?.slots) ? t.slots : [])) {
+              const def = varById[s?.var];
+              for (const nm of (def?.enum || [])) allNames.add(nm);
+            }
+          }
+          for (const [nm, asset] of Object.entries(P.portraits)) {
+            if (typeof asset !== 'string' || !asset.trim()) err('$.party.portraits', `'${nm}'의 에셋 이름이 비어 있음`);
+            if (allNames.size && !allNames.has(nm)) {
+              warn('$.party.portraits', `'${nm}'은 어느 슬롯 후보에도 없는 이름입니다 — 오타이거나 명단에서 빠진 인물입니다`);
+            }
+          }
+        }
+      }
       if (P.empty == null && anySlot) {
         warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
           + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');
@@ -2673,6 +2705,9 @@ function partyView(schema, state, opts = {}) {
   const tabs = partyTabs(schema);
   const unique = p.unique !== false;
   const empty = p.empty ?? null;
+  // 초상 (v0.57) — 이름 → 캐릭터 에셋 이름. 한글 함명↔영문 에셋명은 자동 유도가 안 되므로
+  // 제작자가 명시한다. 실물 읽기(readImage)는 어댑터 몫 — 여기서는 이름만 얹는다.
+  const portraits = (p.portraits && typeof p.portraits === 'object') ? p.portraits : {};
   const byId = {};
   for (const v of schema.vars || []) byId[v.id] = v;
   const stById = {};
@@ -2698,8 +2733,12 @@ function partyView(schema, state, opts = {}) {
           name,
           usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
           locked: rosterItems != null && !rosterHas(rosterItems, name),
+          portrait: portraits[name] ?? null,
         }));
-      return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+      return {
+        var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates,
+        portrait: (!isEmpty && value != null) ? (portraits[value] ?? null) : null,
+      };
     });
     // 탭의 액션 버튼 — 모르는 id는 조용히 떨구지 않고 잠긴 채 보여 준다 (제작 실수 가시화)
     const actions = t.actions.map((id) => stById[id]
@@ -8904,6 +8943,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : '지금은 유저만 편성을 바꿉니다 (슬롯 변수가 [AI 설정] 허용 목록에 없음) — '
           + 'AI도 서사 따라 바꾸게 하려면 허용 목록에 슬롯 변수를 추가하세요.'));
 
+    // ── 초상 (v0.57) — 이름 → 캐릭터 에셋 이름. 슬롯·후보 칩에 얼굴이 뜬다 ──
+    {
+      const allNames = [...new Set(allFlatSlots()
+        .flatMap((s) => (schema.vars.find((v) => v.id === s.var)?.enum || []))
+        .filter((n) => n !== P.empty))];
+      if (allNames.length) {
+        const fold = h('details', { class: 'sce-fold' },
+          h('summary', {}, `🖼 초상 매핑 (${Object.keys(P.portraits || {}).filter((k) => P.portraits[k]).length}/${allNames.length}명)`));
+        fold.appendChild(h('div', { class: 'sce-hint' },
+          '인물별로 캐릭터 추가 에셋의 이름을 적으면 편성 팝업의 슬롯·후보 칩에 얼굴이 뜹니다 '
+          + '(확장자는 생략 가능 — leningrad_profile.png → leningrad_profile). '
+          + '비워 두면 그 인물은 이름만 표시됩니다. 에셋 이름은 봇 편집의 추가 에셋 탭에서 볼 수 있습니다.'));
+        const dl = h('datalist', { id: 'scep-portrait-assets' });
+        fold.appendChild(dl);
+        if (ai && ai.getAssetSources) {
+          const note = h('span', { class: 'sce-hint' }, '');
+          fold.appendChild(h('div', { class: 'sce-row' },
+            h('button', { class: 'sce-btn', onclick: async () => {
+              try {
+                const r = await ai.getAssetSources();
+                const names = [...new Set((r?.sources || []).flatMap((s) => s.names || []))];
+                dl.replaceChildren(...names.map((n) => h('option', { value: n })));
+                note.textContent = `에셋 ${names.length}개 읽음 — 입력 칸에서 자동완성됩니다.`;
+              } catch (e) { note.textContent = `에셋 읽기 실패 — ${e.message}`; }
+            } }, '🔎 에셋 이름 불러오기 (자동완성용)'), note));
+        }
+        for (const nm of allNames) {
+          fold.appendChild(h('div', { class: 'sce-row' },
+            h('span', { class: 'sce-w-m' }, nm),
+            (() => {
+              const inp = bindInput(P.portraits?.[nm], (x) => {
+                P.portraits = P.portraits || {};
+                const t = String(x).trim();
+                if (t) P.portraits[nm] = t; else delete P.portraits[nm];
+                if (!Object.keys(P.portraits).length) delete P.portraits;
+                rerender();
+              }, { cls: 'sce-w-l', ph: '(에셋 이름 — 비우면 글자만)' });
+              inp.setAttribute('list', 'scep-portrait-assets');
+              return inp;
+            })(),
+          ));
+        }
+        wrap.appendChild(fold);
+      }
+    }
+
     wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '쓸 수 있는 클래스: .scg-card(카드) .scg-title(제목) .scg-slot(슬롯 상자) .scg-slot-label '
@@ -14165,6 +14250,10 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      #sc-game .scg-face { width:38px; height:38px; border-radius:8px; object-fit:cover;
+        border:1px solid #35486e; flex:0 0 auto; }
+      #sc-game .scg-chip-face { width:20px; height:20px; border-radius:50%; object-fit:cover;
+        vertical-align:-5px; margin:-2px 6px -2px -4px; }
       #sc-game .scg-tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #24304a;
         margin:2px 0 8px; }
       #sc-game .scg-tab { border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
@@ -14233,6 +14322,53 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     if (gameKind === 'party') renderPartyPanel(root);
   }
 
+  // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
+  // 캐릭터 additionalAssets([이름, assetId, 확장자])에서 이름을 찾아 readImage로 읽는다.
+  // 환경에 따라 readImage가 없거나 막혀 있을 수 있다 (v0.54 db처럼) — 실패하면 조용히
+  // 글자 폴백(이미지 없이 이름만)으로 남고, 콘솔에 한 번만 이유를 적는다.
+  const portraitCache = new Map(); // `${chaId}:${에셋이름}` → blob URL | null(실패 확정)
+  let portraitWarned = false;
+  async function resolvePortraitUrl(assetName) {
+    const key = `${currentChaId}:${assetName}`;
+    if (portraitCache.has(key)) return portraitCache.get(key);
+    let url = null;
+    try {
+      const char = await Risuai.getCharacter();
+      const want = String(assetName).trim().toLowerCase();
+      const wantBase = want.replace(/\.[a-z0-9]+$/, '');
+      const hit = (char?.additionalAssets || []).find(([nm]) => {
+        const n = String(nm).trim().toLowerCase();
+        return n === want || n === wantBase || n.replace(/\.[a-z0-9]+$/, '') === wantBase;
+      });
+      if (hit && Risuai.readImage) {
+        const data = await Risuai.readImage(hit[1]);
+        if (data != null) {
+          // 환경마다 반환형이 다를 수 있다 — Uint8Array/ArrayBuffer/데이터URL 문자열 전부 방어
+          if (typeof data === 'string') url = data.startsWith('data:') ? data : null;
+          else {
+            const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+            if (bytes.length) url = URL.createObjectURL(new Blob([bytes]));
+          }
+        }
+      }
+    } catch (e) {
+      if (!portraitWarned) { portraitWarned = true; console.log('[simcore] 초상 읽기 실패 (글자 폴백):', e.message); }
+    }
+    if (url == null && !portraitWarned && !Risuai.readImage) {
+      portraitWarned = true; console.log('[simcore] 이 환경에는 readImage가 없어 편성 초상을 못 그립니다 — 이름만 표시');
+    }
+    portraitCache.set(key, url);
+    return url;
+  }
+
+  // 렌더는 동기, 이미지는 나중에 도착 — 자리(img)를 만들어 두고 로드가 끝나면 채운다.
+  // 리렌더로 img가 떨어져 나갔으면 isConnected가 false라 조용히 버려진다.
+  function attachPortrait(img, assetName) {
+    resolvePortraitUrl(assetName).then((url) => {
+      if (url && img.isConnected) { img.src = url; img.style.display = ''; }
+    }).catch(() => {});
+  }
+
   function renderPartyPanel(root) {
     // 액션 상태는 범례·조작줄과 같은 출처(currentActionStates) — 탭 버튼과 짝이 맞아야 한다
     const view = partyMod.partyView(schema, session.current, { actionStates: currentActionStates() });
@@ -14278,6 +14414,14 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       row.innerHTML = `<span class="scg-slot-label">${escapeText(slot.label)}</span>`
         + `<span class="scg-slot-val${slot.isEmpty ? ' scg-empty' : ''}">${escapeText(slot.isEmpty ? '(비어 있음)' : String(slot.value ?? '—'))}</span>`
         + `<span class="scg-slot-arrow">${open ? '▲' : '▼ 변경'}</span>`;
+      if (slot.portrait) {
+        // 초상 — 로드 전엔 숨겨 두고 도착하면 나타난다 (실패 시 이름만 남는 글자 폴백)
+        const face = document.createElement('img');
+        face.className = 'scg-face';
+        face.style.display = 'none';
+        row.insertBefore(face, row.firstChild);
+        attachPortrait(face, slot.portrait);
+      }
       row.onclick = () => { gameOpenSlot = open ? null : slot.var; gameNotice = null; renderGamePanel(); };
       box.appendChild(row);
 
@@ -14292,6 +14436,13 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
             + (c.locked ? ' scg-locked' : '');
           chip.dataset.val = c.name;
           chip.textContent = c.name;
+          if (c.portrait) {
+            const face = document.createElement('img');
+            face.className = 'scg-chip-face';
+            face.style.display = 'none';
+            chip.insertBefore(face, chip.firstChild);
+            attachPortrait(face, c.portrait);
+          }
           if (c.locked) chip.title = `아직 보유하지 않음 — ${tab.roster?.label ?? '보유 목록'}에 없어요`;
           else if (c.usedBy) {
             // 이동해 오는 원래 자리 — 딴 탭일 수도 있다 (한 인물 = 한 자리)

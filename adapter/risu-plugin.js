@@ -1,13 +1,25 @@
 //@name simcore
 //@api 3.0
-//@version 0.56.2
-//@display-name SimCore (시뮬 엔진) v0.56 편성 탭
+//@version 0.57.0
+//@display-name SimCore (시뮬 엔진) v0.57 편성 초상
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.57.0 ────────────────────────────────────────────────
+// 편성 초상 — 유저 제안: "봇의 대원 목록 패널처럼 편성표에도 캐릭터 에셋을". 봇 패널의
+// {{raw::…}}는 메시지 렌더 전용이라 우리 iframe 팝업에서는 안 통한다 — 대신
+// party.portraits({ "이름": "에셋이름" }) 맵 + getCharacter().additionalAssets에서 이름 대조
+// + readImage(assetId)로 실물을 읽어 blob URL로 그린다 (한글 함명↔영문 에셋명은 자동
+// 유도가 안 되므로 명시 맵 — 근사매칭으로 돌아가지 않는다는 에셋 팩 원칙 그대로).
+// - 슬롯 38px 초상 + 후보 칩 20px 아바타. 로드 전 숨김 → 도착 시 표시.
+// - readImage가 없거나 막힌 환경(v0.54 db 전례)은 글자 폴백 + 콘솔 1회 안내. [live-test]
+// - 반환형 방어: Uint8Array/ArrayBuffer/데이터URL 문자열 전부 수용. 캐시는 chaId 키.
+// - 검증: portraits 오타(명단 밖 이름) 경고 — 이미지가 조용히 안 뜨는 사고를 미리 잡는다.
+// - 편집기 [편성표] 탭에 초상 매핑 접이식 + 에셋 이름 자동완성(getAssetSources datalist).
 //
 // ── v0.56.2 ────────────────────────────────────────────────
 // 내장 템플릿 13호 '함대 — 편성과 출격' — v0.56 편성 탭의 표준 예제 (유저 요청:
@@ -1930,6 +1942,10 @@
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      #sc-game .scg-face { width:38px; height:38px; border-radius:8px; object-fit:cover;
+        border:1px solid #35486e; flex:0 0 auto; }
+      #sc-game .scg-chip-face { width:20px; height:20px; border-radius:50%; object-fit:cover;
+        vertical-align:-5px; margin:-2px 6px -2px -4px; }
       #sc-game .scg-tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #24304a;
         margin:2px 0 8px; }
       #sc-game .scg-tab { border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
@@ -1998,6 +2014,53 @@
     if (gameKind === 'party') renderPartyPanel(root);
   }
 
+  // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
+  // 캐릭터 additionalAssets([이름, assetId, 확장자])에서 이름을 찾아 readImage로 읽는다.
+  // 환경에 따라 readImage가 없거나 막혀 있을 수 있다 (v0.54 db처럼) — 실패하면 조용히
+  // 글자 폴백(이미지 없이 이름만)으로 남고, 콘솔에 한 번만 이유를 적는다.
+  const portraitCache = new Map(); // `${chaId}:${에셋이름}` → blob URL | null(실패 확정)
+  let portraitWarned = false;
+  async function resolvePortraitUrl(assetName) {
+    const key = `${currentChaId}:${assetName}`;
+    if (portraitCache.has(key)) return portraitCache.get(key);
+    let url = null;
+    try {
+      const char = await Risuai.getCharacter();
+      const want = String(assetName).trim().toLowerCase();
+      const wantBase = want.replace(/\.[a-z0-9]+$/, '');
+      const hit = (char?.additionalAssets || []).find(([nm]) => {
+        const n = String(nm).trim().toLowerCase();
+        return n === want || n === wantBase || n.replace(/\.[a-z0-9]+$/, '') === wantBase;
+      });
+      if (hit && Risuai.readImage) {
+        const data = await Risuai.readImage(hit[1]);
+        if (data != null) {
+          // 환경마다 반환형이 다를 수 있다 — Uint8Array/ArrayBuffer/데이터URL 문자열 전부 방어
+          if (typeof data === 'string') url = data.startsWith('data:') ? data : null;
+          else {
+            const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+            if (bytes.length) url = URL.createObjectURL(new Blob([bytes]));
+          }
+        }
+      }
+    } catch (e) {
+      if (!portraitWarned) { portraitWarned = true; console.log('[simcore] 초상 읽기 실패 (글자 폴백):', e.message); }
+    }
+    if (url == null && !portraitWarned && !Risuai.readImage) {
+      portraitWarned = true; console.log('[simcore] 이 환경에는 readImage가 없어 편성 초상을 못 그립니다 — 이름만 표시');
+    }
+    portraitCache.set(key, url);
+    return url;
+  }
+
+  // 렌더는 동기, 이미지는 나중에 도착 — 자리(img)를 만들어 두고 로드가 끝나면 채운다.
+  // 리렌더로 img가 떨어져 나갔으면 isConnected가 false라 조용히 버려진다.
+  function attachPortrait(img, assetName) {
+    resolvePortraitUrl(assetName).then((url) => {
+      if (url && img.isConnected) { img.src = url; img.style.display = ''; }
+    }).catch(() => {});
+  }
+
   function renderPartyPanel(root) {
     // 액션 상태는 범례·조작줄과 같은 출처(currentActionStates) — 탭 버튼과 짝이 맞아야 한다
     const view = partyMod.partyView(schema, session.current, { actionStates: currentActionStates() });
@@ -2043,6 +2106,14 @@
       row.innerHTML = `<span class="scg-slot-label">${escapeText(slot.label)}</span>`
         + `<span class="scg-slot-val${slot.isEmpty ? ' scg-empty' : ''}">${escapeText(slot.isEmpty ? '(비어 있음)' : String(slot.value ?? '—'))}</span>`
         + `<span class="scg-slot-arrow">${open ? '▲' : '▼ 변경'}</span>`;
+      if (slot.portrait) {
+        // 초상 — 로드 전엔 숨겨 두고 도착하면 나타난다 (실패 시 이름만 남는 글자 폴백)
+        const face = document.createElement('img');
+        face.className = 'scg-face';
+        face.style.display = 'none';
+        row.insertBefore(face, row.firstChild);
+        attachPortrait(face, slot.portrait);
+      }
       row.onclick = () => { gameOpenSlot = open ? null : slot.var; gameNotice = null; renderGamePanel(); };
       box.appendChild(row);
 
@@ -2057,6 +2128,13 @@
             + (c.locked ? ' scg-locked' : '');
           chip.dataset.val = c.name;
           chip.textContent = c.name;
+          if (c.portrait) {
+            const face = document.createElement('img');
+            face.className = 'scg-chip-face';
+            face.style.display = 'none';
+            chip.insertBefore(face, chip.firstChild);
+            attachPortrait(face, c.portrait);
+          }
           if (c.locked) chip.title = `아직 보유하지 않음 — ${tab.roster?.label ?? '보유 목록'}에 없어요`;
           else if (c.usedBy) {
             // 이동해 오는 원래 자리 — 딴 탭일 수도 있다 (한 인물 = 한 자리)

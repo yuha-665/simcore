@@ -79,6 +79,9 @@ function partyView(schema, state, opts = {}) {
   const tabs = partyTabs(schema);
   const unique = p.unique !== false;
   const empty = p.empty ?? null;
+  // 초상 (v0.57) — 이름 → 캐릭터 에셋 이름. 한글 함명↔영문 에셋명은 자동 유도가 안 되므로
+  // 제작자가 명시한다. 실물 읽기(readImage)는 어댑터 몫 — 여기서는 이름만 얹는다.
+  const portraits = (p.portraits && typeof p.portraits === 'object') ? p.portraits : {};
   const byId = {};
   for (const v of schema.vars || []) byId[v.id] = v;
   const stById = {};
@@ -104,8 +107,12 @@ function partyView(schema, state, opts = {}) {
           name,
           usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
           locked: rosterItems != null && !rosterHas(rosterItems, name),
+          portrait: portraits[name] ?? null,
         }));
-      return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+      return {
+        var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates,
+        portrait: (!isEmpty && value != null) ? (portraits[value] ?? null) : null,
+      };
     });
     // 탭의 액션 버튼 — 모르는 id는 조용히 떨구지 않고 잠긴 채 보여 준다 (제작 실수 가시화)
     const actions = t.actions.map((id) => stById[id]

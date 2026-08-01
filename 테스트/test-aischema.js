@@ -68,9 +68,11 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   }
   ck('모르는 예제 키는 경영으로 대체', buildSchemaSpecPrompt('없는키', false).includes('가게 운영'), '');
 
-  // 크기 — 웹 UI에 붙여넣을 수 있어야 의미가 있다
+  // 크기 — 웹 UI에 붙여넣을 수 있어야 의미가 있다.
+  // 상한은 무한 성장 방지용 가드레일 — v0.58에서 편성표 검증(party)이 검증기 원문에
+  // 합류하며 60KB를 넘어 72KB로 조정 (실제 붙여넣기 한계는 수백 KB라 여유가 크다).
   const full = buildSchemaSpecPrompt('politics', true);
-  ck('★ 규격서가 붙여넣기 가능한 크기 (60KB 미만)', full.length < 60 * 1024, kb(full));
+  ck('★ 규격서가 붙여넣기 가능한 크기 (72KB 미만)', full.length < 72 * 1024, kb(full));
   ck('전체 소스(251KB)보다 훨씬 작음', full.length < src.length / 4, `${kb(full)} vs ${kb(src)}`);
   console.log(`  [크기] 최소 ${kb(buildSchemaSpecPrompt('rpg', false))} / 기본 ${kb(p)} / 최대 ${kb(full)}`);
 }

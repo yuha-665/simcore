@@ -2643,6 +2643,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
         '탭 = 편성 하나 또는 시설 하나. 슬롯을 채우면 편성 탭, 슬롯 없이 액션만 걸면 '
         + '수복·제작 같은 시설 탭이 됩니다. 인물은 탭이 달라도 한 자리에만 앉습니다 (이동/맞교환).'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        pair('탭 표시 방식', bindSelect(P.nav ?? 'tabs',
+          [['tabs', '탭 바 — 몇 개 안 될 때'], ['select', '셀렉트 + 검색 — 인물별 탭이 많을 때']],
+          (x) => { if (x === 'tabs') delete P.nav; else P.nav = x; rerender(); }),
+          '탭이 십수 개(인물별 스킬트리 등)면 셀렉트+검색이 찾기 쉽다'),
+        (P.tabs.length >= 8 && P.nav !== 'select')
+          ? h('span', { class: 'sce-hint sce-warn' }, `탭이 ${P.tabs.length}개 — 셀렉트+검색을 권합니다`)
+          : null,
+      ));
       P.tabs.forEach((t, ti) => {
         t.slots = Array.isArray(t.slots) ? t.slots : [];
         wrap.appendChild(h('div', { class: 'sce-block' },

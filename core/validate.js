@@ -781,6 +781,10 @@ function validateSchema(schema) {
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
       }
+      // 탭 표시 방식 (v0.58.1) — 탭이 적으면 탭 바, 인물이 많으면 셀렉트+검색. 제작자가 고른다.
+      if (P.nav != null && !['tabs', 'select'].includes(P.nav)) {
+        err('$.party.nav', "nav는 'tabs'(탭 바) 또는 'select'(셀렉트+검색)");
+      }
       // 초상 (v0.57) — 이름 → 에셋 이름. 오타는 이미지가 조용히 안 뜨는 사고가 되므로 여기서 잡는다
       if (P.portraits != null) {
         if (typeof P.portraits !== 'object' || Array.isArray(P.portraits)) {

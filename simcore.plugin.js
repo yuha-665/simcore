@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.58.0
+//@version 0.58.1
 //@display-name SimCore (시뮬 엔진) v0.58 스킬·업그레이드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.58.1 ────────────────────────────────────────────────
+// 탭 내비 선택 — 유저 제안: "캐릭 수가 적으면 탭, 많으면 셀렉트바+검색. 선택은 제작자가."
+// party.nav: 'tabs'(기본) | 'select'. select면 탭 바 대신 [🔍 검색] + 셀렉트 —
+// 인물별 스킬트리 탭이 수십 개인 봇용. 검색 타이핑은 셀렉트 옵션만 갈아끼운다
+// (전체 리렌더는 입력 포커스를 죽인다). 편집기에 방식 선택 + 탭 8개 이상이면 권고.
+// 규격서 크기 가드 60→72KB (party 검증이 검증기 원문에 합류한 성장분).
 //
 // ── v0.58.0 ────────────────────────────────────────────────
 // 업그레이드(items) — 스킬창·스킬 레벨 찍기 (유저 제안: "영지로 치면 시설 레벨·정책·특성").
@@ -2323,6 +2330,10 @@ function validateSchema(schema) {
       }
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      // 탭 표시 방식 (v0.58.1) — 탭이 적으면 탭 바, 인물이 많으면 셀렉트+검색. 제작자가 고른다.
+      if (P.nav != null && !['tabs', 'select'].includes(P.nav)) {
+        err('$.party.nav', "nav는 'tabs'(탭 바) 또는 'select'(셀렉트+검색)");
       }
       // 초상 (v0.57) — 이름 → 에셋 이름. 오타는 이미지가 조용히 안 뜨는 사고가 되므로 여기서 잡는다
       if (P.portraits != null) {
@@ -9083,6 +9094,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
         '탭 = 편성 하나 또는 시설 하나. 슬롯을 채우면 편성 탭, 슬롯 없이 액션만 걸면 '
         + '수복·제작 같은 시설 탭이 됩니다. 인물은 탭이 달라도 한 자리에만 앉습니다 (이동/맞교환).'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        pair('탭 표시 방식', bindSelect(P.nav ?? 'tabs',
+          [['tabs', '탭 바 — 몇 개 안 될 때'], ['select', '셀렉트 + 검색 — 인물별 탭이 많을 때']],
+          (x) => { if (x === 'tabs') delete P.nav; else P.nav = x; rerender(); }),
+          '탭이 십수 개(인물별 스킬트리 등)면 셀렉트+검색이 찾기 쉽다'),
+        (P.tabs.length >= 8 && P.nav !== 'select')
+          ? h('span', { class: 'sce-hint sce-warn' }, `탭이 ${P.tabs.length}개 — 셀렉트+검색을 권합니다`)
+          : null,
+      ));
       P.tabs.forEach((t, ti) => {
         t.slots = Array.isArray(t.slots) ? t.slots : [];
         wrap.appendChild(h('div', { class: 'sce-block' },
@@ -13861,6 +13881,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   let gameNotice = null;    // 마지막 조작 결과 한 줄 (거부 이유 등)
   let gameOpenSlot = null;  // 후보 목록이 펼쳐진 슬롯 var (아코디언 — 한 번에 하나)
   let gameOpenTab = null;   // 열려 있는 편성 탭 id (v0.56 — 함대/수복/제작)
+  let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
@@ -14471,6 +14492,12 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         border:1px solid #35486e; flex:0 0 auto; }
       #sc-game .scg-chip-face { width:20px; height:20px; border-radius:50%; object-fit:cover;
         vertical-align:-5px; margin:-2px 6px -2px -4px; }
+      #sc-game .scg-nav { display:flex; gap:6px; margin:2px 0 10px; }
+      #sc-game .scg-nav-search { flex:1 1 auto; min-width:0; background:#0a101f; color:#e6ebf5;
+        border:1px solid #35486e; border-radius:8px; padding:6px 10px; font-size:13px; }
+      #sc-game .scg-nav-search:focus { border-color:#5b8def; outline:none; }
+      #sc-game .scg-nav-sel { flex:0 1 46%; background:#1c2740; color:#dfe7f5; border:1px solid #3d5384;
+        border-radius:8px; padding:6px 8px; font-size:13px; }
       #sc-game .scg-tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #24304a;
         margin:2px 0 8px; }
       #sc-game .scg-tab { border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
@@ -14512,6 +14539,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     gameNotice = null;
     gameOpenSlot = null;
     gameOpenTab = null; // 열 때마다 첫 탭부터
+    gameTabSearch = '';
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -14604,16 +14632,39 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     card.appendChild(title);
     if (view.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: view.note }));
 
-    // 탭 바 (v0.56 — 함대/수복/제작). 하나뿐이면 바를 안 그린다.
+    // 탭 내비 (v0.56 탭 바 / v0.58.1 셀렉트+검색). 하나뿐이면 안 그린다.
+    // 표시 방식은 제작자 몫(party.nav) — 인물 몇 명이면 탭 바, 수십 명이면 셀렉트+검색.
     const tab = view.tabs.find((t) => t.id === gameOpenTab) ?? view.tabs[0];
-    if (view.tabs.length > 1) {
+    const goTab = (id) => { gameOpenTab = id; gameOpenSlot = null; gameNotice = null; renderGamePanel(); };
+    if (view.tabs.length > 1 && schema.party?.nav === 'select') {
+      const nav = document.createElement('div');
+      nav.className = 'scg-nav';
+      const norm = (s) => String(s).replace(/\s+/g, '').toLowerCase();
+      const sel = document.createElement('select');
+      sel.className = 'scg-nav-sel';
+      const fill = () => {
+        const q = norm(gameTabSearch);
+        sel.replaceChildren(...view.tabs
+          .filter((t) => t === tab || !q || norm(t.label).includes(q) || norm(t.id).includes(q))
+          .map((t) => Object.assign(document.createElement('option'),
+            { value: t.id, textContent: t.label, selected: t === tab })));
+      };
+      const search = Object.assign(document.createElement('input'),
+        { className: 'scg-nav-search', placeholder: '🔍 탭 검색', value: gameTabSearch });
+      // 타이핑마다 전체 리렌더를 하면 입력 포커스가 죽는다 — 셀렉트 옵션만 갈아끼운다
+      search.oninput = () => { gameTabSearch = search.value; fill(); };
+      sel.onchange = () => goTab(sel.value);
+      fill();
+      nav.append(search, sel);
+      card.appendChild(nav);
+    } else if (view.tabs.length > 1) {
       const bar = document.createElement('div');
       bar.className = 'scg-tabs';
       for (const t of view.tabs) {
         const b = Object.assign(document.createElement('button'),
           { className: 'scg-tab' + (t === tab ? ' scg-on' : ''), textContent: t.label });
         b.dataset.tab = t.id;
-        b.onclick = () => { gameOpenTab = t.id; gameOpenSlot = null; gameNotice = null; renderGamePanel(); };
+        b.onclick = () => goTab(t.id);
         bar.appendChild(b);
       }
       card.appendChild(bar);

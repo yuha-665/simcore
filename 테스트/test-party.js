@@ -288,6 +288,14 @@ const clone = (o) => JSON.parse(J(o));
   ck('★ 영지 탭 — 골드로 시설 레벨', r5.ok && r5.changes.mine === 2 && r5.changes.gold === 40, J(r5));
   ck('없는 항목 거부', !party.applyUpgrade(SK, state, 'hp').ok, '');
 
+  // nav (v0.58.1) — 탭 표시 방식은 제작자 선택
+  const navSel = clone(SK);
+  navSel.party.nav = 'select';
+  ck('nav=select 검증 통과', validateSchema(navSel).ok, '');
+  const navBad = clone(SK);
+  navBad.party.nav = 'dropdown';
+  ck('nav 오타 오류', validateSchema(navBad).errors.some((e) => /tabs.*select/.test(e.msg)), '');
+
   // 검증 — 새 오류들
   const badVar = clone(SK);
   badVar.party.tabs[0].items[0].var = 'nobody';

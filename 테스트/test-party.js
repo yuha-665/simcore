@@ -461,6 +461,56 @@ const clone = (o) => JSON.parse(J(o));
     J(findings.map((x) => x.tag)));
 }
 
+// ── 7. 편성표 정적 진단 (v0.60) — 팝업 경제의 죽은 경로 ──
+// 편성·찍기는 시뮬 밖("측정 불가" 원칙)이라, 그 반대급부로 정말 죽은 경로도 침묵했다.
+// 수입 없는 포인트·영입 경로 없는 잠금·영영 안 열리는 탭은 정적으로 잡는다.
+{
+  const diagnose = SC.require('diagnose').diagnose;
+  const tags = (s) => diagnose(s, { runs: 2, turns: 20 }).findings.map((x) => x.tag);
+
+  const DEAD = clone(BASE);
+  DEAD.vars.push({ id: 'sp', label: 'SP', type: 'int', init: 3, min: 0, max: 99 },
+    { id: 'skill_a', label: '검술', type: 'int', init: 0, min: 0, max: 5 });
+  delete DEAD.party.slots;
+  DEAD.party.tabs = [
+    { id: 'main', label: '편성', slots: [{ var: 'front' }, { var: 'rear' }] },
+    { id: 'train', label: '수련', points: 'sp', items: [{ var: 'skill_a', cost: 1 }] },
+  ];
+  ck('진단 픽스처 검증 통과', validateSchema(DEAD).ok, J(validateSchema(DEAD).errors));
+
+  // ① 못 버는 포인트 — sp를 올려 주는 곳이 어디에도 없다
+  ck('★ 수입 없는 포인트 → 못 버는 포인트', tags(DEAD).includes('못 버는 포인트'), J(tags(DEAD)));
+  const EARN = clone(DEAD);
+  EARN.rules = { events: [{ id: 'lv', when: 'hp >= 10', once: true,
+    effects: [{ set: 'sp', expr: 'min(sp + 1, 99)' }], notify: '수련 포인트를 얻었다' }] };
+  ck('지급 이벤트가 생기면 안 뜬다', !tags(EARN).includes('못 버는 포인트'), J(tags(EARN)));
+
+  // ② 영입 경로 없음 — 셀레네가 roster에 없는데 allies를 움직이는 곳도 없다
+  ck('★ 영입 경로 없음 (잠긴 후보 + 목록 이동 경로 전무)', tags(DEAD).includes('영입 경로 없음'), J(tags(DEAD)));
+  const RECRUIT = clone(DEAD);
+  RECRUIT.updater.allow.push({ id: 'allies' });
+  ck('보유 목록이 AI 허용이면 안 뜬다 (서사 영입 가능)', !tags(RECRUIT).includes('영입 경로 없음'), J(tags(RECRUIT)));
+
+  // ③ 열리지 않는 탭 — when이 시작부터 거짓 + 조건 변수를 아무도 못 움직임
+  const HIDDEN = clone(DEAD);
+  HIDDEN.vars.push({ id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 10 });
+  HIDDEN.party.tabs[1].when = 'fame >= 3';
+  ck('★ 시작부터 거짓 + 이동 경로 없음 → 열리지 않는 탭', tags(HIDDEN).includes('열리지 않는 탭'), J(tags(HIDDEN)));
+  const OK1 = clone(HIDDEN);
+  OK1.updater.allow.push({ id: 'fame' });
+  ck('조건 변수가 움직일 수 있으면 안 뜬다', !tags(OK1).includes('열리지 않는 탭'), J(tags(OK1)));
+  const OK2 = clone(HIDDEN);
+  OK2.party.tabs[1].when = "has(deployed, '아린')";
+  ck('deployed 게이트는 정상 설계 — 안 뜬다 (편성 담당)', !tags(OK2).includes('열리지 않는 탭'), J(tags(OK2)));
+
+  // 템플릿은 셋 다 깨끗해야 한다 — 오탐이 나면 v0.52 원칙 위반
+  for (const key of ['rpg', 'fleet']) {
+    const tg = tags(JSON.parse(J(TEMPLATES[key].schema)));
+    ck(`템플릿 '${key}'에 편성 정적 경고 없음`,
+      !tg.includes('못 버는 포인트') && !tg.includes('영입 경로 없음') && !tg.includes('열리지 않는 탭'), J(tg));
+  }
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

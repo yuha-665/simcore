@@ -43,6 +43,13 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   ck('2단 구조 안내', p.includes('2단 구조'), '');
   ck('배열 인덱싱 없음을 명시', p.includes('배열 인덱싱은 없습니다'), '');
 
+  // 편성표 (v0.60) — 검증기 원문만으로는 AI가 party 존재를 모른다. 규격서가 직접 알린다.
+  ck('★ 최상위 키 목록에 party', p.includes('`party`'), '');
+  ck('★ 편성표 절 존재 (탭·deployed·when)', p.includes('## 편성표(party)') && p.includes('deployed') && p.includes('tabs[].when'), '');
+  ck('★ 포인트 수입 경로를 함께 만들라고 못박음', p.includes('포인트 수입 경로'), '');
+  ck('portraits·css는 사람 몫이라고 명시', p.includes('portraits') && p.includes('만들지 마세요'), '');
+  ck('편성표가 선택임을 명시 (아무 봇에나 넣지 않게)', p.includes('빼세요'), '');
+
   // 밸런스 — 검증기가 못 잡는 부분
   ck('★ 도달 가능성 역산을 요구', p.includes('역산'), '');
   ck('★ 경계값 함정 경고 (내가 실제로 겪은 버그)', p.includes('시작값이 조건 경계와 같으면'), '');

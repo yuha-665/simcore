@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.59.0
-//@display-name SimCore (시뮬 엔진) v0.59 편성 연동
+//@version 0.60.0
+//@display-name SimCore (시뮬 엔진) v0.60 AI 경로·진단 편성 대응
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.60.0 ────────────────────────────────────────────────
+// AI 제작 경로·진단의 편성표 대응 — 유저 지적: "패치한 게 꽤 되는데 AI에게 개발시키는
+// 프롬이랑 진단은 손볼 거 없나". 점검 결과 v0.55~59 동안 편성표가 자랐는데 AI 경로가 못 따라옴.
+// - 규격서: 최상위 키에 party 등재 + SCHEMA_PARTY_RULES 절 신설 (탭 3종·roster·points·
+//   when·deployed·"portraits/css는 사람 몫"). 검증기 원문만으로는 AI가 party 존재를 모른다.
+// - 패치 요청서: party를 "패치 불가" 목록에 명시 + 다이제스트에 편성표 참조 절 —
+//   편성표가 가리키는 액션·변수 remove 금지 (지우면 가져오기 정지인데 AI가 원인 모름).
+// - 부분 요청서: [편성표] 탭에도 AI 도구 (TAB_SLICES.party — party 통째 교체, 규격·기존
+//   액션 계약·portraits/css 보존 지시 동봉). 이 편집기 seg는 테스트가 단독 평가하므로 require 금지.
+// - 진단 정적 검사 3종 (팝업 경제는 시뮬 밖 — "측정 불가" 원칙의 반대급부를 정적으로 메움):
+//   ① 못 버는 포인트 (비용 있는 items + 수입 경로 전무) ② 영입 경로 없음 (roster 잠금 후보 +
+//   목록을 움직이는 곳 전무) ③ 열리지 않는 탭 (when 시작부터 거짓 + 조건 변수 이동 경로 전무).
 //
 // ── v0.59.0 ────────────────────────────────────────────────
 // 편성 연동 게이트 — 유저 제안: "편성에 들어온 애들만 상태창에 보여주기, 스킬창 목록에서도".
@@ -5541,7 +5554,7 @@ const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
-const { evaluate, truthy } = require('./expr');
+const { evaluate, truthy, referencedVars } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -5772,6 +5785,56 @@ function diagnose(schema, opts = {}) {
   // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
+  }
+
+  // ── 편성표 정적 검사 (v0.60) — 팝업 경제의 죽은 경로 ─────────
+  // 편성·찍기는 유저 클릭 뒤에 있어 시뮬 관측이 안 된다. 그래서 "측정 불가"로 빼는 게
+  // v0.52 원칙인데, 그 반대급부로 **정말 죽은 경로**도 침묵하게 된다 — 수입 없는 포인트,
+  // 영입 경로 없는 잠금, 영영 안 열리는 탭은 시뮬 없이 정적으로 판별 가능하니 여기서 잡는다.
+  {
+    const partyMod = require('./party');
+    const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
+    const varById = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+    // 이 변수를 움직일 수 있는 곳이 있나 — '편성'(팝업 소비·잠금)은 수입/영입 경로로 안 친다
+    const canMove = (id) => allowIds.has(id) || [...(writers[id] || [])].some((w) => w !== '편성');
+    const initVars = Object.fromEntries((schema.vars || []).map((v) => [v.id, v.init]));
+    for (const t of partyMod.partyTabs(schema)) {
+      // ① 못 버는 포인트 — 비용 있는 업그레이드가 있는데 포인트 수입 경로가 전무
+      const costly = t.items.some((it) => typeof it.cost === 'string' || (typeof it.cost === 'number' && it.cost > 0));
+      if (costly && t.points && !canMove(t.points)) {
+        add('mid', '못 버는 포인트', `'${t.label}' 탭의 업그레이드는 '${t.points}'(으)로 찍는데, 이 변수를 올려 주는 곳이 `
+          + '없습니다 (이벤트·액션·onTurn 어디에도 없고 AI 허용 목록에도 없음). 시작 포인트를 다 쓰면 끝인 스킬트리입니다 — '
+          + '지급 이벤트(레벨업 등)를 만들거나 updater.allow에 넣으세요.', 'rules');
+      }
+      // ② 영입 경로 없음 — roster 잠금 후보가 있는데 그 목록에 이름을 넣어 주는 곳이 전무
+      if (t.roster && !canMove(t.roster)) {
+        const init = Array.isArray(varById[t.roster]?.init) ? varById[t.roster].init : [];
+        const locked = [...new Set(t.slots.flatMap((s) => (varById[s.var]?.enum || [])
+          .filter((nm) => nm !== (schema.party?.empty ?? null) && !partyMod.rosterHas(init, nm))))];
+        if (locked.length) {
+          add('mid', '영입 경로 없음', `'${t.label}' 탭의 후보 ${locked.slice(0, 4).join('·')}${locked.length > 4 ? ` 외 ${locked.length - 4}명` : ''}은(는) `
+            + `보유 목록('${t.roster}')에 없어 잠겨 있는데, 이 목록에 이름을 넣는 곳이 없습니다 (list 효과도 AI 허용도 없음) — `
+            + '영입이 영영 불가능합니다. 영입 이벤트를 만들거나 목록을 updater.allow에 넣으세요.', 'rules');
+        }
+      }
+      // ③ 열리지 않는 탭 — when이 처음부터 거짓 + 조건 속 값을 아무도 못 움직임.
+      //    deployed·슬롯 변수·팝업이 움직이는 값(찍은 레벨 등)이 끼어 있으면 편성 게이트 = 정상.
+      if (t.when) {
+        let refs = null;
+        try { refs = referencedVars(t.when); } catch { /* 깨진 식은 검증 몫 */ }
+        if (refs && !refs.some((n) => n === 'deployed' || partySlotIds.has(n) || partyGatedWriters.has(n))) {
+          const movable = refs.some((n) => canMove(n) || !varById[n]); // 모르는 이름(파생·시간)은 움직인다고 본다
+          if (!movable) {
+            let vis = true;
+            try { vis = truthy(evaluate(t.when, engine.makeLookup(schema, initVars), null)); } catch { /* */ }
+            if (!vis) {
+              add('mid', '열리지 않는 탭', `'${t.label}' 탭의 표시 조건(\`${t.when}\`)이 시작부터 거짓인데, `
+                + '조건 속 변수를 움직이는 곳이 없습니다 — 이 탭은 영영 안 보입니다. 조건 변수를 올릴 경로를 주거나 조건을 빼세요.', 'party');
+            }
+          }
+        }
+      }
+    }
   }
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;
@@ -6864,6 +6927,20 @@ function schemaLanguageTable() {
   ].join('\n');
 }
 
+// 편성표(party, v0.55~0.59) — 규격 압축본. 세부 정답은 검증기 원문이지만, 존재 자체를
+// 여기서 안 알리면 AI는 party 키를 영영 모른다 (검증기는 "있으면 검사"지 "만들라"가 아니다).
+const SCHEMA_PARTY_RULES = [
+  '- 편성표는 **인물을 자리에 앉히는 봇에만** 넣으세요 (파티·함대·부대·영지 인사). 아니면 `party` 키 자체를 빼세요.',
+  '- 슬롯 = enum 변수 하나. **enum 값 목록이 곧 편성 후보**이고, 빈값(`empty`, 예: "없음")이 그 목록에 있어야 합니다.',
+  '- `roster`에 list 변수를 주면 **그 목록에 있는 이름만** 편성할 수 있습니다 (영입해야 열리는 구조).',
+  '- `tabs` 배열로 탭 여러 개: 편성 탭(`slots`) / 시설 탭(`actions` — **기존 액션 id 참조**, 새 트리거를 만들지 마세요) / 업그레이드 탭(`items`).',
+  '- `items[]` = `{ "var": int변수, "cost": 숫자|식, "requires": 조건식, "max": 상한 }` — 찍기 = 포인트(`points` 변수) 차감 + 레벨 +1. `max` 1이면 특성(해금)입니다.',
+  '- **비용 있는 items를 만들면 포인트 수입 경로도 함께 만드세요** — 이벤트·액션·onTurn이 points 변수를 올려 줘야 찍을 수 있습니다. 수입 없는 스킬트리는 죽은 화면입니다.',
+  '- `tabs[].when` = 표시 조건. 거짓이면 탭이 통째로 숨습니다 — `has(deployed, "이름")`을 걸면 편성된 인물의 탭만 남습니다.',
+  '- `portraits`(초상)와 `css`는 봇 제작자가 편집기에서 채우는 몫입니다 — AI는 에셋 이름을 모르니 만들지 마세요.',
+  '- 실물 예제: "용사의 여정"(rpg — 편성+수련 탭)과 "함대 — 편성과 출격"(fleet — 편성/정비창/보급 탭) 템플릿.',
+];
+
 function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
@@ -6882,7 +6959,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -6900,6 +6977,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 반복 이벤트 — once인가 래치인가',
     ...SCHEMA_EVENT_PATTERN_RULES,
+    '',
+    '## 편성표(party) — 인물을 자리에 앉히는 봇이면 (선택)',
+    ...SCHEMA_PARTY_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -6982,6 +7062,27 @@ function patchIdDigest(schema) {
   fullLine('판정 (checks)', schema.checks);
   fullLine('지시문 (directives)', schema.directives);
   fullLine('AI 허용 변수 (allow)', schema.updater?.allow);
+  // 편성표(v0.55~) — 패치 대상이 아니지만 **참조를 모르면 사고가 난다**: 편성표가 가리키는
+  // 액션·변수를 remove하면 가져오기가 정지되는데, 다이제스트에 없으면 AI는 원인을 모른다.
+  // (require 대신 인라인 정규화 — 이 구간은 테스트가 단독 평가해서 모듈을 못 부른다)
+  if (schema.party && typeof schema.party === 'object') {
+    const P = schema.party;
+    const tabs = Array.isArray(P.tabs) && P.tabs.length ? P.tabs
+      : [{ slots: P.slots, actions: P.actions, items: P.items, roster: P.roster, points: P.points }];
+    const flat = (k) => tabs.flatMap((t) => Array.isArray(t?.[k]) ? t[k] : []);
+    const uniq = (a) => [...new Set(a.filter(Boolean))];
+    const refVars = uniq([
+      ...flat('slots').map((s) => s?.var), ...flat('items').map((it) => it?.var),
+      ...tabs.map((t) => t?.roster), P.roster, ...tabs.map((t) => t?.points), P.points,
+    ]);
+    const refActs = uniq(flat('actions'));
+    out.push('', '### 편성표 (party) — 패치로 못 다룹니다. 참조만 알아 두세요',
+      `- 편성표가 참조하는 변수: ${refVars.map((v) => `\`${v}\``).join(' ') || '(없음)'} — **remove 금지** (지우면 가져오기 정지)`,
+      ...(refActs.length
+        ? [`- 편성표 탭이 버튼으로 쓰는 액션: ${refActs.map((a) => `\`${a}\``).join(' ')} — **remove 금지**, update는 됩니다`]
+        : []),
+      '- 조건식에서는 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)를 쓸 수 있습니다 — `has(deployed, "이름")`');
+  }
   return out.join('\n');
 }
 
@@ -7031,7 +7132,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
-    '- 상태창(statusUI)·onTurn·setup·meta는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
@@ -7554,6 +7655,9 @@ const TAB_SLICES = {
   // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
   // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
   presets: { keys: ['setup'], sub: 'presets', label: '시작 프리셋' },
+  // 편성표(v0.60) — party 객체 통째 교체. portraits·css까지 실려 나가므로 요청서가
+  // "원문 그대로 옮겨 담아라"를 못박는다 (제작자가 손으로 채운 값이라 AI가 지어낼 수 없다).
+  party: { keys: ['party'], label: '편성표' },
 };
 
 /**
@@ -7569,6 +7673,15 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'actions') push('actions', schema.actions);
   else if (tabKey === 'checks') push('checks', schema.checks);
   else if (tabKey === 'presets') push('setup.presets', schema.setup?.presets);
+  else if (tabKey === 'party') {
+    // 인라인 정규화 (축약형 = 탭 1개) — 이 구간은 테스트가 단독 평가라 party 모듈을 못 부른다
+    const P = schema.party || {};
+    const tabs = Array.isArray(P.tabs) && P.tabs.length ? P.tabs
+      : (P.slots || P.actions || P.items ? [P] : []);
+    if (Array.isArray(P.tabs)) push('party.tabs', P.tabs);
+    push('슬롯(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.slots) ? t.slots : []));
+    push('업그레이드(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.items) ? t.items : []));
+  }
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
     push('rules.events', schema.rules?.events);
@@ -7628,6 +7741,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
       checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
+      party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭")',
     };
     head.push('## 내가 원하는 것',
       WANT[tabKey] ?? '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
@@ -7796,6 +7910,27 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- 등급의 `when`과 `effects` 수식에서는 `roll`(굴린 눈)·`mod`(보정)·`total`(합계)·`vs`(목표치)를 그대로 쓸 수 있습니다.',
       '- 등급 `effects`는 이벤트 효과와 같은 형식입니다 (예: 대실패에 `{ "set": "hp", "expr": "hp - rand(1, 4)" }`).',
       '- 등급 `inject`는 그 등급일 때 AI에게 덧붙는 연출 지시입니다 (선택).',
+      '');
+  } else if (tabKey === 'party') {
+    body.push('## 편성표 규격', ...SCHEMA_PARTY_RULES, '',
+      '## 이미 있는 액션 — 탭의 `actions`는 이 id만 참조할 수 있습니다',
+      (schema.actions || []).length
+        ? (schema.actions).map((a) => `- \`${a.id}\` ${a.label ?? ''}`).join('\n')
+        : '(없음 — actions 참조를 넣지 마세요. 시설 버튼이 필요하면 JSON 대신 그 사실을 알려주세요)',
+      '',
+      '## ⚠ portraits(초상)·css가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "party": { "label": "편성", "icon": "⚔️", "empty": "없음", "roster": "allies",',
+      '  "tabs": [',
+      '    { "id": "main", "label": "편성", "slots": [ { "var": "front", "label": "전위" } ] },',
+      '    { "id": "train", "label": "수련", "points": "sp", "when": "has(deployed, \'아린\')",',
+      '      "items": [ { "var": "skill_sword", "cost": 1, "max": 5 } ] }',
+      '  ] } }',
+      '```',
       '');
   } else {
     body.push('## 액션은 이 6가지 형태 중 하나입니다',
@@ -8995,6 +9130,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const wrap = h('div');
     const enums = schema.vars.filter((v) => v.type === 'enum');
     const lists = schema.vars.filter((v) => v.type === 'list');
+
+    wrap.appendChild(tabAiTools('party'));
 
     if (!schema.party) {
       wrap.appendChild(h('div', { class: 'sce-hint' },

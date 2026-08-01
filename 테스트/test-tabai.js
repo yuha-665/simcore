@@ -126,6 +126,20 @@ const P = TEMPLATES.politics.schema;
   }
 }
 
+// ── 편성표 슬라이스 (v0.60) — [편성표] 탭도 AI에게 맡길 수 있다 ──
+{
+  const RP = JSON.parse(JSON.stringify(TEMPLATES.rpg.schema));
+  const pp = M.buildTabExportPrompt(RP, 'party');
+  ck('★ party 슬라이스 등록', !!M.TAB_SLICES.party, '');
+  ck('★ party: 최상위 키 못박음', pp.includes('`"party"`'), '');
+  ck('party: 규격 절 포함 (deployed·when·items)', pp.includes('## 편성표 규격') && pp.includes('deployed') && pp.includes('items'), '');
+  ck('★ party: 기존 액션 계약 동봉 (탭 actions는 이 id만)', pp.includes('`rest`') && pp.includes('이 id만 참조'), '');
+  ck('party: portraits·css 보존 지시', pp.includes('portraits') && pp.includes('원문 그대로'), '');
+  ck('party: 현재 내용이 출발점으로 실림', pp.includes('"skill_sword"'), '');
+  ck('party: 체크섬에 슬롯·업그레이드 개수', /슬롯\(전체 탭\)` \*\*\d+개\*\*/.test(pp) && /업그레이드\(전체 탭\)` \*\*\d+개\*\*/.test(pp), pp.match(/- `[^`]+` \*\*\d+개\*\*/g)?.join(' ') ?? '');
+  ck('party: 조각 골라내기', JSON.stringify(M.pickTabFragment('party', { party: { slots: [] } })) === '{"party":{"slots":[]}}', '');
+}
+
 // ── 가져오기: 조각 골라내기 ──
 {
   const pick = M.pickTabFragment;

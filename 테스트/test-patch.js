@@ -300,6 +300,20 @@ const baseJson = JSON.stringify(BASE);
   const dg = M.patchIdDigest(S);
   ck('다이제스트: 랜덤·갈림길 표기 준비', typeof dg === 'string' && dg.includes('### 변수'), '');
 
+  // 편성표 참조 보호 (v0.60) — 편성표가 가리키는 액션·변수를 remove하면 가져오기가
+  // 정지되는데, 다이제스트에 없으면 AI는 원인을 모른다 (RPG 템플릿 = party 실물)
+  {
+    const RP = JSON.parse(JSON.stringify(TEMPLATES.rpg.schema));
+    const pd = M.patchIdDigest(RP);
+    ck('★ 다이제스트: 편성표 참조 절 존재', pd.includes('### 편성표'), '');
+    ck('★ 다이제스트: 슬롯·포인트 변수 remove 금지', pd.includes('`front`') && pd.includes('`sp`') && pd.includes('remove 금지'), '');
+    ck('★ 다이제스트: 탭이 쓰는 액션 remove 금지', pd.includes('`rest`') && /액션.*remove 금지/.test(pd), '');
+    ck('다이제스트: deployed 안내', pd.includes('deployed'), '');
+    ck('party 없는 스키마엔 편성표 절 없음', !dg.includes('### 편성표'), '');
+    ck('★ 패치 불가 목록에 party 명시', M.buildPatchExportPrompt(RP).includes('편성표(party)는 패치로 못 다룹니다')
+      || M.buildPatchExportPrompt(RP).includes('편성표(party)'), '');
+  }
+
   // 번들 배선 스모크 — 편집기 ② 섹션이 실제로 실려 있는지 (빌드 누락 감지)
   ck('★ 번들에 ② 섹션 문자열 존재', src.includes('② AI에게 스키마 고치게 하기'), '');
   ck('번들에 패치 검사 버튼 존재', src.includes('🔍 패치 검사'), '');

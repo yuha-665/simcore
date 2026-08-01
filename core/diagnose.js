@@ -7,7 +7,7 @@ const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
-const { evaluate, truthy } = require('./expr');
+const { evaluate, truthy, referencedVars } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -238,6 +238,56 @@ function diagnose(schema, opts = {}) {
   // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
+  }
+
+  // ── 편성표 정적 검사 (v0.60) — 팝업 경제의 죽은 경로 ─────────
+  // 편성·찍기는 유저 클릭 뒤에 있어 시뮬 관측이 안 된다. 그래서 "측정 불가"로 빼는 게
+  // v0.52 원칙인데, 그 반대급부로 **정말 죽은 경로**도 침묵하게 된다 — 수입 없는 포인트,
+  // 영입 경로 없는 잠금, 영영 안 열리는 탭은 시뮬 없이 정적으로 판별 가능하니 여기서 잡는다.
+  {
+    const partyMod = require('./party');
+    const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
+    const varById = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+    // 이 변수를 움직일 수 있는 곳이 있나 — '편성'(팝업 소비·잠금)은 수입/영입 경로로 안 친다
+    const canMove = (id) => allowIds.has(id) || [...(writers[id] || [])].some((w) => w !== '편성');
+    const initVars = Object.fromEntries((schema.vars || []).map((v) => [v.id, v.init]));
+    for (const t of partyMod.partyTabs(schema)) {
+      // ① 못 버는 포인트 — 비용 있는 업그레이드가 있는데 포인트 수입 경로가 전무
+      const costly = t.items.some((it) => typeof it.cost === 'string' || (typeof it.cost === 'number' && it.cost > 0));
+      if (costly && t.points && !canMove(t.points)) {
+        add('mid', '못 버는 포인트', `'${t.label}' 탭의 업그레이드는 '${t.points}'(으)로 찍는데, 이 변수를 올려 주는 곳이 `
+          + '없습니다 (이벤트·액션·onTurn 어디에도 없고 AI 허용 목록에도 없음). 시작 포인트를 다 쓰면 끝인 스킬트리입니다 — '
+          + '지급 이벤트(레벨업 등)를 만들거나 updater.allow에 넣으세요.', 'rules');
+      }
+      // ② 영입 경로 없음 — roster 잠금 후보가 있는데 그 목록에 이름을 넣어 주는 곳이 전무
+      if (t.roster && !canMove(t.roster)) {
+        const init = Array.isArray(varById[t.roster]?.init) ? varById[t.roster].init : [];
+        const locked = [...new Set(t.slots.flatMap((s) => (varById[s.var]?.enum || [])
+          .filter((nm) => nm !== (schema.party?.empty ?? null) && !partyMod.rosterHas(init, nm))))];
+        if (locked.length) {
+          add('mid', '영입 경로 없음', `'${t.label}' 탭의 후보 ${locked.slice(0, 4).join('·')}${locked.length > 4 ? ` 외 ${locked.length - 4}명` : ''}은(는) `
+            + `보유 목록('${t.roster}')에 없어 잠겨 있는데, 이 목록에 이름을 넣는 곳이 없습니다 (list 효과도 AI 허용도 없음) — `
+            + '영입이 영영 불가능합니다. 영입 이벤트를 만들거나 목록을 updater.allow에 넣으세요.', 'rules');
+        }
+      }
+      // ③ 열리지 않는 탭 — when이 처음부터 거짓 + 조건 속 값을 아무도 못 움직임.
+      //    deployed·슬롯 변수·팝업이 움직이는 값(찍은 레벨 등)이 끼어 있으면 편성 게이트 = 정상.
+      if (t.when) {
+        let refs = null;
+        try { refs = referencedVars(t.when); } catch { /* 깨진 식은 검증 몫 */ }
+        if (refs && !refs.some((n) => n === 'deployed' || partySlotIds.has(n) || partyGatedWriters.has(n))) {
+          const movable = refs.some((n) => canMove(n) || !varById[n]); // 모르는 이름(파생·시간)은 움직인다고 본다
+          if (!movable) {
+            let vis = true;
+            try { vis = truthy(evaluate(t.when, engine.makeLookup(schema, initVars), null)); } catch { /* */ }
+            if (!vis) {
+              add('mid', '열리지 않는 탭', `'${t.label}' 탭의 표시 조건(\`${t.when}\`)이 시작부터 거짓인데, `
+                + '조건 속 변수를 움직이는 곳이 없습니다 — 이 탭은 영영 안 보입니다. 조건 변수를 올릴 경로를 주거나 조건을 빼세요.', 'party');
+            }
+          }
+        }
+      }
+    }
   }
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;

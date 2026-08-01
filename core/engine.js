@@ -15,7 +15,7 @@
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
-const { timeConfig, exposedValues, parseStart, epochFrom,
+const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
@@ -1105,7 +1105,9 @@ function applyChatCommands(schema, state, text, rng) {
   // /액션도 내장 — 우상단 플로팅 버튼이 v0.55에서 사라져서, 클릭 조작(mainDom)이 거부된
   // 환경에서는 이 명령이 액션을 켜는 유일한 통로다. 상태창 범례가 이름을 보여준다.
   const hasActions = (schema.actions || []).length > 0;
-  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions) || !text || !text.includes('/')) {
+  // /날짜도 내장 — 시간 체계를 켠 봇이면 항상 열린다 (아래 분기 주석 참고)
+  const cmdTcfg = timeConfig(schema);
+  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions && !cmdTcfg) || !text || !text.includes('/')) {
     return { text, applied: [], vars: state.vars, pick: null, meta: null };
   }
   const vars = { ...state.vars };
@@ -1166,6 +1168,29 @@ function applyChatCommands(schema, state, text, rng) {
       pick = idx;
       applied.push({ id: `choice:${ev.id}`, from: null, to: v.label, how: '선택' });
       return `(시스템: 선택 — ${idx + 1}. ${v.label})`;
+    }
+    // 날짜 세팅 (v0.61.1) — 시계(time_epoch)는 세이브에 산다. 시간 탭의 시작값을 고쳐도
+    // 진행 중인 채팅에는 소급되지 않고(실측 문의: "작중은 10월인데 상태창이 3월"),
+    // 보조 AI의 skip 보고는 캡이 있어 몇 달을 못 건넌다. 진행 중 시계를 맞추는 직통로.
+    if (cmd === '날짜' && !byCmd['날짜'] && cmdTcfg) {
+      const arg = argRaw.trim();
+      const from = Number(vars[EPOCH_KEY] ?? cmdTcfg.startEpoch);
+      const curCal = calendarOf(from, cmdTcfg.calendar);
+      const show = (cal2) => `${formatDate(cmdTcfg.dateFmt, cal2)} (${cmdTcfg.weekdays[cal2.wd]}) ${formatClock(cmdTcfg.clockFmt, cal2)}`;
+      if (!arg) {
+        return `(시스템: 날짜 — 지금 ${show(curCal)}. 이렇게 맞춥니다: /날짜 2026-10-05 또는 /날짜 2026-10-05 14:00)`;
+      }
+      const parts = parseStart(arg, cmdTcfg.calendar);
+      if (!parts) {
+        return `(시스템: 날짜 — '${arg}'를 읽을 수 없음. "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 합니다)`;
+      }
+      // 시각을 안 적었으면 지금 시각을 유지한다 — 보통은 날짜만 옮기고 싶은 것이다
+      if (!arg.includes(':')) { parts.h = curCal.h; parts.mi = curCal.mi; }
+      const toEpoch = epochFrom(parts, cmdTcfg.calendar);
+      if (toEpoch === from) return '(시스템: 날짜 — 바뀐 것 없음)';
+      vars[EPOCH_KEY] = toEpoch;
+      applied.push({ id: EPOCH_KEY, from, to: toEpoch, how: '날짜 지정' });
+      return `(시스템: 날짜 — ${show(calendarOf(toEpoch, cmdTcfg.calendar))}로 맞춤)`;
     }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다

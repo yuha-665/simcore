@@ -241,5 +241,50 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
+// ── /날짜 내장 명령 (v0.61.1) — 진행 중 채팅의 시계를 직접 맞추는 직통로 ──
+// 배경(실측 문의): "작중은 10월인데 상태창이 3월" — 시계는 세이브(time_epoch)에 살아서
+// 시간 탭의 시작값 변경이 소급되지 않고, skip 보고는 캡이 있어 몇 달을 못 건넌다.
+{
+  const S = {
+    simcore: '0.1', meta: { name: '날짜 명령' },
+    time: { start: '2026-03-02 08:30', advance: 'explicit' },
+    vars: [{ id: 'hp', label: '체력', type: 'int', init: 10, min: 0, max: 20, cmd: '체력' }],
+    updater: { allow: [] },
+  };
+  const st = engine.initState(S);
+  const run = (line, state = st) => engine.applyChatCommands(S, state, line, () => 0.5);
+
+  const r1 = run('/날짜 2026-10-05');
+  ck('★ /날짜 — epoch가 그 날로 바뀐다', r1.vars.time_epoch !== st.vars.time_epoch
+    && J(time.calendarOf(r1.vars.time_epoch).y) === '2026'
+    && time.calendarOf(r1.vars.time_epoch).m === 10 && time.calendarOf(r1.vars.time_epoch).d === 5, J(r1.applied));
+  ck('★ 시각을 안 적으면 지금 시각(08:30) 유지', time.calendarOf(r1.vars.time_epoch).h === 8
+    && time.calendarOf(r1.vars.time_epoch).mi === 30, '');
+  ck('시스템 줄로 치환됨', /\(시스템: 날짜 — .*맞춤\)/.test(r1.text), r1.text);
+
+  const r2 = run('/날짜 2026-10-05 21:00');
+  ck('시각까지 적으면 그 시각', time.calendarOf(r2.vars.time_epoch).h === 21, '');
+
+  ck('인자 없으면 현재와 사용법 안내', /지금.*\/날짜 2026-10-05/.test(run('/날짜').text), run('/날짜').text);
+  ck('없는 날짜는 거부 (2월 30일)', /읽을 수 없음/.test(run('/날짜 2026-02-30').text), '');
+  ck('같은 날짜는 변화 없음', /바뀐 것 없음/.test(run('/날짜 2026-03-02 08:30').text), '');
+
+  // 양보 규칙 — 제작자가 '날짜'라는 변수 명령을 만들었다면 그쪽이 이긴다 (/액션과 동일)
+  const S2 = JSON.parse(J(S));
+  S2.vars.push({ id: 'memo', label: '메모', type: 'text', init: '', cmd: '날짜' });
+  const st2 = engine.initState(S2);
+  const y = engine.applyChatCommands(S2, st2, '/날짜 개업 기념일', () => 0.5);
+  ck('★ 같은 이름의 변수 명령에 양보', y.vars.memo === '개업 기념일' && y.vars.time_epoch === st2.vars.time_epoch, J(y.applied));
+
+  // 시간 체계 없는 봇에서는 내장이 아예 없다 — 유저 글이면 건드리지 않는다
+  const S3 = { simcore: '0.1', meta: { name: 'x' }, vars: [{ id: 'hp', type: 'int', init: 1, cmd: '체력' }], updater: { allow: [] } };
+  const n = engine.applyChatCommands(S3, engine.initState(S3), '/날짜 2026-10-05', () => 0.5);
+  ck('시간 없는 봇은 /날짜를 그대로 둔다', n.text === '/날짜 2026-10-05', n.text);
+
+  // 다른 명령과 한 입력에 섞여도 각자 처리
+  const mix = run('/체력 15\n/날짜 2026-12-25');
+  ck('변수 명령과 같이 써도 각자 동작', mix.vars.hp === 15 && time.calendarOf(mix.vars.time_epoch).m === 12, '');
+}
+
 console.log(`\n${p} passed, ${f} failed`);
 process.exit(f ? 1 : 0);

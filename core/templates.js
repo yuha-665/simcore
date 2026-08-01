@@ -883,6 +883,10 @@ const ROMANCE = {
       { id: 'classmate', label: '같은 반 친구', set: { stage: '지인', affection: 20, place: '교실' } },
       { id: 'firstmeet', label: '초면', set: { stage: '타인', affection: 5, place: '거리' } },
       { id: 'reunion', label: '재회', set: { stage: '친구', affection: 40, place: '오랜만의 약속 장소' } },
+      // startAt (v0.51) — 시계도 시작값의 일부. 진행 중 채팅에서 눌러도 시계가 이 시점으로
+      // 점프한다 ("작중은 10월인데 상태창이 3월" 지원 사례의 처방 — /날짜 명령과 짝).
+      { id: 'autumn', label: '2학기 — 가을부터', set: { stage: '지인', affection: 25, place: '교실' },
+        startAt: '2026-10-05 08:30' },
     ],
     ai: {
       enabled: true,

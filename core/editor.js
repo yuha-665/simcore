@@ -3132,6 +3132,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
     }
 
+    // ⚠ 소급 안 됨 — 시계(time_epoch)는 채팅 시작 때 세이브에 박힌다. 여기를 고쳐도
+    //   진행 중인 채팅의 날짜는 안 바뀐다 (실측 문의: "작중은 10월인데 상태창이 3월").
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '시작 시점은 **새로 시작하는 채팅**에만 적용됩니다 — 진행 중인 채팅의 시계는 세이브에 '
+      + '저장돼 있어 여기서 안 바뀝니다. 진행 중인 판의 날짜를 옮기려면 채팅에 '
+      + '/날짜 2026-10-05 를 치거나, [새 시작] 탭의 프리셋 시작 시점(startAt)을 쓰세요.'));
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
         { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
@@ -3255,7 +3261,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         schema.time ? pair('시작 시점', bindInput(p.startAt, (x) => {
           p.startAt = x.trim() || undefined; rerender();
         }, { cls: 'sce-w-m', ph: `(비우면 ${schema.time.start})` }),
-        '이 프리셋으로 시작할 때의 작중 날짜·시각. "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"') : null,
+        '이 프리셋으로 시작할 때의 작중 날짜·시각 ("YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"). '
+        + '진행 중 채팅에서 눌러도 시계가 이 시점으로 점프한다 — 변수를 안 적으면 시계만 옮긴다. '
+        + '한 번만 옮길 거면 채팅에 /날짜 2026-10-05 를 쳐도 된다') : null,
         grip(schema.setup.presets, i, rerender),
       ));
       p.set = p.set || {};

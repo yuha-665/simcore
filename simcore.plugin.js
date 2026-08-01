@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.61.0
+//@version 0.61.1
 //@display-name SimCore (시뮬 엔진) v0.61 달력 패널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.61.1 ────────────────────────────────────────────────
+// /날짜 내장 명령 + 프리셋 시간 정비 — 실측 문의: "작중은 10월인데 상태창이 3월, 시간 탭을
+// 고쳐도 안 바뀜". 원인: 시계(time_epoch)는 채팅 시작 때 세이브에 박혀 시작값 변경이 소급
+// 안 되고, skip 보고는 캡(주 단위)이라 몇 달을 못 건넌다. 진행 중 시계를 맞출 통로가 없었다.
+// - [/날짜] /액션·/선택과 같은 내장 계열 (시간 체계 켠 봇이면 열림, 같은 이름 변수 명령에 양보).
+//   /날짜 2026-10-05 → 그 날로 (시각 생략 시 현재 시각 유지) / 인자 없으면 현재+사용법 /
+//   없는 날짜 거부. 변경은 vars.time_epoch 한 칸 — 명령 계약(새 vars 반환) 그대로.
+// - [프리셋] 연애 템플릿에 startAt 실물("2학기 — 가을부터") — 진행 중 채팅에서 눌러도 시계가
+//   점프한다는 사실을 편집기 힌트에 명시 (set 비우면 시계만). 시간 탭에 "소급 안 됨" 경고 추가.
 //
 // ── v0.61.0 ────────────────────────────────────────────────
 // 달력 패널 — 게임 패널 2호 (유저 제안: "달력이랑 시간도 구현해놨으니 캘린더 기능도,
@@ -3707,7 +3717,7 @@ SimCore.define("engine", function (require, module, exports) {
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
-const { timeConfig, exposedValues, parseStart, epochFrom,
+const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
@@ -4797,7 +4807,9 @@ function applyChatCommands(schema, state, text, rng) {
   // /액션도 내장 — 우상단 플로팅 버튼이 v0.55에서 사라져서, 클릭 조작(mainDom)이 거부된
   // 환경에서는 이 명령이 액션을 켜는 유일한 통로다. 상태창 범례가 이름을 보여준다.
   const hasActions = (schema.actions || []).length > 0;
-  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions) || !text || !text.includes('/')) {
+  // /날짜도 내장 — 시간 체계를 켠 봇이면 항상 열린다 (아래 분기 주석 참고)
+  const cmdTcfg = timeConfig(schema);
+  if ((!Object.keys(byCmd).length && !hasChoices && !hasActions && !cmdTcfg) || !text || !text.includes('/')) {
     return { text, applied: [], vars: state.vars, pick: null, meta: null };
   }
   const vars = { ...state.vars };
@@ -4858,6 +4870,29 @@ function applyChatCommands(schema, state, text, rng) {
       pick = idx;
       applied.push({ id: `choice:${ev.id}`, from: null, to: v.label, how: '선택' });
       return `(시스템: 선택 — ${idx + 1}. ${v.label})`;
+    }
+    // 날짜 세팅 (v0.61.1) — 시계(time_epoch)는 세이브에 산다. 시간 탭의 시작값을 고쳐도
+    // 진행 중인 채팅에는 소급되지 않고(실측 문의: "작중은 10월인데 상태창이 3월"),
+    // 보조 AI의 skip 보고는 캡이 있어 몇 달을 못 건넌다. 진행 중 시계를 맞추는 직통로.
+    if (cmd === '날짜' && !byCmd['날짜'] && cmdTcfg) {
+      const arg = argRaw.trim();
+      const from = Number(vars[EPOCH_KEY] ?? cmdTcfg.startEpoch);
+      const curCal = calendarOf(from, cmdTcfg.calendar);
+      const show = (cal2) => `${formatDate(cmdTcfg.dateFmt, cal2)} (${cmdTcfg.weekdays[cal2.wd]}) ${formatClock(cmdTcfg.clockFmt, cal2)}`;
+      if (!arg) {
+        return `(시스템: 날짜 — 지금 ${show(curCal)}. 이렇게 맞춥니다: /날짜 2026-10-05 또는 /날짜 2026-10-05 14:00)`;
+      }
+      const parts = parseStart(arg, cmdTcfg.calendar);
+      if (!parts) {
+        return `(시스템: 날짜 — '${arg}'를 읽을 수 없음. "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 합니다)`;
+      }
+      // 시각을 안 적었으면 지금 시각을 유지한다 — 보통은 날짜만 옮기고 싶은 것이다
+      if (!arg.includes(':')) { parts.h = curCal.h; parts.mi = curCal.mi; }
+      const toEpoch = epochFrom(parts, cmdTcfg.calendar);
+      if (toEpoch === from) return '(시스템: 날짜 — 바뀐 것 없음)';
+      vars[EPOCH_KEY] = toEpoch;
+      applied.push({ id: EPOCH_KEY, from, to: toEpoch, how: '날짜 지정' });
+      return `(시스템: 날짜 — ${show(calendarOf(toEpoch, cmdTcfg.calendar))}로 맞춤)`;
     }
     const def = byCmd[cmd];
     if (!def) return line;                     // 모르는 명령 — 유저 글이다, 건드리지 않는다
@@ -9977,6 +10012,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
     }
 
+    // ⚠ 소급 안 됨 — 시계(time_epoch)는 채팅 시작 때 세이브에 박힌다. 여기를 고쳐도
+    //   진행 중인 채팅의 날짜는 안 바뀐다 (실측 문의: "작중은 10월인데 상태창이 3월").
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '시작 시점은 **새로 시작하는 채팅**에만 적용됩니다 — 진행 중인 채팅의 시계는 세이브에 '
+      + '저장돼 있어 여기서 안 바뀝니다. 진행 중인 판의 날짜를 옮기려면 채팅에 '
+      + '/날짜 2026-10-05 를 치거나, [새 시작] 탭의 프리셋 시작 시점(startAt)을 쓰세요.'));
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
         { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
@@ -10100,7 +10141,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         schema.time ? pair('시작 시점', bindInput(p.startAt, (x) => {
           p.startAt = x.trim() || undefined; rerender();
         }, { cls: 'sce-w-m', ph: `(비우면 ${schema.time.start})` }),
-        '이 프리셋으로 시작할 때의 작중 날짜·시각. "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"') : null,
+        '이 프리셋으로 시작할 때의 작중 날짜·시각 ("YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"). '
+        + '진행 중 채팅에서 눌러도 시계가 이 시점으로 점프한다 — 변수를 안 적으면 시계만 옮긴다. '
+        + '한 번만 옮길 거면 채팅에 /날짜 2026-10-05 를 쳐도 된다') : null,
         grip(schema.setup.presets, i, rerender),
       ));
       p.set = p.set || {};
@@ -12587,6 +12630,10 @@ const ROMANCE = {
       { id: 'classmate', label: '같은 반 친구', set: { stage: '지인', affection: 20, place: '교실' } },
       { id: 'firstmeet', label: '초면', set: { stage: '타인', affection: 5, place: '거리' } },
       { id: 'reunion', label: '재회', set: { stage: '친구', affection: 40, place: '오랜만의 약속 장소' } },
+      // startAt (v0.51) — 시계도 시작값의 일부. 진행 중 채팅에서 눌러도 시계가 이 시점으로
+      // 점프한다 ("작중은 10월인데 상태창이 3월" 지원 사례의 처방 — /날짜 명령과 짝).
+      { id: 'autumn', label: '2학기 — 가을부터', set: { stage: '지인', affection: 25, place: '교실' },
+        startAt: '2026-10-05 08:30' },
     ],
     ai: {
       enabled: true,

@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.56.0
+//@version 0.56.1
 //@display-name SimCore (시뮬 엔진) v0.56 편성 탭
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.56.1 ────────────────────────────────────────────────
+// 진단 오탐 수정 — 실측: 6여단 봇 스키마(실봇 변환 1호)에서 "기함을 정해야 출격" 액션이
+// '못 쓰는 액션'(high)으로, 그 뒤의 연료·탄약 소비 경로가 '단조 자원'으로 신고됐다.
+// 편성은 유저 팝업 몫이라 시뮬은 영영 미편성 — AI 담당 문턱과 같은 부류의 측정 한계다.
+// '편성 담당 문턱'(low, "조건을 낮추지 마세요") 신설 + 편성 게이트 액션이 움직이는 변수는
+// 단조·눌어붙음 측정 제외(건너뛴 개수 보고). v0.52 원칙: 정상 설계에 경고를 내지 않는다.
 //
 // ── v0.56.0 ────────────────────────────────────────────────
 // 편성 탭 — 롤모델 칸코레 (유저 제안: "편성을 더 추가할 수 있게, 수복·제작처럼 늘리고
@@ -5512,6 +5519,14 @@ function diagnose(schema, opts = {}) {
   const RND = schema.rules?.randomEvents?.table || [];
   const allEv = [...EV, ...RND];
   const writers = writerMap(schema);
+  // 편성 게이트 (v0.56) — 조건이 편성 슬롯 변수를 보는 액션("기함을 정해야 출격")은
+  // 편성이 유저 팝업 몫이라 시뮬에서는 영영 안 열린다. 그걸 "못 쓰는 액션"으로 신고하거나,
+  // 그 액션 뒤에 있는 소비 경로를 못 보고 "단조 자원"이라 하면 정상 설계에 경고를 내는 것이다
+  // (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
+  const partySlotIds = new Set(require('./party').allSlots(schema).map((s) => s.var));
+  const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) => partySlotIds.has(n));
+  const partyGatedWriters = new Set(); // 편성 게이트 액션이 움직이는 변수 — 단조·눌어붙음 측정 불가
+  for (const a of ACT) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
   const loseVar = pickLoseVar(schema);
   stats.loseVar = loseVar;
 
@@ -5988,6 +6003,13 @@ function diagnose(schema, opts = {}) {
           `'${a.label ?? a.id}'는 ${turns}턴 안에 열리지 않았습니다 — ${where}. ${laterNote}`, null);
         continue;
       }
+      if (partyGated(a)) {
+        stats.partyGatedActs = (stats.partyGatedActs ?? 0) + 1;
+        add('low', '편성 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — 조건이 편성 슬롯을 봅니다. `
+          + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **여는 조건을 낮추지 마세요.** '
+          + '실제로 열리는지는 채팅에서 편성한 뒤 확인하세요.', null);
+        continue;
+      }
       if (aiGated(schema, b, turns)) {
         stats.aiGated = (stats.aiGated ?? 0) + 1;
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
@@ -6093,7 +6115,7 @@ function diagnose(schema, opts = {}) {
   // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
   const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
   const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
-  let aiOnlyStill = 0, cascadeStill = 0;
+  let aiOnlyStill = 0, cascadeStill = 0, partyGatedStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
     // 시간 진행 입구는 엔진이 매 턴 소비 후 0으로 되돌리는 우편함 — 관측 시점엔 늘 0이라
@@ -6117,6 +6139,9 @@ function diagnose(schema, opts = {}) {
     if (!simCanMove(x.id)) continue; // 아래 단조 검사도 마찬가지 이유로 성립하지 않는다
     if (x.type !== 'int' && x.type !== 'float') continue;
     if (/^(day|turn|week|month|year|round)$/i.test(x.id)) continue;
+    // 소비/보급 한쪽이 편성 게이트 액션 뒤에 있는 자원(연료·탄약) — 시뮬은 편성을 못 하니
+    // 그 방향이 관측에서 통째로 빠진다. "경로가 없다"는 말이 거짓이므로 재지 않는다.
+    if (partyGatedWriters.has(x.id)) { partyGatedStill++; continue; }
     let down = true, up = true;
     for (const r of [...idle, ...play]) {
       for (let i = 1; i < r.hist.length; i++) {
@@ -6150,6 +6175,12 @@ function diagnose(schema, opts = {}) {
   if (cascadeStill) {
     add('low', '연쇄', `변수 ${cascadeStill}개는 위에서 '안 떴다'고 신고한 이벤트만이 세우는 값이라 `
       + '함께 안 움직였습니다 — 따로 고칠 것이 아니라 그 이벤트가 뜨면 같이 풀립니다.', null);
+  }
+  stats.partyGatedVars = partyGatedStill;
+  if (partyGatedStill) {
+    add('low', '측정 불가', `변수 ${partyGatedStill}개는 소비/보급의 한쪽이 편성 게이트 액션(출격 등) 뒤에 있어 `
+      + '단조·눌어붙음을 재지 않았습니다 — 편성은 유저 몫이라 시뮬레이션에서는 그 경로가 안 열립니다. '
+      + '실제 흐름은 채팅에서 편성·출격을 몇 번 굴려 확인하세요.', null);
   }
 
   // ── 7. 시작값 = 조건 경계 ──

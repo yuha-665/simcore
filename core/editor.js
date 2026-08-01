@@ -356,6 +356,16 @@ const SCHEMA_PARTY_RULES = [
   '- 실물 예제: "용사의 여정"(rpg — 편성+수련 탭)과 "함대 — 편성과 출격"(fleet — 편성/정비창/보급 탭) 템플릿.',
 ];
 
+// 달력(calendar, v0.61) — party와 같은 이유로 규격서에 직접 알린다.
+const SCHEMA_CALENDAR_RULES = [
+  '- 달력은 **시간 체계(`time` 섹션)가 켜진 봇에만** 넣을 수 있습니다. 날짜가 중요한 봇(일상·학원·경영·영지)이 아니면 빼세요.',
+  '- `list`에 list 변수를 주면 유저가 달력에서 날짜를 눌러 일정을 등록합니다. 항목은 `"내용 @경과일"`로 저장되는 평범한 목록이라, '
+  + '`has(목록, "축제")` 조건·onTurn 만료 규칙(`{ "list": "...", "expire": "elapsed" }` — 지난 일정 자동 삭제)이 그대로 통합니다.',
+  '- `marks` = 기념일: `{ "label": "생일", "month": 5, "dom": 14 }`. 적는 칸이 반복을 정합니다 — 월+일=매년, 일만=매달(월세일), 요일만=매주(수업).',
+  '- 다른 목록의 `@기한`(계약 만료 등)은 자동으로 달력에 표시됩니다 — 따로 적을 것이 없습니다.',
+  '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
+];
+
 function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
@@ -374,7 +384,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -395,6 +405,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 편성표(party) — 인물을 자리에 앉히는 봇이면 (선택)',
     ...SCHEMA_PARTY_RULES,
+    '',
+    '## 달력(calendar) — 날짜가 중요한 봇이면 (선택)',
+    ...SCHEMA_CALENDAR_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -498,6 +511,12 @@ function patchIdDigest(schema) {
         : []),
       '- 조건식에서는 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)를 쓸 수 있습니다 — `has(deployed, "이름")`');
   }
+  // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
+  if (schema.calendar && typeof schema.calendar === 'object' && schema.calendar.list) {
+    out.push('', '### 달력 (calendar) — 패치로 못 다룹니다',
+      `- 일정 목록 \`${schema.calendar.list}\` — **remove 금지** (달력 일정 등록이 이 목록에 삽니다). `
+      + '항목의 `@숫자`는 날짜 기한 표기이니 지우지 마세요.');
+  }
   return out.join('\n');
 }
 
@@ -547,7 +566,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
-    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
@@ -1808,7 +1827,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['rules', '규칙·이벤트'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -2239,6 +2258,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
+    [/^\$\.calendar\b/, '달력', false],
     [/^\$\.(statusUI|promptState)\b/, '상태창', false],
     [/^\$\.updater\b/, 'AI 설정', false],
     [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
@@ -2833,6 +2853,125 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     wrap.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 제거')));
+    return wrap;
+  }
+
+  // ── 탭: 달력 ──────────────────────────────────────────────
+  // 게임 패널 2호 (v0.61). 일정 = list 변수 + @기한 규약 — 새 저장소를 만들지 않아서
+  // 만료 자동 정리(onTurn expire)·AI의 @+N 등록·has() 조건식이 전부 기존 기계로 돈다.
+  function tabCalendar() {
+    const wrap = h('div');
+    const tcfg = timeConfig(schema);
+    if (!tcfg) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+        '달력 패널은 시간 체계 위에서 섭니다 — 시계 없는 달력은 그릴 날짜가 없습니다. '
+        + '[시간] 탭에서 먼저 켜고 오세요.'));
+      return wrap;
+    }
+    const lists = schema.vars.filter((v) => v.type === 'list');
+
+    if (!schema.calendar) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '달력 패널 — 채팅 화면 우상단에 [📅] 버튼을 달고, 누르면 이번 달 달력이 뜹니다. '
+        + '계약·버프의 @기한이 자동으로 표시되고, 기념일(생일·축제·월세일)을 박아 둘 수 있고, '
+        + '일정 목록을 지정하면 날짜를 눌러 약속을 등록할 수 있습니다 (일상물·학원물·경영물용).'));
+      wrap.appendChild(addBtn('달력 만들기', () => {
+        schema.calendar = { label: '달력', icon: '📅' };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const C = schema.calendar;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('버튼 이름', bindInput(C.label, (x) => { C.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '달력' })),
+        pair('아이콘', bindInput(C.icon, (x) => { C.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📅' })),
+        pair('설명', bindInput(C.note, (x) => { C.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단 한 줄 (비워도 됨)' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('일정 목록', bindSelect(C.list ?? '',
+          [['', '(없음 — 보기 전용 달력)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) C.list = x; else delete C.list; rerender(); }),
+          '지정하면 달력에서 날짜를 눌러 일정을 등록할 수 있다 — 항목은 "내용 @경과일"로 저장'),
+      ),
+    ));
+
+    if (!C.list) {
+      // 일정 목록 골격 — 변수 + 만료 규칙을 한 번에. 이름이 겹치면 만들지 않는다 (직접 고르게)
+      const canScaffold = !schema.vars.some((v) => v.id === 'plans');
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        canScaffold ? h('button', { class: 'sce-btn', onclick: () => {
+          schema.vars.push({ id: 'plans', label: '일정', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
+            desc: '앞으로 잡힌 약속·일정. 날짜가 지나면 자동으로 지워진다.' });
+          if (tcfg.expose.includes('elapsed')) {
+            schema.rules = schema.rules || {};
+            schema.rules.onTurn = schema.rules.onTurn || [];
+            schema.rules.onTurn.push({ list: 'plans', expire: 'elapsed' });
+          }
+          C.list = 'plans';
+          rerender();
+        } }, '📝 일정 목록 만들기 (plans 변수 + 자동 정리 규칙)') : null,
+        h('span', { class: 'sce-hint' }, canScaffold
+          ? '누르면 list 변수 하나와 "지난 일정 자동 삭제" 규칙이 같이 생깁니다.'
+          : 'plans 변수가 이미 있습니다 — 위에서 직접 고르세요.'),
+      ));
+    } else {
+      const hasExpire = (schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire);
+      if (!hasExpire && tcfg.expose.includes('elapsed')) {
+        wrap.appendChild(h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn', onclick: () => {
+            schema.rules = schema.rules || {};
+            schema.rules.onTurn = schema.rules.onTurn || [];
+            schema.rules.onTurn.push({ list: C.list, expire: 'elapsed' });
+            rerender();
+          } }, '🧹 지난 일정 자동 정리 규칙 추가'),
+          h('span', { class: 'sce-hint sce-warn' }, '지금은 지난 일정이 목록에 계속 남습니다.'),
+        ));
+      }
+      const allowed = (schema.updater?.allow || []).some((a) => a.id === C.list);
+      wrap.appendChild(h('div', { class: 'sce-hint' }, allowed
+        ? `보조 AI도 일정을 잡을 수 있습니다 ('${C.list}'가 [AI 설정] 허용 목록에 있음) — `
+          + '서사에서 "일요일에 보자"가 나오면 AI가 "@+N"(며칠 뒤)으로 등록하고, 시스템이 날짜로 굳힙니다.'
+        : `지금은 유저만 일정을 등록합니다 — AI도 서사 따라 잡게 하려면 '${C.list}'를 [AI 설정] 허용 목록에 넣으세요.`));
+    }
+
+    // 기념일 (marks) — 적힌 성분이 전부 맞는 날에 뜬다
+    C.marks = Array.isArray(C.marks) ? C.marks : [];
+    wrap.appendChild(h('h4', {}, `기념일 (${C.marks.length}개)`));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '반복은 적는 칸이 정합니다 — 월+일 = 매년 (생일·축제) · 일만 = 매달 (월세일·정산일) · 요일만 = 매주 (수업·정기 모임). '
+      + '메모는 그 날을 눌렀을 때 보입니다.'));
+    C.marks.forEach((mk, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          pair('이름', bindInput(mk.label, (x) => { mk.label = x; rerender(); }, { cls: 'sce-w-m', ph: '생일' })),
+          pair('월', bindInput(mk.month, (x) => { mk.month = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
+          pair('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
+          pair('요일', bindSelect(mk.weekday ?? '',
+            [['', '(무관)'], ...tcfg.weekdays.map((w) => [w, w])],
+            (x) => { if (x) mk.weekday = x; else delete mk.weekday; rerender(); })),
+          pair('메모', bindInput(mk.note, (x) => { mk.note = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비워도 됨)' })),
+          grip(C.marks, i, rerender),
+        ),
+      ));
+    });
+    wrap.appendChild(addBtn('기념일 추가', () => {
+      (C.marks = Array.isArray(C.marks) ? C.marks : []).push({ label: '기념일', month: 1, dom: 1 });
+      rerender();
+    }));
+    if (!C.marks.length) delete C.marks;   // 빈 배열은 스키마에 안 남긴다 (addBtn이 되살린다)
+
+    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨)'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '쓸 수 있는 클래스: .scc-day(날짜 칸) .scc-day.scc-today(오늘) .scc-day.scc-sel(선택) '
+      + '.scc-dot.scc-mark(기념일 점) .scc-dot.scc-plan(일정 점) .scc-dot.scc-due(기한 점) '
+      + '.scc-nav(달 이동 줄) .scc-detail(하단 상세). 카드·제목은 편성표와 같은 .scg-card/.scg-title.'));
+    wrap.appendChild(bindArea(C.css, (x) => { C.css = x || undefined; rerender(); },
+      '.scg-card { background:#141018; border-color:#8a6d3b; }\n.scc-day.scc-today { border-color:#e0a94a; }'));
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.calendar; rerender(); } }, '달력 제거')));
     return wrap;
   }
 
@@ -4622,7 +4761,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function deepBody() {
-    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, rules: tabRules, actions: tabActions,
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 

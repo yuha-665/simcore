@@ -681,6 +681,8 @@ const BUSINESS = {
 //          ⑤ 에셋 팩(assets) — 감정 이미지 자동 삽입의 표준형 (v0.53). 곱셈 목록(인물×감정)을
 //             칸 선언(인물+감정)으로 바꾸고, 조합·실존 대조·폴백은 시스템이 한다.
 //             예시 팩은 꺼진 채(enabled: false) 실려 있다 — 어휘를 자기 에셋 이름에 맞춘 뒤 켠다.
+//          ⑥ 달력(calendar, v0.61) — 기념일 marks(월+일=매년·요일=매주) + 약속 목록(plans).
+//             일정 = list 항목 + @기한 규약이라 만료 정리·AI의 @+N 등록이 기존 기계로 돈다.
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
@@ -690,6 +692,16 @@ const ROMANCE = {
     start: '2026-03-02 08:30',
     advance: 'explicit',
     format: { date: 'M월 D일', clock: 'HH:mm' },
+  },
+  // 달력 (v0.61) — [📅] 버튼 → 월 그리드. 기념일은 marks가, 약속은 plans 목록이,
+  // 계약·버프의 @기한은 자동으로 표시된다. 날짜 클릭 → 약속 등록.
+  calendar: {
+    label: '달력', icon: '📅', list: 'plans',
+    note: '날짜를 누르면 약속을 등록할 수 있다.',
+    marks: [
+      { label: '상대 생일', month: 5, dom: 14, note: '잊으면 큰일 난다.' },
+      { label: '도서부 모임', weekday: '수' },
+    ],
   },
   vars: [
     { id: 'affection', label: '호감도', type: 'int', init: 10, min: 0, max: 100 },
@@ -702,6 +714,10 @@ const ROMANCE = {
     { id: 'memories', label: '함께한 기억', type: 'list', init: [], maxItems: 15, itemMaxLength: 40,
       desc: '둘 사이에 실제로 있었던 일. 나중에 대화에서 다시 꺼내 쓴다.' },
     { id: 'confessed', label: '고백함', type: 'bool', init: false },
+    // 일정 (v0.61 달력) — 달력 팝업에서 날짜를 눌러 등록하고, AI도 서사에서 잡는다(allow).
+    // 항목은 "내용 @경과일" — onTurn expire 규칙이 지난 약속을 스스로 지운다.
+    { id: 'plans', label: '약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 30,
+      desc: '앞으로 잡힌 약속. 서사에서 새 약속이 잡히면 "내용 @+N"(N일 뒤)으로 추가하라. 날짜가 지나면 자동으로 지워진다.' },
     // 시간 진행 입구 — 엔진이 매 턴 소비 후 0으로 되돌린다. 규칙은 desc에 산다
     // (지시문은 메인 전용이라 상태를 갱신하는 보조 AI가 못 읽는다 — 실측 사고).
     { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
@@ -718,6 +734,8 @@ const ROMANCE = {
     onTurn: [
       { set: 'tension', expr: 'max(tension - 3, 0)' },
       { set: 'jealousy', expr: 'max(jealousy - 2, 0)' },
+      // 지난 약속 자동 정리 — @경과일이 elapsed보다 과거인 항목을 스스로 뺀다 (v0.61 달력)
+      { list: 'plans', expire: 'elapsed' },
     ],
     // 관계 단계는 호감도가 문턱을 넘을 때 자동으로 올라간다.
     // once를 쓰지 않은 이유: 사이가 나빠져 단계가 내려갔다가 다시 올라올 수 있어야 하기 때문.
@@ -796,6 +814,7 @@ const ROMANCE = {
       { id: 'tension', maxDelta: 20 },
       { id: 'jealousy', maxDelta: 20 },
       { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
+      { id: 'plans' },   // 서사에서 잡힌 약속 — "@+N"은 시스템이 절대 날짜로 굳힌다 (v0.61)
       // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
       { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
     ],

@@ -831,6 +831,55 @@ function validateSchema(schema) {
     }
   }
 
+  // ── calendar (달력 패널 — 게임 패널 2호, v0.61) ─────────────
+  // 월 그리드 + 기념일 마킹 + 일정 등록(list 변수 + @기한 규약). 시간 체계 위에서만 선다.
+  if (schema.calendar != null) {
+    const C = schema.calendar;
+    if (typeof C !== 'object' || Array.isArray(C)) err('$.calendar', 'calendar는 객체여야 함');
+    else {
+      const ct = timeConfig(schema);
+      if (!ct) {
+        err('$.calendar', '달력 패널은 시간 체계(time)가 켜져 있어야 합니다 — 시계 없는 달력은 그릴 날짜가 없습니다. [시간] 탭에서 먼저 켜세요');
+      }
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['css', 'CSS']]) {
+        if (C[k] != null && typeof C[k] !== 'string') err(`$.calendar.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (C.list != null) {
+        const lv = vars.find((v) => v && v.id === C.list);
+        if (!lv) err('$.calendar.list', `일정 목록 '${C.list}'가 vars에 없음`);
+        else if (lv.type !== 'list') err('$.calendar.list', `일정 목록 '${C.list}'는 list 타입이어야 함 (현재: ${lv.type})`);
+        else if (!(schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire)) {
+          warn('$.calendar.list', `'${C.list}'에 만료 규칙이 없습니다 — 지난 일정이 저절로 안 지워집니다. `
+            + `onTurn에 { "list": "${C.list}", "expire": "elapsed" }를 권합니다`);
+        }
+      }
+      if (C.marks != null) {
+        if (!Array.isArray(C.marks)) err('$.calendar.marks', 'marks는 배열이어야 함');
+        else C.marks.forEach((mk, i) => {
+          const p = `$.calendar.marks[${i}]`;
+          if (!mk || typeof mk !== 'object') { err(p, '기념일은 객체여야 함'); return; }
+          if (!mk.label || typeof mk.label !== 'string' || !mk.label.trim()) err(p, '기념일 label 필요');
+          if (mk.month == null && mk.dom == null && mk.weekday == null) {
+            err(p, '언제인지가 없습니다 — month(월)·dom(일)·weekday(요일) 중 하나는 필요합니다 '
+              + '(month+dom=매년, dom만=매달, weekday만=매주)');
+          }
+          if (mk.month != null && (!Number.isInteger(mk.month) || mk.month < 1 || mk.month > 12)) err(p, 'month는 1~12 정수');
+          const maxDom = ct?.calendar === 'flat30' ? 30 : 31;
+          if (mk.dom != null && (!Number.isInteger(mk.dom) || mk.dom < 1 || mk.dom > maxDom)) err(p, `dom은 1~${maxDom} 정수`);
+          // 존재하지 않는 날짜(2월 30일 등)는 영영 안 오는 기념일이다 — 윤년 2/29는 허용
+          if (ct && mk.month != null && mk.dom != null) {
+            const cap = ct.calendar === 'flat30' ? 30 : [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mk.month - 1];
+            if (mk.dom > cap) err(p, `${mk.month}월 ${mk.dom}일은 없는 날짜입니다`);
+          }
+          if (ct && mk.weekday != null && !ct.weekdays.includes(mk.weekday)) {
+            err(p, `'${mk.weekday}'는 요일 이름이 아닙니다 — 이 봇의 요일: ${ct.weekdays.join(', ')}`);
+          }
+          if (mk.note != null && typeof mk.note !== 'string') err(p, 'note는 문자열');
+        });
+      }
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 

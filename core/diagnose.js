@@ -48,6 +48,8 @@ function writerMap(schema) {
   // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
   // (v0.56부터 탭 구조 — 평면 목록은 party 모듈이 한 곳에서 정의한다)
   for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
+  // 달력(v0.61) — 일정 목록은 유저가 팝업에서 등록한다. 시뮬은 못 움직이지만 죽은 변수가 아니다
+  if (schema.calendar?.list) add(schema.calendar.list, '달력');
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }

@@ -31,6 +31,7 @@ const escapeText = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 (0, eval)(src.slice(src.indexOf('const SimCore = (() => {'), src.indexOf('(async () => {')) + '\n;globalThis.__SC = SimCore;');
 const { actionGlyph } = globalThis.__SC.require('render'); // 슬라이스가 참조 — 실물 사용
 const partyMod = globalThis.__SC.require('party');
+const calendarMod = globalThis.__SC.require('calendar');
 let panelBuilt = false;
 const renderPanel = () => {};
 const loadForCurrentChar = async () => {};

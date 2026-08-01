@@ -1,13 +1,29 @@
 //@name simcore
 //@api 3.0
-//@version 0.60.0
-//@display-name SimCore (시뮬 엔진) v0.60 AI 경로·진단 편성 대응
+//@version 0.61.0
+//@display-name SimCore (시뮬 엔진) v0.61 달력 패널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.61.0 ────────────────────────────────────────────────
+// 달력 패널 — 게임 패널 2호 (유저 제안: "달력이랑 시간도 구현해놨으니 캘린더 기능도,
+// 달력 클릭해서 일정 등록 — 생일·학교 시간표·경영·영지 다 활용"). core/calendar.js.
+// - [📅 버튼 → 월 그리드] time.js 산술 그대로 (그레고리 윤년·flat30 360일). ◀▶ 달 이동,
+//   [오늘] 복귀, 오늘 강조. 시간 체계(time) 켠 봇 + calendar 섹션 옵트인.
+// - [일정 = list 변수 + @기한 규약] 새 저장소 없음 — 날짜 클릭 → 등록하면 "내용 @D"로
+//   목록에 삽입. 그래서 공짜: 지난 일정 자동 정리(onTurn expire), AI의 서사 등록(@+N을
+//   엔진이 굳힘, allow), has(약속,"축제") 조건식 연동. @D 단위는 그 목록의 expire 식과
+//   같은 시계로 잇는다 (절대일 = 오늘 + (D − 식의 현재값), resolveRelativeExpiry와 동원칙).
+// - [마킹 3종] 📌 기념일 marks(월+일=매년·일만=매달·요일만=매주) / 📝 일정(삭제 가능) /
+//   ⏳ 기한 — 다른 목록의 @기한(계약 만료 등)이 자동 표시. 날짜 클릭 → 하단 상세.
+// - [검증] time 필수, marks 성분·없는 날짜(2/30)·요일 오타(커스텀 요일명 대조), 만료 규칙
+//   없으면 경고. [편집기] 달력 탭 — 일정 목록 골격 생성(변수+정리 규칙), 기념일 행, CSS.
+// - [AI 경로] 규격서 calendar 절 + 최상위 키 등재, 패치 불가 명시 + 일정 목록 remove 보호.
+// - 연애 템플릿에 실물 (plans + 생일/도서부 marks + allow + expire). 진단 writer '달력'.
 //
 // ── v0.60.0 ────────────────────────────────────────────────
 // AI 제작 경로·진단의 편성표 대응 — 유저 지적: "패치한 게 꽤 되는데 AI에게 개발시키는
@@ -2405,6 +2421,55 @@ function validateSchema(schema) {
     }
   }
 
+  // ── calendar (달력 패널 — 게임 패널 2호, v0.61) ─────────────
+  // 월 그리드 + 기념일 마킹 + 일정 등록(list 변수 + @기한 규약). 시간 체계 위에서만 선다.
+  if (schema.calendar != null) {
+    const C = schema.calendar;
+    if (typeof C !== 'object' || Array.isArray(C)) err('$.calendar', 'calendar는 객체여야 함');
+    else {
+      const ct = timeConfig(schema);
+      if (!ct) {
+        err('$.calendar', '달력 패널은 시간 체계(time)가 켜져 있어야 합니다 — 시계 없는 달력은 그릴 날짜가 없습니다. [시간] 탭에서 먼저 켜세요');
+      }
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['css', 'CSS']]) {
+        if (C[k] != null && typeof C[k] !== 'string') err(`$.calendar.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (C.list != null) {
+        const lv = vars.find((v) => v && v.id === C.list);
+        if (!lv) err('$.calendar.list', `일정 목록 '${C.list}'가 vars에 없음`);
+        else if (lv.type !== 'list') err('$.calendar.list', `일정 목록 '${C.list}'는 list 타입이어야 함 (현재: ${lv.type})`);
+        else if (!(schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire)) {
+          warn('$.calendar.list', `'${C.list}'에 만료 규칙이 없습니다 — 지난 일정이 저절로 안 지워집니다. `
+            + `onTurn에 { "list": "${C.list}", "expire": "elapsed" }를 권합니다`);
+        }
+      }
+      if (C.marks != null) {
+        if (!Array.isArray(C.marks)) err('$.calendar.marks', 'marks는 배열이어야 함');
+        else C.marks.forEach((mk, i) => {
+          const p = `$.calendar.marks[${i}]`;
+          if (!mk || typeof mk !== 'object') { err(p, '기념일은 객체여야 함'); return; }
+          if (!mk.label || typeof mk.label !== 'string' || !mk.label.trim()) err(p, '기념일 label 필요');
+          if (mk.month == null && mk.dom == null && mk.weekday == null) {
+            err(p, '언제인지가 없습니다 — month(월)·dom(일)·weekday(요일) 중 하나는 필요합니다 '
+              + '(month+dom=매년, dom만=매달, weekday만=매주)');
+          }
+          if (mk.month != null && (!Number.isInteger(mk.month) || mk.month < 1 || mk.month > 12)) err(p, 'month는 1~12 정수');
+          const maxDom = ct?.calendar === 'flat30' ? 30 : 31;
+          if (mk.dom != null && (!Number.isInteger(mk.dom) || mk.dom < 1 || mk.dom > maxDom)) err(p, `dom은 1~${maxDom} 정수`);
+          // 존재하지 않는 날짜(2월 30일 등)는 영영 안 오는 기념일이다 — 윤년 2/29는 허용
+          if (ct && mk.month != null && mk.dom != null) {
+            const cap = ct.calendar === 'flat30' ? 30 : [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mk.month - 1];
+            if (mk.dom > cap) err(p, `${mk.month}월 ${mk.dom}일은 없는 날짜입니다`);
+          }
+          if (ct && mk.weekday != null && !ct.weekdays.includes(mk.weekday)) {
+            err(p, `'${mk.weekday}'는 요일 이름이 아닙니다 — 이 봇의 요일: ${ct.weekdays.join(', ')}`);
+          }
+          if (mk.note != null && typeof mk.note !== 'string') err(p, 'note는 문자열');
+        });
+      }
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -2995,6 +3060,199 @@ function applyUpgrade(schema, state, itemVar) {
 }
 
 module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState };
+
+});
+
+SimCore.define("calendar", function (require, module, exports) {
+// 달력 패널 — 게임 패널 2호 (v0.61). 월 그리드 + 기한·기념일 마킹 + 날짜 클릭 일정 등록.
+//
+// 원칙: **새 저장소를 만들지 않는다** — 일정 = 평범한 list 변수 항목 + `@기한` 규약 재사용.
+// 그래서 공짜로 따라오는 것들:
+//   (1) 지난 일정 자동 정리 = 기존 onTurn expire 규칙
+//   (2) AI가 서사로 일정 잡기 = updater.allow + `@+N` 상대 기한 (엔진이 절대값으로 굳힘)
+//   (3) 조건식 연동 = has(약속, "축제") — 일정이 이벤트·지시문·showWhen의 재료가 된다
+// 시간 산술은 전부 time.js 몫 — 여기서는 셀 배치와 마킹 대조만 한다. 상태를 바꾸는 것은
+// 일정 등록/삭제뿐이고, 그마저 "바뀔 목록 연산"만 돌려준다 (적용은 호스트 — party와 같은 계약).
+//
+// `@값`의 단위 문제: 항목의 @D는 그 목록을 만료시키는 expire 식의 단위로 적혀 있다
+// (engine.resolveRelativeExpiry와 같은 원칙 — 등록과 만료를 같은 시계로 잰다).
+// 그래서 날짜↔@D 변환은 [절대일 = 오늘절대일 + (D − 지금의 expire 식 값)]으로 잇고,
+// expire 규칙이 없는 목록만 elapsed(시작부터 경과일) 규약으로 간주한다.
+
+const { timeConfig, calendarOf, epochFrom, daysInMonth, MIN_PER_DAY, EPOCH_KEY } = require('./time');
+const { itemExpiry } = require('./expr');
+
+function dayIdx(epochMin) { return Math.floor(epochMin / MIN_PER_DAY); }
+
+/** 달력 설정 (시간 체계가 꺼져 있으면 null — 달력은 시계 위에서만 선다) */
+function calendarConfig(schema) {
+  const c = schema?.calendar;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+  if (!timeConfig(schema)) return null;
+  return c;
+}
+
+/** 사이드바 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 (party와 같은 계약) */
+function calendarButtonSpec(schema) {
+  const c = calendarConfig(schema);
+  if (!c) return null;
+  return { label: c.label ?? '달력', icon: c.icon ?? '📅' };
+}
+
+/** 항목에서 기한 표기를 걷어낸 표시용 라벨 ("영화 약속 @12" → "영화 약속") */
+function planLabel(item) {
+  return String(item).replace(/@\+?\d+(?:\.\d+)?/g, '').trim();
+}
+
+// 이 목록의 expire 식이 지금 가리키는 값 — @D와 같은 단위의 "현재". 규칙이 없거나
+// 평가가 안 되면 null (호출부가 elapsed 규약으로 폴백).
+function expireNow(schema, state, listId) {
+  const rule = (schema.rules?.onTurn || []).find((r) => r && r.list === listId && r.expire);
+  if (!rule) return null;
+  try {
+    const { evaluate } = require('./expr');
+    const { makeLookup } = require('./engine');   // 지연 require — 번들 순서 무관
+    const v = Number(evaluate(rule.expire, makeLookup(schema, state.vars), null));
+    return isFinite(v) ? v : null;
+  } catch { return null; }
+}
+
+/**
+ * 한 달치 그리기 재료. 상태를 바꾸지 않는다.
+ * opts { year, month } — 생략하면 오늘이 든 달.
+ * 반환: { year, month, label, weekdays, lead, today: {y,m,d}, canRegister, listLabel,
+ *         prev: {year,month}, next: {year,month},
+ *         cells: [{ dom, weekday, today, marks: [{kind:'mark'|'plan'|'due', label, note?, from?, item?}] }] }
+ */
+function monthView(schema, state, opts = {}) {
+  const c = calendarConfig(schema);
+  if (!c) return null;
+  const cfg = timeConfig(schema);
+  const epoch = Number(state.vars?.[EPOCH_KEY] ?? cfg.startEpoch);
+  const today = calendarOf(epoch, cfg.calendar);
+  const y = opts.year ?? today.y;
+  const m = opts.month ?? today.m;
+  const dim = daysInMonth(y, m, cfg.calendar);
+  const todayDay = dayIdx(epoch);
+  const startDay = dayIdx(cfg.startEpoch);
+  const absOf = (d) => dayIdx(epochFrom({ y, m, d, h: 0, mi: 0 }, cfg.calendar));
+  const byId = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+
+  // 절대일 → 그 칸에 붙을 마크들
+  const byDay = new Map();
+  const put = (absDay, mark) => {
+    if (!byDay.has(absDay)) byDay.set(absDay, []);
+    byDay.get(absDay).push(mark);
+  };
+
+  // ① 일정 (calendar.list) — 유저·AI가 등록한 항목
+  if (c.list) {
+    const items = state.vars?.[c.list] ?? byId[c.list]?.init ?? [];
+    const now = expireNow(schema, state, c.list);
+    for (const it of (Array.isArray(items) ? items : [])) {
+      const D = itemExpiry(it);
+      if (D == null) continue;   // 기한 없는 항목은 달력에 못 앉는다 (목록에는 그대로 있다)
+      const absDay = now != null ? todayDay + Math.round(D - now) : startDay + Math.round(D);
+      put(absDay, { kind: 'plan', label: planLabel(it), item: String(it) });
+    }
+  }
+  // ② 기한 (다른 목록의 @기한 — 계약 만료·버프 종료가 달력에 저절로 보인다)
+  for (const rule of (schema.rules?.onTurn || [])) {
+    if (!rule || !rule.list || !rule.expire || rule.list === c.list) continue;
+    const now = expireNow(schema, state, rule.list);
+    if (now == null) continue;
+    const items = state.vars?.[rule.list] ?? byId[rule.list]?.init ?? [];
+    for (const it of (Array.isArray(items) ? items : [])) {
+      const D = itemExpiry(it);
+      if (D == null) continue;
+      put(todayDay + Math.round(D - now), {
+        kind: 'due', label: planLabel(it), from: byId[rule.list]?.label ?? rule.list,
+      });
+    }
+  }
+
+  const marks = Array.isArray(c.marks) ? c.marks : [];
+  const cells = [];
+  for (let d = 1; d <= dim; d++) {
+    const wd = calendarOf(epochFrom({ y, m, d, h: 0, mi: 0 }, cfg.calendar), cfg.calendar).wd;
+    const cellMarks = [];
+    // ③ 제작자 기념일 — 적힌 성분이 전부 맞아야 그 칸 (month+dom=매년, dom만=매달, weekday만=매주)
+    for (const mk of marks) {
+      if (!mk || !mk.label) continue;
+      if (mk.month != null && mk.month !== m) continue;
+      if (mk.dom != null && mk.dom !== d) continue;
+      if (mk.weekday != null && cfg.weekdays[wd] !== mk.weekday) continue;
+      if (mk.month == null && mk.dom == null && mk.weekday == null) continue;
+      cellMarks.push({ kind: 'mark', label: mk.label, note: mk.note ?? null });
+    }
+    cellMarks.push(...(byDay.get(absOf(d)) ?? []));
+    cells.push({
+      dom: d, weekday: wd,
+      today: y === today.y && m === today.m && d === today.d,
+      marks: cellMarks,
+    });
+  }
+
+  return {
+    year: y, month: m, label: `${y}년 ${m}월`,
+    weekdays: cfg.weekdays, lead: cells[0]?.weekday ?? 0,
+    today: { y: today.y, m: today.m, d: today.d },
+    canRegister: !!c.list, listLabel: c.list ? (byId[c.list]?.label ?? c.list) : null,
+    prev: m <= 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 },
+    next: m >= 12 ? { year: y + 1, month: 1 } : { year: y, month: m + 1 },
+    cells,
+  };
+}
+
+/**
+ * 일정 등록 — 바뀔 목록 연산만 돌려준다 (적용은 호스트).
+ * 반환: { ok, listId, item } | { ok: false, reason }
+ */
+function addPlan(schema, state, { year, month, dom, label }) {
+  const c = calendarConfig(schema);
+  if (!c) return { ok: false, reason: '달력이 정의되지 않음' };
+  if (!c.list) return { ok: false, reason: '일정 목록(list)이 지정되지 않음 — 보기 전용 달력' };
+  const cfg = timeConfig(schema);
+  const def = (schema.vars || []).find((v) => v.id === c.list);
+  // '@'는 기한 표기 문자라 라벨에서 걷어낸다 — 안 걷으면 itemExpiry가 엉뚱한 걸 기한으로 읽는다
+  const name = String(label ?? '').replace(/@/g, '').trim();
+  if (!name) return { ok: false, reason: '일정 내용을 적어 주세요' };
+  if (dom < 1 || dom > daysInMonth(year, month, cfg.calendar)) {
+    return { ok: false, reason: `${year}년 ${month}월에 ${dom}일은 없어요` };
+  }
+  const epoch = Number(state.vars?.[EPOCH_KEY] ?? cfg.startEpoch);
+  const todayDay = dayIdx(epoch);
+  const targetDay = dayIdx(epochFrom({ y: year, m: month, d: dom, h: 0, mi: 0 }, cfg.calendar));
+  if (targetDay < todayDay) return { ok: false, reason: '지난 날짜에는 등록할 수 없어요' };
+  const now = expireNow(schema, state, c.list);
+  const D = now != null
+    ? Math.round(now + (targetDay - todayDay))
+    : targetDay - dayIdx(cfg.startEpoch);
+  const item = `${name} @${D}`;
+  const cur = state.vars?.[c.list] ?? def?.init ?? [];
+  if (def?.maxItems && cur.length >= def.maxItems) {
+    return { ok: false, reason: `일정이 가득 찼어요 (최대 ${def.maxItems}개)` };
+  }
+  // coerce의 길이 자르기에 맡기면 `@D`가 잘려 무기한 일정이 된다 — 여기서 막는다
+  if (def?.itemMaxLength && item.length > def.itemMaxLength) {
+    return { ok: false, reason: `내용이 너무 길어요 (기한 표기 포함 ${def.itemMaxLength}자까지)` };
+  }
+  return { ok: true, listId: c.list, item };
+}
+
+/** 일정 삭제 — 달력이 등록한 목록의 항목만, 정확히 일치할 때만 */
+function removePlan(schema, state, item) {
+  const c = calendarConfig(schema);
+  if (!c?.list) return { ok: false, reason: '일정 목록이 없음' };
+  const def = (schema.vars || []).find((v) => v.id === c.list);
+  const cur = state.vars?.[c.list] ?? def?.init ?? [];
+  if (!Array.isArray(cur) || !cur.includes(String(item))) {
+    return { ok: false, reason: '이미 없는 일정이에요' };
+  }
+  return { ok: true, listId: c.list, item: String(item) };
+}
+
+module.exports = { calendarConfig, calendarButtonSpec, monthView, addPlan, removePlan, planLabel };
 
 });
 
@@ -5595,6 +5853,8 @@ function writerMap(schema) {
   // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
   // (v0.56부터 탭 구조 — 평면 목록은 party 모듈이 한 곳에서 정의한다)
   for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
+  // 달력(v0.61) — 일정 목록은 유저가 팝업에서 등록한다. 시뮬은 못 움직이지만 죽은 변수가 아니다
+  if (schema.calendar?.list) add(schema.calendar.list, '달력');
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
@@ -6941,6 +7201,16 @@ const SCHEMA_PARTY_RULES = [
   '- 실물 예제: "용사의 여정"(rpg — 편성+수련 탭)과 "함대 — 편성과 출격"(fleet — 편성/정비창/보급 탭) 템플릿.',
 ];
 
+// 달력(calendar, v0.61) — party와 같은 이유로 규격서에 직접 알린다.
+const SCHEMA_CALENDAR_RULES = [
+  '- 달력은 **시간 체계(`time` 섹션)가 켜진 봇에만** 넣을 수 있습니다. 날짜가 중요한 봇(일상·학원·경영·영지)이 아니면 빼세요.',
+  '- `list`에 list 변수를 주면 유저가 달력에서 날짜를 눌러 일정을 등록합니다. 항목은 `"내용 @경과일"`로 저장되는 평범한 목록이라, '
+  + '`has(목록, "축제")` 조건·onTurn 만료 규칙(`{ "list": "...", "expire": "elapsed" }` — 지난 일정 자동 삭제)이 그대로 통합니다.',
+  '- `marks` = 기념일: `{ "label": "생일", "month": 5, "dom": 14 }`. 적는 칸이 반복을 정합니다 — 월+일=매년, 일만=매달(월세일), 요일만=매주(수업).',
+  '- 다른 목록의 `@기한`(계약 만료 등)은 자동으로 달력에 표시됩니다 — 따로 적을 것이 없습니다.',
+  '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
+];
+
 function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
@@ -6959,7 +7229,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -6980,6 +7250,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 편성표(party) — 인물을 자리에 앉히는 봇이면 (선택)',
     ...SCHEMA_PARTY_RULES,
+    '',
+    '## 달력(calendar) — 날짜가 중요한 봇이면 (선택)',
+    ...SCHEMA_CALENDAR_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -7083,6 +7356,12 @@ function patchIdDigest(schema) {
         : []),
       '- 조건식에서는 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)를 쓸 수 있습니다 — `has(deployed, "이름")`');
   }
+  // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
+  if (schema.calendar && typeof schema.calendar === 'object' && schema.calendar.list) {
+    out.push('', '### 달력 (calendar) — 패치로 못 다룹니다',
+      `- 일정 목록 \`${schema.calendar.list}\` — **remove 금지** (달력 일정 등록이 이 목록에 삽니다). `
+      + '항목의 `@숫자`는 날짜 기한 표기이니 지우지 마세요.');
+  }
   return out.join('\n');
 }
 
@@ -7132,7 +7411,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
-    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)는 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
@@ -8393,7 +8672,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['rules', '규칙·이벤트'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -8824,6 +9103,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
+    [/^\$\.calendar\b/, '달력', false],
     [/^\$\.(statusUI|promptState)\b/, '상태창', false],
     [/^\$\.updater\b/, 'AI 설정', false],
     [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
@@ -9418,6 +9698,125 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     wrap.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 제거')));
+    return wrap;
+  }
+
+  // ── 탭: 달력 ──────────────────────────────────────────────
+  // 게임 패널 2호 (v0.61). 일정 = list 변수 + @기한 규약 — 새 저장소를 만들지 않아서
+  // 만료 자동 정리(onTurn expire)·AI의 @+N 등록·has() 조건식이 전부 기존 기계로 돈다.
+  function tabCalendar() {
+    const wrap = h('div');
+    const tcfg = timeConfig(schema);
+    if (!tcfg) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+        '달력 패널은 시간 체계 위에서 섭니다 — 시계 없는 달력은 그릴 날짜가 없습니다. '
+        + '[시간] 탭에서 먼저 켜고 오세요.'));
+      return wrap;
+    }
+    const lists = schema.vars.filter((v) => v.type === 'list');
+
+    if (!schema.calendar) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '달력 패널 — 채팅 화면 우상단에 [📅] 버튼을 달고, 누르면 이번 달 달력이 뜹니다. '
+        + '계약·버프의 @기한이 자동으로 표시되고, 기념일(생일·축제·월세일)을 박아 둘 수 있고, '
+        + '일정 목록을 지정하면 날짜를 눌러 약속을 등록할 수 있습니다 (일상물·학원물·경영물용).'));
+      wrap.appendChild(addBtn('달력 만들기', () => {
+        schema.calendar = { label: '달력', icon: '📅' };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const C = schema.calendar;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('버튼 이름', bindInput(C.label, (x) => { C.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '달력' })),
+        pair('아이콘', bindInput(C.icon, (x) => { C.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📅' })),
+        pair('설명', bindInput(C.note, (x) => { C.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단 한 줄 (비워도 됨)' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('일정 목록', bindSelect(C.list ?? '',
+          [['', '(없음 — 보기 전용 달력)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) C.list = x; else delete C.list; rerender(); }),
+          '지정하면 달력에서 날짜를 눌러 일정을 등록할 수 있다 — 항목은 "내용 @경과일"로 저장'),
+      ),
+    ));
+
+    if (!C.list) {
+      // 일정 목록 골격 — 변수 + 만료 규칙을 한 번에. 이름이 겹치면 만들지 않는다 (직접 고르게)
+      const canScaffold = !schema.vars.some((v) => v.id === 'plans');
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        canScaffold ? h('button', { class: 'sce-btn', onclick: () => {
+          schema.vars.push({ id: 'plans', label: '일정', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
+            desc: '앞으로 잡힌 약속·일정. 날짜가 지나면 자동으로 지워진다.' });
+          if (tcfg.expose.includes('elapsed')) {
+            schema.rules = schema.rules || {};
+            schema.rules.onTurn = schema.rules.onTurn || [];
+            schema.rules.onTurn.push({ list: 'plans', expire: 'elapsed' });
+          }
+          C.list = 'plans';
+          rerender();
+        } }, '📝 일정 목록 만들기 (plans 변수 + 자동 정리 규칙)') : null,
+        h('span', { class: 'sce-hint' }, canScaffold
+          ? '누르면 list 변수 하나와 "지난 일정 자동 삭제" 규칙이 같이 생깁니다.'
+          : 'plans 변수가 이미 있습니다 — 위에서 직접 고르세요.'),
+      ));
+    } else {
+      const hasExpire = (schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire);
+      if (!hasExpire && tcfg.expose.includes('elapsed')) {
+        wrap.appendChild(h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn', onclick: () => {
+            schema.rules = schema.rules || {};
+            schema.rules.onTurn = schema.rules.onTurn || [];
+            schema.rules.onTurn.push({ list: C.list, expire: 'elapsed' });
+            rerender();
+          } }, '🧹 지난 일정 자동 정리 규칙 추가'),
+          h('span', { class: 'sce-hint sce-warn' }, '지금은 지난 일정이 목록에 계속 남습니다.'),
+        ));
+      }
+      const allowed = (schema.updater?.allow || []).some((a) => a.id === C.list);
+      wrap.appendChild(h('div', { class: 'sce-hint' }, allowed
+        ? `보조 AI도 일정을 잡을 수 있습니다 ('${C.list}'가 [AI 설정] 허용 목록에 있음) — `
+          + '서사에서 "일요일에 보자"가 나오면 AI가 "@+N"(며칠 뒤)으로 등록하고, 시스템이 날짜로 굳힙니다.'
+        : `지금은 유저만 일정을 등록합니다 — AI도 서사 따라 잡게 하려면 '${C.list}'를 [AI 설정] 허용 목록에 넣으세요.`));
+    }
+
+    // 기념일 (marks) — 적힌 성분이 전부 맞는 날에 뜬다
+    C.marks = Array.isArray(C.marks) ? C.marks : [];
+    wrap.appendChild(h('h4', {}, `기념일 (${C.marks.length}개)`));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '반복은 적는 칸이 정합니다 — 월+일 = 매년 (생일·축제) · 일만 = 매달 (월세일·정산일) · 요일만 = 매주 (수업·정기 모임). '
+      + '메모는 그 날을 눌렀을 때 보입니다.'));
+    C.marks.forEach((mk, i) => {
+      wrap.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          pair('이름', bindInput(mk.label, (x) => { mk.label = x; rerender(); }, { cls: 'sce-w-m', ph: '생일' })),
+          pair('월', bindInput(mk.month, (x) => { mk.month = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
+          pair('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
+          pair('요일', bindSelect(mk.weekday ?? '',
+            [['', '(무관)'], ...tcfg.weekdays.map((w) => [w, w])],
+            (x) => { if (x) mk.weekday = x; else delete mk.weekday; rerender(); })),
+          pair('메모', bindInput(mk.note, (x) => { mk.note = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비워도 됨)' })),
+          grip(C.marks, i, rerender),
+        ),
+      ));
+    });
+    wrap.appendChild(addBtn('기념일 추가', () => {
+      (C.marks = Array.isArray(C.marks) ? C.marks : []).push({ label: '기념일', month: 1, dom: 1 });
+      rerender();
+    }));
+    if (!C.marks.length) delete C.marks;   // 빈 배열은 스키마에 안 남긴다 (addBtn이 되살린다)
+
+    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨)'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '쓸 수 있는 클래스: .scc-day(날짜 칸) .scc-day.scc-today(오늘) .scc-day.scc-sel(선택) '
+      + '.scc-dot.scc-mark(기념일 점) .scc-dot.scc-plan(일정 점) .scc-dot.scc-due(기한 점) '
+      + '.scc-nav(달 이동 줄) .scc-detail(하단 상세). 카드·제목은 편성표와 같은 .scg-card/.scg-title.'));
+    wrap.appendChild(bindArea(C.css, (x) => { C.css = x || undefined; rerender(); },
+      '.scg-card { background:#141018; border-color:#8a6d3b; }\n.scc-day.scc-today { border-color:#e0a94a; }'));
+
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.calendar; rerender(); } }, '달력 제거')));
     return wrap;
   }
 
@@ -11207,7 +11606,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function deepBody() {
-    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, rules: tabRules, actions: tabActions,
+    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
   }
 
@@ -11986,6 +12385,8 @@ const BUSINESS = {
 //          ⑤ 에셋 팩(assets) — 감정 이미지 자동 삽입의 표준형 (v0.53). 곱셈 목록(인물×감정)을
 //             칸 선언(인물+감정)으로 바꾸고, 조합·실존 대조·폴백은 시스템이 한다.
 //             예시 팩은 꺼진 채(enabled: false) 실려 있다 — 어휘를 자기 에셋 이름에 맞춘 뒤 켠다.
+//          ⑥ 달력(calendar, v0.61) — 기념일 marks(월+일=매년·요일=매주) + 약속 목록(plans).
+//             일정 = list 항목 + @기한 규약이라 만료 정리·AI의 @+N 등록이 기존 기계로 돈다.
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
@@ -11995,6 +12396,16 @@ const ROMANCE = {
     start: '2026-03-02 08:30',
     advance: 'explicit',
     format: { date: 'M월 D일', clock: 'HH:mm' },
+  },
+  // 달력 (v0.61) — [📅] 버튼 → 월 그리드. 기념일은 marks가, 약속은 plans 목록이,
+  // 계약·버프의 @기한은 자동으로 표시된다. 날짜 클릭 → 약속 등록.
+  calendar: {
+    label: '달력', icon: '📅', list: 'plans',
+    note: '날짜를 누르면 약속을 등록할 수 있다.',
+    marks: [
+      { label: '상대 생일', month: 5, dom: 14, note: '잊으면 큰일 난다.' },
+      { label: '도서부 모임', weekday: '수' },
+    ],
   },
   vars: [
     { id: 'affection', label: '호감도', type: 'int', init: 10, min: 0, max: 100 },
@@ -12007,6 +12418,10 @@ const ROMANCE = {
     { id: 'memories', label: '함께한 기억', type: 'list', init: [], maxItems: 15, itemMaxLength: 40,
       desc: '둘 사이에 실제로 있었던 일. 나중에 대화에서 다시 꺼내 쓴다.' },
     { id: 'confessed', label: '고백함', type: 'bool', init: false },
+    // 일정 (v0.61 달력) — 달력 팝업에서 날짜를 눌러 등록하고, AI도 서사에서 잡는다(allow).
+    // 항목은 "내용 @경과일" — onTurn expire 규칙이 지난 약속을 스스로 지운다.
+    { id: 'plans', label: '약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 30,
+      desc: '앞으로 잡힌 약속. 서사에서 새 약속이 잡히면 "내용 @+N"(N일 뒤)으로 추가하라. 날짜가 지나면 자동으로 지워진다.' },
     // 시간 진행 입구 — 엔진이 매 턴 소비 후 0으로 되돌린다. 규칙은 desc에 산다
     // (지시문은 메인 전용이라 상태를 갱신하는 보조 AI가 못 읽는다 — 실측 사고).
     { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
@@ -12023,6 +12438,8 @@ const ROMANCE = {
     onTurn: [
       { set: 'tension', expr: 'max(tension - 3, 0)' },
       { set: 'jealousy', expr: 'max(jealousy - 2, 0)' },
+      // 지난 약속 자동 정리 — @경과일이 elapsed보다 과거인 항목을 스스로 뺀다 (v0.61 달력)
+      { list: 'plans', expire: 'elapsed' },
     ],
     // 관계 단계는 호감도가 문턱을 넘을 때 자동으로 올라간다.
     // once를 쓰지 않은 이유: 사이가 나빠져 단계가 내려갔다가 다시 올라올 수 있어야 하기 때문.
@@ -12101,6 +12518,7 @@ const ROMANCE = {
       { id: 'tension', maxDelta: 20 },
       { id: 'jealousy', maxDelta: 20 },
       { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
+      { id: 'plans' },   // 서사에서 잡힌 약속 — "@+N"은 시스템이 절대 날짜로 굳힌다 (v0.61)
       // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
       { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
     ],
@@ -13606,6 +14024,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   const { itemValue, itemExpiry } = SimCore.require('expr');
   const assetsMod = SimCore.require('assets');
   const partyMod = SimCore.require('party');
+  const calendarMod = SimCore.require('calendar');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -14109,11 +14528,13 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   // syncControls()를 부르므로 여기(실행 지점보다 앞)에 있어야 TDZ를 피한다.
   let gameBuilt = false;
   let gameVisible = false;
-  let gameKind = null;      // 'party' — 지금은 편성표뿐, 다음 패널(장비창 등)도 이 통로로
+  let gameKind = null;      // 'party' | 'calendar' — 게임 패널 종류 (다음 패널도 이 통로로)
   let gameNotice = null;    // 마지막 조작 결과 한 줄 (거부 이유 등)
   let gameOpenSlot = null;  // 후보 목록이 펼쳐진 슬롯 var (아코디언 — 한 번에 하나)
   let gameOpenTab = null;   // 열려 있는 편성 탭 id (v0.56 — 함대/수복/제작)
   let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
+  let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
+  let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
@@ -14629,6 +15050,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     if (session && schema) {
       const p = partyMod.partyButtonSpec(schema);
       if (p) specs.push({ key: 'party', ...p });
+      const c = calendarMod.calendarButtonSpec(schema);
+      if (c) specs.push({ key: 'calendar', ...c });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -14741,6 +15164,43 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-game .scg-act:hover { background:#24345c; border-color:#5b8def; }
       #sc-game .scg-act.scg-armed { border-color:#c8a050; background:rgba(200,160,80,.18); color:#ffe2a8; font-weight:600; }
       #sc-game .scg-act.scg-locked { opacity:.4; cursor:not-allowed; }
+      #sc-game .scc-nav { display:flex; align-items:center; gap:6px; margin:2px 0 10px; }
+      #sc-game .scc-nav .scc-month { flex:1; text-align:center; font-weight:700; color:#fff; font-size:14px; }
+      #sc-game .scc-nav button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
+        color:#dfe7f5; padding:4px 10px; font-size:13px; cursor:pointer; }
+      #sc-game .scc-nav button:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scc-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; }
+      #sc-game .scc-wd { text-align:center; color:#9db8e8; font-size:11px; padding:2px 0 4px; letter-spacing:.04em; }
+      #sc-game .scc-day { min-height:40px; border:1px solid #2a3a5e; border-radius:8px; background:#0e1526;
+        padding:3px 4px; cursor:pointer; font-size:12px; color:#dfe7f5; position:relative; }
+      #sc-game .scc-day:hover { background:#16203a; border-color:#3d5384; }
+      #sc-game .scc-day.scc-blank { visibility:hidden; }
+      #sc-game .scc-day.scc-today { border-color:#6b93f2; background:#1a2a52; font-weight:700; }
+      #sc-game .scc-day.scc-sel { border-color:#c8a050; box-shadow:0 0 0 1px #c8a050 inset; }
+      #sc-game .scc-day .scc-num { font-variant-numeric:tabular-nums; }
+      #sc-game .scc-dots { display:flex; gap:2px; flex-wrap:wrap; margin-top:2px; }
+      #sc-game .scc-dot { width:6px; height:6px; border-radius:50%; }
+      #sc-game .scc-dot.scc-mark { background:#c8a050; }
+      #sc-game .scc-dot.scc-plan { background:#5b8def; }
+      #sc-game .scc-dot.scc-due { background:#e06c75; }
+      #sc-game .scc-detail { margin-top:10px; border:1px solid #2a3a5e; border-radius:10px;
+        background:#0e1526; padding:9px 12px; }
+      #sc-game .scc-detail-date { font-weight:700; color:#fff; font-size:13px; margin-bottom:5px; }
+      #sc-game .scc-entry { display:flex; align-items:center; gap:7px; font-size:13px; padding:2px 0; }
+      #sc-game .scc-entry .scc-kind { font-size:11px; color:#9db8e8; flex:0 0 auto; }
+      #sc-game .scc-entry .scc-del { margin-left:auto; background:transparent; border:none; color:#8a99b5;
+        cursor:pointer; font-size:13px; padding:0 4px; border-radius:6px; }
+      #sc-game .scc-entry .scc-del:hover { background:#24345c; color:#f2aab6; }
+      #sc-game .scc-entry-note { color:#7d8aa5; font-size:11.5px; margin-left:20px; }
+      #sc-game .scc-add { display:flex; gap:6px; margin-top:7px; }
+      #sc-game .scc-add input { flex:1; min-width:0; background:#0a101f; color:#e6ebf5;
+        border:1px solid #35486e; border-radius:8px; padding:6px 10px; font-size:13px; }
+      #sc-game .scc-add input:focus { border-color:#5b8def; outline:none; }
+      #sc-game .scc-add button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
+        color:#dfe7f5; padding:6px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scc-add button:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scc-legend { display:flex; gap:12px; margin-top:8px; color:#7d8aa5; font-size:11px; }
+      #sc-game .scc-legend .scc-dot { display:inline-block; vertical-align:0; margin-right:4px; }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -14756,7 +15216,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   function applyGameCss() {
     let el = document.getElementById('sc-game-custom');
     if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
-    const css = gameKind === 'party' ? schema?.party?.css : null;
+    const css = gameKind === 'party' ? schema?.party?.css
+      : gameKind === 'calendar' ? schema?.calendar?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -14772,6 +15233,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     gameOpenSlot = null;
     gameOpenTab = null; // 열 때마다 첫 탭부터
     gameTabSearch = '';
+    gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
+    gameCalSel = null;
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -14797,6 +15260,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     const root = document.getElementById('sc-game');
     if (!root || !session || !schema) return;
     if (gameKind === 'party') renderPartyPanel(root);
+    else if (gameKind === 'calendar') renderCalendarPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -15048,6 +15512,146 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
 
   // 게임 패널이 변수를 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러
   // (편집기 commitVars와 같은 규약). 실패해도 화면은 갱신한다.
+  // ── 달력 패널 (v0.61) — 월 그리드 + 기한·기념일 마킹 + 날짜 클릭 일정 등록 ──────
+  // 일정 = calendar.list(평범한 list 변수) 항목 + `@기한` 규약. 새 저장소 없음 —
+  // 그래서 expire 자동 정리·AI의 @+N 등록·has() 조건식이 전부 기존 기계로 돈다.
+  function renderCalendarPanel(root) {
+    const view = calendarMod.monthView(schema, session.current, gameCalYm ?? {});
+    if (!view) { root.innerHTML = ''; return; }
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card';
+    card.addEventListener('click', (ev) => ev.stopPropagation());
+
+    const c = schema.calendar || {};
+    const title = document.createElement('div');
+    title.className = 'scg-title';
+    title.append(Object.assign(document.createElement('span'), { textContent: `${c.icon ?? '📅'} ${c.label ?? '달력'}` }));
+    const x = Object.assign(document.createElement('button'), { className: 'scg-x', textContent: '✕', title: '닫기' });
+    x.onclick = () => closeGamePanel();
+    title.appendChild(x);
+    card.appendChild(title);
+    if (c.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: c.note }));
+
+    // 달 내비 — [오늘]은 오늘이 든 달로 복귀 (gameCalYm=null이 그 뜻)
+    const nav = document.createElement('div');
+    nav.className = 'scc-nav';
+    const goYm = (ym) => { gameCalYm = ym; gameCalSel = null; gameNotice = null; renderGamePanel(); };
+    const prev = Object.assign(document.createElement('button'), { textContent: '◀' });
+    prev.onclick = () => goYm(view.prev);
+    const next = Object.assign(document.createElement('button'), { textContent: '▶' });
+    next.onclick = () => goYm(view.next);
+    const todayBtn = Object.assign(document.createElement('button'), { textContent: '오늘' });
+    todayBtn.onclick = () => goYm(null);
+    nav.append(prev,
+      Object.assign(document.createElement('div'), { className: 'scc-month', textContent: view.label }),
+      next, todayBtn);
+    card.appendChild(nav);
+
+    // 그리드 — 요일 헤더 + 1일 앞 공백 + 날짜 칸 (점 = 그 날의 마크, 최대 4개)
+    const grid = document.createElement('div');
+    grid.className = 'scc-grid';
+    for (const wd of view.weekdays) {
+      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-wd', textContent: wd }));
+    }
+    for (let i = 0; i < view.lead; i++) {
+      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-day scc-blank' }));
+    }
+    for (const cell of view.cells) {
+      const el = document.createElement('div');
+      el.className = 'scc-day' + (cell.today ? ' scc-today' : '') + (gameCalSel === cell.dom ? ' scc-sel' : '');
+      el.appendChild(Object.assign(document.createElement('div'), { className: 'scc-num', textContent: String(cell.dom) }));
+      if (cell.marks.length) {
+        const dots = document.createElement('div');
+        dots.className = 'scc-dots';
+        for (const mk of cell.marks.slice(0, 4)) {
+          dots.appendChild(Object.assign(document.createElement('span'), { className: `scc-dot scc-${mk.kind}` }));
+        }
+        el.appendChild(dots);
+      }
+      el.onclick = () => { gameCalSel = gameCalSel === cell.dom ? null : cell.dom; gameNotice = null; renderGamePanel(); };
+      grid.appendChild(el);
+    }
+    card.appendChild(grid);
+
+    const legend = document.createElement('div');
+    legend.className = 'scc-legend';
+    legend.innerHTML = '<span><span class="scc-dot scc-mark"></span>기념일</span>'
+      + (view.canRegister ? '<span><span class="scc-dot scc-plan"></span>일정</span>' : '')
+      + '<span><span class="scc-dot scc-due"></span>기한</span>';
+    card.appendChild(legend);
+
+    // 선택한 날 상세 — 마크 풀이 + 일정 삭제(달력이 등록한 것만) + 등록 칸
+    const sel = view.cells.find((cl) => cl.dom === gameCalSel);
+    if (sel) {
+      const box = document.createElement('div');
+      box.className = 'scc-detail';
+      box.appendChild(Object.assign(document.createElement('div'), {
+        className: 'scc-detail-date',
+        textContent: `${view.month}월 ${sel.dom}일 (${view.weekdays[sel.weekday]})${sel.today ? ' — 오늘' : ''}`,
+      }));
+      if (!sel.marks.length) {
+        box.appendChild(Object.assign(document.createElement('div'), {
+          className: 'scc-entry-note', textContent: '이 날에는 아무것도 없어요.' }));
+      }
+      const KIND = { mark: '📌', plan: '📝', due: '⏳' };
+      for (const mk of sel.marks) {
+        const row = document.createElement('div');
+        row.className = 'scc-entry';
+        row.appendChild(Object.assign(document.createElement('span'), { className: 'scc-kind', textContent: KIND[mk.kind] ?? '' }));
+        row.appendChild(Object.assign(document.createElement('span'), {
+          textContent: mk.label + (mk.from ? ` (${mk.from})` : '') }));
+        if (mk.kind === 'plan') {
+          const del = Object.assign(document.createElement('button'), { className: 'scc-del', textContent: '✕', title: '일정 삭제' });
+          del.onclick = () => onPlanRemove(mk.item);
+          row.appendChild(del);
+        }
+        box.appendChild(row);
+        if (mk.note) box.appendChild(Object.assign(document.createElement('div'), { className: 'scc-entry-note', textContent: mk.note }));
+      }
+      if (view.canRegister) {
+        const add = document.createElement('div');
+        add.className = 'scc-add';
+        const inp = Object.assign(document.createElement('input'), {
+          placeholder: `${view.listLabel}에 등록 — 예: 영화 약속`, maxLength: 60 });
+        const btn = Object.assign(document.createElement('button'), { textContent: '등록' });
+        const submit = () => onPlanAdd(view.year, view.month, sel.dom, inp.value);
+        btn.onclick = submit;
+        inp.onkeydown = (ev) => { if (ev.key === 'Enter') submit(); };
+        add.append(inp, btn);
+        box.appendChild(add);
+      }
+      card.appendChild(box);
+    }
+
+    if (gameNotice) card.appendChild(Object.assign(document.createElement('div'), { className: 'scg-notice', textContent: gameNotice }));
+    root.appendChild(card);
+  }
+
+  const currentListOf = (listId) =>
+    session.current.vars[listId] ?? (schema.vars.find((v) => v.id === listId)?.init ?? []);
+
+  async function onPlanAdd(year, month, dom, label) {
+    if (!session || !schema) return;
+    const r = calendarMod.addPlan(schema, session.current, { year, month, dom, label });
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    const next = [...currentListOf(r.listId), r.item];
+    gameNotice = `✓ ${calendarMod.planLabel(r.item)} — ${month}월 ${dom}일 등록`;
+    await commitPanelChanges({ [r.listId]: next }, '일정 등록');
+  }
+
+  async function onPlanRemove(item) {
+    if (!session || !schema) return;
+    const r = calendarMod.removePlan(schema, session.current, item);
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    // filter가 아니라 한 개만 — 같은 이름 일정이 여럿이어도 누른 것 하나만 지운다
+    const next = [...currentListOf(r.listId)];
+    const idx = next.indexOf(r.item);
+    if (idx >= 0) next.splice(idx, 1);
+    gameNotice = `✓ ${calendarMod.planLabel(r.item)} 삭제`;
+    await commitPanelChanges({ [r.listId]: next }, '일정 삭제');
+  }
+
   async function commitPanelChanges(changes, what) {
     Object.assign(session.current.vars, changes);
     try {

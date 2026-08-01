@@ -1,13 +1,29 @@
 //@name simcore
 //@api 3.0
-//@version 0.60.0
-//@display-name SimCore (시뮬 엔진) v0.60 AI 경로·진단 편성 대응
+//@version 0.61.0
+//@display-name SimCore (시뮬 엔진) v0.61 달력 패널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.61.0 ────────────────────────────────────────────────
+// 달력 패널 — 게임 패널 2호 (유저 제안: "달력이랑 시간도 구현해놨으니 캘린더 기능도,
+// 달력 클릭해서 일정 등록 — 생일·학교 시간표·경영·영지 다 활용"). core/calendar.js.
+// - [📅 버튼 → 월 그리드] time.js 산술 그대로 (그레고리 윤년·flat30 360일). ◀▶ 달 이동,
+//   [오늘] 복귀, 오늘 강조. 시간 체계(time) 켠 봇 + calendar 섹션 옵트인.
+// - [일정 = list 변수 + @기한 규약] 새 저장소 없음 — 날짜 클릭 → 등록하면 "내용 @D"로
+//   목록에 삽입. 그래서 공짜: 지난 일정 자동 정리(onTurn expire), AI의 서사 등록(@+N을
+//   엔진이 굳힘, allow), has(약속,"축제") 조건식 연동. @D 단위는 그 목록의 expire 식과
+//   같은 시계로 잇는다 (절대일 = 오늘 + (D − 식의 현재값), resolveRelativeExpiry와 동원칙).
+// - [마킹 3종] 📌 기념일 marks(월+일=매년·일만=매달·요일만=매주) / 📝 일정(삭제 가능) /
+//   ⏳ 기한 — 다른 목록의 @기한(계약 만료 등)이 자동 표시. 날짜 클릭 → 하단 상세.
+// - [검증] time 필수, marks 성분·없는 날짜(2/30)·요일 오타(커스텀 요일명 대조), 만료 규칙
+//   없으면 경고. [편집기] 달력 탭 — 일정 목록 골격 생성(변수+정리 규칙), 기념일 행, CSS.
+// - [AI 경로] 규격서 calendar 절 + 최상위 키 등재, 패치 불가 명시 + 일정 목록 remove 보호.
+// - 연애 템플릿에 실물 (plans + 생일/도서부 marks + allow + expire). 진단 writer '달력'.
 //
 // ── v0.60.0 ────────────────────────────────────────────────
 // AI 제작 경로·진단의 편성표 대응 — 유저 지적: "패치한 게 꽤 되는데 AI에게 개발시키는
@@ -887,6 +903,7 @@
   const { itemValue, itemExpiry } = SimCore.require('expr');
   const assetsMod = SimCore.require('assets');
   const partyMod = SimCore.require('party');
+  const calendarMod = SimCore.require('calendar');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -1390,11 +1407,13 @@
   // syncControls()를 부르므로 여기(실행 지점보다 앞)에 있어야 TDZ를 피한다.
   let gameBuilt = false;
   let gameVisible = false;
-  let gameKind = null;      // 'party' — 지금은 편성표뿐, 다음 패널(장비창 등)도 이 통로로
+  let gameKind = null;      // 'party' | 'calendar' — 게임 패널 종류 (다음 패널도 이 통로로)
   let gameNotice = null;    // 마지막 조작 결과 한 줄 (거부 이유 등)
   let gameOpenSlot = null;  // 후보 목록이 펼쳐진 슬롯 var (아코디언 — 한 번에 하나)
   let gameOpenTab = null;   // 열려 있는 편성 탭 id (v0.56 — 함대/수복/제작)
   let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
+  let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
+  let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
@@ -1910,6 +1929,8 @@
     if (session && schema) {
       const p = partyMod.partyButtonSpec(schema);
       if (p) specs.push({ key: 'party', ...p });
+      const c = calendarMod.calendarButtonSpec(schema);
+      if (c) specs.push({ key: 'calendar', ...c });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -2022,6 +2043,43 @@
       #sc-game .scg-act:hover { background:#24345c; border-color:#5b8def; }
       #sc-game .scg-act.scg-armed { border-color:#c8a050; background:rgba(200,160,80,.18); color:#ffe2a8; font-weight:600; }
       #sc-game .scg-act.scg-locked { opacity:.4; cursor:not-allowed; }
+      #sc-game .scc-nav { display:flex; align-items:center; gap:6px; margin:2px 0 10px; }
+      #sc-game .scc-nav .scc-month { flex:1; text-align:center; font-weight:700; color:#fff; font-size:14px; }
+      #sc-game .scc-nav button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
+        color:#dfe7f5; padding:4px 10px; font-size:13px; cursor:pointer; }
+      #sc-game .scc-nav button:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scc-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; }
+      #sc-game .scc-wd { text-align:center; color:#9db8e8; font-size:11px; padding:2px 0 4px; letter-spacing:.04em; }
+      #sc-game .scc-day { min-height:40px; border:1px solid #2a3a5e; border-radius:8px; background:#0e1526;
+        padding:3px 4px; cursor:pointer; font-size:12px; color:#dfe7f5; position:relative; }
+      #sc-game .scc-day:hover { background:#16203a; border-color:#3d5384; }
+      #sc-game .scc-day.scc-blank { visibility:hidden; }
+      #sc-game .scc-day.scc-today { border-color:#6b93f2; background:#1a2a52; font-weight:700; }
+      #sc-game .scc-day.scc-sel { border-color:#c8a050; box-shadow:0 0 0 1px #c8a050 inset; }
+      #sc-game .scc-day .scc-num { font-variant-numeric:tabular-nums; }
+      #sc-game .scc-dots { display:flex; gap:2px; flex-wrap:wrap; margin-top:2px; }
+      #sc-game .scc-dot { width:6px; height:6px; border-radius:50%; }
+      #sc-game .scc-dot.scc-mark { background:#c8a050; }
+      #sc-game .scc-dot.scc-plan { background:#5b8def; }
+      #sc-game .scc-dot.scc-due { background:#e06c75; }
+      #sc-game .scc-detail { margin-top:10px; border:1px solid #2a3a5e; border-radius:10px;
+        background:#0e1526; padding:9px 12px; }
+      #sc-game .scc-detail-date { font-weight:700; color:#fff; font-size:13px; margin-bottom:5px; }
+      #sc-game .scc-entry { display:flex; align-items:center; gap:7px; font-size:13px; padding:2px 0; }
+      #sc-game .scc-entry .scc-kind { font-size:11px; color:#9db8e8; flex:0 0 auto; }
+      #sc-game .scc-entry .scc-del { margin-left:auto; background:transparent; border:none; color:#8a99b5;
+        cursor:pointer; font-size:13px; padding:0 4px; border-radius:6px; }
+      #sc-game .scc-entry .scc-del:hover { background:#24345c; color:#f2aab6; }
+      #sc-game .scc-entry-note { color:#7d8aa5; font-size:11.5px; margin-left:20px; }
+      #sc-game .scc-add { display:flex; gap:6px; margin-top:7px; }
+      #sc-game .scc-add input { flex:1; min-width:0; background:#0a101f; color:#e6ebf5;
+        border:1px solid #35486e; border-radius:8px; padding:6px 10px; font-size:13px; }
+      #sc-game .scc-add input:focus { border-color:#5b8def; outline:none; }
+      #sc-game .scc-add button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
+        color:#dfe7f5; padding:6px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scc-add button:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scc-legend { display:flex; gap:12px; margin-top:8px; color:#7d8aa5; font-size:11px; }
+      #sc-game .scc-legend .scc-dot { display:inline-block; vertical-align:0; margin-right:4px; }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -2037,7 +2095,8 @@
   function applyGameCss() {
     let el = document.getElementById('sc-game-custom');
     if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
-    const css = gameKind === 'party' ? schema?.party?.css : null;
+    const css = gameKind === 'party' ? schema?.party?.css
+      : gameKind === 'calendar' ? schema?.calendar?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -2053,6 +2112,8 @@
     gameOpenSlot = null;
     gameOpenTab = null; // 열 때마다 첫 탭부터
     gameTabSearch = '';
+    gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
+    gameCalSel = null;
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -2078,6 +2139,7 @@
     const root = document.getElementById('sc-game');
     if (!root || !session || !schema) return;
     if (gameKind === 'party') renderPartyPanel(root);
+    else if (gameKind === 'calendar') renderCalendarPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -2329,6 +2391,146 @@
 
   // 게임 패널이 변수를 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러
   // (편집기 commitVars와 같은 규약). 실패해도 화면은 갱신한다.
+  // ── 달력 패널 (v0.61) — 월 그리드 + 기한·기념일 마킹 + 날짜 클릭 일정 등록 ──────
+  // 일정 = calendar.list(평범한 list 변수) 항목 + `@기한` 규약. 새 저장소 없음 —
+  // 그래서 expire 자동 정리·AI의 @+N 등록·has() 조건식이 전부 기존 기계로 돈다.
+  function renderCalendarPanel(root) {
+    const view = calendarMod.monthView(schema, session.current, gameCalYm ?? {});
+    if (!view) { root.innerHTML = ''; return; }
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card';
+    card.addEventListener('click', (ev) => ev.stopPropagation());
+
+    const c = schema.calendar || {};
+    const title = document.createElement('div');
+    title.className = 'scg-title';
+    title.append(Object.assign(document.createElement('span'), { textContent: `${c.icon ?? '📅'} ${c.label ?? '달력'}` }));
+    const x = Object.assign(document.createElement('button'), { className: 'scg-x', textContent: '✕', title: '닫기' });
+    x.onclick = () => closeGamePanel();
+    title.appendChild(x);
+    card.appendChild(title);
+    if (c.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: c.note }));
+
+    // 달 내비 — [오늘]은 오늘이 든 달로 복귀 (gameCalYm=null이 그 뜻)
+    const nav = document.createElement('div');
+    nav.className = 'scc-nav';
+    const goYm = (ym) => { gameCalYm = ym; gameCalSel = null; gameNotice = null; renderGamePanel(); };
+    const prev = Object.assign(document.createElement('button'), { textContent: '◀' });
+    prev.onclick = () => goYm(view.prev);
+    const next = Object.assign(document.createElement('button'), { textContent: '▶' });
+    next.onclick = () => goYm(view.next);
+    const todayBtn = Object.assign(document.createElement('button'), { textContent: '오늘' });
+    todayBtn.onclick = () => goYm(null);
+    nav.append(prev,
+      Object.assign(document.createElement('div'), { className: 'scc-month', textContent: view.label }),
+      next, todayBtn);
+    card.appendChild(nav);
+
+    // 그리드 — 요일 헤더 + 1일 앞 공백 + 날짜 칸 (점 = 그 날의 마크, 최대 4개)
+    const grid = document.createElement('div');
+    grid.className = 'scc-grid';
+    for (const wd of view.weekdays) {
+      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-wd', textContent: wd }));
+    }
+    for (let i = 0; i < view.lead; i++) {
+      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-day scc-blank' }));
+    }
+    for (const cell of view.cells) {
+      const el = document.createElement('div');
+      el.className = 'scc-day' + (cell.today ? ' scc-today' : '') + (gameCalSel === cell.dom ? ' scc-sel' : '');
+      el.appendChild(Object.assign(document.createElement('div'), { className: 'scc-num', textContent: String(cell.dom) }));
+      if (cell.marks.length) {
+        const dots = document.createElement('div');
+        dots.className = 'scc-dots';
+        for (const mk of cell.marks.slice(0, 4)) {
+          dots.appendChild(Object.assign(document.createElement('span'), { className: `scc-dot scc-${mk.kind}` }));
+        }
+        el.appendChild(dots);
+      }
+      el.onclick = () => { gameCalSel = gameCalSel === cell.dom ? null : cell.dom; gameNotice = null; renderGamePanel(); };
+      grid.appendChild(el);
+    }
+    card.appendChild(grid);
+
+    const legend = document.createElement('div');
+    legend.className = 'scc-legend';
+    legend.innerHTML = '<span><span class="scc-dot scc-mark"></span>기념일</span>'
+      + (view.canRegister ? '<span><span class="scc-dot scc-plan"></span>일정</span>' : '')
+      + '<span><span class="scc-dot scc-due"></span>기한</span>';
+    card.appendChild(legend);
+
+    // 선택한 날 상세 — 마크 풀이 + 일정 삭제(달력이 등록한 것만) + 등록 칸
+    const sel = view.cells.find((cl) => cl.dom === gameCalSel);
+    if (sel) {
+      const box = document.createElement('div');
+      box.className = 'scc-detail';
+      box.appendChild(Object.assign(document.createElement('div'), {
+        className: 'scc-detail-date',
+        textContent: `${view.month}월 ${sel.dom}일 (${view.weekdays[sel.weekday]})${sel.today ? ' — 오늘' : ''}`,
+      }));
+      if (!sel.marks.length) {
+        box.appendChild(Object.assign(document.createElement('div'), {
+          className: 'scc-entry-note', textContent: '이 날에는 아무것도 없어요.' }));
+      }
+      const KIND = { mark: '📌', plan: '📝', due: '⏳' };
+      for (const mk of sel.marks) {
+        const row = document.createElement('div');
+        row.className = 'scc-entry';
+        row.appendChild(Object.assign(document.createElement('span'), { className: 'scc-kind', textContent: KIND[mk.kind] ?? '' }));
+        row.appendChild(Object.assign(document.createElement('span'), {
+          textContent: mk.label + (mk.from ? ` (${mk.from})` : '') }));
+        if (mk.kind === 'plan') {
+          const del = Object.assign(document.createElement('button'), { className: 'scc-del', textContent: '✕', title: '일정 삭제' });
+          del.onclick = () => onPlanRemove(mk.item);
+          row.appendChild(del);
+        }
+        box.appendChild(row);
+        if (mk.note) box.appendChild(Object.assign(document.createElement('div'), { className: 'scc-entry-note', textContent: mk.note }));
+      }
+      if (view.canRegister) {
+        const add = document.createElement('div');
+        add.className = 'scc-add';
+        const inp = Object.assign(document.createElement('input'), {
+          placeholder: `${view.listLabel}에 등록 — 예: 영화 약속`, maxLength: 60 });
+        const btn = Object.assign(document.createElement('button'), { textContent: '등록' });
+        const submit = () => onPlanAdd(view.year, view.month, sel.dom, inp.value);
+        btn.onclick = submit;
+        inp.onkeydown = (ev) => { if (ev.key === 'Enter') submit(); };
+        add.append(inp, btn);
+        box.appendChild(add);
+      }
+      card.appendChild(box);
+    }
+
+    if (gameNotice) card.appendChild(Object.assign(document.createElement('div'), { className: 'scg-notice', textContent: gameNotice }));
+    root.appendChild(card);
+  }
+
+  const currentListOf = (listId) =>
+    session.current.vars[listId] ?? (schema.vars.find((v) => v.id === listId)?.init ?? []);
+
+  async function onPlanAdd(year, month, dom, label) {
+    if (!session || !schema) return;
+    const r = calendarMod.addPlan(schema, session.current, { year, month, dom, label });
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    const next = [...currentListOf(r.listId), r.item];
+    gameNotice = `✓ ${calendarMod.planLabel(r.item)} — ${month}월 ${dom}일 등록`;
+    await commitPanelChanges({ [r.listId]: next }, '일정 등록');
+  }
+
+  async function onPlanRemove(item) {
+    if (!session || !schema) return;
+    const r = calendarMod.removePlan(schema, session.current, item);
+    if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+    // filter가 아니라 한 개만 — 같은 이름 일정이 여럿이어도 누른 것 하나만 지운다
+    const next = [...currentListOf(r.listId)];
+    const idx = next.indexOf(r.item);
+    if (idx >= 0) next.splice(idx, 1);
+    gameNotice = `✓ ${calendarMod.planLabel(r.item)} 삭제`;
+    await commitPanelChanges({ [r.listId]: next }, '일정 삭제');
+  }
+
   async function commitPanelChanges(changes, what) {
     Object.assign(session.current.vars, changes);
     try {

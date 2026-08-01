@@ -12,3 +12,5 @@ tools/extracted-shim.txt
 simcore-save-*.json
 *.charx
 선라이즈맨션-패치/
+*.crdownload
+미확인*

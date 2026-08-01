@@ -2492,7 +2492,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
 
     const P = schema.party;
-    P.slots = Array.isArray(P.slots) ? P.slots : [];
+    const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
+    if (!hasTabs) P.slots = Array.isArray(P.slots) ? P.slots : [];
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
       + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
@@ -2519,37 +2520,110 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ),
     ));
 
-    wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+    // ── 슬롯·액션 편집 조각 (축약형과 탭 양쪽에서 재사용) ──
+    const allFlatSlots = () => (hasTabs ? P.tabs.flatMap((t) => (Array.isArray(t.slots) ? t.slots : [])) : P.slots);
+    const slotBlocks = (list) => {
+      const frag = h('div');
+      list.forEach((s, i) => {
+        const def = schema.vars.find((v) => v.id === s.var);
+        frag.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('변수', bindSelect(s.var ?? '',
+              enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+              (x) => { s.var = x; rerender(); }),
+              '이 슬롯이 저장되는 enum 변수'),
+            pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+            grip(list, i, rerender),
+          ),
+          def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
+        ));
+      });
+      if (enums.length) {
+        frag.appendChild(addBtn('슬롯 추가', () => {
+          const used = new Set(allFlatSlots().map((s) => s.var));
+          const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
+          list.push({ var: next.id });
+          rerender();
+        }));
+      }
+      return frag;
+    };
+    // 탭의 버튼 = 기존 액션 연결. 액션이 이미 이벤트·규칙·판정 배선이라(effects/check/inject)
+    // 체크 하나로 "출격·수복·제작"이 걸린다 — 새 트리거 기계 없음.
+    const actionPicks = (owner) => {
+      const row = h('div', { class: 'sce-row' });
+      if (!schema.actions.length) {
+        row.appendChild(h('span', { class: 'sce-hint' },
+          '연결할 액션이 아직 없습니다 — [액션] 탭에서 만들면 여기 체크 칸이 생깁니다.'));
+        return row;
+      }
+      row.appendChild(h('span', { class: 'sce-hint' }, '팝업 버튼으로 넣을 액션:'));
+      for (const a of schema.actions) {
+        const arr = () => (owner.actions = Array.isArray(owner.actions) ? owner.actions : []);
+        row.appendChild(bindCheck((owner.actions || []).includes(a.id), (on) => {
+          const list = arr();
+          if (on && !list.includes(a.id)) list.push(a.id);
+          if (!on) owner.actions = list.filter((x) => x !== a.id);
+          if (owner.actions && !owner.actions.length) delete owner.actions;
+          rerender();
+        }, a.label || a.id));
+      }
+      return row;
+    };
+
     if (!enums.length) {
       wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
         'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
     }
-    P.slots.forEach((s, i) => {
-      const def = schema.vars.find((v) => v.id === s.var);
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          pair('변수', bindSelect(s.var ?? '',
-            enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-            (x) => { s.var = x; rerender(); }),
-            '이 슬롯이 저장되는 enum 변수'),
-          pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
-          grip(P.slots, i, rerender),
-        ),
-        def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
-      ));
-    });
-    if (enums.length) {
-      wrap.appendChild(addBtn('슬롯 추가', () => {
-        const used = new Set(P.slots.map((s) => s.var));
-        const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
-        P.slots.push({ var: next.id });
+
+    if (!hasTabs) {
+      // 단일 편성 (축약형)
+      wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+      wrap.appendChild(slotBlocks(P.slots));
+      wrap.appendChild(actionPicks(P));
+      // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots, ...(P.actions ? { actions: P.actions } : {}) }];
+          delete P.slots; delete P.actions;
+          rerender();
+        } }, '🗂 탭 구조로 전환 (편성 여러 개 · 수복/제작 같은 시설 탭)')));
+    } else {
+      // 여러 탭 (칸코레 모델) — 슬롯 있는 탭 = 편성, 슬롯 없이 액션만 = 시설(수복·제작)
+      wrap.appendChild(h('h4', {}, `탭 (${P.tabs.length}개)`));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '탭 = 편성 하나 또는 시설 하나. 슬롯을 채우면 편성 탭, 슬롯 없이 액션만 걸면 '
+        + '수복·제작 같은 시설 탭이 됩니다. 인물은 탭이 달라도 한 자리에만 앉습니다 (이동/맞교환).'));
+      P.tabs.forEach((t, ti) => {
+        t.slots = Array.isArray(t.slots) ? t.slots : [];
+        wrap.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('탭 이름', bindInput(t.label, (x) => { t.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: `탭${ti + 1}` })),
+            pair('id', bindInput(t.id, (x) => { const v = String(x).trim(); if (v) t.id = v; else delete t.id; rerender(); }, { cls: 'sce-w-s', ph: `tab${ti + 1}` }),
+              '안 적으면 자동 (tabN)'),
+            pair('보유 목록', bindSelect(t.roster ?? '',
+              [['', P.roster ? `(공용 — ${P.roster})` : '(제한 없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+              (x) => { if (x) t.roster = x; else delete t.roster; rerender(); }),
+              '이 탭만 다른 목록을 쓸 때 (예: 수복 대기열)'),
+            // 삭제를 onDelete가 전담하고 false를 돌려 grip의 기본 splice를 막는다 (이중 삭제 방지)
+            grip(P.tabs, ti, rerender, () => { P.tabs.splice(ti, 1); if (!P.tabs.length) delete P.tabs; rerender(); return false; }),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
+          ),
+          slotBlocks(t.slots),
+          actionPicks(t),
+        ));
+      });
+      wrap.appendChild(addBtn('탭 추가', () => {
+        P.tabs.push({ id: `tab${P.tabs.length + 1}`, label: `편성 ${P.tabs.length + 1}`, slots: [] });
         rerender();
       }));
     }
 
     // AI가 편성을 서사로 움직이게 할지 — 슬롯 변수를 allow에 넣으면 된다 (선택 사항)
     const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
-    const aiMoved = P.slots.filter((s) => allowIds.has(s.var));
+    const aiMoved = allFlatSlots().filter((s) => allowIds.has(s.var));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       aiMoved.length
         ? `보조 AI도 슬롯을 움직일 수 있습니다 (${aiMoved.map((s) => s.var).join(', ')}가 [AI 설정] 허용 목록에 있음) — `

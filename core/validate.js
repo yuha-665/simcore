@@ -675,32 +675,72 @@ function validateSchema(schema) {
   }
 
   // ── party (편성표 — 게임 패널 1호) ─────────────────────────
-  // 슬롯 = enum 변수, 보유 = list 변수. 설계: docs/design-편성표.md
+  // 슬롯 = enum 변수, 보유 = list 변수, 탭 = 여러 편성/시설 (칸코레 모델, v0.56).
+  // 설계: docs/design-편성표.md
   if (schema.party != null) {
     const P = schema.party;
     if (typeof P !== 'object' || Array.isArray(P)) err('$.party', 'party는 객체여야 함');
     else {
       const varById = {};
       for (const v of vars) if (v && v.id) varById[v.id] = v;
-      const slots = Array.isArray(P.slots) ? P.slots : [];
-      if (!slots.length) err('$.party.slots', '슬롯(slots)이 최소 1개 필요');
-      const seen = new Set();
-      slots.forEach((s, i) => {
-        const p = `$.party.slots[${i}]`;
-        if (!s || typeof s !== 'object') { err(p, '슬롯은 객체여야 함'); return; }
-        const def = varById[s.var];
-        if (!def) { err(p, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
-        if (def.type !== 'enum') {
-          err(p, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
-          return;
+      const actionIds = new Set((Array.isArray(schema.actions) ? schema.actions : []).map((a) => a && a.id));
+      const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
+      // 축약형(slots/actions 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
+      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length)) {
+        err('$.party', 'tabs와 최상위 slots/actions를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+      }
+      // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
+      const tabs = hasTabs
+        ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
+        : [{ t: { slots: P.slots, actions: P.actions, roster: undefined }, p: '$.party' }];
+
+      const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
+      const tabIds = new Set();
+      let anySlot = false, anyContent = false;
+      for (const { t, p } of tabs) {
+        if (!t || typeof t !== 'object') { err(p, '탭은 객체여야 함'); continue; }
+        if (hasTabs && t.id != null) {
+          if (!ID_RE.test(t.id)) err(p, `잘못된 탭 id: '${t.id}'`);
+          else if (tabIds.has(t.id)) err(p, `중복된 탭 id: '${t.id}'`);
+          else tabIds.add(t.id);
         }
-        if (seen.has(s.var)) err(p, `슬롯 변수 '${s.var}' 중복 — 슬롯마다 다른 변수를 쓰세요`);
-        seen.add(s.var);
-        // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
-        if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
-          err(p, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+        const slots = Array.isArray(t.slots) ? t.slots : [];
+        const acts = Array.isArray(t.actions) ? t.actions : [];
+        if (!slots.length && !acts.length) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성) 또는 actions(시설 버튼) 중 하나는 필요합니다');
+          continue;
         }
-      });
+        anyContent = true;
+        slots.forEach((s, i) => {
+          const sp = `${p}.slots[${i}]`;
+          if (!s || typeof s !== 'object') { err(sp, '슬롯은 객체여야 함'); return; }
+          const def = varById[s.var];
+          if (!def) { err(sp, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
+          if (def.type !== 'enum') {
+            err(sp, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
+            return;
+          }
+          if (seen.has(s.var)) err(sp, `슬롯 변수 '${s.var}' 중복 — 탭이 달라도 슬롯마다 다른 변수를 쓰세요`);
+          seen.add(s.var);
+          anySlot = true;
+          // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
+          if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
+            err(sp, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+          }
+        });
+        // 탭의 버튼은 기존 액션을 가리킨다 — 액션이 이미 이벤트·규칙·판정 배선이므로
+        acts.forEach((id, i) => {
+          if (!actionIds.has(id)) err(`${p}.actions[${i}]`, `'${id}'는 actions에 없는 액션 id — [액션] 탭에서 먼저 만드세요`);
+        });
+        // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용 roster
+        if (t.roster != null && t.roster !== P.roster) {
+          const r = varById[t.roster];
+          if (!r) err(`${p}.roster`, `보유 목록 '${t.roster}'가 vars에 없음`);
+          else if (r.type !== 'list') err(`${p}.roster`, `보유 목록 '${t.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
+        }
+      }
+      if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
+
       if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
       if (P.roster != null) {
         const r = varById[P.roster];
@@ -710,7 +750,7 @@ function validateSchema(schema) {
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
       }
-      if (P.empty == null && slots.length) {
+      if (P.empty == null && anySlot) {
         warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
           + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');
       }

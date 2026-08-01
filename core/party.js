@@ -6,15 +6,39 @@
 //   표시 = statusUI의 when 분기 (v0.31부터 있던 기능).
 // 이 모듈은 순수 로직만 담는다 — DOM은 어댑터(#sc-game)가, 검증은 validate가 맡는다.
 //
+// v0.56 탭: 롤모델은 칸코레 — 함대가 여럿이고(제1함대/제2함대), 슬롯 없이 버튼만 있는
+// 시설 탭(수복·제작)도 있다. 탭의 버튼은 **기존 액션**을 가리킨다 — 액션이 이미
+// 이벤트·규칙·판정으로 배선돼 있으므로(effects/check/inject), 새 트리거 기계가 필요 없다.
+//
 // 왜 슬롯마다 enum이 따로인가: "전위엔 전사만" 같은 슬롯별 제약이 enum 값 목록으로
 // 자연스럽게 표현된다. 후보가 같다면 같은 값 목록을 복사하면 될 뿐이다.
 
-/** 편성표 설정 (없거나 슬롯이 비면 null — 어댑터가 버튼 자체를 안 단다) */
-function partyConfig(schema) {
+/**
+ * 탭 정규화 — 단일 탭 축약형(slots/actions를 party에 직접)과 tabs 배열을 한 형태로.
+ * 둘 다 쓰면 검증이 막는다 (validate). 반환: [{ id, label, note, roster, slots, actions }]
+ */
+function partyTabs(schema) {
   const p = schema?.party;
-  if (!p || typeof p !== 'object') return null;
-  if (!Array.isArray(p.slots) || !p.slots.length) return null;
-  return p;
+  if (!p || typeof p !== 'object') return [];
+  if (Array.isArray(p.tabs) && p.tabs.length) {
+    return p.tabs.map((t, i) => ({
+      id: t.id ?? `tab${i + 1}`,
+      label: t.label ?? `탭${i + 1}`,
+      note: t.note ?? null,
+      roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
+      slots: Array.isArray(t.slots) ? t.slots : [],
+      actions: Array.isArray(t.actions) ? t.actions : [],
+    }));
+  }
+  const slots = Array.isArray(p.slots) ? p.slots : [];
+  const actions = Array.isArray(p.actions) ? p.actions : [];
+  if (!slots.length && !actions.length) return [];
+  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null, slots, actions }];
+}
+
+/** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
+function partyConfig(schema) {
+  return partyTabs(schema).length ? schema.party : null;
 }
 
 /** 사이드바 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 */
@@ -33,60 +57,86 @@ function rosterHas(list, name) {
   return (Array.isArray(list) ? list : []).some((it) => rosterName(it) === name);
 }
 
+/** 편성표의 모든 슬롯 (탭 무관 평면 목록) — 검증·중복 자리 계산 공용 */
+function allSlots(schema) {
+  return partyTabs(schema).flatMap((t) => t.slots);
+}
+
 /**
  * 화면에 그릴 재료 한 벌. 상태를 건드리지 않는다.
- * 반환: { label, icon, note, empty, unique, roster: {var,label,items}|null,
- *         slots: [{ var, label, value, isEmpty, candidates: [{name, usedBy, locked}] }] }
- *   usedBy — unique일 때 이 이름이 이미 앉아 있는 다른 슬롯 var (고르면 그쪽에서 이동해 온다)
+ * opts.actionStates — 호스트가 주는 액션 상태 배열 [{id,label,armed,disabled,reason}]
+ *   (어댑터의 currentActionStates와 같은 출처 — 상태창 범례·조작줄과 짝이 맞아야 한다).
+ * 반환: { label, icon, note, empty, unique,
+ *         tabs: [{ id, label, note, roster: {var,label,items}|null,
+ *                  slots: [{ var, label, value, isEmpty, candidates: [{name, usedBy, locked}] }],
+ *                  actions: [{ id, label, armed, disabled, reason }] }] }
+ *   usedBy — unique일 때 이 이름이 이미 앉아 있는 다른 슬롯 var (탭이 달라도 — 한 인물은 한 자리).
  *   locked — roster가 있는데 아직 보유하지 않은 이름 (표시는 하되 잠금 — "영입하면 열린다")
  */
-function partyView(schema, state) {
+function partyView(schema, state, opts = {}) {
   const p = partyConfig(schema);
   if (!p) return null;
+  const tabs = partyTabs(schema);
   const unique = p.unique !== false;
   const empty = p.empty ?? null;
   const byId = {};
   for (const v of schema.vars || []) byId[v.id] = v;
-  const rosterDef = p.roster ? byId[p.roster] : null;
-  const rosterItems = rosterDef ? (state.vars[p.roster] ?? rosterDef.init ?? []) : null;
-  const seat = {}; // 이름 → 앉아 있는 슬롯 var
-  for (const s of p.slots) {
+  const stById = {};
+  for (const st of opts.actionStates || []) stById[st.id] = st;
+
+  // 자리 지도 — 탭을 가로질러 본다 (칸코레: 한 함선은 한 함대에만)
+  const seat = {};
+  for (const s of allSlots(schema)) {
     const val = state.vars[s.var];
     if (val != null && val !== empty) seat[val] = s.var;
   }
-  const slots = p.slots.map((s) => {
-    const def = byId[s.var] || {};
-    const value = state.vars[s.var] ?? def.init ?? null;
-    const isEmpty = empty != null && value === empty;
-    const candidates = (def.enum || [])
-      .filter((name) => name !== empty)
-      .map((name) => ({
-        name,
-        usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
-        locked: rosterItems != null && !rosterHas(rosterItems, name),
-      }));
-    return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+
+  const viewTabs = tabs.map((t) => {
+    const rosterDef = t.roster ? byId[t.roster] : null;
+    const rosterItems = rosterDef ? (state.vars[t.roster] ?? rosterDef.init ?? []) : null;
+    const slots = t.slots.map((s) => {
+      const def = byId[s.var] || {};
+      const value = state.vars[s.var] ?? def.init ?? null;
+      const isEmpty = empty != null && value === empty;
+      const candidates = (def.enum || [])
+        .filter((name) => name !== empty)
+        .map((name) => ({
+          name,
+          usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
+          locked: rosterItems != null && !rosterHas(rosterItems, name),
+        }));
+      return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+    });
+    // 탭의 액션 버튼 — 모르는 id는 조용히 떨구지 않고 잠긴 채 보여 준다 (제작 실수 가시화)
+    const actions = t.actions.map((id) => stById[id]
+      ?? { id, label: (schema.actions || []).find((a) => a.id === id)?.label ?? id,
+        armed: !!state.meta?.armed?.[id], disabled: false, reason: '' });
+    return {
+      id: t.id, label: t.label, note: t.note,
+      roster: rosterDef
+        ? { var: t.roster, label: rosterDef.label ?? t.roster, items: (rosterItems || []).map(rosterName) }
+        : null,
+      slots, actions,
+    };
   });
+
   return {
     label: p.label ?? '편성표', icon: p.icon ?? '⚔️', note: p.note ?? null,
-    empty, unique,
-    roster: rosterDef
-      ? { var: p.roster, label: rosterDef.label ?? p.roster, items: (rosterItems || []).map(rosterName) }
-      : null,
-    slots,
+    empty, unique, tabs: viewTabs,
   };
 }
 
 /**
  * 슬롯에 값 하나 앉히기. 상태를 바꾸지 않고 **바뀔 값만** 돌려준다 — 적용은 호스트 몫.
- * unique 충돌은 게임 편성표의 표준대로 푼다: 이미 딴 슬롯에 앉아 있는 이름을 고르면
- * **이동**(그 슬롯은 비움), 빈값이 없는 스키마면 **맞교환**(단, 상대 enum에 값이 있어야).
+ * unique 충돌은 게임 편성표의 표준대로 푼다: 이미 딴 슬롯(딴 탭 포함)에 앉아 있는 이름을
+ * 고르면 **이동**(그 슬롯은 비움), 빈값이 없는 스키마면 **맞교환**(단, 상대 enum에 값이 있어야).
  * 반환: { ok, changes: {var: value, ...}, moved?: {from} } | { ok: false, reason }
  */
 function applyPartyPick(schema, state, slotVar, value) {
   const view = partyView(schema, state);
   if (!view) return { ok: false, reason: '편성표가 정의되지 않음' };
-  const slot = view.slots.find((s) => s.var === slotVar);
+  const flat = view.tabs.flatMap((t) => t.slots);
+  const slot = flat.find((s) => s.var === slotVar);
   if (!slot) return { ok: false, reason: `'${slotVar}'는 편성 슬롯이 아님` };
   const def = (schema.vars || []).find((v) => v.id === slotVar);
 
@@ -99,13 +149,16 @@ function applyPartyPick(schema, state, slotVar, value) {
     return { ok: false, reason: `'${value}'는 ${slot.label} 후보에 없음` };
   }
   const cand = slot.candidates.find((c) => c.name === value);
-  if (cand?.locked) return { ok: false, reason: `'${value}'는 아직 보유하지 않음 (${view.roster?.label ?? '보유 목록'}에 없음)` };
+  if (cand?.locked) {
+    const tab = view.tabs.find((t) => t.slots.some((s) => s.var === slotVar));
+    return { ok: false, reason: `'${value}'는 아직 보유하지 않음 (${tab?.roster?.label ?? '보유 목록'}에 없음)` };
+  }
   if (slot.value === value) return { ok: true, changes: {} };
 
   const changes = { [slotVar]: value };
   if (cand?.usedBy) {
     // 이동 또는 맞교환
-    const other = view.slots.find((s) => s.var === cand.usedBy);
+    const other = flat.find((s) => s.var === cand.usedBy);
     const otherDef = (schema.vars || []).find((v) => v.id === cand.usedBy);
     if (view.empty != null && otherDef?.enum?.includes(view.empty)) {
       changes[cand.usedBy] = view.empty;                    // 이동 — 원래 자리는 비운다
@@ -119,4 +172,4 @@ function applyPartyPick(schema, state, slotVar, value) {
   return { ok: true, changes };
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyView, applyPartyPick, rosterName, rosterHas };
+module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, partyView, applyPartyPick, rosterName, rosterHas };

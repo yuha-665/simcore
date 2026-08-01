@@ -69,24 +69,25 @@ const clone = (o) => JSON.parse(J(o));
   ck('party 없는 스키마는 그대로 통과', validateSchema(noParty).ok, '');
 }
 
-// ── 2. partyView — 후보·잠금·자리 ────────────────────────────
+// ── 2. partyView — 후보·잠금·자리 (축약형 = 탭 1개) ──────────
 {
   const state = engine.initState(BASE);
   const view = party.partyView(BASE, state);
-  ck('★ 뷰 기본 — 슬롯 2개·라벨', view.slots.length === 2 && view.slots[0].label === '전위' && view.slots[1].label === '후위', J(view.slots.map((s) => s.label)));
-  ck('빈 슬롯 표시', view.slots[0].isEmpty === true, '');
-  const names = view.slots[0].candidates.map((c) => c.name);
+  const slots = view.tabs[0].slots;
+  ck('★ 뷰 기본 — 탭 1개·슬롯 2개·라벨', view.tabs.length === 1 && slots.length === 2 && slots[0].label === '전위' && slots[1].label === '후위', J(slots.map((s) => s.label)));
+  ck('빈 슬롯 표시', slots[0].isEmpty === true, '');
+  const names = slots[0].candidates.map((c) => c.name);
   ck('후보에서 빈값 제외', J(names) === J(['아린', '바크', '셀레네']), J(names));
   // roster 잠금 — 아린은 보유, 바크는 "@기한" 꼬리가 붙어도 보유로 친다, 셀레네는 미보유
-  const lockOf = (n) => view.slots[0].candidates.find((c) => c.name === n).locked;
+  const lockOf = (n) => slots[0].candidates.find((c) => c.name === n).locked;
   ck('★ roster 잠금 — 미보유만 잠긴다', !lockOf('아린') && !lockOf('바크') && lockOf('셀레네'),
-    J(view.slots[0].candidates));
+    J(slots[0].candidates));
   ck('rosterName — 목록 규약 꼬리 제거', party.rosterName('바크 @3일') === '바크' && party.rosterName('아린 +2') === '아린', '');
 
   state.vars.front = '아린';
   const v2 = party.partyView(BASE, state);
-  ck('usedBy — 딴 슬롯에 앉은 인물 표시', v2.slots[1].candidates.find((c) => c.name === '아린').usedBy === 'front', '');
-  ck('자기 슬롯에서는 usedBy 없음', v2.slots[0].candidates.find((c) => c.name === '아린').usedBy === null, '');
+  ck('usedBy — 딴 슬롯에 앉은 인물 표시', v2.tabs[0].slots[1].candidates.find((c) => c.name === '아린').usedBy === 'front', '');
+  ck('자기 슬롯에서는 usedBy 없음', v2.tabs[0].slots[0].candidates.find((c) => c.name === '아린').usedBy === null, '');
 
   ck('party 없는 스키마 뷰는 null', party.partyView({ vars: [] }, state) === null, '');
   const spec = party.partyButtonSpec(BASE);
@@ -127,6 +128,79 @@ const clone = (o) => JSON.parse(J(o));
   st2.vars.front = '아린'; st2.vars.rear = '바크';
   const r8 = party.applyPartyPick(noEmpty, st2, 'front', '바크');
   ck('★ 빈값 없으면 맞교환', r8.ok && r8.changes.front === '바크' && r8.changes.rear === '아린', J(r8));
+}
+
+// ── 3.5 탭 (v0.56) — 칸코레 모델: 함대 여럿 + 시설(수복·제작) 탭 ──
+{
+  // 함대 2개 + 수복(별도 roster) + 제작(슬롯 없이 버튼만)
+  const KAN = {
+    simcore: '0.1',
+    meta: { name: '칸코레풍' },
+    vars: [
+      { id: 'ships', label: '보유 함선', type: 'list', init: ['무라쿠모', '시구레', '유키카제'] },
+      { id: 'dock_q', label: '수복 대기', type: 'list', init: ['시구레'] },
+      { id: 'f1_flag', label: '1함대 기함', type: 'enum', init: '없음', enum: ['없음', '무라쿠모', '시구레', '유키카제'] },
+      { id: 'f2_flag', label: '2함대 기함', type: 'enum', init: '없음', enum: ['없음', '무라쿠모', '시구레', '유키카제'] },
+      { id: 'dock1', label: '독 1', type: 'enum', init: '없음', enum: ['없음', '무라쿠모', '시구레', '유키카제'] },
+      { id: 'res', label: '자원', type: 'int', init: 100, min: 0 },
+    ],
+    actions: [
+      { id: 'sortie', label: '⚓ 출격', mode: 'oneshot', effects: [] },
+      { id: 'build', label: '🔨 건조', mode: 'oneshot', when: 'res >= 50', effects: [{ set: 'res', expr: 'res - 50' }] },
+    ],
+    party: {
+      label: '함대', icon: '⚓', empty: '없음', roster: 'ships',
+      tabs: [
+        { id: 'f1', label: '제1함대', slots: [{ var: 'f1_flag', label: '기함' }], actions: ['sortie'] },
+        { id: 'f2', label: '제2함대', slots: [{ var: 'f2_flag', label: '기함' }] },
+        { id: 'dock', label: '수복', roster: 'dock_q', slots: [{ var: 'dock1' }] },
+        { id: 'fac', label: '제작', actions: ['build'] },
+      ],
+    },
+  };
+  const v = validateSchema(KAN);
+  ck('★ 탭 스키마 검증 통과', v.ok, J(v.errors));
+
+  const state = engine.initState(KAN);
+  const view = party.partyView(KAN, state, {
+    actionStates: [{ id: 'sortie', label: '⚓ 출격', armed: false, disabled: false, reason: '' },
+      { id: 'build', label: '🔨 건조', armed: true, disabled: false, reason: '' }],
+  });
+  ck('★ 탭 4개 — 라벨·순서', J(view.tabs.map((t) => t.label)) === J(['제1함대', '제2함대', '수복', '제작']), J(view.tabs.map((t) => t.label)));
+  ck('시설 탭 — 슬롯 0 + 액션 1', view.tabs[3].slots.length === 0 && view.tabs[3].actions.length === 1, '');
+  ck('★ 탭 액션이 호스트 상태와 짝', view.tabs[0].actions[0].label === '⚓ 출격' && view.tabs[3].actions[0].armed === true, J(view.tabs[3].actions));
+  ck('탭별 roster — 수복은 대기열만 연다',
+    view.tabs[2].slots[0].candidates.filter((c) => !c.locked).map((c) => c.name).join() === '시구레',
+    J(view.tabs[2].slots[0].candidates));
+  ck('공용 roster — 함대 탭은 보유 전체', view.tabs[0].slots[0].candidates.every((c) => !c.locked), '');
+
+  // 탭을 가로지르는 한 자리 원칙 — 1함대 기함을 2함대에 앉히면 이동해 온다
+  state.vars.f1_flag = '무라쿠모';
+  const v2 = party.partyView(KAN, state);
+  ck('★ 교차 탭 usedBy', v2.tabs[1].slots[0].candidates.find((c) => c.name === '무라쿠모').usedBy === 'f1_flag', '');
+  const mv = party.applyPartyPick(KAN, state, 'f2_flag', '무라쿠모');
+  ck('★ 교차 탭 이동', mv.ok && mv.changes.f2_flag === '무라쿠모' && mv.changes.f1_flag === '없음', J(mv));
+
+  // 검증 — 탭 구조의 새 오류들
+  const dupX = clone(KAN);
+  dupX.party.tabs[1].slots[0].var = 'f1_flag';
+  ck('교차 탭 슬롯 중복 오류', validateSchema(dupX).errors.some((e) => /탭이 달라도/.test(e.msg)), '');
+  const badAct = clone(KAN);
+  badAct.party.tabs[0].actions = ['launch_nukes'];
+  ck('없는 액션 id 오류', validateSchema(badAct).errors.some((e) => /actions에 없는 액션/.test(e.msg)), '');
+  const emptyTab = clone(KAN);
+  emptyTab.party.tabs.push({ id: 'nothing', label: '빈 탭' });
+  ck('슬롯도 액션도 없는 탭 오류', validateSchema(emptyTab).errors.some((e) => /슬롯도 액션도 없는/.test(e.msg)), '');
+  const mixed = clone(KAN);
+  mixed.party.slots = [{ var: 'f1_flag' }];
+  ck('tabs+최상위 slots 혼용 오류', validateSchema(mixed).errors.some((e) => /같이 쓸 수 없음/.test(e.msg)), '');
+  const dupTabId = clone(KAN);
+  dupTabId.party.tabs[1].id = 'f1';
+  ck('탭 id 중복 오류', validateSchema(dupTabId).errors.some((e) => /중복된 탭 id/.test(e.msg)), '');
+
+  // 축약형 하위 호환 — v0.55 스키마(BASE)가 탭 하나로 정규화된다
+  const tabs = party.partyTabs(BASE);
+  ck('★ 축약형 = 탭 1개로 정규화', tabs.length === 1 && tabs[0].slots.length === 2 && tabs[0].roster === 'allies', J(tabs));
 }
 
 // ── 4. /액션 내장 명령 — 플로팅 버튼 제거(v0.55)의 폴백 통로 ──
@@ -181,9 +255,11 @@ const clone = (o) => JSON.parse(J(o));
     ck('★ 템플릿 검증 통과', v.ok, J(v.errors));
     const state = engine.initState(t);
     const view = party.partyView(t, state);
-    ck('템플릿 뷰 — 슬롯 2·시작은 빈 편성', view.slots.length === 2 && view.slots.every((s) => s.isEmpty), J(view.slots));
-    ck('시작 보유(아린)만 열려 있다', view.slots[0].candidates.filter((c) => !c.locked).map((c) => c.name).join() === '아린', J(view.slots[0].candidates));
-    const r = party.applyPartyPick(t, state, view.slots[0].var, '아린');
+    const slots = view.tabs[0].slots;
+    ck('템플릿 뷰 — 슬롯 2·시작은 빈 편성', slots.length === 2 && slots.every((s) => s.isEmpty), J(slots));
+    ck('시작 보유(아린)만 열려 있다', slots[0].candidates.filter((c) => !c.locked).map((c) => c.name).join() === '아린', J(slots[0].candidates));
+    ck('액션 연결(rest)이 첫 탭에 실린다 (v0.56)', view.tabs[0].actions.some((a) => a.id === 'rest'), J(view.tabs[0].actions));
+    const r = party.applyPartyPick(t, state, slots[0].var, '아린');
     ck('템플릿에서 편성 동작', r.ok && Object.values(r.changes)[0] === '아린', J(r));
   }
 }

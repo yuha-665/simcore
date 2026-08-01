@@ -56,7 +56,12 @@ const P = TEMPLATES.politics.schema;
       if (!home) { ck(`${kind} '${name}': 검증할 템플릿이 지정됨`, false, `id=${obj.id}`); continue; }
       const sch = JSON.parse(JSON.stringify(TEMPLATES[home].schema));
       if (kind === '이벤트') { sch.rules = sch.rules || {}; sch.rules.events = [obj]; }
-      else sch.actions = [obj];
+      else {
+        sch.actions = [obj];
+        // 액션을 통째로 갈아끼우면 편성표의 액션 참조(party.actions)가 끊긴다 — 여기서는
+        // 패턴 예시의 유효성만 보는 것이므로 편성표를 떼고 검증한다 (참조 절단 오류는 정상 동작)
+        delete sch.party;
+      }
       const v = validateSchema(sch);
       ck(`★ ${kind} '${name}' 예시가 실제로 검증 통과 (${home})`, v.ok,
         v.errors.map((e) => `${e.path}: ${e.msg}`).join(' / '));

@@ -145,12 +145,15 @@ const RPG = {
   },
   // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
   // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
+  // actions(v0.56): 팝업에 기존 액션 버튼을 단다 — 액션이 이미 이벤트·규칙 배선이라 이 한 줄로
+  // "편성 창에서 야영"이 연결된다. 편성이 여럿이면(칸코레식 함대/수복/제작) tabs 배열로 확장.
   party: {
     label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
     slots: [
       { var: 'front', label: '전위' },
       { var: 'rear', label: '후위' },
     ],
+    actions: ['rest'],
     note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
   },
   actions: [

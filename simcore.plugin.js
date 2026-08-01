@@ -1,13 +1,26 @@
 //@name simcore
 //@api 3.0
-//@version 0.55.0
-//@display-name SimCore (시뮬 엔진) v0.55 편성표
+//@version 0.56.0
+//@display-name SimCore (시뮬 엔진) v0.56 편성 탭
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.56.0 ────────────────────────────────────────────────
+// 편성 탭 — 롤모델 칸코레 (유저 제안: "편성을 더 추가할 수 있게, 수복·제작처럼 늘리고
+// 탭에 버튼을 달아 이벤트/규칙 연결"). 실기에서 v0.55 단일 편성 동작 확인 직후 확장.
+// - [tabs] party.tabs 배열 — 탭 = 편성 하나(슬롯) 또는 시설 하나(슬롯 없이 버튼만: 수복·제작).
+//   탭별 roster 오버라이드(수복 대기열 등). 축약형(최상위 slots/actions)은 탭 1개로 정규화,
+//   혼용은 검증이 막는다. 인물은 탭이 달라도 한 자리 — usedBy/이동/맞교환이 탭을 가로지른다.
+// - [탭 버튼 = 기존 액션] 새 트리거 기계를 만들지 않았다 — 액션이 이미 이벤트·규칙·판정
+//   배선이라(effects/check/inject) 팝업 칩이 onActionButton을 그대로 부른다. 무장 ●·잠금 🔒
+//   표시는 범례·조작줄과 같은 출처(currentActionStates)를 받아 짝이 맞는다.
+// - [편집기] 축약형 ↔ [🗂 탭 구조로 전환], 탭 추가/삭제/정렬, 액션 체크 연결, 탭별 roster.
+// - [진단] 슬롯 writer '편성' 등록을 party.allSlots(탭 평면)로 일원화.
+// - RPG 템플릿 party.actions:['rest'] 예시. 테스트 test-party.js 53종.
 //
 // ── v0.55.0 ────────────────────────────────────────────────
 // 편성표 — 게임 패널 1호 (설계 docs/design-편성표.md, 레코드 층 순서 2 "레코드 없이 지금 재료로").
@@ -2166,32 +2179,72 @@ function validateSchema(schema) {
   }
 
   // ── party (편성표 — 게임 패널 1호) ─────────────────────────
-  // 슬롯 = enum 변수, 보유 = list 변수. 설계: docs/design-편성표.md
+  // 슬롯 = enum 변수, 보유 = list 변수, 탭 = 여러 편성/시설 (칸코레 모델, v0.56).
+  // 설계: docs/design-편성표.md
   if (schema.party != null) {
     const P = schema.party;
     if (typeof P !== 'object' || Array.isArray(P)) err('$.party', 'party는 객체여야 함');
     else {
       const varById = {};
       for (const v of vars) if (v && v.id) varById[v.id] = v;
-      const slots = Array.isArray(P.slots) ? P.slots : [];
-      if (!slots.length) err('$.party.slots', '슬롯(slots)이 최소 1개 필요');
-      const seen = new Set();
-      slots.forEach((s, i) => {
-        const p = `$.party.slots[${i}]`;
-        if (!s || typeof s !== 'object') { err(p, '슬롯은 객체여야 함'); return; }
-        const def = varById[s.var];
-        if (!def) { err(p, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
-        if (def.type !== 'enum') {
-          err(p, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
-          return;
+      const actionIds = new Set((Array.isArray(schema.actions) ? schema.actions : []).map((a) => a && a.id));
+      const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
+      // 축약형(slots/actions 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
+      if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length)) {
+        err('$.party', 'tabs와 최상위 slots/actions를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+      }
+      // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
+      const tabs = hasTabs
+        ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
+        : [{ t: { slots: P.slots, actions: P.actions, roster: undefined }, p: '$.party' }];
+
+      const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
+      const tabIds = new Set();
+      let anySlot = false, anyContent = false;
+      for (const { t, p } of tabs) {
+        if (!t || typeof t !== 'object') { err(p, '탭은 객체여야 함'); continue; }
+        if (hasTabs && t.id != null) {
+          if (!ID_RE.test(t.id)) err(p, `잘못된 탭 id: '${t.id}'`);
+          else if (tabIds.has(t.id)) err(p, `중복된 탭 id: '${t.id}'`);
+          else tabIds.add(t.id);
         }
-        if (seen.has(s.var)) err(p, `슬롯 변수 '${s.var}' 중복 — 슬롯마다 다른 변수를 쓰세요`);
-        seen.add(s.var);
-        // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
-        if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
-          err(p, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+        const slots = Array.isArray(t.slots) ? t.slots : [];
+        const acts = Array.isArray(t.actions) ? t.actions : [];
+        if (!slots.length && !acts.length) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성) 또는 actions(시설 버튼) 중 하나는 필요합니다');
+          continue;
         }
-      });
+        anyContent = true;
+        slots.forEach((s, i) => {
+          const sp = `${p}.slots[${i}]`;
+          if (!s || typeof s !== 'object') { err(sp, '슬롯은 객체여야 함'); return; }
+          const def = varById[s.var];
+          if (!def) { err(sp, `슬롯 변수 '${s.var}'가 vars에 없음`); return; }
+          if (def.type !== 'enum') {
+            err(sp, `슬롯 변수 '${s.var}'는 enum 타입이어야 함 (현재: ${def.type}) — 후보 목록이 enum 값 목록입니다`);
+            return;
+          }
+          if (seen.has(s.var)) err(sp, `슬롯 변수 '${s.var}' 중복 — 탭이 달라도 슬롯마다 다른 변수를 쓰세요`);
+          seen.add(s.var);
+          anySlot = true;
+          // 빈값(empty)이 그 슬롯 enum에 없으면 한 번 앉힌 뒤 비울 방법이 없다
+          if (P.empty != null && Array.isArray(def.enum) && !def.enum.includes(P.empty)) {
+            err(sp, `빈값 '${P.empty}'이 '${s.var}'의 enum 목록에 없음 — 슬롯을 비울 수 없게 됩니다`);
+          }
+        });
+        // 탭의 버튼은 기존 액션을 가리킨다 — 액션이 이미 이벤트·규칙·판정 배선이므로
+        acts.forEach((id, i) => {
+          if (!actionIds.has(id)) err(`${p}.actions[${i}]`, `'${id}'는 actions에 없는 액션 id — [액션] 탭에서 먼저 만드세요`);
+        });
+        // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용 roster
+        if (t.roster != null && t.roster !== P.roster) {
+          const r = varById[t.roster];
+          if (!r) err(`${p}.roster`, `보유 목록 '${t.roster}'가 vars에 없음`);
+          else if (r.type !== 'list') err(`${p}.roster`, `보유 목록 '${t.roster}'는 list 타입이어야 함 (현재: ${r.type})`);
+        }
+      }
+      if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
+
       if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
       if (P.roster != null) {
         const r = varById[P.roster];
@@ -2201,7 +2254,7 @@ function validateSchema(schema) {
       for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['note', '설명'], ['css', 'CSS']]) {
         if (P[k] != null && typeof P[k] !== 'string') err(`$.party.${k}`, `${name}(${k})은 문자열이어야 함`);
       }
-      if (P.empty == null && slots.length) {
+      if (P.empty == null && anySlot) {
         warn('$.party', 'empty(빈값)가 없습니다 — 슬롯을 비울 수 없고, 인물을 옮기면 맞교환만 됩니다. '
           + '각 슬롯 enum에 "없음" 같은 값을 넣고 empty로 지정하는 것을 권합니다');
       }
@@ -2533,15 +2586,39 @@ SimCore.define("party", function (require, module, exports) {
 //   표시 = statusUI의 when 분기 (v0.31부터 있던 기능).
 // 이 모듈은 순수 로직만 담는다 — DOM은 어댑터(#sc-game)가, 검증은 validate가 맡는다.
 //
+// v0.56 탭: 롤모델은 칸코레 — 함대가 여럿이고(제1함대/제2함대), 슬롯 없이 버튼만 있는
+// 시설 탭(수복·제작)도 있다. 탭의 버튼은 **기존 액션**을 가리킨다 — 액션이 이미
+// 이벤트·규칙·판정으로 배선돼 있으므로(effects/check/inject), 새 트리거 기계가 필요 없다.
+//
 // 왜 슬롯마다 enum이 따로인가: "전위엔 전사만" 같은 슬롯별 제약이 enum 값 목록으로
 // 자연스럽게 표현된다. 후보가 같다면 같은 값 목록을 복사하면 될 뿐이다.
 
-/** 편성표 설정 (없거나 슬롯이 비면 null — 어댑터가 버튼 자체를 안 단다) */
-function partyConfig(schema) {
+/**
+ * 탭 정규화 — 단일 탭 축약형(slots/actions를 party에 직접)과 tabs 배열을 한 형태로.
+ * 둘 다 쓰면 검증이 막는다 (validate). 반환: [{ id, label, note, roster, slots, actions }]
+ */
+function partyTabs(schema) {
   const p = schema?.party;
-  if (!p || typeof p !== 'object') return null;
-  if (!Array.isArray(p.slots) || !p.slots.length) return null;
-  return p;
+  if (!p || typeof p !== 'object') return [];
+  if (Array.isArray(p.tabs) && p.tabs.length) {
+    return p.tabs.map((t, i) => ({
+      id: t.id ?? `tab${i + 1}`,
+      label: t.label ?? `탭${i + 1}`,
+      note: t.note ?? null,
+      roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
+      slots: Array.isArray(t.slots) ? t.slots : [],
+      actions: Array.isArray(t.actions) ? t.actions : [],
+    }));
+  }
+  const slots = Array.isArray(p.slots) ? p.slots : [];
+  const actions = Array.isArray(p.actions) ? p.actions : [];
+  if (!slots.length && !actions.length) return [];
+  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null, slots, actions }];
+}
+
+/** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
+function partyConfig(schema) {
+  return partyTabs(schema).length ? schema.party : null;
 }
 
 /** 사이드바 버튼 사양 — 어댑터가 registerButton에 그대로 쓴다 */
@@ -2560,60 +2637,86 @@ function rosterHas(list, name) {
   return (Array.isArray(list) ? list : []).some((it) => rosterName(it) === name);
 }
 
+/** 편성표의 모든 슬롯 (탭 무관 평면 목록) — 검증·중복 자리 계산 공용 */
+function allSlots(schema) {
+  return partyTabs(schema).flatMap((t) => t.slots);
+}
+
 /**
  * 화면에 그릴 재료 한 벌. 상태를 건드리지 않는다.
- * 반환: { label, icon, note, empty, unique, roster: {var,label,items}|null,
- *         slots: [{ var, label, value, isEmpty, candidates: [{name, usedBy, locked}] }] }
- *   usedBy — unique일 때 이 이름이 이미 앉아 있는 다른 슬롯 var (고르면 그쪽에서 이동해 온다)
+ * opts.actionStates — 호스트가 주는 액션 상태 배열 [{id,label,armed,disabled,reason}]
+ *   (어댑터의 currentActionStates와 같은 출처 — 상태창 범례·조작줄과 짝이 맞아야 한다).
+ * 반환: { label, icon, note, empty, unique,
+ *         tabs: [{ id, label, note, roster: {var,label,items}|null,
+ *                  slots: [{ var, label, value, isEmpty, candidates: [{name, usedBy, locked}] }],
+ *                  actions: [{ id, label, armed, disabled, reason }] }] }
+ *   usedBy — unique일 때 이 이름이 이미 앉아 있는 다른 슬롯 var (탭이 달라도 — 한 인물은 한 자리).
  *   locked — roster가 있는데 아직 보유하지 않은 이름 (표시는 하되 잠금 — "영입하면 열린다")
  */
-function partyView(schema, state) {
+function partyView(schema, state, opts = {}) {
   const p = partyConfig(schema);
   if (!p) return null;
+  const tabs = partyTabs(schema);
   const unique = p.unique !== false;
   const empty = p.empty ?? null;
   const byId = {};
   for (const v of schema.vars || []) byId[v.id] = v;
-  const rosterDef = p.roster ? byId[p.roster] : null;
-  const rosterItems = rosterDef ? (state.vars[p.roster] ?? rosterDef.init ?? []) : null;
-  const seat = {}; // 이름 → 앉아 있는 슬롯 var
-  for (const s of p.slots) {
+  const stById = {};
+  for (const st of opts.actionStates || []) stById[st.id] = st;
+
+  // 자리 지도 — 탭을 가로질러 본다 (칸코레: 한 함선은 한 함대에만)
+  const seat = {};
+  for (const s of allSlots(schema)) {
     const val = state.vars[s.var];
     if (val != null && val !== empty) seat[val] = s.var;
   }
-  const slots = p.slots.map((s) => {
-    const def = byId[s.var] || {};
-    const value = state.vars[s.var] ?? def.init ?? null;
-    const isEmpty = empty != null && value === empty;
-    const candidates = (def.enum || [])
-      .filter((name) => name !== empty)
-      .map((name) => ({
-        name,
-        usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
-        locked: rosterItems != null && !rosterHas(rosterItems, name),
-      }));
-    return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+
+  const viewTabs = tabs.map((t) => {
+    const rosterDef = t.roster ? byId[t.roster] : null;
+    const rosterItems = rosterDef ? (state.vars[t.roster] ?? rosterDef.init ?? []) : null;
+    const slots = t.slots.map((s) => {
+      const def = byId[s.var] || {};
+      const value = state.vars[s.var] ?? def.init ?? null;
+      const isEmpty = empty != null && value === empty;
+      const candidates = (def.enum || [])
+        .filter((name) => name !== empty)
+        .map((name) => ({
+          name,
+          usedBy: unique && seat[name] && seat[name] !== s.var ? seat[name] : null,
+          locked: rosterItems != null && !rosterHas(rosterItems, name),
+        }));
+      return { var: s.var, label: s.label ?? def.label ?? s.var, value, isEmpty, candidates };
+    });
+    // 탭의 액션 버튼 — 모르는 id는 조용히 떨구지 않고 잠긴 채 보여 준다 (제작 실수 가시화)
+    const actions = t.actions.map((id) => stById[id]
+      ?? { id, label: (schema.actions || []).find((a) => a.id === id)?.label ?? id,
+        armed: !!state.meta?.armed?.[id], disabled: false, reason: '' });
+    return {
+      id: t.id, label: t.label, note: t.note,
+      roster: rosterDef
+        ? { var: t.roster, label: rosterDef.label ?? t.roster, items: (rosterItems || []).map(rosterName) }
+        : null,
+      slots, actions,
+    };
   });
+
   return {
     label: p.label ?? '편성표', icon: p.icon ?? '⚔️', note: p.note ?? null,
-    empty, unique,
-    roster: rosterDef
-      ? { var: p.roster, label: rosterDef.label ?? p.roster, items: (rosterItems || []).map(rosterName) }
-      : null,
-    slots,
+    empty, unique, tabs: viewTabs,
   };
 }
 
 /**
  * 슬롯에 값 하나 앉히기. 상태를 바꾸지 않고 **바뀔 값만** 돌려준다 — 적용은 호스트 몫.
- * unique 충돌은 게임 편성표의 표준대로 푼다: 이미 딴 슬롯에 앉아 있는 이름을 고르면
- * **이동**(그 슬롯은 비움), 빈값이 없는 스키마면 **맞교환**(단, 상대 enum에 값이 있어야).
+ * unique 충돌은 게임 편성표의 표준대로 푼다: 이미 딴 슬롯(딴 탭 포함)에 앉아 있는 이름을
+ * 고르면 **이동**(그 슬롯은 비움), 빈값이 없는 스키마면 **맞교환**(단, 상대 enum에 값이 있어야).
  * 반환: { ok, changes: {var: value, ...}, moved?: {from} } | { ok: false, reason }
  */
 function applyPartyPick(schema, state, slotVar, value) {
   const view = partyView(schema, state);
   if (!view) return { ok: false, reason: '편성표가 정의되지 않음' };
-  const slot = view.slots.find((s) => s.var === slotVar);
+  const flat = view.tabs.flatMap((t) => t.slots);
+  const slot = flat.find((s) => s.var === slotVar);
   if (!slot) return { ok: false, reason: `'${slotVar}'는 편성 슬롯이 아님` };
   const def = (schema.vars || []).find((v) => v.id === slotVar);
 
@@ -2626,13 +2729,16 @@ function applyPartyPick(schema, state, slotVar, value) {
     return { ok: false, reason: `'${value}'는 ${slot.label} 후보에 없음` };
   }
   const cand = slot.candidates.find((c) => c.name === value);
-  if (cand?.locked) return { ok: false, reason: `'${value}'는 아직 보유하지 않음 (${view.roster?.label ?? '보유 목록'}에 없음)` };
+  if (cand?.locked) {
+    const tab = view.tabs.find((t) => t.slots.some((s) => s.var === slotVar));
+    return { ok: false, reason: `'${value}'는 아직 보유하지 않음 (${tab?.roster?.label ?? '보유 목록'}에 없음)` };
+  }
   if (slot.value === value) return { ok: true, changes: {} };
 
   const changes = { [slotVar]: value };
   if (cand?.usedBy) {
     // 이동 또는 맞교환
-    const other = view.slots.find((s) => s.var === cand.usedBy);
+    const other = flat.find((s) => s.var === cand.usedBy);
     const otherDef = (schema.vars || []).find((v) => v.id === cand.usedBy);
     if (view.empty != null && otherDef?.enum?.includes(view.empty)) {
       changes[cand.usedBy] = view.empty;                    // 이동 — 원래 자리는 비운다
@@ -2646,7 +2752,7 @@ function applyPartyPick(schema, state, slotVar, value) {
   return { ok: true, changes };
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyView, applyPartyPick, rosterName, rosterHas };
+module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, partyView, applyPartyPick, rosterName, rosterHas };
 
 });
 
@@ -5231,7 +5337,8 @@ function writerMap(schema) {
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
   // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만
   // "바꾸는 곳이 없다"는 말은 거짓이므로 고정 변수·안 움직임 오탐에서 뺀다.
-  for (const s of (schema.party?.slots || [])) add(s.var, '편성');
+  // (v0.56부터 탭 구조 — 평면 목록은 party 모듈이 한 곳에서 정의한다)
+  for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
   return w;
 }
 
@@ -8620,7 +8727,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
 
     const P = schema.party;
-    P.slots = Array.isArray(P.slots) ? P.slots : [];
+    const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
+    if (!hasTabs) P.slots = Array.isArray(P.slots) ? P.slots : [];
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
       + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
@@ -8647,37 +8755,110 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ),
     ));
 
-    wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+    // ── 슬롯·액션 편집 조각 (축약형과 탭 양쪽에서 재사용) ──
+    const allFlatSlots = () => (hasTabs ? P.tabs.flatMap((t) => (Array.isArray(t.slots) ? t.slots : [])) : P.slots);
+    const slotBlocks = (list) => {
+      const frag = h('div');
+      list.forEach((s, i) => {
+        const def = schema.vars.find((v) => v.id === s.var);
+        frag.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('변수', bindSelect(s.var ?? '',
+              enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+              (x) => { s.var = x; rerender(); }),
+              '이 슬롯이 저장되는 enum 변수'),
+            pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
+            grip(list, i, rerender),
+          ),
+          def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
+        ));
+      });
+      if (enums.length) {
+        frag.appendChild(addBtn('슬롯 추가', () => {
+          const used = new Set(allFlatSlots().map((s) => s.var));
+          const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
+          list.push({ var: next.id });
+          rerender();
+        }));
+      }
+      return frag;
+    };
+    // 탭의 버튼 = 기존 액션 연결. 액션이 이미 이벤트·규칙·판정 배선이라(effects/check/inject)
+    // 체크 하나로 "출격·수복·제작"이 걸린다 — 새 트리거 기계 없음.
+    const actionPicks = (owner) => {
+      const row = h('div', { class: 'sce-row' });
+      if (!schema.actions.length) {
+        row.appendChild(h('span', { class: 'sce-hint' },
+          '연결할 액션이 아직 없습니다 — [액션] 탭에서 만들면 여기 체크 칸이 생깁니다.'));
+        return row;
+      }
+      row.appendChild(h('span', { class: 'sce-hint' }, '팝업 버튼으로 넣을 액션:'));
+      for (const a of schema.actions) {
+        const arr = () => (owner.actions = Array.isArray(owner.actions) ? owner.actions : []);
+        row.appendChild(bindCheck((owner.actions || []).includes(a.id), (on) => {
+          const list = arr();
+          if (on && !list.includes(a.id)) list.push(a.id);
+          if (!on) owner.actions = list.filter((x) => x !== a.id);
+          if (owner.actions && !owner.actions.length) delete owner.actions;
+          rerender();
+        }, a.label || a.id));
+      }
+      return row;
+    };
+
     if (!enums.length) {
       wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
         'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
     }
-    P.slots.forEach((s, i) => {
-      const def = schema.vars.find((v) => v.id === s.var);
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          pair('변수', bindSelect(s.var ?? '',
-            enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-            (x) => { s.var = x; rerender(); }),
-            '이 슬롯이 저장되는 enum 변수'),
-          pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
-          grip(P.slots, i, rerender),
-        ),
-        def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
-      ));
-    });
-    if (enums.length) {
-      wrap.appendChild(addBtn('슬롯 추가', () => {
-        const used = new Set(P.slots.map((s) => s.var));
-        const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
-        P.slots.push({ var: next.id });
+
+    if (!hasTabs) {
+      // 단일 편성 (축약형)
+      wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
+      wrap.appendChild(slotBlocks(P.slots));
+      wrap.appendChild(actionPicks(P));
+      // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots, ...(P.actions ? { actions: P.actions } : {}) }];
+          delete P.slots; delete P.actions;
+          rerender();
+        } }, '🗂 탭 구조로 전환 (편성 여러 개 · 수복/제작 같은 시설 탭)')));
+    } else {
+      // 여러 탭 (칸코레 모델) — 슬롯 있는 탭 = 편성, 슬롯 없이 액션만 = 시설(수복·제작)
+      wrap.appendChild(h('h4', {}, `탭 (${P.tabs.length}개)`));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '탭 = 편성 하나 또는 시설 하나. 슬롯을 채우면 편성 탭, 슬롯 없이 액션만 걸면 '
+        + '수복·제작 같은 시설 탭이 됩니다. 인물은 탭이 달라도 한 자리에만 앉습니다 (이동/맞교환).'));
+      P.tabs.forEach((t, ti) => {
+        t.slots = Array.isArray(t.slots) ? t.slots : [];
+        wrap.appendChild(h('div', { class: 'sce-block' },
+          h('div', { class: 'sce-row' },
+            pair('탭 이름', bindInput(t.label, (x) => { t.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: `탭${ti + 1}` })),
+            pair('id', bindInput(t.id, (x) => { const v = String(x).trim(); if (v) t.id = v; else delete t.id; rerender(); }, { cls: 'sce-w-s', ph: `tab${ti + 1}` }),
+              '안 적으면 자동 (tabN)'),
+            pair('보유 목록', bindSelect(t.roster ?? '',
+              [['', P.roster ? `(공용 — ${P.roster})` : '(제한 없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+              (x) => { if (x) t.roster = x; else delete t.roster; rerender(); }),
+              '이 탭만 다른 목록을 쓸 때 (예: 수복 대기열)'),
+            // 삭제를 onDelete가 전담하고 false를 돌려 grip의 기본 splice를 막는다 (이중 삭제 방지)
+            grip(P.tabs, ti, rerender, () => { P.tabs.splice(ti, 1); if (!P.tabs.length) delete P.tabs; rerender(); return false; }),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
+          ),
+          slotBlocks(t.slots),
+          actionPicks(t),
+        ));
+      });
+      wrap.appendChild(addBtn('탭 추가', () => {
+        P.tabs.push({ id: `tab${P.tabs.length + 1}`, label: `편성 ${P.tabs.length + 1}`, slots: [] });
         rerender();
       }));
     }
 
     // AI가 편성을 서사로 움직이게 할지 — 슬롯 변수를 allow에 넣으면 된다 (선택 사항)
     const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
-    const aiMoved = P.slots.filter((s) => allowIds.has(s.var));
+    const aiMoved = allFlatSlots().filter((s) => allowIds.has(s.var));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       aiMoved.length
         ? `보조 AI도 슬롯을 움직일 수 있습니다 (${aiMoved.map((s) => s.var).join(', ')}가 [AI 설정] 허용 목록에 있음) — `
@@ -10728,12 +10909,15 @@ const RPG = {
   },
   // 편성표 (v0.55) — 우상단 [⚔️ 편성] 버튼 → 팝업. 슬롯 = enum 변수, 보유 = allies 목록.
   // 저장은 그냥 변수라 위 statusUI showWhen·promptState가 그대로 읽는다. 새 표시 문법 없음.
+  // actions(v0.56): 팝업에 기존 액션 버튼을 단다 — 액션이 이미 이벤트·규칙 배선이라 이 한 줄로
+  // "편성 창에서 야영"이 연결된다. 편성이 여럿이면(칸코레식 함대/수복/제작) tabs 배열로 확장.
   party: {
     label: '편성', icon: '⚔️', empty: '없음', roster: 'allies',
     slots: [
       { var: 'front', label: '전위' },
       { var: 'rear', label: '후위' },
     ],
+    actions: ['rest'],
     note: '동료를 영입하면(동료 목록) 편성할 수 있다.',
   },
   actions: [
@@ -13198,6 +13382,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   let gameKind = null;      // 'party' — 지금은 편성표뿐, 다음 패널(장비창 등)도 이 통로로
   let gameNotice = null;    // 마지막 조작 결과 한 줄 (거부 이유 등)
   let gameOpenSlot = null;  // 후보 목록이 펼쳐진 슬롯 var (아코디언 — 한 번에 하나)
+  let gameOpenTab = null;   // 열려 있는 편성 탭 id (v0.56 — 함대/수복/제작)
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
@@ -13790,6 +13975,17 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      #sc-game .scg-tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #24304a;
+        margin:2px 0 8px; }
+      #sc-game .scg-tab { border:1px solid transparent; border-bottom:none; border-radius:8px 8px 0 0;
+        background:transparent; color:#a7b4cc; padding:5px 12px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-tab.scg-on { color:#fff; background:#3660d9; border-color:#6b93f2; font-weight:600; }
+      #sc-game .scg-acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+      #sc-game .scg-act { border:1px solid #4a5f8e; border-radius:9px;
+        background:#182240; color:#cfe0ff; padding:6px 13px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-act:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scg-act.scg-armed { border-color:#c8a050; background:rgba(200,160,80,.18); color:#ffe2a8; font-weight:600; }
+      #sc-game .scg-act.scg-locked { opacity:.4; cursor:not-allowed; }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -13819,6 +14015,7 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     gameKind = kind;
     gameNotice = null;
     gameOpenSlot = null;
+    gameOpenTab = null; // 열 때마다 첫 탭부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -13847,7 +14044,8 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   }
 
   function renderPartyPanel(root) {
-    const view = partyMod.partyView(schema, session.current);
+    // 액션 상태는 범례·조작줄과 같은 출처(currentActionStates) — 탭 버튼과 짝이 맞아야 한다
+    const view = partyMod.partyView(schema, session.current, { actionStates: currentActionStates() });
     if (!view) { root.innerHTML = ''; return; }
     root.innerHTML = '';
     const card = document.createElement('div');
@@ -13863,7 +14061,23 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     card.appendChild(title);
     if (view.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: view.note }));
 
-    for (const slot of view.slots) {
+    // 탭 바 (v0.56 — 함대/수복/제작). 하나뿐이면 바를 안 그린다.
+    const tab = view.tabs.find((t) => t.id === gameOpenTab) ?? view.tabs[0];
+    if (view.tabs.length > 1) {
+      const bar = document.createElement('div');
+      bar.className = 'scg-tabs';
+      for (const t of view.tabs) {
+        const b = Object.assign(document.createElement('button'),
+          { className: 'scg-tab' + (t === tab ? ' scg-on' : ''), textContent: t.label });
+        b.dataset.tab = t.id;
+        b.onclick = () => { gameOpenTab = t.id; gameOpenSlot = null; gameNotice = null; renderGamePanel(); };
+        bar.appendChild(b);
+      }
+      card.appendChild(bar);
+    }
+    if (tab.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: tab.note }));
+
+    for (const slot of tab.slots) {
       const box = document.createElement('div');
       box.className = 'scg-slot';
       box.dataset.slot = slot.var;
@@ -13888,9 +14102,10 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
             + (c.locked ? ' scg-locked' : '');
           chip.dataset.val = c.name;
           chip.textContent = c.name;
-          if (c.locked) chip.title = `아직 보유하지 않음 — ${view.roster?.label ?? '보유 목록'}에 없어요`;
+          if (c.locked) chip.title = `아직 보유하지 않음 — ${tab.roster?.label ?? '보유 목록'}에 없어요`;
           else if (c.usedBy) {
-            const from = view.slots.find((s) => s.var === c.usedBy);
+            // 이동해 오는 원래 자리 — 딴 탭일 수도 있다 (한 인물 = 한 자리)
+            const from = view.tabs.flatMap((t) => t.slots).find((s) => s.var === c.usedBy);
             chip.title = `${from?.label ?? c.usedBy}에서 이동해 와요`;
           }
           chip.onclick = () => onPartyPick(slot.var, c.name);
@@ -13907,10 +14122,28 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       card.appendChild(box);
     }
 
-    if (view.roster) {
+    // 탭의 액션 버튼 (v0.56) — 기존 액션을 그대로 무장/해제한다. 액션이 이미 이벤트·규칙·
+    // 판정으로 배선돼 있으므로(effects/check/inject) 이 칩 하나로 "출격·수복·제작"이 연결된다.
+    if (tab.actions.length) {
+      const acts = document.createElement('div');
+      acts.className = 'scg-acts';
+      for (const a of tab.actions) {
+        const chip = document.createElement('button');
+        chip.className = 'scg-act' + (a.armed ? ' scg-armed' : '') + (a.disabled ? ' scg-locked' : '');
+        chip.dataset.act = a.id;
+        chip.textContent = `${a.label}${a.armed ? ' ●' : ''}`;
+        if (a.disabled) chip.title = a.reason || '지금은 쓸 수 없음';
+        else chip.title = a.armed ? '눌러서 해제 — 전송하면 반영' : '눌러서 무장 — 전송하면 반영';
+        chip.onclick = () => onActionButton(a.id); // 범례·조작줄과 같은 토글 경로 (syncControls가 패널도 다시 그린다)
+        acts.appendChild(chip);
+      }
+      card.appendChild(acts);
+    }
+
+    if (tab.roster) {
       card.appendChild(Object.assign(document.createElement('div'), {
         className: 'scg-roster',
-        textContent: `${view.roster.label}: ${view.roster.items.length ? view.roster.items.join(', ') : '(없음)'}`,
+        textContent: `${tab.roster.label}: ${tab.roster.items.length ? tab.roster.items.join(', ') : '(없음)'}`,
       }));
     }
     const notice = Object.assign(document.createElement('div'), { className: 'scg-notice' });

@@ -1,13 +1,24 @@
 //@name simcore
 //@api 3.0
-//@version 0.58.1
-//@display-name SimCore (시뮬 엔진) v0.58 스킬·업그레이드
+//@version 0.59.0
+//@display-name SimCore (시뮬 엔진) v0.59 편성 연동
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.59.0 ────────────────────────────────────────────────
+// 편성 연동 게이트 — 유저 제안: "편성에 들어온 애들만 상태창에 보여주기, 스킬창 목록에서도".
+// 핵심은 가상 목록 하나: 편성표가 있으면 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용)가
+// 수식 언어에 자동 제공된다 — has(deployed, '아린')이 상태창 showWhen·지시문·이벤트 조건·
+// requires·{deployed} 자리표시자 어디서든 통한다 (allIds 검증 + makeLookup 실행, 두 관문에만 꽂음).
+// - party.tabs[].when: 표시 조건 — 거짓이면 탭이 통째로 숨는다. 인물별 스킬트리 탭을
+//   has(deployed, '이름')으로 걸면 편성된 인물의 탭만 남는다 (v0.58.1 셀렉트+검색과 겹벌이).
+//   숨은 탭의 자리 점유는 유효(한 인물=한 자리 유지), 모든 탭이 숨으면 이유를 말하는 안내문.
+// - 진단: deployed를 보는 액션/이벤트 = 편성 게이트 (low '편성 담당 문턱/이벤트', 오탐 방지 v0.52 원칙).
+// - 검증: 이름 그림자 경고(deployed 변수/파생), 전 탭 when 경고, 탭 when 식 검사.
 //
 // ── v0.58.1 ────────────────────────────────────────────────
 // 탭 내비 선택 — 유저 제안: "캐릭 수가 적으면 탭, 많으면 셀렉트바+검색. 선택은 제작자가."
@@ -2124,6 +2135,13 @@
     // 탭 내비 (v0.56 탭 바 / v0.58.1 셀렉트+검색). 하나뿐이면 안 그린다.
     // 표시 방식은 제작자 몫(party.nav) — 인물 몇 명이면 탭 바, 수십 명이면 셀렉트+검색.
     const tab = view.tabs.find((t) => t.id === gameOpenTab) ?? view.tabs[0];
+    // 모든 탭이 표시 조건(when, v0.59)에 걸려 숨은 경우 — 빈 카드 대신 이유를 말해 준다
+    if (!tab) {
+      card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note',
+        textContent: '지금 표시할 탭이 없습니다 — 탭 표시 조건이 전부 거짓입니다 (예: 아직 아무도 편성되지 않음).' }));
+      root.appendChild(card);
+      return;
+    }
     const goTab = (id) => { gameOpenTab = id; gameOpenSlot = null; gameNotice = null; renderGamePanel(); };
     if (view.tabs.length > 1 && schema.party?.nav === 'select') {
       const nav = document.createElement('div');

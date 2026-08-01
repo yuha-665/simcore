@@ -230,9 +230,11 @@ function diagnose(schema, opts = {}) {
   // 그 액션 뒤에 있는 소비 경로를 못 보고 "단조 자원"이라 하면 정상 설계에 경고를 내는 것이다
   // (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
   const partySlotIds = new Set(require('./party').allSlots(schema).map((s) => s.var));
-  const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) => partySlotIds.has(n));
-  const partyGatedWriters = new Set(); // 편성 게이트 액션이 움직이는 변수 — 단조·눌어붙음 측정 불가
-  for (const a of ACT) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
+  // 'deployed'(편성 가상 목록, v0.59)를 보는 조건도 같은 이유로 시뮬에서는 늘 미편성이다
+  const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) =>
+    partySlotIds.has(n) || (schema.party != null && n === 'deployed'));
+  const partyGatedWriters = new Set(); // 편성 게이트 액션·이벤트가 움직이는 변수 — 단조·눌어붙음 측정 불가
+  for (const a of [...ACT, ...allEv]) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
   // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
@@ -663,6 +665,16 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     // 문턱에 걸린 값을 보조 AI가 그 방향으로 밀 수 있는가 — 그렇다면 관측 범위가 증거가 못 된다.
+    // 편성 게이트 이벤트 (v0.59) — 조건이 편성 슬롯/deployed를 본다 ("아린이 전열에 있으면").
+    // 편성은 유저 팝업 몫이라 시뮬은 늘 미편성 — 죽은 이벤트가 아니다 (액션 쪽과 같은 원칙).
+    if (partyGated(e)) {
+      stats.deadEvents--;
+      stats.partyGatedEvs = (stats.partyGatedEvs ?? 0) + 1;
+      add('low', '편성 담당 이벤트', `'${e.id}' 미발동 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
+        + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **문턱을 내리지 마세요.** '
+        + '실제로 뜨는지는 채팅에서 편성한 뒤 확인하세요.', null);
+      continue;
+    }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
     if (aiGated(schema, b, turns)) {
       stats.deadEvents--;
@@ -715,7 +727,7 @@ function diagnose(schema, opts = {}) {
       }
       if (partyGated(a)) {
         stats.partyGatedActs = (stats.partyGatedActs ?? 0) + 1;
-        add('low', '편성 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — 조건이 편성 슬롯을 봅니다. `
+        add('low', '편성 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
           + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **여는 조건을 낮추지 마세요.** '
           + '실제로 열리는지는 채팅에서 편성한 뒤 확인하세요.', null);
         continue;

@@ -94,6 +94,11 @@ function validateSchema(schema) {
   const tcfg = timeConfig(schema);
   const exposedNames = new Set(tcfg ? tcfg.expose : []);
   for (const n of exposedNames) allIds.add(n);
+  // 편성 가상 목록 (v0.59) — 편성표가 있으면 'deployed'(편성 슬롯에 앉은 이름들)를
+  // 어느 조건식·자리표시자에서든 쓸 수 있다: has(deployed, '아린'). 실행은 engine.makeLookup이 맡는다.
+  if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
+    allIds.add('deployed');
+  }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -705,6 +710,9 @@ function validateSchema(schema) {
           else if (tabIds.has(t.id)) err(p, `중복된 탭 id: '${t.id}'`);
           else tabIds.add(t.id);
         }
+        // 탭 표시 조건 (v0.59) — 거짓이면 탭이 통째로 숨는다. 인물별 스킬트리 탭을
+        // has(deployed, '이름')으로 걸면 편성된 인물의 탭만 목록에 남는다.
+        if (hasTabs && t.when != null) checkExpr(t.when, `${p}.when`, allIds, err, { allowRand: false });
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
         const items = Array.isArray(t.items) ? t.items : [];
@@ -771,6 +779,17 @@ function validateSchema(schema) {
         });
       }
       if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
+      // 모든 탭에 표시 조건이 걸리면 전부 거짓인 순간 편성표가 텅 비어 보인다 — 상시 탭 하나를 권한다
+      if (hasTabs && P.tabs.length && P.tabs.every((t) => t && t.when != null)) {
+        warn('$.party.tabs', '모든 탭에 표시 조건(when)이 있습니다 — 전부 거짓이면 편성표가 비어 보입니다. '
+          + '조건 없는 탭(기본 편성 등)을 하나 두는 것을 권합니다');
+      }
+      // 'deployed'는 편성 가상 목록이 쓰는 이름 — 같은 id의 변수/파생이 있으면 그쪽이 가려서
+      // has(deployed, ...)가 편성을 안 보게 된다 (시간 노출 이름 충돌과 같은 종류의 사고)
+      if (varById.deployed || (Array.isArray(schema.derived) && schema.derived.some((d) => d && d.id === 'deployed'))) {
+        warn('$.party', "'deployed'라는 변수/파생이 이미 있습니다 — 편성 가상 목록(deployed)이 가려져 "
+          + 'has(deployed, ...)가 편성 슬롯을 읽지 않습니다. 다른 id를 권합니다');
+      }
 
       if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
       if (P.roster != null) {

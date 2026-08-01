@@ -30,6 +30,7 @@ function partyTabs(schema) {
       id: t.id ?? `tab${i + 1}`,
       label: t.label ?? `탭${i + 1}`,
       note: t.note ?? null,
+      when: t.when ?? null,                   // 표시 조건 (v0.59) — 거짓이면 탭이 뷰에서 숨는다
       roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
       points: t.points ?? p.points ?? null,   // 탭별 포인트 자원 (스킬=SP, 시설=골드) — 없으면 공용
       slots: Array.isArray(t.slots) ? t.slots : [],
@@ -41,7 +42,7 @@ function partyTabs(schema) {
   const actions = Array.isArray(p.actions) ? p.actions : [];
   const items = Array.isArray(p.items) ? p.items : [];
   if (!slots.length && !actions.length && !items.length) return [];
-  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null,
+  return [{ id: 'main', label: p.label ?? '편성', note: null, when: null, roster: p.roster ?? null,
     points: p.points ?? null, slots, actions, items }];
 }
 
@@ -137,7 +138,21 @@ function partyView(schema, state, opts = {}) {
     if (val != null && val !== empty) seat[val] = s.var;
   }
 
-  const viewTabs = tabs.map((t) => {
+  // 탭 표시 조건 (v0.59) — 편성 연동 게이트. has(deployed, '이름')을 걸면 편성된 인물의
+  // 스킬트리 탭만 목록에 남는다. 숨은 탭의 자리(seat)는 위에서 이미 셌다 — 안 보여도 점유는 유효.
+  // 깨진 식은 보이는 쪽으로 넘어진다 (조용히 사라지면 제작자가 원인을 못 찾는다 — 검증이 잡는다).
+  let visible = tabs;
+  if (tabs.some((t) => t.when)) {
+    const { evaluate, truthy } = require('./expr');
+    const { makeLookup } = require('./engine');
+    const lookup = makeLookup(schema, state.vars);
+    visible = tabs.filter((t) => {
+      if (!t.when) return true;
+      try { return truthy(evaluate(t.when, lookup, null)); } catch { return true; }
+    });
+  }
+
+  const viewTabs = visible.map((t) => {
     const rosterDef = t.roster ? byId[t.roster] : null;
     const rosterItems = rosterDef ? (state.vars[t.roster] ?? rosterDef.init ?? []) : null;
     const slots = t.slots.map((s) => {

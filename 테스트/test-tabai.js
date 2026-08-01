@@ -61,6 +61,9 @@ const P = TEMPLATES.politics.schema;
         // 액션을 통째로 갈아끼우면 편성표의 액션 참조(party.actions)가 끊긴다 — 여기서는
         // 패턴 예시의 유효성만 보는 것이므로 편성표를 떼고 검증한다 (참조 절단 오류는 정상 동작)
         delete sch.party;
+        // 편성표를 떼면 deployed 가상 목록(v0.59)도 사라진다 — 그걸 보는 지시문도 함께 뗀다
+        sch.directives = (sch.directives || []).filter(
+          (d) => !/\bdeployed\b/.test(`${d.when ?? ''} ${d.text ?? ''}`));
       }
       const v = validateSchema(sch);
       ck(`★ ${kind} '${name}' 예시가 실제로 검증 통과 (${home})`, v.ok,

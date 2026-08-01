@@ -373,6 +373,94 @@ const clone = (o) => JSON.parse(J(o));
   }
 }
 
+// ── 6. 편성 연동 (v0.59) — deployed 가상 목록 + 탭 표시 조건(when) ──
+// 유저 제안: "편성에 들어온 애들만 상태창에 보여주기, 스킬창 목록에서도".
+// deployed는 allIds(검증)와 makeLookup(실행) 두 관문에만 꽂혀 모든 조건식 자리에서 통한다.
+{
+  const { evaluate, truthy } = SC.require('expr');
+
+  // deployed 가상 목록 — makeLookup
+  const state = engine.initState(BASE);
+  const dep = () => evaluate('deployed', engine.makeLookup(BASE, state.vars), null);
+  ck('★ deployed — 아무도 없으면 빈 목록', J(dep()) === J([]), J(dep()));
+  state.vars.front = '아린';
+  state.vars.rear = '바크';
+  ck('★ deployed — 앉은 이름들 (빈값 제외)', J(dep()) === J(['아린', '바크']), J(dep()));
+  ck('★ has(deployed, ...) — showWhen·이벤트·requires에 쓰는 실전형',
+    truthy(evaluate("has(deployed, '아린')", engine.makeLookup(BASE, state.vars), null))
+    && !truthy(evaluate("has(deployed, '셀레네')", engine.makeLookup(BASE, state.vars), null)), '');
+  ck('party 없는 스키마에서 deployed는 미정의 변수',
+    (() => { try { evaluate('deployed', engine.makeLookup({ vars: [], party: null }, {}), null); return false; }
+      catch (e) { return /알 수 없는 변수/.test(e.message); } })(), '');
+  // 같은 id의 실제 변수가 있으면 그쪽이 이긴다 (기존 스키마 호환)
+  const shadow = clone(BASE);
+  shadow.vars.push({ id: 'deployed', label: '주둔지', type: 'text', init: '요새' });
+  ck('deployed 변수가 있으면 그 값이 이긴다',
+    evaluate('deployed', engine.makeLookup(shadow, engine.initState(shadow).vars), null) === '요새', '');
+  const sv = validateSchema(shadow);
+  ck('그림자 경고 — deployed 변수 + 편성표', sv.warnings.some((w) => /deployed/.test(w.msg)), J(sv.warnings));
+
+  // 검증 — deployed 참조 허용 여부는 편성표 유무를 따른다
+  const withRef = clone(BASE);
+  withRef.directives = [{ id: 'd1', when: "has(deployed, '아린')", text: '[편성] 아린 동행: {deployed}' }];
+  const vr = validateSchema(withRef);
+  ck('★ 검증 — party 있으면 deployed 참조·자리표시자 통과', vr.ok, J(vr.errors));
+  const noP = clone(withRef);
+  delete noP.party;
+  ck('검증 — party 없으면 deployed는 알 수 없는 변수',
+    validateSchema(noP).errors.some((e) => /알 수 없는 변수 'deployed'/.test(e.msg)), '');
+
+  // 탭 표시 조건 — 편성된 인물의 스킬트리 탭만 남기기
+  const GATED = clone(BASE);
+  GATED.vars.push(
+    { id: 'sp', label: 'SP', type: 'int', init: 3, min: 0, max: 99 },
+    { id: 'arin_sword', label: '아린 검술', type: 'int', init: 0, min: 0, max: 5 },
+  );
+  delete GATED.party.slots;
+  GATED.party.tabs = [
+    { id: 'main', label: '편성', slots: [{ var: 'front', label: '전위' }, { var: 'rear' }] },
+    { id: 'arin', label: '아린 수련', when: "has(deployed, '아린')", points: 'sp',
+      items: [{ var: 'arin_sword', cost: 1 }] },
+  ];
+  const gv = validateSchema(GATED);
+  ck('★ 탭 when 검증 통과', gv.ok, J(gv.errors));
+  const badWhen = clone(GATED);
+  badWhen.party.tabs[1].when = 'has(nobody_list, "x")';
+  ck('탭 when의 없는 변수는 오류', validateSchema(badWhen).errors.some((e) => /알 수 없는 변수/.test(e.msg)), '');
+  const allGated = clone(GATED);
+  allGated.party.tabs[0].when = 'hp > 0';
+  ck('모든 탭에 when이면 경고', validateSchema(allGated).warnings.some((w) => /모든 탭에 표시 조건/.test(w.msg)), '');
+
+  const gs = engine.initState(GATED);
+  const hidden = party.partyView(GATED, gs);
+  ck('★ 미편성 — 수련 탭이 숨는다', hidden.tabs.length === 1 && hidden.tabs[0].id === 'main', J(hidden.tabs.map((t) => t.id)));
+  ck('숨은 탭의 항목은 찍기 거부 아님 확인 — 뷰에서만 숨는다 (자리·검증은 유효)',
+    party.allItems(GATED).length === 1, '');
+  gs.vars.front = '아린';
+  const shown = party.partyView(GATED, gs);
+  ck('★ 아린 편성 → 수련 탭이 나타난다', shown.tabs.length === 2 && shown.tabs[1].id === 'arin', J(shown.tabs.map((t) => t.id)));
+  // 깨진 식은 보이는 쪽으로 (조용히 사라지면 원인을 못 찾는다)
+  const broken = clone(GATED);
+  broken.party.tabs[1].when = 'has(';
+  ck('깨진 when은 탭을 숨기지 않는다', party.partyView(broken, engine.initState(broken)).tabs.length === 2, '');
+
+  // 진단 — deployed를 보는 액션/이벤트는 편성 게이트 (오탐 방지, v0.52 원칙)
+  const DIAG = clone(GATED);
+  DIAG.actions = [{ id: 'duo', label: '🗡 합격술', mode: 'oneshot', when: "has(deployed, '아린')",
+    inject: '[액션] 아린과 합을 맞춘다.', effects: [{ set: 'hp', expr: 'min(hp + 1, 20)' }] }];
+  DIAG.rules = { events: [{ id: 'arin_ev', when: "has(deployed, '아린') and hp < 5",
+    effects: [{ set: 'hp', expr: 'hp + 2' }], notify: '아린이 감쌌다' }] };
+  const dv = validateSchema(DIAG);
+  ck('진단 픽스처 검증 통과', dv.ok, J(dv.errors));
+  const findings = SC.require('diagnose').diagnose(DIAG, { runs: 3, turns: 30 }).findings;
+  ck('★ deployed 조건 액션 = 편성 담당 문턱 (못 쓰는 액션 아님)',
+    findings.some((x) => x.tag === '편성 담당 문턱') && !findings.some((x) => x.tag === '못 쓰는 액션'),
+    J(findings.map((x) => x.tag)));
+  ck('★ deployed 조건 이벤트 = 편성 담당 이벤트 (죽은 이벤트 아님)',
+    findings.some((x) => x.tag === '편성 담당 이벤트') && !findings.some((x) => x.tag === '죽은 이벤트'),
+    J(findings.map((x) => x.tag)));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

@@ -196,6 +196,20 @@ function makeLookup(schema, vars) {
     if (name in vars) return vars[name];
     const tv = timeVal(name);
     if (tv !== undefined) return tv;
+    // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
+    // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
+    // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
+    if (name === 'deployed' && schema.party && !derivedById.deployed) {
+      const { allSlots } = require('./party');   // 지연 require — party ↔ engine 순환 회피
+      const empty = schema.party.empty ?? null;
+      const byId = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+      const out = [];
+      for (const s of allSlots(schema)) {
+        const v = vars[s.var] ?? byId[s.var]?.init ?? null;
+        if (v != null && v !== empty && !out.includes(v)) out.push(v);
+      }
+      return out;
+    }
     const d = derivedById[name];
     if (!d) return undefined;
     if (name in memo) return memo[name];

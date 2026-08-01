@@ -269,7 +269,8 @@ const SCHEMA_HARD_RULES = [
   '- `int`/`float`은 `init`이 숫자여야 하고 `min` ≤ `init` ≤ `max` 여야 합니다.',
   '- `list`의 `init`은 문자열 배열입니다. **수식으로 대입할 수 없고** `{ "list": "아이디", "add": [...], "remove": [...] }` 형태로만 바꿉니다.',
   '- `derived`는 계산 전용입니다. 효과의 `set` 대상이 될 수 없습니다.',
-  '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다.',
+  '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다. '
+  + '(예외: 편성표 `party`가 있으면 `deployed` — 편성 슬롯에 앉은 이름들의 읽기 전용 목록 — 를 쓸 수 있습니다)',
   '- `updater.allow[].id`도 `vars`에 있어야 하며, 숫자형에는 `maxDelta`를 주는 것이 좋습니다(없으면 AI가 무제한으로 바꿉니다).',
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
@@ -286,6 +287,9 @@ const SCHEMA_EXPR_RULES = [
   + '`@+숫자`로 쓰면(`"@+1080"` = 1080일 뒤) 추가되는 순간 시스템이 절대값으로 굳힙니다 — '
   + '보조 AI에게 "지금 날짜 + 기간"을 계산시키지 마세요. 그게 이 플러그인이 없애려는 일입니다.',
   '문자열 비교는 큰따옴표: `stage == "친구"`',
+  '편성표(`party`)가 있으면 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)가 자동 제공됩니다 — '
+  + '`has(deployed, "아린")`으로 "지금 편성돼 있나"를 조건·showWhen·지시문 어디서든 묻습니다. '
+  + '`party.tabs[].when`에 걸면 그 탭이 조건이 참일 때만 보입니다 (인물별 스킬트리 탭 걸러내기).',
   '**`rand()`는 효과(effects)에서만** 씁니다. 조건(`when`)과 `derived`에는 쓸 수 없습니다.',
   '  → 주사위가 필요하면 "효과에서 굴려 변수에 담고 → 그 변수로 분기"하는 2단 구조를 쓰세요.',
   '대입·반복문·점 접근(`a.b`)·배열 인덱싱은 없습니다. 목록은 `count`/`has`/`sum`으로만 다룹니다.',
@@ -2497,7 +2501,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
       + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
-      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다).'));
+      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다). '
+      + '편성표가 있으면 deployed(편성 슬롯에 앉은 이름 목록)가 자동 제공됩니다 — '
+      + 'has(deployed, "아린")을 상태창 showWhen·지시문·이벤트 조건 어디서든 쓸 수 있습니다.'));
 
     wrap.appendChild(h('div', { class: 'sce-block' },
       h('div', { class: 'sce-row' },
@@ -2669,6 +2675,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-row' },
             pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
             pointsSelect(t, P.points ? `(공용 — ${P.points})` : '(포인트 없음)'),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 표시) has(deployed, "아린")' }),
+              '거짓이면 탭이 통째로 숨는다 — 인물별 스킬트리 탭을 편성된 인물만 남기는 용도'),
           ),
           slotBlocks(t.slots),
           h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),

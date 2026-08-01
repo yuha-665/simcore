@@ -1,13 +1,24 @@
 //@name simcore
 //@api 3.0
-//@version 0.58.1
-//@display-name SimCore (시뮬 엔진) v0.58 스킬·업그레이드
+//@version 0.59.0
+//@display-name SimCore (시뮬 엔진) v0.59 편성 연동
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.59.0 ────────────────────────────────────────────────
+// 편성 연동 게이트 — 유저 제안: "편성에 들어온 애들만 상태창에 보여주기, 스킬창 목록에서도".
+// 핵심은 가상 목록 하나: 편성표가 있으면 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용)가
+// 수식 언어에 자동 제공된다 — has(deployed, '아린')이 상태창 showWhen·지시문·이벤트 조건·
+// requires·{deployed} 자리표시자 어디서든 통한다 (allIds 검증 + makeLookup 실행, 두 관문에만 꽂음).
+// - party.tabs[].when: 표시 조건 — 거짓이면 탭이 통째로 숨는다. 인물별 스킬트리 탭을
+//   has(deployed, '이름')으로 걸면 편성된 인물의 탭만 남는다 (v0.58.1 셀렉트+검색과 겹벌이).
+//   숨은 탭의 자리 점유는 유효(한 인물=한 자리 유지), 모든 탭이 숨으면 이유를 말하는 안내문.
+// - 진단: deployed를 보는 액션/이벤트 = 편성 게이트 (low '편성 담당 문턱/이벤트', 오탐 방지 v0.52 원칙).
+// - 검증: 이름 그림자 경고(deployed 변수/파생), 전 탭 when 경고, 탭 when 식 검사.
 //
 // ── v0.58.1 ────────────────────────────────────────────────
 // 탭 내비 선택 — 유저 제안: "캐릭 수가 적으면 탭, 많으면 셀렉트바+검색. 선택은 제작자가."
@@ -1644,6 +1655,11 @@ function validateSchema(schema) {
   const tcfg = timeConfig(schema);
   const exposedNames = new Set(tcfg ? tcfg.expose : []);
   for (const n of exposedNames) allIds.add(n);
+  // 편성 가상 목록 (v0.59) — 편성표가 있으면 'deployed'(편성 슬롯에 앉은 이름들)를
+  // 어느 조건식·자리표시자에서든 쓸 수 있다: has(deployed, '아린'). 실행은 engine.makeLookup이 맡는다.
+  if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
+    allIds.add('deployed');
+  }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -2255,6 +2271,9 @@ function validateSchema(schema) {
           else if (tabIds.has(t.id)) err(p, `중복된 탭 id: '${t.id}'`);
           else tabIds.add(t.id);
         }
+        // 탭 표시 조건 (v0.59) — 거짓이면 탭이 통째로 숨는다. 인물별 스킬트리 탭을
+        // has(deployed, '이름')으로 걸면 편성된 인물의 탭만 목록에 남는다.
+        if (hasTabs && t.when != null) checkExpr(t.when, `${p}.when`, allIds, err, { allowRand: false });
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
         const items = Array.isArray(t.items) ? t.items : [];
@@ -2321,6 +2340,17 @@ function validateSchema(schema) {
         });
       }
       if (!anyContent) err('$.party', '슬롯 또는 액션이 있는 탭이 최소 1개 필요');
+      // 모든 탭에 표시 조건이 걸리면 전부 거짓인 순간 편성표가 텅 비어 보인다 — 상시 탭 하나를 권한다
+      if (hasTabs && P.tabs.length && P.tabs.every((t) => t && t.when != null)) {
+        warn('$.party.tabs', '모든 탭에 표시 조건(when)이 있습니다 — 전부 거짓이면 편성표가 비어 보입니다. '
+          + '조건 없는 탭(기본 편성 등)을 하나 두는 것을 권합니다');
+      }
+      // 'deployed'는 편성 가상 목록이 쓰는 이름 — 같은 id의 변수/파생이 있으면 그쪽이 가려서
+      // has(deployed, ...)가 편성을 안 보게 된다 (시간 노출 이름 충돌과 같은 종류의 사고)
+      if (varById.deployed || (Array.isArray(schema.derived) && schema.derived.some((d) => d && d.id === 'deployed'))) {
+        warn('$.party', "'deployed'라는 변수/파생이 이미 있습니다 — 편성 가상 목록(deployed)이 가려져 "
+          + 'has(deployed, ...)가 편성 슬롯을 읽지 않습니다. 다른 id를 권합니다');
+      }
 
       if (P.empty != null && typeof P.empty !== 'string') err('$.party.empty', 'empty(빈값)는 문자열이어야 함');
       if (P.roster != null) {
@@ -2711,6 +2741,7 @@ function partyTabs(schema) {
       id: t.id ?? `tab${i + 1}`,
       label: t.label ?? `탭${i + 1}`,
       note: t.note ?? null,
+      when: t.when ?? null,                   // 표시 조건 (v0.59) — 거짓이면 탭이 뷰에서 숨는다
       roster: t.roster ?? p.roster ?? null,   // 탭별 보유 목록 (수복 후보 따로 등) — 없으면 공용
       points: t.points ?? p.points ?? null,   // 탭별 포인트 자원 (스킬=SP, 시설=골드) — 없으면 공용
       slots: Array.isArray(t.slots) ? t.slots : [],
@@ -2722,7 +2753,7 @@ function partyTabs(schema) {
   const actions = Array.isArray(p.actions) ? p.actions : [];
   const items = Array.isArray(p.items) ? p.items : [];
   if (!slots.length && !actions.length && !items.length) return [];
-  return [{ id: 'main', label: p.label ?? '편성', note: null, roster: p.roster ?? null,
+  return [{ id: 'main', label: p.label ?? '편성', note: null, when: null, roster: p.roster ?? null,
     points: p.points ?? null, slots, actions, items }];
 }
 
@@ -2818,7 +2849,21 @@ function partyView(schema, state, opts = {}) {
     if (val != null && val !== empty) seat[val] = s.var;
   }
 
-  const viewTabs = tabs.map((t) => {
+  // 탭 표시 조건 (v0.59) — 편성 연동 게이트. has(deployed, '이름')을 걸면 편성된 인물의
+  // 스킬트리 탭만 목록에 남는다. 숨은 탭의 자리(seat)는 위에서 이미 셌다 — 안 보여도 점유는 유효.
+  // 깨진 식은 보이는 쪽으로 넘어진다 (조용히 사라지면 제작자가 원인을 못 찾는다 — 검증이 잡는다).
+  let visible = tabs;
+  if (tabs.some((t) => t.when)) {
+    const { evaluate, truthy } = require('./expr');
+    const { makeLookup } = require('./engine');
+    const lookup = makeLookup(schema, state.vars);
+    visible = tabs.filter((t) => {
+      if (!t.when) return true;
+      try { return truthy(evaluate(t.when, lookup, null)); } catch { return true; }
+    });
+  }
+
+  const viewTabs = visible.map((t) => {
     const rosterDef = t.roster ? byId[t.roster] : null;
     const rosterItems = rosterDef ? (state.vars[t.roster] ?? rosterDef.init ?? []) : null;
     const slots = t.slots.map((s) => {
@@ -3572,6 +3617,20 @@ function makeLookup(schema, vars) {
     if (name in vars) return vars[name];
     const tv = timeVal(name);
     if (tv !== undefined) return tv;
+    // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
+    // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
+    // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
+    if (name === 'deployed' && schema.party && !derivedById.deployed) {
+      const { allSlots } = require('./party');   // 지연 require — party ↔ engine 순환 회피
+      const empty = schema.party.empty ?? null;
+      const byId = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+      const out = [];
+      for (const s of allSlots(schema)) {
+        const v = vars[s.var] ?? byId[s.var]?.init ?? null;
+        if (v != null && v !== empty && !out.includes(v)) out.push(v);
+      }
+      return out;
+    }
     const d = derivedById[name];
     if (!d) return undefined;
     if (name in memo) return memo[name];
@@ -5705,9 +5764,11 @@ function diagnose(schema, opts = {}) {
   // 그 액션 뒤에 있는 소비 경로를 못 보고 "단조 자원"이라 하면 정상 설계에 경고를 내는 것이다
   // (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
   const partySlotIds = new Set(require('./party').allSlots(schema).map((s) => s.var));
-  const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) => partySlotIds.has(n));
-  const partyGatedWriters = new Set(); // 편성 게이트 액션이 움직이는 변수 — 단조·눌어붙음 측정 불가
-  for (const a of ACT) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
+  // 'deployed'(편성 가상 목록, v0.59)를 보는 조건도 같은 이유로 시뮬에서는 늘 미편성이다
+  const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) =>
+    partySlotIds.has(n) || (schema.party != null && n === 'deployed'));
+  const partyGatedWriters = new Set(); // 편성 게이트 액션·이벤트가 움직이는 변수 — 단조·눌어붙음 측정 불가
+  for (const a of [...ACT, ...allEv]) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
   // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
@@ -6138,6 +6199,16 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     // 문턱에 걸린 값을 보조 AI가 그 방향으로 밀 수 있는가 — 그렇다면 관측 범위가 증거가 못 된다.
+    // 편성 게이트 이벤트 (v0.59) — 조건이 편성 슬롯/deployed를 본다 ("아린이 전열에 있으면").
+    // 편성은 유저 팝업 몫이라 시뮬은 늘 미편성 — 죽은 이벤트가 아니다 (액션 쪽과 같은 원칙).
+    if (partyGated(e)) {
+      stats.deadEvents--;
+      stats.partyGatedEvs = (stats.partyGatedEvs ?? 0) + 1;
+      add('low', '편성 담당 이벤트', `'${e.id}' 미발동 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
+        + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **문턱을 내리지 마세요.** '
+        + '실제로 뜨는지는 채팅에서 편성한 뒤 확인하세요.', null);
+      continue;
+    }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
     if (aiGated(schema, b, turns)) {
       stats.deadEvents--;
@@ -6190,7 +6261,7 @@ function diagnose(schema, opts = {}) {
       }
       if (partyGated(a)) {
         stats.partyGatedActs = (stats.partyGatedActs ?? 0) + 1;
-        add('low', '편성 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — 조건이 편성 슬롯을 봅니다. `
+        add('low', '편성 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
           + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **여는 조건을 낮추지 마세요.** '
           + '실제로 열리는지는 채팅에서 편성한 뒤 확인하세요.', null);
         continue;
@@ -6720,7 +6791,8 @@ const SCHEMA_HARD_RULES = [
   '- `int`/`float`은 `init`이 숫자여야 하고 `min` ≤ `init` ≤ `max` 여야 합니다.',
   '- `list`의 `init`은 문자열 배열입니다. **수식으로 대입할 수 없고** `{ "list": "아이디", "add": [...], "remove": [...] }` 형태로만 바꿉니다.',
   '- `derived`는 계산 전용입니다. 효과의 `set` 대상이 될 수 없습니다.',
-  '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다.',
+  '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다. '
+  + '(예외: 편성표 `party`가 있으면 `deployed` — 편성 슬롯에 앉은 이름들의 읽기 전용 목록 — 를 쓸 수 있습니다)',
   '- `updater.allow[].id`도 `vars`에 있어야 하며, 숫자형에는 `maxDelta`를 주는 것이 좋습니다(없으면 AI가 무제한으로 바꿉니다).',
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
@@ -6737,6 +6809,9 @@ const SCHEMA_EXPR_RULES = [
   + '`@+숫자`로 쓰면(`"@+1080"` = 1080일 뒤) 추가되는 순간 시스템이 절대값으로 굳힙니다 — '
   + '보조 AI에게 "지금 날짜 + 기간"을 계산시키지 마세요. 그게 이 플러그인이 없애려는 일입니다.',
   '문자열 비교는 큰따옴표: `stage == "친구"`',
+  '편성표(`party`)가 있으면 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)가 자동 제공됩니다 — '
+  + '`has(deployed, "아린")`으로 "지금 편성돼 있나"를 조건·showWhen·지시문 어디서든 묻습니다. '
+  + '`party.tabs[].when`에 걸면 그 탭이 조건이 참일 때만 보입니다 (인물별 스킬트리 탭 걸러내기).',
   '**`rand()`는 효과(effects)에서만** 씁니다. 조건(`when`)과 `derived`에는 쓸 수 없습니다.',
   '  → 주사위가 필요하면 "효과에서 굴려 변수에 담고 → 그 변수로 분기"하는 2단 구조를 쓰세요.',
   '대입·반복문·점 접근(`a.b`)·배열 인덱싱은 없습니다. 목록은 `count`/`has`/`sum`으로만 다룹니다.',
@@ -8948,7 +9023,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
       + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
-      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다).'));
+      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다). '
+      + '편성표가 있으면 deployed(편성 슬롯에 앉은 이름 목록)가 자동 제공됩니다 — '
+      + 'has(deployed, "아린")을 상태창 showWhen·지시문·이벤트 조건 어디서든 쓸 수 있습니다.'));
 
     wrap.appendChild(h('div', { class: 'sce-block' },
       h('div', { class: 'sce-row' },
@@ -9120,6 +9197,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-row' },
             pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
             pointsSelect(t, P.points ? `(공용 — ${P.points})` : '(포인트 없음)'),
+          ),
+          h('div', { class: 'sce-row' },
+            pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 표시) has(deployed, "아린")' }),
+              '거짓이면 탭이 통째로 숨는다 — 인물별 스킬트리 탭을 편성된 인물만 남기는 용도'),
           ),
           slotBlocks(t.slots),
           h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
@@ -11176,6 +11257,13 @@ const RPG = {
       when: 'gold <= 10',
       text: '[상태] 수중에 돈이 거의 없다 ({gold}G). 궁핍함이 선택지에 영향을 줘야 한다.',
     },
+    // 편성 연동 (v0.59) — deployed(편성 슬롯에 앉은 이름들)로 편성 사실을 서사에 잇는다.
+    // 상태창 showWhen·이벤트 조건·업그레이드 requires에도 같은 식이 그대로 통한다.
+    {
+      id: 'arin_in_party',
+      when: "has(deployed, '아린')",
+      text: '[편성] 아린이 전열(전위/후위)에 편성돼 있다. 이동·전투·야영 장면에서 아린이 곁에 있음이 서사에 드러나야 한다.',
+    },
   ],
   updater: {
     model: 'aux',
@@ -13201,6 +13289,9 @@ const SMITH = {
 //   ④ 편성 게이트 액션 — "기함을 정해야 출격"(when이 슬롯 변수를 봄). 진단은 이걸
 //      '편성 담당 문턱'으로 안내한다 (시뮬은 편성을 못 하므로 — 조건을 낮추지 말 것)
 //   ⑤ 함명은 enum이 확정한다 — AI는 명단 밖 이름을 만들 수 없다 (제작자가 후보를 정한다)
+//   ⑥ 편성 연동 (v0.59) — 정비창 탭은 when으로 "볼 일이 있을 때만" 보인다 (손상함이 있거나
+//      아직 입거 중인 함이 남았을 때). 편성 여부 자체는 deployed 가상 목록으로 어디서든
+//      읽는다 — has(deployed, '미리내'). 지시문 실물 예는 RPG 템플릿(아린 편성)에 있다
 const FLEET = {
   simcore: '0.1',
   meta: { name: '함대 — 편성과 출격', author: 'SimCore 템플릿' },
@@ -13233,6 +13324,10 @@ const FLEET = {
         actions: ['sortie'],
         note: '가동 중인 함만 편성할 수 있다.' },
       { id: 'dock', label: '정비창', roster: 'damaged',
+        // 표시 조건 (v0.59) — 손상함이 없고 입거 중인 함도 없으면 탭 자체가 숨는다.
+        // dock1 조건을 같이 보는 이유: 수리가 끝나 손상 목록이 비어도 함이 아직 정비석에
+        // 앉아 있는 동안은 탭이 보여야 비울 수 있다 (조용히 사라지면 자리가 잠긴 채 남는다).
+        when: "count(damaged) > 0 or dock1 != '없음'",
         slots: [{ var: 'dock1' }],
         actions: ['repair'],
         note: '손상 목록에 오른 함만 입거할 수 있다.' },
@@ -14635,6 +14730,13 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
     // 탭 내비 (v0.56 탭 바 / v0.58.1 셀렉트+검색). 하나뿐이면 안 그린다.
     // 표시 방식은 제작자 몫(party.nav) — 인물 몇 명이면 탭 바, 수십 명이면 셀렉트+검색.
     const tab = view.tabs.find((t) => t.id === gameOpenTab) ?? view.tabs[0];
+    // 모든 탭이 표시 조건(when, v0.59)에 걸려 숨은 경우 — 빈 카드 대신 이유를 말해 준다
+    if (!tab) {
+      card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note',
+        textContent: '지금 표시할 탭이 없습니다 — 탭 표시 조건이 전부 거짓입니다 (예: 아직 아무도 편성되지 않음).' }));
+      root.appendChild(card);
+      return;
+    }
     const goTab = (id) => { gameOpenTab = id; gameOpenSlot = null; gameNotice = null; renderGamePanel(); };
     if (view.tabs.length > 1 && schema.party?.nav === 'select') {
       const nav = document.createElement('div');

@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.63.0
+//@version 0.63.1
 //@display-name SimCore (시뮬 엔진) v0.63 기능 추가 카드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.63.1 ────────────────────────────────────────────────
+// 기능 요청 마무리 — design-기능프리셋.md 진행 6·7번 (남아 있던 마지막 두 칸).
+// - [calendar 슬라이스] TAB_SLICES.calendar + 요청서(달력 규격·목록 계약·요일 계약·css 보존)
+//   + 신원에 "일정 목록 연결" 포함 — 스칼라지만 잃으면 등록 기능이 통째로 죽어서다.
+//   달력 탭에 AI 도구, 🧩에 📅 달력·일정 카드 (vars→rules→calendar 3단계, 시간 전제).
+// - [시간 켜기 3택 강제] (design-시간.md §결정 2) "그냥 켜기" 버튼 제거 — 켜기만 하면
+//   시계가 멈춘 채 박힌다(같은 날짜가 영원히 뜨는 건 날짜가 없는 것보다 나쁨). 🌙 버튼·보고 /
+//   📝 보고만 / 📆 턴마다 하루 중 골라야 켜진다. 골격은 ensureSkipVars/addEndDayAction으로
+//   진행 입구 버튼과 공유 (두 벌 금지).
+// - [상태창 날짜 문] (§결정 1) 시간 꺼진 봇의 상태창 탭에 "날짜 변수를 직접 만들지 마세요 +
+//   [🕐 시간 탭으로]" — day 손조립 사고 5건이 전부 그 길에서 났다.
+// - [기능별 회귀] 카드 전 단계 요청서 검사 — 요구 문구·변수 계약·전체 세트 요구가 실리는가,
+//   홈 템플릿에서 needs가 통과하는가. 달력 슬라이스 왕복(무손실+검증+css 생존) 포함.
 //
 // ── v0.63.0 ────────────────────────────────────────────────
 // 🧩 기능 추가 — 창작 탭에 카드 7장 (상태창 한 벌 / 상점 / 퀘스트 보드 / 레벨·성장 /
@@ -8050,6 +8064,9 @@ const TAB_SLICES = {
   // (customCSS·커스텀 템플릿·테마)까지 날아가므로, groups 하나만 갈아끼우고 layout만 덤으로 받는다.
   // 꾸미기는 👁 결과 탭의 🎨 창구가 따로 맡는다 — 같은 절을 두 창구가 겹치지 않게 나눠 쥔다.
   status: { keys: ['statusUI'], sub: 'groups', subOpt: ['layout'], label: '상태창' },
+  // 달력(v0.63.1) — calendar 객체 통째 교체. css는 제작자 손값이라 원문 보존을 요청서가
+  // 못박는다. 일정 목록 변수·만료 규칙은 vars/rules 절 몫 — 📅 카드가 순차로 나눠 맡긴다.
+  calendar: { keys: ['calendar'], label: '달력' },
 };
 
 // 직결 생성 입력칸의 예시 문구 — 여기 쓴 내용이 요청서의 '내가 원하는 것'에 그대로 들어간다.
@@ -8063,6 +8080,7 @@ const TAB_WANT_PH = {
   presets: '예: 난이도 3단계 — 어려움은 이미 위기 상황에서 시작',
   party: '예: 출격 편성 3슬롯 + 정비창 탭',
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
+  calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
 };
 
 /**
@@ -8092,6 +8110,7 @@ function tabItemCounts(schema, tabKey) {
     push('슬롯(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.slots) ? t.slots : []));
     push('업그레이드(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.items) ? t.items : []));
   }
+  else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
     push('rules.events', schema.rules?.events);
@@ -8181,6 +8200,18 @@ const FEATURE_RECIPES = [
     steps: [{ tab: 'party', want: '인물을 자리에 앉히는 편성 탭을 만들어 주세요. '
       + '자리를 비워 둘 수 있게 빈값도 후보에 넣어 주세요.' }],
   },
+  {
+    id: 'calendar', icon: '📅', label: '달력·일정',
+    desc: '세계관 기념일이 박힌 달력 + 날짜 클릭 일정 등록',
+    needs: (s) => (s.time ? null : '시간 체계가 필요합니다 — [시간] 탭에서 먼저 켜세요'),
+    steps: [
+      { tab: 'vars', want: '달력에서 쓸 일정 목록(list) 변수를 하나 만들어 주세요 — 약속·예정된 일이 들어가고 '
+        + '항목 끝에 "@기한"이 붙습니다. 알맞은 목록이 이미 있으면 새로 만들지 말고 그대로 두세요.' },
+      { tab: 'rules', want: '일정 목록의 기한이 지난 항목이 자동으로 사라지는 정리 규칙(onTurn expire)을 넣어 주세요.' },
+      { tab: 'calendar', want: '이 봇 세계관에 어울리는 기념일(생일·축제·정산일·정기 모임)을 달력에 박고, '
+        + '일정 목록을 연결해 주세요.' },
+    ],
+  },
 ];
 
 /**
@@ -8213,6 +8244,10 @@ function tabItemIds(schema, tabKey) {
     if (Array.isArray(P.tabs)) add('탭', P.tabs);
     add('슬롯', tabs.flatMap((t) => (Array.isArray(t?.slots) ? t.slots : [])), 'var');
     add('업그레이드', tabs.flatMap((t) => (Array.isArray(t?.items) ? t.items : [])), 'var');
+  } else if (tabKey === 'calendar') {
+    add('기념일', schema.calendar?.marks, 'label');
+    // 일정 목록 연결은 스칼라지만 잃어버리면 등록 기능이 통째로 죽는다 — 신원으로 취급해 지킨다
+    if (schema.calendar?.list) out.push(`일정 목록 ${schema.calendar.list}`);
   } else if (tabKey === 'rules') {
     add('이벤트', schema.rules?.events);
     add('랜덤', schema.rules?.randomEvents?.table);
@@ -8499,6 +8534,30 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "label": "소지품", "visibility": "collapsed", "items": [',
       '      { "var": "gold" }, { "var": "pack" } ] }',
       '  ] }',
+      '```',
+      '');
+  } else if (tabKey === 'calendar') {
+    const tcal = timeConfig(schema);
+    const listVars = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 달력 규격', ...SCHEMA_CALENDAR_RULES, '',
+      '## 이미 있는 목록 변수 — `list`(일정 등록용)는 이 중에서만 고를 수 있습니다',
+      listVars.length
+        ? listVars.map((v) => `- \`${v.id}\` ${v.label ?? ''}`).join('\n')
+        : '(없음 — `list` 항목을 넣지 마세요. 보기 전용 달력이 됩니다. 일정 목록이 필요하면 JSON 대신 그 사실을 알려주세요)',
+      '',
+      ...(tcal ? [`## 이 봇의 요일 이름 — \`weekday\`는 이 중에서만: ${tcal.weekdays.join(' · ')}`, ''] : []),
+      '## ⚠ css가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 이름**입니다. 형태만 보고, 이름은 위 계약표·목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "calendar": { "label": "달력", "icon": "📅", "list": "plans",',
+      '  "marks": [',
+      '    { "label": "상대 생일", "month": 5, "dom": 14, "note": "잊으면 큰일 난다." },',
+      '    { "label": "정산일", "dom": 1 },',
+      '    { "label": "도서부 모임", "weekday": "수" }',
+      '  ] } }',
       '```',
       '');
   } else {
@@ -9262,6 +9321,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(block);
     });
     wrap.appendChild(addBtn('그룹 추가', () => { ui.groups.push({ label: '', items: [] }); rerender(); }));
+    // 날짜 자리 = 시간 탭으로만 통하는 문 (design-시간.md §결정 1) — day 같은 int 변수를
+    // 손으로 만들어 꽂는 길이 열려 있는 한 사람도 AI도 그리로 샌다 (실측 사고 5건 전부 그 길).
+    if (!schema.time) {
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('span', { class: 'sce-hint' },
+          '📅 날짜·시각을 표시하고 싶으면 — 날짜 변수를 직접 만들지 마세요 (매 턴 어긋납니다). '
+          + '시간 체계를 켜면 date·clock이 위 항목 목록에 자동으로 생깁니다.'),
+        h('button', { class: 'sce-btn', onclick: () => { activeTab = 'time'; rerender(); } },
+          '🕐 시간 탭으로'),
+      ));
+    }
 
     // 자동 배치: 아직 상태창에 없는 변수·파생을 한 번에 채워넣기
     const usedIds = new Set(ui.groups.flatMap((g2) => (g2.items || []).map((it) => it.var)));
@@ -10214,6 +10284,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const lists = schema.vars.filter((v) => v.type === 'list');
 
+    wrap.appendChild(tabAiTools('calendar'));
+
     if (!schema.calendar) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
         '달력 패널 — 채팅 화면 우상단에 [📅] 버튼을 달고, 누르면 이번 달 달력이 뜹니다. '
@@ -10443,6 +10515,28 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // day_advance·day_skip·clock_prev처럼 접두 파생형도 잡는다 (실측: 맨션봇의 자정 넘김 배선 3종)
   const LEGACY_TIME_RE = /^(days|date|hour|minute|week|weekday|month|year|season|time_of_day)$|^(day|clock)(_|$)|^sim_(year|month|dom|day|season|week)/;
 
+  // 시간 골격 헬퍼 — 켜기 3택과 진행 입구 버튼이 같은 것을 만든다 (두 벌 금지)
+  function ensureSkipVars() {
+    if (!schema.vars.some((v) => v.id === SKIP_DAY)) {
+      schema.vars.push({ id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
+        desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' });
+      schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 });
+    }
+    if (!schema.vars.some((v) => v.id === SKIP_MIN)) {
+      schema.vars.push({ id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
+        desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 식사·외출이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' });
+      schema.updater.allow.push({ id: SKIP_MIN, maxGain: 720 });
+    }
+  }
+  function addEndDayAction() {
+    if ((schema.actions || []).some((a) => (a.effects || []).some((f) => f.set === SKIP_DAY))) return;
+    schema.actions.push({
+      id: 'end_day', label: '🌙 하루를 마친다',
+      effects: [{ set: SKIP_DAY, expr: '1' }, { set: SKIP_MIN, expr: '0' }],
+      inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
+    });
+  }
+
   function tabTime() {
     const wrap = h('div');
     const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
@@ -10458,10 +10552,29 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           `이 봇에는 손으로 만든 날짜 변수가 있습니다 (${legacy.map((v) => v.id).join(', ')}) — `
           + '켠 뒤 아래 정리 마법사로 걷어내면 노출 이름과의 충돌도 함께 풀립니다.'));
       }
-      wrap.appendChild(addBtn('🕐 시간 체계 켜기', () => {
-        schema.time = { start: '2026-01-01 09:00', advance: 'explicit', format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
-        rerender();
-      }));
+      // 켜는 순간 완성품 (design-시간.md §결정 2) — 켜기만 하고 진행 입구가 없으면 시계가
+      // 멈춘 채 박힌다. 상태창에 같은 날짜가 영원히 뜨는 건 날짜가 없는 것보다 나쁘다 —
+      // 그래서 "그냥 켜기" 버튼을 두지 않고, 시간이 흐르는 방식을 같이 고르게 한다.
+      wrap.appendChild(h('h4', {}, '🕐 시간 체계 켜기 — 시간이 어떻게 흐르나요?'));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '켜기만 하면 시계가 멈춘 채 시작합니다. 흐르는 방식까지 골라야 완성품입니다 (켠 뒤에 바꿀 수 있어요).'));
+      const enable = (advance) => {
+        schema.time = { start: '2026-01-01 09:00', advance, format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+      };
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          enable('explicit'); ensureSkipVars(); addEndDayAction(); rerender();
+        } }, '🌙 버튼·보고로 — 일상물 표준 (하루 마무리 액션 + AI 장면 보고)')));
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '유저가 [🌙 하루를 마친다]를 누르거나, 보조 AI가 장면마다 "몇 분 흘렀나"를 보고해 시간이 갑니다. 대부분의 봇은 이걸 고르세요.'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          enable('explicit'); ensureSkipVars(); rerender();
+        } }, '📝 AI 보고로만 — 버튼 없이 서사 흐름 따라')));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          enable('perTurn'); rerender();
+        } }, '📆 턴마다 하루 — 생존물·경영물형 (출력 1번 = 1일)')));
       return wrap;
     }
 
@@ -10535,13 +10648,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         wrap.appendChild(h('div', { class: 'sce-warn' },
           `⚠ ${SKIP_DAY}/${SKIP_MIN} 변수가 없어 시간이 흐를 입구가 없습니다.`));
         wrap.appendChild(addBtn(`진행 입구 만들기 — ${SKIP_DAY}·${SKIP_MIN} 변수 + AI 허용`, () => {
-          schema.vars.push(
-            { id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
-              desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
-            { id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
-              desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 식사·외출이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
-          );
-          schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 }, { id: SKIP_MIN, maxGain: 720 });
+          ensureSkipVars();
           rerender();
         }));
         wrap.appendChild(h('div', { class: 'sce-hint' },
@@ -10554,11 +10661,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           (a.effects || []).some((f) => f.set === SKIP_DAY));
         if (hasDay && !hasEndDay) {
           wrap.appendChild(addBtn("🌙 '하루를 마친다' 액션 추가", () => {
-            schema.actions.push({
-              id: 'end_day', label: '🌙 하루를 마친다',
-              effects: [{ set: SKIP_DAY, expr: '1' }, ...(hasMin ? [{ set: SKIP_MIN, expr: '0' }] : [])],
-              inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
-            });
+            ensureSkipVars();   // skip_min이 없던 봇이면 함께 — 액션 효과가 그 변수를 만진다
+            addEndDayAction();
             rerender();
           }));
         }

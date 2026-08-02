@@ -283,6 +283,77 @@ const P = TEMPLATES.politics.schema;
   ck('상태창 카드는 status 슬라이스를 씀', by('status_set').steps[0].tab === 'status', '');
 }
 
+// ── 달력 슬라이스 (v0.63.1) — 📅 카드의 마지막 절 ──
+{
+  const RM = JSON.parse(JSON.stringify(TEMPLATES.romance.schema));
+  RM.calendar.css = '.scc-day { border-color: gold; }';   // 보존 검증용 제작자 손값
+  const cp = M.buildTabExportPrompt(RM, 'calendar');
+  ck('★ calendar 슬라이스 등록', !!M.TAB_SLICES.calendar, '');
+  ck('★ calendar: 최상위 키 못박음', cp.includes('`"calendar"`'), '');
+  ck('calendar: 규격 절 포함 (marks 반복 규칙·expire)', cp.includes('## 달력 규격') && cp.includes('매년') && cp.includes('expire'), '');
+  ck('★ calendar: 목록 계약 동봉 (list는 이 중에서만)', cp.includes('`plans`') && cp.includes('이 중에서만'), '');
+  ck('★ calendar: 요일 계약 동봉 (커스텀 요일명 오타 방지)', cp.includes('월 · 화 · 수'), '');
+  ck('calendar: css 원문 보존 지시', cp.includes('css가 이미 있으면 원문 그대로'), '');
+  ck('calendar: 체크섬에 기념일 개수', /calendar\.marks` \*\*\d+개\*\*/.test(cp), '');
+  ck('calendar: 요구 문구가 요청서에 실림',
+    M.buildTabExportPrompt(RM, 'calendar', { want: '단오제는 5월 5일' }).includes('단오제는 5월 5일'), '');
+
+  // 신원 — 일정 목록 연결은 스칼라지만 잃으면 등록 기능이 통째로 죽는다 → 신원으로 지킨다
+  const idsCal = M.tabItemIds(RM, 'calendar');
+  ck('★ 신원: 기념일 label + 일정 목록 연결',
+    idsCal.includes('기념일 상대 생일') && idsCal.includes('일정 목록 plans'), idsCal.join(' / '));
+  const dropList = M.planTabImport(RM, 'calendar',
+    M.pickTabFragment('calendar', { calendar: { label: '달력', marks: RM.calendar.marks } }, RM));
+  ck('★ 계획: list 연결이 빠지면 손실로 잡힘', dropList.lost.includes('일정 목록 plans'), dropList.lost.join(', '));
+
+  // ★ 왕복 — AI가 준 것처럼 넣고: 기존 신원 무손실 + 검증 통과 + css 생존
+  const frag = M.pickTabFragment('calendar', { calendar: {
+    label: '달력', icon: '📅', list: 'plans', css: RM.calendar.css,
+    marks: [...RM.calendar.marks, { label: '기말고사', month: 7, dom: 1 }],
+  } }, RM);
+  const plan2 = M.planTabImport(RM, 'calendar', frag);
+  ck('★ 왕복: 기존 신원 무손실 + 새 기념일만 추가',
+    plan2.lost.length === 0 && plan2.gained.includes('기념일 기말고사'),
+    `lost=${plan2.lost.join(',')} gained=${plan2.gained.join(',')}`);
+  const sch = JSON.parse(JSON.stringify(RM));
+  Object.assign(sch, JSON.parse(JSON.stringify(frag)));
+  const cv = validateSchema(sch);
+  ck('★ 왕복 후 검증 통과', cv.ok, cv.errors.map((e) => `${e.path}: ${e.msg}`).join(' / '));
+  ck('★ 왕복 후 제작자 css 생존', sch.calendar.css === RM.calendar.css, '');
+}
+
+// ── ⑦ 기능별 회귀 — 모든 카드의 모든 단계 요청서가 재료를 실어 나가는가 ──
+// 카드로 만든 결과물이 나쁘면 그건 요청서 버그다 (design-기능프리셋.md §병행 트랙).
+// AI 응답은 시뮬 못 하니, 회귀의 대상은 "요청서에 무엇이 실렸나"와 needs의 정확성이다.
+{
+  const RC = M.FEATURE_RECIPES;
+  // 카드마다 전제가 통과하는 홈 템플릿 — needs가 여기서 막히면 전제 검사가 잘못된 것
+  const HOME = {
+    status_set: 'romance', shop: 'survival', quest_board: 'romance', level: 'romance',
+    affection: 'romance', skilltree: 'rpg', party: 'rpg', calendar: 'romance',
+  };
+  ck('★ 모든 카드에 홈 템플릿 지정', RC.every((r) => HOME[r.id]),
+    RC.filter((r) => !HOME[r.id]).map((r) => r.id).join(', '));
+  for (const r of RC) {
+    const sch = JSON.parse(JSON.stringify(TEMPLATES[HOME[r.id] ?? 'romance'].schema));
+    ck(`★ 회귀 ${r.id}: 홈에서 전제 통과`, r.needs(sch) === null, String(r.needs(sch)));
+    for (const s of r.steps) {
+      const p = M.buildTabExportPrompt(sch, s.tab, { want: s.want });
+      ck(`회귀 ${r.id}/${s.tab}: 요구 문구가 요청서에 실림`, p.includes(s.want.slice(0, 20)), '');
+      if (s.tab !== 'vars') {
+        ck(`회귀 ${r.id}/${s.tab}: 변수 계약표 동봉 (없는 변수를 못 지어내게)`,
+          p.includes('여기 있는 것만'), '');
+      }
+      ck(`회귀 ${r.id}/${s.tab}: 전체 세트 요구 (통 교체 방어)`,
+        p.includes('한 세트로 돌려주세요') || p.includes('나머지가 전부 사라집니다'), '');
+    }
+  }
+  ck('★ 📅 달력 카드가 등록됨 (시간 전제)', (() => {
+    const c = RC.find((r) => r.id === 'calendar');
+    return !!c && typeof c.needs(P) === 'string' && c.needs(TEMPLATES.romance.schema) === null;
+  })(), '');
+}
+
 // ── 번들 스모크: 두 창구가 실제로 배선됐는가 ──
 // 구조 = 3층 상태창 탭 / 꾸미기 = 1층 👁 결과 + 3층 상태창 탭 (같은 함수, 상태 공유)
 {
@@ -304,6 +375,14 @@ const P = TEMPLATES.politics.schema;
     /tabWant\[s\.tab\] = s\.want/.test(src) && /await runTabGenerate\(s\.tab\)/.test(src), '');
   ck('★ 결과·되돌리기를 카드와 탭이 같이 씀 (tabResultEl)',
     (src.match(/tabResultEl\(/g) || []).length >= 3, String((src.match(/tabResultEl\(/g) || []).length));
+  // §결정 2 (design-시간.md) — "그냥 켜기"를 없애고 진행 입구 3택을 강제 (켜는 순간 완성품)
+  ck('★ 시간 켜기 = 진행 입구 3택 강제',
+    src.includes('시간이 어떻게 흐르나요') && src.includes('턴마다 하루 — 생존물')
+    && src.includes('ensureSkipVars(); addEndDayAction();'), '');
+  // §결정 1 — 상태창의 날짜 자리는 시간 탭으로만 통하는 문
+  ck('★ 상태창 날짜 자리 = 시간 탭으로 보내는 문',
+    src.includes('날짜 변수를 직접 만들지 마세요') && src.includes('🕐 시간 탭으로'), '');
+  ck('달력 탭에도 AI 도구 배선', src.includes("tabAiTools('calendar')"), '');
 }
 
 // ── 가져오기: 조각 골라내기 ──

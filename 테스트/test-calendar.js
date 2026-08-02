@@ -196,9 +196,9 @@ const BASE = {
 // ── 6. 규격서·패치 경로에 달력이 실렸는가 (v0.60 원칙) ──────
 {
   const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-  const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
+  const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
     seg + '\nreturn { buildSchemaSpecPrompt, buildPatchExportPrompt, patchIdDigest };')(
-    validateSchema, TEMPLATES, SC.require('time').timeConfig);
+    validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
   const p = M.buildSchemaSpecPrompt('romance', false);
   ck('★ 규격서 최상위 키에 calendar', p.includes('`calendar`'), '');
   ck('★ 규격서 달력 절 존재', p.includes('## 달력(calendar)') && p.includes('expire'), '');

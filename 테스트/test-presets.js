@@ -10,9 +10,8 @@ const { diagnose } = SC.require('diagnose');
 const engine = SC.require('engine');
 
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const M = new Function('validateSchema', 'TEMPLATES',
-  seg + '\nreturn { PRESET_PATTERNS, PRESET_FIELD_SPEC, PRESET_BALANCE_RULES, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts };')(
-  validateSchema, TEMPLATES);
+const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
+  seg + '\nreturn { PRESET_PATTERNS, PRESET_FIELD_SPEC, PRESET_BALANCE_RULES, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts };')(validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const clone = (o) => JSON.parse(JSON.stringify(o));

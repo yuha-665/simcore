@@ -168,8 +168,8 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 {
   const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
   const { TEMPLATES } = SC.require('templates');
-  const E = new Function('validateSchema', 'TEMPLATES',
-    seg + '\nreturn { buildTabExportPrompt, pickTabFragment };')(validateSchema, TEMPLATES);
+  const E = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
+    seg + '\nreturn { buildTabExportPrompt, pickTabFragment };')(validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
   console.log('\n── 순서대로 했을 때 (변수 탭 → 규칙 탭) ──');
 

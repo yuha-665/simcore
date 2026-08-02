@@ -12,9 +12,10 @@ const { seededRng } = SC.require('rng');
 
 // editor 모듈은 DOM이 필요하므로 순수 함수 구간만 떼어 실행한다
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const E = new Function('validateSchema', 'TEMPLATES',
+const E = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
   seg + '\nreturn { buildTabExportPrompt, pickTabFragment, TAB_SLICES, VAR_PATTERNS, '
-  + 'VAR_BALANCE_RULES, VAR_FIELD_SPEC, idsUsedElsewhere, varContractTable };')(validateSchema, TEMPLATES);
+  + 'VAR_BALANCE_RULES, VAR_FIELD_SPEC, idsUsedElsewhere, varContractTable };')(
+  validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';

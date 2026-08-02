@@ -8,9 +8,9 @@ const { validateSchema } = SC.require('validate');
 const { TEMPLATES } = SC.require('templates');
 
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const M = new Function('validateSchema', 'TEMPLATES',
-  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES };')(
-  validateSchema, TEMPLATES);
+const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
+  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts };')(
+  validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const S = TEMPLATES.survival.schema;
@@ -119,7 +119,9 @@ const P = TEMPLATES.politics.schema;
 
   // 'vars'는 이제 지원된다 (전용 검증은 test-varsai.js) — 여긴 미지원 탭 처리만 본다
   ck('vars 탭은 이제 지원됨', M.buildTabExportPrompt(S, 'vars').length > 1000, '');
-  for (const key of ['status', 'setup', 'ai', '없는탭']) {
+  // 'status'도 v0.62부터 지원 (전용 검증은 아래 상태창 슬라이스 절)
+  ck('status 탭은 이제 지원됨', M.buildTabExportPrompt(S, 'status').length > 1000, '');
+  for (const key of ['setup', 'ai', '없는탭']) {
     let threw = false;
     try { M.buildTabExportPrompt(S, key); } catch (e) { threw = true; }
     ck(`미지원 탭 '${key}'은 거부`, threw, '');
@@ -138,6 +140,79 @@ const P = TEMPLATES.politics.schema;
   ck('party: 현재 내용이 출발점으로 실림', pp.includes('"skill_sword"'), '');
   ck('party: 체크섬에 슬롯·업그레이드 개수', /슬롯\(전체 탭\)` \*\*\d+개\*\*/.test(pp) && /업그레이드\(전체 탭\)` \*\*\d+개\*\*/.test(pp), pp.match(/- `[^`]+` \*\*\d+개\*\*/g)?.join(' ') ?? '');
   ck('party: 조각 골라내기', JSON.stringify(M.pickTabFragment('party', { party: { slots: [] } })) === '{"party":{"slots":[]}}', '');
+}
+
+// ── 상태창 슬라이스 (v0.62) — 구조 창구. 꾸미기(CSS·템플릿)는 절대 안 건드린다 ──
+{
+  const RM = JSON.parse(JSON.stringify(TEMPLATES.romance.schema));
+  const sp = M.buildTabExportPrompt(RM, 'status');
+  ck('★ status 슬라이스 등록', !!M.TAB_SLICES.status, '');
+  ck('★ status: 최상위 키 groups·layout 못박음', sp.includes('`"groups"`') && sp.includes('`"layout"`'), '');
+  ck('status: 규격 절 포함', sp.includes('## 상태창 규격') && sp.includes('showWhen') && sp.includes('collapsed'), '');
+  ck('★ status: 날짜 줄 직접 만들기 금지', sp.includes('날짜·시각 줄을 직접 만들지 마세요'), '');
+  ck('★ status: 꾸미기는 그대로 남는다고 못박음', sp.includes('커스텀 CSS') && sp.includes('그대로 남습니다'), '');
+  ck('status: 현재 그룹이 출발점으로 실림', sp.includes('"affection"'), '');
+  ck('status: 체크섬에 그룹·표시 항목 개수',
+    /statusUI\.groups` \*\*\d+개\*\*/.test(sp) && /표시 항목` \*\*\d+개\*\*/.test(sp),
+    sp.match(/- `[^`]+` \*\*\d+개\*\*/g)?.join(' ') ?? '');
+
+  // ★ 계약표에 시간 노출 이름이 실려야 "date를 그냥 쓰라"는 지시가 성립한다.
+  //   이게 빠지면 AI는 날짜를 못 쓰는 줄 알고 day 변수를 새로 만들자고 한다 (design-시간.md §결정 1).
+  ck('★ 계약표에 시간 노출 이름 (date·clock)', sp.includes('| `date` |') && sp.includes('| `clock` |'), '');
+  ck('시간 꺼진 봇엔 노출 이름 절이 없음',
+    !M.buildTabExportPrompt(P, 'status').includes('시간 체계가 켜져 있습니다'), '');
+
+  // ★ 통째 교체가 아니라 groups만 갈아끼운다 — 제작자가 쌓은 꾸미기가 살아남아야 한다
+  const got = M.pickTabFragment('status', { groups: [{ label: '새 그룹', items: [{ var: 'affection' }] }] }, RM);
+  ck('★ status: customCSS가 보존됨',
+    !!RM.statusUI.customCSS && got.statusUI.customCSS === RM.statusUI.customCSS, '');
+  ck('★ status: 그룹만 갈아끼워짐',
+    got.statusUI.groups.length === 1 && got.statusUI.groups[0].label === '새 그룹', '');
+  ck('status: mode·collapsible 등 나머지 보존',
+    got.statusUI.mode === RM.statusUI.mode && got.statusUI.collapsible === RM.statusUI.collapsible, '');
+
+  // layout — 준 것만 반영. 빠뜨렸다고 기존 설정을 지우면 그게 손실이다
+  ck('★ status: layout을 주면 반영',
+    M.pickTabFragment('status', { groups: [], layout: 'tabs' }, RM).statusUI.layout === 'tabs', '');
+  ck('★ status: layout을 안 주면 기존 유지',
+    M.pickTabFragment('status', { groups: [] },
+      { statusUI: { groups: [], layout: 'accordion' } }).statusUI.layout === 'accordion', '');
+  ck('status: statusUI로 감싼 응답도 받음', (() => {
+    const w = M.pickTabFragment('status', { statusUI: { groups: [{ label: 'A', items: [] }], layout: 'tabs' } }, RM);
+    return w.statusUI.groups[0].label === 'A' && w.statusUI.layout === 'tabs';
+  })(), '');
+
+  // ★ 왕복 — AI가 준 것처럼 넣고 실제로 검증을 통과하는가
+  const sch = JSON.parse(JSON.stringify(RM));
+  Object.assign(sch, M.pickTabFragment('status', {
+    layout: 'tabs',
+    groups: [
+      { label: '관계', items: [
+        { var: 'date' }, { var: 'clock' },
+        { var: 'affection', bar: { max: 100 }, color: "affection < 30 ? '#c0392b' : '#2e8b57'" }] },
+      { label: '기록', visibility: 'collapsed', items: [
+        { var: 'memories' }, { var: 'jealousy', showWhen: 'jealousy > 0' }] },
+    ],
+  }, sch));
+  const sv = validateSchema(sch);
+  ck('★ AI가 준 상태창 조각이 병합 후 검증 통과', sv.ok, sv.errors.map((e) => `${e.path}: ${e.msg}`).join(' / '));
+  ck('★ 왕복 후에도 커스텀 CSS가 살아 있음', sch.statusUI.customCSS === RM.statusUI.customCSS, '');
+  ck('왕복 후 체크섬이 새 개수를 반영',
+    JSON.stringify(M.tabItemCounts(sch, 'status')) === JSON.stringify([['statusUI.groups', 2], ['표시 항목', 5]]),
+    JSON.stringify(M.tabItemCounts(sch, 'status')));
+}
+
+// ── 번들 스모크: 두 창구가 실제로 배선됐는가 ──
+// 구조 = 3층 상태창 탭 / 꾸미기 = 1층 👁 결과 + 3층 상태창 탭 (같은 함수, 상태 공유)
+{
+  ck('★ 구조 창구가 상태창 탭에 배선됨', src.includes("tabAiTools('status')"), '');
+  const nCss = (src.match(/cssAiTools\(\)/g) || []).length;
+  ck('★ 꾸미기 창구가 양쪽에서 쓰임 (정의 1 + 호출 2)', nCss >= 3, String(nCss));
+  ck('직결 생성·공통 가져오기 경로 존재',
+    src.includes('runTabGenerate') && src.includes('applyTabImport'), '');
+  ck('요구 입력칸 예시가 status에도 있음', src.includes('체력·허기·기온은 게이지로'), '');
+  ck('★ 상태창이 [내보내기]로 되살릴 수 있는 탭으로 승격', src.includes("'상태창', true"), '');
+  ck('promptState는 상태창과 분리됨', src.includes("'AI 설정', false"), '');
 }
 
 // ── 가져오기: 조각 골라내기 ──

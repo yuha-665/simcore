@@ -366,6 +366,25 @@ const SCHEMA_CALENDAR_RULES = [
   '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
 ];
 
+// 상태창 구조(statusUI.groups/layout) — 꾸미기(CSS·커스텀 템플릿)와 창구를 나눈 쪽의 규격.
+// "무엇을 보여줄까"만 다룬다. 색·폰트·배치 HTML은 🎨 꾸미기 창구가 따로 맡는다.
+const SCHEMA_STATUS_RULES = [
+  '- 상태창은 **그룹(`groups`) → 항목(`items`)** 두 단입니다. 그룹은 화면의 한 칸, 항목은 그 안의 한 줄입니다.',
+  '- 항목의 기본형은 `{ "var": "변수id" }`입니다. **위 계약표에 있는 이름만** 쓸 수 있습니다 (파생·시간 노출 이름 포함).',
+  '- 게이지 `"bar": { "max": 100 }`는 **최소·최대가 뚜렷한 수치에만** 다세요. `max`에는 수식(`max_hp`)도 됩니다. '
+  + '골드·일수처럼 상한이 없는 값에 달면 눈금이 거짓말을 합니다.',
+  '- `"showWhen"`은 그 줄의 표시 조건입니다. 평소엔 0이고 사건이 있을 때만 의미가 생기는 값(질투·부상·수배)에 쓰세요.',
+  '- 그룹 `"visibility"`: `show`(기본) / `collapsed`(접어둠 — 자주 안 보는 묶음) / `hidden`(화면에서 감춤 — 규칙만 쓰는 내부 수치).',
+  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 그룹이 둘 이상일 때만** 동작합니다.',
+  '- 색은 조건식으로 줍니다: `"color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'"`. '
+  + '**색 코드는 작은따옴표**로 감싸세요 — 편집기의 색 고르개가 그 형태만 되읽습니다.',
+  '- ⚠ **날짜·시각 줄을 직접 만들지 마세요.** `day` 같은 변수를 새로 요구하지 말고, 계약표에 `date`·`clock`·`weekday`가 '
+  + '있으면 `{ "var": "date" }`처럼 **그 이름을 그대로 참조**하세요. 계약표에 없으면 이 봇은 시간 체계가 꺼진 것이니 '
+  + '날짜 줄 자체를 넣지 마세요 — 켜는 것은 [시간] 탭의 몫입니다.',
+  '- **꾸미기는 여기서 하지 않습니다.** 색·폰트·테두리·커스텀 HTML은 별도 창구(🎨 꾸미기)가 담당합니다. `groups`와 `layout`만 주세요.',
+  '- 한 그룹에 항목을 열 개 넘게 몰지 마세요. 주제별로 나누고, 자주 안 보는 묶음은 `collapsed`로 접어 두세요.',
+];
+
 function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
@@ -1058,6 +1077,17 @@ function varContractTable(schema) {
       '| id | 이름 | 계산식 |', '|---|---|---|',
       ...schema.derived.map((d) => `| \`${d.id}\` | ${d.label ?? d.id} | \`${d.expr}\` |`));
   }
+  // 시간 노출 이름도 계약이다. 이게 빠지면 AI는 date를 못 쓰는 줄 알고 day 변수를 새로 만들자고 한다 —
+  // design-시간.md §결정 1이 막으려는 바로 그 길이라, 상태창·규칙 요청서 전부가 이 표에 기댄다.
+  const tcfg = timeConfig(schema);
+  const exposed = tcfg?.expose ?? [];
+  if (exposed.length) {
+    out.push('',
+      '### 시간 체계가 켜져 있습니다 — 아래 이름은 **읽기 전용**으로 그냥 쓸 수 있습니다.',
+      '날짜·시각 변수를 새로 만들지 마세요. 날짜 계산도 하지 마세요 — 요일·윤년·자릿수는 엔진이 처리합니다.',
+      '| id | 뜻 |', '|---|---|',
+      ...exposed.map((n) => `| \`${n}\` | ${EXPOSED_LABELS[n] ?? n} |`));
+  }
   return out.join('\n');
 }
 
@@ -1092,6 +1122,23 @@ const TAB_SLICES = {
   // 편성표(v0.60) — party 객체 통째 교체. portraits·css까지 실려 나가므로 요청서가
   // "원문 그대로 옮겨 담아라"를 못박는다 (제작자가 손으로 채운 값이라 AI가 지어낼 수 없다).
   party: { keys: ['party'], label: '편성표' },
+  // 상태창(v0.62) — 구조 창구. statusUI를 통째로 갈아끼우면 제작자가 쌓은 꾸미기
+  // (customCSS·커스텀 템플릿·테마)까지 날아가므로, groups 하나만 갈아끼우고 layout만 덤으로 받는다.
+  // 꾸미기는 👁 결과 탭의 🎨 창구가 따로 맡는다 — 같은 절을 두 창구가 겹치지 않게 나눠 쥔다.
+  status: { keys: ['statusUI'], sub: 'groups', subOpt: ['layout'], label: '상태창' },
+};
+
+// 직결 생성 입력칸의 예시 문구 — 여기 쓴 내용이 요청서의 '내가 원하는 것'에 그대로 들어간다.
+// 빈 칸으로 눌러도 된다 (그 경우 요청서의 기본 안내문이 그대로 나간다).
+const TAB_WANT_PH = {
+  vars: '예: 눈 덮인 산장에서 겨울나기 — 체온·장작·식량을 굴리고 싶다',
+  commands: '예: 골드는 /돈, 소지품은 /가방으로 치게',
+  actions: '예: 사냥·장작패기·불침번 — 불침번은 끌 때까지 유지되게',
+  checks: '예: d20 능력 판정 4종, 대실패는 상황이 악화되게',
+  rules: '예: 체온이 0 아래로 3턴 가면 동사, 눈보라는 가끔 터지게',
+  presets: '예: 난이도 3단계 — 어려움은 이미 위기 상황에서 시작',
+  party: '예: 출격 편성 3슬롯 + 정비창 탭',
+  status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
 };
 
 /**
@@ -1107,6 +1154,11 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'actions') push('actions', schema.actions);
   else if (tabKey === 'checks') push('checks', schema.checks);
   else if (tabKey === 'presets') push('setup.presets', schema.setup?.presets);
+  else if (tabKey === 'status') {
+    // 그룹 수만으로는 부족하다 — AI가 그룹은 남기고 항목만 솎아내는 쪽이 더 흔하다
+    push('statusUI.groups', schema.statusUI?.groups);
+    out.push(['표시 항목', (schema.statusUI?.groups || []).reduce((n, g) => n + (g.items?.length || 0), 0)]);
+  }
   else if (tabKey === 'party') {
     // 인라인 정규화 (축약형 = 탭 1개) — 이 구간은 테스트가 단독 평가라 party 모듈을 못 부른다
     const P = schema.party || {};
@@ -1138,8 +1190,14 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     // vars를 통째로 실어 보내면 AI가 그걸 고쳐서 돌려주고, 가져오기에서 변수가 날아간다.
     current.commands = (schema.vars || []).filter((v) => v[slice.merge])
       .map((v) => ({ var: v.id, cmd: v[slice.merge] }));
-  } else if (slice.sub) current[slice.sub] = schema[slice.keys[0]]?.[slice.sub] ?? [];
-  else for (const k of slice.keys) if (schema[k] !== undefined) current[k] = schema[k];
+  } else if (slice.sub) {
+    current[slice.sub] = schema[slice.keys[0]]?.[slice.sub] ?? [];
+    // 곁딸린 스칼라(상태창 layout 등) — 있으면 같이 보여줘야 AI가 현 상태를 알고 고른다
+    for (const k of slice.subOpt ?? []) {
+      const v = schema[slice.keys[0]]?.[k];
+      if (v !== undefined) current[k] = v;
+    }
+  } else for (const k of slice.keys) if (schema[k] !== undefined) current[k] = schema[k];
   // 🔵는 "확인만 해보세요" 수준이라 AI에게 보내지 않는다.
   // 고칠 게 아닌 걸 고치라고 하면 멀쩡한 설계를 건드려 오히려 나빠지고, 목록이 영영 안 줄어든다.
   const fixes = (opts.findings || []).filter((f) => f.tab === tabKey && f.sev !== 'low');
@@ -1176,14 +1234,18 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
       checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
       party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭")',
+      status: '(여기를 채우세요 — 예: "체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래" / "인물 4명을 각각 그룹으로 나누고 탭으로" / "위험할 때만 뜨는 경고 줄 몇 개")',
     };
+    // 직결 생성은 유저가 쓴 요구를 여기에 꽂는다. 복사 왕복이면 빈 자리표시자가 그대로 나가고,
+    // 유저가 붙여넣기 전에 손으로 채운다 — 같은 요청서를 두 경로가 나눠 쓴다.
+    const want = String(opts.want ?? '').trim();
     head.push('## 내가 원하는 것',
-      WANT[tabKey] ?? '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
+      want || WANT[tabKey] || '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
       '');
   }
 
   head.push('## 출력 형식',
-    `- **JSON 하나만** 출력하세요. 최상위 키는 ${(slice.sub ? [slice.sub] : slice.keys).map((k) => `\`"${k}"\``).join(', ')} 입니다.`,
+    `- **JSON 하나만** 출력하세요. 최상위 키는 ${(slice.sub ? [slice.sub, ...(slice.subOpt ?? [])] : slice.keys).map((k) => `\`"${k}"\``).join(', ')} 입니다.`,
     '- 설명은 코드펜스 밖에 쓰지 마세요.',
     '',
     '## ⚠ 반드시 이 탭 전체를 다시 주세요',
@@ -1191,6 +1253,8 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     '손대지 않은 항목도 원문 그대로 옮겨 담아 한 세트로 돌려주세요.',
     ...(tabKey === 'presets'
       ? ['(갈아끼워지는 건 프리셋 목록뿐입니다. 같은 탭의 AI 최초설정은 그대로 남습니다.)'] : []),
+    ...(tabKey === 'status'
+      ? ['(갈아끼워지는 건 그룹 목록과 배치뿐입니다. 커스텀 CSS·HTML 템플릿·테마는 그대로 남습니다 — 손대지 마세요.)'] : []),
     '',
     '지금 이 탭에 들어 있는 개수입니다 — 출력하기 전에 세어서 맞는지 확인하세요:',
     ...counts.map(([p, n]) => `- \`${p}\` **${n}개**`),
@@ -1366,6 +1430,22 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  ] } }',
       '```',
       '');
+  } else if (tabKey === 'status') {
+    body.push('## 상태창 규격', ...SCHEMA_STATUS_RULES, '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "layout": "stack",',
+      '  "groups": [',
+      '    { "label": "몸 상태", "items": [',
+      '      { "var": "hp", "bar": { "max": "max_hp" }, "color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'" },',
+      '      { "var": "hunger", "bar": { "max": 100 } },',
+      '      { "var": "wound", "showWhen": "wound > 0" } ] },',
+      '    { "label": "소지품", "visibility": "collapsed", "items": [',
+      '      { "var": "gold" }, { "var": "pack" } ] }',
+      '  ] }',
+      '```',
+      '');
   } else {
     body.push('## 액션은 이 6가지 형태 중 하나입니다',
       '액션은 플레이어가 화면 우상단 버튼으로 누릅니다. 누르면 무장(ON)되고 다음 전송에 효과가 적용됩니다.',
@@ -1460,7 +1540,13 @@ function pickTabFragment(tabKey, frag, schema) {
     const arr = Array.isArray(frag[slice.sub]) ? frag[slice.sub]
       : Array.isArray(frag[host]?.[slice.sub]) ? frag[host][slice.sub] : null;
     if (!arr) throw new Error(`"${slice.sub}" 배열이 없습니다`);
-    return { [host]: { ...(schema?.[host] ?? {}), [slice.sub]: arr } };
+    const next = { ...(schema?.[host] ?? {}), [slice.sub]: arr };
+    // 곁딸린 스칼라는 준 것만 반영한다 — 빠뜨렸다고 기존 설정을 지우면 그게 손실이다
+    for (const k of slice.subOpt ?? []) {
+      const v = frag[k] !== undefined ? frag[k] : frag[host]?.[k];
+      if (v !== undefined) next[k] = v;
+    }
+    return { [host]: next };
   }
 
   // 스키마를 통째로 준 경우에도 이 탭 몫만 뽑아 쓴다
@@ -2180,6 +2266,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         '같은 접두사(noz_… 등)를 쓰는 변수끼리 그룹 하나씩 만들어 넣습니다. 그룹 제목은 라벨의 공통 앞부분'
         + '("노조미 호감"·"노조미 기분" → "노조미")에서 따오고, 기본 접힘으로 둡니다. 그룹이 많으면 위 [그룹 배치]에서 탭·아코디언을 고르세요.'));
     }
+    // 🤖 구조 창구 — "무엇을 보여줄까". 아래 꾸미기 창구와 짝이다.
+    // 템플릿 모드에서는 그룹이 그려지지 않으므로 자동 구성일 때만 띄운다 (만들어도 안 보이면 사고다).
+    wrap.appendChild(tabAiTools('status'));
     } // end auto mode
 
     wrap.appendChild(h('h4', {}, 'CSS 레시피 — 딸깍하면 아래 커스텀 CSS에 채워짐 (이어서 수정 가능)'));
@@ -2231,12 +2320,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     recipeRow.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => { ui.customCSS = undefined; rerender(); } }, 'CSS 지우기'));
     wrap.appendChild(recipeRow);
 
-    // 직접 CSS를 짜는 대신, 규격서를 통째로 복사해 외부 AI에 맡기는 경로.
-    copyWidget('📋 AI에게 요청할 CSS 규격 복사',
-      '원하는 디자인이 레시피에 없으면 — 아래 버튼으로 규격서를 복사해서 아무 AI 사이트에 붙여넣고 '
-      + '"이런 분위기로 만들어줘"라고만 하세요. 받아온 CSS를 아래 칸에 넣으면 끝입니다.',
-      () => buildCssSpecPrompt(schema),
-    ).mount(wrap);
+    // 🎨 꾸미기 창구 — "어떻게 보일까". 1층 👁 결과와 **같은 것**을 여기서도 띄운다
+    // (요청 문구·되돌리기 슬롯까지 공유하므로 어느 쪽에서 눌러도 결과가 같다).
+    wrap.appendChild(h('h4', {}, '🎨 꾸미기도 AI에게 맡기기'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '구조 창구가 **무엇을 보여줄지**(그룹·항목)를 만든다면, 이쪽은 **어떻게 보일지**를 만듭니다. '
+      + '[🎨 스킨만]은 아래 커스텀 CSS 칸을 채우고, [🖼 배치까지]는 커스텀 HTML 템플릿을 통째로 짜 넣습니다 '
+      + '— 배치까지 맡기면 표시 방식이 커스텀으로 바뀌어 그룹 목록 대신 그 템플릿이 그려집니다.'));
+    wrap.appendChild(cssAiTools());
 
     wrap.appendChild(h('h4', {}, '커스텀 CSS (자동으로 상태창 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
     wrap.appendChild(bindArea(ui.customCSS, (x) => { ui.customCSS = x || undefined; rerender(); },
@@ -2252,6 +2343,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭 하나만 떼어 AI에게 맡기는 도구 (내보내기 → 붙여넣기 → 되돌리기) ──
   let tabUndo = null; // { tabKey, label, before } — 통째로 갈아끼우므로 한 단계 되돌리기가 필수
   let tabAiMsg = null; // { tabKey, text } — rerender를 건너뛰고 살아남아야 하는 가져오기 결과 안내
+  let tabWant = {};   // tabKey → 요구 문구. 요청서의 '내가 원하는 것'에 그대로 들어간다
+  let tabGen = { busy: false, seq: 0, key: null }; // 탭별 직결 생성 (cssGen과 같은 취소 규약)
 
   // 검증 오류 경로 → 그 오류가 속한 탭. 변수를 갈아끼웠을 때 어디를 고쳐야 하는지 알려준다.
   const PATH_TABS = [
@@ -2259,7 +2352,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
-    [/^\$\.(statusUI|promptState)\b/, '상태창', false],
+    // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
+    // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
+    [/^\$\.statusUI\b/, '상태창', true],
+    [/^\$\.promptState\b/, 'AI 설정', false],
     [/^\$\.updater\b/, 'AI 설정', false],
     [/^\$\.setup\.presets\b/, '새 시작(프리셋)', true],
     [/^\$\.setup\b/, '새 시작', false],
@@ -2279,10 +2375,109 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return { missing: [...missing], aiReady: [...aiReady], manual: [...manual] };
   }
 
+  // 붙여넣기와 직결 생성이 **같은 문**으로 들어오게 한다 — 검사·경고·되돌리기를 한 곳에서만 관리한다.
+  // from='ai'면 산문 응답도 정상 경로다 (요청서가 "이 탭 밖의 일이면 JSON 대신 알려달라"고 시킨다).
+  function applyTabImport(tabKey, raw, from) {
+    const slice = TAB_SLICES[tabKey];
+    const text = String(raw ?? '').trim();
+    if (!text) { tabAiMsg = { tabKey, text: '붙여넣은 내용이 없습니다.', warn: true }; return false; }
+
+    let frag = null, why = '';
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    try { frag = JSON.parse(fenced ? fenced[1] : text); }
+    catch (e) {
+      why = e.message;
+      // 앞뒤에 설명이 붙은 응답 — 보조 파서와 같은 관대한 추출기로 한 번 더 (v0.54.9와 같은 이유)
+      try { frag = engine.extractJsonObject(text); } catch { frag = null; }
+    }
+    if (!frag) {
+      const prose = text.replace(/```[\s\S]*?```/g, '').trim();
+      tabAiMsg = { tabKey, warn: true, text: (from === 'ai' && prose && !text.includes('{'))
+        ? 'AI가 JSON 대신 답을 보냈습니다 — ' + prose.slice(0, 400)
+        : `JSON 파싱 실패 — ${why}` };
+      return false;
+    }
+
+    let picked;
+    try { picked = pickTabFragment(tabKey, frag, schema); }
+    catch (e) { tabAiMsg = { tabKey, text: `가져오기 실패 — ${e.message}`, warn: true }; return false; }
+
+    const beforeCounts = tabItemCounts(schema, tabKey);
+    tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
+    Object.assign(schema, JSON.parse(JSON.stringify(picked)));
+    normalize();
+    const afterCounts = tabItemCounts(schema, tabKey);
+    const counts = afterCounts.map(([p, n]) => `${p} ${n}개`).join(', ');
+    let msg = `✓ 가져왔습니다${counts ? ` — ${counts}` : ''}.`;
+    let warn = false;
+
+    // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
+    const lost = afterCounts
+      .map(([p, n], i) => [p, beforeCounts[i]?.[1] ?? 0, n])
+      .filter(([, was, now]) => was >= 4 && now < was * 0.6);
+    if (lost.length) {
+      warn = true;
+      msg = `⚠ 가져왔지만 항목이 크게 줄었습니다 — `
+        + lost.map(([p, was, now]) => `${p} ${was}개 → ${now}개`).join(', ')
+        + '. AI가 고친 것만 돌려준 것 같습니다. 의도한 게 아니면 [↩ 되돌리기]를 누르고, '
+        + 'AI에게 "손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.';
+    } else if (tabKey === 'vars') {
+      const b = breakageAfterVarImport();
+      if (b.missing.length) {
+        warn = true;
+        msg += ` 다만 다른 탭이 쓰던 변수 ${b.missing.length}개가 사라졌습니다 (${b.missing.join(', ')}).`;
+        if (b.aiReady.length) msg += ` ${b.aiReady.join('·')} 탭은 [내보내기]로 다시 만들면 됩니다.`;
+        if (b.manual.length) msg += ` ${b.manual.join('·')} 탭은 직접 고쳐야 합니다.`;
+      } else {
+        msg += ' 이제 액션 탭과 규칙·이벤트 탭에서 내보내기를 하면 이 변수표가 함께 나갑니다.';
+      }
+    }
+    tabAiMsg = { tabKey, text: msg, warn };
+    return true;
+  }
+
+  // 탭 하나만 그 자리에서 생성 — 복사 왕복 없이. 규격서·변수 계약·개수 체크섬은 내보내기와 완전히 같다.
+  async function runTabGenerate(tabKey) {
+    if (!ai || !ai.generate || tabGen.busy) return;
+    const mySeq = ++tabGen.seq;
+    tabGen.busy = true; tabGen.key = tabKey; tabAiMsg = null;
+    rerender();
+    let res = null;
+    try { res = await ai.generate(buildTabExportPrompt(schema, tabKey, { want: tabWant[tabKey] })); }
+    catch (e) { res = { error: '호출 예외: ' + e.message }; }
+    if (tabGen.seq !== mySeq || destroyed) return;
+    tabGen.busy = false;
+    if (typeof res !== 'string' || !res.trim()) {
+      tabAiMsg = { tabKey, warn: true, text: res && res.blocked
+        ? '⚠ 이 환경은 LLM 직접 호출이 차단되어 있습니다 — 아래 [📤 규격 내보내기]로 복사해 웹 AI에 주세요.'
+        : '⚠ 호출 실패 — ' + ((res && res.error) || '원인 불명') + ' · 생성 모델을 바꾸거나 [📤 규격 내보내기]를 쓰세요.' };
+      rerender(); return;
+    }
+    applyTabImport(tabKey, res, 'ai');
+    rerender();
+  }
+
   function tabAiTools(tabKey) {
     const slice = TAB_SLICES[tabKey];
     const wrap = h('div', { class: 'sce-block' });
     wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+
+    // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
+    if (ai && ai.generate) {
+      const genRow = h('div', { class: 'sce-row' },
+        bindInput(tabWant[tabKey] ?? '', (x) => { tabWant[tabKey] = x; },
+          { cls: 'sce-w-l', ph: TAB_WANT_PH[tabKey] ?? '원하는 것을 한 줄로' }));
+      genRow.appendChild(tabGen.busy && tabGen.key === tabKey
+        ? h('button', { class: 'sce-btn', onclick: () => { tabGen.seq++; tabGen.busy = false; rerender(); } }, '✋ 취소')
+        : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
+            onclick: () => runTabGenerate(tabKey) }, `✨ ${slice.label} 만들어 달라기`));
+      wrap.appendChild(genRow);
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        tabGen.busy && tabGen.key === tabKey
+          ? '⏳ 생성 중… (수십 초 걸릴 수 있음)'
+          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 옵니다 — 규격서와 **이 봇에 이미 있는 변수 목록**이 함께 나가서 '
+            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남습니다.'));
+    }
 
     copyWidget(`📤 ${slice.label} 규격 내보내기`,
       tabKey === 'vars'
@@ -2298,49 +2493,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       (tabAiMsg && tabAiMsg.tabKey === tabKey) ? tabAiMsg.text
         : 'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
     if (tabAiMsg && tabAiMsg.tabKey === tabKey && tabAiMsg.warn) note.className += ' sce-warn';
-    const area = h('textarea', { style: 'height:130px', placeholder: `{ "${slice.keys[0]}": [ ... ] }` });
+    const area = h('textarea', { style: 'height:130px',
+      placeholder: `{ "${slice.sub ?? slice.keys[0]}": [ ... ] }` });
     const row = h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn', onclick: () => {
-        const raw = String(area.value).trim();
-        if (!raw) { note.textContent = '붙여넣은 내용이 없습니다.'; return; }
-        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-        let frag;
-        try { frag = JSON.parse(fenced ? fenced[1] : raw); }
-        catch (e) { note.textContent = `JSON 파싱 실패 — ${e.message}`; return; }
-        let picked;
-        try { picked = pickTabFragment(tabKey, frag, schema); }
-        catch (e) { note.textContent = `가져오기 실패 — ${e.message}`; return; }
-        const beforeCounts = tabItemCounts(schema, tabKey);
-        tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
-        Object.assign(schema, JSON.parse(JSON.stringify(picked)));
-        normalize();
-        const afterCounts = tabItemCounts(schema, tabKey);
-        const counts = afterCounts.map(([p, n]) => `${p} ${n}개`).join(', ');
-        let text = `✓ 가져왔습니다${counts ? ` — ${counts}` : ''}.`;
-        let warn = false;
-
-        // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
-        const lost = afterCounts
-          .map(([p, n], i) => [p, beforeCounts[i]?.[1] ?? 0, n])
-          .filter(([, was, now]) => was >= 4 && now < was * 0.6);
-        if (lost.length) {
-          warn = true;
-          text = `⚠ 가져왔지만 항목이 크게 줄었습니다 — `
-            + lost.map(([p, was, now]) => `${p} ${was}개 → ${now}개`).join(', ')
-            + '. AI가 고친 것만 돌려준 것 같습니다. 의도한 게 아니면 [↩ 되돌리기]를 누르고, '
-            + 'AI에게 "손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.';
-        } else if (tabKey === 'vars') {
-          const b = breakageAfterVarImport();
-          if (b.missing.length) {
-            warn = true;
-            text += ` 다만 다른 탭이 쓰던 변수 ${b.missing.length}개가 사라졌습니다 (${b.missing.join(', ')}).`;
-            if (b.aiReady.length) text += ` ${b.aiReady.join('·')} 탭은 [내보내기]로 다시 만들면 됩니다.`;
-            if (b.manual.length) text += ` ${b.manual.join('·')} 탭은 직접 고쳐야 합니다.`;
-          } else {
-            text += ' 이제 액션 탭과 규칙·이벤트 탭에서 내보내기를 하면 이 변수표가 함께 나갑니다.';
-          }
-        }
-        tabAiMsg = { tabKey, text, warn };
+        applyTabImport(tabKey, area.value, 'paste');
         rerender(); // 아래 검증 리포트가 바로 갱신된다 — 오류가 있으면 [②]로 AI에게 돌려주면 된다
       } }, '📥 가져오기'),
     );
@@ -3621,6 +3778,55 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return pv;
   }
 
+  // 🎨 꾸미기 창구 본체 — 1층 👁 결과와 3층 상태창 탭이 같은 것을 띄운다.
+  // 상태(cssMode·cssReq·cssGen·cssBackup)를 공유하므로 어느 쪽에서 눌러도 결과와 되돌리기가 같다.
+  function cssAiTools() {
+    const wrap = h('div');
+    const layoutMode = cssMode === 'layout';
+    const cssRow = h('div', { class: 'sce-row' },
+      bindSelect(cssMode, [
+        ['skin', '🎨 스킨만 — 색·폰트·질감'],
+        ['layout', '🖼 배치까지 — 템플릿 통째'],
+      ], (x) => { cssMode = x; rerender(); }),
+      bindInput(cssReq, (x) => { cssReq = x; },
+        { cls: 'sce-w-l', ph: layoutMode
+          ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
+          : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
+    if (ai && ai.generate) {
+      cssRow.appendChild(cssGen.busy
+        ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
+        : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
+            onclick: () => runCssGenerate() }, layoutMode ? '🖼 생성' : '🎨 생성'));
+    }
+    if (cssBackup) {
+      cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+        schema.statusUI.mode = cssBackup.mode;
+        schema.statusUI.template = cssBackup.template;
+        schema.statusUI.customCSS = cssBackup.customCSS;
+        cssBackup = null; cssGen.note = null; rerender();
+      } }, '↩ 꾸미기 되돌리기'));
+    }
+    wrap.appendChild(cssRow);
+    if (!layoutMode && schema.statusUI.mode === 'template') {
+      wrap.appendChild(h('div', { class: 'sce-warn' },
+        '⚠ 이 봇은 커스텀 템플릿을 쓰고 있어 스킨 CSS(자동 배치 클래스 기준)가 힘을 못 씁니다 — [🖼 배치까지]를 쓰세요.'));
+    }
+    if (cssGen.busy) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        layoutMode ? '⏳ 배치 생성 중… (수십 초 걸릴 수 있음)' : '⏳ CSS 생성 중…'));
+    } else if (cssGen.note) {
+      wrap.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
+    }
+    copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
+      layoutMode
+        ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사합니다 — 웹 AI에게 주고, 받은 HTML은 '
+          + '3층 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style> 자동 분리).'
+        : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
+          + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+      () => (cssMode === 'layout' ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq))).mount(wrap);
+    return wrap;
+  }
+
   async function runCssGenerate() {
     if (!ai || !ai.generate || cssGen.busy) return;
     const layout = cssMode === 'layout';
@@ -3782,44 +3988,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(h('div', { class: 'sce-hint' },
         '지금 스키마가 그리는 상태창입니다 — 창작·심층 어디서 고치든 즉시 갱신됩니다.'));
       box.appendChild(statusPreviewEl('pv1'));
-      // 꾸미기 — 스킨(색·폰트)과 배치(템플릿 통째) 둘 다 자동화 영역. 손조립은 3층 몫.
-      const layoutMode = cssMode === 'layout';
-      const cssRow = h('div', { class: 'sce-row' });
-      cssRow.appendChild(bindSelect(cssMode, [
-        ['skin', '🎨 스킨만 — 색·폰트·질감'],
-        ['layout', '🖼 배치까지 — 템플릿 통째'],
-      ], (x) => { cssMode = x; rerender(); }));
-      cssRow.appendChild(bindInput(cssReq, (x) => { cssReq = x; },
-        { cls: 'sce-w-l', ph: layoutMode
-          ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
-          : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
-      if (ai && ai.generate) {
-        cssRow.appendChild(cssGen.busy
-          ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
-          : h('button', { class: 'sce-btn', onclick: () => runCssGenerate() }, layoutMode ? '🖼 생성' : '🎨 생성'));
-      }
-      if (cssBackup) {
-        cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
-          schema.statusUI.mode = cssBackup.mode;
-          schema.statusUI.template = cssBackup.template;
-          schema.statusUI.customCSS = cssBackup.customCSS;
-          cssBackup = null; cssGen.note = null; rerender();
-        } }, '↩ 꾸미기 되돌리기'));
-      }
-      box.appendChild(cssRow);
-      if (!layoutMode && schema.statusUI.mode === 'template') {
-        box.appendChild(h('div', { class: 'sce-warn' },
-          '⚠ 이 봇은 커스텀 템플릿을 쓰고 있어 스킨 CSS(자동 배치 클래스 기준)가 힘을 못 씁니다 — [🖼 배치까지]를 쓰세요.'));
-      }
-      if (cssGen.busy) box.appendChild(h('div', { class: 'sce-hint' }, layoutMode ? '⏳ 배치 생성 중… (수십 초 걸릴 수 있음)' : '⏳ CSS 생성 중…'));
-      else if (cssGen.note) box.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
-      copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
-        layoutMode
-          ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사합니다 — 웹 AI에게 주고, 받은 HTML은 '
-            + '3층 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style> 자동 분리).'
-          : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
-            + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
-        () => (cssMode === 'layout' ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq))).mount(box);
+      // 꾸미기 — 스킨(색·폰트)과 배치(템플릿 통째) 둘 다 자동화 영역.
+      // 구조("무엇을 보여줄까")를 맡기는 창구는 3층 상태창 탭에 있다 — 같은 절을 둘이 나눠 쥔다.
+      box.appendChild(cssAiTools());
+      box.appendChild(h('div', { class: 'sce-hint' },
+        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 🧰 심층 편집 → 상태창 탭의 구조 창구를 쓰세요.'));
       box.appendChild(h('h4', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'));
       box.appendChild(catalogView());
       return box;

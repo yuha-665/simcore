@@ -9,8 +9,8 @@ const { TEMPLATES } = SC.require('templates');
 const { diagnose } = SC.require('diagnose');
 
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const E = new Function('validateSchema', 'TEMPLATES',
-  seg + '\nreturn { buildTabExportPrompt, pickTabFragment, tabItemCounts, TAB_SLICES };')(validateSchema, TEMPLATES);
+const E = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
+  seg + '\nreturn { buildTabExportPrompt, pickTabFragment, tabItemCounts, TAB_SLICES };')(validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const cp = (o) => JSON.parse(JSON.stringify(o));

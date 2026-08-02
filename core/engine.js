@@ -134,7 +134,60 @@ function reconcileState(schema, state) {
   m.pendingChoice = m.pendingChoice ?? null; // 걸려 있는 갈림길 { id, turn } — 동시 1개 상한
   m.pendingChoicePick = m.pendingChoicePick ?? null; // /선택으로 고른 번호 (0기준) — 다음 전송에서 집행
   m.suggestions = m.suggestions || []; // 다음 행동 제안 (v0.43) — 보조 AI가 만들고, 전송하면 비워진다
+  // 직전 보조 호출 이후로 이미 반영된 변화 (v0.65) — 다음 보조 프롬프트에 "끝난 일"로 실린다.
+  // 채팅 텍스트가 아니라 여기 사는 게 핵심: 모델을 안 거치므로 숫자가 지어내질 수 없고,
+  // 리롤·삭제로 스냅샷이 되감기면 이 줄들도 같이 되감긴다.
+  m.lastChanges = m.lastChanges || [];
   return state;
+}
+
+// 보조에게 보여 줄 "이미 반영된 변화" 줄 만들기 ────────────────
+// 정기 틱(onTurn)은 뺀다 — 매 턴 같은 줄이 반복되어 정보량이 없고, "정기 수입·소비는
+// 시스템이 계산하니 반영하지 마라"는 규칙이 이미 그 몫을 한다.
+const CHANGE_MEMO_MAX = 8;
+function changeMemoLines(schema, changeLog) {
+  const cfg = timeConfig(schema);
+  const varById = Object.fromEntries([...schema.vars, ...(schema.derived || [])].map((v) => [v.id, v]));
+  const out = [];
+  for (const c of changeLog || []) {
+    if (out.length >= CHANGE_MEMO_MAX) break;
+    if (c.source === 'onTurn') continue;
+    // 시간 우편함(skip_day/skip_min)은 건너뛴다 — 소비 결과가 아래 '시각' 줄이라 두 번 말하게 된다
+    if (c.id === SKIP_DAY || c.id === SKIP_MIN) continue;
+    if (c.id === EPOCH_KEY) {
+      if (!cfg) continue;
+      const stamp = (e) => {
+        const cal = calendarOf(e, cfg.calendar);
+        return `${formatDate(cfg.dateFmt, cal)} ${formatClock(cfg.clockFmt, cal)}`;
+      };
+      out.push(`- 시각 ${stamp(c.from)} → ${stamp(c.to)} (${c.to - c.from}분 진행)`);
+      continue;
+    }
+    // 판정 줄 — id가 라벨이고 from이 없다 (변수 변화가 아니라 굴림 결과)
+    if (c.from == null && typeof c.to === 'string') { out.push(`- ${c.id}: ${c.to}`); continue; }
+    const name = varById[c.id]?.label || c.id;
+    const reason = c.reason ? ` — ${String(c.reason).slice(0, 40)}` : '';
+    if (typeof c.from === 'number' && typeof c.to === 'number') {
+      const d = c.to - c.from;
+      out.push(`- ${name} ${c.from} → ${c.to} (${d > 0 ? '+' : ''}${d})${reason}`);
+    } else if (Array.isArray(c.from) || Array.isArray(c.to)) {
+      const from = Array.isArray(c.from) ? c.from : [], to = Array.isArray(c.to) ? c.to : [];
+      const added = to.filter((x) => !from.includes(x)), gone = from.filter((x) => !to.includes(x));
+      const parts = [...added.map((x) => `+${x}`), ...gone.map((x) => `-${x}`)];
+      if (parts.length) out.push(`- ${name} ${parts.join(', ')}${reason}`);
+    } else {
+      out.push(`- ${name} ${c.from} → ${c.to}${reason}`);
+    }
+  }
+  return out.map((s) => s.slice(0, 140));
+}
+
+/** @param append true면 이번 사이클에 이어 붙인다 (전송 단계 → 응답 단계 순서 보존) */
+function recordChangeMemo(schema, state, changeLog, append = false) {
+  const lines = changeMemoLines(schema, changeLog);
+  state.meta.lastChanges = append
+    ? [...(state.meta.lastChanges || []), ...lines].slice(-CHANGE_MEMO_MAX)
+    : lines;
 }
 
 /**
@@ -524,6 +577,10 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (ps.systemGuide) lines.push(ps.systemGuide);
   else if (schema.vars.length) lines.push(DEFAULT_SYSTEM_GUIDE);
 
+  // 전송 단계에서 일어난 것(무장 액션 효과·시간 소비)도 "이미 반영됨"에 이어 붙인다 —
+  // 이번 턴 보조 호출은 이 뒤에 오므로, 보조가 그걸 자기 몫으로 또 세면 안 된다.
+  recordChangeMemo(schema, state, changeLog, true);
+
   return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives };
 }
 
@@ -648,6 +705,8 @@ function applyChangesToState(schema, prevState, changes, reasons, seenText = nul
   const changeLog = [];
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
+  // 지연·브리지 소급 경로 — outputPhase가 이미 자기 몫을 쓴 뒤라 이어 붙인다
+  recordChangeMemo(schema, state, changeLog, true);
   return { state, changeLog };
 }
 
@@ -805,6 +864,9 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 9. 턴 카운터
   state.meta.turn += 1;
+
+  // 이번 사이클의 원장을 새로 쓴다 (전송 단계 몫은 보조가 이미 봤으니 여기서 교체).
+  recordChangeMemo(schema, state, changeLog, false);
 
   return { state, changeLog, firedEvents };
 }
@@ -997,12 +1059,36 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   // JSON 겉껍데기(changes/reasons)는 그대로 둔다: 파서·적용 경로가 한 갈래로 유지된다.
   const noVars = !specs;
 
+  // 지금 몇 시인가 (v0.65) — 없으면 "밤까지 잤다" 같은 **절대 시점** 서술을 델타로 바꿀 수가 없다.
+  // 상대량("3일 후")은 글에 답이 적혀 있어 시계 없이도 되지만, 한국어 RP의 시간 표현은
+  // 대부분 절대 시점이다. 실측 사고: 큰 도약 한 번 뒤 매 턴 500분씩 밀림 — 보조는 자기가
+  // 방금 민 시계를 확인할 방법이 없어 매번 처음처럼 "저녁까지의 간격"을 다시 넣고 있었다.
+  // ⚠ 루아 브리지(allowAll)에는 안 싣는다. 브리지는 설치 시점에 템플릿을 한 번 굽고
+  // 실행 때 `⟦cur:id⟧`를 채팅 변수로 치환하는데, 그 치환 목록이 schema.vars 뿐이라
+  // 엔진 예약 키인 time_epoch은 채워지지 않는다. 게다가 채워 봐야 분 단위 정수라
+  // 루아 쪽에 달력 산술이 또 필요하다 — 이미지가 없는 것과 같은 계열의 브리지 제약.
+  const cfg = opts.allowAll ? null : timeConfig(schema);
+  let nowLine = null;
+  if (cfg && state && typeof state.vars?.[EPOCH_KEY] === 'number') {
+    const cal = calendarOf(state.vars[EPOCH_KEY], cfg.calendar);
+    nowLine = `[지금] ${formatDate(cfg.dateFmt, cal)} (${cfg.weekdays[cal.wd]}) ${formatClock(cfg.clockFmt, cal)}`;
+  }
+  // 이미 반영된 변화 — 끝난 일이라고 못 박아 이중 계산을 막는다.
+  // 브리지 템플릿 굽기(allowAll)에는 안 싣는다: 설치 시점에 한 번 구워지므로 그때의 원장이
+  // 영영 박혀 매 턴 거짓말이 된다.
+  const memo = (!opts.allowAll && state?.meta?.lastChanges?.length) ? state.meta.lastChanges : null;
+  // 시간 규칙은 보조가 실제로 시간을 만질 수 있을 때만 (skip 우편함이 열려 있어야 뜻이 있다)
+  const timeRule = nowLine && allow.some((a) => a.id === SKIP_DAY || a.id === SKIP_MIN);
+
   return [
     noVars
       ? '너는 장면 분석기다. 아래 서사를 읽고 아래에서 요청한 항목만 JSON으로 출력하라.'
       : '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
     '',
+    nowLine, nowLine ? '' : null,
     noVars ? null : '[조정 가능 변수]', noVars ? null : specs, noVars ? null : '',
+    memo ? '[직전 보조 호출 이후 이미 반영된 변화]' : null,
+    memo ? memo.join('\n') : null, memo ? '' : null,
     historyText || null, historyText ? '' : null,
     userText ? '[유저의 행동/발화]' : null, userText || null, userText ? '' : null,
     '[이번 턴 서사]', narrative, '',
@@ -1010,7 +1096,10 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     noVars
       ? '- 조정할 변수가 없다. changes와 reasons는 항상 빈 객체로 두어라.'
       : '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
+    memo ? '- 위 "이미 반영된 변화"는 시스템이 이미 끝낸 일이다. 같은 것을 다시 세지 마라. 이번 턴 서사에서 **새로** 일어난 것만 보고하라.' : null,
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
+    // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
+    timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
     noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
     noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다

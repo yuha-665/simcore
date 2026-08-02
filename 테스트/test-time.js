@@ -239,8 +239,6 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ck('★ time 없는 전 템플릿에 시간 가정 지적 0', changed === 0, String(changed));
 }
 
-let p = 0, f = 0;
-for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 // ── /날짜 내장 명령 (v0.61.1) — 진행 중 채팅의 시계를 직접 맞추는 직통로 ──
 // 배경(실측 문의): "작중은 10월인데 상태창이 3월" — 시계는 세이브(time_epoch)에 살아서
 // 시간 탭의 시작값 변경이 소급되지 않고, skip 보고는 캡이 있어 몇 달을 못 건넌다.
@@ -286,5 +284,81 @@ for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `�
   ck('변수 명령과 같이 써도 각자 동작', mix.vars.hp === 15 && time.calendarOf(mix.vars.time_epoch).m === 12, '');
 }
 
+// ── v0.65 보조에게 시계와 원장을 준다 ──────────────────────
+// 실측 제보: 🌙 버튼이 하루를 통째로 넘겨서 대신 "밤까지 잤다"고 썼더니, 그 뒤로 매 동작마다
+// 500분씩 밀렸다. 원인은 보조가 **지금 몇 시인지 몰랐다는 것**. "3일 후" 같은 상대량은 글에
+// 답이 있어 시계 없이도 되지만 "밤까지"는 목표 시각이라 빼기가 필요한데, 피감수를 안 줬다.
+// 게다가 자기가 방금 민 시계를 확인할 방법이 없어 매 턴 처음처럼 같은 간격을 다시 넣었다.
+{
+  const R2 = TEMPLATES.romance.schema;
+  const boot = () => { const s = engine.initState(R2); s.meta.setupDone = true; return s; };
+  const prompt = (st, narr = '창밖이 어둑하다.') => engine.buildAuxPrompt(R2, st, narr, null, '');
+
+  // ① [지금] — 시계를 보여 준다
+  const p0 = prompt(boot());
+  ck('★ 시간 켠 봇의 보조 프롬프트에 [지금] 시각이 실린다', /\[지금\] 3월 2일 \(월\) 08:30/.test(p0), p0.slice(0, 90));
+  const noTime = { simcore: '0.1', meta: { name: 'x' }, vars: [{ id: 'hp', label: '체력', type: 'int', init: 10 }], updater: { allow: [{ id: 'hp' }] } };
+  ck('시간 안 켠 봇에는 [지금]이 없다', !engine.buildAuxPrompt(noTime, engine.initState(noTime), '싸운다', null, '').includes('[지금]'), '');
+  // 브리지는 설치 시점에 한 번 굽고 ⟦cur:id⟧를 schema.vars로만 치환한다 —
+  // time_epoch은 그 목록에 없어 치환이 안 되므로 아예 안 싣는다
+  const baked = engine.buildAuxPrompt(R2, boot(), '⟦NARR⟧', '⟦USER⟧', '', { allowAll: true });
+  ck('★ 루아 브리지 굽기에는 [지금]을 안 싣는다 (치환 안 되는 자리)', !baked.includes('[지금]'), '');
+
+  // ② 시간 규칙 — 보조가 실제로 시간을 만질 수 있을 때만
+  ck('skip 우편함이 열려 있으면 시간 규칙이 붙는다', p0.includes('[지금] 시각 이후로'), '');
+  const R3 = JSON.parse(J(R2));
+  R3.updater.allow = R3.updater.allow.filter((a) => !/^skip_/.test(a.id));
+  ck('보조가 시간을 못 만지는 봇엔 시간 규칙을 안 붙인다',
+    !engine.buildAuxPrompt(R3, boot(), '창밖이 어둑하다.', null, '').includes('[지금] 시각 이후로'), '');
+
+  // ③ 원장 — 이미 반영된 변화
+  let st = boot();
+  st = engine.sendPhase(R2, st).state;
+  const o1 = engine.outputPhase(R2, st, { skip_min: 500, affection: 5 }, { affection: '도서관에서 웃어 줬다' });
+  st = o1.state;
+  const memo = st.meta.lastChanges;
+  ck('★ 원장이 시각을 절대 시각 두 개로 적는다',
+    memo.some((l) => /시각 3월 2일 08:30 → 3월 2일 16:50 \(500분 진행\)/.test(l)), J(memo));
+  ck('원장이 변수 변화를 사유까지 적는다',
+    memo.some((l) => /호감도 10 → 15 \(\+5\) — 도서관에서 웃어 줬다/.test(l)), J(memo));
+  ck('★ skip 우편함 자체는 원장에 안 나온다 (시각 줄과 두 번 말하기 금지)',
+    !memo.some((l) => /skip_min|skip_day/.test(l)), J(memo));
+
+  // ④ 다음 턴 프롬프트에 실리고, 다시 세지 말라는 못이 박힌다
+  const st2 = engine.sendPhase(R2, st).state;
+  const p2 = prompt(st2, '창밖은 어느새 어둑했다. 민서가 하품을 했다.');
+  ck('★ 다음 턴 보조 프롬프트에 원장이 실린다', p2.includes('[직전 보조 호출 이후 이미 반영된 변화]'), '');
+  ck('★ 500분 밀린 뒤: 지금이 16:50이라는 것과 500분을 이미 썼다는 것이 둘 다 보인다',
+    /\[지금\] 3월 2일 \(월\) 16:50/.test(p2) && p2.includes('(500분 진행)'), '');
+  ck('원장에는 "다시 세지 마라"가 붙는다', p2.includes('같은 것을 다시 세지 마라'), '');
+  ck('브리지 굽기에는 원장을 안 싣는다 (한 번 구운 원장이 영영 거짓말이 된다)',
+    !engine.buildAuxPrompt(R2, st2, '⟦NARR⟧', '⟦USER⟧', '', { allowAll: true }).includes('이미 반영된 변화'), '');
+
+  // ⑤ 누적하지 않는다 — 사이클마다 교체 (전송 단계 몫은 이어 붙이고, 응답 단계에서 새로 씀)
+  const o2 = engine.outputPhase(R2, st2, { affection: 1 }, {});
+  ck('★ 원장은 사이클마다 교체된다 (무한 누적 금지)',
+    !o2.state.meta.lastChanges.some((l) => l.includes('500분 진행')), J(o2.state.meta.lastChanges));
+
+  // ⑥ 정기 틱은 뺀다 — 매 턴 같은 줄이라 정보량이 없고, 규칙이 이미 그 몫을 한다
+  const TICK = { simcore: '0.1', meta: { name: 't' },
+    vars: [{ id: 'gold', label: '돈', type: 'int', init: 0 }, { id: 'mood', label: '기분', type: 'int', init: 0 }],
+    rules: { onTurn: [{ set: 'gold', expr: 'gold + 10' }] },
+    updater: { allow: [{ id: 'mood' }] } };
+  const ts = engine.outputPhase(TICK, engine.sendPhase(TICK, engine.initState(TICK)).state, { mood: 3 }, {});
+  ck('정기 틱(onTurn)은 원장에서 뺀다', !ts.state.meta.lastChanges.some((l) => l.includes('돈')), J(ts.state.meta.lastChanges));
+  ck('보조가 민 것은 원장에 남는다', ts.state.meta.lastChanges.some((l) => l.includes('기분')), J(ts.state.meta.lastChanges));
+
+  // ⑦ 상한 — 세이브에 매 턴 실리므로 무한정 길어지면 안 된다
+  const many = { ...TICK, vars: Array.from({ length: 20 }, (_, i) => ({ id: 'v' + i, label: '값' + i, type: 'int', init: 0 })),
+    rules: {}, updater: { allow: Array.from({ length: 20 }, (_, i) => ({ id: 'v' + i })) } };
+  const chg = {}; for (let i = 0; i < 20; i++) chg['v' + i] = 1;
+  const ms = engine.outputPhase(many, engine.sendPhase(many, engine.initState(many)).state, chg, {});
+  ck('원장은 8줄로 끊는다', ms.state.meta.lastChanges.length === 8, String(ms.state.meta.lastChanges.length));
+}
+
+// ⚠ 집계는 반드시 맨 끝. 예전엔 이 두 줄이 /날짜 블록 **앞**에 있어서 그 11건이
+// 출력도 집계도 안 됐다 — 깨져도 "0 failed"가 나오는, 실패할 수 없는 테스트였다.
+let p = 0, f = 0;
+for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);
 process.exit(f ? 1 : 0);

@@ -1178,6 +1178,55 @@ function tabItemCounts(schema, tabKey) {
 }
 
 /**
+ * 이 탭이 지금 쥐고 있는 항목들의 **신원** 목록. 가져오기 전후를 비교해 사라지는 것을 찾는다.
+ * 개수 체크섬(tabItemCounts)이 "몇 개 줄었나"라면 이쪽은 "무엇이 없어지나"다 —
+ * 넣은 뒤에 경고하는 것과 넣기 전에 막는 것의 차이라, 통 교체의 실질 안전판은 이쪽이다.
+ * (같은 이름이 둘이면 집합에서 하나로 뭉친다. 그 몫은 개수 체크섬이 잡는다.)
+ */
+function tabItemIds(schema, tabKey) {
+  const out = [];
+  const add = (kind, arr, key = 'id') => {
+    for (const it of (Array.isArray(arr) ? arr : [])) {
+      const v = it && typeof it === 'object' ? it[key] : it;
+      if (v != null && v !== '') out.push(`${kind} ${v}`);
+    }
+  };
+  if (tabKey === 'vars') { add('변수', schema.vars); add('파생', schema.derived); }
+  else if (tabKey === 'commands') add('명령', (schema.vars || []).filter((v) => v.cmd));
+  else if (tabKey === 'actions') add('액션', schema.actions);
+  else if (tabKey === 'checks') add('판정', schema.checks);
+  else if (tabKey === 'presets') add('프리셋', schema.setup?.presets);
+  else if (tabKey === 'status') {
+    const gs = schema.statusUI?.groups || [];
+    gs.forEach((g, i) => out.push(`그룹 ${g?.label || `#${i + 1}`}`));
+    add('항목', gs.flatMap((g) => (Array.isArray(g?.items) ? g.items : [])), 'var');
+  } else if (tabKey === 'party') {
+    const P = schema.party || {};
+    const tabs = Array.isArray(P.tabs) && P.tabs.length ? P.tabs
+      : (P.slots || P.actions || P.items ? [P] : []);
+    if (Array.isArray(P.tabs)) add('탭', P.tabs);
+    add('슬롯', tabs.flatMap((t) => (Array.isArray(t?.slots) ? t.slots : [])), 'var');
+    add('업그레이드', tabs.flatMap((t) => (Array.isArray(t?.items) ? t.items : [])), 'var');
+  } else if (tabKey === 'rules') {
+    add('이벤트', schema.rules?.events);
+    add('랜덤', schema.rules?.randomEvents?.table);
+    add('지시문', schema.directives);
+  }
+  return out;
+}
+
+/** 가져오기 계획 — 적용하면 무엇이 사라지고 무엇이 생기는가 (스키마를 건드리지 않는다) */
+function planTabImport(schema, tabKey, picked) {
+  const before = tabItemIds(schema, tabKey);
+  const after = tabItemIds({ ...schema, ...JSON.parse(JSON.stringify(picked)) }, tabKey);
+  const beforeSet = new Set(before), afterSet = new Set(after);
+  return {
+    lost: [...beforeSet].filter((s) => !afterSet.has(s)),
+    gained: [...afterSet].filter((s) => !beforeSet.has(s)),
+  };
+}
+
+/**
  * @param opts.findings 진단 결과 (있으면 "고쳐 주세요" 모드로 바뀐다)
  * @param opts.stats    진단 통계 (생존율 등 — 균형 판단 재료로 함께 넘긴다)
  */
@@ -2345,6 +2394,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let tabAiMsg = null; // { tabKey, text } — rerender를 건너뛰고 살아남아야 하는 가져오기 결과 안내
   let tabWant = {};   // tabKey → 요구 문구. 요청서의 '내가 원하는 것'에 그대로 들어간다
   let tabGen = { busy: false, seq: 0, key: null }; // 탭별 직결 생성 (cssGen과 같은 취소 규약)
+  // { tabKey, picked, lost, gained } — 사라지는 것이 있으면 여기 붙들어 두고 확인을 받는다.
+  // 스키마는 아직 안 건드린 상태다 (취소 = 무변화).
+  let tabPending = null;
 
   // 검증 오류 경로 → 그 오류가 속한 탭. 변수를 갈아끼웠을 때 어디를 고쳐야 하는지 알려준다.
   const PATH_TABS = [
@@ -2378,7 +2430,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 붙여넣기와 직결 생성이 **같은 문**으로 들어오게 한다 — 검사·경고·되돌리기를 한 곳에서만 관리한다.
   // from='ai'면 산문 응답도 정상 경로다 (요청서가 "이 탭 밖의 일이면 JSON 대신 알려달라"고 시킨다).
   function applyTabImport(tabKey, raw, from) {
-    const slice = TAB_SLICES[tabKey];
+    tabPending = null; // 새로 들어온 것이 앞선 계획을 대체한다
     const text = String(raw ?? '').trim();
     if (!text) { tabAiMsg = { tabKey, text: '붙여넣은 내용이 없습니다.', warn: true }; return false; }
 
@@ -2402,14 +2454,29 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     try { picked = pickTabFragment(tabKey, frag, schema); }
     catch (e) { tabAiMsg = { tabKey, text: `가져오기 실패 — ${e.message}`, warn: true }; return false; }
 
+    // 넣기 **전에** 사라지는 것을 보여주고 멈춘다. 아래 급감 경고는 이미 넣은 뒤에 뜨므로,
+    // "작업하던 게 통 교체로 날아간다"를 실제로 막는 건 여기다. 손실이 없으면 그냥 통과한다.
+    const plan = planTabImport(schema, tabKey, picked);
+    if (plan.lost.length) {
+      tabPending = { tabKey, picked, ...plan };
+      return false;
+    }
+    return commitTabImport(tabKey, picked, plan);
+  }
+
+  function commitTabImport(tabKey, picked, plan) {
+    const slice = TAB_SLICES[tabKey];
     const beforeCounts = tabItemCounts(schema, tabKey);
     tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
     Object.assign(schema, JSON.parse(JSON.stringify(picked)));
     normalize();
+    tabPending = null;
     const afterCounts = tabItemCounts(schema, tabKey);
     const counts = afterCounts.map(([p, n]) => `${p} ${n}개`).join(', ');
     let msg = `✓ 가져왔습니다${counts ? ` — ${counts}` : ''}.`;
     let warn = false;
+    // 계획을 보고 눌렀다면 무엇을 지웠는지 결과에도 남긴다 (되돌리기 판단 재료)
+    if (plan?.lost?.length) msg += ` ${plan.lost.length}개를 지웠습니다 (${plan.lost.slice(0, 6).join(', ')}${plan.lost.length > 6 ? ' 외' : ''}).`;
 
     // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
     const lost = afterCounts
@@ -2440,7 +2507,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   async function runTabGenerate(tabKey) {
     if (!ai || !ai.generate || tabGen.busy) return;
     const mySeq = ++tabGen.seq;
-    tabGen.busy = true; tabGen.key = tabKey; tabAiMsg = null;
+    tabGen.busy = true; tabGen.key = tabKey; tabAiMsg = null; tabPending = null;
     rerender();
     let res = null;
     try { res = await ai.generate(buildTabExportPrompt(schema, tabKey, { want: tabWant[tabKey] })); }
@@ -2477,6 +2544,32 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ? '⏳ 생성 중… (수십 초 걸릴 수 있음)'
           : '창작 탭의 생성 모델이 이 탭 몫만 만들어 옵니다 — 규격서와 **이 봇에 이미 있는 변수 목록**이 함께 나가서 '
             + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남습니다.'));
+    }
+
+    // ★ 적용 전 계획 — 사라지는 것이 있으면 여기서 멈춘다. 스키마는 아직 그대로다.
+    if (tabPending && tabPending.tabKey === tabKey) {
+      const p = tabPending;
+      const cut = (arr) => arr.slice(0, 12).join(', ') + (arr.length > 12 ? ` 외 ${arr.length - 12}개` : '');
+      const box = h('div', { class: 'sce-block' });
+      box.appendChild(h('div', { class: 'sce-warn' },
+        `⚠ 적용하면 ${p.lost.length}개가 사라집니다 — ${cut(p.lost)}`));
+      if (p.gained.length) {
+        box.appendChild(h('div', { class: 'sce-hint' },
+          `새로 생기는 것 ${p.gained.length}개 — ${cut(p.gained)}`));
+      }
+      box.appendChild(h('div', { class: 'sce-hint' },
+        'AI가 **고친 것만** 돌려주면 나머지가 통째로 없어집니다. 의도한 삭제가 아니면 [취소]를 누르고 '
+        + '"손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.'));
+      box.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-danger', onclick: () => {
+          commitTabImport(tabKey, p.picked, p); rerender();
+        } }, `그래도 적용 (${p.lost.length}개 삭제)`),
+        h('button', { class: 'sce-btn', onclick: () => {
+          tabPending = null;
+          tabAiMsg = { tabKey, text: '취소했습니다 — 아무것도 바뀌지 않았습니다.', warn: false };
+          rerender();
+        } }, '취소')));
+      wrap.appendChild(box);
     }
 
     copyWidget(`📤 ${slice.label} 규격 내보내기`,

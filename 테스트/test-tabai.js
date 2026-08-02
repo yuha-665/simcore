@@ -9,7 +9,7 @@ const { TEMPLATES } = SC.require('templates');
 
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
 const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
-  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts };')(
+  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport };')(
   validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
@@ -202,6 +202,45 @@ const P = TEMPLATES.politics.schema;
     JSON.stringify(M.tabItemCounts(sch, 'status')));
 }
 
+// ── 적용 전 계획 (v0.62.1) — 넣기 전에 "무엇이 사라지나"를 뽑는다 ──
+{
+  const ids = M.tabItemIds, plan = M.planTabImport;
+  const RM = JSON.parse(JSON.stringify(TEMPLATES.romance.schema));
+
+  ck('신원: 액션 id가 잡힘', ids(S, 'actions').every((s) => s.startsWith('액션 ')) && ids(S, 'actions').length === S.actions.length, '');
+  ck('신원: 변수 탭은 변수+파생 둘 다',
+    ids(S, 'vars').filter((s) => s.startsWith('변수 ')).length === S.vars.length
+    && ids(S, 'vars').filter((s) => s.startsWith('파생 ')).length === S.derived.length, '');
+  ck('신원: 규칙 탭은 이벤트·랜덤·지시문',
+    ids(S, 'rules').some((s) => s.startsWith('이벤트 ')) && ids(S, 'rules').some((s) => s.startsWith('지시문 ')), '');
+  ck('신원: 상태창은 그룹+항목', (() => {
+    const r = ids(RM, 'status');
+    return r.includes('그룹 관계') && r.includes('항목 affection');
+  })(), ids(RM, 'status').slice(0, 4).join(' / '));
+
+  // ★ 통 교체로 사라지는 것을 적용 전에 뽑아낸다
+  const half = { actions: S.actions.slice(0, 1) };
+  const pl = plan(S, 'actions', M.pickTabFragment('actions', half));
+  ck('★ 사라지는 액션이 계획에 잡힘', pl.lost.length === S.actions.length - 1 && pl.gained.length === 0,
+    `lost=${pl.lost.length} gained=${pl.gained.length}`);
+  ck('★ 계획은 스키마를 안 건드림', S.actions.length > 1, String(S.actions.length));
+
+  const same = plan(S, 'actions', M.pickTabFragment('actions', { actions: S.actions }));
+  ck('★ 그대로면 손실 0 (확인 없이 통과해야 함)', same.lost.length === 0 && same.gained.length === 0, '');
+
+  const grew = plan(S, 'actions', M.pickTabFragment('actions',
+    { actions: [...S.actions, { id: 'new_one', label: '🆕 새것' }] }));
+  ck('★ 추가만 하면 손실 0, 새것만 잡힘',
+    grew.lost.length === 0 && grew.gained.length === 1 && grew.gained[0] === '액션 new_one', grew.gained.join(','));
+
+  // 상태창 — 꾸미기는 보존되므로 계획에도 안 나온다 (groups만 비교)
+  const stPlan = plan(RM, 'status', M.pickTabFragment('status',
+    { groups: [{ label: '관계', items: [{ var: 'affection' }] }] }, RM));
+  ck('★ status: 사라지는 그룹·항목이 잡힘',
+    stPlan.lost.includes('그룹 감정') && stPlan.lost.includes('항목 mood') && !stPlan.lost.includes('항목 affection'),
+    stPlan.lost.join(', '));
+}
+
 // ── 번들 스모크: 두 창구가 실제로 배선됐는가 ──
 // 구조 = 3층 상태창 탭 / 꾸미기 = 1층 👁 결과 + 3층 상태창 탭 (같은 함수, 상태 공유)
 {
@@ -213,6 +252,10 @@ const P = TEMPLATES.politics.schema;
   ck('요구 입력칸 예시가 status에도 있음', src.includes('체력·허기·기온은 게이지로'), '');
   ck('★ 상태창이 [내보내기]로 되살릴 수 있는 탭으로 승격', src.includes("'상태창', true"), '');
   ck('promptState는 상태창과 분리됨', src.includes("'AI 설정', false"), '');
+  ck('★ 적용 전 확인이 배선됨 (붙들기 → 그래도 적용 / 취소)',
+    src.includes('tabPending') && src.includes('그래도 적용') && src.includes('commitTabImport'), '');
+  ck('★ 손실 있으면 스키마를 건드리기 전에 멈춤',
+    /tabPending = \{ tabKey, picked, \.\.\.plan \};\s*return false;/.test(src), '');
 }
 
 // ── 가져오기: 조각 골라내기 ──

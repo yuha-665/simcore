@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.65.0
+//@version 0.65.1
 //@display-name SimCore (시뮬 엔진) v0.65 보조에게 시계와 원장을
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.65.1 ────────────────────────────────────────────────
+// 채팅 명령의 답이 유저에게 닿는다 — 실측: "/날짜 이거 인풋에 치니 바로 채팅 보내지기되는데
+// 뭔가 다른곳에 써야했나". 쓰는 곳은 맞았다. 어댑터가 `if (!r.applied.length) return content;`로
+// 끊고 있어서 **상태가 안 바뀌는 응답이 전부 버려졌다** — 도움말(`/날짜`), 오류('읽을 수 없음'),
+// 거부('쿨다운'), '바뀐 것 없음', '고를 선택지가 없음'. 유저 글이 그대로 모델에게 나가니
+// 명령을 처음 써 보는 사람은 "명령이 안 먹는다"로 읽는다. /날짜만의 문제가 아니었다.
+// - 엔진은 처음부터 제대로 만들어 돌려주고 있었다 (test-chatcmd 통과). 버린 건 어댑터다 —
+//   input 훅을 덮는 테스트가 하나도 없어서 새어 나갔다. test-cmdreply.js 신설(실부팅 15종).
+// - 판정 기준은 `r.text !== content`. 모르는 명령은 엔진이 손대지 않으므로
+//   "글이 달라졌다 = 우리 명령이었다"가 성립한다 (남의 '/'로 시작하는 글은 그대로 통과).
 //
 // ── v0.65.0 ────────────────────────────────────────────────
 // 보조에게 시계와 원장을 — 실측 제보: "🌙 버튼이 하루를 통째로 넘기길래 '캐릭터는 밤까지
@@ -1643,7 +1654,12 @@
       await loadForCurrentChar();
       if (!session || !schema) return content;
       const r = engine.applyChatCommands(schema, session.current, content);
-      if (!r.applied.length) return content;
+      // ⚠ 상태가 안 바뀌어도 **엔진이 우리 명령으로 알아본 줄**은 답을 돌려줘야 한다.
+      // 도움말(`/날짜`), 오류('읽을 수 없음'), 거부('쿨다운') 응답이 전부 여기 온다 —
+      // applied 개수로 끊고 있어서 그것들이 통째로 버려졌고, 유저 글 '/날짜'가 그대로
+      // 모델에게 나갔다(실측: "인풋에 치니 그냥 채팅이 보내진다"). 모르는 명령은 엔진이
+      // 손대지 않으므로 text가 달라졌다 = 우리 명령이었다는 뜻이다.
+      if (!r.applied.length) return r.text !== content ? r.text : content;
       session.current.vars = r.vars;
       // /선택은 기록만 — 집행은 다음 전송 단계(sendPhase)가 한다. pre 스냅샷에 실려 리롤에도 산다.
       if (r.pick != null) session.current.meta = { ...session.current.meta, pendingChoicePick: r.pick };

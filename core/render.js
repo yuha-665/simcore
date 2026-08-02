@@ -371,6 +371,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     if (items) inner += `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
   }
 
+  // 에셋만 쓰는 봇(변수 0개) — 그릴 것이 하나도 없으면 빈 상자도 만들지 않는다.
+  // 변수가 있는 봇에서 조건 때문에 잠깐 비는 것과는 다르다. 그쪽은 상자가 남아 있어야
+  // 다음 턴에 값이 돌아왔을 때 같은 자리에서 이어진다.
+  if (!inner && !schema.vars.length) return '';
+
   const title = esc(schema.meta?.name ?? '상태');
   const body = ui.collapsible !== false
     ? `<details open><summary>${title}</summary>${inner}</details>`

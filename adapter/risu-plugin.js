@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.63.1
-//@display-name SimCore (시뮬 엔진) v0.63 기능 추가 카드
+//@version 0.64.0
+//@display-name SimCore (시뮬 엔진) v0.64 에셋 전용 설치
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.64.0 ────────────────────────────────────────────────
+// 에셋 전용 설치 — "에셋만 쓰고 싶은데 변수를 꼭 등록하라고 한다" (유저).
+// 이미지 태그 자동화는 상태를 하나도 안 본다. 그런데 통행세로 변수 하나를 만들게 하고
+// 있었고, 그 우회로 만든 껍데기 변수가 상태창·보조 프롬프트에 평생 따라다녔다.
+// - [설치] 변수 0개 허용 — 단, **변수 없이 도는 기능이 실제로 켜져 있을 때만**(에셋 팩 /
+//   행동 제안). 정말 아무 일도 안 하는 빈 스키마는 그대로 오류다 (validate.varFreeWork).
+// - [⚠ 진짜 막힌 곳은 여기였다] 보조 호출 게이트가 `allow.length > 0`이었다 — 변수가 없으면
+//   호출 자체를 건너뛰어 **이미지가 영영 안 붙는다**. 이미지·행동 제안은 그 호출에 얹혀
+//   가는데 개수로 끊고 있었던 것. engine.auxHasWork(변수 | 제안 | 열린 팩)로 교체.
+// - [프롬프트] 조정할 변수가 0개인 호출은 "너는 장면 분석기다"로 갈아탄다. 빈 [조정 가능
+//   변수] 목록에 "변화만 출력하라"를 붙이면 시킨 일이 없는 지시서가 되고, 모델이 image까지
+//   같이 흘린다. JSON 겉껍데기(changes/reasons)는 유지 — 파서·적용 경로는 한 갈래로 둔다.
+// - [빈 상자 제거] 변수 0개면 상태창 HTML을 아예 안 낸다(빈 <details> 금지). 본 프롬프트의
+//   "수치·상태는 시스템이 관리한다" 기본 지침도 뺀다 — 없는 상태창을 쓰지 말라는 지시가 된다.
+// - [도구가 벌주지 않게] 진단은 변수 0개면 시뮬을 안 굴리고 멈춘다. 안 그러면 "패배 변수를
+//   못 찾았다", "시작 프리셋이 없다"로 정상 설계를 나무란다 (v0.52 원칙).
+//   schemaIsBlank에 에셋 팩 합류 — 팩이 있으면 빈 봇이 아니다(기능 카드·패치 경로가 열린다).
+// - [안내] 🎨 에셋 층과 변수 탭에 "변수 없이 이대로 저장하면 됩니다" 한 줄씩.
 //
 // ── v0.63.1 ────────────────────────────────────────────────
 // 기능 요청 마무리 — design-기능프리셋.md 진행 6·7번 (남아 있던 마지막 두 칸).
@@ -1837,13 +1856,18 @@
       // (aux 경로에서만 채워진다 — 브리지 모드는 필터를 안 쓰므로 null 그대로 둔다)
       let seenText = null;
       const allowCount = schema.updater?.allow?.length ?? 0;
-      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount });
+      // ⚠ 호출 여부는 허용 변수 개수로 정하지 않는다. 이미지와 행동 제안이 이 호출에
+      // 얹혀 가기 때문이다 — 변수 0개(에셋 전용) 봇에서 개수로 끊으면 이미지가 영영 안 붙었다.
+      const hasWork = engine.auxHasWork(schema, session.current);
+      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount, hasWork });
       if (mode === 'off') {
         lastAux = { status: '호출 건너뜀 — 설정값이 off', raw: '', applied: 0 };
-      } else if (allowCount === 0) {
-        lastAux = { status: '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)', raw: '', applied: 0 };
+      } else if (!hasWork) {
+        lastAux = { status: schema.vars.length
+          ? '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)'
+          : '호출 건너뜀 — 시킬 일이 없음 (변수도 에셋 팩도 없는 봇)', raw: '', applied: 0 };
       }
-      if (mode === 'aux' && allowCount > 0) {
+      if (mode === 'aux' && hasWork) {
         // 유저의 이번 입력도 델타 판정 근거에 포함 ("500골드를 기부한다" 같은 의지 반영)
         const msgs = chat?.message ?? [];
         let lastUserText = null, lastUserIdx = -1;

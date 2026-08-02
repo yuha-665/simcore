@@ -625,6 +625,9 @@ function schemaIsBlank(s) {
     + n(s.rules && s.rules.onTurn) + n(s.rules && s.rules.events)
     + n(s.rules && s.rules.randomEvents && s.rules.randomEvents.table)
     + n(s.updater && s.updater.allow) + n(s.statusUI && s.statusUI.groups)
+    // 에셋 팩 (v0.64) — 변수 0개여도 팩이 있으면 빈 봇이 아니다. 여기서 빠뜨리면
+    // 에셋 전용 봇이 "아직 스키마가 없습니다" 취급을 받아 기능 카드도 패치 경로도 안 열린다.
+    + n(s.assets && s.assets.packs)
     + n(s.setup && s.setup.presets) === 0;
 }
 
@@ -2110,6 +2113,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(tabAiTools('vars'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '상태창에 들어갈 항목들. 행 추가로 자유롭게 — 타입에 따라 AI 갱신 방식이 달라진다 (숫자=증감, 텍스트=재작성, 선택지=교체).'));
+    // 에셋 전용 설치 (v0.64) — 여기가 비어 있어도 되는 유일한 경우. 안 알려주면
+    // "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
+    if (!schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '✅ 이 봇은 에셋(이미지)만 씁니다 — 변수는 비워 둬도 설치됩니다. 억지로 만들 필요 없습니다.'));
+    }
 
     // 정리 계획 — 쓰이는 변수를 지우려 할 때만 뜬다. 확인해야 실제로 지운다 (패치와 같은 규율)
     if (purge) {
@@ -5096,6 +5105,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       '보조가 인물·감정만 고르면 조합·실존 대조·폴백은 시스템이 한다. 팩이 없으면 기능 꺼짐 — 기존 봇은 아무것도 안 바뀐다.'));
 
     const a = schema.assets;
+    // 에셋 전용 설치 (v0.64) — 변수를 하나도 안 만들어도 설치되고 돈다.
+    // 이 안내가 없으면 "변수 탭이 비었는데 괜찮은 건가"에서 손이 멈춘다 (실제 문의).
+    if (!schema.vars.length) {
+      box.appendChild(h('div', { class: 'sce-hint' },
+        a && a.packs && a.packs.length
+          ? '✅ 변수 없이 에셋만 쓰는 봇 — 이대로 저장하면 됩니다. 상태창·명령·시간은 안 뜨고 이미지만 붙습니다. '
+            + '나중에 상태창이 필요해지면 그때 변수 탭에서 만들면 됩니다.'
+          : '변수를 하나도 안 만들어도 됩니다 — 팩을 하나 만들면 에셋 전용 봇으로 그대로 설치됩니다.'));
+    }
     if (a && a.packs && a.packs.length) {
       box.appendChild(h('div', { class: 'sce-row' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
@@ -5390,4 +5408,4 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   };
 }
 
-module.exports = { createSchemaEditor, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };
+module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };

@@ -19,6 +19,16 @@ function codebookDigits(label) {
 const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
   'round', 'floor', 'ceil', 'abs', 'min', 'max', 'clamp', 'rand', 'count', 'has', 'sum']);
 
+/**
+ * 변수 하나 없이도 실제로 뭔가를 하는 기능이 켜져 있나 — 에셋 전용 설치의 통과 조건.
+ * 나머지 기능(상태창·이벤트·시간·편성·달력·판정)은 전부 변수를 읽거나 쓰므로 여기 없다.
+ */
+function varFreeWork(schema) {
+  if (Array.isArray(schema.assets?.packs) && schema.assets.packs.length) return true;
+  if (schema.suggest) return true;
+  return false;
+}
+
 function validateSchema(schema) {
   const errors = [];
   const warnings = [];
@@ -32,7 +42,20 @@ function validateSchema(schema) {
 
   // ── vars ──
   const vars = Array.isArray(schema.vars) ? schema.vars : [];
-  if (!vars.length) err('$.vars', '변수가 하나도 정의되지 않음');
+  // 변수 0개 — v0.64까지는 무조건 오류였다. 그런데 에셋 팩(이미지 태그 자동화)은 상태를
+  // 하나도 안 본다. 그것만 쓰려는 제작자에게 "쓰지도 않을 변수를 하나 만들어라"라고 하는 건
+  // 설계가 아니라 통행세다. 그래서 **변수 없이도 도는 기능이 실제로 켜져 있으면** 통과시키고,
+  // 정말로 아무 일도 안 하는 빈 스키마만 막는다.
+  if (!Array.isArray(schema.vars)) {
+    err('$.vars', 'vars는 배열이어야 합니다 (변수를 안 쓰더라도 빈 배열 []은 있어야 함)');
+  } else if (!vars.length) {
+    if (varFreeWork(schema)) {
+      warn('$.vars', '변수가 없습니다 — 에셋(이미지 태그)만 쓰는 봇으로 설치됩니다. '
+        + '상태창·명령·이벤트·시간은 뜨지 않습니다');
+    } else {
+      err('$.vars', '변수가 하나도 정의되지 않음 — 변수 없이 도는 기능(에셋 팩)이라도 하나는 켜져 있어야 합니다');
+    }
+  }
   const ids = new Set();
   const cmdNames = new Set();
   for (let i = 0; i < vars.length; i++) {
@@ -920,4 +943,4 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema };
+module.exports = { validateSchema, varFreeWork };

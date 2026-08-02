@@ -222,6 +222,11 @@ function diagnose(schema, opts = {}) {
   for (const w of v.warnings) add('mid', '검증', `${w.path} — ${w.msg}`, tabOfPath(w.path));
   if (!v.ok) return { ran: false, findings, stats };
 
+  // 에셋만 쓰는 봇 — 굴릴 상태가 없다. 여기서 멈추지 않으면 "패배 변수를 못 찾았다",
+  // "시작 프리셋이 없다" 같은, 이 봇에는 있을 수도 없는 것들을 나무라게 된다
+  // (v0.52 원칙 — 도구가 좋은 설계를 벌주면 아무도 그 설계를 안 쓴다).
+  if (!schema.vars.length) return { ran: false, findings, stats };
+
   const ACT = schema.actions || [];
   const EV = schema.rules?.events || [];
   const RND = schema.rules?.randomEvents?.table || [];

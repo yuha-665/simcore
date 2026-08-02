@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.63.1
-//@display-name SimCore (시뮬 엔진) v0.63 기능 추가 카드
+//@version 0.64.0
+//@display-name SimCore (시뮬 엔진) v0.64 에셋 전용 설치
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.64.0 ────────────────────────────────────────────────
+// 에셋 전용 설치 — "에셋만 쓰고 싶은데 변수를 꼭 등록하라고 한다" (유저).
+// 이미지 태그 자동화는 상태를 하나도 안 본다. 그런데 통행세로 변수 하나를 만들게 하고
+// 있었고, 그 우회로 만든 껍데기 변수가 상태창·보조 프롬프트에 평생 따라다녔다.
+// - [설치] 변수 0개 허용 — 단, **변수 없이 도는 기능이 실제로 켜져 있을 때만**(에셋 팩 /
+//   행동 제안). 정말 아무 일도 안 하는 빈 스키마는 그대로 오류다 (validate.varFreeWork).
+// - [⚠ 진짜 막힌 곳은 여기였다] 보조 호출 게이트가 `allow.length > 0`이었다 — 변수가 없으면
+//   호출 자체를 건너뛰어 **이미지가 영영 안 붙는다**. 이미지·행동 제안은 그 호출에 얹혀
+//   가는데 개수로 끊고 있었던 것. engine.auxHasWork(변수 | 제안 | 열린 팩)로 교체.
+// - [프롬프트] 조정할 변수가 0개인 호출은 "너는 장면 분석기다"로 갈아탄다. 빈 [조정 가능
+//   변수] 목록에 "변화만 출력하라"를 붙이면 시킨 일이 없는 지시서가 되고, 모델이 image까지
+//   같이 흘린다. JSON 겉껍데기(changes/reasons)는 유지 — 파서·적용 경로는 한 갈래로 둔다.
+// - [빈 상자 제거] 변수 0개면 상태창 HTML을 아예 안 낸다(빈 <details> 금지). 본 프롬프트의
+//   "수치·상태는 시스템이 관리한다" 기본 지침도 뺀다 — 없는 상태창을 쓰지 말라는 지시가 된다.
+// - [도구가 벌주지 않게] 진단은 변수 0개면 시뮬을 안 굴리고 멈춘다. 안 그러면 "패배 변수를
+//   못 찾았다", "시작 프리셋이 없다"로 정상 설계를 나무란다 (v0.52 원칙).
+//   schemaIsBlank에 에셋 팩 합류 — 팩이 있으면 빈 봇이 아니다(기능 카드·패치 경로가 열린다).
+// - [안내] 🎨 에셋 층과 변수 탭에 "변수 없이 이대로 저장하면 됩니다" 한 줄씩.
 //
 // ── v0.63.1 ────────────────────────────────────────────────
 // 기능 요청 마무리 — design-기능프리셋.md 진행 6·7번 (남아 있던 마지막 두 칸).
@@ -1677,6 +1696,16 @@ function codebookDigits(label) {
 const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
   'round', 'floor', 'ceil', 'abs', 'min', 'max', 'clamp', 'rand', 'count', 'has', 'sum']);
 
+/**
+ * 변수 하나 없이도 실제로 뭔가를 하는 기능이 켜져 있나 — 에셋 전용 설치의 통과 조건.
+ * 나머지 기능(상태창·이벤트·시간·편성·달력·판정)은 전부 변수를 읽거나 쓰므로 여기 없다.
+ */
+function varFreeWork(schema) {
+  if (Array.isArray(schema.assets?.packs) && schema.assets.packs.length) return true;
+  if (schema.suggest) return true;
+  return false;
+}
+
 function validateSchema(schema) {
   const errors = [];
   const warnings = [];
@@ -1690,7 +1719,20 @@ function validateSchema(schema) {
 
   // ── vars ──
   const vars = Array.isArray(schema.vars) ? schema.vars : [];
-  if (!vars.length) err('$.vars', '변수가 하나도 정의되지 않음');
+  // 변수 0개 — v0.64까지는 무조건 오류였다. 그런데 에셋 팩(이미지 태그 자동화)은 상태를
+  // 하나도 안 본다. 그것만 쓰려는 제작자에게 "쓰지도 않을 변수를 하나 만들어라"라고 하는 건
+  // 설계가 아니라 통행세다. 그래서 **변수 없이도 도는 기능이 실제로 켜져 있으면** 통과시키고,
+  // 정말로 아무 일도 안 하는 빈 스키마만 막는다.
+  if (!Array.isArray(schema.vars)) {
+    err('$.vars', 'vars는 배열이어야 합니다 (변수를 안 쓰더라도 빈 배열 []은 있어야 함)');
+  } else if (!vars.length) {
+    if (varFreeWork(schema)) {
+      warn('$.vars', '변수가 없습니다 — 에셋(이미지 태그)만 쓰는 봇으로 설치됩니다. '
+        + '상태창·명령·이벤트·시간은 뜨지 않습니다');
+    } else {
+      err('$.vars', '변수가 하나도 정의되지 않음 — 변수 없이 도는 기능(에셋 팩)이라도 하나는 켜져 있어야 합니다');
+    }
+  }
   const ids = new Set();
   const cmdNames = new Set();
   for (let i = 0; i < vars.length; i++) {
@@ -2578,7 +2620,7 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema };
+module.exports = { validateSchema, varFreeWork };
 
 });
 
@@ -4279,7 +4321,10 @@ function sendPhase(schema, prevState, { rng } = {}) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
   }
-  lines.push(ps.systemGuide || DEFAULT_SYSTEM_GUIDE);
+  // 기본 지침("수치·상태는 시스템이 관리한다")은 관리할 수치가 있을 때만 뜻이 있다.
+  // 에셋만 쓰는 봇(변수 0개)에 넣으면 있지도 않은 상태창을 쓰지 말라는 지시가 된다.
+  if (ps.systemGuide) lines.push(ps.systemGuide);
+  else if (schema.vars.length) lines.push(DEFAULT_SYSTEM_GUIDE);
 
   return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives };
 }
@@ -4748,30 +4793,70 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const imgSpec = (!opts.allowAll && state)
     ? auxImageSpec(schema, makeLookup(schema, state.vars)).instruction : '';
 
+  // 조정할 변수가 하나도 없는 호출 — 에셋 전용 봇(변수 0개)이거나 이번 턴에 mentions 게이트가
+  // 전부 닫힌 경우다. 그때 "상태 변수의 변화만 출력하라 / [조정 가능 변수] (빈칸)"을 그대로 보내면
+  // 시킨 일이 없는 지시서가 된다 — 모델이 image·suggest까지 같이 흘려버린다.
+  // JSON 겉껍데기(changes/reasons)는 그대로 둔다: 파서·적용 경로가 한 갈래로 유지된다.
+  const noVars = !specs;
+
   return [
-    '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
+    noVars
+      ? '너는 장면 분석기다. 아래 서사를 읽고 아래에서 요청한 항목만 JSON으로 출력하라.'
+      : '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
     '',
-    '[조정 가능 변수]', specs, '',
+    noVars ? null : '[조정 가능 변수]', noVars ? null : specs, noVars ? null : '',
     historyText || null, historyText ? '' : null,
     userText ? '[유저의 행동/발화]' : null, userText || null, userText ? '' : null,
     '[이번 턴 서사]', narrative, '',
     '[규칙]',
-    '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
+    noVars
+      ? '- 조정할 변수가 없다. changes와 reasons는 항상 빈 객체로 두어라.'
+      : '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
-    '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
-    schema.updater?.guide ? `- ${schema.updater.guide}` : null,
+    noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
+    noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
     '',
     '출력 형식 (JSON만, 다른 텍스트 금지):',
-    schema.suggest
-      ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
-      : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
-    schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}',
+    noVars
+      ? (schema.suggest
+        ? '{"changes": {}, "reasons": {}, "suggest": ["행동 제안", "행동 제안"]}'
+        : '{"changes": {}, "reasons": {}}')
+      : (schema.suggest
+        ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
+        : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}'),
+    noVars ? null
+      : (schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}'),
     imgSpec ? '' : null,
     imgSpec || null,
   ].filter((x) => x !== null).join('\n');
+}
+
+/**
+ * 이번 턴 보조 호출에 시킬 일이 있나 — 호출을 건너뛸지 판단하는 유일한 기준.
+ *
+ * ⚠ 예전에는 `updater.allow.length > 0`으로만 판단했다. 그런데 상태 갱신 호출에는 이미지와
+ * 행동 제안이 **얹혀 간다**(추가 호출 0이 설계의 핵심). 그래서 변수가 없는 봇 —
+ * 에셋만 쓰려고 만든 봇 — 에서는 호출 자체가 건너뛰어져 이미지가 영영 안 붙었다.
+ * 얹혀 가는 것이 하나라도 있으면 부른다.
+ *
+ * @param state 이미지 팩 게이트(when) 판정용. 없으면 팩 존재만으로 본다.
+ */
+function auxHasWork(schema, state = null) {
+  if ((schema?.updater?.allow?.length ?? 0) > 0) return true;
+  if (schema?.suggest) return true;
+  // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
+  // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
+  if ((schema?.assets?.packs?.length ?? 0) > 0) {
+    const by = schema.assets.by ?? 'aux';
+    if (by === 'aux' || by === 'aux_flow') {
+      if (!state) return true; // 상태를 모르면 있다고 본다 — 건너뛰어 잃는 쪽이 더 나쁘다
+      if (auxImageSpec(schema, makeLookup(schema, state.vars)).instruction) return true;
+    }
+  }
+  return false;
 }
 
 // ── 채팅 명령 ────────────────────────────────────────────────
@@ -5026,7 +5111,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
-  renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };
@@ -5406,6 +5491,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       }).join('');
     if (items) inner += `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
   }
+
+  // 에셋만 쓰는 봇(변수 0개) — 그릴 것이 하나도 없으면 빈 상자도 만들지 않는다.
+  // 변수가 있는 봇에서 조건 때문에 잠깐 비는 것과는 다르다. 그쪽은 상자가 남아 있어야
+  // 다음 턴에 값이 돌아왔을 때 같은 자리에서 이어진다.
+  if (!inner && !schema.vars.length) return '';
 
   const title = esc(schema.meta?.name ?? '상태');
   const body = ui.collapsible !== false
@@ -6119,6 +6209,11 @@ function diagnose(schema, opts = {}) {
   for (const e of v.errors) add('high', '검증', `${e.path} — ${e.msg}`, tabOfPath(e.path));
   for (const w of v.warnings) add('mid', '검증', `${w.path} — ${w.msg}`, tabOfPath(w.path));
   if (!v.ok) return { ran: false, findings, stats };
+
+  // 에셋만 쓰는 봇 — 굴릴 상태가 없다. 여기서 멈추지 않으면 "패배 변수를 못 찾았다",
+  // "시작 프리셋이 없다" 같은, 이 봇에는 있을 수도 없는 것들을 나무라게 된다
+  // (v0.52 원칙 — 도구가 좋은 설계를 벌주면 아무도 그 설계를 안 쓴다).
+  if (!schema.vars.length) return { ran: false, findings, stats };
 
   const ACT = schema.actions || [];
   const EV = schema.rules?.events || [];
@@ -7563,6 +7658,9 @@ function schemaIsBlank(s) {
     + n(s.rules && s.rules.onTurn) + n(s.rules && s.rules.events)
     + n(s.rules && s.rules.randomEvents && s.rules.randomEvents.table)
     + n(s.updater && s.updater.allow) + n(s.statusUI && s.statusUI.groups)
+    // 에셋 팩 (v0.64) — 변수 0개여도 팩이 있으면 빈 봇이 아니다. 여기서 빠뜨리면
+    // 에셋 전용 봇이 "아직 스키마가 없습니다" 취급을 받아 기능 카드도 패치 경로도 안 열린다.
+    + n(s.assets && s.assets.packs)
     + n(s.setup && s.setup.presets) === 0;
 }
 
@@ -9048,6 +9146,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(tabAiTools('vars'));
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '상태창에 들어갈 항목들. 행 추가로 자유롭게 — 타입에 따라 AI 갱신 방식이 달라진다 (숫자=증감, 텍스트=재작성, 선택지=교체).'));
+    // 에셋 전용 설치 (v0.64) — 여기가 비어 있어도 되는 유일한 경우. 안 알려주면
+    // "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
+    if (!schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '✅ 이 봇은 에셋(이미지)만 씁니다 — 변수는 비워 둬도 설치됩니다. 억지로 만들 필요 없습니다.'));
+    }
 
     // 정리 계획 — 쓰이는 변수를 지우려 할 때만 뜬다. 확인해야 실제로 지운다 (패치와 같은 규율)
     if (purge) {
@@ -12034,6 +12138,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       '보조가 인물·감정만 고르면 조합·실존 대조·폴백은 시스템이 한다. 팩이 없으면 기능 꺼짐 — 기존 봇은 아무것도 안 바뀐다.'));
 
     const a = schema.assets;
+    // 에셋 전용 설치 (v0.64) — 변수를 하나도 안 만들어도 설치되고 돈다.
+    // 이 안내가 없으면 "변수 탭이 비었는데 괜찮은 건가"에서 손이 멈춘다 (실제 문의).
+    if (!schema.vars.length) {
+      box.appendChild(h('div', { class: 'sce-hint' },
+        a && a.packs && a.packs.length
+          ? '✅ 변수 없이 에셋만 쓰는 봇 — 이대로 저장하면 됩니다. 상태창·명령·시간은 안 뜨고 이미지만 붙습니다. '
+            + '나중에 상태창이 필요해지면 그때 변수 탭에서 만들면 됩니다.'
+          : '변수를 하나도 안 만들어도 됩니다 — 팩을 하나 만들면 에셋 전용 봇으로 그대로 설치됩니다.'));
+    }
     if (a && a.packs && a.packs.length) {
       box.appendChild(h('div', { class: 'sce-row' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
@@ -12328,7 +12441,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   };
 }
 
-module.exports = { createSchemaEditor, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };
+module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };
 
 });
 
@@ -15525,13 +15638,18 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       // (aux 경로에서만 채워진다 — 브리지 모드는 필터를 안 쓰므로 null 그대로 둔다)
       let seenText = null;
       const allowCount = schema.updater?.allow?.length ?? 0;
-      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount });
+      // ⚠ 호출 여부는 허용 변수 개수로 정하지 않는다. 이미지와 행동 제안이 이 호출에
+      // 얹혀 가기 때문이다 — 변수 0개(에셋 전용) 봇에서 개수로 끊으면 이미지가 영영 안 붙었다.
+      const hasWork = engine.auxHasWork(schema, session.current);
+      console.log('[simcore] output 처리 시작:', { outIndex, mode, allowCount, hasWork });
       if (mode === 'off') {
         lastAux = { status: '호출 건너뜀 — 설정값이 off', raw: '', applied: 0 };
-      } else if (allowCount === 0) {
-        lastAux = { status: '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)', raw: '', applied: 0 };
+      } else if (!hasWork) {
+        lastAux = { status: schema.vars.length
+          ? '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)'
+          : '호출 건너뜀 — 시킬 일이 없음 (변수도 에셋 팩도 없는 봇)', raw: '', applied: 0 };
       }
-      if (mode === 'aux' && allowCount > 0) {
+      if (mode === 'aux' && hasWork) {
         // 유저의 이번 입력도 델타 판정 근거에 포함 ("500골드를 기부한다" 같은 의지 반영)
         const msgs = chat?.message ?? [];
         let lastUserText = null, lastUserIdx = -1;

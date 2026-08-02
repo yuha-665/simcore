@@ -519,7 +519,10 @@ function sendPhase(schema, prevState, { rng } = {}) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
   }
-  lines.push(ps.systemGuide || DEFAULT_SYSTEM_GUIDE);
+  // 기본 지침("수치·상태는 시스템이 관리한다")은 관리할 수치가 있을 때만 뜻이 있다.
+  // 에셋만 쓰는 봇(변수 0개)에 넣으면 있지도 않은 상태창을 쓰지 말라는 지시가 된다.
+  if (ps.systemGuide) lines.push(ps.systemGuide);
+  else if (schema.vars.length) lines.push(DEFAULT_SYSTEM_GUIDE);
 
   return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives };
 }
@@ -988,30 +991,70 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const imgSpec = (!opts.allowAll && state)
     ? auxImageSpec(schema, makeLookup(schema, state.vars)).instruction : '';
 
+  // 조정할 변수가 하나도 없는 호출 — 에셋 전용 봇(변수 0개)이거나 이번 턴에 mentions 게이트가
+  // 전부 닫힌 경우다. 그때 "상태 변수의 변화만 출력하라 / [조정 가능 변수] (빈칸)"을 그대로 보내면
+  // 시킨 일이 없는 지시서가 된다 — 모델이 image·suggest까지 같이 흘려버린다.
+  // JSON 겉껍데기(changes/reasons)는 그대로 둔다: 파서·적용 경로가 한 갈래로 유지된다.
+  const noVars = !specs;
+
   return [
-    '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
+    noVars
+      ? '너는 장면 분석기다. 아래 서사를 읽고 아래에서 요청한 항목만 JSON으로 출력하라.'
+      : '너는 시뮬레이션 상태 관리자다. 아래 서사를 읽고 상태 변수의 변화만 JSON으로 출력하라.',
     '',
-    '[조정 가능 변수]', specs, '',
+    noVars ? null : '[조정 가능 변수]', noVars ? null : specs, noVars ? null : '',
     historyText || null, historyText ? '' : null,
     userText ? '[유저의 행동/발화]' : null, userText || null, userText ? '' : null,
     '[이번 턴 서사]', narrative, '',
     '[규칙]',
-    '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
+    noVars
+      ? '- 조정할 변수가 없다. changes와 reasons는 항상 빈 객체로 두어라.'
+      : '- 유저의 행동과 서사에 명시적으로 드러난 변화만 반영하라. 언급 없는 변수는 포함하지 마라.',
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
-    '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
-    schema.updater?.guide ? `- ${schema.updater.guide}` : null,
+    noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
+    noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
     '',
     '출력 형식 (JSON만, 다른 텍스트 금지):',
-    schema.suggest
-      ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
-      : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}',
-    schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}',
+    noVars
+      ? (schema.suggest
+        ? '{"changes": {}, "reasons": {}, "suggest": ["행동 제안", "행동 제안"]}'
+        : '{"changes": {}, "reasons": {}}')
+      : (schema.suggest
+        ? '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}, "suggest": ["행동 제안", "행동 제안"]}'
+        : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}'),
+    noVars ? null
+      : (schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}'),
     imgSpec ? '' : null,
     imgSpec || null,
   ].filter((x) => x !== null).join('\n');
+}
+
+/**
+ * 이번 턴 보조 호출에 시킬 일이 있나 — 호출을 건너뛸지 판단하는 유일한 기준.
+ *
+ * ⚠ 예전에는 `updater.allow.length > 0`으로만 판단했다. 그런데 상태 갱신 호출에는 이미지와
+ * 행동 제안이 **얹혀 간다**(추가 호출 0이 설계의 핵심). 그래서 변수가 없는 봇 —
+ * 에셋만 쓰려고 만든 봇 — 에서는 호출 자체가 건너뛰어져 이미지가 영영 안 붙었다.
+ * 얹혀 가는 것이 하나라도 있으면 부른다.
+ *
+ * @param state 이미지 팩 게이트(when) 판정용. 없으면 팩 존재만으로 본다.
+ */
+function auxHasWork(schema, state = null) {
+  if ((schema?.updater?.allow?.length ?? 0) > 0) return true;
+  if (schema?.suggest) return true;
+  // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
+  // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
+  if ((schema?.assets?.packs?.length ?? 0) > 0) {
+    const by = schema.assets.by ?? 'aux';
+    if (by === 'aux' || by === 'aux_flow') {
+      if (!state) return true; // 상태를 모르면 있다고 본다 — 건너뛰어 잃는 쪽이 더 나쁘다
+      if (auxImageSpec(schema, makeLookup(schema, state.vars)).instruction) return true;
+    }
+  }
+  return false;
 }
 
 // ── 채팅 명령 ────────────────────────────────────────────────
@@ -1266,7 +1309,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
-  renderTemplate, buildAuxPrompt, auxAllowList, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };

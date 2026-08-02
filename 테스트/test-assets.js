@@ -494,6 +494,103 @@ async function bootLive(mutate) {
     if (global.__unload) global.__unload();
   }
 
+  // ── v0.64 에셋 전용 설치 — 변수 0개로도 설치되고, 이미지가 실제로 붙는다 ──
+  // 유저 지적: "에셋만 쓸 건데 무조건 변수를 등록하라고 한다". 통행세로 만든 껍데기 변수는
+  // 상태창·보조 프롬프트에 평생 따라다닌다.
+  {
+    const eng = SC.require('engine');
+    const { renderStatusHtml } = SC.require('render');
+    const { diagnose } = SC.require('diagnose');
+    const { schemaIsBlank } = SC.require('editor');
+
+    // 에셋만 쓰는 봇 — 변수·상태창·갱신 허용목록이 통째로 없다
+    const ONLY = () => ({
+      simcore: '0.1', meta: { name: '에셋만' }, vars: [],
+      assets: { by: 'aux', packs: [{
+        id: 'p1', source: '모듈A', sep: '_', format: '<img="{name}">',
+        slots: [{ id: 'who', values: ['Arin'] }, { id: 'emo', values: ['smile', 'sad'], fallback: 'smile' }],
+      }] },
+    });
+
+    // ① 설치 — 변수 없이 도는 기능이 켜져 있을 때만 통과. 빈 스키마는 그대로 오류
+    const vOnly = validateSchema(ONLY());
+    ck('★ 에셋 전용: 변수 0개여도 설치 통과', vOnly.ok, JSON.stringify(vOnly.errors));
+    ck('에셋 전용: 대신 경고로 뭐가 안 뜨는지 알려준다',
+      vOnly.warnings.some((w) => w.path === '$.vars' && /에셋/.test(w.msg)), JSON.stringify(vOnly.warnings));
+    const vEmpty = validateSchema({ simcore: '0.1', vars: [] });
+    ck('★ 아무 일도 안 하는 빈 스키마는 여전히 오류',
+      !vEmpty.ok && vEmpty.errors.some((e) => e.path === '$.vars'), JSON.stringify(vEmpty.errors));
+    const vNoArr = validateSchema({ simcore: '0.1' });
+    ck('vars 자체가 없으면 오류 (배열은 있어야 엔진이 돈다)',
+      !vNoArr.ok && vNoArr.errors.some((e) => e.path === '$.vars'), JSON.stringify(vNoArr.errors));
+    const vSug = validateSchema({ simcore: '0.1', vars: [], suggest: { count: 3 } });
+    ck('행동 제안만 켠 봇도 통과 (변수 없이 도는 기능)', vSug.ok, JSON.stringify(vSug.errors));
+
+    // ② 보조 호출 게이트 — 여기가 진짜로 막혀 있던 곳. 개수로 끊으면 이미지가 영영 안 붙는다
+    const st0 = eng.initState(ONLY());
+    ck('★ auxHasWork: 변수 0개여도 열린 팩이 있으면 부른다', eng.auxHasWork(ONLY(), st0) === true, '');
+    ck('auxHasWork: 변수도 팩도 없으면 안 부른다',
+      eng.auxHasWork({ vars: [] }, { vars: {}, meta: {} }) === false, '');
+    const mainOnly = ONLY(); mainOnly.assets.by = 'main';
+    ck("auxHasWork: by:'main'은 본 프롬프트 주입이라 보조와 무관",
+      eng.auxHasWork(mainOnly, eng.initState(mainOnly)) === false, '');
+    const gated = snap(); gated.assets.packs = gated.assets.packs.filter((p2) => p2.when); gated.updater = { allow: [] };
+    ck('auxHasWork: 게이트가 전부 닫힌 턴엔 부를 이유가 없다',
+      eng.auxHasWork(gated, eng.initState(gated)) === false, '');
+    ck('auxHasWork: 제안만 켜도 부른다',
+      eng.auxHasWork({ vars: [], suggest: {} }, { vars: {}, meta: {} }) === true, '');
+
+    // ③ 프롬프트 — 시킬 변수가 없는데 "변화만 출력하라"를 보내면 시킨 일 없는 지시서가 된다
+    const pOnly = eng.buildAuxPrompt(ONLY(), st0, '아린이 웃었다', null, '');
+    ck('★ 변수 0개 프롬프트: 장면 분석기로 갈아탄다', pOnly.startsWith('너는 장면 분석기다'), pOnly.slice(0, 40));
+    ck('변수 0개 프롬프트: 빈 [조정 가능 변수] 목록을 안 붙인다', !pOnly.includes('[조정 가능 변수]'), '');
+    ck('변수 0개 프롬프트: 겉껍데기는 유지 (파서 한 갈래)', pOnly.includes('{"changes": {}, "reasons": {}}'), '');
+    ck('★ 변수 0개 프롬프트: 이미지 지시는 그대로 실린다',
+      pOnly.includes('"image"') && pOnly.includes('who: one of [Arin]'), '');
+    const FULL = () => { const s = snap(); s.updater = { allow: [{ id: 'nsfw_on' }] }; return s; };
+    const pFull = eng.buildAuxPrompt(FULL(), eng.initState(FULL()), '히로미가 화를 냈다', null, '');
+    ck('갱신할 변수가 있는 봇의 프롬프트는 그대로 (회귀 없음)',
+      pFull.startsWith('너는 시뮬레이션 상태 관리자다') && pFull.includes('[조정 가능 변수]'), pFull.slice(0, 40));
+    // 변수는 있는데 이번 턴에 열린 것이 하나도 없는 경우도 같은 길로 간다 — 빈 목록은 안 보낸다
+    const pShut = eng.buildAuxPrompt(snap(), eng.initState(snap()), '조용한 오후다', null, '');
+    ck('허용 변수가 비면 변수가 있는 봇도 장면 분석기로 간다', pShut.startsWith('너는 장면 분석기다'), pShut.slice(0, 40));
+
+    // ④ 빈 상자·헛지침 제거
+    ck('★ 변수 0개면 상태창 HTML 자체를 안 낸다', renderStatusHtml(ONLY(), st0) === '', renderStatusHtml(ONLY(), st0));
+    ck('변수가 있으면 상태창은 그대로 나온다',
+      renderStatusHtml(snap(), eng.initState(snap())).includes('sim-status'), '');
+    const sendOnly = eng.sendPhase(ONLY(), st0);
+    ck('★ 변수 0개면 "수치·상태는 시스템이 관리한다" 기본 지침도 안 붙는다',
+      !sendOnly.promptBlock.includes('수치·상태는 시스템이 관리한다'), sendOnly.promptBlock.slice(0, 80));
+    ck('변수가 있으면 기본 지침은 그대로',
+      eng.sendPhase(snap(), eng.initState(snap())).promptBlock.includes('수치·상태는 시스템이 관리한다'), '');
+
+    // ⑤ 도구가 정상 설계를 벌주지 않게 (v0.52 원칙)
+    const dOnly = diagnose(ONLY(), { turns: 10, runs: 1 });
+    ck('★ 진단: 에셋 전용 봇을 "패배 변수 없음/프리셋 없음"으로 나무라지 않는다',
+      dOnly.findings.every((x) => x.tag === '검증'), JSON.stringify(dOnly.findings.map((x) => x.tag)));
+    ck('★ 빈 봇 판정: 팩이 있으면 빈 봇이 아니다 (기능 카드·패치 경로가 열린다)',
+      schemaIsBlank(ONLY()) === false && schemaIsBlank({ vars: [] }) === true, '');
+  }
+
+  // ── 배선: 변수 0개 봇 실부팅 — 게이트를 개수로 끊던 회귀의 본체 ──
+  {
+    const w3 = await bootLive((s) => {
+      s.vars = [];
+      s.updater = { allow: [] };
+      s.assets.packs = s.assets.packs.filter((p2) => !p2.when); // 게이트 팩은 변수를 본다
+      delete s.statusUI;
+    });
+    const hk = global.__hooks ?? {};
+    w3.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}';
+    await hk.beforeRequest([{ role: 'user', content: '안녕' }], 'model');
+    const outO = await hk.output('히로미가 화를 냈다.');
+    ck('★ 실부팅: 변수 0개 봇에서도 이미지가 붙는다 (예전엔 호출 자체를 건너뛰었다)',
+      outO.startsWith('<img="Hiromi_angry">\n\n'), outO.slice(0, 60));
+    ck('실부팅: 변수 0개여도 마커는 정상', /⟦simcore:1⟧$/.test(outO), outO.slice(-30));
+    if (global.__unload) global.__unload();
+  }
+
   let p = 0, f = 0;
   for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
   console.log(`\n${p} passed, ${f} failed`);

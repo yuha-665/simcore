@@ -1177,6 +1177,88 @@ function tabItemCounts(schema, tabKey) {
   return out;
 }
 
+// ── 🧩 기능 추가 — 카드 하나가 "규격에 맞춰 AI에게 맡기기"를 대신 눌러준다 ────
+//
+// 고정된 패치 JSON이 아니다 (design-기능프리셋.md §방향 전환). 상태창·편성표·스킬트리는
+// 애초에 그 봇의 변수가 있어야 성립하므로 찍어낼 수 없고, 굴러가는 스키마에 밀어 넣으면
+// 이름·전제가 어긋나며 제작자의 작업을 덮는다. 그래서 카드가 만드는 것은 **요청서**다 —
+// 하는 일은 tabWant[슬라이스]를 채우고 그 탭의 직결 생성을 부르는 것뿐이라,
+// 검사·계획 확인·되돌리기가 전부 탭별 도구의 것을 그대로 탄다.
+//
+// steps가 여럿이면 **순차**다. 변수부터 확정해야 다음 절이 그 변수를 보고 만든다 —
+// 한 번에 다 시키면 없는 이름을 지어내면서 전부 어긋난다 (진단 수정 요청과 같은 이유).
+const FEATURE_RECIPES = [
+  {
+    id: 'status_set', icon: '📊', label: '상태창 한 벌',
+    desc: '지금 변수들을 주제별 그룹으로 묶고 게이지·표시 조건까지 배정',
+    needs: (s) => ((s.vars || []).length >= 2 ? null : '변수가 2개 이상 있어야 합니다 — [변수] 탭에서 먼저'),
+    steps: [{ tab: 'status', want: '지금 있는 변수들을 주제별 그룹으로 묶어 상태창을 한 벌 짜 주세요. '
+      + '최소·최대가 뚜렷한 수치는 게이지로, 평소 0이고 사건 때만 의미가 생기는 값은 표시 조건을 걸어 주세요. '
+      + '자주 안 보는 묶음은 접어 두세요.' }],
+  },
+  {
+    id: 'shop', icon: '🛒', label: '상점',
+    desc: '돈을 쓰는 구매 액션 묶음 — 못 살 땐 버튼이 잠김',
+    needs: (s) => {
+      if (!(s.vars || []).some((v) => v.type === 'int' || v.type === 'float')) return '돈으로 쓸 숫자 변수가 필요합니다';
+      if (!(s.vars || []).some((v) => v.type === 'list')) return '소지품으로 쓸 목록 변수가 필요합니다';
+      return null;
+    },
+    steps: [{ tab: 'actions', want: '돈을 소모해 물건을 사는 상점 액션을 몇 개 만들어 주세요. '
+      + '살 돈이 모자라면 버튼이 잠기게 조건을 걸고, 산 물건은 소지품 목록에 들어가게 해 주세요.' }],
+  },
+  {
+    id: 'quest_board', icon: '📜', label: '퀘스트 보드',
+    desc: '의뢰가 뜨고, 수주를 고르고, 기한이 지나면 사라지는 한 벌',
+    needs: (s) => (s.time ? null : '시간 체계가 필요합니다 — [시간] 탭에서 먼저 켜세요'),
+    steps: [
+      { tab: 'vars', want: '의뢰 목록 변수(항목에 "@기한"이 붙는 list)와 평판·보수처럼 의뢰에 딸린 수치를 만들어 주세요.' },
+      { tab: 'rules', want: '가끔 새 의뢰가 붙는 랜덤 이벤트를 만들어 주세요 — 받을지 말지 고르는 갈림길을 달고, '
+        + '기한이 지난 의뢰는 목록에서 자동으로 사라지게 정리 규칙도 함께 주세요.' },
+    ],
+  },
+  {
+    id: 'level', icon: '📈', label: '레벨·성장',
+    desc: '경험치가 쌓이면 레벨이 오르고 포인트를 주는 한 벌',
+    needs: () => null,
+    steps: [
+      { tab: 'vars', want: '경험치·레벨·남은 포인트 변수를 만들어 주세요.' },
+      { tab: 'rules', want: '경험치가 기준을 넘으면 레벨이 오르고 포인트를 주는 이벤트를 만들어 주세요. '
+        + '레벨이 오를 때 알림이 뜨게 해 주세요.' },
+    ],
+  },
+  {
+    id: 'affection', icon: '💕', label: '호감도 인물',
+    desc: '한 인물의 호감 수치 + 관계 단계 + 단계별 서술 지시문',
+    needs: () => null,
+    steps: [
+      { tab: 'vars', want: '인물 한 명의 호감 수치와, 그 수치로 자동 계산되는 관계 단계(파생 변수)를 만들어 주세요.' },
+      { tab: 'rules', want: '관계 단계에 따라 그 인물의 태도·말투가 달라지는 서술 지시문을 단계마다 하나씩 만들어 주세요.' },
+    ],
+  },
+  {
+    id: 'skilltree', icon: '🌳', label: '스킬트리',
+    desc: '포인트를 찍어 올리는 스킬 탭 — 선행 조건까지',
+    needs: () => null,
+    steps: [
+      { tab: 'vars', want: '스킬 포인트 변수와, 포인트를 써서 올릴 스킬 레벨 변수 몇 개를 만들어 주세요.' },
+      // 수입 경로를 안 만들면 진단이 '못 버는 포인트'로 잡는다 — 죽은 화면을 만들지 않으려면 필수 단계다
+      { tab: 'rules', want: '스킬 포인트를 버는 경로를 만들어 주세요 — 조건을 넘기면 포인트를 주는 이벤트로요. '
+        + '수입이 없으면 스킬 탭은 아무것도 못 찍는 죽은 화면이 됩니다.' },
+      { tab: 'party', want: '스킬 포인트로 찍는 업그레이드 탭을 만들어 주세요. '
+        + '뒷 단계 스킬에는 앞 단계를 요구하는 선행 조건을 걸어 주세요.' },
+    ],
+  },
+  {
+    id: 'party', icon: '⚓', label: '편성표',
+    desc: '인물을 자리에 앉히는 편성 탭',
+    needs: (s) => ((s.vars || []).some((v) => v.type === 'enum' || v.type === 'list')
+      ? null : '편성 후보로 쓸 enum 또는 목록 변수가 필요합니다'),
+    steps: [{ tab: 'party', want: '인물을 자리에 앉히는 편성 탭을 만들어 주세요. '
+      + '자리를 비워 둘 수 있게 빈값도 후보에 넣어 주세요.' }],
+  },
+];
+
 /**
  * 이 탭이 지금 쥐고 있는 항목들의 **신원** 목록. 가져오기 전후를 비교해 사라지는 것을 찾는다.
  * 개수 체크섬(tabItemCounts)이 "몇 개 줄었나"라면 이쪽은 "무엇이 없어지나"다 —
@@ -2397,6 +2479,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // { tabKey, picked, lost, gained } — 사라지는 것이 있으면 여기 붙들어 두고 확인을 받는다.
   // 스키마는 아직 안 건드린 상태다 (취소 = 무변화).
   let tabPending = null;
+  let featureWant = '';  // 🧩 카드에 덧붙이는 요구 (선택)
+  let featureRun = null; // { id, icon, label, step, total, tab } — 여러 단계짜리 기능의 진행 위치
 
   // 검증 오류 경로 → 그 오류가 속한 탭. 변수를 갈아끼웠을 때 어디를 고쳐야 하는지 알려준다.
   const PATH_TABS = [
@@ -2524,29 +2608,86 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
   }
 
-  function tabAiTools(tabKey) {
-    const slice = TAB_SLICES[tabKey];
-    const wrap = h('div', { class: 'sce-block' });
-    wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+  // 가져오기 결과 한 덩어리 — 적용 전 계획 상자 + 안내 문구 + 되돌리기.
+  // 탭별 도구와 🧩 기능 추가가 **같은 것**을 쓴다: 어디서 시작했든 같은 확인을 받는다.
+  // 🧩 카드 한 장 = 그 기능에 필요한 절(들)을 순서대로 AI에게 시키는 일.
+  // 카드가 하는 일은 tabWant를 채우고 그 탭의 직결 생성을 부르는 것뿐이다 —
+  // 검사·계획 확인·되돌리기는 탭별 도구의 것을 그대로 탄다 (새 병합 코드 없음).
+  async function runFeature(recipe, step) {
+    const s = recipe.steps[step];
+    if (!s || !ai || !ai.generate || tabGen.busy) return;
+    featureRun = { id: recipe.id, icon: recipe.icon, label: recipe.label,
+      step, total: recipe.steps.length, tab: s.tab };
+    const extra = featureWant.trim();
+    tabWant[s.tab] = s.want + (extra ? ` 그리고 이렇게 해 주세요: ${extra}` : '');
+    await runTabGenerate(s.tab);
+  }
 
-    // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
-    if (ai && ai.generate) {
-      const genRow = h('div', { class: 'sce-row' },
-        bindInput(tabWant[tabKey] ?? '', (x) => { tabWant[tabKey] = x; },
-          { cls: 'sce-w-l', ph: TAB_WANT_PH[tabKey] ?? '원하는 것을 한 줄로' }));
-      genRow.appendChild(tabGen.busy && tabGen.key === tabKey
-        ? h('button', { class: 'sce-btn', onclick: () => { tabGen.seq++; tabGen.busy = false; rerender(); } }, '✋ 취소')
-        : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
-            onclick: () => runTabGenerate(tabKey) }, `✨ ${slice.label} 만들어 달라기`));
-      wrap.appendChild(genRow);
+  function featureBox() {
+    const wrap = h('div', { class: 'sce-block' });
+    wrap.appendChild(h('h4', {}, '🧩 기능 추가 — 굴러가는 봇에 서브시스템 하나 얹기'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '고정된 조각을 밀어 넣는 게 아닙니다 — **이 봇의 변수를 보고** AI가 그 자리에 맞게 만듭니다. '
+      + '만드는 절의 규격서와 변수 계약이 그대로 나가고, 넣기 전에 사라지는 것을 보여주는 확인도 똑같이 붙습니다.'));
+
+    if (!ai || !ai.generate) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
-        tabGen.busy && tabGen.key === tabKey
-          ? '⏳ 생성 중… (수십 초 걸릴 수 있음)'
-          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 옵니다 — 규격서와 **이 봇에 이미 있는 변수 목록**이 함께 나가서 '
-            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남습니다.'));
+        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 심층 편집의 각 탭에서 '
+        + '[📤 규격 내보내기]로 복사해 웹 AI에게 주세요. 나오는 요청서는 카드가 쓰는 것과 같습니다.'));
+      return wrap;
     }
 
-    // ★ 적용 전 계획 — 사라지는 것이 있으면 여기서 멈춘다. 스키마는 아직 그대로다.
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindInput(featureWant, (x) => { featureWant = x; },
+        { cls: 'sce-w-l', ph: '(선택) 덧붙일 요구 — 예: 판타지 분위기로 / 인물 이름은 히로미로' })));
+
+    for (const r of FEATURE_RECIPES) {
+      let blocked = null;
+      try { blocked = r.needs(schema); } catch { blocked = null; }
+      const btn = h('button', { class: 'sce-btn sce-add', style: 'width:auto',
+        onclick: () => { if (!blocked) runFeature(r, 0); } }, `${r.icon} ${r.label}`);
+      if (blocked || tabGen.busy) { btn.disabled = true; btn.style.opacity = .45; }
+      wrap.appendChild(h('div', { class: 'sce-row' }, btn,
+        h('span', { class: 'sce-hint', style: 'margin:0' },
+          blocked ? `⛔ ${blocked}`
+            : r.desc + (r.steps.length > 1 ? ` · ${r.steps.length}단계` : ''))));
+    }
+
+    // 진행 중인 기능 — 단계 표시 + 결과(계획 확인·되돌리기) + 다음 단계
+    if (featureRun) {
+      const fr = featureRun;
+      const r = FEATURE_RECIPES.find((x) => x.id === fr.id);
+      const box = h('div', { class: 'sce-block' });
+      box.appendChild(h('h4', {},
+        `${fr.icon} ${fr.label} — ${fr.step + 1}/${fr.total}단계 · ${TAB_SLICES[fr.tab].label}`));
+      if (tabGen.busy && tabGen.key === fr.tab) {
+        box.appendChild(h('div', { class: 'sce-hint' }, '⏳ 만드는 중… (수십 초 걸릴 수 있음)'));
+      }
+      box.appendChild(tabResultEl(fr.tab));
+      // 앞 단계가 들어간 뒤에야 다음으로 간다 — 확인 대기 중이면 다음 버튼을 안 띄운다
+      const settled = !tabGen.busy && !tabPending && tabUndo && tabUndo.tabKey === fr.tab;
+      if (settled && r && fr.step + 1 < fr.total) {
+        const nx = r.steps[fr.step + 1];
+        box.appendChild(h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn sce-add', style: 'width:auto',
+            onclick: () => runFeature(r, fr.step + 1) },
+          `▶ 다음 — ${fr.step + 2}/${fr.total} ${TAB_SLICES[nx.tab].label}`),
+          h('span', { class: 'sce-hint', style: 'margin:0' },
+            '앞 단계가 만든 것을 보고 다음 절을 만듭니다 — 한꺼번에 시키면 없는 이름을 지어냅니다.')));
+      } else if (settled) {
+        box.appendChild(h('div', { class: 'sce-hint' },
+          `✅ ${fr.label} 완료. 🔬 진단으로 한 번 굴려 보세요 — 새로 생긴 수치가 상태창에 안 보이면 `
+          + '🧰 심층 편집의 [상태창] 탭에서 배치하면 됩니다.'));
+      }
+      box.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-mini', onclick: () => { featureRun = null; rerender(); } }, '닫기')));
+      wrap.appendChild(box);
+    }
+    return wrap;
+  }
+
+  function tabResultEl(tabKey) {
+    const wrap = h('div');
     if (tabPending && tabPending.tabKey === tabKey) {
       const p = tabPending;
       const cut = (arr) => arr.slice(0, 12).join(', ') + (arr.length > 12 ? ` 외 ${arr.length - 12}개` : '');
@@ -2571,6 +2712,44 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         } }, '취소')));
       wrap.appendChild(box);
     }
+    if (tabAiMsg && tabAiMsg.tabKey === tabKey) {
+      wrap.appendChild(h('div', { class: tabAiMsg.warn ? 'sce-warn' : 'sce-hint' }, tabAiMsg.text));
+    }
+    if (tabUndo && tabUndo.tabKey === tabKey) {
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn sce-danger', onclick: () => {
+          schema = tabUndo.before;
+          tabUndo = null; tabPending = null;
+          tabAiMsg = { tabKey, text: '↩ 가져오기 전으로 되돌렸습니다.', warn: false };
+          rerender();
+        } }, `↩ ${TAB_SLICES[tabKey].label} 가져오기 되돌리기`)));
+    }
+    return wrap;
+  }
+
+  function tabAiTools(tabKey) {
+    const slice = TAB_SLICES[tabKey];
+    const wrap = h('div', { class: 'sce-block' });
+    wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+
+    // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
+    if (ai && ai.generate) {
+      const genRow = h('div', { class: 'sce-row' },
+        bindInput(tabWant[tabKey] ?? '', (x) => { tabWant[tabKey] = x; },
+          { cls: 'sce-w-l', ph: TAB_WANT_PH[tabKey] ?? '원하는 것을 한 줄로' }));
+      genRow.appendChild(tabGen.busy && tabGen.key === tabKey
+        ? h('button', { class: 'sce-btn', onclick: () => { tabGen.seq++; tabGen.busy = false; rerender(); } }, '✋ 취소')
+        : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
+            onclick: () => runTabGenerate(tabKey) }, `✨ ${slice.label} 만들어 달라기`));
+      wrap.appendChild(genRow);
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        tabGen.busy && tabGen.key === tabKey
+          ? '⏳ 생성 중… (수십 초 걸릴 수 있음)'
+          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 옵니다 — 규격서와 **이 봇에 이미 있는 변수 목록**이 함께 나가서 '
+            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남습니다.'));
+    }
+
+    wrap.appendChild(tabResultEl(tabKey));
 
     copyWidget(`📤 ${slice.label} 규격 내보내기`,
       tabKey === 'vars'
@@ -2582,10 +2761,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     ).mount(wrap);
     wrap.appendChild(jumpRow('부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
 
+    // 결과 안내·되돌리기는 위 tabResultEl이 맡는다 — 여기는 붙여넣기 사용법만 남긴다
     const note = h('div', { class: 'sce-hint' },
-      (tabAiMsg && tabAiMsg.tabKey === tabKey) ? tabAiMsg.text
-        : 'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
-    if (tabAiMsg && tabAiMsg.tabKey === tabKey && tabAiMsg.warn) note.className += ' sce-warn';
+      'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
     const area = h('textarea', { style: 'height:130px',
       placeholder: `{ "${slice.sub ?? slice.keys[0]}": [ ... ] }` });
     const row = h('div', { class: 'sce-row' },
@@ -2594,14 +2772,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         rerender(); // 아래 검증 리포트가 바로 갱신된다 — 오류가 있으면 [②]로 AI에게 돌려주면 된다
       } }, '📥 가져오기'),
     );
-    if (tabUndo && tabUndo.tabKey === tabKey) {
-      row.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => {
-        schema = tabUndo.before;
-        tabUndo = null;
-        tabAiMsg = { tabKey, text: '↩ 가져오기 전으로 되돌렸습니다.', warn: false };
-        rerender();
-      } }, '↩ 가져오기 되돌리기'));
-    }
     wrap.appendChild(note);
     wrap.appendChild(area);
     wrap.appendChild(row);
@@ -4097,10 +4267,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return box;
     }
 
+    // 🧩 기능 카드 먼저, 자유 입력은 그 아래 — "이 중에 없으면 말로 시키세요"의 동선.
+    // 빈 봇에는 안 띄운다 (얹을 대상이 없다 — 통짜 생성이나 템플릿이 먼저다).
+    if (!blank) box.appendChild(featureBox());
+
     box.appendChild(h('div', { class: 'sce-hint' },
       blank
         ? '아직 스키마가 없습니다 — 원하는 봇을 말하면 AI가 통째로 만들어 옵니다. 검증을 통과해야만 반영되니 부담 없이 시키세요.'
-        : '원하는 걸 말하면 바꿀 부분만 담은 패치가 옵니다 — 적용 전에 계획을 보여주고, 충돌이 있으면 멈춰서 물어봅니다.'));
+        : '카드에 없는 것은 말로 시키세요 — 원하는 걸 말하면 바꿀 부분만 담은 패치가 옵니다. 적용 전에 계획을 보여주고, 충돌이 있으면 멈춰서 물어봅니다.'));
 
     // 통짜 생성 결과 — 반영 전 확인 상자
     if (aiFull) {

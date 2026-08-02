@@ -9,7 +9,7 @@ const { TEMPLATES } = SC.require('templates');
 
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
 const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
-  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport };')(
+  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport, FEATURE_RECIPES };')(
   validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
@@ -241,6 +241,48 @@ const P = TEMPLATES.politics.schema;
     stPlan.lost.join(', '));
 }
 
+// ── 🧩 기능 추가 카드 (v0.63) — 카드는 JSON이 아니라 요청서를 만든다 ──
+{
+  const RC = M.FEATURE_RECIPES;
+  const RM = JSON.parse(JSON.stringify(TEMPLATES.romance.schema));
+  const BLANK = { vars: [], derived: [] };
+
+  ck('★ 카드가 하나 이상 있음', Array.isArray(RC) && RC.length >= 5, String(RC.length));
+  ck('★ 모든 단계가 실제 슬라이스를 가리킴',
+    RC.every((r) => r.steps.every((s) => !!M.TAB_SLICES[s.tab])),
+    RC.flatMap((r) => r.steps.map((s) => s.tab)).filter((t) => !M.TAB_SLICES[t]).join(', '));
+  ck('모든 단계에 요구 문구가 있음', RC.every((r) => r.steps.every((s) => s.want && s.want.length > 10)), '');
+  ck('id·라벨·설명이 모두 있고 id는 중복 없음',
+    RC.every((r) => r.id && r.label && r.desc && r.icon) && new Set(RC.map((r) => r.id)).size === RC.length, '');
+
+  // ★ needs는 순수 함수여야 한다 — 빈 스키마에서도 안 터지고, 막을 땐 이유를 말해야 한다
+  ck('★ needs가 빈 스키마에서 안 터짐', (() => {
+    try { RC.forEach((r) => r.needs(BLANK)); return true; } catch (e) { return false; }
+  })(), '');
+  ck('★ needs는 null 아니면 안내 문구', RC.every((r) => {
+    const v = r.needs(RM);
+    return v === null || (typeof v === 'string' && v.length > 5);
+  }), '');
+
+  const by = (id) => RC.find((r) => r.id === id);
+  ck('★ 퀘스트 보드는 시간 없으면 막힘', typeof by('quest_board').needs(P) === 'string', '');
+  ck('★ 퀘스트 보드는 시간 켜진 봇에선 열림', by('quest_board').needs(RM) === null, String(by('quest_board').needs(RM)));
+  ck('★ 상점은 돈·소지품 없으면 막힘', typeof by('shop').needs(BLANK) === 'string', '');
+  ck('상점은 survival(골드+목록)에선 열림', by('shop').needs(S) === null, String(by('shop').needs(S)));
+  ck('★ 편성표는 enum·목록 없으면 막힘', typeof by('party').needs(BLANK) === 'string', '');
+  ck('상태창 한 벌은 변수 2개 미만이면 막힘',
+    typeof by('status_set').needs({ vars: [{ id: 'a' }] }) === 'string', '');
+
+  // ★ 여러 절이 걸린 기능은 변수부터 — 다음 절이 그 변수를 보고 만들어야 한다
+  ck('★ 다단계 기능은 변수 탭부터 시작',
+    RC.filter((r) => r.steps.length > 1).every((r) => r.steps[0].tab === 'vars'),
+    RC.filter((r) => r.steps.length > 1).map((r) => `${r.id}:${r.steps[0].tab}`).join(' '));
+  // 비용 있는 items만 만들고 수입을 안 만들면 진단이 '못 버는 포인트'로 잡는다 = 죽은 화면
+  ck('★ 스킬트리에 포인트 수입 단계가 있음',
+    by('skilltree').steps.some((s) => s.tab === 'rules' && /포인트를 버는|수입/.test(s.want)), '');
+  ck('상태창 카드는 status 슬라이스를 씀', by('status_set').steps[0].tab === 'status', '');
+}
+
 // ── 번들 스모크: 두 창구가 실제로 배선됐는가 ──
 // 구조 = 3층 상태창 탭 / 꾸미기 = 1층 👁 결과 + 3층 상태창 탭 (같은 함수, 상태 공유)
 {
@@ -256,6 +298,12 @@ const P = TEMPLATES.politics.schema;
     src.includes('tabPending') && src.includes('그래도 적용') && src.includes('commitTabImport'), '');
   ck('★ 손실 있으면 스키마를 건드리기 전에 멈춤',
     /tabPending = \{ tabKey, picked, \.\.\.plan \};\s*return false;/.test(src), '');
+  ck('★ 🧩 기능 카드가 창작 탭에 배선됨',
+    src.includes('featureBox()') && src.includes('FEATURE_RECIPES'), '');
+  ck('★ 카드는 새 병합 코드 없이 탭 경로를 그대로 탐',
+    /tabWant\[s\.tab\] = s\.want/.test(src) && /await runTabGenerate\(s\.tab\)/.test(src), '');
+  ck('★ 결과·되돌리기를 카드와 탭이 같이 씀 (tabResultEl)',
+    (src.match(/tabResultEl\(/g) || []).length >= 3, String((src.match(/tabResultEl\(/g) || []).length));
 }
 
 // ── 가져오기: 조각 골라내기 ──

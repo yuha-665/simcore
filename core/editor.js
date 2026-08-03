@@ -516,8 +516,10 @@ const CSS = `
 .sce .sce-command-visibility.is-warning { border-left-color:var(--sce-warning); }
 .sce .sce-command-visibility strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
 .sce .sce-command-visibility p { margin:2px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.5; }
-/* 심층 편집 한 탭의 작업 폭 — 상한은 여기 하나로 끝난다 (deepBody가 씌우는 상자). */
-.sce .sce-deep-body { width:100%; max-width:var(--sce-work-w); }
+/* 심층 편집 작업 폭 — 상한은 이 기둥 하나로 끝난다. 탭 바·본문·오류줄이 같이 들어 있어
+   오른쪽 끝이 한 줄로 떨어진다. 안쪽 블록은 자기 폭을 다시 박지 않는다 (전부 100%/토큰). */
+.sce .sce-deep { width:100%; max-width:var(--sce-work-w); }
+.sce .sce-deep-body { width:100%; }
 .sce .sce-status-editor { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-status-intro {
   width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
@@ -7575,9 +7577,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     assetFold.addEventListener('toggle', () => { assetsOpen = assetFold.open; });
     root.appendChild(assetFold);
 
+    // 탭 바·본문·오류줄을 한 기둥에 넣는다. 폭 상한은 본문이 아니라 **이 기둥**에 걸린다 —
+    // 본문만 좁히면 탭 바 밑줄이 혼자 패널 끝까지 가서 탭마다 오른쪽이 어긋나 보인다 (실측 제보).
     const lower = h('details', { class: 'sce-lower' },
       h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
-      deepTabs(), deepBody(), reportEl);
+      h('div', { class: 'sce-deep' }, deepTabs(), deepBody(), reportEl));
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });
     root.appendChild(lower);

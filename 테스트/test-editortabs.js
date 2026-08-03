@@ -247,9 +247,11 @@ if (ed) {
   }
   ck('★ 심층 편집 폭 상한이 공용 토큰 하나로 모여 있다 (px 직접 박기 금지)',
     strays.length === 0, strays.join(' | '));
-  ck('심층 편집 몸통에 폭 상자가 씌워져 있다',
-    /\.sce \.sce-deep-body \{[^}]*max-width:var\(--sce-work-w\)/.test(css)
-    && src.includes("h('div', { class: 'sce-deep-body' }, body)"), '');
+  // 폭 상한은 **탭 바까지 품은 기둥**에 걸려야 한다. 본문만 좁히면 탭 바 밑줄이 혼자
+  // 패널 끝까지 가서 탭마다 오른쪽이 어긋난다 (실측 제보: "모든탭이 다 안맞게되었는데").
+  ck('★ 폭 상한이 탭 바까지 품은 기둥에 걸려 있다',
+    /\.sce \.sce-deep \{[^}]*max-width:var\(--sce-work-w\)/.test(css)
+    && src.includes("h('div', { class: 'sce-deep' }, deepTabs(), deepBody(), reportEl)"), '');
 }
 
 let p = 0, f = 0;

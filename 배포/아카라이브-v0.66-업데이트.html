@@ -1,0 +1,250 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.60 &nbsp;→&nbsp; v0.66</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 먼저 알려야 할 것 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">시간이 폭주하던 버그를 고쳤습니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v0.65</span></span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#c98a7a;">증상</b> — 하루를 넘기는 버튼을 누른 뒤 "밤까지 잤다"처럼 쓰면,
+  그 다음부터 <b>매 동작마다 몇 백 분씩</b> 시계가 밀립니다. 시간 체계를 켠 봇이라면 누구나 밟을 수 있었습니다.
+  </p>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">원인</b> — 시간을 굴리는 건 보조 모델인데, 그 보조에게 <b style="color:#dbe2ea;">지금 몇 시인지를 안 알려주고 있었습니다.</b>
+  "3일 후" 같은 건 글에 답이 적혀 있어 잘 읽었지만, "밤까지"·"저녁이 되었다"는 지금 시각에서 빼야 하는 값이라 기준이 필요했습니다.
+  게다가 보조는 자기가 방금 민 시계를 확인할 방법이 없어서, 매 턴 처음처럼 "저녁까지의 간격"을 통째로 다시 넣었습니다.
+  </p>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">수정</b> — 보조 프롬프트 머리에 <b style="color:#dbe2ea;">[지금] 3월 2일 (월) 16:50</b>을 붙이고,
+  "여기서 새로 흐른 만큼만 밀어라"를 규칙으로 못박고, 직전 호출 이후 이미 반영된 변화를 함께 넘깁니다.
+  같은 구멍을 세 방향에서 막았습니다.
+  </p>
+
+  <div style="background:#161b22;border-radius:4px;padding:12px 15px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    <b style="color:#dbe2ea;">이미 어긋난 채팅은</b> 인풋창에 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/날짜 2026-10-05 22:00</span> 처럼 쳐서 바로 맞출 수 있습니다.
+    새 채팅을 팔 필요 없습니다.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── ⚠ 채팅 명령 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">채팅 명령이 "안 먹는 것처럼" 보이던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v0.65.1</span></span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/날짜</span> 만 치면 사용법이 떠야 하는데
+  <b style="color:#c98a7a;">그냥 그대로 AI에게 보내졌습니다.</b> 오타로 쓴 날짜, 쿨다운 거부, "바뀐 것 없음", "고를 선택지가 없음" — 답이 필요한 경우가 전부 그랬습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  엔진은 처음부터 제대로 답을 만들고 있었고, 그걸 화면에 내보내는 쪽에서 <b style="color:#dbe2ea;">"값이 안 바뀌었으면 버린다"</b>고 판단하고 있었습니다.
+  명령을 처음 써 보는 사람은 "명령이 안 되는구나"로 읽을 수밖에 없었습니다. 이제 모든 답이 그대로 뜹니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+봇 만드는 화면이 <b style="color:#e0a94a;">통째로 새로 그려졌고</b>, 거의 모든 칸을 AI에게 맡길 수 있게 됐습니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+큰 덩어리는 넷 — <b style="color:#dbe2ea;">편집기 UI 전면 재편</b>(v0.66),
+<b style="color:#dbe2ea;">모든 탭에 AI 직결 생성</b>(v0.62), <b style="color:#dbe2ea;">🧩 기능 카드 7장</b>(v0.63),
+<b style="color:#dbe2ea;">달력 패널</b>(v0.61).
+</p>
+
+<!-- ─────────── ① UI 재편 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">봇 만드는 화면이 새로 그려졌습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.66</span>
+  </div>
+
+  <div style="background:#0d1117;border-left:3px solid #a8d5a2;border-radius:0 4px 4px 0;padding:13px 16px;margin-bottom:16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    <b style="color:#a8d5a2;">이건 제가 만든 게 아닙니다.</b> 한 분이 편집기 UI를 통째로 다시 짜서
+    "이런 식으로 바꿔 봤는데 쓰실 거면 쓰세요"라며 넘겨 주셨습니다. 검토해서 그대로 받았습니다. 고맙습니다.
+    </p>
+  </div>
+
+  <p style="margin:0 0 8px;color:#dbe2ea;">달라진 것:</p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 안내 문구를 처음 쓰는 사람 기준으로 다시 썼습니다.</b>
+  "숫자·문장·선택지·목록에 따라 저장 방식이 달라져요. 먼저 기본 변수를 정한 뒤 규칙과 상태창에서 사용하면 됩니다." 같은 식으로요. 400개 가까이 손봤습니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 변수·명령·상태창 편집이 카드로 바뀌었습니다.</b>
+  접기·펼치기, <b style="color:#dbe2ea;">문제 있는 것만 펼치기</b>, 형식에 필요한 칸만 보이기, 어디서 쓰이는 ID를 바꾸려 하면 경고.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· <span style="font-family:ui-monospace,Consolas,monospace;">⠿</span> 를 잡고 끌어서 순서를 바꿉니다.</b>
+  변수 카드도, 상태창 그룹·항목도요. ▲▼ 버튼은 그대로 있습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 진단 결과에서 [부분 패치 만들기]가 앞줄로</b> 나왔습니다. 탭을 통째로 갈아엎는 옛 방식은 접힌 뒤로 내렸습니다.
+  </p>
+
+  <div style="background:#0d1117;border-radius:4px;padding:13px 16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    <b style="color:#dbe2ea;">조용히 고쳐진 것</b> — 선택지·목록을 이제 <b style="color:#dbe2ea;">한 줄에 하나씩</b> 편집합니다.
+    예전엔 쉼표로 나눠서, <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">좋음, 아주</span> 같은 항목이 두 개로 쪼개졌습니다.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── ② AI 직결 생성 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">이제 거의 모든 칸을 말로 시킬 수 있습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.62</span>
+  </div>
+
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  탭마다 <b style="color:#e0a94a;">[✨ 만들어 달라기]</b>가 붙었습니다. 요구를 한 줄 쓰고 누르면 그 탭 몫만 만들어 옵니다.
+  복사해서 다른 AI에 붙여넣는 길도 그대로 있습니다 (직접 호출이 막힌 환경용).
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">변수    "눈 덮인 산장에서 겨울나기 — 체온·장작·식량을 굴리고 싶다"
+명령    "골드는 /돈, 소지품은 /가방으로 치게"
+상태창  "체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래"
+규칙    "체온이 0 아래로 3턴 가면 동사, 눈보라는 가끔 터지게"</pre>
+
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+  요청할 때 <b style="color:#dbe2ea;">이 봇에 이미 있는 변수 목록이 같이 나갑니다.</b>
+  그래서 AI가 없는 이름을 지어내지 못하고, 받은 결과는 검사를 통과해야만 들어갑니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;margin-bottom:14px;">
+    <p style="margin:0 0 6px;color:#dbe2ea;font-size:14px;"><b>넣기 전에 무엇이 사라지는지 보여줍니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.62.1</span></p>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    탭 단위 반영은 <b>통째 교체</b>라, AI가 하나만 빠뜨리면 그게 곧 삭제입니다.
+    이제 적용 전에 <b style="color:#dbe2ea;">"사라질 것"의 이름을 목록으로 보여주고</b> 확인을 받습니다 —
+    액션 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">사냥</span>, 그룹 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">감정</span> 식으로요.
+    잃는 게 없으면 그냥 지나갑니다.
+    </p>
+  </div>
+
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">상태창도 맡길 수 있게 됐습니다</b> — 무엇을 보여줄지(그룹·항목)와 어떻게 보일지(색·배치)를 따로 시킵니다.
+  구조를 맡겨도 <b style="color:#dbe2ea;">공들여 짠 CSS와 커스텀 템플릿은 안 건드립니다.</b>
+  </p>
+</div>
+
+<!-- ─────────── ③ 기능 카드 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🧩 기능 카드 — 흔한 것들은 눌러서 얹습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.63</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">🎛 상태창 한 벌     🏪 상점       📜 퀘스트 보드   📈 레벨·성장
+💗 호감도 인물      🌳 스킬트리   ⚔ 편성표        📅 달력·일정</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  찍어내는 게 아니라 <b style="color:#dbe2ea;">그 봇에 맞는 요청서를 만들어 AI에게 넘깁니다.</b>
+  상점이든 스킬트리든 그 봇의 변수 이름을 알아야 성립하니까요.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">못 쓰는 카드는 잠기고 이유가 옆에 뜹니다.</b>
+  상점은 돈(숫자)과 소지품(목록)이 있어야 하고, 퀘스트 보드는 시간 체계가 켜져 있어야 합니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  여러 절이 걸린 기능은 <b style="color:#dbe2ea;">한꺼번에 안 만들고 순서대로</b> 갑니다.
+  스킬트리는 변수 → 포인트 수입 규칙 → 편성표 순인데, 수입 없는 스킬 탭은 눌러 봐야 아무 일도 안 일어나는 죽은 화면이라서요.
+  </p>
+</div>
+
+<!-- ─────────── ④ 달력 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">📅 달력 — 날짜를 눌러 일정을 등록합니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.61</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  편성표에 이어 <b style="color:#e0a94a;">게임 패널 2호</b>입니다. 채팅 화면의 📅 버튼을 누르면 월 그리드가 뜹니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  달력에 세 가지가 표시됩니다 — <b style="color:#dbe2ea;">📌 기념일</b>(생일·정기 행사. 매년·매달·매주),
+  <b style="color:#dbe2ea;">📝 일정</b>(날짜를 눌러 등록·삭제), <b style="color:#dbe2ea;">⏳ 기한</b>(계약 만료 같은 게 자동으로 뜹니다).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  일정은 그냥 목록 변수라, 등록해 두면 <b style="color:#dbe2ea;">지난 일정은 알아서 정리되고</b>,
+  AI가 서사 중에 "다음 주에 만나기로 했다"를 등록할 수도 있고, 규칙 조건에도 그대로 씁니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 잔가지 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 그 밖에</span>
+  </div>
+
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">이미지만 쓰는 봇도 설치됩니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.64</span> —
+  에셋 팩(이미지 자동 삽입)만 쓰고 싶은데 변수를 억지로 하나 만들어야 했습니다. 이제 변수 0개로 설치되고, 이미지도 제대로 붙습니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">진행 중인 채팅의 날짜를 고칠 수 있습니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.61.1</span> —
+  시계는 채팅 시작 때 박혀서 시간 탭을 고쳐도 소급되지 않았습니다.
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">/날짜 2026-10-05</span> 로 바로 옮깁니다 (시각을 안 적으면 지금 시각 유지).
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">시간 켜기가 3택이 됐습니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.63.1</span> —
+  그냥 켜기만 하면 시계가 멈춘 채 박혀서, 같은 날짜가 영원히 뜹니다. 날짜가 아예 없는 것보다 나쁩니다.
+  🌙 버튼·보고 / 📝 보고만 / 📆 턴마다 하루 중 골라야 켜집니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">ON/OFF 명령 도움말이 틀렸던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.66</span> —
+  "끄려면 off"라고 안내했는데 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">off</span>는 실제로 안 먹었습니다.
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">0</span> 또는 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">false</span>입니다.
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="border-top:1px solid #3a4553;padding-top:20px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;">
+  플러그인 파일을 새로 받아 <b style="color:#e0a94a;">다시 임포트</b>하세요.
+  파일만 바꿔 두면 리수에서 도는 건 여전히 옛날 빌드입니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  제대로 갈렸는지는 플러그인 목록에서 확인할 수 있습니다 —
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">SimCore (시뮬 엔진) v0.66 편집기 UI 재편</span>
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">봇 스키마는 그대로 씁니다.</b> 고칠 것도, 다시 설치할 것도 없습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  안 되는 게 있으면 댓글 주세요. 이번 업데이트에서 고친 것 중 절반은 댓글로 알게 된 것들입니다.
+  </p>
+</div>
+
+</div>

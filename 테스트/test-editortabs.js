@@ -168,16 +168,67 @@ if (ed) {
   ck('에셋 전용 안내가 뜬다', (container.textContent || '').includes('에셋만 쓰는 봇'),
     (container.textContent || '').slice(0, 120));
 
+  // ── ⠿ 끌어서 순서 바꾸기 (v0.66.1) — 손잡이를 실제로 잡고 놓아 본다 ──
+  ed.setSchema(SCHEMA);
+  for (const d of findAll(container, (e) => e.tagName === 'DETAILS' && e.className.includes('sce-lower'))) d.open = true;
+  {
+    const varTab = findAll(container, (e) => e.tagName === 'BUTTON' && e.className.includes('sce-tab')
+      && (e.textContent || '').includes('변수'))[0];
+    varTab?.onclick({ preventDefault() {} });
+    for (const d of findAll(container, (e) => e.tagName === 'DETAILS' && e.className.includes('sce-lower'))) d.open = true;
+    const handles = findAll(container, (e) => e.className.includes('sce-variable-drag-handle'));
+    // 기본 변수 + 파생 변수 카드 전부에 붙는다
+    ck('★ 변수 카드마다 ⠿ 손잡이가 있다',
+      handles.length === SCHEMA.vars.length + SCHEMA.derived.length, `${handles.length}개`);
+
+    // 첫 카드를 잡아 둘째 카드 아래로 놓는다. document 리스너로 이어지므로 그걸 붙잡아 부른다.
+    const moves = []; const ups = [];
+    const realAdd = document.addEventListener;
+    document.addEventListener = (type, fn) => { if (type === 'pointermove') moves.push(fn); if (type === 'pointerup') ups.push(fn); };
+    let dragErr = null;
+    try {
+      handles[0].onpointerdown({ pointerId: 1, clientX: 10, clientY: 10, preventDefault() {}, button: 0 });
+      for (const fn of moves) fn({ pointerId: 1, clientX: 10, clientY: 200, preventDefault() {} });
+      for (const fn of ups) fn({ pointerId: 1, clientX: 10, clientY: 200, preventDefault() {} });
+    } catch (e) { dragErr = e; }
+    document.addEventListener = realAdd;
+    ck('★ 손잡이를 잡고 놓아도 예외가 없다', !dragErr,
+      dragErr && dragErr.message + ' | ' + String(dragErr.stack).split('\n')[1]);
+    const after = ed.getSchema();
+    ck('끌어도 변수 개수는 그대로 (잃거나 복제되지 않는다)',
+      after.vars.length === SCHEMA.vars.length, `${after.vars.length}`);
+    ck('끌어도 변수 집합은 그대로 (순서만 바뀐다)',
+      after.vars.map((v) => v.id).sort().join(',') === SCHEMA.vars.map((v) => v.id).sort().join(','),
+      after.vars.map((v) => v.id).join(','));
+  }
+
   ed.destroy();
 }
 
-// ── 끌어서 이동 스위치 (v0.66) — 꺼져 있으면 손잡이가 없어야 한다 ──
+// ── 끌어서 이동 스위치 (v0.66) ──
 {
   const on = /const CARD_DRAG = true/.test(src);
   ck('CARD_DRAG 스위치가 있다', /const CARD_DRAG = (true|false)/.test(src), '');
-  ck(on ? '스위치 ON — 손잡이가 붙는다' : '★ 스위치 OFF — ⠿ 손잡이가 안 붙는다',
-    on ? src.includes("}, '⠿')") : !/⠿/.test(container.textContent || ''), '');
-  ck('꺼도 ▲▼ 순서 버튼은 남는다', src.includes("title: '위로' }, '▲'") && src.includes("title: '아래로' }, '▼'"), '');
+  ck(on ? '스위치 ON — 손잡이가 붙는다' : '스위치 OFF — ⠿ 손잡이가 안 붙는다',
+    on ? src.includes("}, '⠿') : null") : !/⠿/.test(container.textContent || ''), '');
+  ck('끌기와 별개로 ▲▼ 순서 버튼은 남는다',
+    src.includes("title: '위로' }, '▲'") && src.includes("title: '아래로' }, '▼'"), '');
+
+  // ★ 손잡이 자리를 **고정 폭 격자 열**로 잡으면, 스위치를 끄는 순간 그 열로 옆엣것이
+  //   밀려 들어가 찌그러진다 (실측: 상태창 항목 셀렉트가 30px가 됐다).
+  //   스위치가 어느 쪽이든 무너지지 않아야 하므로 CSS 자체를 못 박는다.
+  const css = src.slice(src.indexOf('const CSS = `'), src.indexOf('\n`;', src.indexOf('const CSS = `')));
+  const rule = css.match(/\.sce \.sce-status-value-control \{([^}]*)\}/)?.[1] ?? '';
+  ck('★ 손잡이 자리는 고정 폭 격자 열이 아니다 (없어도 안 찌그러진다)',
+    /display:flex/.test(rule) && !/grid-template-columns/.test(rule), rule.replace(/\s+/g, ' ').trim());
+
+  // 폭 층은 두 개까지 — 패널폭 → 작업폭. 카드 안에 세 번째 숫자를 박으면 전부 어긋나 보인다.
+  ck('★ 카드 안쪽은 카드 폭을 따른다 (세 번째 폭 층 없음)',
+    /--sce-variable-work-width:100%/.test(css), (css.match(/--sce-variable-work-width:[^;]*/) || ['없음'])[0]);
+  const dupes = [...css.matchAll(/(\.sce [^{]+)\{([^}]*)\}/g)]
+    .filter((m) => (m[2].match(/max-width:/g) || []).length > 1).map((m) => m[1].trim());
+  ck('★ 한 규칙에 max-width가 두 번 들어간 곳이 없다 (뒤엣것이 조용히 이긴다)',
+    dupes.length === 0, dupes.join(', '));
 }
 
 let p = 0, f = 0;

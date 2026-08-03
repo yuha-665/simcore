@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.66.0
+//@version 0.66.1
 //@display-name SimCore (시뮬 엔진) v0.66 편집기 UI 재편
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.66.1 ────────────────────────────────────────────────
+// 폭 층 정리 + 끌어서 순서 바꾸기 켬 — v0.66.0 실기 확인 피드백 ("맞지는 않네").
+// - 한 탭 안에 폭이 **세 층**이었다: 패널폭 → 작업폭(820) → 카드안폭(680). 셋이 서로
+//   어긋나 보이는 게 원인이었다. 카드 안쪽(--sce-variable-work-width)을 카드 폭에 맞춰
+//   두 층으로 줄였다.
+// - .sce-status-groups / .sce-status-tools 는 한 규칙 안에 max-width가 두 번 들어가
+//   뒤엣것(960px)이 조용히 이기고 있었다 — v0.66.0에서 폭 토큰을 기계적으로 끼워 넣다
+//   생긴 것. 규칙당 max-width는 하나여야 한다는 어서션을 테스트에 박았다.
+// - ⚠ **상태창 항목 셀렉트가 30px로 찌그러진 원인**: .sce-status-value-control 이
+//   손잡이 자리를 grid-template-columns:30px … 고정 열로 잡고 있었는데, v0.66.0에서
+//   손잡이를 끄니 셀렉트가 그 30px 열로 밀려 들어갔다. flex로 바꿔 손잡이가 있든 없든
+//   안 무너지게 했다 — 스위치를 다시 끌 일이 생겨도 같은 사고가 안 난다.
+// - CARD_DRAG = true (유저 요청). ▲▼ 버튼은 그대로 남는다. 가짜 포인터로 손잡이를
+//   잡고 놓는 경로를 테스트가 실제로 굴린다 (변수를 잃거나 복제하지 않는지까지).
 //
 // ── v0.66.0 ────────────────────────────────────────────────
 // 편집기 UI 재편 — 외부 기여분 병합. 한 유저가 v0.61.0을 기준선으로 관리 패널·편집기 UI를
@@ -7192,10 +7207,12 @@ SimCore.define("editor", function (require, module, exports) {
 // ai = { generate(prompt), getBotContext() } — 내장 AI 생성(위층)용 호스트 주입. 없으면 복사 옆문만 뜬다.
 
 // 카드 순서를 **끌어서** 바꾸는 길 (v0.66 UI 개조판에서 들어옴).
-// 순서 바꾸기 자체는 grip()의 ▲▼ 버튼이 그대로 맡고 있어서, 이건 덧붙임이다.
-// 포인터 이벤트는 리스/포켓리수·모바일에서 실기 확인 전이라 꺼 둔다 — 확인되면 true로 바꾸면
-// 손잡이(⠿)가 다시 붙는다. 구현(beginVariableDrag/beginStatusDrag)은 그대로 남겨 둔다.
-const CARD_DRAG = false;
+// 순서 바꾸기 자체는 grip()의 ▲▼ 버튼이 그대로 맡고 있어서 이건 덧붙임이고, 꺼도 기능은 안 잃는다.
+// v0.66.0에서 실기 확인 전이라 잠깐 꺼 뒀다가 v0.66.1에서 켰다 (유저 요청).
+// ⚠ 끌 때는 CSS도 같이 봐야 한다 — 손잡이 자리를 고정 폭 격자 열로 잡아 두면 손잡이가 없을 때
+// 그 열로 다른 게 밀려 들어간다 (실측: 상태창 항목 셀렉트가 30px로 찌그러졌다).
+// 지금은 그 자리를 flex로 바꿔 둬서 꺼도 안 무너진다.
+const CARD_DRAG = true;
 
 const { validateSchema } = require('./validate');
 const { referencedVars } = require('./expr');
@@ -7557,7 +7574,9 @@ const CSS = `
   font-weight:750; overflow-wrap:anywhere; }
 .sce .sce-variable-card-summary { min-width:0; color:var(--sce-muted); font-size:11.5px;
   line-height:1.45; overflow-wrap:anywhere; }
-.sce .sce-variable-card-body { --sce-variable-work-width:680px; margin-top:7px; padding-top:7px;
+/* 카드 안쪽은 카드 폭에 맞춘다. 여기에 따로 숫자(680px)를 박아 두면 한 탭 안에
+   패널폭 → 작업폭(--sce-work-w) → 카드안폭 세 층이 생겨 전부 어긋나 보인다 (실측 제보). */
+.sce .sce-variable-card-body { --sce-variable-work-width:100%; margin-top:7px; padding-top:7px;
   border-top:1px solid var(--sce-line); }
 .sce .sce-variable-grid { display:grid; width:100%; max-width:var(--sce-variable-work-width);
   grid-template-columns:260px minmax(0,1fr); gap:7px; align-items:end; }
@@ -7729,8 +7748,7 @@ const CSS = `
 .sce .sce-status-section-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
 .sce .sce-status-count { min-width:34px; padding:4px 7px; border:1px solid var(--sce-line-strong);
   border-radius:999px; color:var(--sce-text); font-size:11.5px; font-weight:700; text-align:center; }
-.sce .sce-status-groups {
-  width:100%; max-width:var(--sce-work-w); display:grid; gap:8px; width:100%; max-width:960px; }
+.sce .sce-status-groups { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
 .sce .sce-status-group { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
   border-radius:4px; background:var(--sce-surface); }
 .sce .sce-status-group.is-collapsed { padding:8px 10px; background:transparent; }
@@ -7753,7 +7771,10 @@ const CSS = `
 .sce .sce-status-item-head { padding:8px 0 5px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
 .sce .sce-status-item { padding:9px 0; border-top:1px solid var(--sce-line); }
 .sce .sce-status-item select, .sce .sce-status-item input { width:100%; min-width:0; max-width:none; }
-.sce .sce-status-value-control { display:grid; grid-template-columns:30px minmax(0,1fr); gap:6px; align-items:center; }
+/* 손잡이가 없을 수도 있다 (CARD_DRAG=false) — 고정 폭 격자 열로 잡으면 그때 셀렉트가
+   손잡이 자리로 밀려 들어가 30px로 찌그러진다. flex는 있으면 붙고 없으면 그냥 사라진다. */
+.sce .sce-status-value-control { display:flex; gap:6px; align-items:center; min-width:0; }
+.sce .sce-status-value-control > select { flex:1; min-width:0; }
 .sce .sce-status-drag-handle { width:30px; min-width:30px; padding:0; color:var(--sce-muted);
   cursor:grab; touch-action:none; letter-spacing:-.08em; }
 .sce .sce-status-drag-handle:active { cursor:grabbing; }
@@ -7785,9 +7806,8 @@ const CSS = `
 .sce .sce-status-empty {
   width:100%; max-width:var(--sce-work-w); padding:11px 0; color:var(--sce-muted); font-size:12px; text-align:center; }
 .sce .sce-status-add-item { width:100%; margin-top:4px; }
-.sce .sce-status-tools {
-  width:100%; max-width:var(--sce-work-w); display:flex; align-items:center; gap:7px; flex-wrap:wrap;
-  width:100%; max-width:960px; margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  width:100%; max-width:var(--sce-work-w); margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-template { width:100%; max-width:960px; margin-top:12px; }
 .sce .sce-status-design { width:100%; max-width:960px; margin-top:15px; border-top:1px solid var(--sce-line-strong);
   border-bottom:1px solid var(--sce-line); }

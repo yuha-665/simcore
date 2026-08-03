@@ -6,10 +6,12 @@
 // ai = { generate(prompt), getBotContext() } — 내장 AI 생성(위층)용 호스트 주입. 없으면 복사 옆문만 뜬다.
 
 // 카드 순서를 **끌어서** 바꾸는 길 (v0.66 UI 개조판에서 들어옴).
-// 순서 바꾸기 자체는 grip()의 ▲▼ 버튼이 그대로 맡고 있어서, 이건 덧붙임이다.
-// 포인터 이벤트는 리스/포켓리수·모바일에서 실기 확인 전이라 꺼 둔다 — 확인되면 true로 바꾸면
-// 손잡이(⠿)가 다시 붙는다. 구현(beginVariableDrag/beginStatusDrag)은 그대로 남겨 둔다.
-const CARD_DRAG = false;
+// 순서 바꾸기 자체는 grip()의 ▲▼ 버튼이 그대로 맡고 있어서 이건 덧붙임이고, 꺼도 기능은 안 잃는다.
+// v0.66.0에서 실기 확인 전이라 잠깐 꺼 뒀다가 v0.66.1에서 켰다 (유저 요청).
+// ⚠ 끌 때는 CSS도 같이 봐야 한다 — 손잡이 자리를 고정 폭 격자 열로 잡아 두면 손잡이가 없을 때
+// 그 열로 다른 게 밀려 들어간다 (실측: 상태창 항목 셀렉트가 30px로 찌그러졌다).
+// 지금은 그 자리를 flex로 바꿔 둬서 꺼도 안 무너진다.
+const CARD_DRAG = true;
 
 const { validateSchema } = require('./validate');
 const { referencedVars } = require('./expr');
@@ -371,7 +373,9 @@ const CSS = `
   font-weight:750; overflow-wrap:anywhere; }
 .sce .sce-variable-card-summary { min-width:0; color:var(--sce-muted); font-size:11.5px;
   line-height:1.45; overflow-wrap:anywhere; }
-.sce .sce-variable-card-body { --sce-variable-work-width:680px; margin-top:7px; padding-top:7px;
+/* 카드 안쪽은 카드 폭에 맞춘다. 여기에 따로 숫자(680px)를 박아 두면 한 탭 안에
+   패널폭 → 작업폭(--sce-work-w) → 카드안폭 세 층이 생겨 전부 어긋나 보인다 (실측 제보). */
+.sce .sce-variable-card-body { --sce-variable-work-width:100%; margin-top:7px; padding-top:7px;
   border-top:1px solid var(--sce-line); }
 .sce .sce-variable-grid { display:grid; width:100%; max-width:var(--sce-variable-work-width);
   grid-template-columns:260px minmax(0,1fr); gap:7px; align-items:end; }
@@ -543,8 +547,7 @@ const CSS = `
 .sce .sce-status-section-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
 .sce .sce-status-count { min-width:34px; padding:4px 7px; border:1px solid var(--sce-line-strong);
   border-radius:999px; color:var(--sce-text); font-size:11.5px; font-weight:700; text-align:center; }
-.sce .sce-status-groups {
-  width:100%; max-width:var(--sce-work-w); display:grid; gap:8px; width:100%; max-width:960px; }
+.sce .sce-status-groups { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
 .sce .sce-status-group { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
   border-radius:4px; background:var(--sce-surface); }
 .sce .sce-status-group.is-collapsed { padding:8px 10px; background:transparent; }
@@ -567,7 +570,10 @@ const CSS = `
 .sce .sce-status-item-head { padding:8px 0 5px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
 .sce .sce-status-item { padding:9px 0; border-top:1px solid var(--sce-line); }
 .sce .sce-status-item select, .sce .sce-status-item input { width:100%; min-width:0; max-width:none; }
-.sce .sce-status-value-control { display:grid; grid-template-columns:30px minmax(0,1fr); gap:6px; align-items:center; }
+/* 손잡이가 없을 수도 있다 (CARD_DRAG=false) — 고정 폭 격자 열로 잡으면 그때 셀렉트가
+   손잡이 자리로 밀려 들어가 30px로 찌그러진다. flex는 있으면 붙고 없으면 그냥 사라진다. */
+.sce .sce-status-value-control { display:flex; gap:6px; align-items:center; min-width:0; }
+.sce .sce-status-value-control > select { flex:1; min-width:0; }
 .sce .sce-status-drag-handle { width:30px; min-width:30px; padding:0; color:var(--sce-muted);
   cursor:grab; touch-action:none; letter-spacing:-.08em; }
 .sce .sce-status-drag-handle:active { cursor:grabbing; }
@@ -599,9 +605,8 @@ const CSS = `
 .sce .sce-status-empty {
   width:100%; max-width:var(--sce-work-w); padding:11px 0; color:var(--sce-muted); font-size:12px; text-align:center; }
 .sce .sce-status-add-item { width:100%; margin-top:4px; }
-.sce .sce-status-tools {
-  width:100%; max-width:var(--sce-work-w); display:flex; align-items:center; gap:7px; flex-wrap:wrap;
-  width:100%; max-width:960px; margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  width:100%; max-width:var(--sce-work-w); margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-template { width:100%; max-width:960px; margin-top:12px; }
 .sce .sce-status-design { width:100%; max-width:960px; margin-top:15px; border-top:1px solid var(--sce-line-strong);
   border-bottom:1px solid var(--sce-line); }

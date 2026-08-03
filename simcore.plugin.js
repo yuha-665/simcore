@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.66.3
+//@version 0.66.4
 //@display-name SimCore (시뮬 엔진) v0.66 편집기 UI 재편
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -8,6 +8,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.66.4 ────────────────────────────────────────────────
+// 심층 편집 폭을 채우는 쪽으로 — 실측 제보 "규칙/이벤트부터는 잘 맞췄는데 그전이 안맞네".
+// 기준이 거기 있었다. 개조판이 아직 손 안 댄 탭(규칙·이벤트 뒤쪽 8종)은 폭 제한이 없어
+// 패널을 꽉 채우는데, 재설계된 앞쪽 넷(변수·명령·상태창·에셋)만 좁은 작업 폭을 쓰고 있었다.
+// 그래서 탭을 옮길 때마다 오른쪽 끝이 튀었다 — 한 탭 안의 문제가 아니라 탭 사이의 문제였다.
+// --sce-work-w를 100%로. 이제 11탭 전부 같은 폭이다.
+// 나중에 좁히고 싶으면 이 값 한 곳만 px로 바꾸면 되고, 탭 바까지 같이 좁아진다(v0.66.3).
 //
 // ── v0.66.3 ────────────────────────────────────────────────
 // 폭 상한을 탭 바까지 품은 기둥에 — 실측 제보 "모든탭이 다 안맞게되었는데".
@@ -7259,9 +7267,12 @@ const CSS = `
   --sce-accent-strong:var(--sc-accent-strong, #4f7fe8); --sce-focus:var(--sc-focus, #9ac2ff);
   --sce-success:var(--sc-success, #79d99a); --sce-warning:var(--sc-warning, #f1cb72);
   --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
-  /* 심층 편집 한 탭 안의 모든 작업 상자가 공유하는 폭. 개별 상자에 숫자를 박으면
-     새 상자를 넣을 때마다 하나씩 어긋난다 (실측: 소개 상자만 끝까지 늘어나 있었다). */
-  --sce-work-w:960px;
+  /* 심층 편집 작업 폭 — 탭 바부터 오류줄까지 이 한 값을 쓴다. 개별 상자에 숫자를 박으면
+     새 상자를 넣을 때마다 하나씩 어긋난다 (실측: 소개 상자만 끝까지 늘어나 있었다).
+     100% = 패널을 채운다. 재설계 전 탭(규칙·이벤트 뒤쪽)이 원래 이렇게 도는데, 앞쪽 넷만
+     좁혀 두니 탭을 옮길 때마다 오른쪽 끝이 튀었다 — 좁히려면 여기 한 곳만 px로 바꾸면
+     되고, 그래도 오른쪽 끝은 계속 한 줄로 떨어진다. */
+  --sce-work-w:100%;
   color:var(--sce-text); font-family:var(--sc-font-body, 'Pretendard Variable', Pretendard,
     'SUIT Variable', 'Noto Sans KR', system-ui, sans-serif); font-size:14px; line-height:1.6;
   overflow-wrap:anywhere; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;

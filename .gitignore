@@ -15,3 +15,7 @@ simcore-save-*.json
 *.crdownload
 미확인*
 *.zip
+
+# 외부 기여 원본 번들 — 병합 끝났고 1.2MB짜리 빌드 산출물이라 리포엔 안 넣는다.
+# 출처·검증 기록은 docs/기여-UI개조판-v0.61.md 에 남아 있다.
+개조판_simcore.plugin.js

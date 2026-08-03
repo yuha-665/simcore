@@ -1,13 +1,39 @@
 //@name simcore
 //@api 3.0
-//@version 0.65.1
-//@display-name SimCore (시뮬 엔진) v0.65 보조에게 시계와 원장을
+//@version 0.66.0
+//@display-name SimCore (시뮬 엔진) v0.66 편집기 UI 재편
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.66.0 ────────────────────────────────────────────────
+// 편집기 UI 재편 — 외부 기여분 병합. 한 유저가 v0.61.0을 기준선으로 관리 패널·편집기 UI를
+// 통째로 다시 짜서 인수인계 문서와 함께 보내 줬다 (공개·병합 허락 받음).
+// 기준선 SHA-256이 우리 ef77f56 번들과 정확히 일치했고, 번들을 모듈 16개로 되쪼갠 결과가
+// core/*.js 전부와 바이트 일치해 3-way 병합이 성립했다. 코어 13종은 손 안 댐, engine은
+// ON/OFF 도움말 한 줄(`끄려면 off / 0 / false` → `0 / false` — off는 실제로 안 먹는다),
+// 나머지는 editor.js와 어댑터 CSS다.
+// - 공통 시각 체계: 색 토큰·대비·포커스·비활성 규칙 통일, 좁은 화면 1열 폴백,
+//   둥근 카드 중첩 대신 얇은 선과 간격으로 위계.
+// - 문구 389개가 존댓말(~해요/~어요)로 다시 쓰였다. 처음 쓰는 사람 기준의 안내로 바뀐다.
+// - 심층 편집 변수·명령·상태창 탭 재구성: 카드 접기, 오류만 펼치기, 형식별 필요한 입력만,
+//   참조 중인 ID 변경 경고, 중복 없는 자동 ID. **선택지·목록은 쉼표가 아니라 한 줄에 하나씩**
+//   편집한다 — 쉼표가 들어간 항목이 쪼개지던 것이 보존된다.
+// - 진단 탭: 부분 패치가 앞줄로, 탭 통 교체는 접힌 뒤로. 발견 항목은 중요도별 2열.
+// - ⚠ **폭 통일** (실측 제보: "이렇게 크기 안 맞는 것들"): 작업 목록은 820px인데 각 탭의
+//   소개 상자에만 폭 제한이 빠져 혼자 끝까지 늘어나 있었다. 상자마다 숫자를 박는 방식이라
+//   새 상자를 넣을 때마다 하나씩 어긋난다 → `--sce-work-w` 토큰 하나로 모으고, 빠져 있던
+//   13개 클래스에 같이 걸었다.
+// - ⚠ **끌어서 순서 바꾸기는 꺼 둔 채로 들어온다** (`CARD_DRAG = false`, core/editor.js 머리).
+//   순서 바꾸기 자체는 grip()의 ▲▼가 그대로 맡고 있어 잃는 기능이 없고, 포인터 이벤트는
+//   포켓리수·모바일 실기 확인 전이다. 확인되면 true 한 글자로 손잡이(⠿)가 붙는다.
+// - 테스트 20건이 깨졌는데 **전부 문구 어서션**이었고 기능 손실은 없었다. 문구가 아니라
+//   로직을 보도록 고쳤다 (예: 그룹 합치기는 라벨 대신 concat 식을 본다). test-diag의
+//   CSS 색 오타 검사는 `.sc-prog-fill.indet,` 의 'fill'을 색 속성으로 오인하던 오탐이라
+//   콜론을 필수로 뒀다.
 //
 // ── v0.65.1 ────────────────────────────────────────────────
 // 채팅 명령의 답이 유저에게 닿는다 — 실측: "/날짜 이거 인풋에 치니 바로 채팅 보내지기되는데
@@ -507,7 +533,7 @@
 // - [편집기] 이층 → 삼층: 1층 = ✨ AI에게 맡기기 + 🔬 진단(이사 옴), 2층 = 🧾 JSON 작업대
 //   (통짜·패치·오류 돌려주기·원본 — 실사용 1순위라 독립 층), 3층 = 심층 편집 탭 8개.
 //   진단을 1층에 둔 이유: 굴려서 찾고 → 그 자리에서 바로 고쳐달라고 보내는 루프 완결.
-// - [편집기] 진단 결과에 [✨ 이 결과로 바로 고쳐달라기] — 복사 왕복 없이 내장 생성으로
+// - [편집기] 진단 결과에 [수정안 만들기] — 복사 왕복 없이 내장 생성으로
 //   직결 (buildPatchExportPrompt findings 모드 + 봇 컨텍스트). 계획·충돌 확인은 동일.
 // - [패널] 사이드바 내비 — 넓은 화면(920px+)에서 현황/봇 편집/세이브/도움말이 좌측 세로
 //   내비로, 콘텐츠 폭 760 → 1360. 좁은 화면은 기존 상단 탭 그대로 (모바일에서 변수
@@ -551,7 +577,7 @@
 //   빈 그룹/템플릿 · promptState. 적용은 원자적 (검증 통과 못 하면 거부) + 되돌리기 1슬롯.
 //   ★ 이게 필요한 이유: 참조가 onTurn·promptState·setup에도 있어 **왕복 패치로는 변수 삭제가
 //   원천 불가능**했다 (그 셋은 패치 미지원 영역). 실전에서 잔재 층 제거가 계속 거부당했다.
-// - [진단] "이 결과로 AI에게 수정 요청하기"가 **패치 경로**로 (권장). 항목 100개짜리 봇에서
+// - [진단] "AI로 수정하기"가 **패치 경로**로 (권장). 항목 100개짜리 봇에서
 //   탭 통 교체는 AI가 하나만 빠뜨려도 그게 삭제다. 통 교체 버튼은 "전면 재작성용"으로 강등.
 //   요청문에 "보조 AI를 안 돌린 결과라 AI가 바꾸는 변수는 안 움직임으로 잘못 나온다" 명시.
 //
@@ -2944,6 +2970,18 @@
   let lastOutIndex = -1;
   let panelBuilt = false;
   let panelVisible = false; // 전체화면 패널이 떠 있는 동안은 클릭 히트테스트를 쉰다
+  let lastManualApply = { id: '', at: 0 };
+  const FIRST_INSTALL_GUIDE_KEY = 'sim:ui:first-install-guide-dismissed';
+
+  async function getFirstInstallGuideDismissed() {
+    try { return (await Risuai.pluginStorage.getItem(FIRST_INSTALL_GUIDE_KEY)) === '1'; }
+    catch { return false; }
+  }
+
+  async function setFirstInstallGuideDismissed(value) {
+    try { await Risuai.pluginStorage.setItem(FIRST_INSTALL_GUIDE_KEY, value ? '1' : '0'); }
+    catch {}
+  }
 
   function buildPanelSkeleton() {
     if (panelBuilt) return;
@@ -3045,6 +3083,403 @@
       #sc-root .sc-spin { display:inline-block; width:11px; height:11px; border:2px solid #3d5384;
         border-top-color:#6b93f2; border-radius:50%; animation:sc-rot .7s linear infinite; }
       @keyframes sc-rot { to { transform:rotate(360deg); } }
+
+      /* v0.61 UI 재병합: 관리 패널의 기능·DOM은 그대로 두고 공통 시각 규칙만 덮어쓴다. */
+      #sc-root {
+        --sc-bg:#171a1f; --sc-surface:#1d2127; --sc-surface-soft:#242a31; --sc-field:#12161b;
+        --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
+        --sc-muted:#b6bec8; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8; --sc-focus:#9ac2ff;
+        --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292; --sc-danger-bg:#3a2225;
+        --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable','Noto Sans KR',system-ui,sans-serif;
+        --sc-font-mono:'D2Coding','Cascadia Mono',ui-monospace,monospace;
+        background:var(--sc-bg) !important; color:var(--sc-text) !important;
+        font-family:var(--sc-font-body) !important; text-rendering:optimizeLegibility;
+        -webkit-font-smoothing:antialiased;
+      }
+      #sc-root .wrap { max-width:1360px; }
+      #sc-root h1 { color:var(--sc-text-strong); }
+      #sc-root h2 { color:var(--sc-text-strong); border-left-color:var(--sc-accent); }
+      #sc-root button { min-height:38px; border-radius:5px !important; background:var(--sc-surface-soft) !important;
+        border-color:var(--sc-line-strong) !important; color:var(--sc-text-strong) !important; }
+      #sc-root button.primary { background:var(--sc-accent-strong) !important; border-color:var(--sc-accent) !important; }
+      #sc-root button.danger { background:var(--sc-danger-bg) !important; border-color:#8f3a4c !important;
+        color:#ffc1c1 !important; }
+      #sc-root input, #sc-root textarea, #sc-root select { min-height:38px; border-radius:5px !important;
+        background:var(--sc-field) !important; border-color:var(--sc-line-strong) !important;
+        color:var(--sc-text-strong) !important; font-family:var(--sc-font-body) !important; }
+      #sc-root input[type="checkbox"] { width:auto !important; min-height:auto; padding:0 !important;
+        accent-color:var(--sc-accent-strong); }
+      #sc-root .muted { color:var(--sc-muted); }
+      #sc-root .report { font-family:var(--sc-font-mono); }
+      #sc-root .sc-maintabs { margin-top:16px; margin-bottom:14px; }
+      #sc-root .sc-maintab { border-radius:0 !important; }
+      #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:transparent !important;
+        border-color:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); }
+      #sc-root .sce .sce-tab { border-radius:0 !important; }
+      #sc-root .sce .sce-tab.on { color:var(--sc-text-strong) !important; background:transparent !important;
+        border-color:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); }
+      #sc-root button:focus-visible, #sc-root input:focus-visible, #sc-root textarea:focus-visible,
+      #sc-root select:focus-visible, #sc-root summary:focus-visible, #sc-root a:focus-visible {
+        outline:2px solid var(--sc-focus) !important; outline-offset:2px; border-color:var(--sc-accent) !important;
+      }
+      @media (hover:hover) and (pointer:fine) {
+        #sc-root button:hover:not(:disabled) { background:#2c343d !important; border-color:var(--sc-accent) !important; }
+      }
+      @media (max-width:600px) {
+        #sc-root button, #sc-root input, #sc-root select, #sc-root textarea { min-height:44px; }
+      }
+      @media (prefers-reduced-motion:reduce) {
+        #sc-root *, #sc-root *::before, #sc-root *::after { transition:none !important; animation:none !important; }
+      }
+
+      #sc-root { position:fixed !important; inset:0 !important; overflow:auto !important;
+        --sc-bg:#171a1f; --sc-surface:#1d2127; --sc-surface-soft:#242a31; --sc-field:#12161b;
+        --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
+        --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
+        --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
+        --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
+          'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
+        --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
+        background:var(--sc-bg) !important; color:var(--sc-text) !important; color-scheme:dark;
+        z-index:2147483000 !important; font-family:var(--sc-font-body) !important; font-size:15px !important;
+        font-weight:450; line-height:1.65 !important; text-align:left !important; overflow-wrap:anywhere;
+        text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
+      #sc-root { scrollbar-gutter:stable both-edges; }
+      #sc-root * { box-sizing:border-box; }
+      #sc-root [hidden] { display:none !important; }
+      #sc-root .wrap { max-width:760px; margin:0 auto; padding:16px 16px 80px; }
+      #sc-root .sc-brand { display:grid; gap:3px; min-width:0; }
+      #sc-root .sc-brand-sub { color:var(--sc-muted); font-family:var(--sc-font-mono); font-size:11.5px;
+        line-height:1.4; letter-spacing:.035em; }
+      #sc-root .sc-header-actions { display:flex; gap:7px; flex-wrap:wrap; }
+      #sc-root .sc-header-actions button { flex:1 1 auto; }
+      #sc-root h1 { font-size:20px; line-height:1.2; color:var(--sc-text-strong); display:flex;
+        justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px;
+        letter-spacing:-.025em; }
+      #sc-root h2 { font-size:14px; color:var(--sc-text-strong); margin:23px 0 10px; padding-left:9px;
+        border-left:3px solid var(--sc-accent); letter-spacing:.01em; }
+      #sc-root button { min-height:38px; background:var(--sc-surface-soft) !important;
+        color:var(--sc-text-strong) !important; border:1px solid var(--sc-line-strong) !important;
+        border-radius:5px !important; padding:7px 12px !important; cursor:pointer !important;
+        font-family:var(--sc-font-body) !important; font-size:13.5px !important; font-weight:600;
+        line-height:1.25 !important; white-space:nowrap; word-break:keep-all; }
+      #sc-root button.primary { background:var(--sc-accent-strong) !important; border-color:var(--sc-accent) !important;
+        color:#ffffff !important; font-weight:700; }
+      #sc-root button.danger { background:var(--sc-danger-bg) !important; border-color:#b85d65 !important;
+        color:#ffb4b4 !important; }
+      #sc-root button:active:not(:disabled) { transform:translateY(1px); }
+      #sc-root button:disabled { opacity:.5 !important; cursor:not-allowed !important; }
+      #sc-root button[aria-busy="true"] { cursor:progress !important; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; }
+      #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:2px 4px 2px 8px;
+        border:1px solid var(--sc-line-strong); border-radius:999px; background:var(--sc-surface-soft);
+        font-size:12.5px; white-space:nowrap; }
+      #sc-root .chip .num { color:var(--sc-success); font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { color:var(--sc-muted-soft); font-size:11.5px; }
+      #sc-root .chip button { min-height:28px; padding:0 6px !important; font-size:12px !important;
+        line-height:1.4 !important; border:none !important; background:transparent !important;
+        color:var(--sc-muted) !important; border-radius:999px !important; }
+      #sc-root .chip-sum { color:var(--sc-text); font-size:12.5px; margin-left:2px; }
+      #sc-root button.armed { border-color:var(--sc-accent) !important;
+        background:var(--sc-accent-strong) !important; color:#ffffff !important; }
+      #sc-root .sce .sce-tab { background:transparent !important; border:0 !important;
+        border-radius:0 !important; color:var(--sc-muted) !important; }
+      #sc-root .sce .sce-tab.on { color:var(--sc-text-strong) !important;
+        background:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); font-weight:650; }
+      #sc-root .sce .sce-btn.sce-add { border-style:dashed !important; color:var(--sc-accent) !important; }
+      #sc-root .sce .sce-btn.sce-danger { color:var(--sc-danger) !important; }
+      #sc-root .sc-maintabs { display:flex; gap:4px; overflow-x:auto; scrollbar-width:thin;
+        border-bottom:1px solid var(--sc-line); margin-top:16px; margin-bottom:14px; }
+      #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
+        border-radius:6px 6px 0 0 !important; background:transparent !important; color:var(--sc-muted) !important;
+        flex:0 0 auto; }
+      #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:var(--sc-surface-soft) !important;
+        border-color:var(--sc-line-strong) !important; font-weight:650; }
+      #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
+      @media (min-width:920px) {
+        #sc-root .wrap { max-width:1440px; display:grid; grid-template-columns:210px minmax(0,1fr);
+          gap:4px 28px; align-items:start; }
+        #sc-root .sc-side { position:sticky; top:16px; }
+        #sc-root .sc-header-actions { display:grid; grid-template-columns:1fr; margin-top:12px; }
+        #sc-root .sc-maintabs { flex-direction:column; gap:6px; border-bottom:none;
+          padding-right:8px; margin-bottom:0; }
+        #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:5px !important;
+          text-align:left !important; padding:9px 12px !important; }
+        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; }
+      }
+      #sc-root .status-ok { color:var(--sc-success); font-weight:650; }
+      #sc-root .status-bad { color:var(--sc-danger); font-weight:650; }
+      #sc-root .status-warn { color:var(--sc-warning); }
+      #sc-root table { width:100%; border-collapse:collapse; font-size:14px; }
+      #sc-root th { color:var(--sc-text-strong); font-weight:650; }
+      #sc-root td, #sc-root th { padding:7px 8px; border-bottom:1px solid var(--sc-line); text-align:left; }
+      #sc-root input, #sc-root textarea, #sc-root select { min-height:38px; background:var(--sc-field) !important;
+        color:var(--sc-text-strong) !important; border:1px solid var(--sc-line-strong) !important;
+        border-radius:5px !important; padding:6px 9px !important; font-family:var(--sc-font-body) !important;
+        font-size:13.5px !important; }
+      #sc-root input::placeholder, #sc-root textarea::placeholder { color:#929ca7; opacity:1; }
+      #sc-root input[type="checkbox"] { width:auto !important; min-height:auto; padding:0 !important;
+        accent-color:var(--sc-accent-strong); }
+      #sc-root input { width:130px; }
+      #sc-root textarea { line-height:1.55; }
+      #sc-root button:focus-visible, #sc-root input:focus-visible, #sc-root textarea:focus-visible,
+      #sc-root select:focus-visible, #sc-root summary:focus-visible, #sc-root a:focus-visible {
+        outline:2px solid var(--sc-focus) !important; outline-offset:2px; border-color:var(--sc-accent) !important;
+      }
+      #sc-root .report { font-family:var(--sc-font-mono); font-size:12.5px; white-space:pre-wrap; margin-top:7px; }
+      #sc-root .muted { color:var(--sc-muted); font-size:13px; }
+      #sc-root .row { display:flex; gap:7px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+      #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
+      /* Hallmark-inspired editorial rhythm: restrained hierarchy, existing tokens, no interaction. */
+      #sc-root .sc-help { width:100%; max-width:1000px; line-height:1.75; color:var(--sc-text);
+        counter-reset:sc-help-section; }
+      #sc-root .sc-help h3 { display:grid; grid-template-columns:32px minmax(0,1fr); gap:10px;
+        align-items:baseline; margin:31px 0 13px; padding:0 0 10px;
+        border-bottom:1px solid var(--sc-line); color:var(--sc-text-strong); font-size:16px; }
+      #sc-root .sc-help h3::before { counter-increment:sc-help-section;
+        content:counter(sc-help-section, decimal-leading-zero); color:var(--sc-accent);
+        font-family:var(--sc-font-mono); font-size:11px; font-weight:700; letter-spacing:.06em; }
+      #sc-root .sc-help h3:first-of-type { margin-top:0; }
+      #sc-root .sc-help p { margin:9px 0 9px 42px; font-size:14px; }
+      #sc-root .sc-help ul { margin:10px 0 10px 42px; padding-left:20px; }
+      #sc-root .sc-help li { margin:7px 0; padding-left:2px; font-size:14px; }
+      #sc-root .sc-help b { color:var(--sc-text-strong); }
+      #sc-root .sc-help-steps { display:grid; grid-template-columns:repeat(4, minmax(0,1fr));
+        gap:8px; margin:11px 0 11px 42px; }
+      #sc-root .sc-help-step { min-width:0; padding:11px 12px; border:1px solid var(--sc-line);
+        border-top:2px solid var(--sc-accent); border-radius:5px; background:var(--sc-field); }
+      #sc-root .sc-help-step-num { display:block; margin-bottom:6px; color:var(--sc-accent);
+        font-family:var(--sc-font-mono); font-size:10.5px; letter-spacing:.06em; }
+      #sc-root .sc-help-step-title { display:block; margin-bottom:5px; color:var(--sc-text-strong);
+        font-size:13.5px; font-weight:700; }
+      #sc-root .sc-help-step-desc { display:block; color:var(--sc-muted); font-size:12.5px;
+        line-height:1.55; overflow-wrap:anywhere; }
+      #sc-root .sc-help-steps-two { grid-template-columns:repeat(2, minmax(0,1fr)); max-width:720px; }
+      #sc-root .sc-help-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+        gap:8px; margin:11px 0 11px 42px; padding:0; list-style:none; }
+      #sc-root .sc-help-grid li { min-width:0; margin:0; padding:11px 12px;
+        border:1px solid var(--sc-line); border-radius:5px; background:var(--sc-field); }
+      #sc-root .sc-help-grid li b { display:block; margin-bottom:4px; }
+      #sc-root .sc-help-var-grid { gap:12px; font-family:var(--sc-font-body); }
+      #sc-root .sc-help-var-card { position:relative; padding:17px 18px 16px 20px !important; overflow:hidden; }
+      #sc-root .sc-help-var-card::before { content:""; position:absolute; inset:0 auto 0 0; width:3px;
+        background:var(--sc-accent); }
+      #sc-root .sc-help-var-card[data-kind="float"]::before { background:#79b9d1; }
+      #sc-root .sc-help-var-card[data-kind="text"]::before { background:var(--sc-success); }
+      #sc-root .sc-help-var-card[data-kind="bool"]::before { background:#72c6b6; }
+      #sc-root .sc-help-var-card[data-kind="enum"]::before { background:var(--sc-warning); }
+      #sc-root .sc-help-var-card[data-kind="list"]::before { background:#ef9f76; }
+      #sc-root .sc-help-var-kicker { display:flex; gap:6px; align-items:center; color:var(--sc-muted);
+        font-size:12.5px; font-weight:650; line-height:1.45; }
+      #sc-root .sc-help-var-code { color:#d7e5ff; font-family:var(--sc-font-mono); font-size:12px; font-weight:600; }
+      #sc-root .sc-help-var-title { display:block; margin:6px 0 5px !important; color:var(--sc-text-strong);
+        font-size:17px; font-weight:750; line-height:1.4; }
+      #sc-root .sc-help-var-desc { display:block; color:var(--sc-text); font-size:14.5px; line-height:1.7; }
+      #sc-root .sc-help-var-fields { margin:12px 0 0; padding:2px 0 0; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-help-var-fields > div { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px;
+        padding-top:8px; color:var(--sc-text); font-size:13.5px; line-height:1.6; }
+      #sc-root .sc-help-var-fields dt { color:var(--sc-text-strong); font-weight:700; }
+      #sc-root .sc-help-var-fields dd { min-width:0; margin:0; }
+      #sc-root .sc-help-var-example { color:#d7e5ff; font-family:var(--sc-font-body); font-size:13px;
+        font-variant-numeric:tabular-nums; }
+      #sc-root .sc-example-label { display:block; margin:11px 0 5px 42px; color:var(--sc-muted);
+        font-family:var(--sc-font-mono); font-size:11px; letter-spacing:.04em; }
+      #sc-root .sc-flow, #sc-root .sc-code { background:var(--sc-field); border:1px solid var(--sc-line);
+        border-left:2px solid var(--sc-line-strong); border-radius:4px; padding:12px 14px;
+        margin:10px 0 10px 42px;
+        font-family:var(--sc-font-mono); font-size:13px; line-height:1.7; white-space:pre-wrap;
+        overflow-x:auto; color:#d7e5ff; }
+      #sc-root .sc-code-i { font-family:var(--sc-font-mono); font-size:12px; background:var(--sc-field);
+        border:1px solid var(--sc-line); border-radius:4px; padding:1px 5px; color:#d7e5ff; }
+      #sc-root .sc-note { background:#202a38; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-accent); border-radius:5px; padding:11px 13px;
+        margin:10px 0 10px 42px; color:var(--sc-text); font-size:14px; }
+      #sc-root .sc-help table { width:calc(100% - 42px); margin:10px 0 10px 42px;
+        background:var(--sc-field); }
+      #sc-root .sc-help th { color:var(--sc-text-strong); background:var(--sc-surface-soft); }
+      #sc-root .sc-help th, #sc-root .sc-help td { padding:10px 11px; vertical-align:top; }
+      #sc-root .sc-weight-table { max-width:720px; table-layout:fixed; }
+      #sc-root .sc-weight-table th:nth-child(1) { width:46%; }
+      #sc-root .sc-weight-table th:nth-child(2) { width:18%; }
+      #sc-root .sc-weight-table td:nth-child(2), #sc-root .sc-weight-table td:nth-child(3) {
+        font-family:var(--sc-font-mono); font-variant-numeric:tabular-nums; }
+      #sc-root .sc-weight-table tfoot td { color:var(--sc-muted); background:var(--sc-surface); font-size:12.5px; }
+      #sc-root .sc-help-facts { display:grid; max-width:720px; margin:10px 0 10px 42px;
+        border-top:1px solid var(--sc-line); border-bottom:1px solid var(--sc-line); }
+      #sc-root .sc-help-facts > div { display:grid; grid-template-columns:108px minmax(0,1fr); gap:12px;
+        padding:9px 0; }
+      #sc-root .sc-help-facts > div + div { border-top:1px solid var(--sc-line); }
+      #sc-root .sc-help-facts dt { color:var(--sc-text-strong); font-weight:700; }
+      #sc-root .sc-help-facts dd { min-width:0; margin:0; color:var(--sc-text); }
+      #sc-root .sc-check { display:inline-flex; align-items:center; gap:7px; font-size:13.5px; cursor:pointer; }
+      #sc-root .sc-check input { width:auto !important; cursor:pointer; }
+      #sc-root .sc-prog { margin-top:8px; }
+      #sc-root .sc-prog-label { font-size:12.5px; color:var(--sc-text); margin-bottom:4px;
+        display:flex; gap:8px; align-items:center; }
+      #sc-root .sc-prog-bar { height:8px; background:var(--sc-field); border:1px solid var(--sc-line-strong);
+        border-radius:99px; overflow:hidden; }
+      #sc-root .sc-prog-fill { height:100%; background:var(--sc-accent-strong); width:0%;
+        transition:width .12s linear; }
+      #sc-root .sc-prog-fill.indet { width:35% !important; animation:sc-slide 1s ease-in-out infinite alternate; }
+      @keyframes sc-slide { from { margin-left:0%; } to { margin-left:65%; } }
+      #sc-root .sc-spin { display:inline-block; width:12px; height:12px; border:2px solid var(--sc-line-strong);
+        border-top-color:var(--sc-accent); border-radius:50%; animation:sc-rot .7s linear infinite; }
+      @keyframes sc-rot { to { transform:rotate(360deg); } }
+      #sc-root #sc-status:not(:empty) { position:relative; width:100%; margin-bottom:14px; padding:10px 12px 10px 31px;
+        border:1px solid var(--sc-line); border-radius:6px; background:var(--sc-surface); }
+      #sc-root #sc-status:not(:empty)::before { content:""; position:absolute; left:12px; top:16px; width:7px; height:7px;
+        border-radius:50%; background:var(--sc-muted); }
+      #sc-root #sc-status.sc-panel-status-ok { display:inline-flex; width:auto; max-width:100%; padding-top:7px;
+        padding-bottom:7px; }
+      #sc-root #sc-status.sc-panel-status-ok::before { top:13px; background:var(--sc-success); }
+      #sc-root #sc-status.sc-panel-status-warn::before { background:var(--sc-warning); }
+      #sc-root #sc-status.sc-panel-status-bad::before { background:var(--sc-danger); }
+      #sc-root .sc-page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+        margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--sc-line); }
+      #sc-root .sc-page-head h2 { margin:0 0 4px; padding:0; border:0; font-size:18px; letter-spacing:-.02em; }
+      #sc-root .sc-page-head p { margin:0; color:var(--sc-muted); font-size:13.5px; }
+      #sc-root .sc-card { min-width:0; padding:14px; border:1px solid var(--sc-line); border-radius:4px;
+        background:var(--sc-surface); }
+      #sc-root .sc-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+        margin-bottom:11px; }
+      #sc-root .sc-card-title { margin:0; color:var(--sc-text-strong); font-size:15px; font-weight:700;
+        line-height:1.35; letter-spacing:-.015em; }
+      #sc-root .sc-card-desc { margin:4px 0 0; color:var(--sc-muted); font-size:13px; line-height:1.55; }
+      #sc-root .sc-card-body { min-width:0; }
+      #sc-root .sc-card-actions { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin-top:11px; }
+      #sc-root .sc-card-badge { display:inline-flex; width:fit-content; padding:2px 7px;
+        border:1px solid var(--sc-line-strong); border-radius:2px; color:var(--sc-muted);
+        background:transparent; font-family:var(--sc-font-mono); font-size:10.5px;
+        font-weight:650; letter-spacing:.03em; white-space:nowrap; }
+      #sc-root .sc-card-badge.ok { color:var(--sc-success); border-color:var(--sc-success); }
+      #sc-root .sc-card-badge.warn { color:var(--sc-warning); border-color:var(--sc-warning); }
+      #sc-root .sc-divider { height:1px; background:var(--sc-line); margin:12px 0; }
+      #sc-root .sc-editor-diff { margin:12px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-warning); border-radius:6px; background:var(--sc-surface); }
+      #sc-root .sc-editor-diff-title { color:var(--sc-text-strong); font-size:13.5px; font-weight:700; }
+      #sc-root .sc-editor-diff-copy { margin-top:3px; color:var(--sc-muted); font-size:12.5px; line-height:1.55; }
+      #sc-root .sc-editor-diff-meta { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:9px;
+        padding-top:9px; border-top:1px solid var(--sc-line); color:var(--sc-text); font-size:12px; }
+      #sc-root .sc-editor-diff-meta span { min-width:0; }
+      #sc-root .sc-schema-validation { margin:10px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-danger); border-radius:6px; background:var(--sc-surface); }
+      #sc-root .sc-schema-validation.is-start { border-left-color:var(--sc-accent); }
+      #sc-root .sc-schema-validation-title { color:var(--sc-text-strong); font-size:13.5px; font-weight:700; }
+      #sc-root .sc-schema-validation-copy { margin-top:3px; color:var(--sc-muted); font-size:12.5px; line-height:1.55; }
+      #sc-root .sc-schema-validation details { margin-top:9px; padding-top:8px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-schema-validation summary { color:var(--sc-muted); font-size:12px; cursor:pointer; }
+      #sc-root .sc-schema-validation-item { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr);
+        gap:8px; margin-top:7px; font-size:12px; }
+      #sc-root .sc-schema-validation-path { color:var(--sc-muted); font-family:var(--sc-font-mono); }
+      #sc-root .sc-schema-validation-message { color:var(--sc-text); }
+      #sc-root .sc-play-grid, #sc-root .sc-connect-grid { display:grid;
+        grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; align-items:stretch; }
+      #sc-root .sc-play-grid > .sc-card, #sc-root .sc-connect-grid > .sc-card { height:100%; }
+      #sc-root .sc-connect-grid { margin-top:10px; align-items:start; }
+      #sc-root .sc-connect-grid > .sc-card { border-top-color:var(--sc-line-strong); }
+      #sc-root .sc-table-wrap { width:100%; min-width:0; overflow-x:auto; }
+      #sc-root #sc-vars table { width:100%; min-width:0; table-layout:fixed; }
+      #sc-root #sc-vars th, #sc-root #sc-vars td { padding-left:6px; padding-right:6px; }
+      #sc-root #sc-vars th:first-child, #sc-root #sc-vars td:first-child { width:36%; }
+      #sc-root #sc-vars th:nth-child(2), #sc-root #sc-vars td:nth-child(2) { width:18%; }
+      #sc-root #sc-vars th:nth-child(3), #sc-root #sc-vars td:nth-child(3) {
+        width:auto; padding-right:3px;
+      }
+      #sc-root #sc-vars th:nth-child(4), #sc-root #sc-vars td:nth-child(4) {
+        width:58px; padding-left:3px; white-space:nowrap;
+      }
+      #sc-root #sc-vars input, #sc-root #sc-vars select { width:100%; min-width:0; }
+      #sc-root #sc-vars td:nth-child(2) { font-variant-numeric:tabular-nums; }
+      #sc-root #sc-vars td:nth-child(4) button { width:100%; min-width:48px; padding-left:7px !important;
+        padding-right:7px !important; }
+      #sc-root #sc-actions { display:flex; gap:9px; flex-wrap:wrap; align-items:flex-start; }
+      #sc-root #sc-actions button { margin-right:0 !important; }
+      #sc-root .sc-action-item { display:grid; gap:4px; min-width:0; }
+      #sc-root .sc-action-reason { max-width:240px; color:var(--sc-warning); font-size:11.5px;
+        line-height:1.4; overflow-wrap:anywhere; }
+      #sc-root .sc-summary { display:grid; gap:8px; min-height:1.5em; color:var(--sc-text);
+        font-family:var(--sc-font-body); font-size:13px; white-space:pre-wrap; }
+      #sc-root .sc-metric-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0;
+        border:1px solid var(--sc-line); }
+      #sc-root .sc-metric { min-width:0; padding:9px 10px; border:0; border-right:1px solid var(--sc-line);
+        border-bottom:1px solid var(--sc-line); border-radius:0; background:transparent; }
+      #sc-root .sc-metric:nth-child(3n) { border-right:0; }
+      #sc-root .sc-metric:nth-last-child(-n+3) { border-bottom:0; }
+      #sc-root .sc-metric-label { display:block; color:var(--sc-muted); font-family:var(--sc-font-mono);
+        font-size:11px; line-height:1.4; letter-spacing:.03em; }
+      #sc-root .sc-metric-value { display:block; margin-top:4px; color:var(--sc-text-strong);
+        font-family:var(--sc-font-mono); font-size:14px; font-weight:650; line-height:1.35;
+        font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+      #sc-root .sc-connection-state { margin-top:9px; padding-top:9px; border-top:1px solid var(--sc-line);
+        color:var(--sc-muted); font-size:12.5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+      #sc-root .sc-connection-details { margin-top:10px; padding-top:8px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-connection-details summary { width:fit-content; color:var(--sc-muted); font-size:12px; cursor:pointer; }
+      #sc-root .sc-install-layout { display:grid; gap:12px; margin-bottom:16px; }
+      #sc-root .sc-install-actions { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+      #sc-root .sc-danger-zone { display:flex; justify-content:space-between; align-items:center; gap:12px;
+        margin-top:12px; padding-top:12px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-danger-zone .muted { max-width:720px; }
+      #sc-root .sc-install-secondary { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+      #sc-root .sc-template-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; align-items:center; }
+      #sc-root .sc-template-row select { width:100%; min-width:0; }
+      #sc-root .sc-editor-shell { min-width:0; border-top:1px solid var(--sc-line); padding-top:15px; }
+      #sc-root .sc-result-stack { display:grid; gap:8px; }
+      #sc-root .sc-save-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+      #sc-root .sc-save-action { display:flex; flex-direction:column; min-width:0; height:100%; }
+      #sc-root .sc-save-action .sc-card-body { display:flex; flex:1; flex-direction:column; }
+      #sc-root .sc-save-action .sc-card-desc { flex:1; }
+      #sc-root .sc-save-action button { width:100%; margin-top:12px; }
+      #sc-root .sc-option-card { margin-top:12px; }
+      @media (hover:hover) and (pointer:fine) {
+        #sc-root button:hover:not(:disabled) { background:#2c343d !important; border-color:var(--sc-accent) !important; }
+        #sc-root button.primary:hover:not(:disabled) { background:#5b8cf0 !important; }
+        #sc-root button.danger:hover:not(:disabled), #sc-root .chip button:hover:not(:disabled),
+        #sc-root .sce .sce-btn.sce-danger:hover:not(:disabled) {
+          background:var(--sc-danger-bg) !important; border-color:var(--sc-danger) !important; color:#ffc1c1 !important;
+        }
+      }
+      @media (max-width:600px) {
+        #sc-root { font-size:14.5px !important; }
+        #sc-root button, #sc-root input, #sc-root textarea, #sc-root select { min-height:44px; }
+        #sc-root .chip { min-height:44px; }
+        #sc-root .chip button { min-width:40px; min-height:40px; }
+        #sc-root .sc-header-actions { width:100%; }
+        #sc-root .sc-header-actions button { flex:1 1 0; }
+        #sc-root .sc-page-head { flex-direction:column; }
+        #sc-root .sc-template-row { grid-template-columns:1fr; }
+        #sc-root .sc-template-row button { width:100%; }
+        #sc-root .sc-save-grid { grid-template-columns:1fr; }
+        #sc-root #sc-vars { overflow:visible; }
+        #sc-root .sc-metric-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
+        #sc-root .sc-metric { border-right:1px solid var(--sc-line); border-bottom:1px solid var(--sc-line); }
+        #sc-root .sc-metric:nth-child(2n) { border-right:0; }
+        #sc-root .sc-metric:nth-last-child(-n+2) { border-bottom:0; }
+        #sc-root .sc-help h3 { grid-template-columns:26px minmax(0,1fr); gap:7px; }
+        #sc-root .sc-help p, #sc-root .sc-help ul, #sc-root .sc-flow, #sc-root .sc-code,
+        #sc-root .sc-note, #sc-root .sc-help-steps, #sc-root .sc-help-grid,
+        #sc-root .sc-example-label { margin-left:0; }
+        #sc-root .sc-help-steps, #sc-root .sc-help-grid { grid-template-columns:1fr; }
+        #sc-root .sc-help-facts { margin-left:0; }
+        #sc-root .sc-help-facts > div { grid-template-columns:1fr; gap:3px; }
+        #sc-root .sc-help table { width:100%; margin-left:0; }
+      }
+      @media (max-width:840px) {
+        #sc-root .sc-play-grid, #sc-root .sc-connect-grid, #sc-root .sc-install-secondary {
+          grid-template-columns:1fr;
+        }
+      }
+      @media (max-width:420px) {
+        #sc-root .sc-metric-grid { grid-template-columns:1fr; }
+        #sc-root .sc-metric, #sc-root .sc-metric:nth-child(2n) { border-right:0; border-bottom:1px solid var(--sc-line); }
+        #sc-root .sc-metric:last-child { border-bottom:0; }
+      }
+      @media (prefers-reduced-motion:reduce) {
+        #sc-root *, #sc-root *::before, #sc-root *::after {
+          scroll-behavior:auto !important; transition:none !important;
+        }
+        #sc-root button:active:not(:disabled) { transform:none; }
+        #sc-root .sc-prog-fill.indet, #sc-root .sc-spin { animation:none !important; }
+      }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -3075,162 +3510,388 @@
         <div id="sc-status"></div>
 
         <div class="sc-page on" id="sc-page-play">
-          <h2>새 시작</h2>
-          <div class="muted">프리셋은 새 채팅 시작 전에 고르는 걸 권장. AI 최초설정이 켜진 스키마는 첫 턴 대화로 시작 상황을 정한다.</div>
-          <div id="sc-presets" class="row">-</div>
-          <div class="row"><button id="sc-resetall" class="danger">상태 완전 초기화 (스냅샷 삭제)</button></div>
-          <h2>상태 변수 (수동 보정)</h2>
-          <div id="sc-vars" class="muted">스키마 로드 후 표시</div>
-          <h2>액션 무장</h2>
-          <div id="sc-actions" class="muted">-</div>
-          <h2>엔진 정보</h2>
-          <div class="row">
-            <button id="sc-auxtest">보조 모델 연결 테스트</button>
-            <span class="muted">버튼 클릭 시점에 직접 호출해 차단 여부를 확정 진단</span>
+          <header class="sc-page-head">
+            <div>
+              <h2>현황</h2>
+              <p>현재 채팅의 시작 설정, 변수와 엔진 상태를 확인하고 필요한 항목만 조정해요.</p>
+            </div>
+          </header>
+          <div class="sc-play-grid">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">새 시작</h3>
+                  <p class="sc-card-desc">새 채팅을 시작하기 전에 프리셋을 고를 수 있어요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.</p>
+                </div>
+                <span class="sc-card-badge">시작 설정</span>
+              </div>
+              <div id="sc-presets" class="sc-card-body row">-</div>
+              <div class="sc-divider"></div>
+              <div class="sc-card-actions">
+                <span class="muted">현재 채팅의 상태와 SimCore 스냅샷을 삭제해요.</span>
+                <button id="sc-resetall" class="danger">상태 완전 초기화</button>
+              </div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">다음 행동(액션 무장)</h3>
+                  <p class="sc-card-desc">선택한 행동은 다음 메시지를 보낼 때 적용돼요.<br>사용할 수 없는 행동에는 잠긴 이유가 표시돼요.</p>
+                </div>
+                <span id="sc-actions-count" class="sc-card-badge">0개 선택</span>
+              </div>
+              <div id="sc-actions" class="sc-card-body muted">-</div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">상태 변수</h3>
+                  <p class="sc-card-desc">엔진이 저장한 현재 값을 확인하고 필요한 경우에만 수동으로 보정해요.</p>
+                </div>
+                <span class="sc-card-badge">수동 보정</span>
+              </div>
+              <div id="sc-vars" class="sc-card-body sc-table-wrap muted">스키마 로드 후 표시</div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">엔진 요약</h3>
+                  <p class="sc-card-desc">현재 채팅에서 실제로 사용 중인 핵심 상태예요.</p>
+                </div>
+                <span id="sc-engine-badge" class="sc-card-badge">확인 중</span>
+              </div>
+              <div id="sc-info" class="sc-card-body sc-summary muted"></div>
+            </section>
           </div>
-          <div class="row">
-            <button id="sc-hitretry">클릭 조작 다시 연결</button>
-            <span id="sc-hitstate" class="muted">-</span>
+          <div class="sc-connect-grid">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">클릭 조작</h3>
+                  <p class="sc-card-desc">상태창의 행동과 선택지를 직접 누를 수 있는지 확인해요.</p>
+                </div>
+                <span id="sc-hit-badge" class="sc-card-badge">확인 전</span>
+              </div>
+              <button id="sc-hitretry">클릭 조작 다시 연결</button>
+              <details class="sc-connection-details">
+                <summary>상세 진단</summary>
+                <div id="sc-hitstate" class="sc-connection-state">-</div>
+              </details>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">보조 모델 연결 테스트</h3>
+                  <p class="sc-card-desc">실제 검증 응답을 받아 연결 여부를 확인하고, 사용된 모델과 호출 경로를 표시해요.</p>
+                </div>
+                <span id="sc-aux-badge" class="sc-card-badge">확인 전</span>
+              </div>
+              <button id="sc-auxtest">연결 테스트 실행</button>
+              <details class="sc-connection-details">
+                <summary>연결 상세</summary>
+                <div id="sc-aux-info" class="sc-connection-state">아직 확인하지 않았어요.</div>
+              </details>
+            </section>
           </div>
-          <div id="sc-info" class="report muted"></div>
         </div>
 
         <div class="sc-page" id="sc-page-edit">
-          <div class="muted">블록 편집기로 봇의 시뮬 규칙을 만들고, 아래 버튼으로 현재 캐릭터에 설치. 카드를 내보내면 스키마도 같이 나간다.</div>
-          <div class="row">
-            <button id="sc-install" class="primary">현재 캐릭터에 설치/업데이트</button>
-            <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
-            <button id="sc-copy">현재 캐릭터 스키마 불러오기</button>
-            <button id="sc-schema-restore">백업 복원</button>
-            <select id="sc-template"></select>
-            <button id="sc-new">템플릿에서 새로 만들기</button>
+          <header class="sc-page-head">
+            <div>
+              <h2>편집 작업공간</h2>
+              <p>어느 편집 화면에서 수정해도 같은 작업본에 저장돼요. 캐릭터에 반영하려면 [캐릭터에 적용]을 눌러 주세요.</p>
+            </div>
+          </header>
+          <div class="sc-install-layout">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">캐릭터 설치 관리</h3>
+                  <p class="sc-card-desc">편집기의 작업본을 캐릭터에 적용하거나 기존 설치본을 불러와요.</p>
+                </div>
+              </div>
+              <div class="sc-install-actions">
+                <button id="sc-install" class="primary">캐릭터에 적용</button>
+                <button id="sc-copy">설치본 불러오기</button>
+                <button id="sc-schema-restore">백업 복원</button>
+              </div>
+              <div class="sc-danger-zone">
+                <span class="muted">제거하기 전 현재 스키마가 자동으로 백업돼요.</span>
+                <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
+              </div>
+            </section>
+            <div class="sc-install-secondary">
+              <section class="sc-card">
+                <div class="sc-card-head">
+                  <div>
+                    <h3 class="sc-card-title">템플릿에서 시작</h3>
+                    <p class="sc-card-desc">선택한 템플릿은 편집기에만 열려요. 적용 버튼을 누르기 전에는 캐릭터가 바뀌지 않아요.</p>
+                  </div>
+                </div>
+                <div class="sc-template-row">
+                  <select id="sc-template" aria-label="새 스키마 템플릿"></select>
+                  <button id="sc-new">편집기에 열기</button>
+                </div>
+              </section>
+              <section class="sc-card">
+                <div class="sc-card-head">
+                  <div>
+                    <h3 class="sc-card-title">Lua 브리지</h3>
+                    <p class="sc-card-desc">플러그인의 직접 보조 모델 호출이 차단된 환경에서 사용하는 우회 연결이에요.</p>
+                  </div>
+                </div>
+                <div class="sc-install-actions">
+                  <button id="sc-luabridge">설치/갱신</button>
+                  <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
+                </div>
+                <p class="sc-card-desc">설치 후 플러그인 설정의 <span class="sc-code-i">aux_model_mode</span>를 <span class="sc-code-i">lua</span>로 설정해요.</p>
+              </section>
+            </div>
           </div>
-          <div class="row">
-            <button id="sc-luabridge">루아 브리지 설치/갱신</button>
-            <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
-            <span class="muted">플러그인의 보조모델 호출이 차단된 환경용 우회로 — 설치 후 플러그인 설정 aux_model_mode를 lua로</span>
+          <div class="sc-result-stack">
+            <div id="sc-editor-warn"></div>
+            <div id="sc-schema-report" class="report"></div>
           </div>
-          <div id="sc-editor-warn"></div>
-          <div id="sc-schema-report" class="report"></div>
-          <div id="sc-editor" style="margin-top:10px"></div>
+          <div class="sc-editor-shell"><div id="sc-editor"></div></div>
         </div>
 
         <div class="sc-page" id="sc-page-save">
-          <h2>세이브 데이터 — 상태 백업/이동</h2>
-          <div class="muted">스냅샷 전체를 파일로 내보내거나 가져와. 스냅샷이 없는 채팅(다른 기기에서 가져온 채팅)은 [미러에서 복원]으로 변수 값만이라도 되살릴 수 있어.</div>
-          <div class="row">
-            <button id="sc-export">세이브 내보내기</button>
-            <button id="sc-import">세이브 가져오기</button>
-            <button id="sc-mirror">미러에서 복원</button>
-            <input type="file" id="sc-import-file" accept=".json" style="display:none">
+          <header class="sc-page-head">
+            <div>
+              <h2>세이브</h2>
+              <p>현재 채팅의 상태를 파일로 보관하거나 다른 채팅과 기기에서 복원해요.</p>
+            </div>
+          </header>
+          <div class="sc-save-grid">
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">파일로 내보내기</h3>
+                <p class="sc-card-desc">현재 상태, 스냅샷 이력과 스키마를 하나의 SimCore 세이브 파일로 저장해요.</p>
+                <button id="sc-export">세이브 내보내기</button>
+              </div>
+            </section>
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">파일에서 가져오기</h3>
+                <p class="sc-card-desc">SimCore 세이브 JSON을 읽어 현재 채팅에 상태와 스냅샷을 복원해요.</p>
+                <button id="sc-import">세이브 가져오기</button>
+                <input type="file" id="sc-import-file" accept=".json" style="display:none">
+              </div>
+            </section>
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">채팅 미러에서 복원</h3>
+                <p class="sc-card-desc">스냅샷이 없는 채팅에서는 채팅 미러에 남은 변수값만 복원해요. 쿨다운과 대기 이벤트는 초기화돼요.</p>
+                <button id="sc-mirror">미러에서 복원</button>
+              </div>
+            </section>
           </div>
-          <div class="row">
+          <section class="sc-card sc-option-card">
             <label class="sc-check"><input type="checkbox" id="sc-import-schema" checked>
               가져올 때 동봉된 스키마도 함께 복원</label>
-          </div>
-          <div class="muted">체크 시 세이브에 들어 있는 스키마(변수·규칙·이벤트·액션)까지 되돌린다 — 기존 스키마는 자동 백업되니
-            [봇 편집]의 [백업 복원]으로 되돌릴 수 있어. 해제하면 지금 스키마를 그대로 두고 변수 값만 가져온다.</div>
+            <p class="sc-card-desc">켜면 세이브의 변수·규칙·이벤트·액션까지 복원해요. 기존 스키마는 자동 백업되며
+              편집 작업공간의 백업 복원으로 되돌릴 수 있어요. 끄면 현재 스키마를 유지하고 호환되는 변수값만 가져와요.</p>
+          </section>
           <div id="sc-save-report" class="report"></div>
         </div>
 
         <div class="sc-page" id="sc-page-help">
-          <h2>개념 정리 — 이것만 알면 된다</h2>
-          <div class="muted">아래 개념이 헷갈리면 [봇 편집] → [템플릿에서 새로 만들기]로 장르 템플릿을 열어
-            실제로 어떻게 쓰였는지 보는 게 제일 빠르다.</div>
-
+          <header class="sc-page-head">
+            <div>
+              <h2>개념 정리 — 이것만 알면 돼요</h2>
+              <p>개념이 헷갈리면 [AI에게 맡기기]에서 장르 템플릿을 열어보세요. 실제 설정 예시를 함께 보면 더 쉽게 이해할 수 있어요.</p>
+            </div>
+          </header>
           <div class="sc-help">
-            <h3>흐름 — 한 턴에 무슨 일이 일어나나</h3>
-            <pre class="sc-flow">유저 입력
-  ↓  ① 전송 전: 상태 블록 + 지시문 + 지난 턴 이벤트 통지를 <b>메인 모델</b>에 붙여 보냄
-메인 모델이 서사를 씀
-  ↓  ② 응답 후: 그 서사를 <b>보조 모델</b>에 보내 "무엇이 얼마나 변했나"를 JSON으로 받음
-  ↓  ③ 엔진이 계산: 보조모델 델타 → 정기 계산 → 조건 이벤트 → 랜덤 이벤트
-상태 갱신 · 상태창 표시</pre>
-            <div class="sc-note">⚠ <b>규칙·이벤트의 조건식과 가중치는 어느 모델에도 전달되지 않는다.</b>
-              전부 플러그인이 자바스크립트로 계산한다. 모델이 알 수 있는 건 <b>결과</b>뿐이다 —
-              이벤트가 일어난 걸 모델에게 알리고 싶으면 반드시 <b>notify</b>를 써야 한다.</div>
+            <h3 id="sc-help-flow">한 턴의 진행 순서</h3>
+            <div class="sc-help-steps">
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">01</span>
+                <span class="sc-help-step-title">입력 준비</span>
+                <span class="sc-help-step-desc">현재 상태, 지시문과 지난 턴의 이벤트 알림을 준비해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">02</span>
+                <span class="sc-help-step-title">이야기 작성</span>
+                <span class="sc-help-step-desc">준비한 정보를 받은 메인 모델이 이야기를 작성해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">03</span>
+                <span class="sc-help-step-title">변화 분석</span>
+                <span class="sc-help-step-desc">보조 모델이 이야기를 분석하고 변화량을 JSON으로 반환해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">04</span>
+                <span class="sc-help-step-title">엔진 처리</span>
+                <span class="sc-help-step-desc">변화량, 정기 계산, 조건 이벤트와 랜덤 이벤트를 순서대로 처리해요.</span>
+              </div>
+            </div>
+            <div class="sc-note">⚠ <b>규칙과 이벤트의 조건식·가중치는 모델에 전달되지 않아요.</b>
+              해당 계산은 플러그인이 직접 처리하고 모델에는 결과만 전달해요.
+              발생한 이벤트를 모델에게 알려야 한다면 <b>notify</b>를 작성해 주세요.</div>
 
-            <h3>변수 (vars)</h3>
-            <p>실제로 저장되는 값. 여섯 종류.</p>
-            <ul>
-              <li><b>정수/실수</b> — 체력, 돈처럼 오르내리는 수. 보조모델은 <b>증감량</b>으로 답한다 (−5, +100).</li>
-              <li><b>텍스트</b> — 한 줄 설명. 보조모델이 <b>새 값 전체</b>로 갈아끼운다.</li>
-              <li><b>참/거짓</b> — 켜짐/꺼짐 상태 (기근 중인가?).</li>
-              <li><b>선택지</b> — 정해둔 목록 중 하나 (봄/여름/가을/겨울). 목록 밖 값은 거부된다.</li>
-              <li><b>목록</b> — 인벤토리, 단서처럼 여러 개. <b>추가/제거</b>로만 바뀌어 통째로 증발하지 않는다.</li>
+            <h3 id="sc-help-vars">변수 (vars)</h3>
+            <p>시뮬레이션이 직접 저장하고 변경하는 값이에요. 모든 변수에는 영문 ID, 표시 이름, 타입과 설명을 적을 수 있어요.
+              실제로 지원하는 여섯 가지 타입과 타입별 설정은 다음과 같아요.</p>
+            <ul class="sc-help-grid sc-help-var-grid">
+              <li class="sc-help-var-card" data-kind="int">
+                <span class="sc-help-var-kicker">숫자 <span class="sc-help-var-code">int</span></span>
+                <b class="sc-help-var-title">정수</b>
+                <span class="sc-help-var-desc">체력, 자금, 인구처럼 소수점 없이 세는 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최소 · 최대 · 표시 형식</dd></div>
+                  <div><dt>갱신</dt><dd>현재 값에 정수 변화량을 더해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">자금 100 → 변화량 −5 → 95</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="float">
+                <span class="sc-help-var-kicker">숫자 <span class="sc-help-var-code">float</span></span>
+                <b class="sc-help-var-title">실수</b>
+                <span class="sc-help-var-desc">온도나 비율처럼 소수점이 필요한 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최소 · 최대 · 표시 형식</dd></div>
+                  <div><dt>갱신</dt><dd>현재 값에 소수 변화량을 더해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">온기 2.5 → 변화량 +0.5 → 3.0</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="text">
+                <span class="sc-help-var-kicker">문장 <span class="sc-help-var-code">text</span></span>
+                <b class="sc-help-var-title">텍스트</b>
+                <span class="sc-help-var-desc">상황이나 관계처럼 문장으로 표현하는 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최대 글자 수</dd></div>
+                  <div><dt>갱신</dt><dd>기존 내용을 새 문장 전체로 교체해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">관계: "경계함" → "조금 신뢰함"</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="bool">
+                <span class="sc-help-var-kicker">상태 <span class="sc-help-var-code">bool</span></span>
+                <b class="sc-help-var-title">참·거짓</b>
+                <span class="sc-help-var-desc">기근 여부처럼 켜짐과 꺼짐으로 구분해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작 시 켜짐 또는 꺼짐</dd></div>
+                  <div><dt>갱신</dt><dd><span class="sc-help-var-code">true</span> 또는 <span class="sc-help-var-code">false</span>로 바꿔요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">기근: false → true</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="enum">
+                <span class="sc-help-var-kicker">고정 선택 <span class="sc-help-var-code">enum</span></span>
+                <b class="sc-help-var-title">선택지</b>
+                <span class="sc-help-var-desc">계절처럼 미리 정해 둔 값 중 하나를 사용해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>선택지 목록 · 시작값</dd></div>
+                  <div><dt>갱신</dt><dd>등록된 선택지 중 하나로 교체해요. 다른 값은 거부해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">봄 · 여름 · 가을 · 겨울</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="list">
+                <span class="sc-help-var-kicker">여러 항목 <span class="sc-help-var-code">list</span></span>
+                <b class="sc-help-var-title">목록</b>
+                <span class="sc-help-var-desc">인벤토리나 단서처럼 여러 항목을 함께 저장해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작 아이템 · 최대 개수 · 아이템 글자 수</dd></div>
+                  <div><dt>갱신</dt><dd>목록 전체를 바꾸지 않고 필요한 항목만 추가하거나 제거해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">추가: 지도 / 제거: 빈 물통</dd></div>
+                </dl>
+              </li>
             </ul>
 
-            <h3>파생 변수 (derived)</h3>
-            <p>다른 변수로 <b>그때그때 계산되는 읽기 전용 값</b>. 저장되지 않고, 규칙으로 직접 바꿀 수도 없다.
-              "인구가 늘면 세수도 자동으로 는다" 같은 관계를 한 줄로 못 박아 두는 용도다.</p>
+            <h3 id="sc-help-derived">파생 변수 (derived)</h3>
+            <p>다른 변수로 <b>자동 계산하는 읽기 전용 값</b>이에요. 따로 저장하지 않으며 규칙이나 AI가 직접 변경할 수 없어요.
+              인구가 늘면 세수도 늘어나는 것처럼, 반복해서 사용하는 계산 관계를 한 줄로 정리할 때 사용해요.</p>
+            <span class="sc-example-label">계산 예시</span>
             <pre class="sc-code">월세수  = round(인구 * 0.3)      ← 인구가 바뀌면 자동으로 따라 바뀜
 순익   = 매출 - 인건비 - 임대료   ← 파생끼리 이어 붙일 수도 있다</pre>
-            <div class="sc-note">파생을 쓰면 규칙이 짧아진다. 매 턴 "자금 = 자금 + round(인구*0.3) - 병력*2"라고
-              길게 쓰는 대신 "자금 = 자금 + 순익"으로 끝난다.</div>
+            <div class="sc-note">파생 변수를 사용하면 규칙을 짧게 유지할 수 있어요.
+              긴 계산식을 매번 반복하는 대신 <b>자금 = 자금 + 순익</b>처럼 작성하면 돼요.</div>
 
-            <h3>규칙 · 이벤트 (rules)</h3>
-            <ul>
-              <li><b>정기 계산(onTurn)</b> — 매 턴 <b>무조건</b> 실행. 시간 경과, 이자, 식량 소비 같은 것.
-                위에서부터 차례로 적용되고 <b>순서가 결과를 바꾼다</b>.</li>
-              <li><b>조건 이벤트(events)</b> — <b>when</b>이 참이 되는 순간 발동. 조건이 계속 참이면 매 턴 또 발동하므로,
-                한 번만 터뜨리려면 <b>once</b>를 켜거나 "발동하면 조건이 거짓이 되도록" 설계한다.
-                <br>예: <span class="sc-code-i">기근 시작</span>은 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span> — 발동하며 기근을 켜니 다음 턴엔 조건이 거짓.</li>
-              <li><b>랜덤 이벤트(randomEvents)</b> — 예측 불가능한 사건.</li>
+            <h3 id="sc-help-rules">규칙 · 이벤트 (rules)</h3>
+            <ul class="sc-help-grid">
+              <li><b>정기 계산(onTurn)</b> — 매 턴 반드시 실행해요. 시간 경과, 이자, 식량 소비 등에 사용해요.
+                위에서부터 순서대로 계산하므로 <b>배치 순서에 따라 결과가 달라질 수 있어요.</b></li>
+              <li><b>조건 이벤트(events)</b> — <b>when</b> 조건이 참이면 발동해요. 조건이 계속 참이면 다음 턴에도 다시 발동해요.
+                한 번만 실행하려면 <b>once</b>를 켜거나, 실행 후 조건이 거짓이 되도록 설정해 주세요.
+                <br>예: <span class="sc-code-i">기근 시작</span>의 조건을 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span>으로 설정하면,
+                발동하면서 기근이 켜지고 다음 턴에는 조건이 거짓이 돼요.</li>
+              <li><b>랜덤 이벤트(randomEvents)</b> — 정해진 확률과 조건에 따라 발생하는 예측 불가능한 사건이에요.</li>
             </ul>
 
-            <h3>가중치 (weight) — 랜덤 이벤트 뽑는 법</h3>
-            <p>두 단계로 굴린다.</p>
-            <pre class="sc-flow">1단계: 이번 턴에 랜덤 이벤트가 일어날까?
-        → <b>chancePerTurn</b> 확률로 결정 (0.3 = 30%)
-2단계: 일어난다면 어느 것?
-        → 조건(when)·재사용 대기(cooldown)를 통과한 것들 중 <b>weight에 비례</b>해 하나</pre>
-            <pre class="sc-code">산적 습격  weight 3  ┐
-행상인 방문 weight 2  ├ 합 6 → 산적 3/6(50%), 행상인 2/6(33%), 역병 1/6(17%)
-역병      weight 1  ┘</pre>
-            <div class="sc-note">가중치는 <b>확률이 아니라 상대 비중</b>이다. 3은 1보다 3배 자주 나온다는 뜻일 뿐,
-              합이 100이 될 필요도 없다. <b>cooldown</b>은 "한 번 나오면 N턴은 다시 안 나옴"이다.</div>
+            <h3 id="sc-help-weight">가중치 (weight)와 랜덤 이벤트</h3>
+            <p>먼저 이번 턴에 랜덤 이벤트가 발생할지 정하고, 발생한다면 조건을 통과한 후보 중 하나를 골라요.</p>
+            <div class="sc-help-steps sc-help-steps-two">
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">01</span>
+                <span class="sc-help-step-title">이번 턴에 발생하는가</span>
+                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span></span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">02</span>
+                <span class="sc-help-step-title">어느 이벤트가 선택되는가</span>
+                <span class="sc-help-step-desc">조건과 쿨다운을 통과한 후보끼리 <b>weight</b>를 비교해 하나를 선택해요.</span>
+              </div>
+            </div>
+            <span class="sc-example-label">세 이벤트가 모두 선택 가능한 경우</span>
+            <table class="sc-weight-table">
+              <thead><tr><th>후보 이벤트</th><th>weight</th><th>선택 확률</th></tr></thead>
+              <tbody>
+                <tr><td>산적 습격</td><td>3</td><td>3 / 6 · 50%</td></tr>
+                <tr><td>행상인 방문</td><td>2</td><td>2 / 6 · 약 33%</td></tr>
+                <tr><td>역병</td><td>1</td><td>1 / 6 · 약 17%</td></tr>
+              </tbody>
+              <tfoot><tr><td>합계</td><td>6</td><td>후보끼리 나눠 가짐</td></tr></tfoot>
+            </table>
+            <dl class="sc-help-facts">
+              <div><dt>weight</dt><dd><b>고정 확률이 아니라 상대 비중</b>이에요. 합계를 100으로 맞출 필요는 없어요.</dd></div>
+              <div><dt>cooldown</dt><dd>이벤트가 발생한 뒤, 다시 후보가 되기까지 기다리는 턴 수예요.</dd></div>
+            </dl>
 
-            <h3>지시문 (directives)</h3>
-            <p>조건이 참인 <b>동안 계속</b> 메인 모델에게 주는 연출 지침. 수치를 바꾸지 않고 <b>글의 방향만</b> 잡는다.
-              이벤트의 notify가 "일어난 일을 한 번 알리는" 것이라면, 지시문은 "그런 상태니까 이렇게 써라"를 매 턴 반복한다.</p>
+            <h3 id="sc-help-directives">지시문 (directives)</h3>
+            <p>조건이 참인 <b>동안 매 턴</b> 메인 모델에 전달하는 연출 지침이에요. 변수를 바꾸지 않고 <b>이야기의 표현 방향</b>만 정해요.
+              <b>notify</b>가 발생한 사건을 한 번 알리는 기능이라면, 지시문은 현재 상태에 맞는 표현을 계속 요청하는 기능이에요.</p>
+            <span class="sc-example-label">지시문 예시</span>
             <pre class="sc-code">조건: 기근            → "굶주림과 흉흉한 민심이 묘사에 배어야 한다"
 조건: 관계 == "썸"    → "연인이 아니다. 확신 대신 망설임으로 그려라"
 조건: 진상 미공개      → "범인을 직접 말하지 마라. 단서만 흘려라"</pre>
 
-            <h3>액션 (actions)</h3>
-            <p>유저가 누르는 버튼. 화면 <b>우상단</b>에 뜬다. 누르면 바로 실행되는 게 아니라
-              <b>무장(●)</b> 상태가 되고, <b>다음 메시지를 보낼 때</b> 효과가 적용되며 AI 전달문이 함께 나간다.</p>
-            <ul>
-              <li><b>1회성</b> — 한 번 쓰면 무장이 풀린다. <b>지속</b> — 끌 때까지 매 턴 적용된다.</li>
-              <li><b>조건(when)</b>이 거짓이거나 <b>쿨다운</b> 중이면 🔒로 잠긴다.</li>
+            <h3 id="sc-help-actions">액션 (actions)</h3>
+            <p>유저가 직접 선택하는 행동 버튼이에요. 버튼을 누르면 즉시 실행되지 않고 <b>무장(●)</b> 상태가 돼요.
+              이후 <b>다음 메시지를 보낼 때</b> 효과와 AI 전달문을 함께 적용해요.</p>
+            <ul class="sc-help-grid">
+              <li><b>1회성</b> — 한 번 적용하면 자동으로 무장이 풀려요.</li>
+              <li><b>지속</b> — 직접 끌 때까지 다음 턴에도 계속 적용해요.</li>
+              <li><b>조건(when)</b>을 만족하지 않거나 <b>쿨다운</b> 중이면 사용할 수 없어요.</li>
             </ul>
 
-            <h3>AI 설정 (updater) — 보조 모델이 건드릴 수 있는 범위</h3>
-            <p>여기 <b>등록한 변수만</b> 보조 모델이 바꿀 수 있다. 등록 안 한 변수는 규칙·이벤트·액션만 건드린다.</p>
-            <ul>
-              <li><b>증감 한도</b>를 꼭 줘라. 없으면 모델이 "골드 −999999"를 제안해도 그대로 먹는다.</li>
-              <li><b>얻는 한도 / 잃는 한도</b>를 따로 줄 수 있다. 연애 템플릿은 호감을 <span class="sc-code-i">최대 +8 / 최대 −15</span>로 줘서
-                "천천히 쌓이고 빨리 식게" 만든다.</li>
-              <li>정기 계산으로 이미 처리하는 건 <b>안내문</b>에 "중복 반영 금지"라고 적어라.</li>
+            <h3 id="sc-help-ai">AI 설정 (updater)</h3>
+            <p>AI 설정에 <b>등록한 변수만</b> 보조 모델이 변경할 수 있어요.
+              등록하지 않은 변수는 규칙·이벤트·액션을 통해서만 변경돼요.</p>
+            <ul class="sc-help-grid">
+              <li><b>증감 한도</b>를 설정해 주세요. 한도가 없으면 보조 모델이 지나치게 큰 변화량을 제안할 수 있어요.</li>
+              <li><b>얻는 한도와 잃는 한도</b>를 따로 설정할 수 있어요. 예를 들어 호감도를
+                <span class="sc-code-i">최대 +8 / 최대 −15</span>로 설정하면 천천히 오르고 빠르게 떨어지도록 만들 수 있어요.</li>
+              <li>정기 계산에서 이미 처리하는 변화는 AI 안내문에 <b>중복 반영하지 말아 달라</b>고 적어 주세요.</li>
             </ul>
 
-            <h3>상태창 vs 프롬프트 — 누가 보나</h3>
+            <h3 id="sc-help-status">상태창과 프롬프트의 차이</h3>
             <table>
               <tr><th>항목</th><th>보는 쪽</th><th>쓰임</th></tr>
-              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 붙는 표. 숨기고 싶은 값은 빼면 된다</td></tr>
-              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>모델이 현재 상황을 알게 하는 블록</td></tr>
-              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>이 변수를 언제 얼마나 움직여야 하는지 힌트</td></tr>
+              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 표시하는 표예요. 숨길 값은 제외할 수 있어요.</td></tr>
+              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>현재 상황을 메인 모델에 알려주는 상태 블록이에요.</td></tr>
+              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>변수를 언제 얼마나 바꿔야 하는지 알려주는 설명이에요.</td></tr>
             </table>
-            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 이 차이를 쓴 예다 —
-              프롬프트에는 넣어 모델이 알게 하고, 상태창에서는 빼서 유저에게는 감춘다.</div>
+            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 대표적인 예예요.
+              메인 모델은 진상을 알아야 하므로 프롬프트에는 포함하지만, 유저에게 숨겨야 하므로 상태창에서는 제외해요.</div>
 
-            <h3>수식에서 쓸 수 있는 것</h3>
+            <h3 id="sc-help-expr">수식에서 사용할 수 있는 표현</h3>
+            <span class="sc-example-label">지원 연산자와 함수</span>
             <pre class="sc-code">+ - * / %        비교: == != &gt; &lt; &gt;= &lt;=      and  or  not
 조건 ? 참값 : 거짓값
 round() floor() ceil() abs() min(a,b) max(a,b) clamp(값,최소,최대)
-rand(최소,최대)   ← 규칙·이벤트 효과에서만. 조건식에는 못 쓴다
+rand(최소,최대)   ← 규칙·이벤트 효과에서만 사용할 수 있어요. 조건식에서는 사용할 수 없어요.
 count(목록)  has(목록, "항목")</pre>
-            <div class="sc-note">대입·반복문·함수 정의는 없다. 봇 설정은 코드가 아니라 <b>표</b>여야 하기 때문이다.</div>
+            <div class="sc-note">대입문, 반복문, 사용자 함수 정의는 지원하지 않아요.
+              봇 설정을 코드가 아닌 안전한 <b>규칙표</b>로 처리하기 위한 제한이에요.</div>
+
           </div>
         </div>
         </div>
@@ -3310,7 +3971,22 @@ count(목록)  has(목록, "항목")</pre>
       const parsed = editor.getSchema();
       const v = validateSchema(parsed);
       if (!v.ok) {
-        rep.innerHTML = v.errors.map((x) => `<div class="status-bad">✗ ${escapeText(x.path)} — ${escapeText(x.msg)}</div>`).join('');
+        const needsFirstBuild = v.errors.some((x) => x.path === '$.vars' && x.msg === '변수가 하나도 정의되지 않음');
+        const title = needsFirstBuild
+          ? '작업본을 먼저 만들어 주세요.'
+          : `작업본에서 확인할 항목이 ${v.errors.length}개 있어요.`;
+        const copy = needsFirstBuild
+          ? '아직 설치할 내용이 없어요. 아래 [AI에게 맡기기]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
+          : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI에게 맡기기]에서 수정을 요청할 수도 있어요.';
+        const details = v.errors.map((x) => '<div class="sc-schema-validation-item">'
+          + `<span class="sc-schema-validation-path">${escapeText(x.path)}</span>`
+          + `<span class="sc-schema-validation-message">${escapeText(x.msg)}</span>`
+          + '</div>').join('');
+        rep.innerHTML = `<div class="sc-schema-validation${needsFirstBuild ? ' is-start' : ''}">`
+          + `<div class="sc-schema-validation-title">${escapeText(title)}</div>`
+          + `<div class="sc-schema-validation-copy">${escapeText(copy)}</div>`
+          + `<details><summary>세부 오류 ${v.errors.length}개</summary>${details}</details>`
+          + '</div>';
         return;
       }
       const r = await installSchemaToCurrentChar(parsed);
@@ -3558,17 +4234,15 @@ count(목록)  has(목록, "항목")</pre>
   // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
   // ⚙simcore(스키마) 항목은 뺀다 — 생성 프롬프트에 다이제스트로 이미 실리므로 이중 전송 금지.
   async function getBotContextForEditor() {
-    try {
-      const char = await Risuai.getCharacter();
-      if (!char) return null;
-      return {
-        name: char.name || '',
-        desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
-        lore: (char.globalLore || [])
-          .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
-          .map((l) => ({ name: l.comment || '', content: l.content || '' })),
-      };
-    } catch { return null; }
+    const char = await Risuai.getCharacter();
+    if (!char) throw new Error('현재 선택된 캐릭터를 찾지 못했습니다.');
+    return {
+      name: char.name || '',
+      desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
+      lore: (char.globalLore || [])
+        .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
+        .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+    };
   }
 
   function ensureEditor() {
@@ -3596,6 +4270,9 @@ count(목록)  has(목록, "항목")</pre>
         const btn = document.querySelector(`#sc-root .sc-maintab[data-floor="${f}"]`);
         if (btn) btn.click();
       },
+      isInstalled: () => panelStatus.state === 'ok',
+      getFirstInstallGuideDismissed,
+      setFirstInstallGuideDismissed,
     });
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);
@@ -3665,14 +4342,25 @@ count(목록)  has(목록, "항목")</pre>
   function renderPanel() {
     buildPanelSkeleton();
     const st = document.getElementById('sc-status');
+    const charName = String(panelStatus.charName || '').trim();
+    const namedCharacter = charName ? `'${charName}' 캐릭터` : '현재 캐릭터';
+    const loadedPrefix = charName ? `'${charName}' — ` : '';
     const stateMsg = {
       'no-char': ['선택된 캐릭터 없음', 'status-warn'],
-      'no-schema': [`'${panelStatus.charName}' 캐릭터에 SimCore 스키마 없음 — 아래 [스키마 관리]에서 JSON을 붙여넣고 설치하면 된다`, 'status-warn'],
-      'parse-error': [`'${panelStatus.charName}' 스키마 JSON 파싱 실패`, 'status-bad'],
-      'invalid': [`'${panelStatus.charName}' 스키마 검증 실패`, 'status-bad'],
-      'ok': [`'${panelStatus.charName}' — ${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI에게 맡기기나 JSON 작업대에서 작업본을 연 뒤 현재 캐릭터에 설치/업데이트하세요`, 'status-warn'],
+      'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
+      'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
+      'ok': [`${loadedPrefix}${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
       'init': ['초기화 중', 'muted'],
     }[panelStatus.state] || ['?', 'muted'];
+    const panelTone = (panelStatus.report || []).length
+      ? 'bad'
+      : (panelStatus.warnings || []).length || stateMsg[1] === 'status-warn'
+        ? 'warn'
+        : stateMsg[1] === 'status-bad'
+          ? 'bad'
+          : 'ok';
+    st.className = `sc-panel-status-${panelTone}`;
     let html = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`;
     for (const e of panelStatus.report || []) html += `<div class="report status-bad">✗ ${e.path} — ${e.msg}</div>`;
     for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
@@ -3684,16 +4372,21 @@ count(목록)  has(목록, "항목")</pre>
       const cur = editorSig();
       const installed = sig(schema ?? BLANK_SCHEMA());
       if (editor && cur !== null && cur !== installed) {
-        let what = '';
+        let editorSummary = '확인할 수 없어요.';
+        let installedSummary = schema ? '확인할 수 없어요.' : '아직 설치되지 않았어요.';
         try {
           const eS = editor.getSchema();
-          what = `편집기: '${eS.meta?.name ?? '이름 없음'}' 변수 ${(eS.vars || []).length}개`
-            + ` / 설치본: '${schema?.meta?.name ?? '없음'}' 변수 ${(schema?.vars || []).length}개`;
+          editorSummary = `'${eS.meta?.name ?? '이름 없음'}' · 변수 ${(eS.vars || []).length}개`;
+          if (schema) installedSummary = `'${schema.meta?.name ?? '이름 없음'}' · 변수 ${(schema.vars || []).length}개`;
         } catch {}
-        warnEl.innerHTML = '<div class="report status-warn">⚠ 편집기 내용이 이 캐릭터에 설치된 스키마와 다름 — '
-          + '지금 [현재 캐릭터에 설치/업데이트]를 누르면 설치본이 이 내용으로 덮어써진다. '
-          + '설치본을 보려면 [현재 캐릭터 스키마 불러오기]를 눌러줘.<br>'
-          + escapeText(what) + '</div>';
+        warnEl.innerHTML = '<div class="sc-editor-diff">'
+          + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
+          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [캐릭터에 적용]을 누르세요. '
+          + '기존 설치본으로 돌아가려면 [설치본 불러오기]를 누르세요.</div>'
+          + '<div class="sc-editor-diff-meta">'
+          + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
+          + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
+          + '</div></div>';
       } else {
         warnEl.innerHTML = '';
       }
@@ -3702,18 +4395,41 @@ count(목록)  has(목록, "항목")</pre>
     const varsDiv = document.getElementById('sc-vars');
     const actionsDiv = document.getElementById('sc-actions');
     const infoDiv = document.getElementById('sc-info');
+    const auxInfoDiv = document.getElementById('sc-aux-info');
+    const actionsCountEl = document.getElementById('sc-actions-count');
+    const engineBadgeEl = document.getElementById('sc-engine-badge');
     const hitStateEl = document.getElementById('sc-hitstate');
+    const hitBadgeEl = document.getElementById('sc-hit-badge');
+    const auxBadgeEl = document.getElementById('sc-aux-badge');
     if (hitStateEl) {
       const label = { idle: '아직 시도 안 함', pending: '패널이 닫히면 켜기를 시도', on: '✓ 켜짐',
         denied: '꺼짐 — mainDom 권한 없음 (거부했었다면 리수 설정 → 플러그인 → simcore 방패 아이콘으로 초기화)',
         error: '오류 — 콘솔 로그 확인' }[hitState] || hitState;
       const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개(상태창 ${hitLastClick.st ?? '?'}·조작줄 ${hitLastClick.strip ?? '?'}) ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
-      hitStateEl.textContent = `클릭 조작: ${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
+      hitStateEl.textContent = `${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
+      if (hitBadgeEl) {
+        const badge = { idle: ['확인 전', ''], pending: ['연결 대기', 'warn'], on: ['연결됨', 'ok'],
+          denied: ['권한 필요', 'warn'], error: ['오류', 'warn'] }[hitState] || [String(hitState), ''];
+        hitBadgeEl.textContent = badge[0];
+        hitBadgeEl.className = 'sc-card-badge' + (badge[1] ? ` ${badge[1]}` : '');
+      }
+    }
+    if (auxBadgeEl) {
+      const auxStatus = String(lastAux.status || '');
+      const badge = /성공|적용/.test(auxStatus) ? ['응답 확인', 'ok']
+        : /중|대기/.test(auxStatus) ? ['확인 중', 'warn']
+          : /실패|차단|오류|없음/.test(auxStatus) ? ['확인 필요', 'warn']
+            : ['확인 전', ''];
+      auxBadgeEl.textContent = badge[0];
+      auxBadgeEl.className = 'sc-card-badge' + (badge[1] ? ` ${badge[1]}` : '');
     }
     const presetsDiv = document.getElementById('sc-presets');
     if (!session) {
       varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
       infoDiv.textContent = ''; presetsDiv.textContent = '-';
+      if (auxInfoDiv) auxInfoDiv.textContent = '스키마 로드 후 표시';
+      if (actionsCountEl) actionsCountEl.textContent = '확인 전';
+      if (engineBadgeEl) { engineBadgeEl.textContent = '스키마 없음'; engineBadgeEl.className = 'sc-card-badge warn'; }
       return;
     }
 
@@ -3805,6 +4521,8 @@ count(목록)  has(목록, "항목")</pre>
         const tdAddBtn = document.createElement('td');
         const addBtn = document.createElement('button');
         addBtn.textContent = '추가';
+        addBtn.disabled = true;
+        addIn.oninput = () => { addBtn.disabled = !addIn.value.trim(); };
         addBtn.onclick = async () => {
           const text = addIn.value.trim();
           if (!text) return;
@@ -3824,20 +4542,47 @@ count(목록)  has(목록, "항목")</pre>
 
       tr.innerHTML = nameCell + `<td>${escapeText(String(cur))}</td>`;
       const tdIn = document.createElement('td');
-      const input = document.createElement('input');
+      const input = document.createElement(v.type === 'bool' ? 'select' : 'input');
+      if (v.type === 'bool') {
+        for (const [value, label] of [['true', '켜짐'], ['false', '꺼짐']]) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          input.appendChild(option);
+        }
+      }
       input.value = String(cur);
       tdIn.appendChild(input);
       const tdBtn = document.createElement('td');
       const btn = document.createElement('button');
-      btn.textContent = '적용';
-      btn.onclick = async () => {
+      const wasJustApplied = lastManualApply.id === v.id && Date.now() - lastManualApply.at < 1400;
+      btn.textContent = wasJustApplied ? '적용됨' : '적용';
+      const readEditedValue = () => {
         let val = input.value;
         if (v.type === 'int' || v.type === 'float') val = Number(val);
-        if (v.type === 'bool') val = val === 'true' || val === '1';
-        const to = engine.coerce(v, val);
+        if (v.type === 'bool') val = val === 'true';
+        return engine.coerce(v, val);
+      };
+      const syncApplyState = () => {
+        const to = readEditedValue();
+        const changed = to !== undefined && JSON.stringify(to) !== JSON.stringify(cur);
+        btn.disabled = !changed;
+        if (changed || !wasJustApplied) btn.textContent = '적용';
+      };
+      input.addEventListener('input', syncApplyState);
+      input.addEventListener('change', syncApplyState);
+      syncApplyState();
+      btn.onclick = async () => {
+        const to = readEditedValue();
         if (to === undefined) { btn.textContent = '거부됨'; setTimeout(() => (btn.textContent = '적용'), 1000); return; }
         session.current.vars[v.id] = to;
+        lastManualApply = { id: v.id, at: Date.now() };
         await commitVars();
+        setTimeout(() => {
+          if (lastManualApply.id !== v.id) return;
+          lastManualApply = { id: '', at: 0 };
+          if (panelVisible) renderPanel();
+        }, 1400);
       };
       tdBtn.appendChild(btn);
       tr.appendChild(tdIn);
@@ -3851,26 +4596,58 @@ count(목록)  has(목록, "항목")</pre>
     if (!(schema.actions || []).length) actionsDiv.textContent = '정의된 액션 없음';
     for (const a of schema.actions || []) {
       const avail = safeAvailability(a);
+      const item = document.createElement('div');
+      item.className = 'sc-action-item';
       const btn = document.createElement('button');
       const armed = !!session.current.meta.armed[a.id];
       btn.textContent = a.label + (armed ? ' ●' : '');
       btn.className = armed ? 'armed' : '';
-      btn.style.marginRight = '6px';
-      if (!avail.ok && !armed) { btn.disabled = true; btn.title = avail.reason; btn.style.opacity = .4; }
+      if (!avail.ok && !armed) {
+        const reason = document.createElement('span');
+        const reasonId = `sc-action-reason-${String(a.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        reason.id = reasonId;
+        reason.className = 'sc-action-reason';
+        reason.textContent = avail.reason || '현재 조건에서는 사용할 수 없어요.';
+        btn.disabled = true;
+        btn.title = reason.textContent;
+        btn.setAttribute('aria-describedby', reasonId);
+        item.appendChild(btn);
+        item.appendChild(reason);
+      } else {
+        item.appendChild(btn);
+      }
       btn.onclick = () => { session.toggle(a.id); syncControls(); renderPanel(); };
-      actionsDiv.appendChild(btn);
+      actionsDiv.appendChild(item);
     }
 
-    infoDiv.textContent =
-      `엔진 턴: ${session.current.meta.turn} / 마지막 출력 인덱스: ${lastOutIndex}\n` +
-      `대기 중 이벤트 통지: ${session.current.meta.pendingNotifies.length}건\n` +
-      `무장: ${Object.keys(session.current.meta.armed).join(', ') || '없음'}\n` +
-      `── 보조 모델 진단 ──\n` +
-      `상태: ${lastAux.status}\n` +
-      `마지막 턴 적용: ${lastAux.applied}건\n` +
-      `현재 스키마의 허용 변수: ${schema?.updater?.allow?.length ?? 0}개\n` +
-      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '') +
-      mentionGateWarning();
+    const armedIds = Object.keys(session.current.meta.armed);
+    const armedSummary = armedIds.join(', ') || '없음';
+    if (actionsCountEl) {
+      actionsCountEl.textContent = `${armedIds.length}개 선택`;
+      actionsCountEl.className = 'sc-card-badge' + (armedIds.length ? ' ok' : '');
+    }
+    if (engineBadgeEl) {
+      engineBadgeEl.textContent = '정상 작동';
+      engineBadgeEl.className = 'sc-card-badge ok';
+    }
+    const metrics = [
+      ['엔진 턴', session.current.meta.turn],
+      ['마지막 출력', lastOutIndex],
+      ['대기 이벤트', `${session.current.meta.pendingNotifies.length}건`],
+      ['무장 행동', armedSummary],
+      ['마지막 AI 적용', `${lastAux.applied}건`],
+      ['허용 변수', `${schema?.updater?.allow?.length ?? 0}개`],
+    ];
+    infoDiv.innerHTML = '<div class="sc-metric-grid">' + metrics.map(([label, value]) =>
+      `<div class="sc-metric"><span class="sc-metric-label">${escapeText(label)}</span>`
+      + `<strong class="sc-metric-value">${escapeText(value)}</strong></div>`).join('') + '</div>';
+    if (auxInfoDiv) {
+      auxInfoDiv.textContent =
+        `최근 호출 상태: ${lastAux.status}\n` +
+        `마지막 실제 턴 적용: ${lastAux.applied}건\n` +
+        (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}\n` : '') +
+        mentionGateWarning();
+    }
     // 모드/브리지 상태는 비동기로 뒤에 덧붙임
     Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
       .then(([m, char, resolved, path]) => {
@@ -3878,9 +4655,11 @@ count(목록)  has(목록, "항목")</pre>
           : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
         let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
         if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
-        infoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
-          + `\n환경 판정: ${pathTxt}`
-          + `\n루아 브리지: ${bridgeTxt}`;
+        if (auxInfoDiv) {
+          auxInfoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
+            + `\n환경 판정: ${pathTxt}`
+            + `\nLua 브리지: ${bridgeTxt}`;
+        }
       }).catch(() => {});
   }
 

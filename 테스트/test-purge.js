@@ -162,8 +162,11 @@ const baseJson = JSON.stringify(BASE);
   const plain = M.buildPatchExportPrompt(BASE);
   ck('평소(진단 아닌) 모드는 안 바뀜', plain.includes('## 내가 원하는 것') && !plain.includes('진단에서 나온'), '');
 
-  ck('★ 번들: 진단 탭에 패치 요청 버튼이 권장으로', src.includes('수정 패치 요청 복사') && src.includes(') — 권장'), '');
-  ck('번들: 통 교체는 전면 재작성용이라고 강등', src.includes('예전 방식(탭 통 교체)'), '');
+  // v0.66 UI 재편으로 문구가 바뀌었다 — 보는 것은 그대로 "패치가 앞줄, 통 교체는 접힌 뒤"다.
+  ck('★ 번들: 진단 탭에 패치 요청이 앞줄로',
+    src.includes('부분 패치 만들기') && src.includes('수정 패치 규격서 복사'), '');
+  ck('번들: 통 교체는 접힌 뒤로 강등',
+    src.includes('외부 AI와 전체 재작성 옵션') && src.includes('탭 전체 재작성'), '');
   ck('★ 번들: 변수 탭에 정리 버튼', src.includes('🧹 정리하고 지우기'), '');
   ck('번들: 정리 되돌리기 1슬롯', src.includes('purgeBackup'), '');
   ck('어댑터 버전은 0.48 이상', /\/\/@version 0\.(4[89]|[5-9]\d)/.test(src), '');

@@ -28,9 +28,11 @@ ck('편집기가 diagnose를 require함', src.includes("require('./diagnose')"),
   for (const m of src.matchAll(/#[0-9a-zA-Z]{2,}/g)) {
     const t = m[0].slice(1);
     if (/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{4}$|^[0-9a-fA-F]{6}$|^[0-9a-fA-F]{8}$/.test(t)) continue;
-    // 코드 안의 #문자는 색상만 있는 게 아니다 — CSS 속성 뒤에 온 것만 본다
+    // 코드 안의 #문자는 색상만 있는 게 아니다 — CSS **선언** 뒤에 온 것만 본다.
+    // 콜론을 필수로 둔다: 없으면 `.sc-prog-fill.indet,\n#sc-root …` 같은 선택자 목록에서
+    // 클래스 이름 속 'fill'을 색 속성으로 오인한다 (v0.66 실측 오탐).
     const before = src.slice(Math.max(0, m.index - 40), m.index);
-    if (/(color|background|border|shadow|fill|stroke|outline)\s*:?[^;{}]*$/i.test(before)) bad.push(m[0]);
+    if (/(color|background|border|shadow|fill|stroke|outline)[a-z-]*\s*:[^;{}]*$/i.test(before)) bad.push(m[0]);
   }
   ck('★ CSS 색상값에 오타가 없음', bad.length === 0, bad.join(', '));
 }
@@ -426,7 +428,7 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     === findingKey({ tag: '죽은 이벤트', text: "'x' 미발동 — 관측 최고 250 (25%)" }), '');
   ck('다른 지적은 다른 열쇠', findingKey({ tag: '죽은 이벤트', text: "'a' x" }) !== findingKey({ tag: '죽은 이벤트', text: "'b' x" }), '');
 
-  ck('편집기가 비교를 배선함', src.includes('compareDiagnoses(diagPrev, diagResult)') && src.includes('📊 직전 진단과 비교'), '');
+  ck('편집기가 비교를 배선함', src.includes('compareDiagnoses(diagPrev, diagResult)') && src.includes('직전 진단과 비교'), ''); // v0.66에서 📊 떨어짐
   ck('턴/시드가 다르면 비교하지 않음', src.includes('before.stats.turns === diagTurns && before.stats.runs === diagRuns'), '');
   ck('★ 🔵는 AI 수정 요청에서 빠진다', src.includes("f.tab === tabKey && f.sev !== 'low'"), '');
 }

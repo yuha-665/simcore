@@ -1,13 +1,39 @@
 //@name simcore
 //@api 3.0
-//@version 0.65.1
-//@display-name SimCore (시뮬 엔진) v0.65 보조에게 시계와 원장을
+//@version 0.66.0
+//@display-name SimCore (시뮬 엔진) v0.66 편집기 UI 재편
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.66.0 ────────────────────────────────────────────────
+// 편집기 UI 재편 — 외부 기여분 병합. 한 유저가 v0.61.0을 기준선으로 관리 패널·편집기 UI를
+// 통째로 다시 짜서 인수인계 문서와 함께 보내 줬다 (공개·병합 허락 받음).
+// 기준선 SHA-256이 우리 ef77f56 번들과 정확히 일치했고, 번들을 모듈 16개로 되쪼갠 결과가
+// core/*.js 전부와 바이트 일치해 3-way 병합이 성립했다. 코어 13종은 손 안 댐, engine은
+// ON/OFF 도움말 한 줄(`끄려면 off / 0 / false` → `0 / false` — off는 실제로 안 먹는다),
+// 나머지는 editor.js와 어댑터 CSS다.
+// - 공통 시각 체계: 색 토큰·대비·포커스·비활성 규칙 통일, 좁은 화면 1열 폴백,
+//   둥근 카드 중첩 대신 얇은 선과 간격으로 위계.
+// - 문구 389개가 존댓말(~해요/~어요)로 다시 쓰였다. 처음 쓰는 사람 기준의 안내로 바뀐다.
+// - 심층 편집 변수·명령·상태창 탭 재구성: 카드 접기, 오류만 펼치기, 형식별 필요한 입력만,
+//   참조 중인 ID 변경 경고, 중복 없는 자동 ID. **선택지·목록은 쉼표가 아니라 한 줄에 하나씩**
+//   편집한다 — 쉼표가 들어간 항목이 쪼개지던 것이 보존된다.
+// - 진단 탭: 부분 패치가 앞줄로, 탭 통 교체는 접힌 뒤로. 발견 항목은 중요도별 2열.
+// - ⚠ **폭 통일** (실측 제보: "이렇게 크기 안 맞는 것들"): 작업 목록은 820px인데 각 탭의
+//   소개 상자에만 폭 제한이 빠져 혼자 끝까지 늘어나 있었다. 상자마다 숫자를 박는 방식이라
+//   새 상자를 넣을 때마다 하나씩 어긋난다 → `--sce-work-w` 토큰 하나로 모으고, 빠져 있던
+//   13개 클래스에 같이 걸었다.
+// - ⚠ **끌어서 순서 바꾸기는 꺼 둔 채로 들어온다** (`CARD_DRAG = false`, core/editor.js 머리).
+//   순서 바꾸기 자체는 grip()의 ▲▼가 그대로 맡고 있어 잃는 기능이 없고, 포인터 이벤트는
+//   포켓리수·모바일 실기 확인 전이다. 확인되면 true 한 글자로 손잡이(⠿)가 붙는다.
+// - 테스트 20건이 깨졌는데 **전부 문구 어서션**이었고 기능 손실은 없었다. 문구가 아니라
+//   로직을 보도록 고쳤다 (예: 그룹 합치기는 라벨 대신 concat 식을 본다). test-diag의
+//   CSS 색 오타 검사는 `.sc-prog-fill.indet,` 의 'fill'을 색 속성으로 오인하던 오탐이라
+//   콜론을 필수로 뒀다.
 //
 // ── v0.65.1 ────────────────────────────────────────────────
 // 채팅 명령의 답이 유저에게 닿는다 — 실측: "/날짜 이거 인풋에 치니 바로 채팅 보내지기되는데
@@ -507,7 +533,7 @@
 // - [편집기] 이층 → 삼층: 1층 = ✨ AI에게 맡기기 + 🔬 진단(이사 옴), 2층 = 🧾 JSON 작업대
 //   (통짜·패치·오류 돌려주기·원본 — 실사용 1순위라 독립 층), 3층 = 심층 편집 탭 8개.
 //   진단을 1층에 둔 이유: 굴려서 찾고 → 그 자리에서 바로 고쳐달라고 보내는 루프 완결.
-// - [편집기] 진단 결과에 [✨ 이 결과로 바로 고쳐달라기] — 복사 왕복 없이 내장 생성으로
+// - [편집기] 진단 결과에 [수정안 만들기] — 복사 왕복 없이 내장 생성으로
 //   직결 (buildPatchExportPrompt findings 모드 + 봇 컨텍스트). 계획·충돌 확인은 동일.
 // - [패널] 사이드바 내비 — 넓은 화면(920px+)에서 현황/봇 편집/세이브/도움말이 좌측 세로
 //   내비로, 콘텐츠 폭 760 → 1360. 좁은 화면은 기존 상단 탭 그대로 (모바일에서 변수
@@ -551,7 +577,7 @@
 //   빈 그룹/템플릿 · promptState. 적용은 원자적 (검증 통과 못 하면 거부) + 되돌리기 1슬롯.
 //   ★ 이게 필요한 이유: 참조가 onTurn·promptState·setup에도 있어 **왕복 패치로는 변수 삭제가
 //   원천 불가능**했다 (그 셋은 패치 미지원 영역). 실전에서 잔재 층 제거가 계속 거부당했다.
-// - [진단] "이 결과로 AI에게 수정 요청하기"가 **패치 경로**로 (권장). 항목 100개짜리 봇에서
+// - [진단] "AI로 수정하기"가 **패치 경로**로 (권장). 항목 100개짜리 봇에서
 //   탭 통 교체는 AI가 하나만 빠뜨려도 그게 삭제다. 통 교체 버튼은 "전면 재작성용"으로 강등.
 //   요청문에 "보조 AI를 안 돌린 결과라 AI가 바꾸는 변수는 안 움직임으로 잘못 나온다" 명시.
 //
@@ -5017,7 +5043,7 @@ function commandSpecs(schema) {
         : v.type === 'enum'
           ? [[`${c} ${en.slice(0, 3).join(' / ')}${en.length > 3 ? ' / …' : ''}`, '선택지 중 하나로 바꾼다']]
           : v.type === 'bool'
-            ? [[`${c} on`, '켠다 (끄려면 off / 0 / false)']]
+            ? [[`${c} on`, '켠다 (끄려면 0 / false)']]
             : [[`${c} 내용`, '적은 그대로 넣는다']];
     return { cmd: v.cmd, id: v.id, label: v.label ?? v.id, type: v.type, usage };
   });
@@ -7165,6 +7191,12 @@ SimCore.define("editor", function (require, module, exports) {
 //   { getSchema(), setSchema(s), validateNow(), destroy() }
 // ai = { generate(prompt), getBotContext() } — 내장 AI 생성(위층)용 호스트 주입. 없으면 복사 옆문만 뜬다.
 
+// 카드 순서를 **끌어서** 바꾸는 길 (v0.66 UI 개조판에서 들어옴).
+// 순서 바꾸기 자체는 grip()의 ▲▼ 버튼이 그대로 맡고 있어서, 이건 덧붙임이다.
+// 포인터 이벤트는 리스/포켓리수·모바일에서 실기 확인 전이라 꺼 둔다 — 확인되면 true로 바꾸면
+// 손잡이(⠿)가 다시 붙는다. 구현(beginVariableDrag/beginStatusDrag)은 그대로 남겨 둔다.
+const CARD_DRAG = false;
+
 const { validateSchema } = require('./validate');
 const { referencedVars } = require('./expr');
 const { renderStatusHtml, THEMES, multiPanelTemplate } = require('./render');
@@ -7176,59 +7208,811 @@ const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText }
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 
 const CSS = `
-.sce { font-size: 13px; }
-.sce * { box-sizing: border-box; }
-.sce .sce-tabs { display:flex; gap:2px; flex-wrap:wrap; border-bottom:2px solid #24304a; margin-bottom:12px; }
-.sce .sce-tab { padding:6px 12px; cursor:pointer; border:1px solid transparent; border-bottom:none;
-  border-radius:8px 8px 0 0; color:#a7b4cc; background:transparent; font-size:13px; }
-.sce .sce-tab.on { color:#fff; border-color:#3d5384; background:rgba(84,120,214,.22); font-weight:600; }
-.sce .sce-block { border:1px solid #2e3d60; border-left:3px solid #3d5384; border-radius:10px;
-  padding:8px 10px; margin-bottom:8px; background:rgba(91,141,239,.05); }
-.sce .sce-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:4px 0; }
-.sce .sce-row > label { color:#9fb0cd; font-size:12px; }
-.sce .sce-pair { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; }
-.sce .sce-pair > label { color:#9fb0cd; font-size:12px; }
-.sce input, .sce select, .sce textarea { background:#0a101f; color:#e6ebf5; border:1px solid #35486e;
-  border-radius:6px; padding:4px 8px; font-size:12.5px; }
-.sce input:focus, .sce textarea:focus { border-color:#5b8def; outline:none; }
-.sce input[type=checkbox] { width:auto; }
-.sce input.sce-w-s { width:70px; } .sce input.sce-w-m { width:110px; } .sce input.sce-w-l { width:100%; flex:1; min-width:140px; }
-.sce textarea { width:100%; min-height:56px; font-family:ui-monospace,monospace; resize:vertical; }
-.sce .sce-btn { background:#1c2740; color:#dfe7f5; border:1px solid #3d5384; border-radius:7px;
-  padding:4px 10px; cursor:pointer; font-size:12.5px; }
-.sce .sce-btn:hover { background:#24345c; border-color:#5b8def; }
-.sce .sce-btn.sce-add { border-style:dashed; border-color:#3d5384; color:#9db8e8; width:100%; margin-top:2px; }
-.sce .sce-btn.sce-add:hover { color:#cfe0ff; }
-.sce .sce-btn.sce-mini { padding:2px 7px; font-size:12px; }
-.sce .sce-btn.sce-danger { color:#d99aa6; }
-.sce .sce-btn.sce-danger:hover { border-color:#d9596f; background:#331722; color:#f2aab6; }
-.sce .sce-grip { display:flex; gap:2px; margin-left:auto; }
-.sce .sce-sub { margin-left:14px; padding-left:10px; border-left:2px solid #3d538466; }
-.sce .sce-hint { color:#aebdd8; font-size:11.5px; margin:2px 0 6px; }
-.sce .sce-report { font-family:ui-monospace,monospace; font-size:12px; white-space:pre-wrap; margin-top:8px; }
-.sce .sce-err { color:#ff7b7b; font-weight:600; } .sce .sce-warn { color:#ffd166; } .sce .sce-ok { color:#6fdb8c; font-weight:600; }
-.sce details.sce-fold { margin:4px 0; } .sce details.sce-fold > summary { cursor:pointer; user-select:none; }
+.sce {
+  --sce-bg:var(--sc-bg, #171a1f); --sce-surface:var(--sc-surface, #1d2127);
+  --sce-surface-soft:var(--sc-surface-soft, #242a31); --sce-field:var(--sc-field, #12161b);
+  --sce-line:var(--sc-line, #3b4652); --sce-line-strong:var(--sc-line-strong, #526171);
+  --sce-text:var(--sc-text, #e3e7eb); --sce-text-strong:var(--sc-text-strong, #f7f9fb);
+  --sce-muted:var(--sc-muted, #b6bec8); --sce-accent:var(--sc-accent, #78a9ff);
+  --sce-accent-strong:var(--sc-accent-strong, #4f7fe8); --sce-focus:var(--sc-focus, #9ac2ff);
+  --sce-success:var(--sc-success, #79d99a); --sce-warning:var(--sc-warning, #f1cb72);
+  --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
+  /* 심층 편집 한 탭 안의 모든 작업 상자가 공유하는 폭. 개별 상자에 숫자를 박으면
+     새 상자를 넣을 때마다 하나씩 어긋난다 (실측: 소개 상자만 끝까지 늘어나 있었다). */
+  --sce-work-w:820px;
+  color:var(--sce-text); font-family:var(--sc-font-body, 'Pretendard Variable', Pretendard,
+    'SUIT Variable', 'Noto Sans KR', system-ui, sans-serif); font-size:14px; line-height:1.6;
+  overflow-wrap:anywhere; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
+}
+.sce * { box-sizing:border-box; }
+.sce .sce-tabs { display:flex; gap:18px; flex-wrap:wrap; border-bottom:1px solid var(--sce-line); margin-bottom:12px; }
+.sce .sce-tab { min-height:38px; padding:7px 2px; cursor:pointer; border:0; border-radius:0;
+  color:var(--sce-muted); background:transparent; font:inherit; font-size:13.5px; }
+.sce .sce-tab.on { color:var(--sce-text-strong); background:transparent; font-weight:650;
+  box-shadow:inset 0 -2px 0 var(--sce-accent); }
+.sce .sce-block { border:1px solid var(--sce-line); border-left:3px solid var(--sce-line-strong); border-radius:4px;
+  padding:10px 12px; margin-bottom:9px; background:var(--sce-surface); }
+.sce .sce-row { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:5px 0; }
+.sce .sce-row > label, .sce .sce-pair > label { color:var(--sce-muted); font-size:12.5px; font-weight:550; }
+.sce .sce-pair { display:inline-flex; gap:6px; align-items:center; white-space:nowrap; }
+.sce input, .sce select, .sce textarea { min-height:38px; background:var(--sce-field); color:var(--sce-text-strong);
+  border:1px solid var(--sce-line-strong); border-radius:5px; padding:6px 9px; font:inherit; font-size:13.5px; }
+.sce input::placeholder, .sce textarea::placeholder { color:#929ca7; opacity:1; }
+.sce input[type=checkbox] { width:auto; min-height:auto; accent-color:var(--sce-accent-strong); }
+.sce input.sce-w-s { width:76px; } .sce input.sce-w-m { width:120px; }
+.sce input.sce-w-l { width:100%; flex:1; min-width:140px; }
+.sce textarea { width:100%; min-height:72px; font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace); resize:vertical; }
+.sce .sce-btn { min-height:38px; background:var(--sce-surface-soft); color:var(--sce-text-strong);
+  border:1px solid var(--sce-line-strong); border-radius:5px; padding:7px 11px; cursor:pointer;
+  font:inherit; font-size:13.5px; font-weight:600; line-height:1.25; word-break:keep-all; }
+.sce .sce-btn.sce-add { border-style:dashed; color:var(--sce-accent); width:100%; margin-top:2px; }
+.sce .sce-btn.sce-mini { min-height:32px; padding:4px 8px; font-size:12.5px; }
+.sce .sce-btn.sce-danger { color:var(--sce-danger); }
+.sce .sce-btn:disabled { opacity:.5; cursor:not-allowed; }
+.sce .sce-grip { display:flex; gap:3px; margin-left:auto; }
+.sce .sce-sub { margin-left:14px; padding-left:10px; border-left:2px solid var(--sce-line); }
+.sce .sce-hint { color:var(--sce-muted); font-size:12.5px; margin:3px 0 7px; line-height:1.6; }
+.sce .sce-field-label { display:block; margin:12px 0 5px; color:var(--sce-text-strong);
+  font-size:12.5px; font-weight:700; }
+.sce .sce-report { font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace);
+  font-size:12.5px; white-space:pre-wrap; margin-top:8px; }
+.sce .sce-err { color:var(--sce-danger); font-weight:650; }
+.sce .sce-warn { color:var(--sce-warning); }
+.sce .sce-ok { color:var(--sce-success); font-weight:650; }
+.sce details.sce-fold { margin:4px 0; }
+.sce details.sce-fold > summary { cursor:pointer; user-select:none; color:var(--sce-text); }
 .sce details.sce-fold > div { margin-left:12px; }
-.sce .sce-tag { display:inline-block; padding:1px 7px; border-radius:9px; font-size:11px; letter-spacing:.02em;
-  background:#26304a; color:#9db8e8; border:1px solid #3a4560; }
+.sce .sce-tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; letter-spacing:.02em;
+  background:var(--sce-surface-soft); color:var(--sce-text); border:1px solid var(--sce-line-strong); }
 .sce .sce-preview { margin-top:10px; }
 .sce .sce-chips { display:flex; gap:6px; flex-wrap:wrap; }
-.sce .sce-chip { display:flex; align-items:center; gap:4px; border:1px solid #35486e; border-radius:8px; padding:3px 8px; font-size:12px; color:#dfe7f5; }
-.sce h4 { margin:16px 0 6px; font-size:12.5px; color:#9db8e8; padding-left:8px; border-left:3px solid #3d5384; }
+.sce .sce-chip { display:flex; align-items:center; gap:4px; border:1px solid var(--sce-line-strong);
+  border-radius:7px; padding:4px 8px; font-size:12.5px; color:var(--sce-text); }
+.sce h4 { margin:17px 0 7px; font-size:13.5px; color:var(--sce-text-strong); padding-left:9px;
+  border-left:3px solid var(--sce-accent); letter-spacing:-.01em; }
 .sce .sce-swatches { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
-.sce .sce-swatch { width:20px !important; height:20px !important; min-width:0 !important;
-  border-radius:6px !important; border:1px solid rgba(0,0,0,.4) !important;
+.sce .sce-swatch { width:24px !important; height:24px !important; min-width:0 !important;
+  border-radius:5px !important; border:1px solid var(--sce-line-strong) !important;
   cursor:pointer; padding:0 !important; flex:none; }
-.sce .sce-swatch.on { outline:2px solid #fff !important; outline-offset:1px; }
-.sce input[type=color] { width:30px !important; height:24px !important; min-width:0 !important;
-  padding:1px !important; border-radius:6px !important; background:transparent !important; cursor:pointer; }
-.sce .sce-colorbox { display:flex; flex-direction:column; gap:4px; margin:4px 0; padding:6px 8px;
-  border:1px dashed #3d538488; border-radius:8px; }
-.sce .sce-top { border-left-color:#8f6fd0; background:rgba(159,111,239,.07); }
+.sce .sce-swatch.on { outline:2px solid var(--sce-focus) !important; outline-offset:2px; }
+.sce input[type=color] { width:34px !important; height:30px !important; min-width:0 !important;
+  padding:2px !important; border-radius:5px !important; background:transparent !important; cursor:pointer; }
+.sce .sce-colorbox { display:flex; flex-direction:column; gap:4px; margin:4px 0; padding:7px 9px;
+  border:1px dashed var(--sce-line-strong); border-radius:6px; }
+.sce .sce-top { border-left-color:#6f9ed6; border-radius:4px; background:var(--sce-surface); }
+.sce .sce-ai-setup { margin-top:11px; padding:9px 0;
+  border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-ai-section-label { margin-bottom:7px; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-ai-request-head { display:flex; justify-content:space-between; align-items:end; gap:8px 14px;
+  margin:12px 0 5px; flex-wrap:wrap; }
+.sce .sce-ai-request-head .sce-field-label { margin:0; }
+.sce .sce-ai-request-mode { color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-ai-request { min-height:92px !important; font-family:inherit; line-height:1.6; }
+.sce .sce-ai-settings-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:8px;
+  align-items:stretch; }
+.sce .sce-ai-setting-card { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:transparent; height:100%; }
+.sce .sce-ai-setting-name { margin-bottom:6px; color:var(--sce-text-strong); font-size:12px; font-weight:700; }
+.sce .sce-ai-context { display:grid; gap:6px; margin:0; align-items:start; }
+.sce .sce-ai-context-toggle { display:flex; align-items:flex-start; gap:8px; width:fit-content; max-width:100%;
+  color:var(--sce-text-strong); font-size:13px; font-weight:650; cursor:pointer; }
+.sce .sce-ai-context-toggle input { flex:none; margin-top:4px; }
+.sce .sce-ai-context-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  border-top:1px solid var(--sce-line); padding-top:5px; }
+.sce .sce-ai-context-meta span { min-width:0; padding:1px 8px 1px 0; color:var(--sce-muted);
+  font-size:11.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-ai-context-meta span:nth-child(even) { padding-left:8px; border-left:1px solid var(--sce-line); }
+.sce .sce-ai-model-row { display:grid; grid-template-columns:auto minmax(180px,1fr); gap:6px 8px; margin:0; }
+.sce .sce-ai-model-row > .sce-hint { align-self:center; }
+.sce .sce-ai-model-copy { grid-column:1 / -1; margin:0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-ai-context-note { display:block; color:var(--sce-muted); font-size:11.5px; font-weight:400; }
+.sce .sce-ai-action-row { justify-content:space-between; margin:10px 0 0; padding-top:10px;
+  border-top:1px solid var(--sce-line); }
+.sce .sce-ai-action-hint { color:var(--sce-muted); font-size:12px; }
+.sce .sce-btn.sce-ai-primary { min-width:124px; background:var(--sce-accent-strong);
+  border-color:var(--sce-accent); color:#fff; }
+.sce .sce-ai-alt { margin-top:13px; padding-top:11px; border-top:1px solid var(--sce-line); }
+.sce .sce-ai-alt-title { margin-bottom:2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:750; }
+.sce .sce-design-polish { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; margin:8px 0 10px;
+  padding:8px 0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); background:transparent; }
+.sce .sce-design-polish .sce-chip { flex:none; padding:0; border:0; border-radius:0; background:transparent; }
+.sce .sce-hallmark-link { display:inline-flex; align-items:center; gap:4px; color:var(--sce-accent);
+  font-size:12px; font-weight:650; text-decoration:none; white-space:nowrap; }
+.sce .sce-hallmark-link:hover { text-decoration:underline; text-underline-offset:2px; }
+.sce .sce-result-section { margin-top:14px; padding-top:13px; border-top:1px solid var(--sce-line); }
+.sce .sce-result-section:first-of-type { margin-top:0; padding-top:0; border-top:0; }
+.sce .sce-result-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:8px; }
+.sce .sce-result-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-result-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-mode-switch { display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; margin:4px 0 9px; }
+.sce .sce-mode-btn { min-height:34px; padding:5px 10px; border:1px solid var(--sce-line-strong); border-radius:4px;
+  background:transparent; color:var(--sce-muted); font:inherit; font-size:12px; cursor:pointer; }
+.sce .sce-mode-btn.on { background:var(--sce-surface-soft); color:var(--sce-text-strong); font-weight:700;
+  border-color:var(--sce-accent); box-shadow:inset 0 -2px 0 var(--sce-accent); }
+.sce .sce-design-actions { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; align-items:start; }
+.sce .sce-design-request { width:100%; min-height:112px; padding:9px 10px; font-family:inherit;
+  line-height:1.55; resize:vertical; }
+.sce .sce-design-controls { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.sce .sce-design-controls .sce-btn { flex:none; }
+.sce .sce-design-controls .sce-btn.sce-ai-primary { min-width:100px; }
+.sce .sce-generation-state { min-height:20px; margin-top:7px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-generation-state.ok { color:var(--sce-success); }
+.sce .sce-generation-state.warn { color:var(--sce-warning); }
+.sce .sce-catalog-counts { display:flex; gap:6px 14px; flex-wrap:wrap; color:var(--sce-text);
+  font-size:12.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-catalog-counts b { color:var(--sce-text-strong); }
+.sce .sce-catalog-details { margin-top:8px; border-top:1px solid var(--sce-line); padding-top:8px; }
+.sce .sce-catalog-details > summary { width:fit-content; color:var(--sce-text); cursor:pointer; font-size:12.5px; }
+.sce .sce-catalog-group { margin-top:12px; }
+.sce .sce-catalog-group > h4 { margin-top:0; }
+.sce .sce-catalog-grid, .sce .sce-event-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px; align-items:stretch; }
+.sce .sce-catalog-item, .sce .sce-event-row { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-catalog-item-title { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; overflow-wrap:anywhere; }
+.sce .sce-catalog-item-detail { margin-top:3px; color:var(--sce-muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.sce .sce-event-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.sce .sce-event-kind { flex:none; padding:2px 6px; border:1px solid var(--sce-line-strong); border-radius:3px;
+  color:var(--sce-text); font-size:10.5px; font-weight:700; letter-spacing:.02em; }
+.sce .sce-event-title { min-width:0; color:var(--sce-text-strong); font-size:13px; font-weight:700;
+  overflow-wrap:anywhere; }
+.sce .sce-event-fields { display:grid; grid-template-columns:minmax(104px,auto) minmax(0,1fr); margin:0; }
+.sce .sce-event-fields dt, .sce .sce-event-fields dd { min-width:0; margin:0; padding:4px 0;
+  border-top:1px solid var(--sce-line); font-size:12px; line-height:1.5; }
+.sce .sce-event-fields dt { padding-right:10px; color:var(--sce-muted); font-weight:650; }
+.sce .sce-event-fields dd { color:var(--sce-text); overflow-wrap:anywhere; }
+.sce .sce-diag-intro { margin:3px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-diag-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-diag-intro p { margin:3px 0 0; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-diag-controls { display:grid; grid-template-columns:minmax(145px,190px) minmax(145px,190px) auto;
+  gap:8px; align-items:end; padding:10px 0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-diag-field { display:grid; grid-template-columns:auto minmax(72px,1fr); gap:2px 8px; align-items:center; }
+.sce .sce-diag-field > span { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-diag-field > small { grid-column:1 / -1; color:var(--sce-muted); font-size:11px; line-height:1.35; }
+.sce .sce-diag-field input { width:100%; }
+.sce .sce-diag-run { min-width:112px; }
+.sce .sce-diag-status { min-height:20px; margin:6px 0 0; color:var(--sce-muted); font-size:12px; }
+.sce .sce-diag-summary { margin:8px 0 12px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-line-strong); border-radius:4px; background:var(--sce-surface); }
+.sce .sce-diag-summary-head { display:flex; justify-content:space-between; gap:8px 16px; align-items:center; flex-wrap:wrap; }
+.sce .sce-diag-counts { display:flex; gap:7px 14px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-count { color:var(--sce-muted); font-size:12px; }
+.sce .sce-diag-count strong { margin-left:3px; color:var(--sce-text-strong); font-size:14px; }
+.sce .sce-diag-meta { color:var(--sce-text); font-size:12px; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-summary-detail { margin-top:6px; padding-top:6px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-diag-compare { margin:10px 0 13px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-surface); }
+.sce .sce-diag-compare-head { padding:9px 11px; border-bottom:1px solid var(--sce-line);
+  color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-diag-compare-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.sce .sce-diag-compare-metric { min-width:0; padding:8px 10px; border-right:1px solid var(--sce-line); }
+.sce .sce-diag-compare-metric:last-child { border-right:0; }
+.sce .sce-diag-compare-metric span { display:block; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-diag-compare-metric strong { display:block; margin-top:1px; color:var(--sce-text-strong);
+  font-size:13.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-compare-detail { display:grid; gap:4px; padding:9px 11px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-clear { margin:10px 0 13px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-success); border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-clear strong { display:block; color:var(--sce-text-strong); font-size:13.5px; }
+.sce .sce-diag-clear span { display:block; margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-group { margin-top:14px; }
+.sce .sce-diag-group-head { display:flex; align-items:center; gap:7px; margin-bottom:7px; padding-left:8px;
+  border-left:3px solid var(--sce-accent); color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-diag-group-count { color:var(--sce-muted); font-size:12px; font-weight:600; }
+.sce .sce-diag-findings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; align-items:start; }
+.sce .sce-diag-finding { min-width:0; padding:11px 12px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-field); }
+.sce .sce-diag-group-high .sce-diag-finding { border-left:3px solid var(--sce-danger); }
+.sce .sce-diag-group-mid .sce-diag-finding { border-left:3px solid var(--sce-warning); }
+.sce .sce-diag-group-low .sce-diag-finding { border-left:3px solid var(--sce-accent); }
+.sce .sce-diag-finding .sce-tag { border-radius:3px; padding:3px 7px; font-size:11.5px; }
+.sce .sce-diag-finding-main { margin-top:7px; color:var(--sce-text-strong); font-size:13.5px; line-height:1.65;
+  overflow-wrap:anywhere; }
+.sce .sce-diag-finding-next { display:grid; grid-template-columns:72px minmax(0,1fr); gap:8px;
+  margin-top:8px; padding-top:7px; border-top:1px solid var(--sce-line); color:var(--sce-text);
+  font-size:12.5px; line-height:1.6; overflow-wrap:anywhere; }
+.sce .sce-diag-finding-next > span { color:var(--sce-muted); font-size:11.5px; font-weight:700; }
+.sce .sce-diag-group-fold { border-top:1px solid var(--sce-line); }
+.sce .sce-diag-group-fold > summary { width:fit-content; padding:9px 0 7px; color:var(--sce-text);
+  font-size:12.5px; font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai { margin-top:18px; padding-top:14px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-diag-ai-head { margin-bottom:9px; }
+.sce .sce-diag-ai-title { color:var(--sce-text-strong); font-size:15px; font-weight:750; }
+.sce .sce-diag-ai-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.6; }
+.sce .sce-diag-ai-primary { display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:11px 12px; border:1px solid var(--sce-line); border-left:3px solid var(--sce-accent);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-ai-primary-text { min-width:0; }
+.sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
+.sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
+  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
+.sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.sce .sce-diag-ai-export-card { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-ai-export-card.is-primary { border-left:3px solid var(--sce-accent); }
+.sce .sce-diag-ai-export-card .sce-hint { margin-top:0; }
+.sce .sce-diag-ai-export-card .sce-row { margin-bottom:0; }
+.sce .sce-diag-rewrite { margin-top:2px; border-top:1px solid var(--sce-line); }
+.sce .sce-diag-rewrite > summary { padding:9px 0; color:var(--sce-text); font-size:12.5px;
+  font-weight:700; cursor:pointer; }
+.sce .sce-diag-rewrite-body { display:grid; gap:8px; padding:0 0 4px; }
+.sce .sce-diag-orphan { border-top:1px solid var(--sce-line); }
+.sce .sce-diag-orphan > summary { width:fit-content; padding:8px 0 4px; color:var(--sce-muted);
+  font-size:12px; cursor:pointer; }
+.sce .sce-diag-orphan > div { padding:3px 0 5px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-ai-warning { margin:10px 0 5px; padding:8px 10px; border-left:2px solid var(--sce-warning);
+  color:var(--sce-muted); font-size:12px; line-height:1.6; background:var(--sce-field); }
+.sce .sce-result-external { margin-top:12px; padding:10px 11px; border-left:2px solid var(--sce-line-strong);
+  background:var(--sce-field); }
+.sce .sce-result-external .sce-ai-alt-title { font-size:12px; }
+.sce .sce-json-intro { margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-json-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-json-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-json-paths { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; align-items:stretch; }
+.sce .sce-json-path { min-width:0; padding:11px 12px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-surface); display:flex; flex-direction:column; height:100%; }
+.sce .sce-json-path.is-primary { border-left:3px solid var(--sce-accent); }
+.sce .sce-json-path-head { display:flex; justify-content:space-between; gap:8px; align-items:start; margin-bottom:5px; }
+.sce .sce-json-path-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-json-path-badge { flex:none; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
+.sce .sce-json-path-copy { min-height:38px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-json-path > .sce-hint { min-height:38px; margin:8px 0 0; }
+.sce .sce-json-path > .sce-row { margin:7px 0 0; }
+.sce .sce-json-path > .sce-row:last-of-type { margin-top:auto; padding-top:7px; }
+.sce .sce-json-path > .sce-copy-output { margin-top:8px; }
+.sce .sce-copy-output[hidden] { display:none !important; }
+.sce .sce-json-workspace { margin-top:14px; padding-top:13px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-json-section-head { display:flex; justify-content:space-between; gap:8px 16px; align-items:start;
+  margin-bottom:7px; flex-wrap:wrap; }
+.sce .sce-json-section-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-json-section-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-patch-input { min-height:138px; }
+.sce .sce-json-action-row { justify-content:space-between; margin-top:8px; }
+.sce .sce-json-action-state { color:var(--sce-muted); font-size:12px; }
+.sce .sce-json-validation { margin-top:15px; padding-top:13px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-json-validation-status { display:flex; gap:8px; align-items:flex-start; padding:8px 10px;
+  border-left:3px solid var(--sce-success); background:var(--sce-field); }
+.sce .sce-json-validation-status.is-error { border-left-color:var(--sce-danger); }
+.sce .sce-json-validation-mark { flex:none; color:var(--sce-success); font-weight:800; }
+.sce .sce-json-validation-status.is-error .sce-json-validation-mark { color:var(--sce-danger); }
+.sce .sce-json-validation-main { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-json-validation-next { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-source { margin-top:14px; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-source > summary { display:flex; justify-content:space-between; gap:10px; padding:11px 0;
+  color:var(--sce-text); font-size:12.5px; font-weight:700; cursor:pointer; }
+.sce .sce-json-source-body { padding:0 0 11px; }
+.sce .sce-json-source textarea { min-height:300px; }
+.sce .sce-json-source-state { min-height:20px; margin-top:6px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-json-source-state.is-dirty { color:var(--sce-warning); }
+.sce .sce-json-import-preview { margin-top:9px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-accent); border-radius:4px; background:var(--sce-field); }
+.sce .sce-json-import-preview.is-error { border-left-color:var(--sce-danger); }
+.sce .sce-json-import-title { color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-json-import-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-import-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:8px;
+  border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-import-metric { min-width:0; padding:6px 8px; border-right:1px solid var(--sce-line); }
+.sce .sce-json-import-metric:last-child { border-right:0; }
+.sce .sce-json-import-metric span { display:block; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-json-import-metric strong { display:block; color:var(--sce-text-strong); font-size:13px;
+  font-variant-numeric:tabular-nums; }
+.sce .sce-json-import-errors { margin-top:8px; color:var(--sce-danger); font-size:12px; line-height:1.55; }
+.sce .sce-json-import-applied { display:flex; justify-content:space-between; align-items:center; gap:8px 12px;
+  margin-bottom:9px; padding:8px 10px; border-left:3px solid var(--sce-success); background:var(--sce-field); }
+.sce .sce-json-import-applied span { color:var(--sce-text); font-size:12px; line-height:1.5; }
+.sce .sce-vars-intro {
+  width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-vars-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-vars-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-vars-ai { width:100%; max-width:var(--sce-work-w); margin:0 0 13px; padding:11px 12px 12px;
+  border:1px solid var(--sce-line); border-left:2px solid var(--sce-accent); border-radius:4px;
+  background:var(--sce-surface); }
+.sce .sce-vars-ai-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px 14px;
+  margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-vars-ai-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-vars-ai-summary { color:var(--sce-muted); font-size:11.5px; font-weight:600; }
+.sce .sce-tab-ai-vars { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+  gap:0; margin:0; padding:0; border:0; background:transparent; }
+.sce .sce-vars-ai-direct { grid-column:1 / -1; min-width:0; padding:0 0 9px;
+  border-bottom:1px solid var(--sce-line); margin-bottom:4px; }
+.sce .sce-vars-ai-direct > .sce-hint { margin-top:5px; }
+.sce .sce-vars-ai-export, .sce .sce-vars-ai-import { min-width:0; padding:5px 12px 3px 0; }
+.sce .sce-vars-ai-import { padding-left:12px; padding-right:0; border-left:1px solid var(--sce-line); }
+.sce .sce-vars-ai-export > .sce-hint, .sce .sce-vars-ai-import > .sce-hint { margin-top:0; }
+.sce .sce-vars-ai-export > .sce-row, .sce .sce-vars-ai-import > .sce-row { margin-bottom:0; }
+.sce .sce-vars-ai-input { min-height:88px; height:88px; }
+.sce .sce-editor-section-head {
+  width:100%; max-width:var(--sce-work-w); display:flex; justify-content:space-between; gap:8px 14px;
+  align-items:flex-start; margin:13px 0 7px; }
+.sce .sce-editor-section-head.sce-variable-section-head { width:100%; max-width:var(--sce-work-w); }
+.sce .sce-editor-section-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-editor-section-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-editor-section-actions { display:flex; justify-content:flex-end; align-items:center; gap:7px; flex-wrap:wrap; }
+.sce .sce-variable-list { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
+.sce .sce-variable-card { min-width:0; padding:9px 10px; }
+.sce .sce-variable-card.is-collapsed { padding:8px 10px; background:transparent; }
+.sce .sce-variable-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px 14px; }
+.sce .sce-variable-card-title { display:flex; align-items:center; gap:7px; min-width:0; flex:1; }
+.sce .sce-variable-drag-handle { flex:none; min-width:30px; color:var(--sce-muted); cursor:grab;
+  touch-action:none; letter-spacing:-.08em; }
+.sce .sce-variable-drag-handle:active { cursor:grabbing; }
+.sce .sce-variable-card-index { flex:none; color:var(--sce-muted); font-family:var(--sc-font-mono,
+  'D2Coding', ui-monospace, monospace); font-size:10.5px; font-weight:700; }
+.sce .sce-variable-title-field { display:flex; align-items:center; gap:7px; width:380px; max-width:100%; }
+.sce .sce-variable-title-field > span { flex:none; color:var(--sce-muted); font-size:11.5px; font-weight:650; }
+.sce .sce-variable-title-field > input { width:100% !important; min-width:0 !important; }
+.sce .sce-variable-card-actions { display:flex; align-items:center; gap:5px; flex:none; }
+.sce .sce-variable-card-actions .sce-grip { margin-left:0; }
+.sce .sce-variable-title-display { min-width:0; color:var(--sce-text-strong); font-size:13px;
+  font-weight:750; overflow-wrap:anywhere; }
+.sce .sce-variable-card-summary { min-width:0; color:var(--sce-muted); font-size:11.5px;
+  line-height:1.45; overflow-wrap:anywhere; }
+.sce .sce-variable-card-body { --sce-variable-work-width:680px; margin-top:7px; padding-top:7px;
+  border-top:1px solid var(--sce-line); }
+.sce .sce-variable-grid { display:grid; width:100%; max-width:var(--sce-variable-work-width);
+  grid-template-columns:260px minmax(0,1fr); gap:7px; align-items:end; }
+.sce .sce-variable-grid.values { grid-template-columns:repeat(3,108px) minmax(0,1fr); margin-top:7px; }
+.sce .sce-variable-grid.values.is-text { grid-template-columns:minmax(0,1fr) 108px; }
+.sce .sce-variable-grid.values.is-enum { grid-template-columns:minmax(0,1fr) 180px; }
+.sce .sce-variable-grid.values.is-list { grid-template-columns:minmax(0,1fr) 108px 132px; }
+.sce .sce-variable-grid.values.is-bool { width:max-content; grid-template-columns:max-content; }
+.sce .sce-variable-field { display:grid; gap:2px; min-width:0; color:var(--sce-muted); font-size:11.5px;
+  font-weight:650; }
+.sce .sce-variable-field > input, .sce .sce-variable-field > select, .sce .sce-variable-field > textarea {
+  width:100% !important; min-width:0 !important; max-width:none !important; }
+.sce .sce-variable-field > textarea { min-height:78px; resize:vertical; line-height:1.45; }
+.sce .sce-variable-grid.values.is-enum .sce-variable-field > textarea,
+.sce .sce-variable-grid.values.is-list .sce-variable-field > textarea {
+  min-height:118px; height:118px; }
+.sce .sce-variable-field.is-wide { grid-column:1 / -1; }
+.sce .sce-variable-field.has-error > input, .sce .sce-variable-field.has-error > select,
+.sce .sce-variable-field.has-error > textarea {
+  border-color:var(--sce-danger); }
+.sce .sce-variable-reference-note { width:100%; max-width:var(--sce-variable-work-width); margin-top:5px;
+  padding:5px 8px; border-left:2px solid var(--sce-warning); background:var(--sce-field);
+  color:var(--sce-text); font-size:11.5px; line-height:1.45; }
+.sce .sce-variable-type-help { margin:4px 0 0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
+.sce .sce-variable-description { width:100%; max-width:var(--sce-variable-work-width); margin-top:6px; }
+.sce .sce-variable-bool { display:flex; gap:6px; }
+.sce .sce-variable-bool .sce-mode-btn { min-width:76px; }
+.sce .sce-field-error { color:var(--sce-danger); font-size:11.5px; font-weight:600; line-height:1.45; }
+.sce .sce-card-issue-count { flex:none; padding-bottom:8px; color:var(--sce-danger); font-size:11.5px;
+  font-weight:700; white-space:nowrap; }
+.sce .sce-card-issue-summary { min-width:0; color:var(--sce-danger); font-size:11.5px;
+  font-weight:650; line-height:1.45; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sce .sce-variable-card.is-just-moved { border-color:var(--sce-accent); }
+.sce .sce-variable-card.is-newly-created, .sce .sce-command-card.is-newly-created {
+  border-color:var(--sce-accent); animation:sce-editor-new-card 1.5s ease both; }
+.sce .sce-variable-card.is-just-moved.moved-up { animation:sce-variable-move-up .72s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-variable-card.is-just-moved.moved-down { animation:sce-variable-move-down .72s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-variable-card.is-just-moved.moved-drag { animation:sce-variable-move-drop .78s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-variable-card.is-dragging { opacity:.46; transform:scale(.994); }
+.sce .sce-variable-card.is-drag-before { border-top-color:var(--sce-accent);
+  box-shadow:0 -4px 0 var(--sce-accent), 0 8px 18px rgba(0,0,0,.18); transform:translateY(4px); }
+.sce .sce-variable-card.is-drag-after { border-bottom-color:var(--sce-accent);
+  box-shadow:0 4px 0 var(--sce-accent), 0 8px 18px rgba(0,0,0,.18); transform:translateY(-4px); }
+.sce .sce-variable-drag-ghost { position:fixed; z-index:120; pointer-events:none; box-sizing:border-box;
+  max-width:calc(100vw - 32px); max-height:180px; overflow:hidden; border:1px solid var(--sce-accent);
+  border-radius:4px; background:rgba(24,30,38,.9); opacity:.86; transform:rotate(.5deg) scale(.99);
+  transform-origin:16px 16px; box-shadow:0 16px 36px rgba(0,0,0,.38), 0 0 0 2px rgba(120,169,255,.2); }
+.sce .sce-variable-drag-ghost::after { content:""; position:absolute; inset:auto 0 0; height:34px;
+  background:linear-gradient(transparent, rgba(24,30,38,.96)); }
+.sce .sce-variable-drag-ghost-badge { position:absolute; right:9px; bottom:7px; z-index:1;
+  padding:3px 6px; border:1px solid var(--sce-accent); border-radius:3px; background:#243a5c;
+  color:var(--sce-text-strong); font-size:10px; font-weight:750; }
+.sce .sce-variable-move-feedback { flex:none; padding:4px 7px; border:1px solid var(--sce-success);
+  border-radius:3px; background:rgba(54,142,94,.14); color:var(--sce-success); font-size:10.5px;
+  font-weight:750; white-space:nowrap; animation:sce-variable-feedback-pop .45s ease both; }
+@keyframes sce-variable-move-up {
+  0% { transform:translateY(12px) scale(.99); background:#20314a; box-shadow:0 0 0 2px rgba(120,169,255,.34); }
+  58% { transform:translateY(-2px) scale(1.002); }
+  100% { transform:translateY(0) scale(1); background:var(--sce-surface); box-shadow:none; }
+}
+@keyframes sce-variable-move-down {
+  0% { transform:translateY(-12px) scale(.99); background:#20314a; box-shadow:0 0 0 2px rgba(120,169,255,.34); }
+  58% { transform:translateY(2px) scale(1.002); }
+  100% { transform:translateY(0) scale(1); background:var(--sce-surface); box-shadow:none; }
+}
+@keyframes sce-variable-move-drop {
+  0% { transform:scale(.975); background:#20314a; box-shadow:0 0 0 3px rgba(120,169,255,.34); }
+  62% { transform:scale(1.004); }
+  100% { transform:scale(1); background:var(--sce-surface); box-shadow:none; }
+}
+@keyframes sce-variable-feedback-pop {
+  0% { opacity:0; transform:scale(.84); }
+  45% { opacity:1; transform:scale(1.04); }
+  100% { opacity:1; transform:scale(1); }
+}
+@keyframes sce-editor-new-card {
+  0% { background:#20314a; box-shadow:0 0 0 3px rgba(120,169,255,.32); }
+  58% { background:var(--sce-surface); box-shadow:0 0 0 1px rgba(120,169,255,.14); }
+  100% { background:var(--sce-surface); box-shadow:none; }
+}
+.sce .sce-variable-preview { width:100%; max-width:var(--sce-variable-work-width); margin-top:5px;
+  color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-variable-preview strong { color:var(--sce-text); font-weight:650; }
+.sce .sce-derived-grid { display:grid; width:100%; max-width:var(--sce-variable-work-width);
+  grid-template-columns:240px minmax(0,1fr); gap:7px; }
+.sce .sce-vars-empty { width:100%; max-width:var(--sce-work-w); padding:14px; border:1px dashed var(--sce-line-strong); border-radius:4px;
+  color:var(--sce-muted); font-size:12.5px; }
+.sce .sce-vars-empty strong { display:block; margin-bottom:3px; color:var(--sce-text-strong); }
+.sce .sce-vars-empty .sce-btn { margin-top:9px; }
+.sce .sce-vars-undo { display:flex; justify-content:space-between; align-items:center; gap:8px 12px;
+  width:100%; max-width:var(--sce-work-w); margin:8px 0; padding:8px 10px; border-left:3px solid var(--sce-success);
+  background:var(--sce-field); }
+.sce .sce-vars-undo span { color:var(--sce-text); font-size:12px; line-height:1.5; }
+.sce .sce-command-intro {
+  width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-command-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-command-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-command-workspace { width:100%; max-width:var(--sce-work-w); }
+.sce .sce-command-create { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px;
+  align-items:end; margin:7px 0 11px; padding:9px 0; border-top:1px solid var(--sce-line);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-command-list { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
+.sce .sce-command-card { padding:10px 11px; }
+.sce .sce-command-card.is-collapsed { padding:8px 10px; background:transparent; }
+.sce .sce-command-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px 14px; }
+.sce .sce-command-card-title { min-width:0; }
+.sce .sce-command-card-title strong { display:block; color:var(--sce-text-strong); font-size:13.5px;
+  overflow-wrap:anywhere; }
+.sce .sce-command-card-title span { display:block; margin-top:1px; color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-command-card-title .sce-command-issue-summary { color:var(--sce-danger); font-weight:700; }
+.sce .sce-command-card-title .sce-command-issue-summary.is-warning { color:var(--sce-warning); }
+.sce .sce-command-card-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; flex:none; }
+.sce .sce-command-card-body { margin-top:8px; padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-command-grid { display:grid; grid-template-columns:240px minmax(0,1fr); gap:8px;
+  width:100%; max-width:680px; align-items:start; }
+.sce .sce-command-readonly { min-height:38px; display:flex; align-items:center; padding:6px 8px;
+  border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); color:var(--sce-text); }
+.sce .sce-command-name-control { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; }
+.sce .sce-command-prefix { min-height:38px; display:flex; align-items:center; padding:0 8px;
+  border:1px solid var(--sce-line-strong); border-right:0; border-radius:4px 0 0 4px;
+  background:var(--sce-surface-soft); color:var(--sce-muted); font-family:var(--sc-font-mono,'D2Coding',monospace); }
+.sce .sce-command-name-control input { width:100% !important; min-width:0 !important; max-width:none !important;
+  border-radius:0 4px 4px 0; }
+.sce .sce-command-usage { width:100%; max-width:680px; margin-top:9px; padding-top:8px;
+  border-top:1px solid var(--sce-line); }
+.sce .sce-command-usage > strong { display:block; margin-bottom:4px; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-command-usage-line { display:grid; grid-template-columns:minmax(150px,auto) minmax(0,1fr);
+  gap:8px; align-items:baseline; padding:3px 0; }
+.sce .sce-command-usage-line code { color:var(--sce-text-strong); font-family:var(--sc-font-mono,'D2Coding',monospace);
+  white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
+.sce .sce-command-usage-line span { color:var(--sce-muted); font-size:12px; }
+.sce .sce-command-usage-note { margin-top:6px; padding:7px 9px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); color:var(--sce-text); font-size:12px; line-height:1.55; }
+.sce .sce-command-visibility { display:flex; align-items:flex-start; justify-content:space-between; gap:10px 14px;
+  width:100%; max-width:var(--sce-work-w); margin-top:13px; padding:9px 10px; border-left:3px solid var(--sce-success);
+  background:var(--sce-field); }
+.sce .sce-command-visibility.is-warning { border-left-color:var(--sce-warning); }
+.sce .sce-command-visibility strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-command-visibility p { margin:2px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-status-editor { width:100%; max-width:1040px; }
+.sce .sce-status-intro {
+  width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-status-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-status-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-status-settings { padding:10px 0; border-top:1px solid var(--sce-line);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-status-settings-grid { display:grid;
+  grid-template-columns:minmax(220px,1.25fr) minmax(220px,1fr) minmax(130px,.55fr) minmax(150px,.6fr);
+  gap:8px; align-items:end; }
+.sce .sce-status-field { display:grid; gap:4px; min-width:0; color:var(--sce-muted);
+  font-size:11.5px; font-weight:650; }
+.sce .sce-status-field > input, .sce .sce-status-field > select,
+.sce .sce-status-field > .sce-chip { width:100%; min-width:0; max-width:none; }
+.sce .sce-status-field > .sce-chip { min-height:38px; align-items:center; }
+.sce .sce-status-layout { width:min(420px,100%); margin-top:8px; }
+.sce .sce-status-layout select { width:100%; min-width:0; max-width:none; }
+.sce .sce-status-note {
+  width:100%; max-width:var(--sce-work-w); margin-top:7px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-status-timegate { display:flex; justify-content:space-between; align-items:center; gap:8px 12px;
+  width:100%; max-width:var(--sce-work-w); margin-top:9px; padding:8px 10px;
+  border-left:3px solid var(--sce-accent); background:var(--sce-surface-soft); border-radius:0 4px 4px 0; }
+.sce .sce-status-timegate > button { flex:none; }
+.sce .sce-status-section-head { display:flex; align-items:flex-start; justify-content:space-between;
+  gap:8px 14px; margin:14px 0 7px; }
+.sce .sce-status-section-head h4 { margin:0; }
+.sce .sce-status-section-head p { margin:2px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-status-section-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.sce .sce-status-count { min-width:34px; padding:4px 7px; border:1px solid var(--sce-line-strong);
+  border-radius:999px; color:var(--sce-text); font-size:11.5px; font-weight:700; text-align:center; }
+.sce .sce-status-groups {
+  width:100%; max-width:var(--sce-work-w); display:grid; gap:8px; width:100%; max-width:960px; }
+.sce .sce-status-group { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-status-group.is-collapsed { padding:8px 10px; background:transparent; }
+.sce .sce-status-group-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px 14px; }
+.sce .sce-status-group-identity { display:flex; align-items:center; gap:7px; min-width:0; }
+.sce .sce-status-group-title { min-width:0; }
+.sce .sce-status-group-title strong { display:block; color:var(--sce-text-strong); font-size:13.5px; }
+.sce .sce-status-group-title span { display:block; margin-top:1px; color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-status-group-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; flex:none; }
+.sce .sce-status-group-body { margin-top:8px; padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-group-settings { display:grid;
+  grid-template-columns:minmax(170px,.7fr) minmax(190px,.8fr) minmax(220px,1.1fr);
+  gap:10px; align-items:end; }
+.sce .sce-status-group-settings .sce-status-field > input,
+.sce .sce-status-group-settings .sce-status-field > select { width:100%; min-width:0; max-width:none; }
+.sce .sce-status-items { margin-top:12px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-item-head, .sce .sce-status-item { display:grid;
+  grid-template-columns:minmax(210px,1.2fr) 68px minmax(155px,.9fr) minmax(150px,.85fr) auto;
+  gap:9px; align-items:end; }
+.sce .sce-status-item-head { padding:8px 0 5px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
+.sce .sce-status-item { padding:9px 0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-item select, .sce .sce-status-item input { width:100%; min-width:0; max-width:none; }
+.sce .sce-status-value-control { display:grid; grid-template-columns:30px minmax(0,1fr); gap:6px; align-items:center; }
+.sce .sce-status-drag-handle { width:30px; min-width:30px; padding:0; color:var(--sce-muted);
+  cursor:grab; touch-action:none; letter-spacing:-.08em; }
+.sce .sce-status-drag-handle:active { cursor:grabbing; }
+.sce .sce-status-item .sce-chip { min-height:38px; padding:5px 6px; justify-content:center; white-space:nowrap; }
+.sce .sce-status-item-max.is-disabled { display:flex; align-items:center; min-height:38px; padding:0 9px;
+  border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); color:var(--sce-muted); }
+.sce .sce-status-item-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; align-self:end; }
+.sce .sce-status-item-color { margin:0 0 7px; padding:7px 0 2px 12px;
+  border-left:2px solid var(--sce-line-strong); }
+.sce .sce-status-draggable.is-just-moved { border-color:var(--sce-accent); }
+.sce .sce-status-draggable.is-just-moved.moved-up { animation:sce-variable-move-up .72s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-status-draggable.is-just-moved.moved-down { animation:sce-variable-move-down .72s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-status-draggable.is-just-moved.moved-drag { animation:sce-variable-move-drop .78s cubic-bezier(.2,.9,.25,1); }
+.sce .sce-status-draggable.is-dragging { opacity:.46; transform:scale(.994); }
+.sce .sce-status-draggable.is-drag-before { border-top-color:var(--sce-accent);
+  box-shadow:0 -4px 0 var(--sce-accent), 0 8px 18px rgba(0,0,0,.18); transform:translateY(4px); }
+.sce .sce-status-draggable.is-drag-after { border-bottom-color:var(--sce-accent);
+  box-shadow:0 4px 0 var(--sce-accent), 0 8px 18px rgba(0,0,0,.18); transform:translateY(-4px); }
+.sce .sce-status-drag-ghost { position:fixed; z-index:120; pointer-events:none; box-sizing:border-box;
+  max-width:calc(100vw - 32px); max-height:150px; overflow:hidden; border:1px solid var(--sce-accent);
+  border-radius:4px; background:rgba(24,30,38,.92); opacity:.88; transform:rotate(.5deg) scale(.99);
+  transform-origin:16px 16px; box-shadow:0 16px 36px rgba(0,0,0,.38), 0 0 0 2px rgba(120,169,255,.2); }
+.sce .sce-status-drag-ghost-badge { position:absolute; right:9px; bottom:7px; z-index:1;
+  padding:3px 6px; border:1px solid var(--sce-accent); border-radius:3px; background:#243a5c;
+  color:var(--sce-text-strong); font-size:10px; font-weight:750; }
+.sce .sce-status-move-feedback { flex:none; padding:4px 7px; border:1px solid var(--sce-success);
+  border-radius:3px; background:rgba(54,142,94,.14); color:var(--sce-success); font-size:10.5px;
+  font-weight:750; white-space:nowrap; animation:sce-variable-feedback-pop .45s ease both; }
+.sce .sce-status-empty {
+  width:100%; max-width:var(--sce-work-w); padding:11px 0; color:var(--sce-muted); font-size:12px; text-align:center; }
+.sce .sce-status-add-item { width:100%; margin-top:4px; }
+.sce .sce-status-tools {
+  width:100%; max-width:var(--sce-work-w); display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  width:100%; max-width:960px; margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-template { width:100%; max-width:960px; margin-top:12px; }
+.sce .sce-status-design { width:100%; max-width:960px; margin-top:15px; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-status-design > summary { padding:11px 0; color:var(--sce-text-strong); font-size:13px;
+  font-weight:750; cursor:pointer; }
+.sce .sce-status-design-body { padding:0 0 12px; }
+.sce .sce-status-preview { width:100%; max-width:960px; margin-top:15px; }
+.sce .sce-status-preview h4 { margin-bottom:7px; }
+.sce .sce-assets { min-width:0; }
+.sce .sce-assets-intro {
+  width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-assets-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-assets-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-assets-controls {
+  width:100%; max-width:var(--sce-work-w); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px 12px;
+  align-items:end; padding:10px 0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-assets-mode { min-width:0; }
+.sce .sce-assets-mode .sce-pair { display:grid; grid-template-columns:auto minmax(0,1fr); }
+.sce .sce-assets-mode select { width:100%; min-width:0; }
+.sce .sce-assets-tools {
+  width:100%; max-width:var(--sce-work-w); justify-content:flex-end; margin:0; }
+.sce .sce-assets-note { grid-column:1 / -1; padding:7px 9px; border-left:3px solid var(--sce-warning);
+  color:var(--sce-text); background:var(--sce-field); font-size:12px; line-height:1.55; }
+.sce .sce-assets-note.is-ok { border-left-color:var(--sce-success); }
+.sce .sce-assets-count { grid-column:1 / -1; color:var(--sce-muted); font-size:12px; }
+.sce .sce-assets-cost {
+  width:100%; max-width:var(--sce-work-w); display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:11px 0 2px;
+  border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-assets-cost-item { min-width:0; padding:8px 10px; border-right:1px solid var(--sce-line); }
+.sce .sce-assets-cost-item:last-child { border-right:0; }
+.sce .sce-assets-cost-item span { display:block; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-assets-cost-item strong { display:block; margin-top:1px; color:var(--sce-text-strong); font-size:13.5px;
+  font-variant-numeric:tabular-nums; }
+.sce .sce-assets-cost-note { grid-column:1 / -1; padding:7px 10px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-assets-list { display:grid; gap:10px; margin-top:7px; }
+.sce .sce-assets-list-head {
+  width:100%; max-width:var(--sce-work-w); display:flex; justify-content:space-between; align-items:center; gap:8px;
+  margin-top:14px; }
+.sce .sce-assets-list-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-assets-list-count { color:var(--sce-muted); font-size:12px; }
+.sce .sce-asset-pack { min-width:0; padding:12px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-surface); }
+.sce .sce-asset-pack-head { display:flex; justify-content:space-between; align-items:start; gap:10px;
+  margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-asset-pack-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-asset-pack-sub { margin-top:2px; color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-asset-pack-settings { display:grid; gap:9px; }
+.sce .sce-asset-pack-core { display:grid; grid-template-columns:auto minmax(150px,.7fr) minmax(180px,1fr);
+  gap:8px; align-items:end; }
+.sce .sce-asset-pack-layout { display:grid; grid-template-columns:minmax(110px,.35fr) minmax(240px,1fr);
+  gap:8px; }
+.sce .sce-asset-pack-options { display:grid; grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto;
+  gap:8px; align-items:end; }
+.sce .sce-asset-field { display:grid; gap:4px; min-width:0; color:var(--sce-muted); font-size:11.5px;
+  font-weight:650; }
+.sce .sce-asset-field > input, .sce .sce-asset-field > select { width:100%; min-width:0; }
+.sce .sce-asset-toggle { display:flex; align-items:center; min-height:38px; padding:0 2px; }
+.sce .sce-asset-slots-head { display:flex; justify-content:space-between; align-items:center; gap:8px;
+  margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-asset-slots-title { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-asset-slot { margin-top:8px; padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-asset-slot-main { display:grid; grid-template-columns:minmax(110px,.55fr) minmax(130px,.7fr) minmax(240px,2fr);
+  gap:8px; }
+.sce .sce-asset-slot-options { display:flex; justify-content:flex-end; align-items:end; gap:8px;
+  margin-top:7px; }
+.sce .sce-asset-slot-options .sce-asset-field { width:min(180px,100%); }
+.sce .sce-asset-slot-options .sce-grip { margin-left:0; }
+.sce .sce-asset-pack-status { margin-top:9px; padding-top:8px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-asset-issues { display:grid; gap:5px; margin-top:9px; padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-asset-issue { display:grid; grid-template-columns:70px minmax(0,1fr); gap:8px; font-size:12px;
+  line-height:1.5; }
+.sce .sce-asset-issue strong { color:var(--sce-danger); }
+.sce .sce-asset-issue.is-warning strong { color:var(--sce-warning); }
+.sce .sce-asset-issue span { color:var(--sce-text); }
+.sce .sce-assets-other-issues { margin-top:12px; border-top:1px solid var(--sce-line); }
+.sce .sce-assets-other-issues > summary { padding:9px 0; color:var(--sce-muted); font-size:12px; cursor:pointer; }
+.sce .sce-assets-other-issues-body { display:grid; gap:5px; padding-bottom:6px; color:var(--sce-muted);
+  font-size:12px; line-height:1.5; }
+.sce .sce-assets-empty { margin-top:13px; padding:12px; border:1px dashed var(--sce-line-strong);
+  color:var(--sce-muted); font-size:12.5px; text-align:center; }
+.sce .sce-assets-import { margin-top:15px; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-assets-import > summary { padding:11px 0; color:var(--sce-text); font-size:12.5px;
+  font-weight:700; cursor:pointer; }
+.sce .sce-assets-import-body { padding:0 0 11px; }
+.sce .sce-assets-import textarea { min-height:150px; }
+.sce .sce-assets-import-state { min-height:20px; margin-top:6px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-patch-plan { padding:0; overflow:hidden; border-left-width:1px; }
+.sce .sce-patch-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start;
+  padding:11px 12px 9px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-patch-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-patch-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-patch-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--sce-line); }
+.sce .sce-patch-metric { min-width:0; padding:8px 10px; border-right:1px solid var(--sce-line); }
+.sce .sce-patch-metric:last-child { border-right:0; }
+.sce .sce-patch-metric span { display:block; color:var(--sce-muted); font-size:10.5px; letter-spacing:.03em; }
+.sce .sce-patch-metric strong { display:block; margin-top:1px; color:var(--sce-text-strong);
+  font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace); font-size:14px; }
+.sce .sce-patch-body { padding:9px 12px; }
+.sce .sce-patch-changes { margin-top:3px; border-top:1px solid var(--sce-line); }
+.sce .sce-patch-changes > summary { padding:8px 0 5px; color:var(--sce-text); font-size:12.5px; cursor:pointer; }
+.sce .sce-patch-change { display:grid; grid-template-columns:18px minmax(0,1fr); gap:6px; padding:4px 0;
+  color:var(--sce-text); font-size:12.5px; line-height:1.45; }
+.sce .sce-patch-change-mark { color:var(--sce-accent); font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace); }
+.sce .sce-patch-actions { display:flex; justify-content:flex-end; gap:7px; padding:9px 12px;
+  border-top:1px solid var(--sce-line); background:var(--sce-field); }
+.sce .sce-patch-report { border-left-color:var(--sce-success); }
+.sce .sce-top-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 0 8px; }
+.sce .sce-top-head h4 { min-width:0; }
+.sce .sce-first-install-guide { position:relative; margin:8px 0 14px; padding:13px;
+  border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface); }
+.sce .sce-first-install-close { position:absolute; top:8px; right:8px; min-width:32px; min-height:32px;
+  padding:0; border:1px solid transparent; border-radius:5px; background:transparent; color:var(--sce-muted);
+  cursor:pointer; font:inherit; font-size:20px; line-height:1; }
+.sce .sce-first-install-title { margin-bottom:2px; color:var(--sce-text-strong); font-weight:750; }
+.sce .sce-first-install-lead { margin:0 38px 11px 0; color:var(--sce-muted); font-size:12.5px; }
+.sce .sce-first-install-steps { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.sce .sce-first-install-step { display:grid; grid-template-columns:68px minmax(0,1fr); gap:3px 9px;
+  align-content:start; min-width:0; padding:10px 11px; border:1px solid var(--sce-line); border-radius:6px;
+  background:var(--sce-field); }
+.sce .sce-first-install-number { color:var(--sce-muted); font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace);
+  font-size:10.5px; font-weight:700; letter-spacing:.04em; }
+.sce .sce-first-install-step.on .sce-first-install-number,
+.sce .sce-first-install-step.on b { color:var(--sce-accent); }
+.sce .sce-first-install-step.done .sce-first-install-number { color:var(--sce-success); }
+.sce .sce-first-install-step b { color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-first-install-step span:last-child { grid-column:1 / -1; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-first-install-note { margin-top:11px; color:var(--sce-text); font-size:12.5px; line-height:1.55; }
 .sce details.sce-lower { margin-top:14px; }
-.sce details.sce-lower > summary { cursor:pointer; user-select:none; color:#9db8e8; font-weight:600;
-  padding:7px 6px; border:1px solid #2e3d60; border-radius:10px; background:rgba(91,141,239,.05); }
-.sce details.sce-lower[open] > summary { border-radius:10px 10px 0 0; margin-bottom:10px; }
+.sce details.sce-lower > summary { cursor:pointer; user-select:none; color:var(--sce-text-strong); font-weight:650;
+  padding:8px; border:1px solid var(--sce-line); border-radius:7px; background:var(--sce-surface); }
+.sce details.sce-lower[open] > summary { border-radius:7px 7px 0 0; margin-bottom:10px; }
+.sce button:focus-visible, .sce input:focus-visible, .sce select:focus-visible,
+.sce textarea:focus-visible, .sce summary:focus-visible, .sce a:focus-visible {
+  outline:2px solid var(--sce-focus); outline-offset:2px; border-color:var(--sce-accent);
+}
+@media (hover:hover) and (pointer:fine) {
+  .sce .sce-tab:hover:not(:disabled), .sce .sce-btn:hover:not(:disabled) {
+    background:#2c343d; border-color:var(--sce-accent);
+  }
+  .sce .sce-mode-btn:hover:not(:disabled) { background:#2c343d; border-color:var(--sce-accent); }
+  .sce .sce-btn.sce-danger:hover:not(:disabled) {
+    border-color:var(--sce-danger); background:var(--sce-danger-bg); color:#ffc1c1;
+  }
+  .sce .sce-first-install-close:hover { color:var(--sce-text-strong); border-color:var(--sce-line-strong); }
+}
+@media (max-width:1040px) {
+  .sce .sce-status-settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-status-group-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options {
+    grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-asset-toggle { align-self:end; }
+  .sce .sce-asset-slot-main { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:1 / -1; }
+}
+@media (max-width:760px) {
+  .sce .sce-tab-ai-vars { grid-template-columns:1fr; }
+  .sce .sce-vars-ai-export, .sce .sce-vars-ai-import { padding:5px 0; }
+  .sce .sce-vars-ai-import { margin-top:7px; padding-top:9px; border-left:0; border-top:1px solid var(--sce-line); }
+  .sce .sce-editor-section-head { align-items:stretch; flex-direction:column; }
+  .sce .sce-editor-section-actions { justify-content:flex-start; }
+  .sce .sce-variable-card-head { align-items:stretch; flex-direction:column; }
+  .sce .sce-variable-card-title { align-items:flex-start; flex-wrap:wrap; }
+  .sce .sce-variable-title-field { width:100%; }
+  .sce .sce-variable-card-actions { justify-content:flex-end; }
+  .sce .sce-variable-grid, .sce .sce-variable-grid.values, .sce .sce-variable-grid.values.is-text,
+  .sce .sce-variable-grid.values.is-enum, .sce .sce-variable-grid.values.is-list,
+  .sce .sce-variable-grid.values.is-bool, .sce .sce-derived-grid { grid-template-columns:1fr; }
+  .sce .sce-variable-grid.values.is-list .sce-variable-field:first-child,
+  .sce .sce-variable-field.is-wide { grid-column:auto; }
+  .sce .sce-vars-undo { align-items:stretch; flex-direction:column; }
+  .sce .sce-command-create, .sce .sce-command-grid { grid-template-columns:1fr; }
+  .sce .sce-command-card-head, .sce .sce-command-visibility { align-items:stretch; flex-direction:column; }
+  .sce .sce-command-card-actions { width:100%; }
+  .sce .sce-command-usage-line { grid-template-columns:1fr; gap:1px; }
+  .sce .sce-status-settings-grid, .sce .sce-status-group-settings { grid-template-columns:1fr; }
+  .sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
+  .sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
+  .sce .sce-status-item-head { display:none; }
+  .sce .sce-status-item { grid-template-columns:minmax(0,1fr) auto; }
+  .sce .sce-status-item > :nth-child(1), .sce .sce-status-item > :nth-child(3) { grid-column:1 / -1; }
+  .sce .sce-status-item-color { padding-left:8px; }
+  .sce .sce-ai-settings-grid, .sce .sce-first-install-steps { grid-template-columns:1fr; }
+  .sce .sce-catalog-grid, .sce .sce-event-list, .sce .sce-diag-findings { grid-template-columns:1fr; }
+  .sce .sce-diag-ai-export-grid { grid-template-columns:1fr; }
+  .sce .sce-json-paths { grid-template-columns:1fr; }
+  .sce .sce-json-import-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-json-import-metric { border-bottom:1px solid var(--sce-line); }
+  .sce .sce-json-import-applied { align-items:stretch; flex-direction:column; }
+  .sce .sce-assets-controls { grid-template-columns:1fr; align-items:stretch; }
+  .sce .sce-assets-tools { justify-content:flex-start; }
+  .sce .sce-assets-note, .sce .sce-assets-count { grid-column:auto; }
+  .sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options,
+  .sce .sce-asset-slot-main { grid-template-columns:1fr; }
+  .sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:auto; }
+  .sce .sce-asset-slot-options { align-items:stretch; flex-direction:column; }
+  .sce .sce-asset-slot-options .sce-asset-field { width:100%; }
+  .sce .sce-diag-ai-primary { align-items:stretch; flex-direction:column; }
+  .sce .sce-diag-ai-primary .sce-btn { width:100%; }
+  .sce .sce-diag-compare-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-diag-compare-metric:nth-child(2) { border-right:0; }
+  .sce .sce-diag-compare-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+  .sce .sce-diag-controls { grid-template-columns:1fr 1fr; }
+  .sce .sce-diag-run { grid-column:1 / -1; width:100%; }
+  .sce .sce-patch-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .sce .sce-patch-metric:nth-child(2) { border-right:0; }
+  .sce .sce-patch-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+}
+@media (max-width:600px) {
+  .sce { font-size:14px; }
+  .sce .sce-tab, .sce .sce-btn, .sce input, .sce select, .sce textarea { min-height:44px; }
+  .sce .sce-btn.sce-mini { min-height:40px; }
+  .sce .sce-btn.sce-ai-primary { width:100%; }
+  .sce .sce-mode-btn, .sce .sce-design-controls .sce-btn.sce-mini { min-height:44px; }
+  .sce .sce-design-controls .sce-btn.sce-ai-primary { width:auto; }
+  .sce .sce-event-fields { grid-template-columns:minmax(92px,auto) minmax(0,1fr); }
+  .sce .sce-diag-controls { grid-template-columns:1fr; }
+  .sce .sce-diag-run { grid-column:auto; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .sce *, .sce *::before, .sce *::after { scroll-behavior:auto !important; transition:none !important; }
+}
 `;
 
 const VAR_TYPES = [
@@ -7283,16 +8067,28 @@ function bindSelect(value, options, apply) {
  * @param buildText 눌렀을 때 만들 텍스트 (오래 걸릴 수 있으므로 클릭 시점에 만든다)
  * @param extra 버튼 옆에 같이 놓을 컨트롤 (예: 예제 고르는 드롭다운)
  */
-function copyWidget(btnLabel, hint, buildText, extra = []) {
+function copyWidget(btnLabel, hint, buildText, extra = [], options = {}) {
   const note = h('div', { class: 'sce-hint' }, hint);
-  const out = h('textarea', { style: 'display:none;height:190px' });
+  const out = h('textarea', { class: 'sce-copy-output', style: 'height:190px' });
+  out.hidden = true;
+  const foldBtn = h('button', { class: 'sce-btn sce-mini', onclick: () => {
+    out.hidden = true;
+    foldBtn.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    note.textContent = hint;
+  } }, '복사 내용 닫기');
+  foldBtn.hidden = true;
   const btn = h('button', { class: 'sce-btn', onclick: async () => {
     let text;
     try { text = buildText(); }
     catch (e) { note.textContent = `만들지 못했습니다 — ${e.message}`; return; }
     if (!text) { note.textContent = '복사할 내용이 없습니다.'; return; }
     out.value = text;
-    out.style.display = '';
+    out.hidden = false;
+    if (options.collapsible) {
+      btn.setAttribute('aria-expanded', 'true');
+      foldBtn.hidden = false;
+    }
     out.focus();
     out.select();
     let copied = false;
@@ -7303,10 +8099,11 @@ function copyWidget(btnLabel, hint, buildText, extra = []) {
       ? `✓ 복사됐습니다 (${kb}KB) — AI 사이트에 붙여넣으세요.`
       : `아래 칸이 전체 선택돼 있습니다 (${kb}KB) — Ctrl+C로 복사하세요.`;
   } }, btnLabel);
+  if (options.collapsible) btn.setAttribute('aria-expanded', 'false');
   return {
     mount(parent) {
       parent.appendChild(note);
-      parent.appendChild(h('div', { class: 'sce-row' }, btn, ...extra));
+      parent.appendChild(h('div', { class: 'sce-row' }, btn, ...(options.collapsible ? [foldBtn] : []), ...extra));
       parent.appendChild(out);
     },
   };
@@ -7338,7 +8135,16 @@ const CSS_SPEC_CLASSES = [
   ['.sim-log / .sim-log-item', '이번 턴 변화 로그'],
 ];
 
-function buildCssSpecPrompt(schema, styleReq = '') {
+const DESIGN_POLISH_PROMPT = [
+  '## 획일적인 AI 디자인 줄이기',
+  '- 요청한 장르와 분위기를 먼저 따르고, 흔한 AI 대시보드 형태를 기본값으로 삼지 마세요.',
+  '- 카드 중첩, 이유 없는 둥근 상자, 알약형 배지 남발을 피하세요.',
+  '- 장식용 그라데이션과 과한 그림자는 쓰지 말고 여백·글자·선·정렬로 위계를 만드세요.',
+  '- 기본·초점·처리 중·성공·경고·오류·비활성 상태를 색에만 의존하지 말고 구분하세요.',
+  '- 긴 텍스트, 빈 값, 모바일 폭과 글자 대비를 함께 점검하세요.',
+];
+
+function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
   let skeleton = '(스키마에 오류가 있어 실제 구조를 못 뽑았습니다 — 위 클래스 목록만 보고 만들어 주세요)';
   try {
     const v = validateSchema(schema);
@@ -7356,6 +8162,7 @@ function buildCssSpecPrompt(schema, styleReq = '') {
     '## 내가 원하는 분위기',
     String(styleReq || '').trim()
       || '(여기에 원하는 스타일을 적으세요 — 예: "낡은 신문지 느낌, 세리프 폰트, 붉은 도장 같은 포인트 색")',
+    ...(designPolish ? ['', ...DESIGN_POLISH_PROMPT] : []),
     '',
     '## 반드시 지킬 것',
     '- **CSS만** 출력하세요. HTML·JS·설명 없이 스타일 규칙만.',
@@ -7381,7 +8188,7 @@ function buildCssSpecPrompt(schema, styleReq = '') {
 // ── 배치까지 AI에게 맡기는 규격서 (커스텀 템플릿 통째) ─────────
 // 스킨 규격(위)과 달리 클래스는 자유, 대신 {자리표시자} 계약이 생명이다 —
 // 목록에 없는 자리표시자는 검증기가 거부하므로 "실패해도 안전"이 여기서도 성립한다.
-function buildLayoutSpecPrompt(schema, styleReq = '') {
+function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
   const ph = [
     ...(schema.vars || []).map((v) =>
       `- \`{${v.id}}\` — ${v.label ?? v.id} (${v.type}${v.type === 'list' ? `, 목록이라 \`{${v.id}:tags}\`로 칩 렌더 가능` : ''})`),
@@ -7395,6 +8202,7 @@ function buildLayoutSpecPrompt(schema, styleReq = '') {
     '## 내가 원하는 분위기·배치',
     String(styleReq || '').trim()
       || '(여기에 적으세요 — 예: "왼쪽에 칭호 칸, 오른쪽에 수치 2열, 하단에 계약 목록 칩")',
+    ...(designPolish ? ['', ...DESIGN_POLISH_PROMPT] : []),
     '',
     '## 반드시 지킬 것',
     '- 출력은 **`<style>` 블록 하나 + HTML**만. 코드펜스 밖에 설명을 덧붙이지 마세요.',
@@ -8853,12 +9661,16 @@ function pickTabFragment(tabKey, frag, schema) {
   if (slice.merge) {
     const arr = Array.isArray(frag.commands) ? frag.commands : null;
     if (!arr) throw new Error('"commands" 배열이 없습니다');
+    const idCounts = new Map();
+    for (const v of (schema?.vars || [])) idCounts.set(v.id, (idCounts.get(v.id) || 0) + 1);
     const byId = {};
-    for (const c of arr) {
+    for (let i = 0; i < arr.length; i++) {
+      const c = arr[i];
       const id = c && (c.var ?? c.id);
       const name = c && c.cmd;
-      if (!id || !name) continue;
+      if (!id || !name) throw new Error(`commands[${i}]에 var 또는 cmd가 없습니다`);
       if (!(schema?.vars || []).some((v) => v.id === id)) throw new Error(`'${id}'은 없는 변수입니다`);
+      if ((idCounts.get(id) || 0) > 1) throw new Error(`변수 ID '${id}'이 중복되어 명령 대상을 고를 수 없습니다`);
       byId[id] = String(name).trim();
     }
     // 목록에서 빠진 변수는 명령을 뗀다 — 그래야 "지워 달라"가 통한다.
@@ -8897,12 +9709,13 @@ function pickTabFragment(tabKey, frag, schema) {
   return picked;
 }
 
-// 행 이동/삭제 버튼 묶음. onDelete를 주면 삭제를 그쪽이 가로챈다 (변수 탭의 참조 정리)
-function grip(list, i, rerender, onDelete) {
+// 행 이동/삭제 버튼 묶음. onDelete/onMove를 주면 변수 탭의 복구·이동 피드백을 연결한다.
+function grip(list, i, rerender, onDelete, onMove) {
   const move = (d) => {
     const j = i + d;
     if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
+    if (onMove) onMove(list[j], j, d);
     rerender();
   };
   return h('span', { class: 'sce-grip' },
@@ -9203,7 +10016,8 @@ function effectRows(schema, effects, rerender) {
 }
 
 function createSchemaEditor(container, initialSchema, opts = {}) {
-  const { onChange, ai, floor, onRequestFloor } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+  const { onChange, ai, floor, onRequestFloor, isInstalled,
+    getFirstInstallGuideDismissed, setFirstInstallGuideDismissed } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
   // onRequestFloor(f): 편집기 안에서 층 이동이 필요할 때 호스트에게 부탁 — 사이드바 하이라이트까지 같이 옮기라고
   // floor: 'top'|'json'|'assets'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
   // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
@@ -9214,6 +10028,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let reportWarnOpen = false; // 검증 리포트의 경고 접기 상태 — rerender에도 유지
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
+  // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
+  const collapsedVariableCards = new WeakSet();
+  let deletedVariableCard = null;
+  let variableMoveFeedback = null; // { item, position, kind } — 다음 렌더에서 한 번 소비
+  let createdVariableCard = null;
+  let deletedCommand = null;
+  const collapsedCommandCards = new WeakSet();
+  let createdCommandCard = null;
   // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets+켜진 모듈), 안내문, 임포터 입력/진행.
   // 임포터 안내는 따로(assetImportNote) — 실패 사유가 버튼 바로 아래 보여야 유저가 알아챈다 (실측).
   let assetNames = null, assetNote = null, assetImportText = '', assetImportNote = null, assetBusy = false, assetsOpen = false;
@@ -9244,6 +10066,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (schema.assets && !(schema.assets.packs || []).length) delete schema.assets;
   }
   normalize();
+  let firstInstallGuideDismissed = false;
+  if (typeof getFirstInstallGuideDismissed === 'function') {
+    Promise.resolve(getFirstInstallGuideDismissed()).then((value) => {
+      if (destroyed) return;
+      firstInstallGuideDismissed = !!value;
+      render();
+    }).catch(() => {});
+  }
 
   const style = h('style', {}, CSS);
   const root = h('div', { class: 'sce' });
@@ -9270,15 +10100,255 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 변수 ──────────────────────────────────────────────
   function tabVars() {
     const wrap = h('div');
-    wrap.appendChild(tabAiTools('vars'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '상태창에 들어갈 항목들. 행 추가로 자유롭게 — 타입에 따라 AI 갱신 방식이 달라진다 (숫자=증감, 텍스트=재작성, 선택지=교체).'));
-    // 에셋 전용 설치 (v0.64) — 여기가 비어 있어도 되는 유일한 경우. 안 알려주면
-    // "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
-    if (!schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '✅ 이 봇은 에셋(이미지)만 씁니다 — 변수는 비워 둬도 설치됩니다. 억지로 만들 필요 없습니다.'));
-    }
+    const validation = validateSchema(schema);
+    const referencedIds = new Set(idsUsedElsewhere(schema));
+    let fieldErrorSeq = 0;
+    const itemErrors = (path) => validation.errors.filter((e) => e.path === path || e.path.startsWith(path + '.'));
+    const issueKind = (error) => {
+      const msg = String(error.msg || '');
+      if (/\.expr$/.test(error.path || '')) return 'expr';
+      if (/id|예약어|중복/.test(msg)) return 'id';
+      if (/알 수 없는 type/.test(msg)) return 'type';
+      if (/enum/.test(msg)) return /init/.test(msg) ? 'init' : 'enum';
+      if (/maxLength/.test(msg)) return 'maxLength';
+      if (/itemMaxLength/.test(msg)) return 'itemMaxLength';
+      if (/maxItems/.test(msg)) return 'maxItems';
+      if (/min > max/.test(msg)) return 'range';
+      if (/init|bool|list 항목/.test(msg)) return 'init';
+      return 'card';
+    };
+    const fieldIssues = (path, ...kinds) => itemErrors(path).filter((e) => kinds.includes(issueKind(e)));
+    const variableField = (label, control, { title = '', wide = false, issues = [] } = {}) => {
+      let errorId;
+      if (issues.length) {
+        errorId = `sce-variable-error-${++fieldErrorSeq}`;
+        control.setAttribute('aria-invalid', 'true');
+        control.setAttribute('aria-describedby', errorId);
+      }
+      return h('div', {
+        class: `sce-variable-field${wide ? ' is-wide' : ''}${issues.length ? ' has-error' : ''}`,
+        title,
+      }, h('span', {}, label), control,
+      issues.length ? h('span', { id: errorId, class: 'sce-field-error' },
+        issues.map((e) => e.msg).join(' · ')) : null);
+    };
+    const referenceNote = (item) => referencedIds.has(item.id)
+      ? h('div', { class: 'sce-variable-reference-note' },
+        '이 ID를 바꾸면 규칙·상태창에서 이 변수를 찾지 못해요.')
+      : null;
+    const itemLines = (items) => (Array.isArray(items) ? items : []).join('\n');
+    const parseItemLines = (text) => String(text).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const nextEditorId = (prefix) => {
+      const used = new Set([...schema.vars, ...schema.derived].map((item) => item?.id).filter(Boolean));
+      let n = 1;
+      while (used.has(`${prefix}${n}`)) n += 1;
+      return `${prefix}${n}`;
+    };
+    const trimSummary = (value, limit = 32) => {
+      const text = String(value ?? '').trim();
+      return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+    };
+    const variableSummary = (item, derived = false) => {
+      if (derived) return `${item.id || 'ID 미정'} · 계산식 ${trimSummary(item.expr || '0', 38)}`;
+      const id = item.id || 'ID 미정';
+      if (item.type === 'int' || item.type === 'float') {
+        return `${id} · ${item.type === 'int' ? '정수' : '실수'} · 시작 ${item.init ?? 0}`;
+      }
+      if (item.type === 'text') return `${id} · 텍스트 · ${trimSummary(item.init) || '빈 문자열'}`;
+      if (item.type === 'bool') return `${id} · ON/OFF · ${item.init ? '켜짐' : '꺼짐'}`;
+      if (item.type === 'enum') return `${id} · 선택지 ${(item.enum || []).length}개 · 시작 ${item.init ?? '미정'}`;
+      if (item.type === 'list') {
+        const count = Array.isArray(item.init) ? item.init.length : 0;
+        return `${id} · 목록 ${count}개 · 최대 ${item.maxItems ?? '제한 없음'}`;
+      }
+      return `${id} · ${item.type || '형식 미정'}`;
+    };
+    const deleteWithUndo = (listKey, index, fallbackTitle) => {
+      const list = schema[listKey];
+      const [item] = list.splice(index, 1);
+      deletedVariableCard = { listKey, index, item, title: item?.label?.trim() || fallbackTitle };
+      rerender();
+      return false;
+    };
+    const bulkControls = (list, pathBase) => {
+      const errorIndexes = new Set(list.map((_, i) => itemErrors(`${pathBase}[${i}]`).length ? i : -1).filter((i) => i >= 0));
+      return [
+        h('button', { class: 'sce-btn sce-mini', disabled: !list.length ? 'disabled' : undefined,
+          onclick: () => { list.forEach((item) => collapsedVariableCards.add(item)); rerender(); } }, '모두 접기'),
+        h('button', { class: 'sce-btn sce-mini', disabled: !list.length ? 'disabled' : undefined,
+          onclick: () => { list.forEach((item) => collapsedVariableCards.delete(item)); rerender(); } }, '모두 펼치기'),
+        h('button', { class: 'sce-btn sce-mini', disabled: !errorIndexes.size ? 'disabled' : undefined,
+          onclick: () => {
+            list.forEach((item, i) => {
+              if (errorIndexes.has(i)) collapsedVariableCards.delete(item);
+              else collapsedVariableCards.add(item);
+            });
+            rerender();
+        } }, `오류만 펼치기${errorIndexes.size ? ` ${errorIndexes.size}` : ''}`),
+      ];
+    };
+    const variableCardElements = new Map();
+    const beginVariableDrag = (item, list, event, handle) => {
+      if (event.button !== 0) return;
+      const sourceCard = variableCardElements.get(item);
+      if (!sourceCard) return;
+      event.preventDefault();
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+      let ghost = null;
+      let targetItem = null;
+      let afterTarget = false;
+
+      const clearTargets = () => {
+        for (const card of variableCardElements.values()) {
+          card.classList.remove('is-drag-before', 'is-drag-after');
+        }
+      };
+      const cleanup = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        document.removeEventListener('pointercancel', onPointerCancel);
+        try { handle.releasePointerCapture?.(pointerId); } catch (e) { /* 이미 해제된 환경 */ }
+        ghost?.remove();
+        sourceCard.classList.remove('is-dragging');
+        clearTargets();
+      };
+      const commit = () => {
+        cleanup();
+        if (!moved || !targetItem || targetItem === item) return;
+        const originalIndex = list.indexOf(item);
+        const withoutItem = list.filter((candidate) => candidate !== item);
+        let nextIndex = withoutItem.indexOf(targetItem);
+        if (originalIndex < 0 || nextIndex < 0) return;
+        if (afterTarget) nextIndex += 1;
+        if (nextIndex === originalIndex) return;
+        withoutItem.splice(nextIndex, 0, item);
+        list.splice(0, list.length, ...withoutItem);
+        variableMoveFeedback = { item, position: nextIndex + 1, kind: 'drag' };
+        rerender();
+      };
+      const onPointerMove = (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        moveEvent.preventDefault();
+        if (!moved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 8) return;
+        if (!moved) {
+          moved = true;
+          ghost = sourceCard.cloneNode(true);
+          ghost.className = 'sce-variable-drag-ghost';
+          ghost.setAttribute('aria-hidden', 'true');
+          ghost.setAttribute('inert', '');
+          const width = sourceCard.getBoundingClientRect().width;
+          if (width > 0) ghost.style.width = `${width}px`;
+          ghost.appendChild(h('span', { class: 'sce-variable-drag-ghost-badge' }, '이동 중'));
+          root.appendChild(ghost);
+        }
+        ghost.style.left = `${moveEvent.clientX + 14}px`;
+        ghost.style.top = `${moveEvent.clientY + 14}px`;
+        const candidates = [...variableCardElements.entries()]
+          .filter(([candidate]) => candidate !== item && list.includes(candidate))
+          .map(([candidate, card]) => ({ candidate, card, bounds: card.getBoundingClientRect() }))
+          .sort((a, b) => a.bounds.top - b.bounds.top);
+        if (!candidates.length) return;
+        const target = candidates.find(({ bounds }) => moveEvent.clientY < bounds.top + bounds.height / 2)
+          || candidates[candidates.length - 1];
+        clearTargets();
+        targetItem = target.candidate;
+        afterTarget = moveEvent.clientY > target.bounds.top + target.bounds.height / 2;
+        target.card.classList.add(afterTarget ? 'is-drag-after' : 'is-drag-before');
+        if (moveEvent.clientY < 48) window.scrollBy(0, -20);
+        else if (moveEvent.clientY > window.innerHeight - 48) window.scrollBy(0, 20);
+      };
+      const onPointerUp = (upEvent) => { if (upEvent.pointerId === pointerId) commit(); };
+      const onPointerCancel = (cancelEvent) => { if (cancelEvent.pointerId === pointerId) cleanup(); };
+
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp);
+      document.addEventListener('pointercancel', onPointerCancel);
+      sourceCard.classList.add('is-dragging');
+      try { handle.setPointerCapture?.(pointerId); } catch (e) { /* 문서 이벤트로 계속 처리 */ }
+    };
+    const variableCard = (item, fallbackTitle, list, index, body, issues, onDelete, summary) => {
+      const collapsed = collapsedVariableCards.has(item);
+      const newlyCreated = createdVariableCard === item;
+      if (newlyCreated) createdVariableCard = null;
+      const title = item.label?.trim() || fallbackTitle;
+      const firstIssue = issues[0]?.msg;
+      const moveFeedback = variableMoveFeedback?.item === item ? variableMoveFeedback : null;
+      if (moveFeedback) variableMoveFeedback = null;
+      const titleInput = bindInput(item.label, (x) => { item.label = x; rerender(); },
+        { cls: 'sce-w-l', ph: fallbackTitle });
+      const dragHandle = CARD_DRAG ? h('button', {
+        class: 'sce-btn sce-mini sce-variable-drag-handle',
+        title: `${title} 순서 끌어서 이동`,
+        'aria-label': `${title} 순서 끌어서 이동`,
+        onpointerdown: (event) => beginVariableDrag(item, list, event, dragHandle),
+        onclick: (event) => event.preventDefault(),
+      }, '⠿') : null;
+      const card = h('section', {
+        class: `sce-block sce-variable-card${collapsed ? ' is-collapsed' : ''}`
+          + (moveFeedback ? ` is-just-moved moved-${moveFeedback.kind}` : '')
+          + (newlyCreated ? ' is-newly-created' : ''),
+      },
+        h('div', { class: 'sce-variable-card-head' },
+          h('div', { class: 'sce-variable-card-title' },
+            dragHandle,
+            h('span', { class: 'sce-variable-card-index' }, String(index + 1).padStart(2, '0')),
+            collapsed
+              ? h('span', { class: 'sce-variable-title-display' }, title)
+              : h('label', { class: 'sce-variable-title-field' }, h('span', {}, '표시 이름'), titleInput),
+            collapsed ? h('span', { class: 'sce-variable-card-summary' }, summary) : null,
+            firstIssue ? h('span', { class: 'sce-card-issue-summary', title: firstIssue },
+              `오류 ${issues.length}개 · ${firstIssue}`) : null),
+          h('div', { class: 'sce-variable-card-actions' },
+            moveFeedback ? h('span', { class: 'sce-variable-move-feedback', role: 'status', 'aria-live': 'polite' },
+              `✓ ${moveFeedback.position}번째로 이동`) : null,
+            h('button', {
+              class: 'sce-btn sce-mini',
+              'aria-expanded': String(!collapsed),
+              title: collapsed ? `${title} 펼치기` : `${title} 접기`,
+              onclick: () => {
+                if (collapsed) collapsedVariableCards.delete(item);
+                else collapsedVariableCards.add(item);
+                rerender();
+              },
+            }, collapsed ? '펼치기' : '접기'),
+            grip(list, index, rerender, onDelete, (movedItem, nextIndex, direction) => {
+              variableMoveFeedback = {
+                item: movedItem,
+                position: nextIndex + 1,
+                kind: direction < 0 ? 'up' : 'down',
+              };
+            }))),
+        collapsed ? null : h('div', { class: 'sce-variable-card-body' }, body));
+      if (moveFeedback) {
+        setTimeout(() => {
+          card.classList.remove('is-just-moved', `moved-${moveFeedback.kind}`);
+          card.querySelector('.sce-variable-move-feedback')?.remove();
+        }, 1500);
+      }
+      variableCardElements.set(item, card);
+      if (newlyCreated) {
+        requestAnimationFrame(() => {
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          card.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+          try { titleInput.focus({ preventScroll: true }); } catch (_) { titleInput.focus(); }
+        });
+        setTimeout(() => card.classList.remove('is-newly-created'), 1500);
+      }
+      return card;
+    };
+
+    wrap.appendChild(h('section', { class: 'sce-vars-intro' },
+      h('div', { class: 'sce-vars-intro-title' }, '게임이 기억하고 바꿀 값을 정해요'),
+      h('div', { class: 'sce-vars-intro-copy' },
+        '숫자·문장·선택지·목록에 따라 저장 방식이 달라져요. 먼저 기본 변수를 정한 뒤 규칙과 상태창에서 사용하면 됩니다.')));
+    wrap.appendChild(h('section', { class: 'sce-vars-ai' },
+      h('div', { class: 'sce-vars-ai-head' },
+        h('div', { class: 'sce-vars-ai-title' }, 'AI로 변수 전체 만들기·교체'),
+        h('div', { class: 'sce-vars-ai-summary' }, `${schema.vars.length}개 변수 · 선택 작업`)),
+      tabAiTools('vars')));
 
     // 정리 계획 — 쓰이는 변수를 지우려 할 때만 뜬다. 확인해야 실제로 지운다 (패치와 같은 규율)
     if (purge) {
@@ -9323,126 +10393,320 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           } }, '↩ 되돌리기') : null,
           h('button', { class: 'sce-btn', onclick: () => { purgeDone = null; rerender(); } }, '확인'))));
     }
+    if (deletedVariableCard) {
+      const deleted = deletedVariableCard;
+      wrap.appendChild(h('div', { class: 'sce-vars-undo', role: 'status' },
+        h('span', {}, `'${deleted.title}' 항목을 삭제했어요.`),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          const list = schema[deleted.listKey];
+          list.splice(Math.min(deleted.index, list.length), 0, deleted.item);
+          deletedVariableCard = null;
+          rerender();
+        } }, '되돌리기')));
+    }
+    const addVariable = () => {
+      const item = { id: nextEditorId('var'), label: '', type: 'int', init: 0 };
+      schema.vars.push(item);
+      createdVariableCard = item;
+      rerender();
+    };
+    wrap.appendChild(h('div', { class: 'sce-editor-section-head sce-variable-section-head' },
+      h('div', {},
+        h('div', { class: 'sce-editor-section-title' }, '기본 변수'),
+        h('div', { class: 'sce-editor-section-copy' }, '시뮬레이션이 직접 저장하고 변경하는 값입니다.')),
+      h('div', { class: 'sce-editor-section-actions' },
+        h('span', { class: 'sce-tag' }, `${schema.vars.length}개`),
+        ...bulkControls(schema.vars, '$.vars'),
+        schema.vars.length ? h('button', { class: 'sce-btn sce-mini', onclick: addVariable }, '+ 변수 추가') : null)));
+    // 에셋 전용 설치 (v0.64) — 변수 탭이 비어 있어도 되는 유일한 경우.
+    // 안 알려주면 "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
+    const assetOnly = !schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0;
+    if (!schema.vars.length) wrap.appendChild(h('div', { class: 'sce-vars-empty' },
+      h('strong', {}, assetOnly ? '변수 없이 에셋만 쓰는 봇이에요' : '아직 기본 변수가 없어요'),
+      h('span', {}, assetOnly
+        ? '이 봇은 이미지 태그만 씁니다. 변수는 비워 둬도 그대로 설치되니 억지로 만들 필요 없어요.'
+        : '게임에서 기억할 값 하나를 먼저 만들어 주세요.'),
+      h('button', { class: 'sce-btn', onclick: addVariable }, '변수 만들기')));
+
+    const variableList = h('div', { class: 'sce-variable-list' });
     schema.vars.forEach((v, i) => {
-      const rows = [
-        h('div', { class: 'sce-row' },
-          bindInput(v.id, (x) => { v.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: gold)' }),
-          bindInput(v.label, (x) => { v.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 자금)' }),
-          bindSelect(v.type, VAR_TYPES, (x) => { changeVarType(v, x); rerender(); }),
-          // 쓰이는 변수를 그냥 지우면 규칙·상태창·프롬프트가 조용히 깨진다 → 정리 계획을 먼저 보인다
-          grip(schema.vars, i, rerender, () => {
-            if (!v.id) return true;
-            const plan = planVarPurge(schema, [v.id]);
-            if (!plan.notes.length && !plan.errors.length) return true; // 아무 데도 안 쓰임 — 그냥 지운다
-            purge = { id: v.id, label: v.label ?? v.id, plan };
-            rerender();
-            return false;
-          }),
-        ),
-      ];
-      const detail = h('div', { class: 'sce-row' });
+      const path = `$.vars[${i}]`;
+      const issues = itemErrors(path);
+      const identity = h('div', { class: 'sce-variable-grid' },
+        variableField('변수 ID', bindInput(v.id, (x) => { v.id = x.trim(); rerender(); },
+          { cls: 'sce-w-l', ph: '영문 ID (예: gold)' }), { issues: fieldIssues(path, 'id') }),
+        variableField('값 형식', bindSelect(v.type, VAR_TYPES, (x) => { changeVarType(v, x); rerender(); }),
+          { issues: fieldIssues(path, 'type') }));
+      const typeHelp = h('div', { class: 'sce-variable-type-help' }, ({
+        int: '정수는 소수점 없는 숫자예요. 시작값과 범위를 정할 수 있어요.',
+        float: '실수는 소수점이 필요한 숫자예요. 시작값과 범위를 정할 수 있어요.',
+        text: '텍스트는 문장이나 짧은 상태를 저장해요.',
+        bool: 'ON/OFF는 켜짐과 꺼짐 두 상태만 저장해요.',
+        enum: `선택지는 미리 정한 값 중 하나만 저장해요. 현재 ${(v.enum || []).length}개예요.`,
+        list: `목록은 여러 아이템 이름을 한 변수에 저장해요. 시작 아이템은 ${Array.isArray(v.init) ? v.init.length : 0}개예요.`,
+      })[v.type] || '저장할 값의 형식을 선택해 주세요.');
+      const detail = h('div', { class: `sce-variable-grid values is-${v.type}` });
       if (v.type === 'int' || v.type === 'float') {
         detail.append(
-          pair('시작값', bindInput(v.init, (x) => { v.init = num(x); rerender(); }, { cls: 'sce-w-s' })),
-          pair('최소', bindInput(v.min, (x) => { v.min = numOrNull(x); rerender(); }, { cls: 'sce-w-s', ph: '없음' })),
-          pair('최대', bindInput(v.max, (x) => { v.max = numOrNull(x); rerender(); }, { cls: 'sce-w-s', ph: '없음' })),
-          pair('표시 형식', bindInput(v.format, (x) => { v.format = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '{v}G → 1,000G' }),
-            '상태창 표시용. {v} 자리에 값이 들어감 (예: {v}G, {v}명, {v}개월차). 비우면 숫자만'),
+          variableField('시작값', bindInput(v.init, (x) => { v.init = num(x); rerender(); }, { cls: 'sce-w-l' }),
+            { issues: fieldIssues(path, 'init') }),
+          variableField('최소', bindInput(v.min, (x) => { v.min = numOrNull(x); rerender(); }, { cls: 'sce-w-l', ph: '제한 없음' }),
+            { issues: fieldIssues(path, 'range') }),
+          variableField('최대', bindInput(v.max, (x) => { v.max = numOrNull(x); rerender(); }, { cls: 'sce-w-l', ph: '제한 없음' }),
+            { issues: fieldIssues(path, 'range') }),
+          variableField('상태창 표시 형식', bindInput(v.format, (x) => { v.format = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '{v}G → 1,000G' }),
+            { title: '{v} 자리에 값이 들어가요. 비우면 숫자만 표시합니다.' }),
         );
       } else if (v.type === 'text') {
         detail.append(
-          pair('시작값', bindInput(v.init, (x) => { v.init = x; rerender(); }, { cls: 'sce-w-l' })),
-          pair('최대 글자', bindInput(v.maxLength, (x) => { v.maxLength = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '200' })),
+          variableField('시작값', bindInput(v.init, (x) => { v.init = x; rerender(); }, { cls: 'sce-w-l' }),
+            { issues: fieldIssues(path, 'init') }),
+          variableField('최대 글자 수', bindInput(v.maxLength, (x) => { v.maxLength = numOrNull(x) ?? undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '200' }), { issues: fieldIssues(path, 'maxLength') }),
         );
       } else if (v.type === 'bool') {
-        detail.append(bindCheck(v.init, (x) => { v.init = x; rerender(); }, '시작 시 ON'));
+        const boolControl = h('div', { class: 'sce-variable-bool', role: 'group', 'aria-label': '시작 상태' },
+          h('button', { class: `sce-mode-btn${v.init === false ? ' on' : ''}`, 'aria-pressed': String(v.init === false),
+            onclick: () => { v.init = false; rerender(); } }, '꺼짐'),
+          h('button', { class: `sce-mode-btn${v.init === true ? ' on' : ''}`, 'aria-pressed': String(v.init === true),
+            onclick: () => { v.init = true; rerender(); } }, '켜짐'));
+        detail.append(variableField('시작 상태', boolControl, { issues: fieldIssues(path, 'init') }));
       } else if (v.type === 'enum') {
+        const enumOptions = (v.enum || []).map((value) => [value, value]);
+        const startSelect = bindSelect(v.init, enumOptions.length ? enumOptions : [['', '선택지를 먼저 입력해 주세요']],
+          (x) => { v.init = x; rerender(); });
+        if (!enumOptions.length) startSelect.disabled = true;
         detail.append(
-          pair('선택지', bindInput((v.enum || []).join(', '), (x) => { v.enum = x.split(',').map((s) => s.trim()).filter(Boolean); rerender(); }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (쉼표 구분)' })),
-          pair('시작값', bindInput(v.init, (x) => { v.init = x; rerender(); }, { cls: 'sce-w-s' })),
+          variableField('선택지 · 한 줄에 하나', bindArea(itemLines(v.enum), (x) => {
+            v.enum = parseItemLines(x);
+            if (!v.enum.includes(v.init)) v.init = v.enum[0];
+            rerender();
+          }, '봄\n여름\n가을\n겨울'), { issues: fieldIssues(path, 'enum') }),
+          variableField('시작값', startSelect, { issues: fieldIssues(path, 'init') }),
         );
       } else if (v.type === 'list') {
         detail.append(
-          pair('시작 아이템', bindInput((Array.isArray(v.init) ? v.init : []).join(', '),
-            (x) => { v.init = x.split(',').map((s) => s.trim()).filter(Boolean); rerender(); },
-            { cls: 'sce-w-l', ph: '빵, 물통 (쉼표 구분, 비워도 됨)' })),
-          pair('최대 개수', bindInput(v.maxItems, (x) => { v.maxItems = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '20' })),
-          pair('아이템 글자수', bindInput(v.itemMaxLength, (x) => { v.itemMaxLength = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '40' })),
+          variableField('시작 아이템 · 한 줄에 하나', bindArea(itemLines(v.init),
+            (x) => { v.init = parseItemLines(x); rerender(); }, '빵\n물통\n워싱턴, D.C.'),
+          { issues: fieldIssues(path, 'init') }),
+          variableField('최대 개수', bindInput(v.maxItems, (x) => { v.maxItems = numOrNull(x) ?? undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '20' }), { issues: fieldIssues(path, 'maxItems') }),
+          variableField('아이템 글자 수', bindInput(v.itemMaxLength, (x) => { v.itemMaxLength = numOrNull(x) ?? undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '40' }), { issues: fieldIssues(path, 'itemMaxLength') }),
         );
       }
-      rows.push(detail);
-      rows.push(h('div', { class: 'sce-row' },
-        pair('설명', bindInput(v.desc, (x) => { v.desc = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '(선택) AI에게 알려줄 이 항목의 의미 — 예: 남은 식량을 일수로 표기 (0이면 굶주림)' }),
-          'AI가 이 변수를 언제/어떻게 갱신해야 하는지 알려주는 설명. 빈칸으로 방치되는 변수에 특히 유용'),
-      ));
-      wrap.appendChild(h('div', { class: 'sce-block' }, ...rows));
+      const description = variableField('AI용 설명', bindInput(v.desc, (x) => { v.desc = x || undefined; rerender(); },
+        { cls: 'sce-w-l', ph: '(선택) 이 값의 의미와 언제 바뀌는지 적어 주세요.' }),
+        { title: 'AI가 이 변수를 언제 어떻게 갱신해야 하는지 알려주는 설명입니다.', wide: true });
+      let preview = null;
+      if (v.type === 'int' || v.type === 'float') {
+        const n = Number(v.init ?? 0);
+        const shown = Number.isFinite(n) ? n.toLocaleString('ko-KR') : String(v.init ?? 0);
+        const formatted = v.format ? String(v.format).replace(/\{v\}/g, shown) : shown;
+        preview = h('div', { class: 'sce-variable-preview' }, '상태창 미리보기: ', h('strong', {}, formatted));
+      }
+      variableList.appendChild(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
+        [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description)], issues, () => {
+          if (!v.id) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
+          const plan = planVarPurge(schema, [v.id]);
+          if (!plan.notes.length && !plan.errors.length) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
+          purge = { id: v.id, label: v.label ?? v.id, plan };
+          rerender();
+          return false;
+        }, variableSummary(v)));
     });
-    wrap.appendChild(addBtn('변수 추가', () => {
-      schema.vars.push({ id: 'var' + (schema.vars.length + 1), label: '', type: 'int', init: 0 });
-      rerender();
-    }));
+    wrap.appendChild(variableList);
 
-    wrap.appendChild(h('h4', {}, '파생 변수 (자동 계산 — AI도 규칙도 직접 못 바꿈)'));
+    const addDerived = () => {
+      const item = { id: nextEditorId('calc'), expr: '0' };
+      schema.derived.push(item);
+      createdVariableCard = item;
+      rerender();
+    };
+    wrap.appendChild(h('div', { class: 'sce-editor-section-head sce-variable-section-head' },
+      h('div', {},
+        h('div', { class: 'sce-editor-section-title' }, '파생 변수'),
+        h('div', { class: 'sce-editor-section-copy' },
+          '기본 변수로 자동 계산되는 읽기 전용 값입니다. AI와 규칙은 직접 바꿀 수 없어요.')),
+      h('div', { class: 'sce-editor-section-actions' },
+        h('span', { class: 'sce-tag' }, `${schema.derived.length}개`),
+        ...bulkControls(schema.derived, '$.derived'),
+        schema.derived.length ? h('button', { class: 'sce-btn sce-mini', onclick: addDerived }, '+ 파생 변수 추가') : null)));
+    if (!schema.derived.length) wrap.appendChild(h('div', { class: 'sce-vars-empty' },
+      h('strong', {}, '아직 파생 변수가 없어요'),
+      h('span', {}, '기본 변수의 값을 계산해서 보여줄 항목이 필요할 때 추가하면 됩니다.'),
+      h('button', { class: 'sce-btn', onclick: addDerived }, '파생 변수 만들기')));
+    const derivedList = h('div', { class: 'sce-variable-list' });
     schema.derived.forEach((d, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' }, h('div', { class: 'sce-row' },
-        bindInput(d.id, (x) => { d.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
-        bindInput(d.label, (x) => { d.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
-        h('span', {}, '='),
-        bindInput(d.expr, (x) => { d.expr = x; rerender(); }, { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
-        grip(schema.derived, i, rerender),
-      )));
+      const path = `$.derived[${i}]`;
+      const issues = itemErrors(path);
+      derivedList.appendChild(variableCard(d, `파생 변수 ${i + 1}`, schema.derived, i,
+        [h('div', { class: 'sce-derived-grid' },
+          variableField('변수 ID', bindInput(d.id, (x) => { d.id = x.trim(); rerender(); },
+            { cls: 'sce-w-l', ph: '영문 ID' }), { issues: fieldIssues(path, 'id') }),
+          variableField('계산식', bindInput(d.expr, (x) => { d.expr = x; rerender(); },
+            { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
+            { issues: fieldIssues(path, 'expr', 'card') })), referenceNote(d)], issues,
+        () => deleteWithUndo('derived', i, `파생 변수 ${i + 1}`), variableSummary(d, true)));
     });
-    wrap.appendChild(addBtn('파생 변수 추가', () => { schema.derived.push({ id: 'calc' + (schema.derived.length + 1), expr: '0' }); rerender(); }));
+    wrap.appendChild(derivedList);
     return wrap;
   }
 
   // ── 탭: 상태창 ────────────────────────────────────────────
   // 뼈대 덮어쓰기 확인용 — rerender()가 DOM을 새로 만들므로 tabStatus 밖에 둬야 살아남는다
   let tplArm = null;
+  const collapsedStatusGroups = new WeakSet();
+  let statusMoveFeedback = null; // { item, position, kind } — 그룹과 항목 이동 뒤 한 번 표시
   function tabStatus() {
     const ui = schema.statusUI;
-    const wrap = h('div');
+    const wrap = h('div', { class: 'sce-status-editor' });
     const allIds = [...schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
                     ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`]),
                     // 시간 노출 파생 — 시간 체계가 켜져 있으면 날짜·시각도 상태창 항목이 된다
                     ...(timeConfig(schema)?.expose ?? []).map((n) => [n, `${EXPOSED_LABELS[n]} (${n}, 시간)`])];
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    const statusField = (label, control, hint = '') => h('div', { class: 'sce-status-field' },
+      h('span', {}, label), control, hint ? h('small', {}, hint) : null);
+    const statusDragElements = new Map();
+    const beginStatusDrag = (item, list, event, handle) => {
+      if (event.button !== 0) return;
+      const source = statusDragElements.get(item);
+      if (!source) return;
+      event.preventDefault();
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+      let ghost = null;
+      let targetItem = null;
+      let afterTarget = false;
+      const clearTargets = () => {
+        for (const element of statusDragElements.values()) {
+          element.classList.remove('is-drag-before', 'is-drag-after');
+        }
+      };
+      const cleanup = () => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        document.removeEventListener('pointercancel', onPointerCancel);
+        try { handle.releasePointerCapture?.(pointerId); } catch (_) { /* 이미 해제된 환경 */ }
+        ghost?.remove();
+        source.classList.remove('is-dragging');
+        clearTargets();
+      };
+      const commit = () => {
+        cleanup();
+        if (!moved || !targetItem || targetItem === item) return;
+        const originalIndex = list.indexOf(item);
+        const withoutItem = list.filter((candidate) => candidate !== item);
+        let nextIndex = withoutItem.indexOf(targetItem);
+        if (originalIndex < 0 || nextIndex < 0) return;
+        if (afterTarget) nextIndex += 1;
+        if (nextIndex === originalIndex) return;
+        withoutItem.splice(nextIndex, 0, item);
+        list.splice(0, list.length, ...withoutItem);
+        statusMoveFeedback = { item, position: nextIndex + 1, kind: 'drag' };
+        rerender();
+      };
+      const onPointerMove = (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        moveEvent.preventDefault();
+        if (!moved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 8) return;
+        if (!moved) {
+          moved = true;
+          ghost = source.cloneNode(true);
+          ghost.className = 'sce-status-drag-ghost';
+          ghost.setAttribute('aria-hidden', 'true');
+          ghost.setAttribute('inert', '');
+          const width = source.getBoundingClientRect().width;
+          if (width > 0) ghost.style.width = `${width}px`;
+          ghost.appendChild(h('span', { class: 'sce-status-drag-ghost-badge' }, '이동 중'));
+          root.appendChild(ghost);
+        }
+        ghost.style.left = `${moveEvent.clientX + 14}px`;
+        ghost.style.top = `${moveEvent.clientY + 14}px`;
+        const candidates = [...statusDragElements.entries()]
+          .filter(([candidate]) => candidate !== item && list.includes(candidate))
+          .map(([candidate, element]) => ({ candidate, element, bounds: element.getBoundingClientRect() }))
+          .sort((a, b) => a.bounds.top - b.bounds.top);
+        if (!candidates.length) return;
+        const target = candidates.find(({ bounds }) => moveEvent.clientY < bounds.top + bounds.height / 2)
+          || candidates[candidates.length - 1];
+        clearTargets();
+        targetItem = target.candidate;
+        afterTarget = moveEvent.clientY > target.bounds.top + target.bounds.height / 2;
+        target.element.classList.add(afterTarget ? 'is-drag-after' : 'is-drag-before');
+        if (moveEvent.clientY < 48) window.scrollBy(0, -20);
+        else if (moveEvent.clientY > window.innerHeight - 48) window.scrollBy(0, 20);
+      };
+      const onPointerUp = (upEvent) => { if (upEvent.pointerId === pointerId) commit(); };
+      const onPointerCancel = (cancelEvent) => { if (cancelEvent.pointerId === pointerId) cleanup(); };
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp);
+      document.addEventListener('pointercancel', onPointerCancel);
+      source.classList.add('is-dragging');
+      try { handle.setPointerCapture?.(pointerId); } catch (_) { /* 문서 이벤트로 계속 처리 */ }
+    };
+    const statusDragHandle = (item, list, label) => {
+      if (!CARD_DRAG) return null;
+      const handle = h('button', {
+        class: 'sce-btn sce-mini sce-status-drag-handle',
+        title: `${label} 순서 끌어서 이동`,
+        'aria-label': `${label} 순서 끌어서 이동`,
+        onpointerdown: (event) => beginStatusDrag(item, list, event, handle),
+        onclick: (event) => event.preventDefault(),
+      }, '⠿');
+      return handle;
+    };
+    const finishStatusMoveFeedback = (element, feedback) => {
+      if (!feedback) return;
+      setTimeout(() => {
+        element.classList.remove('is-just-moved', `moved-${feedback.kind}`);
+        element.querySelector('.sce-status-move-feedback')?.remove();
+      }, 1500);
+    };
+    wrap.appendChild(h('section', { class: 'sce-status-intro' },
+      h('div', { class: 'sce-status-intro-title' }, '플레이어에게 보여줄 상태를 정리해요'),
+      h('div', { class: 'sce-status-intro-copy' },
+        '저장된 값 중 필요한 것만 그룹으로 묶습니다. 여기서 순서와 표시 방식을 바꿔도 변수나 규칙의 값은 바뀌지 않아요.')));
+    const settings = h('section', { class: 'sce-status-settings' });
+    settings.appendChild(h('div', { class: 'sce-status-settings-grid' },
       // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
       // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
-      pair('제목', bindInput(schema.meta?.name, (x) => {
+      statusField('상태창 제목', bindInput(schema.meta?.name, (x) => {
         schema.meta = schema.meta || {};
         schema.meta.name = x.trim() || undefined; rerender();
-      }, { cls: 'sce-w-m', ph: '(비우면 "상태")' }),
-        '상태창 머리글 + 메인 AI 상태 블록 제목 + 진단 리포트 제목'),
-      pair('표시 방식', bindSelect(ui.mode ?? 'auto', [
+      }, { cls: 'sce-w-m', ph: '비우면 상태' })),
+      statusField('구성 방식', bindSelect(ui.mode ?? 'auto', [
         ['auto', '자동 구성 (그룹/항목)'], ['template', '커스텀 HTML 템플릿 (고급)'],
-      ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
-        '자동: 아래 그룹/항목으로 엔진이 구성. 템플릿: HTML을 직접 짜고 {변수id}로 값을 꽂음 — 팝업/특수 레이아웃용'),
-      pair('테마', bindSelect(ui.theme ?? 'clean', Object.keys(THEMES).map((t) => [t, t]), (x) => { ui.theme = x; rerender(); })),
-      bindCheck(ui.collapsible !== false, (x) => { ui.collapsible = x; rerender(); }, '접을 수 있게'),
+      ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); })),
+      statusField('기본 테마', bindSelect(ui.theme ?? 'clean', Object.keys(THEMES).map((t) => [t, t]),
+        (x) => { ui.theme = x; rerender(); })),
+      statusField('메시지 표시', bindCheck(ui.collapsible !== false,
+        (x) => { ui.collapsible = x; rerender(); }, '상태창 접기 허용')),
     ));
     if ((ui.mode ?? 'auto') !== 'template') {
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        pair('그룹 배치', bindSelect(ui.layout ?? 'stack', [
+      settings.appendChild(h('div', { class: 'sce-status-layout' },
+        statusField('여러 그룹 배치', bindSelect(ui.layout ?? 'stack', [
           ['stack', '쌓기 (기본)'], ['tabs', '탭 — 한 번에 한 장'],
           ['accordion', '접기/펼치기 — 여러 장 동시에'], ['popover', '버튼 팝업 — 눌러야 뜸'],
-        ], (x) => { ui.layout = x === 'stack' ? undefined : x; rerender(); }),
-          '그룹이 여럿일 때 어떻게 보여줄지. 탭·팝업은 그룹이 둘 이상이어야 동작한다 (하나면 그냥 쌓인다).'),
+        ], (x) => { ui.layout = x === 'stack' ? undefined : x; rerender(); })),
       ));
       if (['tabs', 'popover'].includes(ui.layout)) {
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '전환은 CSS만으로 돈다 — 메시지 안의 버튼은 리스가 클릭 정보를 잘라내서 스크립트로는 못 받기 때문. '
-          + '그래서 탭 선택은 새 턴이 와서 최신 메시지가 다시 그려지면 첫 탭으로 돌아간다 (지난 메시지는 그대로 남는다).'));
+        settings.appendChild(h('div', { class: 'sce-status-note' },
+          '탭·팝업 선택은 새 상태 메시지가 만들어지면 첫 그룹으로 돌아가요.'));
       }
     }
+    wrap.appendChild(settings);
 
     if (ui.mode === 'template') {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
+      const templateBox = h('section', { class: 'sce-status-template' });
+      templateBox.appendChild(h('div', { class: 'sce-hint' },
         'AI가 만들어준 결과물을 <style> 포함 통째로 이 칸에 붙여넣어도 됨 — CSS는 자동 분리·스코핑됨. ' +
         'HTML 안에 {변수id}가 실제 값으로 치환되고, 목록은 {변수id:tags}로 칩 렌더. ' +
         '팝업(체크박스 토글) 구조 가능. 팁: 팝업형이면 "접을 수 있게" 끄기.'));
-      wrap.appendChild(bindArea(ui.template, (x) => { ui.template = x; rerender(); },
+      templateBox.appendChild(bindArea(ui.template, (x) => { ui.template = x; rerender(); },
         '<div class="my-ledger">\n  <b>재정:</b> {gold}G | <b>사기:</b> {morale_grade}\n  <div>{facilities:tags}</div>\n</div>'));
 
       // 다중 패널 뼈대 — 빈 예제를 주면 결국 변수명을 하나씩 갈아 끼워야 하므로,
@@ -9457,12 +10721,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         rerender();
       };
       const tplBtn = (kind, label) => addBtn(tplArm === kind ? `정말 덮어쓸까요? — ${label}` : label, putTpl(kind));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
+      templateBox.appendChild(h('div', { class: 'sce-hint' },
         '여러 패널로 나누고 싶으면 아래에서 뼈대를 뽑아 쓰세요 — 이 봇의 그룹·변수가 이미 채워져 나옵니다. '
         + '탭은 {uid}(이 상태창이 그려진 메시지 번호)를 라디오 id·name에 씁니다. '
         + '빼면 메시지끼리 탭이 엉켜서 최신 글의 탭을 눌렀는데 맨 위 글이 바뀝니다. '
         + '그냥 쓰기만 할 거면 표시 방식을 "자동 구성"으로 두고 [그룹 배치]에서 고르는 쪽이 간단합니다.'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
+      templateBox.appendChild(h('div', { class: 'sce-row' },
         tplBtn('tabs', '탭 뼈대 넣기'),
         tplBtn('accordion', '접기/펼치기 뼈대'),
         tplBtn('popover', '버튼 팝업 뼈대'),
@@ -9470,14 +10734,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
       // ── 조건부 템플릿: 한 봇에 두 가지 플레이가 있을 때 상태창을 통째로 갈아끼운다 ──
       ui.templates = ui.templates || [];
-      wrap.appendChild(h('h4', {}, '조건부 템플릿 (한 봇에 여러 판이 있을 때)'));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
+      templateBox.appendChild(h('h4', {}, '조건부 템플릿 (한 봇에 여러 판이 있을 때)'));
+      templateBox.appendChild(h('div', { class: 'sce-hint' },
         '조건이 참인 첫 번째 것만 그려진다. 예: 영지 운영이면 A, 왕궁 시종이면 B. '
         + '각 템플릿의 <style>은 자기 id 껍데기(.sim-tpl-<id>) 안으로 자동 격리되므로, '
         + '두 템플릿이 똑같은 클래스명을 써도 서로를 덮어쓰지 않는다. '
         + '위 칸(조건 없는 기본 템플릿)은 어느 조건도 안 맞을 때의 보험으로 남겨두면 좋다.'));
       ui.templates.forEach((t, i) => {
-        wrap.appendChild(h('div', { class: 'sce-block' },
+        templateBox.appendChild(h('div', { class: 'sce-block' },
           h('div', { class: 'sce-row' },
             pair('id', bindInput(t.id, (x) => { t.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: 'estate' }),
               'CSS 격리에 쓰이는 이름 — 영문·숫자·_만'),
@@ -9489,79 +10753,159 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             '<style>.ledger{...}</style>\n<div class="ledger">{gold}G</div>'),
         ));
       });
-      wrap.appendChild(addBtn('조건부 템플릿 추가', () => {
+      templateBox.appendChild(addBtn('조건부 템플릿 추가', () => {
         ui.templates.push({ id: 'tpl' + (ui.templates.length + 1), when: '', template: '' });
         rerender();
       }));
+      wrap.appendChild(templateBox);
     } else {
 
+    const groupsHead = h('div', { class: 'sce-status-section-head' },
+      h('div', {},
+        h('h4', {}, '표시 그룹'),
+        h('p', {}, '관련된 값을 묶고, 플레이어가 읽을 순서대로 정리해요.')),
+      h('div', { class: 'sce-status-section-actions' },
+        h('span', { class: 'sce-status-count' }, `${ui.groups.length}개`),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          ui.groups.forEach((group) => collapsedStatusGroups.add(group)); rerender();
+        } }, '모두 접기'),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          ui.groups.forEach((group) => collapsedStatusGroups.delete(group)); rerender();
+        } }, '모두 펼치기'),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          ui.groups.push({ label: '', items: [] }); rerender();
+        } }, '+ 그룹 추가')));
+    wrap.appendChild(groupsHead);
+    const groupsList = h('div', { class: 'sce-status-groups' });
     ui.groups.forEach((g, gi) => {
-      const block = h('div', { class: 'sce-block' });
-      block.appendChild(h('div', { class: 'sce-row' },
-        pair('그룹', bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-m', ph: '그룹 이름 (예: 내정)' })),
-        pair('표시', bindSelect(g.visibility ?? 'show', [
-          ['show', '보임'], ['collapsed', '접힘 (펼쳐서 봄)'], ['hidden', '숨김 — 내부관리용'],
-        ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); }),
-          '숨김: 채팅 상태창엔 안 나오고 규칙·AI·패널에서만 관리되는 내부 수치'),
-        pair('표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
-          { cls: 'sce-w-m', ph: '(비우면 항상)' }),
-          '조건이 참일 때만 이 그룹이 상태창에 등장. 예: famine / curse > 0'),
-        // 그룹 통째 합치기 — 항목을 드롭다운으로 하나씩 옮기다 눈 빠진다는 제보 (v0.44.2)
-        ui.groups.length >= 2 ? pair('합치기', bindSelect('', [['', '↪ 다른 그룹으로…'],
-          ...ui.groups.map((g2, i2) => [String(i2), `${i2 + 1}. ${g2.label || '(이름 없음)'}`])
-            .filter(([i2]) => i2 !== '' && Number(i2) !== gi)],
-          (x) => {
-            if (x === '') return;
-            const target = ui.groups[Number(x)];
-            target.items = (target.items || []).concat(g.items || []);
-            ui.groups.splice(gi, 1);
-            rerender();
-          }),
-          '이 그룹의 항목 전부를 고른 그룹 끝에 붙이고, 이 그룹은 없앰') : null,
-        grip(ui.groups, gi, rerender),
-      ));
       g.items = g.items || [];
-      const sub = h('div', { class: 'sce-sub' });
-      g.items.forEach((it, ii) => {
-        const row = h('div', { class: 'sce-row' },
-          bindSelect(it.var, allIds.length ? allIds : [['', '(변수 없음)']], (x) => { it.var = x; rerender(); }),
-          bindCheck(!!it.bar, (x) => { if (x) it.bar = it.bar || { max: 100 }; else delete it.bar; rerender(); }, '게이지'),
-          pair('조건', bindInput(it.showWhen, (x) => { it.showWhen = x || undefined; rerender(); },
-            { cls: 'sce-w-m', ph: '(항상)' }),
-            '조건이 참일 때만 이 항목이 표시. 예: famine, hp < max_hp'),
-        );
-        if (it.bar) {
-          row.append(
-            pair('최대', bindInput(it.bar.max, (x) => {
-              it.bar.max = x;
-              // % 기준 위험 전환 색은 최대값을 수식에 품고 있으므로 같이 재생성
-              const spec = parseColorSpec(it.color, it.var);
-              if (spec.mode === 'threshold' && spec.kind === 'pct') {
-                it.color = buildColorSpec(spec, it.var, x);
-              }
-              rerender();
-            }, { cls: 'sce-w-m', ph: '100 또는 수식 (예: max_hp)' })),
-          );
+      const collapsed = collapsedStatusGroups.has(g);
+      const groupMoveFeedback = statusMoveFeedback?.item === g ? statusMoveFeedback : null;
+      if (groupMoveFeedback) statusMoveFeedback = null;
+      const visibilityLabel = g.visibility === 'hidden' ? '숨김' : g.visibility === 'collapsed' ? '기본 접힘' : '보임';
+      const groupLabel = g.label || '이름 없는 그룹';
+      const groupDragHandle = statusDragHandle(g, ui.groups, groupLabel);
+      const block = h('section', { class: `sce-status-group sce-status-draggable${collapsed ? ' is-collapsed' : ''}`
+        + (groupMoveFeedback ? ` is-just-moved moved-${groupMoveFeedback.kind}` : '') });
+      const body = h('div', { class: 'sce-status-group-body' });
+      const toggle = h('button', { class: 'sce-btn sce-mini', onclick: () => {
+        if (collapsedStatusGroups.has(g)) collapsedStatusGroups.delete(g);
+        else collapsedStatusGroups.add(g);
+        rerender();
+      } }, collapsed ? '펼치기' : '접기');
+      block.appendChild(h('div', { class: 'sce-status-group-head' },
+        h('div', { class: 'sce-status-group-identity' }, groupDragHandle,
+          h('div', { class: 'sce-status-group-title' },
+            h('strong', {}, `${String(gi + 1).padStart(2, '0')}  ${groupLabel}`),
+            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}`))),
+        h('div', { class: 'sce-status-group-actions' },
+          groupMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
+            `✓ ${groupMoveFeedback.position}번째로 이동`) : null,
+          toggle, grip(ui.groups, gi, rerender, null, (movedItem, nextIndex, direction) => {
+            statusMoveFeedback = {
+              item: movedItem,
+              position: nextIndex + 1,
+              kind: direction < 0 ? 'up' : 'down',
+            };
+          }))));
+      if (!collapsed) {
+        body.appendChild(h('div', { class: 'sce-status-group-settings' },
+          statusField('그룹 이름', bindInput(g.label, (x) => { g.label = x; rerender(); },
+            { cls: 'sce-w-m', ph: '예: 기온, 비축' })),
+          statusField('처음 보이는 상태', bindSelect(g.visibility ?? 'show', [
+            ['show', '보임'], ['collapsed', '접힌 상태'], ['hidden', '숨김 (내부 관리)'],
+          ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); })),
+          statusField('그룹 표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
+            { cls: 'sce-w-m', ph: '비우면 항상 표시' })),
+        ));
+        if (ui.groups.length >= 2) {
+          body.appendChild(h('div', { class: 'sce-status-layout' },
+            statusField('다른 그룹에 합치기', bindSelect('', [['', '대상 그룹 선택…'],
+              ...ui.groups.map((g2, i2) => [String(i2), `${i2 + 1}. ${g2.label || '이름 없음'}`])
+                .filter(([i2]) => i2 !== '' && Number(i2) !== gi)],
+              (x) => {
+                if (x === '') return;
+                const target = ui.groups[Number(x)];
+                target.items = (target.items || []).concat(g.items || []);
+                ui.groups.splice(gi, 1);
+                rerender();
+              }))));
         }
-        row.appendChild(grip(g.items, ii, rerender));
-        sub.appendChild(row);
-        if (it.bar) sub.appendChild(colorBuilder(it, it.var, rerender));
-      });
-      sub.appendChild(addBtn('항목', () => { g.items.push({ var: schema.vars[0]?.id ?? '' }); rerender(); }));
-      block.appendChild(sub);
-      wrap.appendChild(block);
+        const items = h('div', { class: 'sce-status-items' });
+        if (g.items.length) {
+          items.appendChild(h('div', { class: 'sce-status-item-head' },
+            h('span', {}, '표시할 값'), h('span', {}, '게이지'), h('span', {}, '표시 조건'),
+            h('span', {}, '게이지 최대값'), h('span', {}, '순서')));
+        } else {
+          items.appendChild(h('div', { class: 'sce-status-empty' },
+            '아직 표시할 값이 없어요. 아래에서 항목을 추가하세요.'));
+        }
+        g.items.forEach((it, ii) => {
+          const itemMoveFeedback = statusMoveFeedback?.item === it ? statusMoveFeedback : null;
+          if (itemMoveFeedback) statusMoveFeedback = null;
+          const itemLabel = allIds.find(([id]) => id === it.var)?.[1] || it.var || '상태창 항목';
+          const itemDragHandle = statusDragHandle(it, g.items, itemLabel);
+          const row = h('div', { class: 'sce-status-item sce-status-draggable'
+            + (itemMoveFeedback ? ` is-just-moved moved-${itemMoveFeedback.kind}` : '') },
+            h('div', { class: 'sce-status-value-control' }, itemDragHandle,
+              bindSelect(it.var, allIds.length ? allIds : [['', '(변수 없음)']],
+                (x) => { it.var = x; rerender(); })),
+            bindCheck(!!it.bar, (x) => {
+              if (x) it.bar = it.bar || { max: 100 }; else delete it.bar;
+              rerender();
+            }, '사용'),
+            bindInput(it.showWhen, (x) => { it.showWhen = x || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '항상 표시' }),
+            it.bar
+              ? bindInput(it.bar.max, (x) => {
+                it.bar.max = x;
+                // % 기준 위험 전환 색은 최대값을 수식에 품고 있으므로 같이 재생성
+                const spec = parseColorSpec(it.color, it.var);
+                if (spec.mode === 'threshold' && spec.kind === 'pct') {
+                  it.color = buildColorSpec(spec, it.var, x);
+                }
+                rerender();
+              }, { cls: 'sce-w-m', ph: '100 또는 max_hp' })
+              : h('div', { class: 'sce-status-item-max is-disabled' }, '사용 안 함'),
+            h('span', { class: 'sce-status-item-actions' },
+              itemMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
+                `✓ ${itemMoveFeedback.position}번째로 이동`) : null,
+              grip(g.items, ii, rerender, null, (movedItem, nextIndex, direction) => {
+                statusMoveFeedback = {
+                  item: movedItem,
+                  position: nextIndex + 1,
+                  kind: direction < 0 ? 'up' : 'down',
+                };
+              })),
+          );
+          statusDragElements.set(it, row);
+          finishStatusMoveFeedback(row, itemMoveFeedback);
+          items.appendChild(row);
+          if (it.bar) items.appendChild(h('div', { class: 'sce-status-item-color' },
+            colorBuilder(it, it.var, rerender)));
+        });
+        items.appendChild(h('button', { class: 'sce-btn sce-add sce-status-add-item', onclick: () => {
+          g.items.push({ var: schema.vars[0]?.id ?? '' }); rerender();
+        } }, '+ 항목 추가'));
+        body.appendChild(items);
+        block.appendChild(body);
+      }
+      statusDragElements.set(g, block);
+      finishStatusMoveFeedback(block, groupMoveFeedback);
+      groupsList.appendChild(block);
     });
-    wrap.appendChild(addBtn('그룹 추가', () => { ui.groups.push({ label: '', items: [] }); rerender(); }));
+    if (!ui.groups.length) groupsList.appendChild(h('div', { class: 'sce-status-empty' },
+      '아직 그룹이 없어요. 위의 [그룹 추가]로 상태창 구성을 시작하세요.'));
+    wrap.appendChild(groupsList);
     // 날짜 자리 = 시간 탭으로만 통하는 문 (design-시간.md §결정 1) — day 같은 int 변수를
     // 손으로 만들어 꽂는 길이 열려 있는 한 사람도 AI도 그리로 샌다 (실측 사고 5건 전부 그 길).
     if (!schema.time) {
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('span', { class: 'sce-hint' },
-          '📅 날짜·시각을 표시하고 싶으면 — 날짜 변수를 직접 만들지 마세요 (매 턴 어긋납니다). '
-          + '시간 체계를 켜면 date·clock이 위 항목 목록에 자동으로 생깁니다.'),
+      wrap.appendChild(h('div', { class: 'sce-status-note sce-status-timegate' },
+        h('span', {},
+          '📅 날짜·시각을 표시하고 싶다면 날짜 변수를 직접 만들지 마세요 — 매 턴 어긋납니다. '
+          + '시간 체계를 켜면 date·clock이 위 항목 목록에 자동으로 생겨요.'),
         h('button', { class: 'sce-btn', onclick: () => { activeTab = 'time'; rerender(); } },
-          '🕐 시간 탭으로'),
-      ));
+          '🕐 시간 탭으로')));
     }
 
     // 자동 배치: 아직 상태창에 없는 변수·파생을 한 번에 채워넣기
@@ -9589,7 +10933,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ? `⚡ 빠진 변수 자동 배치 (${missing.length}개 — 마지막 그룹에 추가)`
       : '⚡ 자동 배치 — 모든 변수가 이미 배치됨');
     if (!missing.length) { autoBtn.disabled = true; autoBtn.style.opacity = .45; }
-    wrap.appendChild(autoBtn);
+    const statusTools = h('div', { class: 'sce-status-tools' }, autoBtn);
 
     // 접두사 묶음 배치 — noz_aff·noz_mood처럼 접두사를 공유하는 변수들을 인물·주제별 그룹으로.
     // 다인 봇(입주자 8명 × 수치 6개 = 그룹 8개 손조립)의 노가다를 없앤다.
@@ -9603,7 +10947,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     for (const [k, arr] of [...buckets]) if (arr.length < 2) buckets.delete(k);
     if (buckets.size >= 2) {
-      wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+      statusTools.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
         const placed = new Set();
         for (const [pre, arr] of buckets) {
           const g = {
@@ -9618,16 +10962,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (rest.length) ui.groups.push({ label: '기타', items: rest.map(mkItem) });
         rerender();
       } }, `⚡ 접두사로 그룹 묶어 배치 (${buckets.size}묶음 — ${[...buckets.keys()].slice(0, 3).map((k) => k + '_*').join(', ')}${buckets.size > 3 ? ' …' : ''})`));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '같은 접두사(noz_… 등)를 쓰는 변수끼리 그룹 하나씩 만들어 넣습니다. 그룹 제목은 라벨의 공통 앞부분'
-        + '("노조미 호감"·"노조미 기분" → "노조미")에서 따오고, 기본 접힘으로 둡니다. 그룹이 많으면 위 [그룹 배치]에서 탭·아코디언을 고르세요.'));
+      statusTools.appendChild(h('div', { class: 'sce-status-note' },
+        '같은 접두사를 쓰는 변수들을 별도 그룹으로 묶어요.'));
     }
+    wrap.appendChild(statusTools);
     // 🤖 구조 창구 — "무엇을 보여줄까". 아래 꾸미기 창구와 짝이다.
     // 템플릿 모드에서는 그룹이 그려지지 않으므로 자동 구성일 때만 띄운다 (만들어도 안 보이면 사고다).
     wrap.appendChild(tabAiTools('status'));
     } // end auto mode
 
-    wrap.appendChild(h('h4', {}, 'CSS 레시피 — 딸깍하면 아래 커스텀 CSS에 채워짐 (이어서 수정 가능)'));
+    const design = h('details', { class: 'sce-status-design' },
+      h('summary', {}, '상태창 꾸미기 (선택)'));
+    const designBody = h('div', { class: 'sce-status-design-body' });
+    designBody.appendChild(h('h4', {}, '디자인 레시피'));
     const RECIPES = [
       ['양피지 장부', `.sim-status { background:#f3ead3; border:1px solid #b09b6b; color:#4a3a26; font-family:Georgia,'Nanum Myeongjo',serif; }
 .sim-status summary { color:#6b512f; }
@@ -9674,24 +11021,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       recipeRow.appendChild(h('button', { class: 'sce-btn', onclick: () => { ui.customCSS = css; rerender(); } }, name));
     }
     recipeRow.appendChild(h('button', { class: 'sce-btn sce-danger', onclick: () => { ui.customCSS = undefined; rerender(); } }, 'CSS 지우기'));
-    wrap.appendChild(recipeRow);
+    designBody.appendChild(recipeRow);
 
     // 🎨 꾸미기 창구 — "어떻게 보일까". 1층 👁 결과와 **같은 것**을 여기서도 띄운다
     // (요청 문구·되돌리기 슬롯까지 공유하므로 어느 쪽에서 눌러도 결과가 같다).
-    wrap.appendChild(h('h4', {}, '🎨 꾸미기도 AI에게 맡기기'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '구조 창구가 **무엇을 보여줄지**(그룹·항목)를 만든다면, 이쪽은 **어떻게 보일지**를 만듭니다. '
-      + '[🎨 스킨만]은 아래 커스텀 CSS 칸을 채우고, [🖼 배치까지]는 커스텀 HTML 템플릿을 통째로 짜 넣습니다 '
-      + '— 배치까지 맡기면 표시 방식이 커스텀으로 바뀌어 그룹 목록 대신 그 템플릿이 그려집니다.'));
+    wrap.appendChild(h('div', { class: 'sce-editor-section-head' }, h('div', {},
+      h('div', { class: 'sce-editor-section-title' }, '🎨 꾸미기도 AI에게 맡기기'),
+      h('div', { class: 'sce-editor-section-copy' },
+        '구조 창구가 무엇을 보여줄지(그룹·항목)를 만든다면, 이쪽은 어떻게 보일지를 만들어요. '
+        + '[스킨만]은 아래 커스텀 CSS 칸을 채우고, [배치까지]는 커스텀 HTML 템플릿을 통째로 짜 넣습니다. '
+        + '배치까지 맡기면 표시 방식이 커스텀으로 바뀌어 그룹 목록 대신 그 템플릿이 그려져요.'))));
     wrap.appendChild(cssAiTools());
 
-    wrap.appendChild(h('h4', {}, '커스텀 CSS (자동으로 상태창 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
-    wrap.appendChild(bindArea(ui.customCSS, (x) => { ui.customCSS = x || undefined; rerender(); },
+    designBody.appendChild(h('h4', {}, '커스텀 CSS'));
+    designBody.appendChild(h('div', { class: 'sce-status-note' },
+      '이 상태창 안에서만 적용돼요. 앱의 다른 화면에는 영향을 주지 않습니다.'));
+    designBody.appendChild(bindArea(ui.customCSS, (x) => { ui.customCSS = x || undefined; rerender(); },
       '.sim-status { border-color: gold; }\n.sim-bar-fill { background: crimson; }'));
+    design.appendChild(designBody);
+    wrap.appendChild(design);
 
     // 미리보기 — 1층 결과 창구와 같은 렌더러 (uid만 다르게, 접기 상태가 서로를 건드리면 안 된다)
-    wrap.appendChild(h('h4', {}, '미리보기 (시작값 기준)'));
-    wrap.appendChild(statusPreviewEl('pv'));
+    wrap.appendChild(h('section', { class: 'sce-status-preview' },
+      h('h4', {}, '미리보기'),
+      h('div', { class: 'sce-status-note' }, '현재 시작값을 기준으로 보여요.'),
+      statusPreviewEl('pv')));
     return wrap;
   }
 
@@ -9954,10 +11308,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function tabAiTools(tabKey) {
     const slice = TAB_SLICES[tabKey];
-    const wrap = h('div', { class: 'sce-block' });
-    wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+    const varsMode = tabKey === 'vars';
+    const commandsMode = tabKey === 'commands';
+    const compactMode = varsMode || commandsMode;
+    const wrap = h('div', { class: `sce-block sce-tab-ai-tools${compactMode ? ' sce-tab-ai-vars sce-tab-ai-compact' : ''}` });
+    if (!compactMode) wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
 
     // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
+    // compact(변수·명령)는 내보내기|가져오기 2열 격자라, 이 블록만 두 열을 가로질러 맨 위에 눕힌다.
+    const directBox = compactMode ? h('div', { class: 'sce-vars-ai-direct' }) : wrap;
     if (ai && ai.generate) {
       const genRow = h('div', { class: 'sce-row' },
         bindInput(tabWant[tabKey] ?? '', (x) => { tabWant[tabKey] = x; },
@@ -9966,40 +11325,56 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ? h('button', { class: 'sce-btn', onclick: () => { tabGen.seq++; tabGen.busy = false; rerender(); } }, '✋ 취소')
         : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
             onclick: () => runTabGenerate(tabKey) }, `✨ ${slice.label} 만들어 달라기`));
-      wrap.appendChild(genRow);
-      wrap.appendChild(h('div', { class: 'sce-hint' },
+      directBox.appendChild(genRow);
+      directBox.appendChild(h('div', { class: 'sce-hint' },
         tabGen.busy && tabGen.key === tabKey
-          ? '⏳ 생성 중… (수십 초 걸릴 수 있음)'
-          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 옵니다 — 규격서와 **이 봇에 이미 있는 변수 목록**이 함께 나가서 '
-            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남습니다.'));
+          ? '⏳ 생성 중이에요. 수십 초 걸릴 수 있어요.'
+          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 와요. 규격서와 이 봇에 이미 있는 변수 목록이 함께 나가서 '
+            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남아요.'));
     }
 
-    wrap.appendChild(tabResultEl(tabKey));
+    directBox.appendChild(tabResultEl(tabKey));
+    if (compactMode) wrap.appendChild(directBox);
 
+    const exportBox = compactMode ? h('div', { class: 'sce-vars-ai-export' }) : wrap;
     copyWidget(`📤 ${slice.label} 규격 내보내기`,
       tabKey === 'vars'
-        ? '**가장 먼저 하는 탭입니다.** 변수는 액션·규칙·상태창 전부의 전제라, 여기부터 확정해야 나머지 탭이 '
-          + '"이 변수만 써라"는 계약을 받을 수 있습니다. 순서를 건너뛰면 가져오기에서 오류가 수백 건 터집니다.'
+        ? '변수는 액션·규칙·상태창이 함께 사용하는 기준이에요. 전체 구성을 새로 만들 때 먼저 확정해 두면 '
+          + '다른 탭에서 정의되지 않은 변수를 사용하는 오류를 줄일 수 있어요.'
+        : commandsMode
+          ? '명령은 이미 만든 변수에 연결돼요. 전체 명령표를 새로 만들 때 변수 목록과 타입별 문법을 함께 넘깁니다.'
         : '이 탭 몫만 떼어내 AI에게 맡깁니다. **이미 정의된 변수 목록이 함께 나가서** 없는 변수를 지어내지 못하고, '
           + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
       () => buildTabExportPrompt(schema, tabKey),
-    ).mount(wrap);
-    wrap.appendChild(jumpRow('부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
+    ).mount(exportBox);
+    exportBox.appendChild(jumpRow(compactMode
+      ? commandsMode
+        ? '말로 설명해 명령 전체를 만들거나, 필요한 명령만 안전하게 고칠 수 있어요.'
+        : '말로 설명해 새 작업본을 만들거나, 일부만 안전하게 고칠 수 있어요.'
+      : '부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
+    if (compactMode) wrap.appendChild(exportBox);
 
     // 결과 안내·되돌리기는 위 tabResultEl이 맡는다 — 여기는 붙여넣기 사용법만 남긴다
     const note = h('div', { class: 'sce-hint' },
       'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
-    const area = h('textarea', { style: 'height:130px',
-      placeholder: `{ "${slice.sub ?? slice.keys[0]}": [ ... ] }` });
+    // 결과 문구(tabAiMsg)는 위 tabResultEl 한 곳에서만 띄운다 — 두 곳에 쓰면 같은 말이 겹친다
+    const importKey = slice.merge ? 'commands' : (slice.sub ?? slice.keys[0]);
+    const area = h('textarea', { class: compactMode ? 'sce-vars-ai-input' : '',
+      style: compactMode ? '' : 'height:130px', placeholder: `{ "${importKey}": [ ... ] }` });
     const row = h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn', onclick: () => {
         applyTabImport(tabKey, area.value, 'paste');
         rerender(); // 아래 검증 리포트가 바로 갱신된다 — 오류가 있으면 [②]로 AI에게 돌려주면 된다
       } }, '📥 가져오기'),
     );
-    wrap.appendChild(note);
-    wrap.appendChild(area);
-    wrap.appendChild(row);
+    // 되돌리기 버튼도 tabResultEl 한 곳이 맡는다 (여기 또 달면 버튼이 둘이 된다)
+    if (compactMode) {
+      wrap.appendChild(h('div', { class: 'sce-vars-ai-import' }, note, area, row));
+    } else {
+      wrap.appendChild(note);
+      wrap.appendChild(area);
+      wrap.appendChild(row);
+    }
     return wrap;
   }
 
@@ -10125,80 +11500,336 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 명령 ──────────────────────────────────────────────
   // 상태는 보조 모델이 알아서 갱신한다. 여기서 여는 건 **그게 틀렸을 때 유저가 고치는 통로**다.
   // 명령 이름은 제작자가 정하므로, 유저가 그걸 볼 자리(상태창 {commands})까지 이 탭이 안내한다.
+  const COMMAND_TYPE_LABELS = {
+    int: '정수',
+    float: '실수',
+    text: '텍스트',
+    bool: 'ON/OFF',
+    enum: '선택지',
+    list: '목록',
+  };
+  // 엔진 내부 헬퍼에 기대지 않고, 편집 화면에서 합산 목록 안내가 필요한지만 안전하게 확인한다.
+  // 유효하지 않은 임시 id가 있어도 정규식 생성으로 편집기 전체가 멈추지 않아야 한다.
+  function commandListIsSummed(id) {
+    const escapedId = String(id ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!escapedId) return false;
+    let pattern;
+    try { pattern = new RegExp(`sum\\s*\\(\\s*${escapedId}\\b`); }
+    catch (_) { return false; }
+    const rules = schema.rules || {};
+    const expressions = [
+      ...(schema.derived || []).map((d) => d?.expr),
+      ...(rules.onTurn || []).flatMap((r) => [r?.expr, r?.expire]),
+      ...(rules.events || []).flatMap((e) => [e?.when, ...(e?.effects || []).map((f) => f?.expr)]),
+      ...(rules.randomEvents?.table || []).flatMap((e) => [e?.when, ...(e?.effects || []).map((f) => f?.expr)]),
+      ...(schema.directives || []).map((d) => d?.when),
+      ...(schema.actions || []).flatMap((a) => [a?.when, ...(a?.effects || []).map((f) => f?.expr)]),
+    ];
+    return expressions.some((expression) => typeof expression === 'string' && pattern.test(expression));
+  }
+  function commandEditorUsage(v, fallbackUsage) {
+    const command = `/${v.cmd}`;
+    if (v.type === 'int' || v.type === 'float') {
+      const step = v.type === 'int' ? '5' : '0.5';
+      const target = v.type === 'int' ? '30' : '21.5';
+      const limits = [
+        v.min != null ? `최소 ${v.min}` : '',
+        v.max != null ? `최대 ${v.max}` : '',
+      ].filter(Boolean).join(' · ');
+      return {
+        rows: [
+          [`${command} +${step}`, `현재 값에 ${step}만큼 더해요`],
+          [`${command} -${step}`, `현재 값에서 ${step}만큼 빼요`],
+          [`${command} ${target}`, '현재 값을 입력한 숫자로 바꿔요'],
+        ],
+        note: `숫자 앞의 +와 -만 계산 기호로 사용할 수 있어요.${limits ? ` 값은 ${limits} 범위로 제한돼요.` : ''}`
+          + (v.type === 'int' ? ' 정수의 계산 결과는 반올림해요.' : ''),
+      };
+    }
+    if (v.type === 'list') {
+      const sample = String(Array.isArray(v.init) && v.init[0] ? v.init[0] : '새 항목 +12');
+      const removeSample = sample.split(/\s+/).find(Boolean) || '새 항목';
+      return {
+        rows: [
+          [`${command} ${sample}`, '뒤의 내용을 새 항목으로 추가해요'],
+          [`${command}- ${removeSample}`, '명령 이름 바로 뒤에 -를 붙여 일치하는 항목을 빼요'],
+        ],
+        note: '항목을 뺄 때는 목록에서 하나만 가려질 만큼의 일부 문구를 입력해도 돼요.'
+          + (commandListIsSummed(v.id) ? ' 이 목록은 합산에 사용되므로 추가 항목을 숫자로 끝내세요.' : ''),
+      };
+    }
+    if (v.type === 'enum') {
+      const choices = (v.enum || []).slice(0, 3);
+      return {
+        rows: choices.length
+          ? choices.map((choice) => [`${command} ${choice}`, `선택 값을 '${choice}'로 바꿔요`])
+          : (fallbackUsage || []),
+        note: '등록된 선택지 중 하나를 정확히 입력해야 해요.',
+      };
+    }
+    if (v.type === 'bool') {
+      return {
+        rows: [
+          [`${command} on`, '켜요'],
+          [`${command} 0`, '꺼요'],
+          [`${command} false`, '꺼요'],
+        ],
+        note: '영문은 소문자로 입력하세요. 끄려면 0 또는 false를 사용하세요.',
+      };
+    }
+    if (v.type === 'text') {
+      const sample = String(v.init || '새로운 상태');
+      return {
+        rows: [
+          [`${command} ${sample}`, '현재 텍스트 전체를 입력한 내용으로 바꿔요'],
+          [`${command} 이동 중`, '띄어쓰기가 포함된 문장도 그대로 저장해요'],
+        ],
+        note: '기존 문장 뒤에 덧붙이지 않고 입력한 내용으로 전체를 교체해요.',
+      };
+    }
+    return { rows: fallbackUsage || [], note: '' };
+  }
   function tabCommands() {
     const wrap = h('div');
-    wrap.appendChild(tabAiTools('commands'));
-
     const withCmd = schema.vars.filter((v) => v.cmd);
     const free = schema.vars.filter((v) => !v.cmd);
+    const validation = validateSchema(schema);
+    let commandErrorSeq = 0;
+    const specs = new Map(engine.commandSpecs(schema).map((s) => [s.id, s]));
+    const commandIssues = (v) => {
+      const index = schema.vars.indexOf(v);
+      const path = `$.vars[${index}]`;
+      return {
+        errors: validation.errors.filter((e) =>
+          (e.path === path || e.path.startsWith(path + '.')) && /cmd|명령 이름|중복/.test(e.msg || '')),
+        warnings: validation.warnings.filter((e) =>
+          (e.path === path || e.path.startsWith(path + '.')) && /cmd|명령|선택/.test(e.msg || '')),
+      };
+    };
+    const issueCache = new Map(withCmd.map((v) => [v, commandIssues(v)]));
+    const problemCommands = new Set(withCmd.filter((v) => {
+      const issues = issueCache.get(v);
+      return issues.errors.length || issues.warnings.length;
+    }));
 
-    wrap.appendChild(h('h4', {}, `채팅 명령 (${withCmd.length}개)`));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '유저가 채팅 입력창에 치는 한 줄. 변수에 이름을 붙이면 그 이름의 명령이 생긴다 — '
-      + '안 붙이면 그 변수엔 명령이 없다. 문법은 적을 필요가 없다, 변수 타입이 정한다. '
-      + '공백·"/"·"-"는 이름에 못 쓰고 겹쳐도 안 된다. 파생 변수에는 못 단다(계산 결과라서).'));
-
-    if (!withCmd.length) {
-      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-        '아직 하나도 없습니다 — 이 봇에는 채팅 명령이 없는 상태입니다. '
-        + '틀리면 매일 복리로 어긋나는 것(지속 수입·계약·봉급)부터 하나 열어 두시길 권합니다.'));
-    }
-
-    for (const v of withCmd) {
-      const spec = engine.commandSpecs(schema).find((s) => s.id === v.id);
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          h('span', { class: 'sce-w-m' }, `${v.label ?? v.id} (${v.type})`),
-          h('span', {}, '/'),
-          bindInput(v.cmd, (x) => {
-            const t = String(x).trim();
-            if (t) v.cmd = t; else delete v.cmd;
-            rerender();
-          }, { cls: 'sce-w-m', ph: '명령 이름' }),
-          h('button', { class: 'sce-btn sce-mini sce-danger', title: '명령 떼기',
-            onclick: () => { delete v.cmd; rerender(); } }, '✕'),
+    wrap.appendChild(h('section', { class: 'sce-command-intro' },
+      h('div', { class: 'sce-command-intro-title' }, '채팅에서 값을 바로 고치는 명령'),
+      h('div', { class: 'sce-command-intro-copy' },
+        '명령은 기존 변수에 짧은 이름을 붙여 만들어요. 입력 문법은 정수·선택지·목록 같은 변수 형식에 맞춰 자동으로 정해집니다.'),
+    ));
+    wrap.appendChild(h('section', { class: 'sce-vars-ai sce-command-ai' },
+      h('div', { class: 'sce-vars-ai-head' },
+        h('div', {},
+          h('h4', {}, 'AI로 명령 전체 만들기·교체'),
+          h('p', {}, '전면 재작성이나 여러 명령을 한꺼번에 정리할 때만 사용하세요.'),
         ),
-        h('div', { class: 'sce-hint' },
-          (spec ? spec.usage.map(([syn, why]) => `${syn}  —  ${why}`).join('\n') : '')),
+        h('span', { class: 'sce-tag' }, `${withCmd.length}개 명령`),
+      ),
+      tabAiTools('commands'),
+    ));
+
+    if (deletedCommand) {
+      const deleted = deletedCommand;
+      wrap.appendChild(h('div', { class: 'sce-vars-undo', role: 'status' },
+        h('span', {}, `/${deleted.cmd} 명령을 삭제했어요.`),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          const variable = schema.vars.includes(deleted.variable)
+            ? deleted.variable
+            : (schema.vars[deleted.index]?.id === deleted.varId
+              ? schema.vars[deleted.index]
+              : schema.vars.find((v) => v.id === deleted.varId));
+          if (variable) variable.cmd = deleted.cmd;
+          deletedCommand = null;
+          rerender();
+        } }, '되돌리기'),
       ));
     }
 
-    // 붙일 변수 고르기. 목록형을 위로 올린다 — 계약·봉급처럼 틀리면 복리로 어긋나는 게 여기 있다.
-    const pick = h('select', { class: 'sce-w-l' });
-    pick.appendChild(h('option', { value: '' }, '— 명령을 붙일 변수 —'));
-    for (const v of [...free].sort((a, b) => (a.type === 'list' ? -1 : 0) - (b.type === 'list' ? -1 : 0))) {
-      pick.appendChild(h('option', { value: v.id }, `${v.label ?? v.id} (${v.id} · ${v.type})`));
-    }
-    wrap.appendChild(h('div', { class: 'sce-row' }, pick,
-      h('button', { class: 'sce-btn', onclick: () => {
-        const v = schema.vars.find((x) => x.id === pick.value);
-        if (!v) return;
-        // 라벨을 그대로 이름으로 쓰면 공백이 들어가 검증에서 막힌다 — 첫 낱말만 쓴다.
+    const workspace = h('div', { class: 'sce-command-workspace' });
+    workspace.appendChild(h('div', { class: 'sce-editor-section-head' },
+      h('div', {},
+        h('h4', {}, '채팅 명령'),
+        h('p', {}, '변수를 고르면 명령과 타입별 사용 예시가 함께 만들어져요. 상태창에서는 변수 탭의 순서대로 표시됩니다.'),
+      ),
+      h('div', { class: 'sce-editor-section-actions' },
+        h('span', { class: 'sce-tag' }, `${withCmd.length}개`),
+        h('button', { class: 'sce-btn sce-mini', disabled: !withCmd.some((v) => !collapsedCommandCards.has(v)) ? 'disabled' : undefined,
+          onclick: () => {
+          withCmd.forEach((v) => collapsedCommandCards.add(v));
+          rerender();
+        } }, '모두 접기'),
+        h('button', {
+          class: 'sce-btn sce-mini', disabled: !withCmd.some((v) => collapsedCommandCards.has(v)) ? 'disabled' : undefined,
+          onclick: () => {
+            withCmd.forEach((v) => collapsedCommandCards.delete(v));
+            rerender();
+          },
+        }, '모두 펼치기'),
+        h('button', {
+          class: 'sce-btn sce-mini', disabled: !problemCommands.size ? 'disabled' : undefined,
+          onclick: () => {
+            withCmd.forEach((v) => {
+              if (problemCommands.has(v)) collapsedCommandCards.delete(v);
+              else collapsedCommandCards.add(v);
+            });
+            rerender();
+          },
+        }, `문제만 펼치기${problemCommands.size ? ` ${problemCommands.size}` : ''}`),
+      ),
+    ));
+
+    if (!schema.vars.length) {
+      workspace.appendChild(h('div', { class: 'sce-vars-empty' },
+        h('strong', {}, '명령을 연결할 변수가 없어요'),
+        h('span', {}, '명령은 기존 변수에 붙는 기능이에요. 변수 탭에서 먼저 변수를 만들어 주세요.'),
+        h('button', { class: 'sce-btn', onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 만들러 가기'),
+      ));
+    } else {
+      const pick = h('select', { class: 'sce-w-l', disabled: free.length ? undefined : 'disabled' });
+      pick.appendChild(h('option', { value: '' }, free.length ? '변수를 선택하세요' : '연결할 수 있는 변수가 없어요'));
+      for (const v of [...free].sort((a, b) => (a.type === 'list' ? -1 : 0) - (b.type === 'list' ? -1 : 0))) {
+        pick.appendChild(h('option', { value: String(schema.vars.indexOf(v)) },
+          `${v.label ?? v.id} (${v.id} · ${COMMAND_TYPE_LABELS[v.type] || v.type})`));
+      }
+      const openButton = h('button', { class: 'sce-btn', disabled: 'disabled', onclick: () => {
+        const index = Number(pick.value);
+        const v = Number.isInteger(index) ? schema.vars[index] : null;
+        if (!v || v.cmd) return;
         const base = String(v.label ?? v.id).trim().split(/\s+/)[0].replace(/[\/-]/g, '') || v.id;
         const taken = new Set(schema.vars.filter((x) => x.cmd).map((x) => x.cmd));
         let name = base, n = 2;
         while (taken.has(name)) name = base + (n++);
         v.cmd = name;
+        createdCommandCard = v;
         rerender();
-      } }, '＋ 명령 열기')));
+      } }, '명령 추가');
+      pick.onchange = () => { openButton.disabled = !pick.value; };
+      workspace.appendChild(h('div', { class: 'sce-command-create' },
+        h('div', { class: 'sce-variable-field' },
+          h('label', {}, free.length ? '명령을 연결할 변수' : '모든 변수에 명령이 연결되어 있어요'),
+          pick,
+        ),
+        openButton,
+      ));
+    }
+    if (!withCmd.length && schema.vars.length) {
+      workspace.appendChild(h('div', { class: 'sce-vars-empty' },
+        h('strong', {}, '아직 채팅 명령이 없어요'),
+        h('span', {}, '위에서 변수를 선택하면 해당 형식에 맞는 명령과 사용 예시가 만들어져요.'),
+      ));
+    }
+    wrap.appendChild(workspace);
 
-    // 유저가 이걸 볼 자리. 이 안내가 없으면 명령을 만들어 놓고 아무도 모르는 상태가 그대로 남는다.
-    wrap.appendChild(h('h4', {}, '유저가 이 목록을 보는 자리'));
-    const tplMode = (schema.statusUI?.mode === 'template');
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      tplMode
-        ? '상태창 템플릿에서 원하는 자리에 {commands} 를 넣으면 접이식 명령 목록이 그려집니다. '
-          + '안 넣으면 안 나옵니다 — 유저는 무슨 명령이 있는지 알 방법이 없어집니다.'
-        : '지금은 그룹 모드라 상태창 맨 아래에 자동으로 붙습니다. 템플릿 모드로 바꾸면 '
-          + '{commands} 를 넣은 자리에만 나옵니다.'));
-    if (tplMode) {
-      const has = (schema.statusUI.templates || []).some((t) => String(t.template || '').includes('{commands}'))
-        || String(schema.statusUI.template || '').includes('{commands}');
-      if (withCmd.length && !has) {
-        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-          '⚠ 명령을 열어 뒀는데 상태창 어디에도 {commands} 가 없습니다. 지금은 유저가 명령의 존재를 알 수 없습니다.'));
+    const commandList = h('div', { class: 'sce-command-list' });
+    for (const v of withCmd) {
+      const spec = specs.get(v.id);
+      const usage = commandEditorUsage(v, spec?.usage);
+      const issues = issueCache.get(v);
+      const collapsed = collapsedCommandCards.has(v);
+      const newlyCreated = createdCommandCard === v;
+      if (newlyCreated) createdCommandCard = null;
+      const input = bindInput(v.cmd, (x) => {
+        const t = String(x).trim();
+        if (t) v.cmd = t; else delete v.cmd;
+        rerender();
+      }, { cls: 'sce-w-l', ph: '명령 이름' });
+      let errorId;
+      if (issues.errors.length) {
+        errorId = `sce-command-error-${++commandErrorSeq}`;
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', errorId);
+      }
+      const firstIssue = issues.errors[0]?.msg || issues.warnings[0]?.msg;
+      const issueCount = issues.errors.length + issues.warnings.length;
+      const card = h('section', {
+        class: `sce-block sce-command-card${collapsed ? ' is-collapsed' : ''}${newlyCreated ? ' is-newly-created' : ''}`,
+      },
+        h('div', { class: 'sce-command-card-head' },
+          h('div', { class: 'sce-command-card-title' },
+            h('strong', {}, `/${v.cmd}`),
+            h('span', {}, `${v.label ?? v.id} · ${v.id} · ${COMMAND_TYPE_LABELS[v.type] || v.type}`),
+            firstIssue ? h('span', {
+              class: `sce-command-issue-summary${!issues.errors.length ? ' is-warning' : ''}`,
+              title: firstIssue,
+            }, `${issues.errors.length ? '오류' : '경고'} ${issueCount}개 · ${firstIssue}`) : null,
+          ),
+          h('div', { class: 'sce-command-card-actions' },
+            h('button', {
+              class: 'sce-btn sce-mini',
+              onclick: () => {
+                if (collapsed) collapsedCommandCards.delete(v);
+                else collapsedCommandCards.add(v);
+                rerender();
+              },
+              'aria-expanded': String(!collapsed),
+            }, collapsed ? '펼치기' : '접기'),
+            h('button', { class: 'sce-btn sce-mini sce-danger', title: '명령 삭제', onclick: () => {
+              deletedCommand = { variable: v, index: schema.vars.indexOf(v), varId: v.id, cmd: v.cmd };
+              delete v.cmd;
+              rerender();
+            } }, '삭제'),
+          ),
+        ),
+        collapsed ? null : h('div', { class: 'sce-command-card-body' },
+          h('div', { class: 'sce-command-grid' },
+            h('div', { class: 'sce-variable-field' },
+              h('label', {}, '연결 변수'),
+              h('div', { class: 'sce-command-readonly' }, `${v.label ?? v.id} · ${COMMAND_TYPE_LABELS[v.type] || v.type}`),
+            ),
+            h('div', { class: `sce-variable-field${issues.errors.length ? ' has-error' : ''}` },
+              h('label', {}, '명령 이름'),
+              h('div', { class: 'sce-command-name-control' },
+                h('span', { class: 'sce-command-prefix' }, '/'),
+                input,
+              ),
+              issues.errors.length ? h('div', { id: errorId, class: 'sce-field-error' },
+                issues.errors.map((e) => e.msg).join(' · ')) : h('div', { class: 'sce-hint' },
+                '공백, /, -는 사용할 수 없으며 다른 명령과 겹칠 수 없어요.'),
+              ...issues.warnings.map((e) => h('div', { class: 'sce-warn' }, e.msg)),
+            ),
+          ),
+          h('div', { class: 'sce-command-usage' },
+            h('strong', {}, '사용 예시'),
+            ...usage.rows.map(([syntax, why]) => h('div', { class: 'sce-command-usage-line' },
+              h('code', {}, syntax),
+              h('span', {}, why),
+            )),
+            usage.note ? h('div', { class: 'sce-command-usage-note' }, usage.note) : null,
+          ),
+        ),
+      );
+      commandList.appendChild(card);
+      if (newlyCreated) {
+        requestAnimationFrame(() => {
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          card.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+          try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+        });
+        setTimeout(() => card.classList.remove('is-newly-created'), 1500);
       }
     }
+    wrap.appendChild(commandList);
+
+    // 유저가 이걸 볼 자리. 이 안내가 없으면 명령을 만들어 놓고 아무도 모르는 상태가 그대로 남는다.
+    const tplMode = (schema.statusUI?.mode === 'template');
+    const hasCommandsSlot = (schema.statusUI?.templates || []).some((t) => String(t.template || '').includes('{commands}'))
+      || String(schema.statusUI?.template || '').includes('{commands}');
+    const visibilityWarning = tplMode && withCmd.length && !hasCommandsSlot;
+    wrap.appendChild(h('div', { class: `sce-command-visibility${visibilityWarning ? ' is-warning' : ''}` },
+      h('div', {},
+        h('strong', {}, visibilityWarning ? '상태창에 명령 목록이 표시되지 않아요' : '상태창 표시 상태'),
+        h('p', {}, tplMode
+          ? hasCommandsSlot
+            ? 'HTML 템플릿의 {commands} 위치에 접이식 명령 목록이 표시돼요.'
+            : 'HTML 템플릿에서는 {commands}를 넣어야 유저가 명령 목록을 볼 수 있어요.'
+          : '자동 구성 방식에서는 상태창 맨 아래에 명령 목록이 자동으로 표시돼요.'),
+      ),
+      visibilityWarning ? h('button', { class: 'sce-btn sce-mini', onclick: () => {
+        activeTab = 'status';
+        rerender();
+      } }, '상태창 설정 보기') : h('span', { class: 'sce-tag' },
+        tplMode ? '템플릿에 표시 중' : '자동 표시 중'),
+    ));
     return wrap;
   }
 
@@ -11154,11 +12785,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let patchChoices = {};   // 충돌 해소 선택('cf:키'), 개명 id('rn:키'), 삭제 체크('rm:섹션:id')
   let patchBackup = null;  // 적용 직전 스키마 — 되돌리기 1슬롯
   let patchReport = null;  // 마지막 적용 내역 (rerender를 넘어 보여줘야 해서 상태로)
+  let jsonDraft = null;    // 원본 JSON 편집 중 내용 (null = 현재 작업본과 같음)
+  let jsonDraftDirty = false;
+  let jsonImportPreview = null; // 전체 교체 전 검사 결과
+  let jsonImportBackup = null;  // 전체 교체 직전 작업본 — 되돌리기 1슬롯
+  let jsonImportApplied = false;
 
   // ── 위층 (AI에게 맡기기) 상태 — docs/design-내장-AI-생성.md ──
   let aiReq = '';           // 요청 문구
   let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
   let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
+  let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
@@ -11184,10 +12821,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('span', { class: 'sce-hint', style: 'margin:0' }, hint));
   }
 
-  async function fetchBotCtx() {
-    if (aiBotCtx !== undefined) return aiBotCtx;
-    if (!ai || !ai.getBotContext) { aiBotCtx = null; return null; }
-    try { aiBotCtx = (await ai.getBotContext()) || null; } catch { aiBotCtx = null; }
+  async function fetchBotCtx(force = false) {
+    if (!force && aiBotCtx !== undefined) return aiBotCtx;
+    aiBotCtxError = null;
+    if (!ai || !ai.getBotContext) {
+      aiBotCtx = null;
+      aiBotCtxError = '현재 환경에서 캐릭터 정보를 읽는 기능을 사용할 수 없어요.';
+      return null;
+    }
+    try { aiBotCtx = (await ai.getBotContext()) || null; }
+    catch (e) {
+      aiBotCtx = null;
+      aiBotCtxError = e instanceof Error ? e.message : String(e);
+    }
     return aiBotCtx;
   }
 
@@ -11210,16 +12856,39 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
       return (m ? m[1] : String(raw)).trim();
     };
+    const jsonParseFailure = (raw, error) => {
+      const cleaned = stripFence(raw);
+      const position = Number(/position\s+(\d+)/i.exec(error.message)?.[1]);
+      let line = 1, column = 1;
+      if (Number.isFinite(position)) {
+        const before = cleaned.slice(0, position);
+        line = before.split('\n').length;
+        column = position - before.lastIndexOf('\n');
+      } else {
+        const lc = /line\s+(\d+)\s+column\s+(\d+)/i.exec(error.message);
+        if (lc) { line = Number(lc[1]); column = Number(lc[2]); }
+      }
+      const lines = cleaned.split('\n');
+      const from = Math.max(0, line - 2), to = Math.min(lines.length, line + 1);
+      const context = lines.slice(from, to).map((value, i) => `${from + i + 1} | ${value}`).join('\n');
+      return {
+        error: `JSON 문법 오류 · ${line}행 ${column}열 — ${error.message}`,
+        context: context.slice(0, 900),
+      };
+    };
     // 응답 검사 — 패치는 parsePatch+planPatch, 통짜는 JSON+validateSchema까지 통과해야 합격.
     // 불합격이어도 안전하다는 게 이 설계의 핵심 — 쓰레기는 여기서 멈추고 스키마는 안 변한다.
     const inspect = (text) => {
+      let parsedJson;
+      try { parsedJson = JSON.parse(stripFence(text)); }
+      catch (e) {
+        const failure = jsonParseFailure(text, e);
+        return { ok: false, errors: [failure.error], retryContext: failure.context };
+      }
       if (blank) {
-        let obj;
-        try { obj = JSON.parse(stripFence(text)); }
-        catch (e) { return { ok: false, errors: ['JSON 파싱 실패: ' + e.message] }; }
-        const v = validateSchema(obj);
+        const v = validateSchema(parsedJson);
         if (!v.ok) return { ok: false, errors: v.errors.map((e) => `${e.path} — ${e.msg}`) };
-        return { ok: true, full: { schema: obj, warnings: v.warnings } };
+        return { ok: true, full: { schema: parsedJson, warnings: v.warnings } };
       }
       const p = patchMod.parsePatch(text);
       if (!p.ok) return { ok: false, errors: p.errors };
@@ -11231,13 +12900,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const prompt = diag
       ? buildPatchExportPrompt(schema, { findings: diag.findings, stats: diag.stats, botCtx: ctxText })
       : buildAiRequestPrompt(schema, req, ctxText);
+    const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     let fatal = null, text = null, got = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       const p = attempt === 0 ? prompt
         // 형식 불합격 1회 자동 재시도 — 오류를 첨부해 다시 (aux JSON 재시도와 같은 규율)
         : prompt + '\n\n──\n방금 응답이 형식 검사에서 거부되었습니다:\n'
           + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
-          + '\n설명 없이, 형식에 맞는 JSON 하나만 다시 출력하세요.';
+          + (got.retryContext ? `\n\n문제가 발견된 주변:\n${got.retryContext}` : '')
+          + '\n\n이전 출력을 그대로 이어 쓰지 말고 처음부터 다시 작성하세요.'
+          + '\n출력 직전에 쉼표, 따옴표, 중괄호 짝을 검사하고 설명이나 코드펜스 없이 유효한 JSON 하나만 출력하세요.';
       let res = null;
       try { res = await ai.generate(p); } catch (e) { res = { error: '호출 예외: ' + e.message }; }
       if (aiGen.seq !== mySeq || destroyed) return; // 취소됨 — 결과를 버린다
@@ -11253,13 +12926,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     aiGen.busy = false;
     if (fatal === 'blocked') {
-      aiGen.note = '⚠ 이 환경은 플러그인의 LLM 직접 호출이 차단되어 있습니다 — [📋 복사해서 다른 AI에게]로 우회하세요.';
+      aiGen.note = `⚠ ${selectedModelLabel} 호출이 이 환경에서 차단됐어요 — [규격서 복사]로 다른 AI를 이용해 주세요.`;
     } else if (fatal) {
-      aiGen.note = '⚠ 생성 호출 실패 — ' + fatal.msg
-        + ' · 생성 모델을 바꾸거나 [📋 복사해서 다른 AI에게]를 쓰세요.';
+      aiGen.note = `⚠ ${selectedModelLabel} 호출 실패 — ${fatal.msg}`
+        + ' · 생성 모델을 바꾸거나 [규격서 복사]를 이용해 주세요.';
     } else if (!got.ok) {
-      aiGen.note = '⚠ 두 번 모두 형식 검사를 통과하지 못했습니다 — 보조 모델이 이 작업에는 약할 수 있습니다. '
-        + '아래 원문을 확인하거나, [📋 복사해서 다른 AI에게]로 더 강한 모델에 맡기세요. 첫 오류: ' + got.errors[0];
+      aiGen.note = `⚠ ${selectedModelLabel} 응답이 두 번 모두 형식 검사를 통과하지 못했어요. `
+        + '아래 원문과 오류 위치를 확인하거나 [규격서 복사]로 다른 AI에 맡겨 주세요. 오류: ' + got.errors[0]
+        + (got.retryContext ? ` · 주변: ${got.retryContext.replace(/\s+/g, ' ').slice(0, 240)}` : '');
       aiGen.raw = text;
     } else if (blank) {
       aiFull = got.full; // 반영은 사람이 누른다 — 요약·경고를 보여주고 확인받는다
@@ -11278,6 +12952,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let topTab = 'make';      // 'make' | 'result' | 'diag'
   let cssReq = '';          // 꾸미기 요청 문구 (분위기·배치)
   let cssMode = 'skin';     // 'skin' = customCSS만 | 'layout' = 커스텀 템플릿 통째
+  let cssDesignPolish = true;
   let cssGen = { busy: false, seq: 0, note: null };
   let cssBackup = null;     // { mode, template, customCSS } — 꾸미기 적용 직전 상태 (되돌리기 1슬롯)
 
@@ -11302,50 +12977,79 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 🎨 꾸미기 창구 본체 — 1층 👁 결과와 3층 상태창 탭이 같은 것을 띄운다.
   // 상태(cssMode·cssReq·cssGen·cssBackup)를 공유하므로 어느 쪽에서 눌러도 결과와 되돌리기가 같다.
+  // 꾸미기 창구 — 1층 👁 결과와 3층 상태창 탭이 **같은 것**을 띄운다 (요청 문구·되돌리기
+  // 슬롯까지 공유하므로 어느 쪽에서 눌러도 결과가 같다). 표현은 v0.66 개조판 것을 따른다.
   function cssAiTools() {
     const wrap = h('div');
     const layoutMode = cssMode === 'layout';
-    const cssRow = h('div', { class: 'sce-row' },
-      bindSelect(cssMode, [
-        ['skin', '🎨 스킨만 — 색·폰트·질감'],
-        ['layout', '🖼 배치까지 — 템플릿 통째'],
-      ], (x) => { cssMode = x; rerender(); }),
-      bindInput(cssReq, (x) => { cssReq = x; },
-        { cls: 'sce-w-l', ph: layoutMode
-          ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
-          : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트' }));
-    if (ai && ai.generate) {
-      cssRow.appendChild(cssGen.busy
-        ? h('button', { class: 'sce-btn', onclick: () => { cssGen.seq++; cssGen.busy = false; rerender(); } }, '✋ 취소')
-        : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
-            onclick: () => runCssGenerate() }, layoutMode ? '🖼 생성' : '🎨 생성'));
+
+    const modeSwitch = h('div', { class: 'sce-mode-switch', role: 'group', 'aria-label': '디자인 생성 범위' });
+    for (const [mode, label, desc] of [
+      ['skin', '스킨만', '색·글꼴·질감'],
+      ['layout', '배치까지', '템플릿 전체'],
+    ]) {
+      modeSwitch.appendChild(h('button', { type: 'button', class: 'sce-mode-btn' + (cssMode === mode ? ' on' : ''),
+        'aria-pressed': String(cssMode === mode), onclick: () => { cssMode = mode; rerender(); } },
+      `${label} · ${desc}`));
     }
+    wrap.appendChild(modeSwitch);
+
+    const cssActions = h('div', { class: 'sce-design-actions' });
+    const cssRequest = bindArea(cssReq, (x) => { cssReq = x; }, layoutMode
+      ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
+      : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트');
+    cssRequest.className = 'sce-design-request';
+    cssRequest.setAttribute('aria-label', layoutMode ? '원하는 배치와 분위기' : '원하는 분위기');
+    cssActions.appendChild(cssRequest);
+
+    const cssControls = h('div', { class: 'sce-design-controls' });
+    if (ai && ai.generate) {
+      cssControls.appendChild(cssGen.busy
+        ? h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          cssGen.seq++; cssGen.busy = false; rerender();
+        } }, '생성 취소')
+        : h('button', { class: 'sce-btn sce-mini sce-ai-primary', onclick: () => runCssGenerate() },
+          layoutMode ? '배치 생성' : '스킨 생성'));
+    }
+    const cssStateClass = cssGen.note && !cssGen.note.startsWith('✅') ? ' warn'
+      : cssGen.note?.startsWith('✅') ? ' ok' : '';
+    cssControls.appendChild(h('span', { class: 'sce-generation-state' + cssStateClass, 'aria-live': 'polite' },
+      cssGen.busy ? (layoutMode ? '배치 생성 중…' : '스킨 생성 중…') : (cssGen.note || '')));
     if (cssBackup) {
-      cssRow.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+      cssControls.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
         schema.statusUI.mode = cssBackup.mode;
         schema.statusUI.template = cssBackup.template;
         schema.statusUI.customCSS = cssBackup.customCSS;
         cssBackup = null; cssGen.note = null; rerender();
-      } }, '↩ 꾸미기 되돌리기'));
+      } }, '꾸미기 되돌리기'));
     }
-    wrap.appendChild(cssRow);
+    cssActions.appendChild(cssControls);
+    wrap.appendChild(cssActions);
+
+    wrap.appendChild(h('div', { class: 'sce-design-polish' },
+      bindCheck(cssDesignPolish, (x) => { cssDesignPolish = x; rerender(); }, '획일적인 AI 디자인 줄이기'),
+      h('span', { class: 'sce-hint', style: 'margin:0' },
+        'Hallmark 가이드를 보정 지침으로 더해 흔한 카드·배지 남발을 줄여요.'),
+      h('a', { class: 'sce-hallmark-link', href: 'https://github.com/Nutlope/hallmark',
+        target: '_blank', rel: 'noopener noreferrer', title: 'Hallmark GitHub 저장소 열기' }, 'GitHub ↗')));
+
     if (!layoutMode && schema.statusUI.mode === 'template') {
       wrap.appendChild(h('div', { class: 'sce-warn' },
-        '⚠ 이 봇은 커스텀 템플릿을 쓰고 있어 스킨 CSS(자동 배치 클래스 기준)가 힘을 못 씁니다 — [🖼 배치까지]를 쓰세요.'));
+        '현재 커스텀 템플릿을 사용 중이라 스킨 CSS가 제대로 반영되지 않을 수 있어요. [배치까지]를 선택해 주세요.'));
     }
-    if (cssGen.busy) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        layoutMode ? '⏳ 배치 생성 중… (수십 초 걸릴 수 있음)' : '⏳ CSS 생성 중…'));
-    } else if (cssGen.note) {
-      wrap.appendChild(h('div', { class: cssGen.note.startsWith('✅') ? 'sce-hint' : 'sce-warn' }, cssGen.note));
-    }
+
+    const external = h('div', { class: 'sce-result-external' },
+      h('div', { class: 'sce-ai-alt-title' }, '외부 AI로 만들기'));
     copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
       layoutMode
-        ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사합니다 — 웹 AI에게 주고, 받은 HTML은 '
-          + '3층 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style> 자동 분리).'
-        : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사합니다 — 웹 AI에게 주고, '
-          + '받은 CSS는 3층 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
-      () => (cssMode === 'layout' ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq))).mount(wrap);
+        ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사해요. 웹 AI에게 주고, 받은 HTML은 '
+          + '심층 편집 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style>은 자동 분리됩니다).'
+        : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사해요. 웹 AI에게 주고, '
+          + '받은 CSS는 심층 편집 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+      () => (cssMode === 'layout'
+        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
+        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish)), [], { collapsible: true }).mount(external);
+    wrap.appendChild(external);
     return wrap;
   }
 
@@ -11357,7 +13061,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
     let res = null;
     try {
-      res = await ai.generate(layout ? buildLayoutSpecPrompt(schema, cssReq) : buildCssSpecPrompt(schema, cssReq));
+      res = await ai.generate(layout
+        ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
+        : buildCssSpecPrompt(schema, cssReq, cssDesignPolish));
     } catch (e) { res = { error: '호출 예외: ' + e.message }; }
     if (cssGen.seq !== mySeq || destroyed) return;
     cssGen.busy = false;
@@ -11428,70 +13134,158 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }
       return JSON.stringify(e);
     };
-    const line = (icon, title, subs) => h('div', { style: 'margin:2px 0 8px' },
-      h('div', {}, `${icon} ${title}`),
-      ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-hint', style: 'margin:0 0 0 20px' }, s)));
+    const line = (icon, title, subs) => h('div', { class: 'sce-catalog-item' },
+      h('div', { class: 'sce-catalog-item-title' }, `${icon} ${title}`),
+      ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-catalog-item-detail' }, s)));
+    const eventRow = (e, random, rndChance) => {
+      const condition = [];
+      if (e.when) condition.push(e.when);
+      if (e.check) condition.push(`판정 ${e.check}`);
+      if (e.once) condition.push('한 번만 발동');
+      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}턴`);
+      if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
+      const effects = (e.effects || []).map(fmtE);
+      if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
+      const kind = random ? `랜덤 · 턴당 ${Math.round(rndChance * 100)}%` : '일반 이벤트';
+      const fields = [
+        ['추가된 항목', e.id || '(ID 없음)'],
+        ['발동·조건', condition.join(' · ') || '조건 없음'],
+        ['효과·변수 변경', effects.join(' · ') || '변경 없음'],
+        ['통지', e.notify || '통지 없음'],
+      ];
+      return h('article', { class: 'sce-event-row' },
+        h('div', { class: 'sce-event-head' },
+          h('span', { class: 'sce-event-kind' }, kind),
+          h('span', { class: 'sce-event-title' }, e.id || '(ID 없음)')),
+        h('dl', { class: 'sce-event-fields' },
+          ...fields.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])));
+    };
+
+    if ((schema.vars || []).length) {
+      const group = h('section', { class: 'sce-catalog-group' }, h('h4', {}, `변수 ${schema.vars.length}개`));
+      const grid = h('div', { class: 'sce-catalog-grid' });
+      for (const v of schema.vars) grid.appendChild(line('◆', v.label ?? v.id ?? '(ID 없음)', [
+        `ID: ${v.id ?? '(없음)'}`,
+        `형식: ${v.type ?? 'int'} · 시작값: ${JSON.stringify(v.init ?? 0)}`,
+        v.min != null || v.max != null ? `범위: ${v.min ?? '제한 없음'} ~ ${v.max ?? '제한 없음'}` : null,
+      ]));
+      group.appendChild(grid); wrap.appendChild(group);
+    }
 
     const evs = schema.rules.events || [];
-    const rndChance = schema.rules.randomEvents?.chancePerTurn || 0;
+    const rndChance = schema.rules.randomEvents?.chancePerTurn ?? 0;
     const rnd = schema.rules.randomEvents?.table || [];
     if (evs.length + rnd.length) {
-      wrap.appendChild(h('h4', {}, `이벤트 ${evs.length + rnd.length}개`));
-      for (const e of evs) wrap.appendChild(line('⚡', `${e.id}${e.once ? ' — 딱 한 번' : ''}`, [
-        e.when ? `발동: ${e.when}` : null,
-        (e.effects || []).length ? `효과: ${e.effects.map(fmtE).join(' · ')}` : null,
-        e.notify ? `통지: ${e.notify}` : null,
-      ]));
-      for (const e of rnd) wrap.appendChild(line('🎲', `${e.id} — 랜덤${rndChance ? ` (턴당 ${Math.round(rndChance * 100)}%)` : ''}`, [
-        e.when ? `조건: ${e.when}` : null,
-        (e.effects || []).length ? `효과: ${e.effects.map(fmtE).join(' · ')}` : null,
-        e.notify ? `통지: ${e.notify}` : null,
-      ]));
+      const group = h('section', { class: 'sce-catalog-group' },
+        h('h4', {}, `이벤트 ${evs.length + rnd.length}개`));
+      const list = h('div', { class: 'sce-event-list' });
+      for (const e of evs) list.appendChild(eventRow(e, false, rndChance));
+      for (const e of rnd) list.appendChild(eventRow(e, true, rndChance));
+      group.appendChild(list);
+      wrap.appendChild(group);
     }
     if ((schema.actions || []).length) {
-      wrap.appendChild(h('h4', {}, `액션 ${schema.actions.length}개`));
-      for (const a of schema.actions) wrap.appendChild(line('🔘', `${a.label ?? a.id}${a.mode ? ` (${a.mode})` : ''}`, [
+      const group = h('section', { class: 'sce-catalog-group' }, h('h4', {}, `액션 ${schema.actions.length}개`));
+      const grid = h('div', { class: 'sce-catalog-grid' });
+      for (const a of schema.actions) grid.appendChild(line('🔘', `${a.label ?? a.id}${a.mode ? ` (${a.mode})` : ''}`, [
         a.when ? `조건: ${a.when}` : null,
         (a.effects || []).length ? `효과: ${a.effects.map(fmtE).join(' · ')}` : null,
         a.check ? `연결 판정: ${a.check}` : null,
         a.inject ? `서사 지시: ${a.inject}` : null,
       ]));
+      group.appendChild(grid); wrap.appendChild(group);
     }
     if ((schema.checks || []).length) {
-      wrap.appendChild(h('h4', {}, `판정 ${schema.checks.length}개`));
-      for (const c of schema.checks) wrap.appendChild(line('🎯', c.label ?? c.id, [
+      const group = h('section', { class: 'sce-catalog-group' }, h('h4', {}, `판정 ${schema.checks.length}개`));
+      const grid = h('div', { class: 'sce-catalog-grid' });
+      for (const c of schema.checks) grid.appendChild(line('🎯', c.label ?? c.id, [
         `굴림: ${c.roll}`,
         (c.grades || []).length ? `${c.grades.length}단계: ${c.grades.map((g) => g.label ?? '(이름 없음)').join(' / ')}` : null,
       ]));
+      group.appendChild(grid); wrap.appendChild(group);
     }
     if ((schema.directives || []).length) {
-      wrap.appendChild(h('h4', {}, `지시문 ${schema.directives.length}개`));
-      for (const d of schema.directives) wrap.appendChild(line('📣', d.id, [
+      const group = h('section', { class: 'sce-catalog-group' }, h('h4', {}, `지시문 ${schema.directives.length}개`));
+      const grid = h('div', { class: 'sce-catalog-grid' });
+      for (const d of schema.directives) grid.appendChild(line('📣', d.id, [
         d.when ? `켜짐: ${d.when}` : null,
         d.text ? `지시: ${d.text}` : null,
       ]));
+      group.appendChild(grid); wrap.appendChild(group);
     }
     if ((schema.rules.onTurn || []).length) {
-      wrap.appendChild(h('h4', {}, '매 턴 정산'));
-      wrap.appendChild(line('🔁', `${schema.rules.onTurn.length}건`,
-        schema.rules.onTurn.map((e) => fmtE(e))));
+      const group = h('section', { class: 'sce-catalog-group' }, h('h4', {}, '매 턴 정산'));
+      const grid = h('div', { class: 'sce-catalog-grid' },
+        line('🔁', `${schema.rules.onTurn.length}건`, schema.rules.onTurn.map((e) => fmtE(e))));
+      group.appendChild(grid); wrap.appendChild(group);
     }
     if (!wrap.childNodes.length) {
-      wrap.appendChild(h('div', { class: 'sce-hint' }, '아직 만들어진 이벤트·액션·판정이 없습니다 — 위 입력창에 시켜보세요.'));
+      wrap.appendChild(h('div', { class: 'sce-hint' }, '아직 만들어진 이벤트·액션·판정이 없어요. 창작 탭에서 원하는 내용을 입력해 주세요.'));
     }
     return wrap;
   }
 
   function topFloor() {
     const box = h('div', { class: 'sce-block sce-top' });
-    box.appendChild(h('h4', { style: 'margin-top:2px' }, '✨ AI에게 맡기기'));
+    const topHead = h('div', { class: 'sce-top-head' },
+      h('h4', { style: 'margin:0' }, '✨ AI에게 맡기기'));
+    if (firstInstallGuideDismissed) {
+      topHead.appendChild(h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => {
+        firstInstallGuideDismissed = false;
+        if (typeof setFirstInstallGuideDismissed === 'function')
+          Promise.resolve(setFirstInstallGuideDismissed(false)).catch(() => {});
+        rerender();
+      } }, '설치 순서 보기'));
+    }
+    box.appendChild(topHead);
     const blank = schemaIsBlank(schema);
+    const installed = typeof isInstalled === 'function' ? !!isInstalled() : !blank;
+    const firstInstallStep = installed ? 5 : aiFull ? 3 : blank ? (aiGen.busy ? 2 : 1) : 4;
+    const firstInstallClass = (step) => 'sce-first-install-step'
+      + (firstInstallStep === step ? ' on' : step < firstInstallStep ? ' done' : '');
+    const firstInstallNumber = (step) => `${String(step).padStart(2, '0')}${firstInstallStep === step ? ' · 현재' : step < firstInstallStep ? ' · 완료' : ''}`;
+
+    if (!firstInstallGuideDismissed) {
+      box.appendChild(h('div', { class: 'sce-first-install-guide' },
+        h('button', { class: 'sce-first-install-close', type: 'button', 'aria-label': '처음 설치 순서 닫기',
+          title: '안내 닫기', onclick: () => {
+            firstInstallGuideDismissed = true;
+            if (typeof setFirstInstallGuideDismissed === 'function')
+              Promise.resolve(setFirstInstallGuideDismissed(true)).catch(() => {});
+            rerender();
+          } }, '×'),
+        h('div', { class: 'sce-first-install-title' }, '처음 설치 순서'),
+        h('div', { class: 'sce-first-install-lead' }, '아래 네 단계를 차례대로 진행해 주세요.'),
+        h('div', { class: 'sce-first-install-steps' },
+          h('div', { class: firstInstallClass(1) },
+            h('span', { class: 'sce-first-install-number' }, firstInstallNumber(1)),
+            h('b', {}, '원하는 내용 입력'),
+            h('span', {}, '아래 입력칸에 만들고 싶은 시뮬레이션을 적어 주세요.')),
+          h('div', { class: firstInstallClass(2) },
+            h('span', { class: 'sce-first-install-number' }, firstInstallNumber(2)),
+            h('b', {}, '작업본 생성'),
+            h('span', {}, '[작업본 생성]을 눌러 작업본을 만들어 주세요.')),
+          h('div', { class: firstInstallClass(3) },
+            h('span', { class: 'sce-first-install-number' }, firstInstallNumber(3)),
+            h('b', {}, '편집기에 넣기'),
+            h('span', {}, '결과를 확인하고 [편집기에 넣기]를 눌러 주세요.')),
+          h('div', { class: firstInstallClass(4) },
+            h('span', { class: 'sce-first-install-number' }, firstInstallNumber(4)),
+            h('b', {}, '캐릭터에 적용'),
+            h('span', {}, '마지막으로 화면 위쪽의 [캐릭터에 적용]을 눌러 주세요.')),
+        ),
+        h('div', { class: 'sce-first-install-note' },
+          installed
+            ? '설치가 완료됐어요. 안내가 더 필요하지 않으면 오른쪽 위 ×를 눌러 닫아 주세요.'
+            : '캐릭터에 적용한 뒤에도 이 안내는 유지돼요. 확인을 마치면 오른쪽 위 ×를 눌러 닫아 주세요.'),
+      ));
+    }
 
     // 1층 내부 탭 — 창작(시키기) / 결과(보기) / 진단(굴리기). 빈 스키마는 보여줄 결과가 없어 창작만.
     if (!blank) {
       const diagCnt = diagResult && diagResult.findings
         ? diagResult.findings.filter((f) => f.sev !== 'low').length : null;
-      const bar = h('div', { class: 'sce-tabs' });
+      const bar = h('div', { class: 'sce-tabs', role: 'tablist', 'aria-label': 'AI 작업 단계' });
       for (const [key, label] of [
         ['make', `✍ 창작${aiGen.busy ? ' ⏳' : (patchSource === 'top' && patchPlan) ? ' ●' : ''}`],
         ['result', '👁 결과'],
@@ -11499,6 +13293,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ]) {
         bar.appendChild(h('button', {
           class: 'sce-tab' + (topTab === key ? ' on' : ''),
+          role: 'tab', 'aria-selected': String(topTab === key),
           onclick: () => { topTab = key; render(); },
         }, label));
       }
@@ -11507,16 +13302,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 👁 결과 — 상태창 미리보기 + CSS 커스텀 + 만들어진 것들 도감
     if (!blank && topTab === 'result') {
-      box.appendChild(h('div', { class: 'sce-hint' },
-        '지금 스키마가 그리는 상태창입니다 — 창작·심층 어디서 고치든 즉시 갱신됩니다.'));
-      box.appendChild(statusPreviewEl('pv1'));
+      const previewSection = h('section', { class: 'sce-result-section' },
+        h('div', { class: 'sce-result-head' }, h('div', {},
+          h('div', { class: 'sce-result-title' }, '상태창 미리보기'),
+          h('div', { class: 'sce-result-copy' },
+            '현재 작업본의 시작값을 보여줍니다. 창작이나 심층 편집에서 고치면 바로 갱신돼요.'))),
+        statusPreviewEl('pv1'));
+      box.appendChild(previewSection);
+
       // 꾸미기 — 스킨(색·폰트)과 배치(템플릿 통째) 둘 다 자동화 영역.
-      // 구조("무엇을 보여줄까")를 맡기는 창구는 3층 상태창 탭에 있다 — 같은 절을 둘이 나눠 쥔다.
-      box.appendChild(cssAiTools());
-      box.appendChild(h('div', { class: 'sce-hint' },
-        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 🧰 심층 편집 → 상태창 탭의 구조 창구를 쓰세요.'));
-      box.appendChild(h('h4', {}, '📖 만들어진 것들 — 이벤트·액션·판정 한눈에'));
-      box.appendChild(catalogView());
+      // 구조("무엇을 보여줄까")를 맡기는 창구는 심층 편집 상태창 탭에 있다 — 같은 절을 둘이 나눠 쥔다.
+      const designSection = h('section', { class: 'sce-result-section' },
+        h('div', { class: 'sce-result-head' }, h('div', {},
+          h('div', { class: 'sce-result-title' }, '디자인 생성'),
+          h('div', { class: 'sce-result-copy' },
+            '색과 글꼴만 바꾸거나, 상태창의 배치까지 새로 만들 수 있어요.'))),
+        cssAiTools());
+      designSection.appendChild(h('div', { class: 'sce-result-copy' },
+        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 심층 편집 → 상태창 탭의 구조 창구를 쓰세요.'));
+      box.appendChild(designSection);
+
+      const eventCount = (schema.rules.events || []).length + (schema.rules.randomEvents?.table || []).length;
+      const counts = [
+        ['변수', (schema.vars || []).length], ['이벤트', eventCount], ['액션', (schema.actions || []).length],
+        ['판정', (schema.checks || []).length], ['지시문', (schema.directives || []).length],
+      ];
+      const catalogSection = h('section', { class: 'sce-result-section' },
+        h('div', { class: 'sce-result-head' }, h('div', {},
+          h('div', { class: 'sce-result-title' }, '만들어진 것들'),
+          h('div', { class: 'sce-result-copy' }, '작업본의 구성 개수를 먼저 확인하고 필요한 경우에만 세부 내용을 펼쳐 보세요.'))),
+        h('div', { class: 'sce-catalog-counts' },
+          ...counts.map(([label, count]) => h('span', {}, `${label} `, h('b', {}, String(count))))),
+        h('details', { class: 'sce-catalog-details' },
+          h('summary', {}, '세부 목록 펼치기'), catalogView()));
+      box.appendChild(catalogSection);
       return box;
     }
 
@@ -11532,8 +13351,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     box.appendChild(h('div', { class: 'sce-hint' },
       blank
-        ? '아직 스키마가 없습니다 — 원하는 봇을 말하면 AI가 통째로 만들어 옵니다. 검증을 통과해야만 반영되니 부담 없이 시키세요.'
-        : '카드에 없는 것은 말로 시키세요 — 원하는 걸 말하면 바꿀 부분만 담은 패치가 옵니다. 적용 전에 계획을 보여주고, 충돌이 있으면 멈춰서 물어봅니다.'));
+        ? '아직 작업본이 없어요. 원하는 내용을 입력한 뒤 [작업본 생성]을 눌러 주세요. AI가 전체 작업본을 만들어요.'
+        : '바꾸고 싶은 내용을 적으면 AI가 필요한 부분만 수정해요. 적용 전에는 변경 계획을 보여드리고, 충돌이 있으면 확인을 요청해요.'));
 
     // 통짜 생성 결과 — 반영 전 확인 상자
     if (aiFull) {
@@ -11557,7 +13376,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             aiFull = null;
             lowerOpen = true; // 무엇이 생겼는지 바로 보이게
             rerender();
-          } }, '✅ 편집기에 반영'),
+          } }, '편집기에 넣기'),
           h('button', { class: 'sce-btn', onclick: () => { aiFull = null; rerender(); } }, '버리기'),
         )));
     }
@@ -11572,12 +13391,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         )));
     }
 
-    const area = h('textarea', { style: 'min-height:64px',
+    box.appendChild(h('div', { class: 'sce-ai-request-head' },
+      h('label', { class: 'sce-field-label', for: 'sce-ai-request' }, '만들고 싶은 내용'),
+      h('span', { class: 'sce-ai-request-mode' }, blank ? '새 작업본 만들기' : '현재 작업본 부분 수정')));
+    const area = h('textarea', { id: 'sce-ai-request', class: 'sce-ai-request',
       placeholder: blank
         ? '예: 겨울 영지 경영 봇. 식량·민심·온기를 추적하고, 식량이 떨어지면 폭동이 일어나게'
         : '예: 산적 습격 이벤트 추가해줘. 경계가 5 이상이면 발동하고 금화를 뺏기게' });
     area.value = aiReq;
-    area.oninput = () => { aiReq = area.value; };
     box.appendChild(area);
 
     // 프리셋 칩 — 검증 오류가 있으면 그걸 고쳐달라는 요청을 한 번에 채운다
@@ -11588,34 +13409,74 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('button', { class: 'sce-btn sce-mini', onclick: () => {
             aiReq = '아래 검증 오류를 전부 고쳐줘:\n' + v0.errors.map((e) => `- ${e.path} — ${e.msg}`).join('\n');
             area.value = aiReq;
+            renderCtxLine();
           } }, `🩹 검증 오류 ${v0.errors.length}건 고쳐달라고 적기`)));
       }
     }
 
+    const aiSetup = h('div', { class: 'sce-ai-setup' },
+      h('div', { class: 'sce-ai-section-label' }, '생성 설정'));
+    box.appendChild(aiSetup);
+    const aiSettingsGrid = h('div', { class: 'sce-ai-settings-grid' });
+    aiSetup.appendChild(aiSettingsGrid);
+
     // 봇 컨텍스트 동봉 + 전송 크기 실측 (copyWidget이 이미 하는 것과 같은 예의)
-    const ctxLine = h('div', { class: 'sce-row' });
+    const ctxLine = h('div', { class: 'sce-row sce-ai-context' });
     const renderCtxLine = () => {
       ctxLine.replaceChildren();
       if (!ai || !ai.getBotContext) return;
-      if (aiBotCtx === undefined) { ctxLine.appendChild(h('span', { class: 'sce-hint' }, '봇 설정 읽는 중…')); return; }
-      const a = assembleBotContext(aiBotCtx);
-      if (a.text) {
-        ctxLine.appendChild(bindCheck(aiCtxOn, (x) => { aiCtxOn = x; renderCtxLine(); },
-          `봇 설명·로어북 함께 보냄 (${(a.bytes / 1024).toFixed(1)}KB${a.truncated ? ' — 상한 20KB 초과분은 생략' : ''})`));
-      } else {
-        ctxLine.appendChild(h('span', { class: 'sce-hint' }, '동봉할 봇 설명·로어북이 없습니다 — 요청 문구만 보냅니다.'));
+      if (aiBotCtx === undefined) {
+        ctxLine.appendChild(h('span', { class: 'sce-hint' }, '현재 캐릭터 정보 읽는 중…'));
+        return;
       }
-      const total = byteLen(buildAiRequestPrompt(schema, aiReq, aiCtxOn && a.text ? a.text : ''));
-      ctxLine.appendChild(h('span', { class: 'sce-hint' }, `· 요청서 전체 약 ${Math.max(1, Math.round(total / 1024))}KB`));
+      const reconnect = () => h('button', { class: 'sce-btn sce-mini', onclick: async () => {
+        aiBotCtx = undefined;
+        aiBotCtxError = null;
+        renderCtxLine();
+        await fetchBotCtx(true);
+        if (!destroyed) renderCtxLine();
+      } }, '현재 캐릭터 다시 연결');
+      if (aiBotCtxError) {
+        ctxLine.appendChild(h('span', { class: 'sce-warn' },
+          `캐릭터 정보를 읽지 못했어요 — ${aiBotCtxError}`));
+        ctxLine.appendChild(reconnect());
+      }
+      const a = assembleBotContext(aiBotCtx);
+      if (!aiBotCtxError && a.text) {
+        const descBytes = byteLen(String(aiBotCtx?.desc || '').trim());
+        const loreCount = (aiBotCtx?.lore || []).filter((l) => (l.content || '').trim()).length;
+        const ctxCheck = h('input', { type: 'checkbox' });
+        ctxCheck.checked = aiCtxOn;
+        ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; renderCtxLine(); };
+        ctxLine.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
+          h('span', {}, '현재 캐릭터 정보 포함',
+            h('span', { class: 'sce-ai-context-note' },
+              a.truncated ? '20KB를 넘는 내용은 생략해서 보내요.' : '설명과 로어북을 생성 요청에 함께 보내요.'))));
+        const total = byteLen(buildAiRequestPrompt(schema, aiReq, aiCtxOn ? a.text : ''));
+        ctxLine.appendChild(h('div', { class: 'sce-ai-context-meta' },
+          h('span', {}, `캐릭터 ${(a.bytes / 1024).toFixed(1)}KB`),
+          h('span', {}, descBytes || loreCount ? `설명 ${(descBytes / 1024).toFixed(1)}KB · 로어북 ${loreCount}개` : '캐릭터 이름만 포함'),
+          h('span', {}, `입력 ${aiReq.trim().length.toLocaleString()}자`),
+          h('span', {}, `전체 ${(total / 1024).toFixed(1)}KB`)));
+      } else if (!aiBotCtxError) {
+        ctxLine.appendChild(h('span', { class: 'sce-hint' },
+          '현재 캐릭터에서 함께 보낼 설명이나 로어북을 찾지 못했어요. 요청 내용만 보내요.'));
+        ctxLine.appendChild(reconnect());
+        const total = byteLen(buildAiRequestPrompt(schema, aiReq, ''));
+        ctxLine.appendChild(h('div', { class: 'sce-ai-context-meta' },
+          h('span', {}, `입력 ${aiReq.trim().length.toLocaleString()}자`),
+          h('span', {}, `전체 ${(total / 1024).toFixed(1)}KB`)));
+      }
     };
     renderCtxLine();
     fetchBotCtx().then(() => { if (!destroyed) renderCtxLine(); });
-    box.appendChild(ctxLine);
+    aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
+      h('div', { class: 'sce-ai-setting-name' }, '전송 정보'), ctxLine));
 
     // 생성 모델 슬롯 — 보조는 번역·요약용 싼 모델이 꽂힌 자리라, 스키마 생성엔 급이 다른
     // 모델이 필요할 수 있다. 어느 걸로 쏠지는 유저가 고른다 (기기 로컬 저장, 어댑터 몫).
     if (ai && ai.getGenModel && ai.setGenModel) {
-      const gmLine = h('div', { class: 'sce-row' });
+      const gmLine = h('div', { class: 'sce-row sce-ai-model-row' });
       const renderGmLine = () => {
         gmLine.replaceChildren();
         if (aiGenModel === undefined) return;
@@ -11649,12 +13510,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
           }
         }
-        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+        gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' },
           aiGenModel.choice === 'aux'
-            ? '보조가 번역·요약용 싼 모델이면 생성 품질이 낮습니다 — 결과가 계속 거부되면 상위 모델을 꽂아보세요'
+            ? '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.'
             : aiGenModel.choice === 'main'
-              ? '대화 모델로 보냅니다 — 단 일부 환경(Claude 공식 API 등)은 인증이 안 붙어 실패합니다. 실패하면 [직접 지정]으로.'
-              : '보조 자리에 이 모델을 꽂아 쏩니다 — 리수 모델 설정에 보이는 id를 그대로'));
+              ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
+              : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.'));
       };
       renderGmLine();
       if (aiGenModel === undefined) {
@@ -11663,25 +13524,45 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
           .then(() => { if (!destroyed) renderGmLine(); });
       }
-      box.appendChild(gmLine);
+      aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
+        h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine));
     }
 
     if (ai && ai.generate) {
-      box.appendChild(h('div', { class: 'sce-row' },
-        aiGen.busy
-          ? h('button', { class: 'sce-btn', onclick: () => { aiGen.seq++; aiGen.busy = false; rerender(); } }, '✋ 취소')
-          : h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => runAiGenerate() }, '✨ 생성')));
+      const actionHint = h('span', { class: 'sce-ai-action-hint' });
+      const generateBtn = aiGen.busy
+        ? h('button', { class: 'sce-btn', onclick: () => { aiGen.seq++; aiGen.busy = false; rerender(); } }, '생성 취소')
+        : h('button', { class: 'sce-btn sce-ai-primary', onclick: () => runAiGenerate() },
+          blank ? '작업본 생성' : '수정안 생성');
+      const refreshGenerateState = () => {
+        if (aiGen.busy) {
+          actionHint.textContent = '응답을 기다리고 있어요. 취소해도 현재 작업본은 바뀌지 않아요.';
+          return;
+        }
+        const ready = !!aiReq.trim();
+        generateBtn.disabled = !ready;
+        generateBtn.title = ready ? '' : '만들거나 수정할 내용을 먼저 입력해 주세요.';
+        actionHint.textContent = ready
+          ? '입력한 요청과 위 설정으로 생성해요.'
+          : '내용을 입력하면 생성 버튼이 활성화돼요.';
+      };
+      area.oninput = () => { aiReq = area.value; renderCtxLine(); refreshGenerateState(); };
+      refreshGenerateState();
+      aiSetup.appendChild(h('div', { class: 'sce-row sce-ai-action-row' },
+        actionHint, generateBtn));
+    } else {
+      area.oninput = () => { aiReq = area.value; renderCtxLine(); };
     }
     if (aiGen.busy) {
-      box.appendChild(h('div', { class: 'sce-hint' },
-        '⏳ 생성 중… 보조 모델이 쓰고 있습니다. 수십 초 걸릴 수 있고, 다른 탭을 보고 있어도 끝나면 결과가 여기 남습니다.'));
+      aiSetup.appendChild(h('div', { class: 'sce-generation-state', 'aria-live': 'polite' },
+        `${blank ? '작업본' : '수정안'} 생성 중… 응답을 기다리고 있어요. 다른 탭을 봐도 결과는 여기에 남아요.`));
     } else if (aiGen.note) {
-      box.appendChild(h('div', { class: 'sce-warn' }, aiGen.note));
+      aiSetup.appendChild(h('div', { class: 'sce-warn' }, aiGen.note));
     }
     if (aiGen.raw && !aiGen.busy) {
       const rawArea = h('textarea', { style: 'height:110px', readonly: 'readonly' });
       rawArea.value = aiGen.raw;
-      box.appendChild(h('details', { class: 'sce-fold' }, h('summary', {}, 'AI가 보낸 원문 — 눌러서 펼치기'), rawArea));
+      aiSetup.appendChild(h('details', { class: 'sce-fold' }, h('summary', {}, 'AI가 보낸 원문 — 눌러서 펼치기'), rawArea));
     }
 
     // 생성 결과의 계획·적용 — ②(붙여넣기)와 같은 UI, 같은 규율
@@ -11693,13 +13574,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 옆문 — API 크레딧 없이 공홈(웹 AI) 구독을 쓰는 유저의 경로. 강등이 아니라 병행 —
     // 같은 프롬프트 빌더를 쓰므로 [✨ 생성]과 내용이 똑같다.
-    copyWidget('📋 복사해서 다른 AI에게',
-      '위 요청과 봇 설정이 담긴 규격서를 복사해 웹 AI(GPT·클로드 등)에 붙여넣으세요. '
-      + '받은 JSON은 🧾 JSON 작업대에 붙여넣으면 됩니다 (패치는 ②, 통짜 스키마는 ④).',
+    const aiAlt = h('div', { class: 'sce-ai-alt' },
+      h('div', { class: 'sce-ai-alt-title' }, '다른 AI 사용'));
+    box.appendChild(aiAlt);
+    copyWidget('규격서 복사',
+      '요청과 캐릭터 설정이 담긴 규격서를 복사해 다른 AI에 붙여넣어 주세요. '
+      + '받은 JSON은 🧾 JSON 작업대에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
       () => {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
-      }).mount(box);
+      }, [], { collapsible: true }).mount(aiAlt);
 
     return box;
   }
@@ -11707,50 +13591,72 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function tabJson() {
     const wrap = h('div');
 
+    wrap.appendChild(h('section', { class: 'sce-json-intro' },
+      h('div', { class: 'sce-json-intro-title' }, 'JSON을 직접 가져오거나 안전하게 부분 수정해요'),
+      h('div', { class: 'sce-json-intro-copy' },
+        '검사와 편집은 현재 작업본에서만 이루어져요. 캐릭터에 반영하려면 화면 위쪽의 [캐릭터에 적용]을 눌러 주세요.')));
+
+    const paths = h('div', { class: 'sce-json-paths' });
+    wrap.appendChild(paths);
+
     // ── AI에게 통째로 맡기는 경로 ──
-    wrap.appendChild(h('h4', {}, '① AI에게 스키마 만들게 하기'));
+    const fullPath = h('section', { class: 'sce-json-path' },
+      h('div', { class: 'sce-json-path-head' },
+        h('div', { class: 'sce-json-path-title' }, '전체 작업본 만들기'),
+        h('span', { class: 'sce-json-path-badge' }, '처음 만들 때')),
+      h('div', { class: 'sce-json-path-copy' },
+        '외부 AI에 전달할 전체 스키마 규격을 만들어요. 받은 JSON은 아래 원본 편집 영역에서 불러옵니다.'));
+    paths.appendChild(fullPath);
     let exampleKey = 'business';
     let withValidator = true;
     const exSelect = bindSelect(exampleKey,
       Object.entries(TEMPLATES).filter(([k]) => k !== 'blank').map(([k, t]) => [k, '예제: ' + t.label.split(' (')[0]]),
       (x) => { exampleKey = x; });
     const valCheck = bindCheck(withValidator, (x) => { withValidator = x; }, '검증기 원문 첨부 (정확도↑, 길이↑)');
-    copyWidget('📋 AI에게 요청할 스키마 규격 복사',
-      '봇 설정을 AI에게 설명하고 이 규격서를 붙여넣으면 스키마를 통째로 만들어 줍니다. '
-      + '받아온 JSON을 아래 칸에 붙여넣고 [JSON → 편집기 반영]을 누르세요. '
-      + '모델에게 가는 문구를 영어로 쓰게 되어 있어 토큰도 절약됩니다.',
+    copyWidget('전체 스키마 규격 복사',
+      '예제와 검증기 포함 여부를 고른 뒤 복사해 외부 AI에 전달하세요.',
       () => buildSchemaSpecPrompt(exampleKey, withValidator),
       [exSelect, valCheck],
-    ).mount(wrap);
+      { collapsible: true },
+    ).mount(fullPath);
     if (schemaIsBlank(schema)) {
-      wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기에서 말로 시키면 통짜를 직접 만들어 옵니다.'));
+      fullPath.appendChild(jumpRow('복사하지 않고 새 작업본을 만들 수 있어요.'));
     }
 
     // ── AI에게 부분 수정을 맡기는 경로 (왕복 패치) ──
     // 통짜 재생성은 안 고칠 부분까지 다시 쓰게 해서 위험하다. 여기는 바꿀 부분만 받아
     // patch.js가 병합한다 — add 충돌은 정지 후 선택, 적용은 원자적(전체 아니면 전무).
-    wrap.appendChild(h('h4', {}, '② AI에게 스키마 고치게 하기 (부분 수정)'));
+    const patchPath = h('section', { class: 'sce-json-path is-primary' },
+      h('div', { class: 'sce-json-path-head' },
+        h('div', { class: 'sce-json-path-title' }, '부분 수정 요청서'),
+        h('span', { class: 'sce-json-path-badge' }, '기존 작업본 수정')),
+      h('div', { class: 'sce-json-path-copy' },
+        '현재 ID와 패치 형식을 외부 AI에 전달해 바뀌는 부분만 받아요. 기존 작업본을 수정할 때 권장합니다.'));
+    paths.appendChild(patchPath);
 
-    if (patchSource === 'json') {
-      const rb = patchReportBox();
-      if (rb) wrap.appendChild(rb);
-    }
+    const jsonPatchReport = patchSource === 'json' ? patchReportBox() : null;
 
-    copyWidget('📋 수정 요청 규격 복사',
-      '지금 스키마의 id 목록과 패치 형식을 함께 복사합니다. AI에게 무엇을 바꾸고 싶은지 설명하고 '
-      + '이걸 붙여넣으면, 바꿀 부분만 담긴 패치 JSON이 옵니다. 받아온 걸 아래 칸에 붙여넣고 '
-      + '[패치 검사]를 누르세요. 처음부터 통째로 만들 때는 ①, 이미 있는 봇을 고칠 때는 여기입니다.',
+    copyWidget('부분 수정 규격 복사',
+      '복사한 규격과 바꾸고 싶은 내용을 외부 AI에 전달한 뒤, 받은 패치를 아래 검사 영역에 붙여넣으세요.',
       () => buildPatchExportPrompt(schema),
-    ).mount(wrap);
-    wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기에서 말로 시키면 같은 패치가 직접 옵니다.'));
+      [], { collapsible: true },
+    ).mount(patchPath);
+    patchPath.appendChild(jumpRow('복사하지 않고 같은 부분 패치를 만들 수 있어요.'));
 
-    const pArea = h('textarea', { style: 'min-height:120px',
-      placeholder: 'AI가 준 패치 JSON을 여기에 — 코드펜스(```)째 붙여넣어도 됩니다' });
+    const workspace = h('section', { class: 'sce-json-workspace' },
+      h('div', { class: 'sce-json-section-head' }, h('div', {},
+        h('div', { class: 'sce-json-section-title' }, '패치 붙여넣기·검사'),
+        h('div', { class: 'sce-json-section-copy' },
+          '검사만으로는 작업본이 바뀌지 않아요. 변경 계획과 충돌을 확인한 뒤 적용할 수 있습니다.'))));
+    wrap.appendChild(workspace);
+    if (jsonPatchReport) workspace.appendChild(jsonPatchReport);
+    const pArea = h('textarea', { class: 'sce-json-patch-input',
+      'aria-label': '검사할 패치 JSON',
+      placeholder: '외부 AI가 준 패치 JSON을 붙여넣어 주세요. 코드펜스(```)가 있어도 검사할 수 있어요.' });
     pArea.value = patchText;
-    pArea.oninput = () => { patchText = pArea.value; };
-    wrap.appendChild(pArea);
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn', onclick: () => {
+    workspace.appendChild(pArea);
+    const patchState = h('span', { class: 'sce-json-action-state', 'aria-live': 'polite' });
+    const checkBtn = h('button', { class: 'sce-btn sce-ai-primary', onclick: () => {
         const parsed = patchMod.parsePatch(patchText);
         patchPlan = parsed.ok
           ? { patch: parsed.patch, plan: patchMod.planPatch(schema, parsed.patch) }
@@ -11758,9 +13664,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         patchChoices = {};
         patchSource = 'json';
         rerender();
-      } }, '🔍 패치 검사'),
-    ));
-    if (patchSource === 'json' && patchPlan) wrap.appendChild(planBoxUI());
+      } }, '패치 검사');
+    const refreshPatchState = () => {
+      const ready = !!patchText.trim();
+      checkBtn.disabled = !ready;
+      checkBtn.title = ready ? '' : '검사할 패치 JSON을 먼저 붙여넣어 주세요.';
+      patchState.textContent = ready ? '붙여넣은 내용의 형식과 변경 범위를 확인해요.' : '패치를 붙여넣으면 검사 버튼이 활성화돼요.';
+    };
+    pArea.oninput = () => { patchText = pArea.value; refreshPatchState(); };
+    refreshPatchState();
+    workspace.appendChild(h('div', { class: 'sce-row sce-json-action-row' }, patchState, checkBtn));
+    if (patchSource === 'json' && patchPlan) workspace.appendChild(planBoxUI());
 
     appendJsonTail(wrap);
     return wrap;
@@ -11784,21 +13698,37 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         planBox.appendChild(box);
         return;
       }
+      box.className = 'sce-block sce-patch-plan';
 
       const secLabel = (s) => patchMod.SECTIONS[s]?.label ?? s;
       const entryName = (e) => e.label ?? e.notify ?? e.text ?? '';
-      box.appendChild(h('div', {},
-        `계획: 추가 ${plan.summary.add} · 교체 ${plan.summary.update} · 삭제 후보 ${plan.summary.remove} · 충돌 ${plan.summary.conflicts}`));
+      box.appendChild(h('div', { class: 'sce-patch-head' }, h('div', {},
+        h('div', { class: 'sce-patch-title' }, '변경 계획'),
+        h('div', { class: 'sce-patch-copy' }, '적용 전 변경 범위와 충돌 여부를 확인해 주세요.'))));
+      box.appendChild(h('div', { class: 'sce-patch-summary' },
+        ...[['추가', plan.summary.add], ['교체', plan.summary.update],
+          ['삭제 후보', plan.summary.remove], ['충돌', plan.summary.conflicts]]
+          .map(([label, value]) => h('div', { class: 'sce-patch-metric' },
+            h('span', {}, label), h('strong', {}, String(value))))));
+      const body = h('div', { class: 'sce-patch-body' });
+      box.appendChild(body);
       if (patch.randomEventsChance != null)
-        box.appendChild(h('div', {}, `⚙ 랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
-      for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
+        body.appendChild(h('div', {}, `랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
+      for (const w of plan.warnings) body.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
 
       const conflictKeys = new Set(plan.conflicts.map((c) => `${c.section}:${c.id}`));
+      const changes = [];
       for (const o of plan.ops) {
         if (o.op === 'remove') continue;                       // 삭제는 아래 체크 목록에서
         if (o.op === 'add' && conflictKeys.has(`${o.section}:${o.id}`)) continue;  // 충돌은 충돌 블록에서
         const mark = o.op === 'add' ? '＋' : '✎';
-        box.appendChild(h('div', {}, `${mark} ${secLabel(o.section)} ${o.id} ${entryName(o.entry)}`));
+        changes.push(h('div', { class: 'sce-patch-change' },
+          h('span', { class: 'sce-patch-change-mark' }, mark),
+          h('span', {}, `${secLabel(o.section)} ${o.id} ${entryName(o.entry)}`)));
+      }
+      if (changes.length) {
+        body.appendChild(h('details', { class: 'sce-patch-changes', open: changes.length <= 6 ? 'open' : null },
+          h('summary', {}, `변경 항목 ${changes.length}개 ${changes.length <= 6 ? '' : '펼치기'}`), ...changes));
       }
 
       // 충돌 — 항목마다 선택. 기본은 '건너뛰기'(가장 안전) — 조용한 교체가 없게.
@@ -11812,13 +13742,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           }
           renderPlanBox();
         };
-        box.appendChild(h('div', { class: 'sce-row' },
+        body.appendChild(h('div', { class: 'sce-row' },
           h('span', { class: 'sce-hint' }, `충돌 ${plan.conflicts.length}건 일괄:`),
           h('button', { class: 'sce-btn', onclick: () => setAll('replace') }, '전부 교체'),
           h('button', { class: 'sce-btn', onclick: () => setAll('rename') }, '전부 새 id'),
           h('button', { class: 'sce-btn', onclick: () => setAll('skip') }, '전부 건너뛰기'),
         ));
-        box.appendChild(h('div', { class: 'sce-hint' },
+        body.appendChild(h('div', { class: 'sce-hint' },
           '충돌이 이렇게 많으면 낡은 규격으로 만든 패치일 수 있습니다 — 이미 있는 걸 AI가 add로 다시 낸 것. '
           + '전부 교체하기 전에, [수정 요청 규격 복사]를 새로 해서 재요청하는 쪽이 안전할 때가 많습니다.'));
       }
@@ -11837,7 +13767,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             '패치 안에서 이 id를 참조하는 식·효과도 함께 바뀝니다'));
         }
         const exName = entryName(c.existing), inName = entryName(c.incoming);
-        box.appendChild(h('div', { class: 'sce-block' }, row,
+        body.appendChild(h('div', { class: 'sce-block' }, row,
           h('div', { class: 'sce-hint' },
             `기존: ${exName || '(이름 없음)'} ↔ 새것: ${inName || '(이름 없음)'}`
             + (exName && inName && exName !== inName ? ' — 이름이 달라 서로 다른 항목일 가능성이 높습니다' : ''))));
@@ -11846,30 +13776,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 삭제 — 기본 해제. AI가 시키지도 않은 삭제를 끼워 넣는 것을 사람 눈으로 거른다.
       const removeOps = plan.ops.filter((o) => o.op === 'remove');
       if (removeOps.length) {
-        box.appendChild(h('div', { class: 'sce-hint' }, '삭제 후보 — 체크한 것만 지워집니다 (기본 해제):'));
+        body.appendChild(h('div', { class: 'sce-hint' }, '삭제 후보 — 체크한 것만 지워집니다 (기본 해제):'));
         if (removeOps.length >= 3) {
           const setRm = (v) => {
             for (const o of removeOps) patchChoices[`rm:${o.section}:${o.id}`] = v;
             renderPlanBox();
           };
-          box.appendChild(h('div', { class: 'sce-row' },
+          body.appendChild(h('div', { class: 'sce-row' },
             h('button', { class: 'sce-btn', onclick: () => setRm(true) }, '전체 체크'),
             h('button', { class: 'sce-btn', onclick: () => setRm(false) }, '전체 해제'),
           ));
         }
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
-          box.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
+          body.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
             `삭제: ${secLabel(o.section)} ${o.id} ${entryName(o.previous)}`)));
         }
       }
 
       // 직전 적용 시도의 실패 사유 — 계획·충돌 선택 UI는 남겨서 고르고 다시 시도할 수 있게
       for (const e of (patchPlan.applyErrors || []))
-        box.appendChild(h('div', { class: 'sce-err' }, `✖ ${e}`));
+        body.appendChild(h('div', { class: 'sce-err' }, `✖ ${e}`));
 
-      box.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn sce-add', onclick: () => {
+      box.appendChild(h('div', { class: 'sce-patch-actions' },
+        h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; rerender(); } }, '취소'),
+        h('button', { class: 'sce-btn sce-ai-primary', onclick: () => {
           // 체크 안 된 remove는 패치에서 뺀다
           const p2 = JSON.parse(JSON.stringify(patch));
           for (const [sec, ids] of Object.entries(p2.remove || {}))
@@ -11890,8 +13821,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           patchText = ''; patchPlan = null; patchChoices = {};
           schema = r.schema;
           rerender();
-        } }, '✅ 패치 적용'),
-        h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; rerender(); } }, '취소'),
+        } }, '패치 적용'),
       ));
       planBox.appendChild(box);
     };
@@ -11909,8 +13839,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
     if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
     const repWarns = (rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`));
-    return h('div', { class: 'sce-block' },
-      h('div', {}, `✅ 패치 적용됨 — ${lines.join(' · ') || '변화 없음'}`),
+    return h('div', { class: 'sce-block sce-patch-report' },
+      h('div', { class: 'sce-ok' }, `패치 적용 완료 — ${lines.join(' · ') || '변화 없음'}`),
       ...(repWarns.length > 3
         ? [h('details', { class: 'sce-fold' },
             h('summary', { class: 'sce-warn' }, `⚠ 경고 ${repWarns.length}건 — 눌러서 펼치기`),
@@ -11919,40 +13849,159 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-row' },
         patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
           schema = patchBackup; patchBackup = null; patchReport = null; rerender();
-        } }, '↩ 되돌리기 (적용 전으로)') : null,
+        } }, '적용 전으로 되돌리기') : null,
         h('button', { class: 'sce-btn', onclick: () => { patchReport = null; rerender(); } }, '확인'),
       ));
   }
 
   function appendJsonTail(wrap) {
     // ── 검증 실패를 되돌려주는 경로 ──
-    wrap.appendChild(h('h4', {}, '③ 오류를 AI에게 돌려주기'));
     const v = validateSchema(schema);
-    copyWidget('📋 검증 결과를 AI에게 돌려주기',
+    const validation = h('section', { class: 'sce-json-validation' },
+      h('div', { class: 'sce-json-section-head' }, h('div', {},
+        h('div', { class: 'sce-json-section-title' }, '현재 작업본 검사'),
+        h('div', { class: 'sce-json-section-copy' },
+          '스키마 형식 오류와 경고를 확인하고, 필요하면 외부 AI에 전달할 수정 요청서를 만들어요.'))),
+      h('div', { class: 'sce-json-validation-status' + (v.ok ? '' : ' is-error') },
+        h('span', { class: 'sce-json-validation-mark' }, v.ok ? '✓' : '!'),
+        h('div', {},
+          h('div', { class: 'sce-json-validation-main' },
+            v.ok ? `형식 검사를 통과했어요${v.warnings.length ? ` · 경고 ${v.warnings.length}건` : ''}`
+              : `형식 오류 ${v.errors.length}건을 먼저 수정해야 해요`),
+          h('div', { class: 'sce-json-validation-next' },
+            v.ok
+              ? '게임 동작까지 확인하려면 AI에게 맡기기의 [진단] 탭을 실행해 주세요.'
+              : '아래 수정 요청서를 외부 AI에 전달하거나, AI에게 맡기기에서 오류 수정을 요청하세요.'))));
+    wrap.appendChild(validation);
+    const fixExport = h('div');
+    validation.appendChild(fixExport);
+    copyWidget(v.ok ? '검사 결과·개선 요청서 복사' : `오류 수정 요청서 복사 · ${v.errors.length}건`,
       v.ok
-        ? `지금 스키마는 유효합니다${v.warnings.length ? ` (경고 ${v.warnings.length}개)` : ''}. 그래도 개선점을 물어보고 싶으면 누르세요.`
-        : `오류 ${v.errors.length}개 — 이 버튼으로 오류 목록과 현재 스키마를 함께 복사해서 AI에게 그대로 주면 고쳐 줍니다. 통과할 때까지 반복하세요.`,
+        ? '현재 스키마와 검사 결과를 외부 AI에 전달해 개선점을 물어볼 수 있어요.'
+        : '오류 목록과 현재 스키마를 함께 복사해 외부 AI에 전달하세요.',
       () => buildFixPrompt(schema, validateSchema(schema)),
-    ).mount(wrap);
-    if (!v.ok) wrap.appendChild(jumpRow('복붙 없이 하려면 — ✨ AI에게 맡기기의 🩹 칩이 오류 목록을 한 번에 보냅니다.'));
+      [], { collapsible: true },
+    ).mount(fixExport);
+    if (!v.ok) validation.appendChild(jumpRow('복사하지 않고 검증 오류 전체를 수정 요청에 넣을 수 있어요.'));
 
     // ── 원본 편집 ──
-    wrap.appendChild(h('h4', {}, '④ 스키마 원본'));
-    wrap.appendChild(h('div', { class: 'sce-hint' }, '여기 붙여넣고 [반영]하면 편집기에 로드됩니다.'));
-    const area = h('textarea', { id: 'sce-json', style: 'min-height:300px' });
-    area.value = JSON.stringify(schema, null, 2);
-    wrap.appendChild(area);
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    const sourceBody = h('div', { class: 'sce-json-source-body' },
+      h('div', { class: 'sce-hint' },
+        '전체 JSON을 직접 고치거나 외부에서 받은 작업본으로 교체할 때만 사용하세요. 불러온 뒤에도 캐릭터에는 자동 반영되지 않아요.'));
+    const source = h('details', { class: 'sce-json-source',
+      open: jsonImportPreview || jsonImportApplied || jsonDraftDirty ? 'open' : null },
+      h('summary', {}, h('span', {}, '스키마 원본 직접 편집'), h('span', { class: 'sce-json-path-badge' }, '고급 작업')),
+      sourceBody);
+    wrap.appendChild(source);
+    if (jsonImportApplied && jsonImportBackup) {
+      sourceBody.appendChild(h('div', { class: 'sce-json-import-applied' },
+        h('span', {}, '전체 JSON을 현재 작업본에 불러왔어요. 캐릭터에는 아직 반영되지 않았습니다.'),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          schema = jsonImportBackup;
+          jsonImportBackup = null;
+          jsonImportApplied = false;
+          jsonDraft = null;
+          jsonDraftDirty = false;
+          jsonImportPreview = null;
+          rerender();
+        } }, '이전 작업본으로 되돌리기')));
+    }
+    const baselineJson = JSON.stringify(schema, null, 2);
+    const area = h('textarea', { id: 'sce-json', 'aria-label': '스키마 원본 JSON' });
+    area.value = jsonDraft ?? baselineJson;
+    sourceBody.appendChild(area);
+    const sourceState = h('div', { class: 'sce-json-source-state', 'aria-live': 'polite' });
+    const previewHost = h('div');
+    const setDraftState = (message, cls = '') => {
+      sourceState.textContent = message;
+      sourceState.className = 'sce-json-source-state' + (cls ? ` ${cls}` : '');
+    };
+    const schemaCounts = (s) => ({
+      vars: (s?.vars || []).length,
+      events: (s?.rules?.events || []).length + (s?.rules?.randomEvents?.table || []).length,
+      actions: (s?.actions || []).length,
+      checks: (s?.checks || []).length,
+      directives: (s?.directives || []).length,
+    });
+    const renderImportPreview = () => {
+      previewHost.replaceChildren();
+      if (!jsonImportPreview) return;
+      const { candidate, validation } = jsonImportPreview;
+      const counts = schemaCounts(candidate);
+      const preview = h('div', { class: 'sce-json-import-preview' + (validation.ok ? '' : ' is-error') },
+        h('div', { class: 'sce-json-import-title' }, validation.ok ? '불러오기 전 확인' : '전체 JSON을 불러올 수 없어요'),
+        h('div', { class: 'sce-json-import-copy' }, validation.ok
+          ? `형식 검사를 통과했어요${validation.warnings.length ? ` · 경고 ${validation.warnings.length}건` : ''}. 구성 개수를 확인한 뒤 작업본을 교체하세요.`
+          : `형식 오류 ${validation.errors.length}건을 먼저 수정해 주세요. 현재 작업본은 바뀌지 않았어요.`),
+        h('div', { class: 'sce-json-import-metrics' },
+          ...[['변수', counts.vars], ['이벤트', counts.events], ['액션', counts.actions],
+            ['판정', counts.checks], ['지시문', counts.directives]]
+            .map(([label, value]) => h('div', { class: 'sce-json-import-metric' },
+              h('span', {}, label), h('strong', {}, String(value))))));
+      if (!validation.ok) {
+        preview.appendChild(h('div', { class: 'sce-json-import-errors' },
+          ...validation.errors.slice(0, 5).map((e) => h('div', {}, `${e.path} — ${e.msg}`)),
+          ...(validation.errors.length > 5 ? [h('div', {}, `외 ${validation.errors.length - 5}건`)] : [])));
+      }
+      preview.appendChild(h('div', { class: 'sce-row' },
+        h('button', { class: 'sce-btn', onclick: () => {
+          jsonImportPreview = null;
+          renderImportPreview();
+          setDraftState('편집 중 · 아직 작업본에 불러오지 않았어요.', 'is-dirty');
+        } }, '취소'),
+        h('button', { class: 'sce-btn sce-ai-primary', disabled: validation.ok ? null : 'disabled',
+          title: validation.ok ? '' : '형식 오류를 먼저 수정해 주세요.', onclick: () => {
+            if (!validation.ok) return;
+            jsonImportBackup = JSON.parse(JSON.stringify(schema));
+            schema = candidate;
+            jsonImportApplied = true;
+            jsonDraft = null;
+            jsonDraftDirty = false;
+            jsonImportPreview = null;
+            rerender();
+          } }, '전체 작업본 교체')));
+      previewHost.appendChild(preview);
+    };
+    area.oninput = () => {
+      jsonDraft = area.value;
+      jsonDraftDirty = area.value !== baselineJson;
+      jsonImportPreview = null;
+      renderImportPreview();
+      setDraftState(jsonDraftDirty ? '편집 중 · 아직 작업본에 불러오지 않았어요.' : '현재 작업본과 같은 내용이에요.',
+        jsonDraftDirty ? 'is-dirty' : '');
+    };
+    setDraftState(jsonDraftDirty ? '편집 중 · 아직 작업본에 불러오지 않았어요.' : '현재 작업본과 같은 내용이에요.',
+      jsonDraftDirty ? 'is-dirty' : '');
+    sourceBody.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn', onclick: () => {
         // AI가 코드펜스를 붙여 주는 일이 잦다 — 벗겨내고 파싱한다
         const raw = String(area.value).trim();
         const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
         const src = fenced ? fenced[1] : raw;
-        try { schema = JSON.parse(src); rerender(); }
-        catch (e) { reportEl.innerHTML = `<div class="sce-err">JSON 파싱 실패: ${escText(e.message)}</div>`; }
-      } }, 'JSON → 편집기 반영'),
-      h('button', { class: 'sce-btn', onclick: () => { area.value = JSON.stringify(schema, null, 2); } }, '편집기 → JSON 갱신'),
+        try {
+          const candidate = JSON.parse(src);
+          jsonImportPreview = { candidate, validation: validateSchema(candidate) };
+          renderImportPreview();
+          setDraftState('검사가 끝났어요. 아래 내용을 확인해 주세요.');
+        }
+        catch (e) {
+          sourceState.textContent = `불러오지 못했어요 — JSON 문법을 확인해 주세요. ${e.message}`;
+          sourceState.className = 'sce-json-source-state sce-err';
+        }
+      } }, '불러오기 전 검사'),
+      h('button', { class: 'sce-btn', onclick: () => {
+        area.value = baselineJson;
+        jsonDraft = null;
+        jsonDraftDirty = false;
+        jsonImportPreview = null;
+        renderImportPreview();
+        sourceState.textContent = '현재 작업본의 JSON으로 되돌렸어요.';
+        sourceState.className = 'sce-json-source-state sce-ok';
+      } }, '현재 작업본으로 되돌리기'),
     ));
+    sourceBody.appendChild(sourceState);
+    sourceBody.appendChild(previewHost);
+    renderImportPreview();
     return wrap;
   }
 
@@ -11963,38 +14012,61 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let diagPrev = null;     // 직전 회차 — "고쳤는데 왜 또 비슷하지?"에 답하려면 비교가 필요하다
   let diagTurns = 60, diagRuns = 6;
 
-  const SEV = { high: ['🔴', '반드시 고쳐야 함'], mid: ['🟡', '고치는 게 좋음'], low: ['🔵', '확인만 해보세요'] };
+  const SEV = {
+    high: ['🔴', '먼저 수정할 항목'],
+    mid: ['🟡', '개선하면 좋은 항목'],
+    low: ['🔵', '확인이 필요한 항목'],
+  };
 
   function tabDiag() {
     const wrap = h('div');
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '스키마를 실제로 여러 번 굴려 봅니다. 문법 오류가 아니라 **게임이 성립하는지**를 봅니다 — '
-      + '영영 안 뜨는 이벤트, 한 번도 못 누르는 액션, 아무도 안 바꾸는 변수, 눌렀을 때 오히려 손해인 버튼 같은 것들. '
-      + '변수·액션·규칙을 AI에게 맡겼다면 내보내기 전에 꼭 한 번 돌려 보세요.'));
+    wrap.appendChild(h('section', { class: 'sce-diag-intro' },
+      h('div', { class: 'sce-diag-intro-title' }, '게임이 실제로 성립하는지 여러 번 굴려 봐요'),
+      h('p', {}, '문법 검사가 놓치는 죽은 이벤트, 누를 수 없는 액션, 움직이지 않는 변수와 손해가 되는 버튼을 찾습니다.'),
+      h('p', {}, '변수·액션·규칙을 AI에게 맡겼다면 내보내기 전에 한 번 확인해 주세요.')));
 
-    const turnsIn = bindInput(diagTurns, (x) => { diagTurns = Math.max(5, num(x)); }, { cls: 'sce-w-s' });
-    const runsIn = bindInput(diagRuns, (x) => { diagRuns = Math.max(1, num(x)); }, { cls: 'sce-w-s' });
-    const status = h('div', { class: 'sce-hint' }, diagResult ? '' : '아직 실행하지 않았습니다.');
+    const turnsIn = bindInput(diagTurns, (x) => { diagTurns = Math.max(5, num(x)); }, { cls: 'sce-w-s', type: 'number' });
+    const runsIn = bindInput(diagRuns, (x) => { diagRuns = Math.max(1, num(x)); }, { cls: 'sce-w-s', type: 'number' });
+    const status = h('div', { class: 'sce-diag-status', 'aria-live': 'polite' }, diagResult ? '' : '아직 실행하지 않았어요.');
     const out = h('div');
 
-    const runBtn = h('button', { class: 'sce-btn sce-add', onclick: () => {
-      status.textContent = '굴리는 중…';
-      status.className = 'sce-hint';
+    const runBtn = h('button', { class: 'sce-btn sce-ai-primary sce-diag-run', onclick: () => {
+      runBtn.disabled = true;
+      runBtn.setAttribute('aria-busy', 'true');
+      runBtn.textContent = '진단 중…';
+      turnsIn.disabled = true;
+      runsIn.disabled = true;
+      status.textContent = `${diagTurns}턴 × ${diagRuns}시드를 확인하고 있어요. 현재 작업본은 바뀌지 않아요.`;
+      status.className = 'sce-diag-status';
       // 무거운 작업이라 버튼 눌린 게 먼저 그려지도록 한 틱 넘긴다
       setTimeout(() => {
         const t0 = Date.now();
         const before = diagResult;
         try { diagResult = diagnose(schema, { turns: diagTurns, runs: diagRuns }); }
-        catch (e) { diagResult = before; status.textContent = `진단 실패 — ${e.message}`; status.className = 'sce-hint sce-warn'; return; }
+        catch (e) {
+          diagResult = before;
+          runBtn.disabled = false;
+          runBtn.removeAttribute('aria-busy');
+          runBtn.textContent = '진단 다시 실행';
+          turnsIn.disabled = false;
+          runsIn.disabled = false;
+          status.textContent = `진단하지 못했어요 — ${e.message}. 설정값을 확인한 뒤 다시 실행해 주세요.`;
+          status.className = 'sce-diag-status sce-warn';
+          return;
+        }
         diagResult.stats.ms = Date.now() - t0;
         // 턴/시드가 같아야 숫자를 나란히 놓고 볼 수 있다
         diagPrev = (before?.ran && before.stats.turns === diagTurns && before.stats.runs === diagRuns) ? before : null;
         render();
       }, 0);
-    } }, '🔬 진단 실행');
+    } }, diagResult ? '진단 다시 실행' : '진단 실행');
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      runBtn, pair('턴 수', turnsIn, '한 판을 몇 턴까지 굴릴지'), pair('시드 수', runsIn, '운 편차를 보려면 여러 번')));
+    wrap.appendChild(h('div', { class: 'sce-diag-controls' },
+      h('label', { class: 'sce-diag-field' }, h('span', {}, '턴 수'), turnsIn,
+        h('small', {}, '한 판을 몇 턴까지 굴릴지 정해요.')),
+      h('label', { class: 'sce-diag-field' }, h('span', {}, '시드 수'), runsIn,
+        h('small', {}, '운에 따른 편차를 여러 번 비교해요.')),
+      runBtn));
     wrap.appendChild(status);
 
     if (diagResult) {
@@ -12013,117 +14085,171 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       else if (stats.deadEvents) line.push(`안 뜬 이벤트 ${stats.deadEvents}종`);
       line.push(`${stats.ms}ms`);
       const late = (stats.lateEvents ?? 0) + (stats.lateActions ?? 0);
-      out.appendChild(h('div', { class: 'sce-block' },
-        h('div', {}, ran
-          ? `🔴 ${stats.high}  🟡 ${stats.mid}  🔵 ${stats.low}   —   ${stats.turns}턴 × ${stats.runs}시드`
-          : '스키마 오류부터 고쳐야 굴려볼 수 있습니다'),
-        h('div', { class: 'sce-hint' }, line.join(' · ')),
-        // 짧은 판에서 진단하면 후반부 콘텐츠가 통째로 "안 뜬 것"이 된다. 그걸 결함으로
-        // 착각하지 않도록, 몇 개가 그런 경우인지 맨 위에서 미리 말해 준다.
-        ...(late ? [h('div', { class: 'sce-hint' },
-          `🔵 ${late}개는 ${stats.turns}턴이 짧아서 못 본 것뿐입니다 — `
-          + `${stats.turns * 2}턴으로 다시 돌리면 사라집니다. 이 봇의 후반부까지 보려면 턴 수를 올리세요.`)] : [])));
+      if (ran) {
+        out.appendChild(h('section', { class: 'sce-diag-summary' },
+          h('div', { class: 'sce-diag-summary-head' },
+            h('div', { class: 'sce-diag-counts' },
+              h('span', { class: 'sce-diag-count' }, '수정 필요', h('strong', {}, String(stats.high))),
+              h('span', { class: 'sce-diag-count' }, '개선 권장', h('strong', {}, String(stats.mid))),
+              h('span', { class: 'sce-diag-count' }, '확인 필요', h('strong', {}, String(stats.low)))),
+            h('span', { class: 'sce-diag-meta' }, `${stats.turns}턴 × ${stats.runs}시드`)),
+          h('div', { class: 'sce-diag-summary-detail' }, line.join(' · ')),
+          // 짧은 판에서 진단하면 후반부 콘텐츠가 통째로 "안 뜬 것"이 된다. 그걸 결함으로
+          // 착각하지 않도록, 몇 개가 그런 경우인지 맨 위에서 미리 말해 준다.
+          ...(late ? [h('div', { class: 'sce-diag-summary-detail' },
+            `확인 · ${late}개는 ${stats.turns}턴이 짧아서 못 본 항목이에요. `
+            + `${stats.turns * 2}턴으로 다시 돌려 후반부까지 확인해 주세요.`)] : [])));
+      } else {
+        out.appendChild(h('div', { class: 'sce-warn sce-diag-summary' }, '스키마 오류부터 고쳐야 진단을 실행할 수 있어요.'));
+      }
 
       // ── 직전 회차와 비교 ──
       // "고쳐도 계속 비슷하게 나온다"는 느낌은 대개 착각이다. 실제로 뭐가 없어졌는지 보여준다.
       const cmp = compareDiagnoses(diagPrev, diagResult);
       if (cmp) {
         const sign = (n) => (n > 0 ? `+${n}` : String(n));
-        const box = h('div', { class: 'sce-block' });
-        box.appendChild(h('h4', {}, '📊 직전 진단과 비교'));
-        box.appendChild(h('div', {},
-          `🔴 ${sign(cmp.delta.high)}  🟡 ${sign(cmp.delta.mid)}  🔵 ${sign(cmp.delta.low)}`
-          + (cmp.delta.deadEvents ? `  ·  안 뜬 이벤트 ${sign(cmp.delta.deadEvents)}종` : '')));
+        const box = h('section', { class: 'sce-diag-compare' });
+        box.appendChild(h('div', { class: 'sce-diag-compare-head' }, '직전 진단과 비교'));
+        box.appendChild(h('div', { class: 'sce-diag-compare-grid' },
+          ...[
+            ['수정 필요', sign(cmp.delta.high)],
+            ['개선 권장', sign(cmp.delta.mid)],
+            ['확인 필요', sign(cmp.delta.low)],
+            ['안 뜬 이벤트', `${sign(cmp.delta.deadEvents || 0)}종`],
+          ].map(([label, value]) => h('div', { class: 'sce-diag-compare-metric' },
+            h('span', {}, label), h('strong', {}, value)))));
+        const detail = h('div', { class: 'sce-diag-compare-detail' });
         if (cmp.survive) {
-          box.appendChild(h('div', {},
+          detail.appendChild(h('div', {},
             `방치 생존 ${cmp.survive.idle[0]} → ${cmp.survive.idle[1]}`
             + ` (평균 ${cmp.survive.idleLife[0].toFixed(0)} → ${cmp.survive.idleLife[1].toFixed(0)}턴)`
             + `  ·  플레이 생존 ${cmp.survive.play[0]} → ${cmp.survive.play[1]}`
             + ` (평균 ${cmp.survive.playLife[0].toFixed(0)} → ${cmp.survive.playLife[1].toFixed(0)}턴)`));
         }
-        box.appendChild(h('div', { class: cmp.fixed.length ? 'sce-ok' : 'sce-hint' },
-          `✓ 해결됨 ${cmp.fixed.length}건`
+        detail.appendChild(h('div', { class: cmp.fixed.length ? 'sce-ok' : '' },
+          `해결된 항목 ${cmp.fixed.length}건`
           + (cmp.fixed.length ? `: ${cmp.fixed.slice(0, 6).map((f) => f.tag + (/'([^']+)'/.exec(f.text)?.[1] ? ` ${/'([^']+)'/.exec(f.text)[1]}` : '')).join(', ')}`
             + (cmp.fixed.length > 6 ? ` 외 ${cmp.fixed.length - 6}건` : '') : '')));
-        box.appendChild(h('div', { class: cmp.fresh.length ? 'sce-warn' : 'sce-hint' },
-          `${cmp.fresh.length ? '⚠' : '·'} 새로 생김 ${cmp.fresh.length}건`
+        detail.appendChild(h('div', { class: cmp.fresh.length ? 'sce-warn' : '' },
+          `새로 발견된 항목 ${cmp.fresh.length}건`
           + (cmp.fresh.length ? `: ${cmp.fresh.slice(0, 6).map((f) => f.tag + (/'([^']+)'/.exec(f.text)?.[1] ? ` ${/'([^']+)'/.exec(f.text)[1]}` : '')).join(', ')}` : '')));
-        box.appendChild(h('div', { class: 'sce-hint' },
-          `그대로 남음 ${cmp.stayed.length}건`
-          + (cmp.stayed.length ? ' — 이건 그 탭에서 못 고치는 문제일 수 있습니다. 아래 목록에서 해결 방법이 다른 탭에 있는지 보세요.' : '')));
+        detail.appendChild(h('div', {},
+          `남아 있는 항목 ${cmp.stayed.length}건`
+          + (cmp.stayed.length ? ' — 아래 목록의 확인할 점을 보고 수정 위치를 찾아 주세요.' : '')));
+        box.appendChild(detail);
         out.appendChild(box);
       }
 
       if (ran && !findings.length) {
-        out.appendChild(h('div', { class: 'sce-ok' }, '✓ 걸린 게 없습니다. 이대로 내보내도 좋습니다.'));
+        out.appendChild(h('div', { class: 'sce-diag-clear' },
+          h('strong', {}, '이번 진단에서는 문제가 발견되지 않았어요.'),
+          h('span', {}, '내보내기 전에 실제 채팅에서도 주요 이벤트와 액션이 의도대로 작동하는지 한 번 확인해 주세요.')));
       }
       for (const sev of ['high', 'mid', 'low']) {
         const group = findings.filter((f) => f.sev === sev);
         if (!group.length) continue;
         const [icon, label] = SEV[sev];
-        out.appendChild(h('h4', {}, `${icon} ${label} (${group.length})`));
+        const section = h('section', { class: `sce-diag-group sce-diag-group-${sev}` },
+          h('div', { class: 'sce-diag-group-head' }, icon, label,
+            h('span', { class: 'sce-diag-group-count' }, `${group.length}건`)));
+        const grid = h('div', { class: 'sce-diag-findings' });
         for (const f of group) {
-          out.appendChild(h('div', { class: 'sce-block' },
-            h('div', { class: 'sce-row' }, h('span', { class: 'sce-tag' }, f.tag)),
-            h('div', {}, f.text)));
+          const parts = String(f.text || '').split(/\s+—\s+/);
+          const finding = parts.shift() || '';
+          const next = parts.join(' — ');
+          grid.appendChild(h('article', { class: 'sce-diag-finding' },
+            h('span', { class: 'sce-tag' }, f.tag),
+            h('div', { class: 'sce-diag-finding-main' }, finding),
+            ...(next ? [h('div', { class: 'sce-diag-finding-next' },
+              h('span', {}, '확인할 점'), next)] : [])));
         }
+        if (sev === 'low' && group.length > 4) {
+          section.appendChild(h('details', { class: 'sce-diag-group-fold' },
+            h('summary', {}, `${group.length}개 항목 펼쳐보기`), grid));
+        } else {
+          section.appendChild(grid);
+        }
+        out.appendChild(section);
       }
 
       // ── 진단 결과를 그대로 AI에게 넘기기 ──
       // 탭별로 나눠 보내는 게 핵심이다. 한꺼번에 고치라고 하면 변수를 지어내면서 전부 어긋난다.
       if (ran && findings.length) {
-        out.appendChild(h('h4', {}, '🤖 이 결과로 AI에게 수정 요청하기'));
-
         // 권장 경로 — 패치 (v0.45). 통 교체는 항목 100개짜리 봇에서 AI가 하나만 빠뜨려도 그게 삭제다.
         const fixable = findings.filter((f) => f.sev !== 'low');
+        const aiSection = h('section', { class: 'sce-diag-ai' },
+          h('div', { class: 'sce-diag-ai-head' },
+            h('div', { class: 'sce-diag-ai-title' }, '진단 결과 수정'),
+            h('div', { class: 'sce-diag-ai-copy' },
+              `수정 필요·개선 권장 ${fixable.length}건만 대상으로 삼아요. 확인 필요 항목은 자동 수정에서 제외합니다.`)));
+        const moreBody = h('div', { class: 'sce-diag-ai-more-body' });
+        const more = h('details', { class: 'sce-diag-ai-more', open: (!ai || !ai.generate) ? 'open' : null },
+          h('summary', {}, '외부 AI와 전체 재작성 옵션'), moreBody);
+        out.appendChild(aiSection);
 
         // 직결 경로 (v0.47) — 복사 왕복 없이 그 자리에서 생성. 계획·충돌 확인은 똑같이 거친다.
         if (fixable.length && ai && ai.generate) {
-          out.appendChild(h('div', { class: 'sce-row' },
-            h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => runAiGenerate({ findings, stats: diagResult.stats }) },
-              `✨ 이 결과로 바로 고쳐달라기 (${fixable.length}건)`),
-            h('span', { class: 'sce-hint', style: 'margin:0' },
-              '창작 탭의 생성 모델로 패치를 받아 옵니다 — 도착하면 ✍ 창작 탭으로 이동합니다.')));
+          aiSection.appendChild(h('div', { class: 'sce-diag-ai-primary' },
+            h('div', { class: 'sce-diag-ai-primary-text' },
+              h('div', { class: 'sce-diag-ai-primary-title' }, '부분 패치 만들기'),
+              h('div', { class: 'sce-diag-ai-primary-copy' },
+                '현재 생성 모델이 필요한 부분만 수정해요. 완성되면 창작 탭에서 변경 계획을 확인합니다.')),
+            h('button', { class: 'sce-btn sce-ai-primary', onclick: () => runAiGenerate({ findings, stats: diagResult.stats }) },
+              `패치 만들기 · ${fixable.length}건`)));
         }
 
         if (fixable.length) {
-          copyWidget(`📤 수정 패치 요청 복사 (${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? `, 🔴 ${fixable.filter((f) => f.sev === 'high').length}` : ''}) — 권장`,
-            '문제 목록 전체와 지금 봇의 항목 전문을 함께 복사합니다. 받은 패치 JSON은 '
-            + '🧾 JSON 작업대 ②의 [패치 검사]에 붙여넣으면 됩니다 — 바꿀 부분만 병합되고, 나머지는 손대지 않습니다. '
-            + '🔵는 고칠 거리가 아니라 확인 사항이라 보내지 않습니다.',
+          moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '외부 AI로 부분 수정'));
+          const patchExport = h('section', { class: 'sce-diag-ai-export-card is-primary' });
+          copyWidget(`수정 패치 규격서 복사 · ${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? ` / 우선 ${fixable.filter((f) => f.sev === 'high').length}건` : ''}`,
+            '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 작업대의 [패치 검사]에서 확인한 뒤 적용하세요.',
             () => buildPatchExportPrompt(schema, { findings, stats: diagResult.stats }),
-          ).mount(out);
+            [], { collapsible: true },
+          ).mount(patchExport);
+          moreBody.appendChild(patchExport);
         }
-
-        out.appendChild(h('div', { class: 'sce-hint' },
-          '아래는 예전 방식(탭 통 교체)입니다 — 그 탭을 **전면 재작성**할 때만 쓰세요. '
-          + '"손대지 않은 것까지 전부 포함해 한 세트로 달라"는 지시가 박혀 나가지만, 항목이 많은 봇에서는 '
-          + 'AI가 하나만 빠뜨려도 그게 곧 삭제입니다. 부분 수정이면 위의 패치를 쓰세요.'));
 
         const byTab = {};
         for (const f of findings) if (f.tab && f.sev !== 'low') (byTab[f.tab] = byTab[f.tab] || []).push(f);
         let anyBtn = false;
+        const tabExportGrid = h('div', { class: 'sce-diag-ai-export-grid' });
         for (const key of Object.keys(TAB_SLICES)) {
           const group = byTab[key];
           if (!group?.length) continue;
           anyBtn = true;
           const hi = group.filter((f) => f.sev === 'high').length;
-          copyWidget(`📤 ${TAB_SLICES[key].label} 수정 요청 복사 (${group.length}건${hi ? `, 🔴 ${hi}` : ''})`,
-            group.map((f) => `· [${f.tag}] ${f.text}`).join('\n'),
+          const tabExport = h('section', { class: 'sce-diag-ai-export-card' });
+          copyWidget(`${TAB_SLICES[key].label} 탭 전체 요청서 · ${group.length}건${hi ? ` / 우선 ${hi}건` : ''}`,
+            `${TAB_SLICES[key].label} 탭의 관련 항목 ${group.length}건을 반영한 전체 재작성 요청서예요. `
+              + '기존 항목이 빠질 수 있으므로 전면 재작성할 때만 사용하세요.',
             () => buildTabExportPrompt(schema, key, { findings, stats: diagResult.stats }),
-          ).mount(out);
+            [], { collapsible: true },
+          ).mount(tabExport);
+          tabExportGrid.appendChild(tabExport);
+        }
+        if (anyBtn) {
+          const rewriteBody = h('div', { class: 'sce-diag-rewrite-body' },
+            h('div', { class: 'sce-diag-ai-warning' },
+              '탭 전체를 다시 만드는 요청서예요. 빠진 항목은 삭제될 수 있으므로 일반적인 수정에는 위의 부분 패치를 이용해 주세요.'),
+            tabExportGrid);
+          moreBody.appendChild(h('details', { class: 'sce-diag-rewrite' },
+            h('summary', {}, `탭 전체 재작성 · ${Object.keys(byTab).filter((key) => byTab[key]?.length).length}개 탭`),
+            rewriteBody));
         }
 
         const orphan = findings.filter((f) => !f.tab || !TAB_SLICES[f.tab]);
         if (orphan.length) {
-          out.appendChild(h('div', { class: 'sce-hint' },
-            `AI 내보내기가 없는 탭이거나 여러 탭에 걸친 지적 ${orphan.length}건은 직접 고쳐야 합니다: `
-            + [...new Set(orphan.map((f) => f.tag))].join(', ')));
+          moreBody.appendChild(h('details', { class: 'sce-diag-orphan' },
+            h('summary', {}, `직접 확인할 항목 · ${orphan.length}건`),
+            h('div', {}, '자동 수정 대상이 아니거나 특정 탭에만 묶을 수 없는 항목이에요. 해당 종류: '
+              + [...new Set(orphan.map((f) => f.tag))].join(', '))));
         }
-        if (!anyBtn) out.appendChild(h('div', { class: 'sce-hint' }, '특정 탭으로 넘길 수 있는 지적이 없습니다.'));
+        if (!anyBtn) moreBody.appendChild(h('div', { class: 'sce-hint' }, '탭 전체 요청서로 만들 항목은 없어요.'));
 
-        copyWidget('📋 진단 결과 전체를 글로 복사',
-          '어디든 붙여넣을 수 있는 사람이 읽는 형태입니다. 메모하거나 남에게 보여줄 때 쓰세요.',
+        moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '기록용'));
+        const textExport = h('section', { class: 'sce-diag-ai-export-card' });
+        copyWidget('진단 내용 복사',
+          '진단 내용을 사람이 읽는 글로 복사해요. 기록하거나 공유할 때 사용하세요.',
           () => [
             `# ${schema.meta?.name ?? '시뮬레이션'} 진단 (${stats.turns}턴 × ${stats.runs}시드)`,
             stats.loseVar ? `방치 생존 ${stats.idleSurvive}/${stats.runs}(평균 ${stats.idleLife.toFixed(0)}턴)`
@@ -12157,7 +14283,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                   + (Math.abs(a.delta) <= a.ci ? ' ← 0과 구분 안 됨' : ''))]
               : []),
           ].filter((x) => x !== '').join('\n'),
-        ).mount(out);
+          [], { collapsible: true },
+        ).mount(textExport);
+        moreBody.appendChild(textExport);
+        aiSection.appendChild(more);
       }
 
       if (diagResult.stats.actionImpact?.length) {
@@ -12228,7 +14357,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   async function loadAssetNames() {
     if (!ai || !ai.getAssetNames) {
-      assetNote = '이 환경은 에셋 목록을 읽을 수 없다 (플레이그라운드 등) — 어휘는 손으로 넣어야 한다.';
+      assetNote = '이 환경에서는 에셋 목록을 읽을 수 없어요. 팩의 어휘를 직접 입력해 주세요.';
       rerender(); return null;
     }
     try {
@@ -12238,8 +14367,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const names = [...new Set((r.sources || []).flatMap((s) => s.names.map(String)))];
         if (!names.length) {
           assetNote = r.dbErr
-            ? `에셋 0개 — 모듈 접근 실패: ${r.dbErr}. 리수의 권한(db) 팝업에서 허용해야 모듈 에셋을 읽을 수 있다.`
-            : '캐릭터·활성 모듈 어디에도 추가 에셋이 없다. (모듈은 이 봇/채팅에서 활성화돼 있어야 보인다)';
+            ? `에셋을 읽지 못했어요 — 모듈 접근 실패: ${r.dbErr}. Risu 권한 창에서 DB 접근을 허용한 뒤 다시 시도해 주세요.`
+            : '캐릭터와 활성 모듈에서 추가 에셋을 찾지 못했어요. 해당 모듈이 현재 봇이나 채팅에서 활성화됐는지 확인해 주세요.';
           rerender(); return null;
         }
         assetNames = names;
@@ -12249,117 +14378,160 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }
       const names = await ai.getAssetNames();
       if (!names || !names.length) {
-        assetNote = '캐릭터·활성 모듈 어디에서도 추가 에셋을 읽지 못했다 — 에셋이 없거나 이 리수 버전이 접근을 막는다.';
+        assetNote = '캐릭터와 활성 모듈에서 추가 에셋을 읽지 못했어요. 에셋 유무와 현재 Risu의 접근 권한을 확인해 주세요.';
         rerender(); return null;
       }
       assetNames = names.map(String);
       return assetNames;
-    } catch (e) { assetNote = '에셋 읽기 실패: ' + e.message; rerender(); return null; }
+    } catch (e) { assetNote = '에셋 목록을 읽지 못했어요 — ' + e.message + '. 권한을 확인한 뒤 다시 시도해 주세요.'; rerender(); return null; }
   }
 
   function assetsFloor() {
-    const box = h('div', { class: 'sce-block sce-top' });
-    box.appendChild(h('h4', { style: 'margin-top:2px' }, '🎨 에셋 팩 — 이미지 태그 자동화'));
-    box.appendChild(h('div', { class: 'sce-hint' },
-      '매 턴 손으로 싣던 이미지 지침(인물×감정 곱셈 목록)을 팩 선언으로 대체한다. ' +
-      '보조가 인물·감정만 고르면 조합·실존 대조·폴백은 시스템이 한다. 팩이 없으면 기능 꺼짐 — 기존 봇은 아무것도 안 바뀐다.'));
+    const box = h('div', { class: 'sce-assets' });
+    box.appendChild(h('section', { class: 'sce-assets-intro' },
+      h('div', { class: 'sce-assets-intro-title' }, '이미지 이름을 팩으로 묶어 자동으로 불러와요'),
+      h('div', { class: 'sce-assets-intro-copy' },
+        '인물·감정 같은 칸만 정하면 시스템이 실제 에셋 이름을 조합하고, 없는 이미지는 폴백으로 처리해요. 팩이 없으면 기능은 꺼진 상태로 유지됩니다.')));
 
     const a = schema.assets;
     // 에셋 전용 설치 (v0.64) — 변수를 하나도 안 만들어도 설치되고 돈다.
     // 이 안내가 없으면 "변수 탭이 비었는데 괜찮은 건가"에서 손이 멈춘다 (실제 문의).
     if (!schema.vars.length) {
-      box.appendChild(h('div', { class: 'sce-hint' },
-        a && a.packs && a.packs.length
-          ? '✅ 변수 없이 에셋만 쓰는 봇 — 이대로 저장하면 됩니다. 상태창·명령·시간은 안 뜨고 이미지만 붙습니다. '
+      const packed = !!(a && a.packs && a.packs.length);
+      box.appendChild(h('div', { class: `sce-assets-note${packed ? ' is-ok' : ''}` },
+        packed
+          ? '✅ 변수 없이 에셋만 쓰는 봇이에요. 이대로 저장하면 됩니다. 상태창·명령·시간은 뜨지 않고 이미지만 붙어요. '
             + '나중에 상태창이 필요해지면 그때 변수 탭에서 만들면 됩니다.'
-          : '변수를 하나도 안 만들어도 됩니다 — 팩을 하나 만들면 에셋 전용 봇으로 그대로 설치됩니다.'));
+          : '변수를 하나도 만들지 않아도 돼요. 팩을 하나 만들면 에셋 전용 봇으로 그대로 설치됩니다.'));
     }
+    const controls = h('section', { class: 'sce-assets-controls' });
+    box.appendChild(controls);
     if (a && a.packs && a.packs.length) {
-      box.appendChild(h('div', { class: 'sce-row' },
+      controls.appendChild(h('div', { class: 'sce-assets-mode' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
-          ['aux', '보조가 고름 — 맨 앞 1장, 추가 비용 0 (권장)'],
-          ['aux_flow', '보조가 고름 — 서사 위치에 여러 장 (본문 인용 앵커)'],
-          ['main', '메인 모델이 직접 — 주입문이 매 턴 전송에 합류'],
+          ['aux', '보조 모델 · 첫 위치에 1장 (권장)'],
+          ['aux_flow', '보조 모델 · 서사 위치에 여러 장'],
+          ['main', '메인 모델 · 매 턴 지침 전송'],
         ], (x) => { if (x === 'aux') delete a.by; else a.by = x; rerender(); }),
-        'aux 계열은 실존 대조·폴백까지 돈다. aux_flow는 보조가 본문 문장을 인용해 자리를 잡고, ' +
-        '인용을 못 찾으면 그 장은 생략 — 어긋난 위치가 나갈 통로가 없다. main은 대조가 불가능해 "확신 없으면 생략" 지시로 버틴다')));
+        '보조 모델 경로는 실존 대조와 폴백을 사용해요. 서사 위치 방식은 인용할 문장을 찾지 못하면 해당 이미지를 생략합니다.')));
+    } else {
+      controls.appendChild(h('div', { class: 'sce-assets-mode' },
+        h('div', { class: 'sce-hint', style: 'margin:0' }, '아직 활성화된 팩이 없어요. 자동 감지하거나 빈 팩을 추가해 시작하세요.')));
     }
 
-    const tools = h('div', { class: 'sce-row' });
+    const tools = h('div', { class: 'sce-row sce-assets-tools' });
     tools.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
       assetNote = null;
       const names = await loadAssetNames();
       if (!names) return;
       const det = detectSlotsFromNames(names);
-      if (!det) { assetNote = `이름 ${names.length}개에서 공통 구분자를 못 찾았다 — 칸을 손으로 만들어야 한다.`; rerender(); return; }
+      if (!det) { assetNote = `에셋 이름 ${names.length}개에서 공통 구분자를 찾지 못했어요. 빈 팩을 추가해 칸을 직접 설정해 주세요.`; rerender(); return; }
       const A = ensureAssets();
       A.packs.push(packDraftFromDetect(det, 'pack' + (A.packs.length + 1)));
       assetNote = `구분자 '${det.sep}' 기준 ${det.covered}/${det.total}개 이름에서 칸 ${det.cols.length}개 감지 — ` +
         '출력 태그(format)는 봇의 표시 규약에 맞게 꼭 손볼 것.';
       rerender();
-    } }, '🔍 에셋에서 자동 감지'));
+    } }, '에셋에서 자동 감지'));
     tools.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
       assetNote = null;
       if (await loadAssetNames()) rerender();
-    } }, '📇 실존 대조 새로고침'));
-    box.appendChild(tools);
-    if (assetNote) box.appendChild(h('div', { class: 'sce-warn' }, assetNote));
-    if (assetNames) box.appendChild(h('div', { class: 'sce-hint' },
-      `실물 에셋 ${assetNames.length}개 읽음 — 팩 카드마다 실존 커버리지가 표시된다.`));
+    } }, '에셋 목록 새로고침'));
+    controls.appendChild(tools);
+    if (assetNote) {
+      const isOk = /^(읽음|구분자)/.test(assetNote);
+      controls.appendChild(h('div', { class: 'sce-assets-note' + (isOk ? ' is-ok' : ''), 'aria-live': 'polite' }, assetNote));
+    }
+    if (assetNames) controls.appendChild(h('div', { class: 'sce-assets-count' },
+      `실제 에셋 ${assetNames.length}개를 읽었어요. 각 팩 아래에서 조합 커버리지를 확인할 수 있습니다.`));
 
     // 매 턴 비용 추정 — 이 기능이 뭘 아끼는지 숫자로. 기준선은 예전 방식(assetlist 통짜 덤프)
     if (a && a.packs && a.packs.length) {
       const cost = estAssetCost(schema, assetNames);
-      let line = `📊 매 턴 비용(추정 ±30%): 메인 프롬프트 +${cost.main} tok · 보조 호출 +${cost.aux} tok`;
+      let saving = null;
       if (cost.baseline != null) {
         const now = cost.main + cost.aux;
-        line += ` — 예전 방식(이름 ${assetNames.length}개 통짜 목록)이면 메인에 매 턴 ~${cost.baseline} tok`;
-        if (now < cost.baseline) line += `, 절감 ~${Math.round((1 - now / cost.baseline) * 100)}% (지침 문단 제외한 보수적 수치)`;
-      } else {
-        line += ' — [📇 실존 대조 새로고침]을 누르면 예전 방식(통짜 목록) 대비 절감률도 계산해 준다';
+        if (now < cost.baseline) saving = Math.round((1 - now / cost.baseline) * 100);
       }
-      box.appendChild(h('div', { class: 'sce-hint' }, line + '. 게이트 팩 어휘는 열린 턴에만 추가된다.'));
+      box.appendChild(h('section', { class: 'sce-assets-cost' },
+        ...[['메인 프롬프트', `+${cost.main} tok`], ['보조 호출', `+${cost.aux} tok`],
+          ['예상 절감', saving != null ? `약 ${saving}%` : '목록 확인 필요']]
+          .map(([label, value]) => h('div', { class: 'sce-assets-cost-item' },
+            h('span', {}, label), h('strong', {}, value))),
+        h('div', { class: 'sce-assets-cost-note' },
+          '매 턴 비용 추정치로 약 ±30% 오차가 있어요. 조건이 닫힌 팩의 어휘는 해당 턴에 전송되지 않습니다.')));
     }
 
     const packs = (a && a.packs) || [];
     const nameSet = assetNames ? new Set(assetNames) : null;
+    const assetValidation = validateSchema(schema);
+    const assetField = (label, control) => h('label', { class: 'sce-asset-field' },
+      h('span', {}, label), control);
+    const issueLabel = (path, packIndex) => {
+      const rest = String(path || '').replace(`$.assets.packs[${packIndex}]`, '');
+      const slot = /^\.slots\[(\d+)\](?:\.([^.]+))?/.exec(rest);
+      if (slot) {
+        const names = { id: 'ID', label: '표시명', values: '어휘', fallback: '폴백' };
+        return `칸 ${Number(slot[1]) + 1}${slot[2] ? ` ${names[slot[2]] || slot[2]}` : ''}`;
+      }
+      const key = /^\.([^.]+)/.exec(rest)?.[1];
+      return ({ id: '팩 ID', format: '출력 태그', source: '출처', when: '게이트', chars: '고정 인물' })[key] || '팩 설정';
+    };
+    box.appendChild(h('div', { class: 'sce-assets-list-head' },
+      h('div', { class: 'sce-assets-list-title' }, '팩 편집'),
+      h('div', { class: 'sce-assets-list-count' }, `${packs.length}개`)));
+    const packList = h('div', { class: 'sce-assets-list' });
+    box.appendChild(packList);
     packs.forEach((p, i) => {
-      const card = h('div', { class: 'sce-block' });
-      card.appendChild(h('div', { class: 'sce-row' },
-        bindCheck(p.enabled !== false, (x) => { if (x) delete p.enabled; else p.enabled = false; rerender(); }, '켜짐'),
-        bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: mansion)' }),
-        pair('출처', bindInput(p.source, (x) => { p.source = x || undefined; rerender(); },
-          { cls: 'sce-w-m', ph: '모듈/봇 이름 — 어디서 온 팩인지' })),
-        grip(packs, i, rerender),
-      ));
-      card.appendChild(h('div', { class: 'sce-row' },
-        pair('구분자', bindInput(p.sep ?? '_', (x) => { if (x === '_' || x === '') delete p.sep; else p.sep = x; rerender(); }, { cls: 'sce-w-s', ph: '_' })),
-        pair('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
-          { cls: 'sce-w-l', ph: '<img="{name}"> — {name}에 조합 이름' }),
-          '봇의 표시 정규식이 알아듣는 문법 그대로. {name} 외에 {칸id}도 자리표시자로 쓸 수 있다'),
-      ));
-      card.appendChild(h('div', { class: 'sce-row' },
-        pair('게이트', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
-          { cls: 'sce-w-m', ph: '(선택) nsfw_on — 닫히면 통째 제외' }),
-          '조건식이 참일 때만 팩이 열린다. 성인 어휘 팩을 쪼개 두면 대부분의 턴에서 토큰이 통째로 빠진다'),
-        pair('고정 인물', bindInput((p.chars || []).join(', '), (x) => {
+      const card = h('section', { class: 'sce-asset-pack' });
+      card.appendChild(h('div', { class: 'sce-asset-pack-head' },
+        h('div', {},
+          h('div', { class: 'sce-asset-pack-title' }, p.id || `팩 ${i + 1}`),
+          h('div', { class: 'sce-asset-pack-sub' }, `${(p.slots || []).length}개 칸 · ${p.enabled === false ? '꺼짐' : '사용 중'}`)),
+        grip(packs, i, rerender)));
+      const settings = h('div', { class: 'sce-asset-pack-settings' });
+      card.appendChild(settings);
+      settings.appendChild(h('div', { class: 'sce-asset-pack-core' },
+        h('div', { class: 'sce-asset-toggle' },
+          bindCheck(p.enabled !== false, (x) => { if (x) delete p.enabled; else p.enabled = false; rerender(); }, '이 팩 사용')),
+        assetField('팩 ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); },
+          { cls: 'sce-w-l', ph: '예: mansion' })),
+        assetField('출처', bindInput(p.source, (x) => { p.source = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '모듈 또는 봇 이름' }))));
+      settings.appendChild(h('div', { class: 'sce-asset-pack-layout' },
+        assetField('이름 구분자', bindInput(p.sep ?? '_', (x) => {
+          if (x === '_' || x === '') delete p.sep; else p.sep = x; rerender();
+        }, { cls: 'sce-w-l', ph: '_' })),
+        assetField('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
+          { cls: 'sce-w-l', ph: '<img="{name}">' }))));
+      settings.appendChild(h('div', { class: 'sce-asset-pack-options' },
+        assetField('게이트 조건', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '선택 · 예: nsfw_on' })),
+        assetField('고정 인물', bindInput((p.chars || []).join(', '), (x) => {
           const v = x.split(',').map((s) => s.trim()).filter(Boolean);
           if (v.length) p.chars = v; else delete p.chars; rerender();
-        }, { cls: 'sce-w-m', ph: '(선택) 단일 캐릭 모듈용, 쉼표 구분' }),
-          '이름 조합에 인물 칸이 없는 팩은 여기 적은 인물로 라우팅된다'),
-        bindCheck(p.verify !== false, (x) => { if (x) delete p.verify; else p.verify = false; rerender(); }, '실존 대조'),
-      ));
+        }, { cls: 'sce-w-l', ph: '선택 · 쉼표로 구분' })),
+        h('div', { class: 'sce-asset-toggle' },
+          bindCheck(p.verify !== false, (x) => { if (x) delete p.verify; else p.verify = false; rerender(); }, '실제 파일과 대조'))));
+      card.appendChild(h('div', { class: 'sce-asset-slots-head' },
+        h('div', { class: 'sce-asset-slots-title' }, `칸 설정 · ${(p.slots || []).length}개`),
+        h('span', { class: 'sce-hint', style: 'margin:0' }, 'ID · 표시명 · 어휘 · 폴백')));
       (p.slots || []).forEach((s, j) => {
-        card.appendChild(h('div', { class: 'sce-row' },
-          bindInput(s.id, (x) => { s.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '칸id (who/emo)' }),
-          bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '표시명' }),
-          pair('어휘', bindInput((s.values || []).join(', '), (x) => {
-            s.values = x.split(',').map((t) => t.trim()).filter(Boolean); rerender();
-          }, { cls: 'sce-w-l', ph: 'angry, smile, neutral (쉼표 구분)' })),
-          bindCheck(!!s.optional, (x) => { if (x) s.optional = true; else delete s.optional; rerender(); }, '생략 가능'),
-          pair('폴백', bindInput(s.fallback, (x) => { s.fallback = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: 'neutral' }),
-            '정조합이 실존하지 않을 때 이 값으로 강등해 재시도 (인물 칸에는 안 씀)'),
-          grip(p.slots, j, rerender),
+        card.appendChild(h('div', { class: 'sce-asset-slot' },
+          h('div', { class: 'sce-asset-slot-main' },
+            assetField('칸 ID', bindInput(s.id, (x) => { s.id = x.trim(); rerender(); },
+              { cls: 'sce-w-l', ph: '예: who, emo' })),
+            assetField('표시명', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '예: 인물, 감정' })),
+            assetField('어휘', bindInput((s.values || []).join(', '), (x) => {
+              s.values = x.split(',').map((t) => t.trim()).filter(Boolean); rerender();
+            }, { cls: 'sce-w-l', ph: '예: angry, smile, neutral · 쉼표로 구분' }))),
+          h('div', { class: 'sce-asset-slot-options' },
+            h('div', { class: 'sce-asset-toggle' },
+              bindCheck(!!s.optional, (x) => { if (x) s.optional = true; else delete s.optional; rerender(); }, '이 칸 생략 가능')),
+            assetField('없을 때 사용할 폴백', bindInput(s.fallback, (x) => {
+              s.fallback = x || undefined; rerender();
+            }, { cls: 'sce-w-l', ph: '예: neutral' })),
+            grip(p.slots, j, rerender)),
         ));
       });
       card.appendChild(addBtn('칸 추가', () => {
@@ -12372,11 +14544,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const first = {};
       for (const s of p.slots || []) if ((s.values || []).length) first[s.id] = s.values[0];
       const prevName = composeName(p, first);
-      if (prevName) card.appendChild(h('div', { class: 'sce-hint' }, `예시 출력: ${renderTag(p, prevName, first)}`));
+      const status = h('div', { class: 'sce-asset-pack-status' });
+      if (prevName) status.appendChild(h('div', {}, `예시 출력 · ${renderTag(p, prevName, first)}`));
 
       const cov = packCoverage(p, nameSet);
       if (cov.skipped) {
-        card.appendChild(h('div', { class: 'sce-hint' },
+        status.appendChild(h('div', {},
           `대조 제외 — 조합 ${cov.combos}개를 검사 없이 신뢰한다. 에셋이 모듈에 살아서 이름 목록을 못 읽는 환경용 ` +
           '(어휘가 지침 그대로면 안전하지만, 오타 조합은 깨진 이미지로 나간다).'));
       } else if (cov.exist != null) {
@@ -12386,39 +14559,67 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         let line = `실존 대조: 필수 조합 ${cov.combos}개 중 ${cov.exist}개 실존`;
         if (cov.rescued) line += `, 빠진 ${cov.combos - cov.exist}개 중 ${cov.rescued}개는 폴백 구제`;
         if (holes > 0) line += ` — 실질 구멍 ${holes}개 (예: ${cov.missing.join(', ')}${holes > cov.missing.length ? ' …' : ''})`;
-        card.appendChild(h('div', { class: holes === 0 ? 'sce-ok' : 'sce-warn' },
+        status.appendChild(h('div', { class: holes === 0 ? 'sce-ok' : 'sce-warn' },
           (holes === 0 ? '✓ ' : '⚠ ') + line));
         if (holes > 0 && !cov.rescued && (p.slots || []).every((s) => s.fallback == null))
-          card.appendChild(h('div', { class: 'sce-hint' },
+          status.appendChild(h('div', {},
             '폴백이 하나도 없다 — 감정 칸에 "어떤 조합으로도 실존하는 값"을 폴백으로 주면 구멍 대부분이 구제된다.'));
       } else if (cov.capped) {
-        card.appendChild(h('div', { class: 'sce-warn' },
+        status.appendChild(h('div', { class: 'sce-warn' },
           `⚠ 필수 조합이 ${cov.combos}개 — 너무 많아 대조를 생략했다 (어휘를 줄이거나 칸을 생략 가능으로)`));
       } else if (!nameSet) {
-        card.appendChild(h('div', { class: 'sce-hint' },
-          `필수 조합 ${cov.combos}개 — [📇 실존 대조 새로고침]을 누르면 실물과 대조해 준다`));
+        status.appendChild(h('div', {},
+          `필수 조합 ${cov.combos}개 — [에셋 목록 새로고침]을 누르면 실제 파일과 대조할 수 있어요.`));
       }
-      box.appendChild(card);
+      if (status.childNodes.length) card.appendChild(status);
+      const prefix = `$.assets.packs[${i}]`;
+      const packErrors = assetValidation.errors.filter((e) => String(e.path || '').startsWith(prefix));
+      const packWarnings = assetValidation.warnings.filter((e) => String(e.path || '').startsWith(prefix));
+      if (packErrors.length || packWarnings.length) {
+        const issues = h('div', { class: 'sce-asset-issues' });
+        for (const e of packErrors) issues.appendChild(h('div', { class: 'sce-asset-issue' },
+          h('strong', {}, issueLabel(e.path, i)), h('span', {}, e.msg)));
+        for (const e of packWarnings) issues.appendChild(h('div', { class: 'sce-asset-issue is-warning' },
+          h('strong', {}, issueLabel(e.path, i)), h('span', {}, e.msg)));
+        card.appendChild(issues);
+      }
+      packList.appendChild(card);
     });
-    box.appendChild(addBtn('팩 추가 (빈 카드)', () => {
+    if (!packs.length) packList.appendChild(h('div', { class: 'sce-assets-empty' },
+      '아직 에셋 팩이 없어요. 위의 자동 감지를 사용하거나 빈 팩을 추가해 직접 설정하세요.'));
+    box.appendChild(addBtn('빈 팩 추가', () => {
       const A = ensureAssets();
       A.packs.push({ id: 'pack' + (A.packs.length + 1), format: '<img="{name}">',
         slots: [{ id: 'who', label: '인물', values: [] }, { id: 'emo', label: '감정', values: [] }] });
       rerender();
     }));
 
+    const otherErrors = assetValidation.errors.filter((e) => !String(e.path || '').startsWith('$.assets'));
+    const otherWarnings = assetValidation.warnings.filter((e) => !String(e.path || '').startsWith('$.assets'));
+    if (otherErrors.length || otherWarnings.length) {
+      const otherBody = h('div', { class: 'sce-assets-other-issues-body' });
+      for (const e of otherErrors) otherBody.appendChild(h('div', {}, `오류 · ${e.path} — ${e.msg}`));
+      for (const e of otherWarnings) otherBody.appendChild(h('div', {}, `확인 · ${e.path} — ${e.msg}`));
+      box.appendChild(h('details', { class: 'sce-assets-other-issues' },
+        h('summary', {}, `에셋 팩 외 작업본 문제 · ${otherErrors.length + otherWarnings.length}건`), otherBody));
+    }
+
     // 임포터 — 모듈 배포문(키워드 목록 + 삽입 문법)을 팩 선언으로
-    box.appendChild(h('h4', {}, '📋 모듈 지침 가져오기'));
-    box.appendChild(h('div', { class: 'sce-hint' },
-      '모듈/봇이 들고 온 이미지 지침 원문을 붙여넣으면 팩 선언으로 변환한다. 변환 결과는 검증을 통과해야 반영된다.'));
+    const importBody = h('div', { class: 'sce-assets-import-body' },
+      h('div', { class: 'sce-hint' },
+        '기존 모듈이나 봇의 이미지 지침을 붙여넣으면 팩 선언으로 변환해요. 형식 검사를 통과한 결과만 현재 작업본에 추가됩니다.'));
+    const importer = h('details', { class: 'sce-assets-import' },
+      h('summary', {}, '기존 이미지 지침에서 팩 가져오기'), importBody);
+    box.appendChild(importer);
     const ta = bindArea(assetImportText, (x) => { assetImportText = x; }, '여기에 지침 원문 붙여넣기…');
-    box.appendChild(ta);
+    importBody.appendChild(ta);
     if (ai && ai.generate) {
-      box.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: async () => {
+      const importHint = h('span', { class: 'sce-hint', style: 'margin:0' });
+      const importBtn = h('button', { class: 'sce-btn sce-ai-primary',
+        'aria-busy': assetBusy ? 'true' : 'false', onclick: async () => {
           if (assetBusy) return;
           assetImportText = ta.value;
-          if (!assetImportText.trim()) { assetImportNote = '붙여넣은 지침이 없다.'; rerender(); return; }
+          if (!assetImportText.trim()) { assetImportNote = '변환할 이미지 지침을 먼저 붙여넣어 주세요.'; rerender(); return; }
           assetBusy = true; assetImportNote = null; rerender();
           try {
             const r = await ai.generate(buildPackImportPrompt(assetImportText));
@@ -12454,14 +14655,26 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                 + (before ? ' ⚠ 기존 오류가 남아 있다 — 설치 전에 위 팩 카드의 오류(빈 어휘 등)를 지워야 한다.' : '');
             }
           } finally { assetBusy = false; rerender(); }
-        } }, assetBusy ? '⏳ 변환 중…' : '✨ AI로 팩 변환')));
+        } }, assetBusy ? '변환 중…' : '팩으로 변환');
+      const refreshImportState = () => {
+        const ready = !!ta.value.trim();
+        importBtn.disabled = assetBusy || !ready;
+        importBtn.title = ready ? '' : '변환할 이미지 지침을 먼저 붙여넣어 주세요.';
+        importHint.textContent = assetBusy
+          ? '응답을 기다리고 있어요. 현재 팩은 바뀌지 않습니다.'
+          : ready ? '변환 결과는 검사 후 한 번에 추가돼요.' : '이미지 지침을 붙여넣으면 변환 버튼이 활성화돼요.';
+      };
+      ta.oninput = () => { assetImportText = ta.value; refreshImportState(); };
+      refreshImportState();
+      importBody.appendChild(h('div', { class: 'sce-row' }, importBtn, importHint));
     } else {
-      box.appendChild(copyWidget('📋 변환 요청서 복사', '외부 AI에게 붙여넣고, 받은 JSON의 packs를 손으로 반영',
-        () => buildPackImportPrompt(ta.value)));
+      copyWidget('변환 요청서 복사', '외부 AI에 전달한 뒤 받은 packs JSON을 원본 편집에서 확인해 주세요.',
+        () => buildPackImportPrompt(ta.value), [], { collapsible: true }).mount(importBody);
     }
     // 임포터 결과/실패 사유는 버튼 바로 아래 — 층 위쪽의 안내(assetNote)와 섞이면 못 알아챈다
-    if (assetImportNote) box.appendChild(h('div', {
-      class: assetImportNote.startsWith('팩 ') ? 'sce-ok' : 'sce-warn' }, assetImportNote));
+    if (assetImportNote) importBody.appendChild(h('div', {
+      class: 'sce-assets-import-state ' + (assetImportNote.startsWith('팩 ') ? 'sce-ok' : 'sce-warn'),
+      'aria-live': 'polite' }, assetImportNote));
     return box;
   }
 
@@ -12510,7 +14723,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         root.appendChild(reportEl);
       } else if (floorView === 'assets') {
         root.appendChild(assetsFloor());
-        root.appendChild(reportEl);
       } else if (floorView === 'deep') {
         root.appendChild(deepTabs());
         root.appendChild(deepBody());
@@ -16815,6 +19027,18 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
   let lastOutIndex = -1;
   let panelBuilt = false;
   let panelVisible = false; // 전체화면 패널이 떠 있는 동안은 클릭 히트테스트를 쉰다
+  let lastManualApply = { id: '', at: 0 };
+  const FIRST_INSTALL_GUIDE_KEY = 'sim:ui:first-install-guide-dismissed';
+
+  async function getFirstInstallGuideDismissed() {
+    try { return (await Risuai.pluginStorage.getItem(FIRST_INSTALL_GUIDE_KEY)) === '1'; }
+    catch { return false; }
+  }
+
+  async function setFirstInstallGuideDismissed(value) {
+    try { await Risuai.pluginStorage.setItem(FIRST_INSTALL_GUIDE_KEY, value ? '1' : '0'); }
+    catch {}
+  }
 
   function buildPanelSkeleton() {
     if (panelBuilt) return;
@@ -16916,6 +19140,403 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
       #sc-root .sc-spin { display:inline-block; width:11px; height:11px; border:2px solid #3d5384;
         border-top-color:#6b93f2; border-radius:50%; animation:sc-rot .7s linear infinite; }
       @keyframes sc-rot { to { transform:rotate(360deg); } }
+
+      /* v0.61 UI 재병합: 관리 패널의 기능·DOM은 그대로 두고 공통 시각 규칙만 덮어쓴다. */
+      #sc-root {
+        --sc-bg:#171a1f; --sc-surface:#1d2127; --sc-surface-soft:#242a31; --sc-field:#12161b;
+        --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
+        --sc-muted:#b6bec8; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8; --sc-focus:#9ac2ff;
+        --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292; --sc-danger-bg:#3a2225;
+        --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable','Noto Sans KR',system-ui,sans-serif;
+        --sc-font-mono:'D2Coding','Cascadia Mono',ui-monospace,monospace;
+        background:var(--sc-bg) !important; color:var(--sc-text) !important;
+        font-family:var(--sc-font-body) !important; text-rendering:optimizeLegibility;
+        -webkit-font-smoothing:antialiased;
+      }
+      #sc-root .wrap { max-width:1360px; }
+      #sc-root h1 { color:var(--sc-text-strong); }
+      #sc-root h2 { color:var(--sc-text-strong); border-left-color:var(--sc-accent); }
+      #sc-root button { min-height:38px; border-radius:5px !important; background:var(--sc-surface-soft) !important;
+        border-color:var(--sc-line-strong) !important; color:var(--sc-text-strong) !important; }
+      #sc-root button.primary { background:var(--sc-accent-strong) !important; border-color:var(--sc-accent) !important; }
+      #sc-root button.danger { background:var(--sc-danger-bg) !important; border-color:#8f3a4c !important;
+        color:#ffc1c1 !important; }
+      #sc-root input, #sc-root textarea, #sc-root select { min-height:38px; border-radius:5px !important;
+        background:var(--sc-field) !important; border-color:var(--sc-line-strong) !important;
+        color:var(--sc-text-strong) !important; font-family:var(--sc-font-body) !important; }
+      #sc-root input[type="checkbox"] { width:auto !important; min-height:auto; padding:0 !important;
+        accent-color:var(--sc-accent-strong); }
+      #sc-root .muted { color:var(--sc-muted); }
+      #sc-root .report { font-family:var(--sc-font-mono); }
+      #sc-root .sc-maintabs { margin-top:16px; margin-bottom:14px; }
+      #sc-root .sc-maintab { border-radius:0 !important; }
+      #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:transparent !important;
+        border-color:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); }
+      #sc-root .sce .sce-tab { border-radius:0 !important; }
+      #sc-root .sce .sce-tab.on { color:var(--sc-text-strong) !important; background:transparent !important;
+        border-color:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); }
+      #sc-root button:focus-visible, #sc-root input:focus-visible, #sc-root textarea:focus-visible,
+      #sc-root select:focus-visible, #sc-root summary:focus-visible, #sc-root a:focus-visible {
+        outline:2px solid var(--sc-focus) !important; outline-offset:2px; border-color:var(--sc-accent) !important;
+      }
+      @media (hover:hover) and (pointer:fine) {
+        #sc-root button:hover:not(:disabled) { background:#2c343d !important; border-color:var(--sc-accent) !important; }
+      }
+      @media (max-width:600px) {
+        #sc-root button, #sc-root input, #sc-root select, #sc-root textarea { min-height:44px; }
+      }
+      @media (prefers-reduced-motion:reduce) {
+        #sc-root *, #sc-root *::before, #sc-root *::after { transition:none !important; animation:none !important; }
+      }
+
+      #sc-root { position:fixed !important; inset:0 !important; overflow:auto !important;
+        --sc-bg:#171a1f; --sc-surface:#1d2127; --sc-surface-soft:#242a31; --sc-field:#12161b;
+        --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
+        --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
+        --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
+        --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
+          'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
+        --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
+        background:var(--sc-bg) !important; color:var(--sc-text) !important; color-scheme:dark;
+        z-index:2147483000 !important; font-family:var(--sc-font-body) !important; font-size:15px !important;
+        font-weight:450; line-height:1.65 !important; text-align:left !important; overflow-wrap:anywhere;
+        text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased; }
+      #sc-root { scrollbar-gutter:stable both-edges; }
+      #sc-root * { box-sizing:border-box; }
+      #sc-root [hidden] { display:none !important; }
+      #sc-root .wrap { max-width:760px; margin:0 auto; padding:16px 16px 80px; }
+      #sc-root .sc-brand { display:grid; gap:3px; min-width:0; }
+      #sc-root .sc-brand-sub { color:var(--sc-muted); font-family:var(--sc-font-mono); font-size:11.5px;
+        line-height:1.4; letter-spacing:.035em; }
+      #sc-root .sc-header-actions { display:flex; gap:7px; flex-wrap:wrap; }
+      #sc-root .sc-header-actions button { flex:1 1 auto; }
+      #sc-root h1 { font-size:20px; line-height:1.2; color:var(--sc-text-strong); display:flex;
+        justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px;
+        letter-spacing:-.025em; }
+      #sc-root h2 { font-size:14px; color:var(--sc-text-strong); margin:23px 0 10px; padding-left:9px;
+        border-left:3px solid var(--sc-accent); letter-spacing:.01em; }
+      #sc-root button { min-height:38px; background:var(--sc-surface-soft) !important;
+        color:var(--sc-text-strong) !important; border:1px solid var(--sc-line-strong) !important;
+        border-radius:5px !important; padding:7px 12px !important; cursor:pointer !important;
+        font-family:var(--sc-font-body) !important; font-size:13.5px !important; font-weight:600;
+        line-height:1.25 !important; white-space:nowrap; word-break:keep-all; }
+      #sc-root button.primary { background:var(--sc-accent-strong) !important; border-color:var(--sc-accent) !important;
+        color:#ffffff !important; font-weight:700; }
+      #sc-root button.danger { background:var(--sc-danger-bg) !important; border-color:#b85d65 !important;
+        color:#ffb4b4 !important; }
+      #sc-root button:active:not(:disabled) { transform:translateY(1px); }
+      #sc-root button:disabled { opacity:.5 !important; cursor:not-allowed !important; }
+      #sc-root button[aria-busy="true"] { cursor:progress !important; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; }
+      #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:2px 4px 2px 8px;
+        border:1px solid var(--sc-line-strong); border-radius:999px; background:var(--sc-surface-soft);
+        font-size:12.5px; white-space:nowrap; }
+      #sc-root .chip .num { color:var(--sc-success); font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { color:var(--sc-muted-soft); font-size:11.5px; }
+      #sc-root .chip button { min-height:28px; padding:0 6px !important; font-size:12px !important;
+        line-height:1.4 !important; border:none !important; background:transparent !important;
+        color:var(--sc-muted) !important; border-radius:999px !important; }
+      #sc-root .chip-sum { color:var(--sc-text); font-size:12.5px; margin-left:2px; }
+      #sc-root button.armed { border-color:var(--sc-accent) !important;
+        background:var(--sc-accent-strong) !important; color:#ffffff !important; }
+      #sc-root .sce .sce-tab { background:transparent !important; border:0 !important;
+        border-radius:0 !important; color:var(--sc-muted) !important; }
+      #sc-root .sce .sce-tab.on { color:var(--sc-text-strong) !important;
+        background:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); font-weight:650; }
+      #sc-root .sce .sce-btn.sce-add { border-style:dashed !important; color:var(--sc-accent) !important; }
+      #sc-root .sce .sce-btn.sce-danger { color:var(--sc-danger) !important; }
+      #sc-root .sc-maintabs { display:flex; gap:4px; overflow-x:auto; scrollbar-width:thin;
+        border-bottom:1px solid var(--sc-line); margin-top:16px; margin-bottom:14px; }
+      #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
+        border-radius:6px 6px 0 0 !important; background:transparent !important; color:var(--sc-muted) !important;
+        flex:0 0 auto; }
+      #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:var(--sc-surface-soft) !important;
+        border-color:var(--sc-line-strong) !important; font-weight:650; }
+      #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
+      @media (min-width:920px) {
+        #sc-root .wrap { max-width:1440px; display:grid; grid-template-columns:210px minmax(0,1fr);
+          gap:4px 28px; align-items:start; }
+        #sc-root .sc-side { position:sticky; top:16px; }
+        #sc-root .sc-header-actions { display:grid; grid-template-columns:1fr; margin-top:12px; }
+        #sc-root .sc-maintabs { flex-direction:column; gap:6px; border-bottom:none;
+          padding-right:8px; margin-bottom:0; }
+        #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:5px !important;
+          text-align:left !important; padding:9px 12px !important; }
+        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; }
+      }
+      #sc-root .status-ok { color:var(--sc-success); font-weight:650; }
+      #sc-root .status-bad { color:var(--sc-danger); font-weight:650; }
+      #sc-root .status-warn { color:var(--sc-warning); }
+      #sc-root table { width:100%; border-collapse:collapse; font-size:14px; }
+      #sc-root th { color:var(--sc-text-strong); font-weight:650; }
+      #sc-root td, #sc-root th { padding:7px 8px; border-bottom:1px solid var(--sc-line); text-align:left; }
+      #sc-root input, #sc-root textarea, #sc-root select { min-height:38px; background:var(--sc-field) !important;
+        color:var(--sc-text-strong) !important; border:1px solid var(--sc-line-strong) !important;
+        border-radius:5px !important; padding:6px 9px !important; font-family:var(--sc-font-body) !important;
+        font-size:13.5px !important; }
+      #sc-root input::placeholder, #sc-root textarea::placeholder { color:#929ca7; opacity:1; }
+      #sc-root input[type="checkbox"] { width:auto !important; min-height:auto; padding:0 !important;
+        accent-color:var(--sc-accent-strong); }
+      #sc-root input { width:130px; }
+      #sc-root textarea { line-height:1.55; }
+      #sc-root button:focus-visible, #sc-root input:focus-visible, #sc-root textarea:focus-visible,
+      #sc-root select:focus-visible, #sc-root summary:focus-visible, #sc-root a:focus-visible {
+        outline:2px solid var(--sc-focus) !important; outline-offset:2px; border-color:var(--sc-accent) !important;
+      }
+      #sc-root .report { font-family:var(--sc-font-mono); font-size:12.5px; white-space:pre-wrap; margin-top:7px; }
+      #sc-root .muted { color:var(--sc-muted); font-size:13px; }
+      #sc-root .row { display:flex; gap:7px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+      #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
+      /* Hallmark-inspired editorial rhythm: restrained hierarchy, existing tokens, no interaction. */
+      #sc-root .sc-help { width:100%; max-width:1000px; line-height:1.75; color:var(--sc-text);
+        counter-reset:sc-help-section; }
+      #sc-root .sc-help h3 { display:grid; grid-template-columns:32px minmax(0,1fr); gap:10px;
+        align-items:baseline; margin:31px 0 13px; padding:0 0 10px;
+        border-bottom:1px solid var(--sc-line); color:var(--sc-text-strong); font-size:16px; }
+      #sc-root .sc-help h3::before { counter-increment:sc-help-section;
+        content:counter(sc-help-section, decimal-leading-zero); color:var(--sc-accent);
+        font-family:var(--sc-font-mono); font-size:11px; font-weight:700; letter-spacing:.06em; }
+      #sc-root .sc-help h3:first-of-type { margin-top:0; }
+      #sc-root .sc-help p { margin:9px 0 9px 42px; font-size:14px; }
+      #sc-root .sc-help ul { margin:10px 0 10px 42px; padding-left:20px; }
+      #sc-root .sc-help li { margin:7px 0; padding-left:2px; font-size:14px; }
+      #sc-root .sc-help b { color:var(--sc-text-strong); }
+      #sc-root .sc-help-steps { display:grid; grid-template-columns:repeat(4, minmax(0,1fr));
+        gap:8px; margin:11px 0 11px 42px; }
+      #sc-root .sc-help-step { min-width:0; padding:11px 12px; border:1px solid var(--sc-line);
+        border-top:2px solid var(--sc-accent); border-radius:5px; background:var(--sc-field); }
+      #sc-root .sc-help-step-num { display:block; margin-bottom:6px; color:var(--sc-accent);
+        font-family:var(--sc-font-mono); font-size:10.5px; letter-spacing:.06em; }
+      #sc-root .sc-help-step-title { display:block; margin-bottom:5px; color:var(--sc-text-strong);
+        font-size:13.5px; font-weight:700; }
+      #sc-root .sc-help-step-desc { display:block; color:var(--sc-muted); font-size:12.5px;
+        line-height:1.55; overflow-wrap:anywhere; }
+      #sc-root .sc-help-steps-two { grid-template-columns:repeat(2, minmax(0,1fr)); max-width:720px; }
+      #sc-root .sc-help-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+        gap:8px; margin:11px 0 11px 42px; padding:0; list-style:none; }
+      #sc-root .sc-help-grid li { min-width:0; margin:0; padding:11px 12px;
+        border:1px solid var(--sc-line); border-radius:5px; background:var(--sc-field); }
+      #sc-root .sc-help-grid li b { display:block; margin-bottom:4px; }
+      #sc-root .sc-help-var-grid { gap:12px; font-family:var(--sc-font-body); }
+      #sc-root .sc-help-var-card { position:relative; padding:17px 18px 16px 20px !important; overflow:hidden; }
+      #sc-root .sc-help-var-card::before { content:""; position:absolute; inset:0 auto 0 0; width:3px;
+        background:var(--sc-accent); }
+      #sc-root .sc-help-var-card[data-kind="float"]::before { background:#79b9d1; }
+      #sc-root .sc-help-var-card[data-kind="text"]::before { background:var(--sc-success); }
+      #sc-root .sc-help-var-card[data-kind="bool"]::before { background:#72c6b6; }
+      #sc-root .sc-help-var-card[data-kind="enum"]::before { background:var(--sc-warning); }
+      #sc-root .sc-help-var-card[data-kind="list"]::before { background:#ef9f76; }
+      #sc-root .sc-help-var-kicker { display:flex; gap:6px; align-items:center; color:var(--sc-muted);
+        font-size:12.5px; font-weight:650; line-height:1.45; }
+      #sc-root .sc-help-var-code { color:#d7e5ff; font-family:var(--sc-font-mono); font-size:12px; font-weight:600; }
+      #sc-root .sc-help-var-title { display:block; margin:6px 0 5px !important; color:var(--sc-text-strong);
+        font-size:17px; font-weight:750; line-height:1.4; }
+      #sc-root .sc-help-var-desc { display:block; color:var(--sc-text); font-size:14.5px; line-height:1.7; }
+      #sc-root .sc-help-var-fields { margin:12px 0 0; padding:2px 0 0; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-help-var-fields > div { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px;
+        padding-top:8px; color:var(--sc-text); font-size:13.5px; line-height:1.6; }
+      #sc-root .sc-help-var-fields dt { color:var(--sc-text-strong); font-weight:700; }
+      #sc-root .sc-help-var-fields dd { min-width:0; margin:0; }
+      #sc-root .sc-help-var-example { color:#d7e5ff; font-family:var(--sc-font-body); font-size:13px;
+        font-variant-numeric:tabular-nums; }
+      #sc-root .sc-example-label { display:block; margin:11px 0 5px 42px; color:var(--sc-muted);
+        font-family:var(--sc-font-mono); font-size:11px; letter-spacing:.04em; }
+      #sc-root .sc-flow, #sc-root .sc-code { background:var(--sc-field); border:1px solid var(--sc-line);
+        border-left:2px solid var(--sc-line-strong); border-radius:4px; padding:12px 14px;
+        margin:10px 0 10px 42px;
+        font-family:var(--sc-font-mono); font-size:13px; line-height:1.7; white-space:pre-wrap;
+        overflow-x:auto; color:#d7e5ff; }
+      #sc-root .sc-code-i { font-family:var(--sc-font-mono); font-size:12px; background:var(--sc-field);
+        border:1px solid var(--sc-line); border-radius:4px; padding:1px 5px; color:#d7e5ff; }
+      #sc-root .sc-note { background:#202a38; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-accent); border-radius:5px; padding:11px 13px;
+        margin:10px 0 10px 42px; color:var(--sc-text); font-size:14px; }
+      #sc-root .sc-help table { width:calc(100% - 42px); margin:10px 0 10px 42px;
+        background:var(--sc-field); }
+      #sc-root .sc-help th { color:var(--sc-text-strong); background:var(--sc-surface-soft); }
+      #sc-root .sc-help th, #sc-root .sc-help td { padding:10px 11px; vertical-align:top; }
+      #sc-root .sc-weight-table { max-width:720px; table-layout:fixed; }
+      #sc-root .sc-weight-table th:nth-child(1) { width:46%; }
+      #sc-root .sc-weight-table th:nth-child(2) { width:18%; }
+      #sc-root .sc-weight-table td:nth-child(2), #sc-root .sc-weight-table td:nth-child(3) {
+        font-family:var(--sc-font-mono); font-variant-numeric:tabular-nums; }
+      #sc-root .sc-weight-table tfoot td { color:var(--sc-muted); background:var(--sc-surface); font-size:12.5px; }
+      #sc-root .sc-help-facts { display:grid; max-width:720px; margin:10px 0 10px 42px;
+        border-top:1px solid var(--sc-line); border-bottom:1px solid var(--sc-line); }
+      #sc-root .sc-help-facts > div { display:grid; grid-template-columns:108px minmax(0,1fr); gap:12px;
+        padding:9px 0; }
+      #sc-root .sc-help-facts > div + div { border-top:1px solid var(--sc-line); }
+      #sc-root .sc-help-facts dt { color:var(--sc-text-strong); font-weight:700; }
+      #sc-root .sc-help-facts dd { min-width:0; margin:0; color:var(--sc-text); }
+      #sc-root .sc-check { display:inline-flex; align-items:center; gap:7px; font-size:13.5px; cursor:pointer; }
+      #sc-root .sc-check input { width:auto !important; cursor:pointer; }
+      #sc-root .sc-prog { margin-top:8px; }
+      #sc-root .sc-prog-label { font-size:12.5px; color:var(--sc-text); margin-bottom:4px;
+        display:flex; gap:8px; align-items:center; }
+      #sc-root .sc-prog-bar { height:8px; background:var(--sc-field); border:1px solid var(--sc-line-strong);
+        border-radius:99px; overflow:hidden; }
+      #sc-root .sc-prog-fill { height:100%; background:var(--sc-accent-strong); width:0%;
+        transition:width .12s linear; }
+      #sc-root .sc-prog-fill.indet { width:35% !important; animation:sc-slide 1s ease-in-out infinite alternate; }
+      @keyframes sc-slide { from { margin-left:0%; } to { margin-left:65%; } }
+      #sc-root .sc-spin { display:inline-block; width:12px; height:12px; border:2px solid var(--sc-line-strong);
+        border-top-color:var(--sc-accent); border-radius:50%; animation:sc-rot .7s linear infinite; }
+      @keyframes sc-rot { to { transform:rotate(360deg); } }
+      #sc-root #sc-status:not(:empty) { position:relative; width:100%; margin-bottom:14px; padding:10px 12px 10px 31px;
+        border:1px solid var(--sc-line); border-radius:6px; background:var(--sc-surface); }
+      #sc-root #sc-status:not(:empty)::before { content:""; position:absolute; left:12px; top:16px; width:7px; height:7px;
+        border-radius:50%; background:var(--sc-muted); }
+      #sc-root #sc-status.sc-panel-status-ok { display:inline-flex; width:auto; max-width:100%; padding-top:7px;
+        padding-bottom:7px; }
+      #sc-root #sc-status.sc-panel-status-ok::before { top:13px; background:var(--sc-success); }
+      #sc-root #sc-status.sc-panel-status-warn::before { background:var(--sc-warning); }
+      #sc-root #sc-status.sc-panel-status-bad::before { background:var(--sc-danger); }
+      #sc-root .sc-page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+        margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--sc-line); }
+      #sc-root .sc-page-head h2 { margin:0 0 4px; padding:0; border:0; font-size:18px; letter-spacing:-.02em; }
+      #sc-root .sc-page-head p { margin:0; color:var(--sc-muted); font-size:13.5px; }
+      #sc-root .sc-card { min-width:0; padding:14px; border:1px solid var(--sc-line); border-radius:4px;
+        background:var(--sc-surface); }
+      #sc-root .sc-card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+        margin-bottom:11px; }
+      #sc-root .sc-card-title { margin:0; color:var(--sc-text-strong); font-size:15px; font-weight:700;
+        line-height:1.35; letter-spacing:-.015em; }
+      #sc-root .sc-card-desc { margin:4px 0 0; color:var(--sc-muted); font-size:13px; line-height:1.55; }
+      #sc-root .sc-card-body { min-width:0; }
+      #sc-root .sc-card-actions { display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin-top:11px; }
+      #sc-root .sc-card-badge { display:inline-flex; width:fit-content; padding:2px 7px;
+        border:1px solid var(--sc-line-strong); border-radius:2px; color:var(--sc-muted);
+        background:transparent; font-family:var(--sc-font-mono); font-size:10.5px;
+        font-weight:650; letter-spacing:.03em; white-space:nowrap; }
+      #sc-root .sc-card-badge.ok { color:var(--sc-success); border-color:var(--sc-success); }
+      #sc-root .sc-card-badge.warn { color:var(--sc-warning); border-color:var(--sc-warning); }
+      #sc-root .sc-divider { height:1px; background:var(--sc-line); margin:12px 0; }
+      #sc-root .sc-editor-diff { margin:12px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-warning); border-radius:6px; background:var(--sc-surface); }
+      #sc-root .sc-editor-diff-title { color:var(--sc-text-strong); font-size:13.5px; font-weight:700; }
+      #sc-root .sc-editor-diff-copy { margin-top:3px; color:var(--sc-muted); font-size:12.5px; line-height:1.55; }
+      #sc-root .sc-editor-diff-meta { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:9px;
+        padding-top:9px; border-top:1px solid var(--sc-line); color:var(--sc-text); font-size:12px; }
+      #sc-root .sc-editor-diff-meta span { min-width:0; }
+      #sc-root .sc-schema-validation { margin:10px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
+        border-left:3px solid var(--sc-danger); border-radius:6px; background:var(--sc-surface); }
+      #sc-root .sc-schema-validation.is-start { border-left-color:var(--sc-accent); }
+      #sc-root .sc-schema-validation-title { color:var(--sc-text-strong); font-size:13.5px; font-weight:700; }
+      #sc-root .sc-schema-validation-copy { margin-top:3px; color:var(--sc-muted); font-size:12.5px; line-height:1.55; }
+      #sc-root .sc-schema-validation details { margin-top:9px; padding-top:8px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-schema-validation summary { color:var(--sc-muted); font-size:12px; cursor:pointer; }
+      #sc-root .sc-schema-validation-item { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr);
+        gap:8px; margin-top:7px; font-size:12px; }
+      #sc-root .sc-schema-validation-path { color:var(--sc-muted); font-family:var(--sc-font-mono); }
+      #sc-root .sc-schema-validation-message { color:var(--sc-text); }
+      #sc-root .sc-play-grid, #sc-root .sc-connect-grid { display:grid;
+        grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; align-items:stretch; }
+      #sc-root .sc-play-grid > .sc-card, #sc-root .sc-connect-grid > .sc-card { height:100%; }
+      #sc-root .sc-connect-grid { margin-top:10px; align-items:start; }
+      #sc-root .sc-connect-grid > .sc-card { border-top-color:var(--sc-line-strong); }
+      #sc-root .sc-table-wrap { width:100%; min-width:0; overflow-x:auto; }
+      #sc-root #sc-vars table { width:100%; min-width:0; table-layout:fixed; }
+      #sc-root #sc-vars th, #sc-root #sc-vars td { padding-left:6px; padding-right:6px; }
+      #sc-root #sc-vars th:first-child, #sc-root #sc-vars td:first-child { width:36%; }
+      #sc-root #sc-vars th:nth-child(2), #sc-root #sc-vars td:nth-child(2) { width:18%; }
+      #sc-root #sc-vars th:nth-child(3), #sc-root #sc-vars td:nth-child(3) {
+        width:auto; padding-right:3px;
+      }
+      #sc-root #sc-vars th:nth-child(4), #sc-root #sc-vars td:nth-child(4) {
+        width:58px; padding-left:3px; white-space:nowrap;
+      }
+      #sc-root #sc-vars input, #sc-root #sc-vars select { width:100%; min-width:0; }
+      #sc-root #sc-vars td:nth-child(2) { font-variant-numeric:tabular-nums; }
+      #sc-root #sc-vars td:nth-child(4) button { width:100%; min-width:48px; padding-left:7px !important;
+        padding-right:7px !important; }
+      #sc-root #sc-actions { display:flex; gap:9px; flex-wrap:wrap; align-items:flex-start; }
+      #sc-root #sc-actions button { margin-right:0 !important; }
+      #sc-root .sc-action-item { display:grid; gap:4px; min-width:0; }
+      #sc-root .sc-action-reason { max-width:240px; color:var(--sc-warning); font-size:11.5px;
+        line-height:1.4; overflow-wrap:anywhere; }
+      #sc-root .sc-summary { display:grid; gap:8px; min-height:1.5em; color:var(--sc-text);
+        font-family:var(--sc-font-body); font-size:13px; white-space:pre-wrap; }
+      #sc-root .sc-metric-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0;
+        border:1px solid var(--sc-line); }
+      #sc-root .sc-metric { min-width:0; padding:9px 10px; border:0; border-right:1px solid var(--sc-line);
+        border-bottom:1px solid var(--sc-line); border-radius:0; background:transparent; }
+      #sc-root .sc-metric:nth-child(3n) { border-right:0; }
+      #sc-root .sc-metric:nth-last-child(-n+3) { border-bottom:0; }
+      #sc-root .sc-metric-label { display:block; color:var(--sc-muted); font-family:var(--sc-font-mono);
+        font-size:11px; line-height:1.4; letter-spacing:.03em; }
+      #sc-root .sc-metric-value { display:block; margin-top:4px; color:var(--sc-text-strong);
+        font-family:var(--sc-font-mono); font-size:14px; font-weight:650; line-height:1.35;
+        font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+      #sc-root .sc-connection-state { margin-top:9px; padding-top:9px; border-top:1px solid var(--sc-line);
+        color:var(--sc-muted); font-size:12.5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+      #sc-root .sc-connection-details { margin-top:10px; padding-top:8px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-connection-details summary { width:fit-content; color:var(--sc-muted); font-size:12px; cursor:pointer; }
+      #sc-root .sc-install-layout { display:grid; gap:12px; margin-bottom:16px; }
+      #sc-root .sc-install-actions { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+      #sc-root .sc-danger-zone { display:flex; justify-content:space-between; align-items:center; gap:12px;
+        margin-top:12px; padding-top:12px; border-top:1px solid var(--sc-line); }
+      #sc-root .sc-danger-zone .muted { max-width:720px; }
+      #sc-root .sc-install-secondary { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px; }
+      #sc-root .sc-template-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; align-items:center; }
+      #sc-root .sc-template-row select { width:100%; min-width:0; }
+      #sc-root .sc-editor-shell { min-width:0; border-top:1px solid var(--sc-line); padding-top:15px; }
+      #sc-root .sc-result-stack { display:grid; gap:8px; }
+      #sc-root .sc-save-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+      #sc-root .sc-save-action { display:flex; flex-direction:column; min-width:0; height:100%; }
+      #sc-root .sc-save-action .sc-card-body { display:flex; flex:1; flex-direction:column; }
+      #sc-root .sc-save-action .sc-card-desc { flex:1; }
+      #sc-root .sc-save-action button { width:100%; margin-top:12px; }
+      #sc-root .sc-option-card { margin-top:12px; }
+      @media (hover:hover) and (pointer:fine) {
+        #sc-root button:hover:not(:disabled) { background:#2c343d !important; border-color:var(--sc-accent) !important; }
+        #sc-root button.primary:hover:not(:disabled) { background:#5b8cf0 !important; }
+        #sc-root button.danger:hover:not(:disabled), #sc-root .chip button:hover:not(:disabled),
+        #sc-root .sce .sce-btn.sce-danger:hover:not(:disabled) {
+          background:var(--sc-danger-bg) !important; border-color:var(--sc-danger) !important; color:#ffc1c1 !important;
+        }
+      }
+      @media (max-width:600px) {
+        #sc-root { font-size:14.5px !important; }
+        #sc-root button, #sc-root input, #sc-root textarea, #sc-root select { min-height:44px; }
+        #sc-root .chip { min-height:44px; }
+        #sc-root .chip button { min-width:40px; min-height:40px; }
+        #sc-root .sc-header-actions { width:100%; }
+        #sc-root .sc-header-actions button { flex:1 1 0; }
+        #sc-root .sc-page-head { flex-direction:column; }
+        #sc-root .sc-template-row { grid-template-columns:1fr; }
+        #sc-root .sc-template-row button { width:100%; }
+        #sc-root .sc-save-grid { grid-template-columns:1fr; }
+        #sc-root #sc-vars { overflow:visible; }
+        #sc-root .sc-metric-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
+        #sc-root .sc-metric { border-right:1px solid var(--sc-line); border-bottom:1px solid var(--sc-line); }
+        #sc-root .sc-metric:nth-child(2n) { border-right:0; }
+        #sc-root .sc-metric:nth-last-child(-n+2) { border-bottom:0; }
+        #sc-root .sc-help h3 { grid-template-columns:26px minmax(0,1fr); gap:7px; }
+        #sc-root .sc-help p, #sc-root .sc-help ul, #sc-root .sc-flow, #sc-root .sc-code,
+        #sc-root .sc-note, #sc-root .sc-help-steps, #sc-root .sc-help-grid,
+        #sc-root .sc-example-label { margin-left:0; }
+        #sc-root .sc-help-steps, #sc-root .sc-help-grid { grid-template-columns:1fr; }
+        #sc-root .sc-help-facts { margin-left:0; }
+        #sc-root .sc-help-facts > div { grid-template-columns:1fr; gap:3px; }
+        #sc-root .sc-help table { width:100%; margin-left:0; }
+      }
+      @media (max-width:840px) {
+        #sc-root .sc-play-grid, #sc-root .sc-connect-grid, #sc-root .sc-install-secondary {
+          grid-template-columns:1fr;
+        }
+      }
+      @media (max-width:420px) {
+        #sc-root .sc-metric-grid { grid-template-columns:1fr; }
+        #sc-root .sc-metric, #sc-root .sc-metric:nth-child(2n) { border-right:0; border-bottom:1px solid var(--sc-line); }
+        #sc-root .sc-metric:last-child { border-bottom:0; }
+      }
+      @media (prefers-reduced-motion:reduce) {
+        #sc-root *, #sc-root *::before, #sc-root *::after {
+          scroll-behavior:auto !important; transition:none !important;
+        }
+        #sc-root button:active:not(:disabled) { transform:none; }
+        #sc-root .sc-prog-fill.indet, #sc-root .sc-spin { animation:none !important; }
+      }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -16946,162 +19567,388 @@ module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, P
         <div id="sc-status"></div>
 
         <div class="sc-page on" id="sc-page-play">
-          <h2>새 시작</h2>
-          <div class="muted">프리셋은 새 채팅 시작 전에 고르는 걸 권장. AI 최초설정이 켜진 스키마는 첫 턴 대화로 시작 상황을 정한다.</div>
-          <div id="sc-presets" class="row">-</div>
-          <div class="row"><button id="sc-resetall" class="danger">상태 완전 초기화 (스냅샷 삭제)</button></div>
-          <h2>상태 변수 (수동 보정)</h2>
-          <div id="sc-vars" class="muted">스키마 로드 후 표시</div>
-          <h2>액션 무장</h2>
-          <div id="sc-actions" class="muted">-</div>
-          <h2>엔진 정보</h2>
-          <div class="row">
-            <button id="sc-auxtest">보조 모델 연결 테스트</button>
-            <span class="muted">버튼 클릭 시점에 직접 호출해 차단 여부를 확정 진단</span>
+          <header class="sc-page-head">
+            <div>
+              <h2>현황</h2>
+              <p>현재 채팅의 시작 설정, 변수와 엔진 상태를 확인하고 필요한 항목만 조정해요.</p>
+            </div>
+          </header>
+          <div class="sc-play-grid">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">새 시작</h3>
+                  <p class="sc-card-desc">새 채팅을 시작하기 전에 프리셋을 고를 수 있어요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.</p>
+                </div>
+                <span class="sc-card-badge">시작 설정</span>
+              </div>
+              <div id="sc-presets" class="sc-card-body row">-</div>
+              <div class="sc-divider"></div>
+              <div class="sc-card-actions">
+                <span class="muted">현재 채팅의 상태와 SimCore 스냅샷을 삭제해요.</span>
+                <button id="sc-resetall" class="danger">상태 완전 초기화</button>
+              </div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">다음 행동(액션 무장)</h3>
+                  <p class="sc-card-desc">선택한 행동은 다음 메시지를 보낼 때 적용돼요.<br>사용할 수 없는 행동에는 잠긴 이유가 표시돼요.</p>
+                </div>
+                <span id="sc-actions-count" class="sc-card-badge">0개 선택</span>
+              </div>
+              <div id="sc-actions" class="sc-card-body muted">-</div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">상태 변수</h3>
+                  <p class="sc-card-desc">엔진이 저장한 현재 값을 확인하고 필요한 경우에만 수동으로 보정해요.</p>
+                </div>
+                <span class="sc-card-badge">수동 보정</span>
+              </div>
+              <div id="sc-vars" class="sc-card-body sc-table-wrap muted">스키마 로드 후 표시</div>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">엔진 요약</h3>
+                  <p class="sc-card-desc">현재 채팅에서 실제로 사용 중인 핵심 상태예요.</p>
+                </div>
+                <span id="sc-engine-badge" class="sc-card-badge">확인 중</span>
+              </div>
+              <div id="sc-info" class="sc-card-body sc-summary muted"></div>
+            </section>
           </div>
-          <div class="row">
-            <button id="sc-hitretry">클릭 조작 다시 연결</button>
-            <span id="sc-hitstate" class="muted">-</span>
+          <div class="sc-connect-grid">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">클릭 조작</h3>
+                  <p class="sc-card-desc">상태창의 행동과 선택지를 직접 누를 수 있는지 확인해요.</p>
+                </div>
+                <span id="sc-hit-badge" class="sc-card-badge">확인 전</span>
+              </div>
+              <button id="sc-hitretry">클릭 조작 다시 연결</button>
+              <details class="sc-connection-details">
+                <summary>상세 진단</summary>
+                <div id="sc-hitstate" class="sc-connection-state">-</div>
+              </details>
+            </section>
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">보조 모델 연결 테스트</h3>
+                  <p class="sc-card-desc">실제 검증 응답을 받아 연결 여부를 확인하고, 사용된 모델과 호출 경로를 표시해요.</p>
+                </div>
+                <span id="sc-aux-badge" class="sc-card-badge">확인 전</span>
+              </div>
+              <button id="sc-auxtest">연결 테스트 실행</button>
+              <details class="sc-connection-details">
+                <summary>연결 상세</summary>
+                <div id="sc-aux-info" class="sc-connection-state">아직 확인하지 않았어요.</div>
+              </details>
+            </section>
           </div>
-          <div id="sc-info" class="report muted"></div>
         </div>
 
         <div class="sc-page" id="sc-page-edit">
-          <div class="muted">블록 편집기로 봇의 시뮬 규칙을 만들고, 아래 버튼으로 현재 캐릭터에 설치. 카드를 내보내면 스키마도 같이 나간다.</div>
-          <div class="row">
-            <button id="sc-install" class="primary">현재 캐릭터에 설치/업데이트</button>
-            <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
-            <button id="sc-copy">현재 캐릭터 스키마 불러오기</button>
-            <button id="sc-schema-restore">백업 복원</button>
-            <select id="sc-template"></select>
-            <button id="sc-new">템플릿에서 새로 만들기</button>
+          <header class="sc-page-head">
+            <div>
+              <h2>편집 작업공간</h2>
+              <p>어느 편집 화면에서 수정해도 같은 작업본에 저장돼요. 캐릭터에 반영하려면 [캐릭터에 적용]을 눌러 주세요.</p>
+            </div>
+          </header>
+          <div class="sc-install-layout">
+            <section class="sc-card">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">캐릭터 설치 관리</h3>
+                  <p class="sc-card-desc">편집기의 작업본을 캐릭터에 적용하거나 기존 설치본을 불러와요.</p>
+                </div>
+              </div>
+              <div class="sc-install-actions">
+                <button id="sc-install" class="primary">캐릭터에 적용</button>
+                <button id="sc-copy">설치본 불러오기</button>
+                <button id="sc-schema-restore">백업 복원</button>
+              </div>
+              <div class="sc-danger-zone">
+                <span class="muted">제거하기 전 현재 스키마가 자동으로 백업돼요.</span>
+                <button id="sc-uninstall" class="danger">캐릭터에서 제거</button>
+              </div>
+            </section>
+            <div class="sc-install-secondary">
+              <section class="sc-card">
+                <div class="sc-card-head">
+                  <div>
+                    <h3 class="sc-card-title">템플릿에서 시작</h3>
+                    <p class="sc-card-desc">선택한 템플릿은 편집기에만 열려요. 적용 버튼을 누르기 전에는 캐릭터가 바뀌지 않아요.</p>
+                  </div>
+                </div>
+                <div class="sc-template-row">
+                  <select id="sc-template" aria-label="새 스키마 템플릿"></select>
+                  <button id="sc-new">편집기에 열기</button>
+                </div>
+              </section>
+              <section class="sc-card">
+                <div class="sc-card-head">
+                  <div>
+                    <h3 class="sc-card-title">Lua 브리지</h3>
+                    <p class="sc-card-desc">플러그인의 직접 보조 모델 호출이 차단된 환경에서 사용하는 우회 연결이에요.</p>
+                  </div>
+                </div>
+                <div class="sc-install-actions">
+                  <button id="sc-luabridge">설치/갱신</button>
+                  <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
+                </div>
+                <p class="sc-card-desc">설치 후 플러그인 설정의 <span class="sc-code-i">aux_model_mode</span>를 <span class="sc-code-i">lua</span>로 설정해요.</p>
+              </section>
+            </div>
           </div>
-          <div class="row">
-            <button id="sc-luabridge">루아 브리지 설치/갱신</button>
-            <button id="sc-luabridge-rm" class="danger">브리지 제거</button>
-            <span class="muted">플러그인의 보조모델 호출이 차단된 환경용 우회로 — 설치 후 플러그인 설정 aux_model_mode를 lua로</span>
+          <div class="sc-result-stack">
+            <div id="sc-editor-warn"></div>
+            <div id="sc-schema-report" class="report"></div>
           </div>
-          <div id="sc-editor-warn"></div>
-          <div id="sc-schema-report" class="report"></div>
-          <div id="sc-editor" style="margin-top:10px"></div>
+          <div class="sc-editor-shell"><div id="sc-editor"></div></div>
         </div>
 
         <div class="sc-page" id="sc-page-save">
-          <h2>세이브 데이터 — 상태 백업/이동</h2>
-          <div class="muted">스냅샷 전체를 파일로 내보내거나 가져와. 스냅샷이 없는 채팅(다른 기기에서 가져온 채팅)은 [미러에서 복원]으로 변수 값만이라도 되살릴 수 있어.</div>
-          <div class="row">
-            <button id="sc-export">세이브 내보내기</button>
-            <button id="sc-import">세이브 가져오기</button>
-            <button id="sc-mirror">미러에서 복원</button>
-            <input type="file" id="sc-import-file" accept=".json" style="display:none">
+          <header class="sc-page-head">
+            <div>
+              <h2>세이브</h2>
+              <p>현재 채팅의 상태를 파일로 보관하거나 다른 채팅과 기기에서 복원해요.</p>
+            </div>
+          </header>
+          <div class="sc-save-grid">
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">파일로 내보내기</h3>
+                <p class="sc-card-desc">현재 상태, 스냅샷 이력과 스키마를 하나의 SimCore 세이브 파일로 저장해요.</p>
+                <button id="sc-export">세이브 내보내기</button>
+              </div>
+            </section>
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">파일에서 가져오기</h3>
+                <p class="sc-card-desc">SimCore 세이브 JSON을 읽어 현재 채팅에 상태와 스냅샷을 복원해요.</p>
+                <button id="sc-import">세이브 가져오기</button>
+                <input type="file" id="sc-import-file" accept=".json" style="display:none">
+              </div>
+            </section>
+            <section class="sc-card sc-save-action">
+              <div class="sc-card-body">
+                <h3 class="sc-card-title">채팅 미러에서 복원</h3>
+                <p class="sc-card-desc">스냅샷이 없는 채팅에서는 채팅 미러에 남은 변수값만 복원해요. 쿨다운과 대기 이벤트는 초기화돼요.</p>
+                <button id="sc-mirror">미러에서 복원</button>
+              </div>
+            </section>
           </div>
-          <div class="row">
+          <section class="sc-card sc-option-card">
             <label class="sc-check"><input type="checkbox" id="sc-import-schema" checked>
               가져올 때 동봉된 스키마도 함께 복원</label>
-          </div>
-          <div class="muted">체크 시 세이브에 들어 있는 스키마(변수·규칙·이벤트·액션)까지 되돌린다 — 기존 스키마는 자동 백업되니
-            [봇 편집]의 [백업 복원]으로 되돌릴 수 있어. 해제하면 지금 스키마를 그대로 두고 변수 값만 가져온다.</div>
+            <p class="sc-card-desc">켜면 세이브의 변수·규칙·이벤트·액션까지 복원해요. 기존 스키마는 자동 백업되며
+              편집 작업공간의 백업 복원으로 되돌릴 수 있어요. 끄면 현재 스키마를 유지하고 호환되는 변수값만 가져와요.</p>
+          </section>
           <div id="sc-save-report" class="report"></div>
         </div>
 
         <div class="sc-page" id="sc-page-help">
-          <h2>개념 정리 — 이것만 알면 된다</h2>
-          <div class="muted">아래 개념이 헷갈리면 [봇 편집] → [템플릿에서 새로 만들기]로 장르 템플릿을 열어
-            실제로 어떻게 쓰였는지 보는 게 제일 빠르다.</div>
-
+          <header class="sc-page-head">
+            <div>
+              <h2>개념 정리 — 이것만 알면 돼요</h2>
+              <p>개념이 헷갈리면 [AI에게 맡기기]에서 장르 템플릿을 열어보세요. 실제 설정 예시를 함께 보면 더 쉽게 이해할 수 있어요.</p>
+            </div>
+          </header>
           <div class="sc-help">
-            <h3>흐름 — 한 턴에 무슨 일이 일어나나</h3>
-            <pre class="sc-flow">유저 입력
-  ↓  ① 전송 전: 상태 블록 + 지시문 + 지난 턴 이벤트 통지를 <b>메인 모델</b>에 붙여 보냄
-메인 모델이 서사를 씀
-  ↓  ② 응답 후: 그 서사를 <b>보조 모델</b>에 보내 "무엇이 얼마나 변했나"를 JSON으로 받음
-  ↓  ③ 엔진이 계산: 보조모델 델타 → 정기 계산 → 조건 이벤트 → 랜덤 이벤트
-상태 갱신 · 상태창 표시</pre>
-            <div class="sc-note">⚠ <b>규칙·이벤트의 조건식과 가중치는 어느 모델에도 전달되지 않는다.</b>
-              전부 플러그인이 자바스크립트로 계산한다. 모델이 알 수 있는 건 <b>결과</b>뿐이다 —
-              이벤트가 일어난 걸 모델에게 알리고 싶으면 반드시 <b>notify</b>를 써야 한다.</div>
+            <h3 id="sc-help-flow">한 턴의 진행 순서</h3>
+            <div class="sc-help-steps">
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">01</span>
+                <span class="sc-help-step-title">입력 준비</span>
+                <span class="sc-help-step-desc">현재 상태, 지시문과 지난 턴의 이벤트 알림을 준비해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">02</span>
+                <span class="sc-help-step-title">이야기 작성</span>
+                <span class="sc-help-step-desc">준비한 정보를 받은 메인 모델이 이야기를 작성해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">03</span>
+                <span class="sc-help-step-title">변화 분석</span>
+                <span class="sc-help-step-desc">보조 모델이 이야기를 분석하고 변화량을 JSON으로 반환해요.</span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">04</span>
+                <span class="sc-help-step-title">엔진 처리</span>
+                <span class="sc-help-step-desc">변화량, 정기 계산, 조건 이벤트와 랜덤 이벤트를 순서대로 처리해요.</span>
+              </div>
+            </div>
+            <div class="sc-note">⚠ <b>규칙과 이벤트의 조건식·가중치는 모델에 전달되지 않아요.</b>
+              해당 계산은 플러그인이 직접 처리하고 모델에는 결과만 전달해요.
+              발생한 이벤트를 모델에게 알려야 한다면 <b>notify</b>를 작성해 주세요.</div>
 
-            <h3>변수 (vars)</h3>
-            <p>실제로 저장되는 값. 여섯 종류.</p>
-            <ul>
-              <li><b>정수/실수</b> — 체력, 돈처럼 오르내리는 수. 보조모델은 <b>증감량</b>으로 답한다 (−5, +100).</li>
-              <li><b>텍스트</b> — 한 줄 설명. 보조모델이 <b>새 값 전체</b>로 갈아끼운다.</li>
-              <li><b>참/거짓</b> — 켜짐/꺼짐 상태 (기근 중인가?).</li>
-              <li><b>선택지</b> — 정해둔 목록 중 하나 (봄/여름/가을/겨울). 목록 밖 값은 거부된다.</li>
-              <li><b>목록</b> — 인벤토리, 단서처럼 여러 개. <b>추가/제거</b>로만 바뀌어 통째로 증발하지 않는다.</li>
+            <h3 id="sc-help-vars">변수 (vars)</h3>
+            <p>시뮬레이션이 직접 저장하고 변경하는 값이에요. 모든 변수에는 영문 ID, 표시 이름, 타입과 설명을 적을 수 있어요.
+              실제로 지원하는 여섯 가지 타입과 타입별 설정은 다음과 같아요.</p>
+            <ul class="sc-help-grid sc-help-var-grid">
+              <li class="sc-help-var-card" data-kind="int">
+                <span class="sc-help-var-kicker">숫자 <span class="sc-help-var-code">int</span></span>
+                <b class="sc-help-var-title">정수</b>
+                <span class="sc-help-var-desc">체력, 자금, 인구처럼 소수점 없이 세는 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최소 · 최대 · 표시 형식</dd></div>
+                  <div><dt>갱신</dt><dd>현재 값에 정수 변화량을 더해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">자금 100 → 변화량 −5 → 95</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="float">
+                <span class="sc-help-var-kicker">숫자 <span class="sc-help-var-code">float</span></span>
+                <b class="sc-help-var-title">실수</b>
+                <span class="sc-help-var-desc">온도나 비율처럼 소수점이 필요한 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최소 · 최대 · 표시 형식</dd></div>
+                  <div><dt>갱신</dt><dd>현재 값에 소수 변화량을 더해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">온기 2.5 → 변화량 +0.5 → 3.0</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="text">
+                <span class="sc-help-var-kicker">문장 <span class="sc-help-var-code">text</span></span>
+                <b class="sc-help-var-title">텍스트</b>
+                <span class="sc-help-var-desc">상황이나 관계처럼 문장으로 표현하는 값이에요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작값 · 최대 글자 수</dd></div>
+                  <div><dt>갱신</dt><dd>기존 내용을 새 문장 전체로 교체해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">관계: "경계함" → "조금 신뢰함"</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="bool">
+                <span class="sc-help-var-kicker">상태 <span class="sc-help-var-code">bool</span></span>
+                <b class="sc-help-var-title">참·거짓</b>
+                <span class="sc-help-var-desc">기근 여부처럼 켜짐과 꺼짐으로 구분해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작 시 켜짐 또는 꺼짐</dd></div>
+                  <div><dt>갱신</dt><dd><span class="sc-help-var-code">true</span> 또는 <span class="sc-help-var-code">false</span>로 바꿔요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">기근: false → true</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="enum">
+                <span class="sc-help-var-kicker">고정 선택 <span class="sc-help-var-code">enum</span></span>
+                <b class="sc-help-var-title">선택지</b>
+                <span class="sc-help-var-desc">계절처럼 미리 정해 둔 값 중 하나를 사용해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>선택지 목록 · 시작값</dd></div>
+                  <div><dt>갱신</dt><dd>등록된 선택지 중 하나로 교체해요. 다른 값은 거부해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">봄 · 여름 · 가을 · 겨울</dd></div>
+                </dl>
+              </li>
+              <li class="sc-help-var-card" data-kind="list">
+                <span class="sc-help-var-kicker">여러 항목 <span class="sc-help-var-code">list</span></span>
+                <b class="sc-help-var-title">목록</b>
+                <span class="sc-help-var-desc">인벤토리나 단서처럼 여러 항목을 함께 저장해요.</span>
+                <dl class="sc-help-var-fields">
+                  <div><dt>설정</dt><dd>시작 아이템 · 최대 개수 · 아이템 글자 수</dd></div>
+                  <div><dt>갱신</dt><dd>목록 전체를 바꾸지 않고 필요한 항목만 추가하거나 제거해요.</dd></div>
+                  <div><dt>예시</dt><dd class="sc-help-var-example">추가: 지도 / 제거: 빈 물통</dd></div>
+                </dl>
+              </li>
             </ul>
 
-            <h3>파생 변수 (derived)</h3>
-            <p>다른 변수로 <b>그때그때 계산되는 읽기 전용 값</b>. 저장되지 않고, 규칙으로 직접 바꿀 수도 없다.
-              "인구가 늘면 세수도 자동으로 는다" 같은 관계를 한 줄로 못 박아 두는 용도다.</p>
+            <h3 id="sc-help-derived">파생 변수 (derived)</h3>
+            <p>다른 변수로 <b>자동 계산하는 읽기 전용 값</b>이에요. 따로 저장하지 않으며 규칙이나 AI가 직접 변경할 수 없어요.
+              인구가 늘면 세수도 늘어나는 것처럼, 반복해서 사용하는 계산 관계를 한 줄로 정리할 때 사용해요.</p>
+            <span class="sc-example-label">계산 예시</span>
             <pre class="sc-code">월세수  = round(인구 * 0.3)      ← 인구가 바뀌면 자동으로 따라 바뀜
 순익   = 매출 - 인건비 - 임대료   ← 파생끼리 이어 붙일 수도 있다</pre>
-            <div class="sc-note">파생을 쓰면 규칙이 짧아진다. 매 턴 "자금 = 자금 + round(인구*0.3) - 병력*2"라고
-              길게 쓰는 대신 "자금 = 자금 + 순익"으로 끝난다.</div>
+            <div class="sc-note">파생 변수를 사용하면 규칙을 짧게 유지할 수 있어요.
+              긴 계산식을 매번 반복하는 대신 <b>자금 = 자금 + 순익</b>처럼 작성하면 돼요.</div>
 
-            <h3>규칙 · 이벤트 (rules)</h3>
-            <ul>
-              <li><b>정기 계산(onTurn)</b> — 매 턴 <b>무조건</b> 실행. 시간 경과, 이자, 식량 소비 같은 것.
-                위에서부터 차례로 적용되고 <b>순서가 결과를 바꾼다</b>.</li>
-              <li><b>조건 이벤트(events)</b> — <b>when</b>이 참이 되는 순간 발동. 조건이 계속 참이면 매 턴 또 발동하므로,
-                한 번만 터뜨리려면 <b>once</b>를 켜거나 "발동하면 조건이 거짓이 되도록" 설계한다.
-                <br>예: <span class="sc-code-i">기근 시작</span>은 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span> — 발동하며 기근을 켜니 다음 턴엔 조건이 거짓.</li>
-              <li><b>랜덤 이벤트(randomEvents)</b> — 예측 불가능한 사건.</li>
+            <h3 id="sc-help-rules">규칙 · 이벤트 (rules)</h3>
+            <ul class="sc-help-grid">
+              <li><b>정기 계산(onTurn)</b> — 매 턴 반드시 실행해요. 시간 경과, 이자, 식량 소비 등에 사용해요.
+                위에서부터 순서대로 계산하므로 <b>배치 순서에 따라 결과가 달라질 수 있어요.</b></li>
+              <li><b>조건 이벤트(events)</b> — <b>when</b> 조건이 참이면 발동해요. 조건이 계속 참이면 다음 턴에도 다시 발동해요.
+                한 번만 실행하려면 <b>once</b>를 켜거나, 실행 후 조건이 거짓이 되도록 설정해 주세요.
+                <br>예: <span class="sc-code-i">기근 시작</span>의 조건을 <span class="sc-code-i">식량 &lt;= 0 <b>and not 기근</b></span>으로 설정하면,
+                발동하면서 기근이 켜지고 다음 턴에는 조건이 거짓이 돼요.</li>
+              <li><b>랜덤 이벤트(randomEvents)</b> — 정해진 확률과 조건에 따라 발생하는 예측 불가능한 사건이에요.</li>
             </ul>
 
-            <h3>가중치 (weight) — 랜덤 이벤트 뽑는 법</h3>
-            <p>두 단계로 굴린다.</p>
-            <pre class="sc-flow">1단계: 이번 턴에 랜덤 이벤트가 일어날까?
-        → <b>chancePerTurn</b> 확률로 결정 (0.3 = 30%)
-2단계: 일어난다면 어느 것?
-        → 조건(when)·재사용 대기(cooldown)를 통과한 것들 중 <b>weight에 비례</b>해 하나</pre>
-            <pre class="sc-code">산적 습격  weight 3  ┐
-행상인 방문 weight 2  ├ 합 6 → 산적 3/6(50%), 행상인 2/6(33%), 역병 1/6(17%)
-역병      weight 1  ┘</pre>
-            <div class="sc-note">가중치는 <b>확률이 아니라 상대 비중</b>이다. 3은 1보다 3배 자주 나온다는 뜻일 뿐,
-              합이 100이 될 필요도 없다. <b>cooldown</b>은 "한 번 나오면 N턴은 다시 안 나옴"이다.</div>
+            <h3 id="sc-help-weight">가중치 (weight)와 랜덤 이벤트</h3>
+            <p>먼저 이번 턴에 랜덤 이벤트가 발생할지 정하고, 발생한다면 조건을 통과한 후보 중 하나를 골라요.</p>
+            <div class="sc-help-steps sc-help-steps-two">
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">01</span>
+                <span class="sc-help-step-title">이번 턴에 발생하는가</span>
+                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span></span>
+              </div>
+              <div class="sc-help-step">
+                <span class="sc-help-step-num">02</span>
+                <span class="sc-help-step-title">어느 이벤트가 선택되는가</span>
+                <span class="sc-help-step-desc">조건과 쿨다운을 통과한 후보끼리 <b>weight</b>를 비교해 하나를 선택해요.</span>
+              </div>
+            </div>
+            <span class="sc-example-label">세 이벤트가 모두 선택 가능한 경우</span>
+            <table class="sc-weight-table">
+              <thead><tr><th>후보 이벤트</th><th>weight</th><th>선택 확률</th></tr></thead>
+              <tbody>
+                <tr><td>산적 습격</td><td>3</td><td>3 / 6 · 50%</td></tr>
+                <tr><td>행상인 방문</td><td>2</td><td>2 / 6 · 약 33%</td></tr>
+                <tr><td>역병</td><td>1</td><td>1 / 6 · 약 17%</td></tr>
+              </tbody>
+              <tfoot><tr><td>합계</td><td>6</td><td>후보끼리 나눠 가짐</td></tr></tfoot>
+            </table>
+            <dl class="sc-help-facts">
+              <div><dt>weight</dt><dd><b>고정 확률이 아니라 상대 비중</b>이에요. 합계를 100으로 맞출 필요는 없어요.</dd></div>
+              <div><dt>cooldown</dt><dd>이벤트가 발생한 뒤, 다시 후보가 되기까지 기다리는 턴 수예요.</dd></div>
+            </dl>
 
-            <h3>지시문 (directives)</h3>
-            <p>조건이 참인 <b>동안 계속</b> 메인 모델에게 주는 연출 지침. 수치를 바꾸지 않고 <b>글의 방향만</b> 잡는다.
-              이벤트의 notify가 "일어난 일을 한 번 알리는" 것이라면, 지시문은 "그런 상태니까 이렇게 써라"를 매 턴 반복한다.</p>
+            <h3 id="sc-help-directives">지시문 (directives)</h3>
+            <p>조건이 참인 <b>동안 매 턴</b> 메인 모델에 전달하는 연출 지침이에요. 변수를 바꾸지 않고 <b>이야기의 표현 방향</b>만 정해요.
+              <b>notify</b>가 발생한 사건을 한 번 알리는 기능이라면, 지시문은 현재 상태에 맞는 표현을 계속 요청하는 기능이에요.</p>
+            <span class="sc-example-label">지시문 예시</span>
             <pre class="sc-code">조건: 기근            → "굶주림과 흉흉한 민심이 묘사에 배어야 한다"
 조건: 관계 == "썸"    → "연인이 아니다. 확신 대신 망설임으로 그려라"
 조건: 진상 미공개      → "범인을 직접 말하지 마라. 단서만 흘려라"</pre>
 
-            <h3>액션 (actions)</h3>
-            <p>유저가 누르는 버튼. 화면 <b>우상단</b>에 뜬다. 누르면 바로 실행되는 게 아니라
-              <b>무장(●)</b> 상태가 되고, <b>다음 메시지를 보낼 때</b> 효과가 적용되며 AI 전달문이 함께 나간다.</p>
-            <ul>
-              <li><b>1회성</b> — 한 번 쓰면 무장이 풀린다. <b>지속</b> — 끌 때까지 매 턴 적용된다.</li>
-              <li><b>조건(when)</b>이 거짓이거나 <b>쿨다운</b> 중이면 🔒로 잠긴다.</li>
+            <h3 id="sc-help-actions">액션 (actions)</h3>
+            <p>유저가 직접 선택하는 행동 버튼이에요. 버튼을 누르면 즉시 실행되지 않고 <b>무장(●)</b> 상태가 돼요.
+              이후 <b>다음 메시지를 보낼 때</b> 효과와 AI 전달문을 함께 적용해요.</p>
+            <ul class="sc-help-grid">
+              <li><b>1회성</b> — 한 번 적용하면 자동으로 무장이 풀려요.</li>
+              <li><b>지속</b> — 직접 끌 때까지 다음 턴에도 계속 적용해요.</li>
+              <li><b>조건(when)</b>을 만족하지 않거나 <b>쿨다운</b> 중이면 사용할 수 없어요.</li>
             </ul>
 
-            <h3>AI 설정 (updater) — 보조 모델이 건드릴 수 있는 범위</h3>
-            <p>여기 <b>등록한 변수만</b> 보조 모델이 바꿀 수 있다. 등록 안 한 변수는 규칙·이벤트·액션만 건드린다.</p>
-            <ul>
-              <li><b>증감 한도</b>를 꼭 줘라. 없으면 모델이 "골드 −999999"를 제안해도 그대로 먹는다.</li>
-              <li><b>얻는 한도 / 잃는 한도</b>를 따로 줄 수 있다. 연애 템플릿은 호감을 <span class="sc-code-i">최대 +8 / 최대 −15</span>로 줘서
-                "천천히 쌓이고 빨리 식게" 만든다.</li>
-              <li>정기 계산으로 이미 처리하는 건 <b>안내문</b>에 "중복 반영 금지"라고 적어라.</li>
+            <h3 id="sc-help-ai">AI 설정 (updater)</h3>
+            <p>AI 설정에 <b>등록한 변수만</b> 보조 모델이 변경할 수 있어요.
+              등록하지 않은 변수는 규칙·이벤트·액션을 통해서만 변경돼요.</p>
+            <ul class="sc-help-grid">
+              <li><b>증감 한도</b>를 설정해 주세요. 한도가 없으면 보조 모델이 지나치게 큰 변화량을 제안할 수 있어요.</li>
+              <li><b>얻는 한도와 잃는 한도</b>를 따로 설정할 수 있어요. 예를 들어 호감도를
+                <span class="sc-code-i">최대 +8 / 최대 −15</span>로 설정하면 천천히 오르고 빠르게 떨어지도록 만들 수 있어요.</li>
+              <li>정기 계산에서 이미 처리하는 변화는 AI 안내문에 <b>중복 반영하지 말아 달라</b>고 적어 주세요.</li>
             </ul>
 
-            <h3>상태창 vs 프롬프트 — 누가 보나</h3>
+            <h3 id="sc-help-status">상태창과 프롬프트의 차이</h3>
             <table>
               <tr><th>항목</th><th>보는 쪽</th><th>쓰임</th></tr>
-              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 붙는 표. 숨기고 싶은 값은 빼면 된다</td></tr>
-              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>모델이 현재 상황을 알게 하는 블록</td></tr>
-              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>이 변수를 언제 얼마나 움직여야 하는지 힌트</td></tr>
+              <tr><td>상태창(statusUI)</td><td><b>유저</b></td><td>메시지에 표시하는 표예요. 숨길 값은 제외할 수 있어요.</td></tr>
+              <tr><td>프롬프트 상태(promptState)</td><td><b>메인 모델</b></td><td>현재 상황을 메인 모델에 알려주는 상태 블록이에요.</td></tr>
+              <tr><td>변수 설명(desc)</td><td><b>보조 모델</b></td><td>변수를 언제 얼마나 바꿔야 하는지 알려주는 설명이에요.</td></tr>
             </table>
-            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 이 차이를 쓴 예다 —
-              프롬프트에는 넣어 모델이 알게 하고, 상태창에서는 빼서 유저에게는 감춘다.</div>
+            <div class="sc-note">추리 템플릿의 <b>진상</b> 변수가 대표적인 예예요.
+              메인 모델은 진상을 알아야 하므로 프롬프트에는 포함하지만, 유저에게 숨겨야 하므로 상태창에서는 제외해요.</div>
 
-            <h3>수식에서 쓸 수 있는 것</h3>
+            <h3 id="sc-help-expr">수식에서 사용할 수 있는 표현</h3>
+            <span class="sc-example-label">지원 연산자와 함수</span>
             <pre class="sc-code">+ - * / %        비교: == != &gt; &lt; &gt;= &lt;=      and  or  not
 조건 ? 참값 : 거짓값
 round() floor() ceil() abs() min(a,b) max(a,b) clamp(값,최소,최대)
-rand(최소,최대)   ← 규칙·이벤트 효과에서만. 조건식에는 못 쓴다
+rand(최소,최대)   ← 규칙·이벤트 효과에서만 사용할 수 있어요. 조건식에서는 사용할 수 없어요.
 count(목록)  has(목록, "항목")</pre>
-            <div class="sc-note">대입·반복문·함수 정의는 없다. 봇 설정은 코드가 아니라 <b>표</b>여야 하기 때문이다.</div>
+            <div class="sc-note">대입문, 반복문, 사용자 함수 정의는 지원하지 않아요.
+              봇 설정을 코드가 아닌 안전한 <b>규칙표</b>로 처리하기 위한 제한이에요.</div>
+
           </div>
         </div>
         </div>
@@ -17181,7 +20028,22 @@ count(목록)  has(목록, "항목")</pre>
       const parsed = editor.getSchema();
       const v = validateSchema(parsed);
       if (!v.ok) {
-        rep.innerHTML = v.errors.map((x) => `<div class="status-bad">✗ ${escapeText(x.path)} — ${escapeText(x.msg)}</div>`).join('');
+        const needsFirstBuild = v.errors.some((x) => x.path === '$.vars' && x.msg === '변수가 하나도 정의되지 않음');
+        const title = needsFirstBuild
+          ? '작업본을 먼저 만들어 주세요.'
+          : `작업본에서 확인할 항목이 ${v.errors.length}개 있어요.`;
+        const copy = needsFirstBuild
+          ? '아직 설치할 내용이 없어요. 아래 [AI에게 맡기기]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
+          : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI에게 맡기기]에서 수정을 요청할 수도 있어요.';
+        const details = v.errors.map((x) => '<div class="sc-schema-validation-item">'
+          + `<span class="sc-schema-validation-path">${escapeText(x.path)}</span>`
+          + `<span class="sc-schema-validation-message">${escapeText(x.msg)}</span>`
+          + '</div>').join('');
+        rep.innerHTML = `<div class="sc-schema-validation${needsFirstBuild ? ' is-start' : ''}">`
+          + `<div class="sc-schema-validation-title">${escapeText(title)}</div>`
+          + `<div class="sc-schema-validation-copy">${escapeText(copy)}</div>`
+          + `<details><summary>세부 오류 ${v.errors.length}개</summary>${details}</details>`
+          + '</div>';
         return;
       }
       const r = await installSchemaToCurrentChar(parsed);
@@ -17429,17 +20291,15 @@ count(목록)  has(목록, "항목")</pre>
   // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
   // ⚙simcore(스키마) 항목은 뺀다 — 생성 프롬프트에 다이제스트로 이미 실리므로 이중 전송 금지.
   async function getBotContextForEditor() {
-    try {
-      const char = await Risuai.getCharacter();
-      if (!char) return null;
-      return {
-        name: char.name || '',
-        desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
-        lore: (char.globalLore || [])
-          .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
-          .map((l) => ({ name: l.comment || '', content: l.content || '' })),
-      };
-    } catch { return null; }
+    const char = await Risuai.getCharacter();
+    if (!char) throw new Error('현재 선택된 캐릭터를 찾지 못했습니다.');
+    return {
+      name: char.name || '',
+      desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
+      lore: (char.globalLore || [])
+        .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
+        .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+    };
   }
 
   function ensureEditor() {
@@ -17467,6 +20327,9 @@ count(목록)  has(목록, "항목")</pre>
         const btn = document.querySelector(`#sc-root .sc-maintab[data-floor="${f}"]`);
         if (btn) btn.click();
       },
+      isInstalled: () => panelStatus.state === 'ok',
+      getFirstInstallGuideDismissed,
+      setFirstInstallGuideDismissed,
     });
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);
@@ -17536,14 +20399,25 @@ count(목록)  has(목록, "항목")</pre>
   function renderPanel() {
     buildPanelSkeleton();
     const st = document.getElementById('sc-status');
+    const charName = String(panelStatus.charName || '').trim();
+    const namedCharacter = charName ? `'${charName}' 캐릭터` : '현재 캐릭터';
+    const loadedPrefix = charName ? `'${charName}' — ` : '';
     const stateMsg = {
       'no-char': ['선택된 캐릭터 없음', 'status-warn'],
-      'no-schema': [`'${panelStatus.charName}' 캐릭터에 SimCore 스키마 없음 — 아래 [스키마 관리]에서 JSON을 붙여넣고 설치하면 된다`, 'status-warn'],
-      'parse-error': [`'${panelStatus.charName}' 스키마 JSON 파싱 실패`, 'status-bad'],
-      'invalid': [`'${panelStatus.charName}' 스키마 검증 실패`, 'status-bad'],
-      'ok': [`'${panelStatus.charName}' — ${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI에게 맡기기나 JSON 작업대에서 작업본을 연 뒤 현재 캐릭터에 설치/업데이트하세요`, 'status-warn'],
+      'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
+      'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
+      'ok': [`${loadedPrefix}${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
       'init': ['초기화 중', 'muted'],
     }[panelStatus.state] || ['?', 'muted'];
+    const panelTone = (panelStatus.report || []).length
+      ? 'bad'
+      : (panelStatus.warnings || []).length || stateMsg[1] === 'status-warn'
+        ? 'warn'
+        : stateMsg[1] === 'status-bad'
+          ? 'bad'
+          : 'ok';
+    st.className = `sc-panel-status-${panelTone}`;
     let html = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`;
     for (const e of panelStatus.report || []) html += `<div class="report status-bad">✗ ${e.path} — ${e.msg}</div>`;
     for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
@@ -17555,16 +20429,21 @@ count(목록)  has(목록, "항목")</pre>
       const cur = editorSig();
       const installed = sig(schema ?? BLANK_SCHEMA());
       if (editor && cur !== null && cur !== installed) {
-        let what = '';
+        let editorSummary = '확인할 수 없어요.';
+        let installedSummary = schema ? '확인할 수 없어요.' : '아직 설치되지 않았어요.';
         try {
           const eS = editor.getSchema();
-          what = `편집기: '${eS.meta?.name ?? '이름 없음'}' 변수 ${(eS.vars || []).length}개`
-            + ` / 설치본: '${schema?.meta?.name ?? '없음'}' 변수 ${(schema?.vars || []).length}개`;
+          editorSummary = `'${eS.meta?.name ?? '이름 없음'}' · 변수 ${(eS.vars || []).length}개`;
+          if (schema) installedSummary = `'${schema.meta?.name ?? '이름 없음'}' · 변수 ${(schema.vars || []).length}개`;
         } catch {}
-        warnEl.innerHTML = '<div class="report status-warn">⚠ 편집기 내용이 이 캐릭터에 설치된 스키마와 다름 — '
-          + '지금 [현재 캐릭터에 설치/업데이트]를 누르면 설치본이 이 내용으로 덮어써진다. '
-          + '설치본을 보려면 [현재 캐릭터 스키마 불러오기]를 눌러줘.<br>'
-          + escapeText(what) + '</div>';
+        warnEl.innerHTML = '<div class="sc-editor-diff">'
+          + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
+          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [캐릭터에 적용]을 누르세요. '
+          + '기존 설치본으로 돌아가려면 [설치본 불러오기]를 누르세요.</div>'
+          + '<div class="sc-editor-diff-meta">'
+          + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
+          + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
+          + '</div></div>';
       } else {
         warnEl.innerHTML = '';
       }
@@ -17573,18 +20452,41 @@ count(목록)  has(목록, "항목")</pre>
     const varsDiv = document.getElementById('sc-vars');
     const actionsDiv = document.getElementById('sc-actions');
     const infoDiv = document.getElementById('sc-info');
+    const auxInfoDiv = document.getElementById('sc-aux-info');
+    const actionsCountEl = document.getElementById('sc-actions-count');
+    const engineBadgeEl = document.getElementById('sc-engine-badge');
     const hitStateEl = document.getElementById('sc-hitstate');
+    const hitBadgeEl = document.getElementById('sc-hit-badge');
+    const auxBadgeEl = document.getElementById('sc-aux-badge');
     if (hitStateEl) {
       const label = { idle: '아직 시도 안 함', pending: '패널이 닫히면 켜기를 시도', on: '✓ 켜짐',
         denied: '꺼짐 — mainDom 권한 없음 (거부했었다면 리수 설정 → 플러그인 → simcore 방패 아이콘으로 초기화)',
         error: '오류 — 콘솔 로그 확인' }[hitState] || hitState;
       const lc = hitLastClick ? ` · 마지막 클릭 (${hitLastClick.x},${hitLastClick.y}) 후보 ${hitLastClick.cand}개(상태창 ${hitLastClick.st ?? '?'}·조작줄 ${hitLastClick.strip ?? '?'}) ${hitLastClick.hit ? '→ 명중 ' + hitLastClick.hit.kind : '→ 명중 없음'}` : '';
-      hitStateEl.textContent = `클릭 조작: ${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
+      hitStateEl.textContent = `${label}${lc}${sugNotice ? ` · 제안 클릭: ${sugNotice}` : ''}`;
+      if (hitBadgeEl) {
+        const badge = { idle: ['확인 전', ''], pending: ['연결 대기', 'warn'], on: ['연결됨', 'ok'],
+          denied: ['권한 필요', 'warn'], error: ['오류', 'warn'] }[hitState] || [String(hitState), ''];
+        hitBadgeEl.textContent = badge[0];
+        hitBadgeEl.className = 'sc-card-badge' + (badge[1] ? ` ${badge[1]}` : '');
+      }
+    }
+    if (auxBadgeEl) {
+      const auxStatus = String(lastAux.status || '');
+      const badge = /성공|적용/.test(auxStatus) ? ['응답 확인', 'ok']
+        : /중|대기/.test(auxStatus) ? ['확인 중', 'warn']
+          : /실패|차단|오류|없음/.test(auxStatus) ? ['확인 필요', 'warn']
+            : ['확인 전', ''];
+      auxBadgeEl.textContent = badge[0];
+      auxBadgeEl.className = 'sc-card-badge' + (badge[1] ? ` ${badge[1]}` : '');
     }
     const presetsDiv = document.getElementById('sc-presets');
     if (!session) {
       varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
       infoDiv.textContent = ''; presetsDiv.textContent = '-';
+      if (auxInfoDiv) auxInfoDiv.textContent = '스키마 로드 후 표시';
+      if (actionsCountEl) actionsCountEl.textContent = '확인 전';
+      if (engineBadgeEl) { engineBadgeEl.textContent = '스키마 없음'; engineBadgeEl.className = 'sc-card-badge warn'; }
       return;
     }
 
@@ -17676,6 +20578,8 @@ count(목록)  has(목록, "항목")</pre>
         const tdAddBtn = document.createElement('td');
         const addBtn = document.createElement('button');
         addBtn.textContent = '추가';
+        addBtn.disabled = true;
+        addIn.oninput = () => { addBtn.disabled = !addIn.value.trim(); };
         addBtn.onclick = async () => {
           const text = addIn.value.trim();
           if (!text) return;
@@ -17695,20 +20599,47 @@ count(목록)  has(목록, "항목")</pre>
 
       tr.innerHTML = nameCell + `<td>${escapeText(String(cur))}</td>`;
       const tdIn = document.createElement('td');
-      const input = document.createElement('input');
+      const input = document.createElement(v.type === 'bool' ? 'select' : 'input');
+      if (v.type === 'bool') {
+        for (const [value, label] of [['true', '켜짐'], ['false', '꺼짐']]) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          input.appendChild(option);
+        }
+      }
       input.value = String(cur);
       tdIn.appendChild(input);
       const tdBtn = document.createElement('td');
       const btn = document.createElement('button');
-      btn.textContent = '적용';
-      btn.onclick = async () => {
+      const wasJustApplied = lastManualApply.id === v.id && Date.now() - lastManualApply.at < 1400;
+      btn.textContent = wasJustApplied ? '적용됨' : '적용';
+      const readEditedValue = () => {
         let val = input.value;
         if (v.type === 'int' || v.type === 'float') val = Number(val);
-        if (v.type === 'bool') val = val === 'true' || val === '1';
-        const to = engine.coerce(v, val);
+        if (v.type === 'bool') val = val === 'true';
+        return engine.coerce(v, val);
+      };
+      const syncApplyState = () => {
+        const to = readEditedValue();
+        const changed = to !== undefined && JSON.stringify(to) !== JSON.stringify(cur);
+        btn.disabled = !changed;
+        if (changed || !wasJustApplied) btn.textContent = '적용';
+      };
+      input.addEventListener('input', syncApplyState);
+      input.addEventListener('change', syncApplyState);
+      syncApplyState();
+      btn.onclick = async () => {
+        const to = readEditedValue();
         if (to === undefined) { btn.textContent = '거부됨'; setTimeout(() => (btn.textContent = '적용'), 1000); return; }
         session.current.vars[v.id] = to;
+        lastManualApply = { id: v.id, at: Date.now() };
         await commitVars();
+        setTimeout(() => {
+          if (lastManualApply.id !== v.id) return;
+          lastManualApply = { id: '', at: 0 };
+          if (panelVisible) renderPanel();
+        }, 1400);
       };
       tdBtn.appendChild(btn);
       tr.appendChild(tdIn);
@@ -17722,26 +20653,58 @@ count(목록)  has(목록, "항목")</pre>
     if (!(schema.actions || []).length) actionsDiv.textContent = '정의된 액션 없음';
     for (const a of schema.actions || []) {
       const avail = safeAvailability(a);
+      const item = document.createElement('div');
+      item.className = 'sc-action-item';
       const btn = document.createElement('button');
       const armed = !!session.current.meta.armed[a.id];
       btn.textContent = a.label + (armed ? ' ●' : '');
       btn.className = armed ? 'armed' : '';
-      btn.style.marginRight = '6px';
-      if (!avail.ok && !armed) { btn.disabled = true; btn.title = avail.reason; btn.style.opacity = .4; }
+      if (!avail.ok && !armed) {
+        const reason = document.createElement('span');
+        const reasonId = `sc-action-reason-${String(a.id).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        reason.id = reasonId;
+        reason.className = 'sc-action-reason';
+        reason.textContent = avail.reason || '현재 조건에서는 사용할 수 없어요.';
+        btn.disabled = true;
+        btn.title = reason.textContent;
+        btn.setAttribute('aria-describedby', reasonId);
+        item.appendChild(btn);
+        item.appendChild(reason);
+      } else {
+        item.appendChild(btn);
+      }
       btn.onclick = () => { session.toggle(a.id); syncControls(); renderPanel(); };
-      actionsDiv.appendChild(btn);
+      actionsDiv.appendChild(item);
     }
 
-    infoDiv.textContent =
-      `엔진 턴: ${session.current.meta.turn} / 마지막 출력 인덱스: ${lastOutIndex}\n` +
-      `대기 중 이벤트 통지: ${session.current.meta.pendingNotifies.length}건\n` +
-      `무장: ${Object.keys(session.current.meta.armed).join(', ') || '없음'}\n` +
-      `── 보조 모델 진단 ──\n` +
-      `상태: ${lastAux.status}\n` +
-      `마지막 턴 적용: ${lastAux.applied}건\n` +
-      `현재 스키마의 허용 변수: ${schema?.updater?.allow?.length ?? 0}개\n` +
-      (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}` : '') +
-      mentionGateWarning();
+    const armedIds = Object.keys(session.current.meta.armed);
+    const armedSummary = armedIds.join(', ') || '없음';
+    if (actionsCountEl) {
+      actionsCountEl.textContent = `${armedIds.length}개 선택`;
+      actionsCountEl.className = 'sc-card-badge' + (armedIds.length ? ' ok' : '');
+    }
+    if (engineBadgeEl) {
+      engineBadgeEl.textContent = '정상 작동';
+      engineBadgeEl.className = 'sc-card-badge ok';
+    }
+    const metrics = [
+      ['엔진 턴', session.current.meta.turn],
+      ['마지막 출력', lastOutIndex],
+      ['대기 이벤트', `${session.current.meta.pendingNotifies.length}건`],
+      ['무장 행동', armedSummary],
+      ['마지막 AI 적용', `${lastAux.applied}건`],
+      ['허용 변수', `${schema?.updater?.allow?.length ?? 0}개`],
+    ];
+    infoDiv.innerHTML = '<div class="sc-metric-grid">' + metrics.map(([label, value]) =>
+      `<div class="sc-metric"><span class="sc-metric-label">${escapeText(label)}</span>`
+      + `<strong class="sc-metric-value">${escapeText(value)}</strong></div>`).join('') + '</div>';
+    if (auxInfoDiv) {
+      auxInfoDiv.textContent =
+        `최근 호출 상태: ${lastAux.status}\n` +
+        `마지막 실제 턴 적용: ${lastAux.applied}건\n` +
+        (lastAux.raw ? `응답 원문(앞 200자): ${lastAux.raw}\n` : '') +
+        mentionGateWarning();
+    }
     // 모드/브리지 상태는 비동기로 뒤에 덧붙임
     Promise.all([Risuai.getArgument('aux_model_mode'), Risuai.getCharacter(), resolveAuxMode(), getAuxPath()])
       .then(([m, char, resolved, path]) => {
@@ -17749,9 +20712,11 @@ count(목록)  has(목록, "항목")</pre>
           : path === 'direct' ? '직접 호출 가능 확인됨' : '아직 판정 전 (첫 턴에 자동 판정)';
         let bridgeTxt = hasLuaBridge(char) ? '설치됨' : '없음';
         if (bridgeIsStale(char, schema)) bridgeTxt += ' ⚠ 현재 스키마와 불일치 — [루아 브리지 설치/갱신] 필요';
-        infoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
-          + `\n환경 판정: ${pathTxt}`
-          + `\n루아 브리지: ${bridgeTxt}`;
+        if (auxInfoDiv) {
+          auxInfoDiv.textContent += `\n설정: ${m || 'auto(기본)'} → 이번 턴 경로: ${resolved}`
+            + `\n환경 판정: ${pathTxt}`
+            + `\nLua 브리지: ${bridgeTxt}`;
+        }
       }).catch(() => {});
   }
 

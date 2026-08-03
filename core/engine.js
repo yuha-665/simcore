@@ -1177,7 +1177,7 @@ function commandSpecs(schema) {
         : v.type === 'enum'
           ? [[`${c} ${en.slice(0, 3).join(' / ')}${en.length > 3 ? ' / …' : ''}`, '선택지 중 하나로 바꾼다']]
           : v.type === 'bool'
-            ? [[`${c} on`, '켠다 (끄려면 off / 0 / false)']]
+            ? [[`${c} on`, '켠다 (끄려면 0 / false)']]
             : [[`${c} 내용`, '적은 그대로 넣는다']];
     return { cmd: v.cmd, id: v.id, label: v.label ?? v.id, type: v.type, usage };
   });

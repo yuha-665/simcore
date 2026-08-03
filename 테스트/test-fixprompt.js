@@ -141,10 +141,10 @@ for (const key of ['vars', 'actions', 'rules']) {
 
 // ── UI 배선 ──
 {
-  ck('진단 탭에 탭별 복사 버튼이 있음', src.includes('수정 요청 복사'), '');
+  ck('진단 탭에 탭별 복사 버튼이 있음', src.includes('탭 전체 요청서'), ''); // v0.66 문구 변경
   ck('복사 버튼이 findings와 stats를 넘김',
     src.includes('buildTabExportPrompt(schema, key, { findings, stats: diagResult.stats })'), '');
-  ck('진단 결과 전체 글 복사도 있음', src.includes('📋 진단 결과 전체를 글로 복사'), '');
+  ck('진단 결과 전체 글 복사도 있음', src.includes('진단 내용 복사'), ''); // v0.66 문구 변경
   ck('AI로 못 넘기는 지적은 따로 안내', src.includes('직접 고쳐야 합니다'), '');
 }
 

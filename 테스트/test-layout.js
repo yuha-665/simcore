@@ -209,10 +209,13 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('★ 편집기에 접두사 묶음 배치 버튼이 있다', src.includes('접두사로 그룹 묶어 배치'), '');
   ck('묶음 그룹은 기본 접힘으로 만든다', /visibility: 'collapsed',\s*\n\s*items: arr\.map\(mkItem\)/.test(src), '');
   ck('접두사 없는 나머지는 기타 그룹으로', src.includes("label: '기타', items: rest.map(mkItem)"), '');
+  // 문구가 아니라 **동작**을 본다 — v0.66 UI 재편에서 라벨만 바뀌고 로직은 그대로였는데
+  // 문구를 보던 옛 어서션이 깨졌다. 기능 손실과 이름 바뀜을 구별 못 하는 테스트는 쓸모가 적다.
   ck('★ 그룹 통째 합치기 셀렉트가 있다 (v0.44.2)',
-    src.includes('↪ 다른 그룹으로…') && src.includes('고른 그룹 끝에 붙이고'), '');
+    src.includes('다른 그룹에 합치기')
+    && src.includes('target.items = (target.items || []).concat(g.items || []);'), '');
   ck('★ 상태창 탭에 제목(meta.name) 칸이 있다 (v0.44.3 — 유일한 입력 경로)',
-    src.includes("pair('제목'") && src.includes('schema.meta.name = x.trim() || undefined'), '');
+    src.includes("statusField('상태창 제목'") && src.includes('schema.meta.name = x.trim() || undefined'), '');
 }
 
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──
@@ -221,7 +224,7 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   // v0.47.1부터 미리보기는 공유 함수(statusPreviewEl)로 — 상태창 탭 'pv', 1층 'pv1' 서로도 안 겹침
   ck('편집기 미리보기는 메시지와 안 겹치는 uid를 쓴다',
     /includeStyle: true, uid \}/.test(src) && src.includes("statusPreviewEl('pv')") && src.includes("statusPreviewEl('pv1')"), '');
-  ck('편집기에 배치 고르는 칸이 있다', src.includes("pair('그룹 배치'"), '');
+  ck('편집기에 배치 고르는 칸이 있다', src.includes("statusField('여러 그룹 배치'"), '');
   ck('편집기에서 뼈대를 뽑을 수 있다', src.includes("tplBtn('tabs'") && src.includes("tplBtn('popover'"), '');
   ck('★ 뼈대 덮어쓰기는 패널 UI로 확인받는다 (호스트 대화상자는 패널에 가려 못 쓴다)',
     src.includes('tplArm !== kind') && !/\bif \([^)]*!confirm\(/.test(src), '');

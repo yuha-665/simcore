@@ -113,13 +113,13 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
 // ── 번들 배선 스모크 — 위층·이층·어댑터 주입이 실제로 실려 있는지 ──
 {
   ck('★ 번들: 위층 "✨ AI에게 맡기기" 존재', src.includes('✨ AI에게 맡기기'), '');
-  ck('번들: 생성 버튼 + 취소 존재', src.includes("'✨ 생성'") && src.includes('✋ 취소'), '');
+  ck('번들: 생성 버튼 + 취소 존재', src.includes('작업본 생성') && src.includes('생성 취소'), ''); // v0.66 문구
   ck('★ 번들: 복붙 옆문 병행', src.includes('📋 복사해서 다른 AI에게'), '');
   ck('★ 번들: 아래층 접기 존재', src.includes('🧰 직접 만지기'), '');
   ck('번들: 계획 UI 공유 함수 (planBoxUI)', src.includes('function planBoxUI'), '');
   ck('번들: 형식 불합격 1회 재시도 문구', src.includes('방금 응답이 형식 검사에서 거부되었습니다'), '');
   ck('번들: 차단 환경 → 옆문 안내', src.includes('LLM 직접 호출이 차단되어'), '');
-  ck('번들: 통짜 반영 확인·되돌리기', src.includes('편집기에 반영') && src.includes('↩ 되돌리기 (반영 전으로)'), '');
+  ck('번들: 통짜 반영 확인·되돌리기', src.includes('편집기에 넣기') && src.includes('↩ 되돌리기 (반영 전으로)'), '');
   ck('★ 어댑터: getBotContext 배선 + ⚙simcore 제외', src.includes('getBotContextForEditor')
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
   ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',
@@ -131,17 +131,17 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('★ 번들: 3층에서 진단·JSON 탭 제거 (바디 맵 기준)',
     !src.includes('diag: tabDiag') && !src.includes('json: tabJson'), '');
   ck('★ 번들: 1층 내부 3탭 (창작/결과/진단)', src.includes('✍ 창작') && src.includes('👁 결과') && src.includes('🔬 진단'), '');
-  ck('★ 번들: 진단 → 바로 고쳐달라기 직결 버튼', src.includes('이 결과로 바로 고쳐달라기'), '');
+  ck('★ 번들: 진단 → 바로 고쳐달라기 직결 버튼', src.includes('부분 패치 만들기') && src.includes('runAiGenerate({ findings, stats: diagResult.stats })'), '');
   ck('번들: 직결 경로도 findings 모드 프롬프트', src.includes('findings: diag.findings'), '');
   ck('★ 패널: 사이드바 + 반응형 폴백', src.includes('sc-side') && src.includes('@media (min-width: 920px)'), '');
 
   // ── 1층 결과 창구 (v0.47.1~2) — 미리보기·CSS 직결·도감 ──
-  ck('★ 번들: 결과 탭 미리보기 안내', src.includes('지금 스키마가 그리는 상태창'), '');
+  ck('★ 번들: 결과 탭 미리보기 안내', src.includes('상태창 미리보기') && src.includes('현재 작업본의 시작값을 보여줍니다'), '');
   ck('번들: 미리보기 렌더러 공유 (statusPreviewEl)', src.includes('function statusPreviewEl'), '');
-  ck('★ 번들: CSS 직결 생성 + 되돌리기', src.includes('runCssGenerate') && src.includes('↩ 꾸미기 되돌리기'), '');
+  ck('★ 번들: CSS 직결 생성 + 되돌리기', src.includes('runCssGenerate') && src.includes("'꾸미기 되돌리기'"), '');
   ck('번들: CSS 응답 방어 (펜스·style 껍데기 제거)', src.includes("css.replace(/<\\/?style[^>]*>/g, '')"), '');
   ck('★ 번들: 만들어진 것들 도감', src.includes('📖 만들어진 것들') && src.includes('function catalogView'), '');
-  ck('번들: CSS 규격서에 분위기 문구 주입', src.includes('buildCssSpecPrompt(schema, cssReq)'), '');
+  ck('번들: CSS 규격서에 분위기 문구 주입', src.includes('buildCssSpecPrompt(schema, cssReq, cssDesignPolish)'), '');
 
   // ── 꾸미기 2모드 (v0.47.3) — 스킨 / 배치까지 ──
   ck('★ 번들: 스킨·배치 모드 선택', src.includes('🎨 스킨만') && src.includes('🖼 배치까지'), '');
@@ -149,8 +149,8 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
     src.includes('function buildLayoutSpecPrompt') && src.includes('id="tab1-{uid}"'), '');
   ck('★ 번들: 배치 적용은 원자적 (새 오류 → 통째 되돌림)',
     src.includes('생성된 템플릿이 검증에서 거부됐습니다'), '');
-  ck('번들: 되돌리기는 mode·template·customCSS 세 값 복원', src.includes('↩ 꾸미기 되돌리기'), '');
-  ck('번들: 커스텀 봇에서 스킨 헛손질 경고', src.includes('스킨 CSS(자동 배치 클래스 기준)가 힘을 못'), '');
+  ck('번들: 되돌리기는 mode·template·customCSS 세 값 복원', src.includes('cssBackup.customCSS;'), '');
+  ck('번들: 커스텀 봇에서 스킨 헛손질 경고', src.includes('스킨 CSS가 제대로 반영되지 않을 수 있어요'), '');
 
   // ── 층 = 사이드 내비 (v0.47.4) ──
   ck('★ 패널: 편집 3항목 사이드 내비 (data-floor)', src.includes('data-floor="top"')
@@ -162,7 +162,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   // ── 실패 사유 표면화 (v0.47.5) ──
   ck('★ 어댑터: 생성 실패가 { error: 사유 }로', src.includes('보조 경로: ${lastAux.status}')
     && src.includes('호출 예외: ${e.message}'), '');
-  ck('★ 편집기: 실패 사유를 화면에 그대로', src.includes('생성 호출 실패 — ') && src.includes('fatal.msg'), '');
+  ck('★ 편집기: 실패 사유를 화면에 그대로', src.includes('호출 실패 — ${fatal.msg}'), '');
   ck('★ 어댑터: 메인 경로 인증 실패 정조준 안내 (실기 확정)',
     src.includes('x-api-key|authentication_error') && src.includes('인증이 안 붙습니다'), '');
   ck('★ 모델 id 자동 읽기 (v0.47.7)', src.includes('async function getModelIds')

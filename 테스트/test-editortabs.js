@@ -229,6 +229,27 @@ if (ed) {
     .filter((m) => (m[2].match(/max-width:/g) || []).length > 1).map((m) => m[1].trim());
   ck('★ 한 규칙에 max-width가 두 번 들어간 곳이 없다 (뒤엣것이 조용히 이긴다)',
     dupes.length === 0, dupes.join(', '));
+
+  // ★ 심층 편집 탭의 작업 폭은 **한 숫자**여야 한다.
+  //   블록마다 px를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
+  //   네 군데로 갈라졌다. 새 상한을 px로 박으면 여기서 걸린다.
+  const DEEP = /^\.sce \.sce-(vars|variable|derived|command|status|assets|deep)-/;
+  const strays = [];
+  for (const m of css.matchAll(/(\.sce [^{]+)\{([^}]*)\}/g)) {
+    const sel = m[1].trim();
+    const w = m[2].match(/max-width:\s*([^;}]+)/);
+    if (!w || !DEEP.test(sel)) continue;
+    const v = w[1].trim();
+    // 허용: 공용 토큰 | 부모를 그대로 따름 | 화면 폭 기준(드래그 고스트) | 해제
+    if (/^var\(--sce-(work-w|variable-work-width)\)$/.test(v) || v === '100%'
+      || v.startsWith('calc(100vw') || v === 'none' || v === 'none !important') continue;
+    strays.push(`${sel} → ${v}`);
+  }
+  ck('★ 심층 편집 폭 상한이 공용 토큰 하나로 모여 있다 (px 직접 박기 금지)',
+    strays.length === 0, strays.join(' | '));
+  ck('심층 편집 몸통에 폭 상자가 씌워져 있다',
+    /\.sce \.sce-deep-body \{[^}]*max-width:var\(--sce-work-w\)/.test(css)
+    && src.includes("h('div', { class: 'sce-deep-body' }, body)"), '');
 }
 
 let p = 0, f = 0;

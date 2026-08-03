@@ -35,7 +35,7 @@ const CSS = `
   --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
   /* 심층 편집 한 탭 안의 모든 작업 상자가 공유하는 폭. 개별 상자에 숫자를 박으면
      새 상자를 넣을 때마다 하나씩 어긋난다 (실측: 소개 상자만 끝까지 늘어나 있었다). */
-  --sce-work-w:820px;
+  --sce-work-w:960px;
   color:var(--sce-text); font-family:var(--sc-font-body, 'Pretendard Variable', Pretendard,
     'SUIT Variable', 'Noto Sans KR', system-ui, sans-serif); font-size:14px; line-height:1.6;
   overflow-wrap:anywhere; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
@@ -491,7 +491,7 @@ const CSS = `
 .sce .sce-command-card-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; flex:none; }
 .sce .sce-command-card-body { margin-top:8px; padding-top:8px; border-top:1px solid var(--sce-line); }
 .sce .sce-command-grid { display:grid; grid-template-columns:240px minmax(0,1fr); gap:8px;
-  width:100%; max-width:680px; align-items:start; }
+  width:100%; max-width:100%; align-items:start; }
 .sce .sce-command-readonly { min-height:38px; display:flex; align-items:center; padding:6px 8px;
   border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); color:var(--sce-text); }
 .sce .sce-command-name-control { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; }
@@ -500,7 +500,7 @@ const CSS = `
   background:var(--sce-surface-soft); color:var(--sce-muted); font-family:var(--sc-font-mono,'D2Coding',monospace); }
 .sce .sce-command-name-control input { width:100% !important; min-width:0 !important; max-width:none !important;
   border-radius:0 4px 4px 0; }
-.sce .sce-command-usage { width:100%; max-width:680px; margin-top:9px; padding-top:8px;
+.sce .sce-command-usage { width:100%; max-width:100%; margin-top:9px; padding-top:8px;
   border-top:1px solid var(--sce-line); }
 .sce .sce-command-usage > strong { display:block; margin-bottom:4px; color:var(--sce-text-strong); font-size:12px; }
 .sce .sce-command-usage-line { display:grid; grid-template-columns:minmax(150px,auto) minmax(0,1fr);
@@ -516,7 +516,9 @@ const CSS = `
 .sce .sce-command-visibility.is-warning { border-left-color:var(--sce-warning); }
 .sce .sce-command-visibility strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
 .sce .sce-command-visibility p { margin:2px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.5; }
-.sce .sce-status-editor { width:100%; max-width:1040px; }
+/* 심층 편집 한 탭의 작업 폭 — 상한은 여기 하나로 끝난다 (deepBody가 씌우는 상자). */
+.sce .sce-deep-body { width:100%; max-width:var(--sce-work-w); }
+.sce .sce-status-editor { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-status-intro {
   width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
   background:var(--sce-field); }
@@ -607,13 +609,13 @@ const CSS = `
 .sce .sce-status-add-item { width:100%; margin-top:4px; }
 .sce .sce-status-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap;
   width:100%; max-width:var(--sce-work-w); margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-status-template { width:100%; max-width:960px; margin-top:12px; }
-.sce .sce-status-design { width:100%; max-width:960px; margin-top:15px; border-top:1px solid var(--sce-line-strong);
+.sce .sce-status-template { width:100%; max-width:var(--sce-work-w); margin-top:12px; }
+.sce .sce-status-design { width:100%; max-width:var(--sce-work-w); margin-top:15px; border-top:1px solid var(--sce-line-strong);
   border-bottom:1px solid var(--sce-line); }
 .sce .sce-status-design > summary { padding:11px 0; color:var(--sce-text-strong); font-size:13px;
   font-weight:750; cursor:pointer; }
 .sce .sce-status-design-body { padding:0 0 12px; }
-.sce .sce-status-preview { width:100%; max-width:960px; margin-top:15px; }
+.sce .sce-status-preview { width:100%; max-width:var(--sce-work-w); margin-top:15px; }
 .sce .sce-status-preview h4 { margin-bottom:7px; }
 .sce .sce-assets { min-width:0; }
 .sce .sce-assets-intro {
@@ -7508,9 +7510,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return tabs;
   }
 
+  // 심층 편집 몸통 — 폭 상한을 **여기 한 곳에서** 건다.
+  // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
+  // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    return { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
+    return h('div', { class: 'sce-deep-body' }, body);
   }
 
   // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.67.0
-//@display-name SimCore (시뮬 엔진) v0.67 미궁 탐사 템플릿
+//@version 0.68.0
+//@display-name SimCore (시뮬 엔진) v0.68 아포칼립스 템플릿
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.

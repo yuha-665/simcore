@@ -2670,6 +2670,379 @@ const DELVE = {
   },
 };
 
+// ── 좀비 아포칼립스 ──────────────────────────────────────────
+// 낮에 나가서 뒤지고, 밤에 은신처에서 버틴다.
+//
+// survival(혹한의 정착지)과 겹치지 않게 축을 다르게 잡았다.
+// 저쪽은 턴이 곧 하루고 자원이 고갈되는 이야기, 이쪽은 **시계가 실제로 흐르고
+// 모든 행동에 소음이라는 대가가 붙는** 이야기다.
+//
+// 손댈 자리를 알아보기 쉽게 축을 셋만 뒀다 — 이 셋만 이해하면 개조가 된다:
+//   ① 소음(noise)  모든 행동에 붙는 대가. 밤 습격 확률의 유일한 입력.
+//   ② 감염(bitten) 물리면 시작되는 시한. 밤을 넘길 때마다 1씩 는다. 약으로만 되돌린다.
+//   ③ 낮과 밤       낮엔 나가고, 밤엔 못 나간다. 🌙로 밤을 넘기며 하루가 정산된다.
+//
+// ⚠ 개조할 때 알아 둘 것 — 진단을 돌리면 "액션을 쓸수록 더 빨리 죽습니다"가 뜬다.
+// 결함이 아니라 시계가 명시적(explicit)이어서다. 진단의 "방치" 쪽은 아무 버튼도 안 누르니
+// 시간이 아예 안 흐르고, 시간이 안 흐르면 굶지도 감염이 진행되지도 않는다 — 영원히 산다.
+// 실제로는 밤을 넘겨야 판이 굴러가므로 이 비교 자체가 성립하지 않는다.
+// 이 템플릿의 난이도는 test-zombie.js가 실제 하루 리듬으로 굴려서 잰다.
+//
+// 여기에만 있는 것: **패배 조건이 bool 변수 하나(dead)로 명시돼 있다.**
+// 그래야 진단이 생존율과 프리셋 난이도를 자동으로 잰다 — 미궁 템플릿은 이게 없어서
+// "판이 끝나는 조건이 있어야 어느 쪽이 더 어려운지를 잴 수 있습니다" 경고가 떴다.
+const ZOMBIE = {
+  simcore: '0.1',
+  meta: { name: '아포칼립스 생존 기록', author: 'SimCore 템플릿' },
+  suggest: { count: 3, guide: '지금 시각과 남은 물자로 할 수 있는 행동. 하나는 소리를 덜 내는 쪽으로.' },
+  // 시계가 진짜로 흐른다. 밤에는 나갈 수 없으므로 낮의 길이가 곧 하루의 예산이다.
+  time: {
+    start: '2026-08-14 07:00', advance: 'explicit',
+    format: { date: 'M월 D일', clock: 'HH:mm' },
+    calendar: 'gregorian',
+  },
+  vars: [
+    // ── 지금 ──
+    { id: 'place', label: '장소', type: 'enum', init: '은신처',
+      enum: ['은신처', '주택가', '상가', '주유소', '병원'],
+      cmd: '장소',
+      desc: '지금 있는 곳. 나가기·돌아오기는 버튼이 하고, 어느 건물인지는 서사나 /장소 명령이 정한다. 병원일수록 약이 많지만 위험하다.' },
+    { id: 'noise', label: '소음', type: 'int', init: 10, min: 0, max: 100,
+      desc: '내가 낸 소리가 쌓인 값. 밤에 이만큼 몰려온다. 총을 쏘면 크게 오르고, 하루가 지나면 가라앉는다.' },
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 480,
+      desc: '이번 응답에서 흐른 시간(분). 짧은 대화는 0~10, 이동이나 수색은 30~120. 밤을 넘기는 건 버튼이 한다.' },
+    // ── 몸 ──
+    { id: 'hp', label: '체력', type: 'int', init: 70, min: 0, max: 100 },
+    { id: 'bitten', label: '감염', type: 'int', init: 0, min: 0, max: 5,
+      desc: '물린 뒤 진행된 정도. 0이면 멀쩡하다. 밤을 넘길 때마다 1씩 오르고 5가 되면 끝이다. 약으로만 되돌린다.' },
+    { id: 'hope', label: '희망', type: 'int', init: 60, min: 0, max: 100 },
+    { id: 'dead', label: '끝', type: 'bool', init: false,
+      desc: '판이 끝났는지. 시스템이 정하니 서사로 바꾸지 마라.' },
+    // ── 물자 ──
+    { id: 'food', label: '식량', type: 'int', init: 6, min: 0, max: 60, format: '{v}끼' },
+    { id: 'med', label: '약품', type: 'int', init: 1, min: 0, max: 20 },
+    { id: 'ammo', label: '탄약', type: 'int', init: 4, min: 0, max: 60, format: '{v}발' },
+    { id: 'loot', label: '주운 것', type: 'list', init: [], maxItems: 10, itemMaxLength: 20,
+      desc: '수색에서 건진 잡동사니. 물자로 안 잡히는 것들 — 라디오, 지도, 사진 같은 것.' },
+    // ── 은신처 ──
+    { id: 'barricade', label: '방벽', type: 'int', init: 50, min: 0, max: 100,
+      desc: '은신처를 막아 둔 정도. 밤 습격을 여기서 받아낸다. 습격마다 깎이고 보강으로 올린다.' },
+    // ── 사람 ──
+    { id: 'crew', label: '동료', type: 'list', init: ['정한', '미주'], maxItems: 6, itemMaxLength: 12,
+      desc: '함께 있는 사람들. 새로 받아들였을 때만 이름을 더해라 — 명단에 없는 사람은 조에 넣을 수 없다.' },
+    { id: 'scout1', label: '탐색조 1', type: 'enum', init: '정한',
+      enum: ['없음', '정한', '미주', '노경', '태식', '유리', '봄이'] },
+    { id: 'scout2', label: '탐색조 2', type: 'enum', init: '없음',
+      enum: ['없음', '정한', '미주', '노경', '태식', '유리', '봄이'] },
+    { id: 'guard1', label: '보초', type: 'enum', init: '미주',
+      enum: ['없음', '정한', '미주', '노경', '태식', '유리', '봄이'] },
+  ],
+  derived: [
+    // daily와 같은 방식 — 때를 hour에서 파생한다. 세는 곳이 하나면 어긋날 수가 없다
+    { id: 'tod', label: '때',
+      expr: "hour < 5 ? '새벽' : (hour < 11 ? '아침' : (hour < 17 ? '낮' : (hour < 20 ? '해질녘' : '밤')))" },
+    { id: 'is_night', label: '밤인가', expr: 'hour >= 20 or hour < 5' },
+    // 탐색조가 많을수록 수색이 잘 되고, 보초가 있어야 밤을 버틴다
+    { id: 'scouts', label: '탐색조',
+      expr: "(scout1 != '없음' ? 1 : 0) + (scout2 != '없음' ? 1 : 0)" },
+    { id: 'watch', label: '경계', expr: "guard1 != '없음' ? 20 : 0" },
+    // 밤에 몰려오는 양 — 소음이 유일한 입력이다. 여기 식 하나가 이 판의 난이도다
+    { id: 'horde', label: '예상 습격', expr: 'round(noise * 0.6)' },
+  ],
+  checks: [
+    // 장소가 문턱이고 탐색조가 보정이다. 밤에 나가면 크게 불리하다
+    { id: 'ck_scavenge', label: '수색 판정',
+      roll: "is_night ? min(rand(1, 20), rand(1, 20)) : rand(1, 20)",
+      mod: 'scouts * 3 - round(bitten * 1.5)',
+      vs: "place == '병원' ? 15 : (place == '주유소' ? 13 : (place == '상가' ? 11 : 9))",
+      grades: [
+        { when: 'roll == 20', label: '노다지',
+          inject: '손대지 않은 창고를 찾았다 — 오늘을 며칠로 늘려 준 발견으로 그려라.',
+          effects: [
+            { set: 'food', expr: 'min(food + 6, 60)' },
+            { set: 'med', expr: 'min(med + 2, 20)' },
+            { set: 'ammo', expr: 'min(ammo + 4, 60)' },
+            { set: 'hope', expr: 'min(hope + 10, 100)' },
+            { list: 'loot', add: ['쓸 만한 물건'] },
+          ] },
+        { when: 'roll == 1', label: '물렸다',
+          inject: '어디서 나왔는지 알 수 없는 손이 팔을 붙잡았다 — 물리는 순간으로 그려라. 이건 되돌릴 수 없다.',
+          effects: [
+            { set: 'hp', expr: 'max(hp - 18, 0)' },
+            { set: 'bitten', expr: 'max(bitten, 1)' },
+            { set: 'noise', expr: 'min(noise + 20, 100)' },
+            { set: 'hope', expr: 'max(hope - 15, 0)' },
+          ] },
+        { when: 'total >= vs', label: '수확',
+          effects: [
+            { set: 'food', expr: 'min(food + 3, 60)' },
+            { set: 'med', expr: "min(med + (place == '병원' ? 2 : 0), 20)" },
+            { set: 'noise', expr: 'min(noise + 8, 100)' },
+          ] },
+        { label: '빈손',
+          effects: [
+            { set: 'hp', expr: 'max(hp - 5, 0)' },
+            { set: 'noise', expr: 'min(noise + 12, 100)' },
+            { set: 'hope', expr: 'max(hope - 4, 0)' },
+          ] },
+      ] },
+  ],
+  actions: [
+    // ── 낮에 밖에서 ──
+    { id: 'scavenge', label: '🔦 뒤진다', mode: 'oneshot',
+      when: "place != '은신처' and not dead", check: 'ck_scavenge',
+      inject: '[행동] 이 건물을 뒤진다. 문을 열 때마다 숨을 죽인다.',
+      effects: [{ set: 'skip_min', expr: 'skip_min + 90' }] },
+    // 나가고 돌아오는 것만 버튼이 확정한다. **어느 건물인지는 서사가 정한다** —
+    // 목적지까지 버튼으로 만들면 액션이 다섯 개로 늘고, AI에게 맡기면 아예 못 나간다.
+    // 가운데를 택했다: 나가면 일단 주택가고, /장소 명령이나 서사로 옮겨 간다.
+    { id: 'go_out', label: '🚶 나간다', mode: 'oneshot',
+      when: "place == '은신처' and not dead",
+      inject: '[행동] 문을 열고 밖으로 나선다. 어디로 향하는지 정하라 — 주택가·상가·주유소·병원 중 하나이고, '
+        + '그 장소를 상태에 반영하라. 아무 말이 없으면 가까운 주택가다.',
+      effects: [
+        { set: 'place', expr: "'주택가'" },
+        { set: 'skip_min', expr: 'skip_min + 60' },
+        { set: 'noise', expr: 'min(noise + 5, 100)' },
+      ] },
+    { id: 'go_home', label: '🏚 은신처로 돌아간다', mode: 'oneshot',
+      when: "place != '은신처' and not dead",
+      inject: '[행동] 왔던 길로 돌아간다. 짐을 안고 문을 두드리는 장면으로.',
+      effects: [
+        { set: 'place', expr: "'은신처'" },
+        { set: 'skip_min', expr: 'skip_min + 60' },
+      ] },
+    { id: 'shoot', label: '🔫 쏜다', mode: 'oneshot',
+      when: 'ammo >= 1 and not dead',
+      inject: '[행동] 총을 쓴다. 확실하지만 소리가 멀리 간다.',
+      effects: [
+        { set: 'ammo', expr: 'max(ammo - 1, 0)' },
+        { set: 'noise', expr: 'min(noise + 25, 100)' },
+        { set: 'skip_min', expr: 'skip_min + 10' },
+      ] },
+    // ── 은신처에서 ──
+    { id: 'fortify', label: '🔨 방벽을 보강한다', mode: 'oneshot',
+      when: "place == '은신처' and not dead",
+      inject: '[행동] 판자와 못으로 문과 창을 다시 막는다.',
+      effects: [
+        { set: 'barricade', expr: 'min(barricade + 20, 100)' },
+        { set: 'noise', expr: 'min(noise + 10, 100)' },
+        { set: 'skip_min', expr: 'skip_min + 120' },
+      ] },
+    { id: 'treat', label: '💊 약을 쓴다', mode: 'oneshot',
+      when: 'med >= 1 and (bitten >= 1 or hp < 60) and not dead',
+      inject: '[행동] 남은 약을 쓴다. 물린 자리를 다시 소독하고 붕대를 간다.',
+      effects: [
+        { set: 'med', expr: 'max(med - 1, 0)' },
+        { set: 'bitten', expr: 'max(bitten - 2, 0)' },
+        { set: 'hp', expr: 'min(hp + 20, 100)' },
+        { set: 'skip_min', expr: 'skip_min + 30' },
+      ] },
+    { id: 'rest', label: '☕ 숨을 돌린다', mode: 'oneshot',
+      when: 'not dead',
+      inject: '[행동] 잠깐 앉아 숨을 고른다. 아무 일도 하지 않는 시간이 필요할 때가 있다.',
+      effects: [
+        { set: 'hope', expr: 'min(hope + 6, 100)' },
+        { set: 'skip_min', expr: 'skip_min + 60' },
+      ] },
+    // ── 하루를 닫는다 ──
+    // daily의 💤과 같은 계산 — 지금이 몇 시든 **다음 날 07:00**으로 간다.
+    // 감염·허기·소음 감쇠가 전부 여기서 하루치로 정산된다. 이 버튼이 이 템플릿의 심장이다.
+    { id: 'nightfall', label: '🌙 밤을 넘긴다', mode: 'oneshot', impactExempt: true,
+      when: 'not dead',
+      inject: '[행동] 불을 끄고 아침까지 버틴다. 밤에 무슨 소리를 들었는지 짧게 그려라.',
+      effects: [
+        { set: 'skip_min', expr: 'skip_min + ((1859 - hour * 60 - minute) % 1440) + 1' },
+        { set: 'food', expr: 'max(food - 2, 0)' },
+        { set: 'hp', expr: 'food <= 1 ? max(hp - 10, 0) : min(hp + 5, 100)' },
+        { set: 'bitten', expr: 'bitten >= 1 ? min(bitten + 1, 5) : 0' },
+        // 방벽과 보초가 습격을 받아낸다. 남은 몫이 사람에게 온다
+        { set: 'hp', expr: 'max(hp - max(horde - barricade - watch, 0), 0)' },
+        { set: 'barricade', expr: 'max(barricade - round(horde * 0.5), 0)' },
+        { set: 'noise', expr: 'max(round(noise * 0.4), 0)' },
+        { set: 'hope', expr: 'max(hope - 3, 0)' },
+      ] },
+  ],
+  rules: {
+    onTurn: [],
+    events: [
+      // 판을 끝내는 두 길. bool 하나로 명시해야 진단이 난이도를 잰다
+      { id: 'turned', when: 'bitten >= 5 and not dead',
+        notify: '열이 가라앉고 시야가 또렷해진다. 배가 고프지 않다. 이제 아무것도 무섭지 않다.',
+        effects: [{ set: 'dead', expr: '1' }] },
+      { id: 'bled_out', when: 'hp <= 0 and not dead',
+        notify: '더는 일어설 수 없다. 문 밖의 소리가 점점 가까워진다.',
+        effects: [{ set: 'dead', expr: '1' }] },
+      // 방벽이 무너지면 은신처를 잃는다 — 죽지는 않지만 밤이 훨씬 위험해진다
+      { id: 'breached', when: 'barricade <= 0 and hope > 0',
+        notify: '막아 둔 것이 다 무너졌다. 오늘 밤은 아무것도 우리를 가려 주지 않는다.',
+        effects: [{ set: 'hope', expr: 'max(hope - 20, 0)' }] },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.3,
+      table: [
+        { id: 'radio', weight: 2, cooldown: 8, when: 'not dead',
+          effects: [{ set: 'hope', expr: 'min(hope + 8, 100)' }],
+          notify: '라디오에서 사람 목소리가 잡혔다. 몇 초뿐이었지만 분명히 살아 있는 사람이었다.' },
+        { id: 'rain', weight: 2, cooldown: 6, when: 'not dead',
+          effects: [{ set: 'noise', expr: 'max(noise - 10, 0)' }],
+          notify: '비가 쏟아진다. 빗소리가 다른 모든 소리를 덮어 준다.' },
+        { id: 'rot', weight: 2, cooldown: 5, when: 'food >= 2 and not dead',
+          effects: [{ set: 'food', expr: 'max(food - 2, 0)' }],
+          notify: '더위에 남은 음식이 상했다. 여름은 아무것도 오래 두지 못하게 한다.' },
+        // ── 갈림길 둘 — 마지막 선택지는 조건 없이 둬야 타임아웃 자동 결정이 된다 ──
+        { id: 'stranger', weight: 3, cooldown: 10, timeout: 2,
+          when: "not dead and count(crew) < 6 and place == '은신처'",
+          notify: '문 두드리는 소리. 사람이다 — 혼자고, 다치지는 않은 것 같다. 들여보낼지 정해야 한다.',
+          choices: [
+            { label: '들인다',
+              inject: '문을 연다. 사람이 하나 늘면 손도 늘지만 먹을 입도 는다. '
+                + '이름을 정하고 동료 명단에 올려라.',
+              effects: [
+                { set: 'hope', expr: 'min(hope + 10, 100)' },
+                { set: 'food', expr: 'max(food - 1, 0)' },
+              ] },
+            { label: '물자만 쥐여 보낸다', when: 'food >= 2',
+              inject: '문틈으로 먹을 것을 밀어 준다. 미안하지만 여기까지다.',
+              effects: [
+                { set: 'food', expr: 'max(food - 2, 0)' },
+                { set: 'hope', expr: 'max(hope - 2, 0)' },
+              ] },
+            { label: '숨을 죽이고 기다린다',
+              inject: '아무 소리도 내지 않는다. 발소리가 멀어질 때까지.',
+              effects: [{ set: 'hope', expr: 'max(hope - 8, 0)' }] },
+          ] },
+        { id: 'the_horde', weight: 3, cooldown: 6, timeout: 2,
+          when: "not dead and place != '은신처'",
+          notify: '길 끝에서 무리가 이쪽으로 흘러온다. 아직 우리를 못 봤다.',
+          choices: [
+            { label: '조용히 물러선다',
+              inject: '한 걸음씩, 등을 보이지 않고 뒤로.',
+              effects: [{ set: 'skip_min', expr: 'skip_min + 45' }] },
+            { label: '뚫는다', when: 'ammo >= 2',
+              inject: '길이 하나뿐이다. 쏘면서 지나간다 — 소리가 멀리 갈 것이다.',
+              effects: [
+                { set: 'ammo', expr: 'max(ammo - 2, 0)' },
+                { set: 'noise', expr: 'min(noise + 35, 100)' },
+                { set: 'hp', expr: 'max(hp - 8, 0)' },
+              ] },
+            { label: '뭔가를 던져 시선을 돌린다',
+              inject: '먼 쪽으로 무언가를 던진다. 소리가 나는 쪽으로 무리가 돌아선다.',
+              effects: [
+                { set: 'noise', expr: 'min(noise + 10, 100)' },
+                { set: 'skip_min', expr: 'skip_min + 20' },
+              ] },
+          ] },
+      ],
+    },
+  },
+  directives: [
+    { id: 'is_bitten', when: 'bitten >= 1 and not dead',
+      text: '[상태] 물린 자리가 낫지 않는다 (감염 {bitten}/5). 열과 오한, 숨기려는 태도가 묘사에 배어나야 한다. '
+        + '밤을 넘길 때마다 나빠진다는 걸 본인도 안다.' },
+    { id: 'loud', when: 'noise >= 60 and not dead',
+      text: '[상태] 오늘 너무 시끄러웠다 (소음 {noise}). 어둠이 오기 전에 뭐라도 해야 한다는 초조함이 있어야 한다.' },
+    { id: 'starving', when: 'food <= 1 and not dead',
+      text: '[상태] 먹을 것이 거의 없다. 배고픔이 판단을 흐리고 말수를 줄인다.' },
+    { id: 'night_out', when: "is_night and place != '은신처' and not dead",
+      text: '[상태] 밤인데 밖에 있다. 보이는 게 거의 없고 소리에만 의지한다 — 가장 위험한 시간이다.' },
+    { id: 'ended', when: 'dead',
+      text: '[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 남은 사람들의 시점이나 뒤에 남은 흔적으로 마무리하라.' },
+  ],
+  updater: {
+    model: 'aux',
+    allow: [
+      { id: 'skip_min', maxGain: 240 },
+      { id: 'place' },
+      { id: 'hp', maxDelta: 20 },
+      { id: 'hope', maxDelta: 15 },
+      { id: 'noise', maxDelta: 25 },
+      { id: 'food', maxDelta: 4 },
+      { id: 'med', maxDelta: 2 },
+      { id: 'ammo', maxDelta: 4 },
+      { id: 'loot' },
+      // 새 사람은 문을 열어 준 턴에만 명단에 오른다 — 아무 때나 열면 스쳐 간 사람까지 동료가 된다
+      { id: 'crew', whenArmed: ['nightfall'] },
+    ],
+    guide: '장면에 실제로 나온 것만 반영하라. 감염(bitten)·방벽·끝남 여부는 시스템이 관리하니 건드리지 마라. '
+      + '흐른 시간은 장면 길이에 맞춰라 — 짧은 대화 0~10분, 이동이나 수색은 30~120분. '
+      + '밤을 넘기는 것은 버튼이 하니 시간으로 하루를 넘기지 마라. '
+      + '조 편성(탐색조·보초)은 플레이어가 정한다 — 바꾸지 마라. 동료 이름은 명단에 있는 것만 써라.',
+  },
+  promptState: {
+    position: 'history_end',
+    template: '[생존 현황] {date} {clock} ({tod}) · {place}\n'
+      + '체력 {hp} · 감염 {bitten}/5 · 희망 {hope}\n'
+      + '식량 {food} · 약품 {med} · 탄약 {ammo} · 방벽 {barricade}\n'
+      + '소음 {noise} (오늘 밤 예상 {horde}) · 탐색조 {scout1}/{scout2} · 보초 {guard1}\n'
+      + '함께: {crew}',
+    includeEvents: true,
+  },
+  party: {
+    label: '편성', icon: '🧟', empty: '없음', roster: 'crew',
+    note: '탐색조는 수색 판정을 올리고, 보초는 밤 습격을 받아낸다. 한 사람은 한 자리에만.',
+    tabs: [
+      { id: 'day', label: '탐색조',
+        slots: [{ var: 'scout1', label: '탐색조 1' }, { var: 'scout2', label: '탐색조 2' }],
+        actions: ['go_out', 'scavenge', 'go_home'],
+        note: '명단에 오른 사람만 넣을 수 있다.' },
+      { id: 'night', label: '밤',
+        slots: [{ var: 'guard1', label: '보초' }],
+        actions: ['fortify', 'nightfall'],
+        note: '보초가 있으면 밤에 오는 것을 20만큼 더 받아낸다.' },
+    ],
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    layout: 'accordion',
+    groups: [
+      { label: '지금', items: [
+        { var: 'place' }, { var: 'tod' },
+        { var: 'noise', bar: { max: 100 }, color: "noise >= 60 ? '#8a3b2e' : (noise >= 30 ? '#8a7340' : '#4a5a4a')" },
+        { var: 'horde' },
+      ] },
+      { label: '몸', items: [
+        { var: 'hp', bar: { max: 100 }, color: "hp <= 30 ? '#8a3b3b' : '#5a7a5a'" },
+        { var: 'bitten', showWhen: 'bitten >= 1', bar: { max: 5 }, color: "'#7a3b5a'" },
+        { var: 'hope', bar: { max: 100 }, color: "hope <= 25 ? '#7a3b2e' : '#5a6a8a'" },
+      ] },
+      { label: '물자', items: [
+        { var: 'food' }, { var: 'med' }, { var: 'ammo' },
+        { var: 'barricade', bar: { max: 100 }, color: "barricade <= 20 ? '#8a3b2e' : '#6a6a5a'" },
+        { var: 'loot', showWhen: 'count(loot) > 0' },
+      ] },
+      { label: '사람', items: [
+        { var: 'crew' },
+        { var: 'scout1', showWhen: "scout1 != '없음'" },
+        { var: 'scout2', showWhen: "scout2 != '없음'" },
+        { var: 'guard1', showWhen: "guard1 != '없음'" },
+      ] },
+    ],
+    // 형광등 꺼진 복도 — 바랜 초록과 녹
+    customCSS: `.sim-status { background:#12150f; border:1px solid #2f3a2a; border-radius:2px; color:#c2c8b8; }
+.sim-status summary { color:#8fae6a; letter-spacing:.14em; font-weight:700; }
+.sim-group-label { color:#77855f; letter-spacing:.18em; font-size:.78em; }
+.sim-label { color:#77855f; opacity:1; }
+.sim-value { color:#e6ead9; font-weight:700; }
+.sim-badge, .sim-tag { background:#1a1f15; color:#9ab86f; border:1px solid #3a462f; border-radius:2px; }
+.sim-bar { background:#0a0c08; height:8px; border:1px solid #2a3323; border-radius:1px; }
+.sim-action { border-color:#3a462f; color:#c2c8b8; border-radius:2px; background:#1a1f15; }
+.sim-action.sim-armed { border-color:#8fae6a; background:#232b1a; color:#d6e6ae; }
+.sim-log { color:#66705a; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'day3', label: '사흘째 — 아직 물자가 있다',
+        set: {} },
+      { id: 'lucky', label: '운이 좋았다 — 창고를 찾았다',
+        set: { food: 18, med: 4, ammo: 14, barricade: 80, hope: 75,
+          crew: ['정한', '미주', '노경'], scout2: '노경' } },
+      { id: 'bitten', label: '이미 물렸다 — 약이 한 대 남았다',
+        set: { bitten: 3, hp: 45, food: 3, med: 1, ammo: 1, barricade: 30, hope: 30 } },
+    ],
+  },
+};
+
 const TEMPLATES = {
   blank: { label: '빈 스키마 (최소)', schema: BLANK },
   daily: { label: '일상 — 하루의 기록 (날짜·시간·날씨·소지품)', schema: DAILY },
@@ -2685,6 +3058,7 @@ const TEMPLATES = {
   smith: { label: '대장간 — 무쇠와 장부 (금고 잠금·단조 판정·주문 갈림길)', schema: SMITH },
   fleet: { label: '함대 — 편성과 출격 (편성 탭·정비창·시설 버튼)', schema: FLEET },
   delve: { label: '미궁 탐사 — 원정과 귀환 (탭 상태창·진형 판정·노획 도박)', schema: DELVE },
+  zombie: { label: '아포칼립스 — 낮의 수색과 밤의 습격 (소음·감염 시한·은신처)', schema: ZOMBIE },
 };
 
-module.exports = { TEMPLATES, DELVE, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH, FLEET };
+module.exports = { TEMPLATES, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH, FLEET };

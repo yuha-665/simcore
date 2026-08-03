@@ -207,6 +207,70 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
     ev.effects.some((f) => f.set === 'late'), '');
 }
 
+// ── 장부: 수입은 적고, 지출은 잔고 차이로 역산한다 ──
+// 지출을 하나하나 적으면 반드시 빠지는 데가 생긴다. 실제로 하나 있었다 —
+// 레슨비는 편성표가 자금을 직접 쓰기 때문에 액션 효과로는 못 잡는다.
+{
+  const ledger = (st) => ({
+    funds: st.vars.funds, income: st.vars.income,
+    spend: D('spend', st.vars), balance: D('balance', st.vars),
+  });
+  let st = engine.initState(S); st.meta.setupDone = true;
+  ck('장부가 프로덕션 탭에 같이 있다 (따로 갈라 두지 않는다)', (() => {
+    const g = S.statusUI.groups.find((x) => x.label === '프로덕션').items.map((i) => i.var);
+    return ['funds', 'income', 'spend', 'balance', 'debt'].every((v2) => g.includes(v2))
+      && !S.statusUI.groups.some((x) => x.label === '장부');
+  })(), '');
+  ck('시작은 수지 0이다', ledger(st).balance === 0 && ledger(st).spend === 0, JSON.stringify(ledger(st)));
+
+  // 무대 보수는 수입으로 적힌다
+  Object.assign(st.vars, { job: '지역 라이브', job_days: 0 },
+    Object.fromEntries(['m1', 'm2', 'm3'].flatMap((m) => ['vo', 'da', 'vi'].map((k) => [`${m}_${k}`, 99]))));
+  st = engine.toggleAction(S, st, 'perform').state;
+  st = engine.sendPhase(S, st, { rng: seededRng('led', 1, 'a') }).state;
+  const afterStage = ledger(st);
+  ck('★ 무대 보수가 수입으로 적힌다', afterStage.income > 0 && afterStage.balance === afterStage.income,
+    JSON.stringify(afterStage));
+
+  // ★ 레슨비 — 편성표가 자금을 직접 쓰는데도 지출에 잡혀야 한다
+  const up = applyUpgrade(S, st, 'm1_vo');
+  ck('레슨을 찍을 수 있다 (검산 전제)', up.ok, up.reason || '');
+  if (up.ok) Object.assign(st.vars, up.changes);
+  const afterLesson = ledger(st);
+  ck('★ 레슨비가 지출에 잡힌다 (효과로는 못 잡는 돈이다)',
+    afterLesson.spend === afterStage.funds - afterLesson.funds,
+    `지출 ${afterLesson.spend} vs 실제 ${afterStage.funds - afterLesson.funds}`);
+
+  // 융자·상환은 벌거나 쓴 게 아니다 — 수지에서 빠져야 한다
+  let fin = engine.initState(S); fin.meta.setupDone = true;
+  fin.vars.funds = 100; fin.vars.month_open = 100;
+  fin = engine.toggleAction(S, fin, 'borrow').state;
+  fin = engine.sendPhase(S, fin, { rng: seededRng('led', 2, 'a') }).state;
+  ck('★ 융자는 수입이 아니다 (수지가 안 움직인다)',
+    fin.vars.funds > 100 && ledger(fin).balance === 0 && ledger(fin).spend === 0, JSON.stringify(ledger(fin)));
+  fin = engine.toggleAction(S, fin, 'repay').state;
+  fin = engine.sendPhase(S, fin, { rng: seededRng('led', 3, 'a') }).state;
+  ck('★ 상환도 지출이 아니다 (빚이 줄었을 뿐이다)', ledger(fin).balance === 0, JSON.stringify(ledger(fin)));
+
+  // 운영비는 잡힌다
+  const beforeNight = ledger(fin).spend;
+  fin = engine.toggleAction(S, fin, 'next_day').state;
+  fin = engine.sendPhase(S, fin, { rng: seededRng('led', 4, 'a') }).state;
+  ck('하루 운영비는 지출에 잡힌다', ledger(fin).spend > beforeNight, `${beforeNight} → ${ledger(fin).spend}`);
+
+  // 월말이 장부를 닫는다 — 닫기가 이자보다 먼저여야 이자가 어느 달에도 안 빠지지 않는다
+  const settle = S.rules.events.find((e) => e.id === 'settle');
+  const order = settle.effects.map((f) => f.set);
+  ck('★ 월말이 장부를 닫는다 (수입 0 · 기초 잔고 갱신)',
+    order.includes('income') && order.includes('month_open'), order.join(','));
+  ck('★ 장부를 닫고 나서 이자를 낸다 (이자가 사라지지 않는다)',
+    order.indexOf('month_open') < order.lastIndexOf('funds'), order.join(','));
+  ck('장부는 AI에게 안 연다', !S.updater.allow.some((a) => a.id === 'income' || a.id === 'month_open'), '');
+  ck('프리셋이 자금을 바꾸면 기초 잔고도 같이 바꾼다 (첫 달 장부가 안 어긋난다)',
+    S.setup.presets.every((p) => p.set.funds == null || p.set.month_open === p.set.funds),
+    S.setup.presets.map((p) => `${p.id}:${p.set.funds}/${p.set.month_open}`).join(' '));
+}
+
 // ── 무대 판정이 정말 능력치와 컨디션을 본다 ──
 {
   const roll = (vars) => {

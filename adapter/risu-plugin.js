@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.69.0
+//@version 0.69.1
 //@display-name SimCore (시뮬 엔진) v0.69 아이돌 템플릿
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //

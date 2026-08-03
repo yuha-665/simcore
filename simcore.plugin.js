@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.69.0
+//@version 0.69.1
 //@display-name SimCore (시뮬 엔진) v0.69 아이돌 템플릿
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -18022,6 +18022,15 @@ const IDOL = {
     { id: 'funds', label: '운용자금', type: 'int', init: 400, min: 0, max: 9999999, format: '{v}만원' },
     { id: 'debt', label: '빚', type: 'int', init: 1200, min: 0, max: 9999999, format: '{v}만원',
       desc: '월말마다 이자가 붙는다. 자금이 바닥나면 융자로 버틸 수 있지만 이자가 함께 커진다.' },
+    // ── 장부 ──
+    // 수입만 직접 적고 지출은 잔고 차이로 역산한다. 지출을 하나하나 적으면 반드시 빠지는
+    // 데가 생기는데, 실제로 여기 하나 있었다 — **레슨비는 편성표가 자금을 직접 쓰기 때문에
+    // 액션 효과로는 잡을 방법이 없다.** 기초 잔고를 기억해 두면 어디로 나갔든 다 걸린다.
+    { id: 'income', label: '이번 달 수입', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
+      desc: '이 달에 일해서 번 돈. 월말 정산에 0으로 돌아간다. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    { id: 'month_open', label: '이 달 기초 잔고', type: 'int', init: 400, min: 0, max: 9999999, format: '{v}만원',
+      desc: '이 달을 시작할 때의 운용자금. 지출은 이것과 지금 잔고의 차이로 역산한다. '
+        + '융자와 상환은 벌거나 쓴 게 아니라 돈의 자리만 옮긴 것이라 여기도 같이 움직여 수지에서 빠진다. 시스템이 관리한다.' },
     { id: 'settled', label: '정산한 달', type: 'int', init: 0, min: 0, max: 12,
       desc: '월말 정산을 끝낸 달. 같은 달에 두 번 정산되지 않게 잡아 두는 빗장이다. 서사로 바꾸지 마라.' },
     // ⚠ 이름에 over가 들어가야 진단이 이걸 패배 변수로 알아본다 (dead/lost/over/fail/… 중 하나).
@@ -18110,6 +18119,10 @@ const IDOL = {
     { id: 'job_pay', label: '일감 보수',
       expr: "job == '전국 투어' ? 1800 : (job == '싱글 수록' ? 1100 : (job == 'TV 음악방송' ? 700"
         + " : (job == '지역 라이브' ? 420 : (job == '잡지 화보' ? 280 : (job == '라디오 출연' ? 200 : (job == '거리 홍보' ? 120 : 0))))))" },
+    // 장부 두 줄 — 수지는 잔고 차이고, 지출은 "번 것 중 안 남은 것"이다.
+    // 이렇게 두면 레슨비처럼 편성표에서 바로 나가는 돈도 자동으로 지출에 들어온다
+    { id: 'balance', label: '이번 달 수지', expr: 'funds - month_open' },
+    { id: 'spend', label: '이번 달 지출', expr: 'max(income - balance, 0)' },
     // 랭킹은 낮을수록 위다. 인지도가 크게, 팬 수와 화제성이 거들어 밀어 올린다
     { id: 'ranking', label: '아이돌 랭킹',
       expr: 'max(1, 300 - round(awareness * 1.6) - round(fans / 400) - round(buzz * 0.6))' },
@@ -18129,6 +18142,7 @@ const IDOL = {
             { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.08)), 100)' },
             { set: 'fans', expr: 'min(fans + round(job_pay * 3), 9999999)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 1.6), 9999999)' },
+            { set: 'income', expr: 'min(income + round(job_pay * 1.6), 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 1.2), 9999999)' },
             { set: 'm2_fan', expr: 'min(m2_fan + round(job_pay * p2 * 1.2), 9999999)' },
             { set: 'm3_fan', expr: 'min(m3_fan + round(job_pay * p3 * 1.2), 9999999)' },
@@ -18145,6 +18159,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 8, 100)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 0.3), 9999999)' },
+            { set: 'income', expr: 'min(income + round(job_pay * 0.3), 9999999)' },
             { set: 'm1_me', expr: 'max(m1_me - round(p1 * 14), 0)' },
             { set: 'm2_me', expr: 'max(m2_me - round(p2 * 14), 0)' },
             { set: 'm3_me', expr: 'max(m3_me - round(p3 * 14), 0)' },
@@ -18160,6 +18175,7 @@ const IDOL = {
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
             { set: 'fans', expr: 'min(fans + job_pay, 9999999)' },
             { set: 'funds', expr: 'min(funds + job_pay, 9999999)' },
+            { set: 'income', expr: 'min(income + job_pay, 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 0.4), 9999999)' },
             { set: 'm2_fan', expr: 'min(m2_fan + round(job_pay * p2 * 0.4), 9999999)' },
             { set: 'm3_fan', expr: 'min(m3_fan + round(job_pay * p3 * 0.4), 9999999)' },
@@ -18175,6 +18191,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 4, 100)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 0.6), 9999999)' },
+            { set: 'income', expr: 'min(income + round(job_pay * 0.6), 9999999)' },
             { set: 'm1_me', expr: 'max(m1_me - round(p1 * 6), 0)' },
             { set: 'm2_me', expr: 'max(m2_me - round(p2 * 6), 0)' },
             { set: 'm3_me', expr: 'max(m3_me - round(p3 * 6), 0)' },
@@ -18271,6 +18288,8 @@ const IDOL = {
       effects: [
         { set: 'funds', expr: 'min(funds + 500, 9999999)' },
         { set: 'debt', expr: 'min(debt + 560, 9999999)' },
+        // 융자는 번 돈이 아니라 자리를 옮긴 돈이다 — 기초 잔고를 같이 올려 수지에서 뺀다
+        { set: 'month_open', expr: 'min(month_open + 500, 9999999)' },
       ] },
     { id: 'repay', label: '💴 빚을 갚는다', mode: 'oneshot',
       when: 'funds >= 200 and debt >= 1 and not unit_over',
@@ -18278,6 +18297,8 @@ const IDOL = {
       effects: [
         { set: 'funds', expr: 'max(funds - 200, 0)' },
         { set: 'debt', expr: 'max(debt - 200, 0)' },
+        // 상환도 마찬가지 — 손해를 본 게 아니라 빚이 줄었을 뿐이라 수지에는 안 잡힌다
+        { set: 'month_open', expr: 'max(month_open - 200, 0)' },
       ] },
     // ── 하루를 닫는다 ──
     // 이 버튼이 이 템플릿의 심장이다. D-day가 여기서 줄고, 펑크도 여기서 확정된다.
@@ -18330,10 +18351,14 @@ const IDOL = {
         notify: '월말이다. 장부를 펴고 이자와 밀린 것들을 셈한다.',
         effects: [
           { set: 'settled', expr: 'month' },
-          { set: 'debt', expr: 'min(debt + max(round(debt * 0.05) - funds, 0), 9999999)' },
-          { set: 'funds', expr: 'max(funds - round(debt * 0.05), 0)' },
           // 펑크도 달이 바뀌면 하나씩 잊힌다 — 안 그러면 한 번 무너진 신용이 영영 안 돌아온다
           { set: 'late', expr: 'max(late - 1, 0)' },
+          // ⚠ 순서 — 장부를 먼저 닫고 이자를 낸다. 이자를 먼저 빼면 그 달에도 다음 달에도
+          // 안 잡히는 돈이 된다. 이자는 새 달 1일에 나가는 첫 지출로 잡힌다.
+          { set: 'income', expr: '0' },
+          { set: 'month_open', expr: 'funds' },
+          { set: 'debt', expr: 'min(debt + max(round(debt * 0.05) - funds, 0), 9999999)' },
+          { set: 'funds', expr: 'max(funds - round(debt * 0.05), 0)' },
         ] },
       // 판을 끝내는 두 길. 빚이 아니라 사람이 먼저다 — 무리한 스케줄이 곧 패배다
       { id: 'burnout', when: 'not unit_over and (m1_me <= 0 or m2_me <= 0 or m3_me <= 0)',
@@ -18422,6 +18447,8 @@ const IDOL = {
       text: '[상태] {job}까지 {job_days}일 남았다. 준비하는 시간의 초조함이 장면에 배어나야 한다.' },
     { id: 'worn', when: 'u_cond <= 35 and not unit_over',
       text: '[상태] 무대에 서는 사람들이 지쳐 있다 (유닛 컨디션 {u_cond}). 웃는 얼굴 뒤가 비치는 묘사를 넣어라.' },
+    { id: 'red', when: 'balance < 0 and not unit_over',
+      text: '[상태] 이 달은 적자다 (수입 {income} · 지출 {spend}). 프로듀서가 장부를 덮어 두는 장면이 어울린다.' },
     { id: 'heavy', when: 'debt >= 3000 and not unit_over',
       text: '[상태] 빚이 {debt}만원이다. 프로듀서는 이걸 셋에게 말하지 않고 있다.' },
     { id: 'hot', when: 'buzz >= 70 and not unit_over',
@@ -18449,6 +18476,7 @@ const IDOL = {
     template: '[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n'
       + '인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n'
       + '자금 {funds} · 빚 {debt} · 펑크 {late}회\n'
+      + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
       + '일감 {job} (남은 {job_days}일) · 의상 {costume}\n'
       + '센터 {center} / 사이드 {side1} · {side2} · 유닛 컨디션 {u_cond}\n'
       + '유나 {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n'
@@ -18491,6 +18519,8 @@ const IDOL = {
     mode: 'auto', collapsible: true,
     layout: 'tabs',
     groups: [
+      // 장부를 프로덕션 탭에 합쳐 둔다 — 등급·인지도를 보는 눈과 돈을 보는 눈이 같아서,
+      // 갈라 두면 "이 인지도를 사려고 얼마를 썼나"를 두 탭을 오가며 봐야 했다.
       { label: '프로덕션', items: [
         { var: 'rank' },
         { var: 'ranking' },
@@ -18498,9 +18528,10 @@ const IDOL = {
         { var: 'buzz', bar: { max: 100 }, color: "buzz >= 70 ? '#d4506a' : (buzz <= 10 ? '#4a4a5a' : '#8a5a8a')" },
         { var: 'fans' },
         { var: 'sales', showWhen: 'sales > 0' },
-      ] },
-      { label: '장부', items: [
         { var: 'funds' },
+        { var: 'income' },
+        { var: 'spend' },
+        { var: 'balance', color: "balance < 0 ? '#a8443a' : '#6a8a7a'" },
         { var: 'debt', color: "debt >= 3000 ? '#a8443a' : '#6a5a7a'" },
         { var: 'late', showWhen: 'late > 0' },
       ] },
@@ -18560,7 +18591,7 @@ const IDOL = {
         set: {} },
       { id: 'hit', label: '한 번 터졌다 — 다음이 어렵다',
         set: {
-          rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200, funds: 900, debt: 900,
+          rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200, funds: 900, month_open: 900, debt: 900,
           costume: '제작 의상',
           m1_vo: 52, m1_da: 40, m1_vi: 44, m1_love: 48, m1_fan: 5200,
           m2_vo: 36, m2_da: 58, m2_vi: 42, m2_love: 40, m2_fan: 4100,
@@ -18568,7 +18599,7 @@ const IDOL = {
         } },
       { id: 'debtor', label: '빚에 눌려 — 셋을 지킬 수 있을까',
         set: {
-          funds: 320, debt: 1900, late: 1, buzz: 8,
+          funds: 320, month_open: 320, debt: 1900, late: 1, buzz: 8,
           costume: '연습복',
           m1_st: 48, m1_me: 40, m1_love: 18,
           m2_st: 52, m2_me: 36, m2_love: 14,

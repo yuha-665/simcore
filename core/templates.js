@@ -2293,6 +2293,383 @@ const FLEET = {
   },
 };
 
+// ── 미궁 탐사 ────────────────────────────────────────────────
+// 원정형 · 무한 깊이. 지상(depth 0)과 지하를 오간다.
+//
+// 이 템플릿이 가르치는 것 (다른 12종에 없는 것들):
+// - statusUI.layout: 'tabs'  — v0.38 기능인데 지금까지 어느 템플릿도 안 썼다.
+//   층·진형·소지·기록이 한 화면에 다 쌓이면 못 읽는다. 탭이 필요한 첫 템플릿.
+// - 판정 둘이 서로 다른 굴림 규칙을 쓴다 (어둠이면 불리 / 함정은 문턱이 더 높다)
+// - 편성 슬롯이 **전투력에 직접 들어간다** (fleet은 출격 자격, 여기는 판정 보정)
+// - whenArmed 두 번째 사용처 — 동료 영입 턴에만 명단을 연다 (smith의 금고와 같은 규율)
+//
+// 설계의 축: **노획물(haul)은 귀환해야 금화가 된다.**
+// 목록으로 하면 통째로 비울 방법이 없고(add/remove/expire뿐), 무엇보다 숫자여야
+// "지금 돌아갈까, 한 층 더 갈까"가 매 턴 저울질이 된다. 쓰러지면 haul을 잃는다 —
+// 원정형이라 캐릭터는 안 죽지만, 잃을 것이 없으면 깊이가 무섭지 않다.
+const DELVE = {
+  simcore: '0.1',
+  meta: { name: '미궁 탐사 기록', author: 'SimCore 템플릿' },
+  suggest: { count: 3, guide: '지금 있는 층과 남은 보급으로 할 수 있는 행동. 하나는 물러설 여지를 남겨라.' },
+  vars: [
+    // ── 탐사 ──
+    { id: 'depth', label: '층', type: 'int', init: 0, min: 0, max: 99,
+      desc: '0이면 지상(마을). 1층부터가 미궁 안이다. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    { id: 'torch', label: '횃불', type: 'int', init: 10, min: 0, max: 30,
+      desc: '지하에서 매 턴 하나씩 탄다. 0이 되면 어둠 속이라 모든 판정이 불리해진다.' },
+    { id: 'rations', label: '식량', type: 'int', init: 12, min: 0, max: 40,
+      desc: '지하에서 매 턴 하나씩 준다. 떨어지면 굶주려 체력이 깎인다.' },
+    { id: 'stairs', label: '계단', type: 'bool', init: false,
+      desc: '이 층의 내려가는 계단을 찾았는지. 시스템 플래그라 서사로 바꾸지 마라.' },
+    { id: 'anchor', label: '귀환 지점', type: 'int', init: 1, min: 1, max: 99, format: '{v}층',
+      desc: '살아서 돌아온 가장 깊은 층. 다음 잠행은 여기서 시작한다. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    // ── 파티 ──
+    { id: 'hp', label: '체력', type: 'int', init: 60, min: 0, max: 999,
+      desc: '일행 전체의 여력. 0이 되면 간신히 기어나와 지상으로 돌아가고 노획물을 잃는다.' },
+    { id: 'wound', label: '부상', type: 'int', init: 0, min: 0, max: 5,
+      desc: '누적 상처. 하나당 판정이 2씩 불리해진다. 지상에서 돈을 들여야만 낫는다.' },
+    { id: 'morale', label: '사기', type: 'int', init: 70, min: 0, max: 100 },
+    { id: 'front1', label: '전열 1', type: 'enum', init: '가르한',
+      enum: ['없음', '가르한', '이슬비', '노루', '무명', '바위손', '실솔'] },
+    { id: 'front2', label: '전열 2', type: 'enum', init: '없음',
+      enum: ['없음', '가르한', '이슬비', '노루', '무명', '바위손', '실솔'] },
+    { id: 'back1', label: '후열 1', type: 'enum', init: '이슬비',
+      enum: ['없음', '가르한', '이슬비', '노루', '무명', '바위손', '실솔'] },
+    { id: 'back2', label: '후열 2', type: 'enum', init: '없음',
+      enum: ['없음', '가르한', '이슬비', '노루', '무명', '바위손', '실솔'] },
+    { id: 'roster', label: '동료', type: 'list', init: ['가르한', '이슬비'], maxItems: 6, itemMaxLength: 12,
+      desc: '함께 내려갈 수 있는 사람들. 술집에서 새로 구했을 때만 이름을 더해라 — 명단에 없는 사람은 진형에 앉힐 수 없다.' },
+    // ── 소지 ──
+    { id: 'gold', label: '금화', type: 'int', init: 120, min: 0, max: 99999, format: '{v}닢' },
+    { id: 'haul', label: '노획', type: 'int', init: 0, min: 0, max: 9999, format: '{v}닢어치',
+      desc: '이번 잠행에서 주운 것. 지상으로 살아 돌아가야 금화가 된다. 쓰러지면 전부 잃는다.' },
+    { id: 'relics', label: '유물', type: 'list', init: [], maxItems: 8, itemMaxLength: 20,
+      desc: '깊은 곳에서만 나오는 물건. 쓰러져도 잃지 않는다.' },
+    // ── 기록 ──
+    { id: 'best_depth', label: '최고 도달', type: 'int', init: 0, min: 0, max: 99, format: '{v}층',
+      desc: '기록이다. 시스템이 갱신하니 서사로 바꾸지 마라.' },
+    { id: 'hall', label: '지금 있는 곳', type: 'text', init: '지상 — 미궁 입구의 마을', maxLength: 60,
+      desc: '이 층의 생김새를 한 줄로. 층을 옮기거나 방을 옮기면 갱신하라.' },
+  ],
+  derived: [
+    // 동료가 늘면 버틸 힘도 늘어난다 — 영입에 값을 치를 이유
+    { id: 'max_hp', label: '최대 체력', expr: '40 + count(roster) * 12' },
+    // 편성이 곧 전투력이다. 전열이 더 크게 실린다 — 앞에 세울 사람을 고르게 만든다
+    { id: 'power', label: '전투력',
+      expr: "(front1 != '없음' ? 3 : 0) + (front2 != '없음' ? 3 : 0)"
+        + " + (back1 != '없음' ? 2 : 0) + (back2 != '없음' ? 2 : 0)" },
+    // 무한 미궁의 유일한 난이도 곡선 — 층이 곧 문턱
+    { id: 'danger', label: '위험도', expr: '8 + depth' },
+    { id: 'light', label: '시야', expr: "torch > 0 ? '밝음' : '어둠'" },
+  ],
+  checks: [
+    // 어둠이면 두 번 굴려 낮은 쪽 — 횃불을 아끼다 판정이 무너지는 걸 몸으로 알게 한다
+    { id: 'ck_delve', label: '탐색 판정',
+      roll: "light == '어둠' ? min(rand(1, 20), rand(1, 20)) : rand(1, 20)",
+      mod: 'power - wound * 2', vs: 'danger',
+      grades: [
+        { when: 'roll == 20', label: '대발견',
+          inject: '벽 너머에 손대지 않은 방이 있었다 — 이 층에서 가장 값진 것을 찾아낸 순간으로 그려라.',
+          effects: [
+            { set: 'haul', expr: 'haul + 60 + depth * 20' },
+            { set: 'morale', expr: 'min(morale + 8, 100)' },
+            { list: 'relics', add: ['이름 없는 유물'] },
+          ] },
+        { when: 'roll == 1', label: '참사',
+          inject: '발밑이 무너지거나 잘못된 것을 건드렸다 — 일행이 크게 다치는 참사로 그려라.',
+          effects: [
+            { set: 'hp', expr: 'max(hp - (10 + depth * 3), 0)' },
+            { set: 'wound', expr: 'min(wound + 1, 5)' },
+            { set: 'morale', expr: 'max(morale - 12, 0)' },
+          ] },
+        { when: 'total >= vs', label: '수확',
+          effects: [
+            { set: 'haul', expr: 'haul + 20 + depth * 8' },
+            { set: 'morale', expr: 'min(morale + 3, 100)' },
+          ] },
+        { label: '허탕',
+          effects: [
+            { set: 'hp', expr: 'max(hp - (5 + depth), 0)' },
+            { set: 'morale', expr: 'max(morale - 4, 0)' },
+          ] },
+      ] },
+    // 함정은 전투력이 덜 먹는다 — 눈썰미의 영역이라 문턱만 높다
+    { id: 'ck_trap', label: '함정 판정',
+      roll: 'rand(1, 20)', mod: 'power - wound * 2', vs: 'danger + 3',
+      grades: [
+        { when: 'total >= vs', label: '간파',
+          inject: '먼저 알아채고 피했다 — 아슬아슬하게 비켜선 순간으로 짧게 그려라.' },
+        { label: '적중',
+          inject: '피할 새가 없었다 — 함정이 일행을 덮치는 장면으로 그려라.',
+          effects: [
+            { set: 'hp', expr: 'max(hp - (8 + depth * 2), 0)' },
+            { set: 'wound', expr: 'min(wound + 1, 5)' },
+          ] },
+      ] },
+  ],
+  actions: [
+    // ── 지하 ──
+    { id: 'delve', label: '⛏ 파헤친다', mode: 'oneshot',
+      when: 'depth > 0', check: 'ck_delve',
+      inject: '[행동] 이 층을 더 뒤진다. 벽을 두드리고 문을 열어 본다.' },
+    { id: 'descend', label: '🪜 더 내려간다', mode: 'oneshot',
+      when: 'depth > 0 and stairs',
+      inject: '[행동] 찾아낸 계단으로 한 층 더 내려간다. 공기가 달라진다.',
+      effects: [
+        { set: 'depth', expr: 'min(depth + 1, 99)' },
+        { set: 'stairs', expr: '0' },
+        { set: 'morale', expr: 'max(morale - 3, 0)' },
+      ] },
+    { id: 'camp', label: '🏕 야영한다', mode: 'oneshot',
+      when: 'depth > 0 and rations >= 2',
+      inject: '[행동] 막다른 방을 골라 불을 피우고 눈을 붙인다.',
+      effects: [
+        { set: 'rations', expr: 'max(rations - 2, 0)' },
+        { set: 'hp', expr: 'min(hp + round(max_hp * 0.3), max_hp)' },
+        { set: 'morale', expr: 'min(morale + 6, 100)' },
+      ] },
+    { id: 'retreat', label: '⬆ 지상으로 돌아간다', mode: 'oneshot',
+      when: 'depth > 0',
+      inject: '[행동] 왔던 길을 되짚어 올라간다. 이번 잠행은 여기까지다.',
+      effects: [
+        { set: 'gold', expr: 'min(gold + haul, 99999)' },
+        { set: 'haul', expr: '0' },
+        { set: 'anchor', expr: 'max(anchor, depth)' },
+        { set: 'depth', expr: '0' },
+        { set: 'stairs', expr: '0' },
+        { set: 'hall', expr: "'지상 — 미궁 입구의 마을'" },
+        { set: 'morale', expr: 'min(morale + 8, 100)' },
+      ] },
+    // ── 지상 ──
+    { id: 'enter', label: '🕳 미궁으로 내려간다', mode: 'oneshot',
+      when: 'depth == 0 and torch > max(anchor - 1, 0)',
+      inject: '[행동] 입구의 찬 공기를 지나 지난번 돌아온 깊이까지 익숙한 길로 내려간다.',
+      effects: [
+        { set: 'depth', expr: 'max(anchor, 1)' },
+        { set: 'torch', expr: 'max(torch - max(anchor - 1, 0), 0)' },
+        { set: 'stairs', expr: '0' },
+      ] },
+    // ⚠ 교착 방지 — 이게 없으면 판이 죽는다.
+    // 실측: 횃불 0 · 금화 28에서 영구 정지했다. 보급은 50이 필요하고, 금화는 내려가야 벌리고,
+    // 내려가려면 횃불이 필요하다. 어느 프리셋의 문제가 아니라 누구나 빠질 수 있는 구멍이었다.
+    // 조건 없이 언제나 눌리는 소액 수입을 지상에 하나 둬서 바닥을 받친다.
+    { id: 'odd_job', label: '🪣 삯일을 한다', mode: 'oneshot',
+      when: 'depth == 0',
+      inject: '[행동] 하루 품을 판다. 짐을 나르거나 허드렛일을 하고 몇 닢을 받는다.',
+      effects: [
+        { set: 'gold', expr: 'min(gold + 20, 99999)' },
+        { set: 'morale', expr: 'max(morale - 2, 0)' },
+      ] },
+    { id: 'supply', label: '🛒 보급한다', mode: 'oneshot',
+      when: 'depth == 0 and gold >= 50',
+      inject: '[행동] 잡화점에서 횃불과 마른 식량을 사들인다.',
+      effects: [
+        { set: 'gold', expr: 'max(gold - 50, 0)' },
+        { set: 'torch', expr: 'min(torch + 8, 30)' },
+        { set: 'rations', expr: 'min(rations + 8, 40)' },
+      ] },
+    { id: 'heal', label: '🩹 상처를 돌본다', mode: 'oneshot',
+      when: 'depth == 0 and wound >= 1 and gold >= 80',
+      inject: '[행동] 의원을 찾아 상처를 제대로 꿰맨다.',
+      effects: [
+        { set: 'gold', expr: 'max(gold - 80, 0)' },
+        { set: 'wound', expr: 'max(wound - 1, 0)' },
+        { set: 'hp', expr: 'max_hp' },
+      ] },
+    // 누가 오는지는 서사가 정한다 — 그래서 효과가 없고, 명단은 이 턴에만 열린다(whenArmed)
+    { id: 'recruit', label: '🍺 술집에서 사람을 구한다', mode: 'oneshot', cooldown: 4,
+      when: 'depth == 0 and gold >= 120 and count(roster) < 6',
+      inject: '[행동] 술집 구석에 앉아 함께 내려갈 사람을 찾는다. '
+        + '누가 응했는지 장면에서 정하고, 그 이름을 동료 명단에 올려라 (명단에 없는 이름은 진형에 앉지 못한다).',
+      effects: [{ set: 'gold', expr: 'max(gold - 120, 0)' }] },
+  ],
+  rules: {
+    // 지하에서만 타고 준다. 규칙엔 조건이 없으니 식 안에서 층을 본다
+    onTurn: [
+      { set: 'torch', expr: 'depth > 0 ? max(torch - 1, 0) : torch' },
+      { set: 'rations', expr: 'depth > 0 ? max(rations - 1, 0) : rations' },
+      { set: 'hp', expr: 'depth > 0 and rations <= 0 ? max(hp - 6, 0) : hp' },
+      { set: 'morale', expr: "depth > 0 and light == '어둠' ? max(morale - 5, 0) : morale" },
+      { set: 'best_depth', expr: 'max(best_depth, depth)' },
+    ],
+    events: [
+      // 원정형이라 죽지 않는다 — 대신 노획물을 통째로 잃고 기어나온다.
+      // hp를 1로 올려 조건을 스스로 닫는다 (안 그러면 매 턴 재발동)
+      { id: 'crawl_out', when: 'hp <= 0',
+        notify: '더는 서 있을 수 없었다. 주운 것을 죄다 버리고 왔던 길로 기어 올라간다.',
+        effects: [
+          { set: 'hp', expr: '1' },
+          { set: 'haul', expr: '0' },
+          { set: 'anchor', expr: 'max(anchor - 2, 1)' },
+          { set: 'wound', expr: 'min(wound + 1, 5)' },
+          { set: 'morale', expr: 'max(morale - 20, 0)' },
+          { set: 'depth', expr: '0' },
+          { set: 'stairs', expr: '0' },
+          { set: 'hall', expr: "'지상 — 미궁 입구의 마을'" },
+        ] },
+    ],
+    randomEvents: {
+      chancePerTurn: 0.4,
+      table: [
+        { id: 'find_stairs', weight: 4, when: 'depth > 0 and not stairs',
+          effects: [{ set: 'stairs', expr: '1' }],
+          notify: '내려가는 계단을 찾았다. 더 깊이 갈 수 있다.' },
+        { id: 'trap', weight: 3, when: 'depth > 0', cooldown: 3, check: 'ck_trap',
+          notify: '바닥의 돌 하나가 다른 소리를 냈다.' },
+        { id: 'spring', weight: 2, when: 'depth > 0 and hp < max_hp', cooldown: 5,
+          effects: [{ set: 'hp', expr: 'min(hp + 12, max_hp)' }],
+          notify: '벽을 타고 흐르는 맑은 물을 찾았다. 잠시 숨을 돌린다.' },
+        { id: 'cache', weight: 2, when: 'depth > 0', cooldown: 4,
+          effects: [{ set: 'torch', expr: 'min(torch + 2, 30)' }],
+          notify: '앞서 내려간 누군가의 짐이 남아 있다. 쓸 만한 횃불을 챙겼다.' },
+        // 갈림길 — 큰 놈. 마지막 선택지가 타임아웃 기본값이라 조건을 달지 않는다
+        { id: 'big_one', weight: 2, when: 'depth >= 2', cooldown: 6, timeout: 2,
+          notify: '통로 저편에서 무언가 큰 것이 이쪽을 보고 있다. 아직 움직이지는 않는다.',
+          choices: [
+            { label: '맞선다',
+              inject: '물러설 곳이 없다고 판단했다 — 정면으로 부딪치는 싸움으로 그려라.',
+              effects: [
+                { set: 'hp', expr: 'max(hp - (12 + depth * 2 - power), 0)' },
+                { set: 'haul', expr: 'haul + 40 + depth * 15' },
+                { set: 'morale', expr: 'min(morale + 6, 100)' },
+              ] },
+            { label: '식량을 던져 주고 물러선다', when: 'rations >= 3',
+              inject: '먹을 것을 던져 시선을 돌리고 그 틈에 빠져나간다.',
+              effects: [
+                { set: 'rations', expr: 'max(rations - 3, 0)' },
+                { set: 'morale', expr: 'max(morale - 4, 0)' },
+              ] },
+            { label: '불을 크게 피워 쫓는다',
+              inject: '가진 불을 한꺼번에 태워 몰아낸다 — 밝기와 열기로 밀어내는 장면으로.',
+              effects: [
+                { set: 'torch', expr: 'max(torch - 3, 0)' },
+                { set: 'morale', expr: 'max(morale - 2, 0)' },
+              ] },
+          ] },
+      ],
+    },
+  },
+  directives: [
+    { id: 'in_dark', when: "depth > 0 and light == '어둠'",
+      text: '[상태] 횃불이 다 탔다. 손끝으로 벽을 짚어야 걷는 어둠이다. 방향 감각과 소리에 기대는 묘사가 배어나야 한다.' },
+    { id: 'starving', when: 'depth > 0 and rations <= 0',
+      text: '[상태] 먹을 것이 떨어졌다. 배고픔과 탈진이 판단과 말수에 드러나야 한다.' },
+    { id: 'battered', when: 'wound >= 3',
+      text: '[상태] 상처가 {wound}겹으로 쌓였다. 성한 데가 없어 움직임 하나하나가 굼뜨다.' },
+    { id: 'deep', when: 'depth >= 5',
+      text: '[상태] 지금 {depth}층이다. 위쪽과는 공기도 소리도 다르다 — 깊이가 주는 압박을 장면에 실어라.' },
+    { id: 'topside', when: 'depth == 0',
+      text: '[상태] 지금은 지상의 마을이다. 미궁의 위험은 없고, 보급·치료·사람 구하기를 할 수 있다.' },
+  ],
+  updater: {
+    model: 'aux',
+    allow: [
+      { id: 'hp', maxDelta: 25 },
+      { id: 'morale', maxDelta: 15 },
+      { id: 'torch', maxDelta: 4 },
+      { id: 'rations', maxDelta: 4 },
+      { id: 'haul', maxGain: 40 },
+      { id: 'relics' },
+      { id: 'hall' },
+      // 명단은 술집에서 사람을 구한 턴에만 열린다 — 아무 때나 열어 두면
+      // 서사가 스쳐 지나간 사람까지 동료로 올린다 (smith의 금고와 같은 규율)
+      { id: 'roster', whenArmed: ['recruit'] },
+    ],
+    guide: '탐색·조우·야영이 서사에 명시된 경우에만 반영하라. 층·계단·부상·금화·최고 기록은 시스템이 관리하니 '
+      + '건드리지 마라. 노획은 실제로 무엇을 주웠는지 장면에 나왔을 때만 올려라. '
+      + '진형(전열·후열)은 탐색자가 정한다 — 바꾸지 마라. 동료 이름은 명단에 있는 것만 쓰고 새로 지어내지 마라.',
+  },
+  promptState: {
+    position: 'history_end',
+    template: '[탐사 현황] {hall}\n'
+      + '{depth}층 · 시야 {light} (횃불 {torch}) · 식량 {rations}\n'
+      + '체력 {hp}/{max_hp} · 부상 {wound} · 사기 {morale} · 전투력 {power}\n'
+      + '전열 {front1} / {front2} · 후열 {back1} / {back2}\n'
+      + '노획 {haul} · 금화 {gold} · 최고 {best_depth}',
+    includeEvents: true,
+  },
+  party: {
+    label: '진형', icon: '🗡', empty: '없음', roster: 'roster',
+    note: '전열은 앞에서 맞고 후열은 뒤에서 거든다 — 전열이 전투력에 더 크게 실린다. 한 사람은 한 자리에만.',
+    tabs: [
+      { id: 'formation', label: '진형',
+        slots: [
+          { var: 'front1', label: '전열 1' },
+          { var: 'front2', label: '전열 2' },
+          { var: 'back1', label: '후열 1' },
+          { var: 'back2', label: '후열 2' },
+        ],
+        actions: ['enter', 'retreat'],
+        note: '명단에 오른 동료만 앉힐 수 있다.' },
+      { id: 'town', label: '지상', when: 'depth == 0',
+        actions: ['odd_job', 'supply', 'heal', 'recruit'],
+        note: '미궁 밖에서만 할 수 있는 일들.' },
+    ],
+  },
+  statusUI: {
+    mode: 'auto', collapsible: true,
+    // 탭 배치의 첫 사용처 — 네 갈래를 한 번에 쌓으면 상태창이 화면을 다 먹는다
+    layout: 'tabs',
+    groups: [
+      { label: '탐사', items: [
+        { var: 'depth' },
+        { var: 'hall' },
+        { var: 'torch', bar: { max: 30 }, color: "torch <= 0 ? '#7a3b2e' : (torch <= 2 ? '#a8763a' : '#b8863a')" },
+        { var: 'rations', bar: { max: 40 }, color: "rations <= 0 ? '#7a3b2e' : '#6a7a4a'" },
+        { var: 'light' },
+        { var: 'stairs', showWhen: 'stairs' },
+        { var: 'anchor' },
+      ] },
+      { label: '일행', items: [
+        { var: 'hp', bar: { max: 'max_hp' }, color: "hp <= max_hp * 0.3 ? '#8a3b3b' : '#5a7a5a'" },
+        { var: 'wound', showWhen: 'wound > 0' },
+        { var: 'morale', bar: { max: 100 }, color: "morale <= 30 ? '#7a3b2e' : '#5a6a8a'" },
+        { var: 'power' },
+        { var: 'front1', showWhen: "front1 != '없음'" },
+        { var: 'front2', showWhen: "front2 != '없음'" },
+        { var: 'back1', showWhen: "back1 != '없음'" },
+        { var: 'back2', showWhen: "back2 != '없음'" },
+      ] },
+      { label: '소지', items: [
+        { var: 'haul', showWhen: 'haul > 0' },
+        { var: 'gold' },
+        { var: 'relics', showWhen: 'count(relics) > 0' },
+        { var: 'roster' },
+      ] },
+      { label: '기록', items: [
+        { var: 'best_depth' },
+        { var: 'danger' },
+      ] },
+    ],
+    // 돌과 그을음 — 횃불 하나로 읽는 화면
+    customCSS: `.sim-status { background:#15120f; border:1px solid #3b322a; border-radius:2px; color:#cbbfae; }
+.sim-status summary { color:#c89a4a; letter-spacing:.14em; font-weight:700; }
+.sim-group-label { color:#8a7a63; letter-spacing:.18em; font-size:.78em; }
+.sim-label { color:#8a7a63; opacity:1; }
+.sim-value { color:#efe4d2; font-weight:700; }
+.sim-badge, .sim-tag { background:#201b16; color:#c89a4a; border:1px solid #4a3d30; border-radius:2px; }
+.sim-bar { background:#0d0b09; height:8px; border:1px solid #33291f; border-radius:1px; }
+.sim-action { border-color:#4a3d30; color:#cbbfae; border-radius:2px; background:#201b16; }
+.sim-action.sim-armed { border-color:#c89a4a; background:#2c2318; color:#f0d9a8; }
+.sim-log { color:#6d6052; }`,
+  },
+  setup: {
+    presets: [
+      { id: 'first', label: '첫 잠행 — 둘이서 내려간다',
+        set: { front1: '가르한', back1: '이슬비' } },
+      { id: 'veteran', label: '숙련 탐색자 — 넷을 갖췄다',
+        set: {
+          roster: ['가르한', '이슬비', '노루', '무명', '바위손'],
+          front1: '가르한', front2: '바위손', back1: '이슬비', back2: '무명',
+          gold: 400, torch: 16, rations: 20, best_depth: 4, anchor: 4, wound: 1,
+        } },
+      { id: 'debt', label: '빚에 쫓겨 — 혼자 내려간다',
+        set: { roster: ['가르한'], front1: '가르한', back1: '없음',
+          gold: 0, torch: 3, rations: 4, wound: 2, morale: 45 } },
+    ],
+  },
+};
+
 const TEMPLATES = {
   blank: { label: '빈 스키마 (최소)', schema: BLANK },
   daily: { label: '일상 — 하루의 기록 (날짜·시간·날씨·소지품)', schema: DAILY },
@@ -2307,6 +2684,7 @@ const TEMPLATES = {
   vtuber: { label: '버튜버 — 방송 운영 (동접·화제성·번아웃·논란)', schema: VTUBER },
   smith: { label: '대장간 — 무쇠와 장부 (금고 잠금·단조 판정·주문 갈림길)', schema: SMITH },
   fleet: { label: '함대 — 편성과 출격 (편성 탭·정비창·시설 버튼)', schema: FLEET },
+  delve: { label: '미궁 탐사 — 원정과 귀환 (탭 상태창·진형 판정·노획 도박)', schema: DELVE },
 };
 
-module.exports = { TEMPLATES, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH, FLEET };
+module.exports = { TEMPLATES, DELVE, BLANK, RPG, ESTATE, MYSTERY, BUSINESS, SURVIVAL, POLITICS, ROMANCE, TRPG, VTUBER, SMITH, FLEET };

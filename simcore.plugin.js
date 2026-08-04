@@ -1,13 +1,30 @@
 //@name simcore
 //@api 3.0
-//@version 0.71.0
-//@display-name SimCore (시뮬 엔진) v0.71 불일치 신고 채널
+//@version 0.72.0
+//@display-name SimCore (시뮬 엔진) v0.72 변화 영수증
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.72.0 ────────────────────────────────────────────────
+// 변화 로그 영수증 모드 — `statusUI.changeLog: 'open' | 'collapsed'(기본) | 'off'`.
+//
+// 다른 봇의 "메시지 끝 변화 영수증"(식자재 -3 / +45,000원 — 사유) 스타일을 유저가 보고
+// 원함. 내용은 이미 있었다(접힌 "이번 턴 변화") — 표현만 가져온다. 본질 차이는 유지:
+// 저쪽 영수증은 모델이 직접 쓰는 **주장**이고, 우리 건 엔진 changeLog에서 그려지는
+// **실제 커밋된 변화**다 (상한에 잘렸으면 잘린 값이 찍힌다).
+//
+// - [렌더] open이면 <details open> 영수증 — 행마다 라벨(굵게) / 델타 / 사유(오른쪽 정렬).
+//   숫자 델타만 +초록/−빨강 — 텍스트 교체·목록 혼합 증감에 색을 칠하면 거짓말이 된다.
+//   off면 로그 자체를 안 그린다. 값이 이상하면 기본(collapsed)으로 — 검증이 오류로 알려 줌.
+// - [편집기] 상태창 탭 설정 그리드에 [변화 로그] 선택 칸 (규칙 #3 — 칸 없는 엔진 기능 금지).
+//   기본값(collapsed)은 스키마에 안 남긴다.
+// - v0.71 불일치 신고와 짝 — 신고는 "반영 안 된 것"을, 영수증은 "반영된 것"을 보여 준다.
+//   서사↔변수 대조가 양방향으로 눈에 보이게 됐다.
+// test-receipt.js 신설.
 //
 // ── v0.71.0 ────────────────────────────────────────────────
 // 서사-시스템 불일치 신고 채널 — **신고 전용, 쓰기 권한 없음.**
@@ -2401,6 +2418,9 @@ function validateSchema(schema) {
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  // 변화 로그 표시 (v0.72) — 값이 틀리면 조용히 기본값(collapsed)으로 그려지므로 알려 준다
+  if (ui.changeLog != null && !['open', 'collapsed', 'off'].includes(ui.changeLog))
+    err('$.statusUI.changeLog', `changeLog는 open|collapsed|off (현재: '${ui.changeLog}')`);
   (ui.groups || []).forEach((g, i) => {
     if (g.visibility != null && !['show', 'collapsed', 'hidden'].includes(g.visibility))
       err(`$.statusUI.groups[${i}]`, `visibility는 show|collapsed|hidden (현재: '${g.visibility}')`);
@@ -5552,7 +5572,14 @@ const BASE_CSS = `
 .sim-action.sim-armed{border-color:#5b8def;background:rgba(91,141,239,.15);font-weight:600}
 .sim-action.sim-disabled{opacity:.45}
 .sim-log{margin-top:8px;font-size:.82em;opacity:.7}
-.sim-log-item{margin:1px 0}
+.sim-log-item{margin:1px 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.sim-log-name{font-weight:600}
+.sim-log-diff.plus{color:#3fb950;font-weight:600}
+.sim-log-diff.minus{color:#f85149;font-weight:600}
+.sim-log-reason{margin-left:auto;opacity:.75;text-align:right}
+.sim-log-open{opacity:.92}
+.sim-log-open .sim-log-item{padding:3px 0;border-bottom:1px solid rgba(128,128,128,.15)}
+.sim-log-open .sim-log-item:last-child{border-bottom:0}
 .sim-cmds{margin-top:10px;border-top:1px solid rgba(128,128,128,.25);padding-top:7px;font-size:.9em}
 .sim-cmds-open{cursor:pointer;opacity:.75;font-size:.88em;font-weight:600;list-style:none}
 .sim-cmds-hint{opacity:.6;font-size:.82em;margin:5px 0 7px}
@@ -5805,8 +5832,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     inner += `</div>`;
   }
 
-  // 변화 로그
-  if (changeLog && changeLog.length) {
+  // 변화 로그 — statusUI.changeLog: 'collapsed'(기본, 접힘) | 'open'(영수증처럼 펼침) | 'off'(숨김).
+  // 내용은 엔진 changeLog에서 그려지므로 "실제로 커밋된 변화"의 영수증이다 — 상한에 잘렸으면
+  // 잘린 값이 찍힌다. 모델이 직접 쓰는 텍스트 영수증(주장)과 출처가 반대라는 게 이 칸의 가치.
+  const logMode = ['open', 'collapsed', 'off'].includes(schema.statusUI?.changeLog)
+    ? schema.statusUI.changeLog : 'collapsed';
+  if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
         || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
@@ -5818,8 +5849,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         const def = varById[c.id];
         const name = def?.label ?? c.id;
         let diff;
+        let tone = ''; // 숫자 델타만 색을 얻는다 — 텍스트 교체·목록 증감 혼합에 색을 칠하면 거짓말이 된다
         if (typeof c.to === 'number' && typeof c.from === 'number') {
-          diff = `${c.to - c.from > 0 ? '+' : ''}${fmtNum(c.to - c.from)}`;
+          const d = c.to - c.from;
+          diff = `${d > 0 ? '+' : ''}${fmtNum(d)}`;
+          tone = d > 0 ? ' plus' : d < 0 ? ' minus' : '';
         } else if (Array.isArray(c.to) || Array.isArray(c.from)) {
           const fromArr = Array.isArray(c.from) ? c.from : [];
           const toArr = Array.isArray(c.to) ? c.to : [];
@@ -5835,9 +5869,16 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         } else {
           diff = `${esc(String(c.from))} → ${esc(String(c.to))}`;
         }
-        return `<div class="sim-log-item">${esc(name)} ${diff}${c.reason ? ` — ${esc(c.reason)}` : ''}</div>`;
+        return `<div class="sim-log-item"><span class="sim-log-name">${esc(name)}</span>`
+          + `<span class="sim-log-diff${tone}">${diff}</span>`
+          + (c.reason ? `<span class="sim-log-reason">${esc(c.reason)}</span>` : '')
+          + '</div>';
       }).join('');
-    if (items) inner += `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
+    if (items) {
+      inner += logMode === 'open'
+        ? `<details class="sim-log sim-log-open" open><summary>이번 턴 변화</summary>${items}</details>`
+        : `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
+    }
   }
 
   // 에셋만 쓰는 봇(변수 0개) — 그릴 것이 하나도 없으면 빈 상자도 만들지 않는다.
@@ -10893,6 +10934,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         (x) => { ui.theme = x; rerender(); })),
       statusField('메시지 표시', bindCheck(ui.collapsible !== false,
         (x) => { ui.collapsible = x; rerender(); }, '상태창 접기 허용')),
+      // 변화 로그 (v0.72) — 엔진이 실제로 커밋한 변화의 영수증. 서사가 뭘 바꿨는지
+      // 매 턴 눈으로 확인하고 싶으면 펼침으로 (수동 보정 판단에도 도움이 된다)
+      statusField('변화 로그', bindSelect(ui.changeLog ?? 'collapsed', [
+        ['collapsed', '접힘 (기본) — 눌러야 보임'], ['open', '펼침 — 영수증처럼 항상 표시'], ['off', '숨김'],
+      ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
+      '이번 턴에 실제 반영된 변수 변화와 사유를 상태창 아래에 보여줘요.'),
     ));
     if ((ui.mode ?? 'auto') !== 'template') {
       settings.appendChild(h('div', { class: 'sce-status-layout' },

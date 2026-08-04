@@ -3511,6 +3511,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         (x) => { ui.theme = x; rerender(); })),
       statusField('메시지 표시', bindCheck(ui.collapsible !== false,
         (x) => { ui.collapsible = x; rerender(); }, '상태창 접기 허용')),
+      // 변화 로그 (v0.72) — 엔진이 실제로 커밋한 변화의 영수증. 서사가 뭘 바꿨는지
+      // 매 턴 눈으로 확인하고 싶으면 펼침으로 (수동 보정 판단에도 도움이 된다)
+      statusField('변화 로그', bindSelect(ui.changeLog ?? 'collapsed', [
+        ['collapsed', '접힘 (기본) — 눌러야 보임'], ['open', '펼침 — 영수증처럼 항상 표시'], ['off', '숨김'],
+      ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
+      '이번 턴에 실제 반영된 변수 변화와 사유를 상태창 아래에 보여줘요.'),
     ));
     if ((ui.mode ?? 'auto') !== 'template') {
       settings.appendChild(h('div', { class: 'sce-status-layout' },

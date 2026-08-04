@@ -83,7 +83,14 @@ const BASE_CSS = `
 .sim-action.sim-armed{border-color:#5b8def;background:rgba(91,141,239,.15);font-weight:600}
 .sim-action.sim-disabled{opacity:.45}
 .sim-log{margin-top:8px;font-size:.82em;opacity:.7}
-.sim-log-item{margin:1px 0}
+.sim-log-item{margin:1px 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.sim-log-name{font-weight:600}
+.sim-log-diff.plus{color:#3fb950;font-weight:600}
+.sim-log-diff.minus{color:#f85149;font-weight:600}
+.sim-log-reason{margin-left:auto;opacity:.75;text-align:right}
+.sim-log-open{opacity:.92}
+.sim-log-open .sim-log-item{padding:3px 0;border-bottom:1px solid rgba(128,128,128,.15)}
+.sim-log-open .sim-log-item:last-child{border-bottom:0}
 .sim-cmds{margin-top:10px;border-top:1px solid rgba(128,128,128,.25);padding-top:7px;font-size:.9em}
 .sim-cmds-open{cursor:pointer;opacity:.75;font-size:.88em;font-weight:600;list-style:none}
 .sim-cmds-hint{opacity:.6;font-size:.82em;margin:5px 0 7px}
@@ -336,8 +343,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     inner += `</div>`;
   }
 
-  // 변화 로그
-  if (changeLog && changeLog.length) {
+  // 변화 로그 — statusUI.changeLog: 'collapsed'(기본, 접힘) | 'open'(영수증처럼 펼침) | 'off'(숨김).
+  // 내용은 엔진 changeLog에서 그려지므로 "실제로 커밋된 변화"의 영수증이다 — 상한에 잘렸으면
+  // 잘린 값이 찍힌다. 모델이 직접 쓰는 텍스트 영수증(주장)과 출처가 반대라는 게 이 칸의 가치.
+  const logMode = ['open', 'collapsed', 'off'].includes(schema.statusUI?.changeLog)
+    ? schema.statusUI.changeLog : 'collapsed';
+  if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
         || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
@@ -349,8 +360,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         const def = varById[c.id];
         const name = def?.label ?? c.id;
         let diff;
+        let tone = ''; // 숫자 델타만 색을 얻는다 — 텍스트 교체·목록 증감 혼합에 색을 칠하면 거짓말이 된다
         if (typeof c.to === 'number' && typeof c.from === 'number') {
-          diff = `${c.to - c.from > 0 ? '+' : ''}${fmtNum(c.to - c.from)}`;
+          const d = c.to - c.from;
+          diff = `${d > 0 ? '+' : ''}${fmtNum(d)}`;
+          tone = d > 0 ? ' plus' : d < 0 ? ' minus' : '';
         } else if (Array.isArray(c.to) || Array.isArray(c.from)) {
           const fromArr = Array.isArray(c.from) ? c.from : [];
           const toArr = Array.isArray(c.to) ? c.to : [];
@@ -366,9 +380,16 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         } else {
           diff = `${esc(String(c.from))} → ${esc(String(c.to))}`;
         }
-        return `<div class="sim-log-item">${esc(name)} ${diff}${c.reason ? ` — ${esc(c.reason)}` : ''}</div>`;
+        return `<div class="sim-log-item"><span class="sim-log-name">${esc(name)}</span>`
+          + `<span class="sim-log-diff${tone}">${diff}</span>`
+          + (c.reason ? `<span class="sim-log-reason">${esc(c.reason)}</span>` : '')
+          + '</div>';
       }).join('');
-    if (items) inner += `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
+    if (items) {
+      inner += logMode === 'open'
+        ? `<details class="sim-log sim-log-open" open><summary>이번 턴 변화</summary>${items}</details>`
+        : `<details class="sim-log"><summary>이번 턴 변화</summary>${items}</details>`;
+    }
   }
 
   // 에셋만 쓰는 봇(변수 0개) — 그릴 것이 하나도 없으면 빈 상자도 만들지 않는다.

@@ -342,7 +342,7 @@ const ED = SC.require('editor');
 
 // 번들 배선 (3단계)
 {
-  ck('★ 사이드바에 에셋 작업영역', src.includes('data-floor="assets"') && src.includes('🎨 에셋 팩'), '');
+  ck('★ 사이드바에 에셋 작업영역 (v0.70 소제목: 에셋 관리자)', src.includes('data-floor="assets"') && src.includes('🎨 에셋 관리자'), '');
   ck('편집기 assets 층 분기', src.includes("floorView === 'assets'"), '');
   ck('★ 호스트 getAssetNames 주입 (output 삽입과 같은 읽기 경로)', src.includes('getAssetNames'), '');
 }

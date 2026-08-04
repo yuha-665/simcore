@@ -112,7 +112,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
 
 // ── 번들 배선 스모크 — 위층·이층·어댑터 주입이 실제로 실려 있는지 ──
 {
-  ck('★ 번들: 위층 "✨ AI에게 맡기기" 존재', src.includes('✨ AI에게 맡기기'), '');
+  ck('★ 번들: 위층 "✨ AI 어시스턴트" 존재 (v0.70 소제목 개편)', src.includes('✨ AI 어시스턴트'), '');
   ck('번들: 생성 버튼 + 취소 존재', src.includes('작업본 생성') && src.includes('생성 취소'), ''); // v0.66 문구
   ck('★ 번들: 복붙 옆문 병행', src.includes('📋 복사해서 다른 AI에게'), '');
   ck('★ 번들: 아래층 접기 존재', src.includes('🧰 직접 만지기'), '');
@@ -127,7 +127,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('어댑터 버전은 0.48 이상', /\/\/@version 0\.(4[89]|[5-9]\d)/.test(src), '');
 
   // ── 삼층 구조 + 사이드바 (v0.47) ──
-  ck('★ 번들: 2층 JSON 작업대 존재', src.includes('🧾 JSON 작업대'), '');
+  ck('★ 번들: 2층 JSON 관리자 존재 (v0.70 소제목 개편)', src.includes('🧾 JSON 관리자'), '');
   ck('★ 번들: 3층에서 진단·JSON 탭 제거 (바디 맵 기준)',
     !src.includes('diag: tabDiag') && !src.includes('json: tabJson'), '');
   ck('★ 번들: 1층 내부 3탭 (창작/결과/진단)', src.includes('✍ 창작') && src.includes('👁 결과') && src.includes('🔬 진단'), '');
@@ -156,8 +156,8 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('★ 패널: 편집 3항목 사이드 내비 (data-floor)', src.includes('data-floor="top"')
     && src.includes('data-floor="json"') && src.includes('data-floor="deep"'), '');
   ck('★ 편집기: setFloor API + 층 전환 배선', src.includes('setFloor: (f)') && src.includes('editor.setFloor(tab.dataset.floor'), '');
-  ck('번들: 스택형 폴백 유지 (플레이그라운드용 접기 2·3층)', src.includes('🧾 JSON 작업대 — 통짜 생성')
-    && src.includes('🧰 직접 만지기 — 심층 편집 탭'), '');
+  ck('번들: 스택형 폴백 유지 (플레이그라운드용 접기 2·3층)', src.includes('🧾 JSON 관리자 — 통짜 생성')
+    && src.includes('🧰 직접 만지기 — 세부 편집 탭'), '');
 
   // ── 실패 사유 표면화 (v0.47.5) ──
   ck('★ 어댑터: 생성 실패가 { error: 사유 }로', src.includes('보조 경로: ${lastAux.status}')

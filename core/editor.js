@@ -4037,7 +4037,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     if (!ai || !ai.generate) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
-        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 심층 편집의 각 탭에서 '
+        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 세부 편집기의 각 탭에서 '
         + '[📤 규격 내보내기]로 복사해 웹 AI에게 주세요. 나오는 요청서는 카드가 쓰는 것과 같습니다.'));
       return wrap;
     }
@@ -4082,7 +4082,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } else if (settled) {
         box.appendChild(h('div', { class: 'sce-hint' },
           `✅ ${fr.label} 완료. 🔬 진단으로 한 번 굴려 보세요 — 새로 생긴 수치가 상태창에 안 보이면 `
-          + '🧰 심층 편집의 [상태창] 탭에서 배치하면 됩니다.'));
+          + '🧰 세부 편집기의 [상태창] 탭에서 배치하면 됩니다.'));
       }
       box.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => { featureRun = null; rerender(); } }, '닫기')));
@@ -4177,7 +4177,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ? commandsMode
         ? '말로 설명해 명령 전체를 만들거나, 필요한 명령만 안전하게 고칠 수 있어요.'
         : '말로 설명해 새 작업본을 만들거나, 일부만 안전하게 고칠 수 있어요.'
-      : '부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
+      : '부분 수정이면 ✨ AI 어시스턴트(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
     if (compactMode) wrap.appendChild(exportBox);
 
     // 결과 안내·되돌리기는 위 tabResultEl이 맡는다 — 여기는 붙여넣기 사용법만 남긴다
@@ -5869,9 +5869,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
       layoutMode
         ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사해요. 웹 AI에게 주고, 받은 HTML은 '
-          + '심층 편집 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style>은 자동 분리됩니다).'
+          + '세부 편집기 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style>은 자동 분리됩니다).'
         : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사해요. 웹 AI에게 주고, '
-          + '받은 CSS는 심층 편집 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+          + '받은 CSS는 세부 편집기 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
       () => (cssMode === 'layout'
         ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
         : buildCssSpecPrompt(schema, cssReq, cssDesignPolish)), [], { collapsible: true }).mount(external);
@@ -6054,7 +6054,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function topFloor() {
     const box = h('div', { class: 'sce-block sce-top' });
     const topHead = h('div', { class: 'sce-top-head' },
-      h('h4', { style: 'margin:0' }, '✨ AI에게 맡기기'));
+      h('h4', { style: 'margin:0' }, '✨ AI 어시스턴트'));
     if (firstInstallGuideDismissed) {
       topHead.appendChild(h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => {
         firstInstallGuideDismissed = false;
@@ -6132,7 +6132,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-result-head' }, h('div', {},
           h('div', { class: 'sce-result-title' }, '상태창 미리보기'),
           h('div', { class: 'sce-result-copy' },
-            '현재 작업본의 시작값을 보여줍니다. 창작이나 심층 편집에서 고치면 바로 갱신돼요.'))),
+            '현재 작업본의 시작값을 보여줍니다. 창작이나 세부 편집기에서 고치면 바로 갱신돼요.'))),
         statusPreviewEl('pv1'));
       box.appendChild(previewSection);
 
@@ -6145,7 +6145,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             '색과 글꼴만 바꾸거나, 상태창의 배치까지 새로 만들 수 있어요.'))),
         cssAiTools());
       designSection.appendChild(h('div', { class: 'sce-result-copy' },
-        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 심층 편집 → 상태창 탭의 구조 창구를 쓰세요.'));
+        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 세부 편집기 → 상태창 탭의 구조 창구를 쓰세요.'));
       box.appendChild(designSection);
 
       const eventCount = (schema.rules.events || []).length + (schema.rules.randomEvents?.table || []).length;
@@ -6405,7 +6405,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(aiAlt);
     copyWidget('규격서 복사',
       '요청과 캐릭터 설정이 담긴 규격서를 복사해 다른 AI에 붙여넣어 주세요. '
-      + '받은 JSON은 🧾 JSON 작업대에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
+      + '받은 JSON은 🧾 JSON 관리자에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
       () => {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
@@ -6696,8 +6696,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               : `형식 오류 ${v.errors.length}건을 먼저 수정해야 해요`),
           h('div', { class: 'sce-json-validation-next' },
             v.ok
-              ? '게임 동작까지 확인하려면 AI에게 맡기기의 [진단] 탭을 실행해 주세요.'
-              : '아래 수정 요청서를 외부 AI에 전달하거나, AI에게 맡기기에서 오류 수정을 요청하세요.'))));
+              ? '게임 동작까지 확인하려면 AI 어시스턴트의 [진단] 탭을 실행해 주세요.'
+              : '아래 수정 요청서를 외부 AI에 전달하거나, AI 어시스턴트에서 오류 수정을 요청하세요.'))));
     wrap.appendChild(validation);
     const fixExport = h('div');
     validation.appendChild(fixExport);
@@ -7028,7 +7028,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '외부 AI로 부분 수정'));
           const patchExport = h('section', { class: 'sce-diag-ai-export-card is-primary' });
           copyWidget(`수정 패치 규격서 복사 · ${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? ` / 우선 ${fixable.filter((f) => f.sev === 'high').length}건` : ''}`,
-            '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 작업대의 [패치 검사]에서 확인한 뒤 적용하세요.',
+            '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 관리자의 [패치 검사]에서 확인한 뒤 적용하세요.',
             () => buildPatchExportPrompt(schema, { findings, stats: diagResult.stats }),
             [], { collapsible: true },
           ).mount(patchExport);
@@ -7567,7 +7567,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     root.appendChild(topFloor());
 
     const jsonFloor = h('details', { class: 'sce-lower' },
-      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
+      h('summary', {}, '🧾 JSON 관리자 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
       tabJson());
     jsonFloor.open = jsonOpen;
     jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
@@ -7583,7 +7583,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 탭 바·본문·오류줄을 한 기둥에 넣는다. 폭 상한은 본문이 아니라 **이 기둥**에 걸린다 —
     // 본문만 좁히면 탭 바 밑줄이 혼자 패널 끝까지 가서 탭마다 오른쪽이 어긋나 보인다 (실측 제보).
     const lower = h('details', { class: 'sce-lower' },
-      h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
+      h('summary', {}, `🧰 직접 만지기 — 세부 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
       h('div', { class: 'sce-deep' }, deepTabs(), deepBody(), reportEl));
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });

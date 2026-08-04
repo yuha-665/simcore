@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.69.2
-//@display-name SimCore (시뮬 엔진) v0.69 아이돌 템플릿
+//@version 0.70.0
+//@display-name SimCore (시뮬 엔진) v0.70 메뉴 재편성·세션 시계
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.70.0 ────────────────────────────────────────────────
+// 메뉴 재편성 + 세션 시계 — 이용자 피드백 4건 중 2건 채택 (나머지: 마커 건너뛰기는
+// 설계상 정상이라 도움말에 설명으로, 시계 내역 저장 제안은 이미 그 구조라 무변경).
+//
+// - [패널] 사이드 내비 범주화: 현황 / **작업도구**(✨ AI 어시스턴트 · 🧾 JSON 관리자 ·
+//   🎨 에셋 관리자 · 🧰 세부 편집기) / **파일관리**(🗂️ 편집 작업공간 · 💾 세이브) / 도움말.
+//   범주 캡션(.sc-navcat)은 넓은 화면 사이드바에서만 — 좁은 화면 가로 탭에선 자리만 먹는다.
+// - [패널] **편집 작업공간을 독립 페이지로** (sc-page-work). 설치 관리·템플릿에서 시작·
+//   루아 브리지 카드가 편집 4층 모두에 중복 노출되던 것을 한 곳으로. 편집 페이지 머리글은
+//   층별 제목으로 교체(FLOOR_HEADS). 작업공간 직행 시에도 ensureEditor() — [캐릭터에 적용]이
+//   editor를 읽는데 편집 도구를 안 거치면 null이라 조용히 죽던 경로 차단.
+//   더티 배너(작업본≠설치본)는 편집·작업공간 양쪽에 같이 뜬다 (sc-work-warn).
+// - [패널] **세션 시계 카드** (현황, time 섹션 있는 스키마만). 날짜·요일·시각·경과일 표시 +
+//   ±1일/±1시간 빠른 조정 + 날짜/시각 직접 지정(parseStart와 같은 해석이라 없는 날짜 거부.
+//   브라우저 date 입력은 flat30 달력·1000년 미만 연도를 못 담아 텍스트 칸). 수정은 변수
+//   수동 보정과 같은 규약(current → out 스냅샷 → CBS 미러)이라 리롤 정합 공짜.
+//   시계가 서사와 밀렸을 때 유저가 즉석 복구하는 자리 — 절대시점→델타 번역 오차의 실용 해법.
+// - [도움말] ⟦simcore:N⟧ 번호 설명 — 턴 순번이 아니라 메시지 인덱스라 건너뛰는 게 정상.
+//   이 번호가 스냅샷 키라(리롤 멱등·삭제 복원) 순번으로 바꾸면 안 된다.
+// - 안내 문구 새 이름 일괄 정합: [봇 편집]→[편집 작업공간], AI에게 맡기기→AI 어시스턴트,
+//   JSON 작업대→JSON 관리자 (동사구 "~만 AI에게 맡기기"류는 그대로 — 탭 이름이 아니다).
 //
 // ── v0.69.0 ────────────────────────────────────────────────
 // 내장 템플릿 16번째 — 아이돌 프로듀스. 유저 요청 3종(미궁·좀비·아이돌) 중 마지막.
@@ -11339,7 +11361,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     if (!ai || !ai.generate) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
-        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 심층 편집의 각 탭에서 '
+        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 세부 편집기의 각 탭에서 '
         + '[📤 규격 내보내기]로 복사해 웹 AI에게 주세요. 나오는 요청서는 카드가 쓰는 것과 같습니다.'));
       return wrap;
     }
@@ -11384,7 +11406,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } else if (settled) {
         box.appendChild(h('div', { class: 'sce-hint' },
           `✅ ${fr.label} 완료. 🔬 진단으로 한 번 굴려 보세요 — 새로 생긴 수치가 상태창에 안 보이면 `
-          + '🧰 심층 편집의 [상태창] 탭에서 배치하면 됩니다.'));
+          + '🧰 세부 편집기의 [상태창] 탭에서 배치하면 됩니다.'));
       }
       box.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => { featureRun = null; rerender(); } }, '닫기')));
@@ -11479,7 +11501,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ? commandsMode
         ? '말로 설명해 명령 전체를 만들거나, 필요한 명령만 안전하게 고칠 수 있어요.'
         : '말로 설명해 새 작업본을 만들거나, 일부만 안전하게 고칠 수 있어요.'
-      : '부분 수정이면 ✨ AI에게 맡기기(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
+      : '부분 수정이면 ✨ AI 어시스턴트(패치)가 더 안전합니다 — 통 교체는 AI가 하나만 빠뜨려도 그게 삭제라서, 전면 재작성일 때만 이 내보내기를 쓰세요.'));
     if (compactMode) wrap.appendChild(exportBox);
 
     // 결과 안내·되돌리기는 위 tabResultEl이 맡는다 — 여기는 붙여넣기 사용법만 남긴다
@@ -13171,9 +13193,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
       layoutMode
         ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사해요. 웹 AI에게 주고, 받은 HTML은 '
-          + '심층 편집 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style>은 자동 분리됩니다).'
+          + '세부 편집기 상태창 탭에서 표시 방식을 커스텀으로 바꾼 뒤 템플릿 칸에 통째로 붙여넣으세요 (<style>은 자동 분리됩니다).'
         : '분위기 문구와 이 봇의 실제 상태창 구조가 담긴 규격서를 복사해요. 웹 AI에게 주고, '
-          + '받은 CSS는 심층 편집 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
+          + '받은 CSS는 세부 편집기 상태창 탭의 커스텀 CSS 칸에 붙여넣으세요.',
       () => (cssMode === 'layout'
         ? buildLayoutSpecPrompt(schema, cssReq, cssDesignPolish)
         : buildCssSpecPrompt(schema, cssReq, cssDesignPolish)), [], { collapsible: true }).mount(external);
@@ -13356,7 +13378,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function topFloor() {
     const box = h('div', { class: 'sce-block sce-top' });
     const topHead = h('div', { class: 'sce-top-head' },
-      h('h4', { style: 'margin:0' }, '✨ AI에게 맡기기'));
+      h('h4', { style: 'margin:0' }, '✨ AI 어시스턴트'));
     if (firstInstallGuideDismissed) {
       topHead.appendChild(h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => {
         firstInstallGuideDismissed = false;
@@ -13434,7 +13456,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-result-head' }, h('div', {},
           h('div', { class: 'sce-result-title' }, '상태창 미리보기'),
           h('div', { class: 'sce-result-copy' },
-            '현재 작업본의 시작값을 보여줍니다. 창작이나 심층 편집에서 고치면 바로 갱신돼요.'))),
+            '현재 작업본의 시작값을 보여줍니다. 창작이나 세부 편집기에서 고치면 바로 갱신돼요.'))),
         statusPreviewEl('pv1'));
       box.appendChild(previewSection);
 
@@ -13447,7 +13469,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             '색과 글꼴만 바꾸거나, 상태창의 배치까지 새로 만들 수 있어요.'))),
         cssAiTools());
       designSection.appendChild(h('div', { class: 'sce-result-copy' },
-        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 심층 편집 → 상태창 탭의 구조 창구를 쓰세요.'));
+        '보여줄 항목 자체(그룹·게이지·표시 조건)를 AI에게 맡기려면 세부 편집기 → 상태창 탭의 구조 창구를 쓰세요.'));
       box.appendChild(designSection);
 
       const eventCount = (schema.rules.events || []).length + (schema.rules.randomEvents?.table || []).length;
@@ -13707,7 +13729,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(aiAlt);
     copyWidget('규격서 복사',
       '요청과 캐릭터 설정이 담긴 규격서를 복사해 다른 AI에 붙여넣어 주세요. '
-      + '받은 JSON은 🧾 JSON 작업대에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
+      + '받은 JSON은 🧾 JSON 관리자에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
       () => {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
@@ -13998,8 +14020,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               : `형식 오류 ${v.errors.length}건을 먼저 수정해야 해요`),
           h('div', { class: 'sce-json-validation-next' },
             v.ok
-              ? '게임 동작까지 확인하려면 AI에게 맡기기의 [진단] 탭을 실행해 주세요.'
-              : '아래 수정 요청서를 외부 AI에 전달하거나, AI에게 맡기기에서 오류 수정을 요청하세요.'))));
+              ? '게임 동작까지 확인하려면 AI 어시스턴트의 [진단] 탭을 실행해 주세요.'
+              : '아래 수정 요청서를 외부 AI에 전달하거나, AI 어시스턴트에서 오류 수정을 요청하세요.'))));
     wrap.appendChild(validation);
     const fixExport = h('div');
     validation.appendChild(fixExport);
@@ -14330,7 +14352,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '외부 AI로 부분 수정'));
           const patchExport = h('section', { class: 'sce-diag-ai-export-card is-primary' });
           copyWidget(`수정 패치 규격서 복사 · ${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? ` / 우선 ${fixable.filter((f) => f.sev === 'high').length}건` : ''}`,
-            '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 작업대의 [패치 검사]에서 확인한 뒤 적용하세요.',
+            '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 관리자의 [패치 검사]에서 확인한 뒤 적용하세요.',
             () => buildPatchExportPrompt(schema, { findings, stats: diagResult.stats }),
             [], { collapsible: true },
           ).mount(patchExport);
@@ -14869,7 +14891,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     root.appendChild(topFloor());
 
     const jsonFloor = h('details', { class: 'sce-lower' },
-      h('summary', {}, '🧾 JSON 작업대 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
+      h('summary', {}, '🧾 JSON 관리자 — 통짜 생성 · 패치 · 오류 돌려주기 · 원본'),
       tabJson());
     jsonFloor.open = jsonOpen;
     jsonFloor.addEventListener('toggle', () => { jsonOpen = jsonFloor.open; });
@@ -14885,7 +14907,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 탭 바·본문·오류줄을 한 기둥에 넣는다. 폭 상한은 본문이 아니라 **이 기둥**에 걸린다 —
     // 본문만 좁히면 탭 바 밑줄이 혼자 패널 끝까지 가서 탭마다 오른쪽이 어긋나 보인다 (실측 제보).
     const lower = h('details', { class: 'sce-lower' },
-      h('summary', {}, `🧰 직접 만지기 — 심층 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
+      h('summary', {}, `🧰 직접 만지기 — 세부 편집 탭${v.ok ? '' : ` (✗ 오류 ${v.errors.length})`}`),
       h('div', { class: 'sce-deep' }, deepTabs(), deepBody(), reportEl));
     lower.open = lowerOpen;
     lower.addEventListener('toggle', () => { lowerOpen = lower.open; });
@@ -18644,6 +18666,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const assetsMod = SimCore.require('assets');
   const partyMod = SimCore.require('party');
   const calendarMod = SimCore.require('calendar');
+  const timeMod = SimCore.require('time');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -18709,7 +18732,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           lastAux = {
             status: hasBridge
               ? '이 환경은 플러그인 직접 호출이 차단됨 → 루아 브리지 경유로 자동 전환 (다음 턴부터 정상 갱신)'
-              : '이 환경은 플러그인 직접 호출이 차단됨 — [봇 편집]의 [루아 브리지 설치/갱신]을 눌러야 수치가 갱신된다',
+              : '이 환경은 플러그인 직접 호출이 차단됨 — [편집 작업공간]의 [루아 브리지 설치/갱신]을 눌러야 수치가 갱신된다',
             raw: text.slice(0, 200), applied: lastAux.applied,
           };
           return { blocked: true };
@@ -18901,7 +18924,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
       console.log(`[simcore] 지연 호출 실패 (${label}) — 이번 턴 수치 변화 없음`);
       lastAux.status = `지연 호출도 차단/실패 (${label}) — 이 환경은 플러그인 LLM 호출이 전면 차단된 것으로 보임. `
-        + `[봇 편집]에서 [루아 브리지 설치] 후 플러그인 설정 aux_model_mode를 lua로 바꾸면 우회된다`;
+        + `[편집 작업공간]에서 [루아 브리지 설치] 후 플러그인 설정 aux_model_mode를 lua로 바꾸면 우회된다`;
     }, 1000);
   }
 
@@ -19522,7 +19545,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         lastAux = { status: '호출 건너뜀 — 설정값이 off', raw: '', applied: 0 };
       } else if (!hasWork) {
         lastAux = { status: schema.vars.length
-          ? '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([봇 편집]→[AI 설정]에서 추가 필요)'
+          ? '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([세부 편집기]→[AI 설정]에서 추가 필요)'
           : '호출 건너뜀 — 시킬 일이 없음 (변수도 에셋 팩도 없는 봇)', raw: '', applied: 0 };
       }
       if (mode === 'aux' && hasWork) {
@@ -20619,6 +20642,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root .sc-maintab.on { color:#fff !important; background:#3660d9 !important; border-color:#6b93f2 !important; font-weight:600; }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
       #sc-root .sc-navdiv { display:none; }
+      /* 범주 캡션 (v0.70 메뉴 재편성) — 좁은 화면(가로 탭)에서는 자리만 먹어 숨긴다 */
+      #sc-root .sc-navcat { display:none; }
       /* 넓은 화면 = 사이드바 내비 (데스크톱에서 노는 좌우 여백 활용).
          좁은 화면 = 위 기본값 그대로 상단 탭 — 모바일에서 변수 보정하러 들어온 유저를 깨지 않는다. */
       @media (min-width: 920px) {
@@ -20632,7 +20657,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           text-align:left !important; padding:8px 12px !important; }
         #sc-root .sc-maintab.on { border-color:#6b93f2 !important; }
         #sc-root .sc-navdiv { display:block; height:1px; background:#24304a; margin:5px 2px; }
+        #sc-root .sc-navcat { display:block; font-size:11px; font-weight:700; letter-spacing:0.08em;
+          color:#7b8db0; margin:10px 4px 2px; }
       }
+      #sc-root .sc-clock-now { font-size:15px; margin-bottom:8px; }
+      #sc-root .sc-clock-quick button { padding:4px 10px; }
+      #sc-root .sc-clock-set { margin-top:8px; }
       #sc-root .status-ok { color:#6fdb8c; font-weight:600; } #sc-root .status-bad { color:#ff7b7b; font-weight:600; }
       #sc-root .status-warn { color:#ffd166; }
       #sc-root table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -20805,6 +20835,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:5px !important;
           text-align:left !important; padding:9px 12px !important; }
         #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; }
+        #sc-root .sc-navcat { color:var(--sc-muted); }
       }
       #sc-root .status-ok { color:var(--sc-success); font-weight:650; }
       #sc-root .status-bad { color:var(--sc-danger); font-weight:650; }
@@ -21095,13 +21126,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           </h1>
           <div class="sc-maintabs">
             <button class="sc-maintab on" data-page="play">📊 현황</button>
-            <div class="sc-navdiv"></div>
-            <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI에게 맡기기</button>
-            <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 작업대</button>
-            <button class="sc-maintab" data-page="edit" data-floor="assets">🎨 에셋 팩</button>
-            <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 심층 편집</button>
-            <div class="sc-navdiv"></div>
+            <div class="sc-navcat">작업도구</div>
+            <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI 어시스턴트</button>
+            <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 관리자</button>
+            <button class="sc-maintab" data-page="edit" data-floor="assets">🎨 에셋 관리자</button>
+            <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 세부 편집기</button>
+            <div class="sc-navcat">파일관리</div>
+            <button class="sc-maintab" data-page="work">🗂️ 편집 작업공간</button>
             <button class="sc-maintab" data-page="save">💾 세이브</button>
+            <div class="sc-navdiv"></div>
             <button class="sc-maintab" data-page="help">❓ 도움말</button>
           </div>
         </div>
@@ -21151,6 +21184,16 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               </div>
               <div id="sc-vars" class="sc-card-body sc-table-wrap muted">스키마 로드 후 표시</div>
             </section>
+            <section class="sc-card" id="sc-clock-card" style="display:none">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">세션 시계</h3>
+                  <p class="sc-card-desc">지금 이야기 속 시각이에요. 서사와 어긋났다면 여기서 바로 맞출 수 있어요.</p>
+                </div>
+                <span class="sc-card-badge">시간</span>
+              </div>
+              <div id="sc-clock" class="sc-card-body muted">-</div>
+            </section>
             <section class="sc-card">
               <div class="sc-card-head">
                 <div>
@@ -21197,10 +21240,25 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         <div class="sc-page" id="sc-page-edit">
           <header class="sc-page-head">
             <div>
-              <h2>편집 작업공간</h2>
-              <p>어느 편집 화면에서 수정해도 같은 작업본에 저장돼요. 캐릭터에 반영하려면 [캐릭터에 적용]을 눌러 주세요.</p>
+              <h2 id="sc-edit-title">AI 어시스턴트</h2>
+              <p id="sc-edit-desc">봇 설정을 읽혀 대화로 작업본을 만들고 진단으로 굴려 봐요.
+                어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.</p>
             </div>
           </header>
+          <div class="sc-result-stack">
+            <div id="sc-editor-warn"></div>
+          </div>
+          <div class="sc-editor-shell"><div id="sc-editor"></div></div>
+        </div>
+
+        <div class="sc-page" id="sc-page-work">
+          <header class="sc-page-head">
+            <div>
+              <h2>편집 작업공간</h2>
+              <p>작업본을 캐릭터에 반영하거나 템플릿에서 새로 시작해요. 어느 편집 도구에서 수정해도 같은 작업본에 저장돼요.</p>
+            </div>
+          </header>
+          <div id="sc-work-warn"></div>
           <div class="sc-install-layout">
             <section class="sc-card">
               <div class="sc-card-head">
@@ -21247,11 +21305,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               </section>
             </div>
           </div>
-          <div class="sc-result-stack">
-            <div id="sc-editor-warn"></div>
-            <div id="sc-schema-report" class="report"></div>
-          </div>
-          <div class="sc-editor-shell"><div id="sc-editor"></div></div>
+          <div id="sc-schema-report" class="report"></div>
         </div>
 
         <div class="sc-page" id="sc-page-save">
@@ -21298,7 +21352,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           <header class="sc-page-head">
             <div>
               <h2>개념 정리 — 이것만 알면 돼요</h2>
-              <p>개념이 헷갈리면 [AI에게 맡기기]에서 장르 템플릿을 열어보세요. 실제 설정 예시를 함께 보면 더 쉽게 이해할 수 있어요.</p>
+              <p>개념이 헷갈리면 [편집 작업공간]의 [템플릿에서 시작]으로 장르 템플릿을 열어보세요. 실제 설정 예시를 함께 보면 더 쉽게 이해할 수 있어요.</p>
             </div>
           </header>
           <div class="sc-help">
@@ -21328,6 +21382,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             <div class="sc-note">⚠ <b>규칙과 이벤트의 조건식·가중치는 모델에 전달되지 않아요.</b>
               해당 계산은 플러그인이 직접 처리하고 모델에는 결과만 전달해요.
               발생한 이벤트를 모델에게 알려야 한다면 <b>notify</b>를 작성해 주세요.</div>
+            <div class="sc-note">💡 <b>메시지 끝의 ⟦simcore:N⟧ 번호는 턴 순번이 아니라 몇 번째 메시지인가예요.</b>
+              유저 메시지도 번호를 하나씩 차지해서 봇 메시지끼리는 번호가 건너뛰는 게 정상이에요
+              (붙어 있는 번호는 유저 입력 없이 보낸 턴이고요). 리롤과 메시지 삭제 복원이
+              이 번호를 기준으로 맞아 들어가니 이상 현상이 아니에요.</div>
 
             <h3 id="sc-help-vars">변수 (vars)</h3>
             <p>시뮬레이션이 직접 저장하고 변경하는 값이에요. 모든 변수에는 영문 ID, 표시 이름, 타입과 설명을 적을 수 있어요.
@@ -21499,6 +21557,14 @@ count(목록)  has(목록, "항목")</pre>
     document.body.appendChild(root);
 
     // 메인 탭 전환
+    // 작업도구 4항목은 같은 edit 페이지 — 층만 바꾸므로 페이지 머리글도 여기서 같이 간다
+    const FLOOR_HEADS = {
+      top: ['AI 어시스턴트', '봇 설정을 읽혀 대화로 작업본을 만들고 진단으로 굴려 봐요.'],
+      json: ['JSON 관리자', 'JSON을 통째로 붙여 넣거나 패치를 검사해 작업본에 적용해요.'],
+      assets: ['에셋 관리자', '캐릭터 에셋을 팩으로 묶어 상황에 맞는 이미지가 서사에 실리게 해요.'],
+      deep: ['세부 편집기', '변수·규칙·이벤트·상태창을 항목별로 직접 편집해요.'],
+    };
+    const FLOOR_HEAD_TAIL = ' 어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.';
     for (const tab of root.querySelectorAll('.sc-maintab')) {
       tab.onclick = () => {
         for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
@@ -21506,7 +21572,15 @@ count(목록)  has(목록, "항목")</pre>
         if (tab.dataset.page === 'edit') {
           ensureEditor();
           editor.setFloor(tab.dataset.floor || 'top'); // 층 = 사이드 내비 항목 (v0.47.4)
+          const head = FLOOR_HEADS[tab.dataset.floor || 'top'];
+          if (head) {
+            document.getElementById('sc-edit-title').textContent = head[0];
+            document.getElementById('sc-edit-desc').textContent = head[1] + FLOOR_HEAD_TAIL;
+          }
         }
+        // 작업공간의 [캐릭터에 적용]은 편집기의 작업본을 읽는다 — 편집 도구를 안 거치고
+        // 바로 들어와도 눌리게 여기서 준비한다 (없으면 설치본이 그대로 실려 무해)
+        if (tab.dataset.page === 'work') ensureEditor();
       };
     }
 
@@ -21575,8 +21649,8 @@ count(목록)  has(목록, "항목")</pre>
           ? '작업본을 먼저 만들어 주세요.'
           : `작업본에서 확인할 항목이 ${v.errors.length}개 있어요.`;
         const copy = needsFirstBuild
-          ? '아직 설치할 내용이 없어요. 아래 [AI에게 맡기기]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
-          : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI에게 맡기기]에서 수정을 요청할 수도 있어요.';
+          ? '아직 설치할 내용이 없어요. [작업도구]의 [AI 어시스턴트]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
+          : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI 어시스턴트]에서 수정을 요청할 수도 있어요.';
         const details = v.errors.map((x) => '<div class="sc-schema-validation-item">'
           + `<span class="sc-schema-validation-path">${escapeText(x.path)}</span>`
           + `<span class="sc-schema-validation-message">${escapeText(x.msg)}</span>`
@@ -21658,7 +21732,7 @@ count(목록)  has(목록, "항목")</pre>
       const r = await callAuxLLM('연결 테스트다. 정확히 {"ok":true} 만 출력하라.', 60);
       if (r && r.blocked) {
         lastAux.status = '테스트 결과: 차단됨 — 버튼 클릭 시점에도 차단이므로 이 환경은 플러그인 LLM 호출 전면 차단. '
-          + '[봇 편집]의 [루아 브리지 설치] + aux_model_mode=lua 사용을 권장';
+          + '[편집 작업공간]의 [루아 브리지 설치] + aux_model_mode=lua 사용을 권장';
       } else if (typeof r === 'string') {
         lastAux.status = '테스트 결과: 성공 — 플러그인 호출 자체는 허용됨 (자동 갱신이 안 되면 다시 알려줘)';
       } else {
@@ -21741,7 +21815,7 @@ count(목록)  has(목록, "항목")</pre>
         let schemaNote = '';
         if (!session) {
           if (!saved) {
-            rep.innerHTML = '<span class="status-bad">이 캐릭터에 스키마가 없어서 가져올 수 없음 — 먼저 [봇 편집]에서 스키마를 설치해줘'
+            rep.innerHTML = '<span class="status-bad">이 캐릭터에 스키마가 없어서 가져올 수 없음 — 먼저 [편집 작업공간]에서 스키마를 설치해줘'
               + ' (이 세이브에는 스키마가 동봉되지 않은 구버전 형식)</span>';
             return;
           }
@@ -21764,7 +21838,7 @@ count(목록)  has(목록, "항목")</pre>
             // 스키마를 통째로 되돌렸으니 [봇 편집]의 변수·규칙·이벤트도 복원본으로 교체.
             // (편집기가 옛 내용을 들고 있으면 다음 [설치]에서 방금 복원한 걸 다시 날린다)
             if (editor) loadIntoEditor(saved);
-            schemaNote = ' · 동봉 스키마로 복원됨 (봇 편집 탭도 갱신)';
+            schemaNote = ' · 동봉 스키마로 복원됨 (편집기 작업본도 갱신)';
           } else {
             // 스키마를 안 바꾸면 세이브의 변수 중 현재 스키마에 없는 것은 갈 곳이 없다.
             // (상태는 reconcileState로 정합화되므로 깨지진 않지만, 값이 무시된다는 건 알려야 한다)
@@ -21946,7 +22020,7 @@ count(목록)  has(목록, "항목")</pre>
     const loadedPrefix = charName ? `'${charName}' — ` : '';
     const stateMsg = {
       'no-char': ['선택된 캐릭터 없음', 'status-warn'],
-      'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI에게 맡기기나 JSON 작업대에서 작업본을 연 뒤 현재 캐릭터에 설치/업데이트하세요`, 'status-warn'],
+      'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI 어시스턴트나 JSON 관리자에서 작업본을 연 뒤 [편집 작업공간]에서 설치하세요`, 'status-warn'],
       'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
       'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
       'ok': [`${loadedPrefix}${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
@@ -21965,9 +22039,10 @@ count(목록)  has(목록, "항목")</pre>
     for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
     st.innerHTML = html;
 
-    // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게
-    const warnEl = document.getElementById('sc-editor-warn');
-    if (warnEl) {
+    // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게.
+    // 편집 도구(작업 중)와 편집 작업공간([적용] 버튼이 있는 곳) 양쪽에 같은 배너를 띄운다
+    const warnEls = [document.getElementById('sc-editor-warn'), document.getElementById('sc-work-warn')].filter(Boolean);
+    for (const warnEl of warnEls) {
       const cur = editorSig();
       const installed = sig(schema ?? BLANK_SCHEMA());
       if (editor && cur !== null && cur !== installed) {
@@ -21980,8 +22055,8 @@ count(목록)  has(목록, "항목")</pre>
         } catch {}
         warnEl.innerHTML = '<div class="sc-editor-diff">'
           + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
-          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [캐릭터에 적용]을 누르세요. '
-          + '기존 설치본으로 돌아가려면 [설치본 불러오기]를 누르세요.</div>'
+          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [편집 작업공간]의 [캐릭터에 적용]을 누르세요. '
+          + '기존 설치본으로 돌아가려면 같은 곳의 [설치본 불러오기]를 누르세요.</div>'
           + '<div class="sc-editor-diff-meta">'
           + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
           + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
@@ -22023,9 +22098,11 @@ count(목록)  has(목록, "항목")</pre>
       auxBadgeEl.className = 'sc-card-badge' + (badge[1] ? ` ${badge[1]}` : '');
     }
     const presetsDiv = document.getElementById('sc-presets');
+    const clockCard = document.getElementById('sc-clock-card');
     if (!session) {
       varsDiv.textContent = '스키마 로드 후 표시'; actionsDiv.textContent = '-';
       infoDiv.textContent = ''; presetsDiv.textContent = '-';
+      if (clockCard) clockCard.style.display = 'none';
       if (auxInfoDiv) auxInfoDiv.textContent = '스키마 로드 후 표시';
       if (actionsCountEl) actionsCountEl.textContent = '확인 전';
       if (engineBadgeEl) { engineBadgeEl.textContent = '스키마 없음'; engineBadgeEl.className = 'sc-card-badge warn'; }
@@ -22189,6 +22266,73 @@ count(목록)  has(목록, "항목")</pre>
       table.appendChild(tr);
     }
     varsDiv.appendChild(table);
+
+    // ── 세션 시계 (v0.70) — time 섹션이 있는 스키마에서만 보인다 ──
+    // 시계가 서사와 밀렸을 때 유저가 즉석에서 되돌리는 자리. 수정은 변수 수동 보정과
+    // 같은 규약을 탄다: current 갱신 → out 스냅샷 덮어쓰기 → CBS 미러 (리롤 정합 유지).
+    const clockDiv = document.getElementById('sc-clock');
+    const tcfg = timeMod.timeConfig(schema);
+    if (clockCard && clockDiv) {
+      if (!tcfg) {
+        clockCard.style.display = 'none';
+      } else {
+        clockCard.style.display = '';
+        const rawEpoch = session.current.vars[timeMod.EPOCH_KEY];
+        const epoch = typeof rawEpoch === 'number' && isFinite(rawEpoch) ? rawEpoch : tcfg.startEpoch;
+        const cal = timeMod.calendarOf(epoch, tcfg.calendar);
+        const startCal = timeMod.calendarOf(tcfg.startEpoch, tcfg.calendar);
+        clockDiv.classList.remove('muted');
+        clockDiv.innerHTML = '';
+        const setEpoch = async (next) => {
+          session.current.vars[timeMod.EPOCH_KEY] = next;
+          await commitVars();
+        };
+        const now = document.createElement('div');
+        now.className = 'sc-clock-now';
+        const elapsed = Math.floor(epoch / 1440) - Math.floor(tcfg.startEpoch / 1440);
+        now.innerHTML = `<b>${escapeText(timeMod.formatDate(tcfg.dateFmt, cal))}</b>`
+          + ` (${escapeText(tcfg.weekdays[cal.wd])}) <b>${escapeText(timeMod.formatClock(tcfg.clockFmt, cal))}</b>`
+          + `<span class="muted"> · 시작 ${escapeText(timeMod.formatDate(tcfg.dateFmt, startCal))}부터 ${elapsed}일째</span>`;
+        clockDiv.appendChild(now);
+        // 빠른 조정 — "한나절쯤 밀렸다"를 버튼 몇 번으로 되돌린다
+        const quick = document.createElement('div');
+        quick.className = 'row sc-clock-quick';
+        for (const [label, delta] of [['−1일', -1440], ['−1시간', -60], ['+1시간', 60], ['+1일', 1440]]) {
+          const b = document.createElement('button');
+          b.textContent = label;
+          b.onclick = () => setEpoch(epoch + delta);
+          quick.appendChild(b);
+        }
+        clockDiv.appendChild(quick);
+        // 직접 지정 — 브라우저 date 입력은 판타지 달력(flat30)과 1000년 미만 연도를 못 담아
+        // 텍스트 칸으로 받는다. 해석은 스키마 검증과 같은 parseStart라 존재하지 않는 날짜는 거부된다.
+        const setRow = document.createElement('div');
+        setRow.className = 'row sc-clock-set';
+        const dateIn = document.createElement('input');
+        dateIn.value = `${cal.y}-${String(cal.m).padStart(2, '0')}-${String(cal.d).padStart(2, '0')}`;
+        dateIn.placeholder = 'YYYY-MM-DD';
+        dateIn.setAttribute('aria-label', '날짜 (YYYY-MM-DD)');
+        const clockIn = document.createElement('input');
+        clockIn.value = `${String(cal.h).padStart(2, '0')}:${String(cal.mi).padStart(2, '0')}`;
+        clockIn.placeholder = 'HH:mm';
+        clockIn.setAttribute('aria-label', '시각 (HH:mm)');
+        const applyBtn = document.createElement('button');
+        applyBtn.textContent = '적용';
+        applyBtn.onclick = async () => {
+          const parts = timeMod.parseStart(`${dateIn.value.trim()} ${clockIn.value.trim()}`.trim(), tcfg.calendar);
+          if (!parts) {
+            applyBtn.textContent = '형식 오류';
+            setTimeout(() => (applyBtn.textContent = '적용'), 1200);
+            return;
+          }
+          await setEpoch(timeMod.epochFrom(parts, tcfg.calendar));
+        };
+        setRow.appendChild(dateIn);
+        setRow.appendChild(clockIn);
+        setRow.appendChild(applyBtn);
+        clockDiv.appendChild(setRow);
+      }
+    }
 
     // 액션 토글
     actionsDiv.innerHTML = '';

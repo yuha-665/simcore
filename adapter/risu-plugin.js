@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.70.0
-//@display-name SimCore (시뮬 엔진) v0.70 메뉴 재편성·세션 시계
+//@version 0.71.0
+//@display-name SimCore (시뮬 엔진) v0.71 불일치 신고 채널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.71.0 ────────────────────────────────────────────────
+// 서사-시스템 불일치 신고 채널 — **신고 전용, 쓰기 권한 없음.**
+//
+// 문제: 서사가 "레벨업했다"고 선언했는데 시스템은 그대로일 때, 지금까지는 그 모순을
+// 아무도 몰랐다 (보조는 허용 목록 밖이라 조용히 무시). 모순은 제거가 불가능하니
+// (게임과 달리 "화면"을 확률 모델이 생성한다) 남은 처분은 표면화다.
+//
+// - [엔진] 허용 목록에 아예 없는 변수 = 시스템 항목(경성 축)으로 기계 정의. 보조 프롬프트에
+//   그 라벨 목록(최대 24)과 함께 "조정하지 말고 conflicts 배열로 보고하라"를 싣는다.
+//   noVars·allowAll(루아 브리지 굽기)에는 안 싣는다 — 브리지는 changes/reasons만 회수.
+// - [엔진] sanitizeConflicts(문자열만·공백 정규화·160자·3건) → pendingNotifies 합류.
+//   다음 턴 [이벤트] 줄로 나가 **메인 모델이 서사를 시스템 상태로 되돌릴 근거**가 된다
+//   (상태 블록의 자기 수복 경향을 알림으로 강화). 변수·changeLog에는 절대 안 닿는다 —
+//   쓰기 권한이 없어 이중 계산·환각 보정이 원천 불가능한, 정합 패스의 안전한 반쪽.
+// - [어댑터] 즉시·지연·브리지 세 경로 모두 전달. 패널 [보조 모델] 요약 + 콘솔에 신고 표시.
+// - 스키마 표면 0 — 새 필드도 편집기 칸도 없다 (규칙 #3 해당 없음). 시스템 항목이 없는
+//   봇(전 변수 허용)에서는 지시 자체가 안 실려 토큰 낭비도 없다.
+// test-conflicts.js 신설.
 //
 // ── v0.70.0 ────────────────────────────────────────────────
 // 메뉴 재편성 + 세션 시계 — 이용자 피드백 4건 중 2건 채택 (나머지: 마커 건너뛰기는
@@ -1656,7 +1675,7 @@
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -2102,7 +2121,7 @@
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -2133,6 +2152,12 @@
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      // 불일치 신고 (v0.71) — 변수에는 반영 안 됨. 패널 [보조 모델] 요약과 콘솔에서 보인다
+      const confs = engine.sanitizeConflicts(r.auxParsed?.conflicts);
+      if (confs.length) {
+        lastAux.status = `${lastAux.status || ''} · ⚠ 서사-시스템 불일치 신고 ${confs.length}건: ${confs.join(' / ')}`;
+        console.log('[simcore] 서사-시스템 불일치 신고 (반영 안 함):', confs.join(' / '));
+      }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',
         '/ 보조 파싱:', r.auxParsed ? Object.keys(r.auxParsed.changes).length + '개 제안' : '실패');

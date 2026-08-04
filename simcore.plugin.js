@@ -1,13 +1,32 @@
 //@name simcore
 //@api 3.0
-//@version 0.70.0
-//@display-name SimCore (시뮬 엔진) v0.70 메뉴 재편성·세션 시계
+//@version 0.71.0
+//@display-name SimCore (시뮬 엔진) v0.71 불일치 신고 채널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.71.0 ────────────────────────────────────────────────
+// 서사-시스템 불일치 신고 채널 — **신고 전용, 쓰기 권한 없음.**
+//
+// 문제: 서사가 "레벨업했다"고 선언했는데 시스템은 그대로일 때, 지금까지는 그 모순을
+// 아무도 몰랐다 (보조는 허용 목록 밖이라 조용히 무시). 모순은 제거가 불가능하니
+// (게임과 달리 "화면"을 확률 모델이 생성한다) 남은 처분은 표면화다.
+//
+// - [엔진] 허용 목록에 아예 없는 변수 = 시스템 항목(경성 축)으로 기계 정의. 보조 프롬프트에
+//   그 라벨 목록(최대 24)과 함께 "조정하지 말고 conflicts 배열로 보고하라"를 싣는다.
+//   noVars·allowAll(루아 브리지 굽기)에는 안 싣는다 — 브리지는 changes/reasons만 회수.
+// - [엔진] sanitizeConflicts(문자열만·공백 정규화·160자·3건) → pendingNotifies 합류.
+//   다음 턴 [이벤트] 줄로 나가 **메인 모델이 서사를 시스템 상태로 되돌릴 근거**가 된다
+//   (상태 블록의 자기 수복 경향을 알림으로 강화). 변수·changeLog에는 절대 안 닿는다 —
+//   쓰기 권한이 없어 이중 계산·환각 보정이 원천 불가능한, 정합 패스의 안전한 반쪽.
+// - [어댑터] 즉시·지연·브리지 세 경로 모두 전달. 패널 [보조 모델] 요약 + 콘솔에 신고 표시.
+// - 스키마 표면 0 — 새 필드도 편집기 칸도 없다 (규칙 #3 해당 없음). 시스템 항목이 없는
+//   봇(전 변수 허용)에서는 지시 자체가 안 실려 토큰 낭비도 없다.
+// test-conflicts.js 신설.
 //
 // ── v0.70.0 ────────────────────────────────────────────────
 // 메뉴 재편성 + 세션 시계 — 이용자 피드백 4건 중 2건 채택 (나머지: 마커 건너뛰기는
@@ -4704,14 +4723,35 @@ function parseSetupResponse(text) {
 // 반환: { state, changeLog, firedEvents }
 
 /** 보조 모델 델타만 적용 (캡·검증) — outputPhase 내부와 지연 소급 적용에서 공용 */
-function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null) {
+function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
+  // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
+  pushConflictNotifies(state, conflicts);
   // 지연·브리지 소급 경로 — outputPhase가 이미 자기 몫을 쓴 뒤라 이어 붙인다
   recordChangeMemo(schema, state, changeLog, true);
   return { state, changeLog };
+}
+
+/**
+ * 불일치 신고 정제 + 통지 합류 (v0.71, 신고 전용 채널).
+ * 보조가 "서사는 이렇게 선언했는데 시스템 관리 항목이라 조정 못 한다"를 보고하면,
+ * 변수는 그대로 두고 통지에만 얹는다. 다음 턴 상태 블록의 [이벤트] 줄로 나가므로
+ * 메인 모델이 시스템 상태 쪽으로 서사를 되돌릴 근거가 된다. 유저에게는 패널 요약에 보인다.
+ */
+function sanitizeConflicts(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((s) => typeof s === 'string' && s.trim())
+    .map((s) => s.trim().replace(/\s+/g, ' ').slice(0, 160))
+    .slice(0, 3);
+}
+
+function pushConflictNotifies(state, conflicts) {
+  for (const c of sanitizeConflicts(conflicts)) {
+    state.meta.pendingNotifies.push(`⚠ 시스템 미확정: ${c} — 상태에 반영되지 않았다. 서사를 현재 상태에 맞춰라.`);
+  }
 }
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
@@ -4756,7 +4796,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -4765,6 +4805,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
+  // 5.2 서사-시스템 불일치 신고 (v0.71) — **신고 전용, 변수에는 절대 반영하지 않는다.**
+  // 통지로만 흘러 다음 턴 [이벤트] 줄에 실린다 → 서사가 스스로 물러나는 자기 수복 유도.
+  // 쓰기 권한이 없어 이중 계산·환각 보정이 원천 불가능한, 정합 패스의 안전한 반쪽이다.
+  pushConflictNotifies(state, conflicts);
 
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
@@ -5084,6 +5128,15 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   // 시간 규칙은 보조가 실제로 시간을 만질 수 있을 때만 (skip 우편함이 열려 있어야 뜻이 있다)
   const timeRule = nowLine && allow.some((a) => a.id === SKIP_DAY || a.id === SKIP_MIN);
 
+  // 신고 전용 불일치 채널 (v0.71) — 허용 목록에 아예 없는 변수 = 서사가 손대면 안 되는
+  // 시스템 항목(경성 축)이다. 서사가 그 변화를 선언하면 **보고만** 받는다: changes에 못
+  // 실리니 변수는 안전하고, 통지로만 흘러 유저와 다음 턴 서사가 불일치를 알게 된다.
+  // 브리지 템플릿 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
+  const allowedIds = new Set((schema.updater?.allow || []).map((a) => a.id));
+  const systemLabels = (!opts.allowAll && !noVars)
+    ? schema.vars.filter((v) => !allowedIds.has(v.id)).map((v) => v.label ?? v.id).slice(0, 24)
+    : [];
+
   return [
     noVars
       ? '너는 장면 분석기다. 아래 서사를 읽고 아래에서 요청한 항목만 JSON으로 출력하라.'
@@ -5105,6 +5158,9 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
     timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
     noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
+    systemLabels.length
+      ? `- 서사가 시스템 관리 항목(${systemLabels.join(', ')})의 변화를 명시적으로 선언했다면 그 값을 조정하려 하지 말고, "conflicts" 배열에 "무엇이 어떻게 선언됐는지"를 한 줄 문자열로 보고하라 (최대 3건). 선언이 없으면 conflicts를 아예 넣지 마라.`
+      : null,
     noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
@@ -5396,11 +5452,12 @@ function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
   return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
+    conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
 }
 
 module.exports = {
-  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, consumeTimeSkips,
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
@@ -6126,6 +6183,7 @@ class SimSession {
       rng: this._rng(outIndex, 'output'),
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
+      conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;
@@ -19129,7 +19187,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -19575,7 +19633,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -19606,6 +19664,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      // 불일치 신고 (v0.71) — 변수에는 반영 안 됨. 패널 [보조 모델] 요약과 콘솔에서 보인다
+      const confs = engine.sanitizeConflicts(r.auxParsed?.conflicts);
+      if (confs.length) {
+        lastAux.status = `${lastAux.status || ''} · ⚠ 서사-시스템 불일치 신고 ${confs.length}건: ${confs.join(' / ')}`;
+        console.log('[simcore] 서사-시스템 불일치 신고 (반영 안 함):', confs.join(' / '));
+      }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',
         '/ 보조 파싱:', r.auxParsed ? Object.keys(r.auxParsed.changes).length + '개 제안' : '실패');

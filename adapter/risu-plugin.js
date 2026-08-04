@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.69.1
+//@version 0.69.2
 //@display-name SimCore (시뮬 엔진) v0.69 아이돌 템플릿
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
@@ -3304,6 +3304,16 @@
         background:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); font-weight:650; }
       #sc-root .sce .sce-btn.sce-add { border-style:dashed !important; color:var(--sc-accent) !important; }
       #sc-root .sce .sce-btn.sce-danger { color:var(--sc-danger) !important; }
+      /* ⚠ 관리 패널의 #sc-root input { width:130px } 는 id 특이도라 편집기의 .sce-w-* 폭 체계를
+         전부 이긴다 (v0.47.8의 탭 색 사고와 같은 종류다 — 그때는 button이었고 이번엔 input이다).
+         flex 컨테이너 안에서는 .sce-w-l의 flex:1이 대신 버텨 줘서 여태 안 드러났고, **격자로
+         짠 곳에서만** 입력칸이 130px에 눌어붙었다 (실기 제보: 에셋 팩 편집 화면 전체).
+         편집기 안에서는 우리 폭 체계가 다시 이기도록 같은 무게로 되돌린다. */
+      #sc-root .sce input { width:auto; }
+      #sc-root .sce input.sce-w-s { width:76px; }
+      #sc-root .sce input.sce-w-m { width:120px; }
+      #sc-root .sce input.sce-w-l { width:100%; min-width:140px; }
+      #sc-root .sce input[type="checkbox"] { width:auto; }
       #sc-root .sc-maintabs { display:flex; gap:4px; overflow-x:auto; scrollbar-width:thin;
         border-bottom:1px solid var(--sc-line); margin-top:16px; margin-bottom:14px; }
       #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;

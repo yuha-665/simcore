@@ -252,6 +252,24 @@ if (ed) {
   ck('★ 폭 상한이 탭 바까지 품은 기둥에 걸려 있다',
     /\.sce \.sce-deep \{[^}]*max-width:var\(--sce-work-w\)/.test(css)
     && src.includes("h('div', { class: 'sce-deep' }, deepTabs(), deepBody(), reportEl)"), '');
+
+  // ── 관리 패널(#sc-root)의 id 특이도가 편집기 폭 체계를 눌러 죽이지 않는가 ──
+  // 실기 제보: 에셋 팩 편집 화면의 입력칸이 전부 130px에 눌어붙었다. 범인은 관리 패널의
+  // `#sc-root input { width:130px }` — id 선택자라 .sce-w-* 를 전부 이긴다. flex로 짠 곳은
+  // .sce-w-l의 flex:1이 대신 버텨 줘서 여태 안 드러났고, **격자로 짠 곳만** 무너졌다.
+  // v0.47.8에 같은 사고가 button으로 한 번 있었다 — 되풀이라 어서션으로 못 박는다.
+  {
+    const blanket = /#sc-root input \{[^}]*width:\s*130px/.test(src);
+    ck('관리 패널에 input 폭을 통으로 박는 규칙이 있다 (아래 어서션의 전제)', blanket, '');
+    const guards = ['s', 'm', 'l'].every((k) =>
+      new RegExp(`#sc-root \\.sce input\\.sce-w-${k} \\{[^}]*width:`).test(src));
+    ck('★ 편집기 안에서는 .sce-w-* 폭 체계가 다시 이긴다 (id 특이도로 되돌려 둔다)',
+      !blanket || (guards && /#sc-root \.sce input \{[^}]*width:\s*auto/.test(src)), '');
+    ck('★ 큰 입력칸은 격자 안에서도 칸을 채운다 (flex:1에만 기대지 않는다)',
+      !blanket || /#sc-root \.sce input\.sce-w-l \{[^}]*width:\s*100%/.test(src), '');
+    ck('체크박스는 폭 되돌리기에 안 휩쓸린다',
+      !blanket || /#sc-root \.sce input\[type="checkbox"\] \{[^}]*width:\s*auto/.test(src), '');
+  }
 }
 
 let p = 0, f = 0;

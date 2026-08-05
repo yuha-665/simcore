@@ -1,13 +1,30 @@
 //@name simcore
 //@api 3.0
-//@version 0.75.0
-//@display-name SimCore (시뮬 엔진) v0.75 에셋 인물별 칸
+//@version 0.76.0
+//@display-name SimCore (시뮬 엔진) v0.76 CBS 통과
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.76.0 ────────────────────────────────────────────────
+// 템플릿 안의 리수 CBS(`{{...}}`)를 건드리지 않는다 — 손상 1건 + 설치 거부 1건.
+//
+// "소전봇 같은 작전 지도를 상태창으로 만들 수 있나"를 실측하다 나온 결함이다.
+// 지도는 이미 오늘 가능했다(배경 이미지 + 좌표 절대배치 핀 + 조건부 클래스, 전부 template
+// 모드로 표현 가능). 막고 있던 건 배경을 부르는 `{{img::지도}}` 한 줄이었다.
+//
+// - [손상] 우리 치환 정규식 `/\{([^{}]+)\}/`이 CBS 안쪽 한 겹을 문다. 이름이 변수·시간
+//   노출 이름과 겹치면 값이 들어가 CBS가 깨졌다 — 실측 `{{date}}` → `{3월 12일}`
+//   (`date`는 시간 체계가 노출하는 이름이다). 안 겹치는 이름은 evaluate가 던져 우연히
+//   살아남고 있었을 뿐이라, 이름 운에 맡기던 상태였다.
+// - [설치 거부] 검증기 checkTemplateRefs는 같은 자리에서 하드 오류를 냈다. `{{img::지도}}`
+//   하나만 있어도 스키마가 설치되지 않았다 — 렌더는 멀쩡한데 문 앞에서 막힌 셈.
+// - 수정: 양쪽 다 "바깥에 중괄호가 한 겹 더 있으면 우리 것이 아니다"로 건너뛴다.
+//   렌더와 검증이 같은 기준을 쓰므로 어긋날 자리가 없다. 진짜 오타(`{ghost_var}`)는 그대로 오류.
+// test-cbspass.js 신설 — 실제 작전 지도 템플릿을 검증→렌더까지 왕복시킨다.
 //
 // ── v0.75.0 ────────────────────────────────────────────────
 // 에셋 aux 지시가 인물별 칸 구조를 잃던 버그 — "에셋은 종류와 형식이 조금만 복잡해지면
@@ -2929,6 +2946,9 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   const re = /\{([^{}]+)\}/g;
   let m;
   while ((m = re.exec(tpl))) {
+    // 리수 CBS({{...}})는 우리 문법이 아니다 — renderTemplate과 같은 기준으로 건너뛴다 (v0.76).
+    // 예전엔 여기서 하드 오류가 나 `{{img::지도}}` 하나만 있어도 설치가 거부됐다 (렌더는 멀쩡했다).
+    if (tpl[m.index - 1] === '{' && tpl[m.index + m[0].length] === '}') continue;
     const inner = m[1].trim().replace(/:tags$/, ''); // {id:tags} 필터 접미사 제거 후 검사
     if (RESERVED_SLOTS.has(inner)) continue;
     try {
@@ -5125,7 +5145,13 @@ function actionAvailability(schema, state, action) {
  *   변수보다 **먼저** 본다 — 같은 이름의 변수가 있으면 검증이 경고로 잡는다.
  */
 function renderTemplate(tpl, lookup, extras = null) {
-  return tpl.replace(/\{([^{}]+)\}/g, (_, inner) => {
+  return tpl.replace(/\{([^{}]+)\}/g, (whole, inner, idx, all) => {
+    // 리수 CBS({{...}})는 통째로 남긴다 (v0.76). 우리 정규식은 안쪽 한 겹을 무는데,
+    // CBS 이름이 우리 변수·시간 노출 이름과 겹치면 값이 치환돼 CBS가 깨진다.
+    // (실측: 시간 체계를 켠 봇에서 `{{date}}` → `{3월 12일}`. 겹치지 않는 이름은
+    //  evaluate가 던져 우연히 살아남고 있었을 뿐이라, 이름 운에 맡길 수 없다.)
+    // 이걸 남겨야 상태창 템플릿에서 `{{img::지도}}` 같은 에셋 참조를 쓸 수 있다.
+    if (all[idx - 1] === '{' && all[idx + whole.length] === '}') return whole;
     try {
       let expr = inner.trim();
       if (extras && Object.prototype.hasOwnProperty.call(extras, expr)) return extras[expr];

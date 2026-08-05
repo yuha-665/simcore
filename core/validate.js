@@ -951,6 +951,9 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   const re = /\{([^{}]+)\}/g;
   let m;
   while ((m = re.exec(tpl))) {
+    // 리수 CBS({{...}})는 우리 문법이 아니다 — renderTemplate과 같은 기준으로 건너뛴다 (v0.76).
+    // 예전엔 여기서 하드 오류가 나 `{{img::지도}}` 하나만 있어도 설치가 거부됐다 (렌더는 멀쩡했다).
+    if (tpl[m.index - 1] === '{' && tpl[m.index + m[0].length] === '}') continue;
     const inner = m[1].trim().replace(/:tags$/, ''); // {id:tags} 필터 접미사 제거 후 검사
     if (RESERVED_SLOTS.has(inner)) continue;
     try {

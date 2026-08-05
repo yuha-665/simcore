@@ -966,7 +966,13 @@ function actionAvailability(schema, state, action) {
  *   변수보다 **먼저** 본다 — 같은 이름의 변수가 있으면 검증이 경고로 잡는다.
  */
 function renderTemplate(tpl, lookup, extras = null) {
-  return tpl.replace(/\{([^{}]+)\}/g, (_, inner) => {
+  return tpl.replace(/\{([^{}]+)\}/g, (whole, inner, idx, all) => {
+    // 리수 CBS({{...}})는 통째로 남긴다 (v0.76). 우리 정규식은 안쪽 한 겹을 무는데,
+    // CBS 이름이 우리 변수·시간 노출 이름과 겹치면 값이 치환돼 CBS가 깨진다.
+    // (실측: 시간 체계를 켠 봇에서 `{{date}}` → `{3월 12일}`. 겹치지 않는 이름은
+    //  evaluate가 던져 우연히 살아남고 있었을 뿐이라, 이름 운에 맡길 수 없다.)
+    // 이걸 남겨야 상태창 템플릿에서 `{{img::지도}}` 같은 에셋 참조를 쓸 수 있다.
+    if (all[idx - 1] === '{' && all[idx + whole.length] === '}') return whole;
     try {
       let expr = inner.trim();
       if (extras && Object.prototype.hasOwnProperty.call(extras, expr)) return extras[expr];

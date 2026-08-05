@@ -1034,7 +1034,7 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '- 출력은 **`<style>` 블록 하나 + HTML**만. 코드펜스 밖에 설명을 덧붙이지 마세요.',
     '- CSS는 시스템이 이 상태창 범위로 자동 격리합니다. 클래스명은 자유롭게 지어도 됩니다.',
     '- 외부 리소스 금지: `@import`, `url(http...)`, 웹폰트 링크. `font-family`는 기기 폰트만.',
-    '- `position: fixed` / `position: absolute`는 피하세요. 채팅 흐름 안에 들어가는 창입니다.',
+    '- `position: fixed` 금지. `position: absolute`는 **이 템플릿 안의 `position: relative` 컨테이너 내부에서만** 쓰세요 (지도 핀·겹침 레이어용). 채팅 흐름에 들어가는 창이라 밖으로 삐져나가면 안 됩니다.',
     '- **아래 목록에 없는 {자리표시자}를 쓰면 설치가 거부됩니다.** 꾸밈용 텍스트는 그냥 글자로 쓰세요.',
     '- 탭·팝업 같은 전환은 체크박스/라디오 + CSS로만 (JS 불가). 라디오·체크박스의 `id`/`name`에는',
     '  반드시 `{uid}`를 섞으세요 (예: `id="tab1-{uid}"`) — 메시지마다 상태창이 새로 그려져서, 없으면 서로 엉킵니다.',
@@ -1042,6 +1042,23 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '',
     '## 쓸 수 있는 자리표시자 (이게 전부입니다)',
     ...ph,
+    '',
+    '## 자리표시자 심화 — 수식·조건부 클래스·이미지',
+    "- 자리표시자에는 수식이 됩니다: `{hp < 30 ? '위험' : '안정'}`. class 속성 안에 넣으면 조건부 스타일이 됩니다:",
+    '  `<i class="pin {region_a == \'적군\' ? \'hostile\' : \'\'}">` — 값에 따라 다른 CSS가 걸립니다.',
+    '- `{{img::에셋이름}}` 같은 리수 문법(중괄호 **두 겹**)은 건드리지 않고 그대로 내보냅니다 —',
+    '  봇에 올린 이미지 에셋을 상태창 안에 넣을 수 있습니다.',
+    '- 두 겹 안에 한 겹을 조립할 수 있습니다: `{{img::지역A_{region_a}}}` → `{{img::지역A_적군}}` —',
+    '  변수 값에 따라 다른 이미지가 뽑힙니다.',
+    '- 존재하지 않는 에셋 이름을 지어내지 마세요. 요청 문구에 적힌 이름만 쓰고, 이미지가 없으면 CSS만으로 그리세요.',
+    '',
+    '## 지도·도해 패턴 (요청이 지도·전황판·신체 부위도·평면도라면)',
+    '- 뼈대: `position:relative` 컨테이너에 배경(`{{img::지도이름}}` 또는 CSS 그라디언트)을 깔고, 그 위에 요소를 절대배치합니다.',
+    '- **지점 핀**: `position:absolute; left:57%; top:45%; transform:translate(-50%,-50%)` — % 좌표라 폭이 변해도 자리가 유지됩니다.',
+    '  핀의 class에 위 조건부 수식을 넣어 상태(확보/전투 중/미탐사)를 색·점멸로 가르세요.',
+    '- **영역 색칠**: 같은 크기의 투명 이미지 레이어를 겹칩니다 — 레이어마다 `position:absolute; inset:0; width:100%; pointer-events:none`,',
+    '  이름을 `{{img::지역_{지역변수}}}`로 조립하면 변수가 바뀔 때 그 지역의 색이 바뀝니다.',
+    '- 접었다 펴는 지도는 체크박스 + `:checked ~` 로 (JS 불가). 이때도 `id`에 `{uid}`를 꼭 섞으세요.',
     '',
     cur
       ? ['## 지금 쓰는 템플릿 — 이걸 바탕으로 고쳐도, 완전히 새로 만들어도 됩니다',
@@ -5862,7 +5879,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     const cssActions = h('div', { class: 'sce-design-actions' });
     const cssRequest = bindArea(cssReq, (x) => { cssReq = x; }, layoutMode
-      ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩'
+      ? '원하는 배치·분위기 — 예: 왼쪽 칭호 칸, 오른쪽 수치 2열, 하단 계약 칩 / 작전 지도: 배경 에셋 worldmap 위에 거점 핀'
       : '원하는 분위기 — 예: 낡은 신문지 느낌, 세리프 폰트, 붉은 도장 포인트');
     cssRequest.className = 'sce-design-request';
     cssRequest.setAttribute('aria-label', layoutMode ? '원하는 배치와 분위기' : '원하는 분위기');

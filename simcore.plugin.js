@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.73.0
-//@display-name SimCore (시뮬 엔진) v0.73 낱말 게이트 어휘장
+//@version 0.74.0
+//@display-name SimCore (시뮬 엔진) v0.74 감지 신고
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.74.0 ────────────────────────────────────────────────
+// 감지 신고 채널 — 연성 축의 신고 채널, v0.71 conflicts의 쌍둥이 (어휘장 벤치마킹 2단).
+//
+// 낱말 게이트의 남은 구멍은 진짜 패러프레이즈다 — "발을 헛디뎠고 일어서지 못했다"에는
+// 부상 계열 낱말이 하나도 없다. 이미 매 턴 서사를 읽는 보조 모델에게 의미 판단을 맡기되
+// **쓰기 권한은 안 준다**: 신고(detected 배열) → 다음 전송 한 번만 낱말 필터 우회 개방.
+//
+// - [엔진] buildAuxPrompt: 낱말 게이트에만 닫힌 변수의 label(id)을 잠김 목록으로 싣고
+//   "명백히 서술됐을 때만 detected로 보고(최대 4, changes 금지)" 지시. 열린 턴에는
+//   "지난 턴 서사의 그 변화를 반영하라" 예외 지시 — 이게 없으면 '앞선 대화 재계산 금지'
+//   규칙이 열어 준 변수를 도로 버린다 (설계 중 자체 발견).
+// - [엔진] outputPhase 5.3 consumeDetected — 해제 표(meta.wordUnlock)를 매 출력마다
+//   갈아끼워 유효 기간이 정확히 한 전송. 델타 적용(5) **뒤**라 신고 턴 changes 밀반입은
+//   구조적으로 불가능. auxAllowList는 낱말 필터만 우회 — whenArmed·갈림길 동결은 신고로도
+//   못 연다 (결정적 잠금 우선). 스냅샷에 실려 리롤·삭제 복원도 기존 규약 그대로.
+// - [엔진] 소급 경로(applyChangesToState)는 얹기만 — 빈 신고로 남의 해제 표를 안 밟는다.
+// - [편집기] AI 설정 탭 [잠긴 변수 감지 신고] 토글 (기본 켜짐, false만 저장 — 규칙 #3).
+//   updater.wordDetect 검증 + 규격서에 안전망 한 줄 추가.
+// - [어댑터] 패널 요약에 "🔎 잠긴 변수 감지 N건 — 다음 턴 열림" / 소급 2경로 detected 전달.
+// - 브리지 굽기(allowAll)에는 잠김 목록을 안 싣는다 — 설치 시점 상태로 굳어 거짓말이 된다.
+// test-detect.js 신설.
 //
 // ── v0.73.0 ────────────────────────────────────────────────
 // 낱말 게이트(mentions) 어휘장 — 설계 시점에 유의어를 굽는다 (RP 메모리 에이전트 플러그인
@@ -2247,6 +2269,10 @@ function validateSchema(schema) {
       && (typeof up.contextTurns !== 'number' || !Number.isInteger(up.contextTurns)
           || up.contextTurns < 1 || up.contextTurns > 5))
     err('$.updater.contextTurns', '보조모델에 보낼 최근 대화 턴 수는 1~5 사이 정수여야 함');
+  // 감지 신고 (v0.74) — 기본 켜짐이라 false만 저장된다. 다른 값이 오면 조용히 켜진 채
+  // 돌아가므로 알려 준다
+  if (up.wordDetect != null && typeof up.wordDetect !== 'boolean')
+    err('$.updater.wordDetect', `wordDetect는 true/false여야 함 (현재: '${up.wordDetect}')`);
   const varById = Object.fromEntries(vars.map((v) => [v.id, v]));
   (up.allow || []).forEach((a, i) => {
     const p = `$.updater.allow[${i}]`;
@@ -4772,13 +4798,19 @@ function parseSetupResponse(text) {
 // 반환: { state, changeLog, firedEvents }
 
 /** 보조 모델 델타만 적용 (캡·검증) — outputPhase 내부와 지연 소급 적용에서 공용 */
-function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null) {
+function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
+  // 감지 신고 — 소급 경로에서는 있으면 얹기만 한다 (빈 신고로 지우면, 이 응답보다 새 출력이
+  // 세워 둔 해제 표를 밟는다. 교체는 정규 경로 outputPhase의 몫)
+  if (schema.updater?.wordDetect !== false) {
+    const det = sanitizeDetected(schema, detected);
+    if (det.length) state.meta.wordUnlock = { ...(state.meta.wordUnlock || {}), ...Object.fromEntries(det.map((id) => [id, true])) };
+  }
   // 지연·브리지 소급 경로 — outputPhase가 이미 자기 몫을 쓴 뒤라 이어 붙인다
   recordChangeMemo(schema, state, changeLog, true);
   return { state, changeLog };
@@ -4801,6 +4833,28 @@ function pushConflictNotifies(state, conflicts) {
   for (const c of sanitizeConflicts(conflicts)) {
     state.meta.pendingNotifies.push(`⚠ 시스템 미확정: ${c} — 상태에 반영되지 않았다. 서사를 현재 상태에 맞춰라.`);
   }
+}
+
+/**
+ * 감지 신고 정제 (v0.74, 연성 축의 신고 채널 — conflicts의 쌍둥이).
+ * 낱말 게이트에 닫힌 변수를 서사가 명백히 서술했다고 보조가 신고하면, 그 턴에는 아무것도
+ * 안 바꾸고 **다음 전송 한 번만** 낱말 필터를 우회해 연다. 신고 자체에 쓰기 권한이 없어
+ * 게이트의 존재 이유(등장 안 한 변수의 드리프트)는 그대로 지켜진다 — 열린 뒤의 변화도
+ * 여전히 상한·coerce를 통과한다.
+ */
+function sanitizeDetected(schema, list) {
+  if (!Array.isArray(list)) return [];
+  const gated = new Set((schema.updater?.allow || []).filter((a) => a.mentions).map((a) => a.id));
+  return [...new Set(list.filter((s) => typeof s === 'string').map((s) => s.trim())
+    .filter((s) => gated.has(s)))].slice(0, 4);
+}
+
+/** 다음 전송 1회분 해제 표를 갈아끼운다 — 매 출력마다 교체라 유효 기간이 정확히 한 전송이다 */
+function consumeDetected(schema, state, detected) {
+  if (schema.updater?.wordDetect === false) { delete state.meta.wordUnlock; return; }
+  const det = sanitizeDetected(schema, detected);
+  if (det.length) state.meta.wordUnlock = Object.fromEntries(det.map((id) => [id, true]));
+  else delete state.meta.wordUnlock;
 }
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
@@ -4845,12 +4899,13 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
-  // 5. 보조 모델 델타 적용
+  // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
+  // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
   applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
@@ -4858,6 +4913,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 통지로만 흘러 다음 턴 [이벤트] 줄에 실린다 → 서사가 스스로 물러나는 자기 수복 유도.
   // 쓰기 권한이 없어 이중 계산·환각 보정이 원천 불가능한, 정합 패스의 안전한 반쪽이다.
   pushConflictNotifies(state, conflicts);
+  // 5.3 감지 신고 (v0.74) — 연성 축의 신고 채널. 이번 신고분으로 해제 표를 갈아끼운다
+  // (다음 전송 한 번만 유효). 이 턴의 changes에 신고 변수가 섞여 있어도 5에서 이미
+  // 게이트에 걸러졌다 — 신고와 반영이 같은 턴에 겹치는 일은 구조적으로 없다.
+  consumeDetected(schema, state, detected);
 
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
@@ -5106,7 +5165,11 @@ function auxAllowList(schema, text, state = null) {
     return false;
   };
 
-  return allow.filter((a) => !a.mentions || keysOf(a).some(reallyIn));
+  // 감지 신고 해제 (v0.74) — 지난 출력이 "서사가 이 변수의 변화를 서술했다"고 신고한 변수는
+  // 이번 전송 한 번만 낱말 없이도 열린다. **낱말 필터만** 우회한다 — whenArmed·갈림길 동결은
+  // 위에서 이미 걸러져 여기 오지도 않으므로, 신고로는 결정적 잠금을 못 푼다.
+  const unlocked = state?.meta?.wordUnlock || {};
+  return allow.filter((a) => !a.mentions || unlocked[a.id] || keysOf(a).some(reallyIn));
 }
 
 /**
@@ -5186,6 +5249,19 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     ? schema.vars.filter((v) => !allowedIds.has(v.id)).map((v) => v.label ?? v.id).slice(0, 24)
     : [];
 
+  // 감지 신고 채널 (v0.74) — 낱말 게이트에만 닫힌 변수의 **label만** 싣는다 (현재값·상한은
+  // 안 준다 — 조정 대상이 아니라 감지 대상이다). auxAllowList(null, state)는 낱말 필터 없이
+  // whenArmed·갈림길 동결만 적용한 목록이라, 그 차집합이 "낱말 때문에 닫힌 것"과 정확히 같다.
+  // whenArmed·동결로 닫힌 변수는 여기 안 실린다 — 결정적 잠금은 신고로도 못 연다.
+  // 브리지 굽기(allowAll)에는 안 싣는다 — 설치 시점에 한 번 구워져 잠김 목록이 거짓말이 된다.
+  const openIds = new Set(allow.map((a) => a.id));
+  const detectable = (!opts.allowAll && state && schema.updater?.wordDetect !== false)
+    ? auxAllowList(schema, null, state).filter((a) => a.mentions && !openIds.has(a.id)).slice(0, 24)
+    : [];
+  // 지난 턴 신고로 이번 턴만 열린 변수 — "앞선 대화 재계산 금지" 규칙의 명시적 예외를 달아야
+  // 한다. 변화가 일어난 서사는 지난 턴 글이라, 예외 없이는 열어 줘도 모델이 스스로 버린다.
+  const unlockedNow = allow.filter((a) => state?.meta?.wordUnlock?.[a.id]);
+
   return [
     noVars
       ? '너는 장면 분석기다. 아래 서사를 읽고 아래에서 요청한 항목만 JSON으로 출력하라.'
@@ -5209,6 +5285,12 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
     systemLabels.length
       ? `- 서사가 시스템 관리 항목(${systemLabels.join(', ')})의 변화를 명시적으로 선언했다면 그 값을 조정하려 하지 말고, "conflicts" 배열에 "무엇이 어떻게 선언됐는지"를 한 줄 문자열로 보고하라 (최대 3건). 선언이 없으면 conflicts를 아예 넣지 마라.`
+      : null,
+    detectable.length
+      ? `- 다음 변수는 이번 턴 잠겨 있다: ${detectable.map((a) => `${varById[a.id]?.label ?? a.id}(${a.id})`).join(', ')}. 서사가 이들의 변화를 **명백히 서술**했을 때만 그 id를 "detected" 배열로 보고하라 (최대 4개, changes에는 넣지 마라 — 다음 턴에 열린다). 분위기·추측으로 넣지 말고, 서술이 없으면 detected를 아예 넣지 마라.`
+      : null,
+    unlockedNow.length
+      ? `- ${unlockedNow.map((a) => `${varById[a.id]?.label ?? a.id}(${a.id})`).join(', ')} 변수는 지난 턴 감지 신고로 이번 턴만 열렸다. **지난 턴 서사**에서 일어난 그 변화를 이번 changes에 반영하라 (앞선 대화 재계산 금지 규칙의 예외다. 단, 위 "이미 반영된 변화"에 있는 것은 여전히 다시 세지 마라).`
       : null,
     noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
@@ -5502,11 +5584,12 @@ function parseAuxResponse(text) {
   if (!obj) return null;
   return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
+    detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
 }
 
 module.exports = {
-  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, consumeTimeSkips,
+  initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
   renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
@@ -6254,6 +6337,7 @@ class SimSession {
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
+      detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;
@@ -8561,6 +8645,7 @@ const SCHEMA_ALLOW_RULES = [
   '  끝의 "다"를 뗀 `"다쳤"`은 "다쳤다·다쳤고·다쳤을"에 걸립니다 (부분일치). 한글은 음절이 축약되므로("다치었다"→"다쳤다") 자주 나오는 꼴 2~3개(`"다쳤", "다친", "다치"`)를 같이 적는 게 안전합니다.',
   '- **매 턴 움직이는 핵심 수치**(돈·피로·시각류)에는 mentions를 달지 마세요 — 낱말을 놓친 턴의 변화가 통째로 사라집니다.',
   '- 상태창이 매 턴 찍는 단위 말("골드"처럼 어떤 변수의 `format`에 든 말)은 낱말로 금지 — 매 턴 화면에 찍혀 항상 열리므로 게이트가 무의미해집니다.',
+  '- 낱말을 놓쳐도 안전망이 있습니다: 서사가 잠긴 변수의 변화를 서술하면 보조 AI가 신고하고 그 변수가 다음 턴 한 번 열립니다(감지 신고, 기본 켜짐). 그래도 유의어를 잘 갖출수록 반영이 한 턴 빠릅니다.',
 ];
 
 // 반복 이벤트 패턴 — once 오남용은 실측 사고다 (맨션봇 시설 위기: once라 두 번째 고장부터 침묵).
@@ -12971,6 +13056,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '앞선 대화를 같이 보내면 "아까 준 선물" 같은 맥락을 보조 AI가 이해해 판단이 정확해진다. '
       + '다만 턴마다 토큰을 더 쓰고, 이미 반영한 변화를 다시 셀 위험도 조금 생긴다 (그러지 말라는 지시는 자동으로 붙는다).'));
+
+    // 감지 신고 (v0.74) — 낱말 게이트의 안전망. 기본 켜짐, 끄기만 저장 (규칙 #3)
+    wrap.appendChild(h('h4', {}, '잠긴 변수 감지 신고'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindCheck(schema.updater.wordDetect !== false,
+        (on) => { schema.updater.wordDetect = on ? undefined : false; rerender(); }, '감지 신고 켜기 (기본)')));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '등장 낱말로 잠근 변수를 서사가 낱말 없이 서술하면("발을 헛디뎠고 일어서지 못했다") 보조 AI가 '
+      + '그 사실만 신고하고, 그 변수가 다음 턴 한 번 열린다. 신고 자체는 값을 못 바꾸고, 열린 뒤에도 '
+      + '증감 한도는 그대로 걸린다. 낱말 잠금을 안 쓰는 봇에는 아무 영향이 없다.'));
 
     // 다음 행동 제안 (v0.43) — 보조 응답에 얹혀 오는 옵트인 기능. 스키마 키는 suggest 하나.
     wrap.appendChild(h('h4', {}, '다음 행동 제안'));
@@ -19284,7 +19379,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -19730,7 +19825,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -19766,6 +19861,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (confs.length) {
         lastAux.status = `${lastAux.status || ''} · ⚠ 서사-시스템 불일치 신고 ${confs.length}건: ${confs.join(' / ')}`;
         console.log('[simcore] 서사-시스템 불일치 신고 (반영 안 함):', confs.join(' / '));
+      }
+      // 감지 신고 (v0.74) — 이번 턴엔 반영 안 됨. 다음 전송 한 번만 그 변수가 낱말 없이 열린다.
+      // 꺼진 봇에서는 표시도 안 한다 — 프롬프트가 안 시켰는데 온 신고는 엔진도 버린다
+      const dets = schema.updater?.wordDetect === false ? []
+        : engine.sanitizeDetected(schema, r.auxParsed?.detected);
+      if (dets.length) {
+        const names = dets.map((id) => schema.vars.find((v) => v.id === id)?.label ?? id).join(', ');
+        lastAux.status = `${lastAux.status || ''} · 🔎 잠긴 변수 감지 ${dets.length}건: ${names} — 다음 턴 열림`;
+        console.log('[simcore] 잠긴 변수 감지 신고 (다음 턴 개방):', dets.join(', '));
       }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',

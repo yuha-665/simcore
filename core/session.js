@@ -78,6 +78,7 @@ class SimSession {
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
+      detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;

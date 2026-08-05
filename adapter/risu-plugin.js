@@ -1,13 +1,35 @@
 //@name simcore
 //@api 3.0
-//@version 0.73.0
-//@display-name SimCore (시뮬 엔진) v0.73 낱말 게이트 어휘장
+//@version 0.74.0
+//@display-name SimCore (시뮬 엔진) v0.74 감지 신고
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.74.0 ────────────────────────────────────────────────
+// 감지 신고 채널 — 연성 축의 신고 채널, v0.71 conflicts의 쌍둥이 (어휘장 벤치마킹 2단).
+//
+// 낱말 게이트의 남은 구멍은 진짜 패러프레이즈다 — "발을 헛디뎠고 일어서지 못했다"에는
+// 부상 계열 낱말이 하나도 없다. 이미 매 턴 서사를 읽는 보조 모델에게 의미 판단을 맡기되
+// **쓰기 권한은 안 준다**: 신고(detected 배열) → 다음 전송 한 번만 낱말 필터 우회 개방.
+//
+// - [엔진] buildAuxPrompt: 낱말 게이트에만 닫힌 변수의 label(id)을 잠김 목록으로 싣고
+//   "명백히 서술됐을 때만 detected로 보고(최대 4, changes 금지)" 지시. 열린 턴에는
+//   "지난 턴 서사의 그 변화를 반영하라" 예외 지시 — 이게 없으면 '앞선 대화 재계산 금지'
+//   규칙이 열어 준 변수를 도로 버린다 (설계 중 자체 발견).
+// - [엔진] outputPhase 5.3 consumeDetected — 해제 표(meta.wordUnlock)를 매 출력마다
+//   갈아끼워 유효 기간이 정확히 한 전송. 델타 적용(5) **뒤**라 신고 턴 changes 밀반입은
+//   구조적으로 불가능. auxAllowList는 낱말 필터만 우회 — whenArmed·갈림길 동결은 신고로도
+//   못 연다 (결정적 잠금 우선). 스냅샷에 실려 리롤·삭제 복원도 기존 규약 그대로.
+// - [엔진] 소급 경로(applyChangesToState)는 얹기만 — 빈 신고로 남의 해제 표를 안 밟는다.
+// - [편집기] AI 설정 탭 [잠긴 변수 감지 신고] 토글 (기본 켜짐, false만 저장 — 규칙 #3).
+//   updater.wordDetect 검증 + 규격서에 안전망 한 줄 추가.
+// - [어댑터] 패널 요약에 "🔎 잠긴 변수 감지 N건 — 다음 턴 열림" / 소급 2경로 detected 전달.
+// - 브리지 굽기(allowAll)에는 잠김 목록을 안 싣는다 — 설치 시점 상태로 굳어 거짓말이 된다.
+// test-detect.js 신설.
 //
 // ── v0.73.0 ────────────────────────────────────────────────
 // 낱말 게이트(mentions) 어휘장 — 설계 시점에 유의어를 굽는다 (RP 메모리 에이전트 플러그인
@@ -1712,7 +1734,7 @@
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -2158,7 +2180,7 @@
           scheduleDeferredAux(auxPrompt, 400, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -2194,6 +2216,15 @@
       if (confs.length) {
         lastAux.status = `${lastAux.status || ''} · ⚠ 서사-시스템 불일치 신고 ${confs.length}건: ${confs.join(' / ')}`;
         console.log('[simcore] 서사-시스템 불일치 신고 (반영 안 함):', confs.join(' / '));
+      }
+      // 감지 신고 (v0.74) — 이번 턴엔 반영 안 됨. 다음 전송 한 번만 그 변수가 낱말 없이 열린다.
+      // 꺼진 봇에서는 표시도 안 한다 — 프롬프트가 안 시켰는데 온 신고는 엔진도 버린다
+      const dets = schema.updater?.wordDetect === false ? []
+        : engine.sanitizeDetected(schema, r.auxParsed?.detected);
+      if (dets.length) {
+        const names = dets.map((id) => schema.vars.find((v) => v.id === id)?.label ?? id).join(', ');
+        lastAux.status = `${lastAux.status || ''} · 🔎 잠긴 변수 감지 ${dets.length}건: ${names} — 다음 턴 열림`;
+        console.log('[simcore] 잠긴 변수 감지 신고 (다음 턴 개방):', dets.join(', '));
       }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',

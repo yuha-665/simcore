@@ -106,7 +106,7 @@ ck('실험대 스키마 유효', validateSchema(S).ok,
     src.includes('engine.sanitizeConflicts(r.auxParsed?.conflicts)')
     && src.includes('서사-시스템 불일치 신고'), '');
   ck('★ 어댑터: 지연·브리지 소급 경로도 전달',
-    (src.match(/parsed\.suggest, parsed\.conflicts\)/g) || []).length === 2, '');
+    (src.match(/parsed\.suggest, parsed\.conflicts, parsed\.detected\)/g) || []).length === 2, '');
   ck('세션: onOutput이 outputPhase에 전달', src.includes('conflicts: parsed.conflicts ?? null'), '');
 }
 

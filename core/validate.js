@@ -312,6 +312,10 @@ function validateSchema(schema) {
       && (typeof up.contextTurns !== 'number' || !Number.isInteger(up.contextTurns)
           || up.contextTurns < 1 || up.contextTurns > 5))
     err('$.updater.contextTurns', '보조모델에 보낼 최근 대화 턴 수는 1~5 사이 정수여야 함');
+  // 감지 신고 (v0.74) — 기본 켜짐이라 false만 저장된다. 다른 값이 오면 조용히 켜진 채
+  // 돌아가므로 알려 준다
+  if (up.wordDetect != null && typeof up.wordDetect !== 'boolean')
+    err('$.updater.wordDetect', `wordDetect는 true/false여야 함 (현재: '${up.wordDetect}')`);
   const varById = Object.fromEntries(vars.map((v) => [v.id, v]));
   (up.allow || []).forEach((a, i) => {
     const p = `$.updater.allow[${i}]`;

@@ -1,0 +1,1433 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "던전러너",
+    "desc": "하이드아웃에서 나가 파밍하고 살아 돌아온다. 잃는 건 짊어진 것뿐이다."
+  },
+  "vars": [
+    {
+      "id": "gold",
+      "label": "금화",
+      "type": "int",
+      "init": 300,
+      "min": 0,
+      "format": "{v}"
+    },
+    {
+      "id": "hp",
+      "label": "체력",
+      "type": "int",
+      "init": 100,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "energy",
+      "label": "활력",
+      "type": "int",
+      "init": 80,
+      "min": 0,
+      "max": 100,
+      "desc": "배고픔. 0이 되면 굶주림이 시작된다."
+    },
+    {
+      "id": "water",
+      "label": "수분",
+      "type": "int",
+      "init": 80,
+      "min": 0,
+      "max": 100,
+      "desc": "목마름. 0이 되면 탈수가 시작된다."
+    },
+    {
+      "id": "place",
+      "label": "현재 위치",
+      "type": "enum",
+      "enum": [
+        "hideout",
+        "mine",
+        "marsh",
+        "abbey",
+        "tomb"
+      ],
+      "init": "hideout"
+    },
+    {
+      "id": "escape_found",
+      "label": "탈출로",
+      "type": "bool",
+      "init": false,
+      "desc": "찾기 전에는 빠져나갈 수 없다."
+    },
+    {
+      "id": "raid_turns",
+      "label": "체류",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "format": "{v}턴"
+    },
+    {
+      "id": "loot_c",
+      "label": "짐: 흔한 것",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "loot_u",
+      "label": "짐: 쓸 만한 것",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "loot_r",
+      "label": "짐: 귀한 것",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "stash_c",
+      "label": "창고: 흔한 것",
+      "type": "int",
+      "init": 4,
+      "min": 0
+    },
+    {
+      "id": "stash_u",
+      "label": "창고: 쓸 만한 것",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "stash_r",
+      "label": "창고: 귀한 것",
+      "type": "int",
+      "init": 0,
+      "min": 0
+    },
+    {
+      "id": "starving",
+      "label": "굶주림",
+      "type": "bool",
+      "init": false
+    },
+    {
+      "id": "dehydrated",
+      "label": "탈수",
+      "type": "bool",
+      "init": false
+    },
+    {
+      "id": "free_hire",
+      "label": "무료 고용권",
+      "type": "int",
+      "init": 1,
+      "min": 0,
+      "format": "{v}장",
+      "desc": "있으면 고용이 공짜다. 첫 동료는 이걸로 들인다."
+    },
+    {
+      "id": "roster_ally",
+      "label": "보유 동료",
+      "type": "list",
+      "init": [],
+      "maxItems": 60
+    },
+    {
+      "id": "roster_wear",
+      "label": "보유 의상",
+      "type": "list",
+      "init": [
+        "default"
+      ],
+      "maxItems": 12
+    },
+    {
+      "id": "ally1",
+      "label": "1번 자리",
+      "type": "enum",
+      "enum": [
+        "default",
+        "Acheron",
+        "Makima",
+        "Tifa_Lockhart",
+        "Scathach",
+        "Ganyu",
+        "Mirko",
+        "Nami",
+        "2B"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "wear1",
+      "label": "1번 차림",
+      "type": "enum",
+      "enum": [
+        "default",
+        "dangerous_beast",
+        "butler",
+        "cheerleader",
+        "magical_girl",
+        "cowkini"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "ally2",
+      "label": "2번 자리",
+      "type": "enum",
+      "enum": [
+        "default",
+        "Acheron",
+        "Makima",
+        "Tifa_Lockhart",
+        "Scathach",
+        "Ganyu",
+        "Mirko",
+        "Nami",
+        "2B"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "wear2",
+      "label": "2번 차림",
+      "type": "enum",
+      "enum": [
+        "default",
+        "dangerous_beast",
+        "butler",
+        "cheerleader",
+        "magical_girl",
+        "cowkini"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "ally3",
+      "label": "3번 자리",
+      "type": "enum",
+      "enum": [
+        "default",
+        "Acheron",
+        "Makima",
+        "Tifa_Lockhart",
+        "Scathach",
+        "Ganyu",
+        "Mirko",
+        "Nami",
+        "2B"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "wear3",
+      "label": "3번 차림",
+      "type": "enum",
+      "enum": [
+        "default",
+        "dangerous_beast",
+        "butler",
+        "cheerleader",
+        "magical_girl",
+        "cowkini"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "ally4",
+      "label": "4번 자리",
+      "type": "enum",
+      "enum": [
+        "default",
+        "Acheron",
+        "Makima",
+        "Tifa_Lockhart",
+        "Scathach",
+        "Ganyu",
+        "Mirko",
+        "Nami",
+        "2B"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "wear4",
+      "label": "4번 차림",
+      "type": "enum",
+      "enum": [
+        "default",
+        "dangerous_beast",
+        "butler",
+        "cheerleader",
+        "magical_girl",
+        "cowkini"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "ally5",
+      "label": "5번 자리",
+      "type": "enum",
+      "enum": [
+        "default",
+        "Acheron",
+        "Makima",
+        "Tifa_Lockhart",
+        "Scathach",
+        "Ganyu",
+        "Mirko",
+        "Nami",
+        "2B"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "wear5",
+      "label": "5번 차림",
+      "type": "enum",
+      "enum": [
+        "default",
+        "dangerous_beast",
+        "butler",
+        "cheerleader",
+        "magical_girl",
+        "cowkini"
+      ],
+      "init": "default"
+    },
+    {
+      "id": "st_storage",
+      "label": "창고",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "보관 한도를 늘린다. 다른 시설의 뿌리다."
+    },
+    {
+      "id": "st_kitchen",
+      "label": "조리대",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "전리품을 끼니로 바꾼다. 활력 회복량이 는다."
+    },
+    {
+      "id": "st_water",
+      "label": "정수기",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "흙탕물을 마실 물로. 수분 회복량이 는다."
+    },
+    {
+      "id": "st_med",
+      "label": "의무실",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "상처를 꿰맨다. 귀환 시 체력이 회복된다."
+    },
+    {
+      "id": "st_tailor",
+      "label": "재봉대",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "동료의 옷을 짓는다. 레벨마다 의상이 풀린다."
+    },
+    {
+      "id": "st_scout",
+      "label": "정찰대",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3,
+      "desc": "탈출로 지도를 모은다. 탈출 판정에 보정."
+    }
+  ],
+  "derived": [
+    {
+      "id": "place_name",
+      "label": "장소",
+      "expr": "place == \"mine\" ? \"버려진 폐광\" : (place == \"marsh\" ? \"고사리 습지\" : (place == \"abbey\" ? \"무너진 수도원\" : (place == \"tomb\" ? \"왕릉 지하\" : (\"하이드아웃\"))))"
+    },
+    {
+      "id": "danger",
+      "label": "위험도",
+      "expr": "place == \"mine\" ? 1 : (place == \"marsh\" ? 2 : (place == \"abbey\" ? 3 : (place == \"tomb\" ? 4 : (0))))"
+    },
+    {
+      "id": "in_raid",
+      "label": "레이드 중",
+      "expr": "place != \"hideout\""
+    },
+    {
+      "id": "carry",
+      "label": "짊어진 것",
+      "expr": "loot_c + loot_u + loot_r"
+    },
+    {
+      "id": "stash",
+      "label": "창고 재고",
+      "expr": "stash_c + stash_u + stash_r"
+    },
+    {
+      "id": "body",
+      "label": "몸 상태",
+      "expr": "hp >= 80 ? \"멀쩡하다\" : (hp >= 55 ? \"지쳤다\" : (hp >= 30 ? \"성치 않다\" : (hp >= 1 ? \"한 걸음이 위태롭다\" : (\"쓰러졌다\"))))"
+    },
+    {
+      "id": "belly",
+      "label": "허기",
+      "expr": "energy >= 70 ? \"든든하다\" : (energy >= 40 ? \"출출하다\" : (energy >= 15 ? \"허기가 심하다\" : (\"굶고 있다\")))"
+    },
+    {
+      "id": "throat",
+      "label": "갈증",
+      "expr": "water >= 70 ? \"괜찮다\" : (water >= 40 ? \"목이 마르다\" : (water >= 15 ? \"입안이 마른다\" : (\"탈수다\")))"
+    }
+  ],
+  "checks": [
+    {
+      "id": "hire",
+      "label": "고용",
+      "roll": "rand(1, 48)",
+      "grades": [
+        {
+          "when": "total >= 1 and total <= 4 and not has(roster_ally, \"Acheron\")",
+          "label": "Acheron 합류 (희귀)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Acheron"
+              ]
+            }
+          ],
+          "inject": "길드가 Acheron을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 5 and total <= 8 and not has(roster_ally, \"Makima\")",
+          "label": "Makima 합류 (희귀)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Makima"
+              ]
+            }
+          ],
+          "inject": "길드가 Makima을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 9 and total <= 12 and not has(roster_ally, \"Scathach\")",
+          "label": "Scathach 합류 (희귀)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Scathach"
+              ]
+            }
+          ],
+          "inject": "길드가 Scathach을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 13 and total <= 16 and not has(roster_ally, \"2B\")",
+          "label": "2B 합류 (희귀)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "2B"
+              ]
+            }
+          ],
+          "inject": "길드가 2B을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 17 and total <= 24 and not has(roster_ally, \"Tifa_Lockhart\")",
+          "label": "Tifa_Lockhart 합류 (일반)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Tifa_Lockhart"
+              ]
+            }
+          ],
+          "inject": "길드가 Tifa_Lockhart을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 25 and total <= 32 and not has(roster_ally, \"Ganyu\")",
+          "label": "Ganyu 합류 (일반)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Ganyu"
+              ]
+            }
+          ],
+          "inject": "길드가 Ganyu을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 33 and total <= 40 and not has(roster_ally, \"Mirko\")",
+          "label": "Mirko 합류 (일반)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Mirko"
+              ]
+            }
+          ],
+          "inject": "길드가 Mirko을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "when": "total >= 41 and total <= 48 and not has(roster_ally, \"Nami\")",
+          "label": "Nami 합류 (일반)",
+          "effects": [
+            {
+              "list": "roster_ally",
+              "add": [
+                "Nami"
+              ]
+            }
+          ],
+          "inject": "길드가 Nami을(를) 데려왔다. 첫인사를 그려라 — 아직 서로를 모른다."
+        },
+        {
+          "label": "이미 아는 얼굴",
+          "effects": [
+            {
+              "set": "gold",
+              "expr": "gold + 150"
+            }
+          ],
+          "inject": "이미 명단에 있는 자가 불려 나왔다. 헛걸음이고, 길드가 수수료 일부를 돌려준다."
+        }
+      ]
+    },
+    {
+      "id": "search",
+      "label": "수색",
+      "roll": "rand(1, 20)",
+      "mod": "floor(hp / 40)",
+      "vs": "13 - danger",
+      "grades": [
+        {
+          "when": "total >= vs + 7",
+          "label": "노다지",
+          "effects": [
+            {
+              "set": "loot_r",
+              "expr": "loot_r + 1 + floor(danger / 2)"
+            },
+            {
+              "set": "loot_u",
+              "expr": "loot_u + 1"
+            }
+          ],
+          "inject": "이번 판의 값어치를 통째로 바꿀 물건이 나왔다."
+        },
+        {
+          "when": "total >= vs",
+          "label": "수확",
+          "effects": [
+            {
+              "set": "loot_u",
+              "expr": "loot_u + 1 + floor(danger / 2)"
+            },
+            {
+              "set": "loot_c",
+              "expr": "loot_c + 2"
+            }
+          ],
+          "inject": "쓸 만한 것을 챙겼다."
+        },
+        {
+          "when": "total >= vs - 4",
+          "label": "푼돈",
+          "effects": [
+            {
+              "set": "loot_c",
+              "expr": "loot_c + 1"
+            }
+          ],
+          "inject": "손에 잡힌 건 흔한 것뿐이다."
+        },
+        {
+          "label": "헛디딤",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(0, hp - (12 + danger * 4))"
+            }
+          ],
+          "inject": "뒤지다 사고가 났다. 소리가 났고, 몸도 상했다."
+        }
+      ]
+    },
+    {
+      "id": "exit",
+      "label": "탈출로 탐색",
+      "roll": "rand(1, 20)",
+      "mod": "st_scout * 2",
+      "vs": "12 + danger",
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "발견",
+          "effects": [
+            {
+              "set": "escape_found",
+              "expr": "true"
+            }
+          ],
+          "inject": "빠져나갈 길을 찾았다. 어디로 어떻게 나가는 길인지 그려라."
+        },
+        {
+          "when": "total >= vs - 3",
+          "label": "단서",
+          "inject": "길의 윤곽만 잡혔다. 확신은 없다."
+        },
+        {
+          "label": "헛수고",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(0, hp - (6 + danger * 2))"
+            }
+          ],
+          "inject": "엉뚱한 데로 돌았다. 시간과 힘만 버렸다."
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "go_mine",
+      "label": "⛏️ 버려진 폐광",
+      "mode": "oneshot",
+      "when": "place == \"hideout\" and hp >= 25",
+      "effects": [
+        {
+          "set": "place",
+          "expr": "\"mine\""
+        },
+        {
+          "set": "raid_turns",
+          "expr": "0"
+        },
+        {
+          "set": "escape_found",
+          "expr": "false"
+        }
+      ],
+      "inject": "하이드아웃을 떠나 버려진 폐광으로 향한다 (무너진 갱도. 얕지만 사람 손을 덜 탔다.). 가는 길과 도착했을 때의 첫인상을 그려라."
+    },
+    {
+      "id": "go_marsh",
+      "label": "🌿 고사리 습지",
+      "mode": "oneshot",
+      "when": "place == \"hideout\" and hp >= 25",
+      "effects": [
+        {
+          "set": "place",
+          "expr": "\"marsh\""
+        },
+        {
+          "set": "raid_turns",
+          "expr": "0"
+        },
+        {
+          "set": "escape_found",
+          "expr": "false"
+        }
+      ],
+      "inject": "하이드아웃을 떠나 고사리 습지으로 향한다 (무릎까지 잠기는 물. 밟는 소리가 멀리 간다.). 가는 길과 도착했을 때의 첫인상을 그려라."
+    },
+    {
+      "id": "go_abbey",
+      "label": "⛪ 무너진 수도원",
+      "mode": "oneshot",
+      "when": "place == \"hideout\" and hp >= 25",
+      "effects": [
+        {
+          "set": "place",
+          "expr": "\"abbey\""
+        },
+        {
+          "set": "raid_turns",
+          "expr": "0"
+        },
+        {
+          "set": "escape_found",
+          "expr": "false"
+        }
+      ],
+      "inject": "하이드아웃을 떠나 무너진 수도원으로 향한다 (성물이 남아 있다는 소문. 그만큼 붐빈다.). 가는 길과 도착했을 때의 첫인상을 그려라."
+    },
+    {
+      "id": "go_tomb",
+      "label": "⚰️ 왕릉 지하",
+      "mode": "oneshot",
+      "when": "place == \"hideout\" and hp >= 25",
+      "effects": [
+        {
+          "set": "place",
+          "expr": "\"tomb\""
+        },
+        {
+          "set": "raid_turns",
+          "expr": "0"
+        },
+        {
+          "set": "escape_found",
+          "expr": "false"
+        }
+      ],
+      "inject": "하이드아웃을 떠나 왕릉 지하으로 향한다 (지도가 없다. 들어간 자가 돌아온 적이 드물다.). 가는 길과 도착했을 때의 첫인상을 그려라."
+    },
+    {
+      "id": "search",
+      "label": "🎒 뒤진다",
+      "mode": "oneshot",
+      "check": "search",
+      "when": "place != \"hideout\"",
+      "inject": "주변을 뒤져 쓸 만한 것을 찾는다."
+    },
+    {
+      "id": "findexit",
+      "label": "🚪 탈출로를 찾는다",
+      "mode": "oneshot",
+      "check": "exit",
+      "when": "place != \"hideout\" and not escape_found",
+      "inject": "빠져나갈 길을 더듬는다."
+    },
+    {
+      "id": "extract",
+      "label": "🏃 탈출한다",
+      "mode": "oneshot",
+      "when": "place != \"hideout\" and escape_found",
+      "effects": [
+        {
+          "set": "stash_c",
+          "expr": "stash_c + loot_c"
+        },
+        {
+          "set": "stash_u",
+          "expr": "stash_u + loot_u"
+        },
+        {
+          "set": "stash_r",
+          "expr": "stash_r + loot_r"
+        },
+        {
+          "set": "loot_c",
+          "expr": "0"
+        },
+        {
+          "set": "loot_u",
+          "expr": "0"
+        },
+        {
+          "set": "loot_r",
+          "expr": "0"
+        },
+        {
+          "set": "place",
+          "expr": "\"hideout\""
+        },
+        {
+          "set": "escape_found",
+          "expr": "false"
+        },
+        {
+          "set": "raid_turns",
+          "expr": "0"
+        },
+        {
+          "set": "hp",
+          "expr": "min(100, hp + st_med * 8)"
+        }
+      ],
+      "inject": "짐을 지고 탈출로로 빠져나간다. 살아 돌아온 자의 하이드아웃을 그려라."
+    },
+    {
+      "id": "eat",
+      "label": "🍖 먹는다",
+      "mode": "oneshot",
+      "when": "stash_c >= 1 or loot_c >= 1",
+      "effects": [
+        {
+          "set": "loot_c",
+          "expr": "loot_c >= 1 ? loot_c - 1 : loot_c"
+        },
+        {
+          "set": "stash_c",
+          "expr": "loot_c >= 1 ? stash_c : max(0, stash_c - 1)"
+        },
+        {
+          "set": "energy",
+          "expr": "min(100, energy + 30 + st_kitchen * 8)"
+        },
+        {
+          "set": "water",
+          "expr": "min(100, water + 10)"
+        }
+      ],
+      "inject": "가진 것으로 끼니를 때운다. 재료가 무엇이고 어떻게 조리했는지 그려라 — 맛도."
+    },
+    {
+      "id": "drink",
+      "label": "💧 마신다",
+      "mode": "oneshot",
+      "effects": [
+        {
+          "set": "water",
+          "expr": "min(100, water + 30 + st_water * 10)"
+        }
+      ],
+      "inject": "물을 마신다. 어디서 얻은 물인지 그려라."
+    },
+    {
+      "id": "hire",
+      "label": "💰 용병을 고용한다",
+      "mode": "oneshot",
+      "check": "hire",
+      "when": "place == \"hideout\" and (free_hire >= 1 or gold >= 500)",
+      "effects": [
+        {
+          "set": "gold",
+          "expr": "gold - (free_hire >= 1 ? 0 : 500)"
+        },
+        {
+          "set": "free_hire",
+          "expr": "max(0, free_hire - 1)"
+        }
+      ],
+      "inject": "용병 길드에 사람을 청한다. 누가 걸어 들어오는지는 길드가 정한다."
+    },
+    {
+      "id": "sell",
+      "label": "💱 상인에게 판다",
+      "mode": "oneshot",
+      "when": "place == \"hideout\" and stash_u + stash_r >= 1",
+      "effects": [
+        {
+          "set": "gold",
+          "expr": "gold + stash_u * 90 + stash_r * 260"
+        },
+        {
+          "set": "stash_u",
+          "expr": "0"
+        },
+        {
+          "set": "stash_r",
+          "expr": "0"
+        }
+      ],
+      "inject": "값나가는 것만 골라 상인에게 넘긴다 (흔한 것은 끼니로 남긴다). 흥정을 그려라."
+    },
+    {
+      "id": "rest",
+      "label": "🛏️ 쉰다",
+      "mode": "oneshot",
+      "when": "place == \"hideout\"",
+      "effects": [
+        {
+          "set": "hp",
+          "expr": "min(100, hp + 15 + st_med * 5)"
+        },
+        {
+          "set": "energy",
+          "expr": "max(0, energy - 5)"
+        }
+      ],
+      "inject": "하이드아웃에서 한숨 돌린다."
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "set": "energy",
+        "expr": "max(0, energy - (place == \"hideout\" ? 1 : 3))"
+      },
+      {
+        "set": "water",
+        "expr": "max(0, water - (place == \"hideout\" ? 1 : 4))"
+      },
+      {
+        "set": "hp",
+        "expr": "clamp(hp - (starving ? 3 : 0) - (dehydrated ? 4 : 0) + (place == \"hideout\" and not starving and not dehydrated ? 2 : 0), 0, 100)"
+      },
+      {
+        "set": "raid_turns",
+        "expr": "place == \"hideout\" ? 0 : raid_turns + 1"
+      }
+    ],
+    "events": [
+      {
+        "id": "starve_on",
+        "when": "energy <= 0 and not starving",
+        "effects": [
+          {
+            "set": "starving",
+            "expr": "true"
+          }
+        ],
+        "notify": "허기가 한계를 넘었다. 손이 떨리고 판단이 흐려진다."
+      },
+      {
+        "id": "starve_off",
+        "when": "energy > 20 and starving",
+        "effects": [
+          {
+            "set": "starving",
+            "expr": "false"
+          }
+        ],
+        "notify": "겨우 배를 채웠다. 떨림이 가라앉는다."
+      },
+      {
+        "id": "thirst_on",
+        "when": "water <= 0 and not dehydrated",
+        "effects": [
+          {
+            "set": "dehydrated",
+            "expr": "true"
+          }
+        ],
+        "notify": "입안이 말라붙었다. 이대로면 오래 못 간다."
+      },
+      {
+        "id": "thirst_off",
+        "when": "water > 20 and dehydrated",
+        "effects": [
+          {
+            "set": "dehydrated",
+            "expr": "false"
+          }
+        ],
+        "notify": "물이 목을 넘어간다. 시야가 다시 잡힌다."
+      },
+      {
+        "id": "hunted",
+        "when": "place != \"hideout\" and raid_turns >= 5",
+        "effects": [
+          {
+            "set": "hp",
+            "expr": "max(0, hp - (4 + (raid_turns - 4) * 3 + danger * 2))"
+          }
+        ],
+        "notify": "따라붙는 것이 있다. 여기 너무 오래 있었다 — 머물수록 가까워진다."
+      },
+      {
+        "id": "down",
+        "when": "hp <= 0",
+        "effects": [
+          {
+            "set": "loot_c",
+            "expr": "0"
+          },
+          {
+            "set": "loot_u",
+            "expr": "0"
+          },
+          {
+            "set": "loot_r",
+            "expr": "0"
+          },
+          {
+            "set": "place",
+            "expr": "\"hideout\""
+          },
+          {
+            "set": "escape_found",
+            "expr": "false"
+          },
+          {
+            "set": "raid_turns",
+            "expr": "0"
+          },
+          {
+            "set": "hp",
+            "expr": "25"
+          },
+          {
+            "set": "energy",
+            "expr": "max(20, energy)"
+          },
+          {
+            "set": "water",
+            "expr": "max(20, water)"
+          }
+        ],
+        "notify": "쓰러졌다. 누군가 끌고 나왔고, 짊어졌던 것은 전부 그 자리에 남았다. 눈을 뜬 곳은 하이드아웃이다."
+      },
+      {
+        "id": "wear_butler",
+        "once": true,
+        "when": "st_tailor >= 1 and not has(roster_wear, \"butler\")",
+        "effects": [
+          {
+            "list": "roster_wear",
+            "add": [
+              "butler"
+            ]
+          }
+        ],
+        "notify": "재봉대에서 새 옷이 나왔다 (butler). 이제 의상실에서 입힐 수 있다."
+      },
+      {
+        "id": "wear_cheerleader",
+        "once": true,
+        "when": "st_tailor >= 1 and not has(roster_wear, \"cheerleader\")",
+        "effects": [
+          {
+            "list": "roster_wear",
+            "add": [
+              "cheerleader"
+            ]
+          }
+        ],
+        "notify": "재봉대에서 새 옷이 나왔다 (cheerleader). 이제 의상실에서 입힐 수 있다."
+      },
+      {
+        "id": "wear_magical_girl",
+        "once": true,
+        "when": "st_tailor >= 2 and not has(roster_wear, \"magical_girl\")",
+        "effects": [
+          {
+            "list": "roster_wear",
+            "add": [
+              "magical_girl"
+            ]
+          }
+        ],
+        "notify": "재봉대에서 새 옷이 나왔다 (magical_girl). 이제 의상실에서 입힐 수 있다."
+      },
+      {
+        "id": "wear_cowkini",
+        "once": true,
+        "when": "st_tailor >= 2 and not has(roster_wear, \"cowkini\")",
+        "effects": [
+          {
+            "list": "roster_wear",
+            "add": [
+              "cowkini"
+            ]
+          }
+        ],
+        "notify": "재봉대에서 새 옷이 나왔다 (cowkini). 이제 의상실에서 입힐 수 있다."
+      },
+      {
+        "id": "wear_dangerous_beast",
+        "once": true,
+        "when": "st_tailor >= 3 and not has(roster_wear, \"dangerous_beast\")",
+        "effects": [
+          {
+            "list": "roster_wear",
+            "add": [
+              "dangerous_beast"
+            ]
+          }
+        ],
+        "notify": "재봉대에서 새 옷이 나왔다 (dangerous_beast). 이제 의상실에서 입힐 수 있다."
+      }
+    ],
+    "randomEvents": {
+      "chancePerTurn": 0.42,
+      "table": [
+        {
+          "id": "beast",
+          "weight": 3,
+          "when": "place != \"hideout\"",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(0, hp - (8 + danger * 5))"
+            }
+          ],
+          "notify": "무언가와 마주쳤다. 싸웠든 피했든 대가를 치렀다 — 무엇이었는지 그려라."
+        },
+        {
+          "id": "cache",
+          "weight": 2,
+          "when": "place != \"hideout\"",
+          "effects": [
+            {
+              "set": "loot_c",
+              "expr": "loot_c + 2"
+            }
+          ],
+          "notify": "앞서 죽은 자가 남긴 것을 찾았다."
+        },
+        {
+          "id": "horror",
+          "weight": 5,
+          "when": "place != \"hideout\" and danger >= 3 and raid_turns >= 2",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(0, hp - (16 + danger * 6))"
+            }
+          ],
+          "notify": "이 안쪽의 것과 마주쳤다. 겨우 떼어 놓았다 — 무엇이었는지, 무엇을 잃었는지 그려라."
+        },
+        {
+          "id": "spring",
+          "weight": 2,
+          "when": "place != \"hideout\" and water < 70",
+          "effects": [
+            {
+              "set": "water",
+              "expr": "min(100, water + 20)"
+            }
+          ],
+          "notify": "마실 만한 물을 찾았다."
+        },
+        {
+          "id": "edible",
+          "weight": 2,
+          "when": "place != \"hideout\" and energy < 70",
+          "effects": [
+            {
+              "set": "energy",
+              "expr": "min(100, energy + 18)"
+            }
+          ],
+          "notify": "먹을 수 있는 것이 눈에 띄었다. 던전밥이다 — 무엇을 어떻게 먹었는지 그려라."
+        },
+        {
+          "id": "deep",
+          "weight": 2,
+          "when": "place != \"hideout\" and raid_turns >= 3 and danger >= 2",
+          "effects": [
+            {
+              "set": "loot_r",
+              "expr": "loot_r + 1"
+            },
+            {
+              "set": "hp",
+              "expr": "max(0, hp - 10)"
+            }
+          ],
+          "notify": "더 안쪽에서 값진 것을 봤다. 손에 넣었지만 대가가 있었다."
+        },
+        {
+          "id": "guild_favor",
+          "weight": 1,
+          "cooldown": 30,
+          "when": "place == \"hideout\" and free_hire == 0 and count(roster_ally) >= 1",
+          "effects": [
+            {
+              "set": "free_hire",
+              "expr": "free_hire + 1"
+            }
+          ],
+          "notify": "용병 길드가 호의를 보냈다 — 다음 한 사람은 값을 받지 않겠다고 한다."
+        },
+        {
+          "id": "peddler",
+          "weight": 1,
+          "when": "place == \"hideout\" and stash_c >= 4",
+          "effects": [
+            {
+              "set": "stash_c",
+              "expr": "max(0, stash_c - 2)"
+            },
+            {
+              "set": "gold",
+              "expr": "gold + 120"
+            }
+          ],
+          "notify": "떠돌이 상인이 들렀다. 흔한 것 몇을 금화로 바꿔 갔다."
+        }
+      ]
+    }
+  },
+  "directives": [
+    {
+      "id": "here_home",
+      "when": "place == \"hideout\"",
+      "text": "지금은 하이드아웃이다. 안전하지만 아무것도 늘지 않는다. 창고 재고 {stash}, 금화 {gold}."
+    },
+    {
+      "id": "here_raid",
+      "when": "place != \"hideout\"",
+      "text": "지금은 {place_name} 안이다 (위험도 {danger}, 체류 {raid_turns}). 짊어진 것 {carry}개는 여기서 죽으면 전부 잃는다."
+    },
+    {
+      "id": "no_exit",
+      "when": "place != \"hideout\" and not escape_found",
+      "text": "탈출로를 아직 못 찾았다. 나가는 길은 판마다 다르고, 찾기 전에는 빠져나갈 수 없다."
+    },
+    {
+      "id": "exit_open",
+      "when": "escape_found",
+      "text": "탈출로를 확보했다. 언제든 빠져나갈 수 있지만, 더 뒤질수록 잃을 것도 커진다."
+    },
+    {
+      "id": "body",
+      "when": "hp < 55",
+      "text": "몸은 {body}. 무리한 묘사를 하지 마라."
+    },
+    {
+      "id": "need",
+      "when": "energy < 40 or water < 40",
+      "text": "허기는 {belly}, 갈증은 {throat}. 대사와 행동에 배어 나오게 하라."
+    },
+    {
+      "id": "party",
+      "when": "count(roster_ally) >= 1",
+      "text": "곁에 있는 동료: {deployed}. 명단에 없는 자는 이 장면에 등장하지 않는다. 차림 — 1번 {wear1} / 2번 {wear2} / 3번 {wear3} / 4번 {wear4} / 5번 {wear5}. 차림에 맞게 묘사하라."
+    },
+    {
+      "id": "alone",
+      "when": "count(roster_ally) == 0",
+      "text": "아직 동료가 없다. 혼자다. 용병 길드에서 사람을 들일 수 있다."
+    }
+  ],
+  "party": {
+    "label": "편성",
+    "icon": "⚔️",
+    "empty": "default",
+    "unique": false,
+    "nav": "select",
+    "note": "뽑고 · 앉히고 · 입히고 · 짓는다.",
+    "portraits": {
+      "Acheron": "Acheron_default_default",
+      "Makima": "Makima_default_default",
+      "Tifa_Lockhart": "Tifa_Lockhart_default_default",
+      "Scathach": "Scathach_default_default",
+      "Ganyu": "Ganyu_default_default",
+      "Mirko": "Mirko_default_default",
+      "Nami": "Nami_default_default",
+      "2B": "2B_default_default"
+    },
+    "tabs": [
+      {
+        "id": "squad",
+        "label": "편성",
+        "roster": "roster_ally",
+        "note": "보유한 동료만 앉는다. 자리에 없는 동료는 대기실에 있고 장면에 등장하지 않는다.",
+        "slots": [
+          {
+            "var": "ally1",
+            "label": "1번 자리"
+          },
+          {
+            "var": "ally2",
+            "label": "2번 자리"
+          },
+          {
+            "var": "ally3",
+            "label": "3번 자리"
+          },
+          {
+            "var": "ally4",
+            "label": "4번 자리"
+          },
+          {
+            "var": "ally5",
+            "label": "5번 자리"
+          }
+        ]
+      },
+      {
+        "id": "wardrobe",
+        "label": "의상실",
+        "roster": "roster_wear",
+        "note": "재봉대를 올리면 잠긴 옷이 풀린다.",
+        "slots": [
+          {
+            "var": "wear1",
+            "label": "1번 차림"
+          },
+          {
+            "var": "wear2",
+            "label": "2번 차림"
+          },
+          {
+            "var": "wear3",
+            "label": "3번 차림"
+          },
+          {
+            "var": "wear4",
+            "label": "4번 차림"
+          },
+          {
+            "var": "wear5",
+            "label": "5번 차림"
+          }
+        ]
+      },
+      {
+        "id": "hideout",
+        "label": "하이드아웃",
+        "points": "gold",
+        "note": "금화로 짓는다. 비용은 레벨마다 오른다.",
+        "items": [
+          {
+            "var": "st_storage",
+            "label": "창고",
+            "max": 3,
+            "note": "보관 한도를 늘린다. 다른 시설의 뿌리다.",
+            "cost": "400 * (st_storage + 1)"
+          },
+          {
+            "var": "st_kitchen",
+            "label": "조리대",
+            "max": 3,
+            "note": "전리품을 끼니로 바꾼다. 활력 회복량이 는다.",
+            "cost": "350 * (st_kitchen + 1)",
+            "requires": "st_storage >= 1",
+            "requiresLabel": "선행 시설이 부족하다"
+          },
+          {
+            "var": "st_water",
+            "label": "정수기",
+            "max": 3,
+            "note": "흙탕물을 마실 물로. 수분 회복량이 는다.",
+            "cost": "350 * (st_water + 1)",
+            "requires": "st_storage >= 1",
+            "requiresLabel": "선행 시설이 부족하다"
+          },
+          {
+            "var": "st_med",
+            "label": "의무실",
+            "max": 3,
+            "note": "상처를 꿰맨다. 귀환 시 체력이 회복된다.",
+            "cost": "500 * (st_med + 1)",
+            "requires": "st_storage >= 2",
+            "requiresLabel": "선행 시설이 부족하다"
+          },
+          {
+            "var": "st_tailor",
+            "label": "재봉대",
+            "max": 3,
+            "note": "동료의 옷을 짓는다. 레벨마다 의상이 풀린다.",
+            "cost": "600 * (st_tailor + 1)",
+            "requires": "st_storage >= 2",
+            "requiresLabel": "선행 시설이 부족하다"
+          },
+          {
+            "var": "st_scout",
+            "label": "정찰대",
+            "max": 3,
+            "note": "탈출로 지도를 모은다. 탈출 판정에 보정.",
+            "cost": "550 * (st_scout + 1)",
+            "requires": "st_storage >= 1",
+            "requiresLabel": "선행 시설이 부족하다"
+          }
+        ]
+      },
+      {
+        "id": "guild",
+        "label": "용병 길드",
+        "note": "무료권이 있으면 공짜, 없으면 금화 500. 누가 올지는 길드가 정한다.",
+        "actions": [
+          "hire"
+        ]
+      },
+      {
+        "id": "sortie",
+        "label": "출격",
+        "note": "위험도가 높을수록 산출도 크고 실수의 대가도 크다.",
+        "actions": [
+          "go_mine",
+          "go_marsh",
+          "go_abbey",
+          "go_tomb"
+        ]
+      }
+    ]
+  },
+  "promptState": {
+    "template": "위치 {place_name} · 체력 {hp}({body}) · 활력 {energy}({belly}) · 수분 {water}({throat})\n짐 {carry} · 창고 {stash} · 금화 {gold} · 동료 {deployed}",
+    "includeEvents": true,
+    "eventPriority": true
+  },
+  "updater": {
+    "contextTurns": 2,
+    "allow": [
+      {
+        "id": "hp",
+        "maxGain": 10,
+        "maxLoss": 20
+      },
+      {
+        "id": "energy",
+        "maxGain": 15,
+        "maxLoss": 15
+      },
+      {
+        "id": "water",
+        "maxGain": 15,
+        "maxLoss": 15
+      },
+      {
+        "id": "loot_c",
+        "maxDelta": 2
+      },
+      {
+        "id": "loot_u",
+        "maxDelta": 1
+      },
+      {
+        "id": "loot_r",
+        "maxDelta": 1
+      }
+    ],
+    "guide": "서사가 실제로 그린 것만 반영하라. 전리품은 장면에서 손에 넣은 것이 분명할 때만 올려라. 이동·편성·의상·금화·시설은 시스템이 정한다 — 서사가 그렇게 말해도 건드리지 마라."
+  },
+  "statusUI": {
+    "mode": "template",
+    "template": "<style>\n.hud{display:flex;flex-direction:column;gap:8px;font-size:13px}\n.hud .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}\n.hud .tag{padding:1px 7px;border:1px solid currentColor;border-radius:9px;opacity:.85}\n.hud .bar{flex:1;min-width:110px}\n.hud .bar b{display:block;font-weight:600;opacity:.7;font-size:11px}\n.hud .bar i{display:block;height:6px;background:currentColor;opacity:.3;border-radius:3px}\n.hud .bar i s{display:block;height:100%;background:currentColor;opacity:1;border-radius:3px}\n.hud .squad{display:flex;gap:6px;overflow-x:auto}\n.hud .who{margin:0;text-align:center;flex:0 0 62px}\n.hud .who img{width:62px;height:62px;object-fit:cover;border-radius:6px;display:block}\n.hud .who figcaption{font-size:10px;opacity:.7;word-break:break-all}\n.hud .risk{color:#c0392b;font-weight:600}\n</style>\n<div class=\"hud\">\n  <div class=\"row\">\n    <span class=\"tag\">📍 {place_name}</span>\n    <span class=\"tag\">💰 {gold}</span>\n    <span class=\"tag\">🎒 {loot_c}·{loot_u}·<b>{loot_r}</b></span>\n    <span class=\"tag\">📦 {stash_c}·{stash_u}·<b>{stash_r}</b></span>\n    <span class=\"tag\">🎟️ {free_hire}</span>\n    <span class=\"{escape_found ? 'tag' : 'tag risk'}\">{place == 'hideout' ? '안전' : (escape_found ? '탈출로 확보' : '탈출로 미발견')}</span>\n  </div>\n  <div class=\"row\">\n    <span class=\"bar\"><b>체력 {hp} · {body}</b><i><s style=\"width:{hp}%\"></s></i></span>\n    <span class=\"bar\"><b>활력 {energy} · {belly}</b><i><s style=\"width:{energy}%\"></s></i></span>\n    <span class=\"bar\"><b>수분 {water} · {throat}</b><i><s style=\"width:{water}%\"></s></i></span>\n  </div>\n  <div class=\"squad\">\n  <figure class=\"who\"><img src=\"{{img::{ally1 == 'default' ? 'blank' : ally1}_{ally1 == 'default' ? 'default' : wear1}_default}}\" alt=\"\"><figcaption>{ally1 == 'default' ? '빈 자리' : ally1}</figcaption></figure>\n  <figure class=\"who\"><img src=\"{{img::{ally2 == 'default' ? 'blank' : ally2}_{ally2 == 'default' ? 'default' : wear2}_default}}\" alt=\"\"><figcaption>{ally2 == 'default' ? '빈 자리' : ally2}</figcaption></figure>\n  <figure class=\"who\"><img src=\"{{img::{ally3 == 'default' ? 'blank' : ally3}_{ally3 == 'default' ? 'default' : wear3}_default}}\" alt=\"\"><figcaption>{ally3 == 'default' ? '빈 자리' : ally3}</figcaption></figure>\n  <figure class=\"who\"><img src=\"{{img::{ally4 == 'default' ? 'blank' : ally4}_{ally4 == 'default' ? 'default' : wear4}_default}}\" alt=\"\"><figcaption>{ally4 == 'default' ? '빈 자리' : ally4}</figcaption></figure>\n  <figure class=\"who\"><img src=\"{{img::{ally5 == 'default' ? 'blank' : ally5}_{ally5 == 'default' ? 'default' : wear5}_default}}\" alt=\"\"><figcaption>{ally5 == 'default' ? '빈 자리' : ally5}</figcaption></figure>\n  </div>\n  {lastcheck}\n  {choices}\n  {commands}\n</div>"
+  },
+  "setup": {
+    "presets": [
+      {
+        "id": "normal",
+        "label": "평범한 시작",
+        "set": {}
+      },
+      {
+        "id": "poor",
+        "label": "맨몸 (어려움)",
+        "set": {
+          "gold": 80,
+          "stash_c": 0,
+          "hp": 80,
+          "energy": 55,
+          "water": 55
+        }
+      },
+      {
+        "id": "veteran",
+        "label": "전직 러너 (쉬움)",
+        "set": {
+          "gold": 900,
+          "stash_c": 5,
+          "stash_u": 2,
+          "st_storage": 1,
+          "free_hire": 2
+        }
+      }
+    ]
+  }
+}

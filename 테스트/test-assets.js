@@ -192,6 +192,36 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('닫힌 팩 어휘 제외', !spec.instruction.includes('blush'), '');
   ck('장면 초점 없으면 null 지시', spec.instruction.includes('"image": null'), '');
   ck('main 모드에서는 빈 스펙', AS.auxImageSpec({ assets: { by: 'main', packs: BASE.assets.packs } }, L).instruction === '', '');
+
+  // ── 인물별 칸 구조 (v0.75) — "복잡해지면 안 돌아간다"의 원인 ────────────────
+  // 팩이 둘 이상이고 칸 구성이 다르면, 평평한 합집합 지시는 거짓말이 된다: 보조는 그 인물에
+  // 필요한 필수 칸을 모르고 빠뜨리고 → composeName null → 이미지가 통째로 사라진다.
+  // 구조는 **라우팅되는 팩**이 정하고(composeName이 그 팩의 칸만 읽는다), 어휘는 그 인물을
+  // 담당하는 열린 팩들의 합집합이다(게이트 팩이 어휘를 넓히는 설계 유지).
+  ck('★ 인물별 줄로 쪼개짐 — Nozomi(모듈 팩, who 칸 없음)는 자기 어휘만',
+    /- Nozomi — "emo": one of \[happy, sad\]/.test(spec.instruction), spec.instruction);
+  ck('★ 같은 구조를 쓰는 인물은 한 줄로 묶임 (인물 26명이어도 줄 수는 팩 수)',
+    /- Hiromi, Seiko — /.test(spec.instruction), '');
+  ck('★ 맨션 인물 줄에 노조미 어휘가 안 샌다 (칸 id가 같아도 팩이 다르면 분리)',
+    !/- Hiromi, Seiko — [^\n]*happy/.test(spec.instruction), '');
+  ck('★ 빠뜨리면 이미지가 사라진다는 경고 + optional 표시',
+    spec.instruction.includes('omitting a listed field drops the image')
+    && spec.instruction.includes('"wear" (optional)'), '');
+  ck('★ 그래도 팩 id는 여전히 안 나옴 (보조에게 팩을 고르게 하지 않는다)',
+    !spec.instruction.includes('mansion') && !spec.instruction.includes('noz'), '');
+
+  // 게이트 팩은 어휘를 넓힌다 — 라우팅은 먼저 선언한 팩이지만 values는 강제가 아니라
+  // 실존 대조로만 걸리므로, 열린 성인 팩의 어휘가 그 인물 줄에 합쳐져야 한다
+  ck('★ 게이트 열리면 그 인물 줄에 어휘가 합쳐진다 (성인 팩 설계 유지)',
+    /- Hiromi, Seiko — [^\n]*blush/.test(AS.auxImageSpec(snap(), Lon).instruction),
+    AS.auxImageSpec(snap(), Lon).instruction);
+
+  // 팩이 하나면 예전 평평한 형태 그대로 — 대다수 봇에 군더더기를 안 붙인다
+  const one = snap(); one.assets.packs = [one.assets.packs[0]];
+  const s1 = AS.auxImageSpec(one, L);
+  ck('★ 팩 하나면 평평한 지시 유지 (기존 봇 무회귀)',
+    s1.instruction.includes('"emo": <emo>') && s1.instruction.includes('who: one of [Hiromi, Seiko]')
+    && !s1.instruction.includes('Fields differ per character'), s1.instruction);
 }
 
 // ── 서사 위치 삽입 (by:'aux_flow', v0.54) — 앵커 탐색 사다리 + 배치 ──

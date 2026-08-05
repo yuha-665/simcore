@@ -241,20 +241,55 @@ function auxImageSpec(schema, lookup) {
       slotVals.set(s.id, set);
     }
   }
-  const fields = ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)];
-  const vocab = [
-    `who: one of [${whoValues.join(', ')}]`,
-    ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
-  ];
+
+  // ⚠ 인물마다 **필요한 칸이 다르다** (v0.75). 팩이 하나면 합집합 = 그 팩이라 평평한 목록이
+  //   정확하지만, 둘부터는 거짓말이 된다: 보조는 "이 인물에 어울리는 칸만" 채우는데 그 인물의
+  //   팩이 요구하는 필수 칸을 모르니 빠뜨리고, composeName이 null을 내 이미지가 통째로 사라진다.
+  //   (실측 제보: "종류와 형식이 조금만 복잡해지면 거의 안 돌아간다")
+  //   구조는 **라우팅되는 팩**이 정한다 — composeName이 그 팩의 칸만 읽기 때문이다.
+  //   어휘는 그 인물을 담당하는 열린 팩들의 합집합: values는 강제되지 않고 실존 대조로만
+  //   걸러지므로, 게이트 팩이 어휘를 넓히는 기존 설계가 그대로 산다.
+  const groups = []; const bySig = new Map();
+  for (const who of whoValues) {
+    const routed = routePack(schema, who, lookup);
+    if (!routed) continue;
+    const mine = packs.filter((p) => packChars(p).includes(who));
+    const fields = (routed.slots || []).filter((s) => s.id !== 'who').map((s) => ({
+      id: s.id,
+      optional: !!s.optional,
+      values: [...new Set(mine.flatMap((p) => (p.slots || [])
+        .filter((x) => x.id === s.id).flatMap((x) => x.values || [])))],
+    }));
+    const sig = JSON.stringify(fields);
+    if (bySig.has(sig)) { bySig.get(sig).chars.push(who); continue; }
+    const g = { chars: [who], fields };
+    bySig.set(sig, g); groups.push(g);
+  }
+
+  // 구조가 한 가지뿐이면 예전 평평한 형태 그대로 — 팩 하나짜리 봇(대다수)에 군더더기를 안 붙인다
+  const uniform = groups.length <= 1;
+  const shape = uniform
+    ? ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)].join(', ')
+    : '"who": <character>, plus that character\'s own fields';
+  const fieldText = (f) => `"${f.id}"${f.optional ? ' (optional)' : ''}: one of [${f.values.join(', ')}]`;
+  const vocab = uniform
+    ? [
+      `who: one of [${whoValues.join(', ')}]`,
+      ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
+    ]
+    : [
+      'Fields differ per character. Fill EXACTLY the fields listed on that character\'s line — omitting a listed field drops the image entirely.',
+      ...groups.map((g) => `- ${g.chars.join(', ')} — ${g.fields.length ? g.fields.map(fieldText).join(' · ') : '(no extra fields)'}`),
+    ];
   const lines = by === 'aux_flow'
     ? [
-      `Also include "images": [{ ${fields.join(', ')}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
+      `Also include "images": [{ ${shape}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
       'anchor: a short quote (10-25 chars) copied EXACTLY, verbatim, from the narrative above. The image is inserted right after the paragraph containing it; if the quote is not found verbatim, that image is dropped.',
       ...vocab,
       'If no clear scene focus, set "images": [].',
     ]
     : [
-      `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+      `Also include "image": { ${shape} } for the main character of this scene.`,
       ...vocab,
       'If no clear scene focus, set "image": null.',
     ];

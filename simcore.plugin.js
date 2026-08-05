@@ -1,13 +1,34 @@
 //@name simcore
 //@api 3.0
-//@version 0.74.0
-//@display-name SimCore (시뮬 엔진) v0.74 감지 신고
+//@version 0.75.0
+//@display-name SimCore (시뮬 엔진) v0.75 에셋 인물별 칸
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.75.0 ────────────────────────────────────────────────
+// 에셋 aux 지시가 인물별 칸 구조를 잃던 버그 — "에셋은 종류와 형식이 조금만 복잡해지면
+// 거의 안 돌아간다"(이용자 제보)의 원인. 유저 실측 확인: **main 모드는 잘 됐고 aux만 문제.**
+//
+// 원인: auxImageSpec이 열린 팩 전부를 평평한 하나로 뭉갰다 — 칸 id 합집합·값 합집합에
+// "어느 칸이 어느 인물 것인지"가 없다. 해소기(routePack→composeName)는 철저히 팩 단위라,
+// 팩이 하나면 합집합=그 팩이라 정확하지만 둘부터 지시가 거짓말이 된다. 보조가 가장
+// 자연스럽게 하는 행동(그 인물에 어울리는 칸만 채우기)이 그 인물 팩의 필수 칸을 빠뜨리고
+// → composeName null → 폴백 사다리도 못 구제(빠진 필수 칸은 대상 아님) → **이미지 실종**.
+// 같은 파일의 main 주입문은 팩별 구조를 이미 다 적고 있었다 — 기본값 aux가 정보가 더 적었다.
+//
+// - [코어] auxImageSpec: 인물별 줄로 쪼갠다. 구조는 **라우팅되는 팩**이 정하고(composeName이
+//   그 팩의 칸만 읽는다), 어휘는 그 인물을 담당하는 열린 팩들의 합집합 — values는 강제가
+//   아니라 실존 대조로만 걸리므로 게이트 팩이 어휘를 넓히는 설계가 그대로 산다.
+//   구조가 같은 인물은 한 줄로 묶어 줄 수 = 팩 수 (인물이 26명이어도 안 는다).
+//   optional 표시 + "빠뜨리면 이미지가 사라진다" 경고. 팩 id는 여전히 안 낸다.
+//   **팩이 하나면 예전 평평한 형태 그대로** — 대다수 봇 무회귀. aux_flow도 같이 적용.
+// - [검증] 필수 칸에 fallback이 없으면 경고 — 보조가 빠뜨렸을 때의 마지막 방어선이다
+//   (템플릿 16종 오탐 0). 에셋 팩 변환 프롬프트에도 "필수 칸엔 fallback 필수" 규칙 추가.
+// test-assets.js에 인물별 구조 어서션 7종 추가.
 //
 // ── v0.74.0 ────────────────────────────────────────────────
 // 감지 신고 채널 — 연성 축의 신고 채널, v0.71 conflicts의 쌍둥이 (어휘장 벤치마킹 2단).
@@ -2648,6 +2669,11 @@ function validateSchema(schema) {
             err(sp + '.values', '값 목록(values)은 비어있지 않은 문자열 배열이어야 함');
           else if (s.fallback != null && !s.values.includes(s.fallback))
             warn(sp, `fallback '${s.fallback}'이 values 목록에 없습니다 — 폴백도 실물 이름 규칙을 따라야 대조를 통과합니다`);
+          // 필수 칸의 폴백은 마지막 방어선 (v0.75) — 보조가 이 칸을 빠뜨리면 조합 자체가
+          // 성립하지 않아 이미지가 통째로 사라진다. optional 칸은 사다리가 빼고 다시 시도하므로
+          // 해당 없고, who는 폴백 대상이 아니다(다른 인물이 나올 수는 없다).
+          if (s.id !== 'who' && !s.optional && s.fallback == null && Array.isArray(s.values) && s.values.length)
+            warn(sp, `필수 칸 '${s.id}'에 fallback이 없습니다 — 보조 AI가 이 칸을 빠뜨리거나 없는 조합을 고르면 이미지가 통째로 사라집니다`);
         });
 
         // format 자리표시자 — {name} 또는 이 팩의 칸 id만
@@ -3164,20 +3190,55 @@ function auxImageSpec(schema, lookup) {
       slotVals.set(s.id, set);
     }
   }
-  const fields = ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)];
-  const vocab = [
-    `who: one of [${whoValues.join(', ')}]`,
-    ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
-  ];
+
+  // ⚠ 인물마다 **필요한 칸이 다르다** (v0.75). 팩이 하나면 합집합 = 그 팩이라 평평한 목록이
+  //   정확하지만, 둘부터는 거짓말이 된다: 보조는 "이 인물에 어울리는 칸만" 채우는데 그 인물의
+  //   팩이 요구하는 필수 칸을 모르니 빠뜨리고, composeName이 null을 내 이미지가 통째로 사라진다.
+  //   (실측 제보: "종류와 형식이 조금만 복잡해지면 거의 안 돌아간다")
+  //   구조는 **라우팅되는 팩**이 정한다 — composeName이 그 팩의 칸만 읽기 때문이다.
+  //   어휘는 그 인물을 담당하는 열린 팩들의 합집합: values는 강제되지 않고 실존 대조로만
+  //   걸러지므로, 게이트 팩이 어휘를 넓히는 기존 설계가 그대로 산다.
+  const groups = []; const bySig = new Map();
+  for (const who of whoValues) {
+    const routed = routePack(schema, who, lookup);
+    if (!routed) continue;
+    const mine = packs.filter((p) => packChars(p).includes(who));
+    const fields = (routed.slots || []).filter((s) => s.id !== 'who').map((s) => ({
+      id: s.id,
+      optional: !!s.optional,
+      values: [...new Set(mine.flatMap((p) => (p.slots || [])
+        .filter((x) => x.id === s.id).flatMap((x) => x.values || [])))],
+    }));
+    const sig = JSON.stringify(fields);
+    if (bySig.has(sig)) { bySig.get(sig).chars.push(who); continue; }
+    const g = { chars: [who], fields };
+    bySig.set(sig, g); groups.push(g);
+  }
+
+  // 구조가 한 가지뿐이면 예전 평평한 형태 그대로 — 팩 하나짜리 봇(대다수)에 군더더기를 안 붙인다
+  const uniform = groups.length <= 1;
+  const shape = uniform
+    ? ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)].join(', ')
+    : '"who": <character>, plus that character\'s own fields';
+  const fieldText = (f) => `"${f.id}"${f.optional ? ' (optional)' : ''}: one of [${f.values.join(', ')}]`;
+  const vocab = uniform
+    ? [
+      `who: one of [${whoValues.join(', ')}]`,
+      ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
+    ]
+    : [
+      'Fields differ per character. Fill EXACTLY the fields listed on that character\'s line — omitting a listed field drops the image entirely.',
+      ...groups.map((g) => `- ${g.chars.join(', ')} — ${g.fields.length ? g.fields.map(fieldText).join(' · ') : '(no extra fields)'}`),
+    ];
   const lines = by === 'aux_flow'
     ? [
-      `Also include "images": [{ ${fields.join(', ')}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
+      `Also include "images": [{ ${shape}, "anchor": <quote> }] — up to 3 entries in narrative order, one per beat where the visual focus changes.`,
       'anchor: a short quote (10-25 chars) copied EXACTLY, verbatim, from the narrative above. The image is inserted right after the paragraph containing it; if the quote is not found verbatim, that image is dropped.',
       ...vocab,
       'If no clear scene focus, set "images": [].',
     ]
     : [
-      `Also include "image": { ${fields.join(', ')} } for the main character of this scene.`,
+      `Also include "image": { ${shape} } for the main character of this scene.`,
       ...vocab,
       'If no clear scene focus, set "image": null.',
     ];
@@ -10252,6 +10313,8 @@ function buildPackImportPrompt(pasteText) {
     '',
     '규칙:',
     '- 지침에 실제로 나열된 어휘만 values에 담아라. 지어내지 마라.',
+    '- **optional이 아닌 칸에는 fallback을 반드시 넣어라** (가장 무난한 값 — 감정이면 중립). '
+    + '보조 AI가 그 칸을 빠뜨리거나 없는 조합을 고르면 fallback이 이미지를 구해 준다. 없으면 그 턴 이미지가 통째로 사라진다.',
     '- 인물명이 이름 조합의 일부면 who 칸으로, 태그 자체가 캐릭터 고정이면 chars로.',
     '- 성인/조건부 어휘는 별도 팩으로 쪼개라. when은 비워 둬라 (변수 연결은 사람이 한다).',
     '- 팩 수는 최소로. 팩을 나누는 기준은 (출력 형식·구분자·잠글 조건)이 다를 때뿐이다 —',

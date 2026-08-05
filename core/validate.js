@@ -691,6 +691,11 @@ function validateSchema(schema) {
             err(sp + '.values', '값 목록(values)은 비어있지 않은 문자열 배열이어야 함');
           else if (s.fallback != null && !s.values.includes(s.fallback))
             warn(sp, `fallback '${s.fallback}'이 values 목록에 없습니다 — 폴백도 실물 이름 규칙을 따라야 대조를 통과합니다`);
+          // 필수 칸의 폴백은 마지막 방어선 (v0.75) — 보조가 이 칸을 빠뜨리면 조합 자체가
+          // 성립하지 않아 이미지가 통째로 사라진다. optional 칸은 사다리가 빼고 다시 시도하므로
+          // 해당 없고, who는 폴백 대상이 아니다(다른 인물이 나올 수는 없다).
+          if (s.id !== 'who' && !s.optional && s.fallback == null && Array.isArray(s.values) && s.values.length)
+            warn(sp, `필수 칸 '${s.id}'에 fallback이 없습니다 — 보조 AI가 이 칸을 빠뜨리거나 없는 조합을 고르면 이미지가 통째로 사라집니다`);
         });
 
         // format 자리표시자 — {name} 또는 이 팩의 칸 id만

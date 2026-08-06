@@ -712,12 +712,28 @@ function validateSchema(schema) {
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
+        // ⚠ 겹침은 **먼저 담당하는 팩 단위로 한 줄** (v0.79). 인물마다 한 줄씩 내면
+        //   명단이 큰 봇에서 같은 문장이 그 인원수만큼 쏟아져 다른 오류를 덮는다
+        //   (실측: 145명 명단을 두 팩에 넣자 똑같은 경고가 145줄 — 낱말 경고가 147줄
+        //   쏟아졌던 v0.44.1과 같은 병이다). 겹친 팩 쌍이 몇인지가 정보고, 누구인지는
+        //   앞 셋이면 찾아갈 수 있다.
+        const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
         for (const c of owns) {
           const prev = claim.get(c) || [];
           const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
-          if (same) warn(p, `인물 '${c}'는 팩 '${same.id}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
+          if (same) {
+            if (!shadow.has(same.id)) shadow.set(same.id, []);
+            shadow.get(same.id).push(c);
+          }
           prev.push({ id: pk.id, when: pk.when ?? '' });
           claim.set(c, prev);
+        }
+        for (const [prevId, names] of shadow) {
+          const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');
+          warn(p, names.length === 1
+            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`
+            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 먼저 선언된 쪽이 담당하므로 `
+              + `이 팩은 그 인물들에게 안 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
         }
       });
     }

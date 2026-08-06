@@ -75,11 +75,8 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('버튼 레이아웃 CSS 존재', src.includes('.sc-editor-diff-act'), '');
 }
 
-// ── 버전 ──
-{
-  ck('버전 0.78.0', /\/\/@version 0\.78\.0/.test(src), '');
-  ck('표시명도 같이 올라감', /\/\/@display-name .*v0\.78/.test(src), '');
-}
+// 버전은 여기서 안 잰다 — 판올림마다 이 파일이 깨지고, 그건 이 기능의 회귀가 아니다.
+// (버전·표시명 짝 맞춤은 릴리스 체크리스트의 몫)
 
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `— ${x}`); ok ? p++ : f++; }

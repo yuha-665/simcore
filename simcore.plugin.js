@@ -1,13 +1,28 @@
 //@name simcore
 //@api 3.0
-//@version 0.78.0
-//@display-name SimCore (시뮬 엔진) v0.78 생성 모델·즉시 적용
+//@version 0.79.0
+//@display-name SimCore (시뮬 엔진) v0.79 지적 접기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.79.0 ────────────────────────────────────────────────
+// 지적 접기 — 한 종류의 지적이 인원수만큼 쏟아져 정작 급한 오류를 덮던 문제.
+//
+// 실측 제보: 145명 명단을 두 팩에 넣자 "인물 'X'는 팩 Y가 먼저 담당합니다"가 **145줄**.
+// 낱말 겹침 경고가 147줄 쏟아졌던 v0.44.1과 같은 병이라 처방도 같다 — 묶어서 한 줄.
+// 두 층에서 막는다: 검증기가 원인 단위로 묶고, 화면은 어떤 검사가 터지든 넘치지 않게 접는다.
+//
+// - [검증] 에셋 팩 겹침을 **가려진 팩마다 한 줄**로 (인물마다 한 줄 → 팩마다 한 줄).
+//   몇 명인지 + 앞 세 명 + "이 팩은 그 인물들에게 안 쓰입니다"까지 한 문장에 담는다.
+//   한 명만 겹치면 예전 문장 그대로 (묶을 게 없으면 묶은 티를 내지 않는다).
+//   when 게이트가 다른 팩은 여전히 무경고 (성인/임신 팩 패턴 — v0.52 원칙 유지).
+// - [패널] 오류·경고 목록을 앞 6줄만 펼치고 나머지는 `N줄 더 보기`로 접는다.
+//   8줄 이하는 그대로 둔다 — 접는 값이 접히는 값보다 크면 안 된다.
+//   지적 본문에 escapeText도 같이 걸었다 (경로·메시지가 그대로 innerHTML에 들어가고 있었다).
 //
 // ── v0.78.0 ────────────────────────────────────────────────
 // 편집 동선 두 군데 — 둘 다 "기능은 있는데 그 자리에 없어서 없는 것처럼 보이던" 것이다.
@@ -2742,12 +2757,28 @@ function validateSchema(schema) {
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
+        // ⚠ 겹침은 **먼저 담당하는 팩 단위로 한 줄** (v0.79). 인물마다 한 줄씩 내면
+        //   명단이 큰 봇에서 같은 문장이 그 인원수만큼 쏟아져 다른 오류를 덮는다
+        //   (실측: 145명 명단을 두 팩에 넣자 똑같은 경고가 145줄 — 낱말 경고가 147줄
+        //   쏟아졌던 v0.44.1과 같은 병이다). 겹친 팩 쌍이 몇인지가 정보고, 누구인지는
+        //   앞 셋이면 찾아갈 수 있다.
+        const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
         for (const c of owns) {
           const prev = claim.get(c) || [];
           const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
-          if (same) warn(p, `인물 '${c}'는 팩 '${same.id}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`);
+          if (same) {
+            if (!shadow.has(same.id)) shadow.set(same.id, []);
+            shadow.get(same.id).push(c);
+          }
           prev.push({ id: pk.id, when: pk.when ?? '' });
           claim.set(c, prev);
+        }
+        for (const [prevId, names] of shadow) {
+          const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');
+          warn(p, names.length === 1
+            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`
+            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 먼저 선언된 쪽이 담당하므로 `
+              + `이 팩은 그 인물들에게 안 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
         }
       });
     }
@@ -21289,6 +21320,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         outline:2px solid var(--sc-focus) !important; outline-offset:2px; border-color:var(--sc-accent) !important;
       }
       #sc-root .report { font-family:var(--sc-font-mono); font-size:12.5px; white-space:pre-wrap; margin-top:7px; }
+      /* 지적이 수십 줄로 쏟아질 때 나머지를 접는 자리 (v0.79) */
+      #sc-root .sc-report-more > summary { margin-top:7px; cursor:pointer; font-size:12.5px; color:var(--sc-muted); }
+      #sc-root .sc-report-more[open] > summary { color:var(--sc-text-strong); }
       #sc-root .muted { color:var(--sc-muted); font-size:13px; }
       #sc-root .row { display:flex; gap:7px; flex-wrap:wrap; margin-top:8px; align-items:center; }
       #sc-root .sc-page { display:none; } #sc-root .sc-page.on { display:block; }
@@ -22473,10 +22507,22 @@ count(목록)  has(목록, "항목")</pre>
           ? 'bad'
           : 'ok';
     st.className = `sc-panel-status-${panelTone}`;
-    let html = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`;
-    for (const e of panelStatus.report || []) html += `<div class="report status-bad">✗ ${e.path} — ${e.msg}</div>`;
-    for (const w of panelStatus.warnings || []) html += `<div class="report status-warn">⚠ ${w.path} — ${w.msg}</div>`;
-    st.innerHTML = html;
+    // 오류·경고 목록 — 앞 몇 줄만 펼쳐 두고 나머지는 접는다 (v0.79). 큰 봇에서는 한 종류의
+    // 지적이 수십~수백 줄로 쏟아져 정작 급한 오류를 덮는다 (실측: 에셋 팩 겹침 145줄).
+    // 검증기 쪽에서도 같은 지적을 묶고 있지만, 화면은 **어떤 검사가 터지든** 안 넘치게 막는다.
+    const SHOW = 6;
+    const list = (items, cls, mark) => {
+      if (!items || !items.length) return '';
+      const row = (e) => `<div class="report ${cls}">${mark} ${escapeText(e.path)} — ${escapeText(e.msg)}</div>`;
+      if (items.length <= SHOW + 2) return items.map(row).join('');
+      const rest = items.length - SHOW;
+      return items.slice(0, SHOW).map(row).join('')
+        + `<details class="sc-report-more"><summary>${rest}줄 더 보기</summary>`
+        + items.slice(SHOW).map(row).join('') + '</details>';
+    };
+    st.innerHTML = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`
+      + list(panelStatus.report, 'status-bad', '✗')
+      + list(panelStatus.warnings, 'status-warn', '⚠');
 
     // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게.
     // 편집 도구(작업 중)와 편집 작업공간([적용] 버튼이 있는 곳) 양쪽에 같은 배너를 띄운다

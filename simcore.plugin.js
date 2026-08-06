@@ -1,13 +1,27 @@
 //@name simcore
 //@api 3.0
-//@version 0.77.0
-//@display-name SimCore (시뮬 엔진) v0.77 지도 규격
+//@version 0.78.0
+//@display-name SimCore (시뮬 엔진) v0.78 생성 모델·즉시 적용
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.78.0 ────────────────────────────────────────────────
+// 편집 동선 두 군데 — 둘 다 "기능은 있는데 그 자리에 없어서 없는 것처럼 보이던" 것이다.
+//
+// - [편집기] **생성 모델 선택을 생성 버튼이 있는 곳마다** (buildGenModelRow로 추출).
+//   설정 자체는 전역이라 에셋 팩 변환·상태창 꾸미기에도 이미 적용되고 있었는데, 고르는
+//   자리가 [AI 어시스턴트] 탭 안에만 있어서 "에셋 변환은 무조건 보조 모델"로 보였다
+//   (실기 제보). 이제 에셋 임포터와 꾸미기 컨트롤에도 같은 줄이 뜨고, 그 화면에서 처음
+//   열어도 선택값을 읽어 온다 (예전엔 AI 탭을 거쳐야 aiGenModel이 채워졌다).
+// - [패널] **더티 배너에 [💾 지금 적용]** — 예전엔 적용 버튼이 [편집 작업공간] 전용이라
+//   한 칸 고칠 때마다 페이지를 옮겨야 했다. 배너는 이미 "반영 안 됨"을 알고 그 자리에
+//   떠 있으니 거기서 끝내는 게 맞다. 설치 로직은 runInstall 한 벌로 합쳤고, 보고는
+//   배너 자기 칸에 쓴다 (편집 도구 화면에는 #sc-schema-report가 없다 — 작업공간 노드다).
+//   성공하면 renderPanel이 배너를 걷어 가는 것이 곧 완료 신호다.
 //
 // ── v0.77.0 ────────────────────────────────────────────────
 // 지도 규격 — 배치 규격서(꾸미기 [배치까지])가 지도·도해 패턴을 가르친다.
@@ -13325,6 +13339,69 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
+  // 생성 모델 선택 줄 (v0.78) — 예전엔 [AI 어시스턴트] 탭 안에만 있었다. 그런데 생성은
+  // 거기서만 일어나지 않는다: 에셋 팩 변환도, 상태창 꾸미기도 같은 `ai.generate`를 탄다.
+  // 설정은 전역이라 이미 적용되고 있었는데 **고르는 자리가 안 보여서** 늘 보조 모델로
+  // 가는 것처럼 보였다(실기 제보). 그래서 줄을 함수로 빼서 생성 버튼이 있는 곳마다 붙인다.
+  //   compact=true — 긴 설명 대신 한 줄 주석만 (임포터·꾸미기처럼 자리가 좁은 곳)
+  function buildGenModelRow(compact) {
+    if (!ai || !ai.getGenModel || !ai.setGenModel) return null;
+    const gmLine = h('div', { class: 'sce-row sce-ai-model-row' });
+    const renderGmLine = () => {
+      gmLine.replaceChildren();
+      if (aiGenModel === undefined) {
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델 읽는 중…'));
+        return;
+      }
+      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+      gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
+      gmLine.appendChild(bindSelect(aiGenModel.choice, [
+        ['aux', '보조 모델 (기본)'],
+        ['main', '메인 모델 (대화용 그대로)'],
+        ['static', '직접 지정 (실험적)'],
+      ], (x) => { aiGenModel.choice = x; save(); rerender(); }));
+      if (aiGenModel.choice === 'static') {
+        gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
+          { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
+        // 설정 화면은 표시명만 보여줘서 id를 손으로 알 수 없다 — 리수 DB에서 직접 읽어다 채운다
+        if (ai.getModelIds && aiModelIds === undefined) {
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
+            Promise.resolve(ai.getModelIds()).then((v) => { aiModelIds = v || null; })
+              .catch(() => { aiModelIds = null; })
+              .then(() => { if (!destroyed) renderGmLine(); });
+          } }, '🔎 리수에서 id 읽기'));
+        } else if (aiModelIds) {
+          for (const [k, label] of [['main', '메인'], ['sub', '보조']]) {
+            const id = aiModelIds[k];
+            if (!id) continue;
+            gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', title: id, onclick: () => {
+              aiGenModel.staticId = id; save(); renderGmLine();
+            } }, `${label}: ${id.length > 26 ? id.slice(0, 26) + '…' : id}`));
+          }
+        } else if (aiModelIds === null) {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+            'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
+        }
+      }
+      const copy = aiGenModel.choice === 'aux'
+        ? (compact ? '보조 모델로 변환해요 — 결과가 부실하면 메인 모델로 바꿔 보세요.'
+          : '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.')
+        : aiGenModel.choice === 'main'
+          ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
+          : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
+      gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' }, copy));
+    };
+    renderGmLine();
+    // 어느 화면에서 처음 열든 여기서 읽는다 — [AI 어시스턴트]를 안 거쳐도 선택이 뜬다
+    if (aiGenModel === undefined) {
+      Promise.resolve(ai.getGenModel())
+        .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
+        .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
+        .then(() => { if (!destroyed) renderGmLine(); });
+    }
+    return gmLine;
+  }
+
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
@@ -13537,6 +13614,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         } }, '생성 취소')
         : h('button', { class: 'sce-btn sce-mini sce-ai-primary', onclick: () => runCssGenerate() },
           layoutMode ? '배치 생성' : '스킨 생성'));
+      // 꾸미기도 같은 생성 경로다 — 모델 선택을 여기서도 (v0.78)
+      const gmLine = buildGenModelRow(true);
+      if (gmLine) cssControls.appendChild(gmLine);
     }
     const cssStateClass = cssGen.note && !cssGen.note.startsWith('✅') ? ' warn'
       : cssGen.note?.startsWith('✅') ? ' ok' : '';
@@ -14002,57 +14082,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 생성 모델 슬롯 — 보조는 번역·요약용 싼 모델이 꽂힌 자리라, 스키마 생성엔 급이 다른
     // 모델이 필요할 수 있다. 어느 걸로 쏠지는 유저가 고른다 (기기 로컬 저장, 어댑터 몫).
-    if (ai && ai.getGenModel && ai.setGenModel) {
-      const gmLine = h('div', { class: 'sce-row sce-ai-model-row' });
-      const renderGmLine = () => {
-        gmLine.replaceChildren();
-        if (aiGenModel === undefined) return;
-        const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
-        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
-        gmLine.appendChild(bindSelect(aiGenModel.choice, [
-          ['aux', '보조 모델 (기본)'],
-          ['main', '메인 모델 (대화용 그대로)'],
-          ['static', '직접 지정 (실험적)'],
-        ], (x) => { aiGenModel.choice = x; save(); renderGmLine(); }));
-        if (aiGenModel.choice === 'static') {
-          gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
-            { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
-          // 설정 화면은 표시명만 보여줘서 id를 손으로 알 수 없다 — 리수 DB에서 직접 읽어다 채운다
-          if (ai.getModelIds && aiModelIds === undefined) {
-            gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
-              Promise.resolve(ai.getModelIds()).then((v) => { aiModelIds = v || null; })
-                .catch(() => { aiModelIds = null; })
-                .then(() => { if (!destroyed) renderGmLine(); });
-            } }, '🔎 리수에서 id 읽기'));
-          } else if (aiModelIds) {
-            for (const [k, label] of [['main', '메인'], ['sub', '보조']]) {
-              const id = aiModelIds[k];
-              if (!id) continue;
-              gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', title: id, onclick: () => {
-                aiGenModel.staticId = id; save(); renderGmLine();
-              } }, `${label}: ${id.length > 26 ? id.slice(0, 26) + '…' : id}`));
-            }
-          } else if (aiModelIds === null) {
-            gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
-              'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
-          }
-        }
-        gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' },
-          aiGenModel.choice === 'aux'
-            ? '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.'
-            : aiGenModel.choice === 'main'
-              ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
-              : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.'));
-      };
-      renderGmLine();
-      if (aiGenModel === undefined) {
-        Promise.resolve(ai.getGenModel())
-          .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
-          .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
-          .then(() => { if (!destroyed) renderGmLine(); });
+    // 줄 자체는 buildGenModelRow가 만든다 — 에셋 변환·꾸미기에서도 같은 줄을 쓴다 (v0.78).
+    {
+      const gmLine = buildGenModelRow(false);
+      if (gmLine) {
+        aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
+          h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine));
       }
-      aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
-        h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine));
     }
 
     if (ai && ai.generate) {
@@ -15141,6 +15177,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ta = bindArea(assetImportText, (x) => { assetImportText = x; }, '여기에 지침 원문 붙여넣기…');
     importBody.appendChild(ta);
     if (ai && ai.generate) {
+      // 변환도 ai.generate를 탄다 = 생성 모델 설정을 그대로 따른다. 고르는 자리를 여기에도
+      // 둔다 — 없으면 "에셋 변환은 무조건 보조 모델"로 보인다 (실기 제보, v0.78)
+      const gmLine = buildGenModelRow(true);
+      if (gmLine) importBody.appendChild(gmLine);
       const importHint = h('span', { class: 'sce-hint', style: 'margin:0' });
       const importBtn = h('button', { class: 'sce-btn sce-ai-primary',
         'aria-busy': assetBusy ? 'true' : 'false', onclick: async () => {
@@ -21383,6 +21423,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root .sc-editor-diff-meta { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:9px;
         padding-top:9px; border-top:1px solid var(--sc-line); color:var(--sc-text); font-size:12px; }
       #sc-root .sc-editor-diff-meta span { min-width:0; }
+      /* 배너 안의 [지금 적용] (v0.78) — 편집 도구에서 작업공간으로 안 넘어가고 끝내는 자리 */
+      #sc-root .sc-editor-diff-act { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-top:10px; }
+      #sc-root .sc-editor-diff-act .sc-apply-report { flex:1; min-width:160px; font-size:12.5px; line-height:1.5; }
       #sc-root .sc-schema-validation { margin:10px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
         border-left:3px solid var(--sc-danger); border-radius:6px; background:var(--sc-surface); }
       #sc-root .sc-schema-validation.is-start { border-left-color:var(--sc-accent); }
@@ -22030,8 +22073,11 @@ count(목록)  has(목록, "항목")</pre>
       await loadForCurrentChar();
       return { ok: true, backedUp };
     }
-    document.getElementById('sc-install').onclick = async () => {
-      const rep = document.getElementById('sc-schema-report');
+    // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
+    // 편집 도구 화면 위에 뜨는 더티 배너의 [지금 적용]. 예전엔 작업공간 전용이라
+    // 한 칸 고칠 때마다 페이지를 옮겨야 했다 — 배너가 이미 "반영 안 됨"을 알고 있으니
+    // 거기서 바로 끝내는 게 맞다. 로직은 한 벌만 둔다.
+    async function runInstall(rep) {
       if (!editor) return;
       const parsed = editor.getSchema();
       const v = validateSchema(parsed);
@@ -22061,7 +22107,8 @@ count(목록)  has(목록, "항목")</pre>
       editorLoadedSig = sig(parsed);
       rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
       renderPanel();
-    };
+    }
+    document.getElementById('sc-install').onclick = () => runInstall(document.getElementById('sc-schema-report'));
     // 자동 백업에서 편집기로 복원 (바로 설치하지 않고 검토 후 [설치]를 누르게 함)
     document.getElementById('sc-schema-restore').onclick = async () => {
       const rep = document.getElementById('sc-schema-report');
@@ -22447,12 +22494,27 @@ count(목록)  has(목록, "항목")</pre>
         } catch {}
         warnEl.innerHTML = '<div class="sc-editor-diff">'
           + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
-          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [편집 작업공간]의 [캐릭터에 적용]을 누르세요. '
-          + '기존 설치본으로 돌아가려면 같은 곳의 [설치본 불러오기]를 누르세요.</div>'
+          + '<div class="sc-editor-diff-copy">아래 [지금 적용]을 누르면 여기서 바로 반영돼요. '
+          + '기존 설치본으로 돌아가려면 [편집 작업공간]의 [설치본 불러오기]를 누르세요.</div>'
           + '<div class="sc-editor-diff-meta">'
           + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
           + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
-          + '</div></div>';
+          + '</div>'
+          + '<div class="sc-editor-diff-act"><button class="sc-btn sc-apply-now">💾 지금 적용</button>'
+          + '<div class="sc-apply-report"></div></div>'
+          + '</div>';
+        // 배너는 innerHTML로 다시 그려지므로 매번 다시 묶는다. 보고는 배너 자기 칸에 —
+        // 편집 도구 화면에는 #sc-schema-report가 없다 (작업공간 전용 노드다).
+        const btn = warnEl.querySelector('.sc-apply-now');
+        const rep = warnEl.querySelector('.sc-apply-report');
+        if (btn) {
+          btn.onclick = async () => {
+            btn.disabled = true;
+            rep.innerHTML = '<span class="status-warn">적용 중…</span>';
+            try { await runInstall(rep); } catch (e) { rep.innerHTML = `<span class="status-bad">${escapeText(e.message)}</span>`; }
+            btn.disabled = false;
+          };
+        }
       } else {
         warnEl.innerHTML = '';
       }

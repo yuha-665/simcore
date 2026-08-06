@@ -1,13 +1,27 @@
 //@name simcore
 //@api 3.0
-//@version 0.77.0
-//@display-name SimCore (시뮬 엔진) v0.77 지도 규격
+//@version 0.78.0
+//@display-name SimCore (시뮬 엔진) v0.78 생성 모델·즉시 적용
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.78.0 ────────────────────────────────────────────────
+// 편집 동선 두 군데 — 둘 다 "기능은 있는데 그 자리에 없어서 없는 것처럼 보이던" 것이다.
+//
+// - [편집기] **생성 모델 선택을 생성 버튼이 있는 곳마다** (buildGenModelRow로 추출).
+//   설정 자체는 전역이라 에셋 팩 변환·상태창 꾸미기에도 이미 적용되고 있었는데, 고르는
+//   자리가 [AI 어시스턴트] 탭 안에만 있어서 "에셋 변환은 무조건 보조 모델"로 보였다
+//   (실기 제보). 이제 에셋 임포터와 꾸미기 컨트롤에도 같은 줄이 뜨고, 그 화면에서 처음
+//   열어도 선택값을 읽어 온다 (예전엔 AI 탭을 거쳐야 aiGenModel이 채워졌다).
+// - [패널] **더티 배너에 [💾 지금 적용]** — 예전엔 적용 버튼이 [편집 작업공간] 전용이라
+//   한 칸 고칠 때마다 페이지를 옮겨야 했다. 배너는 이미 "반영 안 됨"을 알고 그 자리에
+//   떠 있으니 거기서 끝내는 게 맞다. 설치 로직은 runInstall 한 벌로 합쳤고, 보고는
+//   배너 자기 칸에 쓴다 (편집 도구 화면에는 #sc-schema-report가 없다 — 작업공간 노드다).
+//   성공하면 renderPanel이 배너를 걷어 가는 것이 곧 완료 신호다.
 //
 // ── v0.77.0 ────────────────────────────────────────────────
 // 지도 규격 — 배치 규격서(꾸미기 [배치까지])가 지도·도해 패턴을 가르친다.
@@ -3670,6 +3684,9 @@
       #sc-root .sc-editor-diff-meta { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:9px;
         padding-top:9px; border-top:1px solid var(--sc-line); color:var(--sc-text); font-size:12px; }
       #sc-root .sc-editor-diff-meta span { min-width:0; }
+      /* 배너 안의 [지금 적용] (v0.78) — 편집 도구에서 작업공간으로 안 넘어가고 끝내는 자리 */
+      #sc-root .sc-editor-diff-act { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-top:10px; }
+      #sc-root .sc-editor-diff-act .sc-apply-report { flex:1; min-width:160px; font-size:12.5px; line-height:1.5; }
       #sc-root .sc-schema-validation { margin:10px 0 2px; padding:12px 14px; border:1px solid var(--sc-line);
         border-left:3px solid var(--sc-danger); border-radius:6px; background:var(--sc-surface); }
       #sc-root .sc-schema-validation.is-start { border-left-color:var(--sc-accent); }
@@ -4317,8 +4334,11 @@ count(목록)  has(목록, "항목")</pre>
       await loadForCurrentChar();
       return { ok: true, backedUp };
     }
-    document.getElementById('sc-install').onclick = async () => {
-      const rep = document.getElementById('sc-schema-report');
+    // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
+    // 편집 도구 화면 위에 뜨는 더티 배너의 [지금 적용]. 예전엔 작업공간 전용이라
+    // 한 칸 고칠 때마다 페이지를 옮겨야 했다 — 배너가 이미 "반영 안 됨"을 알고 있으니
+    // 거기서 바로 끝내는 게 맞다. 로직은 한 벌만 둔다.
+    async function runInstall(rep) {
       if (!editor) return;
       const parsed = editor.getSchema();
       const v = validateSchema(parsed);
@@ -4348,7 +4368,8 @@ count(목록)  has(목록, "항목")</pre>
       editorLoadedSig = sig(parsed);
       rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
       renderPanel();
-    };
+    }
+    document.getElementById('sc-install').onclick = () => runInstall(document.getElementById('sc-schema-report'));
     // 자동 백업에서 편집기로 복원 (바로 설치하지 않고 검토 후 [설치]를 누르게 함)
     document.getElementById('sc-schema-restore').onclick = async () => {
       const rep = document.getElementById('sc-schema-report');
@@ -4734,12 +4755,27 @@ count(목록)  has(목록, "항목")</pre>
         } catch {}
         warnEl.innerHTML = '<div class="sc-editor-diff">'
           + '<div class="sc-editor-diff-title">캐릭터에 아직 반영하지 않은 변경이 있어요.</div>'
-          + '<div class="sc-editor-diff-copy">변경 내용을 적용하려면 [편집 작업공간]의 [캐릭터에 적용]을 누르세요. '
-          + '기존 설치본으로 돌아가려면 같은 곳의 [설치본 불러오기]를 누르세요.</div>'
+          + '<div class="sc-editor-diff-copy">아래 [지금 적용]을 누르면 여기서 바로 반영돼요. '
+          + '기존 설치본으로 돌아가려면 [편집 작업공간]의 [설치본 불러오기]를 누르세요.</div>'
           + '<div class="sc-editor-diff-meta">'
           + `<span><b>작업본</b> ${escapeText(editorSummary)}</span>`
           + `<span><b>설치본</b> ${escapeText(installedSummary)}</span>`
-          + '</div></div>';
+          + '</div>'
+          + '<div class="sc-editor-diff-act"><button class="sc-btn sc-apply-now">💾 지금 적용</button>'
+          + '<div class="sc-apply-report"></div></div>'
+          + '</div>';
+        // 배너는 innerHTML로 다시 그려지므로 매번 다시 묶는다. 보고는 배너 자기 칸에 —
+        // 편집 도구 화면에는 #sc-schema-report가 없다 (작업공간 전용 노드다).
+        const btn = warnEl.querySelector('.sc-apply-now');
+        const rep = warnEl.querySelector('.sc-apply-report');
+        if (btn) {
+          btn.onclick = async () => {
+            btn.disabled = true;
+            rep.innerHTML = '<span class="status-warn">적용 중…</span>';
+            try { await runInstall(rep); } catch (e) { rep.innerHTML = `<span class="status-bad">${escapeText(e.message)}</span>`; }
+            btn.disabled = false;
+          };
+        }
       } else {
         warnEl.innerHTML = '';
       }

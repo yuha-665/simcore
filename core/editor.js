@@ -5681,6 +5681,69 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
+  // 생성 모델 선택 줄 (v0.78) — 예전엔 [AI 어시스턴트] 탭 안에만 있었다. 그런데 생성은
+  // 거기서만 일어나지 않는다: 에셋 팩 변환도, 상태창 꾸미기도 같은 `ai.generate`를 탄다.
+  // 설정은 전역이라 이미 적용되고 있었는데 **고르는 자리가 안 보여서** 늘 보조 모델로
+  // 가는 것처럼 보였다(실기 제보). 그래서 줄을 함수로 빼서 생성 버튼이 있는 곳마다 붙인다.
+  //   compact=true — 긴 설명 대신 한 줄 주석만 (임포터·꾸미기처럼 자리가 좁은 곳)
+  function buildGenModelRow(compact) {
+    if (!ai || !ai.getGenModel || !ai.setGenModel) return null;
+    const gmLine = h('div', { class: 'sce-row sce-ai-model-row' });
+    const renderGmLine = () => {
+      gmLine.replaceChildren();
+      if (aiGenModel === undefined) {
+        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델 읽는 중…'));
+        return;
+      }
+      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+      gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
+      gmLine.appendChild(bindSelect(aiGenModel.choice, [
+        ['aux', '보조 모델 (기본)'],
+        ['main', '메인 모델 (대화용 그대로)'],
+        ['static', '직접 지정 (실험적)'],
+      ], (x) => { aiGenModel.choice = x; save(); rerender(); }));
+      if (aiGenModel.choice === 'static') {
+        gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
+          { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
+        // 설정 화면은 표시명만 보여줘서 id를 손으로 알 수 없다 — 리수 DB에서 직접 읽어다 채운다
+        if (ai.getModelIds && aiModelIds === undefined) {
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
+            Promise.resolve(ai.getModelIds()).then((v) => { aiModelIds = v || null; })
+              .catch(() => { aiModelIds = null; })
+              .then(() => { if (!destroyed) renderGmLine(); });
+          } }, '🔎 리수에서 id 읽기'));
+        } else if (aiModelIds) {
+          for (const [k, label] of [['main', '메인'], ['sub', '보조']]) {
+            const id = aiModelIds[k];
+            if (!id) continue;
+            gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', title: id, onclick: () => {
+              aiGenModel.staticId = id; save(); renderGmLine();
+            } }, `${label}: ${id.length > 26 ? id.slice(0, 26) + '…' : id}`));
+          }
+        } else if (aiModelIds === null) {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
+            'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
+        }
+      }
+      const copy = aiGenModel.choice === 'aux'
+        ? (compact ? '보조 모델로 변환해요 — 결과가 부실하면 메인 모델로 바꿔 보세요.'
+          : '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.')
+        : aiGenModel.choice === 'main'
+          ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
+          : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
+      gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' }, copy));
+    };
+    renderGmLine();
+    // 어느 화면에서 처음 열든 여기서 읽는다 — [AI 어시스턴트]를 안 거쳐도 선택이 뜬다
+    if (aiGenModel === undefined) {
+      Promise.resolve(ai.getGenModel())
+        .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
+        .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
+        .then(() => { if (!destroyed) renderGmLine(); });
+    }
+    return gmLine;
+  }
+
   let aiGen = { busy: false, seq: 0, note: null, raw: null }; // 생성 진행·실패 상태 (seq로 취소 판별)
   let aiFull = null;        // 통짜 생성 결과 대기 { schema, warnings } — 반영 전 확인
   let aiFullReport = null;  // 통짜 반영 내역 문구
@@ -5893,6 +5956,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         } }, '생성 취소')
         : h('button', { class: 'sce-btn sce-mini sce-ai-primary', onclick: () => runCssGenerate() },
           layoutMode ? '배치 생성' : '스킨 생성'));
+      // 꾸미기도 같은 생성 경로다 — 모델 선택을 여기서도 (v0.78)
+      const gmLine = buildGenModelRow(true);
+      if (gmLine) cssControls.appendChild(gmLine);
     }
     const cssStateClass = cssGen.note && !cssGen.note.startsWith('✅') ? ' warn'
       : cssGen.note?.startsWith('✅') ? ' ok' : '';
@@ -6358,57 +6424,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 생성 모델 슬롯 — 보조는 번역·요약용 싼 모델이 꽂힌 자리라, 스키마 생성엔 급이 다른
     // 모델이 필요할 수 있다. 어느 걸로 쏠지는 유저가 고른다 (기기 로컬 저장, 어댑터 몫).
-    if (ai && ai.getGenModel && ai.setGenModel) {
-      const gmLine = h('div', { class: 'sce-row sce-ai-model-row' });
-      const renderGmLine = () => {
-        gmLine.replaceChildren();
-        if (aiGenModel === undefined) return;
-        const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
-        gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
-        gmLine.appendChild(bindSelect(aiGenModel.choice, [
-          ['aux', '보조 모델 (기본)'],
-          ['main', '메인 모델 (대화용 그대로)'],
-          ['static', '직접 지정 (실험적)'],
-        ], (x) => { aiGenModel.choice = x; save(); renderGmLine(); }));
-        if (aiGenModel.choice === 'static') {
-          gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
-            { cls: 'sce-w-m', ph: '모델 id', title: '리수가 이 id를 모르면 보조 모델로 조용히 폴백됩니다' }));
-          // 설정 화면은 표시명만 보여줘서 id를 손으로 알 수 없다 — 리수 DB에서 직접 읽어다 채운다
-          if (ai.getModelIds && aiModelIds === undefined) {
-            gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
-              Promise.resolve(ai.getModelIds()).then((v) => { aiModelIds = v || null; })
-                .catch(() => { aiModelIds = null; })
-                .then(() => { if (!destroyed) renderGmLine(); });
-            } }, '🔎 리수에서 id 읽기'));
-          } else if (aiModelIds) {
-            for (const [k, label] of [['main', '메인'], ['sub', '보조']]) {
-              const id = aiModelIds[k];
-              if (!id) continue;
-              gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', title: id, onclick: () => {
-                aiGenModel.staticId = id; save(); renderGmLine();
-              } }, `${label}: ${id.length > 26 ? id.slice(0, 26) + '…' : id}`));
-            }
-          } else if (aiModelIds === null) {
-            gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' },
-              'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
-          }
-        }
-        gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' },
-          aiGenModel.choice === 'aux'
-            ? '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.'
-            : aiGenModel.choice === 'main'
-              ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
-              : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.'));
-      };
-      renderGmLine();
-      if (aiGenModel === undefined) {
-        Promise.resolve(ai.getGenModel())
-          .then((v) => { aiGenModel = (v && v.choice) ? v : { choice: 'aux', staticId: '' }; })
-          .catch(() => { aiGenModel = { choice: 'aux', staticId: '' }; })
-          .then(() => { if (!destroyed) renderGmLine(); });
+    // 줄 자체는 buildGenModelRow가 만든다 — 에셋 변환·꾸미기에서도 같은 줄을 쓴다 (v0.78).
+    {
+      const gmLine = buildGenModelRow(false);
+      if (gmLine) {
+        aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
+          h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine));
       }
-      aiSettingsGrid.appendChild(h('div', { class: 'sce-ai-setting-card' },
-        h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine));
     }
 
     if (ai && ai.generate) {
@@ -7497,6 +7519,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const ta = bindArea(assetImportText, (x) => { assetImportText = x; }, '여기에 지침 원문 붙여넣기…');
     importBody.appendChild(ta);
     if (ai && ai.generate) {
+      // 변환도 ai.generate를 탄다 = 생성 모델 설정을 그대로 따른다. 고르는 자리를 여기에도
+      // 둔다 — 없으면 "에셋 변환은 무조건 보조 모델"로 보인다 (실기 제보, v0.78)
+      const gmLine = buildGenModelRow(true);
+      if (gmLine) importBody.appendChild(gmLine);
       const importHint = h('span', { class: 'sce-hint', style: 'margin:0' });
       const importBtn = h('button', { class: 'sce-btn sce-ai-primary',
         'aria-busy': assetBusy ? 'true' : 'false', onclick: async () => {

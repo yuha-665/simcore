@@ -16,7 +16,7 @@
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
-  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
+  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -48,15 +48,23 @@ const DEFAULT_CHOICE_WAIT =
 
 // ── 초기화 ──────────────────────────────────────────────────
 
-function initState(schema) {
+function initState(schema, opts = {}) {
   const vars = {};
   for (const v of schema.vars) {
     vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
   // 시간 체계(schema.time) — 내부 저장은 epoch(분) 정수 하나. 스키마 vars가 아니라
   // 엔진 예약 키라 allow에 올릴 수 없고, 보조 AI가 날짜를 직접 만질 방법이 없다.
+  //
+  // 시작 시각 무작위(v0.80)는 **rng를 준 호출자에게만** 걸린다. 세션은 chatId로 시드를
+  // 만들어 넘기므로 판마다 다르고 같은 판 안에서는 고정이다. 진단·테스트처럼 rng를 안 주는
+  // 호출자는 예전 그대로 start에서 시작한다 — 결정적 경로를 흔들지 않는다.
   const tcfg = timeConfig(schema);
-  if (tcfg) vars[EPOCH_KEY] = tcfg.startEpoch;
+  if (tcfg) {
+    vars[EPOCH_KEY] = tcfg.startRandom && typeof opts.rng === 'function'
+      ? epochFrom(rollStart(tcfg, opts.rng), tcfg.calendar)
+      : tcfg.startEpoch;
+  }
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },

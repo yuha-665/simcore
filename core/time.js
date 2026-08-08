@@ -153,7 +153,49 @@ function timeConfig(schema) {
     expose: Array.isArray(t.expose)
       ? t.expose.filter((n) => EXPOSABLE.includes(n))
       : DEFAULT_EXPOSE,
+    startRandom: normStartRandom(t.startRandom),   // 없으면 null = 늘 start에서 시작 (v0.80)
   };
+}
+
+// ── 시작 시각 무작위 (v0.80) ────────────────────────────────
+// 배포된 봇은 새 채팅마다 늘 같은 날 같은 시각에서 시작한다. 그걸 바꾸려면 제작자가 아니라
+// **플레이어가** 시간 탭을 열어야 하는데, 그건 설정을 만질 줄 아는 사람만 쓰는 기능이 된다
+// (실기 제보). 범위를 정해 두면 판마다 시작점이 달라진다.
+//
+// 칸마다 따로 켠다 — "시각만 무작위, 날짜는 고정"이 가장 흔한 쓰임이라 전부 아니면 전무는 안 된다.
+// 안 켠 칸은 start의 값을 그대로 쓴다.
+const RANDOM_FIELDS = { year: 'y', month: 'm', dom: 'd', hour: 'h', minute: 'mi' };
+const RANDOM_BOUNDS = { year: [1, 9999], month: [1, 12], dom: [1, 31], hour: [0, 23], minute: [0, 59] };
+
+/** startRandom 정규화 — 쓸 수 있는 범위만 남긴다. 하나도 없으면 null(꺼짐) */
+function normStartRandom(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of Object.keys(RANDOM_FIELDS)) {
+    const r = raw[key];
+    if (!Array.isArray(r) || r.length !== 2) continue;
+    const lo = Math.floor(Number(r[0])), hi = Math.floor(Number(r[1]));
+    if (!isFinite(lo) || !isFinite(hi) || lo > hi) continue;
+    const [bl, bh] = RANDOM_BOUNDS[key];
+    out[key] = [Math.max(bl, lo), Math.min(bh, hi)];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * 시작 시점을 굴린다. rng가 없으면(진단·테스트) start 그대로 — 결정적 경로를 안 흔든다.
+ * 세션은 chatId로 시드를 만들므로 **같은 채팅이면 늘 같은 시각, 새 채팅이면 새 시각**이다.
+ */
+function rollStart(cfg, rng) {
+  const R = cfg?.startRandom;
+  if (!R || typeof rng !== 'function') return cfg.start;
+  const pick = ([lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1));
+  const p = { ...cfg.start };
+  for (const [key, slot] of Object.entries(RANDOM_FIELDS)) if (R[key]) p[slot] = pick(R[key]);
+  // 말일 보정 — 2월 30일처럼 없는 날이 나오면 그 달 마지막 날로 당긴다 (범위를 1~31로 둬도 안전)
+  const dmax = daysInMonth(p.y, p.m, cfg.calendar);
+  if (p.d > dmax) p.d = dmax;
+  return p;
 }
 
 /** 월 → 계절 인덱스 (0봄 1여름 2가을 3겨울) */
@@ -208,6 +250,6 @@ function exposedDefs(schema) {
 module.exports = {
   MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
   DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS,
-  parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex,
+  parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex, rollStart, normStartRandom, RANDOM_BOUNDS,
   formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
 };

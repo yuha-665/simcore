@@ -1,13 +1,29 @@
 //@name simcore
 //@api 3.0
-//@version 0.79.0
-//@display-name SimCore (시뮬 엔진) v0.79 지적 접기
+//@version 0.80.0
+//@display-name SimCore (시뮬 엔진) v0.80 무작위 시작·리롤 난수
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.80.0 ────────────────────────────────────────────────
+// 실기 제보 두 건 — 둘 다 "판마다 달라야 할 것이 안 달라진다".
+//
+// - [시간] **시작 시각 무작위** (`time.startRandom`). 배포된 봇은 새 채팅마다 늘 같은 날
+//   같은 시각에서 시작한다. 그걸 바꾸려면 플레이어가 시간 탭을 열어야 하는데, 그건 설정을
+//   만질 줄 아는 사람만 쓰는 기능이 된다. 시각·분·일·월·년을 칸마다 [최소, 최대]로 정하고,
+//   **채운 칸만** 굴린다 (비운 칸은 start 그대로 — "시각만 무작위, 날짜는 고정"이 가장 흔하다).
+//   시드는 chatId라 **같은 판에서는 고정**(리롤에 안 흔들림), 새 채팅이면 새로 굴린다.
+//   판 초기화만 예외로 즉석 난수를 쓴다 — chatId 시드면 초기화해도 같은 시각이 나온다.
+//   rng를 안 주는 호출자(진단·테스트)는 예전 그대로 start — 결정적 경로를 안 흔든다.
+//   없는 날짜(2월 31일 등)는 그 달 말일로 당긴다. flat30에서 31일 범위는 경고.
+// - [규칙] **리롤 안정 난수 토글**. 배선(`rerollStableRng`)은 v0.1부터 있었는데 편집기 칸이
+//   없어서 끌 방법이 JSON 손편집뿐이었다 — 규칙 #3의 세 번째 재발이다. "리롤해도 변수가
+//   똑같다"는 제보가 정확히 이 자리였다. 검증도 없어 오타(`rerollStable: false`)가 조용히
+//   무시됐으므로 타입 검사도 같이 넣었다. 기본은 켜짐 유지 (판정의 완벽 주사위가 이것에 기댄다).
 //
 // ── v0.79.0 ────────────────────────────────────────────────
 // 지적 접기 — 한 종류의 지적이 인원수만큼 쏟아져 정작 급한 오류를 덮던 문제.
@@ -1981,7 +1997,49 @@ function timeConfig(schema) {
     expose: Array.isArray(t.expose)
       ? t.expose.filter((n) => EXPOSABLE.includes(n))
       : DEFAULT_EXPOSE,
+    startRandom: normStartRandom(t.startRandom),   // 없으면 null = 늘 start에서 시작 (v0.80)
   };
+}
+
+// ── 시작 시각 무작위 (v0.80) ────────────────────────────────
+// 배포된 봇은 새 채팅마다 늘 같은 날 같은 시각에서 시작한다. 그걸 바꾸려면 제작자가 아니라
+// **플레이어가** 시간 탭을 열어야 하는데, 그건 설정을 만질 줄 아는 사람만 쓰는 기능이 된다
+// (실기 제보). 범위를 정해 두면 판마다 시작점이 달라진다.
+//
+// 칸마다 따로 켠다 — "시각만 무작위, 날짜는 고정"이 가장 흔한 쓰임이라 전부 아니면 전무는 안 된다.
+// 안 켠 칸은 start의 값을 그대로 쓴다.
+const RANDOM_FIELDS = { year: 'y', month: 'm', dom: 'd', hour: 'h', minute: 'mi' };
+const RANDOM_BOUNDS = { year: [1, 9999], month: [1, 12], dom: [1, 31], hour: [0, 23], minute: [0, 59] };
+
+/** startRandom 정규화 — 쓸 수 있는 범위만 남긴다. 하나도 없으면 null(꺼짐) */
+function normStartRandom(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of Object.keys(RANDOM_FIELDS)) {
+    const r = raw[key];
+    if (!Array.isArray(r) || r.length !== 2) continue;
+    const lo = Math.floor(Number(r[0])), hi = Math.floor(Number(r[1]));
+    if (!isFinite(lo) || !isFinite(hi) || lo > hi) continue;
+    const [bl, bh] = RANDOM_BOUNDS[key];
+    out[key] = [Math.max(bl, lo), Math.min(bh, hi)];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * 시작 시점을 굴린다. rng가 없으면(진단·테스트) start 그대로 — 결정적 경로를 안 흔든다.
+ * 세션은 chatId로 시드를 만들므로 **같은 채팅이면 늘 같은 시각, 새 채팅이면 새 시각**이다.
+ */
+function rollStart(cfg, rng) {
+  const R = cfg?.startRandom;
+  if (!R || typeof rng !== 'function') return cfg.start;
+  const pick = ([lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1));
+  const p = { ...cfg.start };
+  for (const [key, slot] of Object.entries(RANDOM_FIELDS)) if (R[key]) p[slot] = pick(R[key]);
+  // 말일 보정 — 2월 30일처럼 없는 날이 나오면 그 달 마지막 날로 당긴다 (범위를 1~31로 둬도 안전)
+  const dmax = daysInMonth(p.y, p.m, cfg.calendar);
+  if (p.d > dmax) p.d = dmax;
+  return p;
 }
 
 /** 월 → 계절 인덱스 (0봄 1여름 2가을 3겨울) */
@@ -2036,7 +2094,7 @@ function exposedDefs(schema) {
 module.exports = {
   MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
   DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS,
-  parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex,
+  parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex, rollStart, normStartRandom, RANDOM_BOUNDS,
   formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
 };
 
@@ -2046,7 +2104,8 @@ SimCore.define("validate", function (require, module, exports) {
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
-const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
+  RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -2184,6 +2243,11 @@ function validateSchema(schema) {
     }
   }
 
+  // 리롤 안정 난수 (기본 켜짐) — 배선은 v0.1부터 있었는데 검증이 없어 오타가 조용히
+  // 무시됐다. `rerollStable: false`라고 적고 "왜 리롤해도 같지"로 헤매는 자리다 (실기 제보).
+  if (schema.rerollStableRng != null && typeof schema.rerollStableRng !== 'boolean')
+    err('$.rerollStableRng', `rerollStableRng는 true/false여야 함 (현재: '${schema.rerollStableRng}')`);
+
   // ── time (시간 체계 — 설계: docs/design-시간.md) ──
   if (schema.time != null) {
     const T = schema.time;
@@ -2197,6 +2261,37 @@ function validateSchema(schema) {
         err('$.time.start', `'${T.start}'를 시작 시점으로 읽을 수 없음 — "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 함`);
       if (T.advance != null && !['explicit', 'perTurn'].includes(T.advance))
         err('$.time.advance', `advance는 explicit(명시적 진행만) | perTurn(턴마다 하루) (현재: '${T.advance}')`);
+      // 시작 시각 무작위 (v0.80) — 칸마다 [최소, 최대]. 안 적은 칸은 start 값을 그대로 쓴다.
+      // 조용히 무시되면 "켠 줄 알았는데 늘 같은 시각"이 되므로 형태 오류는 전부 잡는다.
+      if (T.startRandom != null) {
+        const SR = T.startRandom;
+        const LABEL = { year: '년', month: '월', dom: '일', hour: '시', minute: '분' };
+        if (typeof SR !== 'object' || Array.isArray(SR)) {
+          err('$.time.startRandom', 'startRandom은 객체 — { hour: [6, 22], dom: [1, 28] } 처럼 칸마다 [최소, 최대]');
+        } else {
+          const keys = Object.keys(SR);
+          if (!keys.length) warn('$.time.startRandom', '범위가 하나도 없습니다 — 무작위 시작이 꺼진 것과 같습니다 (칸을 채우거나 startRandom을 지우세요)');
+          for (const k of keys) {
+            const p = `$.time.startRandom.${k}`;
+            if (!TIME_RANDOM_BOUNDS[k]) {
+              err(p, `모르는 칸 '${k}' — ${Object.keys(TIME_RANDOM_BOUNDS).join(', ')} 중에서 고르세요`);
+              continue;
+            }
+            const [bl, bh] = TIME_RANDOM_BOUNDS[k];
+            const r = SR[k];
+            if (!Array.isArray(r) || r.length !== 2 || r.some((n) => typeof n !== 'number' || !isFinite(n))) {
+              err(p, `${LABEL[k]} 범위는 숫자 두 개 — [최소, 최대] (허용 ${bl}~${bh})`);
+            } else if (r[0] > r[1]) {
+              err(p, `${LABEL[k]} 범위의 최소가 최대보다 큽니다 (${r[0]} > ${r[1]})`);
+            } else if (r[0] < bl || r[1] > bh) {
+              err(p, `${LABEL[k]} 범위가 ${bl}~${bh}를 벗어납니다 (현재 ${r[0]}~${r[1]})`);
+            }
+          }
+          // flat30은 한 달이 30일 — 31일을 뽑아 봐야 말일로 당겨지므로 알려 준다
+          if (calendar === 'flat30' && Array.isArray(SR.dom) && SR.dom[1] > 30)
+            warn('$.time.startRandom.dom', 'flat30 달력은 한 달이 30일입니다 — 31은 30으로 당겨집니다');
+        }
+      }
       if (T.format != null) {
         if (typeof T.format !== 'object' || Array.isArray(T.format)) err('$.time.format', 'format은 객체 — { date, clock }');
         else {
@@ -4261,7 +4356,7 @@ SimCore.define("engine", function (require, module, exports) {
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
-  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
+  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -4293,15 +4388,23 @@ const DEFAULT_CHOICE_WAIT =
 
 // ── 초기화 ──────────────────────────────────────────────────
 
-function initState(schema) {
+function initState(schema, opts = {}) {
   const vars = {};
   for (const v of schema.vars) {
     vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
   // 시간 체계(schema.time) — 내부 저장은 epoch(분) 정수 하나. 스키마 vars가 아니라
   // 엔진 예약 키라 allow에 올릴 수 없고, 보조 AI가 날짜를 직접 만질 방법이 없다.
+  //
+  // 시작 시각 무작위(v0.80)는 **rng를 준 호출자에게만** 걸린다. 세션은 chatId로 시드를
+  // 만들어 넘기므로 판마다 다르고 같은 판 안에서는 고정이다. 진단·테스트처럼 rng를 안 주는
+  // 호출자는 예전 그대로 start에서 시작한다 — 결정적 경로를 흔들지 않는다.
   const tcfg = timeConfig(schema);
-  if (tcfg) vars[EPOCH_KEY] = tcfg.startEpoch;
+  if (tcfg) {
+    vars[EPOCH_KEY] = tcfg.startRandom && typeof opts.rng === 'function'
+      ? epochFrom(rollStart(tcfg, opts.rng), tcfg.calendar)
+      : tcfg.startEpoch;
+  }
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -6451,7 +6554,9 @@ class SimSession {
       const found = await this.store.latestAtOrBelow('out', latestOutIndex);
       if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
     }
-    this.current = engine.initState(this.schema);
+    // 시작 시각 무작위(v0.80)용 rng — 인덱스를 -1로 둬 어느 턴과도 안 겹치는 시드를 쓴다.
+    // 리롤 안정이 켜져 있으면 chatId로만 갈리므로 **이 채팅은 늘 같은 시각**, 새 채팅은 새 시각.
+    this.current = engine.initState(this.schema, { rng: this._rng(-1, 'start') });
     return this.current;
   }
 
@@ -6538,7 +6643,9 @@ class SimSession {
     onProgress?.(0, mine.length, '스냅샷 삭제 중');
     await mapLimited(mine, IO_CONCURRENCY, (k) => this.store.b.remove(k),
       (d, t) => onProgress?.(d, t, '스냅샷 삭제 중'));
-    this.current = engine.initState(this.schema);
+    // 초기화는 리롤이 아니라 "판을 지우고 새로 시작"이다 — 시작 시각 무작위를 켰다면
+    // **여기서는 새로 굴린다** (chatId 시드를 쓰면 초기화해도 늘 같은 시각이 나온다).
+    this.current = engine.initState(this.schema, { rng: makeUnstableRng(this.random) });
     return this.current;
   }
 
@@ -11942,6 +12049,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function tabRules() {
     const wrap = h('div');
     wrap.appendChild(tabAiTools('rules'));
+
+    // 리롤 안정 난수 (v0.80에 칸이 생김 — 배선은 처음부터 있었다). 규칙 #3의 재발이었다:
+    // 스키마 키만 있고 칸이 없어서, "리롤해도 랜덤이 똑같다"를 버그로 겪고도 끌 방법이 없었다.
+    wrap.appendChild(h('h4', {}, '난수'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindCheck(schema.rerollStableRng !== false,
+        (on) => { schema.rerollStableRng = on ? undefined : false; rerender(); },
+        '리롤 안정 (기본 켜짐)')));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      schema.rerollStableRng === false
+        ? '**꺼짐** — 리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다. 마음에 안 드는 결과를 '
+          + '다시 굴릴 수 있는 대신, 같은 지점에서 계속 굴려 원하는 결과를 뽑아낼 수도 있습니다.'
+        : '**켜짐** — 같은 지점에서 리롤하면 랜덤 이벤트·판정이 같은 눈으로 나옵니다. 서사 표현만 '
+          + '다시 뽑고 결과는 못 바꾸게 하는 설정이라, TRPG·생존물처럼 판정이 무거운 봇에 맞습니다. '
+          + '"리롤해도 변수가 그대로다"가 불편하면 끄세요.'));
+
     wrap.appendChild(h('h4', {}, '매 턴 자동 처리 (수입·소비 같은 정기 틱)'));
     wrap.appendChild(effectRows(schema, schema.rules.onTurn, rerender));
 
@@ -13029,6 +13152,48 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
       ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
     ));
+    // 시작 시각 무작위 (v0.80) — 켜면 판마다 시작점이 달라진다. 안 켠 칸은 위 시작 시점 그대로.
+    // 규칙 #3: 엔진에만 넣고 칸을 안 만들면 JSON 손편집 말고는 쓸 방법이 없다.
+    {
+      const RF = [
+        ['hour', '시각', 0, 23, '6, 22'],
+        ['minute', '분', 0, 59, '0, 59'],
+        ['dom', '일', 1, 31, '1, 28'],
+        ['month', '월', 1, 12, '3, 5'],
+        ['year', '년', 1, 9999, '2024, 2026'],
+      ];
+      const on = !!T.startRandom;
+      wrap.appendChild(h('h4', {}, '시작 시각 무작위'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        bindCheck(on, (v) => {
+          // 켤 때 시각 범위를 기본으로 채워 준다 — 빈 껍데기를 켜 두면 아무것도 안 바뀐다
+          T.startRandom = v ? { hour: [6, 22] } : undefined;
+          rerender();
+        }, '판마다 시작 시각을 다르게')));
+      if (on) {
+        const SR = T.startRandom;
+        const row = h('div', { class: 'sce-row' });
+        for (const [key, label, lo, hi, ph] of RF) {
+          const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
+          row.appendChild(pair(label, bindInput(cur, (x) => {
+            const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
+            if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
+            else delete SR[key];   // 비우면 그 칸은 고정 (시작 시점 값을 그대로 쓴다)
+            rerender();
+          }, { cls: 'sce-w-s', ph }), `${lo}~${hi} · 비우면 고정`));
+        }
+        wrap.appendChild(row);
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '채운 칸만 굴립니다 — 비운 칸은 위 [시작 시점]의 값을 그대로 씁니다 (예: 시각만 채우면 날짜는 고정). '
+          + '**같은 채팅 안에서는 늘 같은 시각**이라 리롤해도 안 흔들리고, 새 채팅을 열면 새로 굴립니다. '
+          + '[현황]의 판 초기화로도 다시 굴러갑니다. 없는 날짜(2월 31일 등)는 그 달 말일로 당겨집니다.'));
+        if (!Object.keys(SR).length) {
+          wrap.appendChild(h('div', { class: 'sce-hint' },
+            '⚠ 범위가 하나도 없어 지금은 꺼진 것과 같습니다 — 칸을 하나 이상 채우세요.'));
+        }
+      }
+    }
+
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
         { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),

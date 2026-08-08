@@ -4253,6 +4253,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function tabRules() {
     const wrap = h('div');
     wrap.appendChild(tabAiTools('rules'));
+
+    // 리롤 안정 난수 (v0.80에 칸이 생김 — 배선은 처음부터 있었다). 규칙 #3의 재발이었다:
+    // 스키마 키만 있고 칸이 없어서, "리롤해도 랜덤이 똑같다"를 버그로 겪고도 끌 방법이 없었다.
+    wrap.appendChild(h('h4', {}, '난수'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      bindCheck(schema.rerollStableRng !== false,
+        (on) => { schema.rerollStableRng = on ? undefined : false; rerender(); },
+        '리롤 안정 (기본 켜짐)')));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      schema.rerollStableRng === false
+        ? '**꺼짐** — 리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다. 마음에 안 드는 결과를 '
+          + '다시 굴릴 수 있는 대신, 같은 지점에서 계속 굴려 원하는 결과를 뽑아낼 수도 있습니다.'
+        : '**켜짐** — 같은 지점에서 리롤하면 랜덤 이벤트·판정이 같은 눈으로 나옵니다. 서사 표현만 '
+          + '다시 뽑고 결과는 못 바꾸게 하는 설정이라, TRPG·생존물처럼 판정이 무거운 봇에 맞습니다. '
+          + '"리롤해도 변수가 그대로다"가 불편하면 끄세요.'));
+
     wrap.appendChild(h('h4', {}, '매 턴 자동 처리 (수입·소비 같은 정기 틱)'));
     wrap.appendChild(effectRows(schema, schema.rules.onTurn, rerender));
 
@@ -5340,6 +5356,48 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
       ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
     ));
+    // 시작 시각 무작위 (v0.80) — 켜면 판마다 시작점이 달라진다. 안 켠 칸은 위 시작 시점 그대로.
+    // 규칙 #3: 엔진에만 넣고 칸을 안 만들면 JSON 손편집 말고는 쓸 방법이 없다.
+    {
+      const RF = [
+        ['hour', '시각', 0, 23, '6, 22'],
+        ['minute', '분', 0, 59, '0, 59'],
+        ['dom', '일', 1, 31, '1, 28'],
+        ['month', '월', 1, 12, '3, 5'],
+        ['year', '년', 1, 9999, '2024, 2026'],
+      ];
+      const on = !!T.startRandom;
+      wrap.appendChild(h('h4', {}, '시작 시각 무작위'));
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        bindCheck(on, (v) => {
+          // 켤 때 시각 범위를 기본으로 채워 준다 — 빈 껍데기를 켜 두면 아무것도 안 바뀐다
+          T.startRandom = v ? { hour: [6, 22] } : undefined;
+          rerender();
+        }, '판마다 시작 시각을 다르게')));
+      if (on) {
+        const SR = T.startRandom;
+        const row = h('div', { class: 'sce-row' });
+        for (const [key, label, lo, hi, ph] of RF) {
+          const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
+          row.appendChild(pair(label, bindInput(cur, (x) => {
+            const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
+            if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
+            else delete SR[key];   // 비우면 그 칸은 고정 (시작 시점 값을 그대로 쓴다)
+            rerender();
+          }, { cls: 'sce-w-s', ph }), `${lo}~${hi} · 비우면 고정`));
+        }
+        wrap.appendChild(row);
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '채운 칸만 굴립니다 — 비운 칸은 위 [시작 시점]의 값을 그대로 씁니다 (예: 시각만 채우면 날짜는 고정). '
+          + '**같은 채팅 안에서는 늘 같은 시각**이라 리롤해도 안 흔들리고, 새 채팅을 열면 새로 굴립니다. '
+          + '[현황]의 판 초기화로도 다시 굴러갑니다. 없는 날짜(2월 31일 등)는 그 달 말일로 당겨집니다.'));
+        if (!Object.keys(SR).length) {
+          wrap.appendChild(h('div', { class: 'sce-hint' },
+            '⚠ 범위가 하나도 없어 지금은 꺼진 것과 같습니다 — 칸을 하나 이상 채우세요.'));
+        }
+      }
+    }
+
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
         { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),

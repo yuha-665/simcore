@@ -39,7 +39,9 @@ class SimSession {
       const found = await this.store.latestAtOrBelow('out', latestOutIndex);
       if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
     }
-    this.current = engine.initState(this.schema);
+    // 시작 시각 무작위(v0.80)용 rng — 인덱스를 -1로 둬 어느 턴과도 안 겹치는 시드를 쓴다.
+    // 리롤 안정이 켜져 있으면 chatId로만 갈리므로 **이 채팅은 늘 같은 시각**, 새 채팅은 새 시각.
+    this.current = engine.initState(this.schema, { rng: this._rng(-1, 'start') });
     return this.current;
   }
 
@@ -126,7 +128,9 @@ class SimSession {
     onProgress?.(0, mine.length, '스냅샷 삭제 중');
     await mapLimited(mine, IO_CONCURRENCY, (k) => this.store.b.remove(k),
       (d, t) => onProgress?.(d, t, '스냅샷 삭제 중'));
-    this.current = engine.initState(this.schema);
+    // 초기화는 리롤이 아니라 "판을 지우고 새로 시작"이다 — 시작 시각 무작위를 켰다면
+    // **여기서는 새로 굴린다** (chatId 시드를 쓰면 초기화해도 늘 같은 시각이 나온다).
+    this.current = engine.initState(this.schema, { rng: makeUnstableRng(this.random) });
     return this.current;
   }
 

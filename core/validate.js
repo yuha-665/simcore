@@ -1,7 +1,8 @@
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
-const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY } = require('./time');
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
+  RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -139,6 +140,11 @@ function validateSchema(schema) {
     }
   }
 
+  // 리롤 안정 난수 (기본 켜짐) — 배선은 v0.1부터 있었는데 검증이 없어 오타가 조용히
+  // 무시됐다. `rerollStable: false`라고 적고 "왜 리롤해도 같지"로 헤매는 자리다 (실기 제보).
+  if (schema.rerollStableRng != null && typeof schema.rerollStableRng !== 'boolean')
+    err('$.rerollStableRng', `rerollStableRng는 true/false여야 함 (현재: '${schema.rerollStableRng}')`);
+
   // ── time (시간 체계 — 설계: docs/design-시간.md) ──
   if (schema.time != null) {
     const T = schema.time;
@@ -152,6 +158,37 @@ function validateSchema(schema) {
         err('$.time.start', `'${T.start}'를 시작 시점으로 읽을 수 없음 — "YYYY-MM-DD HH:mm" 형식의 실재하는 날짜여야 함`);
       if (T.advance != null && !['explicit', 'perTurn'].includes(T.advance))
         err('$.time.advance', `advance는 explicit(명시적 진행만) | perTurn(턴마다 하루) (현재: '${T.advance}')`);
+      // 시작 시각 무작위 (v0.80) — 칸마다 [최소, 최대]. 안 적은 칸은 start 값을 그대로 쓴다.
+      // 조용히 무시되면 "켠 줄 알았는데 늘 같은 시각"이 되므로 형태 오류는 전부 잡는다.
+      if (T.startRandom != null) {
+        const SR = T.startRandom;
+        const LABEL = { year: '년', month: '월', dom: '일', hour: '시', minute: '분' };
+        if (typeof SR !== 'object' || Array.isArray(SR)) {
+          err('$.time.startRandom', 'startRandom은 객체 — { hour: [6, 22], dom: [1, 28] } 처럼 칸마다 [최소, 최대]');
+        } else {
+          const keys = Object.keys(SR);
+          if (!keys.length) warn('$.time.startRandom', '범위가 하나도 없습니다 — 무작위 시작이 꺼진 것과 같습니다 (칸을 채우거나 startRandom을 지우세요)');
+          for (const k of keys) {
+            const p = `$.time.startRandom.${k}`;
+            if (!TIME_RANDOM_BOUNDS[k]) {
+              err(p, `모르는 칸 '${k}' — ${Object.keys(TIME_RANDOM_BOUNDS).join(', ')} 중에서 고르세요`);
+              continue;
+            }
+            const [bl, bh] = TIME_RANDOM_BOUNDS[k];
+            const r = SR[k];
+            if (!Array.isArray(r) || r.length !== 2 || r.some((n) => typeof n !== 'number' || !isFinite(n))) {
+              err(p, `${LABEL[k]} 범위는 숫자 두 개 — [최소, 최대] (허용 ${bl}~${bh})`);
+            } else if (r[0] > r[1]) {
+              err(p, `${LABEL[k]} 범위의 최소가 최대보다 큽니다 (${r[0]} > ${r[1]})`);
+            } else if (r[0] < bl || r[1] > bh) {
+              err(p, `${LABEL[k]} 범위가 ${bl}~${bh}를 벗어납니다 (현재 ${r[0]}~${r[1]})`);
+            }
+          }
+          // flat30은 한 달이 30일 — 31일을 뽑아 봐야 말일로 당겨지므로 알려 준다
+          if (calendar === 'flat30' && Array.isArray(SR.dom) && SR.dom[1] > 30)
+            warn('$.time.startRandom.dom', 'flat30 달력은 한 달이 30일입니다 — 31은 30으로 당겨집니다');
+        }
+      }
       if (T.format != null) {
         if (typeof T.format !== 'object' || Array.isArray(T.format)) err('$.time.format', 'format은 객체 — { date, clock }');
         else {

@@ -24,22 +24,45 @@ const engine = require(__P('../core/engine.js'));
 const { seededRng } = require(__P('../core/rng.js'));
 const { partyTabs } = require(__P('../core/party.js'));
 
-// ── 명단 ──
-// 원본 봇의 이미지 규격 이름을 그대로 쓴다. 한글로 옮겨 적으면 읽기는 좋아지지만
-// 나중에 초상화(에셋)를 붙일 때 이름이 안 맞아서 두 벌을 관리하게 된다.
+// ── 명단 ── [한글 표기, 이미지 규격 이름]
+//
+// 편성표·상태창에 뜨는 건 **한글**이고, 원본 봇의 이미지 태그가 쓰는 건 **영문**이다.
+// 화면에 Kurokawa_Akane라고 뜨면 누군지 알아보는 데 한 박자가 걸린다 — 그렇다고 값을
+// 한글로만 두면 AI가 `<img="...">`에 뭘 넣어야 할지 모른다. 그래서 **값은 한글, 병기는 파생**:
+// 슬롯 값은 한글이고, 아래 NAME_MAP을 뒤집은 파생(id1~id5)이 영문 이름을 프롬프트에 같이 실어
+// 보낸다. 초상화를 붙일 때 쓰는 party.portraits도 이 표에서 자동으로 만들어진다.
+//
+// ⚠ 한글 표기는 **음차**다 — 정식 번역명과 다를 수 있다. 원작 표기가 따로 있으면 여기 왼쪽
+//   칸만 고치면 된다(오른쪽 영문은 이미지 규격이라 절대 건드리지 말 것).
+//
 // 여기 44명은 원본이 **의상 변형까지 가진** 쪽이다 — 무대에 세울 사람들이라 그렇다.
-// (기본 일러만 있는 40명은 주변 인물이라 유닛 후보에서 뺐다. 필요하면 아래 배열에 더하면 된다.)
-const CAST = [
-  'Iino_Miko', 'Shiina_Mahiru', 'Koyasu_Tsubame', 'Shiranui_Frill', 'Sugaya_Nowa',
-  'Inui_Shinju', 'Inui_Sajuna', 'Kitagawa_Marin', 'Yamada_Ryo', 'Ijichi_Nijika',
-  'Kita_Ikuyo', 'Gotoh_Hitori', 'Kotobuki_Minami', 'Shijo_Maki', 'Kashiwagi_Nagisa',
-  'Sumi_Yuki', 'Hayasaka_Ai', 'Hoshino_Ai', 'Memcho', 'Kurokawa_Akane',
-  'Shirogane_Kei', 'Arima_Kana', 'Hoshino_Ruby', 'Fujiwara_Chika', 'Shinomiya_Kaguya',
-  'Nishikigi_Chisato', 'Kurumi', 'Inoue_Takina', 'Iwashita_Shima', 'Shimizu_Eliza',
-  'Ijichi_Seika', 'Hiroi_Kikuri', 'PA-san', 'Saitou_Miyako', 'Hori_Kyouko',
-  'Alisa_Mikhailovna_Kujou', 'Mariya_Mikhailovna_Kujou', 'Suou_Yuki', 'Sakurajima_Mai',
-  'Nakano_Ichika', 'Nakano_Itsuki', 'Nakano_Yotsuba', 'Nakano_Miku', 'Nakano_Nino',
+// (기본 일러만 있는 40명은 주변 인물이라 유닛 후보에서 뺐다. 필요하면 아래 표에 더하면 된다.)
+const NAME_MAP = [
+  ['이이노 미코', 'Iino_Miko'], ['시이나 마히루', 'Shiina_Mahiru'],
+  ['코야스 츠바메', 'Koyasu_Tsubame'], ['시라누이 프릴', 'Shiranui_Frill'],
+  ['스가야 노와', 'Sugaya_Nowa'], ['이누이 신주', 'Inui_Shinju'],
+  ['이누이 사쥬나', 'Inui_Sajuna'], ['키타가와 마린', 'Kitagawa_Marin'],
+  ['야마다 료', 'Yamada_Ryo'], ['이지치 니지카', 'Ijichi_Nijika'],
+  ['키타 이쿠요', 'Kita_Ikuyo'], ['고토 히토리', 'Gotoh_Hitori'],
+  ['코토부키 미나미', 'Kotobuki_Minami'], ['시조 마키', 'Shijo_Maki'],
+  ['카시와기 나기사', 'Kashiwagi_Nagisa'], ['스미 유키', 'Sumi_Yuki'],
+  ['하야사카 아이', 'Hayasaka_Ai'], ['호시노 아이', 'Hoshino_Ai'],
+  ['멤쵸', 'Memcho'], ['쿠로카와 아카네', 'Kurokawa_Akane'],
+  ['시로가네 케이', 'Shirogane_Kei'], ['아리마 카나', 'Arima_Kana'],
+  ['호시노 루비', 'Hoshino_Ruby'], ['후지와라 치카', 'Fujiwara_Chika'],
+  ['시노미야 카구야', 'Shinomiya_Kaguya'], ['니시키기 치사토', 'Nishikigi_Chisato'],
+  ['쿠루미', 'Kurumi'], ['이노우에 타키나', 'Inoue_Takina'],
+  ['이와시타 시마', 'Iwashita_Shima'], ['시미즈 엘리자', 'Shimizu_Eliza'],
+  ['이지치 세이카', 'Ijichi_Seika'], ['히로이 키쿠리', 'Hiroi_Kikuri'],
+  ['PA씨', 'PA-san'], ['사이토 미야코', 'Saitou_Miyako'],
+  ['호리 쿄코', 'Hori_Kyouko'], ['쿠죠 알리사', 'Alisa_Mikhailovna_Kujou'],
+  ['쿠죠 마리야', 'Mariya_Mikhailovna_Kujou'], ['스오우 유키', 'Suou_Yuki'],
+  ['사쿠라지마 마이', 'Sakurajima_Mai'], ['나카노 이치카', 'Nakano_Ichika'],
+  ['나카노 이츠키', 'Nakano_Itsuki'], ['나카노 요츠바', 'Nakano_Yotsuba'],
+  ['나카노 미쿠', 'Nakano_Miku'], ['나카노 니노', 'Nakano_Nino'],
 ];
+const CAST = NAME_MAP.map(([ko]) => ko);
+const ASSET = Object.fromEntries(NAME_MAP);
 const EMPTY = '빈 자리';
 const N = 5;                                   // 자리 다섯 — 센터 하나 + 사이드 넷
 const SEAT = ['센터', '사이드 1', '사이드 2', '사이드 3', '사이드 4'];
@@ -60,7 +83,7 @@ const keptVars = S.vars.filter((v) => !isMemberVar(v.id));
 // 빈 채로 내보내면 임포트 직후 아무것도 안 굴러가고(무대에 설 사람이 없다), 진단도 액션 절반을
 // "못 쓰는 액션"으로 신고한다 — 편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 영영 빈다.
 // 원작에서 실제로 한 유닛인 다섯을 앉혀 뒀다. 임포트하자마자 굴러가고, 바꾸는 건 한 번의 클릭이다.
-const DEFAULT_LINEUP = ['Hoshino_Ai', 'Arima_Kana', 'Hoshino_Ruby', 'Memcho', 'Kurokawa_Akane'];
+const DEFAULT_LINEUP = ['호시노 아이', '아리마 카나', '호시노 루비', '멤쵸', '쿠로카와 아카네'];
 
 const slotVars = Array.from({ length: N }, (_, i) => ({
   id: `slot${i + 1}`, label: SEAT[i], type: 'enum', init: DEFAULT_LINEUP[i] ?? EMPTY, enum: [EMPTY, ...CAST],
@@ -100,6 +123,9 @@ const cut = (r) => Math.round(MAXPOW * r / 10) * 10;
 const RANK_EXPR = [...TIERS].reverse()
   .reduce((acc, [g, r]) => `u_pow >= ${cut(r)} ? '${g}' : (${acc})`, "'E'");
 
+// 한글 값 하나를 영문 이름으로 옮기는 식. 조건이 서로 배타적이라 순서는 상관없다
+const assetExpr = (v) => NAME_MAP.reduceRight((acc, [ko, en]) => `${v} == '${ko}' ? '${en}' : (${acc})`, "''");
+
 const memberDerivedIds = new Set(['p1', 'p2', 'p3', 'stand', 'u_vo', 'u_da', 'u_vi',
   'c1', 'c2', 'c3', 'u_cond', 'u_fan', 'u_pow', 'u_love', 'u_rank']);
 const keptDerived = S.derived.filter((d) => !memberDerivedIds.has(d.id));
@@ -112,6 +138,12 @@ const newDerived = [
   // 센터만 1.3배. 자리에 아무도 없으면 0이라 그 자리 숫자는 어디에도 안 실린다
   ...Array.from({ length: N }, (_, i) => ({
     id: `p${i + 1}`, label: `${SEAT[i]} 배수`, expr: i === 0 ? 'o1 * 1.3' : `o${i + 1}`,
+  })),
+  // 표기(한글) → 이미지 규격 이름(영문). 화면에는 안 쓰고 **프롬프트에 병기**하는 데만 쓴다 —
+  // 원본 봇의 이미지 태그가 영문 이름을 요구하는데, 슬롯 값은 한글이라 그대로는 못 넘긴다.
+  // 44갈래 삼항이라 길지만 식은 프롬프트에 안 실린다(값만 실린다). 사람이 읽을 자리가 아니다.
+  ...Array.from({ length: N }, (_, i) => ({
+    id: `id${i + 1}`, label: `${SEAT[i]} 에셋 이름`, expr: assetExpr(`slot${i + 1}`),
   })),
   { id: 'stand', label: '무대 인원', expr: seq((i) => `o${i}`) },
   { id: 'u_vo', label: '유닛 보컬', expr: `round(${seq((i) => `m${i}_vo * p${i}`)})` },
@@ -196,6 +228,11 @@ S.party.empty = EMPTY;
 S.party.nav = 'select';
 S.party.note = '센터는 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 한 사람은 한 자리에만.';
 S.party.unique = true;   // 같은 사람을 두 자리에 앉힐 수 없다
+// 초상화 — 켜면 편성표 후보에 그림이 붙는다. **리수 쪽 에셋 이름을 확인한 뒤에 켤 것**:
+// 원본 봇의 이미지는 `Nakano_Miku.default.avif`처럼 점으로 이어진 이름이라, 리수가 이걸
+// 어떤 에셋 키로 잡는지에 따라 여기 값이 달라진다. 없는 이름을 넣으면 빈 그림이 줄줄이 뜬다.
+const WITH_PORTRAITS = false;
+if (WITH_PORTRAITS) S.party.portraits = { ...ASSET };
 
 // ── 5. 상태창 ──
 // 자리 탭은 **사람이 앉았을 때만** 뜬다. 다섯 칸을 늘 펼쳐 두면 빈 자리 숫자가 화면의 절반이다
@@ -222,7 +259,9 @@ S.statusUI.groups.push(...Array.from({ length: N }, (_, i) => {
 }));
 
 // ── 6. 프롬프트 상태 블록 ──
-// 이름은 슬롯 값이 그대로 들어간다. 빈 자리는 '빈 자리'로 찍히므로 AI가 헷갈리지 않는다
+// 이름은 슬롯 값이 그대로 들어간다. 빈 자리는 '빈 자리'로 찍히므로 AI가 헷갈리지 않는다.
+// 한글 이름 옆에 이미지 규격 이름을 괄호로 병기한다 — "서사는 한글로, 이미지 태그는 영문으로"를
+// 줄 하나가 다 말한다. 이게 없으면 AI가 상태창의 '호시노 아이'로 <img> 이름을 지어낸다.
 S.promptState.template = '[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n'
   + '인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n'
   + '자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n'
@@ -232,7 +271,7 @@ S.promptState.template = '[프로덕션] {date} ({weekday}) · {rank}등급 · �
   + `유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n`
   + Array.from({ length: N }, (_, i) => {
     const k = i + 1;
-    return `${SEAT[i]} {slot${k}} — {m${k}_vo}/{m${k}_da}/{m${k}_vi} 컨디션 {c${k}} 호감 {m${k}_love}`;
+    return `${SEAT[i]} {slot${k}}({id${k}}) — {m${k}_vo}/{m${k}_da}/{m${k}_vi} 컨디션 {c${k}} 호감 {m${k}_love}`;
   }).join('\n');
 
 // ── 7. 보조 AI에게 여는 것 ──
@@ -251,7 +290,8 @@ S.updater.guide = S.updater.guide.replace('편성(센터·사이드)은 프로�
 S.directives.unshift({
   id: 'lineup', when: 'stand >= 1 and not unit_over',
   text: '[유닛] 지금 이 유닛은 {stand}명이다 — 센터 {slot1}. 편성표에 앉은 사람만 유닛 멤버로 다뤄라. '
-    + '앉지 않은 인물은 등장시킬 수 있어도 유닛의 일원으로는 쓰지 마라.',
+    + '앉지 않은 인물은 등장시킬 수 있어도 유닛의 일원으로는 쓰지 마라. '
+    + '이미지 태그에는 이름의 괄호 안 영문 표기를 써라 ({slot1} → {id1}).',
 });
 S.directives.unshift({
   id: 'empty_unit', when: 'stand == 0 and not unit_over',
@@ -309,7 +349,7 @@ console.log(ghosts.length ? `⚠ 옛 이름이 남음: ${ghosts.join(', ')}` : '
 // 편성표는 진단이 못 만지는 자리다. 다섯을 앉히고 며칠 굴려서 무대가 서는지 눈으로 본다.
 {
   let st = engine.initState(S); st.meta.setupDone = true;
-  const picked = ['Hoshino_Ai', 'Arima_Kana', 'Hoshino_Ruby', 'Memcho', 'Kurokawa_Akane'];
+  const picked = [...DEFAULT_LINEUP];
   picked.forEach((name, i) => { st.vars[`slot${i + 1}`] = name; });
   const L = () => engine.makeLookup(S, st.vars);
   console.log(`\n편성: ${picked.join(' · ')}`);

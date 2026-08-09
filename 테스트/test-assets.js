@@ -381,11 +381,13 @@ const ED = SC.require('editor');
 
 // ── 배선 (2단계): 가짜 리스 실부팅 — 보조가 image를 얹어 보내면 본문 맨 앞에 1장 ──
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function bootLive(mutate) {
+async function bootLive(mutate, worldPatch) {
   const LORE = src.match(/const SCHEMA_LORE_COMMENT = '([^']+)'/)?.[1];
   const SCHEMA = snap(); SCHEMA.updater = { allow: [{ id: 'nsfw_on' }] };
   if (mutate) mutate(SCHEMA);
   const world = {
+    // 모듈 에셋 읽기는 v0.83부터 기본 꺼짐이다. 이 하네스는 모듈봇 경로를 재는 게 목적이라 켜 둔다
+    moduleAssets: true,
     auxResult: '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}',
     chars: [{
       chaId: 'c-sim', name: '에셋 봇', triggerscript: [],
@@ -402,7 +404,6 @@ async function bootLive(mutate) {
     // 활성 = 전역 enabledModules(m-on) ∪ 채팅 chat.modules(m-chat, 봇 개별 활성화).
     // 꺼진 모듈(m-off) 이름은 대조에 안 낀다.
     getDatabase: async (keys) => {
-      if (world.dbArgBroken && keys) return null; // includeOnly 인자를 모르는 구버전 흉내
       return {
         enabledModules: ['m-on'],
         modules: [
@@ -421,7 +422,8 @@ async function bootLive(mutate) {
     addRisuReplacer: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
     addRisuScriptHandler: async (k, fn) => { (global.__hooks ??= {})[k] = fn; },
     showContainer: async () => {}, alert: async () => {},
-    getArgument: async () => 'aux',            // 보조 직접 호출 강제
+    // v0.83: 모듈 에셋 읽기는 인자로 켠다 (기본 off). 세계가 켰다고 하면 on을 준다
+    getArgument: async (k) => (k === 'module_assets' ? (world.moduleAssets ? 'on' : 'off') : 'aux'),
     onUnload: async (fn) => { global.__unload = fn; },
     runLLMModel: async () => ({ type: 'success', result: world.auxResult }),
     pluginStorage: {
@@ -431,6 +433,7 @@ async function bootLive(mutate) {
       keys: async () => [...store.keys()],
     },
   };
+  Object.assign(world, worldPatch || {});
   const el = () => new Proxy({ style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {} },
     children: [], appendChild() {}, append() {}, remove() {}, setAttribute() {}, addEventListener() {},
     querySelector: () => null, querySelectorAll: () => [] }, { get: (t, k) => (k in t ? t[k] : undefined), set: () => true });
@@ -472,7 +475,8 @@ async function bootLive(mutate) {
   world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Nozomi","emo":"happy"}}';
   await hooks.beforeRequest([{ role: 'user', content: '넷' }], 'model');
   const out4 = await hooks.output('노조미가 웃었다.');
-  ck('★ 실부팅: 켜진 모듈의 에셋도 대조에 합쳐진다', out4.startsWith('<char-noz emotion="happy">'), out4.slice(0, 60));
+  ck('★ 실부팅: 켜진 모듈의 에셋도 대조에 합쳐진다 (module_assets=on)',
+    out4.startsWith('<char-noz emotion="happy">'), out4.slice(0, 60));
 
   // 턴 5: 꺼진 모듈의 에셋 이름(Hiromi_smile)은 대조에 안 낀다 → 폴백도 실물 없음 → 생략
   world.chats['c-sim:0'].message.push({ role: 'char', data: '넷째 응답' }, { role: 'user', data: '다섯' });
@@ -488,16 +492,36 @@ async function bootLive(mutate) {
   const out6 = await hooks.output('세이코가 웃었다.');
   ck('★ 실부팅: 채팅 개별 활성 모듈의 에셋도 대조 합류', out6.startsWith('<img="Seiko_smile">'), out6.slice(0, 60));
 
-  // 턴 7: includeOnly 인자를 모르는 구버전 리수 — 무인자 재호출 사다리로 살아남는다
-  world.dbArgBroken = true;
-  world.chats['c-sim:0'].message.push({ role: 'char', data: '여섯째 응답' }, { role: 'user', data: '일곱' });
-  world.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Nozomi","emo":"happy"}}';
-  await hooks.beforeRequest([{ role: 'user', content: '일곱' }], 'model');
-  const out7 = await hooks.output('노조미가 또 웃었다.');
-  ck('★ 실부팅: getDatabase 인자 미지원 버전도 무인자 폴백으로 모듈 읽기', out7.startsWith('<char-noz emotion="happy">'), out7.slice(0, 60));
-  world.dbArgBroken = false;
-
   if (global.__unload) global.__unload();
+
+  // ── v0.83: 모듈 읽기를 끄면 db를 **아예 안 부른다** ──
+  // 무인자 getDatabase() 폴백도 뺐다 — 리수 DB를 통째로 브리지 너머로 받아 오면서 하는 일은
+  // modules 배열 하나 꺼내는 것뿐이라, 편집기가 몇 초씩 멈추는 값을 못 치렀다.
+  // ⚠ 여기서 재는 건 "안 읽는다"가 아니라 **안 부른다**는 것이다 — 느림의 원인이 호출 자체였다.
+  {
+    let dbCalls = 0;
+    const w3 = await bootLive(null, { moduleAssets: false });
+    const hk = global.__hooks ?? {};
+    const realDb = global.Risuai.getDatabase;
+    global.Risuai.getDatabase = async (...a2) => { dbCalls++; return realDb(...a2); };
+    w3.auxResult = '{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}';
+    await hk.beforeRequest([{ role: 'user', content: '안녕' }], 'model');
+    const o = await hk.output('히로미가 화를 냈다.');
+    ck('★ 모듈 읽기가 꺼져 있으면 db를 한 번도 안 부른다 (느림의 원인이 호출 자체였다)',
+      dbCalls === 0, `${dbCalls}회 호출`);
+    ck('★ 꺼져 있어도 캐릭터 에셋 대조는 그대로 산다',
+      o.startsWith('<img="Hiromi_angry">'), o.slice(0, 60));
+    global.Risuai.getDatabase = realDb;
+    if (global.__unload) global.__unload();
+  }
+
+  // 규칙 #3 — 기능에는 만질 자리가 있어야 한다. 여기서는 플러그인 인자와 편집기 안내가 그 자리다
+  ck('★ module_assets 인자가 선언돼 있다 (끈 걸 켤 방법이 있다)',
+    /\/\/@arg module_assets string off=/.test(src), '');
+  ck('★ 편집기가 "모듈은 안 읽었다"고 말한다 (0개가 결함처럼 보이지 않게)',
+    src.includes('모듈 에셋은 읽지 않았어요') && src.includes('module_assets를 on으로'), '');
+  ck('무인자 getDatabase 폴백이 사라졌다', !/getDatabase\(\)\s*;/.test(src)
+    && !src.includes('await Risuai.getDatabase();'), '');
 
   // ── 배선: aux_flow 실부팅 — 보조가 images 배열+앵커를 보내면 서사 위치에 여러 장 ──
   {

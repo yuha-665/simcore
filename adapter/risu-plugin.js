@@ -1,13 +1,31 @@
 //@name simcore
 //@api 3.0
-//@version 0.82.1
-//@display-name SimCore (시뮬 엔진) v0.82.1 아이돌 의뢰판·음지 루트
+//@version 0.83.0
+//@display-name SimCore (시뮬 엔진) v0.83 에셋 읽기 경량화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
+//@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.83.0 ────────────────────────────────────────────────
+// [에셋 목록 불러오기]가 몇 초씩 멈춘다는 제보. 원인이 둘이었고 둘 다 얻는 게 없었다.
+//
+// - **무인자 getDatabase() 폴백 제거.** includeOnly를 모르는 옛 리수 대비로 넣어 둔
+//   사다리 마지막 칸인데, 인자 없이 부르면 리수 DB를 통째로 샌드박스 브리지 너머로
+//   직렬화해 넘겨받는다 — 캐릭터·채팅·로어북이 다 실린다. 그걸 받아서 하는 일은
+//   modules 배열 하나 꺼내는 것뿐이다. 값을 못 치를 비용이라 뺐다.
+// - **모듈 에셋 읽기를 기본 꺼짐으로.** 새 인자 `module_assets`(off/on).
+//   v0.54.3~6에서 모듈봇(MIKU&BRS)을 위해 낸 길인데, 그 뒤로도 "이 리수 빌드는 db가
+//   잠겨 있어 못 읽는다"가 계속 나왔다(v0.54.6 주석). 대부분의 판에서 이 경로는
+//   **느리기만 하고 아무것도 못 읽는다.** 이미지가 모듈에 사는 봇만 켜서 쓰면 된다.
+//   끈 상태에서는 db를 아예 안 건드리므로 매 턴 이미지 해석 경로도 같이 가벼워진다.
+//
+// ⚠ 끈 상태의 실존 대조는 **캐릭터 에셋만** 본다. 이미지가 모듈에 있는 봇에서 켜지 않으면
+//   그 조합이 "실존하지 않음"으로 걸려 이미지가 안 나갈 수 있다 — 편집기의 에셋 안내가
+//   그 사실과 켜는 법을 같이 말한다. 팩의 verify:false도 그대로 유효한 탈출구다.
 //
 // ── v0.82.1 ────────────────────────────────────────────────
 // 유닛 랭크가 **시작하자마자 S**였다. u_pow는 셋을 자리 배수로 더한 값이라 만점이 990인데
@@ -2174,26 +2192,40 @@
   }
 
   // db 읽기 사다리 (v0.54.5) — 실측: getDatabase가 권한 팝업도 없이 조용히 null을 준다.
-  // ① includeOnly로 호출 → ② (ask일 때만) requestPluginPermission('db')로 팝업을 직접 띄우고 재시도
-  // → ③ includeOnly 인자를 모르는 버전 대비 무인자 호출. ask는 편집기 버튼 경로에서만 true —
-  // 채팅 턴 중에 권한 팝업이 튀어나오면 안 된다.
+  // ① includeOnly로 호출 → ② (ask일 때만) requestPluginPermission('db')로 팝업을 직접 띄우고 재시도.
+  // ask는 편집기 버튼 경로에서만 true — 채팅 턴 중에 권한 팝업이 튀어나오면 안 된다.
+  //
+  // ⚠ v0.83에서 **무인자 getDatabase() 폴백을 뺐다.** 인자 없이 부르면 리수 DB를 통째로
+  //   샌드박스 브리지 너머로 직렬화해 넘겨받는다 — 캐릭터·채팅·로어북이 다 실린 수십 MB다.
+  //   그걸 받아서 하는 일은 modules 배열 하나 꺼내는 것뿐이고, 그마저도 실기에서는 모듈
+  //   에셋이 안 읽혔다(제보). 얻는 것 없이 편집기가 몇 초씩 멈추는 경로였다.
+  //   includeOnly를 모르는 옛 리수에서는 이제 모듈 에셋을 못 읽는다 — 대신 안 멈춘다.
   async function readModulesDb(ask) {
-    const call = async (withArg) => {
-      try { return withArg ? await Risuai.getDatabase(['modules', 'enabledModules']) : await Risuai.getDatabase(); }
+    const call = async () => {
+      try { return await Risuai.getDatabase(['modules', 'enabledModules']); }
       catch (e) { return { __err: (e && e.message) || 'getDatabase 실패' }; }
     };
-    let db = await call(true);
+    let db = await call();
     if (db && db.__err) return db;
     if ((!db || typeof db !== 'object') && ask && Risuai.requestPluginPermission) {
-      try { await Risuai.requestPluginPermission('db'); } catch { /* 권한 API 없음/실패 — 다음 사다리로 */ }
-      db = await call(true);
-      if (db && db.__err) return db;
-    }
-    if (!db || typeof db !== 'object') {
-      const full = await call(false);
-      if (full && typeof full === 'object' && !full.__err) db = full;
+      try { await Risuai.requestPluginPermission('db'); } catch { /* 권한 API 없음/실패 — 여기서 끝 */ }
+      db = await call();
     }
     return db;
+  }
+
+  // 모듈 에셋을 읽을까 (v0.83) — **기본은 안 읽는다.**
+  // 이미지가 모듈에 사는 봇(MIKU&BRS)을 위해 만든 길인데, 실기에서 거의 안 읽히는 데다
+  // db 접근이 느려서 [에셋 목록 불러오기]가 몇 초씩 멈춘다는 제보가 왔다. 쓰는 사람만 켜게 뒀다.
+  // 켜는 곳: 리수 플러그인 설정의 module_assets = on
+  let moduleAssetsMode = null;
+  async function moduleAssetsOn(fresh) {
+    if (fresh) moduleAssetsMode = null;   // 편집기 버튼 경로 — 방금 설정을 바꿨을 수 있다
+    if (moduleAssetsMode === null) {
+      try { moduleAssetsMode = String((await Risuai.getArgument('module_assets')) || 'off').toLowerCase(); }
+      catch { moduleAssetsMode = 'off'; }
+    }
+    return moduleAssetsMode === 'on';
   }
 
   async function getAssetSources(ask) {
@@ -2204,6 +2236,10 @@
       const n = collectAssetNames(char?.additionalAssets);
       if (n.length) sources.push({ label: '캐릭터', names: n });
     } catch { /* 캐릭터 접근 실패 — 모듈만으로도 진행 */ }
+    // 꺼져 있으면 db를 아예 안 건드린다 — 여기가 느린 자리라 "안 읽는다"가 곧 "안 멈춘다"다
+    if (!(await moduleAssetsOn(ask))) {
+      return { sources, dbErr: null, moduleOff: true };
+    }
     try {
       const db = await readModulesDb(ask);
       if (db && db.__err) dbErr = db.__err;
@@ -2224,7 +2260,7 @@
         }
       }
     } catch (e) { dbErr = (e && e.message) || 'getDatabase 실패'; }
-    return { sources, dbErr };
+    return { sources, dbErr, moduleOff: false };
   }
 
   /** 대조용 Set — 출처 무관 합집합. 하나도 없으면 null(대조 생략, 정조합 신뢰). 권한 요청 없음. */

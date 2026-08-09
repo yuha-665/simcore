@@ -7328,15 +7328,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (ai.getAssetSources) {
         const r = await ai.getAssetSources();
         const names = [...new Set((r.sources || []).flatMap((s) => s.names.map(String)))];
+        // 모듈 읽기는 기본으로 꺼져 있다 (v0.83 — db 접근이 느려 편집기가 몇 초씩 멈췄다).
+        // 껐다는 사실을 여기서 말하지 않으면 "에셋이 0개다"가 결함처럼 보인다.
+        const moduleHint = r.moduleOff
+          ? ' 모듈 에셋은 읽지 않았어요 — 이미지가 모듈에 있는 봇이면 리수 플러그인 설정에서 module_assets를 on으로 바꾸세요.'
+          : '';
         if (!names.length) {
           assetNote = r.dbErr
             ? `에셋을 읽지 못했어요 — 모듈 접근 실패: ${r.dbErr}. Risu 권한 창에서 DB 접근을 허용한 뒤 다시 시도해 주세요.`
-            : '캐릭터와 활성 모듈에서 추가 에셋을 찾지 못했어요. 해당 모듈이 현재 봇이나 채팅에서 활성화됐는지 확인해 주세요.';
+            : `캐릭터에서 추가 에셋을 찾지 못했어요.${moduleHint || ' 해당 모듈이 현재 봇이나 채팅에서 활성화됐는지 확인해 주세요.'}`;
           rerender(); return null;
         }
         assetNames = names;
         assetNote = '읽음: ' + (r.sources || []).map((s) => `${s.label} ${s.names.length}개`).join(' + ')
-          + (r.dbErr ? ` ⚠ 모듈 접근 실패: ${r.dbErr}` : '');
+          + (r.dbErr ? ` ⚠ 모듈 접근 실패: ${r.dbErr}` : '') + moduleHint;
         return assetNames;
       }
       const names = await ai.getAssetNames();

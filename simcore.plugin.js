@@ -1,13 +1,56 @@
 //@name simcore
 //@api 3.0
-//@version 0.81.0
-//@display-name SimCore (시뮬 엔진) v0.81 아이돌 템플릿 개편
+//@version 0.82.0
+//@display-name SimCore (시뮬 엔진) v0.82 아이돌 의뢰판·음지 루트
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.82.0 ────────────────────────────────────────────────
+// 아이돌 프로듀스 — **진짜 프로듀서**로. 누르면 되는 판에서 고르는 판으로 바꿨다.
+//
+// - [일감] 버튼 두 개가 등급을 보고 알아서 자리를 골라 주던 것을 **사다리 일곱**으로 폈다.
+//   거리 홍보 → 지역 라디오 → 잡지 화보 → 지방 방송국 → 케이블 → 지상파 → 골든타임 특집.
+//   자리마다 여는 문턱(인지도)·영업비·성사율이 다르고, 헛걸음이어도 영업비는 나간다.
+//   ⚠ 여는 축은 **인지도 하나**다. 등급은 인지도가 문턱을 넘을 때 따라 오르는 값이라
+//   `rank_n >= 4`를 같이 걸면 같은 말이 두 번 되고, 진단이 이걸 "못 쓰는 액션"으로 오해해
+//   high 지적 세 건을 만들었다.
+// - [성사율] 굴리기 전에 확률이 보인다 (일감 탭). 20면 주사위라 눈 하나가 5%p고, 대성공이
+//   늘 있으니 바닥 5%·천장 100%다. ⚠ 보정에 **상한 20**을 뒀다 — 캡이 없으면 인지도 90쯤부터
+//   여섯 자리가 전부 100%가 되어 판정이 장식이 된다. 펑크는 캡 밖에서 깎아 늘 아프게 뒀다.
+//   신인 75/60/45/40/10/5 → 정상 100/100/100/100/85/65 (펑크 3회면 골든타임 35%).
+// - [영업 판정 여섯] 엔진은 **판정을 액션 효과보다 먼저** 굴린다 — 판정은 "어느 자리를
+//   노렸나"를 알 수 없다. 그래서 판정은 이겼는지만 pitch_won에 적고 **자리를 넣는 건 액션**이
+//   한다. 대어(20)면 한 칸 위를 물고 온다. 같은 이유로 음지 설득도 자리마다 하나씩이다.
+// - [무대] 라이브는 **빌리는 것**이라 판정이 없다. 대신 대관료가 선불이고 정원이 천장이라,
+//   못 채우면 그대로 손해다 — "잡을 수 있는가"와 "채울 수 있는가"가 다른 질문이라는 게
+//   이 축의 전부다. 예상 객석(live_fill)이 그 답이고 60% 아래면 붉게 뜬다.
+//   라이브하우스 → 시민회관 → 합동 페스티벌 → 단독 공연 → 전국 투어 (팬 수·유닛 종합이 연다).
+// - [제작] 의상 3단계·음반 3단계. 위로 갈수록 비싸고 **이름값을 요구한다** — 무명 유닛에는
+//   좋은 사람이 안 붙는다. 음반은 한 단계씩만 올라가고, 한 번 내면 월말마다 인세가 들어온다
+//   (이 판에서 손을 놓아도 도는 유일한 돈).
+// - [음지] 타락도 + 네 자리(심야 행사 → 스폰서 자리 → 수위 화보 → 성인 영상). 넷 다 그날 밤에
+//   끝나고(급전이라 일정표에 안 올린다), **셋이 거절할 수 있다** — 타락도가 오를수록 거절이
+//   줄고 문턱도 열린다. 거절도 값을 치른다(호감·멘탈). 탭 자체가 `funds < 250 or corrupt >= 1`
+//   일 때만 보인다. **갈림길**: 타락도 45를 넘으면 지상파가, 25를 넘으면 골든타임이 닫힌다.
+//   이게 없으면 음지는 그냥 "돈 더 주는 버튼"이라 갈림길이 안 된다.
+// - [끝나는 길] 셋으로. 번아웃(멘탈 0) · **미납 이탈(월급 석 달)** · 파산. ⚠ 미납을 두 달로
+//   뒀더니 정상 플레이가 8/8 전멸했다 — 이 판은 자금이 늘 0 근처를 걷기 때문에 한두 번
+//   미끄러지는 건 예사다. 석 달은 사정이 아니라 못 하는 것이다.
+// - [고정비] 사무소 임대료(월말) 신설. 융자는 **이미 진 빚에 비례해** 얹힌다
+//   (1200 → 1880 → 2668 → 3535) — 정액이던 시절엔 돌려막기가 영원해서 파산이 한 번도 안 떴다.
+//
+// 밸런스에서 배운 것: 진단의 "아무것도 안 해도 전부 생존"을 잡으려 임대료를 200으로 올렸더니
+// 정상 플레이 생존율이 38%까지 떨어졌다. 진단이 굴리는 방치는 이 템플릿에서 도달할 수 없는
+// 상태다(시간이 🌙로만 흐르는데 방치 시뮬은 날짜를 공짜로 넘긴다). 지표에 맞추다 판을 망칠
+// 뻔했고, 되돌렸다. 남은 mid 두 건은 v0.81에도 있던 것이다.
+//
+// 잡은 버그: 급작 제안 갈림길이 job에 '지역 라이브'(라이브 쪽 값)를 넣고 있었다 — enum에 없는
+// 값이라 난이도·보수 표가 전부 0으로 떨어져 **공짜로 치르는 무대**가 됐다. 표현식 안의 문자열은
+// 검증이 못 보니, 축이 둘인 스키마에서는 눈으로 짝을 맞출 것.
 //
 // ── v0.81.0 ────────────────────────────────────────────────
 // 아이돌 프로듀스 템플릿 개편 — 실기 피드백 넷.
@@ -18651,6 +18694,58 @@ const ZOMBIE = {
 // zombie와 같은 규율: **패배 조건이 bool 하나(closed)로 명시돼 있다.** 그래야 진단이
 // 생존율과 프리셋 난이도를 스스로 잰다. 여기서 판을 끝내는 건 빚이 아니라 사람이다 —
 // 멘탈이 0이 된 멤버가 나오면 유닛이 활동을 멈춘다. 무리한 스케줄이 곧 패배다.
+//
+// v0.82 — 일감이 사다리가 되면서 판정이 열 개로 늘었다. 모양이 완전히 같고 vs만 다르므로
+// 표 하나와 찍어 내는 함수 하나로 둔다. **손으로 열 번 복사하면 반드시 한 군데가 어긋나고**,
+// 어긋난 판정은 굴러가긴 해서 아무도 모른다 — 밸런스만 조용히 틀어진다.
+// 산출물은 평범한 객체라 JSON 내보내기·편집기에서는 손으로 쓴 것과 구별되지 않는다.
+const PITCH_TIERS = [
+  ['radio', '지역 라디오 영업', 11],
+  ['mag', '잡지 화보 영업', 14],
+  ['ltv', '지방 방송국 영업', 17],
+  ['cable', '케이블 영업', 18],
+  ['net', '지상파 영업', 24],
+  ['gold', '골든타임 영업', 28],
+];
+const pitchCheck = (id, label, vs) => ({
+  id: `ck_${id}`, label, roll: 'rand(1, 20)', mod: 'pitch_mod', vs,
+  grades: [
+    { when: 'roll == 20', label: '대어',
+      inject: '기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.',
+      effects: [
+        { set: 'pitch_won', expr: '2' },
+        { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
+      ] },
+    { when: 'total >= vs', label: '수주', effects: [{ set: 'pitch_won', expr: '1' }] },
+    { label: '헛걸음',
+      inject: '명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.',
+      effects: [{ set: 'pitch_won', expr: '0' }, { set: 'buzz', expr: 'max(buzz - 2, 0)' }] },
+  ],
+});
+const SHADY_TIERS = [
+  ['night', '심야 행사 설득', 10],
+  ['spon', '스폰서 자리 설득', 15],
+  ['gravure', '수위 화보 설득', 19],
+  ['adult', '성인 영상 설득', 24],
+];
+const shadyCheck = (id, label, vs) => ({
+  id: `ck_${id}`, label, roll: 'rand(1, 20)', mod: 'shady_mod', vs,
+  grades: [
+    { when: 'total >= vs', label: '받아들였다', effects: [{ set: 'shady_ok', expr: '1' }] },
+    { label: '거절했다',
+      inject: '아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.',
+      effects: [
+        { set: 'shady_ok', expr: '0' },
+        { set: 'm1_love', expr: 'max(m1_love - 5, 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - 5, 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - 5, 0)' },
+        { set: 'm1_me', expr: 'max(m1_me - 4, 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - 4, 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+      ] },
+  ],
+});
+
 const IDOL = {
   simcore: '0.1',
   meta: { name: '아이돌 프로듀스 기록', author: 'SimCore 템플릿' },
@@ -18704,6 +18799,10 @@ const IDOL = {
     { id: 'month_open', label: '이 달 기초 잔고', type: 'int', init: 400, min: 0, max: 9999999, format: '{v}만원',
       desc: '이 달을 시작할 때의 운용자금. 지출은 이것과 지금 잔고의 차이로 역산한다. '
         + '융자와 상환은 벌거나 쓴 게 아니라 돈의 자리만 옮긴 것이라 여기도 같이 움직여 수지에서 빠진다. 시스템이 관리한다.' },
+    // 미납 — 사람이 떠나는 세 번째 길 (v0.82). 빚은 참을 수 있어도 월급은 못 참는다.
+    // 한 달은 사정이 있는 것이고 두 달은 사정이 아니다.
+    { id: 'unpaid', label: '월급 미납', type: 'int', init: 0, min: 0, max: 12, format: '{v}개월',
+      desc: '월급을 연달아 못 준 달 수. 한 번이라도 제대로 주면 0으로 돌아간다. 시스템이 정하니 서사로 바꾸지 마라.' },
     { id: 'settled', label: '정산한 달', type: 'int', init: 0, min: 0, max: 12,
       desc: '월말 정산을 끝낸 달. 같은 달에 두 번 정산되지 않게 잡아 두는 빗장이다. 서사로 바꾸지 마라.' },
     // ⚠ 이름에 over가 들어가야 진단이 이걸 패배 변수로 알아본다 (dead/lost/over/fail/… 중 하나).
@@ -18714,13 +18813,24 @@ const IDOL = {
     // ── 일감 ──
     // 축이 둘이다 (v0.81) — 업무와 라이브는 **동시에 하나씩** 들고 있을 수 있다.
     // 한 칸이던 시절에는 "다음 주 라이브 전에 화보를 하나 끼울까" 같은 저울질이 성립하지 않았다.
+    //
+    // v0.82: 일감이 **사다리**가 됐다. 거리에서 시작해 지역 라디오·지방 방송국·케이블을 거쳐
+    // 지상파와 골든타임까지, 자리마다 여는 문턱(인지도·등급)과 영업 성사율이 따로 있다.
+    // 전에는 버튼 두 개가 등급을 보고 알아서 자리를 골라 줬는데, 그러면 플레이어가 하는 일이
+    // "누른다"밖에 없다. 자리를 **고르게** 만들어야 프로듀서 노릇이 된다.
     { id: 'job', label: '잡힌 업무', type: 'enum', init: '없음',
-      enum: ['없음', '거리 홍보', '라디오 출연', '잡지 화보', 'TV 음악방송', '싱글 수록'],
+      enum: ['없음', '거리 홍보', '지역 라디오', '잡지 화보', '지방 방송국', '케이블 음악방송', '지상파 음악방송', '골든타임 특집'],
       desc: '수주해 둔 일. 시스템이 정하니 서사로 바꾸지 마라 — 어떤 현장이었는지는 서사가 그린다.' },
     { id: 'job_days', label: '업무까지', type: 'int', init: 0, min: 0, max: 30, format: '{v}일',
       desc: '업무까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
+    // 영업 판정이 남기고 가는 쪽지. 판정은 액션 효과보다 **먼저** 굴러서 "어느 자리를 노렸나"를
+    // 알 수 없다 — 그래서 판정은 이겼는지만 적고, 자리를 넣는 건 각 액션의 효과가 한다.
+    { id: 'pitch_won', label: '영업 결과', type: 'int', init: 0, min: 0, max: 2,
+      desc: '직전 영업 판정의 결과(0 헛걸음·1 수주·2 대어). 시스템이 쓰고 바로 읽는 임시 값이니 서사로 건드리지 마라.' },
+    { id: 'shady_ok', label: '설득 결과', type: 'int', init: 0, min: 0, max: 1,
+      desc: '직전 음지 설득의 결과(0 거절·1 수락). 시스템이 쓰고 바로 읽는 임시 값이니 서사로 건드리지 마라.' },
     { id: 'live', label: '잡힌 라이브', type: 'enum', init: '없음',
-      enum: ['없음', '소규모 라이브', '지역 라이브', '합동 콘서트', '단독 공연', '전국 투어'],
+      enum: ['없음', '라이브하우스', '시민회관', '합동 페스티벌', '단독 공연', '전국 투어'],
       desc: '잡아 둔 공연. 시스템이 정하니 서사로 바꾸지 마라.' },
     { id: 'live_days', label: '라이브까지', type: 'int', init: 0, min: 0, max: 60, format: '{v}일',
       desc: '공연일까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
@@ -18739,8 +18849,18 @@ const IDOL = {
     { id: 'wardrobe', label: '보유 의상', type: 'list', init: [], maxItems: 12, itemMaxLength: 24,
       desc: '맞춰 둔 무대의상. 새로 맞추면 어떤 옷인지 이름을 지어 올려라.' },
     { id: 'costume', label: '착용 의상', type: 'enum', init: '기본 무대의상',
-      enum: ['연습복', '기본 무대의상', '제작 의상', '특별 의상'],
+      enum: ['연습복', '기본 무대의상', '제작 의상', '특별 의상', '특주 의상'],
       desc: '무대에 입고 서는 것. 좋을수록 판정이 유리하다. 맞추는 건 자금이 든다.' },
+    // ── 제작 의뢰 ── (v0.82)
+    // 의상과 음반은 **사서 쓰는 것**이 아니라 **주문해서 만드는 것**이다. 위로 갈수록 비싸고,
+    // 돈만으로는 안 되고 이름값이 따라와야 한다 — 무명 유닛에는 좋은 사람이 안 붙는다.
+    { id: 'album', label: '낸 음반', type: 'enum', init: '없음', enum: ['없음', '싱글', '미니 앨범', '정규 앨범'],
+      desc: '지금까지 낸 것 중 가장 큰 것. 월말마다 인세가 들어온다. 시스템이 정하니 서사로 바꾸지 마라.' },
+    // ── 음지 ── (v0.82)
+    // 급할 때 손이 가는 쪽. 한 번 담그면 다음이 쉬워지고(문턱이 열리고), 대신 양지의
+    // 큰 자리가 닫힌다. 되돌아오는 길은 있지만 느리다 — 하루에 1씩만 빠진다.
+    { id: 'corrupt', label: '타락도', type: 'int', init: 0, min: 0, max: 100,
+      desc: '음지 일감에 얼마나 발을 담갔는가. 오르면 음지가 더 열리고 지상파·골든타임이 닫힌다. 시스템이 정하니 서사로 바꾸지 마라.' },
     // ── 유닛 자리 ──
     { id: 'center', label: '센터', type: 'enum', init: '유나', enum: ['없음', '유나', '세리', '린'] },
     { id: 'side1', label: '사이드 1', type: 'enum', init: '세리', enum: ['없음', '유나', '세리', '린'] },
@@ -18807,27 +18927,54 @@ const IDOL = {
     { id: 'rank_n', label: '등급 수치',
       expr: "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))" },
     { id: 'dress', label: '의상 보정',
-      expr: "costume == '특별 의상' ? 5 : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4))" },
+      expr: "costume == '특주 의상' ? 8 : (costume == '특별 의상' ? 5"
+        + " : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4)))" },
+    { id: 'album_n', label: '음반 급수',
+      expr: "album == '정규 앨범' ? 3 : (album == '미니 앨범' ? 2 : (album == '싱글' ? 1 : 0))" },
     // 일감표는 이 두 줄이 전부다 — 새 일감을 넣으려면 enum과 여기 두 줄에만 더하면 된다
     { id: 'job_vs', label: '업무 난이도',
-      expr: "job == '싱글 수록' ? 21 : (job == 'TV 음악방송' ? 18"
-        + " : (job == '잡지 화보' ? 13 : (job == '라디오 출연' ? 12 : (job == '거리 홍보' ? 10 : 0))))" },
+      expr: "job == '골든타임 특집' ? 26 : (job == '지상파 음악방송' ? 22 : (job == '케이블 음악방송' ? 19"
+        + " : (job == '지방 방송국' ? 16 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '거리 홍보' ? 10 : 0))))))" },
     { id: 'job_pay', label: '업무 보수',
-      expr: "job == '싱글 수록' ? 1100 : (job == 'TV 음악방송' ? 700"
-        + " : (job == '잡지 화보' ? 280 : (job == '라디오 출연' ? 200 : (job == '거리 홍보' ? 120 : 0))))" },
+      expr: "job == '골든타임 특집' ? 2600 : (job == '지상파 음악방송' ? 1500 : (job == '케이블 음악방송' ? 900"
+        + " : (job == '지방 방송국' ? 560 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '거리 홍보' ? 120 : 0))))))" },
     // 라이브표 — 업무와 같은 모양의 두 줄 + 정원. 새 공연을 넣으려면 enum과 여기 세 줄에만 더한다
     { id: 'live_vs', label: '라이브 난이도',
-      expr: "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 콘서트' ? 19"
-        + " : (live == '지역 라이브' ? 15 : (live == '소규모 라이브' ? 12 : 0))))" },
+      expr: "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 페스티벌' ? 19"
+        + " : (live == '시민회관' ? 15 : (live == '라이브하우스' ? 12 : 0))))" },
     { id: 'live_pay', label: '라이브 개런티',
-      expr: "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 콘서트' ? 800"
-        + " : (live == '지역 라이브' ? 420 : (live == '소규모 라이브' ? 260 : 0))))" },
+      expr: "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 페스티벌' ? 800"
+        + " : (live == '시민회관' ? 420 : (live == '라이브하우스' ? 260 : 0))))" },
     { id: 'live_cap', label: '공연장 정원',
-      expr: "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 콘서트' ? 1500"
-        + " : (live == '지역 라이브' ? 600 : (live == '소규모 라이브' ? 200 : 0))))" },
+      expr: "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 페스티벌' ? 1500"
+        + " : (live == '시민회관' ? 600 : (live == '라이브하우스' ? 200 : 0))))", format: '{v}석' },
     // 팔릴 표 — 정원이 천장이다. 팬이 많아도 작은 데서 하면 그만큼만 팔린다(= 큰 자리를 노릴 이유).
+    // 거꾸로, 정원이 예상 티켓보다 훨씬 크면 대관료만 날리는 빈 객석이 된다(= 무리하지 말 이유).
     { id: 'live_tickets', label: '예상 티켓',
-      expr: 'live_cap > 0 ? min(live_cap, round(fans * 0.3 + buzz * 12 + u_fan / 30)) : 0' },
+      expr: 'live_cap > 0 ? min(live_cap, round(fans * 0.3 + buzz * 12 + u_fan / 30)) : 0', format: '{v}장' },
+    { id: 'live_fill', label: '예상 객석',
+      expr: 'live_cap > 0 ? round(live_tickets * 100 / live_cap) : 0', format: '{v}%' },
+    // ── 영업 성사율 ── (v0.82)
+    // 판정을 굴리기 전에 **확률이 보여야** 저울질이 된다. 20면 주사위라 눈 하나가 5%p고,
+    // 대성공(20)이 늘 있으니 바닥은 5%, 천장은 100%다. 자리마다 vs만 다르고 식은 같다 —
+    // pitch_mod 한 줄이 여섯 자리의 공통 분모다(고칠 데가 하나여야 어긋나지 않는다).
+    // ⚠ 상한 20 — 캡이 없으면 인지도 90쯤부터 여섯 자리가 전부 100%가 되어 판정이 장식이 된다.
+    //   펑크는 캡 **밖에서** 깎는다: 신용은 아무리 커져도 계속 아파야 한다.
+    { id: 'pitch_mod', label: '영업 보정', expr: 'min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2' },
+    { id: 'od_radio', label: '지역 라디오 성사율', expr: 'min(100, max(5, (21 - 11 + pitch_mod) * 5))', format: '{v}%' },
+    { id: 'od_mag', label: '잡지 화보 성사율', expr: 'min(100, max(5, (21 - 14 + pitch_mod) * 5))', format: '{v}%' },
+    { id: 'od_ltv', label: '지방 방송국 성사율', expr: 'min(100, max(5, (21 - 17 + pitch_mod) * 5))', format: '{v}%' },
+    { id: 'od_cable', label: '케이블 성사율', expr: 'min(100, max(5, (21 - 18 + pitch_mod) * 5))', format: '{v}%' },
+    { id: 'od_net', label: '지상파 성사율', expr: 'min(100, max(5, (21 - 24 + pitch_mod) * 5))', format: '{v}%' },
+    { id: 'od_gold', label: '골든타임 성사율', expr: 'min(100, max(5, (21 - 28 + pitch_mod) * 5))', format: '{v}%' },
+    // 음지 수락률 — 셋이 받아들이느냐다. 타락도가 오를수록 쉬워지고(그게 이 길의 무서운 점),
+    // 호감이 높아도 쉬워진다(믿으니까 따라온다). 여기에 "거절"의 뜻이 그대로 들어 있다.
+    { id: 'u_love', label: '평균 호감', expr: 'round((m1_love + m2_love + m3_love) / 3)' },
+    { id: 'shady_mod', label: '설득 보정', expr: 'min(20, round(corrupt / 5) + round(u_love / 9) + (funds < 100 ? 3 : 0))' },
+    { id: 'od_night', label: '심야 행사 수락률', expr: 'min(100, max(5, (21 - 10 + shady_mod) * 5))', format: '{v}%' },
+    { id: 'od_spon', label: '스폰서 자리 수락률', expr: 'min(100, max(5, (21 - 15 + shady_mod) * 5))', format: '{v}%' },
+    { id: 'od_gravure', label: '수위 화보 수락률', expr: 'min(100, max(5, (21 - 19 + shady_mod) * 5))', format: '{v}%' },
+    { id: 'od_adult', label: '성인 영상 수락률', expr: 'min(100, max(5, (21 - 24 + shady_mod) * 5))', format: '{v}%' },
     // 장부 두 줄 — 수지는 잔고 차이고, 지출은 "번 것 중 안 남은 것"이다.
     // 이렇게 두면 레슨비처럼 편성표에서 바로 나가는 돈도 자동으로 지출에 들어온다
     // 총합은 파생이다 — 갈래를 늘려도 여기 한 줄만 항이 붙고 장부가 저절로 맞는다
@@ -18836,7 +18983,11 @@ const IDOL = {
     // ⚠ 배수 90은 진단으로 고른 값이다: 45면 "아무것도 안 해도 전부 생존"(긴장 없음),
     //   140이면 "액션을 쓸수록 더 빨리 죽는다"(플레이가 손해). 90에서만 파산이 살아나고
     //   난이도 지적이 사라진다. 이 판의 압박은 이자가 아니라 **사람 유지비**에서 나온다.
-    { id: 'salary', label: '멤버 월급', expr: '(rank_n + 2) * 90' },
+    { id: 'salary', label: '멤버 월급', expr: '(rank_n + 3) * 60' },
+    // 사무소 임대료 (v0.82) — 월말에 한 번 나가는 고정비. 하루 유지비(🌙의 25만원)만으로는
+    // **날을 안 넘기는 판**에 아무 압박이 없었다: 진단이 "아무것도 안 해도 전부 생존"이라고
+    // 신고한 게 이 구멍이다. 달마다 오는 청구서는 손을 놓고 있어도 온다.
+    { id: 'rent', label: '사무소 임대료', expr: '100 + rank_n * 30' },
     { id: 'balance', label: '이번 달 수지', expr: 'funds - month_open' },
     { id: 'spend', label: '이번 달 지출', expr: 'max(income - balance, 0)' },
     // 랭킹은 낮을수록 위다. 인지도가 크게, 팬 수와 화제성이 거들어 밀어 올린다
@@ -18865,12 +19016,12 @@ const IDOL = {
             { set: 'm1_me', expr: 'min(m1_me + round(p1 * 10), 100)' },
             { set: 'm2_me', expr: 'min(m2_me + round(p2 * 10), 100)' },
             { set: 'm3_me', expr: 'min(m3_me + round(p3 * 10), 100)' },
-            // 음반은 수록·투어에서 크게 팔리지만, 잘된 무대는 뭐든 판을 조금씩 민다
-            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' ? 0.4 : 0.08)), 9999999)" },
+            // 음반은 낸 게 있어야 팔린다 — 무대가 잘되면 그날 판이 밀린다(없으면 밀 게 없다)
+            { set: 'sales', expr: 'min(sales + round(fans * album_n * 0.12), 9999999)' },
             // ⚠ 장부에만 적고 자금에 안 넣으면 유령 지출이 된다 (지출 = 수입 − 잔고차이).
             // 실제로 한 번 밟았다 — 음반 수입 32만원이 그대로 "쓴 돈"으로 잡혔다.
-            { set: 'inc_album', expr: "min(inc_album + round(fans * (job == '싱글 수록' ? 0.4 : 0.08) * 0.5), 9999999)" },
-            { set: 'funds', expr: "min(funds + round(fans * (job == '싱글 수록' ? 0.4 : 0.08) * 0.5), 9999999)" },
+            { set: 'inc_album', expr: 'min(inc_album + round(fans * album_n * 0.06), 9999999)' },
+            { set: 'funds', expr: 'min(funds + round(fans * album_n * 0.06), 9999999)' },
             { set: 'job', expr: "'없음'" },
             { set: 'job_days', expr: '0' },
           ] },
@@ -18902,11 +19053,11 @@ const IDOL = {
             { set: 'm1_me', expr: 'min(m1_me + round(p1 * 4), 100)' },
             { set: 'm2_me', expr: 'min(m2_me + round(p2 * 4), 100)' },
             { set: 'm3_me', expr: 'min(m3_me + round(p3 * 4), 100)' },
-            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' ? 0.2 : 0.04)), 9999999)" },
+            { set: 'sales', expr: 'min(sales + round(fans * album_n * 0.06), 9999999)' },
             // ⚠ 장부에만 적고 자금에 안 넣으면 유령 지출이 된다 (지출 = 수입 − 잔고차이).
             // 실제로 한 번 밟았다 — 음반 수입 32만원이 그대로 "쓴 돈"으로 잡혔다.
-            { set: 'inc_album', expr: "min(inc_album + round(fans * (job == '싱글 수록' ? 0.2 : 0.04) * 0.5), 9999999)" },
-            { set: 'funds', expr: "min(funds + round(fans * (job == '싱글 수록' ? 0.2 : 0.04) * 0.5), 9999999)" },
+            { set: 'inc_album', expr: 'min(inc_album + round(fans * album_n * 0.03), 9999999)' },
+            { set: 'funds', expr: 'min(funds + round(fans * album_n * 0.03), 9999999)' },
             { set: 'job', expr: "'없음'" },
             { set: 'job_days', expr: '0' },
           ] },
@@ -18979,47 +19130,132 @@ const IDOL = {
             { set: 'live', expr: "'없음'" },
           ] },
       ] },
-    { id: 'ck_pitch', label: '영업 판정',
-      roll: 'rand(1, 20)', mod: 'round(awareness / 7) + round(buzz / 8) + rank_n - late * 2', vs: 15,
-      grades: [
-        { when: 'roll == 20', label: '대어',
-          inject: '기대도 안 한 자리에서 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.',
-          effects: [
-            { set: 'job', expr: "'싱글 수록'" },
-            { set: 'job_days', expr: '6 + rand(0, 4)' },
-            { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
-          ] },
-        { when: 'total >= vs', label: '수주',
-          effects: [
-            { set: 'job', expr: "rank_n >= 4 ? '싱글 수록' : (rank_n >= 2 ? 'TV 음악방송' : '잡지 화보')" },
-            { set: 'job_days', expr: '4 + rand(0, 3)' },
-          ] },
-        { label: '헛걸음',
-          inject: '명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.',
-          effects: [{ set: 'buzz', expr: 'max(buzz - 2, 0)' }] },
-      ] },
+    // ── 영업 판정 여섯 ── (v0.82)
+    // ⚠ 왜 하나가 아니라 여섯인가: 엔진은 **판정을 액션 효과보다 먼저** 굴린다. 그래서 판정은
+    // "어느 자리를 노렸는가"를 알 수 없다 — vs를 자리에 맞춰 바꿀 방법이 없다는 뜻이다.
+    // 대신 판정은 이겼는지만 pitch_won에 적고, **자리를 job에 넣는 건 각 액션의 효과**가 한다.
+    // 모양이 똑같아서 표로 찍어 낸다 (아래 pitchCheck). 새 자리를 늘릴 때 손댈 곳은
+    // ① job enum ② job_vs/job_pay 두 줄 ③ 성사율 파생 한 줄 ④ 이 표 한 줄 ⑤ 액션 하나다.
+    ...PITCH_TIERS.map(([id, label, vs]) => pitchCheck(id, label, vs)),
+    // ── 음지 수락 판정 넷 ── (v0.82)
+    // 이건 "일이 잡히느냐"가 아니라 **셋이 받아들이느냐**다. 그래서 실패가 헛걸음이 아니라
+    // 거절이고, 거절은 호감을 깎는다 — 물어본 것 자체가 남는다.
+    // 영업과 같은 이유로 자리마다 하나씩이다 (판정이 액션보다 먼저 굴러서 vs를 못 고른다).
+    ...SHADY_TIERS.map(([id, label, vs]) => shadyCheck(id, label, vs)),
   ],
   actions: [
-    // ── 일감을 잡는다 ──
-    // 작은 일은 언제나 받아진다. ⚠ 교착 방지의 바닥이다 — 자금 0에 일감도 없으면
-    // 판이 죽는데, 미궁 템플릿에서 실제로 밟았던 구멍이라 여기도 조건 없는 수입을 뒀다.
-    { id: 'take_small', label: '📋 작은 일을 받는다', mode: 'oneshot',
+    // ── 일감 사다리 ── (v0.82)
+    // 자리마다 버튼 하나다. 못 여는 자리도 편성표에는 **잠긴 채로 보인다** — 무엇이 다음
+    // 목표인지가 화면에 있어야 성장이 성장으로 느껴진다. 여는 조건은 인지도와 등급이고,
+    // 영업비는 위로 갈수록 비싸다(헛걸음이면 그 돈만 날린다 = 성사율을 볼 이유).
+    //
+    // 각 액션의 job 배정식이 같은 모양인 이유: 판정이 먼저 굴러 pitch_won만 남기므로
+    // **자리 이름을 아는 건 액션뿐**이다. 대어(2)면 한 칸 위를 물고 온다.
+    //
+    // ⚠ 여는 축은 **인지도 하나**다. 등급(rank)은 인지도가 문턱을 넘을 때 따라 오르는
+    // 값이라, `rank_n >= 4`를 같이 걸면 같은 말을 두 번 하는 것이다. 게다가 진단은
+    // 인지도가 보조 AI 담당인 건 알아도 등급이 그 얼굴인 건 몰라서 "못 쓰는 액션"으로
+    // 오해한다 — 조건을 겹쳐 걸면 있지도 않은 결함이 세 건 생긴다.
+    //
+    // ⚠ 거리 홍보만 판정이 없다 — 교착 방지의 바닥이다. 자금 0에 일감도 없으면 판이 죽는데,
+    // 미궁 템플릿에서 실제로 밟았던 구멍이라 여기도 조건 없이 잡히는 일을 하나 남겨 뒀다.
+    { id: 'take_street', label: '📋 거리에서 뛴다', mode: 'oneshot',
       when: "job == '없음' and not unit_over",
-      inject: '[행동] 늘 오던 곳에 전화를 돌린다. 큰 자리는 아니지만 확실하게 잡히는 일이다.',
+      inject: '[행동] 전단을 들고 사람 많은 데로 나간다. 돈은 안 되지만 거절당할 일도 없다.',
       effects: [
-        { set: 'job', expr: "rank_n >= 4 ? 'TV 음악방송' : (rank_n >= 2 ? '잡지 화보' : (rank_n >= 1 ? '라디오 출연' : '거리 홍보'))" },
-        { set: 'job_days', expr: '1 + rand(0, 2)' },
+        { set: 'job', expr: "'거리 홍보'" },
+        { set: 'job_days', expr: '1 + rand(0, 1)' },
       ] },
-    { id: 'take_big', label: '🎬 큰 자리를 노린다', mode: 'oneshot', cooldown: 2,
-      when: "job == '없음' and awareness >= 25 and funds >= 30 and not unit_over", check: 'ck_pitch',
-      inject: '[행동] 기획사와 방송국을 돈다. 이쪽에서 먼저 고개를 숙여야 하는 자리다.',
-      effects: [{ set: 'funds', expr: 'max(funds - 30, 0)' }] },
-    { id: 'book_live', label: '🎫 라이브를 잡는다', mode: 'oneshot', cooldown: 3,
-      when: "live == '없음' and not unit_over",
-      inject: '[행동] 공연장을 알아보고 날을 잡는다. 규모는 지금 이름값이 정한다.',
+    { id: 'take_radio', label: '📻 지역 라디오에 넣는다', mode: 'oneshot',
+      when: "job == '없음' and awareness >= 8 and funds >= 10 and not unit_over", check: 'ck_radio',
+      inject: '[행동] 동네 방송국에 전화를 건다. 담당자 이름은 이미 외우고 있다.',
       effects: [
-        { set: 'live', expr: "rank_n >= 5 ? '전국 투어' : (rank_n >= 4 ? '단독 공연' : (rank_n >= 3 ? '합동 콘서트' : (rank_n >= 1 ? '지역 라이브' : '소규모 라이브')))" },
-        { set: 'live_days', expr: '6 + rand(0, 6)' },
+        { set: 'funds', expr: 'max(funds - 10, 0)' },
+        { set: 'job', expr: "pitch_won >= 2 ? '잡지 화보' : (pitch_won >= 1 ? '지역 라디오' : job)" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 2 + rand(0, 2) : job_days' },
+      ] },
+    { id: 'take_mag', label: '📖 잡지사를 돈다', mode: 'oneshot',
+      when: "job == '없음' and awareness >= 18 and funds >= 20 and not unit_over", check: 'ck_mag',
+      inject: '[행동] 편집부 문 앞에서 기다린다. 지면 한 쪽이 걸린 자리다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 20, 0)' },
+        { set: 'job', expr: "pitch_won >= 2 ? '지방 방송국' : (pitch_won >= 1 ? '잡지 화보' : job)" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 3 + rand(0, 2) : job_days' },
+      ] },
+    { id: 'take_ltv', label: '📡 지방 방송국을 노린다', mode: 'oneshot', cooldown: 2,
+      when: "job == '없음' and awareness >= 32 and funds >= 40 and not unit_over", check: 'ck_ltv',
+      inject: '[행동] 기차를 타고 지방 방송국을 돈다. 이쪽에서 먼저 고개를 숙여야 하는 자리다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 40, 0)' },
+        { set: 'job', expr: "pitch_won >= 2 ? '케이블 음악방송' : (pitch_won >= 1 ? '지방 방송국' : job)" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 4 + rand(0, 3) : job_days' },
+      ] },
+    { id: 'take_cable', label: '📺 케이블 음악방송을 노린다', mode: 'oneshot', cooldown: 2,
+      when: "job == '없음' and awareness >= 46 and funds >= 70 and not unit_over", check: 'ck_cable',
+      inject: '[행동] 편성 담당과 마주 앉는다. 자리는 하나고 기다리는 유닛은 여럿이다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 70, 0)' },
+        { set: 'job', expr: "pitch_won >= 2 ? '지상파 음악방송' : (pitch_won >= 1 ? '케이블 음악방송' : job)" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 5 + rand(0, 3) : job_days' },
+      ] },
+    // ⚠ 위 두 자리는 타락도가 문을 닫는다 — 음지로 간 유닛은 지상파가 안 받는다.
+    // 이게 이 판의 갈림길이다: 음지는 오늘의 돈을, 지상파는 내일의 이름을 준다.
+    { id: 'take_net', label: '🏙 지상파 음악방송을 노린다', mode: 'oneshot', cooldown: 3,
+      when: "job == '없음' and awareness >= 62 and corrupt <= 45 and funds >= 120 and not unit_over",
+      check: 'ck_net',
+      inject: '[행동] 본사 로비에서 한참을 기다린다. 여기까지 온 것만으로도 몇 년이 걸렸다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 120, 0)' },
+        { set: 'job', expr: "pitch_won >= 2 ? '골든타임 특집' : (pitch_won >= 1 ? '지상파 음악방송' : job)" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 6 + rand(0, 4) : job_days' },
+      ] },
+    { id: 'take_gold', label: '🌟 골든타임 특집을 노린다', mode: 'oneshot', cooldown: 4,
+      when: "job == '없음' and awareness >= 80 and corrupt <= 25 and funds >= 200 and not unit_over",
+      check: 'ck_gold',
+      inject: '[행동] 국장실까지 올라간다. 이 자리는 실력만으로 오는 게 아니라는 걸 서로 안다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 200, 0)' },
+        { set: 'job', expr: "pitch_won >= 1 ? '골든타임 특집' : job" },
+        { set: 'job_days', expr: 'pitch_won >= 1 ? 8 + rand(0, 5) : job_days' },
+      ] },
+    // ── 대관 ── (v0.82)
+    // 공연장은 **빌리는 것**이라 판정이 없다 — 돈만 있으면 잡힌다. 대신 정원이 천장이고
+    // 대관료가 선불이라, 못 채우면 그대로 손해다. "잡을 수 있는가"와 "채울 수 있는가"가
+    // 다른 질문이라는 것이 이 축의 전부다 (일감 탭의 예상 객석이 그 답이다).
+    { id: 'hall_small', label: '🎪 라이브하우스를 빌린다', mode: 'oneshot', cooldown: 4,
+      when: "live == '없음' and funds >= 60 and not unit_over",
+      inject: '[행동] 지하 라이브하우스와 날을 잡는다. 백 명이 차면 꽉 찬 것처럼 보이는 곳이다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 60, 0)' },
+        { set: 'live', expr: "'라이브하우스'" }, { set: 'live_days', expr: '5 + rand(0, 4)' },
+      ] },
+    { id: 'hall_civic', label: '🏛 시민회관을 빌린다', mode: 'oneshot',
+      when: "live == '없음' and fans >= 3000 and funds >= 150 and not unit_over",
+      inject: '[행동] 시민회관 대관 신청서를 낸다. 무대가 넓어서 셋이 서면 허전할 수도 있다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 150, 0)' },
+        { set: 'live', expr: "'시민회관'" }, { set: 'live_days', expr: '7 + rand(0, 5)' },
+      ] },
+    { id: 'hall_fest', label: '🎡 합동 페스티벌에 낀다', mode: 'oneshot',
+      when: "live == '없음' and fans >= 5000 and u_pow >= 100 and funds >= 300 and not unit_over",
+      inject: '[행동] 여러 유닛이 서는 무대의 한 칸을 산다. 앞뒤로 누가 서는지가 중요한 자리다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 300, 0)' },
+        { set: 'live', expr: "'합동 페스티벌'" }, { set: 'live_days', expr: '9 + rand(0, 6)' },
+      ] },
+    { id: 'hall_solo', label: '🎭 단독 공연을 건다', mode: 'oneshot',
+      when: "live == '없음' and fans >= 15000 and u_pow >= 150 and funds >= 700 and not unit_over",
+      inject: '[행동] 이름 하나로 홀을 채워야 하는 날을 잡는다. 포스터에 다른 이름이 없다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 700, 0)' },
+        { set: 'live', expr: "'단독 공연'" }, { set: 'live_days', expr: '12 + rand(0, 8)' },
+      ] },
+    { id: 'hall_tour', label: '🚌 전국 투어를 올린다', mode: 'oneshot',
+      when: "live == '없음' and fans >= 25000 and u_pow >= 200 and funds >= 1600 and not unit_over",
+      inject: '[행동] 도시 이름이 줄줄이 적힌 일정표를 짠다. 돌아올 때 셋이 어떤 얼굴일지는 아무도 모른다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 1600, 0)' },
+        { set: 'live', expr: "'전국 투어'" }, { set: 'live_days', expr: '16 + rand(0, 10)' },
       ] },
     // ── 무대 ──
     { id: 'live_show', label: '🎫 라이브에 선다', mode: 'oneshot',
@@ -19065,12 +19301,115 @@ const IDOL = {
         { set: 'fans', expr: 'min(fans + 40 + round(fans * 0.04), 9999999)' },
         { set: 'm1_st', expr: 'max(m1_st - 3, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 3, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 3, 0)' },
       ] },
-    { id: 'dress_up', label: '👗 의상을 맞춘다', mode: 'oneshot',
-      when: "funds >= 250 and costume != '특별 의상' and not unit_over",
-      inject: '[행동] 의상실에 셋을 데려간다. 무대 위에서 보일 실루엣을 고르는 시간이다.',
+    // ── 제작 의뢰 ── (v0.82)
+    // 돈만으로는 안 된다. 위 등급일수록 **이름값을 요구한다** — 무명 유닛에는 좋은 사람이
+    // 안 붙는다는 게 이 문턱의 뜻이다. 새로 맞춘 옷 이름은 서사가 짓고 보조 AI가 wardrobe에 올린다.
+    { id: 'make_dress1', label: '👗 무대의상을 맞춘다', mode: 'oneshot',
+      when: "funds >= 150 and costume != '제작 의상' and costume != '특별 의상' and costume != '특주 의상' and not unit_over",
+      inject: '[행동] 동네 의상실에 셋을 데려간다. 치수를 재는 동안 아무도 말이 없다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 150, 0)' }, { set: 'costume', expr: "'제작 의상'" }] },
+    { id: 'make_dress2', label: '✨ 특별 의상을 의뢰한다', mode: 'oneshot',
+      when: "funds >= 500 and awareness >= 35 and costume != '특별 의상' and costume != '특주 의상' and not unit_over",
+      inject: '[행동] 이름 있는 디자이너를 찾아간다. 도면부터 그리는 자리다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 500, 0)' }, { set: 'costume', expr: "'특별 의상'" }] },
+    { id: 'make_dress3', label: '💎 특주 의상을 올린다', mode: 'oneshot',
+      when: "funds >= 1400 and awareness >= 65 and costume != '특주 의상' and not unit_over",
+      inject: '[행동] 이 무대만을 위한 옷을 짓는다. 다시는 안 입을 옷이라는 걸 모두가 안다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 1400, 0)' }, { set: 'costume', expr: "'특주 의상'" }] },
+    // 음반은 한 번 내면 **매달 인세가 들어온다** — 이 판에서 유일하게 손을 놓아도 도는 돈이라
+    // 값이 비싸고 인지도를 요구한다. 곡 이름은 서사가 짓고 보조 AI가 songs에 올린다.
+    { id: 'make_single', label: '💿 싱글을 낸다', mode: 'oneshot',
+      when: "funds >= 600 and awareness >= 20 and album == '없음' and not unit_over",
+      inject: '[행동] 작은 스튜디오를 빌려 두 곡을 녹음한다. 첫 음반이다.',
       effects: [
-        { set: 'funds', expr: 'max(funds - 250, 0)' },
-        { set: 'costume', expr: "costume == '제작 의상' ? '특별 의상' : (costume == '기본 무대의상' ? '제작 의상' : '기본 무대의상')" },
+        { set: 'funds', expr: 'max(funds - 600, 0)' }, { set: 'album', expr: "'싱글'" },
+        { set: 'buzz', expr: 'min(buzz + 10, 100)' },
+        { set: 'sales', expr: 'min(sales + round(fans * 0.3), 9999999)' },
+      ] },
+    { id: 'make_mini', label: '📀 미니 앨범을 낸다', mode: 'oneshot',
+      when: "funds >= 1400 and awareness >= 40 and album == '싱글' and not unit_over",
+      inject: '[행동] 다섯 곡짜리를 짠다. 곡 순서를 놓고 밤을 새우는 장면이 어울린다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 1400, 0)' }, { set: 'album', expr: "'미니 앨범'" },
+        { set: 'buzz', expr: 'min(buzz + 16, 100)' },
+        { set: 'sales', expr: 'min(sales + round(fans * 0.5), 9999999)' },
+      ] },
+    { id: 'make_full', label: '🏆 정규 앨범을 낸다', mode: 'oneshot',
+      when: "funds >= 3000 and awareness >= 65 and album == '미니 앨범' and not unit_over",
+      inject: '[행동] 정규 한 장을 만든다. 이걸로 이 유닛이 어떤 유닛인지가 정해진다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 3000, 0)' }, { set: 'album', expr: "'정규 앨범'" },
+        { set: 'buzz', expr: 'min(buzz + 24, 100)' },
+        { set: 'awareness', expr: 'min(awareness + 4, 100)' },
+        { set: 'sales', expr: 'min(sales + round(fans * 0.8), 9999999)' },
+      ] },
+    // ── 음지 ── (v0.82)
+    // 돈이 급할 때 손이 가는 쪽. 넷 다 **그날 밤에 끝난다**(D-day가 없다) — 급전이라는 게
+    // 이 축의 성질이라 일정표에 안 올린다. 위로 갈수록 벌이가 크고 셋이 잃는 것도 크다.
+    // 문턱은 자금이 아니라 **타락도**다: 한 번 담근 만큼만 다음이 열린다.
+    // ⚠ impactExempt — 진단이 "쓰면 손해인 함정 액션"으로 잡는 게 맞는 버튼이다. 손해인 걸
+    //   알면서 누르는 자리라서 지적에서 뺀다 (융자와 같은 규율).
+    { id: 'shady_night', label: '🌃 심야 행사를 받는다', mode: 'oneshot', cooldown: 2, impactExempt: true,
+      when: 'not unit_over', check: 'ck_night',
+      inject: '[행동] 이름을 안 밝히는 쪽 행사다. 끝나면 현금으로 준다고 했다.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 200 : 0), 9999999)' },
+        { set: 'inc_stage', expr: 'min(inc_stage + (shady_ok >= 1 ? 200 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 4 : 0), 100)' },
+        { set: 'm1_st', expr: 'max(m1_st - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm2_st', expr: 'max(m2_st - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm3_st', expr: 'max(m3_st - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 6 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 6 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 6 : 0), 0)' },
+      ] },
+    { id: 'shady_spon', label: '🥂 스폰서 자리에 앉힌다', mode: 'oneshot', cooldown: 3, impactExempt: true,
+      when: 'corrupt >= 10 and not unit_over', check: 'ck_spon',
+      inject: '[행동] 술자리에 셋을 앉힌다. 무대 이야기는 한 마디도 안 나오는 자리다.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 650 : 0), 9999999)' },
+        { set: 'inc_stage', expr: 'min(inc_stage + (shady_ok >= 1 ? 650 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 9 : 0), 100)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 12 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 12 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 12 : 0), 0)' },
+        { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 5 : 0), 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 5 : 0), 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 5 : 0), 0)' },
+      ] },
+    { id: 'shady_gravure', label: '📷 수위 있는 화보를 찍는다', mode: 'oneshot', cooldown: 4, impactExempt: true,
+      when: 'corrupt >= 28 and not unit_over', check: 'ck_gravure',
+      inject: '[행동] 어디까지 벗길지를 놓고 흥정한다. 셋에게는 마지막에 말한다.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 1500 : 0), 9999999)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + (shady_ok >= 1 ? 1500 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 13 : 0), 100)' },
+        { set: 'buzz', expr: 'min(buzz + (shady_ok >= 1 ? 20 : 0), 100)' },
+        { set: 'fans', expr: 'min(fans + (shady_ok >= 1 ? round(fans * 0.08) + 300 : 0), 9999999)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 16 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 16 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 16 : 0), 0)' },
+        { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 8 : 0), 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 8 : 0), 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 8 : 0), 0)' },
+      ] },
+    { id: 'shady_adult', label: '🔞 성인 영상으로 돌린다', mode: 'oneshot', cooldown: 6, impactExempt: true,
+      when: 'corrupt >= 55 and not unit_over', check: 'ck_adult',
+      inject: '[행동] 이 계약서에 도장을 찍으면 돌아올 길이 없다는 걸 양쪽 다 안다. 현장은 그리지 말고 계약 자리까지만 그려라.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 3800 : 0), 9999999)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + (shady_ok >= 1 ? 3800 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 18 : 0), 100)' },
+        { set: 'buzz', expr: 'min(buzz + (shady_ok >= 1 ? 30 : 0), 100)' },
+        { set: 'fans', expr: 'min(fans + (shady_ok >= 1 ? round(fans * 0.2) + 1200 : 0), 9999999)' },
+        // 이름값이 깎인다 — 팬은 늘어도 업계가 등을 돌린다. 이게 지상파가 닫히는 이유다
+        { set: 'awareness', expr: 'max(awareness - (shady_ok >= 1 ? 6 : 0), 0)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 22 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 22 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 22 : 0), 0)' },
+        { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 12 : 0), 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 12 : 0), 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 12 : 0), 0)' },
       ] },
     // 융자는 일부러 손해인 버튼이다 — 오늘을 사고 내일을 판다. 진단의 '함정 액션'
     // 지적에서 빼되(impactExempt), 정말 급할 때만 열리게 자금 문턱을 걸어 둔다.
@@ -19079,7 +19418,10 @@ const IDOL = {
       inject: '[행동] 은행 창구에 앉는다. 숫자를 적고 도장을 찍는 짧은 장면으로.',
       effects: [
         { set: 'funds', expr: 'min(funds + 500, 9999999)' },
-        { set: 'debt', expr: 'min(debt + 560, 9999999)' },
+        // 급전은 갈수록 조건이 나빠진다 — 이미 진 빚에 비례해 얹힌다. 정액(+560)이던 시절에는
+        // 돌려막기가 영원히 가능해서 파산이 **한 번도 안 떴다**(진단의 '죽은 이벤트'). 이제
+        // 1200 → 1880 → 2668 → 3535로 불어나 다섯 번째 융자가 파산선을 넘는다.
+        { set: 'debt', expr: 'min(debt + 560 + round(debt * 0.1), 9999999)' },
         // 융자는 번 돈이 아니라 자리를 옮긴 돈이다 — 기초 잔고를 같이 올려 수지에서 뺀다
         { set: 'month_open', expr: 'min(month_open + 500, 9999999)' },
       ] },
@@ -19154,12 +19496,37 @@ const IDOL = {
           { set: 'late', expr: 'max(late - 1, 0)' },
           // ⚠ 순서 — 장부를 먼저 닫고 이자를 낸다. 이자를 먼저 빼면 그 달에도 다음 달에도
           // 안 잡히는 돈이 된다. 이자는 새 달 1일에 나가는 첫 지출로 잡힌다.
+          // 타락은 달이 바뀌면 조금 잊힌다 — 되돌아오는 길이 아주 없으면 그건 갈림길이 아니다.
+          // 하루 단위로 빼면 음지 루트 자체가 유지되지 않아서(문턱이 계속 닫힌다) 달 단위로 둔다
+          { set: 'corrupt', expr: 'max(corrupt - 3, 0)' },
           { set: 'inc_stage', expr: '0' }, { set: 'inc_ticket', expr: '0' },
           { set: 'inc_goods', expr: '0' }, { set: 'inc_album', expr: '0' },
           { set: 'month_open', expr: 'funds' },
+          // 인세 — 낸 음반이 있으면 손을 놓아도 도는 유일한 돈이다. 새 달의 첫 수입으로 잡는다
+          // (month_open을 닫은 뒤라야 이 달 수입에 들어간다). 장부와 자금을 **같이** 올린다
+          { set: 'inc_album', expr: 'min(inc_album + round(fans * album_n * 0.005), 9999999)' },
+          { set: 'funds', expr: 'min(funds + round(fans * album_n * 0.005), 9999999)' },
           // 월급 — 새 달의 첫 지출. 못 주면 그만큼 빚이 된다 (이자와 같은 규율)
+          // ⚠ 순서 — 사람에게 가는 값은 **자금을 빼기 전에** 재야 한다. 뒤로 옮기면
+          //   funds가 이미 0이라 늘 미지급으로 잡힌다.
+          // 월급을 못 준 달은 사람이 먼저 안다. 이게 없으면 손 놓고 있어도 아무도 안 무너져서
+          // "아무것도 안 해도 전부 생존"이 된다 — 진단이 그렇게 신고했다. 무너지는 건 빚이
+          // 아니라 사람이라는 이 판의 규율을, 아무 일도 안 한 판에도 똑같이 적용한 것이다.
+          { set: 'unpaid', expr: 'funds < salary ? min(unpaid + 1, 12) : 0' },
+          { set: 'm1_me', expr: 'funds < salary ? max(m1_me - 10, 0) : m1_me' },
+          { set: 'm2_me', expr: 'funds < salary ? max(m2_me - 10, 0) : m2_me' },
+          { set: 'm3_me', expr: 'funds < salary ? max(m3_me - 10, 0) : m3_me' },
+          { set: 'm1_love', expr: 'funds < salary ? max(m1_love - 12, 0) : m1_love' },
+          { set: 'm2_love', expr: 'funds < salary ? max(m2_love - 12, 0) : m2_love' },
+          { set: 'm3_love', expr: 'funds < salary ? max(m3_love - 12, 0) : m3_love' },
           { set: 'debt', expr: 'min(debt + max(salary - funds, 0), 9999999)' },
           { set: 'funds', expr: 'max(funds - salary, 0)' },
+          // 임대료 — 월급 다음으로 나간다. 못 내면 역시 빚이 된다.
+          // ⚠ 여기엔 사람 값을 안 붙인다: 월급과 임대료 양쪽에 멘탈을 걸었더니 자금이
+          //   잠깐 마르는 것만으로 유닛이 무너져 정상 플레이 생존율이 38%까지 떨어졌다.
+          //   못 받은 건 월급이지 사무실이 아니다 — 사람에게 가는 값은 월급 쪽에만 둔다.
+          { set: 'debt', expr: 'min(debt + max(rent - funds, 0), 9999999)' },
+          { set: 'funds', expr: 'max(funds - rent, 0)' },
           { set: 'debt', expr: 'min(debt + max(round(debt * 0.05) - funds, 0), 9999999)' },
           { set: 'funds', expr: 'max(funds - round(debt * 0.05), 0)' },
         ] },
@@ -19167,7 +19534,14 @@ const IDOL = {
       { id: 'burnout', when: 'not unit_over and (m1_me <= 0 or m2_me <= 0 or m3_me <= 0)',
         notify: '연습실에 아무도 나오지 않은 아침이 있었다. 더 굴릴 수 없다는 걸 모두가 안다.',
         effects: [{ set: 'unit_over', expr: '1' }] },
-      { id: 'bankrupt', when: 'debt >= 6000 and not unit_over',
+      // 사람이 떠나는 두 번째 길 — 빚보다 먼저 오는 쪽이다. 석 달 연속 월급을 못 주면
+      // 아무도 붙잡지 않는다.
+      // ⚠ 두 달로 뒀더니 정상 플레이가 8/8 전멸했다 — 이 판은 자금이 늘 0 근처를 걷기
+      //   때문에 한두 번 미끄러지는 건 예사다. 석 달은 '사정'이 아니라 '못 하는 것'이다
+      { id: 'walkout', when: 'unpaid >= 3 and not unit_over',
+        notify: '석 달째다. 아무도 화를 내지 않았고, 그래서 더 분명했다 — 셋은 각자 갈 곳을 찾았다.',
+        effects: [{ set: 'unit_over', expr: '1' }] },
+      { id: 'bankrupt', when: 'debt >= 4500 and not unit_over',
         notify: '더는 돌려막을 곳이 없다. 사무소 문에 종이 한 장이 붙었다.',
         effects: [{ set: 'unit_over', expr: '1' }] },
     ],
@@ -19184,6 +19558,15 @@ const IDOL = {
             { set: 'm1_st', expr: 'max(m1_st - 12, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 12, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 12, 0)' },
           ],
           notify: '연습실에 감기가 돌았다. 셋 다 목이 가라앉았다.' },
+        // 음지의 청구서 — 돈은 그날 받고 값은 나중에 치른다. 이 이벤트가 없으면 타락 루트가
+        // 그냥 "돈 더 주는 버튼"이 되어 갈림길이 안 된다
+        { id: 'leak', weight: 3, cooldown: 10, when: 'not unit_over and corrupt >= 40',
+          effects: [
+            { set: 'awareness', expr: 'max(awareness - 5, 0)' },
+            { set: 'buzz', expr: 'min(buzz + 15, 100)' },
+            { set: 'm1_me', expr: 'max(m1_me - 8, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 8, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 8, 0)' },
+          ],
+          notify: '음지 쪽 사진이 돌고 있다는 이야기가 들어왔다. 아직은 소문이지만, 소문은 늘 먼저 도착한다.' },
         { id: 'interview', weight: 2, cooldown: 7, when: 'not unit_over and awareness >= 20',
           effects: [
             { set: 'awareness', expr: 'min(awareness + 3, 100)' },
@@ -19222,14 +19605,17 @@ const IDOL = {
             { label: '잡는다',
               inject: '일정을 뒤엎고 받기로 한다. 준비할 시간이 거의 없다.',
               effects: [
-                { set: 'job', expr: "rank_n >= 3 ? 'TV 음악방송' : '잡지 화보'" },
+                { set: 'job', expr: "rank_n >= 3 ? '케이블 음악방송' : '잡지 화보'" },
                 { set: 'job_days', expr: '2' },
                 { set: 'm1_st', expr: 'max(m1_st - 8, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 8, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 8, 0)' },
               ] },
+            // ⚠ 여기 오래 있던 버그가 있었다 — job에 '지역 라이브'(라이브 쪽 값)를 넣고 있었다.
+            //   enum에 없는 값이라 난이도·보수 표가 전부 0으로 떨어져 **공짜로 치르는 무대**가 됐다.
+            //   표현식 안의 문자열은 검증이 못 보니, 축이 둘인 스키마에서는 눈으로 짝을 맞출 것.
             { label: '조건을 걸고 받는다', when: 'awareness >= 40',
               inject: '이쪽 조건을 먼저 말한다. 받아들여지면 그건 이 유닛이 아쉬운 쪽이 아니라는 뜻이다.',
               effects: [
-                { set: 'job', expr: "'지역 라이브'" },
+                { set: 'job', expr: "'지방 방송국'" },
                 { set: 'job_days', expr: '4' },
                 { set: 'awareness', expr: 'min(awareness + 2, 100)' },
               ] },
@@ -19254,6 +19640,10 @@ const IDOL = {
       text: '[상태] 이 달은 적자다 (수입 {income} · 지출 {spend}). 프로듀서가 장부를 덮어 두는 장면이 어울린다.' },
     { id: 'heavy', when: 'debt >= 3000 and not unit_over',
       text: '[상태] 빚이 {debt}만원이다. 프로듀서는 이걸 셋에게 말하지 않고 있다.' },
+    { id: 'shade', when: 'corrupt >= 25 and corrupt < 55 and not unit_over',
+      text: '[상태] 이 유닛은 이미 밝은 데만 다니지 않는다 (타락도 {corrupt}). 셋의 표정에 전에 없던 것이 섞여 있어야 한다.' },
+    { id: 'sunk', when: 'corrupt >= 55 and not unit_over',
+      text: '[상태] 돌아갈 자리가 거의 남지 않았다 (타락도 {corrupt}). 프로듀서도 셋도 그걸 알면서 말하지 않는다. 수위 있는 장면은 암시까지만 하고 넘겨라.' },
     { id: 'hot', when: 'buzz >= 70 and not unit_over',
       text: '[상태] 지금 화제의 한가운데다 (화제성 {buzz}). 어디를 가도 알아보고, 그게 부담이기도 하다.' },
     { id: 'ended', when: 'unit_over',
@@ -19273,7 +19663,7 @@ const IDOL = {
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
     ],
-    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·활동 중단은 시스템이 관리하니 건드리지 마라. '
+    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
@@ -19284,7 +19674,8 @@ const IDOL = {
       + '인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n'
       + '자금 {funds} · 빚 {debt} · 펑크 {late}회\n'
       + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
-      + '일감 {job} (남은 {job_days}일) · 의상 {costume}\n'
+      + '업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n'
+      + '의상 {costume} · 음반 {album} · 타락도 {corrupt}\n'
       + '센터 {center} / 사이드 {side1} · {side2} · 유닛 컨디션 {u_cond}\n'
       + '유나 {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n'
       + '세리 {m2_vo}/{m2_da}/{m2_vi} 컨디션 {c2} 호감 {m2_love}\n'
@@ -19301,7 +19692,7 @@ const IDOL = {
           { var: 'side1', label: '사이드 1' },
           { var: 'side2', label: '사이드 2' },
         ],
-        actions: ['perform', 'dress_up'],
+        actions: ['perform', 'live_show'],
         note: '자리를 비워 두면 그 사람은 이번 무대에 안 선다 — 컨디션을 아낄 수 있다.' },
       // 레슨은 편성표의 업그레이드 항목이다. 비용이 자기 레벨을 보고 올라 스스로 브레이크가 된다
       { id: 'lesson', label: '레슨',
@@ -19317,8 +19708,26 @@ const IDOL = {
           { var: 'm3_vi', label: '린 · 비주얼', max: 100, cost: 'round(m3_vi * m3_vi / 25) + 30' },
         ],
         note: '운용자금으로 찍는다. 한 칸 올릴 때마다 다음 한 칸이 비싸진다.' },
+      // ── 의뢰판 ── (v0.82)
+      // 못 여는 자리도 **잠긴 채로 보인다** — 편성표는 실행할 수 없는 액션을 지우지 않고
+      // 이유와 함께 흐리게 남긴다. 그게 "다음 목표"를 화면에 두는 유일한 자리다.
+      { id: 'jobs', label: '일감',
+        actions: ['take_street', 'take_radio', 'take_mag', 'take_ltv', 'take_cable', 'take_net', 'take_gold'],
+        note: '자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다.' },
+      { id: 'halls', label: '무대',
+        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show'],
+        note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다.' },
+      { id: 'make', label: '제작',
+        actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full'],
+        note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다.' },
+      // 탭 자체에 조건이 걸린다 — 돈이 마르기 전에는 이런 게 있다는 것도 모르는 편이 낫다.
+      // 한 번이라도 담갔으면(타락도 ≥ 1) 형편이 나아져도 계속 보인다
+      { id: 'shade', label: '음지', when: 'funds < 250 or corrupt >= 1',
+        actions: ['shady_night', 'shady_spon', 'shady_gravure', 'shady_adult'],
+        note: '오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. '
+          + '타락도가 높으면 지상파와 골든타임이 닫힌다.' },
       { id: 'office', label: '사무소',
-        actions: ['take_small', 'take_big', 'rest_day', 'talk', 'promo', 'borrow', 'repay', 'next_day'],
+        actions: ['rest_day', 'talk', 'promo', 'borrow', 'repay', 'next_day'],
         note: '하루를 쓰는 일들. 다 하고 나면 🌙로 날을 넘긴다.' },
     ],
   },
@@ -19347,6 +19756,7 @@ const IDOL = {
         { var: 'u_cond', bar: { max: 100 }, color: "u_cond <= 35 ? '#a8443a' : '#6a8a7a'" },
         { var: 'u_vo' }, { var: 'u_da' }, { var: 'u_vi' },
         { var: 'costume' },
+        { var: 'album', showWhen: "album != '없음'" },
         { var: 'songs', showWhen: 'count(songs) > 0' },
         { var: 'wardrobe', showWhen: 'count(wardrobe) > 0' },
       ] },
@@ -19364,20 +19774,42 @@ const IDOL = {
         { var: 'debt', color: "debt >= 3000 ? '#a8443a' : '#6a5a7a'" },
       ] },
       // 일감 탭 = 의뢰판. 지금 잡힌 것 둘(업무·라이브)이 각각 일정·난이도·보수를 달고,
-      // 그 아래에 다음 차례가 줄을 선다
+      // 그 아래에 다음 차례가 줄을 선다.
+      // v0.82: **일감이 비어 있을 때만** 성사율 표가 펼쳐진다. 이미 잡아 둔 일이 있으면
+      // 볼 이유가 없는 숫자고, 늘 떠 있으면 지금 무엇이 중요한지가 안 보인다.
       { label: '일감', items: [
         { var: 'job' },
         { var: 'job_days', showWhen: "job != '없음'" },
         { var: 'job_vs', showWhen: "job != '없음'" },
         { var: 'job_pay', showWhen: "job != '없음'" },
+        { var: 'od_radio', showWhen: "job == '없음' and awareness >= 8" },
+        { var: 'od_mag', showWhen: "job == '없음' and awareness >= 18" },
+        { var: 'od_ltv', showWhen: "job == '없음' and awareness >= 32" },
+        { var: 'od_cable', showWhen: "job == '없음' and awareness >= 46" },
+        { var: 'od_net', showWhen: "job == '없음' and awareness >= 62 and corrupt <= 45" },
+        { var: 'od_gold', showWhen: "job == '없음' and awareness >= 80 and corrupt <= 25" },
         { var: 'live' },
         { var: 'live_days', showWhen: "live != '없음'" },
         { var: 'live_vs', showWhen: "live != '없음'" },
         { var: 'live_pay', showWhen: "live != '없음'" },
+        { var: 'live_cap', showWhen: "live != '없음'" },
         { var: 'live_tickets', showWhen: "live != '없음'" },
+        // 예상 객석 — 대관을 무리했는지가 여기 한 줄에 다 나온다. 60% 아래면 붉게 뜬다
+        { var: 'live_fill', showWhen: "live != '없음'", bar: { max: 100 },
+          color: "live_fill < 60 ? '#a8443a' : '#6a8a7a'" },
         { var: 'job_queue', showWhen: 'count(job_queue) > 0' },
         { var: 'live_queue', showWhen: 'count(live_queue) > 0' },
         { var: 'schedule', showWhen: 'count(schedule) > 0' },
+      ] },
+      // 음지 탭 — 발을 담근 뒤에만 뜬다. 안 간 판에서는 이런 게 있다는 것도 안 보인다
+      { label: '음지', showWhen: 'corrupt >= 1', items: [
+        { var: 'corrupt', bar: { max: 100 },
+          color: "corrupt >= 55 ? '#8a2a3a' : (corrupt >= 25 ? '#a8443a' : '#6a5a7a')" },
+        { var: 'u_love', bar: { max: 100 }, color: "'#c86a9a'" },
+        { var: 'od_night' },
+        { var: 'od_spon', showWhen: 'corrupt >= 10' },
+        { var: 'od_gravure', showWhen: 'corrupt >= 28' },
+        { var: 'od_adult', showWhen: 'corrupt >= 55' },
       ] },
       { label: '유나', items: [
         { var: 'm1_vo' }, { var: 'm1_da' }, { var: 'm1_vi' },
@@ -19422,15 +19854,18 @@ const IDOL = {
         set: {} },
       { id: 'hit', label: '한 번 터졌다 — 다음이 어렵다',
         set: {
-          rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200, funds: 900, month_open: 900, debt: 900,
+          rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200, funds: 1500, month_open: 1500, debt: 600,
           costume: '제작 의상',
           m1_vo: 52, m1_da: 40, m1_vi: 44, m1_love: 48, m1_fan: 5200,
           m2_vo: 36, m2_da: 58, m2_vi: 42, m2_love: 40, m2_fan: 4100,
           m3_vo: 40, m3_da: 38, m3_vi: 61, m3_love: 34, m3_fan: 4700,
         } },
+      // ⚠ 프리셋은 **두 축 이상**을 함께 밀어야 난이도가 된다. 자금만 조금 줄이고 빚만 조금
+      //   늘렸을 때는 진단이 "이름만 다르고 판은 같다"고 신고했다 — 실제로 세 프리셋의 수명이
+      //   1~2턴 차이였다. 비축(자금)·부채(파산선까지의 거리)·완충(멘탈)을 같이 민다.
       { id: 'debtor', label: '빚에 눌려 — 셋을 지킬 수 있을까',
         set: {
-          funds: 320, month_open: 320, debt: 1900, late: 1, buzz: 8,
+          funds: 260, month_open: 260, debt: 3000, late: 2, buzz: 8,
           costume: '연습복',
           m1_st: 48, m1_me: 40, m1_love: 18,
           m2_st: 52, m2_me: 36, m2_love: 14,

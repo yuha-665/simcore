@@ -41,9 +41,13 @@ const D = (id, vars) => expr.evaluate(S.derived.find((d) => d.id === id).expr, e
     /m1_st/.test(condExpr) && /m1_me/.test(condExpr), condExpr);
   ck('★ 축② 컨디션이 무대 판정에 실린다',
     /u_cond/.test(S.checks.find((c) => c.id === 'ck_stage').mod), '');
-  ck('★ 축③ 등급이 일감 크기를 연다',
-    /rank_n/.test(JSON.stringify(A('take_small').effects))
-    && /rank_n/.test(JSON.stringify(S.checks.find((c) => c.id === 'ck_pitch').grades)), '');
+  // v0.82 — 자리를 고르는 건 플레이어고, 여는 축은 인지도 하나다.
+  // ⚠ 등급(rank_n)을 조건에 같이 걸면 같은 말이 두 번 되고, 진단이 "못 쓰는 액션"으로 오해한다
+  ck('★ 축③ 인지도가 일감 사다리를 연다',
+    ['take_radio', 'take_mag', 'take_ltv', 'take_cable', 'take_net', 'take_gold']
+      .every((id) => /awareness >= \d+/.test(A(id).when)), '');
+  ck('★ 일감 조건에 등급이 겹쳐 있지 않다 (인지도의 얼굴이라 같은 말이다)',
+    ['take_ltv', 'take_cable', 'take_net', 'take_gold'].every((id) => !/rank_n/.test(A(id).when)), '');
   ck('날짜를 넘기는 입구는 🌙 하나뿐이다 (AI에게도 안 연다)',
     S.actions.filter((a) => /skip_day/.test(JSON.stringify(a.effects || []))).length === 1
     && !S.updater.allow.some((a) => a.id === 'skip_day'), '');
@@ -60,7 +64,8 @@ const D = (id, vars) => expr.evaluate(S.derived.find((d) => d.id === id).expr, e
   ck('★ 패배 변수 이름이 진단 규약에 맞는다 (over/dead/lost/fail …)',
     /lost|collapse|dead|over|fail|ruin|defeat|gameover/i.test(lose.id), lose.id);
   const ends = S.rules.events.filter((e) => JSON.stringify(e.effects || []).includes('"unit_over"'));
-  ck('끝나는 길이 둘이다 (사람 / 돈)', ends.length === 2, String(ends.length));
+  // v0.82 — 셋이다: 번아웃(멘탈 0) · 미납 이탈(석 달) · 파산. 앞의 둘이 사람 쪽이다
+  ck('끝나는 길이 셋이다 (번아웃 · 미납 이탈 · 파산)', ends.length === 3, String(ends.length));
   ck('사람 쪽이 먼저다 (멘탈 0이면 판이 멈춘다)',
     !!S.rules.events.find((e) => e.id === 'burnout' && /m1_me <= 0/.test(e.when)), '');
   ck('패배 변수는 AI에게 안 연다', !S.updater.allow.some((a) => a.id === 'unit_over'), '');
@@ -133,7 +138,7 @@ function play(seed, preset, days = 60) {
     let want;
     if (w.job !== '없음' && w.job_days <= 0) want = ['perform', 'next_day'];
     else if (cond < 55) want = ['rest_day', 'talk', 'next_day'];
-    else if (w.job === '없음') want = ['take_big', 'take_small', 'next_day'];
+    else if (w.job === '없음') want = ['take_cable', 'take_ltv', 'take_mag', 'take_radio', 'take_street', 'next_day'];
     else want = ['next_day'];
     if (w.job === '없음' && w.funds >= 300) want = ['promo', ...want];
     if (w.funds >= 800 && w.debt > 0) want = ['repay', ...want];
@@ -148,8 +153,11 @@ function play(seed, preset, days = 60) {
     } else { stuck++; maxStuck = Math.max(maxStuck, stuck); }
     st = engine.sendPhase(S, st, { rng: seededRng(seed, t, 'a') }).state;
     st = engine.outputPhase(S, st, {}, {}, { rng: seededRng(seed, t, 'o') }).state;
-    // 여유가 있으면 레슨을 찍는다 — 편성표는 진단이 못 만지는 자리라 여기서만 굴러 본다
-    if (st.vars.funds > 350) {
+    // 여유가 있으면 레슨을 찍는다 — 편성표는 진단이 못 만지는 자리라 여기서만 굴러 본다.
+    // ⚠ 여유는 **다음 청구서를 남기고 남은 것**이다. 고정 350만원으로 두면 이 자동 플레이어는
+    //   월급·임대료가 큰 프리셋일수록 더 크게 미납을 내서, 잘나가는 유닛이 신인보다 빨리
+    //   죽는 뒤집힌 결과가 나온다 — 판 탓이 아니라 자동 플레이어가 청구서를 안 남긴 탓이다.
+    if (st.vars.funds > D('salary', st.vars) + D('rent', st.vars) + 350) {
       for (const it of partyTabs(S).flatMap((tb) => tb.items || [])) {
         const up = applyUpgrade(S, st, it.var);
         if (up.ok) { Object.assign(st.vars, up.changes); lessons++; break; }
@@ -181,7 +189,7 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
 // ── 펑크: 그날 무대에 안 서면 신용이 깎인다 ──
 {
   let st = engine.initState(S); st.meta.setupDone = true;
-  st.vars.job = '지역 라이브'; st.vars.job_days = 0;
+  st.vars.job = '잡지 화보'; st.vars.job_days = 0;
   const before = st.vars.late;
   st = engine.toggleAction(S, st, 'next_day').state;
   st = engine.sendPhase(S, st, { rng: seededRng('l', 1, 'a') }).state;
@@ -190,7 +198,7 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
   ck('펑크는 판정에 그대로 붙는다', /late/.test(S.checks.find((c) => c.id === 'ck_stage').mod), '');
   // 남은 날이 있을 때는 펑크가 아니라 하루가 줄 뿐이다
   let ok = engine.initState(S); ok.meta.setupDone = true;
-  ok.vars.job = '지역 라이브'; ok.vars.job_days = 3;
+  ok.vars.job = '잡지 화보'; ok.vars.job_days = 3;
   ok = engine.toggleAction(S, ok, 'next_day').state;
   ok = engine.sendPhase(S, ok, { rng: seededRng('l', 2, 'a') }).state;
   ck('아직 남은 날이면 하루만 준다', ok.vars.late === 0 && ok.vars.job_days === 2,
@@ -232,7 +240,7 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
   ck('시작은 수지 0이다', ledger(st).balance === 0 && ledger(st).spend === 0, JSON.stringify(ledger(st)));
 
   // 무대 보수는 수입으로 적힌다
-  Object.assign(st.vars, { job: 'TV 음악방송', job_days: 0 },
+  Object.assign(st.vars, { job: '케이블 음악방송', job_days: 0 },
     Object.fromEntries(['m1', 'm2', 'm3'].flatMap((m) => ['vo', 'da', 'vi'].map((k) => [`${m}_${k}`, 99]))));
   st = engine.toggleAction(S, st, 'perform').state;
   st = engine.sendPhase(S, st, { rng: seededRng('led', 1, 'a') }).state;
@@ -286,11 +294,11 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
 {
   const roll = (vars) => {
     let st = engine.initState(S); st.meta.setupDone = true;
-    Object.assign(st.vars, vars, { job: 'TV 음악방송', job_days: 0 });
+    Object.assign(st.vars, vars, { job: '케이블 음악방송', job_days: 0 });
     let win = 0;
     for (let i = 0; i < 60; i++) {
       let s2 = engine.initState(S); s2.meta.setupDone = true;
-      Object.assign(s2.vars, vars, { job: 'TV 음악방송', job_days: 0 });
+      Object.assign(s2.vars, vars, { job: '케이블 음악방송', job_days: 0 });
       s2 = engine.toggleAction(S, s2, 'perform').state;
       s2 = engine.sendPhase(S, s2, { rng: seededRng('s', i, 'a') }).state;
       if (s2.vars.buzz > 20 + 10) win++;     // 성공 계열만 화제성이 크게 뛴다
@@ -339,6 +347,183 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
   })(), jobs.join(' < '));
   ck('자리 배수가 멤버마다 한 줄이다 (슬롯×멤버 격자가 아니다)',
     ['p1', 'p2', 'p3'].every((id) => !!S.derived.find((d) => d.id === id)), '');
+}
+
+// ── v0.82 의뢰판: 자리를 고르는 판이 정말 굴러가는가 ──
+//
+// 여기서 재는 건 밸런스가 아니라 **규약**이다. 판정이 액션보다 먼저 굴러서 "어느 자리를
+// 노렸는지"를 모른다는 엔진 순서 위에 이 판이 세워져 있으므로, 그 규약이 깨지면
+// 영업은 굴러가는 것처럼 보이면서 아무 자리도 안 잡힌다 — 화면에는 아무 표시도 안 난다.
+const init = () => { const st = engine.initState(S); st.meta.setupDone = true; return st; };
+const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initState(S).vars, ...vars }));
+
+{
+  const TIERS = [
+    ['take_radio', 'ck_radio', 'od_radio', '지역 라디오', '잡지 화보'],
+    ['take_mag', 'ck_mag', 'od_mag', '잡지 화보', '지방 방송국'],
+    ['take_ltv', 'ck_ltv', 'od_ltv', '지방 방송국', '케이블 음악방송'],
+    ['take_cable', 'ck_cable', 'od_cable', '케이블 음악방송', '지상파 음악방송'],
+    ['take_net', 'ck_net', 'od_net', '지상파 음악방송', '골든타임 특집'],
+    ['take_gold', 'ck_gold', 'od_gold', '골든타임 특집', '골든타임 특집'],
+  ];
+  ck('★ 자리마다 버튼·판정·성사율이 한 벌씩 있다',
+    TIERS.every(([a, c, o]) => A(a) && S.checks.find((x) => x.id === c) && S.derived.find((d) => d.id === o)), '');
+  ck('★ 자리마다 판정이 따로다 (판정이 액션보다 먼저 굴러 vs를 못 고른다)',
+    new Set(TIERS.map(([a]) => A(a).check)).size === TIERS.length, '');
+
+  // 판정 → pitch_won → 액션이 자리를 넣는다. 셋 중 하나만 어긋나도 영업이 조용히 죽는다
+  const jobOf = (id, won) => E(A(id).effects.find((f) => f.set === 'job').expr, { job: '없음', pitch_won: won });
+  ck('★ 헛걸음(0)이면 자리가 안 잡힌다', TIERS.every(([id]) => jobOf(id, 0) === '없음'), '');
+  ck('★ 수주(1)면 노린 자리가 잡힌다',
+    TIERS.every(([id, , , mine]) => jobOf(id, 1) === mine), TIERS.map(([id]) => jobOf(id, 1)).join(','));
+  ck('★ 대어(2)면 한 칸 위를 물고 온다 (꼭대기는 자기 자리)',
+    TIERS.every(([id, , , , up]) => jobOf(id, 2) === up), TIERS.map(([id]) => jobOf(id, 2)).join(','));
+  ck('★ 판정이 남기는 건 pitch_won뿐이다 (자리 이름은 액션만 안다)',
+    TIERS.every(([, c]) => S.checks.find((x) => x.id === c).grades
+      .every((g) => (g.effects || []).some((f) => f.set === 'pitch_won')
+        && !(g.effects || []).some((f) => f.set === 'job'))), '');
+  ck('★ 헛걸음이어도 영업비는 나간다 (성사율을 볼 이유가 여기 있다)',
+    TIERS.every(([id]) => {
+      const f = A(id).effects.find((x) => x.set === 'funds');
+      return f && /funds - \d+/.test(f.expr);
+    }), '');
+
+  // 성사율 — 어려운 자리일수록 낮고, 이름값이 오르면 다 같이 오른다
+  const odds = (id, vars) => D(id, { ...engine.initState(S).vars, ...vars });
+  const at = (vars) => TIERS.map(([, , o]) => odds(o, vars));
+  const low = at({ awareness: 12, buzz: 20 });
+  ck('★ 어려운 자리일수록 성사율이 낮다', low.every((x, i) => i === 0 || x <= low[i - 1]), low.join('/'));
+  const high = at({ awareness: 90, buzz: 90, rank: 'S' });
+  ck('★ 이름값이 오르면 성사율이 오른다', high.every((x, i) => x >= low[i]), `${low.join('/')} → ${high.join('/')}`);
+  ck('성사율은 5~100 사이다 (대성공이 있으니 0은 없다)',
+    [...low, ...high].every((x) => x >= 5 && x <= 100), [...low, ...high].join('/'));
+  ck('성사율 여섯이 pitch_mod 한 줄을 공유한다 (고칠 데가 하나다)',
+    TIERS.every(([, , o]) => /pitch_mod/.test(S.derived.find((d) => d.id === o).expr))
+    && TIERS.every(([, c]) => S.checks.find((x) => x.id === c).mod === 'pitch_mod'), '');
+}
+
+// ── 대관: 잡는 것과 채우는 것은 다른 질문이다 ──
+{
+  const HALLS = ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour'];
+  ck('★ 공연장은 판정 없이 빌린다 (돈만 있으면 잡힌다)', HALLS.every((id) => !A(id).check), '');
+  ck('★ 대관료가 선불이다', HALLS.every((id) => A(id).effects.some((f) => f.set === 'funds' && /funds - \d+/.test(f.expr))), '');
+  const fee = HALLS.map((id) => Number(/funds - (\d+)/.exec(A(id).effects.find((f) => f.set === 'funds').expr)[1]));
+  ck('★ 큰 자리일수록 대관료가 비싸다', fee.every((x, i) => i === 0 || x > fee[i - 1]), fee.join('<'));
+  ck('★ 팬이 있어야 큰 데를 빌려준다 (유저가 말한 "잡을 수 있을지")',
+    HALLS.slice(1).every((id) => /fans >= \d+/.test(A(id).when)), '');
+  // 정원이 천장 — 팬이 아무리 많아도 작은 데서는 그만큼만 팔린다
+  const many = { fans: 900000, buzz: 100, live: '라이브하우스' };
+  ck('★ 정원이 천장이다 (팬이 많아도 작은 데선 그만큼만)',
+    D('live_tickets', { ...engine.initState(S).vars, ...many }) === D('live_cap', { ...engine.initState(S).vars, ...many }), '');
+  // 반대로 무리하면 빈 객석 — 예상 객석이 그 경고다
+  const thin = { fans: 800, buzz: 0, live: '전국 투어', m1_fan: 0, m2_fan: 0, m3_fan: 0 };
+  ck('★ 무리해서 빌리면 예상 객석이 바닥이다 (빈 객석 경고)',
+    D('live_fill', { ...engine.initState(S).vars, ...thin }) < 20,
+    `${D('live_fill', { ...engine.initState(S).vars, ...thin })}%`);
+  ck('라이브가 없으면 예상 객석은 0이다 (0으로 나누지 않는다)',
+    D('live_fill', { ...engine.initState(S).vars, live: '없음' }) === 0, '');
+  const lives = V('live').enum.filter((x) => x !== '없음');
+  const lvs = S.derived.find((d) => d.id === 'live_vs').expr;
+  const lpay = S.derived.find((d) => d.id === 'live_pay').expr;
+  const lcap = S.derived.find((d) => d.id === 'live_cap').expr;
+  ck('★ 라이브표가 세 줄(난이도·개런티·정원)에 다 모여 있다',
+    lives.every((l) => lvs.includes(l) && lpay.includes(l) && lcap.includes(l)), lives.join(','));
+}
+
+// ── 제작 의뢰: 돈만으로는 안 된다 ──
+{
+  const DRESS = ['make_dress1', 'make_dress2', 'make_dress3'];
+  const DISC = ['make_single', 'make_mini', 'make_full'];
+  const costOf = (id) => Number(/funds - (\d+)/.exec(A(id).effects.find((f) => f.set === 'funds').expr)[1]);
+  const needOf = (id) => { const m = /awareness >= (\d+)/.exec(A(id).when); return m ? Number(m[1]) : 0; };
+  for (const [name, ids] of [['의상', DRESS], ['음반', DISC]]) {
+    ck(`★ ${name} 등급이 오를수록 비싸다`, ids.map(costOf).every((x, i) => i === 0 || x > ids.map(costOf)[i - 1]),
+      ids.map(costOf).join('<'));
+    ck(`★ ${name} 등급이 오를수록 이름값을 요구한다 (돈만으로는 안 된다)`,
+      ids.map(needOf).every((x, i) => i === 0 || x > ids.map(needOf)[i - 1]), ids.map(needOf).join('<'));
+  }
+  ck('★ 음반은 한 단계씩만 올라간다 (정규부터 낼 수 없다)',
+    /album == '없음'/.test(A('make_single').when) && /album == '싱글'/.test(A('make_mini').when)
+    && /album == '미니 앨범'/.test(A('make_full').when), '');
+  ck('의상은 이미 좋은 걸 입고 있으면 안 열린다 (내려가는 버튼이 아니다)',
+    DRESS.every((id) => /costume != '특주 의상'/.test(A(id).when)), '');
+  ck('★ 좋은 옷일수록 무대가 유리하다', D('dress', { ...engine.initState(S).vars, costume: '특주 의상' })
+    > D('dress', { ...engine.initState(S).vars, costume: '기본 무대의상' }), '');
+}
+
+// ── 인세: 손을 놓아도 도는 유일한 돈 (그리고 유령 지출이 아닌가) ──
+{
+  const settle = S.rules.events.find((e) => e.id === 'settle');
+  const idx = settle.effects.map((f) => f.set);
+  ck('★ 인세는 장부를 닫은 뒤에 들어온다 (새 달 수입이다)',
+    idx.lastIndexOf('inc_album') > idx.indexOf('month_open'), idx.join(','));
+  // ⚠ v0.81에서 실제로 밟은 버그 — 장부에만 적고 자금에 안 넣으면 지출로 둔갑한다
+  const albumWrites = settle.effects.filter((f) => /album_n/.test(f.expr || ''));
+  ck('★ 인세가 장부와 자금을 같이 올린다 (유령 지출 방지)',
+    albumWrites.length === 2 && albumWrites.some((f) => f.set === 'inc_album') && albumWrites.some((f) => f.set === 'funds'),
+    albumWrites.map((f) => f.set).join(','));
+  ck('음반이 없으면 인세도 0이다', D('album_n', { ...engine.initState(S).vars, album: '없음' }) === 0, '');
+  ck('★ 큰 음반일수록 인세가 크다',
+    D('album_n', { ...engine.initState(S).vars, album: '정규 앨범' }) > D('album_n', { ...engine.initState(S).vars, album: '싱글' }), '');
+}
+
+// ── 음지: 오늘의 돈과 내일의 이름을 바꾸는 자리 ──
+{
+  const SHADE = [['shady_night', 'ck_night', 'od_night'], ['shady_spon', 'ck_spon', 'od_spon'],
+    ['shady_gravure', 'ck_gravure', 'od_gravure'], ['shady_adult', 'ck_adult', 'od_adult']];
+  ck('★ 음지도 자리마다 설득 판정이 있다', SHADE.every(([a, c]) => A(a) && A(a).check === c), '');
+  ck('★ 거절하면 돈이 안 들어온다 (물어본 것만 남는다)',
+    SHADE.every(([id]) => A(id).effects.filter((f) => /shady_ok/.test(f.expr || '')).length === A(id).effects.length)
+    && SHADE.every(([id]) => E(A(id).effects.find((f) => f.set === 'funds').expr, { funds: 0, shady_ok: 0 }) === 0), '');
+  ck('★ 수락하면 크게 들어온다',
+    SHADE.every(([id]) => E(A(id).effects.find((f) => f.set === 'funds').expr, { funds: 0, shady_ok: 1 }) > 0), '');
+  ck('★ 거절도 값을 치른다 (호감이 깎인다)',
+    SHADE.every(([, c]) => /m1_love/.test(JSON.stringify(S.checks.find((x) => x.id === c).grades.at(-1)))), '');
+  // 유저가 말한 "타락도에 따라 거절할 확률이 낮아져 점차 해금된다"
+  const acc = (v) => SHADE.map(([, , o]) => D(o, { ...engine.initState(S).vars, corrupt: v, funds: 1000 }));
+  ck('★ 타락도가 오르면 수락률이 오른다 (담근 만큼 다음이 쉬워진다)',
+    acc(80).every((x, i) => x > acc(0)[i]), `${acc(0).join('/')} → ${acc(80).join('/')}`);
+  ck('★ 문턱도 타락도가 연다 (처음부터 끝까지 갈 수는 없다)',
+    SHADE.slice(1).map(([id]) => Number(/corrupt >= (\d+)/.exec(A(id).when)[1]))
+      .every((x, i, a2) => i === 0 || x > a2[i - 1]), '');
+  ck('★ 급하면 설득이 쉬워진다 (돈이 마르면 셋도 안다)',
+    D('shady_mod', { ...engine.initState(S).vars, funds: 50 }) > D('shady_mod', { ...engine.initState(S).vars, funds: 5000 }), '');
+  // 갈림길 — 음지로 가면 양지의 큰 자리가 닫힌다. 이게 없으면 그냥 "돈 더 주는 버튼"이다
+  ck('★ 타락도가 지상파와 골든타임을 닫는다 (갈림길이 성립한다)',
+    /corrupt <= 45/.test(A('take_net').when) && /corrupt <= 25/.test(A('take_gold').when), '');
+  ck('타락은 달이 바뀌면 조금 잊힌다 (되돌아올 길이 있다)',
+    S.rules.events.find((e) => e.id === 'settle').effects.some((f) => f.set === 'corrupt' && /corrupt - \d+/.test(f.expr)), '');
+  ck('음지에도 청구서가 있다 (타락이 높으면 폭로가 돈다)',
+    !!S.rules.randomEvents.table.find((e) => e.id === 'leak' && /corrupt >= \d+/.test(e.when)), '');
+  ck('음지 액션은 함정 지적에서 면제 (손해인 줄 알고 누르는 자리다)',
+    SHADE.every(([id]) => A(id).impactExempt === true), '');
+  ck('타락도는 AI에게 안 연다 (시스템이 정한다)', !S.updater.allow.some((a) => a.id === 'corrupt'), '');
+}
+
+// ── 패널: 못 여는 자리도 잠긴 채로 보인다 ──
+{
+  const tabs = partyTabs(S);
+  const byId = Object.fromEntries(tabs.map((t) => [t.id, t]));
+  ck('★ 의뢰판이 편성표에 있다 (일감 · 무대 · 제작 · 음지)',
+    ['jobs', 'halls', 'make', 'shade'].every((id) => byId[id]), tabs.map((t) => t.id).join(','));
+  ck('★ 일감 탭에 사다리 일곱이 다 늘어서 있다 (잠긴 것도 보여야 다음 목표가 된다)',
+    byId.jobs.actions.length === 7, String(byId.jobs.actions.length));
+  ck('★ 음지 탭은 조건이 걸려 있다 (형편이 멀쩡하면 보이지도 않는다)',
+    /funds < \d+ or corrupt >= 1/.test(byId.shade.when || ''), String(byId.shade.when));
+  // 상태창 — 성사율은 일감이 비었을 때만 본다
+  const jobPane = S.statusUI.groups.find((g) => g.label === '일감');
+  const oddRows = jobPane.items.filter((it) => /^od_/.test(it.var));
+  ck('★ 성사율이 일감 탭에 뜬다', oddRows.length === 6, String(oddRows.length));
+  ck('★ 일감을 이미 잡았으면 성사율은 접힌다 (지금 중요한 게 가려지지 않게)',
+    oddRows.every((it) => /job == '없음'/.test(it.showWhen || '')), '');
+  ck('★ 성사율 표시 조건이 버튼 조건과 짝이다 (안 열리는 자리의 확률을 보여주지 않는다)',
+    [['od_ltv', 'take_ltv'], ['od_cable', 'take_cable'], ['od_net', 'take_net'], ['od_gold', 'take_gold']]
+      .every(([o, a]) => {
+        const need = /awareness >= (\d+)/.exec(jobPane.items.find((it) => it.var === o).showWhen)[1];
+        return need === /awareness >= (\d+)/.exec(A(a).when)[1];
+      }), '');
+  const shadePane = S.statusUI.groups.find((g) => g.label === '음지');
+  ck('★ 음지 탭도 발을 담근 뒤에만 뜬다', /corrupt >= 1/.test(shadePane.showWhen || ''), String(shadePane.showWhen));
 }
 
 report();

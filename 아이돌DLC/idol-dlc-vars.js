@@ -228,11 +228,16 @@ S.party.empty = EMPTY;
 S.party.nav = 'select';
 S.party.note = '센터는 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 한 사람은 한 자리에만.';
 S.party.unique = true;   // 같은 사람을 두 자리에 앉힐 수 없다
-// 초상화 — 켜면 편성표 후보에 그림이 붙는다. **리수 쪽 에셋 이름을 확인한 뒤에 켤 것**:
-// 원본 봇의 이미지는 `Nakano_Miku.default.avif`처럼 점으로 이어진 이름이라, 리수가 이걸
-// 어떤 에셋 키로 잡는지에 따라 여기 값이 달라진다. 없는 이름을 넣으면 빈 그림이 줄줄이 뜬다.
-const WITH_PORTRAITS = false;
-if (WITH_PORTRAITS) S.party.portraits = { ...ASSET };
+// 초상화 — 편성표 슬롯·후보 칩에 얼굴이 뜬다. 값은 **리수 에셋 이름**(확장자 뺀 파일명)이다.
+// 원본 봇의 기본 일러가 `Nakano_Miku.default.avif`이므로 에셋 이름은 `Nakano_Miku.default`.
+// ⚠ 봇마다 다르다. 편집기 [편성표] 층 → 🖼 초상 매핑 → [🔎 에셋 이름 불러오기]를 눌러
+//   실제 이름을 보고, 다르면 아래 꼬리표만 고쳐서 다시 돌리면 44명이 한 번에 맞춰진다.
+//   (44칸을 손으로 채우지 않으려고 여기서 만든다 — 편집기 UI는 몇 명 고칠 때 쓰는 자리다.)
+const PORTRAIT_SUFFIX = '.default';
+const WITH_PORTRAITS = true;
+if (WITH_PORTRAITS) {
+  S.party.portraits = Object.fromEntries(NAME_MAP.map(([ko, en]) => [ko, en + PORTRAIT_SUFFIX]));
+}
 
 // ── 5. 상태창 ──
 // 자리 탭은 **사람이 앉았을 때만** 뜬다. 다섯 칸을 늘 펼쳐 두면 빈 자리 숫자가 화면의 절반이다

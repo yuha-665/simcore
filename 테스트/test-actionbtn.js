@@ -21,8 +21,10 @@ const Risuai = {
   async setChatPanel() {},
 };
 const engine = {
+  // 목 — 조건을 평가하지 않고 when이 달려 있으면 차단한다 (이 파일의 검사 대상은
+  // 조건 평가가 아니라 버튼 배선·알림 경로다. 평가 자체는 코어 테스트가 본다)
   actionAvailability(schema, state, a) {
-    if (a.when === 'false') return { ok: false, reason: '조건 미충족' };
+    if (a.when) return { ok: false, reason: '조건 미충족' };
     return { ok: true };
   },
   findChoiceEvent() { return null; },
@@ -119,6 +121,14 @@ const check = (name, cond, extra = '') => { results.push([cond, name, extra]); }
   check('★ 패널 위에서는 호스트 알림을 안 부른다', alerts.length === 1, JSON.stringify(alerts));
   check('★ 대신 패널 공지줄에 잠금 이유가 뜬다',
     String(gameNotice).includes('🔒') && String(gameNotice).includes('조건 미충족'), String(gameNotice));
+  // v0.85.3 — 조건을 사람 말로: 변수 id가 라벨로 치환되어 보인다
+  // (실사고: 업무가 잡혀 있어 거리 홍보가 잠긴 것을 난이도 설정 미스로 오해)
+  // ⚠ 이 하네스의 engine은 목이라 조건을 실제로 평가하지 않는다 (when이 있으면 차단).
+  // 검사 대상은 humanCond — 조건문의 변수 id(front)가 라벨(전위)로 바뀌어 보이는가다.
+  schema.actions.push({ id: 'sortie', label: '출격', when: "front != '없음'" });
+  await onActionButton('sortie');
+  check('★ 잠금 이유가 조건을 사람 말로 보여준다 (front → 전위)',
+    String(gameNotice).includes('전위') && !String(gameNotice).includes('front'), String(gameNotice));
   await onActionButton('repair');
   check('성공 토글이 잠금 공지를 지운다 (낡은 이유가 계속 떠 있지 않게)', gameNotice === null, String(gameNotice));
   gameVisible = false;

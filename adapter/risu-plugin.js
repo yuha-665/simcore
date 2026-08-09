@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85.2
-//@display-name SimCore (시뮬 엔진) v0.85.2 프리셋이 새 채팅에 따라간다
+//@version 0.85.3
+//@display-name SimCore (시뮬 엔진) v0.85.3 잠금 이유를 조건 그대로 보여준다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.3 ───────────────────────────────────────────────
+// 잠긴 액션의 이유가 '조건 미충족' 넉 자뿐이라 유저가 왜 잠겼는지 알 수 없었다
+// (실사고: 업무가 잡혀 있어 거리 홍보가 잠긴 것을 리얼리티 난이도 설정 미스로 오해 —
+//  거리 홍보의 조건은 난이도와 무관하다: 잡힌 업무 == '없음' 그리고 활동 중단 아님).
+// 변수 id를 라벨로 치환해 조건을 그대로 보여준다 (humanCond) — 패널 칩 툴팁·클릭 공지·
+// 호스트 알림·상태창 범례가 같은 문구를 쓴다 (currentActionStates 한 곳에서 만든다).
 //
 // ── v0.85.2 ───────────────────────────────────────────────
 // 새 시작 프리셋이 **새 채팅에서 증발**하던 문제 (실사고: 리얼리티를 골랐는데 새 채팅이
@@ -2622,6 +2629,20 @@
    * 액션의 현재 상태. 우상단 버튼과 상태창 범례가 같은 값을 봐야 짝이 맞으므로 한 곳에서 만든다.
    * (actionGlyph는 render 모듈이 갖고 있다 — 범례도 같은 글리프를 써야 하기 때문)
    */
+  // 잠금 이유를 사람 말로 (v0.85.3) — '조건 미충족'만으로는 왜 잠겼는지 알 길이 없다.
+  // 실사고: 업무가 잡혀 있어 거리 홍보가 잠긴 것을 난이도 설정 미스로 오해했다.
+  // 변수 id를 라벨로 바꿔 조건을 그대로 보여준다 — 완전한 번역은 아니어도
+  // "이 버튼이 무엇을 보고 있는가"는 전달된다.
+  function humanCond(when) {
+    if (!when || !schema) return String(when ?? '');
+    const names = Object.fromEntries([...(schema.vars || []), ...(schema.derived || [])]
+      .map((v) => [v.id, v.label || v.id]));
+    return String(when)
+      .replace(/\bnot\s+([A-Za-z_][A-Za-z0-9_]*)/g, '$1 아님')
+      .replace(/[A-Za-z_][A-Za-z0-9_]*/g, (t) => names[t] ?? t)
+      .replace(/\band\b/g, '그리고').replace(/\bor\b/g, '또는');
+  }
+
   function currentActionStates() {
     if (!session || !schema) return [];
     return (schema.actions || []).map((a) => {
@@ -2631,7 +2652,8 @@
         label: a.label ?? a.id,
         armed: !!session.current.meta.armed[a.id],
         disabled: !avail.ok,
-        reason: avail.reason ?? '',
+        reason: !avail.ok && avail.reason === '조건 미충족' && a.when
+          ? `조건 미충족 — ${humanCond(a.when)}` : (avail.reason ?? ''),
       };
     });
   }
@@ -2678,16 +2700,20 @@
     const r = session.toggle(actionId);
     console.log('[simcore] 액션', actionId, r.armed ? '무장 ●' : '해제', r.blocked ? `(차단: ${r.blocked})` : '');
     if (r.blocked) {
-      const label = schema?.actions?.find((a) => a.id === actionId)?.label ?? actionId;
+      const def = schema?.actions?.find((a) => a.id === actionId);
+      const label = def?.label ?? actionId;
+      // 이유가 '조건 미충족'뿐이면 조건을 사람 말로 풀어 붙인다 (v0.85.3)
+      const why = r.blocked === '조건 미충족' && def?.when
+        ? `조건 미충족 — ${humanCond(def.when)}` : r.blocked;
       // 규칙 #6 — 게임 패널이 떠 있는 동안 호스트 알림(Risuai.alert)은 우리 전체화면 iframe
       // **뒤에** 떠서 문구가 안 보이고 닫을 수도 없다 (실사고: 패널의 잠긴 액션 클릭).
       // 패널이 보이면 패널 안 공지줄(gameNotice)로, 아니면 기존대로 호스트 알림으로.
       if (gameVisible) {
-        gameNotice = `🔒 ${label} — ${r.blocked}`;
+        gameNotice = `🔒 ${label} — ${why}`;
         // syncControls가 패널을 다시 그리지만, 실패해도 공지는 떠야 하므로 여기서도 그린다
         try { renderGamePanel(); } catch {}
       } else {
-        try { await Risuai.alert(`'${label}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
+        try { await Risuai.alert(`'${label}' 지금은 쓸 수 없어 — ${why}`); } catch {}
       }
     } else if (gameVisible && gameNotice && gameNotice.startsWith('🔒')) {
       gameNotice = null; // 성공 토글이 이전 잠금 공지를 지운다 — 낡은 이유가 계속 떠 있지 않게

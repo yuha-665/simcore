@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85.3
-//@display-name SimCore (시뮬 엔진) v0.85.3 잠금 이유를 조건 그대로 보여준다
+//@version 0.85.4
+//@display-name SimCore (시뮬 엔진) v0.85.4 패널 조작이 상태창에 바로 보인다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.4 ───────────────────────────────────────────────
+// 패널에서 레슨을 찍어도 채팅 속 상태창은 옛 숫자였다 — 상태창은 리수가 그 메시지를
+// 다시 그릴 때만 갱신되기 때문 (값 자체는 즉시 적용·저장되고 있었다. 표시 지연일 뿐).
+// mainDom(클릭 조작 권한)이 열려 있으면 상태창 루트(id=simst-<uid>, 규칙 #4 uid 섞음)를
+// 찾아 본체를 제자리에서 새로 그린다 — 쓰기는 SafeElement가 새니타이즈. 반영을 되읽어
+// 확인하고, 안 되는 환경(권한 거부 등)이면 패널 공지에 "다음 메시지에서 갱신"을 붙인다.
+// 편성·레슨·달력·변수 수동 보정·프리셋 모두 같은 길을 탄다.
+// [live-test] SafeElement innerHTML 대입 반영 여부 웹리스 확인.
 //
 // ── v0.85.3 ───────────────────────────────────────────────
 // 잠긴 액션의 이유가 '조건 미충족' 넉 자뿐이라 유저가 왜 잠겼는지 알 수 없었다
@@ -6489,7 +6498,9 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     ? `<details open><summary>${title}</summary>${inner}</details>`
     : inner;
   const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
-  return `${styleTag}<div class="sim-status">${body}</div>`;
+  // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
+  // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
+  return `${styleTag}<div class="sim-status" id="simst-${uid}">${body}</div>`;
 }
 
 /**
@@ -22132,6 +22143,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       await mirrorVars(chaIdx, chatIdx);
     } catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
     console.log(`[simcore] ${what}:`, JSON.stringify(changes));
+    // 채팅 속 상태창도 제자리 갱신 (v0.85.4) — 안 되는 환경(mainDom 거부 등)이면
+    // 공지줄에 "다음 메시지에서 갱신"을 붙여 헛갈리지 않게 한다
+    const refreshed = await refreshStatusDom();
+    if (!refreshed && gameNotice && gameNotice.startsWith('✓')) {
+      gameNotice += ' · 채팅 속 상태창은 다음 메시지에서 갱신돼요';
+    }
     renderGamePanel();
     await updateControlStrip();
     if (panelBuilt) renderPanel();
@@ -22202,6 +22219,43 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (typeof obj[method] === 'function') return await obj[method]();
       return prop != null ? obj[prop] : undefined;
     } catch { return prop != null ? obj[prop] : undefined; }
+  }
+
+  // ── 상태창 즉시 갱신 (v0.85.4) ────────────────────────────
+  // 채팅 속 상태창은 리수가 그 메시지를 다시 그릴 때만 갱신된다 — 패널에서 레슨을 찍어도
+  // 다음 메시지 전까지는 옛 숫자가 보였다 (실사고: "찍었는데 상태창은 그대로" 신고).
+  // mainDom이 열려 있으면 상태창 루트(id=simst-<uid>)를 찾아 본체를 새로 그려 넣는다.
+  // 쓰기는 SafeElement가 DOMPurify로 새니타이즈한다. 반영 여부를 되읽어 확인하고,
+  // 실패면 false를 돌려 호출자가 "다음 메시지에서 갱신" 안내를 붙이게 한다.
+  // [live-test] SafeElement innerHTML 대입이 실제 반영되는지 웹리스에서 확인 필요.
+  async function refreshStatusDom() {
+    if (!session || !schema || hitState !== 'on' || !hitDoc) return false;
+    try {
+      const els = await hitDoc.querySelectorAll('[class*="sim-status"]');
+      const n = typeof els.length === 'function' ? await els.length() : els.length;
+      let verified = false;
+      for (let i = 0; i < n; i++) {
+        const el = typeof els.at === 'function' ? await els.at(i) : els[i];
+        if (!el) continue;
+        const eid = String(await safeCall(el, 'getId', 'id') ?? '');
+        const m = /^simst-([A-Za-z0-9_-]+)$/.exec(eid);
+        if (!m) continue;
+        const html = renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
+          { includeStyle: false, uid: m[1] });
+        // 루트 껍데기는 이미 DOM에 있다 — 본체만 갈아 끼운다
+        const inner = html.replace(/^<div class="sim-status"[^>]*>/, '').replace(/<\/div>$/, '');
+        try {
+          if (typeof el.setInnerHTML === 'function') await el.setInnerHTML(inner);
+          else el.innerHTML = inner;
+        } catch { continue; }
+        // 되읽어 반영 확인 — 프록시가 쓰기를 조용히 버리는 환경이면 여기서 걸린다
+        try {
+          const back = String(await safeCall(el, 'getInnerHTML', 'innerHTML') ?? '');
+          if (back && back.slice(0, 60) === inner.slice(0, 60)) verified = true;
+        } catch {}
+      }
+      return verified;
+    } catch (e) { console.log('[simcore] 상태창 즉시 갱신 실패:', e.message); return false; }
   }
 
   async function onDocClick(ev) {
@@ -24006,6 +24060,7 @@ count(목록)  has(목록, "항목")</pre>
         const chaIdx = await Risuai.getCurrentCharacterIndex();
         const chatIdx = await Risuai.getCurrentChatIndex();
         await mirrorVars(chaIdx, chatIdx);
+        try { await refreshStatusDom(); } catch {} // 채팅 속 상태창도 제자리 갱신 (v0.85.4)
         renderPanel();
       };
       presetsDiv.appendChild(btn);
@@ -24027,6 +24082,7 @@ count(목록)  has(목록, "항목")</pre>
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);
+      try { await refreshStatusDom(); } catch {} // 채팅 속 상태창도 제자리 갱신 (v0.85.4)
       renderPanel();
     };
 

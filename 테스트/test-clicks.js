@@ -161,6 +161,16 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('권한 거부 안내에 방패 아이콘 경로', src.includes('방패 아이콘'), '');
   ck('다시 연결 버튼', src.includes('sc-hitretry'), '');
   ck('제안 칩 = sendChat 경로', src.includes('Risuai.sendChat('), '');
+
+  // ── 상태창 제자리 갱신 (v0.85.4) — 패널 조작이 채팅 속 상태창에 바로 보이게 ──
+  ck('★ 제자리 갱신 함수가 있다', src.includes('async function refreshStatusDom()'), '');
+  ck('★ 게임 패널 커밋이 제자리 갱신을 부른다',
+    /commitPanelChanges[\s\S]{0,900}refreshStatusDom\(\)/.test(src.slice(src.indexOf('async function commitPanelChanges'))), '');
+  ck('★ 안 되는 환경에선 안내를 붙인다 (조용한 실패 금지)',
+    src.includes('채팅 속 상태창은 다음 메시지에서 갱신돼요'), '');
+  ck('★ 루트 손잡이(simst-)로 찾는다', src.includes('simst-'), '');
+  ck('되읽어 반영을 확인한다 (프록시가 쓰기를 버리는 환경 대비)',
+    src.includes("safeCall(el, 'getInnerHTML', 'innerHTML')"), '');
 }
 
 (async () => {

@@ -59,6 +59,9 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   const m3 = draw(mk('tabs'), 3);
   const m4 = draw(mk('tabs'), 4);
   ck('★ 메시지가 다르면 라디오 id가 다르다', !m3.includes('simtab-4-') && m4.includes('simtab-4-0'), '');
+  // v0.85.4 — 루트 id는 어댑터의 제자리 갱신 손잡이다 (uid 섞임 = 규칙 #4)
+  ck('★ 상태창 루트에 uid 섞인 id가 붙는다 (제자리 갱신 손잡이)',
+    m3.includes('id="simst-3"') && m4.includes('id="simst-4"'), '');
   ck('★ 메시지가 다르면 라디오 name도 다르다 (선택이 서로 풀리지 않게)',
     m3.includes('name="simtab-3"') && m4.includes('name="simtab-4"'), '');
   const ids3 = (m3.match(/id="[^"]+"/g) || []);
@@ -79,7 +82,9 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   // 바깥 껍데기(<details open>)도 open이라 그건 빼고 센다
   ck('아코디언: 첫 장만 펼쳐져 있다', (html.match(/sim-acc" open>/g) || []).length === 1,
     (html.match(/<details[^>]*>/g) || []).join(' '));
-  ck('★ 아코디언은 id를 안 쓴다 (메시지끼리 충돌 불가)', !html.includes('id='), '');
+  // 루트 손잡이(simst-<uid>)는 uid가 섞여 있어 예외 — 내부 요소의 고정 id만 금지다
+  ck('★ 아코디언은 id를 안 쓴다 (메시지끼리 충돌 불가)',
+    !html.replace(/id="simst-[^"]*"/g, '').includes('id='), '');
   ck('아코디언: 그룹이 하나여도 동작한다', draw(mk('accordion', 1), 3).includes('sim-acc'), '');
 }
 
@@ -89,7 +94,8 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('★ 팝업: 그룹마다 tabindex 가진 껍데기', (html.match(/class="sim-pop" tabindex="0"/g) || []).length === 3, '');
   ck('팝업: 버튼과 본문이 짝지어져 있다',
     (html.match(/sim-pop-btn/g) || []).length === 3 && (html.match(/sim-pop-body/g) || []).length === 3, '');
-  ck('★ 팝업도 id를 안 쓴다', !html.includes('id='), '');
+  ck('★ 팝업도 id를 안 쓴다',
+    !html.replace(/id="simst-[^"]*"/g, '').includes('id='), '');
   ck('팝업: 그룹이 하나면 쌓기로 되돌린다', !draw(mk('popover', 1), 3).includes('sim-pops'), '');
 }
 

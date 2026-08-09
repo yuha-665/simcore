@@ -406,7 +406,9 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     ? `<details open><summary>${title}</summary>${inner}</details>`
     : inner;
   const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
-  return `${styleTag}<div class="sim-status">${body}</div>`;
+  // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
+  // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
+  return `${styleTag}<div class="sim-status" id="simst-${uid}">${body}</div>`;
 }
 
 /**

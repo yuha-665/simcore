@@ -53,6 +53,19 @@
       "desc": "업계가 이 사무소를 어떻게 보는가. 큰 일감을 여는 열쇠다. 인지도에 따라 시스템이 올리니 서사로 바꾸지 마라."
     },
     {
+      "id": "hard",
+      "label": "난이도",
+      "type": "enum",
+      "init": "보통",
+      "enum": [
+        "쉬움",
+        "보통",
+        "어려움",
+        "리얼리티"
+      ],
+      "desc": "판의 난이도. 시작할 때 정하는 시스템 설정이니 서사로 바꾸지 마라."
+    },
+    {
       "id": "awareness",
       "label": "인지도",
       "type": "int",
@@ -1081,6 +1094,40 @@
       "expr": "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))"
     },
     {
+      "id": "hard_n",
+      "label": "난이도 수치",
+      "expr": "hard == '리얼리티' ? 3 : (hard == '어려움' ? 2 : (hard == '쉬움' ? 0 : 1))"
+    },
+    {
+      "id": "fan_mul",
+      "label": "팬 획득 배율",
+      "expr": "(12 - hard_n * 2) / 10"
+    },
+    {
+      "id": "meal_cost",
+      "label": "회식 비용",
+      "expr": "round(40 * (3 + hard_n) / 4)",
+      "format": "{v}만원"
+    },
+    {
+      "id": "mass_cost",
+      "label": "마사지 비용",
+      "expr": "round(120 * (3 + hard_n) / 4)",
+      "format": "{v}만원"
+    },
+    {
+      "id": "spa_cost",
+      "label": "스파 비용",
+      "expr": "round(260 * (3 + hard_n) / 4)",
+      "format": "{v}만원"
+    },
+    {
+      "id": "resort_cost",
+      "label": "리조트 비용",
+      "expr": "round(600 * (3 + hard_n) / 4)",
+      "format": "{v}만원"
+    },
+    {
       "id": "dress",
       "label": "의상 보정",
       "expr": "costume == '특주 의상' ? 8 : (costume == '특별 의상' ? 5 : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4)))"
@@ -1131,7 +1178,7 @@
     {
       "id": "pitch_mod",
       "label": "영업 보정",
-      "expr": "min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2"
+      "expr": "min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2 + (1 - hard_n) * 2"
     },
     {
       "id": "od_radio",
@@ -1284,7 +1331,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + round(job_pay * 3), 9999999)"
+              "expr": "min(fans + round(job_pay * 3 * fan_mul), 9999999)"
             },
             {
               "set": "funds",
@@ -1437,7 +1484,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + job_pay, 9999999)"
+              "expr": "min(fans + round(job_pay * fan_mul), 9999999)"
             },
             {
               "set": "funds",
@@ -1587,7 +1634,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + round(live_tickets * 0.5), 9999999)"
+              "expr": "min(fans + round(live_tickets * 0.5 * fan_mul), 9999999)"
             },
             {
               "set": "buzz",
@@ -1666,7 +1713,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + round(live_tickets * 0.25), 9999999)"
+              "expr": "min(fans + round(live_tickets * 0.25 * fan_mul), 9999999)"
             },
             {
               "set": "buzz",
@@ -1788,7 +1835,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + v_prize * 5, 9999999)"
+              "expr": "min(fans + round(v_prize * 5 * fan_mul), 9999999)"
             },
             {
               "set": "buzz",
@@ -1874,7 +1921,7 @@
             },
             {
               "set": "fans",
-              "expr": "min(fans + v_prize * 3, 9999999)"
+              "expr": "min(fans + round(v_prize * 3 * fan_mul), 9999999)"
             },
             {
               "set": "buzz",
@@ -2933,6 +2980,266 @@
       ]
     },
     {
+      "id": "meal",
+      "label": "🍚 회식을 쏜다",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "funds >= meal_cost and not unit_over",
+      "inject": "[행동] 오늘은 고기다. 테이블 예절 같은 건 잠시 잊기로 한다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - meal_cost, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 6, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 6, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 6, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 6, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 6, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 6, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 6, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 6, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 6, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 6, 100)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 2, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 2, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 2, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 2, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 2, 100)"
+        }
+      ]
+    },
+    {
+      "id": "massage",
+      "label": "💆 마사지샵에 보낸다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "awareness >= 32 and funds >= mass_cost and not unit_over",
+      "inject": "[행동] 단골 마사지샵에 셋을 밀어 넣는다. 무대에 서는 몸은 관리가 일이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - mass_cost, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 18, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 18, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 18, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 18, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 18, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 4, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 4, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 4, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 4, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 4, 100)"
+        }
+      ]
+    },
+    {
+      "id": "spa",
+      "label": "♨️ 스파에 데려간다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "when": "awareness >= 46 and funds >= spa_cost and not unit_over",
+      "inject": "[행동] 회원제 스파. 이 정도는 되어야 알아보는 사람 없이 쉴 수 있다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - spa_cost, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 14, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 14, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 14, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 14, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 14, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 14, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 14, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 14, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 14, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 14, 100)"
+        }
+      ]
+    },
+    {
+      "id": "resort",
+      "label": "🏝 리조트 휴가를 준다",
+      "mode": "oneshot",
+      "cooldown": 8,
+      "when": "awareness >= 76 and funds >= resort_cost and not unit_over",
+      "inject": "[행동] 일정표를 통째로 비우고 바다로 보낸다. 사진이 찍히지 않을 곳으로.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - resort_cost, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 30, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 30, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 30, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 30, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 30, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 25, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 25, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 25, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 25, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 25, 100)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 6, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 6, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 6, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 6, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 6, 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "max(buzz - 3, 0)"
+        }
+      ]
+    },
+    {
       "id": "promo",
       "label": "📣 홍보를 돈다",
       "mode": "oneshot",
@@ -2954,7 +3261,7 @@
         },
         {
           "set": "fans",
-          "expr": "min(fans + 40 + round(fans * 0.04), 9999999)"
+          "expr": "min(fans + round((40 + round(fans * 0.04)) * fan_mul), 9999999)"
         },
         {
           "set": "m1_st",
@@ -3644,7 +3951,7 @@
           },
           {
             "set": "fans",
-            "expr": "min(fans + round(fans * 0.2), 9999999)"
+            "expr": "min(fans + round(fans * 0.2 * fan_mul), 9999999)"
           },
           {
             "set": "m1_love",
@@ -3775,11 +4082,11 @@
           },
           {
             "set": "debt",
-            "expr": "min(debt + max(round(debt * 0.05) - funds, 0), 9999999)"
+            "expr": "min(debt + max(round(debt * (3 + hard_n * 2) / 100) - funds, 0), 9999999)"
           },
           {
             "set": "funds",
-            "expr": "max(funds - round(debt * 0.05), 0)"
+            "expr": "max(funds - round(debt * (3 + hard_n * 2) / 100), 0)"
           }
         ]
       },
@@ -3931,6 +4238,99 @@
             }
           ],
           "notify": "작은 잡지에서 인터뷰 요청이 왔다. 두 쪽짜리지만 지면은 지면이다."
+        },
+        {
+          "id": "collector",
+          "weight": 4,
+          "cooldown": 6,
+          "timeout": 2,
+          "when": "not unit_over and debt >= 3600 - hard_n * 600",
+          "notify": "빚 독촉이 사무소까지 왔다. 정장 차림 둘이 응접실에 앉아 일어나지 않는다.",
+          "choices": [
+            {
+              "label": "소개받은 일을 받는다",
+              "inject": "그쪽이 내미는 종이에 적힌 일로 이자를 무마하기로 한다 — 밝은 데서 하는 일이 아니라는 건 서로 안다.",
+              "effects": [
+                {
+                  "set": "corrupt",
+                  "expr": "min(corrupt + 8, 100)"
+                },
+                {
+                  "set": "funds",
+                  "expr": "min(funds + 400, 9999999)"
+                },
+                {
+                  "set": "m1_me",
+                  "expr": "max(m1_me - 4, 0)"
+                },
+                {
+                  "set": "m2_me",
+                  "expr": "max(m2_me - 4, 0)"
+                },
+                {
+                  "set": "m3_me",
+                  "expr": "max(m3_me - 4, 0)"
+                },
+                {
+                  "set": "m4_me",
+                  "expr": "max(m4_me - 4, 0)"
+                },
+                {
+                  "set": "m5_me",
+                  "expr": "max(m5_me - 4, 0)"
+                }
+              ]
+            },
+            {
+              "label": "긁어모아 급한 불을 끈다",
+              "when": "funds >= 300",
+              "inject": "서랍까지 털어 봉투를 만든다. 이번 달은 넘긴다.",
+              "effects": [
+                {
+                  "set": "funds",
+                  "expr": "max(funds - 300, 0)"
+                },
+                {
+                  "set": "debt",
+                  "expr": "max(debt - 200, 0)"
+                }
+              ]
+            },
+            {
+              "label": "버틴다",
+              "inject": "내줄 것이 없다고 말한다. 돌아가는 등 뒤로, 다음에는 여기서 끝나지 않을 거라는 말이 남는다.",
+              "effects": [
+                {
+                  "set": "debt",
+                  "expr": "min(debt + round(debt * 0.03), 9999999)"
+                },
+                {
+                  "set": "m1_me",
+                  "expr": "max(m1_me - 8, 0)"
+                },
+                {
+                  "set": "m2_me",
+                  "expr": "max(m2_me - 8, 0)"
+                },
+                {
+                  "set": "m3_me",
+                  "expr": "max(m3_me - 8, 0)"
+                },
+                {
+                  "set": "m4_me",
+                  "expr": "max(m4_me - 8, 0)"
+                },
+                {
+                  "set": "m5_me",
+                  "expr": "max(m5_me - 8, 0)"
+                },
+                {
+                  "set": "buzz",
+                  "expr": "max(buzz - 3, 0)"
+                }
+              ]
+            }
+          ]
         },
         {
           "id": "scandal",
@@ -4295,7 +4695,7 @@
         "maxDelta": 6
       }
     ],
-    "guide": "장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
+    "guide": "장면에 실제로 나온 것만 반영하라. 등급·난이도·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
   },
   "promptState": {
     "position": "history_end",
@@ -4491,11 +4891,22 @@
         "note": "오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. 타락도가 높으면 지상파와 골든타임이 닫힌다."
       },
       {
-        "id": "office",
-        "label": "사무소",
+        "id": "care",
+        "label": "관리",
         "actions": [
           "rest_day",
           "talk",
+          "meal",
+          "massage",
+          "spa",
+          "resort"
+        ],
+        "note": "체력·멘탈을 돌보는 자리. 위 시설일수록 세게 돌려주지만 이름값이 있어야 열리고, 비용은 난이도에 따라 비싸진다 (값은 상태창 [관리]에서 본다)."
+      },
+      {
+        "id": "office",
+        "label": "사무소",
+        "actions": [
           "promo",
           "borrow",
           "repay",
@@ -4563,6 +4974,10 @@
         "items": [
           {
             "var": "rank"
+          },
+          {
+            "var": "hard",
+            "showWhen": "hard != '보통'"
           },
           {
             "var": "ranking"
@@ -4791,6 +5206,26 @@
           {
             "var": "schedule",
             "showWhen": "count(schedule) > 0"
+          }
+        ]
+      },
+      {
+        "label": "관리",
+        "items": [
+          {
+            "var": "meal_cost"
+          },
+          {
+            "var": "mass_cost",
+            "showWhen": "awareness >= 32"
+          },
+          {
+            "var": "spa_cost",
+            "showWhen": "awareness >= 46"
+          },
+          {
+            "var": "resort_cost",
+            "showWhen": "awareness >= 76"
           }
         ]
       },
@@ -5080,121 +5515,143 @@
   "setup": {
     "presets": [
       {
-        "id": "rookie",
-        "label": "무명 — 아직 아무도 모른다",
-        "set": {}
-      },
-      {
-        "id": "hit",
-        "label": "한 번 터졌다 — 다음이 어렵다",
+        "id": "easy",
+        "label": "신규 데뷔 · 쉬움 — 든든한 출발",
         "set": {
-          "rank": "C",
-          "awareness": 46,
-          "buzz": 62,
-          "fans": 14000,
-          "sales": 3200,
-          "funds": 1500,
-          "month_open": 1500,
-          "debt": 600,
-          "costume": "제작 의상",
-          "album": "싱글",
-          "m1_vo": 45,
-          "m1_da": 45,
-          "m1_vi": 45,
-          "m1_love": 40,
-          "m1_fan": 2800,
-          "m2_vo": 45,
-          "m2_da": 45,
-          "m2_vi": 45,
-          "m2_love": 40,
-          "m2_fan": 2800,
-          "m3_vo": 45,
-          "m3_da": 45,
-          "m3_vi": 45,
-          "m3_love": 40,
-          "m3_fan": 2800,
-          "m4_vo": 45,
-          "m4_da": 45,
-          "m4_vi": 45,
-          "m4_love": 40,
-          "m4_fan": 2800,
-          "m5_vo": 45,
-          "m5_da": 45,
-          "m5_vi": 45,
-          "m5_love": 40,
-          "m5_fan": 2800
-        }
-      },
-      {
-        "id": "debtor",
-        "label": "빚에 눌려 — 다섯을 지킬 수 있을까",
-        "set": {
-          "funds": 260,
-          "month_open": 260,
-          "debt": 2600,
-          "late": 2,
-          "buzz": 8,
+          "awareness": 0,
+          "buzz": 0,
+          "fans": 0,
+          "sales": 0,
           "costume": "연습복",
-          "m1_st": 50,
-          "m1_me": 38,
-          "m1_love": 12,
-          "m2_st": 50,
-          "m2_me": 38,
-          "m2_love": 12,
-          "m3_st": 50,
-          "m3_me": 38,
-          "m3_love": 12,
-          "m4_st": 50,
-          "m4_me": 38,
-          "m4_love": 12,
-          "m5_st": 50,
-          "m5_me": 38,
-          "m5_love": 12
+          "m1_vo": 1,
+          "m1_da": 1,
+          "m1_vi": 1,
+          "m1_fan": 0,
+          "m2_vo": 1,
+          "m2_da": 1,
+          "m2_vi": 1,
+          "m2_fan": 0,
+          "m3_vo": 1,
+          "m3_da": 1,
+          "m3_vi": 1,
+          "m3_fan": 0,
+          "m4_vo": 1,
+          "m4_da": 1,
+          "m4_vi": 1,
+          "m4_fan": 0,
+          "m5_vo": 1,
+          "m5_da": 1,
+          "m5_vi": 1,
+          "m5_fan": 0,
+          "hard": "쉬움",
+          "funds": 600,
+          "month_open": 600,
+          "debt": 0
         }
       },
       {
-        "id": "shade",
-        "label": "이미 발을 담갔다 — 돌아갈 수 있을까",
+        "id": "normal",
+        "label": "신규 데뷔 · 보통 — 맨몸과 사무소 하나",
         "set": {
-          "rank": "D",
-          "awareness": 34,
-          "buzz": 40,
-          "fans": 4200,
-          "corrupt": 30,
-          "funds": 700,
-          "month_open": 700,
-          "debt": 1800,
-          "costume": "제작 의상",
-          "m1_vo": 36,
-          "m1_da": 36,
-          "m1_vi": 40,
-          "m1_me": 44,
-          "m1_love": 26,
-          "m1_fan": 900,
-          "m2_vo": 36,
-          "m2_da": 36,
-          "m2_vi": 40,
-          "m2_me": 44,
-          "m2_love": 26,
-          "m2_fan": 900,
-          "m3_vo": 36,
-          "m3_da": 36,
-          "m3_vi": 40,
-          "m3_me": 44,
-          "m3_love": 26,
-          "m3_fan": 900,
-          "m4_vo": 36,
-          "m4_da": 36,
-          "m4_vi": 40,
-          "m4_me": 44,
-          "m4_love": 26,
-          "m4_fan": 900,
-          "m5_vo": 36,
-          "m5_da": 36,
-          "m5_vi": 40,
-          "m5_me": 44,
-          "m5_love": 26,
-          "m5_fan": 900
+          "awareness": 0,
+          "buzz": 0,
+          "fans": 0,
+          "sales": 0,
+          "costume": "연습복",
+          "m1_vo": 1,
+          "m1_da": 1,
+          "m1_vi": 1,
+          "m1_fan": 0,
+          "m2_vo": 1,
+          "m2_da": 1,
+          "m2_vi": 1,
+          "m2_fan": 0,
+          "m3_vo": 1,
+          "m3_da": 1,
+          "m3_vi": 1,
+          "m3_fan": 0,
+          "m4_vo": 1,
+          "m4_da": 1,
+          "m4_vi": 1,
+          "m4_fan": 0,
+          "m5_vo": 1,
+          "m5_da": 1,
+          "m5_vi": 1,
+          "m5_fan": 0,
+          "hard": "보통",
+          "funds": 400,
+          "month_open": 400,
+          "debt": 800
+        }
+      },
+      {
+        "id": "harsh",
+        "label": "신규 데뷔 · 어려움 — 빚으로 시작하는 꿈",
+        "set": {
+          "awareness": 0,
+          "buzz": 0,
+          "fans": 0,
+          "sales": 0,
+          "costume": "연습복",
+          "m1_vo": 1,
+          "m1_da": 1,
+          "m1_vi": 1,
+          "m1_fan": 0,
+          "m2_vo": 1,
+          "m2_da": 1,
+          "m2_vi": 1,
+          "m2_fan": 0,
+          "m3_vo": 1,
+          "m3_da": 1,
+          "m3_vi": 1,
+          "m3_fan": 0,
+          "m4_vo": 1,
+          "m4_da": 1,
+          "m4_vi": 1,
+          "m4_fan": 0,
+          "m5_vo": 1,
+          "m5_da": 1,
+          "m5_vi": 1,
+          "m5_fan": 0,
+          "hard": "어려움",
+          "funds": 250,
+          "month_open": 250,
+          "debt": 2000
+        }
+      },
+      {
+        "id": "reality",
+        "label": "신규 데뷔 · 리얼리티 — 업계의 밑바닥",
+        "set": {
+          "awareness": 0,
+          "buzz": 0,
+          "fans": 0,
+          "sales": 0,
+          "costume": "연습복",
+          "m1_vo": 1,
+          "m1_da": 1,
+          "m1_vi": 1,
+          "m1_fan": 0,
+          "m2_vo": 1,
+          "m2_da": 1,
+          "m2_vi": 1,
+          "m2_fan": 0,
+          "m3_vo": 1,
+          "m3_da": 1,
+          "m3_vi": 1,
+          "m3_fan": 0,
+          "m4_vo": 1,
+          "m4_da": 1,
+          "m4_vi": 1,
+          "m4_fan": 0,
+          "m5_vo": 1,
+          "m5_da": 1,
+          "m5_vi": 1,
+          "m5_fan": 0,
+          "hard": "리얼리티",
+          "funds": 150,
+          "month_open": 150,
+          "debt": 3000
         }
       }
     ]

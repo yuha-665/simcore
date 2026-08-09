@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.84.1
-//@display-name SimCore (시뮬 엔진) v0.84.1 패널 뒤 유령 알림 수정
+//@version 0.85
+//@display-name SimCore (시뮬 엔진) v0.85 난이도 4종·관리 시설·빚 독촉
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,23 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85 ─────────────────────────────────────────────────
+// 아이돌 템플릿 — 난이도 시스템 + 관리 시설 + 빚 독촉.
+// ① 난이도(hard: 쉬움/보통/어려움/리얼리티) — 원칙대로 "문턱을 미는" 변수 하나.
+//    이자율 3/5/7/9% · 팬 획득 ×1.2/1.0/0.8/0.6 · 영업 보정 +2/0/-2/-4 · 시설 비용
+//    ×0.75/1.0/1.25/1.5 · 독촉 문턱 3600/3000/2400/1800. **보통 = v0.84까지의 숫자와
+//    전부 일치**라 기존 세이브가 안 흔들린다.
+// ② 관리 시설 — 회식·마사지샵·스파·리조트 (편성표 [관리] 탭, 쉬기·이야기도 이사).
+//    위 시설일수록 세게 돌려주고 인지도가 연다(32=D·46=C·76=A — 등급 눈금).
+//    비용은 파생(*_cost)이라 조건·지출·상태창이 같은 줄을 읽는다.
+// ③ 빚 독촉(collector) — 문턱 넘은 빚에 정장 둘이 찾아온다. 소개받은 일(타락도 +8,
+//    음지 탭이 열리는 문) / 긁어모아 막기 / 버티기(빚 이자 가산 + 멘탈).
+// ④ DLC 프리셋 = 신규 데뷔 × 난이도 4종 — 전원 인지도·화제성·팬·판매 0, 능력치 1레벨.
+//    다른 건 자금·빚과 hard뿐. 실측(60일 8시드): 깨끗한 플레이 8/8·8/8·8/8·3/8,
+//    빚 상환+음지 병행 시 리얼리티 6/8 — "관리 못 하면 음지로 밀린다"가 구조로 성립.
+// 규칙 #5 확인 — 새 지적 0건, mid+high 34→32 (독촉 덕에 "아무것도 안 해도 전부
+// 생존"[긴장 없음] mid가 내장·DLC 양쪽에서 해소).
 //
 // ── v0.84.1 ───────────────────────────────────────────────
 // 게임 패널의 잠긴 액션을 누르면 차단 이유를 Risuai.alert로 알렸는데, 알림이 우리
@@ -19013,6 +19030,11 @@ const IDOL = {
     // ── 프로덕션 ──
     { id: 'rank', label: '프로덕션 등급', type: 'enum', init: 'F', enum: ['F', 'E', 'D', 'C', 'B', 'A', 'S'],
       desc: '업계가 이 사무소를 어떻게 보는가. 큰 일감을 여는 열쇠다. 인지도에 따라 시스템이 올리니 서사로 바꾸지 마라.' },
+    // ── 난이도 ── (v0.85) — "이벤트를 켜고 끄는 게 아니라 문턱을 미는 것"(설계 원칙).
+    // 이자율·팬 획득·영업 보정·시설 비용·독촉 문턱에 hard_n이 꽂힌다. 보통(1)이 기준값이라
+    // 모든 공식이 보통에서 v0.84까지의 숫자와 정확히 같다 — 기존 세이브가 안 흔들린다.
+    { id: 'hard', label: '난이도', type: 'enum', init: '보통', enum: ['쉬움', '보통', '어려움', '리얼리티'],
+      desc: '판의 난이도. 시작할 때 정하는 시스템 설정이니 서사로 바꾸지 마라.' },
     { id: 'awareness', label: '인지도', type: 'int', init: 12, min: 0, max: 100,
       desc: '이름을 아는 사람이 얼마나 되는가. 천천히 오르고 잘 안 내린다.' },
     { id: 'buzz', label: '화제성', type: 'int', init: 20, min: 0, max: 100,
@@ -19178,6 +19200,18 @@ const IDOL = {
       expr: "u_pow >= 800 ? 'S' : (u_pow >= 620 ? 'A' : (u_pow >= 450 ? 'B' : (u_pow >= 300 ? 'C' : (u_pow >= 180 ? 'D' : 'E'))))" },
     { id: 'rank_n', label: '등급 수치',
       expr: "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))" },
+    // 난이도 수치 — 보통 = 1 이 기준. 아래 공식들이 전부 hard_n 1에서 예전 값과 일치한다
+    { id: 'hard_n', label: '난이도 수치',
+      expr: "hard == '리얼리티' ? 3 : (hard == '어려움' ? 2 : (hard == '쉬움' ? 0 : 1))" },
+    // 팬 획득 배율 — 난이도가 오를수록 같은 무대로 덜 는다 (쉬움 1.2 / 보통 1.0 / 어려움 0.8 / 리얼리티 0.6)
+    { id: 'fan_mul', label: '팬 획득 배율', expr: '(12 - hard_n * 2) / 10' },
+    // ── 시설 비용 ── (v0.85) — 관리 탭의 네 시설. 난이도 배율 (3+hard_n)/4 = 0.75/1.0/1.25/1.5.
+    // 비용을 파생으로 뺀 이유는 영업 성사율과 같다 — 조건(when)과 효과가 같은 줄을 읽어야
+    // "열리는 값"과 "나가는 값"이 어긋나지 않고, 상태창에 그대로 보여줄 수도 있다.
+    { id: 'meal_cost', label: '회식 비용', expr: 'round(40 * (3 + hard_n) / 4)', format: '{v}만원' },
+    { id: 'mass_cost', label: '마사지 비용', expr: 'round(120 * (3 + hard_n) / 4)', format: '{v}만원' },
+    { id: 'spa_cost', label: '스파 비용', expr: 'round(260 * (3 + hard_n) / 4)', format: '{v}만원' },
+    { id: 'resort_cost', label: '리조트 비용', expr: 'round(600 * (3 + hard_n) / 4)', format: '{v}만원' },
     { id: 'dress', label: '의상 보정',
       expr: "costume == '특주 의상' ? 8 : (costume == '특별 의상' ? 5"
         + " : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4)))" },
@@ -19212,7 +19246,10 @@ const IDOL = {
     // pitch_mod 한 줄이 여섯 자리의 공통 분모다(고칠 데가 하나여야 어긋나지 않는다).
     // ⚠ 상한 20 — 캡이 없으면 인지도 90쯤부터 여섯 자리가 전부 100%가 되어 판정이 장식이 된다.
     //   펑크는 캡 **밖에서** 깎는다: 신용은 아무리 커져도 계속 아파야 한다.
-    { id: 'pitch_mod', label: '영업 보정', expr: 'min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2' },
+    // 난이도 항은 캡 밖이다 (펑크와 같은 이유) — 이름값이 아무리 커도 어려운 판은 계속 어려워야 한다.
+    // 쉬움 +2 / 보통 0 / 어려움 -2 / 리얼리티 -4 (눈금당 10%p)
+    { id: 'pitch_mod', label: '영업 보정',
+      expr: 'min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2 + (1 - hard_n) * 2' },
     { id: 'od_radio', label: '지역 라디오 성사율', expr: 'min(100, max(5, (21 - 11 + pitch_mod) * 5))', format: '{v}%' },
     { id: 'od_mag', label: '잡지 화보 성사율', expr: 'min(100, max(5, (21 - 14 + pitch_mod) * 5))', format: '{v}%' },
     { id: 'od_ltv', label: '지방 방송국 성사율', expr: 'min(100, max(5, (21 - 17 + pitch_mod) * 5))', format: '{v}%' },
@@ -19272,7 +19309,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 35, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.08)), 100)' },
-            { set: 'fans', expr: 'min(fans + round(job_pay * 3), 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(job_pay * 3 * fan_mul), 9999999)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 1.6), 9999999)' },
             { set: 'inc_stage', expr: 'min(inc_stage + round(job_pay * 1.6), 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 1.2), 9999999)' },
@@ -19309,7 +19346,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 18, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
-            { set: 'fans', expr: 'min(fans + job_pay, 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(job_pay * fan_mul), 9999999)' },
             { set: 'funds', expr: 'min(funds + job_pay, 9999999)' },
             { set: 'inc_stage', expr: 'min(inc_stage + job_pay, 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 0.4), 9999999)' },
@@ -19354,7 +19391,7 @@ const IDOL = {
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.8), 9999999)' },
             { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.35), 9999999)' },
             { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 1.15), 9999999)' },
-            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.5), 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.5 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 24, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.05)), 100)' },
             { set: 'm1_st', expr: 'max(m1_st - round(p1 * 16), 0)' },
@@ -19372,7 +19409,7 @@ const IDOL = {
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.5), 9999999)' },
             { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.18), 9999999)' },
             { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.68), 9999999)' },
-            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.25), 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.25 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 12, 100)' },
             { set: 'm1_st', expr: 'max(m1_st - round(p1 * 18), 0)' },
             { set: 'm2_st', expr: 'max(m2_st - round(p2 * 18), 0)' },
@@ -19410,7 +19447,7 @@ const IDOL = {
           effects: [
             { set: 'funds', expr: 'min(funds + round(v_prize * 1.5), 9999999)' },
             { set: 'inc_stage', expr: 'min(inc_stage + round(v_prize * 1.5), 9999999)' },
-            { set: 'fans', expr: 'min(fans + v_prize * 5, 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(v_prize * 5 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 30, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.06)), 100)' },
             { set: 'm1_me', expr: 'min(m1_me + round(p1 * 8), 100)' },
@@ -19432,7 +19469,7 @@ const IDOL = {
           effects: [
             { set: 'funds', expr: 'min(funds + v_prize, 9999999)' },
             { set: 'inc_stage', expr: 'min(inc_stage + v_prize, 9999999)' },
-            { set: 'fans', expr: 'min(fans + v_prize * 3, 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(v_prize * 3 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 16, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
             { set: 'v_rank', expr: 'v_rank == 0 ? 70 : max(1, v_rank - max(1, round(v_rank * 0.22)))' },
@@ -19616,6 +19653,46 @@ const IDOL = {
         { set: 'm1_me', expr: 'min(m1_me + 10, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 10, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 10, 100)' },
         { set: 'm1_love', expr: 'min(m1_love + 6, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 6, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 6, 100)' },
       ] },
+    // ── 관리 시설 ── (v0.85)
+    // 쉬는 것(공짜에 가까움)과 시설(돈으로 사는 회복)의 축. 위 시설일수록 세게 돌려주고,
+    // 여는 문턱은 등급이 아니라 **인지도**다 — 등급은 인지도의 얼굴이라 겹쳐 걸면 진단이
+    // 오해한다(v0.82 교훈). 눈금은 등급 이벤트와 같다: 32=D · 46=C · 76=A.
+    // 비용은 난이도가 정한다(*_cost 파생). 전원에게 간다 — 회복은 무대 인원이 아니라 식구 몫.
+    { id: 'meal', label: '🍚 회식을 쏜다', mode: 'oneshot', cooldown: 2,
+      when: 'funds >= meal_cost and not unit_over',
+      inject: '[행동] 오늘은 고기다. 테이블 예절 같은 건 잠시 잊기로 한다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - meal_cost, 0)' },
+        { set: 'm1_st', expr: 'min(m1_st + 6, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 6, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 6, 100)' },
+        { set: 'm1_me', expr: 'min(m1_me + 6, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 6, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 6, 100)' },
+        { set: 'm1_love', expr: 'min(m1_love + 2, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 2, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 2, 100)' },
+      ] },
+    { id: 'massage', label: '💆 마사지샵에 보낸다', mode: 'oneshot', cooldown: 3,
+      when: 'awareness >= 32 and funds >= mass_cost and not unit_over',
+      inject: '[행동] 단골 마사지샵에 셋을 밀어 넣는다. 무대에 서는 몸은 관리가 일이다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - mass_cost, 0)' },
+        { set: 'm1_st', expr: 'min(m1_st + 18, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 18, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 18, 100)' },
+        { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+      ] },
+    { id: 'spa', label: '♨️ 스파에 데려간다', mode: 'oneshot', cooldown: 4,
+      when: 'awareness >= 46 and funds >= spa_cost and not unit_over',
+      inject: '[행동] 회원제 스파. 이 정도는 되어야 알아보는 사람 없이 쉴 수 있다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - spa_cost, 0)' },
+        { set: 'm1_st', expr: 'min(m1_st + 14, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 14, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 14, 100)' },
+        { set: 'm1_me', expr: 'min(m1_me + 14, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 14, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 14, 100)' },
+      ] },
+    { id: 'resort', label: '🏝 리조트 휴가를 준다', mode: 'oneshot', cooldown: 8,
+      when: 'awareness >= 76 and funds >= resort_cost and not unit_over',
+      inject: '[행동] 일정표를 통째로 비우고 바다로 보낸다. 사진이 찍히지 않을 곳으로.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - resort_cost, 0)' },
+        { set: 'm1_st', expr: 'min(m1_st + 30, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 30, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 30, 100)' },
+        { set: 'm1_me', expr: 'min(m1_me + 25, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 25, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 25, 100)' },
+        { set: 'm1_love', expr: 'min(m1_love + 6, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 6, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 6, 100)' },
+        { set: 'buzz', expr: 'max(buzz - 3, 0)' },
+      ] },
     // ── 사무소 ──
     { id: 'promo', label: '📣 홍보를 돈다', mode: 'oneshot', cooldown: 3,
       when: 'funds >= 30 and not unit_over',
@@ -19628,7 +19705,7 @@ const IDOL = {
         // ⚠ 체력 3·쿨다운 3은 진단으로 고른 값이다: 6·2였을 때 이 버튼은 **있는 것 자체가
         //   손해**였다(빼면 33턴 더 삶). 월급이 자금을 조이자 드러난 함정이라, 발품 값을
         //   낮춰 균형을 되돌렸다.
-        { set: 'fans', expr: 'min(fans + 40 + round(fans * 0.04), 9999999)' },
+        { set: 'fans', expr: 'min(fans + round((40 + round(fans * 0.04)) * fan_mul), 9999999)' },
         { set: 'm1_st', expr: 'max(m1_st - 3, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 3, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 3, 0)' },
       ] },
     // ── 제작 의뢰 ── (v0.82)
@@ -19823,7 +19900,7 @@ const IDOL = {
         effects: [
           { set: 'buzz', expr: '100' },
           { set: 'awareness', expr: 'min(awareness + 8, 100)' },
-          { set: 'fans', expr: 'min(fans + round(fans * 0.2), 9999999)' },
+          { set: 'fans', expr: 'min(fans + round(fans * 0.2 * fan_mul), 9999999)' },
           { set: 'm1_love', expr: 'min(m1_love + 10, 100)' },
           { set: 'm2_love', expr: 'min(m2_love + 10, 100)' },
           { set: 'm3_love', expr: 'min(m3_love + 10, 100)' },
@@ -19869,8 +19946,9 @@ const IDOL = {
           //   못 받은 건 월급이지 사무실이 아니다 — 사람에게 가는 값은 월급 쪽에만 둔다.
           { set: 'debt', expr: 'min(debt + max(rent - funds, 0), 9999999)' },
           { set: 'funds', expr: 'max(funds - rent, 0)' },
-          { set: 'debt', expr: 'min(debt + max(round(debt * 0.05) - funds, 0), 9999999)' },
-          { set: 'funds', expr: 'max(funds - round(debt * 0.05), 0)' },
+          // 이자율은 난이도가 정한다 — 쉬움 3% / 보통 5% / 어려움 7% / 리얼리티 9% (v0.85)
+          { set: 'debt', expr: 'min(debt + max(round(debt * (3 + hard_n * 2) / 100) - funds, 0), 9999999)' },
+          { set: 'funds', expr: 'max(funds - round(debt * (3 + hard_n * 2) / 100), 0)' },
         ] },
       // 판을 끝내는 두 길. 빚이 아니라 사람이 먼저다 — 무리한 스케줄이 곧 패배다
       { id: 'burnout', when: 'not unit_over and (m1_me <= 0 or m2_me <= 0 or m3_me <= 0)',
@@ -19915,6 +19993,35 @@ const IDOL = {
             { set: 'buzz', expr: 'min(buzz + 5, 100)' },
           ],
           notify: '작은 잡지에서 인터뷰 요청이 왔다. 두 쪽짜리지만 지면은 지면이다.' },
+        // 빚 독촉 (v0.85) — 못 갚는 빚은 조용히 안 있는다. 문턱은 난이도가 정한다
+        // (쉬움 3600 / 보통 3000 / 어려움 2400 / 리얼리티 1800). "소개받은 일"이 음지로
+        // 이어지는 문이다 — 타락도가 1이라도 오르면 음지 탭이 열린다.
+        // 마지막 선택지는 조건 없이(타임아웃 자동 결정 규약) — 버티는 것도 값을 치른다.
+        { id: 'collector', weight: 4, cooldown: 6, timeout: 2,
+          when: 'not unit_over and debt >= 3600 - hard_n * 600',
+          notify: '빚 독촉이 사무소까지 왔다. 정장 차림 둘이 응접실에 앉아 일어나지 않는다.',
+          choices: [
+            { label: '소개받은 일을 받는다',
+              inject: '그쪽이 내미는 종이에 적힌 일로 이자를 무마하기로 한다 — 밝은 데서 하는 일이 아니라는 건 서로 안다.',
+              effects: [
+                { set: 'corrupt', expr: 'min(corrupt + 8, 100)' },
+                { set: 'funds', expr: 'min(funds + 400, 9999999)' },
+                { set: 'm1_me', expr: 'max(m1_me - 4, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 4, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+              ] },
+            { label: '긁어모아 급한 불을 끈다', when: 'funds >= 300',
+              inject: '서랍까지 털어 봉투를 만든다. 이번 달은 넘긴다.',
+              effects: [
+                { set: 'funds', expr: 'max(funds - 300, 0)' },
+                { set: 'debt', expr: 'max(debt - 200, 0)' },
+              ] },
+            { label: '버틴다',
+              inject: '내줄 것이 없다고 말한다. 돌아가는 등 뒤로, 다음에는 여기서 끝나지 않을 거라는 말이 남는다.',
+              effects: [
+                { set: 'debt', expr: 'min(debt + round(debt * 0.03), 9999999)' },
+                { set: 'm1_me', expr: 'max(m1_me - 8, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 8, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 8, 0)' },
+                { set: 'buzz', expr: 'max(buzz - 3, 0)' },
+              ] },
+          ] },
         // ── 갈림길 둘 — 마지막 선택지는 조건 없이 둬야 타임아웃 자동 결정이 된다 ──
         { id: 'scandal', weight: 3, cooldown: 9, timeout: 2, when: 'not unit_over and buzz >= 35',
           notify: '기자 하나가 사진 몇 장을 들고 왔다. 아직 어디에도 안 실렸다.',
@@ -20007,7 +20114,7 @@ const IDOL = {
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
     ],
-    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. '
+    guide: '장면에 실제로 나온 것만 반영하라. 등급·난이도·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
@@ -20072,8 +20179,13 @@ const IDOL = {
         actions: ['shady_night', 'shady_spon', 'shady_gravure', 'shady_adult'],
         note: '오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. '
           + '타락도가 높으면 지상파와 골든타임이 닫힌다.' },
+      // 관리 — 몸과 마음을 돈으로 사는 자리 (v0.85). 위 시설은 인지도가 열고 비용은 난이도가 정한다
+      { id: 'care', label: '관리',
+        actions: ['rest_day', 'talk', 'meal', 'massage', 'spa', 'resort'],
+        note: '체력·멘탈을 돌보는 자리. 위 시설일수록 세게 돌려주지만 이름값이 있어야 열리고, '
+          + '비용은 난이도에 따라 비싸진다 (값은 상태창 [관리]에서 본다).' },
       { id: 'office', label: '사무소',
-        actions: ['rest_day', 'talk', 'promo', 'borrow', 'repay', 'next_day'],
+        actions: ['promo', 'borrow', 'repay', 'next_day'],
         note: '하루를 쓰는 일들. 다 하고 나면 🌙로 날을 넘긴다.' },
     ],
   },
@@ -20088,6 +20200,7 @@ const IDOL = {
       // 때는 여기서 다시 쪼개고 유닛마다 탭을 하나씩 두면 된다.
       { label: '프로덕션', items: [
         { var: 'rank' },
+        { var: 'hard', showWhen: "hard != '보통'" },
         { var: 'ranking' },
         { var: 'v_disp' },
         { var: 'awareness', bar: { max: 100 }, color: "'#c86a9a'" },
@@ -20153,6 +20266,13 @@ const IDOL = {
         { var: 'live_queue', showWhen: 'count(live_queue) > 0' },
         { var: 'schedule', showWhen: 'count(schedule) > 0' },
       ] },
+      // 관리 탭 (v0.85) — 시설 비용표. 표시 문턱은 버튼 조건과 같은 눈금(영업 성사율 규율)
+      { label: '관리', items: [
+        { var: 'meal_cost' },
+        { var: 'mass_cost', showWhen: 'awareness >= 32' },
+        { var: 'spa_cost', showWhen: 'awareness >= 46' },
+        { var: 'resort_cost', showWhen: 'awareness >= 76' },
+      ] },
       // 음지 탭 — 발을 담근 뒤에만 뜬다. 안 간 판에서는 이런 게 있다는 것도 안 보인다
       { label: '음지', showWhen: 'corrupt >= 1', items: [
         { var: 'corrupt', bar: { max: 100 },
@@ -20217,6 +20337,7 @@ const IDOL = {
       //   1~2턴 차이였다. 비축(자금)·부채(파산선까지의 거리)·완충(멘탈)을 같이 민다.
       { id: 'debtor', label: '빚에 눌려 — 셋을 지킬 수 있을까',
         set: {
+          hard: '어려움',
           funds: 260, month_open: 260, debt: 3000, late: 2, buzz: 8,
           costume: '연습복',
           m1_st: 48, m1_me: 40, m1_love: 18,

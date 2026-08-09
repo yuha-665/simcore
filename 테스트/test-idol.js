@@ -210,7 +210,8 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
   const ev = S.rules.events.find((e) => e.id === 'settle');
   ck('월말 정산이 빗장을 스스로 닫는다 (같은 달에 두 번 안 돈다)',
     /settled != month/.test(ev.when) && ev.effects.some((f) => f.set === 'settled'), '');
-  ck('이자가 빚이 클수록 아프다', /debt \* 0\.05/.test(JSON.stringify(ev.effects)), '');
+  // v0.85부터 이자율은 난이도가 정한다 — (3 + hard_n * 2)% (보통 5% = 예전 값)
+  ck('이자가 빚이 클수록 아프다', /debt \* \(3 \+ hard_n \* 2\) \/ 100/.test(JSON.stringify(ev.effects)), '');
   ck('펑크는 달이 바뀌면 하나씩 잊힌다 (신용이 영영 안 죽는다)',
     ev.effects.some((f) => f.set === 'late'), '');
 }
@@ -585,6 +586,63 @@ const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initSta
       (jobPane.items.find((it) => it.var === v).showWhen || '').includes(`fans >= ${gate}`)), '');
   ck('비너스 순위가 프롬프트에 실린다', /\{v_disp\}/.test(S.promptState.template), '');
   ck('순위는 AI에게 안 연다 (배틀 판정만 움직인다)', !S.updater.allow.some((a) => a.id === 'v_rank'), '');
+}
+
+// ── 난이도 (v0.85) — 보통이 기준이고, 사다리는 네 축(이자·팬·영업·시설)을 함께 민다 ──
+{
+  const base = engine.initState(S).vars;
+  const H = ['쉬움', '보통', '어려움', '리얼리티'];
+  const at = (h) => ({ ...base, hard: h });
+  ck('★ 난이도 수치는 0~3 사다리다', H.map((h) => D('hard_n', at(h))).join(',') === '0,1,2,3',
+    H.map((h) => D('hard_n', at(h))).join(','));
+  ck('★ 보통이 기준값이다 (팬 배율 1.0 — 기존 세이브가 안 흔들린다)', D('fan_mul', at('보통')) === 1, '');
+  ck('★ 난이도가 오르면 팬이 덜 는다', H.map((h) => D('fan_mul', at(h))).every((v, i, a2) => i === 0 || v < a2[i - 1]), '');
+  ck('★ 난이도가 오르면 영업이 어려워진다',
+    H.map((h) => D('pitch_mod', at(h))).every((v, i, a2) => i === 0 || v < a2[i - 1]), '');
+  const ev = S.rules.events.find((e) => e.id === 'settle');
+  const interest = (h) => {
+    const f = ev.effects.filter((x) => x.set === 'funds').find((x) => /hard_n \* 2/.test(x.expr));
+    return expr.evaluate(f.expr, engine.makeLookup(S, { ...at(h), debt: 1000, funds: 1000 }));
+  };
+  ck('★ 이자율도 난이도 사다리다 (쉬움 3% ~ 리얼리티 9%, 보통 5% = 예전 값)',
+    interest('쉬움') === 970 && interest('보통') === 950 && interest('리얼리티') === 910,
+    H.map((h) => 1000 - interest(h)).join(','));
+}
+
+// ── 관리 시설 (v0.85) — 돈으로 사는 회복, 위 시설은 이름값이 연다 ──
+{
+  const base = engine.initState(S).vars;
+  const FAC = [['meal', 'meal_cost', 0], ['massage', 'mass_cost', 32], ['spa', 'spa_cost', 46], ['resort', 'resort_cost', 76]];
+  ck('★ 시설 넷이 관리 탭에 있다', (() => {
+    const care = partyTabs(S).find((t) => t.id === 'care');
+    return !!care && FAC.every(([id]) => care.actions.includes(id)) && care.actions.includes('rest_day');
+  })(), '');
+  ck('★ 조건과 지출이 같은 비용 파생을 읽는다 (열리는 값 = 나가는 값)',
+    FAC.every(([id, cost]) => A(id).when.includes(`funds >= ${cost}`)
+      && A(id).effects.some((f) => f.set === 'funds' && f.expr.includes(cost))), '');
+  ck('★ 위 시설일수록 이름값이 필요하다 (눈금은 등급 이벤트와 같다: 32=D · 46=C · 76=A)',
+    FAC.slice(1).every(([id, , aw]) => A(id).when.includes(`awareness >= ${aw}`)), '');
+  ck('★ 비용은 난이도가 올린다 (보통 1.0배 기준)',
+    FAC.every(([, cost]) => D(cost, { ...base, hard: '리얼리티' }) > D(cost, { ...base, hard: '보통' })
+      && D(cost, { ...base, hard: '쉬움' }) < D(cost, { ...base, hard: '보통' })), '');
+  ck('시설은 몸이나 마음을 돌려준다',
+    FAC.every(([id]) => A(id).effects.some((f) => /^m1_(st|me)$/.test(f.set))), '');
+  const carePane = S.statusUI.groups.find((g) => g.label === '관리');
+  ck('★ 비용표 표시 문턱이 버튼 조건과 짝이다',
+    !!carePane && FAC.slice(1).every(([id, cost, aw]) =>
+      (carePane.items.find((it) => it.var === cost).showWhen || '').includes(`awareness >= ${aw}`)), '');
+}
+
+// ── 빚 독촉 (v0.85) — 못 갚는 빚이 음지로 미는 문 ──
+{
+  const col = S.rules.randomEvents.table.find((e) => e.id === 'collector');
+  ck('★ 독촉 이벤트가 있다', !!col, '');
+  ck('★ 문턱은 난이도가 내린다 (어려운 판일수록 일찍 온다)', /3600 - hard_n \* 600/.test(col.when), col.when);
+  ck('★ 소개받은 일이 타락도를 올린다 (음지 탭이 열리는 문)',
+    col.choices[0].effects.some((f) => f.set === 'corrupt' && /\+ 8/.test(f.expr)), '');
+  ck('갈림길 규약 — 마지막 선택지는 조건이 없다 (타임아웃 자동 결정)', !col.choices.at(-1).when, '');
+  ck('버티는 것도 값을 치른다 (공짜 선택지 금지)',
+    col.choices.at(-1).effects.some((f) => f.set === 'debt' || /^m1_me$/.test(f.set)), '');
 }
 
 report();

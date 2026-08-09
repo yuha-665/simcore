@@ -339,36 +339,26 @@ S.directives.push({
     + '가르는 순위 결전 — 으로 정해진다. 이것을 세계의 상식으로 깔고 서사를 진행하라.',
 });
 
-// ── 9. 프리셋 — 사람은 안 정하고 형편만 정한다 ──
-// ⚠ 프리셋으로 인물을 박으면 이 DLC의 뜻이 사라진다("누구로 짜도 된다"). 그래서 여기서는
-//   자금·이름값·부채만 민다. 사람은 편성표에서 고른다.
+// ── 9. 프리셋 — 신규 데뷔 × 난이도 (v0.85) ──
+// 넷 다 같은 출발점이다: 이름 없음(인지도·화제성·팬·판매 전부 0) · 능력치 1레벨.
+// 다른 건 **형편과 세상**뿐 — 자금·빚, 그리고 hard가 미는 이자율·팬 획득·영업 성사율·
+// 시설 비용·독촉 문턱. "프리셋으로 인물을 안 박는다"는 원칙은 그대로다(사람은 편성표에서).
+// ⚠ 체력·멘탈은 0으로 두지 않는다 — 멘탈 0은 그 자리에서 번아웃 패배다. 시작은 몸 성한 무명이다.
+const DEBUT = {
+  awareness: 0, buzz: 0, fans: 0, sales: 0, costume: '연습복',
+  ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
+    [`m${i + 1}_vo`, 1], [`m${i + 1}_da`, 1], [`m${i + 1}_vi`, 1], [`m${i + 1}_fan`, 0],
+  ]).flat()),
+};
 S.setup.presets = [
-  { id: 'rookie', label: '무명 — 아직 아무도 모른다', set: {} },
-  { id: 'hit', label: '한 번 터졌다 — 다음이 어렵다',
-    set: {
-      rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200,
-      funds: 1500, month_open: 1500, debt: 600, costume: '제작 의상', album: '싱글',
-      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
-        [`m${i + 1}_vo`, 45], [`m${i + 1}_da`, 45], [`m${i + 1}_vi`, 45],
-        [`m${i + 1}_love`, 40], [`m${i + 1}_fan`, 2800],
-      ]).flat()),
-    } },
-  { id: 'debtor', label: '빚에 눌려 — 다섯을 지킬 수 있을까',
-    set: {
-      funds: 260, month_open: 260, debt: 2600, late: 2, buzz: 8, costume: '연습복',
-      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
-        [`m${i + 1}_st`, 50], [`m${i + 1}_me`, 38], [`m${i + 1}_love`, 12],
-      ]).flat()),
-    } },
-  { id: 'shade', label: '이미 발을 담갔다 — 돌아갈 수 있을까',
-    set: {
-      rank: 'D', awareness: 34, buzz: 40, fans: 4200, corrupt: 30,
-      funds: 700, month_open: 700, debt: 1800, costume: '제작 의상',
-      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
-        [`m${i + 1}_vo`, 36], [`m${i + 1}_da`, 36], [`m${i + 1}_vi`, 40],
-        [`m${i + 1}_me`, 44], [`m${i + 1}_love`, 26], [`m${i + 1}_fan`, 900],
-      ]).flat()),
-    } },
+  { id: 'easy', label: '신규 데뷔 · 쉬움 — 든든한 출발',
+    set: { ...DEBUT, hard: '쉬움', funds: 600, month_open: 600, debt: 0 } },
+  { id: 'normal', label: '신규 데뷔 · 보통 — 맨몸과 사무소 하나',
+    set: { ...DEBUT, hard: '보통', funds: 400, month_open: 400, debt: 800 } },
+  { id: 'harsh', label: '신규 데뷔 · 어려움 — 빚으로 시작하는 꿈',
+    set: { ...DEBUT, hard: '어려움', funds: 250, month_open: 250, debt: 2000 } },
+  { id: 'reality', label: '신규 데뷔 · 리얼리티 — 업계의 밑바닥',
+    set: { ...DEBUT, hard: '리얼리티', funds: 150, month_open: 150, debt: 3000 } },
 ];
 
 // ── 검증 ──
@@ -388,6 +378,15 @@ if (!dump.includes(`m${N}_me`) || !dump.includes(`slot${N}`)) ghosts.push(`자�
 if (!S.directives.some((d) => d.id === 'world' && d.when === '1')) ghosts.push('세계관 지시문 없음');
 if (!/\/ 48/.test(S.derived.find((d) => d.id === 'v_mod').expr)) ghosts.push('v_mod 나눔수 미조정');
 if (!JSON.stringify(S.checks.find((c) => c.id === 'ck_venus')).includes(`m${N}_me`)) ghosts.push('배틀 효과 자리 미배선');
+// 난이도 프리셋 (v0.85) — 넷이고, 빚 사다리가 오르고, 전부 1레벨 무명 데뷔인가
+if (S.setup.presets.length !== 4) ghosts.push('프리셋 4종 아님');
+{
+  const debts = S.setup.presets.map((p) => p.set.debt);
+  if (!debts.every((d, i) => i === 0 || d > debts[i - 1])) ghosts.push('빚 사다리 역전');
+  if (!S.setup.presets.every((p) => p.set[`m${N}_vo`] === 1 && p.set.fans === 0 && p.set.hard)) ghosts.push('데뷔 초기화 불완전');
+}
+// 시설(관리 탭)도 다섯 자리로 배선됐는가 — m3 줄 복제 방식의 상시 함정
+if (!JSON.stringify(S.actions.find((a) => a.id === 'meal'))?.includes(`m${N}_st`)) ghosts.push('시설 효과 자리 미배선');
 console.log(ghosts.length ? `⚠ 옛 이름이 남음: ${ghosts.join(', ')}` : '미치환: 없음');
 
 // ── 실제로 굴러가는가 ──

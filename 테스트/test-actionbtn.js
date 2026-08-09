@@ -112,6 +112,17 @@ const check = (name, cond, extra = '') => { results.push([cond, name, extra]); }
   check('차단 시 알림 + 무장 안 됨', alerts.length === 1 && alerts[0].includes('조건 미충족') && !session.current.meta.armed.reclaim,
     JSON.stringify(alerts));
 
+  // 7.5 게임 패널이 떠 있는 동안의 차단 — 호스트 알림은 전체화면 iframe 뒤에 떠서 안 보인다
+  // (규칙 #6, v0.84.1 실사고: 패널의 잠긴 액션을 누르면 문구 없는 유령 알림이 떴다)
+  gameVisible = true;
+  await onActionButton('reclaim');
+  check('★ 패널 위에서는 호스트 알림을 안 부른다', alerts.length === 1, JSON.stringify(alerts));
+  check('★ 대신 패널 공지줄에 잠금 이유가 뜬다',
+    String(gameNotice).includes('🔒') && String(gameNotice).includes('조건 미충족'), String(gameNotice));
+  await onActionButton('repair');
+  check('성공 토글이 잠금 공지를 지운다 (낡은 이유가 계속 떠 있지 않게)', gameNotice === null, String(gameNotice));
+  gameVisible = false;
+
   // 8. 세션 종료 → 전부 정리
   schema = { vars: [{ id: 'front', label: '전위', type: 'enum', init: '없음', enum: ['없음', '아린'] }] };
   schema.party = { slots: [{ var: 'front' }], empty: '없음' };

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.84
-//@display-name SimCore (시뮬 엔진) v0.84 탭 스크롤 수정·비너스 배틀
+//@version 0.84.1
+//@display-name SimCore (시뮬 엔진) v0.84.1 패널 뒤 유령 알림 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.84.1 ───────────────────────────────────────────────
+// 게임 패널의 잠긴 액션을 누르면 차단 이유를 Risuai.alert로 알렸는데, 알림이 우리
+// 전체화면 iframe **뒤에** 떠서 문구가 안 보였다 (규칙 #6의 alert판 — alertConfirm만
+// 조심하고 alert는 놓쳤다). 패널이 떠 있으면 패널 안 공지줄(gameNotice)로, 아니면
+// 기존대로 호스트 알림. 나머지 alert 호출처 전수 감사 — 패널 닫힌 문맥(제안 칩·갈림길
+// 히트테스트·조작줄)이거나, 패널 열기 전 조기 반환이거나, 먼저 패널을 닫는 규약 준수 확인.
 //
 // ── v0.84 ─────────────────────────────────────────────────
 // ① 상태창 탭을 누르면 리수 화면 전체가 밀리던 사고 수정.
@@ -2620,7 +2627,19 @@
     const r = session.toggle(actionId);
     console.log('[simcore] 액션', actionId, r.armed ? '무장 ●' : '해제', r.blocked ? `(차단: ${r.blocked})` : '');
     if (r.blocked) {
-      try { await Risuai.alert(`'${actionId}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
+      const label = schema?.actions?.find((a) => a.id === actionId)?.label ?? actionId;
+      // 규칙 #6 — 게임 패널이 떠 있는 동안 호스트 알림(Risuai.alert)은 우리 전체화면 iframe
+      // **뒤에** 떠서 문구가 안 보이고 닫을 수도 없다 (실사고: 패널의 잠긴 액션 클릭).
+      // 패널이 보이면 패널 안 공지줄(gameNotice)로, 아니면 기존대로 호스트 알림으로.
+      if (gameVisible) {
+        gameNotice = `🔒 ${label} — ${r.blocked}`;
+        // syncControls가 패널을 다시 그리지만, 실패해도 공지는 떠야 하므로 여기서도 그린다
+        try { renderGamePanel(); } catch {}
+      } else {
+        try { await Risuai.alert(`'${label}' 지금은 쓸 수 없어 — ${r.blocked}`); } catch {}
+      }
+    } else if (gameVisible && gameNotice && gameNotice.startsWith('🔒')) {
+      gameNotice = null; // 성공 토글이 이전 잠금 공지를 지운다 — 낡은 이유가 계속 떠 있지 않게
     }
     await syncControls();
     if (panelBuilt) renderPanel();

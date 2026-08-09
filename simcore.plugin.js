@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.83.3
-//@display-name SimCore (시뮬 엔진) v0.83.3 진단 오탐 정리
+//@version 0.84
+//@display-name SimCore (시뮬 엔진) v0.84 탭 스크롤 수정·비너스 배틀
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,23 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.84 ─────────────────────────────────────────────────
+// ① 상태창 탭을 누르면 리수 화면 전체가 밀리던 사고 수정.
+//    숨김 라디오가 `position:absolute` 0×0이었는데, 라벨 클릭 때 브라우저가 라디오에
+//    포커스를 주며 scrollIntoView를 한다 — 리수의 overflow:hidden 앱 컨테이너까지
+//    스크롤되어 화면이 밀리고(아래는 검은 여백) 스크롤바가 없어 되돌릴 수도 없었다.
+//    `display:none`으로 교체 (렌더 안 되는 요소는 포커스 자체가 불가능하다). 기본 탭·
+//    다중 패널 뼈대·AI 커스텀 상태창 지침 세 자리 모두. (규칙 #7로 기록)
+// ② 아이돌 템플릿 — 비너스 배틀 (라이브 배틀 순위 결전).
+//    순위표가 곧 대진표: 위로 갈수록 상대가 세진다(v_vs). 참가비만 내면 도전은 열리고,
+//    이기면 상금·팬·순위, 지면 멘탈·순위를 잃는다. 정점(1위)은 판을 끝내지 않는 승리.
+//    실측 곡선 — 초반엔 50위 벽, 중반 20위 벽, 후반 정점 다툼(1위 방어 36%), 만렙 군림(87%).
+// ③ 아이돌 DLC — 세계관 지시문. `when: '1'` 지시문은 매 턴 주입되므로 봇 설명 없이도
+//    스키마가 세계의 전제(아이돌 지상주의 + 비너스 배틀)를 직접 깔아 준다.
+// ④ 진단 오탐 둘 (비너스가 드러냄, 규칙 #5 확인 완료 — 새 지적 0건, mid+high 34 유지):
+//    · 설정 의존 — `not unit_over`처럼 시작값이 이미 만족시키는 항을 게이트로 오인 (극성 확인 추가)
+//    · 편성 게이트 액션의 **판정**이 쓰는 변수(v_rank)를 '안 움직임'으로 신고 (문 상속 추가)
 //
 // ── v0.83.3 ────────────────────────────────────────────────
 // 진단이 **정상 설계를 벌주던** 두 자리 (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
@@ -6120,8 +6137,12 @@ const BASE_CSS = `
 .sim-cmd-why{opacity:.6;font-size:.82em}
 
 /* ── 배치(statusUI.layout) ── 전부 JS 없이 CSS만으로 전환된다.
-   메시지 안 버튼은 리스가 클릭 이벤트의 target을 잘라내서 스크립트로는 못 받는다. */
-.sim-tabin{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+   메시지 안 버튼은 리스가 클릭 이벤트의 target을 잘라내서 스크립트로는 못 받는다.
+   ⚠ 숨김 라디오는 display:none이어야 한다. position:absolute 0×0으로 숨기면 라벨 클릭 때
+   브라우저가 라디오에 포커스를 주며 scrollIntoView를 하는데, 리수의 overflow:hidden 앱
+   컨테이너까지 스크롤시켜 화면 전체가 밀리고(아래는 검은 여백) 유저는 되돌릴 수도 없다.
+   display:none이면 포커스 자체가 불가능하고, 라벨의 체크 전달과 형제 선택자는 그대로 동작한다. */
+.sim-tabin{display:none}
 .sim-tabbar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
 .sim-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
   border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}
@@ -6614,7 +6635,7 @@ ${rows(p.ids)}
 .mp-in-${i}:checked ~ .mp-panels .mp-panel-${i}{display:block}`).join('\n');
   return `<style>
 ${base}
-.mp-in{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+.mp-in{display:none}
 .mp-bar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
 .mp-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
   border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}
@@ -7122,13 +7143,18 @@ function numericTermsAllReached(when, obs) {
  *   이벤트가 안 뜨면 그 플래그도 안 움직인다. 그걸 근거로 "이 플래그 때문에 안 뜬다"고 하면
  *   원인과 결과가 뒤집힌 채 순환한다. 그 플래그는 false로 시작하므로 막고 있는 게 아니다.
  */
-function gatedBySetting(when, schema, writers, moved, selfSets = null) {
+function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null) {
   if (!when) return null;
   for (const v of schema.vars) {
     if (v.type !== 'enum' && v.type !== 'bool') continue;
     if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
     if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
     if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
+    // 극성 — 이름이 조건에 있다고 다 게이트가 아니다. `not unit_over`처럼 **시작값이 이미
+    // 조건을 만족시키는** 항은 이 변수가 막는 게 아니라 다른 항이 막는 것이다. 값을 뒤집어
+    // 조건이 참이 되는지 관측 상태로 재 본다 (실측: 비너스 정점 이벤트가 활동 중단을 뒤집어
+    // 쓴 채로 "바꿀 수단이 없다"고 신고됐다 — 진짜 원인은 순위 쪽 항이었다).
+    if (states && !blockedBy(when, states, schema, v)) continue;
     const who = writers[v.id] || new Set();
     const byPlayer = [...who].some((s) => s === '액션' || s === '새 시작' || s === '최초설정');
     // 보조 AI가 세우는 값이면 "바꿀 수단이 없다"는 말은 사실이 아니다 — 시뮬에 AI가 없을 뿐이다.
@@ -7206,6 +7232,31 @@ function diagnose(schema, opts = {}) {
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
   }
+  // 편성 전용 쓰기 (v0.84) — in-play 쓰기 자리가 **전부** 편성 게이트 뒤인 변수는 '안 움직임'도
+  // 잴 수 없다 (시뮬은 편성을 못 한다). partyGatedWriters(어느 한 자리라도 편성 뒤)와 달리
+  // 편성 밖 자리가 하나라도 있으면 빠진다 — 그 자리가 안 걸린 건 진짜 결함일 수 있어서다.
+  // 판정 등급 효과는 그 판정을 여는 액션의 문을 물려받는다
+  // (실측: 비너스 배틀 — stand ≥ 1 게이트 액션의 판정만이 v_rank를 쓰는데 '안 움직임' mid가 떴다).
+  const partyOnlyWriters = (() => {
+    const partySites = new Set(), openSites = new Set();
+    const ckOpen = new Map();  // checkId → 편성 밖에서도 굴릴 수 있는가
+    for (const a of ACT) {
+      const open = !partyGated(a);
+      if (a.check) ckOpen.set(a.check, (ckOpen.get(a.check) || false) || open);
+      for (const f of (a.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const e of allEv) {
+      const open = !partyGated(e);
+      for (const f of (e.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+      for (const c of (e.choices || [])) for (const f of (c.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const c of (schema.checks || [])) {
+      const open = ckOpen.has(c.id) ? ckOpen.get(c.id) : true; // 아무 액션도 안 여는 판정은 열림으로 친다(보수적)
+      for (const g of (c.grades || [])) for (const f of (g.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const r of (schema.rules?.onTurn || [])) { if (r.set) openSites.add(r.set); if (r.list) openSites.add(r.list); }
+    return new Set([...partySites].filter((id) => !openSites.has(id)));
+  })();
 
   // ── 편성표 정적 검사 (v0.60) — 팝업 경제의 죽은 경로 ─────────
   // 편성·찍기는 유저 클릭 뒤에 있어 시뮬 관측이 안 된다. 그래서 "측정 불가"로 빼는 게
@@ -7636,7 +7687,7 @@ function diagnose(schema, opts = {}) {
     if (everFired.has(e.id)) continue;
     stats.deadEvents++;
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
-    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets);
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates);
     if (gate) {
       const excused = gate.byPlayer || gate.byAI;
       add(excused ? 'low' : 'mid', '설정 의존',
@@ -7690,6 +7741,19 @@ function diagnose(schema, opts = {}) {
       add('low', '편성 담당 이벤트', `'${e.id}' 미발동 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
         + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **문턱을 내리지 마세요.** '
         + '실제로 뜨는지는 채팅에서 편성한 뒤 확인하세요.', null);
+      continue;
+    }
+    // 편성 문 뒤의 판정만이 미는 값에 걸린 이벤트 (v0.84) — 비너스 정점처럼 "편성해야 여는
+    // 액션 → 그 판정 → 그 값 → 이 이벤트"로 이어지는 사슬. 시뮬은 첫 문을 제대로 못 여니
+    // 여기까지 영영 안 온다 — 죽은 게 아니라 측정 밖이다. (bottleneck은 ==를 못 읽으므로
+    // b에 기대지 않고 조건의 이름을 직접 훑는다 — partyGated와 같은 방식)
+    const poVar = (String(e.when ?? '').match(ID_TOKEN) || []).find((n) => partyOnlyWriters.has(n));
+    if (poVar) {
+      stats.deadEvents--;
+      stats.partyGatedEvs = (stats.partyGatedEvs ?? 0) + 1;
+      add('low', '편성 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${poVar}'을(를) 움직이는 자리가 전부 `
+        + '편성 게이트 액션(과 그 판정) 뒤라, 편성을 유저처럼 못 하는 시뮬레이션에서는 여기까지 못 갑니다 — '
+        + '**문턱을 내리지 마세요.** 실제로 뜨는지는 채팅에서 편성하고 굴려 보세요.', null);
       continue;
     }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
@@ -7877,6 +7941,8 @@ function diagnose(schema, opts = {}) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
       // 안 뜬 이벤트만이 세우는 플래그 — 원인은 그 이벤트 쪽이고 이미 3번에서 말했다.
       if (deadOnlyVars.has(x.id)) { cascadeStill++; continue; }
+      // 쓰는 자리가 전부 편성 게이트 뒤 — 시뮬은 편성을 못 하니 시작값인 게 당연하다 (v0.84)
+      if (partyOnlyWriters.has(x.id)) { partyGatedStill++; continue; }
       const w = [...(writers[x.id] || [])];
       const aiToo = w.includes('AI');
       add(aiToo ? 'low' : 'mid', '안 움직임', `'${x.id}'가 ${turns}턴 내내 ${JSON.stringify(x.init)}에서 안 변했습니다 — `
@@ -7890,7 +7956,7 @@ function diagnose(schema, opts = {}) {
     if (/^(day|turn|week|month|year|round)$/i.test(x.id)) continue;
     // 소비/보급 한쪽이 편성 게이트 액션 뒤에 있는 자원(연료·탄약) — 시뮬은 편성을 못 하니
     // 그 방향이 관측에서 통째로 빠진다. "경로가 없다"는 말이 거짓이므로 재지 않는다.
-    if (partyGatedWriters.has(x.id)) { partyGatedStill++; continue; }
+    if (partyGatedWriters.has(x.id) || partyOnlyWriters.has(x.id)) { partyGatedStill++; continue; }
     let down = true, up = true;
     for (const r of [...idle, ...play]) {
       for (let i = 1; i < r.hist.length; i++) {
@@ -9053,6 +9119,8 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '- **아래 목록에 없는 {자리표시자}를 쓰면 설치가 거부됩니다.** 꾸밈용 텍스트는 그냥 글자로 쓰세요.',
     '- 탭·팝업 같은 전환은 체크박스/라디오 + CSS로만 (JS 불가). 라디오·체크박스의 `id`/`name`에는',
     '  반드시 `{uid}`를 섞으세요 (예: `id="tab1-{uid}"`) — 메시지마다 상태창이 새로 그려져서, 없으면 서로 엉킵니다.',
+    '- 숨김 라디오·체크박스는 반드시 `display:none`으로 숨기세요. `position:absolute` 0×0으로 숨기면',
+    '  라벨 클릭 때 브라우저가 거기로 포커스 스크롤을 해서 앱 화면 전체가 밀립니다.',
     '- 밝은 테마/어두운 테마 어느 쪽에서도 읽히도록 배경색과 글자색을 같이 지정하세요.',
     '',
     '## 쓸 수 있는 자리표시자 (이게 전부입니다)',
@@ -19029,6 +19097,11 @@ const IDOL = {
     // 큰 자리가 닫힌다. 되돌아오는 길은 있지만 느리다 — 하루에 1씩만 빠진다.
     { id: 'corrupt', label: '타락도', type: 'int', init: 0, min: 0, max: 100,
       desc: '음지 일감에 얼마나 발을 담갔는가. 오르면 음지가 더 열리고 지상파·골든타임이 닫힌다. 시스템이 정하니 서사로 바꾸지 마라.' },
+    // ── 비너스 배틀 ── (v0.84)
+    // 아이돌끼리 라이브로 맞붙는 공인 순위 결전. 인기 랭킹(파생)이 "얼마나 알려졌나"라면
+    // 이건 "무대에서 누굴 꺾었나"다. 0은 순위권 밖이고, 순위는 배틀 판정만 움직인다.
+    { id: 'v_rank', label: '비너스 순위', type: 'int', init: 0, min: 0, max: 100, format: '{v}위',
+      desc: '비너스 배틀 공인 순위. 1위가 정점, 0은 순위권 밖이다. 배틀 판정만 움직이니 서사로 바꾸지 마라.' },
     // ── 유닛 자리 ──
     { id: 'center', label: '센터', type: 'enum', init: '유나', enum: ['없음', '유나', '세리', '린'] },
     { id: 'side1', label: '사이드 1', type: 'enum', init: '세리', enum: ['없음', '유나', '세리', '린'] },
@@ -19147,6 +19220,19 @@ const IDOL = {
     { id: 'od_spon', label: '스폰서 자리 수락률', expr: 'min(100, max(5, (21 - 15 + shady_mod) * 5))', format: '{v}%' },
     { id: 'od_gravure', label: '수위 화보 수락률', expr: 'min(100, max(5, (21 - 19 + shady_mod) * 5))', format: '{v}%' },
     { id: 'od_adult', label: '성인 영상 수락률', expr: 'min(100, max(5, (21 - 24 + shady_mod) * 5))', format: '{v}%' },
+    // ── 비너스 배틀 ── (v0.84)
+    // 난이도는 상대가 정한다 — 위로 갈수록 상대가 세진다. 순위표가 곧 대진표라 표가 따로 없다.
+    // 보정은 라이브 판정과 같은 축(능력·의상·컨디션·곡 수·신용)을 파생 하나로 묶었다 —
+    // 판정 mod와 승률 표시가 같은 줄을 읽어야 화면의 숫자와 굴린 숫자가 어긋나지 않는다.
+    { id: 'v_vs', label: '배틀 난이도', expr: 'v_rank == 0 ? 14 : 18 + round((100 - v_rank) / 3)' },
+    { id: 'v_mod', label: '배틀 보정',
+      expr: 'round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) + count(songs) - late' },
+    { id: 'v_odds', label: '배틀 승률', expr: 'min(100, max(5, (21 - v_vs + v_mod) * 5))', format: '{v}%' },
+    { id: 'v_prize', label: '배틀 상금', expr: 'v_rank == 0 ? 100 : 100 + round((100 - v_rank) * 7)', format: '{v}만원' },
+    { id: 'v_stage', label: '배틀 무대',
+      expr: "v_rank == 0 ? '예선 무대' : (v_rank <= 4 ? '정점 결전' : (v_rank <= 12 ? '전국 본선' : (v_rank <= 40 ? '전국 예선' : '지역 배틀')))" },
+    // 표기용 — 0을 "0위"로 내보내면 순위권 밖이라는 뜻이 안 보인다
+    { id: 'v_disp', label: '비너스', expr: "v_rank == 0 ? '순위권 밖' : v_rank + '위'" },
     // 장부 두 줄 — 수지는 잔고 차이고, 지출은 "번 것 중 안 남은 것"이다.
     // 이렇게 두면 레슨비처럼 편성표에서 바로 나가는 돈도 자동으로 지출에 들어온다
     // 총합은 파생이다 — 갈래를 늘려도 여기 한 줄만 항이 붙고 장부가 저절로 맞는다
@@ -19302,6 +19388,58 @@ const IDOL = {
             { set: 'live', expr: "'없음'" },
           ] },
       ] },
+    // ── 비너스 배틀 판정 ── (v0.84)
+    // 라이브 판정과 같은 축이되 상대는 순위가 정한다(v_vs). 순위권 밖이면 데뷔전이라 무르고,
+    // 순위권에 들면 위로 갈수록 상대가 세진다 — 오르는 속도는 비율이라 정점 앞이 제일 느리다.
+    // ⚠ 효과 순서 — 상금·팬은 v_prize(지금 순위 기준)를 먼저 정산하고 나서 순위를 옮긴다.
+    //   순위를 먼저 옮기면 이긴 상대가 아니라 다음 상대 기준으로 상금이 나온다.
+    { id: 'ck_venus', label: '비너스 배틀',
+      roll: 'rand(1, 20)',
+      mod: 'v_mod',
+      vs: 'v_vs',
+      grades: [
+        { when: 'roll == 20', label: '압승',
+          inject: '승부가 아니라 격의 차이였다 — 상대 팬들까지 박수를 치게 만든 무대로 그려라.',
+          effects: [
+            { set: 'funds', expr: 'min(funds + round(v_prize * 1.5), 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + round(v_prize * 1.5), 9999999)' },
+            { set: 'fans', expr: 'min(fans + v_prize * 5, 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 30, 100)' },
+            { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.06)), 100)' },
+            { set: 'm1_me', expr: 'min(m1_me + round(p1 * 8), 100)' },
+            { set: 'm2_me', expr: 'min(m2_me + round(p2 * 8), 100)' },
+            { set: 'm3_me', expr: 'min(m3_me + round(p3 * 8), 100)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 50 : max(1, v_rank - max(2, round(v_rank * 0.4)))' },
+          ] },
+        { when: 'roll == 1', label: '참패',
+          inject: '비교당하는 것이 이 판의 규칙이다 — 그리고 오늘은 그 비교가 잔인했다.',
+          effects: [
+            { set: 'buzz', expr: 'max(buzz - 10, 0)' },
+            { set: 'm1_me', expr: 'max(m1_me - round(p1 * 14), 0)' },
+            { set: 'm2_me', expr: 'max(m2_me - round(p2 * 14), 0)' },
+            { set: 'm3_me', expr: 'max(m3_me - round(p3 * 14), 0)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 0 : min(100, v_rank + max(2, round(v_rank * 0.3)))' },
+          ] },
+        { when: 'total >= vs', label: '승리',
+          inject: '심사는 관객이 한다 — 함성의 크기가 갈랐다.',
+          effects: [
+            { set: 'funds', expr: 'min(funds + v_prize, 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + v_prize, 9999999)' },
+            { set: 'fans', expr: 'min(fans + v_prize * 3, 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 16, 100)' },
+            { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 70 : max(1, v_rank - max(1, round(v_rank * 0.22)))' },
+          ] },
+        { label: '패배',
+          inject: '무대는 좋았다. 상대가 더 좋았을 뿐이다 — 그걸 셋도 객석도 알았다.',
+          effects: [
+            { set: 'buzz', expr: 'max(buzz - 4, 0)' },
+            { set: 'm1_me', expr: 'max(m1_me - round(p1 * 8), 0)' },
+            { set: 'm2_me', expr: 'max(m2_me - round(p2 * 8), 0)' },
+            { set: 'm3_me', expr: 'max(m3_me - round(p3 * 8), 0)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 0 : min(100, v_rank + max(1, round(v_rank * 0.12)))' },
+          ] },
+      ] },
     // ── 영업 판정 여섯 ── (v0.82)
     // ⚠ 왜 하나가 아니라 여섯인가: 엔진은 **판정을 액션 효과보다 먼저** 굴린다. 그래서 판정은
     // "어느 자리를 노렸는가"를 알 수 없다 — vs를 자리에 맞춰 바꿀 방법이 없다는 뜻이다.
@@ -19428,6 +19566,19 @@ const IDOL = {
       effects: [
         { set: 'funds', expr: 'max(funds - 1600, 0)' },
         { set: 'live', expr: "'전국 투어'" }, { set: 'live_days', expr: '16 + rand(0, 10)' },
+      ] },
+    // ── 비너스 배틀 ── (v0.84)
+    // 순위는 사는 게 아니라 뺏는 것이다 — 참가비만 내면 자리는 순위가 정해 준다(순위표가 곧 대진표).
+    // 대관과 달리 개런티가 없다: 걸린 건 상금과 순위고, 지면 순위가 내려간다.
+    { id: 'venus_battle', label: '🏆 비너스 배틀에 나간다', mode: 'oneshot', cooldown: 5,
+      when: 'fans >= 2000 and stand >= 1 and u_cond >= 40 and funds >= 50 and not unit_over',
+      check: 'ck_venus',
+      inject: '[행동] 비너스 배틀에 이름을 올린다. 같은 무대, 같은 조명, 관객이 심판이다 — 상대 유닛을 등장시켜 맞붙는 장면으로 그려라.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 50, 0)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 12), 0)' },
+        { set: 'm2_st', expr: 'max(m2_st - round(p2 * 12), 0)' },
+        { set: 'm3_st', expr: 'max(m3_st - round(p3 * 12), 0)' },
       ] },
     // ── 무대 ──
     { id: 'live_show', label: '🎫 라이브에 선다', mode: 'oneshot',
@@ -19658,6 +19809,18 @@ const IDOL = {
         notify: '이제 이쪽에서 자리를 고른다. A등급이다.' },
       { id: 'rank_s', when: "rank == 'A' and awareness >= 92", effects: [{ set: 'rank', expr: "'S'" }],
         notify: '올해를 이야기할 때 이 이름이 빠지지 않게 되었다. S등급이다.' },
+      // 비너스 정점 — 판을 끝내지 않는 승리. rank 이벤트와 같은 규칙이라 once가 없다:
+      // 정점에서 밀려났다 다시 오르면 그날도 사건이 맞다.
+      { id: 'venus_crown', when: 'v_rank == 1 and not unit_over',
+        notify: '비너스 배틀 정점이다. 이제 이 이름 위에는 아무도 없다 — 전국의 무대가 이쪽을 본다.',
+        effects: [
+          { set: 'buzz', expr: '100' },
+          { set: 'awareness', expr: 'min(awareness + 8, 100)' },
+          { set: 'fans', expr: 'min(fans + round(fans * 0.2), 9999999)' },
+          { set: 'm1_love', expr: 'min(m1_love + 10, 100)' },
+          { set: 'm2_love', expr: 'min(m2_love + 10, 100)' },
+          { set: 'm3_love', expr: 'min(m3_love + 10, 100)' },
+        ] },
       // 월말 정산 — 시간 등호에는 반드시 빗장이 필요하다. 조건이 참인 동안 매 턴 발동하지
       // 않도록 효과가 조건 변수(settled)를 직접 닫는다 (v0.50 린트가 요구하는 짝)
       { id: 'settle', when: 'dom >= 28 and settled != month and not unit_over',
@@ -19818,6 +19981,8 @@ const IDOL = {
       text: '[상태] 돌아갈 자리가 거의 남지 않았다 (타락도 {corrupt}). 프로듀서도 셋도 그걸 알면서 말하지 않는다. 수위 있는 장면은 암시까지만 하고 넘겨라.' },
     { id: 'hot', when: 'buzz >= 70 and not unit_over',
       text: '[상태] 지금 화제의 한가운데다 (화제성 {buzz}). 어디를 가도 알아보고, 그게 부담이기도 하다.' },
+    { id: 'venus_top', when: 'v_rank >= 1 and v_rank <= 10 and not unit_over',
+      text: '[상태] 비너스 배틀 {v_rank}위 — 이름이 순위로 불리는 자리다. 어디서든 순위가 먼저 소개되고, 도전자들이 이쪽을 지목한다.' },
     { id: 'ended', when: 'unit_over',
       text: '[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 흩어진 뒤의 시점이나 남은 것들로 마무리하라.' },
   ],
@@ -19835,7 +20000,7 @@ const IDOL = {
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
     ],
-    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·활동 중단은 시스템이 관리하니 건드리지 마라. '
+    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
@@ -19847,6 +20012,7 @@ const IDOL = {
       + '자금 {funds} · 빚 {debt} · 펑크 {late}회\n'
       + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
       + '업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n'
+      + '비너스 배틀 {v_disp} ({v_stage})\n'
       + '의상 {costume} · 음반 {album} · 타락도 {corrupt}\n'
       + '센터 {center} / 사이드 {side1} · {side2} · 유닛 컨디션 {u_cond}\n'
       + '유나 {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n'
@@ -19887,8 +20053,9 @@ const IDOL = {
         actions: ['take_street', 'take_radio', 'take_mag', 'take_ltv', 'take_cable', 'take_net', 'take_gold'],
         note: '자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다.' },
       { id: 'halls', label: '무대',
-        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show'],
-        note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다.' },
+        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show', 'venus_battle'],
+        note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다. '
+          + '비너스 배틀은 반대다: 참가비는 싸지만 상대가 있고, 지면 순위가 내려간다.' },
       { id: 'make', label: '제작',
         actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full'],
         note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다.' },
@@ -19915,6 +20082,7 @@ const IDOL = {
       { label: '프로덕션', items: [
         { var: 'rank' },
         { var: 'ranking' },
+        { var: 'v_disp' },
         { var: 'awareness', bar: { max: 100 }, color: "'#c86a9a'" },
         { var: 'buzz', bar: { max: 100 }, color: "buzz >= 70 ? '#d4506a' : (buzz <= 10 ? '#4a4a5a' : '#8a5a8a')" },
         { var: 'fans' },
@@ -19969,6 +20137,11 @@ const IDOL = {
         // 예상 객석 — 대관을 무리했는지가 여기 한 줄에 다 나온다. 60% 아래면 붉게 뜬다
         { var: 'live_fill', showWhen: "live != '없음'", bar: { max: 100 },
           color: "live_fill < 60 ? '#a8443a' : '#6a8a7a'" },
+        // 비너스 배틀 — 문이 열리는 문턱(팬 2000)이 버튼 조건과 같은 줄이어야 한다.
+        // 승률·상금이 보여야 "지금 나갈까"가 저울질이 된다 (영업 성사율과 같은 규율)
+        { var: 'v_stage', showWhen: 'fans >= 2000' },
+        { var: 'v_odds', showWhen: 'fans >= 2000' },
+        { var: 'v_prize', showWhen: 'fans >= 2000' },
         { var: 'job_queue', showWhen: 'count(job_queue) > 0' },
         { var: 'live_queue', showWhen: 'count(live_queue) > 0' },
         { var: 'schedule', showWhen: 'count(schedule) > 0' },

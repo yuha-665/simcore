@@ -212,13 +212,18 @@ function numericTermsAllReached(when, obs) {
  *   이벤트가 안 뜨면 그 플래그도 안 움직인다. 그걸 근거로 "이 플래그 때문에 안 뜬다"고 하면
  *   원인과 결과가 뒤집힌 채 순환한다. 그 플래그는 false로 시작하므로 막고 있는 게 아니다.
  */
-function gatedBySetting(when, schema, writers, moved, selfSets = null) {
+function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null) {
   if (!when) return null;
   for (const v of schema.vars) {
     if (v.type !== 'enum' && v.type !== 'bool') continue;
     if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
     if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
     if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
+    // 극성 — 이름이 조건에 있다고 다 게이트가 아니다. `not unit_over`처럼 **시작값이 이미
+    // 조건을 만족시키는** 항은 이 변수가 막는 게 아니라 다른 항이 막는 것이다. 값을 뒤집어
+    // 조건이 참이 되는지 관측 상태로 재 본다 (실측: 비너스 정점 이벤트가 활동 중단을 뒤집어
+    // 쓴 채로 "바꿀 수단이 없다"고 신고됐다 — 진짜 원인은 순위 쪽 항이었다).
+    if (states && !blockedBy(when, states, schema, v)) continue;
     const who = writers[v.id] || new Set();
     const byPlayer = [...who].some((s) => s === '액션' || s === '새 시작' || s === '최초설정');
     // 보조 AI가 세우는 값이면 "바꿀 수단이 없다"는 말은 사실이 아니다 — 시뮬에 AI가 없을 뿐이다.
@@ -296,6 +301,31 @@ function diagnose(schema, opts = {}) {
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { partyGatedWriters.add(it.var); if (t.points) partyGatedWriters.add(t.points); }
   }
+  // 편성 전용 쓰기 (v0.84) — in-play 쓰기 자리가 **전부** 편성 게이트 뒤인 변수는 '안 움직임'도
+  // 잴 수 없다 (시뮬은 편성을 못 한다). partyGatedWriters(어느 한 자리라도 편성 뒤)와 달리
+  // 편성 밖 자리가 하나라도 있으면 빠진다 — 그 자리가 안 걸린 건 진짜 결함일 수 있어서다.
+  // 판정 등급 효과는 그 판정을 여는 액션의 문을 물려받는다
+  // (실측: 비너스 배틀 — stand ≥ 1 게이트 액션의 판정만이 v_rank를 쓰는데 '안 움직임' mid가 떴다).
+  const partyOnlyWriters = (() => {
+    const partySites = new Set(), openSites = new Set();
+    const ckOpen = new Map();  // checkId → 편성 밖에서도 굴릴 수 있는가
+    for (const a of ACT) {
+      const open = !partyGated(a);
+      if (a.check) ckOpen.set(a.check, (ckOpen.get(a.check) || false) || open);
+      for (const f of (a.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const e of allEv) {
+      const open = !partyGated(e);
+      for (const f of (e.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+      for (const c of (e.choices || [])) for (const f of (c.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const c of (schema.checks || [])) {
+      const open = ckOpen.has(c.id) ? ckOpen.get(c.id) : true; // 아무 액션도 안 여는 판정은 열림으로 친다(보수적)
+      for (const g of (c.grades || [])) for (const f of (g.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
+    }
+    for (const r of (schema.rules?.onTurn || [])) { if (r.set) openSites.add(r.set); if (r.list) openSites.add(r.list); }
+    return new Set([...partySites].filter((id) => !openSites.has(id)));
+  })();
 
   // ── 편성표 정적 검사 (v0.60) — 팝업 경제의 죽은 경로 ─────────
   // 편성·찍기는 유저 클릭 뒤에 있어 시뮬 관측이 안 된다. 그래서 "측정 불가"로 빼는 게
@@ -726,7 +756,7 @@ function diagnose(schema, opts = {}) {
     if (everFired.has(e.id)) continue;
     stats.deadEvents++;
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
-    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets);
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates);
     if (gate) {
       const excused = gate.byPlayer || gate.byAI;
       add(excused ? 'low' : 'mid', '설정 의존',
@@ -780,6 +810,19 @@ function diagnose(schema, opts = {}) {
       add('low', '편성 담당 이벤트', `'${e.id}' 미발동 — 조건이 편성(슬롯 또는 deployed)을 봅니다. `
         + '편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 늘 미편성입니다 — **문턱을 내리지 마세요.** '
         + '실제로 뜨는지는 채팅에서 편성한 뒤 확인하세요.', null);
+      continue;
+    }
+    // 편성 문 뒤의 판정만이 미는 값에 걸린 이벤트 (v0.84) — 비너스 정점처럼 "편성해야 여는
+    // 액션 → 그 판정 → 그 값 → 이 이벤트"로 이어지는 사슬. 시뮬은 첫 문을 제대로 못 여니
+    // 여기까지 영영 안 온다 — 죽은 게 아니라 측정 밖이다. (bottleneck은 ==를 못 읽으므로
+    // b에 기대지 않고 조건의 이름을 직접 훑는다 — partyGated와 같은 방식)
+    const poVar = (String(e.when ?? '').match(ID_TOKEN) || []).find((n) => partyOnlyWriters.has(n));
+    if (poVar) {
+      stats.deadEvents--;
+      stats.partyGatedEvs = (stats.partyGatedEvs ?? 0) + 1;
+      add('low', '편성 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${poVar}'을(를) 움직이는 자리가 전부 `
+        + '편성 게이트 액션(과 그 판정) 뒤라, 편성을 유저처럼 못 하는 시뮬레이션에서는 여기까지 못 갑니다 — '
+        + '**문턱을 내리지 마세요.** 실제로 뜨는지는 채팅에서 편성하고 굴려 보세요.', null);
       continue;
     }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
@@ -967,6 +1010,8 @@ function diagnose(schema, opts = {}) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
       // 안 뜬 이벤트만이 세우는 플래그 — 원인은 그 이벤트 쪽이고 이미 3번에서 말했다.
       if (deadOnlyVars.has(x.id)) { cascadeStill++; continue; }
+      // 쓰는 자리가 전부 편성 게이트 뒤 — 시뮬은 편성을 못 하니 시작값인 게 당연하다 (v0.84)
+      if (partyOnlyWriters.has(x.id)) { partyGatedStill++; continue; }
       const w = [...(writers[x.id] || [])];
       const aiToo = w.includes('AI');
       add(aiToo ? 'low' : 'mid', '안 움직임', `'${x.id}'가 ${turns}턴 내내 ${JSON.stringify(x.init)}에서 안 변했습니다 — `
@@ -980,7 +1025,7 @@ function diagnose(schema, opts = {}) {
     if (/^(day|turn|week|month|year|round)$/i.test(x.id)) continue;
     // 소비/보급 한쪽이 편성 게이트 액션 뒤에 있는 자원(연료·탄약) — 시뮬은 편성을 못 하니
     // 그 방향이 관측에서 통째로 빠진다. "경로가 없다"는 말이 거짓이므로 재지 않는다.
-    if (partyGatedWriters.has(x.id)) { partyGatedStill++; continue; }
+    if (partyGatedWriters.has(x.id) || partyOnlyWriters.has(x.id)) { partyGatedStill++; continue; }
     let down = true, up = true;
     for (const r of [...idle, ...play]) {
       for (let i = 1; i < r.hist.length; i++) {

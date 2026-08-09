@@ -221,6 +221,11 @@ for (const [id, ratio] of [['hall_fest', 0.30], ['hall_solo', 0.45], ['hall_tour
   for (const c of S.checks) {
     if (typeof c.mod === 'string') c.mod = c.mod.replace('(u_vo + u_da + u_vi) / 30', `(u_vo + u_da + u_vi) / ${div}`);
   }
+  // 배틀 보정(v_mod)은 파생에 산다 — 판정 mod와 승률 표시가 같은 줄을 읽도록 묶었기 때문.
+  // 파생 쪽도 같은 자로 다시 재지 않으면 화면의 승률만 1.6배 기준이 된다 (v0.84)
+  for (const d of S.derived) {
+    if (typeof d.expr === 'string') d.expr = d.expr.replace('(u_vo + u_da + u_vi) / 30', `(u_vo + u_da + u_vi) / ${div}`);
+  }
 }
 
 // 번아웃 — 다섯 자리 전부를 본다. 빈 자리는 멘탈이 0이어도 판을 끝내면 안 되므로 착석을 같이 본다
@@ -290,6 +295,7 @@ S.promptState.template = '[프로덕션] {date} ({weekday}) · {rank}등급 · �
   + '자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n'
   + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
   + '업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n'
+  + '비너스 배틀 {v_disp} ({v_stage})\n'
   + '의상 {costume} · 음반 {album}\n'
   + `유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n`
   + Array.from({ length: N }, (_, i) => {
@@ -320,6 +326,17 @@ S.directives.unshift({
   id: 'empty_unit', when: 'stand == 0 and not unit_over',
   text: '[유닛] 아직 유닛이 없다. 편성표(🎤)에서 다섯 자리를 채우기 전까지는 무대 이야기를 시작하지 마라 — '
     + '누구를 모을지 고르는 장면으로 끌어라.',
+});
+
+// ── 8.5 세계관 — 봇 설명에 안 적어도 스키마가 직접 전제를 깔아 준다 (v0.84) ──
+// 지시문은 "조건이 참인 동안 매 턴 주입"이라 when: '1'이면 상시 로어가 된다.
+// 로어북 없이 카드+세이브만 옮겨도 세계의 상식이 함께 간다.
+S.directives.push({
+  id: 'world', when: '1',
+  text: '[세계관] 이 세계에서 아이돌은 모든 여성의 우상이자 권력이고 목표다. 최고의 아이돌로 '
+    + '스카우트되는 것은 더없는 영광이며, 소녀들은 정점에 서기 위해서라면 무엇이든 한다. '
+    + '유닛 사이의 공인 서열은 비너스 배틀 — 같은 무대에서 라이브로 맞붙어 관객이 승부를 '
+    + '가르는 순위 결전 — 으로 정해진다. 이것을 세계의 상식으로 깔고 서사를 진행하라.',
 });
 
 // ── 9. 프리셋 — 사람은 안 정하고 형편만 정한다 ──
@@ -366,6 +383,11 @@ const dump = JSON.stringify({ ...S, party: S.party, statusUI: S.statusUI });
 const ghosts = ['유나', '세리', '· 린', '"center"', '"side1"', '"side2"'].filter((g) => dump.includes(g));
 // 자리 다섯이 실제로 다 배선됐는가 — m3 줄만 복제하는 방식이라 마지막 자리가 빠지면 조용히 셋만 굴러간다
 if (!dump.includes(`m${N}_me`) || !dump.includes(`slot${N}`)) ghosts.push(`자리 ${N} 미배선`);
+// 비너스 배틀 (v0.84) — 세계관 지시문이 실려 있고, 배틀 보정(파생)도 자리 수의 자로 재졌는가.
+// 판정 mod만 바꾸고 파생을 빼먹으면 화면의 승률만 세 자리 기준(1.6배)이 된다.
+if (!S.directives.some((d) => d.id === 'world' && d.when === '1')) ghosts.push('세계관 지시문 없음');
+if (!/\/ 48/.test(S.derived.find((d) => d.id === 'v_mod').expr)) ghosts.push('v_mod 나눔수 미조정');
+if (!JSON.stringify(S.checks.find((c) => c.id === 'ck_venus')).includes(`m${N}_me`)) ghosts.push('배틀 효과 자리 미배선');
 console.log(ghosts.length ? `⚠ 옛 이름이 남음: ${ghosts.join(', ')}` : '미치환: 없음');
 
 // ── 실제로 굴러가는가 ──

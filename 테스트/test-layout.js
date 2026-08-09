@@ -102,6 +102,10 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('탭 CSS는 그룹 수만큼만 (남는 규칙 없음)', !css.includes('.sim-panel-3'), '');
   ck('패널은 기본이 숨김', css.includes('.sim-panel{display:none}'), '');
   ck('stack에는 탭 규칙을 안 싣는다', !buildStatusCss(mk('stack')).includes(':checked ~'), '');
+  // 실사고(v0.84): absolute 0×0 라디오는 라벨 클릭 때 포커스 스크롤을 일으켜
+  // 리수의 overflow:hidden 앱 화면 전체를 밀어 버렸다. 렌더 안 되는 요소는 포커스 불가.
+  ck('★ 숨김 라디오는 display:none이다 (포커스 스크롤 원천 봉쇄)',
+    /\.sim-tabin\{display:none\}/.test(css) && !/\.sim-tabin\{[^}]*absolute/.test(css), '');
   ck('팝업 본문은 배경과 글자색을 같이 정한다 (뒤가 비치면 안 된다)',
     /\.sim-pop-body\{[^}]*background:var\(--sim-pop-bg[^}]*color:var\(--sim-pop-fg/.test(buildStatusCss(mk('popover'))), '');
   ck('팝업은 :focus-within으로 열린다', buildStatusCss(mk('popover')).includes('.sim-pop:focus-within .sim-pop-body{display:block}'), '');
@@ -183,6 +187,8 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('탭 뼈대 CSS가 자리 수만큼 나온다',
     tabs.includes('.mp-in-1:checked ~ .mp-panels .mp-panel-1') && !tabs.includes('.mp-panel-2'), '');
   ck('뼈대는 기본 CSS(.sim-*)와 클래스가 안 겹친다', !/class="[^"]*\bsim-/.test(tabs), '');
+  ck('★ 뼈대의 숨김 라디오도 display:none이다 (포커스 스크롤 원천 봉쇄)',
+    tabs.includes('.mp-in{display:none}') && !/\.mp-in\{[^}]*absolute/.test(tabs), '');
 
   // 그룹을 안 만들어 둔 봇도 뭔가 나와야 한다 (빈 상자를 주면 아무도 못 고친다)
   const NOG = { ...SCH, statusUI: { mode: 'template' } };

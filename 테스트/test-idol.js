@@ -546,6 +546,47 @@ const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initSta
   ck('★ 음지 탭도 발을 담근 뒤에만 뜬다', /corrupt >= 1/.test(shadePane.showWhen || ''), String(shadePane.showWhen));
 }
 
+// ── 비너스 배틀 (v0.84) — 순위 결전: 위로 갈수록 상대가 세고, 정산은 이긴 상대 기준 ──
+{
+  const CK = S.checks.find((c) => c.id === 'ck_venus');
+  const base = engine.initState(S).vars;
+  const EV = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...base, ...vars }));
+  ck('★ 배틀 판정과 버튼이 짝지어져 있다', !!CK && A('venus_battle').check === 'ck_venus', '');
+  const vs = (rk) => D('v_vs', { ...base, v_rank: rk });
+  ck('★ 위로 갈수록 상대가 세진다 (순위표가 곧 대진표)',
+    vs(0) < vs(100) && vs(100) < vs(50) && vs(50) < vs(20) && vs(20) < vs(1),
+    [0, 100, 50, 20, 1].map((r) => vs(r)).join('/'));
+  ck('★ 판정 mod와 승률 표시가 같은 줄(v_mod)을 읽는다 (화면의 숫자와 굴린 숫자가 같다)',
+    CK.mod === 'v_mod' && /v_mod/.test(S.derived.find((d) => d.id === 'v_odds').expr), '');
+  ck('배틀 승률은 5~100 사이다',
+    [0, 1, 50].every((rk) => { const o = D('v_odds', { ...base, v_rank: rk }); return o >= 5 && o <= 100; }), '');
+  // 정산 순서 — v_prize는 지금 순위를 읽으므로, 순위 이동이 상금보다 먼저면 다음 상대 기준이 된다
+  const winG = CK.grades.find((g) => g.label === '승리');
+  const order = winG.effects.map((f) => f.set);
+  ck('★ 상금·팬이 순위 이동보다 먼저다 (이긴 상대 기준으로 정산된다)',
+    order.indexOf('funds') < order.indexOf('v_rank') && order.indexOf('fans') < order.indexOf('v_rank'),
+    order.join(','));
+  ck('★ 상금은 장부와 자금에 같이 적힌다 (유령 지출 방지)',
+    winG.effects.some((f) => f.set === 'inc_stage') && winG.effects.some((f) => f.set === 'funds'), '');
+  const move = (g, rk) =>
+    EV(CK.grades.find((x) => x.label === g).effects.find((f) => f.set === 'v_rank').expr, { v_rank: rk });
+  ck('★ 데뷔전을 이기면 순위권에 든다', move('승리', 0) > 0 && move('압승', 0) > 0, '');
+  ck('★ 이기면 오르고 지면 내려간다 (1위 위로는 없다)',
+    move('승리', 50) < 50 && move('패배', 50) > 50 && move('승리', 1) === 1, '');
+  ck('순위권 밖에서 지면 그대로 밖이다', move('패배', 0) === 0 && move('참패', 0) === 0, '');
+  ck('바닥은 100위다 (한 번 들면 순위권 밖으로 안 밀려난다)', move('참패', 95) <= 100, String(move('참패', 95)));
+  const crown = S.rules.events.find((e) => e.id === 'venus_crown');
+  ck('★ 정점 이벤트는 판을 끝내지 않는 승리다',
+    !!crown && !crown.effects.some((f) => f.set === 'unit_over'), '');
+  const jobPane = S.statusUI.groups.find((g) => g.label === '일감');
+  const gate = /fans >= (\d+)/.exec(A('venus_battle').when)[1];
+  ck('★ 배틀 승률·상금 표시 문턱이 버튼 조건과 짝이다',
+    ['v_stage', 'v_odds', 'v_prize'].every((v) =>
+      (jobPane.items.find((it) => it.var === v).showWhen || '').includes(`fans >= ${gate}`)), '');
+  ck('비너스 순위가 프롬프트에 실린다', /\{v_disp\}/.test(S.promptState.template), '');
+  ck('순위는 AI에게 안 연다 (배틀 판정만 움직인다)', !S.updater.allow.some((a) => a.id === 'v_rank'), '');
+}
+
 report();
 
 function report() {

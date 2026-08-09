@@ -3234,6 +3234,11 @@ const IDOL = {
     // 큰 자리가 닫힌다. 되돌아오는 길은 있지만 느리다 — 하루에 1씩만 빠진다.
     { id: 'corrupt', label: '타락도', type: 'int', init: 0, min: 0, max: 100,
       desc: '음지 일감에 얼마나 발을 담갔는가. 오르면 음지가 더 열리고 지상파·골든타임이 닫힌다. 시스템이 정하니 서사로 바꾸지 마라.' },
+    // ── 비너스 배틀 ── (v0.84)
+    // 아이돌끼리 라이브로 맞붙는 공인 순위 결전. 인기 랭킹(파생)이 "얼마나 알려졌나"라면
+    // 이건 "무대에서 누굴 꺾었나"다. 0은 순위권 밖이고, 순위는 배틀 판정만 움직인다.
+    { id: 'v_rank', label: '비너스 순위', type: 'int', init: 0, min: 0, max: 100, format: '{v}위',
+      desc: '비너스 배틀 공인 순위. 1위가 정점, 0은 순위권 밖이다. 배틀 판정만 움직이니 서사로 바꾸지 마라.' },
     // ── 유닛 자리 ──
     { id: 'center', label: '센터', type: 'enum', init: '유나', enum: ['없음', '유나', '세리', '린'] },
     { id: 'side1', label: '사이드 1', type: 'enum', init: '세리', enum: ['없음', '유나', '세리', '린'] },
@@ -3352,6 +3357,19 @@ const IDOL = {
     { id: 'od_spon', label: '스폰서 자리 수락률', expr: 'min(100, max(5, (21 - 15 + shady_mod) * 5))', format: '{v}%' },
     { id: 'od_gravure', label: '수위 화보 수락률', expr: 'min(100, max(5, (21 - 19 + shady_mod) * 5))', format: '{v}%' },
     { id: 'od_adult', label: '성인 영상 수락률', expr: 'min(100, max(5, (21 - 24 + shady_mod) * 5))', format: '{v}%' },
+    // ── 비너스 배틀 ── (v0.84)
+    // 난이도는 상대가 정한다 — 위로 갈수록 상대가 세진다. 순위표가 곧 대진표라 표가 따로 없다.
+    // 보정은 라이브 판정과 같은 축(능력·의상·컨디션·곡 수·신용)을 파생 하나로 묶었다 —
+    // 판정 mod와 승률 표시가 같은 줄을 읽어야 화면의 숫자와 굴린 숫자가 어긋나지 않는다.
+    { id: 'v_vs', label: '배틀 난이도', expr: 'v_rank == 0 ? 14 : 18 + round((100 - v_rank) / 3)' },
+    { id: 'v_mod', label: '배틀 보정',
+      expr: 'round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) + count(songs) - late' },
+    { id: 'v_odds', label: '배틀 승률', expr: 'min(100, max(5, (21 - v_vs + v_mod) * 5))', format: '{v}%' },
+    { id: 'v_prize', label: '배틀 상금', expr: 'v_rank == 0 ? 100 : 100 + round((100 - v_rank) * 7)', format: '{v}만원' },
+    { id: 'v_stage', label: '배틀 무대',
+      expr: "v_rank == 0 ? '예선 무대' : (v_rank <= 4 ? '정점 결전' : (v_rank <= 12 ? '전국 본선' : (v_rank <= 40 ? '전국 예선' : '지역 배틀')))" },
+    // 표기용 — 0을 "0위"로 내보내면 순위권 밖이라는 뜻이 안 보인다
+    { id: 'v_disp', label: '비너스', expr: "v_rank == 0 ? '순위권 밖' : v_rank + '위'" },
     // 장부 두 줄 — 수지는 잔고 차이고, 지출은 "번 것 중 안 남은 것"이다.
     // 이렇게 두면 레슨비처럼 편성표에서 바로 나가는 돈도 자동으로 지출에 들어온다
     // 총합은 파생이다 — 갈래를 늘려도 여기 한 줄만 항이 붙고 장부가 저절로 맞는다
@@ -3507,6 +3525,58 @@ const IDOL = {
             { set: 'live', expr: "'없음'" },
           ] },
       ] },
+    // ── 비너스 배틀 판정 ── (v0.84)
+    // 라이브 판정과 같은 축이되 상대는 순위가 정한다(v_vs). 순위권 밖이면 데뷔전이라 무르고,
+    // 순위권에 들면 위로 갈수록 상대가 세진다 — 오르는 속도는 비율이라 정점 앞이 제일 느리다.
+    // ⚠ 효과 순서 — 상금·팬은 v_prize(지금 순위 기준)를 먼저 정산하고 나서 순위를 옮긴다.
+    //   순위를 먼저 옮기면 이긴 상대가 아니라 다음 상대 기준으로 상금이 나온다.
+    { id: 'ck_venus', label: '비너스 배틀',
+      roll: 'rand(1, 20)',
+      mod: 'v_mod',
+      vs: 'v_vs',
+      grades: [
+        { when: 'roll == 20', label: '압승',
+          inject: '승부가 아니라 격의 차이였다 — 상대 팬들까지 박수를 치게 만든 무대로 그려라.',
+          effects: [
+            { set: 'funds', expr: 'min(funds + round(v_prize * 1.5), 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + round(v_prize * 1.5), 9999999)' },
+            { set: 'fans', expr: 'min(fans + v_prize * 5, 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 30, 100)' },
+            { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.06)), 100)' },
+            { set: 'm1_me', expr: 'min(m1_me + round(p1 * 8), 100)' },
+            { set: 'm2_me', expr: 'min(m2_me + round(p2 * 8), 100)' },
+            { set: 'm3_me', expr: 'min(m3_me + round(p3 * 8), 100)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 50 : max(1, v_rank - max(2, round(v_rank * 0.4)))' },
+          ] },
+        { when: 'roll == 1', label: '참패',
+          inject: '비교당하는 것이 이 판의 규칙이다 — 그리고 오늘은 그 비교가 잔인했다.',
+          effects: [
+            { set: 'buzz', expr: 'max(buzz - 10, 0)' },
+            { set: 'm1_me', expr: 'max(m1_me - round(p1 * 14), 0)' },
+            { set: 'm2_me', expr: 'max(m2_me - round(p2 * 14), 0)' },
+            { set: 'm3_me', expr: 'max(m3_me - round(p3 * 14), 0)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 0 : min(100, v_rank + max(2, round(v_rank * 0.3)))' },
+          ] },
+        { when: 'total >= vs', label: '승리',
+          inject: '심사는 관객이 한다 — 함성의 크기가 갈랐다.',
+          effects: [
+            { set: 'funds', expr: 'min(funds + v_prize, 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + v_prize, 9999999)' },
+            { set: 'fans', expr: 'min(fans + v_prize * 3, 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 16, 100)' },
+            { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 70 : max(1, v_rank - max(1, round(v_rank * 0.22)))' },
+          ] },
+        { label: '패배',
+          inject: '무대는 좋았다. 상대가 더 좋았을 뿐이다 — 그걸 셋도 객석도 알았다.',
+          effects: [
+            { set: 'buzz', expr: 'max(buzz - 4, 0)' },
+            { set: 'm1_me', expr: 'max(m1_me - round(p1 * 8), 0)' },
+            { set: 'm2_me', expr: 'max(m2_me - round(p2 * 8), 0)' },
+            { set: 'm3_me', expr: 'max(m3_me - round(p3 * 8), 0)' },
+            { set: 'v_rank', expr: 'v_rank == 0 ? 0 : min(100, v_rank + max(1, round(v_rank * 0.12)))' },
+          ] },
+      ] },
     // ── 영업 판정 여섯 ── (v0.82)
     // ⚠ 왜 하나가 아니라 여섯인가: 엔진은 **판정을 액션 효과보다 먼저** 굴린다. 그래서 판정은
     // "어느 자리를 노렸는가"를 알 수 없다 — vs를 자리에 맞춰 바꿀 방법이 없다는 뜻이다.
@@ -3633,6 +3703,19 @@ const IDOL = {
       effects: [
         { set: 'funds', expr: 'max(funds - 1600, 0)' },
         { set: 'live', expr: "'전국 투어'" }, { set: 'live_days', expr: '16 + rand(0, 10)' },
+      ] },
+    // ── 비너스 배틀 ── (v0.84)
+    // 순위는 사는 게 아니라 뺏는 것이다 — 참가비만 내면 자리는 순위가 정해 준다(순위표가 곧 대진표).
+    // 대관과 달리 개런티가 없다: 걸린 건 상금과 순위고, 지면 순위가 내려간다.
+    { id: 'venus_battle', label: '🏆 비너스 배틀에 나간다', mode: 'oneshot', cooldown: 5,
+      when: 'fans >= 2000 and stand >= 1 and u_cond >= 40 and funds >= 50 and not unit_over',
+      check: 'ck_venus',
+      inject: '[행동] 비너스 배틀에 이름을 올린다. 같은 무대, 같은 조명, 관객이 심판이다 — 상대 유닛을 등장시켜 맞붙는 장면으로 그려라.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 50, 0)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 12), 0)' },
+        { set: 'm2_st', expr: 'max(m2_st - round(p2 * 12), 0)' },
+        { set: 'm3_st', expr: 'max(m3_st - round(p3 * 12), 0)' },
       ] },
     // ── 무대 ──
     { id: 'live_show', label: '🎫 라이브에 선다', mode: 'oneshot',
@@ -3863,6 +3946,18 @@ const IDOL = {
         notify: '이제 이쪽에서 자리를 고른다. A등급이다.' },
       { id: 'rank_s', when: "rank == 'A' and awareness >= 92", effects: [{ set: 'rank', expr: "'S'" }],
         notify: '올해를 이야기할 때 이 이름이 빠지지 않게 되었다. S등급이다.' },
+      // 비너스 정점 — 판을 끝내지 않는 승리. rank 이벤트와 같은 규칙이라 once가 없다:
+      // 정점에서 밀려났다 다시 오르면 그날도 사건이 맞다.
+      { id: 'venus_crown', when: 'v_rank == 1 and not unit_over',
+        notify: '비너스 배틀 정점이다. 이제 이 이름 위에는 아무도 없다 — 전국의 무대가 이쪽을 본다.',
+        effects: [
+          { set: 'buzz', expr: '100' },
+          { set: 'awareness', expr: 'min(awareness + 8, 100)' },
+          { set: 'fans', expr: 'min(fans + round(fans * 0.2), 9999999)' },
+          { set: 'm1_love', expr: 'min(m1_love + 10, 100)' },
+          { set: 'm2_love', expr: 'min(m2_love + 10, 100)' },
+          { set: 'm3_love', expr: 'min(m3_love + 10, 100)' },
+        ] },
       // 월말 정산 — 시간 등호에는 반드시 빗장이 필요하다. 조건이 참인 동안 매 턴 발동하지
       // 않도록 효과가 조건 변수(settled)를 직접 닫는다 (v0.50 린트가 요구하는 짝)
       { id: 'settle', when: 'dom >= 28 and settled != month and not unit_over',
@@ -4023,6 +4118,8 @@ const IDOL = {
       text: '[상태] 돌아갈 자리가 거의 남지 않았다 (타락도 {corrupt}). 프로듀서도 셋도 그걸 알면서 말하지 않는다. 수위 있는 장면은 암시까지만 하고 넘겨라.' },
     { id: 'hot', when: 'buzz >= 70 and not unit_over',
       text: '[상태] 지금 화제의 한가운데다 (화제성 {buzz}). 어디를 가도 알아보고, 그게 부담이기도 하다.' },
+    { id: 'venus_top', when: 'v_rank >= 1 and v_rank <= 10 and not unit_over',
+      text: '[상태] 비너스 배틀 {v_rank}위 — 이름이 순위로 불리는 자리다. 어디서든 순위가 먼저 소개되고, 도전자들이 이쪽을 지목한다.' },
     { id: 'ended', when: 'unit_over',
       text: '[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 흩어진 뒤의 시점이나 남은 것들로 마무리하라.' },
   ],
@@ -4040,7 +4137,7 @@ const IDOL = {
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
     ],
-    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·활동 중단은 시스템이 관리하니 건드리지 마라. '
+    guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
@@ -4052,6 +4149,7 @@ const IDOL = {
       + '자금 {funds} · 빚 {debt} · 펑크 {late}회\n'
       + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
       + '업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n'
+      + '비너스 배틀 {v_disp} ({v_stage})\n'
       + '의상 {costume} · 음반 {album} · 타락도 {corrupt}\n'
       + '센터 {center} / 사이드 {side1} · {side2} · 유닛 컨디션 {u_cond}\n'
       + '유나 {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n'
@@ -4092,8 +4190,9 @@ const IDOL = {
         actions: ['take_street', 'take_radio', 'take_mag', 'take_ltv', 'take_cable', 'take_net', 'take_gold'],
         note: '자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다.' },
       { id: 'halls', label: '무대',
-        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show'],
-        note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다.' },
+        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show', 'venus_battle'],
+        note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다. '
+          + '비너스 배틀은 반대다: 참가비는 싸지만 상대가 있고, 지면 순위가 내려간다.' },
       { id: 'make', label: '제작',
         actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full'],
         note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다.' },
@@ -4120,6 +4219,7 @@ const IDOL = {
       { label: '프로덕션', items: [
         { var: 'rank' },
         { var: 'ranking' },
+        { var: 'v_disp' },
         { var: 'awareness', bar: { max: 100 }, color: "'#c86a9a'" },
         { var: 'buzz', bar: { max: 100 }, color: "buzz >= 70 ? '#d4506a' : (buzz <= 10 ? '#4a4a5a' : '#8a5a8a')" },
         { var: 'fans' },
@@ -4174,6 +4274,11 @@ const IDOL = {
         // 예상 객석 — 대관을 무리했는지가 여기 한 줄에 다 나온다. 60% 아래면 붉게 뜬다
         { var: 'live_fill', showWhen: "live != '없음'", bar: { max: 100 },
           color: "live_fill < 60 ? '#a8443a' : '#6a8a7a'" },
+        // 비너스 배틀 — 문이 열리는 문턱(팬 2000)이 버튼 조건과 같은 줄이어야 한다.
+        // 승률·상금이 보여야 "지금 나갈까"가 저울질이 된다 (영업 성사율과 같은 규율)
+        { var: 'v_stage', showWhen: 'fans >= 2000' },
+        { var: 'v_odds', showWhen: 'fans >= 2000' },
+        { var: 'v_prize', showWhen: 'fans >= 2000' },
         { var: 'job_queue', showWhen: 'count(job_queue) > 0' },
         { var: 'live_queue', showWhen: 'count(live_queue) > 0' },
         { var: 'schedule', showWhen: 'count(schedule) > 0' },

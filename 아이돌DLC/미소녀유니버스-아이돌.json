@@ -345,6 +345,16 @@
       "desc": "음지 일감에 얼마나 발을 담갔는가. 오르면 음지가 더 열리고 지상파·골든타임이 닫힌다. 시스템이 정하니 서사로 바꾸지 마라."
     },
     {
+      "id": "v_rank",
+      "label": "비너스 순위",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100,
+      "format": "{v}위",
+      "desc": "비너스 배틀 공인 순위. 1위가 정점, 0은 순위권 밖이다. 배틀 판정만 움직이니 서사로 바꾸지 마라."
+    },
+    {
       "id": "skip_day",
       "label": "건너뛴 일수",
       "type": "int",
@@ -1189,6 +1199,38 @@
       "format": "{v}%"
     },
     {
+      "id": "v_vs",
+      "label": "배틀 난이도",
+      "expr": "v_rank == 0 ? 14 : 18 + round((100 - v_rank) / 3)"
+    },
+    {
+      "id": "v_mod",
+      "label": "배틀 보정",
+      "expr": "round((u_vo + u_da + u_vi) / 48) + dress + round((u_cond - 60) / 12) + count(songs) - late"
+    },
+    {
+      "id": "v_odds",
+      "label": "배틀 승률",
+      "expr": "min(100, max(5, (21 - v_vs + v_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "v_prize",
+      "label": "배틀 상금",
+      "expr": "v_rank == 0 ? 100 : 100 + round((100 - v_rank) * 7)",
+      "format": "{v}만원"
+    },
+    {
+      "id": "v_stage",
+      "label": "배틀 무대",
+      "expr": "v_rank == 0 ? '예선 무대' : (v_rank <= 4 ? '정점 결전' : (v_rank <= 12 ? '전국 본선' : (v_rank <= 40 ? '전국 예선' : '지역 배틀')))"
+    },
+    {
+      "id": "v_disp",
+      "label": "비너스",
+      "expr": "v_rank == 0 ? '순위권 밖' : v_rank + '위'"
+    },
+    {
       "id": "income",
       "label": "이번 달 수입",
       "expr": "inc_stage + inc_ticket + inc_goods + inc_album"
@@ -1719,6 +1761,166 @@
             {
               "set": "live",
               "expr": "'없음'"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_venus",
+      "label": "비너스 배틀",
+      "roll": "rand(1, 20)",
+      "mod": "v_mod",
+      "vs": "v_vs",
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "압승",
+          "inject": "승부가 아니라 격의 차이였다 — 상대 팬들까지 박수를 치게 만든 무대로 그려라.",
+          "effects": [
+            {
+              "set": "funds",
+              "expr": "min(funds + round(v_prize * 1.5), 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + round(v_prize * 1.5), 9999999)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + v_prize * 5, 9999999)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 30, 100)"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(2, round((100 - awareness) * 0.06)), 100)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "min(m1_me + round(p1 * 8), 100)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "min(m2_me + round(p2 * 8), 100)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "min(m3_me + round(p3 * 8), 100)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "min(m4_me + round(p4 * 8), 100)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "min(m5_me + round(p5 * 8), 100)"
+            },
+            {
+              "set": "v_rank",
+              "expr": "v_rank == 0 ? 50 : max(1, v_rank - max(2, round(v_rank * 0.4)))"
+            }
+          ]
+        },
+        {
+          "when": "roll == 1",
+          "label": "참패",
+          "inject": "비교당하는 것이 이 판의 규칙이다 — 그리고 오늘은 그 비교가 잔인했다.",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 10, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - round(p1 * 14), 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - round(p2 * 14), 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - round(p3 * 14), 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - round(p4 * 14), 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - round(p5 * 14), 0)"
+            },
+            {
+              "set": "v_rank",
+              "expr": "v_rank == 0 ? 0 : min(100, v_rank + max(2, round(v_rank * 0.3)))"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "승리",
+          "inject": "심사는 관객이 한다 — 함성의 크기가 갈랐다.",
+          "effects": [
+            {
+              "set": "funds",
+              "expr": "min(funds + v_prize, 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + v_prize, 9999999)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + v_prize * 3, 9999999)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 16, 100)"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            },
+            {
+              "set": "v_rank",
+              "expr": "v_rank == 0 ? 70 : max(1, v_rank - max(1, round(v_rank * 0.22)))"
+            }
+          ]
+        },
+        {
+          "label": "패배",
+          "inject": "무대는 좋았다. 상대가 더 좋았을 뿐이다 — 그걸 셋도 객석도 알았다.",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 4, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - round(p1 * 8), 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - round(p2 * 8), 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - round(p3 * 8), 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - round(p4 * 8), 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - round(p5 * 8), 0)"
+            },
+            {
+              "set": "v_rank",
+              "expr": "v_rank == 0 ? 0 : min(100, v_rank + max(1, round(v_rank * 0.12)))"
             }
           ]
         }
@@ -2546,6 +2748,41 @@
         {
           "set": "live_days",
           "expr": "16 + rand(0, 10)"
+        }
+      ]
+    },
+    {
+      "id": "venus_battle",
+      "label": "🏆 비너스 배틀에 나간다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "when": "fans >= 2000 and stand >= 1 and u_cond >= 40 and funds >= 50 and not unit_over",
+      "check": "ck_venus",
+      "inject": "[행동] 비너스 배틀에 이름을 올린다. 같은 무대, 같은 조명, 관객이 심판이다 — 상대 유닛을 등장시켜 맞붙는 장면으로 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 50, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 12), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 12), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 12), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 12), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 12), 0)"
         }
       ]
     },
@@ -3393,6 +3630,45 @@
         "notify": "올해를 이야기할 때 이 이름이 빠지지 않게 되었다. S등급이다."
       },
       {
+        "id": "venus_crown",
+        "when": "v_rank == 1 and not unit_over",
+        "notify": "비너스 배틀 정점이다. 이제 이 이름 위에는 아무도 없다 — 전국의 무대가 이쪽을 본다.",
+        "effects": [
+          {
+            "set": "buzz",
+            "expr": "100"
+          },
+          {
+            "set": "awareness",
+            "expr": "min(awareness + 8, 100)"
+          },
+          {
+            "set": "fans",
+            "expr": "min(fans + round(fans * 0.2), 9999999)"
+          },
+          {
+            "set": "m1_love",
+            "expr": "min(m1_love + 10, 100)"
+          },
+          {
+            "set": "m2_love",
+            "expr": "min(m2_love + 10, 100)"
+          },
+          {
+            "set": "m3_love",
+            "expr": "min(m3_love + 10, 100)"
+          },
+          {
+            "set": "m4_love",
+            "expr": "min(m4_love + 10, 100)"
+          },
+          {
+            "set": "m5_love",
+            "expr": "min(m5_love + 10, 100)"
+          }
+        ]
+      },
+      {
         "id": "settle",
         "when": "dom >= 28 and settled != month and not unit_over",
         "notify": "월말이다. 장부를 펴고 이자와 밀린 것들을 셈한다.",
@@ -3933,9 +4209,19 @@
       "text": "[상태] 지금 화제의 한가운데다 (화제성 {buzz}). 어디를 가도 알아보고, 그게 부담이기도 하다."
     },
     {
+      "id": "venus_top",
+      "when": "v_rank >= 1 and v_rank <= 10 and not unit_over",
+      "text": "[상태] 비너스 배틀 {v_rank}위 — 이름이 순위로 불리는 자리다. 어디서든 순위가 먼저 소개되고, 도전자들이 이쪽을 지목한다."
+    },
+    {
       "id": "ended",
       "when": "unit_over",
       "text": "[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 흩어진 뒤의 시점이나 남은 것들로 마무리하라."
+    },
+    {
+      "id": "world",
+      "when": "1",
+      "text": "[세계관] 이 세계에서 아이돌은 모든 여성의 우상이자 권력이고 목표다. 최고의 아이돌로 스카우트되는 것은 더없는 영광이며, 소녀들은 정점에 서기 위해서라면 무엇이든 한다. 유닛 사이의 공인 서열은 비너스 배틀 — 같은 무대에서 라이브로 맞붙어 관객이 승부를 가르는 순위 결전 — 으로 정해진다. 이것을 세계의 상식으로 깔고 서사를 진행하라."
     }
   ],
   "updater": {
@@ -4009,11 +4295,11 @@
         "maxDelta": 6
       }
     ],
-    "guide": "장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
+    "guide": "장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
   },
   "promptState": {
     "position": "history_end",
-    "template": "[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n의상 {costume} · 음반 {album}\n유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n센터 {slot1}({id1}) — {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n사이드 1 {slot2}({id2}) — {m2_vo}/{m2_da}/{m2_vi} 컨디션 {c2} 호감 {m2_love}\n사이드 2 {slot3}({id3}) — {m3_vo}/{m3_da}/{m3_vi} 컨디션 {c3} 호감 {m3_love}\n사이드 3 {slot4}({id4}) — {m4_vo}/{m4_da}/{m4_vi} 컨디션 {c4} 호감 {m4_love}\n사이드 4 {slot5}({id5}) — {m5_vo}/{m5_da}/{m5_vi} 컨디션 {c5} 호감 {m5_love}",
+    "template": "[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n비너스 배틀 {v_disp} ({v_stage})\n의상 {costume} · 음반 {album}\n유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n센터 {slot1}({id1}) — {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n사이드 1 {slot2}({id2}) — {m2_vo}/{m2_da}/{m2_vi} 컨디션 {c2} 호감 {m2_love}\n사이드 2 {slot3}({id3}) — {m3_vo}/{m3_da}/{m3_vi} 컨디션 {c3} 호감 {m3_love}\n사이드 3 {slot4}({id4}) — {m4_vo}/{m4_da}/{m4_vi} 컨디션 {c4} 호감 {m4_love}\n사이드 4 {slot5}({id5}) — {m5_vo}/{m5_da}/{m5_vi} 컨디션 {c5} 호감 {m5_love}",
     "includeEvents": true
   },
   "party": {
@@ -4174,9 +4460,10 @@
           "hall_fest",
           "hall_solo",
           "hall_tour",
-          "live_show"
+          "live_show",
+          "venus_battle"
         ],
-        "note": "공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다."
+        "note": "공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다. 비너스 배틀은 반대다: 참가비는 싸지만 상대가 있고, 지면 순위가 내려간다."
       },
       {
         "id": "make",
@@ -4279,6 +4566,9 @@
           },
           {
             "var": "ranking"
+          },
+          {
+            "var": "v_disp"
           },
           {
             "var": "awareness",
@@ -4477,6 +4767,18 @@
               "max": 100
             },
             "color": "live_fill < 60 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "v_stage",
+            "showWhen": "fans >= 2000"
+          },
+          {
+            "var": "v_odds",
+            "showWhen": "fans >= 2000"
+          },
+          {
+            "var": "v_prize",
+            "showWhen": "fans >= 2000"
           },
           {
             "var": "job_queue",

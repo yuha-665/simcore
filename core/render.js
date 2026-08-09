@@ -104,8 +104,12 @@ const BASE_CSS = `
 .sim-cmd-why{opacity:.6;font-size:.82em}
 
 /* ── 배치(statusUI.layout) ── 전부 JS 없이 CSS만으로 전환된다.
-   메시지 안 버튼은 리스가 클릭 이벤트의 target을 잘라내서 스크립트로는 못 받는다. */
-.sim-tabin{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+   메시지 안 버튼은 리스가 클릭 이벤트의 target을 잘라내서 스크립트로는 못 받는다.
+   ⚠ 숨김 라디오는 display:none이어야 한다. position:absolute 0×0으로 숨기면 라벨 클릭 때
+   브라우저가 라디오에 포커스를 주며 scrollIntoView를 하는데, 리수의 overflow:hidden 앱
+   컨테이너까지 스크롤시켜 화면 전체가 밀리고(아래는 검은 여백) 유저는 되돌릴 수도 없다.
+   display:none이면 포커스 자체가 불가능하고, 라벨의 체크 전달과 형제 선택자는 그대로 동작한다. */
+.sim-tabin{display:none}
 .sim-tabbar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
 .sim-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
   border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}
@@ -598,7 +602,7 @@ ${rows(p.ids)}
 .mp-in-${i}:checked ~ .mp-panels .mp-panel-${i}{display:block}`).join('\n');
   return `<style>
 ${base}
-.mp-in{position:absolute;width:0;height:0;opacity:0;margin:0;pointer-events:none}
+.mp-in{display:none}
 .mp-bar{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 7px;border-bottom:1px solid rgba(128,128,128,.28)}
 .mp-tab{cursor:pointer;padding:4px 11px;margin-bottom:-1px;border:1px solid transparent;border-bottom:none;
   border-radius:8px 8px 0 0;font-size:.88em;font-weight:600;opacity:.55}

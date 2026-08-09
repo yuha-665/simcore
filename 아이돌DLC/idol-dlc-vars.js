@@ -1,0 +1,344 @@
+const __P = (...p) => require('path').resolve(__dirname, ...p);
+// 미소녀 유니버스 — 아이돌 프로듀스 DLC 생성기
+//
+// 남의 봇에 얹는 DLC다. 원본 봇에는 등장인물이 84명(이미지 규격 기준: 기본 일러만 있는
+// 40명 + 의상 변형이 있는 44명) 있고, 그중 **누구로 유닛을 짜도 상관없어야** 한다.
+// 프리셋으로는 못 한다 — 프리셋은 "이 사람들로 시작한다"고 못 박는 것이고, 여기서 필요한 건
+// "채팅 시작 전에 편성표에서 다섯을 고른다"이기 때문이다. 그래서 **편성표 슬롯의 후보 명단**이다.
+//
+// ── 설계 한 줄: 능력치는 사람이 아니라 **자리**에 붙는다 ──
+//   44명 × 일곱 줄(보컬·댄스·비주얼·체력·멘탈·호감·개별인기)이면 변수가 308개다. 리수가
+//   못 버티기도 하지만, 그보다 **한 판에서 실제로 쓰는 건 다섯 명뿐**이라 나머지 300개는
+//   영원히 0인 채로 프롬프트 무게만 늘린다. 그래서 자리 다섯에 스탯을 붙이고, 누가 그 자리에
+//   앉는지는 슬롯 enum이 정한다.
+//   ⚠ 대가: 사람을 바꾸면 그 자리의 숫자를 **이어받는다**. 채팅 시작 전에 유닛을 짜고 그대로
+//   가는 이 DLC의 쓰임새에는 맞지만, 중간에 멤버를 갈아 끼우는 봇으로 개조할 때는 이 결정부터
+//   다시 봐야 한다.
+//
+// 나머지(일감 사다리·대관·제작 의뢰·음지·장부·이벤트)는 내장 아이돌 템플릿 v0.82를 그대로
+// 쓴다. 여기서 손대는 건 **사람 쪽**뿐이다 — 그래야 본체 템플릿이 나아질 때 같이 나아진다.
+const fs = require('fs');
+const { TEMPLATES } = require(__P('../core/templates.js'));
+const { validateSchema } = require(__P('../core/validate.js'));
+const engine = require(__P('../core/engine.js'));
+const { seededRng } = require(__P('../core/rng.js'));
+const { partyTabs } = require(__P('../core/party.js'));
+
+// ── 명단 ──
+// 원본 봇의 이미지 규격 이름을 그대로 쓴다. 한글로 옮겨 적으면 읽기는 좋아지지만
+// 나중에 초상화(에셋)를 붙일 때 이름이 안 맞아서 두 벌을 관리하게 된다.
+// 여기 44명은 원본이 **의상 변형까지 가진** 쪽이다 — 무대에 세울 사람들이라 그렇다.
+// (기본 일러만 있는 40명은 주변 인물이라 유닛 후보에서 뺐다. 필요하면 아래 배열에 더하면 된다.)
+const CAST = [
+  'Iino_Miko', 'Shiina_Mahiru', 'Koyasu_Tsubame', 'Shiranui_Frill', 'Sugaya_Nowa',
+  'Inui_Shinju', 'Inui_Sajuna', 'Kitagawa_Marin', 'Yamada_Ryo', 'Ijichi_Nijika',
+  'Kita_Ikuyo', 'Gotoh_Hitori', 'Kotobuki_Minami', 'Shijo_Maki', 'Kashiwagi_Nagisa',
+  'Sumi_Yuki', 'Hayasaka_Ai', 'Hoshino_Ai', 'Memcho', 'Kurokawa_Akane',
+  'Shirogane_Kei', 'Arima_Kana', 'Hoshino_Ruby', 'Fujiwara_Chika', 'Shinomiya_Kaguya',
+  'Nishikigi_Chisato', 'Kurumi', 'Inoue_Takina', 'Iwashita_Shima', 'Shimizu_Eliza',
+  'Ijichi_Seika', 'Hiroi_Kikuri', 'PA-san', 'Saitou_Miyako', 'Hori_Kyouko',
+  'Alisa_Mikhailovna_Kujou', 'Mariya_Mikhailovna_Kujou', 'Suou_Yuki', 'Sakurajima_Mai',
+  'Nakano_Ichika', 'Nakano_Itsuki', 'Nakano_Yotsuba', 'Nakano_Miku', 'Nakano_Nino',
+];
+const EMPTY = '빈 자리';
+const N = 5;                                   // 자리 다섯 — 센터 하나 + 사이드 넷
+const SEAT = ['센터', '사이드 1', '사이드 2', '사이드 3', '사이드 4'];
+
+const S = JSON.parse(JSON.stringify(TEMPLATES.idol.schema));
+S.meta = {
+  name: '미소녀 유니버스 — 아이돌 프로듀스',
+  desc: '누구로 유닛을 짜도 되는 아이돌 프로듀싱 판. 편성표에서 다섯을 고르고 시작한다.',
+  author: 'SimCore 템플릿 (아이돌 v0.82 기반)',
+};
+
+// ── 1. 사람 쪽 변수 갈아 끼우기 ──
+// 내장 템플릿의 유나·세리·린 세 벌(m1_~m3_)과 센터/사이드 둘을 걷어내고 자리 다섯을 세운다.
+const isMemberVar = (id) => /^m[1-3]_/.test(id) || ['center', 'side1', 'side2'].includes(id);
+const keptVars = S.vars.filter((v) => !isMemberVar(v.id));
+
+// 기본 편성 — **예시일 뿐이고 편성표에서 통째로 갈아 끼운다.**
+// 빈 채로 내보내면 임포트 직후 아무것도 안 굴러가고(무대에 설 사람이 없다), 진단도 액션 절반을
+// "못 쓰는 액션"으로 신고한다 — 편성은 유저가 팝업에서 하는 것이라 시뮬레이션에서는 영영 빈다.
+// 원작에서 실제로 한 유닛인 다섯을 앉혀 뒀다. 임포트하자마자 굴러가고, 바꾸는 건 한 번의 클릭이다.
+const DEFAULT_LINEUP = ['Hoshino_Ai', 'Arima_Kana', 'Hoshino_Ruby', 'Memcho', 'Kurokawa_Akane'];
+
+const slotVars = Array.from({ length: N }, (_, i) => ({
+  id: `slot${i + 1}`, label: SEAT[i], type: 'enum', init: DEFAULT_LINEUP[i] ?? EMPTY, enum: [EMPTY, ...CAST],
+  desc: i === 0
+    ? '가운데 서는 사람. 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 프로듀서가 정하니 서사로 바꾸지 마라.'
+    : '무대에 함께 서는 사람. 비워 두면 이번 무대에 안 선다. 프로듀서가 정하니 서사로 바꾸지 마라.',
+}));
+
+// 한 자리가 일곱 줄이다. 시작값은 전원 같게 둔다 — 원작 캐릭터마다 능력치를 미리 매겨 두면
+// "이 애는 원래 노래를 못한다"를 시스템이 못 박게 되는데, 그건 남의 2차창작에 손대는 짓이다.
+// 어떤 애가 무엇을 잘하는지는 레슨과 서사가 정하게 둔다.
+const STATS = [
+  ['vo', '보컬', 25, 100], ['da', '댄스', 25, 100], ['vi', '비주얼', 25, 100],
+  ['st', '체력', 70, 100], ['me', '멘탈', 60, 100], ['love', '호감도', 20, 100],
+];
+const memberVars = [];
+for (let i = 1; i <= N; i++) {
+  for (const [k, name, init, max] of STATS) {
+    memberVars.push({
+      id: `m${i}_${k}`, label: `${SEAT[i - 1]} · ${name}`, type: 'int', init, min: 0, max,
+      ...(k === 'me' ? { desc: '0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다.' } : {}),
+      ...(k === 'love' ? { desc: '프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다.' } : {}),
+    });
+  }
+  memberVars.push({ id: `m${i}_fan`, label: `${SEAT[i - 1]} · 개별 인기`, type: 'int', init: 200, min: 0, max: 9999999, format: '{v}명' });
+}
+S.vars = [...keptVars, ...slotVars, ...memberVars];
+
+// ── 2. 파생: 자리 다섯을 보는 식으로 다시 쓴다 ──
+// 자리에 스탯이 붙어 있으므로 "이 자리에 사람이 있는가(oK)" 한 줄이면 배수가 나온다.
+// 내장 템플릿은 사람 쪽에서 자리를 찾느라 슬롯 이름을 세 번 비교했는데, 여기서는 그럴 일이 없다.
+// 만점과 문턱 — 자리가 늘면 천장도 는다. 비율은 내장 템플릿(세 자리 990 → 800/620/450/300/180)과 같다
+const MAXPOW = Math.round((1.3 + (N - 1)) * 100 * 3);
+const TIERS = [['S', 0.81], ['A', 0.63], ['B', 0.45], ['C', 0.30], ['D', 0.18]];
+const cut = (r) => Math.round(MAXPOW * r / 10) * 10;
+// ⚠ 낮은 등급부터 감싸야 한다 — 높은 쪽부터 접으면 A 조건이 S보다 먼저 걸려 S가 영영 안 나온다
+const RANK_EXPR = [...TIERS].reverse()
+  .reduce((acc, [g, r]) => `u_pow >= ${cut(r)} ? '${g}' : (${acc})`, "'E'");
+
+const memberDerivedIds = new Set(['p1', 'p2', 'p3', 'stand', 'u_vo', 'u_da', 'u_vi',
+  'c1', 'c2', 'c3', 'u_cond', 'u_fan', 'u_pow', 'u_love', 'u_rank']);
+const keptDerived = S.derived.filter((d) => !memberDerivedIds.has(d.id));
+const seq = (f, join = ' + ') => Array.from({ length: N }, (_, i) => f(i + 1)).join(join);
+
+const newDerived = [
+  ...Array.from({ length: N }, (_, i) => ({
+    id: `o${i + 1}`, label: `${SEAT[i]} 착석`, expr: `slot${i + 1} != '${EMPTY}' ? 1 : 0`,
+  })),
+  // 센터만 1.3배. 자리에 아무도 없으면 0이라 그 자리 숫자는 어디에도 안 실린다
+  ...Array.from({ length: N }, (_, i) => ({
+    id: `p${i + 1}`, label: `${SEAT[i]} 배수`, expr: i === 0 ? 'o1 * 1.3' : `o${i + 1}`,
+  })),
+  { id: 'stand', label: '무대 인원', expr: seq((i) => `o${i}`) },
+  { id: 'u_vo', label: '유닛 보컬', expr: `round(${seq((i) => `m${i}_vo * p${i}`)})` },
+  { id: 'u_da', label: '유닛 댄스', expr: `round(${seq((i) => `m${i}_da * p${i}`)})` },
+  { id: 'u_vi', label: '유닛 비주얼', expr: `round(${seq((i) => `m${i}_vi * p${i}`)})` },
+  ...Array.from({ length: N }, (_, i) => ({
+    id: `c${i + 1}`, label: `${SEAT[i]} 컨디션`, expr: `round((m${i + 1}_st + m${i + 1}_me) / 2)`,
+  })),
+  { id: 'u_cond', label: '유닛 컨디션',
+    expr: `stand > 0 ? round((${seq((i) => `c${i} * p${i}`)}) / (${seq((i) => `p${i}`)})) : 0` },
+  // 빈 자리의 팬은 안 센다 — 앉은 사람 것만 유닛의 것이다
+  { id: 'u_fan', label: '유닛 인기도', expr: seq((i) => `m${i}_fan * o${i}`) },
+  { id: 'u_pow', label: '유닛 종합', expr: 'u_vo + u_da + u_vi' },
+  // ⚠ 랭크 문턱은 **자리 수에 따라 다시 잡아야 한다.** u_pow는 합계라 자리가 늘면 천장도
+  //   같이 오른다 (세 자리 990 → 다섯 자리 1290). 내장 템플릿의 숫자를 그대로 쓰면 다섯을
+  //   앉히는 순간 시작부터 S등급이 뜬다 — 실제로 밟았다(시작 u_pow 399로 S).
+  //   그래서 만점 대비 비율(0.81/0.63/0.45/0.30/0.18)로 다시 만든다.
+  { id: 'u_rank', label: '유닛 랭크', expr: RANK_EXPR },
+  // 평균 호감 — 앉은 사람들의 평균이다. 빈 자리를 0으로 세면 셋만 세운 유닛이 늘 불리해진다
+  { id: 'u_love', label: '평균 호감',
+    expr: `stand > 0 ? round((${seq((i) => `m${i}_love * o${i}`)}) / stand) : 0` },
+];
+// 순서를 지킨다 — 내장 템플릿의 파생은 위에서 아래로 서로를 참조한다(u_pow → u_rank 등).
+// 사람 쪽 파생을 통째로 맨 앞에 두면 그 관계가 깨지지 않는다.
+S.derived = [...newDerived, ...keptDerived];
+
+// ── 3. 효과 줄 늘리기 ──
+// 내장 템플릿은 멤버마다 한 줄씩 세 줄이 한 벌이다(`m1_me` `m2_me` `m3_me`). 자리가 다섯이니
+// **m3 줄을 본떠 m4·m5를 만든다**. 문자열을 통째로 뒤지지 않고 m3 줄만 복제하는 이유는,
+// 그래야 "세 줄 한 벌"이라는 규약을 지키는 자리만 정확히 늘어나기 때문이다 —
+// m1만 나오는 식(예: burnout 조건)은 아래에서 따로 다시 쓴다.
+let cloned = 0;
+const growEffects = (arr) => {
+  if (!Array.isArray(arr)) return arr;
+  const out = [];
+  for (const f of arr) {
+    out.push(f);
+    const m = /^m3_(\w+)$/.exec(f.set || '');
+    if (!m) continue;
+    for (let i = 4; i <= N; i++) {
+      out.push({ ...f, set: `m${i}_${m[1]}`, expr: String(f.expr).replace(/\bm3_/g, `m${i}_`).replace(/\bp3\b/g, `p${i}`) });
+      cloned++;
+    }
+  }
+  return out;
+};
+const walk = (node) => {
+  if (Array.isArray(node)) { node.forEach(walk); return; }
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node.effects)) node.effects = growEffects(node.effects);
+  for (const v of Object.values(node)) walk(v);
+};
+walk(S.checks); walk(S.actions); walk(S.rules);
+
+// 대관 문턱의 u_pow도 같은 자로 다시 잰다 — 내장 템플릿은 세 자리(만점 990) 기준이라
+// 다섯을 앉히면 페스티벌부터 전부 첫날에 열린다
+for (const [id, ratio] of [['hall_fest', 0.30], ['hall_solo', 0.45], ['hall_tour', 0.63]]) {
+  const a = S.actions.find((x) => x.id === id);
+  a.when = a.when.replace(/u_pow >= \d+/, `u_pow >= ${cut(ratio)}`);
+}
+
+// 번아웃 — 다섯 자리 전부를 본다. 빈 자리는 멘탈이 0이어도 판을 끝내면 안 되므로 착석을 같이 본다
+const burnout = S.rules.events.find((e) => e.id === 'burnout');
+burnout.when = `not unit_over and (${seq((i) => `(o${i} > 0 and m${i}_me <= 0)`, ' or ')})`;
+
+// ── 4. 편성표 ──
+const tabs = S.party.tabs;
+const unit = tabs.find((t) => t.id === 'unit');
+unit.slots = Array.from({ length: N }, (_, i) => ({ var: `slot${i + 1}`, label: SEAT[i] }));
+unit.note = '채팅을 시작하기 전에 다섯을 고른다 — 지금 앉아 있는 다섯은 예시일 뿐이다. '
+  + '자리를 비워 두면 그 사람은 무대에 안 선다. '
+  + '⚠ 능력치는 사람이 아니라 자리에 붙는다 — 중간에 사람을 바꾸면 그 자리의 숫자를 이어받는다.';
+// 레슨 — 자리 다섯 × 세 스탯. 비용식은 내장 템플릿과 같은 모양(자기 레벨을 보고 오른다)
+tabs.find((t) => t.id === 'lesson').items = Array.from({ length: N }, (_, i) =>
+  ['vo', 'da', 'vi'].map((k, j) => ({
+    var: `m${i + 1}_${k}`, label: `${SEAT[i]} · ${['보컬', '댄스', '비주얼'][j]}`, max: 100,
+    cost: `round(m${i + 1}_${k} * m${i + 1}_${k} / 25) + 30`,
+  }))).flat();
+S.party.label = '유닛';
+S.party.empty = EMPTY;
+// 후보가 44명이라 탭 바로는 안 된다 — 셀렉트+검색으로 고르게 한다
+S.party.nav = 'select';
+S.party.note = '센터는 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 한 사람은 한 자리에만.';
+S.party.unique = true;   // 같은 사람을 두 자리에 앉힐 수 없다
+
+// ── 5. 상태창 ──
+// 자리 탭은 **사람이 앉았을 때만** 뜬다. 다섯 칸을 늘 펼쳐 두면 빈 자리 숫자가 화면의 절반이다
+const memberPaneLabels = new Set(['유나', '세리', '린']);
+S.statusUI.groups = S.statusUI.groups.filter((g) => !memberPaneLabels.has(g.label));
+const prod = S.statusUI.groups.find((g) => g.label === '프로덕션');
+prod.items = prod.items.filter((it) => !['center', 'side1', 'side2'].includes(it.var));
+prod.items.splice(prod.items.findIndex((it) => it.var === 'u_rank'), 0,
+  ...Array.from({ length: N }, (_, i) => ({ var: `slot${i + 1}`, showWhen: `o${i + 1} > 0` })));
+S.statusUI.groups.push(...Array.from({ length: N }, (_, i) => {
+  const k = i + 1;
+  return {
+    label: `${SEAT[i]}`, showWhen: `o${k} > 0`,
+    items: [
+      { var: `slot${k}` },
+      { var: `m${k}_vo` }, { var: `m${k}_da` }, { var: `m${k}_vi` },
+      { var: `m${k}_st`, bar: { max: 100 }, color: `m${k}_st <= 25 ? '#a8443a' : '#6a8a7a'` },
+      { var: `c${k}`, bar: { max: 100 }, color: `c${k} <= 30 ? '#a8443a' : '#6a8a7a'` },
+      { var: `m${k}_me`, bar: { max: 100 }, color: `m${k}_me <= 20 ? '#a8443a' : '#7a6a9a'` },
+      { var: `m${k}_love`, bar: { max: 100 }, color: "'#c86a9a'" },
+      { var: `m${k}_fan` },
+    ],
+  };
+}));
+
+// ── 6. 프롬프트 상태 블록 ──
+// 이름은 슬롯 값이 그대로 들어간다. 빈 자리는 '빈 자리'로 찍히므로 AI가 헷갈리지 않는다
+S.promptState.template = '[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n'
+  + '인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n'
+  + '자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n'
+  + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
+  + '업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n'
+  + '의상 {costume} · 음반 {album}\n'
+  + `유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n`
+  + Array.from({ length: N }, (_, i) => {
+    const k = i + 1;
+    return `${SEAT[i]} {slot${k}} — {m${k}_vo}/{m${k}_da}/{m${k}_vi} 컨디션 {c${k}} 호감 {m${k}_love}`;
+  }).join('\n');
+
+// ── 7. 보조 AI에게 여는 것 ──
+// 편성(누가 어느 자리)은 프로듀서 몫이라 안 연다. 자리 다섯의 멘탈·호감만 연다
+S.updater.allow = [
+  ...S.updater.allow.filter((a) => !/^m[1-3]_/.test(a.id)),
+  ...Array.from({ length: N }, (_, i) => [
+    { id: `m${i + 1}_me`, maxDelta: 8 }, { id: `m${i + 1}_love`, maxDelta: 6 },
+  ]).flat(),
+];
+S.updater.guide = S.updater.guide.replace('편성(센터·사이드)은 프로듀서가 정한다.',
+  '편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. '
+  + '등장인물 이름은 편성표에 앉은 사람만 쓴다.');
+
+// ── 8. 지시문 하나 추가 — 누가 무대에 서는지를 AI가 알아야 한다 ──
+S.directives.unshift({
+  id: 'lineup', when: 'stand >= 1 and not unit_over',
+  text: '[유닛] 지금 이 유닛은 {stand}명이다 — 센터 {slot1}. 편성표에 앉은 사람만 유닛 멤버로 다뤄라. '
+    + '앉지 않은 인물은 등장시킬 수 있어도 유닛의 일원으로는 쓰지 마라.',
+});
+S.directives.unshift({
+  id: 'empty_unit', when: 'stand == 0 and not unit_over',
+  text: '[유닛] 아직 유닛이 없다. 편성표(🎤)에서 다섯 자리를 채우기 전까지는 무대 이야기를 시작하지 마라 — '
+    + '누구를 모을지 고르는 장면으로 끌어라.',
+});
+
+// ── 9. 프리셋 — 사람은 안 정하고 형편만 정한다 ──
+// ⚠ 프리셋으로 인물을 박으면 이 DLC의 뜻이 사라진다("누구로 짜도 된다"). 그래서 여기서는
+//   자금·이름값·부채만 민다. 사람은 편성표에서 고른다.
+S.setup.presets = [
+  { id: 'rookie', label: '무명 — 아직 아무도 모른다', set: {} },
+  { id: 'hit', label: '한 번 터졌다 — 다음이 어렵다',
+    set: {
+      rank: 'C', awareness: 46, buzz: 62, fans: 14000, sales: 3200,
+      funds: 1500, month_open: 1500, debt: 600, costume: '제작 의상', album: '싱글',
+      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
+        [`m${i + 1}_vo`, 45], [`m${i + 1}_da`, 45], [`m${i + 1}_vi`, 45],
+        [`m${i + 1}_love`, 40], [`m${i + 1}_fan`, 2800],
+      ]).flat()),
+    } },
+  { id: 'debtor', label: '빚에 눌려 — 다섯을 지킬 수 있을까',
+    set: {
+      funds: 260, month_open: 260, debt: 2600, late: 2, buzz: 8, costume: '연습복',
+      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
+        [`m${i + 1}_st`, 50], [`m${i + 1}_me`, 38], [`m${i + 1}_love`, 12],
+      ]).flat()),
+    } },
+  { id: 'shade', label: '이미 발을 담갔다 — 돌아갈 수 있을까',
+    set: {
+      rank: 'D', awareness: 34, buzz: 40, fans: 4200, corrupt: 30,
+      funds: 700, month_open: 700, debt: 1800, costume: '제작 의상',
+      ...Object.fromEntries(Array.from({ length: N }, (_, i) => [
+        [`m${i + 1}_vo`, 36], [`m${i + 1}_da`, 36], [`m${i + 1}_vi`, 40],
+        [`m${i + 1}_me`, 44], [`m${i + 1}_love`, 26], [`m${i + 1}_fan`, 900],
+      ]).flat()),
+    } },
+];
+
+// ── 검증 ──
+const v = validateSchema(S);
+console.log(v.ok ? '검증: 통과' : '검증: 실패');
+for (const e of v.errors) console.log('  오류 ', e.path, e.msg);
+for (const w of v.warnings) console.log('  경고 ', w.path, w.msg);
+if (!v.ok) process.exit(1);
+
+// 미치환 확인 — 내장 템플릿에서 물려온 옛 이름이 남아 있으면 여기서 잡힌다
+const dump = JSON.stringify({ ...S, party: S.party, statusUI: S.statusUI });
+const ghosts = ['유나', '세리', '· 린', '"center"', '"side1"', '"side2"'].filter((g) => dump.includes(g));
+// 자리 다섯이 실제로 다 배선됐는가 — m3 줄만 복제하는 방식이라 마지막 자리가 빠지면 조용히 셋만 굴러간다
+if (!dump.includes(`m${N}_me`) || !dump.includes(`slot${N}`)) ghosts.push(`자리 ${N} 미배선`);
+console.log(ghosts.length ? `⚠ 옛 이름이 남음: ${ghosts.join(', ')}` : '미치환: 없음');
+
+// ── 실제로 굴러가는가 ──
+// 편성표는 진단이 못 만지는 자리다. 다섯을 앉히고 며칠 굴려서 무대가 서는지 눈으로 본다.
+{
+  let st = engine.initState(S); st.meta.setupDone = true;
+  const picked = ['Hoshino_Ai', 'Arima_Kana', 'Hoshino_Ruby', 'Memcho', 'Kurokawa_Akane'];
+  picked.forEach((name, i) => { st.vars[`slot${i + 1}`] = name; });
+  const L = () => engine.makeLookup(S, st.vars);
+  console.log(`\n편성: ${picked.join(' · ')}`);
+  console.log(`  무대 인원 ${L()('stand')}명 · 유닛 종합 ${L()('u_pow')} (${L()('u_rank')}등급)`
+    + ` · 컨디션 ${L()('u_cond')} · 인기도 ${L()('u_fan')}명`);
+
+  let stages = 0, nights = 0;
+  for (let t = 1; t <= 120 && nights < 40; t++) {
+    if (st.vars.unit_over) break;
+    const w = st.vars;
+    let want;
+    if (w.job !== '없음' && w.job_days <= 0) want = ['perform', 'next_day'];
+    else if (L()('u_cond') < 55) want = ['rest_day', 'talk', 'next_day'];
+    else if (w.job === '없음') want = ['take_ltv', 'take_mag', 'take_radio', 'take_street', 'next_day'];
+    else want = ['next_day'];
+    if (w.live !== '없음' && w.live_days <= 0) want = ['live_show', ...want];
+    if (w.live === '없음' && w.funds >= 400) want = ['hall_small', ...want];
+    for (const a of want) {
+      const r = engine.toggleAction(S, st, a);
+      if (r.armed) { st = r.state; if (a === 'perform') stages++; if (a === 'next_day') nights++; break; }
+    }
+    st = engine.sendPhase(S, st, { rng: seededRng('dlc', t, 'a') }).state;
+    st = engine.outputPhase(S, st, {}, {}, { rng: seededRng('dlc', t, 'o') }).state;
+  }
+  console.log(`  40일: 무대 ${stages}회 · 자금 ${st.vars.funds}만원 · 빚 ${st.vars.debt}만원`
+    + ` · 인지도 ${st.vars.awareness} · 팬 ${st.vars.fans}명 · ${st.vars.unit_over ? '중단됨' : '굴러감'}`);
+}
+
+fs.writeFileSync(__P('미소녀유니버스-아이돌.json'), JSON.stringify(S, null, 2));
+console.log('\n저장: ' + __P('미소녀유니버스-아이돌.json')
+  + `\n  명단 ${CAST.length}명 · 자리 ${N} · 변수 ${S.vars.length} · 파생 ${S.derived.length}`
+  + ` · 판정 ${S.checks.length} · 액션 ${S.actions.length} · 효과 복제 ${cloned}줄`);

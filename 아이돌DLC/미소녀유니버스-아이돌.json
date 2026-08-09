@@ -1,0 +1,4829 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "미소녀 유니버스 — 아이돌 프로듀스",
+    "desc": "누구로 유닛을 짜도 되는 아이돌 프로듀싱 판. 편성표에서 다섯을 고르고 시작한다.",
+    "author": "SimCore 템플릿 (아이돌 v0.82 기반)"
+  },
+  "suggest": {
+    "count": 3,
+    "guide": "남은 날짜와 멤버 컨디션으로 지금 할 수 있는 것. 하나는 사람을 챙기는 쪽으로."
+  },
+  "time": {
+    "start": "2026-04-06",
+    "advance": "explicit",
+    "format": {
+      "date": "M월 D일"
+    },
+    "calendar": "gregorian"
+  },
+  "calendar": {
+    "label": "스케줄",
+    "icon": "📅",
+    "list": "schedule",
+    "note": "날짜를 눌러 예정을 적어 둘 수 있다. 받아 둔 일감이 며칠 남았는지는 위쪽 상태창에 뜬다.",
+    "marks": [
+      {
+        "label": "주간 라디오",
+        "weekday": "금",
+        "note": "고정 코너가 있는 날."
+      },
+      {
+        "label": "월말 정산",
+        "dom": 28,
+        "note": "빚에 이자가 붙는다."
+      }
+    ]
+  },
+  "vars": [
+    {
+      "id": "rank",
+      "label": "프로덕션 등급",
+      "type": "enum",
+      "init": "F",
+      "enum": [
+        "F",
+        "E",
+        "D",
+        "C",
+        "B",
+        "A",
+        "S"
+      ],
+      "desc": "업계가 이 사무소를 어떻게 보는가. 큰 일감을 여는 열쇠다. 인지도에 따라 시스템이 올리니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "awareness",
+      "label": "인지도",
+      "type": "int",
+      "init": 12,
+      "min": 0,
+      "max": 100,
+      "desc": "이름을 아는 사람이 얼마나 되는가. 천천히 오르고 잘 안 내린다."
+    },
+    {
+      "id": "buzz",
+      "label": "화제성",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "지금 이 순간 얼마나 회자되는가. 무대 뒤에 치솟고 며칠이면 가라앉는다."
+    },
+    {
+      "id": "fans",
+      "label": "팬 수",
+      "type": "int",
+      "init": 800,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    },
+    {
+      "id": "sales",
+      "label": "음반 판매량",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}장",
+      "desc": "지금까지 팔린 누계. 수록이나 투어를 잘 마쳤을 때만 늘어난다."
+    },
+    {
+      "id": "funds",
+      "label": "운용자금",
+      "type": "int",
+      "init": 400,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원"
+    },
+    {
+      "id": "debt",
+      "label": "빚",
+      "type": "int",
+      "init": 1200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "월말마다 이자가 붙는다. 자금이 바닥나면 융자로 버틸 수 있지만 이자가 함께 커진다."
+    },
+    {
+      "id": "inc_stage",
+      "label": "무대 보수",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "일감·라이브를 치르고 받은 돈. 월말 정산에 0으로 돌아간다. 시스템이 관리하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "inc_ticket",
+      "label": "티켓 수입",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "라이브 티켓이 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "inc_goods",
+      "label": "굿즈 수입",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "공연장에서 굿즈가 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "inc_album",
+      "label": "음반 수입",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "음반이 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "month_open",
+      "label": "이 달 기초 잔고",
+      "type": "int",
+      "init": 400,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}만원",
+      "desc": "이 달을 시작할 때의 운용자금. 지출은 이것과 지금 잔고의 차이로 역산한다. 융자와 상환은 벌거나 쓴 게 아니라 돈의 자리만 옮긴 것이라 여기도 같이 움직여 수지에서 빠진다. 시스템이 관리한다."
+    },
+    {
+      "id": "unpaid",
+      "label": "월급 미납",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 12,
+      "format": "{v}개월",
+      "desc": "월급을 연달아 못 준 달 수. 한 번이라도 제대로 주면 0으로 돌아간다. 시스템이 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "settled",
+      "label": "정산한 달",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 12,
+      "desc": "월말 정산을 끝낸 달. 같은 달에 두 번 정산되지 않게 잡아 두는 빗장이다. 서사로 바꾸지 마라."
+    },
+    {
+      "id": "unit_over",
+      "label": "활동 중단",
+      "type": "bool",
+      "init": false,
+      "desc": "유닛이 멈췄는지. 시스템이 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "job",
+      "label": "잡힌 업무",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "거리 홍보",
+        "지역 라디오",
+        "잡지 화보",
+        "지방 방송국",
+        "케이블 음악방송",
+        "지상파 음악방송",
+        "골든타임 특집"
+      ],
+      "desc": "수주해 둔 일. 시스템이 정하니 서사로 바꾸지 마라 — 어떤 현장이었는지는 서사가 그린다."
+    },
+    {
+      "id": "job_days",
+      "label": "업무까지",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 30,
+      "format": "{v}일",
+      "desc": "업무까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다."
+    },
+    {
+      "id": "pitch_won",
+      "label": "영업 결과",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 2,
+      "desc": "직전 영업 판정의 결과(0 헛걸음·1 수주·2 대어). 시스템이 쓰고 바로 읽는 임시 값이니 서사로 건드리지 마라."
+    },
+    {
+      "id": "shady_ok",
+      "label": "설득 결과",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 1,
+      "desc": "직전 음지 설득의 결과(0 거절·1 수락). 시스템이 쓰고 바로 읽는 임시 값이니 서사로 건드리지 마라."
+    },
+    {
+      "id": "live",
+      "label": "잡힌 라이브",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "라이브하우스",
+        "시민회관",
+        "합동 페스티벌",
+        "단독 공연",
+        "전국 투어"
+      ],
+      "desc": "잡아 둔 공연. 시스템이 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "live_days",
+      "label": "라이브까지",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 60,
+      "format": "{v}일",
+      "desc": "공연일까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다."
+    },
+    {
+      "id": "late",
+      "label": "펑크",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 99,
+      "desc": "약속한 날 무대에 서지 못한 횟수. 업계에서 신용이 여기서 깎이고, 판정에 그대로 붙는다."
+    },
+    {
+      "id": "schedule",
+      "label": "일정",
+      "type": "list",
+      "init": [],
+      "maxItems": 12,
+      "itemMaxLength": 30,
+      "desc": "달력에 적어 둔 예정. 서사에서 새 일정이 잡히면 \"내용 @+N\"(N일 뒤)으로 추가하라. 날짜가 지나면 자동으로 지워진다."
+    },
+    {
+      "id": "job_queue",
+      "label": "다음 업무",
+      "type": "list",
+      "init": [],
+      "maxItems": 6,
+      "itemMaxLength": 30,
+      "desc": "앞으로 잡힌 업무. 서사에서 새 일이 정해지면 \"내용 @+N\"(N일 뒤)으로 올려라. 날짜가 지나면 자동으로 지워진다."
+    },
+    {
+      "id": "live_queue",
+      "label": "다음 라이브",
+      "type": "list",
+      "init": [],
+      "maxItems": 6,
+      "itemMaxLength": 30,
+      "desc": "앞으로 잡힌 공연. \"내용 @+N\"(N일 뒤)으로 올려라. 날짜가 지나면 자동으로 지워진다."
+    },
+    {
+      "id": "songs",
+      "label": "보유곡",
+      "type": "list",
+      "init": [],
+      "maxItems": 20,
+      "itemMaxLength": 24,
+      "desc": "유닛이 가진 곡. 수록을 마치면 곡 이름을 지어 올려라. 곡이 많을수록 라이브가 유리하다."
+    },
+    {
+      "id": "wardrobe",
+      "label": "보유 의상",
+      "type": "list",
+      "init": [],
+      "maxItems": 12,
+      "itemMaxLength": 24,
+      "desc": "맞춰 둔 무대의상. 새로 맞추면 어떤 옷인지 이름을 지어 올려라."
+    },
+    {
+      "id": "costume",
+      "label": "착용 의상",
+      "type": "enum",
+      "init": "기본 무대의상",
+      "enum": [
+        "연습복",
+        "기본 무대의상",
+        "제작 의상",
+        "특별 의상",
+        "특주 의상"
+      ],
+      "desc": "무대에 입고 서는 것. 좋을수록 판정이 유리하다. 맞추는 건 자금이 든다."
+    },
+    {
+      "id": "album",
+      "label": "낸 음반",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "싱글",
+        "미니 앨범",
+        "정규 앨범"
+      ],
+      "desc": "지금까지 낸 것 중 가장 큰 것. 월말마다 인세가 들어온다. 시스템이 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "corrupt",
+      "label": "타락도",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100,
+      "desc": "음지 일감에 얼마나 발을 담갔는가. 오르면 음지가 더 열리고 지상파·골든타임이 닫힌다. 시스템이 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "skip_day",
+      "label": "건너뛴 일수",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 30,
+      "desc": "며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 🌙 버튼이 하니 서사로 날짜를 넘기지 마라."
+    },
+    {
+      "id": "slot1",
+      "label": "센터",
+      "type": "enum",
+      "init": "Hoshino_Ai",
+      "enum": [
+        "빈 자리",
+        "Iino_Miko",
+        "Shiina_Mahiru",
+        "Koyasu_Tsubame",
+        "Shiranui_Frill",
+        "Sugaya_Nowa",
+        "Inui_Shinju",
+        "Inui_Sajuna",
+        "Kitagawa_Marin",
+        "Yamada_Ryo",
+        "Ijichi_Nijika",
+        "Kita_Ikuyo",
+        "Gotoh_Hitori",
+        "Kotobuki_Minami",
+        "Shijo_Maki",
+        "Kashiwagi_Nagisa",
+        "Sumi_Yuki",
+        "Hayasaka_Ai",
+        "Hoshino_Ai",
+        "Memcho",
+        "Kurokawa_Akane",
+        "Shirogane_Kei",
+        "Arima_Kana",
+        "Hoshino_Ruby",
+        "Fujiwara_Chika",
+        "Shinomiya_Kaguya",
+        "Nishikigi_Chisato",
+        "Kurumi",
+        "Inoue_Takina",
+        "Iwashita_Shima",
+        "Shimizu_Eliza",
+        "Ijichi_Seika",
+        "Hiroi_Kikuri",
+        "PA-san",
+        "Saitou_Miyako",
+        "Hori_Kyouko",
+        "Alisa_Mikhailovna_Kujou",
+        "Mariya_Mikhailovna_Kujou",
+        "Suou_Yuki",
+        "Sakurajima_Mai",
+        "Nakano_Ichika",
+        "Nakano_Itsuki",
+        "Nakano_Yotsuba",
+        "Nakano_Miku",
+        "Nakano_Nino"
+      ],
+      "desc": "가운데 서는 사람. 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 프로듀서가 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "slot2",
+      "label": "사이드 1",
+      "type": "enum",
+      "init": "Arima_Kana",
+      "enum": [
+        "빈 자리",
+        "Iino_Miko",
+        "Shiina_Mahiru",
+        "Koyasu_Tsubame",
+        "Shiranui_Frill",
+        "Sugaya_Nowa",
+        "Inui_Shinju",
+        "Inui_Sajuna",
+        "Kitagawa_Marin",
+        "Yamada_Ryo",
+        "Ijichi_Nijika",
+        "Kita_Ikuyo",
+        "Gotoh_Hitori",
+        "Kotobuki_Minami",
+        "Shijo_Maki",
+        "Kashiwagi_Nagisa",
+        "Sumi_Yuki",
+        "Hayasaka_Ai",
+        "Hoshino_Ai",
+        "Memcho",
+        "Kurokawa_Akane",
+        "Shirogane_Kei",
+        "Arima_Kana",
+        "Hoshino_Ruby",
+        "Fujiwara_Chika",
+        "Shinomiya_Kaguya",
+        "Nishikigi_Chisato",
+        "Kurumi",
+        "Inoue_Takina",
+        "Iwashita_Shima",
+        "Shimizu_Eliza",
+        "Ijichi_Seika",
+        "Hiroi_Kikuri",
+        "PA-san",
+        "Saitou_Miyako",
+        "Hori_Kyouko",
+        "Alisa_Mikhailovna_Kujou",
+        "Mariya_Mikhailovna_Kujou",
+        "Suou_Yuki",
+        "Sakurajima_Mai",
+        "Nakano_Ichika",
+        "Nakano_Itsuki",
+        "Nakano_Yotsuba",
+        "Nakano_Miku",
+        "Nakano_Nino"
+      ],
+      "desc": "무대에 함께 서는 사람. 비워 두면 이번 무대에 안 선다. 프로듀서가 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "slot3",
+      "label": "사이드 2",
+      "type": "enum",
+      "init": "Hoshino_Ruby",
+      "enum": [
+        "빈 자리",
+        "Iino_Miko",
+        "Shiina_Mahiru",
+        "Koyasu_Tsubame",
+        "Shiranui_Frill",
+        "Sugaya_Nowa",
+        "Inui_Shinju",
+        "Inui_Sajuna",
+        "Kitagawa_Marin",
+        "Yamada_Ryo",
+        "Ijichi_Nijika",
+        "Kita_Ikuyo",
+        "Gotoh_Hitori",
+        "Kotobuki_Minami",
+        "Shijo_Maki",
+        "Kashiwagi_Nagisa",
+        "Sumi_Yuki",
+        "Hayasaka_Ai",
+        "Hoshino_Ai",
+        "Memcho",
+        "Kurokawa_Akane",
+        "Shirogane_Kei",
+        "Arima_Kana",
+        "Hoshino_Ruby",
+        "Fujiwara_Chika",
+        "Shinomiya_Kaguya",
+        "Nishikigi_Chisato",
+        "Kurumi",
+        "Inoue_Takina",
+        "Iwashita_Shima",
+        "Shimizu_Eliza",
+        "Ijichi_Seika",
+        "Hiroi_Kikuri",
+        "PA-san",
+        "Saitou_Miyako",
+        "Hori_Kyouko",
+        "Alisa_Mikhailovna_Kujou",
+        "Mariya_Mikhailovna_Kujou",
+        "Suou_Yuki",
+        "Sakurajima_Mai",
+        "Nakano_Ichika",
+        "Nakano_Itsuki",
+        "Nakano_Yotsuba",
+        "Nakano_Miku",
+        "Nakano_Nino"
+      ],
+      "desc": "무대에 함께 서는 사람. 비워 두면 이번 무대에 안 선다. 프로듀서가 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "slot4",
+      "label": "사이드 3",
+      "type": "enum",
+      "init": "Memcho",
+      "enum": [
+        "빈 자리",
+        "Iino_Miko",
+        "Shiina_Mahiru",
+        "Koyasu_Tsubame",
+        "Shiranui_Frill",
+        "Sugaya_Nowa",
+        "Inui_Shinju",
+        "Inui_Sajuna",
+        "Kitagawa_Marin",
+        "Yamada_Ryo",
+        "Ijichi_Nijika",
+        "Kita_Ikuyo",
+        "Gotoh_Hitori",
+        "Kotobuki_Minami",
+        "Shijo_Maki",
+        "Kashiwagi_Nagisa",
+        "Sumi_Yuki",
+        "Hayasaka_Ai",
+        "Hoshino_Ai",
+        "Memcho",
+        "Kurokawa_Akane",
+        "Shirogane_Kei",
+        "Arima_Kana",
+        "Hoshino_Ruby",
+        "Fujiwara_Chika",
+        "Shinomiya_Kaguya",
+        "Nishikigi_Chisato",
+        "Kurumi",
+        "Inoue_Takina",
+        "Iwashita_Shima",
+        "Shimizu_Eliza",
+        "Ijichi_Seika",
+        "Hiroi_Kikuri",
+        "PA-san",
+        "Saitou_Miyako",
+        "Hori_Kyouko",
+        "Alisa_Mikhailovna_Kujou",
+        "Mariya_Mikhailovna_Kujou",
+        "Suou_Yuki",
+        "Sakurajima_Mai",
+        "Nakano_Ichika",
+        "Nakano_Itsuki",
+        "Nakano_Yotsuba",
+        "Nakano_Miku",
+        "Nakano_Nino"
+      ],
+      "desc": "무대에 함께 서는 사람. 비워 두면 이번 무대에 안 선다. 프로듀서가 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "slot5",
+      "label": "사이드 4",
+      "type": "enum",
+      "init": "Kurokawa_Akane",
+      "enum": [
+        "빈 자리",
+        "Iino_Miko",
+        "Shiina_Mahiru",
+        "Koyasu_Tsubame",
+        "Shiranui_Frill",
+        "Sugaya_Nowa",
+        "Inui_Shinju",
+        "Inui_Sajuna",
+        "Kitagawa_Marin",
+        "Yamada_Ryo",
+        "Ijichi_Nijika",
+        "Kita_Ikuyo",
+        "Gotoh_Hitori",
+        "Kotobuki_Minami",
+        "Shijo_Maki",
+        "Kashiwagi_Nagisa",
+        "Sumi_Yuki",
+        "Hayasaka_Ai",
+        "Hoshino_Ai",
+        "Memcho",
+        "Kurokawa_Akane",
+        "Shirogane_Kei",
+        "Arima_Kana",
+        "Hoshino_Ruby",
+        "Fujiwara_Chika",
+        "Shinomiya_Kaguya",
+        "Nishikigi_Chisato",
+        "Kurumi",
+        "Inoue_Takina",
+        "Iwashita_Shima",
+        "Shimizu_Eliza",
+        "Ijichi_Seika",
+        "Hiroi_Kikuri",
+        "PA-san",
+        "Saitou_Miyako",
+        "Hori_Kyouko",
+        "Alisa_Mikhailovna_Kujou",
+        "Mariya_Mikhailovna_Kujou",
+        "Suou_Yuki",
+        "Sakurajima_Mai",
+        "Nakano_Ichika",
+        "Nakano_Itsuki",
+        "Nakano_Yotsuba",
+        "Nakano_Miku",
+        "Nakano_Nino"
+      ],
+      "desc": "무대에 함께 서는 사람. 비워 두면 이번 무대에 안 선다. 프로듀서가 정하니 서사로 바꾸지 마라."
+    },
+    {
+      "id": "m1_vo",
+      "label": "센터 · 보컬",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m1_da",
+      "label": "센터 · 댄스",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m1_vi",
+      "label": "센터 · 비주얼",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m1_st",
+      "label": "센터 · 체력",
+      "type": "int",
+      "init": 70,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m1_me",
+      "label": "센터 · 멘탈",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "max": 100,
+      "desc": "0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다."
+    },
+    {
+      "id": "m1_love",
+      "label": "센터 · 호감도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다."
+    },
+    {
+      "id": "m1_fan",
+      "label": "센터 · 개별 인기",
+      "type": "int",
+      "init": 200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    },
+    {
+      "id": "m2_vo",
+      "label": "사이드 1 · 보컬",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m2_da",
+      "label": "사이드 1 · 댄스",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m2_vi",
+      "label": "사이드 1 · 비주얼",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m2_st",
+      "label": "사이드 1 · 체력",
+      "type": "int",
+      "init": 70,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m2_me",
+      "label": "사이드 1 · 멘탈",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "max": 100,
+      "desc": "0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다."
+    },
+    {
+      "id": "m2_love",
+      "label": "사이드 1 · 호감도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다."
+    },
+    {
+      "id": "m2_fan",
+      "label": "사이드 1 · 개별 인기",
+      "type": "int",
+      "init": 200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    },
+    {
+      "id": "m3_vo",
+      "label": "사이드 2 · 보컬",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m3_da",
+      "label": "사이드 2 · 댄스",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m3_vi",
+      "label": "사이드 2 · 비주얼",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m3_st",
+      "label": "사이드 2 · 체력",
+      "type": "int",
+      "init": 70,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m3_me",
+      "label": "사이드 2 · 멘탈",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "max": 100,
+      "desc": "0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다."
+    },
+    {
+      "id": "m3_love",
+      "label": "사이드 2 · 호감도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다."
+    },
+    {
+      "id": "m3_fan",
+      "label": "사이드 2 · 개별 인기",
+      "type": "int",
+      "init": 200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    },
+    {
+      "id": "m4_vo",
+      "label": "사이드 3 · 보컬",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m4_da",
+      "label": "사이드 3 · 댄스",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m4_vi",
+      "label": "사이드 3 · 비주얼",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m4_st",
+      "label": "사이드 3 · 체력",
+      "type": "int",
+      "init": 70,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m4_me",
+      "label": "사이드 3 · 멘탈",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "max": 100,
+      "desc": "0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다."
+    },
+    {
+      "id": "m4_love",
+      "label": "사이드 3 · 호감도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다."
+    },
+    {
+      "id": "m4_fan",
+      "label": "사이드 3 · 개별 인기",
+      "type": "int",
+      "init": 200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    },
+    {
+      "id": "m5_vo",
+      "label": "사이드 4 · 보컬",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m5_da",
+      "label": "사이드 4 · 댄스",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m5_vi",
+      "label": "사이드 4 · 비주얼",
+      "type": "int",
+      "init": 25,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m5_st",
+      "label": "사이드 4 · 체력",
+      "type": "int",
+      "init": 70,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": "m5_me",
+      "label": "사이드 4 · 멘탈",
+      "type": "int",
+      "init": 60,
+      "min": 0,
+      "max": 100,
+      "desc": "0이 되면 더 못 선다. 무대가 깎고, 쉬거나 이야기를 나누면 돌아온다."
+    },
+    {
+      "id": "m5_love",
+      "label": "사이드 4 · 호감도",
+      "type": "int",
+      "init": 20,
+      "min": 0,
+      "max": 100,
+      "desc": "프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 주고, 음지 설득도 쉬워진다."
+    },
+    {
+      "id": "m5_fan",
+      "label": "사이드 4 · 개별 인기",
+      "type": "int",
+      "init": 200,
+      "min": 0,
+      "max": 9999999,
+      "format": "{v}명"
+    }
+  ],
+  "derived": [
+    {
+      "id": "o1",
+      "label": "센터 착석",
+      "expr": "slot1 != '빈 자리' ? 1 : 0"
+    },
+    {
+      "id": "o2",
+      "label": "사이드 1 착석",
+      "expr": "slot2 != '빈 자리' ? 1 : 0"
+    },
+    {
+      "id": "o3",
+      "label": "사이드 2 착석",
+      "expr": "slot3 != '빈 자리' ? 1 : 0"
+    },
+    {
+      "id": "o4",
+      "label": "사이드 3 착석",
+      "expr": "slot4 != '빈 자리' ? 1 : 0"
+    },
+    {
+      "id": "o5",
+      "label": "사이드 4 착석",
+      "expr": "slot5 != '빈 자리' ? 1 : 0"
+    },
+    {
+      "id": "p1",
+      "label": "센터 배수",
+      "expr": "o1 * 1.3"
+    },
+    {
+      "id": "p2",
+      "label": "사이드 1 배수",
+      "expr": "o2"
+    },
+    {
+      "id": "p3",
+      "label": "사이드 2 배수",
+      "expr": "o3"
+    },
+    {
+      "id": "p4",
+      "label": "사이드 3 배수",
+      "expr": "o4"
+    },
+    {
+      "id": "p5",
+      "label": "사이드 4 배수",
+      "expr": "o5"
+    },
+    {
+      "id": "stand",
+      "label": "무대 인원",
+      "expr": "o1 + o2 + o3 + o4 + o5"
+    },
+    {
+      "id": "u_vo",
+      "label": "유닛 보컬",
+      "expr": "round(m1_vo * p1 + m2_vo * p2 + m3_vo * p3 + m4_vo * p4 + m5_vo * p5)"
+    },
+    {
+      "id": "u_da",
+      "label": "유닛 댄스",
+      "expr": "round(m1_da * p1 + m2_da * p2 + m3_da * p3 + m4_da * p4 + m5_da * p5)"
+    },
+    {
+      "id": "u_vi",
+      "label": "유닛 비주얼",
+      "expr": "round(m1_vi * p1 + m2_vi * p2 + m3_vi * p3 + m4_vi * p4 + m5_vi * p5)"
+    },
+    {
+      "id": "c1",
+      "label": "센터 컨디션",
+      "expr": "round((m1_st + m1_me) / 2)"
+    },
+    {
+      "id": "c2",
+      "label": "사이드 1 컨디션",
+      "expr": "round((m2_st + m2_me) / 2)"
+    },
+    {
+      "id": "c3",
+      "label": "사이드 2 컨디션",
+      "expr": "round((m3_st + m3_me) / 2)"
+    },
+    {
+      "id": "c4",
+      "label": "사이드 3 컨디션",
+      "expr": "round((m4_st + m4_me) / 2)"
+    },
+    {
+      "id": "c5",
+      "label": "사이드 4 컨디션",
+      "expr": "round((m5_st + m5_me) / 2)"
+    },
+    {
+      "id": "u_cond",
+      "label": "유닛 컨디션",
+      "expr": "stand > 0 ? round((c1 * p1 + c2 * p2 + c3 * p3 + c4 * p4 + c5 * p5) / (p1 + p2 + p3 + p4 + p5)) : 0"
+    },
+    {
+      "id": "u_fan",
+      "label": "유닛 인기도",
+      "expr": "m1_fan * o1 + m2_fan * o2 + m3_fan * o3 + m4_fan * o4 + m5_fan * o5"
+    },
+    {
+      "id": "u_pow",
+      "label": "유닛 종합",
+      "expr": "u_vo + u_da + u_vi"
+    },
+    {
+      "id": "u_rank",
+      "label": "유닛 랭크",
+      "expr": "u_pow >= 1290 ? 'S' : (u_pow >= 1000 ? 'A' : (u_pow >= 720 ? 'B' : (u_pow >= 480 ? 'C' : (u_pow >= 290 ? 'D' : ('E')))))"
+    },
+    {
+      "id": "u_love",
+      "label": "평균 호감",
+      "expr": "stand > 0 ? round((m1_love * o1 + m2_love * o2 + m3_love * o3 + m4_love * o4 + m5_love * o5) / stand) : 0"
+    },
+    {
+      "id": "rank_n",
+      "label": "등급 수치",
+      "expr": "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))"
+    },
+    {
+      "id": "dress",
+      "label": "의상 보정",
+      "expr": "costume == '특주 의상' ? 8 : (costume == '특별 의상' ? 5 : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4)))"
+    },
+    {
+      "id": "album_n",
+      "label": "음반 급수",
+      "expr": "album == '정규 앨범' ? 3 : (album == '미니 앨범' ? 2 : (album == '싱글' ? 1 : 0))"
+    },
+    {
+      "id": "job_vs",
+      "label": "업무 난이도",
+      "expr": "job == '골든타임 특집' ? 26 : (job == '지상파 음악방송' ? 22 : (job == '케이블 음악방송' ? 19 : (job == '지방 방송국' ? 16 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '거리 홍보' ? 10 : 0))))))"
+    },
+    {
+      "id": "job_pay",
+      "label": "업무 보수",
+      "expr": "job == '골든타임 특집' ? 2600 : (job == '지상파 음악방송' ? 1500 : (job == '케이블 음악방송' ? 900 : (job == '지방 방송국' ? 560 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '거리 홍보' ? 120 : 0))))))"
+    },
+    {
+      "id": "live_vs",
+      "label": "라이브 난이도",
+      "expr": "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 페스티벌' ? 19 : (live == '시민회관' ? 15 : (live == '라이브하우스' ? 12 : 0))))"
+    },
+    {
+      "id": "live_pay",
+      "label": "라이브 개런티",
+      "expr": "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 페스티벌' ? 800 : (live == '시민회관' ? 420 : (live == '라이브하우스' ? 260 : 0))))"
+    },
+    {
+      "id": "live_cap",
+      "label": "공연장 정원",
+      "expr": "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 페스티벌' ? 1500 : (live == '시민회관' ? 600 : (live == '라이브하우스' ? 200 : 0))))",
+      "format": "{v}석"
+    },
+    {
+      "id": "live_tickets",
+      "label": "예상 티켓",
+      "expr": "live_cap > 0 ? min(live_cap, round(fans * 0.3 + buzz * 12 + u_fan / 30)) : 0",
+      "format": "{v}장"
+    },
+    {
+      "id": "live_fill",
+      "label": "예상 객석",
+      "expr": "live_cap > 0 ? round(live_tickets * 100 / live_cap) : 0",
+      "format": "{v}%"
+    },
+    {
+      "id": "pitch_mod",
+      "label": "영업 보정",
+      "expr": "min(20, round(awareness / 7) + round(buzz / 8) + rank_n) - late * 2"
+    },
+    {
+      "id": "od_radio",
+      "label": "지역 라디오 성사율",
+      "expr": "min(100, max(5, (21 - 11 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_mag",
+      "label": "잡지 화보 성사율",
+      "expr": "min(100, max(5, (21 - 14 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_ltv",
+      "label": "지방 방송국 성사율",
+      "expr": "min(100, max(5, (21 - 17 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_cable",
+      "label": "케이블 성사율",
+      "expr": "min(100, max(5, (21 - 18 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_net",
+      "label": "지상파 성사율",
+      "expr": "min(100, max(5, (21 - 24 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_gold",
+      "label": "골든타임 성사율",
+      "expr": "min(100, max(5, (21 - 28 + pitch_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "shady_mod",
+      "label": "설득 보정",
+      "expr": "min(20, round(corrupt / 5) + round(u_love / 9) + (funds < 100 ? 3 : 0))"
+    },
+    {
+      "id": "od_night",
+      "label": "심야 행사 수락률",
+      "expr": "min(100, max(5, (21 - 10 + shady_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_spon",
+      "label": "스폰서 자리 수락률",
+      "expr": "min(100, max(5, (21 - 15 + shady_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_gravure",
+      "label": "수위 화보 수락률",
+      "expr": "min(100, max(5, (21 - 19 + shady_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "od_adult",
+      "label": "성인 영상 수락률",
+      "expr": "min(100, max(5, (21 - 24 + shady_mod) * 5))",
+      "format": "{v}%"
+    },
+    {
+      "id": "income",
+      "label": "이번 달 수입",
+      "expr": "inc_stage + inc_ticket + inc_goods + inc_album"
+    },
+    {
+      "id": "salary",
+      "label": "멤버 월급",
+      "expr": "(rank_n + 3) * 60"
+    },
+    {
+      "id": "rent",
+      "label": "사무소 임대료",
+      "expr": "100 + rank_n * 30"
+    },
+    {
+      "id": "balance",
+      "label": "이번 달 수지",
+      "expr": "funds - month_open"
+    },
+    {
+      "id": "spend",
+      "label": "이번 달 지출",
+      "expr": "max(income - balance, 0)"
+    },
+    {
+      "id": "ranking",
+      "label": "아이돌 랭킹",
+      "expr": "max(1, 300 - round(awareness * 1.6) - round(fans / 400) - round(buzz * 0.6))"
+    }
+  ],
+  "checks": [
+    {
+      "id": "ck_stage",
+      "label": "무대 판정",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) - late",
+      "vs": "job_vs",
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "전설의 무대",
+          "inject": "그 자리에 있던 사람 전부가 오래 기억할 무대가 되었다 — 객석의 공기가 바뀌는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 35, 100)"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(2, round((100 - awareness) * 0.08)), 100)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + round(job_pay * 3), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(job_pay * 1.6), 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + round(job_pay * 1.6), 9999999)"
+            },
+            {
+              "set": "m1_fan",
+              "expr": "min(m1_fan + round(job_pay * p1 * 1.2), 9999999)"
+            },
+            {
+              "set": "m2_fan",
+              "expr": "min(m2_fan + round(job_pay * p2 * 1.2), 9999999)"
+            },
+            {
+              "set": "m3_fan",
+              "expr": "min(m3_fan + round(job_pay * p3 * 1.2), 9999999)"
+            },
+            {
+              "set": "m4_fan",
+              "expr": "min(m4_fan + round(job_pay * p4 * 1.2), 9999999)"
+            },
+            {
+              "set": "m5_fan",
+              "expr": "min(m5_fan + round(job_pay * p5 * 1.2), 9999999)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "min(m1_me + round(p1 * 10), 100)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "min(m2_me + round(p2 * 10), 100)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "min(m3_me + round(p3 * 10), 100)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "min(m4_me + round(p4 * 10), 100)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "min(m5_me + round(p5 * 10), 100)"
+            },
+            {
+              "set": "sales",
+              "expr": "min(sales + round(fans * album_n * 0.12), 9999999)"
+            },
+            {
+              "set": "inc_album",
+              "expr": "min(inc_album + round(fans * album_n * 0.06), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(fans * album_n * 0.06), 9999999)"
+            },
+            {
+              "set": "job",
+              "expr": "'없음'"
+            },
+            {
+              "set": "job_days",
+              "expr": "0"
+            }
+          ]
+        },
+        {
+          "when": "roll == 1",
+          "label": "사고",
+          "inject": "무대 위에서 무언가 어긋났다 — 음이 밀렸든 발이 걸렸든, 그 순간이 길게 느껴지는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 8, 100)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(job_pay * 0.3), 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + round(job_pay * 0.3), 9999999)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - round(p1 * 14), 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - round(p2 * 14), 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - round(p3 * 14), 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - round(p4 * 14), 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - round(p5 * 14), 0)"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 3, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 3, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 3, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 3, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 3, 0)"
+            },
+            {
+              "set": "job",
+              "expr": "'없음'"
+            },
+            {
+              "set": "job_days",
+              "expr": "0"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 18, 100)"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + job_pay, 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + job_pay, 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + job_pay, 9999999)"
+            },
+            {
+              "set": "m1_fan",
+              "expr": "min(m1_fan + round(job_pay * p1 * 0.4), 9999999)"
+            },
+            {
+              "set": "m2_fan",
+              "expr": "min(m2_fan + round(job_pay * p2 * 0.4), 9999999)"
+            },
+            {
+              "set": "m3_fan",
+              "expr": "min(m3_fan + round(job_pay * p3 * 0.4), 9999999)"
+            },
+            {
+              "set": "m4_fan",
+              "expr": "min(m4_fan + round(job_pay * p4 * 0.4), 9999999)"
+            },
+            {
+              "set": "m5_fan",
+              "expr": "min(m5_fan + round(job_pay * p5 * 0.4), 9999999)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "min(m1_me + round(p1 * 4), 100)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "min(m2_me + round(p2 * 4), 100)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "min(m3_me + round(p3 * 4), 100)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "min(m4_me + round(p4 * 4), 100)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "min(m5_me + round(p5 * 4), 100)"
+            },
+            {
+              "set": "sales",
+              "expr": "min(sales + round(fans * album_n * 0.06), 9999999)"
+            },
+            {
+              "set": "inc_album",
+              "expr": "min(inc_album + round(fans * album_n * 0.03), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(fans * album_n * 0.03), 9999999)"
+            },
+            {
+              "set": "job",
+              "expr": "'없음'"
+            },
+            {
+              "set": "job_days",
+              "expr": "0"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "나쁘지 않았지만 아무도 오래 이야기하지 않을 무대였다.",
+          "effects": [
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 4, 100)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(job_pay * 0.6), 9999999)"
+            },
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + round(job_pay * 0.6), 9999999)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - round(p1 * 6), 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - round(p2 * 6), 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - round(p3 * 6), 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - round(p4 * 6), 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - round(p5 * 6), 0)"
+            },
+            {
+              "set": "job",
+              "expr": "'없음'"
+            },
+            {
+              "set": "job_days",
+              "expr": "0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_live",
+      "label": "라이브 판정",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) + count(songs) - late",
+      "vs": "live_vs",
+      "grades": [
+        {
+          "when": "total >= vs + 6",
+          "label": "만석",
+          "inject": "표가 남지 않았다. 앙코르가 끝나고도 사람들이 자리를 안 떴다 — 객석의 열기로 그려라.",
+          "effects": [
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + live_pay, 9999999)"
+            },
+            {
+              "set": "inc_ticket",
+              "expr": "min(inc_ticket + round(live_tickets * 0.8), 9999999)"
+            },
+            {
+              "set": "inc_goods",
+              "expr": "min(inc_goods + round(live_tickets * 0.35), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + live_pay + round(live_tickets * 1.15), 9999999)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + round(live_tickets * 0.5), 9999999)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 24, 100)"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.05)), 100)"
+            },
+            {
+              "set": "m1_st",
+              "expr": "max(m1_st - round(p1 * 16), 0)"
+            },
+            {
+              "set": "m2_st",
+              "expr": "max(m2_st - round(p2 * 16), 0)"
+            },
+            {
+              "set": "m3_st",
+              "expr": "max(m3_st - round(p3 * 16), 0)"
+            },
+            {
+              "set": "m4_st",
+              "expr": "max(m4_st - round(p4 * 16), 0)"
+            },
+            {
+              "set": "m5_st",
+              "expr": "max(m5_st - round(p5 * 16), 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "min(m1_me + round(p1 * 8), 100)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "min(m2_me + round(p2 * 8), 100)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "min(m3_me + round(p3 * 8), 100)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "min(m4_me + round(p4 * 8), 100)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "min(m5_me + round(p5 * 8), 100)"
+            },
+            {
+              "set": "live",
+              "expr": "'없음'"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "inject": "무대는 끝났고 사람들은 만족해서 돌아갔다.",
+          "effects": [
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + live_pay, 9999999)"
+            },
+            {
+              "set": "inc_ticket",
+              "expr": "min(inc_ticket + round(live_tickets * 0.5), 9999999)"
+            },
+            {
+              "set": "inc_goods",
+              "expr": "min(inc_goods + round(live_tickets * 0.18), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + live_pay + round(live_tickets * 0.68), 9999999)"
+            },
+            {
+              "set": "fans",
+              "expr": "min(fans + round(live_tickets * 0.25), 9999999)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 12, 100)"
+            },
+            {
+              "set": "m1_st",
+              "expr": "max(m1_st - round(p1 * 18), 0)"
+            },
+            {
+              "set": "m2_st",
+              "expr": "max(m2_st - round(p2 * 18), 0)"
+            },
+            {
+              "set": "m3_st",
+              "expr": "max(m3_st - round(p3 * 18), 0)"
+            },
+            {
+              "set": "m4_st",
+              "expr": "max(m4_st - round(p4 * 18), 0)"
+            },
+            {
+              "set": "m5_st",
+              "expr": "max(m5_st - round(p5 * 18), 0)"
+            },
+            {
+              "set": "live",
+              "expr": "'없음'"
+            }
+          ]
+        },
+        {
+          "label": "빈 객석",
+          "inject": "비어 있는 자리가 무대에서도 보였다. 끝까지 해냈지만 모두가 그걸 알았다.",
+          "effects": [
+            {
+              "set": "inc_stage",
+              "expr": "min(inc_stage + round(live_pay * 0.4), 9999999)"
+            },
+            {
+              "set": "inc_ticket",
+              "expr": "min(inc_ticket + round(live_tickets * 0.15), 9999999)"
+            },
+            {
+              "set": "funds",
+              "expr": "min(funds + round(live_pay * 0.4) + round(live_tickets * 0.2), 9999999)"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 8, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - round(p1 * 12), 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - round(p2 * 12), 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - round(p3 * 12), 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - round(p4 * 12), 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - round(p5 * 12), 0)"
+            },
+            {
+              "set": "m1_st",
+              "expr": "max(m1_st - round(p1 * 14), 0)"
+            },
+            {
+              "set": "m2_st",
+              "expr": "max(m2_st - round(p2 * 14), 0)"
+            },
+            {
+              "set": "m3_st",
+              "expr": "max(m3_st - round(p3 * 14), 0)"
+            },
+            {
+              "set": "m4_st",
+              "expr": "max(m4_st - round(p4 * 14), 0)"
+            },
+            {
+              "set": "m5_st",
+              "expr": "max(m5_st - round(p5 * 14), 0)"
+            },
+            {
+              "set": "live",
+              "expr": "'없음'"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_radio",
+      "label": "지역 라디오 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 11,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_mag",
+      "label": "잡지 화보 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 14,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ltv",
+      "label": "지방 방송국 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 17,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_cable",
+      "label": "케이블 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 18,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_net",
+      "label": "지상파 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 24,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_gold",
+      "label": "골든타임 영업",
+      "roll": "rand(1, 20)",
+      "mod": "pitch_mod",
+      "vs": 28,
+      "grades": [
+        {
+          "when": "roll == 20",
+          "label": "대어",
+          "inject": "기대도 안 한 자리에서 더 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "2"
+            },
+            {
+              "set": "awareness",
+              "expr": "min(awareness + max(1, round((100 - awareness) * 0.03)), 100)"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "수주",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "헛걸음",
+          "inject": "명함만 두고 나왔다. 이런 날이 더 많다는 걸 서로 안다.",
+          "effects": [
+            {
+              "set": "pitch_won",
+              "expr": "0"
+            },
+            {
+              "set": "buzz",
+              "expr": "max(buzz - 2, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_night",
+      "label": "심야 행사 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 10,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_spon",
+      "label": "스폰서 자리 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 15,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_gravure",
+      "label": "수위 화보 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 19,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_adult",
+      "label": "성인 영상 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 24,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "take_street",
+      "label": "📋 거리에서 뛴다",
+      "mode": "oneshot",
+      "when": "job == '없음' and not unit_over",
+      "inject": "[행동] 전단을 들고 사람 많은 데로 나간다. 돈은 안 되지만 거절당할 일도 없다.",
+      "effects": [
+        {
+          "set": "job",
+          "expr": "'거리 홍보'"
+        },
+        {
+          "set": "job_days",
+          "expr": "1 + rand(0, 1)"
+        }
+      ]
+    },
+    {
+      "id": "take_radio",
+      "label": "📻 지역 라디오에 넣는다",
+      "mode": "oneshot",
+      "when": "job == '없음' and awareness >= 8 and funds >= 10 and not unit_over",
+      "check": "ck_radio",
+      "inject": "[행동] 동네 방송국에 전화를 건다. 담당자 이름은 이미 외우고 있다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 10, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 2 ? '잡지 화보' : (pitch_won >= 1 ? '지역 라디오' : job)"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 2 + rand(0, 2) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_mag",
+      "label": "📖 잡지사를 돈다",
+      "mode": "oneshot",
+      "when": "job == '없음' and awareness >= 18 and funds >= 20 and not unit_over",
+      "check": "ck_mag",
+      "inject": "[행동] 편집부 문 앞에서 기다린다. 지면 한 쪽이 걸린 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 20, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 2 ? '지방 방송국' : (pitch_won >= 1 ? '잡지 화보' : job)"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 3 + rand(0, 2) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_ltv",
+      "label": "📡 지방 방송국을 노린다",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "job == '없음' and awareness >= 32 and funds >= 40 and not unit_over",
+      "check": "ck_ltv",
+      "inject": "[행동] 기차를 타고 지방 방송국을 돈다. 이쪽에서 먼저 고개를 숙여야 하는 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 40, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 2 ? '케이블 음악방송' : (pitch_won >= 1 ? '지방 방송국' : job)"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 4 + rand(0, 3) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_cable",
+      "label": "📺 케이블 음악방송을 노린다",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "job == '없음' and awareness >= 46 and funds >= 70 and not unit_over",
+      "check": "ck_cable",
+      "inject": "[행동] 편성 담당과 마주 앉는다. 자리는 하나고 기다리는 유닛은 여럿이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 70, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 2 ? '지상파 음악방송' : (pitch_won >= 1 ? '케이블 음악방송' : job)"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 5 + rand(0, 3) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_net",
+      "label": "🏙 지상파 음악방송을 노린다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "job == '없음' and awareness >= 62 and corrupt <= 45 and funds >= 120 and not unit_over",
+      "check": "ck_net",
+      "inject": "[행동] 본사 로비에서 한참을 기다린다. 여기까지 온 것만으로도 몇 년이 걸렸다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 120, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 2 ? '골든타임 특집' : (pitch_won >= 1 ? '지상파 음악방송' : job)"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 6 + rand(0, 4) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_gold",
+      "label": "🌟 골든타임 특집을 노린다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "when": "job == '없음' and awareness >= 80 and corrupt <= 25 and funds >= 200 and not unit_over",
+      "check": "ck_gold",
+      "inject": "[행동] 국장실까지 올라간다. 이 자리는 실력만으로 오는 게 아니라는 걸 서로 안다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 200, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "pitch_won >= 1 ? '골든타임 특집' : job"
+        },
+        {
+          "set": "job_days",
+          "expr": "pitch_won >= 1 ? 8 + rand(0, 5) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "hall_small",
+      "label": "🎪 라이브하우스를 빌린다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "when": "live == '없음' and funds >= 60 and not unit_over",
+      "inject": "[행동] 지하 라이브하우스와 날을 잡는다. 백 명이 차면 꽉 찬 것처럼 보이는 곳이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 60, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'라이브하우스'"
+        },
+        {
+          "set": "live_days",
+          "expr": "5 + rand(0, 4)"
+        }
+      ]
+    },
+    {
+      "id": "hall_civic",
+      "label": "🏛 시민회관을 빌린다",
+      "mode": "oneshot",
+      "when": "live == '없음' and fans >= 3000 and funds >= 150 and not unit_over",
+      "inject": "[행동] 시민회관 대관 신청서를 낸다. 무대가 넓어서 셋이 서면 허전할 수도 있다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 150, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'시민회관'"
+        },
+        {
+          "set": "live_days",
+          "expr": "7 + rand(0, 5)"
+        }
+      ]
+    },
+    {
+      "id": "hall_fest",
+      "label": "🎡 합동 페스티벌에 낀다",
+      "mode": "oneshot",
+      "when": "live == '없음' and fans >= 5000 and u_pow >= 480 and funds >= 300 and not unit_over",
+      "inject": "[행동] 여러 유닛이 서는 무대의 한 칸을 산다. 앞뒤로 누가 서는지가 중요한 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 300, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'합동 페스티벌'"
+        },
+        {
+          "set": "live_days",
+          "expr": "9 + rand(0, 6)"
+        }
+      ]
+    },
+    {
+      "id": "hall_solo",
+      "label": "🎭 단독 공연을 건다",
+      "mode": "oneshot",
+      "when": "live == '없음' and fans >= 15000 and u_pow >= 720 and funds >= 700 and not unit_over",
+      "inject": "[행동] 이름 하나로 홀을 채워야 하는 날을 잡는다. 포스터에 다른 이름이 없다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 700, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'단독 공연'"
+        },
+        {
+          "set": "live_days",
+          "expr": "12 + rand(0, 8)"
+        }
+      ]
+    },
+    {
+      "id": "hall_tour",
+      "label": "🚌 전국 투어를 올린다",
+      "mode": "oneshot",
+      "when": "live == '없음' and fans >= 25000 and u_pow >= 1000 and funds >= 1600 and not unit_over",
+      "inject": "[행동] 도시 이름이 줄줄이 적힌 일정표를 짠다. 돌아올 때 셋이 어떤 얼굴일지는 아무도 모른다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 1600, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'전국 투어'"
+        },
+        {
+          "set": "live_days",
+          "expr": "16 + rand(0, 10)"
+        }
+      ]
+    },
+    {
+      "id": "live_show",
+      "label": "🎫 라이브에 선다",
+      "mode": "oneshot",
+      "when": "live != '없음' and live_days <= 0 and stand >= 1 and not unit_over",
+      "check": "ck_live",
+      "inject": "[행동] 객석이 찼다. 조명이 꺼지고 첫 음이 나가기 직전부터 그려라."
+    },
+    {
+      "id": "perform",
+      "label": "🎤 업무를 치른다",
+      "mode": "oneshot",
+      "when": "job != '없음' and job_days <= 0 and stand >= 1 and not unit_over",
+      "check": "ck_stage",
+      "inject": "[행동] 오늘이 그날이다. 대기실에서 무대까지의 몇 걸음부터 그려라.",
+      "effects": [
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 16), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 16), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 16), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 16), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 16), 0)"
+        }
+      ]
+    },
+    {
+      "id": "rest_day",
+      "label": "☕ 쉬게 한다",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "when": "funds >= 20 and not unit_over",
+      "inject": "[행동] 오늘은 아무 일정도 잡지 않는다. 셋을 각자 쉬게 둔다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 20, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 25, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 25, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 25, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 25, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 25, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 12, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 12, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 12, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 12, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 12, 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "max(buzz - 3, 0)"
+        }
+      ]
+    },
+    {
+      "id": "talk",
+      "label": "💬 이야기를 나눈다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "not unit_over",
+      "inject": "[행동] 연습실에 남아 셋과 이야기한다. 무슨 말이 오갔는지는 장면이 정한다.",
+      "effects": [
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 10, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 10, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 10, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 10, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 10, 100)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 6, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 6, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 6, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 6, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 6, 100)"
+        }
+      ]
+    },
+    {
+      "id": "promo",
+      "label": "📣 홍보를 돈다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "funds >= 30 and not unit_over",
+      "inject": "[행동] 전단과 SNS와 발품. 이름을 한 사람이라도 더 알게 만드는 일이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 30, 0)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + max(1, round((100 - awareness) * 0.05)), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 8, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + 40 + round(fans * 0.04), 9999999)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - 3, 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - 3, 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - 3, 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - 3, 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - 3, 0)"
+        }
+      ]
+    },
+    {
+      "id": "make_dress1",
+      "label": "👗 무대의상을 맞춘다",
+      "mode": "oneshot",
+      "when": "funds >= 150 and costume != '제작 의상' and costume != '특별 의상' and costume != '특주 의상' and not unit_over",
+      "inject": "[행동] 동네 의상실에 셋을 데려간다. 치수를 재는 동안 아무도 말이 없다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 150, 0)"
+        },
+        {
+          "set": "costume",
+          "expr": "'제작 의상'"
+        }
+      ]
+    },
+    {
+      "id": "make_dress2",
+      "label": "✨ 특별 의상을 의뢰한다",
+      "mode": "oneshot",
+      "when": "funds >= 500 and awareness >= 35 and costume != '특별 의상' and costume != '특주 의상' and not unit_over",
+      "inject": "[행동] 이름 있는 디자이너를 찾아간다. 도면부터 그리는 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 500, 0)"
+        },
+        {
+          "set": "costume",
+          "expr": "'특별 의상'"
+        }
+      ]
+    },
+    {
+      "id": "make_dress3",
+      "label": "💎 특주 의상을 올린다",
+      "mode": "oneshot",
+      "when": "funds >= 1400 and awareness >= 65 and costume != '특주 의상' and not unit_over",
+      "inject": "[행동] 이 무대만을 위한 옷을 짓는다. 다시는 안 입을 옷이라는 걸 모두가 안다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 1400, 0)"
+        },
+        {
+          "set": "costume",
+          "expr": "'특주 의상'"
+        }
+      ]
+    },
+    {
+      "id": "make_single",
+      "label": "💿 싱글을 낸다",
+      "mode": "oneshot",
+      "when": "funds >= 600 and awareness >= 20 and album == '없음' and not unit_over",
+      "inject": "[행동] 작은 스튜디오를 빌려 두 곡을 녹음한다. 첫 음반이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 600, 0)"
+        },
+        {
+          "set": "album",
+          "expr": "'싱글'"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 10, 100)"
+        },
+        {
+          "set": "sales",
+          "expr": "min(sales + round(fans * 0.3), 9999999)"
+        }
+      ]
+    },
+    {
+      "id": "make_mini",
+      "label": "📀 미니 앨범을 낸다",
+      "mode": "oneshot",
+      "when": "funds >= 1400 and awareness >= 40 and album == '싱글' and not unit_over",
+      "inject": "[행동] 다섯 곡짜리를 짠다. 곡 순서를 놓고 밤을 새우는 장면이 어울린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 1400, 0)"
+        },
+        {
+          "set": "album",
+          "expr": "'미니 앨범'"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 16, 100)"
+        },
+        {
+          "set": "sales",
+          "expr": "min(sales + round(fans * 0.5), 9999999)"
+        }
+      ]
+    },
+    {
+      "id": "make_full",
+      "label": "🏆 정규 앨범을 낸다",
+      "mode": "oneshot",
+      "when": "funds >= 3000 and awareness >= 65 and album == '미니 앨범' and not unit_over",
+      "inject": "[행동] 정규 한 장을 만든다. 이걸로 이 유닛이 어떤 유닛인지가 정해진다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 3000, 0)"
+        },
+        {
+          "set": "album",
+          "expr": "'정규 앨범'"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 24, 100)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 4, 100)"
+        },
+        {
+          "set": "sales",
+          "expr": "min(sales + round(fans * 0.8), 9999999)"
+        }
+      ]
+    },
+    {
+      "id": "shady_night",
+      "label": "🌃 심야 행사를 받는다",
+      "mode": "oneshot",
+      "cooldown": 2,
+      "impactExempt": true,
+      "when": "not unit_over",
+      "check": "ck_night",
+      "inject": "[행동] 이름을 안 밝히는 쪽 행사다. 끝나면 현금으로 준다고 했다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 200 : 0), 9999999)"
+        },
+        {
+          "set": "inc_stage",
+          "expr": "min(inc_stage + (shady_ok >= 1 ? 200 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 4 : 0), 100)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "shady_spon",
+      "label": "🥂 스폰서 자리에 앉힌다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "impactExempt": true,
+      "when": "corrupt >= 10 and not unit_over",
+      "check": "ck_spon",
+      "inject": "[행동] 술자리에 셋을 앉힌다. 무대 이야기는 한 마디도 안 나오는 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 650 : 0), 9999999)"
+        },
+        {
+          "set": "inc_stage",
+          "expr": "min(inc_stage + (shady_ok >= 1 ? 650 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 9 : 0), 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "shady_gravure",
+      "label": "📷 수위 있는 화보를 찍는다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "impactExempt": true,
+      "when": "corrupt >= 28 and not unit_over",
+      "check": "ck_gravure",
+      "inject": "[행동] 어디까지 벗길지를 놓고 흥정한다. 셋에게는 마지막에 말한다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 1500 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 1500 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 13 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 20 : 0), 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + (shady_ok >= 1 ? round(fans * 0.08) + 300 : 0), 9999999)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "shady_adult",
+      "label": "🔞 성인 영상으로 돌린다",
+      "mode": "oneshot",
+      "cooldown": 6,
+      "impactExempt": true,
+      "when": "corrupt >= 55 and not unit_over",
+      "check": "ck_adult",
+      "inject": "[행동] 이 계약서에 도장을 찍으면 돌아올 길이 없다는 걸 양쪽 다 안다. 현장은 그리지 말고 계약 자리까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 3800 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 3800 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 18 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 30 : 0), 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + (shady_ok >= 1 ? round(fans * 0.2) + 1200 : 0), 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "max(awareness - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 22 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 22 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 22 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 22 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 22 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 12 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "borrow",
+      "label": "🏦 융자를 받는다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "impactExempt": true,
+      "when": "funds < 150 and not unit_over",
+      "inject": "[행동] 은행 창구에 앉는다. 숫자를 적고 도장을 찍는 짧은 장면으로.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 500, 9999999)"
+        },
+        {
+          "set": "debt",
+          "expr": "min(debt + 560 + round(debt * 0.1), 9999999)"
+        },
+        {
+          "set": "month_open",
+          "expr": "min(month_open + 500, 9999999)"
+        }
+      ]
+    },
+    {
+      "id": "repay",
+      "label": "💴 빚을 갚는다",
+      "mode": "oneshot",
+      "when": "funds >= 200 and debt >= 1 and not unit_over",
+      "inject": "[행동] 장부의 숫자를 조금 줄인다. 아무도 안 보는 곳에서 하는 일이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 200, 0)"
+        },
+        {
+          "set": "debt",
+          "expr": "max(debt - 200, 0)"
+        },
+        {
+          "set": "month_open",
+          "expr": "max(month_open - 200, 0)"
+        }
+      ]
+    },
+    {
+      "id": "next_day",
+      "label": "🌙 하루를 마친다",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not unit_over",
+      "inject": "[행동] 사무소의 불을 끄고 하루를 접는다. 오늘 남은 것 하나를 짧게 그려라.",
+      "effects": [
+        {
+          "set": "skip_day",
+          "expr": "skip_day + 1"
+        },
+        {
+          "set": "late",
+          "expr": "job != '없음' and job_days <= 0 ? min(late + 1, 99) : late"
+        },
+        {
+          "set": "buzz",
+          "expr": "job != '없음' and job_days <= 0 ? max(buzz - 12, 0) : max(round(buzz * 0.88), 0)"
+        },
+        {
+          "set": "job",
+          "expr": "job != '없음' and job_days <= 0 ? '없음' : job"
+        },
+        {
+          "set": "late",
+          "expr": "live != '없음' and live_days <= 0 ? min(late + 2, 99) : late"
+        },
+        {
+          "set": "buzz",
+          "expr": "live != '없음' and live_days <= 0 ? max(buzz - 18, 0) : buzz"
+        },
+        {
+          "set": "live",
+          "expr": "live != '없음' and live_days <= 0 ? '없음' : live"
+        },
+        {
+          "set": "funds",
+          "expr": "max(funds - 25, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "min(m1_st + 10, 100)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "min(m2_st + 10, 100)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "min(m3_st + 10, 100)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "min(m4_st + 10, 100)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "min(m5_st + 10, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 4, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 4, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 4, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 4, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 4, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "max(fans - round(fans * 0.01), 0)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "max(m1_fan - round(m1_fan * 0.01), 0)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "max(m2_fan - round(m2_fan * 0.01), 0)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "max(m3_fan - round(m3_fan * 0.01), 0)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "max(m4_fan - round(m4_fan * 0.01), 0)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "max(m5_fan - round(m5_fan * 0.01), 0)"
+        },
+        {
+          "set": "awareness",
+          "expr": "buzz <= 8 ? max(awareness - 1, 0) : awareness"
+        },
+        {
+          "set": "job_days",
+          "expr": "max(job_days - 1, 0)"
+        },
+        {
+          "set": "live_days",
+          "expr": "max(live_days - 1, 0)"
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "list": "schedule",
+        "expire": "elapsed"
+      },
+      {
+        "list": "job_queue",
+        "expire": "elapsed"
+      },
+      {
+        "list": "live_queue",
+        "expire": "elapsed"
+      }
+    ],
+    "events": [
+      {
+        "id": "rank_e",
+        "when": "rank == 'F' and awareness >= 20",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'E'"
+          }
+        ],
+        "notify": "업계 명부에 사무소 이름이 실렸다. E등급이다."
+      },
+      {
+        "id": "rank_d",
+        "when": "rank == 'E' and awareness >= 32",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'D'"
+          }
+        ],
+        "notify": "전화가 먼저 걸려 오기 시작했다. D등급이다."
+      },
+      {
+        "id": "rank_c",
+        "when": "rank == 'D' and awareness >= 46",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'C'"
+          }
+        ],
+        "notify": "이름을 대면 알아듣는 사람이 늘었다. C등급이다."
+      },
+      {
+        "id": "rank_b",
+        "when": "rank == 'C' and awareness >= 60",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'B'"
+          }
+        ],
+        "notify": "지상파 편성표에 유닛 이름이 올랐다. B등급이다."
+      },
+      {
+        "id": "rank_a",
+        "when": "rank == 'B' and awareness >= 76",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'A'"
+          }
+        ],
+        "notify": "이제 이쪽에서 자리를 고른다. A등급이다."
+      },
+      {
+        "id": "rank_s",
+        "when": "rank == 'A' and awareness >= 92",
+        "effects": [
+          {
+            "set": "rank",
+            "expr": "'S'"
+          }
+        ],
+        "notify": "올해를 이야기할 때 이 이름이 빠지지 않게 되었다. S등급이다."
+      },
+      {
+        "id": "settle",
+        "when": "dom >= 28 and settled != month and not unit_over",
+        "notify": "월말이다. 장부를 펴고 이자와 밀린 것들을 셈한다.",
+        "effects": [
+          {
+            "set": "settled",
+            "expr": "month"
+          },
+          {
+            "set": "late",
+            "expr": "max(late - 1, 0)"
+          },
+          {
+            "set": "corrupt",
+            "expr": "max(corrupt - 3, 0)"
+          },
+          {
+            "set": "inc_stage",
+            "expr": "0"
+          },
+          {
+            "set": "inc_ticket",
+            "expr": "0"
+          },
+          {
+            "set": "inc_goods",
+            "expr": "0"
+          },
+          {
+            "set": "inc_album",
+            "expr": "0"
+          },
+          {
+            "set": "month_open",
+            "expr": "funds"
+          },
+          {
+            "set": "inc_album",
+            "expr": "min(inc_album + round(fans * album_n * 0.005), 9999999)"
+          },
+          {
+            "set": "funds",
+            "expr": "min(funds + round(fans * album_n * 0.005), 9999999)"
+          },
+          {
+            "set": "unpaid",
+            "expr": "funds < salary ? min(unpaid + 1, 12) : 0"
+          },
+          {
+            "set": "m1_me",
+            "expr": "funds < salary ? max(m1_me - 10, 0) : m1_me"
+          },
+          {
+            "set": "m2_me",
+            "expr": "funds < salary ? max(m2_me - 10, 0) : m2_me"
+          },
+          {
+            "set": "m3_me",
+            "expr": "funds < salary ? max(m3_me - 10, 0) : m3_me"
+          },
+          {
+            "set": "m4_me",
+            "expr": "funds < salary ? max(m4_me - 10, 0) : m4_me"
+          },
+          {
+            "set": "m5_me",
+            "expr": "funds < salary ? max(m5_me - 10, 0) : m5_me"
+          },
+          {
+            "set": "m1_love",
+            "expr": "funds < salary ? max(m1_love - 12, 0) : m1_love"
+          },
+          {
+            "set": "m2_love",
+            "expr": "funds < salary ? max(m2_love - 12, 0) : m2_love"
+          },
+          {
+            "set": "m3_love",
+            "expr": "funds < salary ? max(m3_love - 12, 0) : m3_love"
+          },
+          {
+            "set": "m4_love",
+            "expr": "funds < salary ? max(m4_love - 12, 0) : m4_love"
+          },
+          {
+            "set": "m5_love",
+            "expr": "funds < salary ? max(m5_love - 12, 0) : m5_love"
+          },
+          {
+            "set": "debt",
+            "expr": "min(debt + max(salary - funds, 0), 9999999)"
+          },
+          {
+            "set": "funds",
+            "expr": "max(funds - salary, 0)"
+          },
+          {
+            "set": "debt",
+            "expr": "min(debt + max(rent - funds, 0), 9999999)"
+          },
+          {
+            "set": "funds",
+            "expr": "max(funds - rent, 0)"
+          },
+          {
+            "set": "debt",
+            "expr": "min(debt + max(round(debt * 0.05) - funds, 0), 9999999)"
+          },
+          {
+            "set": "funds",
+            "expr": "max(funds - round(debt * 0.05), 0)"
+          }
+        ]
+      },
+      {
+        "id": "burnout",
+        "when": "not unit_over and ((o1 > 0 and m1_me <= 0) or (o2 > 0 and m2_me <= 0) or (o3 > 0 and m3_me <= 0) or (o4 > 0 and m4_me <= 0) or (o5 > 0 and m5_me <= 0))",
+        "notify": "연습실에 아무도 나오지 않은 아침이 있었다. 더 굴릴 수 없다는 걸 모두가 안다.",
+        "effects": [
+          {
+            "set": "unit_over",
+            "expr": "1"
+          }
+        ]
+      },
+      {
+        "id": "walkout",
+        "when": "unpaid >= 3 and not unit_over",
+        "notify": "석 달째다. 아무도 화를 내지 않았고, 그래서 더 분명했다 — 셋은 각자 갈 곳을 찾았다.",
+        "effects": [
+          {
+            "set": "unit_over",
+            "expr": "1"
+          }
+        ]
+      },
+      {
+        "id": "bankrupt",
+        "when": "debt >= 4500 and not unit_over",
+        "notify": "더는 돌려막을 곳이 없다. 사무소 문에 종이 한 장이 붙었다.",
+        "effects": [
+          {
+            "set": "unit_over",
+            "expr": "1"
+          }
+        ]
+      }
+    ],
+    "randomEvents": {
+      "chancePerTurn": 0.35,
+      "table": [
+        {
+          "id": "fan_letter",
+          "weight": 3,
+          "cooldown": 6,
+          "when": "not unit_over",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "min(m1_me + 6, 100)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "min(m2_me + 6, 100)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "min(m3_me + 6, 100)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "min(m4_me + 6, 100)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "min(m5_me + 6, 100)"
+            }
+          ],
+          "notify": "사무소로 편지가 왔다. 손글씨였고, 아주 오래 쓴 티가 났다."
+        },
+        {
+          "id": "cold",
+          "weight": 2,
+          "cooldown": 5,
+          "when": "not unit_over",
+          "effects": [
+            {
+              "set": "m1_st",
+              "expr": "max(m1_st - 12, 0)"
+            },
+            {
+              "set": "m2_st",
+              "expr": "max(m2_st - 12, 0)"
+            },
+            {
+              "set": "m3_st",
+              "expr": "max(m3_st - 12, 0)"
+            },
+            {
+              "set": "m4_st",
+              "expr": "max(m4_st - 12, 0)"
+            },
+            {
+              "set": "m5_st",
+              "expr": "max(m5_st - 12, 0)"
+            }
+          ],
+          "notify": "연습실에 감기가 돌았다. 셋 다 목이 가라앉았다."
+        },
+        {
+          "id": "leak",
+          "weight": 3,
+          "cooldown": 10,
+          "when": "not unit_over and corrupt >= 40",
+          "effects": [
+            {
+              "set": "awareness",
+              "expr": "max(awareness - 5, 0)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 15, 100)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 8, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 8, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 8, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 8, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 8, 0)"
+            }
+          ],
+          "notify": "음지 쪽 사진이 돌고 있다는 이야기가 들어왔다. 아직은 소문이지만, 소문은 늘 먼저 도착한다."
+        },
+        {
+          "id": "interview",
+          "weight": 2,
+          "cooldown": 7,
+          "when": "not unit_over and awareness >= 20",
+          "effects": [
+            {
+              "set": "awareness",
+              "expr": "min(awareness + 3, 100)"
+            },
+            {
+              "set": "buzz",
+              "expr": "min(buzz + 5, 100)"
+            }
+          ],
+          "notify": "작은 잡지에서 인터뷰 요청이 왔다. 두 쪽짜리지만 지면은 지면이다."
+        },
+        {
+          "id": "scandal",
+          "weight": 3,
+          "cooldown": 9,
+          "timeout": 2,
+          "when": "not unit_over and buzz >= 35",
+          "notify": "기자 하나가 사진 몇 장을 들고 왔다. 아직 어디에도 안 실렸다.",
+          "choices": [
+            {
+              "label": "정면으로 밝힌다",
+              "inject": "숨기지 않기로 했다 — 셋을 앞에 세우지 않고 프로듀서가 먼저 말하는 장면으로.",
+              "effects": [
+                {
+                  "set": "buzz",
+                  "expr": "min(buzz + 20, 100)"
+                },
+                {
+                  "set": "awareness",
+                  "expr": "min(awareness + 4, 100)"
+                },
+                {
+                  "set": "m1_love",
+                  "expr": "min(m1_love + 8, 100)"
+                },
+                {
+                  "set": "m2_love",
+                  "expr": "min(m2_love + 8, 100)"
+                },
+                {
+                  "set": "m3_love",
+                  "expr": "min(m3_love + 8, 100)"
+                },
+                {
+                  "set": "m4_love",
+                  "expr": "min(m4_love + 8, 100)"
+                },
+                {
+                  "set": "m5_love",
+                  "expr": "min(m5_love + 8, 100)"
+                },
+                {
+                  "set": "m1_me",
+                  "expr": "max(m1_me - 8, 0)"
+                },
+                {
+                  "set": "m2_me",
+                  "expr": "max(m2_me - 8, 0)"
+                },
+                {
+                  "set": "m3_me",
+                  "expr": "max(m3_me - 8, 0)"
+                },
+                {
+                  "set": "m4_me",
+                  "expr": "max(m4_me - 8, 0)"
+                },
+                {
+                  "set": "m5_me",
+                  "expr": "max(m5_me - 8, 0)"
+                }
+              ]
+            },
+            {
+              "label": "값을 치르고 덮는다",
+              "when": "funds >= 300",
+              "inject": "봉투가 오간다. 아무 일도 없었던 것으로 한다 — 셋은 이 일을 모른다.",
+              "effects": [
+                {
+                  "set": "funds",
+                  "expr": "max(funds - 300, 0)"
+                },
+                {
+                  "set": "buzz",
+                  "expr": "max(buzz - 4, 0)"
+                }
+              ]
+            },
+            {
+              "label": "아무 말도 하지 않는다",
+              "inject": "대응하지 않기로 했다. 기사는 나가고, 며칠 시끄럽다가 가라앉을 것이다.",
+              "effects": [
+                {
+                  "set": "buzz",
+                  "expr": "min(buzz + 12, 100)"
+                },
+                {
+                  "set": "m1_me",
+                  "expr": "max(m1_me - 12, 0)"
+                },
+                {
+                  "set": "m2_me",
+                  "expr": "max(m2_me - 12, 0)"
+                },
+                {
+                  "set": "m3_me",
+                  "expr": "max(m3_me - 12, 0)"
+                },
+                {
+                  "set": "m4_me",
+                  "expr": "max(m4_me - 12, 0)"
+                },
+                {
+                  "set": "m5_me",
+                  "expr": "max(m5_me - 12, 0)"
+                },
+                {
+                  "set": "m1_love",
+                  "expr": "max(m1_love - 6, 0)"
+                },
+                {
+                  "set": "m2_love",
+                  "expr": "max(m2_love - 6, 0)"
+                },
+                {
+                  "set": "m3_love",
+                  "expr": "max(m3_love - 6, 0)"
+                },
+                {
+                  "set": "m4_love",
+                  "expr": "max(m4_love - 6, 0)"
+                },
+                {
+                  "set": "m5_love",
+                  "expr": "max(m5_love - 6, 0)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "sudden_offer",
+          "weight": 3,
+          "cooldown": 8,
+          "timeout": 2,
+          "when": "not unit_over and job == '없음'",
+          "notify": "내일모레 자리 하나가 비었다는 연락이 왔다. 급하지만 큰 자리다.",
+          "choices": [
+            {
+              "label": "잡는다",
+              "inject": "일정을 뒤엎고 받기로 한다. 준비할 시간이 거의 없다.",
+              "effects": [
+                {
+                  "set": "job",
+                  "expr": "rank_n >= 3 ? '케이블 음악방송' : '잡지 화보'"
+                },
+                {
+                  "set": "job_days",
+                  "expr": "2"
+                },
+                {
+                  "set": "m1_st",
+                  "expr": "max(m1_st - 8, 0)"
+                },
+                {
+                  "set": "m2_st",
+                  "expr": "max(m2_st - 8, 0)"
+                },
+                {
+                  "set": "m3_st",
+                  "expr": "max(m3_st - 8, 0)"
+                },
+                {
+                  "set": "m4_st",
+                  "expr": "max(m4_st - 8, 0)"
+                },
+                {
+                  "set": "m5_st",
+                  "expr": "max(m5_st - 8, 0)"
+                }
+              ]
+            },
+            {
+              "label": "조건을 걸고 받는다",
+              "when": "awareness >= 40",
+              "inject": "이쪽 조건을 먼저 말한다. 받아들여지면 그건 이 유닛이 아쉬운 쪽이 아니라는 뜻이다.",
+              "effects": [
+                {
+                  "set": "job",
+                  "expr": "'지방 방송국'"
+                },
+                {
+                  "set": "job_days",
+                  "expr": "4"
+                },
+                {
+                  "set": "awareness",
+                  "expr": "min(awareness + 2, 100)"
+                }
+              ]
+            },
+            {
+              "label": "거절한다",
+              "inject": "무리라고 판단했다. 셋에게는 나중에 말하거나, 말하지 않는다.",
+              "effects": [
+                {
+                  "set": "m1_love",
+                  "expr": "min(m1_love + 4, 100)"
+                },
+                {
+                  "set": "m2_love",
+                  "expr": "min(m2_love + 4, 100)"
+                },
+                {
+                  "set": "m3_love",
+                  "expr": "min(m3_love + 4, 100)"
+                },
+                {
+                  "set": "m4_love",
+                  "expr": "min(m4_love + 4, 100)"
+                },
+                {
+                  "set": "m5_love",
+                  "expr": "min(m5_love + 4, 100)"
+                },
+                {
+                  "set": "buzz",
+                  "expr": "max(buzz - 2, 0)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "directives": [
+    {
+      "id": "empty_unit",
+      "when": "stand == 0 and not unit_over",
+      "text": "[유닛] 아직 유닛이 없다. 편성표(🎤)에서 다섯 자리를 채우기 전까지는 무대 이야기를 시작하지 마라 — 누구를 모을지 고르는 장면으로 끌어라."
+    },
+    {
+      "id": "lineup",
+      "when": "stand >= 1 and not unit_over",
+      "text": "[유닛] 지금 이 유닛은 {stand}명이다 — 센터 {slot1}. 편성표에 앉은 사람만 유닛 멤버로 다뤄라. 앉지 않은 인물은 등장시킬 수 있어도 유닛의 일원으로는 쓰지 마라."
+    },
+    {
+      "id": "dday",
+      "when": "job != '없음' and job_days <= 0 and not unit_over",
+      "text": "[상태] 오늘이 그날이다 — {job}. 아침부터 공기가 다르고, 대기실 밖의 소리가 계속 들어온다."
+    },
+    {
+      "id": "soon",
+      "when": "job != '없음' and job_days >= 1 and not unit_over",
+      "text": "[상태] {job}까지 {job_days}일 남았다. 준비하는 시간의 초조함이 장면에 배어나야 한다."
+    },
+    {
+      "id": "worn",
+      "when": "u_cond <= 35 and not unit_over",
+      "text": "[상태] 무대에 서는 사람들이 지쳐 있다 (유닛 컨디션 {u_cond}). 웃는 얼굴 뒤가 비치는 묘사를 넣어라."
+    },
+    {
+      "id": "red",
+      "when": "balance < 0 and not unit_over",
+      "text": "[상태] 이 달은 적자다 (수입 {income} · 지출 {spend}). 프로듀서가 장부를 덮어 두는 장면이 어울린다."
+    },
+    {
+      "id": "heavy",
+      "when": "debt >= 3000 and not unit_over",
+      "text": "[상태] 빚이 {debt}만원이다. 프로듀서는 이걸 셋에게 말하지 않고 있다."
+    },
+    {
+      "id": "shade",
+      "when": "corrupt >= 25 and corrupt < 55 and not unit_over",
+      "text": "[상태] 이 유닛은 이미 밝은 데만 다니지 않는다 (타락도 {corrupt}). 셋의 표정에 전에 없던 것이 섞여 있어야 한다."
+    },
+    {
+      "id": "sunk",
+      "when": "corrupt >= 55 and not unit_over",
+      "text": "[상태] 돌아갈 자리가 거의 남지 않았다 (타락도 {corrupt}). 프로듀서도 셋도 그걸 알면서 말하지 않는다. 수위 있는 장면은 암시까지만 하고 넘겨라."
+    },
+    {
+      "id": "hot",
+      "when": "buzz >= 70 and not unit_over",
+      "text": "[상태] 지금 화제의 한가운데다 (화제성 {buzz}). 어디를 가도 알아보고, 그게 부담이기도 하다."
+    },
+    {
+      "id": "ended",
+      "when": "unit_over",
+      "text": "[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 흩어진 뒤의 시점이나 남은 것들로 마무리하라."
+    }
+  ],
+  "updater": {
+    "model": "aux",
+    "allow": [
+      {
+        "id": "buzz",
+        "maxDelta": 12
+      },
+      {
+        "id": "awareness",
+        "maxDelta": 4
+      },
+      {
+        "id": "fans",
+        "maxGain": 500
+      },
+      {
+        "id": "schedule"
+      },
+      {
+        "id": "job_queue"
+      },
+      {
+        "id": "live_queue"
+      },
+      {
+        "id": "songs"
+      },
+      {
+        "id": "wardrobe"
+      },
+      {
+        "id": "m1_me",
+        "maxDelta": 8
+      },
+      {
+        "id": "m1_love",
+        "maxDelta": 6
+      },
+      {
+        "id": "m2_me",
+        "maxDelta": 8
+      },
+      {
+        "id": "m2_love",
+        "maxDelta": 6
+      },
+      {
+        "id": "m3_me",
+        "maxDelta": 8
+      },
+      {
+        "id": "m3_love",
+        "maxDelta": 6
+      },
+      {
+        "id": "m4_me",
+        "maxDelta": 8
+      },
+      {
+        "id": "m4_love",
+        "maxDelta": 6
+      },
+      {
+        "id": "m5_me",
+        "maxDelta": 8
+      },
+      {
+        "id": "m5_love",
+        "maxDelta": 6
+      }
+    ],
+    "guide": "장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·음반·타락도·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
+  },
+  "promptState": {
+    "position": "history_end",
+    "template": "[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n자금 {funds} · 빚 {debt} · 펑크 {late}회 · 타락도 {corrupt}\n이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n업무 {job} (남은 {job_days}일) · 라이브 {live} (남은 {live_days}일)\n의상 {costume} · 음반 {album}\n유닛 {u_rank}등급 · 인원 {stand}명 · 컨디션 {u_cond} · 인기도 {u_fan}\n센터 {slot1} — {m1_vo}/{m1_da}/{m1_vi} 컨디션 {c1} 호감 {m1_love}\n사이드 1 {slot2} — {m2_vo}/{m2_da}/{m2_vi} 컨디션 {c2} 호감 {m2_love}\n사이드 2 {slot3} — {m3_vo}/{m3_da}/{m3_vi} 컨디션 {c3} 호감 {m3_love}\n사이드 3 {slot4} — {m4_vo}/{m4_da}/{m4_vi} 컨디션 {c4} 호감 {m4_love}\n사이드 4 {slot5} — {m5_vo}/{m5_da}/{m5_vi} 컨디션 {c5} 호감 {m5_love}",
+    "includeEvents": true
+  },
+  "party": {
+    "label": "유닛",
+    "icon": "🎤",
+    "empty": "빈 자리",
+    "points": "funds",
+    "note": "센터는 능력치가 1.3배로 실리고 개별 인기도 그만큼 더 가져간다. 한 사람은 한 자리에만.",
+    "tabs": [
+      {
+        "id": "unit",
+        "label": "편성",
+        "slots": [
+          {
+            "var": "slot1",
+            "label": "센터"
+          },
+          {
+            "var": "slot2",
+            "label": "사이드 1"
+          },
+          {
+            "var": "slot3",
+            "label": "사이드 2"
+          },
+          {
+            "var": "slot4",
+            "label": "사이드 3"
+          },
+          {
+            "var": "slot5",
+            "label": "사이드 4"
+          }
+        ],
+        "actions": [
+          "perform",
+          "live_show"
+        ],
+        "note": "채팅을 시작하기 전에 다섯을 고른다 — 지금 앉아 있는 다섯은 예시일 뿐이다. 자리를 비워 두면 그 사람은 무대에 안 선다. ⚠ 능력치는 사람이 아니라 자리에 붙는다 — 중간에 사람을 바꾸면 그 자리의 숫자를 이어받는다."
+      },
+      {
+        "id": "lesson",
+        "label": "레슨",
+        "items": [
+          {
+            "var": "m1_vo",
+            "label": "센터 · 보컬",
+            "max": 100,
+            "cost": "round(m1_vo * m1_vo / 25) + 30"
+          },
+          {
+            "var": "m1_da",
+            "label": "센터 · 댄스",
+            "max": 100,
+            "cost": "round(m1_da * m1_da / 25) + 30"
+          },
+          {
+            "var": "m1_vi",
+            "label": "센터 · 비주얼",
+            "max": 100,
+            "cost": "round(m1_vi * m1_vi / 25) + 30"
+          },
+          {
+            "var": "m2_vo",
+            "label": "사이드 1 · 보컬",
+            "max": 100,
+            "cost": "round(m2_vo * m2_vo / 25) + 30"
+          },
+          {
+            "var": "m2_da",
+            "label": "사이드 1 · 댄스",
+            "max": 100,
+            "cost": "round(m2_da * m2_da / 25) + 30"
+          },
+          {
+            "var": "m2_vi",
+            "label": "사이드 1 · 비주얼",
+            "max": 100,
+            "cost": "round(m2_vi * m2_vi / 25) + 30"
+          },
+          {
+            "var": "m3_vo",
+            "label": "사이드 2 · 보컬",
+            "max": 100,
+            "cost": "round(m3_vo * m3_vo / 25) + 30"
+          },
+          {
+            "var": "m3_da",
+            "label": "사이드 2 · 댄스",
+            "max": 100,
+            "cost": "round(m3_da * m3_da / 25) + 30"
+          },
+          {
+            "var": "m3_vi",
+            "label": "사이드 2 · 비주얼",
+            "max": 100,
+            "cost": "round(m3_vi * m3_vi / 25) + 30"
+          },
+          {
+            "var": "m4_vo",
+            "label": "사이드 3 · 보컬",
+            "max": 100,
+            "cost": "round(m4_vo * m4_vo / 25) + 30"
+          },
+          {
+            "var": "m4_da",
+            "label": "사이드 3 · 댄스",
+            "max": 100,
+            "cost": "round(m4_da * m4_da / 25) + 30"
+          },
+          {
+            "var": "m4_vi",
+            "label": "사이드 3 · 비주얼",
+            "max": 100,
+            "cost": "round(m4_vi * m4_vi / 25) + 30"
+          },
+          {
+            "var": "m5_vo",
+            "label": "사이드 4 · 보컬",
+            "max": 100,
+            "cost": "round(m5_vo * m5_vo / 25) + 30"
+          },
+          {
+            "var": "m5_da",
+            "label": "사이드 4 · 댄스",
+            "max": 100,
+            "cost": "round(m5_da * m5_da / 25) + 30"
+          },
+          {
+            "var": "m5_vi",
+            "label": "사이드 4 · 비주얼",
+            "max": 100,
+            "cost": "round(m5_vi * m5_vi / 25) + 30"
+          }
+        ],
+        "note": "운용자금으로 찍는다. 한 칸 올릴 때마다 다음 한 칸이 비싸진다."
+      },
+      {
+        "id": "jobs",
+        "label": "일감",
+        "actions": [
+          "take_street",
+          "take_radio",
+          "take_mag",
+          "take_ltv",
+          "take_cable",
+          "take_net",
+          "take_gold"
+        ],
+        "note": "자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다."
+      },
+      {
+        "id": "halls",
+        "label": "무대",
+        "actions": [
+          "hall_small",
+          "hall_civic",
+          "hall_fest",
+          "hall_solo",
+          "hall_tour",
+          "live_show"
+        ],
+        "note": "공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다."
+      },
+      {
+        "id": "make",
+        "label": "제작",
+        "actions": [
+          "make_dress1",
+          "make_dress2",
+          "make_dress3",
+          "make_single",
+          "make_mini",
+          "make_full"
+        ],
+        "note": "돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다."
+      },
+      {
+        "id": "shade",
+        "label": "음지",
+        "when": "funds < 250 or corrupt >= 1",
+        "actions": [
+          "shady_night",
+          "shady_spon",
+          "shady_gravure",
+          "shady_adult"
+        ],
+        "note": "오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. 타락도가 높으면 지상파와 골든타임이 닫힌다."
+      },
+      {
+        "id": "office",
+        "label": "사무소",
+        "actions": [
+          "rest_day",
+          "talk",
+          "promo",
+          "borrow",
+          "repay",
+          "next_day"
+        ],
+        "note": "하루를 쓰는 일들. 다 하고 나면 🌙로 날을 넘긴다."
+      }
+    ],
+    "nav": "select",
+    "unique": true
+  },
+  "statusUI": {
+    "mode": "auto",
+    "collapsible": true,
+    "layout": "tabs",
+    "groups": [
+      {
+        "label": "프로덕션",
+        "items": [
+          {
+            "var": "rank"
+          },
+          {
+            "var": "ranking"
+          },
+          {
+            "var": "awareness",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "buzz",
+            "bar": {
+              "max": 100
+            },
+            "color": "buzz >= 70 ? '#d4506a' : (buzz <= 10 ? '#4a4a5a' : '#8a5a8a')"
+          },
+          {
+            "var": "fans"
+          },
+          {
+            "var": "sales",
+            "showWhen": "sales > 0"
+          },
+          {
+            "var": "late",
+            "showWhen": "late > 0"
+          },
+          {
+            "var": "slot1",
+            "showWhen": "o1 > 0"
+          },
+          {
+            "var": "slot2",
+            "showWhen": "o2 > 0"
+          },
+          {
+            "var": "slot3",
+            "showWhen": "o3 > 0"
+          },
+          {
+            "var": "slot4",
+            "showWhen": "o4 > 0"
+          },
+          {
+            "var": "slot5",
+            "showWhen": "o5 > 0"
+          },
+          {
+            "var": "u_rank"
+          },
+          {
+            "var": "u_fan"
+          },
+          {
+            "var": "u_cond",
+            "bar": {
+              "max": 100
+            },
+            "color": "u_cond <= 35 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "u_vo"
+          },
+          {
+            "var": "u_da"
+          },
+          {
+            "var": "u_vi"
+          },
+          {
+            "var": "costume"
+          },
+          {
+            "var": "album",
+            "showWhen": "album != '없음'"
+          },
+          {
+            "var": "songs",
+            "showWhen": "count(songs) > 0"
+          },
+          {
+            "var": "wardrobe",
+            "showWhen": "count(wardrobe) > 0"
+          }
+        ]
+      },
+      {
+        "label": "장부",
+        "items": [
+          {
+            "var": "funds"
+          },
+          {
+            "var": "income"
+          },
+          {
+            "var": "inc_stage",
+            "showWhen": "inc_stage > 0"
+          },
+          {
+            "var": "inc_ticket",
+            "showWhen": "inc_ticket > 0"
+          },
+          {
+            "var": "inc_goods",
+            "showWhen": "inc_goods > 0"
+          },
+          {
+            "var": "inc_album",
+            "showWhen": "inc_album > 0"
+          },
+          {
+            "var": "salary"
+          },
+          {
+            "var": "spend"
+          },
+          {
+            "var": "balance",
+            "color": "balance < 0 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "debt",
+            "color": "debt >= 3000 ? '#a8443a' : '#6a5a7a'"
+          }
+        ]
+      },
+      {
+        "label": "일감",
+        "items": [
+          {
+            "var": "job"
+          },
+          {
+            "var": "job_days",
+            "showWhen": "job != '없음'"
+          },
+          {
+            "var": "job_vs",
+            "showWhen": "job != '없음'"
+          },
+          {
+            "var": "job_pay",
+            "showWhen": "job != '없음'"
+          },
+          {
+            "var": "od_radio",
+            "showWhen": "job == '없음' and awareness >= 8"
+          },
+          {
+            "var": "od_mag",
+            "showWhen": "job == '없음' and awareness >= 18"
+          },
+          {
+            "var": "od_ltv",
+            "showWhen": "job == '없음' and awareness >= 32"
+          },
+          {
+            "var": "od_cable",
+            "showWhen": "job == '없음' and awareness >= 46"
+          },
+          {
+            "var": "od_net",
+            "showWhen": "job == '없음' and awareness >= 62 and corrupt <= 45"
+          },
+          {
+            "var": "od_gold",
+            "showWhen": "job == '없음' and awareness >= 80 and corrupt <= 25"
+          },
+          {
+            "var": "live"
+          },
+          {
+            "var": "live_days",
+            "showWhen": "live != '없음'"
+          },
+          {
+            "var": "live_vs",
+            "showWhen": "live != '없음'"
+          },
+          {
+            "var": "live_pay",
+            "showWhen": "live != '없음'"
+          },
+          {
+            "var": "live_cap",
+            "showWhen": "live != '없음'"
+          },
+          {
+            "var": "live_tickets",
+            "showWhen": "live != '없음'"
+          },
+          {
+            "var": "live_fill",
+            "showWhen": "live != '없음'",
+            "bar": {
+              "max": 100
+            },
+            "color": "live_fill < 60 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "job_queue",
+            "showWhen": "count(job_queue) > 0"
+          },
+          {
+            "var": "live_queue",
+            "showWhen": "count(live_queue) > 0"
+          },
+          {
+            "var": "schedule",
+            "showWhen": "count(schedule) > 0"
+          }
+        ]
+      },
+      {
+        "label": "음지",
+        "showWhen": "corrupt >= 1",
+        "items": [
+          {
+            "var": "corrupt",
+            "bar": {
+              "max": 100
+            },
+            "color": "corrupt >= 55 ? '#8a2a3a' : (corrupt >= 25 ? '#a8443a' : '#6a5a7a')"
+          },
+          {
+            "var": "u_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "od_night"
+          },
+          {
+            "var": "od_spon",
+            "showWhen": "corrupt >= 10"
+          },
+          {
+            "var": "od_gravure",
+            "showWhen": "corrupt >= 28"
+          },
+          {
+            "var": "od_adult",
+            "showWhen": "corrupt >= 55"
+          }
+        ]
+      },
+      {
+        "label": "센터",
+        "showWhen": "o1 > 0",
+        "items": [
+          {
+            "var": "slot1"
+          },
+          {
+            "var": "m1_vo"
+          },
+          {
+            "var": "m1_da"
+          },
+          {
+            "var": "m1_vi"
+          },
+          {
+            "var": "m1_st",
+            "bar": {
+              "max": 100
+            },
+            "color": "m1_st <= 25 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "c1",
+            "bar": {
+              "max": 100
+            },
+            "color": "c1 <= 30 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "m1_me",
+            "bar": {
+              "max": 100
+            },
+            "color": "m1_me <= 20 ? '#a8443a' : '#7a6a9a'"
+          },
+          {
+            "var": "m1_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "m1_fan"
+          }
+        ]
+      },
+      {
+        "label": "사이드 1",
+        "showWhen": "o2 > 0",
+        "items": [
+          {
+            "var": "slot2"
+          },
+          {
+            "var": "m2_vo"
+          },
+          {
+            "var": "m2_da"
+          },
+          {
+            "var": "m2_vi"
+          },
+          {
+            "var": "m2_st",
+            "bar": {
+              "max": 100
+            },
+            "color": "m2_st <= 25 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "c2",
+            "bar": {
+              "max": 100
+            },
+            "color": "c2 <= 30 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "m2_me",
+            "bar": {
+              "max": 100
+            },
+            "color": "m2_me <= 20 ? '#a8443a' : '#7a6a9a'"
+          },
+          {
+            "var": "m2_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "m2_fan"
+          }
+        ]
+      },
+      {
+        "label": "사이드 2",
+        "showWhen": "o3 > 0",
+        "items": [
+          {
+            "var": "slot3"
+          },
+          {
+            "var": "m3_vo"
+          },
+          {
+            "var": "m3_da"
+          },
+          {
+            "var": "m3_vi"
+          },
+          {
+            "var": "m3_st",
+            "bar": {
+              "max": 100
+            },
+            "color": "m3_st <= 25 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "c3",
+            "bar": {
+              "max": 100
+            },
+            "color": "c3 <= 30 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "m3_me",
+            "bar": {
+              "max": 100
+            },
+            "color": "m3_me <= 20 ? '#a8443a' : '#7a6a9a'"
+          },
+          {
+            "var": "m3_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "m3_fan"
+          }
+        ]
+      },
+      {
+        "label": "사이드 3",
+        "showWhen": "o4 > 0",
+        "items": [
+          {
+            "var": "slot4"
+          },
+          {
+            "var": "m4_vo"
+          },
+          {
+            "var": "m4_da"
+          },
+          {
+            "var": "m4_vi"
+          },
+          {
+            "var": "m4_st",
+            "bar": {
+              "max": 100
+            },
+            "color": "m4_st <= 25 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "c4",
+            "bar": {
+              "max": 100
+            },
+            "color": "c4 <= 30 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "m4_me",
+            "bar": {
+              "max": 100
+            },
+            "color": "m4_me <= 20 ? '#a8443a' : '#7a6a9a'"
+          },
+          {
+            "var": "m4_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "m4_fan"
+          }
+        ]
+      },
+      {
+        "label": "사이드 4",
+        "showWhen": "o5 > 0",
+        "items": [
+          {
+            "var": "slot5"
+          },
+          {
+            "var": "m5_vo"
+          },
+          {
+            "var": "m5_da"
+          },
+          {
+            "var": "m5_vi"
+          },
+          {
+            "var": "m5_st",
+            "bar": {
+              "max": 100
+            },
+            "color": "m5_st <= 25 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "c5",
+            "bar": {
+              "max": 100
+            },
+            "color": "c5 <= 30 ? '#a8443a' : '#6a8a7a'"
+          },
+          {
+            "var": "m5_me",
+            "bar": {
+              "max": 100
+            },
+            "color": "m5_me <= 20 ? '#a8443a' : '#7a6a9a'"
+          },
+          {
+            "var": "m5_love",
+            "bar": {
+              "max": 100
+            },
+            "color": "'#c86a9a'"
+          },
+          {
+            "var": "m5_fan"
+          }
+        ]
+      }
+    ],
+    "customCSS": ".sim-status { background:#14101a; border:1px solid #352b42; border-radius:3px; color:#cfc4d8; }\n.sim-status summary { color:#e07aa8; letter-spacing:.14em; font-weight:700; }\n.sim-group-label { color:#8a7a9a; letter-spacing:.18em; font-size:.78em; }\n.sim-label { color:#8a7a9a; opacity:1; }\n.sim-value { color:#f4eaf6; font-weight:700; }\n.sim-badge, .sim-tag { background:#1e1728; color:#e0a94a; border:1px solid #453352; border-radius:3px; }\n.sim-bar { background:#0c0910; height:8px; border:1px solid #2c2436; border-radius:2px; }\n.sim-action { border-color:#453352; color:#cfc4d8; border-radius:3px; background:#1e1728; }\n.sim-action.sim-armed { border-color:#e07aa8; background:#2c1f38; color:#f8d4e6; }\n.sim-log { color:#6f6478; }"
+  },
+  "setup": {
+    "presets": [
+      {
+        "id": "rookie",
+        "label": "무명 — 아직 아무도 모른다",
+        "set": {}
+      },
+      {
+        "id": "hit",
+        "label": "한 번 터졌다 — 다음이 어렵다",
+        "set": {
+          "rank": "C",
+          "awareness": 46,
+          "buzz": 62,
+          "fans": 14000,
+          "sales": 3200,
+          "funds": 1500,
+          "month_open": 1500,
+          "debt": 600,
+          "costume": "제작 의상",
+          "album": "싱글",
+          "m1_vo": 45,
+          "m1_da": 45,
+          "m1_vi": 45,
+          "m1_love": 40,
+          "m1_fan": 2800,
+          "m2_vo": 45,
+          "m2_da": 45,
+          "m2_vi": 45,
+          "m2_love": 40,
+          "m2_fan": 2800,
+          "m3_vo": 45,
+          "m3_da": 45,
+          "m3_vi": 45,
+          "m3_love": 40,
+          "m3_fan": 2800,
+          "m4_vo": 45,
+          "m4_da": 45,
+          "m4_vi": 45,
+          "m4_love": 40,
+          "m4_fan": 2800,
+          "m5_vo": 45,
+          "m5_da": 45,
+          "m5_vi": 45,
+          "m5_love": 40,
+          "m5_fan": 2800
+        }
+      },
+      {
+        "id": "debtor",
+        "label": "빚에 눌려 — 다섯을 지킬 수 있을까",
+        "set": {
+          "funds": 260,
+          "month_open": 260,
+          "debt": 2600,
+          "late": 2,
+          "buzz": 8,
+          "costume": "연습복",
+          "m1_st": 50,
+          "m1_me": 38,
+          "m1_love": 12,
+          "m2_st": 50,
+          "m2_me": 38,
+          "m2_love": 12,
+          "m3_st": 50,
+          "m3_me": 38,
+          "m3_love": 12,
+          "m4_st": 50,
+          "m4_me": 38,
+          "m4_love": 12,
+          "m5_st": 50,
+          "m5_me": 38,
+          "m5_love": 12
+        }
+      },
+      {
+        "id": "shade",
+        "label": "이미 발을 담갔다 — 돌아갈 수 있을까",
+        "set": {
+          "rank": "D",
+          "awareness": 34,
+          "buzz": 40,
+          "fans": 4200,
+          "corrupt": 30,
+          "funds": 700,
+          "month_open": 700,
+          "debt": 1800,
+          "costume": "제작 의상",
+          "m1_vo": 36,
+          "m1_da": 36,
+          "m1_vi": 40,
+          "m1_me": 44,
+          "m1_love": 26,
+          "m1_fan": 900,
+          "m2_vo": 36,
+          "m2_da": 36,
+          "m2_vi": 40,
+          "m2_me": 44,
+          "m2_love": 26,
+          "m2_fan": 900,
+          "m3_vo": 36,
+          "m3_da": 36,
+          "m3_vi": 40,
+          "m3_me": 44,
+          "m3_love": 26,
+          "m3_fan": 900,
+          "m4_vo": 36,
+          "m4_da": 36,
+          "m4_vi": 40,
+          "m4_me": 44,
+          "m4_love": 26,
+          "m4_fan": 900,
+          "m5_vo": 36,
+          "m5_da": 36,
+          "m5_vi": 40,
+          "m5_me": 44,
+          "m5_love": 26,
+          "m5_fan": 900
+        }
+      }
+    ]
+  }
+}

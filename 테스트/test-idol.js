@@ -451,6 +451,26 @@ const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initSta
     > D('dress', { ...engine.initState(S).vars, costume: '기본 무대의상' }), '');
 }
 
+// ── 유닛 랭크가 합계 눈금인가 ──
+// ⚠ 실측 사고: 문턱을 한 사람 기준(260/200/150)으로 잡아 두는 바람에 **시작하자마자 S등급**이
+//   떴다. u_pow는 셋을 자리 배수로 더한 값이라 만점이 990이다. 랭크가 첫 턴에 천장이면
+//   성장이 화면에 안 보이고, u_pow를 문턱으로 쓰는 대관도 첫날에 전부 열린다.
+{
+  const base = engine.initState(S).vars;
+  const MAX = Math.round((1.3 + 2) * 100 * 3);
+  const full = Object.fromEntries(['m1', 'm2', 'm3'].flatMap((m) => ['vo', 'da', 'vi'].map((k) => [`${m}_${k}`, 100])));
+  ck('★ 시작 유닛은 천장이 아니다 (랭크가 성장할 자리가 있다)',
+    D('u_rank', base) !== 'S', `${D('u_pow', base)}/${MAX} → ${D('u_rank', base)}`);
+  ck('★ 전원 만점이면 S등급이다 (사다리 꼭대기가 닿는다)',
+    D('u_rank', { ...base, ...full }) === 'S', `${D('u_pow', { ...base, ...full })} → ${D('u_rank', { ...base, ...full })}`);
+  ck('★ 랭크가 합계 눈금이다 (만점 대비 비율)', D('u_pow', { ...base, ...full }) === MAX, String(MAX));
+  // 대관의 u_pow 문턱도 같은 자여야 한다 — 아니면 시작하자마자 큰 공연장이 열린다
+  const powGate = (id) => Number(/u_pow >= (\d+)/.exec(A(id).when)[1]);
+  ck('★ 대관 문턱도 같은 눈금이다 (시작 유닛으로는 안 열린다)',
+    ['hall_fest', 'hall_solo', 'hall_tour'].every((id) => powGate(id) > D('u_pow', base)),
+    `${D('u_pow', base)} vs ${['hall_fest', 'hall_solo', 'hall_tour'].map(powGate).join('/')}`);
+}
+
 // ── 인세: 손을 놓아도 도는 유일한 돈 (그리고 유령 지출이 아닌가) ──
 {
   const settle = S.rules.events.find((e) => e.id === 'settle');

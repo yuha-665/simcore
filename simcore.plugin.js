@@ -1,13 +1,21 @@
 //@name simcore
 //@api 3.0
-//@version 0.82.0
-//@display-name SimCore (시뮬 엔진) v0.82 아이돌 의뢰판·음지 루트
+//@version 0.82.1
+//@display-name SimCore (시뮬 엔진) v0.82.1 아이돌 의뢰판·음지 루트
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.82.1 ────────────────────────────────────────────────
+// 유닛 랭크가 **시작하자마자 S**였다. u_pow는 셋을 자리 배수로 더한 값이라 만점이 990인데
+// 문턱을 한 사람 기준(260/200/150/100/60)으로 잡아 뒀다 — 시작 u_pow 266이 그대로 S다.
+// 랭크가 첫 턴에 천장이면 성장이 화면에 안 보이고, u_pow를 문턱으로 쓰는 대관(합동 페스티벌
+// 이상)도 첫날에 전부 열린다. 만점 대비 비율로 다시 잡았다 (800/620/450/300/180, 시작은 D).
+// 대관의 u_pow 문턱도 같은 자로 옮겼다 (300/450/620).
+// 자리 수가 다른 봇으로 개조할 때 같은 함정을 다시 밟으므로 test-idol에 눈금 검사를 넣었다.
 //
 // ── v0.82.0 ────────────────────────────────────────────────
 // 아이돌 프로듀스 — **진짜 프로듀서**로. 누르면 되는 판에서 고르는 판으로 바꿨다.
@@ -18922,8 +18930,12 @@ const IDOL = {
     // 인기도는 소속 전원의 개별 인기 합이다 (무대에 안 선 멤버의 팬도 유닛의 팬이다).
     { id: 'u_fan', label: '유닛 인기도', expr: 'm1_fan + m2_fan + m3_fan' },
     { id: 'u_pow', label: '유닛 종합', expr: 'u_vo + u_da + u_vi' },
+    // ⚠ 문턱은 **합계** 기준이다. u_pow는 셋의 능력치를 자리 배수로 더한 값이라 만점이 990
+    //   (센터 1.3 + 사이드 1 + 사이드 1) × 100 × 세 항. 처음 이 줄을 260/200/150으로 썼을 때는
+    //   한 사람 기준으로 잡은 숫자였고, 그래서 **시작하자마자 S등급**이 떴다(시작 u_pow 266).
+    //   랭크가 첫 턴에 천장이면 성장이 화면에 안 보인다. 만점 대비 비율로 다시 잡았다.
     { id: 'u_rank', label: '유닛 랭크',
-      expr: "u_pow >= 260 ? 'S' : (u_pow >= 200 ? 'A' : (u_pow >= 150 ? 'B' : (u_pow >= 100 ? 'C' : (u_pow >= 60 ? 'D' : 'E'))))" },
+      expr: "u_pow >= 800 ? 'S' : (u_pow >= 620 ? 'A' : (u_pow >= 450 ? 'B' : (u_pow >= 300 ? 'C' : (u_pow >= 180 ? 'D' : 'E'))))" },
     { id: 'rank_n', label: '등급 수치',
       expr: "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))" },
     { id: 'dress', label: '의상 보정',
@@ -19237,21 +19249,21 @@ const IDOL = {
         { set: 'live', expr: "'시민회관'" }, { set: 'live_days', expr: '7 + rand(0, 5)' },
       ] },
     { id: 'hall_fest', label: '🎡 합동 페스티벌에 낀다', mode: 'oneshot',
-      when: "live == '없음' and fans >= 5000 and u_pow >= 100 and funds >= 300 and not unit_over",
+      when: "live == '없음' and fans >= 5000 and u_pow >= 300 and funds >= 300 and not unit_over",
       inject: '[행동] 여러 유닛이 서는 무대의 한 칸을 산다. 앞뒤로 누가 서는지가 중요한 자리다.',
       effects: [
         { set: 'funds', expr: 'max(funds - 300, 0)' },
         { set: 'live', expr: "'합동 페스티벌'" }, { set: 'live_days', expr: '9 + rand(0, 6)' },
       ] },
     { id: 'hall_solo', label: '🎭 단독 공연을 건다', mode: 'oneshot',
-      when: "live == '없음' and fans >= 15000 and u_pow >= 150 and funds >= 700 and not unit_over",
+      when: "live == '없음' and fans >= 15000 and u_pow >= 450 and funds >= 700 and not unit_over",
       inject: '[행동] 이름 하나로 홀을 채워야 하는 날을 잡는다. 포스터에 다른 이름이 없다.',
       effects: [
         { set: 'funds', expr: 'max(funds - 700, 0)' },
         { set: 'live', expr: "'단독 공연'" }, { set: 'live_days', expr: '12 + rand(0, 8)' },
       ] },
     { id: 'hall_tour', label: '🚌 전국 투어를 올린다', mode: 'oneshot',
-      when: "live == '없음' and fans >= 25000 and u_pow >= 200 and funds >= 1600 and not unit_over",
+      when: "live == '없음' and fans >= 25000 and u_pow >= 620 and funds >= 1600 and not unit_over",
       inject: '[행동] 도시 이름이 줄줄이 적힌 일정표를 짠다. 돌아올 때 셋이 어떤 얼굴일지는 아무도 모른다.',
       effects: [
         { set: 'funds', expr: 'max(funds - 1600, 0)' },

@@ -270,4 +270,31 @@ function applyUpgrade(schema, state, itemVar) {
   return { ok: false, reason: `'${itemVar}'는 업그레이드 항목이 아님` };
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState };
+/**
+ * 초상 이름 맞추기 — portraits에 적은 이름과 실물 에셋 이름을 짝지운다.
+ *
+ * 편집기가 "확장자는 생략 가능"이라고 약속하므로 양쪽 다 확장자를 떼고도 본다.
+ * ⚠ 실측 사고: `Nakano_Miku.default.avif`처럼 **이름 안에 점이 있는** 에셋에서 짝이 안 맞았다.
+ *   꼬리 하나를 떼는 규칙(`\.[a-z0-9]+$`)은 `Nakano_Miku.default`에서 `.default`를 확장자로
+ *   착각해 `Nakano_Miku`까지 깎아 버린다. 그래서 "떼고 vs 안 떼고"를 네 가지로 다 맞춰 본다 —
+ *   어느 쪽이 확장자를 달고 있는지 모르는 채로 짝을 찾아야 하기 때문이다.
+ * @param names 실물 에셋 이름 배열 (또는 [이름, ...] 항목 배열)
+ * @param want portraits에 적힌 이름
+ * @returns 맞은 항목 (없으면 null)
+ */
+function matchAssetName(names, want) {
+  const strip = (x) => String(x).replace(/\.[a-z0-9]+$/i, '');
+  const w = String(want ?? '').trim().toLowerCase();
+  if (!w) return null;
+  const wBase = strip(w);
+  for (const item of names || []) {
+    const raw = Array.isArray(item) ? item[0] : (item && typeof item === 'object' ? item.name : item);
+    const n = String(raw ?? '').trim().toLowerCase();
+    if (!n) continue;
+    const nBase = strip(n);
+    if (n === w || nBase === w || n === wBase || nBase === wBase) return item;
+  }
+  return null;
+}
+
+module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState, matchAssetName };

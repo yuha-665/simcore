@@ -220,6 +220,28 @@ const clone = (o) => JSON.parse(J(o));
   ck('빈 슬롯은 초상 없음', view.tabs[0].slots[1].portrait === null, '');
 
   const typo = clone(P);
+  // ── 초상 이름 맞추기 (v0.83.2) ──
+  // ⚠ 실측 사고: 이름 안에 점이 있는 에셋(Nakano_Miku.default.avif)에서 짝이 안 맞았다.
+  //   꼬리 하나를 떼는 규칙은 'Nakano_Miku.default'에서 .default를 확장자로 착각해
+  //   'Nakano_Miku'까지 깎는다. 편성표에 얼굴이 하나도 안 뜨는데 오류는 없는 종류의 사고다.
+  {
+    const { matchAssetName } = SC.require('party');
+    const A = [['Nakano_Miku.default.avif', 'a1', 'avif'], ['bark_profile.png', 'a2', 'png'],
+      ['arin_profile', 'a3', 'png']];
+    const got = (w) => { const r = matchAssetName(A, w); return r ? r[0] : null; };
+    ck('★ 이름에 점이 있어도 확장자만 떼고 맞춘다',
+      got('Nakano_Miku.default') === 'Nakano_Miku.default.avif', String(got('Nakano_Miku.default')));
+    ck('★ 확장자까지 그대로 적어도 맞는다',
+      got('Nakano_Miku.default.avif') === 'Nakano_Miku.default.avif', '');
+    ck('대소문자·앞뒤 공백은 무시', got('  nakano_miku.DEFAULT  ') === 'Nakano_Miku.default.avif', '');
+    ck('에셋에만 확장자가 있어도 맞는다', got('bark_profile') === 'bark_profile.png', '');
+    ck('적은 쪽에만 확장자가 있어도 맞는다', got('arin_profile.png') === 'arin_profile', '');
+    ck('없는 이름은 null (조용히 글자 폴백)', got('Nobody_here') === null, '');
+    ck('빈 이름은 null (아무 에셋이나 걸리지 않는다)', matchAssetName(A, '   ') === null, '');
+    ck('어댑터가 이 함수를 쓴다 (규칙을 한 군데 둔다)',
+      src.includes('partyMod.matchAssetName(char?.additionalAssets'), '');
+  }
+
   typo.party.portraits['셀레나'] = 'x';
   ck('명단에 없는 이름은 경고 (오타 감지)', validateSchema(typo).warnings.some((w) => /오타이거나/.test(w.msg)), '');
   const bad = clone(P);

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.83.1
-//@display-name SimCore (시뮬 엔진) v0.83.1 초상 대조
+//@version 0.83.2
+//@display-name SimCore (시뮬 엔진) v0.83.2 초상 대조·이름 맞추기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.83.2 ────────────────────────────────────────────────
+// 초상이 하나도 안 뜨는 사고 — **이름 안에 점이 있는 에셋**(Nakano_Miku.default.avif)에서
+// 짝짓기가 실패했다. 꼬리 하나를 떼는 규칙(`\.[a-z0-9]+$`)이 'Nakano_Miku.default'에서
+// `.default`를 확장자로 착각해 'Nakano_Miku'까지 깎아 버린다 — 오류도 안 나고 얼굴만 안 뜬다.
+// 규칙을 core/party.js의 matchAssetName 하나로 옮기고("떼고/안 떼고" 네 조합을 다 맞춰 본다)
+// 테스트로 못 박았다. 어댑터는 그걸 부르기만 한다.
 //
 // ── v0.83.1 ────────────────────────────────────────────────
 // 초상 매핑에 대조를 붙였다. 명단 44명에 캐릭터 에셋 49개면 **어느 쪽이 남는지**가 안 보인다 —
@@ -2775,12 +2782,9 @@
     let url = null;
     try {
       const char = await Risuai.getCharacter();
-      const want = String(assetName).trim().toLowerCase();
-      const wantBase = want.replace(/\.[a-z0-9]+$/, '');
-      const hit = (char?.additionalAssets || []).find(([nm]) => {
-        const n = String(nm).trim().toLowerCase();
-        return n === want || n === wantBase || n.replace(/\.[a-z0-9]+$/, '') === wantBase;
-      });
+      // 이름 맞추기는 party 모듈이 한다 — 이름 안에 점이 있는 에셋(Nakano_Miku.default.avif)에서
+      // 짝이 안 맞던 자리라, 규칙을 한 군데 두고 테스트로 못 박았다 (matchAssetName)
+      const hit = partyMod.matchAssetName(char?.additionalAssets || [], assetName);
       if (hit && Risuai.readImage) {
         const data = await Risuai.readImage(hit[1]);
         if (data != null) {

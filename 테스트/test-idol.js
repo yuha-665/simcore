@@ -211,20 +211,28 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
 // 지출을 하나하나 적으면 반드시 빠지는 데가 생긴다. 실제로 하나 있었다 —
 // 레슨비는 편성표가 자금을 직접 쓰기 때문에 액션 효과로는 못 잡는다.
 {
+  // v0.81: income은 갈래 넷(무대·티켓·굿즈·음반)의 **파생**이다 — vars에 없다
   const ledger = (st) => ({
-    funds: st.vars.funds, income: st.vars.income,
+    funds: st.vars.funds, income: D('income', st.vars),
     spend: D('spend', st.vars), balance: D('balance', st.vars),
   });
   let st = engine.initState(S); st.meta.setupDone = true;
-  ck('장부가 프로덕션 탭에 같이 있다 (따로 갈라 두지 않는다)', (() => {
+  // v0.81: 수입이 갈래 넷이 되면서 장부가 자기 탭을 얻었다.
+  // 대신 프로덕션 탭은 유닛을 흡수했다 — 이 판은 사무소에 유닛이 하나뿐이라 갈라 둘 이유가 없다.
+  ck('★ 장부가 자기 탭에 모여 있다', (() => {
+    const g = (S.statusUI.groups.find((x) => x.label === '장부') || { items: [] }).items.map((i) => i.var);
+    return ['funds', 'income', 'inc_stage', 'inc_ticket', 'inc_goods', 'inc_album',
+      'salary', 'spend', 'balance', 'debt'].every((v2) => g.includes(v2));
+  })(), '');
+  ck('★ 프로덕션 탭이 유닛을 품는다 (유닛 탭이 따로 없다)', (() => {
     const g = S.statusUI.groups.find((x) => x.label === '프로덕션').items.map((i) => i.var);
-    return ['funds', 'income', 'spend', 'balance', 'debt'].every((v2) => g.includes(v2))
-      && !S.statusUI.groups.some((x) => x.label === '장부');
+    return ['center', 'u_rank', 'u_fan', 'u_cond', 'u_vo', 'songs', 'wardrobe'].every((v2) => g.includes(v2))
+      && !S.statusUI.groups.some((x) => x.label === '유닛');
   })(), '');
   ck('시작은 수지 0이다', ledger(st).balance === 0 && ledger(st).spend === 0, JSON.stringify(ledger(st)));
 
   // 무대 보수는 수입으로 적힌다
-  Object.assign(st.vars, { job: '지역 라이브', job_days: 0 },
+  Object.assign(st.vars, { job: 'TV 음악방송', job_days: 0 },
     Object.fromEntries(['m1', 'm2', 'm3'].flatMap((m) => ['vo', 'da', 'vi'].map((k) => [`${m}_${k}`, 99]))));
   st = engine.toggleAction(S, st, 'perform').state;
   st = engine.sendPhase(S, st, { rng: seededRng('led', 1, 'a') }).state;
@@ -261,11 +269,14 @@ const avg = (rows, k) => Math.round(rows.reduce((a, b) => a + b[k], 0) / rows.le
   // 월말이 장부를 닫는다 — 닫기가 이자보다 먼저여야 이자가 어느 달에도 안 빠지지 않는다
   const settle = S.rules.events.find((e) => e.id === 'settle');
   const order = settle.effects.map((f) => f.set);
-  ck('★ 월말이 장부를 닫는다 (수입 0 · 기초 잔고 갱신)',
-    order.includes('income') && order.includes('month_open'), order.join(','));
+  ck('★ 월말이 장부를 닫는다 (수입 갈래 넷 0 · 기초 잔고 갱신)',
+    ['inc_stage', 'inc_ticket', 'inc_goods', 'inc_album', 'month_open'].every((k) => order.includes(k)),
+    order.join(','));
+  ck('★ 월급이 새 달 첫 지출로 나간다', settle.effects.some((f) => /salary/.test(f.expr || '')), order.join(','));
   ck('★ 장부를 닫고 나서 이자를 낸다 (이자가 사라지지 않는다)',
     order.indexOf('month_open') < order.lastIndexOf('funds'), order.join(','));
-  ck('장부는 AI에게 안 연다', !S.updater.allow.some((a) => a.id === 'income' || a.id === 'month_open'), '');
+  ck('장부는 AI에게 안 연다', !S.updater.allow.some((a) => ['income', 'month_open', 'inc_stage',
+    'inc_ticket', 'inc_goods', 'inc_album'].includes(a.id)), '');
   ck('프리셋이 자금을 바꾸면 기초 잔고도 같이 바꾼다 (첫 달 장부가 안 어긋난다)',
     S.setup.presets.every((p) => p.set.funds == null || p.set.month_open === p.set.funds),
     S.setup.presets.map((p) => `${p.id}:${p.set.funds}/${p.set.month_open}`).join(' '));

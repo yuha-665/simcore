@@ -1,13 +1,41 @@
 //@name simcore
 //@api 3.0
-//@version 0.80.0
-//@display-name SimCore (시뮬 엔진) v0.80 무작위 시작·리롤 난수
+//@version 0.81.0
+//@display-name SimCore (시뮬 엔진) v0.81 아이돌 템플릿 개편
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //
 // SimCore 리스 어댑터 — 코어(core/*)는 빌드 시 이 파일 위에 번들됨.
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.81.0 ────────────────────────────────────────────────
+// 아이돌 프로듀스 템플릿 개편 — 실기 피드백 넷.
+//
+// - [탭] **프로덕션 + 유닛 결합.** 이 판은 사무소에 유닛이 하나뿐인데 갈라 둬서
+//   "우리가 어디까지 왔나"를 두 탭을 오가며 봐야 했다. 유닛을 여럿 굴리는 봇으로 개조할
+//   때 다시 쪼개면 된다 (유닛마다 탭 하나).
+// - [유닛] 랭크·인기도·보유곡·보유의상 추가. 랭크는 종합 능력치의 파생이고, 인기도는
+//   소속 전원의 개별 인기 합이다(무대에 안 선 멤버의 팬도 유닛의 팬이다). 곡·의상 이름은
+//   시스템이 못 지으므로 목록 변수 + 보조 AI에게 개방 — "무엇이 나올 차례인가"까지만 시스템.
+// - [일감] **의뢰판으로.** 업무(job)와 라이브(live)를 **동시에 하나씩** 들 수 있는 두 축으로
+//   쪼갰다 — 예전엔 칸이 하나라 "다음 주 라이브 전에 화보를 끼울까"가 성립하지 않았다.
+//   각각 일정·난이도·보수가 뜨고, 라이브에는 예상 티켓(정원이 천장)이 붙는다. 그 다음 차례는
+//   job_queue·live_queue 목록이 "@+N" 규약으로 들고 달력에 그대로 뜬다.
+//   라이브 판정(ck_live) 신설 — 티켓·굿즈 수입이 여기서만 들어온다.
+// - [장부] 수입을 갈래 넷(무대·티켓·굿즈·음반)으로 나누고 **총합 income을 파생으로** 돌렸다.
+//   갈래를 늘려도 장부가 저절로 맞는다 (예전엔 income에도 같이 적어야 했고 빠지면 지출이
+//   부풀었다). 멤버 월급을 지출로 신설 — 등급이 오르면 같이 오른다.
+//
+// 진단으로 고른 값 둘 (mid 지적 3건 → 1건):
+//   · 월급 배수 90 — 45면 "아무것도 안 해도 전부 생존", 140이면 "액션을 쓸수록 빨리 죽는다".
+//     90에서만 파산 이벤트가 살아나고 난이도 지적이 사라진다.
+//   · 홍보 체력 3·쿨다운 3 — 월급이 자금을 조이자 6·2가 함정 액션으로 드러났다(빼면 33턴 더 삶).
+// 남은 mid 1건(프리셋 수명 수렴, 150턴)은 개편 전부터 있던 것이다. 팬 14,000명인 유닛이
+// 신인보다 빨리 죽는 게 더 이상해서 억지로 안 맞췄다.
+//
+// 잡은 버그: 음반 수입을 장부에만 적고 자금에 안 넣어 **유령 지출**이 생기던 것 (지출은
+// 수입 − 잔고차이로 역산하므로, 안 들어온 돈이 그대로 "쓴 돈"이 된다). test-idol이 잡았다.
 //
 // ── v0.80.0 ────────────────────────────────────────────────
 // 실기 제보 두 건 — 둘 다 "판마다 달라야 할 것이 안 달라진다".
@@ -18661,8 +18689,18 @@ const IDOL = {
     // 수입만 직접 적고 지출은 잔고 차이로 역산한다. 지출을 하나하나 적으면 반드시 빠지는
     // 데가 생기는데, 실제로 여기 하나 있었다 — **레슨비는 편성표가 자금을 직접 쓰기 때문에
     // 액션 효과로는 잡을 방법이 없다.** 기초 잔고를 기억해 두면 어디로 나갔든 다 걸린다.
-    { id: 'income', label: '이번 달 수입', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
-      desc: '이 달에 일해서 번 돈. 월말 정산에 0으로 돌아간다. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    // 수입은 **갈래별로** 적는다 (v0.81). 한 칸이던 시절에는 "이 달에 얼마 벌었나"는 알아도
+    // "무엇이 벌어다 줬나"를 몰라서, 라이브를 늘릴지 굿즈를 찍을지 판단할 근거가 없었다.
+    // 총합 income은 파생이라 새 갈래를 더해도 장부가 저절로 맞는다 (예전엔 갈래를 늘릴 때마다
+    // income에도 같이 적어야 했고, 그게 빠지면 지출이 부풀어 보였다).
+    { id: 'inc_stage', label: '무대 보수', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
+      desc: '일감·라이브를 치르고 받은 돈. 월말 정산에 0으로 돌아간다. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    { id: 'inc_ticket', label: '티켓 수입', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
+      desc: '라이브 티켓이 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    { id: 'inc_goods', label: '굿즈 수입', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
+      desc: '공연장에서 굿즈가 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라.' },
+    { id: 'inc_album', label: '음반 수입', type: 'int', init: 0, min: 0, max: 9999999, format: '{v}만원',
+      desc: '음반이 팔려 들어온 돈. 시스템이 관리하니 서사로 바꾸지 마라.' },
     { id: 'month_open', label: '이 달 기초 잔고', type: 'int', init: 400, min: 0, max: 9999999, format: '{v}만원',
       desc: '이 달을 시작할 때의 운용자금. 지출은 이것과 지금 잔고의 차이로 역산한다. '
         + '융자와 상환은 벌거나 쓴 게 아니라 돈의 자리만 옮긴 것이라 여기도 같이 움직여 수지에서 빠진다. 시스템이 관리한다.' },
@@ -18674,16 +18712,33 @@ const IDOL = {
     { id: 'unit_over', label: '활동 중단', type: 'bool', init: false,
       desc: '유닛이 멈췄는지. 시스템이 정하니 서사로 바꾸지 마라.' },
     // ── 일감 ──
-    { id: 'job', label: '잡힌 일감', type: 'enum', init: '없음',
-      enum: ['없음', '거리 홍보', '라디오 출연', '잡지 화보', '지역 라이브', 'TV 음악방송', '싱글 수록', '전국 투어'],
+    // 축이 둘이다 (v0.81) — 업무와 라이브는 **동시에 하나씩** 들고 있을 수 있다.
+    // 한 칸이던 시절에는 "다음 주 라이브 전에 화보를 하나 끼울까" 같은 저울질이 성립하지 않았다.
+    { id: 'job', label: '잡힌 업무', type: 'enum', init: '없음',
+      enum: ['없음', '거리 홍보', '라디오 출연', '잡지 화보', 'TV 음악방송', '싱글 수록'],
       desc: '수주해 둔 일. 시스템이 정하니 서사로 바꾸지 마라 — 어떤 현장이었는지는 서사가 그린다.' },
-    { id: 'job_days', label: '남은 날', type: 'int', init: 0, min: 0, max: 30,
-      desc: '일감까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
+    { id: 'job_days', label: '업무까지', type: 'int', init: 0, min: 0, max: 30, format: '{v}일',
+      desc: '업무까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
+    { id: 'live', label: '잡힌 라이브', type: 'enum', init: '없음',
+      enum: ['없음', '소규모 라이브', '지역 라이브', '합동 콘서트', '단독 공연', '전국 투어'],
+      desc: '잡아 둔 공연. 시스템이 정하니 서사로 바꾸지 마라.' },
+    { id: 'live_days', label: '라이브까지', type: 'int', init: 0, min: 0, max: 60, format: '{v}일',
+      desc: '공연일까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
     { id: 'late', label: '펑크', type: 'int', init: 0, min: 0, max: 99,
       desc: '약속한 날 무대에 서지 못한 횟수. 업계에서 신용이 여기서 깎이고, 판정에 그대로 붙는다.' },
     { id: 'schedule', label: '일정', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
       desc: '달력에 적어 둔 예정. 서사에서 새 일정이 잡히면 "내용 @+N"(N일 뒤)으로 추가하라. 날짜가 지나면 자동으로 지워진다.' },
-    { id: 'costume', label: '의상', type: 'enum', init: '기본 무대의상',
+    // 예약 목록 — 지금 잡힌 것 말고 **그 다음**. 항목은 "내용 @+N"(N일 뒤) 규약이라
+    // 달력에 그대로 뜬다. ⚠ 남은 날을 항목에 적으면 안 된다 (끝자리 숫자는 안 변하는 값 전용).
+    { id: 'job_queue', label: '다음 업무', type: 'list', init: [], maxItems: 6, itemMaxLength: 30,
+      desc: '앞으로 잡힌 업무. 서사에서 새 일이 정해지면 "내용 @+N"(N일 뒤)으로 올려라. 날짜가 지나면 자동으로 지워진다.' },
+    { id: 'live_queue', label: '다음 라이브', type: 'list', init: [], maxItems: 6, itemMaxLength: 30,
+      desc: '앞으로 잡힌 공연. "내용 @+N"(N일 뒤)으로 올려라. 날짜가 지나면 자동으로 지워진다.' },
+    { id: 'songs', label: '보유곡', type: 'list', init: [], maxItems: 20, itemMaxLength: 24,
+      desc: '유닛이 가진 곡. 수록을 마치면 곡 이름을 지어 올려라. 곡이 많을수록 라이브가 유리하다.' },
+    { id: 'wardrobe', label: '보유 의상', type: 'list', init: [], maxItems: 12, itemMaxLength: 24,
+      desc: '맞춰 둔 무대의상. 새로 맞추면 어떤 옷인지 이름을 지어 올려라.' },
+    { id: 'costume', label: '착용 의상', type: 'enum', init: '기본 무대의상',
       enum: ['연습복', '기본 무대의상', '제작 의상', '특별 의상'],
       desc: '무대에 입고 서는 것. 좋을수록 판정이 유리하다. 맞추는 건 자금이 든다.' },
     // ── 유닛 자리 ──
@@ -18743,19 +18798,45 @@ const IDOL = {
     { id: 'c3', label: '린 컨디션', expr: 'round((m3_st + m3_me) / 2)' },
     { id: 'u_cond', label: '유닛 컨디션',
       expr: 'stand > 0 ? round((c1 * p1 + c2 * p2 + c3 * p3) / (p1 + p2 + p3)) : 0' },
+    // 유닛 지표 — 프로덕션(사무소)의 이름값과 별개로 **이 유닛이 얼마나 컸는가**.
+    // 인기도는 소속 전원의 개별 인기 합이다 (무대에 안 선 멤버의 팬도 유닛의 팬이다).
+    { id: 'u_fan', label: '유닛 인기도', expr: 'm1_fan + m2_fan + m3_fan' },
+    { id: 'u_pow', label: '유닛 종합', expr: 'u_vo + u_da + u_vi' },
+    { id: 'u_rank', label: '유닛 랭크',
+      expr: "u_pow >= 260 ? 'S' : (u_pow >= 200 ? 'A' : (u_pow >= 150 ? 'B' : (u_pow >= 100 ? 'C' : (u_pow >= 60 ? 'D' : 'E'))))" },
     { id: 'rank_n', label: '등급 수치',
       expr: "rank == 'S' ? 6 : (rank == 'A' ? 5 : (rank == 'B' ? 4 : (rank == 'C' ? 3 : (rank == 'D' ? 2 : (rank == 'E' ? 1 : 0)))))" },
     { id: 'dress', label: '의상 보정',
       expr: "costume == '특별 의상' ? 5 : (costume == '제작 의상' ? 3 : (costume == '기본 무대의상' ? 0 : -4))" },
     // 일감표는 이 두 줄이 전부다 — 새 일감을 넣으려면 enum과 여기 두 줄에만 더하면 된다
-    { id: 'job_vs', label: '일감 난이도',
-      expr: "job == '전국 투어' ? 25 : (job == '싱글 수록' ? 21 : (job == 'TV 음악방송' ? 18"
-        + " : (job == '지역 라이브' ? 15 : (job == '잡지 화보' ? 13 : (job == '라디오 출연' ? 12 : (job == '거리 홍보' ? 10 : 0))))))" },
-    { id: 'job_pay', label: '일감 보수',
-      expr: "job == '전국 투어' ? 1800 : (job == '싱글 수록' ? 1100 : (job == 'TV 음악방송' ? 700"
-        + " : (job == '지역 라이브' ? 420 : (job == '잡지 화보' ? 280 : (job == '라디오 출연' ? 200 : (job == '거리 홍보' ? 120 : 0))))))" },
+    { id: 'job_vs', label: '업무 난이도',
+      expr: "job == '싱글 수록' ? 21 : (job == 'TV 음악방송' ? 18"
+        + " : (job == '잡지 화보' ? 13 : (job == '라디오 출연' ? 12 : (job == '거리 홍보' ? 10 : 0))))" },
+    { id: 'job_pay', label: '업무 보수',
+      expr: "job == '싱글 수록' ? 1100 : (job == 'TV 음악방송' ? 700"
+        + " : (job == '잡지 화보' ? 280 : (job == '라디오 출연' ? 200 : (job == '거리 홍보' ? 120 : 0))))" },
+    // 라이브표 — 업무와 같은 모양의 두 줄 + 정원. 새 공연을 넣으려면 enum과 여기 세 줄에만 더한다
+    { id: 'live_vs', label: '라이브 난이도',
+      expr: "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 콘서트' ? 19"
+        + " : (live == '지역 라이브' ? 15 : (live == '소규모 라이브' ? 12 : 0))))" },
+    { id: 'live_pay', label: '라이브 개런티',
+      expr: "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 콘서트' ? 800"
+        + " : (live == '지역 라이브' ? 420 : (live == '소규모 라이브' ? 260 : 0))))" },
+    { id: 'live_cap', label: '공연장 정원',
+      expr: "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 콘서트' ? 1500"
+        + " : (live == '지역 라이브' ? 600 : (live == '소규모 라이브' ? 200 : 0))))" },
+    // 팔릴 표 — 정원이 천장이다. 팬이 많아도 작은 데서 하면 그만큼만 팔린다(= 큰 자리를 노릴 이유).
+    { id: 'live_tickets', label: '예상 티켓',
+      expr: 'live_cap > 0 ? min(live_cap, round(fans * 0.3 + buzz * 12 + u_fan / 30)) : 0' },
     // 장부 두 줄 — 수지는 잔고 차이고, 지출은 "번 것 중 안 남은 것"이다.
     // 이렇게 두면 레슨비처럼 편성표에서 바로 나가는 돈도 자동으로 지출에 들어온다
+    // 총합은 파생이다 — 갈래를 늘려도 여기 한 줄만 항이 붙고 장부가 저절로 맞는다
+    { id: 'income', label: '이번 달 수입', expr: 'inc_stage + inc_ticket + inc_goods + inc_album' },
+    // 월급은 등급이 오르면 같이 오른다 — 커진 유닛은 유지비도 커야 자금 압박이 안 사라진다.
+    // ⚠ 배수 90은 진단으로 고른 값이다: 45면 "아무것도 안 해도 전부 생존"(긴장 없음),
+    //   140이면 "액션을 쓸수록 더 빨리 죽는다"(플레이가 손해). 90에서만 파산이 살아나고
+    //   난이도 지적이 사라진다. 이 판의 압박은 이자가 아니라 **사람 유지비**에서 나온다.
+    { id: 'salary', label: '멤버 월급', expr: '(rank_n + 2) * 90' },
     { id: 'balance', label: '이번 달 수지', expr: 'funds - month_open' },
     { id: 'spend', label: '이번 달 지출', expr: 'max(income - balance, 0)' },
     // 랭킹은 낮을수록 위다. 인지도가 크게, 팬 수와 화제성이 거들어 밀어 올린다
@@ -18777,7 +18858,7 @@ const IDOL = {
             { set: 'awareness', expr: 'min(awareness + max(2, round((100 - awareness) * 0.08)), 100)' },
             { set: 'fans', expr: 'min(fans + round(job_pay * 3), 9999999)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 1.6), 9999999)' },
-            { set: 'income', expr: 'min(income + round(job_pay * 1.6), 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + round(job_pay * 1.6), 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 1.2), 9999999)' },
             { set: 'm2_fan', expr: 'min(m2_fan + round(job_pay * p2 * 1.2), 9999999)' },
             { set: 'm3_fan', expr: 'min(m3_fan + round(job_pay * p3 * 1.2), 9999999)' },
@@ -18785,7 +18866,11 @@ const IDOL = {
             { set: 'm2_me', expr: 'min(m2_me + round(p2 * 10), 100)' },
             { set: 'm3_me', expr: 'min(m3_me + round(p3 * 10), 100)' },
             // 음반은 수록·투어에서 크게 팔리지만, 잘된 무대는 뭐든 판을 조금씩 민다
-            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' or job == '전국 투어' ? 0.4 : 0.08)), 9999999)" },
+            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' ? 0.4 : 0.08)), 9999999)" },
+            // ⚠ 장부에만 적고 자금에 안 넣으면 유령 지출이 된다 (지출 = 수입 − 잔고차이).
+            // 실제로 한 번 밟았다 — 음반 수입 32만원이 그대로 "쓴 돈"으로 잡혔다.
+            { set: 'inc_album', expr: "min(inc_album + round(fans * (job == '싱글 수록' ? 0.4 : 0.08) * 0.5), 9999999)" },
+            { set: 'funds', expr: "min(funds + round(fans * (job == '싱글 수록' ? 0.4 : 0.08) * 0.5), 9999999)" },
             { set: 'job', expr: "'없음'" },
             { set: 'job_days', expr: '0' },
           ] },
@@ -18794,7 +18879,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 8, 100)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 0.3), 9999999)' },
-            { set: 'income', expr: 'min(income + round(job_pay * 0.3), 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + round(job_pay * 0.3), 9999999)' },
             { set: 'm1_me', expr: 'max(m1_me - round(p1 * 14), 0)' },
             { set: 'm2_me', expr: 'max(m2_me - round(p2 * 14), 0)' },
             { set: 'm3_me', expr: 'max(m3_me - round(p3 * 14), 0)' },
@@ -18810,14 +18895,18 @@ const IDOL = {
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
             { set: 'fans', expr: 'min(fans + job_pay, 9999999)' },
             { set: 'funds', expr: 'min(funds + job_pay, 9999999)' },
-            { set: 'income', expr: 'min(income + job_pay, 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + job_pay, 9999999)' },
             { set: 'm1_fan', expr: 'min(m1_fan + round(job_pay * p1 * 0.4), 9999999)' },
             { set: 'm2_fan', expr: 'min(m2_fan + round(job_pay * p2 * 0.4), 9999999)' },
             { set: 'm3_fan', expr: 'min(m3_fan + round(job_pay * p3 * 0.4), 9999999)' },
             { set: 'm1_me', expr: 'min(m1_me + round(p1 * 4), 100)' },
             { set: 'm2_me', expr: 'min(m2_me + round(p2 * 4), 100)' },
             { set: 'm3_me', expr: 'min(m3_me + round(p3 * 4), 100)' },
-            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' or job == '전국 투어' ? 0.2 : 0.04)), 9999999)" },
+            { set: 'sales', expr: "min(sales + round(fans * (job == '싱글 수록' ? 0.2 : 0.04)), 9999999)" },
+            // ⚠ 장부에만 적고 자금에 안 넣으면 유령 지출이 된다 (지출 = 수입 − 잔고차이).
+            // 실제로 한 번 밟았다 — 음반 수입 32만원이 그대로 "쓴 돈"으로 잡혔다.
+            { set: 'inc_album', expr: "min(inc_album + round(fans * (job == '싱글 수록' ? 0.2 : 0.04) * 0.5), 9999999)" },
+            { set: 'funds', expr: "min(funds + round(fans * (job == '싱글 수록' ? 0.2 : 0.04) * 0.5), 9999999)" },
             { set: 'job', expr: "'없음'" },
             { set: 'job_days', expr: '0' },
           ] },
@@ -18826,7 +18915,7 @@ const IDOL = {
           effects: [
             { set: 'buzz', expr: 'min(buzz + 4, 100)' },
             { set: 'funds', expr: 'min(funds + round(job_pay * 0.6), 9999999)' },
-            { set: 'income', expr: 'min(income + round(job_pay * 0.6), 9999999)' },
+            { set: 'inc_stage', expr: 'min(inc_stage + round(job_pay * 0.6), 9999999)' },
             { set: 'm1_me', expr: 'max(m1_me - round(p1 * 6), 0)' },
             { set: 'm2_me', expr: 'max(m2_me - round(p2 * 6), 0)' },
             { set: 'm3_me', expr: 'max(m3_me - round(p3 * 6), 0)' },
@@ -18835,19 +18924,74 @@ const IDOL = {
           ] },
       ] },
     // 영업 판정 — 큰 자리는 굽신거려서 얻는다. 펑크가 여기에 그대로 붙는다
+    // 라이브 판정 — 무대 판정과 같은 축에 **곡 수**가 하나 더 붙는다.
+    // 티켓과 굿즈가 여기서만 들어오므로, 라이브를 안 하면 수입이 개런티뿐이다.
+    { id: 'ck_live', label: '라이브 판정',
+      roll: 'rand(1, 20)',
+      mod: 'round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) + count(songs) - late',
+      vs: 'live_vs',
+      grades: [
+        { when: 'total >= vs + 6', label: '만석',
+          inject: '표가 남지 않았다. 앙코르가 끝나고도 사람들이 자리를 안 떴다 — 객석의 열기로 그려라.',
+          effects: [
+            { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
+            { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.8), 9999999)' },
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.35), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 1.15), 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.5), 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 24, 100)' },
+            { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.05)), 100)' },
+            { set: 'm1_st', expr: 'max(m1_st - round(p1 * 16), 0)' },
+            { set: 'm2_st', expr: 'max(m2_st - round(p2 * 16), 0)' },
+            { set: 'm3_st', expr: 'max(m3_st - round(p3 * 16), 0)' },
+            { set: 'm1_me', expr: 'min(m1_me + round(p1 * 8), 100)' },
+            { set: 'm2_me', expr: 'min(m2_me + round(p2 * 8), 100)' },
+            { set: 'm3_me', expr: 'min(m3_me + round(p3 * 8), 100)' },
+            { set: 'live', expr: "'없음'" },
+          ] },
+        { when: 'total >= vs', label: '성공',
+          inject: '무대는 끝났고 사람들은 만족해서 돌아갔다.',
+          effects: [
+            { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
+            { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.5), 9999999)' },
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.18), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.68), 9999999)' },
+            { set: 'fans', expr: 'min(fans + round(live_tickets * 0.25), 9999999)' },
+            { set: 'buzz', expr: 'min(buzz + 12, 100)' },
+            { set: 'm1_st', expr: 'max(m1_st - round(p1 * 18), 0)' },
+            { set: 'm2_st', expr: 'max(m2_st - round(p2 * 18), 0)' },
+            { set: 'm3_st', expr: 'max(m3_st - round(p3 * 18), 0)' },
+            { set: 'live', expr: "'없음'" },
+          ] },
+        { label: '빈 객석',
+          inject: '비어 있는 자리가 무대에서도 보였다. 끝까지 해냈지만 모두가 그걸 알았다.',
+          effects: [
+            { set: 'inc_stage', expr: 'min(inc_stage + round(live_pay * 0.4), 9999999)' },
+            { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.15), 9999999)' },
+            { set: 'funds', expr: 'min(funds + round(live_pay * 0.4) + round(live_tickets * 0.2), 9999999)' },
+            { set: 'buzz', expr: 'max(buzz - 8, 0)' },
+            { set: 'm1_me', expr: 'max(m1_me - round(p1 * 12), 0)' },
+            { set: 'm2_me', expr: 'max(m2_me - round(p2 * 12), 0)' },
+            { set: 'm3_me', expr: 'max(m3_me - round(p3 * 12), 0)' },
+            { set: 'm1_st', expr: 'max(m1_st - round(p1 * 14), 0)' },
+            { set: 'm2_st', expr: 'max(m2_st - round(p2 * 14), 0)' },
+            { set: 'm3_st', expr: 'max(m3_st - round(p3 * 14), 0)' },
+            { set: 'live', expr: "'없음'" },
+          ] },
+      ] },
     { id: 'ck_pitch', label: '영업 판정',
       roll: 'rand(1, 20)', mod: 'round(awareness / 7) + round(buzz / 8) + rank_n - late * 2', vs: 15,
       grades: [
         { when: 'roll == 20', label: '대어',
           inject: '기대도 안 한 자리에서 큰 이야기가 나왔다 — 명함을 건네받는 순간으로 짧게 그려라.',
           effects: [
-            { set: 'job', expr: "rank_n >= 4 ? '전국 투어' : '싱글 수록'" },
+            { set: 'job', expr: "'싱글 수록'" },
             { set: 'job_days', expr: '6 + rand(0, 4)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.03)), 100)' },
           ] },
         { when: 'total >= vs', label: '수주',
           effects: [
-            { set: 'job', expr: "rank_n >= 5 ? '싱글 수록' : (rank_n >= 3 ? 'TV 음악방송' : '지역 라이브')" },
+            { set: 'job', expr: "rank_n >= 4 ? '싱글 수록' : (rank_n >= 2 ? 'TV 음악방송' : '잡지 화보')" },
             { set: 'job_days', expr: '4 + rand(0, 3)' },
           ] },
         { label: '헛걸음',
@@ -18863,15 +19007,25 @@ const IDOL = {
       when: "job == '없음' and not unit_over",
       inject: '[행동] 늘 오던 곳에 전화를 돌린다. 큰 자리는 아니지만 확실하게 잡히는 일이다.',
       effects: [
-        { set: 'job', expr: "rank_n >= 4 ? '지역 라이브' : (rank_n >= 2 ? '잡지 화보' : (rank_n >= 1 ? '라디오 출연' : '거리 홍보'))" },
+        { set: 'job', expr: "rank_n >= 4 ? 'TV 음악방송' : (rank_n >= 2 ? '잡지 화보' : (rank_n >= 1 ? '라디오 출연' : '거리 홍보'))" },
         { set: 'job_days', expr: '1 + rand(0, 2)' },
       ] },
     { id: 'take_big', label: '🎬 큰 자리를 노린다', mode: 'oneshot', cooldown: 2,
       when: "job == '없음' and awareness >= 25 and funds >= 30 and not unit_over", check: 'ck_pitch',
       inject: '[행동] 기획사와 방송국을 돈다. 이쪽에서 먼저 고개를 숙여야 하는 자리다.',
       effects: [{ set: 'funds', expr: 'max(funds - 30, 0)' }] },
+    { id: 'book_live', label: '🎫 라이브를 잡는다', mode: 'oneshot', cooldown: 3,
+      when: "live == '없음' and not unit_over",
+      inject: '[행동] 공연장을 알아보고 날을 잡는다. 규모는 지금 이름값이 정한다.',
+      effects: [
+        { set: 'live', expr: "rank_n >= 5 ? '전국 투어' : (rank_n >= 4 ? '단독 공연' : (rank_n >= 3 ? '합동 콘서트' : (rank_n >= 1 ? '지역 라이브' : '소규모 라이브')))" },
+        { set: 'live_days', expr: '6 + rand(0, 6)' },
+      ] },
     // ── 무대 ──
-    { id: 'perform', label: '🎤 무대에 선다', mode: 'oneshot',
+    { id: 'live_show', label: '🎫 라이브에 선다', mode: 'oneshot',
+      when: "live != '없음' and live_days <= 0 and stand >= 1 and not unit_over", check: 'ck_live',
+      inject: '[행동] 객석이 찼다. 조명이 꺼지고 첫 음이 나가기 직전부터 그려라.' },
+    { id: 'perform', label: '🎤 업무를 치른다', mode: 'oneshot',
       when: "job != '없음' and job_days <= 0 and stand >= 1 and not unit_over", check: 'ck_stage',
       inject: '[행동] 오늘이 그날이다. 대기실에서 무대까지의 몇 걸음부터 그려라.',
       effects: [
@@ -18897,16 +19051,19 @@ const IDOL = {
         { set: 'm1_love', expr: 'min(m1_love + 6, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 6, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 6, 100)' },
       ] },
     // ── 사무소 ──
-    { id: 'promo', label: '📣 홍보를 돈다', mode: 'oneshot', cooldown: 2,
+    { id: 'promo', label: '📣 홍보를 돈다', mode: 'oneshot', cooldown: 3,
       when: 'funds >= 30 and not unit_over',
       inject: '[행동] 전단과 SNS와 발품. 이름을 한 사람이라도 더 알게 만드는 일이다.',
       effects: [
         { set: 'funds', expr: 'max(funds - 30, 0)' },
         { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.05)), 100)' },
         { set: 'buzz', expr: 'min(buzz + 8, 100)' },
-        // 발품은 그날 바로 팬으로도 돌아온다 — 인지도만 주면 돌아오는 데 너무 오래 걸린다
+        // 발품은 그날 바로 팬으로도 돌아온다 — 인지도만 주면 돌아오는 데 너무 오래 걸린다.
+        // ⚠ 체력 3·쿨다운 3은 진단으로 고른 값이다: 6·2였을 때 이 버튼은 **있는 것 자체가
+        //   손해**였다(빼면 33턴 더 삶). 월급이 자금을 조이자 드러난 함정이라, 발품 값을
+        //   낮춰 균형을 되돌렸다.
         { set: 'fans', expr: 'min(fans + 40 + round(fans * 0.04), 9999999)' },
-        { set: 'm1_st', expr: 'max(m1_st - 6, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 6, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 6, 0)' },
+        { set: 'm1_st', expr: 'max(m1_st - 3, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 3, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 3, 0)' },
       ] },
     { id: 'dress_up', label: '👗 의상을 맞춘다', mode: 'oneshot',
       when: "funds >= 250 and costume != '특별 의상' and not unit_over",
@@ -18947,6 +19104,10 @@ const IDOL = {
         { set: 'late', expr: "job != '없음' and job_days <= 0 ? min(late + 1, 99) : late" },
         { set: 'buzz', expr: "job != '없음' and job_days <= 0 ? max(buzz - 12, 0) : max(round(buzz * 0.88), 0)" },
         { set: 'job', expr: "job != '없음' and job_days <= 0 ? '없음' : job" },
+        // 라이브도 같은 규율 — 잡아 두고 안 서면 펑크다 (공연은 표를 판 자리라 더 크게 깎인다)
+        { set: 'late', expr: "live != '없음' and live_days <= 0 ? min(late + 2, 99) : late" },
+        { set: 'buzz', expr: "live != '없음' and live_days <= 0 ? max(buzz - 18, 0) : buzz" },
+        { set: 'live', expr: "live != '없음' and live_days <= 0 ? '없음' : live" },
         { set: 'funds', expr: 'max(funds - 25, 0)' },
         { set: 'm1_st', expr: 'min(m1_st + 10, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 10, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 10, 100)' },
         { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
@@ -18958,12 +19119,15 @@ const IDOL = {
         { set: 'm3_fan', expr: 'max(m3_fan - round(m3_fan * 0.01), 0)' },
         { set: 'awareness', expr: 'buzz <= 8 ? max(awareness - 1, 0) : awareness' },
         { set: 'job_days', expr: 'max(job_days - 1, 0)' },
+        { set: 'live_days', expr: 'max(live_days - 1, 0)' },
       ] },
   ],
   rules: {
     onTurn: [
       // 지난 일정 자동 정리 — @경과일이 지난 항목을 스스로 뺀다 (달력 규약)
       { list: 'schedule', expire: 'elapsed' },
+      { list: 'job_queue', expire: 'elapsed' },
+      { list: 'live_queue', expire: 'elapsed' },
     ],
     events: [
       // 등급은 인지도가 문턱을 넘을 때 올라간다. once를 안 쓴 이유는 romance와 같다 —
@@ -18990,8 +19154,12 @@ const IDOL = {
           { set: 'late', expr: 'max(late - 1, 0)' },
           // ⚠ 순서 — 장부를 먼저 닫고 이자를 낸다. 이자를 먼저 빼면 그 달에도 다음 달에도
           // 안 잡히는 돈이 된다. 이자는 새 달 1일에 나가는 첫 지출로 잡힌다.
-          { set: 'income', expr: '0' },
+          { set: 'inc_stage', expr: '0' }, { set: 'inc_ticket', expr: '0' },
+          { set: 'inc_goods', expr: '0' }, { set: 'inc_album', expr: '0' },
           { set: 'month_open', expr: 'funds' },
+          // 월급 — 새 달의 첫 지출. 못 주면 그만큼 빚이 된다 (이자와 같은 규율)
+          { set: 'debt', expr: 'min(debt + max(salary - funds, 0), 9999999)' },
+          { set: 'funds', expr: 'max(funds - salary, 0)' },
           { set: 'debt', expr: 'min(debt + max(round(debt * 0.05) - funds, 0), 9999999)' },
           { set: 'funds', expr: 'max(funds - round(debt * 0.05), 0)' },
         ] },
@@ -19054,7 +19222,7 @@ const IDOL = {
             { label: '잡는다',
               inject: '일정을 뒤엎고 받기로 한다. 준비할 시간이 거의 없다.',
               effects: [
-                { set: 'job', expr: "rank_n >= 3 ? 'TV 음악방송' : '지역 라이브'" },
+                { set: 'job', expr: "rank_n >= 3 ? 'TV 음악방송' : '잡지 화보'" },
                 { set: 'job_days', expr: '2' },
                 { set: 'm1_st', expr: 'max(m1_st - 8, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 8, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 8, 0)' },
               ] },
@@ -19100,6 +19268,10 @@ const IDOL = {
       { id: 'm1_me', maxDelta: 8 }, { id: 'm2_me', maxDelta: 8 }, { id: 'm3_me', maxDelta: 8 },
       { id: 'm1_love', maxDelta: 6 }, { id: 'm2_love', maxDelta: 6 }, { id: 'm3_love', maxDelta: 6 },
       { id: 'schedule' },
+      { id: 'job_queue' }, { id: 'live_queue' },
+      // 곡·의상 이름은 시스템이 못 짓는다 — "무엇이 나올 차례인가"까지만 시스템이 정하고
+      // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
+      { id: 'songs' }, { id: 'wardrobe' },
     ],
     guide: '장면에 실제로 나온 것만 반영하라. 등급·일감·D-day·자금·빚·의상·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
@@ -19156,6 +19328,9 @@ const IDOL = {
     groups: [
       // 장부를 프로덕션 탭에 합쳐 둔다 — 등급·인지도를 보는 눈과 돈을 보는 눈이 같아서,
       // 갈라 두면 "이 인지도를 사려고 얼마를 썼나"를 두 탭을 오가며 봐야 했다.
+      // 프로덕션과 유닛을 한 탭에 (v0.81) — 이 판은 사무소에 유닛이 **하나**다. 갈라 두면
+      // "우리가 어디까지 왔나"를 두 탭을 오가며 봐야 했다. 유닛을 여럿 굴리는 봇으로 개조할
+      // 때는 여기서 다시 쪼개고 유닛마다 탭을 하나씩 두면 된다.
       { label: '프로덕션', items: [
         { var: 'rank' },
         { var: 'ranking' },
@@ -19163,25 +19338,46 @@ const IDOL = {
         { var: 'buzz', bar: { max: 100 }, color: "buzz >= 70 ? '#d4506a' : (buzz <= 10 ? '#4a4a5a' : '#8a5a8a')" },
         { var: 'fans' },
         { var: 'sales', showWhen: 'sales > 0' },
-        { var: 'funds' },
-        { var: 'income' },
-        { var: 'spend' },
-        { var: 'balance', color: "balance < 0 ? '#a8443a' : '#6a8a7a'" },
-        { var: 'debt', color: "debt >= 3000 ? '#a8443a' : '#6a5a7a'" },
         { var: 'late', showWhen: 'late > 0' },
-      ] },
-      { label: '일감', items: [
-        { var: 'job' },
-        { var: 'job_days', showWhen: "job != '없음'" },
-        { var: 'costume' },
-        { var: 'schedule', showWhen: 'count(schedule) > 0' },
-      ] },
-      { label: '유닛', items: [
         { var: 'center' },
         { var: 'side1', showWhen: "side1 != '없음'" },
         { var: 'side2', showWhen: "side2 != '없음'" },
+        { var: 'u_rank' },
+        { var: 'u_fan' },
         { var: 'u_cond', bar: { max: 100 }, color: "u_cond <= 35 ? '#a8443a' : '#6a8a7a'" },
         { var: 'u_vo' }, { var: 'u_da' }, { var: 'u_vi' },
+        { var: 'costume' },
+        { var: 'songs', showWhen: 'count(songs) > 0' },
+        { var: 'wardrobe', showWhen: 'count(wardrobe) > 0' },
+      ] },
+      // 장부는 갈래가 넷이 되면서 자기 탭을 얻었다 — 어디서 벌었는지가 다음 수를 정한다
+      { label: '장부', items: [
+        { var: 'funds' },
+        { var: 'income' },
+        { var: 'inc_stage', showWhen: 'inc_stage > 0' },
+        { var: 'inc_ticket', showWhen: 'inc_ticket > 0' },
+        { var: 'inc_goods', showWhen: 'inc_goods > 0' },
+        { var: 'inc_album', showWhen: 'inc_album > 0' },
+        { var: 'salary' },
+        { var: 'spend' },
+        { var: 'balance', color: "balance < 0 ? '#a8443a' : '#6a8a7a'" },
+        { var: 'debt', color: "debt >= 3000 ? '#a8443a' : '#6a5a7a'" },
+      ] },
+      // 일감 탭 = 의뢰판. 지금 잡힌 것 둘(업무·라이브)이 각각 일정·난이도·보수를 달고,
+      // 그 아래에 다음 차례가 줄을 선다
+      { label: '일감', items: [
+        { var: 'job' },
+        { var: 'job_days', showWhen: "job != '없음'" },
+        { var: 'job_vs', showWhen: "job != '없음'" },
+        { var: 'job_pay', showWhen: "job != '없음'" },
+        { var: 'live' },
+        { var: 'live_days', showWhen: "live != '없음'" },
+        { var: 'live_vs', showWhen: "live != '없음'" },
+        { var: 'live_pay', showWhen: "live != '없음'" },
+        { var: 'live_tickets', showWhen: "live != '없음'" },
+        { var: 'job_queue', showWhen: 'count(job_queue) > 0' },
+        { var: 'live_queue', showWhen: 'count(live_queue) > 0' },
+        { var: 'schedule', showWhen: 'count(schedule) > 0' },
       ] },
       { label: '유나', items: [
         { var: 'm1_vo' }, { var: 'm1_da' }, { var: 'm1_vi' },

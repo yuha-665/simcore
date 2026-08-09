@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.83.2
-//@display-name SimCore (시뮬 엔진) v0.83.2 초상 대조·이름 맞추기
+//@version 0.83.3
+//@display-name SimCore (시뮬 엔진) v0.83.3 진단 오탐 정리
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,25 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.83.3 ────────────────────────────────────────────────
+// 진단이 **정상 설계를 벌주던** 두 자리 (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
+//
+// ① 팝업으로만 오르는 값에 걸린 문턱을 "못 쓰는 액션/죽은 이벤트"로 신고했다.
+//    편성 슬롯은 이미 봐 주고 있었는데 **업그레이드 항목**(레슨·하이드아웃 시설)은 안 봤다.
+//    던전러너의 의상 해금 다섯이 통째로 mid 오탐이었고(`st_tailor >= N` — 재봉소는 팝업에서만
+//    올린다), 아이돌 DLC의 대관 문턱(`u_pow >= N` — 레슨 합)도 같은 자리였다.
+//    이제 파생을 타고 넘어간다: 항이 **전부** 팝업 전용이면 그 파생도 팝업 전용이다.
+//    ⚠ '유일한 출처'가 핵심 — 포인트 변수(자금)는 items 비용으로도 빠지지만 액션·이벤트가
+//      숱하게 움직이므로 여기 넣으면 `funds >= N` 조건이 전부 면죄부를 받는다.
+//      프리셋('새 시작')은 시작값만 정하므로 런타임 출처로 안 친다.
+// ② 조건 하나하나는 닿았는데 **동시에** 안 맞은 액션을 "못 쓰는 액션"(high)이라 했다.
+//    자금이 찼을 땐 이름값이 모자라고 이름값이 찼을 땐 자금을 다 쓴 흐름 문제라, 문턱을
+//    내리라는 처방이 엉뚱하다. 실측으로 두 번 밟았다(시민회관·케이블 음악방송).
+//    '조건 동시 불충족'(mid)으로 갈라 이유를 그대로 말한다.
+//
+// 규칙 #5대로 내장 16종 + 생성기 산출물 2종에 돌려 확인: **새로 생긴 지적 0건**,
+// mid+high 40 → 34 (전부 위 두 부류의 오탐 제거).
 //
 // ── v0.83.2 ────────────────────────────────────────────────
 // 초상이 하나도 안 뜨는 사고 — **이름 안에 점이 있는 에셋**(Nakano_Miku.default.avif)에서
@@ -7072,6 +7091,30 @@ function bottleneck(when, obs) {
   return worst;
 }
 
+/**
+ * 수치 조건이 **둘 이상** 있고 그 전부가 한 번씩은 만족된 적이 있는가.
+ * 참이면 못 여는 이유가 문턱이 아니라 **타이밍**이다 — 자금이 찼을 땐 이름값이 모자라고
+ * 이름값이 찼을 땐 자금을 다 쓴, 같은 시점에 안 겹치는 흐름. 하나뿐이면 그냥 못 닿은 것이다.
+ */
+function numericTermsAllReached(when, obs) {
+  if (!when) return false;
+  let n = 0;
+  CMP.lastIndex = 0;
+  let m;
+  while ((m = CMP.exec(when))) {
+    const [, id, op, numS] = m;
+    const o = obs[id];
+    if (!o || !isFinite(o.max)) continue;
+    const need = Number(numS);
+    const got = (op === '>=' || op === '>') ? o.max : o.min;
+    const reached = (op === '>=') ? got >= need : (op === '>') ? got > need
+      : (op === '<=') ? got <= need : got < need;
+    if (!reached) return false;
+    n++;
+  }
+  return n >= 2;
+}
+
 /** 이 조건이 "한 번도 안 바뀐 enum/설정값"에 갇혀 있는가 (죽은 게 아니라 다른 설정에서만 뜨는 것) */
 /**
  * @param selfSets 이 이벤트가 스스로 세우는 값들. 반드시 빼야 한다 —
@@ -7129,8 +7172,34 @@ function diagnose(schema, opts = {}) {
   // (v0.52 원칙 — 그런 도구는 아무도 안 쓴다).
   const partySlotIds = new Set(require('./party').allSlots(schema).map((s) => s.var));
   // 'deployed'(편성 가상 목록, v0.59)를 보는 조건도 같은 이유로 시뮬에서는 늘 미편성이다
+  // 팝업으로만 움직이는 값 (v0.83.3) — 업그레이드 항목이 **유일한** 출처인 변수와 편성 슬롯.
+  // ⚠ '유일한'이 핵심이다. 포인트 변수(자금 등)는 items의 비용으로도 빠지지만 액션·이벤트가
+  //   숱하게 움직이므로 여기 넣으면 `funds >= N` 조건이 전부 "편성 담당"으로 둔갑해
+  //   진짜 결함이 조용해진다. 다른 데서 한 번이라도 움직이면 팝업 전용이 아니다.
+  const varIds = new Set((schema.vars || []).map((x) => x.id));
+  const derivedIds = new Set((schema.derived || []).map((x) => x.id));
+  const partyOnly = new Set(partySlotIds);
+  for (const t of require('./party').partyTabs(schema)) {
+    for (const it of t.items) {
+      // '새 시작'(프리셋·최초설정)은 시작값을 정할 뿐 판이 도는 동안 올려 주는 경로가 아니다 —
+      // 시뮬은 여전히 팝업 없이는 이 값을 못 올린다. 런타임에 움직이는 출처만 따진다.
+      const w = writers[it.var];
+      if (!w || [...w].every((x) => x === '편성' || x === '새 시작')) partyOnly.add(it.var);
+    }
+  }
+  // 파생을 타고 넘어간다 — 레슨으로만 오르는 능력치의 합(u_pow 같은)에 문턱을 걸면
+  // 이름이 달라졌을 뿐 여전히 팝업 뒤다. 항이 **전부** 팝업 전용일 때만 물려받는다.
+  for (let pass = 0; pass < 4; pass++) {
+    for (const d of schema.derived || []) {
+      if (partyOnly.has(d.id)) continue;
+      const refs = String(d.expr ?? '').match(ID_TOKEN) || [];
+      const vars = refs.filter((n) => varIds.has(n) || derivedIds.has(n));
+      if (vars.length && vars.every((n) => partyOnly.has(n))) partyOnly.add(d.id);
+    }
+  }
+  // 'deployed'(편성 가상 목록, v0.59)를 보는 조건도 같은 이유로 시뮬에서는 늘 미편성이다
   const partyGated = (a) => !!a.when && (String(a.when).match(ID_TOKEN) || []).some((n) =>
-    partySlotIds.has(n) || (schema.party != null && n === 'deployed'));
+    partyOnly.has(n) || (schema.party != null && n === 'deployed'));
   const partyGatedWriters = new Set(); // 편성 게이트 액션·이벤트가 움직이는 변수 — 단조·눌어붙음 측정 불가
   for (const a of [...ACT, ...allEv]) if (partyGated(a)) for (const f of (a.effects || [])) partyGatedWriters.add(f.set ?? f.list);
   // 업그레이드(v0.58) — 포인트 소비·레벨 상승이 팝업 클릭 뒤에 있어 같은 이유로 잴 수 없다
@@ -7685,6 +7754,16 @@ function diagnose(schema, opts = {}) {
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
           + `다만 '${b.id}'은(는) 보조 AI가 서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 `
           + '시작값 근처에 머뭅니다 — **여는 조건을 낮추지 마세요.**', null);
+        continue;
+      }
+      // 조건 하나하나는 닿았는데 **동시에** 안 맞은 경우 (v0.83.3) — "못 쓰는 액션"이 아니다.
+      // 자금이 찼을 땐 이름값이 모자라고 이름값이 찼을 땐 자금을 다 썼다는 식의 흐름 문제라,
+      // 문턱을 내리라는 처방이 엉뚱하다. 실측으로 두 번 밟았다(시민회관·케이블 음악방송).
+      if (!b && numericTermsAllReached(a.when, obs)) {
+        add('mid', '조건 동시 불충족',
+          `'${a.label ?? a.id}'는 조건이 하나하나는 만족된 적이 있는데 **동시에** 맞은 적이 없습니다 — `
+          + `${a.when}. 서로 배타적인 조건이거나, 한쪽이 차면 다른 쪽이 비는 흐름입니다. `
+          + '문턱을 내리기 전에 그 자원들이 같은 시점에 찰 수 있는 판인지 보세요.', 'actions');
         continue;
       }
       add('high', '못 쓰는 액션',

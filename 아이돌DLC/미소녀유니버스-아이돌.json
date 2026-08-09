@@ -627,7 +627,7 @@
       "id": "m1_vo",
       "label": "센터 · 보컬",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -635,7 +635,7 @@
       "id": "m1_da",
       "label": "센터 · 댄스",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -643,7 +643,7 @@
       "id": "m1_vi",
       "label": "센터 · 비주얼",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -686,7 +686,7 @@
       "id": "m2_vo",
       "label": "사이드 1 · 보컬",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -694,7 +694,7 @@
       "id": "m2_da",
       "label": "사이드 1 · 댄스",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -702,7 +702,7 @@
       "id": "m2_vi",
       "label": "사이드 1 · 비주얼",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -745,7 +745,7 @@
       "id": "m3_vo",
       "label": "사이드 2 · 보컬",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -753,7 +753,7 @@
       "id": "m3_da",
       "label": "사이드 2 · 댄스",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -761,7 +761,7 @@
       "id": "m3_vi",
       "label": "사이드 2 · 비주얼",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -804,7 +804,7 @@
       "id": "m4_vo",
       "label": "사이드 3 · 보컬",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -812,7 +812,7 @@
       "id": "m4_da",
       "label": "사이드 3 · 댄스",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -820,7 +820,7 @@
       "id": "m4_vi",
       "label": "사이드 3 · 비주얼",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -863,7 +863,7 @@
       "id": "m5_vo",
       "label": "사이드 4 · 보컬",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -871,7 +871,7 @@
       "id": "m5_da",
       "label": "사이드 4 · 댄스",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -879,7 +879,7 @@
       "id": "m5_vi",
       "label": "사이드 4 · 비주얼",
       "type": "int",
-      "init": 25,
+      "init": 10,
       "min": 0,
       "max": 100
     },
@@ -1224,7 +1224,7 @@
       "id": "ck_stage",
       "label": "무대 판정",
       "roll": "rand(1, 20)",
-      "mod": "round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) - late",
+      "mod": "round((u_vo + u_da + u_vi) / 48) + dress + round((u_cond - 60) / 12) - late",
       "vs": "job_vs",
       "grades": [
         {
@@ -1519,7 +1519,7 @@
       "id": "ck_live",
       "label": "라이브 판정",
       "roll": "rand(1, 20)",
-      "mod": "round((u_vo + u_da + u_vi) / 30) + dress + round((u_cond - 60) / 12) + count(songs) - late",
+      "mod": "round((u_vo + u_da + u_vi) / 48) + dress + round((u_cond - 60) / 12) + count(songs) - late",
       "vs": "live_vs",
       "grades": [
         {

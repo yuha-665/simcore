@@ -4192,10 +4192,16 @@ const IDOL = {
     },
   },
   directives: [
+    // 보수를 지시문에 못 박는 이유 — 모델이 상태를 안 보고 금액을 지어낸다 (실사고:
+    // 거리 홍보 120만원을 서사가 "5만 엔"으로 불렀다). 화폐 단위까지 같이 박는다.
     { id: 'dday', when: "job != '없음' and job_days <= 0 and not unit_over",
-      text: '[상태] 오늘이 그날이다 — {job}. 아침부터 공기가 다르고, 대기실 밖의 소리가 계속 들어온다.' },
+      text: '[상태] 오늘이 그날이다 — {job} (보수 {job_pay}만원). 아침부터 공기가 다르고, 대기실 밖의 소리가 계속 들어온다. 금액을 언급할 땐 이 보수를 그대로 쓰라 — 화폐 단위는 만원이다.' },
     { id: 'soon', when: "job != '없음' and job_days >= 1 and not unit_over",
-      text: '[상태] {job}까지 {job_days}일 남았다. 준비하는 시간의 초조함이 장면에 배어나야 한다.' },
+      text: '[상태] {job}까지 {job_days}일 남았다 (보수 {job_pay}만원). 준비하는 시간의 초조함이 장면에 배어나야 한다. 금액을 언급할 땐 이 보수를 그대로 쓰라 — 화폐 단위는 만원이다.' },
+    { id: 'live_dday', when: "live != '없음' and live_days <= 0 and not unit_over",
+      text: '[상태] 오늘 라이브다 — {live} (개런티 {live_pay}만원). 금액을 언급할 땐 이 개런티를 그대로 쓰라 — 화폐 단위는 만원이다.' },
+    { id: 'live_soon', when: "live != '없음' and live_days >= 1 and not unit_over",
+      text: '[상태] 라이브 {live}까지 {live_days}일 남았다 (개런티 {live_pay}만원). 금액을 언급할 땐 이 개런티를 그대로 쓰라 — 화폐 단위는 만원이다.' },
     { id: 'worn', when: 'u_cond <= 35 and not unit_over',
       text: '[상태] 무대에 서는 사람들이 지쳐 있다 (유닛 컨디션 {u_cond}). 웃는 얼굴 뒤가 비치는 묘사를 넣어라.' },
     { id: 'red', when: 'balance < 0 and not unit_over',

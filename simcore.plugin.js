@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85
-//@display-name SimCore (시뮬 엔진) v0.85 난이도 4종·관리 시설·빚 독촉
+//@version 0.85.1
+//@display-name SimCore (시뮬 엔진) v0.85.1 지금 적용 되읽기 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.1 ───────────────────────────────────────────────
+// 더티 배너의 [지금 적용]이 안 먹히는 것처럼 보이던 문제.
+// ① setCharacter 직후의 getCharacter가 아직 옛 캐릭터를 줄 수 있다 — 그러면 방금 쓴
+//    스키마 대신 옛 것이 다시 로드되고 배너가 "미반영"으로 되그려진다. 설치 후 되읽기가
+//    쓴 것과 일치하는지 확인하고 불일치면 350ms 간격 3회 재시도.
+//    ([캐릭터에 적용]은 같은 코드인데 "됐다"는 신고는 시차다 — 나중에 누르면 정착돼 있다)
+// ② 성공하면 배너가 흔적 없이 사라져 확인이 없었다 — "✓ 캐릭터에 적용됐어요" 한 줄을
+//    3.5초 남긴다.
+// ③ 덤으로 찾은 실버그: 새 시작 프리셋이 out 스냅샷을 저장하지 않아 메모리에만 남았다 —
+//    채팅을 옮겼다 돌아오면 프리셋이 조용히 증발. 변수 수동 보정과 같은 규약으로 저장.
 //
 // ── v0.85 ─────────────────────────────────────────────────
 // 아이돌 템플릿 — 난이도 시스템 + 관리 시설 + 빚 독촉.
@@ -23401,6 +23412,19 @@ count(목록)  has(목록, "항목")</pre>
       await Risuai.setCharacter(char);
       charKey = null;
       await loadForCurrentChar();
+      // 되읽기 레이스 방어 (v0.85.1) — setCharacter 직후의 getCharacter가 아직 옛 캐릭터를
+      // 돌려줄 수 있다. 그러면 방금 쓴 스키마 대신 옛 스키마가 다시 로드되고, 더티 배너가
+      // "여전히 미반영"으로 되그려져 **적용 버튼이 안 먹히는 것처럼 보인다** (실사고 — 배너의
+      // [지금 적용]만 안 먹히는 느낌이고 나중에 누른 [캐릭터에 적용]은 된다는 신고. 시차다).
+      // 우리가 무엇을 썼는지는 아니까, 되읽은 것이 그것인지 확인하고 아니면 잠깐 뒤 다시 읽는다.
+      const want = sig(parsed);
+      for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
+        console.log('[simcore] 설치 되읽기 불일치 — 재시도', i + 1);
+        await new Promise((res) => setTimeout(res, 350));
+        charKey = null;
+        await loadForCurrentChar();
+      }
+      if (sig(schema ?? {}) !== want) console.log('[simcore] ⚠ 설치 되읽기가 계속 옛 스키마 — 리수 반영 지연');
       return { ok: true, backedUp };
     }
     // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
@@ -23853,7 +23877,16 @@ count(목록)  has(목록, "항목")</pre>
           btn.onclick = async () => {
             btn.disabled = true;
             rep.innerHTML = '<span class="status-warn">적용 중…</span>';
-            try { await runInstall(rep); } catch (e) { rep.innerHTML = `<span class="status-bad">${escapeText(e.message)}</span>`; }
+            try {
+              await runInstall(rep);
+              // 성공하면 renderPanel이 배너를 통째로 지운다 — 흔적 없이 사라지면 "안 먹혔나?"가
+              // 되므로 그 자리에 확인 한 줄을 잠깐 남긴다 (v0.85.1). 실패·검증 오류면 배너가
+              // 그대로 남아 rep의 보고가 보이므로 여기서는 아무것도 안 한다.
+              if (!warnEl.querySelector('.sc-apply-now')) {
+                warnEl.innerHTML = '<div class="sc-editor-diff"><span class="status-ok">✓ 캐릭터에 적용됐어요.</span></div>';
+                setTimeout(() => { if (!warnEl.querySelector('.sc-apply-now')) renderPanel(); }, 3500);
+              }
+            } catch (e) { rep.innerHTML = `<span class="status-bad">${escapeText(e.message)}</span>`; }
             btn.disabled = false;
           };
         }
@@ -23914,6 +23947,9 @@ count(목록)  has(목록, "항목")</pre>
       btn.textContent = p.label ?? p.id;
       btn.onclick = async () => {
         session.applyPreset(p.id);
+        // ⚠ 스냅샷 저장을 빼먹으면 프리셋이 메모리에만 남는다 — 채팅을 옮겼다 돌아오면
+        // 마지막 저장본으로 되돌아가 조용히 사라진다 (v0.85.1, 변수 수동 보정과 같은 규약)
+        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
         const chaIdx = await Risuai.getCurrentCharacterIndex();
         const chatIdx = await Risuai.getCurrentChatIndex();
         await mirrorVars(chaIdx, chatIdx);

@@ -69,6 +69,17 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 옛 안내(작업공간으로 이동) 잔존 없음',
     !src.includes('변경 내용을 적용하려면 [편집 작업공간]의 [캐릭터에 적용]을 누르세요'), '');
 
+  // v0.85.1 — 적용 직후 되읽기 레이스 방어 + 성공 확인 한 줄
+  // (setCharacter 직후의 getCharacter가 옛 캐릭터를 주면 배너가 "미반영"으로 되그려져
+  //  [지금 적용]이 안 먹히는 것처럼 보였다 — 실사고)
+  ck('★ 설치 후 되읽기를 검증하고 재시도한다', src.includes('설치 되읽기 불일치 — 재시도'), '');
+  ck('★ 적용 성공 확인 한 줄을 남긴다 (배너가 흔적 없이 사라지지 않게)',
+    src.includes('✓ 캐릭터에 적용됐어요.'), '');
+  // v0.85.1 — 프리셋도 스냅샷을 저장한다 (메모리에만 남으면 채팅 전환에 조용히 증발)
+  const presetAt = src.indexOf('session.applyPreset(p.id)');
+  ck('★ 프리셋 적용이 out 스냅샷을 저장한다',
+    presetAt > 0 && src.slice(presetAt, presetAt + 400).includes("session.store.save('out', lastOutIndex"), '');
+
   // 두 배너 모두에 붙어야 한다 (편집 도구 / 작업공간)
   ck('배너는 편집·작업공간 양쪽', src.includes("document.getElementById('sc-editor-warn'), document.getElementById('sc-work-warn')"), '');
 

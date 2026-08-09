@@ -1,0 +1,79 @@
+-- ============================================================
+-- TRPGMaster 슬림판 (심코어 이식용) v1.0
+-- 원본 28,678줄 중 심코어(페르소나테이블.json)가 가져간 것을 전부 덜어내고
+-- 표시 계층만 남긴 자립형 소스. 트리거의 기존 루아를 이걸로 통째로 교체한다.
+--
+-- 남긴 것:
+--   1. 삽화 태그 래핑 — <img="..."> 를 스타일 입힌 카드로 (editDisplay)
+--   2. 스탠딩 캡션 — 캐릭터명 + 심코어 레벨 미러 읽기 (읽기 전용)
+--   3. 구판 마커 청소 — 옛 세이브의 ▥...▥ / <<TM_...>> 잔재를 표시에서 숨김
+--
+-- 덜어낸 것 (전부 심코어 소유):
+--   시트/스탯/HP/MP/판정/전투/XP/레벨/골드/서비스/패널 HTML/세션 패널 LLM/페이스 시스템
+--
+-- 규칙: 이 루아는 게임 숫자를 절대 쓰지(write) 않는다. 심코어가 미러한
+--   채팅 변수를 읽기만 한다 — 두 엔진이 같은 값을 놓고 싸우지 않게.
+-- ============================================================
+
+CHAR_IDS = {"sinsoyul", "junghanna", "kimminhee", "yuseola"}
+CHAR_NAMES_KO = {
+    sinsoyul = "신소율",
+    junghanna = "정한나",
+    kimminhee = "김민희",
+    yuseola  = "유설아",
+}
+-- 원본 owner id → 심코어 변수 접두 (레벨 미러 읽기용)
+SIM_PREFIX = {
+    sinsoyul = "soyul",
+    junghanna = "hanna",
+    kimminhee = "minhee",
+    yuseola  = "seola",
+}
+
+local function escapeHtml(s)
+    return tostring(s or ""):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+end
+
+-- 심코어가 미러한 레벨을 읽는다. 미러가 없거나 숫자가 아니면 배지를 생략한다 —
+-- 심코어 없이 굴려도 죽지 않게 (getChatVar는 없는 키에 문자열 'null'을 준다).
+local function levelBadge(triggerId, ownerId)
+    local prefix = SIM_PREFIX[ownerId]
+    if not prefix then return "" end
+    local ok, raw = pcall(getChatVar, triggerId, prefix .. "_level")
+    local lv = ok and tonumber(raw) or nil
+    if not lv or lv < 1 then return "" end
+    return '<span class="tm-standing-level">Lv ' .. math.floor(lv) .. '</span>'
+end
+
+-- 옛 세이브·모델 흉내가 남긴 엔진 마커를 표시에서만 지운다 (원문은 안 건드린다)
+local function stripLegacyMarkers(text)
+    local out = tostring(text or "")
+    out = out:gsub("▥[^▥\n]-▥", "")
+    out = out:gsub("<<TM_[^>\n]->>", "")
+    out = out:gsub("⌛♦⌛", "")
+    return out
+end
+
+local function wrapCharacterImages(triggerId, text)
+    local out = stripLegacyMarkers(text)
+    if not out:find('<img="', 1, true) then return out end
+    local function wrapIllustration(assetName)
+        return '<div class="tm-illustration-image trs-compat"><img src="{{raw::' .. assetName .. '.webp}}" alt="' .. assetName .. '"></div>'
+    end
+    out = out:gsub('<img="(pt_[%w_]+)">', wrapIllustration)
+    out = out:gsub('<img="(bg_[%w_]+)">', wrapIllustration)
+    for _, ownerId in ipairs(CHAR_IDS) do
+        out = out:gsub('<img="(' .. ownerId .. '[%w_]*)">', function(assetName)
+            local caption = escapeHtml(CHAR_NAMES_KO[ownerId] or ownerId) .. levelBadge(triggerId, ownerId)
+            return '<div class="yp-character-image trs-compat"><img src="{{raw::' .. assetName .. '.webp}}" alt="' .. assetName
+                .. '"><span class="tm-standing-caption">' .. caption .. '</span></div>'
+        end)
+    end
+    return out
+end
+
+listenEdit("editDisplay", function(triggerId, data)
+    local ok, result = pcall(wrapCharacterImages, triggerId, data)
+    if ok and result then return result end
+    return data
+end)

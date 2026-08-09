@@ -1,0 +1,106 @@
+<style>
+/* TRPGMaster 슬림판 CSS (심코어 이식용) v1.0
+   원본 8,401줄 중 슬림 루아(lua-slim.txt)가 실제로 찍는 클래스만 남겼다:
+   .tm-illustration-image / .yp-character-image / .tm-standing-caption / .tm-standing-level
+   패널·시트·카드·애니메이션 CSS는 전부 삭제 — 상태창은 심코어가 자기 스타일로 그린다.
+
+   리수가 모든 선택자에 .chattext 접두를 붙인다 — :root는 못 쓰므로 * 로 변수를 뿌린다.
+   !important 금지 (원본 규칙 유지). */
+
+* {
+    --tm-ink-90: rgba(28, 25, 23, 0.90);
+    --tm-linen: #F5F5DC;
+    --tm-linen-94: rgba(245, 245, 220, 0.94);
+    --tm-gold-16: rgba(212, 165, 116, 0.16);
+    --tm-gold-30: rgba(212, 165, 116, 0.30);
+}
+
+/* 삽화 (pt_ / bg_ 에셋) */
+.tm-illustration-image {
+    display: block;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    margin: 10px auto;
+    overflow: hidden;
+    border: 1px solid var(--tm-gold-16);
+    border-radius: 4px;
+    background: rgba(28, 25, 23, 0.16);
+}
+.tm-illustration-image img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: min(78vh, 820px);
+    object-fit: contain;
+}
+
+/* 캐릭터 스탠딩 */
+.yp-character-image {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0;
+    gap: 0;
+    line-height: 0;
+    overflow: hidden;
+    border: 2px solid var(--tm-linen-94);
+    border-radius: 6px;
+    background: rgba(28, 25, 23, 0.28);
+    box-shadow:
+        0 8px 18px rgba(28, 25, 23, 0.20),
+        0 0 0 1px var(--tm-gold-30);
+}
+.yp-character-image img {
+    display: block;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: min(58vh, 608px);
+    margin: 0;
+    padding: 0;
+    object-fit: contain;
+    vertical-align: top;
+}
+.yp-character-image .tm-standing-caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 5px 10px 6px;
+    text-align: center;
+    font-size: 1.23em;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+    color: var(--tm-ink-90);
+    background: var(--tm-linen-94);
+}
+.yp-character-image .tm-standing-level {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding: 2px 7px;
+    border: 1px solid rgba(88, 62, 35, 0.22);
+    border-radius: 999px;
+    background: rgba(88, 62, 35, 0.10);
+    color: var(--tm-ink-90);
+    font-size: 0.72em;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+</style>

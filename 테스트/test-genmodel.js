@@ -78,7 +78,10 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   // v0.85.1 — 프리셋도 스냅샷을 저장한다 (메모리에만 남으면 채팅 전환에 조용히 증발)
   const presetAt = src.indexOf('session.applyPreset(p.id)');
   ck('★ 프리셋 적용이 out 스냅샷을 저장한다',
-    presetAt > 0 && src.slice(presetAt, presetAt + 400).includes("session.store.save('out', lastOutIndex"), '');
+    presetAt > 0 && src.slice(presetAt, presetAt + 900).includes("session.store.save('out', lastOutIndex"), '');
+  // v0.85.2 — 선택이 캐릭터에 저장되고 턴 0 로드 때 자동 적용된다
+  ck('★ 프리셋 선택을 캐릭터에 저장한다', src.includes('sim:start-preset:'), '');
+  ck('★ 턴 0 세션 로드 때 저장된 프리셋을 자동 적용한다', src.includes('새 시작 프리셋 자동 적용'), '');
 
   // 두 배너 모두에 붙어야 한다 (편집 도구 / 작업공간)
   ck('배너는 편집·작업공간 양쪽', src.includes("document.getElementById('sc-editor-warn'), document.getElementById('sc-work-warn')"), '');

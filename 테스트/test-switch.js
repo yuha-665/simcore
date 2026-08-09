@@ -84,10 +84,11 @@ const SCHEMA = {
   actions: [{ id: 'heal', label: '💊 회복', mode: 'oneshot', effects: [{ set: 'hp', expr: 'min(100, hp + 10)' }] }],
   party: { label: '편성', icon: '⚔️', empty: '없음', slots: [{ var: 'front' }] },
   statusUI: { mode: 'auto', groups: [{ label: '상태', items: [{ var: 'hp' }] }] },
+  setup: { presets: [{ id: 'hardmode', label: '어려움', set: { hp: 5 } }] },
 };
 
 (async () => {
-  const { world, buttons } = await boot();
+  const { world, buttons, store } = await boot();
 
   // ⚙️ 진입 버튼은 항상 있다 — 유틸(게임 패널) 버튼만 센다
   const utilBtns = () => [...buttons.keys()].filter((k) => k !== 'SimCore');
@@ -113,6 +114,24 @@ const SCHEMA = {
   await sleep(2200);
   ck('★ 채팅을 바꿔도 버튼이 유지된다 (세션 재로드 성공)',
     buttons.has('simcore:util:party'), [...buttons.keys()].join(',') + ' (이전: ' + before + ')');
+
+  // ── 새 시작 프리셋의 캐릭터 저장 (v0.85.2) ──
+  // 실사고: 패널에서 리얼리티를 골랐는데 **새 채팅**을 만들자 초기값으로 시작했다.
+  // 선택은 캐릭터에 저장되고, 턴 0인 새 세션이 잡힐 때마다 자동 적용되어야 한다.
+  store.set('sim:start-preset:c-sim', 'hardmode');
+  world.chats['c-sim:2'] = { id: 'ch3', message: [{ role: 'char', data: '첫인사 ⟦simcore:0⟧' }] };
+  world.chatIdx = 2;
+  await sleep(2200);
+  const html = global.__hooks?.display?.('⟦simcore:0⟧') ?? '';
+  ck('★ 저장된 프리셋이 새 채팅 턴 0에 자동 적용된다 (hp 50→5)',
+    /5</.test(String(html)) && !/50</.test(String(html)), String(html).slice(0, 200));
+  // 없는 프리셋 id가 저장돼 있으면 조용히 무시한다 (스키마 교체 대비)
+  store.set('sim:start-preset:c-sim', 'ghost-preset');
+  world.chats['c-sim:3'] = { id: 'ch4', message: [{ role: 'char', data: '첫인사 ⟦simcore:0⟧' }] };
+  world.chatIdx = 3;
+  await sleep(2200);
+  const html2 = global.__hooks?.display?.('⟦simcore:0⟧') ?? '';
+  ck('스키마에 없는 저장 프리셋은 무시된다 (초기값 유지)', /50</.test(String(html2)), String(html2).slice(0, 200));
 
   // 스키마 없는 캐릭터로 돌아가면 버튼이 걷힌다
   world.chaIdx = 0; world.chatIdx = 0;

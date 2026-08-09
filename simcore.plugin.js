@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85.1
-//@display-name SimCore (시뮬 엔진) v0.85.1 지금 적용 되읽기 수정
+//@version 0.85.2
+//@display-name SimCore (시뮬 엔진) v0.85.2 프리셋이 새 채팅에 따라간다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.2 ───────────────────────────────────────────────
+// 새 시작 프리셋이 **새 채팅에서 증발**하던 문제 (실사고: 리얼리티를 골랐는데 새 채팅이
+// 10레벨·팬 200명 초기값으로 시작). 프리셋은 고른 순간의 채팅 상태에만 적용됐는데,
+// 새 채팅은 세션을 초기값으로 새로 잡는다 — "새 채팅을 시작하기 전에 고르세요"라는
+// 안내와 구조가 모순이었다. 선택을 캐릭터에 저장(sim:start-preset:<캐릭터>)하고,
+// 턴 0인 세션이 잡힐 때마다 자동 적용한다 (첫 턴 뒤엔 스냅샷이 이긴다). 패널의 프리셋
+// 버튼에 ✓ 표시 — 새 채팅마다 무엇으로 시작하는지 보인다. 없는 id는 조용히 무시.
 //
 // ── v0.85.1 ───────────────────────────────────────────────
 // 더티 배너의 [지금 적용]이 안 먹히는 것처럼 보이던 문제.
@@ -20905,6 +20913,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
   let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
+  let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
+  let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
@@ -20974,6 +20984,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
     await session.init(lastCharIdx);
+    // 새 시작 프리셋은 채팅이 아니라 **캐릭터에** 붙는다 (v0.85.2). 패널에서 고른 순간의
+    // 채팅에만 적용하던 예전 방식은 새 채팅을 만드는 순간 초기값으로 증발했다 — 실사고:
+    // 리얼리티를 골랐는데 새 채팅이 10레벨·팬 200명(초기값)으로 시작. 선택을 저장해 두고
+    // 턴 0인 세션이 잡힐 때마다 다시 적용한다. 첫 턴이 지나면 스냅샷이 이기므로 안 건드린다.
+    startPresetKey = `sim:start-preset:${currentChaId}`;
+    try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
+    catch { startPresetId = null; }
+    if (startPresetId && session.current.meta.turn === 0) {
+      if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
+        session.applyPreset(startPresetId);
+        console.log('[simcore] 새 시작 프리셋 자동 적용:', startPresetId);
+      } else startPresetId = null; // 스키마가 바뀌어 이제 없는 프리셋 — 무시
+    }
     console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
   }
 
@@ -22929,7 +22952,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               <div class="sc-card-head">
                 <div>
                   <h3 class="sc-card-title">새 시작</h3>
-                  <p class="sc-card-desc">새 채팅을 시작하기 전에 프리셋을 고를 수 있어요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.</p>
+                  <p class="sc-card-desc">고른 프리셋(✓)은 캐릭터에 저장되어 <b>새 채팅을 시작할 때마다 자동 적용</b>돼요.<br>AI 최초설정이 켜진 스키마는 첫 대화에서 시작 상황을 정해요.</p>
                 </div>
                 <span class="sc-card-badge">시작 설정</span>
               </div>
@@ -23944,9 +23967,13 @@ count(목록)  has(목록, "항목")</pre>
     if (!presets.length) presetsDiv.innerHTML = '<span class="muted">정의된 프리셋 없음</span>';
     for (const p of presets) {
       const btn = document.createElement('button');
-      btn.textContent = p.label ?? p.id;
+      // 저장된 선택엔 ✓ — 새 채팅마다 자동 적용되는 것이 무엇인지 보여야 한다 (v0.85.2)
+      btn.textContent = (p.id === startPresetId ? '✓ ' : '') + (p.label ?? p.id);
       btn.onclick = async () => {
         session.applyPreset(p.id);
+        // 선택을 캐릭터에 저장 — 이후 새 채팅은 턴 0 로드 때 이 프리셋으로 시작한다 (v0.85.2)
+        startPresetId = p.id;
+        try { if (startPresetKey) await Risuai.pluginStorage.setItem(startPresetKey, p.id); } catch {}
         // ⚠ 스냅샷 저장을 빼먹으면 프리셋이 메모리에만 남는다 — 채팅을 옮겼다 돌아오면
         // 마지막 저장본으로 되돌아가 조용히 사라진다 (v0.85.1, 변수 수동 보정과 같은 규약)
         if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);

@@ -4982,9 +4982,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                 const r = await ai.getAssetSources();
                 const names = [...new Set((r?.sources || []).flatMap((s) => s.names || []))];
                 dl.replaceChildren(...names.map((n) => h('option', { value: n })));
-                note.textContent = `에셋 ${names.length}개 읽음 — 입력 칸에서 자동완성됩니다.`;
+                // 대조 (v0.83.1) — 명단 44명에 에셋 49개면 어느 쪽이 남는지가 안 보인다.
+                // 인물마다 초상을 손으로 확인하는 건 사람이 할 일이 아니라서 여기서 짚어 준다.
+                // 확장자는 양쪽에서 떼고 본다 (리수 버전마다 붙기도 하고 안 붙기도 한다).
+                const bare = (x) => String(x).replace(/\.(png|jpe?g|gif|webp|avif|bmp)$/i, '');
+                const have = new Set(names.map(bare));
+                const mapped = new Map(allNames
+                  .map((nm) => [nm, (P.portraits || {})[nm]]).filter(([, a]) => a));
+                const missing = allNames.filter((nm) => !mapped.has(nm));
+                const broken = [...mapped].filter(([, a]) => !have.has(bare(a))).map(([nm]) => nm);
+                const used = new Set([...mapped.values()].map(bare));
+                const spare = names.filter((n) => !used.has(bare(n)));
+                const say = (label, arr, cap = 6) => (arr.length
+                  ? ` · ${label} ${arr.length}: ${arr.slice(0, cap).join(', ')}${arr.length > cap ? ` 외 ${arr.length - cap}` : ''}`
+                  : '');
+                note.textContent = `에셋 ${names.length}개 읽음 — 입력 칸에서 자동완성됩니다.`
+                  + say('초상 없음', missing) + say('에셋에 없는 이름', broken) + say('안 쓰인 에셋', spare);
               } catch (e) { note.textContent = `에셋 읽기 실패 — ${e.message}`; }
-            } }, '🔎 에셋 이름 불러오기 (자동완성용)'), note));
+            } }, '🔎 에셋 이름 불러오기 · 대조'), note));
         }
         for (const nm of allNames) {
           fold.appendChild(h('div', { class: 'sce-row' },

@@ -69,6 +69,7 @@ const BASE_CSS = `
 .sim-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
 .sim-choices{margin-top:8px;padding:7px 10px;border:1px solid rgba(200,160,80,.5);border-radius:7px}
 .sim-choices-title{font-weight:700;font-size:.88em;opacity:.85;margin-bottom:4px}
+.sim-choices-desc{font-size:.84em;opacity:.75;margin-bottom:5px}
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
@@ -198,6 +199,9 @@ function choicesHtml(schema, state) {
   if (!ev) return '';
   const lookup = makeLookup(schema, state.vars);
   let out = '<div class="sim-choices"><div class="sim-choices-title">⌛ 선택의 순간</div>';
+  // 무엇에 대한 선택인지 — 발동 순간의 notify를 다시 보여준다. 알림은 그 턴에 흘러가 버려서
+  // 다음 메시지의 선택 블록만 보면 맥락이 없었다 (실기 제보: 빚 얘긴 줄 알았는데 일감 제안이었다)
+  if (ev.notify) out += `<div class="sim-choices-desc">${esc(String(ev.notify))}</div>`;
   ev.choices.forEach((c, i) => {
     let locked = false;
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }

@@ -4109,11 +4109,51 @@ const IDOL = {
             { set: 'm1_me', expr: 'min(m1_me + 6, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 6, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 6, 100)' },
           ],
           notify: '사무소로 편지가 왔다. 손글씨였고, 아주 오래 쓴 티가 났다.' },
-        { id: 'cold', weight: 2, cooldown: 5, when: 'not unit_over',
+        { id: 'cold', weight: 2, cooldown: 8, when: 'not unit_over',
           effects: [
             { set: 'm1_st', expr: 'max(m1_st - 12, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 12, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 12, 0)' },
           ],
           notify: '연습실에 감기가 돌았다. 셋 다 목이 가라앉았다.' },
+        // ── 일상 이벤트 (v0.85.8) — 게이트 없는 이벤트가 편지·감기 둘뿐이라, 일감을 잡고
+        // 있는 동안엔 감기만 반복해서 걸렸다 (실기 제보). 풀을 넓혀 희석한다.
+        { id: 'stray_cat', weight: 2, cooldown: 7, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+          ],
+          notify: '연습실 뒷문에 길고양이가 자리를 잡았다. 셋이 몰래 이름을 붙였다.' },
+        { id: 'fan_gift', weight: 2, cooldown: 8, when: 'not unit_over',
+          effects: [
+            { set: 'm1_st', expr: 'min(m1_st + 4, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 4, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 4, 100)' },
+            { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+          ],
+          notify: '팬이 보낸 간식 상자가 도착했다. 손편지가 맨 위에 놓여 있었다.' },
+        { id: 'noise_complaint', weight: 2, cooldown: 9, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'max(m1_me - 4, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 4, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+            { set: 'buzz', expr: 'max(buzz - 2, 0)' },
+          ],
+          notify: '옆 건물에서 소음 민원이 들어왔다. 밤 연습 시간을 줄여야 할지도 모른다.' },
+        { id: 'equip_break', weight: 2, cooldown: 10, when: 'not unit_over and funds >= 30',
+          effects: [{ set: 'funds', expr: 'max(funds - 30, 0)' }],
+          notify: '연습실 스피커가 수명을 다했다. 수리비 30만원이 나갔다.' },
+        { id: 'senior_visit', weight: 2, cooldown: 10, when: 'not unit_over',
+          effects: [
+            { set: 'm1_st', expr: 'min(m1_st + 6, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 6, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 6, 100)' },
+            { set: 'm1_love', expr: 'min(m1_love + 2, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 2, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 2, 100)' },
+          ],
+          notify: '같은 소속사 출신 선배가 간식을 들고 들렀다. 짧은 조언이 오래 남았다.' },
+        { id: 'viral_clip', weight: 1, cooldown: 12, when: 'not unit_over',
+          effects: [
+            { set: 'buzz', expr: 'min(buzz + 12, 100)' },
+            { set: 'fans', expr: 'min(fans + round(80 * fan_mul), 9999999)' },
+          ],
+          notify: '누가 찍은 연습 영상이 조용히 돌고 있다. 댓글이 낯선 속도로 늘어난다.' },
+        // 날씨 연동 — v0.85.7의 weather가 수치에도 닿는 자리. 비·눈 오는 날의 작은 대가
+        { id: 'bad_weather', weight: 2, cooldown: 8, when: "not unit_over and (weather == '비' or weather == '눈')",
+          effects: [
+            { set: 'm1_st', expr: 'max(m1_st - 5, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 5, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 5, 0)' },
+          ],
+          notify: '궂은 날씨에 이동이 길어졌다. 젖은 신발이 마르기 전에 다음 일정이 왔다.' },
         // 음지의 청구서 — 돈은 그날 받고 값은 나중에 치른다. 이 이벤트가 없으면 타락 루트가
         // 그냥 "돈 더 주는 버튼"이 되어 갈림길이 안 된다
         { id: 'leak', weight: 3, cooldown: 10, when: 'not unit_over and corrupt >= 40',

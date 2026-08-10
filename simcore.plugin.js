@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85.8
-//@display-name SimCore (시뮬 엔진) v0.85.8 선택지에 맥락 표시 + 아이돌 일상 이벤트 7종
+//@version 0.85.9
+//@display-name SimCore (시뮬 엔진) v0.85.9 아이돌 관계·개그·럭키 이벤트 10종
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.9 ───────────────────────────────────────────────
+// IDOL 랜덤 이벤트 10종 추가 (실기 요청): 다툼 갈림길(중재/기다림/외면)·냉전,
+// 긍정(팬클럽 fans≥800·완주·재방송 aware≥32), 럭키 스케베 2종(해프닝 수위),
+// 음지 화보 갈림길(corrupt≥25 — 수위는 암시까지, sunk 규약), 개그 2종.
+// 문구는 인원 중립 (DLC 유닛 5인). 효과는 m1/m2/m3 삼중 패턴 — DLC가 m4/m5 자동 복제.
 //
 // ── v0.85.8 ───────────────────────────────────────────────
 // ① 갈림길 블록에 발동 문구(notify)를 부제로 다시 보여준다 — 알림은 그 턴에 흘러가
@@ -20108,6 +20114,93 @@ const IDOL = {
             { set: 'm1_st', expr: 'max(m1_st - 5, 0)' }, { set: 'm2_st', expr: 'max(m2_st - 5, 0)' }, { set: 'm3_st', expr: 'max(m3_st - 5, 0)' },
           ],
           notify: '궂은 날씨에 이동이 길어졌다. 젖은 신발이 마르기 전에 다음 일정이 왔다.' },
+        // ── 관계·개그·럭키 (v0.85.9) — 문구는 인원 중립으로 (DLC는 유닛이 5인이다) ──
+        // 다툼은 갈림길이다 — 프로듀서가 어떻게 끼어드는가가 곧 이 게임의 관계 운영이므로.
+        // 누가 누구와 싸웠는지는 서사가 정한다 (효과는 유닛 전체 평균으로 떨어진다).
+        { id: 'quarrel', weight: 2, cooldown: 12, timeout: 2, when: 'not unit_over',
+          notify: '연습 방향을 두고 멤버 둘의 언성이 높아졌다. 연습실 공기가 낮게 가라앉아 있다.',
+          choices: [
+            { label: '자리를 만들어 중재한다',
+              inject: '둘을 따로 불러 앉힌다. 누가 어떤 말로 매듭을 푸는지 그려라.',
+              effects: [
+                { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+                { set: 'm1_love', expr: 'min(m1_love + 2, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 2, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 2, 100)' },
+              ] },
+            { label: '스스로 풀 때까지 기다린다',
+              inject: '어른의 개입 없이 둘이 풀게 둔다. 시간이 걸리지만 그만큼 단단해질 수도 있다.',
+              effects: [
+                { set: 'm1_me', expr: 'max(m1_me - 3, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 3, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 3, 0)' },
+                { set: 'm1_love', expr: 'min(m1_love + 4, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 4, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 4, 100)' },
+              ] },
+            { label: '못 본 척 넘어간다',
+              inject: '바쁘다는 핑계로 지나친다. 가라앉은 공기가 다음 날까지 이어진다.',
+              effects: [
+                { set: 'm1_me', expr: 'max(m1_me - 6, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 6, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 6, 0)' },
+              ] },
+          ] },
+        { id: 'cold_war', weight: 2, cooldown: 10, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'max(m1_me - 5, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 5, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 5, 0)' },
+          ],
+          notify: '누가 먼저랄 것 없이 말수가 줄었다. 싸운 것도 아닌데 연습실이 조용하다.' },
+        // 긍정 — 팬클럽은 팬 문턱이 열고, 완주는 아무 때나
+        { id: 'fanclub', weight: 2, cooldown: 15, when: 'not unit_over and fans >= 800',
+          effects: [
+            { set: 'fans', expr: 'min(fans + round(120 * fan_mul), 9999999)' },
+            { set: 'm1_love', expr: 'min(m1_love + 4, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 4, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 4, 100)' },
+          ],
+          notify: '팬들이 자발적으로 팬클럽을 꾸렸다는 소식이 왔다. 회칙 1조가 "무리하지 말 것"이었다.' },
+        { id: 'perfect_run', weight: 2, cooldown: 8, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'min(m1_me + 6, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 6, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 6, 100)' },
+            { set: 'buzz', expr: 'min(buzz + 3, 100)' },
+          ],
+          notify: '처음으로 곡 하나를 처음부터 끝까지 틀리지 않고 완주했다. 끝나고 아무도 먼저 말을 못 꺼냈다.' },
+        { id: 'rerun', weight: 1, cooldown: 12, when: 'not unit_over and awareness >= 32',
+          effects: [
+            { set: 'awareness', expr: 'min(awareness + 2, 100)' },
+            { set: 'fans', expr: 'min(fans + round(60 * fan_mul), 9999999)' },
+          ],
+          notify: '지난 출연분이 재방송을 탔다. 본 사람이 생각보다 많았다.' },
+        // 럭키 스케베 — 수위는 해프닝까지. 무거운 쪽은 음지 게이트(corrupt) 뒤에 있다
+        { id: 'lucky_wardrobe', weight: 2, cooldown: 9, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'max(m1_me - 3, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 3, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 3, 0)' },
+            { set: 'm1_love', expr: 'min(m1_love + 3, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 3, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 3, 100)' },
+          ],
+          notify: '의상 갈아입는 중에 커튼이 무너졌다. 하필 프로듀서가 지나가던 참이었고, 비명은 사무소 밖까지 들렸다.' },
+        { id: 'lucky_laundry', weight: 1, cooldown: 12, when: 'not unit_over',
+          effects: [
+            { set: 'm1_love', expr: 'min(m1_love + 2, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 2, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 2, 100)' },
+          ],
+          notify: '연습복 세탁물이 프로듀서의 짐과 섞여 버렸다. 돌려주는 손도 받는 손도 서로 눈을 못 맞췄다.' },
+        // 음지 화보 제안 — 에로 축은 타락 노선에서만 문이 열린다 (수위는 암시까지, sunk 지시문 규약)
+        { id: 'shady_photo', weight: 2, cooldown: 12, timeout: 2, when: 'not unit_over and corrupt >= 25',
+          notify: '수위 있는 화보를 찍자는 전화가 왔다. 지면은 밝은 곳이 아니지만, 부르는 값은 밝은 곳보다 높다.',
+          choices: [
+            { label: '받는다',
+              inject: '촬영을 받기로 한다. 어떤 촬영인지는 직접 그리지 말고 전후의 공기로만 암시하라.',
+              effects: [
+                { set: 'corrupt', expr: 'min(corrupt + 6, 100)' },
+                { set: 'funds', expr: 'min(funds + 250, 9999999)' },
+                { set: 'm1_me', expr: 'max(m1_me - 5, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 5, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 5, 0)' },
+              ] },
+            { label: '끊는다',
+              inject: '번호를 차단한다. 하지만 이런 전화가 왔다는 사실 자체가 지금 위치를 말해 준다.',
+              effects: [{ set: 'm1_me', expr: 'max(m1_me - 2, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 2, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 2, 0)' }] },
+          ] },
+        // 개그 — 웃기려고 넣는 이벤트는 효과가 아니라 문구가 본체다. 수치는 거들 뿐
+        { id: 'dance_fail', weight: 2, cooldown: 8, when: 'not unit_over',
+          effects: [
+            { set: 'buzz', expr: 'min(buzz + 8, 100)' },
+            { set: 'm1_me', expr: 'max(m1_me - 4, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 4, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+          ],
+          notify: '안무 연습 중 대차게 넘어지는 장면이 찍혀 돌고 있다. 조회수는 신곡보다 잘 나온다.' },
+        { id: 'wrong_delivery', weight: 2, cooldown: 9, when: 'not unit_over',
+          effects: [
+            { set: 'm1_me', expr: 'min(m1_me + 5, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 5, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 5, 100)' },
+          ],
+          notify: '주소가 틀린 택배가 왔다 — 사람 키만 한 물고기 인형이었다. 반송 전까지 연습실 상석을 차지했다.' },
         // 음지의 청구서 — 돈은 그날 받고 값은 나중에 치른다. 이 이벤트가 없으면 타락 루트가
         // 그냥 "돈 더 주는 버튼"이 되어 갈림길이 안 된다
         { id: 'leak', weight: 3, cooldown: 10, when: 'not unit_over and corrupt >= 40',

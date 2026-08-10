@@ -3119,6 +3119,34 @@ const shadyCheck = (id, label, vs) => ({
   ],
 });
 
+// 하루를 닫는 정산 한 벌 — 🌙 액션과 서사 연동 이벤트(night_auto)가 **같은 목록**을 쓴다.
+// 두 벌로 갈라 두면 반드시 한쪽만 고쳐져서 어긋난다 (시계 입구는 하나라는 규율의 코드판).
+const IDOL_DAY_EFFECTS = [
+  { set: 'skip_day', expr: 'skip_day + 1' },
+  // ⚠ 순서가 중요하다 — 펑크 판정이 job_days를 읽으므로 감소는 맨 뒤다
+  { set: 'late', expr: "job != '없음' and job_days <= 0 ? min(late + 1, 99) : late" },
+  { set: 'buzz', expr: "job != '없음' and job_days <= 0 ? max(buzz - 12, 0) : max(round(buzz * 0.88), 0)" },
+  { set: 'job', expr: "job != '없음' and job_days <= 0 ? '없음' : job" },
+  // 라이브도 같은 규율 — 잡아 두고 안 서면 펑크다 (공연은 표를 판 자리라 더 크게 깎인다)
+  { set: 'late', expr: "live != '없음' and live_days <= 0 ? min(late + 2, 99) : late" },
+  { set: 'buzz', expr: "live != '없음' and live_days <= 0 ? max(buzz - 18, 0) : buzz" },
+  { set: 'live', expr: "live != '없음' and live_days <= 0 ? '없음' : live" },
+  { set: 'funds', expr: 'max(funds - 25, 0)' },
+  { set: 'm1_st', expr: 'min(m1_st + 10, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 10, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 10, 100)' },
+  { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+  // 잊힘 — 쌓이기만 하는 자원을 두면 손 놓아도 안 줄어든다. 하루 1%씩 빠져서
+  // "계속 뭔가 하고 있어야 유지된다"가 성립한다. 인지도는 화제가 아예 없는 날에만 준다
+  { set: 'fans', expr: 'max(fans - round(fans * 0.01), 0)' },
+  { set: 'm1_fan', expr: 'max(m1_fan - round(m1_fan * 0.01), 0)' },
+  { set: 'm2_fan', expr: 'max(m2_fan - round(m2_fan * 0.01), 0)' },
+  { set: 'm3_fan', expr: 'max(m3_fan - round(m3_fan * 0.01), 0)' },
+  { set: 'awareness', expr: 'buzz <= 8 ? max(awareness - 1, 0) : awareness' },
+  { set: 'job_days', expr: 'max(job_days - 1, 0)' },
+  { set: 'live_days', expr: 'max(live_days - 1, 0)' },
+  // 서사 연동 깃발 청소 — 🌙을 눌렀으면 같은 턴의 넘김 요청은 이미 소화된 것
+  { set: 'night_req', expr: 'false' },
+];
+
 const IDOL = {
   simcore: '0.1',
   meta: { name: '아이돌 프로듀스 기록', author: 'SimCore 템플릿' },
@@ -3279,10 +3307,15 @@ const IDOL = {
       desc: '프로듀서를 얼마나 믿는가. 높으면 힘든 날에도 버텨 준다.' },
     { id: 'm3_fan', label: '린 · 개별 인기', type: 'int', init: 420, min: 0, max: 9999999, format: '{v}명' },
     // ── 진행 ──
-    // 하루를 넘기는 입구는 🌙 하나뿐이다 (updater allow에도 없다) — 시계 입구가 둘이면
+    // 하루를 넘기는 정산은 🌙 한 벌뿐이다 (IDOL_DAY_EFFECTS) — 시계 입구가 둘이면
     // 하루가 두 번 흐른다. 좀비 템플릿에서 같은 규율을 썼다.
+    // v0.85.6: 입구가 하나라 서사가 밤을 넘겨도 날짜가 안 흘러 어긋나는 실사고가 났다.
+    // 그래서 보조 AI에게 "요청 깃발"만 준다 (night_req) — 정산 자체는 여전히 한 벌이고,
+    // 🌙이 깃발을 같이 지우므로 같은 밤이 두 번 흐르지 않는다.
     { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
-      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 🌙 버튼이 하니 서사로 날짜를 넘기지 마라.' },
+      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 시스템이 하니 직접 바꾸지 마라.' },
+    { id: 'night_req', label: '하루 넘김 요청', type: 'bool', init: false,
+      desc: '서사가 명백히 하룻밤을 넘겼는데 🌙이 안 눌렸을 때만 켠다 (잠들고 이튿날 아침 등). 시스템이 하루 정산을 대신 돌린다. 같은 날 안이면 절대 켜지 마라.' },
   ],
   derived: [
     // 자리 배수 — 멤버마다 한 줄. 슬롯 쪽에서 사람을 찾으면 3×3 항이 되지만,
@@ -3960,29 +3993,7 @@ const IDOL = {
     { id: 'next_day', label: '🌙 하루를 마친다', mode: 'oneshot', impactExempt: true,
       when: 'not unit_over',
       inject: '[행동] 사무소의 불을 끄고 하루를 접는다. 오늘 남은 것 하나를 짧게 그려라.',
-      effects: [
-        { set: 'skip_day', expr: 'skip_day + 1' },
-        // ⚠ 순서가 중요하다 — 펑크 판정이 job_days를 읽으므로 감소는 맨 뒤다
-        { set: 'late', expr: "job != '없음' and job_days <= 0 ? min(late + 1, 99) : late" },
-        { set: 'buzz', expr: "job != '없음' and job_days <= 0 ? max(buzz - 12, 0) : max(round(buzz * 0.88), 0)" },
-        { set: 'job', expr: "job != '없음' and job_days <= 0 ? '없음' : job" },
-        // 라이브도 같은 규율 — 잡아 두고 안 서면 펑크다 (공연은 표를 판 자리라 더 크게 깎인다)
-        { set: 'late', expr: "live != '없음' and live_days <= 0 ? min(late + 2, 99) : late" },
-        { set: 'buzz', expr: "live != '없음' and live_days <= 0 ? max(buzz - 18, 0) : buzz" },
-        { set: 'live', expr: "live != '없음' and live_days <= 0 ? '없음' : live" },
-        { set: 'funds', expr: 'max(funds - 25, 0)' },
-        { set: 'm1_st', expr: 'min(m1_st + 10, 100)' }, { set: 'm2_st', expr: 'min(m2_st + 10, 100)' }, { set: 'm3_st', expr: 'min(m3_st + 10, 100)' },
-        { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
-        // 잊힘 — 쌓이기만 하는 자원을 두면 손 놓아도 안 줄어든다. 하루 1%씩 빠져서
-        // "계속 뭔가 하고 있어야 유지된다"가 성립한다. 인지도는 화제가 아예 없는 날에만 준다
-        { set: 'fans', expr: 'max(fans - round(fans * 0.01), 0)' },
-        { set: 'm1_fan', expr: 'max(m1_fan - round(m1_fan * 0.01), 0)' },
-        { set: 'm2_fan', expr: 'max(m2_fan - round(m2_fan * 0.01), 0)' },
-        { set: 'm3_fan', expr: 'max(m3_fan - round(m3_fan * 0.01), 0)' },
-        { set: 'awareness', expr: 'buzz <= 8 ? max(awareness - 1, 0) : awareness' },
-        { set: 'job_days', expr: 'max(job_days - 1, 0)' },
-        { set: 'live_days', expr: 'max(live_days - 1, 0)' },
-      ] },
+      effects: IDOL_DAY_EFFECTS },
   ],
   rules: {
     onTurn: [
@@ -3992,6 +4003,11 @@ const IDOL = {
       { list: 'live_queue', expire: 'elapsed' },
     ],
     events: [
+      // 서사 연동 하루 넘김 — 보조 AI가 켠 요청을 여기서 소화한다. 효과는 🌙과 **같은 한 벌**
+      // (IDOL_DAY_EFFECTS — 그 안의 night_req=false가 이 이벤트의 자기해제 빗장이기도 하다).
+      // 순서 안전: 🌙(전송 단계)이 먼저면 깃발이 이미 꺼져 있어 같은 밤이 두 번 흐르지 않는다.
+      { id: 'night_auto', when: 'night_req and not unit_over', effects: IDOL_DAY_EFFECTS,
+        notify: '서사를 따라 하루가 넘어갔다 — 🌙 없이도 사무소의 밤은 정산된다.' },
       // 등급은 인지도가 문턱을 넘을 때 올라간다. once를 안 쓴 이유는 romance와 같다 —
       // 조건이 계속 참이면 한 번만 발동하고, 내려갔다 올라와도 다시 맞춰진다
       { id: 'rank_e', when: "rank == 'F' and awareness >= 20", effects: [{ set: 'rank', expr: "'E'" }],
@@ -4218,6 +4234,10 @@ const IDOL = {
       text: '[상태] 비너스 배틀 {v_rank}위 — 이름이 순위로 불리는 자리다. 어디서든 순위가 먼저 소개되고, 도전자들이 이쪽을 지목한다.' },
     { id: 'ended', when: 'unit_over',
       text: '[상태] 이 이야기는 끝났다. 새로 시작하지 말고, 흩어진 뒤의 시점이나 남은 것들로 마무리하라.' },
+    // 시간 규율 — 진행은 하루 단위다. 서사가 "사흘 뒤"로 건너뛰면 D-day·정산이 못 따라와
+    // 상태와 어긋난다 (실사고). 하룻밤 넘김은 시스템이 따라오지만(night_auto) 그 이상은 못 한다.
+    { id: 'clock', when: 'not unit_over',
+      text: '[시간] 오늘은 {date}다. 서사는 하루 단위로 진행하라 — 하룻밤을 넘겨 이튿날 아침까지는 그려도 되지만, "며칠 뒤"처럼 여러 날을 한 번에 건너뛰지 마라.' },
   ],
   updater: {
     model: 'aux',
@@ -4229,13 +4249,15 @@ const IDOL = {
       { id: 'm1_love', maxDelta: 6 }, { id: 'm2_love', maxDelta: 6 }, { id: 'm3_love', maxDelta: 6 },
       { id: 'schedule' },
       { id: 'job_queue' }, { id: 'live_queue' },
+      { id: 'night_req' },
       // 곡·의상 이름은 시스템이 못 짓는다 — "무엇이 나올 차례인가"까지만 시스템이 정하고
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
     ],
     guide: '장면에 실제로 나온 것만 반영하라. 등급·난이도·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. '
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
-      + '날짜를 넘기는 것은 🌙 버튼이 하니 시간으로 하루를 넘기지 마라. '
+      + '서사가 명백히 하룻밤을 넘겼는데(잠들고 이튿날 아침 등) 날짜가 그대로면 night_req를 켜라 — 하루 정산은 시스템이 돌린다. '
+      + '같은 날 안이거나 이미 날짜가 넘어갔으면 켜지 마라. 여러 날 건너뜀은 반영하지 못한다. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
   },
   promptState: {

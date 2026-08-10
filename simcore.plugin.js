@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.85.6
-//@display-name SimCore (시뮬 엔진) v0.85.6 아이돌 밤이 서사를 따라 넘어간다
+//@version 0.85.7
+//@display-name SimCore (시뮬 엔진) v0.85.7 아이돌 프로필에 날짜·시간대·계절·날씨
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.85.7 ───────────────────────────────────────────────
+// IDOL 프로덕션 탭 머리에 날짜·시간대·계절·날씨. 날짜는 노출 파생 'date' 한 줄
+// (연·월·일을 따로 얹으면 다섯 줄로 갈라진다 — 실기 제보). 형식 YYYY-MM-DD.
+// 계절은 달력 내장 노출값(season) 그대로. 시간대(tod)·날씨(weather)는 서사가 정하는
+// 값이라 enum + allow — 🌙/night_auto가 시간대를 아침으로 되돌린다.
 //
 // ── v0.85.6 ───────────────────────────────────────────────
 // IDOL: 서사가 밤을 넘겼는데 🌙을 안 누르면 날짜가 안 흘러 어긋나는 실사고.
@@ -19080,6 +19086,8 @@ const IDOL_DAY_EFFECTS = [
   { set: 'awareness', expr: 'buzz <= 8 ? max(awareness - 1, 0) : awareness' },
   { set: 'job_days', expr: 'max(job_days - 1, 0)' },
   { set: 'live_days', expr: 'max(live_days - 1, 0)' },
+  // 하루가 넘어가면 아침이다 — 시간대는 서사가 굴리고, 날은 여기서 재설정한다
+  { set: 'tod', expr: "'아침'" },
   // 서사 연동 깃발 청소 — 🌙을 눌렀으면 같은 턴의 넘김 요청은 이미 소화된 것
   { set: 'night_req', expr: 'false' },
 ];
@@ -19091,7 +19099,7 @@ const IDOL = {
   // 시각은 안 쓴다 — 이 판의 단위는 하루다. 날짜와 요일만 있으면 스케줄이 선다.
   time: {
     start: '2026-04-06', advance: 'explicit',
-    format: { date: 'M월 D일' },
+    format: { date: 'YYYY-MM-DD' },
     calendar: 'gregorian',
   },
   // 달력이 이 템플릿의 중심이다. 고정 일정은 marks가, 손으로 적는 예정은 schedule이,
@@ -19253,6 +19261,11 @@ const IDOL = {
       desc: '며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 시스템이 하니 직접 바꾸지 마라.' },
     { id: 'night_req', label: '하루 넘김 요청', type: 'bool', init: false,
       desc: '서사가 명백히 하룻밤을 넘겼는데 🌙이 안 눌렸을 때만 켠다 (잠들고 이튿날 아침 등). 시스템이 하루 정산을 대신 돌린다. 같은 날 안이면 절대 켜지 마라.' },
+    // ── 환경 (서사가 정하는 값 — 계절은 달력이 내니 파생, 시간대·날씨는 서사 몫) ──
+    { id: 'tod', label: '시간대', type: 'enum', init: '아침', enum: ['아침', '낮', '저녁', '밤'],
+      desc: '장면의 시간대. 서사가 그린 대로 따라가라. 하루를 마치면 시스템이 아침으로 되돌린다.' },
+    { id: 'weather', label: '날씨', type: 'enum', init: '맑음', enum: ['맑음', '흐림', '비', '눈', '바람'],
+      desc: '오늘의 날씨. 서사에 나온 대로 따라가되 계절에 어울리게 — 눈은 겨울에만.' },
   ],
   derived: [
     // 자리 배수 — 멤버마다 한 줄. 슬롯 쪽에서 사람을 찾으면 3×3 항이 되지만,
@@ -20187,6 +20200,7 @@ const IDOL = {
       { id: 'schedule' },
       { id: 'job_queue' }, { id: 'live_queue' },
       { id: 'night_req' },
+      { id: 'tod' }, { id: 'weather' },
       // 곡·의상 이름은 시스템이 못 짓는다 — "무엇이 나올 차례인가"까지만 시스템이 정하고
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
       { id: 'songs' }, { id: 'wardrobe' },
@@ -20195,11 +20209,12 @@ const IDOL = {
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '서사가 명백히 하룻밤을 넘겼는데(잠들고 이튿날 아침 등) 날짜가 그대로면 night_req를 켜라 — 하루 정산은 시스템이 돌린다. '
       + '같은 날 안이거나 이미 날짜가 넘어갔으면 켜지 마라. 여러 날 건너뜀은 반영하지 못한다. '
+      + '시간대(tod)와 날씨(weather)는 장면이 그린 대로 유지하라 — 날씨는 계절에 어울리게, 눈은 겨울에만. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
   },
   promptState: {
     position: 'history_end',
-    template: '[프로덕션] {date} ({weekday}) · {rank}등급 · 랭킹 {ranking}위\n'
+    template: '[프로덕션] {date} ({weekday}) {tod} · {weather} · {season} · {rank}등급 · 랭킹 {ranking}위\n'
       + '인지도 {awareness} · 화제성 {buzz} · 팬 {fans} · 누적 판매 {sales}\n'
       + '자금 {funds} · 빚 {debt} · 펑크 {late}회\n'
       + '이번 달 수입 {income} · 지출 {spend} · 수지 {balance}\n'
@@ -20277,6 +20292,11 @@ const IDOL = {
       // "우리가 어디까지 왔나"를 두 탭을 오가며 봐야 했다. 유닛을 여럿 굴리는 봇으로 개조할
       // 때는 여기서 다시 쪼개고 유닛마다 탭을 하나씩 두면 된다.
       { label: '프로덕션', items: [
+        // 날짜는 노출 파생 'date' 하나로 — 연·월·일을 따로 얹으면 줄이 다섯으로 갈라진다 (실기 제보)
+        { var: 'date' },
+        { var: 'tod' },
+        { var: 'season' },
+        { var: 'weather' },
         { var: 'rank' },
         { var: 'hard', showWhen: "hard != '보통'" },
         { var: 'ranking' },

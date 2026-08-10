@@ -3097,7 +3097,9 @@ const pitchCheck = (id, label, vs) => ({
 });
 const SHADY_TIERS = [
   ['night', '심야 행사 설득', 10],
+  ['cam', '음지 방송 설득', 13],
   ['spon', '스폰서 자리 설득', 15],
+  ['costume', '수위 코스튬 촬영 설득', 17],
   ['gravure', '수위 화보 설득', 19],
   ['adult', '성인 영상 설득', 24],
 ];
@@ -3145,9 +3147,63 @@ const IDOL_DAY_EFFECTS = [
   { set: 'live_days', expr: 'max(live_days - 1, 0)' },
   // 하루가 넘어가면 아침이다 — 시간대는 서사가 굴리고, 날은 여기서 재설정한다
   { set: 'tod', expr: "'아침'" },
+  { set: 'day_slots', expr: '2' },
   // 서사 연동 깃발 청소 — 🌙을 눌렀으면 같은 턴의 넘김 요청은 이미 소화된 것
   { set: 'night_req', expr: 'false' },
 ];
+
+// 레슨 — 3스탯 × 4등급 (v0.86). "돈으로 점수를 산다"뿐이던 성장에 시간·굴림의 축을 더한다:
+// 레슨은 싸지만 하루 두 칸(day_slots)을 먹고, 굴림이 성패를 가른다. 등급은 유닛 스탯 합이
+// 열고(센터 1.3 + 사이드들 — 만점 ~330 스케일) 멤버별 상한이 막는다 — 초급만으론 40을 못 넘는다.
+// 효과는 m1/m2/m3 + p1/p2/p3 삼중 패턴 — DLC가 m4/m5·p4/p5로 자동 복제한다.
+const LESSON_STATS = [['vo', '보컬', '🎤'], ['da', '댄스', '💃'], ['vi', '비주얼', '💄']];
+const LESSON_TIERS = [
+  // [key, 이름, 비용(만원), 기본 상승, 멤버 스탯 상한, 여는 유닛 합]
+  ['t1', '초급', 30, 2, 40, 0],
+  ['t2', '중급', 80, 3, 60, 60],
+  ['t3', '고급', 180, 4, 80, 130],
+  ['t4', '최상급', 350, 6, 100, 200],
+];
+// 이미 상한 위인 멤버는 깎지 않는다 (특별 과외로 먼저 올렸을 수 있다) — max(현재, min(현재+G, 상한))
+const lessonGain = (s, g, cap) => [1, 2, 3].map((i) => ({
+  set: `m${i}_${s}`,
+  expr: `p${i} > 0 ? max(m${i}_${s}, min(m${i}_${s} + ${g}, ${cap})) : m${i}_${s}`,
+}));
+const LESSON_CHECKS = [];
+const LESSON_ACTIONS = [];
+for (const [s, sname, icon] of LESSON_STATS) {
+  for (const [tk, tname, cost, gain, cap, gate] of LESSON_TIERS) {
+    LESSON_CHECKS.push({
+      id: `ck_ls_${s}_${tk}`, label: `${sname} 레슨 (${tname})`,
+      roll: 'rand(1, 20)', mod: 'round((u_cond - 60) / 12)', vs: 12,
+      grades: [
+        { when: 'roll == 1', label: '대실패',
+          inject: '레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.',
+          effects: [
+            { set: 'm1_me', expr: 'max(m1_me - 4, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 4, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+          ] },
+        { when: 'roll == 20 or total >= vs + 6', label: '대성공',
+          inject: '무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.',
+          effects: lessonGain(s, gain + 2, cap) },
+        { when: 'total >= vs', label: '성공', effects: lessonGain(s, gain, cap) },
+        { label: '아쉬움',
+          inject: '몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.',
+          effects: lessonGain(s, Math.max(1, Math.floor(gain / 2)), cap) },
+      ],
+    });
+    LESSON_ACTIONS.push({
+      id: `ls_${s}_${tk}`, label: `${icon} ${sname} 레슨 · ${tname} (${cost}만원)`, mode: 'oneshot',
+      check: `ck_ls_${s}_${tk}`,
+      when: `day_slots >= 1 and funds >= ${cost}${gate > 0 ? ` and u_${s} >= ${gate}` : ''} and not unit_over`,
+      inject: `[행동] ${tname} ${sname} 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.`,
+      effects: [
+        { set: 'funds', expr: `max(funds - ${cost}, 0)` },
+        { set: 'day_slots', expr: 'max(day_slots - 1, 0)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 6), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 6), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 6), 0)' },
+      ],
+    });
+  }
+}
 
 const IDOL = {
   simcore: '0.1',
@@ -3227,7 +3283,7 @@ const IDOL = {
     // 전에는 버튼 두 개가 등급을 보고 알아서 자리를 골라 줬는데, 그러면 플레이어가 하는 일이
     // "누른다"밖에 없다. 자리를 **고르게** 만들어야 프로듀서 노릇이 된다.
     { id: 'job', label: '잡힌 업무', type: 'enum', init: '없음',
-      enum: ['없음', '거리 홍보', '지역 라디오', '잡지 화보', '지방 방송국', '케이블 음악방송', '지상파 음악방송', '골든타임 특집'],
+      enum: ['없음', '거리 홍보', '백화점 홍보', '지역 라디오', '잡지 화보', '축제 행사', '지방 방송국', '케이블 음악방송', '지상파 음악방송', '골든타임 특집'],
       desc: '수주해 둔 일. 시스템이 정하니 서사로 바꾸지 마라 — 어떤 현장이었는지는 서사가 그린다.' },
     { id: 'job_days', label: '업무까지', type: 'int', init: 0, min: 0, max: 30, format: '{v}일',
       desc: '업무까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
@@ -3238,7 +3294,7 @@ const IDOL = {
     { id: 'shady_ok', label: '설득 결과', type: 'int', init: 0, min: 0, max: 1,
       desc: '직전 음지 설득의 결과(0 거절·1 수락). 시스템이 쓰고 바로 읽는 임시 값이니 서사로 건드리지 마라.' },
     { id: 'live', label: '잡힌 라이브', type: 'enum', init: '없음',
-      enum: ['없음', '라이브하우스', '시민회관', '합동 페스티벌', '단독 공연', '전국 투어'],
+      enum: ['없음', '라이브하우스', '백화점 라이브', '시민회관', '합동 페스티벌', '단독 공연', '전국 투어'],
       desc: '잡아 둔 공연. 시스템이 정하니 서사로 바꾸지 마라.' },
     { id: 'live_days', label: '라이브까지', type: 'int', init: 0, min: 0, max: 60, format: '{v}일',
       desc: '공연일까지 며칠 남았나. 0이면 오늘이다. 시스템이 관리한다.' },
@@ -3321,6 +3377,12 @@ const IDOL = {
     // ── 환경 (서사가 정하는 값 — 계절은 달력이 내니 파생, 시간대·날씨는 서사 몫) ──
     { id: 'tod', label: '시간대', type: 'enum', init: '아침', enum: ['아침', '낮', '저녁', '밤'],
       desc: '장면의 시간대. 서사가 그린 대로 따라가라. 하루를 마치면 시스템이 아침으로 되돌린다.' },
+    // 하루의 일정 칸 — 오전·오후 두 칸. 지금은 레슨만 이걸 먹는다 (v0.86: "하루에 레슨 두 번까지").
+    // 모든 액션에 물리면 놀이가 회계가 되므로, 시간을 크게 먹는 것만 문다.
+    { id: 'day_slots', label: '남은 일정', type: 'int', init: 2, min: 0, max: 2, format: '{v}칸',
+      desc: '오전·오후 두 칸. 레슨이 한 칸씩 쓴다. 하루를 마치면 되돌아온다. 시스템이 관리한다.' },
+    { id: 'goods', label: '판매 굿즈', type: 'list', init: [], maxItems: 6, itemMaxLength: 16,
+      desc: '제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다. 시스템이 관리한다.' },
     { id: 'weather', label: '날씨', type: 'enum', init: '맑음', enum: ['맑음', '흐림', '비', '눈', '바람'],
       desc: '오늘의 날씨. 서사에 나온 대로 따라가되 계절에 어울리게 — 눈은 겨울에만.' },
   ],
@@ -3373,20 +3435,20 @@ const IDOL = {
     // 일감표는 이 두 줄이 전부다 — 새 일감을 넣으려면 enum과 여기 두 줄에만 더하면 된다
     { id: 'job_vs', label: '업무 난이도',
       expr: "job == '골든타임 특집' ? 26 : (job == '지상파 음악방송' ? 22 : (job == '케이블 음악방송' ? 19"
-        + " : (job == '지방 방송국' ? 16 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '거리 홍보' ? 10 : 0))))))" },
+        + " : (job == '지방 방송국' ? 16 : (job == '축제 행사' ? 14 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '백화점 홍보' ? 11 : (job == '거리 홍보' ? 10 : 0))))))))" },
     { id: 'job_pay', label: '업무 보수',
       expr: "job == '골든타임 특집' ? 2600 : (job == '지상파 음악방송' ? 1500 : (job == '케이블 음악방송' ? 900"
-        + " : (job == '지방 방송국' ? 560 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '거리 홍보' ? 120 : 0))))))" },
+        + " : (job == '지방 방송국' ? 560 : (job == '축제 행사' ? 420 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '백화점 홍보' ? 160 : (job == '거리 홍보' ? 120 : 0))))))))" },
     // 라이브표 — 업무와 같은 모양의 두 줄 + 정원. 새 공연을 넣으려면 enum과 여기 세 줄에만 더한다
     { id: 'live_vs', label: '라이브 난이도',
       expr: "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 페스티벌' ? 19"
-        + " : (live == '시민회관' ? 15 : (live == '라이브하우스' ? 12 : 0))))" },
+        + " : (live == '시민회관' ? 15 : (live == '백화점 라이브' ? 13 : (live == '라이브하우스' ? 12 : 0)))))" },
     { id: 'live_pay', label: '라이브 개런티',
       expr: "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 페스티벌' ? 800"
-        + " : (live == '시민회관' ? 420 : (live == '라이브하우스' ? 260 : 0))))" },
+        + " : (live == '시민회관' ? 420 : (live == '백화점 라이브' ? 340 : (live == '라이브하우스' ? 260 : 0)))))" },
     { id: 'live_cap', label: '공연장 정원',
       expr: "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 페스티벌' ? 1500"
-        + " : (live == '시민회관' ? 600 : (live == '라이브하우스' ? 200 : 0))))", format: '{v}석' },
+        + " : (live == '시민회관' ? 600 : (live == '백화점 라이브' ? 350 : (live == '라이브하우스' ? 200 : 0)))))", format: '{v}석' },
     // 팔릴 표 — 정원이 천장이다. 팬이 많아도 작은 데서 하면 그만큼만 팔린다(= 큰 자리를 노릴 이유).
     // 거꾸로, 정원이 예상 티켓보다 훨씬 크면 대관료만 날리는 빈 객석이 된다(= 무리하지 말 이유).
     { id: 'live_tickets', label: '예상 티켓',
@@ -3542,8 +3604,9 @@ const IDOL = {
           effects: [
             { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.8), 9999999)' },
-            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.35), 9999999)' },
-            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 1.15), 9999999)' },
+            // 물판은 굿즈 종류가 늘수록 커진다 (v0.86) — funds 줄과 짝 (유령 지출 방지 규약)
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)' },
             { set: 'fans', expr: 'min(fans + round(live_tickets * 0.5 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 24, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.05)), 100)' },
@@ -3560,8 +3623,8 @@ const IDOL = {
           effects: [
             { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.5), 9999999)' },
-            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * 0.18), 9999999)' },
-            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.68), 9999999)' },
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)' },
             { set: 'fans', expr: 'min(fans + round(live_tickets * 0.25 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 12, 100)' },
             { set: 'm1_st', expr: 'max(m1_st - round(p1 * 18), 0)' },
@@ -3649,6 +3712,7 @@ const IDOL = {
     // 거절이고, 거절은 호감을 깎는다 — 물어본 것 자체가 남는다.
     // 영업과 같은 이유로 자리마다 하나씩이다 (판정이 액션보다 먼저 굴러서 vs를 못 고른다).
     ...SHADY_TIERS.map(([id, label, vs]) => shadyCheck(id, label, vs)),
+    ...LESSON_CHECKS,
   ],
   actions: [
     // ── 일감 사다리 ── (v0.82)
@@ -3680,6 +3744,23 @@ const IDOL = {
         { set: 'funds', expr: 'max(funds - 10, 0)' },
         { set: 'job', expr: "pitch_won >= 2 ? '잡지 화보' : (pitch_won >= 1 ? '지역 라디오' : job)" },
         { set: 'job_days', expr: 'pitch_won >= 1 ? 2 + rand(0, 2) : job_days' },
+      ] },
+    // 중간 사다리 (v0.86) — 계약 자리라 판정 없이 잡힌다 (halls 규약). 수수료만 선불
+    { id: 'take_dept', label: '🏬 백화점 홍보를 잡는다', mode: 'oneshot',
+      when: "job == '없음' and awareness >= 10 and funds >= 12 and not unit_over",
+      inject: '[행동] 백화점 이벤트팀과 계약서를 쓴다. 행사장 한켠, 지나가던 사람들이 관객이 되는 자리다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 12, 0)' },
+        { set: 'job', expr: "'백화점 홍보'" },
+        { set: 'job_days', expr: '2 + rand(0, 1)' },
+      ] },
+    { id: 'take_fest', label: '🎪 축제 행사를 잡는다', mode: 'oneshot',
+      when: "job == '없음' and awareness >= 22 and buzz >= 12 and funds >= 30 and not unit_over",
+      inject: '[행동] 지역 축제 운영진과 무대 순서를 조율한다. 야외 무대는 날씨도 실력이다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 30, 0)' },
+        { set: 'job', expr: "'축제 행사'" },
+        { set: 'job_days', expr: '3 + rand(0, 2)' },
       ] },
     { id: 'take_mag', label: '📖 잡지사를 돈다', mode: 'oneshot',
       when: "job == '없음' and awareness >= 18 and funds >= 20 and not unit_over", check: 'ck_mag',
@@ -3735,6 +3816,13 @@ const IDOL = {
       effects: [
         { set: 'funds', expr: 'max(funds - 60, 0)' },
         { set: 'live', expr: "'라이브하우스'" }, { set: 'live_days', expr: '5 + rand(0, 4)' },
+      ] },
+    { id: 'hall_dept', label: '🏬 백화점 특설무대를 빌린다', mode: 'oneshot', cooldown: 3,
+      when: "live == '없음' and fans >= 1200 and funds >= 90 and not unit_over",
+      inject: '[행동] 백화점 옥상 특설무대와 날을 잡는다. 쇼핑 온 사람들의 발을 멈추게 해야 하는 자리다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 90, 0)' },
+        { set: 'live', expr: "'백화점 라이브'" }, { set: 'live_days', expr: '4 + rand(0, 3)' },
       ] },
     { id: 'hall_civic', label: '🏛 시민회관을 빌린다', mode: 'oneshot',
       when: "live == '없음' and fans >= 3000 and funds >= 150 and not unit_over",
@@ -3909,6 +3997,80 @@ const IDOL = {
     // 문턱은 자금이 아니라 **타락도**다: 한 번 담근 만큼만 다음이 열린다.
     // ⚠ impactExempt — 진단이 "쓰면 손해인 함정 액션"으로 잡는 게 맞는 버튼이다. 손해인 걸
     //   알면서 누르는 자리라서 지적에서 뺀다 (융자와 같은 규율).
+    // ── 굿즈 제작 (v0.86) — 장부에 굿즈 수입 칸만 있고 만들 방법이 없었다 (실기 제보).
+    // 한 번 만들면 목록에 남고, 라이브 물판·미니 라이브 판매액이 종류 수만큼 커진다
+    { id: 'make_goods1', label: '🖼 포토카드 세트를 찍는다', mode: 'oneshot',
+      when: "not has(goods, '포토카드') and funds >= 60 and not unit_over",
+      inject: '[행동] 인쇄소에 포토카드 시안을 넘긴다. 어떤 표정을 고를지로 한참 다퉜다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 60, 0)' }, { list: 'goods', add: ['포토카드'] }] },
+    { id: 'make_goods2', label: '🪄 응원봉을 제작한다', mode: 'oneshot',
+      when: "not has(goods, '응원봉') and awareness >= 15 and funds >= 150 and not unit_over",
+      inject: '[행동] 유닛 색을 정하는 자리부터 시작한다. 객석의 색이 정해지는 날이다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 150, 0)' }, { list: 'goods', add: ['응원봉'] }] },
+    { id: 'make_goods3', label: '📕 화보집을 만든다', mode: 'oneshot',
+      when: "not has(goods, '화보집') and awareness >= 30 and funds >= 320 and not unit_over",
+      inject: '[행동] 사진가와 로케이션을 잡는다. 촬영은 하루, 고르는 건 일주일이다.',
+      effects: [{ set: 'funds', expr: 'max(funds - 320, 0)' }, { list: 'goods', add: ['화보집'] }] },
+    // ── 팬서비스 (v0.86) — 돈은 안 되지만 팬과 유대를 사는 자리. 위로 갈수록 팬 문턱이 높다.
+    // 몸값(체력)을 치른다 — 악수회가 공짜가 아니라는 건 서는 쪽이 안다
+    { id: 'fs_shake', label: '🤝 악수회를 연다', mode: 'oneshot', cooldown: 3,
+      when: 'fans >= 300 and funds >= 40 and not unit_over',
+      inject: '[행동] 소규모 악수회를 연다. 한 사람당 몇 초, 그 몇 초를 위해 몇 시간을 선다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 40, 0)' },
+        { set: 'fans', expr: 'min(fans + round(180 * fan_mul), 9999999)' },
+        { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 60), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 60), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 60), 9999999)' },
+        { set: 'm1_love', expr: 'min(m1_love + 4, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 4, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 4, 100)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 12), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 12), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 12), 0)' },
+      ] },
+    { id: 'fs_photo', label: '📸 사진회를 연다', mode: 'oneshot', cooldown: 4,
+      when: 'fans >= 800 and funds >= 60 and not unit_over',
+      inject: '[행동] 촬영회를 연다. 렌즈 너머의 표정까지 서비스다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 60, 0)' },
+        { set: 'fans', expr: 'min(fans + round(260 * fan_mul), 9999999)' },
+        { set: 'buzz', expr: 'min(buzz + 4, 100)' },
+        { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 90), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 90), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 90), 9999999)' },
+        { set: 'm1_love', expr: 'min(m1_love + 4, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 4, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 4, 100)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 10), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 10), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 10), 0)' },
+      ] },
+    { id: 'fs_sign', label: '🖊 사인회를 연다', mode: 'oneshot', cooldown: 5,
+      when: 'fans >= 1500 and funds >= 80 and not unit_over',
+      inject: '[행동] 사인회를 연다. 이름을 물어보고, 그 이름을 눌러 쓴다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 80, 0)' },
+        { set: 'fans', expr: 'min(fans + round(360 * fan_mul), 9999999)' },
+        { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 120), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 120), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 120), 9999999)' },
+        { set: 'm1_love', expr: 'min(m1_love + 6, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 6, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 6, 100)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 10), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 10), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 10), 0)' },
+        { set: 'm1_me', expr: 'max(m1_me - 3, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 3, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 3, 0)' },
+      ] },
+    { id: 'fs_mini', label: '🎶 미니 라이브를 연다', mode: 'oneshot', cooldown: 5,
+      when: 'fans >= 1000 and funds >= 100 and not unit_over',
+      inject: '[행동] 무료 미니 라이브를 연다. 표 없는 무대가 제일 솔직한 객석을 만든다.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 100 + count(goods) * 30, 0)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + count(goods) * 30, 9999999)' },
+        { set: 'fans', expr: 'min(fans + round(420 * fan_mul), 9999999)' },
+        { set: 'buzz', expr: 'min(buzz + 9, 100)' },
+        { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 140), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 140), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 140), 9999999)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 15), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 15), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 15), 0)' },
+      ] },
+    { id: 'fs_meet', label: '💐 팬미팅을 연다', mode: 'oneshot', cooldown: 6,
+      when: 'fans >= 3000 and funds >= 150 and not unit_over',
+      inject: '[행동] 팬미팅을 연다. 무대가 아니라 마주 앉는 자리다 — 게임과 편지와 약속으로.',
+      effects: [
+        { set: 'funds', expr: 'max(funds - 150 + count(goods) * 40, 0)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + count(goods) * 40, 9999999)' },
+        { set: 'fans', expr: 'min(fans + round(550 * fan_mul), 9999999)' },
+        { set: 'buzz', expr: 'min(buzz + 7, 100)' },
+        { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 180), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 180), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 180), 9999999)' },
+        { set: 'm1_love', expr: 'min(m1_love + 9, 100)' }, { set: 'm2_love', expr: 'min(m2_love + 9, 100)' }, { set: 'm3_love', expr: 'min(m3_love + 9, 100)' },
+        { set: 'm1_st', expr: 'max(m1_st - round(p1 * 13), 0)' }, { set: 'm2_st', expr: 'max(m2_st - round(p2 * 13), 0)' }, { set: 'm3_st', expr: 'max(m3_st - round(p3 * 13), 0)' },
+        { set: 'm1_me', expr: 'min(m1_me + 4, 100)' }, { set: 'm2_me', expr: 'min(m2_me + 4, 100)' }, { set: 'm3_me', expr: 'min(m3_me + 4, 100)' },
+      ] },
+    // ── 레슨 12종 (v0.86, 생성 — LESSON_STATS × LESSON_TIERS) ──
+    ...LESSON_ACTIONS,
     { id: 'shady_night', label: '🌃 심야 행사를 받는다', mode: 'oneshot', cooldown: 2, impactExempt: true,
       when: 'not unit_over', check: 'ck_night',
       inject: '[행동] 이름을 안 밝히는 쪽 행사다. 끝나면 현금으로 준다고 했다.',
@@ -3936,6 +4098,40 @@ const IDOL = {
         { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 5 : 0), 0)' },
         { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 5 : 0), 0)' },
         { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 5 : 0), 0)' },
+      ] },
+    // ── 음지 확장 (v0.86, 실기 요청) — 개인 방송과 코스튬 촬영. 기존 사다리의 중간 단이다:
+    // 심야 행사(10) → 방송(10) → 스폰서 → 코스튬(18) → 화보(28) → 영상(55)
+    { id: 'shady_cam', label: '📹 음지 개인 방송을 튼다', mode: 'oneshot', cooldown: 3, impactExempt: true,
+      when: 'corrupt >= 10 and not unit_over', check: 'ck_cam',
+      inject: '[행동] 얼굴 반쪽만 나오는 개인 방송을 연다. 후원 알림음이 울릴 때마다 수위가 한 뼘씩 밀린다 — 화면 밖의 공기까지만 그려라.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 350 : 0), 9999999)' },
+        { set: 'inc_stage', expr: 'min(inc_stage + (shady_ok >= 1 ? 350 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 6 : 0), 100)' },
+        { set: 'buzz', expr: 'min(buzz + (shady_ok >= 1 ? 8 : 0), 100)' },
+        { set: 'fans', expr: 'min(fans + (shady_ok >= 1 ? round(fans * 0.03) + 100 : 0), 9999999)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 8 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 8 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 8 : 0), 0)' },
+        { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 4 : 0), 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 4 : 0), 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 4 : 0), 0)' },
+      ] },
+    { id: 'shady_costume', label: '🧵 야한 코스튬 촬영을 받는다', mode: 'oneshot', cooldown: 4, impactExempt: true,
+      when: 'corrupt >= 18 and not unit_over', check: 'ck_costume',
+      inject: '[행동] 보내온 의상 상자를 연다. 옷이라기보다 끈에 가깝다 — 갈아입기 전의 침묵까지만 그려라.',
+      effects: [
+        { set: 'funds', expr: 'min(funds + (shady_ok >= 1 ? 700 : 0), 9999999)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + (shady_ok >= 1 ? 700 : 0), 9999999)' },
+        { set: 'corrupt', expr: 'min(corrupt + (shady_ok >= 1 ? 9 : 0), 100)' },
+        { set: 'buzz', expr: 'min(buzz + (shady_ok >= 1 ? 12 : 0), 100)' },
+        { set: 'fans', expr: 'min(fans + (shady_ok >= 1 ? round(fans * 0.05) + 200 : 0), 9999999)' },
+        { set: 'm1_me', expr: 'max(m1_me - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm2_me', expr: 'max(m2_me - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm3_me', expr: 'max(m3_me - (shady_ok >= 1 ? 10 : 0), 0)' },
+        { set: 'm1_love', expr: 'max(m1_love - (shady_ok >= 1 ? 6 : 0), 0)' },
+        { set: 'm2_love', expr: 'max(m2_love - (shady_ok >= 1 ? 6 : 0), 0)' },
+        { set: 'm3_love', expr: 'max(m3_love - (shady_ok >= 1 ? 6 : 0), 0)' },
       ] },
     { id: 'shady_gravure', label: '📷 수위 있는 화보를 찍는다', mode: 'oneshot', cooldown: 4, impactExempt: true,
       when: 'corrupt >= 28 and not unit_over', check: 'ck_gravure',
@@ -4423,8 +4619,10 @@ const IDOL = {
         ],
         actions: ['perform', 'live_show'],
         note: '자리를 비워 두면 그 사람은 이번 무대에 안 선다 — 컨디션을 아낄 수 있다.' },
-      // 레슨은 편성표의 업그레이드 항목이다. 비용이 자기 레벨을 보고 올라 스스로 브레이크가 된다
+      // 레슨 (v0.86 개편) — 주력은 아래 레슨 액션이다: 싸고, 하루 두 칸을 먹고, 굴림이 성패를
+      // 가른다. 기존 돈-직행 항목은 "특별 과외"로 남긴다 (비싸지만 확실하고 즉시).
       { id: 'lesson', label: '레슨',
+        actions: LESSON_ACTIONS.map((a) => a.id),
         items: [
           { var: 'm1_vo', label: '유나 · 보컬', max: 100, cost: 'round(m1_vo * m1_vo / 25) + 30' },
           { var: 'm1_da', label: '유나 · 댄스', max: 100, cost: 'round(m1_da * m1_da / 25) + 30' },
@@ -4436,24 +4634,32 @@ const IDOL = {
           { var: 'm3_da', label: '린 · 댄스', max: 100, cost: 'round(m3_da * m3_da / 25) + 30' },
           { var: 'm3_vi', label: '린 · 비주얼', max: 100, cost: 'round(m3_vi * m3_vi / 25) + 30' },
         ],
-        note: '운용자금으로 찍는다. 한 칸 올릴 때마다 다음 한 칸이 비싸진다.' },
+        note: '레슨은 하루 두 칸(오전·오후)을 먹고 굴림이 성패를 가른다 — 위 등급은 유닛 실력이 열고, 등급마다 오를 수 있는 상한이 있다. '
+          + '아래 "특별 과외"는 돈으로 바로 올린다: 비싸고, 한 칸 올릴 때마다 다음 칸이 비싸진다.' },
       // ── 의뢰판 ── (v0.82)
       // 못 여는 자리도 **잠긴 채로 보인다** — 편성표는 실행할 수 없는 액션을 지우지 않고
       // 이유와 함께 흐리게 남긴다. 그게 "다음 목표"를 화면에 두는 유일한 자리다.
       { id: 'jobs', label: '일감',
-        actions: ['take_street', 'take_radio', 'take_mag', 'take_ltv', 'take_cable', 'take_net', 'take_gold'],
-        note: '자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다.' },
+        actions: ['take_street', 'take_dept', 'take_radio', 'take_mag', 'take_fest', 'take_ltv', 'take_cable', 'take_net', 'take_gold'],
+        note: '자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다. '
+          + '백화점·축제는 계약 자리라 판정 없이 잡힌다.' },
       { id: 'halls', label: '무대',
-        actions: ['hall_small', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show', 'venus_battle'],
+        actions: ['hall_small', 'hall_dept', 'hall_civic', 'hall_fest', 'hall_solo', 'hall_tour', 'live_show', 'venus_battle'],
         note: '공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다. '
           + '비너스 배틀은 반대다: 참가비는 싸지만 상대가 있고, 지면 순위가 내려간다.' },
+      // 팬서비스 (v0.86) — 돈이 아니라 팬과 유대를 사는 자리. 굿즈가 있으면 현장 판매가 붙는다
+      { id: 'fanserv', label: '팬서비스',
+        actions: ['fs_shake', 'fs_photo', 'fs_sign', 'fs_mini', 'fs_meet'],
+        note: '수익은 없거나 적지만 팬·개별 인기·유대가 오른다. 위로 갈수록 팬 문턱이 높고, 몸값(체력)을 치른다. '
+          + '미니 라이브·팬미팅은 굿즈가 있으면 현장 판매 수입이 붙는다.' },
       { id: 'make', label: '제작',
-        actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full'],
-        note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다.' },
+        actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full', 'make_goods1', 'make_goods2', 'make_goods3'],
+        note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다. '
+          + '굿즈는 한 번 만들면 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다.' },
       // 탭 자체에 조건이 걸린다 — 돈이 마르기 전에는 이런 게 있다는 것도 모르는 편이 낫다.
       // 한 번이라도 담갔으면(타락도 ≥ 1) 형편이 나아져도 계속 보인다
       { id: 'shade', label: '음지', when: 'funds < 250 or corrupt >= 1',
-        actions: ['shady_night', 'shady_spon', 'shady_gravure', 'shady_adult'],
+        actions: ['shady_night', 'shady_cam', 'shady_spon', 'shady_costume', 'shady_gravure', 'shady_adult'],
         note: '오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. '
           + '타락도가 높으면 지상파와 골든타임이 닫힌다.' },
       // 관리 — 몸과 마음을 돈으로 사는 자리 (v0.85). 위 시설은 인지도가 열고 비용은 난이도가 정한다
@@ -4481,6 +4687,7 @@ const IDOL = {
         { var: 'tod' },
         { var: 'season' },
         { var: 'weather' },
+        { var: 'day_slots', showWhen: 'day_slots < 2' },
         { var: 'rank' },
         { var: 'hard', showWhen: "hard != '보통'" },
         { var: 'ranking' },
@@ -4510,6 +4717,7 @@ const IDOL = {
         { var: 'inc_ticket', showWhen: 'inc_ticket > 0' },
         { var: 'inc_goods', showWhen: 'inc_goods > 0' },
         { var: 'inc_album', showWhen: 'inc_album > 0' },
+        { var: 'goods', showWhen: 'count(goods) > 0' },
         { var: 'salary' },
         { var: 'spend' },
         { var: 'balance', color: "balance < 0 ? '#a8443a' : '#6a8a7a'" },

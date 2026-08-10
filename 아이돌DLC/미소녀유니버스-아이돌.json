@@ -205,8 +205,10 @@
       "enum": [
         "없음",
         "거리 홍보",
+        "백화점 홍보",
         "지역 라디오",
         "잡지 화보",
+        "축제 행사",
         "지방 방송국",
         "케이블 음악방송",
         "지상파 음악방송",
@@ -250,6 +252,7 @@
       "enum": [
         "없음",
         "라이브하우스",
+        "백화점 라이브",
         "시민회관",
         "합동 페스티벌",
         "단독 공연",
@@ -395,6 +398,25 @@
         "밤"
       ],
       "desc": "장면의 시간대. 서사가 그린 대로 따라가라. 하루를 마치면 시스템이 아침으로 되돌린다."
+    },
+    {
+      "id": "day_slots",
+      "label": "남은 일정",
+      "type": "int",
+      "init": 2,
+      "min": 0,
+      "max": 2,
+      "format": "{v}칸",
+      "desc": "오전·오후 두 칸. 레슨이 한 칸씩 쓴다. 하루를 마치면 되돌아온다. 시스템이 관리한다."
+    },
+    {
+      "id": "goods",
+      "label": "판매 굿즈",
+      "type": "list",
+      "init": [],
+      "maxItems": 6,
+      "itemMaxLength": 16,
+      "desc": "제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다. 시스템이 관리한다."
     },
     {
       "id": "weather",
@@ -1174,27 +1196,27 @@
     {
       "id": "job_vs",
       "label": "업무 난이도",
-      "expr": "job == '골든타임 특집' ? 26 : (job == '지상파 음악방송' ? 22 : (job == '케이블 음악방송' ? 19 : (job == '지방 방송국' ? 16 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '거리 홍보' ? 10 : 0))))))"
+      "expr": "job == '골든타임 특집' ? 26 : (job == '지상파 음악방송' ? 22 : (job == '케이블 음악방송' ? 19 : (job == '지방 방송국' ? 16 : (job == '축제 행사' ? 14 : (job == '잡지 화보' ? 13 : (job == '지역 라디오' ? 12 : (job == '백화점 홍보' ? 11 : (job == '거리 홍보' ? 10 : 0))))))))"
     },
     {
       "id": "job_pay",
       "label": "업무 보수",
-      "expr": "job == '골든타임 특집' ? 2600 : (job == '지상파 음악방송' ? 1500 : (job == '케이블 음악방송' ? 900 : (job == '지방 방송국' ? 560 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '거리 홍보' ? 120 : 0))))))"
+      "expr": "job == '골든타임 특집' ? 2600 : (job == '지상파 음악방송' ? 1500 : (job == '케이블 음악방송' ? 900 : (job == '지방 방송국' ? 560 : (job == '축제 행사' ? 420 : (job == '잡지 화보' ? 300 : (job == '지역 라디오' ? 200 : (job == '백화점 홍보' ? 160 : (job == '거리 홍보' ? 120 : 0))))))))"
     },
     {
       "id": "live_vs",
       "label": "라이브 난이도",
-      "expr": "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 페스티벌' ? 19 : (live == '시민회관' ? 15 : (live == '라이브하우스' ? 12 : 0))))"
+      "expr": "live == '전국 투어' ? 27 : (live == '단독 공연' ? 23 : (live == '합동 페스티벌' ? 19 : (live == '시민회관' ? 15 : (live == '백화점 라이브' ? 13 : (live == '라이브하우스' ? 12 : 0)))))"
     },
     {
       "id": "live_pay",
       "label": "라이브 개런티",
-      "expr": "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 페스티벌' ? 800 : (live == '시민회관' ? 420 : (live == '라이브하우스' ? 260 : 0))))"
+      "expr": "live == '전국 투어' ? 2400 : (live == '단독 공연' ? 1400 : (live == '합동 페스티벌' ? 800 : (live == '시민회관' ? 420 : (live == '백화점 라이브' ? 340 : (live == '라이브하우스' ? 260 : 0)))))"
     },
     {
       "id": "live_cap",
       "label": "공연장 정원",
-      "expr": "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 페스티벌' ? 1500 : (live == '시민회관' ? 600 : (live == '라이브하우스' ? 200 : 0))))",
+      "expr": "live == '전국 투어' ? 9000 : (live == '단독 공연' ? 3000 : (live == '합동 페스티벌' ? 1500 : (live == '시민회관' ? 600 : (live == '백화점 라이브' ? 350 : (live == '라이브하우스' ? 200 : 0)))))",
       "format": "{v}석"
     },
     {
@@ -1660,11 +1682,11 @@
             },
             {
               "set": "inc_goods",
-              "expr": "min(inc_goods + round(live_tickets * 0.35), 9999999)"
+              "expr": "min(inc_goods + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)"
             },
             {
               "set": "funds",
-              "expr": "min(funds + live_pay + round(live_tickets * 1.15), 9999999)"
+              "expr": "min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)"
             },
             {
               "set": "fans",
@@ -1739,11 +1761,11 @@
             },
             {
               "set": "inc_goods",
-              "expr": "min(inc_goods + round(live_tickets * 0.18), 9999999)"
+              "expr": "min(inc_goods + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)"
             },
             {
               "set": "funds",
-              "expr": "min(funds + live_pay + round(live_tickets * 0.68), 9999999)"
+              "expr": "min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)"
             },
             {
               "set": "fans",
@@ -2365,11 +2387,149 @@
       ]
     },
     {
+      "id": "ck_cam",
+      "label": "음지 방송 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 13,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "ck_spon",
       "label": "스폰서 자리 설득",
       "roll": "rand(1, 20)",
       "mod": "shady_mod",
       "vs": 15,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_costume",
+      "label": "수위 코스튬 촬영 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 17,
       "grades": [
         {
           "when": "total >= vs",
@@ -2570,6 +2730,1386 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ck_ls_vo_t1",
+      "label": "보컬 레슨 (초급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 4, 40)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 4, 40)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 4, 40)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 4, 40)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 4, 40)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 2, 40)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 2, 40)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 2, 40)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 2, 40)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 2, 40)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 1, 40)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 1, 40)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 1, 40)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 1, 40)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 1, 40)) : m5_vo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vo_t2",
+      "label": "보컬 레슨 (중급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 5, 60)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 5, 60)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 5, 60)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 5, 60)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 5, 60)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 3, 60)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 3, 60)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 3, 60)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 3, 60)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 3, 60)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 1, 60)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 1, 60)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 1, 60)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 1, 60)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 1, 60)) : m5_vo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vo_t3",
+      "label": "보컬 레슨 (고급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 6, 80)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 6, 80)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 6, 80)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 6, 80)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 6, 80)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 4, 80)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 4, 80)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 4, 80)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 4, 80)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 4, 80)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 2, 80)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 2, 80)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 2, 80)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 2, 80)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 2, 80)) : m5_vo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vo_t4",
+      "label": "보컬 레슨 (최상급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 8, 100)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 8, 100)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 8, 100)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 8, 100)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 8, 100)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 6, 100)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 6, 100)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 6, 100)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 6, 100)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 6, 100)) : m5_vo"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vo",
+              "expr": "p1 > 0 ? max(m1_vo, min(m1_vo + 3, 100)) : m1_vo"
+            },
+            {
+              "set": "m2_vo",
+              "expr": "p2 > 0 ? max(m2_vo, min(m2_vo + 3, 100)) : m2_vo"
+            },
+            {
+              "set": "m3_vo",
+              "expr": "p3 > 0 ? max(m3_vo, min(m3_vo + 3, 100)) : m3_vo"
+            },
+            {
+              "set": "m4_vo",
+              "expr": "p4 > 0 ? max(m4_vo, min(m4_vo + 3, 100)) : m4_vo"
+            },
+            {
+              "set": "m5_vo",
+              "expr": "p5 > 0 ? max(m5_vo, min(m5_vo + 3, 100)) : m5_vo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_da_t1",
+      "label": "댄스 레슨 (초급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 4, 40)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 4, 40)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 4, 40)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 4, 40)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 4, 40)) : m5_da"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 2, 40)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 2, 40)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 2, 40)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 2, 40)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 2, 40)) : m5_da"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 1, 40)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 1, 40)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 1, 40)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 1, 40)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 1, 40)) : m5_da"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_da_t2",
+      "label": "댄스 레슨 (중급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 5, 60)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 5, 60)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 5, 60)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 5, 60)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 5, 60)) : m5_da"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 3, 60)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 3, 60)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 3, 60)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 3, 60)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 3, 60)) : m5_da"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 1, 60)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 1, 60)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 1, 60)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 1, 60)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 1, 60)) : m5_da"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_da_t3",
+      "label": "댄스 레슨 (고급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 6, 80)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 6, 80)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 6, 80)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 6, 80)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 6, 80)) : m5_da"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 4, 80)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 4, 80)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 4, 80)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 4, 80)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 4, 80)) : m5_da"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 2, 80)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 2, 80)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 2, 80)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 2, 80)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 2, 80)) : m5_da"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_da_t4",
+      "label": "댄스 레슨 (최상급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 8, 100)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 8, 100)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 8, 100)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 8, 100)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 8, 100)) : m5_da"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 6, 100)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 6, 100)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 6, 100)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 6, 100)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 6, 100)) : m5_da"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_da",
+              "expr": "p1 > 0 ? max(m1_da, min(m1_da + 3, 100)) : m1_da"
+            },
+            {
+              "set": "m2_da",
+              "expr": "p2 > 0 ? max(m2_da, min(m2_da + 3, 100)) : m2_da"
+            },
+            {
+              "set": "m3_da",
+              "expr": "p3 > 0 ? max(m3_da, min(m3_da + 3, 100)) : m3_da"
+            },
+            {
+              "set": "m4_da",
+              "expr": "p4 > 0 ? max(m4_da, min(m4_da + 3, 100)) : m4_da"
+            },
+            {
+              "set": "m5_da",
+              "expr": "p5 > 0 ? max(m5_da, min(m5_da + 3, 100)) : m5_da"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vi_t1",
+      "label": "비주얼 레슨 (초급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 4, 40)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 4, 40)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 4, 40)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 4, 40)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 4, 40)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 2, 40)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 2, 40)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 2, 40)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 2, 40)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 2, 40)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 1, 40)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 1, 40)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 1, 40)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 1, 40)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 1, 40)) : m5_vi"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vi_t2",
+      "label": "비주얼 레슨 (중급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 5, 60)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 5, 60)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 5, 60)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 5, 60)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 5, 60)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 3, 60)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 3, 60)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 3, 60)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 3, 60)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 3, 60)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 1, 60)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 1, 60)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 1, 60)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 1, 60)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 1, 60)) : m5_vi"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vi_t3",
+      "label": "비주얼 레슨 (고급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 6, 80)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 6, 80)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 6, 80)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 6, 80)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 6, 80)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 4, 80)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 4, 80)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 4, 80)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 4, 80)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 4, 80)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 2, 80)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 2, 80)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 2, 80)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 2, 80)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 2, 80)) : m5_vi"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_ls_vi_t4",
+      "label": "비주얼 레슨 (최상급)",
+      "roll": "rand(1, 20)",
+      "mod": "round((u_cond - 60) / 12)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "대실패",
+          "inject": "레슨이 완전히 어긋난 날이다. 강사의 한숨과 가라앉은 연습실을 그려라.",
+          "effects": [
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        },
+        {
+          "when": "roll == 20 or total >= vs + 6",
+          "label": "대성공",
+          "inject": "무언가가 자리에 딱 맞아 들어갔다 — 벽 하나를 넘는 순간으로 그려라.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 8, 100)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 8, 100)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 8, 100)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 8, 100)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 8, 100)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 6, 100)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 6, 100)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 6, 100)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 6, 100)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 6, 100)) : m5_vi"
+            }
+          ]
+        },
+        {
+          "label": "아쉬움",
+          "inject": "몸이 따라 주지 않는 날이었다. 그래도 아주 헛되지는 않았다.",
+          "effects": [
+            {
+              "set": "m1_vi",
+              "expr": "p1 > 0 ? max(m1_vi, min(m1_vi + 3, 100)) : m1_vi"
+            },
+            {
+              "set": "m2_vi",
+              "expr": "p2 > 0 ? max(m2_vi, min(m2_vi + 3, 100)) : m2_vi"
+            },
+            {
+              "set": "m3_vi",
+              "expr": "p3 > 0 ? max(m3_vi, min(m3_vi + 3, 100)) : m3_vi"
+            },
+            {
+              "set": "m4_vi",
+              "expr": "p4 > 0 ? max(m4_vi, min(m4_vi + 3, 100)) : m4_vi"
+            },
+            {
+              "set": "m5_vi",
+              "expr": "p5 > 0 ? max(m5_vi, min(m5_vi + 3, 100)) : m5_vi"
+            }
+          ]
+        }
+      ]
     }
   ],
   "actions": [
@@ -2609,6 +4149,48 @@
         {
           "set": "job_days",
           "expr": "pitch_won >= 1 ? 2 + rand(0, 2) : job_days"
+        }
+      ]
+    },
+    {
+      "id": "take_dept",
+      "label": "🏬 백화점 홍보를 잡는다",
+      "mode": "oneshot",
+      "when": "job == '없음' and awareness >= 10 and funds >= 12 and not unit_over",
+      "inject": "[행동] 백화점 이벤트팀과 계약서를 쓴다. 행사장 한켠, 지나가던 사람들이 관객이 되는 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 12, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "'백화점 홍보'"
+        },
+        {
+          "set": "job_days",
+          "expr": "2 + rand(0, 1)"
+        }
+      ]
+    },
+    {
+      "id": "take_fest",
+      "label": "🎪 축제 행사를 잡는다",
+      "mode": "oneshot",
+      "when": "job == '없음' and awareness >= 22 and buzz >= 12 and funds >= 30 and not unit_over",
+      "inject": "[행동] 지역 축제 운영진과 무대 순서를 조율한다. 야외 무대는 날씨도 실력이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 30, 0)"
+        },
+        {
+          "set": "job",
+          "expr": "'축제 행사'"
+        },
+        {
+          "set": "job_days",
+          "expr": "3 + rand(0, 2)"
         }
       ]
     },
@@ -2745,6 +4327,28 @@
         {
           "set": "live_days",
           "expr": "5 + rand(0, 4)"
+        }
+      ]
+    },
+    {
+      "id": "hall_dept",
+      "label": "🏬 백화점 특설무대를 빌린다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "live == '없음' and fans >= 1200 and funds >= 90 and not unit_over",
+      "inject": "[행동] 백화점 옥상 특설무대와 날을 잡는다. 쇼핑 온 사람들의 발을 멈추게 해야 하는 자리다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 90, 0)"
+        },
+        {
+          "set": "live",
+          "expr": "'백화점 라이브'"
+        },
+        {
+          "set": "live_days",
+          "expr": "4 + rand(0, 3)"
         }
       ]
     },
@@ -3450,6 +5054,949 @@
       ]
     },
     {
+      "id": "make_goods1",
+      "label": "🖼 포토카드 세트를 찍는다",
+      "mode": "oneshot",
+      "when": "not has(goods, '포토카드') and funds >= 60 and not unit_over",
+      "inject": "[행동] 인쇄소에 포토카드 시안을 넘긴다. 어떤 표정을 고를지로 한참 다퉜다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 60, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "포토카드"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "make_goods2",
+      "label": "🪄 응원봉을 제작한다",
+      "mode": "oneshot",
+      "when": "not has(goods, '응원봉') and awareness >= 15 and funds >= 150 and not unit_over",
+      "inject": "[행동] 유닛 색을 정하는 자리부터 시작한다. 객석의 색이 정해지는 날이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 150, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "응원봉"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "make_goods3",
+      "label": "📕 화보집을 만든다",
+      "mode": "oneshot",
+      "when": "not has(goods, '화보집') and awareness >= 30 and funds >= 320 and not unit_over",
+      "inject": "[행동] 사진가와 로케이션을 잡는다. 촬영은 하루, 고르는 건 일주일이다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 320, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "화보집"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fs_shake",
+      "label": "🤝 악수회를 연다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "when": "fans >= 300 and funds >= 40 and not unit_over",
+      "inject": "[행동] 소규모 악수회를 연다. 한 사람당 몇 초, 그 몇 초를 위해 몇 시간을 선다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 40, 0)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(180 * fan_mul), 9999999)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "min(m1_fan + round(p1 * 60), 9999999)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "min(m2_fan + round(p2 * 60), 9999999)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "min(m3_fan + round(p3 * 60), 9999999)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "min(m4_fan + round(p4 * 60), 9999999)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "min(m5_fan + round(p5 * 60), 9999999)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 4, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 4, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 4, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 4, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 4, 100)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 12), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 12), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 12), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 12), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 12), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs_photo",
+      "label": "📸 사진회를 연다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "when": "fans >= 800 and funds >= 60 and not unit_over",
+      "inject": "[행동] 촬영회를 연다. 렌즈 너머의 표정까지 서비스다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 60, 0)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(260 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 4, 100)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "min(m1_fan + round(p1 * 90), 9999999)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "min(m2_fan + round(p2 * 90), 9999999)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "min(m3_fan + round(p3 * 90), 9999999)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "min(m4_fan + round(p4 * 90), 9999999)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "min(m5_fan + round(p5 * 90), 9999999)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 4, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 4, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 4, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 4, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 4, 100)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 10), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 10), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 10), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 10), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 10), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs_sign",
+      "label": "🖊 사인회를 연다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "when": "fans >= 1500 and funds >= 80 and not unit_over",
+      "inject": "[행동] 사인회를 연다. 이름을 물어보고, 그 이름을 눌러 쓴다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 80, 0)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(360 * fan_mul), 9999999)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "min(m1_fan + round(p1 * 120), 9999999)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "min(m2_fan + round(p2 * 120), 9999999)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "min(m3_fan + round(p3 * 120), 9999999)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "min(m4_fan + round(p4 * 120), 9999999)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "min(m5_fan + round(p5 * 120), 9999999)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 6, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 6, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 6, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 6, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 6, 100)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 10), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 10), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 10), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 10), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 10), 0)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 3, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 3, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 3, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 3, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 3, 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs_mini",
+      "label": "🎶 미니 라이브를 연다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "when": "fans >= 1000 and funds >= 100 and not unit_over",
+      "inject": "[행동] 무료 미니 라이브를 연다. 표 없는 무대가 제일 솔직한 객석을 만든다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 100 + count(goods) * 30, 0)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + count(goods) * 30, 9999999)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(420 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 9, 100)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "min(m1_fan + round(p1 * 140), 9999999)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "min(m2_fan + round(p2 * 140), 9999999)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "min(m3_fan + round(p3 * 140), 9999999)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "min(m4_fan + round(p4 * 140), 9999999)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "min(m5_fan + round(p5 * 140), 9999999)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 15), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 15), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 15), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 15), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 15), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs_meet",
+      "label": "💐 팬미팅을 연다",
+      "mode": "oneshot",
+      "cooldown": 6,
+      "when": "fans >= 3000 and funds >= 150 and not unit_over",
+      "inject": "[행동] 팬미팅을 연다. 무대가 아니라 마주 앉는 자리다 — 게임과 편지와 약속으로.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 150 + count(goods) * 40, 0)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + count(goods) * 40, 9999999)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(550 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 7, 100)"
+        },
+        {
+          "set": "m1_fan",
+          "expr": "min(m1_fan + round(p1 * 180), 9999999)"
+        },
+        {
+          "set": "m2_fan",
+          "expr": "min(m2_fan + round(p2 * 180), 9999999)"
+        },
+        {
+          "set": "m3_fan",
+          "expr": "min(m3_fan + round(p3 * 180), 9999999)"
+        },
+        {
+          "set": "m4_fan",
+          "expr": "min(m4_fan + round(p4 * 180), 9999999)"
+        },
+        {
+          "set": "m5_fan",
+          "expr": "min(m5_fan + round(p5 * 180), 9999999)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "min(m1_love + 9, 100)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "min(m2_love + 9, 100)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "min(m3_love + 9, 100)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "min(m4_love + 9, 100)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "min(m5_love + 9, 100)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 13), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 13), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 13), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 13), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 13), 0)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "min(m1_me + 4, 100)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "min(m2_me + 4, 100)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "min(m3_me + 4, 100)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "min(m4_me + 4, 100)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "min(m5_me + 4, 100)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vo_t1",
+      "label": "🎤 보컬 레슨 · 초급 (30만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vo_t1",
+      "when": "day_slots >= 1 and funds >= 30 and not unit_over",
+      "inject": "[행동] 초급 보컬 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 30, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vo_t2",
+      "label": "🎤 보컬 레슨 · 중급 (80만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vo_t2",
+      "when": "day_slots >= 1 and funds >= 80 and u_vo >= 60 and not unit_over",
+      "inject": "[행동] 중급 보컬 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 80, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vo_t3",
+      "label": "🎤 보컬 레슨 · 고급 (180만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vo_t3",
+      "when": "day_slots >= 1 and funds >= 180 and u_vo >= 130 and not unit_over",
+      "inject": "[행동] 고급 보컬 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 180, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vo_t4",
+      "label": "🎤 보컬 레슨 · 최상급 (350만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vo_t4",
+      "when": "day_slots >= 1 and funds >= 350 and u_vo >= 200 and not unit_over",
+      "inject": "[행동] 최상급 보컬 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 350, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_da_t1",
+      "label": "💃 댄스 레슨 · 초급 (30만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_da_t1",
+      "when": "day_slots >= 1 and funds >= 30 and not unit_over",
+      "inject": "[행동] 초급 댄스 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 30, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_da_t2",
+      "label": "💃 댄스 레슨 · 중급 (80만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_da_t2",
+      "when": "day_slots >= 1 and funds >= 80 and u_da >= 60 and not unit_over",
+      "inject": "[행동] 중급 댄스 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 80, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_da_t3",
+      "label": "💃 댄스 레슨 · 고급 (180만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_da_t3",
+      "when": "day_slots >= 1 and funds >= 180 and u_da >= 130 and not unit_over",
+      "inject": "[행동] 고급 댄스 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 180, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_da_t4",
+      "label": "💃 댄스 레슨 · 최상급 (350만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_da_t4",
+      "when": "day_slots >= 1 and funds >= 350 and u_da >= 200 and not unit_over",
+      "inject": "[행동] 최상급 댄스 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 350, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vi_t1",
+      "label": "💄 비주얼 레슨 · 초급 (30만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vi_t1",
+      "when": "day_slots >= 1 and funds >= 30 and not unit_over",
+      "inject": "[행동] 초급 비주얼 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 30, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vi_t2",
+      "label": "💄 비주얼 레슨 · 중급 (80만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vi_t2",
+      "when": "day_slots >= 1 and funds >= 80 and u_vi >= 60 and not unit_over",
+      "inject": "[행동] 중급 비주얼 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 80, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vi_t3",
+      "label": "💄 비주얼 레슨 · 고급 (180만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vi_t3",
+      "when": "day_slots >= 1 and funds >= 180 and u_vi >= 130 and not unit_over",
+      "inject": "[행동] 고급 비주얼 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 180, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
+      "id": "ls_vi_t4",
+      "label": "💄 비주얼 레슨 · 최상급 (350만원)",
+      "mode": "oneshot",
+      "check": "ck_ls_vi_t4",
+      "when": "day_slots >= 1 and funds >= 350 and u_vi >= 200 and not unit_over",
+      "inject": "[행동] 최상급 비주얼 레슨을 잡는다. 반나절이 통째로 들어간다 — 편성된 멤버들이 받는다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 350, 0)"
+        },
+        {
+          "set": "day_slots",
+          "expr": "max(day_slots - 1, 0)"
+        },
+        {
+          "set": "m1_st",
+          "expr": "max(m1_st - round(p1 * 6), 0)"
+        },
+        {
+          "set": "m2_st",
+          "expr": "max(m2_st - round(p2 * 6), 0)"
+        },
+        {
+          "set": "m3_st",
+          "expr": "max(m3_st - round(p3 * 6), 0)"
+        },
+        {
+          "set": "m4_st",
+          "expr": "max(m4_st - round(p4 * 6), 0)"
+        },
+        {
+          "set": "m5_st",
+          "expr": "max(m5_st - round(p5 * 6), 0)"
+        }
+      ]
+    },
+    {
       "id": "shady_night",
       "label": "🌃 심야 행사를 받는다",
       "mode": "oneshot",
@@ -3574,6 +6121,150 @@
         {
           "set": "m5_love",
           "expr": "max(m5_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "shady_cam",
+      "label": "📹 음지 개인 방송을 튼다",
+      "mode": "oneshot",
+      "cooldown": 3,
+      "impactExempt": true,
+      "when": "corrupt >= 10 and not unit_over",
+      "check": "ck_cam",
+      "inject": "[행동] 얼굴 반쪽만 나오는 개인 방송을 연다. 후원 알림음이 울릴 때마다 수위가 한 뼘씩 밀린다 — 화면 밖의 공기까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 350 : 0), 9999999)"
+        },
+        {
+          "set": "inc_stage",
+          "expr": "min(inc_stage + (shady_ok >= 1 ? 350 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 6 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 8 : 0), 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + (shady_ok >= 1 ? round(fans * 0.03) + 100 : 0), 9999999)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "shady_costume",
+      "label": "🧵 야한 코스튬 촬영을 받는다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "impactExempt": true,
+      "when": "corrupt >= 18 and not unit_over",
+      "check": "ck_costume",
+      "inject": "[행동] 보내온 의상 상자를 연다. 옷이라기보다 끈에 가깝다 — 갈아입기 전의 침묵까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 700 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 700 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 9 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 12 : 0), 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + (shady_ok >= 1 ? round(fans * 0.05) + 200 : 0), 9999999)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 6 : 0), 0)"
         }
       ]
     },
@@ -3890,6 +6581,10 @@
           "expr": "'아침'"
         },
         {
+          "set": "day_slots",
+          "expr": "2"
+        },
+        {
           "set": "night_req",
           "expr": "false"
         }
@@ -4027,6 +6722,10 @@
           {
             "set": "tod",
             "expr": "'아침'"
+          },
+          {
+            "set": "day_slots",
+            "expr": "2"
           },
           {
             "set": "night_req",
@@ -5601,6 +8300,20 @@
       {
         "id": "lesson",
         "label": "레슨",
+        "actions": [
+          "ls_vo_t1",
+          "ls_vo_t2",
+          "ls_vo_t3",
+          "ls_vo_t4",
+          "ls_da_t1",
+          "ls_da_t2",
+          "ls_da_t3",
+          "ls_da_t4",
+          "ls_vi_t1",
+          "ls_vi_t2",
+          "ls_vi_t3",
+          "ls_vi_t4"
+        ],
         "items": [
           {
             "var": "m1_vo",
@@ -5693,27 +8406,30 @@
             "cost": "round(m5_vi * m5_vi / 25) + 30"
           }
         ],
-        "note": "운용자금으로 찍는다. 한 칸 올릴 때마다 다음 한 칸이 비싸진다."
+        "note": "레슨은 하루 두 칸(오전·오후)을 먹고 굴림이 성패를 가른다 — 위 등급은 유닛 실력이 열고, 등급마다 오를 수 있는 상한이 있다. 아래 \"특별 과외\"는 돈으로 바로 올린다: 비싸고, 한 칸 올릴 때마다 다음 칸이 비싸진다."
       },
       {
         "id": "jobs",
         "label": "일감",
         "actions": [
           "take_street",
+          "take_dept",
           "take_radio",
           "take_mag",
+          "take_fest",
           "take_ltv",
           "take_cable",
           "take_net",
           "take_gold"
         ],
-        "note": "자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다."
+        "note": "자리마다 여는 문턱과 성사율이 다르다. 성사율은 상태창 [일감] 탭에서 본다 — 헛걸음이어도 영업비는 나간다. 백화점·축제는 계약 자리라 판정 없이 잡힌다."
       },
       {
         "id": "halls",
         "label": "무대",
         "actions": [
           "hall_small",
+          "hall_dept",
           "hall_civic",
           "hall_fest",
           "hall_solo",
@@ -5724,6 +8440,18 @@
         "note": "공연장은 판정 없이 빌린다. 대신 대관료가 선불이고 정원이 천장이다 — 못 채우면 그대로 손해다. 비너스 배틀은 반대다: 참가비는 싸지만 상대가 있고, 지면 순위가 내려간다."
       },
       {
+        "id": "fanserv",
+        "label": "팬서비스",
+        "actions": [
+          "fs_shake",
+          "fs_photo",
+          "fs_sign",
+          "fs_mini",
+          "fs_meet"
+        ],
+        "note": "수익은 없거나 적지만 팬·개별 인기·유대가 오른다. 위로 갈수록 팬 문턱이 높고, 몸값(체력)을 치른다. 미니 라이브·팬미팅은 굿즈가 있으면 현장 판매 수입이 붙는다."
+      },
+      {
         "id": "make",
         "label": "제작",
         "actions": [
@@ -5732,9 +8460,12 @@
           "make_dress3",
           "make_single",
           "make_mini",
-          "make_full"
+          "make_full",
+          "make_goods1",
+          "make_goods2",
+          "make_goods3"
         ],
-        "note": "돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다."
+        "note": "돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다. 굿즈는 한 번 만들면 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다."
       },
       {
         "id": "shade",
@@ -5742,7 +8473,9 @@
         "when": "funds < 250 or corrupt >= 1",
         "actions": [
           "shady_night",
+          "shady_cam",
           "shady_spon",
+          "shady_costume",
           "shady_gravure",
           "shady_adult"
         ],
@@ -5841,6 +8574,10 @@
           },
           {
             "var": "weather"
+          },
+          {
+            "var": "day_slots",
+            "showWhen": "day_slots < 2"
           },
           {
             "var": "rank"
@@ -5963,6 +8700,10 @@
           {
             "var": "inc_album",
             "showWhen": "inc_album > 0"
+          },
+          {
+            "var": "goods",
+            "showWhen": "count(goods) > 0"
           },
           {
             "var": "salary"

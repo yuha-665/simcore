@@ -527,8 +527,8 @@ const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initSta
   const byId = Object.fromEntries(tabs.map((t) => [t.id, t]));
   ck('★ 의뢰판이 편성표에 있다 (일감 · 무대 · 제작 · 음지)',
     ['jobs', 'halls', 'make', 'shade'].every((id) => byId[id]), tabs.map((t) => t.id).join(','));
-  ck('★ 일감 탭에 사다리 일곱이 다 늘어서 있다 (잠긴 것도 보여야 다음 목표가 된다)',
-    byId.jobs.actions.length === 7, String(byId.jobs.actions.length));
+  ck('★ 일감 탭에 사다리 아홉이 다 늘어서 있다 (잠긴 것도 보여야 다음 목표가 된다 — v0.86 백화점·축제 포함)',
+    byId.jobs.actions.length === 9, String(byId.jobs.actions.length));
   ck('★ 음지 탭은 조건이 걸려 있다 (형편이 멀쩡하면 보이지도 않는다)',
     /funds < \d+ or corrupt >= 1/.test(byId.shade.when || ''), String(byId.shade.when));
   // 상태창 — 성사율은 일감이 비었을 때만 본다

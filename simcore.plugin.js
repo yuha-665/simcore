@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.86.1
-//@display-name SimCore (시뮬 엔진) v0.86.1 서사로 치른 무대도 정산된다
+//@version 0.86.2
+//@display-name SimCore (시뮬 엔진) v0.86.2 범례 클릭 즉시 반영 + 잠긴 액션 접기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.86.2 ───────────────────────────────────────────────
+// ① 범례 클릭이 무장은 시키는데 ✅ 표시가 다음 메시지까지 안 보였다 (실기 제보 —
+//   v0.85.4의 제자리 갱신이 패널 경로에만 물려 있었다). onActionButton 성공 토글에도
+//   refreshStatusDom을 연결. [live-test] 범례 클릭 → 즉시 ✅ 확인.
+// ② 잠긴 액션 접기 — 액션 60개가 되자 잠금 사유가 벽지가 됐다 (모바일 지옥).
+//   누를 수 있는 것만 펼치고 잠긴 것은 "🔒 잠긴 액션 N개" 접힌 상자로 —
+//   해금 조건(다음 목표)은 상자 안에 그대로 남는다.
 //
 // ── v0.86.1 ───────────────────────────────────────────────
 // IDOL: 서사가 무대를 치렀는데 버튼이 안 눌리면 보수도 없이 펑크가 났다 (실기 제보).
@@ -6217,6 +6225,9 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-actlocked{display:block;width:100%;margin-top:4px}
+.sim-actlocked summary{cursor:pointer;font-size:.8em;opacity:.55;user-select:none}
+.sim-actlocked[open] summary{margin-bottom:3px}
 /* 클릭 조작(v0.42) — 어댑터가 좌표 히트테스트로 이 클래스가 붙은 자리를 진짜 버튼으로 만든다.
    mainDom 권한이 없으면 그냥 표시용 범례다 (기존 동작 그대로) */
 .sim-hit{cursor:pointer}
@@ -6471,9 +6482,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다 —
   //  그래서 버튼 태그가 아니라 좌표 히트테스트다)
   if (actionStates && actionStates.length) {
-    inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
-    for (const a of actionStates) {
+    const actionChip = (a) => {
       // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
       const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;
       const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ') + hit;
@@ -6488,9 +6497,21 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       const badge = a.disabled ? '🔒' : (a.armed ? '✅' : (hasIcon ? lead : ''));
       const tail = a.armed ? ' <span class="sim-action-state">발동 대기</span>'
         : (a.disabled && a.reason ? ` <span class="sim-action-state">${esc(a.reason)}</span>` : '');
-      inner += `<span class="${cls}"${title}>`
+      return `<span class="${cls}"${title}>`
         + (badge ? `<span class="sim-action-glyph">${esc(badge)}</span>` : '')
         + `${esc(text)}${tail}</span>`;
+    };
+    // 지금 누를 수 있는 것만 펼치고, 잠긴 것은 접는다 (v0.86.2) — 액션이 60개가 되자
+    // 잠금 사유가 벽지가 됐다 (실기 제보: 모바일 지옥). 해금 조건은 "다음 목표"라는
+    // 가치가 있으므로 지우지 않고 접힌 상자 안에 그대로 남긴다.
+    const open = actionStates.filter((a) => !a.disabled);
+    const locked = actionStates.filter((a) => a.disabled);
+    inner += `<div class="sim-actions">`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
+    for (const a of open) inner += actionChip(a);
+    if (locked.length) {
+      inner += `<details class="sim-actlocked"><summary>🔒 잠긴 액션 ${locked.length}개 — 해금 조건 보기</summary>`
+        + locked.map(actionChip).join('') + `</details>`;
     }
     inner += `</div>`;
   }
@@ -22026,6 +22047,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
     } else if (gameVisible && gameNotice && gameNotice.startsWith('🔒')) {
       gameNotice = null; // 성공 토글이 이전 잠금 공지를 지운다 — 낡은 이유가 계속 떠 있지 않게
+    }
+    if (!r.blocked) {
+      // 범례 클릭의 ✅(발동 대기) 표시도 제자리 갱신 (v0.86.2) — 상태창은 리수가 메시지를
+      // 다시 그릴 때만 바뀌므로, 여기서 안 그리면 무장이 됐는지 다음 메시지까지 안 보인다
+      // (실기 제보: "눌렀는데 안 나온다"). 패널 조작(v0.85.4)과 같은 길이다.
+      try { await refreshStatusDom(); } catch {}
     }
     await syncControls();
     if (panelBuilt) renderPanel();

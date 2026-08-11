@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.86.1
-//@display-name SimCore (시뮬 엔진) v0.86.1 서사로 치른 무대도 정산된다
+//@version 0.86.2
+//@display-name SimCore (시뮬 엔진) v0.86.2 범례 클릭 즉시 반영 + 잠긴 액션 접기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.86.2 ───────────────────────────────────────────────
+// ① 범례 클릭이 무장은 시키는데 ✅ 표시가 다음 메시지까지 안 보였다 (실기 제보 —
+//   v0.85.4의 제자리 갱신이 패널 경로에만 물려 있었다). onActionButton 성공 토글에도
+//   refreshStatusDom을 연결. [live-test] 범례 클릭 → 즉시 ✅ 확인.
+// ② 잠긴 액션 접기 — 액션 60개가 되자 잠금 사유가 벽지가 됐다 (모바일 지옥).
+//   누를 수 있는 것만 펼치고 잠긴 것은 "🔒 잠긴 액션 N개" 접힌 상자로 —
+//   해금 조건(다음 목표)은 상자 안에 그대로 남는다.
 //
 // ── v0.86.1 ───────────────────────────────────────────────
 // IDOL: 서사가 무대를 치렀는데 버튼이 안 눌리면 보수도 없이 펑크가 났다 (실기 제보).
@@ -2778,6 +2786,12 @@
       }
     } else if (gameVisible && gameNotice && gameNotice.startsWith('🔒')) {
       gameNotice = null; // 성공 토글이 이전 잠금 공지를 지운다 — 낡은 이유가 계속 떠 있지 않게
+    }
+    if (!r.blocked) {
+      // 범례 클릭의 ✅(발동 대기) 표시도 제자리 갱신 (v0.86.2) — 상태창은 리수가 메시지를
+      // 다시 그릴 때만 바뀌므로, 여기서 안 그리면 무장이 됐는지 다음 메시지까지 안 보인다
+      // (실기 제보: "눌렀는데 안 나온다"). 패널 조작(v0.85.4)과 같은 길이다.
+      try { await refreshStatusDom(); } catch {}
     }
     await syncControls();
     if (panelBuilt) renderPanel();

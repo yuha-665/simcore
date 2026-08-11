@@ -73,6 +73,9 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-actlocked{display:block;width:100%;margin-top:4px}
+.sim-actlocked summary{cursor:pointer;font-size:.8em;opacity:.55;user-select:none}
+.sim-actlocked[open] summary{margin-bottom:3px}
 /* 클릭 조작(v0.42) — 어댑터가 좌표 히트테스트로 이 클래스가 붙은 자리를 진짜 버튼으로 만든다.
    mainDom 권한이 없으면 그냥 표시용 범례다 (기존 동작 그대로) */
 .sim-hit{cursor:pointer}
@@ -327,9 +330,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // (메시지 안의 <button>은 리스가 클릭 이벤트의 target을 잘라내 구조적으로 동작하지 않는다 —
   //  그래서 버튼 태그가 아니라 좌표 히트테스트다)
   if (actionStates && actionStates.length) {
-    inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
-    for (const a of actionStates) {
+    const actionChip = (a) => {
       // 클릭 조작(v0.42): 잠긴 액션은 히트 없음 — 눌러도 잠김 안내만 나올 자리라 아예 비활성
       const hit = a.disabled ? '' : ` sim-hit sim-hitact-${a.id}`;
       const cls = ['sim-action', a.armed ? 'sim-armed' : '', a.disabled ? 'sim-disabled' : ''].filter(Boolean).join(' ') + hit;
@@ -344,9 +345,21 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       const badge = a.disabled ? '🔒' : (a.armed ? '✅' : (hasIcon ? lead : ''));
       const tail = a.armed ? ' <span class="sim-action-state">발동 대기</span>'
         : (a.disabled && a.reason ? ` <span class="sim-action-state">${esc(a.reason)}</span>` : '');
-      inner += `<span class="${cls}"${title}>`
+      return `<span class="${cls}"${title}>`
         + (badge ? `<span class="sim-action-glyph">${esc(badge)}</span>` : '')
         + `${esc(text)}${tail}</span>`;
+    };
+    // 지금 누를 수 있는 것만 펼치고, 잠긴 것은 접는다 (v0.86.2) — 액션이 60개가 되자
+    // 잠금 사유가 벽지가 됐다 (실기 제보: 모바일 지옥). 해금 조건은 "다음 목표"라는
+    // 가치가 있으므로 지우지 않고 접힌 상자 안에 그대로 남긴다.
+    const open = actionStates.filter((a) => !a.disabled);
+    const locked = actionStates.filter((a) => a.disabled);
+    inner += `<div class="sim-actions">`;
+    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
+    for (const a of open) inner += actionChip(a);
+    if (locked.length) {
+      inner += `<details class="sim-actlocked"><summary>🔒 잠긴 액션 ${locked.length}개 — 해금 조건 보기</summary>`
+        + locked.map(actionChip).join('') + `</details>`;
     }
     inner += `</div>`;
   }

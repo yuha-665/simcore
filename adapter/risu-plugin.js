@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.86.0
-//@display-name SimCore (시뮬 엔진) v0.86.0 아이돌 대형 패치 — 레슨·팬서비스·굿즈·음지·일감
+//@version 0.86.1
+//@display-name SimCore (시뮬 엔진) v0.86.1 서사로 치른 무대도 정산된다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.86.1 ───────────────────────────────────────────────
+// IDOL: 서사가 무대를 치렀는데 버튼이 안 눌리면 보수도 없이 펑크가 났다 (실기 제보).
+// night_req와 같은 규약의 stage_req — 보조 AI가 켜면 stage_auto/live_auto 이벤트가
+// ck_stage/ck_live를 대신 굴려 등급대로 정산한다. 서사가 말한 금액은 여전히 무시
+// (경제는 판정이 센다). perform/live_show가 깃발을 지워 이중 정산 차단,
+// stage_req_clear가 무대 없는 날의 헛깃발을 내린다.
 //
 // ── v0.86.0 ───────────────────────────────────────────────
 // IDOL 콘텐츠 대형 패치 (실기 요청 5건):

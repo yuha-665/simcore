@@ -3374,6 +3374,10 @@ const IDOL = {
       desc: '며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 시스템이 하니 직접 바꾸지 마라.' },
     { id: 'night_req', label: '하루 넘김 요청', type: 'bool', init: false,
       desc: '서사가 명백히 하룻밤을 넘겼는데 🌙이 안 눌렸을 때만 켠다 (잠들고 이튿날 아침 등). 시스템이 하루 정산을 대신 돌린다. 같은 날 안이면 절대 켜지 마라.' },
+    // 무대 대리 정산 (v0.86.1) — 서사가 무대를 치렀는데 버튼이 안 눌리면 돈도 없이 펑크가
+    // 났다 (실기 제보). night_req와 같은 규약: 깃발은 요청일 뿐, 정산은 판정이 굴린다.
+    { id: 'stage_req', label: '무대 정산 요청', type: 'bool', init: false,
+      desc: '서사가 오늘 잡힌 업무나 라이브 무대를 명백히 치렀는데 버튼이 안 눌렸을 때만 켠다. 시스템이 무대 판정을 굴려 등급대로 정산한다. 무대 장면이 없었거나 이미 정산됐으면 켜지 마라.' },
     // ── 환경 (서사가 정하는 값 — 계절은 달력이 내니 파생, 시간대·날씨는 서사 몫) ──
     { id: 'tod', label: '시간대', type: 'enum', init: '아침', enum: ['아침', '낮', '저녁', '밤'],
       desc: '장면의 시간대. 서사가 그린 대로 따라가라. 하루를 마치면 시스템이 아침으로 되돌린다.' },
@@ -3868,7 +3872,8 @@ const IDOL = {
     // ── 무대 ──
     { id: 'live_show', label: '🎫 라이브에 선다', mode: 'oneshot',
       when: "live != '없음' and live_days <= 0 and stand >= 1 and not unit_over", check: 'ck_live',
-      inject: '[행동] 객석이 찼다. 조명이 꺼지고 첫 음이 나가기 직전부터 그려라.' },
+      inject: '[행동] 객석이 찼다. 조명이 꺼지고 첫 음이 나가기 직전부터 그려라.',
+      effects: [{ set: 'stage_req', expr: 'false' }] },
     { id: 'perform', label: '🎤 업무를 치른다', mode: 'oneshot',
       when: "job != '없음' and job_days <= 0 and stand >= 1 and not unit_over", check: 'ck_stage',
       inject: '[행동] 오늘이 그날이다. 대기실에서 무대까지의 몇 걸음부터 그려라.',
@@ -3876,6 +3881,8 @@ const IDOL = {
         { set: 'm1_st', expr: 'max(m1_st - round(p1 * 16), 0)' },
         { set: 'm2_st', expr: 'max(m2_st - round(p2 * 16), 0)' },
         { set: 'm3_st', expr: 'max(m3_st - round(p3 * 16), 0)' },
+        // 버튼으로 치렀으면 같은 턴의 대리 정산 요청은 이미 소화된 것 (night_req와 같은 빗장)
+        { set: 'stage_req', expr: 'false' },
       ] },
     // ── 사람 ──
     { id: 'rest_day', label: '☕ 쉬게 한다', mode: 'oneshot', cooldown: 2,
@@ -4211,6 +4218,27 @@ const IDOL = {
       // 순서 안전: 🌙(전송 단계)이 먼저면 깃발이 이미 꺼져 있어 같은 밤이 두 번 흐르지 않는다.
       { id: 'night_auto', when: 'night_req and not unit_over', effects: IDOL_DAY_EFFECTS,
         notify: '서사를 따라 하루가 넘어갔다 — 🌙 없이도 사무소의 밤은 정산된다.' },
+      // 무대 대리 정산 (v0.86.1) — 깃발이 켜져 있고 정말 무대가 잡힌 날이면 판정을 대신
+      // 굴린다. 효과 조건은 perform/live_show의 when과 같아야 한다 (버튼이면 됐을 상황만).
+      // 업무가 먼저다 — 같은 턴에 둘 다 걸리면 업무가 깃발을 지워 라이브는 다음 요청을 기다린다.
+      { id: 'stage_auto', when: "stage_req and job != '없음' and job_days <= 0 and stand >= 1 and not unit_over",
+        check: 'ck_stage',
+        effects: [
+          { set: 'm1_st', expr: 'max(m1_st - round(p1 * 16), 0)' },
+          { set: 'm2_st', expr: 'max(m2_st - round(p2 * 16), 0)' },
+          { set: 'm3_st', expr: 'max(m3_st - round(p3 * 16), 0)' },
+          { set: 'stage_req', expr: 'false' },
+        ],
+        notify: '서사를 따라 무대 판정이 굴러갔다 — 보수는 등급대로 정산된다.' },
+      { id: 'live_auto', when: "stage_req and live != '없음' and live_days <= 0 and stand >= 1 and not unit_over",
+        check: 'ck_live',
+        effects: [{ set: 'stage_req', expr: 'false' }],
+        notify: '서사를 따라 라이브 판정이 굴러갔다 — 티켓·물판까지 등급대로 정산된다.' },
+      // 헛깃발 청소 — 정산할 무대가 없는데 켜진 깃발은 조용히 내린다 (낡은 깃발이
+      // 며칠 뒤 무대에서 유령 정산을 만들지 않게)
+      { id: 'stage_req_clear',
+        when: "stage_req and (job == '없음' or job_days >= 1) and (live == '없음' or live_days >= 1)",
+        effects: [{ set: 'stage_req', expr: 'false' }] },
       // 등급은 인지도가 문턱을 넘을 때 올라간다. once를 안 쓴 이유는 romance와 같다 —
       // 조건이 계속 참이면 한 번만 발동하고, 내려갔다 올라와도 다시 맞춰진다
       { id: 'rank_e', when: "rank == 'F' and awareness >= 20", effects: [{ set: 'rank', expr: "'E'" }],
@@ -4579,7 +4607,7 @@ const IDOL = {
       { id: 'm1_love', maxDelta: 6 }, { id: 'm2_love', maxDelta: 6 }, { id: 'm3_love', maxDelta: 6 },
       { id: 'schedule' },
       { id: 'job_queue' }, { id: 'live_queue' },
-      { id: 'night_req' },
+      { id: 'night_req' }, { id: 'stage_req' },
       { id: 'tod' }, { id: 'weather' },
       // 곡·의상 이름은 시스템이 못 짓는다 — "무엇이 나올 차례인가"까지만 시스템이 정하고
       // 그게 무엇인지는 서사가 짓는다 (계약·발견 목록과 같은 규약)
@@ -4589,6 +4617,8 @@ const IDOL = {
       + '능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(센터·사이드)은 프로듀서가 정한다. '
       + '서사가 명백히 하룻밤을 넘겼는데(잠들고 이튿날 아침 등) 날짜가 그대로면 night_req를 켜라 — 하루 정산은 시스템이 돌린다. '
       + '같은 날 안이거나 이미 날짜가 넘어갔으면 켜지 마라. 여러 날 건너뜀은 반영하지 못한다. '
+      + '서사가 오늘 잡힌 업무·라이브 무대를 명백히 치렀는데 [판정] 정산이 없었으면 stage_req를 켜라 — 보수·티켓은 시스템이 판정으로 정산한다. '
+      + '무대 장면이 없었거나 이미 정산됐으면 켜지 마라. 서사가 말한 벌이 금액은 무시하라 — 정산은 등급이 정한다. '
       + '시간대(tod)와 날씨(weather)는 장면이 그린 대로 유지하라 — 날씨는 계절에 어울리게, 눈은 겨울에만. '
       + '일정은 서사에서 새 예정이 잡혔을 때만 "내용 @+N" 형태로 더하라.',
   },

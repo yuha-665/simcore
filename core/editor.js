@@ -3559,6 +3559,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['collapsed', '접힘 (기본) — 눌러야 보임'], ['open', '펼침 — 영수증처럼 항상 표시'], ['off', '숨김'],
       ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
       '이번 턴에 실제 반영된 변수 변화와 사유를 상태창 아래에 보여줘요.'),
+      // 하이라이트 카드 (v0.86.4) — 판정 성패·돈·소지품·스탯 변화를 게임 알림처럼 세운다
+      statusField('하이라이트 카드', bindSelect(ui.highlights ?? 'on', [
+        ['on', '켬 (기본) — 판정·돈·소지품 변화를 카드로'], ['off', '끔'],
+      ], (x) => { ui.highlights = x === 'on' ? undefined : x; rerender(); }),
+      '이번 턴의 체감 나는 변화만 골라 상태창 맨 위에 카드로 세워요.'),
     ));
     if ((ui.mode ?? 'auto') !== 'template') {
       settings.appendChild(h('div', { class: 'sce-status-layout' },

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.86.3
-//@display-name SimCore (시뮬 엔진) v0.86.3 무대 당일 일감 증발 버그 수정
+//@version 0.86.4
+//@display-name SimCore (시뮬 엔진) v0.86.4 판정·돈·소지품 변화가 카드로 보인다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.86.4 ───────────────────────────────────────────────
+// 하이라이트 카드 — 실기 제보: 판정 성패·돈·소지품·스탯처럼 체감 나는 변화가 전부
+// 접힌 로그 속에 있어 채팅에서 안 보였다. 이번 턴 변화 중 골라(판정 무조건, 숫자는
+// 합산 델타, 목록은 넣고 뺀 것, enum은 A→B, bool 제외 — 깃발 소음) 상태창 맨 위
+// 접힘 바깥에 게임 알림풍 카드로 세운다. 성패가 카드 색을 정한다.
+// statusUI.highlights: 'off'로 끔 (편집기 상태창 탭에 칸 추가 — 규칙 #3).
 //
 // ── v0.86.3 ───────────────────────────────────────────────
 // 실사고: 무대 당일 일감이 그냥 사라지고 돈이 안 들어왔다. 원인은 이벤트 순서 —
@@ -6233,6 +6240,14 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
+.sim-card{padding:7px 11px;border:1px solid rgba(128,128,160,.35);border-left:3px solid rgba(128,140,220,.9);border-radius:8px;font-size:.93em;line-height:1.45}
+.sim-card.good{border-left-color:rgba(80,180,120,.95)}
+.sim-card.bad{border-left-color:rgba(200,80,80,.95)}
+.sim-card .d-up{color:#5fb87d;font-weight:700}
+.sim-card .d-down{color:#d16a6a;font-weight:700}
+.sim-card-now{opacity:.6;font-size:.88em}
+.sim-card-more{opacity:.55;font-size:.85em;border-left-color:rgba(128,128,160,.4)}
 .sim-actlocked{display:block;width:100%;margin-top:4px}
 .sim-actlocked summary{cursor:pointer;font-size:.8em;opacity:.55;user-select:none}
 .sim-actlocked[open] summary{margin-bottom:3px}
@@ -6409,6 +6424,75 @@ function commandsHtml(schema) {
     + `<div class="sim-cmds-body">${rows}</div></details>`;
 }
 
+/**
+ * 하이라이트 카드 — 이번 턴의 체감 나는 변화만 골라 게임 알림처럼 세운다 (v0.86.4).
+ * 전체 영수증(이번 턴 변화)과 역할이 다르다: 로그는 빠짐없이·접혀서, 카드는 골라서·세워서.
+ * 규칙: 판정은 무조건 카드 / 숫자는 합산 델타(0이면 생략) / 목록은 넣고 뺀 것 /
+ *       enum·text는 A → B / bool은 안 세운다 (대부분 시스템 깃발이라 소음이다).
+ * 출처는 액션·판정·이벤트·랜덤·보조 AI만 — onTurn 틱·시간 소비는 매 턴 있는 배경이다.
+ * statusUI.highlights: 'off' 로 끌 수 있다.
+ */
+function highlightCards(schema, changeLog, varById) {
+  if (schema.statusUI?.highlights === 'off') return '';
+  if (!changeLog || !changeLog.length) return '';
+  const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
+    || c.source?.startsWith('check:') || c.source?.startsWith('event:')
+    || c.source?.startsWith('random:') || c.source?.startsWith('choice'));
+  if (!keep.length) return '';
+  const cards = [];
+  // 판정 요약줄 — 성패가 색을 정한다 (성공 계열 초록 / 실패 계열 붉음).
+  // ⚠ 등급 효과의 변수 변화도 source가 check:라서, "요약줄 = id가 변수가 아닌 것"으로 가른다
+  const isCheckSummary = (c) => c.source?.startsWith('check:') && !varById[c.id];
+  for (const c of keep) {
+    if (!isCheckSummary(c)) continue;
+    const txt = String(c.to ?? '');
+    const tone = /대실패|실패|사고|헛|거절/.test(txt) ? ' bad' : (/성공|만석|전설|수확|노다지|발견|합류/.test(txt) ? ' good' : '');
+    cards.push(`<div class="sim-card${tone}">🎲 <b>${esc(String(c.id))}</b> ${esc(txt)}</div>`);
+  }
+  // 변수 — 같은 변수를 여러 효과가 만졌으면 처음→끝으로 합쳐 하나의 카드로
+  const byVar = new Map();
+  for (const c of keep) {
+    if (isCheckSummary(c)) continue;
+    const def = varById[c.id];
+    if (!def || def.type === 'bool') continue;
+    const prev = byVar.get(c.id);
+    if (prev) prev.to = c.to;
+    else byVar.set(c.id, { id: c.id, from: c.from, to: c.to, def });
+  }
+  // 우선순위 — 소지품·돈이 멤버별 잔카드에 밀려 상한 밖으로 떨어지지 않게:
+  // 소지품(1) → 돈(2) → 상태 전환(3) → 나머지 숫자(4). 같은 순위끼리는 일어난 순서.
+  const varCards = [];
+  for (const { id, from, to, def } of byVar.values()) {
+    const label = esc(def.label ?? id);
+    if (Array.isArray(from) || Array.isArray(to)) {
+      const fa = Array.isArray(from) ? from : []; const ta = Array.isArray(to) ? to : [];
+      const added = ta.filter((x) => !fa.includes(x));
+      const removed = fa.filter((x) => !ta.includes(x));
+      if (!added.length && !removed.length) continue;
+      const bits = [...added.map((x) => `<span class="d-up">+${esc(String(x))}</span>`),
+        ...removed.map((x) => `<span class="d-down">−${esc(String(x))}</span>`)];
+      varCards.push({ pri: 1, html: `<div class="sim-card">🎒 <b>${label}</b> ${bits.join(' ')}</div>` });
+    } else if (typeof to === 'number' || typeof from === 'number') {
+      const d = (Number(to) || 0) - (Number(from) || 0);
+      if (!d) continue;
+      const fmt = (v) => def.format ? def.format.replace('{v}', fmtNum(Math.abs(v))) : fmtNum(Math.abs(v));
+      const money = /만원|골드|G\b|원/.test(String(def.format ?? ''));
+      varCards.push({ pri: money ? 2 : 4, html: `<div class="sim-card">${money ? '💰' : '📊'} <b>${label}</b> `
+        + `<span class="${d > 0 ? 'd-up' : 'd-down'}">${d > 0 ? '+' : '−'}${fmt(d)}</span>`
+        + ` <span class="sim-card-now">(현재 ${esc(def.format ? def.format.replace('{v}', fmtNum(to)) : fmtNum(to))})</span></div>` });
+    } else if (String(from) !== String(to)) {
+      varCards.push({ pri: 3, html: `<div class="sim-card">🔔 <b>${label}</b> ${esc(String(from))} → <b>${esc(String(to))}</b></div>` });
+    }
+  }
+  varCards.sort((a, b) => a.pri - b.pri);
+  cards.push(...varCards.map((c) => c.html));
+  if (!cards.length) return '';
+  const MAX = 8;
+  const shown = cards.slice(0, MAX);
+  const more = cards.length > MAX ? `<div class="sim-card sim-card-more">…외 ${cards.length - MAX}건 — 아래 '이번 턴 변화'에서</div>` : '';
+  return `<div class="sim-cards">${shown.join('')}${more}</div>`;
+}
+
 function renderStatusHtml(schema, state, changeLog = null, actionStates = null, opts = {}) {
   const ui = schema.statusUI || {};
   const lookup = makeLookup(schema, state.vars);
@@ -6582,10 +6666,14 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const body = ui.collapsible !== false
     ? `<details open><summary>${title}</summary>${inner}</details>`
     : inner;
+  // 하이라이트 카드 (v0.86.4) — 접힌 상자 **바깥**, 상태창 맨 위. 이번 턴의 체감 나는
+  // 변화(판정 성패·돈·소지품·스탯)를 게임 알림처럼 세운다. 실기 제보: 변화가 전부
+  // 접힌 로그 속에 있어서 "플레이가 남긴 흔적"이 채팅에서 안 보였다.
+  const cards = highlightCards(schema, changeLog, varById);
   const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
   // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
   // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
-  return `${styleTag}<div class="sim-status" id="simst-${uid}">${body}</div>`;
+  return `${styleTag}<div class="sim-status" id="simst-${uid}">${cards}${body}</div>`;
 }
 
 /**
@@ -11786,6 +11874,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['collapsed', '접힘 (기본) — 눌러야 보임'], ['open', '펼침 — 영수증처럼 항상 표시'], ['off', '숨김'],
       ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
       '이번 턴에 실제 반영된 변수 변화와 사유를 상태창 아래에 보여줘요.'),
+      // 하이라이트 카드 (v0.86.4) — 판정 성패·돈·소지품·스탯 변화를 게임 알림처럼 세운다
+      statusField('하이라이트 카드', bindSelect(ui.highlights ?? 'on', [
+        ['on', '켬 (기본) — 판정·돈·소지품 변화를 카드로'], ['off', '끔'],
+      ], (x) => { ui.highlights = x === 'on' ? undefined : x; rerender(); }),
+      '이번 턴의 체감 나는 변화만 골라 상태창 맨 위에 카드로 세워요.'),
     ));
     if ((ui.mode ?? 'auto') !== 'template') {
       settings.appendChild(h('div', { class: 'sce-status-layout' },

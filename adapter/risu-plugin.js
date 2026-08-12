@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.87.0
-//@display-name SimCore (시뮬 엔진) v0.87.0 아이돌 굿즈·콜라보·음지 상점 대확장
+//@version 0.87.1
+//@display-name SimCore (시뮬 엔진) v0.87.1 상태창 클릭 반응 속도·탭 튕김 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.87.1 ───────────────────────────────────────────────
+// 실사고(세 번째 제보): 상태창 액션 버튼이 또 안 눌린다. 이번엔 클래스가 아니라 **속도**였다:
+// ① 좌표 히트테스트가 후보마다 at(i)·getBoundingClientRect를 차례로 await — RPC 한 왕복씩
+//   n번. 액션 83개(아이돌 v0.87.0) × 메시지마다 그려지는 상태창 = 후보 수백 개, 클릭 한 번에
+//   몇 초 → "안 눌린다"로 체감. 전 후보 병렬 조회로 왕복을 겹치고(전체가 한 왕복 수준),
+//   스캔 중 중복 클릭은 버린다 (hitScanBusy).
+// ② 즉시 갱신이 라디오를 새로 써서 보던 탭이 첫 탭으로 튕겼다 — 13탭이 되면서 누른 칩이
+//   눈앞에서 사라지는 수준. 갱신 전에 input:checked를 읽어 그 탭에 checked를 되단다.
+// ③ 되읽기 검증(slice 60 비교)이 항상 실패 — setInnerHTML의 기본 DOMPurify가 마크업을
+//   정규화한다 (실측: <details open> → open=""). 렌더마다 숨은 나온스 스팬으로 교체.
+//   ①~③ 전부 어댑터만 — 스키마 변경 없음, 플러그인 재임포트만 하면 된다.
 //
 // ── v0.87.0 ───────────────────────────────────────────────
 // IDOL 상점 대확장 (실기 요청, 전부 *_DEFS 표 생성):
@@ -3492,6 +3504,7 @@
   // 쓰기는 SafeElement가 DOMPurify로 새니타이즈한다. 반영 여부를 되읽어 확인하고,
   // 실패면 false를 돌려 호출자가 "다음 메시지에서 갱신" 안내를 붙이게 한다.
   // [live-test] SafeElement innerHTML 대입이 실제 반영되는지 웹리스에서 확인 필요.
+  let refreshNonce = 0; // 되읽기 검증용 일련번호 — 렌더마다 숨은 스팬에 박아 "내가 쓴 판"임을 확인
   async function refreshStatusDom() {
     if (!session || !schema || hitState !== 'on' || !hitDoc) return false;
     try {
@@ -3504,6 +3517,17 @@
         const eid = String(await safeCall(el, 'getId', 'id') ?? '');
         const m = /^simst-([A-Za-z0-9_-]+)$/.exec(eid);
         if (!m) continue;
+        // 갱신 전에 지금 보고 있는 탭을 붙잡아 둔다 — 라디오를 새로 쓰면 checked가 기본
+        // (첫 탭)으로 돌아가, 칩을 누를 때마다 보던 탭이 첫 탭으로 튕긴다 (v0.87.1 —
+        // 탭이 13장이 되면서 실기에서 "누르면 상태창이 널뛴다"로 체감된 문제).
+        let tabIdx = -1;
+        try {
+          const cur = await el.querySelector('input:checked');
+          if (cur) {
+            const tm = /sim-tabin-(\d+)/.exec(String(await safeCall(cur, 'getClassName', 'className') ?? ''));
+            if (tm) tabIdx = +tm[1];
+          }
+        } catch {}
         const html = renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
           { includeStyle: false, uid: m[1] });
         // 루트 껍데기는 이미 DOM에 있다 — 본체만 갈아 끼운다
@@ -3513,9 +3537,20 @@
         // 안 맞아 상태창이 통짜 텍스트로 깨진다 (실사고: 범례 클릭마다 상태창이 무너짐 —
         // v0.86.2가 클릭에 즉시 갱신을 물리면서 드러났다). 파이프라인 규칙 그대로:
         // x-risu-·hljs로 시작하면 그대로, 아니면 접두. 재갱신에도 멱등이다.
-        const inner = raw.replace(/class="([^"]*)"/g, (mm, cls) =>
+        let inner = raw.replace(/class="([^"]*)"/g, (mm, cls) =>
           `class="${cls.split(/\s+/).filter(Boolean)
             .map((c) => /^(x-risu-|hljs)/.test(c) ? c : 'x-risu-' + c).join(' ')}"`);
+        // 붙잡아 둔 탭을 되살린다 — 새 렌더의 checked(첫 탭)를 지우고 그 자리 라디오에 단다.
+        // 탭 수가 줄어 자리가 사라졌으면(게이트 변화) 그냥 기본 첫 탭으로 둔다.
+        if (tabIdx > 0 && new RegExp(`sim-tabin-${tabIdx}[" ]`).test(inner)) {
+          inner = inner.replace(/(<input[^>]*sim-tabin-\d+[^>]*?) checked(>| )/g, '$1$2');
+          inner = inner.replace(new RegExp(`(<input[^>]*sim-tabin-${tabIdx}"[^>]*?)>`), '$1 checked>');
+        }
+        // 되읽기 검증 표식 — setInnerHTML은 기본 DOMPurify를 타서 마크업이 정규화된다
+        // (실측: <details open> → open="") — 원문 앞부분 비교는 항상 어긋난다 (v0.87.1에서
+        // 발견). 렌더마다 숨은 스팬에 일련번호를 박고 그게 되읽히는지로만 확인한다.
+        const nonce = `x-risu-sim-refnonce-${++refreshNonce}`;
+        inner += `<span class="${nonce}" style="display:none"></span>`;
         try {
           if (typeof el.setInnerHTML === 'function') await el.setInnerHTML(inner);
           else el.innerHTML = inner;
@@ -3523,14 +3558,23 @@
         // 되읽어 반영 확인 — 프록시가 쓰기를 조용히 버리는 환경이면 여기서 걸린다
         try {
           const back = String(await safeCall(el, 'getInnerHTML', 'innerHTML') ?? '');
-          if (back && back.slice(0, 60) === inner.slice(0, 60)) verified = true;
+          if (back.includes(nonce)) verified = true;
         } catch {}
       }
       return verified;
     } catch (e) { console.log('[simcore] 상태창 즉시 갱신 실패:', e.message); return false; }
   }
 
+  // ⚠ 스캔은 병렬로 (v0.87.1). 예전엔 후보마다 at(i)·getBoundingClientRect를 **차례로**
+  // await했다 — RPC 한 왕복씩 n번. 액션이 80개를 넘고(아이돌 v0.87.0) 상태창이 메시지마다
+  // 그려지니 후보가 수백 개가 되고, 클릭 한 번에 몇 초씩 걸려 "버튼이 안 눌린다"로 체감됐다
+  // (실기 제보 세 번째만에 잡음). 전 후보의 좌표를 한꺼번에 띄우면 왕복 시간이 겹쳐서
+  // 전체가 한 왕복 수준으로 줄고, className은 명중한 것만 읽는다.
+  // 스캔이 도는 동안 온 클릭은 버린다 — 밀린 스캔이 줄줄이 도는 것보다 낫다.
+  let hitScanBusy = false;
   async function onDocClick(ev) {
+    if (hitScanBusy) return;
+    hitScanBusy = true;
     try {
       if (!session || !schema || !hitDoc || panelVisible) return; // 우리 전체화면 패널이 덮는 동안은 무시
       if ((ev.button ?? 0) !== 0) return;
@@ -3546,12 +3590,17 @@
         stripCnt = typeof sp.length === 'function' ? await sp.length() : sp.length;
       } catch {}
       hitLastClick = { x: ev.clientX, y: ev.clientY, cand: n, st: stCnt, strip: stripCnt, hit: null };
-      for (let i = 0; i < n; i++) {
-        const el = typeof els.at === 'function' ? await els.at(i) : els[i];
-        if (!el) continue;
-        const r = await el.getBoundingClientRect();
-        if (!r || !(r.width > 0) || !(r.height > 0)) continue; // 접혀 있거나 화면에 없는 요소
-        if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) continue;
+      const inside = (await Promise.all(Array.from({ length: n }, async (_, i) => {
+        try {
+          const el = typeof els.at === 'function' ? await els.at(i) : els[i];
+          if (!el) return null;
+          const r = await el.getBoundingClientRect();
+          if (!r || !(r.width > 0) || !(r.height > 0)) return null; // 접혀 있거나 화면에 없는 요소
+          if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) return null;
+          return el;
+        } catch { return null; }
+      }))).filter(Boolean);
+      for (const el of inside) {
         const hit = decodeHitClass(await safeCall(el, 'getClassName', 'className'));
         if (!hit) continue;
         hitLastClick.hit = hit;
@@ -3561,6 +3610,7 @@
         return; // 첫 명중 하나만
       }
     } catch (e) { console.log('[simcore] 클릭 처리 오류:', e.message); }
+    finally { hitScanBusy = false; }
   }
 
   // 제안 칩 클릭 (v0.43) — 그 문장을 유저 메시지로 바로 전송한다 (공식 sendChat API, 전용 권한 1회).

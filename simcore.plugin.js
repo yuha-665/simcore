@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.86.4
-//@display-name SimCore (시뮬 엔진) v0.86.4 판정·돈·소지품 변화가 카드로 보인다
+//@version 0.86.5
+//@display-name SimCore (시뮬 엔진) v0.86.5 범례 클릭 시 상태창 깨짐 수정
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.86.5 ───────────────────────────────────────────────
+// 실사고: 범례 클릭·패널 조작 후 상태창이 통짜 텍스트로 깨졌다. 원인 — 리수 파이프라인은
+// 메시지의 class 전부와 <style> 선택자에 x-risu- 접두를 붙이는데, 즉시 갱신(v0.85.4)이
+// 접두 없는 원본 클래스로 갈아 끼워 접두된 CSS와 어긋났다. v0.86.2가 범례 클릭마다
+// 즉시 갱신을 물리면서 "누르면 깨진다"로 드러났다. 갈아 끼우는 HTML의 클래스를
+// 파이프라인 규칙 그대로(x-risu-·hljs 시작이면 유지) 미리 접두 — 멱등이라 재갱신도 안전.
+// 히트테스트([class*=\"sim-hit\"])와 decodeHitClass는 접두를 이미 다룬다.
+// [live-test] 범례 클릭 → ✅ 표시 + 상태창 모양 유지 확인.
 //
 // ── v0.86.4 ───────────────────────────────────────────────
 // 하이라이트 카드 — 실기 제보: 판정 성패·돈·소지품·스탯처럼 체감 나는 변화가 전부
@@ -22841,7 +22850,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const html = renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
           { includeStyle: false, uid: m[1] });
         // 루트 껍데기는 이미 DOM에 있다 — 본체만 갈아 끼운다
-        const inner = html.replace(/^<div class="sim-status"[^>]*>/, '').replace(/<\/div>$/, '');
+        const raw = html.replace(/^<div class="sim-status"[^>]*>/, '').replace(/<\/div>$/, '');
+        // ⚠ 클래스 접두 (v0.86.5) — 리수 메시지 파이프라인은 모든 class에 x-risu-를 붙이고
+        // <style> 선택자도 같이 접두한다. 접두 없이 갈아 끼우면 이미 접두된 메시지 CSS와
+        // 안 맞아 상태창이 통짜 텍스트로 깨진다 (실사고: 범례 클릭마다 상태창이 무너짐 —
+        // v0.86.2가 클릭에 즉시 갱신을 물리면서 드러났다). 파이프라인 규칙 그대로:
+        // x-risu-·hljs로 시작하면 그대로, 아니면 접두. 재갱신에도 멱등이다.
+        const inner = raw.replace(/class="([^"]*)"/g, (mm, cls) =>
+          `class="${cls.split(/\s+/).filter(Boolean)
+            .map((c) => /^(x-risu-|hljs)/.test(c) ? c : 'x-risu-' + c).join(' ')}"`);
         try {
           if (typeof el.setInnerHTML === 'function') await el.setInnerHTML(inner);
           else el.innerHTML = inner;

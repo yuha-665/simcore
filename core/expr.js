@@ -28,7 +28,10 @@ const FUNC_ARITY = {
  * @returns {number|null}
  */
 function itemExpiry(s) {
-  const m = String(s).match(/@(\d+(?:\.\d+)?)/);
+  // 음수도 기한으로 읽는다 (v0.87.2) — 보조 AI가 "@-22"처럼 쓰면 이미 지난 기한이라
+  // 다음 만료 정리에서 즉시 빠진다. 실사고: 음수가 패턴에 안 걸려 null(무기한)이 되는 바람에
+  // 지난 일정이 영영 안 지워지는 유령 항목이 됐다 ("거리 홍보 및 게릴라 버스킹 @-22").
+  const m = String(s).match(/@(-?\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : null;
 }
 
@@ -44,7 +47,8 @@ function itemExpiry(s) {
  * @returns {number|null} 숫자가 없으면 null
  */
 function itemValue(s) {
-  const m = String(s).replace(/@\d+(?:\.\d+)?/g, '').match(/([+-]?\d+(?:\.\d+)?)\s*$/);
+  // 기한 떼기도 음수까지 (itemExpiry와 같은 패턴) — 안 떼면 "@-22"의 -22가 값으로 잡힌다
+  const m = String(s).replace(/@-?\d+(?:\.\d+)?/g, '').match(/([+-]?\d+(?:\.\d+)?)\s*$/);
   return m ? parseFloat(m[1]) : null;
 }
 

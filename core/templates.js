@@ -3156,6 +3156,9 @@ const IDOL_DAY_EFFECTS = [
   { set: 'day_slots', expr: '2' },
   // 서사 연동 깃발 청소 — 🌙을 눌렀으면 같은 턴의 넘김 요청은 이미 소화된 것
   { set: 'night_req', expr: 'false' },
+  // 유령 밤 빗장 올리기 (v0.87.2) — 이 턴·다음 턴에 오는 night_req는 방금 정산된 밤의
+  // 메아리다 (night_ghost_clear가 지운다). onTurn이 매턴 1씩 깎아 두 턴이면 풀린다.
+  { set: 'night_done', expr: '2' },
 ];
 
 // 레슨 — 3스탯 × 4등급 (v0.86). "돈으로 점수를 산다"뿐이던 성장에 시간·굴림의 축을 더한다:
@@ -3473,6 +3476,16 @@ const IDOL = {
       desc: '며칠 통째로 지났나. 같은 날 안이면 0. 날을 넘기는 것은 시스템이 하니 직접 바꾸지 마라.' },
     { id: 'night_req', label: '하루 넘김 요청', type: 'bool', init: false,
       desc: '서사가 명백히 하룻밤을 넘겼는데 🌙이 안 눌렸을 때만 켠다 (잠들고 이튿날 아침 등). 시스템이 하루 정산을 대신 돌린다. 같은 날 안이면 절대 켜지 마라.' },
+    // 유령 밤 빗장 (v0.87.2) — 🌙이 정산한 그 턴의 출력에서 보조 AI가 방금 그려진 밤 장면을
+    // 보고 night_req를 또 켜면, 같은 턴 이벤트(night_auto)가 **둘째 밤**을 정산했다
+    // (실사고: 백화점 업무 D-1에서 🌙 누르고 자고 일어나니 이미 펑크 — 하루가 이틀로 흘러
+    // 일하는 날 아침이 오기 전에 job_days 0 펑크 분기가 굴렀다). 정산 직후 2로 올리고
+    // onTurn이 1씩 깎는다 — onTurn(출력 6)이 이벤트(출력 7)보다 먼저 돌아 정산 턴에
+    // 2→1로 깎여도 빗장이 살아야 해서 2다. ≥1인 동안 도착한 night_req는 방금 정산된
+    // 밤의 메아리로 보고 지운다 (night_ghost_clear). 진짜 새 밤은 한 턴 뒤 0이 된 뒤라 통과.
+    // ⚠ updater allow에 절대 넣지 말 것 — 보조 AI가 이 빗장을 만지면 이중 정산이 되살아난다.
+    { id: 'night_done', label: '밤 정산 직후', type: 'int', init: 0, min: 0, max: 2,
+      desc: '방금 하루 정산이 돌았음을 표시하는 내부 빗장. 시스템 전용이니 직접 바꾸지 마라.' },
     // 무대 대리 정산 (v0.86.1) — 서사가 무대를 치렀는데 버튼이 안 눌리면 돈도 없이 펑크가
     // 났다 (실기 제보). night_req와 같은 규약: 깃발은 요청일 뿐, 정산은 판정이 굴린다.
     { id: 'stage_req', label: '무대 정산 요청', type: 'bool', init: false,
@@ -4305,6 +4318,9 @@ const IDOL = {
       { list: 'schedule', expire: 'elapsed' },
       { list: 'job_queue', expire: 'elapsed' },
       { list: 'live_queue', expire: 'elapsed' },
+      // 유령 밤 빗장 감쇠 — onTurn(출력 6)은 이벤트(출력 7)보다 먼저 돈다.
+      // 정산 턴: 2→1 (빗장 유지) → 다음 턴: 1→0 (진짜 새 밤부터 통과)
+      { set: 'night_done', expr: 'max(night_done - 1, 0)' },
     ],
     events: [
       // 서사 연동 하루 넘김 — 보조 AI가 켠 요청을 여기서 소화한다. 효과는 🌙과 **같은 한 벌**
@@ -4335,9 +4351,17 @@ const IDOL = {
       { id: 'stage_req_clear',
         when: "stage_req and (job == '없음' or job_days >= 1) and (live == '없음' or live_days >= 1)",
         effects: [{ set: 'stage_req', expr: 'false' }] },
+      // 유령 밤 청소 (v0.87.2) — 방금 정산된 밤(night_done ≥ 1)의 메아리 깃발은 조용히
+      // 내린다. 🌙을 누른 턴의 출력에서 보조 AI가 그 밤 장면을 보고 night_req를 또 켜면,
+      // 아래 night_auto가 같은 턴에 둘째 밤을 정산했다 (실사고: D-1에서 자고 일어나니 펑크).
+      // 지우기만 하고 빗장은 안 깎는다 — 빗장은 onTurn 감쇠로만 풀린다.
+      { id: 'night_ghost_clear', when: 'night_req and night_done >= 1',
+        effects: [{ set: 'night_req', expr: 'false' }] },
       // 하루 넘김 — 반드시 무대 대리 정산 **뒤에** (위 순서 규칙). 무대가 정산되고 나면
       // job이 '없음'이라 이 밤 정산의 펑크 분기가 그 무대를 노쇼로 몰지 않는다.
-      { id: 'night_auto', when: 'night_req and not unit_over', effects: IDOL_DAY_EFFECTS,
+      // night_done == 0은 이중 방어 — 위 청소가 깃발을 지우므로 평소엔 안 걸리지만,
+      // 이벤트 순서가 뒤바뀌는 실수를 해도 유령 정산만은 막힌다.
+      { id: 'night_auto', when: 'night_req and night_done == 0 and not unit_over', effects: IDOL_DAY_EFFECTS,
         notify: '서사를 따라 하루가 넘어갔다 — 🌙 없이도 사무소의 밤은 정산된다.' },
       // 등급은 인지도가 문턱을 넘을 때 올라간다. once를 안 쓴 이유는 romance와 같다 —
       // 조건이 계속 참이면 한 번만 발동하고, 내려갔다 올라와도 다시 맞춰진다

@@ -645,6 +645,49 @@ const E = (e, vars) => expr.evaluate(e, engine.makeLookup(S, { ...engine.initSta
     col.choices.at(-1).effects.some((f) => f.set === 'debt' || /^m1_me$/.test(f.set)), '');
 }
 
+// ── 유령 밤 이중 정산 (v0.87.2) — 실사고: 백화점 업무 D-1에서 🌙 누르고 자고 일어나니
+// 이미 펑크. 🌙이 정산한 턴의 출력에서 보조 AI가 그 밤을 보고 night_req를 또 켜면
+// night_auto가 같은 턴에 둘째 밤을 정산했다. 빗장(night_done)이 메아리를 지워야 한다.
+{
+  let st = engine.initState(S);
+  st.vars.job = '백화점 홍보'; st.vars.job_days = 1; st.vars.funds = 400;
+  const late0 = st.vars.late;
+  // 🌙 (전날 밤) — 펑크 없이 D-day만 1→0
+  st = engine.toggleAction(S, st, 'next_day').state;
+  st = engine.sendPhase(S, st, { rng: seededRng('gn', 1, 'a') }).state;
+  ck('★ 전날 🌙: 펑크 없음 + D-day 0 (일하는 날 아침)',
+    st.vars.late === late0 && st.vars.job === '백화점 홍보' && st.vars.job_days === 0,
+    `late ${st.vars.late} job ${st.vars.job} days ${st.vars.job_days}`);
+  ck('정산 직후 빗장이 올라간다', st.vars.night_done === 2, String(st.vars.night_done));
+  // 같은 턴 출력 — 보조 AI가 방금 그 밤을 보고 night_req를 또 켠다 (유령)
+  const fundsBefore = st.vars.funds;
+  const o = engine.outputPhase(S, st, { night_req: true }, {}, { rng: seededRng('gn', 1, 'o') });
+  st = o.state;
+  ck('★ 유령 밤이 정산되지 않는다 (펑크 없음·일감 유지·둘째 밤 지출 없음)',
+    st.vars.late === late0 && st.vars.job === '백화점 홍보' && st.vars.funds === fundsBefore,
+    `late ${st.vars.late} job ${st.vars.job} funds ${fundsBefore}→${st.vars.funds}`);
+  ck('유령 깃발은 지워진다', st.vars.night_req === false, '');
+  // 다음 턴 — 빗장이 풀려(1→0) 진짜 새 밤 요청은 정상 정산된다
+  st = engine.outputPhase(S, st, { night_req: true }, {}, { rng: seededRng('gn', 2, 'o') }).state;
+  ck('★ 한 턴 뒤 진짜 밤은 정상 정산 (일하는 날을 그냥 넘겨 의도된 펑크)',
+    st.vars.late === late0 + 1 && st.vars.job === '없음', `late ${st.vars.late} job ${st.vars.job}`);
+}
+
+// ── 유령 일정 (v0.87.2) — 실사고: "거리 홍보 및 게릴라 버스킹 @-22"가 무기한이 되어
+// 다음 업무·다음 라이브·일정 세 줄에 영영 떠 있었다. 음수 기한 = 이미 지난 것 → 즉시 정리.
+{
+  const { itemExpiry, itemValue } = expr;
+  ck('★ 음수 기한을 읽는다 (@-22 → -22)', itemExpiry('거리 홍보 및 게릴라 버스킹 @-22') === -22, '');
+  ck('음수 기한이 항목 값으로 새지 않는다', itemValue('거리 홍보 및 게릴라 버스킹 @-22') === null, '');
+  let st = engine.initState(S);
+  st.vars.schedule = ['거리 홍보 및 게릴라 버스킹 @-22'];
+  st.vars.job_queue = ['거리 홍보 및 게릴라 버스킹 @-22', '백화점 홍보 @9'];
+  st = engine.outputPhase(S, st, {}, {}, { rng: seededRng('gs', 1, 'o') }).state;
+  ck('★ 지난 항목은 다음 턴에 스스로 빠진다 (미래 항목은 남는다)',
+    st.vars.schedule.length === 0 && st.vars.job_queue.length === 1 && /@9/.test(st.vars.job_queue[0]),
+    JSON.stringify([st.vars.schedule, st.vars.job_queue]));
+}
+
 report();
 
 function report() {

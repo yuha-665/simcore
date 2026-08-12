@@ -3102,6 +3102,12 @@ const SHADY_TIERS = [
   ['costume', '수위 코스튬 촬영 설득', 17],
   ['gravure', '수위 화보 설득', 19],
   ['adult', '성인 영상 설득', 24],
+  // 시크릿 팬서비스 (v0.87) — 같은 설득 사다리를 탄다
+  ['sshake', '시크릿 악수회 설득', 11],
+  ['sfoto', '시크릿 사진회 설득', 13],
+  ['slive', '시크릿 라이브 설득', 15],
+  ['smeet', '시크릿 팬미팅 설득', 17],
+  ['sstrip', '스트립쇼 설득', 20],
 ];
 const shadyCheck = (id, label, vs) => ({
   id: `ck_${id}`, label, roll: 'rand(1, 20)', mod: 'shady_mod', vs,
@@ -3204,6 +3210,99 @@ for (const [s, sname, icon] of LESSON_STATS) {
     });
   }
 }
+
+// ── 굿즈·콜라보·음지 굿즈·음지 팬서비스 (v0.87) — 표가 곧 콘텐츠다 ──────────
+// 굿즈: 만들면 goods 목록에 남고 라이브 물판·팬서비스 판매가 종류 수만큼 커진다 (상한 6종분).
+const GOODS_DEFS = [
+  // [id, 아이콘, 이름, 제작비, 여는 인지도]
+  ['photocard', '🖼', '포토카드', 60, 0],
+  ['badge', '📛', '캔뱃지', 90, 10],
+  ['acrylic', '🧊', '아크릴 스탠드', 120, 12],
+  ['lightstick', '🪄', '응원봉', 150, 15],
+  ['scroll', '📜', '족자봉', 180, 20],
+  ['asmr', '🎧', 'ASMR 보이스', 220, 24],
+  ['photobook', '📕', '화보집', 320, 30],
+  ['dakimakura', '🛏', '다키마쿠라', 400, 35],
+];
+const GOODS_ACTIONS = GOODS_DEFS.map(([id, icon, name, cost, gate]) => ({
+  id: `mk_${id}`, label: `${icon} ${name} 제작 (${cost}만원)`, mode: 'oneshot',
+  when: `not has(goods, '${name}') and funds >= ${cost}${gate ? ` and awareness >= ${gate}` : ''} and not unit_over`,
+  inject: `[행동] ${name} 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.`,
+  effects: [{ set: 'funds', expr: `max(funds - ${cost}, 0)` }, { list: 'goods', add: [name] }],
+}));
+// 콜라보: 브랜드가 계약금을 내는 쪽이다 — 문턱은 프로덕션 등급(rank_n)이 연다.
+const COLLAB_DEFS = [
+  // [id, 아이콘, 이름, 등급 문턱(rank_n), 추가 조건, 계약금, 인지도+, 팬 기본, 화제성+]
+  ['bread', '🍞', '빵 콜라보', 2, '', 300, 4, 400, 10],
+  ['store', '🏪', '편의점 콜라보', 3, '', 500, 6, 700, 12],
+  ['franchise', '🍔', '프랜차이즈 콜라보', 3, ' and fans >= 8000', 800, 8, 1200, 14],
+  ['tech', '📱', '전자제품 콜라보', 4, '', 1400, 10, 2000, 16],
+  ['car', '🚗', '자동차 콜라보', 5, '', 2200, 12, 3000, 18],
+];
+const COLLAB_ACTIONS = COLLAB_DEFS.map(([id, icon, name, rankGate, extra, pay, aw, fanBase, bz]) => ({
+  id: `cl_${id}`, label: `${icon} ${name} (계약금 ${pay}만원)`, mode: 'oneshot',
+  when: `not has(collabs, '${name}') and rank_n >= ${rankGate}${extra} and not unit_over`,
+  inject: `[행동] ${name} 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.`,
+  effects: [
+    { set: 'funds', expr: `min(funds + ${pay}, 9999999)` },
+    { set: 'inc_goods', expr: `min(inc_goods + ${pay}, 9999999)` },
+    { set: 'awareness', expr: `min(awareness + ${aw}, 100)` },
+    { set: 'fans', expr: `min(fans + round(${fanBase} * fan_mul), 9999999)` },
+    { set: 'buzz', expr: `min(buzz + ${bz}, 100)` },
+    { list: 'collabs', add: [name] },
+  ],
+}));
+// 음지 굿즈: 타락도가 열고, 만들 때마다 타락이 또 오른다. 시크릿 팬서비스 판매의 재고다.
+const SGOODS_DEFS = [
+  // [id, 이름, 제작비, 여는 타락도, 타락 상승]
+  ['sphotocard', '야한 포토카드 세트', 80, 10, 3],
+  ['sbadge', '성인용 캔뱃지', 100, 15, 3],
+  ['sacrylic', '성인용 아크릴', 130, 20, 4],
+  ['sasmr', '성인 ASMR', 250, 25, 5],
+  ['sscroll', '성인용 족자봉', 200, 30, 4],
+  ['sdaki', '성인용 다키마쿠라', 450, 35, 6],
+  ['svideo', '은밀 사생활 영상', 300, 45, 10],
+  ['sav', '팬서비스 AV 영상', 600, 60, 14],
+];
+const SGOODS_ACTIONS = SGOODS_DEFS.map(([id, name, cost, gate, cg]) => ({
+  id: `mk_${id}`, label: `🔞 ${name} 제작 (${cost}만원)`, mode: 'oneshot', impactExempt: true,
+  when: `not has(sgoods, '${name}') and corrupt >= ${gate} and funds >= ${cost} and not unit_over`,
+  inject: `[행동] ${name} 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.`,
+  effects: [
+    { set: 'funds', expr: `max(funds - ${cost}, 0)` },
+    { set: 'corrupt', expr: `min(corrupt + ${cg}, 100)` },
+    { set: 'm1_me', expr: 'max(m1_me - 4, 0)' }, { set: 'm2_me', expr: 'max(m2_me - 4, 0)' }, { set: 'm3_me', expr: 'max(m3_me - 4, 0)' },
+    { list: 'sgoods', add: [name] },
+  ],
+}));
+// 음지 팬서비스: 돈을 받는 팬서비스 — 설득 판정을 거치고, 음지 굿즈가 현장 판매로 붙는다.
+// 값은 멘탈·유대·타락으로 치른다. 스트립쇼는 이름값까지 깎인다 (업계 소문).
+const SFS_DEFS = [
+  // [id, 판정 id, 아이콘, 이름, 여는 타락도, 기본 수익, 굿즈당 판매, 타락+, 화제성+, 멘탈−, 유대−, 쿨다운, 이름값−]
+  ['fs2_shake', 'sshake', '🤫', '시크릿 악수회', 15, 150, 40, 3, 4, 6, 3, 4, 0],
+  ['fs2_photo', 'sfoto', '🕶', '시크릿 사진회', 25, 250, 50, 4, 6, 8, 4, 5, 0],
+  ['fs2_live', 'slive', '🎤', '시크릿 라이브', 35, 400, 70, 5, 8, 10, 5, 5, 0],
+  ['fs2_meet', 'smeet', '🥂', '시크릿 팬미팅', 45, 550, 90, 6, 8, 12, 6, 6, 0],
+  ['fs2_strip', 'sstrip', '🔥', '시크릿 스트립쇼', 55, 800, 120, 8, 10, 16, 8, 7, 2],
+];
+const SFS_ACTIONS = SFS_DEFS.map(([id, ck, icon, name, gate, base, per, cg, bz, me, love, cd, awLoss]) => ({
+  id, label: `${icon} ${name}를 연다`, mode: 'oneshot', cooldown: cd, impactExempt: true,
+  when: `corrupt >= ${gate} and not unit_over`, check: `ck_${ck}`,
+  inject: `[행동] 아는 사람만 아는 자리 — ${name}를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.`,
+  effects: [
+    { set: 'funds', expr: `min(funds + (shady_ok >= 1 ? ${base} + count(sgoods) * ${per} : 0), 9999999)` },
+    { set: 'inc_goods', expr: `min(inc_goods + (shady_ok >= 1 ? ${base} + count(sgoods) * ${per} : 0), 9999999)` },
+    { set: 'corrupt', expr: `min(corrupt + (shady_ok >= 1 ? ${cg} : 0), 100)` },
+    { set: 'buzz', expr: `min(buzz + (shady_ok >= 1 ? ${bz} : 0), 100)` },
+    ...(awLoss ? [{ set: 'awareness', expr: `max(awareness - (shady_ok >= 1 ? ${awLoss} : 0), 0)` }] : []),
+    { set: 'm1_me', expr: `max(m1_me - (shady_ok >= 1 ? ${me} : 0), 0)` },
+    { set: 'm2_me', expr: `max(m2_me - (shady_ok >= 1 ? ${me} : 0), 0)` },
+    { set: 'm3_me', expr: `max(m3_me - (shady_ok >= 1 ? ${me} : 0), 0)` },
+    { set: 'm1_love', expr: `max(m1_love - (shady_ok >= 1 ? ${love} : 0), 0)` },
+    { set: 'm2_love', expr: `max(m2_love - (shady_ok >= 1 ? ${love} : 0), 0)` },
+    { set: 'm3_love', expr: `max(m3_love - (shady_ok >= 1 ? ${love} : 0), 0)` },
+  ],
+}));
 
 const IDOL = {
   simcore: '0.1',
@@ -3385,8 +3484,12 @@ const IDOL = {
     // 모든 액션에 물리면 놀이가 회계가 되므로, 시간을 크게 먹는 것만 문다.
     { id: 'day_slots', label: '남은 일정', type: 'int', init: 2, min: 0, max: 2, format: '{v}칸',
       desc: '오전·오후 두 칸. 레슨이 한 칸씩 쓴다. 하루를 마치면 되돌아온다. 시스템이 관리한다.' },
-    { id: 'goods', label: '판매 굿즈', type: 'list', init: [], maxItems: 6, itemMaxLength: 16,
-      desc: '제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다. 시스템이 관리한다.' },
+    { id: 'goods', label: '판매 굿즈', type: 'list', init: [], maxItems: 10, itemMaxLength: 16,
+      desc: '제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다 (판매 보정은 6종분까지). 시스템이 관리한다.' },
+    { id: 'collabs', label: '콜라보', type: 'list', init: [], maxItems: 6, itemMaxLength: 16,
+      desc: '체결한 브랜드 콜라보. 계약금·인지도·팬이 체결 시 들어온다. 시스템이 관리한다.' },
+    { id: 'sgoods', label: '음지 굿즈', type: 'list', init: [], maxItems: 10, itemMaxLength: 16,
+      desc: '조용히 만들어 둔 물건들. 시크릿 팬서비스 현장에서 팔린다. 시스템이 관리한다.' },
     { id: 'weather', label: '날씨', type: 'enum', init: '맑음', enum: ['맑음', '흐림', '비', '눈', '바람'],
       desc: '오늘의 날씨. 서사에 나온 대로 따라가되 계절에 어울리게 — 눈은 겨울에만.' },
   ],
@@ -3608,9 +3711,9 @@ const IDOL = {
           effects: [
             { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.8), 9999999)' },
-            // 물판은 굿즈 종류가 늘수록 커진다 (v0.86) — funds 줄과 짝 (유령 지출 방지 규약)
-            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)' },
-            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)' },
+            // 물판은 굿즈 종류가 늘수록 커진다 (v0.86, 보정은 6종분까지) — funds 줄과 짝 (유령 지출 방지 규약)
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (35 + min(count(goods), 6) * 6) / 100), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + min(count(goods), 6) * 6) / 100), 9999999)' },
             { set: 'fans', expr: 'min(fans + round(live_tickets * 0.5 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 24, 100)' },
             { set: 'awareness', expr: 'min(awareness + max(1, round((100 - awareness) * 0.05)), 100)' },
@@ -3627,8 +3730,8 @@ const IDOL = {
           effects: [
             { set: 'inc_stage', expr: 'min(inc_stage + live_pay, 9999999)' },
             { set: 'inc_ticket', expr: 'min(inc_ticket + round(live_tickets * 0.5), 9999999)' },
-            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)' },
-            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)' },
+            { set: 'inc_goods', expr: 'min(inc_goods + round(live_tickets * (18 + min(count(goods), 6) * 4) / 100), 9999999)' },
+            { set: 'funds', expr: 'min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + min(count(goods), 6) * 4) / 100), 9999999)' },
             { set: 'fans', expr: 'min(fans + round(live_tickets * 0.25 * fan_mul), 9999999)' },
             { set: 'buzz', expr: 'min(buzz + 12, 100)' },
             { set: 'm1_st', expr: 'max(m1_st - round(p1 * 18), 0)' },
@@ -4004,20 +4107,11 @@ const IDOL = {
     // 문턱은 자금이 아니라 **타락도**다: 한 번 담근 만큼만 다음이 열린다.
     // ⚠ impactExempt — 진단이 "쓰면 손해인 함정 액션"으로 잡는 게 맞는 버튼이다. 손해인 걸
     //   알면서 누르는 자리라서 지적에서 뺀다 (융자와 같은 규율).
-    // ── 굿즈 제작 (v0.86) — 장부에 굿즈 수입 칸만 있고 만들 방법이 없었다 (실기 제보).
-    // 한 번 만들면 목록에 남고, 라이브 물판·미니 라이브 판매액이 종류 수만큼 커진다
-    { id: 'make_goods1', label: '🖼 포토카드 세트를 찍는다', mode: 'oneshot',
-      when: "not has(goods, '포토카드') and funds >= 60 and not unit_over",
-      inject: '[행동] 인쇄소에 포토카드 시안을 넘긴다. 어떤 표정을 고를지로 한참 다퉜다.',
-      effects: [{ set: 'funds', expr: 'max(funds - 60, 0)' }, { list: 'goods', add: ['포토카드'] }] },
-    { id: 'make_goods2', label: '🪄 응원봉을 제작한다', mode: 'oneshot',
-      when: "not has(goods, '응원봉') and awareness >= 15 and funds >= 150 and not unit_over",
-      inject: '[행동] 유닛 색을 정하는 자리부터 시작한다. 객석의 색이 정해지는 날이다.',
-      effects: [{ set: 'funds', expr: 'max(funds - 150, 0)' }, { list: 'goods', add: ['응원봉'] }] },
-    { id: 'make_goods3', label: '📕 화보집을 만든다', mode: 'oneshot',
-      when: "not has(goods, '화보집') and awareness >= 30 and funds >= 320 and not unit_over",
-      inject: '[행동] 사진가와 로케이션을 잡는다. 촬영은 하루, 고르는 건 일주일이다.',
-      effects: [{ set: 'funds', expr: 'max(funds - 320, 0)' }, { list: 'goods', add: ['화보집'] }] },
+    // ── 굿즈·콜라보·음지 굿즈·시크릿 팬서비스 (v0.87, 생성 — 위 *_DEFS 표) ──
+    ...GOODS_ACTIONS,
+    ...COLLAB_ACTIONS,
+    ...SGOODS_ACTIONS,
+    ...SFS_ACTIONS,
     // ── 팬서비스 (v0.86) — 돈은 안 되지만 팬과 유대를 사는 자리. 위로 갈수록 팬 문턱이 높다.
     // 몸값(체력)을 치른다 — 악수회가 공짜가 아니라는 건 서는 쪽이 안다
     { id: 'fs_shake', label: '🤝 악수회를 연다', mode: 'oneshot', cooldown: 3,
@@ -4056,8 +4150,8 @@ const IDOL = {
       when: 'fans >= 1000 and funds >= 100 and not unit_over',
       inject: '[행동] 무료 미니 라이브를 연다. 표 없는 무대가 제일 솔직한 객석을 만든다.',
       effects: [
-        { set: 'funds', expr: 'max(funds - 100 + count(goods) * 30, 0)' },
-        { set: 'inc_goods', expr: 'min(inc_goods + count(goods) * 30, 9999999)' },
+        { set: 'funds', expr: 'max(funds - 100 + min(count(goods), 6) * 30, 0)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + min(count(goods), 6) * 30, 9999999)' },
         { set: 'fans', expr: 'min(fans + round(420 * fan_mul), 9999999)' },
         { set: 'buzz', expr: 'min(buzz + 9, 100)' },
         { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 140), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 140), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 140), 9999999)' },
@@ -4067,8 +4161,8 @@ const IDOL = {
       when: 'fans >= 3000 and funds >= 150 and not unit_over',
       inject: '[행동] 팬미팅을 연다. 무대가 아니라 마주 앉는 자리다 — 게임과 편지와 약속으로.',
       effects: [
-        { set: 'funds', expr: 'max(funds - 150 + count(goods) * 40, 0)' },
-        { set: 'inc_goods', expr: 'min(inc_goods + count(goods) * 40, 9999999)' },
+        { set: 'funds', expr: 'max(funds - 150 + min(count(goods), 6) * 40, 0)' },
+        { set: 'inc_goods', expr: 'min(inc_goods + min(count(goods), 6) * 40, 9999999)' },
         { set: 'fans', expr: 'min(fans + round(550 * fan_mul), 9999999)' },
         { set: 'buzz', expr: 'min(buzz + 7, 100)' },
         { set: 'm1_fan', expr: 'min(m1_fan + round(p1 * 180), 9999999)' }, { set: 'm2_fan', expr: 'min(m2_fan + round(p2 * 180), 9999999)' }, { set: 'm3_fan', expr: 'min(m3_fan + round(p3 * 180), 9999999)' },
@@ -4690,15 +4784,28 @@ const IDOL = {
         note: '수익은 없거나 적지만 팬·개별 인기·유대가 오른다. 위로 갈수록 팬 문턱이 높고, 몸값(체력)을 치른다. '
           + '미니 라이브·팬미팅은 굿즈가 있으면 현장 판매 수입이 붙는다.' },
       { id: 'make', label: '제작',
-        actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full', 'make_goods1', 'make_goods2', 'make_goods3'],
-        note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다. '
-          + '굿즈는 한 번 만들면 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다.' },
+        actions: ['make_dress1', 'make_dress2', 'make_dress3', 'make_single', 'make_mini', 'make_full'],
+        note: '돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다.' },
+      // 굿즈·콜라보 (v0.87) — 굿즈는 물판의 재고, 콜라보는 이름값이 부르는 계약금
+      { id: 'goodsmk', label: '굿즈',
+        actions: GOODS_ACTIONS.map((a) => a.id),
+        note: '한 번 만들면 목록에 남고 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다 (보정은 6종분까지). 위 굿즈일수록 인지도가 있어야 팔린다.' },
+      { id: 'collab', label: '콜라보',
+        actions: COLLAB_ACTIONS.map((a) => a.id),
+        note: '브랜드가 계약금을 들고 온다 — 문은 프로덕션 등급이 연다. 계약금·인지도·팬이 체결 즉시 들어온다.' },
       // 탭 자체에 조건이 걸린다 — 돈이 마르기 전에는 이런 게 있다는 것도 모르는 편이 낫다.
       // 한 번이라도 담갔으면(타락도 ≥ 1) 형편이 나아져도 계속 보인다
       { id: 'shade', label: '음지', when: 'funds < 250 or corrupt >= 1',
         actions: ['shady_night', 'shady_cam', 'shady_spon', 'shady_costume', 'shady_gravure', 'shady_adult'],
         note: '오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. '
           + '타락도가 높으면 지상파와 골든타임이 닫힌다.' },
+      // 음지 굿즈·시크릿 팬서비스 (v0.87) — 탭 자체가 타락도로 잠긴다: 담그기 전에는 존재도 모른다
+      { id: 'sgoodsmk', label: '음지 굿즈', when: 'corrupt >= 10',
+        actions: SGOODS_ACTIONS.map((a) => a.id),
+        note: '조용히 만들어 조용히 파는 물건들. 만들 때마다 타락이 오르고, 시크릿 팬서비스 현장 판매가 종류 수만큼 커진다.' },
+      { id: 'sfans', label: '음지 팬서비스', when: 'corrupt >= 15',
+        actions: SFS_ACTIONS.map((a) => a.id),
+        note: '아는 사람만 아는 자리 — 돈을 받는 팬서비스다. 설득이 필요하고, 값은 멘탈·유대·타락으로 치른다. 음지 굿즈가 있으면 현장 판매가 붙는다.' },
       // 관리 — 몸과 마음을 돈으로 사는 자리 (v0.85). 위 시설은 인지도가 열고 비용은 난이도가 정한다
       { id: 'care', label: '관리',
         actions: ['rest_day', 'talk', 'meal', 'massage', 'spa', 'resort'],
@@ -4755,6 +4862,8 @@ const IDOL = {
         { var: 'inc_goods', showWhen: 'inc_goods > 0' },
         { var: 'inc_album', showWhen: 'inc_album > 0' },
         { var: 'goods', showWhen: 'count(goods) > 0' },
+        { var: 'collabs', showWhen: 'count(collabs) > 0' },
+        { var: 'sgoods', showWhen: 'count(sgoods) > 0' },
         { var: 'salary' },
         { var: 'spend' },
         { var: 'balance', color: "balance < 0 ? '#a8443a' : '#6a8a7a'" },

@@ -421,9 +421,27 @@
       "label": "판매 굿즈",
       "type": "list",
       "init": [],
+      "maxItems": 10,
+      "itemMaxLength": 16,
+      "desc": "제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다 (판매 보정은 6종분까지). 시스템이 관리한다."
+    },
+    {
+      "id": "collabs",
+      "label": "콜라보",
+      "type": "list",
+      "init": [],
       "maxItems": 6,
       "itemMaxLength": 16,
-      "desc": "제작해 둔 굿즈 종류. 라이브 물판과 팬서비스 현장에서 팔린다. 시스템이 관리한다."
+      "desc": "체결한 브랜드 콜라보. 계약금·인지도·팬이 체결 시 들어온다. 시스템이 관리한다."
+    },
+    {
+      "id": "sgoods",
+      "label": "음지 굿즈",
+      "type": "list",
+      "init": [],
+      "maxItems": 10,
+      "itemMaxLength": 16,
+      "desc": "조용히 만들어 둔 물건들. 시크릿 팬서비스 현장에서 팔린다. 시스템이 관리한다."
     },
     {
       "id": "weather",
@@ -1689,11 +1707,11 @@
             },
             {
               "set": "inc_goods",
-              "expr": "min(inc_goods + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)"
+              "expr": "min(inc_goods + round(live_tickets * (35 + min(count(goods), 6) * 6) / 100), 9999999)"
             },
             {
               "set": "funds",
-              "expr": "min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + count(goods) * 6) / 100), 9999999)"
+              "expr": "min(funds + live_pay + round(live_tickets * 0.8) + round(live_tickets * (35 + min(count(goods), 6) * 6) / 100), 9999999)"
             },
             {
               "set": "fans",
@@ -1768,11 +1786,11 @@
             },
             {
               "set": "inc_goods",
-              "expr": "min(inc_goods + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)"
+              "expr": "min(inc_goods + round(live_tickets * (18 + min(count(goods), 6) * 4) / 100), 9999999)"
             },
             {
               "set": "funds",
-              "expr": "min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + count(goods) * 4) / 100), 9999999)"
+              "expr": "min(funds + live_pay + round(live_tickets * 0.5) + round(live_tickets * (18 + min(count(goods), 6) * 4) / 100), 9999999)"
             },
             {
               "set": "fans",
@@ -2675,6 +2693,351 @@
       "roll": "rand(1, 20)",
       "mod": "shady_mod",
       "vs": 24,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_sshake",
+      "label": "시크릿 악수회 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 11,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_sfoto",
+      "label": "시크릿 사진회 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 13,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_slive",
+      "label": "시크릿 라이브 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 15,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_smeet",
+      "label": "시크릿 팬미팅 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 17,
+      "grades": [
+        {
+          "when": "total >= vs",
+          "label": "받아들였다",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "1"
+            }
+          ]
+        },
+        {
+          "label": "거절했다",
+          "inject": "아무도 먼저 입을 열지 않았다. 그 침묵이 대답이었다 — 프로듀서가 말을 거두는 장면으로 그려라.",
+          "effects": [
+            {
+              "set": "shady_ok",
+              "expr": "0"
+            },
+            {
+              "set": "m1_love",
+              "expr": "max(m1_love - 5, 0)"
+            },
+            {
+              "set": "m2_love",
+              "expr": "max(m2_love - 5, 0)"
+            },
+            {
+              "set": "m3_love",
+              "expr": "max(m3_love - 5, 0)"
+            },
+            {
+              "set": "m4_love",
+              "expr": "max(m4_love - 5, 0)"
+            },
+            {
+              "set": "m5_love",
+              "expr": "max(m5_love - 5, 0)"
+            },
+            {
+              "set": "m1_me",
+              "expr": "max(m1_me - 4, 0)"
+            },
+            {
+              "set": "m2_me",
+              "expr": "max(m2_me - 4, 0)"
+            },
+            {
+              "set": "m3_me",
+              "expr": "max(m3_me - 4, 0)"
+            },
+            {
+              "set": "m4_me",
+              "expr": "max(m4_me - 4, 0)"
+            },
+            {
+              "set": "m5_me",
+              "expr": "max(m5_me - 4, 0)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ck_sstrip",
+      "label": "스트립쇼 설득",
+      "roll": "rand(1, 20)",
+      "mod": "shady_mod",
+      "vs": 20,
       "grades": [
         {
           "when": "total >= vs",
@@ -5071,11 +5434,11 @@
       ]
     },
     {
-      "id": "make_goods1",
-      "label": "🖼 포토카드 세트를 찍는다",
+      "id": "mk_photocard",
+      "label": "🖼 포토카드 제작 (60만원)",
       "mode": "oneshot",
       "when": "not has(goods, '포토카드') and funds >= 60 and not unit_over",
-      "inject": "[행동] 인쇄소에 포토카드 시안을 넘긴다. 어떤 표정을 고를지로 한참 다퉜다.",
+      "inject": "[행동] 포토카드 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
       "effects": [
         {
           "set": "funds",
@@ -5090,11 +5453,49 @@
       ]
     },
     {
-      "id": "make_goods2",
-      "label": "🪄 응원봉을 제작한다",
+      "id": "mk_badge",
+      "label": "📛 캔뱃지 제작 (90만원)",
       "mode": "oneshot",
-      "when": "not has(goods, '응원봉') and awareness >= 15 and funds >= 150 and not unit_over",
-      "inject": "[행동] 유닛 색을 정하는 자리부터 시작한다. 객석의 색이 정해지는 날이다.",
+      "when": "not has(goods, '캔뱃지') and funds >= 90 and awareness >= 10 and not unit_over",
+      "inject": "[행동] 캔뱃지 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 90, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "캔뱃지"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_acrylic",
+      "label": "🧊 아크릴 스탠드 제작 (120만원)",
+      "mode": "oneshot",
+      "when": "not has(goods, '아크릴 스탠드') and funds >= 120 and awareness >= 12 and not unit_over",
+      "inject": "[행동] 아크릴 스탠드 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 120, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "아크릴 스탠드"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_lightstick",
+      "label": "🪄 응원봉 제작 (150만원)",
+      "mode": "oneshot",
+      "when": "not has(goods, '응원봉') and funds >= 150 and awareness >= 15 and not unit_over",
+      "inject": "[행동] 응원봉 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
       "effects": [
         {
           "set": "funds",
@@ -5109,11 +5510,49 @@
       ]
     },
     {
-      "id": "make_goods3",
-      "label": "📕 화보집을 만든다",
+      "id": "mk_scroll",
+      "label": "📜 족자봉 제작 (180만원)",
       "mode": "oneshot",
-      "when": "not has(goods, '화보집') and awareness >= 30 and funds >= 320 and not unit_over",
-      "inject": "[행동] 사진가와 로케이션을 잡는다. 촬영은 하루, 고르는 건 일주일이다.",
+      "when": "not has(goods, '족자봉') and funds >= 180 and awareness >= 20 and not unit_over",
+      "inject": "[행동] 족자봉 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 180, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "족자봉"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_asmr",
+      "label": "🎧 ASMR 보이스 제작 (220만원)",
+      "mode": "oneshot",
+      "when": "not has(goods, 'ASMR 보이스') and funds >= 220 and awareness >= 24 and not unit_over",
+      "inject": "[행동] ASMR 보이스 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 220, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "ASMR 보이스"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_photobook",
+      "label": "📕 화보집 제작 (320만원)",
+      "mode": "oneshot",
+      "when": "not has(goods, '화보집') and funds >= 320 and awareness >= 30 and not unit_over",
+      "inject": "[행동] 화보집 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
       "effects": [
         {
           "set": "funds",
@@ -5124,6 +5563,896 @@
           "add": [
             "화보집"
           ]
+        }
+      ]
+    },
+    {
+      "id": "mk_dakimakura",
+      "label": "🛏 다키마쿠라 제작 (400만원)",
+      "mode": "oneshot",
+      "when": "not has(goods, '다키마쿠라') and funds >= 400 and awareness >= 35 and not unit_over",
+      "inject": "[행동] 다키마쿠라 제작을 발주한다. 시안을 고르는 손이 제일 오래 걸린다.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 400, 0)"
+        },
+        {
+          "list": "goods",
+          "add": [
+            "다키마쿠라"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cl_bread",
+      "label": "🍞 빵 콜라보 (계약금 300만원)",
+      "mode": "oneshot",
+      "when": "not has(collabs, '빵 콜라보') and rank_n >= 2 and not unit_over",
+      "inject": "[행동] 빵 콜라보 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 300, 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + 300, 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 4, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(400 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 10, 100)"
+        },
+        {
+          "list": "collabs",
+          "add": [
+            "빵 콜라보"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cl_store",
+      "label": "🏪 편의점 콜라보 (계약금 500만원)",
+      "mode": "oneshot",
+      "when": "not has(collabs, '편의점 콜라보') and rank_n >= 3 and not unit_over",
+      "inject": "[행동] 편의점 콜라보 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 500, 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + 500, 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 6, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(700 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 12, 100)"
+        },
+        {
+          "list": "collabs",
+          "add": [
+            "편의점 콜라보"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cl_franchise",
+      "label": "🍔 프랜차이즈 콜라보 (계약금 800만원)",
+      "mode": "oneshot",
+      "when": "not has(collabs, '프랜차이즈 콜라보') and rank_n >= 3 and fans >= 8000 and not unit_over",
+      "inject": "[행동] 프랜차이즈 콜라보 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 800, 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + 800, 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 8, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(1200 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 14, 100)"
+        },
+        {
+          "list": "collabs",
+          "add": [
+            "프랜차이즈 콜라보"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cl_tech",
+      "label": "📱 전자제품 콜라보 (계약금 1400만원)",
+      "mode": "oneshot",
+      "when": "not has(collabs, '전자제품 콜라보') and rank_n >= 4 and not unit_over",
+      "inject": "[행동] 전자제품 콜라보 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 1400, 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + 1400, 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 10, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(2000 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 16, 100)"
+        },
+        {
+          "list": "collabs",
+          "add": [
+            "전자제품 콜라보"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cl_car",
+      "label": "🚗 자동차 콜라보 (계약금 2200만원)",
+      "mode": "oneshot",
+      "when": "not has(collabs, '자동차 콜라보') and rank_n >= 5 and not unit_over",
+      "inject": "[행동] 자동차 콜라보 계약서에 도장을 찍는다. 유닛 얼굴이 남의 물건에 실리는 첫날을 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + 2200, 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + 2200, 9999999)"
+        },
+        {
+          "set": "awareness",
+          "expr": "min(awareness + 12, 100)"
+        },
+        {
+          "set": "fans",
+          "expr": "min(fans + round(3000 * fan_mul), 9999999)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + 18, 100)"
+        },
+        {
+          "list": "collabs",
+          "add": [
+            "자동차 콜라보"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sphotocard",
+      "label": "🔞 야한 포토카드 세트 제작 (80만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '야한 포토카드 세트') and corrupt >= 10 and funds >= 80 and not unit_over",
+      "inject": "[행동] 야한 포토카드 세트 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 80, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 3, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "야한 포토카드 세트"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sbadge",
+      "label": "🔞 성인용 캔뱃지 제작 (100만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '성인용 캔뱃지') and corrupt >= 15 and funds >= 100 and not unit_over",
+      "inject": "[행동] 성인용 캔뱃지 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 100, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 3, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "성인용 캔뱃지"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sacrylic",
+      "label": "🔞 성인용 아크릴 제작 (130만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '성인용 아크릴') and corrupt >= 20 and funds >= 130 and not unit_over",
+      "inject": "[행동] 성인용 아크릴 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 130, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 4, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "성인용 아크릴"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sasmr",
+      "label": "🔞 성인 ASMR 제작 (250만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '성인 ASMR') and corrupt >= 25 and funds >= 250 and not unit_over",
+      "inject": "[행동] 성인 ASMR 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 250, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 5, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "성인 ASMR"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sscroll",
+      "label": "🔞 성인용 족자봉 제작 (200만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '성인용 족자봉') and corrupt >= 30 and funds >= 200 and not unit_over",
+      "inject": "[행동] 성인용 족자봉 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 200, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 4, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "성인용 족자봉"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sdaki",
+      "label": "🔞 성인용 다키마쿠라 제작 (450만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '성인용 다키마쿠라') and corrupt >= 35 and funds >= 450 and not unit_over",
+      "inject": "[행동] 성인용 다키마쿠라 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 450, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 6, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "성인용 다키마쿠라"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_svideo",
+      "label": "🔞 은밀 사생활 영상 제작 (300만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '은밀 사생활 영상') and corrupt >= 45 and funds >= 300 and not unit_over",
+      "inject": "[행동] 은밀 사생활 영상 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 300, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 10, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "은밀 사생활 영상"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mk_sav",
+      "label": "🔞 팬서비스 AV 영상 제작 (600만원)",
+      "mode": "oneshot",
+      "impactExempt": true,
+      "when": "not has(sgoods, '팬서비스 AV 영상') and corrupt >= 60 and funds >= 600 and not unit_over",
+      "inject": "[행동] 팬서비스 AV 영상 제작 건을 조용히 진행한다. 밝은 데서 할 이야기가 아니라는 걸 서로 안다 — 내용은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "max(funds - 600, 0)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + 14, 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - 4, 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - 4, 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - 4, 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - 4, 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - 4, 0)"
+        },
+        {
+          "list": "sgoods",
+          "add": [
+            "팬서비스 AV 영상"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fs2_shake",
+      "label": "🤫 시크릿 악수회를 연다",
+      "mode": "oneshot",
+      "cooldown": 4,
+      "impactExempt": true,
+      "when": "corrupt >= 15 and not unit_over",
+      "check": "ck_sshake",
+      "inject": "[행동] 아는 사람만 아는 자리 — 시크릿 악수회를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 150 + count(sgoods) * 40 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 150 + count(sgoods) * 40 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 3 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 4 : 0), 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 3 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 3 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 3 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 3 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 3 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs2_photo",
+      "label": "🕶 시크릿 사진회를 연다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "impactExempt": true,
+      "when": "corrupt >= 25 and not unit_over",
+      "check": "ck_sfoto",
+      "inject": "[행동] 아는 사람만 아는 자리 — 시크릿 사진회를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 250 + count(sgoods) * 50 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 250 + count(sgoods) * 50 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 4 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 6 : 0), 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 4 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs2_live",
+      "label": "🎤 시크릿 라이브를 연다",
+      "mode": "oneshot",
+      "cooldown": 5,
+      "impactExempt": true,
+      "when": "corrupt >= 35 and not unit_over",
+      "check": "ck_slive",
+      "inject": "[행동] 아는 사람만 아는 자리 — 시크릿 라이브를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 400 + count(sgoods) * 70 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 400 + count(sgoods) * 70 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 5 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 8 : 0), 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 10 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 5 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs2_meet",
+      "label": "🥂 시크릿 팬미팅를 연다",
+      "mode": "oneshot",
+      "cooldown": 6,
+      "impactExempt": true,
+      "when": "corrupt >= 45 and not unit_over",
+      "check": "ck_smeet",
+      "inject": "[행동] 아는 사람만 아는 자리 — 시크릿 팬미팅를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 550 + count(sgoods) * 90 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 550 + count(sgoods) * 90 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 6 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 8 : 0), 100)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 12 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 6 : 0), 0)"
+        }
+      ]
+    },
+    {
+      "id": "fs2_strip",
+      "label": "🔥 시크릿 스트립쇼를 연다",
+      "mode": "oneshot",
+      "cooldown": 7,
+      "impactExempt": true,
+      "when": "corrupt >= 55 and not unit_over",
+      "check": "ck_sstrip",
+      "inject": "[행동] 아는 사람만 아는 자리 — 시크릿 스트립쇼를 연다. 초대장은 밝은 데로 다니지 않는다. 현장은 암시까지만 그려라.",
+      "effects": [
+        {
+          "set": "funds",
+          "expr": "min(funds + (shady_ok >= 1 ? 800 + count(sgoods) * 120 : 0), 9999999)"
+        },
+        {
+          "set": "inc_goods",
+          "expr": "min(inc_goods + (shady_ok >= 1 ? 800 + count(sgoods) * 120 : 0), 9999999)"
+        },
+        {
+          "set": "corrupt",
+          "expr": "min(corrupt + (shady_ok >= 1 ? 8 : 0), 100)"
+        },
+        {
+          "set": "buzz",
+          "expr": "min(buzz + (shady_ok >= 1 ? 10 : 0), 100)"
+        },
+        {
+          "set": "awareness",
+          "expr": "max(awareness - (shady_ok >= 1 ? 2 : 0), 0)"
+        },
+        {
+          "set": "m1_me",
+          "expr": "max(m1_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m2_me",
+          "expr": "max(m2_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m3_me",
+          "expr": "max(m3_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m4_me",
+          "expr": "max(m4_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m5_me",
+          "expr": "max(m5_me - (shady_ok >= 1 ? 16 : 0), 0)"
+        },
+        {
+          "set": "m1_love",
+          "expr": "max(m1_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m2_love",
+          "expr": "max(m2_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m3_love",
+          "expr": "max(m3_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m4_love",
+          "expr": "max(m4_love - (shady_ok >= 1 ? 8 : 0), 0)"
+        },
+        {
+          "set": "m5_love",
+          "expr": "max(m5_love - (shady_ok >= 1 ? 8 : 0), 0)"
         }
       ]
     },
@@ -5395,11 +6724,11 @@
       "effects": [
         {
           "set": "funds",
-          "expr": "max(funds - 100 + count(goods) * 30, 0)"
+          "expr": "max(funds - 100 + min(count(goods), 6) * 30, 0)"
         },
         {
           "set": "inc_goods",
-          "expr": "min(inc_goods + count(goods) * 30, 9999999)"
+          "expr": "min(inc_goods + min(count(goods), 6) * 30, 9999999)"
         },
         {
           "set": "fans",
@@ -5461,11 +6790,11 @@
       "effects": [
         {
           "set": "funds",
-          "expr": "max(funds - 150 + count(goods) * 40, 0)"
+          "expr": "max(funds - 150 + min(count(goods), 6) * 40, 0)"
         },
         {
           "set": "inc_goods",
-          "expr": "min(inc_goods + count(goods) * 40, 9999999)"
+          "expr": "min(inc_goods + min(count(goods), 6) * 40, 9999999)"
         },
         {
           "set": "fans",
@@ -8534,12 +9863,36 @@
           "make_dress3",
           "make_single",
           "make_mini",
-          "make_full",
-          "make_goods1",
-          "make_goods2",
-          "make_goods3"
+          "make_full"
         ],
-        "note": "돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다. 굿즈는 한 번 만들면 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다."
+        "note": "돈만으로는 안 된다. 위 등급일수록 이름값을 요구한다. 음반은 한 번 내면 매달 인세가 들어온다."
+      },
+      {
+        "id": "goodsmk",
+        "label": "굿즈",
+        "actions": [
+          "mk_photocard",
+          "mk_badge",
+          "mk_acrylic",
+          "mk_lightstick",
+          "mk_scroll",
+          "mk_asmr",
+          "mk_photobook",
+          "mk_dakimakura"
+        ],
+        "note": "한 번 만들면 목록에 남고 라이브 물판·팬서비스 판매액이 종류 수만큼 커진다 (보정은 6종분까지). 위 굿즈일수록 인지도가 있어야 팔린다."
+      },
+      {
+        "id": "collab",
+        "label": "콜라보",
+        "actions": [
+          "cl_bread",
+          "cl_store",
+          "cl_franchise",
+          "cl_tech",
+          "cl_car"
+        ],
+        "note": "브랜드가 계약금을 들고 온다 — 문은 프로덕션 등급이 연다. 계약금·인지도·팬이 체결 즉시 들어온다."
       },
       {
         "id": "shade",
@@ -8554,6 +9907,35 @@
           "shady_adult"
         ],
         "note": "오늘의 돈을 내일의 이름과 바꾸는 자리. 셋이 거절할 수 있고, 타락도가 오를수록 거절이 줄어든다. 타락도가 높으면 지상파와 골든타임이 닫힌다."
+      },
+      {
+        "id": "sgoodsmk",
+        "label": "음지 굿즈",
+        "when": "corrupt >= 10",
+        "actions": [
+          "mk_sphotocard",
+          "mk_sbadge",
+          "mk_sacrylic",
+          "mk_sasmr",
+          "mk_sscroll",
+          "mk_sdaki",
+          "mk_svideo",
+          "mk_sav"
+        ],
+        "note": "조용히 만들어 조용히 파는 물건들. 만들 때마다 타락이 오르고, 시크릿 팬서비스 현장 판매가 종류 수만큼 커진다."
+      },
+      {
+        "id": "sfans",
+        "label": "음지 팬서비스",
+        "when": "corrupt >= 15",
+        "actions": [
+          "fs2_shake",
+          "fs2_photo",
+          "fs2_live",
+          "fs2_meet",
+          "fs2_strip"
+        ],
+        "note": "아는 사람만 아는 자리 — 돈을 받는 팬서비스다. 설득이 필요하고, 값은 멘탈·유대·타락으로 치른다. 음지 굿즈가 있으면 현장 판매가 붙는다."
       },
       {
         "id": "care",
@@ -8778,6 +10160,14 @@
           {
             "var": "goods",
             "showWhen": "count(goods) > 0"
+          },
+          {
+            "var": "collabs",
+            "showWhen": "count(collabs) > 0"
+          },
+          {
+            "var": "sgoods",
+            "showWhen": "count(sgoods) > 0"
           },
           {
             "var": "salary"

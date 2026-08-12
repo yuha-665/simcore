@@ -6625,6 +6625,60 @@
     ],
     "events": [
       {
+        "id": "stage_auto",
+        "when": "stage_req and job != '없음' and job_days <= 0 and stand >= 1 and not unit_over",
+        "check": "ck_stage",
+        "effects": [
+          {
+            "set": "m1_st",
+            "expr": "max(m1_st - round(p1 * 16), 0)"
+          },
+          {
+            "set": "m2_st",
+            "expr": "max(m2_st - round(p2 * 16), 0)"
+          },
+          {
+            "set": "m3_st",
+            "expr": "max(m3_st - round(p3 * 16), 0)"
+          },
+          {
+            "set": "m4_st",
+            "expr": "max(m4_st - round(p4 * 16), 0)"
+          },
+          {
+            "set": "m5_st",
+            "expr": "max(m5_st - round(p5 * 16), 0)"
+          },
+          {
+            "set": "stage_req",
+            "expr": "false"
+          }
+        ],
+        "notify": "서사를 따라 무대 판정이 굴러갔다 — 보수는 등급대로 정산된다."
+      },
+      {
+        "id": "live_auto",
+        "when": "stage_req and live != '없음' and live_days <= 0 and stand >= 1 and not unit_over",
+        "check": "ck_live",
+        "effects": [
+          {
+            "set": "stage_req",
+            "expr": "false"
+          }
+        ],
+        "notify": "서사를 따라 라이브 판정이 굴러갔다 — 티켓·물판까지 등급대로 정산된다."
+      },
+      {
+        "id": "stage_req_clear",
+        "when": "stage_req and (job == '없음' or job_days >= 1) and (live == '없음' or live_days >= 1)",
+        "effects": [
+          {
+            "set": "stage_req",
+            "expr": "false"
+          }
+        ]
+      },
+      {
         "id": "night_auto",
         "when": "night_req and not unit_over",
         "effects": [
@@ -6750,60 +6804,6 @@
           }
         ],
         "notify": "서사를 따라 하루가 넘어갔다 — 🌙 없이도 사무소의 밤은 정산된다."
-      },
-      {
-        "id": "stage_auto",
-        "when": "stage_req and job != '없음' and job_days <= 0 and stand >= 1 and not unit_over",
-        "check": "ck_stage",
-        "effects": [
-          {
-            "set": "m1_st",
-            "expr": "max(m1_st - round(p1 * 16), 0)"
-          },
-          {
-            "set": "m2_st",
-            "expr": "max(m2_st - round(p2 * 16), 0)"
-          },
-          {
-            "set": "m3_st",
-            "expr": "max(m3_st - round(p3 * 16), 0)"
-          },
-          {
-            "set": "m4_st",
-            "expr": "max(m4_st - round(p4 * 16), 0)"
-          },
-          {
-            "set": "m5_st",
-            "expr": "max(m5_st - round(p5 * 16), 0)"
-          },
-          {
-            "set": "stage_req",
-            "expr": "false"
-          }
-        ],
-        "notify": "서사를 따라 무대 판정이 굴러갔다 — 보수는 등급대로 정산된다."
-      },
-      {
-        "id": "live_auto",
-        "when": "stage_req and live != '없음' and live_days <= 0 and stand >= 1 and not unit_over",
-        "check": "ck_live",
-        "effects": [
-          {
-            "set": "stage_req",
-            "expr": "false"
-          }
-        ],
-        "notify": "서사를 따라 라이브 판정이 굴러갔다 — 티켓·물판까지 등급대로 정산된다."
-      },
-      {
-        "id": "stage_req_clear",
-        "when": "stage_req and (job == '없음' or job_days >= 1) and (live == '없음' or live_days >= 1)",
-        "effects": [
-          {
-            "set": "stage_req",
-            "expr": "false"
-          }
-        ]
       },
       {
         "id": "rank_e",
@@ -8326,7 +8326,7 @@
         "maxDelta": 6
       }
     ],
-    "guide": "장면에 실제로 나온 것만 반영하라. 등급·난이도·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 서사가 명백히 하룻밤을 넘겼는데(잠들고 이튿날 아침 등) 날짜가 그대로면 night_req를 켜라 — 하루 정산은 시스템이 돌린다. 같은 날 안이거나 이미 날짜가 넘어갔으면 켜지 마라. 여러 날 건너뜀은 반영하지 못한다. 서사가 오늘 잡힌 업무·라이브 무대를 명백히 치렀는데 [판정] 정산이 없었으면 stage_req를 켜라 — 보수·티켓은 시스템이 판정으로 정산한다. 무대 장면이 없었거나 이미 정산됐으면 켜지 마라. 서사가 말한 벌이 금액은 무시하라 — 정산은 등급이 정한다. 시간대(tod)와 날씨(weather)는 장면이 그린 대로 유지하라 — 날씨는 계절에 어울리게, 눈은 겨울에만. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
+    "guide": "장면에 실제로 나온 것만 반영하라. 등급·난이도·일감·D-day·자금·빚·의상·음반·타락도·비너스 순위·활동 중단은 시스템이 관리하니 건드리지 마라. 능력치(보컬·댄스·비주얼)는 레슨으로만 오르니 바꾸지 마라. 편성(다섯 자리)은 프로듀서가 정한다 — 슬롯을 건드리지 마라. 등장인물 이름은 편성표에 앉은 사람만 쓴다. 서사가 명백히 하룻밤을 넘겼는데(잠들고 이튿날 아침 등) 날짜가 그대로면 night_req를 켜라 — 하루 정산은 시스템이 돌린다. 같은 날 안이거나 이미 날짜가 넘어갔으면 켜지 마라. 여러 날 건너뜀은 반영하지 못한다. 서사가 오늘 잡힌 업무·라이브 무대를 명백히 치렀는데 [판정] 정산이 없었으면 stage_req를 켜라 — 보수·티켓은 시스템이 판정으로 정산한다. 무대 장면이 없었거나 이미 정산됐으면 켜지 마라. 서사가 말한 벌이 금액은 무시하라 — 정산은 등급이 정한다. ⚠ 무대를 치른 날 밤까지 넘겼으면 stage_req와 night_req를 둘 다 켜라 — night_req만 켜면 그 무대가 노쇼(펑크)로 정산된다. 시간대(tod)와 날씨(weather)는 장면이 그린 대로 유지하라 — 날씨는 계절에 어울리게, 눈은 겨울에만. 일정은 서사에서 새 예정이 잡혔을 때만 \"내용 @+N\" 형태로 더하라."
   },
   "promptState": {
     "position": "history_end",

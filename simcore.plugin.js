@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.87.2
-//@display-name SimCore (시뮬 엔진) v0.87.2 아이돌 유령 밤 이중 정산·유령 일정 수정
+//@version 0.87.3
+//@display-name SimCore (시뮬 엔진) v0.87.3 에셋팩 구조 라우팅 — 인물 공유 팩 공존
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.87.3 ───────────────────────────────────────────────
+// 실사고: 감정 팩(who·wear·emo)과 성행위 팩(who·wear·act)이 인물을 공유하자 뒷팩이 통째로
+// 죽었다 ("사용처가 다른데 겹친다는 이유로 못 쓰게 만든다"). 라우팅이 인물→팩 하나였던 탓.
+// → 구조 라우팅: 어느 팩이냐는 보조가 **채운 칸**이 고른다.
+// - [코어] resolveImage: 후보 팩 전부(routePacks, 선언 순)를 1차 정조합 → 2차 폴백 사다리
+//   순으로. 정조합이 먼저라 앞 팩의 폴백(emo→default)이 뒷팩용 선택을 삼키지 않는다.
+// - [코어] auxImageSpec: 칸 id가 부분집합인 팩은 기존처럼 어휘만 넓히고(성인 게이트 패턴),
+//   새 칸을 가진 팩은 "field set (1)/(2)"로 나란히 전송 — 보조는 한 세트를 통째로 채운다.
+//   팩 id는 여전히 지시에 안 나온다.
+// - [검증] 겹침 경고는 필수 칸 구성이 겹칠 때만 — 구조가 다른 공존은 정상 설계.
+//   렌더러·스키마 무변 — 플러그인 재임포트만 하면 된다.
 //
 // ── v0.87.2 ───────────────────────────────────────────────
 // 실사고 둘 (아이돌 실기):
@@ -3180,6 +3192,9 @@ function validateSchema(schema) {
         // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선.
         // 단, 게이트(when)가 서로 다른 팩의 겹침은 의도된 변형(성인/임신 팩 패턴)이라
         // 경고하지 않는다 — 정상 설계에 경고를 내면 아무도 그 설계를 안 쓴다 (v0.52 원칙).
+        // v0.87.3부터 **필수 칸 구성이 다른 팩의 겹침도 정상 설계다** (감정 팩 + 성행위 팩 —
+        // 채운 칸이 팩을 고른다, assets.js 구조 라우팅). 경고는 앞 팩의 필수 칸이 이 팩
+        // 필수 칸의 부분집합이라 정조합을 앞 팩이 반드시 먼저 채가는 경우에만 낸다.
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
@@ -3188,23 +3203,26 @@ function validateSchema(schema) {
         //   (실측: 145명 명단을 두 팩에 넣자 똑같은 경고가 145줄 — 낱말 경고가 147줄
         //   쏟아졌던 v0.44.1과 같은 병이다). 겹친 팩 쌍이 몇인지가 정보고, 누구인지는
         //   앞 셋이면 찾아갈 수 있다.
+        const reqIds = slots.filter((s) => s && s.id !== 'who' && !s.optional).map((s) => s.id);
         const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
         for (const c of owns) {
           const prev = claim.get(c) || [];
-          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? '')
+            && x.req.every((id) => reqIds.includes(id)));
           if (same) {
             if (!shadow.has(same.id)) shadow.set(same.id, []);
             shadow.get(same.id).push(c);
           }
-          prev.push({ id: pk.id, when: pk.when ?? '' });
+          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds });
           claim.set(c, prev);
         }
         for (const [prevId, names] of shadow) {
           const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');
           warn(p, names.length === 1
-            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`
-            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 먼저 선언된 쪽이 담당하므로 `
-              + `이 팩은 그 인물들에게 안 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
+            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 필수 칸 구성이 겹쳐 먼저 선언된 팩이 우선하고, `
+              + `이 팩은 앞 팩에 없는 이미지의 예비·어휘 확장으로만 쓰입니다`
+            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 필수 칸 구성이 겹쳐 먼저 선언된 쪽이 담당하고, `
+              + `이 팩은 앞 팩에 없는 이미지의 예비·어휘 확장으로만 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
         }
       });
     }
@@ -3496,15 +3514,19 @@ function packChars(pack) {
 }
 
 /**
- * 라우팅 — 인물을 담당하는 팩을 찾는다. 먼저 선언된 팩 우선 (조용한 덮어쓰기 금지,
- * 왕복 패치의 충돌 원칙과 같다). 보조에게 팩 id를 고르게 하지 않는 이유가 이 함수다.
+ * 라우팅 — 인물을 담당하는 열린 팩 **전부** (선언 순). v0.87.3부터 한 인물에 구조가 다른
+ * 팩이 공존한다 (실사고: 일반 감정 팩 + 성행위 팩이 인물을 공유하는데 뒷팩이 통째로 죽었다
+ * — "사용처가 다른데 겹친다는 이유로 못 쓰게 만든다"). 어느 팩이냐는 보조가 **채운 칸**이
+ * 고른다 (resolveImage의 구조 라우팅). 보조에게 팩 id를 고르게 하지 않는 원칙은 그대로다.
  */
+function routePacks(schema, who, lookup) {
+  if (!who) return [];
+  return openPacks(schema, lookup).filter((p) => packChars(p).includes(who));
+}
+
+/** 첫 후보 팩 — 먼저 선언된 팩 우선 (조용한 덮어쓰기 금지, 왕복 패치의 충돌 원칙과 같다) */
 function routePack(schema, who, lookup) {
-  if (!who) return null;
-  for (const p of openPacks(schema, lookup)) {
-    if (packChars(p).includes(who)) return p;
-  }
-  return null;
+  return routePacks(schema, who, lookup)[0] || null;
 }
 
 /**
@@ -3540,8 +3562,8 @@ function renderTag(pack, name, choice) {
  * 인물별 이미지 개수·감정 목록이 달라도 팩은 합집합 한 번만 선언하면 되는 이유.
  *
  * assetSet: 실물 에셋 이름 Set. null이면 대조 불가 환경 — 사다리 없이 정조합을 그대로 믿는다.
- * 사다리: ① 정조합 → ② optional 칸 제거 → ③ 폴백값 치환(칸의 fallback, who 제외)
- *         → ④ 폴백값 치환 + optional 제거 → 전부 실패면 null (삽입 생략).
+ * 사다리: ① 정조합 → ② optional 칸 제거 → ③-a 한 칸씩 폴백 치환(채운 값은 지킨다)
+ *         → ③-b 폴백값 전부 치환(who 제외, ±optional 제거) → 전부 실패면 null (삽입 생략).
  * demoted = 정조합이 아닌 걸로 살아남았다는 표시 (폴백률 진단용).
  * 라우팅과 분리해 둔 이유: 편집기 커버리지가 "이 빠진 조합, 폴백으로 구제되나"를 같은
  * 사다리로 미리 재기 위해 (구제 여부가 다르게 계산되면 표시가 거짓말이 된다).
@@ -3566,7 +3588,17 @@ function resolveInPack(pack, choice, assetSet) {
     if (name != null) demoted = true;
   }
   if (name == null) {
-    // 폴백값 치환 — who는 그대로 (같은 인물의 폴백 감정으로 강등)
+    // ③-a 한 칸씩만 폴백 치환 (v0.87.3) — 채운 값(예: wear=nude)을 지키면서 없는 칸만
+    //     강등한다. 전부 치환이 먼저면 유효한 wear까지 cloth로 뒤집힌 채 구제되는 사고.
+    for (const s of pack.slots || []) {
+      if (s.id === 'who' || s.fallback == null) continue;
+      const one = { ...choice, [s.id]: s.fallback };
+      name = tryName(one, false) ?? tryName(one, true);
+      if (name != null) { demoted = true; used = one; break; }
+    }
+  }
+  if (name == null) {
+    // ③-b 폴백값 전부 치환 — who는 그대로 (같은 인물의 폴백 조합으로 강등)
     const fb = { ...choice };
     let has = false;
     for (const s of pack.slots || []) {
@@ -3581,14 +3613,36 @@ function resolveInPack(pack, choice, assetSet) {
   return name == null ? null : { name, used, demoted };
 }
 
-/** 라우팅 + 사다리 + 태그 렌더 — aux 모드의 한 장 해소 경로 */
+/**
+ * 라우팅 + 사다리 + 태그 렌더 — aux 모드의 한 장 해소 경로.
+ *
+ * 구조 라우팅 (v0.87.3): 인물의 후보 팩이 여럿이면 어느 팩이냐는 **채운 칸**이 고른다.
+ * 1차 — 정조합(폴백 사다리 없이)이 되는 팩을 선언 순으로: {who, wear, act}는 emo가 필수인
+ *   감정 팩을 조용히 지나 성행위 팩에 안착한다. 사다리보다 먼저 해야 하는 이유: 앞 팩의
+ *   폴백(emo→default)이 뒷팩용 선택을 삼켜 엉뚱한 기본 감정 이미지가 나가는 것을 막는다.
+ * 2차 — 전부 실패하면 기존 폴백 사다리를 선언 순으로 (앞 팩에 없는 이미지는 뒷팩이 예비).
+ */
 function resolveImage(schema, choice, assetSet, lookup) {
   const who = choice && choice.who;
-  const pack = routePack(schema, who, lookup);
-  if (!pack) return { ok: false, reason: 'no-pack', who: who ?? null };
-  const r = resolveInPack(pack, choice, assetSet);
-  if (!r) return { ok: false, reason: 'no-asset', who, pack: pack.id };
-  return { ok: true, name: r.name, tag: renderTag(pack, r.name, r.used), pack: pack.id, demoted: r.demoted };
+  const cands = routePacks(schema, who, lookup);
+  if (!cands.length) return { ok: false, reason: 'no-pack', who: who ?? null };
+  for (const pack of cands) {
+    const set = pack.verify === false ? null : assetSet;
+    const name = composeName(pack, choice, false);
+    if (name != null && (!set || set.has(name))) {
+      return { ok: true, name, tag: renderTag(pack, name, choice), pack: pack.id, demoted: false };
+    }
+  }
+  // 사다리도 **구조가 맞는 팩 먼저** — 채운 칸이 필수 칸을 다 덮는 팩이 이 선택의 의도다.
+  // 순서를 안 가리면 앞 팩의 전체 폴백이 남의 선택을 구조째 삼킨다 (act 선택이
+  // 앞 팩 폴백으로 emo=default·wear까지 뒤집힌 채 나가는 실측 사고).
+  const filled = new Set(Object.keys(choice || {}).filter((k) => choice[k] != null && choice[k] !== ''));
+  const fits = (p) => (p.slots || []).every((s) => s.id === 'who' || s.optional || filled.has(s.id));
+  for (const pack of [...cands.filter(fits), ...cands.filter((p) => !fits(p))]) {
+    const r = resolveInPack(pack, choice, assetSet);
+    if (r) return { ok: true, name: r.name, tag: renderTag(pack, r.name, r.used), pack: pack.id, demoted: r.demoted };
+  }
+  return { ok: false, reason: 'no-asset', who, pack: cands[0].id };
 }
 
 // ── 서사 위치 삽입 (by: 'aux_flow') ──────────────────────────
@@ -3710,29 +3764,42 @@ function auxImageSpec(schema, lookup) {
   //   구조는 **라우팅되는 팩**이 정한다 — composeName이 그 팩의 칸만 읽기 때문이다.
   //   어휘는 그 인물을 담당하는 열린 팩들의 합집합: values는 강제되지 않고 실존 대조로만
   //   걸러지므로, 게이트 팩이 어휘를 넓히는 기존 설계가 그대로 산다.
+  // 인물별 구조 변형 (v0.87.3) — 후보 팩의 칸 id 집합이 앞 변형의 **부분집합**이면 그
+  // 변형에 어휘만 넓힌다 (성인 게이트 팩이 emo 어휘를 더하는 기존 패턴 그대로). 새 칸 id를
+  // 가진 팩은 **별도 변형**으로 나란히 제시한다 — 감정 팩과 성행위 팩이 인물을 공유하는
+  // 패턴 (실사고: 뒷팩이 통째로 죽어 "사용처가 다른데 못 쓴다"). 채운 칸이 팩을 고르므로
+  // (resolveImage 구조 라우팅) 보조는 여전히 팩 id를 모른다.
   const groups = []; const bySig = new Map();
   for (const who of whoValues) {
-    const routed = routePack(schema, who, lookup);
-    if (!routed) continue;
-    const mine = packs.filter((p) => packChars(p).includes(who));
-    const fields = (routed.slots || []).filter((s) => s.id !== 'who').map((s) => ({
-      id: s.id,
-      optional: !!s.optional,
-      values: [...new Set(mine.flatMap((p) => (p.slots || [])
-        .filter((x) => x.id === s.id).flatMap((x) => x.values || [])))],
-    }));
-    const sig = JSON.stringify(fields);
+    const cands = routePacks(schema, who, lookup);
+    if (!cands.length) continue;
+    const variants = []; // [{ ids: [{id, optional}], packs: [팩] }]
+    for (const p of cands) {
+      const ids = (p.slots || []).filter((s) => s.id !== 'who').map((s) => ({ id: s.id, optional: !!s.optional }));
+      const host = variants.find((v) => ids.every((f) => v.ids.some((g) => g.id === f.id)));
+      if (host) { host.packs.push(p); continue; }
+      variants.push({ ids, packs: [p] });
+    }
+    const varFields = variants.map((v) => v.ids.map((f) => ({
+      id: f.id,
+      optional: f.optional,
+      values: [...new Set(v.packs.flatMap((p) => (p.slots || [])
+        .filter((x) => x.id === f.id).flatMap((x) => x.values || [])))],
+    })));
+    const sig = JSON.stringify(varFields);
     if (bySig.has(sig)) { bySig.get(sig).chars.push(who); continue; }
-    const g = { chars: [who], fields };
+    const g = { chars: [who], variants: varFields };
     bySig.set(sig, g); groups.push(g);
   }
 
   // 구조가 한 가지뿐이면 예전 평평한 형태 그대로 — 팩 하나짜리 봇(대다수)에 군더더기를 안 붙인다
-  const uniform = groups.length <= 1;
+  const uniform = groups.length <= 1 && (groups[0]?.variants.length ?? 1) <= 1;
+  const multiSet = groups.some((g) => g.variants.length > 1);
   const shape = uniform
     ? ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)].join(', ')
     : '"who": <character>, plus that character\'s own fields';
   const fieldText = (f) => `"${f.id}"${f.optional ? ' (optional)' : ''}: one of [${f.values.join(', ')}]`;
+  const variantText = (fields) => fields.length ? fields.map(fieldText).join(' · ') : '(no extra fields)';
   const vocab = uniform
     ? [
       `who: one of [${whoValues.join(', ')}]`,
@@ -3740,7 +3807,11 @@ function auxImageSpec(schema, lookup) {
     ]
     : [
       'Fields differ per character. Fill EXACTLY the fields listed on that character\'s line — omitting a listed field drops the image entirely.',
-      ...groups.map((g) => `- ${g.chars.join(', ')} — ${g.fields.length ? g.fields.map(fieldText).join(' · ') : '(no extra fields)'}`),
+      ...(multiSet ? ['Where a character lists multiple field sets, fill ALL fields of exactly ONE set — the fields you fill select the image family (e.g., emotion vs explicit).'] : []),
+      ...groups.map((g) => g.variants.length === 1
+        ? `- ${g.chars.join(', ')} — ${variantText(g.variants[0])}`
+        : `- ${g.chars.join(', ')} — one of ${g.variants.length} field sets: `
+          + g.variants.map((v, i) => `(${i + 1}) ${variantText(v)}`).join('  OR  ')),
     ];
   const lines = by === 'aux_flow'
     ? [
@@ -3758,7 +3829,7 @@ function auxImageSpec(schema, lookup) {
 }
 
 module.exports = {
-  packOpen, openPacks, packChars, whoSlot, routePack,
+  packOpen, openPacks, packChars, whoSlot, routePack, routePacks,
   composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
   mainInjectionText, auxImageSpec,
 };

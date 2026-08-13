@@ -34,8 +34,9 @@ const mk = (packs) => ({
   ck('★ 앞 셋을 예시로 준다 (찾아갈 실마리)',
     sh.length === 1 && sh[0].msg.includes("'Char_1', 'Char_2', 'Char_3'"), sh[0]?.msg);
   ck('★ 외 N명으로 나머지를 센다', sh.length === 1 && sh[0].msg.includes('외 142명'), sh[0]?.msg);
-  ck('★ 결과가 무엇인지 말한다 (뒤 팩이 안 쓰인다)',
-    sh.length === 1 && sh[0].msg.includes('안 쓰입니다'), sh[0]?.msg);
+  // v0.87.3부터 뒤 팩이 통째로 죽지 않는다 (구조 라우팅) — 문구도 "예비·어휘 확장"으로 바뀜
+  ck('★ 결과가 무엇인지 말한다 (뒤 팩은 예비·어휘 확장)',
+    sh.length === 1 && sh[0].msg.includes('예비·어휘 확장'), sh[0]?.msg);
   ck('경로는 뒤에 선언된 팩을 가리킨다', sh.length === 1 && sh[0].path === '$.assets.packs[1]', sh[0]?.path);
 }
 
@@ -43,8 +44,9 @@ const mk = (packs) => ({
 {
   const S = mk([mkPack('general_state', ['default']), mkPack('nsfw_state', ['a'], ['Char_1'])]);
   const sh = shadowOf(S);
-  ck('★ 한 명 겹침은 예전 문장 유지', sh.length === 1
-    && sh[0].msg === "인물 'Char_1'는 팩 'general_state'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다", sh[0]?.msg);
+  ck('★ 한 명 겹침은 단수 문장 (묶은 티를 내지 않는다)', sh.length === 1
+    && sh[0].msg === "인물 'Char_1'는 팩 'general_state'가 먼저 담당합니다 — 필수 칸 구성이 겹쳐 먼저 선언된 팩이 우선하고, "
+      + '이 팩은 앞 팩에 없는 이미지의 예비·어휘 확장으로만 쓰입니다', sh[0]?.msg);
 }
 
 // 팩이 셋이면 **가려진 팩마다** 한 줄 — 뭉뚱그려 하나로 만들지도, 쌍마다 부풀리지도 않는다.

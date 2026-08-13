@@ -226,6 +226,64 @@ const Lon = mkLookup({ nsfw_on: true });
     && !s1.instruction.includes('Fields differ per character'), s1.instruction);
 }
 
+// ── 구조 라우팅 (v0.87.3) — 인물을 공유하는 구조 다른 팩의 공존 ──
+// 실사고: 감정 팩(who·wear·emo)과 성행위 팩(who·wear·act)이 인물을 공유하자 뒷팩이
+// 통째로 죽었다. 어느 팩이냐는 보조가 채운 칸이 고른다 — 팩 id는 여전히 안 나간다.
+{
+  const KS = {
+    simcore: '0.1', meta: { name: '코노스바 패턴' },
+    vars: [],
+    statusUI: { mode: 'auto', groups: [] },
+    assets: {
+      by: 'aux',
+      packs: [
+        { id: 'ks', source: '가이드', sep: '_', format: '<img ks="{name}">',
+          slots: [
+            { id: 'who', values: ['megumin', 'aqua'] },
+            { id: 'wear', values: ['cloth', 'nude'], fallback: 'cloth' },
+            { id: 'emo', values: ['angry', 'default'], fallback: 'default' },
+          ] },
+        { id: 'ks_s', source: '가이드', sep: '_', format: '<img s="{name}">',
+          slots: [
+            { id: 'who', values: ['megumin', 'aqua'] },
+            { id: 'wear', values: ['cloth', 'nude'], fallback: 'cloth' },
+            { id: 'act', values: ['handjob_default', 'paizuri_default'], fallback: 'handjob_default' },
+          ] },
+      ],
+    },
+  };
+  const set = new Set(['megumin_cloth_angry', 'megumin_cloth_default', 'megumin_nude_handjob_default']);
+  const Lk = mkLookup({});
+
+  ck('★ 구조 겹침 공존은 경고 없음 (필수 칸이 다르면 정상 설계)',
+    !validateSchema(KS).warnings.some((w) => /먼저 선언된/.test(w.msg)),
+    validateSchema(KS).warnings.map((w) => w.msg).join(' / '));
+
+  const emo = AS.resolveImage(KS, { who: 'megumin', wear: 'cloth', emo: 'angry' }, set, Lk);
+  ck('★ 감정 칸을 채우면 감정 팩으로', emo.ok && emo.pack === 'ks' && emo.tag === '<img ks="megumin_cloth_angry">', JSON.stringify(emo));
+  const act = AS.resolveImage(KS, { who: 'megumin', wear: 'nude', act: 'handjob_default' }, set, Lk);
+  ck('★ 성행위 칸을 채우면 뒷팩으로 (뒷팩이 죽지 않는다)',
+    act.ok && act.pack === 'ks_s' && act.tag === '<img s="megumin_nude_handjob_default">', JSON.stringify(act));
+  ck('★ 앞 팩 폴백이 뒷팩용 선택을 삼키지 않는다 (act 선택이 emo=default로 강등되지 않음)',
+    act.demoted === false, JSON.stringify(act));
+  const miss = AS.resolveImage(KS, { who: 'megumin', wear: 'nude', act: 'paizuri_default' }, set, Lk);
+  ck('없는 성행위 조합은 그 팩의 사다리로 강등 (폴백 act)',
+    miss.ok && miss.pack === 'ks_s' && miss.name === 'megumin_nude_handjob_default' && miss.demoted, JSON.stringify(miss));
+
+  const spec = AS.auxImageSpec(KS, Lk);
+  ck('★ 지시에 두 field set이 나란히 실린다 (겹쳐도 둘 다 전송)',
+    /one of 2 field sets/.test(spec.instruction) && /"emo"/.test(spec.instruction) && /"act"/.test(spec.instruction),
+    spec.instruction);
+  ck('★ 한 세트를 통째로 채우라는 규칙이 실린다', /exactly ONE set/.test(spec.instruction), '');
+  ck('팩 id는 여전히 안 나옴', !/\bks_s\b/.test(spec.instruction), '');
+
+  // 기존 성인 게이트 패턴(칸 id 부분집합)은 변형으로 갈라지지 않고 어휘만 넓어져야 한다
+  const S2 = snap();
+  const s2 = AS.auxImageSpec(S2, Lon);
+  ck('★ 부분집합 팩(성인 게이트)은 별도 세트로 갈라지지 않는다 (어휘 확장 유지)',
+    !/field sets/.test(s2.instruction) && /- Hiromi, Seiko — [^\n]*blush/.test(s2.instruction), s2.instruction);
+}
+
 // ── 서사 위치 삽입 (by:'aux_flow', v0.54) — 앵커 탐색 사다리 + 배치 ──
 // 위치를 서수가 아니라 본문 인용으로 받는 이유: 실존 대조와 같은 원리 —
 // 검증할 수 없는 답은 받지 않는다. 못 찾으면 안 놓으면 그만이다.

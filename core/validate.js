@@ -746,6 +746,9 @@ function validateSchema(schema) {
         // 라우팅 — 담당 인물 선언 + 팩끼리 겹침은 먼저 선언한 쪽 우선.
         // 단, 게이트(when)가 서로 다른 팩의 겹침은 의도된 변형(성인/임신 팩 패턴)이라
         // 경고하지 않는다 — 정상 설계에 경고를 내면 아무도 그 설계를 안 쓴다 (v0.52 원칙).
+        // v0.87.3부터 **필수 칸 구성이 다른 팩의 겹침도 정상 설계다** (감정 팩 + 성행위 팩 —
+        // 채운 칸이 팩을 고른다, assets.js 구조 라우팅). 경고는 앞 팩의 필수 칸이 이 팩
+        // 필수 칸의 부분집합이라 정조합을 앞 팩이 반드시 먼저 채가는 경우에만 낸다.
         const whoVals = slots.find((s) => s && s.id === 'who')?.values || [];
         const owns = [...(Array.isArray(pk.chars) ? pk.chars : []), ...whoVals];
         if (!owns.length) warn(p, '담당 인물이 없습니다 (who 칸도 chars도 없음) — aux 모드에서 이 팩으로 라우팅되지 않습니다');
@@ -754,23 +757,26 @@ function validateSchema(schema) {
         //   (실측: 145명 명단을 두 팩에 넣자 똑같은 경고가 145줄 — 낱말 경고가 147줄
         //   쏟아졌던 v0.44.1과 같은 병이다). 겹친 팩 쌍이 몇인지가 정보고, 누구인지는
         //   앞 셋이면 찾아갈 수 있다.
+        const reqIds = slots.filter((s) => s && s.id !== 'who' && !s.optional).map((s) => s.id);
         const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
         for (const c of owns) {
           const prev = claim.get(c) || [];
-          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+          const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? '')
+            && x.req.every((id) => reqIds.includes(id)));
           if (same) {
             if (!shadow.has(same.id)) shadow.set(same.id, []);
             shadow.get(same.id).push(c);
           }
-          prev.push({ id: pk.id, when: pk.when ?? '' });
+          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds });
           claim.set(c, prev);
         }
         for (const [prevId, names] of shadow) {
           const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');
           warn(p, names.length === 1
-            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 먼저 선언된 팩이 우선합니다`
-            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 먼저 선언된 쪽이 담당하므로 `
-              + `이 팩은 그 인물들에게 안 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
+            ? `인물 ${head}는 팩 '${prevId}'가 먼저 담당합니다 — 필수 칸 구성이 겹쳐 먼저 선언된 팩이 우선하고, `
+              + `이 팩은 앞 팩에 없는 이미지의 예비·어휘 확장으로만 쓰입니다`
+            : `인물 ${names.length}명이 팩 '${prevId}'와 겹칩니다 — 필수 칸 구성이 겹쳐 먼저 선언된 쪽이 담당하고, `
+              + `이 팩은 앞 팩에 없는 이미지의 예비·어휘 확장으로만 쓰입니다 (${head}${names.length > 3 ? ` 외 ${names.length - 3}명` : ''})`);
         }
       });
     }

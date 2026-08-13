@@ -1,0 +1,220 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.66 &nbsp;→&nbsp; v0.87</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ CBS 손상 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">리수 문법(<span style="font-family:ui-monospace,Consolas,monospace;font-size:16px;">{{...}}</span>)을 쓴 봇이 망가지던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v0.76</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  상태창 템플릿에 리수 자체 문법 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">{{getvar::x}}</span> 같은 걸 섞어 쓰면,
+  SimCore가 자기 치환 문법인 줄 알고 <b style="color:#c98a7a;">건드려서 손상시키거나 설치 자체를 거부</b>했습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  이제 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">{{...}}</span>는 손대지 않고 그대로 통과시킵니다.
+  리수가 자기 몫을 알아서 처리합니다. 두 문법을 한 템플릿에 섞어 써도 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 상태창 버튼 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">상태창 버튼이 느리고, 눌러도 티가 안 나던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v0.86~87</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  상태창의 액션 버튼을 눌러도 <b style="color:#c98a7a;">다음 메시지가 오기 전엔 아무 변화가 없어서</b> "안 눌렸나?" 하고 또 누르게 됐고,
+  액션이 많은 봇에선 클릭 인식 자체가 몇 초씩 걸렸습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  이제 누르는 즉시 상태창에 ✅가 뜨고, 보고 있던 탭도 유지됩니다.
+  클릭 판정을 병렬로 바꿔서 버튼이 수백 개 떠 있어도 바로 반응합니다.
+  잠긴 액션 수십 개가 상태창을 도배하던 것도 <b style="color:#dbe2ea;">🔒 접기 한 줄</b>로 들어갔습니다 — 모바일에서 특히 살 만해졌습니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+내장 템플릿이 <b style="color:#e0a94a;">16종</b>이 됐고, 그중 아이돌 프로듀스는 <b style="color:#e0a94a;">풀게임 하나</b>가 됐습니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+큰 덩어리는 넷 — <b style="color:#dbe2ea;">새 템플릿 3종</b>(v0.67~69),
+<b style="color:#dbe2ea;">아이돌 프로듀스 대개편</b>(v0.81~87), <b style="color:#dbe2ea;">하이라이트 카드</b>(v0.86),
+<b style="color:#dbe2ea;">에셋팩 공존</b>(v0.87).
+</p>
+
+<!-- ─────────── ① 새 템플릿 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">내장 템플릿 3종 추가 — 총 16종</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.67~69</span>
+  </div>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">🗿 미궁 탐사       층을 내려가며 보급과 목숨을 거래하는 던전 크롤
+☢ 아포칼립스      멸망 후 30일 — 생존자·물자·거점 방어
+🎤 아이돌 프로듀스  무명 유닛을 데뷔부터 키우는 경영 시뮬</pre>
+
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  전부 <b style="color:#dbe2ea;">[새로 만들기]에서 눌러서 바로 설치</b>됩니다. 변수·규칙·상태창·액션이 다 짜여 있으니
+  그대로 놀아도 되고, 뜯어서 자기 봇의 뼈대로 써도 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 아이돌 대개편 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🎤 아이돌 프로듀스 — 템플릿 하나가 풀게임이 됐습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.81~87</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  실플 하면서 아쉬운 걸 계속 밀어 넣다 보니 이렇게 됐습니다. 달력에 D-day가 박히는 <b style="color:#e0a94a;">의뢰판</b>이 루프의 한가운데고,
+  나머지가 전부 그 주변에 붙습니다.
+  </p>
+
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 일감·라이브 의뢰판</b> — 거리 홍보부터 전국 투어까지. 받아 두면 D-day가 다가오고, 당일에 무대를 치러 정산합니다. 펑크 내면 신용이 깎입니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 레슨</b> — 보컬·댄스·비주얼 × 초급~최상급. 하루 두 칸을 소모하고 판정으로 성패가 갈립니다. 등급이 올라야 상한이 뚫립니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 굿즈·콜라보</b> — 포토카드부터 다키마쿠라까지 8종, 인지도가 열어 줍니다. 콜라보 5종은 반대로 <b style="color:#dbe2ea;">브랜드가 계약금을 들고 옵니다.</b>
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 팬서비스</b> — 악수회·사진회·사인회·팬미팅·미니라이브. 팬과 유대를 얻는 대신 체력을 냅니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 음지 루트</b> — 빚에 몰리면 열리는 뒷길입니다. 타락도가 오를수록 깊어지고, 돌아오기 어렵습니다. 수위 있는 전개가 싫으면 안 밟으면 그만입니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 난이도 4종 + 빚 독촉 + 신규 데뷔 프리셋</b> — 리얼리티로 시작하면 이자 9%가 진짜 뼈아픕니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 일상 이벤트 17종</b> — 감기·다툼·럭키 스케베·개그까지. 상태창엔 날짜·시간대·계절·날씨가 같이 뜹니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    <b style="color:#dbe2ea;">서사와 시스템이 서로 따라옵니다</b> — 🌙 버튼을 안 눌러도 서사가 밤을 넘기면 날짜가 따라오고,
+    서사로 치른 무대도 정산됩니다. 보수 금액은 시스템 값을 지시문에 못 박아서 AI가 "5만 엔" 같은 걸 지어내지 못합니다.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── ③ 하이라이트 카드 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">하이라이트 카드 — 이번 턴에 무슨 일이 있었는지가 보입니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.86</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  판정 성패, 소지금 증감, 소지품 변화, 스탯 변화 — 게임에서 제일 체감되는 것들이
+  정작 <b style="color:#c98a7a;">상태창을 열어 봐야만 보였습니다.</b> 이제 상태창 맨 위에 게임 알림풍 카드로 뜹니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">🎲 무대 판정 — 성공        💰 자금 +495만원
+📦 굿즈: 포토카드 획득     📈 인지도 12 → 15</pre>
+
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  변화가 없으면 안 뜨고, 상태창 탭에서 끌 수 있습니다.
+  더 촘촘한 내역이 필요하면 <b style="color:#dbe2ea;">변화 로그 영수증 모드</b>(v0.72)를 켜면 전체 변화가 접힌 목록으로 남습니다.
+  </p>
+</div>
+
+<!-- ─────────── ④ 에셋팩 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">에셋팩 — 한 인물에 성격이 다른 팩을 겹쳐 쓸 수 있습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.75~87</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  같은 인물에 <b style="color:#dbe2ea;">감정 이미지 팩</b>과 <b style="color:#dbe2ea;">성인 이미지 팩</b>처럼
+  구조가 다른 팩을 두 개 선언하면 <b style="color:#c98a7a;">뒷팩이 통째로 무시됐습니다.</b>
+  이제 어느 팩을 쓸지는 장면이 고릅니다 — 감정 칸이 채워지면 감정 팩, 성행위 칸이 채워지면 그쪽 팩으로 갑니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 팩 2개부터 이미지가 안 나오던 버그</b>(v0.75)도 잡았습니다 — 인물마다 필요한 칸이 다른데 AI에게 뭉뚱그려 알려주던 탓이었습니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 없는 조합은 한 칸씩만 낮춰서 구제</b>합니다 — 예전엔 조합 하나가 없으면 의상까지 기본값으로 뒤집힌 이미지가 나갔습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 초상 매핑 대조</b>(v0.83) — 편성표 인물 중 초상 이미지가 빠진 게 누군지 편집기가 짚어 줍니다. 모듈 에셋 읽기도 기본을 꺼서 로딩이 가벼워졌습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 잔가지 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 그 밖에</span>
+  </div>
+
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">서사-시스템 불일치 신고</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.71</span> —
+  서사가 숫자와 어긋나면 보조 AI가 신고만 하고(값은 절대 못 건드립니다), 다음 턴에 서사가 스스로 물러나게 유도합니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">잠긴 액션에 이유가 뜹니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.85</span> —
+  "조건 미충족" 대신 <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">인지도 10 이상 · 자금 12 이상</span>처럼 뭐가 모자란지 말해 줍니다.
+  갈림길 선택지에도 무엇에 대한 선택인지 부제가 붙습니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">생성 모델을 생성 지점마다 고릅니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.78</span> —
+  [✨ 만들어 달라기]마다 쓸 모델을 그 자리에서 바꿀 수 있습니다. 시작 시각 무작위와 리롤 난수 고정 토글(v0.80)도 들어왔습니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">메뉴 재편성 + 세션 시계</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.70</span> —
+  이용자 피드백으로 관리 패널 동선을 다듬고, 지금 채팅이 게임 시간으로 언제인지 상단에 상시 표시합니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">자잘한 버그들</b> — 새 시작 프리셋이 새 채팅에서 증발하던 것(v0.85.2),
+  무대 당일 일감이 사라지던 것(v0.86.3), 하루가 이틀로 정산되던 유령 밤(v0.87.2),
+  지난 일정이 안 지워지던 유령 일정(v0.87.2)까지. 절반 이상이 실플 제보로 잡혔습니다.
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="border-top:1px solid #3a4553;padding-top:20px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;">
+  플러그인 파일을 새로 받아 <b style="color:#e0a94a;">다시 임포트</b>하세요.
+  파일만 바꿔 두면 리수에서 도는 건 여전히 옛날 빌드입니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  제대로 갈렸는지는 플러그인 목록에서 확인할 수 있습니다 —
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">SimCore (시뮬 엔진) v0.87.3 에셋팩 구조 라우팅</span>
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">봇 스키마는 그대로 씁니다.</b> 다만 아이돌 템플릿을 뜯어 쓰던 분은
+  [새로 만들기]에서 새로 뽑아야 이번 콘텐츠가 다 들어 있습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  안 되는 게 있으면 댓글 주세요. 이번 업데이트에서 고친 것 중 절반은 댓글로 알게 된 것들입니다.
+  </p>
+</div>
+
+</div>

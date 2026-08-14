@@ -247,6 +247,7 @@ function mainInjectionText(schema, lookup) {
   for (const p of packs) {
     const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id).join(` ${p.sep ?? '_'} `);
     out.push(`- pack "${p.id}": format ${p.format} · name = ${order}`);
+    if (p.usage) out.push(`  use for: ${p.usage}`); // 쓰임새 — 팩이 여럿일 때 선택 기준 (v0.88)
     for (const s of p.slots || []) {
       out.push(`  ${s.id}${s.optional ? ' (optional)' : ''}: ${(s.values || []).join(', ')}`);
     }
@@ -301,15 +302,21 @@ function auxImageSpec(schema, lookup) {
       if (host) { host.packs.push(p); continue; }
       variants.push({ ids, packs: [p] });
     }
-    const varFields = variants.map((v) => v.ids.map((f) => ({
-      id: f.id,
-      optional: f.optional,
-      values: [...new Set(v.packs.flatMap((p) => (p.slots || [])
-        .filter((x) => x.id === f.id).flatMap((x) => x.values || [])))],
-    })));
-    const sig = JSON.stringify(varFields);
+    // usage(쓰임새 한 줄, v0.88) — 같은 인물에 field set이 여럿이면 "어느 쪽을 언제 쓰나"의
+    // 판단 기준이 없어 보조가 헷갈린다 (실기 지적: "에셋 명 조합만 받으면 헷갈릴듯").
+    // 팩 제작자가 적은 한 줄을 그 변형의 선택 기준으로 실어 보낸다.
+    const varData = variants.map((v) => ({
+      fields: v.ids.map((f) => ({
+        id: f.id,
+        optional: f.optional,
+        values: [...new Set(v.packs.flatMap((p) => (p.slots || [])
+          .filter((x) => x.id === f.id).flatMap((x) => x.values || [])))],
+      })),
+      usage: [...new Set(v.packs.map((p) => p.usage).filter(Boolean))].join(' / ') || null,
+    }));
+    const sig = JSON.stringify(varData);
     if (bySig.has(sig)) { bySig.get(sig).chars.push(who); continue; }
-    const g = { chars: [who], variants: varFields };
+    const g = { chars: [who], variants: varData };
     bySig.set(sig, g); groups.push(g);
   }
 
@@ -320,15 +327,19 @@ function auxImageSpec(schema, lookup) {
     ? ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)].join(', ')
     : '"who": <character>, plus that character\'s own fields';
   const fieldText = (f) => `"${f.id}"${f.optional ? ' (optional)' : ''}: one of [${f.values.join(', ')}]`;
-  const variantText = (fields) => fields.length ? fields.map(fieldText).join(' · ') : '(no extra fields)';
+  const variantText = (v) => (v.fields.length ? v.fields.map(fieldText).join(' · ') : '(no extra fields)')
+    + (v.usage ? ` — use for: ${v.usage}` : '');
+  const soloUsage = uniform ? (groups[0]?.variants[0]?.usage
+    ?? ([...new Set(packs.map((p) => p.usage).filter(Boolean))].join(' / ') || null)) : null;
   const vocab = uniform
     ? [
       `who: one of [${whoValues.join(', ')}]`,
       ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
+      ...(soloUsage ? [`use for: ${soloUsage}`] : []),
     ]
     : [
       'Fields differ per character. Fill EXACTLY the fields listed on that character\'s line — omitting a listed field drops the image entirely.',
-      ...(multiSet ? ['Where a character lists multiple field sets, fill ALL fields of exactly ONE set — the fields you fill select the image family (e.g., emotion vs explicit).'] : []),
+      ...(multiSet ? ['Where a character lists multiple field sets, pick the ONE set that fits the current scene (each set\'s "use for" note is the criterion) and fill ALL its fields.'] : []),
       ...groups.map((g) => g.variants.length === 1
         ? `- ${g.chars.join(', ')} — ${variantText(g.variants[0])}`
         : `- ${g.chars.join(', ')} — one of ${g.variants.length} field sets: `

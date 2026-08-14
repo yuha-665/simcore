@@ -2729,6 +2729,7 @@ function buildPackImportPrompt(pasteText) {
     '  "format": "출력 태그 원형 — {name} 자리에 조합된 이름 (예: <img=\\"{name}\\">)",',
     '  "chars": ["(선택) 태그가 캐릭터 고정인 단일 캐릭 모듈이면 담당 인물"],',
     '  "when": "(선택) 성인 등 조건부 어휘 게이트 — 비워 두면 항상 열림",',
+    '  "usage": "(선택) 이 팩을 언제 쓰는지 한 줄 — 같은 인물에 팩이 여럿일 때 AI의 선택 기준 (예: 성행위 장면에서만)",',
     '  "slots": [{ "id": "who", "label": "인물", "values": ["..."] },',
     '            { "id": "emo", "label": "감정", "values": ["..."], "fallback": "중립값" },',
     '            { "id": "wear", "label": "의상", "values": ["..."], "optional": true }] }]}',
@@ -7464,7 +7465,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         return `칸 ${Number(slot[1]) + 1}${slot[2] ? ` ${names[slot[2]] || slot[2]}` : ''}`;
       }
       const key = /^\.([^.]+)/.exec(rest)?.[1];
-      return ({ id: '팩 ID', format: '출력 태그', source: '출처', when: '게이트', chars: '고정 인물' })[key] || '팩 설정';
+      return ({ id: '팩 ID', format: '출력 태그', source: '출처', when: '게이트', chars: '고정 인물', usage: '쓰임새' })[key] || '팩 설정';
     };
     box.appendChild(h('div', { class: 'sce-assets-list-head' },
       h('div', { class: 'sce-assets-list-title' }, '팩 편집'),
@@ -7494,6 +7495,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         assetField('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
           { cls: 'sce-w-l', ph: '<img="{name}">' }))));
       settings.appendChild(h('div', { class: 'sce-asset-pack-options' },
+        assetField('쓰임새 (AI 선택 기준)', bindInput(p.usage, (x) => { p.usage = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '선택 · 예: 성행위 장면에서만 / 일반 표정 연출' })),
         assetField('게이트 조건', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '선택 · 예: nsfw_on' })),
         assetField('고정 인물', bindInput((p.chars || []).join(', '), (x) => {

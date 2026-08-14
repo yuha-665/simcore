@@ -713,6 +713,8 @@ function validateSchema(schema) {
         if (!pk.source) warn(p, 'source(출처)가 없습니다 — 모듈을 뗀 뒤 어느 팩이 고아인지 알 수 없게 됩니다');
         // 빈 when은 "항상 열림" — packOpen과 같은 해석. 임포터가 "비워 둬라"를 ""로 내는 게 정상이다
         if (pk.when != null && String(pk.when).trim() !== '') checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
+        if (pk.usage != null && typeof pk.usage !== 'string') err(p + '.usage', 'usage(쓰임새)는 문자열이어야 함');
+        else if (pk.usage && pk.usage.length > 200) warn(p + '.usage', '쓰임새가 200자를 넘습니다 — 매 턴 지시문에 실리는 한 줄이니 짧게 쓰세요');
         if (pk.chars != null && (!Array.isArray(pk.chars) || pk.chars.some((c) => typeof c !== 'string')))
           err(p + '.chars', 'chars는 문자열 배열이어야 함');
 
@@ -759,6 +761,7 @@ function validateSchema(schema) {
         //   앞 셋이면 찾아갈 수 있다.
         const reqIds = slots.filter((s) => s && s.id !== 'who' && !s.optional).map((s) => s.id);
         const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
+        const coexist = new Set(); // 구조가 달라 공존하는 앞 팩 id (usage 권고용, v0.88)
         for (const c of owns) {
           const prev = claim.get(c) || [];
           const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? '')
@@ -766,9 +769,19 @@ function validateSchema(schema) {
           if (same) {
             if (!shadow.has(same.id)) shadow.set(same.id, []);
             shadow.get(same.id).push(c);
+          } else {
+            // 구조가 다른 인물 공유 = 채운 칸이 팩을 고르는 공존 (v0.87.3). 보조가 어느
+            // field set을 쓸지 고르려면 판단 기준이 필요하다 — 쓰임새(usage) 없이 두 세트를
+            // 받으면 헷갈린다 (실기 지적). 어느 한쪽이라도 비어 있으면 짚어 준다.
+            const other = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+            if (other && (!pk.usage || !other.usage)) coexist.add(other.id);
           }
-          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds });
+          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds, usage: pk.usage || '' });
           claim.set(c, prev);
+        }
+        for (const prevId of coexist) {
+          warn(p, `팩 '${prevId}'와 인물을 나눠 쓰는 구조 공존입니다 — 두 팩 모두 쓰임새(usage)를 `
+            + '적어야 보조 AI가 장면에 맞는 field set을 고릅니다 (예: "성행위 장면에서만")');
         }
         for (const [prevId, names] of shadow) {
           const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');

@@ -237,13 +237,13 @@ const Lon = mkLookup({ nsfw_on: true });
     assets: {
       by: 'aux',
       packs: [
-        { id: 'ks', source: '가이드', sep: '_', format: '<img ks="{name}">',
+        { id: 'ks', source: '가이드', sep: '_', format: '<img ks="{name}">', usage: '일반 장면의 표정 연출',
           slots: [
             { id: 'who', values: ['megumin', 'aqua'] },
             { id: 'wear', values: ['cloth', 'nude'], fallback: 'cloth' },
             { id: 'emo', values: ['angry', 'default'], fallback: 'default' },
           ] },
-        { id: 'ks_s', source: '가이드', sep: '_', format: '<img s="{name}">',
+        { id: 'ks_s', source: '가이드', sep: '_', format: '<img s="{name}">', usage: '성행위 장면에서만',
           slots: [
             { id: 'who', values: ['megumin', 'aqua'] },
             { id: 'wear', values: ['cloth', 'nude'], fallback: 'cloth' },
@@ -274,8 +274,26 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('★ 지시에 두 field set이 나란히 실린다 (겹쳐도 둘 다 전송)',
     /one of 2 field sets/.test(spec.instruction) && /"emo"/.test(spec.instruction) && /"act"/.test(spec.instruction),
     spec.instruction);
-  ck('★ 한 세트를 통째로 채우라는 규칙이 실린다', /exactly ONE set/.test(spec.instruction), '');
+  ck('★ 한 세트를 통째로 채우라는 규칙이 실린다', /ONE set that fits/.test(spec.instruction), '');
   ck('팩 id는 여전히 안 나옴', !/\bks_s\b/.test(spec.instruction), '');
+
+  // ── 쓰임새 한 줄 (v0.88) — "어느 세트를 언제 쓰나"의 판단 기준 ──
+  ck('★ 각 field set에 쓰임새가 실린다 (use for)',
+    /use for: 일반 장면의 표정 연출/.test(spec.instruction) && /use for: 성행위 장면에서만/.test(spec.instruction),
+    spec.instruction);
+  ck('★ 쓰임새가 둘 다 있으면 공존 경고 없음',
+    !validateSchema(KS).warnings.some((w) => w.msg.includes('쓰임새')), '');
+  const noUse = JSON.parse(JSON.stringify(KS));
+  delete noUse.assets.packs[1].usage;
+  ck('★ 구조 공존인데 쓰임새가 빠지면 경고 (아무 세트나 고르는 사고 예방)',
+    validateSchema(noUse).warnings.some((w) => w.msg.includes('쓰임새(usage)')),
+    validateSchema(noUse).warnings.map((w) => w.msg).join(' / '));
+  // main 모드에도 팩 줄에 실린다
+  const mainT = AS.mainInjectionText({ assets: { by: 'main', packs: KS.assets.packs } }, Lk);
+  ck('main 주입문에도 쓰임새가 실린다', /use for: 성행위 장면에서만/.test(mainT), mainT);
+  // 팩 하나(uniform)여도 쓰임새는 나간다
+  const oneKs = JSON.parse(JSON.stringify(KS)); oneKs.assets.packs = [oneKs.assets.packs[0]];
+  ck('팩 하나(평평한 지시)에도 쓰임새 한 줄', /use for: 일반 장면의 표정 연출/.test(AS.auxImageSpec(oneKs, Lk).instruction), '');
 
   // 기존 성인 게이트 패턴(칸 id 부분집합)은 변형으로 갈라지지 않고 어휘만 넓어져야 한다
   const S2 = snap();

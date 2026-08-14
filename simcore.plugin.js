@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.87.3
-//@display-name SimCore (시뮬 엔진) v0.87.3 에셋팩 구조 라우팅 — 인물 공유 팩 공존
+//@version 0.88.0
+//@display-name SimCore (시뮬 엔진) v0.88.0 에셋팩 쓰임새 한 줄 — AI가 팩을 고르는 기준
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.88.0 ───────────────────────────────────────────────
+// 실기 지적: 구조 라우팅(v0.87.3)으로 한 인물이 field set을 여럿 받게 됐는데, "어느 세트를
+// 언제 쓰나"의 판단 기준이 없다 — 에셋 명 조합만 받으면 보조가 헷갈린다.
+// → 팩에 usage(쓰임새 한 줄) 필드 추가:
+// - [코어] auxImageSpec: 각 field set 줄에 "use for: <쓰임새>"로 실린다 (변형 합치면 ' / ' 연결).
+//   uniform(팩 하나) 경로에도 한 줄, mainInjectionText의 팩 줄에도 얹음.
+// - [편집기] 팩 설정에 '쓰임새 (AI 선택 기준)' 칸 (규칙 #3) + 임포터 규격에 usage 추가.
+// - [검증] usage 문자열 검사(200자 경고) + 구조 공존인데 어느 한쪽이라도 쓰임새가 없으면
+//   경고 — 공존 자체가 성립해도 기준 없인 보조가 아무 세트나 고른다.
+//   스키마 필드 추가지만 기존 봇 무변 (usage 없으면 예전 지시 그대로). 플러그인 재임포트만.
 //
 // ── v0.87.3 ───────────────────────────────────────────────
 // 실사고: 감정 팩(who·wear·emo)과 성행위 팩(who·wear·act)이 인물을 공유하자 뒷팩이 통째로
@@ -3159,6 +3170,8 @@ function validateSchema(schema) {
         if (!pk.source) warn(p, 'source(출처)가 없습니다 — 모듈을 뗀 뒤 어느 팩이 고아인지 알 수 없게 됩니다');
         // 빈 when은 "항상 열림" — packOpen과 같은 해석. 임포터가 "비워 둬라"를 ""로 내는 게 정상이다
         if (pk.when != null && String(pk.when).trim() !== '') checkExpr(pk.when, p + '.when', allIds, err, { allowRand: false });
+        if (pk.usage != null && typeof pk.usage !== 'string') err(p + '.usage', 'usage(쓰임새)는 문자열이어야 함');
+        else if (pk.usage && pk.usage.length > 200) warn(p + '.usage', '쓰임새가 200자를 넘습니다 — 매 턴 지시문에 실리는 한 줄이니 짧게 쓰세요');
         if (pk.chars != null && (!Array.isArray(pk.chars) || pk.chars.some((c) => typeof c !== 'string')))
           err(p + '.chars', 'chars는 문자열 배열이어야 함');
 
@@ -3205,6 +3218,7 @@ function validateSchema(schema) {
         //   앞 셋이면 찾아갈 수 있다.
         const reqIds = slots.filter((s) => s && s.id !== 'who' && !s.optional).map((s) => s.id);
         const shadow = new Map(); // 먼저 담당하는 팩 id → 이 팩과 겹친 인물들
+        const coexist = new Set(); // 구조가 달라 공존하는 앞 팩 id (usage 권고용, v0.88)
         for (const c of owns) {
           const prev = claim.get(c) || [];
           const same = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? '')
@@ -3212,9 +3226,19 @@ function validateSchema(schema) {
           if (same) {
             if (!shadow.has(same.id)) shadow.set(same.id, []);
             shadow.get(same.id).push(c);
+          } else {
+            // 구조가 다른 인물 공유 = 채운 칸이 팩을 고르는 공존 (v0.87.3). 보조가 어느
+            // field set을 쓸지 고르려면 판단 기준이 필요하다 — 쓰임새(usage) 없이 두 세트를
+            // 받으면 헷갈린다 (실기 지적). 어느 한쪽이라도 비어 있으면 짚어 준다.
+            const other = prev.find((x) => x.id !== pk.id && (x.when ?? '') === (pk.when ?? ''));
+            if (other && (!pk.usage || !other.usage)) coexist.add(other.id);
           }
-          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds });
+          prev.push({ id: pk.id, when: pk.when ?? '', req: reqIds, usage: pk.usage || '' });
           claim.set(c, prev);
+        }
+        for (const prevId of coexist) {
+          warn(p, `팩 '${prevId}'와 인물을 나눠 쓰는 구조 공존입니다 — 두 팩 모두 쓰임새(usage)를 `
+            + '적어야 보조 AI가 장면에 맞는 field set을 고릅니다 (예: "성행위 장면에서만")');
         }
         for (const [prevId, names] of shadow) {
           const head = names.slice(0, 3).map((n) => `'${n}'`).join(', ');
@@ -3726,6 +3750,7 @@ function mainInjectionText(schema, lookup) {
   for (const p of packs) {
     const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id).join(` ${p.sep ?? '_'} `);
     out.push(`- pack "${p.id}": format ${p.format} · name = ${order}`);
+    if (p.usage) out.push(`  use for: ${p.usage}`); // 쓰임새 — 팩이 여럿일 때 선택 기준 (v0.88)
     for (const s of p.slots || []) {
       out.push(`  ${s.id}${s.optional ? ' (optional)' : ''}: ${(s.values || []).join(', ')}`);
     }
@@ -3780,15 +3805,21 @@ function auxImageSpec(schema, lookup) {
       if (host) { host.packs.push(p); continue; }
       variants.push({ ids, packs: [p] });
     }
-    const varFields = variants.map((v) => v.ids.map((f) => ({
-      id: f.id,
-      optional: f.optional,
-      values: [...new Set(v.packs.flatMap((p) => (p.slots || [])
-        .filter((x) => x.id === f.id).flatMap((x) => x.values || [])))],
-    })));
-    const sig = JSON.stringify(varFields);
+    // usage(쓰임새 한 줄, v0.88) — 같은 인물에 field set이 여럿이면 "어느 쪽을 언제 쓰나"의
+    // 판단 기준이 없어 보조가 헷갈린다 (실기 지적: "에셋 명 조합만 받으면 헷갈릴듯").
+    // 팩 제작자가 적은 한 줄을 그 변형의 선택 기준으로 실어 보낸다.
+    const varData = variants.map((v) => ({
+      fields: v.ids.map((f) => ({
+        id: f.id,
+        optional: f.optional,
+        values: [...new Set(v.packs.flatMap((p) => (p.slots || [])
+          .filter((x) => x.id === f.id).flatMap((x) => x.values || [])))],
+      })),
+      usage: [...new Set(v.packs.map((p) => p.usage).filter(Boolean))].join(' / ') || null,
+    }));
+    const sig = JSON.stringify(varData);
     if (bySig.has(sig)) { bySig.get(sig).chars.push(who); continue; }
-    const g = { chars: [who], variants: varFields };
+    const g = { chars: [who], variants: varData };
     bySig.set(sig, g); groups.push(g);
   }
 
@@ -3799,15 +3830,19 @@ function auxImageSpec(schema, lookup) {
     ? ['"who": <character>', ...[...slotVals.keys()].map((k) => `"${k}": <${k}>`)].join(', ')
     : '"who": <character>, plus that character\'s own fields';
   const fieldText = (f) => `"${f.id}"${f.optional ? ' (optional)' : ''}: one of [${f.values.join(', ')}]`;
-  const variantText = (fields) => fields.length ? fields.map(fieldText).join(' · ') : '(no extra fields)';
+  const variantText = (v) => (v.fields.length ? v.fields.map(fieldText).join(' · ') : '(no extra fields)')
+    + (v.usage ? ` — use for: ${v.usage}` : '');
+  const soloUsage = uniform ? (groups[0]?.variants[0]?.usage
+    ?? ([...new Set(packs.map((p) => p.usage).filter(Boolean))].join(' / ') || null)) : null;
   const vocab = uniform
     ? [
       `who: one of [${whoValues.join(', ')}]`,
       ...[...slotVals.entries()].map(([k, set]) => `${k}: one of [${[...set].join(', ')}]`),
+      ...(soloUsage ? [`use for: ${soloUsage}`] : []),
     ]
     : [
       'Fields differ per character. Fill EXACTLY the fields listed on that character\'s line — omitting a listed field drops the image entirely.',
-      ...(multiSet ? ['Where a character lists multiple field sets, fill ALL fields of exactly ONE set — the fields you fill select the image family (e.g., emotion vs explicit).'] : []),
+      ...(multiSet ? ['Where a character lists multiple field sets, pick the ONE set that fits the current scene (each set\'s "use for" note is the criterion) and fill ALL its fields.'] : []),
       ...groups.map((g) => g.variants.length === 1
         ? `- ${g.chars.join(', ')} — ${variantText(g.variants[0])}`
         : `- ${g.chars.join(', ')} — one of ${g.variants.length} field sets: `
@@ -11163,6 +11198,7 @@ function buildPackImportPrompt(pasteText) {
     '  "format": "출력 태그 원형 — {name} 자리에 조합된 이름 (예: <img=\\"{name}\\">)",',
     '  "chars": ["(선택) 태그가 캐릭터 고정인 단일 캐릭 모듈이면 담당 인물"],',
     '  "when": "(선택) 성인 등 조건부 어휘 게이트 — 비워 두면 항상 열림",',
+    '  "usage": "(선택) 이 팩을 언제 쓰는지 한 줄 — 같은 인물에 팩이 여럿일 때 AI의 선택 기준 (예: 성행위 장면에서만)",',
     '  "slots": [{ "id": "who", "label": "인물", "values": ["..."] },',
     '            { "id": "emo", "label": "감정", "values": ["..."], "fallback": "중립값" },',
     '            { "id": "wear", "label": "의상", "values": ["..."], "optional": true }] }]}',
@@ -15898,7 +15934,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         return `칸 ${Number(slot[1]) + 1}${slot[2] ? ` ${names[slot[2]] || slot[2]}` : ''}`;
       }
       const key = /^\.([^.]+)/.exec(rest)?.[1];
-      return ({ id: '팩 ID', format: '출력 태그', source: '출처', when: '게이트', chars: '고정 인물' })[key] || '팩 설정';
+      return ({ id: '팩 ID', format: '출력 태그', source: '출처', when: '게이트', chars: '고정 인물', usage: '쓰임새' })[key] || '팩 설정';
     };
     box.appendChild(h('div', { class: 'sce-assets-list-head' },
       h('div', { class: 'sce-assets-list-title' }, '팩 편집'),
@@ -15928,6 +15964,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         assetField('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
           { cls: 'sce-w-l', ph: '<img="{name}">' }))));
       settings.appendChild(h('div', { class: 'sce-asset-pack-options' },
+        assetField('쓰임새 (AI 선택 기준)', bindInput(p.usage, (x) => { p.usage = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '선택 · 예: 성행위 장면에서만 / 일반 표정 연출' })),
         assetField('게이트 조건', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '선택 · 예: nsfw_on' })),
         assetField('고정 인물', bindInput((p.chars || []).join(', '), (x) => {

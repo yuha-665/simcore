@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.89.0
-//@display-name SimCore (시뮬 엔진) v0.89.0 게임 패널 대장 탭 + 탭별 플로팅 버튼
+//@version 0.89.1
+//@display-name SimCore (시뮬 엔진) v0.89.1 대장 탭 + 랜덤 이벤트 확률 식 지원
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.89.1 ───────────────────────────────────────────────
+// 베리디아 난이도 프리셋 재설계(희망적/보통/리얼리티)에서 드러난 갭: 프리셋은 변수 초기값만
+// 바꾸는데 randomEvents.chancePerTurn이 숫자 상수라 "프리셋마다 사건 빈도"가 불가능했다.
+// - [코어] chancePerTurn에 식 허용 (0~1 스케일, 매 추첨마다 현 상태로 평가) — 난이도 변수
+//   (hardship 등)를 읽게 짜면 프리셋 하나로 빈도가 따라 움직인다. 깨진 식은 0으로 강하.
+// - [편집기] 확률 칸이 숫자(%)와 식을 다 받음, 카탈로그 표기 '식(...)', 패치 takeChance 완화.
+// - [검증] 식이면 checkExpr (rand 금지). 숫자 봇 무변 — 플러그인 재임포트만.
 //
 // ── v0.89.0 ───────────────────────────────────────────────
 // 베리디아 리메이크 P1 (docs/design-베리디아-리메이크.md): 상태창에 우겨넣은 참고 정보(인물
@@ -2800,8 +2808,11 @@ function validateSchema(schema) {
   });
   const re = rules.randomEvents;
   if (re) {
-    if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
-      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 필요');
+    // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
+    if (typeof re.chancePerTurn === 'string') {
+      checkExpr(re.chancePerTurn, '$.rules.randomEvents.chancePerTurn', allIds, err, { allowRand: false });
+    } else if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요');
     (re.table || []).forEach((e, i) => {
       const p = `$.rules.randomEvents.table[${i}]`;
       if (!e.id) err(p, '이벤트 id 필요');
@@ -4513,7 +4524,10 @@ function parsePatch(raw) {
   // 패치로 추가할 때 이게 없으면 병합 결과가 검증(0~1 필요)에서 무조건 죽으므로 받아준다.
   const takeChance = (v, where) => {
     if (v == null) return;
-    if (typeof v !== 'number' || v < 0 || v > 1) { err(`${where}: randomEvents 발동률은 0~1 숫자여야 함 (현재: ${JSON.stringify(v)})`); return; }
+    // 숫자 또는 식 (v0.89.1) — 식의 문법·변수 검사는 병합 후 validateSchema가 맡는다
+    const okNum = typeof v === 'number' && v >= 0 && v <= 1;
+    const okExpr = typeof v === 'string' && v.trim();
+    if (!okNum && !okExpr) { err(`${where}: randomEvents 발동률은 0~1 숫자 또는 식이어야 함 (현재: ${JSON.stringify(v)})`); return; }
     patch.randomEventsChance = v;
   };
   takeChance(obj.randomEventsChance, 'randomEventsChance');
@@ -5742,7 +5756,18 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 8. 랜덤 이벤트 추첨
   const re = schema.rules?.randomEvents;
-  if (re && rng && rng() < (re.chancePerTurn ?? 0)) {
+  // 발동 확률 — 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
+  // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
+  // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
+  // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
+  let reChance = 0;
+  if (re) {
+    if (typeof re.chancePerTurn === 'string') {
+      try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
+      reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
+    } else reChance = re.chancePerTurn ?? 0;
+  }
+  if (re && rng && rng() < reChance) {
     const eligible = (re.table || []).filter((ev) => {
       // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
       if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
@@ -10833,7 +10858,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     }
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
-      '- `rules.randomEvents` — `chancePerTurn`(0~1) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -12868,8 +12893,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const re = schema.rules.randomEvents;
     wrap.appendChild(h('h4', {}, '랜덤 이벤트'));
     wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('턴당 발동 확률', bindInput(Math.round((re.chancePerTurn ?? 0) * 100), (x) => { re.chancePerTurn = Math.max(0, Math.min(100, num(x))) / 100; rerender(); }, { cls: 'sce-w-s' })),
-      h('span', {}, '%'),
+      pair('턴당 발동 확률', bindInput(
+        typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
+        (x) => {
+          // 숫자는 % 로, 식은 그대로 (v0.89.1 — 0~1 스케일). 빈 칸은 0.
+          const t = String(x).trim();
+          const n = Number(t);
+          if (!t) re.chancePerTurn = 0;
+          else if (isFinite(n)) re.chancePerTurn = Math.max(0, Math.min(100, n)) / 100;
+          else re.chancePerTurn = t;
+          rerender();
+        }, { cls: 'sce-w-l', ph: '15 (%) 또는 식: 0.04 + hardship * 0.001' }),
+        '숫자면 % · 식이면 0~1 스케일 — 식이 난이도 변수를 읽으면 프리셋마다 사건 빈도가 달라진다'),
     ));
     re.table.forEach((ev, i) => {
       wrap.appendChild(h('div', { class: 'sce-block' },
@@ -14743,7 +14778,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
       const effects = (e.effects || []).map(fmtE);
       if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
-      const kind = random ? `랜덤 · 턴당 ${Math.round(rndChance * 100)}%` : '일반 이벤트';
+      const kind = random
+        ? `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`
+        : '일반 이벤트';
       const fields = [
         ['추가된 항목', e.id || '(ID 없음)'],
         ['발동·조건', condition.join(' · ') || '조건 없음'],

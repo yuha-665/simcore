@@ -328,8 +328,11 @@ function validateSchema(schema) {
   });
   const re = rules.randomEvents;
   if (re) {
-    if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
-      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 필요');
+    // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
+    if (typeof re.chancePerTurn === 'string') {
+      checkExpr(re.chancePerTurn, '$.rules.randomEvents.chancePerTurn', allIds, err, { allowRand: false });
+    } else if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요');
     (re.table || []).forEach((e, i) => {
       const p = `$.rules.randomEvents.table[${i}]`;
       if (!e.id) err(p, '이벤트 id 필요');

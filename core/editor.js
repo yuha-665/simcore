@@ -2294,7 +2294,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     }
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
-      '- `rules.randomEvents` — `chancePerTurn`(0~1) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -4329,8 +4329,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const re = schema.rules.randomEvents;
     wrap.appendChild(h('h4', {}, '랜덤 이벤트'));
     wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('턴당 발동 확률', bindInput(Math.round((re.chancePerTurn ?? 0) * 100), (x) => { re.chancePerTurn = Math.max(0, Math.min(100, num(x))) / 100; rerender(); }, { cls: 'sce-w-s' })),
-      h('span', {}, '%'),
+      pair('턴당 발동 확률', bindInput(
+        typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
+        (x) => {
+          // 숫자는 % 로, 식은 그대로 (v0.89.1 — 0~1 스케일). 빈 칸은 0.
+          const t = String(x).trim();
+          const n = Number(t);
+          if (!t) re.chancePerTurn = 0;
+          else if (isFinite(n)) re.chancePerTurn = Math.max(0, Math.min(100, n)) / 100;
+          else re.chancePerTurn = t;
+          rerender();
+        }, { cls: 'sce-w-l', ph: '15 (%) 또는 식: 0.04 + hardship * 0.001' }),
+        '숫자면 % · 식이면 0~1 스케일 — 식이 난이도 변수를 읽으면 프리셋마다 사건 빈도가 달라진다'),
     ));
     re.table.forEach((ev, i) => {
       wrap.appendChild(h('div', { class: 'sce-block' },
@@ -6204,7 +6214,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
       const effects = (e.effects || []).map(fmtE);
       if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
-      const kind = random ? `랜덤 · 턴당 ${Math.round(rndChance * 100)}%` : '일반 이벤트';
+      const kind = random
+        ? `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`
+        : '일반 이벤트';
       const fields = [
         ['추가된 항목', e.id || '(ID 없음)'],
         ['발동·조건', condition.join(' · ') || '조건 없음'],

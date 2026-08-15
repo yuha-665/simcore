@@ -770,7 +770,10 @@ const S = {
     // 여기 있는 건 전부 "밖에서 오는 것"이다. 안에서 나는 일(곳간이 빈다, 사람이 앓는다)은
     // 이미 onTurn 정산이 만들어 낸다. 그걸 여기 또 넣으면 같은 불행이 두 배로 온다.
     randomEvents: {
-      chancePerTurn: 0.075,
+      // 발동 확률도 hardship이 민다 (v0.89.1 식 지원) — 희망(10) 0.05 / 보통(45) 0.09 / 리얼리티(100) 0.15.
+      // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다.
+      // 리얼리티가 랜디랜덤인 이유의 절반이 이 줄이다 — 두 배 자주, 세 배 넓은 창으로.
+      chancePerTurn: '0.04 + hardship * 0.0011',
       table: [
         // ① 길 — 무역로는 목록이 아니라 사건이다. 얼고, 무너지고, 도적이 앉는다.
         { id: 'road_ice', weight: 2, cooldown: 40,
@@ -970,6 +973,45 @@ const S = {
             { set: 'b_stella', expr: 'clamp(b_stella + 4, -50, 100)' }],
           notify: '[광휘회에서 지나갔다] 순회 중이던 자매 하나가 하루 묵으며 앓는 이들을 봐 주었다. '
             + '고용이 아니라 지나는 길이었고, 내일이면 간다.' },
+
+        // ── ⑧ 등급 사건 (난이도 프리셋 재설계, 2026-08-15) ──
+        // 혈전급은 리얼리티에서 창이 세 배 넓지만 어느 판에도 있다 — 켜고 끄지 않는다(원칙).
+        // 반대로 순풍급은 시련이 낮을수록 창이 넓다: thr의 기울기를 뒤집으면 된다.
+        { id: 'horde', weight: 2, cooldown: 70,
+          when: `${QUIET} and ${thr('threat', '>=', 92, 62)} and pop >= 40`,
+          effects: [
+            { set: 'pop', expr: 'max(pop - 6 - rand(0, 8), 20)' },
+            { set: 'army', expr: 'max(army - rand(2, 6), 0)' },
+            { set: 'morale', expr: 'clamp(morale - 14, 0, 100)' },
+            { set: 'threat', expr: 'clamp(threat + 10, 0, 100)' },
+          ],
+          notify: '[무리가 내려왔다] 척후가 봤다던 것들이 한꺼번에 왔다. 밤새 싸웠고, 아침에 세어 보니 '
+            + '빈자리가 있다. 저들은 물러난 것이지 사라진 게 아니다.' },
+        { id: 'granary_rot', weight: 2, cooldown: 60,
+          when: `${QUIET} and ${thr('food', '>=', 1400, 600)}`,
+          effects: [{ set: 'food', expr: 'max(food - round(food * (0.08 + hardship * 0.0012)), 0)' },
+            { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' }],
+          notify: '[곳간이 상했다] 밑단 가마니에서 쉰내가 올라왔다. 젖은 채로 쌓은 것이 속에서 썩었다. '
+            + '상한 것을 골라내는 데 하루가 갔고, 골라낸 만큼이 줄었다.' },
+        { id: 'deserters', weight: 2, cooldown: 45,
+          when: `${QUIET} and ${thr('morale', '<=', 6, 28)} and pop >= 40`,
+          effects: [{ set: 'pop', expr: 'max(pop - 3 - rand(0, 5), 20)' },
+            { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' }],
+          notify: '[사람이 떠났다] 새벽에 남쪽 길로 몇 집이 조용히 나갔다. 말리는 사람이 없었다는 것이 '
+            + '더 나쁜 소식이다. 남은 이들이 그 빈집을 하루 종일 쳐다봤다.' },
+        { id: 'settlers', weight: 2, cooldown: 45,
+          when: `${QUIET} and ${thr('fame', '>=', 6, 30)} and pop < cap and health >= 25`,
+          effects: [{ set: 'pop', expr: 'pop + 3 + rand(0, 4)' },
+            { set: 'morale', expr: 'clamp(morale + 4, 0, 100)' }],
+          notify: '[가족이 정착했다] 손에 연장이 있는 가족이 들어와 빈집을 골랐다. 도망 온 것이 아니라 '
+            + '골라서 온 것이다 — 이 땅 이야기가 밖에서 그렇게 돈다는 뜻이다.' },
+        { id: 'patron', weight: 2, cooldown: 60,
+          when: `${QUIET} and ${thr('rel_top', '>=', 25, 60)}`,
+          effects: [{ set: 'gold', expr: 'gold + 80 + rand(0, 60)' },
+            { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
+            { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
+          notify: '[선물이 왔다] 이웃 영지의 인장이 찍힌 궤짝이 도착했다. 답례를 바라는 선물이라는 걸 '
+            + '모르는 사람은 없지만, 당장은 금화가 금화다.' },
       ],
     },
   },
@@ -1266,12 +1308,33 @@ const S = {
   //   "아껴 쓴다"가 아니라 "먹을 자리를 새로 만든다"뿐이고, 그걸 못 하면 반드시 무너진다.
   //   그래서 focus와 alert가 그쪽을 가리키고, starving_soon 지시문이 허용된 길을 알려 준다.
   setup: {
+    // ── 난이도 3종 (유저 확정, 2026-08-15) ──
+    // 희망적 = 하렘 즐기기용 (영지는 배경) / 보통 = 일반적으로 어려움 / 리얼리티 = 랜디식 혈전.
+    // 갈리는 축: hardship(사건 창 + 발동 확률 식) · hire_mult(몸값) · fame(고용 문턱) · 개막 자원.
+    // ⚠ 프리셋끼리 갈리는 축은 하나도 생략하지 않는다 — 기본값에 기대면 나중에 스키마 시작값을
+    //   손대는 순간 사다리가 조용히 뒤집힌다. 같은 값이어도 세 곳 모두에 적어 둔다.
     presets: [
+      {
+        id: 'hope',
+        label: '🌸 희망적 — 좋은 시절',
+        // 영지가 저절로 크진 않지만 저절로 죽지도 않는다. fame 26 — 중급 메이드 문턱(25)이
+        // 처음부터 열려 있고 몸값은 6할. 사건은 0.05/턴, 순풍급(settlers·patron) 창이 제일 넓다.
+        set: {
+          pop: 120, houses: ['성한 오두막 100', '성채 별채 40'],
+          food: 2600, water: 2200, gold: 800,
+          health: 42, morale: 52, unrest: 6, threat: 18,
+          farms: ['살아있는 밭 5', '개울가 채마밭 2'],   // 적성 7 — 곳간이 저절로 마르진 않는다
+          wells: 2,
+          infra: ['낡은 병영', '연병장', '대장간', '마을 우물', '돌다리'],
+          stock: ['목재 150', '보리 씨 40'],
+          route: '없음', route_days: 0, rel_cap: 20, fame: 26,
+          hardship: 10, hire_mult: 60,
+          focus: '좋은 사람들을 곁에 모으는 것',
+        },
+      },
       {
         id: 'normal',
         label: '🌾 보통 — 그래도 사람이 산다',
-        // ⚠ 하드와 갈리는 축은 하나도 생략하지 않는다 — 기본값에 기대면 나중에 스키마 시작값을
-        //   손대는 순간 사다리가 조용히 뒤집힌다. 둘이 같은 값이어도 여기 적어 둔다(pop·houses·route).
         set: {
           pop: 110, houses: ['남은 오두막 90', '성채 헛간 30'],
           food: 1600, water: 1500, gold: 120,          // 열나흘치. 봄엔 축나고 가을에 메운다
@@ -1280,18 +1343,20 @@ const S = {
           wells: 1,                                     // 쓸 만한 우물 하나. 이게 곧 식수 자립이다
           infra: ['무너진 병영', '잡초 연병장', '폐허 대장간', '마을 우물'],
           stock: ['목재 100', '보리 씨 20'],
-          route: '없음', route_days: 0, rel_cap: 10,
-          hardship: 35, hire_mult: 80,
+          route: '없음', route_days: 0, rel_cap: 10, fame: 0,
+          hardship: 45, hire_mult: 100,                // "일반적으로 어려움" — 구 35/80에서 올림
           focus: '겨울이 오기 전에 밭을 늘리는 것',
         },
       },
       {
-        id: 'hard',
-        label: '💀 절망 — 사흘',
+        id: 'reality',
+        label: '🩸 리얼리티 — 랜디의 혈전',
+        // 매 인풋이 생사를 가른다 (림월드 랜디랜덤 철인). 구 '절망'의 개막 + hardship 100 —
+        // 사건 0.15/턴에 혈전급(horde·granary_rot·deserters) 창 최대, 몸값 1.8배.
         set: {
           // 전쟁이 지나간 자리. 사람이 절반으로 줄었고 남은 절반이 굶는다.
           pop: 70, food: 210, water: 210, gold: 0,     // 딱 사흘치
-          health: 12, morale: 12, unrest: 30, threat: 78,
+          health: 12, morale: 12, unrest: 30, threat: 80,
           farms: [],                                    // 다 죽었다. 여기서 다시 만들어야 한다
           wells: 0,
           houses: ['성한 오두막 25', '성채 헛간 20'],    // 수용 45에 일흔 — 처음부터 터져 나간다
@@ -1300,8 +1365,8 @@ const S = {
           // 산길은 몬스터가 내려오는 길이다. 열나흘은 어차피 곳간을 보고 있을 시간이고,
           // 그동안 랜덤 사건이 안 겹치는 게 오히려 낫다 — 길이 열리는 날부터 세상이 때리기 시작한다.
           route: '북 산길', route_days: 14,
-          rel_cap: 5,                                   // 왕도조차 서류로만 안다
-          hardship: 85, hire_mult: 150,
+          rel_cap: 5, fame: 0,                          // 왕도조차 서류로만 안다
+          hardship: 100, hire_mult: 180,
           focus: '사흘 안에 먹을 것을 구하는 것',
           alert: '곳간에 사흘치. 밭은 죽었고 우물은 못 쓴다.',
         },
@@ -1614,11 +1679,8 @@ for (const t of S.party.tabs) {
   console.log(`대장 [${t.label}] 렌더:`, ph.length, '자 · 미치환:', left.length ? '❗ ' + left.join(' ') : '✓ 없음');
 }
 
-// ── 신안 v2 산출 — 이 생성기가 곧 출처다 (P6 출처 일원화) ──
-// 리수 적용: 편집기 [JSON] 탭에 이 파일 내용을 통째로 붙여넣고 설치.
-fs.writeFileSync(__P('영지-변수상태창-신안v2.json'), JSON.stringify(S, null, 1));
-console.log('신안 v2 저장: 영지-변수상태창-신안v2.json —',
-  `vars ${S.vars.length} · derived ${S.derived.length} · 대장 탭 ${S.party.tabs.length}`);
+// (산출 파일은 러너 맨 끝에서 신안.json 하나로 저장한다 — 한때 v2 별도 파일을 두다
+//  중복임을 발견하고 합쳤다. 리수 적용: 편집기 [JSON] 탭에 그 파일을 통째로 붙여넣고 설치.)
 
 const d = diagnose(S, { turns: 60, runs: 6 });
 console.log('\n━━ 진단 ━━');
@@ -1708,8 +1770,8 @@ for (const f of d.findings) console.log(` ${sev[f.sev]} [${f.tag}] ${f.text.slic
   // 나쁜 일의 문턱이 실제로 갈리는가 — 첫날 판정만 보면 시드 운이 안 섞인다.
   const BAD = new Set(['road_ice', 'road_snow', 'road_bandit', 'road_wood', 'road_flood', 'raid', 'plague',
     'drought', 'storm', 'hail', 'frost', 'wildfire', 'coldsnap', 'foul_water', 'murrain',
-    'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'leak']);
-  const GOOD = new Set(['bumper', 'wanderer', 'pilgrims', 'windfall', 'sister_visit']);
+    'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'leak', 'horde', 'granary_rot', 'deserters']);
+  const GOOD = new Set(['bumper', 'wanderer', 'pilgrims', 'windfall', 'sister_visit', 'settlers', 'patron']);
   const kind = (id) => BAD.has(id) ? '나쁨' : GOOD.has(id) ? '좋음' : '중립';
 
   // 한 해를 열흘 간격으로 훑어 사건 후보를 센다. 계절 조건이 섞이므로 시드 운은 안 들어간다.

@@ -1728,7 +1728,7 @@
       }
     ],
     "randomEvents": {
-      "chancePerTurn": 0.075,
+      "chancePerTurn": "0.04 + hardship * 0.0011",
       "table": [
         {
           "id": "road_ice",
@@ -2240,6 +2240,103 @@
             }
           ],
           "notify": "[광휘회에서 지나갔다] 순회 중이던 자매 하나가 하루 묵으며 앓는 이들을 봐 주었다. 고용이 아니라 지나는 길이었고, 내일이면 간다."
+        },
+        {
+          "id": "horde",
+          "weight": 2,
+          "cooldown": 70,
+          "when": "disaster == \"\" and route == \"없음\" and threat >= 92 - hardship * 0.3 and pop >= 40",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "max(pop - 6 - rand(0, 8), 20)"
+            },
+            {
+              "set": "army",
+              "expr": "max(army - rand(2, 6), 0)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 14, 0, 100)"
+            },
+            {
+              "set": "threat",
+              "expr": "clamp(threat + 10, 0, 100)"
+            }
+          ],
+          "notify": "[무리가 내려왔다] 척후가 봤다던 것들이 한꺼번에 왔다. 밤새 싸웠고, 아침에 세어 보니 빈자리가 있다. 저들은 물러난 것이지 사라진 게 아니다."
+        },
+        {
+          "id": "granary_rot",
+          "weight": 2,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and food >= 1400 - hardship * 8",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "max(food - round(food * (0.08 + hardship * 0.0012)), 0)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 4, 0, 100)"
+            }
+          ],
+          "notify": "[곳간이 상했다] 밑단 가마니에서 쉰내가 올라왔다. 젖은 채로 쌓은 것이 속에서 썩었다. 상한 것을 골라내는 데 하루가 갔고, 골라낸 만큼이 줄었다."
+        },
+        {
+          "id": "deserters",
+          "weight": 2,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and morale <= 6 + hardship * 0.22 and pop >= 40",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "max(pop - 3 - rand(0, 5), 20)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 3, 0, 100)"
+            }
+          ],
+          "notify": "[사람이 떠났다] 새벽에 남쪽 길로 몇 집이 조용히 나갔다. 말리는 사람이 없었다는 것이 더 나쁜 소식이다. 남은 이들이 그 빈집을 하루 종일 쳐다봤다."
+        },
+        {
+          "id": "settlers",
+          "weight": 2,
+          "cooldown": 45,
+          "when": "disaster == \"\" and route == \"없음\" and fame >= 6 + hardship * 0.24 and pop < cap and health >= 25",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "pop + 3 + rand(0, 4)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 4, 0, 100)"
+            }
+          ],
+          "notify": "[가족이 정착했다] 손에 연장이 있는 가족이 들어와 빈집을 골랐다. 도망 온 것이 아니라 골라서 온 것이다 — 이 땅 이야기가 밖에서 그렇게 돈다는 뜻이다."
+        },
+        {
+          "id": "patron",
+          "weight": 2,
+          "cooldown": 60,
+          "when": "disaster == \"\" and route == \"없음\" and rel_top >= 25 + hardship * 0.35",
+          "effects": [
+            {
+              "set": "gold",
+              "expr": "gold + 80 + rand(0, 60)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 2, 0, 100)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 3, 0, 100)"
+            }
+          ],
+          "notify": "[선물이 왔다] 이웃 영지의 인장이 찍힌 궤짝이 도착했다. 답례를 바라는 선물이라는 걸 모르는 사람은 없지만, 당장은 금화가 금화다."
         }
       ]
     }
@@ -2669,6 +2766,47 @@
   "setup": {
     "presets": [
       {
+        "id": "hope",
+        "label": "🌸 희망적 — 좋은 시절",
+        "set": {
+          "pop": 120,
+          "houses": [
+            "성한 오두막 100",
+            "성채 별채 40"
+          ],
+          "food": 2600,
+          "water": 2200,
+          "gold": 800,
+          "health": 42,
+          "morale": 52,
+          "unrest": 6,
+          "threat": 18,
+          "farms": [
+            "살아있는 밭 5",
+            "개울가 채마밭 2"
+          ],
+          "wells": 2,
+          "infra": [
+            "낡은 병영",
+            "연병장",
+            "대장간",
+            "마을 우물",
+            "돌다리"
+          ],
+          "stock": [
+            "목재 150",
+            "보리 씨 40"
+          ],
+          "route": "없음",
+          "route_days": 0,
+          "rel_cap": 20,
+          "fame": 26,
+          "hardship": 10,
+          "hire_mult": 60,
+          "focus": "좋은 사람들을 곁에 모으는 것"
+        }
+      },
+      {
         "id": "normal",
         "label": "🌾 보통 — 그래도 사람이 산다",
         "set": {
@@ -2702,14 +2840,15 @@
           "route": "없음",
           "route_days": 0,
           "rel_cap": 10,
-          "hardship": 35,
-          "hire_mult": 80,
+          "fame": 0,
+          "hardship": 45,
+          "hire_mult": 100,
           "focus": "겨울이 오기 전에 밭을 늘리는 것"
         }
       },
       {
-        "id": "hard",
-        "label": "💀 절망 — 사흘",
+        "id": "reality",
+        "label": "🩸 리얼리티 — 랜디의 혈전",
         "set": {
           "pop": 70,
           "food": 210,
@@ -2718,7 +2857,7 @@
           "health": 12,
           "morale": 12,
           "unrest": 30,
-          "threat": 78,
+          "threat": 80,
           "farms": [],
           "wells": 0,
           "houses": [
@@ -2738,8 +2877,9 @@
           "route": "북 산길",
           "route_days": 14,
           "rel_cap": 5,
-          "hardship": 85,
-          "hire_mult": 150,
+          "fame": 0,
+          "hardship": 100,
+          "hire_mult": 180,
           "focus": "사흘 안에 먹을 것을 구하는 것",
           "alert": "곳간에 사흘치. 밭은 죽었고 우물은 못 쓴다."
         }

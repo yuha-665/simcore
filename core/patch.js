@@ -92,7 +92,10 @@ function parsePatch(raw) {
   // 패치로 추가할 때 이게 없으면 병합 결과가 검증(0~1 필요)에서 무조건 죽으므로 받아준다.
   const takeChance = (v, where) => {
     if (v == null) return;
-    if (typeof v !== 'number' || v < 0 || v > 1) { err(`${where}: randomEvents 발동률은 0~1 숫자여야 함 (현재: ${JSON.stringify(v)})`); return; }
+    // 숫자 또는 식 (v0.89.1) — 식의 문법·변수 검사는 병합 후 validateSchema가 맡는다
+    const okNum = typeof v === 'number' && v >= 0 && v <= 1;
+    const okExpr = typeof v === 'string' && v.trim();
+    if (!okNum && !okExpr) { err(`${where}: randomEvents 발동률은 0~1 숫자 또는 식이어야 함 (현재: ${JSON.stringify(v)})`); return; }
     patch.randomEventsChance = v;
   };
   takeChance(obj.randomEventsChance, 'randomEventsChance');

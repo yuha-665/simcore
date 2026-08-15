@@ -888,7 +888,18 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 8. 랜덤 이벤트 추첨
   const re = schema.rules?.randomEvents;
-  if (re && rng && rng() < (re.chancePerTurn ?? 0)) {
+  // 발동 확률 — 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
+  // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
+  // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
+  // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
+  let reChance = 0;
+  if (re) {
+    if (typeof re.chancePerTurn === 'string') {
+      try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
+      reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
+    } else reChance = re.chancePerTurn ?? 0;
+  }
+  if (re && rng && rng() < reChance) {
     const eligible = (re.table || []).filter((ev) => {
       // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
       if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;

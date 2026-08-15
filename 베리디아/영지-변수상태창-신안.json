@@ -1728,7 +1728,7 @@
       }
     ],
     "randomEvents": {
-      "chancePerTurn": "0.04 + hardship * 0.0011",
+      "chancePerTurn": "0.04 + hardship * 0.0004",
       "table": [
         {
           "id": "road_ice",

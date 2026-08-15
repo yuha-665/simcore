@@ -1311,7 +1311,11 @@ const S = {
   },
 };
 
-// ── 상태창: 지금 쓰시는 양식 그대로, 자리표시자만 새 이름으로 ──
+// ── 상태창: 다이어트판 (리메이크 P2, docs/design-베리디아-리메이크.md) ──
+// "오늘 아침 책상 위 한 장" — 매 턴 변하고 매 턴 봐야 하는 것만 남긴다.
+// 목록(계약·물자·경작지·인프라)·호감도 26명·계승·주변 영지는 전부 대장 탭(아래 S.party)으로.
+// 상태창은 메시지마다 다시 그려지지만 대장은 열었을 때만 그려진다 — 그게 나누는 기준이다.
+// 빠진 자리마다 "— 명세는 📖" 같은 길잡이를 남긴다: 어디로 갔는지 화면이 말해야 한다.
 const CSS = fs.readFileSync(__P('simcore-save-영지.json'), 'utf8');
 const oldCss = JSON.parse(CSS).schema.statusUI.customCSS || '';
 S.statusUI.templates = [{
@@ -1331,21 +1335,15 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>위치:</span> <span class="val">{location}</span></div>'
     + '<div class="status-entry"><span>재해:</span> <span class="val">{disaster}</span></div>'
     + '<div class="status-entry status-span2"><span>난이도:</span> <span class="val">{diff_txt}</span></div>'
-    + '<div class="status-section-title">🧭 답사 — 영토 파악 {survey} ({finds})</div>'
-    + '<div class="status-entry"><span>북 · 칼날 능선:</span> <span class="val">{found_n}</span></div>'
-    + '<div class="status-entry"><span>서 · 속삭이는 숲:</span> <span class="val">{found_w}</span></div>'
-    + '<div class="status-entry"><span>남 · 잿빛 평원:</span> <span class="val">{found_s}</span></div>'
-    + '<div class="status-entry"><span>동 · 강가:</span> <span class="val">{found_e}</span></div>'
-    + '<div class="status-entry status-span2"><span>척후 파견:</span> '
-    + '<span class="val">{explore_dir} ({scouting}) — 탐사 인원 {scout_men}</span></div>'
+    + '<div class="status-section-title">🧭 답사</div>'
+    + '<div class="status-entry status-span2"><span>척후:</span> '
+    + '<span class="val">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div>'
     + '<div class="status-section-title">달력</div>'
     + '<div class="status-entry"><span>다음 축일:</span> <span class="val">{fest} ({fest_when}, D-{fest_in})</span></div>'
     + '<div class="status-entry"><span>예정:</span> <span class="val">{appt_txt}</span></div>'
-    + '<div class="status-span2" style="padding:4px 8px; opacity:.85; font-size:.92em;">{fest_desc}</div>'
     + '<div class="status-section-title">인구 및 노동</div>'
     + '<div class="status-entry"><span>주민:</span> <span class="val">{pop} / 수용 {cap}</span></div>'
     + '<div class="status-entry"><span>거처:</span> <span class="val">{crowd_txt} ({crowd}%)</span></div>'
-    + '<div class="status-full-list">{houses:tags}</div>'
     + '<div class="status-entry"><span>국면:</span> <span class="val">{phase}</span></div>'
     + '<div class="status-entry"><span>가용 노동력:</span> <span class="val">{able}</span></div>'
     + '<div class="status-entry"><span>배분:</span> <span class="val">{labor_policy}</span></div>'
@@ -1357,21 +1355,14 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>일 수입:</span> <span class="val">{income} / 지출 {upkeep} (봉급 {payroll})</span></div>'
     + '<div class="status-entry"><span>재정 수지:</span> <span class="val">{net_gold}/일</span></div>'
     + '<div class="status-entry status-span2"><span>통행:</span> <span class="val">{route_txt}</span></div>'
-    + '<div class="status-entry status-span2"><span>수입 (식량 +{sup_food} · 식수 +{sup_water}, 대금 {import_cost}/일):</span></div>'
-    + '<div class="status-full-list">{supply:tags}</div>'
-    + '<div class="status-entry status-span2"><span>지속 수입 ({deals}/일):</span></div>'
-    + '<div class="status-full-list">{contracts:tags}</div>'
+    + '<div class="status-entry status-span2"><span>정기 유입:</span> '
+    + '<span class="val">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div>'
     + '<div class="status-entry"><span>식량:</span> <span class="val">{food} ({food_txt})</span></div>'
     + '<div class="status-entry"><span>식수:</span> <span class="val">{water} ({water_txt})</span></div>'
     + '<div class="status-entry"><span>일 수확:</span> <span class="val">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div>'
     + '<div class="status-entry"><span>식량 수지:</span> <span class="val">{surplus}/일</span></div>'
-    + '<div class="status-entry status-span2"><span>보유 물자:</span> <span class="val">{stock}</span></div>'
-    + '<div class="status-section-title">🌾 경작지 — {farm_txt}</div>'
-    + '<div class="status-full-list">{farms:tags}</div>'
-    + '<div class="status-section-title">⛏️ 자원지 — 산출 {extract}/일</div>'
-    + '<div class="status-full-list">{sites:tags}</div>'
-    + '<div class="status-section-title">🏗️ 인프라 — 식수원 {wells}</div>'
-    + '<div class="status-full-list">{infra:tags}</div>'
+    + '<div class="status-entry status-span2"><span>기반:</span> '
+    + '<span class="val">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div>'
     + '<div class="status-section-title">민생 및 보안</div>'
     + '<div class="status-entry"><span>사기:</span> <span class="val">{morale_txt}</span></div>'
     + '<div class="status-entry"><span>보건:</span> <span class="val">{health_txt}</span></div>'
@@ -1379,38 +1370,90 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>군사:</span> <span class="val">{army_txt}</span></div>'
     + '<div class="status-entry"><span>외부보안:</span> <span class="val">{sec_out_txt}</span></div>'
     + '<div class="status-entry"><span>내부보안:</span> <span class="val">{sec_in_txt}</span></div>'
-    + '<div class="status-section-title">👑 왕위 계승 — 선두 {frontrunner}</div>'
-    + '<div class="status-entry"><span>카산드라:</span> <span class="val">{pw_cass_txt}</span></div>'
-    + '<div class="status-entry"><span>오렐리아:</span> <span class="val">{pw_orel_txt}</span></div>'
-    + '<div class="status-entry"><span>릴리아나:</span> <span class="val">{pw_lili_txt}</span></div>'
-    + '<div class="status-entry"><span>내 지지:</span> <span class="val">{stance}</span></div>'
-    + '<div class="status-entry status-span2"><span>조정에서의 무게:</span> <span class="val">{weight_txt} · {exposed_txt}</span></div>'
-    + '<div class="status-section-title">🗺️ 주변 영지 우호도</div>'
-    + NEIGH.map(([id, dir, name, dist]) =>
-      `<div class="status-entry"><span>${dir} · ${name} (${dist}):</span> <span class="val">{${id}_txt}</span></div>`).join('')
-    + '<div class="status-section-title">👯 메이드 및 핵심 고용인 현황</div>'
+    + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
-    + '<div class="status-section-title">💗 인물 호감도 ({bond_known})</div>'
-    + '<div class="status-entry status-span2"><span>아카데미 · 대성당:</span> <span class="val">{hire_open} 응한다 — {hire_txt}</span></div>'
-    + '<div class="status-entry status-span2"><span>군단 · 수녀 (봉급 {payroll}/일):</span></div>'
-    + '<div class="status-full-list">{corps:tags}</div>'
-    + '<div class="status-entry status-span2"><span>왕가 · 동행:</span> <span class="val">{bond0}</span></div>'
-    + '<div class="status-entry status-span2"><span>귀족:</span> <span class="val">{bond1}</span></div>'
-    + '<div class="status-entry status-span2"><span>광휘회:</span> <span class="val">{bond2}</span></div>'
-    + '<div class="status-entry status-span2"><span>메이드군단:</span> <span class="val">{bond3}</span></div>'
-    + '<div class="status-full-list" style="background: rgba(74, 44, 42, 0.05);">{staff:tags}</div>'
-    + '<div class="status-section-title">🤝 교역 상대 · 인맥</div>'
-    + '<div class="status-entry status-span2"><span>내다 팔 것:</span> <span class="val">{sites} · {stock}</span></div>'
-    + '<div class="status-full-list">{contacts:tags}</div>'
+    + '<div class="status-entry status-span2"><span>사람들:</span> '
+    + '<span class="val">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div>'
     + '<div class="status-section-title">현재 집중 목표</div>'
     + '<div class="status-span2" style="text-align:center; padding:8px; font-weight:bold;">{focus}</div>'
     + '<div class="urgent-box"><strong>⚠️ 긴급 통지</strong>{alert}</div>'
+    + '<div class="status-span2" style="text-align:center; padding:4px; opacity:.8; font-size:.9em;">'
+    + '자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div>'
     // 명령 이름은 이 스키마가 정한다 — 유저가 그걸 알 곳이 여기뿐이다.
     // 접혀 있어서 평소엔 한 줄이고, 펴면 무엇을 어떻게 고치는지 나온다.
     + '<div class="status-span2">{commands}</div>'
     + '</div></div></div>',
 }];
+
+// ── 대장(臺帳) — 게임 패널 (v0.89 template 탭) ──
+// 상태창에서 뺀 참고 정보가 전부 여기 산다. 4면: 영지(재정·물자·기반·달력) / 인물(호감도·
+// 명부·시세) / 탐사(지도) / 정세(계승·이웃). 자리표시자는 상태창과 같은 파생을 그대로 쓴다 —
+// 새 변수 없음, 화면 재배치일 뿐이다. 인물·탐사는 플로팅 버튼(fab)으로 바로 연다.
+const sec = (t) => `<div class="vled-sec">${t}</div>`;
+const row = (k, v2) => `<div class="vled-row"><span>${k}</span><span class="v">${v2}</span></div>`;
+S.party = {
+  label: '영지 대장', icon: '📖',
+  css: `
+.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
+  width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
+.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
+.scg-title .scg-x { color:#4a2c2a; }
+.scg-title .scg-x:hover { background:#e2d3b6; color:#4a2c2a; }
+.scg-note { color:#6b5744; }
+.scg-tabs { border-bottom:2px solid #bda27e; }
+.scg-tab { color:#6b5744; }
+.scg-tab.scg-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }
+.scg-notice { color:#8a3a2a; }
+.scg-tpl .vled-h { text-align:center; font-size:16px; font-weight:700; letter-spacing:.18em; margin:2px 0 8px; color:#4a2c2a; }
+.scg-tpl .vled-h small { display:block; letter-spacing:0; font-size:11.5px; font-weight:400; color:#6b5744; margin-top:2px; }
+.scg-tpl .vled-sec { margin:10px 0 4px; padding:3px 9px; background:#4a2c2a; color:#f0e5d1; font-size:12.5px; font-weight:700; border-radius:3px; }
+.scg-tpl .vled-row { display:flex; justify-content:space-between; gap:10px; padding:3px 4px; font-size:13px; border-bottom:1px dashed #d8c6a4; }
+.scg-tpl .vled-row .v { font-weight:700; text-align:right; }
+.scg-tpl .vled-p { padding:2px 6px; font-size:12.5px; color:#5a4c3a; }
+.scg-tpl .sim-tag { border:1px solid #bda27e; background:rgba(74,44,42,.06); color:#3d352a; }
+.scg-tpl .sim-empty { color:#8a7a60; }`,
+  tabs: [
+    { id: 'estate', label: '영지', template: ''
+      + '<div class="vled-h">영지 대장<small>{date} · {season}</small></div>'
+      + sec('재정 — {gold} ({gold_txt})')
+      + row('일 수입 / 지출', '{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일')
+      + sec('지속 수입 — +{deals}/일') + '{contracts:tags}'
+      + sec('정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)') + '{supply:tags}'
+      + row('통행', '{route_txt}')
+      + sec('보유 물자') + '{stock:tags}'
+      + sec('주거 — 수용 {cap} ({crowd_txt} {crowd}%)') + '{houses:tags}'
+      + sec('경작지 — {farm_txt} · 일 수확 {harvest}') + '{farms:tags}'
+      + sec('자원지 — 산출 {extract}/일') + '{sites:tags}'
+      + sec('인프라 — 식수원 {wells}') + '{infra:tags}'
+      + sec('달력')
+      + row('다음 축일', '{fest} ({fest_when}, D-{fest_in})')
+      + '<div class="vled-p">{fest_desc}</div>' },
+    { id: 'people', label: '인물', fab: '📋', template: ''
+      + '<div class="vled-h">인물 명부<small>아는 얼굴 {bond_known}</small></div>'
+      + sec('아카데미 · 대성당')
+      + '<div class="vled-p">{hire_open} 응한다 — {hire_txt}</div>'
+      + sec('군단 · 수녀 — 봉급 {payroll}/일') + '{corps:tags}'
+      + sec('호감도')
+      + row('왕가 · 동행', '{bond0}') + row('귀족', '{bond1}')
+      + row('광휘회', '{bond2}') + row('메이드군단', '{bond3}')
+      + sec('현지 고용인') + '{staff:tags}'
+      + sec('인맥 · 교역 상대') + '{contacts:tags}' },
+    { id: 'survey', label: '탐사', fab: '🗺️', template: ''
+      + '<div class="vled-h">탐사 지도<small>영토 파악 {survey} ({finds})</small></div>'
+      + row('척후 파견', '{explore_dir} ({scouting}) — 인원 {scout_men}')
+      + EXPLORE.map(([d, v2, name, desc]) =>
+        sec(`${d.slice(0, 1)} · ${name}`) + `<div class="vled-p">${desc}</div>`
+        + row('진행', `{found_${v2.slice(4)}}`)).join('') },
+    { id: 'court', label: '정세', template: ''
+      + '<div class="vled-h">정세 보고<small>{exposed_txt}</small></div>'
+      + sec('왕위 계승 — 선두 {frontrunner}')
+      + row('카산드라', '{pw_cass_txt}') + row('오렐리아', '{pw_orel_txt}') + row('릴리아나', '{pw_lili_txt}')
+      + row('내 지지', '{stance} ({weight_txt})')
+      + sec('주변 영지')
+      + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('') },
+  ],
+};
 
 const v = validateSchema(S);
 console.log('검증:', v.ok ? '통과' : '실패');
@@ -1562,6 +1605,20 @@ console.log('\n프롬프트 길이:', send.promptBlock.length, '자');
 
 const html = renderStatusHtml(S, st);
 console.log('상태창 렌더:', html.length, '자 · 미치환 자리표시자:', /\{[a-z_]+\}/.test(html.replace(/<style[\s\S]*?<\/style>/, '')) ? '❗ 있음' : '✓ 없음');
+
+// 대장 탭 — 자리표시자 오타는 검증이 잡지만, 조건 분기 속 미치환은 실렌더로만 보인다
+const { renderPanelTemplate } = SC.require('render');
+for (const t of S.party.tabs) {
+  const ph = renderPanelTemplate(S, st, t.template);
+  const left = ph.replace(/<style[\s\S]*?<\/style>/, '').match(/\{[a-z_]+\}/g) || [];
+  console.log(`대장 [${t.label}] 렌더:`, ph.length, '자 · 미치환:', left.length ? '❗ ' + left.join(' ') : '✓ 없음');
+}
+
+// ── 신안 v2 산출 — 이 생성기가 곧 출처다 (P6 출처 일원화) ──
+// 리수 적용: 편집기 [JSON] 탭에 이 파일 내용을 통째로 붙여넣고 설치.
+fs.writeFileSync(__P('영지-변수상태창-신안v2.json'), JSON.stringify(S, null, 1));
+console.log('신안 v2 저장: 영지-변수상태창-신안v2.json —',
+  `vars ${S.vars.length} · derived ${S.derived.length} · 대장 탭 ${S.party.tabs.length}`);
 
 const d = diagnose(S, { turns: 60, runs: 6 });
 console.log('\n━━ 진단 ━━');

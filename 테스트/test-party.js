@@ -533,6 +533,67 @@ const clone = (o) => JSON.parse(J(o));
   }
 }
 
+// ── 8. 대장 탭 + 플로팅 버튼 (v0.89) — template/fab ──
+// 베리디아 리메이크 P1: 상태창의 참고 정보(인물 대장·영지 대장)를 패널로 옮기는 통로.
+{
+  const { renderPanelTemplate } = SC.require('render');
+
+  const T = clone(BASE);
+  delete T.party.slots;
+  T.vars.push({ id: 'gold', label: '재정', type: 'int', init: 120, min: 0 });
+  T.party.tabs = [
+    { id: 'main', label: '편성', slots: [{ var: 'front' }, { var: 'rear' }] },
+    { id: 'ledger', label: '인물 대장', fab: '📋',
+      template: '<style>.led { color: red; }</style><div class="led">재정 {gold} · 동료 {count(allies)}명</div><div>{allies:tags}</div>' },
+  ];
+  const v = validateSchema(T);
+  ck('★ 슬롯 없이 template만 있는 탭 검증 통과', v.ok, J(v.errors));
+
+  // 자리표시자 오타는 렌더에서 {이름} 리터럴로 유저에게 보인다 — 검증이 미리 잡아야 한다
+  const badRef = clone(T);
+  badRef.party.tabs[1].template = '<div>{golld}</div>';
+  ck('template의 없는 변수 → 오류', validateSchema(badRef).errors.some((e) => /golld/.test(e.msg)), J(validateSchema(badRef).errors));
+
+  const badFab = clone(T);
+  badFab.party.tabs[1].fab = '인물 대장 열기 버튼';
+  ck('fab이 길면 오류 (버튼에 안 들어감)', validateSchema(badFab).errors.some((e) => /이모지 한두 글자/.test(e.msg)), '');
+
+  const mix = clone(T);
+  mix.party.template = '<div>{gold}</div>';
+  ck('tabs와 최상위 template 혼용 오류', validateSchema(mix).errors.some((e) => /같이 쓸 수 없음/.test(e.msg)), '');
+
+  const notStr = clone(T);
+  notStr.party.tabs[1].template = 42;
+  ck('template이 문자열 아니면 오류', validateSchema(notStr).errors.some((e) => /문자열이어야/.test(e.msg)), '');
+
+  // 축약형: template만으로 편성표가 성립하고, fab은 의미가 없으니 경고
+  const solo = clone(BASE);
+  delete solo.party.slots;
+  delete solo.party.roster;
+  solo.party.template = '<div>체력 {hp}</div>';
+  ck('축약형 template만으로 검증 통과', validateSchema(solo).ok, J(validateSchema(solo).errors));
+  ck('축약형 template만으로 편성표 성립 (버튼이 달린다)', party.partyConfig(solo) != null, '');
+  const soloFab = clone(solo);
+  soloFab.party.fab = '📋';
+  ck('축약형 fab은 경고', validateSchema(soloFab).warnings.some((w) => /축약형/.test(w.msg)), J(validateSchema(soloFab).warnings));
+
+  // fab 사양 — 어댑터가 이대로 registerButton을 단다
+  ck('★ partyFabSpecs = fab 있는 탭만', J(party.partyFabSpecs(T)) === J([{ id: 'ledger', label: '인물 대장', icon: '📋' }]), J(party.partyFabSpecs(T)));
+
+  // 뷰 통과 — 어댑터 renderPartyPanel이 tab.template를 그대로 받는다
+  const st = engine.initState(T);
+  const view = party.partyView(T, st);
+  ck('뷰에 template/fab 실림', view.tabs[1].template != null && view.tabs[1].fab === '📋', J(view.tabs[1]));
+
+  // 렌더 — 상태창과 같은 자리표시자, 패널 전용 규약 셋
+  const html = renderPanelTemplate(T, st, T.party.tabs[1].template);
+  ck('★ 자리표시자 치환 (변수·식)', html.includes('재정 120') && html.includes('동료 2명'), html);
+  ck(':tags 칩 + 목록 규약 꼬리 유지', html.includes('sim-tag') && html.includes('바크 @3일'), html);
+  ck('임베드 <style>은 #sc-game로 스코핑', html.includes('#sc-game .led'), html);
+  const html2 = renderPanelTemplate(T, st, '{uid}|{choices}|{{img::지도}}');
+  ck('{uid}=scg 고정 · {choices}=빈칸 · CBS 통과', html2 === 'scg||{{img::지도}}', html2);
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

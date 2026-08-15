@@ -36,14 +36,22 @@ function partyTabs(schema) {
       slots: Array.isArray(t.slots) ? t.slots : [],
       actions: Array.isArray(t.actions) ? t.actions : [],
       items: Array.isArray(t.items) ? t.items : [],
+      // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML을 탭에 그린다.
+      // 상태창 다이어트의 짝: 매 메시지 렌더가 아깝던 참고 정보(인물 대장·영지 대장)를
+      // "열었을 때만 그리는" 패널로 옮기는 통로다. 렌더는 render.renderPanelTemplate 몫.
+      template: typeof t.template === 'string' && t.template.trim() ? t.template : null,
+      // 탭별 플로팅 버튼 (v0.89) — 적으면 우상단 유틸 버튼 줄에 이 탭 전용 버튼이 생기고,
+      // 누르면 패널이 이 탭으로 바로 열린다 (📋 인물 대장, 🗺️ 탐사 지도 식).
+      fab: typeof t.fab === 'string' && t.fab.trim() ? t.fab.trim() : null,
     }));
   }
   const slots = Array.isArray(p.slots) ? p.slots : [];
   const actions = Array.isArray(p.actions) ? p.actions : [];
   const items = Array.isArray(p.items) ? p.items : [];
-  if (!slots.length && !actions.length && !items.length) return [];
+  const template = typeof p.template === 'string' && p.template.trim() ? p.template : null;
+  if (!slots.length && !actions.length && !items.length && !template) return [];
   return [{ id: 'main', label: p.label ?? '편성', note: null, when: null, roster: p.roster ?? null,
-    points: p.points ?? null, slots, actions, items }];
+    points: p.points ?? null, slots, actions, items, template, fab: null }];
 }
 
 /** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
@@ -56,6 +64,18 @@ function partyButtonSpec(schema) {
   const p = partyConfig(schema);
   if (!p) return null;
   return { label: p.label ?? '편성표', icon: p.icon ?? '⚔️' };
+}
+
+/**
+ * 탭별 플로팅 버튼 사양 (v0.89) — fab이 적힌 탭마다 하나. 어댑터가 registerButton으로
+ * 달고, 누르면 openGamePanel('party', tabId)로 그 탭이 바로 열린다.
+ * 표시 조건(when)이 지금 거짓인 탭도 버튼은 유지한다 — 버튼 등록은 스키마 단위라
+ * 상태 따라 붙였다 떼면 리수 쪽 버튼 줄이 매 턴 출렁인다. 눌렀는데 탭이 숨어 있으면
+ * 패널이 첫 탭으로 열리며 이유를 말해 준다 (renderPartyPanel의 빈 탭 안내와 같은 규약).
+ */
+function partyFabSpecs(schema) {
+  return partyTabs(schema).filter((t) => t.fab)
+    .map((t) => ({ id: t.id, label: t.label, icon: t.fab }));
 }
 
 // roster(보유 목록) 항목 대조 — 목록 규약 흔적을 걷어내고 이름만 본다.
@@ -194,6 +214,7 @@ function partyView(schema, state, opts = {}) {
         ? { var: t.points, label: pointsDef.label ?? t.points, value: Number(state.vars[t.points] ?? pointsDef.init ?? 0) }
         : null,
       slots, actions, items,
+      template: t.template, fab: t.fab,   // v0.89 — 렌더(HTML 치환)는 어댑터가 render 모듈로
     };
   });
 
@@ -297,4 +318,4 @@ function matchAssetName(names, want) {
   return null;
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState, matchAssetName };
+module.exports = { partyConfig, partyButtonSpec, partyFabSpecs, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState, matchAssetName };

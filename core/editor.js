@@ -1346,7 +1346,7 @@ function patchIdDigest(schema) {
   if (schema.party && typeof schema.party === 'object') {
     const P = schema.party;
     const tabs = Array.isArray(P.tabs) && P.tabs.length ? P.tabs
-      : [{ slots: P.slots, actions: P.actions, items: P.items, roster: P.roster, points: P.points }];
+      : [{ slots: P.slots, actions: P.actions, items: P.items, template: P.template, roster: P.roster, points: P.points }];
     const flat = (k) => tabs.flatMap((t) => Array.isArray(t?.[k]) ? t[k] : []);
     const uniq = (a) => [...new Set(a.filter(Boolean))];
     const refVars = uniq([
@@ -1354,8 +1354,12 @@ function patchIdDigest(schema) {
       ...tabs.map((t) => t?.roster), P.roster, ...tabs.map((t) => t?.points), P.points,
     ]);
     const refActs = uniq(flat('actions'));
+    // 대장 템플릿(v0.89)의 {자리표시자}도 변수를 참조한다 — 식 파싱 없이 개수만 알린다
+    // (여기는 인라인 구간이라 expr 모듈을 못 부른다. 지운 변수는 검증이 $.party...template에서 잡는다)
+    const tplTabs = tabs.filter((t) => typeof t?.template === 'string' && t.template.trim()).length;
     out.push('', '### 편성표 (party) — 패치로 못 다룹니다. 참조만 알아 두세요',
       `- 편성표가 참조하는 변수: ${refVars.map((v) => `\`${v}\``).join(' ') || '(없음)'} — **remove 금지** (지우면 가져오기 정지)`,
+      ...(tplTabs ? [`- 대장 템플릿({자리표시자} HTML)이 있는 탭 ${tplTabs}개 — 템플릿에 쓰인 변수도 remove하면 가져오기가 정지합니다`] : []),
       ...(refActs.length
         ? [`- 편성표 탭이 버튼으로 쓰는 액션: ${refActs.map((a) => `\`${a}\``).join(' ')} — **remove 금지**, update는 됩니다`]
         : []),
@@ -2222,7 +2226,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
       checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
-      party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭")',
+      party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭" / "인물 호감도 대장 탭 — 플로팅 버튼 📋로 바로 열리게")',
       status: '(여기를 채우세요 — 예: "체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래" / "인물 4명을 각각 그룹으로 나누고 탭으로" / "위험할 때만 뜨는 경고 줄 몇 개")',
     };
     // 직결 생성은 유저가 쓴 요구를 여기에 꽂는다. 복사 왕복이면 빈 자리표시자가 그대로 나가고,
@@ -2415,9 +2419,13 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "tabs": [',
       '    { "id": "main", "label": "편성", "slots": [ { "var": "front", "label": "전위" } ] },',
       '    { "id": "train", "label": "수련", "points": "sp", "when": "has(deployed, \'아린\')",',
-      '      "items": [ { "var": "skill_sword", "cost": 1, "max": 5 } ] }',
+      '      "items": [ { "var": "skill_sword", "cost": 1, "max": 5 } ] },',
+      '    { "id": "ledger", "label": "인물 대장", "fab": "📋",',
+      '      "template": "<div>아군 {count(allies)}명 · 사기 {morale}</div><div>{allies:tags}</div>" }',
       '  ] } }',
       '```',
+      'template(대장 탭, v0.89) = 상태창과 같은 자리표시자 HTML — 슬롯 없이 이것만 있는 탭도 됩니다. '
+      + 'fab = 그 탭 전용 우상단 버튼 아이콘 (누르면 그 탭으로 바로 열림).',
       '');
   } else if (tabKey === 'status') {
     body.push('## 상태창 규격', ...SCHEMA_STATUS_RULES, '',
@@ -4899,6 +4907,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('div', { class: 'sce-row' }, pointsSelect(P, '(포인트 없음)')));
       wrap.appendChild(itemBlocks(P));
       wrap.appendChild(actionPicks(P));
+      // 대장 템플릿 (v0.89) — 축약형에도 열어 둔다 (엔진 지원과 편집기 칸의 짝, 규칙 #3)
+      wrap.appendChild(h('details', { class: 'sce-fold', ...(P.template ? { open: '' } : {}) },
+        h('summary', {}, `📜 대장 템플릿 ${P.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 팝업에 그린다`),
+        h('div', { class: 'sce-hint' },
+          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+          + '<style>은 자동으로 팝업 범위로 갇힌다 ({choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
+        bindArea(P.template, (x) => { P.template = x || undefined; rerender(); },
+          '<div class="ledger">인구 {pop} · 재정 {gold}</div>')));
       // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
       wrap.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {
@@ -4945,7 +4961,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-row' },
             pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 표시) has(deployed, "아린")' }),
               '거짓이면 탭이 통째로 숨는다 — 인물별 스킬트리 탭을 편성된 인물만 남기는 용도'),
+            pair('플로팅 버튼', bindInput(t.fab, (x) => { t.fab = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📋' }),
+              '아이콘을 적으면 우상단에 이 탭 전용 버튼이 생긴다 — 누르면 이 탭으로 바로 열림'),
           ),
+          // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML. 슬롯·액션 없이 이것만 있는
+          // 탭도 된다 (인물 대장·영지 대장처럼 "열었을 때만 보는" 참고 화면).
+          h('details', { class: 'sce-fold', ...(t.template ? { open: '' } : {}) },
+            h('summary', {}, `📜 대장 템플릿 ${t.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 탭에 그린다`),
+            h('div', { class: 'sce-hint' },
+              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+              + '<style>은 자동으로 팝업 범위로 갇힌다. 상태창에서 옮길 조각을 그대로 붙여 넣으면 된다 '
+              + '(단 {choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
+            bindArea(t.template, (x) => { t.template = x || undefined; rerender(); },
+              '<div class="ledger">인구 {pop} · 재정 {gold}</div>\n<div>{contacts:tags}</div>')),
           slotBlocks(t.slots),
           h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
           itemBlocks(t),

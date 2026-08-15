@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.88.0
-//@display-name SimCore (시뮬 엔진) v0.88.0 에셋팩 쓰임새 한 줄 — AI가 팩을 고르는 기준
+//@version 0.89.0
+//@display-name SimCore (시뮬 엔진) v0.89.0 게임 패널 대장 탭 + 탭별 플로팅 버튼
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.89.0 ───────────────────────────────────────────────
+// 베리디아 리메이크 P1 (docs/design-베리디아-리메이크.md): 상태창에 우겨넣은 참고 정보(인물
+// 대장·영지 대장)를 "열었을 때만 그리는" 패널로 옮길 자리가 없었다 — 패널 탭은 slots/actions/
+// items 3종뿐. + 유저 채택: 다른 봇의 "플로팅 버튼 → 종이 카드 팝업" UI.
+// - [코어] party.tabs[].template (대장 탭): 상태창과 같은 자리표시자 HTML을 탭 본문으로.
+//   render.renderPanelTemplate — {uid}='scg' 고정, {choices}는 빈칸(패널에선 좌표 히트테스트가
+//   안 닿아 안 눌린다), 임베드 <style>은 #sc-game로 스코핑. 슬롯 없이 template만 있는 탭 허용.
+// - [코어] party.tabs[].fab: 아이콘을 적으면 우상단 유틸 버튼 줄에 그 탭 전용 버튼이 생기고
+//   누르면 openGamePanel('party', tabId)로 바로 열린다 (📋 인물 대장, 🗺️ 탐사 지도 식).
+//   when으로 숨은 탭의 버튼은 유지 — 눌리면 첫 탭 폴백 + 안내 (버튼 줄 출렁임 방지).
+// - [편집기] 탭마다 '플로팅 버튼' 칸 + '대장 템플릿' 접이 칸 (축약형에도, 규칙 #3).
+//   party AI 규격에 template/fab 예시, 패치 다이제스트에 템플릿 탭 참조 경고.
+// - [검증] template 자리표시자 검사(상태창과 같은 checkTemplateRefs), fab 글리프 길이,
+//   tabs와 최상위 template 혼용 금지. 스키마 형식 추가 — 기존 봇 무변, 플러그인 재임포트만.
 //
 // ── v0.88.0 ───────────────────────────────────────────────
 // 실기 지적: 구조 라우팅(v0.87.3)으로 한 인물이 field set을 여럿 받게 됐는데, "어느 세트를
@@ -1717,7 +1732,7 @@
 (async () => {
   const { validateSchema } = SimCore.require('validate');
   const { SimSession } = SimCore.require('session');
-  const { renderStatusHtml, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
+  const { renderStatusHtml, renderPanelTemplate, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
   const engine = SimCore.require('engine');
@@ -2823,9 +2838,13 @@
     const specs = [];
     if (session && schema) {
       const p = partyMod.partyButtonSpec(schema);
-      if (p) specs.push({ key: 'party', ...p });
+      if (p) specs.push({ key: 'party', kind: 'party', tab: null, ...p });
+      // 탭별 플로팅 버튼 (v0.89) — fab이 적힌 탭마다 전용 버튼. 누르면 그 탭으로 바로 열린다.
+      for (const f of partyMod.partyFabSpecs(schema)) {
+        specs.push({ key: `partytab_${f.id}`, kind: 'party', tab: f.id, label: f.label, icon: f.icon });
+      }
       const c = calendarMod.calendarButtonSpec(schema);
-      if (c) specs.push({ key: 'calendar', ...c });
+      if (c) specs.push({ key: 'calendar', kind: 'calendar', tab: null, ...c });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -2837,7 +2856,7 @@
       await Risuai.registerButton(
         { name: sp.label, icon: escapeText(sp.icon), iconType: 'html', location: 'action', id: btnId },
         // 프로미스를 돌려줘야 클릭 처리가 클릭 단위로 직렬화된다 (v0.42 교훈)
-        () => openGamePanel(sp.key),
+        () => openGamePanel(sp.kind, sp.tab),
       );
     }
     for (const old of utilBtnIds) {
@@ -2907,6 +2926,11 @@
         font-size:18px; cursor:pointer; padding:2px 8px; border-radius:8px; }
       #sc-game .scg-title .scg-x:hover { background:#24345c; color:#fff; }
       #sc-game .scg-note { color:#a7b4cc; font-size:12.5px; margin:0 0 10px; }
+      #sc-game .scg-tpl { margin-top:8px; }
+      #sc-game .scg-tpl img { max-width:100%; }
+      #sc-game .scg-tpl .sim-tag { display:inline-block; border:1px solid #35486e; border-radius:999px;
+        background:#0e1526; padding:1px 9px; margin:2px 3px 2px 0; font-size:12.5px; }
+      #sc-game .scg-tpl .sim-empty { color:#5d6b87; font-size:12.5px; }
       #sc-game .scg-slot { border:1px solid #2a3a5e; border-radius:10px; background:#0e1526;
         margin-top:8px; overflow:hidden; }
       #sc-game .scg-slot-row { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; }
@@ -3017,7 +3041,7 @@
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
-  async function openGamePanel(kind) {
+  async function openGamePanel(kind, tabId = null) {
     await loadForCurrentChar();
     if (!session || !schema) {
       try { await Risuai.alert('SimCore 봇이 아니거나 스키마를 읽지 못했어요.'); } catch {}
@@ -3027,7 +3051,9 @@
     gameKind = kind;
     gameNotice = null;
     gameOpenSlot = null;
-    gameOpenTab = null; // 열 때마다 첫 탭부터
+    // 탭별 플로팅 버튼(v0.89)이 목적지 탭을 들고 온다 — 없으면 열 때마다 첫 탭부터.
+    // 그 탭이 표시 조건(when)으로 지금 숨어 있으면 renderPartyPanel의 폴백(첫 탭)이 받는다.
+    gameOpenTab = tabId;
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
@@ -3166,6 +3192,17 @@
       card.appendChild(bar);
     }
     if (tab.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: tab.note }));
+
+    // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML을 탭 본문으로.
+    // 우리 iframe DOM이라 innerHTML이 그대로 산다 (새니타이저·x-risu- 접두 문제가 처음부터 없다).
+    // 렌더 실패는 이 탭만 문구로 낮춘다 — 패널 전체가 죽으면 원인 볼 곳이 사라진다.
+    if (tab.template) {
+      const tpl = document.createElement('div');
+      tpl.className = 'scg-tpl';
+      try { tpl.innerHTML = renderPanelTemplate(schema, session.current, tab.template); }
+      catch (e) { tpl.textContent = `대장 템플릿 렌더 실패 — ${e.message}`; }
+      card.appendChild(tpl);
+    }
 
     for (const slot of tab.slots) {
       const box = document.createElement('div');

@@ -746,6 +746,26 @@ function extractTemplateParts(template) {
   return { html, css };
 }
 
+/**
+ * 게임 패널 대장(臺帳) 탭 렌더 (v0.89) — party.tabs[].template을 HTML로.
+ * 상태창 템플릿과 같은 자리표시자({변수}·{목록:tags}·{commands}·{lastcheck})를 그대로 쓴다 —
+ * 상태창에서 패널로 옮길 때 템플릿 조각을 복사만 하면 되게 하기 위해서다.
+ * 다른 점 둘:
+ *   {uid} → 'scg' 고정 — 패널은 메시지마다가 아니라 한 장뿐이라 구분자가 필요 없다.
+ *   {choices} → 빈 문자열 — 갈림길 클릭은 메인 DOM 좌표 히트테스트 기계라 패널에선 안 눌린다.
+ *     안 눌리는 버튼을 그리면 고장으로 보이므로 아예 안 그린다.
+ * 임베드 <style>은 #sc-game 범위로 가둬 함께 돌려준다 (party.css와 같은 안전 규약).
+ */
+function renderPanelTemplate(schema, state, tpl) {
+  const lookup = makeLookup(schema, state.vars);
+  const lc = state.meta?.lastCheck;
+  const extras = { commands: commandsHtml(schema), uid: 'scg',
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '' };
+  const parts = extractTemplateParts(tpl);
+  const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
+  return styleTag + renderTemplate(parts.html, lookup, extras);
+}
+
 function evalSafe(src, lookup) {
   try { return evaluate(src, lookup, null); } catch { return undefined; }
 }
@@ -754,5 +774,5 @@ function fmtNum(n) {
   return Number.isInteger(n) ? n.toLocaleString('en-US') : (Math.round(n * 100) / 100).toLocaleString('en-US');
 }
 
-module.exports = { renderStatusHtml, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
+module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
   layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };

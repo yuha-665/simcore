@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.88.0
-//@display-name SimCore (시뮬 엔진) v0.88.0 에셋팩 쓰임새 한 줄 — AI가 팩을 고르는 기준
+//@version 0.89.0
+//@display-name SimCore (시뮬 엔진) v0.89.0 게임 패널 대장 탭 + 탭별 플로팅 버튼
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.89.0 ───────────────────────────────────────────────
+// 베리디아 리메이크 P1 (docs/design-베리디아-리메이크.md): 상태창에 우겨넣은 참고 정보(인물
+// 대장·영지 대장)를 "열었을 때만 그리는" 패널로 옮길 자리가 없었다 — 패널 탭은 slots/actions/
+// items 3종뿐. + 유저 채택: 다른 봇의 "플로팅 버튼 → 종이 카드 팝업" UI.
+// - [코어] party.tabs[].template (대장 탭): 상태창과 같은 자리표시자 HTML을 탭 본문으로.
+//   render.renderPanelTemplate — {uid}='scg' 고정, {choices}는 빈칸(패널에선 좌표 히트테스트가
+//   안 닿아 안 눌린다), 임베드 <style>은 #sc-game로 스코핑. 슬롯 없이 template만 있는 탭 허용.
+// - [코어] party.tabs[].fab: 아이콘을 적으면 우상단 유틸 버튼 줄에 그 탭 전용 버튼이 생기고
+//   누르면 openGamePanel('party', tabId)로 바로 열린다 (📋 인물 대장, 🗺️ 탐사 지도 식).
+//   when으로 숨은 탭의 버튼은 유지 — 눌리면 첫 탭 폴백 + 안내 (버튼 줄 출렁임 방지).
+// - [편집기] 탭마다 '플로팅 버튼' 칸 + '대장 템플릿' 접이 칸 (축약형에도, 규칙 #3).
+//   party AI 규격에 template/fab 예시, 패치 다이제스트에 템플릿 탭 참조 경고.
+// - [검증] template 자리표시자 검사(상태창과 같은 checkTemplateRefs), fab 글리프 길이,
+//   tabs와 최상위 template 혼용 금지. 스키마 형식 추가 — 기존 봇 무변, 플러그인 재임포트만.
 //
 // ── v0.88.0 ───────────────────────────────────────────────
 // 실기 지적: 구조 라우팅(v0.87.3)으로 한 인물이 field set을 여럿 받게 됐는데, "어느 세트를
@@ -3265,13 +3280,13 @@ function validateSchema(schema) {
       const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
       // 축약형(slots/actions/items 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
       if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length
-        || Array.isArray(P.items) && P.items.length)) {
-        err('$.party', 'tabs와 최상위 slots/actions/items를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+        || Array.isArray(P.items) && P.items.length || typeof P.template === 'string' && P.template.trim())) {
+        err('$.party', 'tabs와 최상위 slots/actions/items/template을 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
       }
       // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
       const tabs = hasTabs
         ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
-        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, roster: undefined, points: P.points }, p: '$.party' }];
+        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, template: P.template, fab: P.fab, roster: undefined, points: P.points }, p: '$.party' }];
 
       const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
       const tabIds = new Set();
@@ -3289,8 +3304,22 @@ function validateSchema(schema) {
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
         const items = Array.isArray(t.items) ? t.items : [];
-        if (!slots.length && !acts.length && !items.length) {
-          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드) 중 하나는 필요합니다');
+        // 대장 템플릿 (v0.89) — 상태창과 같은 자리표시자 검사를 여기서도 돈다.
+        // 오타 난 변수는 렌더에서 {이름} 리터럴로 남아 유저 화면에 그대로 보인다 — 미리 잡는다.
+        const tpl = typeof t.template === 'string' && t.template.trim() ? t.template : null;
+        if (t.template != null && typeof t.template !== 'string') err(`${p}.template`, 'template은 문자열이어야 함');
+        if (tpl) {
+          const stripStyle = (s) => String(s).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+          checkTemplateRefs(stripStyle(tpl), `${p}.template`, allIds, err);
+        }
+        // 탭별 플로팅 버튼 (v0.89) — 우상단 버튼에 들어가는 글리프라 길면 잘려 보인다
+        if (t.fab != null) {
+          if (typeof t.fab !== 'string' || !t.fab.trim()) err(`${p}.fab`, 'fab(플로팅 버튼)은 아이콘 글리프 문자열이어야 함');
+          else if (t.fab.trim().length > 8) err(`${p}.fab`, 'fab은 이모지 한두 글자만 — 긴 글은 버튼에 안 들어갑니다');
+          else if (!hasTabs) warn(`${p}.fab`, 'fab은 tabs 구조에서만 씁니다 — 축약형(탭 하나)은 편성표 버튼이 이미 그 탭을 엽니다');
+        }
+        if (!slots.length && !acts.length && !items.length && !tpl) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드)·template(대장) 중 하나는 필요합니다');
           continue;
         }
         anyContent = true;
@@ -3910,14 +3939,22 @@ function partyTabs(schema) {
       slots: Array.isArray(t.slots) ? t.slots : [],
       actions: Array.isArray(t.actions) ? t.actions : [],
       items: Array.isArray(t.items) ? t.items : [],
+      // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML을 탭에 그린다.
+      // 상태창 다이어트의 짝: 매 메시지 렌더가 아깝던 참고 정보(인물 대장·영지 대장)를
+      // "열었을 때만 그리는" 패널로 옮기는 통로다. 렌더는 render.renderPanelTemplate 몫.
+      template: typeof t.template === 'string' && t.template.trim() ? t.template : null,
+      // 탭별 플로팅 버튼 (v0.89) — 적으면 우상단 유틸 버튼 줄에 이 탭 전용 버튼이 생기고,
+      // 누르면 패널이 이 탭으로 바로 열린다 (📋 인물 대장, 🗺️ 탐사 지도 식).
+      fab: typeof t.fab === 'string' && t.fab.trim() ? t.fab.trim() : null,
     }));
   }
   const slots = Array.isArray(p.slots) ? p.slots : [];
   const actions = Array.isArray(p.actions) ? p.actions : [];
   const items = Array.isArray(p.items) ? p.items : [];
-  if (!slots.length && !actions.length && !items.length) return [];
+  const template = typeof p.template === 'string' && p.template.trim() ? p.template : null;
+  if (!slots.length && !actions.length && !items.length && !template) return [];
   return [{ id: 'main', label: p.label ?? '편성', note: null, when: null, roster: p.roster ?? null,
-    points: p.points ?? null, slots, actions, items }];
+    points: p.points ?? null, slots, actions, items, template, fab: null }];
 }
 
 /** 편성표 설정 (탭이 하나도 없으면 null — 어댑터가 버튼 자체를 안 단다) */
@@ -3930,6 +3967,18 @@ function partyButtonSpec(schema) {
   const p = partyConfig(schema);
   if (!p) return null;
   return { label: p.label ?? '편성표', icon: p.icon ?? '⚔️' };
+}
+
+/**
+ * 탭별 플로팅 버튼 사양 (v0.89) — fab이 적힌 탭마다 하나. 어댑터가 registerButton으로
+ * 달고, 누르면 openGamePanel('party', tabId)로 그 탭이 바로 열린다.
+ * 표시 조건(when)이 지금 거짓인 탭도 버튼은 유지한다 — 버튼 등록은 스키마 단위라
+ * 상태 따라 붙였다 떼면 리수 쪽 버튼 줄이 매 턴 출렁인다. 눌렀는데 탭이 숨어 있으면
+ * 패널이 첫 탭으로 열리며 이유를 말해 준다 (renderPartyPanel의 빈 탭 안내와 같은 규약).
+ */
+function partyFabSpecs(schema) {
+  return partyTabs(schema).filter((t) => t.fab)
+    .map((t) => ({ id: t.id, label: t.label, icon: t.fab }));
 }
 
 // roster(보유 목록) 항목 대조 — 목록 규약 흔적을 걷어내고 이름만 본다.
@@ -4068,6 +4117,7 @@ function partyView(schema, state, opts = {}) {
         ? { var: t.points, label: pointsDef.label ?? t.points, value: Number(state.vars[t.points] ?? pointsDef.init ?? 0) }
         : null,
       slots, actions, items,
+      template: t.template, fab: t.fab,   // v0.89 — 렌더(HTML 치환)는 어댑터가 render 모듈로
     };
   });
 
@@ -4171,7 +4221,7 @@ function matchAssetName(names, want) {
   return null;
 }
 
-module.exports = { partyConfig, partyButtonSpec, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState, matchAssetName };
+module.exports = { partyConfig, partyButtonSpec, partyFabSpecs, partyTabs, allSlots, allItems, partyView, applyPartyPick, applyUpgrade, rosterName, rosterHas, itemState, matchAssetName };
 
 });
 
@@ -7067,6 +7117,26 @@ function extractTemplateParts(template) {
   return { html, css };
 }
 
+/**
+ * 게임 패널 대장(臺帳) 탭 렌더 (v0.89) — party.tabs[].template을 HTML로.
+ * 상태창 템플릿과 같은 자리표시자({변수}·{목록:tags}·{commands}·{lastcheck})를 그대로 쓴다 —
+ * 상태창에서 패널로 옮길 때 템플릿 조각을 복사만 하면 되게 하기 위해서다.
+ * 다른 점 둘:
+ *   {uid} → 'scg' 고정 — 패널은 메시지마다가 아니라 한 장뿐이라 구분자가 필요 없다.
+ *   {choices} → 빈 문자열 — 갈림길 클릭은 메인 DOM 좌표 히트테스트 기계라 패널에선 안 눌린다.
+ *     안 눌리는 버튼을 그리면 고장으로 보이므로 아예 안 그린다.
+ * 임베드 <style>은 #sc-game 범위로 가둬 함께 돌려준다 (party.css와 같은 안전 규약).
+ */
+function renderPanelTemplate(schema, state, tpl) {
+  const lookup = makeLookup(schema, state.vars);
+  const lc = state.meta?.lastCheck;
+  const extras = { commands: commandsHtml(schema), uid: 'scg',
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '' };
+  const parts = extractTemplateParts(tpl);
+  const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
+  return styleTag + renderTemplate(parts.html, lookup, extras);
+}
+
 function evalSafe(src, lookup) {
   try { return evaluate(src, lookup, null); } catch { return undefined; }
 }
@@ -7075,7 +7145,7 @@ function fmtNum(n) {
   return Number.isInteger(n) ? n.toLocaleString('en-US') : (Math.round(n * 100) / 100).toLocaleString('en-US');
 }
 
-module.exports = { renderStatusHtml, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
+module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
   layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };
 
 });
@@ -9815,7 +9885,7 @@ function patchIdDigest(schema) {
   if (schema.party && typeof schema.party === 'object') {
     const P = schema.party;
     const tabs = Array.isArray(P.tabs) && P.tabs.length ? P.tabs
-      : [{ slots: P.slots, actions: P.actions, items: P.items, roster: P.roster, points: P.points }];
+      : [{ slots: P.slots, actions: P.actions, items: P.items, template: P.template, roster: P.roster, points: P.points }];
     const flat = (k) => tabs.flatMap((t) => Array.isArray(t?.[k]) ? t[k] : []);
     const uniq = (a) => [...new Set(a.filter(Boolean))];
     const refVars = uniq([
@@ -9823,8 +9893,12 @@ function patchIdDigest(schema) {
       ...tabs.map((t) => t?.roster), P.roster, ...tabs.map((t) => t?.points), P.points,
     ]);
     const refActs = uniq(flat('actions'));
+    // 대장 템플릿(v0.89)의 {자리표시자}도 변수를 참조한다 — 식 파싱 없이 개수만 알린다
+    // (여기는 인라인 구간이라 expr 모듈을 못 부른다. 지운 변수는 검증이 $.party...template에서 잡는다)
+    const tplTabs = tabs.filter((t) => typeof t?.template === 'string' && t.template.trim()).length;
     out.push('', '### 편성표 (party) — 패치로 못 다룹니다. 참조만 알아 두세요',
       `- 편성표가 참조하는 변수: ${refVars.map((v) => `\`${v}\``).join(' ') || '(없음)'} — **remove 금지** (지우면 가져오기 정지)`,
+      ...(tplTabs ? [`- 대장 템플릿({자리표시자} HTML)이 있는 탭 ${tplTabs}개 — 템플릿에 쓰인 변수도 remove하면 가져오기가 정지합니다`] : []),
       ...(refActs.length
         ? [`- 편성표 탭이 버튼으로 쓰는 액션: ${refActs.map((a) => `\`${a}\``).join(' ')} — **remove 금지**, update는 됩니다`]
         : []),
@@ -10691,7 +10765,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       vars: '(여기를 채우세요 — 어떤 봇이고, 무엇을 수치로 굴리고 싶은지. 장르·분위기·플레이어가 쥐는 결정권을 적어주면 좋습니다)',
       presets: '(여기를 채우세요 — 예: "난이도 3단계로" / "출신 배경 4종으로" / "쉬움·보통·어려움인데 어려움은 이미 위기 상황에서 시작하게")',
       checks: '(여기를 채우세요 — 예: "d20 능력 판정 4종" / "은신·설득·해킹 판정, 대실패는 상황이 악화되게" / "2d6 판정, 10+ 성공 / 7~9 부분 성공")',
-      party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭")',
+      party: '(여기를 채우세요 — 예: "출격 편성 3슬롯 + 정비창 탭" / "동료 4명 각자 스킬트리 탭, 편성된 동료 탭만 보이게" / "영지 시설 레벨 찍는 업그레이드 탭" / "인물 호감도 대장 탭 — 플로팅 버튼 📋로 바로 열리게")',
       status: '(여기를 채우세요 — 예: "체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래" / "인물 4명을 각각 그룹으로 나누고 탭으로" / "위험할 때만 뜨는 경고 줄 몇 개")',
     };
     // 직결 생성은 유저가 쓴 요구를 여기에 꽂는다. 복사 왕복이면 빈 자리표시자가 그대로 나가고,
@@ -10884,9 +10958,13 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "tabs": [',
       '    { "id": "main", "label": "편성", "slots": [ { "var": "front", "label": "전위" } ] },',
       '    { "id": "train", "label": "수련", "points": "sp", "when": "has(deployed, \'아린\')",',
-      '      "items": [ { "var": "skill_sword", "cost": 1, "max": 5 } ] }',
+      '      "items": [ { "var": "skill_sword", "cost": 1, "max": 5 } ] },',
+      '    { "id": "ledger", "label": "인물 대장", "fab": "📋",',
+      '      "template": "<div>아군 {count(allies)}명 · 사기 {morale}</div><div>{allies:tags}</div>" }',
       '  ] } }',
       '```',
+      'template(대장 탭, v0.89) = 상태창과 같은 자리표시자 HTML — 슬롯 없이 이것만 있는 탭도 됩니다. '
+      + 'fab = 그 탭 전용 우상단 버튼 아이콘 (누르면 그 탭으로 바로 열림).',
       '');
   } else if (tabKey === 'status') {
     body.push('## 상태창 규격', ...SCHEMA_STATUS_RULES, '',
@@ -13368,6 +13446,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('div', { class: 'sce-row' }, pointsSelect(P, '(포인트 없음)')));
       wrap.appendChild(itemBlocks(P));
       wrap.appendChild(actionPicks(P));
+      // 대장 템플릿 (v0.89) — 축약형에도 열어 둔다 (엔진 지원과 편집기 칸의 짝, 규칙 #3)
+      wrap.appendChild(h('details', { class: 'sce-fold', ...(P.template ? { open: '' } : {}) },
+        h('summary', {}, `📜 대장 템플릿 ${P.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 팝업에 그린다`),
+        h('div', { class: 'sce-hint' },
+          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+          + '<style>은 자동으로 팝업 범위로 갇힌다 ({choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
+        bindArea(P.template, (x) => { P.template = x || undefined; rerender(); },
+          '<div class="ledger">인구 {pop} · 재정 {gold}</div>')));
       // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
       wrap.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {
@@ -13414,7 +13500,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-row' },
             pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 표시) has(deployed, "아린")' }),
               '거짓이면 탭이 통째로 숨는다 — 인물별 스킬트리 탭을 편성된 인물만 남기는 용도'),
+            pair('플로팅 버튼', bindInput(t.fab, (x) => { t.fab = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📋' }),
+              '아이콘을 적으면 우상단에 이 탭 전용 버튼이 생긴다 — 누르면 이 탭으로 바로 열림'),
           ),
+          // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML. 슬롯·액션 없이 이것만 있는
+          // 탭도 된다 (인물 대장·영지 대장처럼 "열었을 때만 보는" 참고 화면).
+          h('details', { class: 'sce-fold', ...(t.template ? { open: '' } : {}) },
+            h('summary', {}, `📜 대장 템플릿 ${t.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 탭에 그린다`),
+            h('div', { class: 'sce-hint' },
+              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+              + '<style>은 자동으로 팝업 범위로 갇힌다. 상태창에서 옮길 조각을 그대로 붙여 넣으면 된다 '
+              + '(단 {choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
+            bindArea(t.template, (x) => { t.template = x || undefined; rerender(); },
+              '<div class="ledger">인구 {pop} · 재정 {gold}</div>\n<div>{contacts:tags}</div>')),
           slotBlocks(t.slots),
           h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
           itemBlocks(t),
@@ -21294,7 +21392,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 (async () => {
   const { validateSchema } = SimCore.require('validate');
   const { SimSession } = SimCore.require('session');
-  const { renderStatusHtml, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
+  const { renderStatusHtml, renderPanelTemplate, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
   const engine = SimCore.require('engine');
@@ -22400,9 +22498,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const specs = [];
     if (session && schema) {
       const p = partyMod.partyButtonSpec(schema);
-      if (p) specs.push({ key: 'party', ...p });
+      if (p) specs.push({ key: 'party', kind: 'party', tab: null, ...p });
+      // 탭별 플로팅 버튼 (v0.89) — fab이 적힌 탭마다 전용 버튼. 누르면 그 탭으로 바로 열린다.
+      for (const f of partyMod.partyFabSpecs(schema)) {
+        specs.push({ key: `partytab_${f.id}`, kind: 'party', tab: f.id, label: f.label, icon: f.icon });
+      }
       const c = calendarMod.calendarButtonSpec(schema);
-      if (c) specs.push({ key: 'calendar', ...c });
+      if (c) specs.push({ key: 'calendar', kind: 'calendar', tab: null, ...c });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -22414,7 +22516,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       await Risuai.registerButton(
         { name: sp.label, icon: escapeText(sp.icon), iconType: 'html', location: 'action', id: btnId },
         // 프로미스를 돌려줘야 클릭 처리가 클릭 단위로 직렬화된다 (v0.42 교훈)
-        () => openGamePanel(sp.key),
+        () => openGamePanel(sp.kind, sp.tab),
       );
     }
     for (const old of utilBtnIds) {
@@ -22484,6 +22586,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         font-size:18px; cursor:pointer; padding:2px 8px; border-radius:8px; }
       #sc-game .scg-title .scg-x:hover { background:#24345c; color:#fff; }
       #sc-game .scg-note { color:#a7b4cc; font-size:12.5px; margin:0 0 10px; }
+      #sc-game .scg-tpl { margin-top:8px; }
+      #sc-game .scg-tpl img { max-width:100%; }
+      #sc-game .scg-tpl .sim-tag { display:inline-block; border:1px solid #35486e; border-radius:999px;
+        background:#0e1526; padding:1px 9px; margin:2px 3px 2px 0; font-size:12.5px; }
+      #sc-game .scg-tpl .sim-empty { color:#5d6b87; font-size:12.5px; }
       #sc-game .scg-slot { border:1px solid #2a3a5e; border-radius:10px; background:#0e1526;
         margin-top:8px; overflow:hidden; }
       #sc-game .scg-slot-row { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; }
@@ -22594,7 +22701,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
-  async function openGamePanel(kind) {
+  async function openGamePanel(kind, tabId = null) {
     await loadForCurrentChar();
     if (!session || !schema) {
       try { await Risuai.alert('SimCore 봇이 아니거나 스키마를 읽지 못했어요.'); } catch {}
@@ -22604,7 +22711,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     gameKind = kind;
     gameNotice = null;
     gameOpenSlot = null;
-    gameOpenTab = null; // 열 때마다 첫 탭부터
+    // 탭별 플로팅 버튼(v0.89)이 목적지 탭을 들고 온다 — 없으면 열 때마다 첫 탭부터.
+    // 그 탭이 표시 조건(when)으로 지금 숨어 있으면 renderPartyPanel의 폴백(첫 탭)이 받는다.
+    gameOpenTab = tabId;
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
@@ -22743,6 +22852,17 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       card.appendChild(bar);
     }
     if (tab.note) card.appendChild(Object.assign(document.createElement('p'), { className: 'scg-note', textContent: tab.note }));
+
+    // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML을 탭 본문으로.
+    // 우리 iframe DOM이라 innerHTML이 그대로 산다 (새니타이저·x-risu- 접두 문제가 처음부터 없다).
+    // 렌더 실패는 이 탭만 문구로 낮춘다 — 패널 전체가 죽으면 원인 볼 곳이 사라진다.
+    if (tab.template) {
+      const tpl = document.createElement('div');
+      tpl.className = 'scg-tpl';
+      try { tpl.innerHTML = renderPanelTemplate(schema, session.current, tab.template); }
+      catch (e) { tpl.textContent = `대장 템플릿 렌더 실패 — ${e.message}`; }
+      card.appendChild(tpl);
+    }
 
     for (const slot of tab.slots) {
       const box = document.createElement('div');

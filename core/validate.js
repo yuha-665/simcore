@@ -808,13 +808,13 @@ function validateSchema(schema) {
       const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
       // 축약형(slots/actions/items 직접)과 tabs를 섞으면 어느 쪽이 이기는지 아무도 모른다 — 막는다
       if (hasTabs && (Array.isArray(P.slots) && P.slots.length || Array.isArray(P.actions) && P.actions.length
-        || Array.isArray(P.items) && P.items.length)) {
-        err('$.party', 'tabs와 최상위 slots/actions/items를 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
+        || Array.isArray(P.items) && P.items.length || typeof P.template === 'string' && P.template.trim())) {
+        err('$.party', 'tabs와 최상위 slots/actions/items/template을 같이 쓸 수 없음 — 전부 tabs 안으로 옮기세요');
       }
       // 정규화된 탭 목록으로 한 번에 검사 (단일 탭 축약형 = 탭 하나)
       const tabs = hasTabs
         ? P.tabs.map((t, i) => ({ t, p: `$.party.tabs[${i}]` }))
-        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, roster: undefined, points: P.points }, p: '$.party' }];
+        : [{ t: { slots: P.slots, actions: P.actions, items: P.items, template: P.template, fab: P.fab, roster: undefined, points: P.points }, p: '$.party' }];
 
       const seen = new Set();   // 슬롯 변수 — 탭을 가로질러 한 번만 (한 인물 = 한 자리 계산의 전제)
       const tabIds = new Set();
@@ -832,8 +832,22 @@ function validateSchema(schema) {
         const slots = Array.isArray(t.slots) ? t.slots : [];
         const acts = Array.isArray(t.actions) ? t.actions : [];
         const items = Array.isArray(t.items) ? t.items : [];
-        if (!slots.length && !acts.length && !items.length) {
-          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드) 중 하나는 필요합니다');
+        // 대장 템플릿 (v0.89) — 상태창과 같은 자리표시자 검사를 여기서도 돈다.
+        // 오타 난 변수는 렌더에서 {이름} 리터럴로 남아 유저 화면에 그대로 보인다 — 미리 잡는다.
+        const tpl = typeof t.template === 'string' && t.template.trim() ? t.template : null;
+        if (t.template != null && typeof t.template !== 'string') err(`${p}.template`, 'template은 문자열이어야 함');
+        if (tpl) {
+          const stripStyle = (s) => String(s).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+          checkTemplateRefs(stripStyle(tpl), `${p}.template`, allIds, err);
+        }
+        // 탭별 플로팅 버튼 (v0.89) — 우상단 버튼에 들어가는 글리프라 길면 잘려 보인다
+        if (t.fab != null) {
+          if (typeof t.fab !== 'string' || !t.fab.trim()) err(`${p}.fab`, 'fab(플로팅 버튼)은 아이콘 글리프 문자열이어야 함');
+          else if (t.fab.trim().length > 8) err(`${p}.fab`, 'fab은 이모지 한두 글자만 — 긴 글은 버튼에 안 들어갑니다');
+          else if (!hasTabs) warn(`${p}.fab`, 'fab은 tabs 구조에서만 씁니다 — 축약형(탭 하나)은 편성표 버튼이 이미 그 탭을 엽니다');
+        }
+        if (!slots.length && !acts.length && !items.length && !tpl) {
+          err(p, '슬롯도 액션도 없는 탭 — slots(편성)·actions(시설 버튼)·items(업그레이드)·template(대장) 중 하나는 필요합니다');
           continue;
         }
         anyContent = true;

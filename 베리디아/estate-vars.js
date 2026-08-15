@@ -1014,6 +1014,59 @@ const S = {
             { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
           notify: '[선물이 왔다] 이웃 영지의 인장이 찍힌 궤짝이 도착했다. 답례를 바라는 선물이라는 걸 '
             + '모르는 사람은 없지만, 당장은 금화가 금화다.' },
+
+        // ── ⑨ 분야 문제 훅 (유저 제안, 2026-08-16) — 범용 조건부 말썽 ──
+        // 탐사 CAT과 같은 구조: 시스템은 "어느 분야에 문제가 났다"까지만 말하고,
+        // 그게 정확히 뭔지(저울 시비인지 혼사 갈등인지 술 사고인지)는 서사가 짓는다.
+        // 그래서 같은 사건이 여러 번 와도 판마다 다른 이야기가 된다. 숫자는 가볍게만 민다 —
+        // 진짜 결과는 서사가 정하고 보조 AI 상한이 받아 적는다.
+        { id: 'trouble_market', weight: 2, cooldown: 35,
+          when: `${QUIET} and (deals >= 5 or gold >= 200)`,
+          effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' }],
+          notify: '[장터가 시끄럽다] 저잣거리에서 다툼이 났다. 저울인지 셈인지 자리싸움인지 — '
+            + '무엇이 불씨인지는 현장이 안다. 남작이 나서기 전에는 안 가라앉을 크기다.' },
+        { id: 'trouble_folk', weight: 2, cooldown: 35,
+          when: `${QUIET} and pop >= 60`,
+          effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' },
+            { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
+          notify: '[마을에 말썽이 났다] 집과 집 사이의 일이다. 혼사인지 빚인지 금 넘은 울타리인지 — '
+            + '사정은 당사자들이 말할 것이다. 사람들이 편을 갈라 서기 시작했다는 게 문제다.' },
+        { id: 'trouble_barracks', weight: 2, cooldown: 35,
+          when: `${QUIET} and army >= 5`,
+          effects: [{ set: 'unrest', expr: 'clamp(unrest + 2, 0, 100)' },
+            { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
+          notify: '[병영이 어수선하다] 병사들 사이에 무슨 일이 있었다. 술인지 노름인지 상관 욕인지 — '
+            + '기강 문제라는 것만 확실하다. 못 본 척하면 커진다.' },
+
+        // ── ⑩ 소소한 순풍 (유저 제안) — 과하지 않게, 웃고 넘어갈 분위기 환기용 ──
+        // 숫자는 티끌(사기 +2~5, 식량 한 줌)이고 난이도 문턱을 안 건다 — 리얼리티의
+        // 가뭄에도 단비는 온다. 그래서 쿨다운만 길게.
+        { id: 'first_baby', weight: 2, cooldown: 90,
+          when: `${QUIET} and pop >= 40`,
+          effects: [{ set: 'pop', expr: 'pop + 1' }, { set: 'morale', expr: 'clamp(morale + 5, 0, 100)' }],
+          notify: '[아이가 태어났다] 부임 뒤 태어난 아이다. 이 땅에서 아이를 낳기로 한 집이 있다는 뜻이다. '
+            + '이름을 영주가 지어 주는 관례가 있다던가 — 사람들이 성문 앞에서 기다린다.' },
+        { id: 'honey_find', weight: 2, cooldown: 80,
+          when: `${QUIET} and month >= 4 and month <= 9`,
+          effects: [{ set: 'food', expr: 'food + 15' }, { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
+          notify: '[벌집을 찾았다] 나무꾼이 숲가에서 통째로 들고 왔다. 꿀이 귀한 땅이라 '
+            + '반 통이면 잔칫상 소리가 나온다.' },
+        { id: 'old_cask', weight: 1, cooldown: 90,
+          when: `${QUIET} and pop >= 30`,
+          effects: [{ set: 'morale', expr: 'clamp(morale + 5, 0, 100)' }],
+          notify: '[술통이 나왔다] 헛간 바닥에서 전 영주 시절 술통이 나왔다. 상했는지 익었는지는 '
+            + '따 봐야 안다 — 어느 쪽이든 오늘 저녁은 시끄럽겠다.' },
+        { id: 'cat_hero', weight: 1, cooldown: 70,
+          when: `${QUIET} and food >= 100`,
+          effects: [{ set: 'morale', expr: 'clamp(morale + 2, 0, 100)' }],
+          notify: '[곳간에 고양이가 산다] 어디서 왔는지 모를 고양이가 곳간에 자리를 잡고 쥐를 줄이고 있다. '
+            + '이름이 벌써 세 개다.' },
+        { id: 'thanks_letter', weight: 2, cooldown: 90,
+          when: `${QUIET} and fame >= 5`,
+          effects: [{ set: 'fame', expr: 'clamp(fame + 1, 0, 100)' },
+            { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
+          notify: '[감사가 닿았다] 지난날 거둬 준 사람이 자리 잡은 곳에서 소식을 보내왔다. '
+            + '별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다.' },
       ],
     },
   },
@@ -1772,8 +1825,10 @@ for (const f of d.findings) console.log(` ${sev[f.sev]} [${f.tag}] ${f.text.slic
   // 나쁜 일의 문턱이 실제로 갈리는가 — 첫날 판정만 보면 시드 운이 안 섞인다.
   const BAD = new Set(['road_ice', 'road_snow', 'road_bandit', 'road_wood', 'road_flood', 'raid', 'plague',
     'drought', 'storm', 'hail', 'frost', 'wildfire', 'coldsnap', 'foul_water', 'murrain',
-    'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'leak', 'horde', 'granary_rot', 'deserters']);
-  const GOOD = new Set(['bumper', 'wanderer', 'pilgrims', 'windfall', 'sister_visit', 'settlers', 'patron']);
+    'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'leak', 'horde', 'granary_rot', 'deserters',
+    'trouble_market', 'trouble_folk', 'trouble_barracks']);
+  const GOOD = new Set(['bumper', 'wanderer', 'pilgrims', 'windfall', 'sister_visit', 'settlers', 'patron',
+    'first_baby', 'honey_find', 'old_cask', 'cat_hero', 'thanks_letter']);
   const kind = (id) => BAD.has(id) ? '나쁨' : GOOD.has(id) ? '좋음' : '중립';
 
   // 한 해를 열흘 간격으로 훑어 사건 후보를 센다. 계절 조건이 섞이므로 시드 운은 안 들어간다.

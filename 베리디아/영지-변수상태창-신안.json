@@ -2337,6 +2337,130 @@
             }
           ],
           "notify": "[선물이 왔다] 이웃 영지의 인장이 찍힌 궤짝이 도착했다. 답례를 바라는 선물이라는 걸 모르는 사람은 없지만, 당장은 금화가 금화다."
+        },
+        {
+          "id": "trouble_market",
+          "weight": 2,
+          "cooldown": 35,
+          "when": "disaster == \"\" and route == \"없음\" and (deals >= 5 or gold >= 200)",
+          "effects": [
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 3, 0, 100)"
+            }
+          ],
+          "notify": "[장터가 시끄럽다] 저잣거리에서 다툼이 났다. 저울인지 셈인지 자리싸움인지 — 무엇이 불씨인지는 현장이 안다. 남작이 나서기 전에는 안 가라앉을 크기다."
+        },
+        {
+          "id": "trouble_folk",
+          "weight": 2,
+          "cooldown": 35,
+          "when": "disaster == \"\" and route == \"없음\" and pop >= 60",
+          "effects": [
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 3, 0, 100)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 2, 0, 100)"
+            }
+          ],
+          "notify": "[마을에 말썽이 났다] 집과 집 사이의 일이다. 혼사인지 빚인지 금 넘은 울타리인지 — 사정은 당사자들이 말할 것이다. 사람들이 편을 갈라 서기 시작했다는 게 문제다."
+        },
+        {
+          "id": "trouble_barracks",
+          "weight": 2,
+          "cooldown": 35,
+          "when": "disaster == \"\" and route == \"없음\" and army >= 5",
+          "effects": [
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 2, 0, 100)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 2, 0, 100)"
+            }
+          ],
+          "notify": "[병영이 어수선하다] 병사들 사이에 무슨 일이 있었다. 술인지 노름인지 상관 욕인지 — 기강 문제라는 것만 확실하다. 못 본 척하면 커진다."
+        },
+        {
+          "id": "first_baby",
+          "weight": 2,
+          "cooldown": 90,
+          "when": "disaster == \"\" and route == \"없음\" and pop >= 40",
+          "effects": [
+            {
+              "set": "pop",
+              "expr": "pop + 1"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 5, 0, 100)"
+            }
+          ],
+          "notify": "[아이가 태어났다] 부임 뒤 태어난 아이다. 이 땅에서 아이를 낳기로 한 집이 있다는 뜻이다. 이름을 영주가 지어 주는 관례가 있다던가 — 사람들이 성문 앞에서 기다린다."
+        },
+        {
+          "id": "honey_find",
+          "weight": 2,
+          "cooldown": 80,
+          "when": "disaster == \"\" and route == \"없음\" and month >= 4 and month <= 9",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "food + 15"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 3, 0, 100)"
+            }
+          ],
+          "notify": "[벌집을 찾았다] 나무꾼이 숲가에서 통째로 들고 왔다. 꿀이 귀한 땅이라 반 통이면 잔칫상 소리가 나온다."
+        },
+        {
+          "id": "old_cask",
+          "weight": 1,
+          "cooldown": 90,
+          "when": "disaster == \"\" and route == \"없음\" and pop >= 30",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 5, 0, 100)"
+            }
+          ],
+          "notify": "[술통이 나왔다] 헛간 바닥에서 전 영주 시절 술통이 나왔다. 상했는지 익었는지는 따 봐야 안다 — 어느 쪽이든 오늘 저녁은 시끄럽겠다."
+        },
+        {
+          "id": "cat_hero",
+          "weight": 1,
+          "cooldown": 70,
+          "when": "disaster == \"\" and route == \"없음\" and food >= 100",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 2, 0, 100)"
+            }
+          ],
+          "notify": "[곳간에 고양이가 산다] 어디서 왔는지 모를 고양이가 곳간에 자리를 잡고 쥐를 줄이고 있다. 이름이 벌써 세 개다."
+        },
+        {
+          "id": "thanks_letter",
+          "weight": 2,
+          "cooldown": 90,
+          "when": "disaster == \"\" and route == \"없음\" and fame >= 5",
+          "effects": [
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 1, 0, 100)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 3, 0, 100)"
+            }
+          ],
+          "notify": "[감사가 닿았다] 지난날 거둬 준 사람이 자리 잡은 곳에서 소식을 보내왔다. 별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다."
         }
       ]
     }

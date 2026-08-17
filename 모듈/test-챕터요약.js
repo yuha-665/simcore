@@ -61,7 +61,9 @@ AX_RESULT = [=[
 EVENTS: They arrived at the keep.
 NOTES: found the old map, promised to pay 200 gold]=]
 `);
-  console.log('② ' + (r.set ? r.set.v.split('\n').slice(-2).join('\n   ') : '❗ 스킵'));
+  // 타임스탬프가 어디에도 없으면 ⏱️ 조각 자체가 생략되어야 한다
+  const ok2 = r.set && !r.set.v.includes('⏱️') && r.set.v.includes('Chapter 1: They arrived');
+  console.log('② ' + (ok2 ? '⏱️ 생략 ✓ | ' : '❗ ') + (r.set ? r.set.v.split('\n').slice(-2).join('\n   ') : '스킵'));
 
   // ③ NOTES 줄이 아예 없는 보조 응답 (형식 관용)
   r = await run(`

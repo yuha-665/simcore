@@ -77,10 +77,11 @@ onOutput = async(function(id)
     end
   end
 
-  -- 이번 응답의 마지막 씬 타임스탬프 → 없으면 직전 요약 것을 잇는다
+  -- 이번 응답의 마지막 씬 타임스탬프 → 없으면 직전 요약 것을 잇고,
+  -- 그마저 없으면(타임스탬프를 안 쓰는 봇) ⏱️ 조각을 통째로 생략한다
   local ts = nil
   for cap in body:gmatch(TS_PATTERN) do ts = cap end
-  ts = ts or prevTs or '----'
+  ts = ts or prevTs
 
   local res = axLLM(id, {
     { role = 'system', content = RULES },
@@ -107,7 +108,7 @@ onOutput = async(function(id)
   if notes then notes = notes:match('[^\n]+') end
 
   local block = MARK .. ' Episode ' .. ep .. ' - Current Chapter ' .. (ch + 1)
-    .. ' | ⏱️[' .. ts .. ']: ' .. events
+    .. (ts and (' | ⏱️[' .. ts .. ']') or '') .. ': ' .. events
   if notes and notes ~= '' and notes:lower() ~= 'none' then
     block = block .. '\n※ Notes: ' .. notes:gsub('%s+', ' ')
   end

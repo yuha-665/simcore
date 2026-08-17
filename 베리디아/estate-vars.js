@@ -1335,7 +1335,8 @@ const S = {
     { id: 'scouting_on', when: 'explore_dir != "없음"',
       text: '[SCOUTING] Scouts are working {explore_dir} — {scouting} of the ground covered. '
         + 'What they bring back is fragments, not answers: a track, a smell on the wind, a shape seen at distance. '
-        + 'Do not let them find the thing itself until the system says they have.' },
+        + 'Do not let them deliver the find itself until the system says they have. What the Baron sees with his '
+        + 'own eyes may stand as a lead — a thing noted in the ledger, not yet a discovery.' },
     { id: 'scouting_close', when: 'explore_dir != "없음" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)',
       text: '[SCOUTING] They are close to whatever is out there. The fragments are starting to line up.' },
 
@@ -1616,7 +1617,12 @@ const S = {
       + 'One domain hearing something does not inform the others.\n'
       + 'SCOUTS: set explore_dir when the narration sends the scouts somewhere, "없음" when they are pulled back. '
       + 'The system tracks how much ground is covered and announces WHEN something is found and of what kind — '
-      + 'it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\n'
+      + 'it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, '
+      + 'with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific '
+      + '(a spring, a ruin, a beast trail), record it as "이름 0" in sites (known, not worked) or a location note in '
+      + 'stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or '
+      + 'talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a '
+      + '[탐사] notice makes it real.\n'
       + 'DISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short '
       + 'line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a '
       + 'place you own: put it in stock as a location note ("고블린 둥지 위치도") and raise threat. Nothing else '

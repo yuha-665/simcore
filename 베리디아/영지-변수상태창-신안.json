@@ -951,6 +951,35 @@
       "desc": "Local people taken on at the holding — never a maid or a sister, they go in corps. Format is ONLY \"Name · role\" — \"요한 · 목수\", \"톰 · 마구간지기\". No individual wage: their keep is already counted in the daily upkeep. Spell the name exactly as the narration spells it. Do not list passers-by."
     },
     {
+      "id": "favors",
+      "label": "빚·약속",
+      "type": "list",
+      "init": [],
+      "maxItems": 10,
+      "itemMaxLength": 40,
+      "cmd": "약속",
+      "desc": "Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists."
+    },
+    {
+      "id": "projects",
+      "label": "공사 중",
+      "type": "list",
+      "init": [],
+      "maxItems": 6,
+      "itemMaxLength": 40,
+      "cmd": "공사",
+      "desc": "Constructions under way. Completion date as @+days; the system announces completion."
+    },
+    {
+      "id": "projects_n",
+      "label": "(내부) 공사 수",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 6,
+      "desc": "완공 감지용 내부 카운터. 시스템 전용이니 직접 바꾸지 마라."
+    },
+    {
       "id": "contacts",
       "label": "아는 사람 · 조직",
       "type": "list",
@@ -1569,6 +1598,10 @@
         "expire": "day + span"
       },
       {
+        "list": "projects",
+        "expire": "day + span"
+      },
+      {
         "set": "food",
         "expr": "max(0, food + surplus * span)"
       },
@@ -1945,6 +1978,27 @@
           }
         ],
         "notify": "[탐사 · 동 강가] 강가에서 사람 손이 닿았던 자리가 나왔다. 누가 만들었고 왜 버려졌는지를 이번 장면에서 정하고 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다. 버려진 이유가 이 발견의 절반이다."
+      },
+      {
+        "id": "proj_track",
+        "when": "count(projects) > projects_n",
+        "effects": [
+          {
+            "set": "projects_n",
+            "expr": "count(projects)"
+          }
+        ]
+      },
+      {
+        "id": "proj_done",
+        "when": "count(projects) < projects_n",
+        "effects": [
+          {
+            "set": "projects_n",
+            "expr": "count(projects)"
+          }
+        ],
+        "notify": "[공사가 끝났다] 공사 목록에서 기한이 찬 것이 내려갔다. 무엇이 완성되었는지 이번 장면에서 보여주고, 완성된 것을 인프라·경작지·식수원 중 맞는 자리에 옮겨 적어라 — 옮겨 적지 않으면 지은 것이 수치에 잡히지 않는다."
       }
     ],
     "randomEvents": {
@@ -3130,6 +3184,12 @@
         "id": "contacts"
       },
       {
+        "id": "favors"
+      },
+      {
+        "id": "projects"
+      },
+      {
         "id": "rel_n",
         "maxDelta": 8
       },
@@ -3372,10 +3432,10 @@
         "maxDelta": 10
       }
     ],
-    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
+    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPROJECTS: when construction actually begins in the narration, add one line to projects as \"무엇 @+days\" — set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. A project merely proposed or funded registers nothing.\nFAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each (\"모르웬에게 곡물 200 상환 @+30\"), the deadline as @+days when one exists. Register only what is actually concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
   },
   "promptState": {
-    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n공사 중 {projects} | 빚·약속 {favors}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
     "includeEvents": true
   },
   "statusUI": {
@@ -3524,7 +3584,7 @@
       {
         "id": "estate",
         "label": "영지",
-        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
+        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">공사 중 — 완공일이 오면 시스템이 알린다</div>{projects:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
       },
       {
         "id": "duty",
@@ -3586,7 +3646,7 @@
       {
         "id": "court",
         "label": "정세",
-        "template": "<div class=\"vled-h\">정세 보고<small>{exposed_txt}</small></div><div class=\"vled-sec\">왕위 계승 — 선두 {frontrunner}</div><div class=\"vled-row\"><span>카산드라</span><span class=\"v\">{pw_cass_txt}</span></div><div class=\"vled-row\"><span>오렐리아</span><span class=\"v\">{pw_orel_txt}</span></div><div class=\"vled-row\"><span>릴리아나</span><span class=\"v\">{pw_lili_txt}</span></div><div class=\"vled-row\"><span>내 지지</span><span class=\"v\">{stance} ({weight_txt})</span></div><div class=\"vled-sec\">주변 영지</div><div class=\"vled-row\"><span>북 · 모르웬 백작 (5일)</span><span class=\"v\">{rel_n_txt}</span></div><div class=\"vled-row\"><span>동 · 리아나 백작 (강 4일·길 7일)</span><span class=\"v\">{rel_e_txt}</span></div><div class=\"vled-row\"><span>남 · 발레리우스 백작 (3일)</span><span class=\"v\">{rel_s_txt}</span></div><div class=\"vled-row\"><span>서 · 실바나 후작 (6일)</span><span class=\"v\">{rel_w_txt}</span></div><div class=\"vled-row\"><span>왕도 · 알라릭 여왕 (14일)</span><span class=\"v\">{rel_cap_txt}</span></div>"
+        "template": "<div class=\"vled-h\">정세 보고<small>{exposed_txt}</small></div><div class=\"vled-sec\">왕위 계승 — 선두 {frontrunner}</div><div class=\"vled-row\"><span>카산드라</span><span class=\"v\">{pw_cass_txt}</span></div><div class=\"vled-row\"><span>오렐리아</span><span class=\"v\">{pw_orel_txt}</span></div><div class=\"vled-row\"><span>릴리아나</span><span class=\"v\">{pw_lili_txt}</span></div><div class=\"vled-row\"><span>내 지지</span><span class=\"v\">{stance} ({weight_txt})</span></div><div class=\"vled-sec\">주변 영지</div><div class=\"vled-row\"><span>북 · 모르웬 백작 (5일)</span><span class=\"v\">{rel_n_txt}</span></div><div class=\"vled-row\"><span>동 · 리아나 백작 (강 4일·길 7일)</span><span class=\"v\">{rel_e_txt}</span></div><div class=\"vled-row\"><span>남 · 발레리우스 백작 (3일)</span><span class=\"v\">{rel_s_txt}</span></div><div class=\"vled-row\"><span>서 · 실바나 후작 (6일)</span><span class=\"v\">{rel_w_txt}</span></div><div class=\"vled-row\"><span>왕도 · 알라릭 여왕 (14일)</span><span class=\"v\">{rel_cap_txt}</span></div><div class=\"vled-sec\">빚·약속 — 이행하거나 파기하기 전엔 안 사라진다</div>{favors:tags}"
       }
     ]
   }

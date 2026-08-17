@@ -463,6 +463,17 @@ const S = {
         + 'already counted in the daily upkeep. Spell the name exactly as the narration spells it. Do not list passers-by.' },
     // 로어북이 못 하는 유일한 것 — "만났다"는 사실. 설정은 미리 쓸 수 있어도 만남은 플레이가 만든다.
     // 여기 적는 건 명단이지 인물집이 아니다. 생김새·성격을 적기 시작하면 로어북과 두 벌이 되어 어긋난다.
+    // 빚·약속 (귀족 축, 리메이크 4-2) — 남작이 이름 있는 상대와 주고받은 채무·언약의 장부.
+    // ⚠ 자동 만료를 걸지 않는다 — 빚은 만기가 오는 순간이 제일 중요한데, expire는 그날
+    //   조용히 지운다. 기한은 @절대일로 굳혀 표시만 하고, 정리(이행·파기)는 서사가 한다.
+    { id: 'favors', label: '빚·약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 40, cmd: '약속',
+      desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists.' },
+    // 건설 큐 (P4-2) — 공사 중인 것들. "@+일수"가 완공일이 되고, 그날 시스템이 목록에서
+    // 내리며 완공 이벤트가 "무엇이 완성됐는지 옮겨 적어라"를 통지한다.
+    { id: 'projects', label: '공사 중', type: 'list', init: [], maxItems: 6, itemMaxLength: 40, cmd: '공사',
+      desc: 'Constructions under way. Completion date as @+days; the system announces completion.' },
+    { id: 'projects_n', label: '(내부) 공사 수', type: 'int', init: 0, min: 0, max: 6,
+      desc: '완공 감지용 내부 카운터. 시스템 전용이니 직접 바꾸지 마라.' },
     { id: 'contacts', label: '아는 사람 · 조직', type: 'list', init: [], maxItems: 10, itemMaxLength: 32, cmd: '인맥',
       desc: 'Everyone met OUTSIDE the holding — merchants, envoys, orders, houses, other domains. '
         + 'Format is ONLY "Name · one clause": "헤세 상단 · 곡물", "케빈 상단장 · 강 무역". '
@@ -733,6 +744,9 @@ const S = {
       // 기준은 'day'가 아니라 'day + span' — 이 턴이 끝나는 날이다.
       // day로 두면 아래에서 day가 올라가기 전 값으로 판정해 한 턴 늦게 빠진다(며칠 건너뛰면 더 늦는다).
       { list: 'contracts', expire: 'day + span' },
+      // 공사 완공 (P4-2) — 완공일이 지난 항목이 목록에서 내려간다. "무엇이 완성됐나"의 통지는
+      // 아래 proj_done 이벤트 몫 (onTurn ⑥ → 조건 이벤트 ⑦ 순서라 같은 턴에 감지된다).
+      { list: 'projects', expire: 'day + span' },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
       { set: 'food', expr: 'max(0, food + surplus * span)' },
@@ -842,7 +856,20 @@ const S = {
       effects: [{ set: `f_${v.slice(4)}`, expr: `f_${v.slice(4)} + 1` }],
       notify: `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. ${CAT[cat][1]}를 이번 장면에서 정하고`
         + ` 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다.${CAT[cat][2]}`,
-    }))),
+    }))).concat([
+      // ── 공사 완공 감지 (P4-2) — 개수 카운터 비교, 목록 내용은 안 읽는다 ──
+      // proj_track: 새 공사가 등록되면 조용히 따라간다 (통지 없음 — 등록은 서사가 이미 그렸다).
+      // proj_done: 만기 정리(위 onTurn expire)로 개수가 줄면 "완공"으로 친다.
+      // ⚠ 같은 턴에 하나 끝나고 하나 새로 잡히면 개수가 안 변해 통지가 빠진다 — 드문 경우고,
+      //   그 턴 서사가 어차피 둘 다 그리고 있으므로 감수한다.
+      { id: 'proj_track', when: 'count(projects) > projects_n',
+        effects: [{ set: 'projects_n', expr: 'count(projects)' }] },
+      { id: 'proj_done', when: 'count(projects) < projects_n',
+        effects: [{ set: 'projects_n', expr: 'count(projects)' }],
+        notify: '[공사가 끝났다] 공사 목록에서 기한이 찬 것이 내려갔다. 무엇이 완성되었는지 이번 장면에서'
+          + ' 보여주고, 완성된 것을 인프라·경작지·식수원 중 맞는 자리에 옮겨 적어라 — 옮겨 적지 않으면'
+          + ' 지은 것이 수치에 잡히지 않는다.' },
+    ]),
 
     // ── 굴러 들어오는 것 ──
     // 매 턴 한 번 굴려서, 걸리면 조건을 통과한 것 중 하나만 터진다. 엔진이 하나 뽑고 끝낸다.
@@ -1391,6 +1418,9 @@ const S = {
       { id: 'location' }, { id: 'disaster' }, { id: 'focus' }, { id: 'alert' },
       { id: 'stock' }, { id: 'corps' }, { id: 'houses' }, { id: 'infra' }, { id: 'farms' }, { id: 'sites' },
       { id: 'staff' }, { id: 'contacts' },
+      // 빚·약속과 공사는 계약과 같은 전사(옮겨 적기) 규율 — guide의 FAVORS/PROJECTS 항목이 선을 긋는다.
+      // projects_n은 절대 열지 않는다 (완공 감지 내부 카운터).
+      { id: 'favors' }, { id: 'projects' },
       // 이웃의 인식. 거리가 있으니 하루에 크게 움직일 수 없다 — 상한이 그걸 대신 지킨다.
       ...NEIGH.map(([id]) => ({ id, maxDelta: 8 })),
       { id: 'ally' }, { id: 'ally_role' },
@@ -1464,6 +1494,13 @@ const S = {
       + 'the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first '
       + 'regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. '
       + 'If one leaves, remove her line — the wage stops with her.\n'
+      + 'PROJECTS: when construction actually begins in the narration, add one line to projects as "무엇 @+days" — '
+      + 'set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). '
+      + 'The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. '
+      + 'A project merely proposed or funded registers nothing.\n'
+      + 'FAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each '
+      + '("모르웬에게 곡물 200 상환 @+30"), the deadline as @+days when one exists. Register only what is actually '
+      + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -1509,6 +1546,7 @@ const S = {
       + '식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
       + '재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n'
       + '지속 수입 {contracts} | 길 {route_txt}\n'
+      + '공사 중 {projects} | 빚·약속 {favors}\n'
       + '수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n'
       + '사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n'
       + '탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n'
@@ -1740,6 +1778,7 @@ S.party = {
       + sec('경작지 — {farm_txt} · 일 수확 {harvest}') + '{farms:tags}'
       + sec('자원지 — 산출 {extract}/일') + '{sites:tags}'
       + sec('인프라 — 식수원 {wells}') + '{infra:tags}'
+      + sec('공사 중 — 완공일이 오면 시스템이 알린다') + '{projects:tags}'
       + sec('달력')
       + row('다음 축일', '{fest} ({fest_when}, D-{fest_in})')
       + '<div class="vled-p">{fest_desc}</div>' },
@@ -1781,7 +1820,8 @@ S.party = {
       + row('카산드라', '{pw_cass_txt}') + row('오렐리아', '{pw_orel_txt}') + row('릴리아나', '{pw_lili_txt}')
       + row('내 지지', '{stance} ({weight_txt})')
       + sec('주변 영지')
-      + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('') },
+      + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('')
+      + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}' },
   ],
 };
 
@@ -2023,6 +2063,36 @@ for (const t of S.party.tabs) {
   const sp2 = engine.sendPhase(S, t2, { rng: seededRng('p4', 2, 's') });
   ok('답사 진척은 현 방향(남)에만', sp2.state.vars.exp_s > 40 && sp2.state.vars.exp_n === 105,
     `남 40→${sp2.state.vars.exp_s} · 북(정산 구간) 105→${sp2.state.vars.exp_n}`);
+}
+
+// ── 공사 큐 검증 (P4-2) — 등록 → 추적 → 완공일 정리 → 통지 합류 ──
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 공사 큐 (P4-2) ━━');
+  let t = engine.initState(S); t.meta.setupDone = true;
+  // AI가 출력에서 "남쪽 우물 @+2"를 등록했다 치고 outputPhase로 넣는다 (상대 기한이 절대로 굳는지도 겸사)
+  // ⚠ 목록 델타는 {add/remove} 연산 형식 — 전체 교체는 엔진이 버린다 (아이템 증발 방지)
+  let r = engine.outputPhase(S, t, { projects: { add: ['남쪽 우물 @+2'] } }, {}, { rng: seededRng('pj', 0, 'o') });
+  t = r.state;
+  const stamped = t.vars.projects[0];
+  ok('상대 기한이 절대일로 굳음 (@+2 → @N)', /@\d+$/.test(stamped) && !stamped.includes('@+'), stamped);
+  ok('proj_track이 카운터를 따라감', t.vars.projects_n === 1, t.vars.projects_n);
+  // 이틀 진행 — 완공일이 지나며 목록에서 내려가고 proj_done이 통지를 세운다
+  let doneNotice = '';
+  for (let i = 1; i <= 3 && !doneNotice; i++) {
+    const sp = engine.sendPhase(S, t, { rng: seededRng('pj', i, 's') });
+    t = sp.state;
+    if (/공사가 끝났다/.test(sp.promptBlock)) doneNotice = `(${i}턴째 통지)`;
+    t = engine.outputPhase(S, t, {}, {}, { rng: seededRng('pj', i, 'o') }).state;
+    if (!doneNotice && t.meta.pendingNotices?.some?.((x) => /공사가 끝났다/.test(String(x)))) doneNotice = `(${i}턴 정산)`;
+  }
+  // 통지는 다음 전송 promptBlock에 합류한다 — 마지막으로 한 번 더 확인
+  if (!doneNotice) {
+    const sp = engine.sendPhase(S, t, { rng: seededRng('pj', 9, 's') });
+    if (/공사가 끝났다/.test(sp.promptBlock)) doneNotice = '(후속 전송 합류)';
+    t = sp.state;
+  }
+  ok('완공 — 목록에서 내려가고 통지 합류', t.vars.projects.length === 0 && t.vars.projects_n === 0 && doneNotice !== '', doneNotice || '통지 없음');
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

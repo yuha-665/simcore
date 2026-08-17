@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.89.1
-//@display-name SimCore (시뮬 엔진) v0.89.1 대장 탭 + 랜덤 이벤트 확률 식 지원
+//@version 0.89.2
+//@display-name SimCore (시뮬 엔진) v0.89.2 상태창 마커 자가 복구
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.89.2 ───────────────────────────────────────────────
+// 실사고: 모듈 Lua 트리거(챕터요약)가 onOutput에서 setChat으로 메시지를 다시 쓰는 사이
+// ⟦simcore:N⟧ 마커가 사라져 그 메시지의 상태창이 실종 (마커는 output 반환값으로 붙는데,
+// 뒤에 도는 스크립트가 낡은 사본으로 덮으면 조용히 증발 — 어떤 서드파티 스크립트든 가능).
+// - [어댑터] 마커 유실 자가 복구: 저장 4초·12초 뒤 점검, 마커가 통째로 없으면 재부착.
+//   리롤 중(char 메시지 없음/turnBusy)·이미 마커 있음이면 불개입.
+// - [어댑터] output 처리 실패(catch)에도 마커는 붙인다 — 상태는 못 굴려도 상태창은 산다.
+// - 스키마 무변 — 플러그인 재임포트만.
 //
 // ── v0.89.1 ───────────────────────────────────────────────
 // 베리디아 난이도 프리셋 재설계(희망적/보통/리얼리티)에서 드러난 갭: 프리셋은 변수 초기값만
@@ -2599,9 +2608,37 @@
     } catch (e) { console.log('[simcore] 이미지 처리 오류:', e.message); return content; }
   }
 
+  // ── 마커 유실 자가 복구 (v0.89.2) ──
+  // 마커는 output 반환값(파이프라인 13단계)으로 붙지만, 그 뒤에 도는 스크립트 —
+  // 특히 Lua onOutput에서 setChat으로 메시지를 다시 쓰는 트리거(챕터요약 등) — 가
+  // 낡은 사본으로 덮으면 조용히 사라진다 (실사고 2026-08-17: ⟦simcore:18⟧ 증발, 상태창 실종).
+  // 저장 몇 초 뒤 두 번 들여다보고 마커가 통째로 없으면 도로 붙인다.
+  //   · 어떤 마커든 있으면 손대지 않는다 (리롤로 새 마커가 붙은 메시지)
+  //   · turnBusy 중엔 손대지 않는다 (다음 턴 파이프라인이 도는 중 — 다음 기회에 본다)
+  //   · 그 자리에 char 메시지가 없으면 손대지 않는다 (리롤로 지워진 중)
+  function scheduleMarkerHeal(outIndex) {
+    const attempt = async (label) => {
+      try {
+        if (turnBusy || !session) return;
+        const ca = await Risuai.getCurrentCharacterIndex();
+        const ci = await Risuai.getCurrentChatIndex();
+        const chat = await Risuai.getChatFromIndex(ca, ci);
+        const msg = chat?.message?.[outIndex];
+        if (!msg || msg.role !== 'char') return;
+        if (typeof msg.data !== 'string' || msg.data.includes('⟦simcore:')) return;
+        msg.data += `\n\n⟦simcore:${outIndex}⟧`;
+        await Risuai.setChatToIndex(ca, ci, chat);
+        console.log(`[simcore] 마커 유실 복구 (${label}):`, outIndex);
+      } catch (e) { console.log('[simcore] 마커 복구 실패:', e.message); }
+    };
+    setTimeout(() => attempt('4초'), 4000);
+    setTimeout(() => attempt('12초'), 12000);
+  }
+
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
+    let outIndexRef = null;   // catch·finally에서도 마커 자리를 알아야 한다
     try {
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
@@ -2609,6 +2646,7 @@
       // outIndex = 이번에 저장될 char 메시지 인덱스
       // [live-test] output 핸들러 시점에 메시지가 이미 배열에 있는지/없는지 확인해 ±1 보정
       const outIndex = chat?.message?.length ?? 0;
+      outIndexRef = outIndex;
       const mode = await resolveAuxMode();
       const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
 
@@ -2746,9 +2784,12 @@
       return (imgTag ? imgTag + '\n\n' : '') + content + `\n\n⟦simcore:${outIndex}⟧`;
     } catch (e) {
       console.log('[simcore] output 오류:', e.message);
-      return content;
+      // 실패해도 마커는 붙인다 — 상태는 못 굴렸지만 상태창까지 죽을 이유는 없다
+      // (표시 핸들러는 마커가 있으면 현재 상태를 그린다. 마커가 없으면 그 메시지의 상태창이 영영 실종)
+      return outIndexRef != null ? content + `\n\n⟦simcore:${outIndexRef}⟧` : content;
     } finally {
       turnBusy = false;                  // 실패해도 반드시 풀어야 전환 감지가 영영 멈추지 않는다
+      if (outIndexRef != null) scheduleMarkerHeal(outIndexRef);
     }
   });
 

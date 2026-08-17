@@ -102,6 +102,34 @@ NOTES: none]=]
   const ok5 = r.set && r.set.v.includes('simcore:4') && r.set.v.indexOf('simcore') < r.set.v.indexOf('Episode');
   console.log('⑤ ' + (ok5 ? '마커 보존 + 요약 뒤에 ✓' : '❗ ' + (r.set ? JSON.stringify(r.set.v) : '스킵')));
 
+  // ⑥ 추론형 보조모델의 생각 유출 (실사고 재현, 2026-08-17):
+  //    생각 안의 초안 NOTES:가 ※ Notes에 통째로 실렸다 — 마지막 EVENTS: 이후만 파싱해야 한다
+  r = await run(`
+CHAT = { { role = 'char', data = '전투 장면 본문' } }
+AX_RESULT = [=[
+**Documenting Combat Dialogue** I am detailing the posturing.
+NOTES: - Rowan stopped walking, turned, took a step back, spoke a challenge.
+**Evaluating Action Significance** leaning towards non-lore impacting. </Thoughts>
+EVENTS: Rowan turned and challenged Macho Man.
+NOTES: none]=]
+`);
+  const ok6 = r.set && !r.set.v.includes('※') && r.set.v.includes('Rowan turned and challenged')
+    && !r.set.v.includes('Documenting');
+  console.log('⑥ ' + (ok6 ? '생각 유출 걸러냄 ✓' : '❗ ' + (r.set ? JSON.stringify(r.set.v.slice(-200)) : '스킵')));
+
+  // ⑦ 진짜 NOTES + 뒤 군더더기 → 마지막 답에서 NOTES 첫 줄만
+  r = await run(`
+CHAT = { { role = 'char', data = '본문' } }
+AX_RESULT = [=[
+thinking... EVENTS: draft one. </think>
+EVENTS: She opened the vault.
+NOTES: vault key acquired
+Let me know if you need anything else.]=]
+`);
+  const ok7 = r.set && r.set.v.includes('※ Notes: vault key acquired') && !r.set.v.includes('Let me know')
+    && r.set.v.includes('She opened the vault');
+  console.log('⑦ ' + (ok7 ? '마지막 답 채택 + NOTES 첫 줄만 ✓' : '❗ ' + (r.set ? JSON.stringify(r.set.v.slice(-200)) : '스킵')));
+
   // lua.global.close()는 노드 종료 시 libuv 단언(UV_HANDLE_CLOSING)을 유발할 수 있다 — 즉시 종료로 회피
   process.exit(0);
 })().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

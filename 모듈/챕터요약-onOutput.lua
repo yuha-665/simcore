@@ -33,7 +33,20 @@ You compress one roleplay response into a chapter summary.
 Output exactly two lines and nothing else:
 EVENTS: 3-5 sentences, past tense, third person, in English. State actions and outcomes only. No adverbs that color tone (highly, deeply, instantly, briskly, shamelessly). No interpretive adjectives describing mood (satisfied, annoyed, lazy, productive, eager). Observable behavior is fine (she fell asleep, he stopped mid-sentence). If the response ends mid-thought or unresolved, end the summary unresolved — do not force a clean closing line.
 NOTES: only things worth preserving — newly revealed truths, items acquired or lost, secrets learned, promises made or broken, decisive irreversible moments. Short bullet-style, comma-separated, factual. No emotional changes, no relationship developments, no atmospheric details. If nothing qualifies, write exactly: none
+Output the two lines directly — no preamble, no reasoning, no tags.
 ]==]
+
+-- 추론형 보조모델은 답 앞에 생각(<Thoughts>…)을 뱉고, 그 안에 EVENTS:/NOTES: 초안이 섞이기도
+-- 한다 (실사고: 사고 과정이 통째로 ※ Notes에 실림). 마지막 EVENTS: 이후만 정답으로 본다.
+local function lastAnswer(s)
+  local pos, p = nil, 1
+  while true do
+    local q = s:find('EVENTS:', p, true)
+    if q == nil then break end
+    pos = q; p = q + 1
+  end
+  return pos and s:sub(pos) or nil
+end
 
 -- 본문에서 기존 ⬥ 블록을 뗀다 (재실행·기존 메인 모델 요약 대비)
 local function stripSummary(s)
@@ -78,14 +91,20 @@ onOutput = async(function(id)
     log('[챕터요약] 보조 호출 실패 — 이 메시지는 요약 없이 둔다: ' .. tostring(res and res.result))
     return
   end
-  local events = res.result:match('EVENTS:%s*(.-)%s*NOTES:')
-    or res.result:match('EVENTS:%s*(.-)%s*$')
-  local notes = res.result:match('NOTES:%s*(.-)%s*$')
+  local tail = lastAnswer(res.result)
+  if tail == nil then
+    log('[챕터요약] 응답에 EVENTS: 가 없음 — 스킵: ' .. res.result:sub(1, 120))
+    return
+  end
+  local events = tail:match('EVENTS:%s*(.-)%s*NOTES:') or tail:match('EVENTS:%s*(.-)%s*$')
+  local notes = tail:match('NOTES:%s*(.-)%s*$')
   if events == nil or events == '' then
     log('[챕터요약] 응답 형식이 어긋남 — 스킵: ' .. res.result:sub(1, 120))
     return
   end
   events = events:gsub('%s+', ' ')
+  -- NOTES는 한 줄 규격 — 뒤에 군더더기가 붙어도 첫 줄만 취한다
+  if notes then notes = notes:match('[^\n]+') end
 
   local block = MARK .. ' Episode ' .. ep .. ' - Current Chapter ' .. (ch + 1)
     .. ' | ⏱️[' .. ts .. ']: ' .. events

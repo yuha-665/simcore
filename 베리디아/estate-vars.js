@@ -1581,7 +1581,9 @@ const S = {
       + 'Touch gold directly only for money that changed hands once (a sale, a raid, a grant). '
       + 'Never add a deal already listed — check the current contents shown above.\n'
       + 'HIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at '
-      + 'the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired '
+      + 'the Academy and the Cathedral; none of them is here EXCEPT anyone the corps list above already shows — '
+      + 'a starting companion who came with the Baron (no request, no fee; she is simply here). '
+      + 'Bishop Beatrix is NOT one of them and can never be hired '
       + 'at any price; she visits and she judges. '
       + 'One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request '
       + 'in progress puts nothing in the list. On arrival do three things together: add "Name wage" to corps taking '
@@ -1691,6 +1693,9 @@ const S = {
           stock: ['목재 150', '보리 씨 40'],
           route: '없음', route_days: 0, rel_cap: 20, fame: 26,
           hardship: 10, hire_mult: 60,
+          // 카드 시작 옵션(난이도 0): "중급메이드 메릴과 주니어 수녀 스텔라와 함께 시작" —
+          // 프리셋이 corps를 안 심으면 가이드("none of them is here")와 모순되어 보조가 영영 안 올린다 (실사고 2026-08-17)
+          corps: ['메릴 8', '스텔라 4'], b_meryl: 20, b_stella: 20,
           focus: '좋은 사람들을 곁에 모으는 것',
         },
       },
@@ -1707,6 +1712,7 @@ const S = {
           stock: ['목재 100', '보리 씨 20'],
           route: '없음', route_days: 0, rel_cap: 10, fame: 0,
           hardship: 45, hire_mult: 100,                // "일반적으로 어려움" — 구 35/80에서 올림
+          corps: ['메릴 8'], b_meryl: 20,              // 카드 시작 옵션(난이도 1): 메릴과 함께 시작
           focus: '겨울이 오기 전에 밭을 늘리는 것',
         },
       },
@@ -1729,6 +1735,9 @@ const S = {
           route: '북 산길', route_days: 14,
           rel_cap: 5, fame: 0,                          // 왕도조차 서류로만 안다
           hardship: 100, hire_mult: 180,
+          // 카드 시작 옵션(난이도 2)도 메릴 동행 — 금고 0에 봉급 8/일이 첫날부터 밀린다.
+          // wages_unpaid 지시문이 개막부터 붙는데, 그게 리얼리티의 맛이다 (의도)
+          corps: ['메릴 8'], b_meryl: 20,
           focus: '사흘 안에 먹을 것을 구하는 것',
           alert: '곳간에 사흘치. 밭은 죽었고 우물은 못 쓴다.',
         },
@@ -2111,6 +2120,20 @@ console.log('\n━━ 탐사 ━━');
   console.log(`  find_n_2 발화 통지: ${gob && gob.includes('고블린') ? '✓ 정본 실림 — ' + gob.slice(0, 60) + '…' : '❗ 정본 없음'}`);
   const vein = openSlot(2);  // o_n=2 → exp_n=112 → find_n_3 (수맥)
   console.log(`  find_n_3 발화 통지: ${vein && vein.includes('수맥') ? '✓ 수맥 실림' : '❗ 수맥 없음'}`);
+}
+{
+  // ── 시작 동행 검증 — 카드 시작 옵션(난이도 0: 메릴+스텔라 / 1·2: 메릴)과 일치해야 한다 ──
+  // 프리셋이 corps를 안 심으면 가이드 "none of them is here"에 막혀 보조가 영영 안 올린다 (실사고)
+  console.log('\n━━ 시작 동행 검증 ━━');
+  for (const p of S.setup.presets) {
+    let t = engine.applyPreset(S, engine.initState(S), p.id).state;
+    const c = (t.vars.corps || []).join(', ');
+    const L = engine.makeLookup(S, t.vars);
+    const okM = c.includes('메릴 8');
+    const okS = p.id !== 'hope' || c.includes('스텔라 4');
+    console.log(`  ${p.label}: ${okM && okS ? '✓' : '❗'} corps=[${c}]`
+      + ` · b_메릴=${t.vars.b_meryl} · 봉급 ${L('payroll')}/일`);
+  }
 }
 
 const send = engine.sendPhase(S, st, { rng: seededRng('e', 99, 's') });

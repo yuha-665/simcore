@@ -62,6 +62,22 @@ const CAT = {
   '숨은 장소': ['사람 손이 닿았던 자리가 나왔다', '누가 만들었고 왜 버려졌는지', ' 버려진 이유가 이 발견의 절반이다.'],
   '위협': ['거기 사는 것과 마주쳤다', '무엇이 몇이나 있는지', ' 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다.'],
 };
+// ── 정본 발견 (로어북 다이어트, 2026-08-17) ──
+// 로어북에 적혀 있던 "정답"들 — 방향마다 뭐가 사는지, 수맥이 어디 갇혀 있는지 — 을 여기로 옮겼다.
+// 로어북에 적히면 모델이 0턴부터 안다: 실제 사고로, 아데레가 첫 장면에서 "마력 감응으로 느껴진다"며
+// 수맥 위치를 불어 버렸다. 탐사도 고민도 없이 정답이 나오면 운영 놀이가 통째로 죽는다.
+// 여기 있으면 해당 자리의 find 이벤트가 터지는 턴에만 통지로 실린다 — 그 전엔 프롬프트 어디에도 없다.
+// (스키마 JSON은 모델이 못 본다. 시나리오레이터 secret과 같은 은닉 논리.)
+// 정본이 없는 자리는 지금처럼 서사가 짓는다 — 개방 원칙은 그대로다. 정본은 로어북 유산 여섯 개뿐.
+const CANON = {
+  find_n_2: '고블린 부족들이다 — 능선 곳곳에 퍼져 살고, 수가 많다. 밤에 내려오는 길목이 이제 지도에 잡혔다.',
+  find_n_3: '무너진 옛 수로의 취수구다 — 능선 뒤 암반 안에 맑은 수맥이 갇혀 있고, 옛 사람들은 여기서 물을 끌었다. '
+    + '손이 모자라 버려졌을 뿐이다. 바위를 깨고 수로를 다시 잇는 큰 공사감이지만, 뚫으면 물 문제가 뿌리부터 풀린다.',
+  find_n_5: '하피들이다 — 상승기류를 타고 봉우리 사이를 돈다. 높은 둥지 자리가 잡혔다.',
+  find_w_4: '거대 거미들이다 — 그리고 숲 안쪽에는 식물이라고만 하기 어려운 것들이 자란다.',
+  find_s_5: '오크 습격대다 — 여기 사는 것이 아니라 남쪽 저편에서 온다. 이 평원이 그들의 내습로다.',
+  find_e_4: '리자드맨이다 — 갈대밭에 살고, 제 영역을 넘는 것을 가만히 지켜보고 있다.',
+};
 // 랜덤 사건이 겹치지 않게 하는 공통 조건 — 이미 곤경 중이면 새 곤경은 안 온다.
 const QUIET = 'disaster == "" and route == "없음"';
 
@@ -894,14 +910,22 @@ const S = {
     // 물건 이름도, 수치 변화도 여기서 안 정한다 — 계약과 같다. 시스템은 "무엇이 나올 차례"까지,
     // 그게 구체적으로 뭔지는 서사가 짓고 보조 모델이 목록에 옮긴다.
     // once: true — 한 자리는 한 번만 열린다. 자리 수를 넘으면 그 방향은 더 나올 게 없다.
-    events: EXPLORE.flatMap(([dir, v, place, , slots]) => slots.map((cat, i) => ({
-      id: `find_${v.slice(4)}_${i + 1}`,
-      once: true,
-      when: `${v} == ${110 + i}`,
-      effects: [{ set: `f_${v.slice(4)}`, expr: `f_${v.slice(4)} + 1` }],
-      notify: `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. ${CAT[cat][1]}를 이번 장면에서 정하고`
-        + ` 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다.${CAT[cat][2]}`,
-    }))).concat([
+    events: EXPLORE.flatMap(([dir, v, place, , slots]) => slots.map((cat, i) => {
+      const id = `find_${v.slice(4)}_${i + 1}`;
+      // 정본 자리: 무엇인지가 이미 정해져 있다 (로어북에서 옮겨 온 여섯 개 — CANON 참조).
+      // 열린 자리: 서사가 짓는다 (개방 원칙).
+      return {
+        id,
+        once: true,
+        when: `${v} == ${110 + i}`,
+        effects: [{ set: `f_${v.slice(4)}`, expr: `f_${v.slice(4)} + 1` }],
+        notify: CANON[id]
+          ? `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. 정체는 이미 정해져 있다 — ${CANON[id]} `
+            + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
+          : `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. ${CAT[cat][1]}를 이번 장면에서 정하고`
+            + ` 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다.${CAT[cat][2]}`,
+      };
+    })).concat([
       // ── 공사 완공 감지 (P4-2) — 개수 카운터 비교, 목록 내용은 안 읽는다 ──
       // proj_track: 새 공사가 등록되면 조용히 따라간다 (통지 없음 — 등록은 서사가 이미 그렸다).
       // proj_done: 만기 정리(위 onTurn expire)로 개수가 줄면 "완공"으로 친다.
@@ -2028,6 +2052,34 @@ console.log('\n━━ 탐사 ━━');
   console.log(`  보유 자원 ${JSON.stringify(t.vars.stock)}`);
   console.log(`  경작지 ${JSON.stringify(t.vars.farms)} · 자원지 ${JSON.stringify(t.vars.sites)}`);
   console.log(`  인프라 ${JSON.stringify(t.vars.infra.slice(4))}`);
+}
+{
+  // ── 정본 발견 (로어북 다이어트) 검증 ──
+  console.log('\n━━ 정본 발견 검증 ━━');
+  // ① CANON 키가 전부 실존하는 find 이벤트인가 (슬롯 재배열 시 오타로 조용히 죽는 것 방지)
+  const findIds = new Set(S.rules.events.map((e) => e.id));
+  const orphan = Object.keys(CANON).filter((k) => !findIds.has(k));
+  console.log(`  CANON ${Object.keys(CANON).length}개 — 실존 이벤트 매칭: ${orphan.length ? '❗ 고아 ' + orphan.join(', ') : '✓ 전부 일치'}`);
+  // ② 정본 자리가 열리면 통지에 정본이 그대로 실리는가 + 사전 유출이 없는가
+  //    (탐사 전 프롬프트에 '고블린' 등 정본 어휘가 없어야 한다 — 랜덤 사건 통지는 별개)
+  const KEY_WORDS = ['고블린', '수맥', '하피', '거미', '리자드맨'];
+  let t = engine.initState(S); t.meta.setupDone = true;
+  const pre = engine.sendPhase(S, t, { rng: seededRng('cn', 0, 's') }).promptBlock;
+  const leak = KEY_WORDS.filter((w) => pre.includes(w));
+  console.log(`  0턴 프롬프트 정본 유출: ${leak.length ? '❗ ' + leak.join(', ') : '✓ 없음'}`);
+  //    exp를 110+i로 직접 박으면 onTurn 리셋(>= 110 ? 0)이 먼저 먹는다 — 정석 경로로 간다:
+  //    exp=100 + 시작점 굴림(o_*)을 고정하면 onTurn이 그 턴에 110+o로 열고 find가 같은 턴에 발화한다.
+  const openSlot = (slot) => {
+    let s = engine.initState(S); s.meta.setupDone = true;
+    s.vars.exp_n = 100; s.vars.o_n = slot;
+    s = engine.outputPhase(S, s, {}, {}, { rng: seededRng('cn', slot, 'o') }).state;
+    // 랜덤 사건 통지에도 '고블린'이 나올 수 있다(horde) — 정본 통지 문구로만 찾는다
+    return s.meta.pendingNotifies.find((n) => n.includes('정체는 이미 정해져 있다'));
+  };
+  const gob = openSlot(1);   // o_n=1 → exp_n=111 → find_n_2 (고블린)
+  console.log(`  find_n_2 발화 통지: ${gob && gob.includes('고블린') ? '✓ 정본 실림 — ' + gob.slice(0, 60) + '…' : '❗ 정본 없음'}`);
+  const vein = openSlot(2);  // o_n=2 → exp_n=112 → find_n_3 (수맥)
+  console.log(`  find_n_3 발화 통지: ${vein && vein.includes('수맥') ? '✓ 수맥 실림' : '❗ 수맥 없음'}`);
 }
 
 const send = engine.sendPhase(S, st, { rng: seededRng('e', 99, 's') });

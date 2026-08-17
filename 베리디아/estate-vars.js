@@ -182,6 +182,11 @@ const SPEC = {
 };
 const TIER_POWER = { J: 1, I: 2, S: 3, E: 4 };
 const HIRE = CAST_ALL.filter(([, , , rank]) => rank);   // 고용 대상 15명 (등급 있는 이들)
+// 아데레 — 포로 왕족 시종 (유저 확정, 2026-08-16). 고용 조건 없음: 시작할 때 동행 여부만
+// 고른다. corps 밖(몸값·봉급 0)이라 배치 축을 뒤집는다 — "사람을 자리에" 대신
+// **"직임을 아데레에게"**(adere_duty). 책사(행정 주) + 시종(가사 부), S급 상당.
+// ally가 아데레가 아니면(동행 없이 시작한 판) 효과 0 + 패널 탭도 숨는다.
+const ADERE_POWER = (label) => label === '행정' ? 3 : label === '가사' ? 1.5 : 0.75;
 const dutyPower = (tail, rank, duty) => {
   const [main, sub] = SPEC[tail] || [];
   const mult = main === duty ? 1 : sub === duty ? 0.5 : (tail === 'yustina' ? 0.5 : 0.25);
@@ -445,6 +450,9 @@ const S = {
       enum: ['없음', ...HIRE.map(([, name]) => name)],
       desc: `${label} 직무 담당자 (${eff}). 게임 패널 [배치] 탭에서 앉힌다.`,
     })),
+    { id: 'adere_duty', label: '아데레 직임', type: 'enum', init: '없음',
+      enum: ['없음', ...DUTY.map(([, label]) => label)],
+      desc: '아데레에게 맡긴 직무 (게임 패널 [아데레] 탭). 동행이 아데레가 아니면 무효.' },
     { id: 'staff', label: '현지 고용인', type: 'list', init: [], maxItems: 12, itemMaxLength: 30, cmd: '고용',
       desc: 'Local people taken on at the holding — never a maid or a sister, they go in corps. '
         + 'Format is ONLY "Name · role" — "요한 · 목수", "톰 · 마구간지기". No individual wage: their keep is '
@@ -556,17 +564,25 @@ const S = {
     // 직무 효과치 (P3) — 앉은 사람의 등급×특기 승수. 떠난 사람(corps에서 빠짐)은 0이 된다:
     // sum(corps, 이름)은 그 사람 봉급 줄이 있을 때만 양수라 "아직 고용 중" 검사로 쓴다.
     // 자리가 비면('없음') 0. 값 범위 0~4 (E 주특기 4) — 쓰는 쪽 공식이 알아서 환산한다.
-    ...DUTY.map(([k]) => ({
+    ...DUTY.map(([k, label]) => ({
       id: `d_${k}`,
-      expr: HIRE.reduceRight(
+      expr: '(' + HIRE.reduceRight(
         (acc, [tail, name, , rank]) => `duty_${k} == ${JSON.stringify(name)}`
           + ` ? (sum(corps, ${JSON.stringify(name)}) > 0 ? ${dutyPower(tail, rank, k)} : 0) : (${acc})`,
-        '0'),
+        '0')
+        + `) + (adere_duty == ${JSON.stringify(label)} and ally == "아데레" ? ${ADERE_POWER(label)} : 0)`,
     })),
+    // 대기조 — 고용은 했는데 직무가 없는 이들. 저택이 윤택해진다 (3명당 사기 +1/일, 최대 +2).
+    // 6칸에 15명이면 태반이 놀게 되는데, 노는 손이 0의 가치면 고용 자체가 벌이 된다 —
+    // 붕 뜨는 대신 "시중"이라는 낮고 넓은 보너스로 받는다 (하렘 플레이의 기계적 등가물).
+    { id: 'duty_seated',
+      expr: DUTY.map(([k]) => `(duty_${k} != "없음" and sum(corps, duty_${k}) > 0 ? 1 : 0)`).join(' + ') },
+    { id: 'duty_idle', label: '대기', expr: 'max(0, count(corps) - duty_seated)', format: '{v}명' },
     // 배치 한 줄 — 프롬프트·인물 대장용. 아무도 없으면 "없음" (bond_txt와 같은 2단 패턴).
     // 떠난 사람(corps에서 빠짐)은 줄에서도 뺀다 — 효과는 이미 0인데 이름만 남으면 프롬프트가 거짓말한다.
     { id: 'duty_raw', expr: DUTY.map(([k, label]) =>
-      `(duty_${k} == "없음" or sum(corps, duty_${k}) <= 0 ? "" : "${label} " + duty_${k} + "  ")`).join(' + ') },
+      `(duty_${k} == "없음" or sum(corps, duty_${k}) <= 0 ? "" : "${label} " + duty_${k} + "  ")`).join(' + ')
+      + ' + (adere_duty == "없음" or ally != "아데레" ? "" : adere_duty + " 아데레  ")' },
     { id: 'duty_line', label: '배치', expr: 'duty_raw == "" ? "없음" : duty_raw' },
     { id: 'hire_open', label: '부를 수 있는 등급',
       expr: TIER.slice().reverse().reduceRight(
@@ -721,7 +737,7 @@ const S = {
       // (잉여가 나야 회복되게 짜면 교착이다 — 보건이 낮아 잉여가 안 나는데 잉여가 없어 보건도 안 오른다)
       // 의무·가사 담당의 회복 보정 (P3) — E 주특기 기준 +2/일. 굶는 날의 -7은 못 이긴다 (의도).
       { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5)) * span, 0, 100)' },
-      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
       // 급료를 못 준 병사가 얌전할 리 없다 — 군대를 키우는 데 재정이 물린다
       // 호위 담당은 경비 인력 몫으로(d_guard×2명), 행정 담당은 회복 보정으로 (P3)
@@ -1573,7 +1589,9 @@ const sec = (t) => `<div class="vled-sec">${t}</div>`;
 const row = (k, v2) => `<div class="vled-row"><span>${k}</span><span class="v">${v2}</span></div>`;
 S.party = {
   label: '영지 대장', icon: '📖',
-  empty: '없음', roster: 'corps',   // 배치 탭: 고용(corps)한 이름만 열린다. 비우기 = '없음'
+  // ⚠ roster는 배치 탭에만 건다 (전역 금지) — 아데레 탭의 후보는 직무 이름이라
+  // corps 대조에 걸리면 전부 잠긴다. empty '없음'은 두 탭 enum 모두에 있다.
+  empty: '없음',
   css: `
 .scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
   width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
@@ -1610,16 +1628,23 @@ S.party = {
       + row('다음 축일', '{fest} ({fest_when}, D-{fest_in})')
       + '<div class="vled-p">{fest_desc}</div>' },
     // 배치 (P3) — 고용한 군단·수녀를 직무에 앉힌다. 실제 편성 슬롯 탭 (템플릿 아님).
-    { id: 'duty', label: '배치', fab: '👯',
+    { id: 'duty', label: '배치', fab: '👯', roster: 'corps',
       note: '고용한 이들을 직무에 앉힌다. 특기가 맞으면 온전한 효과, 아니면 반감 — 정답 배치는 없다. '
+        + '배치 안 된 이들은 저택 시중(대기조 — 사기 보너스). '
         + DUTY.map(([, label, eff]) => `${label}=${eff.split(' (')[0]}`).join(' · '),
       slots: DUTY.map(([k, label]) => ({ var: `duty_${k}`, label })) },
+    // 아데레 — corps 밖 특수 인물이라 축을 뒤집은 전용 탭: "직임을 아데레에게".
+    // 동행 없이 시작한 판(ally != 아데레)에선 탭이 통째로 숨는다 (v0.59 when).
+    { id: 'aide', label: '아데레', when: 'ally == "아데레"',
+      note: '포로 왕족의 시종 — 몸값도 봉급도 없다. 직임 하나를 맡긴다 (책사라 행정이 특기).',
+      slots: [{ var: 'adere_duty', label: '직임' }] },
     { id: 'people', label: '인물', fab: '📋', template: ''
       + '<div class="vled-h">인물 명부<small>아는 얼굴 {bond_known}</small></div>'
-      + sec('배치 — 효과치 (특기 일치 시 최대 4)')
+      + sec('배치 — 효과치 (특기 일치 시 최대 4) · 대기 {duty_idle}')
       + row('가사', '{duty_home} ({d_home})') + row('호위', '{duty_guard} ({d_guard})')
       + row('행정', '{duty_admin} ({d_admin})') + row('의무', '{duty_care} ({d_care})')
       + row('탐사', '{duty_scout} ({d_scout})') + row('건설', '{duty_build} ({d_build})')
+      + row('아데레', '{adere_duty}')
       + sec('아카데미 · 대성당')
       + '<div class="vled-p">{hire_open} 응한다 — {hire_txt}</div>'
       + sec('군단 · 수녀 — 봉급 {payroll}/일') + '{corps:tags}'
@@ -1829,6 +1854,27 @@ for (const t of S.party.tabs) {
   ok('배치 탭 슬롯 6 + 미고용 잠금', dutyTab.slots.length === 6
     && dutyTab.slots[0].candidates.find((c) => c.name === '스텔라').locked
     && !dutyTab.slots[0].candidates.find((c) => c.name === '유스티나').locked, dutyTab.slots.length);
+
+  // 아데레 — corps 밖 특수 축
+  t.vars.adere_duty = '행정';
+  const La = engine.makeLookup(S, t.vars);
+  ok('아데레 행정 주특기 = 3 (봉급 0)', La('d_admin') === 3, La('d_admin'));
+  ok('배치 줄에 아데레', String(La('duty_line')).includes('행정 아데레'), La('duty_line'));
+  const aide = SC.require('party').partyView(S, t).tabs.find((x) => x.id === 'aide');
+  ok('아데레 탭 — 후보가 직무 이름 + 잠금 없음', aide
+    && aide.slots[0].candidates.every((c) => !c.locked), JSON.stringify(aide?.slots[0].candidates.map((c) => c.name)));
+  t.vars.ally = '';
+  const Lb = engine.makeLookup(S, t.vars);
+  ok('동행 없이 시작한 판 — 효과 0 · 줄에서 제외 · 탭 숨김',
+    Lb('d_admin') === 0 && !String(Lb('duty_line')).includes('아데레')
+    && !SC.require('party').partyView(S, t).tabs.some((x) => x.id === 'aide'), Lb('d_admin'));
+  t.vars.ally = '아데레';
+
+  // 대기조 — 배치 안 된 고용인의 낮고 넓은 사기 보너스
+  t.vars.corps = ['유스티나 30', '메릴 8', '필리아 4', '세리에 4', '리비아 8'];
+  const Lc = engine.makeLookup(S, t.vars);
+  ok('대기 4명 (5고용, 착석은 가사 유스티나뿐)', Lc('duty_idle') === 4
+    && Lc('duty_seated') === 1, `seated=${Lc('duty_seated')} idle=${Lc('duty_idle')}`);
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

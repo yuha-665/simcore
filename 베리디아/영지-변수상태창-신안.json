@@ -914,6 +914,22 @@
       "desc": "건설 직무 담당자 (건설 인력 가산). 게임 패널 [배치] 탭에서 앉힌다."
     },
     {
+      "id": "adere_duty",
+      "label": "아데레 직임",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "가사",
+        "호위",
+        "행정",
+        "의무",
+        "탐사",
+        "건설"
+      ],
+      "desc": "아데레에게 맡긴 직무 (게임 패널 [아데레] 탭). 동행이 아데레가 아니면 무효."
+    },
+    {
       "id": "staff",
       "label": "현지 고용인",
       "type": "list",
@@ -1191,31 +1207,41 @@
     },
     {
       "id": "d_home",
-      "expr": "duty_home == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_home == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 1 : 0) : (duty_home == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_home == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 1 : 0) : (duty_home == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.5 : 0) : (duty_home == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_home == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 1 : 0) : (duty_home == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 2 : 0) : (duty_home == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 3 : 0) : (duty_home == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_home == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_home == \"라라\" ? (sum(corps, \"라라\") > 0 ? 3 : 0) : (duty_home == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_home == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_home == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+      "expr": "(duty_home == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_home == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 1 : 0) : (duty_home == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_home == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 1 : 0) : (duty_home == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.5 : 0) : (duty_home == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_home == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 1 : 0) : (duty_home == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 2 : 0) : (duty_home == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 3 : 0) : (duty_home == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_home == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_home == \"라라\" ? (sum(corps, \"라라\") > 0 ? 3 : 0) : (duty_home == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_home == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_home == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))) + (adere_duty == \"가사\" and ally == \"아데레\" ? 1.5 : 0)"
     },
     {
       "id": "d_guard",
-      "expr": "duty_guard == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_guard == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_guard == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_guard == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_guard == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_guard == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 1 : 0) : (duty_guard == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_guard == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_guard == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_guard == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_guard == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 3 : 0) : (duty_guard == \"라라\" ? (sum(corps, \"라라\") > 0 ? 1.5 : 0) : (duty_guard == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 4 : 0) : (duty_guard == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 4 : 0) : (duty_guard == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 2 : 0) : (0)))))))))))))))"
+      "expr": "(duty_guard == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_guard == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_guard == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_guard == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_guard == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_guard == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 1 : 0) : (duty_guard == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_guard == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_guard == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_guard == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_guard == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 3 : 0) : (duty_guard == \"라라\" ? (sum(corps, \"라라\") > 0 ? 1.5 : 0) : (duty_guard == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 4 : 0) : (duty_guard == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 4 : 0) : (duty_guard == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 2 : 0) : (0)))))))))))))))) + (adere_duty == \"호위\" and ally == \"아데레\" ? 0.75 : 0)"
     },
     {
       "id": "d_admin",
-      "expr": "duty_admin == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_admin == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_admin == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_admin == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_admin == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_admin == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_admin == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_admin == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_admin == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_admin == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 3 : 0) : (duty_admin == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_admin == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_admin == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_admin == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_admin == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+      "expr": "(duty_admin == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_admin == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_admin == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_admin == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_admin == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_admin == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_admin == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_admin == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_admin == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_admin == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 3 : 0) : (duty_admin == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_admin == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_admin == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_admin == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_admin == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))) + (adere_duty == \"행정\" and ally == \"아데레\" ? 3 : 0)"
     },
     {
       "id": "d_care",
-      "expr": "duty_care == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 1 : 0) : (duty_care == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 2 : 0) : (duty_care == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 3 : 0) : (duty_care == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_care == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_care == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_care == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_care == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 1 : 0) : (duty_care == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_care == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_care == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_care == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_care == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_care == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_care == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+      "expr": "(duty_care == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 1 : 0) : (duty_care == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 2 : 0) : (duty_care == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 3 : 0) : (duty_care == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_care == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_care == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_care == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_care == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 1 : 0) : (duty_care == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_care == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_care == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_care == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_care == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_care == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_care == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))) + (adere_duty == \"의무\" and ally == \"아데레\" ? 0.75 : 0)"
     },
     {
       "id": "d_scout",
-      "expr": "duty_scout == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_scout == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_scout == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_scout == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_scout == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 1 : 0) : (duty_scout == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 2 : 0) : (duty_scout == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_scout == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_scout == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_scout == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_scout == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_scout == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_scout == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_scout == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_scout == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 4 : 0) : (0)))))))))))))))"
+      "expr": "(duty_scout == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_scout == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_scout == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_scout == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_scout == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 1 : 0) : (duty_scout == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 2 : 0) : (duty_scout == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_scout == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_scout == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_scout == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_scout == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_scout == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_scout == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_scout == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_scout == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 4 : 0) : (0)))))))))))))))) + (adere_duty == \"탐사\" and ally == \"아데레\" ? 0.75 : 0)"
     },
     {
       "id": "d_build",
-      "expr": "duty_build == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_build == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_build == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_build == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_build == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_build == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_build == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 2 : 0) : (duty_build == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_build == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 1.5 : 0) : (duty_build == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_build == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 1.5 : 0) : (duty_build == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_build == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_build == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 2 : 0) : (duty_build == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+      "expr": "(duty_build == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_build == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_build == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_build == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_build == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_build == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_build == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 2 : 0) : (duty_build == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_build == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 1.5 : 0) : (duty_build == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_build == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 1.5 : 0) : (duty_build == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_build == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_build == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 2 : 0) : (duty_build == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))) + (adere_duty == \"건설\" and ally == \"아데레\" ? 0.75 : 0)"
+    },
+    {
+      "id": "duty_seated",
+      "expr": "(duty_home != \"없음\" and sum(corps, duty_home) > 0 ? 1 : 0) + (duty_guard != \"없음\" and sum(corps, duty_guard) > 0 ? 1 : 0) + (duty_admin != \"없음\" and sum(corps, duty_admin) > 0 ? 1 : 0) + (duty_care != \"없음\" and sum(corps, duty_care) > 0 ? 1 : 0) + (duty_scout != \"없음\" and sum(corps, duty_scout) > 0 ? 1 : 0) + (duty_build != \"없음\" and sum(corps, duty_build) > 0 ? 1 : 0)"
+    },
+    {
+      "id": "duty_idle",
+      "label": "대기",
+      "expr": "max(0, count(corps) - duty_seated)",
+      "format": "{v}명"
     },
     {
       "id": "duty_raw",
-      "expr": "(duty_home == \"없음\" or sum(corps, duty_home) <= 0 ? \"\" : \"가사 \" + duty_home + \"  \") + (duty_guard == \"없음\" or sum(corps, duty_guard) <= 0 ? \"\" : \"호위 \" + duty_guard + \"  \") + (duty_admin == \"없음\" or sum(corps, duty_admin) <= 0 ? \"\" : \"행정 \" + duty_admin + \"  \") + (duty_care == \"없음\" or sum(corps, duty_care) <= 0 ? \"\" : \"의무 \" + duty_care + \"  \") + (duty_scout == \"없음\" or sum(corps, duty_scout) <= 0 ? \"\" : \"탐사 \" + duty_scout + \"  \") + (duty_build == \"없음\" or sum(corps, duty_build) <= 0 ? \"\" : \"건설 \" + duty_build + \"  \")"
+      "expr": "(duty_home == \"없음\" or sum(corps, duty_home) <= 0 ? \"\" : \"가사 \" + duty_home + \"  \") + (duty_guard == \"없음\" or sum(corps, duty_guard) <= 0 ? \"\" : \"호위 \" + duty_guard + \"  \") + (duty_admin == \"없음\" or sum(corps, duty_admin) <= 0 ? \"\" : \"행정 \" + duty_admin + \"  \") + (duty_care == \"없음\" or sum(corps, duty_care) <= 0 ? \"\" : \"의무 \" + duty_care + \"  \") + (duty_scout == \"없음\" or sum(corps, duty_scout) <= 0 ? \"\" : \"탐사 \" + duty_scout + \"  \") + (duty_build == \"없음\" or sum(corps, duty_build) <= 0 ? \"\" : \"건설 \" + duty_build + \"  \") + (adere_duty == \"없음\" or ally != \"아데레\" ? \"\" : adere_duty + \" 아데레  \")"
     },
     {
       "id": "duty_line",
@@ -1549,7 +1575,7 @@
       },
       {
         "set": "morale",
-        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
+        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
       },
       {
         "set": "unrest",
@@ -3201,7 +3227,6 @@
     "label": "영지 대장",
     "icon": "📖",
     "empty": "없음",
-    "roster": "corps",
     "css": "\n.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;\n  width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }\n.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }\n.scg-title .scg-x { color:#4a2c2a; }\n.scg-title .scg-x:hover { background:#e2d3b6; color:#4a2c2a; }\n.scg-note { color:#6b5744; }\n.scg-tabs { border-bottom:2px solid #bda27e; }\n.scg-tab { color:#6b5744; }\n.scg-tab.scg-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }\n.scg-notice { color:#8a3a2a; }\n.scg-tpl .vled-h { text-align:center; font-size:16px; font-weight:700; letter-spacing:.18em; margin:2px 0 8px; color:#4a2c2a; }\n.scg-tpl .vled-h small { display:block; letter-spacing:0; font-size:11.5px; font-weight:400; color:#6b5744; margin-top:2px; }\n.scg-tpl .vled-sec { margin:10px 0 4px; padding:3px 9px; background:#4a2c2a; color:#f0e5d1; font-size:12.5px; font-weight:700; border-radius:3px; }\n.scg-tpl .vled-row { display:flex; justify-content:space-between; gap:10px; padding:3px 4px; font-size:13px; border-bottom:1px dashed #d8c6a4; }\n.scg-tpl .vled-row .v { font-weight:700; text-align:right; }\n.scg-tpl .vled-p { padding:2px 6px; font-size:12.5px; color:#5a4c3a; }\n.scg-tpl .sim-tag { border:1px solid #bda27e; background:rgba(74,44,42,.06); color:#3d352a; }\n.scg-tpl .sim-empty { color:#8a7a60; }",
     "tabs": [
       {
@@ -3213,7 +3238,8 @@
         "id": "duty",
         "label": "배치",
         "fab": "👯",
-        "note": "고용한 이들을 직무에 앉힌다. 특기가 맞으면 온전한 효과, 아니면 반감 — 정답 배치는 없다. 가사=사기 회복 + 식량 소비 절감 · 호위=경비 인력 가산 · 행정=내부 불안 회복 · 의무=보건 회복 · 탐사=척후 인력 가산 · 건설=건설 인력 가산",
+        "roster": "corps",
+        "note": "고용한 이들을 직무에 앉힌다. 특기가 맞으면 온전한 효과, 아니면 반감 — 정답 배치는 없다. 배치 안 된 이들은 저택 시중(대기조 — 사기 보너스). 가사=사기 회복 + 식량 소비 절감 · 호위=경비 인력 가산 · 행정=내부 불안 회복 · 의무=보건 회복 · 탐사=척후 인력 가산 · 건설=건설 인력 가산",
         "slots": [
           {
             "var": "duty_home",
@@ -3242,10 +3268,22 @@
         ]
       },
       {
+        "id": "aide",
+        "label": "아데레",
+        "when": "ally == \"아데레\"",
+        "note": "포로 왕족의 시종 — 몸값도 봉급도 없다. 직임 하나를 맡긴다 (책사라 행정이 특기).",
+        "slots": [
+          {
+            "var": "adere_duty",
+            "label": "직임"
+          }
+        ]
+      },
+      {
         "id": "people",
         "label": "인물",
         "fab": "📋",
-        "template": "<div class=\"vled-h\">인물 명부<small>아는 얼굴 {bond_known}</small></div><div class=\"vled-sec\">배치 — 효과치 (특기 일치 시 최대 4)</div><div class=\"vled-row\"><span>가사</span><span class=\"v\">{duty_home} ({d_home})</span></div><div class=\"vled-row\"><span>호위</span><span class=\"v\">{duty_guard} ({d_guard})</span></div><div class=\"vled-row\"><span>행정</span><span class=\"v\">{duty_admin} ({d_admin})</span></div><div class=\"vled-row\"><span>의무</span><span class=\"v\">{duty_care} ({d_care})</span></div><div class=\"vled-row\"><span>탐사</span><span class=\"v\">{duty_scout} ({d_scout})</span></div><div class=\"vled-row\"><span>건설</span><span class=\"v\">{duty_build} ({d_build})</span></div><div class=\"vled-sec\">아카데미 · 대성당</div><div class=\"vled-p\">{hire_open} 응한다 — {hire_txt}</div><div class=\"vled-sec\">군단 · 수녀 — 봉급 {payroll}/일</div>{corps:tags}<div class=\"vled-sec\">호감도</div><div class=\"vled-row\"><span>왕가 · 동행</span><span class=\"v\">{bond0}</span></div><div class=\"vled-row\"><span>귀족</span><span class=\"v\">{bond1}</span></div><div class=\"vled-row\"><span>광휘회</span><span class=\"v\">{bond2}</span></div><div class=\"vled-row\"><span>메이드군단</span><span class=\"v\">{bond3}</span></div><div class=\"vled-sec\">현지 고용인</div>{staff:tags}<div class=\"vled-sec\">인맥 · 교역 상대</div>{contacts:tags}"
+        "template": "<div class=\"vled-h\">인물 명부<small>아는 얼굴 {bond_known}</small></div><div class=\"vled-sec\">배치 — 효과치 (특기 일치 시 최대 4) · 대기 {duty_idle}</div><div class=\"vled-row\"><span>가사</span><span class=\"v\">{duty_home} ({d_home})</span></div><div class=\"vled-row\"><span>호위</span><span class=\"v\">{duty_guard} ({d_guard})</span></div><div class=\"vled-row\"><span>행정</span><span class=\"v\">{duty_admin} ({d_admin})</span></div><div class=\"vled-row\"><span>의무</span><span class=\"v\">{duty_care} ({d_care})</span></div><div class=\"vled-row\"><span>탐사</span><span class=\"v\">{duty_scout} ({d_scout})</span></div><div class=\"vled-row\"><span>건설</span><span class=\"v\">{duty_build} ({d_build})</span></div><div class=\"vled-row\"><span>아데레</span><span class=\"v\">{adere_duty}</span></div><div class=\"vled-sec\">아카데미 · 대성당</div><div class=\"vled-p\">{hire_open} 응한다 — {hire_txt}</div><div class=\"vled-sec\">군단 · 수녀 — 봉급 {payroll}/일</div>{corps:tags}<div class=\"vled-sec\">호감도</div><div class=\"vled-row\"><span>왕가 · 동행</span><span class=\"v\">{bond0}</span></div><div class=\"vled-row\"><span>귀족</span><span class=\"v\">{bond1}</span></div><div class=\"vled-row\"><span>광휘회</span><span class=\"v\">{bond2}</span></div><div class=\"vled-row\"><span>메이드군단</span><span class=\"v\">{bond3}</span></div><div class=\"vled-sec\">현지 고용인</div>{staff:tags}<div class=\"vled-sec\">인맥 · 교역 상대</div>{contacts:tags}"
       },
       {
         "id": "survey",

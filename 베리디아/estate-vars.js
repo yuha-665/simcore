@@ -228,6 +228,46 @@ const EPOCH = (3 - 1) * 30 + (1 - 1);
 const S = {
   simcore: '0.1',
   meta: { name: '베리디아 남작령' },
+  // ── 시간 체계 (flat30 이행, 유저 확정 2026-08-15 / 실행 08-16) ──
+  // 수제 360일 달력(파생 7개)을 time 1급으로. 한 달 30일 × 12달 = 같은 360일이라
+  // 날짜·축일·계절이 한 눈금도 안 어긋난다. 진행은 explicit — 날짜는 보조가 skip_day에
+  // 적었을 때만 흐른다 ("1아웃풋=1일" 왜곡 해소). 시각(🕗아침)은 서사 전용 enum으로 존치.
+  time: {
+    start: '1499-03-01 08:00',
+    advance: 'explicit',
+    calendar: 'flat30',
+    format: { date: 'YYYY년 M월 D일' },
+    seasons: ['🍀봄', '🌻여름', '🍂가을', '⛄겨울'],   // seasonIndex: 3~5월=봄 — 기존 매핑과 동일
+    expose: ['date', 'season', 'year', 'month', 'dom', 'elapsed'],
+  },
+  // 달력 패널 (🕐) — 축일 12종이 기념일로, 계약·공사 기한이 점으로 걸린다.
+  // 일정 목록(list)은 안 단다 — 예정(appt) 체계가 이미 그 자리를 맡고 있다.
+  calendar: {
+    label: '달력', icon: '🕐',
+    note: '축일과 기한(계약·공사)이 날짜에 걸린다.',
+    marks: FEST.map(([m, d, name, note]) => ({ month: m, dom: d, label: name, note })),
+    // 양피지 팔레트 — party.css와 같은 결 (달력 패널이 열릴 때만 이 CSS로 갈아끼워진다)
+    css: `
+.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
+  width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
+.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
+.scg-title .scg-x { color:#4a2c2a; }
+.scg-note { color:#6b5744; }
+.scc-nav .scc-month { color:#4a2c2a; }
+.scc-nav button { background:#f0e5d1; border:1px solid #bda27e; color:#3d352a; }
+.scc-nav button:hover { background:#e2d3b6; border-color:#4a2c2a; }
+.scc-wd { color:#6b5744; }
+.scc-day { background:rgba(255,255,255,.35); border-color:#d8c6a4; color:#3d352a; }
+.scc-day:hover { background:rgba(74,44,42,.08); border-color:#bda27e; }
+.scc-day.scc-today { border-color:#a12a2a; background:#f5e3e3; }
+.scc-day.scc-sel { border-color:#4a2c2a; box-shadow:0 0 0 1px #4a2c2a inset; }
+.scc-dot.scc-mark { background:#bda27e; }
+.scc-dot.scc-due { background:#a12a2a; }
+.scc-detail { background:rgba(255,255,255,.35); border-color:#bda27e; }
+.scc-detail-date { color:#4a2c2a; }
+.scc-entry .scc-kind { color:#6b5744; }
+.scc-legend { color:#6b5744; }`,
+  },
   vars: [
     // ── 시간·환경 ──
     // 날짜와 계절은 이제 AI가 아니라 day가 정한다(아래 derived).
@@ -238,9 +278,14 @@ const S = {
     // ⚠ init이 0인 것은 실수가 아니다. 보조 AI가 내는 숫자는 절대값이 아니라 증감값으로 붙는다
     //   (엔진이 from + delta로 적용한다). init을 1로 두면 AI가 "사흘"이라고 3을 써도 1+3=4일이 된다.
     //   0에서 출발해야 AI가 쓴 숫자가 그대로 날수가 되고, 아무 말 안 한 턴은 0 → 아래 span이 1로 받는다.
-    { id: 'days_passed', label: '이번에 흐른 날', type: 'int', init: 0, min: 0, max: 14,
-      desc: 'Days elapsed this response, if more than one. "Three days later" = 3, "next week" = 7. '
-        + 'Leave it alone for a single day. Date and season advance by this on their own.' },
+    // flat30 이행 (2026-08-16): 엔진 예약 이름 skip_day — 보조가 적은 날수를 엔진이 소비해
+    // 시계(time_epoch)에 굳힌다. 옛 days_passed와 결정적 차이: **0이면 날짜가 안 흐른다.**
+    // 같은 날 안의 장면 여러 턴이 며칠씩 흐르던 "1아웃풋=1일" 왜곡(design-시간.md)이 사라진다.
+    // ⚠ 진행 규칙은 이 desc에 적는다 — 지시문은 메인 전용이라 보조가 못 읽는다.
+    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 14,
+      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, next week = 7. '
+        + 'Leave it at 0 while the scene stays within the same day — the date, daily consumption and '
+        + 'harvest all move only with this.' },
     // 시각·날씨는 종류가 유한하다 → text로 두면 AI가 매번 다른 표기를 만든다. enum이면 못 벗어난다.
     { id: 'time', label: '시각', type: 'enum', init: '🕗아침',
       enum: ['🌅새벽', '🕗아침', '🕛낮', '🕗저녁', '🌙밤'] },
@@ -253,8 +298,14 @@ const S = {
       desc: 'Name of the disaster currently underway; empty string if none. Start a new one only when disaster_days is 0.' },
     { id: 'disaster_days', label: '재해 잔여', type: 'int', init: 0, min: 0, max: 30,
       desc: 'How many more days the disaster runs. The system counts it down and clears it at 0. Set it only at the start.' },
+    // day는 시계(elapsed)의 거울 변수다 — onTurn 첫 규칙이 매 턴 동기화한다.
+    // ⚠ 파생 별칭(expr: 'elapsed')으로 두면 안 된다: lookup이 vars를 파생보다 먼저 읽는데
+    //   reconcile은 잉여 키를 안 걷어내서, 구세이브에 남은 옛 vars.day가 별칭을 영구히 가린다
+    //   (날짜 동결 + 첫 span 폭주). 변수면 옛 값이 있어도 첫 턴에 새 시계로 스냅된다.
     { id: 'day', label: '경과일', type: 'int', init: 0, min: 0,
-      desc: '부임 후 며칠째인지. 날짜·계절·축일이 전부 여기서 계산된다. 시스템이 센다. 손대지 말 것.' },
+      desc: '부임 후 며칠째. 시계(elapsed)에서 매 턴 동기화된다. 시스템이 센다. 손대지 말 것.' },
+    { id: 'day_prev', label: '(내부) 지난 정산일', type: 'int', init: 0, min: 0,
+      desc: '지난 턴 정산 시점의 경과일. 시스템 전용이니 직접 바꾸지 마라.' },
 
     // ── 달력에 적어 두는 예정 하나 ──
     // "사흘 뒤 백작의 사자가 온다"를 AI가 기억하고 있을 거라 기대하면 안 된다.
@@ -486,18 +537,10 @@ const S = {
 
   derived: [
     // 이번 턴이 며칠어치인가. AI가 아무 말 안 했으면(0) 하루로 친다.
-    { id: 'span', label: '흐른 날', expr: 'max(1, days_passed)' },
-
-    // ── 달력: day 하나에서 전부 나온다 ──
-    // 12달 × 30일 = 360일. 판타지니 윤달도 28일도 없다 — 대신 AI가 날짜를 절대 못 흘린다.
-    { id: 'yday', label: '연중일', expr: `(day + ${EPOCH}) % 360` },
-    { id: 'year', label: '연도', expr: `${BASE_YEAR} + floor((day + ${EPOCH}) / 360)` },
-    { id: 'month', label: '월', expr: 'floor(yday / 30) + 1' },
-    { id: 'dom', label: '일', expr: 'yday % 30 + 1' },
-    { id: 'date', label: '날짜', expr: 'year + "년 " + month + "월 " + dom + "일"' },
-    // 계절도 달력이 정한다. 이제 계절과 날짜가 어긋날 수가 없다.
-    { id: 'season', label: '계절',
-      expr: 'month >= 12 or month <= 2 ? "⛄겨울" : (month <= 5 ? "🍀봄" : (month <= 8 ? "🌻여름" : "🍂가을"))' },
+    // ── 시간 (flat30 이행) — 날짜·계절·월·일은 time 체계의 노출 파생(date/season/month/dom/elapsed)이 낸다 ──
+    // 수제 달력 파생(yday·year·month·dom·date·season)이 지워졌다. day는 변수로 존치 (vars 참조).
+    // span = 이번 턴에 흐른 날수. **0일 수 있다** — 같은 날 안의 장면은 정산도 멈춘다.
+    { id: 'span', label: '흐른 날', expr: 'max(0, day - day_prev)' },
 
     // ── 다음 축일 ──
     // 이번 달 축일이 아직 안 지났으면 그것, 지났으면 다음 달 것.
@@ -740,13 +783,16 @@ const S = {
   // ── 매 턴 자동 정산. AI는 이 계산에 손대지 않는다 ──
   rules: {
     onTurn: [
+      // 반드시 첫 규칙: 시계 거울 동기화. 시계 소비(⑤.5)가 onTurn(⑥)보다 먼저라 elapsed는
+      // 이미 이 턴이 끝나는 날이고, 여기서 day에 비추면 아래 모든 규칙(expire·span)이 그걸 본다.
+      // 구세이브의 옛 day 값도 이 줄이 첫 턴에 새 시계로 스냅한다.
+      { set: 'day', expr: 'elapsed' },
       // 기한이 다한 계약부터 턴다. 정산보다 먼저여야 끝난 계약이 하루치를 더 받아 가지 않는다.
-      // 기준은 'day'가 아니라 'day + span' — 이 턴이 끝나는 날이다.
-      // day로 두면 아래에서 day가 올라가기 전 값으로 판정해 한 턴 늦게 빠진다(며칠 건너뛰면 더 늦는다).
-      { list: 'contracts', expire: 'day + span' },
+      // 기준은 그냥 'day' — 위 동기화 덕에 이미 이 턴이 끝나는 날이다 (옛 'day + span' 보정 불요).
+      { list: 'contracts', expire: 'day' },
       // 공사 완공 (P4-2) — 완공일이 지난 항목이 목록에서 내려간다. "무엇이 완성됐나"의 통지는
       // 아래 proj_done 이벤트 몫 (onTurn ⑥ → 조건 이벤트 ⑦ 순서라 같은 턴에 감지된다).
-      { list: 'projects', expire: 'day + span' },
+      { list: 'projects', expire: 'day' },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
       { set: 'food', expr: 'max(0, food + surplus * span)' },
@@ -790,7 +836,7 @@ const S = {
             + ` ? min(100, ${v} + round(scout_men * (0.6 + ${f} * 0.1)) * span) : ${v}))`,
         };
       }),
-      { set: 'day', expr: 'day + span' },
+      // (day 증가는 사라졌다 — 시계는 엔진이 skip_day 소비로 굴리고, day는 elapsed 별칭이다)
       // 재해는 저절로 끝난다. AI가 "언제 끝났더라"를 기억할 필요가 없다.
       { set: 'disaster_days', expr: 'max(0, disaster_days - span)' },
       { set: 'blight', expr: 'max(0, blight - span)' },   // 밭은 저절로 아문다
@@ -840,9 +886,8 @@ const S = {
       { set: 'exposed',
         expr: 'clamp(exposed + (stance == "중립" ? (day >= 60 ? 1 : -2) : 4) * min(span, 2), 0, 100)' },
 
-      // 반드시 마지막. 위 정산이 끝난 뒤 0으로 돌려놔야
-      // AI가 아무 말 안 한 턴이 조용히 사흘씩 흐르지 않는다.
-      { set: 'days_passed', expr: '0' },
+      // 반드시 마지막. 위 정산이 전부 span(=day - day_prev)을 읽은 뒤에 박자를 당겨야 한다.
+      { set: 'day_prev', expr: 'day' },
     ],
     // ── 발견 ──
     // 어느 자리가 열렸는지는 onTurn이 이미 정했다. 여기는 그걸 서사에게 넘기는 자리다.
@@ -1437,7 +1482,7 @@ const S = {
       //   전사  유저가 "매일 12골드씩 60일"이라 씀 → 옮겨 적음      ← 이건 받아쓰기다
       // guide의 STANDING INCOME 항목이 "숫자가 명시됐을 때만"으로 그 선을 긋는다.
       // 그래도 틀리면 /계약- 이나 패널 ✕로 뺀다 — 목록이라 눈에 보이는 게 이 설계의 이점이다.
-      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'days_passed' },
+      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'skip_day', maxGain: 14 },
       { id: 'route' }, { id: 'route_days', maxDelta: 40 },
       { id: 'stance' }, { id: 'exposed', maxDelta: 15 },   // 유저가 배분을 지시하면 반영
       // 방향은 열어 둔다. 계약과 달리 틀려도 복리로 어긋나지 않는다 —
@@ -1462,10 +1507,11 @@ const S = {
     guide: 'Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population '
       + 'change are already settled by the system — never touch them. You change only what the story created as an '
       + 'exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\n'
-      + 'TIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, '
-      + 'next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the '
-      + 'date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled '
-      + 'appointment; pass through it as a scene.\n'
+      + 'TIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, '
+      + 'three days later = 3, next week = 7). Leave it at 0 while the scene stays within the same day — nothing is '
+      + 'consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and '
+      + 'the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a '
+      + 'scheduled appointment; pass through it as a scene.\n'
       + 'WEATHER: pick only what fits the season (no heat wave in winter).\n'
       + 'DISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\n'
       + 'ROADS: route is whichever road is shut. Set it back to "없음" the moment the narration clears it — bandits '
@@ -1831,6 +1877,21 @@ for (const e of v.errors) console.log('  ✗', e.path, e.msg);
 for (const w of v.warnings) console.log('  ⚠', w.path, w.msg);
 if (!v.ok) process.exit(1);
 
+// ── flat30 이행 하네스 규약 ──
+// 아래 시뮬들은 전부 "1턴 = 최소 하루"를 전제로 짜여 있다 (12일 런·400일 방치·수확 표…).
+// explicit 시계에선 아무도 skip_day를 안 적으면 날짜도 정산도 멈추므로, 러너 전용으로
+// outputPhase를 감싸 매 턴 하루를 기본 주입한다 — 실플에서 보조 AI가 스스로 적는 것의 등가.
+// 개별 검증이 더 큰 값을 넣으면(예정 건너뛰기 6일 등) 그 값이 그대로 이긴다.
+const _outputPhase = engine.outputPhase;
+engine.outputPhase = (schema, sendState, changes, reasons, opts) => {
+  const ch = (changes && typeof changes === 'object') ? changes : {};
+  if (ch.skip_day == null) ch.skip_day = 1;
+  return _outputPhase(schema, sendState, ch, reasons, opts);
+};
+// 달력 좌표: day는 이제 elapsed 별칭이라 직접 못 쓴다 — epoch(분)로 민다.
+const EP0 = engine.initState(S).vars.time_epoch;
+const atDay = (t, d) => { t.vars.time_epoch = EP0 + d * 1440; t.vars.day = d; return t; };
+
 // 굴려 본다 — 시스템이 자동 정산하는 부분만 (AI 없음)
 let st = engine.initState(S); st.meta.setupDone = true;
 console.log('\n━━ 시스템만으로 12일 (AI 개입 없음) ━━');
@@ -1847,7 +1908,7 @@ for (let i = 0; i < 12; i++) {
 
 // ── 달력 검증 ──
 // 1) 360일이 정확히 한 바퀴인가  2) 계절이 달과 어긋나지 않는가  3) 축일이 빠짐없이 한 번씩 오는가
-const at = (d) => { const t = engine.initState(S); t.vars.day = d; return engine.makeLookup(S, t.vars); };
+const at = (d) => { const t = atDay(engine.initState(S), d); return engine.makeLookup(S, t.vars); };
 console.log('\n━━ 달력 ━━');
 for (const d of [0, 29, 30, 300, 359, 360, 719, 720]) {
   const L = at(d);
@@ -1881,7 +1942,7 @@ const apptRun = (label, plan) => {
   }
 };
 apptRun('평범하게', [{ appt: '백작의 사자 도착', appt_in: 3 }, null, null, null, null, null]);
-apptRun('예정일을 건너뛰어 버림', [{ appt: '백작의 사자 도착', appt_in: 3 }, null, { days_passed: 6 }, null, null]);
+apptRun('예정일을 건너뛰어 버림', [{ appt: '백작의 사자 도착', appt_in: 3 }, null, { skip_day: 6 }, null, null]);
 apptRun('연달아 두 번 등록', [{ appt: '첫 약속', appt_in: 1 }, null, null, { appt: '둘째 약속', appt_in: 2 }, null, null]);
 
 // ── 지속 수입 검증 ── 등록 → 매일 자동 정산 → 파기
@@ -1892,12 +1953,12 @@ const script = [
   [1, { contracts: { add: ['헤세 상단 양모 계약 +12'] } }, '양모 계약 체결 (무기한)'],
   [2, null, '(가만히 둔다)'],
   [1, { contracts: { add: ['제분소 5', '겨울 부역 부담 @14 -4'] } }, '제분소 + 부역(14일까지)'],
-  [1, { days_passed: 6 }, '엿새 건너뜀 (하루 아닌 6일이어야)'],
+  [1, { skip_day: 6 }, '엿새 건너뜀 (하루 아닌 6일이어야)'],
   [2, null, '(가만히 둔다)'],
   [1, null, '기한 당일 — 아직 유효해야'],
   [1, null, '기한 하루 뒤 — 부역이 저절로 빠져야'],
   [1, { contracts: { remove: ['헤세 상단 양모 계약 +12'] } }, '양모 계약 파기'],
-  [1, { days_passed: 12 }, '열이틀 건너뜀'],
+  [1, { skip_day: 12 }, '열이틀 건너뜀'],
 ];
 for (const [n, ch, why] of script) {
   for (let k = 0; k < n; k++) {
@@ -1957,7 +2018,7 @@ console.log('\n━━ 탐사 ━━');
     const sp = engine.sendPhase(S, t, { rng: seededRng('f', i, 's') });
     const out = engine.outputPhase(S, sp.state, {}, {}, { rng: seededRng('f', i, 'o') });
     t = out.state;
-    for (const n of t.meta.pendingNotifies) log.push(`  ${String(t.vars.day).padStart(2)}일  ${n}`);
+    for (const n of t.meta.pendingNotifies) log.push(`  ${String(engine.makeLookup(S, t.vars)("day")).padStart(2)}일  ${n}`);
     if (t.vars.exp_s >= 110 && t.vars.explore_dir === '남 평원') t.vars.explore_dir = '동 강가';
   }
   console.log(log.join('\n') || '  (30턴 내 발견 없음)');
@@ -2095,6 +2156,32 @@ for (const t of S.party.tabs) {
   ok('완공 — 목록에서 내려가고 통지 합류', t.vars.projects.length === 0 && t.vars.projects_n === 0 && doneNotice !== '', doneNotice || '통지 없음');
 }
 
+// ── 시간 이행 검증 (flat30) — 새 동작 둘 + 구세이브 스냅 ──
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 시간 이행 (flat30) ━━');
+  // ① 같은 날 안의 장면(skip_day 0)은 날짜도 정산도 멈춘다 — 래퍼를 피해 원본 outputPhase로
+  let t = engine.initState(S); t.meta.setupDone = true;
+  const f0 = t.vars.food, d0 = engine.makeLookup(S, t.vars)('date');
+  let r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('tm', 1, 's') }).state, {}, {}, { rng: seededRng('tm', 1, 'o') });
+  const L1 = engine.makeLookup(S, r.state.vars);
+  ok('skip 0 → 날짜 그대로 · 곳간 그대로', L1('date') === d0 && r.state.vars.food === f0,
+    `${d0} · 식량 ${f0} → ${L1('date')} · ${r.state.vars.food}`);
+  // ② 사흘을 적으면 사흘치가 한 번에 흐른다
+  r = _outputPhase(S, r.state, { skip_day: 3 }, {}, { rng: seededRng('tm', 2, 'o') });
+  const L2 = engine.makeLookup(S, r.state.vars);
+  ok('skip 3 → 날짜 +3 · 사흘치 정산', L2('elapsed') === 3 && r.state.vars.food < f0,
+    `${L2('date')} · 식량 ${f0} → ${r.state.vars.food}`);
+  // ③ 구세이브 스냅 — 옛 vars.day(172)가 남아 있어도 첫 턴에 새 시계로 스냅, span 폭주 없음
+  let old = engine.initState(S); old.meta.setupDone = true;
+  old.vars.day = 172; old.vars.days_passed = 0;   // 이행 전 세이브의 잔재
+  const fOld = old.vars.food;
+  r = _outputPhase(S, engine.sendPhase(S, old, { rng: seededRng('tm', 3, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('tm', 3, 'o') });
+  ok('구세이브 → day 스냅 · 하루치만 정산 (172일치 폭주 없음)',
+    r.state.vars.day === engine.makeLookup(S, r.state.vars)('elapsed') && (fOld - r.state.vars.food) < 120,
+    `day ${r.state.vars.day} · 식량 ${fOld} → ${r.state.vars.food}`);
+}
+
 const d = diagnose(S, { turns: 60, runs: 6 });
 console.log('\n━━ 진단 ━━');
 const sev = { high: '🔴', mid: '🟡', low: '🔵' };
@@ -2197,7 +2284,7 @@ for (const f of d.findings) console.log(` ${sev[f.sev]} [${f.tag}] ${f.text.slic
     const names = new Set();
     for (let d = 0; d < 360; d += 10) {
       const t = engine.clone(t0);
-      t.vars.day = d; t.vars.route = '없음'; t.vars.route_days = 0; t.vars.disaster = ''; t.vars.disaster_days = 0;
+      atDay(t, d); t.vars.route = '없음'; t.vars.route_days = 0; t.vars.disaster = ''; t.vars.disaster_days = 0;
       const L = engine.makeLookup(S, t.vars);
       for (const ev of S.rules.randomEvents.table) {
         if (ev.when && !truthy(evaluate(ev.when, L, null))) continue;

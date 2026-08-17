@@ -157,6 +157,36 @@ const TIER = [
 ];
 const CAST_ALL = Object.values(CAST).flat();
 const RANKNAME = Object.fromEntries(TIER.map(([k, label]) => [k, label]));
+
+// ── 직무 배치 (리메이크 P3, docs/design-베리디아-리메이크.md §4-1) ──
+// 고용한 군단·수녀를 직무 자리에 앉힌다 (게임 패널 배치 탭). 능력 프로필은 변수가 아니라
+// 이 표다 — 안 변하는 것은 변수 자리가 아니다. 변하는 것은 "누가 어디 앉았나"(duty_* enum)뿐.
+//   [키, 라벨, 효과 한 줄(패널 설명용)]
+const DUTY = [
+  ['home', '가사', '사기 회복 + 식량 소비 절감'],
+  ['guard', '호위', '경비 인력 가산 (내부 불안 압력 완화)'],
+  ['admin', '행정', '내부 불안 회복'],
+  ['care', '의무', '보건 회복'],
+  ['scout', '탐사', '척후 인력 가산 (탐사·채집 가속)'],
+  ['build', '건설', '건설 인력 가산'],
+];
+// 특기 [주, 부] — 카드 로어북의 Core Ability 실측 (유저 검수 완료, 2026-08-15).
+// 주특기 100% / 부특기 50% / 무특기 25% (유스티나만 만능 50%) — 완만하게: 개방 원칙의
+// "정답 배치 금지". 호감도나 서사 사정으로 딴 자리에 앉혀도 손해가 아프지 않아야 한다.
+const SPEC = {
+  yustina: ['guard', 'home'], algeria: ['guard', 'build'], lirica: ['scout', 'guard'],
+  clarice: ['home', 'build'], cassia: ['admin', null], lulu: ['guard', 'build'], lara: ['home', 'guard'],
+  livia: ['scout', 'guard'], fiora: ['build', 'home'], meryl: ['home', 'care'],
+  philia: ['home', null], serie: ['scout', 'home'],
+  lapis: ['care', null], celestia: ['care', 'home'], stella: ['care', null],
+};
+const TIER_POWER = { J: 1, I: 2, S: 3, E: 4 };
+const HIRE = CAST_ALL.filter(([, , , rank]) => rank);   // 고용 대상 15명 (등급 있는 이들)
+const dutyPower = (tail, rank, duty) => {
+  const [main, sub] = SPEC[tail] || [];
+  const mult = main === duty ? 1 : sub === duty ? 0.5 : (tail === 'yustina' ? 0.5 : 0.25);
+  return TIER_POWER[rank] * mult;
+};
 // 만난 사람만 이어 붙인다 — 스물여섯을 매 턴 다 내보내면 프롬프트가 인물표가 된다.
 // 고용 대상은 이름 옆에 등급을 붙인다 — 값이 얼마인지 바로 읽히게.
 const bondLine = (rows) => rows.map(([id, name, , rank]) =>
@@ -406,6 +436,15 @@ const S = {
         + 'daily wage last — "리비아 8", "스텔라 4". No role, no description. Their sum is paid out of the treasury '
         + 'every day, so an entry without a number is a free servant and that is wrong.' },
     // 현지인. 이름과 직임만 — 설명은 쓰지 마라, 로어북에 있다.
+    // 직무 배치 (P3) — 슬롯 = enum 하나 = 게임 패널 배치 탭의 자리 하나.
+    // roster(corps) 잠금이 있어 고용 안 한 이름은 패널에서 잠긴 채 보인다 (영입하면 열린다).
+    // ⚠ updater allow 금지 — 배치는 유저가 패널에서 정한다. AI가 서사 분위기로 옮기면
+    //   보너스가 소리 없이 움직여 "왜 곳간이 줄지" 못 찾게 된다.
+    ...DUTY.map(([k, label, eff]) => ({
+      id: `duty_${k}`, label: `${label} 담당`, type: 'enum', init: '없음',
+      enum: ['없음', ...HIRE.map(([, name]) => name)],
+      desc: `${label} 직무 담당자 (${eff}). 게임 패널 [배치] 탭에서 앉힌다.`,
+    })),
     { id: 'staff', label: '현지 고용인', type: 'list', init: [], maxItems: 12, itemMaxLength: 30, cmd: '고용',
       desc: 'Local people taken on at the holding — never a maid or a sister, they go in corps. '
         + 'Format is ONLY "Name · role" — "요한 · 목수", "톰 · 마구간지기". No individual wage: their keep is '
@@ -514,6 +553,21 @@ const S = {
       { id: `wage_${k}`, expr: hireWage(wage) },
     ]).flat(),
     { id: 'payroll', label: '봉급 총액', expr: 'sum(corps)' },
+    // 직무 효과치 (P3) — 앉은 사람의 등급×특기 승수. 떠난 사람(corps에서 빠짐)은 0이 된다:
+    // sum(corps, 이름)은 그 사람 봉급 줄이 있을 때만 양수라 "아직 고용 중" 검사로 쓴다.
+    // 자리가 비면('없음') 0. 값 범위 0~4 (E 주특기 4) — 쓰는 쪽 공식이 알아서 환산한다.
+    ...DUTY.map(([k]) => ({
+      id: `d_${k}`,
+      expr: HIRE.reduceRight(
+        (acc, [tail, name, , rank]) => `duty_${k} == ${JSON.stringify(name)}`
+          + ` ? (sum(corps, ${JSON.stringify(name)}) > 0 ? ${dutyPower(tail, rank, k)} : 0) : (${acc})`,
+        '0'),
+    })),
+    // 배치 한 줄 — 프롬프트·인물 대장용. 아무도 없으면 "없음" (bond_txt와 같은 2단 패턴).
+    // 떠난 사람(corps에서 빠짐)은 줄에서도 뺀다 — 효과는 이미 0인데 이름만 남으면 프롬프트가 거짓말한다.
+    { id: 'duty_raw', expr: DUTY.map(([k, label]) =>
+      `(duty_${k} == "없음" or sum(corps, duty_${k}) <= 0 ? "" : "${label} " + duty_${k} + "  ")`).join(' + ') },
+    { id: 'duty_line', label: '배치', expr: 'duty_raw == "" ? "없음" : duty_raw' },
     { id: 'hire_open', label: '부를 수 있는 등급',
       expr: TIER.slice().reverse().reduceRight(
         (acc, [, label, , gate]) => `fame >= ${gate} ? ${JSON.stringify(label + '까지')} : (${acc})`,
@@ -545,9 +599,10 @@ const S = {
 
     { id: 'able', label: '가용 노동력', expr: 'round(pop * (0.38 + health * 0.0035))', format: '{v}명' },
     { id: 'farm_men', label: '경작', expr: `round(able * (${share(1)}))`, format: '{v}명' },
-    { id: 'build_men', label: '건설', expr: `round(able * (${share(2)}))`, format: '{v}명' },
+    // 담당자(建·探)가 이끌면 실질 인력이 는다 — d_* × 2명 몫 (P3)
+    { id: 'build_men', label: '건설', expr: `round(able * (${share(2)})) + round(d_build * 2)`, format: '{v}명' },
     { id: 'guard_men', label: '경비', expr: `round(able * (${share(3)}))`, format: '{v}명' },
-    { id: 'scout_men', label: '탐사', expr: `round(able * (${share(4)}))`, format: '{v}명' },
+    { id: 'scout_men', label: '탐사', expr: `round(able * (${share(4)})) + round(d_scout * 2)`, format: '{v}명' },
     // 먹이고 재운 정도가 곧 능률. "식량 쓰고 쉬면 게이지가 찬다"를 미시관리 없이 흡수한다.
     { id: 'efficiency', label: '능률', expr: 'clamp(35 + health * 0.45 + morale * 0.2, 20, 100)' },
 
@@ -565,7 +620,8 @@ const S = {
       expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)' },
     { id: 'draw_water', label: '일 취수',
       expr: 'round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)' },
-    { id: 'eaten', label: '일 소비', expr: 'pop + army' },
+    // 가사 담당이 곳간 낭비를 줄인다 (라라의 빙결 보존이 대표 서사) — E 주특기 기준 -6/일
+    { id: 'eaten', label: '일 소비', expr: 'max(0, pop + army - round(d_home * 1.5))' },
 
     // ── 수입 ──
     // 계약 목록은 금화만 나른다. 그래서 "밀 수입 -15"를 계약에 적으면 돈만 나가고 밀은 안 들어왔다.
@@ -663,12 +719,14 @@ const S = {
       { set: 'gold', expr: 'max(0, gold + net_gold * span)' },
       // 굶거나 목마르면 무너지고, 곳간이 있는 동안은 천천히 회복된다.
       // (잉여가 나야 회복되게 짜면 교착이다 — 보건이 낮아 잉여가 안 나는데 잉여가 없어 보건도 안 오른다)
-      { set: 'health', expr: 'clamp(health + (food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) * span, 0, 100)' },
-      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
+      // 의무·가사 담당의 회복 보정 (P3) — E 주특기 기준 +2/일. 굶는 날의 -7은 못 이긴다 (의도).
+      { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5)) * span, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
       // 급료를 못 준 병사가 얌전할 리 없다 — 군대를 키우는 데 재정이 물린다
-      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0)'
-        + ' + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0)) * span, 0, 100)' },
+      // 호위 담당은 경비 인력 몫으로(d_guard×2명), 행정 담당은 회복 보정으로 (P3)
+      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0)'
+        + ' + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span, 0, 100)' },
       // 명성은 "여기 가면 살 수 있다"는 소문
       { set: 'fame', expr: 'clamp(fame + ((surplus > 4 ? 2 : 0) - (unrest >= 60 ? 2 : 0)) * span, 0, 100)' },
       // 굶으면 사람이 줄고, 먹이고 이름이 나면 흘러든다.
@@ -1331,6 +1389,7 @@ const S = {
     template: '[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n'
       + '다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n'
       + '국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n'
+      + '직무 배치 {duty_line}\n'
       + '식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
       + '재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n'
       + '지속 수입 {contracts} | 길 {route_txt}\n'
@@ -1514,6 +1573,7 @@ const sec = (t) => `<div class="vled-sec">${t}</div>`;
 const row = (k, v2) => `<div class="vled-row"><span>${k}</span><span class="v">${v2}</span></div>`;
 S.party = {
   label: '영지 대장', icon: '📖',
+  empty: '없음', roster: 'corps',   // 배치 탭: 고용(corps)한 이름만 열린다. 비우기 = '없음'
   css: `
 .scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
   width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
@@ -1549,8 +1609,17 @@ S.party = {
       + sec('달력')
       + row('다음 축일', '{fest} ({fest_when}, D-{fest_in})')
       + '<div class="vled-p">{fest_desc}</div>' },
+    // 배치 (P3) — 고용한 군단·수녀를 직무에 앉힌다. 실제 편성 슬롯 탭 (템플릿 아님).
+    { id: 'duty', label: '배치', fab: '👯',
+      note: '고용한 이들을 직무에 앉힌다. 특기가 맞으면 온전한 효과, 아니면 반감 — 정답 배치는 없다. '
+        + DUTY.map(([, label, eff]) => `${label}=${eff.split(' (')[0]}`).join(' · '),
+      slots: DUTY.map(([k, label]) => ({ var: `duty_${k}`, label })) },
     { id: 'people', label: '인물', fab: '📋', template: ''
       + '<div class="vled-h">인물 명부<small>아는 얼굴 {bond_known}</small></div>'
+      + sec('배치 — 효과치 (특기 일치 시 최대 4)')
+      + row('가사', '{duty_home} ({d_home})') + row('호위', '{duty_guard} ({d_guard})')
+      + row('행정', '{duty_admin} ({d_admin})') + row('의무', '{duty_care} ({d_care})')
+      + row('탐사', '{duty_scout} ({d_scout})') + row('건설', '{duty_build} ({d_build})')
       + sec('아카데미 · 대성당')
       + '<div class="vled-p">{hire_open} 응한다 — {hire_txt}</div>'
       + sec('군단 · 수녀 — 봉급 {payroll}/일') + '{corps:tags}'
@@ -1729,6 +1798,7 @@ console.log('상태창 렌더:', html.length, '자 · 미치환 자리표시자:
 // 대장 탭 — 자리표시자 오타는 검증이 잡지만, 조건 분기 속 미치환은 실렌더로만 보인다
 const { renderPanelTemplate } = SC.require('render');
 for (const t of S.party.tabs) {
+  if (!t.template) continue;   // 배치 탭은 슬롯 UI — 템플릿 렌더 대상이 아니다
   const ph = renderPanelTemplate(S, st, t.template);
   const left = ph.replace(/<style[\s\S]*?<\/style>/, '').match(/\{[a-z_]+\}/g) || [];
   console.log(`대장 [${t.label}] 렌더:`, ph.length, '자 · 미치환:', left.length ? '❗ ' + left.join(' ') : '✓ 없음');
@@ -1736,6 +1806,30 @@ for (const t of S.party.tabs) {
 
 // (산출 파일은 러너 맨 끝에서 신안.json 하나로 저장한다 — 한때 v2 별도 파일을 두다
 //  중복임을 발견하고 합쳤다. 리수 적용: 편집기 [JSON] 탭에 그 파일을 통째로 붙여넣고 설치.)
+
+// ── 배치 검증 (P3) — 특기 승수·고용 검사·공식 연결이 실제로 굴러가는가 ──
+{
+  const t = engine.initState(S); t.meta.setupDone = true;
+  const base = engine.makeLookup(S, t.vars)('eaten');
+  t.vars.corps = ['유스티나 30', '메릴 8'];
+  t.vars.duty_guard = '유스티나'; t.vars.duty_home = '메릴'; t.vars.duty_care = '스텔라';
+  const L = engine.makeLookup(S, t.vars);
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 배치 (P3) ━━');
+  ok('유스티나(E) 호위 주특기 = 4', L('d_guard') === 4, L('d_guard'));
+  ok('메릴(I) 가사 주특기 = 2', L('d_home') === 2, L('d_home'));
+  ok('스텔라 미고용 → 의무 0 (corps에 없음)', L('d_care') === 0, L('d_care'));
+  ok(`가사 배치로 소비 절감 (${base} → )`, L('eaten') === base - 3, L('eaten'));
+  ok('배치 줄 — 미고용 스텔라는 빠진다', String(L('duty_line')).includes('가사 메릴')
+    && String(L('duty_line')).includes('호위 유스티나') && !String(L('duty_line')).includes('스텔라'), L('duty_line'));
+  t.vars.duty_home = '유스티나'; t.vars.duty_guard = '없음';
+  ok('유스티나를 가사로 옮기면 부특기 반감 = 2', engine.makeLookup(S, t.vars)('d_home') === 2, engine.makeLookup(S, t.vars)('d_home'));
+  const pv = SC.require('party').partyView(S, t);
+  const dutyTab = pv.tabs.find((x) => x.id === 'duty');
+  ok('배치 탭 슬롯 6 + 미고용 잠금', dutyTab.slots.length === 6
+    && dutyTab.slots[0].candidates.find((c) => c.name === '스텔라').locked
+    && !dutyTab.slots[0].candidates.find((c) => c.name === '유스티나').locked, dutyTab.slots.length);
+}
 
 const d = diagnose(S, { turns: 60, runs: 6 });
 console.log('\n━━ 진단 ━━');

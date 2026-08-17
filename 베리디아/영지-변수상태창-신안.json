@@ -764,6 +764,156 @@
       "desc": "Maids and sisters actually serving here, hired from the roster. Format is ONLY \"Name wage\" with the daily wage last — \"리비아 8\", \"스텔라 4\". No role, no description. Their sum is paid out of the treasury every day, so an entry without a number is a free servant and that is wrong."
     },
     {
+      "id": "duty_home",
+      "label": "가사 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "가사 직무 담당자 (사기 회복 + 식량 소비 절감). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
+      "id": "duty_guard",
+      "label": "호위 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "호위 직무 담당자 (경비 인력 가산 (내부 불안 압력 완화)). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
+      "id": "duty_admin",
+      "label": "행정 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "행정 직무 담당자 (내부 불안 회복). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
+      "id": "duty_care",
+      "label": "의무 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "의무 직무 담당자 (보건 회복). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
+      "id": "duty_scout",
+      "label": "탐사 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "탐사 직무 담당자 (척후 인력 가산 (탐사·채집 가속)). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
+      "id": "duty_build",
+      "label": "건설 담당",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "스텔라",
+        "셀레스티아",
+        "라피스",
+        "필리아",
+        "세리에",
+        "리비아",
+        "피오라",
+        "메릴",
+        "클라리스",
+        "카시아",
+        "룰루",
+        "라라",
+        "유스티나",
+        "알제리아",
+        "리리카"
+      ],
+      "desc": "건설 직무 담당자 (건설 인력 가산). 게임 패널 [배치] 탭에서 앉힌다."
+    },
+    {
       "id": "staff",
       "label": "현지 고용인",
       "type": "list",
@@ -1040,6 +1190,39 @@
       "expr": "sum(corps)"
     },
     {
+      "id": "d_home",
+      "expr": "duty_home == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_home == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 1 : 0) : (duty_home == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_home == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 1 : 0) : (duty_home == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.5 : 0) : (duty_home == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_home == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 1 : 0) : (duty_home == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 2 : 0) : (duty_home == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 3 : 0) : (duty_home == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_home == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_home == \"라라\" ? (sum(corps, \"라라\") > 0 ? 3 : 0) : (duty_home == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_home == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_home == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "d_guard",
+      "expr": "duty_guard == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_guard == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_guard == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_guard == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_guard == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_guard == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 1 : 0) : (duty_guard == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_guard == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_guard == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_guard == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_guard == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 3 : 0) : (duty_guard == \"라라\" ? (sum(corps, \"라라\") > 0 ? 1.5 : 0) : (duty_guard == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 4 : 0) : (duty_guard == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 4 : 0) : (duty_guard == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 2 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "d_admin",
+      "expr": "duty_admin == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_admin == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_admin == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_admin == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_admin == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_admin == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_admin == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_admin == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_admin == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_admin == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 3 : 0) : (duty_admin == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_admin == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_admin == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_admin == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_admin == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "d_care",
+      "expr": "duty_care == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 1 : 0) : (duty_care == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 2 : 0) : (duty_care == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 3 : 0) : (duty_care == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_care == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_care == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_care == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_care == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 1 : 0) : (duty_care == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_care == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_care == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_care == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_care == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_care == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_care == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "d_scout",
+      "expr": "duty_scout == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_scout == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_scout == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_scout == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_scout == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 1 : 0) : (duty_scout == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 2 : 0) : (duty_scout == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 0.5 : 0) : (duty_scout == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_scout == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 0.75 : 0) : (duty_scout == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_scout == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 0.75 : 0) : (duty_scout == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_scout == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_scout == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 1 : 0) : (duty_scout == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 4 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "d_build",
+      "expr": "duty_build == \"스텔라\" ? (sum(corps, \"스텔라\") > 0 ? 0.25 : 0) : (duty_build == \"셀레스티아\" ? (sum(corps, \"셀레스티아\") > 0 ? 0.5 : 0) : (duty_build == \"라피스\" ? (sum(corps, \"라피스\") > 0 ? 0.75 : 0) : (duty_build == \"필리아\" ? (sum(corps, \"필리아\") > 0 ? 0.25 : 0) : (duty_build == \"세리에\" ? (sum(corps, \"세리에\") > 0 ? 0.25 : 0) : (duty_build == \"리비아\" ? (sum(corps, \"리비아\") > 0 ? 0.5 : 0) : (duty_build == \"피오라\" ? (sum(corps, \"피오라\") > 0 ? 2 : 0) : (duty_build == \"메릴\" ? (sum(corps, \"메릴\") > 0 ? 0.5 : 0) : (duty_build == \"클라리스\" ? (sum(corps, \"클라리스\") > 0 ? 1.5 : 0) : (duty_build == \"카시아\" ? (sum(corps, \"카시아\") > 0 ? 0.75 : 0) : (duty_build == \"룰루\" ? (sum(corps, \"룰루\") > 0 ? 1.5 : 0) : (duty_build == \"라라\" ? (sum(corps, \"라라\") > 0 ? 0.75 : 0) : (duty_build == \"유스티나\" ? (sum(corps, \"유스티나\") > 0 ? 2 : 0) : (duty_build == \"알제리아\" ? (sum(corps, \"알제리아\") > 0 ? 2 : 0) : (duty_build == \"리리카\" ? (sum(corps, \"리리카\") > 0 ? 1 : 0) : (0)))))))))))))))"
+    },
+    {
+      "id": "duty_raw",
+      "expr": "(duty_home == \"없음\" or sum(corps, duty_home) <= 0 ? \"\" : \"가사 \" + duty_home + \"  \") + (duty_guard == \"없음\" or sum(corps, duty_guard) <= 0 ? \"\" : \"호위 \" + duty_guard + \"  \") + (duty_admin == \"없음\" or sum(corps, duty_admin) <= 0 ? \"\" : \"행정 \" + duty_admin + \"  \") + (duty_care == \"없음\" or sum(corps, duty_care) <= 0 ? \"\" : \"의무 \" + duty_care + \"  \") + (duty_scout == \"없음\" or sum(corps, duty_scout) <= 0 ? \"\" : \"탐사 \" + duty_scout + \"  \") + (duty_build == \"없음\" or sum(corps, duty_build) <= 0 ? \"\" : \"건설 \" + duty_build + \"  \")"
+    },
+    {
+      "id": "duty_line",
+      "label": "배치",
+      "expr": "duty_raw == \"\" ? \"없음\" : duty_raw"
+    },
+    {
       "id": "hire_open",
       "label": "부를 수 있는 등급",
       "expr": "fame >= 75 ? \"정예까지\" : (fame >= 50 ? \"상급까지\" : (fame >= 25 ? \"중급까지\" : (fame >= 0 ? \"초급까지\" : (\"아무도\"))))"
@@ -1106,7 +1289,7 @@
     {
       "id": "build_men",
       "label": "건설",
-      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.4 : (labor_policy == \"방비 우선\" ? 0.15 : (0.15)))))",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.4 : (labor_policy == \"방비 우선\" ? 0.15 : (0.15))))) + round(d_build * 2)",
       "format": "{v}명"
     },
     {
@@ -1118,7 +1301,7 @@
     {
       "id": "scout_men",
       "label": "탐사",
-      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.05 : (labor_policy == \"방비 우선\" ? 0.05 : (0.3)))))",
+      "expr": "round(able * (labor_policy == \"생존 우선\" ? 0.1 : (labor_policy == \"재건 우선\" ? 0.05 : (labor_policy == \"방비 우선\" ? 0.05 : (0.3))))) + round(d_scout * 2)",
       "format": "{v}명"
     },
     {
@@ -1154,7 +1337,7 @@
     {
       "id": "eaten",
       "label": "일 소비",
-      "expr": "pop + army"
+      "expr": "max(0, pop + army - round(d_home * 1.5))"
     },
     {
       "id": "sup_food",
@@ -1362,15 +1545,15 @@
       },
       {
         "set": "health",
-        "expr": "clamp(health + (food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) * span, 0, 100)"
+        "expr": "clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5)) * span, 0, 100)"
       },
       {
         "set": "morale",
-        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
+        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
       },
       {
         "set": "unrest",
-        "expr": "clamp(unrest + ((guard_men + army < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0) + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0)) * span, 0, 100)"
+        "expr": "clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0) + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span, 0, 100)"
       },
       {
         "set": "fame",
@@ -2874,7 +3057,7 @@
     "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
   },
   "promptState": {
-    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
     "includeEvents": true
   },
   "statusUI": {
@@ -3017,6 +3200,8 @@
   "party": {
     "label": "영지 대장",
     "icon": "📖",
+    "empty": "없음",
+    "roster": "corps",
     "css": "\n.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;\n  width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }\n.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }\n.scg-title .scg-x { color:#4a2c2a; }\n.scg-title .scg-x:hover { background:#e2d3b6; color:#4a2c2a; }\n.scg-note { color:#6b5744; }\n.scg-tabs { border-bottom:2px solid #bda27e; }\n.scg-tab { color:#6b5744; }\n.scg-tab.scg-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }\n.scg-notice { color:#8a3a2a; }\n.scg-tpl .vled-h { text-align:center; font-size:16px; font-weight:700; letter-spacing:.18em; margin:2px 0 8px; color:#4a2c2a; }\n.scg-tpl .vled-h small { display:block; letter-spacing:0; font-size:11.5px; font-weight:400; color:#6b5744; margin-top:2px; }\n.scg-tpl .vled-sec { margin:10px 0 4px; padding:3px 9px; background:#4a2c2a; color:#f0e5d1; font-size:12.5px; font-weight:700; border-radius:3px; }\n.scg-tpl .vled-row { display:flex; justify-content:space-between; gap:10px; padding:3px 4px; font-size:13px; border-bottom:1px dashed #d8c6a4; }\n.scg-tpl .vled-row .v { font-weight:700; text-align:right; }\n.scg-tpl .vled-p { padding:2px 6px; font-size:12.5px; color:#5a4c3a; }\n.scg-tpl .sim-tag { border:1px solid #bda27e; background:rgba(74,44,42,.06); color:#3d352a; }\n.scg-tpl .sim-empty { color:#8a7a60; }",
     "tabs": [
       {
@@ -3025,10 +3210,42 @@
         "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
       },
       {
+        "id": "duty",
+        "label": "배치",
+        "fab": "👯",
+        "note": "고용한 이들을 직무에 앉힌다. 특기가 맞으면 온전한 효과, 아니면 반감 — 정답 배치는 없다. 가사=사기 회복 + 식량 소비 절감 · 호위=경비 인력 가산 · 행정=내부 불안 회복 · 의무=보건 회복 · 탐사=척후 인력 가산 · 건설=건설 인력 가산",
+        "slots": [
+          {
+            "var": "duty_home",
+            "label": "가사"
+          },
+          {
+            "var": "duty_guard",
+            "label": "호위"
+          },
+          {
+            "var": "duty_admin",
+            "label": "행정"
+          },
+          {
+            "var": "duty_care",
+            "label": "의무"
+          },
+          {
+            "var": "duty_scout",
+            "label": "탐사"
+          },
+          {
+            "var": "duty_build",
+            "label": "건설"
+          }
+        ]
+      },
+      {
         "id": "people",
         "label": "인물",
         "fab": "📋",
-        "template": "<div class=\"vled-h\">인물 명부<small>아는 얼굴 {bond_known}</small></div><div class=\"vled-sec\">아카데미 · 대성당</div><div class=\"vled-p\">{hire_open} 응한다 — {hire_txt}</div><div class=\"vled-sec\">군단 · 수녀 — 봉급 {payroll}/일</div>{corps:tags}<div class=\"vled-sec\">호감도</div><div class=\"vled-row\"><span>왕가 · 동행</span><span class=\"v\">{bond0}</span></div><div class=\"vled-row\"><span>귀족</span><span class=\"v\">{bond1}</span></div><div class=\"vled-row\"><span>광휘회</span><span class=\"v\">{bond2}</span></div><div class=\"vled-row\"><span>메이드군단</span><span class=\"v\">{bond3}</span></div><div class=\"vled-sec\">현지 고용인</div>{staff:tags}<div class=\"vled-sec\">인맥 · 교역 상대</div>{contacts:tags}"
+        "template": "<div class=\"vled-h\">인물 명부<small>아는 얼굴 {bond_known}</small></div><div class=\"vled-sec\">배치 — 효과치 (특기 일치 시 최대 4)</div><div class=\"vled-row\"><span>가사</span><span class=\"v\">{duty_home} ({d_home})</span></div><div class=\"vled-row\"><span>호위</span><span class=\"v\">{duty_guard} ({d_guard})</span></div><div class=\"vled-row\"><span>행정</span><span class=\"v\">{duty_admin} ({d_admin})</span></div><div class=\"vled-row\"><span>의무</span><span class=\"v\">{duty_care} ({d_care})</span></div><div class=\"vled-row\"><span>탐사</span><span class=\"v\">{duty_scout} ({d_scout})</span></div><div class=\"vled-row\"><span>건설</span><span class=\"v\">{duty_build} ({d_build})</span></div><div class=\"vled-sec\">아카데미 · 대성당</div><div class=\"vled-p\">{hire_open} 응한다 — {hire_txt}</div><div class=\"vled-sec\">군단 · 수녀 — 봉급 {payroll}/일</div>{corps:tags}<div class=\"vled-sec\">호감도</div><div class=\"vled-row\"><span>왕가 · 동행</span><span class=\"v\">{bond0}</span></div><div class=\"vled-row\"><span>귀족</span><span class=\"v\">{bond1}</span></div><div class=\"vled-row\"><span>광휘회</span><span class=\"v\">{bond2}</span></div><div class=\"vled-row\"><span>메이드군단</span><span class=\"v\">{bond3}</span></div><div class=\"vled-sec\">현지 고용인</div>{staff:tags}<div class=\"vled-sec\">인맥 · 교역 상대</div>{contacts:tags}"
       },
       {
         "id": "survey",

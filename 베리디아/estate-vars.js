@@ -1611,8 +1611,9 @@ const S = {
 // 목록(계약·물자·경작지·인프라)·호감도 26명·계승·주변 영지는 전부 대장 탭(아래 S.party)으로.
 // 상태창은 메시지마다 다시 그려지지만 대장은 열었을 때만 그려진다 — 그게 나누는 기준이다.
 // 빠진 자리마다 "— 명세는 📖" 같은 길잡이를 남긴다: 어디로 갔는지 화면이 말해야 한다.
-const CSS = fs.readFileSync(__P('simcore-save-영지.json'), 'utf8');
-const oldCss = JSON.parse(CSS).schema.statusUI.customCSS || '';
+// CSS 출처 일원화 (P5) — 옛 세이브 파일에서 읽던 것을 ledger.css로 떼어 냈다.
+// 다이어트로 죽은 셀렉터(.status-full-list — 목록이 전부 대장 탭으로 가서)도 그때 걷어냈다.
+const oldCss = fs.readFileSync(__P('ledger.css'), 'utf8');
 S.statusUI.templates = [{
   id: 'estate',
   template: `<style>${oldCss}</style>`
@@ -1705,6 +1706,19 @@ S.party = {
 .scg-tab { color:#6b5744; }
 .scg-tab.scg-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }
 .scg-notice { color:#8a3a2a; }
+/* 배치 탭 (P3 슬롯 UI) — 어두운 기본 테마를 양피지로 (P5) */
+.scg-slot { border:1px solid #bda27e; background:rgba(255,255,255,.35); }
+.scg-slot-row:hover { background:rgba(74,44,42,.08); }
+.scg-slot-label { color:#6b5744; }
+.scg-slot-val { color:#a12a2a; }
+.scg-slot-val.scg-empty { color:#8a7a60; }
+.scg-slot-arrow { color:#8a7a60; }
+.scg-chip { border:1px solid #bda27e; background:#f0e5d1; color:#3d352a; }
+.scg-chip:hover { background:#e2d3b6; border-color:#4a2c2a; }
+.scg-chip.scg-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }
+.scg-chip.scg-used { border-style:dashed; color:#6b5744; }
+.scg-chip.scg-clear { border-color:#a12a2a; color:#a12a2a; background:#f5e3e3; }
+.scg-roster { color:#6b5744; }
 .scg-tpl .vled-h { text-align:center; font-size:16px; font-weight:700; letter-spacing:.18em; margin:2px 0 8px; color:#4a2c2a; }
 .scg-tpl .vled-h small { display:block; letter-spacing:0; font-size:11.5px; font-weight:400; color:#6b5744; margin-top:2px; }
 .scg-tpl .vled-sec { margin:10px 0 4px; padding:3px 9px; background:#4a2c2a; color:#f0e5d1; font-size:12.5px; font-weight:700; border-radius:3px; }

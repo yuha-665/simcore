@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');
+
+/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */
+.status-modal-window br, .status-grid br { display: none; }
+.status-modal-window, .status-modal-window * { box-sizing: border-box; }
+
+.status-checkbox { display: none; }
+
+/* 호출 버튼 */
+.status-open-label {
+    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;
+    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');
+    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;
+    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;
+    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+}
+.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }
+.status-open-label::before { content: '📜'; }
+
+/* 오버레이 (display 토글 금지 — opacity/visibility만) */
+.status-full-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;
+}
+.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }
+.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }
+
+/* 스테이터스 창 */
+.status-modal-window {
+    width: 95%; max-width: 520px; max-height: 90vh;
+    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');
+    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;
+    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);
+    padding: 30px; position: relative; overflow-y: auto;
+    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    font-family: 'Noto Serif KR', serif; color: #3D352A;
+}
+
+.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }
+.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }
+
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }
+
+.status-section-title {
+    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;
+    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;
+    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;
+}
+
+.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }
+.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }
+.status-span2 { grid-column: span 2; }
+
+.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }
+
+.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }
+.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }
+.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }

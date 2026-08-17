@@ -373,6 +373,10 @@ const S = {
 
     // ── 안전 ──
     { id: 'army', label: '상비군', type: 'int', init: 0, min: 0, format: '{v}명' },
+    // 배급 수위 (P4) — 액션 토글로만 움직인다 (updater 금지: "배급을 줄여라"는 유저의 결단이지
+    // 분위기가 아니다). 절약이면 소비 25% 절감, 대신 사기·보건이 매일 1씩 샌다.
+    { id: 'rations', label: '배급', type: 'enum', init: '평시', enum: ['평시', '절약'],
+      desc: '식량 배급 수위. 액션 버튼(배급 축소/복구)으로만 바꾼다.' },
     { id: 'unrest', label: '내부 불안', type: 'int', init: 15, min: 0, max: 100 },
     { id: 'threat', label: '외부 위협', type: 'int', init: 40, min: 0, max: 100 },
     { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100,
@@ -636,8 +640,9 @@ const S = {
       expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)' },
     { id: 'draw_water', label: '일 취수',
       expr: 'round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)' },
-    // 가사 담당이 곳간 낭비를 줄인다 (라라의 빙결 보존이 대표 서사) — E 주특기 기준 -6/일
-    { id: 'eaten', label: '일 소비', expr: 'max(0, pop + army - round(d_home * 1.5))' },
+    // 가사 담당이 곳간 낭비를 줄인다 (라라의 빙결 보존이 대표 서사) — E 주특기 기준 -6/일.
+    // 배급 절약은 25% 절감 — 대신 onTurn에서 사기·보건이 매일 샌다 (버튼의 대가).
+    { id: 'eaten', label: '일 소비', expr: 'max(0, round((pop + army) * (rations == "절약" ? 0.75 : 1)) - round(d_home * 1.5))' },
 
     // ── 수입 ──
     // 계약 목록은 금화만 나른다. 그래서 "밀 수입 -15"를 계약에 적으면 돈만 나가고 밀은 안 들어왔다.
@@ -736,8 +741,9 @@ const S = {
       // 굶거나 목마르면 무너지고, 곳간이 있는 동안은 천천히 회복된다.
       // (잉여가 나야 회복되게 짜면 교착이다 — 보건이 낮아 잉여가 안 나는데 잉여가 없어 보건도 안 오른다)
       // 의무·가사 담당의 회복 보정 (P3) — E 주특기 기준 +2/일. 굶는 날의 -7은 못 이긴다 (의도).
-      { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5)) * span, 0, 100)' },
-      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
+      // 배급 절약(P4)은 사기·보건을 매일 1씩 깎는다 — 소비 25% 절감의 대가.
+      { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
       // 급료를 못 준 병사가 얌전할 리 없다 — 군대를 키우는 데 재정이 물린다
       // 호위 담당은 경비 인력 몫으로(d_guard×2명), 행정 담당은 회복 보정으로 (P3)
@@ -1279,7 +1285,101 @@ const S = {
         + 'Not "food 781" but "the granary will hold two months" — render them as something a person would feel. '
         + 'Never write against the figures: no feasting while they starve, no one following gladly when morale is on the floor.' },
   ],
-  actions: [],
+  // ── 판정 (P4) — 성패를 AI 기분이 아니라 주사위가 정한다 ──
+  // 개방 원칙과의 궁합: 판정은 시도의 "이름"을 모른다. 보정식이 지금 상태(담당 배치·인력·사기)를
+  // 읽을 뿐이라, 유저가 어떤 기상천외한 잔치를 열든 성패 기계는 같은 것을 쓴다.
+  // 등급 effects의 숫자는 시스템 공식(clamp·상한)을 그대로 따른다.
+  checks: [
+    { id: 'chk_fest', label: '잔치 판정',
+      roll: 'rand(1, 20)',
+      mod: 'round(morale * 0.1) + round(d_home)',   // 민심과 가사 담당의 솜씨가 잔치를 만든다
+      vs: 14,
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'morale', expr: 'clamp(morale + 14, 0, 100)' },
+            { set: 'fame', expr: 'clamp(fame + 4, 0, 100)' },
+            { set: 'unrest', expr: 'clamp(unrest - 6, 0, 100)' }],
+          inject: 'The feast becomes the stuff of local legend — describe one moment people will retell for years.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'morale', expr: 'clamp(morale + 8, 0, 100)' },
+            { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' }],
+          inject: 'A good feast, warmly received.' },
+        { label: '실패',
+          effects: [{ set: 'morale', expr: 'clamp(morale + 2, 0, 100)' }],
+          inject: 'The feast misfires somehow — burnt food, a brawl, rain, an unwelcome guest. People ate, but the mood soured.' },
+      ] },
+    { id: 'chk_drill', label: '훈련 판정',
+      roll: 'rand(1, 20)',
+      mod: 'round(d_guard) + round(army * 0.05)',   // 호위 담당이 교관 노릇을 한다
+      vs: 12,
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'army', expr: 'min(army + 6, round(pop * 0.2))' },
+            { set: 'threat', expr: 'clamp(threat - 4, 0, 100)' },
+            { set: 'morale', expr: 'clamp(morale - 1, 0, 100)' }],
+          inject: 'The recruits surpass expectations — word of disciplined ranks spreads beyond the walls.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'army', expr: 'min(army + 4, round(pop * 0.2))' },
+            { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
+          inject: 'Hard drilling, decent soldiers.' },
+        { label: '실패',
+          effects: [{ set: 'army', expr: 'min(army + 1, round(pop * 0.2))' },
+            { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' },
+            { set: 'health', expr: 'clamp(health - 2, 0, 100)' }],
+          inject: 'The drill goes wrong — an injury, a quarrel, or plain exhaustion. Few useful soldiers came of it.' },
+      ] },
+    { id: 'chk_survey', label: '답사 판정',
+      roll: 'rand(1, 20)',
+      mod: 'round(d_scout) + round(scout_men * 0.2)',
+      vs: 13,
+      // 진척은 지금 훑는 방향(explore_dir)에만 붙는다. 이미 다 훑은 방향(>=100)은 안 건드린다 —
+      // exp_*의 100 이상은 발견 정산용 부호화 구간이라 밀면 깨진다.
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [
+            ...EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 30) : ${v2}` })),
+            { set: 'morale', expr: 'clamp(morale + 2, 0, 100)' }],
+          inject: 'The survey party finds far more than expected — let the land itself surprise them.' },
+        { when: 'total >= vs', label: '성공',
+          effects: EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 18) : ${v2}` })),
+          inject: 'Steady progress through rough country.' },
+        { label: '실패',
+          effects: [
+            ...EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 5) : ${v2}` })),
+            { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' },
+            { set: 'health', expr: 'clamp(health - 1, 0, 100)' }],
+          inject: 'The push goes badly — lost trails, a scare, someone hurt. They came back with little.' },
+      ] },
+  ],
+
+  // ── 액션 (P4) — 보편 행정 스위치만, 사업 종류는 영구 금지 (개방 원칙 §1-4) ──
+  // 서사로 말하면 보조 AI가 자주 놓치거나 숫자에 안 닿는 반복 지시 5개. 라벨 맨 앞
+  // 이모지가 곧 버튼 아이콘. 판정 달린 셋은 "무장 → 전송 시 굴림 → 같은 턴 서사 반영".
+  actions: [
+    { id: 'ration_cut', label: '🍲 배급 축소', mode: 'oneshot',
+      when: 'rations == "평시"',
+      effects: [{ set: 'rations', expr: '"절약"' }],
+      inject: 'The Baron orders rations cut by a quarter. The granary drains slower; the people eat thinner and know it.' },
+    { id: 'ration_back', label: '🍚 배급 복구', mode: 'oneshot',
+      when: 'rations == "절약"',
+      effects: [{ set: 'rations', expr: '"평시"' }],
+      inject: 'Full rations are restored. Relief at the tables tonight.' },
+    { id: 'act_fest', label: '🎉 축일 잔치', mode: 'oneshot', cooldown: 30,
+      when: 'gold >= 80 and food >= 150 and disaster == ""',
+      check: 'chk_fest',
+      effects: [{ set: 'gold', expr: 'max(0, gold - 80)' }, { set: 'food', expr: 'max(0, food - 150)' }],
+      inject: 'The Baron throws a feast for the holding — 80 gold and 150 food are spent on it.' },
+    { id: 'act_drill', label: '⚔️ 훈련 소집', mode: 'oneshot', cooldown: 15,
+      when: 'able >= 20 and food >= 50',
+      check: 'chk_drill',
+      effects: [{ set: 'food', expr: 'max(0, food - 30)' }],
+      inject: 'The Baron calls a muster and drills the able-bodied — 30 food goes to the training tables.' },
+    { id: 'act_survey', label: '🧭 집중 답사', mode: 'oneshot', cooldown: 12,
+      when: 'scout_men >= 3',
+      check: 'chk_survey',
+      effects: [{ set: 'food', expr: 'max(0, food - 20)' }],
+      inject: 'The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food.' },
+  ],
 
   // ── AI 관할과 그 상한 ──
   // 상한이 없으면 "왕가에서 지원이 왔다"로 식량 5만을 만들어 낸다.
@@ -1406,7 +1506,7 @@ const S = {
       + '다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n'
       + '국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n'
       + '직무 배치 {duty_line}\n'
-      + '식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
+      + '식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
       + '재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n'
       + '지속 수입 {contracts} | 길 {route_txt}\n'
       + '수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n'
@@ -1552,7 +1652,7 @@ S.statusUI.templates = [{
     + '<div class="status-entry status-span2"><span>통행:</span> <span class="val">{route_txt}</span></div>'
     + '<div class="status-entry status-span2"><span>정기 유입:</span> '
     + '<span class="val">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div>'
-    + '<div class="status-entry"><span>식량:</span> <span class="val">{food} ({food_txt})</span></div>'
+    + '<div class="status-entry"><span>식량:</span> <span class="val">{food} ({food_txt} · 배급 {rations})</span></div>'
     + '<div class="status-entry"><span>식수:</span> <span class="val">{water} ({water_txt})</span></div>'
     + '<div class="status-entry"><span>일 수확:</span> <span class="val">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div>'
     + '<div class="status-entry"><span>식량 수지:</span> <span class="val">{surplus}/일</span></div>'
@@ -1572,6 +1672,8 @@ S.statusUI.templates = [{
     + '<span class="val">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div>'
     + '<div class="status-section-title">현재 집중 목표</div>'
     + '<div class="status-span2" style="text-align:center; padding:8px; font-weight:bold;">{focus}</div>'
+    // 마지막 판정 한 줄 — 판정 전엔 빈 문자열이라 안 보인다 (🎲 아이콘을 박으면 늘 떠서 뺐다)
+    + '<div class="status-span2" style="padding:0 8px; font-size:.92em;">{lastcheck}</div>'
     + '<div class="urgent-box"><strong>⚠️ 긴급 통지</strong>{alert}</div>'
     + '<div class="status-span2" style="text-align:center; padding:4px; opacity:.8; font-size:.9em;">'
     + '자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div>'
@@ -1875,6 +1977,38 @@ for (const t of S.party.tabs) {
   const Lc = engine.makeLookup(S, t.vars);
   ok('대기 4명 (5고용, 착석은 가사 유스티나뿐)', Lc('duty_idle') === 4
     && Lc('duty_seated') === 1, `seated=${Lc('duty_seated')} idle=${Lc('duty_idle')}`);
+}
+
+// ── 액션·판정 검증 (P4) — 무장 → 전송 시 굴림 → 등급 효과 → 자체 비용 순서 실측 ──
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 액션·판정 (P4) ━━');
+  let t = engine.initState(S); t.meta.setupDone = true;
+  t.vars.gold = 500; t.vars.food = 1000; t.vars.morale = 40;
+  // 배급 토글 — 축소는 평시에만, 복구는 절약에만 열린다
+  ok('배급 축소 사용 가능 (평시)', engine.actionAvailability(S, t, S.actions.find((a) => a.id === 'ration_cut')).ok, '');
+  ok('배급 복구는 잠김 (평시)', !engine.actionAvailability(S, t, S.actions.find((a) => a.id === 'ration_back')).ok, '');
+  const eatenBase = engine.makeLookup(S, t.vars)('eaten');
+  t.vars.rations = '절약';
+  ok('절약 → 소비 25% 절감', engine.makeLookup(S, t.vars)('eaten') === Math.max(0, Math.round((t.vars.pop + t.vars.army) * 0.75)), `${eatenBase} → ${engine.makeLookup(S, t.vars)('eaten')}`);
+  t.vars.rations = '평시';
+  // 잔치 — 무장하고 전송하면 판정이 구르고, 등급 효과와 비용이 함께 커밋된다
+  t.meta.armed.act_fest = true;
+  const before = { gold: t.vars.gold, food: t.vars.food, morale: t.vars.morale };
+  const sp = engine.sendPhase(S, t, { rng: seededRng('p4', 1, 's') });
+  const v2 = sp.state.vars;
+  const lc = sp.state.meta.lastCheck;
+  ok('판정이 굴렀다 (lastCheck 기록)', lc && lc.label === '잔치 판정', JSON.stringify(lc?.summary ?? null));
+  ok('비용 지출 (금 -80 · 식량 -150)', v2.gold === before.gold - 80 && v2.food === before.food - 150, `gold ${before.gold}→${v2.gold} food ${before.food}→${v2.food}`);
+  ok('등급 효과 반영 (사기 변동)', v2.morale !== before.morale, `morale ${before.morale}→${v2.morale}`);
+  ok('프롬프트에 [판정] 줄', /\[판정\]|잔치 판정/.test(sp.promptBlock), sp.promptBlock.match(/.*잔치 판정.*/)?.[0]?.slice(0, 60) ?? '(없음)');
+  // 집중 답사 — 현재 방향에만 진척이 붙고, 이미 정산 구간(>=100)은 안 건드린다
+  let t2 = engine.initState(S); t2.meta.setupDone = true;
+  t2.vars.exp_s = 40; t2.vars.exp_n = 105; t2.vars.explore_dir = '남 평원';
+  t2.meta.armed.act_survey = true;
+  const sp2 = engine.sendPhase(S, t2, { rng: seededRng('p4', 2, 's') });
+  ok('답사 진척은 현 방향(남)에만', sp2.state.vars.exp_s > 40 && sp2.state.vars.exp_n === 105,
+    `남 40→${sp2.state.vars.exp_s} · 북(정산 구간) 105→${sp2.state.vars.exp_n}`);
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

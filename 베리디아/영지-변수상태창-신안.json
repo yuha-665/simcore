@@ -393,6 +393,17 @@
       "format": "{v}명"
     },
     {
+      "id": "rations",
+      "label": "배급",
+      "type": "enum",
+      "init": "평시",
+      "enum": [
+        "평시",
+        "절약"
+      ],
+      "desc": "식량 배급 수위. 액션 버튼(배급 축소/복구)으로만 바꾼다."
+    },
+    {
       "id": "unrest",
       "label": "내부 불안",
       "type": "int",
@@ -1363,7 +1374,7 @@
     {
       "id": "eaten",
       "label": "일 소비",
-      "expr": "max(0, pop + army - round(d_home * 1.5))"
+      "expr": "max(0, round((pop + army) * (rations == \"절약\" ? 0.75 : 1)) - round(d_home * 1.5))"
     },
     {
       "id": "sup_food",
@@ -1571,11 +1582,11 @@
       },
       {
         "set": "health",
-        "expr": "clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5)) * span, 0, 100)"
+        "expr": "clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5) - (rations == \"절약\" ? 1 : 0)) * span, 0, 100)"
       },
       {
         "set": "morale",
-        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
+        "expr": "clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (rations == \"절약\" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != \"\" ? 2 : 0)) * span, 0, 100)"
       },
       {
         "set": "unrest",
@@ -2791,7 +2802,288 @@
       "text": "[WRITING RULE] The figures above are your basis for judgment only. Never transcribe numbers or tables into the prose. Not \"food 781\" but \"the granary will hold two months\" — render them as something a person would feel. Never write against the figures: no feasting while they starve, no one following gladly when morale is on the floor."
     }
   ],
-  "actions": [],
+  "checks": [
+    {
+      "id": "chk_fest",
+      "label": "잔치 판정",
+      "roll": "rand(1, 20)",
+      "mod": "round(morale * 0.1) + round(d_home)",
+      "vs": 14,
+      "grades": [
+        {
+          "when": "total >= vs + 5",
+          "label": "대성공",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 14, 0, 100)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 4, 0, 100)"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest - 6, 0, 100)"
+            }
+          ],
+          "inject": "The feast becomes the stuff of local legend — describe one moment people will retell for years."
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 8, 0, 100)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 2, 0, 100)"
+            }
+          ],
+          "inject": "A good feast, warmly received."
+        },
+        {
+          "label": "실패",
+          "effects": [
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 2, 0, 100)"
+            }
+          ],
+          "inject": "The feast misfires somehow — burnt food, a brawl, rain, an unwelcome guest. People ate, but the mood soured."
+        }
+      ]
+    },
+    {
+      "id": "chk_drill",
+      "label": "훈련 판정",
+      "roll": "rand(1, 20)",
+      "mod": "round(d_guard) + round(army * 0.05)",
+      "vs": 12,
+      "grades": [
+        {
+          "when": "total >= vs + 5",
+          "label": "대성공",
+          "effects": [
+            {
+              "set": "army",
+              "expr": "min(army + 6, round(pop * 0.2))"
+            },
+            {
+              "set": "threat",
+              "expr": "clamp(threat - 4, 0, 100)"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 1, 0, 100)"
+            }
+          ],
+          "inject": "The recruits surpass expectations — word of disciplined ranks spreads beyond the walls."
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "army",
+              "expr": "min(army + 4, round(pop * 0.2))"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 2, 0, 100)"
+            }
+          ],
+          "inject": "Hard drilling, decent soldiers."
+        },
+        {
+          "label": "실패",
+          "effects": [
+            {
+              "set": "army",
+              "expr": "min(army + 1, round(pop * 0.2))"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 4, 0, 100)"
+            },
+            {
+              "set": "health",
+              "expr": "clamp(health - 2, 0, 100)"
+            }
+          ],
+          "inject": "The drill goes wrong — an injury, a quarrel, or plain exhaustion. Few useful soldiers came of it."
+        }
+      ]
+    },
+    {
+      "id": "chk_survey",
+      "label": "답사 판정",
+      "roll": "rand(1, 20)",
+      "mod": "round(d_scout) + round(scout_men * 0.2)",
+      "vs": 13,
+      "grades": [
+        {
+          "when": "total >= vs + 5",
+          "label": "대성공",
+          "effects": [
+            {
+              "set": "exp_n",
+              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 30) : exp_n"
+            },
+            {
+              "set": "exp_w",
+              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 30) : exp_w"
+            },
+            {
+              "set": "exp_s",
+              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 30) : exp_s"
+            },
+            {
+              "set": "exp_e",
+              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 30) : exp_e"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale + 2, 0, 100)"
+            }
+          ],
+          "inject": "The survey party finds far more than expected — let the land itself surprise them."
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "exp_n",
+              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 18) : exp_n"
+            },
+            {
+              "set": "exp_w",
+              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 18) : exp_w"
+            },
+            {
+              "set": "exp_s",
+              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 18) : exp_s"
+            },
+            {
+              "set": "exp_e",
+              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 18) : exp_e"
+            }
+          ],
+          "inject": "Steady progress through rough country."
+        },
+        {
+          "label": "실패",
+          "effects": [
+            {
+              "set": "exp_n",
+              "expr": "explore_dir == \"북 산맥\" and exp_n < 100 ? min(100, exp_n + 5) : exp_n"
+            },
+            {
+              "set": "exp_w",
+              "expr": "explore_dir == \"서 숲\" and exp_w < 100 ? min(100, exp_w + 5) : exp_w"
+            },
+            {
+              "set": "exp_s",
+              "expr": "explore_dir == \"남 평원\" and exp_s < 100 ? min(100, exp_s + 5) : exp_s"
+            },
+            {
+              "set": "exp_e",
+              "expr": "explore_dir == \"동 강가\" and exp_e < 100 ? min(100, exp_e + 5) : exp_e"
+            },
+            {
+              "set": "morale",
+              "expr": "clamp(morale - 3, 0, 100)"
+            },
+            {
+              "set": "health",
+              "expr": "clamp(health - 1, 0, 100)"
+            }
+          ],
+          "inject": "The push goes badly — lost trails, a scare, someone hurt. They came back with little."
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "ration_cut",
+      "label": "🍲 배급 축소",
+      "mode": "oneshot",
+      "when": "rations == \"평시\"",
+      "effects": [
+        {
+          "set": "rations",
+          "expr": "\"절약\""
+        }
+      ],
+      "inject": "The Baron orders rations cut by a quarter. The granary drains slower; the people eat thinner and know it."
+    },
+    {
+      "id": "ration_back",
+      "label": "🍚 배급 복구",
+      "mode": "oneshot",
+      "when": "rations == \"절약\"",
+      "effects": [
+        {
+          "set": "rations",
+          "expr": "\"평시\""
+        }
+      ],
+      "inject": "Full rations are restored. Relief at the tables tonight."
+    },
+    {
+      "id": "act_fest",
+      "label": "🎉 축일 잔치",
+      "mode": "oneshot",
+      "cooldown": 30,
+      "when": "gold >= 80 and food >= 150 and disaster == \"\"",
+      "check": "chk_fest",
+      "effects": [
+        {
+          "set": "gold",
+          "expr": "max(0, gold - 80)"
+        },
+        {
+          "set": "food",
+          "expr": "max(0, food - 150)"
+        }
+      ],
+      "inject": "The Baron throws a feast for the holding — 80 gold and 150 food are spent on it."
+    },
+    {
+      "id": "act_drill",
+      "label": "⚔️ 훈련 소집",
+      "mode": "oneshot",
+      "cooldown": 15,
+      "when": "able >= 20 and food >= 50",
+      "check": "chk_drill",
+      "effects": [
+        {
+          "set": "food",
+          "expr": "max(0, food - 30)"
+        }
+      ],
+      "inject": "The Baron calls a muster and drills the able-bodied — 30 food goes to the training tables."
+    },
+    {
+      "id": "act_survey",
+      "label": "🧭 집중 답사",
+      "mode": "oneshot",
+      "cooldown": 12,
+      "when": "scout_men >= 3",
+      "check": "chk_survey",
+      "effects": [
+        {
+          "set": "food",
+          "expr": "max(0, food - 20)"
+        }
+      ],
+      "inject": "The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food."
+    }
+  ],
   "updater": {
     "model": "aux",
     "allow": [
@@ -3083,7 +3375,7 @@
     "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: if the narration skipped more than a day, put the number of days in days_passed (three days later = 3, next week = 7; leave it alone for a single day). Consumption and harvest settle for that whole span and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here. Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
   },
   "promptState": {
-    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
     "includeEvents": true
   },
   "statusUI": {
@@ -3092,7 +3384,7 @@
     "templates": [
       {
         "id": "estate",
-        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br, .status-full-list br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n/* 확장된 리스트 섹션 (시설 & 고용) — 플러그인이 어떤 태그로 칩을 뱉든 대응 */\n.status-full-list {\n    grid-column: span 2; padding: 10px; background: rgba(255, 255, 255, 0.3);\n    border-radius: 4px; margin-top: 5px; min-height: 40px;\n    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;\n}\n.status-full-list ul, .status-full-list ol { display: contents; list-style: none; padding: 0; margin: 0; }\n.status-full-list li,\n.status-full-list > span,\n.status-full-list > div,\n.status-full-list > p {\n    background: #4a2c2a; color: #f0e5d1; padding: 2px 10px; border-radius: 4px;\n    font-size: 0.85em; line-height: 1.7; margin: 0; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);\n}\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style><input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
+        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br, .status-full-list br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n/* 확장된 리스트 섹션 (시설 & 고용) — 플러그인이 어떤 태그로 칩을 뱉든 대응 */\n.status-full-list {\n    grid-column: span 2; padding: 10px; background: rgba(255, 255, 255, 0.3);\n    border-radius: 4px; margin-top: 5px; min-height: 40px;\n    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;\n}\n.status-full-list ul, .status-full-list ol { display: contents; list-style: none; padding: 0; margin: 0; }\n.status-full-list li,\n.status-full-list > span,\n.status-full-list > div,\n.status-full-list > p {\n    background: #4a2c2a; color: #f0e5d1; padding: 2px 10px; border-radius: 4px;\n    font-size: 0.85em; line-height: 1.7; margin: 0; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);\n}\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style><input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
       }
     ]
   },

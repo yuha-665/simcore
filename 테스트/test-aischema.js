@@ -78,9 +78,10 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   // 크기 — 웹 UI에 붙여넣을 수 있어야 의미가 있다.
   // 상한은 무한 성장 방지용 가드레일 — v0.58에서 편성표 검증(party)이 검증기 원문에
   // 합류하며 60KB를 넘어 72KB로 조정, v0.88에서 에셋 구조 공존·쓰임새(usage) 검증이
-  // 더해져 76KB로 조정 (실제 붙여넣기 한계는 수백 KB라 여유가 크다).
+  // 더해져 76KB로, v0.90에서 시나리오(scenario) 검증이 더해져 80KB로 조정
+  // (실제 붙여넣기 한계는 수백 KB라 여유가 크다).
   const full = buildSchemaSpecPrompt('politics', true);
-  ck('★ 규격서가 붙여넣기 가능한 크기 (76KB 미만)', full.length < 76 * 1024, kb(full));
+  ck('★ 규격서가 붙여넣기 가능한 크기 (80KB 미만)', full.length < 80 * 1024, kb(full));
   ck('전체 소스(251KB)보다 훨씬 작음', full.length < src.length / 4, `${kb(full)} vs ${kb(src)}`);
   console.log(`  [크기] 최소 ${kb(buildSchemaSpecPrompt('rpg', false))} / 기본 ${kb(p)} / 최대 ${kb(full)}`);
 }

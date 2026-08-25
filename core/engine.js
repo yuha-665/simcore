@@ -15,6 +15,8 @@
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
+const { SCN_IDX, SCN_TURNS, scenarioConfig, scenarioExposedVal, scenarioTransition,
+  scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 
@@ -65,6 +67,8 @@ function initState(schema, opts = {}) {
       ? epochFrom(rollStart(tcfg, opts.rng), tcfg.calendar)
       : tcfg.startEpoch;
   }
+  // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
+  if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -129,6 +133,12 @@ function reconcileState(schema, state) {
   // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
   const tcfg = timeConfig(schema);
   if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
+  // 시나리오 예약 키 (v0.90) — time_epoch과 같은 계열. 진행 중 세이브에 시나리오를 나중에
+  // 켜면 1막부터 시작한다 (이야기 척추는 소급하지 않는다).
+  if (scenarioConfig(schema)) {
+    if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
+    if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
+  }
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -257,6 +267,12 @@ function makeLookup(schema, vars) {
     if (name in vars) return vars[name];
     const tv = timeVal(name);
     if (tv !== undefined) return tv;
+    // 시나리오 노출 (v0.90) — scn_act(현재 막 id)·scn_label(라벨)은 예약 키 scn_idx에서 계산.
+    // scn_turns는 vars에 직접 살아 위 `name in vars`에서 이미 잡혔다.
+    if (name === 'scn_act' || name === 'scn_label') {
+      const sv = scenarioExposedVal(schema, vars, name);
+      if (sv !== undefined) return sv;
+    }
     // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
     // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
     // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
@@ -562,6 +578,14 @@ function sendPhase(schema, prevState, { rng } = {}) {
         }
       } catch { /* 검증 단계에서 걸러지지만 방어 */ }
     }
+  }
+
+  // 3.5.5 시나리오 척추 (v0.90) — 현재 막의 연출 지시 + 열린 막들의 내막만 싣는다.
+  // 전체 시나리오는 영영 안 실린다 — 은닉은 구조가 보장한다 (design-시나리오레이터 §3-1).
+  // 지시문(3.5)과 같은 층·같은 제외 규칙 (세션 0 중에는 이야기 지시가 이르다).
+  if (!isSetupPending(schema, state)) {
+    const scnBlock = scenarioInjectionText(schema, state.vars, (s) => renderTemplate(s, lookup));
+    if (scnBlock) lines.push(scnBlock);
   }
 
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
@@ -936,6 +960,22 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
           break;
         }
       }
+    }
+  }
+
+  // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
+  // 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금 조건이 바로 읽는다.
+  // 전환은 턴당 한 막 — 조건이 여러 막을 한 번에 넘겨도 페이스는 막 단위로 걷는다
+  // (scenarioTransition이 다음 막 하나만 보고, 여기는 한 번만 부른다).
+  if (scenarioConfig(schema)) {
+    state.vars[SCN_TURNS] = (Number(state.vars[SCN_TURNS]) || 0) + 1;
+    const tr = scenarioTransition(schema, state.vars, makeLookup(schema, state.vars));
+    if (tr) {
+      state.vars[SCN_IDX] = tr.toIndex;
+      state.vars[SCN_TURNS] = 0;
+      applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
+      if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
+      firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
     }
   }
 

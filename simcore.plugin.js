@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.89.2
-//@display-name SimCore (시뮬 엔진) v0.89.2 상태창 마커 자가 복구
+//@version 0.90.0
+//@display-name SimCore (시뮬 엔진) v0.90 시나리오레이터
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,26 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.90.0 ───────────────────────────────────────────────
+// 시나리오레이터 1차 — 엔진 수직 슬라이스 (core/scenario.js, 설계 docs/design-시나리오레이터.md).
+// 배포자가 시나리오 라인(acts)을 등록하면 조건을 만족할 때마다 다음 막이 해금된다 —
+// 이야기 속도·흐름 제어. 루아 자율주행(기승전결 통짜 주입 → 세 턴 만에 종결)과
+// 중심 사건 생성기 v1.3(⏫ 국면진행이 유저 버튼)의 실패를 조건식+minTurns가 대체한다.
+// - [은닉 = 구조] 모델은 전체 시나리오를 영영 못 본다. sendPhase 3.5.5가 현재 막의
+//   direct + 이미 열린 막들의 secret만 싣는다. secret 0개면 절 자체가 없다("내막이
+//   있다"는 신호도 스포일러). "미공개 = 거짓이 아니라 아직" 어법은 S2D에서 이식(설계 §5).
+// - [전환 = outputPhase 8.5] 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금이 바로
+//   읽는다. 턴당 한 막. minTurns = 페이스 바닥(조건이 먼저 차도 직전 막에서 N턴).
+//   unlock은 rand() 금지 — 전환은 결정적이어야 진단·리롤·세이브가 안 어긋난다.
+//   onEnter 효과 + notify(다음 전송 합류) + firedEvents 'scenario:막id' 창구.
+// - [상태 = vars 예약 키] scn_idx·scn_turns (time_epoch 계열 — 스키마 vars 아님,
+//   allow에 못 올림 = 보조가 못 만짐). 조건식·상태창 노출은 scn_act(막 id)·scn_label(라벨)·
+//   scn_turns — 진행 표시는 라벨만, 스포일러 없이.
+// - [검증] 중간 막 unlock 없음=오류(영영 안 열림), 예약 이름 충돌, intensity 오타,
+//   onEnter 효과 검사, 첫 막 unlock/minTurns=경고(무시됨). intensity 5종(잠복·전개·
+//   고조·절정·해소) 기본 문구는 v1.3 [연출 지시] 출발 + S2D FACT LOCK 양면 어법.
+// - 다음: 편집기 [시나리오] 탭 + tabAiTools 슬라이스 + 내장 AI 생성 + 진단(죽은 막) + 실물 예시.
 //
 // ── v0.89.2 ───────────────────────────────────────────────
 // 실사고: 모듈 Lua 트리거(챕터요약)가 onOutput에서 setChat으로 메시지를 다시 쓰는 사이
@@ -2612,6 +2632,11 @@ function validateSchema(schema) {
   if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
     allIds.add('deployed');
   }
+  // 시나리오 노출 (v0.90) — scn_act(막 id)·scn_label(라벨)·scn_turns(막 경과 턴).
+  // 규칙·파생 검사보다 먼저 등록해야 `scn_act == "act2"` 같은 조건이 통과한다.
+  if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
+    for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
+  }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -3497,6 +3522,75 @@ function validateSchema(schema) {
             err(p, `'${mk.weekday}'는 요일 이름이 아닙니다 — 이 봇의 요일: ${ct.weekdays.join(', ')}`);
           }
           if (mk.note != null && typeof mk.note !== 'string') err(p, 'note는 문자열');
+        });
+      }
+    }
+  }
+
+  // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
+  // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
+  // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.
+  if (schema.scenario != null) {
+    const S = schema.scenario;
+    if (typeof S !== 'object' || Array.isArray(S)) err('$.scenario', 'scenario는 객체여야 함');
+    else {
+      if (S.label != null && typeof S.label !== 'string') err('$.scenario.label', 'label은 문자열이어야 함');
+      // 예약 이름 충돌 — scn_idx·scn_turns는 세이브 예약 키, scn_act·scn_label은 노출 이름.
+      // 같은 id의 변수/파생이 있으면 조건식이 시나리오가 아니라 그 변수를 읽는다 (시간 노출 충돌과 같은 사고).
+      for (const rn of ['scn_idx', 'scn_turns', 'scn_act', 'scn_label']) {
+        if (ids.has(rn) || derived.some((d) => d && d.id === rn)) {
+          err('$.scenario', `'${rn}'는 시나리오가 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+      }
+      const acts = Array.isArray(S.acts) ? S.acts : null;
+      if (!acts || !acts.length) err('$.scenario.acts', '막(acts)이 최소 1개 필요합니다');
+      else {
+        const actIds = new Set();
+        const INTENSITY_KEYS = ['잠복', '전개', '고조', '절정', '해소'];
+        acts.forEach((a, i) => {
+          const p = `$.scenario.acts[${i}]`;
+          if (!a || typeof a !== 'object') { err(p, '막은 객체여야 함'); return; }
+          if (a.id != null && !ID_RE.test(a.id)) err(p, `잘못된 막 id: '${a.id}' (영문자로 시작, 영문·숫자·_만)`);
+          const aid = a.id || `act${i + 1}`;
+          if (actIds.has(aid)) err(p, `중복 막 id: '${aid}'`);
+          actIds.add(aid);
+          if (a.label != null && typeof a.label !== 'string') err(p, 'label은 문자열이어야 함');
+          // 해금식 — 첫 막은 즉시 시작이라 무시되고, 중간 막에 없으면 그 뒤가 전부 죽는다
+          if (i === 0 && a.unlock != null) {
+            warn(p, '첫 막의 unlock은 무시됩니다 — 첫 막은 즉시 시작합니다');
+          }
+          if (i > 0) {
+            if (typeof a.unlock !== 'string' || !a.unlock.trim()) {
+              err(p, `'${aid}' 막에 해금 조건(unlock)이 없습니다 — 이 막부터 뒤가 영영 안 열립니다`);
+            } else {
+              // rand() 금지 — 전환은 결정적이어야 진단·리롤·세이브가 어긋나지 않는다.
+              // 우연에 걸고 싶으면 랜덤 이벤트가 세운 변수를 읽게 하라 (2단 구조 그대로).
+              checkExpr(a.unlock, p + '.unlock', allIds, err, { allowRand: false });
+            }
+          }
+          if (a.minTurns != null && (!Number.isInteger(a.minTurns) || a.minTurns < 0)) {
+            err(p, 'minTurns는 0 이상의 정수여야 함');
+          }
+          if (i === 0 && a.minTurns != null) warn(p, '첫 막의 minTurns는 무시됩니다 — 들어오는 전환이 없습니다');
+          if (a.direct != null) {
+            if (typeof a.direct !== 'string') err(p, 'direct(연출 지시)는 문자열이어야 함');
+            else checkTemplateRefs(a.direct, p + '.direct', allIds, err);
+          }
+          if (a.secret != null) {
+            if (typeof a.secret !== 'string') err(p, 'secret(내막)은 문자열이어야 함');
+            else checkTemplateRefs(a.secret, p + '.secret', allIds, err);
+          }
+          if (!String(a.direct || '').trim() && !a.intensity) {
+            warn(p, `'${aid}' 막에 direct도 intensity도 없습니다 — 이 막이 열려도 모델에게 가는 연출 지시가 없습니다`);
+          }
+          if (a.intensity != null && !INTENSITY_KEYS.includes(a.intensity)) {
+            err(p, `intensity는 ${INTENSITY_KEYS.join('/')} 중 하나 (현재: '${a.intensity}')`);
+          }
+          if (a.onEnter != null) {
+            if (!Array.isArray(a.onEnter)) err(p, 'onEnter는 효과 배열이어야 함');
+            else a.onEnter.forEach((r, j) => checkSet(r, `${p}.onEnter[${j}]`));
+          }
+          if (a.notify != null && typeof a.notify !== 'string') err(p, 'notify는 문자열이어야 함');
         });
       }
     }
@@ -4438,6 +4532,145 @@ module.exports = { calendarConfig, calendarButtonSpec, monthView, addPlan, remov
 
 });
 
+SimCore.define("scenario", function (require, module, exports) {
+// 시나리오레이터 — 이야기의 척추 (설계: docs/design-시나리오레이터.md)
+//
+// 원칙: 막 전환은 **조건식이** 정한다 — 버튼도, 모델의 눈치도 아니다. 모델은 전체
+// 시나리오를 영영 못 본다: 현재 막의 연출 지시(direct)와 이미 열린 막들의 내막(secret)만
+// 받는다. 분량 조절 문제가 구조적으로 사라진다 — 모델이 조절할 게 없으니까
+// (루아 "자율주행"이 실패한 지점 — 기승전결 통짜 주입은 세 턴 만에 끝났다).
+//
+// 이벤트와의 분업: 이벤트 = 세상의 리듬(반복·랜덤·조건), 시나리오 = 이야기의 척추(선형·1회).
+// 막 해금 조건이 이벤트·판정이 세운 변수를 읽으므로 둘은 자연히 맞물린다.
+//
+// 내부 상태는 vars의 예약 키 두 칸 (time_epoch과 같은 계열 — 엔진이 관리, 스키마 vars 아님):
+//   scn_idx(현재 막 번호) · scn_turns(현재 막에서 보낸 턴). 조건식·상태창에는
+//   scn_act(막 id)·scn_label(막 라벨)·scn_turns가 노출된다 — 진행 표시는 라벨만, 스포일러 없이.
+//
+// 추리 게임은 비목표다 (설계 §5 — S2D.추리가 이미 그 자리의 성숙한 정답).
+// 이 모듈은 심코어가 굴리는 봇들(영지·아이돌·연애·무협)에 이야기 페이스를 꽂는다.
+
+const { evaluate, truthy } = require('./expr');
+
+const SCN_IDX = 'scn_idx';
+const SCN_TURNS = 'scn_turns';
+// 조건식·자리표시자에서 쓸 수 있는 노출 이름. scn_turns는 vars에 직접 살아 lookup의
+// `name in vars`에서 잡히고, scn_act/scn_label은 makeLookup이 이 모듈에 물어 계산한다.
+const SCN_EXPOSED = ['scn_act', 'scn_label', 'scn_turns'];
+
+// 국면별 기본 연출 문구 — 루아 "중심 사건 생성기 v1.3"의 [연출 지시]에서 출발.
+// 양면 어법(금지 + "이건 사고를 잠그는 규칙이 아니다")은 S2D FACT LOCK에서 이식했다 (설계 §5):
+// 잠복 막의 "옅게만"이 이야기 전체를 위축시키는 부작용을 뒷문장이 막는다.
+const INTENSITIES = {
+  잠복: '중심 사건은 아직 수면 아래에 있다. 이 응답에서는 그 실마리를 아주 옅게만 깔아라 — 전면에 내세우지 말 것. '
+    + '단, 이것은 이야기를 멈추라는 뜻이 아니다. 현재 장면·일상·관계는 자유롭고 적극적으로 진행하라.',
+  전개: '중심 사건이 모습을 드러내기 시작한다. 단서와 조짐을 장면에 실어 나르되, 전모는 아직 감춰라. '
+    + '인물들이 각자의 해석과 의심을 말하는 것은 자유다.',
+  고조: '긴장을 눈에 띄게 끌어올려라. 중심 사건이 인물들의 선택을 압박하기 시작하고, 되돌리기 어려워진다는 감각을 깔아라.',
+  절정: '중심 사건이 전면에 나선다. 더 이상 미루거나 피할 수 없다 — 장면의 중심에 사건을 세우고 정면으로 다뤄라.',
+  해소: '사건의 여파를 갈무리하라. 새 갈등을 열지 말고, 인물과 세계에 남은 흔적·변화·감정을 정리하는 데 집중하라.',
+};
+
+/**
+ * 스키마의 scenario 절 정규화. 없거나 형태가 아니면 null — "없음 = 꺼짐" 불변식.
+ * 검증은 validate 몫이고, 여기는 깨진 값에도 안 죽는 방어 정규화만 한다.
+ */
+function scenarioConfig(schema) {
+  const s = schema?.scenario;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+  const rawActs = Array.isArray(s.acts) ? s.acts : [];
+  const acts = [];
+  for (let i = 0; i < rawActs.length; i++) {
+    const a = rawActs[i];
+    if (!a || typeof a !== 'object') continue;
+    acts.push({
+      id: typeof a.id === 'string' && a.id ? a.id : `act${i + 1}`,
+      label: typeof a.label === 'string' ? a.label : '',
+      unlock: typeof a.unlock === 'string' && a.unlock.trim() ? a.unlock : null,
+      minTurns: Number.isFinite(Number(a.minTurns)) ? Math.max(0, Math.floor(Number(a.minTurns))) : 0,
+      direct: typeof a.direct === 'string' ? a.direct : '',
+      secret: typeof a.secret === 'string' ? a.secret : '',
+      intensity: typeof a.intensity === 'string' && INTENSITIES[a.intensity] ? a.intensity : null,
+      onEnter: Array.isArray(a.onEnter) ? a.onEnter : [],
+      notify: typeof a.notify === 'string' ? a.notify : '',
+    });
+  }
+  if (!acts.length) return null;
+  return { label: typeof s.label === 'string' ? s.label : '', acts };
+}
+
+/** 현재 막 번호 — 세이브가 옛 스키마(막이 줄어든)를 만나도 안 죽게 잘라 낸다 */
+function currentActIndex(cfg, vars) {
+  const raw = Number(vars?.[SCN_IDX]);
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(cfg.acts.length - 1, Math.floor(raw)));
+}
+
+/** makeLookup 위임 — scn_act(막 id)·scn_label(라벨). 그 외 이름은 undefined(관여 안 함) */
+function scenarioExposedVal(schema, vars, name) {
+  if (name !== 'scn_act' && name !== 'scn_label') return undefined;
+  const cfg = scenarioConfig(schema);
+  if (!cfg) return undefined;
+  const act = cfg.acts[currentActIndex(cfg, vars)];
+  return name === 'scn_act' ? act.id : (act.label || act.id);
+}
+
+/**
+ * 막 전환 판정 — 순수 결정만. 적용(effects·notify·카운터 리셋)은 엔진 outputPhase 몫.
+ * 다음 막 하나만 본다: 조건이 여러 막을 한 번에 넘겨도 **턴당 한 막** — 페이스는 막 단위로 걷는다.
+ * minTurns는 unlock과 같은 항목에 산다 — "이 막으로 들어오려면 직전 막에서 최소 N턴".
+ * 조건이 먼저 차도 바닥을 깔아 주는 페이스 손잡이다 (설계 §2).
+ */
+function scenarioTransition(schema, vars, lookup) {
+  const cfg = scenarioConfig(schema);
+  if (!cfg) return null;
+  const idx = currentActIndex(cfg, vars);
+  const next = cfg.acts[idx + 1];
+  if (!next) return null;                       // 마지막 막 — 유지 (해소 상태)
+  if (!next.unlock) return null;                // 해금식 없는 중간 막 — 검증이 잡지만 실행은 방어
+  const stayed = Number(vars?.[SCN_TURNS]) || 0;
+  if (stayed < next.minTurns) return null;      // 페이스 바닥 — 조건보다 먼저 본다 (평가 비용도 아낌)
+  try {
+    if (!truthy(evaluate(next.unlock, lookup, null))) return null;
+  } catch { return null; }                      // 깨진 식 — 검증이 미리 잡는다. 여기서 던지면 턴이 죽는다
+  return { toIndex: idx + 1, act: next };
+}
+
+/**
+ * 메인 프롬프트 주입 블록 — **현재 막의 지시 + 열린 막들의 secret만.**
+ * 전체 시나리오는 여기 없다. 이 함수가 은닉 보장의 실체다 (설계 §3-1).
+ * @param render direct·secret 속 {변수} 치환기 — 엔진이 renderTemplate을 물려 준다.
+ *   기본은 원문 그대로 (테스트·미리보기용).
+ */
+function scenarioInjectionText(schema, vars, render = (s) => s) {
+  const cfg = scenarioConfig(schema);
+  if (!cfg) return '';
+  const idx = currentActIndex(cfg, vars);
+  const act = cfg.acts[idx];
+  const lines = [];
+  const head = [cfg.label, act.label || act.id].filter(Boolean).join(' · ');
+  lines.push(`[이야기 지침] ${head} (${idx + 1}/${cfg.acts.length}막)`);
+  if (act.intensity) lines.push(INTENSITIES[act.intensity]);
+  if (act.direct) lines.push(render(act.direct));
+  // 내막 — 열린 막까지 누적 공개. 밝혀진 진실은 잊히지 않는다 (설계 §2 secret).
+  // 하나도 안 열렸으면 절 자체를 안 만든다 — "미공개 내막이 있다"는 신호도 스포일러다.
+  const secrets = cfg.acts.slice(0, idx + 1).map((a) => a.secret).filter(Boolean);
+  if (secrets.length) {
+    // "미공개 = 거짓이 아니라 아직" 어법 — S2D PUBLIC STATE 계약에서 이식 (설계 §5).
+    // 모델이 빈칸을 창작으로 메우거나, 반대로 아는 척 결말을 당겨 오는 것을 양쪽에서 막는다.
+    lines.push('[밝혀진 내막] 아래는 이야기 안에서 이미 성립한 진실이다. 여기 없는 내막은 거짓이 아니라 아직 밝혀지지 않은 것이다 — 빈칸을 창작으로 메우지 말고, 아직 밝혀지지 않은 결말을 안다고 서술하지 마라.');
+    for (const sec of secrets) lines.push(`- ${render(sec)}`);
+  }
+  return lines.join('\n');
+}
+
+module.exports = {
+  SCN_IDX, SCN_TURNS, SCN_EXPOSED, INTENSITIES,
+  scenarioConfig, currentActIndex, scenarioExposedVal, scenarioTransition, scenarioInjectionText,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -4892,6 +5125,8 @@ SimCore.define("engine", function (require, module, exports) {
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
+const { SCN_IDX, SCN_TURNS, scenarioConfig, scenarioExposedVal, scenarioTransition,
+  scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 
@@ -4942,6 +5177,8 @@ function initState(schema, opts = {}) {
       ? epochFrom(rollStart(tcfg, opts.rng), tcfg.calendar)
       : tcfg.startEpoch;
   }
+  // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
+  if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
   return {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -5006,6 +5243,12 @@ function reconcileState(schema, state) {
   // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
   const tcfg = timeConfig(schema);
   if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
+  // 시나리오 예약 키 (v0.90) — time_epoch과 같은 계열. 진행 중 세이브에 시나리오를 나중에
+  // 켜면 1막부터 시작한다 (이야기 척추는 소급하지 않는다).
+  if (scenarioConfig(schema)) {
+    if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
+    if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
+  }
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -5134,6 +5377,12 @@ function makeLookup(schema, vars) {
     if (name in vars) return vars[name];
     const tv = timeVal(name);
     if (tv !== undefined) return tv;
+    // 시나리오 노출 (v0.90) — scn_act(현재 막 id)·scn_label(라벨)은 예약 키 scn_idx에서 계산.
+    // scn_turns는 vars에 직접 살아 위 `name in vars`에서 이미 잡혔다.
+    if (name === 'scn_act' || name === 'scn_label') {
+      const sv = scenarioExposedVal(schema, vars, name);
+      if (sv !== undefined) return sv;
+    }
     // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
     // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
     // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
@@ -5439,6 +5688,14 @@ function sendPhase(schema, prevState, { rng } = {}) {
         }
       } catch { /* 검증 단계에서 걸러지지만 방어 */ }
     }
+  }
+
+  // 3.5.5 시나리오 척추 (v0.90) — 현재 막의 연출 지시 + 열린 막들의 내막만 싣는다.
+  // 전체 시나리오는 영영 안 실린다 — 은닉은 구조가 보장한다 (design-시나리오레이터 §3-1).
+  // 지시문(3.5)과 같은 층·같은 제외 규칙 (세션 0 중에는 이야기 지시가 이르다).
+  if (!isSetupPending(schema, state)) {
+    const scnBlock = scenarioInjectionText(schema, state.vars, (s) => renderTemplate(s, lookup));
+    if (scnBlock) lines.push(scnBlock);
   }
 
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
@@ -5813,6 +6070,22 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
           break;
         }
       }
+    }
+  }
+
+  // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
+  // 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금 조건이 바로 읽는다.
+  // 전환은 턴당 한 막 — 조건이 여러 막을 한 번에 넘겨도 페이스는 막 단위로 걷는다
+  // (scenarioTransition이 다음 막 하나만 보고, 여기는 한 번만 부른다).
+  if (scenarioConfig(schema)) {
+    state.vars[SCN_TURNS] = (Number(state.vars[SCN_TURNS]) || 0) + 1;
+    const tr = scenarioTransition(schema, state.vars, makeLookup(schema, state.vars));
+    if (tr) {
+      state.vars[SCN_IDX] = tr.toIndex;
+      state.vars[SCN_TURNS] = 0;
+      applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
+      if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
+      firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
     }
   }
 

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.89.2
-//@display-name SimCore (시뮬 엔진) v0.89.2 상태창 마커 자가 복구
+//@version 0.90.0
+//@display-name SimCore (시뮬 엔진) v0.90 시나리오레이터
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,26 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.90.0 ───────────────────────────────────────────────
+// 시나리오레이터 1차 — 엔진 수직 슬라이스 (core/scenario.js, 설계 docs/design-시나리오레이터.md).
+// 배포자가 시나리오 라인(acts)을 등록하면 조건을 만족할 때마다 다음 막이 해금된다 —
+// 이야기 속도·흐름 제어. 루아 자율주행(기승전결 통짜 주입 → 세 턴 만에 종결)과
+// 중심 사건 생성기 v1.3(⏫ 국면진행이 유저 버튼)의 실패를 조건식+minTurns가 대체한다.
+// - [은닉 = 구조] 모델은 전체 시나리오를 영영 못 본다. sendPhase 3.5.5가 현재 막의
+//   direct + 이미 열린 막들의 secret만 싣는다. secret 0개면 절 자체가 없다("내막이
+//   있다"는 신호도 스포일러). "미공개 = 거짓이 아니라 아직" 어법은 S2D에서 이식(설계 §5).
+// - [전환 = outputPhase 8.5] 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금이 바로
+//   읽는다. 턴당 한 막. minTurns = 페이스 바닥(조건이 먼저 차도 직전 막에서 N턴).
+//   unlock은 rand() 금지 — 전환은 결정적이어야 진단·리롤·세이브가 안 어긋난다.
+//   onEnter 효과 + notify(다음 전송 합류) + firedEvents 'scenario:막id' 창구.
+// - [상태 = vars 예약 키] scn_idx·scn_turns (time_epoch 계열 — 스키마 vars 아님,
+//   allow에 못 올림 = 보조가 못 만짐). 조건식·상태창 노출은 scn_act(막 id)·scn_label(라벨)·
+//   scn_turns — 진행 표시는 라벨만, 스포일러 없이.
+// - [검증] 중간 막 unlock 없음=오류(영영 안 열림), 예약 이름 충돌, intensity 오타,
+//   onEnter 효과 검사, 첫 막 unlock/minTurns=경고(무시됨). intensity 5종(잠복·전개·
+//   고조·절정·해소) 기본 문구는 v1.3 [연출 지시] 출발 + S2D FACT LOCK 양면 어법.
+// - 다음: 편집기 [시나리오] 탭 + tabAiTools 슬라이스 + 내장 AI 생성 + 진단(죽은 막) + 실물 예시.
 //
 // ── v0.89.2 ───────────────────────────────────────────────
 // 실사고: 모듈 Lua 트리거(챕터요약)가 onOutput에서 setChat으로 메시지를 다시 쓰는 사이

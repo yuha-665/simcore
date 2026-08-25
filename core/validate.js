@@ -123,6 +123,11 @@ function validateSchema(schema) {
   if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
     allIds.add('deployed');
   }
+  // 시나리오 노출 (v0.90) — scn_act(막 id)·scn_label(라벨)·scn_turns(막 경과 턴).
+  // 규칙·파생 검사보다 먼저 등록해야 `scn_act == "act2"` 같은 조건이 통과한다.
+  if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
+    for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
+  }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -1008,6 +1013,75 @@ function validateSchema(schema) {
             err(p, `'${mk.weekday}'는 요일 이름이 아닙니다 — 이 봇의 요일: ${ct.weekdays.join(', ')}`);
           }
           if (mk.note != null && typeof mk.note !== 'string') err(p, 'note는 문자열');
+        });
+      }
+    }
+  }
+
+  // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
+  // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
+  // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.
+  if (schema.scenario != null) {
+    const S = schema.scenario;
+    if (typeof S !== 'object' || Array.isArray(S)) err('$.scenario', 'scenario는 객체여야 함');
+    else {
+      if (S.label != null && typeof S.label !== 'string') err('$.scenario.label', 'label은 문자열이어야 함');
+      // 예약 이름 충돌 — scn_idx·scn_turns는 세이브 예약 키, scn_act·scn_label은 노출 이름.
+      // 같은 id의 변수/파생이 있으면 조건식이 시나리오가 아니라 그 변수를 읽는다 (시간 노출 충돌과 같은 사고).
+      for (const rn of ['scn_idx', 'scn_turns', 'scn_act', 'scn_label']) {
+        if (ids.has(rn) || derived.some((d) => d && d.id === rn)) {
+          err('$.scenario', `'${rn}'는 시나리오가 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+      }
+      const acts = Array.isArray(S.acts) ? S.acts : null;
+      if (!acts || !acts.length) err('$.scenario.acts', '막(acts)이 최소 1개 필요합니다');
+      else {
+        const actIds = new Set();
+        const INTENSITY_KEYS = ['잠복', '전개', '고조', '절정', '해소'];
+        acts.forEach((a, i) => {
+          const p = `$.scenario.acts[${i}]`;
+          if (!a || typeof a !== 'object') { err(p, '막은 객체여야 함'); return; }
+          if (a.id != null && !ID_RE.test(a.id)) err(p, `잘못된 막 id: '${a.id}' (영문자로 시작, 영문·숫자·_만)`);
+          const aid = a.id || `act${i + 1}`;
+          if (actIds.has(aid)) err(p, `중복 막 id: '${aid}'`);
+          actIds.add(aid);
+          if (a.label != null && typeof a.label !== 'string') err(p, 'label은 문자열이어야 함');
+          // 해금식 — 첫 막은 즉시 시작이라 무시되고, 중간 막에 없으면 그 뒤가 전부 죽는다
+          if (i === 0 && a.unlock != null) {
+            warn(p, '첫 막의 unlock은 무시됩니다 — 첫 막은 즉시 시작합니다');
+          }
+          if (i > 0) {
+            if (typeof a.unlock !== 'string' || !a.unlock.trim()) {
+              err(p, `'${aid}' 막에 해금 조건(unlock)이 없습니다 — 이 막부터 뒤가 영영 안 열립니다`);
+            } else {
+              // rand() 금지 — 전환은 결정적이어야 진단·리롤·세이브가 어긋나지 않는다.
+              // 우연에 걸고 싶으면 랜덤 이벤트가 세운 변수를 읽게 하라 (2단 구조 그대로).
+              checkExpr(a.unlock, p + '.unlock', allIds, err, { allowRand: false });
+            }
+          }
+          if (a.minTurns != null && (!Number.isInteger(a.minTurns) || a.minTurns < 0)) {
+            err(p, 'minTurns는 0 이상의 정수여야 함');
+          }
+          if (i === 0 && a.minTurns != null) warn(p, '첫 막의 minTurns는 무시됩니다 — 들어오는 전환이 없습니다');
+          if (a.direct != null) {
+            if (typeof a.direct !== 'string') err(p, 'direct(연출 지시)는 문자열이어야 함');
+            else checkTemplateRefs(a.direct, p + '.direct', allIds, err);
+          }
+          if (a.secret != null) {
+            if (typeof a.secret !== 'string') err(p, 'secret(내막)은 문자열이어야 함');
+            else checkTemplateRefs(a.secret, p + '.secret', allIds, err);
+          }
+          if (!String(a.direct || '').trim() && !a.intensity) {
+            warn(p, `'${aid}' 막에 direct도 intensity도 없습니다 — 이 막이 열려도 모델에게 가는 연출 지시가 없습니다`);
+          }
+          if (a.intensity != null && !INTENSITY_KEYS.includes(a.intensity)) {
+            err(p, `intensity는 ${INTENSITY_KEYS.join('/')} 중 하나 (현재: '${a.intensity}')`);
+          }
+          if (a.onEnter != null) {
+            if (!Array.isArray(a.onEnter)) err(p, 'onEnter는 효과 배열이어야 함');
+            else a.onEnter.forEach((r, j) => checkSet(r, `${p}.onEnter[${j}]`));
+          }
+          if (a.notify != null && typeof a.notify !== 'string') err(p, 'notify는 문자열이어야 함');
         });
       }
     }

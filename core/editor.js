@@ -5198,6 +5198,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다. '
       + '유저에게는 상태창 진행 칩(자동 구성이면 맨 위, 템플릿이면 {scenario} 자리)과 '
       + '전환 순간의 📖 하이라이트 카드로 보입니다 — 라벨만, 스포일러 없이.'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '해금이 읽는 변수를 보조 AI가 움직인다면(자동 갱신 허용 목록), 그 변수의 **desc가 곧 페이스 '
+      + '손잡이**입니다 — 보조 AI는 desc를 보고 언제 움직일지 정합니다. 변수 탭에서 기록 기준을 '
+      + '적어 두세요 (예: "서사에서 조각을 실제로 확보했을 때만 +1. 언급·추측은 세지 않는다"). '
+      + 'AI에게 "해금해도 되는지"를 판단시키는 게 아니라 일어난 일만 기록시키는 겁니다 — '
+      + '판단은 해금식과 최소 체류 턴이 합니다.'));
 
     const INTENSITY_OPTS = [['', '(없음 — direct만)'],
       ...Object.keys(INTENSITIES).map((k) => [k, k])];

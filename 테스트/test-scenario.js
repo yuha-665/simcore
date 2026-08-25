@@ -20,7 +20,8 @@ const cp = (o) => JSON.parse(JSON.stringify(o));
 const BASE = {
   simcore: '0.1',
   vars: [
-    { id: 'finds', label: '조각 발견', type: 'int', init: 0, min: 0, max: 10 },
+    { id: 'finds', label: '조각 발견', type: 'int', init: 0, min: 0, max: 10,
+      desc: '서사에서 조각을 실제로 확보했을 때만 +1. 언급이나 추측은 세지 않는다.' },
     { id: 'threat', label: '위협', type: 'int', init: 0, min: 0, max: 100 },
   ],
   rules: { events: [] },
@@ -229,6 +230,26 @@ function turn(schema, state, changes = {}) {
   const bareAct = cp(BASE);
   delete bareAct.scenario.acts[2].intensity;
   ck('direct도 intensity도 없는 막 = 경고', validateSchema(bareAct).warnings.some((w) => w.msg.includes('연출 지시가 없습니다')), '');
+
+  // 해금 변수의 기록 기준 (v0.93.1) — desc가 보조 AI의 페이스 손잡이라는 걸 검증이 가르친다
+  ck('★ 해금 변수 desc 있으면 기록 기준 경고 없음',
+    !v0.warnings.some((w) => w.msg.includes('언제 움직일지')), JSON.stringify(v0.warnings));
+  const noDesc = cp(BASE);
+  delete noDesc.vars[0].desc; // finds — allow에 있고 act2 해금이 읽는다
+  ck('★ AI 담당 해금 변수에 desc 없음 = 경고 ("언제 움직일지")',
+    validateSchema(noDesc).warnings.some((w) => w.msg.includes("'finds'") && w.msg.includes('언제 움직일지')), '');
+  // threat은 desc가 없지만 allow 밖(onEnter·이벤트가 세움) — 시스템 담당은 경고 대상이 아니다
+  ck('★ 시스템 담당 해금 변수는 desc 없어도 경고 없음 (오탐 방어)',
+    !validateSchema(noDesc).warnings.some((w) => w.msg.includes("'threat'")), '');
+  // 문자열 리터럴은 변수로 오인하지 않는다 (allow 변수와 같은 글자여도)
+  const strLit = cp(noDesc);
+  strLit.vars.push({ id: 'stage', label: '단계', type: 'text', init: 'finds' });
+  strLit.updater.allow.push({ id: 'stage' });
+  strLit.scenario.acts[2].unlock = 'threat >= 10 or stage == "finds"';
+  ck('★ 해금식 문자열 리터럴은 오인 안 함', (() => {
+    const w = validateSchema(strLit).warnings;
+    return !w.some((x) => x.path.includes('acts[2]') && x.msg.includes("'finds'"));
+  })(), '');
 }
 
 // ── 편집기 슬라이스 (v0.91) — [시나리오] 탭을 AI에게 맡길 수 있다 ──

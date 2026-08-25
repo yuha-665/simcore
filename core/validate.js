@@ -1083,6 +1083,26 @@ function validateSchema(schema) {
           }
           if (a.notify != null && typeof a.notify !== 'string') err(p, 'notify는 문자열이어야 함');
         });
+        // 해금 변수의 기록 기준 (v0.93.1) — 해금이 읽는 변수를 보조 AI가 움직인다면(allow),
+        // 그 변수의 desc가 곧 페이스 손잡이다: 보조 AI는 계약표의 desc를 보고 "언제 움직일지"를
+        // 정한다 (판단은 조건식+minTurns 몫, AI는 기록만). desc가 비면 AI가 감으로 움직여
+        // 막 페이스가 운에 맡겨진다. 이벤트·판정이 세우는 변수(allow 밖)는 대상이 아니다 — 오탐 0.
+        const allowIds = new Set((schema.updater?.allow || []).map((x) => x && x.id).filter(Boolean));
+        const descWarned = new Set();
+        acts.forEach((a, i) => {
+          if (i === 0 || typeof a.unlock !== 'string') return;
+          // 문자열 리터럴 안의 단어를 변수로 오인하지 않게 벗겨 낸다 (stage == "friend" 류)
+          const bare = a.unlock.replace(/"[^"]*"|'[^']*'/g, '');
+          for (const m of bare.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+            const id = m[0];
+            if (descWarned.has(id) || !allowIds.has(id)) continue;
+            const v = (schema.vars || []).find((x) => x && x.id === id);
+            if (!v || String(v.desc || '').trim()) continue;
+            descWarned.add(id);
+            warn(`$.scenario.acts[${i}].unlock`,
+              `해금이 읽는 '${id}'는 보조 AI 담당인데 desc가 없습니다 — 보조 AI는 desc를 보고 언제 움직일지 정합니다. 변수 탭에서 기록 기준(예: "서사에서 실제로 확보했을 때만 +1")을 적어 주세요`);
+          }
+        });
       }
     }
   }

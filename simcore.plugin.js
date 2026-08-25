@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.93.0
+//@version 0.93.1
 //@display-name SimCore (시뮬 엔진) v0.93 시나리오 상태창
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.93.1 ───────────────────────────────────────────────
+// 해금 변수의 기록 기준 — 실기 피드백: "AI가 해금 변수를 언제 움직일지 어디에 적지?"
+// 답은 원래 있던 자리(변수 desc — 보조 계약표에 그대로 실린다)인데, 시나리오 탭도
+// 요청서도 그 연결을 안 가르쳐 줬다. 원칙: AI에게 "해금 판단"을 맡기면 자율주행 실패
+// 재현 — AI는 일어난 일만 기록(desc = 기록 기준), 판단은 해금식+minTurns가 한다.
+// - [검증 warn] 해금이 읽는 변수가 updater.allow에 있는데 desc가 비면 경고
+//   ("보조 AI는 desc를 보고 언제 움직일지 정합니다"). allow 밖(이벤트·판정이 세우는
+//   변수)은 대상 아님 + 해금식 문자열 리터럴 오인 방지 — 오탐 0 원칙.
+// - [시나리오 탭 힌트] "desc가 곧 페이스 손잡이" 안내 한 절.
 //
 // ── v0.93.0 ───────────────────────────────────────────────
 // 시나리오레이터 4차 — 유저 눈에 보이는 자리. 모델 주입(1차)·편집(2차)·진단(3차)에 이어
@@ -3639,6 +3649,26 @@ function validateSchema(schema) {
             else a.onEnter.forEach((r, j) => checkSet(r, `${p}.onEnter[${j}]`));
           }
           if (a.notify != null && typeof a.notify !== 'string') err(p, 'notify는 문자열이어야 함');
+        });
+        // 해금 변수의 기록 기준 (v0.93.1) — 해금이 읽는 변수를 보조 AI가 움직인다면(allow),
+        // 그 변수의 desc가 곧 페이스 손잡이다: 보조 AI는 계약표의 desc를 보고 "언제 움직일지"를
+        // 정한다 (판단은 조건식+minTurns 몫, AI는 기록만). desc가 비면 AI가 감으로 움직여
+        // 막 페이스가 운에 맡겨진다. 이벤트·판정이 세우는 변수(allow 밖)는 대상이 아니다 — 오탐 0.
+        const allowIds = new Set((schema.updater?.allow || []).map((x) => x && x.id).filter(Boolean));
+        const descWarned = new Set();
+        acts.forEach((a, i) => {
+          if (i === 0 || typeof a.unlock !== 'string') return;
+          // 문자열 리터럴 안의 단어를 변수로 오인하지 않게 벗겨 낸다 (stage == "friend" 류)
+          const bare = a.unlock.replace(/"[^"]*"|'[^']*'/g, '');
+          for (const m of bare.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+            const id = m[0];
+            if (descWarned.has(id) || !allowIds.has(id)) continue;
+            const v = (schema.vars || []).find((x) => x && x.id === id);
+            if (!v || String(v.desc || '').trim()) continue;
+            descWarned.add(id);
+            warn(`$.scenario.acts[${i}].unlock`,
+              `해금이 읽는 '${id}'는 보조 AI 담당인데 desc가 없습니다 — 보조 AI는 desc를 보고 언제 움직일지 정합니다. 변수 탭에서 기록 기준(예: "서사에서 실제로 확보했을 때만 +1")을 적어 주세요`);
+          }
         });
       }
     }
@@ -14204,6 +14234,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다. '
       + '유저에게는 상태창 진행 칩(자동 구성이면 맨 위, 템플릿이면 {scenario} 자리)과 '
       + '전환 순간의 📖 하이라이트 카드로 보입니다 — 라벨만, 스포일러 없이.'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '해금이 읽는 변수를 보조 AI가 움직인다면(자동 갱신 허용 목록), 그 변수의 **desc가 곧 페이스 '
+      + '손잡이**입니다 — 보조 AI는 desc를 보고 언제 움직일지 정합니다. 변수 탭에서 기록 기준을 '
+      + '적어 두세요 (예: "서사에서 조각을 실제로 확보했을 때만 +1. 언급·추측은 세지 않는다"). '
+      + 'AI에게 "해금해도 되는지"를 판단시키는 게 아니라 일어난 일만 기록시키는 겁니다 — '
+      + '판단은 해금식과 최소 체류 턴이 합니다.'));
 
     const INTENSITY_OPTS = [['', '(없음 — direct만)'],
       ...Object.keys(INTENSITIES).map((k) => [k, k])];

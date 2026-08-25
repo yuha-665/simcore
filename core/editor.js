@@ -2988,6 +2988,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets+켜진 모듈), 안내문, 임포터 입력/진행.
   // 임포터 안내는 따로(assetImportNote) — 실패 사유가 버튼 바로 아래 보여야 유저가 알아챈다 (실측).
   let assetNames = null, assetNote = null, assetImportText = '', assetImportNote = null, assetBusy = false, assetsOpen = false;
+  // 모듈 팩 매니페스트 (v0.94) — 다시 읽기 결과 표시 + 배포자용 내보내기 상태
+  let modulePackNote = null, manifestPick = null, manifestOut = null;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -7657,6 +7659,62 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     if (assetNames) controls.appendChild(h('div', { class: 'sce-assets-count' },
       `실제 에셋 ${assetNames.length}개를 읽었어요. 각 팩 아래에서 조합 커버리지를 확인할 수 있습니다.`));
+
+    // ── 모듈 팩 매니페스트 (v0.94) — 에셋 애드온을 모듈로 배포하는 통로 ──
+    // 이미지는 모듈에 실리는데 팩 정의(지침)는 스키마에만 살던 구멍의 처방.
+    // 받는 봇: 아래 체크를 켜고 저장하면, 활성 모듈의 ⚙simcore-pack 로어북 항목을 읽어 병합.
+    // 주는 모듈: 아래 내보내기로 팩 JSON을 만들어 모듈 로어북에 붙여넣는다.
+    {
+      const mm = h('section', { class: 'sce-assets-controls sce-assets-modpacks' });
+      mm.appendChild(h('div', { class: 'sce-assets-intro-title' }, '📦 모듈 팩 매니페스트'));
+      mm.appendChild(bindCheck(!!(a && a.moduleManifests), (x) => {
+        const A = ensureAssets();
+        if (x) A.moduleManifests = true; else delete A.moduleManifests;
+        rerender();
+      }, '활성 모듈의 ⚙simcore-pack 항목에서 팩을 자동으로 읽어와요'));
+      mm.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+        '에셋 애드온 모듈을 받는 봇용 스위치예요. 모듈 로어북에 이름(코멘트)이 ⚙simcore-pack인 '
+        + '항목을 두고 내용에 팩 JSON을 넣으면, 모듈 임포트·활성화만으로 팩이 붙습니다. '
+        + '켠 뒤 저장(설치)해야 적용되고, 이미지 실존 대조도 그 모듈에서 함께 읽어요.'));
+      if (a && a.moduleManifests) {
+        mm.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
+          if (!ai || !ai.getModulePacks) { modulePackNote = '이 환경에서는 모듈을 읽을 수 없어요.'; rerender(); return; }
+          try {
+            const r = await ai.getModulePacks();
+            modulePackNote = (r.merged.length
+              ? '병합된 모듈 팩: ' + r.merged.map((p) => `${p.id} (${p.source})`).join(', ')
+              : r.scanned ? '활성 모듈에 ⚙simcore-pack 항목이 없어요 — 설치된 스키마 기준이라, 방금 켰다면 저장(설치) 후 다시 읽어 주세요.'
+                : '스캔 안 됨 — 설치된 스키마에서 이 스위치가 꺼져 있어요 (저장 후 다시).')
+              + (r.warnings.length ? ' · ⚠ ' + r.warnings.join(' | ') : '');
+          } catch (e) { modulePackNote = '모듈 읽기 실패: ' + e.message; }
+          rerender();
+        } }, '모듈 팩 다시 읽기'));
+        if (modulePackNote) mm.appendChild(h('div', { class: 'sce-assets-note', 'aria-live': 'polite' }, modulePackNote));
+      }
+      // 배포자용 내보내기 — 이 스키마의 팩 하나를 매니페스트 JSON으로
+      const myPacks = (a && a.packs || []).filter((p) => p.origin !== 'module');
+      if (myPacks.length) {
+        const rowEl = h('div', { class: 'sce-row' });
+        rowEl.appendChild(bindSelect(manifestPick ?? myPacks[0].id,
+          myPacks.map((p) => [p.id, `팩 ${p.id}`]),
+          (x) => { manifestPick = x; manifestOut = null; rerender(); }));
+        rowEl.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+          const pk = myPacks.find((p) => p.id === (manifestPick ?? myPacks[0].id)) || myPacks[0];
+          const { origin, ...clean } = pk;
+          manifestOut = JSON.stringify(clean, null, 2);
+          rerender();
+        } }, '매니페스트 JSON 만들기'));
+        mm.appendChild(rowEl);
+        if (manifestOut != null) {
+          mm.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+            '아래 JSON을 복사해, 배포할 모듈의 로어북에 새 항목(이름: ⚙simcore-pack, 항상 활성 끄기)을 '
+            + '만들어 내용으로 붙여넣으세요. 이미지 파일도 같은 모듈의 추가 에셋에 넣으면 배포 완성입니다.'));
+          mm.appendChild(h('textarea', { class: 'sce-input', readonly: 'readonly', rows: 8,
+            style: 'width:100%; font-family:monospace; font-size:11px' }, manifestOut));
+        }
+      }
+      box.appendChild(mm);
+    }
 
     // 매 턴 비용 추정 — 이 기능이 뭘 아끼는지 숫자로. 기준선은 예전 방식(assetlist 통짜 덤프)
     if (a && a.packs && a.packs.length) {

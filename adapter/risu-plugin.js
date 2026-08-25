@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.93.1
-//@display-name SimCore (시뮬 엔진) v0.93 시나리오 상태창
+//@version 0.94.0
+//@display-name SimCore (시뮬 엔진) v0.94 모듈 팩 매니페스트
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,7 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v0.93.1 ───────────────────────────────────────────────
+// ── v0.94.0 ───────────────────────────────────────────────
+// 배포 구멍(유저 제보): 이미지는 모듈에 실을 수 있는데(module_assets) 팩 정의 — 에셋 지침
+// (format·슬롯·usage·when) — 는 스키마 전용이라 에셋 애드온을 모듈로 배포할 방법이 없었다.
+// - [코어 assets] 모듈 로어북 규약 ⚙simcore-pack: 항목 내용 = 팩 JSON. parseManifest +
+//   mergeModulePacks — 후보를 스키마에 얹어 검증 통과분만 origin:module로 병합 (깨진
+//   매니페스트가 봇을 못 죽인다). id 충돌은 스키마·선착 우선, source 비면 모듈 이름, 상한 8.
+// - [어댑터] assets.moduleManifests 옵트인 봇만 로드 시 활성 모듈 스캔·병합 (기본 봇 무비용).
+//   매니페스트 모듈의 이미지 이름은 module_assets 꺼져 있어도 실존 대조에 합류.
+// - [편집기] 에셋 탭 📦 모듈 팩 매니페스트: 옵트인 체크 + [다시 읽기](권한 팝업 경로) +
+//   배포자용 팩 → 매니페스트 JSON 내보내기. 병합 팩은 편집기·저장에서 걸러진다 (유령 방지).
+// - [검증] assets.moduleManifests 불리언. 테스트 test-modpacks.js 18케이스.
+//// ── v0.93.1 ───────────────────────────────────────────────
 // 해금 변수의 기록 기준 — 실기 피드백: "AI가 해금 변수를 언제 움직일지 어디에 적지?"
 // 답은 원래 있던 자리(변수 desc — 보조 계약표에 그대로 실린다)인데, 시나리오 탭도
 // 요청서도 그 연결을 안 가르쳐 줬다. 원칙: AI에게 "해금 판단"을 맡기면 자율주행 실패
@@ -2400,6 +2411,8 @@
     charKey = key;
     schema = parsed;
     mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
+    // 모듈 팩 매니페스트 (v0.94) — 옵트인 봇만 db를 읽는다. 실패해도 로드는 계속.
+    try { await scanModulePacks(false); } catch (e) { console.log('[simcore] 모듈 팩 스캔 오류:', e.message); }
 
     // pluginStorage를 SnapshotStore 백엔드로 감싼다
     const backend = {
@@ -2646,7 +2659,64 @@
     const { sources } = await getAssetSources(false);
     const set = new Set();
     for (const s of sources) for (const n of s.names) set.add(n);
+    // 매니페스트 모듈의 이미지 이름 — module_assets가 꺼져 있어도 실존 대조에 넣는다
+    // (매니페스트 팩의 이미지는 그 모듈에 산다. 팩만 받고 대조를 못 하면 전부 강등된다)
+    for (const n of modulePackState.moduleAssetNames) set.add(n);
     return set.size ? set : null;
+  }
+
+  // ── 모듈 팩 매니페스트 (v0.94) ────────────────────────────
+  // 에셋 애드온 모듈이 로어북 항목(⚙simcore-pack, 내용=팩 JSON)으로 자기 지침을 실어 나른다.
+  // 스키마가 assets.moduleManifests: true로 옵트인한 봇에서만 db를 읽는다 — 기본 봇은
+  // 로드가 1ms도 느려지지 않는다 (v0.83 "안 읽는다 = 안 멈춘다" 원칙 유지).
+  // 스캔 시점: 스키마 로드 1회 + 편집기 [다시 읽기](ask=true, 권한 팝업 허용).
+  // 채팅 개별 활성 모듈이 판 중간에 바뀌면 편집기에서 다시 읽어야 한다 (문서화).
+  let modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false };
+
+  async function scanModulePacks(ask) {
+    const reset = () => {
+      if (schema?.assets?.packs) schema.assets.packs = schema.assets.packs.filter((p) => p.origin !== 'module');
+      modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false };
+    };
+    if (!schema?.assets || schema.assets.moduleManifests !== true) { reset(); return modulePackState; }
+    const warnings = [];
+    const manifests = [];
+    const assetNames = [];
+    const db = await readModulesDb(ask);
+    if (db && db.__err) warnings.push('모듈 읽기 실패: ' + db.__err);
+    else if (!db || typeof db !== 'object') {
+      warnings.push('db 권한 거부 또는 미지원 — 편집기 에셋 탭 [모듈 팩 다시 읽기]로 권한을 요청할 수 있어요');
+    } else {
+      const active = new Set(Array.isArray(db.enabledModules) ? db.enabledModules : []);
+      try {
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+        for (const id of chat?.modules || []) active.add(id);
+      } catch { /* 채팅 접근 실패 — 전역 활성만으로 진행 */ }
+      for (const m of db.modules || []) {
+        if (!m || !active.has(m.id)) continue;
+        const entries = (m.lorebook || []).filter((l) => l && l.comment === assetsMod.MANIFEST_COMMENT);
+        if (!entries.length) continue;
+        const label = m.name ?? m.id;
+        for (const l of entries) manifests.push({ label, content: l.content });
+        assetNames.push(...collectAssetNames(m.assets));   // 매니페스트 모듈의 이미지는 대조에 필요
+      }
+    }
+    // 병합 — 통과한 팩만 origin:'module'로 스키마에 얹는다. 저장·편집 경로는 이 표시를 걸러낸다.
+    const r = assetsMod.mergeModulePacks(schema, manifests, validateSchema);
+    schema.assets.packs = [...schema.assets.packs.filter((p) => p.origin !== 'module'), ...r.packs];
+    modulePackState = {
+      merged: r.packs.map((p) => ({ id: p.id, source: p.source })),
+      warnings: [...warnings, ...r.warnings],
+      moduleAssetNames: assetNames,
+      scanned: true,
+    };
+    if (r.packs.length || modulePackState.warnings.length) {
+      console.log('[simcore] 모듈 팩:', r.packs.map((p) => p.id).join(', ') || '(없음)',
+        modulePackState.warnings.length ? '/ 경고: ' + modulePackState.warnings.join(' | ') : '');
+    }
+    return modulePackState;
   }
 
   /** 보조 응답의 image 필드 → 출력 태그 (실패 시 null — 삽입 생략) */
@@ -5338,6 +5408,9 @@ count(목록)  has(목록, "항목")</pre>
   function ensureEditor() {
     if (editor) return;
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    // 모듈 매니페스트로 병합된 팩은 편집·저장 대상이 아니다 — 모듈이 관리한다.
+    // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
+    if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
       ai: {
         // ⚠ 자기 정산 함정 — callGenLLM만 쓸 것. 'main' 선택 시에도 GEN_SENTINEL로
@@ -5353,6 +5426,10 @@ count(목록)  has(목록, "항목")</pre>
         // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4).
         // 버튼 경로라 ask=true — 권한 팝업을 여기서만 띄운다 (v0.54.5)
         getAssetSources: () => getAssetSources(true),
+        // 모듈 팩 매니페스트 (v0.94) — 다시 읽기 + 현황. 버튼 경로라 ask=true.
+        // ⚠ 편집기 미저장 스키마가 아니라 **설치된 스키마** 기준으로 스캔한다 — 체크박스를
+        //   막 켰다면 저장(설치) 후에 눌러야 반영된다 (편집기 안내문이 이를 말한다).
+        getModulePacks: () => scanModulePacks(true),
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

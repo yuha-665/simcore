@@ -706,6 +706,9 @@ function validateSchema(schema) {
     else {
       if (A.by != null && !['aux', 'aux_flow', 'main'].includes(A.by))
         err('$.assets.by', "by는 'aux'(맨 앞 1장), 'aux_flow'(서사 위치 여러 장) 또는 'main'");
+      // v0.94 — 활성 모듈의 ⚙simcore-pack 매니페스트(팩 정의)를 런타임 병합할지 (옵트인)
+      if (A.moduleManifests != null && typeof A.moduleManifests !== 'boolean')
+        err('$.assets.moduleManifests', 'moduleManifests는 true/false');
       if (!Array.isArray(A.packs)) err('$.assets.packs', 'packs 배열이 필요함');
       const packIds = new Set();
       const claim = new Map(); // 인물 → 먼저 담당을 선언한 팩 id (조용한 덮어쓰기 금지)

@@ -45,6 +45,9 @@ let schema = null, currentChaId = null;
   function ensureEditor() {
     if (editor) return;
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    // 모듈 매니페스트로 병합된 팩은 편집·저장 대상이 아니다 — 모듈이 관리한다.
+    // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
+    if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(base);
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);

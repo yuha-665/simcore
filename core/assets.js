@@ -360,8 +360,65 @@ function auxImageSpec(schema, lookup) {
   return { instruction: lines.join('\n'), whoValues, slotIds: [...slotVals.keys()] };
 }
 
+// ── 모듈 팩 매니페스트 (v0.94) ────────────────────────────────
+// 치명적 배포 구멍의 처방: 이미지는 모듈에 실어 보낼 수 있는데(module_assets) 팩 정의 —
+// 에셋 지침(format·슬롯·usage·when) — 는 스키마에만 살아서, 에셋 애드온을 모듈로 낼 방법이
+// 없었다. 규약: 모듈 로어북에 comment가 '⚙simcore-pack'인 항목을 두고 내용에 팩 JSON을
+// 싣는다 (⚙simcore 세이브 동봉 스키마와 같은 규약 계열). 스키마가 assets.moduleManifests로
+// 옵트인하면 어댑터가 활성 모듈을 스캔해 여기 병합기로 팩을 얹는다 — 받는 쪽은 임포트만.
+const MANIFEST_COMMENT = '⚙simcore-pack';
+
+/** 매니페스트 내용 → 팩 후보 배열. {packs:[...]} / [...] / 단일 팩 객체 다 받는다 */
+function parseManifest(text) {
+  let v;
+  try { v = JSON.parse(String(text ?? '')); }
+  catch (e) { return { packs: [], error: 'JSON 파싱 실패: ' + e.message }; }
+  const arr = Array.isArray(v) ? v : (v && Array.isArray(v.packs)) ? v.packs
+    : (v && typeof v === 'object') ? [v] : null;
+  if (!arr) return { packs: [], error: '팩 객체·배열·{packs:[...]} 중 하나여야 함' };
+  return { packs: arr.filter((p) => p && typeof p === 'object'), error: null };
+}
+
+/**
+ * 모듈 팩 병합 — 후보를 하나씩 스키마에 얹어 validateFn(validateSchema)으로 검사하고,
+ * 통과한 것만 origin:'module' 표시를 달아 받아들인다. 스키마는 로드 시점에 이미 유효하므로
+ * 새 오류는 전부 그 후보의 몫이다. id 충돌은 검증(중복 id)이 잡는다 — 스키마 팩과
+ * 먼저 온 모듈 팩이 우선. source가 비면 모듈 이름을 넣는다 (고아 팩 추적).
+ * manifests = [{ label, content }] (활성 모듈 순서 = 우선순위)
+ */
+function mergeModulePacks(schema, manifests, validateFn, cap = 8) {
+  const warnings = [];
+  const accepted = [];
+  const basePacks = (schema?.assets?.packs || []).filter((p) => p && p.origin !== 'module');
+  for (const m of manifests || []) {
+    const { packs, error } = parseManifest(m.content);
+    if (error) { warnings.push(`모듈 '${m.label}': ${error}`); continue; }
+    for (const raw of packs) {
+      if (accepted.length >= cap) {
+        warnings.push(`모듈 팩 상한(${cap}) 초과 — '${m.label}'의 나머지는 무시`);
+        break;
+      }
+      const cand = { ...raw, origin: 'module' };
+      if (!cand.source) cand.source = `모듈 ${m.label}`;
+      const test = {
+        ...schema,
+        assets: { ...(schema.assets || {}), packs: [...basePacks, ...accepted, cand] },
+      };
+      let v;
+      try { v = validateFn(test); } catch (e) { v = { ok: false, errors: [{ path: '$', msg: e.message }] }; }
+      if (v && v.ok) accepted.push(cand);
+      else {
+        const why = (v?.errors || []).slice(0, 2).map((x) => x.msg).join(' / ') || '검증 실패';
+        warnings.push(`모듈 '${m.label}' 팩 '${raw.id ?? '?'}' 제외 — ${why}`);
+      }
+    }
+  }
+  return { packs: accepted, warnings };
+}
+
 module.exports = {
   packOpen, openPacks, packChars, whoSlot, routePack, routePacks,
   composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
   mainInjectionText, auxImageSpec,
+  MANIFEST_COMMENT, parseManifest, mergeModulePacks,
 };

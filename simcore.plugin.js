@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.93.1
-//@display-name SimCore (시뮬 엔진) v0.93 시나리오 상태창
+//@version 0.94.0
+//@display-name SimCore (시뮬 엔진) v0.94 모듈 팩 매니페스트
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,7 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v0.93.1 ───────────────────────────────────────────────
+// ── v0.94.0 ───────────────────────────────────────────────
+// 배포 구멍(유저 제보): 이미지는 모듈에 실을 수 있는데(module_assets) 팩 정의 — 에셋 지침
+// (format·슬롯·usage·when) — 는 스키마 전용이라 에셋 애드온을 모듈로 배포할 방법이 없었다.
+// - [코어 assets] 모듈 로어북 규약 ⚙simcore-pack: 항목 내용 = 팩 JSON. parseManifest +
+//   mergeModulePacks — 후보를 스키마에 얹어 검증 통과분만 origin:module로 병합 (깨진
+//   매니페스트가 봇을 못 죽인다). id 충돌은 스키마·선착 우선, source 비면 모듈 이름, 상한 8.
+// - [어댑터] assets.moduleManifests 옵트인 봇만 로드 시 활성 모듈 스캔·병합 (기본 봇 무비용).
+//   매니페스트 모듈의 이미지 이름은 module_assets 꺼져 있어도 실존 대조에 합류.
+// - [편집기] 에셋 탭 📦 모듈 팩 매니페스트: 옵트인 체크 + [다시 읽기](권한 팝업 경로) +
+//   배포자용 팩 → 매니페스트 JSON 내보내기. 병합 팩은 편집기·저장에서 걸러진다 (유령 방지).
+// - [검증] assets.moduleManifests 불리언. 테스트 test-modpacks.js 18케이스.
+//// ── v0.93.1 ───────────────────────────────────────────────
 // 해금 변수의 기록 기준 — 실기 피드백: "AI가 해금 변수를 언제 움직일지 어디에 적지?"
 // 답은 원래 있던 자리(변수 desc — 보조 계약표에 그대로 실린다)인데, 시나리오 탭도
 // 요청서도 그 연결을 안 가르쳐 줬다. 원칙: AI에게 "해금 판단"을 맡기면 자율주행 실패
@@ -3273,6 +3284,9 @@ function validateSchema(schema) {
     else {
       if (A.by != null && !['aux', 'aux_flow', 'main'].includes(A.by))
         err('$.assets.by', "by는 'aux'(맨 앞 1장), 'aux_flow'(서사 위치 여러 장) 또는 'main'");
+      // v0.94 — 활성 모듈의 ⚙simcore-pack 매니페스트(팩 정의)를 런타임 병합할지 (옵트인)
+      if (A.moduleManifests != null && typeof A.moduleManifests !== 'boolean')
+        err('$.assets.moduleManifests', 'moduleManifests는 true/false');
       if (!Array.isArray(A.packs)) err('$.assets.packs', 'packs 배열이 필요함');
       const packIds = new Set();
       const claim = new Map(); // 인물 → 먼저 담당을 선언한 팩 id (조용한 덮어쓰기 금지)
@@ -4085,10 +4099,67 @@ function auxImageSpec(schema, lookup) {
   return { instruction: lines.join('\n'), whoValues, slotIds: [...slotVals.keys()] };
 }
 
+// ── 모듈 팩 매니페스트 (v0.94) ────────────────────────────────
+// 치명적 배포 구멍의 처방: 이미지는 모듈에 실어 보낼 수 있는데(module_assets) 팩 정의 —
+// 에셋 지침(format·슬롯·usage·when) — 는 스키마에만 살아서, 에셋 애드온을 모듈로 낼 방법이
+// 없었다. 규약: 모듈 로어북에 comment가 '⚙simcore-pack'인 항목을 두고 내용에 팩 JSON을
+// 싣는다 (⚙simcore 세이브 동봉 스키마와 같은 규약 계열). 스키마가 assets.moduleManifests로
+// 옵트인하면 어댑터가 활성 모듈을 스캔해 여기 병합기로 팩을 얹는다 — 받는 쪽은 임포트만.
+const MANIFEST_COMMENT = '⚙simcore-pack';
+
+/** 매니페스트 내용 → 팩 후보 배열. {packs:[...]} / [...] / 단일 팩 객체 다 받는다 */
+function parseManifest(text) {
+  let v;
+  try { v = JSON.parse(String(text ?? '')); }
+  catch (e) { return { packs: [], error: 'JSON 파싱 실패: ' + e.message }; }
+  const arr = Array.isArray(v) ? v : (v && Array.isArray(v.packs)) ? v.packs
+    : (v && typeof v === 'object') ? [v] : null;
+  if (!arr) return { packs: [], error: '팩 객체·배열·{packs:[...]} 중 하나여야 함' };
+  return { packs: arr.filter((p) => p && typeof p === 'object'), error: null };
+}
+
+/**
+ * 모듈 팩 병합 — 후보를 하나씩 스키마에 얹어 validateFn(validateSchema)으로 검사하고,
+ * 통과한 것만 origin:'module' 표시를 달아 받아들인다. 스키마는 로드 시점에 이미 유효하므로
+ * 새 오류는 전부 그 후보의 몫이다. id 충돌은 검증(중복 id)이 잡는다 — 스키마 팩과
+ * 먼저 온 모듈 팩이 우선. source가 비면 모듈 이름을 넣는다 (고아 팩 추적).
+ * manifests = [{ label, content }] (활성 모듈 순서 = 우선순위)
+ */
+function mergeModulePacks(schema, manifests, validateFn, cap = 8) {
+  const warnings = [];
+  const accepted = [];
+  const basePacks = (schema?.assets?.packs || []).filter((p) => p && p.origin !== 'module');
+  for (const m of manifests || []) {
+    const { packs, error } = parseManifest(m.content);
+    if (error) { warnings.push(`모듈 '${m.label}': ${error}`); continue; }
+    for (const raw of packs) {
+      if (accepted.length >= cap) {
+        warnings.push(`모듈 팩 상한(${cap}) 초과 — '${m.label}'의 나머지는 무시`);
+        break;
+      }
+      const cand = { ...raw, origin: 'module' };
+      if (!cand.source) cand.source = `모듈 ${m.label}`;
+      const test = {
+        ...schema,
+        assets: { ...(schema.assets || {}), packs: [...basePacks, ...accepted, cand] },
+      };
+      let v;
+      try { v = validateFn(test); } catch (e) { v = { ok: false, errors: [{ path: '$', msg: e.message }] }; }
+      if (v && v.ok) accepted.push(cand);
+      else {
+        const why = (v?.errors || []).slice(0, 2).map((x) => x.msg).join(' / ') || '검증 실패';
+        warnings.push(`모듈 '${m.label}' 팩 '${raw.id ?? '?'}' 제외 — ${why}`);
+      }
+    }
+  }
+  return { packs: accepted, warnings };
+}
+
 module.exports = {
   packOpen, openPacks, packChars, whoSlot, routePack, routePacks,
   composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
   mainInjectionText, auxImageSpec,
+  MANIFEST_COMMENT, parseManifest, mergeModulePacks,
 };
 
 });
@@ -12024,6 +12095,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 🎨 에셋 층 상태 — 실물 이름 캐시(호스트 additionalAssets+켜진 모듈), 안내문, 임포터 입력/진행.
   // 임포터 안내는 따로(assetImportNote) — 실패 사유가 버튼 바로 아래 보여야 유저가 알아챈다 (실측).
   let assetNames = null, assetNote = null, assetImportText = '', assetImportNote = null, assetBusy = false, assetsOpen = false;
+  // 모듈 팩 매니페스트 (v0.94) — 다시 읽기 결과 표시 + 배포자용 내보내기 상태
+  let modulePackNote = null, manifestPick = null, manifestOut = null;
 
   // 스키마 하위 구조 보정 (편집기가 만지는 경로는 항상 존재하게)
   function normalize() {
@@ -16693,6 +16766,62 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     if (assetNames) controls.appendChild(h('div', { class: 'sce-assets-count' },
       `실제 에셋 ${assetNames.length}개를 읽었어요. 각 팩 아래에서 조합 커버리지를 확인할 수 있습니다.`));
+
+    // ── 모듈 팩 매니페스트 (v0.94) — 에셋 애드온을 모듈로 배포하는 통로 ──
+    // 이미지는 모듈에 실리는데 팩 정의(지침)는 스키마에만 살던 구멍의 처방.
+    // 받는 봇: 아래 체크를 켜고 저장하면, 활성 모듈의 ⚙simcore-pack 로어북 항목을 읽어 병합.
+    // 주는 모듈: 아래 내보내기로 팩 JSON을 만들어 모듈 로어북에 붙여넣는다.
+    {
+      const mm = h('section', { class: 'sce-assets-controls sce-assets-modpacks' });
+      mm.appendChild(h('div', { class: 'sce-assets-intro-title' }, '📦 모듈 팩 매니페스트'));
+      mm.appendChild(bindCheck(!!(a && a.moduleManifests), (x) => {
+        const A = ensureAssets();
+        if (x) A.moduleManifests = true; else delete A.moduleManifests;
+        rerender();
+      }, '활성 모듈의 ⚙simcore-pack 항목에서 팩을 자동으로 읽어와요'));
+      mm.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+        '에셋 애드온 모듈을 받는 봇용 스위치예요. 모듈 로어북에 이름(코멘트)이 ⚙simcore-pack인 '
+        + '항목을 두고 내용에 팩 JSON을 넣으면, 모듈 임포트·활성화만으로 팩이 붙습니다. '
+        + '켠 뒤 저장(설치)해야 적용되고, 이미지 실존 대조도 그 모듈에서 함께 읽어요.'));
+      if (a && a.moduleManifests) {
+        mm.appendChild(h('button', { class: 'sce-btn', onclick: async () => {
+          if (!ai || !ai.getModulePacks) { modulePackNote = '이 환경에서는 모듈을 읽을 수 없어요.'; rerender(); return; }
+          try {
+            const r = await ai.getModulePacks();
+            modulePackNote = (r.merged.length
+              ? '병합된 모듈 팩: ' + r.merged.map((p) => `${p.id} (${p.source})`).join(', ')
+              : r.scanned ? '활성 모듈에 ⚙simcore-pack 항목이 없어요 — 설치된 스키마 기준이라, 방금 켰다면 저장(설치) 후 다시 읽어 주세요.'
+                : '스캔 안 됨 — 설치된 스키마에서 이 스위치가 꺼져 있어요 (저장 후 다시).')
+              + (r.warnings.length ? ' · ⚠ ' + r.warnings.join(' | ') : '');
+          } catch (e) { modulePackNote = '모듈 읽기 실패: ' + e.message; }
+          rerender();
+        } }, '모듈 팩 다시 읽기'));
+        if (modulePackNote) mm.appendChild(h('div', { class: 'sce-assets-note', 'aria-live': 'polite' }, modulePackNote));
+      }
+      // 배포자용 내보내기 — 이 스키마의 팩 하나를 매니페스트 JSON으로
+      const myPacks = (a && a.packs || []).filter((p) => p.origin !== 'module');
+      if (myPacks.length) {
+        const rowEl = h('div', { class: 'sce-row' });
+        rowEl.appendChild(bindSelect(manifestPick ?? myPacks[0].id,
+          myPacks.map((p) => [p.id, `팩 ${p.id}`]),
+          (x) => { manifestPick = x; manifestOut = null; rerender(); }));
+        rowEl.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+          const pk = myPacks.find((p) => p.id === (manifestPick ?? myPacks[0].id)) || myPacks[0];
+          const { origin, ...clean } = pk;
+          manifestOut = JSON.stringify(clean, null, 2);
+          rerender();
+        } }, '매니페스트 JSON 만들기'));
+        mm.appendChild(rowEl);
+        if (manifestOut != null) {
+          mm.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+            '아래 JSON을 복사해, 배포할 모듈의 로어북에 새 항목(이름: ⚙simcore-pack, 항상 활성 끄기)을 '
+            + '만들어 내용으로 붙여넣으세요. 이미지 파일도 같은 모듈의 추가 에셋에 넣으면 배포 완성입니다.'));
+          mm.appendChild(h('textarea', { class: 'sce-input', readonly: 'readonly', rows: 8,
+            style: 'width:100%; font-family:monospace; font-size:11px' }, manifestOut));
+        }
+      }
+      box.appendChild(mm);
+    }
 
     // 매 턴 비용 추정 — 이 기능이 뭘 아끼는지 숫자로. 기준선은 예전 방식(assetlist 통짜 덤프)
     if (a && a.packs && a.packs.length) {
@@ -22681,6 +22810,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     charKey = key;
     schema = parsed;
     mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
+    // 모듈 팩 매니페스트 (v0.94) — 옵트인 봇만 db를 읽는다. 실패해도 로드는 계속.
+    try { await scanModulePacks(false); } catch (e) { console.log('[simcore] 모듈 팩 스캔 오류:', e.message); }
 
     // pluginStorage를 SnapshotStore 백엔드로 감싼다
     const backend = {
@@ -22927,7 +23058,64 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const { sources } = await getAssetSources(false);
     const set = new Set();
     for (const s of sources) for (const n of s.names) set.add(n);
+    // 매니페스트 모듈의 이미지 이름 — module_assets가 꺼져 있어도 실존 대조에 넣는다
+    // (매니페스트 팩의 이미지는 그 모듈에 산다. 팩만 받고 대조를 못 하면 전부 강등된다)
+    for (const n of modulePackState.moduleAssetNames) set.add(n);
     return set.size ? set : null;
+  }
+
+  // ── 모듈 팩 매니페스트 (v0.94) ────────────────────────────
+  // 에셋 애드온 모듈이 로어북 항목(⚙simcore-pack, 내용=팩 JSON)으로 자기 지침을 실어 나른다.
+  // 스키마가 assets.moduleManifests: true로 옵트인한 봇에서만 db를 읽는다 — 기본 봇은
+  // 로드가 1ms도 느려지지 않는다 (v0.83 "안 읽는다 = 안 멈춘다" 원칙 유지).
+  // 스캔 시점: 스키마 로드 1회 + 편집기 [다시 읽기](ask=true, 권한 팝업 허용).
+  // 채팅 개별 활성 모듈이 판 중간에 바뀌면 편집기에서 다시 읽어야 한다 (문서화).
+  let modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false };
+
+  async function scanModulePacks(ask) {
+    const reset = () => {
+      if (schema?.assets?.packs) schema.assets.packs = schema.assets.packs.filter((p) => p.origin !== 'module');
+      modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false };
+    };
+    if (!schema?.assets || schema.assets.moduleManifests !== true) { reset(); return modulePackState; }
+    const warnings = [];
+    const manifests = [];
+    const assetNames = [];
+    const db = await readModulesDb(ask);
+    if (db && db.__err) warnings.push('모듈 읽기 실패: ' + db.__err);
+    else if (!db || typeof db !== 'object') {
+      warnings.push('db 권한 거부 또는 미지원 — 편집기 에셋 탭 [모듈 팩 다시 읽기]로 권한을 요청할 수 있어요');
+    } else {
+      const active = new Set(Array.isArray(db.enabledModules) ? db.enabledModules : []);
+      try {
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+        for (const id of chat?.modules || []) active.add(id);
+      } catch { /* 채팅 접근 실패 — 전역 활성만으로 진행 */ }
+      for (const m of db.modules || []) {
+        if (!m || !active.has(m.id)) continue;
+        const entries = (m.lorebook || []).filter((l) => l && l.comment === assetsMod.MANIFEST_COMMENT);
+        if (!entries.length) continue;
+        const label = m.name ?? m.id;
+        for (const l of entries) manifests.push({ label, content: l.content });
+        assetNames.push(...collectAssetNames(m.assets));   // 매니페스트 모듈의 이미지는 대조에 필요
+      }
+    }
+    // 병합 — 통과한 팩만 origin:'module'로 스키마에 얹는다. 저장·편집 경로는 이 표시를 걸러낸다.
+    const r = assetsMod.mergeModulePacks(schema, manifests, validateSchema);
+    schema.assets.packs = [...schema.assets.packs.filter((p) => p.origin !== 'module'), ...r.packs];
+    modulePackState = {
+      merged: r.packs.map((p) => ({ id: p.id, source: p.source })),
+      warnings: [...warnings, ...r.warnings],
+      moduleAssetNames: assetNames,
+      scanned: true,
+    };
+    if (r.packs.length || modulePackState.warnings.length) {
+      console.log('[simcore] 모듈 팩:', r.packs.map((p) => p.id).join(', ') || '(없음)',
+        modulePackState.warnings.length ? '/ 경고: ' + modulePackState.warnings.join(' | ') : '');
+    }
+    return modulePackState;
   }
 
   /** 보조 응답의 image 필드 → 출력 태그 (실패 시 null — 삽입 생략) */
@@ -25619,6 +25807,9 @@ count(목록)  has(목록, "항목")</pre>
   function ensureEditor() {
     if (editor) return;
     const base = schema ? JSON.parse(JSON.stringify(schema)) : BLANK_SCHEMA();
+    // 모듈 매니페스트로 병합된 팩은 편집·저장 대상이 아니다 — 모듈이 관리한다.
+    // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
+    if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
       ai: {
         // ⚠ 자기 정산 함정 — callGenLLM만 쓸 것. 'main' 선택 시에도 GEN_SENTINEL로
@@ -25634,6 +25825,10 @@ count(목록)  has(목록, "항목")</pre>
         // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4).
         // 버튼 경로라 ask=true — 권한 팝업을 여기서만 띄운다 (v0.54.5)
         getAssetSources: () => getAssetSources(true),
+        // 모듈 팩 매니페스트 (v0.94) — 다시 읽기 + 현황. 버튼 경로라 ask=true.
+        // ⚠ 편집기 미저장 스키마가 아니라 **설치된 스키마** 기준으로 스캔한다 — 체크박스를
+        //   막 켰다면 저장(설치) 후에 눌러야 반영된다 (편집기 안내문이 이를 말한다).
+        getModulePacks: () => scanModulePacks(true),
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

@@ -351,7 +351,8 @@ function turn(schema, state, changes = {}) {
   ck('★ 진단: onEnter만 받는 변수가 고정 변수로 안 잡힘',
     !r5.findings.some((f) => f.tag === '고정 변수' && f.text.includes("'threat'")), '');
 
-  // ⑥ 전 템플릿 오탐 0 — scenario 없는 봇은 시나리오 지적이 하나도 없어야 한다
+  // ⑥ 전 템플릿 오탐 0 — scenario 없는 봇은 시나리오 지적이 없어야 하고,
+  //    실물 예시를 실은 봇(rpg, v0.93)은 자기 진단을 통과해야 한다 (품질 게이트 겸용)
   const T = SC.require('templates').TEMPLATES;
   let leak = '';
   for (const k of Object.keys(T)) {
@@ -359,6 +360,72 @@ function turn(schema, state, changes = {}) {
     if (r.findings.some((f) => ['닫힌 막', '이야기 페이스', '후반부 막'].includes(f.tag))) leak += k + ' ';
   }
   ck('★ 전 템플릿 시나리오 오탐 0', !leak, leak);
+}
+
+// ── 상태창·대장 자리 (v0.93) — {scenario} 칩 + 막 전환 📖 카드 ──
+{
+  const render = SC.require('render');
+  const schema = cp(BASE);
+  let st = engine.initState(schema);
+
+  // 칩 — 라벨·진행만. 은닉 보장은 유저 눈(상태창)에서도 지켜진다.
+  const chip = render.scenarioChipHtml(schema, st.vars);
+  ck('★ 칩: 시나리오 라벨 + 현재 막 + 1/3막',
+    chip.includes('제1장 — 혈마심경') && chip.includes('잠복') && chip.includes('1/3막'), chip);
+  ck('★ 칩: direct·secret·뒷막 라벨 없음 — 은닉은 상태창에서도',
+    !chip.includes('실마리') && !chip.includes('셋이 아니라') && !chip.includes('전개'), chip);
+  ck('scenario 없으면 칩도 빈칸', render.scenarioChipHtml({ vars: [] }, {}) === '', '');
+
+  // 자동 구성(그룹) 모드 — 맨 위에 자동 합류. 템플릿 모드 — {scenario} 자리에만.
+  const auto = render.renderStatusHtml(
+    { ...cp(schema), statusUI: { groups: [{ label: '수련', items: [{ var: 'finds' }] }] } }, st, [], null, {});
+  ck('★ 그룹 모드: 칩 자동 표시', auto.includes('sim-scn') && auto.includes('1/3막'), '');
+  const tplSchema = { ...cp(schema), statusUI: { mode: 'template', template: '<div>머리 {scenario} 꼬리</div>' } };
+  ck('★ 템플릿 모드: {scenario} 치환',
+    render.renderStatusHtml(tplSchema, st, [], null, {}).includes('sim-scn'), '');
+  ck('★ 대장(패널) 탭에도 같은 자리표시자',
+    render.renderPanelTemplate(schema, st, '<div>{scenario}</div>').includes('1/3막'), '');
+
+  // 검증 — {scenario}는 예약 자리(참조 검사 통과), 변수 이름으로 쓰면 경고
+  const vOk = validateSchema(tplSchema);
+  ck('★ 검증: {scenario} 예약 자리 통과', vOk.ok, JSON.stringify(vOk.errors));
+  const clash = cp(BASE);
+  clash.vars.push({ id: 'scenario', label: '충돌', type: 'int', init: 0 });
+  ck('변수 id "scenario"는 자리표시자 충돌 경고',
+    validateSchema(clash).warnings.some((w) => w.msg.includes('자리표시자')), '');
+
+  // 막 전환 → 원장(changeLog) 의사 항목 + 📖 하이라이트 카드 (§6 미결 3의 답)
+  st = engine.initState(schema);
+  for (let i = 0; i < 3; i++) st = turn(schema, st).state;
+  const sp = engine.sendPhase(schema, st, { armedActions: [] });
+  const op = engine.outputPhase(schema, sp.state, { finds: 2 }, {}, { rng: () => 0.99 });
+  const tr = op.changeLog.find((c) => c.source === 'scenario:act2' && c.id === '제1장 — 혈마심경');
+  ck('★ 전환이 원장에 남음 (잠복 → 전개)', !!tr && tr.from === '잠복' && tr.to === '전개', JSON.stringify(tr));
+  const html = render.renderStatusHtml(schema, op.state, op.changeLog, null, {});
+  ck('★ 📖 막 전환 하이라이트 카드', html.includes('📖') && html.includes('sim-card'), '');
+  ck('★ onEnter 효과도 카드로 (위협 📊)', html.includes('위협'), '');
+  ck('변화 로그(영수증)에도 전환 줄', html.includes('잠복') && html.includes('전개'), '');
+
+  // AI 창구 계약 — 시나리오가 켜진 봇에만 {scenario}·.sim-scn이 규격서에 실린다
+  const segB = src.slice(src.indexOf('const CSS_SPEC_CLASSES = ['), src.indexOf('const SCHEMA_HARD_RULES = ['));
+  const B = new Function('validateSchema', 'renderStatusHtml', 'engine',
+    segB + '\nreturn { buildCssSpecPrompt, buildLayoutSpecPrompt };')(
+    validateSchema, render.renderStatusHtml, engine);
+  const lay = B.buildLayoutSpecPrompt(cp(BASE));
+  ck('★ 배치 규격서: {scenario}·{scn_label} 계약 합류', lay.includes('{scenario}') && lay.includes('{scn_label}'), '');
+  const layOff = B.buildLayoutSpecPrompt({ ...cp(BASE), scenario: undefined });
+  ck('★ 시나리오 없는 봇 규격서엔 안 실림 (빈칸 유도 방지)', !layOff.includes('{scenario}'), '');
+  ck('스킨 규격서: .sim-scn 클래스 합류', B.buildCssSpecPrompt(cp(BASE)).includes('.sim-scn'), '');
+}
+
+// ── 템플릿 실물 예시 (v0.93) — RPG '무너진 봉인' ──
+{
+  const rpg = SC.require('templates').TEMPLATES.rpg.schema;
+  ck('★ RPG 템플릿에 시나리오 실물 예시', rpg.scenario?.acts?.length === 3, '');
+  ck('★ 예시 unlock = 정석 패턴 (조건 or scn_turns 폴백)',
+    rpg.scenario.acts[1].unlock.includes('or scn_turns >='), rpg.scenario.acts[1].unlock);
+  // 진단 통과는 위 ⑥ 전 템플릿 스윕이 보증한다 — 이제 그 스윕은 "실어 보낸 예시가
+  // 자기 진단을 통과한다"는 품질 게이트를 겸한다 (카드로 만든 시나리오가 걸리면 요청서 버그).
 }
 
 // ── 집계 ──

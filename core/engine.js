@@ -15,7 +15,7 @@
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
-const { SCN_IDX, SCN_TURNS, scenarioConfig, scenarioExposedVal, scenarioTransition,
+const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal, scenarioTransition,
   scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
@@ -967,12 +967,18 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금 조건이 바로 읽는다.
   // 전환은 턴당 한 막 — 조건이 여러 막을 한 번에 넘겨도 페이스는 막 단위로 걷는다
   // (scenarioTransition이 다음 막 하나만 보고, 여기는 한 번만 부른다).
-  if (scenarioConfig(schema)) {
+  const scnCfg = scenarioConfig(schema);
+  if (scnCfg) {
     state.vars[SCN_TURNS] = (Number(state.vars[SCN_TURNS]) || 0) + 1;
     const tr = scenarioTransition(schema, state.vars, makeLookup(schema, state.vars));
     if (tr) {
+      const fromAct = scnCfg.acts[currentActIndex(scnCfg, state.vars)];
       state.vars[SCN_IDX] = tr.toIndex;
       state.vars[SCN_TURNS] = 0;
+      // 전환 자체를 원장에 남긴다 (v0.93) — id는 변수가 아니라 시나리오 라벨이다.
+      // 하이라이트 카드(📖)·변화 로그·보조 AI 원장(lastChanges)이 전부 이 한 줄에서 그려진다.
+      changeLog.push({ id: scnCfg.label || '이야기', from: fromAct.label || fromAct.id,
+        to: tr.act.label || tr.act.id, source: `scenario:${tr.act.id}` });
       applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
       if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
       firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다

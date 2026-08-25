@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.92.0
-//@display-name SimCore (시뮬 엔진) v0.90 시나리오레이터
+//@version 0.93.0
+//@display-name SimCore (시뮬 엔진) v0.93 시나리오 상태창
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,23 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.93.0 ───────────────────────────────────────────────
+// 시나리오레이터 4차 — 유저 눈에 보이는 자리. 모델 주입(1차)·편집(2차)·진단(3차)에 이어
+// 마지막 조각: 플레이어가 이야기의 어디에 서 있는지를 스포일러 없이 보여 준다.
+// - [{scenario} 진행 칩] 현재 막 라벨 + (i/N막)만 — direct·secret은 상태창에도 절대 안
+//   실린다 (은닉 보장 §3-1은 유저 눈에서도). 자동 구성이면 상태창 맨 위 자동, 템플릿
+//   모드면 {scenario} 자리(예약 자리 — RESERVED_SLOTS 합류), 대장(패널) 탭도 동일.
+// - [📖 막 전환 하이라이트 카드] §6 미결 3의 답 — notify는 AI쪽 통지라 유저 눈에 안
+//   보였다. 전환 순간을 엔진이 원장(changeLog)에 남기고(id=시나리오 라벨, 잠복 → 전개),
+//   하이라이트 카드·변화 로그·보조 AI 원장(lastChanges)이 전부 그 한 줄에서 그려진다.
+//   onEnter 효과도 카드 창구(📊·🎒)에 합류.
+// - [AI 창구 계약] 배치 규격서에 {scenario}·{scn_label}(시나리오 켜진 봇만 — 빈칸 유도
+//   방지), 스킨 규격서에 .sim-scn, 대장 템플릿 안내에 {scenario}.
+// - [템플릿 실물 예시] rpg '무너진 봉인' 3막 — unlock 정석 패턴(`level >= 3 or
+//   scn_turns >= 8`: 성장이 빠르면 먼저, 아니어도 N턴이면 이야기가 움직인다) + minTurns +
+//   onEnter(인장 습득) + 막별 secret. 전 템플릿 진단 스윕이 이 예시의 품질 게이트를 겸한다.
+// - 남은 것: 실기(막 전환 체감 페이스, 칩·카드 실화면) + 새 시작 페이지 막 강제 이동(§4).
 //
 // ── v0.92.0 ───────────────────────────────────────────────
 // 시나리오레이터 3차 — 진단. "카드로 만든 시나리오가 진단에 걸리면 요청서 버그"의 품질
@@ -2629,7 +2646,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -3647,7 +3664,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices']);
+// scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {
@@ -5156,7 +5174,7 @@ SimCore.define("engine", function (require, module, exports) {
 
 const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
-const { SCN_IDX, SCN_TURNS, scenarioConfig, scenarioExposedVal, scenarioTransition,
+const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal, scenarioTransition,
   scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
@@ -6108,12 +6126,18 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이벤트(⑦·⑧) 뒤라 이번 턴 이벤트가 세운 변수를 해금 조건이 바로 읽는다.
   // 전환은 턴당 한 막 — 조건이 여러 막을 한 번에 넘겨도 페이스는 막 단위로 걷는다
   // (scenarioTransition이 다음 막 하나만 보고, 여기는 한 번만 부른다).
-  if (scenarioConfig(schema)) {
+  const scnCfg = scenarioConfig(schema);
+  if (scnCfg) {
     state.vars[SCN_TURNS] = (Number(state.vars[SCN_TURNS]) || 0) + 1;
     const tr = scenarioTransition(schema, state.vars, makeLookup(schema, state.vars));
     if (tr) {
+      const fromAct = scnCfg.acts[currentActIndex(scnCfg, state.vars)];
       state.vars[SCN_IDX] = tr.toIndex;
       state.vars[SCN_TURNS] = 0;
+      // 전환 자체를 원장에 남긴다 (v0.93) — id는 변수가 아니라 시나리오 라벨이다.
+      // 하이라이트 카드(📖)·변화 로그·보조 AI 원장(lastChanges)이 전부 이 한 줄에서 그려진다.
+      changeLog.push({ id: scnCfg.label || '이야기', from: fromAct.label || fromAct.id,
+        to: tr.act.label || tr.act.id, source: `scenario:${tr.act.id}` });
       applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
       if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
       firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
@@ -6713,6 +6737,7 @@ SimCore.define("render", function (require, module, exports) {
 const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
+const { scenarioConfig, currentActIndex } = require('./scenario');
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -6782,6 +6807,8 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
+.sim-scn-prog{opacity:.55;font-size:.9em}
 .sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
 .sim-card{padding:7px 11px;border:1px solid rgba(128,128,160,.35);border-left:3px solid rgba(128,140,220,.9);border-radius:8px;font-size:.93em;line-height:1.45}
 .sim-card.good{border-left-color:rgba(80,180,120,.95)}
@@ -6967,6 +6994,22 @@ function commandsHtml(schema) {
 }
 
 /**
+ * 시나리오 진행 칩 (v0.93) — 현재 막 라벨 + 진행(i/N막)만. direct·secret은 절대 안 실린다 —
+ * 상태창은 유저 눈이고, 은닉 보장(scenario §3-1)은 여기서도 지켜져야 한다.
+ * 템플릿 모드에선 {scenario} 자리에, 자동 구성(그룹) 모드에선 상태창 맨 위에 자동으로 선다.
+ * 대장(패널) 탭에도 같은 자리표시자로 나온다 — 그쪽은 sim-* CSS가 없어 맨글자로 뜨지만
+ * 패널 템플릿은 어차피 <style>을 품으므로 .sim-scn을 제 손으로 입히면 된다.
+ */
+function scenarioChipHtml(schema, vars) {
+  const cfg = scenarioConfig(schema);
+  if (!cfg) return '';
+  const idx = currentActIndex(cfg, vars);
+  const act = cfg.acts[idx];
+  return `<span class="sim-scn">📖 ${cfg.label ? esc(cfg.label) + ' · ' : ''}<b>${esc(act.label || act.id)}</b>`
+    + ` <span class="sim-scn-prog">${idx + 1}/${cfg.acts.length}막</span></span>`;
+}
+
+/**
  * 하이라이트 카드 — 이번 턴의 체감 나는 변화만 골라 게임 알림처럼 세운다 (v0.86.4).
  * 전체 영수증(이번 턴 변화)과 역할이 다르다: 로그는 빠짐없이·접혀서, 카드는 골라서·세워서.
  * 규칙: 판정은 무조건 카드 / 숫자는 합산 델타(0이면 생략) / 목록은 넣고 뺀 것 /
@@ -6979,9 +7022,18 @@ function highlightCards(schema, changeLog, varById) {
   if (!changeLog || !changeLog.length) return '';
   const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
-    || c.source?.startsWith('random:') || c.source?.startsWith('choice'));
+    || c.source?.startsWith('random:') || c.source?.startsWith('choice')
+    || c.source?.startsWith('scenario:'));
   if (!keep.length) return '';
   const cards = [];
+  // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는
+  // AI쪽 통지라 유저 눈에 안 보였다 — 유저에게 보이는 답이 이 카드다). 엔진이 전환 때
+  // 원장에 남긴 의사 항목(id=시나리오 라벨, 변수 아님)을 여기서 세운다. onEnter 효과는
+  // 변수 항목이라 아래 일반 경로(📊·🎒)로 자연히 흐른다.
+  for (const c of keep) {
+    if (!c.source?.startsWith('scenario:') || varById[c.id]) continue;
+    cards.push(`<div class="sim-card">📖 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
+  }
   // 판정 요약줄 — 성패가 색을 정한다 (성공 계열 초록 / 실패 계열 붉음).
   // ⚠ 등급 효과의 변수 변화도 source가 check:라서, "요약줄 = id가 변수가 아닌 것"으로 가른다
   const isCheckSummary = (c) => c.source?.startsWith('check:') && !varById[c.id];
@@ -7045,7 +7097,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
-    choices: choicesHtml(schema, state) };
+    choices: choicesHtml(schema, state),
+    scenario: scenarioChipHtml(schema, state.vars) };
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
@@ -7103,9 +7156,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       }
       panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
     }
-    inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
-    // (템플릿 모드는 반대다: 제작자가 {commands}/{choices}를 박은 자리에만 나온다)
+    // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
+    if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
+    inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
   }
@@ -7158,7 +7212,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
-        || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:'))
       .map((c) => {
         // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
         if (c.source?.startsWith('check:')) {
@@ -7469,7 +7523,8 @@ function renderPanelTemplate(schema, state, tpl) {
   const lookup = makeLookup(schema, state.vars);
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid: 'scg',
-    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '' };
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
+    scenario: scenarioChipHtml(schema, state.vars) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
   return styleTag + renderTemplate(parts.html, lookup, extras);
@@ -7484,7 +7539,7 @@ function fmtNum(n) {
 }
 
 module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
-  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };
+  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, scenarioChipHtml, BASE_CSS, THEMES };
 
 });
 
@@ -9955,6 +10010,7 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '',
     '## 쓸 수 있는 클래스 (이게 전부입니다)',
     ...CSS_SPEC_CLASSES.map(([sel, desc]) => `- \`${sel}\` — ${desc}`),
+    ...(schema.scenario ? ['- `.sim-scn / .sim-scn-prog` — 이야기 진행 칩 (현재 막 라벨) / 그 안의 (i/N막) 표시'] : []),
     '',
     '## 이 봇의 실제 상태창 구조',
     '```html',
@@ -9971,6 +10027,12 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     ...(schema.vars || []).map((v) =>
       `- \`{${v.id}}\` — ${v.label ?? v.id} (${v.type}${v.type === 'list' ? `, 목록이라 \`{${v.id}:tags}\`로 칩 렌더 가능` : ''})`),
     ...(schema.derived || []).map((d) => `- \`{${d.id}}\` — ${d.label ?? d.id} (자동 계산)`),
+    // 시나리오가 켜진 봇 — 진행 칩과 노출 이름을 계약에 합류시킨다 (없는 봇에 보여주면
+    // AI가 시나리오 없는 스키마에 {scenario}를 박아 빈칸이 나온다)
+    ...(schema.scenario ? [
+      '- `{scenario}` — 이야기 진행 칩 (현재 막 라벨 + i/N막 — 시스템이 채움, 스포일러 없음)',
+      '- `{scn_label}` / `{scn_turns}` — 현재 막 라벨 글자만 / 이 막에서 보낸 턴 수',
+    ] : []),
   ];
   const cur = schema.statusUI?.mode === 'template' && (schema.statusUI.template || '').trim();
   return [
@@ -13940,7 +14002,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('details', { class: 'sce-fold', ...(P.template ? { open: '' } : {}) },
         h('summary', {}, `📜 대장 템플릿 ${P.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 팝업에 그린다`),
         h('div', { class: 'sce-hint' },
-          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
           + '<style>은 자동으로 팝업 범위로 갇힌다 ({choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
         bindArea(P.template, (x) => { P.template = x || undefined; rerender(); },
           '<div class="ledger">인구 {pop} · 재정 {gold}</div>')));
@@ -13998,7 +14060,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('details', { class: 'sce-fold', ...(t.template ? { open: '' } : {}) },
             h('summary', {}, `📜 대장 템플릿 ${t.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 탭에 그린다`),
             h('div', { class: 'sce-hint' },
-              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
               + '<style>은 자동으로 팝업 범위로 갇힌다. 상태창에서 옮길 조각을 그대로 붙여 넣으면 된다 '
               + '(단 {choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
             bindArea(t.template, (x) => { t.template = x || undefined; rerender(); },
@@ -14139,7 +14201,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '막은 위에서 아래로 한 방향으로만 진행됩니다. 전환은 **조건이 참이 된 턴**에 일어나고, '
       + '최소 체류 턴을 채우기 전엔 조건이 차도 기다립니다. 상태창·조건식에서 '
-      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다.'));
+      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다. '
+      + '유저에게는 상태창 진행 칩(자동 구성이면 맨 위, 템플릿이면 {scenario} 자리)과 '
+      + '전환 순간의 📖 하이라이트 카드로 보입니다 — 라벨만, 스포일러 없이.'));
 
     const INTENSITY_OPTS = [['', '(없음 — direct만)'],
       ...Object.keys(INTENSITIES).map((k) => [k, k])];
@@ -17046,6 +17110,30 @@ const RPG = {
       text: '[편성] 아린이 전열(전위/후위)에 편성돼 있다. 이동·전투·야영 장면에서 아린이 곁에 있음이 서사에 드러나야 한다.',
     },
   ],
+  // 시나리오레이터 (v0.90~) — 이야기의 척추. 배울 점:
+  //  ① unlock의 정석 = `조건 or scn_turns >= N` — 성장이 빠르면 먼저, 아니어도 N턴이면
+  //     이야기가 저절로 움직인다 (설계 §2의 'finds >= 2 or day >= 30'과 같은 꼴).
+  //  ② minTurns = 페이스 바닥 — 조건이 먼저 차도 직전 막에서 최소 N턴은 머문다.
+  //  ③ secret = 그 막부터 모델에게 공개되는 내막. 이전 막에선 프롬프트에 아예 안 실린다.
+  //     유저 상태창에는 라벨·진행(i/N막)만 나온다 — 스포일러 없이.
+  scenario: {
+    label: '무너진 봉인',
+    acts: [
+      { id: 'road', label: '여로의 시작', intensity: '잠복',
+        direct: '마물의 준동은 아직 변경의 소문 수준이다. 여행의 일상과 동료와의 관계를 중심에 둬라.',
+        secret: '변경의 마물 준동은 우연이 아니다 — 옛 봉인이 안쪽에서부터 삭고 있다.' },
+      { id: 'shadow', label: '그림자의 조짐', unlock: 'level >= 3 or scn_turns >= 8', minTurns: 5,
+        intensity: '전개',
+        direct: '마물의 흔적이 눈에 띄게 늘었다. 단서와 조짐을 장면에 실어 나르되, 배후는 아직 감춰라.',
+        secret: '봉인을 삭게 만든 것은 밖의 마물이 아니라, 봉인을 지켜야 할 감시탑 쪽이다.',
+        onEnter: [{ list: 'inventory', add: ['금이 간 인장'] }],
+        notify: '쓰러진 마물의 품에서 금이 간 인장이 나왔다. 봉인과 관련된 물건이다.' },
+      { id: 'clash', label: '결전', unlock: 'level >= 5 or scn_turns >= 10', minTurns: 6,
+        intensity: '절정',
+        direct: '봉인의 심장부가 눈앞이다. 더 미루지 마라 — 장면의 중심에 결전을 세워라.',
+        notify: '봉인의 심장부에 도착했다. 되돌아갈 길은 없다.' },
+    ],
+  },
   updater: {
     model: 'aux',
     allow: [

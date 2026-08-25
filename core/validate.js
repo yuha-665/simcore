@@ -89,7 +89,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -1107,7 +1107,8 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // 수식이 아니라 렌더러가 채워 넣는 자리 — 변수가 아니므로 참조 검사에서 빼야 한다.
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices']);
+// scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario']);
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

@@ -1004,6 +1004,7 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
     '',
     '## 쓸 수 있는 클래스 (이게 전부입니다)',
     ...CSS_SPEC_CLASSES.map(([sel, desc]) => `- \`${sel}\` — ${desc}`),
+    ...(schema.scenario ? ['- `.sim-scn / .sim-scn-prog` — 이야기 진행 칩 (현재 막 라벨) / 그 안의 (i/N막) 표시'] : []),
     '',
     '## 이 봇의 실제 상태창 구조',
     '```html',
@@ -1020,6 +1021,12 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     ...(schema.vars || []).map((v) =>
       `- \`{${v.id}}\` — ${v.label ?? v.id} (${v.type}${v.type === 'list' ? `, 목록이라 \`{${v.id}:tags}\`로 칩 렌더 가능` : ''})`),
     ...(schema.derived || []).map((d) => `- \`{${d.id}}\` — ${d.label ?? d.id} (자동 계산)`),
+    // 시나리오가 켜진 봇 — 진행 칩과 노출 이름을 계약에 합류시킨다 (없는 봇에 보여주면
+    // AI가 시나리오 없는 스키마에 {scenario}를 박아 빈칸이 나온다)
+    ...(schema.scenario ? [
+      '- `{scenario}` — 이야기 진행 칩 (현재 막 라벨 + i/N막 — 시스템이 채움, 스포일러 없음)',
+      '- `{scn_label}` / `{scn_turns}` — 현재 막 라벨 글자만 / 이 막에서 보낸 턴 수',
+    ] : []),
   ];
   const cur = schema.statusUI?.mode === 'template' && (schema.statusUI.template || '').trim();
   return [
@@ -4989,7 +4996,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(h('details', { class: 'sce-fold', ...(P.template ? { open: '' } : {}) },
         h('summary', {}, `📜 대장 템플릿 ${P.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 팝업에 그린다`),
         h('div', { class: 'sce-hint' },
-          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
           + '<style>은 자동으로 팝업 범위로 갇힌다 ({choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
         bindArea(P.template, (x) => { P.template = x || undefined; rerender(); },
           '<div class="ledger">인구 {pop} · 재정 {gold}</div>')));
@@ -5047,7 +5054,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('details', { class: 'sce-fold', ...(t.template ? { open: '' } : {}) },
             h('summary', {}, `📜 대장 템플릿 ${t.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 탭에 그린다`),
             h('div', { class: 'sce-hint' },
-              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck}. '
+              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
               + '<style>은 자동으로 팝업 범위로 갇힌다. 상태창에서 옮길 조각을 그대로 붙여 넣으면 된다 '
               + '(단 {choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
             bindArea(t.template, (x) => { t.template = x || undefined; rerender(); },
@@ -5188,7 +5195,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '막은 위에서 아래로 한 방향으로만 진행됩니다. 전환은 **조건이 참이 된 턴**에 일어나고, '
       + '최소 체류 턴을 채우기 전엔 조건이 차도 기다립니다. 상태창·조건식에서 '
-      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다.'));
+      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다. '
+      + '유저에게는 상태창 진행 칩(자동 구성이면 맨 위, 템플릿이면 {scenario} 자리)과 '
+      + '전환 순간의 📖 하이라이트 카드로 보입니다 — 라벨만, 스포일러 없이.'));
 
     const INTENSITY_OPTS = [['', '(없음 — direct만)'],
       ...Object.keys(INTENSITIES).map((k) => [k, k])];

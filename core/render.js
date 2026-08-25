@@ -4,6 +4,7 @@
 const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
+const { scenarioConfig, currentActIndex } = require('./scenario');
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -73,6 +74,8 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
+.sim-scn-prog{opacity:.55;font-size:.9em}
 .sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
 .sim-card{padding:7px 11px;border:1px solid rgba(128,128,160,.35);border-left:3px solid rgba(128,140,220,.9);border-radius:8px;font-size:.93em;line-height:1.45}
 .sim-card.good{border-left-color:rgba(80,180,120,.95)}
@@ -258,6 +261,22 @@ function commandsHtml(schema) {
 }
 
 /**
+ * 시나리오 진행 칩 (v0.93) — 현재 막 라벨 + 진행(i/N막)만. direct·secret은 절대 안 실린다 —
+ * 상태창은 유저 눈이고, 은닉 보장(scenario §3-1)은 여기서도 지켜져야 한다.
+ * 템플릿 모드에선 {scenario} 자리에, 자동 구성(그룹) 모드에선 상태창 맨 위에 자동으로 선다.
+ * 대장(패널) 탭에도 같은 자리표시자로 나온다 — 그쪽은 sim-* CSS가 없어 맨글자로 뜨지만
+ * 패널 템플릿은 어차피 <style>을 품으므로 .sim-scn을 제 손으로 입히면 된다.
+ */
+function scenarioChipHtml(schema, vars) {
+  const cfg = scenarioConfig(schema);
+  if (!cfg) return '';
+  const idx = currentActIndex(cfg, vars);
+  const act = cfg.acts[idx];
+  return `<span class="sim-scn">📖 ${cfg.label ? esc(cfg.label) + ' · ' : ''}<b>${esc(act.label || act.id)}</b>`
+    + ` <span class="sim-scn-prog">${idx + 1}/${cfg.acts.length}막</span></span>`;
+}
+
+/**
  * 하이라이트 카드 — 이번 턴의 체감 나는 변화만 골라 게임 알림처럼 세운다 (v0.86.4).
  * 전체 영수증(이번 턴 변화)과 역할이 다르다: 로그는 빠짐없이·접혀서, 카드는 골라서·세워서.
  * 규칙: 판정은 무조건 카드 / 숫자는 합산 델타(0이면 생략) / 목록은 넣고 뺀 것 /
@@ -270,9 +289,18 @@ function highlightCards(schema, changeLog, varById) {
   if (!changeLog || !changeLog.length) return '';
   const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
-    || c.source?.startsWith('random:') || c.source?.startsWith('choice'));
+    || c.source?.startsWith('random:') || c.source?.startsWith('choice')
+    || c.source?.startsWith('scenario:'));
   if (!keep.length) return '';
   const cards = [];
+  // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는
+  // AI쪽 통지라 유저 눈에 안 보였다 — 유저에게 보이는 답이 이 카드다). 엔진이 전환 때
+  // 원장에 남긴 의사 항목(id=시나리오 라벨, 변수 아님)을 여기서 세운다. onEnter 효과는
+  // 변수 항목이라 아래 일반 경로(📊·🎒)로 자연히 흐른다.
+  for (const c of keep) {
+    if (!c.source?.startsWith('scenario:') || varById[c.id]) continue;
+    cards.push(`<div class="sim-card">📖 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
+  }
   // 판정 요약줄 — 성패가 색을 정한다 (성공 계열 초록 / 실패 계열 붉음).
   // ⚠ 등급 효과의 변수 변화도 source가 check:라서, "요약줄 = id가 변수가 아닌 것"으로 가른다
   const isCheckSummary = (c) => c.source?.startsWith('check:') && !varById[c.id];
@@ -336,7 +364,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
-    choices: choicesHtml(schema, state) };
+    choices: choicesHtml(schema, state),
+    scenario: scenarioChipHtml(schema, state.vars) };
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
@@ -394,9 +423,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       }
       panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
     }
-    inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
-    // (템플릿 모드는 반대다: 제작자가 {commands}/{choices}를 박은 자리에만 나온다)
+    // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
+    if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
+    inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
   }
@@ -449,7 +479,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
-        || c.source?.startsWith('action:') || c.source?.startsWith('check:'))
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:'))
       .map((c) => {
         // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
         if (c.source?.startsWith('check:')) {
@@ -760,7 +790,8 @@ function renderPanelTemplate(schema, state, tpl) {
   const lookup = makeLookup(schema, state.vars);
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid: 'scg',
-    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '' };
+    lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
+    scenario: scenarioChipHtml(schema, state.vars) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
   return styleTag + renderTemplate(parts.html, lookup, extras);
@@ -775,4 +806,4 @@ function fmtNum(n) {
 }
 
 module.exports = { renderStatusHtml, renderPanelTemplate, actionGlyph, scopeCss, buildStatusCss, extractTemplateParts,
-  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, BASE_CSS, THEMES };
+  layoutGroups, layoutCss, multiPanelTemplate, decodeHitClass, scenarioChipHtml, BASE_CSS, THEMES };

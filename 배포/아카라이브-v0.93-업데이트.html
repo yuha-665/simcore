@@ -1,0 +1,177 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.87 &nbsp;→&nbsp; v0.93</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 상태창 실종 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">다른 스크립트와 겹치면 상태창이 사라지던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v0.89.2</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  챕터 요약 같은 <b style="color:#c98a7a;">모듈 Lua 스크립트가 메시지를 다시 쓰면</b> SimCore가 심어 둔 상태창 표식이 같이 지워져서,
+  그 메시지의 상태창이 조용히 실종됐습니다. 어떤 서드파티 스크립트든 일으킬 수 있는 사고였습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  이제 저장 뒤에 스스로 점검해서 표식이 사라졌으면 다시 붙입니다.
+  상태 계산이 실패한 턴에도 상태창만은 살아남게 바꿨습니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+봇에 <b style="color:#e0a94a;">이야기의 척추</b>가 생겼습니다 — 시나리오를 막 단위로 적어 두면, 조건이 차오를 때마다 다음 막이 열립니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+큰 덩어리는 셋 — <b style="color:#dbe2ea;">시나리오레이터</b>(v0.90~93),
+<b style="color:#dbe2ea;">게임 패널 대장 탭</b>(v0.89), <b style="color:#dbe2ea;">에셋팩 쓰임새</b>(v0.88).
+</p>
+
+<!-- ─────────── ① 시나리오레이터 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">📖 시나리오레이터 — 이야기의 속도를 시스템이 지킵니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.90~93</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  기승전결을 프롬프트에 통째로 적어 본 분은 아실 겁니다 — <b style="color:#c98a7a;">모델이 세 턴 만에 결말까지 달려 버립니다.</b>
+  모델은 지금이 이야기의 몇 %인지 모르기 때문입니다.
+  시나리오레이터는 그 판단을 모델에게서 뺏어 옵니다.
+  </p>
+
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">1막 잠복   연출: 실마리를 옅게만          내막: (이 막부터 모델에게 공개)
+2막 전개   해금: 단서 2개 or 30일 경과    최소 체류: 5턴
+3막 절정   해금: 위협 10 이상             전환 효과 + 알림</pre>
+
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 막이 열리는 건 조건식입니다</b> — 플레이가 남긴 변수(단서·호감도·경과일·판정 결과)가 차오르면 다음 막이 열립니다.
+  버튼도, 모델의 눈치도 아닙니다. <b style="color:#dbe2ea;">최소 체류 턴</b>을 걸면 조건이 먼저 차도 그만큼은 머뭅니다 — 이야기 속도의 바닥.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 스포일러가 구조적으로 불가능합니다</b> — 모델은 전체 시나리오를 영영 못 봅니다.
+  받는 건 <b style="color:#dbe2ea;">현재 막의 연출 지시와 이미 밝혀진 내막뿐</b>입니다.
+  반전을 secret 칸에 적어 두면 그 막이 열리기 전엔 프롬프트 어디에도 실리지 않습니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 국면 연출 5종 내장</b> — 잠복/전개/고조/절정/해소. 잠복 막이라고 이야기가 멈추지 않게,
+  "옅게 깔되 장면은 적극적으로"까지 문구를 다듬어 뒀습니다. 막마다 고유 지시를 그 위에 얹으면 됩니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 만들기는 셋 중 편한 걸로</b> — [시나리오] 탭에서 3막 골격 버튼으로 직접 짜거나,
+  요청서를 뽑아 AI에게 통째로 맡기거나, ✨AI에게 맡기기의 📖 기능 카드로 시작하거나.
+  <b style="color:#dbe2ea;">영영 안 열리는 막은 진단이 잡아 줍니다</b> — 어느 조건이 병목인지, 판이 짧아서인지까지 짚습니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+    <b style="color:#dbe2ea;">플레이어 화면에는</b> 상태창에 진행 칩(<span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">📖 무너진 봉인 · 결전 3/3막</span>)이 뜨고,
+    막이 넘어가는 순간엔 하이라이트 카드가 섭니다 — 라벨만, 스포일러 없이.
+    </p>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    <b style="color:#dbe2ea;">실물 예시</b>는 RPG 템플릿에 들어 있습니다 — [새로 만들기] → RPG를 뽑으면
+    3막짜리 '무너진 봉인'이 같이 옵니다. 뜯어서 자기 봇에 옮겨 쓰세요.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── ② 대장 탭 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">게임 패널 대장(臺帳) 탭 — 상태창에 다 못 싣는 정보의 자리</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.89</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  인물 대장, 영지 현황, 탐사 지도 같은 참고 정보는 매 턴 볼 것도 아닌데
+  <b style="color:#c98a7a;">상태창에 우겨넣으면 채팅이 무거워졌습니다.</b>
+  이제 게임 패널에 <b style="color:#dbe2ea;">자리표시자 HTML 탭</b>을 만들 수 있습니다 — 열었을 때만 그려집니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 상태창 템플릿과 같은 문법</b> — {변수} {목록:tags} 그대로라, 상태창에서 조각을 잘라 붙이면 됩니다. CSS도 품을 수 있습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 전용 플로팅 버튼</b> — 탭에 아이콘을 적으면 우상단에 그 탭으로 직행하는 버튼이 생깁니다
+  (📋 인물 대장, 🗺️ 탐사 지도 식으로).
+  </p>
+</div>
+
+<!-- ─────────── ③ 에셋팩 쓰임새 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">에셋팩 '쓰임새' 칸 — 팩이 여럿일 때 AI가 헷갈리지 않게</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.88</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지난 업데이트에서 한 인물에 성격 다른 팩(감정 이미지 + 성인 이미지)을 겹쳐 쓸 수 있게 됐는데,
+  정작 <b style="color:#c98a7a;">"어느 팩을 언제 쓰는지"를 AI에게 알려 줄 방법이 없었습니다.</b>
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  팩 설정에 <b style="color:#dbe2ea;">쓰임새 한 줄</b>을 적으면 AI 지시에 그대로 실립니다 —
+  "일상 장면의 표정 변화용" / "성인 장면 전용" 식으로. 구조가 겹치는 팩에 쓰임새가 없으면 편집기가 경고합니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 잔가지 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 그 밖에</span>
+  </div>
+
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">난이도별 사건 빈도</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.89.1</span> —
+  랜덤 이벤트 발생 확률에 식을 쓸 수 있습니다. 난이도 변수를 읽게 짜면
+  리얼리티 모드에서만 사건이 잦은 봇이 프리셋 하나로 됩니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">해금 변수 길잡이</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.93.1</span> —
+  시나리오 해금이 읽는 변수를 보조 AI가 움직인다면, 그 변수의 설명(desc)이 곧 "언제 움직이는지"의 기준입니다.
+  설명이 비어 있으면 검증이 짚어 줍니다 — AI에게 해금 판단을 맡기는 게 아니라, 일어난 일만 기록시키는 구조입니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">진단이 시나리오도 봅니다</b> <span style="font-family:ui-monospace,Consolas,monospace;color:#8b98a9;">v0.92</span> —
+  영영 안 열리는 막, 너무 일찍 다 열려 버리는 페이스까지. 다른 진단처럼
+  "판이 짧아서 못 본 것뿐"인 경우는 결함으로 몰지 않습니다.
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="border-top:1px solid #3a4553;padding-top:20px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;">
+  플러그인 파일을 새로 받아 <b style="color:#e0a94a;">다시 임포트</b>하세요.
+  파일만 바꿔 두면 리수에서 도는 건 여전히 옛날 빌드입니다.
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  제대로 갈렸는지는 플러그인 목록에서 확인할 수 있습니다 —
+  <span style="font-family:ui-monospace,Consolas,monospace;color:#7fc7d9;">SimCore (시뮬 엔진) v0.93 시나리오 상태창</span>
+  </p>
+  <p style="margin:0 0 10px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">기존 봇 스키마는 그대로 굴러갑니다.</b> 시나리오는 순수 추가 기능이라
+  안 쓰는 봇엔 아무 영향이 없습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:14px;">
+  안 되는 게 있으면 댓글 주세요. 상태창 실종 같은 건 댓글이 아니었으면 못 잡았을 사고였습니다.
+  </p>
+</div>
+
+</div>

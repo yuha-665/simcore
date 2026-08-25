@@ -268,6 +268,99 @@ function turn(schema, state, changes = {}) {
     && src.includes('scenario: tabScenario') && src.includes('시나리오(scenario) — 중심 이야기를'), '');
 }
 
+// ── 진단 (v0.92) — 척추가 실제로 걷는가 ──
+{
+  const { diagnose } = SC.require('diagnose');
+
+  // ① 닫힌 막 — 해금 변수를 아무도 안 올림 → high + 연쇄 표기 + 첫 닫힌 막 하나만
+  const closed = {
+    simcore: '0.1',
+    vars: [{ id: 'finds', label: '조각', type: 'int', init: 0, min: 0, max: 10 }],
+    rules: { events: [] }, updater: { allow: [] },
+    scenario: { acts: [
+      { id: 'a1', label: '잠복', intensity: '잠복' },
+      { id: 'a2', label: '전개', unlock: 'finds >= 2', intensity: '전개' },
+      { id: 'a3', label: '절정', unlock: 'finds >= 5', intensity: '절정' },
+    ] },
+  };
+  const r1 = diagnose(closed, { turns: 30, runs: 3 });
+  const dead = r1.findings.filter((f) => f.tag === '닫힌 막');
+  ck('★ 진단: 닫힌 막 = high', dead.length === 1 && dead[0].sev === 'high', JSON.stringify(dead.map((f) => f.sev)));
+  ck('★ 진단: 병목을 짚음 (finds >= 2, 관측 최고 0)', dead[0].text.includes('finds >= 2') && dead[0].text.includes('최고 0'), '');
+  ck('★ 진단: 첫 닫힌 막만 신고 + 뒤는 연쇄 표기', dead[0].text.includes('전개') && dead[0].text.includes('1개 막도 함께'), '');
+  ck('진단: 탭 배정 = scenario (수정 요청 경로)', dead[0].tab === 'scenario', String(dead[0].tab));
+  ck('진단: stats에 도달 막 수', r1.stats.scnActs === 3 && r1.stats.scnReached === 1, JSON.stringify([r1.stats.scnActs, r1.stats.scnReached]));
+
+  // ② 페이스 붕괴 — 전 막이 초반에 다 열림 → mid
+  const fast = {
+    simcore: '0.1',
+    vars: [{ id: 'x', label: 'X', type: 'int', init: 9, min: 0, max: 10 }],
+    rules: { onTurn: [{ set: 'x', expr: 'min(10, x + 1)' }] }, updater: { allow: [] },
+    scenario: { acts: [
+      { id: 'a1', label: '잠복' }, { id: 'a2', label: '전개', unlock: 'x >= 1' },
+      { id: 'a3', label: '절정', unlock: 'x >= 2' },
+    ] },
+  };
+  const r2 = diagnose(fast, { turns: 40, runs: 3 });
+  ck('★ 진단: 페이스 붕괴 = mid ("기승전결 소진")',
+    r2.findings.some((f) => f.tag === '이야기 페이스' && f.sev === 'mid' && f.text.includes('minTurns')), '');
+
+  // ②' minTurns가 바닥을 깔면 페이스 지적이 사라진다 — 손잡이가 실제로 작동
+  const paced = JSON.parse(JSON.stringify(fast));
+  paced.scenario.acts[1].minTurns = 10;
+  paced.scenario.acts[2].minTurns = 10;
+  const r2b = diagnose(paced, { turns: 40, runs: 3 });
+  ck('★ 진단: minTurns를 주면 페이스 지적 없음', !r2b.findings.some((f) => f.tag === '이야기 페이스'), '');
+
+  // ③ AI 담당 문턱 — 해금 변수가 allow에 있으면 결함이 아니라 측정 밖 (low + "문턱 내리지 마세요")
+  const aig = {
+    simcore: '0.1',
+    vars: [{ id: 'trust', label: '신뢰', type: 'int', init: 0, min: 0, max: 100 }],
+    rules: { events: [] }, updater: { allow: [{ id: 'trust', maxDelta: 10 }] },
+    scenario: { acts: [{ id: 'a1', label: '잠복' }, { id: 'a2', label: '전개', unlock: 'trust >= 30' }] },
+  };
+  const r3 = diagnose(aig, { turns: 30, runs: 3 });
+  ck('★ 진단: AI 담당 해금 = low 변명 ("문턱을 내리지 마세요")',
+    r3.findings.some((f) => f.tag === 'AI 담당 문턱' && f.sev === 'low' && f.text.includes('전개') && f.text.includes('문턱을 내리지 마세요')), '');
+  ck('진단: AI 담당은 닫힌 막으로 안 잡힘', !r3.findings.some((f) => f.tag === '닫힌 막'), '');
+
+  // ④ 후반부 막 — 짧은 판엔 안 오지만 긴 판엔 온다 → low "판이 짧아서"
+  const late = JSON.parse(JSON.stringify(fast));
+  late.vars = [{ id: 'x', label: 'X', type: 'int', init: 0, min: 0, max: 100 }];
+  late.rules.onTurn = [{ set: 'x', expr: 'min(100, x + 1)' }];
+  late.scenario.acts = [{ id: 'a1', label: '잠복' }, { id: 'a2', label: '전개', unlock: 'x >= 45', minTurns: 1 }];
+  const r4 = diagnose(late, { turns: 30, runs: 3 });
+  ck('★ 진단: 후반부 막 = low ("판이 짧아서")',
+    r4.findings.some((f) => f.tag === '후반부 막' && f.sev === 'low'),
+    r4.findings.filter((f) => /막/.test(f.tag)).map((f) => f.tag).join(','));
+
+  // ⑤ onEnter만이 세우는 변수 — "고정 변수" 오탐이 없어야 한다
+  const enterOnly = {
+    simcore: '0.1',
+    vars: [
+      { id: 'go', label: '진행', type: 'int', init: 0, min: 0, max: 10 },
+      { id: 'threat', label: '위협', type: 'int', init: 0, min: 0, max: 100 },
+    ],
+    rules: { onTurn: [{ set: 'go', expr: 'min(10, go + 1)' }] }, updater: { allow: [] },
+    scenario: { acts: [
+      { id: 'a1', label: '잠복' },
+      { id: 'a2', label: '전개', unlock: 'go >= 3', onEnter: [{ set: 'threat', expr: '40' }] },
+    ] },
+  };
+  const r5 = diagnose(enterOnly, { turns: 30, runs: 3 });
+  ck('★ 진단: onEnter만 받는 변수가 고정 변수로 안 잡힘',
+    !r5.findings.some((f) => f.tag === '고정 변수' && f.text.includes("'threat'")), '');
+
+  // ⑥ 전 템플릿 오탐 0 — scenario 없는 봇은 시나리오 지적이 하나도 없어야 한다
+  const T = SC.require('templates').TEMPLATES;
+  let leak = '';
+  for (const k of Object.keys(T)) {
+    const r = diagnose(JSON.parse(JSON.stringify(T[k].schema)), { turns: 20, runs: 2 });
+    if (r.findings.some((f) => ['닫힌 막', '이야기 페이스', '후반부 막'].includes(f.tag))) leak += k + ' ';
+  }
+  ck('★ 전 템플릿 시나리오 오탐 0', !leak, leak);
+}
+
 // ── 집계 ──
 let pass = 0, fail = 0;
 for (const [c, n, x] of R) {

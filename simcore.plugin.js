@@ -1,6 +1,6 @@
 //@name simcore
 //@api 3.0
-//@version 0.91.0
+//@version 0.92.0
 //@display-name SimCore (시뮬 엔진) v0.90 시나리오레이터
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
@@ -9,6 +9,23 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.92.0 ───────────────────────────────────────────────
+// 시나리오레이터 3차 — 진단. "카드로 만든 시나리오가 진단에 걸리면 요청서 버그"의 품질
+// 게이트가 시나리오에도 닫힌다 (design-기능프리셋.md §병행 트랙).
+// - [닫힌 막 = high] 죽은 이벤트와 같은 기계 — 해금이 읽는 값의 병목을 짚는다
+//   ("finds >= 2 인데 관측 최고 0"). 은닉 설계라 결함의 값이 더 크다: 이 막부터의
+//   이야기·secret은 플레이어가 영영 못 본다. 막은 선형 사슬이라 **첫 닫힌 막 하나만**
+//   신고하고 뒤는 "함께 잠김 — 원인은 이쪽 하나"로 붙인다.
+// - [변명 사다리 재사용] 설정 게이트(byPlayer/byAI) → 긴 판 재확인(onlyLonger —
+//   'scenario:막id'가 fired 창구로 이미 흐른다) → AI 담당 문턱(aiGated, "문턱을 내리지
+//   마세요"). 오탐 0 원칙 그대로 (전 템플릿 확인 테스트 포함).
+// - [이야기 페이스 = mid] 마지막 막까지 평균 ≤ max(5, 판의 25%)턴이면 기승전결이 초반에
+//   소진된 것 — 루아 자율주행의 "세 턴 만에 종결" 재현. minTurns를 주면 지적이 사라진다
+//   (페이스 손잡이가 작동한다는 것까지 테스트가 확인).
+// - [오탐 방어] writerMap에 onEnter 합류(전환 효과만 받는 변수의 "고정 변수" 오탐 차단),
+//   trackIds에 scn_turns(그걸 읽는 조건의 병목 지목용).
+// - 남은 것: 상태창 {scenario} 자리 + 템플릿 실물 예시 + 실기(막 전환 체감 페이스).
 //
 // ── v0.91.0 ───────────────────────────────────────────────
 // 시나리오레이터 2차 — 편집기 [시나리오] 탭 + AI 경로.
@@ -7717,6 +7734,7 @@ const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
+const { scenarioConfig } = require('./scenario');
 const { evaluate, truthy, referencedVars } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
@@ -7760,6 +7778,10 @@ function writerMap(schema) {
   for (const s of require('./party').allSlots(schema)) add(s.var, '편성');
   // 달력(v0.61) — 일정 목록은 유저가 팝업에서 등록한다. 시뮬은 못 움직이지만 죽은 변수가 아니다
   if (schema.calendar?.list) add(schema.calendar.list, '달력');
+  // 시나리오(v0.92) — 막 전환의 onEnter도 어엿한 쓰기 경로다. 빠지면 전환 효과만 받는
+  // 변수가 "고정 변수"로 오탐된다
+  for (const a of (scenarioConfig(schema)?.acts || []))
+    for (const f of (a.onEnter || [])) add(f.set ?? f.list, '시나리오');
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
@@ -8137,8 +8159,11 @@ function diagnose(schema, opts = {}) {
 
   // ── 2. 실제로 굴린다 ──
   const obs = {};                          // id → {min,max}  (vars + derived 전부)
+  const SCN = scenarioConfig(schema);
   const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id),
-    ...(TCFG ? TCFG.expose : [])];
+    ...(TCFG ? TCFG.expose : []),
+    // 시나리오 노출 — scn_turns를 관측해야 그걸 읽는 조건의 병목(bottleneck)을 짚을 수 있다
+    ...(SCN ? ['scn_turns'] : [])];
   const note = (id, n) => {
     if (typeof n !== 'number' || !isFinite(n)) return;
     const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
@@ -8546,6 +8571,72 @@ function diagnose(schema, opts = {}) {
     }
     add('mid', '죽은 이벤트', `'${e.id}' 미발동 — ${where}`
       + (b ? '. 문턱을 내리거나 그 값을 올릴 경로를 주세요.' : ''), 'rules');
+  }
+
+  // ── 3.5 시나리오 막 (v0.92) — 척추가 실제로 걷는가 ──
+  // 죽은 이벤트와 같은 기계인데 관심사가 둘이다: ① 영영 안 열리는 막 (은닉이 무덤이 됨)
+  // ② 너무 빨리 다 열리는 막 (페이스 붕괴 — 루아 자율주행의 "세 턴 만에 기승전결" 재현).
+  // 막은 선형 사슬이라 **첫 닫힌 막 하나만** 신고한다 — 뒤는 전부 같은 문제의 그림자다.
+  if (SCN && SCN.acts.length >= 2) {
+    const allRuns = [...idle, ...play];
+    stats.scnActs = SCN.acts.length;
+    // 판마다 hist의 scn_idx로 도달·페이스를 읽는다 (fired의 'scenario:막id'와 같은 정보지만
+    // 페이스는 "몇 턴에 열렸나"가 필요해서 스냅샷 쪽을 본다)
+    let maxReach = 0;
+    const lastOpenTurns = [];              // 마지막 막이 열린 턴 (열린 판만)
+    for (const r of allRuns) {
+      let m = 0;
+      r.hist.forEach((v, t) => {
+        const x = Number(v.scn_idx) || 0;
+        if (x > m) m = x;
+        if (x >= SCN.acts.length - 1 && !lastOpenTurns.some((e2) => e2.run === r)) {
+          lastOpenTurns.push({ run: r, turn: t });
+        }
+      });
+      if (m > maxReach) maxReach = m;
+    }
+    stats.scnReached = maxReach + 1;
+
+    if (maxReach < SCN.acts.length - 1) {
+      // ① 닫힌 막 — 변명 사다리는 죽은 이벤트와 같은 순서: 게이트 → 긴 판 → AI 문턱 → 진짜 결함
+      const act = SCN.acts[maxReach + 1];
+      const rest = SCN.acts.length - 2 - maxReach; // 이 막 뒤에 같이 잠긴 막 수
+      const restNote = rest > 0 ? ` (그 뒤 ${rest}개 막도 함께 잠겨 있습니다 — 원인은 이쪽 하나)` : '';
+      const aname = act.label || act.id;
+      const b = bottleneck(act.unlock, obs);
+      const where = b
+        ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
+          + (b.pct != null ? ` (${b.pct}%)` : '')
+        : `해금 조건: ${act.unlock ?? '(없음)'}`;
+      const gate = gatedBySetting(act.unlock, schema, writers, moved, null, finalStates);
+      if (gate && (gate.byPlayer || gate.byAI)) {
+        add('low', '설정 의존', `'${aname}' 막은 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 안 열립니다`
+          + (gate.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
+            : ' — 이 값은 보조 AI가 서사를 보고 세웁니다. 시뮬레이션에는 AI가 없어 영영 시작값인 것이고, 결함이 아닙니다.')
+          + restNote, null);
+      } else if (onlyLonger(`scenario:${act.id}`, 'event')) {
+        add('low', '후반부 막', `'${aname}' 막은 ${turns}턴 안에 안 열렸습니다 — ${where}. ${laterNote}${restNote}`, null);
+      } else if (aiGated(schema, b, turns)) {
+        add('low', 'AI 담당 문턱', `'${aname}' 막 미해금 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 서사에 따라 `
+          + '움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — **문턱을 내리지 마세요.** '
+          + `실제로 열리는지는 채팅을 몇 턴 돌려서 보세요.${restNote}`, null);
+      } else {
+        add('high', '닫힌 막', `'${aname}' 막이 영영 안 열립니다 — ${where}. `
+          + '해금 조건이 읽는 값을 올릴 경로(이벤트·판정·액션)를 주거나 문턱을 내리세요. '
+          + `이 막부터의 이야기·내막(secret)은 플레이어가 영영 못 봅니다.${restNote}`, 'scenario');
+      }
+    } else if (lastOpenTurns.length) {
+      // ② 페이스 — 마지막 막이 너무 일찍 열리면 척추가 무너진 것. minTurns 총합이 바닥을
+      // 깔아 주므로, 그 바닥의 존재 자체는 페이스 손잡이가 작동한다는 뜻이다 — 관측 턴으로만 판단.
+      const avgOpen = lastOpenTurns.reduce((s, e2) => s + e2.turn, 0) / lastOpenTurns.length;
+      stats.scnLastOpenAvg = Math.round(avgOpen * 10) / 10;
+      const floor = Math.max(5, Math.round(turns * 0.25));
+      if (avgOpen <= floor && lastOpenTurns.length >= allRuns.length / 2) {
+        add('mid', '이야기 페이스', `마지막 막까지 평균 ${stats.scnLastOpenAvg}턴 만에 전부 열립니다 (${turns}턴 판 기준) — `
+          + '기승전결이 초반에 소진되면 남은 판 내내 절정 이후를 맴돕니다. '
+          + '막의 minTurns(최소 체류)를 올리거나 해금 문턱을 높여 이야기 속도를 잡으세요.', 'scenario');
+      }
+    }
   }
 
   // ── 4. 도배되는 이벤트 ──

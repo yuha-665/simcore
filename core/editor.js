@@ -22,6 +22,7 @@ const { diagnose, compareDiagnoses } = require('./diagnose');
 const patchMod = require('./patch');
 const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
+const { INTENSITIES } = require('./scenario');
 
 const CSS = `
 .sce {
@@ -1194,6 +1195,25 @@ const SCHEMA_CALENDAR_RULES = [
   '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
 ];
 
+// 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
+// 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
+// (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
+const SCHEMA_SCENARIO_RULES = [
+  '- 시나리오는 **막(acts)의 선형 사슬**입니다. 조건(unlock)이 참이 되면 다음 막이 열립니다 — 유저 버튼도, 모델의 판단도 아닙니다.',
+  '- 모델은 전체 시나리오를 못 봅니다. **현재 막의 direct + 이미 열린 막들의 secret만** 전달됩니다. '
+  + '그러니 뒷막을 아는 전제로 direct를 쓰지 마세요 — 각 막은 그 막만 알고도 성립해야 합니다.',
+  '- `unlock` = 해금 조건식 (첫 막은 생략 — 즉시 시작). **플레이가 남기는 흔적**(변수·경과일·판정 결과)을 읽으세요. '
+  + 'rand()는 금지 — 우연에 걸고 싶으면 랜덤 이벤트가 세운 변수를 읽게 하세요.',
+  '- `minTurns` = 페이스 바닥 — 조건이 먼저 차도 직전 막에서 최소 N턴 머뭅니다. 이야기 속도의 핵심 손잡이입니다.',
+  '- `direct` = 이 막이 열려 있는 동안 매 턴 가는 연출 지시 ({변수} 삽입 가능). **표면 상황만 쓰세요** — '
+  + '무슨 일이 일어나고 있는지, 어떤 분위기를 깔지. 내막·반전·정체는 direct에 쓰면 안 됩니다.',
+  '- `secret` = **이 막부터** 모델에게 공개되는 내막. 반전·정체·진상은 전부 여기로 — 공개는 누적이라 한 번 밝혀진 진실은 유지됩니다.',
+  '- `intensity` = 잠복/전개/고조/절정/해소 — 국면별 기본 연출 문구가 자동으로 붙습니다 (direct는 그 위에 얹는 봇 고유 지시).',
+  '- `onEnter` = 전환 순간 1회 효과(이벤트 효과와 같은 형식), `notify` = 전환 통지 한 줄.',
+  '- **주인공(유저)의 행동·선택·결말을 정해 두지 마세요.** 시나리오는 무대를 옮기는 것이지 배우를 조종하는 것이 아닙니다.',
+  '- 조건식에서 `scn_act`(현재 막 id)·`scn_turns`(현재 막 경과 턴)를 쓸 수 있습니다 — 지시문·이벤트를 막에 연동할 때.',
+];
+
 // 상태창 구조(statusUI.groups/layout) — 꾸미기(CSS·커스텀 템플릿)와 창구를 나눈 쪽의 규격.
 // "무엇을 보여줄까"만 다룬다. 색·폰트·배치 HTML은 🎨 꾸미기 창구가 따로 맡는다.
 const SCHEMA_STATUS_RULES = [
@@ -1231,7 +1251,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -1258,6 +1278,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 달력(calendar) — 날짜가 중요한 봇이면 (선택)',
     ...SCHEMA_CALENDAR_RULES,
+    '',
+    '## 시나리오(scenario) — 중심 이야기를 막 단위로 끌고 가는 봇이면 (선택)',
+    ...SCHEMA_SCENARIO_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -1970,6 +1993,9 @@ const TAB_SLICES = {
   // 달력(v0.63.1) — calendar 객체 통째 교체. css는 제작자 손값이라 원문 보존을 요청서가
   // 못박는다. 일정 목록 변수·만료 규칙은 vars/rules 절 몫 — 📅 카드가 순차로 나눠 맡긴다.
   calendar: { keys: ['calendar'], label: '달력' },
+  // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
+  // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
+  scenario: { keys: ['scenario'], label: '시나리오' },
 };
 
 // 직결 생성 입력칸의 예시 문구 — 여기 쓴 내용이 요청서의 '내가 원하는 것'에 그대로 들어간다.
@@ -1984,6 +2010,7 @@ const TAB_WANT_PH = {
   party: '예: 출격 편성 3슬롯 + 정비창 탭',
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
+  scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
 };
 
 /**
@@ -2014,6 +2041,7 @@ function tabItemCounts(schema, tabKey) {
     push('업그레이드(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.items) ? t.items : []));
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
+  else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
     push('rules.events', schema.rules?.events);
@@ -2115,6 +2143,15 @@ const FEATURE_RECIPES = [
         + '일정 목록을 연결해 주세요.' },
     ],
   },
+  {
+    id: 'scenario', icon: '📖', label: '시나리오',
+    desc: '중심 이야기를 3~5막으로 — 조건 해금 + 스포일러 은닉',
+    // 해금 조건이 읽을 흔적이 있어야 한다 — 변수가 하나도 없으면 막이 열릴 계기가 없다
+    needs: (s) => ((s.vars || []).length >= 1 ? null : '해금 조건이 읽을 변수가 최소 1개 필요합니다'),
+    steps: [{ tab: 'scenario', want: '이 봇의 설정에 어울리는 중심 사건 하나를 정해 3~5막 시나리오로 짜 주세요. '
+      + '막마다 표면에서 보이는 것은 direct에, 아직 숨겨진 진상은 secret에 나눠 담고, '
+      + '막 전환 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
+  },
 ];
 
 /**
@@ -2151,6 +2188,8 @@ function tabItemIds(schema, tabKey) {
     add('기념일', schema.calendar?.marks, 'label');
     // 일정 목록 연결은 스칼라지만 잃어버리면 등록 기능이 통째로 죽는다 — 신원으로 취급해 지킨다
     if (schema.calendar?.list) out.push(`일정 목록 ${schema.calendar.list}`);
+  } else if (tabKey === 'scenario') {
+    (schema.scenario?.acts || []).forEach((a, i) => out.push(`막 ${a?.label || a?.id || `#${i + 1}`}`));
   } else if (tabKey === 'rules') {
     add('이벤트', schema.rules?.events);
     add('랜덤', schema.rules?.randomEvents?.table);
@@ -2464,6 +2503,32 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "label": "상대 생일", "month": 5, "dom": 14, "note": "잊으면 큰일 난다." },',
       '    { "label": "정산일", "dom": 1 },',
       '    { "label": "도서부 모임", "weekday": "수" }',
+      '  ] } }',
+      '```',
+      '');
+  } else if (tabKey === 'scenario') {
+    body.push('## 시나리오 규격', ...SCHEMA_SCENARIO_RULES, '',
+      '## 쓰는 순서 — 이 순서로 생각하면 좋은 시나리오가 나옵니다',
+      '1. 이 봇의 중심 사건 하나를 정한다 (배경 설정이 아니라 **진행되는 이야기**).',
+      '2. 그것이 겉으로 드러나는 단계를 3~5막으로 자른다 (잠복 → 전개 → 고조 → 절정 → 해소).',
+      '3. 막마다 "표면에서 보이는 것"을 direct에, "아직 숨겨진 진상"을 secret에 나눠 담는다.',
+      '4. 막 전환의 계기를 위 계약표의 변수로 잡는다 — 플레이가 실제로 움직이는 값이어야 합니다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "scenario": { "label": "제1장 — 혈마심경",',
+      '  "acts": [',
+      '    { "id": "act1", "label": "잠복", "intensity": "잠복",',
+      '      "direct": "강호에 수상한 소문이 돈다 — 실마리를 옅게만 암시하라.",',
+      '      "secret": "혈마심경 조각은 사실 셋이 아니라 넷이다." },',
+      '    { "id": "act2", "label": "전개", "unlock": "finds >= 2 or day >= 30", "minTurns": 5,',
+      '      "intensity": "전개", "direct": "조각을 노리는 자들이 움직이기 시작한다.",',
+      '      "secret": "흑막은 문파 안에 있다.",',
+      '      "onEnter": [{ "set": "threat", "expr": "clamp(threat + 10, 0, 100)" }],',
+      '      "notify": "[이야기] 수면 아래에서 무언가 움직이기 시작했다." },',
+      '    { "id": "act3", "label": "절정", "unlock": "threat >= 60", "minTurns": 8, "intensity": "절정",',
+      '      "direct": "더 이상 숨길 것이 없다 — 정면 충돌을 무대 중앙에 세워라." }',
       '  ] } }',
       '```',
       '');
@@ -2941,6 +3006,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
     // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지
     if (schema.assets && !(schema.assets.packs || []).length) delete schema.assets;
+    // 막을 다 지우면 scenario도 걷는다 — 같은 불변식
+    if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
   }
   normalize();
   let firstInstallGuideDismissed = false;
@@ -2959,7 +3026,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -3955,6 +4022,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
+    [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -5084,6 +5152,106 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 달력 ──────────────────────────────────────────────
   // 게임 패널 2호 (v0.61). 일정 = list 변수 + @기한 규약 — 새 저장소를 만들지 않아서
   // 만료 자동 정리(onTurn expire)·AI의 @+N 등록·has() 조건식이 전부 기존 기계로 돈다.
+  // ── 탭: 시나리오 (v0.91, 설계 docs/design-시나리오레이터.md) ──────
+  // 배포자가 이야기의 척추를 표로 적는 자리. 은닉이 요점이라 UI도 그 축이다 —
+  // secret 칸에 "모델은 이 막부터 본다"를 계속 상기시킨다.
+  function tabScenario() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('scenario'));
+
+    if (!schema.scenario) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '시나리오 — 중심 이야기를 막(act) 단위로 등록해 두면, 조건을 만족할 때마다 다음 막이 '
+        + '해금됩니다. 모델은 전체 시나리오를 못 보고 **현재 막의 연출 지시와 이미 밝혀진 내막만** '
+        + '받습니다 — 이야기 속도와 스포일러를 시스템이 지킵니다. '
+        + '(추리 사건 게임이 필요하면 이건 그 용도가 아닙니다 — 이야기 페이스 제어용입니다.)'));
+      wrap.appendChild(addBtn('시나리오 만들기 (3막 골격)', () => {
+        schema.scenario = {
+          label: '',
+          acts: [
+            { id: 'act1', label: '잠복', intensity: '잠복', direct: '', secret: '' },
+            { id: 'act2', label: '전개', unlock: '', minTurns: 5, intensity: '전개', direct: '', secret: '' },
+            { id: 'act3', label: '절정', unlock: '', minTurns: 8, intensity: '절정', direct: '', secret: '' },
+          ],
+        };
+        rerender();
+      }));
+      return wrap;
+    }
+
+    const S = schema.scenario;
+    S.acts = S.acts || [];
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('시나리오 제목', bindInput(S.label, (x) => { S.label = x || undefined; rerender(); },
+        { cls: 'sce-w-l', ph: '제1장 — 혈마심경 (프롬프트 머리글에 실림, 비워도 됨)' })),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '막은 위에서 아래로 한 방향으로만 진행됩니다. 전환은 **조건이 참이 된 턴**에 일어나고, '
+      + '최소 체류 턴을 채우기 전엔 조건이 차도 기다립니다. 상태창·조건식에서 '
+      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다.'));
+
+    const INTENSITY_OPTS = [['', '(없음 — direct만)'],
+      ...Object.keys(INTENSITIES).map((k) => [k, k])];
+    S.acts.forEach((a, i) => {
+      const p = h('div', { class: 'sce-block' });
+      p.appendChild(h('div', { class: 'sce-row' },
+        h('b', {}, `${i + 1}막`),
+        pair('id', bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `act${i + 1}` }),
+          '조건식에서 scn_act == "이 값"으로 참조'),
+        pair('라벨', bindInput(a.label, (x) => { a.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '잠복 / 전개 / …' }), '유저에게 보이는 이름 — 스포일러 없이'),
+        pair('국면', bindSelect(a.intensity ?? '', INTENSITY_OPTS,
+          (x) => { if (x) a.intensity = x; else delete a.intensity; rerender(); }),
+          '기본 연출 문구 자동 첨부 — direct는 그 위에 얹는 봇 고유 지시'),
+        grip(S.acts, i, rerender),
+      ));
+      if (i > 0) {
+        p.appendChild(h('div', { class: 'sce-row' },
+          pair('해금 조건', bindInput(a.unlock, (x) => { a.unlock = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: 'finds >= 2 or day >= 30' }),
+            '이 조건이 참이 되면 이전 막에서 넘어온다 — 플레이가 움직이는 변수를 읽을 것 (rand() 금지)'),
+          pair('최소 체류', bindInput(a.minTurns, (x) => {
+            const n = parseInt(x, 10);
+            if (isFinite(n) && n > 0) a.minTurns = n; else delete a.minTurns;
+            rerender();
+          }, { cls: 'sce-w-s', ph: '0' }), '직전 막에서 최소 몇 턴을 보내야 넘어올 수 있나 — 페이스 바닥'),
+        ));
+      } else {
+        p.appendChild(h('div', { class: 'sce-hint' }, '첫 막은 즉시 시작합니다 — 해금 조건이 없습니다.'));
+      }
+      p.appendChild(pair('연출 지시', null, ''));
+      p.appendChild(bindArea(a.direct, (x) => { a.direct = x || undefined; rerender(); },
+        '이 막이 열려 있는 동안 매 턴 모델에게 가는 지시 — 표면 상황만. {변수} 삽입 가능.'));
+      p.appendChild(h('div', { class: 'sce-hint' },
+        '🔒 내막(secret) — **이 막이 열리는 순간부터** 모델에게 공개됩니다. 반전·정체·진상은 '
+        + '전부 여기에: 이전 막에서는 프롬프트에 아예 실리지 않습니다.'));
+      p.appendChild(bindArea(a.secret, (x) => { a.secret = x || undefined; rerender(); },
+        '(비워도 됨) 예: 흑막은 문파 안에 있다.'));
+      p.appendChild(h('div', { class: 'sce-row' },
+        pair('전환 통지', bindInput(a.notify, (x) => { a.notify = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '(비워도 됨) [이야기] 수면 아래에서 무언가 움직이기 시작했다.' }),
+          '막이 열리는 턴, [이벤트] 줄로 모델에게 1회 전달'),
+      ));
+      // 전환 순간 1회 효과 — 이벤트 효과와 같은 형식·같은 편집 UI
+      a.onEnter = a.onEnter || [];
+      if (a.onEnter.length || i > 0) {
+        p.appendChild(h('div', { class: 'sce-hint', style: 'margin-bottom:0' }, '전환 효과 (열리는 순간 1회):'));
+        p.appendChild(effectRows(schema, a.onEnter, rerender));
+      }
+      wrap.appendChild(p);
+    });
+    wrap.appendChild(addBtn('막 추가', () => {
+      S.acts.push({ id: `act${S.acts.length + 1}`, label: '', unlock: '', direct: '', secret: '' });
+      rerender();
+    }));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-danger', onclick: () => {
+        delete schema.scenario; rerender();
+      } }, '시나리오 삭제'),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '진행 중 세이브의 막 위치는 세이브에 남습니다 — 다시 켜면 1막부터.')));
+    return wrap;
+  }
+
   function tabCalendar() {
     const wrap = h('div');
     const tcfg = timeConfig(schema);
@@ -7730,7 +7898,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }

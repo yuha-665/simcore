@@ -331,6 +331,7 @@ const P = TEMPLATES.politics.schema;
   const HOME = {
     status_set: 'romance', shop: 'survival', quest_board: 'romance', level: 'romance',
     affection: 'romance', skilltree: 'rpg', party: 'rpg', calendar: 'romance',
+    scenario: 'mystery',
   };
   ck('★ 모든 카드에 홈 템플릿 지정', RC.every((r) => HOME[r.id]),
     RC.filter((r) => !HOME[r.id]).map((r) => r.id).join(', '));

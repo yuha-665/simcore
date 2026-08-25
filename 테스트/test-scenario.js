@@ -231,6 +231,43 @@ function turn(schema, state, changes = {}) {
   ck('direct도 intensity도 없는 막 = 경고', validateSchema(bareAct).warnings.some((w) => w.msg.includes('연출 지시가 없습니다')), '');
 }
 
+// ── 편집기 슬라이스 (v0.91) — [시나리오] 탭을 AI에게 맡길 수 있다 ──
+{
+  const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
+  const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS', 'INTENSITIES',
+    seg + '\nreturn { buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport, FEATURE_RECIPES };')(
+    validateSchema, SC.require('templates').TEMPLATES, SC.require('time').timeConfig,
+    SC.require('time').EXPOSED_LABELS, scn.INTENSITIES);
+
+  ck('★ scenario 슬라이스 등록', !!M.TAB_SLICES.scenario, '');
+  const sp = M.buildTabExportPrompt(cp(BASE), 'scenario');
+  ck('★ 요청서: 최상위 키 못박음', sp.includes('`"scenario"`'), '');
+  ck('★ 요청서: 규격 절 + v1.3 생성 규칙 (표면/secret 분리·주인공 금지)',
+    sp.includes('## 시나리오 규격') && sp.includes('표면') && sp.includes('배우를 조종'), '');
+  ck('요청서: 변수 계약표 동봉', sp.includes('여기 있는 것만') && sp.includes('| `finds` |'), '');
+  ck('요청서: 예시 JSON 동봉 + 다른 봇 이름 경고', sp.includes('"acts"') && sp.includes('다른 봇의 변수 이름'), '');
+  ck('요청서: 체크섬에 막 개수', /scenario\.acts` \*\*\d+개\*\*/.test(sp), '');
+
+  // 왕복 — 조각 골라내기 + 신원 계획
+  const got = M.pickTabFragment('scenario', { scenario: { acts: [{ id: 'a1', direct: 'x' }] } });
+  ck('★ 조각 골라내기', got.scenario.acts.length === 1, '');
+  const plan = M.planTabImport(cp(BASE), 'scenario',
+    { scenario: { label: '', acts: [{ id: 'act1', label: '잠복' }] } });
+  ck('★ 적용 전 계획: 사라지는 막이 신원으로 잡힘',
+    plan.lost.includes('막 전개') && plan.lost.includes('막 절정') && !plan.lost.includes('막 잠복'),
+    plan.lost.join(', '));
+
+  // 🧩 카드
+  const card = M.FEATURE_RECIPES.find((r) => r.id === 'scenario');
+  ck('★ 📖 시나리오 카드 존재 + scenario 슬라이스 사용', !!card && card.steps[0].tab === 'scenario', '');
+  ck('카드 전제: 변수 0개면 막힘', typeof card.needs({ vars: [] }) === 'string', '');
+  ck('카드 전제: 변수 있으면 열림', card.needs(cp(BASE)) === null, '');
+
+  // 통짜 규격서에도 절이 실림 (내장 AI 생성 경로)
+  ck('★ 편집기 탭·통짜 규격서 배선', src.includes("['scenario', '시나리오']")
+    && src.includes('scenario: tabScenario') && src.includes('시나리오(scenario) — 중심 이야기를'), '');
+}
+
 // ── 집계 ──
 let pass = 0, fail = 0;
 for (const [c, n, x] of R) {

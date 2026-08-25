@@ -1,7 +1,14 @@
 # SimCore 스키마 레퍼런스
 
+**v0.93.1 기준.** 진실의 원천은 `core/validate.js`(검증 규칙 전부).
+
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
-· `checks` · `updater` · `promptState` · `statusUI` · `setup`
+· `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
+· `party` · `assets` · `scenario` · `rerollStableRng`
+
+- `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
+- **엔진 예약 키** (세이브 vars에 살지만 스키마 vars로 만들면 오류): `time_epoch`(시간),
+  `scn_idx`·`scn_turns`(시나리오)
 
 ---
 
@@ -11,28 +18,35 @@
 
 | 필드 | |
 |---|---|
-| `id` | 영문 식별자 (필수). `commands`는 상태창 자리표시자와 겹치므로 경고 |
+| `id` | 영문 식별자 (필수). 예약어(true/false/and/or/not/함수명) 불가. `commands`·`lastcheck`·`scenario`는 상태창 자리표시자와 겹치므로 경고 |
 | `label` | 화면에 뜨는 이름 (한국어). `mentions: true`면 이게 낱말이 된다 |
 | `type` | `int` \| `float` \| `text` \| `bool` \| `enum` \| `list` |
-| `init` | 시작값. 타입과 맞아야 함 (bool은 true/false, list는 배열) |
+| `init` | 시작값. 타입과 맞아야 함 (bool은 true/false, list는 배열). min/max 범위 밖이면 오류 |
 | `min` / `max` | 숫자형 범위. `min > max`면 오류 |
 | `format` | 표시 형식. `{v}`가 값 자리 (예: `{v}G`) |
-| `enum` | `type: 'enum'`일 때 선택지 배열 |
+| `desc` | 설명 — **보조 AI 계약표에 실린다.** 기록 기준·진행 규칙(skip 변수, 시나리오 해금 변수)을 적는 자리 |
+| `enum` | `type: 'enum'`일 때 선택지 배열 (2개 이상) |
 | `maxLength` | `text` 최대 글자수 (기본 200) |
 | `maxItems` / `itemMaxLength` | `list` 상한 |
-| `cmd` | 채팅 명령 이름. 공백·`/`·`-` 불가, 중복 불가. **파생 변수엔 못 단다** |
+| `cmd` | 채팅 명령 이름. 공백·`/`·`-` 불가, 중복 불가. `'선택'`은 갈림길 내장 명령이라 경고. **파생 변수엔 못 단다** |
 
 ## derived — 파생 변수
 
-`{ id, label, expr }`. 계산으로만 정해지는 값. **AI도 규칙도 직접 못 바꾼다.**
+`{ id, label, expr, format? }`. 계산으로만 정해지는 값. **AI도 규칙도 직접 못 바꾼다.**
 어디서도 안 바뀌는 변수를 만들 바에는 처음부터 파생으로 만든다.
+시간 노출 이름(date/clock/…)과 겹치면 오류 (전용 안내 메시지).
+
+### 이름 공간 (조건식·자리표시자에서 변수처럼 쓰이는 것 전부)
+vars + derived + 시간 노출(expose) + `deployed`(편성 가상 목록, party가 있을 때)
++ `scn_act`·`scn_label`·`scn_turns`(시나리오가 있을 때). 서로 겹치면 검증이 잡는다.
 
 ---
 
 ## rules — 시스템이 직접 굴리는 것
 
 ### `rules.onTurn[]`
-조건 없이 매 턴 실행되는 효과. `{ set, expr }`.
+조건 없이 매 턴 실행되는 효과. `{ set, expr }` 또는 목록 효과(아래 표현식 절).
+목록 만료는 여기 둔다: `{ list: 'schedule', expire: 'elapsed' }`.
 
 ### `rules.events[]`
 
@@ -44,7 +58,7 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 |---|---|
 | `id` | 필수, 중복 불가 (랜덤 이벤트와도 겹치면 안 됨) |
 | `when` | 조건식. **`rand()` 못 씀** |
-| `effects[]` | `{ set, expr }` 또는 `{ list, add[], remove[] }` |
+| `effects[]` | `{ set, expr }` 또는 `{ list, add[], remove[], expire }` |
 | `notify` | 다음 턴에 AI에게 전달될 서술 |
 | `once` | true면 딱 한 번만 |
 | `check` | 판정 id (v0.40) — 발동 시 굴리고 [판정] 줄은 통지로 다음 전송 합류 |
@@ -53,9 +67,13 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 ⚠ **시작/끝 이벤트를 짝으로 만든다.** `food <= 0`만 쓰면 식량이 0인 동안 매 턴 재발동한다.
 `food <= 0 and not famine` / `food > food_need * 2 and famine` 식으로 플래그를 끼운다.
 
+⚠ **시간 등호 무래치 린트** (explicit 진행 봇): when에 노출 이름 `==`가 있는데 효과가 조건 속
+변수를 안 만지면 경고 — 하루가 여러 턴이라 그 날 내내 매 턴 발동한다 (급여일 중복 지급 사고).
+
 ### `rules.randomEvents`
-`chancePerTurn` (0~1) + `table[]`. 표 항목은 events와 같고 `weight`(양수) · `cooldown`(턴) 추가.
-`when`을 비우면 항상 후보.
+`chancePerTurn` + `table[]`. `chancePerTurn`은 **0~1 숫자 또는 식** (v0.89.1 — 식도 0~1 스케일,
+난이도 변수를 읽어 프리셋마다 빈도를 달리한다. rand 금지).
+표 항목은 events와 같고 `weight`(양수) · `cooldown`(턴) 추가. `when`을 비우면 항상 후보.
 
 ### 갈림길 — `choices[]` (v0.41, 조건·랜덤 이벤트 공통)
 
@@ -88,6 +106,10 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 
 이게 없으면 식량 0인데 AI가 풍요로운 식탁을 묘사하는 괴리가 난다.
 
+⚠ **지시문은 메인 모델 전용.** text가 보조 AI 담당 변수(`_` 포함 id)를 직접 조작하라고
+지시하면 경고 — 그 규칙은 정작 상태를 갱신하는 보조 AI가 영영 못 읽는다.
+변수의 `desc`나 `updater.guide`로 옮긴다.
+
 ---
 
 ## actions — 유저가 누르는 버튼
@@ -96,10 +118,11 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 |---|---|
 | `id` / `label` | 라벨 **맨 앞 이모지가 곧 버튼 아이콘**이 된다 (버튼 칸은 글리프 한 칸) |
 | `mode` | `oneshot`(1회성) \| `hold`(지속형) |
-| `cooldown` | 턴 수. oneshot만 기록됨 |
+| `cooldown` | 턴 수 (0 이상). oneshot만 기록됨 |
 | `when` | 사용 조건. 거짓이면 잠김(🔒) |
 | `inject` | 발동 시 AI에게 전달될 문장 |
 | `effects[]` | rules와 같은 형식 |
+| `check` | 판정 id — 무장 → 전송 시 굴림, 같은 턴 서사 반영 |
 
 **공통: 누르면 무장(armed)만 되고 다음 `sendPhase`에서 발동한다.** 즉시 적용이 아니다.
 한 번 더 누르면 취소. 차이는 발동 후 — oneshot은 자동 해제 + 쿨다운, **hold는 끌 때까지 매 턴 계속**.
@@ -164,11 +187,12 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 |---|---|
 | `allow[]` | **여기 없는 변수는 AI가 절대 못 건드린다** |
 | `allow[].id` | vars에 있어야 함 |
-| `allow[].maxGain` / `maxLoss` / `maxDelta` | 턴당 증감 상한. **셋 다 없고 min/max도 없으면 무제한** (검증 경고) |
+| `allow[].maxGain` / `maxLoss` / `maxDelta` | 턴당 증감 상한 (0 이상). **셋 다 없고 변수 min/max도 없으면 무제한** (검증 경고) |
 | `allow[].maxLength` | text 최대 글자 (기본 200) |
 | `allow[].mentions` | `true`(label을 낱말로) 또는 문자열/배열. **이번 턴 서사에 그 말이 있을 때만 열린다** |
 | `allow[].whenArmed` | 액션 id 또는 배열 (v0.39). **그 액션이 무장 중(hold)이거나 이번 전송에서 발동(oneshot)된 턴에만 열린다.** 여러 개면 하나만 열려도 개방. mentions와 같이 걸면 둘 다 만족해야. id가 actions에 없으면 검증 오류 |
 | `contextTurns` | 보조 AI에게 함께 보낼 최근 대화 (1~5 정수, 기본 1) |
+| `wordDetect` | 낱말 감지 신고 (v0.74) — true/false, 기본 켜짐. 다른 값은 오류 |
 | `guide` | 보조 AI 추가 지시 |
 
 ### allow에 뭘 넣고 뭘 빼나
@@ -206,6 +230,8 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 - 금화·식량 같은 **공용 수치에는 걸면 안 된다** (이름 없이도 늘 바뀌므로 갱신이 멈춘다)
 - **단위 낱말 금지** (v0.38.3 실측 사고): funds에 "골드"를 걸었는데 재고 포맷이 "원가 N골드"라
   매 턴 열림 + 큰 maxDelta → 돈 자동 증식. 낱말이 어떤 변수의 `format`에 들어 있으면 검증 경고
+- **문장 종결형 낱말 경고** (v0.73): "다쳤다"처럼 축약 과거형+'다'로 끝나는 키는 그 꼴 그대로일
+  때만 걸린다 — 끝의 '다'를 떼라("다쳤" → "다쳤고"에도 걸림)
 - **채팅 언어의 낱말이어야 한다.** 한국어 낱말 + 영어 채팅이면 그 변수는 **조용히 영영 안 열린다**
   (에러 없는 실패). 다국어 봇은 병기("골드, gold")하거나 mentions 없이 캡으로만 제어.
   패널 [현황]이 6턴 연속 안 열린 mentions 변수를 경고한다 (aux 직접 경로 전용)
@@ -217,9 +243,9 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 
 ## promptState — 메인 AI에게 보낼 상태 요약
 
-`{ template, includeEvents, eventPriority, systemGuide }`. `{변수id}` 자리표시자.
+`{ template, includeEvents, eventPriority, systemGuide, checkGuide }`. `{변수id}` 자리표시자.
 `eventPriority`는 이벤트 발동 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙을 자동으로 붙인다
-(문자열을 주면 그 문구로 대체).
+(문자열을 주면 그 문구로 대체). `checkGuide`도 같은 원칙 (판정 턴 전용, false로 끄기 가능).
 
 ---
 
@@ -228,27 +254,37 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | 필드 | |
 |---|---|
 | `mode` | `auto`(그룹) \| `template`(HTML 직접) |
-| `layout` | `stack`(기본) \| `tabs` \| `accordion` \| `popover` — **auto 모드 전용** |
+| `layout` | `stack`(기본) \| `tabs` \| `accordion` \| `popover` — **auto 모드 전용** (템플릿 모드면 무시 경고) |
 | `theme` | `clean` \| `parchment` \| `terminal` \| `card` … |
 | `collapsible` | false면 바깥 `<details>` 없이 펼쳐진 채 |
+| `changeLog` | 변화 로그 표시 (v0.72): `open`(펼침) \| `collapsed`(기본, 접힘) \| `off`(숨김). 다른 값은 오류 |
+| `highlights` | 하이라이트 카드 (v0.86.4): 기본 켜짐, `'off'`로만 끈다. 이번 턴의 체감 나는 변화(판정 성패·돈·소지품·enum 전환)를 접힌 상자 **바깥** 맨 위에 게임 알림처럼 세운다. bool 변수·onTurn 틱·시간 소비는 안 세운다 |
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
 | `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
-| `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` |
-| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{commands}` · `{uid}` · `{lastcheck}` · `{choices}` |
-| `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리 |
+| `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` — bar.max·color는 수식 가능 (rand 불가) |
+| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · 예약 자리표시자(아래) |
+| `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리. id는 영문 식별자 (CSS 클래스가 됨). 조건 없는 템플릿 뒤의 항목은 도달 불가 경고, 전부 조건부면 "빈 상태창" 경고 |
 
-- `tabs`/`popover`는 **보이는 그룹이 2개 이상**일 때만 동작 (아니면 조용히 stack)
-- 자리표시자 `{uid}` = 이 상태창이 그려진 **메시지 번호**. 탭의 radio `id`/`name`에 필수
+- **예약 자리표시자** (RESERVED_SLOTS — 변수 참조 검사에서 제외): `{commands}` `{uid}`
+  `{lastcheck}` `{choices}` `{scenario}`
+- `{uid}` = 이 상태창이 그려진 **메시지 번호**. 탭의 radio `id`/`name`에 필수
 - `{commands}` — 그룹 모드는 맨 아래 자동, 템플릿 모드는 박은 자리에만.
   명령을 열어 두고 `{commands}`가 없으면 명령 탭이 경고
+- `{scenario}` = 시나리오 진행 칩 (현재 막 라벨 + i/N막, v0.93 — 시나리오 없으면 빈 문자열).
+  그룹 모드는 상태창 맨 위 자동
+- `tabs`/`popover`는 **보이는 그룹이 2개 이상**일 때만 동작 (아니면 조용히 stack)
+- 리수 CBS(`{{...}}`)는 자리표시자 검사에서 건너뛴다 (v0.76 — `{{img::지도}}` 사용 가능)
 
 ---
 
 ## setup — 새 시작
 
 ### `setup.presets[]`
-`{ id, label, set: {변수id: 값} }`. **값만 쓸 수 있고 수식은 안 된다.**
+`{ id, label, set: {변수id: 값}, startAt? }`. **값만 쓸 수 있고 수식은 안 된다.**
 여기 적은 변수만 바뀌고 나머지는 `init` 그대로. 기본 난이도는 `set: {}`로 비워 두는 게 정직하다.
+
+`startAt` (v0.51): `"2026-05-16 13:00"` — 그 프리셋으로 시작할 때의 작중 시각. 시계는 엔진
+예약 키(`time_epoch`)라 `set`으로 못 건드리므로 이 칸이 유일한 통로다. `time`이 없으면 경고 후 무시.
 
 ### `setup.ai`
 `{ enabled, vars[], instruction, guide }`. 첫 턴 대화로 시작 상황을 정한다(세션 0).
@@ -267,21 +303,26 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
   "start": "2026-04-01 07:30",          // 실재하는 날짜여야 함. 시각 생략 시 00:00
   "advance": "explicit",                 // explicit(기본) | perTurn(턴마다 하루 — 구형, 비권장)
   "calendar": "gregorian",               // gregorian(윤년·월별 일수) | flat30(한 달 30일 × 12달)
+  "startRandom": { "hour": [6, 22] },    // 시작 시각 무작위 (v0.80) — 칸마다 [최소, 최대]
   "format": { "date": "YYYY-MM-DD", "clock": "HH:mm" },  // 토큰: YYYY YY MM M DD D / HH H mm m
-  "weekdays": ["월","화","수","목","금","토","일"],       // 첫 칸이 월요일 고정
-  "seasons": ["봄","여름","가을","겨울"],
+  "weekdays": ["월","화","수","목","금","토","일"],       // 첫 칸이 월요일 고정 (7개)
+  "seasons": ["봄","여름","가을","겨울"],                 // 4개
   "expose": ["date","clock","weekday","season","month","dom","hour","minute","elapsed"]
 }
 ```
 
-- **노출 파생** (`expose`, 기본은 `year` 빼고 전부): 조건식·상태창·템플릿에서 변수처럼 쓴다 —
+- **노출 파생** (`expose`, 기본은 `year` 빼고 전부 — 가능: date/clock/weekday/season/year/month/
+  dom/hour/minute/elapsed): 조건식·상태창·템플릿에서 변수처럼 쓴다 —
   `dom == 1`(매달 1일), `weekday == "토"`, `hour >= 22`, `{date}` `{clock}`.
   같은 이름의 변수/파생이 있으면 검증이 거부한다. 자릿수(`07:05`)는 포맷이 책임진다.
+- **startRandom** (v0.80): 칸은 year/month/dom/hour/minute, 범위는 각각 1~9999 / 1~12 / 1~31 /
+  0~23 / 0~59. 안 적은 칸은 start 값 그대로. flat30에서 dom 31은 30으로 당겨짐(경고).
 - **진행은 양(量)으로**: 예약 이름 int 변수 `skip_day`(일)·`skip_min`(분)을 엔진이 매 턴 소비
   → epoch에 굳히고 0으로 리셋. 일·분을 분리해 AI에게 날짜 산술(3일=4320분)을 안 시킨다.
   소비 시점은 두 곳 — 전송 단계(액션 효과 직후: 🌙 버튼의 하루가 그 턴 프롬프트에 바로 반영)와
   응답 단계(보조 델타 직후: onTurn·이벤트보다 먼저라 `dom == 1` 이벤트가 새 날짜를 본다).
-  음수는 무시. allow의 maxGain 캡이 그대로 걸린다.
+  음수는 무시. allow의 maxGain 캡이 그대로 걸린다. skip 변수는 int여야 하고(아니면 오류)
+  min: 0 권장(경고). explicit인데 skip 변수가 하나도 없으면 "시간이 영영 멈춘다" 경고.
 - ⚠ **진행 규칙은 skip 변수의 `desc`에 쓴다** — 지시문(directives)은 메인 전용이라 보조가 못 읽는다.
 - **진단**: explicit이면 시뮬에 시간이 안 흘러 날짜 이벤트가 전부 죽은 이벤트로 오탐된다 →
   진단이 **턴마다 하루를 가정**하고 굴리고, '시간 가정' low 지적으로 가정 사실을 명시한다.
@@ -304,16 +345,151 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
   · 남은 손 카운터는 `business`의 `month`·`politics`의 `week` 둘뿐 — perTurn이 1일/턴 고정이라
     아직 표현 불가 (알려진 한계, docs/ai-mistakes.md).
 
-### `setup.presets[].startAt` (v0.51)
-`"2026-05-16 13:00"` — 그 프리셋으로 시작할 때의 작중 시각. 시계는 엔진 예약 키(`time_epoch`)라
-`set`으로 못 건드리므로 이 칸이 유일한 통로다. `time`이 없으면 경고 후 무시된다.
-(daily의 "여유로운 주말" = 토요일 13:00, "빠듯한 월말" = 29일)
+---
+
+## calendar — 달력 패널 (v0.61, 옵트인)
+
+월 그리드 + 기념일 마킹 + 일정 등록. **시간 체계(time) 위에서만 선다** — 없으면 오류.
+
+| 필드 | |
+|---|---|
+| `label` / `icon` / `css` | 문자열 |
+| `list` | 일정 목록 = list 변수 id (`@기한` 규약). 만료 규칙(`onTurn`의 `{ list, expire }`)이 없으면 "지난 일정이 안 지워진다" 경고 |
+| `marks[]` | `{ label(필수), month?, dom?, weekday?, note? }` — month+dom=매년, dom만=매달, weekday만=매주. 셋 다 없으면 오류 |
+
+- month 1~12, dom 1~31(flat30은 1~30), 없는 날짜(2월 30일 등)는 오류 (윤년 2/29 허용)
+- weekday는 그 봇의 `time.weekdays` 이름이어야 함
+
+---
+
+## party — 편성표 패널 (v0.56, 옵트인)
+
+슬롯 = enum 변수, 보유 = list 변수, 탭 = 여러 편성/시설 (칸코레 모델). 설계: `docs/design-편성표.md`.
+
+### 최상위 필드
+
+| 필드 | |
+|---|---|
+| `label` / `icon` / `note` / `css` | 문자열 |
+| `empty` | 빈 슬롯 값 — 각 슬롯 enum에 이 값이 있어야 비울 수 있다 (없으면 오류). 아예 없으면 "맞교환만 된다" 경고 |
+| `roster` | 공용 보유 목록 (list 변수 id) |
+| `points` | 공용 포인트 변수 (숫자 타입) — items 비용의 지갑 |
+| `nav` | `tabs`(탭 바) \| `select`(셀렉트+검색, 인물 많을 때) (v0.58.1) |
+| `portraits` | `{ "이름": "에셋이름" }` — 슬롯 후보에 없는 이름은 경고 |
+| `tabs[]` | 아래. **tabs와 최상위 slots/actions/items/template을 섞으면 오류** (축약형 = 탭 하나) |
+
+### `tabs[]` 항목
+
+| 필드 | |
+|---|---|
+| `id` / `label` | id는 영문 식별자, 중복 불가 |
+| `when` | 탭 표시 조건 (v0.59) — 거짓이면 탭이 통째로 숨는다. `has(deployed, '이름')`으로 편성된 인물의 탭만 남기는 패턴. 모든 탭에 when이 있으면 "전부 거짓이면 빈 편성표" 경고 |
+| `slots[]` | `{ var, label?, ... }` — var는 **enum 변수** (후보 목록 = enum 값). 탭을 가로질러 슬롯 변수 중복 불가 (한 인물 = 한 자리) |
+| `actions[]` | 기존 액션 id 배열 — 시설 버튼. actions에 없으면 오류 |
+| `items[]` | 업그레이드 항목 (v0.58): `{ var(int 변수), max?, cost?(숫자 또는 식), requires?(식) }`. 비용이 있으면 points 필수. max도 변수 max도 없으면 "무한히 찍힌다" 경고 |
+| `roster` / `points` | 탭별 오버라이드 |
+| `template` | **대장 템플릿** (v0.89) — 상태창과 같은 자리표시자 문법의 HTML 탭. 변수 오타는 검증이 잡는다 |
+| `fab` | 탭별 플로팅 버튼 글리프 (v0.89) — 이모지 한두 글자 (8자 초과 오류). tabs 구조 전용 |
+
+- **`deployed` 가상 목록**: 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출 —
+  `has(deployed, '아린')`이 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
+  같은 id의 변수/파생이 있으면 그쪽이 가린다 (경고)
+
+---
+
+## assets — 에셋 팩 (이미지 태그 자동화, 옵트인)
+
+조합(C×E)을 슬롯(C+E)으로. emit을 SimCore가 소유하므로 AI는 모듈의 사설 규약을 배울 필요가 없다.
+설계: `docs/design-에셋-슬롯.md`. **변수 0개 봇도 에셋 팩만 켜져 있으면 설치된다** (경고만).
+
+| 필드 | |
+|---|---|
+| `by` | `aux`(맨 앞 1장) \| `aux_flow`(서사 위치 여러 장) \| `main` |
+| `packs[]` | 아래 |
+
+### `packs[]` 항목
+
+| 필드 | |
+|---|---|
+| `id` | 영문 식별자, 중복 불가 |
+| `format` | 필수 — `{name}` 또는 `{칸id}` 자리표시자를 포함한 출력 문자열 (그 봇의 태그 방언 그대로) |
+| `sep` | 에셋 이름 조합 구분자 (기본 `_`) |
+| `source` | 출처 표시 — 없으면 "고아 팩 추적 불가" 경고 |
+| `when` | 게이트 조건식 (rand 불가). 빈 문자열 = 항상 열림. 상태 미상이면 when 있는 팩은 닫힌 것으로 취급 (성인 팩 안전) |
+| `usage` | 쓰임새 한 줄 (v0.88, ≤200자) — 매 턴 지시문에 실린다. 구조 공존 팩(같은 인물, 다른 필수 칸)은 양쪽 다 있어야 보조가 field set을 고른다 (없으면 경고) |
+| `chars` | 팩 레벨 담당 인물 배열 (who 칸과 합집합) |
+| `verify` | false면 실존 대조 끄기 (에셋 이름 목록을 못 읽는 환경용, v0.54.6) |
+| `slots[]` | `{ id, values[](필수), optional?, fallback? }` — 최소 1개. `who` 칸이 인물 라우팅 키 |
+
+- **라우팅**: 인물 → 담당하는 열린 팩 전부 (선언 순). v0.87.3부터 **필수 칸 구성이 다른 팩의
+  공존은 정상 설계** (감정 팩 + 성행위 팩 — 보조가 채운 칸이 팩을 고른다, "구조 라우팅").
+  경고는 필수 칸이 겹쳐 앞 팩이 정조합을 반드시 먼저 채가는 경우에만
+- **폴백 사다리**: 정조합 → optional 제거 → 한 칸씩 fallback 치환 → 전부 치환(who 제외).
+  필수 칸에 fallback이 없으면 "이미지 통째 증발" 경고 (who·optional 제외).
+  fallback이 values에 없으면 경고
+
+---
+
+## scenario — 시나리오레이터 (v0.90, 옵트인)
+
+이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥. 설계: `docs/design-시나리오레이터.md`.
+**막 전환은 조건식이 정한다** — 버튼도 모델의 눈치도 아니다. 모델은 전체 시나리오를 영영 못 본다:
+현재 막의 연출 지시 + **열린 막까지의 secret 누적**만 받는다. 전환은 **턴당 한 막**.
+이벤트 = 세상의 리듬(반복·랜덤), 시나리오 = 이야기의 척추(선형·1회) — 해금식이 이벤트·판정이
+세운 변수를 읽으므로 자연히 맞물린다.
+
+```json
+"scenario": {
+  "label": "장미 살인 사건",
+  "acts": [
+    { "id": "act1", "label": "일상", "intensity": "잠복", "direct": "..." },
+    { "id": "act2", "label": "발단", "unlock": "clue >= 2", "minTurns": 4,
+      "intensity": "전개", "secret": "정원사가 범인이다",
+      "onEnter": [{ "set": "tension", "expr": "tension + 20" }], "notify": "..." }
+  ]
+}
+```
+
+### `acts[]` 필드
+
+| 필드 | |
+|---|---|
+| `id` | 영문 식별자 (생략 시 `actN`), 중복 불가 |
+| `label` | 진행 표시용 라벨 — 유저에게 보이는 건 라벨뿐 (스포일러 없이) |
+| `unlock` | 해금 조건식. **첫 막은 무시(경고), 중간 막에 없으면 오류** (그 뒤가 전부 죽는다). **rand() 금지** — 우연에 걸고 싶으면 랜덤 이벤트가 세운 변수를 읽게 (2단 구조) |
+| `minTurns` | 직전 막에서 최소 N턴 (0 이상 정수) — 조건이 먼저 차도 바닥을 깔아 주는 페이스 손잡이. 첫 막은 무시(경고) |
+| `direct` | 이 막의 연출 지시 ({변수} 가능) |
+| `secret` | 내막 — 이 막이 **열린 뒤부터 누적 공개** ("미공개 = 거짓이 아니라 아직" 어법 자동 첨부) |
+| `intensity` | `잠복` \| `전개` \| `고조` \| `절정` \| `해소` — 국면별 기본 연출 문구. direct와 병용 가능. **direct도 intensity도 없으면 경고** |
+| `onEnter[]` | 전환 시 1회 효과 배열 (effects와 같은 형식) |
+| `notify` | 전환 시 다음 턴 AI 통지 |
+
+### 예약 이름 · 노출
+
+- **예약 키** (엔진 관리, 스키마 vars 아님 — 같은 id의 변수/파생은 오류): `scn_idx`(현재 막 번호)
+  · `scn_turns`(현재 막 경과 턴)
+- **노출 이름** (조건식·상태창에서 변수처럼): `scn_act`(막 id) · `scn_label`(라벨) · `scn_turns`.
+  `scn_act == "act2"` 같은 조건이 어디서든 통한다
+- 상태창: `{scenario}` 예약 자리 (진행 칩 — 현재 막 라벨 + i/N막). 그룹 모드는 맨 위 자동.
+  막 전환은 하이라이트 카드(📖)·변화 로그에도 선다
+
+### 검증 규칙 요약
+
+- acts 최소 1개. 막 id 중복 오류, intensity 오타 오류, onEnter는 효과 배열
+- direct/secret의 `{변수}` 참조 검사 (오타 = 오류)
+- **해금 변수 desc 린트 (v0.93.1)**: unlock이 읽는 변수가 updater.allow에 있는데 `desc`가 비면
+  경고 — 보조 AI는 desc를 보고 "언제 움직일지" 정한다 (판단은 조건식+minTurns 몫, AI는 기록만).
+  desc가 비면 막 페이스가 운에 맡겨진다. 이벤트·판정이 세우는 변수(allow 밖)는 대상 아님
 
 ---
 
 ## 표현식 문법
 
-비교/논리: `<= >= == != and or not`
+- 산술: `+ - * / %` (0 나눗셈·0 나머지는 0 — 봇이 죽는 것보다 낫다)
+- 비교/논리: `< > <= >= == != and or not` (결과는 1/0)
+- **3항: `조건 ? a : b`** · 괄호 · 문자열 리터럴(`'...'`/`"..."`) · `true`/`false`(=1/0)
+- `+`는 한쪽이 문자열이면 문자열 연결
+- 변수 참조는 정의된 이름만 (미정의 = 오류). 비지원(의도적): 대입, 루프, 프로퍼티 접근
 
 함수는 `FUNCS` / `FUNC_ARITY` 가 전부다 (그 외는 오류):
 
@@ -322,17 +498,30 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `round` `floor` `ceil` `abs` | 1 | |
 | `min` `max` | 2+ | |
 | `clamp(v, lo, hi)` | 3 | |
-| `rand(a, b)` | 2 | 평가 컨텍스트의 **시드 RNG**를 쓴다 |
-| `count(list)` | 1 | |
+| `rand(a, b)` | 2 | **정수** [a, b]. 평가 컨텍스트의 **시드 RNG**를 쓴다 |
+| `count(list)` | 1 | 목록 길이 (문자열이면 글자수) |
 | `has(list, '항목')` | 2 | |
-| `sum(list)` | 1~2 | 목록 항목 **맨 끝의 숫자**를 더한다 |
+| `sum(list)` `sum(list, '필터')` | 1~2 | 목록 항목 **맨 끝의 숫자**를 더한다. 2인자면 그 문자열을 포함한 항목만 |
 
-- 목록 조작 효과: `{ list: 'id', add: [...], remove: [...] }` — **전체 교체는 금지**(아이템 증발 방지)
-- `when` 계열에는 `rand()` 금지 (events / randomEvents.when / showWhen / directives.when / templates.when)
+- `when` 계열에는 `rand()` 금지 (events / randomEvents.when / showWhen / directives.when /
+  templates.when / 팩 when / 탭 when / requires / cost / unlock / mod / vs / 등급 when …).
+  허용 자리는 **effects의 expr**과 **checks의 roll**뿐
+
+### 목록 효과
+
+`{ list: 'id', add: [...], remove: [...], expire: '수식' }` — **전체 교체는 금지**(아이템 증발 방지).
+add/remove/expire 셋 다 없으면 경고.
+
+- `expire` — 현재 시각(경과값)을 주는 수식 (예: `"elapsed"`). 항목의 `@숫자`가 이 값보다
+  작으면 만료돼 빠진다. `@` 없는 항목은 무기한
+- **상대 기한 `@+N`** — add 항목에 쓰면 그 목록의 onTurn expire 규칙과 같은 시계로
+  **절대값으로 굳혀** 들어간다 (모델은 "3일 뒤"만 알면 된다). expire 규칙이 없으면 안 굳고
+  무기한이 된다 (안전한 실패)
 
 ### 목록 항목의 규약
 - **기한 `@숫자`** — 남은 일수가 아니라 **끝나는 시점**(절대 경과값). 미니 표현식엔 반복문이 없어
-  매 턴 1씩 깎는 게 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞는다
+  매 턴 1씩 깎는 게 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞는다.
+  음수(`@-22`)도 기한으로 읽힌다 (v0.87.2 — 이미 지난 기한, 다음 만료 정리에서 즉시 빠짐)
 - **`sum()`은 숫자가 항목 맨 끝에 있어야** 잡는다. "양모 계약 +12" → 12.
   "아무 데나 있는 마지막 숫자"로 하면 "양모 계약 12 (30일)"이 30으로 조용히 잘못 잡힌다
 - 자주 변하는 숫자를 목록 항목에 넣지 말 것. 끝자리 숫자는 **안 변하는 값 전용**(봉급·수용 인원 등)

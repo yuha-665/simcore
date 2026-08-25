@@ -1,48 +1,62 @@
-# 내장 템플릿 12종 실측표
+# 내장 템플릿 16종 실측표 (v0.93.1 기준)
 
 `SimCore.require('templates').TEMPLATES` 에서 뽑은 값. **가이드나 배포글에 예시를 쓸 때 여기서
 고를 것** — 지어내면 유저 화면과 안 맞는다.
 
-다시 뽑으려면:
+다시 뽑으려면 (리포 루트에서):
 
 ```bash
-cd E:/0.리수봇/simcore && node -e "
+cd /c/claude/simcore && node -e "
 const fs=require('fs');const src=fs.readFileSync('simcore.plugin.js','utf8');
 (0,eval)(src.slice(src.indexOf('const SimCore = (() => {'), src.indexOf('(async () => {'))+'\n;globalThis.__SC=SimCore;');
 const {TEMPLATES}=globalThis.__SC.require('templates');
-// 필요한 것만 골라 출력
+// 필요한 것만 골라 출력. 랜덤 이벤트 풀은 rules.randomEvents.table
 "
 ```
 
 ## 전체표
 
-| id | vars | derived | allow | 틱/이벤트/랜덤 | 지시문 | 액션 | 프리셋 | 그룹 | 최초설정 | 랜덤% |
-|---|--:|--:|--:|---|--:|--:|--:|--:|:-:|--:|
-| blank | 1 | 0 | 1 | 0/0/0 | 0 | 0 | 0 | 1 | ✕ | 0 |
-| daily | 5 | 1 | 5 | 0/0/12 | 3 | 2 | 3 | 2 | ○ | 30 |
-| rpg | 10 | 3 | 9 | 0/4/3 | 2 | 2 | 2 | 4 | ○ | 15 |
-| estate | 9 | 2 | 7 | 3/3/2 | 2 | 2 | 3 | 3 | ○ | 25 |
-| mystery | 9 | 2 | 6 | 2/4/4 | 4 | 3 | 3 | 3 | ○ | 30 |
-| business | 10 | 7 | 6 | 4/4/4 | 3 | 4 | 3 | 3 | ○ | 30 |
-| survival | 12 | 9 | 8 | 6/7/5 | 4 | 6 | 3 | 4 | ○ | 35 |
-| politics | 16 | 4 | 10 | 4/6/5 | 5 | 6 | 3 | 4 | ○ | 35 |
-| romance | 10 | 1 | 8 | 2/6/4 | 6 | 4 | 3 | 3 | ○ | 35 |
-| trpg | 12 | 4 | 6 | 2/3/3 | 3 | 3 | 4 | 3 | ○ | 22 |
-| vtuber | 16 | 10 | 8 | 7/7/9 | 7 | 8 | 3 | 5 | ○ | 40 |
-| smith | 11 | 3 | 8 | 1/2/6 | 3 | 5 | 3 | 3 | ○ | 25 |
+| id | vars | derived | allow | 틱/이벤트/랜덤 | 지시문 | 액션 | 프리셋 | 그룹 | 최초설정 | 랜덤% | 시간 | 파티(탭) | 에셋 | 판정 | 시나리오 |
+|---|--:|--:|--:|---|--:|--:|--:|--:|:-:|--:|:-:|:-:|:-:|--:|:-:|
+| blank | 1 | 0 | 1 | 0/0/0 | 0 | 0 | 0 | 1 | ✕ | 0 | ✕ | ✕ | ✕ | 0 | ✕ |
+| daily | 5 | 1 | 5 | 0/0/12 | 3 | 2 | 3 | 2 | ○ | 30 | ○ | ✕ | ✕ | 0 | ✕ |
+| rpg | 16 | 3 | 10 | 0/4/3 | 3 | 2 | 2 | 6 | ○ | 15 | ✕ | 2 | ✕ | 0 | 3막 |
+| estate | 9 | 2 | 7 | 3/3/2 | 2 | 2 | 3 | 3 | ○ | 25 | ✕ | ✕ | ✕ | 0 | ✕ |
+| mystery | 9 | 2 | 6 | 2/4/4 | 4 | 3 | 3 | 3 | ○ | 30 | ✕ | ✕ | ✕ | 0 | ✕ |
+| business | 10 | 7 | 6 | 4/4/4 | 3 | 4 | 3 | 3 | ○ | 30 | ✕ | ✕ | ✕ | 0 | ✕ |
+| survival | 12 | 9 | 8 | 6/7/5 | 4 | 6 | 3 | 4 | ○ | 35 | ○ | ✕ | ✕ | 0 | ✕ |
+| politics | 16 | 4 | 10 | 4/6/5 | 5 | 6 | 3 | 4 | ○ | 35 | ✕ | ✕ | ✕ | 0 | ✕ |
+| romance | 11 | 1 | 9 | 3/6/4 | 6 | 4 | 4 | 3 | ○ | 35 | ○ | ✕ | ○ | 0 | ✕ |
+| trpg | 12 | 4 | 6 | 2/3/3 | 3 | 3 | 4 | 3 | ○ | 22 | ✕ | ✕ | ✕ | 2 | ✕ |
+| vtuber | 16 | 10 | 8 | 7/7/9 | 7 | 8 | 3 | 5 | ○ | 40 | ○ | ✕ | ✕ | 0 | ✕ |
+| smith | 11 | 3 | 8 | 1/2/6 | 3 | 5 | 3 | 3 | ○ | 25 | ✕ | ✕ | ✕ | 1 | ✕ |
+| fleet | 10 | 0 | 6 | 0/0/2 | 2 | 3 | 3 | 4 | ○ | 12 | ✕ | 3 | ✕ | 0 | ✕ |
+| delve | 18 | 4 | 8 | 5/1/5 | 5 | 9 | 3 | 4 | ○ | 40 | ✕ | 2 | ✕ | 2 | ✕ |
+| zombie | 16 | 5 | 10 | 0/3/5 | 5 | 8 | 3 | 4 | ○ | 30 | ○ | 2 | ✕ | 1 | ✕ |
+| idol | 66 | 55 | 18 | 4/16/24 | 13 | 83 | 3 | 8 | ○ | 35 | ○ | 13 | ✕ | 32 | ✕ |
 
-**`cmd`(채팅 명령)는 trpg의 `/능력` 하나뿐** (v0.43 — check_stat 즉석 지정, 상시 판정과 한 세트).
-나머지 11종은 0개다. 가이드에서 이 대비를 반드시 짚어야 한다 — 템플릿 사용자는 우상단 버튼은
-이미 보고 있지만 `/명령`은 존재조차 모른다.
+- 그룹은 전 템플릿 `mode: auto`. 랜덤 이벤트 풀은 `rules.randomEvents.table`(구 events 키 아님).
+- **derived 0은 fleet뿐** (파생 없이 vars·파티 탭만으로 돌아간다). **idol은 전 축 최대급**
+  (vars 66 / derived 55 / 액션 83 / 판정 32 / 탭 13) — 규모 감각의 상한 예시로 쓸 것.
+- **시나리오는 rpg 하나뿐** ('무너진 봉인' 3막, 아래 실물 예시 참조).
+- **에셋은 romance 하나뿐** (partner 팩, `enabled: false` 출고 — 인물 Hana × 감정 6종
+  normal/smile/shy/angry/sad/surprised 슬롯, `<img="{name}">` 포맷 예시).
+- **달력 패널은 romance(📅 달력, 생일·모임 marks)와 idol(📅 스케줄, 주간 라디오·월말 정산 marks)** 둘.
 
-**`layout`은 전 템플릿 미지정(=stack).** v0.38 기능이 기본으로는 안 보인다.
+**`cmd`(채팅 명령)는 3종 5개** — trpg `/능력`(check_stat enum, v0.43 — 상시 판정과 한 세트),
+fleet `/태세`(alert enum)·`/가동`(active)·`/손상`(damaged), zombie `/장소`(place enum).
+전부 변수에 붙는 var-cmd다. 나머지 13종은 0개 — 가이드에서 이 대비를 반드시 짚어야 한다.
+템플릿 사용자는 우상단 버튼은 이미 보고 있지만 `/명령`은 존재조차 모른다.
+
+**`layout` 지정은 3종** — delve `tabs`, zombie `accordion`, idol `tabs`. 나머지 13종은
+미지정(=stack)이라, v0.38 레이아웃 기능의 실물 예시는 이 셋에서 골라야 한다.
 
 ## 허용(allow)에서 일부러 뺀 변수 — 설계 의도의 결정체
 
 | 템플릿 | 뺀 것 | 왜 |
 |---|---|---|
 | daily | (`skip_day` 자체를 안 만듦) | **날짜는 버튼으로만** (`💤`). v0.51부터 변수를 아예 안 둬서 구조로 막는다 — AI는 `skip_min`(그날 안에서 흐른 분)만 보고한다 |
-| rpg | `level` | exp에서 규칙이 올려 준다 |
+| rpg | `level` `front` `rear` `sp` `skill_sword` `skill_heal` | exp에서 규칙이 올려 줌 / **편성 슬롯**(파티 탭이 관리) / **수련 포인트·트리**(포인트 소비 UI가 관리) |
 | estate | `turn` `famine` | 카운터 / 이벤트 플래그 |
 | mystery | `scene` `truth` `solved` | 카운터 / **숨긴 정답** / 진행 플래그 |
 | business | `month` `price` `district` `crisis` | 카운터 / 플레이어 정책 / 플래그 |
@@ -52,28 +66,40 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | trpg | `str` `dex` `wit` `cha` `adv` `dmg` | **캐릭터 시트 + 판정 부속.** 판정 결과 자체(roll/total/grade)는 v0.40부터 변수가 아니라 meta — 뺄 것도 없이 원천 차단 |
 | vtuber | `subs` `stream_hours` `editor` `concept` `trend_seed` `burnout` `in_scandal` `career_over` | 카운터 / 규칙 산출값 / 플래그 |
 | smith | `skill` `stoked` `noble_next` | 캐릭터 시트 / 판정 소모품(액션·이벤트가 관리) / 의뢰 문턱(선택이 올린다) |
+| fleet | `flag` `ship2` `ship3` `dock1` | **편성·정비창 슬롯 전부** — 파티 탭이 관리, 보조 AI 손 못 댐 |
+| delve | `depth` `stairs` `anchor` `wound` `front1` `front2` `back1` `back2` `gold` `best_depth` | 카운터·기록 / 플래그 / **진형 슬롯 4**(파티 탭) / 골드는 액션·판정이 관리 |
+| zombie | `bitten` `dead` `barricade` `scout1` `scout2` `guard1` | 감염·사망 플래그 / 방벽(액션이 관리) / **탐색조·야간 슬롯**(파티 탭) |
+| idol | 48개 (allow 18개만 개방) | 멤버 시트(`m1_vo`…`m3_fan`), 장부·수익 분해(`funds` `debt` `inc_*` `sales`), 편성 슬롯(`center` `side1/2`), 랭크·판정·플래그 전부 잠금. 열린 건 버즈·인지도·팬·멤버 기분/애정·스케줄·큐·요청·날씨·보유곡·의상뿐 |
 
-패턴: **카운터 · 주사위/판정값 · 이벤트 플래그 · 플레이어가 고르는 정책 · 숨긴 정답**은 안 연다.
+패턴: **카운터 · 주사위/판정값 · 이벤트 플래그 · 플레이어가 고르는 정책 · 숨긴 정답 · 파티 슬롯**은 안 연다.
 
 ⚠ 규칙이 쓰는 변수와 allow는 **규칙이 있는 템플릿 전부에서 겹친다** (estate `food`, rpg `hp` …).
 "규칙이 쓰면 빼라"가 아니라 "서사에 안 나타나면 빼라"가 기준이다.
 
-`whenArmed`(액션 잠금, v0.39)는 **smith만** — 장부가 둘인 유일한 템플릿이다
-(`vault`를 `deposit`/`withdraw` 버튼 턴에만 개방). 나머지는 장부가 하나라 필요가 없다.
+`whenArmed`(액션 잠금, v0.39)는 **3종** — smith `vault`←[deposit, withdraw](장부 둘, 입출금 버튼
+턴에만 개방), delve `roster`←[recruit](술집 영입 턴에만 동료 목록 개방), zombie `crew`←[nightfall]
+(밤 넘기기 턴에만 인원 명단 개방).
 
-`checks`(판정, v0.40)는 **trpg 2종** (ck_free 자유 판정 + ck_attack — v0.43에서 능력 판정
-4종을 ck_free 하나로 통합, 능력 선택은 check_stat enum이 담당) + **smith 1종** (ck_forge —
-액션과 랜덤 이벤트가 하나를 나눠 쓰는 예시).
+`checks`(판정, v0.40)는 **trpg 2**(ck_free 자유 판정 + ck_attack) + **smith 1**(ck_forge — 액션과
+랜덤 이벤트가 하나를 나눠 쓰는 예시) + **delve 2**(ck_delve — 어둠이면 불리굴림 `min(rand,rand)`,
+vs가 변수 `danger` / ck_trap vs `danger + 3`) + **zombie 1**(ck_scavenge — 밤이면 불리굴림, vs가
+장소별 3항 중첩 `병원 15 > 주유소 13 > 상가 11 > 기본 9`) + **idol 32**(무대·일감 판정 20종
+ck_stage/ck_live/ck_venus/방송·지방·음지… + **레슨 트리 티어 판정 12종** `ck_ls_{vo,da,vi}_t{1..4}`).
+vs에 변수·조건식이 들어가는 실물은 delve/zombie에서 고를 것.
 
-`suggest`(다음 행동 제안, v0.43)는 **smith만** — 매 턴 보조 응답에 얹혀 와 조작줄 칩이 된다.
+`suggest`(다음 행동 제안, v0.43)는 **4종** — smith / delve / zombie / idol, 전부 count 3.
+가이드 문장이 각각 달라 실물 예시로 좋다 (zombie: "하나는 소리를 덜 내는 쪽으로", idol: "하나는
+사람을 챙기는 쪽으로").
 
-`choices`(갈림길, v0.41)는 **daily 1종** (stray_cat 길고양이, timeout 2 — 랜덤 표) +
-**smith 2종** (noble_offer 조건 이벤트: 잠긴 선택지·문턱 재발동 제어 / peddler 랜덤: timeout 2).
+`choices`(갈림길, v0.41)는 **daily 1**(stray_cat, timeout 2) + **smith 2**(noble_offer 조건 /
+peddler 랜덤) + **delve 1**(big_one — 노획 도박) + **zombie 2**(stranger / the_horde) +
+**idol 5**(quarrel / shady_photo / collector / scandal / sudden_offer — 최다).
 
-**smith는 v0.39~0.43 신기능 총집합** — 새 기능을 실기로 만져 볼 때 이 템플릿 하나면 된다
-(클릭 조작은 어느 템플릿이든 범례·선택지에 자동).
+**smith는 v0.39~0.43 신기능 총집합**이었고, 지금은 **신규 3종(delve/zombie/idol, v0.67~0.69)**이
+그 역할을 물려받았다 — layout·whenArmed·checks(변수 vs)·suggest·choices를 전부 실기로 쓴다.
+새 기능을 만져 볼 때는 delve(중형) 또는 idol(대형)을 고르면 된다.
 
-## 시간 체계를 쓰는 템플릿 (v0.49~0.51)
+## 시간 체계를 쓰는 템플릿 (v0.49~)
 
 | 템플릿 | advance | start | 표시 | 진행 입구 |
 |---|---|---|---|---|
@@ -81,11 +107,15 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 | daily | explicit | 2026-05-18 08:00 (월) | M월 D일 / HH:mm | skip_min(≤240)만 + 🕐 2시간 · 💤 다음 08:00 |
 | survival | perTurn | 2026-12-01 07:00 (화) | M월 D일 | 없음 (턴마다 하루) |
 | vtuber | perTurn | 2026-03-02 20:00 (월) | M월 D일 | 없음 (턴마다 하루) |
+| zombie | explicit | 2026-08-14 07:00 (금) | M월 D일 / HH:mm | skip_min(≤240) + 🌙 밤을 넘긴다 (calendar: gregorian) |
+| idol | explicit | 2026-04-06 (월) | YYYY-MM-DD (날짜만, 시계 없음) | **skip_day가 allow에 없다** — 🌙 하루를 마친다 버튼만 (calendar: gregorian) |
 
-표시용 "N일차"는 perTurn 쪽에서 파생 `day_no = elapsed + 1` (+format `{v}일차`)로 만든다 —
-파생이라 읽기 전용이고 epoch 하나에서 나오므로 옛 `day` 변수처럼 따로 놀 수가 없다.
-남은 손 카운터는 business `month`·politics `week` 둘뿐 (perTurn이 1일/턴 고정이라 표현 불가 —
-알려진 한계, docs/ai-mistakes.md). `test-timetpl.js`가 이 둘을 예외 처리하므로 셋째가 생기면 잡힌다.
+idol은 daily의 "날짜는 버튼으로만" 선언의 반대편 구현 — 변수(`skip_day`)는 있되 allow에서 빼서
+버튼 전용으로 묶었다. 표시용 "N일차"는 perTurn 쪽에서 파생 `day_no = elapsed + 1`(+format
+`{v}일차`)로 만든다 — 파생이라 읽기 전용이고 epoch 하나에서 나오므로 옛 `day` 변수처럼 따로 놀
+수가 없다. 남은 손 카운터는 business `month`·politics `week` 둘뿐 (perTurn이 1일/턴 고정이라
+표현 불가 — 알려진 한계, docs/ai-mistakes.md). `테스트/test-timetpl.js`가 이 둘을 예외 처리하므로
+셋째가 생기면 잡힌다.
 
 ## 자주 인용하는 실물 예시
 
@@ -104,7 +134,7 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
 그룹          내정 / 군사 / 상황
 ```
 
-### rpg — actions
+### rpg — 파티 편성 + 수련 트리 + 시나리오 (v0.93 확장)
 ```
 🏕 휴식        oneshot  cooldown 2
               inject "[플레이어 액션] 모닥불을 피우고 휴식을 취한다."
@@ -113,10 +143,28 @@ const {TEMPLATES}=globalThis.__SC.require('templates');
               inject "[플레이어 액션] 회복약을 마신다."
               inventory remove ['회복약'] / hp = min(hp+50, max_hp)
 allow 한도     hp 60 / mp 40 / exp 80 / gold 300 / weapon·armor 30자 / location 50 / condition 40
+              + 리스트 inventory·allies (동료 영입은 보조 AI가 allies에 적고, 편성은 파티 탭)
+파티(⚔️ 편성)  main 탭: 슬롯 전위(front)·후위(rear), roster = allies
+              train 탭: 포인트 sp — skill_sword(cost 1) → skill_heal(cost 1,
+              requires "skill_sword >= 2", 라벨 "검술 2 필요") — **되돌릴 수 없는 트리의 최소 실물**
 프리셋         신참 모험가 = {}  (빈 프리셋 — 기본 시작값)
               베테랑 용병 = level 5, gold 500, 강철 장검, 사슬 갑옷, 회복약×2 + 낡은 지도
-그룹          전투 / 성장 / 소지 / 위치
+그룹          전투 / 성장 / 소지 / 편성 / 수련 / 위치
 ```
+
+### rpg — scenario '무너진 봉인' 3막 (v0.93, 유일한 시나리오 실물)
+```
+1막 여로의 시작   intensity 잠복 — unlock 없음(시작 막)
+                secret "변경의 마물 준동은 우연이 아니다 — 옛 봉인이 안쪽에서부터 삭고 있다."
+2막 그림자의 조짐  unlock "level >= 3 or scn_turns >= 8"   minTurns 5   intensity 전개
+                onEnter: inventory add ['금이 간 인장'] + notify
+                secret "봉인을 삭게 만든 것은 … 감시탑 쪽이다."
+3막 결전         unlock "level >= 5 or scn_turns >= 10"   minTurns 6   intensity 절정
+                notify "봉인의 심장부에 도착했다. 되돌아갈 길은 없다."
+```
+**unlock 정석 패턴 = `성장 조건 or scn_turns >= N`** — 잘 크면 성장으로, 못 크면 턴수로 어차피
+열린다(진행 보증). `scn_turns`는 변수가 아니라 시나리오 엔진이 세는 내장 카운터고, secret은
+현재 막에서만 AI에게 몰래 주입된다.
 
 ### daily — 유일하게 틱이 없는 템플릿 (v0.51에서 진짜 시계로)
 ```
@@ -156,12 +204,13 @@ ck_attack   roll 'adv ? max(rand(1, 20), rand(1, 20)) : rand(1, 20)'   mod str_m
             실패(기본 — when 없음)
 액션         ⚔ 공격 = check: ck_attack + inject "[행동] 무기를 들어 공격한다."
             + effects [stamina-1, adv=0]  ← 정리는 액션 몫 (굴림이 adv를 먼저 읽는다)
-이벤트       do_roll (when need_roll, check: ck_str) — 보조 AI가 판정을 요청하면 시스템이 대신 굴린다
+이벤트       do_roll (when need_roll, check: ck_free) — 보조 AI가 판정을 요청하면 시스템이 대신 굴린다
+            (effects로 adv·need_roll 리셋 — v0.43에서 ck_free로 통합된 뒤의 모습)
 onTurn      dmg = 0 (피해량은 판정 턴에만 의미 — 지시문이 눌어붙지 않게)
 ```
 회귀: 구판(v0.39 손조립)과 같은 시드에서 굴림·등급·피해·반격·기력 **시드별 동일값 800/800** 확인.
 
-### smith — 신기능 총집합 (v0.42.1)
+### smith — v0.39~0.43 신기능 묶음 (v0.42.1, 소형 예시로 여전히 유효)
 ```
 whenArmed   allow의 vault 에 whenArmed: ['deposit','withdraw'] — 입금/출금 버튼이 눌린 턴에만
             보조 AI에게 열린다. 두 액션은 effects 없이 inject 만("얼마를 옮겼는지 장면에서 정해
@@ -180,7 +229,52 @@ ck_forge    roll 'stoked ? max(rand(1,20), rand(1,20)) : rand(1,20)'   mod skill
             0으로 걸면 영영 안 터진다. 문턱 1 + 회복 효과로 조건을 스스로 닫는다
 ```
 
-### hold(지속형) 액션 — 넷
+### 신규 3종 (v0.67~0.69) — delve / zombie / idol
+
+**delve — 미궁 탐사 (layout: tabs)**
+```
+루프        원정(진형 탭: 전위 2·후위 2 슬롯 + 🕳 진입/⬆ 귀환) ↔ 지상 탭(삯일·보급·치료·술집 영입)
+판정        ck_delve: 어둠이면 min(rand,rand) 불리굴림, vs = danger (변수!) / ck_trap vs danger+3
+whenArmed   roster ← [recruit] — 술집에서 사람을 구한 턴에만 동료 목록 개방
+갈림길       big_one — 노획 도박 (챙겨 나가느냐 더 파느냐)
+액션 9      ⛏ 파헤친다(check) / 🪜 더 내려간다 / 🏕 야영 / ⬆ 귀환 / 🕳 진입 / 🪣 삯일 / 🛒 보급 / 🩹 치료 / 🍺 영입
+그룹        탐사 / 일행 / 소지 / 기록  (best_depth 기록형 변수)
+```
+
+**zombie — 아포칼립스 (layout: accordion)**
+```
+시간        explicit + 시계(HH:mm) + gregorian — 낮 수색 / 밤 습격의 2박자.
+           skip_min ≤240, 밤은 🌙 밤을 넘긴다 버튼
+판정        ck_scavenge: 밤이면 불리굴림, vs = 장소별 조건식 (병원 15 / 주유소 13 / 상가 11 / 기본 9)
+           — 장소 선택(/장소 cmd·place enum)이 곧 난이도 선택
+whenArmed   crew ← [nightfall] — 밤 넘기기 턴에만 인원 명단 개방
+파티        탐색조(낮 2슬롯) / 밤(경계 1슬롯)
+갈림길       stranger(낯선 생존자) / the_horde(무리)
+```
+
+**idol — 아이돌 프로듀스 (layout: tabs) — v0.81~0.87에 걸쳐 풀게임화, 최대 규모**
+```
+규모        vars 66(멤버 3인 시트 m1~m3 × vo/da/vi/st/fan 포함) / derived 55 / 액션 83 /
+           판정 32 / 랜덤 24 / 이벤트 16 / 지시문 13 / 그룹 8 / 파티 탭 13
+탭 13      편성(3슬롯: center/side1/side2) / 레슨 / 일감(의뢰판) / 무대 / 팬서비스 / 제작 /
+           굿즈 / 콜라보 / 음지 / 음지 굿즈 / 음지 팬서비스 / 관리 / 사무소
+레슨 트리    파티 items로 능력치 직접 구매 — cost가 식: round(stat*stat/25)+30 (오를수록 비싸짐)
+           + 티어 판정 ck_ls_{vo,da,vi}_t{1..4} 12종
+판정 32    무대·방송·지방·심야·잡지·성인·음지 등 일감별 20종 + 레슨 12종
+달력        📅 스케줄 (list: schedule, marks: 주간 라디오(금)·월말 정산(28일))
+시간        explicit·날짜만(YYYY-MM-DD)·skip_day는 allow 제외 — 🌙 하루를 마친다 버튼 전용
+장부        allow 18/66만 개방 — funds/debt/inc_* 수익 분해는 전부 규칙·정산 이벤트(settle) 몫
+갈림길 5    quarrel / shady_photo / collector / scandal / sudden_offer
+프리셋      신인 셋 / 한 번 터졌다 / 빚에 눌려 (3단계 난이도)
+```
+
+**fleet — 함대 편성 (파티 탭의 최소 실물)**
+```
+derived 0 · 틱/이벤트 0 — 규칙 거의 없이 파티 탭 3개(출격 편성 3슬롯 / 정비창 1슬롯 / 보급)와
+액션 3개(⚓ 출격 / 🔧 수리 / 📦 보급)로 도는 구조 시연용. cmd 3종(/태세 /가동 /손상)은 16종 중 최다
+```
+
+### hold(지속형) 액션 — 넷 (신규 4종에는 없음)
 ```
 estate  🛡 순찰 강화     gold = gold - 20        "[지속 정책] 병사들이 순찰을 강화하고 있다."
 vtuber  🔴 풀타임 방송   when not burnout
@@ -195,12 +289,13 @@ trpg    🎲 상시 판정     check: ck_free          hold+check = 켜 둔 동�
 한겨울 — 이미 빠듯함     temp -28  coal 260  food 230  people 38  hope 50  discontent 30
 폐허 — 남은 게 거의 없음  temp -34  coal 120  food  90  people 22  hope 30  discontent 45  sick 5
 ```
+같은 3단계 패턴이 idol에도 (신인 셋 / 한 번 터졌다 / 빚에 눌려).
 
 ## 그룹 이름 (layout 예시용)
 
 | | |
 |---|---|
-| rpg | 전투 / 성장 / 소지 / 위치 |
+| rpg | 전투 / 성장 / 소지 / 편성 / 수련 / 위치 |
 | estate | 내정 / 군사 / 상황 |
 | mystery | 수사 / 인물 / 상황 |
 | business | 재무 / 영업 / 가게 |
@@ -211,6 +306,12 @@ trpg    🎲 상시 판정     check: ck_free          hold+check = 켜 둔 동�
 | vtuber | 채널 / 방송 / 컨디션 / 수익 / 팬 |
 | daily | 지금 / 소지 |
 | smith | 장부 / 공방 / 명성 |
+| fleet | 출격 편성 / 정비창 / 자원 / 태세 |
+| delve | 탐사 / 일행 / 소지 / 기록 |
+| zombie | 지금 / 몸 / 물자 / 사람 |
+| idol | 프로덕션 / 장부 / 일감 / 관리 / 음지 / 유나 / 세리 / 린 |
+
+idol은 **멤버별 그룹**(유나/세리/린)이라는 유일한 패턴 — 인물 하나당 그룹 하나.
 
 ## 밸런스 감각 (진단 규격서에서)
 

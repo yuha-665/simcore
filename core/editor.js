@@ -2655,6 +2655,30 @@ function pickTabFragment(tabKey, frag, schema) {
   return picked;
 }
 
+/**
+ * 잘린 JSON 감지 (v0.94.1) — 모델 응답 길이 한계로 출력이 중간에 끊기면, 재시도해도
+ * **같은 자리에서 또 잘린다** (한계는 모델 설정이지 운이 아니다). 그런데 이걸 일반
+ * "형식 검사 불합격"으로 안내하면 유저는 재생성만 반복하다 포기한다 (실기 제보).
+ * 완성된 JSON은 괄호가 전부 닫히고 문자열 밖에서 끝난다 — 안 그러면 잘린 것으로 본다.
+ * (닫는 괄호 하나 빼먹은 오타도 잡히지만, 그건 재시도 안내보다 길이 안내가 해로울 게 없다)
+ */
+function looksTruncatedJson(cleaned) {
+  let depth = 0, inStr = false, esc = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+  }
+  return inStr || depth > 0;
+}
+
 // 행 이동/삭제 버튼 묶음. onDelete/onMove를 주면 변수 탭의 복구·이동 피드백을 연결한다.
 function grip(list, i, rerender, onDelete, onMove) {
   const move = (d) => {
@@ -4072,9 +4096,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     if (!frag) {
       const prose = text.replace(/```[\s\S]*?```/g, '').trim();
+      const body = fenced ? fenced[1] : text;
+      const cut = body.length > 1500 && looksTruncatedJson(body.trim());
       tabAiMsg = { tabKey, warn: true, text: (from === 'ai' && prose && !text.includes('{'))
         ? 'AI가 JSON 대신 답을 보냈습니다 — ' + prose.slice(0, 400)
-        : `JSON 파싱 실패 — ${why}` };
+        : cut
+          ? 'JSON이 중간에 잘려 있습니다 (괄호가 닫히지 않음) — AI 응답이 길이 한계로 끊겼을 수 있어요. '
+            + '응답을 끝까지 받았는지 확인하고, 계속 잘리면 응답 최대 길이를 늘리거나 더 작은 단위로 요청해 주세요.'
+          : `JSON 파싱 실패 — ${why}` };
       return false;
     }
 
@@ -6133,7 +6162,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       try { parsedJson = JSON.parse(stripFence(text)); }
       catch (e) {
         const failure = jsonParseFailure(text, e);
-        return { ok: false, errors: [failure.error], retryContext: failure.context };
+        // 잘림 감지 — 짧은 출력의 문법 오류는 모델 실수(재시도가 약)지만, 길게 쓰다
+        // 안 닫힌 채 끝난 건 응답 길이 한계(재시도가 무익)다. 갈래를 나눠 안내한다.
+        const cleaned = stripFence(text);
+        const truncated = cleaned.length > 1500 && looksTruncatedJson(cleaned);
+        return { ok: false, errors: [failure.error], retryContext: failure.context, truncated };
       }
       if (blank) {
         const v = validateSchema(parsedJson);
@@ -6172,6 +6205,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       text = res;
       got = inspect(res);
       if (got.ok) break;
+      if (got.truncated) break; // 잘린 출력은 재시도해도 같은 자리에서 잘린다 — 안내로 직행
     }
 
     aiGen.busy = false;
@@ -6180,9 +6214,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     } else if (fatal) {
       aiGen.note = `⚠ ${selectedModelLabel} 호출 실패 — ${fatal.msg}`
         + ' · 생성 모델을 바꾸거나 [규격서 복사]를 이용해 주세요.';
+    } else if (!got.ok && got.truncated) {
+      aiGen.note = `⚠ ${selectedModelLabel} 응답이 중간에 잘렸어요 — JSON이 닫히지 않은 채 `
+        + `${Math.max(1, Math.round(text.length / 1024))}KB에서 끊겼습니다. 보통 모델의 **응답 최대 길이** 한계라 `
+        + '재시도해도 같은 자리에서 또 잘립니다. 해결: ① 생성 모델을 긴 출력이 되는 쪽(메인 모델/직접 지정)으로 바꾸기 '
+        + '② 리수 설정에서 그 모델의 응답 최대 길이(max tokens)를 늘리기 '
+        + '③ 한 번에 통째로 만들지 말고 ✨기능 카드나 탭별 요청으로 쪼개서 만들기.';
+      aiGen.raw = text;
     } else if (!got.ok) {
       aiGen.note = `⚠ ${selectedModelLabel} 응답이 두 번 모두 형식 검사를 통과하지 못했어요. `
         + '아래 원문과 오류 위치를 확인하거나 [규격서 복사]로 다른 AI에 맡겨 주세요. 오류: ' + got.errors[0]
+        + (got.errors.length > 1 ? ` (외 ${got.errors.length - 1}건)` : '')
         + (got.retryContext ? ` · 주변: ${got.retryContext.replace(/\s+/g, ' ').slice(0, 240)}` : '');
       aiGen.raw = text;
     } else if (blank) {
@@ -7196,7 +7238,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           setDraftState('검사가 끝났어요. 아래 내용을 확인해 주세요.');
         }
         catch (e) {
-          sourceState.textContent = `불러오지 못했어요 — JSON 문법을 확인해 주세요. ${e.message}`;
+          sourceState.textContent = (src.trim().length > 1500 && looksTruncatedJson(src.trim()))
+            ? 'JSON이 중간에 잘려 있어요 (괄호가 닫히지 않음) — AI 응답이 길이 한계로 끊겼을 수 있습니다. 응답을 끝까지 받았는지 확인해 주세요.'
+            : `불러오지 못했어요 — JSON 문법을 확인해 주세요. ${e.message}`;
           sourceState.className = 'sce-json-source-state sce-err';
         }
       } }, '불러오기 전 검사'),

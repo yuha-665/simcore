@@ -13,7 +13,7 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 // 편집기 계층 추출 — test-patch와 같은 방식
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
 const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
-  seg + '\nreturn { schemaIsBlank, assembleBotContext, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt };')(
+  seg + '\nreturn { schemaIsBlank, assembleBotContext, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt, looksTruncatedJson };')(
   validateSchema, TEMPLATES, SC.require('time').timeConfig);
 
 // 실험대 — 항목이 있는 스키마 (패치 모드 판별용)
@@ -182,6 +182,27 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('번들: 기본값은 여전히 보조 (검증 안 된 경로를 기본으로 안 씀)',
     src.includes("{ choice: 'aux', staticId: '' }"), '');
   ck('번들: static 빈 id는 보조로 폴백', src.includes("gm.choice === 'static' && !gm.staticId.trim()"), '');
+}
+
+// ── 잘린 JSON 감지 (v0.94.1) — "형식 검사 불합격 반복 → 포기" 실기 제보의 원인 분리 ──
+// 응답 길이 한계로 잘린 출력은 재시도해도 같은 자리에서 잘린다. 일반 문법 오류(재시도가 약)와
+// 갈래를 나눠, 유저에게 모델 교체·응답 길이·쪼개기라는 실제 해법을 안내해야 한다.
+{
+  const item = (i) => `{"id":"v${i}","label":"라벨${i}","type":"int","init":0}`;
+  const items = Array.from({ length: 60 }, (_, i) => item(i)).join(',');
+  ck('★ 안 닫힌 긴 JSON = 잘림', M.looksTruncatedJson(`{"vars":[${items},{"id":"x"`), '');
+  ck('★ 문자열 안에서 끊겨도 잘림', M.looksTruncatedJson(`{"vars":[${items}],"meta":{"name":"끊`), '');
+  ck('완성 JSON은 잘림 아님', !M.looksTruncatedJson(`{"vars":[${items}]}`), '');
+  ck('이스케이프 따옴표에 안 속음', !M.looksTruncatedJson('{"a":"say \\"hi\\" ok"}'), '');
+  ck('중괄호 든 문자열 값에 안 속음', !M.looksTruncatedJson('{"a":"x { y [ z"}'), '');
+
+  // 번들 배선 — 유저가 실제로 보게 될 안내 문구
+  ck('★ 생성 실패 안내에 길이 한계 갈래', src.includes('응답이 중간에 잘렸어요')
+    && src.includes('재시도해도 같은 자리에서 또 잘립니다'), '');
+  ck('★ 잘림이면 2차 자동 재시도 생략', src.includes('잘린 출력은 재시도해도 같은 자리에서 잘린다'), '');
+  ck('★ 탭 붙여넣기·원본 편집 게이트에도 잘림 안내', src.includes('길이 한계로 끊겼을 수 있')
+    && src.includes('응답을 끝까지 받았는지'), '');
+  ck('형식 오류 안내에 나머지 오류 개수 표기', src.includes('외 ${got.errors.length - 1}건'), '');
 }
 
 let p = 0, f = 0;

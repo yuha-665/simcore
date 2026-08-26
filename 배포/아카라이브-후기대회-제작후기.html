@@ -1,0 +1,224 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN — 후기대회</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">제작 후기</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:15px;color:#e0a94a;margin-top:10px;">상태창 플러그인, v0.1 → v0.94</div>
+</div>
+
+<p style="margin:0 0 14px;color:#dbe2ea;">
+후기대회 있는 김에 홍보도 할 겸 플러그인 제작 후기 좀 써보려 함
+</p>
+
+<div style="margin:0 0 26px;"><img src="//ac.arca.live/20260826sac/6d5363f314f5bc75ba1040c30a39a76302afb4ea7e1cd851031adf61a91ca9fb.png?expires=1787720842&key=vXYwbnw3xKKzcEGdiyv79w" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301964533" url="//ac.arca.live/20260826sac/6d5363f314f5bc75ba1040c30a39a76302afb4ea7e1cd851031adf61a91ca9fb.png?expires=1787720842&key=vXYwbnw3xKKzcEGdiyv79w" originalurl="//ac.arca.live/20260826sac/6d5363f314f5bc75ba1040c30a39a76302afb4ea7e1cd851031adf61a91ca9fb.png?expires=1787720842&key=vXYwbnw3xKKzcEGdiyv79w"></div>
+
+<!-- ─────────── 만들게 된 이유 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">만들게 된 이유</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  상태창이란 게 원래 지침을 정리해서 그 토큰을 매턴 봇한테 보내고, <b style="color:#c98a7a;">봇 지능까지 상태창 그리는 데 쓰게 만드는 구조</b>임.
+  이게 항상 불만이었음.
+  </p>
+  <p style="margin:0;color:#dbe2ea;">
+  그럴 거면 차라리 <b style="color:#e0a94a;">변수 자체를 완전히 통제하는 플러그인</b>을 만들면 되지 않나? 싶어서 제작에 들어갔음.
+  </p>
+</div>
+
+<!-- ─────────── 상태창 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">시작은 상태창</div>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/0798932055d05e71df3c16f0c29c9fa302c3a35f89f016b2e34c4c1e3974bcd0.png?expires=1787721143&key=eOLmwm63-GfBbmeIF95gww" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301965088" url="//ac.arca.live/20260826sac/0798932055d05e71df3c16f0c29c9fa302c3a35f89f016b2e34c4c1e3974bcd0.png?expires=1787721143&key=eOLmwm63-GfBbmeIF95gww" originalurl="//ac.arca.live/20260826sac/0798932055d05e71df3c16f0c29c9fa302c3a35f89f016b2e34c4c1e3974bcd0.png?expires=1787721143&key=eOLmwm63-GfBbmeIF95gww"></div>
+
+  <p style="margin:0 0 8px;color:#dbe2ea;">상태창 만들 때 고려한 게 세 가지였음.</p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">① 상태창 제작 지침에 토큰 낭비가 없을 것
+② 찐빠 발생율 자체를 제거할 것
+③ 자유롭게 커스텀이 가능할 것</pre>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  그래서 변수를 일일이 세팅하게 하고, CSS도 별도로 입혀서 마음대로 꾸밀 수 있게 만들었음.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  그리고 사실 리스에서 정규식으로 디스플레이 바꾸는 게 <b style="color:#c98a7a;">렉의 심각한 주범</b>이라,
+  심코어는 그 문제까지 잡으려고 <b style="color:#e0a94a;">정규식을 아예 안 쓰면서 CSS를 마음대로 꾸미는 쪽</b>에 공을 많이 들였음.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  기존엔 상태창 하나 만들려면 공홈이나 AI한테 "리수에서 적용되게" CSS 짜달라 해야 하고, 정규식에 맞춰 배치해야 하고,
+  거기 맞춰 지침서도 써야 하고... 하나 만드는 게 일이었잖음. 이참에 그 단점을 전부 보완하고자 했음.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  누구나 쉽게 만들고, 확장하고, 개조하고, 꾸미고, 렉 없이 쓰는 게 목적이라 상태창 기능 하나에도 생각보다 소스가 많이 들어간 듯.
+  </p>
+</div>
+
+<!-- ─────────── 이벤트·규칙 + 액션 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">이벤트·규칙 + 액션 — 루아와 트리거의 대체품</div>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/ea6861c168ad5fa7c415abe5df75d7094ed5755c473199059e8c7d8e58a8020f.png?expires=1787721692&key=cdauLQLXwAYGa-e_KDWQsQ" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301965941" url="//ac.arca.live/20260826sac/ea6861c168ad5fa7c415abe5df75d7094ed5755c473199059e8c7d8e58a8020f.png?expires=1787721692&key=cdauLQLXwAYGa-e_KDWQsQ" originalurl="//ac.arca.live/20260826sac/ea6861c168ad5fa7c415abe5df75d7094ed5755c473199059e8c7d8e58a8020f.png?expires=1787721692&key=cdauLQLXwAYGa-e_KDWQsQ"></div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  상태창을 다 만들고 다음으로 작업한 게 이벤트/규칙 + 액션 기능임.
+  기존에 <b style="color:#dbe2ea;">루아 스크립트 + 트리거로 하던 일을 대체</b>하려고 만들었음.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  상태창이 토큰과 모델 지능을 아끼면서 찐빠 없이 내용을 관리하는 거라면, 이쪽은 봇에 디테일한 작동을 넣고 싶은 사람들을 위한 거임.
+  트리거는 만들기 귀찮고 관리도 힘들고 쓸 때마다 좋았던 기억이 없고, 루아는 어렵고 복잡한데 무겁기까지 함.
+  그래서 차라리 <b style="color:#dbe2ea;">가볍고 쉽고 확장성 좋은 대체품</b>을 만들자 한 거임.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  제작 전에 "리수는 왜 굳이 루아를 채택했나"를 조사한 적이 있는데 — 루아가 리수와 독립적이라 보안성이 좋고,
+  옛날부터 게임 쪽에서 쓰여서 데이터가 많아서라고 추측했음. 그래서 심코어도 그 취지에 맞게
+  <b style="color:#dbe2ea;">보안을 중시하고 리스 본체를 안 건드리는 방향</b>을 개발 원칙으로 삼았음.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  그리고 개인적으로 루아 이벤트를 안 좋아하는 이유가 하나 더 있는데, <b style="color:#c98a7a;">루아는 애초에 챗질이랑 안 맞음.</b>
+  챗질은 유저 인풋과 AI 성향에 따라 수많은 변수로 자유롭게 흘러가야 하는데, 루아는 코딩해 놓은 원인-결과값만으로
+  혼자 돌아가서 RP 서사와 연동이 안 됨. 스크립트가 서사를 따라오는 게 아니라
+  <b style="color:#c98a7a;">사용자가 스크립트 동작에 맞춰 서사를 바꿔야 하는 주객전도</b>가 일어남.
+  </p>
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:13px 16px;">
+    <p style="margin:0;color:#a9b4c2;font-size:14px;">
+    심코어는 이걸 완전히 탈피해서, <b style="color:#dbe2ea;">보조 도구가 사용자의 서사에 스스로 맞추는 것</b>을 목표로 잡았음.
+    그래서 뜯어보면 내부 지침이 상당히 엄격하게 나눠져 있음. 유저가 도구에 구속받는 게 아니라,
+    도구가 유저한테 맞춰서 항상 찐빠 없이 알잘딱해주는 걸 목적으로 만들었다고 알아주면 좋겠음.
+    </p>
+  </div>
+</div>
+
+<!-- ─────────── 진입장벽 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">진입장벽과의 전쟁</div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  초반 구성을 다 만들어 놓고 예상대로 잘 돌아가긴 했는데, 큰 문제에 봉착했음.
+  <b style="color:#c98a7a;">진입장벽이 너무 큼.</b> 플러그인 설치하고 끝이 아니라 제작툴을 직접 다뤄야 하는데, 내가 직접 해봐도 존나 어렵더라.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  처음엔 너무 단순하게 생각했던 거임. 규격 내보내기로 공홈에 복사하고 → 대화하고 → 결과물을 다시 심코어에 붙여넣고...
+  이 왕복이 생각보다 번거롭고 쉽지 않음. 이걸 어떻게 하지 고민하다 떠오른 게 —
+  리수 사용자면 어차피 다들 API가 있는데, <b style="color:#e0a94a;">그냥 리수 안에서 AI를 갈구면 되는 거 아닌가?</b>
+  </p>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/1522e273c09d8d0a71a309ce1055b3756c3e2f6e8ab79b91ff415cb8d806fbbe.png?expires=1787722399&key=VnmNklH0wJVhJUoU-kHVYA" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967020" url="//ac.arca.live/20260826sac/1522e273c09d8d0a71a309ce1055b3756c3e2f6e8ab79b91ff415cb8d806fbbe.png?expires=1787722399&key=VnmNklH0wJVhJUoU-kHVYA" originalurl="//ac.arca.live/20260826sac/1522e273c09d8d0a71a309ce1055b3756c3e2f6e8ab79b91ff415cb8d806fbbe.png?expires=1787722399&key=VnmNklH0wJVhJUoU-kHVYA"></div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  그래서 만든 게 규격 내보내기가 아니라 <b style="color:#dbe2ea;">심코어 자체에서 AI를 다이렉트로 호출해 일을 시키는 기능</b>임.
+  API를 따로 적을 필요 없이 리수의 메인모델/보조모델을 골라서 쓰게 했음. 이것만으로 상당히 쾌적해졌는데, 아직도 뭔가 부족하더라.
+  </p>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/5682548bfcf757a674eb3c711d1740d6a89e4e172fad2ff2c86ec7591b7e8b16.png?expires=1787722508&key=5qCs7ypQoqOx8IdeEJd6yQ" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967216" url="//ac.arca.live/20260826sac/5682548bfcf757a674eb3c711d1740d6a89e4e172fad2ff2c86ec7591b7e8b16.png?expires=1787722508&key=5qCs7ypQoqOx8IdeEJd6yQ" originalurl="//ac.arca.live/20260826sac/5682548bfcf757a674eb3c711d1740d6a89e4e172fad2ff2c86ec7591b7e8b16.png?expires=1787722508&key=5qCs7ypQoqOx8IdeEJd6yQ"></div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  기능 탭이 많다 보니 탭마다 요청을 쪼개서 AI가 한 가지 일에 집중하게 한 건 좋았는데,
+  기능이 너무 많으니 <b style="color:#c98a7a;">역으로 뭘 해야 할지 모르는 문제</b>가 생김.
+  </p>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/6c4b120b785f9b379e3c57620031e5d3bdc79b81de7d867bbfddd7047a8d265a.png?expires=1787722496&key=R8FXnOpGjY0EbdIsBk91og" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967204" url="//ac.arca.live/20260826sac/6c4b120b785f9b379e3c57620031e5d3bdc79b81de7d867bbfddd7047a8d265a.png?expires=1787722496&key=R8FXnOpGjY0EbdIsBk91og" originalurl="//ac.arca.live/20260826sac/6c4b120b785f9b379e3c57620031e5d3bdc79b81de7d867bbfddd7047a8d265a.png?expires=1787722496&key=R8FXnOpGjY0EbdIsBk91og"></div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  그래서 <b style="color:#e0a94a;">총괄 제작 기능</b>을 따로 만들었음. 그냥 공홈에서 대화하듯
+  "나 이런 기능 필요해 뜌땨아아아아" 하면 AI가 "하잇 알겠습니다" 하고 알아서 만들어주는 걸 목적으로 함.
+  여기서 토대를 만들고, 더 세부적으로 만지고 싶으면 각 탭에 들어가 집중적으로 갈굴 수 있는 구조임.
+  </p>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/5cd17711eece3b4e8a4e82043a15f051b3d58ec5bc68120ea56816ce3e52174e.png?expires=1787722650&key=D2WOBGiNvBifR-jbPBjArA" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967439" url="//ac.arca.live/20260826sac/5cd17711eece3b4e8a4e82043a15f051b3d58ec5bc68120ea56816ce3e52174e.png?expires=1787722650&key=D2WOBGiNvBifR-jbPBjArA" originalurl="//ac.arca.live/20260826sac/5cd17711eece3b4e8a4e82043a15f051b3d58ec5bc68120ea56816ce3e52174e.png?expires=1787722650&key=D2WOBGiNvBifR-jbPBjArA"></div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  진입장벽 때문에 프리셋도 상당히 신경 썼음. 거의 모든 장르를 커버하게 일일이 다 만들어서 박아넣었음 — 지금 <b style="color:#dbe2ea;">16종</b>임.
+  미궁 탐사, 아포칼립스, 아이돌 프로듀스 같은 걸 [새로 만들기]에서 누르면 변수·규칙·상태창이 다 짜인 채로 설치됨.
+  </p>
+
+  <div style="margin:0;"><img src="//ac.arca.live/20260826sac/3dadbab3eadbf602c999952532568508afbb30f124c8f5069ea70a6a8fd65a43.png?expires=1787722712&key=9oMnCfRk9P-j1kNS3XeNgw" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967504" url="//ac.arca.live/20260826sac/3dadbab3eadbf602c999952532568508afbb30f124c8f5069ea70a6a8fd65a43.png?expires=1787722712&key=9oMnCfRk9P-j1kNS3XeNgw" originalurl="//ac.arca.live/20260826sac/3dadbab3eadbf602c999952532568508afbb30f124c8f5069ea70a6a8fd65a43.png?expires=1787722712&key=9oMnCfRk9P-j1kNS3XeNgw"></div>
+</div>
+
+<!-- ─────────── 날짜 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">제일 힘들었던 것 — 날짜</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "AI는 숫자를 모른다"는 말이 있듯이, AI한테 날짜·시간을 조작시키는 게 제일 어려웠음. 여기서 시행착오가 진짜 많았던 듯.
+  </p>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/bb9b2ea83e67fe205dc377a510053715402949c8e00b9349c93e80b172804e94.png?expires=1787722844&key=GU6qhBf_m49frxPFfHnwoQ" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301967827" url="//ac.arca.live/20260826sac/bb9b2ea83e67fe205dc377a510053715402949c8e00b9349c93e80b172804e94.png?expires=1787722844&key=GU6qhBf_m49frxPFfHnwoQ" originalurl="//ac.arca.live/20260826sac/bb9b2ea83e67fe205dc377a510053715402949c8e00b9349c93e80b172804e94.png?expires=1787722844&key=GU6qhBf_m49frxPFfHnwoQ"></div>
+
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  아무튼 지금은 꽤 안정화됐고 달력 연동까지 만들었음. 상태창과 엮어서 제일 쉽고 유용하게 쓸 수 있는 기능이 됐다고 생각함.
+  </p>
+</div>
+
+<!-- ─────────── 다 넣음 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">넣고 싶은 걸 전부 넣음</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">그 외에도 한 달 넘게 넣고 싶은 걸 다 구현해서 박아넣은 듯.</p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 서사를 따라 AI가 자동으로 이벤트를 등록하는 기능</b> — "3년 동안 고기 30개 납품하고 30골드 받는 계약"을 하면,
+  AI가 그 이벤트를 자동 등록해서 납품 기간마다 고기 −30 / 골드 +30을 알아서 반영함
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;"><b style="color:#dbe2ea;">· 편성표</b> — 소전봇이나 RPG 파티봇에 쓴 그거</p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;"><b style="color:#dbe2ea;">· 이벤트 수동 발동 버튼</b> + <b style="color:#dbe2ea;">찐빠 즉시 수정용 긴급 명령어</b></p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;"><b style="color:#dbe2ea;">· 시나리오 제작 모드</b> — 자율주행 떡밥 관리, 이야기 페이스 제어</p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;"><b style="color:#dbe2ea;">· TRPG 주사위 판정</b>, <b style="color:#dbe2ea;">다중 상태창</b>...</p>
+  <p style="margin:0;color:#dbe2ea;">
+  이제는 상상하는 거의 모든 게 가능해서, <b style="color:#e0a94a;">오히려 안 되는 기능을 찾고 있는 중임.</b>
+  </p>
+</div>
+
+<!-- ─────────── 에셋 관리자 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">요즘 제일 잘 쓰는 기능 — 에셋 관리자</div>
+
+  <div style="margin:0 0 14px;"><img src="//ac.arca.live/20260826sac/4003fbb0b78d212736830d3d654abdbb12de13b79a7c343581baf44d39ff2195.png?expires=1787723117&key=pvPCHjGed1q8kWAHR8YjSA" class="fr-fic fr-dii" data-fr-last-image-pasted="true" uploaded="true" idx="301968378" url="//ac.arca.live/20260826sac/4003fbb0b78d212736830d3d654abdbb12de13b79a7c343581baf44d39ff2195.png?expires=1787723117&key=pvPCHjGed1q8kWAHR8YjSA" originalurl="//ac.arca.live/20260826sac/4003fbb0b78d212736830d3d654abdbb12de13b79a7c343581baf44d39ff2195.png?expires=1787723117&key=pvPCHjGed1q8kWAHR8YjSA"></div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  나는 지금까지 에셋 출력식에 1~2천 토큰을 불태우면서, AI가 없는 명령어를 지어내서 이미지 찐빠 내는 게 굉장히 마음에 안 들었는데,
+  이걸로 전부 해결해서 제일 만족스러움.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  2천 넘던 출력식이 <b style="color:#dbe2ea;">300토큰 이하로 압축</b>되고, 정규식으로 찐빠 이미지를 걸러낼 필요 없이
+  <b style="color:#dbe2ea;">찐빠 자체가 발생을 안 함.</b> 모듈봇 여러 개 쓰면 출력 지침이 능지를 박살내고 찐빠도 심해지는 것까지 다 해결함.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  지금은 모듈봇 자체에 심코어를 적용해서, 모듈만 적용해도 에셋 출력이 되는 기능을 개발해서 테스트 중임.
+  </p>
+</div>
+
+<!-- ─────────── 배포 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="font-size:19px;font-weight:600;margin-bottom:14px;">배포는 어떻게 되냐면</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  제작자 입장에서 배포도 신경 썼음. 심코어 봇은 <b style="color:#e0a94a;">카드에 설정이 통째로 실려 감.</b>
+  받는 사람은 봇카드 임포트하고 플러그인만 깔면 끝임 — 별도 설정 파일을 받거나 세팅을 따라할 필요가 없음.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  받는 사람 환경이 제각각인 문제도 플러그인이 알아서 함. 보조모델 직접 호출이 되는 환경인지 차단된 환경인지를
+  <b style="color:#dbe2ea;">스스로 판별해서 되는 경로로 굳힘.</b> "설정에서 뭐뭐를 켜주세요" 같은 안내문을 쓸 필요가 없게 만들었음.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  그리고 배포 전에 <b style="color:#dbe2ea;">진단</b> 기능으로 봇을 수백 턴 자동으로 굴려볼 수 있음.
+  영영 안 터지는 이벤트, 영영 안 열리는 시나리오 막, 죽어 있는 변수 같은 걸 배포 전에 미리 잡아줌.
+  배포하고 나서 "이 이벤트 안 나오는데요" 소리 듣기 전에 플러그인이 먼저 알려주는 거임.
+  </p>
+</div>
+
+<!-- ─────────── 요약 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:10px;">요약</div>
+<pre style="background:#161b22;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:16px 18px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.9;color:#dbe2ea;">✔ 상태창 찐빠 없이 날먹 가능
+✔ 스토리 봇 제작 — 자율주행 떡밥 관리·엔딩 분기·디테일 살리기
+✔ CSS 정규식 + 루아의 무거움 대비, 렉 없이 다양한 유틸
+✔ 기존 루아·타 플러그인들과 충돌 없음
+✔ 에셋·상태창 출력 문구 다 삭제하고 돈 아낌</pre>
+
+<p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+개발은 클로드 바이브코딩으로 했음. 대신 기능 넣을 때마다 자동 테스트를 같이 쌓게 해서 지금 3천 개가 넘고,
+업데이트마다 그걸 전부 통과해야 배포함.
+</p>
+
+<p style="margin:0 0 12px;color:#dbe2ea;font-size:17px;">
+아무튼 <b style="color:#e0a94a;">존나 개쩌는 심코어</b> 많이 사용해주면 좋겠다.
+</p>
+<p style="margin:0;color:#a9b4c2;">
+굳이 봇 제작을 안 해도 <b style="color:#dbe2ea;">상태창 + 에셋 기능만 써도 충분히 밥값하는 플러그인</b>이라고 생각함.
+상태창이랑 에셋 출력식으로 매턴 날아가는 토큰만 2~5천인데, 그거 아껴서 장기기억에 능지 더 보존하면 좋겠다.
+</p>
+
+</div>

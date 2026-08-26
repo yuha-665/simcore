@@ -13448,6 +13448,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (compactMode) wrap.appendChild(directBox);
 
     const exportBox = compactMode ? h('div', { class: 'sce-vars-ai-export' }) : wrap;
+    // 표지판 (v0.94.1 실기 제보) — 직결 생성이 있는 환경에서 내보내기는 우회로다. 갈림길을
+    // 안 세워두면 유저가 두 경로를 겹쳐 쓴다 (생성해 놓고 규격서도 복사해 외부 AI를 또 돌림).
+    if (ai && ai.generate) exportBox.appendChild(h('div', { class: 'sce-hint' },
+      '아래 내보내기·가져오기는 위 ✨ 직결 생성이 안 되는 환경(호출 차단·웹 AI만 사용)용 우회로예요 — 직결이 되면 쓸 일이 없습니다.'));
     copyWidget(`📤 ${slice.label} 규격 내보내기`,
       tabKey === 'vars'
         ? '변수는 액션·규칙·상태창이 함께 사용하는 기준이에요. 전체 구성을 새로 만들 때 먼저 확정해 두면 '
@@ -15451,7 +15455,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
 
     const external = h('div', { class: 'sce-result-external' },
-      h('div', { class: 'sce-ai-alt-title' }, '외부 AI로 만들기'));
+      h('div', { class: 'sce-ai-alt-title' }, '외부 AI로 만들기 — 위 버튼이 안 될 때의 옆길'));
     copyWidget(layoutMode ? '📋 배치 규격 복사' : '📋 CSS 규격 복사',
       layoutMode
         ? '배치 요청과 자리표시자 계약이 담긴 규격서를 복사해요. 웹 AI에게 주고, 받은 HTML은 '
@@ -15944,12 +15948,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 옆문 — API 크레딧 없이 공홈(웹 AI) 구독을 쓰는 유저의 경로. 강등이 아니라 병행 —
     // 같은 프롬프트 빌더를 쓰므로 [✨ 생성]과 내용이 똑같다.
+    // ⚠ 표지판 필수 (v0.94.1 실기 제보): 갈림길을 안 세워두면 유저가 [✨ 생성]이 잘 되는데도
+    // 규격서를 복사해 외부 AI를 돌리고 그 결과를 JSON 관리자에 또 넣는 삼중 혼선을 겪는다.
     const aiAlt = h('div', { class: 'sce-ai-alt' },
-      h('div', { class: 'sce-ai-alt-title' }, '다른 AI 사용'));
+      h('div', { class: 'sce-ai-alt-title' }, '다른 AI 사용 — 위 [✨ 생성]이 안 될 때의 옆길'));
     box.appendChild(aiAlt);
     copyWidget('규격서 복사',
-      '요청과 캐릭터 설정이 담긴 규격서를 복사해 다른 AI에 붙여넣어 주세요. '
-      + '받은 JSON은 🧾 JSON 관리자에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
+      '위 [✨ 생성]과 같은 일을 하는 우회로예요 — 위 버튼이 잘 되면 이 칸은 쓸 일이 없습니다. '
+      + 'AI 호출이 차단됐거나 API 없이 웹 AI(공홈)를 쓸 때만: 규격서를 복사해 다른 AI에 붙여넣고, '
+      + '받은 JSON을 🧾 JSON 관리자에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
       () => {
         const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
@@ -16571,7 +16578,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
 
         if (fixable.length) {
-          moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '외부 AI로 부분 수정'));
+          moreBody.appendChild(h('div', { class: 'sce-diag-ai-subhead' }, '외부 AI로 부분 수정 — 위 [패치 만들기]가 안 될 때의 옆길'));
           const patchExport = h('section', { class: 'sce-diag-ai-export-card is-primary' });
           copyWidget(`수정 패치 규격서 복사 · ${fixable.length}건${fixable.filter((f) => f.sev === 'high').length ? ` / 우선 ${fixable.filter((f) => f.sev === 'high').length}건` : ''}`,
             '다른 AI에 전달할 부분 수정 규격서예요. 받은 패치 JSON은 JSON 관리자의 [패치 검사]에서 확인한 뒤 적용하세요.',

@@ -1,0 +1,208 @@
+<p><strong><span style="font-size:36px;">0. 이 가이드 하나면 됨</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">심코어 가이드 1~2탄이 옛날 방식(규격서 복사해서 공홈 왕복) 기준이라, 요즘 버전 쓰는 사람은 오히려 헷갈린다는 제보가 있었음. 그래서 <strong>v0.94 기준으로 봇 제작 흐름만 처음부터 끝까지</strong> 다시 씀. 이 가이드 하나로 봇 하나가 나오고, 1~10탄은 세부 기능이 궁금할 때 찾아보는 사전이라고 생각하면 됨.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">시작 전에 제일 중요한 것부터. <strong>AI한테 시키는 길이 두 개인데, 하나만 쓰면 됨.</strong></span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p><strong>기본길 = ✨ AI에게 맡기기.</strong> 인풋창에 말로 시키면 리수 안에서 AI가 직접 만들어 줌. 복사·붙여넣기 없음.</p>
+	<p><strong>옆길 = 규격서 복사.</strong> AI 호출이 차단된 환경이거나 API 없이 공홈만 쓸 때, 규격서를 복사해 밖에서 작업하고 결과를 가져오는 우회로.</p>
+	<p><strong>기본길이 되면 옆길은 평생 쓸 일 없음.</strong> 둘을 섞어 쓰면 그때부터 꼬임.</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">(예전 가이드는 옆길이 본편이었음 &mdash; 그때는 기본길이 없었으니까. 지금은 반대임)</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">1. 준비 &mdash; 2분 걸림</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">① 플러그인 파일을 리수에 임포트함 (이미 했으면 통과)</span></p>
+
+<p><span style="font-size:14px;">② 봇을 열고 심코어 관리 패널에서 <strong>[현재 캐릭터에 설치/업데이트]</strong>를 누름 &mdash; 이걸 눌러야 그 봇에 심코어가 붙음</span></p>
+
+<p><br></p>
+
+<p>[스샷: 관리 패널 — 설치/업데이트 버튼]</p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">2. 제일 쉬운 시작 &mdash; 템플릿 훔치기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">백지에서 시작할 필요 없음. <strong>[새로 만들기]</strong>에 완성된 템플릿이 16종 있음 &mdash; RPG, 연애, 경영, 미궁 탐사, 아포칼립스, 아이돌 프로듀스, TRPG 판정...</span></p>
+
+<p><br></p>
+
+<p>[스샷: 새로 만들기 템플릿 목록]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">만들려는 봇과 장르가 비슷한 걸 골라 설치하면 변수&middot;규칙&middot;상태창&middot;액션이 전부 짜인 채로 들어옴. 그대로 놀아도 되고, 여기서부터 아래 3번(AI에게 맡기기)으로 <strong>내 봇에 맞게 개조</strong>하는 게 제일 빠른 길임.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">완전 백지에서 시작하고 싶으면 바로 3번으로.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">3. 본편 &mdash; ✨ AI에게 맡기기</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">봇 편집 사이드바에서 <strong>✨ AI에게 맡기기</strong>로 들어가면 인풋창이 있음. 여기에 원하는 봇을 <strong>말로</strong> 적으면 됨. 공홈에서 대화하듯이.</span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>&quot;던전 탐사 봇. HP랑 소지금 있고, 층수 내려갈수록 위험해지고, 보스 잡으면 보상 나오게&quot;</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">적고 <strong>[✨ 생성]</strong> 누르면 끝. 수십 초 뒤에 작업본이 나옴.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 인풋창 + 생성 버튼]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;"><strong>나온 작업본은 바로 적용되지 않음.</strong> 뭐가 만들어졌는지 요약&middot;경고를 보여주고, 사람이 [반영]을 눌러야 들어감. 마음에 안 들면 안 누르면 그만이라 몇 번을 다시 시켜도 봇이 안 망가짐.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 작업본 계획/요약 화면]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">그리고 여기서부터가 진짜임. <strong>한 번에 완벽하게 만들려고 하지 말고, 반영한 뒤에 계속 대화로 고치면 됨.</strong></span></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>&quot;호감도 시스템 넣어줘&quot; &rarr; 반영</p>
+	<p>&quot;상태창에 날씨도 띄워줘&quot; &rarr; 반영</p>
+	<p>&quot;돈이 너무 잘 벌림. 수입 좀 줄여줘&quot; &rarr; 반영</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이미 만든 봇에 시키면 <strong>전체를 갈아엎는 게 아니라 시킨 부분만 고치는 패치</strong>로 들어와서 안전함. 잘못 반영했으면 [↩ 되돌리기]도 한 번 남아 있음.</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">특정 부분만 집중적으로 시키고 싶으면 세부 편집기의 각 탭(변수&middot;규칙&middot;액션&middot;시나리오...)에도 <strong>✨ 만들어 달라기</strong> 버튼이 따로 있음. 그 탭 몫만 만들어 옴.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">4. 생성 모델 팁 &mdash; 잘리면 모델을 바꿔라</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">인풋창 옆에 <strong>생성 모델</strong> 선택이 있음 (보조/메인/직접 지정). 기본값은 보조 모델인데, <strong>봇을 통째로 처음 만들 때는 [메인 모델] 추천</strong>임.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 생성 모델 선택]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">이유: 통짜 생성은 출력이 긴데, 보조 모델은 응답 최대 길이가 짧게 잡힌 경우가 많아서 <strong>JSON이 중간에 잘림</strong>. 잘리면 몇 번을 다시 돌려도 같은 자리에서 또 잘림 (길이 한계는 운이 아니라 설정이라서). v0.94.1부터는 잘리면 &quot;응답이 중간에 잘렸어요&quot;라고 원인을 정확히 알려주니, 그 안내가 뜨면:</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">① 생성 모델을 메인/직접 지정으로 바꾸거나</span></p>
+
+<p><span style="font-size:14px;">② 리수 설정에서 그 모델의 응답 최대 길이(max tokens)를 늘리거나</span></p>
+
+<p><span style="font-size:14px;">③ 통째로 말고 탭 단위로 쪼개서 시키면 됨</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">수정 대화(패치)는 출력이 짧아서 보조 모델로도 잘 됨.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">5. 옆길 &mdash; 규격서 복사 (API 없는 사람 전용)</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">[✨ 생성]을 눌렀는데 &quot;호출이 차단됐어요&quot;가 뜨는 환경이거나, API 없이 공홈 구독만 쓰는 경우에만 이 절을 읽으면 됨. <strong>[✨ 생성]이 잘 되는 사람은 여기 볼 필요 없음.</strong></span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">인풋창 아래 <strong>[규격서 복사]</strong>를 누르면 요청 내용 + 봇 정보 + 작성 규칙이 통째로 복사됨. 이걸 공홈(웹 AI)에 붙여넣으면 AI가 JSON을 만들어 줌. 그 JSON을 복사해서:</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">&middot; 봇 전체 작업본이면 &rarr; <strong>🧾 JSON 관리자</strong>의 전체 작업본 칸에 붙여넣기</span></p>
+
+<p><span style="font-size:14px;">&middot; 탭 하나 몫이면 &rarr; 그 탭의 <strong>[📥 가져오기]</strong> 칸에 붙여넣기</span></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">코드펜스(```)나 앞뒤 설명이 붙어 있어도 알아서 벗겨냄. 붙여넣은 게 형식에 어긋나면 검사가 막아 주니까 봇이 망가질 걱정은 없음.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 규격서 복사 칸 — "옆길" 표지판 보이게]</p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">6. 마무리 &mdash; 배포 전엔 🔬 진단</span></strong></p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">봇이 얼추 완성됐으면 <strong>🔬 진단</strong>을 한 번 돌리셈. 봇을 수백 턴 자동으로 굴려서 &mdash; 영영 안 터지는 이벤트, 영영 안 열리는 시나리오 막, 안 움직이는 변수 같은 걸 미리 잡아 줌.</span></p>
+
+<p><br></p>
+
+<p>[스샷: 진단 결과 화면]</p>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">잡힌 문제는 <strong>[패치 만들기]</strong> 누르면 AI가 고쳐 옴 &mdash; 이것도 계획 보여주고 사람이 반영을 누르는 방식이라 안전함. 배포하고 나서 &quot;이 이벤트 안 나오는데요&quot; 소리 듣기 전에 플러그인이 먼저 알려주는 거임.</span></p>
+
+<p><br></p>
+
+<p><br></p>
+
+<p><strong><span style="font-size:36px;">정리</span></strong></p>
+
+<p><br></p>
+
+<blockquote>
+	<p>① 설치하고 봇에 [설치/업데이트] 한 번</p>
+	<p>② 비슷한 템플릿 깔고 시작 (백지보다 빠름)</p>
+	<p>③ ✨ 인풋창에 말로 시키고 [생성] &rarr; [반영] &rarr; 이후 대화로 계속 수정</p>
+	<p>④ 통짜 생성은 메인 모델로 &mdash; 잘리면 모델 탓이니 다시 돌리지 말 것</p>
+	<p>⑤ 규격서 복사는 [✨ 생성]이 안 되는 환경 전용 옆길</p>
+	<p>⑥ 배포 전 🔬 진단 한 번</p>
+</blockquote>
+
+<p><br></p>
+
+<p><span style="font-size:14px;">막히는 데 있으면 댓글로. 세부 기능(판정&middot;갈림길&middot;에셋 팩&middot;편성표...)은 가이드 3~10탄 참고.</span></p>

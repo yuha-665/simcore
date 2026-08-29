@@ -176,6 +176,37 @@ const turn = (st, changes = {}, opts = {}, i = 0) => {
 }
 
 // ── 리롤 되감기 — pre 스냅샷 재현 (세션 규약) ──
+// ── 되울림 (v1.0.3) — 주인공 글·댓글이 다음 전송에 1회 실리고 소거되는 1회용 통로 ──
+{
+  const t = fresh();
+  const pid = board.applyUserPost(S, t, { title: '길드 뒷담 반박', author: '주인공닉', body: '그 소문 사실 아님. 내가 현장에 있었음' }, null);
+  // 반응이 달린 뒤 스레드째 되울린다 (키배 재현)
+  board.applyDelta(S, t, { re: [{ id: pid, re: [{ author: 'ㅇㅇ', body: '증거 있음?' }, { author: '노원구주민', body: '얘 말이 맞음 나도 봄' }] }] }, { rng: seededRng('e', 1, 'x') });
+  const line = board.userEcho(S, t, 'user_post', { postId: pid, body: '그 소문 사실 아님. 내가 현장에 있었음' });
+  ck('★ 되울림 줄 생성 — 내 글 + 최신 반응 스레드째', !!line && line.includes('길드 뒷담 반박')
+    && line.includes('증거 있음?') && line.includes('노원구주민'), String(line));
+  ck('pendingNotifies에 실림', t.meta.pendingNotifies.includes(line), '');
+  // 다음 전송에 1회 실리고 소거된다 (pendingNotifies 규약)
+  const send1 = engine.sendPhase(S, t, { rng: seededRng('e', 2, 's') });
+  ck('★ 다음 전송에 1회 실림', send1.promptBlock.includes('남긴 흔적') && send1.promptBlock.includes('길드 뒷담 반박'), '');
+  const send2 = engine.sendPhase(S, send1.state, { rng: seededRng('e', 3, 's') });
+  ck('★ 그다음 전송엔 없다 (1회용 — 자동 소거)', !send2.promptBlock.includes('남긴 흔적'), '');
+  // 댓글 되울림 — 유저 자신의 문장은 반응 목록에서 빠진다 (몸통에 이미 있으므로)
+  const t2 = fresh();
+  const pid2 = board.applyUserPost(S, t2, { title: '원글', author: 'ㅇㅇ', body: '본문' }, null);
+  board.applyUserComment(t2, pid2, { author: '주인공닉', body: '내 반박 댓글' });
+  const line2 = board.userEcho(S, t2, 'user_comment', { postId: pid2, author: '주인공닉', body: '내 반박 댓글' });
+  ck('댓글 되울림 — 단 글과 내 댓글이 몸통에', line2.includes('원글') && line2.includes('내 반박 댓글'), String(line2));
+  ck('반응 목록에 내 문장 중복 없음', (line2.match(/내 반박 댓글/g) || []).length === 1, String(line2));
+  // 끄면 조용하다
+  const Soff = JSON.parse(JSON.stringify(S)); Soff.board.echo = false;
+  const t3 = engine.initState(Soff); t3.meta.setupDone = true;
+  const pid3 = board.applyUserPost(Soff, t3, { title: 'x', author: 'y', body: 'z' }, null);
+  ck('★ echo:false — 되울림 없음', board.userEcho(Soff, t3, 'user_post', { postId: pid3 }) === null
+    && t3.meta.pendingNotifies.length === 0, '');
+  ck('없는 글 id는 조용히 무시', board.userEcho(S, fresh(), 'user_post', { postId: 999 }) === null, '');
+}
+
 {
   const { SimSession } = SC.require('session');
   const { MapBackend } = (() => {

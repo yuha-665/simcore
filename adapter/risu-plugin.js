@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.2
-//@display-name SimCore (시뮬 엔진) v1.0.2 상태창 위치 선택
+//@version 1.0.3
+//@display-name SimCore (시뮬 엔진) v1.0.3 보드 되울림
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.3 ────────────────────────────────────────────────
+// 보드 되울림 (유저 제안: "유저가 키배를 뜸 → 다음 서사에 쓸 소스로 주고, 필요없으면 버려지는
+// 1회용 통로") — board.echo (기본 켬).
+// - 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글 + 최신 반응 3개)
+//   실렸다가 소거된다 — pendingNotifies 규약 (상점 거래 내역과 같은 길).
+// - 반응 보조 호출의 성패와 무관하게 되울린다 (내 글 자체는 이미 사실). 반응 적용 뒤에
+//   읽어서 키배·지원 댓글이 스레드째 실린다. mainLine의 "원문 금지"와 안 부딪힌다 —
+//   주인공이 직접 한 일은 서사의 사실이라서다.
+// - [편집기] [보드] 탭 체크박스 + SCHEMA_BOARD_RULES (규칙 #3). test-board.js 되울림 절.
 //
 // ── v1.0.2 ────────────────────────────────────────────────
 // 상태창 위치 선택 (UI 개조 협업자 요청) — statusUI.position: 'bottom'(기본) | 'top'.
@@ -4204,6 +4214,13 @@
     } catch (e) {
       gameNotice = `⚠ 보드 갱신 실패: ${e.message}`;
     } finally {
+      // 주인공 글·댓글 1회 되울림 (v1.0.3) — 반응 성패와 무관하게 다음 턴 서사 소스로.
+      // 반응 적용 뒤에 읽어야 스레드(내 글 + 달린 반응)째로 실린다.
+      if (kind === 'user_post' || kind === 'user_comment') {
+        try {
+          if (boardMod.userEcho(schema, session.current, kind, payload)) await boardSaveNow('보드 되울림');
+        } catch (e) { console.log('[simcore] 보드 되울림 실패:', e.message); }
+      }
       boardBusy = false;
       renderGamePanel();
     }

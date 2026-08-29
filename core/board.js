@@ -37,6 +37,7 @@ function boardConfig(schema) {
     postsPerTurn: Math.max(0, Math.min(CAPS.NEW_PER_APPLY_MAX, b.postsPerTurn ?? DEFAULTS.postsPerTurn)),
     maxPosts: Math.max(CAPS.MAX_POSTS_MIN, Math.min(CAPS.MAX_POSTS_MAX, b.maxPosts ?? DEFAULTS.maxPosts)),
     mainInject: b.mainInject !== false,
+    echo: b.echo !== false,   // 주인공 글·댓글 1회 되울림 (v1.0.3)
     when: typeof b.when === 'string' ? b.when : '',
     css: typeof b.css === 'string' ? b.css : '',
     categories: Array.isArray(b.categories) && b.categories.length
@@ -219,6 +220,30 @@ function auxSpec(schema, state, makeLookup) {
   ].filter((x) => x !== null).join('\n');
 }
 
+/**
+ * 주인공의 글·댓글 1회 되울림 (v1.0.3) — 다음 전송에 한 번 실리고 소거되는 서사 소스.
+ * 유저가 모집글을 올리든 키배를 뜨든, 그 스레드(내 글 + 최신 반응)가 다음 턴 메인에
+ * "쓸 수 있으면 쓰고 아니면 무시하라"로 넘어간다. pendingNotifies를 타므로 자동 소거.
+ * mainLine의 "원문 금지" 원칙과 안 부딪힌다 — 주인공이 직접 한 일은 서사의 사실이다.
+ */
+function userEcho(schema, state, kind, payload) {
+  const cfg = boardConfig(schema);
+  if (!cfg || !cfg.echo || !state?.meta) return null;
+  const post = (state.board?.posts || []).find((p) => p.id === payload?.postId);
+  if (!post) return null;
+  // 최신 반응 — 되울림의 몸통에 이미 있는 유저 자신의 문장은 빼고 최대 3개
+  const rs = (post.re || []).filter((r) => r.body !== payload.body).slice(-3)
+    .map((r) => `${r.author} "${cut(r.body, 40)}"`).join(' · ');
+  const head = kind === 'user_comment'
+    ? `#${post.id} "${cut(post.title, 30)}" 글에 단 댓글 — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}: "${cut(payload.body, 80)}"`
+    : `${post.cat ? `[${post.cat}] ` : ''}"${cut(post.title, 30)}" — ${post.author}: "${cut(post.body, 80)}"`;
+  const line = `[${cfg.label}] 주인공이 방금 게시판에 남긴 흔적 (다음 서사에 쓸 수 있으면 쓰고, 아니면 무시하라): `
+    + head + (rs ? ` / 최신 반응: ${rs}` : '');
+  state.meta.pendingNotifies = state.meta.pendingNotifies || [];
+  state.meta.pendingNotifies.push(line);
+  return line;
+}
+
 /** 메인 프롬프트 화제 한 줄 — 서사가 여론을 아는 유일한 통로 */
 function mainLine(schema, state) {
   const cfg = boardConfig(schema);
@@ -278,5 +303,5 @@ function parseInteraction(text, extractJsonObject) {
 module.exports = {
   CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
-  digest, auxSpec, mainLine, interactionPrompt, parseInteraction,
+  digest, auxSpec, mainLine, userEcho, interactionPrompt, parseInteraction,
 };

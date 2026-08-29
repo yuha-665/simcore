@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.2
-//@display-name SimCore (시뮬 엔진) v1.0.2 상태창 위치 선택
+//@version 1.0.3
+//@display-name SimCore (시뮬 엔진) v1.0.3 보드 되울림
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.3 ────────────────────────────────────────────────
+// 보드 되울림 (유저 제안: "유저가 키배를 뜸 → 다음 서사에 쓸 소스로 주고, 필요없으면 버려지는
+// 1회용 통로") — board.echo (기본 켬).
+// - 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글 + 최신 반응 3개)
+//   실렸다가 소거된다 — pendingNotifies 규약 (상점 거래 내역과 같은 길).
+// - 반응 보조 호출의 성패와 무관하게 되울린다 (내 글 자체는 이미 사실). 반응 적용 뒤에
+//   읽어서 키배·지원 댓글이 스레드째 실린다. mainLine의 "원문 금지"와 안 부딪힌다 —
+//   주인공이 직접 한 일은 서사의 사실이라서다.
+// - [편집기] [보드] 탭 체크박스 + SCHEMA_BOARD_RULES (규칙 #3). test-board.js 되울림 절.
 //
 // ── v1.0.2 ────────────────────────────────────────────────
 // 상태창 위치 선택 (UI 개조 협업자 요청) — statusUI.position: 'bottom'(기본) | 'top'.
@@ -5105,6 +5115,7 @@ function boardConfig(schema) {
     postsPerTurn: Math.max(0, Math.min(CAPS.NEW_PER_APPLY_MAX, b.postsPerTurn ?? DEFAULTS.postsPerTurn)),
     maxPosts: Math.max(CAPS.MAX_POSTS_MIN, Math.min(CAPS.MAX_POSTS_MAX, b.maxPosts ?? DEFAULTS.maxPosts)),
     mainInject: b.mainInject !== false,
+    echo: b.echo !== false,   // 주인공 글·댓글 1회 되울림 (v1.0.3)
     when: typeof b.when === 'string' ? b.when : '',
     css: typeof b.css === 'string' ? b.css : '',
     categories: Array.isArray(b.categories) && b.categories.length
@@ -5287,6 +5298,30 @@ function auxSpec(schema, state, makeLookup) {
   ].filter((x) => x !== null).join('\n');
 }
 
+/**
+ * 주인공의 글·댓글 1회 되울림 (v1.0.3) — 다음 전송에 한 번 실리고 소거되는 서사 소스.
+ * 유저가 모집글을 올리든 키배를 뜨든, 그 스레드(내 글 + 최신 반응)가 다음 턴 메인에
+ * "쓸 수 있으면 쓰고 아니면 무시하라"로 넘어간다. pendingNotifies를 타므로 자동 소거.
+ * mainLine의 "원문 금지" 원칙과 안 부딪힌다 — 주인공이 직접 한 일은 서사의 사실이다.
+ */
+function userEcho(schema, state, kind, payload) {
+  const cfg = boardConfig(schema);
+  if (!cfg || !cfg.echo || !state?.meta) return null;
+  const post = (state.board?.posts || []).find((p) => p.id === payload?.postId);
+  if (!post) return null;
+  // 최신 반응 — 되울림의 몸통에 이미 있는 유저 자신의 문장은 빼고 최대 3개
+  const rs = (post.re || []).filter((r) => r.body !== payload.body).slice(-3)
+    .map((r) => `${r.author} "${cut(r.body, 40)}"`).join(' · ');
+  const head = kind === 'user_comment'
+    ? `#${post.id} "${cut(post.title, 30)}" 글에 단 댓글 — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}: "${cut(payload.body, 80)}"`
+    : `${post.cat ? `[${post.cat}] ` : ''}"${cut(post.title, 30)}" — ${post.author}: "${cut(post.body, 80)}"`;
+  const line = `[${cfg.label}] 주인공이 방금 게시판에 남긴 흔적 (다음 서사에 쓸 수 있으면 쓰고, 아니면 무시하라): `
+    + head + (rs ? ` / 최신 반응: ${rs}` : '');
+  state.meta.pendingNotifies = state.meta.pendingNotifies || [];
+  state.meta.pendingNotifies.push(line);
+  return line;
+}
+
 /** 메인 프롬프트 화제 한 줄 — 서사가 여론을 아는 유일한 통로 */
 function mainLine(schema, state) {
   const cfg = boardConfig(schema);
@@ -5346,7 +5381,7 @@ function parseInteraction(text, extractJsonObject) {
 module.exports = {
   CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
-  digest, auxSpec, mainLine, interactionPrompt, parseInteraction,
+  digest, auxSpec, mainLine, userEcho, interactionPrompt, parseInteraction,
 };
 
 });
@@ -11257,6 +11292,7 @@ const SCHEMA_BOARD_RULES = [
   '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+  '- `echo`(기본 true)면 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글+최신 반응) 실렸다가 소거됩니다 — 서사가 쓸 수 있으면 쓰고, 아니면 버려지는 1회용 소스.',
   '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
@@ -15821,6 +15857,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           '거짓인 턴에는 새 글이 안 올라옵니다 (열람은 항상 가능) — 게이트 안 통신 두절 같은 것'),
         bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); },
           '메인 모델에 화제 한 줄 주입 (서사가 여론을 아는 통로)'),
+        bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); },
+          '주인공 글·댓글 1회 되울림 — 다음 턴에 스레드째 서사 소스로 (안 쓰이면 버려짐)'),
       ),
       pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
         '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
@@ -26096,6 +26134,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     } catch (e) {
       gameNotice = `⚠ 보드 갱신 실패: ${e.message}`;
     } finally {
+      // 주인공 글·댓글 1회 되울림 (v1.0.3) — 반응 성패와 무관하게 다음 턴 서사 소스로.
+      // 반응 적용 뒤에 읽어야 스레드(내 글 + 달린 반응)째로 실린다.
+      if (kind === 'user_post' || kind === 'user_comment') {
+        try {
+          if (boardMod.userEcho(schema, session.current, kind, payload)) await boardSaveNow('보드 되울림');
+        } catch (e) { console.log('[simcore] 보드 되울림 실패:', e.message); }
+      }
       boardBusy = false;
       renderGamePanel();
     }

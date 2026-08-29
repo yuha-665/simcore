@@ -1249,6 +1249,7 @@ const SCHEMA_BOARD_RULES = [
   '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+  '- `echo`(기본 true)면 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글+최신 반응) 실렸다가 소거됩니다 — 서사가 쓸 수 있으면 쓰고, 아니면 버려지는 1회용 소스.',
   '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
@@ -5813,6 +5814,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           '거짓인 턴에는 새 글이 안 올라옵니다 (열람은 항상 가능) — 게이트 안 통신 두절 같은 것'),
         bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); },
           '메인 모델에 화제 한 줄 주입 (서사가 여론을 아는 통로)'),
+        bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); },
+          '주인공 글·댓글 1회 되울림 — 다음 턴에 스레드째 서사 소스로 (안 쓰이면 버려짐)'),
       ),
       pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
         '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),

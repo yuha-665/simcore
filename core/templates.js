@@ -707,6 +707,31 @@ const BUSINESS = {
 //             예시 팩은 꺼진 채(enabled: false) 실려 있다 — 어휘를 자기 에셋 이름에 맞춘 뒤 켠다.
 //          ⑥ 달력(calendar, v0.61) — 기념일 marks(월+일=매년·요일=매주) + 약속 목록(plans).
 //             일정 = list 항목 + @기한 규약이라 만료 정리·AI의 @+N 등록이 기존 기계로 돈다.
+// 하루 경계 넘김 (v0.99) 공용 조각 — romance·daily가 같은 패턴을 쓴다.
+// ⚠ 시각을 int로 받으면 안 된다 — 보조 changes의 숫자는 **델타**로 적용된다 (실측:
+//   init -1에 5를 적으면 4가 된다). enum은 절대값 적용이라 델타 함정이 없고,
+//   LLM에게도 "장면이 몇 시냐"보다 "장면이 어느 때냐"가 자연스럽다.
+const WAKE_ENUM = ['미정', '새벽', '아침', '정오', '오후', '저녁', '밤', '심야'];
+// 시간대 → 대표 시각. 심야 1시는 "자정을 넘긴 다음 날"로 자연히 떨어진다.
+const WAKE_HOUR = "(wake_at == '새벽' ? 5 : (wake_at == '아침' ? 8 : (wake_at == '정오' ? 12 : "
+  + "(wake_at == '오후' ? 15 : (wake_at == '저녁' ? 19 : (wake_at == '밤' ? 22 : 1))))))";
+// "다음으로 돌아오는 그 시간대"까지의 분 — (0, 1440]. 무조건 +1일이 아니다:
+// 밤 22:40에 자고 새벽이면 +380분(익일), 새벽 3시에 자고 아침이면 +300분(같은 날 아침 —
+// 무조건 익일로 보내면 29시간을 자게 된다. 옛 "다음 08:00" 공식의 이 미덕은 지킨다).
+// 정확히 그 시각에 누르면 +1440(다음 날 같은 시각). 총량이 1440 이하라 skip_min 하나로 실린다.
+const WAKE_TOTAL_MIN = `((${WAKE_HOUR} * 60 - (hour * 60 + minute)) + 1439) % 1440 + 1`;
+const WAKE_AT_VAR = {
+  id: 'wake_at', label: '(내부) 다음 장면 시간대', type: 'enum', init: '미정', enum: WAKE_ENUM,
+  desc: "day_break가 true일 때만: 하루를 마친 뒤 새로 시작된 장면이 실제로 잡은 때를 장면에서 읽어 적어라 "
+    + "(새벽/아침/정오/오후/저녁/밤/심야 — 심야는 자정 넘김). 아침이라 단정하지 마라. "
+    + "시계는 시스템이 '다음으로 돌아오는 그 시간대'로 맞춘다.",
+};
+const DAY_BREAK_VAR = { id: 'day_break', label: '(내부) 다음날 예약', type: 'bool', init: false };
+const DAY_BREAK_DIRECTIVE = (examples) => ({
+  id: 'day_break_pending', when: 'day_break',
+  text: `[시간] 다음 장면은 하루를 마치고 난 뒤다 — 대개 다음 날이지만, 새벽에 잠들었다면 같은 날 아침일 수 있다. 시각은 문맥이 정한다 — ${examples} 모두 가능하다. 아침으로 단정하지 마라. 장면의 시각이 자연스럽게 드러나게 하라.`,
+});
+
 const ROMANCE = {
   simcore: '0.1',
   meta: { name: '연애 — 관계 시뮬', author: 'SimCore 템플릿' },
@@ -748,6 +773,11 @@ const ROMANCE = {
       desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
     { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
       desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 데이트·수업이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
+    // 하루 경계 넘김 (v0.99) — "다음 날 = 아침"이라 단정하지 않는다. 🌙 버튼은 깃발만 세우고,
+    // 장면이 잡은 시간대(wake_at)를 보조가 읽어 오면 시스템 이벤트가 분 델타를 계산한다
+    // (시각을 읽는 건 LLM의 일, 델타를 구하는 건 시스템의 일 — "숫자는 시스템이").
+    DAY_BREAK_VAR,
+    WAKE_AT_VAR,
   ],
   derived: [
     { id: 'closeness', label: '친밀도', expr: 'clamp(round(affection * 0.7 + count(memories) * 3), 0, 100)' },
@@ -781,6 +811,14 @@ const ROMANCE = {
       { id: 'drift', when: 'affection <= 5 and stage != "타인"',
         effects: [{ set: 'stage', expr: '"지인"' }, { set: 'mood', expr: '"가라앉음"' }],
         notify: '사이가 눈에 띄게 서먹해졌다.' },
+      // 하루 경계 동기화 (v0.99) — 보조가 wake_at을 읽어 오면 "다음으로 돌아오는 그
+      // 시간대"까지의 분을 시스템이 계산해 굳히고 깃발을 내린다 (총량 ≤ 1440 — max 안 넘음).
+      { id: 'day_break_sync', when: "day_break and wake_at != '미정'",
+        effects: [
+          { set: 'skip_min', expr: WAKE_TOTAL_MIN },
+          { set: 'day_break', expr: 'false' },
+          { set: 'wake_at', expr: "'미정'" },
+        ] },
     ],
     randomEvents: {
       chancePerTurn: 0.35,
@@ -814,6 +852,8 @@ const ROMANCE = {
       text: '[감정] 질투가 짙다. 티내지 않으려다 새어 나오는 가시 돋친 말투를 섞어라.' },
     { id: 'recall', when: 'count(memories) >= 3',
       text: '[연속성] 함께한 기억({memories:tags})을 대화에서 자연스럽게 다시 꺼내 쓰라.' },
+    // 깃발이 서 있는 동안 유지 — inject는 1회성이지만 이 지시문은 리롤에도 살아남는다
+    DAY_BREAK_DIRECTIVE('새벽 등교, 늦잠, 점심 약속, 저녁 재회'),
   ],
   actions: [
     { id: 'talk', label: '💬 말 걸기', mode: 'oneshot', cooldown: 1,
@@ -825,11 +865,13 @@ const ROMANCE = {
     { id: 'confess', label: '💗 고백', mode: 'oneshot', when: 'affection >= 70 and not confessed',
       inject: '[플레이어 행동] 용기를 내어 마음을 고백한다.',
       effects: [{ set: 'confessed', expr: '1' }, { set: 'tension', expr: '100' }] },
-    // 하루 마무리 — 지금이 몇 시든 "다음 08:00까지"를 분으로 계산해 굳힌다.
-    // 자정 전에 누르면 이튿날 아침, 새벽에 누르면 같은 날 아침이 된다.
+    // 하루 마무리 (v0.99 하루 경계 넘김) — 시계를 미리 돌리지 않는다. 깃발만 세우면
+    // 메인이 문맥에 맞는 다음날 장면(새벽/정오/저녁…)을 고르고, 보조가 그 시간대(wake_at)를
+    // 읽어 오면 day_break_sync 이벤트가 분을 계산해 굳힌다. "아침 고정"은 군대물·야간
+    // 서사에서 어긋난다는 실전 피드백의 반영.
     { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1,
-      inject: '[시간] 오늘은 여기까지다. 다음 장면은 이튿날 아침에서 시작하라.',
-      effects: [{ set: 'skip_min', expr: '((1919 - hour * 60 - minute) % 1440) + 1' }] },
+      inject: '[시간] 오늘은 여기까지다. 다음 장면은 하루를 마치고 난 뒤 — 시각은 문맥이 정한다.',
+      effects: [{ set: 'day_break', expr: 'true' }] },
   ],
   updater: {
     allow: [
@@ -841,6 +883,7 @@ const ROMANCE = {
       { id: 'plans' },   // 서사에서 잡힌 약속 — "@+N"은 시스템이 절대 날짜로 굳힌다 (v0.61)
       // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
       { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
+      { id: 'wake_at' },  // 하루 경계 넘김 — 다음날 장면이 잡은 시간대 (day_break 중에만 의미)
     ],
     guide: '기억(memories)에는 실제로 있었던 사건만 한 줄로 add하라. 호감도는 상대의 반응이 뚜렷할 때만 움직여라.',
   },
@@ -1812,6 +1855,9 @@ const DAILY = {
     { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
       desc: '이번 장면에서 실제로 흐른 시간(분). 대화 한 토막이면 5~20, 식사·이동이면 30~90, '
         + '반나절을 보냈으면 240까지. 아무 일도 없었으면 0. 하루를 넘기지는 마라 — 그건 [💤] 버튼의 몫이다.' },
+    // 하루 경계 넘김 (v0.99) — "다음 날 = 아침"이라 단정하지 않는다 (연애 템플릿과 같은 패턴)
+    DAY_BREAK_VAR,
+    WAKE_AT_VAR,
   ],
   derived: [
     // 때는 시각에서 나온다 — 옛 enum 변수를 대체. 세는 곳이 하나뿐이라 시각과 어긋날 수 없다.
@@ -1821,7 +1867,16 @@ const DAILY = {
   rules: {
     // 틱 없음 — 위 주석 참고. 시간이 저절로 흐르면 대화가 성립하지 않는다.
     onTurn: [],
-    events: [],
+    events: [
+      // 하루 경계 동기화 (v0.99) — "다음으로 돌아오는 그 시간대"까지의 분을 시스템이
+      // 계산한다 (총량 ≤ 1440 — skip_day 없는 이 템플릿의 분 하나로 충분히 실린다).
+      { id: 'day_break_sync', when: "day_break and wake_at != '미정'",
+        effects: [
+          { set: 'skip_min', expr: WAKE_TOTAL_MIN },
+          { set: 'day_break', expr: 'false' },
+          { set: 'wake_at', expr: "'미정'" },
+        ] },
+    ],
     randomEvents: {
       chancePerTurn: 0.3,
       table: [
@@ -1876,16 +1931,18 @@ const DAILY = {
       text: '[상태] 늦은 시각({clock}, {tod})이다. 문을 닫은 가게, 인적이 드문 거리, 피로 같은 것을 고려하라.' },
     { id: 'broke', when: 'money < 5000',
       text: '[상태] 수중에 {money}원밖에 없다. 돈이 드는 선택은 부담스럽게 다뤄라.' },
+    DAY_BREAK_DIRECTIVE('새벽 출근, 늦잠, 점심부터 시작, 밤샘 뒤 그대로 낮'),
   ],
   actions: [
     { id: 'pass_time', label: '🕐 시간을 보낸다', mode: 'oneshot',
       inject: '[플레이어 액션] 두어 시간이 흘렀다. 그 사이에 있었던 일부터 이어서 그려라.',
       effects: [{ set: 'skip_min', expr: '120' }] },
-    // 지금이 몇 시든 **다음 08:00까지**를 분으로 계산한다 — 새벽 3시에 눌러도 같은 날 아침이 된다.
-    // (`skip_day = 1`로 하면 시각이 그대로라 새벽에 잠들면 이튿날도 새벽에 깬다)
+    // 하루 마무리 (v0.99 하루 경계 넘김) — 시계를 미리 돌리지 않는다. 깃발만 세우면 메인이
+    // 문맥에 맞는 다음날 장면을 고르고, 보조가 그 시간대(wake_at)를 읽어 오면 day_break_sync
+    // 이벤트가 분을 계산해 굳힌다. (예전엔 "다음 08:00" 고정 — 야근·교대 서사에서 어긋났다)
     { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot',
-      inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 이튿날 아침부터 시작한다.',
-      effects: [{ set: 'skip_min', expr: '((1919 - hour * 60 - minute) % 1440) + 1' }] },
+      inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 자고 일어난 뒤 — 시각은 문맥이 정한다.',
+      effects: [{ set: 'day_break', expr: 'true' }] },
   ],
   updater: {
     model: 'aux',
@@ -1894,6 +1951,7 @@ const DAILY = {
     // 대신 **그날 안에서 흐른 분**은 보고하게 한다 — 그건 서사만 아는 정보다.
     allow: [
       { id: 'skip_min', maxGain: 240 },
+      { id: 'wake_at' },  // 하루 경계 넘김 — 다음날 장면이 잡은 시간대 (day_break 중에만 의미)
       { id: 'weather' },
       { id: 'place', maxLength: 40 },
       { id: 'money', maxGain: 50000, maxLoss: 50000 },

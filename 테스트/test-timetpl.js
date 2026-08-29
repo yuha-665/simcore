@@ -126,18 +126,23 @@ const run = (s, st, n, seed = 'z') => {
   ck('21:30 → 밤, late_hour 활성', L(s, late.state)('tod') === '밤'
     && late.activeDirectives.includes('late_hour'), L(s, late.state)('clock'));
 
-  // 💤 = 지금이 몇 시든 다음 08:00
+  // 💤 (v0.99 하루 경계 넘김) — 깃발 → 보조가 장면의 시간대(wake_at)를 읽어 오면 동기화.
+  // "다음으로 돌아오는 그 시간대" 공식이라 밤에 자면 이튿날, 새벽에 자면 같은 날이 된다.
   const t2 = engine.toggleAction(s, late.state, 'end_day');
-  const send2 = engine.sendPhase(s, t2.state, {});
-  ck('★ 밤에 💤 → 이튿날 08:00', L(s, send2.state)('date') === '5월 19일'
+  let send2 = engine.sendPhase(s, t2.state, {});
+  ck('💤 직후 — 시계 유지 + 깃발 (아침 선반영 안 함)', send2.state.vars.day_break === true
+    && L(s, send2.state)('clock') === '21:30', L(s, send2.state)('clock'));
+  send2 = engine.sendPhase(s, engine.outputPhase(s, send2.state, { wake_at: '아침' }, {}, {}).state, {});
+  ck('★ 밤에 💤 + 아침 판독 → 이튿날 08:00', L(s, send2.state)('date') === '5월 19일'
     && L(s, send2.state)('clock') === '08:00', `${L(s, send2.state)('date')} ${L(s, send2.state)('clock')}`);
-  // 새벽 3시에 💤 → **같은 날** 아침 (skip_day = 1이면 못 하는 것)
+  // 새벽에 💤 → **같은 날** 아침 (무조건 +1일이면 29시간을 자게 된다 — 옛 공식의 미덕 유지)
   let dawn = engine.outputPhase(s, engine.initState(s), { skip_min: 240 }, {}, {}).state; // 12:00
   for (let i = 0; i < 4; i++) dawn = engine.outputPhase(s, dawn, { skip_min: 180 }, {}, {}).state; // 24:00 → 03:00
   ck('새벽 03:00 상태', L(s, dawn)('clock') === '00:00' || L(s, dawn)('tod') === '새벽', L(s, dawn)('clock'));
   const t3 = engine.toggleAction(s, dawn, 'end_day');
-  const send3 = engine.sendPhase(s, t3.state, {});
-  ck('★ 새벽에 💤 → 같은 날 아침 08:00 (시각 유지형으로는 불가능)',
+  let send3 = engine.sendPhase(s, t3.state, {});
+  send3 = engine.sendPhase(s, engine.outputPhase(s, send3.state, { wake_at: '아침' }, {}, {}).state, {});
+  ck('★ 새벽에 💤 + 아침 판독 → 같은 날 아침 08:00 (29시간 수면 방지)',
     L(s, send3.state)('clock') === '08:00', `${L(s, send3.state)('date')} ${L(s, send3.state)('clock')}`);
 }
 

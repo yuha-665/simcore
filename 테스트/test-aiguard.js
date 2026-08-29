@@ -137,15 +137,21 @@ const BASE = {
   ck('romance: 🌙 하루 마무리 액션', (r.actions || []).some((a) => a.id === 'end_day'), '');
   const v = validateSchema(r);
   ck('★ romance 검증 통과 경고 0', v.ok && v.warnings.length === 0, J(v.warnings));
-  // 실동작: 08:30 시작 → 90분 장면 → 🌙 → 이튿날 08:00
+  // 실동작 (v0.99 하루 경계 넘김): 08:30 시작 → 90분 장면 → 🌙(깃발만) → 보조가
+  // "아침" 장면으로 읽어 오면 동기화 → 이튿날 08:00
   let st = engine.initState(r);
   st.meta.setupDone = true; // 세션 0 건너뜀
   let o = engine.outputPhase(r, st, { skip_min: 90 }, {}, {});
   const L = (s2) => engine.makeLookup(r, s2.vars);
   ck('romance: 장면 90분 흐름', L(o.state)('clock') === '10:00', L(o.state)('clock'));
   const t = engine.toggleAction(r, o.state, 'end_day');
-  const send = engine.sendPhase(r, t.state, {});
-  ck('★ romance: 🌙 → 이튿날 08:00', L(send.state)('clock') === '08:00' && L(send.state)('date') === '3월 3일',
+  let send = engine.sendPhase(r, t.state, {});
+  ck('★ romance: 🌙 직후 — 시계 유지 + 깃발 (아침 선반영 안 함)',
+    L(send.state)('clock') === '10:00' && send.state.vars.day_break === true,
+    L(send.state)('clock') + ' ' + String(send.state.vars.day_break));
+  const o2 = engine.outputPhase(r, send.state, { wake_at: '아침' }, {}, {});
+  send = engine.sendPhase(r, o2.state, {});
+  ck('★ romance: 🌙 + 아침 판독 → 이튿날 08:00', L(send.state)('clock') === '08:00' && L(send.state)('date') === '3월 3일',
     L(send.state)('date') + ' ' + L(send.state)('clock'));
 }
 

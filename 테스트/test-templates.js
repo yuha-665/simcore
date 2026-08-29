@@ -121,6 +121,69 @@ for (const k of ['mystery', 'business', 'romance']) {
   ck('[romance] 켜면 image 스펙 합류', prompt2.includes('"image"') && prompt2.includes('Hana'), prompt2.slice(-300));
 }
 
+// 하루 경계 넘김 (v0.99) — 🌙는 깃발만, 시각은 장면이 정하고 시스템이 분을 계산한다.
+// 유저 실전 피드백: "다음날 아침 고정"은 군대물·야간 서사에서 어긋난다.
+// ⚠ 시간대는 enum(wake_at)이다 — int로 받으면 보조 changes가 델타로 적용돼 값이 어긋난다 (실측).
+{
+  const { evaluate } = SimCore.require('expr');
+  const at = (sch, st, name) => evaluate(name, engine.makeLookup(sch, st.vars), null);
+  for (const key of ['romance', 'daily']) {
+    const sch = TEMPLATES[key].schema;
+    let st = engine.initState(sch); st.meta.setupDone = true;
+    // 밤 22:40으로 옮겨 놓고 (야간 작전 시나리오 재현) 🌙를 무장
+    st.vars.skip_min = (22 - at(sch, st, 'hour')) * 60 + (40 - at(sch, st, 'minute'));
+    st = engine.outputPhase(sch, st, {}, {}, { rng: seededRng('d', 0, 'o') }).state;
+    st = engine.toggleAction(sch, st, 'end_day').state;
+    const day0 = at(sch, st, 'elapsed');
+    const send = engine.sendPhase(sch, st, { rng: seededRng('d', 1, 's') });
+    st = send.state;
+    ck(`[${key}] 🌙 — 시계는 안 돌고 깃발만`, at(sch, st, 'elapsed') === day0 && st.vars.day_break === true,
+      `elapsed ${at(sch, st, 'elapsed')} day_break ${st.vars.day_break}`);
+    ck(`[${key}] 🌙 inject·지시문 — 아침 단정 금지`, send.promptBlock.includes('시각은 문맥이 정한다')
+      && send.promptBlock.includes('아침으로 단정하지 마라'), '');
+    // 보조가 "다음날 새벽" 장면으로 읽어 옴 → sync 이벤트가 분을 계산·깃발 해제
+    st = engine.outputPhase(sch, st, { wake_at: '새벽' }, {}, { rng: seededRng('d', 2, 'o') }).state;
+    ck(`[${key}] sync — 깃발·시간대 되돌림 (자가 회복 래치)`, st.vars.day_break === false && st.vars.wake_at === '미정',
+      `day_break ${st.vars.day_break} wake_at ${st.vars.wake_at}`);
+    // 다음 전송에서 소비 — 다음 날 새벽 05:00 정각
+    st = engine.sendPhase(sch, st, { rng: seededRng('d', 3, 's') }).state;
+    ck(`[${key}] ★ 익일 새벽 05:00 도착 (22:40 → +380분)`, at(sch, st, 'elapsed') === day0 + 1
+      && at(sch, st, 'hour') === 5 && at(sch, st, 'minute') === 0,
+      `elapsed ${at(sch, st, 'elapsed')} ${at(sch, st, 'hour')}:${at(sch, st, 'minute')}`);
+    // 새벽 03:00에 잠들어 "아침" — 무조건 +1일이 아니라 **같은 날** 아침 (29시간 수면 방지.
+    // 옛 "다음 08:00" 공식의 미덕을 next-occurrence 공식이 지킨다)
+    let st2 = engine.initState(sch); st2.meta.setupDone = true;
+    st2.vars.skip_min = ((3 - at(sch, st2, 'hour') + 24) * 60 - at(sch, st2, 'minute')) % 1440;
+    st2 = engine.outputPhase(sch, st2, {}, {}, { rng: seededRng('d', 4, 'o') }).state;
+    const day2 = at(sch, st2, 'elapsed');
+    st2 = engine.toggleAction(sch, st2, 'end_day').state;
+    st2 = engine.sendPhase(sch, st2, { rng: seededRng('d', 5, 's') }).state;
+    st2 = engine.outputPhase(sch, st2, { wake_at: '아침' }, {}, { rng: seededRng('d', 6, 'o') }).state;
+    st2 = engine.sendPhase(sch, st2, { rng: seededRng('d', 7, 's') }).state;
+    ck(`[${key}] ★ 새벽 03:00 취침 → 같은 날 아침 08:00 (29시간 수면 방지)`, at(sch, st2, 'elapsed') === day2
+      && at(sch, st2, 'hour') === 8, `elapsed ${at(sch, st2, 'elapsed')} hour ${at(sch, st2, 'hour')}`);
+    // 심야 — "자정 넘김"은 달력상 다음 날 01:00 (22:40에 누르면 같은 밤의 연장)
+    let st4 = engine.initState(sch); st4.meta.setupDone = true;
+    st4.vars.skip_min = (22 - at(sch, st4, 'hour')) * 60 + (40 - at(sch, st4, 'minute'));
+    st4 = engine.outputPhase(sch, st4, {}, {}, { rng: seededRng('d', 11, 'o') }).state;
+    const day4 = at(sch, st4, 'elapsed');
+    st4 = engine.toggleAction(sch, st4, 'end_day').state;
+    st4 = engine.sendPhase(sch, st4, { rng: seededRng('d', 12, 's') }).state;
+    st4 = engine.outputPhase(sch, st4, { wake_at: '심야' }, {}, { rng: seededRng('d', 13, 'o') }).state;
+    st4 = engine.sendPhase(sch, st4, { rng: seededRng('d', 14, 's') }).state;
+    ck(`[${key}] 심야 = 달력상 다음 날 01:00`, at(sch, st4, 'elapsed') === day4 + 1
+      && at(sch, st4, 'hour') === 1, `elapsed ${at(sch, st4, 'elapsed')} hour ${at(sch, st4, 'hour')}`);
+    // 보조가 wake_at을 못 적은 턴 — 깃발이 남아 지시문 유지 (다음 턴 재시도)
+    let st3 = engine.initState(sch); st3.meta.setupDone = true;
+    st3 = engine.toggleAction(sch, st3, 'end_day').state;
+    st3 = engine.sendPhase(sch, st3, { rng: seededRng('d', 8, 's') }).state;
+    st3 = engine.outputPhase(sch, st3, {}, {}, { rng: seededRng('d', 9, 'o') }).state;
+    const send3 = engine.sendPhase(sch, st3, { rng: seededRng('d', 10, 's') });
+    ck(`[${key}] 보조 무응답 턴 — 깃발 유지 + 지시문 재주입`, st3.vars.day_break === true
+      && send3.promptBlock.includes('아침으로 단정하지 마라'), '');
+  }
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

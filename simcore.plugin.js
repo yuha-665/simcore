@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.4
-//@display-name SimCore (시뮬 엔진) v1.0.4 패널 쓰기 유실 픽스
+//@version 1.0.5
+//@display-name SimCore (시뮬 엔진) v1.0.5 개조 번들
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.5 ────────────────────────────────────────────────
+// 개조 번들 (배포 도구) — 남의 봇 개조판을 "카드 재배포 없이" 나누는 통로 (원본 카드
+// 비허가 확인이 계기). 로어북 전체 + 정규식을 한 파일로 묶고, 받는 쪽은 원본 카드 위에
+// 한 번에 교체 적용한다 — 수동 "전부 지우고 가져오기" 지옥(리수에 일괄삭제 없음)이 사라진다.
+// - 스키마 항목(⚙simcore)도 로어북에 실려 함께 간다 → 배포물이 [플러그인 + 번들] 2개로 준다.
+// - 교체 전 이전 로어북·정규식을 pluginStorage에 자동 백업 (캐릭터당 최근 3개) + [되돌리기].
+// - 트리거스크립트(루아 브리지)·인사말·이미지는 안 건드린다 — 원본 카드의 것 유지.
+// - 적용 확인은 패널 안 2단 버튼 (규칙 #6: 패널 위 host alert 금지). 형식: simcoreBundle: 1.
+// - 순수 로직은 bundleFromChar/applyBundleToChar — 테스트 배수구 globalThis.__simcoreBundle.
+//   테스트/test-bundle.js 신설.
 //
 // ── v1.0.4 ────────────────────────────────────────────────
 // 긴급: 턴 없이 패널만 만진 변화가 리로드에 증발 (실사고 제보: "게시글 쓰고 갱신 누르니
@@ -23923,6 +23934,39 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
 
+  // ── 개조 번들 (v1.0.5) — 로어북+정규식을 한 파일로 배포하고 한 번에 교체 적용 ──
+  // 계기: 개조 배포에서 원본 카드 재배포가 비허가 → "원본 카드 + 개조 파일"로 갈랐는데,
+  // 리수에 로어북·정규식 일괄삭제가 없어 받는 쪽이 원본 항목을 하나씩 지워야 했다.
+  // 번들은 **전체 교체**라 그 수작업이 없다. 스키마 항목(⚙simcore)도 로어북에 실려 함께 간다.
+  // 트리거스크립트(루아 브리지 자리)·인사말·이미지는 안 건드린다 — 원본 카드의 것 유지.
+  function bundleFromChar(char, name) {
+    return {
+      simcoreBundle: 1,
+      name: String(name || char?.name || '개조 번들'),
+      lorebook: (char?.globalLore || []).map((l) => ({ ...l })),
+      regex: (char?.customscript || []).map((r) => ({ ...r })),
+    };
+  }
+  /** 번들 형식 검사 — 아니면 이유 문자열, 맞으면 null */
+  function bundleShapeError(data) {
+    if (!data || data.simcoreBundle !== 1) return '개조 번들 파일이 아님 (simcoreBundle: 1 필요)';
+    if (!Array.isArray(data.lorebook) || !data.lorebook.length) return '번들에 로어북이 비어 있음';
+    if (data.regex != null && !Array.isArray(data.regex)) return 'regex는 배열이어야 함';
+    return null;
+  }
+  /**
+   * 번들을 캐릭터에 교체 적용 — 로어북은 통째, 정규식은 번들에 있을 때만 통째.
+   * 순수 함수: char를 고쳐서 돌려줄 뿐 저장(setCharacter)은 호출자 몫.
+   */
+  function applyBundleToChar(char, data) {
+    char.globalLore = data.lorebook.map((l) => ({ ...l }));
+    if (Array.isArray(data.regex)) char.customscript = data.regex.map((r) => ({ ...r }));
+    return char;
+  }
+  // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직만 노출, UI는 실기 확인
+  try { globalThis.__simcoreBundle = { bundleFromChar, bundleShapeError, applyBundleToChar }; }
+  catch { /* 전역이 막힌 환경 */ }
+
   // 보조 모델에 붙이는 짧은 유저 턴. system 한 통만 보내면 안 되는 프로바이더가 있다.
   // 구글 계열(버텍스 Gemini)은 system을 contents가 아니라 systemInstruction으로 빼내므로
   // system만 보내면 contents가 빈 배열이 되고, 리수의 요청 빌더가 마지막/첫 원소의 role을
@@ -27616,6 +27660,20 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             <p class="sc-card-desc">켜면 세이브의 변수·규칙·이벤트·액션까지 복원해요. 기존 스키마는 자동 백업되며
               편집 작업공간의 백업 복원으로 되돌릴 수 있어요. 끄면 현재 스키마를 유지하고 호환되는 변수값만 가져와요.</p>
           </section>
+          <section class="sc-card sc-option-card">
+            <h3 class="sc-card-title">🧳 개조 번들 (배포 도구)</h3>
+            <p class="sc-card-desc">이 캐릭터의 로어북 전체와 정규식을 한 파일로 묶어요. 개조판을 나눌 때 카드 대신
+              이 파일을 배포하면, 받는 분은 원본 카드 위에 [가져와 교체] 한 번으로 끝나요 — 시스템(⚙simcore)도
+              로어북에 실려 함께 갑니다. 교체 전 상태는 자동 백업되고 [되돌리기]로 복구할 수 있어요.
+              인사말·이미지·트리거는 건드리지 않아요.</p>
+            <div class="sc-card-body" style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="sc-bundle-export">번들 내보내기</button>
+              <button id="sc-bundle-apply">번들 가져와 교체</button>
+              <button id="sc-bundle-revert">교체 되돌리기</button>
+              <input type="file" id="sc-bundle-file" accept=".json" style="display:none">
+            </div>
+            <div id="sc-bundle-report" class="report"></div>
+          </section>
           <div id="sc-save-report" class="report"></div>
         </div>
 
@@ -28168,6 +28226,111 @@ count(목록)  has(목록, "항목")</pre>
         ? `<span class="status-ok">✓ 변수 ${n}개 복원 (쿨다운·대기 이벤트는 초기화됨)</span>`
         : '<span class="status-warn">미러에 복원할 값이 없음</span>';
       renderPanel();
+    };
+
+    // ── 개조 번들 (v1.0.5) ──
+    const bundleRep = () => document.getElementById('sc-bundle-report');
+    const BUNDLE_BK_PREFIX = 'sim:bundle-backup:';
+    const bundleBkKeyBase = (char) => `${BUNDLE_BK_PREFIX}${char.chaId ?? char.name}:`;
+    document.getElementById('sc-bundle-export').onclick = async () => {
+      const rep = bundleRep();
+      try {
+        const char = await Risuai.getCharacter();
+        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+        const data = bundleFromChar(char, schema?.meta?.name);
+        if (!data.lorebook.length) {
+          rep.innerHTML = '<span class="status-bad">이 캐릭터의 로어북이 비어 있음 — 내보낼 게 없어요</span>'; return;
+        }
+        const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `simcore-bundle-${data.name.replace(/[^\w가-힣-]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        rep.innerHTML = `<span class="status-ok">✓ 내보내기 완료 — 로어북 ${data.lorebook.length}개 · 정규식 ${data.regex.length}개`
+          + `${hasSchema ? ' · ⚙simcore 동봉' : ' · <b>⚠ ⚙simcore 없음 — 스키마를 먼저 [설치/업데이트] 하고 다시 내보내세요</b>'}</span>`;
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">내보내기 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    // 교체는 파괴적이라 패널 안 2단 확인 (규칙 #6 — 패널 위 host alert 금지). 파일을 먼저
+    // 읽어 형식·개수를 보여준 상태에서 같은 버튼을 한 번 더 눌러야 실제로 갈아 끼운다.
+    let bundlePending = null; // { data, until }
+    document.getElementById('sc-bundle-apply').onclick = () => {
+      if (bundlePending && Date.now() < bundlePending.until) return runBundleApply();
+      bundlePending = null;
+      document.getElementById('sc-bundle-file').click();
+    };
+    document.getElementById('sc-bundle-file').onchange = async (ev) => {
+      const rep = bundleRep();
+      const file = ev.target.files?.[0];
+      ev.target.value = '';
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        const bad = bundleShapeError(data);
+        if (bad) { rep.innerHTML = `<span class="status-bad">${escapeText(bad)}</span>`; return; }
+        bundlePending = { data, until: Date.now() + 15000 };
+        const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
+        rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
+          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}.<br>`
+          + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
+          + '15초 안에 [번들 가져와 교체]를 한 번 더 누르면 적용해요.</span>';
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">번들 읽기 실패: ${escapeText(e.message)}</span>`;
+      }
+    };
+    async function runBundleApply() {
+      const rep = bundleRep();
+      const { data } = bundlePending;
+      bundlePending = null;
+      try {
+        const char = await Risuai.getCharacter();
+        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+        // 교체 전 백업 (캐릭터당 최근 3개) — 스키마 백업과 같은 결의 안전망
+        try {
+          const bk = bundleBkKeyBase(char) + Date.now();
+          await Risuai.pluginStorage.setItem(bk, JSON.stringify({
+            lorebook: char.globalLore || [], regex: char.customscript || [],
+          }));
+          const keys = (await Risuai.pluginStorage.keys())
+            .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
+          for (const k of keys.slice(0, -3)) await Risuai.pluginStorage.removeItem(k);
+        } catch (e) { console.log('[simcore] 번들 백업 실패:', e.message); }
+        applyBundleToChar(char, data);
+        await Risuai.setCharacter(char);
+        charKey = null;
+        await loadForCurrentChar();
+        rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
+          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}`
+          + `${session ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요' : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;
+        renderPanel();
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;
+      }
+    }
+    document.getElementById('sc-bundle-revert').onclick = async () => {
+      const rep = bundleRep();
+      try {
+        const char = await Risuai.getCharacter();
+        if (!char) { rep.innerHTML = '<span class="status-bad">캐릭터가 선택되지 않음</span>'; return; }
+        const keys = (await Risuai.pluginStorage.keys())
+          .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
+        if (!keys.length) { rep.innerHTML = '<span class="status-warn">이 캐릭터의 번들 교체 백업이 없음</span>'; return; }
+        const raw = await Risuai.pluginStorage.getItem(keys[keys.length - 1]);
+        const bk = JSON.parse(raw);
+        char.globalLore = bk.lorebook || [];
+        char.customscript = bk.regex || [];
+        await Risuai.setCharacter(char);
+        await Risuai.pluginStorage.removeItem(keys[keys.length - 1]); // 쓴 백업은 소모 (되돌리기 반복 = 한 단계씩)
+        charKey = null;
+        await loadForCurrentChar();
+        rep.innerHTML = `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>`;
+        renderPanel();
+      } catch (e) {
+        rep.innerHTML = `<span class="status-bad">되돌리기 실패: ${escapeText(e.message)}</span>`;
+      }
     };
   }
 
@@ -28771,6 +28934,7 @@ count(목록)  has(목록, "항목")</pre>
     if (luaPollTimer) clearInterval(luaPollTimer);
     if (outSettle) { clearTimeout(outSettle.timer); outSettle = null; }
     try { delete globalThis.__simcoreDrainTurn; } catch { /* 전역이 막힌 환경 */ }
+    try { delete globalThis.__simcoreBundle; } catch { /* 전역이 막힌 환경 */ }
     console.log('[simcore] 언로드');
   });
   console.log('[simcore] 플러그인 초기화 완료 — 채팅 화면의 ⚙️ 버튼 또는 설정 메뉴에서 패널 열기');

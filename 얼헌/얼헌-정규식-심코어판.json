@@ -1,0 +1,195 @@
+{
+ "type": "regex",
+ "data": [
+  {
+   "comment": "[ 🖊️ ] /gen: 세계관/룰 생성",
+   "in": "/gen",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create a text RPG.\n\n1. **Extract Keywords and Core Sentences:**\n   - Separate the keywords and sentences from the \"Character Information\" provided.\n\n2. **Analyze World Elements:**\n   - Analyze in-depth how each of the sentences and keywords will influence the world's attributes, such as geography, history, factions, cultures, magic systems, and technological advancements.\n\n3. **Synthesize Information:**\n   - The extracted information may seem disparate. Creatively synthesize a cohesive world setting that organically connects this information (e.g., Info A, Info B - because Info A and Info X, it is Info B).\n\n4. **Complete World Setting According to the Template:**\n   - Fill in the completed world's settings according to the provided template. While filling out the template, avoid unnecessary literary language and focus on straightforward facts and information.\n\n5. **Output the Completed World:**\n   - Omit any explanation of how the world was created and only output the completed world result following the template.\n\n6. **Focus on Rich Detail:**\n   - Do not output interface elements or images. Ensure the descriptions are rich and detailed, creating a vibrant and three-dimensional world.\n\n7. **Prohibitions:**\n - Do not include player profiles, Additional Information/Rules and interfaces in your response.)\n",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "[ 🖊️ ] /kr : 왕국 및 지역 정보 확장",
+   "in": "/kr",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create information.\n\nBased on the information of the created RPG, write detailed information on each item of **Kingdoms/Regions**. Please follow this format:\n### name\n- Overview: <Key information and explanation, regional characteristics and culture, living tribes and people, tendencies, culture>\n- Locations: <Detailed locations here>\n\n**Prohibitions:**\n - Do not include player profiles, Additional Information/Rules and interfaces in your response.)",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "[ 🖊️ ] /pe: 탐험할 장소 확장",
+   "in": "/pe",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create information.\n\nBased on the information of the created RPG, write detailed information for each item in **Places to Explore**. Please follow this format:\n### World Largest Dungeon\nImage command: {{img::<name>}}\n- Overview: <Key information and explanation, where this place belongs on the world map, kingdom, or region.>\n- Monsters: <If this location is a dungeon or a dangerous place, write the monsters that live there. If it is a user-friendly place and monsters do not live in it, it will not be written about.>\n- Trivia:\n\n**Prohibitions:**\n - Do not include player profiles, Additional Information/Rules and interfaces in your response.)\n",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "[ 🖊️ ] /npc : NPC 정보 확장",
+   "in": "/npc",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create information. \n\nBased on the information of the created RPG, write down the details of each **Characters (NPC)** item in detail. Please follow this format:\n\n### Profile\nName:\nAlias:\nAge:\nGender:\nRace:\nOrigin:\nBirthday:\nFaith:\nBlood type:\n\n### Appearance\nBody shape:\nOverall Look: (Includes eye and hair color)\nFashion style:\nEquipment:\nSignature item:\nPerfume:\nAura:\n\n### Background\nStrength:\nIntelligence:\nFamily:\nPast:\nEducation:\nJob:\nIncome:\nResidence:\nNetwork:\nReputation:\n\n### Personality\nWound:\nBelief:\nLimit:\nMorality:\nAchievement:\nInteraction:\nIdentity:\nFlaw:\nArchetype:\n\n### Visible side\nDream:\nGoal:\nMotivation:\nRoutine:\nSkill:\nSpeech:\nHabit:\n\n### Hidden side\nWeakness:\nConflict:\nFear:\nPotential:\nSecret:\nChastity:\nSexuality:\n\n### Preference\nLike:\nHobby:\nRomance:\nObsession:\nHate:\n\n### Special\n\n### Quotes\n- <Examples of lines that reflect personality and speaking style1>\n- <Examples of lines that reflect personality and speaking style2>\n\n**Prohibitions:**\n - Do not include player profiles, Additional Information/Rules and interfaces in your response.\n- Do not use the '*'. please use the '-'.\n**Note:**\n- Write efficiently by reducing the number of letters (concise)\n- 'maybe' is not allowed.)",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "[ 🖊️ ] /npc2 : NPC 정보 확장",
+   "in": "/npc2",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create information. \n\nBased on the information of the created RPG, write down the details of each **Characters (NPC)** item in detail. Please follow this format:\n\n### Profile\nName:\nAge:\nGender:\nRace:\nOrigin:\nBirthday:\nBlood type:\nFaith:\n\n### Appearance\nBody shape:\nOverall Look: \nFashion style:\nSignature item:\nAura:\n\n### Background\nStrength:\nIntelligence:\nFamily:\nPast:\nEducation:\nJob:\nResidence:\nReputation:\n\n### Personality\nWound:\nBelief:\nLimit:\nMorality:\nAchievement:\nInteraction:\nIdentity:\nFlaw:\nArchetype:\n\n### Visible side\nDream:\nGoal:\nMotivation:\nRoutine:\nSkill:\n\n### Hidden side\nWeakness:\nConflict:\nFear:\nPotential:\nSecret:\n\n### Preference\nLike:\nHobby:\nObsession:\nHate:\n\n### Special\n\n### Quotes\n- <Examples of lines that reflect personality and speaking style1>\n- <Examples of lines that reflect personality and speaking style2>\n\n**Prohibitions:**\n - Do not include player profiles, Additional Information/Rules and interfaces in your response.\n- Do not use the '*'. please use the '-'.\n**Note:**\n- Write efficiently by reducing the number of letters (concise)\n- 'maybe' is not allowed.)",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "[ 🖊️ ] /m1: 스타팅 메시지 작성",
+   "in": "/m1 ",
+   "out": "(OOC: Let's take a break from roleplaying for a moment and create information.\n\n/m1 \"prompt\" If you've received the above command, please incorporate the (template) information about the Text RPG and the details from the given \"prompt\" to describe a reach scenario where the character and {{user}} Introduction to the current situation, similar to the beginning of a novel. But don't obsess over overly literary expressions; Additionally, when writing the character's dialogue, enclose it in quotation marks. Be sure to print out interface, and make good use of images. ***However, please ensure that {{user}}'s dialogue not included. Just express it through action.*** ",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "---에셋---",
+   "in": "",
+   "out": "",
+   "type": "editinput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 커맨드 개행",
+   "in": "\\s*(<img=\".*?\"\\>)\\s*",
+   "out": "\n\n$1\n\n",
+   "type": "editdisplay",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 디스플레이 (Male, Female)",
+   "in": "<img=\"(Male|Female)\">",
+   "out": "<table class=\"gender-table\">\n    <tr>\n        <td class=\"gender-cell in-table\">\n              <img src=\"{{raw::$1}}\" alt=\"$1\">\n        </td>\n    </tr>\n</table>",
+   "type": "editdisplay",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 디스플레이",
+   "in": "<img=\"(.*?) (acting cute double v|acting cute heart hands|acting cute Rabbit pose|acting coy|angry|annoyed|aroused|bathing in bathtub|blushing shyly|bored|bridling|buttjob over clothes|cheek pulling|chuunibyou|confused|contemptuous|coughing|crying with eyes (?:closed|open)|curious|default|depressed|determined|disappointed|disgusted|embarrassed|enraged|eureka|excited|finger sucking|full-face blush|giggling|grabbing breast(?: open (?:clothes|bra))?|grudging|guilty|handjob(?: over clothes)?|happy tears|indifferent|jealous|laughing|lustful|middle finger|mixed-bathing washing (?:back|body|hair)|nervous(?: pouting)?|nipple pull open bra|nude(?: grabbing breast| nipple pull)?|paizuri(?: cum)?|pillow humping|pleading|pouting|proud|relieved|sad|scared|serious|sexual frustration(?: (?:standing|sitting|doggystyle))?|smile|smirk|smug|sniggering|headpat|stupefied|surprised|suspicious|thinking|underwear only|worried|french kiss(?: during sex)?|(?:(?:imminent|after) )?kiss|(?:handholding )?cowgirl (?:after sex|ejaculation|grinding|happy sex|hard sex|imminent penetration|sex)|doggystyle (?:after sex|ejaculation|fingering|happy sex|hard sex|imminent penetration|sex)|(?:handholding )?missionary (?:after sex|ejaculation|fingering|happy sex|hard sex|imminent penetration|sex)|(?:reverse )?standing (?:after sex|ejaculation|fingering|happy sex|hard sex|imminent penetration|sex)|upright straddle (?:after sex|ejaculation|grinding|happy sex|hard sex|imminent penetration|sex)|anal (?:after sex|ejaculation|happy sex|imminent penetration|sex)|reverse cowgirl (?:after sex|ejaculation|happy sex|imminent penetration|sex)|fellatio(?: cum| skilled)?|(?:reverse )?footjob(?: cum)?|deepthroat|licking (?:glans|testicle)|masturbation|orgasm|cunnilingus|cum on (?:back|belly|face)|after sex)\">",
+   "out": "{{#if {{equal::{{getvar::LowSpec}}::1}}}}\n{{#if {{greater_equal::{{chat_index}}::{{? {{lastmessageid}}-5}}}}}}\n<table class=\"asset-table\">\n    <tr>\n        <td class=\"image-cell in-table\">\n              <img src=\"{{raw::$1 $2}}\" alt=\"$1 $2\">\n        </td>\n    </tr>\n</table>\n{{/if}}\n{{/if}}\n{{#if {{equal::{{getvar::LowSpec}}::0}}}}\n<table class=\"asset-table\">\n    <tr>\n        <td class=\"image-cell in-table\">\n              <img src=\"{{raw::$1 $2}}\" alt=\"$1 $2\">\n        </td>\n    </tr>\n</table>\n{{/if}}",
+   "type": "editdisplay",
+   "ableFlag": true,
+   "flag": "g<order 0>"
+  },
+  {
+   "comment": "border",
+   "in": "{border}",
+   "out": "rgba(143,130,188,0.4)",
+   "type": "editdisplay",
+   "ableFlag": false
+  },
+  {
+   "comment": "bg",
+   "in": "{background}",
+   "out": "rgba(143,130,188,0.25)",
+   "type": "editdisplay",
+   "ableFlag": false
+  },
+  {
+   "comment": "---찐빠 방지---",
+   "in": "",
+   "out": "",
+   "type": "editinput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정1",
+   "in": "`<",
+   "out": "<",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정2",
+   "in": ">`",
+   "out": ">",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정3",
+   "in": "Choi Min-jun / Milestone",
+   "out": "Choi Min-jun",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정4",
+   "in": "(<img) src=\"([^\"]*)\">",
+   "out": "$1=\"$2\">",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정5",
+   "in": "<img=\"(Male|Female)(.+?)\">",
+   "out": "<img=\"$1\">",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정6",
+   "in": "<img=\"(?!(?:(?:Alice Croft|Baek Hwi-Sung|Choi (?:Min-jun|Tae-joon|Yoo-jin|Yu-na|Tae-hyun)|Go Eun-bi|Ha Wol-young|Han (?:Ji-won|Seo-yeon)|Haru Ito|Im Jin-tae|Isabelle Hayes|Jake Miller|Jang Eun-seo|Jin So-hee|Joo Ah-ram|Kang (?:Min-hyuk|Woo-seok|Yoo-ra|Tae-shik)|Kim Min-soo|Lee (?:Ha-eun|Ji-hye|So-yoon)|Lim Seol-hee|Min Chae-rin|Na Sun-young|Oh Ha-na|Park (?:Jun-ho|So-won|Hye-in)|Rivea|Sasaki Yua|Seo Ji-han|Song Ha-neul|Yoo (?:Jin-hyuk|Sun-hwa|Jin-seong)|Yoon (?:Mirae|Ji-ho)|Chae Ha-yoon|Kwon (?:Jae-hyun|Do-yoon)|Ahn Do-hyun|Shin Woo-hyun|Baek Eun-ha) (?:acting cute double v|acting cute heart hands|acting cute Rabbit pose|acting coy|angry|annoyed|aroused|bathing in bathtub|blushing shyly|bored|bridling|buttjob over clothes|cheek pulling|chuunibyou|confused|contemptuous|coughing|crying with eyes (?:closed|open)|curious|default|depressed|determined|disappointed|disgusted|embarrassed|enraged|eureka|excited|finger sucking|full-face blush|giggling|grabbing breast(?: open (?:clothes|bra))?|grudging|guilty|handjob(?: over clothes)?|happy tears|indifferent|jealous|laughing|lustful|middle finger|mixed-bathing washing (?:back|body|hair)|nervous(?: pouting)?|nipple pull open bra|nude(?: grabbing breast| nipple pull)?|paizuri(?: cum)?|pillow humping|pleading|pouting|proud|relieved|sad|scared|serious|sexual frustration(?: (?:standing|sitting|doggystyle))?|smile|smirk|smug|sniggering|headpat|stupefied|surprised|suspicious|thinking|underwear only|worried|french kiss(?: during sex)?|(?:(?:imminent|after) )?kiss|deepthroat|orgasm|masturbation|cunnilingus|fellatio(?: cum| skilled)?|(?:reverse )?footjob(?: cum)?|licking (?:glans|testicle)|cum on (?:back|belly|face)|after sex|(?:(?:handholding )?cowgirl|upright straddle) (?:after sex|ejaculation|grinding|happy sex|hard sex|imminent penetration|sex)|(?:doggystyle|(?:handholding )?missionary|(?:reverse )?standing) (?:after sex|ejaculation|fingering|happy sex|hard sex|imminent penetration|sex)|(?:anal|reverse cowgirl) (?:after sex|ejaculation|happy sex|imminent penetration|sex))|(?:Female|Male)))[^\"]+\">",
+   "out": "",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "에셋 찐빠 수정7",
+   "in": "<img=“([^”]*)”>",
+   "out": "<img=\"$1\">",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "---커맨드---",
+   "in": "",
+   "out": "",
+   "type": "editinput",
+   "ableFlag": false
+  },
+  {
+   "comment": "/요약",
+   "in": "/요약",
+   "out": "(OOC: Let's pause the roleplaying session for a moment to summarize and organize the chatlog so far.\n\n### Segmenting the Entire Story\n- Instructions: Divide the story into several parts based on major turning points or events in context. Each part should focus on one major event or theme.\n\n### Summarizing Each Part\n- Instructions: Briefly summarize the important content, events, and character reactions in each part. Follow the commands below.\n- Commands:\n (1) Time: The time when this part of the story takes place (e.g., beginning of the conversation, middle, end)\n (2) Major Event: The major event occurring in this part\n (3) Major Dialogue: Important lines and sentences (there can be multiple instances of these)\n (4) Reaction: The reactions or emotional states of the characters\n\n### Summarizing the Whole Story\nInstructions: Arrange the summaries of each part in chronological order to clarify the overall flow of the story. \nNote: this summary should not include any foreshadowing or predictions about future events, and should focus solely on summarizing the story as it has unfolded so far.)",
+   "type": "editinput",
+   "ableFlag": false
+  },
+  {
+   "comment": "---기타---",
+   "in": "",
+   "out": "",
+   "type": "disabled",
+   "ableFlag": false
+  },
+  {
+   "comment": "",
+   "in": "Yu-jin",
+   "out": "Yoo-jin",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "",
+   "in": "Yoo-na",
+   "out": "Yu-na",
+   "type": "editoutput",
+   "ableFlag": false
+  },
+  {
+   "comment": "",
+   "in": "Ji-Won",
+   "out": "Ji-won",
+   "type": "editprocess",
+   "ableFlag": false
+  },
+  {
+   "comment": "",
+   "in": "희성",
+   "out": "휘성",
+   "type": "editoutput",
+   "ableFlag": false
+  }
+ ]
+}

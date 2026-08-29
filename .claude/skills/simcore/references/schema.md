@@ -262,7 +262,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
 | `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
 | `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` — bar.max·color는 수식 가능 (rand 불가) |
-| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · 예약 자리표시자(아래) |
+| `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{id:tags:필터}`(그 문자열을 품은 항목만 — 지도 대장의 구역별 칸, v0.98) · 예약 자리표시자(아래) |
 | `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리. id는 영문 식별자 (CSS 클래스가 됨). 조건 없는 템플릿 뒤의 항목은 도달 불가 경고, 전부 조건부면 "빈 상태창" 경고 |
 
 - **예약 자리표시자** (RESERVED_SLOTS — 변수 참조 검사에서 제외): `{commands}` `{uid}`
@@ -446,6 +446,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `mainInject` | 기본 true — 메인 프롬프트에 **화제 한 줄만** 주입 (원문은 절대 안 실림) |
 | `when` | 생성 게이트 식 (rand 금지) — 거짓 턴엔 갱신 요청이 빠짐 (통신 두절 등). 열람은 항상 |
 | `css` | 패널 스킨 (`.scb-*` 덮어쓰기, `#sc-game` 범위 자동 격리) |
+| `categories` (v0.98) | 문자열 1~6개 — 패널이 탭(전체+칸별)으로 나뉘고 글마다 `cat`이 붙는다 (어휘 밖은 첫 칸 보정). 파티 모집판 같은 "게시판 안의 게시판". 글쓰기 폼은 보던 탭을 기본 칸으로 |
 
 - **턴 갱신은 기존 보조 호출에 얹힌다** (응답의 `"board"` 필드 — suggest·이미지와 같은 원칙,
   추가 호출 0). 조회수·추천은 시스템이 굴린다 (시드 rng, 리롤 안정).

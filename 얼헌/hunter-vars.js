@@ -98,6 +98,9 @@ const NPC_HOSTILE = [
   '채하윤 Chae Ha-yoon (26/F): manic free-spirited Vice-Commander of 불신론자, former E-Rank, Rare Mana Bullet, twin pistols Tic&Toc',
 ];
 const roster = (arr) => arr.map((s) => '· ' + s).join(' ');
+// 파티 후보 — 명단 전원의 한국어 이름 (P6. 슬롯은 enum: 제작자가 명사를 확정, AI는 못 만든다)
+const koName = (s) => (s.match(/^[가-힣]+(?: [가-힣]+)*/) || [''])[0];
+const PARTY_NAMES = Object.values(NPC_BAND).flat().map(koName);
 // 대역 노출 조건 — 유저 라이선스 ±1 (미각성 0은 E 대역)
 const BAND_WHEN = {
   E: 'lic_n <= 2', D: 'lic_n <= 3', C: 'lic_n >= 2 and lic_n <= 4',
@@ -259,6 +262,18 @@ const S = {
         + 'grave injury, death. Format "이름 — 변화", e.g. "김민수 — D급 승급", "서지한 — 흡혈 저주 해제". '
         + 'Profiles are the baseline; log deviations only, one entry per fact, replace when superseded. '
         + 'NOT for moods, locations or the protagonist.' },
+
+    // ── 파티 (P6) — 영입은 이야기가, 편성은 버튼이 ──
+    // 명부(allies)는 보조가 서사를 보고 움직이고, 슬롯(party1~4)은 패널 전용이라
+    // updater.allow에 없다 — AI가 마음대로 파티를 짜고 푸는 것을 구조로 막는다.
+    { id: 'allies', label: '동료 명부', type: 'list', init: [], maxItems: 12, itemMaxLength: 20, cmd: '동료',
+      desc: 'Named hunters who agreed to team up with the protagonist — name only (e.g. "김민수"). '
+        + 'Add ONLY when recruitment happens on-screen (헌터넷 모집 지원 수락, 직접 섭외, 협회 매칭). '
+        + 'Remove on falling-out, guild poaching, death. Being an ally ≠ being in the current party.' },
+    ...[1, 2, 3, 4].map((n) => ({
+      id: `party${n}`, label: `파티원 ${n}`, type: 'enum', init: '없음',
+      enum: ['없음', ...PARTY_NAMES],
+      desc: 'Set from the party panel only — never change this yourself.' })),
   ],
 
   derived: [
@@ -467,6 +482,12 @@ const S = {
     { id: 'npc_s_far', when: 'lic_n <= 4',
       text: 'S-Rank celebrities everyone knows from media and HunterNet (distant figures, not walk-ons): '
         + '박준호 · 백휘성 · 임진태 · 하월영(검귀) · 제이크 밀러 · 한지원.' },
+    // 파티 동행 (P6) — 편성된 슬롯만 (지시문은 renderTemplate을 타서 {party1}이 이름으로 치환)
+    ...[1, 2, 3, 4].map((n) => ({
+      id: `party_${n}`, when: `party${n} != '없음'`,
+      text: `Party member accompanying the protagonist: {party${n}} — present in scenes by default `
+        + '(dialogue, combat role, opinions per their profile) until the narrative parts ways.',
+    })),
     { id: 'npc_staff', when: 'true',
       text: `Institutional figures met by function, not rank: ${roster(NPC_STAFF)}` },
     { id: 'npc_hostile', when: 'faction_on',
@@ -505,6 +526,7 @@ const S = {
       { id: 'skills' },
       { id: 'quests' },
       { id: 'npc_notes' },
+      { id: 'allies' },
       { id: 'in_gate' },
       { id: 'gates' },
       { id: 'break_name', maxLength: 30 },
@@ -543,7 +565,10 @@ const S = {
     guide: 'Anonymous hunter forum in Korean internet-community register: 반말, 마침표 생략, '
       + '축약·밈·드립, 낚시글과 헛소문 섞임. 닉네임은 짧은 한국어 (예: ㅇㅇ, 각성실패자, '
       + '노원구주민, 창술만12년). 글이 다 진실일 필요 없다 — 과장·유언비어·광고성 글도 게시판의 결이다. '
-      + 'Posts reference the current gates board, recent public events, and famous hunters.',
+      + 'Posts reference the current gates board, recent public events, and famous hunters. '
+      + '모집 칸 글은 "구역/게이트 등급/구하는 역할·인원" 꼴 (예: 동북권 D급, 탱커 1 딜러 2 구함). '
+      + '유저의 모집 글에는 명단(cast)의 헌터가 지원 댓글을 달 수 있다 — 유저 랭크대에 맞는 인물만, 실명으로.',
+    categories: ['자유', '정보', '모집'],
     postsPerTurn: 2, maxPosts: 20,
     when: 'not in_gate',
     // 패널 스킨 — 상태창과 같은 다크네이비/스틸블루 규격 (a-* 팔레트)
@@ -559,7 +584,57 @@ const S = {
 .scb-body { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.15); color: #c5d0e6; }
 .scb-re { border-top-color: rgba(138,162,204,.12); }
 .scb-re .scb-re-a { color: #8aa2cc; }
-.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }`,
+.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }
+.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
+.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }`,
+  },
+
+  // ── 파티 + 게이트 지도 (P6) — 편성표 (v0.55 탭 + v0.89 대장 템플릿·fab) ──
+  // 영입은 이야기가(allies — 보조·/동료), 편성은 버튼이(party1~4 — 패널 전용).
+  // 지도는 새 패널이 아니라 대장 템플릿 탭: {gates:tags:권역}(v0.98 필터)이 게이트 보드를
+  // 서울 5권역 칸에 나눠 꽂는다. fab 🗺️로 바로 열린다.
+  party: {
+    label: '파티', icon: '🤝', empty: '없음',
+    tabs: [
+      { id: 'members', label: '파티 편성', roster: 'allies',
+        note: '동료 명부에 오른 헌터만 편성할 수 있어요 — 영입(모집글·섭외)은 이야기에서.',
+        slots: [{ var: 'party1' }, { var: 'party2' }, { var: 'party3' }, { var: 'party4' }] },
+      { id: 'map', label: '게이트 지도', fab: '🗺️',
+        template: `
+<div class="hmap">
+  <div class="hmap-head">SEOUL GATE MAP<span class="hmap-hz">위험도 {hazard}</span></div>
+  <div class="hmap-grid">
+    <div class="hmap-zone hmz-nw"><div class="hmap-zn">서북권</div><div class="hmap-zd">은평 · 서대문 · 마포</div>{gates:tags:서북권}</div>
+    <div class="hmap-zone hmz-ne"><div class="hmap-zn">동북권</div><div class="hmap-zd">성북 · 노원 · 강북</div>{gates:tags:동북권}</div>
+    <div class="hmap-zone hmz-ct"><div class="hmap-zn">도심권</div><div class="hmap-zd">종로 · 중구 · 용산</div>{gates:tags:도심권}</div>
+    <div class="hmap-zone hmz-sw"><div class="hmap-zn">서남권</div><div class="hmap-zd">양천 · 구로 · 영등포 · 관악</div>{gates:tags:서남권}</div>
+    <div class="hmap-zone hmz-se"><div class="hmap-zn">동남권</div><div class="hmap-zd">서초 · 강남 · 송파 · 강동</div>{gates:tags:동남권}</div>
+  </div>
+  <div class="hmap-foot">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>
+</div>` },
+    ],
+    // 상태창과 같은 다크네이비/스틸블루 규격 + 지도 전용 스타일
+    css: `
+.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }
+.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }
+.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;
+  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }
+.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }
+.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }
+.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }
+.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }
+.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;
+  background: rgba(10,12,18,.55); min-height: 72px; }
+.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;
+  letter-spacing: 1px; font-size: 13px; }
+.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }
+.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;
+  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;
+  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }
+.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }
+.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);
+  padding-top: 6px; }`,
   },
 
   // ── 알터 스토어 (P4.5) — 상점 (v0.96 엔진 기능) ──
@@ -938,6 +1013,47 @@ console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
   ok('코인 10 매도 = 8,000원 회수', ex2.ok && t2.vars.coin === coinBefore
     && t2.vars.won === wonBefore - 12000 + 8000, JSON.stringify({ won: t2.vars.won }));
   ok('보유 초과 매도 거부', !shopMod.exchange(S, t2, 99999, 'sell').ok);
+}
+
+console.log('\n━━ P6 — 파티 편성 + 게이트 지도 + 모집판 ━━');
+{
+  const partyMod = SC.require('party');
+  ok('파티 후보 32명 — 한국어 이름 추출 무결', PARTY_NAMES.length === 32
+    && PARTY_NAMES.every((n) => n && /^[가-힣 ]+$/.test(n)), JSON.stringify(PARTY_NAMES));
+  // 영입 전 편성 잠금 (roster 규약: "영입하면 열린다")
+  let t = fresh();
+  let pick = partyMod.applyPartyPick(S, t, 'party1', '김민수');
+  ok('명부에 없는 헌터 편성 거부', !pick.ok && pick.reason.includes('보유'), JSON.stringify(pick));
+  ({ st: t } = turn(t, { allies: { add: ['김민수'] } }, 100));
+  ok('영입 기록 (동료 명부)', t.vars.allies.includes('김민수'), JSON.stringify(t.vars.allies));
+  pick = partyMod.applyPartyPick(S, t, 'party1', '김민수');
+  ok('영입 후 편성 성공', pick.ok && pick.changes.party1 === '김민수', JSON.stringify(pick));
+  t.vars.party1 = '김민수';
+  const p = turn(t, {}, 101);
+  ok('파티 동행 지시문 — 이름 치환', p.prompt.includes('Party member accompanying')
+    && p.prompt.includes('김민수'), '');
+  // 지도 — {gates:tags:권역} 필터가 보드를 권역 칸에 나눠 꽂는다
+  t.vars.gates = ['동북권 D 고블린 소굴 @+4', '도심권 C 붕괴 지하철 게이트 @+2'];
+  const mapTpl = S.party.tabs.find((x) => x.id === 'map').template;
+  const html = SC.require('render').renderPanelTemplate(S, t, mapTpl);
+  const zone = (cls) => html.split(`hmz-${cls}`)[1].split('hmap-zone')[0];
+  ok('지도 — 동북권 칸에만 고블린 소굴', zone('ne').includes('고블린 소굴') && !zone('ct').includes('고블린 소굴'), '');
+  ok('지도 — 빈 권역은 "없음"', zone('sw').includes('없음'), '');
+  const leftoverMap = (html.match(/\{[a-z_]+(?::[^}]*)?\}/g) || []);
+  ok('지도 — 미치환 자리표시자 없음', leftoverMap.length === 0, leftoverMap.join(' '));
+  // 헌터넷 모집판 (보드 카테고리 v0.98)
+  const aux = engine.buildAuxPrompt(S, t, '서사', null);
+  ok('보조 지시에 칸 어휘', aux.includes('자유 | 정보 | 모집'), '');
+  t = engine.outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('h', 102, 's') }).state, {}, {}, {
+    rng: seededRng('h', 102, 'o'),
+    board: { new: [
+      { title: '동북권 D급 탱커 구함', author: '노원구주민', body: '내일 아침 공략', cat: '모집' },
+      { title: '아무말', author: 'ㅇㅇ', body: '잡담', cat: '레전더리칸' },
+    ] },
+  }).state;
+  const rec = t.board.posts.find((x) => x.title.includes('탱커 구함'));
+  ok('모집 칸 글 등록', rec && rec.cat === '모집', JSON.stringify(t.board.posts.map((x) => x.cat)));
+  ok('어휘 밖 칸 → 첫 칸(자유) 보정', t.board.posts.find((x) => x.title === '아무말').cat === '자유', '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

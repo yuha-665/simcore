@@ -592,6 +592,13 @@ const clone = (o) => JSON.parse(J(o));
   ck('임베드 <style>은 #sc-game로 스코핑', html.includes('#sc-game .led'), html);
   const html2 = renderPanelTemplate(T, st, '{uid}|{choices}|{{img::지도}}');
   ck('{uid}=scg 고정 · {choices}=빈칸 · CBS 통과', html2 === 'scg||{{img::지도}}', html2);
+
+  // :tags:필터 (v0.98) — 그 문자열을 품은 항목만 (지도 대장의 구역별 칸)
+  st.vars.allies = ['동북권 D 고블린 소굴', '도심권 C 지하철', '동북권 E 폐건물'];
+  const h3 = renderPanelTemplate(T, st, '<i>{allies:tags:동북권}</i><b>{allies:tags:서남권}</b>');
+  ck('★ :tags:필터 — 매치 항목만 칩', (h3.match(/sim-tag/g) || []).length === 2
+    && h3.includes('고블린 소굴') && h3.includes('폐건물') && !h3.includes('지하철'), h3);
+  ck(':tags:필터 — 빈 결과는 "없음"', h3.includes('<b><span class="sim-empty">없음</span></b>'), h3);
 }
 
 let p = 0, f = 0;

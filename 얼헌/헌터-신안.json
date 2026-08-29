@@ -419,6 +419,184 @@
       "itemMaxLength": 40,
       "cmd": "인물",
       "desc": "Lasting CHANGES to named NPCs only — promotion, guild move, notable new gear/skill, grave injury, death. Format \"이름 — 변화\", e.g. \"김민수 — D급 승급\", \"서지한 — 흡혈 저주 해제\". Profiles are the baseline; log deviations only, one entry per fact, replace when superseded. NOT for moods, locations or the protagonist."
+    },
+    {
+      "id": "allies",
+      "label": "동료 명부",
+      "type": "list",
+      "init": [],
+      "maxItems": 12,
+      "itemMaxLength": 20,
+      "cmd": "동료",
+      "desc": "Named hunters who agreed to team up with the protagonist — name only (e.g. \"김민수\"). Add ONLY when recruitment happens on-screen (헌터넷 모집 지원 수락, 직접 섭외, 협회 매칭). Remove on falling-out, guild poaching, death. Being an ally ≠ being in the current party."
+    },
+    {
+      "id": "party1",
+      "label": "파티원 1",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "김민수",
+        "송하늘",
+        "안도현",
+        "오하나",
+        "최유나",
+        "리베아",
+        "이사벨 헤이즈",
+        "유진성",
+        "이하은",
+        "강유라",
+        "박소원",
+        "서지한",
+        "최민준",
+        "민채린",
+        "주아람",
+        "한서연",
+        "하루 이토",
+        "최태현",
+        "강민혁",
+        "강우석",
+        "사사키 유아",
+        "유선화",
+        "앨리스 크로프트",
+        "이지혜",
+        "임설희",
+        "진소희",
+        "박준호",
+        "백휘성",
+        "임진태",
+        "하월영",
+        "제이크 밀러",
+        "한지원"
+      ],
+      "desc": "Set from the party panel only — never change this yourself."
+    },
+    {
+      "id": "party2",
+      "label": "파티원 2",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "김민수",
+        "송하늘",
+        "안도현",
+        "오하나",
+        "최유나",
+        "리베아",
+        "이사벨 헤이즈",
+        "유진성",
+        "이하은",
+        "강유라",
+        "박소원",
+        "서지한",
+        "최민준",
+        "민채린",
+        "주아람",
+        "한서연",
+        "하루 이토",
+        "최태현",
+        "강민혁",
+        "강우석",
+        "사사키 유아",
+        "유선화",
+        "앨리스 크로프트",
+        "이지혜",
+        "임설희",
+        "진소희",
+        "박준호",
+        "백휘성",
+        "임진태",
+        "하월영",
+        "제이크 밀러",
+        "한지원"
+      ],
+      "desc": "Set from the party panel only — never change this yourself."
+    },
+    {
+      "id": "party3",
+      "label": "파티원 3",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "김민수",
+        "송하늘",
+        "안도현",
+        "오하나",
+        "최유나",
+        "리베아",
+        "이사벨 헤이즈",
+        "유진성",
+        "이하은",
+        "강유라",
+        "박소원",
+        "서지한",
+        "최민준",
+        "민채린",
+        "주아람",
+        "한서연",
+        "하루 이토",
+        "최태현",
+        "강민혁",
+        "강우석",
+        "사사키 유아",
+        "유선화",
+        "앨리스 크로프트",
+        "이지혜",
+        "임설희",
+        "진소희",
+        "박준호",
+        "백휘성",
+        "임진태",
+        "하월영",
+        "제이크 밀러",
+        "한지원"
+      ],
+      "desc": "Set from the party panel only — never change this yourself."
+    },
+    {
+      "id": "party4",
+      "label": "파티원 4",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "김민수",
+        "송하늘",
+        "안도현",
+        "오하나",
+        "최유나",
+        "리베아",
+        "이사벨 헤이즈",
+        "유진성",
+        "이하은",
+        "강유라",
+        "박소원",
+        "서지한",
+        "최민준",
+        "민채린",
+        "주아람",
+        "한서연",
+        "하루 이토",
+        "최태현",
+        "강민혁",
+        "강우석",
+        "사사키 유아",
+        "유선화",
+        "앨리스 크로프트",
+        "이지혜",
+        "임설희",
+        "진소희",
+        "박준호",
+        "백휘성",
+        "임진태",
+        "하월영",
+        "제이크 밀러",
+        "한지원"
+      ],
+      "desc": "Set from the party panel only — never change this yourself."
     }
   ],
   "derived": [
@@ -865,6 +1043,26 @@
       "text": "S-Rank celebrities everyone knows from media and HunterNet (distant figures, not walk-ons): 박준호 · 백휘성 · 임진태 · 하월영(검귀) · 제이크 밀러 · 한지원."
     },
     {
+      "id": "party_1",
+      "when": "party1 != '없음'",
+      "text": "Party member accompanying the protagonist: {party1} — present in scenes by default (dialogue, combat role, opinions per their profile) until the narrative parts ways."
+    },
+    {
+      "id": "party_2",
+      "when": "party2 != '없음'",
+      "text": "Party member accompanying the protagonist: {party2} — present in scenes by default (dialogue, combat role, opinions per their profile) until the narrative parts ways."
+    },
+    {
+      "id": "party_3",
+      "when": "party3 != '없음'",
+      "text": "Party member accompanying the protagonist: {party3} — present in scenes by default (dialogue, combat role, opinions per their profile) until the narrative parts ways."
+    },
+    {
+      "id": "party_4",
+      "when": "party4 != '없음'",
+      "text": "Party member accompanying the protagonist: {party4} — present in scenes by default (dialogue, combat role, opinions per their profile) until the narrative parts ways."
+    },
+    {
       "id": "npc_staff",
       "when": "true",
       "text": "Institutional figures met by function, not rank: · 권재현 Kwon Jae-hyun (60s/M): Association President, former S-Rank (3rd Gen, Mana Enchant), chronic illness · 고은비 Go Eun-bi (22/F): earnest insecure Association 주임, assistant to 최유진 · 최유진 Choi Yoo-jin (24/F): efficient Association Registration & Assessment 팀장, skilled martial artist · 박혜인 Park Hye-in (31/F): cold meticulous Association senior researcher & rank-measurement supervisor · 이소윤 Lee So-yoon (28/F): chatty meddlesome Association Settlement Dept 대리, scent-obsessed · 윤미래 Yoon Mirae (29/F): gentle yet ruthless Baekryeon Guild Master, non-combatant, uses Foresight · 윤지호 Yoon Ji-ho (14/M): resourceful Black Market errand boy, innate item identification · 백은하 Baek Eun-ha (24/F): gentle hospital rehab patient (post-coma, partial memory), 백휘성's sister"
@@ -979,6 +1177,9 @@
         "id": "npc_notes"
       },
       {
+        "id": "allies"
+      },
+      {
         "id": "in_gate"
       },
       {
@@ -1050,11 +1251,50 @@
     "label": "헌터넷",
     "icon": "🌐",
     "topics": "게이트 출현·공략 소식, 헌터 목격담과 소문, 장비·마정석 시세, 협회/길드 뒷말, 랭크 측정 후기, 몬스터 정보 공유, 각성 관련 잡담",
-    "guide": "Anonymous hunter forum in Korean internet-community register: 반말, 마침표 생략, 축약·밈·드립, 낚시글과 헛소문 섞임. 닉네임은 짧은 한국어 (예: ㅇㅇ, 각성실패자, 노원구주민, 창술만12년). 글이 다 진실일 필요 없다 — 과장·유언비어·광고성 글도 게시판의 결이다. Posts reference the current gates board, recent public events, and famous hunters.",
+    "guide": "Anonymous hunter forum in Korean internet-community register: 반말, 마침표 생략, 축약·밈·드립, 낚시글과 헛소문 섞임. 닉네임은 짧은 한국어 (예: ㅇㅇ, 각성실패자, 노원구주민, 창술만12년). 글이 다 진실일 필요 없다 — 과장·유언비어·광고성 글도 게시판의 결이다. Posts reference the current gates board, recent public events, and famous hunters. 모집 칸 글은 \"구역/게이트 등급/구하는 역할·인원\" 꼴 (예: 동북권 D급, 탱커 1 딜러 2 구함). 유저의 모집 글에는 명단(cast)의 헌터가 지원 댓글을 달 수 있다 — 유저 랭크대에 맞는 인물만, 실명으로.",
+    "categories": [
+      "자유",
+      "정보",
+      "모집"
+    ],
     "postsPerTurn": 2,
     "maxPosts": 20,
     "when": "not in_gate",
-    "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.scb-row { border-bottom-color: rgba(138,162,204,.12); }\n.scb-row:hover { background: rgba(138,162,204,.07); }\n.scb-row .scb-title { color: #dce6f5; }\n.scb-view-title { color: #dce6f5; }\n.scb-body { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.15); color: #c5d0e6; }\n.scb-re { border-top-color: rgba(138,162,204,.12); }\n.scb-re .scb-re-a { color: #8aa2cc; }\n.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }"
+    "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.scb-row { border-bottom-color: rgba(138,162,204,.12); }\n.scb-row:hover { background: rgba(138,162,204,.07); }\n.scb-row .scb-title { color: #dce6f5; }\n.scb-view-title { color: #dce6f5; }\n.scb-body { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.15); color: #c5d0e6; }\n.scb-re { border-top-color: rgba(138,162,204,.12); }\n.scb-re .scb-re-a { color: #8aa2cc; }\n.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }\n.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }"
+  },
+  "party": {
+    "label": "파티",
+    "icon": "🤝",
+    "empty": "없음",
+    "tabs": [
+      {
+        "id": "members",
+        "label": "파티 편성",
+        "roster": "allies",
+        "note": "동료 명부에 오른 헌터만 편성할 수 있어요 — 영입(모집글·섭외)은 이야기에서.",
+        "slots": [
+          {
+            "var": "party1"
+          },
+          {
+            "var": "party2"
+          },
+          {
+            "var": "party3"
+          },
+          {
+            "var": "party4"
+          }
+        ]
+      },
+      {
+        "id": "map",
+        "label": "게이트 지도",
+        "fab": "🗺️",
+        "template": "\n<div class=\"hmap\">\n  <div class=\"hmap-head\">SEOUL GATE MAP<span class=\"hmap-hz\">위험도 {hazard}</span></div>\n  <div class=\"hmap-grid\">\n    <div class=\"hmap-zone hmz-nw\"><div class=\"hmap-zn\">서북권</div><div class=\"hmap-zd\">은평 · 서대문 · 마포</div>{gates:tags:서북권}</div>\n    <div class=\"hmap-zone hmz-ne\"><div class=\"hmap-zn\">동북권</div><div class=\"hmap-zd\">성북 · 노원 · 강북</div>{gates:tags:동북권}</div>\n    <div class=\"hmap-zone hmz-ct\"><div class=\"hmap-zn\">도심권</div><div class=\"hmap-zd\">종로 · 중구 · 용산</div>{gates:tags:도심권}</div>\n    <div class=\"hmap-zone hmz-sw\"><div class=\"hmap-zn\">서남권</div><div class=\"hmap-zd\">양천 · 구로 · 영등포 · 관악</div>{gates:tags:서남권}</div>\n    <div class=\"hmap-zone hmz-se\"><div class=\"hmap-zn\">동남권</div><div class=\"hmap-zd\">서초 · 강남 · 송파 · 강동</div>{gates:tags:동남권}</div>\n  </div>\n  <div class=\"hmap-foot\">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>\n</div>"
+      }
+    ],
+    "css": "\n.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }\n.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }\n.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\n  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }\n.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }\n.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }\n.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;\n  background: rgba(10,12,18,.55); min-height: 72px; }\n.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;\n  letter-spacing: 1px; font-size: 13px; }\n.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }\n.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;\n  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;\n  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }\n.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }\n.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);\n  padding-top: 6px; }"
   },
   "shop": {
     "label": "알터 스토어",

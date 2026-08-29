@@ -1063,12 +1063,15 @@ function renderTemplate(tpl, lookup, extras = null) {
     try {
       let expr = inner.trim();
       if (extras && Object.prototype.hasOwnProperty.call(extras, expr)) return extras[expr];
-      let filter = null;
-      const m = expr.match(/^(.*?):(tags)$/); // {inventory:tags} → 칩 목록 HTML
-      if (m) { expr = m[1].trim(); filter = m[2]; }
+      let filter = null, filterArg = null;
+      // {inventory:tags} → 칩 목록 HTML. {gates:tags:도심권} → 그 문자열을 품은 항목만 (v0.98
+      // — 지도 대장처럼 한 목록을 구역별 칸에 나눠 꽂을 때)
+      const m = expr.match(/^(.*?):(tags)(?::(.+))?$/);
+      if (m) { expr = m[1].trim(); filter = m[2]; filterArg = m[3]?.trim() || null; }
       const v = evaluate(expr, lookup, null);
       if (filter === 'tags') {
-        const arr = Array.isArray(v) ? v : [String(v)];
+        let arr = Array.isArray(v) ? v : [String(v)];
+        if (filterArg) arr = arr.filter((x) => String(x).includes(filterArg));
         return arr.length
           ? arr.map((x) => `<span class="sim-tag">${escapeHtml(String(x))}</span>`).join('')
           : '<span class="sim-empty">없음</span>';

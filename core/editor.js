@@ -1209,6 +1209,7 @@ const SCHEMA_BOARD_RULES = [
   '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+  '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
 // 상점(shop, v0.96) — 시스템 상점.
@@ -5496,6 +5497,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       pair('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
         { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 욕' }),
         '게시판이 무엇에 대해 떠드는 곳인지 — 보조 AI의 글감이 됩니다'),
+      pair('카테고리', bindInput((B.categories ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+        if (arr.length) B.categories = arr; else delete B.categories; rerender();
+      }, { cls: 'sce-w-full', ph: '자유, 정보, 모집 (쉼표 구분, 최대 6 — 비우면 탭 없음)' }),
+        '패널이 탭으로 나뉘고 글마다 칸이 붙습니다 — 모집판 같은 "게시판 안의 게시판"'),
       pair('생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
         '말투·익명성·금기 등. 예: 익명 커뮤니티 말투(반말, 마침표 생략, 밈). 닉네임은 짧은 한국어. 유저를 전지적으로 알지 못한다.'),
         ''),

@@ -145,6 +145,36 @@ const turn = (st, changes = {}, opts = {}, i = 0) => {
   ck('인터랙션 응답 관대 파싱', parsed && parsed.re[0].id === id, J(parsed));
 }
 
+// ── 카테고리 (v0.98) — 패널 탭 + 글별 cat ──
+{
+  const SC2 = JSON.parse(J(S));
+  SC2.board.categories = ['자유', '정보', '모집'];
+  const v = validateSchema(SC2);
+  ck('★ 카테고리 스키마 통과', v.ok, J(v.errors));
+  const bad = JSON.parse(J(SC2)); bad.board.categories = [];
+  ck('빈 카테고리 배열 오류', !validateSchema(bad).ok, '');
+  const bad2 = JSON.parse(J(SC2)); bad2.board.categories = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  ck('카테고리 7개 오류 (최대 6)', !validateSchema(bad2).ok, '');
+
+  const t = engine.initState(SC2); t.meta.setupDone = true;
+  const aux = engine.buildAuxPrompt(SC2, t, '서사', null);
+  ck('★ 보조 지시에 칸 어휘 + cat 형식', aux.includes('자유 | 정보 | 모집') && aux.includes('"cat"'), '');
+  board.applyDelta(SC2, t, { new: [
+    { title: '탱커 구함', body: 'x', cat: '모집' },
+    { title: '어휘 밖', body: 'y', cat: '공지사항' },
+  ] }, { rng: seededRng('c', 1, 'o') });
+  ck('★ cat 저장 + 어휘 밖은 첫 칸 보정',
+    t.board.posts.find((p) => p.title === '탱커 구함').cat === '모집'
+    && t.board.posts.find((p) => p.title === '어휘 밖').cat === '자유', J(t.board.posts));
+  ck('digest에 [칸] 표시', board.digest(t).includes('[모집]'), board.digest(t));
+  const uid = board.applyUserPost(SC2, t, { title: '유저 모집글', body: 'z', cat: '모집' });
+  ck('★ 유저 글 cat 반영', t.board.posts.find((p) => p.id === uid).cat === '모집', '');
+  // 카테고리 없는 봇(S)은 cat이 아예 안 붙는다 — 기존 동작 무변
+  const t2 = fresh();
+  board.applyDelta(S, t2, { new: [{ title: '평글', body: 'x', cat: '모집' }] }, { rng: seededRng('c', 2, 'o') });
+  ck('카테고리 미설정 — cat 무시 (기존 동작)', t2.board.posts[0].cat === undefined, J(t2.board.posts[0]));
+}
+
 // ── 리롤 되감기 — pre 스냅샷 재현 (세션 규약) ──
 {
   const { SimSession } = SC.require('session');

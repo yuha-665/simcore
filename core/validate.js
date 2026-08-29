@@ -1041,6 +1041,11 @@ function validateSchema(schema) {
         err('$.board.maxPosts', '보존 글 수는 4~40 정수');
       }
       if (B.mainInject != null && typeof B.mainInject !== 'boolean') err('$.board.mainInject', 'mainInject는 true/false');
+      // 카테고리 (v0.98) — 패널 탭 + 글별 cat (어휘 밖은 첫 칸 보정)
+      if (B.categories != null && (!Array.isArray(B.categories) || !B.categories.length
+        || B.categories.length > 6 || B.categories.some((c) => typeof c !== 'string' || !c.trim()))) {
+        err('$.board.categories', '카테고리는 문자열 1~6개 배열 (첫 칸이 기본 칸)');
+      }
       if (B.when != null) {
         if (typeof B.when !== 'string') err('$.board.when', 'when은 표현식 문자열이어야 함');
         else if (B.when.trim()) checkExpr(B.when, '$.board.when', allIds, err, { allowRand: false });
@@ -1249,7 +1254,7 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
     // 리수 CBS({{...}})는 우리 문법이 아니다 — renderTemplate과 같은 기준으로 건너뛴다 (v0.76).
     // 예전엔 여기서 하드 오류가 나 `{{img::지도}}` 하나만 있어도 설치가 거부됐다 (렌더는 멀쩡했다).
     if (tpl[m.index - 1] === '{' && tpl[m.index + m[0].length] === '}') continue;
-    const inner = m[1].trim().replace(/:tags$/, ''); // {id:tags} 필터 접미사 제거 후 검사
+    const inner = m[1].trim().replace(/:tags(?::[^{}]+)?$/, ''); // {id:tags}·{id:tags:필터}(v0.98) 접미사 제거 후 검사
     if (RESERVED_SLOTS.has(inner)) continue;
     try {
       compile(inner);

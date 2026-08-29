@@ -10,7 +10,12 @@
 //   · ⚠ 자체 구현이다: LightBoard(CC BY-NC-SA)의 코드·저장 포맷과 무관하다.
 //
 // 스키마 (옵트인):
-//   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css? }
+//   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css?,
+//            categories? }
+//
+// 카테고리 (v0.98): categories: ['자유','정보','모집'] — 패널이 탭으로 나뉘고 글마다 cat이
+// 붙는다 (어휘 밖은 첫 칸 보정 — 상점 카테고리와 같은 규약). 파티 모집판 같은
+// "게시판 안의 게시판"이 필요할 때 쓴다.
 
 const { timeConfig, calendarOf, formatDate } = require('./time');
 const { evaluate, truthy } = require('./expr');
@@ -34,7 +39,16 @@ function boardConfig(schema) {
     mainInject: b.mainInject !== false,
     when: typeof b.when === 'string' ? b.when : '',
     css: typeof b.css === 'string' ? b.css : '',
+    categories: Array.isArray(b.categories) && b.categories.length
+      ? b.categories.map((c) => String(c).slice(0, 12)).slice(0, 6) : null,
   };
+}
+
+/** 카테고리 보정 — 어휘 밖은 첫 칸으로 (상점 cat과 같은 규약). 카테고리 없으면 null */
+function normCat(cfg, cat) {
+  if (!cfg?.categories) return null;
+  const c = cut(cat, 12);
+  return cfg.categories.includes(c) ? c : cfg.categories[0];
 }
 
 function initBoard() { return { seq: 1, posts: [] }; }
@@ -89,6 +103,7 @@ function sanitizeDelta(raw, cfg) {
     if (!title || !body) continue;
     out.posts.push({
       title, body,
+      cat: normCat(cfg, p.cat),
       author: cut(p.author, CAPS.AUTHOR) || 'ㅇㅇ',
       re: (Array.isArray(p.re) ? p.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5),
     });
@@ -132,6 +147,7 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
     board.posts.unshift({
       id: board.seq++, title: p.title, author: p.author, time: now,
       views: ri(3, 40), up: ri(0, 3), body: p.body, re: p.re,
+      ...(p.cat ? { cat: p.cat } : {}),
     });
   }
   // 지표 표류 — 최근 글일수록 많이 돈다 (숫자는 시스템이. AI가 아니라)
@@ -145,9 +161,10 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
 }
 
 /** 유저가 패널에서 쓴 글 — 즉시 등록, 반응은 보조 호출이 이어 받는다. 반환: 글 id */
-function applyUserPost(schema, state, { title, author, body }) {
+function applyUserPost(schema, state, { title, author, body, cat }) {
   const board = ensureBoard(state);
   const cfg = boardConfig(schema) || {};
+  const nc = normCat(cfg, cat);
   const post = {
     id: board.seq++,
     title: cut(title, CAPS.TITLE) || '(제목 없음)',
@@ -156,6 +173,7 @@ function applyUserPost(schema, state, { title, author, body }) {
     views: 1, up: 0,
     body: cut(body, CAPS.BODY),
     re: [],
+    ...(nc ? { cat: nc } : {}),
   };
   board.posts.unshift(post);
   if (cfg.maxPosts && board.posts.length > cfg.maxPosts) board.posts.length = cfg.maxPosts;
@@ -178,7 +196,7 @@ function digest(state, n = 8) {
   const posts = state?.board?.posts || [];
   if (!posts.length) return '(게시판이 비어 있다)';
   return posts.slice(0, n).map((p) =>
-    `#${p.id} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
+    `#${p.id}${p.cat ? ` [${p.cat}]` : ''} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
 }
 
 /** 턴 갱신 요청 — 기존 보조 호출에 얹는 지시 (추가 호출 0) */
@@ -193,10 +211,11 @@ function auxSpec(schema, state, makeLookup) {
     digest(state),
     `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`,
     cfg.topics ? `- 게시판의 관심사: ${cfg.topics}` : null,
+    cfg.categories ? `- 새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
     '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
-    '- board 형식: {"new":[{"title":"제목","author":"닉네임","body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}',
+    `- board 형식: {"new":[{"title":"제목","author":"닉네임"${cfg.categories ? ',"cat":"칸"' : ''},"body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}`,
   ].filter((x) => x !== null).join('\n');
 }
 
@@ -217,6 +236,7 @@ function interactionPrompt(schema, state, kind, payload = {}) {
   const head = [
     `너는 "${cfg.label}" 게시판 시뮬레이터다. 아래 게시판 현황을 보고 요청된 갱신만 JSON으로 출력하라.`,
     cfg.topics ? `게시판의 관심사: ${cfg.topics}` : null,
+    cfg.categories ? `새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? cfg.guide : null,
     '글·댓글은 그 커뮤니티 말투 그대로. 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만. 조회수·추천수는 쓰지 마라.',
     '',
@@ -227,11 +247,11 @@ function interactionPrompt(schema, state, kind, payload = {}) {
     payload.narrative ? String(payload.narrative).slice(0, 2400) : null,
     '',
   ];
-  const fmt = '출력 형식 (JSON만, 다른 텍스트 금지): {"board":{"new":[{"title","author","body","re":[{"author","body"}]}],"re":[{"id":글번호,"re":[{"author","body"}]}]}}';
+  const fmt = `출력 형식 (JSON만, 다른 텍스트 금지): {"board":{"new":[{"title","author"${cfg.categories ? ',"cat"' : ''},"body","re":[{"author","body"}]}],"re":[{"id":글번호,"re":[{"author","body"}]}]}}`;
   let task;
   if (kind === 'user_post') {
     task = [
-      `[방금 등록된 글] #${payload.postId} "${cut(payload.title, CAPS.TITLE)}" — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}`,
+      `[방금 등록된 글] #${payload.postId}${payload.cat ? ` [${payload.cat}]` : ''} "${cut(payload.title, CAPS.TITLE)}" — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}`,
       cut(payload.body, CAPS.BODY),
       '',
       `- 이 글에 대한 다른 사용자들의 댓글 반응을 0~5개 만들어 "re"의 id ${payload.postId}로 담아라 (반응 수는 글의 화제성에 비례).`,
@@ -256,7 +276,7 @@ function parseInteraction(text, extractJsonObject) {
 }
 
 module.exports = {
-  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow,
+  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
   digest, auxSpec, mainLine, interactionPrompt, parseInteraction,
 };

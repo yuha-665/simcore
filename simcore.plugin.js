@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.97.0
-//@display-name SimCore (시뮬 엔진) v0.97 상점 환전 창구
+//@version 0.98.0
+//@display-name SimCore (시뮬 엔진) v0.98 보드 카테고리·지도 대장
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.98.0 ───────────────────────────────────────────────
+// 보드 카테고리 + 템플릿 목록 필터 (얼헌 파티 모집판·게이트 지도 — 유저 요청 2건.
+// 새 기계는 안 만들었다: 모집판은 보드 탭, 지도는 편성표 대장 템플릿(v0.89)이 받는다).
+// - [코어 board] categories(1~6) — 패널이 탭(전체+칸별)으로 나뉘고 글마다 cat이 붙는다.
+//   어휘 밖 칸은 첫 칸 보정 (상점 cat 규약). digest·auxSpec·인터랙션 프롬프트에 어휘 전파.
+// - [코어 engine] renderTemplate `{목록:tags:필터}` — 그 문자열을 품은 항목만 칩으로.
+//   지도 대장이 한 목록(gates)을 구역 칸에 나눠 꽂는 통로.
+// - [어댑터] 보드 목록 카테고리 탭 + 글쓰기 칸 선택(보던 탭이 기본) + [칸] 표시.
+//   패널 열 때 shopView.exchQty 미초기화로 환전 입력칸에 "undefined" 찍히던 것 수정.
+// - [편집기] [보드] 탭 카테고리 칸 + SCHEMA_BOARD_RULES. [검증] categories 1~6 문자열.
+// - [얼헌 P6] 파티 편성(allies 명부 + party1~4 슬롯 — 영입은 이야기가, 편성은 버튼이,
+//   동행 지시문 {partyN} 치환) + 헌터넷 모집 칸(명단 지원 댓글 지침) + 게이트 지도 탭
+//   (서울 5권역 그리드, {gates:tags:권역}, fab 🗺️). 테스트 72→84.
 //
 // ── v0.97.0 ───────────────────────────────────────────────
 // 상점 환전 창구 (얼헌 코인↔원화 — 원작 캐논: 공식 거래 금지, 블랙 마켓만 ₩1,000/코인).
@@ -3670,6 +3684,11 @@ function validateSchema(schema) {
         err('$.board.maxPosts', '보존 글 수는 4~40 정수');
       }
       if (B.mainInject != null && typeof B.mainInject !== 'boolean') err('$.board.mainInject', 'mainInject는 true/false');
+      // 카테고리 (v0.98) — 패널 탭 + 글별 cat (어휘 밖은 첫 칸 보정)
+      if (B.categories != null && (!Array.isArray(B.categories) || !B.categories.length
+        || B.categories.length > 6 || B.categories.some((c) => typeof c !== 'string' || !c.trim()))) {
+        err('$.board.categories', '카테고리는 문자열 1~6개 배열 (첫 칸이 기본 칸)');
+      }
       if (B.when != null) {
         if (typeof B.when !== 'string') err('$.board.when', 'when은 표현식 문자열이어야 함');
         else if (B.when.trim()) checkExpr(B.when, '$.board.when', allIds, err, { allowRand: false });
@@ -3878,7 +3897,7 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
     // 리수 CBS({{...}})는 우리 문법이 아니다 — renderTemplate과 같은 기준으로 건너뛴다 (v0.76).
     // 예전엔 여기서 하드 오류가 나 `{{img::지도}}` 하나만 있어도 설치가 거부됐다 (렌더는 멀쩡했다).
     if (tpl[m.index - 1] === '{' && tpl[m.index + m[0].length] === '}') continue;
-    const inner = m[1].trim().replace(/:tags$/, ''); // {id:tags} 필터 접미사 제거 후 검사
+    const inner = m[1].trim().replace(/:tags(?::[^{}]+)?$/, ''); // {id:tags}·{id:tags:필터}(v0.98) 접미사 제거 후 검사
     if (RESERVED_SLOTS.has(inner)) continue;
     try {
       compile(inner);
@@ -4993,7 +5012,12 @@ SimCore.define("board", function (require, module, exports) {
 //   · ⚠ 자체 구현이다: LightBoard(CC BY-NC-SA)의 코드·저장 포맷과 무관하다.
 //
 // 스키마 (옵트인):
-//   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css? }
+//   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css?,
+//            categories? }
+//
+// 카테고리 (v0.98): categories: ['자유','정보','모집'] — 패널이 탭으로 나뉘고 글마다 cat이
+// 붙는다 (어휘 밖은 첫 칸 보정 — 상점 카테고리와 같은 규약). 파티 모집판 같은
+// "게시판 안의 게시판"이 필요할 때 쓴다.
 
 const { timeConfig, calendarOf, formatDate } = require('./time');
 const { evaluate, truthy } = require('./expr');
@@ -5017,7 +5041,16 @@ function boardConfig(schema) {
     mainInject: b.mainInject !== false,
     when: typeof b.when === 'string' ? b.when : '',
     css: typeof b.css === 'string' ? b.css : '',
+    categories: Array.isArray(b.categories) && b.categories.length
+      ? b.categories.map((c) => String(c).slice(0, 12)).slice(0, 6) : null,
   };
+}
+
+/** 카테고리 보정 — 어휘 밖은 첫 칸으로 (상점 cat과 같은 규약). 카테고리 없으면 null */
+function normCat(cfg, cat) {
+  if (!cfg?.categories) return null;
+  const c = cut(cat, 12);
+  return cfg.categories.includes(c) ? c : cfg.categories[0];
 }
 
 function initBoard() { return { seq: 1, posts: [] }; }
@@ -5072,6 +5105,7 @@ function sanitizeDelta(raw, cfg) {
     if (!title || !body) continue;
     out.posts.push({
       title, body,
+      cat: normCat(cfg, p.cat),
       author: cut(p.author, CAPS.AUTHOR) || 'ㅇㅇ',
       re: (Array.isArray(p.re) ? p.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5),
     });
@@ -5115,6 +5149,7 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
     board.posts.unshift({
       id: board.seq++, title: p.title, author: p.author, time: now,
       views: ri(3, 40), up: ri(0, 3), body: p.body, re: p.re,
+      ...(p.cat ? { cat: p.cat } : {}),
     });
   }
   // 지표 표류 — 최근 글일수록 많이 돈다 (숫자는 시스템이. AI가 아니라)
@@ -5128,9 +5163,10 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
 }
 
 /** 유저가 패널에서 쓴 글 — 즉시 등록, 반응은 보조 호출이 이어 받는다. 반환: 글 id */
-function applyUserPost(schema, state, { title, author, body }) {
+function applyUserPost(schema, state, { title, author, body, cat }) {
   const board = ensureBoard(state);
   const cfg = boardConfig(schema) || {};
+  const nc = normCat(cfg, cat);
   const post = {
     id: board.seq++,
     title: cut(title, CAPS.TITLE) || '(제목 없음)',
@@ -5139,6 +5175,7 @@ function applyUserPost(schema, state, { title, author, body }) {
     views: 1, up: 0,
     body: cut(body, CAPS.BODY),
     re: [],
+    ...(nc ? { cat: nc } : {}),
   };
   board.posts.unshift(post);
   if (cfg.maxPosts && board.posts.length > cfg.maxPosts) board.posts.length = cfg.maxPosts;
@@ -5161,7 +5198,7 @@ function digest(state, n = 8) {
   const posts = state?.board?.posts || [];
   if (!posts.length) return '(게시판이 비어 있다)';
   return posts.slice(0, n).map((p) =>
-    `#${p.id} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
+    `#${p.id}${p.cat ? ` [${p.cat}]` : ''} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
 }
 
 /** 턴 갱신 요청 — 기존 보조 호출에 얹는 지시 (추가 호출 0) */
@@ -5176,10 +5213,11 @@ function auxSpec(schema, state, makeLookup) {
     digest(state),
     `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`,
     cfg.topics ? `- 게시판의 관심사: ${cfg.topics}` : null,
+    cfg.categories ? `- 새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
     '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
-    '- board 형식: {"new":[{"title":"제목","author":"닉네임","body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}',
+    `- board 형식: {"new":[{"title":"제목","author":"닉네임"${cfg.categories ? ',"cat":"칸"' : ''},"body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}`,
   ].filter((x) => x !== null).join('\n');
 }
 
@@ -5200,6 +5238,7 @@ function interactionPrompt(schema, state, kind, payload = {}) {
   const head = [
     `너는 "${cfg.label}" 게시판 시뮬레이터다. 아래 게시판 현황을 보고 요청된 갱신만 JSON으로 출력하라.`,
     cfg.topics ? `게시판의 관심사: ${cfg.topics}` : null,
+    cfg.categories ? `새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? cfg.guide : null,
     '글·댓글은 그 커뮤니티 말투 그대로. 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만. 조회수·추천수는 쓰지 마라.',
     '',
@@ -5210,11 +5249,11 @@ function interactionPrompt(schema, state, kind, payload = {}) {
     payload.narrative ? String(payload.narrative).slice(0, 2400) : null,
     '',
   ];
-  const fmt = '출력 형식 (JSON만, 다른 텍스트 금지): {"board":{"new":[{"title","author","body","re":[{"author","body"}]}],"re":[{"id":글번호,"re":[{"author","body"}]}]}}';
+  const fmt = `출력 형식 (JSON만, 다른 텍스트 금지): {"board":{"new":[{"title","author"${cfg.categories ? ',"cat"' : ''},"body","re":[{"author","body"}]}],"re":[{"id":글번호,"re":[{"author","body"}]}]}}`;
   let task;
   if (kind === 'user_post') {
     task = [
-      `[방금 등록된 글] #${payload.postId} "${cut(payload.title, CAPS.TITLE)}" — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}`,
+      `[방금 등록된 글] #${payload.postId}${payload.cat ? ` [${payload.cat}]` : ''} "${cut(payload.title, CAPS.TITLE)}" — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}`,
       cut(payload.body, CAPS.BODY),
       '',
       `- 이 글에 대한 다른 사용자들의 댓글 반응을 0~5개 만들어 "re"의 id ${payload.postId}로 담아라 (반응 수는 글의 화제성에 비례).`,
@@ -5239,7 +5278,7 @@ function parseInteraction(text, extractJsonObject) {
 }
 
 module.exports = {
-  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow,
+  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
   digest, auxSpec, mainLine, interactionPrompt, parseInteraction,
 };
@@ -7083,12 +7122,15 @@ function renderTemplate(tpl, lookup, extras = null) {
     try {
       let expr = inner.trim();
       if (extras && Object.prototype.hasOwnProperty.call(extras, expr)) return extras[expr];
-      let filter = null;
-      const m = expr.match(/^(.*?):(tags)$/); // {inventory:tags} → 칩 목록 HTML
-      if (m) { expr = m[1].trim(); filter = m[2]; }
+      let filter = null, filterArg = null;
+      // {inventory:tags} → 칩 목록 HTML. {gates:tags:도심권} → 그 문자열을 품은 항목만 (v0.98
+      // — 지도 대장처럼 한 목록을 구역별 칸에 나눠 꽂을 때)
+      const m = expr.match(/^(.*?):(tags)(?::(.+))?$/);
+      if (m) { expr = m[1].trim(); filter = m[2]; filterArg = m[3]?.trim() || null; }
       const v = evaluate(expr, lookup, null);
       if (filter === 'tags') {
-        const arr = Array.isArray(v) ? v : [String(v)];
+        let arr = Array.isArray(v) ? v : [String(v)];
+        if (filterArg) arr = arr.filter((x) => String(x).includes(filterArg));
         return arr.length
           ? arr.map((x) => `<span class="sim-tag">${escapeHtml(String(x))}</span>`).join('')
           : '<span class="sim-empty">없음</span>';
@@ -11109,6 +11151,7 @@ const SCHEMA_BOARD_RULES = [
   '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+  '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
 // 상점(shop, v0.96) — 시스템 상점.
@@ -15396,6 +15439,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       pair('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
         { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 욕' }),
         '게시판이 무엇에 대해 떠드는 곳인지 — 보조 AI의 글감이 됩니다'),
+      pair('카테고리', bindInput((B.categories ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+        if (arr.length) B.categories = arr; else delete B.categories; rerender();
+      }, { cls: 'sce-w-full', ph: '자유, 정보, 모집 (쉼표 구분, 최대 6 — 비우면 탭 없음)' }),
+        '패널이 탭으로 나뉘고 글마다 칸이 붙습니다 — 모집판 같은 "게시판 안의 게시판"'),
       pair('생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
         '말투·익명성·금기 등. 예: 익명 커뮤니티 말투(반말, 마침표 생략, 밈). 닉네임은 짧은 한국어. 유저를 전지적으로 알지 못한다.'),
         ''),
@@ -23819,7 +23867,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
   // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
-  let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
+  let boardView = { mode: 'list', postId: null, cat: null };  // mode: 'list' | 'read' | 'write', cat: 카테고리 필터(null=전체)
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
   let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
@@ -24783,8 +24831,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
-    boardView = { mode: 'list', postId: null };   // 보드는 열 때마다 목록부터
-    shopView = { cat: null };                      // 상점은 열 때마다 첫 카테고리부터
+    boardView = { mode: 'list', postId: null, cat: null };  // 보드는 열 때마다 목록·전체 칸부터
+    shopView = { cat: null, exchQty: '' };                   // 상점은 열 때마다 첫 카테고리부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -25325,28 +25373,40 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       ai.maxLength = boardMod.CAPS.AUTHOR;
       const ta = el('textarea', 'scb-ta'); ta.placeholder = '내용';
       ta.maxLength = boardMod.CAPS.BODY;
+      let ci = null;
+      if (cfg.categories) {
+        ci = el('select', 'scb-input');
+        for (const c of cfg.categories) {
+          const o = el('option', null, c); o.value = c;
+          // 지금 보던 칸을 기본으로 (모집 탭에서 글쓰기 → 모집 글)
+          if (c === (boardView.cat ?? cfg.categories[0])) o.selected = true;
+          ci.appendChild(o);
+        }
+        card.appendChild(ci);
+      }
       card.appendChild(ti); card.appendChild(ai); card.appendChild(ta);
       const bar = el('div', 'scb-toolbar');
       bar.appendChild(btn('등록', async () => {
         if (!ti.value.trim() || !ta.value.trim()) { gameNotice = '⚠ 제목과 내용을 채워 주세요'; renderGamePanel(); return; }
+        const cat = ci ? ci.value : undefined;
         const postId = boardMod.applyUserPost(schema, session.current,
-          { title: ti.value, author: ai.value, body: ta.value });
+          { title: ti.value, author: ai.value, body: ta.value, cat });
         await boardSaveNow('보드 글 등록');
-        boardView = { mode: 'read', postId };
+        boardView = { ...boardView, mode: 'read', postId };
         gameNotice = '✓ 등록됐어요';
         renderGamePanel();
-        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value });
+        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value, cat });
       }));
-      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('← 목록', () => { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); }));
       card.appendChild(bar);
     } else if (boardView.mode === 'read') {
       // ── 읽기 ──
       const post = board.posts.find((p) => p.id === boardView.postId);
-      if (!post) { boardView = { mode: 'list', postId: null }; renderGamePanel(); return; }
+      if (!post) { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); return; }
       const bar = el('div', 'scb-toolbar');
-      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('← 목록', () => { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); }));
       card.appendChild(bar);
-      card.appendChild(el('div', 'scb-view-title', post.title));
+      card.appendChild(el('div', 'scb-view-title', post.cat ? `[${post.cat}] ${post.title}` : post.title));
       card.appendChild(el('div', 'scb-view-info',
         `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
       card.appendChild(el('div', 'scb-body', post.body));
@@ -25379,18 +25439,35 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     } else {
       // ── 목록 ──
       const bar = el('div', 'scb-toolbar');
-      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { mode: 'write', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { ...boardView, mode: 'write', postId: null }; renderGamePanel(); }));
       bar.appendChild(btn('🔄 새 소식', () => callBoardAux('refresh')));
       card.appendChild(bar);
+      // 카테고리 탭 (v0.98) — 전체 + 칸별 필터 (모집판 같은 "게시판 안의 게시판")
+      if (cfg.categories) {
+        const tabs = el('div', 'sch-tabs');
+        const tabBtn = (label, val) => {
+          const b = el('button', `sch-tab${boardView.cat === val ? ' sch-on' : ''}`, label);
+          b.type = 'button';
+          b.onclick = () => { boardView = { ...boardView, cat: val }; renderGamePanel(); };
+          return b;
+        };
+        tabs.appendChild(tabBtn('전체', null));
+        for (const c of cfg.categories) tabs.appendChild(tabBtn(c, c));
+        card.appendChild(tabs);
+      }
+      const posts = boardView.cat ? board.posts.filter((p) => p.cat === boardView.cat) : board.posts;
       if (!board.posts.length) {
         card.appendChild(el('div', 'scb-empty', '아직 글이 없어요 — 이야기가 흐르면 글이 올라오기 시작합니다.'));
+      } else if (!posts.length) {
+        card.appendChild(el('div', 'scb-empty', '이 칸은 아직 비어 있어요 — [✍ 글쓰기]로 첫 글을 올려 보세요.'));
       }
-      for (const p of board.posts) {
+      for (const p of posts) {
         const row = el('div', 'scb-row');
         row.appendChild(el('span', 'scb-num', `#${p.id}`));
-        row.appendChild(el('span', 'scb-title', p.re.length ? `${p.title} [${p.re.length}]` : p.title));
+        row.appendChild(el('span', 'scb-title',
+          `${p.cat && !boardView.cat ? `[${p.cat}] ` : ''}${p.title}${p.re.length ? ` [${p.re.length}]` : ''}`));
         row.appendChild(el('span', 'scb-meta', `${p.author} · ${p.time} · 👁${p.views} · 👍${p.up}`));
-        row.onclick = () => { boardView = { mode: 'read', postId: p.id }; renderGamePanel(); };
+        row.onclick = () => { boardView = { ...boardView, mode: 'read', postId: p.id }; renderGamePanel(); };
         card.appendChild(row);
       }
     }
@@ -25539,7 +25616,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const row = el('div', 'sch-item');
       const inp = el('input', 'sch-exch-qty');
       inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량`;
-      inp.value = shopView.exchQty;
+      inp.value = shopView.exchQty ?? '';
       inp.oninput = () => { shopView.exchQty = inp.value; };
       row.appendChild(inp);
       row.appendChild(btn(`${curName} 사기`, 'scb-btn', () => onShopExchange('buy')));

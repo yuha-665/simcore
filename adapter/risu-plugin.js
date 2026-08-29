@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.97.0
-//@display-name SimCore (시뮬 엔진) v0.97 상점 환전 창구
+//@version 0.98.0
+//@display-name SimCore (시뮬 엔진) v0.98 보드 카테고리·지도 대장
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.98.0 ───────────────────────────────────────────────
+// 보드 카테고리 + 템플릿 목록 필터 (얼헌 파티 모집판·게이트 지도 — 유저 요청 2건.
+// 새 기계는 안 만들었다: 모집판은 보드 탭, 지도는 편성표 대장 템플릿(v0.89)이 받는다).
+// - [코어 board] categories(1~6) — 패널이 탭(전체+칸별)으로 나뉘고 글마다 cat이 붙는다.
+//   어휘 밖 칸은 첫 칸 보정 (상점 cat 규약). digest·auxSpec·인터랙션 프롬프트에 어휘 전파.
+// - [코어 engine] renderTemplate `{목록:tags:필터}` — 그 문자열을 품은 항목만 칩으로.
+//   지도 대장이 한 목록(gates)을 구역 칸에 나눠 꽂는 통로.
+// - [어댑터] 보드 목록 카테고리 탭 + 글쓰기 칸 선택(보던 탭이 기본) + [칸] 표시.
+//   패널 열 때 shopView.exchQty 미초기화로 환전 입력칸에 "undefined" 찍히던 것 수정.
+// - [편집기] [보드] 탭 카테고리 칸 + SCHEMA_BOARD_RULES. [검증] categories 1~6 문자열.
+// - [얼헌 P6] 파티 편성(allies 명부 + party1~4 슬롯 — 영입은 이야기가, 편성은 버튼이,
+//   동행 지시문 {partyN} 치환) + 헌터넷 모집 칸(명단 지원 댓글 지침) + 게이트 지도 탭
+//   (서울 5권역 그리드, {gates:tags:권역}, fab 🗺️). 테스트 72→84.
 //
 // ── v0.97.0 ───────────────────────────────────────────────
 // 상점 환전 창구 (얼헌 코인↔원화 — 원작 캐논: 공식 거래 금지, 블랙 마켓만 ₩1,000/코인).
@@ -2412,7 +2426,7 @@
   let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
   // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
-  let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
+  let boardView = { mode: 'list', postId: null, cat: null };  // mode: 'list' | 'read' | 'write', cat: 카테고리 필터(null=전체)
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
   let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
@@ -3376,8 +3390,8 @@
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
-    boardView = { mode: 'list', postId: null };   // 보드는 열 때마다 목록부터
-    shopView = { cat: null };                      // 상점은 열 때마다 첫 카테고리부터
+    boardView = { mode: 'list', postId: null, cat: null };  // 보드는 열 때마다 목록·전체 칸부터
+    shopView = { cat: null, exchQty: '' };                   // 상점은 열 때마다 첫 카테고리부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -3918,28 +3932,40 @@
       ai.maxLength = boardMod.CAPS.AUTHOR;
       const ta = el('textarea', 'scb-ta'); ta.placeholder = '내용';
       ta.maxLength = boardMod.CAPS.BODY;
+      let ci = null;
+      if (cfg.categories) {
+        ci = el('select', 'scb-input');
+        for (const c of cfg.categories) {
+          const o = el('option', null, c); o.value = c;
+          // 지금 보던 칸을 기본으로 (모집 탭에서 글쓰기 → 모집 글)
+          if (c === (boardView.cat ?? cfg.categories[0])) o.selected = true;
+          ci.appendChild(o);
+        }
+        card.appendChild(ci);
+      }
       card.appendChild(ti); card.appendChild(ai); card.appendChild(ta);
       const bar = el('div', 'scb-toolbar');
       bar.appendChild(btn('등록', async () => {
         if (!ti.value.trim() || !ta.value.trim()) { gameNotice = '⚠ 제목과 내용을 채워 주세요'; renderGamePanel(); return; }
+        const cat = ci ? ci.value : undefined;
         const postId = boardMod.applyUserPost(schema, session.current,
-          { title: ti.value, author: ai.value, body: ta.value });
+          { title: ti.value, author: ai.value, body: ta.value, cat });
         await boardSaveNow('보드 글 등록');
-        boardView = { mode: 'read', postId };
+        boardView = { ...boardView, mode: 'read', postId };
         gameNotice = '✓ 등록됐어요';
         renderGamePanel();
-        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value });
+        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value, cat });
       }));
-      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('← 목록', () => { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); }));
       card.appendChild(bar);
     } else if (boardView.mode === 'read') {
       // ── 읽기 ──
       const post = board.posts.find((p) => p.id === boardView.postId);
-      if (!post) { boardView = { mode: 'list', postId: null }; renderGamePanel(); return; }
+      if (!post) { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); return; }
       const bar = el('div', 'scb-toolbar');
-      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('← 목록', () => { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); }));
       card.appendChild(bar);
-      card.appendChild(el('div', 'scb-view-title', post.title));
+      card.appendChild(el('div', 'scb-view-title', post.cat ? `[${post.cat}] ${post.title}` : post.title));
       card.appendChild(el('div', 'scb-view-info',
         `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
       card.appendChild(el('div', 'scb-body', post.body));
@@ -3972,18 +3998,35 @@
     } else {
       // ── 목록 ──
       const bar = el('div', 'scb-toolbar');
-      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { mode: 'write', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { ...boardView, mode: 'write', postId: null }; renderGamePanel(); }));
       bar.appendChild(btn('🔄 새 소식', () => callBoardAux('refresh')));
       card.appendChild(bar);
+      // 카테고리 탭 (v0.98) — 전체 + 칸별 필터 (모집판 같은 "게시판 안의 게시판")
+      if (cfg.categories) {
+        const tabs = el('div', 'sch-tabs');
+        const tabBtn = (label, val) => {
+          const b = el('button', `sch-tab${boardView.cat === val ? ' sch-on' : ''}`, label);
+          b.type = 'button';
+          b.onclick = () => { boardView = { ...boardView, cat: val }; renderGamePanel(); };
+          return b;
+        };
+        tabs.appendChild(tabBtn('전체', null));
+        for (const c of cfg.categories) tabs.appendChild(tabBtn(c, c));
+        card.appendChild(tabs);
+      }
+      const posts = boardView.cat ? board.posts.filter((p) => p.cat === boardView.cat) : board.posts;
       if (!board.posts.length) {
         card.appendChild(el('div', 'scb-empty', '아직 글이 없어요 — 이야기가 흐르면 글이 올라오기 시작합니다.'));
+      } else if (!posts.length) {
+        card.appendChild(el('div', 'scb-empty', '이 칸은 아직 비어 있어요 — [✍ 글쓰기]로 첫 글을 올려 보세요.'));
       }
-      for (const p of board.posts) {
+      for (const p of posts) {
         const row = el('div', 'scb-row');
         row.appendChild(el('span', 'scb-num', `#${p.id}`));
-        row.appendChild(el('span', 'scb-title', p.re.length ? `${p.title} [${p.re.length}]` : p.title));
+        row.appendChild(el('span', 'scb-title',
+          `${p.cat && !boardView.cat ? `[${p.cat}] ` : ''}${p.title}${p.re.length ? ` [${p.re.length}]` : ''}`));
         row.appendChild(el('span', 'scb-meta', `${p.author} · ${p.time} · 👁${p.views} · 👍${p.up}`));
-        row.onclick = () => { boardView = { mode: 'read', postId: p.id }; renderGamePanel(); };
+        row.onclick = () => { boardView = { ...boardView, mode: 'read', postId: p.id }; renderGamePanel(); };
         card.appendChild(row);
       }
     }
@@ -4132,7 +4175,7 @@
       const row = el('div', 'sch-item');
       const inp = el('input', 'sch-exch-qty');
       inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량`;
-      inp.value = shopView.exchQty;
+      inp.value = shopView.exchQty ?? '';
       inp.oninput = () => { shopView.exchQty = inp.value; };
       row.appendChild(inp);
       row.appendChild(btn(`${curName} 사기`, 'scb-btn', () => onShopExchange('buy')));

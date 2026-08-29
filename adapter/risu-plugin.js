@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.3
-//@display-name SimCore (시뮬 엔진) v1.0.3 보드 되울림
+//@version 1.0.4
+//@display-name SimCore (시뮬 엔진) v1.0.4 패널 쓰기 유실 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.4 ────────────────────────────────────────────────
+// 긴급: 턴 없이 패널만 만진 변화가 리로드에 증발 (실사고 제보: "게시글 쓰고 갱신 누르니
+// 내 글만 사라짐" — 옛 턴의 글은 스냅샷에 있어 살았고 유저 글만 램이었다).
+// - 뿌리: loadForCurrentChar가 세션을 out:N에서 복원하면서 lastOutIndex는 -1로 둠 →
+//   boardSaveNow·commitPanelChanges·수동 설정이 전부 `>= 0` 가드에 걸려 조용히 저장 생략
+//   → 리로드(신안 재적용 [설치/업데이트]·플러그인 재부팅·채팅 전환 복귀)가 램만의 변화를 지움.
+// - 수정: 로드 시 복원 앵커(out:lastCharIdx)를 lastOutIndex로 승계 — 패널 쓰기가 같은
+//   자리에 저장돼 리로드를 살아남는다. 채팅 전환 시 이전 채팅의 낡은 앵커가 새 채팅에
+//   새던 잠복 버그도 같이 잡힘. 되울림(v1.0.3)과는 무관 — 그 통로는 글을 지우지 않는다.
+// - test-panelanchor.js 신설 (턴 없는 세션에서 /명령 저장 → 스냅샷 실측).
 //
 // ── v1.0.3 ────────────────────────────────────────────────
 // 보드 되울림 (유저 제안: "유저가 키배를 뜸 → 다음 서사에 쓸 소스로 주고, 필요없으면 버려지는
@@ -2574,6 +2585,9 @@
   // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
   let turnBusy = false;
   let turnBusyAt = 0;
+  // 마지막 out 스냅샷 인덱스 = 패널 쓰기의 저장 앵커. ⚠ 최초 loadForCurrentChar()가
+  // v1.0.4부터 이 값을 쓰므로 선언이 그보다 앞에 있어야 한다 (TDZ — utilBtn류와 같은 사연).
+  let lastOutIndex = -1;
   let panelStatus = { state: 'init', charName: null, report: null }; // 패널 표시용
   // 사이드바(우상단) 유틸 버튼 상태 (구현은 아래 '사이드바 = 게임 패널 launcher' 절).
   // v0.55: 액션별 플로팅 버튼을 없애고 이 자리를 게임 UI(편성표 등) 여는 버튼에 내줬다 —
@@ -2679,6 +2693,13 @@
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
     await session.init(lastCharIdx);
+    // 패널 쓰기의 저장 앵커 (v1.0.4) — 로드 직후 lastOutIndex가 -1이면 boardSaveNow·
+    // commitPanelChanges·수동 설정이 전부 조용히 저장을 건너뛰어, 턴 없이 패널만 만진
+    // 변화(게시글·거래·보정)가 램에만 살았다. 그러다 리로드(신안 재적용·재부팅·전환)가
+    // 오면 스냅샷에서 복원되며 증발 — 실사고 2026-08-30: "글 쓰고 갱신 누르니 내 글만 사라짐"
+    // (옛 턴의 NPC 글은 스냅샷에 있어 살고, 유저 글만 램이었다). 세션이 복원된 바로 그
+    // 자리(out:lastCharIdx)를 앵커로 승계하면 패널 쓰기가 같은 자리에 저장돼 리로드를 살아남는다.
+    lastOutIndex = lastCharIdx;
     // 새 시작 프리셋은 채팅이 아니라 **캐릭터에** 붙는다 (v0.85.2). 패널에서 고른 순간의
     // 채팅에만 적용하던 예전 방식은 새 채팅을 만드는 순간 초기값으로 증발했다 — 실사고:
     // 리얼리티를 골랐는데 새 채팅이 10레벨·팬 200명(초기값)으로 시작. 선택을 저장해 두고
@@ -4903,7 +4924,7 @@
   }
 
   // ── 관리 패널 (플러그인 자체 iframe UI — 제약 없는 DOM) ────
-  let lastOutIndex = -1;
+  // (lastOutIndex 선언은 v1.0.4에 전환 감지 절 앞으로 이사 — 최초 로드가 앵커를 쓰게 됨)
   let panelBuilt = false;
   let panelVisible = false; // 전체화면 패널이 떠 있는 동안은 클릭 히트테스트를 쉰다
   let lastManualApply = { id: '', at: 0 };

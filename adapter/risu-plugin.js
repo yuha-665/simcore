@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.5
-//@display-name SimCore (시뮬 엔진) v1.0.5 개조 번들
+//@version 1.0.6
+//@display-name SimCore (시뮬 엔진) v1.0.6 번들 적용 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.6 ────────────────────────────────────────────────
+// 긴급: 번들 적용이 갓 임포트한 원본 카드에서 안 먹힘 (실사고 — "변수 하나도 없다고
+// 캐릭터 저장이 안 됨", 유저가 세이브 가져오기 + [캐릭터에 적용]으로 우회해야 했다).
+// - 뿌리 ①: setCharacter 직후 되읽기 레이스(v0.85.1과 같은 사연)를 번들 적용만 방어 안 함
+//   → 옛 캐릭터를 되읽어 세션이 안 뜨고 "⚙simcore 없음"으로 오판. → 번들 속 스키마와
+//   대조하는 재시도 3회(350ms) 추가, 보고 문구도 [인식됨 / 반영 지연 / 진짜 없음] 3분화.
+// - 뿌리 ②: 편집기 작업본 미갱신 — 세이브 가져오기는 loadIntoEditor를 하는데 번들은 안 해서,
+//   빈/옛 작업본이 더티 배너로 남아 [지금 적용]이 "변수가 하나도 정의되지 않음"으로 거부
+//   (빈 작업본을 설치하려 든 것). → 적용·되돌리기 모두 편집기 동기화 (세이브와 같은 규약).
 //
 // ── v1.0.5 ────────────────────────────────────────────────
 // 개조 번들 (배포 도구) — 남의 봇 개조판을 "카드 재배포 없이" 나누는 통로 (원본 카드
@@ -6378,13 +6388,37 @@ count(목록)  has(목록, "항목")</pre>
             .filter((k) => k.startsWith(bundleBkKeyBase(char))).sort();
           for (const k of keys.slice(0, -3)) await Risuai.pluginStorage.removeItem(k);
         } catch (e) { console.log('[simcore] 번들 백업 실패:', e.message); }
+        // 번들 속 스키마를 미리 읽어 둔다 — 적용 검증(되읽기 대조)과 편집기 갱신에 쓴다
+        let bundled = null;
+        try {
+          const entry = data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok) bundled = p; }
+        } catch { /* 동봉 스키마 손상 — 없음으로 취급 */ }
         applyBundleToChar(char, data);
         await Risuai.setCharacter(char);
         charKey = null;
         await loadForCurrentChar();
+        // 되읽기 레이스 방어 (v0.85.1과 동일 사연) — setCharacter 직후의 getCharacter가 옛
+        // 캐릭터를 돌려주면 "⚙simcore 없음"으로 오판된다. 실사고(v1.0.6): 갓 임포트한
+        // 원본 카드에 번들을 넣었는데 시스템이 안 뜨고, 편집기(빈 작업본)의 [캐릭터에 적용]은
+        // "변수가 하나도 정의되지 않음"으로 거부 — 유저가 세이브 가져오기로 우회해야 했다.
+        if (bundled) {
+          const want = sig(bundled);
+          for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
+            await new Promise((res) => setTimeout(res, 350));
+            charKey = null;
+            await loadForCurrentChar();
+          }
+          // 편집기 작업본도 번들 스키마로 — 세이브 가져오기와 같은 규약. 안 하면 빈/옛
+          // 작업본이 더티 배너로 남아 [지금 적용]이 방금 넣은 스키마를 도로 지우려 든다.
+          if (editor) loadIntoEditor(bundled);
+        }
+        const settled = bundled && sig(schema ?? {}) === sig(bundled);
         rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
           + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}`
-          + `${session ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요' : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;
+          + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
+            : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
+              : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;
         renderPanel();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;
@@ -6406,6 +6440,11 @@ count(목록)  has(목록, "항목")</pre>
         await Risuai.pluginStorage.removeItem(keys[keys.length - 1]); // 쓴 백업은 소모 (되돌리기 반복 = 한 단계씩)
         charKey = null;
         await loadForCurrentChar();
+        // 복구본에 ⚙simcore가 있으면 편집기 작업본도 맞춘다 (적용 경로와 같은 규약)
+        try {
+          const entry = (bk.lorebook || []).find((l) => l.comment === SCHEMA_LORE_COMMENT);
+          if (entry) { const p = JSON.parse(entry.content); if (validateSchema(p).ok && editor) loadIntoEditor(p); }
+        } catch { /* 복구본 스키마 손상 — 편집기는 그대로 */ }
         rep.innerHTML = `<span class="status-ok">✓ 교체 전 상태로 복구 — 로어북 ${(bk.lorebook || []).length}개 · 정규식 ${(bk.regex || []).length}개</span>`;
         renderPanel();
       } catch (e) {

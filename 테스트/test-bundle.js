@@ -10,8 +10,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.0.5', src.includes('//@version 1.0.5'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.0\.5/.test(src), '');
+  ck('버전 1.0.6', src.includes('//@version 1.0.6'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.0\.6/.test(src), '');
+  // v1.0.6 회귀 — 실사고: 갓 임포트한 원본 카드에서 번들 적용이 안 먹힘
+  ck('적용 후 되읽기 레이스 재시도 (v0.85.1 결)', src.includes('리수 반영이 늦어요'), '');
+  ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약)', src.includes('if (editor) loadIntoEditor(bundled);'), '');
+  ck('되돌리기도 편집기 동기화', src.includes('validateSchema(p).ok && editor) loadIntoEditor(p);'), '');
   ck('세이브 페이지에 번들 카드', src.includes('sc-bundle-export') && src.includes('sc-bundle-apply')
     && src.includes('sc-bundle-revert'), '');
   ck('백업 키 규약', src.includes("'sim:bundle-backup:'"), '');

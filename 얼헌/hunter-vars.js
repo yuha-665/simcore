@@ -27,6 +27,83 @@ const { evaluate, truthy } = SC.require('expr');
 // 중첩 3항을 괄호로 안전하게 — [[조건, 값], ...] + 마지막 기본값
 const chain = (pairs, last) => pairs.reduceRight((acc, [c, v]) => `(${c} ? ${v} : ${acc})`, last);
 
+// ══════════ P2 — NPC 레지스트리 (원본 NPC List 11.3K + Hostile 2.5K의 동적 대체) ══════════
+// 정적 기준선(랭크·역할·소속·한 줄)은 여기 표가 유일 출처 → 랭크 그룹별 지시문으로 베이크된다.
+// 유저 라이선스 ±1 그룹만 노출 (미각성은 E 대역으로 취급). 이미 서사에 들어온 인물은 대역과
+// 무관하게 유지 — 개별 로어북 항목이 이름 키워드로 뜨므로 별도 장치가 필요 없다.
+// 변동 정보(승급·이적·장비·부상)는 npc_notes 목록 하나에 "이탈분만" 기록한다.
+const NPC_BAND = {
+  E: [
+    '김민수 Kim Min-soo (20/M): eager naive rookie, E-Rank Tanker (Classless), leans on Rare skill 이목집중',
+    '송하늘 Song Ha-neul (20/F): energetic optimist, E-Rank Archer, high potential, hunts to support family, gore-averse',
+    '안도현 Ahn Do-hyun (25/M): laid-back practical E-Rank Support (Classless), repair skill 탁월한 손재주',
+    '오하나 Oh Ha-na (20/F): purple bob, otaku energy, E-Rank Dealer 투척가 (knives)',
+    '최유나 Choi Yu-na (17/F): blunt tsundere secretly kind, E-Rank Tanker, passive 강철 모루',
+  ],
+  D: [
+    '리베아 Rivea (appears 12/F): forgetful detached, D-Rank(?) hidden 잊혀진 신격, kept in Association custody, requires mana',
+    '이사벨 헤이즈 Isabelle Hayes (20/F): devout zealous D-Rank Crusader, church-raised, unknowingly holds an Athena-linked Unique Skill',
+    '유진성 Yoo Jin-seong (27/M): hearty meticulous D-Rank crafter 대장장이, Hunter Association engineer (7층)',
+    '이하은 Lee Ha-eun (21/F): timid earnest D-Rank Cleric, freelance',
+  ],
+  C: [
+    '강유라 Kang Yoo-ra (27/F): tomboyish easygoing C-Rank Striker (Taekwondo), hunts as hobby/stress relief',
+    '박소원 Park So-won (25/F): enthusiastic diligent C-Rank Supporter 연금술사, Eunrang Guild',
+    '서지한 Seo Ji-han (26/M): calm secretive C-Rank Supporter (buffs/heals), cursed with vampirism, seeks a cure in secret',
+    '최민준 Choi Min-jun (35/M): mentor-like patient C-Rank Tank Centurion, runs rookie support agency Stone Square',
+  ],
+  B: [
+    '민채린 Min Chae-rin (24/F): prickly tsundere B-Rank Dealer Shadow Hunter, cat ears she dislikes, prefers solitude',
+    '주아람 Joo Ah-ram (29/F): calm calculating B-Rank, Unique Skill 홍선, Heuksa Guild Master',
+    '한서연 Han Seo-yeon (23/F): driven reckless B-Rank Fire Mage, 한지원\'s younger sister, inferiority complex',
+    '하루 이토 Haru Ito (16/M): sharp-witted youngest B-Rank Elementalist, commands spirits, dual JP/KR',
+    '최태현 Choi Tae-hyun (36/M): sly one-eyed B-Rank close Dealer, Association field team 팀장, Unique 소울 홀드, vapes',
+  ],
+  A: [
+    '강민혁 Kang Min-hyuk (24/M): calm pragmatic A-Rank Dealer 검사 (Eclipse Blade aura), avoids S-Rank, Heuksa Guild',
+    '강우석 Kang Woo-seok (25/M): polite resolute protective A-Rank Tanker, Baekryeon Guild',
+    '사사키 유아 Sasaki Yua (25/F): disciplined ambitious A-Rank Dealer/Tank, hidden 저승 무사, seeks S-Rank',
+    '유선화 Yoo Sun-hwa (25/F): fierce loyal A-Rank Tank/Dealer, Eunrang, runs fighting ground 무쇠 천칭, gauntlets 탈로스의 의지',
+    '앨리스 크로프트 Alice Croft (22/F, looks 10-12): smug arrogant A-Rank Supporter, hidden Successor of Chronos, British researcher',
+    '이지혜 Lee Ji-hye (28/F): lazy indifferent A-Rank Summoner (hidden Nyx), unaffiliated, hunts purely for income',
+    '임설희 Lim Seol-hee (26/F): cold misunderstood Ice Princess, A-Rank Dealer, Unique Ice Maker, Baekryeon',
+    '진소희 Jin So-hee (26/F): lethargic cynical A-Rank Dealer/Supporter, Unique 퇴마부, 주아람\'s bodyguard',
+  ],
+  S: [
+    '박준호 Park Jun-ho (38/M): taciturn protective S-Rank Tank, hidden 벽운갑주, Jeokho Guild',
+    '백휘성 Baek Hwi-Sung (30/M): intense hunter-hostile S-Rank Dealer, hidden Herald of Helios, Association suppression duty',
+    '임진태 Im Jin-tae (41/M): hot-blooded protective S-Rank Dealer, hidden Werewolf, Eunrang Guild Master',
+    '하월영 Ha Wol-young (28/F): always-drunk unpredictable S-Rank Tanker(?), nicknamed 검귀, three Unique katanas',
+    '제이크 밀러 Jake Miller (32/M): rough confrontational S-Rank 무투가, freelance, dismissive',
+    '한지원 Han Ji-won (26/F): playful strategic S-Rank Support (barriers/True Gaze), Jeokho, foodie, scouts rookies',
+  ],
+};
+const NPC_STAFF = [
+  '권재현 Kwon Jae-hyun (60s/M): Association President, former S-Rank (3rd Gen, Mana Enchant), chronic illness',
+  '고은비 Go Eun-bi (22/F): earnest insecure Association 주임, assistant to 최유진',
+  '최유진 Choi Yoo-jin (24/F): efficient Association Registration & Assessment 팀장, skilled martial artist',
+  '박혜인 Park Hye-in (31/F): cold meticulous Association senior researcher & rank-measurement supervisor',
+  '이소윤 Lee So-yoon (28/F): chatty meddlesome Association Settlement Dept 대리, scent-obsessed',
+  '윤미래 Yoon Mirae (29/F): gentle yet ruthless Baekryeon Guild Master, non-combatant, uses Foresight',
+  '윤지호 Yoon Ji-ho (14/M): resourceful Black Market errand boy, innate item identification',
+  '백은하 Baek Eun-ha (24/F): gentle hospital rehab patient (post-coma, partial memory), 백휘성\'s sister',
+];
+const NPC_HOSTILE = [
+  '강태식 Kang Tae-shik (29/M): psychopathic C-Rank Rogue posing as D/E, serial killer preying on low-rank parties',
+  '권도윤 Kwon Do-yoon (27/M): calculative venomous B-Rank, Black Market operative',
+  '유진혁 Yoo Jin-hyuk (31/M): vengeful fugitive PK, former A-Rank, hidden 에레보스의 피조물, targets 백휘성/high ranks',
+  '신우현 Shin Woo-hyun (late 20s/M): manic fanatic 등불 of 이계 숭배단, non-Awakened, corrupted mana stones, 존댓말',
+  '나선영 Na Sun-young (28/F): blind seeress, serene zealot 등불 of 이계 숭배단, curse user',
+  '장은서 Jang Eun-seo (27/F): nihilistic leader of 상태창 불신론자, Awakened without Status Window, penalty-free cursed items',
+  '채하윤 Chae Ha-yoon (26/F): manic free-spirited Vice-Commander of 불신론자, former E-Rank, Rare Mana Bullet, twin pistols Tic&Toc',
+];
+const roster = (arr) => arr.map((s) => '· ' + s).join(' ');
+// 대역 노출 조건 — 유저 라이선스 ±1 (미각성 0은 E 대역)
+const BAND_WHEN = {
+  E: 'lic_n <= 2', D: 'lic_n <= 3', C: 'lic_n >= 2 and lic_n <= 4',
+  B: 'lic_n >= 3 and lic_n <= 5', A: 'lic_n >= 4', S: 'lic_n >= 5',
+};
+
 // 랭크 구간 (원본 로어북 "4. Stats Explanation" 그대로)
 const RANKS = [[100, 'S'], [80, 'A'], [60, 'B'], [40, 'C'], [25, 'D']];
 const rankExpr = (v) => chain(RANKS.map(([at, r]) => [`${v} >= ${at}`, `'${r}'`]), `'E'`);
@@ -141,6 +218,13 @@ const S = {
       desc: '유저 정책값 (원본 scenario 토글). 끄면 일상물 — 게이트 이벤트 빈도가 내려간다.' },
     { id: 'hazard', label: '위험도', type: 'int', init: 30, min: 0, max: 100,
       desc: '세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라.' },
+
+    // ── NPC 변동 기록 (P2) — 기준선(레지스트리)에서 "달라진 것"만 ──
+    { id: 'npc_notes', label: '인물 변동', type: 'list', init: [], maxItems: 14, itemMaxLength: 40, cmd: '인물',
+      desc: 'Lasting CHANGES to named NPCs only — promotion, guild move, notable new gear/skill, '
+        + 'grave injury, death. Format "이름 — 변화", e.g. "김민수 — D급 승급", "서지한 — 흡혈 저주 해제". '
+        + 'Profiles are the baseline; log deviations only, one entry per fact, replace when superseded. '
+        + 'NOT for moods, locations or the protagonist.' },
   ],
 
   derived: [
@@ -215,6 +299,25 @@ const S = {
     { id: 'pts_idle', when: 'stat_pts >= 4',
       text: '미분배 스탯 포인트가 {stat_pts}점 쌓여 있다. 분배는 유저의 선택이다 — 대신 정하지 말고, '
         + '수련·정비 장면에서 가볍게 상기시켜라.' },
+
+    // ── NPC 등장 규칙 (P2) — 원본 NPC List(always 11.3K)의 동적 대체 ──
+    { id: 'npc_cast', when: 'true',
+      text: 'The named cast listed below are this world\'s recurring figures. Introduce naturally only '
+        + 'those whose rank band fits the scene; the rest exist off-screen unless an event, reputation '
+        + 'or the user pulls them in. Anyone already in the story stays available regardless of band. '
+        + 'If a [인물 변동] entry exists for someone, it overrides their profile baseline.' },
+    ...Object.entries(NPC_BAND).map(([band, arr]) => ({
+      id: `npc_${band.toLowerCase()}`, when: BAND_WHEN[band],
+      text: `${band}-Rank hunters natural to encounter now: ${roster(arr)}`,
+    })),
+    { id: 'npc_s_far', when: 'lic_n <= 4',
+      text: 'S-Rank celebrities everyone knows from media and HunterNet (distant figures, not walk-ons): '
+        + '박준호 · 백휘성 · 임진태 · 하월영(검귀) · 제이크 밀러 · 한지원.' },
+    { id: 'npc_staff', when: 'true',
+      text: `Institutional figures met by function, not rank: ${roster(NPC_STAFF)}` },
+    { id: 'npc_hostile', when: 'faction_on',
+      text: `Hostile figures (use sparingly, for tension arcs): ${roster(NPC_HOSTILE)} `
+        + '— factions: 상태창 불신론자 (anti-System extremists) · 이계 숭배단 (Gate-worship cult).' },
   ],
 
   updater: {
@@ -247,6 +350,7 @@ const S = {
       { id: 'items' },
       { id: 'skills' },
       { id: 'quests' },
+      { id: 'npc_notes' },
       // 원화: 수입은 턴당 5백만이 상한(대박 보상도 분할 정산), 손실은 사실상 무제한 (비대칭 원칙)
       { id: 'won', maxGain: 5000000, maxLoss: 1000000000 },
       { id: 'coin', maxGain: 50, maxLoss: 500 },
@@ -316,6 +420,8 @@ S.statusUI.templates = [{
     + '{skills:tags}'
     + '<div class="a-sec">QUESTS</div>'
     + '{quests:tags}'
+    + '<div class="a-sec">PEOPLE — 인물 변동</div>'
+    + '{npc_notes:tags}'
     + '<div class="a-foot">{lastcheck}</div>'
     + '{commands}'
     + '</div>',
@@ -428,6 +534,42 @@ for (const p of S.setup.presets) {
   if (p.id === 'gutter') ok('밑바닥 — 3만원 · 소지품 없음 · 위험 60',
     t.vars.won === 30000 && t.vars.items.length === 0 && t.vars.hazard === 60,
     JSON.stringify({ won: t.vars.won, items: t.vars.items, hazard: t.vars.hazard }));
+}
+
+console.log('\n━━ P2 — NPC 랭크 게이팅 ━━');
+{
+  // E급 신인: E·D 대역 상세 + S 셀럽 한 줄, A급 상세는 없어야
+  let t = fresh();
+  const pE = turn(t, {}, 50).prompt;
+  ok('E유저 — E·D 대역 상세 노출', pE.includes('김민수') && pE.includes('리베아'));
+  ok('E유저 — A급 상세 미노출', !pE.includes('Eclipse Blade'), 'A급 강민혁 상세가 실림');
+  ok('E유저 — S 셀럽은 원거리 한 줄만', pE.includes('distant figures') && !pE.includes('벽운갑주'));
+  ok('E유저 — 협회 직원·적대 인물 상시', pE.includes('고은비') && pE.includes('강태식'));
+
+  // B급: C·B·A 대역, E 신인 상세는 빠진다
+  t = fresh(); t.vars.license = 'B';
+  const pB = turn(t, {}, 51).prompt;
+  ok('B유저 — C·B·A 대역 노출', pB.includes('강유라') && pB.includes('민채린') && pB.includes('Eclipse Blade'));
+  ok('B유저 — E 신인 상세 미노출', !pB.includes('김민수'));
+  ok('B유저 — S는 아직 원거리 한 줄', pB.includes('distant figures') && !pB.includes('벽운갑주'));
+
+  // S급: A·S 상세, 셀럽 한 줄은 사라진다
+  t = fresh(); t.vars.license = 'S';
+  const pS = turn(t, {}, 52).prompt;
+  ok('S유저 — A·S 상세 노출', pS.includes('벽운갑주') && pS.includes('Eclipse Blade'));
+  ok('S유저 — 원거리 한 줄 소멸', !pS.includes('distant figures'));
+  ok('S유저 — 하위 대역 미노출', !pS.includes('김민수') && !pS.includes('강유라'));
+
+  // 적대 서사 끔
+  t = fresh(); t.vars.faction_on = false;
+  const pF = turn(t, {}, 53).prompt;
+  ok('faction_on=false — 적대 인물 목록 미노출', !pF.includes('강태식'));
+
+  // 변동 기록이 기준선을 이긴다는 규칙이 상시 실려 있나
+  ok('변동 우선 규칙 상시', pE.includes('overrides their profile baseline'));
+  let t2 = fresh();
+  ({ st: t2 } = turn(t2, { npc_notes: { add: ['김민수 — D급 승급'] } }, 54));
+  ok('변동 기록 등록', t2.vars.npc_notes.length === 1 && t2.vars.npc_notes[0].includes('김민수'));
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

@@ -1,0 +1,221 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:15px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">v1.0 정식 출시</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v0.93 &nbsp;→&nbsp; v1.0</div>
+  <p style="margin:10px 0 0;color:#a9b4c2;font-size:14px;">0.1부터 굴려 온 엔진이 1.0을 찍었습니다. 기념으로 <b style="color:#dbe2ea;">얼터헌터 개조판(무책임 베타)</b>을 같이 풉니다 — 글 아래쪽에.</p>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  변수·이벤트·판정·상점·게시판까지 편집기에서 만들고, 어려운 건 AI에게 만들어 달라고 시키면 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 스트리밍 중복 과금 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">스트리밍을 켜고 쓰면 보조 모델이 한 턴에 10번+ 불리던 문제 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v1.0.1</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  리스는 스트리밍 중 <b style="color:#c98a7a;">응답 조각이 올 때마다</b> 출력 처리를 다시 돌립니다. SimCore가 그때마다 보조 모델을 불러서,
+  한 턴에 상태 갱신 호출이 10번 넘게 나가고 <b style="color:#c98a7a;">수치가 중복으로 움직일 수</b> 있었습니다. 스트리밍을 끄고 쓰셨다면 무관합니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  이제 스트리밍이 끝난 걸 확인하고 <b style="color:#dbe2ea;">딱 한 번</b>만 처리합니다. 덤으로 보조 호출이 메인과 같은 최대 토큰(예: 10000)으로
+  나가던 것도 요청 크기에 맞게 조입니다 — 보조 비용이 눈에 띄게 줄어듭니다. <b style="color:#dbe2ea;">플러그인 파일을 다시 임포트해야 적용됩니다.</b>
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+봇 세계에 <b style="color:#e0a94a;">유저 말고도 사는 사람들</b>이 생겼습니다 — 게시판이 떠들고, 상점이 흥정하고, 시계는 장면을 따라옵니다.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+큰 덩어리는 넷 — <b style="color:#dbe2ea;">커뮤니티 게시판</b>(v0.95~98), <b style="color:#dbe2ea;">상점·환전</b>(v0.96~97),
+<b style="color:#dbe2ea;">과거 상태창 + 제작 도구 7종</b>(v1.0), <b style="color:#dbe2ea;">하루 경계 넘김</b>(v0.99).
+</p>
+
+<!-- ─────────── ① 게시판 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🌐 커뮤니티 게시판 — 세계 안에 사는 익명 커뮤니티</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.95~98, 1.0.3</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  봇 세계 안의 미니 게시판입니다. 매 턴 서사를 보고 게시판 사용자들이 목격담·소문·낚시글을 올리고,
+  유저도 패널에서 <b style="color:#e0a94a;">채팅 턴을 쓰지 않고</b> 글을 쓰고 댓글로 키배를 뜰 수 있습니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 토큰이 무섭지 않습니다</b> — 게시판 원문은 메인 모델에 절대 안 실립니다. 서사에는 "지금 화제" 한 줄만 흘러갑니다.
+  게시판 통짜를 매턴 재전송하던 기존 방식들의 비용 문제를 구조로 없앤 겁니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 칸(탭) 분류</b> — 자유/정보/모집처럼 최대 6칸. 모집판 같은 "게시판 안의 게시판"이 됩니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 내가 쓴 글은 서사가 압니다</b> (v1.0.3) — 유저가 올린 글·댓글은 달린 반응까지 스레드째
+  <b style="color:#dbe2ea;">다음 턴에 딱 한 번</b> 서사 소스로 넘어가고, 안 쓰이면 조용히 버려집니다. 키배를 떴으면 다음 장면의 인물이 그걸 알고 있을 수 있습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">게시글·조회수·추천은 세이브에 함께 저장되고 리롤하면 그 시점으로 되감깁니다.</p>
+</div>
+
+<!-- ─────────── ② 상점 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🏪 상점 + 환전 — 가격은 시스템이 지킵니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.96~97</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  로어북 상점의 고질병 — 없는 등급을 지어내고, S급 아이템을 껌값에 파는 <b style="color:#c98a7a;">AI 뇌절</b> — 을 구조로 잡았습니다.
+  등급 어휘와 가격 밴드를 스키마가 못박고, <b style="color:#e0a94a;">어휘 밖 등급은 거부, 밴드 밖 가격은 강제 보정</b>됩니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 구매·판매·환전은 계산이 전부 엔진</b> — 보조 호출 0회, 즉시 정산. 거래 내역은 다음 턴에 한 번 서사로 흘러가고 소거됩니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">· 이중 통화 환전</b> — 환율과 스프레드(살 때 비싸고 팔 때 싼 것)까지 스키마로. 암시장 환전상 같은 걸 만들 수 있습니다.
+  </p>
+</div>
+
+<!-- ─────────── ③ 1.0 제작 도구 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🕰 과거 상태창 + 제작 도구 7종</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  옛 메시지의 상태창이 이제 <b style="color:#e0a94a;">그 시점의 수치</b>로 그려집니다. 지금까지는 어느 메시지를 봐도 전부 현재 값이었습니다 —
+  10턴 전 전투 장면을 올려다보면 그때의 HP가 보입니다.
+  </p>
+  <p style="margin:0 0 6px;color:#a9b4c2;font-size:14px;">
+  제작자용 도구도 한 번에 들어왔습니다 —
+  <b style="color:#dbe2ea;">🧪 1턴 시험 실행</b>(채팅 없이 엔진만 한 턴 굴려 뭐가 왜 바뀌는지 타임라인으로),
+  <b style="color:#dbe2ea;">프리셋·달력 미리보기</b>, <b style="color:#dbe2ea;">변수 참조 추적</b>(이 변수 어디서 쓰는 중인지),
+  <b style="color:#dbe2ea;">랜덤 이벤트 실효 확률 표시</b>, <b style="color:#dbe2ea;">파생 계산값 미리보기</b>, 시간 탭 AI 내보내기/가져오기.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  그리고 <b style="color:#dbe2ea;">상태창 위치</b>를 고를 수 있습니다 (v1.0.2) — 본문 아래(기본) 또는 본문 위. 긴 응답에서 수치부터 보고 싶은 분용.
+  </p>
+</div>
+
+<!-- ─────────── ④ 하루 경계 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 개선</span>
+    <span style="font-size:19px;font-weight:600;">🌙 하루 마무리가 "다음날 아침"을 못박지 않습니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v0.99</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  🌙 버튼을 누르면 예전엔 무조건 +24시간 아침이었습니다 — 야간 작전물·교대 근무물에서 어긋나던 부분.
+  이제 <b style="color:#dbe2ea;">장면이 먼저 정하고 시계가 따라옵니다</b>: 다음 장면이 새벽이면 새벽으로, 정오면 정오로.
+  시간 계산은 여전히 시스템이 하니 시계가 틀어지진 않습니다.
+  </p>
+</div>
+
+<!-- ═══════════ 얼헌 개조판 ═══════════ -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:12px;margin-bottom:22px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">1.0 기념 동시 공개</div>
+  <div style="font-size:26px;font-weight:700;line-height:1.25;">얼터헌터 <span style="color:#e0a94a;">SimCore 개조판</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">무책임 베타</span></div>
+</div>
+
+<p style="margin:0 0 14px;color:#dbe2ea;">
+얼터헌터가 뭔지는 설명 안 하겠습니다 — 아는 그 봇 맞습니다. 그 봇의 시스템 층(상태창·헌터넷·스토어·이벤트)을
+SimCore 엔진으로 통째로 갈아 끼운 개조판입니다. 서사·로어북·인물은 원본의 것이고, <b style="color:#e0a94a;">숫자가 굴러가는 방식</b>이 바뀌었습니다.
+</p>
+<p style="margin:0 0 20px;color:#a9b4c2;font-size:14px;">
+가장 큰 체감은 토큰입니다 — 원본은 상태창 지침·NPC 목록·이벤트 트리거가 <b style="color:#c98a7a;">매턴 약 42,000자</b>를 상시 전송했습니다.
+개조판은 같은 일을 상태 블록과 시스템이 하면서 <b style="color:#a8d5a2;">매턴 3,000~4,000자</b>로 돕니다. 상태창 뽑는 보조 호출도 채팅 로그 통짜(10k~16k토큰) 대신 상태 블록 중심으로 확 줄었습니다.
+</p>
+
+<!-- 헌터넷 -->
+<div style="background:#161b22;border-radius:6px;padding:20px 20px;margin-bottom:12px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">🌐 헌터넷 — 진짜로 돌아가는 커뮤니티</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">자유 · 정보 · 모집 · 성인</b> 네 칸짜리 익명 게시판. 매 턴 세계가 목격담과 소문을 올리고,
+  유저는 채팅 턴 없이 글쓰기·댓글·키배가 됩니다. 내가 쓴 글은 다음 턴 서사가 알고 있고요.
+  모집 칸에 파티원 구인 글을 올리면 <b style="color:#dbe2ea;">등장인물 헌터가 실명으로 지원 댓글</b>을 답니다.
+  게이트 안에서는 통신 두절 — 새 글이 안 올라옵니다. 성인 칸은 원본 그 음지판의 결 그대로입니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">[스샷 첨부: 헌터넷 패널 — 탭·글 목록·읽기 화면]</p>
+</div>
+
+<!-- 스토어 -->
+<div style="background:#161b22;border-radius:6px;padding:20px 20px;margin-bottom:12px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">🏪 알터 스토어 + 암거래 환전</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  코인 경제로 굴러가는 시스템 상점 — 등급·가격 밴드가 못박혀 있어 <b style="color:#dbe2ea;">S급 스킬북 껌값 사태가 구조적으로 불가능</b>합니다.
+  구매·판매·감정은 즉시 정산, 원화↔코인은 <b style="color:#dbe2ea;">암거래 환전</b>(살 때 1,200원 / 팔 때 800원 — 원작의 "블랙 마켓 ₩1,000" 설정 승계)으로.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">[스샷 첨부: 스토어 패널 — 진열·환전 탭]</p>
+</div>
+
+<!-- 상태창/변수 -->
+<div style="background:#161b22;border-radius:6px;padding:20px 20px;margin-bottom:12px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">📊 등급 · 장비 · 스킬 — 전부 변수로 굴러갑니다</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  레벨·EXP·스탯 5종·HP/MP/SP·라이선스 등급·장비 슬롯·스킬·퀘스트가 전부 시스템 변수입니다.
+  <b style="color:#dbe2ea;">레벨업(EXP 공식 원본 그대로)·랭크 승급 자격·전투불능은 시스템이 직접 판정</b>하고,
+  NPC 48명도 랭크대가 유저와 맞는 인물만 프롬프트에 실립니다 — E급 신인 눈에 S급이 일상적으로 안 보이는 이유가 시스템에 있습니다.
+  상태창 디자인은 원본 규격 그대로 승계했습니다. 판정 주사위(전투·회피·감지·교섭)도 있는데 호불호가 갈릴 물건이라 <b style="color:#dbe2ea;">/판정 명령으로 끄고 켤 수 있습니다.</b>
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">[스샷 첨부: 상태창 — 스탯·장비·게이트 보드까지]</p>
+</div>
+
+<!-- 이벤트 -->
+<div style="background:#161b22;border-radius:6px;padding:20px 20px;margin-bottom:12px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">⚡ 이벤트 자율 발동 — 세계가 알아서 움직입니다</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  랜덤 이벤트 29종 + 시스템 이벤트가 확률과 조건으로 굴러갑니다 — 게이트 출현(권역·등급을 시스템이 굴림),
+  <b style="color:#dbe2ea;">게이트 브레이크 초읽기</b>(D-day가 실제로 깎이고 0이 되면 터짐), 돌발 퀘스트, 스카웃, 길드 월급날(가입 30일마다),
+  구설수, 암시장 접선, 전리품 드랍까지. 원본의 로어북 이벤트 트리거 20종을 흡수해서 확률·쿨다운·조건이 전부 시스템 관리입니다.
+  세상 뒤숭숭함(위험도)이 빈도를 밀어 올리는 구조라, 일상 모드에서도 세상이 아주 멈추진 않습니다.
+  </p>
+</div>
+
+<!-- 지도/파티 -->
+<div style="background:#161b22;border-radius:6px;padding:20px 20px;margin-bottom:20px;">
+  <div style="font-size:17px;font-weight:600;margin-bottom:10px;">🗺️ 게이트 지도 + 파티 관리</div>
+  <p style="margin:0 0 8px;color:#a9b4c2;font-size:14px;">
+  서울 5권역 그리드에 지금 열린 게이트가 등급·잔여일과 함께 꽂혀 보이는 <b style="color:#dbe2ea;">지도 패널</b>,
+  그리고 영입한 동료를 슬롯에 편성하는 <b style="color:#dbe2ea;">파티 편성표</b>. 편성된 파티원은 장면에 기본 동행으로 잡힙니다.
+  영입은 이야기로(모집판 지원·직접 섭외), 편성은 버튼으로 — AI가 멋대로 파티를 짜고 푸는 건 구조로 막혀 있습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">[스샷 첨부: 게이트 지도 탭 / 파티 편성표]</p>
+</div>
+
+<!-- 설치 -->
+<div style="background:#161b22;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:16px 18px;margin-bottom:16px;">
+  <div style="font-size:15px;font-weight:600;margin-bottom:8px;">설치 (순서 중요)</div>
+  <p style="margin:0 0 4px;color:#a9b4c2;font-size:14px;">1. SimCore 플러그인 파일을 리스에 임포트 — 이미 쓰고 있어도 <b style="color:#dbe2ea;">v1.0.3으로 재임포트</b> (위의 ⚠ 스트리밍 수정 포함)</p>
+  <p style="margin:0 0 4px;color:#a9b4c2;font-size:14px;">2. 개조판 카드를 임포트하고, SimCore 패널에서 <b style="color:#dbe2ea;">[현재 캐릭터에 설치/업데이트]</b> 한 번</p>
+  <p style="margin:0 0 4px;color:#a9b4c2;font-size:14px;">3. 새 채팅 시작 <b style="color:#dbe2ea;">전에</b> [새 시작]에서 프리셋 선택 — 신인 헌터 / 재능형 각성자 / 밑바닥</p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">4. 보조 모델이 막힌 환경이면 [루아 브리지 설치/갱신] — [보조 모델 연결 테스트]로 확인</p>
+</div>
+
+<p style="margin:0 0 6px;color:#dbe2ea;">
+[링크: SimCore 플러그인 파일]<br>
+[링크: 얼터헌터 개조판 카드]
+</p>
+
+<p style="margin:14px 0 6px;color:#a9b4c2;font-size:14px;">
+<b style="color:#c98a7a;">무책임 베타라는 말 그대로입니다</b> — 로컬에서는 잘 돌지만 실전 데이터가 부족합니다.
+이상한 수치, 안 터지는 이벤트, 깨지는 패널 전부 제보 환영합니다. 어느 장면에서 뭐가 이상했는지 한 줄이면 충분합니다.
+</p>
+<p style="margin:0 0 0;color:#8b98a9;font-size:13px;">
+원작 얼터헌터는 원작자님의 봇입니다 — 이 개조판은 시스템 층을 갈아 끼운 2차 창작이고, 문제 시 내리겠습니다.
+헌터넷은 커뮤니티 게시판이라는 발상만 승계한 SimCore 자체 구현입니다 (원본 프레임워크 코드와 무관).
+</p>
+
+</div>

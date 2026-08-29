@@ -234,6 +234,10 @@ const S = {
     { id: 'dice_on', label: '판정 주사위', type: 'bool', init: true, cmd: '판정',
       desc: '유저 정책값. 켜면 전투·회피·감지·교섭 국면에서 시스템이 주사위를 굴려 [판정] 줄을 준다. '
         + '끄면 순수 서사 재량. 시작 후 바꾸려면 /판정.' },
+    // 원본 toggle_alterNSFW(=2) 승계 — 확장 수위 팩(alter_nsfw)의 when 게이트
+    { id: 'alter_on', label: '수위 확장', type: 'bool', init: true, cmd: '수위',
+      desc: '유저 정책값 (원본 alterNSFW 토글 승계). 끄면 확장 수위 이미지 팩이 잠긴다 '
+        + '(기본 팩은 그대로). 시작 후 바꾸려면 /수위.' },
     { id: 'hazard', label: '위험도', type: 'int', init: 30, min: 0, max: 100,
       desc: '세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라.' },
 
@@ -464,6 +468,12 @@ const S = {
             + 'down. The [판정] grade sets how far words carry.' },
         // ── 길드·사회 보강 (2026-08-29 이벤트 확충 — 액션 대신 이벤트로, 유저 지시) ──
         // (급여는 여기 없다 — 월급은 랜덤이 아니라 주기라서 rules.events의 결정 이벤트다)
+        // 전리품 — "드랍 순간"을 여는 이벤트. 목록 정산은 items/coin 기존 규칙대로 보조가.
+        { id: 'loot_drop', weight: 2, cooldown: 4, when: 'in_gate',
+          effects: [{ set: 'coin', expr: 'store_on ? coin + rand(2, 8) : coin' }],
+          notify: '[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth '
+            + 'keeping. Show the drop moment and update the inventory (grade tag, count last). '
+            + 'Coins are already settled when the store exists.' },
         { id: 'gate_race', weight: 1, cooldown: 6,
           notify: '[경쟁] Another party is moving on the same gate or quarry — permits, speed, or a '
             + 'split negotiation. Rivals today can be allies tomorrow; prefer the registered cast.' },
@@ -491,7 +501,8 @@ const S = {
         { when: 'roll == 1', label: '치명적 실수', effects: [{ set: 'hp', expr: 'max(hp - 15, 0)' }],
           inject: '치명적인 실수가 나왔다 — 부상급 대가를 치르고 국면이 급격히 나빠진다.' },
         { when: 'total >= vs + 7', label: '압도', effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
-          inject: '기대 이상의 전과다 — 지켜본 이가 있다면 소문이 날 만한 장면으로 그려라.' },
+          inject: '기대 이상의 전과다 — 지켜본 이가 있다면 소문이 날 만한 장면으로 그려라. '
+            + '전리품도 후하게 떨어진다 (마정석·부산물·장비 — 소지품 갱신).' },
         { when: 'total >= vs', label: '우세', inject: '전투의 주도권을 잡는다 — 유효타를 그려라.' },
         { label: '고전', effects: [{ set: 'sp', expr: 'max(sp - 15, 0)' }],
           inject: '결정타가 나오지 않는다 — 소모전이다. 밀리는 국면을 그려라.' },
@@ -582,6 +593,13 @@ const S = {
     { id: 'npc_hostile', when: 'faction_on',
       text: `Hostile figures (use sparingly, for tension arcs): ${roster(NPC_HOSTILE)} `
         + '— factions: 상태창 불신론자 (anti-System extremists) · 이계 숭배단 (Gate-worship cult).' },
+    // ── 이미지 명령 규칙 (원본 Image Command Instructions 승계 — 어휘는 assets 팩이 준다) ──
+    { id: 'img_rules', when: 'true',
+      text: 'Image rules: whenever a listed character appears, is spotlighted, or speaks, put one '
+        + '<img="…"> tag in that character\'s paragraph — one tag per character, even if none were '
+        + 'shown last turn. Base tag is the name alone; append an emotion only when their state '
+        + 'visibly shifts. NEVER print an image for the protagonist/user. Characters not in the '
+        + 'lists are extras: use <img="Male"> or <img="Female"> only, no emotion.' },
   ],
 
   updater: {
@@ -757,6 +775,132 @@ const S = {
 .scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
 .scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }
 .sch-wallet { color: #c9a86a; }`,
+  },
+
+  // ── 에셋 팩 (P5) — 원본 이미지 지침의 심코어 이관 (2026-08-29 유저 제공 지침서) ──
+  // 계기: 팩을 모듈 매니페스트(⚙simcore-pack)로 실었더니 모듈 업데이트마다 날아감 —
+  // 스키마 소유로 옮기면 신안 재적용이 곧 복원이다. 이미지 실물은 여전히 에셋 모듈에 산다
+  // (verify:false — 이름 목록 대조 불가 환경). moduleManifests는 켜 둔다 (애드온 통로 +
+  // 매니페스트 모듈 이미지의 실존 대조 합류, id 충돌은 스키마 우선이라 안전).
+  // by:'main' — 원본과 같은 결: 메인이 인물 문단마다 인라인으로 태그를 찍는다
+  // (다인원 동시 표시 — aux 1장 모드로는 원본 UX 재현 불가). 규칙은 img_rules 지시문.
+  assets: {
+    by: 'main',
+    moduleManifests: true,
+    packs: [
+      {
+        id: 'sexual_scene_positions',
+        source: '얼헌 원본 Sexual scene Character Image Guidelines',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        usage: '성애 장면 필수 — 체위·국면에 맞는 태그를 문맥대로. 여성 인물 전용.',
+        slots: [
+          { id: 'who', label: '인물', values: [
+            'Min Chae-rin', 'Song Ha-neul', 'Alice Croft', 'Isabelle Hayes', 'Lim Seol-hee',
+            'Lee Ha-eun', 'Choi Yu-na', 'Ha Wol-young', 'Han Ji-won', 'Han Seo-yeon',
+            'Go Eun-bi', 'Yoon Mirae', 'Choi Yoo-jin', 'Joo Ah-ram', 'Kang Yoo-ra',
+            'Jang Eun-seo', 'Na Sun-young', 'Sasaki Yua', 'Rivea', 'Oh Ha-na',
+            'Jin So-hee', 'Yoo Sun-hwa', 'Lee Ji-hye', 'Park So-won', 'Chae Ha-yoon',
+            'Baek Eun-ha', 'Park Hye-in', 'Lee So-yoon',
+          ], fallback: 'Min Chae-rin' },
+          { id: 'position', label: '체위 및 동작', values: [
+            'cowgirl after sex', 'cowgirl ejaculation', 'cowgirl grinding', 'cowgirl happy sex',
+            'cowgirl hard sex', 'cowgirl imminent penetration', 'cowgirl sex',
+            'doggystyle after sex', 'doggystyle ejaculation', 'doggystyle fingering',
+            'doggystyle happy sex', 'doggystyle hard sex', 'doggystyle imminent penetration',
+            'doggystyle sex', 'handholding cowgirl after sex', 'handholding cowgirl ejaculation',
+            'handholding cowgirl grinding', 'handholding cowgirl happy sex',
+            'handholding cowgirl hard sex', 'handholding cowgirl imminent penetration',
+            'handholding cowgirl sex', 'handholding missionary after sex',
+            'handholding missionary ejaculation', 'handholding missionary fingering',
+            'handholding missionary happy sex', 'handholding missionary hard sex',
+            'handholding missionary imminent penetration', 'handholding missionary sex',
+            'missionary after sex', 'missionary ejaculation', 'missionary fingering',
+            'missionary happy sex', 'missionary hard sex', 'missionary imminent penetration',
+            'missionary sex', 'reverse standing after sex', 'reverse standing ejaculation',
+            'reverse standing fingering', 'reverse standing happy sex', 'reverse standing hard sex',
+            'reverse standing imminent penetration', 'reverse standing sex', 'standing after sex',
+            'standing ejaculation', 'standing fingering', 'standing happy sex', 'standing hard sex',
+            'standing imminent penetration', 'standing sex', 'upright straddle after sex',
+            'upright straddle ejaculation', 'upright straddle grinding',
+            'upright straddle happy sex', 'upright straddle hard sex',
+            'upright straddle imminent penetration', 'upright straddle sex',
+          ], fallback: 'missionary sex' },
+        ],
+      },
+      {
+        id: 'sexual_scene_alter_nsfw',
+        source: '얼헌 원본 Sexual scene Guidelines (alterNSFW)',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        when: 'alter_on',   // 원본 toggle_alterNSFW=2 승계 — /수위 로 온오프
+        usage: '확장 수위 — 추가 행위·특수 상황·상태 묘사. 여성 인물 전용.',
+        slots: [
+          { id: 'who', label: '인물', values: [
+            'Min Chae-rin', 'Song Ha-neul', 'Alice Croft', 'Isabelle Hayes', 'Lim Seol-hee',
+            'Lee Ha-eun', 'Choi Yu-na', 'Ha Wol-young', 'Han Ji-won', 'Han Seo-yeon',
+            'Go Eun-bi', 'Yoon Mirae', 'Choi Yoo-jin', 'Joo Ah-ram', 'Kang Yoo-ra',
+            'Jang Eun-seo', 'Na Sun-young', 'Sasaki Yua', 'Rivea', 'Oh Ha-na',
+            'Jin So-hee', 'Yoo Sun-hwa', 'Lee Ji-hye', 'Park So-won', 'Chae Ha-yoon',
+            'Baek Eun-ha', 'Park Hye-in', 'Lee So-yoon',
+          ], fallback: 'Min Chae-rin' },
+          { id: 'action', label: '행위 및 상태', values: [
+            'after sex', 'anal after sex', 'anal ejaculation', 'anal happy sex',
+            'anal imminent penetration', 'anal sex', 'bathing', 'buttjob over clothes',
+            'cum on back', 'cum on belly', 'cum on face', 'cunnilingus', 'deepthroat',
+            'fellatio', 'fellatio cum', 'fellatio skilled', 'finger sucking', 'footjob',
+            'footjob cum', 'french kiss during sex', 'grabbing breast', 'grabbing breast open bra',
+            'grabbing breast open clothes', 'handjob', 'handjob over clothes', 'licking glans',
+            'licking testicle', 'masturbation', 'mixed-bathing washing back',
+            'mixed-bathing washing body', 'mixed-bathing washing hair', 'nipple pull open bra',
+            'nude', 'nude grabbing breast', 'nude nipple pull', 'orgasm', 'paizuri', 'paizuri cum',
+            'pillow humping', 'reverse cowgirl after sex', 'reverse cowgirl ejaculation',
+            'reverse cowgirl happy sex', 'reverse cowgirl imminent penetration',
+            'reverse cowgirl sex', 'reverse footjob', 'reverse footjob cum',
+            'sexual frustration doggystyle', 'sexual frustration sitting',
+            'sexual frustration standing', 'underwear', 'kiss', 'imminent kiss', 'after kiss',
+            'french kiss', 'cheek pulling', 'headpat', 'acting cute double v',
+            'acting cute heart hands', 'acting cute Rabbit',
+          ], fallback: 'kiss' },
+        ],
+      },
+      {
+        id: 'char_emotions',
+        source: '얼헌 원본 Characters/Status Command List',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        usage: '인물 등장·조명·발화 시 기본 1장 — 이름만. 감정이 크게 움직이면 감정 칸을 덧붙인다.',
+        slots: [
+          { id: 'who', label: '인물', values: [
+            'Kang Min-hyuk', 'Kim Min-soo', 'Min Chae-rin', 'Baek Hwi-Sung', 'Song Ha-neul',
+            'Alice Croft', 'Isabelle Hayes', 'Im Jin-tae', 'Lim Seol-hee', 'Lee Ha-eun',
+            'Jake Miller', 'Choi Min-jun', 'Choi Tae-joon', 'Choi Yu-na', 'Ha Wol-young',
+            'Han Ji-won', 'Han Seo-yeon', 'Haru Ito', 'Go Eun-bi', 'Yoon Mirae',
+            'Choi Yoo-jin', 'Seo Ji-han', 'Kang Yoo-ra', 'Joo Ah-ram', 'Jang Eun-seo',
+            'Na Sun-young', 'Sasaki Yua', 'Rivea', 'Yoo Jin-hyuk', 'Oh Ha-na',
+            'Jin So-hee', 'Park Jun-ho', 'Kang Woo-seok', 'Yoo Sun-hwa', 'Lee Ji-hye',
+            'Park So-won', 'Kang Tae-shik', 'Yoon Ji-ho', 'Chae Ha-yoon', 'Kwon Jae-hyun',
+            'Yoo Jin-seong', 'Kwon Do-yoon', 'Ahn Do-hyun', 'Shin Woo-hyun', 'Baek Eun-ha',
+            'Park Hye-in', 'Lee So-yoon', 'Choi Tae-hyun',
+          ] },
+          { id: 'emo', label: '감정', optional: true, values: [
+            'acting coy', 'angry', 'annoyed', 'aroused', 'blushing shyly', 'bored', 'bridling',
+            'chuunibyou', 'confused', 'contemptuous', 'coughing', 'crying with eyes closed',
+            'crying with eyes open', 'curious', 'default', 'depressed', 'determined',
+            'disappointed', 'embarrassed', 'enraged', 'eureka', 'full-face blush', 'giggling',
+            'grudging', 'guilty', 'happy tears', 'indifferent', 'jealous', 'lustful',
+            'middle finger', 'nervous pouting', 'nervous', 'pouting', 'proud', 'sad', 'serious',
+            'smile', 'smirk', 'smug', 'sniggering', 'stupefied', 'surprised', 'suspicious',
+            'thinking', 'worried', 'disgusted', 'scared', 'excited', 'relieved', 'laughing',
+            'pleading',
+          ], fallback: 'default' },
+        ],
+      },
+      {
+        id: 'extra_char',
+        source: '얼헌 원본 Extra Character Image Guidelines',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        usage: '명단에 없는 엑스트라 전용 — Male/Female만, 감정 칸 없이.',
+        slots: [{ id: 'who', label: '엑스트라', values: ['Male', 'Female'] }],
+      },
+    ],
   },
 };
 
@@ -962,6 +1106,47 @@ console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이
   ({ st: u } = turn(u, { skip_day: 14 }, 811));
   ({ st: u } = turn(u, { skip_day: 14 }, 812));
   ok('무소속은 급여 없음 (42일)', u.vars.won === w0, String(u.vars.won));
+}
+
+console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');
+{
+  const row = S.rules.randomEvents.table.find((r) => r.id === 'loot_drop');
+  ok('게이트 안 전용', row && row.when === 'in_gate', row?.when);
+  // 코인은 스토어가 켜진 세계에서만 굴러들어온다 (정책 조건이 effects 식 안에)
+  const L0 = engine.makeLookup(S, fresh().vars);   // store_on=false, coin=0
+  ok('스토어 꺼짐 — 코인 불변', evaluate(row.effects[0].expr, L0, seededRng('lt', 1, 'e')) === 0, '');
+  const tOn = fresh(); tOn.vars.store_on = true;
+  const got = evaluate(row.effects[0].expr, engine.makeLookup(S, tOn.vars), seededRng('lt', 2, 'e'));
+  ok('스토어 켜짐 — 2~8C 범위', got >= 2 && got <= 8, String(got));
+  ok('압도 등급에 전리품 인젝트', S.checks.find((c) => c.id === 'gate_fight')
+    .grades.find((g) => g.label === '압도').inject.includes('전리품'), '');
+}
+
+console.log('\n━━ P5 — 에셋 팩 (원본 이미지 지침 이관) ━━');
+{
+  const pk = (id) => S.assets.packs.find((p) => p.id === id);
+  ok('팩 4종 (감정·엑스트라·체위·확장수위)', S.assets.packs.length === 4,
+    S.assets.packs.map((p) => p.id).join(','));
+  ok('감정 팩 — 인물 48 · 감정 51 (감정은 생략 가능 칸)',
+    pk('char_emotions').slots[0].values.length === 48
+    && pk('char_emotions').slots[1].values.length === 51
+    && pk('char_emotions').slots[1].optional === true, '');
+  ok('체위 팩 — 여성 28 · 체위 56', pk('sexual_scene_positions').slots[0].values.length === 28
+    && pk('sexual_scene_positions').slots[1].values.length === 56, '');
+  ok('확장 팩 — 행위 59 · alter_on 게이트', pk('sexual_scene_alter_nsfw').slots[1].values.length === 59
+    && pk('sexual_scene_alter_nsfw').when === 'alter_on', '');
+  ok('모듈 매니페스트 통로 유지 (애드온 + 실존 대조 합류)', S.assets.moduleManifests === true, '');
+  // by:'main' — 주입문이 메인 프롬프트에 실리고, 정책이 팩을 실제로 잠근다
+  const t = fresh();
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('as', 1, 's') }).promptBlock;
+  ok('메인 주입문 존재 ([Image tags])', p1.includes('[Image tags]'), '');
+  ok('감정·체위·확장 어휘 실림', p1.includes('full-face blush') && p1.includes('missionary sex')
+    && p1.includes('paizuri'), '');
+  ok('이미지 규칙 지시문 (인물마다 1장·유저 금지·엑스트라 Male/Female)',
+    p1.includes('one tag per character') && p1.includes('<img="Male">'), '');
+  t.vars.alter_on = false;
+  const p2 = engine.sendPhase(S, t, { rng: seededRng('as', 2, 's') }).promptBlock;
+  ok('/수위 끄면 확장 어휘만 빠진다', !p2.includes('paizuri') && p2.includes('missionary sex'), '');
 }
 
 console.log('\n━━ P2 — NPC 랭크 게이팅 ━━');

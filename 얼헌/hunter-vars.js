@@ -104,6 +104,16 @@ const BAND_WHEN = {
   B: 'lic_n >= 3 and lic_n <= 5', A: 'lic_n >= 4', S: 'lic_n >= 5',
 };
 
+// ══════════ P3 — 서울 권역 게이트 시스템 ══════════
+// 서울 5대 권역 (실제 도시계획 권역 구분). zone_i/grade_i는 "가장 최근 출현" 좌표 —
+// 출현 이벤트가 rand로 굴리고, 보드 등록(이름 짓기)은 보조가 한다.
+const ZONES = ['도심권', '동북권', '서북권', '서남권', '동남권'];
+const ZONE_DESC = '도심권(종로·중구·용산) · 동북권(성북·노원·강북) · 서북권(은평·서대문·마포) '
+  + '· 서남권(양천·구로·영등포·관악) · 동남권(서초·강남·송파·강동)';
+const GRADES = ['E', 'D', 'C', 'B', 'A', 'S'];
+const idx1 = (list, v) => chain(list.slice(0, -1).map((name, i) => [`${v} == ${i + 1}`, `'${name}'`]),
+  `'${list[list.length - 1]}'`);
+
 // 랭크 구간 (원본 로어북 "4. Stats Explanation" 그대로)
 const RANKS = [[100, 'S'], [80, 'A'], [60, 'B'], [40, 'C'], [25, 'D']];
 const rankExpr = (v) => chain(RANKS.map(([at, r]) => [`${v} >= ${at}`, `'${r}'`]), `'E'`);
@@ -219,6 +229,25 @@ const S = {
     { id: 'hazard', label: '위험도', type: 'int', init: 30, min: 0, max: 100,
       desc: '세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라.' },
 
+    // ── 게이트 (P3) ──
+    { id: 'day_prev', label: '(내부) 지난 정산일', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용 — 일 단위 카운트다운의 거울 변수. 직접 바꾸지 마라.' },
+    { id: 'zone_i', label: '(내부) 최근 출현 권역', type: 'int', init: 0, min: 0, max: 5,
+      desc: '시스템이 굴린다 (0=없음). 직접 바꾸지 마라.' },
+    { id: 'grade_i', label: '(내부) 최근 출현 등급', type: 'int', init: 0, min: 0, max: 6,
+      desc: '시스템이 굴린다 (0=없음). 직접 바꾸지 마라.' },
+    { id: 'gates', label: '게이트 보드', type: 'list', init: ['도심권 D 붕괴 지하철 게이트 @+9'],
+      maxItems: 6, itemMaxLength: 36, cmd: '게이트',
+      desc: 'Association board of open Gates — "권역 등급 이름 @+잔여일", e.g. "동북권 D 고블린 소굴 @+6". '
+        + 'Register a gate when a [게이트] notice or the narrative establishes one; remove when cleared. '
+        + 'A gate whose deadline lapses disappears — other hunters cleared it off-screen, or it closed.' },
+    // 브레이크 경보 — 보드에서 "가장 위험한 하나"만 시스템이 초읽기한다 (베리디아 appt 패턴)
+    { id: 'break_name', label: '브레이크 경보', type: 'text', init: '', maxLength: 30,
+      desc: 'THE one gate whose break the story is racing against; empty if none. '
+        + 'ALWAYS set break_in (days left) in the same turn you set this.' },
+    { id: 'break_in', label: '브레이크까지', type: 'int', init: 0, min: 0, max: 30,
+      desc: 'Days until that gate breaks. The system counts it down; at 0 the break fires. Set only at the start.' },
+
     // ── NPC 변동 기록 (P2) — 기준선(레지스트리)에서 "달라진 것"만 ──
     { id: 'npc_notes', label: '인물 변동', type: 'list', init: [], maxItems: 14, itemMaxLength: 40, cmd: '인물',
       desc: 'Lasting CHANGES to named NPCs only — promotion, guild move, notable new gear/skill, '
@@ -243,6 +272,11 @@ const S = {
     { id: 'mp_w', label: '(표시) MP비', expr: 'round(mp * 100 / max(mp_max, 1))' },
     { id: 'sp_w', label: '(표시) SP비', expr: 'round(sp * 100 / max(sp_max, 1))' },
     { id: 'exp_w', label: '(표시) EXP비', expr: 'round(min(exp, exp_need) * 100 / max(exp_need, 1))' },
+    // P3 — 게이트 표시
+    { id: 'zone_txt', label: '최근 출현 권역', expr: `(zone_i == 0 ? '—' : ${idx1(ZONES, 'zone_i')})` },
+    { id: 'grade_txt', label: '최근 출현 등급', expr: `(grade_i == 0 ? '—' : ${idx1(GRADES, 'grade_i')})` },
+    { id: 'break_txt', label: '브레이크 상황',
+      expr: `(break_name == '' ? '없음' : break_name + ' D-' + break_in)` },
   ],
 
   rules: {
@@ -251,8 +285,12 @@ const S = {
       { set: 'hp', expr: 'min(hp, hp_max)' },
       { set: 'mp', expr: 'min(mp, mp_max)' },
       { set: 'sp', expr: 'min(sp, sp_max)' },
-      // 기한 퀘스트(@절대경과값) 자동 만료 — '@+3' 상대 기한이 이 시계로 굳는다.
+      // 기한 퀘스트·게이트(@절대경과값) 자동 만료 — '@+3' 상대 기한이 이 시계로 굳는다.
       { list: 'quests', expire: 'elapsed' },
+      { list: 'gates', expire: 'elapsed' },
+      // 브레이크 초읽기 — 흐른 날수만큼 깎는다. ⚠ day_prev 갱신은 반드시 이 뒤에.
+      { set: 'break_in', expr: 'break_name != "" ? max(break_in - (elapsed - day_prev), 0) : 0' },
+      { set: 'day_prev', expr: 'elapsed' },
     ],
     events: [
       // ── 레벨업 — 원본 루아 enforceExpRule의 공식을 시스템이 직접 집행 ──
@@ -280,7 +318,99 @@ const S = {
           + '생겼다 — 주변 인물이나 협회 단말 알림으로 자연스럽게 흘려라. 심사 없이 등급이 바뀌지는 않는다.' },
       { id: 'promo_clear', when: '(est_n <= lic_n or lic_n < 1) and promo_seen',
         effects: [{ set: 'promo_seen', expr: 'false' }] },
+      // ── 게이트 브레이크 (P3) — 초읽기가 0에 닿으면 터진다 ──
+      { id: 'gate_break', when: 'break_name != "" and break_in <= 0',
+        effects: [
+          { set: 'hazard', expr: 'min(hazard + 10, 100)' },
+          { set: 'break_name', expr: '""' },
+        ],
+        notify: '[게이트 브레이크] The watched gate\'s deadline has passed — monsters pour into the city. '
+          + 'This is a district-scale disaster: sirens, evacuation, hunter mobilization. The protagonist '
+          + 'need not be at the epicenter, but the world must feel it. Remove that gate from the board.' },
     ],
+
+    // ── 랜덤 이벤트 (P3) — 원본 로어북 트리거 20종(각 roll 2%)의 흡수·확장 ──
+    // 빈도는 문턱으로 민다: hazard(프리셋·브레이크가 조정)와 action_on이 확률식에 들어간다.
+    // 끄는 게 아니라 낮추는 것 — 일상 모드에서도 세상은 가끔 움직인다.
+    randomEvents: {
+      chancePerTurn: '(action_on ? 0.20 : 0.07) * (0.5 + hazard * 0.01)',
+      table: [
+        // ── 게이트 계열 ──
+        { id: 'gate_spawn', weight: 3, cooldown: 3,
+          effects: [
+            { set: 'zone_i', expr: 'rand(1, 5)' },
+            { set: 'grade_i', expr: 'clamp(floor((rand(1, 100) + hazard) / 35) + 1, 1, 5)' },
+          ],
+          notify: '[게이트] A new Gate has appeared — district and grade are in the state block '
+            + '(최근 출현). Weave it in naturally: association alert on the terminal, HunterNet buzz, '
+            + 'or a distant siren. Name it and register it on the gates board with a deadline (@+days).' },
+        { id: 's_gate', weight: 1, cooldown: 40, when: 'hazard >= 50 or lic_n >= 5',
+          effects: [{ set: 'zone_i', expr: 'rand(1, 5)' }, { set: 'grade_i', expr: '6' }],
+          notify: '[대형 사태] An S-Grade Gate has formed — national-news scale. Top guilds and the '
+            + 'Association scramble; ordinary hunters are ordered to perimeter duty. Register it on the board.' },
+        { id: 'hidden_piece', weight: 1, cooldown: 10,
+          notify: '[던전 이변] Seed an anomaly for the NEXT dungeon run — a hidden room, a second-layer '
+            + 'entrance, an out-of-place relic, or monsters behaving wrong. Foreshadow now; pay off inside.' },
+        // ── 사회·기회 계열 ──
+        { id: 'quest_sudden', weight: 2, cooldown: 2,
+          notify: '[돌발 퀘스트] A quest arises from the current situation — new objective, challenge or '
+            + 'opportunity the party may pursue. Announce it as a system quest and add it to the quest list.' },
+        { id: 'scout_offer', weight: 1, cooldown: 12, when: 'fame >= 15',
+          notify: '[스카웃] A guild or agency has noticed the protagonist — an approach with concrete terms. '
+            + 'Pick a plausible one from the cast/guilds; accepting or refusing both carry consequences.' },
+        { id: 'assoc_call', weight: 1, cooldown: 8, when: 'lic_n >= 2',
+          notify: '[협회] The Hunter Association contacts the protagonist — commissioned subjugation, '
+            + 'measurement follow-up, paperwork, or a favor with strings attached.' },
+        { id: 'blackmarket', weight: 1, cooldown: 10, when: 'faction_on',
+          notify: '[암시장] A Black Market thread surfaces — a fence, an unregistered item, a coin-hungry '
+            + 'broker. Tempting, illegal, and remembered by the wrong people.' },
+        { id: 'hunternet_buzz', weight: 1, cooldown: 6, when: 'fame >= 10',
+          effects: [{ set: 'fame', expr: 'min(fame + 2, 100)' }],
+          notify: '[헌터넷] Something about the protagonist is trending on HunterNet — clip, rumor or '
+            + 'witness thread. Public opinion cuts both ways.' },
+        { id: 'pk_shadow', weight: 1, cooldown: 10, when: 'faction_on and hazard >= 40',
+          notify: '[불온한 기척] Signs of PK or hostile-faction activity near the protagonist\'s routes — '
+            + 'a party that never came back, a tail, a too-friendly stranger. Build dread, no ambush yet.' },
+        { id: 'skill_chance', weight: 1, cooldown: 8,
+          notify: '[기연] A chance at growth appears — a skill book drop, a master\'s passing advice, or an '
+            + 'awakening trigger under pressure. It must be earned in the scene, not given.' },
+        // ── 서사 클리셰 계열 (원본 트리거 압축 승계) ──
+        { id: 'npc_meet', weight: 2, cooldown: 3,
+          notify: '[인물] Introduce an NPC who fits the current scene naturally — support, information, or '
+            + 'a quest hook. Prefer the registered cast in the current rank band; a fresh face is allowed. '
+            + 'Not while the protagonist is in lodging, private space, or intimacy.' },
+        { id: 'npc_odd', weight: 1, cooldown: 5,
+          notify: '[의외의 인물] Introduce someone who does NOT fit the scene — wrong place, wrong rank, '
+            + 'wrong manner. Their presence itself is a question the story should answer later.' },
+        { id: 'npc_rival', weight: 1, cooldown: 6, when: 'faction_on',
+          notify: '[적대적 인물] Introduce or surface an antagonist — rival hunter, saboteur, or a hostile '
+            + 'faction contact. Menace through behavior, not immediate violence.' },
+        { id: 'twist', weight: 1, cooldown: 8,
+          notify: '[반전] Reveal that something established was not what it seemed — an ally\'s motive, '
+            + 'a quest\'s true client, an item\'s origin. Twist facts, never retcon them.' },
+        { id: 'hard_choice', weight: 1, cooldown: 8,
+          notify: '[어려운 결정] Force a dilemma with no clean answer — save one or the other, profit or '
+            + 'principle, speed or safety. Lay out stakes clearly and let the user choose.' },
+        { id: 'discovery', weight: 1, cooldown: 8,
+          notify: '[비밀 발견] The protagonist stumbles onto something hidden — a document, an overheard '
+            + 'conversation, a gate anomaly. Knowing it is a burden as much as an asset.' },
+        { id: 'windfall', weight: 1, cooldown: 6,
+          notify: '[행운] A small good thing happens — a generous payout, a rare drop, unexpected kindness. '
+            + 'Keep it proportionate; the world stays tough.' },
+        { id: 'bad_day', weight: 1, cooldown: 6,
+          notify: '[악재] Something goes wrong — gear breaks, a payment is delayed, a rumor sours, weather '
+            + 'turns. A complication, not a catastrophe.' },
+        { id: 'aftermath', weight: 1, cooldown: 6,
+          notify: '[여파] A consequence of a PAST scene arrives now — gratitude, a grudge, a bill, '
+            + 'a summons. Pull from what actually happened in this story.' },
+        { id: 'bond', weight: 2, cooldown: 4,
+          notify: '[관계] Deepen a relationship already on screen — a meal, a favor repaid, a quiet '
+            + 'conversation that shifts how two people see each other.' },
+        { id: 'growth_moment', weight: 1, cooldown: 10,
+          notify: '[자아] Give the protagonist a beat of self-discovery — why they hunt, what they fear, '
+            + 'what the Awakening changed. Interior, quiet, earned.' },
+      ],
+    },
   },
 
   directives: [
@@ -299,6 +429,16 @@ const S = {
     { id: 'pts_idle', when: 'stat_pts >= 4',
       text: '미분배 스탯 포인트가 {stat_pts}점 쌓여 있다. 분배는 유저의 선택이다 — 대신 정하지 말고, '
         + '수련·정비 장면에서 가볍게 상기시켜라.' },
+
+    // ── 게이트 (P3) ──
+    { id: 'seoul_zones', when: 'true',
+      text: `Seoul hunter administration divides the city into 5 zones: ${ZONE_DESC}. `
+        + 'Gate notices and the gates board use these zone names.' },
+    { id: 'break_soon', when: 'break_name != "" and break_in <= 2',
+      text: '브레이크 임박 — "{break_name}"이(가) {break_in}일 안에 터진다. 도시의 긴장(대피 안내, '
+        + '헌터 소집, 헌터넷 술렁임)이 배경에 깔려야 한다.' },
+    { id: 'daily_mode', when: 'not action_on',
+      text: '일상물 페이스다 — 전투·게이트 서사를 앞세우지 말고 생활·관계·직업의 결을 그려라.' },
 
     // ── NPC 등장 규칙 (P2) — 원본 NPC List(always 11.3K)의 동적 대체 ──
     { id: 'npc_cast', when: 'true',
@@ -351,6 +491,9 @@ const S = {
       { id: 'skills' },
       { id: 'quests' },
       { id: 'npc_notes' },
+      { id: 'gates' },
+      { id: 'break_name', maxLength: 30 },
+      { id: 'break_in', maxGain: 30, maxLoss: 30 },
       // 원화: 수입은 턴당 5백만이 상한(대박 보상도 분할 정산), 손실은 사실상 무제한 (비대칭 원칙)
       { id: 'won', maxGain: 5000000, maxLoss: 1000000000 },
       { id: 'coin', maxGain: 50, maxLoss: 500 },
@@ -420,6 +563,10 @@ S.statusUI.templates = [{
     + '{skills:tags}'
     + '<div class="a-sec">QUESTS</div>'
     + '{quests:tags}'
+    + '<div class="a-sec">GATE BOARD</div>'
+    + '<div class="a-row"><span>최근 출현</span><span class="v">{zone_txt} · {grade_txt}급</span></div>'
+    + '<div class="a-row"><span>브레이크 경보</span><span class="v">{break_txt}</span></div>'
+    + '{gates:tags}'
     + '<div class="a-sec">PEOPLE — 인물 변동</div>'
     + '{npc_notes:tags}'
     + '<div class="a-foot">{lastcheck}</div>'
@@ -570,6 +717,82 @@ console.log('\n━━ P2 — NPC 랭크 게이팅 ━━');
   let t2 = fresh();
   ({ st: t2 } = turn(t2, { npc_notes: { add: ['김민수 — D급 승급'] } }, 54));
   ok('변동 기록 등록', t2.vars.npc_notes.length === 1 && t2.vars.npc_notes[0].includes('김민수'));
+}
+
+console.log('\n━━ P3 — 게이트 브레이크 초읽기 ━━');
+{
+  let t = fresh();
+  ({ st: t } = turn(t, { break_name: '노원 C급 게이트', break_in: 3 }, 60));
+  ok('경보 등록 (같은 날 — 초읽기 그대로)', t.vars.break_name !== '' && t.vars.break_in === 3,
+    `${t.vars.break_name} ${t.vars.break_in}`);
+  ({ st: t } = turn(t, { skip_day: 1 }, 61));
+  ok('하루 뒤 D-2', t.vars.break_in === 2, String(t.vars.break_in));
+  const p = turn(t, {}, 62);
+  ok('D-2 — 임박 지시문 깔림', p.prompt.includes('브레이크 임박'));
+  ({ st: t } = turn(t, { skip_day: 3 }, 63));
+  ok('기한 경과 → 브레이크 발화 (경보 해제 + hazard +10)',
+    t.vars.break_name === '' && t.vars.hazard === 40, `name="${t.vars.break_name}" hz${t.vars.hazard}`);
+  const p2 = turn(t, {}, 64);
+  ok('브레이크 통지가 다음 전송에 실림', p2.prompt.includes('게이트 브레이크'));
+  ok('경보 없으면 초읽기 0 고정', p2.st.vars.break_in === 0);
+}
+
+console.log('\n━━ P3 — 게이트 보드 기한 ━━');
+{
+  let t = fresh();
+  ({ st: t } = turn(t, { gates: { add: ['동북권 D 고블린 소굴 @+4'] } }, 70));
+  ok('보드 2건 (시작 1 + 등록 1)', t.vars.gates.length === 2, JSON.stringify(t.vars.gates));
+  ({ st: t } = turn(t, { skip_day: 5 }, 71));
+  ({ st: t } = turn(t, {}, 72));
+  ok('닷새 뒤 기한 건 소멸 (오프스크린 공략) · 잔여 확인',
+    t.vars.gates.length === 1 && t.vars.gates[0].includes('붕괴 지하철'), JSON.stringify(t.vars.gates));
+}
+
+console.log('\n━━ P3 — 출현 굴림 공식 (경계) ━━');
+{
+  // grade 공식: clamp(floor((roll + hazard) / 35) + 1, 1, 5)
+  const g = (roll, hz) => Math.max(1, Math.min(5, Math.floor((roll + hz) / 35) + 1));
+  ok('hazard 30 — E~B 범위 (S 불가)', g(1, 30) === 1 && g(100, 30) === 4);
+  ok('hazard 0 — E~C 범위', g(1, 0) === 1 && g(100, 0) === 3);
+  ok('hazard 100 — 최소 C, 최대 A (S는 전용 이벤트)', g(1, 100) === 3 && g(100, 100) === 5);
+  const t = fresh(); t.vars.zone_i = 2; t.vars.grade_i = 6;
+  const L = engine.makeLookup(S, t.vars);
+  ok('파생 매핑 — zone 2=동북권, grade 6=S', L('zone_txt') === '동북권' && L('grade_txt') === 'S');
+  const L0 = engine.makeLookup(S, fresh().vars);
+  ok('출현 전에는 — 표시', L0('zone_txt') === '—' && L0('grade_txt') === '—');
+}
+
+console.log('\n━━ P3 — 이벤트 표 구성 (프리셋별 후보) ━━');
+{
+  for (const p of S.setup.presets) {
+    const t = engine.applyPreset(S, engine.initState(S), p.id).state;
+    t.meta.setupDone = true;
+    const L = engine.makeLookup(S, t.vars);
+    const cand = S.rules.randomEvents.table.filter((ev) => !ev.when || truthy(evaluate(ev.when, L, null)));
+    const chance = evaluate(S.rules.randomEvents.chancePerTurn, L, null);
+    console.log(`  ${p.id.padEnd(8)} 후보 ${String(cand.length).padStart(2)}/${S.rules.randomEvents.table.length}종 · 턴당 ${Math.round(chance * 100)}%`);
+    ok(`${p.id} — 확률 0~1 범위`, chance > 0 && chance <= 1, String(chance));
+  }
+  // 일상 모드에서도 0이 아니어야 (끄지 않고 낮춘다)
+  const t = fresh(); t.vars.action_on = false;
+  const chance = evaluate(S.rules.randomEvents.chancePerTurn, engine.makeLookup(S, t.vars), null);
+  ok('일상 모드 — 낮지만 0 아님', chance > 0 && chance < 0.1, String(chance));
+}
+
+console.log('\n━━ P3 — 60턴 방치 실발화 (시드 고정 — 결정적) ━━');
+{
+  let t = fresh();
+  for (let i = 0; i < 60; i++) {
+    const send = engine.sendPhase(S, t, { rng: seededRng('run', i, 's') });
+    t = engine.outputPhase(S, send.state, { skip_day: 1 }, {}, { rng: seededRng('run', i, 'o') }).state;
+  }
+  // 발화 흔적은 eventLastFired로 센다 (엔진이 이벤트 발화 턴을 meta에 남긴다)
+  const randomIds = new Set(S.rules.randomEvents.table.map((e) => e.id));
+  const cds = Object.keys(t.meta.eventLastFired || {}).filter((id) => randomIds.has(id));
+  ok('랜덤 이벤트가 실제로 발화했다', cds.length >= 3, JSON.stringify(Object.keys(t.meta.eventLastFired || {})));
+  ok('출현 굴림이 유효 범위에 들어왔다',
+    t.vars.zone_i >= 0 && t.vars.zone_i <= 5 && t.vars.grade_i >= 0 && t.vars.grade_i <= 6,
+    `zone${t.vars.zone_i} grade${t.vars.grade_i}`);
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

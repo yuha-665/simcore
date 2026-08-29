@@ -212,7 +212,7 @@ const run = (s, st, n, seed = 'z') => {
   ck('번들: 이정표가 once의 한계를 같이 알린다', src.includes('두 번째부터 영영 침묵한다'), '');
   ck('★ 번들: 기한 만료 예시가 elapsed', src.includes('"expire": "elapsed"'), '');
   ck('번들: 프리셋 시작 시점 칸', src.includes('이 프리셋으로 시작할 때의 작중 날짜·시각'), '');
-  ck('어댑터 버전이 v0.51 이상', /\/\/@version 0\.(5[1-9]|[6-9]\d)/.test(src), '');
+  ck('어댑터 버전이 v0.51 이상', /\/\/@version (0\.(5[1-9]|[6-9]\d)|[1-9]\d*\.)/.test(src), '');
 }
 
 let p = 0, f = 0;

@@ -169,7 +169,7 @@ const baseJson = JSON.stringify(BASE);
     src.includes('외부 AI와 전체 재작성 옵션') && src.includes('탭 전체 재작성'), '');
   ck('★ 번들: 변수 탭에 정리 버튼', src.includes('🧹 정리하고 지우기'), '');
   ck('번들: 정리 되돌리기 1슬롯', src.includes('purgeBackup'), '');
-  ck('어댑터 버전은 0.48 이상', /\/\/@version 0\.(4[89]|[5-9]\d)/.test(src), '');
+  ck('어댑터 버전은 0.48 이상', /\/\/@version (0\.(4[89]|[5-9]\d)|[1-9]\d*\.)/.test(src), '');
 }
 
 let p = 0, f = 0;

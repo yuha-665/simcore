@@ -122,7 +122,9 @@ const BASE = {
   const M = new Function('varContractTable', 'timeConfig', seg + '\nreturn patchIdDigest;')(
     () => '(변수표)', SC.require('time').timeConfig);
   const dig = M(BASE);
-  ck('★ 다이제스트에 시간 체계 블록', dig.includes('시간 체계') && dig.includes('`dom`') && dig.includes('편집기 [시간] 탭 전용'), '');
+  // v1.0 #7 — time이 탭 왕복 대상이 되며 문구가 "일반 패치 금지 + 탭 창구"로 바뀌었다
+  ck('★ 다이제스트에 시간 체계 블록', dig.includes('시간 체계') && dig.includes('`dom`')
+    && dig.includes('일반 패치로는 못 다룹니다') && dig.includes('탭 단위 내보내기/가져오기'), '');
   const noTime = clone(BASE); delete noTime.time;
   ck('time 없으면 다이제스트에 블록 없음', !M(noTime).includes('시간 체계'), '');
 }
@@ -167,7 +169,7 @@ const BASE = {
     for (const f of d.findings) if (f.tag === 'once 재발 눌림') bad.push(`${k}:${f.text.slice(0, 40)}`);
   }
   ck('★ 전 템플릿에 새 지적 0', bad.length === 0, J(bad));
-  ck('어댑터 버전은 0.50 이상', /\/\/@version 0\.(5[0-9]|[6-9]\d)/.test(src), '');
+  ck('어댑터 버전은 0.50 이상', /\/\/@version (0\.(5[0-9]|[6-9]\d)|[1-9]\d*\.)/.test(src), '');
 }
 
 let p = 0, f = 0;

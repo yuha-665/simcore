@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.99.0
-//@display-name SimCore (시뮬 엔진) v0.99 하루 경계 넘김
+//@version 1.0.0
+//@display-name SimCore (시뮬 엔진) v1.0 제작 도구·과거 상태창
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,28 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.0 ────────────────────────────────────────────────
+// 제작 도구 일괄 + 과거 상태창 — UI 개조 협업자 피드백 7건 전부 채택.
+// - [#1 과거 상태창] 과거 마커를 그 시점(out:N) 스냅샷으로 렌더 — v0.11부터 주석 예고만
+//   있던 것. display 핸들러가 동기라 램 캐시(histStates)로: out 저장 가로채기(store.save
+//   랩) + 로드 시 배경 프리페치 + 캐시 미스는 현재 상태 폴백(keepN 밖 옛 메시지).
+//   과거 렌더는 하이라이트·액션 범례·갈림길 없이 (현재 세션 조작 오독 방지).
+//   테스트 test-histstatus.js (가짜 리수 부팅 실측 8케이스). [live-test] 재렌더 타이밍.
+// - [#2 달력 미리보기] [달력] 탭에 시작 날짜 기준 실물 카드 — 기념일·일정·기한 점 +
+//   사용자 CSS(scopeCss '.sce-cal-preview' 격리). monthView(코어)와 같은 데이터.
+// - [#3 프리셋 미리보기] [새 시작] 탭 프리셋마다 [👁] — 기본→적용값 diff + startAt +
+//   그 상태의 상태창 렌더.
+// - [#4 1턴 시험 실행] [규칙·이벤트]·[액션] 탭에 🧪 — 실제 엔진을 헤드리스로 한 턴 굴려
+//   changeLog 출처(액션/판정/시간/틱/이벤트/랜덤)별 타임라인 + 통지 + 최종 diff.
+//   시드 고정·[🎲 다른 운으로]. 보조 AI 없는 시스템 축 전용.
+// - [#5 계산 미리보기] 파생 카드에 "시작값 기준 계산: N" 한 줄 + 랜덤 이벤트마다
+//   시작 상태 실효 확률(발동% × weight/Σ후보, 조건 불충족 표시, 쿨다운 제외 근사).
+// - [#6 참조 펼쳐보기] 변수·파생 카드의 참조 경고가 "N곳에서 참조 중" 펼치기로 —
+//   파생/틱/이벤트/지시문/액션/판정/계약표/상태요약/상태창/프리셋/편성표/달력/보드/상점/
+//   시나리오 역색인(varReferenceIndex). 분류 밖은 '기타'로 과소보고 방지.
+// - [#7 시간 탭 왕복] TAB_SLICES.time — [시간] 탭에 요청서 내보내기/JSON 가져오기.
+//   요청서에 달력 전환 위험 경고 동봉. 일반 패치의 time 금지는 유지.
 //
 // ── v0.99.0 ───────────────────────────────────────────────
 // 하루 경계 넘김 — UI 개조 협업자 제안 채택: 🌙 하루 마무리가 "다음날 아침"을 박지 않는다.
@@ -2416,6 +2438,43 @@
   let session = null;
   let schema = null;
   let lastChangeLog = [];
+  // ── 과거 상태창 캐시 (v1.0 #1) — 과거 마커를 그 시점(out:N) 상태로 그린다 ──
+  // v0.11부터 주석으로만 남아 있던 원래 의도의 이행: display 핸들러가 동기라 비동기
+  // 스냅샷을 못 기다린다 → out 저장을 가로채 램에 같이 얹고(loadForCurrentChar에서 배선),
+  // 옛 채팅 로드 시엔 배경 프리페치. 캐시에 없으면 현재 상태 폴백 (keepN 밖 옛 메시지 포함).
+  // [live-test] 지연 적재분이 화면에 반영되는 시점 — 리수가 과거 메시지를 다시 그릴 때.
+  let histStates = new Map();       // outIndex(Number) → 그 시점 상태 (조작 유령 제거본)
+  const histPending = new Set();
+  const HIST_CAP = 80;              // SnapshotStore keepN(60)보다 넉넉히
+  function histPut(idx, st) {
+    try {
+      const s = engine.reconcileState(schema, JSON.parse(JSON.stringify(st)));
+      // 과거 상태창에서 눌리면 안 되는 것 — 갈림길·제안은 좌표 히트테스트로 **현재** 세션을 조작한다
+      s.meta.pendingChoice = null;
+      s.meta.suggestions = [];
+      histStates.set(Number(idx), s);
+    } catch { return; }
+    if (histStates.size > HIST_CAP) histStates.delete(Math.min(...histStates.keys()));
+  }
+  async function histFetch(idx) {
+    if (!session || histPending.has(idx) || histStates.has(idx)) return;
+    histPending.add(idx);
+    try {
+      const st = await session.store.load('out', idx);
+      if (st) histPut(idx, st);
+    } catch (e) { console.log('[simcore] 과거 스냅샷 적재 실패:', idx, e.message); }
+  }
+  async function histPrefetch() {
+    if (!session) return;
+    try {
+      const prefix = session.store.p + ':out:';
+      const keys = (await session.store.b.keys()).filter((k) => k.startsWith(prefix));
+      for (const k of keys) {
+        const idx = parseInt(k.slice(prefix.length), 10);
+        if (isFinite(idx)) await histFetch(idx);
+      }
+    } catch (e) { console.log('[simcore] 과거 스냅샷 프리페치 실패:', e.message); }
+  }
   let charKey = null;
   let currentChaId = null; // 현재 선택된 캐릭터 식별자 (편집기 오염 방지용 — 스키마 유무와 무관하게 항상 갱신)
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
@@ -2511,6 +2570,14 @@
       keys: () => Risuai.pluginStorage.keys(),
     };
     session = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
+    // 과거 상태창 캐시 (v1.0 #1) — out 저장을 한 군데서 가로채 램 캐시를 같이 갱신한다.
+    // 저장 지점이 여럿(턴·패널 커밋·보드·수동 설정)이라 개별 배선 대신 저장 자체를 감싼다.
+    histStates = new Map(); histPending.clear();
+    const origStoreSave = session.store.save.bind(session.store);
+    session.store.save = async (phase, index, state) => {
+      await origStoreSave(phase, index, state);
+      if (phase === 'out') histPut(index, state);
+    };
 
     // 마지막 char 메시지 인덱스에서 상태 복원
     const msgs = chat?.message ?? [];
@@ -2533,6 +2600,7 @@
       } else startPresetId = null; // 스키마가 바뀌어 이제 없는 프리셋 — 무시
     }
     console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
+    histPrefetch(); // 과거 상태창 (v1.0 #1) — 배경 적재, 실패해도 무해 (현재 상태 폴백)
   }
 
   await loadForCurrentChar();
@@ -3043,15 +3111,27 @@
     if (!session || !content.includes('⟦simcore:')) return content;
     return content.replace(MARKER_RE, (_, idxStr) => {
       try {
-        // 마지막 메시지의 마커만 실시간 상태, 과거 마커는 해당 시점 스냅샷
-        // [live-test] 과거 스냅샷 렌더는 async가 필요하므로 v0.1은 최신 상태로 통일,
-        //             과거 메시지 상태창은 v0.2에서 (display 핸들러의 async 지원 여부 확인)
+        // 마지막 메시지의 마커는 실시간 상태, 과거 마커는 해당 시점 스냅샷 (v1.0 #1 —
+        // v0.11부터 예고만 있던 것. 캐시에 없으면 현재 상태 폴백 + 배경 적재).
+        // 과거 렌더는 하이라이트(changeLog)·액션 범례 없이 — 범례는 지금 조작으로 오독된다.
         // CSS는 메시지에 자체 포함 (mainDom 권한 불필요)
         // 액션은 '범례'로 넣는다 — 우상단 버튼은 글리프 하나만 보여줄 수 있어서
         // 여기서 글리프↔라벨을 짝지어주지 않으면 무슨 버튼인지 알 수가 없다.
         // (클릭은 여전히 우상단 버튼 몫: 메시지 안 버튼은 리스가 target을 잘라내 동작하지 않는다)
         // idxStr = 이 마커가 박힌 메시지 번호. 탭의 라디오 id·name에 섞여 메시지끼리
         // 서로의 탭을 건드리는 걸 막는다 (같은 id가 여럿이면 label[for]은 첫 번째만 집는다).
+        const idx = Number(idxStr);
+        // 기준 = 마지막 out 인덱스. 옛 채팅을 막 로드해 아직 턴이 안 돈 동안(lastOutIndex -1)은
+        // 캐시의 최대 인덱스가 그 역할을 한다 (session.init이 복원한 바로 그 스냅샷).
+        const lastIdx = lastOutIndex >= 0 ? lastOutIndex
+          : (histStates.size ? Math.max(...histStates.keys()) : -1);
+        if (isFinite(idx) && lastIdx >= 0 && idx !== lastIdx) {
+          const cached = histStates.get(idx);
+          if (cached) {
+            return renderStatusHtml(schema, cached, null, null, { includeStyle: true, uid: idxStr });
+          }
+          histFetch(idx); // 비동기 — 다음 재렌더부터 그 시점 상태
+        }
         return renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
           { includeStyle: true, uid: idxStr });
       } catch (e) {

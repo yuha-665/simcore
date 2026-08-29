@@ -124,7 +124,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
   ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',
     src.includes('generate: (promptText) => callGenLLM(promptText)'), '');
-  ck('어댑터 버전은 0.48 이상', /\/\/@version 0\.(4[89]|[5-9]\d)/.test(src), '');
+  ck('어댑터 버전은 0.48 이상', /\/\/@version (0\.(4[89]|[5-9]\d)|[1-9]\d*\.)/.test(src), '');
 
   // ── 삼층 구조 + 사이드바 (v0.47) ──
   ck('★ 번들: 2층 JSON 관리자 존재 (v0.70 소제목 개편)', src.includes('🧾 JSON 관리자'), '');

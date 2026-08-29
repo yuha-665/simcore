@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.99.0
-//@display-name SimCore (시뮬 엔진) v0.99 하루 경계 넘김
+//@version 1.0.0
+//@display-name SimCore (시뮬 엔진) v1.0 제작 도구·과거 상태창
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,28 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.0 ────────────────────────────────────────────────
+// 제작 도구 일괄 + 과거 상태창 — UI 개조 협업자 피드백 7건 전부 채택.
+// - [#1 과거 상태창] 과거 마커를 그 시점(out:N) 스냅샷으로 렌더 — v0.11부터 주석 예고만
+//   있던 것. display 핸들러가 동기라 램 캐시(histStates)로: out 저장 가로채기(store.save
+//   랩) + 로드 시 배경 프리페치 + 캐시 미스는 현재 상태 폴백(keepN 밖 옛 메시지).
+//   과거 렌더는 하이라이트·액션 범례·갈림길 없이 (현재 세션 조작 오독 방지).
+//   테스트 test-histstatus.js (가짜 리수 부팅 실측 8케이스). [live-test] 재렌더 타이밍.
+// - [#2 달력 미리보기] [달력] 탭에 시작 날짜 기준 실물 카드 — 기념일·일정·기한 점 +
+//   사용자 CSS(scopeCss '.sce-cal-preview' 격리). monthView(코어)와 같은 데이터.
+// - [#3 프리셋 미리보기] [새 시작] 탭 프리셋마다 [👁] — 기본→적용값 diff + startAt +
+//   그 상태의 상태창 렌더.
+// - [#4 1턴 시험 실행] [규칙·이벤트]·[액션] 탭에 🧪 — 실제 엔진을 헤드리스로 한 턴 굴려
+//   changeLog 출처(액션/판정/시간/틱/이벤트/랜덤)별 타임라인 + 통지 + 최종 diff.
+//   시드 고정·[🎲 다른 운으로]. 보조 AI 없는 시스템 축 전용.
+// - [#5 계산 미리보기] 파생 카드에 "시작값 기준 계산: N" 한 줄 + 랜덤 이벤트마다
+//   시작 상태 실효 확률(발동% × weight/Σ후보, 조건 불충족 표시, 쿨다운 제외 근사).
+// - [#6 참조 펼쳐보기] 변수·파생 카드의 참조 경고가 "N곳에서 참조 중" 펼치기로 —
+//   파생/틱/이벤트/지시문/액션/판정/계약표/상태요약/상태창/프리셋/편성표/달력/보드/상점/
+//   시나리오 역색인(varReferenceIndex). 분류 밖은 '기타'로 과소보고 방지.
+// - [#7 시간 탭 왕복] TAB_SLICES.time — [시간] 탭에 요청서 내보내기/JSON 가져오기.
+//   요청서에 달력 전환 위험 경고 동봉. 일반 패치의 time 금지는 유지.
 //
 // ── v0.99.0 ───────────────────────────────────────────────
 // 하루 경계 넘김 — UI 개조 협업자 제안 채택: 🌙 하루 마무리가 "다음날 아침"을 박지 않는다.
@@ -9971,8 +9993,10 @@ SimCore.define("editor", function (require, module, exports) {
 const CARD_DRAG = true;
 
 const { validateSchema } = require('./validate');
-const { referencedVars } = require('./expr');
-const { renderStatusHtml, THEMES, multiPanelTemplate } = require('./render');
+const { referencedVars, evaluate, truthy } = require('./expr');
+const { seededRng } = require('./rng');
+const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn } = require('./render');
+const { monthView } = require('./calendar');
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
@@ -10360,6 +10384,37 @@ const CSS = `
 .sce .sce-variable-reference-note { width:100%; max-width:var(--sce-variable-work-width); margin-top:5px;
   padding:5px 8px; border-left:2px solid var(--sce-warning); background:var(--sce-field);
   color:var(--sce-text); font-size:11.5px; line-height:1.45; }
+.sce .sce-variable-reference-note summary { cursor:pointer; }
+.sce .sce-ref-line { margin-top:3px; color:var(--sce-muted); }
+.sce .sce-derived-now { width:100%; max-width:var(--sce-variable-work-width); margin-top:5px;
+  padding:4px 8px; border-left:2px solid var(--sce-accent, #5b8def); background:var(--sce-field);
+  color:var(--sce-text); font-size:11.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-derived-now-err { border-left-color:var(--sce-danger); color:var(--sce-muted); }
+.sce .sce-preset-preview { margin-top:8px; padding:8px 10px; border:1px dashed var(--sce-border);
+  border-radius:8px; background:var(--sce-field); font-size:12px; }
+.sce .sce-preset-preview-status { margin-top:4px; max-height:420px; overflow:auto;
+  border:1px solid var(--sce-border); border-radius:8px; padding:6px; }
+/* 달력 미리보기 (v1.0 #2) — 어댑터 패널의 scc-* 기본 스킨 축약본. 사용자 CSS가 위에 얹힌다 */
+.sce .sce-cal-preview { max-width:420px; }
+.sce .sce-cal-preview .scg-card { border:1px solid var(--sce-border); border-radius:12px;
+  padding:10px 12px; background:var(--sce-field); color:var(--sce-text); }
+.sce .sce-cal-preview .scg-title { font-weight:700; margin-bottom:4px; }
+.sce .sce-cal-preview .scg-note { color:var(--sce-muted); font-size:11.5px; margin-bottom:6px; }
+.sce .sce-cal-preview .scc-nav { display:flex; justify-content:center; margin:2px 0 6px; }
+.sce .sce-cal-preview .scc-month { font-weight:600; }
+.sce .sce-cal-preview .scc-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; }
+.sce .sce-cal-preview .scc-wd { text-align:center; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-cal-preview .scc-day { min-height:34px; border:1px solid var(--sce-border); border-radius:6px;
+  padding:2px 4px; font-size:11px; position:relative; }
+.sce .sce-cal-preview .scc-day.scc-today { border-color:var(--sce-accent, #5b8def); box-shadow:0 0 0 1px var(--sce-accent, #5b8def) inset; }
+.sce .sce-cal-preview .scc-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin:0 1px; }
+.sce .sce-cal-preview .scc-dot.scc-mark { background:#c9a86a; }
+.sce .sce-cal-preview .scc-dot.scc-plan { background:#5b8def; }
+.sce .sce-cal-preview .scc-dot.scc-due { background:#d05555; }
+.sce .sce-cal-preview .scc-detail { margin-top:6px; border-top:1px dashed var(--sce-border);
+  padding-top:5px; font-size:11px; color:var(--sce-muted); }
+.sce .sce-cal-preview .scc-detail-date { font-weight:600; color:var(--sce-text); }
+.sce .sce-trial-phase { margin-top:7px; font-weight:600; color:var(--sce-text); font-size:11.5px; }
 .sce .sce-variable-type-help { margin:4px 0 0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
 .sce .sce-variable-description { width:100%; max-width:var(--sce-variable-work-width); margin-top:6px; }
 .sce .sce-variable-bool { display:flex; gap:6px; }
@@ -11340,7 +11395,8 @@ function patchIdDigest(schema) {
     out.push('', '### 시간 체계 (읽기 전용 — 조건식·자리표시자에 변수처럼 사용 가능)',
       `- 사용 가능한 이름: ${tcfg.expose.map((n) => `\`${n}\``).join(' ')}`,
       `- 시작 \`${schema.time.start}\` · 진행 ${tcfg.advance === 'explicit' ? '명시적(skip_day/skip_min 소비)' : '턴마다 하루'} · 달력 ${tcfg.calendar}`,
-      '- 이 이름들은 `set` 대상이 될 수 없고, `time` 섹션 자체도 패치로 못 다룹니다 (편집기 [시간] 탭 전용).');
+      '- 이 이름들은 `set` 대상이 될 수 없고, `time` 섹션 자체도 일반 패치로는 못 다룹니다 '
+      + '([시간] 탭의 손편집 또는 탭 단위 내보내기/가져오기 전용 — v1.0).');
   }
   const body = (e) => { const { _rnd, ...b } = e; return '`' + JSON.stringify(b) + '`'; };
   const evs = [...(schema.rules?.events || []),
@@ -11729,6 +11785,88 @@ const VAR_BALANCE_RULES = [
 
 const EDITOR_ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/; // validate 모듈의 ID_RE와 같은 규칙 (모듈 경계라 재선언)
 
+/**
+ * 변수 역색인 (v1.0 #6) — 각 변수가 스키마 어디서 참조되는지. 변수 카드의 "참조 N곳"
+ * 펼쳐보기 재료다. planVarPurge(삭제 정리)와 달리 고치지 않고 **보여주기만** 한다.
+ * 분류를 놓친 참조는 idsUsedElsewhere(원문 정규식)가 '기타'로 받친다 — 과소보고 방지.
+ * @returns Map<id, [{ where, what }]>
+ */
+function varReferenceIndex(schema) {
+  const map = new Map();
+  const add = (id, where, what) => {
+    if (typeof id !== 'string' || !id) return;
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push({ where, what });
+  };
+  const ex = (e, where, what) => {
+    if (typeof e !== 'string' || !e.trim()) return;
+    try { for (const id of referencedVars(e)) add(id, where, what); } catch { /* 검증 몫 */ }
+  };
+  const tpl = (t, where, what) => {
+    if (typeof t !== 'string') return;
+    for (const m of t.matchAll(/\{([a-zA-Z_][a-zA-Z0-9_]*)(?::[^{}]*)?\}/g)) add(m[1], where, what);
+  };
+  const fx = (arr, where, what) => (Array.isArray(arr) ? arr : []).forEach((f) => {
+    if (!f || typeof f !== 'object') return;
+    add(f.set, where, what); add(f.list, where, what);
+    ex(f.expr, where, what); ex(f.expire, where, what);
+  });
+  const evBlock = (e, where, what) => {
+    ex(e.when, where, what); fx(e.effects, where, what);
+    (Array.isArray(e.choices) ? e.choices : []).forEach((c) => { ex(c.when, where, what); fx(c.effects, where, what); });
+  };
+  (schema.derived || []).forEach((d) => ex(d.expr, '파생', d.label ?? d.id));
+  fx(schema.rules?.onTurn, '정기 틱', 'onTurn');
+  (schema.rules?.events || []).forEach((e) => evBlock(e, '조건 이벤트', e.id));
+  ex(typeof schema.rules?.randomEvents?.chancePerTurn === 'string' ? schema.rules.randomEvents.chancePerTurn : '',
+    '랜덤 이벤트', '발동 확률식');
+  (schema.rules?.randomEvents?.table || []).forEach((e) => evBlock(e, '랜덤 이벤트', e.id));
+  (schema.directives || []).forEach((d) => { ex(d.when, '지시문', d.id); tpl(d.text, '지시문', d.id); });
+  (schema.actions || []).forEach((a) => { ex(a.when, '액션', a.label ?? a.id); fx(a.effects, '액션', a.label ?? a.id); });
+  (schema.checks || []).forEach((c) => {
+    ex(c.roll, '판정', c.label ?? c.id); ex(c.mod, '판정', c.label ?? c.id); ex(c.vs, '판정', c.label ?? c.id);
+    (Array.isArray(c.grades) ? c.grades : []).forEach((g) => fx(g.effects, '판정', c.label ?? c.id));
+  });
+  (schema.updater?.allow || []).forEach((a) => add(a?.id, 'AI 계약표', 'allow'));
+  tpl(schema.promptState?.template, 'AI 상태요약', 'template');
+  (schema.statusUI?.groups || []).forEach((g) => (g.items || []).forEach((it) => {
+    if (!it || typeof it !== 'object') return;
+    add(it.var, '상태창', g.label ?? '그룹');
+    ex(it.showWhen, '상태창', g.label ?? '그룹'); ex(it.color, '상태창', g.label ?? '그룹');
+    if (it.bar && typeof it.bar.max === 'string') ex(it.bar.max, '상태창', g.label ?? '그룹');
+  }));
+  tpl(schema.statusUI?.template, '상태창', '커스텀 템플릿');
+  (schema.setup?.presets || []).forEach((p) => Object.keys(p?.set || {}).forEach((id) => add(id, '시작 프리셋', p.label ?? p.id)));
+  const pt = schema.party;
+  if (pt) {
+    add(pt.roster, '편성표', '보유 목록'); add(pt.points, '편성표', '포인트');
+    const tabs = Array.isArray(pt.tabs) && pt.tabs.length ? pt.tabs : [pt];
+    tabs.forEach((t) => {
+      add(t.roster, '편성표', t.label ?? '탭'); add(t.points, '편성표', t.label ?? '탭');
+      ex(t.when, '편성표', t.label ?? '탭');
+      (t.slots || []).forEach((s) => add(s?.var, '편성표', t.label ?? '슬롯'));
+      (t.items || []).forEach((it) => { add(it?.var, '편성표', t.label ?? '업그레이드'); ex(it?.cost, '편성표', t.label ?? '업그레이드'); ex(it?.when, '편성표', t.label ?? '업그레이드'); });
+      tpl(t.template, '편성표', t.label ?? '대장 템플릿');
+    });
+  }
+  add(schema.calendar?.list, '달력', '일정 목록');
+  ex(schema.board?.when, '보드', 'when');
+  if (schema.shop) {
+    add(schema.shop.currency, '상점', '지갑'); add(schema.shop.buyTo, '상점', '구매 목록');
+    add(schema.shop.sellFrom, '상점', '매입 목록'); add(schema.shop.exchange?.var, '상점', '환전 지갑');
+    ex(schema.shop.when, '상점', 'when');
+  }
+  (schema.scenario?.acts || []).forEach((a) => {
+    ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
+    fx(a?.onEnter, '시나리오', a?.id ?? '막');
+  });
+  // 분류를 놓친 참조 — 원문 정규식이 잡은 것만 '기타'로 (과소보고 방지)
+  for (const id of idsUsedElsewhere(schema)) {
+    if (!map.has(id)) add(id, '기타', '스키마 어딘가 (분류 밖)');
+  }
+  return map;
+}
+
 /** 다른 탭이 실제로 참조 중인 변수 id — 변수 탭에서 지우면 그쪽이 깨진다 */
 function idsUsedElsewhere(schema) {
   const rest = JSON.stringify({
@@ -11993,6 +12131,9 @@ const TAB_SLICES = {
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
+  // 시간(v1.0 #7) — time 객체 통째 교체. 일반 패치는 계속 금지 (예약 이름·달력 전환 위험)
+  // 지만 탭 왕복은 [시간] 탭 손편집과 같은 위험 수준이라 연다 — 요청서가 달력 전환 경고 동봉.
+  time: { keys: ['time'], label: '시간' },
 };
 
 // 직결 생성 입력칸의 예시 문구 — 여기 쓴 내용이 요청서의 '내가 원하는 것'에 그대로 들어간다.
@@ -12010,6 +12151,7 @@ const TAB_WANT_PH = {
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
+  time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
 };
 
 /**
@@ -12042,6 +12184,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
+  else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -12540,6 +12683,29 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "sellRate": 0.6, "when": "store_on",',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
+      '');
+  } else if (tabKey === 'time') {
+    body.push('## 시간 체계 규격', ...SCHEMA_TIME_RULES, '',
+      '## time 섹션 필드',
+      '- `start`: "YYYY-MM-DD HH:mm" — 이야기의 시작 시각. **진행 중인 세이브에는 소급되지 않습니다** (시계는 세이브에 삽니다).',
+      '- `advance`: "explicit"(보조가 skip_day/skip_min을 보고할 때만 흐름 — 장면 단위 RP 표준) 또는 "perTurn"(1턴=1일 — 1턴이 하루인 장르만).',
+      '- `calendar`: "gregorian"(기본) 또는 "flat30"(한 달 30일 고정 판타지력).',
+      '- `format`: { "date": "M월 D일", "clock": "HH:mm" } — 표시 서식. clock을 주면 분 시계 봇입니다.',
+      '- `weekdays` / `seasons`: 요일·계절 이름 배열 (선택 — 세계관 고유 이름 가능).',
+      '- `expose`: 조건식·상태창에서 쓸 노출 이름 선택 (date/clock/weekday/season/year/month/dom/hour/minute/elapsed).',
+      '',
+      '## ⚠ 진행 중인 봇의 달력을 바꾸지 마세요',
+      '`calendar`를 바꾸면 같은 시계(epoch)가 **다른 날짜로 읽힙니다** — 진행 중 세이브의 날짜가 통째로 튑니다.',
+      '새 봇을 만드는 중에만 바꾸세요. `advance` 변경도 같은 이유로 신중히.',
+      '',
+      '## 이런 모양으로 주세요',
+      '```json',
+      '{ "time": { "start": "2026-03-02 08:30", "advance": "explicit", "calendar": "gregorian",',
+      '  "format": { "date": "M월 D일", "clock": "HH:mm" },',
+      '  "weekdays": ["월", "화", "수", "목", "금", "토", "일"],',
+      '  "expose": ["date", "clock", "weekday", "elapsed"] } }',
+      '```',
+      '⚠ explicit 진행이면 skip_day/skip_min **변수**(vars 절)가 시간 입구입니다 — 이 창구는 time 섹션만 다루니, 그 변수가 없다면 [변수] 탭에서 따로 만들어야 합니다.',
       '');
   } else if (tabKey === 'scenario') {
     body.push('## 시나리오 규격', ...SCHEMA_SCENARIO_RULES, '',
@@ -13106,7 +13272,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function tabVars() {
     const wrap = h('div');
     const validation = validateSchema(schema);
-    const referencedIds = new Set(idsUsedElsewhere(schema));
     let fieldErrorSeq = 0;
     const itemErrors = (path) => validation.errors.filter((e) => e.path === path || e.path.startsWith(path + '.'));
     const issueKind = (error) => {
@@ -13137,10 +13302,35 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       issues.length ? h('span', { id: errorId, class: 'sce-field-error' },
         issues.map((e) => e.msg).join(' · ')) : null);
     };
-    const referenceNote = (item) => referencedIds.has(item.id)
-      ? h('div', { class: 'sce-variable-reference-note' },
-        '이 ID를 바꾸면 규칙·상태창에서 이 변수를 찾지 못해요.')
-      : null;
+    // 참조 펼쳐보기 (v1.0 #6) — 어디서 쓰는지 목록으로. 큰 스키마 수정의 지도.
+    const refIndex = varReferenceIndex(schema);
+    const referenceNote = (item) => {
+      const refs = refIndex.get(item.id);
+      if (!refs || !refs.length) return null;
+      const byWhere = new Map();
+      for (const r of refs) {
+        if (!byWhere.has(r.where)) byWhere.set(r.where, new Set());
+        byWhere.get(r.where).add(String(r.what));
+      }
+      const n = [...byWhere.values()].reduce((s, set) => s + set.size, 0);
+      return h('details', { class: 'sce-variable-reference-note' },
+        h('summary', {}, `${n}곳에서 참조 중 — ID를 바꾸면 그쪽이 깨져요 (펼쳐서 확인)`),
+        ...[...byWhere.entries()].map(([where, whats]) =>
+          h('div', { class: 'sce-ref-line' }, `· ${where}: ${[...whats].join(', ')}`)));
+    };
+    // 파생 현재값 (v1.0 #5) — 시작값 기준 실제 계산 결과 한 줄
+    let previewVars = null;
+    try { previewVars = engine.initState(schema).vars; } catch { /* 검증 오류 중엔 생략 */ }
+    const derivedNow = (d) => {
+      if (!previewVars || typeof d.expr !== 'string' || !d.expr.trim()) return null;
+      try {
+        const v = evaluate(d.expr, engine.makeLookup(schema, previewVars), null);
+        return h('div', { class: 'sce-derived-now' },
+          `시작값 기준 계산: ${Array.isArray(v) ? JSON.stringify(v) : String(v)}`);
+      } catch (e) {
+        return h('div', { class: 'sce-derived-now sce-derived-now-err' }, `시작값 기준 계산 실패 — ${e.message}`);
+      }
+    };
     const itemLines = (items) => (Array.isArray(items) ? items : []).join('\n');
     const parseItemLines = (text) => String(text).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     const nextEditorId = (prefix) => {
@@ -13552,7 +13742,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             { cls: 'sce-w-l', ph: '영문 ID' }), { issues: fieldIssues(path, 'id') }),
           variableField('계산식', bindInput(d.expr, (x) => { d.expr = x; rerender(); },
             { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
-            { issues: fieldIssues(path, 'expr', 'card') })), referenceNote(d)], issues,
+            { issues: fieldIssues(path, 'expr', 'card') })), derivedNow(d), referenceNote(d)], issues,
         () => deleteWithUndo('derived', i, `파생 변수 ${i + 1}`), variableSummary(d, true)));
     });
     wrap.appendChild(derivedList);
@@ -14074,6 +14264,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // { tabKey, picked, lost, gained } — 사라지는 것이 있으면 여기 붙들어 두고 확인을 받는다.
   // 스키마는 아직 안 건드린 상태다 (취소 = 무변화).
   let tabPending = null;
+  let presetPreview = null; // v1.0 #3 — 미리보기가 열린 프리셋 id (하나만)
+  let trial = { preset: '', action: '', seed: '1', result: null }; // v1.0 #4 — 1턴 시험 실행
   let featureWant = '';  // 🧩 카드에 덧붙이는 요구 (선택)
   let featureRun = null; // { id, icon, label, step, total, tab } — 여러 단계짜리 기능의 진행 위치
 
@@ -14085,6 +14277,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
     [/^\$\.shop\b/, '상점', false],
+    [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
@@ -14406,6 +14599,94 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+  // ── 1턴 시험 실행 (v1.0 #4) — 규칙·액션·판정 디버거 ──────────
+  // 채팅 없이 실제 엔진(sendPhase→outputPhase)을 헤드리스로 한 턴 굴리고, changeLog의
+  // 출처(source)를 사람 말로 풀어 타임라인으로 보여준다. 보조 AI는 없다 — 시스템 축 전용.
+  function runTrial() {
+    try {
+      let st = engine.initState(schema);
+      st.meta.setupDone = true;
+      if (trial.preset) st = engine.applyPreset(schema, st, trial.preset).state;
+      const before = JSON.parse(JSON.stringify(st.vars));
+      let blocked = null;
+      if (trial.action) {
+        const t = engine.toggleAction(schema, st, trial.action);
+        if (t.blocked) blocked = t.blocked; else st = t.state;
+      }
+      const seed = String(trial.seed ?? '1');
+      const send = engine.sendPhase(schema, st, { rng: seededRng('trial', seed, 's') });
+      const out = engine.outputPhase(schema, send.state, {}, {}, { rng: seededRng('trial', seed, 'o') });
+      trial.result = { before, send, out, blocked };
+    } catch (e) {
+      trial.result = { error: e.message };
+    }
+    rerender();
+  }
+  function trialRunBlock() {
+    const SRC = (s) => s === 'onTurn' ? '정기 틱'
+      : s === 'time' ? '시간 진행'
+        : s.startsWith('action:') ? `액션 (${s.slice(7)})`
+          : s.startsWith('check:') ? `판정 (${s.slice(6)})`
+            : s.startsWith('event:') ? `조건 이벤트 (${s.slice(6)})`
+              : s.startsWith('random:') ? `랜덤 이벤트 (${s.slice(7)})`
+                : s.startsWith('choice:') ? `갈림길 (${s.slice(7)})`
+                  : s.startsWith('scenario:') ? `시나리오 (${s.slice(9)})` : s;
+    const fmt = (v) => Array.isArray(v) ? (v.length ? v.join(', ') : '(빈 목록)') : String(v);
+    const nameOf = (id) => (schema.vars.find((v) => v.id === id) ?? schema.derived.find((d) => d.id === id))?.label ?? id;
+    const logLine = (c) => h('div', { class: 'sce-ref-line' },
+      `· [${SRC(String(c.source ?? '?'))}] ${nameOf(c.id)}: ${fmt(c.from)} → `, h('b', {}, fmt(c.to)));
+
+    const wrap = h('div', { class: 'sce-block sce-trial' });
+    wrap.appendChild(h('h4', {}, '🧪 1턴 시험 실행'));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '채팅 없이 시스템만 한 턴 굴려 봅니다 — 액션 효과 → 판정 → 시간 진행 → 정기 틱 → 조건 이벤트 → 랜덤 이벤트 순서 그대로. '
+      + '보조 AI가 서사에서 적어 올 변화는 없는 시스템 축 전용 시뮬입니다.'));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      pair('시작', bindSelect(trial.preset,
+        [['', '기본 시작값'], ...(schema.setup?.presets ?? []).map((p) => [p.id, p.label || p.id])],
+        (x) => { trial.preset = x; })),
+      pair('액션', bindSelect(trial.action,
+        [['', '(액션 없이)'], ...(schema.actions ?? []).map((a) => [a.id, a.label ?? a.id])],
+        (x) => { trial.action = x; }), '고르면 무장된 채로 턴이 시작됩니다'),
+      pair('시드', bindInput(trial.seed, (x) => { trial.seed = x; }, { cls: 'sce-w-s', ph: '1' }),
+        '랜덤 굴림 고정용 — 같은 시드는 같은 운'),
+      h('button', { class: 'sce-btn', onclick: runTrial }, '▶ 실행'),
+      trial.result ? h('button', { class: 'sce-btn sce-mini', onclick: () => {
+        trial.seed = String((parseInt(trial.seed, 10) || 0) + 1); runTrial();
+      } }, '🎲 다른 운으로') : null,
+    ));
+    const r = trial.result;
+    if (!r) return wrap;
+    if (r.error) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, `실행 실패 — ${r.error} (검증 오류부터 잡아 주세요)`));
+      return wrap;
+    }
+    const box = h('div', { class: 'sce-preset-preview' });
+    if (r.blocked) box.appendChild(h('div', { class: 'sce-ref-line' }, `⚠ 액션 무장 실패: ${r.blocked} — 액션 없이 진행했습니다`));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 전송 단계 (장면이 쓰이기 전)'));
+    if (r.send.changeLog.length) r.send.changeLog.forEach((c) => box.appendChild(logLine(c)));
+    else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 응답 단계 (장면이 끝난 뒤)'));
+    if (r.out.changeLog.length) r.out.changeLog.forEach((c) => box.appendChild(logLine(c)));
+    else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
+    if (r.out.firedEvents?.length) {
+      box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 발동한 이벤트'));
+      box.appendChild(h('div', { class: 'sce-ref-line' }, '· ' + r.out.firedEvents.map(SRC).join(' · ')));
+    }
+    const notifies = r.out.state.meta?.pendingNotifies ?? [];
+    if (notifies.length) {
+      box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 다음 턴 AI에게 갈 통지'));
+      notifies.forEach((n) => box.appendChild(h('div', { class: 'sce-ref-line' }, `· ${n}`)));
+    }
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 최종 변경값 (턴 시작 대비)'));
+    const changedIds = schema.vars.filter((v) => JSON.stringify(r.before[v.id]) !== JSON.stringify(r.out.state.vars[v.id]));
+    if (changedIds.length) changedIds.forEach((v) => box.appendChild(h('div', { class: 'sce-ref-line' },
+      `· ${v.label ?? v.id}: ${fmt(r.before[v.id])} → `, h('b', {}, fmt(r.out.state.vars[v.id])))));
+    else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변수 무변 — 이벤트·통지만 있었거나 아무 일도 없었어요)'));
+    wrap.appendChild(box);
+    return wrap;
+  }
+
   function tabRules() {
     const wrap = h('div');
     wrap.appendChild(tabAiTools('rules'));
@@ -14468,6 +14749,34 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     const re = schema.rules.randomEvents;
     wrap.appendChild(h('h4', {}, '랜덤 이벤트'));
+    // 실효 확률 미리보기 (v1.0 #5) — 시작 상태 기준: 발동확률 × weight/Σ(후보 weight).
+    // 쿨다운·최초설정·다른 이벤트와의 경합은 뺀 근사다 — 감을 잡는 용도.
+    const reProb = (() => {
+      let base = null;
+      try { base = engine.initState(schema).vars; } catch { return null; }
+      const lookup = engine.makeLookup(schema, base);
+      let chance = re.chancePerTurn ?? 0;
+      if (typeof chance === 'string') {
+        try { chance = Number(evaluate(chance, lookup, null)); } catch { return null; }
+      }
+      if (!isFinite(chance)) return null;
+      const elig = re.table.map((ev) => {
+        if (!ev.when) return true;
+        try { return truthy(evaluate(ev.when, lookup, null)); } catch { return false; }
+      });
+      const total = re.table.reduce((s, ev, i) => s + (elig[i] ? (ev.weight ?? 1) : 0), 0);
+      return { chance: Math.max(0, Math.min(1, chance)), elig, total };
+    })();
+    const reProbLine = (ev, i) => {
+      if (!reProb) return null;
+      if (!reProb.elig[i]) {
+        return h('div', { class: 'sce-derived-now sce-derived-now-err' },
+          '시작 상태에선 조건 불충족 — 지금은 후보가 아니에요 (조건이 참이 되는 판에서만 추첨)');
+      }
+      const p = reProb.total > 0 ? reProb.chance * ((ev.weight ?? 1) / reProb.total) : 0;
+      return h('div', { class: 'sce-derived-now' },
+        `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% (발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} — 쿨다운 제외 근사)`);
+    };
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('턴당 발동 확률', bindInput(
         typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
@@ -14497,10 +14806,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '산적이 상단을 습격했다...' })),
         ),
+        reProbLine(ev, i),
         choiceEditor(ev),
       ));
     });
     wrap.appendChild(addBtn('랜덤 이벤트', () => { re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 }); rerender(); }));
+    wrap.appendChild(trialRunBlock());
     return wrap;
   }
 
@@ -15600,6 +15911,50 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(bindArea(C.css, (x) => { C.css = x || undefined; rerender(); },
       '.scg-card { background:#141018; border-color:#8a6d3b; }\n.scc-day.scc-today { border-color:#e0a94a; }'));
 
+    // 미리보기 (v1.0 #2) — 채팅에 안 들어가고 시작 날짜 기준 실제 달력 카드를 본다.
+    // 기념일·일정 점·사용자 CSS까지 monthView(코어)와 같은 데이터로 그린다.
+    wrap.appendChild(h('h4', {}, '미리보기 (시작 날짜 기준)'));
+    try {
+      const pvState = engine.initState(schema);
+      const mv = monthView(schema, pvState, {});
+      if (mv) {
+        const cal = h('div', { class: 'sce-cal-preview' });
+        if (C.css) {
+          const st = document.createElement('style');
+          st.textContent = scopeCssFn(C.css, '.sce-cal-preview');
+          cal.appendChild(st);
+        }
+        const card = h('div', { class: 'scg-card' });
+        card.appendChild(h('div', { class: 'scg-title' }, `${C.icon ?? '📅'} ${C.label ?? '달력'}`));
+        if (C.note) card.appendChild(h('div', { class: 'scg-note' }, C.note));
+        card.appendChild(h('div', { class: 'scc-nav' }, h('span', { class: 'scc-month' }, mv.label)));
+        const grid = h('div', { class: 'scc-grid' });
+        for (const w of mv.weekdays) grid.appendChild(h('div', { class: 'scc-wd' }, w));
+        for (let i = 0; i < mv.lead; i++) grid.appendChild(h('div', { class: 'scc-blank' }));
+        for (const cell of mv.cells) {
+          const dots = cell.marks.map((mk) =>
+            h('span', { class: `scc-dot scc-${mk.kind}`, title: mk.label }));
+          grid.appendChild(h('div', { class: `scc-day${cell.today ? ' scc-today' : ''}`,
+            title: cell.marks.map((mk) => mk.label).join(', ') },
+          h('span', {}, String(cell.dom)), ...dots));
+        }
+        card.appendChild(grid);
+        const todays = mv.cells.filter((cx) => cx.marks.length);
+        if (todays.length) {
+          card.appendChild(h('div', { class: 'scc-detail' },
+            h('div', { class: 'scc-detail-date' }, '이번 달 표시:'),
+            ...todays.slice(0, 8).map((cx) => h('div', { class: 'scc-entry' },
+              `${cx.dom}일 — ${cx.marks.map((mk) => `${mk.kind === 'mark' ? '기념일' : mk.kind === 'plan' ? '일정' : '기한'} ${mk.label}`).join(', ')}`))));
+        }
+        cal.appendChild(card);
+        wrap.appendChild(cal);
+        wrap.appendChild(h('div', { class: 'sce-hint' },
+          '점: 기념일(mark)·일정(plan)·기한(due). 실제 패널의 달 이동·날짜 클릭 등록은 채팅 화면에서만 동작합니다.'));
+      }
+    } catch (e) {
+      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, `미리보기 실패 — ${e.message}`));
+    }
+
     wrap.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.calendar; rerender(); } }, '달력 제거')));
     return wrap;
@@ -15640,6 +15995,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ));
     });
     wrap.appendChild(addBtn('액션 추가', () => { schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] }); rerender(); }));
+    wrap.appendChild(trialRunBlock());
     return wrap;
   }
 
@@ -15753,6 +16109,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function tabTime() {
     const wrap = h('div');
+    wrap.appendChild(tabAiTools('time'));  // v1.0 #7 — 탭 단위 내보내기/가져오기 (일반 패치는 계속 금지)
     const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
 
     if (!schema.time) {
@@ -15955,11 +16312,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-hint' },
       '새 채팅을 시작할 때 패널에서 한 번 누르는 버튼. 여기 적은 변수만 그 값으로 세팅되고 나머지는 시작값 그대로 간다. '
       + '값만 쓸 수 있고 수식은 안 된다. 난이도 이름을 붙였다면 [🔬 진단]에서 실제로 굴려 순서가 맞는지 확인할 것.'));
+    // 프리셋 미리보기 (v1.0 #3) — 기본→적용값 비교 + 그 상태의 상태창. 채팅에 들어가지 않고
+    // "이 프리셋으로 시작하면 어떻게 보이나"를 확인한다.
+    const presetPreviewBlock = (p) => {
+      let base, applied;
+      try {
+        base = engine.initState(schema);
+        applied = engine.applyPreset(schema, base, p.id).state;
+      } catch (e) {
+        return h('div', { class: 'sce-hint sce-warn' }, `미리보기 실패 — ${e.message} (검증 오류부터 잡아 주세요)`);
+      }
+      const fmt = (v) => Array.isArray(v) ? (v.length ? v.join(', ') : '(빈 목록)') : String(v);
+      const rows = Object.keys(p.set || {}).map((id) => {
+        const def = schema.vars.find((v) => v.id === id);
+        if (!def) return h('div', { class: 'sce-ref-line' }, `· ${id}: (없는 변수 — 무시됨)`);
+        const from = fmt(base.vars[id]), to = fmt(applied.vars[id]);
+        return h('div', { class: 'sce-ref-line' },
+          `· ${def.label ?? id}: ${from} → `, h('b', {}, to), from === to ? ' (변화 없음)' : '');
+      });
+      if (schema.time && p.startAt) {
+        rows.unshift(h('div', { class: 'sce-ref-line' },
+          `· 시작 시점: ${schema.time.start} → `, h('b', {}, p.startAt)));
+      }
+      if (!rows.length) rows.push(h('div', { class: 'sce-ref-line' }, '· 바꾸는 값이 없어요 — 기본 시작과 동일합니다'));
+      const box = h('div', { class: 'sce-preset-preview' },
+        h('div', { class: 'sce-hint', style: 'margin:0 0 6px' }, '기본 시작 → 이 프리셋 적용:'),
+        ...rows);
+      try {
+        applied.meta.setupDone = true;
+        const holder = h('div', { class: 'sce-preset-preview-status' });
+        holder.innerHTML = renderStatusHtml(schema, applied, null, null,
+          { includeStyle: true, uid: `pv-${p.id}` });
+        box.appendChild(h('div', { class: 'sce-hint', style: 'margin:8px 0 4px' }, '이 상태의 상태창:'));
+        box.appendChild(holder);
+      } catch (e) {
+        box.appendChild(h('div', { class: 'sce-hint sce-warn' }, `상태창 렌더 실패 — ${e.message}`));
+      }
+      return box;
+    };
     schema.setup.presets.forEach((p, i) => {
       const block = h('div', { class: 'sce-block' });
       block.appendChild(h('div', { class: 'sce-row' },
         bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
         bindInput(p.label, (x) => { p.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          presetPreview = presetPreview === p.id ? null : p.id; rerender();
+        } }, presetPreview === p.id ? '👁 미리보기 닫기' : '👁 미리보기'),
         // 시간 체계가 켜져 있으면 시계도 시작값의 일부다 — "주말 오후에 시작" 같은 배경 프리셋용.
         // epoch은 set으로 못 건드리는 예약 키라 이 칸이 유일한 통로다.
         schema.time ? pair('시작 시점', bindInput(p.startAt, (x) => {
@@ -15990,6 +16388,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (unused) { p.set[unused.id] = unused.init ?? 0; rerender(); }
       }));
       block.appendChild(sub);
+      if (presetPreview === p.id) block.appendChild(presetPreviewBlock(p));
       wrap.appendChild(block);
     });
     wrap.appendChild(addBtn('프리셋 추가', () => { schema.setup.presets.push({ id: 'preset' + (schema.setup.presets.length + 1), label: '', set: {} }); rerender(); }));
@@ -23922,6 +24321,43 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let session = null;
   let schema = null;
   let lastChangeLog = [];
+  // ── 과거 상태창 캐시 (v1.0 #1) — 과거 마커를 그 시점(out:N) 상태로 그린다 ──
+  // v0.11부터 주석으로만 남아 있던 원래 의도의 이행: display 핸들러가 동기라 비동기
+  // 스냅샷을 못 기다린다 → out 저장을 가로채 램에 같이 얹고(loadForCurrentChar에서 배선),
+  // 옛 채팅 로드 시엔 배경 프리페치. 캐시에 없으면 현재 상태 폴백 (keepN 밖 옛 메시지 포함).
+  // [live-test] 지연 적재분이 화면에 반영되는 시점 — 리수가 과거 메시지를 다시 그릴 때.
+  let histStates = new Map();       // outIndex(Number) → 그 시점 상태 (조작 유령 제거본)
+  const histPending = new Set();
+  const HIST_CAP = 80;              // SnapshotStore keepN(60)보다 넉넉히
+  function histPut(idx, st) {
+    try {
+      const s = engine.reconcileState(schema, JSON.parse(JSON.stringify(st)));
+      // 과거 상태창에서 눌리면 안 되는 것 — 갈림길·제안은 좌표 히트테스트로 **현재** 세션을 조작한다
+      s.meta.pendingChoice = null;
+      s.meta.suggestions = [];
+      histStates.set(Number(idx), s);
+    } catch { return; }
+    if (histStates.size > HIST_CAP) histStates.delete(Math.min(...histStates.keys()));
+  }
+  async function histFetch(idx) {
+    if (!session || histPending.has(idx) || histStates.has(idx)) return;
+    histPending.add(idx);
+    try {
+      const st = await session.store.load('out', idx);
+      if (st) histPut(idx, st);
+    } catch (e) { console.log('[simcore] 과거 스냅샷 적재 실패:', idx, e.message); }
+  }
+  async function histPrefetch() {
+    if (!session) return;
+    try {
+      const prefix = session.store.p + ':out:';
+      const keys = (await session.store.b.keys()).filter((k) => k.startsWith(prefix));
+      for (const k of keys) {
+        const idx = parseInt(k.slice(prefix.length), 10);
+        if (isFinite(idx)) await histFetch(idx);
+      }
+    } catch (e) { console.log('[simcore] 과거 스냅샷 프리페치 실패:', e.message); }
+  }
   let charKey = null;
   let currentChaId = null; // 현재 선택된 캐릭터 식별자 (편집기 오염 방지용 — 스키마 유무와 무관하게 항상 갱신)
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
@@ -24017,6 +24453,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       keys: () => Risuai.pluginStorage.keys(),
     };
     session = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
+    // 과거 상태창 캐시 (v1.0 #1) — out 저장을 한 군데서 가로채 램 캐시를 같이 갱신한다.
+    // 저장 지점이 여럿(턴·패널 커밋·보드·수동 설정)이라 개별 배선 대신 저장 자체를 감싼다.
+    histStates = new Map(); histPending.clear();
+    const origStoreSave = session.store.save.bind(session.store);
+    session.store.save = async (phase, index, state) => {
+      await origStoreSave(phase, index, state);
+      if (phase === 'out') histPut(index, state);
+    };
 
     // 마지막 char 메시지 인덱스에서 상태 복원
     const msgs = chat?.message ?? [];
@@ -24039,6 +24483,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       } else startPresetId = null; // 스키마가 바뀌어 이제 없는 프리셋 — 무시
     }
     console.log('[simcore] 로드 완료:', schema.meta?.name, '/ 상태:', session.current.vars);
+    histPrefetch(); // 과거 상태창 (v1.0 #1) — 배경 적재, 실패해도 무해 (현재 상태 폴백)
   }
 
   await loadForCurrentChar();
@@ -24549,15 +24994,27 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (!session || !content.includes('⟦simcore:')) return content;
     return content.replace(MARKER_RE, (_, idxStr) => {
       try {
-        // 마지막 메시지의 마커만 실시간 상태, 과거 마커는 해당 시점 스냅샷
-        // [live-test] 과거 스냅샷 렌더는 async가 필요하므로 v0.1은 최신 상태로 통일,
-        //             과거 메시지 상태창은 v0.2에서 (display 핸들러의 async 지원 여부 확인)
+        // 마지막 메시지의 마커는 실시간 상태, 과거 마커는 해당 시점 스냅샷 (v1.0 #1 —
+        // v0.11부터 예고만 있던 것. 캐시에 없으면 현재 상태 폴백 + 배경 적재).
+        // 과거 렌더는 하이라이트(changeLog)·액션 범례 없이 — 범례는 지금 조작으로 오독된다.
         // CSS는 메시지에 자체 포함 (mainDom 권한 불필요)
         // 액션은 '범례'로 넣는다 — 우상단 버튼은 글리프 하나만 보여줄 수 있어서
         // 여기서 글리프↔라벨을 짝지어주지 않으면 무슨 버튼인지 알 수가 없다.
         // (클릭은 여전히 우상단 버튼 몫: 메시지 안 버튼은 리스가 target을 잘라내 동작하지 않는다)
         // idxStr = 이 마커가 박힌 메시지 번호. 탭의 라디오 id·name에 섞여 메시지끼리
         // 서로의 탭을 건드리는 걸 막는다 (같은 id가 여럿이면 label[for]은 첫 번째만 집는다).
+        const idx = Number(idxStr);
+        // 기준 = 마지막 out 인덱스. 옛 채팅을 막 로드해 아직 턴이 안 돈 동안(lastOutIndex -1)은
+        // 캐시의 최대 인덱스가 그 역할을 한다 (session.init이 복원한 바로 그 스냅샷).
+        const lastIdx = lastOutIndex >= 0 ? lastOutIndex
+          : (histStates.size ? Math.max(...histStates.keys()) : -1);
+        if (isFinite(idx) && lastIdx >= 0 && idx !== lastIdx) {
+          const cached = histStates.get(idx);
+          if (cached) {
+            return renderStatusHtml(schema, cached, null, null, { includeStyle: true, uid: idxStr });
+          }
+          histFetch(idx); // 비동기 — 다음 재렌더부터 그 시점 상태
+        }
         return renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
           { includeStyle: true, uid: idxStr });
       } catch (e) {

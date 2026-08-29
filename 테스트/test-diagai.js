@@ -195,7 +195,7 @@ ck('진단이 완주함', r.ran, JSON.stringify(r.findings.slice(0, 2)));
 }
 
 // ── 7. 어댑터 버전 ─────────────────────────────────────────
-ck('어댑터 버전이 0.52 이상', /\/\/@version 0\.(5[2-9]|[6-9]\d)/.test(src), '');
+ck('어댑터 버전이 0.52 이상', /\/\/@version (0\.(5[2-9]|[6-9]\d)|[1-9]\d*\.)/.test(src), '');
 
 const bad = R.filter(([c]) => !c);
 for (const [c, n, x] of R) if (!c) console.log(`  ✗ ${n}${x ? ` — ${x}` : ''}`);

@@ -325,7 +325,7 @@ const baseJson = JSON.stringify(BASE);
     src.includes('전부 교체') && src.includes('전부 새 id') && src.includes('전부 건너뛰기'), '');
   ck('충돌 다발 = 낡은 규격 힌트 존재 (v0.44.2)', src.includes('낡은 규격으로 만든 패치일 수'), '');
   ck('삭제 후보 전체 토글 존재 (v0.44.2)', src.includes('전체 체크') && src.includes('전체 해제'), '');
-  ck('어댑터 버전은 0.48 이상', /\/\/@version 0\.(4[89]|[5-9]\d)/.test(src), '');
+  ck('어댑터 버전은 0.48 이상', /\/\/@version (0\.(4[89]|[5-9]\d)|[1-9]\d*\.)/.test(src), '');
 }
 
 let p = 0, f = 0;

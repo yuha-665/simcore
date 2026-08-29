@@ -304,6 +304,11 @@ const S = {
     { id: 'mainstat', label: '주 스탯', expr: 'max(max(str, con), max(max(agi, intel), sen))' },
     { id: 'rank_est', label: '측정 등급', expr: rankExpr('mainstat') },
     { id: 'est_n', label: '(내부) 측정 등급 수치', expr: rankN('mainstat') },
+    // 판정 상대 등급 — 게이트 안이면 최근 출현 게이트의 등급(grade_i 1~6=E~S), 밖이거나
+    // 게이트 등급 미상(grade_i 0)이면 자기 측정 등급. 목표치가 이걸 읽어 성장을 따라온다 —
+    // 고정 목표치(13+hazard/25)는 S랭크(보정 +14~+34)에서 주사위가 장식이 되는 실계산 확인.
+    { id: 'opp_n', label: '(내부) 판정 상대 등급',
+      expr: '(in_gate and grade_i > 0) ? grade_i : est_n' },
     { id: 'lic_n', label: '(내부) 라이선스 수치',
       expr: chain([['license == "S"', '6'], ['license == "A"', '5'], ['license == "B"', '4'],
         ['license == "C"', '3'], ['license == "D"', '2'], ['license == "E"', '1']], '0') },
@@ -463,6 +468,7 @@ const S = {
             + 'what the Awakening changed. Interior, quiet, earned.' },
         // ── 판정 이벤트 (dice_on 정책 — /판정 으로 온오프) ──
         // 굴림·정산은 엔진(checks), 여기는 "언제 굴리나"만. 끄면 이 4종이 통째로 잠기고
+        // (목표치는 opp_n — 게이트 등급이 밀어 올린다. checks 섹션 주석 참고)
         // 나머지 이벤트는 그대로다 — 주사위 호불호가 콘텐츠 손실로 이어지지 않는다.
         { id: 'gate_clash', weight: 4, cooldown: 3, when: 'dice_on and in_gate', check: 'gate_fight',
           notify: '[전투] A combat beat inside the Gate — the [판정] line already decided how it goes. '
@@ -507,11 +513,17 @@ const S = {
   // ── 판정 (v0.40 checks) — "완벽 주사위". 유저 정책 dice_on(/판정)으로 온오프 ──
   // 굴림·등급·정산 전부 엔진: 결과는 meta.lastCheck (보조가 만질 형태 자체가 없다),
   // 시드 굴림이라 리롤해도 같은 눈. 트리거는 위 판정 이벤트 4종뿐 — 액션이 없는 봇이라
-  // "이벤트가 국면을 열고 주사위가 판을 정하는" 결이다. d20 + 스탯/10 보정, hazard가 문턱을 민다.
+  // "이벤트가 국면을 열고 주사위가 판을 정하는" 결이다. d20 + 스탯/10 보정.
+  //
+  // 목표치는 상대 등급(opp_n = 게이트 안이면 게이트 등급, 밖이면 자기 등급)이 정한다.
+  // 처음 공식(13 + hazard/25)은 상대가 없어서, 보정이 +1→+34로 자라는 동안 목표치가
+  // 13~17에 묶여 S랭크부터 주사위가 장식이 됐다 (유저 지적 — 원본 스탯 스케일은 S=100+).
+  // 등급 연동이면 같은 급 상대는 끝까지 팽팽하고(굴림 9~12 필요), 한 급 위는 +3씩 벽,
+  // 급 아래는 시원하게 쓸린다 — 헌터물 성장 문법 그대로. hazard는 잔가시(+0~4)로만 남는다.
   checks: [
     { id: 'gate_fight', label: '전투 판정', roll: 'rand(1, 20)',
       mod: 'floor(mainstat / 10) + floor(level / 10)',
-      vs: '13 + floor(hazard / 25)',
+      vs: '10 + opp_n * 3 + floor(hazard / 25)',
       grades: [
         { when: 'roll == 1', label: '치명적 실수', effects: [{ set: 'hp', expr: 'max(hp - 15, 0)' }],
           inject: '치명적인 실수가 나왔다 — 부상급 대가를 치르고 국면이 급격히 나빠진다.' },
@@ -522,8 +534,10 @@ const S = {
         { label: '고전', effects: [{ set: 'sp', expr: 'max(sp - 15, 0)' }],
           inject: '결정타가 나오지 않는다 — 소모전이다. 밀리는 국면을 그려라.' },
       ] },
+    // 회피·감지·교섭은 주 스탯이 아닌 스탯을 쓴다 — 상대는 같은 opp_n이므로, 부스탯이
+    // 약한 빌드는 그 국면이 실제로 어렵다 (스탯 분배가 판정에서 체감되는 자리).
     { id: 'evade', label: '회피 판정', roll: 'rand(1, 20)', mod: 'floor(agi / 10)',
-      vs: '12 + floor(hazard / 25)',
+      vs: '9 + opp_n * 3 + floor(hazard / 25)',
       grades: [
         { when: 'roll == 1', label: '직격', effects: [{ set: 'hp', expr: 'max(hp - 20, 0)' }],
           inject: '피할 수 없었다 — 직격이다.' },
@@ -532,14 +546,15 @@ const S = {
         { label: '피격', effects: [{ set: 'hp', expr: 'max(hp - 10, 0)' }],
           inject: '미처 다 피하지 못했다 — 가볍지 않은 대가다.' },
       ] },
-    { id: 'sense', label: '감지 판정', roll: 'rand(1, 20)', mod: 'floor(sen / 10)', vs: 13,
+    { id: 'sense', label: '감지 판정', roll: 'rand(1, 20)', mod: 'floor(sen / 10)',
+      vs: '11 + opp_n * 2',
       grades: [
         { when: 'total >= vs + 7', label: '통찰', inject: '숨겨진 것의 정체까지 짚어낸다 — 정보를 아끼지 말고 줘라.' },
         { when: 'total >= vs', label: '감지', inject: '무언가 눈치챈다 — 단서 하나를 쥐여줘라.' },
         { label: '무감', inject: '낌새를 놓쳤다 — 그 대가는 나중에 온다.' },
       ] },
     { id: 'parley', label: '교섭 판정', roll: 'rand(1, 20)',
-      mod: 'floor(intel / 10) + floor(fame / 20)', vs: 13,
+      mod: 'floor(intel / 10) + floor(fame / 20)', vs: '11 + opp_n * 2',
       grades: [
         { when: 'total >= vs + 7', label: '설복', effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
           inject: '상대가 완전히 넘어온다 — 기대 이상의 조건을 끌어내라.' },
@@ -994,7 +1009,8 @@ S.statusUI.templates = [{
     + '{gates:tags}'
     + '<div class="a-sec">PEOPLE — 인물 변동</div>'
     + '{npc_notes:tags}'
-    + '<div class="a-foot">{lastcheck}</div>'
+    // {lastcheck}는 안 쓴다 — "마지막 굴림"이 다음 굴림까지 상시 잔류해 전투 중으로 오독됐고
+    // (유저 제보), 판정 턴에는 변화 카드(🎲)가 이미 보여준다.
     + '{commands}'
     + '</div>',
 }];
@@ -1127,6 +1143,29 @@ console.log('\n━━ 판정 — dice_on 정책 게이트 (호불호 온오프) 
   const on = run(true), off = run(false);
   ok(`켜면 판정이 실제로 굴러간다 (30턴 중 ${on}회)`, on >= 1, String(on));
   ok('끄면 0회 — 다른 이벤트는 그대로', off === 0, String(off));
+}
+
+console.log('\n━━ 판정 — 목표치는 상대 등급이 민다 (S랭크에서 주사위가 살아있나) ━━');
+{
+  const vsOf = (id, vars) => evaluate(S.checks.find((c) => c.id === id).vs,
+    engine.makeLookup(S, vars), seededRng('dc', 1, 'e'));
+  const modOf = (id, vars) => evaluate(S.checks.find((c) => c.id === id).mod,
+    engine.makeLookup(S, vars), seededRng('dc', 2, 'e'));
+  // 신인: 게이트 밖·등급 미상 → 상대는 자기 등급(E=1). 예전 공식(13~14)과 같은 체감.
+  const rookie = fresh().vars;
+  ok('신인 전투 DC 13대 (구공식과 동체감)', vsOf('gate_fight', rookie) === 14, String(vsOf('gate_fight', rookie)));
+  // S랭크가 S게이트(grade_i 6)에 들어감 — 구공식이면 DC 14에 보정 +19로 주사위 장식.
+  const sHigh = { ...fresh().vars, str: 120, level: 70, in_gate: true, grade_i: 6 };
+  const dc = vsOf('gate_fight', sHigh), mo = modOf('gate_fight', sHigh);
+  const need = dc - mo;   // 이 눈 이상이어야 우세
+  ok(`S랭크 vs S게이트 — 성공에 굴림 ${need} 필요 (2~20 = 주사위 살아있음)`, need >= 2 && need <= 20,
+    `DC ${dc}, 보정 +${mo}`);
+  ok('한 급 아래(A게이트)는 벽이 3 낮다', vsOf('gate_fight', { ...sHigh, grade_i: 5 }) === dc - 3, '');
+  // 게이트 등급 미상(grade_i 0)이면 자기 등급이 상대 — S랭크끼리라 여전히 팽팽
+  const noGate = { ...sHigh, grade_i: 0 };
+  ok('등급 미상 폴백 = 자기 등급 (S랭크 DC 28+)', vsOf('gate_fight', noGate) >= 28, String(vsOf('gate_fight', noGate)));
+  // 상시 잔류 오독 건 — 상태창 템플릿에서 {lastcheck}를 뺐다
+  ok('상태창에 {lastcheck} 상시 노출 없음', !S.statusUI.templates[0].template.includes('{lastcheck}'), '');
 }
 
 console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이선스 비례) ━━');

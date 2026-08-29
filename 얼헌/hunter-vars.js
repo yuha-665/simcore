@@ -275,6 +275,14 @@ const S = {
     { id: 'in_gate', label: '게이트 안', type: 'bool', init: false,
       desc: 'true while the protagonist is INSIDE a Gate/dungeon (communications cut). '
         + 'Set back to false the moment they exit.' },
+    // 교전 상대 등급 — 헌터전 판정의 목표치 소스 (없으면 게이트 등급 → 자기 등급 순 폴백).
+    // 상대 주사위는 안 굴린다: 상대의 강함은 목표치가 표현한다 (판정 opp_n 주석 참고).
+    { id: 'foe', label: '교전 상대', type: 'enum', init: '없음', cmd: '상대',
+      enum: ['없음', 'E', 'D', 'C', 'B', 'A', 'S'],
+      desc: 'Rank of the CURRENT opponent when the protagonist faces a hunter or ranked being '
+        + 'in direct confrontation (combat, standoff, hostile negotiation). Set it the moment the '
+        + 'opponent is established; RESET to 없음 as soon as the confrontation ends. '
+        + 'Not for gate monsters — the gate grade already covers those.' },
 
     // ── NPC 변동 기록 (P2) — 기준선(레지스트리)에서 "달라진 것"만 ──
     { id: 'npc_notes', label: '인물 변동', type: 'list', init: [], maxItems: 14, itemMaxLength: 40, cmd: '인물',
@@ -304,11 +312,14 @@ const S = {
     { id: 'mainstat', label: '주 스탯', expr: 'max(max(str, con), max(max(agi, intel), sen))' },
     { id: 'rank_est', label: '측정 등급', expr: rankExpr('mainstat') },
     { id: 'est_n', label: '(내부) 측정 등급 수치', expr: rankN('mainstat') },
-    // 판정 상대 등급 — 게이트 안이면 최근 출현 게이트의 등급(grade_i 1~6=E~S), 밖이거나
-    // 게이트 등급 미상(grade_i 0)이면 자기 측정 등급. 목표치가 이걸 읽어 성장을 따라온다 —
-    // 고정 목표치(13+hazard/25)는 S랭크(보정 +14~+34)에서 주사위가 장식이 되는 실계산 확인.
+    { id: 'foe_n', label: '(내부) 교전 상대 수치',
+      expr: chain([['foe == "S"', '6'], ['foe == "A"', '5'], ['foe == "B"', '4'],
+        ['foe == "C"', '3'], ['foe == "D"', '2'], ['foe == "E"', '1']], '0') },
+    // 판정 상대 등급 — 우선순위: 교전 상대(foe, 헌터전) > 게이트 등급(grade_i) > 자기 측정
+    // 등급(est_n). 목표치가 이걸 읽어 성장을 따라온다 — 고정 목표치(13+hazard/25)는
+    // S랭크(보정 +14~+34)에서 주사위가 장식이 되는 실계산 확인. 상대 주사위는 안 굴린다.
     { id: 'opp_n', label: '(내부) 판정 상대 등급',
-      expr: '(in_gate and grade_i > 0) ? grade_i : est_n' },
+      expr: 'foe_n > 0 ? foe_n : ((in_gate and grade_i > 0) ? grade_i : est_n)' },
     { id: 'lic_n', label: '(내부) 라이선스 수치',
       expr: chain([['license == "S"', '6'], ['license == "A"', '5'], ['license == "B"', '4'],
         ['license == "C"', '3'], ['license == "D"', '2'], ['license == "E"', '1']], '0') },
@@ -671,6 +682,7 @@ const S = {
       { id: 'npc_notes' },
       { id: 'allies' },
       { id: 'in_gate' },
+      { id: 'foe' },
       { id: 'gates' },
       { id: 'break_name', maxLength: 30 },
       { id: 'break_in', maxGain: 30, maxLoss: 30 },
@@ -1006,6 +1018,8 @@ S.statusUI.templates = [{
     + '<div class="a-sec">GATE BOARD</div>'
     + '<div class="a-row"><span>최근 출현</span><span class="v">{zone_txt} · {grade_txt}급</span></div>'
     + '<div class="a-row"><span>브레이크 경보</span><span class="v">{break_txt}</span></div>'
+    // 교전 상대 — 판정 DC 소스가 눈에 보여야 잔류(리셋 깜빡)를 유저가 잡을 수 있다 (/상대 없음)
+    + '<div class="a-row"><span>교전 상대</span><span class="v">{foe}</span></div>'
     + '{gates:tags}'
     + '<div class="a-sec">PEOPLE — 인물 변동</div>'
     + '{npc_notes:tags}'
@@ -1164,6 +1178,13 @@ console.log('\n━━ 판정 — 목표치는 상대 등급이 민다 (S랭크�
   // 게이트 등급 미상(grade_i 0)이면 자기 등급이 상대 — S랭크끼리라 여전히 팽팽
   const noGate = { ...sHigh, grade_i: 0 };
   ok('등급 미상 폴백 = 자기 등급 (S랭크 DC 28+)', vsOf('gate_fight', noGate) >= 28, String(vsOf('gate_fight', noGate)));
+  // 헌터전 (foe) — 상대 주사위 없이 등급이 목표치를 민다. 우선순위: foe > 게이트 > 자기
+  ok('교전 상대가 게이트 등급보다 우선 (S게이트 안에서 A헌터전 = DC -3)',
+    vsOf('gate_fight', { ...sHigh, foe: 'A' }) === dc - 3, '');
+  ok('교전 끝(없음)이면 게이트로 복귀', vsOf('gate_fight', { ...sHigh, foe: '없음' }) === dc, '');
+  const rookieVsS = { ...rookie, foe: 'S' };
+  ok('E랭크 vs S헌터 — DC 29 (절망이 맞다)', vsOf('gate_fight', rookieVsS) === 29, String(vsOf('gate_fight', rookieVsS)));
+  ok('foe 보조 관리 허용 (allow 등재)', S.updater.allow.some((a) => a.id === 'foe'), '');
   // 상시 잔류 오독 건 — 상태창 템플릿에서 {lastcheck}를 뺐다
   ok('상태창에 {lastcheck} 상시 노출 없음', !S.statusUI.templates[0].template.includes('{lastcheck}'), '');
 }

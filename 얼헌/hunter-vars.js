@@ -229,12 +229,19 @@ const S = {
       desc: '유저 정책값 (원본 faction 토글). 불신론자·이계 숭배단 서사 축.' },
     { id: 'action_on', label: '액션 서사', type: 'bool', init: true, cmd: '액션',
       desc: '유저 정책값 (원본 scenario 토글). 끄면 일상물 — 게이트 이벤트 빈도가 내려간다.' },
+    // 판정 주사위 — 헌터물에서 주사위는 호불호가 갈린다 (유저 지시 2026-08-29): 기본 켬 + /판정 으로 끔.
+    // 끄면 판정 부착 이벤트 4종이 통째로 잠긴다 (판정 자체가 이벤트로만 굴러가므로 게이트가 하나다).
+    { id: 'dice_on', label: '판정 주사위', type: 'bool', init: true, cmd: '판정',
+      desc: '유저 정책값. 켜면 전투·회피·감지·교섭 국면에서 시스템이 주사위를 굴려 [판정] 줄을 준다. '
+        + '끄면 순수 서사 재량. 시작 후 바꾸려면 /판정.' },
     { id: 'hazard', label: '위험도', type: 'int', init: 30, min: 0, max: 100,
       desc: '세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라.' },
 
     // ── 게이트 (P3) ──
     { id: 'day_prev', label: '(내부) 지난 정산일', type: 'int', init: 0, min: 0,
       desc: '시스템 전용 — 일 단위 카운트다운의 거울 변수. 직접 바꾸지 마라.' },
+    { id: 'pay_prev', label: '(내부) 지난 급여일', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용 — 길드 급여 주기(30일)의 거울 변수. 직접 바꾸지 마라.' },
     { id: 'zone_i', label: '(내부) 최근 출현 권역', type: 'int', init: 0, min: 0, max: 5,
       desc: '시스템이 굴린다 (0=없음). 직접 바꾸지 마라.' },
     { id: 'grade_i', label: '(내부) 최근 출현 등급', type: 'int', init: 0, min: 0, max: 6,
@@ -311,6 +318,8 @@ const S = {
       // 브레이크 초읽기 — 흐른 날수만큼 깎는다. ⚠ day_prev 갱신은 반드시 이 뒤에.
       { set: 'break_in', expr: 'break_name != "" ? max(break_in - (elapsed - day_prev), 0) : 0' },
       { set: 'day_prev', expr: 'elapsed' },
+      // 급여 시계 — 무소속인 동안엔 거울이 따라가고(주기 정지), 가입한 날부터 30일을 센다.
+      { set: 'pay_prev', expr: "guild == '무소속' ? elapsed : pay_prev" },
     ],
     events: [
       // ── 레벨업 — 원본 루아 enforceExpRule의 공식을 시스템이 직접 집행 ──
@@ -338,6 +347,14 @@ const S = {
           + '생겼다 — 주변 인물이나 협회 단말 알림으로 자연스럽게 흘려라. 심사 없이 등급이 바뀌지는 않는다.' },
       { id: 'promo_clear', when: '(est_n <= lic_n or lic_n < 1) and promo_seen',
         effects: [{ set: 'promo_seen', expr: 'false' }] },
+      // ── 길드 급여 — 월급은 랜덤이 아니라 주기다 (가입 30일마다, 라이선스 비례) ──
+      { id: 'guild_payday', when: "guild != '무소속' and elapsed - pay_prev >= 30",
+        effects: [
+          { set: 'won', expr: 'won + 200000 + lic_n * 150000' },
+          { set: 'pay_prev', expr: 'elapsed' },
+        ],
+        notify: '[급여] Guild payday — the monthly salary has landed (amount already settled in the '
+          + 'state block). A guild also expects things: attach a small guild errand, notice or meeting.' },
       // ── 게이트 브레이크 (P3) — 초읽기가 0에 닿으면 터진다 ──
       { id: 'gate_break', when: 'break_name != "" and break_in <= 0',
         effects: [
@@ -353,7 +370,8 @@ const S = {
     // 빈도는 문턱으로 민다: hazard(프리셋·브레이크가 조정)와 action_on이 확률식에 들어간다.
     // 끄는 게 아니라 낮추는 것 — 일상 모드에서도 세상은 가끔 움직인다.
     randomEvents: {
-      chancePerTurn: '(action_on ? 0.20 : 0.07) * (0.5 + hazard * 0.01)',
+      // 게이트 안은 사건의 연속이다 — in_gate ×1.8 (전투·기습 판정이 굴러갈 밀도 확보)
+      chancePerTurn: '(action_on ? 0.20 : 0.07) * (0.5 + hazard * 0.01) * (in_gate ? 1.8 : 1)',
       table: [
         // ── 게이트 계열 ──
         { id: 'gate_spawn', weight: 3, cooldown: 3,
@@ -429,9 +447,80 @@ const S = {
         { id: 'growth_moment', weight: 1, cooldown: 10,
           notify: '[자아] Give the protagonist a beat of self-discovery — why they hunt, what they fear, '
             + 'what the Awakening changed. Interior, quiet, earned.' },
+        // ── 판정 이벤트 (dice_on 정책 — /판정 으로 온오프) ──
+        // 굴림·정산은 엔진(checks), 여기는 "언제 굴리나"만. 끄면 이 4종이 통째로 잠기고
+        // 나머지 이벤트는 그대로다 — 주사위 호불호가 콘텐츠 손실로 이어지지 않는다.
+        { id: 'gate_clash', weight: 4, cooldown: 3, when: 'dice_on and in_gate', check: 'gate_fight',
+          notify: '[전투] A combat beat inside the Gate — the [판정] line already decided how it goes. '
+            + 'Narrate the clash to MATCH that grade; never flip the result.' },
+        { id: 'ambush_hit', weight: 1, cooldown: 6, when: 'dice_on and (in_gate or hazard >= 40)', check: 'evade',
+          notify: '[기습] Something strikes from a blind angle — follow the [판정] evasion result. '
+            + 'Outside a gate this can be a hostile hunter, a breakout stray, or an accident.' },
+        { id: 'omen_sense', weight: 1, cooldown: 7, when: 'dice_on', check: 'sense',
+          notify: '[낌새] There is something to notice in this scene. Follow the [판정] result: on success '
+            + 'hand over a real clue (tie it to gates, factions or a quest); on failure the moment passes by.' },
+        { id: 'parley_beat', weight: 1, cooldown: 9, when: 'dice_on', check: 'parley',
+          notify: '[교섭] A negotiation beat — price haggling, information trading, or talking someone '
+            + 'down. The [판정] grade sets how far words carry.' },
+        // ── 길드·사회 보강 (2026-08-29 이벤트 확충 — 액션 대신 이벤트로, 유저 지시) ──
+        // (급여는 여기 없다 — 월급은 랜덤이 아니라 주기라서 rules.events의 결정 이벤트다)
+        { id: 'gate_race', weight: 1, cooldown: 6,
+          notify: '[경쟁] Another party is moving on the same gate or quarry — permits, speed, or a '
+            + 'split negotiation. Rivals today can be allies tomorrow; prefer the registered cast.' },
+        { id: 'smear', weight: 1, cooldown: 12, when: 'fame >= 20',
+          effects: [{ set: 'fame', expr: 'max(fame - rand(3, 7), 0)' }],
+          notify: '[구설수] HunterNet turns on the protagonist — an unflattering clip, a twisted rumor, '
+            + 'a hit thread. Fame already dropped; show where it came from and who fans the flames.' },
+        { id: 'drill_call', weight: 1, cooldown: 8, when: 'stat_pts > 0',
+          notify: '[수련] An opening to train — a mentor\'s offer, an empty training hall, a lesson '
+            + 'drawn from a recent fight. If the user commits, the scene may spend stat points '
+            + '(분배는 유저의 의사가 우선이다).' },
       ],
     },
   },
+
+  // ── 판정 (v0.40 checks) — "완벽 주사위". 유저 정책 dice_on(/판정)으로 온오프 ──
+  // 굴림·등급·정산 전부 엔진: 결과는 meta.lastCheck (보조가 만질 형태 자체가 없다),
+  // 시드 굴림이라 리롤해도 같은 눈. 트리거는 위 판정 이벤트 4종뿐 — 액션이 없는 봇이라
+  // "이벤트가 국면을 열고 주사위가 판을 정하는" 결이다. d20 + 스탯/10 보정, hazard가 문턱을 민다.
+  checks: [
+    { id: 'gate_fight', label: '전투 판정', roll: 'rand(1, 20)',
+      mod: 'floor(mainstat / 10) + floor(level / 10)',
+      vs: '13 + floor(hazard / 25)',
+      grades: [
+        { when: 'roll == 1', label: '치명적 실수', effects: [{ set: 'hp', expr: 'max(hp - 15, 0)' }],
+          inject: '치명적인 실수가 나왔다 — 부상급 대가를 치르고 국면이 급격히 나빠진다.' },
+        { when: 'total >= vs + 7', label: '압도', effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
+          inject: '기대 이상의 전과다 — 지켜본 이가 있다면 소문이 날 만한 장면으로 그려라.' },
+        { when: 'total >= vs', label: '우세', inject: '전투의 주도권을 잡는다 — 유효타를 그려라.' },
+        { label: '고전', effects: [{ set: 'sp', expr: 'max(sp - 15, 0)' }],
+          inject: '결정타가 나오지 않는다 — 소모전이다. 밀리는 국면을 그려라.' },
+      ] },
+    { id: 'evade', label: '회피 판정', roll: 'rand(1, 20)', mod: 'floor(agi / 10)',
+      vs: '12 + floor(hazard / 25)',
+      grades: [
+        { when: 'roll == 1', label: '직격', effects: [{ set: 'hp', expr: 'max(hp - 20, 0)' }],
+          inject: '피할 수 없었다 — 직격이다.' },
+        { when: 'total >= vs + 7', label: '완벽 회피', inject: '종이 한 장 차이로 흘리고 반격 자세까지 잡는다.' },
+        { when: 'total >= vs', label: '회피', inject: '아슬아슬하게 피한다.' },
+        { label: '피격', effects: [{ set: 'hp', expr: 'max(hp - 10, 0)' }],
+          inject: '미처 다 피하지 못했다 — 가볍지 않은 대가다.' },
+      ] },
+    { id: 'sense', label: '감지 판정', roll: 'rand(1, 20)', mod: 'floor(sen / 10)', vs: 13,
+      grades: [
+        { when: 'total >= vs + 7', label: '통찰', inject: '숨겨진 것의 정체까지 짚어낸다 — 정보를 아끼지 말고 줘라.' },
+        { when: 'total >= vs', label: '감지', inject: '무언가 눈치챈다 — 단서 하나를 쥐여줘라.' },
+        { label: '무감', inject: '낌새를 놓쳤다 — 그 대가는 나중에 온다.' },
+      ] },
+    { id: 'parley', label: '교섭 판정', roll: 'rand(1, 20)',
+      mod: 'floor(intel / 10) + floor(fame / 20)', vs: 13,
+      grades: [
+        { when: 'total >= vs + 7', label: '설복', effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
+          inject: '상대가 완전히 넘어온다 — 기대 이상의 조건을 끌어내라.' },
+        { when: 'total >= vs', label: '타결', inject: '대화가 통한다 — 합리적인 선에서 성사시켜라.' },
+        { label: '결렬', inject: '말이 먹히지 않는다 — 상대의 태도가 굳는다. 다른 길을 찾게 하라.' },
+      ] },
+  ],
 
   directives: [
     // 원본 "측정 불가 방지" 로어북(1.7K자)의 한 줄 정제판
@@ -833,6 +922,46 @@ for (const p of S.setup.presets) {
   if (p.id === 'gutter') ok('밑바닥 — 3만원 · 소지품 없음 · 위험 60',
     t.vars.won === 30000 && t.vars.items.length === 0 && t.vars.hazard === 60,
     JSON.stringify({ won: t.vars.won, items: t.vars.items, hazard: t.vars.hazard }));
+}
+
+console.log('\n━━ 판정 — dice_on 정책 게이트 (호불호 온오프) ━━');
+{
+  const diced = S.rules.randomEvents.table.filter((r) => r.check);
+  ok('판정 부착 이벤트 4종', diced.length === 4, String(diced.length));
+  ok('전부 dice_on 게이트 (끄면 통째로 잠긴다)', diced.every((r) => /\bdice_on\b/.test(r.when || '')), '');
+  ok('판정 id 전부 실존', diced.every((r) => S.checks.some((c) => c.id === r.check)), '');
+  // 같은 시드로 dice_on만 바꿔 30턴 방치 — 켜면 판정이 굴러가고 끄면 0회
+  const run = (diceOn) => {
+    let t = fresh(); t.vars.dice_on = diceOn; t.vars.in_gate = true; t.vars.hazard = 80;
+    let n = 0;
+    for (let i = 0; i < 30; i++) {
+      ({ st: t } = turn(t, {}, 700 + i));
+      if (t.meta.lastCheck) { n++; t.meta.lastCheck = null; }
+    }
+    return n;
+  };
+  const on = run(true), off = run(false);
+  ok(`켜면 판정이 실제로 굴러간다 (30턴 중 ${on}회)`, on >= 1, String(on));
+  ok('끄면 0회 — 다른 이벤트는 그대로', off === 0, String(off));
+}
+
+console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이선스 비례) ━━');
+{
+  let t = fresh(); t.vars.guild = '백호 길드';
+  const w0 = t.vars.won;
+  ({ st: t } = turn(t, { skip_day: 14 }, 800));
+  ({ st: t } = turn(t, { skip_day: 14 }, 801));    // 28일 — 아직
+  ok('30일 전엔 침묵', t.vars.won === w0, String(t.vars.won - w0));
+  ({ st: t } = turn(t, { skip_day: 3 }, 802));     // 31일 — 급여일
+  ok('한 달 차면 급여 = 20만 + 라이선스×15만 (E: 35만)', t.vars.won - w0 === 350000, String(t.vars.won - w0));
+  ({ st: t } = turn(t, { skip_day: 14 }, 803));
+  ok('받은 뒤엔 다음 달을 다시 센다 (14일 차 침묵)', t.vars.won - w0 === 350000, String(t.vars.won - w0));
+  // 무소속: 거울이 따라가서 주기가 아예 돌지 않는다
+  let u = fresh();
+  ({ st: u } = turn(u, { skip_day: 14 }, 810));
+  ({ st: u } = turn(u, { skip_day: 14 }, 811));
+  ({ st: u } = turn(u, { skip_day: 14 }, 812));
+  ok('무소속은 급여 없음 (42일)', u.vars.won === w0, String(u.vars.won));
 }
 
 console.log('\n━━ P2 — NPC 랭크 게이팅 ━━');

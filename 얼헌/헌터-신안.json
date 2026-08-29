@@ -340,6 +340,14 @@
       "desc": "유저 정책값 (원본 scenario 토글). 끄면 일상물 — 게이트 이벤트 빈도가 내려간다."
     },
     {
+      "id": "dice_on",
+      "label": "판정 주사위",
+      "type": "bool",
+      "init": true,
+      "cmd": "판정",
+      "desc": "유저 정책값. 켜면 전투·회피·감지·교섭 국면에서 시스템이 주사위를 굴려 [판정] 줄을 준다. 끄면 순수 서사 재량. 시작 후 바꾸려면 /판정."
+    },
+    {
       "id": "hazard",
       "label": "위험도",
       "type": "int",
@@ -355,6 +363,14 @@
       "init": 0,
       "min": 0,
       "desc": "시스템 전용 — 일 단위 카운트다운의 거울 변수. 직접 바꾸지 마라."
+    },
+    {
+      "id": "pay_prev",
+      "label": "(내부) 지난 급여일",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용 — 길드 급여 주기(30일)의 거울 변수. 직접 바꾸지 마라."
     },
     {
       "id": "zone_i",
@@ -705,6 +721,10 @@
       {
         "set": "day_prev",
         "expr": "elapsed"
+      },
+      {
+        "set": "pay_prev",
+        "expr": "guild == '무소속' ? elapsed : pay_prev"
       }
     ],
     "events": [
@@ -771,6 +791,21 @@
         ]
       },
       {
+        "id": "guild_payday",
+        "when": "guild != '무소속' and elapsed - pay_prev >= 30",
+        "effects": [
+          {
+            "set": "won",
+            "expr": "won + 200000 + lic_n * 150000"
+          },
+          {
+            "set": "pay_prev",
+            "expr": "elapsed"
+          }
+        ],
+        "notify": "[급여] Guild payday — the monthly salary has landed (amount already settled in the state block). A guild also expects things: attach a small guild errand, notice or meeting."
+      },
+      {
         "id": "gate_break",
         "when": "break_name != \"\" and break_in <= 0",
         "effects": [
@@ -787,7 +822,7 @@
       }
     ],
     "randomEvents": {
-      "chancePerTurn": "(action_on ? 0.20 : 0.07) * (0.5 + hazard * 0.01)",
+      "chancePerTurn": "(action_on ? 0.20 : 0.07) * (0.5 + hazard * 0.01) * (in_gate ? 1.8 : 1)",
       "table": [
         {
           "id": "gate_spawn",
@@ -947,10 +982,208 @@
           "weight": 1,
           "cooldown": 10,
           "notify": "[자아] Give the protagonist a beat of self-discovery — why they hunt, what they fear, what the Awakening changed. Interior, quiet, earned."
+        },
+        {
+          "id": "gate_clash",
+          "weight": 4,
+          "cooldown": 3,
+          "when": "dice_on and in_gate",
+          "check": "gate_fight",
+          "notify": "[전투] A combat beat inside the Gate — the [판정] line already decided how it goes. Narrate the clash to MATCH that grade; never flip the result."
+        },
+        {
+          "id": "ambush_hit",
+          "weight": 1,
+          "cooldown": 6,
+          "when": "dice_on and (in_gate or hazard >= 40)",
+          "check": "evade",
+          "notify": "[기습] Something strikes from a blind angle — follow the [판정] evasion result. Outside a gate this can be a hostile hunter, a breakout stray, or an accident."
+        },
+        {
+          "id": "omen_sense",
+          "weight": 1,
+          "cooldown": 7,
+          "when": "dice_on",
+          "check": "sense",
+          "notify": "[낌새] There is something to notice in this scene. Follow the [판정] result: on success hand over a real clue (tie it to gates, factions or a quest); on failure the moment passes by."
+        },
+        {
+          "id": "parley_beat",
+          "weight": 1,
+          "cooldown": 9,
+          "when": "dice_on",
+          "check": "parley",
+          "notify": "[교섭] A negotiation beat — price haggling, information trading, or talking someone down. The [판정] grade sets how far words carry."
+        },
+        {
+          "id": "gate_race",
+          "weight": 1,
+          "cooldown": 6,
+          "notify": "[경쟁] Another party is moving on the same gate or quarry — permits, speed, or a split negotiation. Rivals today can be allies tomorrow; prefer the registered cast."
+        },
+        {
+          "id": "smear",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "fame >= 20",
+          "effects": [
+            {
+              "set": "fame",
+              "expr": "max(fame - rand(3, 7), 0)"
+            }
+          ],
+          "notify": "[구설수] HunterNet turns on the protagonist — an unflattering clip, a twisted rumor, a hit thread. Fame already dropped; show where it came from and who fans the flames."
+        },
+        {
+          "id": "drill_call",
+          "weight": 1,
+          "cooldown": 8,
+          "when": "stat_pts > 0",
+          "notify": "[수련] An opening to train — a mentor's offer, an empty training hall, a lesson drawn from a recent fight. If the user commits, the scene may spend stat points (분배는 유저의 의사가 우선이다)."
         }
       ]
     }
   },
+  "checks": [
+    {
+      "id": "gate_fight",
+      "label": "전투 판정",
+      "roll": "rand(1, 20)",
+      "mod": "floor(mainstat / 10) + floor(level / 10)",
+      "vs": "13 + floor(hazard / 25)",
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "치명적 실수",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(hp - 15, 0)"
+            }
+          ],
+          "inject": "치명적인 실수가 나왔다 — 부상급 대가를 치르고 국면이 급격히 나빠진다."
+        },
+        {
+          "when": "total >= vs + 7",
+          "label": "압도",
+          "effects": [
+            {
+              "set": "fame",
+              "expr": "min(fame + 1, 100)"
+            }
+          ],
+          "inject": "기대 이상의 전과다 — 지켜본 이가 있다면 소문이 날 만한 장면으로 그려라."
+        },
+        {
+          "when": "total >= vs",
+          "label": "우세",
+          "inject": "전투의 주도권을 잡는다 — 유효타를 그려라."
+        },
+        {
+          "label": "고전",
+          "effects": [
+            {
+              "set": "sp",
+              "expr": "max(sp - 15, 0)"
+            }
+          ],
+          "inject": "결정타가 나오지 않는다 — 소모전이다. 밀리는 국면을 그려라."
+        }
+      ]
+    },
+    {
+      "id": "evade",
+      "label": "회피 판정",
+      "roll": "rand(1, 20)",
+      "mod": "floor(agi / 10)",
+      "vs": "12 + floor(hazard / 25)",
+      "grades": [
+        {
+          "when": "roll == 1",
+          "label": "직격",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(hp - 20, 0)"
+            }
+          ],
+          "inject": "피할 수 없었다 — 직격이다."
+        },
+        {
+          "when": "total >= vs + 7",
+          "label": "완벽 회피",
+          "inject": "종이 한 장 차이로 흘리고 반격 자세까지 잡는다."
+        },
+        {
+          "when": "total >= vs",
+          "label": "회피",
+          "inject": "아슬아슬하게 피한다."
+        },
+        {
+          "label": "피격",
+          "effects": [
+            {
+              "set": "hp",
+              "expr": "max(hp - 10, 0)"
+            }
+          ],
+          "inject": "미처 다 피하지 못했다 — 가볍지 않은 대가다."
+        }
+      ]
+    },
+    {
+      "id": "sense",
+      "label": "감지 판정",
+      "roll": "rand(1, 20)",
+      "mod": "floor(sen / 10)",
+      "vs": 13,
+      "grades": [
+        {
+          "when": "total >= vs + 7",
+          "label": "통찰",
+          "inject": "숨겨진 것의 정체까지 짚어낸다 — 정보를 아끼지 말고 줘라."
+        },
+        {
+          "when": "total >= vs",
+          "label": "감지",
+          "inject": "무언가 눈치챈다 — 단서 하나를 쥐여줘라."
+        },
+        {
+          "label": "무감",
+          "inject": "낌새를 놓쳤다 — 그 대가는 나중에 온다."
+        }
+      ]
+    },
+    {
+      "id": "parley",
+      "label": "교섭 판정",
+      "roll": "rand(1, 20)",
+      "mod": "floor(intel / 10) + floor(fame / 20)",
+      "vs": 13,
+      "grades": [
+        {
+          "when": "total >= vs + 7",
+          "label": "설복",
+          "effects": [
+            {
+              "set": "fame",
+              "expr": "min(fame + 1, 100)"
+            }
+          ],
+          "inject": "상대가 완전히 넘어온다 — 기대 이상의 조건을 끌어내라."
+        },
+        {
+          "when": "total >= vs",
+          "label": "타결",
+          "inject": "대화가 통한다 — 합리적인 선에서 성사시켜라."
+        },
+        {
+          "label": "결렬",
+          "inject": "말이 먹히지 않는다 — 상대의 태도가 굳는다. 다른 길을 찾게 하라."
+        }
+      ]
+    }
+  ],
   "directives": [
     {
       "id": "no_unmeasurable",

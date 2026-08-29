@@ -450,7 +450,9 @@ const S = {
       text: 'This world has the Alter Store — an ethereal system shop only the Awakened can open '
         + '(a translucent interface, summoned at will outside Gates). It trades in Coin, not money. '
         + 'Purchases and sales are handled by the store panel; the [알터 스토어] notices in events are '
-        + 'settled facts. Non-hunters cannot see or use it.' },
+        + 'settled facts. Non-hunters cannot see or use it. Coin trading is officially forbidden — the '
+        + 'Black Market is the only exception (rate ≈ ₩1,000 per Coin, risky back-alley deals). '
+        + '[암거래 환전] notices are such deals, already settled — narrate the shady exchange, not the math.' },
 
     // ── NPC 등장 규칙 (P2) — 원본 NPC List(always 11.3K)의 동적 대체 ──
     { id: 'npc_cast', when: 'true',
@@ -571,6 +573,9 @@ const S = {
     bands: { '일반': [1, 60], '레어': [60, 400], '유니크': [400, 3000] },
     sellRate: 0.6, maxStock: 18,
     when: 'store_on',
+    // 환전 — 원작 캐논: 코인의 공식 거래는 금지, 블랙 마켓만 예외 (시세 1코인 ≈ ₩1,000).
+    // spread 0.2가 암거래 리스크 프리미엄: 살 때 1,200원 / 팔 때 800원.
+    exchange: { var: 'won', rate: 1000, spread: 0.2, label: '암거래 환전' },
     guide: 'Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative '
       + 'to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, '
       + 'gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. '
@@ -921,6 +926,18 @@ console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
   const sell2 = shopMod.sell(S, send.state, '고블린 마정석 5');
   ok('시세판 매입 — 끝수 차감 + 코인 적립', sell2.ok && sell2.payout === 4
     && send.state.vars.items.includes('고블린 마정석 4'), JSON.stringify(send.state.vars.items));
+  // 환전 (v0.97) — 캐논: 블랙 마켓 시세 ₩1,000/코인, 암거래 스프레드 0.2
+  const t2 = send.state;
+  const wonBefore = t2.vars.won, coinBefore = t2.vars.coin;
+  const ex = shopMod.exchange(S, t2, 10, 'buy');
+  ok('암거래 환전 — 코인 10 매입 = 12,000원', ex.ok && t2.vars.coin === coinBefore + 10
+    && t2.vars.won === wonBefore - 12000, JSON.stringify({ won: t2.vars.won, coin: t2.vars.coin }));
+  ok('환전 통지 접두 [암거래 환전]', t2.meta.pendingNotifies.some((n) => n.includes('[암거래 환전]')),
+    JSON.stringify(t2.meta.pendingNotifies));
+  const ex2 = shopMod.exchange(S, t2, 10, 'sell');
+  ok('코인 10 매도 = 8,000원 회수', ex2.ok && t2.vars.coin === coinBefore
+    && t2.vars.won === wonBefore - 12000 + 8000, JSON.stringify({ won: t2.vars.won }));
+  ok('보유 초과 매도 거부', !shopMod.exchange(S, t2, 99999, 'sell').ok);
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

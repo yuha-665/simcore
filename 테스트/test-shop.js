@@ -22,6 +22,7 @@ const S = {
   simcore: '0.1', meta: { name: '상점봇' },
   vars: [
     { id: 'coin', label: '코인', type: 'int', init: 100, min: 0, format: '{v}C' },
+    { id: 'won', label: '현금', type: 'int', init: 100000, min: 0 },
     { id: 'items', label: '소지품', type: 'list', init: ['고블린 마정석 3'], maxItems: 4 },
     { id: 'store_on', label: '스토어', type: 'bool', init: true },
   ],
@@ -33,6 +34,7 @@ const S = {
     bands: { '일반': [1, 60], '레어': [60, 400], '유니크': [400, 3000] },
     sellRate: 0.5, maxStock: 8, when: 'store_on',
     guide: 'E랭크 처치 1~5코인 기준의 상대 가격.',
+    exchange: { var: 'won', rate: 1000, spread: 0.2, label: '암거래 환전' },
   },
 };
 
@@ -141,6 +143,37 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
     && !t.vars.items.includes('정체불명 반지'), J({ coin: t.vars.coin }));
   r = shop.sell(S, t, '없는 물건');
   ck('없는 물건 거부', !r.ok && !r.needAppraisal, J(r));
+}
+
+// ── 환전 (v0.97) — 통화 ↔ 상대 지갑, 계산 전부 엔진 ──
+{
+  const cfg = shop.shopConfig(S);
+  const rates = shop.exchangeRates(cfg);
+  ck('★ 환율 — 수수료 반영 (1000, s0.2 → 사기 1200 / 팔기 800)', rates.buy === 1200 && rates.sell === 800, J(rates));
+  const badX = JSON.parse(J(S)); badX.shop.exchange.var = 'ghost';
+  ck('없는 상대 지갑 오류', !validateSchema(badX).ok, '');
+  const badX2 = JSON.parse(J(S)); badX2.shop.exchange.var = 'coin';
+  ck('상대 지갑 = 상점 통화 오류', !validateSchema(badX2).ok, '');
+
+  const t = fresh();
+  let r = shop.exchange(S, t, 50, 'buy');
+  ck('★ 코인 사기 — 코인 +50, 현금 -60000', r.ok && t.vars.coin === 150 && t.vars.won === 40000,
+    J({ coin: t.vars.coin, won: t.vars.won }));
+  ck('★ 통지 접두 = 창구 이름 (상점 본체와 분리)', t.meta.pendingNotifies[0].includes('[암거래 환전]'),
+    J(t.meta.pendingNotifies));
+  r = shop.exchange(S, t, 100, 'buy');
+  ck('현금 부족 거부 (40000 < 120000)', !r.ok && r.reason.includes('부족') && t.vars.coin === 150, J(r));
+  r = shop.exchange(S, t, 100, 'sell');
+  ck('★ 코인 팔기 — 코인 -100, 현금 +80000', r.ok && t.vars.coin === 50 && t.vars.won === 120000,
+    J({ coin: t.vars.coin, won: t.vars.won }));
+  r = shop.exchange(S, t, 999, 'sell');
+  ck('보유 초과 판매 거부', !r.ok && t.vars.coin === 50, J(r));
+  ck('수량 0·문자 거부', !shop.exchange(S, t, 0, 'buy').ok && !shop.exchange(S, t, 'x', 'buy').ok, '');
+  const send = engine.sendPhase(S, t, { rng: seededRng('x', 1, 's') });
+  ck('★ 환전 통지도 다음 전송 1회 후 소거', send.promptBlock.includes('암거래 환전')
+    && send.state.meta.pendingNotifies.length === 0, '');
+  const noX = JSON.parse(J(S)); delete noX.shop.exchange;
+  ck('환전 미설정 — 창구 없음 거부', !shop.exchange(noX, fresh(), 10, 'buy').ok, '');
 }
 
 // ── 인터랙션 프롬프트·파싱 ──

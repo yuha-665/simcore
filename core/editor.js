@@ -1219,6 +1219,8 @@ const SCHEMA_SHOP_RULES = [
   '- `sellFrom`을 주면 매입(판매) 창구가 열립니다. 시세판(buying)에 잡힌 물건은 즉시가, 나머지는 감정 → `sellRate` 비율 지급.',
   '- 진열·시세는 세이브에 살고, 첫 입고는 자동, 물갈이는 유저의 [새로고침] 버튼입니다. `guide`에 무엇을 파는 곳인지·가격 감각의 기준을 적으세요.',
   '- `when` 조건이 거짓이면 상점 버튼째 숨습니다 (그 판에 상점이 없는 세계).',
+  '- `exchange: { "var", "rate", "spread", "label" }`를 주면 환전 창구가 열립니다 — 상점 통화 1 = rate(상대 지갑). '
+  + '살 때 rate×(1+spread), 팔 때 rate×(1-spread), 계산은 전부 시스템입니다. 두 통화가 도는 세계(코인↔현금)에만 넣으세요.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -5429,6 +5431,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         '등급별 [최소~최대] — 진열가를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
       pair('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
         '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'), ''),
+      h('div', { class: 'sce-row' },
+        pair('환전 상대 지갑', bindSelect(SH.exchange?.var ?? '',
+          [['', '(없음 — 환전 창구 닫힘)'], ...nums.filter((v) => v.id !== SH.currency).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => {
+            if (x) SH.exchange = { rate: 1, ...(SH.exchange ?? {}), var: x };
+            else delete SH.exchange; rerender();
+          }), '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)'),
+        pair('환율', bindInput(SH.exchange?.rate ?? '', (x) => {
+          const n = parseFloat(x); if (SH.exchange && isFinite(n) && n > 0) { SH.exchange.rate = n; rerender(); }
+        }, { cls: 'sce-w-s', ph: '1000' }), '통화 1 = 상대 지갑 얼마'),
+        pair('수수료', bindInput(SH.exchange?.spread ?? '', (x) => {
+          if (!SH.exchange) return;
+          const n = parseFloat(x); if (isFinite(n)) SH.exchange.spread = Math.max(0, Math.min(0.9, n)); else delete SH.exchange.spread; rerender();
+        }, { cls: 'sce-w-s', ph: '0.2' }), '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템'),
+        pair('창구 이름', bindInput(SH.exchange?.label ?? '', (x) => {
+          if (!SH.exchange) return;
+          if (x) SH.exchange.label = x; else delete SH.exchange.label; rerender();
+        }, { cls: 'sce-w-m', ph: '환전' }), '거래 통지의 접두 (예: 암거래 환전)'),
+      ),
       h('div', { class: 'sce-row' },
         pair('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),

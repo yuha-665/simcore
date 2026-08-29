@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.96.0
-//@display-name SimCore (시뮬 엔진) v0.96 커뮤니티 보드·상점
+//@version 0.97.0
+//@display-name SimCore (시뮬 엔진) v0.97 상점 환전 창구
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.97.0 ───────────────────────────────────────────────
+// 상점 환전 창구 (얼헌 코인↔원화 — 원작 캐논: 공식 거래 금지, 블랙 마켓만 ₩1,000/코인).
+// - [코어 shop] exchange: { var, rate, spread?, label? } — 통화 1 = rate(상대 지갑).
+//   살 때 rate×(1+spread), 팔 때 rate×(1-spread). 계산·정산 전부 엔진, 보조 호출 0.
+//   통지 접두는 exchange.label — 상점 본체와 다른 장소일 수 있다 (얼헌 "암거래 환전").
+// - [어댑터] 상점 패널 [💱 환전] 탭 — 상대 지갑 잔액·시세 표시·수량 입력·사기/팔기.
+// - [편집기] [상점] 탭에 환전 4칸 (상대 지갑/환율/수수료/창구 이름) + 규칙 한 줄.
+// - [검증] exchange — 상대 지갑 실존·숫자·통화와 다름, rate 양수, spread 0~0.9.
+// - [얼헌] shop.exchange 배선 + alter_store 지시문에 환전 캐논 + 변환기 lore=1
+//   (알터 스토어·코인·블랙 마켓 세계관 복원 — 스토어 항목은 키워드 활성으로 강등,
+//   블랙 마켓 가격표는 economy=0으로 계속 배제: 심코어판 코인 경제와 스케일 충돌).
 //
 // ── v0.96.0 ───────────────────────────────────────────────
 // 상점 (얼터헌터 "알터 스토어" 흡수 — 유저 지목 고질병: 로어북 상점의 "S랭크 스킬북 뇌절"과
@@ -2403,7 +2415,7 @@
   let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
-  let shopView = { cat: null };                     // cat: 카테고리 이름 | '__sell' (매입 창구)
+  let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
   let shopBusy = false;
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
@@ -3227,6 +3239,8 @@
       #sc-game .sch-qty { color:#e2938f; font-size:11px; white-space:nowrap; }
       #sc-game .sch-log { margin-top:8px; border-top:1px dashed #2a3a5e; padding-top:6px;
         color:#7d8aa5; font-size:11.5px; }
+      #sc-game .sch-exch-qty { flex:1; min-width:0; background:#131b2e; border:1px solid #3d5384;
+        border-radius:8px; color:#e6ebf5; padding:6px 10px; font-size:13px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
@@ -4031,6 +4045,16 @@
     else renderGamePanel();
   }
 
+  // 환전 (v0.97) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
+  async function onShopExchange(dir) {
+    if (!session || !schema) return;
+    const qty = parseInt(shopView.exchQty, 10);
+    const r = shopMod.exchange(schema, session.current, qty, dir);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) { shopView.exchQty = ''; await commitPanelChanges({}, '환전'); }
+    else renderGamePanel();
+  }
+
   async function onShopSell(itemText) {
     if (!session || !schema) return;
     let r = shopMod.sell(schema, session.current, itemText);
@@ -4088,10 +4112,33 @@
     if (cfg.sellFrom) {
       tabs.appendChild(btn('📤 매입', `sch-tab${active === '__sell' ? ' sch-on' : ''}`, () => { shopView.cat = '__sell'; renderGamePanel(); }));
     }
+    if (cfg.exchange) {
+      tabs.appendChild(btn('💱 환전', `sch-tab${active === '__exch' ? ' sch-on' : ''}`, () => { shopView.cat = '__exch'; renderGamePanel(); }));
+    }
     tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onShopRestock));
     card.appendChild(tabs);
 
-    if (active === '__sell') {
+    if (active === '__exch') {
+      // ── 환전 창구 (v0.97) — 통화 ↔ 상대 지갑, 환율·수수료는 시스템이 (뇌절 없음) ──
+      const rates = shopMod.exchangeRates(cfg);
+      const exDef = schema.vars.find((v) => v.id === cfg.exchange.var);
+      const exVal = session.current.vars[cfg.exchange.var] ?? 0;
+      const curName = walletDef?.label ?? cfg.currency;
+      const exName = exDef?.label ?? cfg.exchange.var;
+      const fmtEx = exDef?.format ? String(exDef.format).replace('{v}', exVal) : String(exVal);
+      card.appendChild(el('div', 'sch-wallet', `👛 ${exName}: ${fmtEx}`));
+      card.appendChild(el('div', 'scg-note',
+        `${cfg.exchange.label} — 시세: ${curName} 1 사기 ${rates.buy} ${exName} · 팔기 ${rates.sell} ${exName}`));
+      const row = el('div', 'sch-item');
+      const inp = el('input', 'sch-exch-qty');
+      inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량`;
+      inp.value = shopView.exchQty;
+      inp.oninput = () => { shopView.exchQty = inp.value; };
+      row.appendChild(inp);
+      row.appendChild(btn(`${curName} 사기`, 'scb-btn', () => onShopExchange('buy')));
+      row.appendChild(btn(`${curName} 팔기`, 'scb-btn', () => onShopExchange('sell')));
+      card.appendChild(row);
+    } else if (active === '__sell') {
       // ── 매입 창구 — 소지 목록에서 판다. 시세판 매치는 즉시가, 아니면 감정 ──
       card.appendChild(el('div', 'scg-note', '시세가 잡힌 물건은 바로 팔리고, 나머지는 감정을 거칩니다 (감정가의 일부만 쳐줘요).'));
       const bag = Array.isArray(session.current.vars[cfg.sellFrom]) ? session.current.vars[cfg.sellFrom] : [];

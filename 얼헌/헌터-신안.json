@@ -822,7 +822,7 @@
     {
       "id": "alter_store",
       "when": "store_on",
-      "text": "This world has the Alter Store — an ethereal system shop only the Awakened can open (a translucent interface, summoned at will outside Gates). It trades in Coin, not money. Purchases and sales are handled by the store panel; the [알터 스토어] notices in events are settled facts. Non-hunters cannot see or use it."
+      "text": "This world has the Alter Store — an ethereal system shop only the Awakened can open (a translucent interface, summoned at will outside Gates). It trades in Coin, not money. Purchases and sales are handled by the store panel; the [알터 스토어] notices in events are settled facts. Non-hunters cannot see or use it. Coin trading is officially forbidden — the Black Market is the only exception (rate ≈ ₩1,000 per Coin, risky back-alley deals). [암거래 환전] notices are such deals, already settled — narrate the shady exchange, not the math."
     },
     {
       "id": "npc_cast",
@@ -1092,6 +1092,12 @@
     "sellRate": 0.6,
     "maxStock": 18,
     "when": "store_on",
+    "exchange": {
+      "var": "won",
+      "rate": 1000,
+      "spread": 0.2,
+      "label": "암거래 환전"
+    },
     "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty). The store never sells Legendary anything.",
     "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }\n.sch-item { border-bottom-color: rgba(138,162,204,.12); }\n.sch-item .sch-name { color: #dce6f5; }\n.sch-grade { border-color: rgba(138,162,204,.3); color: #8aa2cc; }\n.sch-price { color: #c9a86a; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.sch-wallet { color: #c9a86a; }"
   }

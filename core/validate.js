@@ -1108,6 +1108,24 @@ function validateSchema(schema) {
       }
       if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
       if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
+      // 환전 (v0.97) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
+      if (SH.exchange != null) {
+        const EX = SH.exchange;
+        if (typeof EX !== 'object' || Array.isArray(EX)) err('$.shop.exchange', 'exchange는 { var, rate, spread?, label? } 객체');
+        else {
+          const xv = (schema.vars || []).find((v) => v.id === EX.var);
+          if (!EX.var || typeof EX.var !== 'string') err('$.shop.exchange.var', '상대 지갑 변수(var)가 필요합니다');
+          else if (!xv) err('$.shop.exchange.var', `상대 지갑 '${EX.var}'가 vars에 없음`);
+          else if (xv.type !== 'int' && xv.type !== 'float') err('$.shop.exchange.var', `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
+          else if (EX.var === SH.currency) err('$.shop.exchange.var', '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+          if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
+            err('$.shop.exchange.rate', '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
+          }
+          if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
+            err('$.shop.exchange.spread', '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
+          }
+        }
+      }
     }
   }
 

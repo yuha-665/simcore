@@ -5,7 +5,13 @@
 //      Hostile 2종 / P3 이벤트 트리거 20종·퓨처 플랜) + 빈 폴더 정리
 //   2. 남은 항목의 죽은 CBS 조건 굽기 — 루아·시작변수가 사라지면 {{getvar::lang}} 등이
 //      'null'을 돌려줘 조건 블록이 통째로 사라진다. 원본 기본값(한국어판)으로 정적 평가해
-//      평문으로 만든다. (lang=1 한국어, lore=0 스토어 꺼짐, faction=1, stats=1)
+//      평문으로 만든다. (lang=1 한국어, lore=1 스토어 세계관 켬, faction=1, stats=1)
+//      · lore=1 (v0.97): 알터 스토어가 심코어 상점이 됐으니 코인·블랙 마켓·스토어 세계관을
+//        복원한다. 단 알터 스토어 항목은 always → 키워드 활성으로 내린다 (운영 규칙은
+//        alter_store 지시문이 store_on일 때 이미 깔린다 — 상시 이중 전송 방지).
+//      · economy=0 유지: 블랙 마켓 가격표(무기 500~2k코인 등)는 원작 스케일이라
+//        심코어판 코인 경제(E킬 1~5C, 밴드 1~3000)와 충돌 — 표는 굽어서 뺀다.
+//        환율 캐논(1코인 ≈ ₩1,000)은 상점 환전 창구·지시문이 대신 말한다.
 //   3. 정규식: 상태창·시스템 메시지·설정 패널·퓨처 플랜·구 언어 설정 계열 제거,
 //      에셋·커맨드·이름 교정 계열은 존치 (에셋은 P5 팩 이식 때까지)
 //
@@ -18,7 +24,7 @@ const OUT = (f) => path.resolve(__dirname, f);
 
 // ── 원본 시작 변수 (봇설정.txt) — lang만 1(한국어)로, 나머지는 원본 기본값 ──
 const VARS = {
-  lang: '1', status_type: '0', status_model: '2', lore: '0', stats: '1', fold: '1',
+  lang: '1', status_type: '0', status_model: '2', lore: '1', stats: '1', fold: '1',
   LowSpec: '0', faction: '1', unmeasurable: '0', economy: '0', scenario: '0',
   event: '1', FuturePlans: '1', clock: '0', sysmsg: '1', metaprompt: '0',
 };
@@ -68,9 +74,13 @@ for (const e of lore.data) {
   if (REMOVE.has(name) || name.startsWith('🌟')) { removed.push(name); continue; }
   if (e.mode === 'folder') { kept.push(e); continue; }
   const baked = bake(e.content || '');
-  // 원래 내용이 있었는데 굽고 나니 빈 항목 (lore=0으로 스토어 전용 내용이 사라진 경우 등)
+  // 원래 내용이 있었는데 굽고 나니 빈 항목 (꺼진 토글 전용 내용이 사라진 경우 등)
   if ((e.content || '').trim() && !baked.trim()) { emptied.push(name); continue; }
-  kept.push({ ...e, content: baked });
+  const entry = { ...e, content: baked };
+  // 알터 스토어 세계관은 키워드 활성으로 (key: Store, 스토어) — 운영 규칙은 alter_store
+  // 지시문이 담당, 이 항목은 유저가 스토어를 입에 올릴 때만 기원·규정 상세를 꺼낸다
+  if (name === '알터 스토어') entry.alwaysActive = false;
+  kept.push(entry);
 }
 // 자식이 하나도 안 남은 폴더 정리
 const usedFolders = new Set(kept.filter((e) => e.mode !== 'folder' && e.folder).map((e) => e.folder));

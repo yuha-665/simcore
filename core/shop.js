@@ -17,7 +17,11 @@
 //
 // 스키마 (옵트인):
 //   shop: { label, icon, currency(필수), buyTo(필수), sellFrom?, categories?, grades?,
-//           bands?, sellRate?, maxStock?, guide?, when?, css? }
+//           bands?, sellRate?, maxStock?, guide?, when?, css?, exchange? }
+//
+// 환전 (v0.97): exchange: { var, rate, spread?, label? } — 상점 통화 ↔ 다른 지갑 변수.
+//   1통화 = rate(상대 지갑 단위). spread가 암거래 수수료: 살 때 rate×(1+spread),
+//   팔 때 rate×(1-spread). 계산은 전부 엔진 (환율 뇌절 방지 — 보조 호출 0).
 
 const { evaluate, truthy } = require('./expr');
 
@@ -46,6 +50,17 @@ function shopConfig(schema) {
     guide: typeof s.guide === 'string' ? s.guide : '',
     when: typeof s.when === 'string' ? s.when : '',
     css: typeof s.css === 'string' ? s.css : '',
+    exchange: (s.exchange && typeof s.exchange === 'object'
+      && typeof s.exchange.var === 'string' && s.exchange.var
+      && typeof s.exchange.rate === 'number' && isFinite(s.exchange.rate) && s.exchange.rate > 0)
+      ? {
+        var: s.exchange.var,
+        rate: s.exchange.rate,
+        spread: typeof s.exchange.spread === 'number'
+          ? Math.max(0, Math.min(0.9, s.exchange.spread)) : 0.2,
+        label: typeof s.exchange.label === 'string' && s.exchange.label.trim()
+          ? s.exchange.label.trim() : '환전',
+      } : null,
   };
 }
 
@@ -205,6 +220,46 @@ function sell(schema, state, itemText, appraised = null) {
   return { ok: true, line, payout };
 }
 
+/** 단위당 환율 — buy: 통화 1을 사는 값(상대 지갑), sell: 통화 1을 판 값. spread가 암거래 수수료 */
+function exchangeRates(cfg) {
+  const ex = cfg?.exchange;
+  if (!ex) return null;
+  return {
+    buy: Math.max(1, Math.ceil(ex.rate * (1 + ex.spread))),
+    sell: Math.max(1, Math.floor(ex.rate * (1 - ex.spread))),
+  };
+}
+
+/** 환전 — 결정적, 보조 호출 없음. dir 'buy' = 통화 사기(상대 지갑 지불) / 'sell' = 통화 팔기 */
+function exchange(schema, state, qty, dir) {
+  const cfg = shopConfig(schema);
+  if (!cfg || !cfg.exchange) return { ok: false, reason: '환전 창구 없음' };
+  const rates = exchangeRates(cfg);
+  const n = Math.floor(Number(qty));
+  if (!isFinite(n) || n < 1) return { ok: false, reason: '수량은 1 이상 정수' };
+  if (n > 1000000) return { ok: false, reason: '한 번에 백만까지만' };
+  const label = (id) => (schema.vars || []).find((v) => v.id === id)?.label ?? id;
+  const curVal = Number(state.vars[cfg.currency]) || 0;
+  const exVal = Number(state.vars[cfg.exchange.var]) || 0;
+  let line;
+  if (dir === 'buy') {
+    const cost = n * rates.buy;
+    if (exVal < cost) return { ok: false, reason: `${label(cfg.exchange.var)} 부족 (${exVal} < ${cost})` };
+    state.vars[cfg.currency] = curVal + n;
+    state.vars[cfg.exchange.var] = exVal - cost;
+    line = `${label(cfg.currency)} +${n} (${label(cfg.exchange.var)} -${cost}).`;
+  } else {
+    if (curVal < n) return { ok: false, reason: `${label(cfg.currency)} 부족 (${curVal} < ${n})` };
+    const gain = n * rates.sell;
+    state.vars[cfg.currency] = curVal - n;
+    state.vars[cfg.exchange.var] = exVal + gain;
+    line = `${label(cfg.currency)} -${n} (${label(cfg.exchange.var)} +${gain}).`;
+  }
+  // 통지 접두는 환전 창구 이름 — 상점 본체와 다른 장소일 수 있다 (얼헌: 알터 스토어 ≠ 암시장)
+  logTx({ ...cfg, label: cfg.exchange.label }, state, line);
+  return { ok: true, line };
+}
+
 const bandsText = (cfg) => cfg.bands
   ? Object.entries(cfg.bands).map(([g, [lo, hi]]) => `${g} ${lo}~${hi}`).join(' / ')
   : null;
@@ -271,5 +326,6 @@ function parseInteraction(text, extractJsonObject) {
 
 module.exports = {
   CAPS, shopConfig, initShop, ensureShop, shopOpen, sanitizeStock, applyStock,
-  buy, sell, quoteFor, mergeIntoList, clampPrice, auxSpec, interactionPrompt, parseInteraction,
+  buy, sell, quoteFor, mergeIntoList, clampPrice, exchange, exchangeRates,
+  auxSpec, interactionPrompt, parseInteraction,
 };

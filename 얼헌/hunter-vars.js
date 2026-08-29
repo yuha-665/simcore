@@ -668,14 +668,19 @@ const S = {
   board: {
     label: '헌터넷', icon: '🌐',
     topics: '게이트 출현·공략 소식, 헌터 목격담과 소문, 장비·마정석 시세, 협회/길드 뒷말, '
-      + '랭크 측정 후기, 몬스터 정보 공유, 각성 관련 잡담',
+      + '랭크 측정 후기, 몬스터 정보 공유, 각성 관련 잡담, 성인 칸의 음지 잡담',
     guide: 'Anonymous hunter forum in Korean internet-community register: 반말, 마침표 생략, '
       + '축약·밈·드립, 낚시글과 헛소문 섞임. 닉네임은 짧은 한국어 (예: ㅇㅇ, 각성실패자, '
       + '노원구주민, 창술만12년). 글이 다 진실일 필요 없다 — 과장·유언비어·광고성 글도 게시판의 결이다. '
       + 'Posts reference the current gates board, recent public events, and famous hunters. '
       + '모집 칸 글은 "구역/게이트 등급/구하는 역할·인원" 꼴 (예: 동북권 D급, 탱커 1 딜러 2 구함). '
-      + '유저의 모집 글에는 명단(cast)의 헌터가 지원 댓글을 달 수 있다 — 유저 랭크대에 맞는 인물만, 실명으로.',
-    categories: ['자유', '정보', '모집'],
+      + '유저의 모집 글에는 명단(cast)의 헌터가 지원 댓글을 달 수 있다 — 유저 랭크대에 맞는 인물만, 실명으로. '
+      // 성인 칸 (원본 헌터넷 2대 인기 코너 승계) — 익명 음지판의 결. 수위는 열되 정보 규칙은 같다.
+      + '성인 칸은 익명 음지 게시판이다: 디시식 반말·저속한 드립 그대로, 수위 제한 없이 — 헌터 대상 '
+      + '망상글, 게이트 뒤풀이·원나잇 후기, 만남 구인, 짤 내놔 드립, 던전 텐트 썰. 진지함 금지, '
+      + '허세와 구라가 반쯤. 실명 헌터를 소재로 삼는 건 소문·망상 수준까지만 — 전지적 정보 금지는 '
+      + '여기도 같다. 성인 칸 글은 반드시 cat을 "성인"으로.',
+    categories: ['자유', '정보', '모집', '성인'],
     postsPerTurn: 2, maxPosts: 20,
     when: 'not in_gate',
     // 패널 스킨 — 상태창과 같은 다크네이비/스틸블루 규격 (a-* 팔레트)
@@ -1267,6 +1272,12 @@ console.log('\n━━ P4 — 헌터넷 (커뮤니티 보드) ━━');
   ok('보드 부착 (빈 게시판)', t.board && Array.isArray(t.board.posts) && t.board.posts.length === 0);
   const aux = engine.buildAuxPrompt(S, t, '거리를 걷는다', null);
   ok('보조 프롬프트에 헌터넷 갱신 요청', aux.includes('헌터넷') && aux.includes('"board"'));
+  // 성인 칸 (원본 2대 인기 코너 승계) — 탭 어휘와 음지판 지침이 보조 계약에 실린다
+  ok('칸 4종 (자유·정보·모집·성인)', S.board.categories.join(',') === '자유,정보,모집,성인',
+    S.board.categories.join(','));
+  ok('성인 칸 어휘가 보조 계약에 전파', aux.includes('자유 | 정보 | 모집 | 성인'), '');
+  ok('성인 칸 지침 — 디시톤·수위 개방·전지적 금지 유지', S.board.guide.includes('디시식')
+    && S.board.guide.includes('수위 제한 없이') && S.board.guide.includes('전지적 정보 금지는 여기도 같다'), '');
   t.vars.in_gate = true;
   ok('게이트 안 — 갱신 요청 차단 (통신 두절)', !engine.buildAuxPrompt(S, t, '던전 안', null).includes('"board"'));
   t.vars.in_gate = false;

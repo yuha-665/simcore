@@ -12,7 +12,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('전환 감지 타이머가 존재', /setInterval\(switchTick, \d+\)/.test(src), '');
   ck('★ 턴 중에는 세션을 갈아끼우지 않는다', src.includes('if (turnBusy && Date.now() - turnBusyAt'), '');
   ck('★ 취소된 턴은 스스로 풀린다 (플래그 영구 잠김 방지)', src.includes('turnBusy = false;\n    const sig'), '');
-  ck('★ output이 실패해도 플래그를 푼다', /finally \{\n      turnBusy = false;/.test(src), '');
+  // v1.0.1: 인라인 턴은 핸들러 finally가, 스트리밍 확정 턴은 finalize의 finally가 푼다
+  ck('★ output이 실패해도 플래그를 푼다 (인라인 경로)', /if \(!deferred\) \{\n        turnBusy = false;/.test(src), '');
+  ck('★ 스트리밍 확정도 실패 시 플래그를 푼다', /finally \{\n        turnBusy = false;\s*\/\/ 이 턴의 busy는 여기서 푼다/.test(src), '');
   ck('★ 언로드 시 타이머 정리', src.includes('clearInterval(switchTimer)'), '');
   ck('부팅 직후 중복 로드를 하지 않는다', !src.includes('await switchTick();'), '');
   ck("'스키마 없음'은 재시도하지 않는다 (폴링 낭비 방지)",

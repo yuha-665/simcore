@@ -77,8 +77,9 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 도움말에 ⟦simcore:N⟧ 번호 설명 존재',
     src.includes('⟦simcore:N⟧ 번호는 턴 순번이 아니라') && src.includes('건너뛰는 게 정상'), '');
   // 설명이 거짓말이 아니어야 한다 — 마커 번호가 정말 메시지 인덱스(스냅샷 키)인지
-  ck('설명의 근거: outIndex = 채팅 배열 길이 (유저 메시지도 번호를 먹는다)',
-    src.includes('const outIndex = chat?.message?.length ?? 0'), '');
+  // (v1.0.1: 스트리밍은 char 메시지가 미리 push돼 있어 length-1, 비스트리밍은 length)
+  ck('설명의 근거: outIndex = 메시지 인덱스 (유저 메시지도 번호를 먹는다)',
+    src.includes('let outIndex = msgs.length;') && src.includes('outIndex = msgs.length - 1;'), '');
 }
 
 // ── 안내 문구 정합 — 옛 행선지가 남으면 유저가 없는 메뉴를 찾아 헤맨다 ──

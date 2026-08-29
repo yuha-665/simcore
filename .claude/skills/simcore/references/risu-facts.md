@@ -50,6 +50,27 @@ for (const replacer of pluginV2.replacerbeforeRequest) {
   **`allowPlugins: true`로 공식 옵트인 가능**
 - 클래식 경로에서 `otherAx`는 `db.seperateModelsForAxModels`가 켜져 있으면 `db.seperateModels.otherAx`를
   쓰고, 아니면 `db.subModel`. **`submodel`에는 그런 분리 키가 없다**
+- **`runLLMModel`엔 출력 상한이 없다** (v3.svelte.ts — 위 4개 인자만 `requestChatDataMain`으로 넘기고,
+  거기서 `targ.maxTokens = arg.maxTokens ?? db.maxResponse`라 항상 **메인과 같은 db.maxResponse**로 나간다.
+  모드별 분리 파라미터 설정도 없음). 상한을 걸 유일한 통로는 `registerBodyIntercepter`
+  (`'replacer'` 권한): 콜백 `(body, kind) => body` — 리수가 fetch 직전에 순회 호출하고 **falsy 반환이면
+  원본 유지**. `kind`는 fetch 호출부가 준 문자열(`gemini_base`/`gemini_base_stream`/`gemini_tool`/
+  `ollama_sdk` 등 — **모든 프로바이더가 주는 게 아니다**). fetchNative 경로의 body는 **문자열(JSON)**.
+  v1.0.1이 이걸로 보조 호출 출력·thinking 예산을 클램프한다 (실사고 2026-08-29: 보조가 10000토큰+thinking으로 과금)
+
+## 스트리밍과 editoutput — 청크마다 다시 돈다 (v1.0.1 실사고)
+
+`index.svelte.ts` 스트리밍 루프 실측 (2026-08-29 협업자 로그 제보 → 소스 확증):
+
+- **스트리밍이면 빈 char 메시지를 먼저 push**하고(`msgIndex` = push 전 length), 이후
+  **청크/플러시마다 `processScriptFull(..., 'editoutput', msgIndex)`를 다시 돌려** 반환값을
+  `message[msgIndex].data`에 덮어쓴다. 즉 **플러그인 'output' 핸들러가 부분 텍스트마다 재호출**된다
+  (한 턴에 10회+). 핸들러 안에서 LLM을 부르거나 상태를 굴리면 그만큼 중복된다.
+- `deferStreamingPostProcessing` 설정이면 스트림 종료 후 최종본으로 한 번 더 돈다 — **같은 턴의
+  editoutput이 확정 이후에도 또 올 수 있다**는 뜻 (재확정 걸쇠 필요).
+- **비스트리밍은 push 전에 한 번**만 돈다. 따라서 output 핸들러 시점의 메시지 배열은
+  비스트리밍 = 응답 미포함(`outIndex = length`), 스트리밍 = 이미 포함(`outIndex = length - 1`).
+  length로만 계산하면 스트리밍에서 +1로 밀린다 (v1.0.1 이전 실버그 — 마커·스냅샷 오배치).
 
 ## 메시지 HTML/CSS가 통과하는 규칙 (`parser.svelte.ts`)
 

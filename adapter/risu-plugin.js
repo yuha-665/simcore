@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.0
-//@display-name SimCore (시뮬 엔진) v1.0 제작 도구·과거 상태창
+//@version 1.0.1
+//@display-name SimCore (시뮬 엔진) v1.0.1 스트리밍 중복호출 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,24 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.1 ────────────────────────────────────────────────
+// 긴급: 스트리밍 중 보조 중복 호출 + 보조 출력 상한 미적용 (협업자 로그 제보, 리수 소스 확증).
+// - [중복 호출] 리수는 스트리밍 중 **청크/플러시마다** editoutput 파이프라인을 다시 돈다
+//   (index.svelte.ts 실측) → 우리 output 핸들러가 부분 텍스트마다 보조 호출 + 틱·이벤트까지
+//   통째로 실행 (한 턴 10회+, 상태·시간 중복 갱신). 게다가 스트리밍은 빈 char 메시지를
+//   미리 push한 뒤라 outIndex = message.length 계산이 +1로 밀려 있었다 (마커·스냅샷 오배치).
+//   → 마지막 글이 이번 스트림의 부분 텍스트면(스트리밍 판정) 마커만 붙이고 아무것도 안 굴린다.
+//   호출이 잠잠해진 뒤(1.2초 + 안정성 이중 확인) 저장된 실물 메시지로 **한 번만** 확정 처리.
+//   이미지(aux/aux_flow)는 저장된 메시지에 소급 삽입. 다음 턴 beforeRequest가 미확정분을
+//   먼저 정산(flush)하므로 순서는 깨지지 않는다. 비스트리밍은 기존 인라인 경로 그대로.
+// - [출력 상한] runLLMModel엔 maxTokens가 아예 없다 (리수 v3.svelte.ts — mode/messages/
+//   staticModel/allowPlugins만 통과). 보조가 메인과 같은 db.maxResponse(예: 10000) +
+//   thinking 켜진 채 나가고 있었다. bodyIntercepter('replacer' 권한, 기보유)로 우리 보조
+//   요청만 이중 걸쇠(호출 진행 중 + AUX_NUDGE 문장 실존)로 식별해 상한을 **낮추기만** 한다:
+//   출력 = 요청분×2(최소 1000), Gemini thinking 예산 512, Claude thinking 1024.
+// - 테스트 test-streamsettle.js 신설 (가짜 리수 스트리밍 시뮬 — 보조 1회·틱 1회·인덱스·클램프).
+//   테스트·디버그 배수구 globalThis.__simcoreDrainTurn (대기 중 확정을 즉시 끝냄).
 //
 // ── v1.0.0 ────────────────────────────────────────────────
 // 제작 도구 일괄 + 과거 상태창 — UI 개조 협업자 피드백 7건 전부 채택.
@@ -2000,6 +2018,10 @@
     // - allowPlugins: true — 보조모델이 플러그인 프로바이더(pluginmodel:::)일 때
     //   기본값이 차단(재귀 IPC 루프 가드)이라 명시적으로 허용해야 함.
     //   ("Plugin calls are blocked by the caller." 의 실제 원인이 이 가드였음)
+    // ⚠ maxTokens는 이 API로 전달되지 않는다 (리수 v3.svelte.ts — 위 4개 인자만
+    //   requestChatDataMain에 넘긴다). 상한은 bodyIntercepter가 HTTP 바디에서 직접 조인다.
+    //   요청분×2(최소 1000) — thinking·JSON 여유. 낮추기만 하므로 유저 설정이 작으면 그대로.
+    auxCapInFlight = Math.max(1000, (Number(maxTokens) || 0) * 2);
     try {
       const res = await Risuai.runLLMModel({
         mode: 'submodel',
@@ -2034,8 +2056,61 @@
     } catch (e) {
       console.log('[simcore] runLLMModel 예외:', e.message);
       lastAux = { status: `호출 예외: ${e.message}`, raw: '', applied: 0 };
+    } finally {
+      auxCapInFlight = null;
     }
     return null;
+  }
+
+  // ── 보조 호출 출력 상한 (v1.0.1) ───────────────────────────
+  // runLLMModel엔 maxTokens 인자가 없어서(위 참조) 보조 호출이 메인과 같은
+  // db.maxResponse(예: 10000)에 thinking까지 켠 채 나가고 있었다 (실측 로그 2026-08-29).
+  // 유일한 개입 통로는 bodyIntercepter('replacer' 권한 — beforeRequest로 이미 보유).
+  // 우리 보조 요청만 이중 걸쇠로 식별한다: ① callAuxLLM 진행 중(auxCapInFlight != null)
+  // ② 바디에 AUX_NUDGE 문장 실존. 남의 요청(동시 진행 메인 스트림 포함)엔 ②가 없다.
+  // 상한은 **낮추기만** 한다 — 유저가 이미 작게 잡았다면 손대지 않는다.
+  let auxCapInFlight = null;   // 진행 중인 보조 호출의 출력 상한 (토큰). null = 보조 호출 없음
+  const AUX_THINK_CAP = 512;   // Gemini thinking 예산 상한 (0은 안 쓴다 — pro 계열은 완전 끄면 400)
+
+  function clampAuxBody(obj, cap) {
+    let touched = false;
+    const num = (o, k, lim) => {
+      if (o && typeof o === 'object' && typeof o[k] === 'number' && o[k] > lim) { o[k] = lim; touched = true; }
+    };
+    // OpenAI 호환 · 루트형
+    num(obj, 'max_tokens', cap); num(obj, 'max_completion_tokens', cap); num(obj, 'maxOutputTokens', cap);
+    // Gemini generationConfig (camel/snake 둘 다)
+    for (const gc of [obj.generationConfig, obj.generation_config]) {
+      if (!gc || typeof gc !== 'object') continue;
+      num(gc, 'maxOutputTokens', cap); num(gc, 'max_output_tokens', cap);
+      const tc = gc.thinkingConfig ?? gc.thinking_config;
+      if (tc && typeof tc === 'object') {
+        const k = 'thinkingBudget' in tc ? 'thinkingBudget' : 'thinking_budget';
+        // -1(동적)·큰 예산 → 소예산. 완전 0은 안 쓴다 — 끄기 불가 모델(pro)에서 400이 난다
+        if (typeof tc[k] === 'number' && (tc[k] < 0 || tc[k] > AUX_THINK_CAP)) { tc[k] = AUX_THINK_CAP; touched = true; }
+      }
+    }
+    // Claude 확장 사고 — API 최소치가 1024라 그 밑으로는 못 내린다
+    num(obj.thinking, 'budget_tokens', 1024);
+    return touched;
+  }
+
+  if (typeof Risuai.registerBodyIntercepter === 'function') {
+    try {
+      await Risuai.registerBodyIntercepter(async (body, kind) => {
+        try {
+          if (auxCapInFlight == null || body == null) return body;
+          const isStr = typeof body === 'string';
+          if (isStr && !body.includes(AUX_NUDGE)) return body;
+          const obj = isStr ? JSON.parse(body) : body;
+          if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return body;
+          if (!isStr && !JSON.stringify(obj).includes(AUX_NUDGE)) return body;
+          if (!clampAuxBody(obj, auxCapInFlight)) return body;
+          console.log('[simcore] 보조 요청 출력 상한 클램프:', auxCapInFlight, `(${kind})`);
+          return isStr ? JSON.stringify(obj) : obj;
+        } catch { return body; }   // 무슨 일이 있어도 남의 요청을 죽이면 안 된다 (falsy면 원본 유지)
+      });
+    } catch (e) { console.log('[simcore] bodyIntercepter 등록 실패(구버전 리수?):', e.message); }
   }
 
   // ── 보조모델 경로 자동 판별 (배포 대비) ────────────────────
@@ -2645,6 +2720,7 @@
       if (!content || !content.includes('/')) return content;
       await loadForCurrentChar();
       if (!session || !schema) return content;
+      await flushOutputSettle();   // 미확정 스트리밍 턴이 있으면 그 결과 위에 명령을 얹는다
       const r = engine.applyChatCommands(schema, session.current, content);
       // ⚠ 상태가 안 바뀌어도 **엔진이 우리 명령으로 알아본 줄**은 답을 돌려줘야 한다.
       // 도움말(`/날짜`), 오류('읽을 수 없음'), 거부('쿨다운') 응답이 전부 여기 온다 —
@@ -2698,6 +2774,9 @@
     turnBusy = true; turnBusyAt = Date.now();
     try {
       // 호출부(리수 request.ts)에 try/catch가 없다 — 여기서 던지면 요청 자체가 죽는다
+      // 직전 턴의 스트리밍 확정이 남아 있으면 먼저 정산한다 — onSend가 그 위에 서야 한다
+      await flushOutputSettle();
+      lastSettledKey = null;   // 새 턴 — 리롤이 같은 자리(outIndex)를 다시 쓸 수 있게 걸쇠 해제
       await loadForCurrentChar();
       if (!session) { turnBusy = false; return messages; }
 
@@ -2940,18 +3019,151 @@
     setTimeout(() => attempt('12초'), 12000);
   }
 
+  // ── 스트리밍 확정 처리 (v1.0.1) ─────────────────────────────
+  // 리수는 스트리밍 중 **청크/플러시마다** editoutput을 다시 돌린다 (index.svelte.ts 실측 —
+  // 부분 텍스트마다 우리 핸들러가 통째로 돌아 보조 호출 10회+/틱 중복이 났다, 2026-08-29 제보).
+  // → 부분 호출은 마커만 붙이고, 호출이 잠잠해진 뒤(SETTLE_MS + 안정성 이중 확인) 저장된
+  //   실물 메시지를 최종본으로 삼아 **한 번만** 확정 처리한다. 이미지는 소급 삽입.
+  const SETTLE_MS = 1200;
+  let outSettle = null;          // { key, chaIdx, chatIdx, outIndex, content, sess, timer }
+  let outSettleRunning = null;   // 확정 처리 진행 중 promise (flush 대기용)
+  let lastSettledKey = null;     // 같은 턴의 늦은 조각으로 두 번 확정하지 않는 걸쇠 (새 턴에 해제)
+
+  function scheduleOutputSettle(chaIdx, chatIdx, outIndex, content) {
+    const key = `${chaIdx}:${chatIdx}:${outIndex}`;
+    if (key === lastSettledKey) return;   // 이미 확정한 턴의 늦은 조각 (defer 후처리 설정 등)
+    if (outSettle && outSettle.key !== key) { clearTimeout(outSettle.timer); outSettle = null; }
+    if (outSettle) {
+      outSettle.content = content;
+      clearTimeout(outSettle.timer);
+    } else {
+      outSettle = { key, chaIdx, chatIdx, outIndex, content, sess: session, timer: null };
+    }
+    outSettle.timer = setTimeout(() => { finalizeOutputSettle(false); }, SETTLE_MS);
+  }
+
+  async function readSavedOutText(s) {
+    try {
+      const chat = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
+      const msg = chat?.message?.[s.outIndex];
+      if (msg && msg.role === 'char' && typeof msg.data === 'string') {
+        const bare = msg.data.replace(MARKER_RE, '').trimEnd();
+        if (bare) return bare;
+      }
+    } catch { /* 저장 전이거나 읽기 실패 — null로 */ }
+    return null;
+  }
+
+  async function finalizeOutputSettle(immediate) {
+    const s = outSettle;
+    if (!s) { if (outSettleRunning) await outSettleRunning; return; }
+    outSettle = null;                      // 선점 — 같은 턴이 두 번 돌지 않는다
+    clearTimeout(s.timer);
+    const run = (async () => {
+      try {
+        if (!session || s.sess !== session) return;   // 확정 전에 캐릭터가 바뀜 — 이 턴은 버린다
+        let text = await readSavedOutText(s);
+        if (!immediate) {
+          // 안정성 이중 확인: 생성이 잠깐 쉰 것일 수 있다 — 더 기다려 같은 값일 때만 확정
+          await sleep(400);
+          const again = await readSavedOutText(s);
+          if (again !== text) {
+            if (!outSettle) {   // 아직 자라는 중 — 재무장 (핸들러 호출이 더 안 와도 다시 본다)
+              outSettle = { ...s, content: again ?? s.content, timer: setTimeout(() => finalizeOutputSettle(false), SETTLE_MS) };
+            }
+            return;
+          }
+        }
+        // 저장 실물이 없으면(비정상·테스트 하네스) 마지막 부분 텍스트로라도 굴린다
+        if (text == null) text = s.content.replace(MARKER_RE, '').trimEnd();
+        lastSettledKey = s.key;
+        const chat = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
+        const r = await processTurnOutput(s.chaIdx, s.chatIdx, s.outIndex, text, chat);
+        // 이미지 삽입 등으로 본문이 달라졌으면 저장된 메시지에 소급 반영 (마커 보존)
+        if (r && typeof r.content === 'string' && r.content !== text) {
+          const c2 = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
+          const msg = c2?.message?.[s.outIndex];
+          if (msg && msg.role === 'char' && typeof msg.data === 'string') {
+            msg.data = r.content + `\n\n⟦simcore:${s.outIndex}⟧`;
+            await Risuai.setChatToIndex(s.chaIdx, s.chatIdx, c2);
+          }
+        }
+        console.log('[simcore] 스트리밍 턴 확정 처리 완료:', s.key);
+      } catch (e) {
+        console.log('[simcore] 스트리밍 턴 확정 오류:', e.message);
+      } finally {
+        turnBusy = false;                  // 이 턴의 busy는 여기서 푼다 (핸들러가 아니라)
+        scheduleMarkerHeal(s.outIndex);
+      }
+    })();
+    outSettleRunning = run;
+    await run;
+    if (outSettleRunning === run) outSettleRunning = null;
+  }
+
+  async function flushOutputSettle() {
+    // 대기 중이면 즉시 확정, 진행 중이면 끝까지 기다린다 — 다음 턴 onSend가 이 턴 위에 서야 한다
+    let guard = 0;
+    while ((outSettle || outSettleRunning) && guard++ < 8) {
+      if (outSettle) await finalizeOutputSettle(true);
+      else await outSettleRunning;
+    }
+  }
+  // 테스트·디버그 배수구 — 대기 중인 스트리밍 확정을 즉시 끝낸다
+  try { globalThis.__simcoreDrainTurn = flushOutputSettle; } catch { /* 전역이 막힌 환경 */ }
+
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
     let outIndexRef = null;   // catch·finally에서도 마커 자리를 알아야 한다
+    let deferred = false;     // 스트리밍 — 확정은 settle이 한다
     try {
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
-      // outIndex = 이번에 저장될 char 메시지 인덱스
-      // [live-test] output 핸들러 시점에 메시지가 이미 배열에 있는지/없는지 확인해 ±1 보정
-      const outIndex = chat?.message?.length ?? 0;
+      const msgs = chat?.message ?? [];
+      // outIndex/스트리밍 판정 (리수 index.svelte.ts 실측 — v1.0.1):
+      //  · 비스트리밍: editoutput은 push **전**에 한 번 → outIndex = length, 여기서 전부 처리
+      //  · 스트리밍: 빈 char 메시지를 **미리 push**한 뒤 청크마다 다시 돈다 → outIndex = length-1
+      //    (예전 length 계산은 스트리밍에서 +1로 밀려 있었다). 부분 텍스트에는 아무것도 안 굴린다.
+      const last = msgs.length ? msgs[msgs.length - 1] : null;
+      let streaming = false;
+      let outIndex = msgs.length;
+      if (last && last.role === 'char' && typeof last.data === 'string') {
+        const bare = last.data.replace(MARKER_RE, '').trimEnd();
+        // 마지막 char 글이 이번 스트림의 부분 텍스트일 때만 (그룹챗 등 남의 완결 글이면 아님)
+        if (bare === '' || content.startsWith(bare) || bare.startsWith(content)
+          || bare.slice(0, 120) === content.slice(0, 120)) {
+          streaming = true; outIndex = msgs.length - 1;
+        }
+      }
       outIndexRef = outIndex;
+      if (streaming) {
+        deferred = true;
+        scheduleOutputSettle(chaIdx, chatIdx, outIndex, content);
+        lastOutIndex = outIndex;
+        return content.includes('⟦simcore:') ? content : content + `\n\n⟦simcore:${outIndex}⟧`;
+      }
+      const r = await processTurnOutput(chaIdx, chatIdx, outIndex, content, chat);
+      lastOutIndex = outIndex;
+      return r.content + `\n\n⟦simcore:${outIndex}⟧`;
+    } catch (e) {
+      console.log('[simcore] output 오류:', e.message);
+      // 실패해도 마커는 붙인다 — 상태는 못 굴렸지만 상태창까지 죽을 이유는 없다
+      // (표시 핸들러는 마커가 있으면 현재 상태를 그린다. 마커가 없으면 그 메시지의 상태창이 영영 실종)
+      return outIndexRef != null ? content + `\n\n⟦simcore:${outIndexRef}⟧` : content;
+    } finally {
+      // 스트리밍 확정이 걸려 있으면 busy를 유지한다 — finalize의 finally가 푼다
+      if (!deferred) {
+        turnBusy = false;                // 실패해도 반드시 풀어야 전환 감지가 영영 멈추지 않는다
+        if (outIndexRef != null) scheduleMarkerHeal(outIndexRef);
+      }
+    }
+  });
+
+  // 한 턴의 실제 처리 — 최초설정/보조 델타/틱·이벤트/이미지. 마커는 붙이지 않는다 (호출자 몫).
+  // 비스트리밍은 output 핸들러가 인라인으로, 스트리밍은 finalizeOutputSettle이 한 번만 부른다.
+  async function processTurnOutput(chaIdx, chatIdx, outIndex, content, chat) {
       const mode = await resolveAuxMode();
       const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
 
@@ -2961,7 +3173,7 @@
           // 루아 브리지가 setup 프롬프트로 호출 중 — 결과를 폴링해 적용 (설정 소비는 그때)
           lastOutIndex = outIndex;
           pollLuaBridge(outIndex, true, baseSeq);
-          return content + `\n\n⟦simcore:${outIndex}⟧`;
+          return { content };
         }
         let setupText = null;
         if (mode !== 'off') {
@@ -2980,14 +3192,14 @@
             console.log('[simcore] 최초설정 지연 적용:', r.changeLog.length, '개 변수');
           }, '최초설정');
           lastOutIndex = outIndex;
-          return content + `\n\n⟦simcore:${outIndex}⟧`;
+          return { content };
         }
         const r = await session.onSetupOutput(outIndex, typeof setupText === 'string' ? setupText : null);
         lastChangeLog = r.changeLog;
         lastOutIndex = outIndex;
         await mirrorVars(chaIdx, chatIdx);
         console.log('[simcore] 최초설정 적용:', r.changeLog.length, '개 변수');
-        return content + `\n\n⟦simcore:${outIndex}⟧`;
+        return { content };
       }
 
       let auxText = null;
@@ -3094,17 +3306,8 @@
       await syncControls(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 조작 UI 갱신
       // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
       if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
-      return (imgTag ? imgTag + '\n\n' : '') + content + `\n\n⟦simcore:${outIndex}⟧`;
-    } catch (e) {
-      console.log('[simcore] output 오류:', e.message);
-      // 실패해도 마커는 붙인다 — 상태는 못 굴렸지만 상태창까지 죽을 이유는 없다
-      // (표시 핸들러는 마커가 있으면 현재 상태를 그린다. 마커가 없으면 그 메시지의 상태창이 영영 실종)
-      return outIndexRef != null ? content + `\n\n⟦simcore:${outIndexRef}⟧` : content;
-    } finally {
-      turnBusy = false;                  // 실패해도 반드시 풀어야 전환 감지가 영영 멈추지 않는다
-      if (outIndexRef != null) scheduleMarkerHeal(outIndexRef);
-    }
-  });
+      return { content: (imgTag ? imgTag + '\n\n' : '') + content };
+  }
 
   // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
   await Risuai.addRisuScriptHandler('display', (content) => {
@@ -6591,6 +6794,8 @@ count(목록)  has(목록, "항목")</pre>
   await Risuai.onUnload(() => {
     clearInterval(switchTimer);
     if (luaPollTimer) clearInterval(luaPollTimer);
+    if (outSettle) { clearTimeout(outSettle.timer); outSettle = null; }
+    try { delete globalThis.__simcoreDrainTurn; } catch { /* 전역이 막힌 환경 */ }
     console.log('[simcore] 언로드');
   });
   console.log('[simcore] 플러그인 초기화 완료 — 채팅 화면의 ⚙️ 버튼 또는 설정 메뉴에서 패널 열기');

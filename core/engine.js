@@ -20,6 +20,7 @@ const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal,
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
+const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -76,6 +77,7 @@ function initState(schema, opts = {}) {
   };
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
+  if (shopMod.shopConfig(schema)) st.shop = shopMod.initShop(); // 상점 (v0.96)
   return st;
 }
 
@@ -145,6 +147,7 @@ function reconcileState(schema, state) {
   }
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
+  if (shopMod.shopConfig(schema)) shopMod.ensureShop(state); // 상점 (v0.96) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -846,7 +849,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -872,6 +875,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.7 커뮤니티 보드 (v0.95) — 보조가 실어 온 델타 적용 + 지표 표류(매 턴, 시드 rng).
   // 시간 소비 뒤여야 새 글의 날짜 도장이 이번 턴의 새 날짜로 찍힌다.
   if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
+  // 5.8 상점 첫 입고 (v0.96) — 재고가 비어 있을 때만 요청했으므로, 온 것만 채운다
+  if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -1286,6 +1291,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     // 커뮤니티 보드 턴 갱신 (v0.95, 옵트인) — 같은 호출에 얹는다 (추가 호출 0).
     // 브리지 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
     (!opts.allowAll && state) ? (boardMod.auxSpec(schema, state, makeLookup) || null) : null,
+    // 상점 첫 입고 (v0.96, 옵트인) — 재고가 빈 동안만 얹는다. 물갈이는 패널 버튼 전용.
+    (!opts.allowAll && state) ? (shopMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -1319,6 +1326,7 @@ function auxHasWork(schema, state = null) {
   if ((schema?.updater?.allow?.length ?? 0) > 0) return true;
   if (schema?.suggest) return true;
   if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
+  if (shopMod.shopConfig(schema)) return true;   // 상점 첫 입고가 얹혀 간다 (v0.96)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -1580,7 +1588,8 @@ function parseAuxResponse(text) {
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
-    board: obj.board ?? null }; // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
+    board: obj.board ?? null,  // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
+    shop: obj.shop ?? null };  // 상점 입고 (v0.96) — 정제는 shop 모듈이
 }
 
 module.exports = {

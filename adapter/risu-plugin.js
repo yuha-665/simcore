@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.95.0
-//@display-name SimCore (시뮬 엔진) v0.95 커뮤니티 보드
+//@version 0.96.0
+//@display-name SimCore (시뮬 엔진) v0.96 커뮤니티 보드·상점
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.96.0 ───────────────────────────────────────────────
+// 상점 (얼터헌터 "알터 스토어" 흡수 — 유저 지목 고질병: 로어북 상점의 "S랭크 스킬북 뇌절"과
+// 가격 계산). 카테고리 탭·구매·판매(감정)·매입 시세판. docs/design-얼헌-개조.md §P4.5.
+// - [코어 shop] state.shop { stock, buying, log } — 스냅샷에 실려 리롤과 되감김.
+//   뇌절은 구조로 잡는다: 등급 어휘(grades)·가격 밴드(bands)를 스키마가 정하고 밴드 밖
+//   진열은 sanitize가 거부/클램프. 결제·잔액·수량·수량 병합("포션 2")은 엔진이 결정적으로.
+// - 거래 내역의 수명 (유저 설계 그대로): pendingNotifies로 **다음 전송에 한 번 실리고 자동
+//   소거** + lastChanges 원장(보조 이중 계산 방지) + 패널 로그 6건 회전. 영구 누적 없음.
+// - 첫 입고는 턴 피기백(재고 빈 동안만 — 이후 매턴 비용 0), 물갈이는 패널 [새로고침],
+//   감정(시세판 밖 판매)만 전용 보조 호출. 구매·시세판 판매는 보조 호출 0.
+// - [어댑터] 게임 패널 4호 — 지갑·카테고리 탭·매입 창구. when 거짓이면 버튼째 숨김.
+// - [편집기] [상점] 탭 (지갑/목록/카테고리/등급/밴드/매입률/지침) + SCHEMA_SHOP_RULES.
+// - [검증] shop 섹션 — currency/buyTo 실존·타입, 밴드 정합, "밴드 없으면 뇌절 재현" 경고.
+//   테스트 테스트/test-shop.js.
 //
 // ── v0.95.0 ───────────────────────────────────────────────
 // 커뮤니티 보드 (얼터헌터 "헌터넷" 흡수가 발단 — docs/design-얼헌-개조.md §P4).
@@ -1872,6 +1887,7 @@
   const calendarMod = SimCore.require('calendar');
   const timeMod = SimCore.require('time');
   const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
+  const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
@@ -2386,6 +2402,9 @@
   // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
   let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
+  // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
+  let shopView = { cat: null };                     // cat: 카테고리 이름 | '__sell' (매입 창구)
+  let shopBusy = false;
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
 
@@ -2911,6 +2930,10 @@
             if (parsed.board && boardMod.boardConfig(schema)) {
               boardMod.applyDelta(schema, session.current, parsed.board, { rng: makeUnstableRng(Math.random) });
             }
+            // 상점 첫 입고 (v0.96) — 지연 경로에서도 적용
+            if (parsed.shop && shopMod.shopConfig(schema)) {
+              shopMod.applyStock(schema, session.current, parsed.shop);
+            }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
             lastAux.applied = amended.changeLog.length;
@@ -3078,6 +3101,12 @@
       // 커뮤니티 보드 (v0.95) — 게임 패널 3호. 스키마가 board를 켠 봇만.
       const b = boardMod.boardConfig(schema);
       if (b) specs.push({ key: 'board', kind: 'board', tab: null, label: b.label, icon: b.icon });
+      // 상점 (v0.96) — 게임 패널 4호. when 게이트가 닫혀 있으면 버튼째 숨긴다
+      // (store_on 같은 정책 변수 — 이 판에 상점이 없는 세계면 버튼도 없어야 한다)
+      const sh = shopMod.shopConfig(schema);
+      if (sh && shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) {
+        specs.push({ key: 'shop', kind: 'shop', tab: null, label: sh.label, icon: sh.icon });
+      }
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -3182,6 +3211,22 @@
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      /* 상점 (v0.96) — 기본 스킨. 봇의 shop.css가 덮어쓴다 */
+      #sc-game .sch-wallet { font-size:13px; color:#8fd6a8; font-weight:700; margin:2px 0 6px; }
+      #sc-game .sch-tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+      #sc-game .sch-tab { border:1px solid #3d5384; border-radius:999px; background:#1c2740; color:#dfe7f5;
+        padding:3px 11px; font-size:12.5px; cursor:pointer; }
+      #sc-game .sch-tab.sch-on { background:#3660d9; border-color:#6b93f2; color:#fff; font-weight:600; }
+      #sc-game .sch-item { display:flex; gap:8px; align-items:center; padding:7px 8px;
+        border-bottom:1px solid #22304f; }
+      #sc-game .sch-item .sch-name { flex:1; color:#e6ebf5; font-size:13px; min-width:0; }
+      #sc-game .sch-item .sch-name small { display:block; color:#7d8aa5; font-size:11px; }
+      #sc-game .sch-grade { font-size:11px; border:1px solid #3d5384; border-radius:6px; padding:0 6px;
+        color:#9db8e8; white-space:nowrap; }
+      #sc-game .sch-price { color:#ffd166; font-size:12.5px; font-weight:700; white-space:nowrap; }
+      #sc-game .sch-qty { color:#e2938f; font-size:11px; white-space:nowrap; }
+      #sc-game .sch-log { margin-top:8px; border-top:1px dashed #2a3a5e; padding-top:6px;
+        color:#7d8aa5; font-size:11.5px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
@@ -3296,7 +3341,8 @@
     if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
     const css = gameKind === 'party' ? schema?.party?.css
       : gameKind === 'calendar' ? schema?.calendar?.css
-        : gameKind === 'board' ? schema?.board?.css : null;
+        : gameKind === 'board' ? schema?.board?.css
+          : gameKind === 'shop' ? schema?.shop?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -3317,6 +3363,7 @@
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
     boardView = { mode: 'list', postId: null };   // 보드는 열 때마다 목록부터
+    shopView = { cat: null };                      // 상점은 열 때마다 첫 카테고리부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -3344,6 +3391,7 @@
     if (gameKind === 'party') renderPartyPanel(root);
     else if (gameKind === 'calendar') renderCalendarPanel(root);
     else if (gameKind === 'board') renderBoardPanel(root);
+    else if (gameKind === 'shop') renderShopPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -3926,6 +3974,165 @@
       }
     }
 
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
+  }
+
+  // ── 상점 패널 (v0.96) — 게임 패널 4호 ─────────────────────────
+  // 구매는 보조 호출 없이 즉시 정산 (숫자는 시스템이). 물갈이·감정만 전용 보조 호출.
+  // 거래 통지는 meta.pendingNotifies로 다음 전송에 실리고 자동 소거 — "쌓지 않는 내역".
+  async function callShopAux(kind, payload = {}) {
+    if (!session || !schema || shopBusy) return null;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return null; }
+    shopBusy = true;
+    gameNotice = kind === 'appraise' ? '⏳ 감정 중…' : '⏳ 상점이 진열을 새로 짜는 중…';
+    renderGamePanel();
+    try {
+      const prompt = shopMod.interactionPrompt(schema, session.current, kind,
+        { ...payload, narrative: await boardNarrative() });
+      const res = await callAuxLLM(prompt, 900);
+      if (res && res.blocked) {
+        gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 상점 물갈이·감정은 쓸 수 없어요';
+        return null;
+      }
+      if (typeof res !== 'string') { gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요'; return null; }
+      const parsed = shopMod.parseInteraction(res, engine.extractJsonObject);
+      if (!parsed) {
+        gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
+        console.log('[simcore] 상점 인터랙션 파싱 실패:', res.slice(0, 200));
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      gameNotice = `⚠ 상점 호출 실패: ${e.message}`;
+      return null;
+    } finally {
+      shopBusy = false;
+    }
+  }
+
+  async function onShopRestock() {
+    const parsed = await callShopAux('restock');
+    if (parsed) {
+      const r = shopMod.applyStock(schema, session.current, parsed);
+      await boardSaveNow('상점 물갈이');
+      gameNotice = r.stocked
+        ? `✓ 새 진열 ${r.stocked}종 · 매입 시세 ${r.buying ?? 0}종` + (r.rejected?.length ? ` (규격 밖 ${r.rejected.length}종 거부)` : '')
+        : '⚠ 쓸 만한 진열이 안 왔어요 — 다시 시도해 보세요';
+    }
+    renderGamePanel();
+  }
+
+  async function onShopBuy(itemId) {
+    if (!session || !schema) return;
+    const r = shopMod.buy(schema, session.current, itemId);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
+    else renderGamePanel();
+  }
+
+  async function onShopSell(itemText) {
+    if (!session || !schema) return;
+    let r = shopMod.sell(schema, session.current, itemText);
+    if (!r.ok && r.needAppraisal) {
+      const parsed = await callShopAux('appraise', { item: itemText });
+      if (parsed == null) { renderGamePanel(); return; }
+      const val = Number(parsed.appraisal);
+      if (!isFinite(val) || val <= 0) { gameNotice = '⚠ 감정 불가 판정이에요 — 이 물건은 여기서 안 받아요'; renderGamePanel(); return; }
+      r = shopMod.sell(schema, session.current, itemText, val);
+    }
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) await commitPanelChanges({}, '상점 판매');
+    else renderGamePanel();
+  }
+
+  function renderShopPanel(root) {
+    const cfg = shopMod.shopConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const shop = shopMod.ensureShop(session.current);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, cls, onClick, disabled = false) => {
+      const b = el('button', cls, label);
+      b.type = 'button';
+      b.disabled = disabled || shopBusy;
+      b.onclick = onClick;
+      return b;
+    };
+
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button'; x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    const walletDef = schema.vars.find((v) => v.id === cfg.currency);
+    const walletVal = session.current.vars[cfg.currency] ?? 0;
+    const fmtWallet = walletDef?.format ? String(walletDef.format).replace('{v}', walletVal) : String(walletVal);
+    card.appendChild(el('div', 'sch-wallet', `💰 ${walletDef?.label ?? cfg.currency}: ${fmtWallet}`));
+
+    // 카테고리 탭 + 매입 창구 탭
+    const cats = cfg.categories;
+    const active = shopView.cat ?? cats[0];
+    const tabs = el('div', 'sch-tabs');
+    for (const c of cats) {
+      tabs.appendChild(btn(c, `sch-tab${active === c ? ' sch-on' : ''}`, () => { shopView.cat = c; renderGamePanel(); }));
+    }
+    if (cfg.sellFrom) {
+      tabs.appendChild(btn('📤 매입', `sch-tab${active === '__sell' ? ' sch-on' : ''}`, () => { shopView.cat = '__sell'; renderGamePanel(); }));
+    }
+    tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onShopRestock));
+    card.appendChild(tabs);
+
+    if (active === '__sell') {
+      // ── 매입 창구 — 소지 목록에서 판다. 시세판 매치는 즉시가, 아니면 감정 ──
+      card.appendChild(el('div', 'scg-note', '시세가 잡힌 물건은 바로 팔리고, 나머지는 감정을 거칩니다 (감정가의 일부만 쳐줘요).'));
+      const bag = Array.isArray(session.current.vars[cfg.sellFrom]) ? session.current.vars[cfg.sellFrom] : [];
+      if (!bag.length) card.appendChild(el('div', 'scb-empty', '팔 수 있는 물건이 없어요.'));
+      for (const item of bag) {
+        const row = el('div', 'sch-item');
+        row.appendChild(el('span', 'sch-name', item));
+        const q = shopMod.quoteFor(shop, item);
+        row.appendChild(el('span', 'sch-price', q != null ? `매입 ${q}` : '감정 필요'));
+        row.appendChild(btn('판매', 'scb-btn', () => onShopSell(item)));
+        card.appendChild(row);
+      }
+      if (shop.buying.length) {
+        const bx = el('div', 'sch-log');
+        bx.textContent = '📋 매입 시세판: ' + shop.buying.map((b) => `${b.name} ${b.price}`).join(' · ');
+        card.appendChild(bx);
+      }
+    } else {
+      // ── 진열 — 카테고리 필터 ──
+      const items = shop.stock.filter((it) => it.cat === active);
+      if (!shop.stock.length) {
+        card.appendChild(el('div', 'scb-empty', shop.stocked
+          ? '진열이 비었어요 — [🔄 새로고침]으로 새 물건을 받아 보세요.'
+          : '첫 입고 대기 중 — 다음 응답이 오면 상품이 채워져요. 급하면 [🔄 새로고침].'));
+      } else if (!items.length) {
+        card.appendChild(el('div', 'scb-empty', '이 칸은 지금 비어 있어요.'));
+      }
+      for (const it of items) {
+        const row = el('div', 'sch-item');
+        const nm = el('span', 'sch-name', it.name);
+        if (it.note) nm.appendChild(el('small', null, it.note));
+        row.appendChild(nm);
+        if (it.grade) row.appendChild(el('span', 'sch-grade', it.grade));
+        if (it.qty != null) row.appendChild(el('span', 'sch-qty', `한정 ${it.qty}`));
+        row.appendChild(el('span', 'sch-price', String(it.price)));
+        row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < it.price));
+        card.appendChild(row);
+      }
+    }
+
+    if (shop.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근 거래: ' + shop.log.join(' · ')));
     if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
     root.appendChild(card);
   }

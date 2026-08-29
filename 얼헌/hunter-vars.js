@@ -444,6 +444,13 @@ const S = {
         + '헌터 소집, 헌터넷 술렁임)이 배경에 깔려야 한다.' },
     { id: 'daily_mode', when: 'not action_on',
       text: '일상물 페이스다 — 전투·게이트 서사를 앞세우지 말고 생활·관계·직업의 결을 그려라.' },
+    // 알터 스토어 (P4.5) — 로어북 항목(lore 토글로 굽는 과정에서 소거)의 핵심만 지시문으로.
+    // 상세 진열·거래는 상점 패널이 전담하므로 여기는 "존재와 규칙"만.
+    { id: 'alter_store', when: 'store_on',
+      text: 'This world has the Alter Store — an ethereal system shop only the Awakened can open '
+        + '(a translucent interface, summoned at will outside Gates). It trades in Coin, not money. '
+        + 'Purchases and sales are handled by the store panel; the [알터 스토어] notices in events are '
+        + 'settled facts. Non-hunters cannot see or use it.' },
 
     // ── NPC 등장 규칙 (P2) — 원본 NPC List(always 11.3K)의 동적 대체 ──
     { id: 'npc_cast', when: 'true',
@@ -551,6 +558,36 @@ const S = {
 .scb-re { border-top-color: rgba(138,162,204,.12); }
 .scb-re .scb-re-a { color: #8aa2cc; }
 .scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }`,
+  },
+
+  // ── 알터 스토어 (P4.5) — 상점 (v0.96 엔진 기능) ──
+  // 원본 로어북 상점의 고질병(유저 지목): "S랭크 스킬북 뇌절 + 가격 계산 힘듦" →
+  // 등급 어휘·가격 밴드를 여기 못박아 시스템이 강제한다. 코인 경제 기준: E랭크 킬 1~5C.
+  shop: {
+    label: '알터 스토어', icon: '🛒',
+    currency: 'coin', buyTo: 'items', sellFrom: 'items',
+    categories: ['추천', '인기', '소모품', '장비', '스킬북', '기타'],
+    grades: ['일반', '레어', '유니크'],
+    bands: { '일반': [1, 60], '레어': [60, 400], '유니크': [400, 3000] },
+    sellRate: 0.6, maxStock: 18,
+    when: 'store_on',
+    guide: 'Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative '
+      + 'to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, '
+      + 'gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. '
+      + 'Occasional 한정 상품 (qty). The store never sells Legendary anything.',
+    // 상태창과 같은 다크네이비/스틸블루 규격
+    css: `
+.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }
+.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }
+.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
+.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }
+.sch-item { border-bottom-color: rgba(138,162,204,.12); }
+.sch-item .sch-name { color: #dce6f5; }
+.sch-grade { border-color: rgba(138,162,204,.3); color: #8aa2cc; }
+.sch-price { color: #c9a86a; }
+.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
+.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }
+.sch-wallet { color: #c9a86a; }`,
   },
 };
 
@@ -851,6 +888,39 @@ console.log('\n━━ P4 — 헌터넷 (커뮤니티 보드) ━━');
   const p = turn(t, {}, 82);
   ok('메인에 화제 한 줄 (원문 없이)', p.prompt.includes('[헌터넷]') && p.prompt.includes('동북권 D급 목격')
     && !p.prompt.includes('협회 알림 옴'), '');
+}
+
+console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
+{
+  const shopMod = SC.require('shop');
+  let t = fresh();
+  ok('기본(store_on=false) — 첫 입고 요청 없음', !engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고'));
+  t.vars.store_on = true;
+  ok('스토어 켜면 — 첫 입고 요청 + 지시문',
+    engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고')
+    && turn(t, {}, 90).prompt.includes('Alter Store'));
+  // 뇌절 봉쇄 — 레전더리 거부·밴드 클램프
+  const r = shopMod.applyStock(S, t, { stock: [
+    { cat: '스킬북', name: 'S급 스킬북', grade: '레전더리', price: 99999 },
+    { cat: '소모품', name: '하급 회복 포션', grade: '일반', price: 999 },
+  ], buying: [{ name: '고블린 마정석', price: 4 }] });
+  ok('레전더리 뇌절 거부 + 일반가 60 클램프', r.stocked === 1 && t.shop.stock[0].price === 60
+    && r.rejected.length === 1, JSON.stringify({ r, stock: t.shop.stock }));
+  // 구매 → 코인 차감 + 통지가 다음 전송에 실리고 소거
+  t.vars.coin = 100;
+  const buy = shopMod.buy(S, t, t.shop.stock[0].id);
+  ok('구매 정산 (코인 40 잔액 + 소지품 합류)', buy.ok && t.vars.coin === 40
+    && t.vars.items.some((x) => x.includes('하급 회복 포션')), JSON.stringify(t.vars.items));
+  const send = engine.sendPhase(S, t, { rng: seededRng('h', 91, 's') });
+  ok('거래 통지 — 다음 전송 1회 후 소거', send.promptBlock.includes('알터 스토어')
+    && send.state.meta.pendingNotifies.length === 0);
+  // 시세판 판매 — 안 가진 물건은 거부, 가진 물건은 즉시 매입
+  const sell = shopMod.sell(S, send.state, '고블린 마정석 5');
+  ok('안 가진 물건 판매 거부', !sell.ok && !sell.needAppraisal);
+  send.state.vars.items.push('고블린 마정석 5');
+  const sell2 = shopMod.sell(S, send.state, '고블린 마정석 5');
+  ok('시세판 매입 — 끝수 차감 + 코인 적립', sell2.ok && sell2.payout === 4
+    && send.state.vars.items.includes('고블린 마정석 4'), JSON.stringify(send.state.vars.items));
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

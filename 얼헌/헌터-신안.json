@@ -820,6 +820,11 @@
       "text": "일상물 페이스다 — 전투·게이트 서사를 앞세우지 말고 생활·관계·직업의 결을 그려라."
     },
     {
+      "id": "alter_store",
+      "when": "store_on",
+      "text": "This world has the Alter Store — an ethereal system shop only the Awakened can open (a translucent interface, summoned at will outside Gates). It trades in Coin, not money. Purchases and sales are handled by the store panel; the [알터 스토어] notices in events are settled facts. Non-hunters cannot see or use it."
+    },
+    {
       "id": "npc_cast",
       "when": "true",
       "text": "The named cast listed below are this world's recurring figures. Introduce naturally only those whose rank band fits the scene; the rest exist off-screen unless an event, reputation or the user pulls them in. Anyone already in the story stays available regardless of band. If a [인물 변동] entry exists for someone, it overrides their profile baseline."
@@ -1050,5 +1055,44 @@
     "maxPosts": 20,
     "when": "not in_gate",
     "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.scb-row { border-bottom-color: rgba(138,162,204,.12); }\n.scb-row:hover { background: rgba(138,162,204,.07); }\n.scb-row .scb-title { color: #dce6f5; }\n.scb-view-title { color: #dce6f5; }\n.scb-body { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.15); color: #c5d0e6; }\n.scb-re { border-top-color: rgba(138,162,204,.12); }\n.scb-re .scb-re-a { color: #8aa2cc; }\n.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }"
+  },
+  "shop": {
+    "label": "알터 스토어",
+    "icon": "🛒",
+    "currency": "coin",
+    "buyTo": "items",
+    "sellFrom": "items",
+    "categories": [
+      "추천",
+      "인기",
+      "소모품",
+      "장비",
+      "스킬북",
+      "기타"
+    ],
+    "grades": [
+      "일반",
+      "레어",
+      "유니크"
+    ],
+    "bands": {
+      "일반": [
+        1,
+        60
+      ],
+      "레어": [
+        60,
+        400
+      ],
+      "유니크": [
+        400,
+        3000
+      ]
+    },
+    "sellRate": 0.6,
+    "maxStock": 18,
+    "when": "store_on",
+    "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty). The store never sells Legendary anything.",
+    "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }\n.sch-item { border-bottom-color: rgba(138,162,204,.12); }\n.sch-item .sch-name { color: #dce6f5; }\n.sch-grade { border-color: rgba(138,162,204,.3); color: #8aa2cc; }\n.sch-price { color: #c9a86a; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.sch-wallet { color: #c9a86a; }"
   }
 }

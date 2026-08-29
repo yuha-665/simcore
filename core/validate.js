@@ -1055,6 +1055,62 @@ function validateSchema(schema) {
     }
   }
 
+  // ── shop (상점 v0.96 — 옵트인. 로어북 상점의 뇌절·가격 계산을 구조로 잡는다) ──
+  if (schema.shop != null) {
+    const SH = schema.shop;
+    if (typeof SH !== 'object' || Array.isArray(SH)) err('$.shop', 'shop은 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['guide', '입고 지침'], ['css', 'CSS']]) {
+        if (SH[k] != null && typeof SH[k] !== 'string') err(`$.shop.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (SH.icon != null && (typeof SH.icon !== 'string' || SH.icon.length > 8)) err('$.shop.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
+      // 지갑 — 숫자 변수 필수
+      const wallet = vars.find((v) => v && v.id === SH.currency);
+      if (!SH.currency || typeof SH.currency !== 'string') err('$.shop.currency', '지갑 변수(currency)가 필요합니다');
+      else if (!wallet) err('$.shop.currency', `지갑 변수 '${SH.currency}'가 vars에 없음`);
+      else if (wallet.type !== 'int' && wallet.type !== 'float') err('$.shop.currency', `지갑 '${SH.currency}'는 숫자 타입이어야 함 (현재: ${wallet.type})`);
+      // 구매품이 들어갈 목록 — list 변수 필수
+      const bagVar = (id, path, req) => {
+        if (id == null) { if (req) err(path, '목록 변수가 필요합니다'); return; }
+        const v = vars.find((x) => x && x.id === id);
+        if (!v) err(path, `목록 변수 '${id}'가 vars에 없음`);
+        else if (v.type !== 'list') err(path, `'${id}'는 list 타입이어야 함 (현재: ${v.type})`);
+      };
+      bagVar(SH.buyTo, '$.shop.buyTo', true);
+      bagVar(SH.sellFrom, '$.shop.sellFrom', false);
+      if (SH.categories != null && (!Array.isArray(SH.categories) || !SH.categories.length || SH.categories.length > 8
+        || SH.categories.some((c) => typeof c !== 'string'))) {
+        err('$.shop.categories', '카테고리는 문자열 1~8개 배열');
+      }
+      if (SH.grades != null && (!Array.isArray(SH.grades) || !SH.grades.length || SH.grades.some((g) => typeof g !== 'string'))) {
+        err('$.shop.grades', '등급 어휘는 문자열 배열');
+      }
+      if (SH.bands != null) {
+        if (typeof SH.bands !== 'object' || Array.isArray(SH.bands)) err('$.shop.bands', 'bands는 { 등급: [최소, 최대] } 객체');
+        else for (const [g, band] of Object.entries(SH.bands)) {
+          if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0)
+            || band[0] > band[1]) err(`$.shop.bands.${g}`, '밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
+          if (SH.grades && !SH.grades.includes(g)) warn(`$.shop.bands.${g}`, `밴드의 등급 '${g}'가 grades 목록에 없습니다 — 영영 안 쓰입니다`);
+        }
+        if (SH.grades) for (const g of SH.grades) {
+          if (!SH.bands[g]) warn('$.shop.bands', `등급 '${g}'에 가격 밴드가 없습니다 — 그 등급은 가격 상한 없이 들어옵니다`);
+        }
+      }
+      if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
+        err('$.shop.sellRate', '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
+      }
+      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 30)) {
+        err('$.shop.maxStock', '진열 상한은 4~30 정수');
+      }
+      if (SH.when != null) {
+        if (typeof SH.when !== 'string') err('$.shop.when', 'when은 표현식 문자열이어야 함');
+        else if (SH.when.trim()) checkExpr(SH.when, '$.shop.when', allIds, err, { allowRand: false });
+      }
+      if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
+      if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
+    }
+  }
+
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
   // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.

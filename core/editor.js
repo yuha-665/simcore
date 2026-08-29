@@ -1211,6 +1211,16 @@ const SCHEMA_BOARD_RULES = [
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
 ];
 
+// 상점(shop, v0.96) — 시스템 상점.
+const SCHEMA_SHOP_RULES = [
+  '- 상점은 **시스템이 결제를 처리하는 상점 패널**입니다. `currency`(지갑 숫자 변수)와 `buyTo`(구매품이 들어갈 list 변수)가 필수입니다.',
+  '- `grades`(등급 어휘)와 `bands`(등급별 [최소, 최대] 가격)를 정하면 **밴드 밖 진열은 시스템이 거부**합니다 — 로어북 상점의 "S급 스킬북 뇌절"을 구조로 막는 장치입니다. 꼭 넣으세요.',
+  '- `categories`(1~8개)가 패널 탭이 됩니다 — "추천"·"인기" 같은 큐레이션 탭도 카테고리로 만듭니다.',
+  '- `sellFrom`을 주면 매입(판매) 창구가 열립니다. 시세판(buying)에 잡힌 물건은 즉시가, 나머지는 감정 → `sellRate` 비율 지급.',
+  '- 진열·시세는 세이브에 살고, 첫 입고는 자동, 물갈이는 유저의 [새로고침] 버튼입니다. `guide`에 무엇을 파는 곳인지·가격 감각의 기준을 적으세요.',
+  '- `when` 조건이 거짓이면 상점 버튼째 숨습니다 (그 판에 상점이 없는 세계).',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -2011,6 +2021,8 @@ const TAB_SLICES = {
   calendar: { keys: ['calendar'], label: '달력' },
   // 보드(v0.95) — board 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   board: { keys: ['board'], label: '보드' },
+  // 상점(v0.96) — shop 객체 통째 교체. 같은 원문 보존 규약.
+  shop: { keys: ['shop'], label: '상점' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -2029,6 +2041,7 @@ const TAB_WANT_PH = {
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
+  shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
 };
 
@@ -2061,6 +2074,7 @@ function tabItemCounts(schema, tabKey) {
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
+  else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -2537,6 +2551,27 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "topics": "게이트 공략 정보, 헌터 소문, 장비 시세",',
       '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
       '  "postsPerTurn": 2, "maxPosts": 20, "when": "not in_gate" } }',
+      '```',
+      '');
+  } else if (tabKey === 'shop') {
+    const nums2 = (schema.vars || []).filter((v) => v.type === 'int' || v.type === 'float');
+    const lists2 = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 상점 규격', ...SCHEMA_SHOP_RULES, '',
+      '## 이미 있는 변수 — currency는 숫자, buyTo/sellFrom은 목록에서만 고를 수 있습니다',
+      `- 숫자: ${nums2.map((v) => `\`${v.id}\``).join(' ') || '(없음)'}`,
+      `- 목록: ${lists2.map((v) => `\`${v.id}\``).join(' ') || '(없음)'}`,
+      '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "shop": { "label": "알터 스토어", "icon": "🛒", "currency": "coin", "buyTo": "items", "sellFrom": "items",',
+      '  "categories": ["추천", "인기", "소모품", "장비"], "grades": ["일반", "레어", "유니크"],',
+      '  "bands": { "일반": [1, 60], "레어": [60, 400], "유니크": [400, 3000] },',
+      '  "sellRate": 0.6, "when": "store_on",',
+      '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
       '');
   } else if (tabKey === 'scenario') {
@@ -3085,7 +3120,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -4082,6 +4117,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
+    [/^\$\.shop\b/, '상점', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
@@ -5326,6 +5362,85 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         delete schema.scenario; rerender();
       } }, '시나리오 삭제'),
       h('span', { class: 'sce-hint', style: 'margin:0' }, '진행 중 세이브의 막 위치는 세이브에 남습니다 — 다시 켜면 1막부터.')));
+    return wrap;
+  }
+
+  // 상점 (v0.96) — 시스템 상점. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabShop() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('shop'));
+    const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
+    const lists = schema.vars.filter((v) => v.type === 'list');
+    if (!schema.shop) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '상점 — 세계 안의 시스템 상점입니다 (알터 스토어·잡화점·포인트샵). 채팅 우상단에 버튼이 '
+        + '생기고, 카테고리 진열·구매·판매(감정)·매입 시세판이 굴러갑니다. 결제·잔액·수량은 전부 '
+        + '시스템이 처리하고, 등급 어휘·가격 밴드를 정해 두면 AI의 뇌절 진열(밴드 밖 가격, 없는 등급)을 '
+        + '시스템이 거부합니다. 거래 내역은 다음 전송에 한 번 실려 서사에 반영되고 자동으로 비워집니다.'));
+      if (!nums.length || !lists.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '상점에는 지갑(숫자 변수)과 구매품이 들어갈 목록(list 변수)이 필요합니다 — [변수] 탭에서 먼저 만드세요.'));
+        return wrap;
+      }
+      wrap.appendChild(addBtn('상점 만들기', () => {
+        schema.shop = { label: '상점', icon: '🛒', currency: nums[0].id, buyTo: lists[0].id };
+        rerender();
+      }));
+      return wrap;
+    }
+    const SH = schema.shop;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('상점 이름', bindInput(SH.label, (x) => { SH.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '상점' })),
+        pair('아이콘', bindInput(SH.icon, (x) => { SH.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🛒' })),
+        pair('지갑', bindSelect(SH.currency ?? '', nums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { SH.currency = x; rerender(); }), '결제에 쓰는 숫자 변수'),
+        pair('진열 상한', bindInput(SH.maxStock ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(30, n)); else delete SH.maxStock; rerender();
+        }, { cls: 'sce-w-s', ph: '18' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('구매품 목록', bindSelect(SH.buyTo ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { SH.buyTo = x; rerender(); }), '산 물건이 들어갈 list 변수'),
+        pair('매입 대상 목록', bindSelect(SH.sellFrom ?? '',
+          [['', '(없음 — 판매 창구 닫힘)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) SH.sellFrom = x; else delete SH.sellFrom; rerender(); }), '팔 물건을 꺼낼 list 변수'),
+        pair('매입률', bindInput(SH.sellRate ?? '', (x) => {
+          const n = parseFloat(x); if (isFinite(n)) SH.sellRate = Math.max(0.1, Math.min(1, n)); else delete SH.sellRate; rerender();
+        }, { cls: 'sce-w-s', ph: '0.5' }), '감정가 대비 지급 비율 (시세판 매치는 시세 그대로)'),
+      ),
+      pair('카테고리', bindInput((SH.categories ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 8);
+        if (arr.length) SH.categories = arr; else delete SH.categories; rerender();
+      }, { cls: 'sce-w-full', ph: '추천, 인기, 소모품, 장비 (쉼표 구분, 최대 8)' }), '패널 탭이 됩니다'),
+      pair('등급 어휘', bindInput((SH.grades ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
+        if (arr.length) SH.grades = arr; else delete SH.grades; rerender();
+      }, { cls: 'sce-w-full', ph: '일반, 레어, 유니크 — 이 밖의 등급은 시스템이 거부' }), ''),
+      pair('가격 밴드', bindInput(SH.bands ? Object.entries(SH.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
+        (x) => {
+          const bands = {};
+          for (const seg of x.split(',')) {
+            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+            if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
+          }
+          if (Object.keys(bands).length) SH.bands = bands; else delete SH.bands; rerender();
+        }, { cls: 'sce-w-full', ph: '일반 1~60, 레어 60~400, 유니크 400~3000' }),
+        '등급별 [최소~최대] — 진열가를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
+      pair('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
+        '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'), ''),
+      h('div', { class: 'sce-row' },
+        pair('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
+      ),
+      pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
+        '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('상점 삭제', () => {
+        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다.')));
     return wrap;
   }
 
@@ -8101,7 +8216,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }

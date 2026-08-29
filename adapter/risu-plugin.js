@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.6
-//@display-name SimCore (시뮬 엔진) v1.0.6 번들 적용 픽스
+//@version 1.0.7
+//@display-name SimCore (시뮬 엔진) v1.0.7 번들 적용 픽스 2
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.7 ────────────────────────────────────────────────
+// 긴급: v1.0.6으로도 번들 적용 실기 실패 (스샷 제보 2건 — "runInstall is not defined" +
+// 가져오기는 되는데 적용 단계로 못 넘어감).
+// - 뿌리 ①: installSchemaToCurrentChar·runInstall이 buildPanelSkeleton() **안**에 살았는데,
+//   더티 배너는 스켈레톤 밖 renderPanel()이 그린다 → 배너 [지금 적용]의 runInstall 참조가
+//   ReferenceError. 두 함수를 IIFE 레벨로 이사 (의존 식별자 전수 확인 — 전부 IIFE 레벨).
+//   외부 참조 전수 스캔으로 같은 유형 부재 확인 (test-bundle 스코프 회귀 단언).
+// - 뿌리 ②: 2단 확인 15초가 안내문 읽는 사이 만료 → 두 번째 클릭이 적용 대신 파일창을
+//   다시 열어 "적용이 안 된다"로 보임. 60초로 늘리고, 만료 후 클릭엔 안내를 띄운다.
 //
 // ── v1.0.6 ────────────────────────────────────────────────
 // 긴급: 번들 적용이 갓 임포트한 원본 카드에서 안 먹힘 (실사고 — "변수 하나도 없다고
@@ -6024,87 +6034,8 @@ count(목록)  has(목록, "항목")</pre>
     };
 
     // ── 봇 편집: 블록 편집기 + 설치 ──
-    /**
-     * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
-     * 기존 스키마를 다른 내용으로 덮어쓸 때는 pluginStorage에 자동 백업을 남긴다
-     * (캐릭터당 최근 5개, 키: sim:schema-backup:<chaId>:<ts>).
-     */
-    async function installSchemaToCurrentChar(parsed) {
-      const char = await Risuai.getCharacter();
-      if (!char) return { ok: false, msg: '캐릭터가 선택되지 않음' };
-      char.globalLore = char.globalLore || [];
-      const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
-      const content = JSON.stringify(parsed);
-      let backedUp = false;
-      if (existing && existing.content !== content) {
-        try {
-          const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
-          await Risuai.pluginStorage.setItem(bk, existing.content);
-          const keys = (await Risuai.pluginStorage.keys())
-            .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
-          for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
-          backedUp = true;
-        } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
-      }
-      if (existing) existing.content = content;
-      else char.globalLore.push({
-        comment: SCHEMA_LORE_COMMENT, key: ' __simcore_never__', secondkey: '',
-        insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
-      });
-      if (hasLuaBridge(char)) installLuaBridgeOn(char, parsed); // 브리지 자동 동기화 (허용 목록/변수 변경 반영)
-      await Risuai.setCharacter(char);
-      charKey = null;
-      await loadForCurrentChar();
-      // 되읽기 레이스 방어 (v0.85.1) — setCharacter 직후의 getCharacter가 아직 옛 캐릭터를
-      // 돌려줄 수 있다. 그러면 방금 쓴 스키마 대신 옛 스키마가 다시 로드되고, 더티 배너가
-      // "여전히 미반영"으로 되그려져 **적용 버튼이 안 먹히는 것처럼 보인다** (실사고 — 배너의
-      // [지금 적용]만 안 먹히는 느낌이고 나중에 누른 [캐릭터에 적용]은 된다는 신고. 시차다).
-      // 우리가 무엇을 썼는지는 아니까, 되읽은 것이 그것인지 확인하고 아니면 잠깐 뒤 다시 읽는다.
-      const want = sig(parsed);
-      for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
-        console.log('[simcore] 설치 되읽기 불일치 — 재시도', i + 1);
-        await new Promise((res) => setTimeout(res, 350));
-        charKey = null;
-        await loadForCurrentChar();
-      }
-      if (sig(schema ?? {}) !== want) console.log('[simcore] ⚠ 설치 되읽기가 계속 옛 스키마 — 리수 반영 지연');
-      return { ok: true, backedUp };
-    }
-    // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
-    // 편집 도구 화면 위에 뜨는 더티 배너의 [지금 적용]. 예전엔 작업공간 전용이라
-    // 한 칸 고칠 때마다 페이지를 옮겨야 했다 — 배너가 이미 "반영 안 됨"을 알고 있으니
-    // 거기서 바로 끝내는 게 맞다. 로직은 한 벌만 둔다.
-    async function runInstall(rep) {
-      if (!editor) return;
-      const parsed = editor.getSchema();
-      const v = validateSchema(parsed);
-      if (!v.ok) {
-        const needsFirstBuild = v.errors.some((x) => x.path === '$.vars' && x.msg === '변수가 하나도 정의되지 않음');
-        const title = needsFirstBuild
-          ? '작업본을 먼저 만들어 주세요.'
-          : `작업본에서 확인할 항목이 ${v.errors.length}개 있어요.`;
-        const copy = needsFirstBuild
-          ? '아직 설치할 내용이 없어요. [작업도구]의 [AI 어시스턴트]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
-          : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI 어시스턴트]에서 수정을 요청할 수도 있어요.';
-        const details = v.errors.map((x) => '<div class="sc-schema-validation-item">'
-          + `<span class="sc-schema-validation-path">${escapeText(x.path)}</span>`
-          + `<span class="sc-schema-validation-message">${escapeText(x.msg)}</span>`
-          + '</div>').join('');
-        rep.innerHTML = `<div class="sc-schema-validation${needsFirstBuild ? ' is-start' : ''}">`
-          + `<div class="sc-schema-validation-title">${escapeText(title)}</div>`
-          + `<div class="sc-schema-validation-copy">${escapeText(copy)}</div>`
-          + `<details><summary>세부 오류 ${v.errors.length}개</summary>${details}</details>`
-          + '</div>';
-        return;
-      }
-      const r = await installSchemaToCurrentChar(parsed);
-      if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
-      // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
-      editorChaId = currentChaId;
-      editorLoadedSig = sig(parsed);
-      rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
-      renderPanel();
-    }
+    // installSchemaToCurrentChar·runInstall은 스켈레톤 밖(IIFE 레벨)에 산다 (v1.0.7) —
+    // renderPanel의 더티 배너 [지금 적용]도 부르는데, 여기 안에 두면 그 참조가 끊긴다.
     document.getElementById('sc-install').onclick = () => runInstall(document.getElementById('sc-schema-report'));
     // 자동 백업에서 편집기로 복원 (바로 설치하지 않고 검토 후 [설치]를 누르게 함)
     document.getElementById('sc-schema-restore').onclick = async () => {
@@ -6349,6 +6280,9 @@ count(목록)  has(목록, "항목")</pre>
     let bundlePending = null; // { data, until }
     document.getElementById('sc-bundle-apply').onclick = () => {
       if (bundlePending && Date.now() < bundlePending.until) return runBundleApply();
+      // 만료 후 클릭이 조용히 파일창만 다시 열면 "적용이 안 된다"로 읽힌다 (실사고 v1.0.7 —
+      // 안내문 읽는 사이 15초가 지나 두 번째 클릭이 적용 대신 파일 선택으로 돌아갔다)
+      if (bundlePending) bundleRep().innerHTML = '<span class="status-warn">확인 시간이 지나 처음부터 다시 — 파일을 다시 선택해 주세요.</span>';
       bundlePending = null;
       document.getElementById('sc-bundle-file').click();
     };
@@ -6361,12 +6295,12 @@ count(목록)  has(목록, "항목")</pre>
         const data = JSON.parse(await file.text());
         const bad = bundleShapeError(data);
         if (bad) { rep.innerHTML = `<span class="status-bad">${escapeText(bad)}</span>`; return; }
-        bundlePending = { data, until: Date.now() + 15000 };
+        bundlePending = { data, until: Date.now() + 60000 };
         const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
         rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
           + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}.<br>`
           + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
-          + '15초 안에 [번들 가져와 교체]를 한 번 더 누르면 적용해요.</span>';
+          + '[번들 가져와 교체]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">번들 읽기 실패: ${escapeText(e.message)}</span>`;
       }
@@ -6473,6 +6407,90 @@ count(목록)  has(목록, "항목")</pre>
     editor.setSchema(copy);
     editorChaId = currentChaId;
     editorLoadedSig = sig(copy);
+  }
+  /**
+   * 현재 캐릭터에 스키마 설치 (공용 — [설치] 버튼, 세이브 가져오기 부트스트랩).
+   * 기존 스키마를 다른 내용으로 덮어쓸 때는 pluginStorage에 자동 백업을 남긴다
+   * (캐릭터당 최근 5개, 키: sim:schema-backup:<chaId>:<ts>).
+   * ⚠ 스켈레톤(buildPanelSkeleton) 안에 넣지 말 것 (v1.0.7) — renderPanel의 더티 배너
+   *   [지금 적용]이 runInstall을 부르는데, 스켈레톤 안이면 바깥에서 참조가 끊겨
+   *   "runInstall is not defined"로 죽는다 (실사고 — 번들 첫 실기에서 발견).
+   */
+  async function installSchemaToCurrentChar(parsed) {
+    const char = await Risuai.getCharacter();
+    if (!char) return { ok: false, msg: '캐릭터가 선택되지 않음' };
+    char.globalLore = char.globalLore || [];
+    const existing = char.globalLore.find((l) => l.comment === SCHEMA_LORE_COMMENT);
+    const content = JSON.stringify(parsed);
+    let backedUp = false;
+    if (existing && existing.content !== content) {
+      try {
+        const bk = `sim:schema-backup:${char.chaId ?? char.name}:${Date.now()}`;
+        await Risuai.pluginStorage.setItem(bk, existing.content);
+        const keys = (await Risuai.pluginStorage.keys())
+          .filter((k) => k.startsWith(`sim:schema-backup:${char.chaId ?? char.name}:`)).sort();
+        for (const k of keys.slice(0, -5)) await Risuai.pluginStorage.removeItem(k);
+        backedUp = true;
+      } catch (e) { console.log('[simcore] 스키마 백업 실패:', e.message); }
+    }
+    if (existing) existing.content = content;
+    else char.globalLore.push({
+      comment: SCHEMA_LORE_COMMENT, key: ' __simcore_never__', secondkey: '',
+      insertorder: 0, content, mode: 'normal', alwaysActive: false, selective: false,
+    });
+    if (hasLuaBridge(char)) installLuaBridgeOn(char, parsed); // 브리지 자동 동기화 (허용 목록/변수 변경 반영)
+    await Risuai.setCharacter(char);
+    charKey = null;
+    await loadForCurrentChar();
+    // 되읽기 레이스 방어 (v0.85.1) — setCharacter 직후의 getCharacter가 아직 옛 캐릭터를
+    // 돌려줄 수 있다. 그러면 방금 쓴 스키마 대신 옛 스키마가 다시 로드되고, 더티 배너가
+    // "여전히 미반영"으로 되그려져 **적용 버튼이 안 먹히는 것처럼 보인다** (실사고 — 배너의
+    // [지금 적용]만 안 먹히는 느낌이고 나중에 누른 [캐릭터에 적용]은 된다는 신고. 시차다).
+    // 우리가 무엇을 썼는지는 아니까, 되읽은 것이 그것인지 확인하고 아니면 잠깐 뒤 다시 읽는다.
+    const want = sig(parsed);
+    for (let i = 0; i < 3 && sig(schema ?? {}) !== want; i++) {
+      console.log('[simcore] 설치 되읽기 불일치 — 재시도', i + 1);
+      await new Promise((res) => setTimeout(res, 350));
+      charKey = null;
+      await loadForCurrentChar();
+    }
+    if (sig(schema ?? {}) !== want) console.log('[simcore] ⚠ 설치 되읽기가 계속 옛 스키마 — 리수 반영 지연');
+    return { ok: true, backedUp };
+  }
+  // 적용은 두 곳에서 부른다 (v0.78): [편집 작업공간]의 [캐릭터에 적용] 버튼과,
+  // 편집 도구 화면 위에 뜨는 더티 배너의 [지금 적용]. 예전엔 작업공간 전용이라
+  // 한 칸 고칠 때마다 페이지를 옮겨야 했다 — 배너가 이미 "반영 안 됨"을 알고 있으니
+  // 거기서 바로 끝내는 게 맞다. 로직은 한 벌만 둔다.
+  async function runInstall(rep) {
+    if (!editor) return;
+    const parsed = editor.getSchema();
+    const v = validateSchema(parsed);
+    if (!v.ok) {
+      const needsFirstBuild = v.errors.some((x) => x.path === '$.vars' && x.msg === '변수가 하나도 정의되지 않음');
+      const title = needsFirstBuild
+        ? '작업본을 먼저 만들어 주세요.'
+        : `작업본에서 확인할 항목이 ${v.errors.length}개 있어요.`;
+      const copy = needsFirstBuild
+        ? '아직 설치할 내용이 없어요. [작업도구]의 [AI 어시스턴트]에서 작업본을 만든 뒤 [캐릭터에 적용]을 다시 눌러 주세요.'
+        : '세부 내용을 확인해 수정한 뒤 다시 적용해 주세요. [AI 어시스턴트]에서 수정을 요청할 수도 있어요.';
+      const details = v.errors.map((x) => '<div class="sc-schema-validation-item">'
+        + `<span class="sc-schema-validation-path">${escapeText(x.path)}</span>`
+        + `<span class="sc-schema-validation-message">${escapeText(x.msg)}</span>`
+        + '</div>').join('');
+      rep.innerHTML = `<div class="sc-schema-validation${needsFirstBuild ? ' is-start' : ''}">`
+        + `<div class="sc-schema-validation-title">${escapeText(title)}</div>`
+        + `<div class="sc-schema-validation-copy">${escapeText(copy)}</div>`
+        + `<details><summary>세부 오류 ${v.errors.length}개</summary>${details}</details>`
+        + '</div>';
+      return;
+    }
+    const r = await installSchemaToCurrentChar(parsed);
+    if (!r.ok) { rep.innerHTML = `<span class="status-bad">${escapeText(r.msg)}</span>`; return; }
+    // 방금 설치한 내용 = 이 캐릭터의 설치본 → 편집기 기준선을 여기로 맞춘다 (더 이상 dirty 아님)
+    editorChaId = currentChaId;
+    editorLoadedSig = sig(parsed);
+    rep.innerHTML = `<span class="status-ok">✓ 설치 완료${v.warnings.length ? ` (경고 ${v.warnings.length}건)` : ''}${r.backedUp ? ' — 이전 스키마는 자동 백업됨 ([백업 복원]으로 되돌리기 가능)' : ''}</span>`;
+    renderPanel();
   }
   // 편집기 위층(✨ AI에게 맡기기)에 동봉할 봇 컨텍스트.
   // ⚙simcore(스키마) 항목은 뺀다 — 생성 프롬프트에 다이제스트로 이미 실리므로 이중 전송 금지.

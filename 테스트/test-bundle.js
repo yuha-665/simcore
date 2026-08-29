@@ -10,12 +10,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.0.6', src.includes('//@version 1.0.6'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.0\.6/.test(src), '');
+  ck('버전 1.0.7', src.includes('//@version 1.0.7'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.0\.7/.test(src), '');
   // v1.0.6 회귀 — 실사고: 갓 임포트한 원본 카드에서 번들 적용이 안 먹힘
   ck('적용 후 되읽기 레이스 재시도 (v0.85.1 결)', src.includes('리수 반영이 늦어요'), '');
   ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약)', src.includes('if (editor) loadIntoEditor(bundled);'), '');
   ck('되돌리기도 편집기 동기화', src.includes('validateSchema(p).ok && editor) loadIntoEditor(p);'), '');
+  // v1.0.7 회귀 ① — runInstall이 스켈레톤 안에 살면 renderPanel의 배너에서 참조가 끊긴다
+  // ("runInstall is not defined" 실사고). IIFE 레벨(2칸 들여쓰기) 선언을 강제한다.
+  ck('runInstall은 IIFE 레벨', /\n  async function runInstall\(/.test(src), '');
+  ck('installSchemaToCurrentChar도 IIFE 레벨', /\n  async function installSchemaToCurrentChar\(/.test(src), '');
+  // 같은 유형 전수 검출: buildPanelSkeleton 본문 안의 함수 선언이 밖에서 불리면 실패
+  {
+    const start = src.indexOf('function buildPanelSkeleton()');
+    let depth = 0, i = src.indexOf('{', start), end = -1;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (!depth) { end = i; break; } }
+    }
+    const body = src.slice(start, end);
+    const inner = [...body.matchAll(/\n    (?:async )?function ([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
+    const outside = src.slice(0, start) + src.slice(end);
+    const leaked = inner.filter((n) => outside.includes(n + '('));
+    ck(`스켈레톤 내부 함수(${inner.length}개)의 외부 참조 없음`, leaked.length === 0, leaked.join(', '));
+  }
+  // v1.0.7 회귀 ② — 2단 확인 15초는 안내문 읽는 사이 만료됐다 (적용 대신 파일창 재오픈)
+  ck('2단 확인 60초', src.includes('Date.now() + 60000'), '');
+  ck('만료 후 클릭에 안내', src.includes('확인 시간이 지나 처음부터 다시'), '');
   ck('세이브 페이지에 번들 카드', src.includes('sc-bundle-export') && src.includes('sc-bundle-apply')
     && src.includes('sc-bundle-revert'), '');
   ck('백업 키 규약', src.includes("'sim:bundle-backup:'"), '');

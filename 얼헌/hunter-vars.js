@@ -262,6 +262,15 @@ const S = {
     { id: 'break_in', label: '브레이크까지', type: 'int', init: 0, min: 0, max: 30,
       desc: 'Days until that gate breaks. The system counts it down; at 0 the break fires. Set only at the start.' },
 
+    // ── 의뢰 보드 (P8) — 게이트 보드와 같은 규약: 이벤트가 시키고 보조가 등록, 기한 자동 소멸 ──
+    // quests(진행 중)와 별개인 "수락 전 대기열". 발주처 접두가 패널 칸 분류 키다 ({offers:tags:[협회]}).
+    { id: 'offers', label: '의뢰 보드', type: 'list', init: ['[협회] 도심권 하수도 정화 지원 (80만원) @+5'],
+      maxItems: 6, itemMaxLength: 44, cmd: '의뢰보드',
+      desc: 'Association quest board — commissions NOT yet accepted. Format "[발주처] 내용 (보상) @+기한", '
+        + '발주처 is one of 협회 / 길드 / 개인 (e.g. "[길드] 마정석 30개 납품 (300만원) @+7"). '
+        + 'When the protagonist accepts one ON-SCREEN, remove it here and add it to quests. '
+        + 'An expired offer vanished — other hunters took it.' },
+
     // ── 헌터넷 (P4) — 게이트 안 통신 두절 게이트 ──
     { id: 'in_gate', label: '게이트 안', type: 'bool', init: false,
       desc: 'true while the protagonist is INSIDE a Gate/dungeon (communications cut). '
@@ -319,6 +328,7 @@ const S = {
       // 기한 퀘스트·게이트(@절대경과값) 자동 만료 — '@+3' 상대 기한이 이 시계로 굳는다.
       { list: 'quests', expire: 'elapsed' },
       { list: 'gates', expire: 'elapsed' },
+      { list: 'offers', expire: 'elapsed' },   // 기한 지난 의뢰 = 다른 헌터가 가져갔다
       // 브레이크 초읽기 — 흐른 날수만큼 깎는다. ⚠ day_prev 갱신은 반드시 이 뒤에.
       { set: 'break_in', expr: 'break_name != "" ? max(break_in - (elapsed - day_prev), 0) : 0' },
       { set: 'day_prev', expr: 'elapsed' },
@@ -474,6 +484,11 @@ const S = {
           notify: '[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth '
             + 'keeping. Show the drop moment and update the inventory (grade tag, count last). '
             + 'Coins are already settled when the store exists.' },
+        { id: 'offer_post', weight: 2, cooldown: 3,
+          notify: '[의뢰] New work hits the quest board — register 1~2 offers on the offers board, '
+            + 'format "[협회|길드|개인] 내용 (보상) @+days". Rewards follow the economy (E-rank errands '
+            + 'run 수십만원대); post a 길드 offer only if the protagonist belongs to one. '
+            + 'Mention it in one line at most — a terminal ping, not a scene.' },
         { id: 'gate_race', weight: 1, cooldown: 6,
           notify: '[경쟁] Another party is moving on the same gate or quarry — permits, speed, or a '
             + 'split negotiation. Rivals today can be allies tomorrow; prefer the registered cast.' },
@@ -600,6 +615,11 @@ const S = {
         + 'shown last turn. Base tag is the name alone; append an emotion only when their state '
         + 'visibly shifts. NEVER print an image for the protagonist/user. Characters not in the '
         + 'lists are extras: use <img="Male"> or <img="Female"> only, no emotion.' },
+    // 의뢰 보드 (P8) — 수락 전 대기열이라는 것을 메인도 알아야 한다
+    { id: 'offer_rule', when: 'true',
+      text: 'The offers board lists OPEN commissions no one has taken — picking one up requires '
+        + 'accepting it in the scene (association terminal, guild desk, the client). Only then does '
+        + 'it become an active quest. Never treat an unaccepted offer as already in progress.' },
   ],
 
   updater: {
@@ -632,6 +652,7 @@ const S = {
       { id: 'items' },
       { id: 'skills' },
       { id: 'quests' },
+      { id: 'offers' },
       { id: 'npc_notes' },
       { id: 'allies' },
       { id: 'in_gate' },
@@ -724,6 +745,18 @@ const S = {
   </div>
   <div class="hmap-foot">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>
 </div>` },
+      // 의뢰 보드 (P8) — 발주처 접두([협회]/[길드]/[개인])가 칸 분류 키
+      { id: 'questboard', label: '의뢰 보드', fab: '📋',
+        template: `
+<div class="hqb">
+  <div class="hmap-head">QUEST BOARD<span class="hmap-hz">수락은 이야기에서</span></div>
+  <div class="hqb-grid">
+    <div class="hmap-zone"><div class="hmap-zn">협회</div><div class="hmap-zd">공인 의뢰 · 토벌 지원</div>{offers:tags:[협회]}</div>
+    <div class="hmap-zone"><div class="hmap-zn">길드</div><div class="hmap-zd">소속 길드 내부 의뢰</div>{offers:tags:[길드]}</div>
+    <div class="hmap-zone"><div class="hmap-zn">개인·사설</div><div class="hmap-zd">사연 있는 일감</div>{offers:tags:[개인]}</div>
+  </div>
+  <div class="hqb-foot">진행 중 퀘스트는 상태창에 · 기한(@+N)이 지난 의뢰는 다른 헌터가 가져간다</div>
+</div>` },
     ],
     // 상태창과 같은 다크네이비/스틸블루 규격 + 지도 전용 스타일
     css: `
@@ -745,6 +778,8 @@ const S = {
   background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;
   padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }
 .hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }
+.hqb-grid { display: grid; gap: 8px; }
+.hqb-foot { color: #5f6c85; font-size: 10.5px; margin-top: 8px; }
 .hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);
   padding-top: 6px; }`,
   },
@@ -1379,6 +1414,31 @@ console.log('\n━━ P6 — 파티 편성 + 게이트 지도 + 모집판 ━━
   const rec = t.board.posts.find((x) => x.title.includes('탱커 구함'));
   ok('모집 칸 글 등록', rec && rec.cat === '모집', JSON.stringify(t.board.posts.map((x) => x.cat)));
   ok('어휘 밖 칸 → 첫 칸(자유) 보정', t.board.posts.find((x) => x.title === '아무말').cat === '자유', '');
+}
+
+console.log('\n━━ P8 — 의뢰 보드 (수락 전 대기열) ━━');
+{
+  let t = fresh();
+  ok('시드 의뢰 1건 ([협회] 접두)', t.vars.offers.length === 1 && t.vars.offers[0].startsWith('[협회]'),
+    JSON.stringify(t.vars.offers));
+  t.vars.offers = ['[협회] 하수도 정화 (80만원) @+5', '[길드] 마정석 납품 (300만원) @+7', '[개인] 실종자 수색 (150만원) @+3'];
+  const tpl = S.party.tabs.find((x) => x.id === 'questboard').template;
+  const html = SC.require('render').renderPanelTemplate(S, t, tpl);
+  const col = (name) => html.split(`>${name}<`)[1].split('hmap-zone')[0];
+  ok('발주처별 칸 분류 ([협회]/[길드]/[개인] 접두 필터)',
+    col('협회').includes('하수도') && !col('협회').includes('납품')
+    && col('길드').includes('납품') && col('개인·사설').includes('실종자'), '');
+  const leftover = (html.match(/\{[a-z_]+(?::[^}]*)?\}/g) || []);
+  ok('미치환 자리표시자 없음', leftover.length === 0, leftover.join(' '));
+  // 기한 만료 — 보조 add 경로로 등록해야 상대 기한(@+N)이 그 시점에 굳는다 (quests와 같은 규약)
+  let u = fresh(); u.vars.offers = [];
+  ({ st: u } = turn(u, { offers: { add: ['[개인] 실종자 수색 (150만원) @+3', '[길드] 마정석 납품 (300만원) @+7'] } }, 119));
+  ({ st: u } = turn(u, { skip_day: 4 }, 120));
+  ({ st: u } = turn(u, {}, 121));
+  ok('나흘 뒤 @+3 의뢰만 소멸', !u.vars.offers.some((o) => o.includes('실종자'))
+    && u.vars.offers.some((o) => o.includes('납품')), JSON.stringify(u.vars.offers));
+  ok('의뢰 게시 이벤트 존재', !!S.rules.randomEvents.table.find((r) => r.id === 'offer_post'), '');
+  ok('수락 규칙 지시문 존재', S.directives.some((d) => d.id === 'offer_rule'), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

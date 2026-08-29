@@ -428,6 +428,18 @@
       "desc": "Days until that gate breaks. The system counts it down; at 0 the break fires. Set only at the start."
     },
     {
+      "id": "offers",
+      "label": "의뢰 보드",
+      "type": "list",
+      "init": [
+        "[협회] 도심권 하수도 정화 지원 (80만원) @+5"
+      ],
+      "maxItems": 6,
+      "itemMaxLength": 44,
+      "cmd": "의뢰보드",
+      "desc": "Association quest board — commissions NOT yet accepted. Format \"[발주처] 내용 (보상) @+기한\", 발주처 is one of 협회 / 길드 / 개인 (e.g. \"[길드] 마정석 30개 납품 (300만원) @+7\"). When the protagonist accepts one ON-SCREEN, remove it here and add it to quests. An expired offer vanished — other hunters took it."
+    },
+    {
       "id": "in_gate",
       "label": "게이트 안",
       "type": "bool",
@@ -720,6 +732,10 @@
       },
       {
         "list": "gates",
+        "expire": "elapsed"
+      },
+      {
+        "list": "offers",
         "expire": "elapsed"
       },
       {
@@ -1037,6 +1053,12 @@
           "notify": "[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth keeping. Show the drop moment and update the inventory (grade tag, count last). Coins are already settled when the store exists."
         },
         {
+          "id": "offer_post",
+          "weight": 2,
+          "cooldown": 3,
+          "notify": "[의뢰] New work hits the quest board — register 1~2 offers on the offers board, format \"[협회|길드|개인] 내용 (보상) @+days\". Rewards follow the economy (E-rank errands run 수십만원대); post a 길드 offer only if the protagonist belongs to one. Mention it in one line at most — a terminal ping, not a scene."
+        },
+        {
           "id": "gate_race",
           "weight": 1,
           "cooldown": 6,
@@ -1330,6 +1352,11 @@
       "id": "img_rules",
       "when": "true",
       "text": "Image rules: whenever a listed character appears, is spotlighted, or speaks, put one <img=\"…\"> tag in that character's paragraph — one tag per character, even if none were shown last turn. Base tag is the name alone; append an emotion only when their state visibly shifts. NEVER print an image for the protagonist/user. Characters not in the lists are extras: use <img=\"Male\"> or <img=\"Female\"> only, no emotion."
+    },
+    {
+      "id": "offer_rule",
+      "when": "true",
+      "text": "The offers board lists OPEN commissions no one has taken — picking one up requires accepting it in the scene (association terminal, guild desk, the client). Only then does it become an active quest. Never treat an unaccepted offer as already in progress."
     }
   ],
   "updater": {
@@ -1431,6 +1458,9 @@
       },
       {
         "id": "quests"
+      },
+      {
+        "id": "offers"
       },
       {
         "id": "npc_notes"
@@ -1552,9 +1582,15 @@
         "label": "게이트 지도",
         "fab": "🗺️",
         "template": "\n<div class=\"hmap\">\n  <div class=\"hmap-head\">SEOUL GATE MAP<span class=\"hmap-hz\">위험도 {hazard}</span></div>\n  <div class=\"hmap-grid\">\n    <div class=\"hmap-zone hmz-nw\"><div class=\"hmap-zn\">서북권</div><div class=\"hmap-zd\">은평 · 서대문 · 마포</div>{gates:tags:서북권}</div>\n    <div class=\"hmap-zone hmz-ne\"><div class=\"hmap-zn\">동북권</div><div class=\"hmap-zd\">성북 · 노원 · 강북</div>{gates:tags:동북권}</div>\n    <div class=\"hmap-zone hmz-ct\"><div class=\"hmap-zn\">도심권</div><div class=\"hmap-zd\">종로 · 중구 · 용산</div>{gates:tags:도심권}</div>\n    <div class=\"hmap-zone hmz-sw\"><div class=\"hmap-zn\">서남권</div><div class=\"hmap-zd\">양천 · 구로 · 영등포 · 관악</div>{gates:tags:서남권}</div>\n    <div class=\"hmap-zone hmz-se\"><div class=\"hmap-zn\">동남권</div><div class=\"hmap-zd\">서초 · 강남 · 송파 · 강동</div>{gates:tags:동남권}</div>\n  </div>\n  <div class=\"hmap-foot\">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>\n</div>"
+      },
+      {
+        "id": "questboard",
+        "label": "의뢰 보드",
+        "fab": "📋",
+        "template": "\n<div class=\"hqb\">\n  <div class=\"hmap-head\">QUEST BOARD<span class=\"hmap-hz\">수락은 이야기에서</span></div>\n  <div class=\"hqb-grid\">\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">협회</div><div class=\"hmap-zd\">공인 의뢰 · 토벌 지원</div>{offers:tags:[협회]}</div>\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">길드</div><div class=\"hmap-zd\">소속 길드 내부 의뢰</div>{offers:tags:[길드]}</div>\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">개인·사설</div><div class=\"hmap-zd\">사연 있는 일감</div>{offers:tags:[개인]}</div>\n  </div>\n  <div class=\"hqb-foot\">진행 중 퀘스트는 상태창에 · 기한(@+N)이 지난 의뢰는 다른 헌터가 가져간다</div>\n</div>"
       }
     ],
-    "css": "\n.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }\n.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }\n.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\n  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }\n.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }\n.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }\n.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;\n  background: rgba(10,12,18,.55); min-height: 72px; }\n.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;\n  letter-spacing: 1px; font-size: 13px; }\n.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }\n.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;\n  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;\n  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }\n.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }\n.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);\n  padding-top: 6px; }"
+    "css": "\n.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }\n.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }\n.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\n  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }\n.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }\n.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }\n.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;\n  background: rgba(10,12,18,.55); min-height: 72px; }\n.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;\n  letter-spacing: 1px; font-size: 13px; }\n.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }\n.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;\n  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;\n  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }\n.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }\n.hqb-grid { display: grid; gap: 8px; }\n.hqb-foot { color: #5f6c85; font-size: 10.5px; margin-top: 8px; }\n.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);\n  padding-top: 6px; }"
   },
   "shop": {
     "label": "알터 스토어",

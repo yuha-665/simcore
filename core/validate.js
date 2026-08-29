@@ -561,6 +561,9 @@ function validateSchema(schema) {
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  // 위치 (v1.0.2) — 렌더 위치만 바꾼다 (저장 마커는 항상 끝). 값이 틀리면 조용히 하단이 된다
+  if (ui.position != null && !['top', 'bottom'].includes(ui.position))
+    err('$.statusUI.position', `position은 top|bottom (현재: '${ui.position}')`);
   // 변화 로그 표시 (v0.72) — 값이 틀리면 조용히 기본값(collapsed)으로 그려지므로 알려 준다
   if (ui.changeLog != null && !['open', 'collapsed', 'off'].includes(ui.changeLog))
     err('$.statusUI.changeLog', `changeLog는 open|collapsed|off (현재: '${ui.changeLog}')`);

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.1
-//@display-name SimCore (시뮬 엔진) v1.0.1 스트리밍 중복호출 픽스
+//@version 1.0.2
+//@display-name SimCore (시뮬 엔진) v1.0.2 상태창 위치 선택
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.2 ────────────────────────────────────────────────
+// 상태창 위치 선택 (UI 개조 협업자 요청) — statusUI.position: 'bottom'(기본) | 'top'.
+// - 저장 마커는 **항상 본문 끝 고정** (스트리밍 부분 반환·마커 유실 복구·beforeRequest 제거가
+//   전부 "끝" 전제) — display 핸들러가 렌더할 때만 top이면 마커 자리를 비우고 본문 앞에 얹는다.
+// - [편집기] [상태창] 탭에 '상태창 위치' 선택 (규칙 #3) + AI 규격서(position 행) + 탭 슬라이스
+//   subOpt에 position (탭 내보내기/가져오기 왕복에 실림). 검증: top|bottom 외 값은 오류.
+// - '중단'은 없다 — 본문 중간의 기준을 정의할 수 없다.
 //
 // ── v1.0.1 ────────────────────────────────────────────────
 // 긴급: 스트리밍 중 보조 중복 호출 + 보조 출력 상한 미적용 (협업자 로그 제보, 리수 소스 확증).
@@ -3312,7 +3320,7 @@
   // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
   await Risuai.addRisuScriptHandler('display', (content) => {
     if (!session || !content.includes('⟦simcore:')) return content;
-    return content.replace(MARKER_RE, (_, idxStr) => {
+    const renderFor = (idxStr) => {
       try {
         // 마지막 메시지의 마커는 실시간 상태, 과거 마커는 해당 시점 스냅샷 (v1.0 #1 —
         // v0.11부터 예고만 있던 것. 캐시에 없으면 현재 상태 폴백 + 배경 적재).
@@ -3341,7 +3349,16 @@
         console.log('[simcore] display 오류:', e.message);
         return '';
       }
-    });
+    };
+    // 위치 (v1.0.2) — statusUI.position: 'top'이면 상태창을 본문 **앞**에 그린다.
+    // 저장되는 마커는 항상 끝 고정 (스트리밍 부분 반환·마커 유실 복구·beforeRequest 제거가
+    // 전부 "끝에 있다"를 전제) — 옮기는 건 렌더 시점의 이 분기뿐이다.
+    if (schema?.statusUI?.position === 'top') {
+      const blocks = [];
+      const stripped = content.replace(MARKER_RE, (_, idxStr) => { blocks.push(renderFor(idxStr)); return ''; });
+      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped;
+    }
+    return content.replace(MARKER_RE, (_, idxStr) => renderFor(idxStr));
   });
 
   // (상태창 CSS는 메시지 내 <style>로 자체 포함되므로 메인 DOM 스타일 주입 불필요)

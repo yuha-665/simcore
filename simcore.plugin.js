@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.1
-//@display-name SimCore (시뮬 엔진) v1.0.1 스트리밍 중복호출 픽스
+//@version 1.0.2
+//@display-name SimCore (시뮬 엔진) v1.0.2 상태창 위치 선택
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.2 ────────────────────────────────────────────────
+// 상태창 위치 선택 (UI 개조 협업자 요청) — statusUI.position: 'bottom'(기본) | 'top'.
+// - 저장 마커는 **항상 본문 끝 고정** (스트리밍 부분 반환·마커 유실 복구·beforeRequest 제거가
+//   전부 "끝" 전제) — display 핸들러가 렌더할 때만 top이면 마커 자리를 비우고 본문 앞에 얹는다.
+// - [편집기] [상태창] 탭에 '상태창 위치' 선택 (규칙 #3) + AI 규격서(position 행) + 탭 슬라이스
+//   subOpt에 position (탭 내보내기/가져오기 왕복에 실림). 검증: top|bottom 외 값은 오류.
+// - '중단'은 없다 — 본문 중간의 기준을 정의할 수 없다.
 //
 // ── v1.0.1 ────────────────────────────────────────────────
 // 긴급: 스트리밍 중 보조 중복 호출 + 보조 출력 상한 미적용 (협업자 로그 제보, 리수 소스 확증).
@@ -3259,6 +3267,9 @@ function validateSchema(schema) {
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  // 위치 (v1.0.2) — 렌더 위치만 바꾼다 (저장 마커는 항상 끝). 값이 틀리면 조용히 하단이 된다
+  if (ui.position != null && !['top', 'bottom'].includes(ui.position))
+    err('$.statusUI.position', `position은 top|bottom (현재: '${ui.position}')`);
   // 변화 로그 표시 (v0.72) — 값이 틀리면 조용히 기본값(collapsed)으로 그려지므로 알려 준다
   if (ui.changeLog != null && !['open', 'collapsed', 'off'].includes(ui.changeLog))
     err('$.statusUI.changeLog', `changeLog는 open|collapsed|off (현재: '${ui.changeLog}')`);
@@ -11290,6 +11301,7 @@ const SCHEMA_STATUS_RULES = [
   '- `"showWhen"`은 그 줄의 표시 조건입니다. 평소엔 0이고 사건이 있을 때만 의미가 생기는 값(질투·부상·수배)에 쓰세요.',
   '- 그룹 `"visibility"`: `show`(기본) / `collapsed`(접어둠 — 자주 안 보는 묶음) / `hidden`(화면에서 감춤 — 규칙만 쓰는 내부 수치).',
   '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 그룹이 둘 이상일 때만** 동작합니다.',
+  '- `"position"`: `bottom`(기본, 본문 아래) / `top`(본문 위 — 수치부터). 상태창이 메시지 어디에 그려질지입니다.',
   '- 색은 조건식으로 줍니다: `"color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'"`. '
   + '**색 코드는 작은따옴표**로 감싸세요 — 편집기의 색 고르개가 그 형태만 되읽습니다.',
   '- ⚠ **날짜·시각 줄을 직접 만들지 마세요.** `day` 같은 변수를 새로 요구하지 말고, 계약표에 `date`·`clock`·`weekday`가 '
@@ -12138,7 +12150,7 @@ const TAB_SLICES = {
   // 상태창(v0.62) — 구조 창구. statusUI를 통째로 갈아끼우면 제작자가 쌓은 꾸미기
   // (customCSS·커스텀 템플릿·테마)까지 날아가므로, groups 하나만 갈아끼우고 layout만 덤으로 받는다.
   // 꾸미기는 👁 결과 탭의 🎨 창구가 따로 맡는다 — 같은 절을 두 창구가 겹치지 않게 나눠 쥔다.
-  status: { keys: ['statusUI'], sub: 'groups', subOpt: ['layout'], label: '상태창' },
+  status: { keys: ['statusUI'], sub: 'groups', subOpt: ['layout', 'position'], label: '상태창' },
   // 달력(v0.63.1) — calendar 객체 통째 교체. css는 제작자 손값이라 원문 보존을 요청서가
   // 못박는다. 일정 목록 변수·만료 규칙은 vars/rules 절 몫 — 📅 카드가 순차로 나눠 맡긴다.
   calendar: { keys: ['calendar'], label: '달력' },
@@ -13898,6 +13910,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         (x) => { ui.theme = x; rerender(); })),
       statusField('메시지 표시', bindCheck(ui.collapsible !== false,
         (x) => { ui.collapsible = x; rerender(); }, '상태창 접기 허용')),
+      // 위치 (v1.0.2) — 렌더 위치만 바꾼다. 저장 마커는 항상 본문 끝 고정 (스트리밍·복구 전제)
+      statusField('상태창 위치', bindSelect(ui.position ?? 'bottom', [
+        ['bottom', '본문 아래 (기본)'], ['top', '본문 위 — 수치부터 보임'],
+      ], (x) => { ui.position = x === 'bottom' ? undefined : x; rerender(); }),
+      '긴 응답에서 스크롤 없이 수치부터 확인하고 싶으면 위로.'),
       // 변화 로그 (v0.72) — 엔진이 실제로 커밋한 변화의 영수증. 서사가 뭘 바꿨는지
       // 매 턴 눈으로 확인하고 싶으면 펼침으로 (수동 보정 판단에도 도움이 된다)
       statusField('변화 로그', bindSelect(ui.changeLog ?? 'collapsed', [
@@ -25195,7 +25212,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
   await Risuai.addRisuScriptHandler('display', (content) => {
     if (!session || !content.includes('⟦simcore:')) return content;
-    return content.replace(MARKER_RE, (_, idxStr) => {
+    const renderFor = (idxStr) => {
       try {
         // 마지막 메시지의 마커는 실시간 상태, 과거 마커는 해당 시점 스냅샷 (v1.0 #1 —
         // v0.11부터 예고만 있던 것. 캐시에 없으면 현재 상태 폴백 + 배경 적재).
@@ -25224,7 +25241,16 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         console.log('[simcore] display 오류:', e.message);
         return '';
       }
-    });
+    };
+    // 위치 (v1.0.2) — statusUI.position: 'top'이면 상태창을 본문 **앞**에 그린다.
+    // 저장되는 마커는 항상 끝 고정 (스트리밍 부분 반환·마커 유실 복구·beforeRequest 제거가
+    // 전부 "끝에 있다"를 전제) — 옮기는 건 렌더 시점의 이 분기뿐이다.
+    if (schema?.statusUI?.position === 'top') {
+      const blocks = [];
+      const stripped = content.replace(MARKER_RE, (_, idxStr) => { blocks.push(renderFor(idxStr)); return ''; });
+      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped;
+    }
+    return content.replace(MARKER_RE, (_, idxStr) => renderFor(idxStr));
   });
 
   // (상태창 CSS는 메시지 내 <style>로 자체 포함되므로 메인 DOM 스타일 주입 불필요)

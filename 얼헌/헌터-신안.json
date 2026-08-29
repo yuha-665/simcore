@@ -1,0 +1,683 @@
+{
+  "simcore": "0.1",
+  "meta": {
+    "name": "얼터헌터"
+  },
+  "time": {
+    "start": "2026-03-02 08:00",
+    "advance": "explicit",
+    "calendar": "gregorian",
+    "format": {
+      "date": "YYYY-MM-DD"
+    },
+    "weekdays": [
+      "월",
+      "화",
+      "수",
+      "목",
+      "금",
+      "토",
+      "일"
+    ],
+    "seasons": [
+      "봄",
+      "여름",
+      "가을",
+      "겨울"
+    ],
+    "expose": [
+      "date",
+      "weekday",
+      "season",
+      "elapsed"
+    ]
+  },
+  "vars": [
+    {
+      "id": "skip_day",
+      "label": "흐른 날",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 14,
+      "desc": "Days that passed in this response. Next morning = 1, three days later = 3. Leave 0 while the scene stays within the same day — the date and every day-counted timer move only with this."
+    },
+    {
+      "id": "time",
+      "label": "시각",
+      "type": "enum",
+      "init": "🕗아침",
+      "enum": [
+        "🌅새벽",
+        "🕗아침",
+        "🕛낮",
+        "🌆저녁",
+        "🌙밤"
+      ]
+    },
+    {
+      "id": "weather",
+      "label": "날씨",
+      "type": "enum",
+      "init": "☀️맑음",
+      "enum": [
+        "☀️맑음",
+        "⛅흐림",
+        "🌧비",
+        "⛈폭우",
+        "❄️눈",
+        "🌫안개",
+        "🔥폭염",
+        "🥶한파"
+      ]
+    },
+    {
+      "id": "location",
+      "label": "위치",
+      "type": "text",
+      "init": "서울 · 헌터 협회 본부",
+      "maxLength": 30,
+      "desc": "Where the scene is. Inside a Gate write \"게이트 내부 — <던전 이름>\"."
+    },
+    {
+      "id": "level",
+      "label": "레벨",
+      "type": "int",
+      "init": 1,
+      "min": 1,
+      "max": 99,
+      "desc": "시스템이 올린다 (EXP가 차면 자동 레벨업). 직접 바꾸지 마라."
+    },
+    {
+      "id": "exp",
+      "label": "EXP",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "EXP earned this turn from monster kills, quest completion, training. Write the GAIN only — level-ups are handled by the system, never touch level yourself. Typical kills: E-rank monster 10~30, D 40~80, C 100~200. No evidence in the scene = no EXP."
+    },
+    {
+      "id": "stat_pts",
+      "label": "스탯 포인트",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "Unspent points (+2 per level-up, system-granted). Spend ONLY when the narrative says training/allocation happened: lower this and raise the matching stat by the same amount."
+    },
+    {
+      "id": "str",
+      "label": "근력",
+      "type": "int",
+      "init": 10,
+      "min": 1,
+      "max": 250,
+      "cmd": "근력",
+      "desc": "Raise only by spending stat_pts (same amount down there) or explicit narrative growth."
+    },
+    {
+      "id": "con",
+      "label": "체질",
+      "type": "int",
+      "init": 10,
+      "min": 1,
+      "max": 250,
+      "cmd": "체질",
+      "desc": "Same rule as str. Max HP = CON×10."
+    },
+    {
+      "id": "agi",
+      "label": "민첩",
+      "type": "int",
+      "init": 10,
+      "min": 1,
+      "max": 250,
+      "cmd": "민첩",
+      "desc": "Same rule as str. Max SP = AGI×10."
+    },
+    {
+      "id": "intel",
+      "label": "지능",
+      "type": "int",
+      "init": 10,
+      "min": 1,
+      "max": 250,
+      "cmd": "지능",
+      "desc": "Same rule as str. Max MP = INT×10."
+    },
+    {
+      "id": "sen",
+      "label": "감각",
+      "type": "int",
+      "init": 10,
+      "min": 1,
+      "max": 250,
+      "cmd": "감각",
+      "desc": "Same rule as str."
+    },
+    {
+      "id": "hp",
+      "label": "HP",
+      "type": "int",
+      "init": 100,
+      "min": 0,
+      "desc": "Life. 0 = incapacitated. Damage taken and healing, as the narrative shows. Cap = CON×10 (system clamps)."
+    },
+    {
+      "id": "mp",
+      "label": "MP",
+      "type": "int",
+      "init": 100,
+      "min": 0,
+      "desc": "Mana. Skill/magic use drains it; rest and potions restore. Below 30% = severe strain, casting may fail."
+    },
+    {
+      "id": "sp",
+      "label": "SP",
+      "type": "int",
+      "init": 100,
+      "min": 0,
+      "desc": "Stamina. Exertion and physical skills drain it; light movement does not. Below 30% = severe strain."
+    },
+    {
+      "id": "license",
+      "label": "헌터 라이선스",
+      "type": "enum",
+      "init": "E",
+      "cmd": "랭크",
+      "enum": [
+        "미각성",
+        "E",
+        "D",
+        "C",
+        "B",
+        "A",
+        "S"
+      ],
+      "desc": "Association-certified rank. Change ONLY when the narrative completes an official evaluation/promotion — raw power growth alone does not move this."
+    },
+    {
+      "id": "job",
+      "label": "클래스",
+      "type": "text",
+      "init": "없음",
+      "maxLength": 30,
+      "cmd": "클래스",
+      "desc": "Class name with disclosure rank, e.g. \"궁수 (일반)\", \"저승 무사 (히든)\". 없음 if none."
+    },
+    {
+      "id": "guild",
+      "label": "소속",
+      "type": "text",
+      "init": "무소속",
+      "maxLength": 24,
+      "cmd": "소속",
+      "desc": "Guild/team/agency the hunter belongs to. 무소속 if none."
+    },
+    {
+      "id": "fame",
+      "label": "명성",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 100,
+      "desc": "How known the hunter is in hunter society and on HunterNet. Rises with public feats, falls with scandals. A rookie stays under 10 for a long while."
+    },
+    {
+      "id": "weapons",
+      "label": "무기",
+      "type": "list",
+      "init": [],
+      "maxItems": 2,
+      "itemMaxLength": 30,
+      "cmd": "무기",
+      "desc": "Equipped weapons, max 2 — \"철제 활 (일반)\". Swap = remove old + add new. Stored gear goes to items."
+    },
+    {
+      "id": "accessories",
+      "label": "장신구",
+      "type": "list",
+      "init": [],
+      "maxItems": 2,
+      "itemMaxLength": 30,
+      "desc": "Equipped accessories, max 2, same format as weapons."
+    },
+    {
+      "id": "armor",
+      "label": "방어구",
+      "type": "text",
+      "init": "없음",
+      "maxLength": 30,
+      "desc": "Equipped armor — \"강화 전술복 (일반)\". 없음 if none."
+    },
+    {
+      "id": "items",
+      "label": "소지품",
+      "type": "list",
+      "init": [
+        "하급 회복 포션 2"
+      ],
+      "maxItems": 10,
+      "itemMaxLength": 30,
+      "cmd": "아이템",
+      "desc": "Carried items with count LAST — \"하급 회복 포션 3\", \"고블린 마정석 5\". Consuming/looting updates the count (remove old entry, add updated one). Money is NOT an item."
+    },
+    {
+      "id": "skills",
+      "label": "스킬",
+      "type": "list",
+      "init": [],
+      "maxItems": 14,
+      "itemMaxLength": 24,
+      "cmd": "스킬",
+      "desc": "Learned skills, name only — no numbers. Skills come from skill books, training, Awakening moments."
+    },
+    {
+      "id": "quests",
+      "label": "퀘스트",
+      "type": "list",
+      "init": [],
+      "maxItems": 5,
+      "itemMaxLength": 48,
+      "cmd": "퀘스트",
+      "desc": "Active quests — \"제목 — 목표 (보상)\". No progress numbers inside; narrate progress instead. Remove on completion/failure. A deadline may be tagged \"@+days\" — the system expires it."
+    },
+    {
+      "id": "won",
+      "label": "원화",
+      "type": "int",
+      "init": 500000,
+      "min": 0,
+      "format": "{v}원",
+      "cmd": "돈",
+      "desc": "Korean won. Income needs on-screen evidence (quest payout, sale, salary) — never invent it. Spending follows real-world prices; hunter gear runs millions."
+    },
+    {
+      "id": "coin",
+      "label": "코인",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "format": "{v}C",
+      "cmd": "코인",
+      "desc": "Alter Store currency (only meaningful while the store exists in this run). Earned from monster kills and quest completion, small amounts (E-rank kill: 1~5)."
+    },
+    {
+      "id": "downed",
+      "label": "(내부) 전투불능",
+      "type": "bool",
+      "init": false,
+      "desc": "시스템 래치 — HP 0 이벤트가 세운다. 직접 바꾸지 마라."
+    },
+    {
+      "id": "promo_seen",
+      "label": "(내부) 승급 알림",
+      "type": "bool",
+      "init": false,
+      "desc": "시스템 래치. 직접 바꾸지 마라."
+    },
+    {
+      "id": "store_on",
+      "label": "알터 스토어",
+      "type": "bool",
+      "init": false,
+      "cmd": "스토어",
+      "desc": "유저 정책값 (원본 lore 토글). 켜면 코인·알터 스토어 서사가 활성. 시작 후 바꾸려면 /스토어."
+    },
+    {
+      "id": "faction_on",
+      "label": "적대 세력",
+      "type": "bool",
+      "init": true,
+      "cmd": "적대세력",
+      "desc": "유저 정책값 (원본 faction 토글). 불신론자·이계 숭배단 서사 축."
+    },
+    {
+      "id": "action_on",
+      "label": "액션 서사",
+      "type": "bool",
+      "init": true,
+      "cmd": "액션",
+      "desc": "유저 정책값 (원본 scenario 토글). 끄면 일상물 — 게이트 이벤트 빈도가 내려간다."
+    },
+    {
+      "id": "hazard",
+      "label": "위험도",
+      "type": "int",
+      "init": 30,
+      "min": 0,
+      "max": 100,
+      "desc": "세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라."
+    }
+  ],
+  "derived": [
+    {
+      "id": "hp_max",
+      "label": "최대 HP",
+      "expr": "con * 10"
+    },
+    {
+      "id": "mp_max",
+      "label": "최대 MP",
+      "expr": "intel * 10"
+    },
+    {
+      "id": "sp_max",
+      "label": "최대 SP",
+      "expr": "agi * 10"
+    },
+    {
+      "id": "exp_need",
+      "label": "필요 EXP",
+      "expr": "(level + 1) * 100"
+    },
+    {
+      "id": "mainstat",
+      "label": "주 스탯",
+      "expr": "max(max(str, con), max(max(agi, intel), sen))"
+    },
+    {
+      "id": "rank_est",
+      "label": "측정 등급",
+      "expr": "(mainstat >= 100 ? 'S' : (mainstat >= 80 ? 'A' : (mainstat >= 60 ? 'B' : (mainstat >= 40 ? 'C' : (mainstat >= 25 ? 'D' : 'E')))))"
+    },
+    {
+      "id": "est_n",
+      "label": "(내부) 측정 등급 수치",
+      "expr": "(mainstat >= 100 ? 6 : (mainstat >= 80 ? 5 : (mainstat >= 60 ? 4 : (mainstat >= 40 ? 3 : (mainstat >= 25 ? 2 : 1)))))"
+    },
+    {
+      "id": "lic_n",
+      "label": "(내부) 라이선스 수치",
+      "expr": "(license == \"S\" ? 6 : (license == \"A\" ? 5 : (license == \"B\" ? 4 : (license == \"C\" ? 3 : (license == \"D\" ? 2 : (license == \"E\" ? 1 : 0))))))"
+    },
+    {
+      "id": "hp_w",
+      "label": "(표시) HP비",
+      "expr": "round(hp * 100 / max(hp_max, 1))"
+    },
+    {
+      "id": "mp_w",
+      "label": "(표시) MP비",
+      "expr": "round(mp * 100 / max(mp_max, 1))"
+    },
+    {
+      "id": "sp_w",
+      "label": "(표시) SP비",
+      "expr": "round(sp * 100 / max(sp_max, 1))"
+    },
+    {
+      "id": "exp_w",
+      "label": "(표시) EXP비",
+      "expr": "round(min(exp, exp_need) * 100 / max(exp_need, 1))"
+    }
+  ],
+  "rules": {
+    "onTurn": [
+      {
+        "set": "hp",
+        "expr": "min(hp, hp_max)"
+      },
+      {
+        "set": "mp",
+        "expr": "min(mp, mp_max)"
+      },
+      {
+        "set": "sp",
+        "expr": "min(sp, sp_max)"
+      },
+      {
+        "list": "quests",
+        "expire": "elapsed"
+      }
+    ],
+    "events": [
+      {
+        "id": "levelup",
+        "when": "exp >= exp_need and level < 99",
+        "effects": [
+          {
+            "set": "exp",
+            "expr": "exp - exp_need"
+          },
+          {
+            "set": "level",
+            "expr": "level + 1"
+          },
+          {
+            "set": "stat_pts",
+            "expr": "stat_pts + 2"
+          }
+        ],
+        "notify": "[시스템] 레벨 업 — 스탯 포인트 +2. 본문에 `[시스템] 레벨 업!` 한 줄로 짧게 연출하라. 포인트 분배는 유저의 몫이니 마음대로 분배하지 마라."
+      },
+      {
+        "id": "down",
+        "when": "hp <= 0 and not downed",
+        "effects": [
+          {
+            "set": "downed",
+            "expr": "true"
+          }
+        ],
+        "notify": "HP가 0이 됐다 — 전투불능이다. 의식을 잃거나 몸을 가눌 수 없는 상태를 서사에 반영하라. 죽음으로 확정하지는 마라 (구조·응급처치의 여지는 서사가 정한다)."
+      },
+      {
+        "id": "down_clear",
+        "when": "hp > 0 and downed",
+        "effects": [
+          {
+            "set": "downed",
+            "expr": "false"
+          }
+        ],
+        "notify": "의식이 돌아왔다 — 회복의 순간을 서사에 반영하라."
+      },
+      {
+        "id": "promo",
+        "when": "est_n > lic_n and lic_n >= 1 and not promo_seen",
+        "effects": [
+          {
+            "set": "promo_seen",
+            "expr": "true"
+          }
+        ],
+        "notify": "측정 수치가 현재 라이선스 등급 구간을 넘어섰다. 협회 재측정(승급 심사)을 받을 자격이 생겼다 — 주변 인물이나 협회 단말 알림으로 자연스럽게 흘려라. 심사 없이 등급이 바뀌지는 않는다."
+      },
+      {
+        "id": "promo_clear",
+        "when": "(est_n <= lic_n or lic_n < 1) and promo_seen",
+        "effects": [
+          {
+            "set": "promo_seen",
+            "expr": "false"
+          }
+        ]
+      }
+    ]
+  },
+  "directives": [
+    {
+      "id": "no_unmeasurable",
+      "when": "true",
+      "text": "\"측정 불가\" 판정을 남발하지 마라 — 미지의 존재라도 대부분 S 구간 안에서 수치화된다. 수치·랭크의 최종 근거는 상태 블록이다."
+    },
+    {
+      "id": "downed_now",
+      "when": "downed",
+      "text": "주인공은 전투불능 상태다 — 스스로 움직일 수 없다. 자력 탈출·반격을 묘사하지 마라."
+    },
+    {
+      "id": "hp_low",
+      "when": "hp > 0 and hp <= hp_max * 3 / 10",
+      "text": "HP가 30% 아래다 — 중상이다. 통증·출혈·움직임 제약이 서사에 배어야 한다."
+    },
+    {
+      "id": "strain",
+      "when": "(mp <= mp_max * 3 / 10 or sp <= sp_max * 3 / 10) and hp > hp_max * 3 / 10",
+      "text": "MP 또는 SP가 30% 아래다 — 극심한 소모 상태. 격한 행동·시전은 실패하거나 대가를 치른다."
+    },
+    {
+      "id": "broke",
+      "when": "won <= 0",
+      "text": "수중에 돈이 한 푼도 없다 — 결제·구매가 필요한 장면은 그 사실에 부딪혀야 한다."
+    },
+    {
+      "id": "pts_idle",
+      "when": "stat_pts >= 4",
+      "text": "미분배 스탯 포인트가 {stat_pts}점 쌓여 있다. 분배는 유저의 선택이다 — 대신 정하지 말고, 수련·정비 장면에서 가볍게 상기시켜라."
+    }
+  ],
+  "updater": {
+    "contextTurns": 2,
+    "guide": "헌터물 기록 기준: 게이트 안 전투가 있었으면 그 턴에 HP/MP/SP 소모·소모품 사용·전리품(마정석 등 items)·EXP를 함께 정산하라. 근거 없는 수입·EXP는 적지 마라. 시간(skip_day)은 날짜가 실제로 넘어갔을 때만. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다.",
+    "allow": [
+      {
+        "id": "skip_day",
+        "maxGain": 14
+      },
+      {
+        "id": "time"
+      },
+      {
+        "id": "weather"
+      },
+      {
+        "id": "location",
+        "maxLength": 30
+      },
+      {
+        "id": "exp",
+        "maxGain": 400,
+        "maxLoss": 0
+      },
+      {
+        "id": "stat_pts",
+        "maxGain": 0,
+        "maxLoss": 10
+      },
+      {
+        "id": "str",
+        "maxGain": 5,
+        "maxLoss": 3
+      },
+      {
+        "id": "con",
+        "maxGain": 5,
+        "maxLoss": 3
+      },
+      {
+        "id": "agi",
+        "maxGain": 5,
+        "maxLoss": 3
+      },
+      {
+        "id": "intel",
+        "maxGain": 5,
+        "maxLoss": 3
+      },
+      {
+        "id": "sen",
+        "maxGain": 5,
+        "maxLoss": 3
+      },
+      {
+        "id": "hp",
+        "maxDelta": 400
+      },
+      {
+        "id": "mp",
+        "maxDelta": 400
+      },
+      {
+        "id": "sp",
+        "maxDelta": 400
+      },
+      {
+        "id": "license"
+      },
+      {
+        "id": "job",
+        "maxLength": 30
+      },
+      {
+        "id": "guild",
+        "maxLength": 24
+      },
+      {
+        "id": "fame",
+        "maxGain": 8,
+        "maxLoss": 15
+      },
+      {
+        "id": "weapons"
+      },
+      {
+        "id": "accessories"
+      },
+      {
+        "id": "armor",
+        "maxLength": 30
+      },
+      {
+        "id": "items"
+      },
+      {
+        "id": "skills"
+      },
+      {
+        "id": "quests"
+      },
+      {
+        "id": "won",
+        "maxGain": 5000000,
+        "maxLoss": 1000000000
+      },
+      {
+        "id": "coin",
+        "maxGain": 50,
+        "maxLoss": 500
+      }
+    ]
+  },
+  "promptState": {
+    "systemGuide": "이 세계는 시스템 창이 뜨는 세계다 — 레벨업·스킬 습득·퀘스트 발생 같은 시스템 사건은 본문 문단 사이 `[시스템] …` 한 줄로 짧게 연출하라. 수치 정산은 상태 블록의 몫이니 숫자를 본문에 나열하지 마라."
+  },
+  "setup": {
+    "presets": [
+      {
+        "id": "rookie",
+        "label": "신인 헌터 — E급 라이선스, 평범한 시작 (표준)",
+        "set": {}
+      },
+      {
+        "id": "gifted",
+        "label": "재능형 각성자 — 두둑한 지원금과 여유 포인트, 세상도 온화하다",
+        "set": {
+          "stat_pts": 4,
+          "won": 3000000,
+          "fame": 5,
+          "hazard": 15
+        }
+      },
+      {
+        "id": "gutter",
+        "label": "밑바닥 — 빈 주머니로 시작, 세상은 흉흉하다",
+        "set": {
+          "won": 30000,
+          "items": [],
+          "hazard": 60
+        }
+      }
+    ]
+  },
+  "statusUI": {
+    "mode": "template",
+    "collapsible": false,
+    "templates": [
+      {
+        "id": "hunter",
+        "template": "<style>/* 얼터헌터 상태창 — 원본 봇 CSS 규격(a-* 클래스, 다크네이비 + 스틸블루 + Rajdhani) 승계.\n   원본은 리수 CBS {{screen_width}} 분기로 반응형을 갰지만, 심코어 statusUI는 CBS를 안 거치므로\n   @media로 옮겼다. 원본 아이덴티티: #0e1015 바탕, #13151c→#1c1f29 카드, #8aa2cc 헤더. */\n@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap');\n\n.a-status-window {\n  background: linear-gradient(145deg, #13151c, #1c1f29);\n  color: #c5d0e6;\n  font-family: 'Noto Sans KR', sans-serif;\n  border-radius: 12px;\n  box-shadow: 0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(82,110,157,.1);\n  margin: 6px auto;\n  padding: 16px 14px;\n  width: 98%;\n  max-width: 1000px;\n  text-align: left;\n  font-size: 13.5px;\n}\n.a-header {\n  font-family: 'Rajdhani', sans-serif;\n  color: #8aa2cc;\n  font-weight: 600;\n  letter-spacing: 2px;\n  text-align: center;\n  font-size: 1.45em;\n  border-bottom: 1px solid rgba(138,162,204,.15);\n  margin-bottom: 12px;\n  padding-bottom: 8px;\n}\n.a-header small { display: block; letter-spacing: .5px; font-size: .55em; color: #6b7fa8; font-weight: 400; }\n.a-top-info-bar {\n  display: flex; flex-wrap: wrap; gap: 6px 14px;\n  align-items: center; justify-content: space-between;\n  background: rgba(25,30,40,.5);\n  border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px;\n  padding: 8px 12px;\n  margin-bottom: 12px;\n}\n.a-info-item { font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; color: #a0b3d1; font-size: .95em; white-space: nowrap; }\n\n/* 코어 줄 — 랭크 배지 + 레벨/직업 */\n.a-core-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }\n.a-rank-badge {\n  font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.5em;\n  color: #8aa2cc; background: rgba(138,162,204,.08);\n  border: 1px solid rgba(138,162,204,.35); border-radius: 8px;\n  min-width: 44px; text-align: center; padding: 2px 8px;\n}\n.a-core-main { flex: 1; min-width: 140px; }\n.a-core-main .a-name { font-weight: 700; color: #dce6f5; }\n.a-core-main .a-sub { color: #8090ad; font-size: .92em; }\n\n/* 자원 바 (HP/MP/SP/EXP) */\n.a-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 12px; }\n.a-bar-item { min-width: 0; }\n.a-bar-label { display: flex; justify-content: space-between; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: .88em; color: #a0b3d1; margin-bottom: 2px; }\n.a-bar-track { height: 7px; background: rgba(10,12,18,.8); border-radius: 4px; overflow: hidden; border: 1px solid rgba(138,162,204,.12); }\n.a-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }\n.a-hp .a-bar-fill { background: linear-gradient(90deg, #b23a48, #e05563); }\n.a-mp .a-bar-fill { background: linear-gradient(90deg, #33549e, #4f7dd9); }\n.a-sp .a-bar-fill { background: linear-gradient(90deg, #2c8a68, #46b98c); }\n.a-exp .a-bar-fill { background: linear-gradient(90deg, #a3833f, #c9a86a); }\n\n/* 스탯 그리드 */\n.a-stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }\n.a-stat-cell {\n  background: rgba(25,30,40,.5); border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px; text-align: center; padding: 6px 2px;\n}\n.a-stat-cell .k { display: block; font-size: .78em; color: #6b7fa8; letter-spacing: 1px; font-family: 'Rajdhani', sans-serif; }\n.a-stat-cell .v { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.25em; color: #dce6f5; }\n\n/* 섹션 */\n.a-sec {\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 600;\n  color: #8aa2cc; letter-spacing: 1.5px; font-size: .92em;\n  border-bottom: 1px solid rgba(138,162,204,.12);\n  margin: 10px 0 6px; padding-bottom: 3px;\n}\n.a-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 2px; }\n.a-row .v { color: #dce6f5; font-weight: 500; text-align: right; }\n\n/* 목록 태그 ({id:tags}) */\n.a-status-window .sim-tag {\n  display: inline-block; background: rgba(25,30,40,.6);\n  border: 1px solid rgba(138,162,204,.18); border-radius: 6px;\n  color: #c5d0e6; font-size: .9em; padding: 2px 8px; margin: 2px 3px 2px 0;\n}\n.a-status-window .sim-empty { color: #5a6885; font-size: .9em; }\n\n.a-foot { text-align: center; color: #6b7fa8; font-size: .85em; margin-top: 8px; opacity: .85; }\n\n@media (max-width: 768px) {\n  .a-status-window { padding: 12px 8px; font-size: 12.5px; }\n  .a-header { font-size: 1.25em; margin-bottom: 8px; }\n  .a-top-info-bar { flex-direction: column; align-items: flex-start; gap: 4px; }\n  .a-bars { grid-template-columns: 1fr; }\n  .a-stats-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }\n}\n</style><div class=\"a-status-window\"><div class=\"a-header\">STATUS WINDOW<small>Alter-Earth Hunter Interface</small></div><div class=\"a-top-info-bar\"><span class=\"a-info-item\">📅 {date} ({weekday})</span><span class=\"a-info-item\">{time}</span><span class=\"a-info-item\">{weather}</span><span class=\"a-info-item\">📍 {location}</span></div><div class=\"a-core-row\"><div class=\"a-rank-badge\">{license}</div><div class=\"a-core-main\"><div class=\"a-name\">Lv.{level} · {job}</div><div class=\"a-sub\">측정 등급 {rank_est} · 소속 {guild} · 명성 {fame}</div></div></div><div class=\"a-bars\"><div class=\"a-bar-item a-hp\"><div class=\"a-bar-label\"><span>HP</span><span>{hp} / {hp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{hp_w}%\"></div></div></div><div class=\"a-bar-item a-mp\"><div class=\"a-bar-label\"><span>MP</span><span>{mp} / {mp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{mp_w}%\"></div></div></div><div class=\"a-bar-item a-sp\"><div class=\"a-bar-label\"><span>SP</span><span>{sp} / {sp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{sp_w}%\"></div></div></div><div class=\"a-bar-item a-exp\"><div class=\"a-bar-label\"><span>EXP</span><span>{exp} / {exp_need}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{exp_w}%\"></div></div></div></div><div class=\"a-stats-grid\"><div class=\"a-stat-cell\"><span class=\"k\">STR 근력</span><span class=\"v\">{str}</span></div><div class=\"a-stat-cell\"><span class=\"k\">CON 체질</span><span class=\"v\">{con}</span></div><div class=\"a-stat-cell\"><span class=\"k\">AGI 민첩</span><span class=\"v\">{agi}</span></div><div class=\"a-stat-cell\"><span class=\"k\">INT 지능</span><span class=\"v\">{intel}</span></div><div class=\"a-stat-cell\"><span class=\"k\">SEN 감각</span><span class=\"v\">{sen}</span></div></div><div class=\"a-row\"><span>미분배 포인트</span><span class=\"v\">{stat_pts}</span></div><div class=\"a-row\"><span>자산</span><span class=\"v\">{won} · {coin}</span></div><div class=\"a-sec\">EQUIPMENT</div><div class=\"a-row\"><span>무기</span><span class=\"v\">{weapons:tags}</span></div><div class=\"a-row\"><span>장신구</span><span class=\"v\">{accessories:tags}</span></div><div class=\"a-row\"><span>방어구</span><span class=\"v\">{armor}</span></div><div class=\"a-sec\">INVENTORY</div>{items:tags}<div class=\"a-sec\">SKILLS</div>{skills:tags}<div class=\"a-sec\">QUESTS</div>{quests:tags}<div class=\"a-foot\">{lastcheck}</div>{commands}</div>"
+      }
+    ]
+  }
+}

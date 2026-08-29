@@ -1,0 +1,100 @@
+/* 얼터헌터 상태창 — 원본 봇 CSS 규격(a-* 클래스, 다크네이비 + 스틸블루 + Rajdhani) 승계.
+   원본은 리수 CBS {{screen_width}} 분기로 반응형을 갰지만, 심코어 statusUI는 CBS를 안 거치므로
+   @media로 옮겼다. 원본 아이덴티티: #0e1015 바탕, #13151c→#1c1f29 카드, #8aa2cc 헤더. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+.a-status-window {
+  background: linear-gradient(145deg, #13151c, #1c1f29);
+  color: #c5d0e6;
+  font-family: 'Noto Sans KR', sans-serif;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(82,110,157,.1);
+  margin: 6px auto;
+  padding: 16px 14px;
+  width: 98%;
+  max-width: 1000px;
+  text-align: left;
+  font-size: 13.5px;
+}
+.a-header {
+  font-family: 'Rajdhani', sans-serif;
+  color: #8aa2cc;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-align: center;
+  font-size: 1.45em;
+  border-bottom: 1px solid rgba(138,162,204,.15);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+}
+.a-header small { display: block; letter-spacing: .5px; font-size: .55em; color: #6b7fa8; font-weight: 400; }
+.a-top-info-bar {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  align-items: center; justify-content: space-between;
+  background: rgba(25,30,40,.5);
+  border: 1px solid rgba(138,162,204,.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.a-info-item { font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; color: #a0b3d1; font-size: .95em; white-space: nowrap; }
+
+/* 코어 줄 — 랭크 배지 + 레벨/직업 */
+.a-core-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.a-rank-badge {
+  font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.5em;
+  color: #8aa2cc; background: rgba(138,162,204,.08);
+  border: 1px solid rgba(138,162,204,.35); border-radius: 8px;
+  min-width: 44px; text-align: center; padding: 2px 8px;
+}
+.a-core-main { flex: 1; min-width: 140px; }
+.a-core-main .a-name { font-weight: 700; color: #dce6f5; }
+.a-core-main .a-sub { color: #8090ad; font-size: .92em; }
+
+/* 자원 바 (HP/MP/SP/EXP) */
+.a-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 12px; }
+.a-bar-item { min-width: 0; }
+.a-bar-label { display: flex; justify-content: space-between; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: .88em; color: #a0b3d1; margin-bottom: 2px; }
+.a-bar-track { height: 7px; background: rgba(10,12,18,.8); border-radius: 4px; overflow: hidden; border: 1px solid rgba(138,162,204,.12); }
+.a-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+.a-hp .a-bar-fill { background: linear-gradient(90deg, #b23a48, #e05563); }
+.a-mp .a-bar-fill { background: linear-gradient(90deg, #33549e, #4f7dd9); }
+.a-sp .a-bar-fill { background: linear-gradient(90deg, #2c8a68, #46b98c); }
+.a-exp .a-bar-fill { background: linear-gradient(90deg, #a3833f, #c9a86a); }
+
+/* 스탯 그리드 */
+.a-stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }
+.a-stat-cell {
+  background: rgba(25,30,40,.5); border: 1px solid rgba(138,162,204,.1);
+  border-radius: 8px; text-align: center; padding: 6px 2px;
+}
+.a-stat-cell .k { display: block; font-size: .78em; color: #6b7fa8; letter-spacing: 1px; font-family: 'Rajdhani', sans-serif; }
+.a-stat-cell .v { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.25em; color: #dce6f5; }
+
+/* 섹션 */
+.a-sec {
+  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 600;
+  color: #8aa2cc; letter-spacing: 1.5px; font-size: .92em;
+  border-bottom: 1px solid rgba(138,162,204,.12);
+  margin: 10px 0 6px; padding-bottom: 3px;
+}
+.a-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 2px; }
+.a-row .v { color: #dce6f5; font-weight: 500; text-align: right; }
+
+/* 목록 태그 ({id:tags}) */
+.a-status-window .sim-tag {
+  display: inline-block; background: rgba(25,30,40,.6);
+  border: 1px solid rgba(138,162,204,.18); border-radius: 6px;
+  color: #c5d0e6; font-size: .9em; padding: 2px 8px; margin: 2px 3px 2px 0;
+}
+.a-status-window .sim-empty { color: #5a6885; font-size: .9em; }
+
+.a-foot { text-align: center; color: #6b7fa8; font-size: .85em; margin-top: 8px; opacity: .85; }
+
+@media (max-width: 768px) {
+  .a-status-window { padding: 12px 8px; font-size: 12.5px; }
+  .a-header { font-size: 1.25em; margin-bottom: 8px; }
+  .a-top-info-bar { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .a-bars { grid-template-columns: 1fr; }
+  .a-stats-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+}

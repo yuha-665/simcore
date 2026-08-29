@@ -19,6 +19,7 @@ const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal,
   scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
+const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -69,10 +70,13 @@ function initState(schema, opts = {}) {
   }
   // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
   if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
-  return {
+  const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
   };
+  // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
+  if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
+  return st;
 }
 
 /** AI 최초설정이 아직 필요한 상태인가 */
@@ -139,6 +143,8 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
+  if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -600,6 +606,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
     if (imgBlock) lines.push(imgBlock);
   }
 
+  // 3.8 커뮤니티 보드 화제 한 줄 (v0.95) — 게시판 원문은 절대 안 싣는다.
+  // 서사가 여론을 아는 통로는 이 한 줄뿐이다 (토큰 절약이 이 기능의 존재 이유).
+  if (!isSetupPending(schema, state)) {
+    const bLine = boardMod.mainLine(schema, state);
+    if (bLine) lines.push(bLine);
+  }
+
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
@@ -833,7 +846,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -855,6 +868,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
   consumeTimeSkips(schema, state, changeLog, { perTurnTick: true });
+
+  // 5.7 커뮤니티 보드 (v0.95) — 보조가 실어 온 델타 적용 + 지표 표류(매 턴, 시드 rng).
+  // 시간 소비 뒤여야 새 글의 날짜 도장이 이번 턴의 새 날짜로 찍힌다.
+  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -1266,6 +1283,9 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
       ? `- ${unlockedNow.map((a) => `${varById[a.id]?.label ?? a.id}(${a.id})`).join(', ')} 변수는 지난 턴 감지 신고로 이번 턴만 열렸다. **지난 턴 서사**에서 일어난 그 변화를 이번 changes에 반영하라 (앞선 대화 재계산 금지 규칙의 예외다. 단, 위 "이미 반영된 변화"에 있는 것은 여전히 다시 세지 마라).`
       : null,
     noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
+    // 커뮤니티 보드 턴 갱신 (v0.95, 옵트인) — 같은 호출에 얹는다 (추가 호출 0).
+    // 브리지 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
+    (!opts.allowAll && state) ? (boardMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -1298,6 +1318,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
 function auxHasWork(schema, state = null) {
   if ((schema?.updater?.allow?.length ?? 0) > 0) return true;
   if (schema?.suggest) return true;
+  if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -1558,7 +1579,8 @@ function parseAuxResponse(text) {
   return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
-    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
+    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
+    board: obj.board ?? null }; // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
 }
 
 module.exports = {

@@ -248,6 +248,11 @@ const S = {
     { id: 'break_in', label: '브레이크까지', type: 'int', init: 0, min: 0, max: 30,
       desc: 'Days until that gate breaks. The system counts it down; at 0 the break fires. Set only at the start.' },
 
+    // ── 헌터넷 (P4) — 게이트 안 통신 두절 게이트 ──
+    { id: 'in_gate', label: '게이트 안', type: 'bool', init: false,
+      desc: 'true while the protagonist is INSIDE a Gate/dungeon (communications cut). '
+        + 'Set back to false the moment they exit.' },
+
     // ── NPC 변동 기록 (P2) — 기준선(레지스트리)에서 "달라진 것"만 ──
     { id: 'npc_notes', label: '인물 변동', type: 'list', init: [], maxItems: 14, itemMaxLength: 40, cmd: '인물',
       desc: 'Lasting CHANGES to named NPCs only — promotion, guild move, notable new gear/skill, '
@@ -491,6 +496,7 @@ const S = {
       { id: 'skills' },
       { id: 'quests' },
       { id: 'npc_notes' },
+      { id: 'in_gate' },
       { id: 'gates' },
       { id: 'break_name', maxLength: 30 },
       { id: 'break_in', maxGain: 30, maxLoss: 30 },
@@ -517,6 +523,35 @@ const S = {
   },
 
   statusUI: { mode: 'template', collapsible: false, templates: [] },   // 아래에서 채운다
+
+  // ── 헌터넷 (P4) — 커뮤니티 보드 (v0.95 엔진 기능) ──
+  // 원본 헌터넷의 개념만 승계한 자체 구현. 게이트 안(in_gate)에서는 새 글이 안 올라온다
+  // (단말기 통신 두절 — 원본 로어북 "Inaccessible in Gates" 승계).
+  board: {
+    label: '헌터넷', icon: '🌐',
+    topics: '게이트 출현·공략 소식, 헌터 목격담과 소문, 장비·마정석 시세, 협회/길드 뒷말, '
+      + '랭크 측정 후기, 몬스터 정보 공유, 각성 관련 잡담',
+    guide: 'Anonymous hunter forum in Korean internet-community register: 반말, 마침표 생략, '
+      + '축약·밈·드립, 낚시글과 헛소문 섞임. 닉네임은 짧은 한국어 (예: ㅇㅇ, 각성실패자, '
+      + '노원구주민, 창술만12년). 글이 다 진실일 필요 없다 — 과장·유언비어·광고성 글도 게시판의 결이다. '
+      + 'Posts reference the current gates board, recent public events, and famous hunters.',
+    postsPerTurn: 2, maxPosts: 20,
+    when: 'not in_gate',
+    // 패널 스킨 — 상태창과 같은 다크네이비/스틸블루 규격 (a-* 팔레트)
+    css: `
+.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }
+.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }
+.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
+.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }
+.scb-row { border-bottom-color: rgba(138,162,204,.12); }
+.scb-row:hover { background: rgba(138,162,204,.07); }
+.scb-row .scb-title { color: #dce6f5; }
+.scb-view-title { color: #dce6f5; }
+.scb-body { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.15); color: #c5d0e6; }
+.scb-re { border-top-color: rgba(138,162,204,.12); }
+.scb-re .scb-re-a { color: #8aa2cc; }
+.scb-input, .scb-ta { background: rgba(10,12,18,.6); border-color: rgba(138,162,204,.2); color: #dce6f5; }`,
+  },
 };
 
 // ── 상태창 — 원본 봇 CSS 규격(a-* 클래스) 승계, hunter.css ──
@@ -793,6 +828,29 @@ console.log('\n━━ P3 — 60턴 방치 실발화 (시드 고정 — 결정적
   ok('출현 굴림이 유효 범위에 들어왔다',
     t.vars.zone_i >= 0 && t.vars.zone_i <= 5 && t.vars.grade_i >= 0 && t.vars.grade_i <= 6,
     `zone${t.vars.zone_i} grade${t.vars.grade_i}`);
+}
+
+console.log('\n━━ P4 — 헌터넷 (커뮤니티 보드) ━━');
+{
+  let t = fresh();
+  ok('보드 부착 (빈 게시판)', t.board && Array.isArray(t.board.posts) && t.board.posts.length === 0);
+  const aux = engine.buildAuxPrompt(S, t, '거리를 걷는다', null);
+  ok('보조 프롬프트에 헌터넷 갱신 요청', aux.includes('헌터넷') && aux.includes('"board"'));
+  t.vars.in_gate = true;
+  ok('게이트 안 — 갱신 요청 차단 (통신 두절)', !engine.buildAuxPrompt(S, t, '던전 안', null).includes('"board"'));
+  t.vars.in_gate = false;
+  ({ st: t } = turn(t, {}, 80));
+  // 델타는 outputPhase opts로 들어간다 — 러너 turn()은 changes만 받으므로 직접 굴린다
+  const send = engine.sendPhase(S, t, { rng: seededRng('h', 81, 's') });
+  t = engine.outputPhase(S, send.state, {}, {}, {
+    rng: seededRng('h', 81, 'o'),
+    board: { new: [{ title: '동북권 D급 목격', author: '노원구주민', body: '협회 알림 옴' }] },
+  }).state;
+  ok('보조 델타로 글 등록', t.board.posts.length === 1 && t.board.posts[0].author === '노원구주민',
+    JSON.stringify(t.board.posts));
+  const p = turn(t, {}, 82);
+  ok('메인에 화제 한 줄 (원문 없이)', p.prompt.includes('[헌터넷]') && p.prompt.includes('동북권 D급 목격')
+    && !p.prompt.includes('협회 알림 옴'), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

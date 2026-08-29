@@ -1,0 +1,978 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+/* --- 기본 스타일 --- */
+.a-body {
+    background-color: #0e1015;
+    font-family: 'Noto Sans KR', sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.a-status-window {
+    background: linear-gradient(145deg, #13151c, #1c1f29);
+    color: #c5d0e6;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(82,110,157,0.1);
+    text-align: center;
+    margin: 0 auto;
+
+    /* [반응형] 너비 및 패딩 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    width: 95%;
+    max-width: 1000px;
+    padding: 20px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    width: 98%;
+    padding: 15px 10px;
+    {{/if}}
+}
+
+.a-header {
+    font-family: 'Rajdhani', sans-serif;
+    color: #8aa2cc;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 2px;
+    border-bottom: 1px solid rgba(138,162,204,0.15);
+
+    /* [반응형] 폰트 크기 및 간격 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    {{/if}}
+    {{#if {{? {{screen_width}} > 425 }} }} /* -- 모바일 -- */
+    font-size: 1.5em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 425 }} }}
+    display: none;
+    {{/if}}
+}
+
+.a-top-info-bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+    background: rgba(25, 30, 40, 0.5);
+    border-radius: 8px;
+    border: 1px solid rgba(138,162,204,0.1);
+
+    /* [반응형] 레이아웃 및 패딩 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    justify-content: space-between;
+    padding: 8px 12px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 8px;
+    align-items: flex-start;
+    {{/if}}
+}
+
+.a-info-item {
+    display: flex;
+    align-items: center;
+    font-family: 'Rajdhani', sans-serif;
+    color: #a0b3d1;
+
+    /* [반응형] 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    font-size: 0.95em;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    font-size: 0.9em;
+    {{/if}}
+}
+
+.a-info-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    opacity: 0.7;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+.a-date-icon { background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EwYjNkMSI+PHBhdGggZD0iTTE3IDEyaC01djVoNXYtNXpNMTYgMXYySDhWMUg2djJINWMtMS4xMSAwLTEuOTkuOS0xLjk5IDJMMyAxOWMwIDEuMS44OSAyIDIgMmgxNGMxLjEgMCAyLS45IDItMlY1YzAtMS4xLS45LTItMi0yaC0xVjFoLTJ6bTMgMThINVY4aDE0djExeiIvPjwvc3ZnPg=='); }
+
+.a-time-icon { background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EwYjNkMSI+PHBhdGggZD0iTTExLjk5IDJDNi40NyAyIDIgNi40OCAyIDEyczQuNDcgMTAgOS45OSAxMEMxNy41MiAyMiAyMiAxNy41MiAyMiAxMlMxNy41MiAyIDExLjk5IDJ6TTEyIDIwYy00LjQyIDAtOC0zLjU4LTgtOHMzLjU4LTggOC04IDggMy41OCA4IDgtMy41OCA4LTggOHptLjUtMTNIMTF2Nmw1LjI1IDMuMTUuNzUtMS4yMy00LjUtMi42N3oiLz48L3N2Zz4='); }
+
+.a-location-icon { background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2EwYjNkMSI+PHBhdGggZD0iTTEyIDJDOC4xMyAyIDUgNS4xMyA1IDljMCA1LjI1IDcgMTMgNyAxM3M3LTcuNzUgNy0xM2MwLTMuODctMy4xMy03LTctN3ptMCA5LjVjLTEuMzggMC0yLjUtMS4xMi0yLjUtMi41czEuMTItMi41IDIuNS0yLjUgMi41IDEuMTIgMi41IDIuNS0xLjEyIDIuNS0yLjUgMi41eiIvPjwvc3ZnPg=='); }
+
+.a-content {
+    display: grid;
+
+    /* [반응형] 그리드 레이아웃 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    grid-template-columns: 1fr;
+    gap: 8px;
+    {{/if}}
+}
+
+.a-item {
+    background: rgba(25,30,40,0.7);
+    border-radius: 8px;
+    text-align: left;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+    border: 1px solid rgba(138,162,204,0.1);
+
+    /* [반응형] 패딩 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    padding: 10px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    padding: 8px;
+    {{/if}}
+}
+
+.a-item-label {
+    font-family: 'Rajdhani', sans-serif;
+    color: #8aa2cc;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: block;
+}
+.a-item-value {
+    text-align: center; 
+    margin: auto;
+}
+.a-gauge-section {
+    width: 100%;
+
+    /* [반응형] 상단 마진 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    margin-top: 6px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    margin-top: 4px;
+    {{/if}}
+}
+
+.a-gauge-row {
+    display: flex;
+    align-items: center;
+
+    /* [반응형] 하단 마진 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    margin-bottom: 8px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    margin-bottom: 6px;
+    {{/if}}
+}
+.a-gauge-row:last-child { margin-bottom: 0; }
+
+.a-gauge-label {
+    flex: 0 0 40px;
+    font-family: 'Rajdhani', sans-serif;
+    color: #8aa2cc;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.a-gauge-container {
+    flex: 1;
+    background: rgba(15,18,25,0.8);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+
+    /* [반응형] 높이 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    height: 20px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    height: 18px;
+    {{/if}}
+}
+
+.a-gauge {
+    height: 100%;
+    transition: width .5s ease-out;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    background-image: linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.15));
+}
+.a-hp-gauge { background-color: rgba(205,76,91,0.8); }
+.a-mp-gauge { background-color: rgba(66,135,245,0.8); }
+.a-sp-gauge { background-color: rgba(230,185,68,0.8); }
+.a-exp-gauge { background-color: rgba(77,182,172,0.8); }
+
+.a-gauge-text {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    z-index: 1;
+    font-family: 'Rajdhani', sans-serif;
+
+    /* [반응형] 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    font-size: 0.9em;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    font-size: 0.8em;
+    {{/if}}
+}
+
+.a-full-width { grid-column: 1 / -1; }
+
+.a-stats-container {
+    display: grid;
+    margin: 6px 0;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    gap: 6px;
+    {{/if}}
+}
+
+.a-stat-item {
+    background: linear-gradient(145deg, rgba(25,30,40,0.7), rgba(30,36,48,0.7));
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid rgba(138,162,204,0.1);
+    transition: all 0.3s;
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.05);
+
+    /* [반응형] 패딩 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    padding: 8px 5px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    padding: 6px 3px;
+    {{/if}}
+}
+.a-stat-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    border: 1px solid rgba(138,162,204,0.3);
+}
+
+.a-stat-value {
+    font-weight: 600;
+    margin-top: 3px;
+    font-family: 'Rajdhani', sans-serif;
+    color: #d8e3f8;
+
+    /* [반응형] 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    font-size: 1.4em;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    font-size: 1.2em;
+    {{/if}}
+}
+
+.a-stat-label {
+    color: #8aa2cc;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+
+    /* [반응형] 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    font-size: 0.8em;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    font-size: 0.75em;
+    {{/if}}
+}
+
+.a-more-info-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 1.5em;
+    border: none !important;
+}
+
+.a-details { width: 100%; }
+.a-details summary { list-style: none; }
+.a-details summary::-webkit-details-marker { display: none; }
+
+.a-summary {
+    width: 100%;
+    background: linear-gradient(145deg, #1a202b, #232a3a);
+    border: 1px solid rgba(138,162,204,0.2) !important;
+    color: #8aa2cc;
+    text-align: center;
+    display: inline-block;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+
+    /* [반응형] 패딩 및 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    padding: 8px 18px;
+    font-size: 14px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    padding: 6px 12px;
+    font-size: 13px;
+    {{/if}}
+}
+.a-summary:hover {
+    background: linear-gradient(145deg, #1e2432, #283245);
+    border-color: rgba(138,162,204,0.4);
+    color: #d8e3f8;
+}
+.a-details[open] .a-summary::after { content: ' CLOSE DETAILS'; }
+.a-details:not([open]) .a-summary::after { content: ' SHOW DETAILS'; }
+
+.a-class-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.a-list-item {
+    line-height: 1.5;
+    border-bottom: 1px solid rgba(138,162,204,0.1);
+
+    /* [반응형] 간격 및 폰트 크기 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    font-size: 0.9em;
+    {{/if}}
+}
+.a-list-item:last-child { border-bottom: none; }
+
+.a-level-badge {
+    display: inline-block;
+    background: linear-gradient(145deg, #26344b, #344668);
+    color: #d8e3f8;
+    font-weight: 600;
+    border-radius: 12px;
+    font-family: 'Rajdhani', sans-serif;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    border: 1px solid rgba(138,162,204,0.3);
+
+    /* [반응형] 패딩 */
+    {{#if {{? {{screen_width}} > 768 }} }} /* -- 데스크탑 -- */
+    padding: 2px 10px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    padding: 2px 8px;
+    {{/if}}
+}
+
+.a-level-coin-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: row;
+    /* [반응형] 레이아웃 */
+    {{#if {{? {{screen_width}} <= 768 }} }} /* -- 모바일 -- */
+    gap: 8px;
+    {{/if}}
+}
+
+.a-level {
+    display: flex;
+    align-items: center;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    gap: 5px;
+}
+
+.a-coin-icon {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(145deg, #ffc107, #ffeb3b);
+    border-radius: 50%;
+    margin-right: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    position: relative;
+}
+.a-coin-icon::before {
+    content: 'C';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10px;
+    color: #5d4037;
+    font-weight: bold;
+}
+
+.a-coin-value {
+    color: #ffd54f;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.row-flex {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+.a-header {
+    font-family: 'Rajdhani', sans-serif;
+    color: #8aa2cc;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center; /* 중앙 정렬 유지 */
+    letter-spacing: 2px;
+    border-bottom: 1px solid rgba(138,162,204,0.15);
+    position: relative; /* 버튼 배치를 위해 relative 추가 */
+
+    /* [반응형] 폰트 크기 및 간격 */
+    {{#if {{? {{screen_width}} > 768 }} }} 
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    {{/if}}
+    {{#if {{? {{screen_width}} > 425 }} }} 
+    font-size: 1.5em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 425 }} }}
+    display: none;
+    {{/if}}
+}
+
+/* --- [기존 CSS 아래에 추가] --- */
+
+/* 레퍼런스에서 가져온 투명 버튼 유틸리티 */
+.invisible-btn-wrapper {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0; /* 투명하게 만듦 */
+    z-index: 10;
+    cursor: pointer;
+}
+/* 리스/실리타번 버튼 강제 스타일링 오버라이드 */
+.invisible-btn-wrapper button {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer !important;
+}
+
+/* 상태창 헤더의 새로고침 버튼 컨테이너 */
+.a-retry-container {
+    position: absolute;
+    right: 15px; /* 우측 여백 */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    
+    /* 새로고침 아이콘 이미지 (SVG) */
+    background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzhhYTJjYyI+PHBhdGggZD0iTTE3LjY1IDYuMzVDMTYuMiA0LjkgMTQuMjEgNCAxMiA0Yy00LjQyIDAtNy45OSAzLjU4LTcuOTkgOHMzLjU3IDggNy45OSA4YzMuNzMgMCA2Ljg0LTIuNTUgNy43My02aC0yLjA4Yy0uODIgMi4zMy0zLjA0IDQtNS42NSA0LTMuMzEgMC02LTIuNjktNi02czIuNjktNiA2LTZjMS42NiAwIDMuMTQuNjkgNC4yMiAxLjc4TDEzIDExaDdWNGwtMi4zNSAyLjM1eiIvPjwvc3ZnPg==');
+    background-size: contain;
+    background-repeat: no-repeat;
+    opacity: 0.5;
+    transition: all 0.3s ease;
+}
+
+.a-retry-container:hover {
+    opacity: 1;
+    transform: translateY(-50%) rotate(180deg); /* 호버 시 회전 효과 */
+}
+
+/* 헤더에 relative 속성 추가 (버튼 위치 기준점) */
+.a-header {
+    position: relative; 
+    /* 기존 스타일 유지... */
+}
+</style>
+<style>
+    @import url('https://fonts.cdnfonts.com/css/muttiara');
+    .asset-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        border: 3px solid {border};
+        border-radius: 15px;
+        overflow: hidden;
+        max-width: 480px;
+        width: 96%;
+        margin: 0 auto;
+        padding: 0;
+    }
+    .gender-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        border: 3px solid {border};
+        border-radius: 15px;
+        overflow: hidden;
+        max-width: 380px;
+        width: 75%;
+        margin: 0 auto;
+        padding: 0;
+    }
+
+    .in-table {
+        text-align: center;
+        vertical-align: middle;
+        padding: 0;
+        margin: 0;
+    }
+
+    .image-cell img {
+        display: block;
+        width: 100%;
+        height: auto;
+        padding: 0;
+        margin: 0;
+        object-fit: cover; 
+        object-position: top;
+        transition: all 0.5s ease;
+	{{#if_pure {{equal::{{getvar::fold}}::1}}}}
+        aspect-ratio: 1 / 1.0; 
+    {{/if}}
+	{{#if_pure {{equal::{{getvar::fold}}::0}}}}
+        aspect-ratio: 1 / 1.4; 
+    {{/if}}
+    }
+    .gender-cell img {
+        display: block;
+        width: 100%;
+        height: auto;
+        padding: 0;
+        margin: 0;
+        object-fit: cover; 
+        object-position: top;
+        transition: all 0.5s ease;
+        aspect-ratio: 1 / 1.0; 
+
+    }
+    .image-cell img:hover {
+	{{#if_pure {{equal::{{getvar::fold}}::1}}}}
+        object-position: center;
+        transition: all 0.5s ease;
+        aspect-ratio: 1/1.4;
+    {{/if}}
+}
+
+    .content-cell {
+        font-family: 'Muttiara', sans-serif;
+        height: 40px;
+        font-size: 19px;
+        border-top: 1px solid black;
+        background: {background};
+        padding: 0;
+        margin: 0;
+    }
+    .smaller {
+        font-size: 15px;
+    }
+</style>
+<style>
+.regex-game-system-alert-wrapper {
+  display: block;
+  width: 100%;
+  padding: 7px 0;
+  box-sizing: border-box;
+  background-color: transparent;
+  text-align: center;
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+}
+
+@keyframes regex-game-alert-glow {
+  0%, 100% {
+    box-shadow: 0 0 3px 1px rgba(70, 150, 255, 0.6), inset 0 0 2px 1px rgba(70, 150, 255, 0.3);
+    border-color: rgba(120, 190, 255, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 6px 2px rgba(100, 180, 255, 0.7), inset 0 0 4px 2px rgba(100, 180, 255, 0.4);
+    border-color: rgba(150, 220, 255, 0.9);
+  }
+}
+
+@keyframes regex-game-alert-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.regex-game-system-alert-wrapper .game-alert-content {
+  box-sizing: border-box;
+  display: inline-block;
+  max-width: 100%;
+  padding: 10px 25px;
+  margin: 0;
+  background: linear-gradient(135deg, #1f2a40 0%, #101828 100%);
+  border: 2px solid rgba(120, 190, 255, 0.8);
+  border-radius: 5px;
+  color: #e0f0ff;
+  font-family: 'Consolas', 'Lucida Console', 'Courier New', monospace;
+  font-size: <<PCFont>>px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  text-shadow: 0 0 3px rgba(150, 220, 255, 0.5);
+  box-shadow: 0 0 6px 2px rgba(70, 150, 255, 0.6), inset 0 0 4px 1px rgba(70, 150, 255, 0.3);
+  animation: regex-game-alert-slide-in 0.4s ease-out forwards; 
+  transform: translateZ(0);
+}
+
+.regex-game-system-alert-wrapper .game-alert-content span {
+  display: inline;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .regex-game-system-alert-wrapper .game-alert-content {
+    font-size: <<MobileFont>>px;
+    padding: 8px 20px;
+  }
+}
+
+</style>
+
+<style>
+/* --- 눈이 편안한 다크 모드 UI 테마 (원본 기반 + active 버튼 시스템 추가) --- */
+
+.setting-title {
+    color: #82aaff;
+    font-weight: 700;
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgba(130, 170, 255, 0.4);
+    text-align: left;
+}
+
+.setting-description {
+    color: #bdbdbd;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    text-align: left;
+    margin-bottom: 18px;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: 400;
+    border-left: 3px solid #82aaff;
+}
+
+/* === 버튼 컨테이너 및 버튼(원형) === */
+.buttons-container {
+    position: fixed;
+    right: 20px;
+    top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 1000;
+}
+
+.btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #455a64;
+    overflow: hidden;
+    background-color: #263238;
+    position: relative;
+}
+
+.btn:hover { border-color: #82aaff; }
+.btn:active { transform: scale(0.9); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3); }
+
+.btn-sys::after {
+    content: '⚙️';
+    font-size: 24px;
+    transition: transform 0.5s ease;
+    pointer-events: none;
+}
+.btn-sys:hover::after { transform: rotate(180deg); }
+
+.btn-session::after {
+    content: '🌍';
+    font-size: 24px;
+    transition: transform 0.5s ease;
+    pointer-events: none;
+}
+.btn-session:hover::after { transform: rotate(15deg) scale(1.1); }
+
+/* === 패널 공통 === */
+.settings-panel {
+    position: fixed;
+    top: 0;
+    height: 100vh;
+    background-color: #1e1e24;
+    z-index: 990;
+    overflow-y: auto;
+    transition: right 0.3s ease;
+    padding-top: 45px;
+    box-sizing: border-box;
+    padding-bottom: 80px;
+
+    /* 기본 상태: 닫힘 */
+    {{#if {{? {{screen_width}} > 768 }} }}
+    width: 33%;
+    right: -33%;
+    {{/if}}
+    {{#if {{? {{screen_width}} <= 768 }} }}
+    width: 100%;
+    right: -100%;
+    {{/if}}
+
+    border-left: 1px solid #37474f;
+}
+
+.settings-panel[class*="opened"] {
+    right: 0 !important;
+}
+
+.panel-header {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    position: sticky;
+    top: 0px;
+    background: linear-gradient(180deg, #1e1e24 90%, rgba(30, 30, 36, 0));
+    z-index: 10;
+}
+
+.panel-title {
+    font-size: 24px;
+    color: #f5f5f5 !important;
+    margin-bottom: 5px;
+    text-shadow: none;
+    font-weight: bold;
+}
+
+.panel-subtitle {
+    font-size: 0.8rem;
+    color: #82aaff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.settings-list { padding: 0 20px 20px; }
+
+.setting-item {
+    background-color: #2a2a32;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #424242;
+    transition: all 0.2s ease;
+}
+.setting-item:hover {
+    border-color: #82aaff;
+}
+
+/* === [핵심] 컨트롤 버튼 시스템 (위 패널처럼) === */
+.setting-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: flex-start;
+}
+
+.control-btn {
+    position: relative;
+    background-color: #37474f;
+    color: #eceff1;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 1rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    text-align: center;
+    min-width: 88px;
+    overflow: hidden;
+}
+
+.control-btn:hover {
+    background-color: #4a5b65;
+    border-color: rgba(130, 170, 255, 0.5);
+}
+
+.control-btn:active {
+    transform: translateY(1px) scale(0.98);
+}
+
+.control-btn button,
+.control-btn > span,
+.control-btn > div {
+    all: unset;
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    padding: 10px 14px !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+}
+
+/* 활성(ON/선택됨) */
+.active-btn {
+    background-color: #82aaff !important;
+    color: #1a1a1a !important;
+    border-color: #82aaff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 0 10px rgba(130, 170, 255, 0.35);
+}
+
+/* 활성 상태에서도 텍스트 색 강제 */
+.active-btn button,
+.active-btn > span,
+.active-btn > div {
+    color: #1a1a1a !important;
+}
+
+/* === 백드롭 & 투명 버튼 유틸 === */
+.sys-backdrop {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.3);
+    z-index: 980;
+    display: none;
+}
+
+.sys-backdrop[class*="opened"] {
+    display: block !important;
+    right: auto !important;
+    left: 0 !important;
+}
+
+.invisible-btn-wrapper {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
+    z-index: 10;
+    cursor: pointer;
+}
+
+.invisible-btn-wrapper > span,
+.invisible-btn-wrapper > div,
+.invisible-btn-wrapper button {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+</style>
+
+<style>
+/* --- Future Plan 섹션 스타일 --- */
+
+/* Summary (헤더/버튼 부분) */
+.a-future-plan summary {
+    /* .a-summary와 유사한 그라디언트 배경 */
+    background: linear-gradient(145deg, #1a202b, #232a3a);
+    cursor: pointer;
+    margin: 5px 0 !important;
+    /* 폰트 스타일: 테마의 헤더 폰트 사용 */
+    font-family: 'Rajdhani', sans-serif; 
+    font-weight: 600;
+    font-size: 1.1em;
+color: #b8c9e8; 
+    letter-spacing: 1px;
+    top: 0 !important;
+    /* 레이아웃 */
+    list-style: none; /* 기본 화살표 제거 */
+    outline: none;
+    transition: background 0.3s, color 0.3s;
+    border-bottom: 1px solid transparent;
+    padding: 7px;
+}
+
+/* Summary 호버 효과 */
+.a-future-plan summary:hover {
+    background: linear-gradient(145deg, #1e2432, #283245);
+    color: #d8e3f8; /* 호버 시 더 밝은 색상 */
+}
+
+/* 펼쳐졌을 때 Summary 스타일 */
+.a-future-plan[open] summary {
+    border-bottom: 1px solid rgba(138, 162, 204, 0.15);
+    color: #d8e3f8;
+    background: rgba(30, 36, 48, 0.9);
+    padding: 7px;
+}
+
+/* 기본 details 화살표 숨기기 (크롬/사파리 대응) */
+.a-future-plan summary::-webkit-details-marker {
+    display: none;
+}
+
+/* 커스텀 화살표 아이콘 생성 (오른쪽 끝) */
+.a-future-plan summary::after {
+    content: '❮'; 
+    display: inline-block;
+    font-size: 0.8em;
+    transform: rotate(-90deg); /* 아래를 향하도록 */
+    transition: transform 0.3s ease;
+    opacity: 0.7;
+    margin-left: 10px;
+}
+
+/* 펼쳐졌을 때 화살표 회전 */
+.a-future-plan[open] summary::after {
+    content: '❮'; 
+    font-size: 0.8em;
+    transform: rotate(90deg); /* 위를 향하도록 */
+    opacity: 1;
+    color: #d8e3f8;
+}
+
+/* 내부 콘텐츠 영역 (내용) */
+.a-future-plan div {
+    background: rgba(15, 18, 25, 0.4); /* 헤더보다 약간 어둡게 처리하여 깊이감 */
+    color: #a0b3d1; /* 본문 텍스트 색상 */
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 0.95em;
+    padding: 13px 9px;
+
+}
+</style>

@@ -34,6 +34,7 @@ const escapeText = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 const { actionGlyph } = globalThis.__SC.require('render'); // 슬라이스가 참조 — 실물 사용
 const partyMod = globalThis.__SC.require('party');
 const calendarMod = globalThis.__SC.require('calendar');
+const boardMod = globalThis.__SC.require('board'); // v0.95 — syncUtilButtons가 보드 버튼도 본다
 let panelBuilt = false;
 const renderPanel = () => {};
 const loadForCurrentChar = async () => {};

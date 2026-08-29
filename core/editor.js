@@ -1202,6 +1202,15 @@ const SCHEMA_CALENDAR_RULES = [
   '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
 ];
 
+// 커뮤니티 보드(board, v0.95) — 세계 안의 미니 게시판.
+const SCHEMA_BOARD_RULES = [
+  '- 보드는 **세계 안의 커뮤니티 게시판**입니다 (헌터넷·학내 커뮤니티·모험가 길드 방보). 세계에 그런 여론 공간이 어울리는 봇에만 넣으세요.',
+  '- 글·댓글 데이터는 세이브에 삽니다 — 스키마에는 **성격만** 적습니다: `topics`(무엇에 대해 떠드는가), `guide`(말투·익명성·금기).',
+  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
+  '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
+  '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -2000,6 +2009,8 @@ const TAB_SLICES = {
   // 달력(v0.63.1) — calendar 객체 통째 교체. css는 제작자 손값이라 원문 보존을 요청서가
   // 못박는다. 일정 목록 변수·만료 규칙은 vars/rules 절 몫 — 📅 카드가 순차로 나눠 맡긴다.
   calendar: { keys: ['calendar'], label: '달력' },
+  // 보드(v0.95) — board 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
+  board: { keys: ['board'], label: '보드' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -2017,6 +2028,7 @@ const TAB_WANT_PH = {
   party: '예: 출격 편성 3슬롯 + 정비창 탭',
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
+  board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
 };
 
@@ -2048,6 +2060,7 @@ function tabItemCounts(schema, tabKey) {
     push('업그레이드(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.items) ? t.items : []));
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
+  else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -2511,6 +2524,19 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "label": "정산일", "dom": 1 },',
       '    { "label": "도서부 모임", "weekday": "수" }',
       '  ] } }',
+      '```',
+      '');
+  } else if (tabKey === 'board') {
+    body.push('## 보드 규격', ...SCHEMA_BOARD_RULES, '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '```json',
+      '{ "board": { "label": "헌터넷", "icon": "🌐",',
+      '  "topics": "게이트 공략 정보, 헌터 소문, 장비 시세",',
+      '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
+      '  "postsPerTurn": 2, "maxPosts": 20, "when": "not in_gate" } }',
       '```',
       '');
   } else if (tabKey === 'scenario') {
@@ -3059,7 +3085,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -4055,6 +4081,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
+    [/^\$\.board\b/, '보드', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
@@ -5299,6 +5326,58 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         delete schema.scenario; rerender();
       } }, '시나리오 삭제'),
       h('span', { class: 'sce-hint', style: 'margin:0' }, '진행 중 세이브의 막 위치는 세이브에 남습니다 — 다시 켜면 1막부터.')));
+    return wrap;
+  }
+
+  // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabBoard() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('board'));
+    if (!schema.board) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '커뮤니티 보드 — 봇 세계 안의 미니 게시판입니다 (헌터넷·학내 커뮤니티·왕국 방보 등). '
+        + '채팅 우상단에 버튼이 생기고, 매 턴 보조 AI가 서사에 반응하는 글·댓글을 올립니다 '
+        + '(기존 보조 호출에 얹혀서 추가 호출 없음). 패널에서 유저가 글·댓글을 쓰면 채팅 턴을 '
+        + '쓰지 않고 보조만 불러 반응이 달립니다. 메인 모델에는 화제 한 줄만 갑니다.'));
+      wrap.appendChild(addBtn('보드 만들기', () => {
+        schema.board = { label: '게시판', icon: '💬', topics: '' };
+        rerender();
+      }));
+      return wrap;
+    }
+    const B = schema.board;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '게시판' })),
+        pair('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '💬' })),
+        pair('턴당 새 글', bindInput(B.postsPerTurn ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(4, n)); else delete B.postsPerTurn; rerender();
+        }, { cls: 'sce-w-s', ph: '2' }), '이번 턴 서사에 반응해 올라올 수 있는 새 글 수 (0~4)'),
+        pair('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n)); else delete B.maxPosts; rerender();
+        }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 내려갑니다 (4~40)'),
+      ),
+      pair('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
+        { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 욕' }),
+        '게시판이 무엇에 대해 떠드는 곳인지 — 보조 AI의 글감이 됩니다'),
+      pair('생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
+        '말투·익명성·금기 등. 예: 익명 커뮤니티 말투(반말, 마침표 생략, 밈). 닉네임은 짧은 한국어. 유저를 전지적으로 알지 못한다.'),
+        ''),
+      h('div', { class: 'sce-row' },
+        pair('생성 조건', bindInput(B.when, (x) => { B.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
+          '거짓인 턴에는 새 글이 안 올라옵니다 (열람은 항상 가능) — 게이트 안 통신 두절 같은 것'),
+        bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); },
+          '메인 모델에 화제 한 줄 주입 (서사가 여론을 아는 통로)'),
+      ),
+      pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
+        '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('보드 삭제', () => {
+        if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) { delete schema.board; rerender(); }
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '글·댓글 데이터는 스키마가 아니라 세이브(스냅샷)에 삽니다 — 리롤하면 게시판도 같이 되감깁니다.')));
     return wrap;
   }
 
@@ -8022,7 +8101,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }

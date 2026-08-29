@@ -1,0 +1,839 @@
+-- ==============================
+-- [헌터물 통합 시스템 스크립트]
+-- 1. NPC 등장 감지 (토큰 절약)
+-- 2. 상태창 자동 생성 (LLM)
+-- ==============================
+
+local CHAT_TOKENS_RESERVE = 10000 -- 기본 상태창 생성 컨텍스트 토큰 상한(기본 1만)
+local STATUS_BLOCKS_KEEP_IN_REQUEST = 3 -- 상태창용 모델 리퀘스트에 포함할 상태창 블록 최대 개수
+
+-- ==============================
+-- [공용 유틸] 상태창 존재 판별 (엄격)
+-- ==============================
+local function containsStatusBlock(text)
+    if not text then return false end
+    return (text:find("^%s*★%s*%[") ~= nil) or
+           (text:find("^%s*☆%s*%[") ~= nil) or
+           (text:find("\n%s*★%s*%[") ~= nil) or
+           (text:find("\n%s*☆%s*%[") ~= nil)
+end
+
+-- ==============================
+-- [공용 유틸] 메시지에서 상태창 블록만 제거 (리퀘스트 컨텍스트용)
+--  - 실제 채팅 데이터는 건드리지 않음
+--  - 메시지 내부에 "본문 + \n\n ★[...]" 형태로 붙은 상태창을 잘라냄
+-- ==============================
+local function stripStatusBlockFromText(text)
+    if not text then return "" end
+
+    -- 메시지 시작이 상태창이면 전체 제거(빈 문자열 반환)
+    if text:find("^%s*[★☆]%s*%[") then
+        return ""
+    end
+
+    -- 마지막으로 등장하는 "\n  ★[" 또는 "\n  ☆[" 위치를 찾아 그 앞까지만 남김
+    local lastPos = nil
+    local idx = 1
+    while true do
+        local s = text:find("\n%s*[★☆]%s*%[", idx)
+        if not s then break end
+        lastPos = s
+        idx = s + 1
+    end
+
+    if lastPos then
+        local trimmed = text:sub(1, lastPos - 1)
+        trimmed = trimmed:match("^%s*(.-)%s*$") or ""
+        return trimmed
+    end
+
+    return text
+end
+
+-- ==============================
+-- [EXP 규칙 강제] ☆ 포맷(stats=1)에서만 EXP needed 공식 적용
+-- ==============================
+local function expNeededNext(level)
+    -- Next Lvl Cost = N * 100, 여기서 N = next level (= current+1)
+    return (level + 1) * 100
+end
+
+local function enforceExpRule(triggerId, status_text)
+    local stats = getChatVar(triggerId, "stats") or "0"
+    if stats ~= "1" then
+        return status_text -- ☆ 포맷에서만 적용
+    end
+
+    -- Level 파싱 (Level: 8 또는 Lv 8 둘 다 대응)
+    local lvl =
+        status_text:match("Level:%s*(%d+)")
+        or status_text:match("Lv%s*(%d+)")
+
+    if not lvl then
+        return status_text
+    end
+
+    local need = expNeededNext(tonumber(lvl))
+
+    -- "EXP: cur / need"에서 need만 교체(첫 1회)
+    status_text = status_text:gsub("(EXP:%s*%d+%s*/%s*)%d+", "%1" .. tostring(need), 1)
+    return status_text
+end
+
+-- ==============================
+-- [1] 설정 및 캐릭터 감지 로직
+-- ==============================
+
+-- 최적화: 값이 변경되었을 때만 변수 저장
+function setVarIfChanged(id, varName, newValue)
+    local curValue = getChatVar(id, varName)
+    if curValue ~= newValue then
+        setChatVar(id, varName, newValue)
+    end
+end
+
+-- NPC 감지 메인 함수
+function processCharacterTokens(triggerId)
+    -- ▼ 여기에 등장인물 리스트(characterMap)를 붙여 넣으세요 (요청대로 이 부분은 비워둠)
+    local characterMap = {
+        -- [주요 인물]
+        { id = "Kang Min-hyuk", keywords = {"Kang Min-hyuk", "강민혁"} },
+        { id = "Kang Yoo-ra", keywords = {"Kang Yoo-ra", "강유라"} },
+        { id = "Kim Min-soo", keywords = {"Kim Min-soo", "김민수"} },
+        { id = "Rivea", keywords = {"Rivea", "리베아"} },
+        { id = "Min Chae-rin", keywords = {"Min Chae-rin", "민채린"} },
+        { id = "Baek Hwi-Sung", keywords = {"Baek Hwi-Sung", "백휘성"} },
+        { id = "Sasaki Yua", keywords = {"Sasaki Yua", "사사키 유아", "유아 사사키"} },
+        { id = "Seo Ji-han", keywords = {"Seo Ji-han", "서지한"} },
+        { id = "Song Ha-neul", keywords = {"Song Ha-neul", "송하늘"} },
+        { id = "Alice Croft", keywords = {"Alice Croft", "Alice", "앨리스 크로프트", "앨리스"} },
+        { id = "Isabelle Hayes", keywords = {"Isabelle Hayes", "Isabelle", "이자벨 헤이즈", "이자벨"} },
+        { id = "Im Jin-tae", keywords = {"Im Jin-tae", "임진태"} },
+        { id = "Lim Seol-hee", keywords = {"Lim Seol-hee", "임설희"} },
+        { id = "Lee Ha-eun", keywords = {"Lee Ha-eun", "이하은"} },
+        { id = "Joo Ah-ram", keywords = {"Joo Ah-ram", "주아람"} },
+        { id = "Jake Miller", keywords = {"Jake Miller", "Jake", "제이크 밀러", "제이크"} },
+        { id = "Choi Min-jun", keywords = {"Choi Min-jun", "최민준"} },
+        { id = "Choi Tae-joon", keywords = {"Choi Tae-joon", "최태준"} },
+        { id = "Choi Yu-na", keywords = {"Choi Yu-na", "최유나"} },
+        { id = "Ha Wol-young", keywords = {"Ha Wol-young", "하월영"} },
+        { id = "Han Ji-won", keywords = {"Han Ji-won", "한지원"} },
+        { id = "Han Seo-yeon", keywords = {"Han Seo-yeon", "한서연"} },
+        { id = "Haru Ito", keywords = {"Haru Ito", "하루 이토", "이토 하루"} },
+        { id = "Oh Ha-na", keywords = {"Oh Ha-na", "오하나"} },
+        { id = "Jin So-hee", keywords = {"Jin So-hee", "진소희"} },
+        { id = "Park Jun-ho", keywords = {"Park Jun-ho", "박준호"} },
+        { id = "Kang Woo-seok", keywords = {"Kang Woo-seok", "강우석"} },
+        { id = "Kwon Jae-hyun", keywords = {"Kwon Jae-hyun", "권재현"} },
+        { id = "Park So-won",   keywords = {"Park So-won",   "박소원"} },
+        { id = "Ahn Do-hyun",   keywords = {"Ahn Do-hyun",   "안도현"} },
+        { id = "Yoo Sun-hwa",   keywords = {"Yoo Sun-hwa",   "유선화"} },
+        { id = "Yoo Jin-seong", keywords = {"Yoo Jin-seong", "유진성"} },
+        { id = "Lee Ji-hye",    keywords = {"Lee Ji-hye",    "이지혜"} },
+        { id = "Choi Tae-hyun",    keywords = {"Choi Tae-hyun",    "최태현"} },
+
+        -- [비각성자]
+        { id = "Go Eun-bi", keywords = {"Go Eun-bi", "고은비"} },
+        { id = "Yoon Mirae", keywords = {"Yoon Mirae", "윤미래"} },
+        { id = "Choi Yoo-jin", keywords = {"Choi Yoo-jin", "최유진"} },
+        { id = "Yoon Ji-ho",    keywords = {"Yoon Ji-ho",    "윤지호"} },
+        { id = "Baek Eun-ha",    keywords = {"Baek Eun-ha",    "백은하"} },
+        { id = "Park Hye-in",    keywords = {"Park Hye-in",    "박혜인"} },
+        { id = "Lee So-yoon",    keywords = {"Lee So-yoon",    "이소윤"} },
+
+        -- [적대 세력]
+        { id = "Yoo Jin-hyuk", keywords = {"Yoo Jin-hyuk", "유진혁"} },
+        { id = "Jang Eun-seo", keywords = {"Jang Eun-seo", "장은서"} },
+        { id = "Na Sun-young", keywords = {"Na Sun-young", "나선영"} },
+        { id = "Kang Tae-shik", keywords = {"Kang Tae-shik", "강태식"} },
+        { id = "Kwon Do-yoon",  keywords = {"Kwon Do-yoon",  "권도윤"} },
+        { id = "Shin Woo-hyun", keywords = {"Shin Woo-hyun", "신우현"} },
+        { id = "Chae Ha-yoon",  keywords = {"Chae Ha-yoon",  "채하윤"} }
+    }
+
+    -- 최근 채팅 9개 가져오기
+    local chatLength = getChatLength(triggerId)
+    local startIndex = math.max(0, chatLength - 9)
+    local recentMessages = ""
+
+    for i = startIndex, chatLength - 1 do
+        local message = getChat(triggerId, i)
+        if message and message.data then
+            recentMessages = recentMessages .. " " .. message.data
+        end
+    end
+
+    -- 키워드 검사 및 변수 갱신
+    for _, charData in ipairs(characterMap) do
+        local isFound = false
+        for _, keyword in ipairs(charData.keywords) do
+            if string.find(recentMessages, keyword, 1, true) then
+                isFound = true
+                break
+            end
+        end
+
+        -- 발견되면 "0", 아니면 "1" (숨김 처리용 값)
+        local newValue = isFound and "0" or "1"
+        setVarIfChanged(triggerId, charData.id, newValue)
+    end
+end
+
+-- ==============================
+-- [2] UI 패널 및 기능 토글
+-- ==============================
+
+-- 화면 갱신 (변수 변경사항 반영용)
+function refreshScreen(triggerId)
+    local lastIndex = getChatLength(triggerId) - 1
+    if lastIndex >= 0 then
+        local lastMsg = getChat(triggerId, lastIndex)
+        setChat(triggerId, lastIndex, lastMsg.data)
+    end
+end
+
+-- 시스템 패널 열기/닫기
+function ToggleSysSettings(triggerId)
+    local current = getChatVar(triggerId, "ui_sys_stat")
+    if current == "opened" then
+        setVarIfChanged(triggerId, "ui_sys_stat", "")
+    else
+        setVarIfChanged(triggerId, "ui_sys_stat", "opened")
+        setVarIfChanged(triggerId, "ui_sess_stat", "") -- 세션 패널 닫기
+    end
+    refreshScreen(triggerId)
+end
+
+-- 세션 패널 열기/닫기
+function ToggleSessionSettings(triggerId)
+    local current = getChatVar(triggerId, "ui_sess_stat")
+    if current == "opened" then
+        setVarIfChanged(triggerId, "ui_sess_stat", "")
+    else
+        setVarIfChanged(triggerId, "ui_sess_stat", "opened")
+        setVarIfChanged(triggerId, "ui_sys_stat", "") -- 시스템 패널 닫기
+    end
+    refreshScreen(triggerId)
+end
+
+-- 모든 패널 닫기 (백드롭)
+function CloseAllPanels(triggerId)
+    setVarIfChanged(triggerId, "ui_sys_stat", "")
+    setVarIfChanged(triggerId, "ui_sess_stat", "")
+    refreshScreen(triggerId)
+end
+
+function statusTypeLua(triggerId)       setVarIfChanged(triggerId, "status_type", "0") end
+function statusTypeLorebook(triggerId) setVarIfChanged(triggerId, "status_type", "1") end
+
+-- 상태창 모델 선택 (0:OFF, 1:Main, 2:Aux)
+function statusModelMain(triggerId) setVarIfChanged(triggerId, "status_model", "1") end
+function statusModelAux(triggerId)  setVarIfChanged(triggerId, "status_model", "2") end
+function statusModelOff(triggerId)  setVarIfChanged(triggerId, "status_model", "0") end
+
+-- 언어 설정
+function kor(triggerId) setVarIfChanged(triggerId, "lang", "1") end
+function en(triggerId)  setVarIfChanged(triggerId, "lang", "0") end
+
+-- 각종 기능 ON/OFF (Lore, Stats, Economy 등)
+function loreON(triggerId) setVarIfChanged(triggerId, "lore", "1") end
+function loreOFF(triggerId) setVarIfChanged(triggerId, "lore", "0") end
+
+function economyON(triggerId) setVarIfChanged(triggerId, "economy", "1") end
+function economyOFF(triggerId) setVarIfChanged(triggerId, "economy", "0") end
+
+function statsON(triggerId) setVarIfChanged(triggerId, "stats", "1") end
+function statsOFF(triggerId) setVarIfChanged(triggerId, "stats", "0") end
+
+function unmeasurableON(triggerId) setVarIfChanged(triggerId, "unmeasurable", "1") end
+function unmeasurableOFF(triggerId) setVarIfChanged(triggerId, "unmeasurable", "0") end
+
+function assetfoldingON(triggerId) setVarIfChanged(triggerId, "fold", "1") end
+function assetfoldingOFF(triggerId) setVarIfChanged(triggerId, "fold", "0") end
+
+function LowSpecON(triggerId) setVarIfChanged(triggerId, "LowSpec", "1") end
+function LowSpecOFF(triggerId) setVarIfChanged(triggerId, "LowSpec", "0") end
+
+function scenarioON(triggerId) setVarIfChanged(triggerId, "scenario", "1") end
+function scenarioOFF(triggerId) setVarIfChanged(triggerId, "scenario", "0") end
+
+function factionON(triggerId) setVarIfChanged(triggerId, "faction", "1") end
+function factionOFF(triggerId) setVarIfChanged(triggerId, "faction", "0") end
+
+function eventON(triggerId) setVarIfChanged(triggerId, "event", "1") end
+function eventOFF(triggerId) setVarIfChanged(triggerId, "event", "0") end
+
+function FuturePlansON(triggerId) setVarIfChanged(triggerId, "FuturePlans", "1") end
+function FuturePlansOFF(triggerId) setVarIfChanged(triggerId, "FuturePlans", "0") end
+
+function clockON(triggerId) setVarIfChanged(triggerId, "clock", "1") end
+function clockOFF(triggerId) setVarIfChanged(triggerId, "clock", "0") end
+
+function sysmsgON(triggerId) setVarIfChanged(triggerId, "sysmsg", "1") end
+function sysmsgOFF(triggerId) setVarIfChanged(triggerId, "sysmsg", "0") end
+
+function metapromptON(triggerId) setVarIfChanged(triggerId, "metaprompt", "1") end
+function metapromptOFF(triggerId) setVarIfChanged(triggerId, "metaprompt", "0") end
+
+-- ==============================
+-- [3] 상태창 생성 로직 (LLM)
+-- ==============================
+
+-- 토큰 수 추정
+function estimateTokens(text)
+    if not text then return 0 end
+    return math.ceil(string.len(text) / 3)
+end
+
+-- 채팅 기록 포맷팅
+-- keepStatusBlocks: nil이면 제한 없음(기존 동작 유지)
+-- keepStatusBlocks: 숫자이면, 상태창 블록(★/☆)을 "최신 keepStatusBlocks개"까지만 리퀘스트에 포함
+-- tokenLimit: nil이면 CHAT_TOKENS_RESERVE 사용
+-- 반환: contextStr, hitLimit, foundStatusInContext
+function getContextString(history, keepStatusBlocks, tokenLimit)
+    tokenLimit = tokenLimit or CHAT_TOKENS_RESERVE
+
+    local logs = {}
+    local current_tokens = 0
+    local status_blocks_included = 0
+    local hitLimit = false
+    local foundStatus = false
+
+    -- 기존과 동일하게 1000 토큰 버퍼 유지
+    local budget = tokenLimit - 1000
+
+    for i = #history, 1, -1 do
+        local msg = history[i]
+        local role = (msg.role == "user") and "User" or "Char"
+        local content = msg.data or ""
+
+        if keepStatusBlocks and msg.role == "char" and containsStatusBlock(content) then
+            if status_blocks_included < keepStatusBlocks then
+                status_blocks_included = status_blocks_included + 1
+            else
+                -- 3개 초과 상태창은 "리퀘스트 컨텍스트에서만" 제거 (채팅 데이터는 그대로)
+                content = stripStatusBlockFromText(content)
+            end
+        end
+
+        -- 최종적으로 컨텍스트에 포함되는 content 기준으로 "상태창 포함 여부" 체크
+        if msg.role == "char" and containsStatusBlock(content) then
+            foundStatus = true
+        end
+
+        local line = role .. ": " .. content
+        local line_tokens = estimateTokens(line)
+
+        if current_tokens + line_tokens > budget then
+            hitLimit = true
+            break
+        end
+
+        current_tokens = current_tokens + line_tokens
+        table.insert(logs, 1, line)
+    end
+
+    return table.concat(logs, "\n\n"), hitLimit, foundStatus
+end
+
+-- 이미 상태창이 있는지 확인 (엄격)
+function hasPreviousStatus(history)
+    for _, msg in ipairs(history) do
+        local content = msg.data or ""
+        if msg.role == "char" and containsStatusBlock(content) then
+            return true
+        end
+    end
+    return false
+end
+
+-- ==============================
+-- [추가 유틸] 상태창(★/☆) 블록에서 허용된 헤더만 남기기
+-- ==============================
+local function _trim(s)
+    return (s and (s:match("^%s*(.-)%s*$"))) or ""
+end
+
+local function _normalizeKey(k)
+    k = _trim(k):lower()
+    k = k:gsub("%s+", " ")
+    return k
+end
+
+local function _buildAllowedKeySet(stats)
+    local allowed = {}
+    local function add(k) allowed[k] = true end
+
+    -- 공통(★/☆ 모두)
+    add("date"); add("time"); add("location"); add("name")
+    add("class"); add("weapons"); add("accessories"); add("armor")
+    add("items"); add("currencies"); add("skills"); add("quests")
+
+    -- ☆(stats=1)에서만
+    if stats == "1" then
+        add("level"); add("stat points"); add("exp")
+        add("hp"); add("mp"); add("sp")
+        add("strength"); add("constitution"); add("agility")
+        add("intelligence"); add("sense")
+    end
+
+    return allowed
+end
+
+local function _mapToCanonicalKey(rawKey)
+    rawKey = _normalizeKey(rawKey)
+
+    local map = {
+        ["date"] = "date",
+        ["time"] = "time",
+        ["location"] = "location",
+        ["name"] = "name",
+
+        ["level"] = "level",
+        ["lv"] = "level",
+
+        ["stat points"] = "stat points",
+        ["statpoints"] = "stat points",
+        ["stat point"] = "stat points",
+
+        ["exp"] = "exp",
+        ["hp"] = "hp",
+        ["mp"] = "mp",
+        ["sp"] = "sp",
+
+        ["strength"] = "strength",
+        ["str"] = "strength",
+        ["constitution"] = "constitution",
+        ["con"] = "constitution",
+        ["agility"] = "agility",
+        ["agi"] = "agility",
+        ["intelligence"] = "intelligence",
+        ["int"] = "intelligence",
+        ["sense"] = "sense",
+        ["sen"] = "sense",
+
+        ["class"] = "class",
+        ["weapons"] = "weapons",
+        ["weapon"] = "weapons",
+        ["accessories"] = "accessories",
+        ["accessory"] = "accessories",
+        ["armor"] = "armor",
+        ["armour"] = "armor",
+        ["items"] = "items",
+        ["item"] = "items",
+
+        ["currencies"] = "currencies",
+        ["currency"] = "currencies",
+        ["cur"] = "currencies",
+        ["money"] = "currencies",
+
+        ["skills"] = "skills",
+        ["skill"] = "skills",
+        ["quests"] = "quests",
+        ["quest"] = "quests",
+    }
+
+    return map[rawKey]
+end
+
+local function _extractHeaderKey(seg)
+    -- 1) "Key: value" 형태
+    local k = seg:match("^%s*([^:|]+)%s*:")
+    if k then return k end
+
+    -- 2) "Lv 8", "HP 90/130", "Cur 5000원" 같은 콜론 없는 형태(보험)
+    local w = seg:match("^%s*(%w+)%s+")
+    if w then return w end
+
+    return nil
+end
+
+local function filterExtraStatusHeaders(triggerId, text)
+    if not text or text == "" then return text end
+
+    local stats = getChatVar(triggerId, "stats") or "0"
+    local allowed = _buildAllowedKeySet(stats)
+
+    local function filterOneBlock(open, inner, close)
+        local kept = {}
+        local seen = {}
+
+        for seg in inner:gmatch("([^|]+)") do
+            seg = _trim(seg)
+            if seg ~= "" then
+                local rawKey = _extractHeaderKey(seg)
+                if rawKey then
+                    local canon = _mapToCanonicalKey(rawKey)
+                    if canon and allowed[canon] and (not seen[canon]) then
+                        seen[canon] = true
+                        table.insert(kept, seg)
+                    end
+                end
+            end
+        end
+
+        -- 전부 필터되어 빈 블록이 되면, 원문 유지(안전장치)
+        -- "정해진 헤더 외에는 무조건 삭제"를 더 엄격히 원하시면 여기만 바꾸시면 됩니다.
+        if #kept == 0 then
+            return open .. inner .. close
+        end
+
+        return open .. table.concat(kept, " | ") .. close
+    end
+
+    text = text:gsub("([★☆]%s*%[)(.-)(%])", filterOneBlock)
+    return text
+end
+
+-- ==============================
+-- LLM 출력 텍스트 정제 (triggerId 전달)
+-- ==============================
+function cleanStatusText(triggerId, text)
+    if not text then return "" end
+
+    text = text:match("^%s*(.-)%s*$")
+    text = text:gsub("```", "")
+    text = text:gsub("<[Tt]houghts?>.-</[Tt]houghts?>", "")
+    text = text:gsub("<[Tt]hink>.-</[Tt]hink>", "")
+    text = text:gsub("<[Tt]houghts?>", ""):gsub("</[Tt]houghts?>", "")
+    text = text:gsub("<[Tt]hink>", ""):gsub("</[Tt]hink>", "")
+
+    local COMMA_GUARD = "__COMMA_GUARD__"
+
+    -- [1] Currencies/Quests 구간의 콤마 보호
+    text = text:gsub("(|%s*Currencies:%s*)([^|%]]+)", function(prefix, v)
+        return prefix .. v:gsub(",", COMMA_GUARD)
+    end)
+
+    text = text:gsub("(|%s*Quests:%s*)([^%]]+)", function(prefix, v)
+        return prefix .. v:gsub(",", COMMA_GUARD)
+    end)
+
+    -- [2] 숫자 포맷 정리 (1,000 -> 1000)  ※ 보호된 구간은 영향 없음
+    while true do
+        local new_text, count = text:gsub("(%d+),(%d%d%d)", "%1%2")
+        if count == 0 then break end
+        text = new_text
+    end
+
+    -- [3] 보호 문자 복원 (반드시 숫자 정리 루프 '후'에!)
+    text = text:gsub(COMMA_GUARD, ",")
+
+    -- 랭크 표기 정리 (Class 이름 보존 + 랭크만 정리)
+    text = text:gsub("(|%s*Class:%s*)([^|%]]+)", function(prefix, content)
+        local name, rank = content:match("^(.-)%s*%(([^)]+)%)%s*$")
+        if not rank then
+            return prefix .. content
+        end
+
+        local r_clean = rank:match("^%s*(.-)%s*$")
+        local r_lower = r_clean:lower()
+
+        if r_lower == "normal" or r_lower == "hidden" or r_lower == "none" or
+           r_clean == "일반" or r_clean == "히든" or r_clean == "없음" then
+            return prefix .. name .. " (" .. r_clean .. ") "
+        else
+            return prefix .. name .. " (none) "
+        end
+    end)
+
+    -- 스탯 표기 정리
+    local patterns = {"Stat Points", "HP", "MP", "SP", "Strength", "Constitution", "Agility", "Intelligence", "Sense"}
+    for _, key in ipairs(patterns) do
+        text = text:gsub("(|%s*" .. key .. ":%s*[%d%s/]+)%s*%([^%)]*%)", "%1")
+    end
+
+    -- 퀘스트 표기 정리
+    local s_quest, e_quest = text:find("|%s*Quests:")
+    if e_quest then
+        local pre = text:sub(1, e_quest)
+        local post = text:sub(e_quest + 1)
+        if post:match("%]%s*$") then
+            local content = post:match("^(.-)%]%s*$")
+            if content then
+                content = content:gsub("%s*%b[]", "")
+                text = pre .. " " .. content .. "]"
+            end
+        end
+    end
+
+    -- ☆ 포맷(stats=1)에서만 EXP needed를 공식으로 강제
+    text = enforceExpRule(triggerId, text)
+
+    -- [추가] 정해진 헤더 외 항목 제거
+    text = filterExtraStatusHeaders(triggerId, text)
+
+    return text
+end
+
+-- ==============================
+-- LLM 프롬프트 생성 함수
+-- ==============================
+function makeStatusPrompt(triggerId, isFirst)
+    local stats = getChatVar(triggerId, "stats") or "0"
+    local clock = getChatVar(triggerId, "clock") or "0"
+    local lore = getChatVar(triggerId, "lore") or "0"
+    local lang = getChatVar(triggerId, "lang") or "0"
+
+    local userName = cbs("{{user}}")
+
+    local time_format = (clock == "1") and "HH:MM:SS" or "Current Time"
+    local coin_format = (lore == "1") and ", amount Coin" or ""
+
+    -- 예시 데이터 설정
+    local ex_time = (clock == "1") and "09:15:20" or "Morning"
+    local ex_coin = (lore == "1") and ", 500 Coin" or ""
+    local ex_quest_coin = (lore == "1") and ", 200 Coin" or ""
+    local ex_loc, ex_class, ex_wep, ex_acc, ex_arm, ex_item, ex_skill, ex_quest_main
+
+    if lang == "1" then
+        ex_loc = "바람의 숲"
+        ex_class = "궁수 (normal)"
+        ex_wep = "철제 활 (normal)"
+        ex_acc = "바람 속성 반지 (normal)"
+        ex_arm = "철제 갑옷 (normal)"
+        ex_item = "하급 체력 포션 (normal)"
+        ex_skill = "더블 샷, 파워 애로우"
+        ex_quest_main = "<일일> 락 디거 처치 (5/10) - 보상: 200 EXP"
+    else
+        ex_loc = "Windy Forest"
+        ex_class = "Archer (Normal)"
+        ex_wep = "Iron Bow (Normal)"
+        ex_acc = "Wind Attribute Ring (Normal)"
+        ex_arm = "Iron Armor (Normal)"
+        ex_item = "Minor Health Potion (Normal)"
+        ex_skill = "Double Shot, Power Arrow"
+        ex_quest_main = "<daily> Kill Rock Digger (5/10) - Reward: 200 EXP"
+    end
+
+    -- 랭크 가이드 텍스트
+    local rank_guide = ""
+    if isFirst and stats == "1" then
+        rank_guide = [[
+[Reference: Rank/Level/Stats Guide]
+- E (Lv1-15, MainStat 10-25 / Other Avg ~10-15): Weakest.
+- D (Lv15-30, MainStat 25-40 / Other Avg ~15-20): Competent.
+- C (Lv30-45, MainStat 40-60 / Other Avg ~20-30): Veteran.
+- B (Lv45-60, MainStat 60-80 / Other Avg ~30-40): Elite.
+- A (Lv60-70, MainStat 80-100 / Other Avg ~40-50): Commander.
+- S (Lv70+, MainStat 100+): Strategic Asset.
+
+Instructions:
+1. Infer power from narrative/titles/species (for non-humans, map to Ranks above).
+2. Set Level/Stats within stat budget:
+  - Base Stats: start at 10.
+  - Stat Points: total gained = (Level-1)*2. (Lv1: 0)
+3. Item Rarity: Normal/Rare/Unique. Legendary ONLY if explicitly stated in the chat/story.
+4. Class rank is disclosure-only: (normal)/(hidden)/(none).
+5. Max HP=CON*10, SP=AGI*10, MP=INT*10.
+6. EXP: current/needed; needed=(Level+1)*100.
+]]
+    elseif stats == "1" then
+        rank_guide = [[
+Instructions:
+- Keep prior stats unless level-up or gear changes.
+- Base Stats: start at 10.
+- Stat Points: total gained = (Level-1)*2. (Lv1: 0)
+- Item Rarity: Normal/Rare/Unique. Legendary ONLY if explicitly stated in the chat/story.
+- Class rank is disclosure-only: (normal)/(hidden)/(none).
+- Max HP=CON*10, SP=AGI*10, MP=INT*10.
+- EXP: current/needed; needed=(Level+1)*100.
+- Don’t inflate EXP/Quest rewards without log evidence; keep scale consistent.
+]]
+    end
+
+    -- 예시 포맷 생성
+    local example_block = ""
+    local mini_example = ""
+
+    if isFirst then
+        if stats == "1" then
+            example_block = [[
+2. Example:
+☆ [Date: 2025-04-16 (Sat) | Time: ]] .. ex_time .. [[ | Location: ]] .. ex_loc .. [[ | Name: ]] .. userName .. [[ | Level: 8 | Stat Points: 3 | EXP: 450 / 800 | HP: 90 / 130 | MP: 90 / 150 | SP: 90 / 100 | Strength: 12 | Constitution: 13 | Agility: 10 | Intelligence: 15 | Sense: 11 | Class: ]] .. ex_class .. [[ | Weapons: ]] .. ex_wep .. [[ | Accessories: ]] .. ex_acc .. [[ | Armor: ]] .. ex_arm .. [[ | Items: ]] .. ex_item .. [[ | Currencies: 50,000 원]] .. ex_coin .. [[ | Skills: ]] .. ex_skill .. [[ | Quests: ]] .. ex_quest_main .. ex_quest_coin .. [[ ]
+]]
+        else
+            example_block = [[
+2. Example:
+★ [Date: 2025-04-16 (Sat) | Time: ]] .. ex_time .. [[ | Location: ]] .. ex_loc .. [[ | Name: ]] .. userName .. [[ | Class: ]] .. ex_class .. [[ | Weapons: ]] .. ex_wep .. [[ | Accessories: ]] .. ex_acc .. [[ | Armor: ]] .. ex_arm .. [[ | Items: ]] .. ex_item .. [[ | Currencies: 50,000 원]] .. ex_coin .. [[ | Skills: ]] .. ex_skill .. [[ | Quests: ]] .. ex_quest_main .. ex_quest_coin .. [[ ]
+]]
+        end
+    else
+        if stats == "1" then
+            mini_example =
+                "2. Mini Example (scale):\n" ..
+                "☆ [Lv 8 | EXP 450/800 | HP 90/130 MP 90/150 SP 90/100 | " ..
+                "STR12 CON13 AGI10 INT15 SEN11 | Cur 50,000 원" .. ex_coin ..
+                " | Gear: " .. ex_wep .. ", " .. ex_acc .. ", " .. ex_arm ..
+                " | Quest: " .. ex_quest_main .. ex_quest_coin .. "]\n"
+        else
+            mini_example =
+                "2. Mini Example (scale):\n" ..
+                "★ [Class " .. ex_class ..
+                " | Gear: " .. ex_wep .. ", " .. ex_acc .. ", " .. ex_arm ..
+                " | Item: " .. ex_item ..
+                " | Cur 50,000 원" .. ex_coin ..
+                " | Quest: " .. ex_quest_main .. ex_quest_coin .. "]\n"
+        end
+    end
+
+    local prompt_body = ""
+    if stats == "1" then
+        prompt_body = [[
+1. Format:
+☆ [Date: YYYY-MM-DD (Day) | Time: ]] .. time_format .. [[ | Location: name | Name: ]] .. userName .. [[ | Level: current | Stat Points: available | EXP: current / required | HP: current / max | MP: current / max | SP: current / max | Strength: current | Constitution: current | Agility: current | Intelligence: current | Sense: current | Class: name (Rank) | Weapons: name (Rank) / name (Rank) | Accessories: name (Rank) / name (Rank) | Armor: name (Rank) | Items: name (Rank) / name (Rank) | Currencies: amount 원]] .. coin_format .. [[ | Skills: skill list | Quests: quest list]
+
+]] .. example_block .. mini_example .. "\n" .. rank_guide
+    else
+        prompt_body = [[
+1. Format:
+★ [Date: YYYY-MM-DD (Day) | Time: ]] .. time_format .. [[ | Location: name | Name: ]] .. userName .. [[ | Class: name (Rank) | Weapons: name (Rank) / name (Rank) | Accessories: name (Rank) / name (Rank) | Armor: name (Rank) | Items: name (Rank) / name (Rank) | Currencies: amount 원]] .. coin_format .. [[ | Skills: skill list | Quests: quest list]
+
+]] .. example_block .. mini_example .. [[
+Instructions:
+- Update Date/Time/Location based on context.
+- Preserve previously acquired items/skills.
+- Item Rarity: Normal/Rare/Unique. Legendary ONLY if explicitly stated in the chat/story.
+- Class rank is disclosure-only: (normal)/(hidden)/(none).
+]]
+    end
+
+    return "### AI Role & System Rules\n" ..
+           "- Role: Data Extraction & RPG System Bot.\n" ..
+           "- Task: Analyze chat log and generate the status window block.\n" ..
+           "- Constraint: No other text/greeting/apologies. Strictly follow format.\n\n" ..
+           prompt_body ..
+           "\n### Task\nAnalyze the chat log and generate the status window.\n"
+end
+
+-- ==============================
+-- 상태창 생성 실행 (LLM 호출 포함)
+-- ==============================
+function processStatusWindow(triggerId)
+    -- 0: Lua (LLM 호출), 1: Lorebook (작동 중지)
+    local status_type = getChatVar(triggerId, "status_type")
+    if status_type == "1" then
+        return
+    end
+
+    local model_mode = getChatVar(triggerId, "status_model") or "2"
+    if model_mode == "0" then return end
+
+    -- (중요) LLM 호출 전, 마지막 메시지 상태/역할로 빠른 탈출: 재트리거 비용 누수 방지
+    local lastIndex = getChatLength(triggerId) - 1
+    if lastIndex < 0 then return end
+
+    local lastMsg = getChat(triggerId, lastIndex)
+    if not lastMsg then return end
+    if lastMsg.role ~= "char" then return end
+    if containsStatusBlock(lastMsg.data or "") then return end
+
+    local history = getFullChat(triggerId)
+    if #history == 0 then return end
+
+    local is_first_generation = not hasPreviousStatus(history)
+    local user_info_block = ""
+
+    if is_first_generation then
+        log("StatusScript: First generation. Injecting profile.")
+        local user_name = cbs("{{user}}")
+        local user_desc = cbs("{{persona}}")
+
+        user_info_block = "\n\n[Reference: User Profile]\n" ..
+                          "Name: " .. user_name .. "\n" ..
+                          "Desc: " .. user_desc .. "\n" ..
+                          "(Use this to determine initial Rank/Stats if none exist)\n\n"
+    end
+
+    -- ==============================
+    -- [요구사항 반영]
+    -- 1) 기본 10k로 컨텍스트 생성
+    -- 2) 10k가 꽉 찼는데(hitLimit) 컨텍스트 안에 상태창이 없으면(foundStatus==false),
+    --    13k -> 16k로 늘려서 "컨텍스트 생성만" 재시도
+    -- 3) 16k까지 늘려도 없으면, 다시 10k 컨텍스트로 LLM 시도
+    -- (LLM 호출은 최종적으로 1회)
+    -- ==============================
+    local baseLimit = CHAT_TOKENS_RESERVE -- 10000
+    local context_str, hit, found = getContextString(history, STATUS_BLOCKS_KEEP_IN_REQUEST, baseLimit)
+
+    if (not is_first_generation) and hit and (not found) then
+        local ctx13, hit13, found13 = getContextString(history, STATUS_BLOCKS_KEEP_IN_REQUEST, 13000)
+        if found13 then
+            context_str = ctx13
+            log("StatusScript: Context expanded to 13000 (status found).")
+        else
+            local ctx16, hit16, found16 = getContextString(history, STATUS_BLOCKS_KEEP_IN_REQUEST, 16000)
+            if found16 then
+                context_str = ctx16
+                log("StatusScript: Context expanded to 16000 (status found).")
+            else
+                -- 요구사항대로: 16k까지 늘렸는데도 상태창이 없으면 10k로 시도(회귀)
+                log("StatusScript: No status found up to 16000; fallback to 10000.")
+            end
+        end
+    end
+
+    local system_prompt = makeStatusPrompt(triggerId, is_first_generation)
+    local final_prompt =
+        system_prompt .. user_info_block ..
+        "--- CHAT LOG ---\n" .. context_str .. "\n--- END LOG ---\nGenerate status."
+
+    local request_msgs = { { role = "user", content = final_prompt } }
+    log("StatusScript: Requesting LLM (Mode: " .. model_mode .. ")...")
+
+    local result
+    if model_mode == "1" then
+        result = LLM(triggerId, request_msgs)
+    else
+        if _G.axLLM then
+            result = axLLM(triggerId, request_msgs)
+        else
+            result = LLM(triggerId, request_msgs)
+        end
+    end
+
+    if type(result) == "userdata" or (type(result) == "table" and result.await) then
+        result = result:await()
+    end
+
+    if result and result.success then
+        local status_text = result.message
+        if not status_text or status_text == "" then
+            status_text = result.result
+        end
+
+        status_text = cleanStatusText(triggerId, status_text)
+        if not status_text or status_text == "" then return end
+
+        local fresh_history = getFullChat(triggerId)
+        local fresh_last_idx = #fresh_history
+        if fresh_last_idx == 0 then return end
+
+        local fresh_last_msg = fresh_history[fresh_last_idx]
+        if fresh_last_msg.role ~= "char" then return end
+
+        -- 중복 생성 방지 (엄격)
+        local current_content = fresh_last_msg.data or ""
+        if containsStatusBlock(current_content) then return end
+
+        local final_content = current_content .. "\n\n" .. status_text
+        setChat(triggerId, fresh_last_idx - 1, final_content)
+        log("StatusScript: Complete!")
+    else
+        local err_msg = (result and result.message) or "Unknown error"
+        log("StatusScript: LLM Failed - " .. err_msg)
+    end
+end
+
+-- ==============================
+-- [4] 메인 실행 트리거
+-- ==============================
+onOutput = async(function(triggerId)
+    -- 1. 캐릭터 감지 로직 실행 (에러 무시)
+    local status1, err1 = pcall(processCharacterTokens, triggerId)
+    if not status1 then log("CharScript ERROR: " .. tostring(err1)) end
+
+    -- 2. 상태창 생성 로직 실행 (에러 무시)
+    local status2, err2 = pcall(processStatusWindow, triggerId)
+    if not status2 then log("StatusScript ERROR: " .. tostring(err2)) end
+end)

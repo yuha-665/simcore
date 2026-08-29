@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.94.1
-//@display-name SimCore (시뮬 엔진) v0.94 모듈 팩 매니페스트
+//@version 0.95.0
+//@display-name SimCore (시뮬 엔진) v0.95 커뮤니티 보드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.95.0 ───────────────────────────────────────────────
+// 커뮤니티 보드 (얼터헌터 "헌터넷" 흡수가 발단 — docs/design-얼헌-개조.md §P4).
+// 원본(LightBoard류)은 게시판 원문을 메인 모델이 본문과 함께 출력해 매턴 재전송하는
+// 구조였다 — 여기선 상태(스냅샷)에 실어 재전송 비용을 없앤다. 자체 구현 (코드·포맷 무관).
+// - [코어 board] state.board { seq, posts } — 스냅샷에 실려 리롤과 함께 되감긴다.
+//   턴 갱신은 기존 보조 호출에 얹힘 ("board" 필드, 추가 호출 0). 조회수·추천은 시스템이
+//   굴린다 (시드 rng). 메인에는 화제 한 줄만 (mainInject). when 게이트(통신 두절 등).
+// - [어댑터] 게임 패널 3호 '보드' — 우상단 버튼, 목록/읽기/쓰기 3면. 글쓰기·댓글·새 소식은
+//   **채팅 턴 없이** 전용 보조 호출로 보드만 갱신 (turnBusy 경합 차단, out 스냅샷 정합).
+// - [편집기] [보드] 탭 — label/icon/topics/guide/postsPerTurn/maxPosts/when/mainInject/css
+//   + AI 도구(생성·내보내기, SCHEMA_BOARD_RULES). 규칙 #3 (엔진 기능엔 편집기 칸).
+// - [검증] board 섹션 — 타입·범위·when 표현식·"topics도 guide도 없음" 경고.
+//   테스트 테스트/test-board.js.
 //
 // ── v0.94.1 ───────────────────────────────────────────────
 // 실기 제보: 내장 AI 생성이 "형식 검사 불합격"만 반복 → 유저가 재생성만 돌리다 포기.
@@ -1857,6 +1871,8 @@
   const partyMod = SimCore.require('party');
   const calendarMod = SimCore.require('calendar');
   const timeMod = SimCore.require('time');
+  const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
+  const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -2367,6 +2383,9 @@
   let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
   let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
+  // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
+  let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
+  let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
 
@@ -2888,6 +2907,10 @@
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
             const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
+            // 보드 델타 (v0.95) — 지연 경로에서도 적용. 표류 rng는 비시드(소급이라 리롤 정합 무관)
+            if (parsed.board && boardMod.boardConfig(schema)) {
+              boardMod.applyDelta(schema, session.current, parsed.board, { rng: makeUnstableRng(Math.random) });
+            }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
             lastAux.applied = amended.changeLog.length;
@@ -3052,6 +3075,9 @@
       }
       const c = calendarMod.calendarButtonSpec(schema);
       if (c) specs.push({ key: 'calendar', kind: 'calendar', tab: null, ...c });
+      // 커뮤니티 보드 (v0.95) — 게임 패널 3호. 스키마가 board를 켠 봇만.
+      const b = boardMod.boardConfig(schema);
+      if (b) specs.push({ key: 'board', kind: 'board', tab: null, label: b.label, icon: b.icon });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -3156,6 +3182,31 @@
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
+      #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
+      #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
+      #sc-game .scb-btn { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
+        padding:5px 12px; font-size:12.5px; cursor:pointer; }
+      #sc-game .scb-btn:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scb-btn:disabled { opacity:.4; cursor:wait; }
+      #sc-game .scb-row { display:flex; gap:8px; align-items:baseline; padding:7px 8px; cursor:pointer;
+        border-bottom:1px solid #22304f; }
+      #sc-game .scb-row:hover { background:#16203a; }
+      #sc-game .scb-row .scb-num { color:#5d6b87; font-size:11.5px; min-width:26px; }
+      #sc-game .scb-row .scb-title { flex:1; color:#e6ebf5; font-size:13px; overflow:hidden;
+        text-overflow:ellipsis; white-space:nowrap; }
+      #sc-game .scb-row .scb-meta { color:#7d8aa5; font-size:11.5px; white-space:nowrap; }
+      #sc-game .scb-view-title { font-size:14.5px; font-weight:700; color:#fff; margin:4px 0 2px; }
+      #sc-game .scb-view-info { color:#7d8aa5; font-size:11.5px; margin-bottom:8px; }
+      #sc-game .scb-body { white-space:pre-wrap; color:#dfe7f5; font-size:13px; background:#0e1526;
+        border:1px solid #22304f; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+      #sc-game .scb-re { border-top:1px dashed #2a3a5e; padding:6px 4px; font-size:12.5px; }
+      #sc-game .scb-re .scb-re-a { color:#9db8e8; margin-right:6px; }
+      #sc-game .scb-input, #sc-game .scb-ta { width:100%; background:#0e1526; border:1px solid #2a3a5e;
+        border-radius:8px; color:#e6ebf5; padding:7px 10px; font-size:13px; margin-bottom:6px;
+        font-family:inherit; }
+      #sc-game .scb-ta { min-height:96px; resize:vertical; }
+      #sc-game .scb-empty { text-align:center; color:#5d6b87; padding:24px 0; }
       #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
       #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
         border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
@@ -3244,7 +3295,8 @@
     let el = document.getElementById('sc-game-custom');
     if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
     const css = gameKind === 'party' ? schema?.party?.css
-      : gameKind === 'calendar' ? schema?.calendar?.css : null;
+      : gameKind === 'calendar' ? schema?.calendar?.css
+        : gameKind === 'board' ? schema?.board?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -3264,6 +3316,7 @@
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
+    boardView = { mode: 'list', postId: null };   // 보드는 열 때마다 목록부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -3290,6 +3343,7 @@
     if (!root || !session || !schema) return;
     if (gameKind === 'party') renderPartyPanel(root);
     else if (gameKind === 'calendar') renderCalendarPanel(root);
+    else if (gameKind === 'board') renderBoardPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -3707,6 +3761,173 @@
     renderGamePanel();
     await updateControlStrip();
     if (panelBuilt) renderPanel();
+  }
+
+  // ── 커뮤니티 보드 패널 (v0.95) — 게임 패널 3호 ─────────────────
+  // 목록/읽기/쓰기 3면. 글쓰기·댓글·새로고침은 **채팅 없는 전용 보조 호출**로 보드만 갱신한다.
+  // 규약: turnBusy 중엔 호출 안 함 (턴 파이프라인의 보조 호출과 경합 금지). 적용 후에는
+  // out:lastOutIndex 스냅샷을 덮어써 리롤과 정합 유지 (manualSet·commitPanelChanges와 같은 규약).
+  async function boardSaveNow(what) {
+    try { if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current); }
+    catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
+  }
+
+  async function boardNarrative() {
+    // 인터랙션 보조에게 줄 이야기 맥락 — 최근 메시지 몇 개 (마커 제거)
+    try {
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const msgs = (await Risuai.getChatFromIndex(chaIdx, chatIdx))?.message ?? [];
+      return msgs.slice(-4).map((m) => String(m.data || '').replace(MARKER_RE, '').trim())
+        .filter(Boolean).join('\n---\n').slice(-2400);
+    } catch { return ''; }
+  }
+
+  async function callBoardAux(kind, payload = {}) {
+    if (!session || !schema || boardBusy) return;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
+    boardBusy = true;
+    gameNotice = '⏳ 게시판 사용자들이 반응하는 중…';
+    renderGamePanel();
+    try {
+      const prompt = boardMod.interactionPrompt(schema, session.current, kind,
+        { ...payload, narrative: await boardNarrative() });
+      const res = await callAuxLLM(prompt, 800);
+      if (res && res.blocked) {
+        gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 보드 실시간 반응은 쓸 수 없고, 턴 갱신만 돌아요';
+      } else if (typeof res === 'string') {
+        const delta = boardMod.parseInteraction(res, engine.extractJsonObject);
+        if (delta) {
+          const r = boardMod.applyDelta(schema, session.current, delta, { rng: makeUnstableRng(Math.random) });
+          await boardSaveNow('보드 갱신');
+          gameNotice = kind === 'refresh'
+            ? `✓ 새 소식 — 새 글 ${r.added}건, 댓글 ${r.replied}건`
+            : (r.added || r.replied) ? `✓ 반응이 달렸어요 — 새 글 ${r.added} · 댓글 ${r.replied}` : '조용하네요 — 아직 반응이 없어요';
+        } else {
+          gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
+          console.log('[simcore] 보드 인터랙션 파싱 실패:', res.slice(0, 200));
+        }
+      } else {
+        gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요';
+      }
+    } catch (e) {
+      gameNotice = `⚠ 보드 갱신 실패: ${e.message}`;
+    } finally {
+      boardBusy = false;
+      renderGamePanel();
+    }
+  }
+
+  function renderBoardPanel(root) {
+    const cfg = boardMod.boardConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const board = boardMod.ensureBoard(session.current);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, onClick, disabled = false) => {
+      const b = el('button', 'scb-btn', label);
+      b.type = 'button';
+      b.disabled = disabled || boardBusy;
+      b.onclick = onClick;
+      return b;
+    };
+
+    // 제목줄 + 닫기 (다른 패널과 같은 규약)
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button';
+    x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    if (boardView.mode === 'write') {
+      // ── 글쓰기 ──
+      card.appendChild(el('div', 'scg-note', '새 글을 쓰면 등록 즉시 실리고, 다른 사용자들의 반응이 이어서 달립니다 (채팅 턴 소모 없음).'));
+      const ti = el('input', 'scb-input'); ti.placeholder = '제목';
+      ti.maxLength = boardMod.CAPS.TITLE;
+      const ai = el('input', 'scb-input'); ai.placeholder = '닉네임 (비우면 익명)';
+      ai.maxLength = boardMod.CAPS.AUTHOR;
+      const ta = el('textarea', 'scb-ta'); ta.placeholder = '내용';
+      ta.maxLength = boardMod.CAPS.BODY;
+      card.appendChild(ti); card.appendChild(ai); card.appendChild(ta);
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('등록', async () => {
+        if (!ti.value.trim() || !ta.value.trim()) { gameNotice = '⚠ 제목과 내용을 채워 주세요'; renderGamePanel(); return; }
+        const postId = boardMod.applyUserPost(schema, session.current,
+          { title: ti.value, author: ai.value, body: ta.value });
+        await boardSaveNow('보드 글 등록');
+        boardView = { mode: 'read', postId };
+        gameNotice = '✓ 등록됐어요';
+        renderGamePanel();
+        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value });
+      }));
+      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      card.appendChild(bar);
+    } else if (boardView.mode === 'read') {
+      // ── 읽기 ──
+      const post = board.posts.find((p) => p.id === boardView.postId);
+      if (!post) { boardView = { mode: 'list', postId: null }; renderGamePanel(); return; }
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      card.appendChild(bar);
+      card.appendChild(el('div', 'scb-view-title', post.title));
+      card.appendChild(el('div', 'scb-view-info',
+        `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
+      card.appendChild(el('div', 'scb-body', post.body));
+      for (const r of post.re) {
+        const row = el('div', 'scb-re');
+        row.appendChild(el('span', 'scb-re-a', r.author));
+        row.appendChild(document.createTextNode(r.body));
+        card.appendChild(row);
+      }
+      const ci = el('input', 'scb-input'); ci.placeholder = '댓글 (닉네임은 "닉: 내용"으로, 없으면 익명)';
+      ci.maxLength = boardMod.CAPS.RE_BODY + boardMod.CAPS.AUTHOR + 2;
+      card.appendChild(ci);
+      const bar2 = el('div', 'scb-toolbar');
+      bar2.appendChild(btn('댓글 달기', async () => {
+        const raw = ci.value.trim();
+        if (!raw) return;
+        const m = raw.match(/^([^:]{1,20}):\s*(.+)$/s);
+        const author = m ? m[1].trim() : '';
+        const body = m ? m[2] : raw;
+        if (!boardMod.applyUserComment(session.current, post.id, { author, body })) {
+          gameNotice = '⚠ 댓글을 달 수 없어요 (글이 삭제됐거나 댓글 상한)';
+          renderGamePanel(); return;
+        }
+        await boardSaveNow('보드 댓글');
+        gameNotice = '✓ 댓글이 달렸어요';
+        renderGamePanel();
+        await callBoardAux('user_comment', { postId: post.id, author, body });
+      }));
+      card.appendChild(bar2);
+    } else {
+      // ── 목록 ──
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { mode: 'write', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('🔄 새 소식', () => callBoardAux('refresh')));
+      card.appendChild(bar);
+      if (!board.posts.length) {
+        card.appendChild(el('div', 'scb-empty', '아직 글이 없어요 — 이야기가 흐르면 글이 올라오기 시작합니다.'));
+      }
+      for (const p of board.posts) {
+        const row = el('div', 'scb-row');
+        row.appendChild(el('span', 'scb-num', `#${p.id}`));
+        row.appendChild(el('span', 'scb-title', p.re.length ? `${p.title} [${p.re.length}]` : p.title));
+        row.appendChild(el('span', 'scb-meta', `${p.author} · ${p.time} · 👁${p.views} · 👍${p.up}`));
+        row.onclick = () => { boardView = { mode: 'read', postId: p.id }; renderGamePanel(); };
+        card.appendChild(row);
+      }
+    }
+
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
   }
 
   async function onPartyPick(slotVar, value) {

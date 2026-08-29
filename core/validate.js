@@ -1021,6 +1021,40 @@ function validateSchema(schema) {
     }
   }
 
+  // ── board (커뮤니티 보드 v0.95 — 옵트인, 설계 docs/design-얼헌-개조.md §P4) ──
+  // 세계 안의 미니 게시판. 상태는 스냅샷에, 턴 갱신은 기존 보조 호출에 얹힌다.
+  if (schema.board != null) {
+    const B = schema.board;
+    if (typeof B !== 'object' || Array.isArray(B)) err('$.board', 'board는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['topics', '관심사'], ['guide', '생성 지침'], ['css', 'CSS']]) {
+        if (B[k] != null && typeof B[k] !== 'string') err(`$.board.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (!B.label || !String(B.label).trim()) warn('$.board.label', '보드 이름이 없습니다 — 패널 제목이 "게시판"이 됩니다');
+      if (B.icon != null && (typeof B.icon !== 'string' || B.icon.length > 8)) {
+        err('$.board.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
+      }
+      if (B.postsPerTurn != null && (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 4)) {
+        err('$.board.postsPerTurn', '턴당 새 글은 0~4 정수');
+      }
+      if (B.maxPosts != null && (!Number.isInteger(B.maxPosts) || B.maxPosts < 4 || B.maxPosts > 40)) {
+        err('$.board.maxPosts', '보존 글 수는 4~40 정수');
+      }
+      if (B.mainInject != null && typeof B.mainInject !== 'boolean') err('$.board.mainInject', 'mainInject는 true/false');
+      if (B.when != null) {
+        if (typeof B.when !== 'string') err('$.board.when', 'when은 표현식 문자열이어야 함');
+        else if (B.when.trim()) checkExpr(B.when, '$.board.when', allIds, err, { allowRand: false });
+      }
+      if (!B.topics && !B.guide) {
+        warn('$.board', '관심사(topics)도 생성 지침(guide)도 없습니다 — 보조가 아무 얘기나 지어냅니다. 게시판이 무엇에 대해 떠드는지 적어 주세요');
+      }
+      // 보드는 보조 호출에 얹혀 갱신된다 — 보조가 아예 안 도는 봇이면 영영 빈 게시판이다
+      if (!(schema.updater?.allow?.length) && !schema.suggest && !(schema.assets?.packs?.length)) {
+        warn('$.board', '이 봇은 보드 외에 보조 AI가 할 일이 없습니다 — 보드 갱신만을 위해 매 턴 보조가 호출됩니다 (의도한 것인지 확인)');
+      }
+    }
+  }
+
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
   // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.

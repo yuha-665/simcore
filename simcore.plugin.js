@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 0.94.1
-//@display-name SimCore (시뮬 엔진) v0.94 모듈 팩 매니페스트
+//@version 0.95.0
+//@display-name SimCore (시뮬 엔진) v0.95 커뮤니티 보드
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v0.95.0 ───────────────────────────────────────────────
+// 커뮤니티 보드 (얼터헌터 "헌터넷" 흡수가 발단 — docs/design-얼헌-개조.md §P4).
+// 원본(LightBoard류)은 게시판 원문을 메인 모델이 본문과 함께 출력해 매턴 재전송하는
+// 구조였다 — 여기선 상태(스냅샷)에 실어 재전송 비용을 없앤다. 자체 구현 (코드·포맷 무관).
+// - [코어 board] state.board { seq, posts } — 스냅샷에 실려 리롤과 함께 되감긴다.
+//   턴 갱신은 기존 보조 호출에 얹힘 ("board" 필드, 추가 호출 0). 조회수·추천은 시스템이
+//   굴린다 (시드 rng). 메인에는 화제 한 줄만 (mainInject). when 게이트(통신 두절 등).
+// - [어댑터] 게임 패널 3호 '보드' — 우상단 버튼, 목록/읽기/쓰기 3면. 글쓰기·댓글·새 소식은
+//   **채팅 턴 없이** 전용 보조 호출로 보드만 갱신 (turnBusy 경합 차단, out 스냅샷 정합).
+// - [편집기] [보드] 탭 — label/icon/topics/guide/postsPerTurn/maxPosts/when/mainInject/css
+//   + AI 도구(생성·내보내기, SCHEMA_BOARD_RULES). 규칙 #3 (엔진 기능엔 편집기 칸).
+// - [검증] board 섹션 — 타입·범위·when 표현식·"topics도 guide도 없음" 경고.
+//   테스트 테스트/test-board.js.
 //
 // ── v0.94.1 ───────────────────────────────────────────────
 // 실기 제보: 내장 AI 생성이 "형식 검사 불합격"만 반복 → 유저가 재생성만 돌리다 포기.
@@ -3609,6 +3623,40 @@ function validateSchema(schema) {
     }
   }
 
+  // ── board (커뮤니티 보드 v0.95 — 옵트인, 설계 docs/design-얼헌-개조.md §P4) ──
+  // 세계 안의 미니 게시판. 상태는 스냅샷에, 턴 갱신은 기존 보조 호출에 얹힌다.
+  if (schema.board != null) {
+    const B = schema.board;
+    if (typeof B !== 'object' || Array.isArray(B)) err('$.board', 'board는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['topics', '관심사'], ['guide', '생성 지침'], ['css', 'CSS']]) {
+        if (B[k] != null && typeof B[k] !== 'string') err(`$.board.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (!B.label || !String(B.label).trim()) warn('$.board.label', '보드 이름이 없습니다 — 패널 제목이 "게시판"이 됩니다');
+      if (B.icon != null && (typeof B.icon !== 'string' || B.icon.length > 8)) {
+        err('$.board.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
+      }
+      if (B.postsPerTurn != null && (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 4)) {
+        err('$.board.postsPerTurn', '턴당 새 글은 0~4 정수');
+      }
+      if (B.maxPosts != null && (!Number.isInteger(B.maxPosts) || B.maxPosts < 4 || B.maxPosts > 40)) {
+        err('$.board.maxPosts', '보존 글 수는 4~40 정수');
+      }
+      if (B.mainInject != null && typeof B.mainInject !== 'boolean') err('$.board.mainInject', 'mainInject는 true/false');
+      if (B.when != null) {
+        if (typeof B.when !== 'string') err('$.board.when', 'when은 표현식 문자열이어야 함');
+        else if (B.when.trim()) checkExpr(B.when, '$.board.when', allIds, err, { allowRand: false });
+      }
+      if (!B.topics && !B.guide) {
+        warn('$.board', '관심사(topics)도 생성 지침(guide)도 없습니다 — 보조가 아무 얘기나 지어냅니다. 게시판이 무엇에 대해 떠드는지 적어 주세요');
+      }
+      // 보드는 보조 호출에 얹혀 갱신된다 — 보조가 아예 안 도는 봇이면 영영 빈 게시판이다
+      if (!(schema.updater?.allow?.length) && !schema.suggest && !(schema.assets?.packs?.length)) {
+        warn('$.board', '이 봇은 보드 외에 보조 AI가 할 일이 없습니다 — 보드 갱신만을 위해 매 턴 보조가 호출됩니다 (의도한 것인지 확인)');
+      }
+    }
+  }
+
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
   // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.
@@ -4831,6 +4879,272 @@ module.exports = {
 
 });
 
+SimCore.define("board", function (require, module, exports) {
+// 커뮤니티 보드 (v0.95) — 봇 세계 안의 미니 게시판 (얼터헌터 "헌터넷" 흡수가 발단).
+//
+// 원본(LightBoard류)은 게시판 원문 전체를 메인 모델이 본문과 함께 출력하고 그게 매턴
+// 컨텍스트로 재전송되는 구조였다 — "엄청난 토큰 희생"의 실체. 심코어판의 결정들:
+//   · 보드 상태는 state.board (스냅샷에 실려 리롤과 함께 되감긴다) — 메인 출력에 안 싣는다
+//   · 턴 갱신은 **기존 보조 호출에 얹는다** (추가 호출 0 — suggest·이미지와 같은 원칙)
+//   · 패널 인터랙션(글쓰기·댓글·새로고침)만 채팅 없는 전용 보조 호출
+//   · 조회수·추천은 AI가 아니라 시스템이 굴린다 (시드 rng — 숫자는 시스템이)
+//   · 메인 모델에는 화제 한 줄만 선택 주입 — 서사가 여론을 아는 통로
+//   · ⚠ 자체 구현이다: LightBoard(CC BY-NC-SA)의 코드·저장 포맷과 무관하다.
+//
+// 스키마 (옵트인):
+//   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css? }
+
+const { timeConfig, calendarOf, formatDate } = require('./time');
+const { evaluate, truthy } = require('./expr');
+
+const CAPS = {
+  TITLE: 60, AUTHOR: 20, BODY: 600, RE_BODY: 200,
+  RE_PER_POST: 12, NEW_PER_APPLY_MAX: 4, MAX_POSTS_MIN: 4, MAX_POSTS_MAX: 40,
+};
+const DEFAULTS = { postsPerTurn: 2, maxPosts: 20 };
+
+function boardConfig(schema) {
+  const b = schema?.board;
+  if (!b || typeof b !== 'object') return null;
+  return {
+    label: typeof b.label === 'string' && b.label.trim() ? b.label.trim() : '게시판',
+    icon: typeof b.icon === 'string' && b.icon.trim() ? b.icon.trim() : '💬',
+    topics: typeof b.topics === 'string' ? b.topics : '',
+    guide: typeof b.guide === 'string' ? b.guide : '',
+    postsPerTurn: Math.max(0, Math.min(CAPS.NEW_PER_APPLY_MAX, b.postsPerTurn ?? DEFAULTS.postsPerTurn)),
+    maxPosts: Math.max(CAPS.MAX_POSTS_MIN, Math.min(CAPS.MAX_POSTS_MAX, b.maxPosts ?? DEFAULTS.maxPosts)),
+    mainInject: b.mainInject !== false,
+    when: typeof b.when === 'string' ? b.when : '',
+    css: typeof b.css === 'string' ? b.css : '',
+  };
+}
+
+function initBoard() { return { seq: 1, posts: [] }; }
+
+/** reconcile 시점에 부착 — 구세이브·스키마에 나중에 켠 경우 */
+function ensureBoard(state) {
+  if (!state.board || typeof state.board !== 'object' || !Array.isArray(state.board.posts)) {
+    state.board = initBoard();
+  }
+  if (typeof state.board.seq !== 'number' || !isFinite(state.board.seq)) {
+    state.board.seq = 1 + state.board.posts.reduce((m, p) => Math.max(m, p.id || 0), 0);
+  }
+  return state.board;
+}
+
+/** when 게이트 — 닫혀 있으면 이번 턴 생성 요청을 안 싣는다 (열람은 항상 가능) */
+function boardOpen(cfg, schema, vars, makeLookup) {
+  if (!cfg.when) return true;
+  try { return truthy(evaluate(cfg.when, makeLookup(schema, vars), null)); }
+  catch { return true; }
+}
+
+/** 작중 시각 도장 — 시간 체계가 있으면 날짜, 없으면 턴 번호 */
+function stampNow(schema, state) {
+  const cfg = timeConfig(schema);
+  const epoch = state?.vars?.time_epoch;
+  if (cfg && typeof epoch === 'number') {
+    return formatDate(cfg.dateFmt, calendarOf(epoch, cfg.calendar));
+  }
+  return `T${(state?.meta?.turn ?? 0) + 1}`;
+}
+
+const cut = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+function sanitizeReply(r) {
+  if (!r || typeof r !== 'object') return null;
+  const body = cut(r.body ?? r.content ?? '', CAPS.RE_BODY);
+  if (!body) return null;
+  return { author: cut(r.author, CAPS.AUTHOR) || 'ㅇㅇ', body };
+}
+
+/** 보조가 준 board 델타를 규격으로 거른다 → { posts:[], replies:[] } */
+function sanitizeDelta(raw, cfg) {
+  const out = { posts: [], replies: [] };
+  if (!raw || typeof raw !== 'object') return out;
+  const maxNew = cfg?.postsPerTurn ?? DEFAULTS.postsPerTurn;
+  for (const p of Array.isArray(raw.new) ? raw.new : []) {
+    if (out.posts.length >= maxNew) break;
+    if (!p || typeof p !== 'object') continue;
+    const title = cut(p.title, CAPS.TITLE);
+    const body = cut(p.body ?? p.content ?? '', CAPS.BODY);
+    if (!title || !body) continue;
+    out.posts.push({
+      title, body,
+      author: cut(p.author, CAPS.AUTHOR) || 'ㅇㅇ',
+      re: (Array.isArray(p.re) ? p.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5),
+    });
+  }
+  for (const r of Array.isArray(raw.re) ? raw.re : []) {
+    if (!r || typeof r !== 'object') continue;
+    const id = Number(r.id);
+    const replies = (Array.isArray(r.re) ? r.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5);
+    if (!isFinite(id) || !replies.length) continue;
+    out.replies.push({ id, re: replies });
+  }
+  return out;
+}
+
+/**
+ * 델타 적용 + 지표 표류. 상태를 제자리 수정한다 (outputPhase의 clone 뒤에서 불린다).
+ * @returns { added, replied } 적용 통계
+ */
+function applyDelta(schema, state, rawDelta, { rng } = {}) {
+  const cfg = boardConfig(schema);
+  if (!cfg) return { added: 0, replied: 0 };
+  const board = ensureBoard(state);
+  const delta = sanitizeDelta(rawDelta, cfg);
+  const now = stampNow(schema, state);
+  const r = rng || (() => 0.5);
+  const ri = (a, b) => a + Math.floor(r() * (b - a + 1));
+
+  // 기존 글 반응
+  let replied = 0;
+  for (const rep of delta.replies) {
+    const post = board.posts.find((p) => p.id === rep.id);
+    if (!post) continue;
+    const room = CAPS.RE_PER_POST - post.re.length;
+    if (room <= 0) continue;
+    post.re.push(...rep.re.slice(0, room));
+    replied += Math.min(rep.re.length, room);
+    post.up += ri(0, 2); // 댓글이 붙는 글은 눈에 띈다
+  }
+  // 새 글 — 최신이 위
+  for (const p of delta.posts.reverse()) {
+    board.posts.unshift({
+      id: board.seq++, title: p.title, author: p.author, time: now,
+      views: ri(3, 40), up: ri(0, 3), body: p.body, re: p.re,
+    });
+  }
+  // 지표 표류 — 최근 글일수록 많이 돈다 (숫자는 시스템이. AI가 아니라)
+  board.posts.forEach((p, i) => {
+    p.views += Math.max(0, ri(0, 9 - Math.min(i, 8)));
+    if (r() < 0.15) p.up += 1;
+  });
+  // 보존 상한 — 오래된 글부터 내려간다
+  if (board.posts.length > cfg.maxPosts) board.posts.length = cfg.maxPosts;
+  return { added: delta.posts.length, replied };
+}
+
+/** 유저가 패널에서 쓴 글 — 즉시 등록, 반응은 보조 호출이 이어 받는다. 반환: 글 id */
+function applyUserPost(schema, state, { title, author, body }) {
+  const board = ensureBoard(state);
+  const cfg = boardConfig(schema) || {};
+  const post = {
+    id: board.seq++,
+    title: cut(title, CAPS.TITLE) || '(제목 없음)',
+    author: cut(author, CAPS.AUTHOR) || 'ㅇㅇ',
+    time: stampNow(schema, state),
+    views: 1, up: 0,
+    body: cut(body, CAPS.BODY),
+    re: [],
+  };
+  board.posts.unshift(post);
+  if (cfg.maxPosts && board.posts.length > cfg.maxPosts) board.posts.length = cfg.maxPosts;
+  return post.id;
+}
+
+/** 유저가 단 댓글 — 즉시 부착. 반환: 성공 여부 */
+function applyUserComment(state, postId, { author, body }) {
+  const board = ensureBoard(state);
+  const post = board.posts.find((p) => p.id === postId);
+  if (!post || post.re.length >= CAPS.RE_PER_POST) return false;
+  const rep = sanitizeReply({ author, body });
+  if (!rep) return false;
+  post.re.push(rep);
+  return true;
+}
+
+/** 보조 프롬프트용 현황 요약 — 최근 8개, 본문은 앞머리만 */
+function digest(state, n = 8) {
+  const posts = state?.board?.posts || [];
+  if (!posts.length) return '(게시판이 비어 있다)';
+  return posts.slice(0, n).map((p) =>
+    `#${p.id} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
+}
+
+/** 턴 갱신 요청 — 기존 보조 호출에 얹는 지시 (추가 호출 0) */
+function auxSpec(schema, state, makeLookup) {
+  const cfg = boardConfig(schema);
+  if (!cfg) return '';
+  if (!boardOpen(cfg, schema, state.vars, makeLookup)) return '';
+  return [
+    '',
+    `[${cfg.label} — 세계 안의 커뮤니티 게시판] (선택 항목)`,
+    '현재 게시판:',
+    digest(state),
+    `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`,
+    cfg.topics ? `- 게시판의 관심사: ${cfg.topics}` : null,
+    cfg.guide ? `- ${cfg.guide}` : null,
+    '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
+    '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
+    '- board 형식: {"new":[{"title":"제목","author":"닉네임","body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}',
+  ].filter((x) => x !== null).join('\n');
+}
+
+/** 메인 프롬프트 화제 한 줄 — 서사가 여론을 아는 유일한 통로 */
+function mainLine(schema, state) {
+  const cfg = boardConfig(schema);
+  if (!cfg || !cfg.mainInject) return null;
+  const posts = state?.board?.posts || [];
+  if (!posts.length) return null;
+  const tops = posts.slice(0, 2).map((p) => `"${cut(p.title, 40)}"`).join(', ');
+  return `[${cfg.label}] 지금 게시판의 화제: ${tops} — 등장인물들이 이 화제를 알고 있을 수 있다. 게시판 원문을 본문에 옮겨 적지 마라.`;
+}
+
+/** 패널 인터랙션 전용 프롬프트 — 채팅 없이 보조만 부른다. 출력은 {"board":{...}} 하나 */
+function interactionPrompt(schema, state, kind, payload = {}) {
+  const cfg = boardConfig(schema);
+  if (!cfg) return null;
+  const head = [
+    `너는 "${cfg.label}" 게시판 시뮬레이터다. 아래 게시판 현황을 보고 요청된 갱신만 JSON으로 출력하라.`,
+    cfg.topics ? `게시판의 관심사: ${cfg.topics}` : null,
+    cfg.guide ? cfg.guide : null,
+    '글·댓글은 그 커뮤니티 말투 그대로. 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만. 조회수·추천수는 쓰지 마라.',
+    '',
+    '[게시판 현황]',
+    digest(state, 10),
+    payload.narrative ? '' : null,
+    payload.narrative ? '[최근 이야기 맥락]' : null,
+    payload.narrative ? String(payload.narrative).slice(0, 2400) : null,
+    '',
+  ];
+  const fmt = '출력 형식 (JSON만, 다른 텍스트 금지): {"board":{"new":[{"title","author","body","re":[{"author","body"}]}],"re":[{"id":글번호,"re":[{"author","body"}]}]}}';
+  let task;
+  if (kind === 'user_post') {
+    task = [
+      `[방금 등록된 글] #${payload.postId} "${cut(payload.title, CAPS.TITLE)}" — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}`,
+      cut(payload.body, CAPS.BODY),
+      '',
+      `- 이 글에 대한 다른 사용자들의 댓글 반응을 0~5개 만들어 "re"의 id ${payload.postId}로 담아라 (반응 수는 글의 화제성에 비례).`,
+      '- 필요하면 파생 글 0~1개를 "new"로 추가해도 된다. 방금 등록된 글 자체를 "new"로 다시 만들지 마라.',
+    ].join('\n');
+  } else if (kind === 'user_comment') {
+    task = [
+      `[방금 달린 댓글] #${payload.postId} 글에 — ${cut(payload.author, CAPS.AUTHOR) || 'ㅇㅇ'}: ${cut(payload.body, CAPS.RE_BODY)}`,
+      '',
+      `- 이 댓글에 이어지는 다른 사용자들의 반응 0~3개를 "re"의 id ${payload.postId}로 담아라 (없어도 된다 — 그땐 빈 board).`,
+    ].join('\n');
+  } else { // refresh
+    task = `- 시간이 조금 흐른 게시판의 새 소식을 만들어라: 새 글 1~${Math.max(1, cfg.postsPerTurn)}개("new")와 기존 글 댓글 반응("re") 약간. 이야기 맥락과 게시판 관심사에 맞게.`;
+  }
+  return [...head, task, '', fmt].filter((x) => x !== null).join('\n');
+}
+
+/** 인터랙션 응답 파싱 — {"board":{...}}만 회수 (관대) */
+function parseInteraction(text, extractJsonObject) {
+  const obj = extractJsonObject(text, 'board');
+  return obj?.board ?? null;
+}
+
+module.exports = {
+  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow,
+  sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
+  digest, auxSpec, mainLine, interactionPrompt, parseInteraction,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -5289,6 +5603,7 @@ const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal,
   scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
+const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -5339,10 +5654,13 @@ function initState(schema, opts = {}) {
   }
   // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
   if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
-  return {
+  const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
   };
+  // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
+  if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
+  return st;
 }
 
 /** AI 최초설정이 아직 필요한 상태인가 */
@@ -5409,6 +5727,8 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
+  if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -5870,6 +6190,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
     if (imgBlock) lines.push(imgBlock);
   }
 
+  // 3.8 커뮤니티 보드 화제 한 줄 (v0.95) — 게시판 원문은 절대 안 싣는다.
+  // 서사가 여론을 아는 통로는 이 한 줄뿐이다 (토큰 절약이 이 기능의 존재 이유).
+  if (!isSetupPending(schema, state)) {
+    const bLine = boardMod.mainLine(schema, state);
+    if (bLine) lines.push(bLine);
+  }
+
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
@@ -6103,7 +6430,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -6125,6 +6452,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
   consumeTimeSkips(schema, state, changeLog, { perTurnTick: true });
+
+  // 5.7 커뮤니티 보드 (v0.95) — 보조가 실어 온 델타 적용 + 지표 표류(매 턴, 시드 rng).
+  // 시간 소비 뒤여야 새 글의 날짜 도장이 이번 턴의 새 날짜로 찍힌다.
+  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -6536,6 +6867,9 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
       ? `- ${unlockedNow.map((a) => `${varById[a.id]?.label ?? a.id}(${a.id})`).join(', ')} 변수는 지난 턴 감지 신고로 이번 턴만 열렸다. **지난 턴 서사**에서 일어난 그 변화를 이번 changes에 반영하라 (앞선 대화 재계산 금지 규칙의 예외다. 단, 위 "이미 반영된 변화"에 있는 것은 여전히 다시 세지 마라).`
       : null,
     noVars || !schema.updater?.guide ? null : `- ${schema.updater.guide}`,
+    // 커뮤니티 보드 턴 갱신 (v0.95, 옵트인) — 같은 호출에 얹는다 (추가 호출 0).
+    // 브리지 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
+    (!opts.allowAll && state) ? (boardMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -6568,6 +6902,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
 function auxHasWork(schema, state = null) {
   if ((schema?.updater?.allow?.length ?? 0) > 0) return true;
   if (schema?.suggest) return true;
+  if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -6828,7 +7163,8 @@ function parseAuxResponse(text) {
   return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
-    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null };
+    image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
+    board: obj.board ?? null }; // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
 }
 
 module.exports = {
@@ -7738,6 +8074,7 @@ class SimSession {
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
       detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
+      board: parsed.board ?? null, // 커뮤니티 보드 델타 (v0.95) — 같은 응답에 실려 온다
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;
@@ -10319,6 +10656,15 @@ const SCHEMA_CALENDAR_RULES = [
   '- 일정 목록을 `updater.allow`에 넣으면 보조 AI가 서사에서 "@+N"(며칠 뒤)으로 일정을 잡고, 시스템이 날짜로 굳힙니다.',
 ];
 
+// 커뮤니티 보드(board, v0.95) — 세계 안의 미니 게시판.
+const SCHEMA_BOARD_RULES = [
+  '- 보드는 **세계 안의 커뮤니티 게시판**입니다 (헌터넷·학내 커뮤니티·모험가 길드 방보). 세계에 그런 여론 공간이 어울리는 봇에만 넣으세요.',
+  '- 글·댓글 데이터는 세이브에 삽니다 — 스키마에는 **성격만** 적습니다: `topics`(무엇에 대해 떠드는가), `guide`(말투·익명성·금기).',
+  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
+  '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
+  '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -11117,6 +11463,8 @@ const TAB_SLICES = {
   // 달력(v0.63.1) — calendar 객체 통째 교체. css는 제작자 손값이라 원문 보존을 요청서가
   // 못박는다. 일정 목록 변수·만료 규칙은 vars/rules 절 몫 — 📅 카드가 순차로 나눠 맡긴다.
   calendar: { keys: ['calendar'], label: '달력' },
+  // 보드(v0.95) — board 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
+  board: { keys: ['board'], label: '보드' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -11134,6 +11482,7 @@ const TAB_WANT_PH = {
   party: '예: 출격 편성 3슬롯 + 정비창 탭',
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
+  board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
 };
 
@@ -11165,6 +11514,7 @@ function tabItemCounts(schema, tabKey) {
     push('업그레이드(전체 탭)', tabs.flatMap((t) => Array.isArray(t?.items) ? t.items : []));
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
+  else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -11628,6 +11978,19 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "label": "정산일", "dom": 1 },',
       '    { "label": "도서부 모임", "weekday": "수" }',
       '  ] } }',
+      '```',
+      '');
+  } else if (tabKey === 'board') {
+    body.push('## 보드 규격', ...SCHEMA_BOARD_RULES, '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '```json',
+      '{ "board": { "label": "헌터넷", "icon": "🌐",',
+      '  "topics": "게이트 공략 정보, 헌터 소문, 장비 시세",',
+      '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
+      '  "postsPerTurn": 2, "maxPosts": 20, "when": "not in_gate" } }',
       '```',
       '');
   } else if (tabKey === 'scenario') {
@@ -12176,7 +12539,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -13172,6 +13535,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
+    [/^\$\.board\b/, '보드', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
@@ -14416,6 +14780,58 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         delete schema.scenario; rerender();
       } }, '시나리오 삭제'),
       h('span', { class: 'sce-hint', style: 'margin:0' }, '진행 중 세이브의 막 위치는 세이브에 남습니다 — 다시 켜면 1막부터.')));
+    return wrap;
+  }
+
+  // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabBoard() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('board'));
+    if (!schema.board) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '커뮤니티 보드 — 봇 세계 안의 미니 게시판입니다 (헌터넷·학내 커뮤니티·왕국 방보 등). '
+        + '채팅 우상단에 버튼이 생기고, 매 턴 보조 AI가 서사에 반응하는 글·댓글을 올립니다 '
+        + '(기존 보조 호출에 얹혀서 추가 호출 없음). 패널에서 유저가 글·댓글을 쓰면 채팅 턴을 '
+        + '쓰지 않고 보조만 불러 반응이 달립니다. 메인 모델에는 화제 한 줄만 갑니다.'));
+      wrap.appendChild(addBtn('보드 만들기', () => {
+        schema.board = { label: '게시판', icon: '💬', topics: '' };
+        rerender();
+      }));
+      return wrap;
+    }
+    const B = schema.board;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '게시판' })),
+        pair('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '💬' })),
+        pair('턴당 새 글', bindInput(B.postsPerTurn ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(4, n)); else delete B.postsPerTurn; rerender();
+        }, { cls: 'sce-w-s', ph: '2' }), '이번 턴 서사에 반응해 올라올 수 있는 새 글 수 (0~4)'),
+        pair('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n)); else delete B.maxPosts; rerender();
+        }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 내려갑니다 (4~40)'),
+      ),
+      pair('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
+        { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 욕' }),
+        '게시판이 무엇에 대해 떠드는 곳인지 — 보조 AI의 글감이 됩니다'),
+      pair('생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
+        '말투·익명성·금기 등. 예: 익명 커뮤니티 말투(반말, 마침표 생략, 밈). 닉네임은 짧은 한국어. 유저를 전지적으로 알지 못한다.'),
+        ''),
+      h('div', { class: 'sce-row' },
+        pair('생성 조건', bindInput(B.when, (x) => { B.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
+          '거짓인 턴에는 새 글이 안 올라옵니다 (열람은 항상 가능) — 게이트 안 통신 두절 같은 것'),
+        bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); },
+          '메인 모델에 화제 한 줄 주입 (서사가 여론을 아는 통로)'),
+      ),
+      pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
+        '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('보드 삭제', () => {
+        if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) { delete schema.board; rerender(); }
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '글·댓글 데이터는 스키마가 아니라 세이브(스냅샷)에 삽니다 — 리롤하면 게시판도 같이 되감깁니다.')));
     return wrap;
   }
 
@@ -17139,7 +17555,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }
@@ -22307,6 +22723,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const partyMod = SimCore.require('party');
   const calendarMod = SimCore.require('calendar');
   const timeMod = SimCore.require('time');
+  const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
+  const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
   const SCHEMA_LORE_COMMENT = '⚙simcore';
@@ -22817,6 +23235,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let gameTabSearch = '';   // nav='select'의 탭 검색어 (v0.58.1 — 인물 많은 봇)
   let gameCalYm = null;     // 달력이 보고 있는 달 {year, month} (v0.61 — null이면 오늘이 든 달)
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
+  // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
+  let boardView = { mode: 'list', postId: null };  // mode: 'list' | 'read' | 'write'
+  let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
 
@@ -23338,6 +23759,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
             const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
+            // 보드 델타 (v0.95) — 지연 경로에서도 적용. 표류 rng는 비시드(소급이라 리롤 정합 무관)
+            if (parsed.board && boardMod.boardConfig(schema)) {
+              boardMod.applyDelta(schema, session.current, parsed.board, { rng: makeUnstableRng(Math.random) });
+            }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
             lastAux.applied = amended.changeLog.length;
@@ -23502,6 +23927,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
       const c = calendarMod.calendarButtonSpec(schema);
       if (c) specs.push({ key: 'calendar', kind: 'calendar', tab: null, ...c });
+      // 커뮤니티 보드 (v0.95) — 게임 패널 3호. 스키마가 board를 켠 봇만.
+      const b = boardMod.boardConfig(schema);
+      if (b) specs.push({ key: 'board', kind: 'board', tab: null, label: b.label, icon: b.icon });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -23606,6 +24034,31 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-game .scg-chip.scg-clear { border-color:#8f3a4c; color:#f2aab6; background:#241019; }
       #sc-game .scg-roster { margin-top:10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scg-notice { margin-top:10px; font-size:12.5px; color:#ffd166; min-height:1.2em; }
+      /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
+      #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
+      #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
+      #sc-game .scb-btn { border:1px solid #3d5384; border-radius:8px; background:#1c2740; color:#dfe7f5;
+        padding:5px 12px; font-size:12.5px; cursor:pointer; }
+      #sc-game .scb-btn:hover { background:#24345c; border-color:#5b8def; }
+      #sc-game .scb-btn:disabled { opacity:.4; cursor:wait; }
+      #sc-game .scb-row { display:flex; gap:8px; align-items:baseline; padding:7px 8px; cursor:pointer;
+        border-bottom:1px solid #22304f; }
+      #sc-game .scb-row:hover { background:#16203a; }
+      #sc-game .scb-row .scb-num { color:#5d6b87; font-size:11.5px; min-width:26px; }
+      #sc-game .scb-row .scb-title { flex:1; color:#e6ebf5; font-size:13px; overflow:hidden;
+        text-overflow:ellipsis; white-space:nowrap; }
+      #sc-game .scb-row .scb-meta { color:#7d8aa5; font-size:11.5px; white-space:nowrap; }
+      #sc-game .scb-view-title { font-size:14.5px; font-weight:700; color:#fff; margin:4px 0 2px; }
+      #sc-game .scb-view-info { color:#7d8aa5; font-size:11.5px; margin-bottom:8px; }
+      #sc-game .scb-body { white-space:pre-wrap; color:#dfe7f5; font-size:13px; background:#0e1526;
+        border:1px solid #22304f; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+      #sc-game .scb-re { border-top:1px dashed #2a3a5e; padding:6px 4px; font-size:12.5px; }
+      #sc-game .scb-re .scb-re-a { color:#9db8e8; margin-right:6px; }
+      #sc-game .scb-input, #sc-game .scb-ta { width:100%; background:#0e1526; border:1px solid #2a3a5e;
+        border-radius:8px; color:#e6ebf5; padding:7px 10px; font-size:13px; margin-bottom:6px;
+        font-family:inherit; }
+      #sc-game .scb-ta { min-height:96px; resize:vertical; }
+      #sc-game .scb-empty { text-align:center; color:#5d6b87; padding:24px 0; }
       #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
       #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
         border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
@@ -23694,7 +24147,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     let el = document.getElementById('sc-game-custom');
     if (!el) { el = document.createElement('style'); el.id = 'sc-game-custom'; document.head.appendChild(el); }
     const css = gameKind === 'party' ? schema?.party?.css
-      : gameKind === 'calendar' ? schema?.calendar?.css : null;
+      : gameKind === 'calendar' ? schema?.calendar?.css
+        : gameKind === 'board' ? schema?.board?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -23714,6 +24168,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     gameTabSearch = '';
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
+    boardView = { mode: 'list', postId: null };   // 보드는 열 때마다 목록부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -23740,6 +24195,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (!root || !session || !schema) return;
     if (gameKind === 'party') renderPartyPanel(root);
     else if (gameKind === 'calendar') renderCalendarPanel(root);
+    else if (gameKind === 'board') renderBoardPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -24157,6 +24613,173 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     renderGamePanel();
     await updateControlStrip();
     if (panelBuilt) renderPanel();
+  }
+
+  // ── 커뮤니티 보드 패널 (v0.95) — 게임 패널 3호 ─────────────────
+  // 목록/읽기/쓰기 3면. 글쓰기·댓글·새로고침은 **채팅 없는 전용 보조 호출**로 보드만 갱신한다.
+  // 규약: turnBusy 중엔 호출 안 함 (턴 파이프라인의 보조 호출과 경합 금지). 적용 후에는
+  // out:lastOutIndex 스냅샷을 덮어써 리롤과 정합 유지 (manualSet·commitPanelChanges와 같은 규약).
+  async function boardSaveNow(what) {
+    try { if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current); }
+    catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
+  }
+
+  async function boardNarrative() {
+    // 인터랙션 보조에게 줄 이야기 맥락 — 최근 메시지 몇 개 (마커 제거)
+    try {
+      const chaIdx = await Risuai.getCurrentCharacterIndex();
+      const chatIdx = await Risuai.getCurrentChatIndex();
+      const msgs = (await Risuai.getChatFromIndex(chaIdx, chatIdx))?.message ?? [];
+      return msgs.slice(-4).map((m) => String(m.data || '').replace(MARKER_RE, '').trim())
+        .filter(Boolean).join('\n---\n').slice(-2400);
+    } catch { return ''; }
+  }
+
+  async function callBoardAux(kind, payload = {}) {
+    if (!session || !schema || boardBusy) return;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
+    boardBusy = true;
+    gameNotice = '⏳ 게시판 사용자들이 반응하는 중…';
+    renderGamePanel();
+    try {
+      const prompt = boardMod.interactionPrompt(schema, session.current, kind,
+        { ...payload, narrative: await boardNarrative() });
+      const res = await callAuxLLM(prompt, 800);
+      if (res && res.blocked) {
+        gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 보드 실시간 반응은 쓸 수 없고, 턴 갱신만 돌아요';
+      } else if (typeof res === 'string') {
+        const delta = boardMod.parseInteraction(res, engine.extractJsonObject);
+        if (delta) {
+          const r = boardMod.applyDelta(schema, session.current, delta, { rng: makeUnstableRng(Math.random) });
+          await boardSaveNow('보드 갱신');
+          gameNotice = kind === 'refresh'
+            ? `✓ 새 소식 — 새 글 ${r.added}건, 댓글 ${r.replied}건`
+            : (r.added || r.replied) ? `✓ 반응이 달렸어요 — 새 글 ${r.added} · 댓글 ${r.replied}` : '조용하네요 — 아직 반응이 없어요';
+        } else {
+          gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
+          console.log('[simcore] 보드 인터랙션 파싱 실패:', res.slice(0, 200));
+        }
+      } else {
+        gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요';
+      }
+    } catch (e) {
+      gameNotice = `⚠ 보드 갱신 실패: ${e.message}`;
+    } finally {
+      boardBusy = false;
+      renderGamePanel();
+    }
+  }
+
+  function renderBoardPanel(root) {
+    const cfg = boardMod.boardConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const board = boardMod.ensureBoard(session.current);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, onClick, disabled = false) => {
+      const b = el('button', 'scb-btn', label);
+      b.type = 'button';
+      b.disabled = disabled || boardBusy;
+      b.onclick = onClick;
+      return b;
+    };
+
+    // 제목줄 + 닫기 (다른 패널과 같은 규약)
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button';
+    x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    if (boardView.mode === 'write') {
+      // ── 글쓰기 ──
+      card.appendChild(el('div', 'scg-note', '새 글을 쓰면 등록 즉시 실리고, 다른 사용자들의 반응이 이어서 달립니다 (채팅 턴 소모 없음).'));
+      const ti = el('input', 'scb-input'); ti.placeholder = '제목';
+      ti.maxLength = boardMod.CAPS.TITLE;
+      const ai = el('input', 'scb-input'); ai.placeholder = '닉네임 (비우면 익명)';
+      ai.maxLength = boardMod.CAPS.AUTHOR;
+      const ta = el('textarea', 'scb-ta'); ta.placeholder = '내용';
+      ta.maxLength = boardMod.CAPS.BODY;
+      card.appendChild(ti); card.appendChild(ai); card.appendChild(ta);
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('등록', async () => {
+        if (!ti.value.trim() || !ta.value.trim()) { gameNotice = '⚠ 제목과 내용을 채워 주세요'; renderGamePanel(); return; }
+        const postId = boardMod.applyUserPost(schema, session.current,
+          { title: ti.value, author: ai.value, body: ta.value });
+        await boardSaveNow('보드 글 등록');
+        boardView = { mode: 'read', postId };
+        gameNotice = '✓ 등록됐어요';
+        renderGamePanel();
+        await callBoardAux('user_post', { postId, title: ti.value, author: ai.value, body: ta.value });
+      }));
+      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      card.appendChild(bar);
+    } else if (boardView.mode === 'read') {
+      // ── 읽기 ──
+      const post = board.posts.find((p) => p.id === boardView.postId);
+      if (!post) { boardView = { mode: 'list', postId: null }; renderGamePanel(); return; }
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('← 목록', () => { boardView = { mode: 'list', postId: null }; renderGamePanel(); }));
+      card.appendChild(bar);
+      card.appendChild(el('div', 'scb-view-title', post.title));
+      card.appendChild(el('div', 'scb-view-info',
+        `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
+      card.appendChild(el('div', 'scb-body', post.body));
+      for (const r of post.re) {
+        const row = el('div', 'scb-re');
+        row.appendChild(el('span', 'scb-re-a', r.author));
+        row.appendChild(document.createTextNode(r.body));
+        card.appendChild(row);
+      }
+      const ci = el('input', 'scb-input'); ci.placeholder = '댓글 (닉네임은 "닉: 내용"으로, 없으면 익명)';
+      ci.maxLength = boardMod.CAPS.RE_BODY + boardMod.CAPS.AUTHOR + 2;
+      card.appendChild(ci);
+      const bar2 = el('div', 'scb-toolbar');
+      bar2.appendChild(btn('댓글 달기', async () => {
+        const raw = ci.value.trim();
+        if (!raw) return;
+        const m = raw.match(/^([^:]{1,20}):\s*(.+)$/s);
+        const author = m ? m[1].trim() : '';
+        const body = m ? m[2] : raw;
+        if (!boardMod.applyUserComment(session.current, post.id, { author, body })) {
+          gameNotice = '⚠ 댓글을 달 수 없어요 (글이 삭제됐거나 댓글 상한)';
+          renderGamePanel(); return;
+        }
+        await boardSaveNow('보드 댓글');
+        gameNotice = '✓ 댓글이 달렸어요';
+        renderGamePanel();
+        await callBoardAux('user_comment', { postId: post.id, author, body });
+      }));
+      card.appendChild(bar2);
+    } else {
+      // ── 목록 ──
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('✍ 글쓰기', () => { boardView = { mode: 'write', postId: null }; renderGamePanel(); }));
+      bar.appendChild(btn('🔄 새 소식', () => callBoardAux('refresh')));
+      card.appendChild(bar);
+      if (!board.posts.length) {
+        card.appendChild(el('div', 'scb-empty', '아직 글이 없어요 — 이야기가 흐르면 글이 올라오기 시작합니다.'));
+      }
+      for (const p of board.posts) {
+        const row = el('div', 'scb-row');
+        row.appendChild(el('span', 'scb-num', `#${p.id}`));
+        row.appendChild(el('span', 'scb-title', p.re.length ? `${p.title} [${p.re.length}]` : p.title));
+        row.appendChild(el('span', 'scb-meta', `${p.author} · ${p.time} · 👁${p.views} · 👍${p.up}`));
+        row.onclick = () => { boardView = { mode: 'read', postId: p.id }; renderGamePanel(); };
+        card.appendChild(row);
+      }
+    }
+
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
   }
 
   async function onPartyPick(slotVar, value) {

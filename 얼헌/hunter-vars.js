@@ -223,8 +223,10 @@ const S = {
       desc: '시스템 래치 — HP 0 이벤트가 세운다. 직접 바꾸지 마라.' },
     { id: 'promo_seen', label: '(내부) 승급 알림', type: 'bool', init: false,
       desc: '시스템 래치. 직접 바꾸지 마라.' },
-    { id: 'store_on', label: '알터 스토어', type: 'bool', init: false, cmd: '스토어',
-      desc: '유저 정책값 (원본 lore 토글). 켜면 코인·알터 스토어 서사가 활성. 시작 후 바꾸려면 /스토어.' },
+    // init true (2026-08-30) — 기본 꺼짐이면 새 채팅마다 상점 버튼이 없어 "버튼 어디 갔지"가
+    // 된다 (실기 제보). 스토어는 대표 기능이라 기본 켬, 끄는 쪽을 명령으로.
+    { id: 'store_on', label: '알터 스토어', type: 'bool', init: true, cmd: '스토어',
+      desc: '유저 정책값 (원본 lore 토글). 켜면 코인·알터 스토어 서사가 활성. 끄려면 /스토어 0.' },
     { id: 'faction_on', label: '적대 세력', type: 'bool', init: true, cmd: '적대세력',
       desc: '유저 정책값 (원본 faction 토글). 불신론자·이계 숭배단 서사 축.' },
     { id: 'action_on', label: '액션 서사', type: 'bool', init: true, cmd: '액션',
@@ -1256,7 +1258,8 @@ console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');
   const row = S.rules.randomEvents.table.find((r) => r.id === 'loot_drop');
   ok('게이트 안 전용', row && row.when === 'in_gate', row?.when);
   // 코인은 스토어가 켜진 세계에서만 굴러들어온다 (정책 조건이 effects 식 안에)
-  const L0 = engine.makeLookup(S, fresh().vars);   // store_on=false, coin=0
+  const tOff = fresh(); tOff.vars.store_on = false;   // 기본 켬(init true)이라 명시로 끈다
+  const L0 = engine.makeLookup(S, tOff.vars);
   ok('스토어 꺼짐 — 코인 불변', evaluate(row.effects[0].expr, L0, seededRng('lt', 1, 'e')) === 0, '');
   const tOn = fresh(); tOn.vars.store_on = true;
   const got = evaluate(row.effects[0].expr, engine.makeLookup(S, tOn.vars), seededRng('lt', 2, 'e'));
@@ -1448,7 +1451,9 @@ console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
 {
   const shopMod = SC.require('shop');
   let t = fresh();
-  ok('기본(store_on=false) — 첫 입고 요청 없음', !engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고'));
+  ok('기본(init true) — 새 채팅부터 상점 활성', t.vars.store_on === true, '');
+  t.vars.store_on = false;
+  ok('꺼면(store_on=false) — 첫 입고 요청 없음', !engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고'));
   t.vars.store_on = true;
   ok('스토어 켜면 — 첫 입고 요청 + 지시문',
     engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고')

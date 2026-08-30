@@ -319,9 +319,9 @@
       "id": "store_on",
       "label": "알터 스토어",
       "type": "bool",
-      "init": false,
+      "init": true,
       "cmd": "스토어",
-      "desc": "유저 정책값 (원본 lore 토글). 켜면 코인·알터 스토어 서사가 활성. 시작 후 바꾸려면 /스토어."
+      "desc": "유저 정책값 (원본 lore 토글). 켜면 코인·알터 스토어 서사가 활성. 끄려면 /스토어 0."
     },
     {
       "id": "faction_on",

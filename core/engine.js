@@ -1591,7 +1591,11 @@ function parseAuxResponse(text) {
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
-    board: obj.board ?? null,  // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
+    // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이. 현재 화제 기사(v1.1.0)는 board 안의
+    // "hot"이 규격이지만, 모델이 최상위에 내는 경우가 잦아 여기서 board로 접어 넣는다 (관대 수용)
+    board: (obj.hot && typeof obj.hot === 'object')
+      ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
+      : (obj.board ?? null),
     shop: obj.shop ?? null };  // 상점 입고 (v0.96) — 정제는 shop 모듈이
 }
 

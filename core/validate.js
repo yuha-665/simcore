@@ -1037,8 +1037,31 @@ function validateSchema(schema) {
       if (B.icon != null && (typeof B.icon !== 'string' || B.icon.length > 8)) {
         err('$.board.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
       }
-      if (B.postsPerTurn != null && (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 4)) {
-        err('$.board.postsPerTurn', '턴당 새 글은 0~4 정수');
+      // postsPerTurn (v1.1.0): 숫자 = 반응형 (서사에 반응할 때만 0~N), [min,max] = 자율형
+      // (매턴 min~max개, 대부분 주인공 무관 — 다양성 리워크의 본체)
+      if (B.postsPerTurn != null) {
+        if (Array.isArray(B.postsPerTurn)) {
+          const P = B.postsPerTurn;
+          if (P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
+            || P[0] < 1 || P[0] > P[1] || P[1] > 6) {
+            err('$.board.postsPerTurn', '자율형은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 6) — 매턴 그만큼 새 글이 올라옵니다');
+          }
+        } else if (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 6) {
+          err('$.board.postsPerTurn', '턴당 새 글은 0~6 정수 (또는 자율형 [최소, 최대])');
+        }
+      }
+      // hot (v1.1.0) — N턴 주기 "현재 화제" 기사 슬롯
+      if (B.hot != null) {
+        if (typeof B.hot !== 'object' || Array.isArray(B.hot)) {
+          err('$.board.hot', 'hot은 { every?, label?, guide? } 객체 — N턴마다 갱신되는 세계 뉴스 기사 한 편');
+        } else {
+          if (B.hot.every != null && (!Number.isInteger(B.hot.every) || B.hot.every < 2 || B.hot.every > 20)) {
+            err('$.board.hot.every', '기사 갱신 주기는 2~20턴 정수 (기본 5)');
+          }
+          if (B.hot.label != null && typeof B.hot.label !== 'string') err('$.board.hot.label', 'label은 문자열');
+          if (B.hot.guide != null && typeof B.hot.guide !== 'string') err('$.board.hot.guide', 'guide는 문자열');
+          if (!B.hot.guide) warn('$.board.hot', '기사 지침(guide)이 없습니다 — 어떤 화제를 다루는 기사인지 적어 주세요 (예: S랭크 동향, 게이트 브레이크 활약담)');
+        }
       }
       if (B.maxPosts != null && (!Number.isInteger(B.maxPosts) || B.maxPosts < 4 || B.maxPosts > 40)) {
         err('$.board.maxPosts', '보존 글 수는 4~40 정수');

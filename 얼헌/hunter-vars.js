@@ -804,7 +804,17 @@ const S = {
       + '허세와 구라가 반쯤. 실명 헌터를 소재로 삼는 건 소문·망상 수준까지만 — 전지적 정보 금지는 '
       + '여기도 같다. 성인 칸 글은 반드시 cat을 "성인"으로.',
     categories: ['자유', '정보', '모집', '성인'],
-    postsPerTurn: 2, maxPosts: 20,
+    // 자율형 [4,5] (v1.1.0) — 반응형 2였을 땐 매턴 주인공 서사가 박제돼 다양성이 죽었다
+    // (유저 지목). 이제 매턴 4~5글, 대부분 주인공 무관한 세계의 글. maxPosts 20 롤링 유지.
+    postsPerTurn: [4, 5], maxPosts: 20,
+    // 현재 화제 (v1.1.0) — 5턴마다 갱신되는 세계급 뉴스 기사. 게시글과 별개의 고정 슬롯.
+    hot: {
+      label: '현재 화제', every: 5,
+      guide: '헌터 전문지·속보 기사체(존댓말 데스크 톤, 커뮤니티 반말 금지). 소재 로테이션: '
+        + 'S랭크 헌터의 근황·이적·스캔들, 게이트 브레이크에서 활약한 무명 헌터 특집, 협회 '
+        + '정책·연구 발표, 대형 길드 동향, 해외 게이트 소식, 신기록·경매 낙찰가. 실존 '
+        + '명단(cast) 인물은 공개 활동 수준까지만.',
+    },
     when: 'not in_gate',
     // 패널 스킨 — 상태창과 같은 다크네이비/스틸블루 규격 (a-* 팔레트)
     css: `
@@ -1571,6 +1581,36 @@ console.log('\n━━ P4 — 헌터넷 (커뮤니티 보드) ━━');
   const p = turn(t, {}, 82);
   ok('메인에 화제 한 줄 (원문 없이)', p.prompt.includes('[헌터넷]') && p.prompt.includes('동북권 D급 목격')
     && !p.prompt.includes('협회 알림 옴'), '');
+  // v1.1.0 다양성 리워크 — "사용자 서사가 헌터넷에 계속 박제돼 다양성이 죽는다" (유저 지목)
+  const aux2 = engine.buildAuxPrompt(S, t, '거리를 걷는다', null);
+  ok('자율형 [4,5] — 매턴 4~5글 지시', S.board.postsPerTurn.join(',') === '4,5'
+    && aux2.includes('새 글 4~5개') && aux2.includes('게시판은 세계와 함께 굴러간다'), '');
+  ok('다양성 지시 — 주인공 무관 위주 + 관련 글 최대 1개',
+    aux2.includes('무관한') && aux2.includes('최대 1개'), '');
+  ok('반응형 문구("반응할 일이 없으면") 소멸', !aux2.includes('반응할 일이 없으면'), '');
+  // 현재 화제 기사 (v1.1.0) — 5턴 주기 세계 뉴스 슬롯
+  const boardMod = SC.require('board');
+  ok('hot 설정 — 5턴 주기 + 기사체 지침', S.board.hot.every === 5
+    && S.board.hot.guide.includes('기사체') && S.board.hot.guide.includes('게이트 브레이크'), '');
+  ok('빈 슬롯 — 첫 턴부터 기사 요청', aux2.includes('"hot"') && aux2.includes('[현재 화제 — 5턴 주기 기사]'), '');
+  t = engine.outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('h', 83, 's') }).state, {}, {}, {
+    rng: seededRng('h', 83, 'o'),
+    board: { hot: { title: 'S랭크 진서연, 3년 만의 이적설', body: '헌터 전문지 단독 보도…' } },
+  }).state;
+  ok('기사 적용 — 슬롯 + 갱신 턴 기록', t.board.hot.title.includes('진서연')
+    && typeof t.board.hot.turn === 'number', JSON.stringify(t.board.hot));
+  const aux3 = engine.buildAuxPrompt(S, t, '거리', null);
+  ok('주기 미도래 — 기사 요청 안 실림 (글 요청은 그대로)', !aux3.includes('"hot"') && aux3.includes('새 글 4~5개'), '');
+  const cfgB = boardMod.boardConfig(S);
+  ok('5턴 경과 — 다시 기사 차례 + 직전 기사와 다른 주제 지시', (() => {
+    const t5 = JSON.parse(JSON.stringify(t)); t5.meta.turn = t.board.hot.turn + 5;
+    return boardMod.hotDue(cfgB, t5)
+      && engine.buildAuxPrompt(S, t5, '거리', null).includes('직전 기사("S랭크 진서연');
+  })(), '');
+  ok('메인에 기사 헤드라인 한 줄 (본문 없이)', (() => {
+    const line = boardMod.mainLine(S, t);
+    return line.includes('현재 화제 기사') && line.includes('진서연') && !line.includes('단독 보도');
+  })(), '');
 }
 
 console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');

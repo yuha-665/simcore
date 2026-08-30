@@ -20,9 +20,11 @@ const J = JSON.stringify;
 
 // ── v1.0.8 회귀 — 입고 잘림: 첫 입고 피기백 턴의 보조 출력 상한 400(=1000토큰)으로는
 // 재고 8~18개 JSON이 안 담겨 2~3개만 진열됐다 ("얼터 스토어에 2~3개뿐" 실사고)
-// v1.0.9 — perCat(카테고리마다 4~6개, 최대 36개)에 맞춰 상한 동반 상향
-ck('첫 입고 턴은 상한 2800 (평턴 400 유지)',
-  src.includes("auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400"), '');
+// v1.0.9 — perCat(카테고리마다 4~6개, 최대 36개)에 맞춰 상한 동반 상향.
+// v1.1.0 — 가산식 재편: 바닥 400 + 실린 항목만큼 (첫 입고 +2400, 자율형 게시판 +800, 기사 +400)
+ck('출력 상한 바닥 400 + 첫 입고 가산 2400',
+  src.includes('let auxCap = 400;')
+  && src.includes("if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;"), '');
 ck('새로고침(물갈이)도 2400', src.includes('const res = await callAuxLLM(prompt, 2400);'), '');
 
 const S = {

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.9
-//@display-name SimCore (시뮬 엔진) v1.0.9 상점 카테고리별 진열
+//@version 1.1.0
+//@display-name SimCore (시뮬 엔진) v1.1.0 게시판 다양성 + 화제 기사
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.1.0 ────────────────────────────────────────────────
+// 게시판 다양성 리워크 + 현재 화제 기사 (유저: "사용자 서사가 헌터넷에 계속 박제돼
+// 다양성이 죽는다").
+// - 뿌리: 종전 턴 갱신은 "이번 턴 서사에 반응할 일이 있으면"이라는 **반응형** 지시 —
+//   글감이 구조적으로 주인공 서사뿐이었다.
+// - board.postsPerTurn이 [min,max] 배열이면 **자율형**: 매턴 min~max개, 대부분 주인공
+//   일행과 무관한 세계의 글 (주인공 관련은 공개 목격급 사건 때만 최대 1개). 숫자면 종전
+//   반응형 그대로. NEW_PER_APPLY_MAX 4 → 6.
+// - board.hot { every, label, guide }: N턴마다 갱신되는 "현재 화제" 기사 한 편 —
+//   S랭커 동향·게이트 브레이크 활약담 같은 세계급 뉴스. 패널 최상단 고정(접기/펼치기),
+//   메인엔 헤드라인 한 줄. 슬롯 교체식 (지난 기사는 안 쌓인다).
+// - 출력 상한 가산식 재편: 바닥 400 + 첫 입고 2400 + 자율형 게시판 800 + 기사 400.
+//   [새 소식] 버튼도 800 → 자율형이면 1600.
+// - 얼헌: postsPerTurn [4,5], hot 5턴 주기 (maxPosts 20 유지 — 롤링 그대로).
 //
 // ── v1.0.9 ────────────────────────────────────────────────
 // 상점 진열이 여전히 휑함 (유저: "갱신해도 카테고리별로 몇 개 안 나온다") — 총량 지시
@@ -3360,11 +3375,15 @@
         seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
-        // 상점 첫 입고가 얹힌 턴은 출력 상한을 넉넉히 (v1.0.8) — 400(클램프 후 1000토큰)으로는
-        // 상태 갱신 + 게시판 + 재고 JSON을 못 담아 2~3개만 살아남았다 (실사고:
-        // "진열대가 2~3개뿐"). 첫 입고는 재고가 빈 동안만 실리므로 평턴 비용은 그대로 400.
-        // v1.0.9: perCat(카테고리마다 4~6개 → 최대 36개)이 생기며 1600으로도 부족 → 2800.
-        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400;
+        // 출력 상한 — 이번 턴 요청에 실린 항목만큼 가산 (v1.1.0에서 가산식으로 재편).
+        // 바닥 400(클램프 후 1000토큰)은 상태 갱신 + 반응형 게시판용. 얹히는 항목:
+        // · 상점 첫 입고(재고 빈 동안만): +2400 — perCat 최대 36개 JSON (v1.0.8~9 실사고)
+        // · 자율형 게시판(매턴 min~max개, v1.1.0): +800 — 4~5글이 400엔 안 담긴다
+        // · 현재 화제 기사(N턴마다, v1.1.0): +400 — 기사 한 편
+        let auxCap = 400;
+        if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;
+        if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
+        if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -3714,6 +3733,12 @@
         font-family:inherit; }
       #sc-game .scb-ta { min-height:96px; resize:vertical; }
       #sc-game .scb-empty { text-align:center; color:#5d6b87; padding:24px 0; }
+      #sc-game .scb-hot { border:1px solid #3a4f80; border-radius:10px; background:#101a30;
+        padding:8px 11px; margin-bottom:8px; }
+      #sc-game .scb-hot-head { color:#ffd98a; font-size:13px; font-weight:700; cursor:pointer; }
+      #sc-game .scb-hot-body { white-space:pre-wrap; color:#dfe7f5; font-size:12.5px; margin-top:6px;
+        border-top:1px dashed #2a3a5e; padding-top:6px; }
+      #sc-game .scb-hot .scb-meta { color:#7d8aa5; font-size:11px; margin-top:4px; }
       #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
       #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
         border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
@@ -4302,7 +4327,8 @@
     try {
       const prompt = boardMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
-      const res = await callAuxLLM(prompt, 800);
+      // [새 소식]은 자율형이면 새 글 4~5개를 통째로 받는다 — 800으론 잘린다 (v1.1.0)
+      const res = await callAuxLLM(prompt, kind === 'refresh' ? 1600 : 800);
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 보드 실시간 반응은 쓸 수 없고, 턴 갱신만 돌아요';
       } else if (typeof res === 'string') {
@@ -4454,6 +4480,16 @@
         tabs.appendChild(tabBtn('전체', null));
         for (const c of cfg.categories) tabs.appendChild(tabBtn(c, c));
         card.appendChild(tabs);
+      }
+      // 현재 화제 기사 (v1.1.0) — 목록 최상단 고정, 접었다 펼 수 있다
+      if (cfg.hot && board.hot?.title) {
+        const hotBox = el('div', 'scb-hot');
+        const hd = el('div', 'scb-hot-head', `📰 [${cfg.hot.label}] ${board.hot.title}`);
+        hd.onclick = () => { boardView = { ...boardView, hotOpen: !boardView.hotOpen }; renderGamePanel(); };
+        hotBox.appendChild(hd);
+        if (boardView.hotOpen) hotBox.appendChild(el('div', 'scb-hot-body', board.hot.body));
+        hotBox.appendChild(el('div', 'scb-meta', `${board.hot.time ?? ''} · ${cfg.hot.every}턴마다 갱신`));
+        card.appendChild(hotBox);
       }
       const posts = boardView.cat ? board.posts.filter((p) => p.cat === boardView.cat) : board.posts;
       if (!board.posts.length) {

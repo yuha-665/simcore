@@ -207,6 +207,85 @@ const turn = (st, changes = {}, opts = {}, i = 0) => {
   ck('없는 글 id는 조용히 무시', board.userEcho(S, fresh(), 'user_post', { postId: 999 }) === null, '');
 }
 
+// ── 자율형 postsPerTurn [min,max] + 다양성 (v1.1.0) ──
+// 계기: 반응형("서사에 반응할 일이 있으면")은 글감이 구조적으로 주인공 서사뿐 —
+// 매턴 유저 서사가 게시판에 박제돼 다양성이 죽었다 (얼헌 실사고)
+{
+  const SA = JSON.parse(J(S)); SA.board.postsPerTurn = [4, 5];
+  ck('★ 자율형 스키마 통과', validateSchema(SA).ok, J(validateSchema(SA).errors));
+  const bad = JSON.parse(J(S)); bad.board.postsPerTurn = [0, 5];
+  ck('자율형 min 0 오류 (최소 1)', !validateSchema(bad).ok, '');
+  const bad2 = JSON.parse(J(S)); bad2.board.postsPerTurn = [2, 9];
+  ck('자율형 max 9 오류 (최대 6)', !validateSchema(bad2).ok, '');
+  const cfg = board.boardConfig(SA);
+  ck('★ 파싱 — postsMin 4 / postsPerTurn 5', cfg.postsMin === 4 && cfg.postsPerTurn === 5, J([cfg.postsMin, cfg.postsPerTurn]));
+  ck('숫자형은 postsMin 0 (반응형 유지)', board.boardConfig(S).postsMin === 0, '');
+  const t = engine.initState(SA); t.meta.setupDone = true;
+  const aux = engine.buildAuxPrompt(SA, t, '서사', null);
+  ck('★ 자율형 지시 — 매턴 4~5개 + 필수 항목', aux.includes('새 글 4~5개')
+    && aux.includes('게시판은 세계와 함께 굴러간다') && aux.includes('(필수 항목)'), '');
+  ck('★ 다양성 지시 — 주인공 무관 위주 + 관련 최대 1개', aux.includes('무관한') && aux.includes('최대 1개'), '');
+  ck('반응형 문구 소멸', !aux.includes('반응할 일이 없으면'), '');
+  const auxR = engine.buildAuxPrompt(S, engine.initState(S), '서사', null);
+  ck('반응형(숫자)은 종전 그대로 — 선택 항목 + 생략 허용', auxR.includes('(선택 항목)') && auxR.includes('반응할 일이 없으면'), '');
+  // 자율형 캡 — sanitize가 postsPerTurn(max)까지 받는다
+  const delta = { new: Array.from({ length: 6 }, (_, i) => ({ title: `글${i}`, body: 'x' })) };
+  board.applyDelta(SA, t, delta, { rng: seededRng('a', 1, 'o') });
+  ck('자율형 새 글 캡 5', t.board.posts.length === 5, String(t.board.posts.length));
+  // 새로고침 프롬프트도 범위·다양성 승계
+  const rp = board.interactionPrompt(SA, t, 'refresh', {});
+  ck('새로고침 — 4~5개 + 다양성', rp.includes('새 글 4~5개') && rp.includes('주인공 관련 글은 최대 1개'), '');
+}
+
+// ── 현재 화제 기사 (v1.1.0) — N턴 주기 세계 뉴스 슬롯 ──
+{
+  const SH = JSON.parse(J(S));
+  SH.board.hot = { label: '헤드라인', every: 3, guide: '세계급 화제만' };
+  ck('★ hot 스키마 통과', validateSchema(SH).ok, J(validateSchema(SH).errors));
+  const bad = JSON.parse(J(SH)); bad.board.hot.every = 1;
+  ck('every 1 오류 (2~20)', !validateSchema(bad).ok, '');
+  const warnV = JSON.parse(J(SH)); delete warnV.board.hot.guide;
+  ck('guide 없으면 경고', validateSchema(warnV).warnings.some((w) => w.path === '$.board.hot'), '');
+  const cfg = board.boardConfig(SH);
+  ck('파싱 — label·every·guide', cfg.hot.label === '헤드라인' && cfg.hot.every === 3 && cfg.hot.guide === '세계급 화제만', '');
+  ck('hot 미설정 봇은 null (기존 동작)', board.boardConfig(S).hot === null, '');
+
+  let t = engine.initState(SH); t.meta.setupDone = true;
+  ck('★ 빈 슬롯 — 첫 턴부터 기사 차례', board.hotDue(cfg, t) === true, '');
+  const aux = engine.buildAuxPrompt(SH, t, '서사', null);
+  ck('★ 기사 지시 — 주기·형식·지침', aux.includes('[헤드라인 — 3턴 주기 기사]')
+    && aux.includes('{"hot"') && aux.includes('세계급 화제만'), '');
+  // 적용 — 슬롯 교체 + 턴 도장
+  t.meta.turn = 7;
+  board.applyDelta(SH, t, { hot: { title: 'S랭크 서열전 개막', body: '기사 본문'.repeat(200) } }, { rng: seededRng('n', 1, 'o') });
+  ck('★ 기사 슬롯 + 본문 900자 캡 + 턴 기록', t.board.hot.title === 'S랭크 서열전 개막'
+    && t.board.hot.body.length === 900 && t.board.hot.turn === 7, J({ len: t.board.hot.body.length, turn: t.board.hot.turn }));
+  ck('★ 주기 미도래 — 요청 안 실림', board.hotDue(cfg, t) === false
+    && !engine.buildAuxPrompt(SH, t, '서사', null).includes('{"hot"'), '');
+  t.meta.turn = 10;
+  const aux3 = engine.buildAuxPrompt(SH, t, '서사', null);
+  ck('★ 3턴 경과 — 다시 차례 + 직전 기사 회피 지시', board.hotDue(cfg, t) === true
+    && aux3.includes('직전 기사("S랭크 서열전 개막")'), '');
+  // 교체식 — 새 기사가 옛 기사를 밀어낸다 (안 쌓임)
+  board.applyDelta(SH, t, { hot: { title: '게이트 브레이크 영웅 인터뷰', body: '단독 인터뷰 전문입니다' } }, { rng: seededRng('n', 2, 'o') });
+  ck('슬롯 교체 — 옛 기사 소멸', t.board.hot.title === '게이트 브레이크 영웅 인터뷰' && t.board.hot.turn === 10, '');
+  // 메인엔 헤드라인 한 줄 — 기사 본문은 안 실린다
+  const line = board.mainLine(SH, t);
+  ck('★ 메인 — 헤드라인만', line.includes('헤드라인 기사: "게이트 브레이크 영웅 인터뷰"') && !line.includes('단독 인터뷰 전문'), line);
+  // hot 없는 봇의 mainLine은 종전 형태 그대로 (기사 접두 없음)
+  const t0 = fresh();
+  board.applyDelta(S, t0, { new: [{ title: '평글', body: 'x' }] }, { rng: seededRng('n', 3, 'o') });
+  ck('hot 미설정 — mainLine에 기사 접두 없음', !board.mainLine(S, t0).includes('기사:'), board.mainLine(S, t0));
+  // hot 미설정 봇에 hot 델타가 와도 무시
+  board.applyDelta(S, t0, { hot: { title: 'x', body: 'y' } }, { rng: seededRng('n', 4, 'o') });
+  ck('hot 미설정 — 델타 무시', t0.board.hot === undefined, '');
+  // 관대 수용 — 모델이 hot을 최상위에 내도 board로 접힌다 (규격은 board 안)
+  const p1 = engine.parseAuxResponse('{"changes":{},"reasons":{},"hot":{"title":"t","body":"b"}}');
+  ck('★ 최상위 hot → board.hot 폴딩', p1.board?.hot?.title === 't', J(p1.board));
+  const p2 = engine.parseAuxResponse('{"changes":{},"reasons":{},"board":{"new":[],"hot":{"title":"in","body":"b"}},"hot":{"title":"out","body":"b"}}');
+  ck('둘 다 오면 board 안이 우선', p2.board.hot.title === 'in', '');
+}
+
 {
   const { SimSession } = SC.require('session');
   const { MapBackend } = (() => {

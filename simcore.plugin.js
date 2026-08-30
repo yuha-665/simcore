@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.9
-//@display-name SimCore (시뮬 엔진) v1.0.9 상점 카테고리별 진열
+//@version 1.1.0
+//@display-name SimCore (시뮬 엔진) v1.1.0 게시판 다양성 + 화제 기사
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.1.0 ────────────────────────────────────────────────
+// 게시판 다양성 리워크 + 현재 화제 기사 (유저: "사용자 서사가 헌터넷에 계속 박제돼
+// 다양성이 죽는다").
+// - 뿌리: 종전 턴 갱신은 "이번 턴 서사에 반응할 일이 있으면"이라는 **반응형** 지시 —
+//   글감이 구조적으로 주인공 서사뿐이었다.
+// - board.postsPerTurn이 [min,max] 배열이면 **자율형**: 매턴 min~max개, 대부분 주인공
+//   일행과 무관한 세계의 글 (주인공 관련은 공개 목격급 사건 때만 최대 1개). 숫자면 종전
+//   반응형 그대로. NEW_PER_APPLY_MAX 4 → 6.
+// - board.hot { every, label, guide }: N턴마다 갱신되는 "현재 화제" 기사 한 편 —
+//   S랭커 동향·게이트 브레이크 활약담 같은 세계급 뉴스. 패널 최상단 고정(접기/펼치기),
+//   메인엔 헤드라인 한 줄. 슬롯 교체식 (지난 기사는 안 쌓인다).
+// - 출력 상한 가산식 재편: 바닥 400 + 첫 입고 2400 + 자율형 게시판 800 + 기사 400.
+//   [새 소식] 버튼도 800 → 자율형이면 1600.
+// - 얼헌: postsPerTurn [4,5], hot 5턴 주기 (maxPosts 20 유지 — 롤링 그대로).
 //
 // ── v1.0.9 ────────────────────────────────────────────────
 // 상점 진열이 여전히 휑함 (유저: "갱신해도 카테고리별로 몇 개 안 나온다") — 총량 지시
@@ -3814,8 +3829,31 @@ function validateSchema(schema) {
       if (B.icon != null && (typeof B.icon !== 'string' || B.icon.length > 8)) {
         err('$.board.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
       }
-      if (B.postsPerTurn != null && (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 4)) {
-        err('$.board.postsPerTurn', '턴당 새 글은 0~4 정수');
+      // postsPerTurn (v1.1.0): 숫자 = 반응형 (서사에 반응할 때만 0~N), [min,max] = 자율형
+      // (매턴 min~max개, 대부분 주인공 무관 — 다양성 리워크의 본체)
+      if (B.postsPerTurn != null) {
+        if (Array.isArray(B.postsPerTurn)) {
+          const P = B.postsPerTurn;
+          if (P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
+            || P[0] < 1 || P[0] > P[1] || P[1] > 6) {
+            err('$.board.postsPerTurn', '자율형은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 6) — 매턴 그만큼 새 글이 올라옵니다');
+          }
+        } else if (!Number.isInteger(B.postsPerTurn) || B.postsPerTurn < 0 || B.postsPerTurn > 6) {
+          err('$.board.postsPerTurn', '턴당 새 글은 0~6 정수 (또는 자율형 [최소, 최대])');
+        }
+      }
+      // hot (v1.1.0) — N턴 주기 "현재 화제" 기사 슬롯
+      if (B.hot != null) {
+        if (typeof B.hot !== 'object' || Array.isArray(B.hot)) {
+          err('$.board.hot', 'hot은 { every?, label?, guide? } 객체 — N턴마다 갱신되는 세계 뉴스 기사 한 편');
+        } else {
+          if (B.hot.every != null && (!Number.isInteger(B.hot.every) || B.hot.every < 2 || B.hot.every > 20)) {
+            err('$.board.hot.every', '기사 갱신 주기는 2~20턴 정수 (기본 5)');
+          }
+          if (B.hot.label != null && typeof B.hot.label !== 'string') err('$.board.hot.label', 'label은 문자열');
+          if (B.hot.guide != null && typeof B.hot.guide !== 'string') err('$.board.hot.guide', 'guide는 문자열');
+          if (!B.hot.guide) warn('$.board.hot', '기사 지침(guide)이 없습니다 — 어떤 화제를 다루는 기사인지 적어 주세요 (예: S랭크 동향, 게이트 브레이크 활약담)');
+        }
       }
       if (B.maxPosts != null && (!Number.isInteger(B.maxPosts) || B.maxPosts < 4 || B.maxPosts > 40)) {
         err('$.board.maxPosts', '보존 글 수는 4~40 정수');
@@ -5161,7 +5199,15 @@ SimCore.define("board", function (require, module, exports) {
 //
 // 스키마 (옵트인):
 //   board: { label, icon, topics, guide, postsPerTurn?, maxPosts?, mainInject?, when?, css?,
-//            categories? }
+//            categories?, hot? }
+//
+// postsPerTurn (v1.1.0): 숫자면 종전 그대로 "서사에 반응할 일이 있으면 0~N개" (반응형).
+//   [min, max] 배열이면 **자율형** — 매턴 min~max개, 대부분 주인공과 무관한 세계의 글.
+//   계기: 반응형은 매턴 주인공 서사가 게시판에 박제돼 다양성이 죽는다 (유저 지목).
+//
+// hot (v1.1.0): { every?, label?, guide? } — N턴마다 갱신되는 "현재 화제" 기사 한 편.
+//   게시글과 별개의 단일 슬롯 (state.board.hot) — 세계급 뉴스(S랭커 동향, 게이트 브레이크
+//   활약담 등)를 주인공과 무관하게 굴린다. 패널 최상단 고정 + 메인엔 헤드라인 한 줄.
 //
 // 카테고리 (v0.98): categories: ['자유','정보','모집'] — 패널이 탭으로 나뉘고 글마다 cat이
 // 붙는다 (어휘 밖은 첫 칸 보정 — 상점 카테고리와 같은 규약). 파티 모집판 같은
@@ -5172,9 +5218,10 @@ const { evaluate, truthy } = require('./expr');
 
 const CAPS = {
   TITLE: 60, AUTHOR: 20, BODY: 600, RE_BODY: 200,
-  RE_PER_POST: 12, NEW_PER_APPLY_MAX: 4, MAX_POSTS_MIN: 4, MAX_POSTS_MAX: 40,
+  RE_PER_POST: 12, NEW_PER_APPLY_MAX: 6, MAX_POSTS_MIN: 4, MAX_POSTS_MAX: 40,
+  HOT_BODY: 900, HOT_EVERY_MIN: 2, HOT_EVERY_MAX: 20,
 };
-const DEFAULTS = { postsPerTurn: 2, maxPosts: 20 };
+const DEFAULTS = { postsPerTurn: 2, maxPosts: 20, hotEvery: 5 };
 
 function boardConfig(schema) {
   const b = schema?.board;
@@ -5184,7 +5231,22 @@ function boardConfig(schema) {
     icon: typeof b.icon === 'string' && b.icon.trim() ? b.icon.trim() : '💬',
     topics: typeof b.topics === 'string' ? b.topics : '',
     guide: typeof b.guide === 'string' ? b.guide : '',
-    postsPerTurn: Math.max(0, Math.min(CAPS.NEW_PER_APPLY_MAX, b.postsPerTurn ?? DEFAULTS.postsPerTurn)),
+    // postsPerTurn: 숫자(반응형) 또는 [min,max](자율형 — postsMin > 0). 내부는 min/max 짝으로
+    ...(Array.isArray(b.postsPerTurn) && b.postsPerTurn.length === 2
+      && Number.isInteger(b.postsPerTurn[0]) && Number.isInteger(b.postsPerTurn[1])
+      ? (() => {
+        const hi = Math.max(1, Math.min(CAPS.NEW_PER_APPLY_MAX, Math.max(b.postsPerTurn[0], b.postsPerTurn[1])));
+        return { postsMin: Math.max(1, Math.min(hi, Math.min(b.postsPerTurn[0], b.postsPerTurn[1]))), postsPerTurn: hi };
+      })()
+      : { postsMin: 0, postsPerTurn: Math.max(0, Math.min(CAPS.NEW_PER_APPLY_MAX, b.postsPerTurn ?? DEFAULTS.postsPerTurn)) }),
+    hot: (b.hot && typeof b.hot === 'object')
+      ? {
+        label: typeof b.hot.label === 'string' && b.hot.label.trim() ? b.hot.label.trim() : '현재 화제',
+        every: Math.max(CAPS.HOT_EVERY_MIN, Math.min(CAPS.HOT_EVERY_MAX,
+          Number.isInteger(b.hot.every) ? b.hot.every : DEFAULTS.hotEvery)),
+        guide: typeof b.hot.guide === 'string' ? b.hot.guide : '',
+      }
+      : null,
     maxPosts: Math.max(CAPS.MAX_POSTS_MIN, Math.min(CAPS.MAX_POSTS_MAX, b.maxPosts ?? DEFAULTS.maxPosts)),
     mainInject: b.mainInject !== false,
     echo: b.echo !== false,   // 주인공 글·댓글 1회 되울림 (v1.0.3)
@@ -5266,7 +5328,21 @@ function sanitizeDelta(raw, cfg) {
     if (!isFinite(id) || !replies.length) continue;
     out.replies.push({ id, re: replies });
   }
+  // 현재 화제 기사 (v1.1.0) — 단일 슬롯, hot 설정이 있는 봇만
+  if (cfg?.hot && raw.hot && typeof raw.hot === 'object') {
+    const title = cut(raw.hot.title, CAPS.TITLE);
+    const body = String(raw.hot.body ?? '').trim().slice(0, CAPS.HOT_BODY);
+    if (title && body) out.hot = { title, body };
+  }
   return out;
+}
+
+/** 현재 화제 기사가 갱신될 차례인가 — 없거나, 마지막 갱신에서 every턴이 지났으면 */
+function hotDue(cfg, state) {
+  if (!cfg?.hot) return false;
+  const hot = state?.board?.hot;
+  if (!hot || typeof hot.turn !== 'number') return true;
+  return ((state?.meta?.turn ?? 0) - hot.turn) >= cfg.hot.every;
 }
 
 /**
@@ -5308,7 +5384,13 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
   });
   // 보존 상한 — 오래된 글부터 내려간다
   if (board.posts.length > cfg.maxPosts) board.posts.length = cfg.maxPosts;
-  return { added: delta.posts.length, replied };
+  // 현재 화제 기사 — 슬롯 교체 (이전 기사는 사라진다. "이미 읽은 걸 또 보진 않는다")
+  let hot = false;
+  if (delta.hot) {
+    board.hot = { ...delta.hot, time: now, turn: state?.meta?.turn ?? 0 };
+    hot = true;
+  }
+  return { added: delta.posts.length, replied, hot };
 }
 
 /** 유저가 패널에서 쓴 글 — 즉시 등록, 반응은 보조 호출이 이어 받는다. 반환: 글 id */
@@ -5355,17 +5437,33 @@ function auxSpec(schema, state, makeLookup) {
   const cfg = boardConfig(schema);
   if (!cfg) return '';
   if (!boardOpen(cfg, schema, state.vars, makeLookup)) return '';
+  // 자율형([min,max]) — 게시판은 주인공이 안 보여도 굴러간다. 반응형(숫자)은 종전 그대로.
+  const autonomous = cfg.postsMin > 0;
+  const askLine = autonomous
+    ? `- 게시판은 세계와 함께 굴러간다: "board" 필드로 새 글 ${cfg.postsMin}~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 매턴 내라.`
+    : `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`;
+  const diversityLine = autonomous
+    ? '- 새 글 대부분은 주인공 일행과 **무관한** 것으로: 익명 개개인의 일상·하소연·자랑, 다른 지역·다른 사건 소식 — 세계가 주인공 없이도 굴러감을 보여라. 이번 턴 서사와 닿는 글은 공개적으로 목격될 만한 일이 실제로 있었을 때만, **최대 1개**.'
+    : null;
+  const hotSpec = hotDue(cfg, state)
+    ? [
+      `- [${cfg.hot.label} — ${cfg.hot.every}턴 주기 기사] board 안에 "hot" 필드로 세계급 화제 기사 한 편을 내라: {"hot":{"title":"헤드라인","body":"기사 본문 (커뮤니티 글이 아니라 기사체)"}}.`,
+      `  주인공 일행과 무관한 세계의 뜨거운 감자로.${cfg.hot.guide ? ` ${cfg.hot.guide}` : ''}${state?.board?.hot?.title ? ` 직전 기사("${cut(state.board.hot.title, 40)}")와 다른 주제로.` : ''}`,
+    ]
+    : [];
   return [
     '',
-    `[${cfg.label} — 세계 안의 커뮤니티 게시판] (선택 항목)`,
+    `[${cfg.label} — 세계 안의 커뮤니티 게시판] (${autonomous ? '필수' : '선택'} 항목)`,
     '현재 게시판:',
     digest(state),
-    `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`,
+    askLine,
+    diversityLine,
     cfg.topics ? `- 게시판의 관심사: ${cfg.topics}` : null,
     cfg.categories ? `- 새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
     '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
+    ...hotSpec,
     `- board 형식: {"new":[{"title":"제목","author":"닉네임"${cfg.categories ? ',"cat":"칸"' : ''},"body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}`,
   ].filter((x) => x !== null).join('\n');
 }
@@ -5399,9 +5497,11 @@ function mainLine(schema, state) {
   const cfg = boardConfig(schema);
   if (!cfg || !cfg.mainInject) return null;
   const posts = state?.board?.posts || [];
-  if (!posts.length) return null;
+  const hot = cfg.hot && state?.board?.hot?.title
+    ? `${cfg.hot.label} 기사: "${cut(state.board.hot.title, 50)}" / ` : '';
+  if (!posts.length && !hot) return null;
   const tops = posts.slice(0, 2).map((p) => `"${cut(p.title, 40)}"`).join(', ');
-  return `[${cfg.label}] 지금 게시판의 화제: ${tops} — 등장인물들이 이 화제를 알고 있을 수 있다. 게시판 원문을 본문에 옮겨 적지 마라.`;
+  return `[${cfg.label}] ${hot}지금 게시판의 화제: ${tops || '(없음)'} — 등장인물들이 이 화제를 알고 있을 수 있다. 게시판·기사 원문을 본문에 옮겨 적지 마라.`;
 }
 
 /** 패널 인터랙션 전용 프롬프트 — 채팅 없이 보조만 부른다. 출력은 {"board":{...}} 하나 */
@@ -5439,7 +5539,12 @@ function interactionPrompt(schema, state, kind, payload = {}) {
       `- 이 댓글에 이어지는 다른 사용자들의 반응 0~3개를 "re"의 id ${payload.postId}로 담아라 (없어도 된다 — 그땐 빈 board).`,
     ].join('\n');
   } else { // refresh
-    task = `- 시간이 조금 흐른 게시판의 새 소식을 만들어라: 새 글 1~${Math.max(1, cfg.postsPerTurn)}개("new")와 기존 글 댓글 반응("re") 약간. 이야기 맥락과 게시판 관심사에 맞게.`;
+    task = [
+      `- 시간이 조금 흐른 게시판의 새 소식을 만들어라: 새 글 ${Math.max(1, cfg.postsMin)}~${Math.max(1, cfg.postsPerTurn)}개("new")와 기존 글 댓글 반응("re") 약간. 이야기 맥락과 게시판 관심사에 맞게.`,
+      cfg.postsMin > 0
+        ? '- 새 글 대부분은 주인공 일행과 무관한 것으로 — 익명 개개인의 일상과 다른 사건 소식으로 세계가 굴러감을 보여라. 주인공 관련 글은 최대 1개.'
+        : null,
+    ].filter(Boolean).join('\n');
   }
   return [...head, task, '', fmt].filter((x) => x !== null).join('\n');
 }
@@ -5451,7 +5556,7 @@ function parseInteraction(text, extractJsonObject) {
 }
 
 module.exports = {
-  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat,
+  CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat, hotDue,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
   digest, auxSpec, mainLine, userEcho, interactionPrompt, parseInteraction,
 };
@@ -7833,7 +7938,11 @@ function parseAuxResponse(text) {
     conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
-    board: obj.board ?? null,  // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이
+    // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이. 현재 화제 기사(v1.1.0)는 board 안의
+    // "hot"이 규격이지만, 모델이 최상위에 내는 경우가 잦아 여기서 board로 접어 넣는다 (관대 수용)
+    board: (obj.hot && typeof obj.hot === 'object')
+      ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
+      : (obj.board ?? null),
     shop: obj.shop ?? null };  // 상점 입고 (v0.96) — 정제는 shop 모듈이
 }
 
@@ -11371,7 +11480,8 @@ const SCHEMA_CALENDAR_RULES = [
 const SCHEMA_BOARD_RULES = [
   '- 보드는 **세계 안의 커뮤니티 게시판**입니다 (헌터넷·학내 커뮤니티·모험가 길드 방보). 세계에 그런 여론 공간이 어울리는 봇에만 넣으세요.',
   '- 글·댓글 데이터는 세이브에 삽니다 — 스키마에는 **성격만** 적습니다: `topics`(무엇에 대해 떠드는가), `guide`(말투·익명성·금기).',
-  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
+  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`은 숫자(0~6)면 반응형(서사에 반응할 때만), `[4,5]`처럼 범위면 자율형 — 매턴 그만큼, 대부분 주인공과 무관한 세계의 글이 올라옵니다. `maxPosts`(4~40)가 보존 상한.',
+  '- `hot`을 주면 게시글과 별개로 N턴(`every`, 기본 5)마다 "현재 화제" 기사 한 편이 갱신됩니다 — 패널 최상단 고정, 메인엔 헤드라인 한 줄 (`guide`에 어떤 화제인지: S랭크 동향, 게이트 브레이크 활약담 등).',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
   '- `echo`(기본 true)면 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글+최신 반응) 실렸다가 소거됩니다 — 서사가 쓸 수 있으면 쓰고, 아니면 버려지는 1회용 소스.',
@@ -12808,7 +12918,8 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '{ "board": { "label": "헌터넷", "icon": "🌐",',
       '  "topics": "게이트 공략 정보, 헌터 소문, 장비 시세",',
       '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
-      '  "postsPerTurn": 2, "maxPosts": 20, "when": "not in_gate" } }',
+      '  "postsPerTurn": [4, 5], "maxPosts": 20, "when": "not in_gate",',
+      '  "hot": { "label": "현재 화제", "every": 5, "guide": "S랭크 동향, 게이트 브레이크 활약담" } } }',
       '```',
       '');
   } else if (tabKey === 'shop') {
@@ -15923,9 +16034,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-row' },
         pair('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '게시판' })),
         pair('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '💬' })),
-        pair('턴당 새 글', bindInput(B.postsPerTurn ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(4, n)); else delete B.postsPerTurn; rerender();
-        }, { cls: 'sce-w-s', ph: '2' }), '이번 턴 서사에 반응해 올라올 수 있는 새 글 수 (0~4)'),
+        pair('턴당 새 글', bindInput(
+          Array.isArray(B.postsPerTurn) ? B.postsPerTurn.join('~') : (B.postsPerTurn ?? ''), (x) => {
+            const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+            if (m) {
+              const lo = Math.max(1, Math.min(6, parseInt(m[1], 10)));
+              B.postsPerTurn = [lo, Math.max(lo, Math.min(6, parseInt(m[2], 10)))];
+            } else {
+              const n = parseInt(x, 10);
+              if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(6, n)); else delete B.postsPerTurn;
+            }
+            rerender();
+          }, { cls: 'sce-w-s', ph: '2' }),
+        '숫자(0~6) = 서사에 반응할 때만. "4~5"처럼 범위 = 매턴 그만큼, 대부분 주인공과 무관한 세계의 글 (자율형)'),
         pair('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
           const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n)); else delete B.maxPosts; rerender();
         }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 내려갑니다 (4~40)'),
@@ -15950,6 +16071,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); },
           '주인공 글·댓글 1회 되울림 — 다음 턴에 스레드째 서사 소스로 (안 쓰이면 버려짐)'),
       ),
+      // 현재 화제 기사 (v1.1.0) — N턴 주기 세계 뉴스 슬롯
+      h('div', { class: 'sce-row' },
+        pair('화제 기사', bindInput(B.hot ? (B.hot.label ?? '현재 화제') : '', (x) => {
+          if (x.trim()) B.hot = { ...(B.hot || {}), label: x.trim() };
+          else delete B.hot;
+          rerender();
+        }, { cls: 'sce-w-m', ph: '(비우면 끔) 예: 현재 화제' }),
+        'N턴마다 갱신되는 세계 뉴스 기사 한 편 — 패널 최상단 고정, 메인엔 헤드라인 한 줄'),
+        B.hot ? pair('갱신 주기(턴)', bindInput(B.hot.every ?? '', (x) => {
+          const n = parseInt(x, 10);
+          if (isFinite(n)) B.hot.every = Math.max(2, Math.min(20, n)); else delete B.hot.every;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '5' })) : null,
+      ),
+      B.hot ? pair('기사 지침', bindArea(B.hot.guide, (x) => { B.hot.guide = x || undefined; rerender(); },
+        '예: S랭크 헌터 동향, 게이트 브레이크 활약담, 협회 발표, 길드 스캔들 — 주인공과 무관한 세계급 화제'), '') : null,
       pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
         '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
     ));
@@ -25309,11 +25446,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
-        // 상점 첫 입고가 얹힌 턴은 출력 상한을 넉넉히 (v1.0.8) — 400(클램프 후 1000토큰)으로는
-        // 상태 갱신 + 게시판 + 재고 JSON을 못 담아 2~3개만 살아남았다 (실사고:
-        // "진열대가 2~3개뿐"). 첫 입고는 재고가 빈 동안만 실리므로 평턴 비용은 그대로 400.
-        // v1.0.9: perCat(카테고리마다 4~6개 → 최대 36개)이 생기며 1600으로도 부족 → 2800.
-        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400;
+        // 출력 상한 — 이번 턴 요청에 실린 항목만큼 가산 (v1.1.0에서 가산식으로 재편).
+        // 바닥 400(클램프 후 1000토큰)은 상태 갱신 + 반응형 게시판용. 얹히는 항목:
+        // · 상점 첫 입고(재고 빈 동안만): +2400 — perCat 최대 36개 JSON (v1.0.8~9 실사고)
+        // · 자율형 게시판(매턴 min~max개, v1.1.0): +800 — 4~5글이 400엔 안 담긴다
+        // · 현재 화제 기사(N턴마다, v1.1.0): +400 — 기사 한 편
+        let auxCap = 400;
+        if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;
+        if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
+        if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -25663,6 +25804,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         font-family:inherit; }
       #sc-game .scb-ta { min-height:96px; resize:vertical; }
       #sc-game .scb-empty { text-align:center; color:#5d6b87; padding:24px 0; }
+      #sc-game .scb-hot { border:1px solid #3a4f80; border-radius:10px; background:#101a30;
+        padding:8px 11px; margin-bottom:8px; }
+      #sc-game .scb-hot-head { color:#ffd98a; font-size:13px; font-weight:700; cursor:pointer; }
+      #sc-game .scb-hot-body { white-space:pre-wrap; color:#dfe7f5; font-size:12.5px; margin-top:6px;
+        border-top:1px dashed #2a3a5e; padding-top:6px; }
+      #sc-game .scb-hot .scb-meta { color:#7d8aa5; font-size:11px; margin-top:4px; }
       #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
       #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
         border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
@@ -26251,7 +26398,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     try {
       const prompt = boardMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
-      const res = await callAuxLLM(prompt, 800);
+      // [새 소식]은 자율형이면 새 글 4~5개를 통째로 받는다 — 800으론 잘린다 (v1.1.0)
+      const res = await callAuxLLM(prompt, kind === 'refresh' ? 1600 : 800);
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 보드 실시간 반응은 쓸 수 없고, 턴 갱신만 돌아요';
       } else if (typeof res === 'string') {
@@ -26403,6 +26551,16 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         tabs.appendChild(tabBtn('전체', null));
         for (const c of cfg.categories) tabs.appendChild(tabBtn(c, c));
         card.appendChild(tabs);
+      }
+      // 현재 화제 기사 (v1.1.0) — 목록 최상단 고정, 접었다 펼 수 있다
+      if (cfg.hot && board.hot?.title) {
+        const hotBox = el('div', 'scb-hot');
+        const hd = el('div', 'scb-hot-head', `📰 [${cfg.hot.label}] ${board.hot.title}`);
+        hd.onclick = () => { boardView = { ...boardView, hotOpen: !boardView.hotOpen }; renderGamePanel(); };
+        hotBox.appendChild(hd);
+        if (boardView.hotOpen) hotBox.appendChild(el('div', 'scb-hot-body', board.hot.body));
+        hotBox.appendChild(el('div', 'scb-meta', `${board.hot.time ?? ''} · ${cfg.hot.every}턴마다 갱신`));
+        card.appendChild(hotBox);
       }
       const posts = boardView.cat ? board.posts.filter((p) => p.cat === boardView.cat) : board.posts;
       if (!board.posts.length) {

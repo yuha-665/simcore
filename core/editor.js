@@ -1246,7 +1246,8 @@ const SCHEMA_CALENDAR_RULES = [
 const SCHEMA_BOARD_RULES = [
   '- 보드는 **세계 안의 커뮤니티 게시판**입니다 (헌터넷·학내 커뮤니티·모험가 길드 방보). 세계에 그런 여론 공간이 어울리는 봇에만 넣으세요.',
   '- 글·댓글 데이터는 세이브에 삽니다 — 스키마에는 **성격만** 적습니다: `topics`(무엇에 대해 떠드는가), `guide`(말투·익명성·금기).',
-  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`(0~4)이 턴당 새 글 상한, `maxPosts`(4~40)가 보존 상한입니다.',
+  '- 갱신은 매 턴 보조 AI가 서사를 보고 합니다 (추가 호출 없음). `postsPerTurn`은 숫자(0~6)면 반응형(서사에 반응할 때만), `[4,5]`처럼 범위면 자율형 — 매턴 그만큼, 대부분 주인공과 무관한 세계의 글이 올라옵니다. `maxPosts`(4~40)가 보존 상한.',
+  '- `hot`을 주면 게시글과 별개로 N턴(`every`, 기본 5)마다 "현재 화제" 기사 한 편이 갱신됩니다 — 패널 최상단 고정, 메인엔 헤드라인 한 줄 (`guide`에 어떤 화제인지: S랭크 동향, 게이트 브레이크 활약담 등).',
   '- `when` 조건이 거짓인 턴에는 새 글이 안 올라옵니다 (예: 통신이 끊기는 장소를 나타내는 bool 변수). 조회수·추천은 시스템이 굴립니다.',
   '- `mainInject`(기본 true)면 메인 모델에 화제 **한 줄**만 주입됩니다 — 게시판 원문은 절대 본문에 실리지 않습니다.',
   '- `echo`(기본 true)면 주인공이 패널에서 쓴 글·댓글이 **다음 전송에 1회** 스레드째(내 글+최신 반응) 실렸다가 소거됩니다 — 서사가 쓸 수 있으면 쓰고, 아니면 버려지는 1회용 소스.',
@@ -2683,7 +2684,8 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '{ "board": { "label": "헌터넷", "icon": "🌐",',
       '  "topics": "게이트 공략 정보, 헌터 소문, 장비 시세",',
       '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
-      '  "postsPerTurn": 2, "maxPosts": 20, "when": "not in_gate" } }',
+      '  "postsPerTurn": [4, 5], "maxPosts": 20, "when": "not in_gate",',
+      '  "hot": { "label": "현재 화제", "every": 5, "guide": "S랭크 동향, 게이트 브레이크 활약담" } } }',
       '```',
       '');
   } else if (tabKey === 'shop') {
@@ -5798,9 +5800,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-row' },
         pair('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '게시판' })),
         pair('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '💬' })),
-        pair('턴당 새 글', bindInput(B.postsPerTurn ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(4, n)); else delete B.postsPerTurn; rerender();
-        }, { cls: 'sce-w-s', ph: '2' }), '이번 턴 서사에 반응해 올라올 수 있는 새 글 수 (0~4)'),
+        pair('턴당 새 글', bindInput(
+          Array.isArray(B.postsPerTurn) ? B.postsPerTurn.join('~') : (B.postsPerTurn ?? ''), (x) => {
+            const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+            if (m) {
+              const lo = Math.max(1, Math.min(6, parseInt(m[1], 10)));
+              B.postsPerTurn = [lo, Math.max(lo, Math.min(6, parseInt(m[2], 10)))];
+            } else {
+              const n = parseInt(x, 10);
+              if (isFinite(n)) B.postsPerTurn = Math.max(0, Math.min(6, n)); else delete B.postsPerTurn;
+            }
+            rerender();
+          }, { cls: 'sce-w-s', ph: '2' }),
+        '숫자(0~6) = 서사에 반응할 때만. "4~5"처럼 범위 = 매턴 그만큼, 대부분 주인공과 무관한 세계의 글 (자율형)'),
         pair('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
           const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n)); else delete B.maxPosts; rerender();
         }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 내려갑니다 (4~40)'),
@@ -5825,6 +5837,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); },
           '주인공 글·댓글 1회 되울림 — 다음 턴에 스레드째 서사 소스로 (안 쓰이면 버려짐)'),
       ),
+      // 현재 화제 기사 (v1.1.0) — N턴 주기 세계 뉴스 슬롯
+      h('div', { class: 'sce-row' },
+        pair('화제 기사', bindInput(B.hot ? (B.hot.label ?? '현재 화제') : '', (x) => {
+          if (x.trim()) B.hot = { ...(B.hot || {}), label: x.trim() };
+          else delete B.hot;
+          rerender();
+        }, { cls: 'sce-w-m', ph: '(비우면 끔) 예: 현재 화제' }),
+        'N턴마다 갱신되는 세계 뉴스 기사 한 편 — 패널 최상단 고정, 메인엔 헤드라인 한 줄'),
+        B.hot ? pair('갱신 주기(턴)', bindInput(B.hot.every ?? '', (x) => {
+          const n = parseInt(x, 10);
+          if (isFinite(n)) B.hot.every = Math.max(2, Math.min(20, n)); else delete B.hot.every;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '5' })) : null,
+      ),
+      B.hot ? pair('기사 지침', bindArea(B.hot.guide, (x) => { B.hot.guide = x || undefined; rerender(); },
+        '예: S랭크 헌터 동향, 게이트 브레이크 활약담, 협회 발표, 길드 스캔들 — 주인공과 무관한 세계급 화제'), '') : null,
       pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
         '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
     ));

@@ -114,6 +114,22 @@ const ZONES = ['도심권', '동북권', '서북권', '서남권', '동남권'];
 const ZONE_DESC = '도심권(종로·중구·용산) · 동북권(성북·노원·강북) · 서북권(은평·서대문·마포) '
   + '· 서남권(양천·구로·영등포·관악) · 동남권(서초·강남·송파·강동)';
 const GRADES = ['E', 'D', 'C', 'B', 'A', 'S'];
+
+// ── 장비 2축 등급 (2026-08-30 유저 설계): 랭크(E~S) × 희귀도(일반/레어/유니크/레전드) ──
+// 단일 희귀도(일반/레어/유니크)로는 "E급이 유니크 먹으면 밸붕"이 구조적이었다 — 랭크 축을
+// 끼우면 E급 유니크(10~600C)가 C급 일반(150~800C) 가격대에 앉는다: 좋은 물건이되 세계가
+// 안 부서진다. 코인 기준 1C ≈ ₩1,000 (암거래 환율과 정합).
+const GEAR_BASE = { E: [1, 60], D: [40, 200], C: [150, 800], B: [600, 3000], A: [2500, 12000], S: [10000, 50000] };
+const RARITY_MULT = { '일반': 1, '레어': 3, '유니크': 10, '레전드': 25 };
+const GEAR_GRADES = [];
+const GEAR_BANDS = {};
+for (const [tier, [glo, ghi]] of Object.entries(GEAR_BASE)) {
+  for (const [rar, m] of Object.entries(RARITY_MULT)) {
+    const g = `${tier}급 ${rar}`;
+    GEAR_GRADES.push(g);
+    GEAR_BANDS[g] = [Math.max(1, Math.round(glo * m)), Math.round(ghi * m)];
+  }
+}
 const idx1 = (list, v) => chain(list.slice(0, -1).map((name, i) => [`${v} == ${i + 1}`, `'${name}'`]),
   `'${list[list.length - 1]}'`);
 
@@ -193,13 +209,15 @@ const S = {
       desc: 'How known the hunter is in hunter society and on HunterNet. Rises with public feats, '
         + 'falls with scandals. A rookie stays under 10 for a long while.' },
 
-    // ── 장비·소지 (등급 표기: 일반/레어/유니크 — 레전더리는 서사에 명시됐을 때만) ──
+    // ── 장비·소지 (등급 표기 2축: "랭크급 희귀도" — 예: E급 일반, D급 레어, C급 유니크.
+    //    랭크는 장비의 격(E~S), 희귀도는 일반/레어/유니크/레전드. 상점 밴드와 같은 표) ──
     { id: 'weapons', label: '무기', type: 'list', init: [], maxItems: 2, itemMaxLength: 30, cmd: '무기',
-      desc: 'Equipped weapons, max 2 — "철제 활 (일반)". Swap = remove old + add new. Stored gear goes to items.' },
+      desc: 'Equipped weapons, max 2 — "철제 활 (E급 일반)". Grade = "랭크급 희귀도" pair '
+        + '(rank E~S × 일반/레어/유니크/레전드). Swap = remove old + add new. Stored gear goes to items.' },
     { id: 'accessories', label: '장신구', type: 'list', init: [], maxItems: 2, itemMaxLength: 30,
       desc: 'Equipped accessories, max 2, same format as weapons.' },
     { id: 'armor', label: '방어구', type: 'text', init: '없음', maxLength: 30,
-      desc: 'Equipped armor — "강화 전술복 (일반)". 없음 if none.' },
+      desc: 'Equipped armor — "강화 전술복 (D급 일반)". Same grade pair rule as weapons. 없음 if none.' },
     { id: 'items', label: '소지품', type: 'list', init: ['하급 회복 포션 2'], maxItems: 10, itemMaxLength: 30, cmd: '아이템',
       desc: 'Carried items with count LAST — "하급 회복 포션 3", "고블린 마정석 5". Consuming/looting '
         + 'updates the count (remove old entry, add updated one). Money is NOT an item.' },
@@ -847,8 +865,12 @@ const S = {
     label: '알터 스토어', icon: '🛒',
     currency: 'coin', buyTo: 'items', sellFrom: 'items',
     categories: ['추천', '인기', '소모품', '장비', '스킬북', '기타'],
-    grades: ['일반', '레어', '유니크'],
-    bands: { '일반': [1, 60], '레어': [60, 400], '유니크': [400, 3000] },
+    // 2축 등급 (GEAR_GRADES/BANDS 상수 참고) — "E급 유니크"처럼 랭크급+희귀도 짝 표기 강제.
+    // 맨 희귀도("유니크")만 쓰면 어휘 밖이라 거부된다 — 짝 표기를 시스템이 지킨다.
+    grades: GEAR_GRADES,
+    bands: GEAR_BANDS,
+    guide: '진열은 주인공 라이선스 ±1랭크대 위주로. 등급은 반드시 "랭크급 희귀도" 짝 표기 '
+      + '(예: D급 레어). 레전드는 극히 드물게 — 한 입고에 최대 1개.',
     sellRate: 0.6, maxStock: 18,
     when: 'store_on',
     // 환전 — 원작 캐논: 코인의 공식 거래는 금지, 블랙 마켓만 예외 (시세 1코인 ≈ ₩1,000).
@@ -1515,13 +1537,20 @@ console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
   ok('스토어 켜면 — 첫 입고 요청 + 지시문',
     engine.buildAuxPrompt(S, t, '서사', null).includes('첫 입고')
     && turn(t, {}, 90).prompt.includes('Alter Store'));
-  // 뇌절 봉쇄 — 레전더리 거부·밴드 클램프
+  // 2축 등급 (랭크×희귀도) — 어휘·밴드·짝 표기 강제
+  ok('등급 24종 = 랭크 6 × 희귀도 4', S.shop.grades.length === 24
+    && S.shop.grades.includes('E급 유니크') && S.shop.grades.includes('S급 레전드'), '');
+  ok('E급 유니크가 C급 일반 가격대 (저랭크 유니크 ≠ 밸붕)',
+    S.shop.bands['E급 유니크'][1] <= S.shop.bands['C급 일반'][1]
+    && S.shop.bands['E급 유니크'][1] >= S.shop.bands['C급 일반'][0], JSON.stringify(S.shop.bands['E급 유니크']));
+  // 뇌절 봉쇄 — 어휘 밖 등급 거부(맨 희귀도 포함)·밴드 클램프
   const r = shopMod.applyStock(S, t, { stock: [
     { cat: '스킬북', name: 'S급 스킬북', grade: '레전더리', price: 99999 },
-    { cat: '소모품', name: '하급 회복 포션', grade: '일반', price: 999 },
+    { cat: '소모품', name: '맨등급 포션', grade: '일반', price: 10 },
+    { cat: '소모품', name: '하급 회복 포션', grade: 'E급 일반', price: 999 },
   ], buying: [{ name: '고블린 마정석', price: 4 }] });
-  ok('레전더리 뇌절 거부 + 일반가 60 클램프', r.stocked === 1 && t.shop.stock[0].price === 60
-    && r.rejected.length === 1, JSON.stringify({ r, stock: t.shop.stock }));
+  ok('레전더리·맨 희귀도 거부 + E급 일반가 60 클램프', r.stocked === 1 && t.shop.stock[0].price === 60
+    && r.rejected.length === 2, JSON.stringify({ r, stock: t.shop.stock }));
   // 구매 → 코인 차감 + 통지가 다음 전송에 실리고 소거
   t.vars.coin = 100;
   const buy = shopMod.buy(S, t, t.shop.stock[0].id);

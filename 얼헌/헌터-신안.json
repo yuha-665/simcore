@@ -230,7 +230,7 @@
       "maxItems": 2,
       "itemMaxLength": 30,
       "cmd": "무기",
-      "desc": "Equipped weapons, max 2 — \"철제 활 (일반)\". Swap = remove old + add new. Stored gear goes to items."
+      "desc": "Equipped weapons, max 2 — \"철제 활 (E급 일반)\". Grade = \"랭크급 희귀도\" pair (rank E~S × 일반/레어/유니크/레전드). Swap = remove old + add new. Stored gear goes to items."
     },
     {
       "id": "accessories",
@@ -247,7 +247,7 @@
       "type": "text",
       "init": "없음",
       "maxLength": 30,
-      "desc": "Equipped armor — \"강화 전술복 (일반)\". 없음 if none."
+      "desc": "Equipped armor — \"강화 전술복 (D급 일반)\". Same grade pair rule as weapons. 없음 if none."
     },
     {
       "id": "items",
@@ -1654,24 +1654,130 @@
       "기타"
     ],
     "grades": [
-      "일반",
-      "레어",
-      "유니크"
+      "E급 일반",
+      "E급 레어",
+      "E급 유니크",
+      "E급 레전드",
+      "D급 일반",
+      "D급 레어",
+      "D급 유니크",
+      "D급 레전드",
+      "C급 일반",
+      "C급 레어",
+      "C급 유니크",
+      "C급 레전드",
+      "B급 일반",
+      "B급 레어",
+      "B급 유니크",
+      "B급 레전드",
+      "A급 일반",
+      "A급 레어",
+      "A급 유니크",
+      "A급 레전드",
+      "S급 일반",
+      "S급 레어",
+      "S급 유니크",
+      "S급 레전드"
     ],
     "bands": {
-      "일반": [
+      "E급 일반": [
         1,
         60
       ],
-      "레어": [
-        60,
-        400
+      "E급 레어": [
+        3,
+        180
       ],
-      "유니크": [
+      "E급 유니크": [
+        10,
+        600
+      ],
+      "E급 레전드": [
+        25,
+        1500
+      ],
+      "D급 일반": [
+        40,
+        200
+      ],
+      "D급 레어": [
+        120,
+        600
+      ],
+      "D급 유니크": [
         400,
+        2000
+      ],
+      "D급 레전드": [
+        1000,
+        5000
+      ],
+      "C급 일반": [
+        150,
+        800
+      ],
+      "C급 레어": [
+        450,
+        2400
+      ],
+      "C급 유니크": [
+        1500,
+        8000
+      ],
+      "C급 레전드": [
+        3750,
+        20000
+      ],
+      "B급 일반": [
+        600,
         3000
+      ],
+      "B급 레어": [
+        1800,
+        9000
+      ],
+      "B급 유니크": [
+        6000,
+        30000
+      ],
+      "B급 레전드": [
+        15000,
+        75000
+      ],
+      "A급 일반": [
+        2500,
+        12000
+      ],
+      "A급 레어": [
+        7500,
+        36000
+      ],
+      "A급 유니크": [
+        25000,
+        120000
+      ],
+      "A급 레전드": [
+        62500,
+        300000
+      ],
+      "S급 일반": [
+        10000,
+        50000
+      ],
+      "S급 레어": [
+        30000,
+        150000
+      ],
+      "S급 유니크": [
+        100000,
+        500000
+      ],
+      "S급 레전드": [
+        250000,
+        1250000
       ]
     },
+    "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty). The store never sells Legendary anything.",
     "sellRate": 0.6,
     "maxStock": 18,
     "when": "store_on",
@@ -1681,7 +1787,6 @@
       "spread": 0.2,
       "label": "암거래 환전"
     },
-    "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty). The store never sells Legendary anything.",
     "css": "\n.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.sch-tab { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.sch-tab.sch-on { background: #33549e; border-color: #8aa2cc; }\n.sch-item { border-bottom-color: rgba(138,162,204,.12); }\n.sch-item .sch-name { color: #dce6f5; }\n.sch-grade { border-color: rgba(138,162,204,.3); color: #8aa2cc; }\n.sch-price { color: #c9a86a; }\n.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }\n.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }\n.sch-wallet { color: #c9a86a; }"
   },
   "assets": {

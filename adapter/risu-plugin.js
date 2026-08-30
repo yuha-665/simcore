@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.3
-//@display-name SimCore (시뮬 엔진) v1.2.3 모듈 팩 메인 주입 픽스
+//@version 1.2.4
+//@display-name SimCore (시뮬 엔진) v1.2.4 에셋 주입 실황 진단
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.4 ────────────────────────────────────────────────
+// v1.2.3으로도 "메인인데 태그 안 나옴" 재현 (유저 제보) — 남은 용의자(저장 안 됨 /
+// 재로드 팩 유실 / 주입문 0자 / 모델이 지침 무시)를 추측하지 않도록, 편집기 에셋 탭에
+// **실행 중 스키마 기준 실황 진단줄** 추가: 삽입 주체·팩 목록(모듈/꺼짐 표시)·메인
+// 주입문 크기·작업본과의 불일치 경고 (ai.getAssetInjection).
 //
 // ── v1.2.3 ────────────────────────────────────────────────
 // 모듈 팩 봇에서 by:'main' 침묵 (유저 제보: "삽입 주체를 메인으로 해도 태그가 안 나옴").
@@ -6907,6 +6913,22 @@ count(목록)  has(목록, "항목")</pre>
         // ⚠ 편집기 미저장 스키마가 아니라 **설치된 스키마** 기준으로 스캔한다 — 체크박스를
         //   막 켰다면 저장(설치) 후에 눌러야 반영된다 (편집기 안내문이 이를 말한다).
         getModulePacks: () => scanModulePacks(true),
+        // 에셋 주입 실황 (v1.2.4) — "메인으로 했는데 태그가 안 나옴"을 추측 없이 특정하는
+        // 진단. 편집기 작업본이 아니라 **실행 중인 스키마** 기준 실측 (모듈 팩 병합·게이트 포함).
+        getAssetInjection: () => {
+          if (!schema) return null;
+          const by = schema.assets?.by ?? 'aux';
+          const packs = (schema.assets?.packs || [])
+            .map((p) => `${p.id}${p.origin === 'module' ? '(모듈)' : ''}${p.enabled === false ? '(꺼짐)' : ''}`);
+          let mainLen = null;
+          if (by === 'main') {
+            try {
+              mainLen = assetsMod.mainInjectionText(schema,
+                engine.makeLookup(schema, session?.current?.vars || {})).length;
+            } catch (e) { mainLen = -1; }
+          }
+          return { by, packs, mainLen };
+        },
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
       // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동

@@ -23,6 +23,13 @@ ck('설치 후 모듈 팩 재스캔 (ask=true)', src.includes("parsed?.assets?.m
   && src.includes('await scanModulePacks(true);'), '');
 ck('sig 비교는 모듈 팩 제외', src.includes("c.assets.packs.filter((p) => !p || p.origin !== 'module')"), '');
 
+// v1.2.4 — 실행 중 실황 진단줄: 작업본이 아니라 설치·병합된 스키마 기준으로
+// 삽입 주체·팩 수·메인 주입문 크기를 보여줘 "왜 안 나오지"를 실측으로 가른다
+ck('에셋 주입 실황 훅 (어댑터)', src.includes('getAssetInjection: () => {')
+  && src.includes('mainLen = assetsMod.mainInjectionText(schema,'), '');
+ck('에셋 탭 실황 진단줄 (편집기)', src.includes('지금 실행 중: 삽입 주체')
+  && src.includes('저장(설치)해야 반영돼요') && src.includes('메인 주입문 0자'), '');
+
 // 간이 lookup — 엔진 makeLookup 대역 (게이트 평가용)
 const mkLookup = (vars) => (name) => {
   if (!(name in vars)) throw new Error(`unknown var ${name}`);

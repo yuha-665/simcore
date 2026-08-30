@@ -8427,6 +8427,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       controls.appendChild(h('div', { class: 'sce-assets-mode' },
         h('div', { class: 'sce-hint', style: 'margin:0' }, '아직 활성화된 팩이 없어요. 자동 감지하거나 빈 팩을 추가해 시작하세요.')));
     }
+    // 실행 중 실황 (v1.2.4) — 작업본이 아니라 지금 설치·병합된 스키마 기준. "설정은 했는데
+    // 왜 안 나오지"의 답이 이 한 줄에 있다: 저장 안 됨 / 팩 유실 / 주입문 0자 전부 여기서 갈린다
+    {
+      const live = (typeof ai?.getAssetInjection === 'function') ? ai.getAssetInjection() : null;
+      if (live) {
+        const byName = { aux: '보조·1장', aux_flow: '보조·서사 위치', main: '메인' };
+        let note = `지금 실행 중: 삽입 주체 ${byName[live.by] ?? live.by} · 팩 ${live.packs.length}개`
+          + (live.packs.length ? ` — ${live.packs.join(', ')}` : '');
+        let warn = false;
+        if ((a?.by ?? 'aux') !== live.by) {
+          note += ` · ⚠ 작업본(${byName[a?.by ?? 'aux']})과 다릅니다 — 저장(설치)해야 반영돼요`;
+          warn = true;
+        } else if (live.by === 'main') {
+          if (live.mainLen > 0) note += ` · 메인 주입문 ${live.mainLen}자 — 다음 전송부터 실립니다`;
+          else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
+        }
+        controls.appendChild(h('div', { class: `sce-hint${warn ? ' sce-warn' : ''}`, style: 'margin:4px 0 0' }, note));
+      }
+    }
 
     const tools = h('div', { class: 'sce-row sce-assets-tools' });
     tools.appendChild(h('button', { class: 'sce-btn', onclick: async () => {

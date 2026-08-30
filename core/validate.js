@@ -1107,8 +1107,19 @@ function validateSchema(schema) {
       if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
         err('$.shop.sellRate', '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
       }
-      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 30)) {
-        err('$.shop.maxStock', '진열 상한은 4~30 정수');
+      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
+        err('$.shop.maxStock', '진열 상한은 4~48 정수');
+      }
+      // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
+      if (SH.perCat != null) {
+        const P = SH.perCat;
+        if (!Array.isArray(P) || P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
+          || P[0] < 1 || P[0] > P[1] || P[1] > 9) {
+          err('$.shop.perCat', 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
+        } else if (Array.isArray(SH.categories) && SH.maxStock != null
+          && P[0] * SH.categories.length > SH.maxStock) {
+          warn('$.shop.perCat', `카테고리 ${SH.categories.length}개 × 최소 ${P[0]}개 = ${P[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
+        }
       }
       if (SH.when != null) {
         if (typeof SH.when !== 'string') err('$.shop.when', 'when은 표현식 문자열이어야 함');

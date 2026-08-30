@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.8
-//@display-name SimCore (시뮬 엔진) v1.0.8 상점 입고 잘림 픽스
+//@version 1.0.9
+//@display-name SimCore (시뮬 엔진) v1.0.9 상점 카테고리별 진열
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.9 ────────────────────────────────────────────────
+// 상점 진열이 여전히 휑함 (유저: "갱신해도 카테고리별로 몇 개 안 나온다") — 총량 지시
+// ("8~18개, 카테고리마다 골고루")를 모델이 카테고리당 1~2개로 뭉갬.
+// - 엔진: shop 스키마에 perCat: [min, max] — 입고 지시가 "카테고리마다 4~6개씩 (빈 카테고리
+//   금지)"로 바뀐다. CAPS.STOCK_MAX 30 → 48 (8카테고리 × 6).
+// - 출력 상한 동반 상향: 첫 입고 피기백 1600 → 2800, 새로고침 1400 → 2400 (36개 JSON 분량).
+// - 얼헌: perCat [4,6] + maxStock 36. 덤: shop.guide 중복 키 사고 수리 — guide가 두 번
+//   선언돼 2축 짝 표기 지시("랭크급 희귀도", 레전드 입고당 1개)가 옛 가이드에 덮여
+//   통째로 죽어 있었다. 한 키로 병합 ("레전드 절대 안 판다" 모순 문구는 제거).
 //
 // ── v1.0.8 ────────────────────────────────────────────────
 // 상점 입고 잘림 (실사고: "얼터 스토어에 2~3개밖에 안 나온다") — v1.0.1 출력 클램프의 부작용.
@@ -3874,8 +3884,19 @@ function validateSchema(schema) {
       if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
         err('$.shop.sellRate', '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
       }
-      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 30)) {
-        err('$.shop.maxStock', '진열 상한은 4~30 정수');
+      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
+        err('$.shop.maxStock', '진열 상한은 4~48 정수');
+      }
+      // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
+      if (SH.perCat != null) {
+        const P = SH.perCat;
+        if (!Array.isArray(P) || P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
+          || P[0] < 1 || P[0] > P[1] || P[1] > 9) {
+          err('$.shop.perCat', 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
+        } else if (Array.isArray(SH.categories) && SH.maxStock != null
+          && P[0] * SH.categories.length > SH.maxStock) {
+          warn('$.shop.perCat', `카테고리 ${SH.categories.length}개 × 최소 ${P[0]}개 = ${P[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
+        }
       }
       if (SH.when != null) {
         if (typeof SH.when !== 'string') err('$.shop.when', 'when은 표현식 문자열이어야 함');
@@ -5457,7 +5478,7 @@ SimCore.define("shop", function (require, module, exports) {
 //
 // 스키마 (옵트인):
 //   shop: { label, icon, currency(필수), buyTo(필수), sellFrom?, categories?, grades?,
-//           bands?, sellRate?, maxStock?, guide?, when?, css?, exchange? }
+//           bands?, sellRate?, maxStock?, perCat?, guide?, when?, css?, exchange? }
 //
 // 환전 (v0.97): exchange: { var, rate, spread?, label? } — 상점 통화 ↔ 다른 지갑 변수.
 //   1통화 = rate(상대 지갑 단위). spread가 암거래 수수료: 살 때 rate×(1+spread),
@@ -5466,7 +5487,7 @@ SimCore.define("shop", function (require, module, exports) {
 const { evaluate, truthy } = require('./expr');
 
 const CAPS = {
-  NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 30, BUYING_MAX: 12, LOG_MAX: 6,
+  NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 48, BUYING_MAX: 12, LOG_MAX: 6,
   QTY_MAX: 9, PRICE_MAX: 100000000,
 };
 
@@ -5487,6 +5508,12 @@ function shopConfig(schema) {
     bands: (s.bands && typeof s.bands === 'object') ? s.bands : null,  // { 등급: [최소, 최대] }
     sellRate: typeof s.sellRate === 'number' ? Math.max(0.1, Math.min(1, s.sellRate)) : 0.5,
     maxStock: Math.max(4, Math.min(CAPS.STOCK_MAX, s.maxStock ?? 18)),
+    // 카테고리마다 몇 개씩 채울지 [min, max]. 없으면 총량("8~maxStock개")만 지시한다.
+    // 계기: 얼헌 실사고 — 총량 지시만으로는 모델이 카테고리당 1~2개로 뭉개서 진열이 휑했다.
+    perCat: (Array.isArray(s.perCat) && s.perCat.length === 2
+      && Number.isInteger(s.perCat[0]) && Number.isInteger(s.perCat[1]) && s.perCat[0] >= 1)
+      ? [Math.min(s.perCat[0], s.perCat[1], 9), Math.min(Math.max(s.perCat[0], s.perCat[1]), 9)]
+      : null,
     guide: typeof s.guide === 'string' ? s.guide : '',
     when: typeof s.when === 'string' ? s.when : '',
     css: typeof s.css === 'string' ? s.css : '',
@@ -5706,9 +5733,13 @@ const bandsText = (cfg) => cfg.bands
 
 /** 입고 지시 본문 — 턴 피기백(빈 재고 자동 입고)과 수동 새로고침이 같은 규격을 쓴다 */
 function stockSpecBody(cfg) {
+  const stockLine = cfg.perCat
+    ? `- "shop" 필드로 진열 상품("stock")을 카테고리마다 ${cfg.perCat[0]}~${cfg.perCat[1]}개씩 채워라`
+      + ` (빈 카테고리 금지, 총 최대 ${cfg.maxStock}개). 매입 시세판("buying")은 3~${CAPS.BUYING_MAX}개.`
+    : `- "shop" 필드로 진열 상품("stock") ${Math.min(8, cfg.maxStock)}~${cfg.maxStock}개와 매입 시세판("buying") 3~${CAPS.BUYING_MAX}개를 내라.`;
   return [
-    `- "shop" 필드로 진열 상품("stock") ${Math.min(8, cfg.maxStock)}~${cfg.maxStock}개와 매입 시세판("buying") 3~${CAPS.BUYING_MAX}개를 내라.`,
-    `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}. 카테고리마다 골고루.`,
+    stockLine,
+    `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}.${cfg.perCat ? '' : ' 카테고리마다 골고루.'}`,
     cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
     bandsText(cfg) ? `- 가격 밴드 (시스템이 강제한다): ${bandsText(cfg)}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
@@ -12797,7 +12828,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '{ "shop": { "label": "알터 스토어", "icon": "🛒", "currency": "coin", "buyTo": "items", "sellFrom": "items",',
       '  "categories": ["추천", "인기", "소모품", "장비"], "grades": ["일반", "레어", "유니크"],',
       '  "bands": { "일반": [1, 60], "레어": [60, 400], "유니크": [400, 3000] },',
-      '  "sellRate": 0.6, "when": "store_on",',
+      '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
       '');
@@ -15796,8 +15827,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         pair('지갑', bindSelect(SH.currency ?? '', nums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
           (x) => { SH.currency = x; rerender(); }), '결제에 쓰는 숫자 변수'),
         pair('진열 상한', bindInput(SH.maxStock ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(30, n)); else delete SH.maxStock; rerender();
+          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(48, n)); else delete SH.maxStock; rerender();
         }, { cls: 'sce-w-s', ph: '18' })),
+        pair('카테고리당 개수', bindInput(Array.isArray(SH.perCat) ? SH.perCat.join('~') : '', (x) => {
+          const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+          if (m) {
+            const lo = Math.max(1, Math.min(9, parseInt(m[1], 10)));
+            SH.perCat = [lo, Math.max(lo, Math.min(9, parseInt(m[2], 10)))];
+          } else delete SH.perCat;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '4~6' }), '입고 지시가 "카테고리마다 N~M개씩"이 됩니다 (비우면 총량 지시)'),
       ),
       h('div', { class: 'sce-row' },
         pair('구매품 목록', bindSelect(SH.buyTo ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
@@ -25271,9 +25310,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         // 상점 첫 입고가 얹힌 턴은 출력 상한을 넉넉히 (v1.0.8) — 400(클램프 후 1000토큰)으로는
-        // 상태 갱신 + 게시판 + 재고 8~18개 JSON을 못 담아 2~3개만 살아남았다 (실사고:
+        // 상태 갱신 + 게시판 + 재고 JSON을 못 담아 2~3개만 살아남았다 (실사고:
         // "진열대가 2~3개뿐"). 첫 입고는 재고가 빈 동안만 실리므로 평턴 비용은 그대로 400.
-        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 1600 : 400;
+        // v1.0.9: perCat(카테고리마다 4~6개 → 최대 36개)이 생기며 1600으로도 부족 → 2800.
+        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400;
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -26397,8 +26437,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     try {
       const prompt = shopMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
-      // 새로고침(물갈이)도 재고 8~18개를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8)
-      const res = await callAuxLLM(prompt, 1400);
+      // 새로고침(물갈이)도 재고 전체를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8).
+      // v1.0.9: perCat 도입으로 최대 36개 JSON — 1400도 부족해 2400으로.
+      const res = await callAuxLLM(prompt, 2400);
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 상점 물갈이·감정은 쓸 수 없어요';
         return null;

@@ -897,17 +897,20 @@ const S = {
     // 맨 희귀도("유니크")만 쓰면 어휘 밖이라 거부된다 — 짝 표기를 시스템이 지킨다.
     grades: GEAR_GRADES,
     bands: GEAR_BANDS,
-    guide: '진열은 주인공 라이선스 ±1랭크대 위주로. 등급은 반드시 "랭크급 희귀도" 짝 표기 '
-      + '(예: D급 레어). 레전드는 극히 드물게 — 한 입고에 최대 1개.',
-    sellRate: 0.6, maxStock: 18,
+    // ⚠ guide는 한 키로만 — 예전에 guide가 두 번 선언돼 뒤 것이 앞 것을 덮는 사고가 있었다
+    // (2축 짝 표기 지시가 통째로 죽어 있었음). 코인 기준·짝 표기·큐레이션을 전부 여기 병합.
+    guide: 'Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative '
+      + 'to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, '
+      + 'gear). 진열은 주인공 라이선스 ±1랭크대 위주로. 등급은 반드시 "랭크급 희귀도" 짝 표기 '
+      + '(예: D급 레어). 레전드는 극히 드물게 — 한 입고에 최대 1개. 추천/인기 are curation '
+      + 'shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty).',
+    // perCat: 총량 지시만으로는 카테고리당 2~3개로 뭉개졌다 (유저 지목) → 카테고리마다 4~6개.
+    // 6카테고리 × 6 = 36이 maxStock 상한.
+    sellRate: 0.6, maxStock: 36, perCat: [4, 6],
     when: 'store_on',
     // 환전 — 원작 캐논: 코인의 공식 거래는 금지, 블랙 마켓만 예외 (시세 1코인 ≈ ₩1,000).
     // spread 0.2가 암거래 리스크 프리미엄: 살 때 1,200원 / 팔 때 800원.
     exchange: { var: 'won', rate: 1000, spread: 0.2, label: '암거래 환전' },
-    guide: 'Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative '
-      + 'to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, '
-      + 'gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. '
-      + 'Occasional 한정 상품 (qty). The store never sells Legendary anything.',
     // 상태창과 같은 다크네이비/스틸블루 규격
     css: `
 .scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }
@@ -1587,6 +1590,18 @@ console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');
   ok('E급 유니크가 C급 일반 가격대 (저랭크 유니크 ≠ 밸붕)',
     S.shop.bands['E급 유니크'][1] <= S.shop.bands['C급 일반'][1]
     && S.shop.bands['E급 유니크'][1] >= S.shop.bands['C급 일반'][0], JSON.stringify(S.shop.bands['E급 유니크']));
+  // v1.0.9 — perCat: "갱신해도 카테고리별로 몇 개 안 나온다" (유저 지목) → 카테고리마다 4~6개
+  ok('perCat [4,6] + maxStock 36 (6카테고리 × 6)',
+    S.shop.perCat[0] === 4 && S.shop.perCat[1] === 6 && S.shop.maxStock === 36, '');
+  ok('입고 지시 — "카테고리마다 4~6개씩" + 빈 카테고리 금지',
+    (() => { const p = engine.buildAuxPrompt(S, t, '서사', null);
+      return p.includes('카테고리마다 4~6개씩') && p.includes('빈 카테고리 금지'); })());
+  // guide 중복 키 사고 회귀 — 두 번 선언되면 뒤 키가 앞을 덮어 짝 표기 지시가 통째로 죽는다
+  ok('guide 병합 생존 — 짝 표기·레전드 1개·코인 기준이 한 키에',
+    S.shop.guide.includes('짝 표기') && S.shop.guide.includes('한 입고에 최대 1개')
+    && S.shop.guide.includes('E-rank monster kill pays 1~5 Coin'), '');
+  ok('레전드 모순 문구 제거 ("never sells Legendary" ↔ 입고당 1개 충돌)',
+    !S.shop.guide.includes('never sells Legendary'), '');
   // 뇌절 봉쇄 — 어휘 밖 등급 거부(맨 희귀도 포함)·밴드 클램프
   const r = shopMod.applyStock(S, t, { stock: [
     { cat: '스킬북', name: 'S급 스킬북', grade: '레전더리', price: 99999 },

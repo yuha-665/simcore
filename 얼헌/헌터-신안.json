@@ -1817,9 +1817,13 @@
         1250000
       ]
     },
-    "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty). The store never sells Legendary anything.",
+    "guide": "Coin economy baseline: an E-rank monster kill pays 1~5 Coin — price everything relative to that. Practical hunter goods (potions, whetstones, antidotes, mana crystals, skill books, gear). 진열은 주인공 라이선스 ±1랭크대 위주로. 등급은 반드시 \"랭크급 희귀도\" 짝 표기 (예: D급 레어). 레전드는 극히 드물게 — 한 입고에 최대 1개. 추천/인기 are curation shelves — reuse items from other categories with a hook. Occasional 한정 상품 (qty).",
     "sellRate": 0.6,
-    "maxStock": 18,
+    "maxStock": 36,
+    "perCat": [
+      4,
+      6
+    ],
     "when": "store_on",
     "exchange": {
       "var": "won",

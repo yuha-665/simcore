@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.8
-//@display-name SimCore (시뮬 엔진) v1.0.8 상점 입고 잘림 픽스
+//@version 1.0.9
+//@display-name SimCore (시뮬 엔진) v1.0.9 상점 카테고리별 진열
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.9 ────────────────────────────────────────────────
+// 상점 진열이 여전히 휑함 (유저: "갱신해도 카테고리별로 몇 개 안 나온다") — 총량 지시
+// ("8~18개, 카테고리마다 골고루")를 모델이 카테고리당 1~2개로 뭉갬.
+// - 엔진: shop 스키마에 perCat: [min, max] — 입고 지시가 "카테고리마다 4~6개씩 (빈 카테고리
+//   금지)"로 바뀐다. CAPS.STOCK_MAX 30 → 48 (8카테고리 × 6).
+// - 출력 상한 동반 상향: 첫 입고 피기백 1600 → 2800, 새로고침 1400 → 2400 (36개 JSON 분량).
+// - 얼헌: perCat [4,6] + maxStock 36. 덤: shop.guide 중복 키 사고 수리 — guide가 두 번
+//   선언돼 2축 짝 표기 지시("랭크급 희귀도", 레전드 입고당 1개)가 옛 가이드에 덮여
+//   통째로 죽어 있었다. 한 키로 병합 ("레전드 절대 안 판다" 모순 문구는 제거).
 //
 // ── v1.0.8 ────────────────────────────────────────────────
 // 상점 입고 잘림 (실사고: "얼터 스토어에 2~3개밖에 안 나온다") — v1.0.1 출력 클램프의 부작용.
@@ -3351,9 +3361,10 @@
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         // 상점 첫 입고가 얹힌 턴은 출력 상한을 넉넉히 (v1.0.8) — 400(클램프 후 1000토큰)으로는
-        // 상태 갱신 + 게시판 + 재고 8~18개 JSON을 못 담아 2~3개만 살아남았다 (실사고:
+        // 상태 갱신 + 게시판 + 재고 JSON을 못 담아 2~3개만 살아남았다 (실사고:
         // "진열대가 2~3개뿐"). 첫 입고는 재고가 빈 동안만 실리므로 평턴 비용은 그대로 400.
-        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 1600 : 400;
+        // v1.0.9: perCat(카테고리마다 4~6개 → 최대 36개)이 생기며 1600으로도 부족 → 2800.
+        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400;
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -4477,8 +4488,9 @@
     try {
       const prompt = shopMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
-      // 새로고침(물갈이)도 재고 8~18개를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8)
-      const res = await callAuxLLM(prompt, 1400);
+      // 새로고침(물갈이)도 재고 전체를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8).
+      // v1.0.9: perCat 도입으로 최대 36개 JSON — 1400도 부족해 2400으로.
+      const res = await callAuxLLM(prompt, 2400);
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 상점 물갈이·감정은 쓸 수 없어요';
         return null;

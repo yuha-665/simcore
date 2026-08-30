@@ -2703,7 +2703,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '{ "shop": { "label": "알터 스토어", "icon": "🛒", "currency": "coin", "buyTo": "items", "sellFrom": "items",',
       '  "categories": ["추천", "인기", "소모품", "장비"], "grades": ["일반", "레어", "유니크"],',
       '  "bands": { "일반": [1, 60], "레어": [60, 400], "유니크": [400, 3000] },',
-      '  "sellRate": 0.6, "when": "store_on",',
+      '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
       '');
@@ -5702,8 +5702,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         pair('지갑', bindSelect(SH.currency ?? '', nums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
           (x) => { SH.currency = x; rerender(); }), '결제에 쓰는 숫자 변수'),
         pair('진열 상한', bindInput(SH.maxStock ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(30, n)); else delete SH.maxStock; rerender();
+          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(48, n)); else delete SH.maxStock; rerender();
         }, { cls: 'sce-w-s', ph: '18' })),
+        pair('카테고리당 개수', bindInput(Array.isArray(SH.perCat) ? SH.perCat.join('~') : '', (x) => {
+          const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+          if (m) {
+            const lo = Math.max(1, Math.min(9, parseInt(m[1], 10)));
+            SH.perCat = [lo, Math.max(lo, Math.min(9, parseInt(m[2], 10)))];
+          } else delete SH.perCat;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '4~6' }), '입고 지시가 "카테고리마다 N~M개씩"이 됩니다 (비우면 총량 지시)'),
       ),
       h('div', { class: 'sce-row' },
         pair('구매품 목록', bindSelect(SH.buyTo ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),

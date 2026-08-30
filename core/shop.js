@@ -17,7 +17,7 @@
 //
 // 스키마 (옵트인):
 //   shop: { label, icon, currency(필수), buyTo(필수), sellFrom?, categories?, grades?,
-//           bands?, sellRate?, maxStock?, guide?, when?, css?, exchange? }
+//           bands?, sellRate?, maxStock?, perCat?, guide?, when?, css?, exchange? }
 //
 // 환전 (v0.97): exchange: { var, rate, spread?, label? } — 상점 통화 ↔ 다른 지갑 변수.
 //   1통화 = rate(상대 지갑 단위). spread가 암거래 수수료: 살 때 rate×(1+spread),
@@ -26,7 +26,7 @@
 const { evaluate, truthy } = require('./expr');
 
 const CAPS = {
-  NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 30, BUYING_MAX: 12, LOG_MAX: 6,
+  NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 48, BUYING_MAX: 12, LOG_MAX: 6,
   QTY_MAX: 9, PRICE_MAX: 100000000,
 };
 
@@ -47,6 +47,12 @@ function shopConfig(schema) {
     bands: (s.bands && typeof s.bands === 'object') ? s.bands : null,  // { 등급: [최소, 최대] }
     sellRate: typeof s.sellRate === 'number' ? Math.max(0.1, Math.min(1, s.sellRate)) : 0.5,
     maxStock: Math.max(4, Math.min(CAPS.STOCK_MAX, s.maxStock ?? 18)),
+    // 카테고리마다 몇 개씩 채울지 [min, max]. 없으면 총량("8~maxStock개")만 지시한다.
+    // 계기: 얼헌 실사고 — 총량 지시만으로는 모델이 카테고리당 1~2개로 뭉개서 진열이 휑했다.
+    perCat: (Array.isArray(s.perCat) && s.perCat.length === 2
+      && Number.isInteger(s.perCat[0]) && Number.isInteger(s.perCat[1]) && s.perCat[0] >= 1)
+      ? [Math.min(s.perCat[0], s.perCat[1], 9), Math.min(Math.max(s.perCat[0], s.perCat[1]), 9)]
+      : null,
     guide: typeof s.guide === 'string' ? s.guide : '',
     when: typeof s.when === 'string' ? s.when : '',
     css: typeof s.css === 'string' ? s.css : '',
@@ -266,9 +272,13 @@ const bandsText = (cfg) => cfg.bands
 
 /** 입고 지시 본문 — 턴 피기백(빈 재고 자동 입고)과 수동 새로고침이 같은 규격을 쓴다 */
 function stockSpecBody(cfg) {
+  const stockLine = cfg.perCat
+    ? `- "shop" 필드로 진열 상품("stock")을 카테고리마다 ${cfg.perCat[0]}~${cfg.perCat[1]}개씩 채워라`
+      + ` (빈 카테고리 금지, 총 최대 ${cfg.maxStock}개). 매입 시세판("buying")은 3~${CAPS.BUYING_MAX}개.`
+    : `- "shop" 필드로 진열 상품("stock") ${Math.min(8, cfg.maxStock)}~${cfg.maxStock}개와 매입 시세판("buying") 3~${CAPS.BUYING_MAX}개를 내라.`;
   return [
-    `- "shop" 필드로 진열 상품("stock") ${Math.min(8, cfg.maxStock)}~${cfg.maxStock}개와 매입 시세판("buying") 3~${CAPS.BUYING_MAX}개를 내라.`,
-    `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}. 카테고리마다 골고루.`,
+    stockLine,
+    `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}.${cfg.perCat ? '' : ' 카테고리마다 골고루.'}`,
     cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
     bandsText(cfg) ? `- 가격 밴드 (시스템이 강제한다): ${bandsText(cfg)}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,

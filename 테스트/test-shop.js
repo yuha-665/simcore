@@ -20,9 +20,10 @@ const J = JSON.stringify;
 
 // ── v1.0.8 회귀 — 입고 잘림: 첫 입고 피기백 턴의 보조 출력 상한 400(=1000토큰)으로는
 // 재고 8~18개 JSON이 안 담겨 2~3개만 진열됐다 ("얼터 스토어에 2~3개뿐" 실사고)
-ck('첫 입고 턴은 상한 1600 (평턴 400 유지)',
-  src.includes("auxPrompt.includes('시스템 상점 첫 입고') ? 1600 : 400"), '');
-ck('새로고침(물갈이)도 1400', src.includes('const res = await callAuxLLM(prompt, 1400);'), '');
+// v1.0.9 — perCat(카테고리마다 4~6개, 최대 36개)에 맞춰 상한 동반 상향
+ck('첫 입고 턴은 상한 2800 (평턴 400 유지)',
+  src.includes("auxPrompt.includes('시스템 상점 첫 입고') ? 2800 : 400"), '');
+ck('새로고침(물갈이)도 2400', src.includes('const res = await callAuxLLM(prompt, 2400);'), '');
 
 const S = {
   simcore: '0.1', meta: { name: '상점봇' },
@@ -91,6 +92,24 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
   t.vars.store_on = false;
   const t2 = fresh(); t2.vars.store_on = false;
   ck('when 닫힘 — 입고 요청 없음', !engine.buildAuxPrompt(S, t2, '서사', null).includes('첫 입고'), '');
+}
+
+// ── perCat (v1.0.9) — 총량 지시만으로는 카테고리당 1~2개로 뭉갰다 (실사고) ──
+{
+  const S2 = JSON.parse(J(S)); S2.shop.perCat = [4, 6]; S2.shop.maxStock = 18;
+  const aux = engine.buildAuxPrompt(S2, fresh(), '서사', null);
+  // fresh()는 S 기준이지만 store_on init true라 S2에서도 열림 — 프롬프트는 S2 스키마로 빌드됨
+  ck('★ perCat — "카테고리마다 4~6개씩" 지시', aux.includes('카테고리마다 4~6개씩'), aux.slice(0, 0));
+  ck('perCat — 빈 카테고리 금지 명시', aux.includes('빈 카테고리 금지'), '');
+  ck('perCat — 애매한 "골고루" 문구 제거', !aux.includes('골고루'), '');
+  const cfg2 = shop.shopConfig(S2);
+  ck('perCat 파싱', cfg2.perCat[0] === 4 && cfg2.perCat[1] === 6, J(cfg2.perCat));
+  ck('perCat 순서 역전 보정·9 클램프', (() => {
+    const s3 = JSON.parse(J(S)); s3.shop.perCat = [12, 2];
+    const c = shop.shopConfig(s3); return c.perCat[0] === 2 && c.perCat[1] === 9;
+  })(), '');
+  ck('perCat 없으면 종전 총량 지시 유지', engine.buildAuxPrompt(S, fresh(), '서사', null).includes('8~8개'), '');
+  ck('STOCK_MAX 48 (8카테고리 × 6)', shop.CAPS.STOCK_MAX === 48, String(shop.CAPS.STOCK_MAX));
 }
 
 // ── 구매 — 결정적 정산 ──

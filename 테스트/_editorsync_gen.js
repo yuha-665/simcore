@@ -14,7 +14,17 @@ let schema = null, currentChaId = null;
   const BLANK_SCHEMA = () => ({
     simcore: '0.1', meta: { name: '새 시뮬레이션' }, vars: [], statusUI: { mode: 'auto', groups: [] },
   });
-  const sig = (o) => { try { return JSON.stringify(o); } catch { return null; } };
+  // 스키마 비교 서명 — 모듈 팩(origin:'module')은 걷어내고 잰다 (v1.2.3): 저장본에 안 실리는
+  // 손님이라, 세면 설치 되읽기·더티 판정이 모듈 팩 봇에서 영영 안 맞는다 (실사고).
+  const sig = (o) => {
+    try {
+      const c = JSON.parse(JSON.stringify(o));
+      if (c && c.assets && Array.isArray(c.assets.packs)) {
+        c.assets.packs = c.assets.packs.filter((p) => !p || p.origin !== 'module');
+      }
+      return JSON.stringify(c);
+    } catch { return null; }
+  };
   const editorSig = () => { try { return editor ? sig(editor.getSchema()) : null; } catch { return null; } };
   /** 편집기 내용이 불러온 뒤 사용자 손을 탔는가 */
   function editorIsDirty() {
@@ -62,6 +72,13 @@ let schema = null, currentChaId = null;
     await Risuai.setCharacter(char);
     charKey = null;
     await loadForCurrentChar();
+    // 모듈 팩 재확보 (v1.2.3) — 재로드의 자동 스캔은 권한 팝업을 못 띄운다(ask=false).
+    // db 권한이 안 잡힌 환경이면 빈손이 되고, 팩 0개면 by:'main' 주입문이 통째로 침묵한다
+    // (실사고: "삽입 주체를 메인으로 해도 태그가 안 나옴" — [다시 읽기] 직후엔 되다가
+    // 저장하는 순간 사라짐). 설치는 버튼 경로라 권한 팝업을 허용해 한 번 더 스캔한다.
+    if (parsed?.assets?.moduleManifests === true) {
+      try { await scanModulePacks(true); } catch (e) { console.log('[simcore] 설치 후 모듈 팩 재스캔 실패:', e.message); }
+    }
     // 되읽기 레이스 방어 (v0.85.1) — setCharacter 직후의 getCharacter가 아직 옛 캐릭터를
     // 돌려줄 수 있다. 그러면 방금 쓴 스키마 대신 옛 스키마가 다시 로드되고, 더티 배너가
     // "여전히 미반영"으로 되그려져 **적용 버튼이 안 먹히는 것처럼 보인다** (실사고 — 배너의

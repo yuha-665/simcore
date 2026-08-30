@@ -16,6 +16,13 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 ck('편집기 — 모듈 팩은 읽기 전용 카드', src.includes('모듈에서 온 팩이라 여기서는 못 고칩니다')
   && src.includes('"verify": false 를 직접 넣고'), '');
 
+// v1.2.3 회귀 — 설치 재로드(ask=false 스캔)가 모듈 팩을 잃으면 by:'main' 주입이 통째로
+// 침묵 (실사고: "메인으로 해도 태그 안 나옴"). 설치 후 권한 팝업 허용 재스캔 + sig가
+// 모듈 팩을 걷어내고 비교하는지.
+ck('설치 후 모듈 팩 재스캔 (ask=true)', src.includes("parsed?.assets?.moduleManifests === true")
+  && src.includes('await scanModulePacks(true);'), '');
+ck('sig 비교는 모듈 팩 제외', src.includes("c.assets.packs.filter((p) => !p || p.origin !== 'module')"), '');
+
 // 간이 lookup — 엔진 makeLookup 대역 (게이트 평가용)
 const mkLookup = (vars) => (name) => {
   if (!(name in vars)) throw new Error(`unknown var ${name}`);

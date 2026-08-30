@@ -29,6 +29,9 @@ ck('에셋 주입 실황 훅 (어댑터)', src.includes('getAssetInjection: () =
   && src.includes('mainLen = assetsMod.mainInjectionText(schema,'), '');
 ck('에셋 탭 실황 진단줄 (편집기)', src.includes('지금 실행 중: 삽입 주체')
   && src.includes('저장(설치)해야 반영돼요') && src.includes('메인 주입문 0자'), '');
+// v1.2.5 — 진단줄이 그리드 셀로 흘러들어 셀렉트가 짜부라짐 (스샷 실사고) → 전폭 행 고정
+ck('진단줄은 전폭 행 (그리드 셀 침범 금지)', src.includes('sce-assets-live')
+  && src.includes('.sce .sce-assets-live { grid-column:1 / -1;'), '');
 
 // 간이 lookup — 엔진 makeLookup 대역 (게이트 평가용)
 const mkLookup = (vars) => (name) => {

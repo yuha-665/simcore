@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.4
-//@display-name SimCore (시뮬 엔진) v1.2.4 에셋 주입 실황 진단
+//@version 1.2.5
+//@display-name SimCore (시뮬 엔진) v1.2.5 진단줄 레이아웃 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,10 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.5 ────────────────────────────────────────────────
+// v1.2.4 진단줄이 에셋 탭 2열 그리드의 셀로 흘러들어 셀렉트가 짜부라짐 (유저 스샷).
+// .sce-assets-live 전폭 행(grid-column 1/-1 + overflow-wrap)으로 고정.
 //
 // ── v1.2.4 ────────────────────────────────────────────────
 // v1.2.3으로도 "메인인데 태그 안 나옴" 재현 (유저 제보) — 남은 용의자(저장 안 됨 /

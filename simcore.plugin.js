@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.4
-//@display-name SimCore (시뮬 엔진) v1.2.4 에셋 주입 실황 진단
+//@version 1.2.5
+//@display-name SimCore (시뮬 엔진) v1.2.5 진단줄 레이아웃 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,10 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.5 ────────────────────────────────────────────────
+// v1.2.4 진단줄이 에셋 탭 2열 그리드의 셀로 흘러들어 셀렉트가 짜부라짐 (유저 스샷).
+// .sce-assets-live 전폭 행(grid-column 1/-1 + overflow-wrap)으로 고정.
 //
 // ── v1.2.4 ────────────────────────────────────────────────
 // v1.2.3으로도 "메인인데 태그 안 나옴" 재현 (유저 제보) — 남은 용의자(저장 안 됨 /
@@ -11281,6 +11285,8 @@ const CSS = `
 .sce .sce-assets-mode { min-width:0; }
 .sce .sce-assets-mode .sce-pair { display:grid; grid-template-columns:auto minmax(0,1fr); }
 .sce .sce-assets-mode select { width:100%; min-width:0; }
+/* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
+.sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
 .sce .sce-assets-tools {
   width:100%; max-width:var(--sce-work-w); justify-content:flex-end; margin:0; }
 .sce .sce-assets-note { grid-column:1 / -1; padding:7px 9px; border-left:3px solid var(--sce-warning);
@@ -19056,7 +19062,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           if (live.mainLen > 0) note += ` · 메인 주입문 ${live.mainLen}자 — 다음 전송부터 실립니다`;
           else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
         }
-        controls.appendChild(h('div', { class: `sce-hint${warn ? ' sce-warn' : ''}`, style: 'margin:4px 0 0' }, note));
+        controls.appendChild(h('div', { class: `sce-hint sce-assets-live${warn ? ' sce-warn' : ''}` }, note));
       }
     }
 

@@ -668,6 +668,8 @@ const CSS = `
 .sce .sce-assets-mode { min-width:0; }
 .sce .sce-assets-mode .sce-pair { display:grid; grid-template-columns:auto minmax(0,1fr); }
 .sce .sce-assets-mode select { width:100%; min-width:0; }
+/* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
+.sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
 .sce .sce-assets-tools {
   width:100%; max-width:var(--sce-work-w); justify-content:flex-end; margin:0; }
 .sce .sce-assets-note { grid-column:1 / -1; padding:7px 9px; border-left:3px solid var(--sce-warning);
@@ -8443,7 +8445,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           if (live.mainLen > 0) note += ` · 메인 주입문 ${live.mainLen}자 — 다음 전송부터 실립니다`;
           else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
         }
-        controls.appendChild(h('div', { class: `sce-hint${warn ? ' sce-warn' : ''}`, style: 'margin:4px 0 0' }, note));
+        controls.appendChild(h('div', { class: `sce-hint sce-assets-live${warn ? ' sce-warn' : ''}` }, note));
       }
     }
 

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.0.7
-//@display-name SimCore (시뮬 엔진) v1.0.7 번들 적용 픽스 2
+//@version 1.0.8
+//@display-name SimCore (시뮬 엔진) v1.0.8 상점 입고 잘림 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.0.8 ────────────────────────────────────────────────
+// 상점 입고 잘림 (실사고: "얼터 스토어에 2~3개밖에 안 나온다") — v1.0.1 출력 클램프의 부작용.
+// - 첫 입고는 턴 보조 호출에 피기백되는데 그 호출의 상한이 400(클램프 후 1000토큰) —
+//   상태 갱신 + 게시판 + 재고 8~18개 JSON이 다 안 들어가 2~3개만 살아남고, stocked
+//   플래그가 서서 자동 재입고도 안 돈다.
+// - 첫 입고가 실린 턴만 1600(3200토큰)으로. 재고가 차면 auxSpec이 빈 문자열이라 평턴 400
+//   그대로 — 비용 증가는 채팅당 첫 1턴뿐. 새로고침(물갈이)도 900 → 1400.
+// - 이미 2~3개로 굳은 채팅은 재임포트 후 상점 패널 [새로고침]으로 물갈이하면 찬다.
 //
 // ── v1.0.7 ────────────────────────────────────────────────
 // 긴급: v1.0.6으로도 번들 적용 실기 실패 (스샷 제보 2건 — "runInstall is not defined" +
@@ -3341,11 +3350,15 @@
         seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
-        auxText = await callAuxLLM(auxPrompt, 400);
+        // 상점 첫 입고가 얹힌 턴은 출력 상한을 넉넉히 (v1.0.8) — 400(클램프 후 1000토큰)으로는
+        // 상태 갱신 + 게시판 + 재고 8~18개 JSON을 못 담아 2~3개만 살아남았다 (실사고:
+        // "진열대가 2~3개뿐"). 첫 입고는 재고가 빈 동안만 실리므로 평턴 비용은 그대로 400.
+        const auxCap = auxPrompt.includes('시스템 상점 첫 입고') ? 1600 : 400;
+        auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
           // 이미지는 소급 삽입 안 한다 — 본문은 이미 확정돼 나갔다 (다음 턴부터 정상)
-          scheduleDeferredAux(auxPrompt, 400, async (text) => {
+          scheduleDeferredAux(auxPrompt, auxCap, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
             const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
@@ -3371,7 +3384,7 @@
           auxText = null; // 즉시 경로에서는 변화 없이 진행 (틱·이벤트는 아래에서 정상 처리)
         } else if (typeof auxText === 'string' && !engine.parseAuxResponse(auxText)) {
           console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도. 원문:', auxText.slice(0, 200));
-          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', 400);
+          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', auxCap);
           auxText = typeof retry === 'string' ? retry : null;
         }
         if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
@@ -4464,7 +4477,8 @@
     try {
       const prompt = shopMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
-      const res = await callAuxLLM(prompt, 900);
+      // 새로고침(물갈이)도 재고 8~18개를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8)
+      const res = await callAuxLLM(prompt, 1400);
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 상점 물갈이·감정은 쓸 수 없어요';
         return null;

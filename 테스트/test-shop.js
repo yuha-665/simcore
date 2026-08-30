@@ -18,6 +18,12 @@ const { seededRng } = SC.require('rng');
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const J = JSON.stringify;
 
+// ── v1.0.8 회귀 — 입고 잘림: 첫 입고 피기백 턴의 보조 출력 상한 400(=1000토큰)으로는
+// 재고 8~18개 JSON이 안 담겨 2~3개만 진열됐다 ("얼터 스토어에 2~3개뿐" 실사고)
+ck('첫 입고 턴은 상한 1600 (평턴 400 유지)',
+  src.includes("auxPrompt.includes('시스템 상점 첫 입고') ? 1600 : 400"), '');
+ck('새로고침(물갈이)도 1400', src.includes('const res = await callAuxLLM(prompt, 1400);'), '');
+
 const S = {
   simcore: '0.1', meta: { name: '상점봇' },
   vars: [

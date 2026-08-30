@@ -497,6 +497,29 @@ const S = {
         { id: 'growth_moment', weight: 1, cooldown: 10,
           notify: '[자아] Give the protagonist a beat of self-discovery — why they hunt, what they fear, '
             + 'what the Awakening changed. Interior, quiet, earned.' },
+        // ── 에로코미디 환기 이벤트 (2026-08-30 유저 지시) — 암울 축(변종·숭배단)만 쌓이면
+        //    이야기가 무거워져 뇌절로 달린다. 랜덤 테이블에 가벼운 질량을 넣는 환기 장치.
+        //    전부 alter_on 게이트 (/수위 0이면 통째 잠김 — dice_on과 같은 정책 결).
+        { id: 'ero_trap_gate', weight: 1, cooldown: 10, when: 'alter_on',
+          notify: '[에로트랩] Word spreads of an "ero-trap" gate variant — slime that dissolves only '
+            + 'fabric, grabby flora with suspicious aim, puzzle walls that grade your poses. Raunchy '
+            + 'comedy, not horror: nobody dies in an ero-trap gate, only dignity does.' },
+        { id: 'ero_armor_meta', weight: 1, cooldown: 10, when: 'alter_on',
+          notify: '[장비 유행] Eros-line armor is this season\'s meta — bikini plate, battle lingerie '
+            + 'with high-grade enchants, and drop tables lately seem to agree. Hunters swear it is '
+            + '"for the conductivity". Fashion comedy: a shop shelf, a scandalized senior, a convert.' },
+        { id: 'mana_expose_study', weight: 1, cooldown: 12, when: 'alter_on',
+          notify: '[속보] Association researchers publish: skin exposure correlates with mana '
+            + 'conductivity. HunterNet erupts, gear makers pivot overnight, and nobody can argue '
+            + 'with peer review. Play the absurdity dead serious — that is the joke.' },
+        { id: 'macho_fashion', weight: 1, cooldown: 12, when: 'alter_on',
+          notify: '[마초 패션] Male hunters embrace the leather-belt-and-briefs meta — oiled muscle, '
+            + 'tactical suspenders, nothing else, citing "the conductivity study". Straight-faced '
+            + 'beefcake comedy; the city has opinions.' },
+        { id: 'succubus_gate', weight: 1, cooldown: 12, when: 'alter_on',
+          notify: '[서큐버스] A succubus/incubus outbreak — charm auras, dream visits, monsters more '
+            + 'dangerous to composure than to life. Ero-comedy encounter: clearing it is embarrassing, '
+            + 'profitable, and extremely post-worthy on HunterNet.' },
         // ── 판정 이벤트 (dice_on 정책 — /판정 으로 온오프) ──
         // 굴림·정산은 엔진(checks), 여기는 "언제 굴리나"만. 끄면 이 4종이 통째로 잠기고
         // (목표치는 opp_n — 게이트 등급이 밀어 올린다. checks 섹션 주석 참고)
@@ -613,6 +636,11 @@ const S = {
     { id: 'gate_scale', when: 'in_gate',
       text: '게이트 몬스터의 격은 게이트 등급을 따른다 — E·D급은 흔한 마수 수준이다. '
         + '정체불명·변종·이상 개체는 상위 게이트나 브레이크, 또는 [변종] 이벤트가 열 때만 꺼내라.' },
+    // 뇌절 방지 페이싱 (2026-08-30 유저 제보: "뭐만 각 보이면 스토리가 파국으로 달린다") —
+    // 에로코미디 이벤트 5종과 짝인 환기 장치. 모든 떡밥의 결말을 파국으로 잡는 습관을 끊는다.
+    { id: 'pacing', when: 'true',
+      text: '모든 떡밥을 파국으로 키우지 마라 — 헛소동, 오해, 소소한 해프닝으로 끝나는 갈래도 '
+        + '세계의 일부다. 무거운 국면이 이어졌으면 일상·유머로 환기하라.' },
     { id: 'downed_now', when: 'downed',
       text: '주인공은 전투불능 상태다 — 스스로 움직일 수 없다. 자력 탈출·반격을 묘사하지 마라.' },
     { id: 'hp_low', when: 'hp > 0 and hp <= hp_max * 3 / 10',
@@ -1298,6 +1326,22 @@ console.log('\n━━ 컨텍 오염 — 변종은 상시 분위기가 아니라 
   ok('신인 D게이트에선 잠김', !truthy(evaluate(ab.when, engine.makeLookup(S, rk.vars), seededRng('ab', 1, 'e'))), '');
   const hi = fresh(); hi.vars.in_gate = true; hi.vars.grade_i = 5;
   ok('A게이트에선 열림', truthy(evaluate(ab.when, engine.makeLookup(S, hi.vars), seededRng('ab', 2, 'e'))), '');
+}
+
+console.log('\n━━ 환기 — 에로코미디 이벤트 5종 (alter_on 게이트) + 페이싱 지시문 ━━');
+{
+  const ECO_IDS = ['ero_trap_gate', 'ero_armor_meta', 'mana_expose_study', 'macho_fashion', 'succubus_gate'];
+  const rows = ECO_IDS.map((id) => S.rules.randomEvents.table.find((r) => r.id === id));
+  ok('에로코미디 5종 전부 존재', rows.every(Boolean), rows.map((r, i) => r ? '' : ECO_IDS[i]).join(','));
+  ok('전부 alter_on 게이트 (/수위 0이면 통째 잠김)', rows.every((r) => r.when === 'alter_on'), '');
+  ok('전부 저가중치·긴 쿨다운 (양념이지 주식이 아니다)',
+    rows.every((r) => r.weight === 1 && r.cooldown >= 10), '');
+  const off = fresh(); off.vars.alter_on = false;
+  ok('수위 끄면 발화 조건 닫힘', rows.every((r) =>
+    !truthy(evaluate(r.when, engine.makeLookup(S, off.vars), seededRng('ec', 1, 'e')))), '');
+  const pace = S.directives.find((d) => d.id === 'pacing');
+  ok('페이싱 지시문 상시 (뇌절 방지 환기)', !!pace && pace.when === 'true'
+    && pace.text.includes('파국으로 키우지 마라'), '');
 }
 
 console.log('\n━━ 경제 — 시세표 지시문 + 상한은 백스톱 (서사 720 vs 장부 500 사고) ━━');

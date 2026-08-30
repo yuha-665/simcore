@@ -1035,6 +1035,41 @@
           "notify": "[자아] Give the protagonist a beat of self-discovery — why they hunt, what they fear, what the Awakening changed. Interior, quiet, earned."
         },
         {
+          "id": "ero_trap_gate",
+          "weight": 1,
+          "cooldown": 10,
+          "when": "alter_on",
+          "notify": "[에로트랩] Word spreads of an \"ero-trap\" gate variant — slime that dissolves only fabric, grabby flora with suspicious aim, puzzle walls that grade your poses. Raunchy comedy, not horror: nobody dies in an ero-trap gate, only dignity does."
+        },
+        {
+          "id": "ero_armor_meta",
+          "weight": 1,
+          "cooldown": 10,
+          "when": "alter_on",
+          "notify": "[장비 유행] Eros-line armor is this season's meta — bikini plate, battle lingerie with high-grade enchants, and drop tables lately seem to agree. Hunters swear it is \"for the conductivity\". Fashion comedy: a shop shelf, a scandalized senior, a convert."
+        },
+        {
+          "id": "mana_expose_study",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "alter_on",
+          "notify": "[속보] Association researchers publish: skin exposure correlates with mana conductivity. HunterNet erupts, gear makers pivot overnight, and nobody can argue with peer review. Play the absurdity dead serious — that is the joke."
+        },
+        {
+          "id": "macho_fashion",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "alter_on",
+          "notify": "[마초 패션] Male hunters embrace the leather-belt-and-briefs meta — oiled muscle, tactical suspenders, nothing else, citing \"the conductivity study\". Straight-faced beefcake comedy; the city has opinions."
+        },
+        {
+          "id": "succubus_gate",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "alter_on",
+          "notify": "[서큐버스] A succubus/incubus outbreak — charm auras, dream visits, monsters more dangerous to composure than to life. Ero-comedy encounter: clearing it is embarrassing, profitable, and extremely post-worthy on HunterNet."
+        },
+        {
           "id": "gate_clash",
           "weight": 4,
           "cooldown": 3,
@@ -1271,6 +1306,11 @@
       "id": "gate_scale",
       "when": "in_gate",
       "text": "게이트 몬스터의 격은 게이트 등급을 따른다 — E·D급은 흔한 마수 수준이다. 정체불명·변종·이상 개체는 상위 게이트나 브레이크, 또는 [변종] 이벤트가 열 때만 꺼내라."
+    },
+    {
+      "id": "pacing",
+      "when": "true",
+      "text": "모든 떡밥을 파국으로 키우지 마라 — 헛소동, 오해, 소소한 해프닝으로 끝나는 갈래도 세계의 일부다. 무거운 국면이 이어졌으면 일상·유머로 환기하라."
     },
     {
       "id": "downed_now",

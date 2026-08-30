@@ -929,6 +929,49 @@ const S = {
           ], fallback: 'kiss' },
         ],
       },
+      // 추가 복장 모듈 (2026-08-30 유저 제공 지침) — 원본 지침 3절(Casual/Homewear/Underwear)을
+      // 팩 하나로 접었다: 복장을 필수 칸으로 두면 인물+복장 구조라 감정 팩(인물만 필수)과
+      // 구조 공존하고, 감정 어휘도 한 번만 실린다 (원본은 절마다 감정 51종 전문 반복 — 3배 길이).
+      // "평상시 = 태그 없음(기본 복장)"은 이 팩을 안 쓰는 것 — 기본 1장은 감정 팩 담당.
+      {
+        id: 'outfits',
+        source: '얼헌 추가 복장 에셋 모듈 (Casual/Homewear/Underwear Guidelines)',
+        sep: ' ', format: '<img="{name}">', verify: false,
+        // 인물별 보유 목록·끝번호(1/2)·세부번호(2-1 등)는 usage에 안 싣는다 — 원본 지침부터
+        // "로어북 참조"고, 그 인물별 표기는 추가 모듈 로어북이 이름 키워드로 띄운다.
+        // 여기는 불변 규칙만 (매 턴 실리는 한 줄 — 200자 린트).
+        usage: '환복이 명시될 때만 — 평상시는 태그 없음(기본 복장). Casual은 사적·친밀 상황만'
+          + '(공무·초면 금지), Homewear는 자택, Underwear는 속옷. 보유·끝번호(1추움/2더움)·'
+          + '세부번호는 로어북 표기대로만. School uniform=Choi Yu-na 등하교, '
+          + 'Underworld Samurai=Sasaki Yua 전투.',
+        slots: [
+          { id: 'who', label: '인물', values: [
+            'Go Eun-bi', 'Baek Eun-ha', 'Lee So-yoon', 'Sasaki Yua', 'Isabelle Hayes',
+            'Park Hye-in', 'Han Seo-yeon', 'Han Ji-won', 'Choi Yoo-jin', 'Min Chae-rin',
+            'Jang Eun-seo', 'Jin So-hee', 'Kang Yoo-ra', 'Yoo Sun-hwa', 'Park So-won',
+            'Lim Seol-hee', 'Joo Ah-ram', 'Oh Ha-na', 'Kim Min-soo', 'Im Jin-tae',
+            'Na Sun-young', 'Chae Ha-yoon', 'Lee Ha-eun', 'Yoon Mirae', 'Rivea',
+            'Song Ha-neul', 'Ha Wol-young', 'Choi Yu-na', 'Lee Ji-hye', 'Alice Croft',
+          ], fallback: 'Go Eun-bi' },
+          { id: 'outfit', label: '복장', values: [
+            'Casual clothes', 'Casual clothes1', 'Casual clothes2',
+            'Casual clothes 2-1', 'Casual clothes 2-2',
+            'Homewear', 'Homewear1', 'Homewear2', 'Underwear',
+            'School uniform', 'School uniform1', 'School uniform2', 'Underworld Samurai',
+          ], fallback: 'Casual clothes' },
+          { id: 'emo', label: '감정', optional: true, values: [
+            'acting coy', 'angry', 'annoyed', 'aroused', 'blushing shyly', 'bored', 'bridling',
+            'chuunibyou', 'confused', 'contemptuous', 'coughing', 'crying with eyes closed',
+            'crying with eyes open', 'curious', 'default', 'depressed', 'determined',
+            'disappointed', 'embarrassed', 'enraged', 'eureka', 'full-face blush', 'giggling',
+            'grudging', 'guilty', 'happy tears', 'indifferent', 'jealous', 'lustful',
+            'middle finger', 'nervous pouting', 'nervous', 'pouting', 'proud', 'sad', 'serious',
+            'smile', 'smirk', 'smug', 'sniggering', 'stupefied', 'surprised', 'suspicious',
+            'thinking', 'worried', 'disgusted', 'scared', 'excited', 'relieved', 'laughing',
+            'pleading', 'imminent kiss', 'kiss', 'after kiss', 'cheek', 'cheek pulling', 'headpat',
+          ], fallback: 'default' },
+        ],
+      },
       {
         id: 'char_emotions',
         source: '얼헌 원본 Characters/Status Command List',
@@ -1225,8 +1268,19 @@ console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');
 console.log('\n━━ P5 — 에셋 팩 (원본 이미지 지침 이관) ━━');
 {
   const pk = (id) => S.assets.packs.find((p) => p.id === id);
-  ok('팩 4종 (감정·엑스트라·체위·확장수위)', S.assets.packs.length === 4,
+  ok('팩 5종 (체위·확장수위·복장·감정·엑스트라)', S.assets.packs.length === 5,
     S.assets.packs.map((p) => p.id).join(','));
+  // 복장 팩 (2026-08-30 추가 복장 모듈) — 원본 지침 3절을 팩 하나로
+  ok('복장 팩 — 인물 30 · 복장 13 · 감정 57(생략 가능)',
+    pk('outfits').slots[0].values.length === 30
+    && pk('outfits').slots[1].values.length === 13
+    && pk('outfits').slots[2].values.length === 57 && pk('outfits').slots[2].optional === true, '');
+  ok('복장 팩은 감정 팩보다 앞 (필수 2칸 → 1칸 공존 순서)',
+    S.assets.packs.findIndex((p) => p.id === 'outfits')
+      < S.assets.packs.findIndex((p) => p.id === 'char_emotions'), '');
+  ok('복장 규칙 핵심이 지침에 있음 (세부는 로어북 위임)', /로어북.*School uniform.*Underworld Samurai/s
+    .test(pk('outfits').usage), '');
+  ok('복장 usage 200자 린트 통과', pk('outfits').usage.length <= 200, String(pk('outfits').usage.length));
   ok('감정 팩 — 인물 48 · 감정 51 (감정은 생략 가능 칸)',
     pk('char_emotions').slots[0].values.length === 48
     && pk('char_emotions').slots[1].values.length === 51

@@ -37,8 +37,8 @@ const S = {
 
 // ── 어댑터 정적 확인 ──
 {
-  ck('버전 1.2.0', src.includes('//@version 1.2.0'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.2\.0/.test(src), '');
+  // 버전 단언은 test-bundle이 원본 — 여기선 모듈 동봉만 본다 (패치 범프마다 두 곳 고치지 않게)
+  ck('messenger 모듈 번들 동봉', src.includes('SimCore.define("messenger"'), '');
   ck('패널 배선 — renderMsgrPanel + gameKind msgr', src.includes('renderMsgrPanel(root)')
     && src.includes("gameKind === 'msgr'"), '');
   ck('유틸 버튼 — msgrConfig가 있는 봇만', src.includes("specs.push({ key: 'msgr'"), '');

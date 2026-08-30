@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.0
-//@display-name SimCore (시뮬 엔진) v1.2.0 메신저 (단말기 문자)
+//@version 1.2.1
+//@display-name SimCore (시뮬 엔진) v1.2.1 기사 자리 표시
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,10 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.1 ────────────────────────────────────────────────
+// 현재 화제 기사가 첫 발행 전엔 흔적 없이 비어 있어 "패널에 따로 없는 건가"로 오인됨
+// (유저 제보). 헌터넷 패널 최상단에 자리 표시(📰 아직 기사가 없어요 — 다음 턴 발행) 추가.
 //
 // ── v1.2.0 ────────────────────────────────────────────────
 // 메신저 (유저 제안: "헌터 단말기답게 연락처 교환한 상대와 문자") — 게임 패널 5호.
@@ -27030,7 +27034,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         for (const c of cfg.categories) tabs.appendChild(tabBtn(c, c));
         card.appendChild(tabs);
       }
-      // 현재 화제 기사 (v1.1.0) — 목록 최상단 고정, 접었다 펼 수 있다
+      // 현재 화제 기사 (v1.1.0) — 목록 최상단 고정, 접었다 펼 수 있다.
+      // 첫 기사 전엔 자리 표시 (v1.2.1 — "기능이 없는 건가" 오인 방지, 실사고)
       if (cfg.hot && board.hot?.title) {
         const hotBox = el('div', 'scb-hot');
         const hd = el('div', 'scb-hot-head', `📰 [${cfg.hot.label}] ${board.hot.title}`);
@@ -27038,6 +27043,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         hotBox.appendChild(hd);
         if (boardView.hotOpen) hotBox.appendChild(el('div', 'scb-hot-body', board.hot.body));
         hotBox.appendChild(el('div', 'scb-meta', `${board.hot.time ?? ''} · ${cfg.hot.every}턴마다 갱신`));
+        card.appendChild(hotBox);
+      } else if (cfg.hot) {
+        const hotBox = el('div', 'scb-hot');
+        hotBox.appendChild(el('div', 'scb-hot-head', `📰 [${cfg.hot.label}] 아직 기사가 없어요`));
+        hotBox.appendChild(el('div', 'scb-meta', `다음 턴에 첫 기사가 발행됩니다 · 이후 ${cfg.hot.every}턴마다 갱신`));
         card.appendChild(hotBox);
       }
       const posts = boardView.cat ? board.posts.filter((p) => p.cat === boardView.cat) : board.posts;

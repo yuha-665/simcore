@@ -279,6 +279,9 @@ const turn = (st, changes = {}, opts = {}, i = 0) => {
   // hot 미설정 봇에 hot 델타가 와도 무시
   board.applyDelta(S, t0, { hot: { title: 'x', body: 'y' } }, { rng: seededRng('n', 4, 'o') });
   ck('hot 미설정 — 델타 무시', t0.board.hot === undefined, '');
+  // v1.2.1 — 첫 기사 전 자리 표시 (실사고: 흔적이 없어 "패널에 따로 없는 건가"로 오인)
+  ck('첫 기사 전 자리 표시 (어댑터)', src.includes('아직 기사가 없어요')
+    && src.includes('다음 턴에 첫 기사가 발행됩니다'), '');
   // 관대 수용 — 모델이 hot을 최상위에 내도 board로 접힌다 (규격은 board 안)
   const p1 = engine.parseAuxResponse('{"changes":{},"reasons":{},"hot":{"title":"t","body":"b"}}');
   ck('★ 최상위 hot → board.hot 폴딩', p1.board?.hot?.title === 't', J(p1.board));

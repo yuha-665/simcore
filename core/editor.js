@@ -1254,6 +1254,16 @@ const SCHEMA_BOARD_RULES = [
   '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
+// 메신저(messenger, v1.2.0) — 단말기 문자.
+const SCHEMA_MSGR_RULES = [
+  '- 메신저는 **주인공의 단말기 문자 패널**입니다 (헌터 단말기·스마트폰이 있는 세계에만). 방·대화는 세이브에 살고, 방은 **유저만** 팝니다 — AI가 만들거나 없애지 않습니다.',
+  '- `contactsVar`(필수)가 연락처 풀입니다 — 동료 명부 같은 **이름 list 변수**를 연결하세요. "파티를 맺을 정도면 연락처는 안다"는 개념이라 별도 연락처 변수를 만들지 않습니다.',
+  '- 1:1 방 최대 5개, 단체방 최대 2개 (상대 4명 + 본인 = 5인). 선톡은 `firstChance`(0~1, 기본 0.25) 확률 + `cooldown`(기본 3턴) — 뜬 턴만 보조 요청에 얹혀 평턴 비용 0.',
+  '- **활성 방 하나만** 다음 인풋에 대화가 실립니다 — 비활성 방은 순수 패널 전용 (서사가 모름). 토큰 설계의 핵심이니 바꾸지 마세요.',
+  '- `notesVar`에 "이름 — 변화" 꼴 list 변수를 연결하면 답장 생성에 인물 최근 변화가 실립니다. 인물 말투·설정은 캐릭터 로어북(이름 키워드 문항)에서 자동 발췌됩니다.',
+  '- `guide`에 문자 말투(길이·이모티콘·초성체 등)를 적으세요. `when` 조건이 거짓인 턴엔 선톡·발신이 멈춥니다 (통신 두절) — 열람은 항상 가능합니다.',
+];
+
 // 상점(shop, v0.96) — 시스템 상점.
 const SCHEMA_SHOP_RULES = [
   '- 상점은 **시스템이 결제를 처리하는 상점 패널**입니다. `currency`(지갑 숫자 변수)와 `buyTo`(구매품이 들어갈 list 변수)가 필수입니다.',
@@ -1875,6 +1885,11 @@ function varReferenceIndex(schema) {
   }
   add(schema.calendar?.list, '달력', '일정 목록');
   ex(schema.board?.when, '보드', 'when');
+  ex(schema.messenger?.when, '메신저', 'when');
+  if (schema.messenger) {
+    add(schema.messenger.contactsVar, '메신저', '연락처 목록');
+    add(schema.messenger.notesVar, '메신저', '인물 변화 목록');
+  }
   if (schema.shop) {
     add(schema.shop.currency, '상점', '지갑'); add(schema.shop.buyTo, '상점', '구매 목록');
     add(schema.shop.sellFrom, '상점', '매입 목록'); add(schema.shop.exchange?.var, '상점', '환전 지갑');
@@ -2152,6 +2167,8 @@ const TAB_SLICES = {
   board: { keys: ['board'], label: '보드' },
   // 상점(v0.96) — shop 객체 통째 교체. 같은 원문 보존 규약.
   shop: { keys: ['shop'], label: '상점' },
+  // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
+  msgr: { keys: ['messenger'], label: '메신저' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -2173,6 +2190,7 @@ const TAB_WANT_PH = {
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
+  msgr: '예: 단말기 문자 — 연락처는 동료 명부와 연동, 게이트 안에선 통신 두절',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
@@ -2208,6 +2226,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
+  else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
@@ -2686,6 +2705,23 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
       '  "postsPerTurn": [4, 5], "maxPosts": 20, "when": "not in_gate",',
       '  "hot": { "label": "현재 화제", "every": 5, "guide": "S랭크 동향, 게이트 브레이크 활약담" } } }',
+      '```',
+      '');
+  } else if (tabKey === 'msgr') {
+    const lists3 = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 메신저 규격', ...SCHEMA_MSGR_RULES, '',
+      '## 이미 있는 변수 — contactsVar/notesVar는 목록에서만 고를 수 있습니다',
+      `- 목록: ${lists3.map((v) => `\`${v.id}\``).join(' ') || '(없음)'}`,
+      '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "messenger": { "label": "단말기", "icon": "📱", "contactsVar": "allies", "notesVar": "npc_notes",',
+      '  "firstChance": 0.25, "cooldown": 3, "when": "not in_gate",',
+      '  "guide": "짧은 문자 말투, 용건 위주, 초성체 섞임. 인물별 말투는 로어북·명단대로." } }',
       '```',
       '');
   } else if (tabKey === 'shop') {
@@ -3278,7 +3314,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -5861,6 +5897,62 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) { delete schema.board; rerender(); }
       }),
       h('span', { class: 'sce-hint', style: 'margin:0' }, '글·댓글 데이터는 스키마가 아니라 세이브(스냅샷)에 삽니다 — 리롤하면 게시판도 같이 되감깁니다.')));
+    return wrap;
+  }
+
+  // 메신저 (v1.2.0) — 단말기 문자. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabMessenger() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('msgr'));
+    const lists = schema.vars.filter((v) => v.type === 'list');
+    if (!schema.messenger) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '메신저 — 주인공의 단말기 문자 패널입니다 (1:1 5방 + 단체방 2방). 방은 유저만 팔 수 있고, '
+        + '유저가 활성화한 방 하나만 다음 인풋에 서사로 전달됩니다. 연락처는 동료 명부 같은 '
+        + 'list 변수와 함께 움직입니다.'));
+      if (!lists.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '연락처로 쓸 list 변수가 없습니다 — [변수] 탭에서 동료 명부(list)를 먼저 만들고 오세요.'));
+        return wrap;
+      }
+      wrap.appendChild(addBtn('메신저 만들기', () => {
+        schema.messenger = { label: '메신저', icon: '📱', contactsVar: lists[0].id };
+        rerender();
+      }));
+      return wrap;
+    }
+    const M = schema.messenger;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('이름', bindInput(M.label, (x) => { M.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '메신저' })),
+        pair('아이콘', bindInput(M.icon, (x) => { M.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📱' })),
+        pair('연락처 목록', bindSelect(M.contactsVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { M.contactsVar = x; rerender(); }), '방을 팔 수 있는 상대 풀 — 동료 명부 같은 이름 list 변수'),
+        pair('인물 변화 목록', bindSelect(M.notesVar ?? '',
+          [['', '(없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) M.notesVar = x; else delete M.notesVar; rerender(); }), '"이름 — 변화" 꼴 델타 목록 — 답장 생성에 실립니다'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('선톡 확률', bindInput(M.firstChance ?? '', (x) => {
+          const n = parseFloat(x); if (isFinite(n)) M.firstChance = Math.max(0, Math.min(1, n)); else delete M.firstChance; rerender();
+        }, { cls: 'sce-w-s', ph: '0.25' }), '턴당 상대가 먼저 문자할 확률 (0이면 선톡 없음)'),
+        pair('선톡 쿨(턴)', bindInput(M.cooldown ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) M.cooldown = Math.max(0, Math.min(20, n)); else delete M.cooldown; rerender();
+        }, { cls: 'sce-w-s', ph: '3' }), '같은 방이 다시 선톡하기까지의 최소 턴'),
+        pair('통신 조건', bindInput(M.when, (x) => { M.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
+        '거짓인 턴엔 선톡·발신이 멈춥니다 (열람은 항상)'),
+      ),
+      pair('문자 말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
+        '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'), ''),
+      pair('패널 CSS', bindArea(M.css, (x) => { M.css = x || undefined; rerender(); },
+        '.scm-* 클래스를 덮어써 말풍선 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('메신저 삭제', () => {
+        if (confirm('메신저 설정을 지울까요? (진행 중 세이브의 방·대화는 세이브에 남습니다)')) { delete schema.messenger; rerender(); }
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '방·대화는 세이브(스냅샷)에 삽니다 — 리롤하면 그 턴의 대화도 같이 되감깁니다.')));
     return wrap;
   }
 
@@ -8672,7 +8764,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }

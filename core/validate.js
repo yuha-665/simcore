@@ -1086,6 +1086,38 @@ function validateSchema(schema) {
     }
   }
 
+  // ── messenger (메신저 v1.2.0 — 옵트인. 단말기 문자: 방은 유저만, 활성 방 하나만 주입) ──
+  if (schema.messenger != null) {
+    const M = schema.messenger;
+    if (typeof M !== 'object' || Array.isArray(M)) err('$.messenger', 'messenger는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['guide', '지침'], ['css', 'CSS']]) {
+        if (M[k] != null && typeof M[k] !== 'string') err(`$.messenger.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      // 연락처 풀 — 방 파기의 유일한 근거 (유저 결정: 파티/동료 축과 같이 움직인다)
+      const cv = (schema.vars || []).find((v) => v.id === M.contactsVar);
+      if (!M.contactsVar || typeof M.contactsVar !== 'string') err('$.messenger.contactsVar', '연락처 목록 변수(contactsVar)가 필요합니다 — 방은 이 목록의 인물과만 팔 수 있어요');
+      else if (!cv) err('$.messenger.contactsVar', `연락처 변수 '${M.contactsVar}'가 vars에 없음`);
+      else if (cv.type !== 'list') err('$.messenger.contactsVar', `연락처 '${M.contactsVar}'는 list 타입이어야 함 (현재: ${cv.type})`);
+      if (M.notesVar != null) {
+        const nv = (schema.vars || []).find((v) => v.id === M.notesVar);
+        if (!nv) err('$.messenger.notesVar', `인물 변화 변수 '${M.notesVar}'가 vars에 없음`);
+        else if (nv.type !== 'list') err('$.messenger.notesVar', `'${M.notesVar}'는 list 타입이어야 함 — "이름 — 변화" 꼴 델타 목록`);
+      }
+      if (M.firstChance != null && (typeof M.firstChance !== 'number' || M.firstChance < 0 || M.firstChance > 1)) {
+        err('$.messenger.firstChance', '선톡 확률은 0~1 숫자 (기본 0.25, 0이면 선톡 없음)');
+      }
+      if (M.cooldown != null && (!Number.isInteger(M.cooldown) || M.cooldown < 0 || M.cooldown > 20)) {
+        err('$.messenger.cooldown', '선톡 쿨다운은 0~20턴 정수 (기본 3)');
+      }
+      if (M.when != null) {
+        if (typeof M.when !== 'string') err('$.messenger.when', 'when은 표현식 문자열이어야 함');
+        else if (M.when.trim()) checkExpr(M.when, '$.messenger.when', allIds, err, { allowRand: false });
+      }
+      if (!M.guide) warn('$.messenger', '문자 말투 지침(guide)이 없습니다 — 상대들이 어떤 말투로 문자하는지 적어 주세요 (인물별 말투는 로어북·명단이 근거)');
+    }
+  }
+
   // ── shop (상점 v0.96 — 옵트인. 로어북 상점의 뇌절·가격 계산을 구조로 잡는다) ──
   if (schema.shop != null) {
     const SH = schema.shop;

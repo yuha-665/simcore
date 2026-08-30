@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.1.0
-//@display-name SimCore (시뮬 엔진) v1.1.0 게시판 다양성 + 화제 기사
+//@version 1.2.0
+//@display-name SimCore (시뮬 엔진) v1.2.0 메신저 (단말기 문자)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.0 ────────────────────────────────────────────────
+// 메신저 (유저 제안: "헌터 단말기답게 연락처 교환한 상대와 문자") — 게임 패널 5호.
+// - core/messenger.js 신설: 1:1 최대 5방·단체방 최대 2방(NPC 4+유저=파티 5인 캡).
+//   방은 **유저만 판다** — 연락처 풀은 contactsVar(얼헌: allies 동료 명부, "파티를 맺을
+//   정도면 연락처는 안다"). AI는 방을 만들지도 없애지도 못한다.
+// - 선톡: 매턴 확률(기본 0.25)+방별 쿨다운(기본 3턴), 시드 해시라 리롤 안정 — 뜬 턴만
+//   보조 요청에 얹힘 (+300, 평턴 비용 0). when 게이트(게이트 안 통신 두절) 승계.
+// - **핵심: 활성 방 하나만** 다음 인풋에 대화 원문(최근 10개)이 실린다 — 비활성 방은
+//   순수 패널 전용 (서사가 모른다). 토큰은 유저가 고른 방만 쓴다.
+// - 패널 발신 → 전용 보조 호출(채팅 턴 0): 인격 컨텍스트 = 캐릭터 **로어북에서 멤버
+//   이름이 걸리는 문항 발췌**(persona, 인물당 700자) + notesVar("이름 — 변화") 델타 +
+//   최근 서사. "누구세요" 답장 방지의 본체.
+// - 말풍선 UI(안읽음 배지·활성 토글·Enter 전송), 나가기는 두 번 누르기(규칙 #6).
+// - ⚠ 리롤하면 그 턴의 패널 대화도 되감김 (보드와 같은 스냅샷 규약 — 패널에 고지).
 //
 // ── v1.1.0 ────────────────────────────────────────────────
 // 게시판 다양성 리워크 + 현재 화제 기사 (유저: "사용자 서사가 헌터넷에 계속 박제돼
@@ -3878,6 +3893,38 @@ function validateSchema(schema) {
     }
   }
 
+  // ── messenger (메신저 v1.2.0 — 옵트인. 단말기 문자: 방은 유저만, 활성 방 하나만 주입) ──
+  if (schema.messenger != null) {
+    const M = schema.messenger;
+    if (typeof M !== 'object' || Array.isArray(M)) err('$.messenger', 'messenger는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['icon', '아이콘'], ['guide', '지침'], ['css', 'CSS']]) {
+        if (M[k] != null && typeof M[k] !== 'string') err(`$.messenger.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      // 연락처 풀 — 방 파기의 유일한 근거 (유저 결정: 파티/동료 축과 같이 움직인다)
+      const cv = (schema.vars || []).find((v) => v.id === M.contactsVar);
+      if (!M.contactsVar || typeof M.contactsVar !== 'string') err('$.messenger.contactsVar', '연락처 목록 변수(contactsVar)가 필요합니다 — 방은 이 목록의 인물과만 팔 수 있어요');
+      else if (!cv) err('$.messenger.contactsVar', `연락처 변수 '${M.contactsVar}'가 vars에 없음`);
+      else if (cv.type !== 'list') err('$.messenger.contactsVar', `연락처 '${M.contactsVar}'는 list 타입이어야 함 (현재: ${cv.type})`);
+      if (M.notesVar != null) {
+        const nv = (schema.vars || []).find((v) => v.id === M.notesVar);
+        if (!nv) err('$.messenger.notesVar', `인물 변화 변수 '${M.notesVar}'가 vars에 없음`);
+        else if (nv.type !== 'list') err('$.messenger.notesVar', `'${M.notesVar}'는 list 타입이어야 함 — "이름 — 변화" 꼴 델타 목록`);
+      }
+      if (M.firstChance != null && (typeof M.firstChance !== 'number' || M.firstChance < 0 || M.firstChance > 1)) {
+        err('$.messenger.firstChance', '선톡 확률은 0~1 숫자 (기본 0.25, 0이면 선톡 없음)');
+      }
+      if (M.cooldown != null && (!Number.isInteger(M.cooldown) || M.cooldown < 0 || M.cooldown > 20)) {
+        err('$.messenger.cooldown', '선톡 쿨다운은 0~20턴 정수 (기본 3)');
+      }
+      if (M.when != null) {
+        if (typeof M.when !== 'string') err('$.messenger.when', 'when은 표현식 문자열이어야 함');
+        else if (M.when.trim()) checkExpr(M.when, '$.messenger.when', allIds, err, { allowRand: false });
+      }
+      if (!M.guide) warn('$.messenger', '문자 말투 지침(guide)이 없습니다 — 상대들이 어떤 말투로 문자하는지 적어 주세요 (인물별 말투는 로어북·명단이 근거)');
+    }
+  }
+
   // ── shop (상점 v0.96 — 옵트인. 로어북 상점의 뇌절·가격 계산을 구조로 잡는다) ──
   if (schema.shop != null) {
     const SH = schema.shop;
@@ -5563,6 +5610,296 @@ module.exports = {
 
 });
 
+SimCore.define("messenger", function (require, module, exports) {
+// 메신저 (v1.2.0) — 헌터 단말기형 1:1/단체 문자 (유저 제안: "헌터넷 소스를 살려서
+// 연락처 교환한 상대와 문자를 주고받는 메신저").
+//
+// 보드(board.js) 인프라의 이식이지만 결정들이 다르다:
+//   · 방은 **유저만 판다** (패널에서 연락처 골라서) — AI가 방을 만들거나 없애지 않는다
+//   · 연락처 풀 = contactsVar(list 변수, 얼헌은 동료 명부 allies) — "파티를 맺을 정도면
+//     연락처는 안다" (유저 결정: 별도 연락처 변수 없이 파티 축과 같이 움직인다)
+//   · 선톡: 매턴 확률(시드 해시 — 리롤 안정) + 방별 쿨다운으로 상대가 먼저 문자를 보낼
+//     수 있다 — 그 턴만 보조 요청에 얹힘 (평턴 비용 0)
+//   · **핵심: 활성 방 하나만 메인 프롬프트에 실린다** (유저 설계). 비활성 방은 순수
+//     패널 전용 대화 — 서사는 모른다. 토큰 문제를 구조로 풀었다.
+//   · 패널 발신(답장 생성)은 채팅 턴 없는 전용 보조 호출 — 인격 컨텍스트(로어북 발췌
+//     persona + notesVar 델타)를 실어야 "누구세요" 답장을 막는다 (품질 리스크의 본체)
+//
+// 스키마 (옵트인):
+//   messenger: { contactsVar(필수), label?, icon?, notesVar?, firstChance?, cooldown?,
+//                guide?, when?, css? }
+//
+// 상태: state.msgr = { seq, active, rooms: [{ id, kind:'dm'|'group', name, members,
+//   msgs: [{from('me'=주인공), body, time}], unread, lastIn }] } — 스냅샷에 실려
+//   리롤과 함께 되감긴다 (⚠ 리롤하면 그 턴의 패널 대화도 되감김 — 보드와 같은 규약).
+
+const { stampNow } = require('./board');
+const { evaluate, truthy } = require('./expr');
+
+const CAPS = {
+  DM_MAX: 5, GROUP_MAX: 2, GROUP_MEMBERS: 4,     // 단체방 NPC 4 + 유저 = 파티 5인 캡
+  MSGS_PER_ROOM: 60, MSG_LEN: 300, ROOM_NAME: 20,
+  IN_PER_TURN: 3, INJECT_N: 10, INJECT_LEN: 120,
+};
+const DEFAULTS = { firstChance: 0.25, cooldown: 3 };
+
+function msgrConfig(schema) {
+  const m = schema?.messenger;
+  if (!m || typeof m !== 'object') return null;
+  if (typeof m.contactsVar !== 'string' || !m.contactsVar) return null;
+  return {
+    label: typeof m.label === 'string' && m.label.trim() ? m.label.trim() : '메신저',
+    icon: typeof m.icon === 'string' && m.icon.trim() ? m.icon.trim() : '📱',
+    contactsVar: m.contactsVar,
+    notesVar: typeof m.notesVar === 'string' && m.notesVar ? m.notesVar : null,
+    firstChance: (typeof m.firstChance === 'number' && m.firstChance >= 0 && m.firstChance <= 1)
+      ? m.firstChance : DEFAULTS.firstChance,
+    cooldown: Number.isInteger(m.cooldown) && m.cooldown >= 0 && m.cooldown <= 20
+      ? m.cooldown : DEFAULTS.cooldown,
+    guide: typeof m.guide === 'string' ? m.guide : '',
+    when: typeof m.when === 'string' ? m.when : '',
+    css: typeof m.css === 'string' ? m.css : '',
+  };
+}
+
+function initMsgr() { return { seq: 1, active: null, rooms: [] }; }
+
+/** reconcile 시점에 부착 — 구세이브·스키마에 나중에 켠 경우 */
+function ensureMsgr(state) {
+  if (!state.msgr || typeof state.msgr !== 'object' || !Array.isArray(state.msgr.rooms)) {
+    state.msgr = initMsgr();
+  }
+  if (typeof state.msgr.seq !== 'number' || !isFinite(state.msgr.seq)) {
+    state.msgr.seq = 1 + state.msgr.rooms.reduce((m, r) => Math.max(m, r.id || 0), 0);
+  }
+  return state.msgr;
+}
+
+/** when 게이트 — 닫히면 선톡·발신이 멈춘다 (게이트 안 통신 두절). 열람은 항상 가능 */
+function msgrOpen(cfg, schema, vars, makeLookup) {
+  if (!cfg.when) return true;
+  try { return truthy(evaluate(cfg.when, makeLookup(schema, vars), null)); }
+  catch { return true; }
+}
+
+const cut = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+
+/** 연락처 풀 — contactsVar(list)의 이름들. 방 파기의 유일한 근거 */
+function contacts(cfg, state) {
+  const v = state?.vars?.[cfg.contactsVar];
+  return Array.isArray(v) ? v.map((x) => cut(x, CAPS.ROOM_NAME)).filter(Boolean) : [];
+}
+
+/**
+ * 방 생성 — 유저 전용 (패널 경로). AI는 방을 만들지 않는다.
+ * @returns {ok, id} | {ok:false, reason}
+ */
+function createRoom(cfg, state, { kind, members, name }) {
+  const msgr = ensureMsgr(state);
+  const k = kind === 'group' ? 'group' : 'dm';
+  const ms = [...new Set((Array.isArray(members) ? members : [])
+    .map((x) => cut(x, CAPS.ROOM_NAME)).filter(Boolean))];
+  const pool = contacts(cfg, state);
+  const outsider = ms.find((m) => !pool.includes(m));
+  if (outsider) return { ok: false, reason: `'${outsider}'은(는) 연락처에 없어요 — 연락처는 ${cfg.contactsVar} 목록과 함께 움직입니다` };
+  if (k === 'dm') {
+    if (ms.length !== 1) return { ok: false, reason: '1:1 방은 상대 한 명을 골라 주세요' };
+    if (msgr.rooms.filter((r) => r.kind === 'dm').length >= CAPS.DM_MAX) {
+      return { ok: false, reason: `1:1 방은 최대 ${CAPS.DM_MAX}개예요 — 안 쓰는 방을 나가 주세요` };
+    }
+    if (msgr.rooms.some((r) => r.kind === 'dm' && r.members[0] === ms[0])) {
+      return { ok: false, reason: `${ms[0]}와의 방이 이미 있어요` };
+    }
+  } else {
+    if (ms.length < 2 || ms.length > CAPS.GROUP_MEMBERS) {
+      return { ok: false, reason: `단체방은 상대 2~${CAPS.GROUP_MEMBERS}명이에요 (본인 포함 ${CAPS.GROUP_MEMBERS + 1}인 — 파티 정원과 같음)` };
+    }
+    if (msgr.rooms.filter((r) => r.kind === 'group').length >= CAPS.GROUP_MAX) {
+      return { ok: false, reason: `단체방은 최대 ${CAPS.GROUP_MAX}개예요` };
+    }
+  }
+  const room = {
+    id: msgr.seq++, kind: k,
+    name: cut(name, CAPS.ROOM_NAME) || (k === 'dm' ? ms[0] : ms.join('·').slice(0, CAPS.ROOM_NAME)),
+    members: ms, msgs: [], unread: 0, lastIn: null,
+  };
+  msgr.rooms.push(room);
+  return { ok: true, id: room.id };
+}
+
+/** 방 나가기 — 대화가 통째로 사라진다 (유저 확인은 패널 몫) */
+function leaveRoom(state, roomId) {
+  const msgr = ensureMsgr(state);
+  const i = msgr.rooms.findIndex((r) => r.id === roomId);
+  if (i < 0) return false;
+  msgr.rooms.splice(i, 1);
+  if (msgr.active === roomId) msgr.active = null;
+  return true;
+}
+
+/** 활성 방 지정 — **하나만** (다음 인풋에 그 대화가 서사로 전달된다). null = 전부 비활성 */
+function setActive(state, roomId) {
+  const msgr = ensureMsgr(state);
+  msgr.active = (roomId != null && msgr.rooms.some((r) => r.id === roomId)) ? roomId : null;
+  return msgr.active;
+}
+
+/** 방 열람 — 안읽음 소거 (패널이 방을 그릴 때 부른다) */
+function markRead(state, roomId) {
+  const room = ensureMsgr(state).rooms.find((r) => r.id === roomId);
+  if (room) room.unread = 0;
+}
+
+function pushMsg(schema, state, room, from, body) {
+  room.msgs.push({ from, body, time: stampNow(schema, state) });
+  if (room.msgs.length > CAPS.MSGS_PER_ROOM) room.msgs.splice(0, room.msgs.length - CAPS.MSGS_PER_ROOM);
+}
+
+/** 주인공 발신 — 즉시 등록 (답장은 전용 보조 호출이 이어 받는다) */
+function userMsg(schema, state, roomId, body) {
+  const room = ensureMsgr(state).rooms.find((r) => r.id === roomId);
+  const b = cut(body, CAPS.MSG_LEN);
+  if (!room || !b) return false;
+  pushMsg(schema, state, room, 'me', b);
+  return true;
+}
+
+/**
+ * 보조가 준 msgr 델타 적용 — [{id, msgs:[{from, body}]}]. 턴 피기백(선톡)과 패널 답장이
+ * 같은 규격. from은 그 방 멤버만 (주인공 'me' 위조·비멤버는 버림). 상태 제자리 수정.
+ */
+function applyDelta(schema, state, rawDelta) {
+  const cfg = msgrConfig(schema);
+  if (!cfg || !Array.isArray(rawDelta)) return { received: 0 };
+  const msgr = ensureMsgr(state);
+  let received = 0;
+  for (const d of rawDelta) {
+    if (!d || typeof d !== 'object') continue;
+    const room = msgr.rooms.find((r) => r.id === Number(d.id));
+    if (!room) continue;
+    let n = 0;
+    for (const m of Array.isArray(d.msgs) ? d.msgs : []) {
+      if (n >= CAPS.IN_PER_TURN) break;
+      const from = cut(m?.from, CAPS.ROOM_NAME);
+      const body = cut(m?.body, CAPS.MSG_LEN);
+      if (!body || !room.members.includes(from)) continue;   // 'me'·비멤버 위조 차단
+      pushMsg(schema, state, room, from, body);
+      n++;
+    }
+    if (n) {
+      received += n;
+      room.lastIn = state?.meta?.turn ?? 0;
+      if (msgr.active !== room.id) room.unread += n;
+    }
+  }
+  return { received };
+}
+
+/** 시드 해시 [0,1) — Math.random 금지 지대 (리롤 안정). 같은 턴 = 같은 결과 */
+function hash01(...parts) {
+  let h = 2166136261;
+  const s = parts.join('|');
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+/** 이번 턴 선톡이 뜰 방 — 쿨다운 지난 방 중 확률에 든 것 하나 (턴당 최대 1방). null 가능 */
+function firstContactRoom(cfg, state) {
+  const msgr = state?.msgr;
+  if (!msgr?.rooms?.length || !cfg.firstChance) return null;
+  const turn = state?.meta?.turn ?? 0;
+  const hits = msgr.rooms
+    .filter((r) => r.lastIn == null || (turn - r.lastIn) >= cfg.cooldown)
+    .map((r) => ({ r, h: hash01('first', turn, r.id, r.name) }))
+    .filter((x) => x.h < cfg.firstChance)
+    .sort((a, b) => a.h - b.h);
+  return hits.length ? hits[0].r : null;
+}
+
+const tail = (room, n, len = 80) => room.msgs.slice(-n)
+  .map((m) => `${m.from === 'me' ? '나' : m.from}: "${cut(m.body, len)}"`).join(' / ');
+
+/** 턴 갱신 요청 — 선톡이 뜬 턴만 기존 보조 호출에 얹는다 (평턴 비용 0) */
+function auxSpec(schema, state, makeLookup) {
+  const cfg = msgrConfig(schema);
+  if (!cfg) return '';
+  if (!msgrOpen(cfg, schema, state.vars, makeLookup)) return '';
+  const room = firstContactRoom(cfg, state);
+  if (!room) return '';
+  return [
+    '',
+    `[${cfg.label} — 주인공의 단말기] (선택 항목)`,
+    `- 이번 턴, "${room.name}" 방(멤버: ${room.members.join(', ')})의 상대가 주인공에게 먼저 메시지를 보낼 자연스러운 순간이다. 서사 흐름상 어색하면 안 보내도 된다.`,
+    room.msgs.length ? `- 이 방의 최근 대화: ${tail(room, 5)}` : '- 이 방은 아직 대화가 없다 — 첫 연락이다.',
+    cfg.guide ? `- ${cfg.guide}` : null,
+    `- msgr 형식: {"msgr":[{"id":${room.id},"msgs":[{"from":"이름","body":"내용"}]}]} — 1~${CAPS.IN_PER_TURN}통, 문자 말투로 짧게. from은 멤버 이름만.`,
+  ].filter((x) => x !== null).join('\n');
+}
+
+/**
+ * 메인 프롬프트 주입 — **활성 방 하나만** (유저 설계의 핵심: 토큰은 유저가 고른 방만 쓴다).
+ * 비활성 방 대화는 서사가 모른다 (순수 패널 전용).
+ */
+function mainLine(schema, state) {
+  const cfg = msgrConfig(schema);
+  if (!cfg) return null;
+  const msgr = state?.msgr;
+  const room = msgr?.rooms?.find((r) => r.id === msgr.active);
+  if (!room || !room.msgs.length) return null;
+  const lines = room.msgs.slice(-CAPS.INJECT_N)
+    .map((m) => `  ${m.from === 'me' ? '나' : m.from}: ${cut(m.body, CAPS.INJECT_LEN)}`);
+  return [
+    `[${cfg.label}] 주인공이 단말기로 나눈 최근 대화 — "${room.name}"${room.kind === 'group' ? ` (단체방: ${room.members.join(', ')})` : ''}:`,
+    ...lines,
+    '— 이 대화는 이미 오간 사실이다. 서사에 자연스럽게 반영하되, 원문을 본문에 옮겨 적지 마라.',
+  ].join('\n');
+}
+
+/**
+ * 패널 발신 답장 프롬프트 — 전용 보조 호출 (채팅 턴 소모 없음).
+ * payload.persona = 어댑터가 로어북에서 발췌한 인물 정보 (품질 리스크 대응의 본체),
+ * payload.narrative = 최근 서사 맥락. notesVar 델타는 여기서 직접 붙인다.
+ */
+function interactionPrompt(schema, state, roomId, payload = {}) {
+  const cfg = msgrConfig(schema);
+  const room = state?.msgr?.rooms?.find((r) => r.id === roomId);
+  if (!cfg || !room) return null;
+  // notesVar("이름 — 변화" 꼴 list) — 방 멤버 것만 발췌
+  const notes = cfg.notesVar && Array.isArray(state.vars?.[cfg.notesVar])
+    ? state.vars[cfg.notesVar].filter((x) => room.members.some((m) => String(x).includes(m)))
+    : [];
+  return [
+    `너는 "${cfg.label}" 메신저 시뮬레이터다. 주인공이 방금 "${room.name}" 방에 메시지를 보냈다. 상대의 답장만 JSON으로 출력하라.`,
+    `방 멤버 (주인공 제외): ${room.members.join(', ')}`,
+    payload.persona ? `[인물 정보 — 이 말투와 설정 그대로]\n${String(payload.persona).slice(0, 2800)}` : null,
+    notes.length ? `[인물 최근 변화] ${notes.slice(0, 8).join(' · ')}` : null,
+    cfg.guide ? cfg.guide : null,
+    payload.narrative ? `[최근 이야기 맥락]\n${String(payload.narrative).slice(0, 1600)}` : null,
+    '',
+    '[이 방의 최근 대화]',
+    tail(room, 15, CAPS.MSG_LEN) || '(첫 대화)',
+    '',
+    `- 답장 1~${CAPS.IN_PER_TURN}통${room.kind === 'group' ? ' — 단체방이니 말할 사람만 말한다 (전원 답장 강제 아님)' : ''}. from은 멤버 이름 중에서만.`,
+    '- 문자 말투로 짧게. 즉답이 어색한 상황(전투 중, 새벽)이면 뜸 들인 한 통이나 짧은 반응도 좋다.',
+    '- 상대는 주인공을 전지적으로 알지 못한다 — 직접 겪었거나 들은 것까지만.',
+    `출력 형식 (JSON만, 다른 텍스트 금지): {"msgr":[{"id":${room.id},"msgs":[{"from":"이름","body":"내용"}]}]}`,
+  ].filter((x) => x !== null).join('\n');
+}
+
+/** 인터랙션 응답 파싱 — {"msgr":[...]}만 회수 (관대) */
+function parseInteraction(text, extractJsonObject) {
+  const obj = extractJsonObject(text, 'msgr');
+  return Array.isArray(obj?.msgr) ? obj.msgr : null;
+}
+
+module.exports = {
+  CAPS, msgrConfig, initMsgr, ensureMsgr, msgrOpen, contacts,
+  createRoom, leaveRoom, setActive, markRead, userMsg,
+  applyDelta, firstContactRoom, auxSpec, mainLine, interactionPrompt, parseInteraction,
+};
+
+});
+
 SimCore.define("shop", function (require, module, exports) {
 // 상점 (v0.96) — 세계 안의 시스템 상점 (얼터헌터 "알터 스토어" 흡수가 발단).
 //
@@ -6368,6 +6705,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
+const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -6425,6 +6763,7 @@ function initState(schema, opts = {}) {
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
   if (shopMod.shopConfig(schema)) st.shop = shopMod.initShop(); // 상점 (v0.96)
+  if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
 
@@ -6495,6 +6834,7 @@ function reconcileState(schema, state) {
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   if (shopMod.shopConfig(schema)) shopMod.ensureShop(state); // 상점 (v0.96) — 같은 규약
+  if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -6963,6 +7303,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
     if (bLine) lines.push(bLine);
   }
 
+  // 3.9 메신저 활성 방 (v1.2.0) — **유저가 활성화한 방 하나만** 대화 원문이 실린다.
+  // 비활성 방은 순수 패널 전용 — 서사는 모른다 (유저 설계: 토큰은 고른 방만 쓴다).
+  if (!isSetupPending(schema, state)) {
+    const mLine = msgrMod.mainLine(schema, state);
+    if (mLine) lines.push(mLine);
+  }
+
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
@@ -7196,7 +7543,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -7224,6 +7571,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
   // 5.8 상점 첫 입고 (v0.96) — 재고가 비어 있을 때만 요청했으므로, 온 것만 채운다
   if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
+  // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
+  if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -7643,6 +7992,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     (!opts.allowAll && state) ? (boardMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 상점 첫 입고 (v0.96, 옵트인) — 재고가 빈 동안만 얹는다. 물갈이는 패널 버튼 전용.
     (!opts.allowAll && state) ? (shopMod.auxSpec(schema, state, makeLookup) || null) : null,
+    // 메신저 선톡 (v1.2.0, 옵트인) — 확률+쿨다운에 든 턴만 얹는다 (평턴 비용 0)
+    (!opts.allowAll && state) ? (msgrMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -7677,6 +8028,7 @@ function auxHasWork(schema, state = null) {
   if (schema?.suggest) return true;
   if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   if (shopMod.shopConfig(schema)) return true;   // 상점 첫 입고가 얹혀 간다 (v0.96)
+  if (msgrMod.msgrConfig(schema)) return true;   // 메신저 선톡이 얹혀 간다 (v1.2.0)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -7943,7 +8295,8 @@ function parseAuxResponse(text) {
     board: (obj.hot && typeof obj.hot === 'object')
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
-    shop: obj.shop ?? null };  // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    msgr: Array.isArray(obj.msgr) ? obj.msgr : null };  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
 }
 
 module.exports = {
@@ -8855,6 +9208,7 @@ class SimSession {
       detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
       board: parsed.board ?? null, // 커뮤니티 보드 델타 (v0.95) — 같은 응답에 실려 온다
       shop: parsed.shop ?? null,   // 상점 첫 입고 (v0.96) — 같은 응답에 실려 온다
+      msgr: parsed.msgr ?? null,   // 메신저 선톡 (v1.2.0) — 같은 응답에 실려 온다
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;
@@ -11488,6 +11842,16 @@ const SCHEMA_BOARD_RULES = [
   '- `categories`(1~6개)를 주면 패널이 탭으로 나뉘고 글마다 칸(cat)이 붙습니다 — 파티 모집판 같은 "게시판 안의 게시판". 어휘 밖 칸은 첫 칸으로 보정됩니다.',
 ];
 
+// 메신저(messenger, v1.2.0) — 단말기 문자.
+const SCHEMA_MSGR_RULES = [
+  '- 메신저는 **주인공의 단말기 문자 패널**입니다 (헌터 단말기·스마트폰이 있는 세계에만). 방·대화는 세이브에 살고, 방은 **유저만** 팝니다 — AI가 만들거나 없애지 않습니다.',
+  '- `contactsVar`(필수)가 연락처 풀입니다 — 동료 명부 같은 **이름 list 변수**를 연결하세요. "파티를 맺을 정도면 연락처는 안다"는 개념이라 별도 연락처 변수를 만들지 않습니다.',
+  '- 1:1 방 최대 5개, 단체방 최대 2개 (상대 4명 + 본인 = 5인). 선톡은 `firstChance`(0~1, 기본 0.25) 확률 + `cooldown`(기본 3턴) — 뜬 턴만 보조 요청에 얹혀 평턴 비용 0.',
+  '- **활성 방 하나만** 다음 인풋에 대화가 실립니다 — 비활성 방은 순수 패널 전용 (서사가 모름). 토큰 설계의 핵심이니 바꾸지 마세요.',
+  '- `notesVar`에 "이름 — 변화" 꼴 list 변수를 연결하면 답장 생성에 인물 최근 변화가 실립니다. 인물 말투·설정은 캐릭터 로어북(이름 키워드 문항)에서 자동 발췌됩니다.',
+  '- `guide`에 문자 말투(길이·이모티콘·초성체 등)를 적으세요. `when` 조건이 거짓인 턴엔 선톡·발신이 멈춥니다 (통신 두절) — 열람은 항상 가능합니다.',
+];
+
 // 상점(shop, v0.96) — 시스템 상점.
 const SCHEMA_SHOP_RULES = [
   '- 상점은 **시스템이 결제를 처리하는 상점 패널**입니다. `currency`(지갑 숫자 변수)와 `buyTo`(구매품이 들어갈 list 변수)가 필수입니다.',
@@ -12109,6 +12473,11 @@ function varReferenceIndex(schema) {
   }
   add(schema.calendar?.list, '달력', '일정 목록');
   ex(schema.board?.when, '보드', 'when');
+  ex(schema.messenger?.when, '메신저', 'when');
+  if (schema.messenger) {
+    add(schema.messenger.contactsVar, '메신저', '연락처 목록');
+    add(schema.messenger.notesVar, '메신저', '인물 변화 목록');
+  }
   if (schema.shop) {
     add(schema.shop.currency, '상점', '지갑'); add(schema.shop.buyTo, '상점', '구매 목록');
     add(schema.shop.sellFrom, '상점', '매입 목록'); add(schema.shop.exchange?.var, '상점', '환전 지갑');
@@ -12386,6 +12755,8 @@ const TAB_SLICES = {
   board: { keys: ['board'], label: '보드' },
   // 상점(v0.96) — shop 객체 통째 교체. 같은 원문 보존 규약.
   shop: { keys: ['shop'], label: '상점' },
+  // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
+  msgr: { keys: ['messenger'], label: '메신저' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -12407,6 +12778,7 @@ const TAB_WANT_PH = {
   status: '예: 체력·허기·기온은 게이지로 맨 위, 소지품은 접어서 아래',
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
+  msgr: '예: 단말기 문자 — 연락처는 동료 명부와 연동, 게이트 안에선 통신 두절',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
@@ -12442,6 +12814,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
+  else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
@@ -12920,6 +13293,23 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "guide": "익명 커뮤니티 말투 — 반말, 마침표 생략, 밈. 닉네임은 짧은 한국어.",',
       '  "postsPerTurn": [4, 5], "maxPosts": 20, "when": "not in_gate",',
       '  "hot": { "label": "현재 화제", "every": 5, "guide": "S랭크 동향, 게이트 브레이크 활약담" } } }',
+      '```',
+      '');
+  } else if (tabKey === 'msgr') {
+    const lists3 = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 메신저 규격', ...SCHEMA_MSGR_RULES, '',
+      '## 이미 있는 변수 — contactsVar/notesVar는 목록에서만 고를 수 있습니다',
+      `- 목록: ${lists3.map((v) => `\`${v.id}\``).join(' ') || '(없음)'}`,
+      '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "messenger": { "label": "단말기", "icon": "📱", "contactsVar": "allies", "notesVar": "npc_notes",',
+      '  "firstChance": 0.25, "cooldown": 3, "when": "not in_gate",',
+      '  "guide": "짧은 문자 말투, 용건 위주, 초성체 섞임. 인물별 말투는 로어북·명단대로." } }',
       '```',
       '');
   } else if (tabKey === 'shop') {
@@ -13512,7 +13902,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -16095,6 +16485,62 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) { delete schema.board; rerender(); }
       }),
       h('span', { class: 'sce-hint', style: 'margin:0' }, '글·댓글 데이터는 스키마가 아니라 세이브(스냅샷)에 삽니다 — 리롤하면 게시판도 같이 되감깁니다.')));
+    return wrap;
+  }
+
+  // 메신저 (v1.2.0) — 단말기 문자. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabMessenger() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('msgr'));
+    const lists = schema.vars.filter((v) => v.type === 'list');
+    if (!schema.messenger) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '메신저 — 주인공의 단말기 문자 패널입니다 (1:1 5방 + 단체방 2방). 방은 유저만 팔 수 있고, '
+        + '유저가 활성화한 방 하나만 다음 인풋에 서사로 전달됩니다. 연락처는 동료 명부 같은 '
+        + 'list 변수와 함께 움직입니다.'));
+      if (!lists.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
+          '연락처로 쓸 list 변수가 없습니다 — [변수] 탭에서 동료 명부(list)를 먼저 만들고 오세요.'));
+        return wrap;
+      }
+      wrap.appendChild(addBtn('메신저 만들기', () => {
+        schema.messenger = { label: '메신저', icon: '📱', contactsVar: lists[0].id };
+        rerender();
+      }));
+      return wrap;
+    }
+    const M = schema.messenger;
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('이름', bindInput(M.label, (x) => { M.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '메신저' })),
+        pair('아이콘', bindInput(M.icon, (x) => { M.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📱' })),
+        pair('연락처 목록', bindSelect(M.contactsVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { M.contactsVar = x; rerender(); }), '방을 팔 수 있는 상대 풀 — 동료 명부 같은 이름 list 변수'),
+        pair('인물 변화 목록', bindSelect(M.notesVar ?? '',
+          [['', '(없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) M.notesVar = x; else delete M.notesVar; rerender(); }), '"이름 — 변화" 꼴 델타 목록 — 답장 생성에 실립니다'),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('선톡 확률', bindInput(M.firstChance ?? '', (x) => {
+          const n = parseFloat(x); if (isFinite(n)) M.firstChance = Math.max(0, Math.min(1, n)); else delete M.firstChance; rerender();
+        }, { cls: 'sce-w-s', ph: '0.25' }), '턴당 상대가 먼저 문자할 확률 (0이면 선톡 없음)'),
+        pair('선톡 쿨(턴)', bindInput(M.cooldown ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) M.cooldown = Math.max(0, Math.min(20, n)); else delete M.cooldown; rerender();
+        }, { cls: 'sce-w-s', ph: '3' }), '같은 방이 다시 선톡하기까지의 최소 턴'),
+        pair('통신 조건', bindInput(M.when, (x) => { M.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
+        '거짓인 턴엔 선톡·발신이 멈춥니다 (열람은 항상)'),
+      ),
+      pair('문자 말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
+        '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'), ''),
+      pair('패널 CSS', bindArea(M.css, (x) => { M.css = x || undefined; rerender(); },
+        '.scm-* 클래스를 덮어써 말풍선 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('메신저 삭제', () => {
+        if (confirm('메신저 설정을 지울까요? (진행 중 세이브의 방·대화는 세이브에 남습니다)')) { delete schema.messenger; rerender(); }
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '방·대화는 세이브(스냅샷)에 삽니다 — 리롤하면 그 턴의 대화도 같이 되감깁니다.')));
     return wrap;
   }
 
@@ -18906,7 +19352,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }
@@ -24134,6 +24580,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const timeMod = SimCore.require('time');
   const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
+  const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
@@ -24781,6 +25228,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
   let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
   let shopBusy = false;
+  // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
+  let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
+  let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
 
@@ -25455,6 +25905,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
+        if (auxPrompt.includes('먼저 메시지를 보낼')) auxCap += 300;   // 메신저 선톡 (v1.2.0)
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -25471,6 +25922,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             // 상점 첫 입고 (v0.96) — 지연 경로에서도 적용
             if (parsed.shop && shopMod.shopConfig(schema)) {
               shopMod.applyStock(schema, session.current, parsed.shop);
+            }
+            // 메신저 선톡 (v1.2.0) — 지연 경로에서도 적용
+            if (parsed.msgr && msgrMod.msgrConfig(schema)) {
+              msgrMod.applyDelta(schema, session.current, parsed.msgr);
             }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -25657,6 +26112,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (sh && shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) {
         specs.push({ key: 'shop', kind: 'shop', tab: null, label: sh.label, icon: sh.icon });
       }
+      // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
+      const mg = msgrMod.msgrConfig(schema);
+      if (mg) specs.push({ key: 'msgr', kind: 'msgr', tab: null, label: mg.label, icon: mg.icon });
     }
     const sig = JSON.stringify(specs);
     if (sig === utilBtnSig) return;
@@ -25810,6 +26268,23 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-game .scb-hot-body { white-space:pre-wrap; color:#dfe7f5; font-size:12.5px; margin-top:6px;
         border-top:1px dashed #2a3a5e; padding-top:6px; }
       #sc-game .scb-hot .scb-meta { color:#7d8aa5; font-size:11px; margin-top:4px; }
+      /* 메신저 (v1.2.0) — 기본 스킨. 봇의 messenger.css가 덮어쓴다 */
+      #sc-game .scm-log { max-height:52vh; overflow-y:auto; padding:6px 2px; display:flex;
+        flex-direction:column; gap:6px; }
+      #sc-game .scm-row { display:flex; }
+      #sc-game .scm-row.scm-mine { justify-content:flex-end; }
+      #sc-game .scm-bubble { max-width:78%; background:#182338; border:1px solid #2a3a5e;
+        border-radius:12px 12px 12px 4px; padding:7px 11px; }
+      #sc-game .scm-mine .scm-bubble { background:#24406e; border-color:#3d5c96;
+        border-radius:12px 12px 4px 12px; }
+      #sc-game .scm-from { color:#9db8e8; font-size:11.5px; font-weight:700; margin-bottom:2px; }
+      #sc-game .scm-body { color:#e6ebf5; font-size:13px; white-space:pre-wrap; word-break:break-word; }
+      #sc-game .scm-time { color:#5d6b87; font-size:10.5px; margin-top:3px; text-align:right; }
+      #sc-game .scm-head { color:#e6ebf5; font-weight:700; font-size:13.5px; margin:4px 0; }
+      #sc-game .scm-pick { padding:6px 10px; border:1px solid #2a3a5e; border-radius:8px;
+        margin-top:6px; cursor:pointer; color:#c5d0e6; font-size:13px; }
+      #sc-game .scm-pick.scm-on { background:#1d3055; border-color:#5b8def; color:#fff; }
+      #sc-game .scm-input { min-height:44px; }
       #sc-game .scg-points { margin:8px 0 2px; font-size:13px; color:#8fd6a8; font-weight:600; }
       #sc-game .scg-item { display:flex; align-items:center; gap:9px; border:1px solid #2a3a5e;
         border-radius:10px; background:#0e1526; margin-top:8px; padding:9px 12px; flex-wrap:wrap; }
@@ -25900,7 +26375,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const css = gameKind === 'party' ? schema?.party?.css
       : gameKind === 'calendar' ? schema?.calendar?.css
         : gameKind === 'board' ? schema?.board?.css
-          : gameKind === 'shop' ? schema?.shop?.css : null;
+          : gameKind === 'shop' ? schema?.shop?.css
+            : gameKind === 'msgr' ? schema?.messenger?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -25922,6 +26398,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     gameCalSel = null;
     boardView = { mode: 'list', postId: null, cat: null };  // 보드는 열 때마다 목록·전체 칸부터
     shopView = { cat: null, exchQty: '' };                   // 상점은 열 때마다 첫 카테고리부터
+    msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -25950,6 +26427,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     else if (gameKind === 'calendar') renderCalendarPanel(root);
     else if (gameKind === 'board') renderBoardPanel(root);
     else if (gameKind === 'shop') renderShopPanel(root);
+    else if (gameKind === 'msgr') renderMsgrPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -26579,6 +27057,231 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
     }
 
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
+  }
+
+  // ── 메신저 패널 (v1.2.0) — 게임 패널 5호 ─────────────────────
+  // 방은 유저만 판다 (연락처 풀 = contactsVar — "파티를 맺을 정도면 연락처는 안다").
+  // 발신·답장은 채팅 턴 없는 전용 보조 호출. 핵심: **활성 방 하나만** 다음 인풋에 실린다 —
+  // 비활성 방은 순수 패널 전용 대화 (서사는 모른다). turnBusy·저장 규약은 보드와 동일.
+  async function buildMsgrPersona(members) {
+    // 품질 리스크("누구세요" 답장)의 해법 — 캐릭터 로어북에서 멤버 이름이 키워드·제목에
+    // 걸리는 문항을 인물당 1건 발췌해 실어준다 (유저 아이디어: "캐릭터 로어북을 보낼 수 있으면")
+    try {
+      const char = await Risuai.getCharacter();
+      const lore = Array.isArray(char?.globalLore) ? char.globalLore : [];
+      const parts = [];
+      for (const name of members) {
+        const hit = lore.find((l) => l && l.comment !== SCHEMA_LORE_COMMENT
+          && (String(l.key || '').includes(name) || String(l.comment || '').includes(name)));
+        if (hit) parts.push(`◆ ${name}\n${String(hit.content || '').trim().slice(0, 700)}`);
+      }
+      return parts.join('\n').slice(0, 2800);
+    } catch { return ''; }
+  }
+
+  async function callMsgrAux(roomId) {
+    if (!session || !schema || msgrBusy) return;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
+    const room = session.current.msgr?.rooms?.find((r) => r.id === roomId);
+    if (!room) return;
+    msgrBusy = true;
+    gameNotice = '⏳ 상대가 입력 중…';
+    renderGamePanel();
+    try {
+      const prompt = msgrMod.interactionPrompt(schema, session.current, roomId, {
+        persona: await buildMsgrPersona(room.members),
+        narrative: await boardNarrative(),
+      });
+      const res = await callAuxLLM(prompt, room.kind === 'group' ? 1000 : 800);
+      if (res && res.blocked) {
+        gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 메신저 답장은 쓸 수 없어요';
+      } else if (typeof res === 'string') {
+        const delta = msgrMod.parseInteraction(res, engine.extractJsonObject);
+        if (delta) {
+          const r = msgrMod.applyDelta(schema, session.current, delta);
+          msgrMod.markRead(session.current, roomId);   // 보고 있는 방 — 안읽음 즉시 소거
+          await boardSaveNow('메신저 답장');
+          gameNotice = r.received ? null : '읽씹이네요 — 답이 없어요';
+        } else {
+          gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
+          console.log('[simcore] 메신저 파싱 실패:', res.slice(0, 200));
+        }
+      } else {
+        gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요';
+      }
+    } catch (e) {
+      gameNotice = `⚠ 메신저 호출 실패: ${e.message}`;
+    } finally {
+      msgrBusy = false;
+      renderGamePanel();
+    }
+  }
+
+  function renderMsgrPanel(root) {
+    const cfg = msgrMod.msgrConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const msgr = msgrMod.ensureMsgr(session.current);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, onClick, disabled = false) => {
+      const b = el('button', 'scb-btn', label);
+      b.type = 'button';
+      b.disabled = disabled || msgrBusy;
+      b.onclick = onClick;
+      return b;
+    };
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button';
+    x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    const room = msgrView.roomId != null ? msgr.rooms.find((r) => r.id === msgrView.roomId) : null;
+    if (msgrView.mode === 'create') {
+      // ── 방 만들기 — 연락처(contactsVar)에서만 고른다 ──
+      const pool = msgrMod.contacts(cfg, session.current);
+      card.appendChild(el('div', 'scg-note',
+        `연락처는 ${schema.vars.find((v) => v.id === cfg.contactsVar)?.label ?? cfg.contactsVar} 목록과 함께 움직여요 — 서사에서 동료가 되면 여기 나타납니다.`));
+      const kindBar = el('div', 'sch-tabs');
+      for (const [k, lbl] of [['dm', '1:1'], ['group', '단체방']]) {
+        const b = el('button', `sch-tab${msgrView.kind === k ? ' sch-on' : ''}`, lbl);
+        b.type = 'button';
+        b.onclick = () => { msgrView = { ...msgrView, kind: k, picked: [] }; renderGamePanel(); };
+        kindBar.appendChild(b);
+      }
+      card.appendChild(kindBar);
+      if (!pool.length) {
+        card.appendChild(el('div', 'scb-empty', '아직 연락처가 없어요 — 이야기에서 동료를 만들면 채워집니다.'));
+      }
+      const maxPick = msgrView.kind === 'dm' ? 1 : msgrMod.CAPS.GROUP_MEMBERS;
+      for (const name of pool) {
+        const row = el('div', 'scm-pick' + (msgrView.picked.includes(name) ? ' scm-on' : ''),
+          `${msgrView.picked.includes(name) ? '☑' : '☐'} ${name}`);
+        row.onclick = () => {
+          const has = msgrView.picked.includes(name);
+          let picked = has ? msgrView.picked.filter((p) => p !== name) : [...msgrView.picked, name];
+          if (!has && picked.length > maxPick) picked = msgrView.kind === 'dm' ? [name] : picked.slice(1);
+          msgrView = { ...msgrView, picked };
+          renderGamePanel();
+        };
+        card.appendChild(row);
+      }
+      let gi = null;
+      if (msgrView.kind === 'group') {
+        gi = el('input', 'scb-input');
+        gi.placeholder = `방 이름 (비우면 멤버 이름) — 상대 2~${msgrMod.CAPS.GROUP_MEMBERS}명, 본인 포함 ${msgrMod.CAPS.GROUP_MEMBERS + 1}인`;
+        gi.maxLength = msgrMod.CAPS.ROOM_NAME;
+        gi.value = msgrView.gname || '';
+        gi.oninput = () => { msgrView.gname = gi.value; };
+        card.appendChild(gi);
+      }
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('만들기', async () => {
+        const r = msgrMod.createRoom(cfg, session.current, {
+          kind: msgrView.kind, members: msgrView.picked, name: msgrView.gname,
+        });
+        if (!r.ok) { gameNotice = `⚠ ${r.reason}`; renderGamePanel(); return; }
+        await boardSaveNow('메신저 방 생성');
+        gameNotice = null;
+        msgrView = { ...msgrView, mode: 'room', roomId: r.id, picked: [], gname: '', draft: '' };
+        renderGamePanel();
+      }, !msgrView.picked.length));
+      bar.appendChild(btn('취소', () => { msgrView = { ...msgrView, mode: 'list', picked: [], gname: '' }; renderGamePanel(); }));
+      card.appendChild(bar);
+    } else if (msgrView.mode === 'room' && room) {
+      // ── 방 안 — 말풍선 + 입력. 열람 즉시 안읽음 소거 ──
+      if (room.unread) { msgrMod.markRead(session.current, room.id); boardSaveNow('메신저 읽음'); }
+      const isActive = msgr.active === room.id;
+      const head = el('div', 'scm-head',
+        `${room.kind === 'group' ? '👥' : '💬'} ${room.name}${room.kind === 'group' ? ` (${room.members.join(', ')})` : ''}`);
+      card.appendChild(head);
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('← 목록', () => { msgrView = { ...msgrView, mode: 'list', roomId: null }; renderGamePanel(); }));
+      bar.appendChild(btn(isActive ? '🟢 활성 — 서사로 전달 중' : '⚪ 비활성 — 패널 전용', async () => {
+        msgrMod.setActive(session.current, isActive ? null : room.id);
+        await boardSaveNow('메신저 활성 전환');
+        renderGamePanel();
+      }));
+      bar.appendChild(btn('나가기', async () => {
+        if (msgrView.confirmLeave === room.id) {
+          msgrMod.leaveRoom(session.current, room.id);
+          await boardSaveNow('메신저 방 나가기');
+          msgrView = { ...msgrView, mode: 'list', roomId: null, confirmLeave: null };
+        } else {
+          // 규칙 #6 — 패널 위 확인은 패널 자체 UI로 (두 번 누르기)
+          msgrView = { ...msgrView, confirmLeave: room.id };
+          gameNotice = '⚠ 대화가 통째로 사라져요 — 한 번 더 누르면 나갑니다';
+        }
+        renderGamePanel();
+      }));
+      card.appendChild(bar);
+      card.appendChild(el('div', 'scg-note', isActive
+        ? '이 방의 최근 대화가 다음 인풋에 서사로 전달됩니다 (활성은 한 방만).'
+        : '패널 전용 대화예요 — 서사는 이 대화를 모릅니다. 전달하려면 활성으로.'));
+      const log = el('div', 'scm-log');
+      if (!room.msgs.length) log.appendChild(el('div', 'scb-empty', '첫 메시지를 보내 보세요.'));
+      for (const m of room.msgs) {
+        const mine = m.from === 'me';
+        const row = el('div', `scm-row${mine ? ' scm-mine' : ''}`);
+        const bubble = el('div', 'scm-bubble');
+        if (!mine && room.kind === 'group') bubble.appendChild(el('div', 'scm-from', m.from));
+        bubble.appendChild(el('div', 'scm-body', m.body));
+        bubble.appendChild(el('div', 'scm-time', m.time));
+        row.appendChild(bubble);
+        log.appendChild(row);
+      }
+      card.appendChild(log);
+      const ta = el('textarea', 'scb-ta scm-input');
+      ta.placeholder = msgrBusy ? '상대가 입력 중…' : '메시지 (Enter 전송, Shift+Enter 줄바꿈)';
+      ta.maxLength = msgrMod.CAPS.MSG_LEN;
+      ta.value = msgrView.draft || '';
+      ta.oninput = () => { msgrView.draft = ta.value; };
+      const doSend = async () => {
+        const body = ta.value.trim();
+        if (!body || msgrBusy) return;
+        msgrMod.userMsg(schema, session.current, room.id, body);
+        msgrView.draft = '';
+        await boardSaveNow('메신저 발신');
+        callMsgrAux(room.id);   // 렌더는 callMsgrAux가 한다 (⏳ → 답장)
+      };
+      ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); } };
+      card.appendChild(ta);
+      const sendBar = el('div', 'scb-toolbar');
+      sendBar.appendChild(btn('전송', doSend));
+      card.appendChild(sendBar);
+      // 새 메시지가 보이게 스크롤 바닥으로 (렌더 뒤 한 틱)
+      setTimeout(() => { try { log.scrollTop = log.scrollHeight; } catch {} }, 0);
+    } else {
+      // ── 방 목록 ──
+      const bar = el('div', 'scb-toolbar');
+      bar.appendChild(btn('＋ 새 방', () => { msgrView = { ...msgrView, mode: 'create', picked: [], gname: '' }; renderGamePanel(); }));
+      card.appendChild(bar);
+      card.appendChild(el('div', 'scg-note',
+        `1:1 최대 ${msgrMod.CAPS.DM_MAX}개 · 단체방 최대 ${msgrMod.CAPS.GROUP_MAX}개. 🟢 활성 방 하나만 서사로 전달돼요. 리롤하면 그 턴의 대화도 함께 되감깁니다.`));
+      if (!msgr.rooms.length) {
+        card.appendChild(el('div', 'scb-empty', '방이 없어요 — [＋ 새 방]으로 연락처의 상대와 대화를 시작하세요.'));
+      }
+      for (const r of msgr.rooms) {
+        const row = el('div', 'scb-row');
+        row.appendChild(el('span', 'scb-num', r.kind === 'group' ? '👥' : '💬'));
+        const last = r.msgs.length ? r.msgs[r.msgs.length - 1] : null;
+        row.appendChild(el('span', 'scb-title',
+          `${msgr.active === r.id ? '🟢 ' : ''}${r.name}${last ? ` — ${(last.from === 'me' ? '나: ' : '') + last.body}`.slice(0, 40) : ''}`));
+        row.appendChild(el('span', 'scb-meta', `${r.unread ? `🔴${r.unread} · ` : ''}${last?.time ?? ''}`));
+        row.onclick = () => { msgrView = { ...msgrView, mode: 'room', roomId: r.id, draft: '', confirmLeave: null }; renderGamePanel(); };
+        card.appendChild(row);
+      }
+    }
     if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
     root.appendChild(card);
   }

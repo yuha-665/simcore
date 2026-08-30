@@ -21,6 +21,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
+const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -78,6 +79,7 @@ function initState(schema, opts = {}) {
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
   if (shopMod.shopConfig(schema)) st.shop = shopMod.initShop(); // 상점 (v0.96)
+  if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
 
@@ -148,6 +150,7 @@ function reconcileState(schema, state) {
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   if (shopMod.shopConfig(schema)) shopMod.ensureShop(state); // 상점 (v0.96) — 같은 규약
+  if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
   m.setupDone = m.setupDone ?? false;
@@ -616,6 +619,13 @@ function sendPhase(schema, prevState, { rng } = {}) {
     if (bLine) lines.push(bLine);
   }
 
+  // 3.9 메신저 활성 방 (v1.2.0) — **유저가 활성화한 방 하나만** 대화 원문이 실린다.
+  // 비활성 방은 순수 패널 전용 — 서사는 모른다 (유저 설계: 토큰은 고른 방만 쓴다).
+  if (!isSetupPending(schema, state)) {
+    const mLine = msgrMod.mainLine(schema, state);
+    if (mLine) lines.push(mLine);
+  }
+
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
       '[최초 설정 진행 중] 아직 시뮬레이션이 시작되지 않았다. 유저와 함께 시작 상황(배경, 자원, 세력 등)을 정하는 대화를 진행하라. 유저의 묘사가 충분해지면 확정된 시작 상황을 서술로 정리하라.');
@@ -849,7 +859,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -877,6 +887,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
   // 5.8 상점 첫 입고 (v0.96) — 재고가 비어 있을 때만 요청했으므로, 온 것만 채운다
   if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
+  // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
+  if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -1296,6 +1308,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     (!opts.allowAll && state) ? (boardMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 상점 첫 입고 (v0.96, 옵트인) — 재고가 빈 동안만 얹는다. 물갈이는 패널 버튼 전용.
     (!opts.allowAll && state) ? (shopMod.auxSpec(schema, state, makeLookup) || null) : null,
+    // 메신저 선톡 (v1.2.0, 옵트인) — 확률+쿨다운에 든 턴만 얹는다 (평턴 비용 0)
+    (!opts.allowAll && state) ? (msgrMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -1330,6 +1344,7 @@ function auxHasWork(schema, state = null) {
   if (schema?.suggest) return true;
   if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   if (shopMod.shopConfig(schema)) return true;   // 상점 첫 입고가 얹혀 간다 (v0.96)
+  if (msgrMod.msgrConfig(schema)) return true;   // 메신저 선톡이 얹혀 간다 (v1.2.0)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -1596,7 +1611,8 @@ function parseAuxResponse(text) {
     board: (obj.hot && typeof obj.hot === 'object')
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
-    shop: obj.shop ?? null };  // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    msgr: Array.isArray(obj.msgr) ? obj.msgr : null };  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
 }
 
 module.exports = {

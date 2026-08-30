@@ -896,6 +896,30 @@ const S = {
   padding-top: 6px; }`,
   },
 
+  // ── 단말기 메신저 (P4.7) — 메신저 (v1.2.0 엔진 기능) ──
+  // 유저 제안: "헌터 단말기답게 연락처 교환한 상대와 문자". 연락처 풀 = allies 동료 명부
+  // ("파티를 맺을 정도면 연락처는 안다" — 유저 결정). 게이트 안 통신 두절은 헌터넷과 동일.
+  // 활성 방 하나만 서사로 전달 — 나머지는 순수 패널 대화 (토큰 설계의 핵심, 유저 안).
+  messenger: {
+    label: '단말기', icon: '📱',
+    contactsVar: 'allies', notesVar: 'npc_notes',
+    firstChance: 0.25, cooldown: 3,
+    guide: '헌터들의 문자 말투: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ, ㅅㄱ) 섞임. '
+      + '인물별 말투·성격은 로어북/명단 프로필 그대로 — 문자라고 캐릭터가 바뀌지 않는다. '
+      + '단골 소재: 게이트 일정 맞추기, 의뢰 나눠 갖기, 정산 얘기, 안부, 시답잖은 짤 얘기. '
+      + '관계 진전은 서사에서 실제 벌어진 일까지만 반영.',
+    when: 'not in_gate',
+    // 상태창과 같은 다크네이비/스틸블루 규격 — 말풍선만 단말기 느낌으로
+    css: `
+.scg-card.scb-wide { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }
+.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }
+.scm-bubble { background: rgba(25,30,40,.85); border-color: rgba(138,162,204,.3); }
+.scm-mine .scm-bubble { background: #33549e; border-color: #8aa2cc; }
+.scm-from { color: #8aa2cc; }
+.scb-btn { background: rgba(25,30,40,.7); border-color: rgba(138,162,204,.3); color: #c5d0e6; }
+.scb-btn:hover { background: rgba(138,162,204,.15); border-color: #8aa2cc; }`,
+  },
+
   // ── 알터 스토어 (P4.5) — 상점 (v0.96 엔진 기능) ──
   // 원본 로어북 상점의 고질병(유저 지목): "S랭크 스킬북 뇌절 + 가격 계산 힘듦" →
   // 등급 어휘·가격 밴드를 여기 못박아 시스템이 강제한다. 코인 경제 기준: E랭크 킬 1~5C.
@@ -1611,6 +1635,54 @@ console.log('\n━━ P4 — 헌터넷 (커뮤니티 보드) ━━');
     const line = boardMod.mainLine(S, t);
     return line.includes('현재 화제 기사') && line.includes('진서연') && !line.includes('단독 보도');
   })(), '');
+}
+
+console.log('\n━━ P4.7 — 단말기 (메신저) ━━');
+{
+  const msgrMod = SC.require('messenger');
+  const cfg = msgrMod.msgrConfig(S);
+  let t = fresh();
+  ok('메신저 부착 (빈 방 목록)', t.msgr && Array.isArray(t.msgr.rooms) && t.msgr.rooms.length === 0);
+  ok('연락처 = 동료 명부 연동 (allies)', cfg.contactsVar === 'allies' && cfg.notesVar === 'npc_notes', '');
+  // 방은 유저만 — 연락처(allies)에 있는 상대만
+  ok('연락처 밖 인물 거부', !msgrMod.createRoom(cfg, t, { kind: 'dm', members: ['김민수'] }).ok, '');
+  t.vars.allies = ['김민수', '서지한', '이하늘'];
+  const r1 = msgrMod.createRoom(cfg, t, { kind: 'dm', members: ['김민수'] });
+  ok('동료와 1:1 방 생성', r1.ok, JSON.stringify(r1));
+  const rg = msgrMod.createRoom(cfg, t, { kind: 'group', members: ['서지한', '이하늘'], name: '레이드 준비방' });
+  ok('단체방 생성 (본인 포함 파티 5인 캡)', rg.ok && msgrMod.CAPS.GROUP_MEMBERS === 4, '');
+  // 선톡 — 시드 해시라 같은 턴 = 같은 결과 (리롤 안정). 턴 3은 김민수 방이 뜨는 턴 (실측)
+  t.meta.turn = 3;
+  const first = msgrMod.firstContactRoom(cfg, t);
+  ok('선톡 발동 턴 — 김민수 방 (시드 해시, 리롤 재현)', first?.id === r1.id
+    && msgrMod.firstContactRoom(cfg, t)?.id === first.id, JSON.stringify(first));
+  ok('선톡 요청이 보조에 실림 (+형식)', (() => {
+    const aux = engine.buildAuxPrompt(S, t, '거리', null);
+    return aux.includes('[단말기 — 주인공의 단말기]') && aux.includes('먼저 메시지를 보낼') && aux.includes('"msgr"');
+  })(), '');
+  // 게이트 안 통신 두절 — 같은 턴이라도 요청이 빠진다
+  t.vars.in_gate = true;
+  ok('게이트 안 — 선톡 차단 (통신 두절)', !engine.buildAuxPrompt(S, t, '던전 안', null).includes('[단말기'), '');
+  t.vars.in_gate = false;
+  // 발신·답장 — from은 멤버만, 활성 방만 서사로
+  msgrMod.userMsg(S, t, r1.id, '내일 게이트 갈래?');
+  msgrMod.applyDelta(S, t, [{ id: r1.id, msgs: [
+    { from: '김민수', body: 'ㅇㅋ 몇 시?' },
+    { from: '위조범', body: '난 멤버 아님' },
+  ] }]);
+  const room1 = t.msgr.rooms.find((r) => r.id === r1.id);
+  ok('답장 부착 + 비멤버 위조 차단', room1.msgs.length === 2 && room1.msgs[1].from === '김민수', JSON.stringify(room1.msgs));
+  ok('비활성 방 — 안읽음 배지', room1.unread === 1, String(room1.unread));
+  ok('비활성 — 서사에 안 실림', !engine.sendPhase(S, t, { rng: seededRng('m', 1, 's') }).promptBlock.includes('ㅇㅋ 몇 시?'), '');
+  msgrMod.setActive(t, r1.id);
+  const pb = engine.sendPhase(S, t, { rng: seededRng('m', 2, 's') }).promptBlock;
+  ok('활성 방 — 대화 원문이 서사로 전달', pb.includes('[단말기]') && pb.includes('ㅇㅋ 몇 시?')
+    && pb.includes('내일 게이트 갈래?'), '');
+  // 답장 프롬프트 — 인격 컨텍스트 (npc_notes 델타 발췌)
+  t.vars.npc_notes = ['김민수 — D급 승급', '박무관 — 은퇴'];
+  const ip = msgrMod.interactionPrompt(S, t, r1.id, { persona: '◆ 김민수\n무뚝뚝한 창잡이', narrative: '어제 같이 사냥했다' });
+  ok('답장 프롬프트 — 로어북 persona + notes 발췌 + 말투 지침', ip.includes('무뚝뚝한 창잡이')
+    && ip.includes('김민수 — D급 승급') && !ip.includes('박무관') && ip.includes('초성체'), '');
 }
 
 console.log('\n━━ P4.5 — 알터 스토어 (상점) ━━');

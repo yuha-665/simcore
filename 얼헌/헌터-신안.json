@@ -1080,6 +1080,13 @@
           "notify": "[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth keeping. Show the drop moment and update the inventory (grade tag, count last). Coins are already settled when the store exists."
         },
         {
+          "id": "aberrant",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "in_gate and (grade_i >= 4 or hazard >= 60)",
+          "notify": "[변종] An aberrant appears — a mutated or unidentifiable entity that does not belong at this gate grade. Treat it as a real anomaly (the Association will want a report), never as the norm."
+        },
+        {
           "id": "offer_post",
           "weight": 2,
           "cooldown": 3,
@@ -1258,7 +1265,12 @@
     {
       "id": "no_unmeasurable",
       "when": "true",
-      "text": "\"측정 불가\" 판정을 남발하지 마라 — 미지의 존재라도 대부분 S 구간 안에서 수치화된다. 수치·랭크의 최종 근거는 상태 블록이다."
+      "text": "수치·랭크의 최종 근거는 상태 블록이다. 어떤 존재든 \"측정 불가\"로 얼버무리지 말고 S 구간 안에서 수치화하라."
+    },
+    {
+      "id": "gate_scale",
+      "when": "in_gate",
+      "text": "게이트 몬스터의 격은 게이트 등급을 따른다 — E·D급은 흔한 마수 수준이다. 정체불명·변종·이상 개체는 상위 게이트나 브레이크, 또는 [변종] 이벤트가 열 때만 꺼내라."
     },
     {
       "id": "downed_now",

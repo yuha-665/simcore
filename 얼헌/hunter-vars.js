@@ -503,6 +503,12 @@ const S = {
           notify: '[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth '
             + 'keeping. Show the drop moment and update the inventory (grade tag, count last). '
             + 'Coins are already settled when the store exists.' },
+        // 변종 — "정체불명의 마수"는 상시 분위기가 아니라 이벤트가 여는 예외다 (유저 지시
+        // 2026-08-30: 컨텍 오염 제거의 짝). 상위 게이트·흉흉한 세계에서만, 드물게.
+        { id: 'aberrant', weight: 1, cooldown: 12, when: 'in_gate and (grade_i >= 4 or hazard >= 60)',
+          notify: '[변종] An aberrant appears — a mutated or unidentifiable entity that does not '
+            + 'belong at this gate grade. Treat it as a real anomaly (the Association will want a '
+            + 'report), never as the norm.' },
         { id: 'offer_post', weight: 2, cooldown: 3,
           notify: '[의뢰] New work hits the quest board — register 1~2 offers on the offers board, '
             + 'format "[협회|길드|개인] 내용 (보상) @+days". Rewards follow the economy (E-rank errands '
@@ -577,10 +583,18 @@ const S = {
   ],
 
   directives: [
-    // 원본 "측정 불가 방지" 로어북(1.7K자)의 한 줄 정제판
+    // 원본 "측정 불가 방지" 로어북(1.7K자)의 한 줄 정제판.
+    // ⚠ "미지의 존재" 같은 떡밥 단어를 넣지 말 것 (2026-08-30 컨텍 오염 실사고) — 매턴
+    // 실리는 금지문이 그 개념을 계속 상기시켜, 첫 게이트부터 "정체불명의 마수 변이체"가
+    // 쏟아졌다. 금지문에는 금지할 문구만 남긴다. 변종은 aberrant 이벤트가 정식으로 연다.
     { id: 'no_unmeasurable', when: 'true',
-      text: '"측정 불가" 판정을 남발하지 마라 — 미지의 존재라도 대부분 S 구간 안에서 수치화된다. '
-        + '수치·랭크의 최종 근거는 상태 블록이다.' },
+      text: '수치·랭크의 최종 근거는 상태 블록이다. 어떤 존재든 "측정 불가"로 얼버무리지 말고 '
+        + 'S 구간 안에서 수치화하라.' },
+    // 몬스터 격 가이드 — 판정 DC는 게이트 등급이 미는데(opp_n) 서사 속 몬스터의 격은 안
+    // 묶여 있었다. 초반 게이트가 초반답게 굴러가게 격을 등급에 귀속시킨다.
+    { id: 'gate_scale', when: 'in_gate',
+      text: '게이트 몬스터의 격은 게이트 등급을 따른다 — E·D급은 흔한 마수 수준이다. '
+        + '정체불명·변종·이상 개체는 상위 게이트나 브레이크, 또는 [변종] 이벤트가 열 때만 꺼내라.' },
     { id: 'downed_now', when: 'downed',
       text: '주인공은 전투불능 상태다 — 스스로 움직일 수 없다. 자력 탈출·반격을 묘사하지 마라.' },
     { id: 'hp_low', when: 'hp > 0 and hp <= hp_max * 3 / 10',
@@ -1232,6 +1246,23 @@ console.log('\n━━ 판정 — 목표치는 상대 등급이 민다 (S랭크�
   ok('foe 보조 관리 허용 (allow 등재)', S.updater.allow.some((a) => a.id === 'foe'), '');
   // 상시 잔류 오독 건 — 상태창 템플릿에서 {lastcheck}를 뺐다
   ok('상태창에 {lastcheck} 상시 노출 없음', !S.statusUI.templates[0].template.includes('{lastcheck}'), '');
+}
+
+console.log('\n━━ 컨텍 오염 — 변종은 상시 분위기가 아니라 이벤트다 (2026-08-30) ━━');
+{
+  // 매턴 금지문이 "미지의 존재"를 상기시켜 첫 게이트부터 정체불명 변이체가 쏟아진 실사고
+  const dir = (id) => S.directives.find((d) => d.id === id);
+  ok('측정 불가 금지문에 떡밥 단어 없음', !/미지|정체불명|변종/.test(dir('no_unmeasurable').text), '');
+  ok('몬스터 격 가이드 — 게이트 안에서만', dir('gate_scale').when === 'in_gate'
+    && dir('gate_scale').text.includes('게이트 등급을 따른다'), '');
+  const ab = S.rules.randomEvents.table.find((r) => r.id === 'aberrant');
+  ok('변종 이벤트 존재 (상위 게이트·고위험 전용)', !!ab
+    && ab.when === 'in_gate and (grade_i >= 4 or hazard >= 60)', ab?.when ?? '없음');
+  // 신인 첫 게이트(D급·hazard 30)에서는 발화 조건 자체가 닫혀 있다
+  const rk = fresh(); rk.vars.in_gate = true; rk.vars.grade_i = 2;
+  ok('신인 D게이트에선 잠김', !truthy(evaluate(ab.when, engine.makeLookup(S, rk.vars), seededRng('ab', 1, 'e'))), '');
+  const hi = fresh(); hi.vars.in_gate = true; hi.vars.grade_i = 5;
+  ok('A게이트에선 열림', truthy(evaluate(ab.when, engine.makeLookup(S, hi.vars), seededRng('ab', 2, 'e'))), '');
 }
 
 console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이선스 비례) ━━');

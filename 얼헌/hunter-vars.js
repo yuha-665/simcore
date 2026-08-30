@@ -603,6 +603,14 @@ const S = {
       text: 'MP 또는 SP가 30% 아래다 — 극심한 소모 상태. 격한 행동·시전은 실패하거나 대가를 치른다.' },
     { id: 'broke', when: 'won <= 0',
       text: '수중에 돈이 한 푼도 없다 — 결제·구매가 필요한 장면은 그 사실에 부딪혀야 한다.' },
+    // 경제 시세표 (2026-08-30) — 메인이 상한을 몰라 720만 정산을 약속하고 장부는 500만만
+    // 기록한 실사고의 처방. 서사가 부를 금액의 근거 + 장부 상한(분할 규칙)을 같이 준다.
+    // 기존 확정 수치와 정합: 길드 기본급 20만+등급×15만/월, D게이트 3인 정산 720만, 장비 수백만~.
+    { id: 'economy', when: 'true',
+      text: '돈 시세 기준 — 게이트 클리어 정산(인당): E 50~200만, D 200~800만, C 800만~3천만, '
+        + 'B 3천만~1억, A 1~5억, S 5억+. 평균 월수입(정산 포함): E 100~300만, D 300만~1천만, '
+        + 'C 1천~5천만, B 5천만~2억, A 2억+. 길드 기본급은 별도(월 20만+등급×15만). '
+        + '한 번에 2천만원 넘는 입금은 선금/잔금 분할 지급으로 서사하라 — 장부가 턴당 2천만까지만 받는다.' },
     { id: 'pts_idle', when: 'stat_pts >= 4',
       text: '미분배 스탯 포인트가 {stat_pts}점 쌓여 있다. 분배는 유저의 선택이다 — 대신 정하지 말고, '
         + '수련·정비 장면에서 가볍게 상기시켜라.' },
@@ -702,8 +710,10 @@ const S = {
       { id: 'gates' },
       { id: 'break_name', maxLength: 30 },
       { id: 'break_in', maxGain: 30, maxLoss: 30 },
-      // 원화: 수입은 턴당 5백만이 상한(대박 보상도 분할 정산), 손실은 사실상 무제한 (비대칭 원칙)
-      { id: 'won', maxGain: 5000000, maxLoss: 1000000000 },
+      // 원화: 수입은 턴당 2천만이 상한, 손실은 사실상 무제한 (비대칭 원칙).
+      // 5백만 → 2천만 (2026-08-30): D게이트 3인 정산 720만이 잘려 서사(720)와 장부(500)가
+      // 어긋난 실사고. economy 지시문의 시세표 기준 C급 정산까지 한 방, B급부터 분할 서사.
+      { id: 'won', maxGain: 20000000, maxLoss: 1000000000 },
       { id: 'coin', maxGain: 50, maxLoss: 500 },
     ],
   },
@@ -1263,6 +1273,17 @@ console.log('\n━━ 컨텍 오염 — 변종은 상시 분위기가 아니라 
   ok('신인 D게이트에선 잠김', !truthy(evaluate(ab.when, engine.makeLookup(S, rk.vars), seededRng('ab', 1, 'e'))), '');
   const hi = fresh(); hi.vars.in_gate = true; hi.vars.grade_i = 5;
   ok('A게이트에선 열림', truthy(evaluate(ab.when, engine.makeLookup(S, hi.vars), seededRng('ab', 2, 'e'))), '');
+}
+
+console.log('\n━━ 경제 — 시세표 지시문 + 수입 상한 정합 (서사 720 vs 장부 500 사고) ━━');
+{
+  const eco = S.directives.find((d) => d.id === 'economy');
+  ok('시세표 지시문 상시 (게이트 정산·월수입·기본급)', !!eco && eco.when === 'true'
+    && /게이트 클리어 정산.*월수입.*기본급/s.test(eco.text), '');
+  const won = S.updater.allow.find((a) => a.id === 'won');
+  ok('수입 상한 2천만 (C급 정산 한 방, B급부터 분할)', won.maxGain === 20000000, String(won.maxGain));
+  ok('지시문의 분할 문구가 상한과 같은 숫자', eco.text.includes('2천만') && eco.text.includes('분할'), '');
+  ok('손실은 비대칭 유지 (사실상 무제한)', won.maxLoss === 1000000000, '');
 }
 
 console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이선스 비례) ━━');

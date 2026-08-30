@@ -8547,6 +8547,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const packList = h('div', { class: 'sce-assets-list' });
     box.appendChild(packList);
     packs.forEach((p, i) => {
+      // 모듈 팩 — 원본이 모듈 로어북의 매니페스트라 여기서 고쳐도 남지 않는다:
+      // 스키마 저장이 origin:'module'을 걸러내고, [모듈 팩 다시 읽기]가 원문으로 덮어쓴다.
+      // 편집 가능한 척 보여주다 실사고("대조 해제가 자꾸 되살아남") — 읽기 전용 카드로.
+      if (p.origin === 'module') {
+        const card = h('section', { class: 'sce-asset-pack' });
+        card.appendChild(h('div', { class: 'sce-asset-pack-head' },
+          h('div', {},
+            h('div', { class: 'sce-asset-pack-title' }, `🧩 ${p.id || `팩 ${i + 1}`} — 모듈 팩`),
+            h('div', { class: 'sce-asset-pack-sub' },
+              `${(p.slots || []).length}개 칸 · ${p.source || '출처 미상'} · 실제 대조 ${p.verify === false ? '끔' : '켬'}`
+              + `${p.usage ? ` · ${String(p.usage).slice(0, 40)}` : ''}`))));
+        card.appendChild(h('div', { class: 'sce-hint', style: 'margin:8px 10px 10px' },
+          '모듈에서 온 팩이라 여기서는 못 고칩니다 — 스키마 저장에 안 실리고, [모듈 팩 다시 읽기]가 '
+          + '매니페스트 원문으로 덮어써요. 대조를 끄려면 그 모듈 로어북의 ⚙simcore-pack 항목 JSON에 '
+          + '"verify": false 를 직접 넣고 [모듈 팩 다시 읽기]를 누르세요.'));
+        packList.appendChild(card);
+        return;
+      }
       const card = h('section', { class: 'sce-asset-pack' });
       card.appendChild(h('div', { class: 'sce-asset-pack-head' },
         h('div', {},

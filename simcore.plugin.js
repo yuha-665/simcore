@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.1
-//@display-name SimCore (시뮬 엔진) v1.2.1 기사 자리 표시
+//@version 1.2.2
+//@display-name SimCore (시뮬 엔진) v1.2.2 모듈 팩 읽기 전용
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.2.2 ────────────────────────────────────────────────
+// 편집기 에셋 탭이 모듈 팩(origin:'module')을 편집 가능한 척 보여줌 — 실제로는 스키마
+// 저장이 걸러내고 [다시 읽기]가 매니페스트 원문으로 덮어써서, "실제 대조 해제가 자꾸
+// 되살아나는" 실사고 (유저 제보). 모듈 팩 카드를 읽기 전용 + 원본 수정 안내로 교체
+// (대조 끄기는 모듈 로어북의 ⚙simcore-pack JSON에 "verify": false).
 //
 // ── v1.2.1 ────────────────────────────────────────────────
 // 현재 화제 기사가 첫 발행 전엔 흔적 없이 비어 있어 "패널에 따로 없는 건가"로 오인됨
@@ -19139,6 +19145,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const packList = h('div', { class: 'sce-assets-list' });
     box.appendChild(packList);
     packs.forEach((p, i) => {
+      // 모듈 팩 — 원본이 모듈 로어북의 매니페스트라 여기서 고쳐도 남지 않는다:
+      // 스키마 저장이 origin:'module'을 걸러내고, [모듈 팩 다시 읽기]가 원문으로 덮어쓴다.
+      // 편집 가능한 척 보여주다 실사고("대조 해제가 자꾸 되살아남") — 읽기 전용 카드로.
+      if (p.origin === 'module') {
+        const card = h('section', { class: 'sce-asset-pack' });
+        card.appendChild(h('div', { class: 'sce-asset-pack-head' },
+          h('div', {},
+            h('div', { class: 'sce-asset-pack-title' }, `🧩 ${p.id || `팩 ${i + 1}`} — 모듈 팩`),
+            h('div', { class: 'sce-asset-pack-sub' },
+              `${(p.slots || []).length}개 칸 · ${p.source || '출처 미상'} · 실제 대조 ${p.verify === false ? '끔' : '켬'}`
+              + `${p.usage ? ` · ${String(p.usage).slice(0, 40)}` : ''}`))));
+        card.appendChild(h('div', { class: 'sce-hint', style: 'margin:8px 10px 10px' },
+          '모듈에서 온 팩이라 여기서는 못 고칩니다 — 스키마 저장에 안 실리고, [모듈 팩 다시 읽기]가 '
+          + '매니페스트 원문으로 덮어써요. 대조를 끄려면 그 모듈 로어북의 ⚙simcore-pack 항목 JSON에 '
+          + '"verify": false 를 직접 넣고 [모듈 팩 다시 읽기]를 누르세요.'));
+        packList.appendChild(card);
+        return;
+      }
       const card = h('section', { class: 'sce-asset-pack' });
       card.appendChild(h('div', { class: 'sce-asset-pack-head' },
         h('div', {},

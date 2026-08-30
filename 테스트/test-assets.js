@@ -11,6 +11,11 @@ const { compile } = SC.require('expr');
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 
+// v1.2.2 회귀 — 편집기가 모듈 팩(origin:'module')을 편집 가능한 척 보여줬다:
+// 저장이 걸러내고 [다시 읽기]가 매니페스트로 덮어써 "대조 해제가 자꾸 되살아남" (실사고).
+ck('편집기 — 모듈 팩은 읽기 전용 카드', src.includes('모듈에서 온 팩이라 여기서는 못 고칩니다')
+  && src.includes('"verify": false 를 직접 넣고'), '');
+
 // 간이 lookup — 엔진 makeLookup 대역 (게이트 평가용)
 const mkLookup = (vars) => (name) => {
   if (!(name in vars)) throw new Error(`unknown var ${name}`);

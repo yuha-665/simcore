@@ -1092,7 +1092,10 @@ const S = {
         id: 'char_emotions',
         source: '얼헌 원본 Characters/Status Command List',
         sep: ' ', format: '<img="{name}">', verify: false,
-        usage: '인물 등장·조명·발화 시 기본 1장 — 이름만. 감정이 크게 움직이면 감정 칸을 덧붙인다.',
+        // v1.4.0 문구 수정 — "감정이 크게 움직이면"이 콜드 스타트를 만들던 실사고
+        // (배포 유저 "에셋이 안 든다" + 제작자 실기 "0장이다가 한두 번 나오면 그 뒤로 잘 나옴").
+        // 감정 칸을 예외가 아니라 기본 동작으로: 발화마다 대화문 앞에 이름+감정.
+        usage: '인물이 등장하거나 말할 때마다 대화문 앞에 1장 — 이름+지금 감정으로. 감정을 못 고르겠으면 이름만(기본 표정).',
         slots: [
           { id: 'who', label: '인물', values: [
             'Kang Min-hyuk', 'Kim Min-soo', 'Min Chae-rin', 'Baek Hwi-Sung', 'Song Ha-neul',

@@ -653,8 +653,23 @@ function validateSchema(schema) {
     if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+    // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
+    if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
     checkRef(a, p);
   });
+  {
+    const off = (schema.actions || []).filter((a) => a && a.offstage === true);
+    if (off.length > 1) {
+      warn('$.actions', `막간(offstage) 액션이 ${off.length}개입니다 — 하나면 충분해요 (어느 쪽이든 켜지면 같은 효과)`);
+    }
+    // 켜고 끄는 스위치가 아니라 1회용이면 "한 장면만 막간"이 된다 — 의도한 것인지만 짚어 준다
+    for (const a of off) {
+      if ((a.mode || 'oneshot') !== 'hold') {
+        warn(`$.actions[${(schema.actions || []).indexOf(a)}].offstage`,
+          '막간 액션이 oneshot입니다 — 딱 한 장면만 주인공이 빠집니다. 껄 때까지 계속 두려면 mode를 hold로');
+      }
+    }
+  }
 
   // ── checks (판정 — "완벽 주사위") ──
   // 결과(roll/total/grade)는 변수가 아니라 meta에 남으므로 updater.allow에 올릴 수 있는

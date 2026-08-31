@@ -45,6 +45,23 @@ const DEFAULT_CHECK_GUIDE =
   '※ 위 [판정]은 시스템이 주사위로 확정한 결과다. 성공을 실패로, 실패를 성공으로 뒤집어 서술하지 마라. '
   + '수치를 본문에 나열하지 말고 그 결과의 무게를 장면으로 그려라.';
 
+/**
+ * 막간 — 주인공이 등장하지 않는 장면 (v1.5.0, actions[].offstage).
+ * 계기(유저): "페르소나가 존재하면 억지로 계속 등장시켜서" 주변 인물끼리 굴러가는 장면이나
+ * 흑막의 뒷이야기를 볼 수가 없다. 프롬프트 토글에서 페르소나 칸을 빼거나 작가노트에 매번
+ * 적으면 되지만 그걸 턴마다 하는 게 불편하다 → 버튼 하나로.
+ *
+ * 셋째 줄이 이 지시문의 핵심이다. 주인공을 지우면 모델은 유저 입력을 여전히 "주인공의 말"로
+ * 읽으려 하므로(그래서 없앤 주인공이 되돌아온다), 입력의 신분을 아예 연출 지시로 바꿔 준다.
+ */
+const DEFAULT_OFFSTAGE =
+  '[막간 — 주인공 부재] 이번 장면에 주인공(유저 페르소나)은 등장하지 않는다.\n'
+  + '- 주인공의 대사·행동·생각·시점을 쓰지 마라. 다른 인물이 주인공을 부르거나 찾아오게 만들지도 마라. '
+  + '주인공을 향한 2인칭 서술("당신은 …")도 쓰지 마라.\n'
+  + '- 다른 인물들이 각자의 자리에서 알아서 움직이는 장면을 써라 — 조연들끼리의 대화, 다른 곳에서 벌어지는 사건, '
+  + '배후 인물의 모의처럼 주인공이 모르는 곳의 이야기가 이 장면의 몫이다.\n'
+  + '- 유저의 입력은 주인공의 말이나 행동이 아니라 "무엇을 비출지" 정하는 연출 지시다. 대사로 옮기지 말고 장면으로 만들어라.';
+
 // 갈림길이 걸려 있는 동안 매 전송 덧붙는다 — 지시문은 AI가 모르는 것만 말한다는 원칙대로,
 // 선택지 내용은 안 싣는다(그건 유저 상태창의 것이다). 모델이 대신 골라 버리는 것만 막는다.
 const DEFAULT_CHOICE_WAIT =
@@ -494,6 +511,18 @@ function rollCheck(schema, state, check, rng, changeLog) {
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
 // 반환: { state, promptBlock, consumedActions, changeLog }
 
+/**
+ * 이번 전송에 막간(주인공 부재) 액션이 발동했는가 (v1.5.0).
+ * armed가 아니라 **firedThisSend**를 본다 — oneshot은 sendPhase에서 무장이 풀리므로
+ * armed만 보면 "한 장면만 막간"이 프롬프트를 못 받는다 (hold는 둘 다 참).
+ * 어댑터도 이걸 보고 페르소나 칸을 걷어낸다 — 판정 기준을 한 군데 둔다.
+ */
+function offstageFired(schema, state) {
+  const fired = state?.meta?.firedThisSend;
+  if (!fired) return false;
+  return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
+}
+
 function sendPhase(schema, prevState, { rng } = {}) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
@@ -635,11 +664,19 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (ps.systemGuide) lines.push(ps.systemGuide);
   else if (schema.vars.length) lines.push(DEFAULT_SYSTEM_GUIDE);
 
+  // 3.95 막간 (v1.5.0) — 맨 끝자리다. 이번 턴의 가장 센 제약이라 생성에 제일 가까이 둔다.
+  // (페르소나 칸 자체를 프롬프트에서 걷어내는 일은 어댑터 몫 — 엔진은 리수 DB를 모른다)
+  if (offstageFired(schema, state) && ps.offstageGuide !== false) {
+    lines.push(typeof ps.offstageGuide === 'string' && ps.offstageGuide.trim()
+      ? renderTemplate(ps.offstageGuide, lookup) : DEFAULT_OFFSTAGE);
+  }
+
   // 전송 단계에서 일어난 것(무장 액션 효과·시간 소비)도 "이미 반영됨"에 이어 붙인다 —
   // 이번 턴 보조 호출은 이 뒤에 오므로, 보조가 그걸 자기 몫으로 또 세면 안 된다.
   recordChangeMemo(schema, state, changeLog, true);
 
-  return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives };
+  return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives,
+    offstage: offstageFired(schema, state) };
 }
 
 // ── ②' 최초설정 응답 단계 — 절대값 적용, 정기 틱·이벤트 없음 ──
@@ -1617,7 +1654,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice, offstageFired,
   renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

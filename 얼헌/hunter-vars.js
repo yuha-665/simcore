@@ -580,6 +580,17 @@ const S = {
   // 13~17에 묶여 S랭크부터 주사위가 장식이 됐다 (유저 지적 — 원본 스탯 스케일은 S=100+).
   // 등급 연동이면 같은 급 상대는 끝까지 팽팽하고(굴림 9~12 필요), 한 급 위는 +3씩 벽,
   // 급 아래는 시원하게 쓸린다 — 헌터물 성장 문법 그대로. hazard는 잔가시(+0~4)로만 남는다.
+  // ── 액션 (P7) — 막간 (v1.5.0 엔진 기능) ──
+  // 유저 제안: 페르소나가 프롬프트에 있으면 모델이 주인공을 억지로 등장시켜, 조연들끼리
+  // 굴러가는 장면이나 흑막 쪽 이야기를 볼 수가 없다. 이 버튼을 켜 둔 동안 주인공은 무대
+  // 밖이고, 유저 입력은 "무엇을 비출지" 정하는 연출 지시로 읽힌다. 끄면 원래대로.
+  // 상태 변수는 안 건드린다 — 주인공이 안 나오는 장면이라 HP도 명성도 움직일 일이 없다.
+  actions: [
+    { id: 'offstage', label: '🎬 막간 — 주인공 없이', mode: 'hold', offstage: true,
+      inject: '[막간] 지금은 주인공의 시야 밖에서 세계가 움직이는 장면이다. 헌터넷·협회·길드·다른 헌터들, '
+        + '혹은 아직 주인공과 마주치지 않은 인물들 쪽으로 카메라를 옮겨라.' },
+  ],
+
   checks: [
     { id: 'gate_fight', label: '전투 판정', roll: 'rand(1, 20)',
       mod: 'floor(mainstat / 10) + floor(level / 10)',
@@ -1818,6 +1829,27 @@ console.log('\n━━ P8 — 의뢰 보드 (수락 전 대기열) ━━');
     && u.vars.offers.some((o) => o.includes('납품')), JSON.stringify(u.vars.offers));
   ok('의뢰 게시 이벤트 존재', !!S.rules.randomEvents.table.find((r) => r.id === 'offer_post'), '');
   ok('수락 규칙 지시문 존재', S.directives.some((d) => d.id === 'offer_rule'), '');
+}
+
+console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
+{
+  // 유저 제안: 페르소나가 있으면 모델이 주인공을 억지로 등장시켜 조연·흑막 쪽 장면을 못 본다
+  const act = S.actions.find((a) => a.id === 'offstage');
+  ok('막간 액션 존재 (hold + offstage)', !!act && act.mode === 'hold' && act.offstage === true, JSON.stringify(act));
+  ok('상태 변수는 안 건드림 (주인공이 없는 장면이라 움직일 수치가 없다)',
+    !act.effects && !act.check, '');
+  let t = fresh();
+  const p0 = turn(t, {}, 130).prompt;
+  ok('평턴 — 흔적 없음 (토큰 0)', !p0.includes('주인공 부재'), '');
+  t = engine.toggleAction(S, t, 'offstage').state;
+  const send = engine.sendPhase(S, t, { rng: seededRng('h', 131, 's') });
+  ok('막간 켜면 — 지시문 + 얼헌 카메라 지시', send.offstage === true
+    && send.promptBlock.includes('[막간 — 주인공 부재]')
+    && send.promptBlock.includes('헌터넷·협회·길드'), '');
+  ok('지시문이 프롬프트 맨 끝', send.promptBlock.trimEnd().endsWith('장면으로 만들어라.'), '');
+  const off = engine.sendPhase(S, engine.toggleAction(S, send.state, 'offstage').state,
+    { rng: seededRng('h', 132, 's') });
+  ok('끄면 원래대로', off.offstage === false && !off.promptBlock.includes('주인공 부재'), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

@@ -119,10 +119,17 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 | `id` / `label` | 라벨 **맨 앞 이모지가 곧 버튼 아이콘**이 된다 (버튼 칸은 글리프 한 칸) |
 | `mode` | `oneshot`(1회성) \| `hold`(지속형) |
 | `cooldown` | 턴 수 (0 이상). oneshot만 기록됨 |
+| `offstage` (v1.5.0) | true면 **막간** — 이 액션이 발동한 턴(hold면 켜 둔 내내)에 ① 주인공 부재 지시문이 프롬프트 **맨 끝**에 붙고 ② 어댑터가 **페르소나 원문을 프롬프트에서 걷어낸다**(db에서 읽어 문자열 일치 제거, 24자 미만이면 생략. 실패해도 지시문은 나간다). 조연들끼리의 장면·흑막 쪽 이야기용 — 페르소나가 있으면 모델이 주인공을 억지로 등장시키는 문제를 끈다. 2개 이상이면 경고, oneshot이면 "한 장면만" 경고 |
 | `when` | 사용 조건. 거짓이면 잠김(🔒) |
 | `inject` | 발동 시 AI에게 전달될 문장 |
 | `effects[]` | rules와 같은 형식 |
 | `check` | 판정 id — 무장 → 전송 시 굴림, 같은 턴 서사 반영 |
+
+- 막간 판정 기준은 armed가 아니라 **`meta.firedThisSend`** (oneshot도 발동한 그 턴엔 걸려야 하므로).
+  엔진·어댑터 공용 `engine.offstageFired(schema, state)` 한 군데. 지시문 교체·끄기는
+  `promptState.offstageGuide` (문자열이면 대체 + `{변수}` 치환, `false`면 끔 — checkGuide와 같은 규약).
+  지시문의 핵심은 **유저 입력의 신분을 "주인공의 말"에서 연출 지시로 바꾸는 줄** — 없으면 모델이
+  입력을 주인공 대사로 읽어 없앤 주인공이 되돌아온다.
 
 **공통: 누르면 무장(armed)만 되고 다음 `sendPhase`에서 발동한다.** 즉시 적용이 아니다.
 한 번 더 누르면 취소. 차이는 발동 후 — oneshot은 자동 해제 + 쿨다운, **hold는 끌 때까지 매 턴 계속**.
@@ -243,9 +250,9 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 
 ## promptState — 메인 AI에게 보낼 상태 요약
 
-`{ template, includeEvents, eventPriority, systemGuide, checkGuide }`. `{변수id}` 자리표시자.
+`{ template, includeEvents, eventPriority, systemGuide, checkGuide, offstageGuide }`. `{변수id}` 자리표시자.
 `eventPriority`는 이벤트 발동 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙을 자동으로 붙인다
-(문자열을 주면 그 문구로 대체). `checkGuide`도 같은 원칙 (판정 턴 전용, false로 끄기 가능).
+(문자열을 주면 그 문구로 대체). `checkGuide`도 같은 원칙 (판정 턴 전용, false로 끄기 가능). `offstageGuide`는 막간 턴 전용 (v1.5.0).
 
 ---
 

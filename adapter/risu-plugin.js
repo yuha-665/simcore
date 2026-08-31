@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.4.1
-//@display-name SimCore (시뮬 엔진) v1.4.1 에셋 확장자 관대화
+//@version 1.5.0
+//@display-name SimCore (시뮬 엔진) v1.5.0 막간 (주인공 부재)
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,19 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.5.0 ────────────────────────────────────────────────
+// 막간 — 주인공이 등장하지 않는 장면 (유저 제안: "페르소나가 존재하면 억지로 계속
+// 등장시켜서" 조연들끼리의 장면·흑막 쪽 이야기를 굴릴 수가 없다. 프롬프트 토글에서
+// 페르소나 칸을 빼거나 작가노트에 매번 적는 걸 버튼 하나로).
+// - actions[].offstage: true — 그 액션이 발동한 턴(hold면 켜 둔 내내)에 두 가지가 걸린다:
+//   ① 주인공 부재 지시문이 프롬프트 **맨 끝**에 (생성에 가장 가까운 자리)
+//   ② 어댑터가 페르소나 원문을 프롬프트에서 걷어냄 (db에서 읽어 문자열 일치로 제거,
+//      24자 미만이면 생략 — 남의 문장을 도려낼 위험. 실패해도 지시문은 그대로 간다)
+// - 지시문의 핵심은 셋째 줄: 유저 입력의 신분을 "주인공의 말"에서 **연출 지시**로 바꾼다.
+//   안 그러면 모델이 입력을 주인공 대사로 읽어 없앤 주인공이 되돌아온다.
+// - promptState.offstageGuide로 문구 교체·끄기 (checkGuide·eventPriority와 같은 규약).
+// - 얼헌: 🎬 막간 — 주인공 없이 (hold).
 //
 // ── v1.4.1 ────────────────────────────────────────────────
 // 에셋 이름 확장자 관대화 (유저 제보: "[에셋에서 자동 감지]가 .webp까지 구분해서 이상하게
@@ -2757,6 +2770,10 @@
     } catch (e) { console.log('[simcore] 과거 스냅샷 프리페치 실패:', e.message); }
   }
   let charKey = null;
+  // 막간(v1.5.0)이 걷어낼 페르소나 원문 캐시 — db 접근이 느려 한 번만 읽는다.
+  // ⚠ 선언은 여기(상태 선언부)에 둘 것: loadForCurrentChar가 부팅 중 먼저 불리므로
+  //   쓰는 자리 옆에 let으로 두면 TDZ ReferenceError가 난다 (v1.0.7 스코프 사고와 같은 유형).
+  let personaCache = null;   // { text } | null(미조회)
   let currentChaId = null; // 현재 선택된 캐릭터 식별자 (편집기 오염 방지용 — 스키마 유무와 무관하게 항상 갱신)
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
   // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
@@ -2844,6 +2861,7 @@
     const key = `${char.chaId}:${chatId}`;
     if (session && charKey === key) return; // 이미 로드됨
     charKey = key;
+    personaCache = null;   // 페르소나는 캐릭터·채팅마다 다를 수 있다 (v1.5.0 막간)
     schema = parsed;
     mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
     // 모듈 팩 매니페스트 (v0.94) — 옵트인 봇만 db를 읽는다. 실패해도 로드는 계속.
@@ -2970,6 +2988,49 @@
   // 'translate'|'otherAx' 중 하나다. 즉 모듈의 루아 axLLM('otherAx')도, 다른 플러그인의
   // runLLMModel도, 번역·요약도 전부 여기를 지나간다. type을 안 보면 남의 프롬프트에
   // 우리 상태 블록을 얹어 그 기능을 죽이고, onSend까지 불러 우리 턴을 몰래 넘기게 된다.
+  // ── 막간: 페르소나 칸 걷어내기 (v1.5.0) ───────────────────
+  // 지시문만으로도 대개 되지만, 페르소나 원문이 프롬프트에 남아 있으면 모델이 주인공을 자꾸
+  // 무대로 끌어온다 (유저: "페르소나가 존재하면 억지로 계속 등장시켜서"). 유저가 손으로 하던
+  // "프롬프트 토글에서 페르소나 칸 빼기"를 막간 액션이 켜진 턴에만 대신한다.
+  // 실패(db 권한 거부·문구 불일치)는 조용히 넘어간다 — 지시문이 여전히 일을 한다.
+  async function readPersonaText() {
+    if (personaCache) return personaCache.text;
+    let text = '';
+    try {
+      const db = await Risuai.getDatabase(['personas', 'selectedPersona']);
+      const list = Array.isArray(db?.personas) ? db.personas : [];
+      const sel = typeof db?.selectedPersona === 'number'
+        ? list[db.selectedPersona]
+        : (list.find((p) => p && (p.id === db?.selectedPersona || p.name === db?.selectedPersona)) ?? list[0]);
+      text = String(sel?.personaPrompt ?? sel?.desc ?? '').trim();
+    } catch (e) { console.log('[simcore] 페르소나 읽기 실패:', e.message); }
+    personaCache = { text };
+    return text;
+  }
+
+  /** 프롬프트에서 페르소나 원문을 지운다. 반환: 손질된 배열 (빈 껍데기 메시지는 빠진다) */
+  async function stripPersona(messages) {
+    const txt = await readPersonaText();
+    // 짧은 페르소나("나는 김철수다.")를 지우려다 남의 문장까지 도려낼 수 있다 — 길이로 문턱을 둔다
+    if (!txt || txt.length < 24) {
+      if (txt) console.log('[simcore] 막간: 페르소나 문구가 너무 짧아 제거 생략 — 지시문만 나갑니다');
+      return messages;
+    }
+    let hit = 0;
+    // 마지막 유저 메시지(이번 입력)는 건드리지 않는다 — 우리가 지울 것이 있을 자리가 아니다
+    const lastUserIdx = messages.map((m) => m?.role).lastIndexOf('user');
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (!m || i === lastUserIdx || typeof m.content !== 'string') continue;
+      if (!m.content.includes(txt)) continue;
+      m.content = m.content.split(txt).join('').replace(/\n{3,}/g, '\n\n').trim();
+      hit++;
+    }
+    if (!hit) { console.log('[simcore] 막간: 프롬프트에서 페르소나 문구를 못 찾음 — 지시문만 나갑니다'); return messages; }
+    // 페르소나만 들어 있던 칸은 빈 껍데기가 된다 — 빈 content는 일부 API가 거부하므로 통째로 뺀다
+    return messages.filter((m) => !(m && typeof m.content === 'string' && !m.content.trim()));
+  }
+
   await Risuai.addRisuReplacer('beforeRequest', async (messages, type) => {
     // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
     // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
@@ -3009,6 +3070,8 @@
       const r = await session.onSend(sendIndex);
       lastChangeLog = r.changeLog;
       messages.push({ role: 'system', content: r.promptBlock });
+      // 막간 (v1.5.0) — 이 턴만 페르소나 칸을 걷어낸다 (지시문은 promptBlock 끝에 이미 실렸다)
+      if (r.offstage) messages = await stripPersona(messages);
       await mirrorVars(chaIdx, chatIdx);
       await writeBridgeControl(chaIdx, chatIdx);
     } catch (e) {

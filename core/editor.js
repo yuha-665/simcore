@@ -6237,6 +6237,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
         ),
+        // 막간 (v1.5.0) — 주인공 없이 주변 인물·흑막 쪽 이야기를 굴리는 스위치
+        h('div', { class: 'sce-row' },
+          bindCheck(a.offstage === true, (x) => { if (x) a.offstage = true; else delete a.offstage; rerender(); },
+            '막간 — 켜진 턴엔 주인공(유저 페르소나)이 등장하지 않는다'),
+          h('span', { class: 'sce-hint', style: 'margin:0' },
+            a.offstage === true
+              ? '주인공 부재 지시문이 프롬프트 맨 끝에 붙고, 페르소나 칸도 그 턴만 프롬프트에서 빠집니다 (유저 입력은 "무엇을 비출지" 연출 지시로 읽힙니다). 껄 때까지 계속 두려면 지속형으로.'
+              : '조연들끼리의 장면·흑막의 뒷이야기용. 페르소나가 있으면 모델이 주인공을 억지로 등장시키는 문제를 버튼 하나로 끕니다.'),
+        ),
         effectRows(schema, a.effects = a.effects || [], rerender),
       ));
     });

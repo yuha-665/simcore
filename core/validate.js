@@ -1182,23 +1182,48 @@ function validateSchema(schema) {
       }
       if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
       if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
-      // 환전 (v0.97) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
+      // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
+      if (SH.units != null) {
+        if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
+          err('$.shop.units', '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
+        } else {
+          const ratios = [];
+          SH.units.forEach((u, i) => {
+            if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
+              err(`$.shop.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
+            }
+            if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`$.shop.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
+            else ratios.push(u.ratio);
+          });
+          if (ratios.length === SH.units.length && !ratios.includes(1)) {
+            err('$.shop.units', '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+          }
+          if (new Set(ratios).size !== ratios.length) err('$.shop.units', '같은 ratio의 단위가 겹칩니다');
+        }
+      }
+      // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
       if (SH.exchange != null) {
-        const EX = SH.exchange;
-        if (typeof EX !== 'object' || Array.isArray(EX)) err('$.shop.exchange', 'exchange는 { var, rate, spread?, label? } 객체');
-        else {
+        const isArr = Array.isArray(SH.exchange);
+        const exArr = isArr ? SH.exchange : [SH.exchange];
+        if (isArr && (!exArr.length || exArr.length > 4)) err('$.shop.exchange', '환전 창구는 1~4개');
+        const seenVars = new Set();
+        exArr.forEach((EX, i) => {
+          const P = isArr ? `$.shop.exchange[${i}]` : '$.shop.exchange';
+          if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(P, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
           const xv = (schema.vars || []).find((v) => v.id === EX.var);
-          if (!EX.var || typeof EX.var !== 'string') err('$.shop.exchange.var', '상대 지갑 변수(var)가 필요합니다');
-          else if (!xv) err('$.shop.exchange.var', `상대 지갑 '${EX.var}'가 vars에 없음`);
-          else if (xv.type !== 'int' && xv.type !== 'float') err('$.shop.exchange.var', `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
-          else if (EX.var === SH.currency) err('$.shop.exchange.var', '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+          if (!EX.var || typeof EX.var !== 'string') err(`${P}.var`, '상대 지갑 변수(var)가 필요합니다');
+          else if (!xv) err(`${P}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
+          else if (xv.type !== 'int' && xv.type !== 'float') err(`${P}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
+          else if (EX.var === SH.currency) err(`${P}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+          else if (seenVars.has(EX.var)) err(`${P}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
+          else seenVars.add(EX.var);
           if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
-            err('$.shop.exchange.rate', '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
+            err(`${P}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
           }
           if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
-            err('$.shop.exchange.spread', '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
+            err(`${P}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
           }
-        }
+        });
       }
     }
   }

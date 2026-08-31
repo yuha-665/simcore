@@ -227,6 +227,69 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
     && t.shop.stocked === true, J(t.shop.stock));
 }
 
+// ── v1.3.0 — 표기 단위 사다리 (units): 골드/실버/코퍼는 화폐 3개가 아니라 표기다 ──
+{
+  const SU = JSON.parse(J(S));
+  SU.shop.units = [{ label: '코퍼', ratio: 1 }, { label: '골드', ratio: 10000 }, { label: '실버', ratio: 100 }];
+  delete SU.shop.bands;   // 밴드 클램프가 사다리 표기 검증을 가리지 않게
+  const v = validateSchema(SU);
+  ck('★ units 스키마 통과', v.ok, J(v.errors));
+  const cfg = shop.shopConfig(SU);
+  ck('units 내림차순 정규화', cfg.units.map((u) => u.ratio).join(',') === '10000,100,1', J(cfg.units));
+  ck('★ fmtMoney 사다리 표기', shop.fmtMoney(cfg, 123456) === '12골드 34실버 56코퍼', shop.fmtMoney(cfg, 123456));
+  ck('fmtMoney 0은 최소 단위', shop.fmtMoney(cfg, 0) === '0코퍼', shop.fmtMoney(cfg, 0));
+  ck('fmtMoney 중간 단위 생략', shop.fmtMoney(cfg, 10005) === '1골드 5코퍼', shop.fmtMoney(cfg, 10005));
+  ck('fmtMoney 음수', shop.fmtMoney(cfg, -250) === '-2실버 50코퍼', shop.fmtMoney(cfg, -250));
+  ck('units 없으면 숫자 그대로', shop.fmtMoney(shop.shopConfig(S), 123456) === '123456', '');
+  // 거래 라인·잔액 부족이 사다리 표기를 쓴다
+  const t = engine.initState(SU); t.meta.setupDone = true;
+  t.vars.coin = 25000;
+  shop.applyStock(SU, t, { stock: [{ cat: '추천', name: '엘릭서', grade: '유니크', price: 12345 }] });
+  const r = shop.buy(SU, t, t.shop.stock[0].id);
+  ck('★ 구매 라인 사다리 표기', r.ok && r.line.includes('1골드 23실버 45코퍼'), J(r));
+  t.vars.coin = 3;
+  shop.applyStock(SU, t, { stock: [{ cat: '추천', name: '비싼것', grade: '유니크', price: 20000 }] });
+  const r2 = shop.buy(SU, t, t.shop.stock[0].id);
+  ck('잔액 부족 사유도 표기', !r2.ok && r2.reason.includes('3코퍼') && r2.reason.includes('2골드'), J(r2));
+  // 입고 지시에 최소 단위 안내가 실린다
+  const t2 = engine.initState(SU); t2.meta.setupDone = true;
+  const spec = shop.auxSpec(SU, t2, engine.makeLookup);
+  ck('입고 지시 — 최소 단위·사다리 안내', spec.includes('최소 단위(코퍼)') && spec.includes('1골드=10000코퍼'), spec.slice(0, 200));
+  // 검증 — 최소 단위 ratio 1 강제
+  const bad = JSON.parse(J(S)); bad.shop.units = [{ label: '골드', ratio: 100 }];
+  ck('★ ratio 1 없으면 오류', !validateSchema(bad).ok, '');
+  const bad2 = JSON.parse(J(S)); bad2.shop.units = [{ label: '골드', ratio: 5 }, { label: '실버', ratio: 5 }, { label: '코퍼', ratio: 1 }];
+  ck('ratio 중복 오류', !validateSchema(bad2).ok, '');
+}
+
+// ── v1.3.0 — 환전 다짝 (exchange 배열): 원·달러·엔처럼 독립 지갑 여럿 ──
+{
+  const SX = JSON.parse(J(S));
+  SX.vars.push({ id: 'usd', label: '달러', type: 'int', init: 50, min: 0 });
+  SX.shop.exchange = [
+    { var: 'won', rate: 1000, spread: 0.2, label: '암거래 환전' },
+    { var: 'usd', rate: 2, spread: 0, label: '달러 창구' },
+  ];
+  const v = validateSchema(SX);
+  ck('★ 환전 배열 스키마 통과', v.ok, J(v.errors));
+  const cfg = shop.shopConfig(SX);
+  ck('창구 2개 정규화', cfg.exchanges.length === 2, J(cfg.exchanges));
+  ck('하위호환 — cfg.exchange = 첫 창구', cfg.exchange && cfg.exchange.var === 'won', '');
+  const t = engine.initState(SX); t.meta.setupDone = true;
+  t.vars.coin = 10;
+  const r = shop.exchange(SX, t, 5, 'buy', 'usd');
+  ck('★ 지정 창구 환전 — usd 지불', r.ok && t.vars.coin === 15 && t.vars.usd === 40 && t.vars.won === 100000, J([r, t.vars]));
+  const r2 = shop.exchange(SX, t, 5, 'buy');
+  ck('varId 생략 = 첫 창구(won)', r2.ok && t.vars.won === 94000, J(t.vars));
+  const r3 = shop.exchange(SX, t, 5, 'buy', 'ghost');
+  ck('없는 창구 거부', !r3.ok, J(r3));
+  ck('창구별 환율', shop.exchangeRates(cfg, 'usd').buy === 2 && shop.exchangeRates(cfg, 'won').buy === 1200, '');
+  // 검증 — 지갑 중복 창구 거부
+  const bad = JSON.parse(J(SX));
+  bad.shop.exchange = [{ var: 'won', rate: 1000 }, { var: 'won', rate: 500 }];
+  ck('지갑 중복 창구 오류', !validateSchema(bad).ok, '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `— ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

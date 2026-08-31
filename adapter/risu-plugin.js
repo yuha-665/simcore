@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.5
-//@display-name SimCore (시뮬 엔진) v1.2.5 진단줄 레이아웃 픽스
+//@version 1.3.0
+//@display-name SimCore (시뮬 엔진) v1.3.0 상점 단위 사다리·환전 다짝
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.3.0 ────────────────────────────────────────────────
+// 상점 화폐 확장 (배포 봇 피드백: "골드·실버·코퍼 세 종류 쓰니 환전이 하나만 지정돼서
+// 물건을 10만 코퍼에 팔더라"). 요구의 정체가 둘이라 기계도 둘:
+// - 표기 단위 사다리 units: [{label, ratio}] — 골드/실버/코퍼는 화폐 3개가 아니라 돈
+//   하나의 표기다. 지갑·계산은 언제나 최소 단위(ratio 1) 정수 하나, 표기만 엔진이 쪼갬
+//   (123456 → "12골드 34실버 56코퍼"). 지갑·진열가·시세판·거래 라인·통지 전부 적용,
+//   입고 지시에도 "가격은 최소 단위 정수" 한 줄 동봉. 최대 4단, 검증이 ratio 1 강제.
+// - 환전 다짝 exchange: [{...}] 배열 허용 (최대 4) — 원↔달러↔엔처럼 독립 지갑 여럿.
+//   객체는 1개짜리로 정규화(하위호환 100%). 패널 환전 탭이 창구별 시세·사기/팔기,
+//   편집기 상점 탭이 창구 행 추가/삭제. 검증은 창구별 + 지갑 중복 거부.
+// 다중 상점(shops[])은 다음 단계.
 //
 // ── v1.2.5 ────────────────────────────────────────────────
 // v1.2.4 진단줄이 에셋 탭 2열 그리드의 셀로 흘러들어 셀렉트가 짜부라짐 (유저 스샷).
@@ -4874,11 +4886,11 @@
     else renderGamePanel();
   }
 
-  // 환전 (v0.97) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
-  async function onShopExchange(dir) {
+  // 환전 (v0.97, v1.3.0 다짝) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
+  async function onShopExchange(dir, exVar) {
     if (!session || !schema) return;
     const qty = parseInt(shopView.exchQty, 10);
-    const r = shopMod.exchange(schema, session.current, qty, dir);
+    const r = shopMod.exchange(schema, session.current, qty, dir, exVar);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) { shopView.exchQty = ''; await commitPanelChanges({}, '환전'); }
     else renderGamePanel();
@@ -4928,7 +4940,9 @@
 
     const walletDef = schema.vars.find((v) => v.id === cfg.currency);
     const walletVal = session.current.vars[cfg.currency] ?? 0;
-    const fmtWallet = walletDef?.format ? String(walletDef.format).replace('{v}', walletVal) : String(walletVal);
+    // 표기 단위(v1.3.0)가 있으면 사다리 표기("12골드 34실버 56코퍼")가 format보다 우선
+    const fmtWallet = cfg.units ? shopMod.fmtMoney(cfg, walletVal)
+      : walletDef?.format ? String(walletDef.format).replace('{v}', walletVal) : String(walletVal);
     card.appendChild(el('div', 'sch-wallet', `💰 ${walletDef?.label ?? cfg.currency}: ${fmtWallet}`));
 
     // 카테고리 탭 + 매입 창구 탭
@@ -4948,25 +4962,28 @@
     card.appendChild(tabs);
 
     if (active === '__exch') {
-      // ── 환전 창구 (v0.97) — 통화 ↔ 상대 지갑, 환율·수수료는 시스템이 (뇌절 없음) ──
-      const rates = shopMod.exchangeRates(cfg);
-      const exDef = schema.vars.find((v) => v.id === cfg.exchange.var);
-      const exVal = session.current.vars[cfg.exchange.var] ?? 0;
+      // ── 환전 창구 (v0.97, v1.3.0 다짝) — 통화 ↔ 상대 지갑들, 환율·수수료는 시스템이 (뇌절 없음) ──
       const curName = walletDef?.label ?? cfg.currency;
-      const exName = exDef?.label ?? cfg.exchange.var;
-      const fmtEx = exDef?.format ? String(exDef.format).replace('{v}', exVal) : String(exVal);
-      card.appendChild(el('div', 'sch-wallet', `👛 ${exName}: ${fmtEx}`));
-      card.appendChild(el('div', 'scg-note',
-        `${cfg.exchange.label} — 시세: ${curName} 1 사기 ${rates.buy} ${exName} · 팔기 ${rates.sell} ${exName}`));
-      const row = el('div', 'sch-item');
+      const qrow = el('div', 'sch-item');
       const inp = el('input', 'sch-exch-qty');
-      inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량`;
+      inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량${cfg.units ? ` (${cfg.units[cfg.units.length - 1].label})` : ''}`;
       inp.value = shopView.exchQty ?? '';
       inp.oninput = () => { shopView.exchQty = inp.value; };
-      row.appendChild(inp);
-      row.appendChild(btn(`${curName} 사기`, 'scb-btn', () => onShopExchange('buy')));
-      row.appendChild(btn(`${curName} 팔기`, 'scb-btn', () => onShopExchange('sell')));
-      card.appendChild(row);
+      qrow.appendChild(inp);
+      card.appendChild(qrow);
+      for (const ex of cfg.exchanges) {
+        const rates = shopMod.exchangeRates(cfg, ex.var);
+        const exDef = schema.vars.find((v) => v.id === ex.var);
+        const exVal = session.current.vars[ex.var] ?? 0;
+        const exName = exDef?.label ?? ex.var;
+        const fmtEx = exDef?.format ? String(exDef.format).replace('{v}', exVal) : String(exVal);
+        card.appendChild(el('div', 'sch-wallet', `👛 ${exName}: ${fmtEx}`));
+        const row = el('div', 'sch-item');
+        row.appendChild(el('span', 'sch-name', `${ex.label} — ${curName} 1 사기 ${rates.buy} ${exName} · 팔기 ${rates.sell} ${exName}`));
+        row.appendChild(btn('사기', 'scb-btn', () => onShopExchange('buy', ex.var)));
+        row.appendChild(btn('팔기', 'scb-btn', () => onShopExchange('sell', ex.var)));
+        card.appendChild(row);
+      }
     } else if (active === '__sell') {
       // ── 매입 창구 — 소지 목록에서 판다. 시세판 매치는 즉시가, 아니면 감정 ──
       card.appendChild(el('div', 'scg-note', '시세가 잡힌 물건은 바로 팔리고, 나머지는 감정을 거칩니다 (감정가의 일부만 쳐줘요).'));
@@ -4976,13 +4993,13 @@
         const row = el('div', 'sch-item');
         row.appendChild(el('span', 'sch-name', item));
         const q = shopMod.quoteFor(shop, item);
-        row.appendChild(el('span', 'sch-price', q != null ? `매입 ${q}` : '감정 필요'));
+        row.appendChild(el('span', 'sch-price', q != null ? `매입 ${shopMod.fmtMoney(cfg, q)}` : '감정 필요'));
         row.appendChild(btn('판매', 'scb-btn', () => onShopSell(item)));
         card.appendChild(row);
       }
       if (shop.buying.length) {
         const bx = el('div', 'sch-log');
-        bx.textContent = '📋 매입 시세판: ' + shop.buying.map((b) => `${b.name} ${b.price}`).join(' · ');
+        bx.textContent = '📋 매입 시세판: ' + shop.buying.map((b) => `${b.name} ${shopMod.fmtMoney(cfg, b.price)}`).join(' · ');
         card.appendChild(bx);
       }
     } else {
@@ -5002,7 +5019,7 @@
         row.appendChild(nm);
         if (it.grade) row.appendChild(el('span', 'sch-grade', it.grade));
         if (it.qty != null) row.appendChild(el('span', 'sch-qty', `한정 ${it.qty}`));
-        row.appendChild(el('span', 'sch-price', String(it.price)));
+        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, it.price)));
         row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < it.price));
         card.appendChild(row);
       }

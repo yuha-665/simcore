@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.2.5
-//@display-name SimCore (시뮬 엔진) v1.2.5 진단줄 레이아웃 픽스
+//@version 1.3.0
+//@display-name SimCore (시뮬 엔진) v1.3.0 상점 단위 사다리·환전 다짝
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.3.0 ────────────────────────────────────────────────
+// 상점 화폐 확장 (배포 봇 피드백: "골드·실버·코퍼 세 종류 쓰니 환전이 하나만 지정돼서
+// 물건을 10만 코퍼에 팔더라"). 요구의 정체가 둘이라 기계도 둘:
+// - 표기 단위 사다리 units: [{label, ratio}] — 골드/실버/코퍼는 화폐 3개가 아니라 돈
+//   하나의 표기다. 지갑·계산은 언제나 최소 단위(ratio 1) 정수 하나, 표기만 엔진이 쪼갬
+//   (123456 → "12골드 34실버 56코퍼"). 지갑·진열가·시세판·거래 라인·통지 전부 적용,
+//   입고 지시에도 "가격은 최소 단위 정수" 한 줄 동봉. 최대 4단, 검증이 ratio 1 강제.
+// - 환전 다짝 exchange: [{...}] 배열 허용 (최대 4) — 원↔달러↔엔처럼 독립 지갑 여럿.
+//   객체는 1개짜리로 정규화(하위호환 100%). 패널 환전 탭이 창구별 시세·사기/팔기,
+//   편집기 상점 탭이 창구 행 추가/삭제. 검증은 창구별 + 지갑 중복 거부.
+// 다중 상점(shops[])은 다음 단계.
 //
 // ── v1.2.5 ────────────────────────────────────────────────
 // v1.2.4 진단줄이 에셋 탭 2열 그리드의 셀로 흘러들어 셀렉트가 짜부라짐 (유저 스샷).
@@ -4018,23 +4030,48 @@ function validateSchema(schema) {
       }
       if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
       if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
-      // 환전 (v0.97) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
+      // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
+      if (SH.units != null) {
+        if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
+          err('$.shop.units', '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
+        } else {
+          const ratios = [];
+          SH.units.forEach((u, i) => {
+            if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
+              err(`$.shop.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
+            }
+            if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`$.shop.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
+            else ratios.push(u.ratio);
+          });
+          if (ratios.length === SH.units.length && !ratios.includes(1)) {
+            err('$.shop.units', '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+          }
+          if (new Set(ratios).size !== ratios.length) err('$.shop.units', '같은 ratio의 단위가 겹칩니다');
+        }
+      }
+      // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
       if (SH.exchange != null) {
-        const EX = SH.exchange;
-        if (typeof EX !== 'object' || Array.isArray(EX)) err('$.shop.exchange', 'exchange는 { var, rate, spread?, label? } 객체');
-        else {
+        const isArr = Array.isArray(SH.exchange);
+        const exArr = isArr ? SH.exchange : [SH.exchange];
+        if (isArr && (!exArr.length || exArr.length > 4)) err('$.shop.exchange', '환전 창구는 1~4개');
+        const seenVars = new Set();
+        exArr.forEach((EX, i) => {
+          const P = isArr ? `$.shop.exchange[${i}]` : '$.shop.exchange';
+          if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(P, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
           const xv = (schema.vars || []).find((v) => v.id === EX.var);
-          if (!EX.var || typeof EX.var !== 'string') err('$.shop.exchange.var', '상대 지갑 변수(var)가 필요합니다');
-          else if (!xv) err('$.shop.exchange.var', `상대 지갑 '${EX.var}'가 vars에 없음`);
-          else if (xv.type !== 'int' && xv.type !== 'float') err('$.shop.exchange.var', `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
-          else if (EX.var === SH.currency) err('$.shop.exchange.var', '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+          if (!EX.var || typeof EX.var !== 'string') err(`${P}.var`, '상대 지갑 변수(var)가 필요합니다');
+          else if (!xv) err(`${P}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
+          else if (xv.type !== 'int' && xv.type !== 'float') err(`${P}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
+          else if (EX.var === SH.currency) err(`${P}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+          else if (seenVars.has(EX.var)) err(`${P}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
+          else seenVars.add(EX.var);
           if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
-            err('$.shop.exchange.rate', '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
+            err(`${P}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
           }
           if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
-            err('$.shop.exchange.spread', '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
+            err(`${P}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
           }
-        }
+        });
       }
     }
   }
@@ -5954,6 +5991,12 @@ SimCore.define("shop", function (require, module, exports) {
 // 환전 (v0.97): exchange: { var, rate, spread?, label? } — 상점 통화 ↔ 다른 지갑 변수.
 //   1통화 = rate(상대 지갑 단위). spread가 암거래 수수료: 살 때 rate×(1+spread),
 //   팔 때 rate×(1-spread). 계산은 전부 엔진 (환율 뇌절 방지 — 보조 호출 0).
+//   v1.3.0: 배열 허용 — exchange: [{...}, {...}] 창구 여러 개 (원↔달러↔엔). 객체는 1개짜리로 정규화.
+//
+// 표기 단위 (v1.3.0): units: [{ label, ratio }] — 골드/실버/코퍼는 화폐 3개가 아니라
+//   돈 하나의 표기 사다리다. 지갑·계산은 언제나 최소 단위 정수 하나, 표기만 엔진이 쪼갠다
+//   (123456 → "12골드 34실버 56코퍼"). 지갑 변수를 단위마다 쪼개면 "어느 지갑에 넣지"
+//   뇌절 표면만 늘어난다 — 그 길을 구조로 막는 장치. 최소 단위 ratio 1 필수 (잔돈 표기).
 
 const { evaluate, truthy } = require('./expr');
 
@@ -5962,11 +6005,52 @@ const CAPS = {
   QTY_MAX: 9, PRICE_MAX: 100000000,
 };
 
+/** 환전 창구 정규화 — 객체·배열 모두 받아 유효한 창구 배열로 (최대 4, var 중복은 선착) */
+function normalizeExchanges(raw) {
+  const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const out = [];
+  const seen = new Set();
+  for (const e of arr) {
+    if (out.length >= 4) break;
+    if (!e || typeof e !== 'object') continue;
+    if (typeof e.var !== 'string' || !e.var || seen.has(e.var)) continue;
+    if (typeof e.rate !== 'number' || !isFinite(e.rate) || e.rate <= 0) continue;
+    seen.add(e.var);
+    out.push({
+      var: e.var,
+      rate: e.rate,
+      spread: typeof e.spread === 'number' ? Math.max(0, Math.min(0.9, e.spread)) : 0.2,
+      label: typeof e.label === 'string' && e.label.trim() ? e.label.trim() : '환전',
+    });
+  }
+  return out;
+}
+
+/** 표기 단위 정규화 — 내림차순 정렬, 최소 단위 ratio 1이 없으면 통째 무효 (잔돈 표기 불가) */
+function normalizeUnits(raw) {
+  if (!Array.isArray(raw)) return null;
+  const out = [];
+  const seen = new Set();
+  for (const u of raw) {
+    if (out.length >= 4) break;
+    if (!u || typeof u !== 'object') continue;
+    const label = String(u.label ?? '').trim().slice(0, 8);
+    const ratio = Math.round(Number(u.ratio));
+    if (!label || !isFinite(ratio) || ratio < 1 || seen.has(ratio)) continue;
+    seen.add(ratio);
+    out.push({ label, ratio });
+  }
+  out.sort((a, b) => b.ratio - a.ratio);
+  if (!out.length || out[out.length - 1].ratio !== 1) return null;
+  return out;
+}
+
 function shopConfig(schema) {
   const s = schema?.shop;
   if (!s || typeof s !== 'object') return null;
   if (typeof s.currency !== 'string' || !s.currency) return null;
   if (typeof s.buyTo !== 'string' || !s.buyTo) return null;
+  const exchanges = normalizeExchanges(s.exchange);
   return {
     label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : '상점',
     icon: typeof s.icon === 'string' && s.icon.trim() ? s.icon.trim() : '🛒',
@@ -5988,18 +6072,27 @@ function shopConfig(schema) {
     guide: typeof s.guide === 'string' ? s.guide : '',
     when: typeof s.when === 'string' ? s.when : '',
     css: typeof s.css === 'string' ? s.css : '',
-    exchange: (s.exchange && typeof s.exchange === 'object'
-      && typeof s.exchange.var === 'string' && s.exchange.var
-      && typeof s.exchange.rate === 'number' && isFinite(s.exchange.rate) && s.exchange.rate > 0)
-      ? {
-        var: s.exchange.var,
-        rate: s.exchange.rate,
-        spread: typeof s.exchange.spread === 'number'
-          ? Math.max(0, Math.min(0.9, s.exchange.spread)) : 0.2,
-        label: typeof s.exchange.label === 'string' && s.exchange.label.trim()
-          ? s.exchange.label.trim() : '환전',
-      } : null,
+    units: normalizeUnits(s.units),
+    exchanges,
+    exchange: exchanges[0] ?? null,   // 하위호환 — 기존 소비처("환전 창구가 있나" 판단 등)
   };
+}
+
+/** 금액 표기 — units 사다리로 "12골드 34실버 56코퍼". 계산은 언제나 최소 단위 정수 하나다 */
+function fmtMoney(cfg, n) {
+  let v = Math.round(Number(n) || 0);
+  const units = cfg?.units;
+  if (!units) return String(v);
+  const sign = v < 0 ? '-' : '';
+  v = Math.abs(v);
+  const parts = [];
+  for (const u of units) {
+    const q = Math.floor(v / u.ratio);
+    v -= q * u.ratio;
+    if (q > 0) parts.push(`${q}${u.label}`);
+  }
+  if (!parts.length) parts.push(`0${units[units.length - 1].label}`);
+  return sign + parts.join(' ');
 }
 
 function initShop() { return { seq: 1, stock: [], buying: [], log: [], stocked: false }; }
@@ -6109,7 +6202,7 @@ function buy(schema, state, itemId) {
   const it = shop.stock.find((x) => x.id === itemId);
   if (!it) return { ok: false, reason: '이미 팔린 물건이에요' };
   const wallet = Number(state.vars[cfg.currency]) || 0;
-  if (wallet < it.price) return { ok: false, reason: `잔액 부족 (${wallet} < ${it.price})` };
+  if (wallet < it.price) return { ok: false, reason: `잔액 부족 (${fmtMoney(cfg, wallet)} < ${fmtMoney(cfg, it.price)})` };
   const listDef = (schema.vars || []).find((v) => v.id === cfg.buyTo);
   const list = Array.isArray(state.vars[cfg.buyTo]) ? [...state.vars[cfg.buyTo]] : [];
   const display = it.grade ? `${it.name} (${it.grade})` : it.name;
@@ -6119,7 +6212,7 @@ function buy(schema, state, itemId) {
   state.vars[cfg.currency] = wallet - it.price;
   state.vars[cfg.buyTo] = list;
   if (it.qty != null) { it.qty -= 1; if (it.qty <= 0) shop.stock = shop.stock.filter((x) => x.id !== itemId); }
-  const line = `「${display}」 구매 (-${it.price}).`;
+  const line = `「${display}」 구매 (-${fmtMoney(cfg, it.price)}).`;
   logTx(cfg, state, line);
   return { ok: true, line };
 }
@@ -6153,14 +6246,21 @@ function sell(schema, state, itemText, appraised = null) {
   else list.splice(idx, 1);
   state.vars[cfg.sellFrom] = list;
   state.vars[cfg.currency] = (Number(state.vars[cfg.currency]) || 0) + payout;
-  const line = `「${m ? m[1] : itemText}」 판매 (+${payout}).`;
+  const line = `「${m ? m[1] : itemText}」 판매 (+${fmtMoney(cfg, payout)}).`;
   logTx(cfg, state, line);
   return { ok: true, line, payout };
 }
 
-/** 단위당 환율 — buy: 통화 1을 사는 값(상대 지갑), sell: 통화 1을 판 값. spread가 암거래 수수료 */
-function exchangeRates(cfg) {
-  const ex = cfg?.exchange;
+/** 창구 선택 — varId를 주면 그 상대 지갑의 창구, 없으면 첫 창구 (v1.2 이하 호환) */
+function exchangePair(cfg, varId) {
+  const list = cfg?.exchanges ?? [];
+  if (!list.length) return null;
+  return varId ? (list.find((e) => e.var === varId) ?? null) : list[0];
+}
+
+/** 단위당 환율 — buy: 통화 1을 사는 값(상대 지갑), 팔 때: 통화 1을 판 값. spread가 암거래 수수료 */
+function exchangeRates(cfg, varId) {
+  const ex = exchangePair(cfg, varId);
   if (!ex) return null;
   return {
     buy: Math.max(1, Math.ceil(ex.rate * (1 + ex.spread))),
@@ -6169,32 +6269,33 @@ function exchangeRates(cfg) {
 }
 
 /** 환전 — 결정적, 보조 호출 없음. dir 'buy' = 통화 사기(상대 지갑 지불) / 'sell' = 통화 팔기 */
-function exchange(schema, state, qty, dir) {
+function exchange(schema, state, qty, dir, varId) {
   const cfg = shopConfig(schema);
-  if (!cfg || !cfg.exchange) return { ok: false, reason: '환전 창구 없음' };
-  const rates = exchangeRates(cfg);
+  const pair = exchangePair(cfg, varId);
+  if (!cfg || !pair) return { ok: false, reason: '환전 창구 없음' };
+  const rates = exchangeRates(cfg, pair.var);
   const n = Math.floor(Number(qty));
   if (!isFinite(n) || n < 1) return { ok: false, reason: '수량은 1 이상 정수' };
   if (n > 1000000) return { ok: false, reason: '한 번에 백만까지만' };
   const label = (id) => (schema.vars || []).find((v) => v.id === id)?.label ?? id;
   const curVal = Number(state.vars[cfg.currency]) || 0;
-  const exVal = Number(state.vars[cfg.exchange.var]) || 0;
+  const exVal = Number(state.vars[pair.var]) || 0;
   let line;
   if (dir === 'buy') {
     const cost = n * rates.buy;
-    if (exVal < cost) return { ok: false, reason: `${label(cfg.exchange.var)} 부족 (${exVal} < ${cost})` };
+    if (exVal < cost) return { ok: false, reason: `${label(pair.var)} 부족 (${exVal} < ${cost})` };
     state.vars[cfg.currency] = curVal + n;
-    state.vars[cfg.exchange.var] = exVal - cost;
-    line = `${label(cfg.currency)} +${n} (${label(cfg.exchange.var)} -${cost}).`;
+    state.vars[pair.var] = exVal - cost;
+    line = `${label(cfg.currency)} +${fmtMoney(cfg, n)} (${label(pair.var)} -${cost}).`;
   } else {
-    if (curVal < n) return { ok: false, reason: `${label(cfg.currency)} 부족 (${curVal} < ${n})` };
+    if (curVal < n) return { ok: false, reason: `${label(cfg.currency)} 부족 (${fmtMoney(cfg, curVal)} < ${fmtMoney(cfg, n)})` };
     const gain = n * rates.sell;
     state.vars[cfg.currency] = curVal - n;
-    state.vars[cfg.exchange.var] = exVal + gain;
-    line = `${label(cfg.currency)} -${n} (${label(cfg.exchange.var)} +${gain}).`;
+    state.vars[pair.var] = exVal + gain;
+    line = `${label(cfg.currency)} -${fmtMoney(cfg, n)} (${label(pair.var)} +${gain}).`;
   }
   // 통지 접두는 환전 창구 이름 — 상점 본체와 다른 장소일 수 있다 (얼헌: 알터 스토어 ≠ 암시장)
-  logTx({ ...cfg, label: cfg.exchange.label }, state, line);
+  logTx({ ...cfg, label: pair.label }, state, line);
   return { ok: true, line };
 }
 
@@ -6208,11 +6309,16 @@ function stockSpecBody(cfg) {
     ? `- "shop" 필드로 진열 상품("stock")을 카테고리마다 ${cfg.perCat[0]}~${cfg.perCat[1]}개씩 채워라`
       + ` (빈 카테고리 금지, 총 최대 ${cfg.maxStock}개). 매입 시세판("buying")은 3~${CAPS.BUYING_MAX}개.`
     : `- "shop" 필드로 진열 상품("stock") ${Math.min(8, cfg.maxStock)}~${cfg.maxStock}개와 매입 시세판("buying") 3~${CAPS.BUYING_MAX}개를 내라.`;
+  const smallest = cfg.units ? cfg.units[cfg.units.length - 1] : null;
+  const ladder = cfg.units
+    ? cfg.units.slice(0, -1).map((u) => `1${u.label}=${u.ratio}${smallest.label}`).join(', ')
+    : null;
   return [
     stockLine,
     `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}.${cfg.perCat ? '' : ' 카테고리마다 골고루.'}`,
     cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
     bandsText(cfg) ? `- 가격 밴드 (시스템이 강제한다): ${bandsText(cfg)}.` : null,
+    smallest ? `- 가격(price)은 최소 단위(${smallest.label}) 정수 하나로 적어라 — 단위 표기는 시스템이 한다${ladder ? ` (${ladder})` : ''}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 한정 수량 상품은 "qty"(1~9)를 달아라 (없으면 무제한). note는 한 줄 설명 (선택).',
     '- shop 형식: {"stock":[{"cat","name","grade","price","qty","note"}],"buying":[{"name","price"}]}',
@@ -6268,8 +6374,8 @@ function parseInteraction(text, extractJsonObject) {
 
 module.exports = {
   CAPS, shopConfig, initShop, ensureShop, shopOpen, sanitizeStock, applyStock,
-  buy, sell, quoteFor, mergeIntoList, clampPrice, exchange, exchangeRates,
-  auxSpec, interactionPrompt, parseInteraction,
+  buy, sell, quoteFor, mergeIntoList, clampPrice, exchange, exchangeRates, exchangePair,
+  fmtMoney, auxSpec, interactionPrompt, parseInteraction,
 };
 
 });
@@ -11892,7 +11998,11 @@ const SCHEMA_SHOP_RULES = [
   '- 진열·시세는 세이브에 살고, 첫 입고는 자동, 물갈이는 유저의 [새로고침] 버튼입니다. `guide`에 무엇을 파는 곳인지·가격 감각의 기준을 적으세요.',
   '- `when` 조건이 거짓이면 상점 버튼째 숨습니다 (그 판에 상점이 없는 세계).',
   '- `exchange: { "var", "rate", "spread", "label" }`를 주면 환전 창구가 열립니다 — 상점 통화 1 = rate(상대 지갑). '
-  + '살 때 rate×(1+spread), 팔 때 rate×(1-spread), 계산은 전부 시스템입니다. 두 통화가 도는 세계(코인↔현금)에만 넣으세요.',
+  + '살 때 rate×(1+spread), 팔 때 rate×(1-spread), 계산은 전부 시스템입니다. 두 통화가 도는 세계(코인↔현금)에만 넣으세요. '
+  + '지갑이 여럿이면(원·달러·엔) **배열**로 창구를 여러 개(최대 4) 둘 수 있습니다: `exchange: [{...}, {...}]`.',
+  '- **골드/실버/코퍼는 화폐 3개가 아닙니다** — 비율이 고정이면 지갑 변수를 쪼개지 말고 지갑 하나(최소 단위) + '
+  + '`units: [{ "label": "골드", "ratio": 10000 }, { "label": "실버", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }]`로 '
+  + '표기만 쪼개세요 (잔고 123456 → "12골드 34실버 56코퍼"). 최소 단위 ratio 1 필수, 계산은 언제나 최소 단위 정수 하나입니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -12511,7 +12621,9 @@ function varReferenceIndex(schema) {
   }
   if (schema.shop) {
     add(schema.shop.currency, '상점', '지갑'); add(schema.shop.buyTo, '상점', '구매 목록');
-    add(schema.shop.sellFrom, '상점', '매입 목록'); add(schema.shop.exchange?.var, '상점', '환전 지갑');
+    add(schema.shop.sellFrom, '상점', '매입 목록');
+    const shopEx = Array.isArray(schema.shop.exchange) ? schema.shop.exchange : schema.shop.exchange ? [schema.shop.exchange] : [];
+    for (const e of shopEx) add(e?.var, '상점', '환전 지갑');
     ex(schema.shop.when, '상점', 'when');
   }
   (schema.scenario?.acts || []).forEach((a) => {
@@ -13361,6 +13473,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "categories": ["추천", "인기", "소모품", "장비"], "grades": ["일반", "레어", "유니크"],',
       '  "bands": { "일반": [1, 60], "레어": [60, 400], "유니크": [400, 3000] },',
       '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
+      '  "units": [{ "label": "골드", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
       '');
@@ -16328,6 +16441,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+  // 환전 창구 행들 (v1.3.0 다짝) — 저장 꼴: 0개=삭제, 1개=객체(하위호환), 2개+=배열
+  function exchangeRows(SH, nums) {
+    const exArr = Array.isArray(SH.exchange) ? SH.exchange : SH.exchange ? [SH.exchange] : [];
+    const setEx = (arr) => {
+      if (!arr.length) delete SH.exchange;
+      else SH.exchange = arr.length === 1 ? arr[0] : arr;
+      rerender();
+    };
+    const taken = (self) => exArr.filter((e) => e !== self).map((e) => e.var);
+    const rows = exArr.map((EX, i) => h('div', { class: 'sce-row' },
+      pair('환전 상대 지갑', bindSelect(EX.var ?? '',
+        nums.filter((v) => v.id !== SH.currency && !taken(EX).includes(v.id)).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+        (x) => { EX.var = x; setEx(exArr); }), i === 0 ? '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)' : ''),
+      pair('환율', bindInput(EX.rate ?? '', (x) => {
+        const n = parseFloat(x); if (isFinite(n) && n > 0) { EX.rate = n; setEx(exArr); }
+      }, { cls: 'sce-w-s', ph: '1000' }), i === 0 ? '통화 1 = 상대 지갑 얼마' : ''),
+      pair('수수료', bindInput(EX.spread ?? '', (x) => {
+        const n = parseFloat(x); if (isFinite(n)) EX.spread = Math.max(0, Math.min(0.9, n)); else delete EX.spread; setEx(exArr);
+      }, { cls: 'sce-w-s', ph: '0.2' }), i === 0 ? '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템' : ''),
+      pair('창구 이름', bindInput(EX.label ?? '', (x) => {
+        if (x) EX.label = x; else delete EX.label; setEx(exArr);
+      }, { cls: 'sce-w-m', ph: '환전' }), i === 0 ? '거래 통지의 접두 (예: 암거래 환전)' : ''),
+      h('button', { class: 'sce-btn sce-mini sce-danger', title: '이 창구 삭제',
+        onclick: () => setEx(exArr.filter((_, j) => j !== i)) }, '✕'),
+    ));
+    const avail = nums.filter((v) => v.id !== SH.currency && !exArr.some((e) => e.var === v.id));
+    if (exArr.length < 4 && avail.length) {
+      rows.push(h('div', { class: 'sce-row' },
+        addBtn(exArr.length ? '환전 창구 추가' : '환전 창구 열기', () => setEx([...exArr, { var: avail[0].id, rate: 1 }])),
+        exArr.length ? h('span', { class: 'sce-hint', style: 'margin:0' }, '지갑이 여럿이면(원·달러·엔) 창구를 지갑마다 하나씩 (최대 4)') : null));
+    }
+    return rows;
+  }
+
   // 상점 (v0.96) — 시스템 상점. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabShop() {
     const wrap = h('div');
@@ -16400,25 +16547,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         '등급별 [최소~최대] — 진열가를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
       pair('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
         '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'), ''),
-      h('div', { class: 'sce-row' },
-        pair('환전 상대 지갑', bindSelect(SH.exchange?.var ?? '',
-          [['', '(없음 — 환전 창구 닫힘)'], ...nums.filter((v) => v.id !== SH.currency).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-          (x) => {
-            if (x) SH.exchange = { rate: 1, ...(SH.exchange ?? {}), var: x };
-            else delete SH.exchange; rerender();
-          }), '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)'),
-        pair('환율', bindInput(SH.exchange?.rate ?? '', (x) => {
-          const n = parseFloat(x); if (SH.exchange && isFinite(n) && n > 0) { SH.exchange.rate = n; rerender(); }
-        }, { cls: 'sce-w-s', ph: '1000' }), '통화 1 = 상대 지갑 얼마'),
-        pair('수수료', bindInput(SH.exchange?.spread ?? '', (x) => {
-          if (!SH.exchange) return;
-          const n = parseFloat(x); if (isFinite(n)) SH.exchange.spread = Math.max(0, Math.min(0.9, n)); else delete SH.exchange.spread; rerender();
-        }, { cls: 'sce-w-s', ph: '0.2' }), '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템'),
-        pair('창구 이름', bindInput(SH.exchange?.label ?? '', (x) => {
-          if (!SH.exchange) return;
-          if (x) SH.exchange.label = x; else delete SH.exchange.label; rerender();
-        }, { cls: 'sce-w-m', ph: '환전' }), '거래 통지의 접두 (예: 암거래 환전)'),
-      ),
+      pair('표기 단위', bindInput((Array.isArray(SH.units) ? SH.units : []).map((u) => `${u.label}=${u.ratio}`).join(', '), (x) => {
+        const arr = [];
+        for (const seg of x.split(',')) {
+          const m = seg.trim().match(/^(.+?)\s*=\s*(\d+)$/);
+          if (m) arr.push({ label: m[1], ratio: Number(m[2]) });
+        }
+        if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
+      }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
+        '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요'),
+      ...exchangeRows(SH, nums),
       h('div', { class: 'sce-row' },
         pair('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
@@ -27415,11 +27553,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     else renderGamePanel();
   }
 
-  // 환전 (v0.97) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
-  async function onShopExchange(dir) {
+  // 환전 (v0.97, v1.3.0 다짝) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
+  async function onShopExchange(dir, exVar) {
     if (!session || !schema) return;
     const qty = parseInt(shopView.exchQty, 10);
-    const r = shopMod.exchange(schema, session.current, qty, dir);
+    const r = shopMod.exchange(schema, session.current, qty, dir, exVar);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) { shopView.exchQty = ''; await commitPanelChanges({}, '환전'); }
     else renderGamePanel();
@@ -27469,7 +27607,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
     const walletDef = schema.vars.find((v) => v.id === cfg.currency);
     const walletVal = session.current.vars[cfg.currency] ?? 0;
-    const fmtWallet = walletDef?.format ? String(walletDef.format).replace('{v}', walletVal) : String(walletVal);
+    // 표기 단위(v1.3.0)가 있으면 사다리 표기("12골드 34실버 56코퍼")가 format보다 우선
+    const fmtWallet = cfg.units ? shopMod.fmtMoney(cfg, walletVal)
+      : walletDef?.format ? String(walletDef.format).replace('{v}', walletVal) : String(walletVal);
     card.appendChild(el('div', 'sch-wallet', `💰 ${walletDef?.label ?? cfg.currency}: ${fmtWallet}`));
 
     // 카테고리 탭 + 매입 창구 탭
@@ -27489,25 +27629,28 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     card.appendChild(tabs);
 
     if (active === '__exch') {
-      // ── 환전 창구 (v0.97) — 통화 ↔ 상대 지갑, 환율·수수료는 시스템이 (뇌절 없음) ──
-      const rates = shopMod.exchangeRates(cfg);
-      const exDef = schema.vars.find((v) => v.id === cfg.exchange.var);
-      const exVal = session.current.vars[cfg.exchange.var] ?? 0;
+      // ── 환전 창구 (v0.97, v1.3.0 다짝) — 통화 ↔ 상대 지갑들, 환율·수수료는 시스템이 (뇌절 없음) ──
       const curName = walletDef?.label ?? cfg.currency;
-      const exName = exDef?.label ?? cfg.exchange.var;
-      const fmtEx = exDef?.format ? String(exDef.format).replace('{v}', exVal) : String(exVal);
-      card.appendChild(el('div', 'sch-wallet', `👛 ${exName}: ${fmtEx}`));
-      card.appendChild(el('div', 'scg-note',
-        `${cfg.exchange.label} — 시세: ${curName} 1 사기 ${rates.buy} ${exName} · 팔기 ${rates.sell} ${exName}`));
-      const row = el('div', 'sch-item');
+      const qrow = el('div', 'sch-item');
       const inp = el('input', 'sch-exch-qty');
-      inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량`;
+      inp.type = 'number'; inp.min = '1'; inp.placeholder = `${curName} 수량${cfg.units ? ` (${cfg.units[cfg.units.length - 1].label})` : ''}`;
       inp.value = shopView.exchQty ?? '';
       inp.oninput = () => { shopView.exchQty = inp.value; };
-      row.appendChild(inp);
-      row.appendChild(btn(`${curName} 사기`, 'scb-btn', () => onShopExchange('buy')));
-      row.appendChild(btn(`${curName} 팔기`, 'scb-btn', () => onShopExchange('sell')));
-      card.appendChild(row);
+      qrow.appendChild(inp);
+      card.appendChild(qrow);
+      for (const ex of cfg.exchanges) {
+        const rates = shopMod.exchangeRates(cfg, ex.var);
+        const exDef = schema.vars.find((v) => v.id === ex.var);
+        const exVal = session.current.vars[ex.var] ?? 0;
+        const exName = exDef?.label ?? ex.var;
+        const fmtEx = exDef?.format ? String(exDef.format).replace('{v}', exVal) : String(exVal);
+        card.appendChild(el('div', 'sch-wallet', `👛 ${exName}: ${fmtEx}`));
+        const row = el('div', 'sch-item');
+        row.appendChild(el('span', 'sch-name', `${ex.label} — ${curName} 1 사기 ${rates.buy} ${exName} · 팔기 ${rates.sell} ${exName}`));
+        row.appendChild(btn('사기', 'scb-btn', () => onShopExchange('buy', ex.var)));
+        row.appendChild(btn('팔기', 'scb-btn', () => onShopExchange('sell', ex.var)));
+        card.appendChild(row);
+      }
     } else if (active === '__sell') {
       // ── 매입 창구 — 소지 목록에서 판다. 시세판 매치는 즉시가, 아니면 감정 ──
       card.appendChild(el('div', 'scg-note', '시세가 잡힌 물건은 바로 팔리고, 나머지는 감정을 거칩니다 (감정가의 일부만 쳐줘요).'));
@@ -27517,13 +27660,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const row = el('div', 'sch-item');
         row.appendChild(el('span', 'sch-name', item));
         const q = shopMod.quoteFor(shop, item);
-        row.appendChild(el('span', 'sch-price', q != null ? `매입 ${q}` : '감정 필요'));
+        row.appendChild(el('span', 'sch-price', q != null ? `매입 ${shopMod.fmtMoney(cfg, q)}` : '감정 필요'));
         row.appendChild(btn('판매', 'scb-btn', () => onShopSell(item)));
         card.appendChild(row);
       }
       if (shop.buying.length) {
         const bx = el('div', 'sch-log');
-        bx.textContent = '📋 매입 시세판: ' + shop.buying.map((b) => `${b.name} ${b.price}`).join(' · ');
+        bx.textContent = '📋 매입 시세판: ' + shop.buying.map((b) => `${b.name} ${shopMod.fmtMoney(cfg, b.price)}`).join(' · ');
         card.appendChild(bx);
       }
     } else {
@@ -27543,7 +27686,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         row.appendChild(nm);
         if (it.grade) row.appendChild(el('span', 'sch-grade', it.grade));
         if (it.qty != null) row.appendChild(el('span', 'sch-qty', `한정 ${it.qty}`));
-        row.appendChild(el('span', 'sch-price', String(it.price)));
+        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, it.price)));
         row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < it.price));
         card.appendChild(row);
       }

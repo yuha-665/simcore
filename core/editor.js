@@ -1275,7 +1275,11 @@ const SCHEMA_SHOP_RULES = [
   '- 진열·시세는 세이브에 살고, 첫 입고는 자동, 물갈이는 유저의 [새로고침] 버튼입니다. `guide`에 무엇을 파는 곳인지·가격 감각의 기준을 적으세요.',
   '- `when` 조건이 거짓이면 상점 버튼째 숨습니다 (그 판에 상점이 없는 세계).',
   '- `exchange: { "var", "rate", "spread", "label" }`를 주면 환전 창구가 열립니다 — 상점 통화 1 = rate(상대 지갑). '
-  + '살 때 rate×(1+spread), 팔 때 rate×(1-spread), 계산은 전부 시스템입니다. 두 통화가 도는 세계(코인↔현금)에만 넣으세요.',
+  + '살 때 rate×(1+spread), 팔 때 rate×(1-spread), 계산은 전부 시스템입니다. 두 통화가 도는 세계(코인↔현금)에만 넣으세요. '
+  + '지갑이 여럿이면(원·달러·엔) **배열**로 창구를 여러 개(최대 4) 둘 수 있습니다: `exchange: [{...}, {...}]`.',
+  '- **골드/실버/코퍼는 화폐 3개가 아닙니다** — 비율이 고정이면 지갑 변수를 쪼개지 말고 지갑 하나(최소 단위) + '
+  + '`units: [{ "label": "골드", "ratio": 10000 }, { "label": "실버", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }]`로 '
+  + '표기만 쪼개세요 (잔고 123456 → "12골드 34실버 56코퍼"). 최소 단위 ratio 1 필수, 계산은 언제나 최소 단위 정수 하나입니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -1894,7 +1898,9 @@ function varReferenceIndex(schema) {
   }
   if (schema.shop) {
     add(schema.shop.currency, '상점', '지갑'); add(schema.shop.buyTo, '상점', '구매 목록');
-    add(schema.shop.sellFrom, '상점', '매입 목록'); add(schema.shop.exchange?.var, '상점', '환전 지갑');
+    add(schema.shop.sellFrom, '상점', '매입 목록');
+    const shopEx = Array.isArray(schema.shop.exchange) ? schema.shop.exchange : schema.shop.exchange ? [schema.shop.exchange] : [];
+    for (const e of shopEx) add(e?.var, '상점', '환전 지갑');
     ex(schema.shop.when, '상점', 'when');
   }
   (schema.scenario?.acts || []).forEach((a) => {
@@ -2744,6 +2750,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "categories": ["추천", "인기", "소모품", "장비"], "grades": ["일반", "레어", "유니크"],',
       '  "bands": { "일반": [1, 60], "레어": [60, 400], "유니크": [400, 3000] },',
       '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
+      '  "units": [{ "label": "골드", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
       '```',
       '');
@@ -5711,6 +5718,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+  // 환전 창구 행들 (v1.3.0 다짝) — 저장 꼴: 0개=삭제, 1개=객체(하위호환), 2개+=배열
+  function exchangeRows(SH, nums) {
+    const exArr = Array.isArray(SH.exchange) ? SH.exchange : SH.exchange ? [SH.exchange] : [];
+    const setEx = (arr) => {
+      if (!arr.length) delete SH.exchange;
+      else SH.exchange = arr.length === 1 ? arr[0] : arr;
+      rerender();
+    };
+    const taken = (self) => exArr.filter((e) => e !== self).map((e) => e.var);
+    const rows = exArr.map((EX, i) => h('div', { class: 'sce-row' },
+      pair('환전 상대 지갑', bindSelect(EX.var ?? '',
+        nums.filter((v) => v.id !== SH.currency && !taken(EX).includes(v.id)).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+        (x) => { EX.var = x; setEx(exArr); }), i === 0 ? '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)' : ''),
+      pair('환율', bindInput(EX.rate ?? '', (x) => {
+        const n = parseFloat(x); if (isFinite(n) && n > 0) { EX.rate = n; setEx(exArr); }
+      }, { cls: 'sce-w-s', ph: '1000' }), i === 0 ? '통화 1 = 상대 지갑 얼마' : ''),
+      pair('수수료', bindInput(EX.spread ?? '', (x) => {
+        const n = parseFloat(x); if (isFinite(n)) EX.spread = Math.max(0, Math.min(0.9, n)); else delete EX.spread; setEx(exArr);
+      }, { cls: 'sce-w-s', ph: '0.2' }), i === 0 ? '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템' : ''),
+      pair('창구 이름', bindInput(EX.label ?? '', (x) => {
+        if (x) EX.label = x; else delete EX.label; setEx(exArr);
+      }, { cls: 'sce-w-m', ph: '환전' }), i === 0 ? '거래 통지의 접두 (예: 암거래 환전)' : ''),
+      h('button', { class: 'sce-btn sce-mini sce-danger', title: '이 창구 삭제',
+        onclick: () => setEx(exArr.filter((_, j) => j !== i)) }, '✕'),
+    ));
+    const avail = nums.filter((v) => v.id !== SH.currency && !exArr.some((e) => e.var === v.id));
+    if (exArr.length < 4 && avail.length) {
+      rows.push(h('div', { class: 'sce-row' },
+        addBtn(exArr.length ? '환전 창구 추가' : '환전 창구 열기', () => setEx([...exArr, { var: avail[0].id, rate: 1 }])),
+        exArr.length ? h('span', { class: 'sce-hint', style: 'margin:0' }, '지갑이 여럿이면(원·달러·엔) 창구를 지갑마다 하나씩 (최대 4)') : null));
+    }
+    return rows;
+  }
+
   // 상점 (v0.96) — 시스템 상점. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabShop() {
     const wrap = h('div');
@@ -5783,25 +5824,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         '등급별 [최소~최대] — 진열가를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
       pair('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
         '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'), ''),
-      h('div', { class: 'sce-row' },
-        pair('환전 상대 지갑', bindSelect(SH.exchange?.var ?? '',
-          [['', '(없음 — 환전 창구 닫힘)'], ...nums.filter((v) => v.id !== SH.currency).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-          (x) => {
-            if (x) SH.exchange = { rate: 1, ...(SH.exchange ?? {}), var: x };
-            else delete SH.exchange; rerender();
-          }), '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)'),
-        pair('환율', bindInput(SH.exchange?.rate ?? '', (x) => {
-          const n = parseFloat(x); if (SH.exchange && isFinite(n) && n > 0) { SH.exchange.rate = n; rerender(); }
-        }, { cls: 'sce-w-s', ph: '1000' }), '통화 1 = 상대 지갑 얼마'),
-        pair('수수료', bindInput(SH.exchange?.spread ?? '', (x) => {
-          if (!SH.exchange) return;
-          const n = parseFloat(x); if (isFinite(n)) SH.exchange.spread = Math.max(0, Math.min(0.9, n)); else delete SH.exchange.spread; rerender();
-        }, { cls: 'sce-w-s', ph: '0.2' }), '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템'),
-        pair('창구 이름', bindInput(SH.exchange?.label ?? '', (x) => {
-          if (!SH.exchange) return;
-          if (x) SH.exchange.label = x; else delete SH.exchange.label; rerender();
-        }, { cls: 'sce-w-m', ph: '환전' }), '거래 통지의 접두 (예: 암거래 환전)'),
-      ),
+      pair('표기 단위', bindInput((Array.isArray(SH.units) ? SH.units : []).map((u) => `${u.label}=${u.ratio}`).join(', '), (x) => {
+        const arr = [];
+        for (const seg of x.split(',')) {
+          const m = seg.trim().match(/^(.+?)\s*=\s*(\d+)$/);
+          if (m) arr.push({ label: m[1], ratio: Number(m[2]) });
+        }
+        if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
+      }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
+        '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요'),
+      ...exchangeRows(SH, nums),
       h('div', { class: 'sce-row' },
         pair('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),

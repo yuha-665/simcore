@@ -7101,7 +7101,8 @@ count(목록)  has(목록, "항목")</pre>
           // 다른 숫자가 나온다 — 유저 문의 "6675자 vs 1519 tok". 그래서 여기서 닫힌 팩을
           // 표시하고, 편집기는 자·토큰을 같이 적어 둘을 견줄 수 있게 한다)
           let lookup = null;
-          try { lookup = engine.makeLookup(schema, session?.current?.vars || {}); } catch { lookup = null; }
+          const liveVars = session?.current?.vars ?? {};
+          try { lookup = engine.makeLookup(schema, liveVars); } catch { lookup = null; }
           let openIds = null;
           try { openIds = new Set(assetsMod.openPacks(schema, lookup).map((p) => p.id)); } catch { openIds = null; }
           const packs = (schema.assets?.packs || []).map((p) => `${p.id}`

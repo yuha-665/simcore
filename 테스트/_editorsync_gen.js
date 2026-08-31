@@ -149,30 +149,7 @@ let schema = null, currentChaId = null;
     // 모듈 매니페스트로 병합된 팩은 편집·저장 대상이 아니다 — 모듈이 관리한다.
     // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
-    editor = createSchemaEditor(base); } catch { lookup = null; }
-          let openIds = null;
-          try { openIds = new Set(assetsMod.openPacks(schema, lookup).map((p) => p.id)); } catch { openIds = null; }
-          const packs = (schema.assets?.packs || []).map((p) => `${p.id}`
-            + (p.origin === 'module' ? '(모듈)' : '')
-            + (p.enabled === false ? '(꺼짐)' : (openIds && !openIds.has(p.id) ? '(조건 닫힘)' : '')));
-          let mainText = null;
-          if (by === 'main') {
-            try { mainText = assetsMod.mainInjectionText(schema, lookup); }
-            catch (e) { mainText = ''; }
-          }
-          return { by, packs, mainText };
-        },
-      },
-      floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫
-      // 편집기 안의 [✨ 말로 시키기] 점프 — 사이드바 탭을 실제로 눌러서 하이라이트까지 같이 이동
-      onRequestFloor: (f) => {
-        const btn = document.querySelector(`#sc-root .sc-maintab[data-floor="${f}"]`);
-        if (btn) btn.click();
-      },
-      isInstalled: () => panelStatus.state === 'ok',
-      getFirstInstallGuideDismissed,
-      setFirstInstallGuideDismissed,
-    });
+    editor = createSchemaEditor(base);
     editorChaId = currentChaId;
     editorLoadedSig = sig(base);
   }

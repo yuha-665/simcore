@@ -9,8 +9,10 @@ const e = src.indexOf('  function escapeText(s)');
 if (s < 0 || e < 0) { console.log('FAIL: 편집기 절을 못 찾음'); process.exit(1); }
 // v0.46부터 ai 옵션이 붙어 호출이 여러 줄 — 닫는 });까지 통째로 목 호출로 치환
 const body = src.slice(s, e)
-  .replace(/createSchemaEditor\(document\.getElementById\('sc-editor'\), base, \{[\s\S]*?\}\);/,
-           'createSchemaEditor(base);');
+  // ⚠ 닫는 자리는 **줄머리 4칸 들여쓰기의 });** 로 잡는다 (v1.5.2). 그냥 첫 `});`로 자르면
+  // ai 블록 안의 `|| {});` 같은 평범한 코드에서 잘려 생성 파일이 깨진다 (실사고).
+  .replace(/createSchemaEditor\(document\.getElementById\('sc-editor'\), base, \{[\s\S]*?\n {4}\}\);/,
+    'createSchemaEditor(base);');
 
 const TESTS = `
 const A = { simcore:'0.1', meta:{name:'영지'},  vars:[{id:'food',type:'int'}], statusUI:{mode:'auto',groups:[]} };

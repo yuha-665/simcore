@@ -429,6 +429,17 @@ const ED = SC.require('editor');
   ck('자동 감지: 칸 어휘 열 단위 합집합', det.cols[0].values.includes('Hiromi') && det.cols[1].values.includes('neutral'), '');
   ck('★ 자동 감지: 넘치는 열은 생략 가능 칸', det.cols[2] && det.cols[2].optional === true, '');
   ck('구분자 없는 무리는 감지 포기 (틀린 초안이 더 해롭다)', ED.detectSlotsFromNames(['alpha', 'beta', 'gamma']) === null, '');
+  // v1.4.1 — 확장자 관대화: .webp 붙은 이름이 어휘를 오염("smile.webp")하고 '.'가 구분자로
+  // 오인되던 실사고 (유저 제보 "이상하게 짤림"). 알려진 이미지 확장자만 뗀다 (.default 보호)
+  {
+    const dw = ED.detectSlotsFromNames(['Hiromi_angry.webp', 'Hiromi_smile.webp', 'Seiko_neutral.webp', 'Seiko_smile.webp']);
+    ck('★ 확장자 떼고 감지 (.webp 오염 방지)', dw && dw.sep === '_'
+      && dw.cols[1].values.includes('smile') && !dw.cols[1].values.some((v) => v.includes('.webp')), JSON.stringify(dw));
+    const dd = ED.detectSlotsFromNames(['Miku_default.avif', 'Miku_smile.avif', 'Rin_default.avif']);
+    ck('알려진 확장자만 — 이름 속 어휘는 보존', dd && dd.cols[1].values.includes('default')
+      && !dd.cols[1].values.some((v) => v.includes('.avif')), JSON.stringify(dd));
+    ck('런타임 대조 Set도 뗀 꼴 합류 배선', src.includes('const b = String(n).replace(/\\.(png|jpe?g|gif|webp|avif|bmp)$/i, \'\');'), '');
+  }
   const draft = ED.packDraftFromDetect(det, 'p1');
   ck('초안 칸 이름 관례 (who/emo)', draft.slots[0].id === 'who' && draft.slots[1].id === 'emo', '');
 

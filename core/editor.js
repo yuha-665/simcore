@@ -3006,8 +3006,14 @@ function changeVarType(v, newType) {
 // ── 에셋 팩: 실물 이름에서 슬롯 구조 감지 (🎨 층) ────────────
 // "Hiromi_angry_apron" 무리에서 구분자·칸 수·칸별 어휘를 읽어 팩 초안을 만든다.
 // 감지는 초안일 뿐 — format(출력 방언)은 봇의 표시 정규식에 맞게 사람이 확정한다.
+// 알려진 이미지 확장자만 뗀다 — 일반 꼬리 규칙(\.[a-z0-9]+$)은 'Nakano_Miku.default'의
+// .default까지 확장자로 착각해 진짜 이름을 깎는다 (v0.83.2 실사고. party matchAssetName과 같은 목록)
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
+
 function detectSlotsFromNames(names) {
-  const clean = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))];
+  // 확장자는 떼고 본다 (v1.4.1) — 리수 버전따라 이름에 .webp가 붙어 와서 감지 어휘를
+  // 오염시키고("Smile.webp") '.'가 구분자로 오인되던 실사고 (유저 제보: "이상하게 짤림")
+  const clean = [...new Set((names || []).map((n) => String(n).trim().replace(IMG_EXT_RE, '')).filter(Boolean))];
   if (clean.length < 2) return null;
   let sep = null, sepRows = [];
   for (const s of ['_', '-', '.', ' ']) {
@@ -8628,7 +8634,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
 
     const packs = (a && a.packs) || [];
-    const nameSet = assetNames ? new Set(assetNames) : null;
+    // 커버리지 대조도 확장자 관대화 (v1.4.1) — 팩 조합명엔 확장자가 없으니 뗀 꼴도 넣는다
+    // (v0.83.1 독트린: 대조는 양쪽에서 떼고 본다. 런타임 getAssetNameSet과 같은 규약)
+    const nameSet = assetNames ? new Set(assetNames.flatMap((n) => {
+      const b = String(n).replace(IMG_EXT_RE, '');
+      return b && b !== n ? [n, b] : [n];
+    })) : null;
     const assetValidation = validateSchema(schema);
     const assetField = (label, control) => h('label', { class: 'sce-asset-field' },
       h('span', {}, label), control);

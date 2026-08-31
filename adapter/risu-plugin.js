@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.4.0
-//@display-name SimCore (시뮬 엔진) v1.4.0 다중 상점
+//@version 1.4.1
+//@display-name SimCore (시뮬 엔진) v1.4.1 에셋 확장자 관대화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.4.1 ────────────────────────────────────────────────
+// 에셋 이름 확장자 관대화 (유저 제보: "[에셋에서 자동 감지]가 .webp까지 구분해서 이상하게
+// 짤림"). 리수 버전마다 이름에 확장자가 붙기도 한다 (v0.83.1 독트린 — 대조는 양쪽에서
+// 떼고 본다). 초상(party matchAssetName)만 지키던 규약을 에셋 팩 경로 전체로:
+// - 자동 감지(detectSlotsFromNames): 알려진 이미지 확장자를 떼고 감지 — 어휘 오염
+//   ("Smile.webp")과 '.' 구분자 오인 해소
+// - 실존 대조: 런타임 getAssetNameSet + 편집기 커버리지 nameSet에 뗀 꼴도 합류 —
+//   .webp 붙은 카드에서 대조가 전부 실패해 이미지가 조용히 생략되던 잠재 사고 봉인
+// - 일반 꼬리 규칙 금지 그대로: 알려진 확장자 목록만 (.default 실사고, v0.83.2)
 //
 // ── v1.4.0 ────────────────────────────────────────────────
 // 다중 상점 shops: [{ id, ...단수와 같은 필드 }] (최대 4, id 필수) — v1.3.0 화폐 확장의
@@ -3103,10 +3113,19 @@
   async function getAssetNameSet() {
     const { sources } = await getAssetSources(false);
     const set = new Set();
-    for (const s of sources) for (const n of s.names) set.add(n);
+    // 확장자 관대화 (v1.4.1) — 리수 버전마다 에셋 이름에 확장자가 붙기도 한다 (v0.83.1 독트린:
+    // 대조는 양쪽에서 떼고 본다). 팩 조합명엔 확장자가 없으니 뗀 꼴도 Set에 넣는다 —
+    // 안 넣으면 .webp 붙은 카드에서 실존 대조가 전부 실패해 이미지가 조용히 생략된다.
+    // 알려진 이미지 확장자만 (일반 꼬리 규칙은 .default까지 깎는다 — v0.83.2 실사고).
+    const add = (n) => {
+      set.add(n);
+      const b = String(n).replace(/\.(png|jpe?g|gif|webp|avif|bmp)$/i, '');
+      if (b && b !== n) set.add(b);
+    };
+    for (const s of sources) for (const n of s.names) add(n);
     // 매니페스트 모듈의 이미지 이름 — module_assets가 꺼져 있어도 실존 대조에 넣는다
     // (매니페스트 팩의 이미지는 그 모듈에 산다. 팩만 받고 대조를 못 하면 전부 강등된다)
-    for (const n of modulePackState.moduleAssetNames) set.add(n);
+    for (const n of modulePackState.moduleAssetNames) add(n);
     return set.size ? set : null;
   }
 

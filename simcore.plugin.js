@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.4.0
-//@display-name SimCore (시뮬 엔진) v1.4.0 다중 상점
+//@version 1.4.1
+//@display-name SimCore (시뮬 엔진) v1.4.1 에셋 확장자 관대화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.4.1 ────────────────────────────────────────────────
+// 에셋 이름 확장자 관대화 (유저 제보: "[에셋에서 자동 감지]가 .webp까지 구분해서 이상하게
+// 짤림"). 리수 버전마다 이름에 확장자가 붙기도 한다 (v0.83.1 독트린 — 대조는 양쪽에서
+// 떼고 본다). 초상(party matchAssetName)만 지키던 규약을 에셋 팩 경로 전체로:
+// - 자동 감지(detectSlotsFromNames): 알려진 이미지 확장자를 떼고 감지 — 어휘 오염
+//   ("Smile.webp")과 '.' 구분자 오인 해소
+// - 실존 대조: 런타임 getAssetNameSet + 편집기 커버리지 nameSet에 뗀 꼴도 합류 —
+//   .webp 붙은 카드에서 대조가 전부 실패해 이미지가 조용히 생략되던 잠재 사고 봉인
+// - 일반 꼬리 규칙 금지 그대로: 알려진 확장자 목록만 (.default 실사고, v0.83.2)
 //
 // ── v1.4.0 ────────────────────────────────────────────────
 // 다중 상점 shops: [{ id, ...단수와 같은 필드 }] (최대 4, id 필수) — v1.3.0 화폐 확장의
@@ -13836,8 +13846,14 @@ function changeVarType(v, newType) {
 // ── 에셋 팩: 실물 이름에서 슬롯 구조 감지 (🎨 층) ────────────
 // "Hiromi_angry_apron" 무리에서 구분자·칸 수·칸별 어휘를 읽어 팩 초안을 만든다.
 // 감지는 초안일 뿐 — format(출력 방언)은 봇의 표시 정규식에 맞게 사람이 확정한다.
+// 알려진 이미지 확장자만 뗀다 — 일반 꼬리 규칙(\.[a-z0-9]+$)은 'Nakano_Miku.default'의
+// .default까지 확장자로 착각해 진짜 이름을 깎는다 (v0.83.2 실사고. party matchAssetName과 같은 목록)
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
+
 function detectSlotsFromNames(names) {
-  const clean = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))];
+  // 확장자는 떼고 본다 (v1.4.1) — 리수 버전따라 이름에 .webp가 붙어 와서 감지 어휘를
+  // 오염시키고("Smile.webp") '.'가 구분자로 오인되던 실사고 (유저 제보: "이상하게 짤림")
+  const clean = [...new Set((names || []).map((n) => String(n).trim().replace(IMG_EXT_RE, '')).filter(Boolean))];
   if (clean.length < 2) return null;
   let sep = null, sepRows = [];
   for (const s of ['_', '-', '.', ' ']) {
@@ -19458,7 +19474,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
 
     const packs = (a && a.packs) || [];
-    const nameSet = assetNames ? new Set(assetNames) : null;
+    // 커버리지 대조도 확장자 관대화 (v1.4.1) — 팩 조합명엔 확장자가 없으니 뗀 꼴도 넣는다
+    // (v0.83.1 독트린: 대조는 양쪽에서 떼고 본다. 런타임 getAssetNameSet과 같은 규약)
+    const nameSet = assetNames ? new Set(assetNames.flatMap((n) => {
+      const b = String(n).replace(IMG_EXT_RE, '');
+      return b && b !== n ? [n, b] : [n];
+    })) : null;
     const assetValidation = validateSchema(schema);
     const assetField = (label, control) => h('label', { class: 'sce-asset-field' },
       h('span', {}, label), control);
@@ -25913,10 +25934,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   async function getAssetNameSet() {
     const { sources } = await getAssetSources(false);
     const set = new Set();
-    for (const s of sources) for (const n of s.names) set.add(n);
+    // 확장자 관대화 (v1.4.1) — 리수 버전마다 에셋 이름에 확장자가 붙기도 한다 (v0.83.1 독트린:
+    // 대조는 양쪽에서 떼고 본다). 팩 조합명엔 확장자가 없으니 뗀 꼴도 Set에 넣는다 —
+    // 안 넣으면 .webp 붙은 카드에서 실존 대조가 전부 실패해 이미지가 조용히 생략된다.
+    // 알려진 이미지 확장자만 (일반 꼬리 규칙은 .default까지 깎는다 — v0.83.2 실사고).
+    const add = (n) => {
+      set.add(n);
+      const b = String(n).replace(/\.(png|jpe?g|gif|webp|avif|bmp)$/i, '');
+      if (b && b !== n) set.add(b);
+    };
+    for (const s of sources) for (const n of s.names) add(n);
     // 매니페스트 모듈의 이미지 이름 — module_assets가 꺼져 있어도 실존 대조에 넣는다
     // (매니페스트 팩의 이미지는 그 모듈에 산다. 팩만 받고 대조를 못 하면 전부 강등된다)
-    for (const n of modulePackState.moduleAssetNames) set.add(n);
+    for (const n of modulePackState.moduleAssetNames) add(n);
     return set.size ? set : null;
   }
 

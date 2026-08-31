@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.0
-//@display-name SimCore (시뮬 엔진) v1.5.0 막간 (주인공 부재)
+//@version 1.5.1
+//@display-name SimCore (시뮬 엔진) v1.5.1 액션 범례 사라짐 픽스
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.5.1 ────────────────────────────────────────────────
+// 액션을 눌러도 "UI가 1초 만에 사라지고 반응 없는 것처럼" (유저 제보 — 막간 버튼 첫 실기).
+// - 뿌리: display는 마커 번호가 앵커(lastOutIndex)와 다르면 '과거'로 보고 범례 없이 그리는데,
+//   그 시점 스냅샷이 램 캐시에 아직 없으면 **현재 상태 + 범례**로 임시 렌더를 했다. 갓 연
+//   채팅은 캐시가 비어 있어 과거 메시지마다 범례가 보이고, 배경 적재가 끝나는 순간(≈1초)
+//   다음 재렌더에서 전부 증발한다. 토글 자체는 됐고 조작줄엔 무장이 떠 있었다 (그래서
+//   "새로고침하면 눌린 걸로 나옴" — 캐시가 다시 비니까).
+// - 캐시 미스 임시 렌더도 범례·하이라이트 없이. DOM 제자리 갱신(refreshStatusDom)도 같은 기준.
+// - '과거' 판정을 idx !== lastIdx → **idx < lastIdx**로. 메시지 삭제·편집으로 앵커가 뒤처지면
+//   마지막 메시지까지 과거로 몰려 범례가 아예 사라진다 (켤 자리가 없어짐).
+// - 버튼 토글도 스냅샷에 저장 — /액션 명령 경로만 저장하고 버튼 경로는 램에만 있었다.
 //
 // ── v1.5.0 ────────────────────────────────────────────────
 // 막간 — 주인공이 등장하지 않는 장면 (유저 제안: "페르소나가 존재하면 억지로 계속
@@ -3633,12 +3645,22 @@
         // 캐시의 최대 인덱스가 그 역할을 한다 (session.init이 복원한 바로 그 스냅샷).
         const lastIdx = lastOutIndex >= 0 ? lastOutIndex
           : (histStates.size ? Math.max(...histStates.keys()) : -1);
-        if (isFinite(idx) && lastIdx >= 0 && idx !== lastIdx) {
+        // ⚠ '과거'는 앵커보다 **작은** 번호만이다 (v1.5.1). idx !== lastIdx로 재면, 메시지
+        // 삭제·편집으로 앵커가 뒤처진 채팅에서 마지막 메시지까지 과거로 몰려 범례가
+        // 아예 사라진다 — 그러면 액션을 켤 자리가 없어진다. 앵커보다 새 번호는 현재로 본다.
+        if (isFinite(idx) && lastIdx >= 0 && idx < lastIdx) {
           const cached = histStates.get(idx);
           if (cached) {
             return renderStatusHtml(schema, cached, null, null, { includeStyle: true, uid: idxStr });
           }
           histFetch(idx); // 비동기 — 다음 재렌더부터 그 시점 상태
+          // ⚠ v1.5.1 — 캐시가 없어도 '과거'라는 사실은 이미 안다. 예전엔 여기서 아래로 떨어져
+          // **현재 상태 + 범례**로 임시 렌더를 했는데, 갓 연 채팅은 캐시가 비어 있어 과거
+          // 메시지마다 범례가 보이다가 배경 적재가 끝나는 순간(≈1초) 전부 사라졌다
+          // (실사고: "액션을 눌러도 UI가 1초 만에 사라지고 반응 없는 것처럼 보인다" —
+          //  토글은 실제로 됐고 조작줄엔 무장이 떴는데, 누른 자리의 ✅만 증발했다).
+          // 값은 현재 것으로 임시로 보여도, 범례·하이라이트는 처음부터 안 그린다.
+          return renderStatusHtml(schema, session.current, null, null, { includeStyle: true, uid: idxStr });
         }
         return renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
           { includeStyle: true, uid: idxStr });
@@ -3797,6 +3819,11 @@
       // 다시 그릴 때만 바뀌므로, 여기서 안 그리면 무장이 됐는지 다음 메시지까지 안 보인다
       // (실기 제보: "눌렀는데 안 나온다"). 패널 조작(v0.85.4)과 같은 길이다.
       try { await refreshStatusDom(); } catch {}
+      // 무장은 램에만 있었다 (v1.5.1) — /액션 명령 경로는 저장하는데 버튼 경로만 안 했다.
+      // 리로드·전환이 오면 세션이 스냅샷에서 복원되며 무장이 조용히 풀린다.
+      try {
+        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current); // 무장 유지
+      } catch (e) { console.log('[simcore] 무장 저장 실패:', e.message); }
     }
     await syncControls();
     if (panelBuilt) renderPanel();
@@ -5243,7 +5270,15 @@
             if (tm) tabIdx = +tm[1];
           }
         } catch {}
-        const html = renderStatusHtml(schema, session.current, lastChangeLog, currentActionStates(),
+        // 과거 메시지에는 범례를 찍지 않는다 (v1.5.1) — display 렌더와 같은 기준.
+        // 여기서 전부에 찍으면 과거 메시지에도 ✅가 잠깐 들어갔다가, 리수가 다시 그리는
+        // 순간 display 규칙(범례 없음)으로 되돌아가 "눌렀는데 사라진다"가 된다.
+        const uidNum = Number(m[1]);
+        const lastIdxNow = lastOutIndex >= 0 ? lastOutIndex
+          : (histStates.size ? Math.max(...histStates.keys()) : -1);
+        const isLast = !(isFinite(uidNum) && lastIdxNow >= 0 && uidNum < lastIdxNow);
+        const html = renderStatusHtml(schema, session.current,
+          isLast ? lastChangeLog : null, isLast ? currentActionStates() : null,
           { includeStyle: false, uid: m[1] });
         // 루트 껍데기는 이미 DOM에 있다 — 본체만 갈아 끼운다
         const raw = html.replace(/^<div class="sim-status"[^>]*>/, '').replace(/<\/div>$/, '');

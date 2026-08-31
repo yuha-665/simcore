@@ -81,10 +81,10 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   // 더해져 76KB로, v0.90에서 시나리오(scenario) 검증이 더해져 80KB로,
   // v0.95~0.96에서 커뮤니티 보드(board)·상점(shop) 검증이 더해져 88KB로,
   // v1.1.0에서 자율형 게시판·화제 기사(hot)·상점 perCat 검증이 더해져 92KB로,
-  // v1.3.0에서 상점 표기 단위(units)·환전 다짝 규칙이 더해져 93KB로 조정
+  // v1.3.0~1.4.0에서 상점 표기 단위(units)·환전 다짝·다중 상점(shops) 규칙이 더해져 94KB로 조정
   // (실제 붙여넣기 한계는 수백 KB라 여유가 크다).
   const full = buildSchemaSpecPrompt('politics', true);
-  ck('★ 규격서가 붙여넣기 가능한 크기 (93KB 미만)', full.length < 93 * 1024, kb(full));
+  ck('★ 규격서가 붙여넣기 가능한 크기 (94KB 미만)', full.length < 94 * 1024, kb(full));
   ck('전체 소스(251KB)보다 훨씬 작음', full.length < src.length / 4, `${kb(full)} vs ${kb(src)}`);
   console.log(`  [크기] 최소 ${kb(buildSchemaSpecPrompt('rpg', false))} / 기본 ${kb(p)} / 최대 ${kb(full)}`);
 }

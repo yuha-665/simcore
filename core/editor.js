@@ -1280,6 +1280,8 @@ const SCHEMA_SHOP_RULES = [
   '- **골드/실버/코퍼는 화폐 3개가 아닙니다** — 비율이 고정이면 지갑 변수를 쪼개지 말고 지갑 하나(최소 단위) + '
   + '`units: [{ "label": "골드", "ratio": 10000 }, { "label": "실버", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }]`로 '
   + '표기만 쪼개세요 (잔고 123456 → "12골드 34실버 56코퍼"). 최소 단위 ratio 1 필수, 계산은 언제나 최소 단위 정수 하나입니다.',
+  '- **상점이 여럿인 세계**(무기점·잡화점·암시장)는 `"shops": [{ "id": "store", ...단수와 같은 필드 }, ...]` 배열로 (최대 4, `id` 필수·중복 금지). '
+  + '상점마다 지갑·재고·categories·when이 독립이고 우상단 버튼도 하나씩 생깁니다. `shop`(단수)과 동시에 쓰면 안 됩니다 — 1개면 단수가 간단합니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -1903,6 +1905,14 @@ function varReferenceIndex(schema) {
     for (const e of shopEx) add(e?.var, '상점', '환전 지갑');
     ex(schema.shop.when, '상점', 'when');
   }
+  if (Array.isArray(schema.shops)) for (const s of schema.shops) {
+    if (!s || typeof s !== 'object') continue;
+    const tag = `상점(${s.id ?? '?'})`;
+    add(s.currency, tag, '지갑'); add(s.buyTo, tag, '구매 목록'); add(s.sellFrom, tag, '매입 목록');
+    const sx = Array.isArray(s.exchange) ? s.exchange : s.exchange ? [s.exchange] : [];
+    for (const e of sx) add(e?.var, tag, '환전 지갑');
+    ex(s.when, tag, 'when');
+  }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
     fx(a?.onEnter, '시나리오', a?.id ?? '막');
@@ -2174,7 +2184,7 @@ const TAB_SLICES = {
   // 보드(v0.95) — board 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   board: { keys: ['board'], label: '보드' },
   // 상점(v0.96) — shop 객체 통째 교체. 같은 원문 보존 규약.
-  shop: { keys: ['shop'], label: '상점' },
+  shop: { keys: ['shop', 'shops'], label: '상점' },
   // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   msgr: { keys: ['messenger'], label: '메신저' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
@@ -2233,7 +2243,7 @@ function tabItemCounts(schema, tabKey) {
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
-  else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
+  else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
@@ -4351,7 +4361,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
-    [/^\$\.shop\b/, '상점', false],
+    [/^\$\.shops?\b/, '상점', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
@@ -5758,7 +5768,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(tabAiTools('shop'));
     const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
     const lists = schema.vars.filter((v) => v.type === 'list');
-    if (!schema.shop) {
+    const shopsArr = Array.isArray(schema.shops) ? schema.shops : null;
+    if (!schema.shop && !shopsArr) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
         '상점 — 세계 안의 시스템 상점입니다 (알터 스토어·잡화점·포인트샵). 채팅 우상단에 버튼이 '
         + '생기고, 카테고리 진열·구매·판매(감정)·매입 시세판이 굴러갑니다. 결제·잔액·수량은 전부 '
@@ -5775,8 +5786,51 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }));
       return wrap;
     }
+    // 다중 상점 (v1.4.0) — 상점마다 같은 필드 한 벌씩. 상태·버튼은 id로 갈린다
+    if (shopsArr) {
+      shopsArr.forEach((SH, i) => {
+        wrap.appendChild(h('div', { class: 'sce-row' },
+          pair(`상점 ${i + 1} — id`, bindInput(SH.id ?? '', (x) => { SH.id = x.trim(); rerender(); },
+            { cls: 'sce-w-m', ph: '예: store, black_market' }),
+            '상태·버튼이 이 id로 갈립니다 — 운영 중에 바꾸면 그 상점 진열이 새로 시작돼요'),
+          h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+            if (confirm(`상점 '${SH.label ?? SH.id ?? i + 1}'을(를) 지울까요?`)) {
+              shopsArr.splice(i, 1);
+              if (!shopsArr.length) delete schema.shops;
+              rerender();
+            }
+          } }, '✕ 이 상점 삭제')));
+        wrap.appendChild(shopFieldBlock(SH, nums, lists));
+      });
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        shopsArr.length < 4 ? addBtn('상점 추가', () => {
+          shopsArr.push({ id: `shop${shopsArr.length + 1}`, label: `상점 ${shopsArr.length + 1}`, icon: '🛒', currency: nums[0].id, buyTo: lists[0].id });
+          rerender();
+        }) : null,
+        h('span', { class: 'sce-hint', style: 'margin:0' }, '상점은 최대 4개 — 지갑·재고·노출 조건이 상점마다 독립이고 우상단 버튼도 하나씩 생깁니다.')));
+      return wrap;
+    }
     const SH = schema.shop;
-    wrap.appendChild(h('div', { class: 'sce-block' },
+    wrap.appendChild(shopFieldBlock(SH, nums, lists));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('상점 삭제', () => {
+        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
+      }),
+      addBtn('2호점 추가 (다중 상점으로 전환)', () => {
+        schema.shops = [
+          { id: 'shop1', ...SH },
+          { id: 'shop2', label: '상점 2', icon: '🛒', currency: nums[0].id, buyTo: lists[0].id },
+        ];
+        delete schema.shop;
+        rerender();
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다. 2호점 전환 시 기존 진열은 1호점이 물려받아요.')));
+    return wrap;
+  }
+
+  // 상점 필드 한 벌 — 단수·다중이 같은 블록을 쓴다 (v1.4.0)
+  function shopFieldBlock(SH, nums, lists) {
+    return h('div', { class: 'sce-block' },
       h('div', { class: 'sce-row' },
         pair('상점 이름', bindInput(SH.label, (x) => { SH.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '상점' })),
         pair('아이콘', bindInput(SH.icon, (x) => { SH.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🛒' })),
@@ -5840,13 +5894,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ),
       pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
         '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      addBtn('상점 삭제', () => {
-        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
-      }),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다.')));
-    return wrap;
+    );
   }
 
   // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.

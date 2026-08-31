@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.3.0
-//@display-name SimCore (시뮬 엔진) v1.3.0 상점 단위 사다리·환전 다짝
+//@version 1.4.0
+//@display-name SimCore (시뮬 엔진) v1.4.0 다중 상점
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.4.0 ────────────────────────────────────────────────
+// 다중 상점 shops: [{ id, ...단수와 같은 필드 }] (최대 4, id 필수) — v1.3.0 화폐 확장의
+// 남은 반쪽 ("무기점은 골드, 암시장은 달러" 세계). 같은 배포 봇 피드백의 후속.
+// - 상점마다 지갑·재고·카테고리·밴드·when 독립. 우상단 버튼도 상점마다 하나 (tab=상점 id,
+//   게이트 닫히면 그 버튼만 숨음) + 패널 안 상점 전환 칩 (열린 상점 2개 이상일 때).
+// - 상태: 단수는 예전 그대로 state.shop(옛 세이브 무접촉), 배열은 state.shops[id].
+//   단수→배열 전환 시 첫 상점이 state.shop 진열을 물려받는다 (편집기 [2호점 추가] 경로).
+// - 첫 입고 피기백은 턴당 한 상점 (재고 빈 첫 상점부터 차례로 — 프롬프트 비대 방지).
+//   다상점이면 응답에 "id" 에코를 요구, applyStock이 라우팅 (에코 누락 = 빈 상점 폴백).
+// - 편집기 [상점] 탭: 다중이면 상점마다 필드 한 벌 + id 행 + [상점 추가]/삭제,
+//   단수엔 [2호점 추가 (다중 상점으로 전환)]. 검증: id 필수·중복 거부·shop과 동시 사용 거부.
 //
 // ── v1.3.0 ────────────────────────────────────────────────
 // 상점 화폐 확장 (배포 봇 피드백: "골드·실버·코퍼 세 종류 쓰니 환전이 하나만 지정돼서
@@ -2765,7 +2777,7 @@
   let boardView = { mode: 'list', postId: null, cat: null };  // mode: 'list' | 'read' | 'write', cat: 카테고리 필터(null=전체)
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
-  let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
+  let shopView = { shopId: null, cat: null, exchQty: '' };  // shopId: 다중 상점 대상(null=단수/첫) · cat: 카테고리 | '__sell' | '__exch'
   let shopBusy = false;
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
@@ -3647,9 +3659,10 @@
       if (b) specs.push({ key: 'board', kind: 'board', tab: null, label: b.label, icon: b.icon });
       // 상점 (v0.96) — 게임 패널 4호. when 게이트가 닫혀 있으면 버튼째 숨긴다
       // (store_on 같은 정책 변수 — 이 판에 상점이 없는 세계면 버튼도 없어야 한다)
-      const sh = shopMod.shopConfig(schema);
-      if (sh && shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) {
-        specs.push({ key: 'shop', kind: 'shop', tab: null, label: sh.label, icon: sh.icon });
+      // v1.4.0 다중 상점: 상점마다 버튼 하나씩 (tab이 목적지 상점 id) — 게이트도 상점별 독립
+      for (const sh of shopMod.shopConfigs(schema)) {
+        if (!shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) continue;
+        specs.push({ key: sh.id == null ? 'shop' : `shop_${sh.id}`, kind: 'shop', tab: sh.id, label: sh.label, icon: sh.icon });
       }
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
@@ -3914,7 +3927,7 @@
     const css = gameKind === 'party' ? schema?.party?.css
       : gameKind === 'calendar' ? schema?.calendar?.css
         : gameKind === 'board' ? schema?.board?.css
-          : gameKind === 'shop' ? schema?.shop?.css
+          : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
             : gameKind === 'msgr' ? schema?.messenger?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
@@ -3936,7 +3949,8 @@
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
     boardView = { mode: 'list', postId: null, cat: null };  // 보드는 열 때마다 목록·전체 칸부터
-    shopView = { cat: null, exchQty: '' };                   // 상점은 열 때마다 첫 카테고리부터
+    // 상점은 열 때마다 첫 카테고리부터. 다중 상점(v1.4.0)은 버튼이 목적지 상점 id를 tab으로 들고 온다
+    shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
@@ -4842,7 +4856,7 @@
     renderGamePanel();
     try {
       const prompt = shopMod.interactionPrompt(schema, session.current, kind,
-        { ...payload, narrative: await boardNarrative() });
+        { ...payload, shopId: shopView.shopId ?? undefined, narrative: await boardNarrative() });
       // 새로고침(물갈이)도 재고 전체를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8).
       // v1.0.9: perCat 도입으로 최대 36개 JSON — 1400도 부족해 2400으로.
       const res = await callAuxLLM(prompt, 2400);
@@ -4869,7 +4883,7 @@
   async function onShopRestock() {
     const parsed = await callShopAux('restock');
     if (parsed) {
-      const r = shopMod.applyStock(schema, session.current, parsed);
+      const r = shopMod.applyStock(schema, session.current, parsed, shopView.shopId ?? undefined);
       await boardSaveNow('상점 물갈이');
       gameNotice = r.stocked
         ? `✓ 새 진열 ${r.stocked}종 · 매입 시세 ${r.buying ?? 0}종` + (r.rejected?.length ? ` (규격 밖 ${r.rejected.length}종 거부)` : '')
@@ -4880,7 +4894,7 @@
 
   async function onShopBuy(itemId) {
     if (!session || !schema) return;
-    const r = shopMod.buy(schema, session.current, itemId);
+    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
     else renderGamePanel();
@@ -4890,7 +4904,7 @@
   async function onShopExchange(dir, exVar) {
     if (!session || !schema) return;
     const qty = parseInt(shopView.exchQty, 10);
-    const r = shopMod.exchange(schema, session.current, qty, dir, exVar);
+    const r = shopMod.exchange(schema, session.current, qty, dir, exVar, shopView.shopId ?? undefined);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) { shopView.exchQty = ''; await commitPanelChanges({}, '환전'); }
     else renderGamePanel();
@@ -4898,13 +4912,14 @@
 
   async function onShopSell(itemText) {
     if (!session || !schema) return;
-    let r = shopMod.sell(schema, session.current, itemText);
+    const sid = shopView.shopId ?? undefined;
+    let r = shopMod.sell(schema, session.current, itemText, null, sid);
     if (!r.ok && r.needAppraisal) {
       const parsed = await callShopAux('appraise', { item: itemText });
       if (parsed == null) { renderGamePanel(); return; }
       const val = Number(parsed.appraisal);
       if (!isFinite(val) || val <= 0) { gameNotice = '⚠ 감정 불가 판정이에요 — 이 물건은 여기서 안 받아요'; renderGamePanel(); return; }
-      r = shopMod.sell(schema, session.current, itemText, val);
+      r = shopMod.sell(schema, session.current, itemText, val, sid);
     }
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 판매');
@@ -4912,9 +4927,11 @@
   }
 
   function renderShopPanel(root) {
-    const cfg = shopMod.shopConfig(schema);
+    // 대상 상점이 스키마에서 사라졌으면(편집 중 삭제 등) 첫 상점으로 폴백
+    const cfg = shopMod.shopConfig(schema, shopView.shopId ?? undefined) ?? shopMod.shopConfig(schema);
     if (!cfg) { root.innerHTML = ''; return; }
-    const shop = shopMod.ensureShop(session.current);
+    if (cfg.id !== shopView.shopId) shopView.shopId = cfg.id;
+    const shop = shopMod.shopStateOf(session.current, cfg);
     root.innerHTML = '';
     const card = document.createElement('div');
     card.className = 'scg-card scb-wide';
@@ -4937,6 +4954,22 @@
     x.type = 'button'; x.onclick = closeGamePanel;
     title.appendChild(x);
     card.appendChild(title);
+
+    // 다중 상점 (v1.4.0) — 열린 상점이 여럿이면 패널 안에서도 오갈 수 있게 칩 한 줄
+    const allShops = shopMod.shopConfigs(schema)
+      .filter((c) => shopMod.shopOpen(c, schema, session.current.vars, engine.makeLookup));
+    if (allShops.length > 1) {
+      const srow = el('div', 'sch-tabs');
+      for (const c of allShops) {
+        srow.appendChild(btn(`${c.icon} ${c.label}`, `sch-tab${c.id === cfg.id ? ' sch-on' : ''}`, () => {
+          shopView = { shopId: c.id, cat: null, exchQty: '' };
+          gameNotice = null;
+          applyGameCss();
+          renderGamePanel();
+        }));
+      }
+      card.appendChild(srow);
+    }
 
     const walletDef = schema.vars.find((v) => v.id === cfg.currency);
     const walletVal = session.current.vars[cfg.currency] ?? 0;

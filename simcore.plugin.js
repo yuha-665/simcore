@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.3.0
-//@display-name SimCore (시뮬 엔진) v1.3.0 상점 단위 사다리·환전 다짝
+//@version 1.4.0
+//@display-name SimCore (시뮬 엔진) v1.4.0 다중 상점
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.4.0 ────────────────────────────────────────────────
+// 다중 상점 shops: [{ id, ...단수와 같은 필드 }] (최대 4, id 필수) — v1.3.0 화폐 확장의
+// 남은 반쪽 ("무기점은 골드, 암시장은 달러" 세계). 같은 배포 봇 피드백의 후속.
+// - 상점마다 지갑·재고·카테고리·밴드·when 독립. 우상단 버튼도 상점마다 하나 (tab=상점 id,
+//   게이트 닫히면 그 버튼만 숨음) + 패널 안 상점 전환 칩 (열린 상점 2개 이상일 때).
+// - 상태: 단수는 예전 그대로 state.shop(옛 세이브 무접촉), 배열은 state.shops[id].
+//   단수→배열 전환 시 첫 상점이 state.shop 진열을 물려받는다 (편집기 [2호점 추가] 경로).
+// - 첫 입고 피기백은 턴당 한 상점 (재고 빈 첫 상점부터 차례로 — 프롬프트 비대 방지).
+//   다상점이면 응답에 "id" 에코를 요구, applyStock이 라우팅 (에코 누락 = 빈 상점 폴백).
+// - 편집기 [상점] 탭: 다중이면 상점마다 필드 한 벌 + id 행 + [상점 추가]/삭제,
+//   단수엔 [2호점 추가 (다중 상점으로 전환)]. 검증: id 필수·중복 거부·shop과 동시 사용 거부.
 //
 // ── v1.3.0 ────────────────────────────────────────────────
 // 상점 화폐 확장 (배포 봇 피드백: "골드·실버·코퍼 세 종류 쓰니 환전이 하나만 지정돼서
@@ -3967,112 +3979,133 @@ function validateSchema(schema) {
   }
 
   // ── shop (상점 v0.96 — 옵트인. 로어북 상점의 뇌절·가격 계산을 구조로 잡는다) ──
-  if (schema.shop != null) {
-    const SH = schema.shop;
-    if (typeof SH !== 'object' || Array.isArray(SH)) err('$.shop', 'shop은 객체여야 함');
-    else {
-      for (const [k, name] of [['label', '이름'], ['guide', '입고 지침'], ['css', 'CSS']]) {
-        if (SH[k] != null && typeof SH[k] !== 'string') err(`$.shop.${k}`, `${name}(${k})은 문자열이어야 함`);
+  // v1.4.0: 다중 상점 shops[] — 몸통 검증은 단수와 같아서 함수 하나를 두 형태가 나눠 쓴다
+  const checkShopBody = (SH, P) => {
+    for (const [k, name] of [['label', '이름'], ['guide', '입고 지침'], ['css', 'CSS']]) {
+      if (SH[k] != null && typeof SH[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
+    }
+    if (SH.icon != null && (typeof SH.icon !== 'string' || SH.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+    // 지갑 — 숫자 변수 필수
+    const wallet = vars.find((v) => v && v.id === SH.currency);
+    if (!SH.currency || typeof SH.currency !== 'string') err(`${P}.currency`, '지갑 변수(currency)가 필요합니다');
+    else if (!wallet) err(`${P}.currency`, `지갑 변수 '${SH.currency}'가 vars에 없음`);
+    else if (wallet.type !== 'int' && wallet.type !== 'float') err(`${P}.currency`, `지갑 '${SH.currency}'는 숫자 타입이어야 함 (현재: ${wallet.type})`);
+    // 구매품이 들어갈 목록 — list 변수 필수
+    const bagVar = (id, path, req) => {
+      if (id == null) { if (req) err(path, '목록 변수가 필요합니다'); return; }
+      const v = vars.find((x) => x && x.id === id);
+      if (!v) err(path, `목록 변수 '${id}'가 vars에 없음`);
+      else if (v.type !== 'list') err(path, `'${id}'는 list 타입이어야 함 (현재: ${v.type})`);
+    };
+    bagVar(SH.buyTo, `${P}.buyTo`, true);
+    bagVar(SH.sellFrom, `${P}.sellFrom`, false);
+    if (SH.categories != null && (!Array.isArray(SH.categories) || !SH.categories.length || SH.categories.length > 8
+      || SH.categories.some((c) => typeof c !== 'string'))) {
+      err(`${P}.categories`, '카테고리는 문자열 1~8개 배열');
+    }
+    if (SH.grades != null && (!Array.isArray(SH.grades) || !SH.grades.length || SH.grades.some((g) => typeof g !== 'string'))) {
+      err(`${P}.grades`, '등급 어휘는 문자열 배열');
+    }
+    if (SH.bands != null) {
+      if (typeof SH.bands !== 'object' || Array.isArray(SH.bands)) err(`${P}.bands`, 'bands는 { 등급: [최소, 최대] } 객체');
+      else for (const [g, band] of Object.entries(SH.bands)) {
+        if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0)
+          || band[0] > band[1]) err(`${P}.bands.${g}`, '밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
+        if (SH.grades && !SH.grades.includes(g)) warn(`${P}.bands.${g}`, `밴드의 등급 '${g}'가 grades 목록에 없습니다 — 영영 안 쓰입니다`);
       }
-      if (SH.icon != null && (typeof SH.icon !== 'string' || SH.icon.length > 8)) err('$.shop.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
-      // 지갑 — 숫자 변수 필수
-      const wallet = vars.find((v) => v && v.id === SH.currency);
-      if (!SH.currency || typeof SH.currency !== 'string') err('$.shop.currency', '지갑 변수(currency)가 필요합니다');
-      else if (!wallet) err('$.shop.currency', `지갑 변수 '${SH.currency}'가 vars에 없음`);
-      else if (wallet.type !== 'int' && wallet.type !== 'float') err('$.shop.currency', `지갑 '${SH.currency}'는 숫자 타입이어야 함 (현재: ${wallet.type})`);
-      // 구매품이 들어갈 목록 — list 변수 필수
-      const bagVar = (id, path, req) => {
-        if (id == null) { if (req) err(path, '목록 변수가 필요합니다'); return; }
-        const v = vars.find((x) => x && x.id === id);
-        if (!v) err(path, `목록 변수 '${id}'가 vars에 없음`);
-        else if (v.type !== 'list') err(path, `'${id}'는 list 타입이어야 함 (현재: ${v.type})`);
-      };
-      bagVar(SH.buyTo, '$.shop.buyTo', true);
-      bagVar(SH.sellFrom, '$.shop.sellFrom', false);
-      if (SH.categories != null && (!Array.isArray(SH.categories) || !SH.categories.length || SH.categories.length > 8
-        || SH.categories.some((c) => typeof c !== 'string'))) {
-        err('$.shop.categories', '카테고리는 문자열 1~8개 배열');
+      if (SH.grades) for (const g of SH.grades) {
+        if (!SH.bands[g]) warn(`${P}.bands`, `등급 '${g}'에 가격 밴드가 없습니다 — 그 등급은 가격 상한 없이 들어옵니다`);
       }
-      if (SH.grades != null && (!Array.isArray(SH.grades) || !SH.grades.length || SH.grades.some((g) => typeof g !== 'string'))) {
-        err('$.shop.grades', '등급 어휘는 문자열 배열');
+    }
+    if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
+      err(`${P}.sellRate`, '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
+    }
+    if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
+      err(`${P}.maxStock`, '진열 상한은 4~48 정수');
+    }
+    // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
+    if (SH.perCat != null) {
+      const PC = SH.perCat;
+      if (!Array.isArray(PC) || PC.length !== 2 || !Number.isInteger(PC[0]) || !Number.isInteger(PC[1])
+        || PC[0] < 1 || PC[0] > PC[1] || PC[1] > 9) {
+        err(`${P}.perCat`, 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
+      } else if (Array.isArray(SH.categories) && SH.maxStock != null
+        && PC[0] * SH.categories.length > SH.maxStock) {
+        warn(`${P}.perCat`, `카테고리 ${SH.categories.length}개 × 최소 ${PC[0]}개 = ${PC[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
       }
-      if (SH.bands != null) {
-        if (typeof SH.bands !== 'object' || Array.isArray(SH.bands)) err('$.shop.bands', 'bands는 { 등급: [최소, 최대] } 객체');
-        else for (const [g, band] of Object.entries(SH.bands)) {
-          if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0)
-            || band[0] > band[1]) err(`$.shop.bands.${g}`, '밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
-          if (SH.grades && !SH.grades.includes(g)) warn(`$.shop.bands.${g}`, `밴드의 등급 '${g}'가 grades 목록에 없습니다 — 영영 안 쓰입니다`);
-        }
-        if (SH.grades) for (const g of SH.grades) {
-          if (!SH.bands[g]) warn('$.shop.bands', `등급 '${g}'에 가격 밴드가 없습니다 — 그 등급은 가격 상한 없이 들어옵니다`);
-        }
-      }
-      if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
-        err('$.shop.sellRate', '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
-      }
-      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
-        err('$.shop.maxStock', '진열 상한은 4~48 정수');
-      }
-      // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
-      if (SH.perCat != null) {
-        const P = SH.perCat;
-        if (!Array.isArray(P) || P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
-          || P[0] < 1 || P[0] > P[1] || P[1] > 9) {
-          err('$.shop.perCat', 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
-        } else if (Array.isArray(SH.categories) && SH.maxStock != null
-          && P[0] * SH.categories.length > SH.maxStock) {
-          warn('$.shop.perCat', `카테고리 ${SH.categories.length}개 × 최소 ${P[0]}개 = ${P[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
-        }
-      }
-      if (SH.when != null) {
-        if (typeof SH.when !== 'string') err('$.shop.when', 'when은 표현식 문자열이어야 함');
-        else if (SH.when.trim()) checkExpr(SH.when, '$.shop.when', allIds, err, { allowRand: false });
-      }
-      if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
-      if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
-      // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
-      if (SH.units != null) {
-        if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
-          err('$.shop.units', '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
-        } else {
-          const ratios = [];
-          SH.units.forEach((u, i) => {
-            if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
-              err(`$.shop.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
-            }
-            if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`$.shop.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
-            else ratios.push(u.ratio);
-          });
-          if (ratios.length === SH.units.length && !ratios.includes(1)) {
-            err('$.shop.units', '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+    }
+    if (SH.when != null) {
+      if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
+      else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });
+    }
+    if (!SH.guide) warn(P, '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
+    if (!SH.grades || !SH.bands) warn(P, '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
+    // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
+    if (SH.units != null) {
+      if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
+        err(`${P}.units`, '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
+      } else {
+        const ratios = [];
+        SH.units.forEach((u, i) => {
+          if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
+            err(`${P}.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
           }
-          if (new Set(ratios).size !== ratios.length) err('$.shop.units', '같은 ratio의 단위가 겹칩니다');
-        }
-      }
-      // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
-      if (SH.exchange != null) {
-        const isArr = Array.isArray(SH.exchange);
-        const exArr = isArr ? SH.exchange : [SH.exchange];
-        if (isArr && (!exArr.length || exArr.length > 4)) err('$.shop.exchange', '환전 창구는 1~4개');
-        const seenVars = new Set();
-        exArr.forEach((EX, i) => {
-          const P = isArr ? `$.shop.exchange[${i}]` : '$.shop.exchange';
-          if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(P, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
-          const xv = (schema.vars || []).find((v) => v.id === EX.var);
-          if (!EX.var || typeof EX.var !== 'string') err(`${P}.var`, '상대 지갑 변수(var)가 필요합니다');
-          else if (!xv) err(`${P}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
-          else if (xv.type !== 'int' && xv.type !== 'float') err(`${P}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
-          else if (EX.var === SH.currency) err(`${P}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
-          else if (seenVars.has(EX.var)) err(`${P}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
-          else seenVars.add(EX.var);
-          if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
-            err(`${P}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
-          }
-          if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
-            err(`${P}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
-          }
+          if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`${P}.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
+          else ratios.push(u.ratio);
         });
+        if (ratios.length === SH.units.length && !ratios.includes(1)) {
+          err(`${P}.units`, '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+        }
+        if (new Set(ratios).size !== ratios.length) err(`${P}.units`, '같은 ratio의 단위가 겹칩니다');
       }
+    }
+    // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
+    if (SH.exchange != null) {
+      const isArr = Array.isArray(SH.exchange);
+      const exArr = isArr ? SH.exchange : [SH.exchange];
+      if (isArr && (!exArr.length || exArr.length > 4)) err(`${P}.exchange`, '환전 창구는 1~4개');
+      const seenVars = new Set();
+      exArr.forEach((EX, i) => {
+        const XP = isArr ? `${P}.exchange[${i}]` : `${P}.exchange`;
+        if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(XP, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
+        const xv = (schema.vars || []).find((v) => v.id === EX.var);
+        if (!EX.var || typeof EX.var !== 'string') err(`${XP}.var`, '상대 지갑 변수(var)가 필요합니다');
+        else if (!xv) err(`${XP}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
+        else if (xv.type !== 'int' && xv.type !== 'float') err(`${XP}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
+        else if (EX.var === SH.currency) err(`${XP}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+        else if (seenVars.has(EX.var)) err(`${XP}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
+        else seenVars.add(EX.var);
+        if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
+          err(`${XP}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
+        }
+        if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
+          err(`${XP}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
+        }
+      });
+    }
+  };
+  if (schema.shop != null && schema.shops != null) {
+    err('$.shops', 'shop(단수)과 shops(배열)를 같이 쓸 수 없습니다 — 2호점부터는 전부 shops 배열로 옮기세요');
+  }
+  if (schema.shop != null) {
+    if (typeof schema.shop !== 'object' || Array.isArray(schema.shop)) err('$.shop', 'shop은 객체여야 함 (여러 상점은 shops 배열)');
+    else checkShopBody(schema.shop, '$.shop');
+  }
+  // 다중 상점 (v1.4.0) — 상점마다 지갑·재고·when이 독립, 우상단 버튼도 하나씩
+  if (schema.shops != null && schema.shop == null) {
+    if (!Array.isArray(schema.shops) || !schema.shops.length || schema.shops.length > 4) {
+      err('$.shops', 'shops는 상점 1~4개 배열 (1개면 단수 shop도 됩니다)');
+    } else {
+      const shopIds = new Set();
+      schema.shops.forEach((SH, i) => {
+        const P = `$.shops[${i}]`;
+        if (!SH || typeof SH !== 'object' || Array.isArray(SH)) { err(P, '상점은 객체여야 함'); return; }
+        if (typeof SH.id !== 'string' || !SH.id.trim()) err(`${P}.id`, '다중 상점은 id가 필수입니다 — 상태·버튼이 id로 갈립니다 (예: "store", "black_market")');
+        else if (SH.id.trim().length > 24) err(`${P}.id`, '상점 id는 24자 이내');
+        else if (shopIds.has(SH.id.trim())) err(`${P}.id`, `상점 id '${SH.id.trim()}'가 겹칩니다`);
+        else shopIds.add(SH.id.trim());
+        checkShopBody(SH, P);
+      });
     }
   }
 
@@ -5997,6 +6030,15 @@ SimCore.define("shop", function (require, module, exports) {
 //   돈 하나의 표기 사다리다. 지갑·계산은 언제나 최소 단위 정수 하나, 표기만 엔진이 쪼갠다
 //   (123456 → "12골드 34실버 56코퍼"). 지갑 변수를 단위마다 쪼개면 "어느 지갑에 넣지"
 //   뇌절 표면만 늘어난다 — 그 길을 구조로 막는 장치. 최소 단위 ratio 1 필수 (잔돈 표기).
+//
+// 다중 상점 (v1.4.0): shops: [{ id, ...단수와 같은 필드 }] (최대 4, id 필수) —
+//   무기점은 골드, 암시장은 달러 같은 세계. 상점마다 지갑·재고·카테고리·when이 독립이고
+//   우상단 버튼도 하나씩 (when이 닫히면 그 상점 버튼만 숨는다).
+//   · 상태: 단수는 예전 그대로 state.shop, 배열은 state.shops[id] — 옛 세이브 무접촉.
+//     단수→배열 전환 시 첫 상점이 state.shop을 물려받는다 (진열 유실 방지).
+//   · 첫 입고 피기백은 턴당 한 상점 (재고 빈 첫 상점부터 차례로) — 프롬프트 비대 방지.
+//     다상점이면 응답에 "id" 에코를 요구해 applyStock이 그 상점으로 라우팅한다.
+//   · shop과 shops를 같이 쓰는 것은 검증이 거부한다 (2호점은 shops로 통일).
 
 const { evaluate, truthy } = require('./expr');
 
@@ -6045,13 +6087,13 @@ function normalizeUnits(raw) {
   return out;
 }
 
-function shopConfig(schema) {
-  const s = schema?.shop;
+function parseShopBody(s, id) {
   if (!s || typeof s !== 'object') return null;
   if (typeof s.currency !== 'string' || !s.currency) return null;
   if (typeof s.buyTo !== 'string' || !s.buyTo) return null;
   const exchanges = normalizeExchanges(s.exchange);
   return {
+    id,
     label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : '상점',
     icon: typeof s.icon === 'string' && s.icon.trim() ? s.icon.trim() : '🛒',
     currency: s.currency,
@@ -6078,6 +6120,30 @@ function shopConfig(schema) {
   };
 }
 
+/** 상점 구성 전부 (v1.4.0) — 단수 shop은 id null(상태 state.shop), shops[]는 id(상태 state.shops[id]) */
+function shopConfigs(schema) {
+  if (Array.isArray(schema?.shops)) {
+    const out = [];
+    const seen = new Set();
+    schema.shops.slice(0, 4).forEach((s, i) => {
+      const id = (s && typeof s.id === 'string' && s.id.trim()) ? s.id.trim().slice(0, 24) : `s${i}`;
+      if (seen.has(id)) return;           // 중복 id는 선착 우선 (검증이 오류로 안내)
+      const cfg = parseShopBody(s, id);
+      if (cfg) { seen.add(id); out.push(cfg); }
+    });
+    return out;
+  }
+  const one = parseShopBody(schema?.shop, null);
+  return one ? [one] : [];
+}
+
+/** 대표/지정 상점 — shopId 생략 = 첫 상점 (v1.3 이하 소비처 하위호환) */
+function shopConfig(schema, shopId) {
+  const list = shopConfigs(schema);
+  if (!list.length) return null;
+  return shopId != null ? (list.find((c) => c.id === shopId) ?? null) : list[0];
+}
+
 /** 금액 표기 — units 사다리로 "12골드 34실버 56코퍼". 계산은 언제나 최소 단위 정수 하나다 */
 function fmtMoney(cfg, n) {
   let v = Math.round(Number(n) || 0);
@@ -6097,14 +6163,41 @@ function fmtMoney(cfg, n) {
 
 function initShop() { return { seq: 1, stock: [], buying: [], log: [], stocked: false }; }
 
-function ensureShop(state) {
-  const sh = state.shop;
-  if (!sh || typeof sh !== 'object' || !Array.isArray(sh.stock)) state.shop = initShop();
-  const s = state.shop;
+function repairShop(s) {
   s.buying = Array.isArray(s.buying) ? s.buying : [];
   s.log = Array.isArray(s.log) ? s.log : [];
   if (typeof s.seq !== 'number' || !isFinite(s.seq)) s.seq = 1 + s.stock.reduce((m, x) => Math.max(m, x.id || 0), 0);
   return s;
+}
+
+/** 레거시 단수 상태 (state.shop) — v1.3 이하 소비처 하위호환 */
+function ensureShop(state) {
+  const sh = state.shop;
+  if (!sh || typeof sh !== 'object' || !Array.isArray(sh.stock)) state.shop = initShop();
+  return repairShop(state.shop);
+}
+
+/** cfg별 상점 상태 — 단수(id null)=state.shop, 배열=state.shops[id] (없으면 초기화) */
+function shopStateOf(state, cfg) {
+  if (!cfg || cfg.id == null) return ensureShop(state);
+  if (!state.shops || typeof state.shops !== 'object' || Array.isArray(state.shops)) state.shops = {};
+  let s = state.shops[cfg.id];
+  if (!s || typeof s !== 'object' || !Array.isArray(s.stock)) s = state.shops[cfg.id] = initShop();
+  return repairShop(s);
+}
+
+/** 전 상점 상태 보장 + 단수→배열 전환 이관 — initState·reconcile이 부른다 */
+function ensureShops(schema, state) {
+  const list = shopConfigs(schema);
+  if (!list.length) return;
+  // 단수 → 배열 전환: 옛 state.shop(진열·시세·로그)을 첫 상점이 물려받는다 (진열 유실 방지)
+  if (list[0].id != null && state.shop && Array.isArray(state.shop.stock)
+    && !(state.shops && state.shops[list[0].id])) {
+    state.shops = (state.shops && typeof state.shops === 'object' && !Array.isArray(state.shops)) ? state.shops : {};
+    state.shops[list[0].id] = state.shop;
+    delete state.shop;
+  }
+  for (const cfg of list) shopStateOf(state, cfg);
 }
 
 function shopOpen(cfg, schema, vars, makeLookup) {
@@ -6157,11 +6250,20 @@ function sanitizeStock(cfg, raw) {
   return out;
 }
 
-/** 재고 통째 교체 (물갈이) — 상점 진열창은 델타가 아니라 교체가 맞다 */
-function applyStock(schema, state, raw) {
-  const cfg = shopConfig(schema);
-  if (!cfg) return { stocked: 0 };
-  const shop = ensureShop(state);
+/** 재고 통째 교체 (물갈이) — 상점 진열창은 델타가 아니라 교체가 맞다.
+ *  대상 상점: shopId 지정(패널 새로고침) > raw.id 에코(다상점 피기백) > 재고 빈 첫 상점 > 첫 상점 */
+function applyStock(schema, state, raw, shopId) {
+  const list = shopConfigs(schema);
+  if (!list.length) return { stocked: 0 };
+  let cfg = shopId != null ? list.find((c) => c.id === shopId)
+    : (raw && typeof raw.id === 'string') ? list.find((c) => c.id === raw.id) : null;
+  if (!cfg) {
+    cfg = list.find((c) => {
+      const s = c.id == null ? state.shop : state.shops?.[c.id];
+      return !s?.stocked && !s?.stock?.length;
+    }) ?? list[0];
+  }
+  const shop = shopStateOf(state, cfg);
   const clean = sanitizeStock(cfg, raw);
   if (!clean.stock.length && !clean.buying.length) return { stocked: 0, rejected: clean.rejected };
   shop.stock = clean.stock.map((it) => ({ id: shop.seq++, ...it }));
@@ -6171,12 +6273,12 @@ function applyStock(schema, state, raw) {
 }
 
 /** 거래 공통 마무리 — 통지(다음 턴 서사) + 원장(이중 계산 방지) + 패널 로그(회전) */
-function logTx(cfg, state, line) {
+function logTx(cfg, state, line, shopSt) {
   const m = state.meta;
   m.pendingNotifies = m.pendingNotifies || [];
   m.pendingNotifies.push(`[${cfg.label}] ${line} 이번 서사에 자연스럽게 반영하라 — 수치 정산은 이미 끝났다.`);
   m.lastChanges = [...(m.lastChanges || []), `${cfg.label}: ${line}`].slice(-12);
-  const shop = ensureShop(state);
+  const shop = shopSt ?? shopStateOf(state, cfg);
   shop.log = [`${line}`, ...shop.log].slice(0, CAPS.LOG_MAX);
 }
 
@@ -6195,10 +6297,10 @@ function mergeIntoList(list, display, maxItems) {
 }
 
 /** 구매 — 결정적, 보조 호출 없음. 반환 { ok, reason?, line? } */
-function buy(schema, state, itemId) {
-  const cfg = shopConfig(schema);
+function buy(schema, state, itemId, shopId) {
+  const cfg = shopConfig(schema, shopId);
   if (!cfg) return { ok: false, reason: '상점 없음' };
-  const shop = ensureShop(state);
+  const shop = shopStateOf(state, cfg);
   const it = shop.stock.find((x) => x.id === itemId);
   if (!it) return { ok: false, reason: '이미 팔린 물건이에요' };
   const wallet = Number(state.vars[cfg.currency]) || 0;
@@ -6213,7 +6315,7 @@ function buy(schema, state, itemId) {
   state.vars[cfg.buyTo] = list;
   if (it.qty != null) { it.qty -= 1; if (it.qty <= 0) shop.stock = shop.stock.filter((x) => x.id !== itemId); }
   const line = `「${display}」 구매 (-${fmtMoney(cfg, it.price)}).`;
-  logTx(cfg, state, line);
+  logTx(cfg, state, line, shop);
   return { ok: true, line };
 }
 
@@ -6227,10 +6329,10 @@ function quoteFor(shop, itemText) {
 }
 
 /** 판매 — 시세판 매치는 즉시, 아니면 감정가(보조)가 와야 한다. price = 감정가(원가 기준) */
-function sell(schema, state, itemText, appraised = null) {
-  const cfg = shopConfig(schema);
+function sell(schema, state, itemText, appraised = null, shopId) {
+  const cfg = shopConfig(schema, shopId);
   if (!cfg || !cfg.sellFrom) return { ok: false, reason: '매입 창구 없음' };
-  const shop = ensureShop(state);
+  const shop = shopStateOf(state, cfg);
   const list = Array.isArray(state.vars[cfg.sellFrom]) ? [...state.vars[cfg.sellFrom]] : [];
   const idx = list.indexOf(itemText);
   if (idx < 0) return { ok: false, reason: '가지고 있지 않은 물건이에요' };
@@ -6247,7 +6349,7 @@ function sell(schema, state, itemText, appraised = null) {
   state.vars[cfg.sellFrom] = list;
   state.vars[cfg.currency] = (Number(state.vars[cfg.currency]) || 0) + payout;
   const line = `「${m ? m[1] : itemText}」 판매 (+${fmtMoney(cfg, payout)}).`;
-  logTx(cfg, state, line);
+  logTx(cfg, state, line, shop);
   return { ok: true, line, payout };
 }
 
@@ -6269,8 +6371,8 @@ function exchangeRates(cfg, varId) {
 }
 
 /** 환전 — 결정적, 보조 호출 없음. dir 'buy' = 통화 사기(상대 지갑 지불) / 'sell' = 통화 팔기 */
-function exchange(schema, state, qty, dir, varId) {
-  const cfg = shopConfig(schema);
+function exchange(schema, state, qty, dir, varId, shopId) {
+  const cfg = shopConfig(schema, shopId);
   const pair = exchangePair(cfg, varId);
   if (!cfg || !pair) return { ok: false, reason: '환전 창구 없음' };
   const rates = exchangeRates(cfg, pair.var);
@@ -6325,21 +6427,26 @@ function stockSpecBody(cfg) {
   ].filter((x) => x !== null);
 }
 
-/** 턴 피기백 — 재고가 빈 동안만 (첫 입고). 이후 물갈이는 패널 버튼으로만 */
+/** 턴 피기백 — 재고가 빈 동안만 (첫 입고). 이후 물갈이는 패널 버튼으로만.
+ *  다상점은 턴당 한 곳(재고 빈 첫 상점부터 차례로 — 프롬프트 비대 방지) + id 에코 요구 */
 function auxSpec(schema, state, makeLookup) {
-  const cfg = shopConfig(schema);
-  if (!cfg) return '';
-  const shop = state.shop;
-  if (shop?.stocked || shop?.stock?.length) return '';
-  if (!shopOpen(cfg, schema, state.vars, makeLookup)) return '';
-  return ['', `[${cfg.label} — 시스템 상점 첫 입고] (필수 항목)`, ...stockSpecBody(cfg)].join('\n');
+  const list = shopConfigs(schema);
+  for (const cfg of list) {
+    const shop = cfg.id == null ? state.shop : state.shops?.[cfg.id];   // 읽기 전용 (초기화는 엔진 몫)
+    if (shop?.stocked || shop?.stock?.length) continue;
+    if (!shopOpen(cfg, schema, state.vars, makeLookup)) continue;
+    const idLine = list.length > 1
+      ? [`- "shop" 객체에 "id": "${cfg.id}"를 그대로 포함하라 — 이번 입고는 ${cfg.label} 하나만이다.`] : [];
+    return ['', `[${cfg.label} — 시스템 상점 첫 입고] (필수 항목)`, ...idLine, ...stockSpecBody(cfg)].join('\n');
+  }
+  return '';
 }
 
-/** 패널 인터랙션 프롬프트 — restock(물갈이) / appraise(감정) */
+/** 패널 인터랙션 프롬프트 — restock(물갈이) / appraise(감정). payload.shopId로 대상 지정 */
 function interactionPrompt(schema, state, kind, payload = {}) {
-  const cfg = shopConfig(schema);
+  const cfg = shopConfig(schema, payload.shopId);
   if (!cfg) return null;
-  const shop = ensureShop(state);
+  const shop = shopStateOf(state, cfg);
   if (kind === 'appraise') {
     return [
       `너는 "${cfg.label}"의 감정사다. 아래 물건의 매입 원가를 정하라.`,
@@ -6373,9 +6480,9 @@ function parseInteraction(text, extractJsonObject) {
 }
 
 module.exports = {
-  CAPS, shopConfig, initShop, ensureShop, shopOpen, sanitizeStock, applyStock,
-  buy, sell, quoteFor, mergeIntoList, clampPrice, exchange, exchangeRates, exchangePair,
-  fmtMoney, auxSpec, interactionPrompt, parseInteraction,
+  CAPS, shopConfig, shopConfigs, initShop, ensureShop, ensureShops, shopStateOf, shopOpen,
+  sanitizeStock, applyStock, buy, sell, quoteFor, mergeIntoList, clampPrice,
+  exchange, exchangeRates, exchangePair, fmtMoney, auxSpec, interactionPrompt, parseInteraction,
 };
 
 });
@@ -6897,7 +7004,7 @@ function initState(schema, opts = {}) {
   };
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
-  if (shopMod.shopConfig(schema)) st.shop = shopMod.initShop(); // 상점 (v0.96)
+  shopMod.ensureShops(schema, st); // 상점 (v0.96, v1.4.0 다중 — 단수 state.shop / 배열 state.shops[id])
   if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
@@ -6968,7 +7075,7 @@ function reconcileState(schema, state) {
   }
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
-  if (shopMod.shopConfig(schema)) shopMod.ensureShop(state); // 상점 (v0.96) — 같은 규약
+  shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
   if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
@@ -12003,6 +12110,8 @@ const SCHEMA_SHOP_RULES = [
   '- **골드/실버/코퍼는 화폐 3개가 아닙니다** — 비율이 고정이면 지갑 변수를 쪼개지 말고 지갑 하나(최소 단위) + '
   + '`units: [{ "label": "골드", "ratio": 10000 }, { "label": "실버", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }]`로 '
   + '표기만 쪼개세요 (잔고 123456 → "12골드 34실버 56코퍼"). 최소 단위 ratio 1 필수, 계산은 언제나 최소 단위 정수 하나입니다.',
+  '- **상점이 여럿인 세계**(무기점·잡화점·암시장)는 `"shops": [{ "id": "store", ...단수와 같은 필드 }, ...]` 배열로 (최대 4, `id` 필수·중복 금지). '
+  + '상점마다 지갑·재고·categories·when이 독립이고 우상단 버튼도 하나씩 생깁니다. `shop`(단수)과 동시에 쓰면 안 됩니다 — 1개면 단수가 간단합니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -12626,6 +12735,14 @@ function varReferenceIndex(schema) {
     for (const e of shopEx) add(e?.var, '상점', '환전 지갑');
     ex(schema.shop.when, '상점', 'when');
   }
+  if (Array.isArray(schema.shops)) for (const s of schema.shops) {
+    if (!s || typeof s !== 'object') continue;
+    const tag = `상점(${s.id ?? '?'})`;
+    add(s.currency, tag, '지갑'); add(s.buyTo, tag, '구매 목록'); add(s.sellFrom, tag, '매입 목록');
+    const sx = Array.isArray(s.exchange) ? s.exchange : s.exchange ? [s.exchange] : [];
+    for (const e of sx) add(e?.var, tag, '환전 지갑');
+    ex(s.when, tag, 'when');
+  }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
     fx(a?.onEnter, '시나리오', a?.id ?? '막');
@@ -12897,7 +13014,7 @@ const TAB_SLICES = {
   // 보드(v0.95) — board 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   board: { keys: ['board'], label: '보드' },
   // 상점(v0.96) — shop 객체 통째 교체. 같은 원문 보존 규약.
-  shop: { keys: ['shop'], label: '상점' },
+  shop: { keys: ['shop', 'shops'], label: '상점' },
   // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   msgr: { keys: ['messenger'], label: '메신저' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
@@ -12956,7 +13073,7 @@ function tabItemCounts(schema, tabKey) {
   }
   else if (tabKey === 'calendar') push('calendar.marks', schema.calendar?.marks);
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
-  else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); }
+  else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
@@ -15074,7 +15191,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
-    [/^\$\.shop\b/, '상점', false],
+    [/^\$\.shops?\b/, '상점', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
@@ -16481,7 +16598,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(tabAiTools('shop'));
     const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
     const lists = schema.vars.filter((v) => v.type === 'list');
-    if (!schema.shop) {
+    const shopsArr = Array.isArray(schema.shops) ? schema.shops : null;
+    if (!schema.shop && !shopsArr) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
         '상점 — 세계 안의 시스템 상점입니다 (알터 스토어·잡화점·포인트샵). 채팅 우상단에 버튼이 '
         + '생기고, 카테고리 진열·구매·판매(감정)·매입 시세판이 굴러갑니다. 결제·잔액·수량은 전부 '
@@ -16498,8 +16616,51 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }));
       return wrap;
     }
+    // 다중 상점 (v1.4.0) — 상점마다 같은 필드 한 벌씩. 상태·버튼은 id로 갈린다
+    if (shopsArr) {
+      shopsArr.forEach((SH, i) => {
+        wrap.appendChild(h('div', { class: 'sce-row' },
+          pair(`상점 ${i + 1} — id`, bindInput(SH.id ?? '', (x) => { SH.id = x.trim(); rerender(); },
+            { cls: 'sce-w-m', ph: '예: store, black_market' }),
+            '상태·버튼이 이 id로 갈립니다 — 운영 중에 바꾸면 그 상점 진열이 새로 시작돼요'),
+          h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+            if (confirm(`상점 '${SH.label ?? SH.id ?? i + 1}'을(를) 지울까요?`)) {
+              shopsArr.splice(i, 1);
+              if (!shopsArr.length) delete schema.shops;
+              rerender();
+            }
+          } }, '✕ 이 상점 삭제')));
+        wrap.appendChild(shopFieldBlock(SH, nums, lists));
+      });
+      wrap.appendChild(h('div', { class: 'sce-row' },
+        shopsArr.length < 4 ? addBtn('상점 추가', () => {
+          shopsArr.push({ id: `shop${shopsArr.length + 1}`, label: `상점 ${shopsArr.length + 1}`, icon: '🛒', currency: nums[0].id, buyTo: lists[0].id });
+          rerender();
+        }) : null,
+        h('span', { class: 'sce-hint', style: 'margin:0' }, '상점은 최대 4개 — 지갑·재고·노출 조건이 상점마다 독립이고 우상단 버튼도 하나씩 생깁니다.')));
+      return wrap;
+    }
     const SH = schema.shop;
-    wrap.appendChild(h('div', { class: 'sce-block' },
+    wrap.appendChild(shopFieldBlock(SH, nums, lists));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      addBtn('상점 삭제', () => {
+        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
+      }),
+      addBtn('2호점 추가 (다중 상점으로 전환)', () => {
+        schema.shops = [
+          { id: 'shop1', ...SH },
+          { id: 'shop2', label: '상점 2', icon: '🛒', currency: nums[0].id, buyTo: lists[0].id },
+        ];
+        delete schema.shop;
+        rerender();
+      }),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다. 2호점 전환 시 기존 진열은 1호점이 물려받아요.')));
+    return wrap;
+  }
+
+  // 상점 필드 한 벌 — 단수·다중이 같은 블록을 쓴다 (v1.4.0)
+  function shopFieldBlock(SH, nums, lists) {
+    return h('div', { class: 'sce-block' },
       h('div', { class: 'sce-row' },
         pair('상점 이름', bindInput(SH.label, (x) => { SH.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '상점' })),
         pair('아이콘', bindInput(SH.icon, (x) => { SH.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🛒' })),
@@ -16563,13 +16724,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ),
       pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
         '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      addBtn('상점 삭제', () => {
-        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
-      }),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다.')));
-    return wrap;
+    );
   }
 
   // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
@@ -25432,7 +25587,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let boardView = { mode: 'list', postId: null, cat: null };  // mode: 'list' | 'read' | 'write', cat: 카테고리 필터(null=전체)
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
-  let shopView = { cat: null, exchQty: '' };        // cat: 카테고리 이름 | '__sell' (매입) | '__exch' (환전)
+  let shopView = { shopId: null, cat: null, exchQty: '' };  // shopId: 다중 상점 대상(null=단수/첫) · cat: 카테고리 | '__sell' | '__exch'
   let shopBusy = false;
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
@@ -26314,9 +26469,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       if (b) specs.push({ key: 'board', kind: 'board', tab: null, label: b.label, icon: b.icon });
       // 상점 (v0.96) — 게임 패널 4호. when 게이트가 닫혀 있으면 버튼째 숨긴다
       // (store_on 같은 정책 변수 — 이 판에 상점이 없는 세계면 버튼도 없어야 한다)
-      const sh = shopMod.shopConfig(schema);
-      if (sh && shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) {
-        specs.push({ key: 'shop', kind: 'shop', tab: null, label: sh.label, icon: sh.icon });
+      // v1.4.0 다중 상점: 상점마다 버튼 하나씩 (tab이 목적지 상점 id) — 게이트도 상점별 독립
+      for (const sh of shopMod.shopConfigs(schema)) {
+        if (!shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) continue;
+        specs.push({ key: sh.id == null ? 'shop' : `shop_${sh.id}`, kind: 'shop', tab: sh.id, label: sh.label, icon: sh.icon });
       }
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
@@ -26581,7 +26737,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const css = gameKind === 'party' ? schema?.party?.css
       : gameKind === 'calendar' ? schema?.calendar?.css
         : gameKind === 'board' ? schema?.board?.css
-          : gameKind === 'shop' ? schema?.shop?.css
+          : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
             : gameKind === 'msgr' ? schema?.messenger?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
@@ -26603,7 +26759,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     gameCalYm = null;   // 달력은 열 때마다 오늘이 든 달부터
     gameCalSel = null;
     boardView = { mode: 'list', postId: null, cat: null };  // 보드는 열 때마다 목록·전체 칸부터
-    shopView = { cat: null, exchQty: '' };                   // 상점은 열 때마다 첫 카테고리부터
+    // 상점은 열 때마다 첫 카테고리부터. 다중 상점(v1.4.0)은 버튼이 목적지 상점 id를 tab으로 들고 온다
+    shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
@@ -27509,7 +27666,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     renderGamePanel();
     try {
       const prompt = shopMod.interactionPrompt(schema, session.current, kind,
-        { ...payload, narrative: await boardNarrative() });
+        { ...payload, shopId: shopView.shopId ?? undefined, narrative: await boardNarrative() });
       // 새로고침(물갈이)도 재고 전체를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8).
       // v1.0.9: perCat 도입으로 최대 36개 JSON — 1400도 부족해 2400으로.
       const res = await callAuxLLM(prompt, 2400);
@@ -27536,7 +27693,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   async function onShopRestock() {
     const parsed = await callShopAux('restock');
     if (parsed) {
-      const r = shopMod.applyStock(schema, session.current, parsed);
+      const r = shopMod.applyStock(schema, session.current, parsed, shopView.shopId ?? undefined);
       await boardSaveNow('상점 물갈이');
       gameNotice = r.stocked
         ? `✓ 새 진열 ${r.stocked}종 · 매입 시세 ${r.buying ?? 0}종` + (r.rejected?.length ? ` (규격 밖 ${r.rejected.length}종 거부)` : '')
@@ -27547,7 +27704,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onShopBuy(itemId) {
     if (!session || !schema) return;
-    const r = shopMod.buy(schema, session.current, itemId);
+    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
     else renderGamePanel();
@@ -27557,7 +27714,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   async function onShopExchange(dir, exVar) {
     if (!session || !schema) return;
     const qty = parseInt(shopView.exchQty, 10);
-    const r = shopMod.exchange(schema, session.current, qty, dir, exVar);
+    const r = shopMod.exchange(schema, session.current, qty, dir, exVar, shopView.shopId ?? undefined);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) { shopView.exchQty = ''; await commitPanelChanges({}, '환전'); }
     else renderGamePanel();
@@ -27565,13 +27722,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onShopSell(itemText) {
     if (!session || !schema) return;
-    let r = shopMod.sell(schema, session.current, itemText);
+    const sid = shopView.shopId ?? undefined;
+    let r = shopMod.sell(schema, session.current, itemText, null, sid);
     if (!r.ok && r.needAppraisal) {
       const parsed = await callShopAux('appraise', { item: itemText });
       if (parsed == null) { renderGamePanel(); return; }
       const val = Number(parsed.appraisal);
       if (!isFinite(val) || val <= 0) { gameNotice = '⚠ 감정 불가 판정이에요 — 이 물건은 여기서 안 받아요'; renderGamePanel(); return; }
-      r = shopMod.sell(schema, session.current, itemText, val);
+      r = shopMod.sell(schema, session.current, itemText, val, sid);
     }
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 판매');
@@ -27579,9 +27737,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   }
 
   function renderShopPanel(root) {
-    const cfg = shopMod.shopConfig(schema);
+    // 대상 상점이 스키마에서 사라졌으면(편집 중 삭제 등) 첫 상점으로 폴백
+    const cfg = shopMod.shopConfig(schema, shopView.shopId ?? undefined) ?? shopMod.shopConfig(schema);
     if (!cfg) { root.innerHTML = ''; return; }
-    const shop = shopMod.ensureShop(session.current);
+    if (cfg.id !== shopView.shopId) shopView.shopId = cfg.id;
+    const shop = shopMod.shopStateOf(session.current, cfg);
     root.innerHTML = '';
     const card = document.createElement('div');
     card.className = 'scg-card scb-wide';
@@ -27604,6 +27764,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     x.type = 'button'; x.onclick = closeGamePanel;
     title.appendChild(x);
     card.appendChild(title);
+
+    // 다중 상점 (v1.4.0) — 열린 상점이 여럿이면 패널 안에서도 오갈 수 있게 칩 한 줄
+    const allShops = shopMod.shopConfigs(schema)
+      .filter((c) => shopMod.shopOpen(c, schema, session.current.vars, engine.makeLookup));
+    if (allShops.length > 1) {
+      const srow = el('div', 'sch-tabs');
+      for (const c of allShops) {
+        srow.appendChild(btn(`${c.icon} ${c.label}`, `sch-tab${c.id === cfg.id ? ' sch-on' : ''}`, () => {
+          shopView = { shopId: c.id, cat: null, exchQty: '' };
+          gameNotice = null;
+          applyGameCss();
+          renderGamePanel();
+        }));
+      }
+      card.appendChild(srow);
+    }
 
     const walletDef = schema.vars.find((v) => v.id === cfg.currency);
     const walletVal = session.current.vars[cfg.currency] ?? 0;

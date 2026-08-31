@@ -542,7 +542,12 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
   lastChanges 원장(보조 이중 계산 방지) + 패널 로그 6건 회전.
 - 입고 델타: `{"shop":{"stock":[{cat,name,grade,price,qty?,note?}],"buying":[{name,price}]}}` —
   진열은 통째 교체(물갈이), buying = 매입 시세판 (마정석 시세 등 — 매치 시 즉시 판매).
-- 편집기 [상점] 탭 (TAB_SLICES.shop).
+- 편집기 [상점] 탭 (TAB_SLICES.shop — keys `['shop','shops']`).
+- **다중 상점 (v1.4.0)**: `shops: [{ id, ...단수와 같은 필드 }]` 최대 4, **id 필수·중복 금지·shop(단수)과 동시 사용 금지**(검증).
+  상점마다 지갑·재고·categories·bands·when 독립, 우상단 버튼도 하나씩(tab=상점 id) + 패널 상점 전환 칩.
+  상태: 단수=state.shop(옛 세이브 무접촉) / 배열=`state.shops[id]`, 단수→배열 전환 시 첫 상점이 state.shop을 물려받음(ensureShops).
+  코어 API: `shopConfigs(schema)` / `shopConfig(schema, shopId?)` / `shopStateOf(state, cfg)` / buy·sell·exchange·applyStock·interactionPrompt에 shopId 인자.
+  첫 입고 피기백은 **턴당 한 상점**(재고 빈 첫 상점) — 다상점이면 응답 "id" 에코 요구, applyStock이 라우팅(누락 시 빈 상점 폴백).
 
 ## scenario — 시나리오레이터 (v0.90, 옵트인)
 

@@ -78,7 +78,7 @@ function initState(schema, opts = {}) {
   };
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
-  if (shopMod.shopConfig(schema)) st.shop = shopMod.initShop(); // 상점 (v0.96)
+  shopMod.ensureShops(schema, st); // 상점 (v0.96, v1.4.0 다중 — 단수 state.shop / 배열 state.shops[id])
   if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
@@ -149,7 +149,7 @@ function reconcileState(schema, state) {
   }
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
-  if (shopMod.shopConfig(schema)) shopMod.ensureShop(state); // 상점 (v0.96) — 같은 규약
+  shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
   if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;

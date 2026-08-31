@@ -290,6 +290,55 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
   ck('지갑 중복 창구 오류', !validateSchema(bad).ok, '');
 }
 
+// ── v1.4.0 — 다중 상점 (shops[]): 지갑·재고·when이 상점마다 독립, 상태는 state.shops[id] ──
+{
+  const SM = JSON.parse(J(S));
+  delete SM.shop;
+  SM.vars.push({ id: 'usd', label: '달러', type: 'int', init: 500, min: 0 });
+  SM.shops = [
+    { id: 'store', label: '알터 스토어', currency: 'coin', buyTo: 'items', categories: ['소모품'], guide: 'g' },
+    { id: 'black', label: '암시장', currency: 'usd', buyTo: 'items', sellFrom: 'items', categories: ['장물'], when: 'store_on', guide: 'g' },
+  ];
+  const v = validateSchema(SM);
+  ck('★ shops 배열 스키마 통과', v.ok, J(v.errors));
+  const cfgs = shop.shopConfigs(SM);
+  ck('구성 2개 + id', cfgs.length === 2 && cfgs[0].id === 'store' && cfgs[1].id === 'black', J(cfgs.map((c) => c.id)));
+  ck('shopConfig(id) 선택', shop.shopConfig(SM, 'black').currency === 'usd', '');
+  ck('하위호환 — 인자 없으면 첫 상점', shop.shopConfig(SM).id === 'store', '');
+  const t = engine.initState(SM); t.meta.setupDone = true;
+  ck('★ 상태 분리 — state.shops[id]', t.shops && t.shops.store && t.shops.black && !t.shop, J(Object.keys(t.shops ?? {})));
+  // 입고 라우팅 — 다상점 피기백의 id 에코
+  shop.applyStock(SM, t, { id: 'black', stock: [{ cat: '장물', name: '훔친 반지', price: 30 }] });
+  ck('★ id 에코 라우팅', t.shops.black.stock.length === 1 && t.shops.store.stock.length === 0, '');
+  // 구매 — shopId 지정 + 지갑 분리 (암시장은 달러)
+  const r = shop.buy(SM, t, t.shops.black.stock[0].id, 'black');
+  ck('★ 지정 상점 구매 — usd 지갑만 줄어듦', r.ok && t.vars.usd === 470 && t.vars.coin === 100, J([r, t.vars]));
+  ck('거래 로그도 그 상점에만', t.shops.black.log.length === 1 && t.shops.store.log.length === 0, '');
+  // auxSpec — 재고 빈 첫 상점 + id 에코 요구 (턴당 한 상점)
+  const spec = shop.auxSpec(SM, t, engine.makeLookup);
+  ck('피기백 — 빈 첫 상점 + id 에코 요구', spec.includes('알터 스토어') && spec.includes('"id": "store"'), spec.slice(0, 120));
+  // id 없는 응답 → 재고 빈 상점으로 (구모델·에코 누락 폴백)
+  shop.applyStock(SM, t, { stock: [{ cat: '소모품', name: '포션', price: 5 }] });
+  ck('id 생략 → 빈 상점 라우팅', t.shops.store.stock.length === 1, J(t.shops.store.stock));
+  // when 게이트 — 상점별 독립
+  t.vars.store_on = false;
+  ck('상점별 when 독립', shop.shopOpen(cfgs[0], SM, t.vars, engine.makeLookup) === true
+    && shop.shopOpen(cfgs[1], SM, t.vars, engine.makeLookup) === false, '');
+  // 단수→배열 전환 이관 — 옛 state.shop을 첫 상점이 물려받는다 (진열 유실 방지)
+  const t2 = engine.initState(SM); t2.meta.setupDone = true;
+  delete t2.shops;
+  t2.shop = { seq: 3, stock: [{ id: 1, cat: '소모품', name: '유산', grade: null, price: 1, qty: null, note: null }], buying: [], log: [], stocked: true };
+  shop.ensureShops(SM, t2);
+  ck('★ 단수→배열 이관', !t2.shop && t2.shops.store.stock[0].name === '유산' && t2.shops.black.stock.length === 0, '');
+  // 검증 — 동시 사용·id 중복·누락
+  const b1 = JSON.parse(J(SM)); b1.shop = JSON.parse(J(S)).shop;
+  ck('shop+shops 동시 사용 오류', !validateSchema(b1).ok, '');
+  const b2 = JSON.parse(J(SM)); b2.shops[1].id = 'store';
+  ck('상점 id 중복 오류', !validateSchema(b2).ok, '');
+  const b3 = JSON.parse(J(SM)); delete b3.shops[1].id;
+  ck('상점 id 누락 오류', !validateSchema(b3).ok, '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `— ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

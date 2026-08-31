@@ -1119,112 +1119,133 @@ function validateSchema(schema) {
   }
 
   // ── shop (상점 v0.96 — 옵트인. 로어북 상점의 뇌절·가격 계산을 구조로 잡는다) ──
-  if (schema.shop != null) {
-    const SH = schema.shop;
-    if (typeof SH !== 'object' || Array.isArray(SH)) err('$.shop', 'shop은 객체여야 함');
-    else {
-      for (const [k, name] of [['label', '이름'], ['guide', '입고 지침'], ['css', 'CSS']]) {
-        if (SH[k] != null && typeof SH[k] !== 'string') err(`$.shop.${k}`, `${name}(${k})은 문자열이어야 함`);
+  // v1.4.0: 다중 상점 shops[] — 몸통 검증은 단수와 같아서 함수 하나를 두 형태가 나눠 쓴다
+  const checkShopBody = (SH, P) => {
+    for (const [k, name] of [['label', '이름'], ['guide', '입고 지침'], ['css', 'CSS']]) {
+      if (SH[k] != null && typeof SH[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
+    }
+    if (SH.icon != null && (typeof SH.icon !== 'string' || SH.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+    // 지갑 — 숫자 변수 필수
+    const wallet = vars.find((v) => v && v.id === SH.currency);
+    if (!SH.currency || typeof SH.currency !== 'string') err(`${P}.currency`, '지갑 변수(currency)가 필요합니다');
+    else if (!wallet) err(`${P}.currency`, `지갑 변수 '${SH.currency}'가 vars에 없음`);
+    else if (wallet.type !== 'int' && wallet.type !== 'float') err(`${P}.currency`, `지갑 '${SH.currency}'는 숫자 타입이어야 함 (현재: ${wallet.type})`);
+    // 구매품이 들어갈 목록 — list 변수 필수
+    const bagVar = (id, path, req) => {
+      if (id == null) { if (req) err(path, '목록 변수가 필요합니다'); return; }
+      const v = vars.find((x) => x && x.id === id);
+      if (!v) err(path, `목록 변수 '${id}'가 vars에 없음`);
+      else if (v.type !== 'list') err(path, `'${id}'는 list 타입이어야 함 (현재: ${v.type})`);
+    };
+    bagVar(SH.buyTo, `${P}.buyTo`, true);
+    bagVar(SH.sellFrom, `${P}.sellFrom`, false);
+    if (SH.categories != null && (!Array.isArray(SH.categories) || !SH.categories.length || SH.categories.length > 8
+      || SH.categories.some((c) => typeof c !== 'string'))) {
+      err(`${P}.categories`, '카테고리는 문자열 1~8개 배열');
+    }
+    if (SH.grades != null && (!Array.isArray(SH.grades) || !SH.grades.length || SH.grades.some((g) => typeof g !== 'string'))) {
+      err(`${P}.grades`, '등급 어휘는 문자열 배열');
+    }
+    if (SH.bands != null) {
+      if (typeof SH.bands !== 'object' || Array.isArray(SH.bands)) err(`${P}.bands`, 'bands는 { 등급: [최소, 최대] } 객체');
+      else for (const [g, band] of Object.entries(SH.bands)) {
+        if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0)
+          || band[0] > band[1]) err(`${P}.bands.${g}`, '밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
+        if (SH.grades && !SH.grades.includes(g)) warn(`${P}.bands.${g}`, `밴드의 등급 '${g}'가 grades 목록에 없습니다 — 영영 안 쓰입니다`);
       }
-      if (SH.icon != null && (typeof SH.icon !== 'string' || SH.icon.length > 8)) err('$.shop.icon', '아이콘은 이모지 한두 글자 (8자 이내)');
-      // 지갑 — 숫자 변수 필수
-      const wallet = vars.find((v) => v && v.id === SH.currency);
-      if (!SH.currency || typeof SH.currency !== 'string') err('$.shop.currency', '지갑 변수(currency)가 필요합니다');
-      else if (!wallet) err('$.shop.currency', `지갑 변수 '${SH.currency}'가 vars에 없음`);
-      else if (wallet.type !== 'int' && wallet.type !== 'float') err('$.shop.currency', `지갑 '${SH.currency}'는 숫자 타입이어야 함 (현재: ${wallet.type})`);
-      // 구매품이 들어갈 목록 — list 변수 필수
-      const bagVar = (id, path, req) => {
-        if (id == null) { if (req) err(path, '목록 변수가 필요합니다'); return; }
-        const v = vars.find((x) => x && x.id === id);
-        if (!v) err(path, `목록 변수 '${id}'가 vars에 없음`);
-        else if (v.type !== 'list') err(path, `'${id}'는 list 타입이어야 함 (현재: ${v.type})`);
-      };
-      bagVar(SH.buyTo, '$.shop.buyTo', true);
-      bagVar(SH.sellFrom, '$.shop.sellFrom', false);
-      if (SH.categories != null && (!Array.isArray(SH.categories) || !SH.categories.length || SH.categories.length > 8
-        || SH.categories.some((c) => typeof c !== 'string'))) {
-        err('$.shop.categories', '카테고리는 문자열 1~8개 배열');
+      if (SH.grades) for (const g of SH.grades) {
+        if (!SH.bands[g]) warn(`${P}.bands`, `등급 '${g}'에 가격 밴드가 없습니다 — 그 등급은 가격 상한 없이 들어옵니다`);
       }
-      if (SH.grades != null && (!Array.isArray(SH.grades) || !SH.grades.length || SH.grades.some((g) => typeof g !== 'string'))) {
-        err('$.shop.grades', '등급 어휘는 문자열 배열');
+    }
+    if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
+      err(`${P}.sellRate`, '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
+    }
+    if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
+      err(`${P}.maxStock`, '진열 상한은 4~48 정수');
+    }
+    // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
+    if (SH.perCat != null) {
+      const PC = SH.perCat;
+      if (!Array.isArray(PC) || PC.length !== 2 || !Number.isInteger(PC[0]) || !Number.isInteger(PC[1])
+        || PC[0] < 1 || PC[0] > PC[1] || PC[1] > 9) {
+        err(`${P}.perCat`, 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
+      } else if (Array.isArray(SH.categories) && SH.maxStock != null
+        && PC[0] * SH.categories.length > SH.maxStock) {
+        warn(`${P}.perCat`, `카테고리 ${SH.categories.length}개 × 최소 ${PC[0]}개 = ${PC[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
       }
-      if (SH.bands != null) {
-        if (typeof SH.bands !== 'object' || Array.isArray(SH.bands)) err('$.shop.bands', 'bands는 { 등급: [최소, 최대] } 객체');
-        else for (const [g, band] of Object.entries(SH.bands)) {
-          if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0)
-            || band[0] > band[1]) err(`$.shop.bands.${g}`, '밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
-          if (SH.grades && !SH.grades.includes(g)) warn(`$.shop.bands.${g}`, `밴드의 등급 '${g}'가 grades 목록에 없습니다 — 영영 안 쓰입니다`);
-        }
-        if (SH.grades) for (const g of SH.grades) {
-          if (!SH.bands[g]) warn('$.shop.bands', `등급 '${g}'에 가격 밴드가 없습니다 — 그 등급은 가격 상한 없이 들어옵니다`);
-        }
-      }
-      if (SH.sellRate != null && (typeof SH.sellRate !== 'number' || SH.sellRate <= 0 || SH.sellRate > 1)) {
-        err('$.shop.sellRate', '매입률은 0 초과 1 이하 숫자 (감정가 대비 지급 비율)');
-      }
-      if (SH.maxStock != null && (!Number.isInteger(SH.maxStock) || SH.maxStock < 4 || SH.maxStock > 48)) {
-        err('$.shop.maxStock', '진열 상한은 4~48 정수');
-      }
-      // perCat (v1.0.9) — 카테고리마다 몇 개씩 채울지. 총량 지시만으로는 카테고리당 1~2개로 뭉갠다
-      if (SH.perCat != null) {
-        const P = SH.perCat;
-        if (!Array.isArray(P) || P.length !== 2 || !Number.isInteger(P[0]) || !Number.isInteger(P[1])
-          || P[0] < 1 || P[0] > P[1] || P[1] > 9) {
-          err('$.shop.perCat', 'perCat은 [최소, 최대] 정수 (1 ≤ 최소 ≤ 최대 ≤ 9) — 카테고리마다 몇 개씩');
-        } else if (Array.isArray(SH.categories) && SH.maxStock != null
-          && P[0] * SH.categories.length > SH.maxStock) {
-          warn('$.shop.perCat', `카테고리 ${SH.categories.length}개 × 최소 ${P[0]}개 = ${P[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
-        }
-      }
-      if (SH.when != null) {
-        if (typeof SH.when !== 'string') err('$.shop.when', 'when은 표현식 문자열이어야 함');
-        else if (SH.when.trim()) checkExpr(SH.when, '$.shop.when', allIds, err, { allowRand: false });
-      }
-      if (!SH.guide) warn('$.shop', '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
-      if (!SH.grades || !SH.bands) warn('$.shop', '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
-      // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
-      if (SH.units != null) {
-        if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
-          err('$.shop.units', '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
-        } else {
-          const ratios = [];
-          SH.units.forEach((u, i) => {
-            if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
-              err(`$.shop.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
-            }
-            if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`$.shop.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
-            else ratios.push(u.ratio);
-          });
-          if (ratios.length === SH.units.length && !ratios.includes(1)) {
-            err('$.shop.units', '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+    }
+    if (SH.when != null) {
+      if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
+      else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });
+    }
+    if (!SH.guide) warn(P, '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
+    if (!SH.grades || !SH.bands) warn(P, '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
+    // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
+    if (SH.units != null) {
+      if (!Array.isArray(SH.units) || !SH.units.length || SH.units.length > 4) {
+        err(`${P}.units`, '표기 단위(units)는 { label, ratio } 1~4개 배열 — 예: [{"label":"골드","ratio":10000},{"label":"코퍼","ratio":1}]');
+      } else {
+        const ratios = [];
+        SH.units.forEach((u, i) => {
+          if (!u || typeof u !== 'object' || typeof u.label !== 'string' || !u.label.trim() || u.label.length > 8) {
+            err(`${P}.units[${i}]`, '단위 이름(label)은 1~8자 문자열');
           }
-          if (new Set(ratios).size !== ratios.length) err('$.shop.units', '같은 ratio의 단위가 겹칩니다');
-        }
-      }
-      // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
-      if (SH.exchange != null) {
-        const isArr = Array.isArray(SH.exchange);
-        const exArr = isArr ? SH.exchange : [SH.exchange];
-        if (isArr && (!exArr.length || exArr.length > 4)) err('$.shop.exchange', '환전 창구는 1~4개');
-        const seenVars = new Set();
-        exArr.forEach((EX, i) => {
-          const P = isArr ? `$.shop.exchange[${i}]` : '$.shop.exchange';
-          if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(P, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
-          const xv = (schema.vars || []).find((v) => v.id === EX.var);
-          if (!EX.var || typeof EX.var !== 'string') err(`${P}.var`, '상대 지갑 변수(var)가 필요합니다');
-          else if (!xv) err(`${P}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
-          else if (xv.type !== 'int' && xv.type !== 'float') err(`${P}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
-          else if (EX.var === SH.currency) err(`${P}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
-          else if (seenVars.has(EX.var)) err(`${P}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
-          else seenVars.add(EX.var);
-          if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
-            err(`${P}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
-          }
-          if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
-            err(`${P}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
-          }
+          if (!Number.isInteger(u?.ratio) || u.ratio < 1) err(`${P}.units[${i}]`, '비율(ratio)은 1 이상의 정수 — 이 단위 하나가 최소 단위 몇 개인가');
+          else ratios.push(u.ratio);
         });
+        if (ratios.length === SH.units.length && !ratios.includes(1)) {
+          err(`${P}.units`, '최소 단위(ratio 1)가 하나 있어야 잔돈을 표기할 수 있습니다 — 예: 코퍼=1');
+        }
+        if (new Set(ratios).size !== ratios.length) err(`${P}.units`, '같은 ratio의 단위가 겹칩니다');
       }
+    }
+    // 환전 (v0.97, v1.3.0 배열 허용) — 상점 통화 ↔ 다른 지갑, 환율·수수료는 시스템 계산
+    if (SH.exchange != null) {
+      const isArr = Array.isArray(SH.exchange);
+      const exArr = isArr ? SH.exchange : [SH.exchange];
+      if (isArr && (!exArr.length || exArr.length > 4)) err(`${P}.exchange`, '환전 창구는 1~4개');
+      const seenVars = new Set();
+      exArr.forEach((EX, i) => {
+        const XP = isArr ? `${P}.exchange[${i}]` : `${P}.exchange`;
+        if (!EX || typeof EX !== 'object' || Array.isArray(EX)) { err(XP, 'exchange는 { var, rate, spread?, label? } 객체 (여러 창구는 배열)'); return; }
+        const xv = (schema.vars || []).find((v) => v.id === EX.var);
+        if (!EX.var || typeof EX.var !== 'string') err(`${XP}.var`, '상대 지갑 변수(var)가 필요합니다');
+        else if (!xv) err(`${XP}.var`, `상대 지갑 '${EX.var}'가 vars에 없음`);
+        else if (xv.type !== 'int' && xv.type !== 'float') err(`${XP}.var`, `상대 지갑 '${EX.var}'는 숫자 타입이어야 함 (현재: ${xv.type})`);
+        else if (EX.var === SH.currency) err(`${XP}.var`, '상대 지갑이 상점 통화와 같습니다 — 환전이 성립하지 않아요');
+        else if (seenVars.has(EX.var)) err(`${XP}.var`, `상대 지갑 '${EX.var}' 창구가 겹칩니다 — 지갑 하나에 창구 하나`);
+        else seenVars.add(EX.var);
+        if (typeof EX.rate !== 'number' || !isFinite(EX.rate) || EX.rate <= 0) {
+          err(`${XP}.rate`, '환율(rate)은 양수 — 통화 1이 상대 지갑으로 얼마인가');
+        }
+        if (EX.spread != null && (typeof EX.spread !== 'number' || EX.spread < 0 || EX.spread > 0.9)) {
+          err(`${XP}.spread`, '수수료(spread)는 0~0.9 — 살 때 rate×(1+s), 팔 때 rate×(1-s)');
+        }
+      });
+    }
+  };
+  if (schema.shop != null && schema.shops != null) {
+    err('$.shops', 'shop(단수)과 shops(배열)를 같이 쓸 수 없습니다 — 2호점부터는 전부 shops 배열로 옮기세요');
+  }
+  if (schema.shop != null) {
+    if (typeof schema.shop !== 'object' || Array.isArray(schema.shop)) err('$.shop', 'shop은 객체여야 함 (여러 상점은 shops 배열)');
+    else checkShopBody(schema.shop, '$.shop');
+  }
+  // 다중 상점 (v1.4.0) — 상점마다 지갑·재고·when이 독립, 우상단 버튼도 하나씩
+  if (schema.shops != null && schema.shop == null) {
+    if (!Array.isArray(schema.shops) || !schema.shops.length || schema.shops.length > 4) {
+      err('$.shops', 'shops는 상점 1~4개 배열 (1개면 단수 shop도 됩니다)');
+    } else {
+      const shopIds = new Set();
+      schema.shops.forEach((SH, i) => {
+        const P = `$.shops[${i}]`;
+        if (!SH || typeof SH !== 'object' || Array.isArray(SH)) { err(P, '상점은 객체여야 함'); return; }
+        if (typeof SH.id !== 'string' || !SH.id.trim()) err(`${P}.id`, '다중 상점은 id가 필수입니다 — 상태·버튼이 id로 갈립니다 (예: "store", "black_market")');
+        else if (SH.id.trim().length > 24) err(`${P}.id`, '상점 id는 24자 이내');
+        else if (shopIds.has(SH.id.trim())) err(`${P}.id`, `상점 id '${SH.id.trim()}'가 겹칩니다`);
+        else shopIds.add(SH.id.trim());
+        checkShopBody(SH, P);
+      });
     }
   }
 

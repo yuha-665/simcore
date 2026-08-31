@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.1
-//@display-name SimCore (시뮬 엔진) v1.5.1 액션 범례 사라짐 픽스
+//@version 1.5.2
+//@display-name SimCore (시뮬 엔진) v1.5.2 에셋 실황 단위 병기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.5.2 ────────────────────────────────────────────────
+// 에셋 탭의 두 숫자가 달라 문의 (유저: "6675자인데 비용 칸은 +1519 tok"). 버그가 아니라
+// **단위와 기준이 둘 다 다른** 것이었다: 실황줄은 자 · 현재 상태(게이트 열림 반영),
+// 비용 칸은 토큰 · lookup 없이(게이트 닫힘 = 항상 나가는 최소치). 얼헌 실측으로 확인 —
+// 닫힘 5114자→1519 tok(비용 칸과 일치) / 현재 6675자→1974 tok(실황줄과 일치).
+// - 실황줄에 자·토큰을 같이 적고 기준 차이를 한 줄로 밝힌다.
+// - 팩 목록에 (조건 닫힘) 표시 — 실황줄이 지금 안 나가는 팩까지 세는 것처럼 보였다.
 //
 // ── v1.5.1 ────────────────────────────────────────────────
 // 액션을 눌러도 "UI가 1초 만에 사라지고 반응 없는 것처럼" (유저 제보 — 막간 버튼 첫 실기).
@@ -19454,8 +19462,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           note += ` · ⚠ 작업본(${byName[a?.by ?? 'aux']})과 다릅니다 — 저장(설치)해야 반영돼요`;
           warn = true;
         } else if (live.by === 'main') {
-          if (live.mainLen > 0) note += ` · 메인 주입문 ${live.mainLen}자 — 다음 전송부터 실립니다`;
-          else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
+          const len = String(live.mainText ?? '').length;
+          if (len > 0) {
+            // 자·토큰을 같이 적는다 — 아래 비용 칸은 토큰이고 게이트를 **닫은 채** 재므로
+            // 숫자가 다르다 (유저 문의: "6675자인데 왜 1519 tok인가"). 단위와 기준을 함께 밝힌다.
+            note += ` · 메인 주입문 ${len}자 ≈ ${estTokens(live.mainText)} tok`
+              + ' — 다음 전송부터 실립니다 (아래 비용 칸은 게이트를 닫은 최소치라 더 작습니다)';
+          } else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
         }
         controls.appendChild(h('div', { class: `sce-hint sce-assets-live${warn ? ' sce-warn' : ''}` }, note));
       }
@@ -29971,16 +29984,22 @@ count(목록)  has(목록, "항목")</pre>
         getAssetInjection: () => {
           if (!schema) return null;
           const by = schema.assets?.by ?? 'aux';
-          const packs = (schema.assets?.packs || [])
-            .map((p) => `${p.id}${p.origin === 'module' ? '(모듈)' : ''}${p.enabled === false ? '(꺼짐)' : ''}`);
-          let mainLen = null;
+          // 게이트는 **현재 상태**로 판정한다 (아래 비용 칸은 상태를 모르는 채로 재므로 서로
+          // 다른 숫자가 나온다 — 유저 문의 "6675자 vs 1519 tok". 그래서 여기서 닫힌 팩을
+          // 표시하고, 편집기는 자·토큰을 같이 적어 둘을 견줄 수 있게 한다)
+          let lookup = null;
+          try { lookup = engine.makeLookup(schema, session?.current?.vars || {}); } catch { lookup = null; }
+          let openIds = null;
+          try { openIds = new Set(assetsMod.openPacks(schema, lookup).map((p) => p.id)); } catch { openIds = null; }
+          const packs = (schema.assets?.packs || []).map((p) => `${p.id}`
+            + (p.origin === 'module' ? '(모듈)' : '')
+            + (p.enabled === false ? '(꺼짐)' : (openIds && !openIds.has(p.id) ? '(조건 닫힘)' : '')));
+          let mainText = null;
           if (by === 'main') {
-            try {
-              mainLen = assetsMod.mainInjectionText(schema,
-                engine.makeLookup(schema, session?.current?.vars || {})).length;
-            } catch (e) { mainLen = -1; }
+            try { mainText = assetsMod.mainInjectionText(schema, lookup); }
+            catch (e) { mainText = ''; }
           }
-          return { by, packs, mainLen };
+          return { by, packs, mainText };
         },
       },
       floor: 'top', // 층은 사이드 내비가 고른다 — 스택형은 플레이그라운드 몫

@@ -8537,8 +8537,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           note += ` · ⚠ 작업본(${byName[a?.by ?? 'aux']})과 다릅니다 — 저장(설치)해야 반영돼요`;
           warn = true;
         } else if (live.by === 'main') {
-          if (live.mainLen > 0) note += ` · 메인 주입문 ${live.mainLen}자 — 다음 전송부터 실립니다`;
-          else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
+          const len = String(live.mainText ?? '').length;
+          if (len > 0) {
+            // 자·토큰을 같이 적는다 — 아래 비용 칸은 토큰이고 게이트를 **닫은 채** 재므로
+            // 숫자가 다르다 (유저 문의: "6675자인데 왜 1519 tok인가"). 단위와 기준을 함께 밝힌다.
+            note += ` · 메인 주입문 ${len}자 ≈ ${estTokens(live.mainText)} tok`
+              + ' — 다음 전송부터 실립니다 (아래 비용 칸은 게이트를 닫은 최소치라 더 작습니다)';
+          } else { note += ' · ⚠ 메인 주입문 0자 — 실행 중 스키마에 열린 팩이 없어 지침이 안 나갑니다 ([모듈 팩 다시 읽기] 후 다시 확인)'; warn = true; }
         }
         controls.appendChild(h('div', { class: `sce-hint sce-assets-live${warn ? ' sce-warn' : ''}` }, note));
       }

@@ -560,14 +560,16 @@ const S = {
             + 'Pick a plausible one from the cast/guilds; accepting or refusing both carry consequences.' },
         { id: 'assoc_call', weight: 1, cooldown: 8, when: 'lic_n >= 2',
           notify: '[협회] The Hunter Association contacts the protagonist — commissioned subjugation, '
-            + 'measurement follow-up, paperwork, or a favor with strings attached.' },
+            + 'measurement follow-up, paperwork, or a favor with strings attached. The errand fits '
+            + 'the protagonist\'s license band (±1 rank) — the Association files hunters by grade.' },
         // ── 길드·상층부 확충 (2026-09-01 유저 요청) — 두 구멍의 처방:
         //    ① 길드 가입 후 랜덤 콘텐츠 0종 (월급뿐) ② fame 20·lic D+ 위로 게이트 없음.
         //    scout_offer(fame 15 단건 제안)·assoc_call(lic 2+ 일반 행정)의 상위판들 — 중복 아님.
         { id: 'guild_task', weight: 2, cooldown: 5, when: "guild != '무소속'",
           notify: '[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, '
             + 'or an internal meeting with the protagonist\'s name on the roster. Small obligations '
-            + 'that make the guild feel like a workplace.' },
+            + 'that make the guild feel like a workplace. Scale the ask to the protagonist\'s rank '
+            + 'and fame — rookies get grunt work, names get named jobs.' },
         { id: 'guild_friction', weight: 1, cooldown: 8, when: "guild != '무소속' and fame >= 10",
           notify: '[길드 경쟁] Friction with a rival guild — overlapping hunting grounds, a poached '
             + 'client, raid-share disputes, or trash talk on HunterNet. The protagonist\'s standing '
@@ -704,7 +706,9 @@ const S = {
             + 'report), never as the norm.' },
         { id: 'offer_post', weight: 2, cooldown: 3,
           notify: '[의뢰] New work hits the quest board — register 1~2 offers on the offers board, '
-            + 'format "[협회|길드|개인] 내용 (보상) @+days". Rewards follow the economy (E-rank errands '
+            + 'format "[협회|길드|개인] 내용 (보상) @+days". Pitch difficulty at the protagonist\'s '
+            + 'license band (±1 rank) — a board never hands an E-rank an A-rank subjugation, and a '
+            + 'high-ranker gets work worth their license. Rewards follow the economy (E-rank errands '
             + 'run 수십만원대); post a 길드 offer only if the protagonist belongs to one. '
             + 'Mention it in one line at most — a terminal ping, not a scene.' },
         { id: 'gate_race', weight: 1, cooldown: 6,
@@ -2133,6 +2137,10 @@ console.log('\n━━ 길드·상층부 이벤트 (2026-09-01 확충 — 소속�
   ok('유명세 fame 40+', truthy(evaluate(row('celebrity').when, pw, null)), '');
   const aT = engine.makeLookup(S, { ...fresh().vars, license: 'A' });
   ok('협회 특무 — A급(lic_n 5)은 열리고 신입은 잠김', truthy(evaluate(row('assoc_task').when, aT, null)), '');
+  // 임무 등급 비례 (2026-09-01 후속) — 의뢰·길드·협회가 난이도를 주인공 대역에 맞춘다
+  ok('의뢰 보드 — 라이선스 대역 ±1 지시', row('offer_post').notify.includes('license band (±1 rank)'), '');
+  ok('길드 일감 — 랭크·명성 비례 지시', row('guild_task').notify.includes('Scale the ask'), '');
+  ok('협회 심부름 — 대역 정합 지시', row('assoc_call').notify.includes('license band (±1 rank)'), '');
 }
 
 console.log('\n━━ P9 — 던전 탐사 (탐사도 · 구역 · 조사 포인트 · 보스 방 래치) ━━');

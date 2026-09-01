@@ -1102,6 +1102,41 @@
           "notify": "[협회] The Hunter Association contacts the protagonist — commissioned subjugation, measurement follow-up, paperwork, or a favor with strings attached."
         },
         {
+          "id": "guild_task",
+          "weight": 2,
+          "cooldown": 5,
+          "when": "guild != '무소속'",
+          "notify": "[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, or an internal meeting with the protagonist's name on the roster. Small obligations that make the guild feel like a workplace."
+        },
+        {
+          "id": "guild_friction",
+          "weight": 1,
+          "cooldown": 8,
+          "when": "guild != '무소속' and fame >= 10",
+          "notify": "[길드 경쟁] Friction with a rival guild — overlapping hunting grounds, a poached client, raid-share disputes, or trash talk on HunterNet. The protagonist's standing drags their guild into it. Rivals today can be allies tomorrow."
+        },
+        {
+          "id": "poach_war",
+          "weight": 1,
+          "cooldown": 15,
+          "when": "guild == '무소속' and fame >= 35",
+          "notify": "[영입 전쟁] Multiple guilds bid for the protagonist at once — competing terms, a dinner invitation, a rushed counter-offer. Being wanted is leverage and pressure in equal measure; staying independent is also an answer."
+        },
+        {
+          "id": "celebrity",
+          "weight": 1,
+          "cooldown": 10,
+          "when": "fame >= 40",
+          "notify": "[유명세] Fame collects its due — a broadcast/interview offer, fans asking for autographs, a candid shot trending on HunterNet, or an ad deal. Sweet and sticky: attention pays, and it never leaves."
+        },
+        {
+          "id": "assoc_task",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "lic_n >= 4",
+          "notify": "[협회 특무] The Association's upper floors call — a task-force seat, a classified briefing, disaster-response consultation. The kind of request only a high-rank hunter receives, and the kind that is hard to refuse."
+        },
+        {
           "id": "blackmarket",
           "weight": 1,
           "cooldown": 10,

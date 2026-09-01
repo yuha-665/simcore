@@ -561,6 +561,29 @@ const S = {
         { id: 'assoc_call', weight: 1, cooldown: 8, when: 'lic_n >= 2',
           notify: '[협회] The Hunter Association contacts the protagonist — commissioned subjugation, '
             + 'measurement follow-up, paperwork, or a favor with strings attached.' },
+        // ── 길드·상층부 확충 (2026-09-01 유저 요청) — 두 구멍의 처방:
+        //    ① 길드 가입 후 랜덤 콘텐츠 0종 (월급뿐) ② fame 20·lic D+ 위로 게이트 없음.
+        //    scout_offer(fame 15 단건 제안)·assoc_call(lic 2+ 일반 행정)의 상위판들 — 중복 아님.
+        { id: 'guild_task', weight: 2, cooldown: 5, when: "guild != '무소속'",
+          notify: '[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, '
+            + 'or an internal meeting with the protagonist\'s name on the roster. Small obligations '
+            + 'that make the guild feel like a workplace.' },
+        { id: 'guild_friction', weight: 1, cooldown: 8, when: "guild != '무소속' and fame >= 10",
+          notify: '[길드 경쟁] Friction with a rival guild — overlapping hunting grounds, a poached '
+            + 'client, raid-share disputes, or trash talk on HunterNet. The protagonist\'s standing '
+            + 'drags their guild into it. Rivals today can be allies tomorrow.' },
+        { id: 'poach_war', weight: 1, cooldown: 15, when: "guild == '무소속' and fame >= 35",
+          notify: '[영입 전쟁] Multiple guilds bid for the protagonist at once — competing terms, '
+            + 'a dinner invitation, a rushed counter-offer. Being wanted is leverage and pressure '
+            + 'in equal measure; staying independent is also an answer.' },
+        { id: 'celebrity', weight: 1, cooldown: 10, when: 'fame >= 40',
+          notify: '[유명세] Fame collects its due — a broadcast/interview offer, fans asking for '
+            + 'autographs, a candid shot trending on HunterNet, or an ad deal. Sweet and sticky: '
+            + 'attention pays, and it never leaves.' },
+        { id: 'assoc_task', weight: 1, cooldown: 12, when: 'lic_n >= 4',
+          notify: '[협회 특무] The Association\'s upper floors call — a task-force seat, a classified '
+            + 'briefing, disaster-response consultation. The kind of request only a high-rank hunter '
+            + 'receives, and the kind that is hard to refuse.' },
         { id: 'blackmarket', weight: 1, cooldown: 10, when: 'faction_on',
           notify: '[암시장] A Black Market thread surfaces — a fence, an unregistered item, a coin-hungry '
             + 'broker. Tempting, illegal, and remembered by the wrong people.' },
@@ -2084,6 +2107,32 @@ console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
   const off = engine.sendPhase(S, engine.toggleAction(S, send.state, 'offstage').state,
     { rng: seededRng('h', 132, 's') });
   ok('끄면 원래대로', off.offstage === false && !off.promptBlock.includes('주인공 부재'), '');
+}
+
+console.log('\n━━ 길드·상층부 이벤트 (2026-09-01 확충 — 소속·명성·랭크 게이트) ━━');
+{
+  const T = S.rules.randomEvents.table;
+  const row = (id) => T.find((r) => r.id === id);
+  ok('5종 존재', ['guild_task', 'guild_friction', 'poach_war', 'celebrity', 'assoc_task'].every((id) => row(id)), '');
+  // 실계산 — 신입(E급 · 무소속 · fame 0)에게는 전부 잠김
+  const nb = engine.makeLookup(S, fresh().vars);
+  ok('신입 — 전부 잠김', ['guild_task', 'guild_friction', 'poach_war', 'celebrity', 'assoc_task']
+    .every((id) => !truthy(evaluate(row(id).when, nb, null))), '');
+  // 길드 가입 → 길드 일감 열림, 명성 붙으면 길드 경쟁도
+  const gm = engine.makeLookup(S, { ...fresh().vars, guild: '청염 길드' });
+  ok('길드 가입 — 일감 열림 (경쟁은 아직)', truthy(evaluate(row('guild_task').when, gm, null))
+    && !truthy(evaluate(row('guild_friction').when, gm, null)), '');
+  const gf = engine.makeLookup(S, { ...fresh().vars, guild: '청염 길드', fame: 12 });
+  ok('길드 + fame 10 — 경쟁 열림', truthy(evaluate(row('guild_friction').when, gf, null)), '');
+  // 영입 전쟁은 무소속 전용 (가입하면 잠김 — scout_offer와 계단 구조)
+  const pw = engine.makeLookup(S, { ...fresh().vars, fame: 40 });
+  const pwG = engine.makeLookup(S, { ...fresh().vars, fame: 40, guild: '청염 길드' });
+  ok('영입 전쟁 — 무소속 fame 35+만', truthy(evaluate(row('poach_war').when, pw, null))
+    && !truthy(evaluate(row('poach_war').when, pwG, null)), '');
+  // 상층부 — fame 40 유명세, A급(lic_n 5) 특무
+  ok('유명세 fame 40+', truthy(evaluate(row('celebrity').when, pw, null)), '');
+  const aT = engine.makeLookup(S, { ...fresh().vars, license: 'A' });
+  ok('협회 특무 — A급(lic_n 5)은 열리고 신입은 잠김', truthy(evaluate(row('assoc_task').when, aT, null)), '');
 }
 
 console.log('\n━━ P9 — 던전 탐사 (탐사도 · 구역 · 조사 포인트 · 보스 방 래치) ━━');

@@ -245,7 +245,13 @@ function mainInjectionText(schema, lookup) {
   const out = ['[Image tags] You may insert image tags in the narration.',
     'Compose tag names ONLY from the values below. If unsure a combination exists, omit the tag entirely.'];
   for (const p of packs) {
-    const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id).join(` ${p.sep ?? '_'} `);
+    // ⚠ 구분자 좌우에 공백을 덧대는 건 sep이 눈에 보이는 문자일 때만 (v1.5.4).
+    // sep=' '인 팩을 ` ${sep} `로 이으면 포맷 줄이 "who   outfit   [emo]" — 세 칸짜리
+    // 본보기가 되고, 모델이 그대로 베껴 <img="A   B   C">를 쓴다. 에셋 이름은 한 칸이라
+    // 대조가 통째로 죽는다 (실사고: "에셋이 안 나온다" 제보의 뿌리).
+    const sep = p.sep ?? '_';
+    const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id)
+      .join(sep.trim() ? ` ${sep} ` : sep);
     out.push(`- pack "${p.id}": format ${p.format} · name = ${order}`);
     if (p.usage) out.push(`  use for: ${p.usage}`); // 쓰임새 — 팩이 여럿일 때 선택 기준 (v0.88)
     for (const s of p.slots || []) {

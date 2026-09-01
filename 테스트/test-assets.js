@@ -208,6 +208,19 @@ const Lon = mkLookup({ nsfw_on: true });
   ck('aux 모드에서는 주입문 없음', AS.mainInjectionText(snap(), L) === '', '');
   const bare = { assets: { by: 'main', packs: [] } };
   ck('팩 없으면 빈 문자열', AS.mainInjectionText(bare, L) === '', '');
+
+  // ── 공백 sep 포맷 줄 (v1.5.4 실사고) — ` ${sep} ` 패딩이 sep=' '에서 세 칸을 만들어
+  // 모델이 <img="A   B   C">를 베꼈다. 얼헌 팩 5종 전부 sep=' '라 전부 죽었다.
+  const SP = { assets: { by: 'main', packs: [{ id: 'wear', format: '<img="{name}">', sep: ' ',
+    slots: [{ id: 'who', values: ['Go Eun-bi'] }, { id: 'outfit', values: ['Casual clothes 2-1'] },
+      { id: 'emo', optional: true, values: ['scared'] }] }] } };
+  const spLine = AS.mainInjectionText(SP, L).split('\n').find((l) => l.includes('name = '));
+  ck('★ 공백 sep 포맷 줄은 한 칸 (who outfit [emo])', spLine.includes('name = who outfit [emo]'), spLine);
+  ck('★ 포맷 줄 어디에도 연속 공백 본보기 없음', !/name = .*\S {2,}/.test(spLine), spLine);
+  // 보이는 sep(_)은 종전대로 패딩 유지 — "who _ emo"가 구분자 안내로 읽힌다
+  const US = { assets: { by: 'main', packs: [{ id: 'e', format: '<img="{name}">', sep: '_',
+    slots: [{ id: 'who', values: ['A'] }, { id: 'emo', values: ['x'] }] }] } };
+  ck('보이는 sep은 패딩 유지 (who _ emo)', AS.mainInjectionText(US, L).includes('name = who _ emo'), '');
 }
 
 // ── aux 지시 조각 (보조는 인물·감정만 — 팩 선택은 SimCore 몫) ──
@@ -758,6 +771,15 @@ async function bootLive(mutate, worldPatch) {
     ck('★ 실부팅: 변수 0개 봇에서도 이미지가 붙는다 (예전엔 호출 자체를 건너뛰었다)',
       outO.startsWith('<img="Hiromi_angry">\n\n'), outO.slice(0, 60));
     ck('실부팅: 변수 0개여도 마커는 정상', /⟦simcore:1⟧$/.test(outO), outO.slice(-30));
+
+    // ── display 공백 정규화 (v1.5.4) — 이미 저장된 <img="A   B">를 렌더에서 구제 ──
+    const disp = hk.display('민서connected가 놀란다. <img="Go Eun-bi   Casual clothes 2-1   scared">\n\n⟦simcore:1⟧');
+    ck('★ display: 태그 안 연속 공백 → 한 칸 (과거 저장분 구제)',
+      disp.includes('<img="Go Eun-bi Casual clothes 2-1 scared">'), disp.slice(0, 90));
+    const disp2 = hk.display('모듈 태그도. <mimg=" Hiromi   angry ">\n\n⟦simcore:1⟧');
+    ck('mimg + 앞뒤 공백도 정리', disp2.includes('<mimg="Hiromi angry">'), disp2.slice(0, 60));
+    const disp3 = hk.display('마커 없는 글의 <img="A   B">도 받는다');
+    ck('마커 없는 메시지(인사말 등)도 정규화', disp3.includes('<img="A B">'), disp3);
     if (global.__unload) global.__unload();
   }
 

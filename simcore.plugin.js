@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.3
-//@display-name SimCore (시뮬 엔진) v1.5.3 모델용 상태 블록 누락 경고
+//@version 1.5.4
+//@display-name SimCore (시뮬 엔진) v1.5.4 에셋 태그 공백 정규화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.5.4 ────────────────────────────────────────────────
+// **에셋 태그 공백 사고** (실기 제보: "에셋이 안 나온다" — 원인 댓글 "띄어쓰기 칸수"가 정답):
+// sep=' '(공백 구분) 팩의 주입문 포맷 줄이 slots를 ` ${sep} `로 이어 "who   outfit   [emo]"
+// — **세 칸짜리 본보기**가 됐고, 모델이 충실히 베껴 <img="Lim Seol-hee   underwear   default">를
+// 썼다. 에셋 이름은 한 칸("Go Eun-bi Casual clothes 2-1 scared")이라 대조가 통째로 죽는다.
+// 얼헌 팩 5종 전부 sep=' '라 전부 해당. 두 곳 수리:
+// - [core/assets] 포맷 줄 구분자 패딩은 sep이 보이는 문자일 때만 — 공백 sep은 그대로 잇는다.
+// - [어댑터 display] <img="…">/<mimg="…"> 안의 연속 공백을 한 칸으로 정규화 — 이미 저장된
+//   과거 메시지와, 제 출력을 본보기 삼는 미래분까지 렌더에서 받는다. 저장본은 안 고친다
+//   (output 훅 스트리밍 판정이 저장본과의 문자열 일치를 전제 — 건드리면 마커가 밀린다).
 //
 // ── v1.5.3 ────────────────────────────────────────────────
 // **얼헌 "서사가 혼자 날아간다"의 진짜 뿌리** (유저 지적으로 규명): 얼헌 스키마에
@@ -4576,7 +4587,13 @@ function mainInjectionText(schema, lookup) {
   const out = ['[Image tags] You may insert image tags in the narration.',
     'Compose tag names ONLY from the values below. If unsure a combination exists, omit the tag entirely.'];
   for (const p of packs) {
-    const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id).join(` ${p.sep ?? '_'} `);
+    // ⚠ 구분자 좌우에 공백을 덧대는 건 sep이 눈에 보이는 문자일 때만 (v1.5.4).
+    // sep=' '인 팩을 ` ${sep} `로 이으면 포맷 줄이 "who   outfit   [emo]" — 세 칸짜리
+    // 본보기가 되고, 모델이 그대로 베껴 <img="A   B   C">를 쓴다. 에셋 이름은 한 칸이라
+    // 대조가 통째로 죽는다 (실사고: "에셋이 안 나온다" 제보의 뿌리).
+    const sep = p.sep ?? '_';
+    const order = (p.slots || []).map((s) => s.optional ? `[${s.id}]` : s.id)
+      .join(sep.trim() ? ` ${sep} ` : sep);
     out.push(`- pack "${p.id}": format ${p.format} · name = ${order}`);
     if (p.usage) out.push(`  use for: ${p.usage}`); // 쓰임새 — 팩이 여럿일 때 선택 기준 (v0.88)
     for (const s of p.slots || []) {
@@ -26547,6 +26564,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   // ── ④ 표시: 마커 → 상태창 HTML ────────────────────────────
   await Risuai.addRisuScriptHandler('display', (content) => {
+    // 에셋 태그 공백 정규화 (v1.5.4) — 모델이 <img="A   B">처럼 칸을 여러 개 쓰면
+    // 이름 대조가 죽어 이미지가 안 나온다 (주입문 세 칸 본보기 사고의 과거분 구제 —
+    // 이미 저장된 메시지와, 제 출력을 본보기 삼아 또 그러는 미래분까지 렌더에서 받는다).
+    // 저장본은 안 고친다 — output 훅의 스트리밍 판정이 저장본과의 문자열 일치를 전제한다.
+    // 우리 display는 정규식 스크립트(에셋 디스플레이)보다 먼저 돌므로 여기서 고치면 닿는다.
+    if (session && schema?.assets?.packs?.length && content.includes('img=')) {
+      content = content.replace(/<(m?img)="([^"\n]+)">/g,
+        (_, t, n) => `<${t}="${n.replace(/\s+/g, ' ').trim()}">`);
+    }
     if (!session || !content.includes('⟦simcore:')) return content;
     const renderFor = (idxStr) => {
       try {

@@ -314,6 +314,27 @@ const S = {
     { id: 'break_in', label: '브레이크까지', type: 'int', init: 0, min: 0, max: 30,
       desc: 'Days until that gate breaks. The system counts it down; at 0 the break fires. Set only at the start.' },
 
+    // ── 던전 탐사 (P9, 2026-09-01 유저 요청) — 게이트 안 서사 재료 ──
+    // "전투한다/더 들어간다"뿐이던 게이트 내부에 탐사 축을 깐다: 탐사도(진행) + 현재 구역 +
+    // 조사 포인트(재료). 포인트는 목록이 아니라 **텍스트**다 — 장면마다 통째로 갈리는 값이라
+    // 통째 교체 의미론이 맞고("자주 변하는 건 목록에 안 넣는다"), 새 게이트 입장 리셋도
+    // effects의 텍스트 set으로 끝난다 (목록 effects엔 clear가 없다 — 엔진 무변경).
+    { id: 'explore', label: '탐사도', type: 'int', init: 0, min: 0, max: 100,
+      desc: 'How explored THIS gate is (0-100). Raise 5~15 on a turn of active exploration or '
+        + 'advancing; 0 while fighting, resting or talking. High explore approaches the boss. '
+        + 'The system resets it on entering a new gate.' },
+    { id: 'gate_room', label: '현재 구역', type: 'text', init: '', maxLength: 30,
+      desc: 'Current chamber/area inside the gate, one short vivid label — e.g. "수맥이 흐르는 종유굴", '
+        + '"무너진 개찰구 홀". Update when the party moves; blank outside gates (system clears).' },
+    { id: 'gate_poi', label: '조사 포인트', type: 'text', init: '', maxLength: 60,
+      desc: 'Investigable things in the CURRENT area, 2~3 short items joined by " · " — e.g. '
+        + '"무너진 제단 · 벽의 발톱자국 · 미지근한 물웅덩이". Replace wholesale as the scene moves. '
+        + 'Blank outside gates.' },
+    { id: 'was_gate', label: '(내부) 게이트 래치', type: 'bool', init: false,
+      desc: '시스템 래치 — 입장/퇴장 전이 감지용. 직접 바꾸지 마라.' },
+    { id: 'boss_found', label: '(내부) 보스 방 발견', type: 'bool', init: false,
+      desc: '시스템 래치 — 탐사도 85+에서 한 번만 발화. 직접 바꾸지 마라.' },
+
     // ── 의뢰 보드 (P8) — 게이트 보드와 같은 규약: 이벤트가 시키고 보조가 등록, 기한 자동 소멸 ──
     // quests(진행 중)와 별개인 "수락 전 대기열". 발주처 접두가 패널 칸 분류 키다 ({offers:tags:[협회]}).
     { id: 'offers', label: '의뢰 보드', type: 'list', init: ['[협회] 도심권 하수도 정화 지원 (80만원) @+5'],
@@ -385,6 +406,13 @@ const S = {
     { id: 'grade_txt', label: '최근 출현 등급', expr: `(grade_i == 0 ? '—' : ${idx1(GRADES, 'grade_i')})` },
     { id: 'break_txt', label: '브레이크 상황',
       expr: `(break_name == '' ? '없음' : break_name + ' D-' + break_in)` },
+    // 던전 탐사 (P9) — 표시용 (게이트 밖에서는 — 로 접힌다)
+    { id: 'explore_txt', label: '탐사도 표시',
+      expr: `in_gate ? (boss_found ? explore + '% · 보스 방 발견' : explore + '%') : '—'` },
+    { id: 'room_txt', label: '현재 구역 표시',
+      expr: `(in_gate and gate_room != '') ? gate_room : '—'` },
+    { id: 'poi_txt', label: '조사 포인트 표시',
+      expr: `(in_gate and gate_poi != '') ? gate_poi : '—'` },
     // 성신의 가호 — 짝 번호 → 텍스트 (꺼짐/미점화는 —)
     { id: 'boon_buff', label: '가호 축복',
       expr: `(boon_on and boon_i >= 1) ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_i')}) : '—'` },
@@ -464,6 +492,27 @@ const S = {
         notify: '[게이트 브레이크] The watched gate\'s deadline has passed — monsters pour into the city. '
           + 'This is a district-scale disaster: sirens, evacuation, hunter mobilization. The protagonist '
           + 'need not be at the epicenter, but the world must feel it. Remove that gate from the board.' },
+      // ── 던전 탐사 (P9) — 리셋은 **퇴장에만** 건다 (래치 짝, 무통지) ──
+      // ⚠ 입장 리셋 금지: 보조 델타가 이벤트보다 먼저 반영되므로, 입장 턴에 리셋을 걸면
+      // 그 턴의 첫 보고(explore·구역·포인트)를 리셋이 덮어쓴다 (실측). 퇴장이 항상
+      // 청소하므로 다음 입장은 이미 깨끗한 상태에서 시작한다.
+      { id: 'gate_enter', when: 'in_gate and not was_gate',
+        effects: [{ set: 'was_gate', expr: 'true' }] },
+      { id: 'gate_exit', when: 'not in_gate and was_gate',
+        effects: [
+          { set: 'was_gate', expr: 'false' },
+          { set: 'explore', expr: '0' },
+          { set: 'gate_room', expr: "''" },
+          { set: 'gate_poi', expr: "''" },
+          { set: 'boss_found', expr: 'false' },
+        ] },
+      // 보스 방 — 탐사도가 심부에 닿으면 한 번만 연다 (promo_seen 래치 패턴).
+      // 발견까지만 시스템 몫이다 — 들어갈지, 언제 싸울지는 유저와 서사가 정한다.
+      { id: 'boss_room', when: 'in_gate and explore >= 85 and not boss_found',
+        effects: [{ set: 'boss_found', expr: 'true' }],
+        notify: '[심부 도달] The party has found the boss chamber of this gate — a threshold moment: '
+          + 'changed air, monster density, the architecture converging. Present the door/space and let '
+          + 'the user decide when to enter. Do NOT start the boss fight on your own.' },
     ],
 
     // ── 랜덤 이벤트 (P3) — 원본 로어북 트리거 20종(각 roll 2%)의 흡수·확장 ──
@@ -594,6 +643,23 @@ const S = {
           notify: '[전리품] The kill pays out — mana stones, monster parts, or a piece of gear worth '
             + 'keeping. Show the drop moment and update the inventory (grade tag, count last). '
             + 'Coins are already settled when the store exists.' },
+        // ── 던전 탐사 인터럽트 (P9) — 시스템은 "무엇이 나올 차례"만, 정체는 서사가 ──
+        { id: 'chest', weight: 2, cooldown: 5, when: 'in_gate',
+          notify: '[보물상자] The party comes upon a chest/cache in this area. Contents cap at the '
+            + 'gate\'s grade (an E-gate chest never holds unique gear). It may be locked, trapped or '
+            + 'a mimic — your call, but pay out honestly when opened. Update inventory.' },
+        { id: 'vein', weight: 2, cooldown: 6, when: 'in_gate',
+          notify: '[채집] A harvestable find — a mana stone vein, herb cluster, monster nest with '
+            + 'usable parts. Harvesting takes time and makes noise: worth vs. risk is the beat. '
+            + 'Yield follows the gate grade.' },
+        { id: 'hidden_space', weight: 1, cooldown: 8, when: 'in_gate and explore >= 30',
+          notify: '[숨겨진 공간] A concealed passage/room reveals itself — shortcut deeper, a relic '
+            + 'niche, or a dead hunter\'s last camp. Entering is the user\'s choice; foreshadow what '
+            + 'might wait inside.' },
+        { id: 'trace', weight: 1, cooldown: 10, when: 'in_gate and explore >= 50',
+          notify: '[흔적] Signs of a previous raid party — gear wreckage, a journal page, claw-marked '
+            + 'barricades, or worse. World-texture beat: what happened to them, and does it warn or '
+            + 'tempt? May seed a quest or a board post.' },
         // 변종 — "정체불명의 마수"는 상시 분위기가 아니라 이벤트가 여는 예외다 (유저 지시
         // 2026-08-30: 컨텍 오염 제거의 짝). 상위 게이트·흉흉한 세계에서만, 드물게.
         { id: 'aberrant', weight: 1, cooldown: 12, when: 'in_gate and (grade_i >= 4 or hazard >= 60)',
@@ -697,6 +763,16 @@ const S = {
     { id: 'gate_scale', when: 'in_gate',
       text: '게이트 몬스터의 격은 게이트 등급을 따른다 — E·D급은 흔한 마수 수준이다. '
         + '정체불명·변종·이상 개체는 상위 게이트나 브레이크, 또는 [변종] 이벤트가 열 때만 꺼내라.' },
+    // ── 던전 탐사 (P9) — "전투한다/더 들어간다"뿐이던 게이트 내부의 서사 재료 ──
+    { id: 'gate_explore_dir', when: 'in_gate',
+      text: '게이트 내부는 조사할 거리가 있는 공간이다 — 매 응답, 장면에 조사 가능한 요소 1~2개를 '
+        + '자연스럽게 깔아라 (구조물·흔적·소리·빛·냄새). 유저가 조사하면 결과를 정직하게 — 수확도 '
+        + '꽝도 있다. 지금 탐사도 {explore}%: 0~30 입구부(잔몹·흔적), 30~70 중층(구조 변화·수확), '
+        + '70+ 심부(위험도 급등, 굵은 수확, 보스의 기척). 전투만 있는 턴엔 탐사도가 늘지 않는다.' },
+    { id: 'gate_loot_dir', when: 'in_gate',
+      text: '드랍 기준 — 마정석: 처치의 6할쯤, 게이트 등급 상응. 장비 드랍: 드물다(1할 이하, 게이트 '
+        + '등급 이하만). 보물상자·채집물도 등급이 상한이다. 보스: 마정석 확정 + 장비/스킬북 3할 — '
+        + '등급을 넘는 물건은 나오지 않는다. 클리어 정산은 경제 시세표를 따른다.' },
     // 뇌절 방지 페이싱 (2026-08-30 유저 제보: "뭐만 각 보이면 스토리가 파국으로 달린다") —
     // 에로코미디 이벤트 5종과 짝인 환기 장치. 모든 떡밥의 결말을 파국으로 잡는 습관을 끊는다.
     { id: 'pacing', when: 'true',
@@ -799,7 +875,8 @@ const S = {
     contextTurns: 2,
     guide: '헌터물 기록 기준: 게이트 안 전투가 있었으면 그 턴에 HP/MP/SP 소모·소모품 사용·전리품'
       + '(마정석 등 items)·EXP를 함께 정산하라. 근거 없는 수입·EXP는 적지 마라. 시간(skip_day)은 '
-      + '날짜가 실제로 넘어갔을 때만. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다.',
+      + '날짜가 실제로 넘어갔을 때만. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다. '
+      + '게이트 안에서는 탐사도(explore)·현재 구역(gate_room)·조사 포인트(gate_poi)를 장면에 맞춰 갱신하라.',
     allow: [
       { id: 'skip_day', maxGain: 14 },
       { id: 'time' },
@@ -829,6 +906,10 @@ const S = {
       { id: 'npc_notes' },
       { id: 'allies' },
       { id: 'in_gate' },
+      // 던전 탐사 (P9) — 탐사도는 상승 전용 (지도를 잊을 수는 없다), 리셋은 시스템 몫
+      { id: 'explore', maxGain: 15, maxLoss: 0 },
+      { id: 'gate_room', maxLength: 30 },
+      { id: 'gate_poi', maxLength: 60 },
       { id: 'foe' },
       { id: 'gates' },
       { id: 'break_name', maxLength: 30 },
@@ -1278,6 +1359,11 @@ S.statusUI.templates = [{
     + '{skills:tags}'
     + '<div class="a-sec">QUESTS</div>'
     + '{quests:tags}'
+    // 던전 탐사 (P9) — 게이트 안에서만 값이 차고, 밖에서는 전부 — 로 접힌다
+    + '<div class="a-sec">EXPLORATION</div>'
+    + '<div class="a-row"><span>탐사도</span><span class="v">{explore_txt}</span></div>'
+    + '<div class="a-row"><span>현재 구역</span><span class="v">{room_txt}</span></div>'
+    + '<div class="a-row"><span>조사 포인트</span><span class="v">{poi_txt}</span></div>'
     + '<div class="a-sec">GATE BOARD</div>'
     + '<div class="a-row"><span>최근 출현</span><span class="v">{zone_txt} · {grade_txt}급</span></div>'
     + '<div class="a-row"><span>브레이크 경보</span><span class="v">{break_txt}</span></div>'
@@ -1976,6 +2062,67 @@ console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
   const off = engine.sendPhase(S, engine.toggleAction(S, send.state, 'offstage').state,
     { rng: seededRng('h', 132, 's') });
   ok('끄면 원래대로', off.offstage === false && !off.promptBlock.includes('주인공 부재'), '');
+}
+
+console.log('\n━━ P9 — 던전 탐사 (탐사도 · 구역 · 조사 포인트 · 보스 방 래치) ━━');
+{
+  let t = fresh();
+  // 게이트 밖 — 지시문·표시 전부 접힘
+  const p0 = engine.sendPhase(S, t, { rng: seededRng('h', 950, 's') });
+  ok('밖 — 탐사 지시문 없음', !p0.promptBlock.includes('조사 가능한 요소')
+    && !p0.promptBlock.includes('드랍 기준'), '');
+  ok('밖 — 표시 — 로 접힘', engine.makeLookup(S, p0.state.vars)('explore_txt') === '—', '');
+  t = p0.state;
+
+  // 입장 — 래치 리셋 + 지시문 등장
+  ({ st: t } = turn(t, { in_gate: true, explore: 10, gate_room: '무너진 개찰구 홀',
+    gate_poi: '녹슨 개찰구 · 벽의 발톱자국' }, 951));
+  ok('입장 턴 — 보조 보고 반영 (리셋은 입장 전이에만)', t.vars.explore === 10
+    && t.vars.gate_room === '무너진 개찰구 홀' && t.vars.was_gate === true, JSON.stringify([t.vars.explore, t.vars.was_gate]));
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('h', 952, 's') });
+  ok('안 — 탐사 연출 + 드랍 기준표 지시문', p1.promptBlock.includes('조사 가능한 요소')
+    && p1.promptBlock.includes('드랍 기준') && p1.promptBlock.includes('탐사도 10%'), '');
+  ok('상태창 — 탐사도·구역·포인트 표시', (() => {
+    const html = SC.require('render').renderStatusHtml(S, p1.state, null, null, { uid: 11 });
+    return html.includes('EXPLORATION') && html.includes('10%') && html.includes('무너진 개찰구 홀')
+      && html.includes('발톱자국');
+  })(), '');
+  t = p1.state;
+
+  // 탐사도 상승 전용 (감소 차단) + 보스 방 래치 85
+  ({ st: t } = turn(t, { explore: -10 }, 953));
+  ok('탐사도 감소 차단 (maxLoss 0)', t.vars.explore === 10, String(t.vars.explore));
+  t.vars.explore = 80;
+  ({ st: t } = turn(t, { explore: 8 }, 954));
+  ok('85 도달 — 보스 방 발견 래치', t.vars.boss_found === true
+    && t.meta.pendingNotifies.some((n) => n.includes('boss chamber')), '');
+  const pB = engine.sendPhase(S, t, { rng: seededRng('h', 955, 's') });
+  ok('표시 — 보스 방 발견 병기', engine.makeLookup(S, pB.state.vars)('explore_txt').includes('보스 방 발견'), '');
+  t = pB.state;
+  ({ st: t } = turn(t, { explore: 5 }, 956));
+  ok('래치 유지 — 재발화 없음', t.vars.boss_found === true
+    && !t.meta.pendingNotifies.some((n) => n.includes('boss chamber')), '');
+
+  // 퇴장 — 전부 리셋
+  ({ st: t } = turn(t, { in_gate: false }, 957));
+  ok('퇴장 — 탐사 상태 리셋', t.vars.explore === 0 && t.vars.gate_room === ''
+    && t.vars.gate_poi === '' && t.vars.boss_found === false && t.vars.was_gate === false, JSON.stringify(t.vars.explore));
+  // 재입장 — 새 던전은 0부터
+  t.vars.explore = 0; // (이미 0이지만 의도 명시)
+  ({ st: t } = turn(t, { in_gate: true, explore: 12 }, 958));
+  ok('재입장 — 새로 시작 (리셋 후 이번 턴 보고만)', t.vars.explore === 12 && t.vars.boss_found === false, String(t.vars.explore));
+
+  // 탐사 인터럽트 4종 — 존재·게이트 확인
+  const T = S.rules.randomEvents.table;
+  const ids = ['chest', 'vein', 'hidden_space', 'trace'];
+  ok('탐사 이벤트 4종 존재', ids.every((id) => T.some((r) => r.id === id)), '');
+  ok('전부 in_gate 전용', ids.every((id) => T.find((r) => r.id === id).when.includes('in_gate')), '');
+  ok('심부 이벤트는 탐사도 게이트 (숨겨진 공간 30+, 흔적 50+)',
+    T.find((r) => r.id === 'hidden_space').when.includes('explore >= 30')
+    && T.find((r) => r.id === 'trace').when.includes('explore >= 50'), '');
+  // 탐사도 게이트 실계산 — 갓 입장(explore 0)에는 심부 이벤트 후보가 안 잡힌다
+  const Lsh = engine.makeLookup(S, { ...fresh().vars, in_gate: true, explore: 0 });
+  ok('갓 입장 — 심부 이벤트 잠김', !truthy(evaluate(T.find((r) => r.id === 'trace').when, Lsh, null)), '');
 }
 
 console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점화 · 변수=상태 · 지시문=지속) ━━');

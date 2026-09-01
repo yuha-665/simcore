@@ -496,6 +496,17 @@ function validateSchema(schema) {
   // ── promptState / statusUI ──
   if (schema.promptState?.template) {
     checkTemplateRefs(schema.promptState.template, '$.promptState.template', allIds, err);
+  } else if (schema.statusUI && schema.statusUI.mode !== 'off' && (vars.length >= 6 || schema.time)) {
+    // v1.5.3 실사고 — 이식 봇(얼헌)에서 이 칸이 통째로 비어 있었다. 상태창은 display 훅
+    // 산물이라 모델에 안 가고, 채팅 변수 미러는 CBS로 불러 써야 프롬프트에 든다.
+    // 그래서 **유저는 날짜·소지금을 보는데 메인 모델은 하나도 못 보는** 상태로 몇 달을 돌았고,
+    // 증상은 "서사가 혼자 날아간다"로 나왔다 (지금 언제 어디인지 모르니 앵커가 없다).
+    // 내장 템플릿 16종은 16/16이 채운다. 문턱(변수 6개+ 또는 시간 체계)은 장난감 스키마를
+    // 벌주지 않기 위한 것 — 세계를 굴리는 봇에서만 뜬다 (도구가 정상 설계를 벌주지 않기).
+    warn('$.promptState.template',
+      '상태창은 있는데 모델용 상태 블록(promptState.template)이 없습니다 — 상태창 HTML은 화면 전용이라 '
+      + '메인 모델에게 가지 않습니다. 지금 이대로면 모델은 날짜·위치·소지금을 모른 채 씁니다. '
+      + '"지금: {date} {time} · {location} · 소지금 {won}원" 식으로 한두 줄만 적어 주세요 (내장 템플릿은 150~550자).');
   }
   if (typeof schema.promptState?.eventPriority === 'string') {
     checkTemplateRefs(schema.promptState.eventPriority, '$.promptState.eventPriority', allIds, err);

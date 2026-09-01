@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.2
-//@display-name SimCore (시뮬 엔진) v1.5.2 에셋 실황 단위 병기
+//@version 1.5.3
+//@display-name SimCore (시뮬 엔진) v1.5.3 모델용 상태 블록 누락 경고
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,19 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.5.3 ────────────────────────────────────────────────
+// **얼헌 "서사가 혼자 날아간다"의 진짜 뿌리** (유저 지적으로 규명): 얼헌 스키마에
+// promptState.template이 통째로 비어 있었다 — 즉 메인 모델이 날짜·시각·위치·소지금을
+// **하나도 못 보는 채로** 쓰고 있었다. 지금 언제 어디인지 모르니 앵커가 있을 수 없다.
+// 값이 모델에 닿는 길은 이 칸 하나뿐인데(상태창 HTML은 display 훅 산물이라 저장도 전송도
+// 안 되고, 채팅 변수 미러 chat.scriptstate는 CBS로 불러 써야 프롬프트에 든다 — 얼헌은
+// 이식 때 원본 CBS를 전부 구워서 읽는 곳이 0개, ⚙simcore 로어북은 key '__simcore_never__'
+// +alwaysActive:false로 절대 안 뜨는 보관함), 이식 봇이라 그 칸만 빈 채로 배포됐다.
+// - 검증 경고 신설: statusUI가 있고 (변수 6개+ 또는 시간 체계)인데 promptState.template이
+//   없으면 warn. 내장 템플릿 16종은 16/16이 채우므로 조용하고, 장난감 스키마도 문턱 아래다.
+// - 얼헌: 300자 상태 블록 신설 (원본 always-on 로어북 6.7K자가 하던 일 — 토큰 이득은 유지).
+// v1.5.0 장면 앵커(산문 규칙)는 이 정보 공급이 없으면 반쪽이었다. 규칙 이전에 시계였다.
 //
 // ── v1.5.2 ────────────────────────────────────────────────
 // 에셋 탭의 두 숫자가 달라 문의 (유저: "6675자인데 비용 칸은 +1519 tok"). 버그가 아니라
@@ -3399,6 +3412,17 @@ function validateSchema(schema) {
   // ── promptState / statusUI ──
   if (schema.promptState?.template) {
     checkTemplateRefs(schema.promptState.template, '$.promptState.template', allIds, err);
+  } else if (schema.statusUI && schema.statusUI.mode !== 'off' && (vars.length >= 6 || schema.time)) {
+    // v1.5.3 실사고 — 이식 봇(얼헌)에서 이 칸이 통째로 비어 있었다. 상태창은 display 훅
+    // 산물이라 모델에 안 가고, 채팅 변수 미러는 CBS로 불러 써야 프롬프트에 든다.
+    // 그래서 **유저는 날짜·소지금을 보는데 메인 모델은 하나도 못 보는** 상태로 몇 달을 돌았고,
+    // 증상은 "서사가 혼자 날아간다"로 나왔다 (지금 언제 어디인지 모르니 앵커가 없다).
+    // 내장 템플릿 16종은 16/16이 채운다. 문턱(변수 6개+ 또는 시간 체계)은 장난감 스키마를
+    // 벌주지 않기 위한 것 — 세계를 굴리는 봇에서만 뜬다 (도구가 정상 설계를 벌주지 않기).
+    warn('$.promptState.template',
+      '상태창은 있는데 모델용 상태 블록(promptState.template)이 없습니다 — 상태창 HTML은 화면 전용이라 '
+      + '메인 모델에게 가지 않습니다. 지금 이대로면 모델은 날짜·위치·소지금을 모른 채 씁니다. '
+      + '"지금: {date} {time} · {location} · 소지금 {won}원" 식으로 한두 줄만 적어 주세요 (내장 템플릿은 150~550자).');
   }
   if (typeof schema.promptState?.eventPriority === 'string') {
     checkTemplateRefs(schema.promptState.eventPriority, '$.promptState.eventPriority', allIds, err);

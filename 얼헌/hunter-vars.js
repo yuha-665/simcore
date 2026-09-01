@@ -786,6 +786,20 @@ const S = {
   // pacing 지시문은 사건의 '강도'(파국 금지) 담당이라 이 구멍을 못 막는다.
   // 자리는 systemGuide — 지시문 층은 에셋 사전(7K자) 앞이라 묻힌다. 여기가 프롬프트 끝자락이다.
   promptState: {
+    // ⚠ 상태 블록 (2026-09-01) — 이식 때 통째로 빠져 있던 칸. 내장 템플릿 16종은 16/16이
+    // 이걸 채우는데 얼헌만 비어 있었고, 그래서 **메인 모델이 날짜·시각·위치·소지금을
+    // 하나도 못 봤다**. 상태창(7.5K자 HTML)은 display 훅 산물이라 모델에 안 가고,
+    // 채팅 변수 미러(chat.scriptstate)는 CBS로 불러 써야 프롬프트에 드는데 이식 때
+    // 원본 CBS를 전부 구워버려서 읽는 곳이 한 군데도 없었다 — 값이 새는 유일한 샛길이던
+    // 지시문 6개도 {stat_pts}·{break_in}뿐. 즉 메인은 "지금 언제 어디"를 모른 채 썼다.
+    // 원본이 always-on 로어북 6.7K자로 하던 일을 300자로 되살린다 (토큰 이득은 유지).
+    template: '[현재 상태 — 시스템이 관리하는 사실이다. 이 값과 어긋나게 쓰지 마라]\n'
+      + '지금: {date} ({weekday}) {time} · {weather} · {location}\n'
+      + '주인공: {license}랭크 Lv{level} · {job} · {guild} · 명성 {fame}\n'
+      + '몸: HP {hp}/{hp_max} · MP {mp}/{mp_max} · SP {sp}/{sp_max}\n'
+      + '지갑: {won}원 · {coin}코인 | 장비: {armor} / {weapons}\n'
+      + '소지품: {items}\n'
+      + '진행 중 퀘스트: {quests}',
     systemGuide: '이 세계는 시스템 창이 뜨는 세계다 — 레벨업·스킬 습득·퀘스트 발생 같은 시스템 사건은 '
       + '본문 문단 사이 `[시스템] …` 한 줄로 짧게 연출하라. 수치 정산은 상태 블록의 몫이니 '
       + '숫자를 본문에 나열하지 마라. '
@@ -1403,6 +1417,23 @@ console.log('\n━━ 환기 — 에로코미디 이벤트 5종 (alter_on 게이
   const pace = S.directives.find((d) => d.id === 'pacing');
   ok('페이싱 지시문 상시 (뇌절 방지 환기)', !!pace && pace.when === 'true'
     && pace.text.includes('파국으로 키우지 마라'), '');
+}
+
+console.log('\n━━ 모델용 상태 블록 — 메인이 "지금 언제 어디"를 아는 유일한 통로 ━━');
+{
+  // 이식 때 통째로 빠져 있던 칸 (2026-09-01 규명). 상태창은 화면 전용이고 채팅 변수 미러는
+  // 읽는 곳이 없어서, 이게 없으면 메인 모델은 날짜도 소지금도 모른 채 쓴다 — "서사가 날아간다"의 뿌리.
+  const t = fresh();
+  const pb = engine.sendPhase(S, t, { rng: seededRng('st', 1, 's') }).promptBlock;
+  ok('상태 블록이 프롬프트에 실림', pb.includes('[현재 상태'), pb.slice(0, 80));
+  ok('★ 날짜·요일·시각·위치 노출', /2026-03-02 \(.\) .*아침/.test(pb) && pb.includes('헌터 협회 본부'),
+    (pb.match(/지금:.*/) || [''])[0]);
+  ok('★ 소지금·HP 노출', pb.includes('500000원') && pb.includes('HP 100/100'),
+    (pb.match(/지갑:.*/) || [''])[0]);
+  ok('맨 앞자리 (대화 맥락보다 먼저 서는 사실)', pb.indexOf('[현재 상태') === 0, String(pb.indexOf('[현재 상태')));
+  ok('미치환 자리표시자 없음', !/\{[a-z_]+\}/.test((pb.match(/\[현재 상태[\s\S]*?\n\n/) || [''])[0]), '');
+  const v = SC.require('validate').validateSchema(S);
+  ok('상태 블록 누락 경고 안 뜸', !v.warnings.some((w) => w.path === '$.promptState.template'), '');
 }
 
 console.log('\n━━ 장면 앵커 — 한 응답 = 한 장면 (원본 상태창 출력이 하던 몫) ━━');

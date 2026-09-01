@@ -185,8 +185,13 @@ const S = {
   vars: [
     // ── 시간·환경 ──
     // ⚠ 진행 규칙은 desc에 적는다 — 지시문은 메인 전용이라 보조가 못 읽는다 (베리디아 규약 승계).
-    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 14,
-      desc: 'Days that passed in this response. Next morning = 1, three days later = 3. '
+    // 상한 3650(10년)은 한계가 아니라 백스톱 — 보조가 날짜(20260305)를 통째로 적는 사고만 막는다.
+    // 옛 14일 상한은 유저가 "한 달 후"라 하면 서사는 한 달, 달력은 14일만 가서 급여일·게이트
+    // 잔여일이 전부 서사보다 뒤처졌다. 달력은 서사를 따라간다 — 도약 폭은 유저가 정한다.
+    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 3650,
+      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, '
+        + 'a month later = 30, a year later = 365 — write the real count however large, '
+        + 'but only the span the story actually skipped (never invent long gaps). '
         + 'Leave 0 while the scene stays within the same day — the date and every day-counted '
         + 'timer move only with this.' },
     { id: 'time', label: '시각', type: 'enum', init: '🕗아침',
@@ -924,10 +929,11 @@ const S = {
     contextTurns: 2,
     guide: '헌터물 기록 기준: 게이트 안 전투가 있었으면 그 턴에 HP/MP/SP 소모·소모품 사용·전리품'
       + '(마정석 등 items)·EXP를 함께 정산하라. 근거 없는 수입·EXP는 적지 마라. 시간(skip_day)은 '
-      + '날짜가 실제로 넘어갔을 때만. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다. '
+      + '날짜가 실제로 넘어갔을 때만 — 유저가 "한 달 후"·"1년 후"처럼 건너뛰면 그 일수(30·365)를 '
+      + '깎지 말고 그대로 적어라. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다. '
       + '게이트 안에서는 탐사도(explore)·현재 구역(gate_room)·조사 포인트(gate_poi)를 장면에 맞춰 갱신하라.',
     allow: [
-      { id: 'skip_day', maxGain: 14 },
+      { id: 'skip_day', maxGain: 3650 },
       { id: 'time' },
       { id: 'weather' },
       { id: 'location', maxLength: 30 },
@@ -1686,6 +1692,31 @@ console.log('\n━━ 급여 — 월급은 주기다 (가입 30일마다, 라이
   ({ st: u } = turn(u, { skip_day: 14 }, 811));
   ({ st: u } = turn(u, { skip_day: 14 }, 812));
   ok('무소속은 급여 없음 (42일)', u.vars.won === w0, String(u.vars.won));
+}
+
+console.log('\n━━ 시간 도약 — 달력은 서사를 따라간다 (14일 상한 철폐) ━━');
+{
+  // 유저가 "한 달 후"라 하면 서사는 한 달인데 달력은 14일만 가던 어긋남 — 급여일·게이트
+  // 잔여일이 전부 서사보다 뒤처졌다. 도약 폭은 유저가 정한다; 남는 상한은 사고 백스톱뿐.
+  const T = SC.require('time');
+  const ev = (t) => T.exposedValues(T.timeConfig(S), t.vars[T.EPOCH_KEY]);
+  let t = fresh();
+  ({ st: t } = turn(t, { skip_day: 30 }, 850));
+  ok('"한 달 후" → 30일 그대로 (옛 상한 14에 깎이지 않음)',
+    ev(t).elapsed === 30 && ev(t).date === '2026-04-01', JSON.stringify(ev(t)));
+  ({ st: t } = turn(t, { skip_day: 365 }, 851));
+  ok('"1년 후" → 365일', ev(t).elapsed === 395 && ev(t).date === '2027-04-01', JSON.stringify(ev(t)));
+  ok('소비 후 skip_day 0 복귀', t.vars.skip_day === 0, String(t.vars.skip_day));
+  // 백스톱 — 보조가 날짜를 일수 칸에 통째로 적는 사고(20260305)만 10년에서 멈춘다
+  let u = fresh();
+  ({ st: u } = turn(u, { skip_day: 20260305 }, 852));
+  ok('날짜를 일수 칸에 적는 사고 → 3650일 백스톱', ev(u).elapsed === 3650, String(ev(u).elapsed));
+  const sd = S.vars.find((v) => v.id === 'skip_day');
+  const al = S.updater.allow.find((a) => a.id === 'skip_day');
+  ok('var max·allow maxGain 둘 다 3650 (한쪽만 올리면 다른 쪽이 깎는다)',
+    sd.max === 3650 && al.maxGain === 3650, `${sd.max}/${al.maxGain}`);
+  ok('보조 어휘 — 한 달=30·1년=365 (desc) + 깎지 말라 (guide)',
+    /month later = 30/.test(sd.desc) && /year later = 365/.test(sd.desc) && S.updater.guide.includes('깎지 말고'), '');
 }
 
 console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');

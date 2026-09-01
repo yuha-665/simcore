@@ -39,8 +39,8 @@
       "type": "int",
       "init": 0,
       "min": 0,
-      "max": 14,
-      "desc": "Days that passed in this response. Next morning = 1, three days later = 3. Leave 0 while the scene stays within the same day — the date and every day-counted timer move only with this."
+      "max": 3650,
+      "desc": "Days that passed in this response. Next morning = 1, three days later = 3, a month later = 30, a year later = 365 — write the real count however large, but only the span the story actually skipped (never invent long gaps). Leave 0 while the scene stays within the same day — the date and every day-counted timer move only with this."
     },
     {
       "id": "time",
@@ -1716,11 +1716,11 @@
   ],
   "updater": {
     "contextTurns": 2,
-    "guide": "헌터물 기록 기준: 게이트 안 전투가 있었으면 그 턴에 HP/MP/SP 소모·소모품 사용·전리품(마정석 등 items)·EXP를 함께 정산하라. 근거 없는 수입·EXP는 적지 마라. 시간(skip_day)은 날짜가 실제로 넘어갔을 때만. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다. 게이트 안에서는 탐사도(explore)·현재 구역(gate_room)·조사 포인트(gate_poi)를 장면에 맞춰 갱신하라.",
+    "guide": "헌터물 기록 기준: 게이트 안 전투가 있었으면 그 턴에 HP/MP/SP 소모·소모품 사용·전리품(마정석 등 items)·EXP를 함께 정산하라. 근거 없는 수입·EXP는 적지 마라. 시간(skip_day)은 날짜가 실제로 넘어갔을 때만 — 유저가 \"한 달 후\"·\"1년 후\"처럼 건너뛰면 그 일수(30·365)를 깎지 말고 그대로 적어라. 스탯은 stat_pts를 소모하는 분배 장면에서만 올린다. 게이트 안에서는 탐사도(explore)·현재 구역(gate_room)·조사 포인트(gate_poi)를 장면에 맞춰 갱신하라.",
     "allow": [
       {
         "id": "skip_day",
-        "maxGain": 14
+        "maxGain": 3650
       },
       {
         "id": "time"

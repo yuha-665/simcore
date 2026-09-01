@@ -133,6 +133,24 @@ for (const [tier, [glo, ghi]] of Object.entries(GEAR_BASE)) {
 const idx1 = (list, v) => chain(list.slice(0, -1).map((name, i) => [`${v} == ${i + 1}`, `'${name}'`]),
   `'${list[list.length - 1]}'`);
 
+// ══════════ 성신의 가호 — 주간 세계 현상 (2026-09-01 유저 설계) ══════════
+// 컨텍스트 층(vars+directives) 1호 구현: 이벤트=점화 · 변수=상태 · 지시문=지속.
+// 매주 성신이 전 세계 각성자에게 축복+대가를 짝으로 내린다 — 매너리즘 방지 장치.
+// 짝은 완전 랜덤도 태그 매칭도 아닌 **손 큐레이션** (유저 예시 조합 승계) — 버프 강도와
+// 대가 부담이 서사적으로 맞물리게 손으로 짠다. 여기 표가 유일 출처, 늘리려면 행 추가만.
+// ⚠ 축복의 수치는 서사 전용이다 — str/con 실변수를 절대 건드리지 않는다 (지시문이 명시).
+const BOON_PAIRS = [
+  ['전 능력치 +30%', '말끝마다 "…냥"이 붙는다'],
+  ['전 능력치 +30%', '자신을 3인칭(이름)으로만 지칭'],
+  ['스킬 위력 2배', '스킬 사용 전 중2병 영창 필수 — 빼먹으면 불발'],
+  ['전 능력치 +50%', '감정 표현이 정반대로 나온다'],
+  ['모든 능력치 2배', '이성 헌터를 보면 구애의 춤부터'],
+  ['회복력 3배', '존댓말·반말이 뒤집힌다'],
+  ['스킬 위력 2배', '모든 대화는 라임을 맞춘 랩으로'],
+  ['전 능력치 +50%', '"게이트"·"몬스터" 발화 금지 — 돌려 말할 것'],
+];
+const BOON_N = BOON_PAIRS.length;
+
 // 랭크 구간 (원본 로어북 "4. Stats Explanation" 그대로)
 const RANKS = [[100, 'S'], [80, 'A'], [60, 'B'], [40, 'C'], [25, 'D']];
 const rankExpr = (v) => chain(RANKS.map(([at, r]) => [`${v} >= ${at}`, `'${r}'`]), `'E'`);
@@ -258,6 +276,13 @@ const S = {
     { id: 'alter_on', label: '수위 확장', type: 'bool', init: true, cmd: '수위',
       desc: '유저 정책값 (원본 alterNSFW 토글 승계). 끄면 확장 수위 이미지 팩이 잠긴다 '
         + '(기본 팩은 그대로). 시작 후 바꾸려면 /수위.' },
+    // 성신의 가호 — 정책 2종. 축복은 전원 고정, 대가의 주인공 적용만 선택 (유저 판정 2026-09-01)
+    { id: 'boon_on', label: '성신의 가호', type: 'bool', init: true, cmd: '가호',
+      desc: '유저 정책값. 매주 성신이 전 세계 헌터에게 랜덤 축복+대가를 내리는 공인 현상. '
+        + '끄려면 /가호 0.' },
+    { id: 'boon_self', label: '가호 대가 주인공 적용', type: 'bool', init: true, cmd: '가호주인공',
+      desc: '유저 정책값. 켜면 행동 대가가 주인공에게도 걸린다(저항 가능 — 대신 축복이 흐려진다). '
+        + '끄면 대가는 NPC만. 바꾸려면 /가호주인공 0.' },
     { id: 'hazard', label: '위험도', type: 'int', init: 30, min: 0, max: 100,
       desc: '세계의 흉흉함 — 프리셋이 정하고 P3 게이트 빈도·이벤트 문턱이 읽는다. 직접 바꾸지 마라.' },
 
@@ -266,6 +291,13 @@ const S = {
       desc: '시스템 전용 — 일 단위 카운트다운의 거울 변수. 직접 바꾸지 마라.' },
     { id: 'pay_prev', label: '(내부) 지난 급여일', type: 'int', init: 0, min: 0,
       desc: '시스템 전용 — 길드 급여 주기(30일)의 거울 변수. 직접 바꾸지 마라.' },
+    // 성신의 가호 내부 — init -7이라 첫 턴(elapsed 0)부터 즉시 점화된다 (가호는 세계 상수).
+    { id: 'boon_prev', label: '(내부) 지난 가호 갱신일', type: 'int', init: -7, min: -7,
+      desc: '시스템 전용 — 가호 주간 로테이션(7일)의 거울 변수. 직접 바꾸지 마라.' },
+    // max 16 = 짝 수(8)×2 — 로테이션의 "직전과 다른 짝 보장" 랩어라운드 중간값을 클램프가
+    // 못 자르게 여유를 둔다 (effects가 순차라 +rand 직후 잠깐 8을 넘는다).
+    { id: 'boon_i', label: '(내부) 가호 짝 번호', type: 'int', init: 0, min: 0, max: BOON_N * 2,
+      desc: '시스템 전용 — 이번 주 축복·대가 짝 인덱스 (0=미점화). 직접 바꾸지 마라.' },
     { id: 'zone_i', label: '(내부) 최근 출현 권역', type: 'int', init: 0, min: 0, max: 5,
       desc: '시스템이 굴린다 (0=없음). 직접 바꾸지 마라.' },
     { id: 'grade_i', label: '(내부) 최근 출현 등급', type: 'int', init: 0, min: 0, max: 6,
@@ -353,6 +385,11 @@ const S = {
     { id: 'grade_txt', label: '최근 출현 등급', expr: `(grade_i == 0 ? '—' : ${idx1(GRADES, 'grade_i')})` },
     { id: 'break_txt', label: '브레이크 상황',
       expr: `(break_name == '' ? '없음' : break_name + ' D-' + break_in)` },
+    // 성신의 가호 — 짝 번호 → 텍스트 (꺼짐/미점화는 —)
+    { id: 'boon_buff', label: '가호 축복',
+      expr: `(boon_on and boon_i >= 1) ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_i')}) : '—'` },
+    { id: 'boon_pen', label: '가호 대가',
+      expr: `(boon_on and boon_i >= 1) ? (${idx1(BOON_PAIRS.map((p) => p[1]), 'boon_i')}) : '—'` },
   ],
 
   rules: {
@@ -397,6 +434,19 @@ const S = {
           + '생겼다 — 주변 인물이나 협회 단말 알림으로 자연스럽게 흘려라. 심사 없이 등급이 바뀌지는 않는다.' },
       { id: 'promo_clear', when: '(est_n <= lic_n or lic_n < 1) and promo_seen',
         effects: [{ set: 'promo_seen', expr: 'false' }] },
+      // ── 성신의 가호 — 주간 로테이션 (컨텍스트 층: 점화는 여기, 지속은 지시문이) ──
+      // 급여와 같은 이유로 결정 이벤트다 — 주기는 랜덤이 아니다. 내용만 rand()로 뽑는다.
+      { id: 'boon_rotate', when: 'boon_on and elapsed - boon_prev >= 7',
+        effects: [
+          // 직전과 반드시 다른 짝 — +rand(1,N-1) 후 랩어라운드. 같은 짝 재추첨이면
+          // "갱신됐는데 그대로네"가 되고, 그건 매너리즘 방지 장치의 자기모순이다.
+          { set: 'boon_i', expr: `boon_i == 0 ? rand(1, ${BOON_N}) : boon_i + rand(1, ${BOON_N - 1})` },
+          { set: 'boon_i', expr: `boon_i > ${BOON_N} ? boon_i - ${BOON_N} : boon_i` },
+          { set: 'boon_prev', expr: 'elapsed' },
+        ],
+        notify: '[성신의 가호] 주간 갱신 — 성신이 새 축복과 대가를 내렸다 (내용은 지시문에 반영됨). '
+          + '밤하늘의 별문양, 협회 공지, 적응하는 헌터들의 소동과 함께 그려라 — 세계 전체가 아는 '
+          + '공인 현상이라 뉴스·헌터넷도 이 얘기다.' },
       // ── 길드 급여 — 월급은 랜덤이 아니라 주기다 (가입 30일마다, 라이선스 비례) ──
       { id: 'guild_payday', when: "guild != '무소속' and elapsed - pay_prev >= 30",
         effects: [
@@ -673,6 +723,20 @@ const S = {
     { id: 'pts_idle', when: 'stat_pts >= 4',
       text: '미분배 스탯 포인트가 {stat_pts}점 쌓여 있다. 분배는 유저의 선택이다 — 대신 정하지 말고, '
         + '수련·정비 장면에서 가볍게 상기시켜라.' },
+
+    // ── 성신의 가호 — 지속 층 (완전 자각 세계 현상. boon_self로 문구가 갈려 지시문 2종) ──
+    { id: 'boon_all', when: 'boon_on and boon_i >= 1 and boon_self',
+      text: '[성신의 가호 — 공인 주간 현상] 성신이 매주 전 세계 각성자에게 축복과 대가를 짝으로 내린다. '
+        + '이번 주 축복: "{boon_buff}" — 주인공 포함 모든 헌터. 대가: "{boon_pen}" — 역시 전원. '
+        + 'NPC 헌터들은 대가를 충실히 수행 중이다. 주인공은 대가를 거스를 수 있으나, 거스르는 장면에서는 '
+        + '축복의 효력도 함께 흐려진다 — 그 대가를 그려라. 상태 블록의 수치는 불변이다: 축복은 실전 '
+        + '발휘로, 대가는 행동·말투로만 연출하라. 세계 전체가 이 현상을 안다.' },
+    { id: 'boon_npc', when: 'boon_on and boon_i >= 1 and not boon_self',
+      text: '[성신의 가호 — 공인 주간 현상] 성신이 매주 전 세계 각성자에게 축복과 대가를 짝으로 내린다. '
+        + '이번 주 축복: "{boon_buff}" — 주인공 포함 모든 헌터. 대가: "{boon_pen}" — 주인공을 제외한 '
+        + '헌터들 (이번 주기 주인공은 대가를 비켜갔다 — 주변이 부러워할 일이다). NPC 헌터들은 대가를 '
+        + '충실히 수행 중이다. 상태 블록의 수치는 불변이다: 축복은 실전 발휘로, 대가는 행동·말투로만 '
+        + '연출하라. 세계 전체가 이 현상을 안다.' },
 
     // ── 게이트 (P3) ──
     { id: 'seoul_zones', when: 'true',
@@ -1185,6 +1249,8 @@ S.statusUI.templates = [{
     + '<span class="a-info-item">{weather}</span>'
     + '<span class="a-info-item">📍 {location}</span>'
     + '</div>'
+    // 성신의 가호 — 세계 배너 (인적 정보가 아니라 top-info-bar 바로 아래). 꺼짐/미점화은 — · —
+    + '<div class="a-row"><span>🌠 성신의 가호</span><span class="v">{boon_buff} · {boon_pen}</span></div>'
     + '<div class="a-core-row">'
     + '<div class="a-rank-badge">{license}</div>'
     + '<div class="a-core-main"><div class="a-name">Lv.{level} · {job}</div>'
@@ -1910,6 +1976,72 @@ console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
   const off = engine.sendPhase(S, engine.toggleAction(S, send.state, 'offstage').state,
     { rng: seededRng('h', 132, 's') });
   ok('끄면 원래대로', off.offstage === false && !off.promptBlock.includes('주인공 부재'), '');
+}
+
+console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점화 · 변수=상태 · 지시문=지속) ━━');
+{
+  const von = S.vars.find((x) => x.id === 'boon_on');
+  const vself = S.vars.find((x) => x.id === 'boon_self');
+  ok('정책 토글 2종 — /가호, /가호주인공 (기본 둘 다 켬)', von.init === true && von.cmd === '가호'
+    && vself.init === true && vself.cmd === '가호주인공', '');
+
+  // 첫 턴 점화 — boon_prev init -7이라 elapsed 0에서 즉시 (가호는 세계 상수)
+  let t = fresh();
+  ({ st: t } = turn(t, {}, 900));
+  ok('첫 턴 점화 — 짝 배정 (1~8)', t.vars.boon_i >= 1 && t.vars.boon_i <= 8, String(t.vars.boon_i));
+  ok('점화 통지 대기', t.meta.pendingNotifies.some((n) => n.includes('성신의 가호')), '');
+
+  // 지속 — 다음 턴부터 매턴 지시문 (주인공 포함 문구)
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('h', 901, 's') });
+  ok('지시문 상시 — 축복·대가 실림', p1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]')
+    && p1.promptBlock.includes('이번 주 축복: "') && !p1.promptBlock.includes('{boon_buff}'), '');
+  ok('boon_self 켬 — 대가 전원 적용 + 저항 규칙', p1.promptBlock.includes('역시 전원')
+    && p1.promptBlock.includes('거스르는 장면에서는'), '');
+  ok('상태창 배너 — 축복·대가 표시', (() => {
+    const html = SC.require('render').renderStatusHtml(S, p1.state, null, null, { uid: 9 });
+    return html.includes('성신의 가호') && !html.includes('{boon_buff}');
+  })(), '');
+
+  // 주인공 제외 모드 — 문구가 갈린다
+  t.vars.boon_self = false;
+  const p2 = engine.sendPhase(S, t, { rng: seededRng('h', 902, 's') });
+  ok('boon_self 끔 — 대가 NPC만 문구', p2.promptBlock.includes('주인공을 제외한')
+    && !p2.promptBlock.includes('역시 전원'), '');
+  t.vars.boon_self = true;
+
+  // 주간 로테이션 — 7일마다, 직전과 반드시 다른 짝 (랩어라운드 보장 10회 검증)
+  let prev = t.vars.boon_i; let changedAll = true; let inRange = true;
+  for (let w = 0; w < 10; w++) {
+    ({ st: t } = turn(t, { skip_day: 7 }, 910 + w));
+    if (t.vars.boon_i === prev) changedAll = false;
+    if (t.vars.boon_i < 1 || t.vars.boon_i > 8) inRange = false;
+    prev = t.vars.boon_i;
+  }
+  ok('주간 로테이션 10회 — 매번 직전과 다른 짝', changedAll, '');
+  ok('로테이션 후 항상 1~8 (랩어라운드 정합)', inRange, String(prev));
+
+  // 7일 미만엔 안 돈다
+  const before = t.vars.boon_i;
+  ({ st: t } = turn(t, { skip_day: 3 }, 930));
+  ({ st: t } = turn(t, { skip_day: 3 }, 931));
+  ok('6일 경과 — 아직 그대로', t.vars.boon_i === before, '');
+  ({ st: t } = turn(t, { skip_day: 1 }, 932));
+  ok('7일째 — 갱신', t.vars.boon_i !== before, '');
+
+  // 끄면 — 지시문·로테이션 정지, 상태창은 — 표기
+  let u = fresh();
+  ({ st: u } = turn(u, {}, 940));
+  u.vars.boon_on = false;
+  // 직전 턴 점화 통지([성신의 가호] 주간 갱신)는 이번 전송에 실리는 게 정상 — 지시문만 재라
+  const p3 = engine.sendPhase(S, u, { rng: seededRng('h', 941, 's') });
+  ok('/가호 0 — 지시문 사라짐', !p3.promptBlock.includes('[성신의 가호 — 공인 주간 현상]'), '');
+  ok('끄면 파생도 — 표기', engine.makeLookup(S, u.vars)('boon_buff') === '—', '');
+  const iOff = u.vars.boon_i;
+  ({ st: u } = turn(u, { skip_day: 14 }, 942));
+  ok('꺼진 동안 로테이션 정지', u.vars.boon_i === iOff, '');
+
+  // 보조가 가호 변수를 못 만진다 (시스템 전용)
+  ok('updater allow에 boon 계열 없음', !S.updater.allow.some((a) => a.id.startsWith('boon_')), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

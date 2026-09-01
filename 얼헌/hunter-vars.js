@@ -714,6 +714,13 @@ const S = {
     { id: 'offstage', label: '🎬 막간 — 주인공 없이', mode: 'hold', offstage: true,
       inject: '[막간] 지금은 주인공의 시야 밖에서 세계가 움직이는 장면이다. 헌터넷·협회·길드·다른 헌터들, '
         + '혹은 아직 주인공과 마주치지 않은 인물들 쪽으로 카메라를 옮겨라.' },
+    // 가호 켬/끔 — 명령(/가호) 말고 버튼으로도 (유저 요청 2026-09-01). oneshot 토글:
+    // 누르면 ✅ 대기, 다음 전송의 액션 소비(1단계)가 반전시키므로 그 턴의 지시문·상태
+    // 블록부터 새 정책이다. inject는 양방향을 한 문구로 커버한다.
+    { id: 'boon_toggle', label: '🌠 가호 켬/끔', mode: 'oneshot',
+      effects: [{ set: 'boon_on', expr: 'boon_on ? false : true' }],
+      inject: '[성신의 가호] 가호 정책이 방금 전환되었다 — 상태 블록·지시문의 현재 상태를 따르라. '
+        + '켜졌다면 성신의 장난이 돌아온 소동을, 꺼졌다면 세계가 문득 멀쩡해진 위화감을 짧게 그려라.' },
   ],
 
   checks: [
@@ -2222,6 +2229,24 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
 
   // 보조가 가호 변수를 못 만진다 (시스템 전용)
   ok('updater allow에 boon 계열 없음', !S.updater.allow.some((a) => a.id.startsWith('boon_')), '');
+
+  // ── 버튼 토글 (유저 요청) — 막간처럼 상태창 범례에서, oneshot 반전 ──
+  const act = S.actions.find((x) => x.id === 'boon_toggle');
+  ok('가호 토글 액션 존재 (oneshot)', !!act && (act.mode || 'oneshot') === 'oneshot', '');
+  let c = fresh();
+  ({ st: c } = turn(c, {}, 990));            // 점화된 상태에서 시작
+  ok('전제 — 켜져 있음', c.vars.boon_on === true, '');
+  c = engine.toggleAction(S, c, 'boon_toggle').state;
+  const off1 = engine.sendPhase(S, c, { rng: seededRng('h', 991, 's') });
+  ok('버튼 1회 — 다음 전송에서 끔 + 같은 턴 지시문부터 반영', off1.state.vars.boon_on === false
+    && off1.consumedActions.includes('boon_toggle')
+    && !off1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]'), '');
+  ok('전환 연출 inject 실림', off1.promptBlock.includes('가호 정책이 방금 전환'), '');
+  ok('oneshot — 발동 후 무장 해제', !off1.state.meta.armed?.boon_toggle, '');
+  let c2 = engine.toggleAction(S, off1.state, 'boon_toggle').state;
+  const on1 = engine.sendPhase(S, c2, { rng: seededRng('h', 992, 's') });
+  ok('버튼 2회 — 도로 켬 + 지시문 복귀 (boon_i 유지라 같은 주 재개)', on1.state.vars.boon_on === true
+    && on1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]'), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

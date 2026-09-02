@@ -103,7 +103,7 @@ peddler 랜덤) + **delve 1**(big_one — 노획 도박) + **zombie 2**(stranger
 
 | 템플릿 | advance | start | 표시 | 진행 입구 |
 |---|---|---|---|---|
-| romance | explicit | 2026-03-02 08:30 (월) | M월 D일 / HH:mm | skip_day(≤7) · skip_min(≤720) + 🌙 하루 경계 넘김(v0.99: day_break→wake_at→sync 이벤트) |
+| romance | explicit | 2026-03-02 08:30 (월) | M월 D일 / HH:mm | skip_day(≤3650 — v1.5.5 도약 캡 철폐, 날짜 오기입 백스톱만) · skip_min(≤720) + 🌙 하루 경계 넘김(v0.99: day_break→wake_at→sync 이벤트) |
 | daily | explicit | 2026-05-18 08:00 (월) | M월 D일 / HH:mm | skip_min(≤240)만 + 🕐 2시간 · 💤 다음 08:00 |
 | survival | perTurn | 2026-12-01 07:00 (화) | M월 D일 | 없음 (턴마다 하루) |
 | vtuber | perTurn | 2026-03-02 20:00 (월) | M월 D일 | 없음 (턴마다 하루) |

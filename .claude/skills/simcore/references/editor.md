@@ -266,7 +266,7 @@
 - 꺼짐: 손 만든 날짜 변수(`LEGACY_TIME_RE`: day/clock_h/sim_* 등) 감지 안내 + `[🕐 시간 체계 켜기]`
 - 켜짐: **시작 시점 미리보기** / `시작 시점` · `진행`(explicit/perTurn) · `달력`(gregorian/flat30) /
   날짜·시각 형식 / 요일·계절 / 노출 이름 체크박스(EXPOSABLE)
-- h4 `진행 입구`: skip 변수 없으면 ⚠ + `[진행 입구 만들기]`(skip_day·skip_min + allow maxGain 7/720),
+- h4 `진행 입구`: skip 변수 없으면 ⚠ + `[진행 입구 만들기]`(skip_day·skip_min + allow maxGain 3650/720 — v1.5.5부터 skip_day 캡은 날짜 오기입 백스톱뿐, 도약 폭은 유저가 정한다),
   있으면 ✓ + `[🌙 '하루를 마친다' 액션 추가]`
 - h4 `옛 날짜 변수 정리`: `[🧹 정리 마법사로 한꺼번에 지우기]` — planVarPurge 재사용
 - `[시간 체계 끄기]` — schema.time만 지운다. 세이브의 time_epoch는 남아 다시 켜면 이어진다

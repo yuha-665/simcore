@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.4
-//@display-name SimCore (시뮬 엔진) v1.5.4 에셋 태그 공백 정규화
+//@version 1.5.5
+//@display-name SimCore (시뮬 엔진) v1.5.5 시간 도약 상한 철폐
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.4
-//@display-name SimCore (시뮬 엔진) v1.5.4 에셋 태그 공백 정규화
+//@version 1.5.5
+//@display-name SimCore (시뮬 엔진) v1.5.5 시간 도약 상한 철폐
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -12162,6 +12162,8 @@ const SCHEMA_TIME_RULES = [
   '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
   '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
   '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
+  '- **skip_day에 도약 캡을 두지 마세요** (max/maxGain 7·14·30 금지). 유저가 "한 달 뒤"라 하면',
+  '  달력도 한 달 가야 합니다 — 캡은 달력을 서사에 뒤처지게 할 뿐. 오기입 백스톱 3650만 두세요.',
   '- **시간 등호 조건은 래치가 필요합니다.** `dom == 5`(급여일)는 그 날의 모든 턴에 참이라',
   '  래치 없이는 매 턴 지급됩니다. 위 래치 짝이나 "마지막 지급 월" 기록 변수로 막으세요.',
   '- **🌙 하루 마무리 버튼에 "다음날 아침"을 박지 마세요** (야간·교대 서사에서 어긋납니다).',
@@ -17309,9 +17311,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 시간 골격 헬퍼 — 켜기 3택과 진행 입구 버튼이 같은 것을 만든다 (두 벌 금지)
   function ensureSkipVars() {
     if (!schema.vars.some((v) => v.id === SKIP_DAY)) {
-      schema.vars.push({ id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
-        desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' });
-      schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 });
+      // v1.5.5: 옛 30/7 캡은 "한 달 뒤"를 7일로 깎아 달력이 서사에 뒤처졌다 — 도약 폭은 유저가
+      // 정한다. 3650은 한계가 아니라 날짜 오기입(20260305) 백스톱 (romance 템플릿과 같은 값).
+      schema.vars.push({ id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 3650,
+        desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만 — "한 달 뒤"면 30, "1년 뒤"면 365, 깎지 말고 그대로.' });
+      schema.updater.allow.push({ id: SKIP_DAY, maxGain: 3650 });
     }
     if (!schema.vars.some((v) => v.id === SKIP_MIN)) {
       schema.vars.push({ id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
@@ -20743,8 +20747,11 @@ const ROMANCE = {
       desc: '앞으로 잡힌 약속. 서사에서 새 약속이 잡히면 "내용 @+N"(N일 뒤)으로 추가하라. 날짜가 지나면 자동으로 지워진다.' },
     // 시간 진행 입구 — 엔진이 매 턴 소비 후 0으로 되돌린다. 규칙은 desc에 산다
     // (지시문은 메인 전용이라 상태를 갱신하는 보조 AI가 못 읽는다 — 실측 사고).
-    { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
-      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' },
+    // 상한 3650(10년)은 한계가 아니라 백스톱 — 보조가 날짜(20260305)를 일수 칸에 통째로 적는
+    // 사고만 막는다. 옛 30/7 상한은 유저가 "한 달 뒤"라 하면 서사는 한 달, 달력은 7일만 가서
+    // 약속(@+N)·정산이 전부 서사보다 뒤처졌다 (v1.5.5). 달력은 서사를 따라간다 — 도약 폭은 유저가 정한다.
+    { id: 'skip_day', label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 3650,
+      desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만 — "한 달 뒤"면 30, "1년 뒤"면 365, 깎지 말고 그대로.' },
     { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
       desc: '이번 장면에서 흐른 시간(분). 대화 한 토막이면 5~20, 데이트·수업이면 60~180. 날짜가 넘어가면 skip_day를 올리고 여기엔 그날 안에서 흐른 분만.' },
     // 하루 경계 넘김 (v0.99) — "다음 날 = 아침"이라 단정하지 않는다. 🌙 버튼은 깃발만 세우고,
@@ -20855,8 +20862,9 @@ const ROMANCE = {
       { id: 'jealousy', maxDelta: 20 },
       { id: 'memories' }, { id: 'mood' }, { id: 'place', maxLength: 40 },
       { id: 'plans' },   // 서사에서 잡힌 약속 — "@+N"은 시스템이 절대 날짜로 굳힌다 (v0.61)
-      // 시간 진행 보고 — 캡이 도약 폭을 묶는다 ("3일 뒤"까지는 되고 한 달 점프는 안 된다)
-      { id: 'skip_day', maxGain: 7 }, { id: 'skip_min', maxGain: 720 },
+      // 시간 진행 보고 — 도약 폭은 유저가 정한다 (v1.5.5: 옛 7일 캡은 "한 달 뒤"를 7일로 깎아
+      // 달력이 서사에 뒤처졌다). 3650은 날짜 오기입 백스톱. 분은 그날 안(≤12h) 몫이라 720 유지.
+      { id: 'skip_day', maxGain: 3650 }, { id: 'skip_min', maxGain: 720 },
       { id: 'wake_at' },  // 하루 경계 넘김 — 다음날 장면이 잡은 시간대 (day_break 중에만 의미)
     ],
     guide: '기억(memories)에는 실제로 있었던 사건만 한 줄로 add하라. 호감도는 상대의 반응이 뚜렷할 때만 움직여라.',

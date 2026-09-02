@@ -356,6 +356,37 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ck('원장은 8줄로 끊는다', ms.state.meta.lastChanges.length === 8, String(ms.state.meta.lastChanges.length));
 }
 
+// ── 시간 도약 캡 철폐 (v1.5.5) ────────────────────────────────
+// 실사고(얼헌): skip_day maxGain 14에 걸려 유저가 "한 달 후"라 해도 달력은 14일만 갔다 —
+// 급여일·기한(@+N)이 전부 서사보다 뒤처졌다. 달력은 서사를 따라간다; 도약 폭은 유저가 정한다.
+// 남는 상한 3650은 보조가 날짜(20260305)를 일수 칸에 통째로 적는 사고의 백스톱뿐이다.
+{
+  const ROM = TEMPLATES.romance.schema;
+  const sd = ROM.vars.find((v) => v.id === 'skip_day');
+  const al = ROM.updater.allow.find((a) => a.id === 'skip_day');
+  ck('romance: skip_day 도약 캡 없음 (var max·allow maxGain 둘 다 3650 — 한쪽만 올리면 다른 쪽이 깎는다)',
+    sd.max === 3650 && al.maxGain === 3650, `${sd.max}/${al.maxGain}`);
+  ck('romance: 보조 어휘 — "한 달 뒤"=30·"1년 뒤"=365', sd.desc.includes('30') && sd.desc.includes('365'), sd.desc);
+  const cfg = time.timeConfig(ROM);
+  const days = (st) => Math.floor((st.vars[time.EPOCH_KEY] - cfg.startEpoch) / time.MIN_PER_DAY);
+  const run = (st, changes) => engine.outputPhase(ROM, engine.sendPhase(ROM, st).state, changes, {}).state;
+  let st = engine.initState(ROM); st.meta.setupDone = true;
+  st = run(st, { skip_day: 30 });
+  ck('★ "한 달 뒤" → 달력 30일 (옛 7일 캡이면 7)', days(st) === 30, String(days(st)));
+  st = run(st, { skip_day: 365 });
+  ck('"1년 뒤" → +365', days(st) === 395, String(days(st)));
+  ck('소비 후 skip_day 0 복귀', st.vars.skip_day === 0, String(st.vars.skip_day));
+  let bad = engine.initState(ROM); bad.meta.setupDone = true;
+  bad = run(bad, { skip_day: 20260305 });
+  ck('날짜를 일수 칸에 적는 사고 → 3650일 백스톱', days(bad) === 3650, String(days(bad)));
+  // 편집기 [진행 입구 만들기]도 같은 값 — 여기서 7을 다시 찍으면 새 봇마다 캡이 되살아난다
+  const body = src.slice(src.indexOf('function ensureSkipVars()'), src.indexOf('function addEndDayAction()'));
+  ck('편집기 진행 입구: max 3650 + maxGain 3650, 7/30 캡 부활 없음',
+    body.includes('max: 3650') && body.includes('maxGain: 3650') && !/maxGain: 7\b/.test(body) && !/max: 30\b/.test(body), '');
+  ck('스펙 프롬프트: 도약 캡 금지 안내 (AI 생성 스키마가 7·14를 다시 찍지 않도록)',
+    src.includes('skip_day에 도약 캡을 두지 마세요'), '');
+}
+
 // ⚠ 집계는 반드시 맨 끝. 예전엔 이 두 줄이 /날짜 블록 **앞**에 있어서 그 11건이
 // 출력도 집계도 안 됐다 — 깨져도 "0 failed"가 나오는, 실패할 수 없는 테스트였다.
 let p = 0, f = 0;

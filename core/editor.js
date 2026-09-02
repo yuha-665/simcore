@@ -1196,6 +1196,8 @@ const SCHEMA_TIME_RULES = [
   '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
   '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
   '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
+  '- **skip_day에 도약 캡을 두지 마세요** (max/maxGain 7·14·30 금지). 유저가 "한 달 뒤"라 하면',
+  '  달력도 한 달 가야 합니다 — 캡은 달력을 서사에 뒤처지게 할 뿐. 오기입 백스톱 3650만 두세요.',
   '- **시간 등호 조건은 래치가 필요합니다.** `dom == 5`(급여일)는 그 날의 모든 턴에 참이라',
   '  래치 없이는 매 턴 지급됩니다. 위 래치 짝이나 "마지막 지급 월" 기록 변수로 막으세요.',
   '- **🌙 하루 마무리 버튼에 "다음날 아침"을 박지 마세요** (야간·교대 서사에서 어긋납니다).',
@@ -6343,9 +6345,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 시간 골격 헬퍼 — 켜기 3택과 진행 입구 버튼이 같은 것을 만든다 (두 벌 금지)
   function ensureSkipVars() {
     if (!schema.vars.some((v) => v.id === SKIP_DAY)) {
-      schema.vars.push({ id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 30,
-        desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만.' });
-      schema.updater.allow.push({ id: SKIP_DAY, maxGain: 7 });
+      // v1.5.5: 옛 30/7 캡은 "한 달 뒤"를 7일로 깎아 달력이 서사에 뒤처졌다 — 도약 폭은 유저가
+      // 정한다. 3650은 한계가 아니라 날짜 오기입(20260305) 백스톱 (romance 템플릿과 같은 값).
+      schema.vars.push({ id: SKIP_DAY, label: '건너뛴 일수', type: 'int', init: 0, min: 0, max: 3650,
+        desc: '며칠 통째로 지났나. 같은 날 안이면 0. 자고 일어나 이튿날 아침이면 1. 2 이상은 "며칠 뒤"처럼 명시적으로 건너뛴 만큼만 — "한 달 뒤"면 30, "1년 뒤"면 365, 깎지 말고 그대로.' });
+      schema.updater.allow.push({ id: SKIP_DAY, maxGain: 3650 });
     }
     if (!schema.vars.some((v) => v.id === SKIP_MIN)) {
       schema.vars.push({ id: SKIP_MIN, label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,

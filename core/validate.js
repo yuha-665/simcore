@@ -1,6 +1,7 @@
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
+const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -89,7 +90,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -127,6 +128,16 @@ function validateSchema(schema) {
   // 규칙·파생 검사보다 먼저 등록해야 `scn_act == "act2"` 같은 조건이 통과한다.
   if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
     for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
+  }
+  // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
+  // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
+  // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
+  if (fightMod.fightChecks(schema).length) {
+    const declared = new Set([...ids, ...derived.map((d) => d && d.id)]);
+    for (const rid of fightMod.FIGHT_RESERVED) {
+      if (declared.has(rid)) err('$.checks', `'${rid}'는 전투 안무 예약 이름입니다 — 변수/파생에 쓸 수 없음`);
+      allIds.add(rid);
+    }
   }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
@@ -666,6 +677,10 @@ function validateSchema(schema) {
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
+    // 교전 이탈 (v1.6.0) — 열린 교전을 닫는 액션. fight 달린 판정이 없으면 닫을 교전이 없다
+    if (a.fightEnd != null && typeof a.fightEnd !== 'boolean') err(p + '.fightEnd', 'fightEnd는 true/false (교전 이탈 — 열린 교전을 닫는 액션)');
+    else if (a.fightEnd === true && !fightMod.fightChecks(schema).length)
+      warn(p + '.fightEnd', 'fight 달린 판정이 없어 닫을 교전이 없습니다 — checks[].fight를 먼저 두세요');
     checkRef(a, p);
   });
   {
@@ -687,6 +702,7 @@ function validateSchema(schema) {
   // 형태 자체가 없다 — "판정 결과 변수 allow 금지"는 검증이 아니라 구조로 달성된다.
   {
     const seen = new Set();
+    const fightIds = new Set(fightMod.fightChecks(schema).map((c) => c.id));
     (Array.isArray(schema.checks) ? schema.checks : []).forEach((c, i) => {
       const p = `$.checks[${i}]`;
       if (!c.id || !ID_RE.test(c.id)) err(p, `잘못된 판정 id: '${c.id}'`);
@@ -717,6 +733,8 @@ function validateSchema(schema) {
         warn(p, '조건 없는 등급이 없습니다 — 어느 조건도 안 맞으면 판정이 등급 없이 끝납니다. 맨 뒤에 기본 등급(예: 실패)을 두세요');
       if (c.vs == null && grades.some((g) => g.when && /\bvs\b/.test(g.when)))
         err(p, '등급 조건이 vs를 쓰는데 판정에 vs(목표치)가 없음');
+      // 전투 안무 (v1.6.0) — fight 달린 판정: 게이지·반격·등급 gain (규약은 core/fight.js 머리말)
+      if (c.fight != null) fightMod.checkFightConfig(c, p, { err, warn, checkExpr, checkSet, checkIds, allIds, fightIds });
     });
     // 판정이 있는 스키마에서 roll/mod/total/vs 이름의 변수는 등급식 안에서 판정값에 가려진다
     if (seen.size) {
@@ -1385,7 +1403,7 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
 // scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario']);
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight']); // fight: 교전 게이지 칩 (v1.6.0)
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

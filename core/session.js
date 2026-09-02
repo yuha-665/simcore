@@ -57,11 +57,12 @@ class SimSession {
    * (리롤이면 지난번과 같은 값이 다시 들어온다)
    * 반환 { promptBlock, state, changeLog, consumedActions }
    */
-  async onSend(sendIndex) {
+  async onSend(sendIndex, userText = '') {
     const existingPre = await this.store.load('pre', sendIndex);
     const base = existingPre ?? this.current ?? engine.initState(this.schema);
     if (!existingPre) await this.store.save('pre', sendIndex, base);
-    const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send') });
+    // userText (v1.6.0): 전투 안무의 맡김/내 수 판단용 — 굴림과 무관하니 리롤 안정성은 그대로
+    const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send'), userText });
     await this.store.save('send', sendIndex, r.state);
     this.current = r.state;
     return r;

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.5
-//@display-name SimCore (시뮬 엔진) v1.5.5 시간 도약 상한 철폐
+//@version 1.6.0
+//@display-name SimCore (시뮬 엔진) v1.6.0 전투 안무
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -2924,10 +2924,154 @@ module.exports = {
 
 });
 
+SimCore.define("fight", function (require, module, exports) {
+// 전투 안무 (v1.6.0, checks[].fight) — 상수·예약 키·상태 헬퍼·검증·상태창 칩.
+// 라운드 굴림(rollFightRound)은 engine.js에 산다 — rollCheck·applySets를 쓰므로 순환 require를 피한다.
+//
+// 계기(유저 2026-09-02): 액션씬이 "이얍 공격 → 끄앙 당했다 → 이겼다"로 밋밋하다. 유저가 디테일하게
+// 적어주면 잘 쓴다 = 모델에 없는 **재료**(기술·무기·상대·장소)와 **구조**(공방 순서·끝나는 지점)를
+// 유저가 손으로 채우는 것. 판정은 지금껏 결과 하나만 줬다 — 결과에 이르는 과정(비트)을 시스템이
+// 굴려 안무 시트로 준다. "숫자는 시스템, 묘사는 LLM"을 전투 안으로.
+//
+// 결착은 시트에 박지 않는다 (유저 판정: 한 응답에 전투가 끝나 버린다). 공격 등급의 gain이 상대
+// 게이지에 쌓이고, 찼을 때만 결착 비트가 뜬다 — 라운드 수는 등급 대 굴림에서 저절로(육성 체감).
+// 라운드 입구는 ⚔ 액션을 매 라운드 누르는 것 하나뿐 (hold ❌):
+//   ⚔ + 짧은 입력("대충 싸웠다")  → 개시 비트까지 시스템이 씀 (맡김)
+//   ⚔ + 긴 입력                  → 유저 수는 그대로, 얼마나 먹혔는지(등급)만 굴림
+//   ⚔ 없음                       → 자유 장면. 게이지 불변 + "쓰러뜨리지 마라" 상시 줄
+// 결착은 ⚔에서만 나온다 — 모델이 혼자 전투를 끝낼 길이 구조적으로 없다.
+//
+// 상태는 예약 키(fight_*)로 vars에 산다 — time_epoch·scn_idx와 같은 계열: when·상태창·지시문이
+// 그대로 읽고, 스냅샷·리롤에 같이 되감긴다. 보조 allow에 올릴 형태가 아니라 AI가 못 만진다.
+
+const FIGHT_KEYS = {
+  max: 'fight_max',       // 게이지 크기. 0 = 교전 없음
+  gauge: 'fight_gauge',   // 누적 유효량
+  round: 'fight_round',   // 굴린 라운드 수
+  foe: 'fight_foe',       // 상대 라벨 (개전 때 굳음)
+  idle: 'fight_idle',     // ⚔ 없이 지나간 전송 수 — idleTurns에 닿으면 정리
+  check: 'fight_check',   // 개전한 판정 id
+};
+// 노출 이름 fight_on(엔진 lookup이 계산)까지 예약 — 변수/파생이 이 이름을 쓰면 검증 오류
+const FIGHT_RESERVED = [...Object.values(FIGHT_KEYS), 'fight_on'];
+
+const FIGHT_SHORT_INPUT = 40;   // 이 길이 미만의 유저 입력 = "맡김" (개시 비트까지 시스템이)
+const FIGHT_IDLE_DEFAULT = 8;   // ⚔ 없이 이만큼 지나면 교전 정리 — 상시 줄이 영영 남는 사고 방지
+
+// 맡김 모드의 개시 비트 — 굴림이 아니라 "재료를 쓰게 하는" 요구. 시드 rng로 하나를 고른다.
+const DEFAULT_FIGHT_FLAVOR = [
+  '상대의 기술·습성이 드러나는 수 하나 — 이 상대가 어떤 놈인지 몸으로 보여 줘라',
+  '지형·주변 사물을 쓰는 수 — 장소가 전투에 개입한다',
+  '감각 하나를 골라 파고들어라 — 소리·냄새·시야·통증 중 하나가 장면을 지배한다',
+  '한순간의 정적 — 서로를 재는 호흡, 그 뒤에야 움직임',
+  '주인공의 몸 상태가 수에 묻어난다 — 숨·다리·쥔 손, 지친 만큼 거칠게',
+];
+const DEFAULT_FIGHT_RULE = '시스템이 굴린 결과다. 순서대로, 비트마다 한 문단 이상 — 결과를 바꾸거나 비트를 건너뛰거나 '
+  + '합치지 마라. 번호·기호·표는 본문에 쓰지 마라. 기술·무기는 실명으로 써라.';
+const DEFAULT_FIGHT_ROUND_END = '라운드 끝 — 상대는 아직 쓰러지지 않는다. 다음 수는 유저가 정한다. 여기서 멈춰라.';
+const DEFAULT_FIGHT_WIN = '결착 — 상대는 더 싸울 수 없다. 도주·항복·전투 불능 중 하나로 이 라운드 안에서 마무리하라. '
+  + '전리품·정산은 다음 장면의 몫이다.';
+const DEFAULT_FIGHT_LOSE = '결착 — 주인공 쪽이 무너진다. 이 라운드 안에서 쓰러지는 장면으로 끝내라. '
+  + '그 뒤의 일(구조·포획·도주 허용)은 다음 장면의 몫이다.';
+// ⚔ 없이 교전이 열려 있는 전송마다 — 맨 끝자락(생성에 가깝게). {fight_*}는 예약 키 그대로 읽힌다
+const DEFAULT_FIGHT_HOLD = '[교전 중 — 상대: {fight_foe} · 누적 {fight_gauge}/{fight_max} · {fight_round}라운드 지남] '
+  + '이 턴엔 공방이 굴려지지 않았다 — 상대는 쓰러지지 않고 결착도 나지 않는다. 대치·대화·이동·준비처럼 '
+  + '유저가 쓴 구도를 그리되 전투를 끝내지 마라. 공방은 유저가 교전 버튼을 눌러야 굴려진다.';
+const DEFAULT_FIGHT_IDLE_END = '[교전 종료] 공방 없이 오래 이어져 시스템이 교전을 정리했다 — 상대와의 싸움은 '
+  + '흐지부지 끝난 것으로 다뤄라.';
+const DEFAULT_FIGHT_LEAVE = '[교전 종료] 유저가 교전에서 이탈했다 — 상대와의 공방은 여기서 끝난다. '
+  + '어떻게 빠져나갔는지는 위 판정을 따르라.';
+
+function fightChecks(schema) {
+  return (schema?.checks || []).filter((c) => c && c.fight && typeof c.fight === 'object' && !Array.isArray(c.fight));
+}
+function fightActive(vars) { return Number(vars?.[FIGHT_KEYS.max]) > 0; }
+
+function clearFight(state) {
+  const v = state.vars;
+  v[FIGHT_KEYS.max] = 0; v[FIGHT_KEYS.gauge] = 0; v[FIGHT_KEYS.round] = 0;
+  v[FIGHT_KEYS.foe] = ''; v[FIGHT_KEYS.idle] = 0; v[FIGHT_KEYS.check] = '';
+}
+// 구세이브·중간에 켠 스키마 — 교전 없음으로 채운다 (reconcileState 규약)
+function ensureFightKeys(state) {
+  const v = state.vars;
+  for (const k of [FIGHT_KEYS.max, FIGHT_KEYS.gauge, FIGHT_KEYS.round, FIGHT_KEYS.idle]) if (typeof v[k] !== 'number') v[k] = 0;
+  for (const k of [FIGHT_KEYS.foe, FIGHT_KEYS.check]) if (typeof v[k] !== 'string') v[k] = '';
+}
+
+/** 검증 — validate.js가 판정 루프 안에서 부른다 (checkExpr/checkSet은 그쪽 것을 빌려 쓴다) */
+function checkFightConfig(c, p, { err, warn, checkExpr, checkSet, checkIds, allIds, fightIds }) {
+  const f = c.fight;
+  const fp = `${p}.fight`;
+  if (typeof f !== 'object' || f === null || Array.isArray(f)) {
+    err(fp, 'fight는 객체 { gauge, reply?, foe?, flavor?, win?, lose?, idleTurns?, rule?, hold? }');
+    return;
+  }
+  if (f.gauge == null) err(`${fp}.gauge`, '게이지 크기(gauge) 필요 — 숫자 또는 식 (예: "30 + opp_n * 25")');
+  else if (typeof f.gauge === 'number') { if (!(f.gauge >= 1)) err(`${fp}.gauge`, 'gauge는 1 이상'); }
+  else checkExpr(String(f.gauge), `${fp}.gauge`, allIds, err, { allowRand: false });
+  if (f.reply != null) {
+    if (typeof f.reply !== 'string' || !checkIds.has(f.reply)) err(`${fp}.reply`, `반격 판정 '${f.reply}'가 checks에 없음`);
+    else if (f.reply === c.id) err(`${fp}.reply`, '반격 판정이 자기 자신 — 회피 같은 다른 판정을 가리켜야 함');
+    else if (fightIds.has(f.reply)) err(`${fp}.reply`, `반격 판정 '${f.reply}'에도 fight가 달려 있음 — 반격은 평판정이어야 함`);
+  } else {
+    warn(`${fp}.reply`, '반격 판정(reply)이 없습니다 — 상대가 되받아치는 비트가 안 생겨 주인공만 때리는 전투가 됩니다');
+  }
+  if (f.foe != null && typeof f.foe !== 'string') err(`${fp}.foe`, 'foe는 문자열 템플릿 ({변수} 가능)');
+  if (f.flavor != null && (!Array.isArray(f.flavor) || !f.flavor.length
+      || f.flavor.some((s) => typeof s !== 'string' || !s.trim())))
+    err(`${fp}.flavor`, 'flavor는 비어있지 않은 문자열 배열 (맡김 모드의 개시 비트 후보)');
+  if (f.idleTurns != null && (!Number.isInteger(f.idleTurns) || f.idleTurns < 1)) err(`${fp}.idleTurns`, 'idleTurns는 1 이상의 정수');
+  for (const k of ['rule', 'hold']) if (f[k] != null && typeof f[k] !== 'string') err(`${fp}.${k}`, `${k}는 문자열`);
+  if (f.win != null) {
+    if (typeof f.win !== 'object' || f.win === null || Array.isArray(f.win)) err(`${fp}.win`, 'win은 { effects?, inject? }');
+    else {
+      (f.win.effects || []).forEach((r, j) => checkSet(r, `${fp}.win.effects[${j}]`));
+      if (f.win.inject != null && typeof f.win.inject !== 'string') err(`${fp}.win.inject`, 'inject는 문자열');
+    }
+  }
+  if (f.lose != null) {
+    if (typeof f.lose !== 'object' || f.lose === null || Array.isArray(f.lose) || typeof f.lose.when !== 'string')
+      err(`${fp}.lose`, 'lose는 { when, inject? } — when은 조건식 (예: "hp <= 0")');
+    else {
+      checkExpr(f.lose.when, `${fp}.lose.when`, allIds, err, { allowRand: false });
+      if (f.lose.inject != null && typeof f.lose.inject !== 'string') err(`${fp}.lose.inject`, 'inject는 문자열');
+    }
+  }
+  const grades = Array.isArray(c.grades) ? c.grades : [];
+  grades.forEach((g, gi) => {
+    if (g.gain != null && (typeof g.gain !== 'number' || g.gain < 0))
+      err(`${p}.grades[${gi}].gain`, 'gain은 0 이상의 숫자 (이 등급이 상대 게이지에 쌓는 유효량)');
+  });
+  if (!grades.some((g) => Number(g.gain) > 0))
+    err(fp, '등급 중 gain > 0이 하나도 없음 — 게이지가 영영 안 차 결착이 나지 않는다');
+}
+
+/** 상태창 칩 — 교전 중일 때만. 그룹 모드는 머리에 붙고, 템플릿 모드는 {fight} 자리에 나온다 */
+function fightChipHtml(vars, esc) {
+  if (!fightActive(vars)) return '';
+  const max = Number(vars[FIGHT_KEYS.max]) || 0;
+  const g = Math.max(0, Math.min(max, Number(vars[FIGHT_KEYS.gauge]) || 0));
+  const pct = max > 0 ? (g / max) * 100 : 0;
+  return `<div class="sim-card sim-fight">⚔ <b>${esc(String(vars[FIGHT_KEYS.foe] || '상대'))}</b> `
+    + `<span class="sim-bar"><span class="sim-bar-fill" style="width:${pct.toFixed(1)}%"></span></span> `
+    + `${g}/${max} · ${Number(vars[FIGHT_KEYS.round]) || 0}R</div>`;
+}
+
+module.exports = {
+  FIGHT_KEYS, FIGHT_RESERVED, FIGHT_SHORT_INPUT, FIGHT_IDLE_DEFAULT,
+  DEFAULT_FIGHT_FLAVOR, DEFAULT_FIGHT_RULE, DEFAULT_FIGHT_ROUND_END, DEFAULT_FIGHT_WIN, DEFAULT_FIGHT_LOSE,
+  DEFAULT_FIGHT_HOLD, DEFAULT_FIGHT_IDLE_END, DEFAULT_FIGHT_LEAVE,
+  fightChecks, fightActive, clearFight, ensureFightKeys, checkFightConfig, fightChipHtml,
+};
+
+});
+
 SimCore.define("validate", function (require, module, exports) {
 // 스키마 검증 — 제작자 경험의 절반. 오류는 위치(path)와 함께 전부 수집해서 돌려준다.
 
 const { compile, referencedVars, ExprError } = require('./expr');
+const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -3016,7 +3160,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -3054,6 +3198,16 @@ function validateSchema(schema) {
   // 규칙·파생 검사보다 먼저 등록해야 `scn_act == "act2"` 같은 조건이 통과한다.
   if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
     for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
+  }
+  // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
+  // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
+  // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
+  if (fightMod.fightChecks(schema).length) {
+    const declared = new Set([...ids, ...derived.map((d) => d && d.id)]);
+    for (const rid of fightMod.FIGHT_RESERVED) {
+      if (declared.has(rid)) err('$.checks', `'${rid}'는 전투 안무 예약 이름입니다 — 변수/파생에 쓸 수 없음`);
+      allIds.add(rid);
+    }
   }
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
@@ -3593,6 +3747,10 @@ function validateSchema(schema) {
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
+    // 교전 이탈 (v1.6.0) — 열린 교전을 닫는 액션. fight 달린 판정이 없으면 닫을 교전이 없다
+    if (a.fightEnd != null && typeof a.fightEnd !== 'boolean') err(p + '.fightEnd', 'fightEnd는 true/false (교전 이탈 — 열린 교전을 닫는 액션)');
+    else if (a.fightEnd === true && !fightMod.fightChecks(schema).length)
+      warn(p + '.fightEnd', 'fight 달린 판정이 없어 닫을 교전이 없습니다 — checks[].fight를 먼저 두세요');
     checkRef(a, p);
   });
   {
@@ -3614,6 +3772,7 @@ function validateSchema(schema) {
   // 형태 자체가 없다 — "판정 결과 변수 allow 금지"는 검증이 아니라 구조로 달성된다.
   {
     const seen = new Set();
+    const fightIds = new Set(fightMod.fightChecks(schema).map((c) => c.id));
     (Array.isArray(schema.checks) ? schema.checks : []).forEach((c, i) => {
       const p = `$.checks[${i}]`;
       if (!c.id || !ID_RE.test(c.id)) err(p, `잘못된 판정 id: '${c.id}'`);
@@ -3644,6 +3803,8 @@ function validateSchema(schema) {
         warn(p, '조건 없는 등급이 없습니다 — 어느 조건도 안 맞으면 판정이 등급 없이 끝납니다. 맨 뒤에 기본 등급(예: 실패)을 두세요');
       if (c.vs == null && grades.some((g) => g.when && /\bvs\b/.test(g.when)))
         err(p, '등급 조건이 vs를 쓰는데 판정에 vs(목표치)가 없음');
+      // 전투 안무 (v1.6.0) — fight 달린 판정: 게이지·반격·등급 gain (규약은 core/fight.js 머리말)
+      if (c.fight != null) fightMod.checkFightConfig(c, p, { err, warn, checkExpr, checkSet, checkIds, allIds, fightIds });
     });
     // 판정이 있는 스키마에서 roll/mod/total/vs 이름의 변수는 등급식 안에서 판정값에 가려진다
     if (seen.size) {
@@ -4312,7 +4473,7 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
 // scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario']);
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight']); // fight: 교전 게이지 칩 (v1.6.0)
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {
@@ -7047,6 +7208,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
+const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -7189,6 +7351,8 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
+  if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
@@ -7327,6 +7491,8 @@ function makeLookup(schema, vars) {
       const sv = scenarioExposedVal(schema, vars, name);
       if (sv !== undefined) return sv;
     }
+    // 전투 안무 노출 (v1.6.0) — fight_on(교전 중인가). 나머지 fight_*는 vars에 직접 살아 위에서 잡혔다.
+    if (name === 'fight_on') return fightMod.fightActive(vars);
     // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
     // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
     // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
@@ -7533,6 +7699,92 @@ function rollCheck(schema, state, check, rng, changeLog) {
   return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
+// ── 전투 안무 — 라운드 하나 (v1.6.0, checks[].fight; 배경·규약은 core/fight.js 머리말) ──
+// 공격 비트 = 그 판정을 그대로 굴린다(등급 effects·기록 그대로) + 등급 gain을 상대 게이지에.
+// 반격 비트 = fight.reply 판정(회피 등)을 굴린다 — 주인공 피해는 그 판정의 등급 effects가 낸다
+// ("숫자는 시스템"; 보조가 피해를 지어낼 자리가 없다). 결착은 게이지가 찼을 때(win) 또는
+// lose.when이 참일 때(주인공 붕괴)만 — 그 밖엔 마지막 줄이 "여기서 멈춰라"다.
+// 굴림 순서가 먼저, 개시 비트 뽑기가 나중이다 — 유저 입력 길이(맡김 여부)가 눈금을 흔들지 않는다.
+const FIGHT_CIRCLED = ['①', '②', '③', '④', '⑤', '⑥'];
+function rollFightRound(schema, state, check, rng, changeLog, userText) {
+  const cfg = check.fight;
+  const K = fightMod.FIGHT_KEYS;
+  const v = state.vars;
+  fightMod.ensureFightKeys(state);
+  // 개전 — 게이지 크기·상대 라벨은 첫 라운드에 굳는다 (도중에 상대 등급이 바뀌어도 게이지는 그대로)
+  if (!fightMod.fightActive(v) || v[K.check] !== check.id) {
+    const lookup0 = makeLookup(schema, v);
+    let max = NaN;
+    try { max = Number(typeof cfg.gauge === 'number' ? cfg.gauge : evaluate(String(cfg.gauge), lookup0, null)); }
+    catch { /* 검증에서 걸러지지만 방어 */ }
+    if (!isFinite(max) || max < 1) max = 100;
+    let foe = '상대';
+    if (typeof cfg.foe === 'string' && cfg.foe.trim()) {
+      try { foe = String(renderTemplate(cfg.foe, lookup0)).trim() || '상대'; } catch { /* 방어 */ }
+    }
+    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id;
+    changeLog.push({ id: '교전', from: null, to: `개전 — ${foe} (게이지 ${v[K.max]})`, source: `fight:${check.id}` });
+  }
+  v[K.round] += 1;
+  v[K.idle] = 0;
+  // 공격 비트
+  const atk = rollCheck(schema, state, check, rng, changeLog);
+  if (!atk) return null;
+  const atkRec = state.meta.lastCheck;
+  const grade = (check.grades || []).find((g) => g.label === atk.grade);
+  const gain = Math.max(0, Number(grade?.gain) || 0);
+  const before = v[K.gauge];
+  v[K.gauge] = Math.min(v[K.max], before + gain);
+  const won = v[K.gauge] >= v[K.max];
+  // 반격 비트 — 상대가 아직 서 있을 때만
+  let rep = null, repRec = null;
+  const replyCheck = typeof cfg.reply === 'string' ? (schema.checks || []).find((c) => c.id === cfg.reply) : null;
+  if (replyCheck && !won) {
+    rep = rollCheck(schema, state, replyCheck, rng, changeLog);
+    repRec = rep ? state.meta.lastCheck : null;
+  }
+  // 주인공 붕괴 — 반격 효과(피해)까지 적용된 뒤에 본다
+  let lost = false;
+  if (cfg.lose && typeof cfg.lose.when === 'string') {
+    try { lost = truthy(evaluate(cfg.lose.when, makeLookup(schema, v), null)); } catch { /* 방어 */ }
+  }
+  const round = v[K.round], max = v[K.max], gauge = v[K.gauge], foe = v[K.foe];
+  const done = won || lost;
+  // 마지막 판정 기록 = 공격 굴림 + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
+  state.meta.lastCheck = { ...atkRec, summary: atkRec.summary + (rep ? ` · 반격: ${rep.grade ?? '?'}` : ''),
+    fight: { round, gauge, max, foe, gain, reply: rep ? rep.grade : null, won, lost } };
+  // 시트
+  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
+  const lines = [];
+  lines.push(`[전투 안무 — ${round}라운드 · 상대: ${foe} · 누적 ${before}→${gauge}/${max}`
+    + `${won ? ' → 결착' : lost ? ' → 주인공 붕괴' : ' → 아직 선다'}]`);
+  lines.push(typeof cfg.rule === 'string' && cfg.rule.trim() ? cfg.rule : fightMod.DEFAULT_FIGHT_RULE);
+  let n = 0;
+  const beat = (s) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${s}`);
+  if (delegated) {
+    const pool = Array.isArray(cfg.flavor) && cfg.flavor.length ? cfg.flavor : fightMod.DEFAULT_FIGHT_FLAVOR;
+    beat(`개시 — ${pool[Math.floor(rng() * pool.length) % pool.length]}`);
+  }
+  // 눈금만 괄호에 — 요약의 "→ 등급" 꼬리는 비트 머리에 이미 있다 (같은 말 두 번 금지)
+  const dice = (rec) => String(rec.summary).replace(/\s*→[^→]*$/, '');
+  beat(`주인공의 공격 — ${atk.grade ?? '판정'} (${dice(atkRec)})`
+    + (delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다')
+    + (gain ? ` · 상대 누적 +${gain}` : ' · 상대에겐 먹히지 않았다')
+    + (atk.inject ? ` — ${atk.inject}` : ''));
+  if (rep) beat(`상대의 반격 — ${rep.grade ?? '판정'} (${dice(repRec)})${rep.inject ? ` — ${rep.inject}` : ''}`);
+  if (won) beat(fightMod.DEFAULT_FIGHT_WIN + (cfg.win?.inject ? ` ${cfg.win.inject}` : ''));
+  else if (lost) beat(fightMod.DEFAULT_FIGHT_LOSE + (cfg.lose?.inject ? ` ${cfg.lose.inject}` : ''));
+  else beat(fightMod.DEFAULT_FIGHT_ROUND_END);
+  if (won && Array.isArray(cfg.win?.effects) && cfg.win.effects.length)
+    applySets(schema, state, cfg.win.effects, rng, changeLog, `fight:${check.id}:win`);
+  if (done) {
+    changeLog.push({ id: '교전', from: null,
+      to: won ? `결착 — ${foe} 전투 불능 (${round}라운드)` : `결착 — 주인공 붕괴 (${round}라운드)`, source: `fight:${check.id}` });
+    fightMod.clearFight(state);
+  }
+  return { lines, done, won, lost, round, gauge, max };
+}
+
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
 // 반환: { state, promptBlock, consumedActions, changeLog }
 
@@ -7548,11 +7800,13 @@ function offstageFired(schema, state) {
   return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
 }
 
-function sendPhase(schema, prevState, { rng } = {}) {
+// userText (v1.6.0): 이번 전송의 유저 입력 원문 — 전투 안무의 맡김/내 수 판단에만 쓴다 (굴림엔 무관)
+function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   const injects = [];
   const consumedActions = [];
+  let fightRoundFired = false;
 
   // 1. 무장 액션 effects (결정적) + inject 수집
   // firedThisSend: whenArmed 게이트의 기준. oneshot은 여기서 무장이 풀리므로 armed만으로는
@@ -7583,14 +7837,29 @@ function sendPhase(schema, prevState, { rng } = {}) {
     // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
     // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
     let checkResult = null;
+    let fightRound = null;
     if (action.check && checkById[action.check]) {
-      checkResult = rollCheck(schema, state, checkById[action.check], rng, changeLog);
+      const chk = checkById[action.check];
+      // 전투 안무 (v1.6.0) — fight 달린 판정은 라운드 하나를 굴려 시트로 낸다 ([판정] 줄·규칙 줄 대신)
+      if (chk.fight && typeof chk.fight === 'object') {
+        fightRound = rollFightRound(schema, state, chk, rng, changeLog, userText);
+        if (fightRound) fightRoundFired = true;
+      } else {
+        checkResult = rollCheck(schema, state, chk, rng, changeLog);
+      }
     }
     applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
     if (action.inject) injects.push(action.inject);
     if (checkResult) {
       injects.push(checkResult.line);
       if (checkResult.inject) injects.push(checkResult.inject);
+    }
+    if (fightRound) injects.push(...fightRound.lines);
+    // 이탈 (v1.6.0) — fightEnd 액션은 열린 교전을 닫는다. 판정이 달렸으면 [판정] 줄이 위에 이미 실렸다
+    if (action.fightEnd === true && fightMod.fightActive(state.vars)) {
+      fightMod.clearFight(state);
+      injects.push(fightMod.DEFAULT_FIGHT_LEAVE);
+      changeLog.push({ id: '교전', from: null, to: '이탈', source: `fight:${action.id}` });
     }
     consumedActions.push(action.id);
     state.meta.firedThisSend[action.id] = true;
@@ -7678,6 +7947,24 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (!isSetupPending(schema, state)) {
     const mLine = msgrMod.mainLine(schema, state);
     if (mLine) lines.push(mLine);
+  }
+
+  // 3.93 교전 중 상시 줄 (v1.6.0) — 교전이 열려 있는데 이번 전송에 라운드가 안 굴려졌으면.
+  // 유저가 자기 구도를 쓰는 턴이다: 게이지는 그대로, 모델이 혼자 결착을 내지 못하게 막는다.
+  // ⚔ 없이 너무 오래 가면(idleTurns) 정리한다 — 상시 줄이 영영 남아 "교전 중"을 우기는 사고 방지.
+  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
+    const K = fightMod.FIGHT_KEYS;
+    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
+    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
+    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
+    if (state.vars[K.idle] >= idleMax) {
+      fightMod.clearFight(state);
+      lines.push(fightMod.DEFAULT_FIGHT_IDLE_END);
+      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
+    } else {
+      const hold = typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD;
+      lines.push(renderTemplate(hold, lookup));
+    }
   }
 
   if (isSetupPending(schema, state)) {
@@ -8679,7 +8966,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice, offstageFired,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired,
   renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -8695,6 +8982,7 @@ const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoice
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
+const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -9055,7 +9343,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state),
-    scenario: scenarioChipHtml(schema, state.vars) };
+    scenario: scenarioChipHtml(schema, state.vars),
+    fight: fightChipHtml(state.vars, esc) };   // {fight} = 교전 게이지 칩 (교전 없으면 빈 문자열)
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
@@ -9116,6 +9405,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
     if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
+    if (extras.fight) inner += `<div>${extras.fight}</div>`;       // 교전 게이지도 머리에 (v1.6.0)
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
@@ -9169,8 +9459,13 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
-        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:'))
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:')
+        || c.source?.startsWith('fight:'))
       .map((c) => {
+        // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
+        if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">⚔ ${esc(String(c.to))}</div>`;
+        }
         // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
         if (c.source?.startsWith('check:')) {
           return `<div class="sim-log-item">🎲 ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
@@ -9481,7 +9776,8 @@ function renderPanelTemplate(schema, state, tpl) {
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid: 'scg',
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
-    scenario: scenarioChipHtml(schema, state.vars) };
+    scenario: scenarioChipHtml(schema, state.vars),
+    fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
   return styleTag + renderTemplate(parts.html, lookup, extras);
@@ -9560,11 +9856,12 @@ class SimSession {
    * (리롤이면 지난번과 같은 값이 다시 들어온다)
    * 반환 { promptBlock, state, changeLog, consumedActions }
    */
-  async onSend(sendIndex) {
+  async onSend(sendIndex, userText = '') {
     const existingPre = await this.store.load('pre', sendIndex);
     const base = existingPre ?? this.current ?? engine.initState(this.schema);
     if (!existingPre) await this.store.save('pre', sendIndex, base);
-    const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send') });
+    // userText (v1.6.0): 전투 안무의 맡김/내 수 판단용 — 굴림과 무관하니 리롤 안정성은 그대로
+    const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send'), userText });
     await this.store.save('send', sendIndex, r.state);
     this.current = r.state;
     return r;
@@ -26023,7 +26320,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
       const sendIndex = Math.max(0, (chat?.message?.length ?? 1) - 1);
 
-      const r = await session.onSend(sendIndex);
+      // 전투 안무 (v1.6.0) — 유저 입력 길이로 맡김/내 수를 가른다. 굴림에는 안 쓰인다 (리롤 안정)
+      const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
+      const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
+      const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
       messages.push({ role: 'system', content: r.promptBlock });
       // 막간 (v1.5.0) — 이 턴만 페르소나 칸을 걷어낸다 (지시문은 promptBlock 끝에 이미 실렸다)

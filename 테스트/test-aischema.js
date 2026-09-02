@@ -82,10 +82,12 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   // v0.95~0.96에서 커뮤니티 보드(board)·상점(shop) 검증이 더해져 88KB로,
   // v1.1.0에서 자율형 게시판·화제 기사(hot)·상점 perCat 검증이 더해져 92KB로,
   // v1.3.0~1.4.0에서 상점 표기 단위(units)·환전 다짝·다중 상점(shops) 규칙이 더해져 94KB로,
-  // v1.5.3에서 모델용 상태 블록 누락 경고가 더해져 95KB로 조정
-  // (실제 붙여넣기 한계는 수백 KB라 여유가 크다).
+  // v1.5.3에서 모델용 상태 블록 누락 경고가 더해져 95KB로,
+  // v1.6.0에서 전투 안무(checks[].fight) 검증이 더해져 96KB로 조정
+  // (실제 붙여넣기 한계는 수백 KB라 여유가 크다 — 다만 검증기 소스를 그대로 싣는 구조라
+  //  검증기가 자라면 같이 자란다. 다섯 번째 조정이니 상한 자체를 손볼 때가 온다).
   const full = buildSchemaSpecPrompt('politics', true);
-  ck('★ 규격서가 붙여넣기 가능한 크기 (95KB 미만)', full.length < 95 * 1024, kb(full));
+  ck('★ 규격서가 붙여넣기 가능한 크기 (96KB 미만)', full.length < 96 * 1024, kb(full));
   ck('전체 소스(251KB)보다 훨씬 작음', full.length < src.length / 4, `${kb(full)} vs ${kb(src)}`);
   console.log(`  [크기] 최소 ${kb(buildSchemaSpecPrompt('rpg', false))} / 기본 ${kb(p)} / 최대 ${kb(full)}`);
 }

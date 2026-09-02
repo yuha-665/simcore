@@ -5,6 +5,7 @@ const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoice
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
+const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -365,7 +366,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   const extras = { commands: commandsHtml(schema), uid,
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state),
-    scenario: scenarioChipHtml(schema, state.vars) };
+    scenario: scenarioChipHtml(schema, state.vars),
+    fight: fightChipHtml(state.vars, esc) };   // {fight} = 교전 게이지 칩 (교전 없으면 빈 문자열)
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
     [...schema.vars, ...(schema.derived || []), ...exposedDefs(schema)].map((v) => [v.id, v]));
@@ -426,6 +428,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
     if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
+    if (extras.fight) inner += `<div>${extras.fight}</div>`;       // 교전 게이지도 머리에 (v1.6.0)
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
@@ -479,8 +482,13 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   if (logMode !== 'off' && changeLog && changeLog.length) {
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
-        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:'))
+        || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:')
+        || c.source?.startsWith('fight:'))
       .map((c) => {
+        // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
+        if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">⚔ ${esc(String(c.to))}</div>`;
+        }
         // 판정 줄 — 변수 변화가 아니라 굴림 결과라 diff 형식이 안 맞는다 (id = 판정 라벨, to = 요약)
         if (c.source?.startsWith('check:')) {
           return `<div class="sim-log-item">🎲 ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
@@ -791,7 +799,8 @@ function renderPanelTemplate(schema, state, tpl) {
   const lc = state.meta?.lastCheck;
   const extras = { commands: commandsHtml(schema), uid: 'scg',
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
-    scenario: scenarioChipHtml(schema, state.vars) };
+    scenario: scenarioChipHtml(schema, state.vars),
+    fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
   return styleTag + renderTemplate(parts.html, lookup, extras);

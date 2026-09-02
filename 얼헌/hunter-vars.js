@@ -402,6 +402,9 @@ const S = {
     { id: 'foe_n', label: '(내부) 교전 상대 수치',
       expr: chain([['foe == "S"', '6'], ['foe == "A"', '5'], ['foe == "B"', '4'],
         ['foe == "C"', '3'], ['foe == "D"', '2'], ['foe == "E"', '1']], '0') },
+    // 전투 안무 상대 라벨 (v1.6.0) — 개전 때 굳는다. 헌터전이면 등급, 게이트면 "게이트 안의 적"
+    { id: 'foe_label', label: '(내부) 교전 상대 라벨',
+      expr: 'foe != "없음" ? foe + "급 상대" : (in_gate ? "게이트 안의 적" : "상대")' },
     // 판정 상대 등급 — 우선순위: 교전 상대(foe, 헌터전) > 게이트 등급(grade_i) > 자기 측정
     // 등급(est_n). 목표치가 이걸 읽어 성장을 따라온다 — 고정 목표치(13+hazard/25)는
     // S랭크(보정 +14~+34)에서 주사위가 장식이 되는 실계산 확인. 상대 주사위는 안 굴린다.
@@ -666,7 +669,8 @@ const S = {
         // 굴림·정산은 엔진(checks), 여기는 "언제 굴리나"만. 끄면 이 4종이 통째로 잠기고
         // (목표치는 opp_n — 게이트 등급이 밀어 올린다. checks 섹션 주석 참고)
         // 나머지 이벤트는 그대로다 — 주사위 호불호가 콘텐츠 손실로 이어지지 않는다.
-        { id: 'gate_clash', weight: 4, cooldown: 3, when: 'dice_on and in_gate', check: 'gate_fight',
+        // 교전 중(fight_on)엔 잠근다 — 라운드는 ⚔가 굴린다 (이벤트 굴림은 평판정이라 게이지를 안 움직인다)
+        { id: 'gate_clash', weight: 4, cooldown: 3, when: 'dice_on and in_gate and not fight_on', check: 'gate_fight',
           notify: '[전투] A combat beat inside the Gate — the [판정] line already decided how it goes. '
             + 'Narrate the clash to MATCH that grade; never flip the result.' },
         { id: 'ambush_hit', weight: 1, cooldown: 6, when: 'dice_on and (in_gate or hazard >= 40)', check: 'evade',
@@ -757,20 +761,34 @@ const S = {
       effects: [{ set: 'boon_on', expr: 'boon_on ? false : true' }],
       inject: '[성신의 가호] 가호 정책이 방금 전환되었다 — 상태 블록·지시문의 현재 상태를 따르라. '
         + '켜졌다면 성신의 장난이 돌아온 소동을, 꺼졌다면 세계가 문득 멀쩡해진 위화감을 짧게 그려라.' },
+    // 전투 안무 (v1.6.0, 유저 결정 2026-09-02) — 라운드 입구는 이 버튼 하나. 안 누른 턴은 유저 구도
+    // (게이지 불변 + 상시 줄), 누르고 짧게 쓰면 시스템 안무, 누르고 길게 쓰면 유저 수 + 유효 레벨만.
+    // 결착은 여기서만 난다 — "이얍 → 끄앙 → 이겼다"가 구조적으로 불가능해진다.
+    { id: 'fight_round', label: '⚔ 교전 — 한 라운드', mode: 'oneshot', when: 'dice_on', check: 'gate_fight' },
+    { id: 'fight_leave', label: '🏃 이탈 — 도주·항복', mode: 'oneshot', when: 'fight_on', check: 'evade', fightEnd: true,
+      inject: '[이탈] 주인공이 교전에서 빠져나가려 한다 — 도주든 항복이든, 위 회피 판정이 그 성패다.' },
   ],
 
   checks: [
     { id: 'gate_fight', label: '전투 판정', roll: 'rand(1, 20)',
       mod: 'floor(mainstat / 10) + floor(level / 10)',
       vs: '10 + opp_n * 3 + floor(hazard / 25)',
+      // 전투 안무 (v1.6.0) — ⚔ 액션이 이 판정을 라운드로 굴린다. 게이지 = 30 + 상대 등급×25
+      // (E 55 · C 105 · S 180): 우세(25) 기준 E 2~3라운드 · C 4 · S 7 — 고전(10)이 잦은 격차전은
+      // 더 길고, 육성이 오르면 압도(50)가 잦아져 짧아진다. 반격은 evade 판정이 피해를 낸다
+      // (직격 -20 · 피격 -10 — 숫자는 시스템). 결착 = 게이지 만땅(승) / hp 0(주인공 붕괴).
+      fight: { gauge: '30 + opp_n * 25', reply: 'evade', foe: '{foe_label}',
+        win: { effects: [{ set: 'foe', expr: '"없음"' }],
+          inject: '헌터전이었다면 상대의 처지(부상·체면·원한)를 한 줄 남겨라.' },
+        lose: { when: 'hp <= 0', inject: '죽음은 아니다 — 의식이 끊기는 데서 끝내라. 뒷일은 시스템(전투불능)이 잇는다.' } },
       grades: [
-        { when: 'roll == 1', label: '치명적 실수', effects: [{ set: 'hp', expr: 'max(hp - 15, 0)' }],
+        { when: 'roll == 1', label: '치명적 실수', gain: 0, effects: [{ set: 'hp', expr: 'max(hp - 15, 0)' }],
           inject: '치명적인 실수가 나왔다 — 부상급 대가를 치르고 국면이 급격히 나빠진다.' },
-        { when: 'total >= vs + 7', label: '압도', effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
+        { when: 'total >= vs + 7', label: '압도', gain: 50, effects: [{ set: 'fame', expr: 'min(fame + 1, 100)' }],
           inject: '기대 이상의 전과다 — 지켜본 이가 있다면 소문이 날 만한 장면으로 그려라. '
             + '전리품도 후하게 떨어진다 (마정석·부산물·장비 — 소지품 갱신).' },
-        { when: 'total >= vs', label: '우세', inject: '전투의 주도권을 잡는다 — 유효타를 그려라.' },
-        { label: '고전', effects: [{ set: 'sp', expr: 'max(sp - 15, 0)' }],
+        { when: 'total >= vs', label: '우세', gain: 25, inject: '전투의 주도권을 잡는다 — 유효타를 그려라.' },
+        { label: '고전', gain: 10, effects: [{ set: 'sp', expr: 'max(sp - 15, 0)' }],
           inject: '결정타가 나오지 않는다 — 소모전이다. 밀리는 국면을 그려라.' },
       ] },
     // 회피·감지·교섭은 주 스탯이 아닌 스탯을 쓴다 — 상대는 같은 opp_n이므로, 부스탯이
@@ -1424,6 +1442,7 @@ S.statusUI.templates = [{
     + '<div class="a-row"><span>브레이크 경보</span><span class="v">{break_txt}</span></div>'
     // 교전 상대 — 판정 DC 소스가 눈에 보여야 잔류(리셋 깜빡)를 유저가 잡을 수 있다 (/상대 없음)
     + '<div class="a-row"><span>교전 상대</span><span class="v">{foe}</span></div>'
+    + '{fight}'   // 전투 안무 게이지 칩 (v1.6.0) — 교전 중일 때만 그려진다
     + '{gates:tags}'
     + '<div class="a-sec">PEOPLE — 인물 변동</div>'
     + '{npc_notes:tags}'
@@ -1717,6 +1736,60 @@ console.log('\n━━ 시간 도약 — 달력은 서사를 따라간다 (14일 
     sd.max === 3650 && al.maxGain === 3650, `${sd.max}/${al.maxGain}`);
   ok('보조 어휘 — 한 달=30·1년=365 (desc) + 깎지 말라 (guide)',
     /month later = 30/.test(sd.desc) && /year later = 365/.test(sd.desc) && S.updater.guide.includes('깎지 말고'), '');
+}
+
+console.log('\n━━ 전투 안무 (v1.6.0) — ⚔ 매 라운드, 결착은 게이지가 정한다 ━━');
+{
+  // 유저 결정(2026-09-02): 결착을 시트에 박으면 한 응답에 전투가 끝난다 → 공격 유효 레벨(등급 gain)을
+  // 게이지에 누적. 라운드 입구는 ⚔ 하나 — 안 누르면 자기 구도, 누르고 "대충 싸웠다"면 시스템 안무.
+  const F = SC.require('fight');
+  const K = F.FIGHT_KEYS;
+  const press = (st, id, i, text = '') => {
+    const armed = id ? engine.toggleAction(S, st, id).state : st;
+    const send = engine.sendPhase(S, armed, { rng: seededRng('fight', i, 's'), userText: text });
+    return { st: engine.outputPhase(S, send.state, {}, {}, { rng: seededRng('fight', i, 'o') }).state, pb: send.promptBlock };
+  };
+  const gf = S.checks.find((c) => c.id === 'gate_fight');
+  ok('gate_fight에 fight — 반격은 evade, 게이지는 상대 등급식, 결착 lose = hp 0',
+    gf.fight && gf.fight.reply === 'evade' && /opp_n/.test(gf.fight.gauge) && gf.fight.lose.when === 'hp <= 0', '');
+  ok('등급 gain: 압도 50 · 우세 25 · 고전 10 · 치명적 실수 0',
+    ['압도', '우세', '고전', '치명적 실수'].map((l) => gf.grades.find((g) => g.label === l).gain).join() === '50,25,10,0', '');
+  ok('⚔ 라운드 액션(dice_on) + 🏃 이탈(fightEnd, fight_on 게이트, evade 판정)',
+    S.actions.some((a) => a.id === 'fight_round' && a.check === 'gate_fight' && a.mode === 'oneshot')
+    && S.actions.some((a) => a.id === 'fight_leave' && a.fightEnd === true && a.when === 'fight_on' && a.check === 'evade'), '');
+  const clash = [...(S.rules.events || []), ...(S.rules.randomEvents?.table || [])].find((e) => e.id === 'gate_clash');
+  ok('gate_clash 이벤트는 교전 중 잠김 (⚔가 굴린다)', !!clash && /not fight_on/.test(clash.when), clash?.when);
+  ok('상태창 템플릿에 {fight} 칩', JSON.stringify(S.statusUI).includes('{fight}'), '');
+  ok('예약 이름 충돌 없음 (foe_label은 예약 밖)', !S.vars.concat(S.derived).some((v) => F.FIGHT_RESERVED.includes(v.id)), '');
+
+  let t = fresh(); t.vars.foe = 'C';
+  let r = press(t, 'fight_round', 1, '대충 싸웠다');
+  ok('★ ⚔ + 짧은 입력 → 안무 시트 (개시 비트, C급 게이지 105, 상대 라벨 "C급 상대")',
+    r.pb.includes('[전투 안무 — 1라운드 · 상대: C급 상대') && r.pb.includes('① 개시 —') && r.st.vars[K.max] === 105, r.pb.slice(0, 300));
+  ok('[판정] 줄·판정 규칙 줄은 시트에 흡수', !r.pb.includes('[판정]') && !r.pb.includes('※ 위 [판정]'), '');
+  ok('상태 블록은 그대로 나간다 (시트가 상태를 밀어내지 않음)', r.pb.includes('[현재 상태 —'), '');
+  r = press(r.st, null, 2, '검을 겨눈 채 상대를 노려본다');
+  ok('★ ⚔ 없는 턴 → [교전 중] 상시 줄, 라운드 불변', r.pb.includes('[교전 중 — 상대: C급 상대') && r.st.vars[K.round] === 1, '');
+  r = press(r.st, 'fight_round', 3, '검기 베기로 목을 노린다 — 상대의 왼쪽 어깨가 열린 순간을 놓치지 않고 파고든다');
+  ok('⚔ + 긴 입력 → 개시 비트 없이 "유저가 쓴 수를 그대로", 2라운드',
+    !r.pb.includes('① 개시 —') && r.pb.includes('유저가 쓴 수를 그대로') && r.st.vars[K.round] === 2, '');
+  // 게이트 안 — 상대 라벨은 게이트, 목표치는 게이트 등급(opp_n)에서
+  let g = fresh(); g.vars.in_gate = true;
+  const gr = press(g, 'fight_round', 5, '싸운다');
+  ok('게이트 안(foe 없음) → 상대 라벨 "게이트 안의 적"', gr.st.vars[K.foe] === '게이트 안의 적', gr.st.vars[K.foe]);
+  // 결착까지 — E급은 2라운드 이후에만 (게이지 55 > 압도 50)
+  let u = fresh(); u.vars.foe = 'E'; let ended = null, rounds = 0;
+  for (let i = 10; i < 30 && !ended; i++) { const q = press(u, 'fight_round', i, '싸운다'); u = q.st; rounds++; if (/결착 —/.test(q.pb)) ended = q.pb; }
+  ok('★ E급 상대 — 결착은 2라운드 이후 (한 응답 결착 없음), 교전 닫힘', !!ended && rounds >= 2 && !F.fightActive(u.vars), `${rounds}라운드`);
+  ok('결착 승리면 foe 리셋 (win effects)', !ended || ended.includes('주인공 붕괴') || u.vars.foe === '없음', u.vars.foe);
+  // 이탈
+  let w = fresh(); w.vars.foe = 'C';
+  let q = press(w, 'fight_round', 40, '싸운다'); q = press(q.st, 'fight_leave', 41, '도망친다');
+  ok('🏃 이탈 → [판정] 회피 + [이탈] inject + [교전 종료], 교전 닫힘',
+    q.pb.includes('[판정] 회피 판정') && q.pb.includes('[이탈]') && q.pb.includes('[교전 종료] 유저가 교전에서 이탈') && !F.fightActive(q.st.vars), '');
+  // 검증 통과 (fight_on when·{fight} 자리표시자 포함)
+  const fv = validateSchema(S);
+  ok('전투 안무 포함 스키마 검증 통과', fv.ok, JSON.stringify(fv.errors));
 }
 
 console.log('\n━━ 전리품 — 드랍 순간을 여는 이벤트 ━━');

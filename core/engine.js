@@ -22,6 +22,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
+const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -164,6 +165,8 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
+  if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
@@ -302,6 +305,8 @@ function makeLookup(schema, vars) {
       const sv = scenarioExposedVal(schema, vars, name);
       if (sv !== undefined) return sv;
     }
+    // 전투 안무 노출 (v1.6.0) — fight_on(교전 중인가). 나머지 fight_*는 vars에 직접 살아 위에서 잡혔다.
+    if (name === 'fight_on') return fightMod.fightActive(vars);
     // 편성 가상 목록 (v0.59) — 편성 슬롯에 앉은 이름들을 읽기 전용 목록으로 노출.
     // has(deployed, '아린')이 상태창 showWhen·탭 when·지시문·이벤트·requires 어디서든 통한다.
     // 같은 id의 실제 변수/파생이 있으면 그쪽이 이긴다 (변수는 위에서 이미 잡혔고, 파생은 여기서 양보).
@@ -508,6 +513,92 @@ function rollCheck(schema, state, check, rng, changeLog) {
   return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
+// ── 전투 안무 — 라운드 하나 (v1.6.0, checks[].fight; 배경·규약은 core/fight.js 머리말) ──
+// 공격 비트 = 그 판정을 그대로 굴린다(등급 effects·기록 그대로) + 등급 gain을 상대 게이지에.
+// 반격 비트 = fight.reply 판정(회피 등)을 굴린다 — 주인공 피해는 그 판정의 등급 effects가 낸다
+// ("숫자는 시스템"; 보조가 피해를 지어낼 자리가 없다). 결착은 게이지가 찼을 때(win) 또는
+// lose.when이 참일 때(주인공 붕괴)만 — 그 밖엔 마지막 줄이 "여기서 멈춰라"다.
+// 굴림 순서가 먼저, 개시 비트 뽑기가 나중이다 — 유저 입력 길이(맡김 여부)가 눈금을 흔들지 않는다.
+const FIGHT_CIRCLED = ['①', '②', '③', '④', '⑤', '⑥'];
+function rollFightRound(schema, state, check, rng, changeLog, userText) {
+  const cfg = check.fight;
+  const K = fightMod.FIGHT_KEYS;
+  const v = state.vars;
+  fightMod.ensureFightKeys(state);
+  // 개전 — 게이지 크기·상대 라벨은 첫 라운드에 굳는다 (도중에 상대 등급이 바뀌어도 게이지는 그대로)
+  if (!fightMod.fightActive(v) || v[K.check] !== check.id) {
+    const lookup0 = makeLookup(schema, v);
+    let max = NaN;
+    try { max = Number(typeof cfg.gauge === 'number' ? cfg.gauge : evaluate(String(cfg.gauge), lookup0, null)); }
+    catch { /* 검증에서 걸러지지만 방어 */ }
+    if (!isFinite(max) || max < 1) max = 100;
+    let foe = '상대';
+    if (typeof cfg.foe === 'string' && cfg.foe.trim()) {
+      try { foe = String(renderTemplate(cfg.foe, lookup0)).trim() || '상대'; } catch { /* 방어 */ }
+    }
+    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id;
+    changeLog.push({ id: '교전', from: null, to: `개전 — ${foe} (게이지 ${v[K.max]})`, source: `fight:${check.id}` });
+  }
+  v[K.round] += 1;
+  v[K.idle] = 0;
+  // 공격 비트
+  const atk = rollCheck(schema, state, check, rng, changeLog);
+  if (!atk) return null;
+  const atkRec = state.meta.lastCheck;
+  const grade = (check.grades || []).find((g) => g.label === atk.grade);
+  const gain = Math.max(0, Number(grade?.gain) || 0);
+  const before = v[K.gauge];
+  v[K.gauge] = Math.min(v[K.max], before + gain);
+  const won = v[K.gauge] >= v[K.max];
+  // 반격 비트 — 상대가 아직 서 있을 때만
+  let rep = null, repRec = null;
+  const replyCheck = typeof cfg.reply === 'string' ? (schema.checks || []).find((c) => c.id === cfg.reply) : null;
+  if (replyCheck && !won) {
+    rep = rollCheck(schema, state, replyCheck, rng, changeLog);
+    repRec = rep ? state.meta.lastCheck : null;
+  }
+  // 주인공 붕괴 — 반격 효과(피해)까지 적용된 뒤에 본다
+  let lost = false;
+  if (cfg.lose && typeof cfg.lose.when === 'string') {
+    try { lost = truthy(evaluate(cfg.lose.when, makeLookup(schema, v), null)); } catch { /* 방어 */ }
+  }
+  const round = v[K.round], max = v[K.max], gauge = v[K.gauge], foe = v[K.foe];
+  const done = won || lost;
+  // 마지막 판정 기록 = 공격 굴림 + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
+  state.meta.lastCheck = { ...atkRec, summary: atkRec.summary + (rep ? ` · 반격: ${rep.grade ?? '?'}` : ''),
+    fight: { round, gauge, max, foe, gain, reply: rep ? rep.grade : null, won, lost } };
+  // 시트
+  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
+  const lines = [];
+  lines.push(`[전투 안무 — ${round}라운드 · 상대: ${foe} · 누적 ${before}→${gauge}/${max}`
+    + `${won ? ' → 결착' : lost ? ' → 주인공 붕괴' : ' → 아직 선다'}]`);
+  lines.push(typeof cfg.rule === 'string' && cfg.rule.trim() ? cfg.rule : fightMod.DEFAULT_FIGHT_RULE);
+  let n = 0;
+  const beat = (s) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${s}`);
+  if (delegated) {
+    const pool = Array.isArray(cfg.flavor) && cfg.flavor.length ? cfg.flavor : fightMod.DEFAULT_FIGHT_FLAVOR;
+    beat(`개시 — ${pool[Math.floor(rng() * pool.length) % pool.length]}`);
+  }
+  // 눈금만 괄호에 — 요약의 "→ 등급" 꼬리는 비트 머리에 이미 있다 (같은 말 두 번 금지)
+  const dice = (rec) => String(rec.summary).replace(/\s*→[^→]*$/, '');
+  beat(`주인공의 공격 — ${atk.grade ?? '판정'} (${dice(atkRec)})`
+    + (delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다')
+    + (gain ? ` · 상대 누적 +${gain}` : ' · 상대에겐 먹히지 않았다')
+    + (atk.inject ? ` — ${atk.inject}` : ''));
+  if (rep) beat(`상대의 반격 — ${rep.grade ?? '판정'} (${dice(repRec)})${rep.inject ? ` — ${rep.inject}` : ''}`);
+  if (won) beat(fightMod.DEFAULT_FIGHT_WIN + (cfg.win?.inject ? ` ${cfg.win.inject}` : ''));
+  else if (lost) beat(fightMod.DEFAULT_FIGHT_LOSE + (cfg.lose?.inject ? ` ${cfg.lose.inject}` : ''));
+  else beat(fightMod.DEFAULT_FIGHT_ROUND_END);
+  if (won && Array.isArray(cfg.win?.effects) && cfg.win.effects.length)
+    applySets(schema, state, cfg.win.effects, rng, changeLog, `fight:${check.id}:win`);
+  if (done) {
+    changeLog.push({ id: '교전', from: null,
+      to: won ? `결착 — ${foe} 전투 불능 (${round}라운드)` : `결착 — 주인공 붕괴 (${round}라운드)`, source: `fight:${check.id}` });
+    fightMod.clearFight(state);
+  }
+  return { lines, done, won, lost, round, gauge, max };
+}
+
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
 // 반환: { state, promptBlock, consumedActions, changeLog }
 
@@ -523,11 +614,13 @@ function offstageFired(schema, state) {
   return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
 }
 
-function sendPhase(schema, prevState, { rng } = {}) {
+// userText (v1.6.0): 이번 전송의 유저 입력 원문 — 전투 안무의 맡김/내 수 판단에만 쓴다 (굴림엔 무관)
+function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   const injects = [];
   const consumedActions = [];
+  let fightRoundFired = false;
 
   // 1. 무장 액션 effects (결정적) + inject 수집
   // firedThisSend: whenArmed 게이트의 기준. oneshot은 여기서 무장이 풀리므로 armed만으로는
@@ -558,14 +651,29 @@ function sendPhase(schema, prevState, { rng } = {}) {
     // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
     // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
     let checkResult = null;
+    let fightRound = null;
     if (action.check && checkById[action.check]) {
-      checkResult = rollCheck(schema, state, checkById[action.check], rng, changeLog);
+      const chk = checkById[action.check];
+      // 전투 안무 (v1.6.0) — fight 달린 판정은 라운드 하나를 굴려 시트로 낸다 ([판정] 줄·규칙 줄 대신)
+      if (chk.fight && typeof chk.fight === 'object') {
+        fightRound = rollFightRound(schema, state, chk, rng, changeLog, userText);
+        if (fightRound) fightRoundFired = true;
+      } else {
+        checkResult = rollCheck(schema, state, chk, rng, changeLog);
+      }
     }
     applySets(schema, state, action.effects, rng, changeLog, `action:${action.id}`);
     if (action.inject) injects.push(action.inject);
     if (checkResult) {
       injects.push(checkResult.line);
       if (checkResult.inject) injects.push(checkResult.inject);
+    }
+    if (fightRound) injects.push(...fightRound.lines);
+    // 이탈 (v1.6.0) — fightEnd 액션은 열린 교전을 닫는다. 판정이 달렸으면 [판정] 줄이 위에 이미 실렸다
+    if (action.fightEnd === true && fightMod.fightActive(state.vars)) {
+      fightMod.clearFight(state);
+      injects.push(fightMod.DEFAULT_FIGHT_LEAVE);
+      changeLog.push({ id: '교전', from: null, to: '이탈', source: `fight:${action.id}` });
     }
     consumedActions.push(action.id);
     state.meta.firedThisSend[action.id] = true;
@@ -653,6 +761,24 @@ function sendPhase(schema, prevState, { rng } = {}) {
   if (!isSetupPending(schema, state)) {
     const mLine = msgrMod.mainLine(schema, state);
     if (mLine) lines.push(mLine);
+  }
+
+  // 3.93 교전 중 상시 줄 (v1.6.0) — 교전이 열려 있는데 이번 전송에 라운드가 안 굴려졌으면.
+  // 유저가 자기 구도를 쓰는 턴이다: 게이지는 그대로, 모델이 혼자 결착을 내지 못하게 막는다.
+  // ⚔ 없이 너무 오래 가면(idleTurns) 정리한다 — 상시 줄이 영영 남아 "교전 중"을 우기는 사고 방지.
+  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
+    const K = fightMod.FIGHT_KEYS;
+    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
+    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
+    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
+    if (state.vars[K.idle] >= idleMax) {
+      fightMod.clearFight(state);
+      lines.push(fightMod.DEFAULT_FIGHT_IDLE_END);
+      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
+    } else {
+      const hold = typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD;
+      lines.push(renderTemplate(hold, lookup));
+    }
   }
 
   if (isSetupPending(schema, state)) {
@@ -1654,7 +1780,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, findChoiceEvent, pickChoice, offstageFired,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired,
   renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

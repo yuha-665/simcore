@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.5.5
-//@display-name SimCore (시뮬 엔진) v1.5.5 시간 도약 상한 철폐
+//@version 1.6.0
+//@display-name SimCore (시뮬 엔진) v1.6.0 전투 안무
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -3111,7 +3111,10 @@
       const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
       const sendIndex = Math.max(0, (chat?.message?.length ?? 1) - 1);
 
-      const r = await session.onSend(sendIndex);
+      // 전투 안무 (v1.6.0) — 유저 입력 길이로 맡김/내 수를 가른다. 굴림에는 안 쓰인다 (리롤 안정)
+      const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
+      const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
+      const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
       messages.push({ role: 'system', content: r.promptBlock });
       // 막간 (v1.5.0) — 이 턴만 페르소나 칸을 걷어낸다 (지시문은 promptBlock 끝에 이미 실렸다)

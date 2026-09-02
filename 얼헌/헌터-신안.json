@@ -211,7 +211,47 @@
       "init": "무소속",
       "maxLength": 24,
       "cmd": "소속",
-      "desc": "Guild/team/agency the hunter belongs to. 무소속 if none."
+      "desc": "Guild/team/agency the hunter belongs to. 무소속 if none. Once set, keep the EXACT same spelling — a changed name reads as a transfer and resets guild standing."
+    },
+    {
+      "id": "guild_rank",
+      "label": "길드 직급",
+      "type": "enum",
+      "init": "—",
+      "cmd": "직급",
+      "enum": [
+        "—",
+        "준회원",
+        "정회원",
+        "정예",
+        "간부"
+      ],
+      "desc": "Rank inside the guild. — while 무소속 (system sets 준회원 on joining). Raise ONE step ONLY when the narrative completes a promotion review the guild offered — never on merit alone."
+    },
+    {
+      "id": "guild_merit",
+      "label": "공헌도",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999,
+      "cmd": "공헌",
+      "desc": "Contribution points inside the guild. Write the GAIN when a guild job is completed on-screen (errand 5~15, joint hunt 20~40, raid/crisis 50+). Discipline may deduct. No evidence = 0. System resets on join/leave/transfer."
+    },
+    {
+      "id": "guild_prev",
+      "label": "(내부) 소속 거울",
+      "type": "text",
+      "init": "무소속",
+      "maxLength": 24,
+      "desc": "시스템 전용 — 입단/탈퇴/이적 전이 감지용. 직접 바꾸지 마라."
+    },
+    {
+      "id": "guild_promo_seen",
+      "label": "(내부) 승진 안내",
+      "type": "bool",
+      "init": false,
+      "desc": "시스템 래치. 직접 바꾸지 마라."
     },
     {
       "id": "fame",
@@ -859,6 +899,21 @@
       "expr": "boon_prev_i >= 1 ? ((boon_prev_i == 1 ? '말끝마다 \"…냥\"이 붙는다' : (boon_prev_i == 2 ? '남녀 모두 오죠사마가 되어 \"…데스와\" 말투를 쓴다' : (boon_prev_i == 3 ? '스킬은 중2병 영창을 해야만 발동 — 빼먹으면 불발' : (boon_prev_i == 4 ? '모든 이의 말투가 사극체가 된다 (\"그대\", \"~하시오\")' : (boon_prev_i == 5 ? '이성 헌터를 보면 구애의 춤부터 춰야 한다' : (boon_prev_i == 6 ? '모두가 일본 2ch 스레드 말투를 쓴다 (\"코이츠www\", \"우효~ 초럭키\")' : (boon_prev_i == 7 ? '모든 결정과 보상이 가챠로 정해진다 — 드랍·협상 결과까지 뽑기' : (boon_prev_i == 8 ? '뭘 하든 어디선가 얄미운 메스가키 중계 음성이 훈수를 둔다 (\"자코 주제에 그걸 하겠다구~?♡\")' : (boon_prev_i == 9 ? '야하고 천박한 음란 대사로만 대화할 수 있다' : (boon_prev_i == 10 ? '입은 것이 적을수록 방어력이 오른다' : '정조 관념이 남녀 반전된다 — 남자는 노출에 소스라치고, 여자는 노골적으로 품평한다'))))))))))) : '—'"
     },
     {
+      "id": "guild_rank_n",
+      "label": "(내부) 직급 수치",
+      "expr": "(guild_rank == '간부' ? 4 : (guild_rank == '정예' ? 3 : (guild_rank == '정회원' ? 2 : (guild_rank == '준회원' ? 1 : 0))))"
+    },
+    {
+      "id": "merit_next",
+      "label": "다음 승진 공헌도",
+      "expr": "(guild_rank_n == 1 ? 100 : (guild_rank_n == 2 ? 300 : (guild_rank_n == 3 ? 700 : 9999)))"
+    },
+    {
+      "id": "guild_txt",
+      "label": "소속 표시",
+      "expr": "guild == '무소속' ? '무소속' : (guild_rank_n >= 4 ? guild + ' · ' + guild_rank + ' (공헌 ' + guild_merit + ')' : guild + ' · ' + guild_rank + ' (공헌 ' + guild_merit + '/' + merit_next + ')')"
+    },
+    {
       "id": "boon_perk",
       "label": "가호 효과",
       "expr": "(boon_on and boon_i >= 1 and (boon_i <= 8 or alter_on)) ? ((boon_i == 1 ? '모두가 조금 귀여워진다 — 적의·경계가 눅는다' : (boon_i == 2 ? '마정석 드랍이 눈에 띄게 후해진다' : (boon_i == 3 ? '영창이 길고 멋질수록 위력 상승 (서사가 점수를 매긴다)' : (boon_i == 4 ? '위엄이 서려 자신감이 오른다' : (boon_i == 5 ? '동성끼리만 있을 때 능력 발휘·자신감 상승' : (boon_i == 6 ? '스레 민심이 실시간 공유돼 정보·소문이 빨리 돈다' : (boon_i == 7 ? '천장 보정 — 꽝이 이어지면 다음 뽑기가 반드시 터진다' : (boon_i == 8 ? '얄밉지만 정확하다 — 훈수가 적의 약점과 함정을 짚어준다' : (boon_i == 9 ? '이성과 대화할 때마다 마력이 회복된다' : (boon_i == 10 ? '전라 상태면 방어력 대폭 상승' : '뒤집힌 시선 속에서 매력·유혹이 잘 먹힌다'))))))))))) : '—'"
@@ -1017,6 +1072,72 @@
         "notify": "[급여] Guild payday — the monthly salary has landed (amount already settled in the state block). A guild also expects things: attach a small guild errand, notice or meeting."
       },
       {
+        "id": "guild_join",
+        "when": "guild != guild_prev and guild != '무소속'",
+        "effects": [
+          {
+            "set": "guild_prev",
+            "expr": "guild"
+          },
+          {
+            "set": "guild_rank",
+            "expr": "'준회원'"
+          },
+          {
+            "set": "guild_merit",
+            "expr": "0"
+          },
+          {
+            "set": "guild_promo_seen",
+            "expr": "false"
+          }
+        ],
+        "notify": "[길드] Joined as 준회원 — the bottom rung. Contribution points start at 0; guild work earns them and a promotion review opens at 100. Show the onboarding: desk, badge, seniors."
+      },
+      {
+        "id": "guild_leave",
+        "when": "guild != guild_prev and guild == '무소속'",
+        "effects": [
+          {
+            "set": "guild_prev",
+            "expr": "guild"
+          },
+          {
+            "set": "guild_rank",
+            "expr": "'—'"
+          },
+          {
+            "set": "guild_merit",
+            "expr": "0"
+          },
+          {
+            "set": "guild_promo_seen",
+            "expr": "false"
+          }
+        ]
+      },
+      {
+        "id": "guild_promo",
+        "when": "guild != '무소속' and guild_rank_n >= 1 and guild_rank_n < 4 and guild_merit >= merit_next and not guild_promo_seen",
+        "effects": [
+          {
+            "set": "guild_promo_seen",
+            "expr": "true"
+          }
+        ],
+        "notify": "[길드 승진 심사] The protagonist's contribution has reached the bar for the next rank — the guild offers a promotion review (interview, trial job, or a vote). Play the review as a scene; only when it concludes does the rank move up ONE step. Do not promote on the spot."
+      },
+      {
+        "id": "guild_promo_clear",
+        "when": "guild_promo_seen and (guild == '무소속' or guild_merit < merit_next or guild_rank_n >= 4)",
+        "effects": [
+          {
+            "set": "guild_promo_seen",
+            "expr": "false"
+          }
+        ]
+      },
+      {
         "id": "gate_break",
         "when": "break_name != \"\" and break_in <= 0",
         "effects": [
@@ -1146,7 +1267,7 @@
           "weight": 2,
           "cooldown": 5,
           "when": "guild != '무소속'",
-          "notify": "[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, or an internal meeting with the protagonist's name on the roster. Small obligations that make the guild feel like a workplace. Scale the ask to the protagonist's rank and fame — rookies get grunt work, names get named jobs."
+          "notify": "[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, or an internal meeting with the protagonist's name on the roster. Small obligations that make the guild feel like a workplace. Scale the ask to the protagonist's rank and fame — rookies get grunt work, names get named jobs. Completing it on-screen earns guild contribution (guild_merit)."
         },
         {
           "id": "guild_friction",
@@ -1700,6 +1821,26 @@
       "text": "[성신의 가호 — 교체됨] 직전 현상 \"{boon_prev_txt}\"은(는) 끝났다. 앞선 대화에 남아 있는 그 말투·행동은 지난 주기의 흔적이니 더 이어 쓰지 마라 — 인물들은 이미 원래대로(또는 새 현상대로) 돌아와 있고, 누군가 습관처럼 옛 말투가 튀어나오면 스스로 민망해하는 정도다."
     },
     {
+      "id": "guild_r1",
+      "when": "guild != '무소속' and guild_rank_n == 1",
+      "text": "길드 직급 준회원 — 잡일과 심부름이 몫이고, 훈련장·창고 같은 시설은 선배 눈치를 봐야 쓴다. 길드 일을 마치면 공헌도가 쌓이고(현재 {guild_merit}/{merit_next}), 100에서 정회원 심사가 열린다."
+    },
+    {
+      "id": "guild_r2",
+      "when": "guild != '무소속' and guild_rank_n == 2",
+      "text": "길드 직급 정회원 — 정식 파티 편성과 훈련장 자유 이용, 길드 매입 창구의 마정석 시세 우대. 지명 의뢰는 아직 없다. 공헌도 {guild_merit}/{merit_next}, 정예 심사는 300."
+    },
+    {
+      "id": "guild_r3",
+      "when": "guild != '무소속' and guild_rank_n == 3",
+      "text": "길드 직급 정예 — 지명 의뢰와 합동 레이드 우선권이 오고, 후배가 붙는다. 길드의 얼굴 중 하나라 바깥 평판이 길드 평판이 된다. 공헌도 {guild_merit}/{merit_next}, 간부 심사는 700."
+    },
+    {
+      "id": "guild_r4",
+      "when": "guild != '무소속' and guild_rank_n == 4",
+      "text": "길드 직급 간부 — 운영 회의에 자리가 있고, 라이벌 길드와의 마찰은 주인공이 수습해야 하는 일이 된다. 지시하는 쪽이지만 책임도 그쪽이다. 공헌도 {guild_merit} (최고 직급)."
+    },
+    {
       "id": "boon_npc",
       "when": "boon_on and boon_i >= 1 and not boon_self and (boon_i <= 8 or alter_on)",
       "text": "[성신의 가호 — 공인 주간 현상] 성신이 매주 전 세계 각성자에게 장난 같은 현상을 내린다. 이번 주 현상: \"{boon_quirk}\" — 딸린 효과: \"{boon_perk}\". 주인공을 제외한 모든 헌터에게 적용 중이다 (이번 주기 주인공은 비켜갔다 — 홀로 멀쩡한 것이 오히려 눈에 띈다). NPC 헌터들은 진지한 얼굴로 충실히 수행 중이다 — 그 대비가 개그다. 상태 블록의 수치는 불변이다: 효과는 실전 발휘·서사로만 연출하라. 세계 전체가 이 현상을 알고, 매주 헌터넷의 단골 소재다."
@@ -1882,6 +2023,14 @@
         "maxLength": 24
       },
       {
+        "id": "guild_merit",
+        "maxGain": 60,
+        "maxLoss": 30
+      },
+      {
+        "id": "guild_rank"
+      },
+      {
         "id": "fame",
         "maxGain": 8,
         "maxLoss": 15
@@ -1995,7 +2144,7 @@
     "templates": [
       {
         "id": "hunter",
-        "template": "<style>/* 얼터헌터 상태창 — 원본 봇 CSS 규격(a-* 클래스, 다크네이비 + 스틸블루 + Rajdhani) 승계.\n   원본은 리수 CBS {{screen_width}} 분기로 반응형을 갰지만, 심코어 statusUI는 CBS를 안 거치므로\n   @media로 옮겼다. 원본 아이덴티티: #0e1015 바탕, #13151c→#1c1f29 카드, #8aa2cc 헤더. */\n@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap');\n\n.a-status-window {\n  background: linear-gradient(145deg, #13151c, #1c1f29);\n  color: #c5d0e6;\n  font-family: 'Noto Sans KR', sans-serif;\n  border-radius: 12px;\n  box-shadow: 0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(82,110,157,.1);\n  margin: 6px auto;\n  padding: 16px 14px;\n  width: 98%;\n  max-width: 1000px;\n  text-align: left;\n  font-size: 13.5px;\n}\n.a-header {\n  font-family: 'Rajdhani', sans-serif;\n  color: #8aa2cc;\n  font-weight: 600;\n  letter-spacing: 2px;\n  text-align: center;\n  font-size: 1.45em;\n  border-bottom: 1px solid rgba(138,162,204,.15);\n  margin-bottom: 12px;\n  padding-bottom: 8px;\n}\n.a-header small { display: block; letter-spacing: .5px; font-size: .55em; color: #6b7fa8; font-weight: 400; }\n.a-top-info-bar {\n  display: flex; flex-wrap: wrap; gap: 6px 14px;\n  align-items: center; justify-content: space-between;\n  background: rgba(25,30,40,.5);\n  border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px;\n  padding: 8px 12px;\n  margin-bottom: 12px;\n}\n.a-info-item { font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; color: #a0b3d1; font-size: .95em; white-space: nowrap; }\n\n/* 코어 줄 — 랭크 배지 + 레벨/직업 */\n.a-core-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }\n.a-rank-badge {\n  font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.5em;\n  color: #8aa2cc; background: rgba(138,162,204,.08);\n  border: 1px solid rgba(138,162,204,.35); border-radius: 8px;\n  min-width: 44px; text-align: center; padding: 2px 8px;\n}\n.a-core-main { flex: 1; min-width: 140px; }\n.a-core-main .a-name { font-weight: 700; color: #dce6f5; }\n.a-core-main .a-sub { color: #8090ad; font-size: .92em; }\n\n/* 자원 바 (HP/MP/SP/EXP) */\n.a-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 12px; }\n.a-bar-item { min-width: 0; }\n.a-bar-label { display: flex; justify-content: space-between; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: .88em; color: #a0b3d1; margin-bottom: 2px; }\n.a-bar-track { height: 7px; background: rgba(10,12,18,.8); border-radius: 4px; overflow: hidden; border: 1px solid rgba(138,162,204,.12); }\n.a-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }\n.a-hp .a-bar-fill { background: linear-gradient(90deg, #b23a48, #e05563); }\n.a-mp .a-bar-fill { background: linear-gradient(90deg, #33549e, #4f7dd9); }\n.a-sp .a-bar-fill { background: linear-gradient(90deg, #2c8a68, #46b98c); }\n.a-exp .a-bar-fill { background: linear-gradient(90deg, #a3833f, #c9a86a); }\n\n/* 스탯 그리드 */\n.a-stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }\n.a-stat-cell {\n  background: rgba(25,30,40,.5); border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px; text-align: center; padding: 6px 2px;\n}\n.a-stat-cell .k { display: block; font-size: .78em; color: #6b7fa8; letter-spacing: 1px; font-family: 'Rajdhani', sans-serif; }\n.a-stat-cell .v { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.25em; color: #dce6f5; }\n\n/* 섹션 */\n.a-sec {\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 600;\n  color: #8aa2cc; letter-spacing: 1.5px; font-size: .92em;\n  border-bottom: 1px solid rgba(138,162,204,.12);\n  margin: 10px 0 6px; padding-bottom: 3px;\n}\n.a-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 2px; }\n.a-row .v { color: #dce6f5; font-weight: 500; text-align: right; }\n\n/* 목록 태그 ({id:tags}) */\n.a-status-window .sim-tag {\n  display: inline-block; background: rgba(25,30,40,.6);\n  border: 1px solid rgba(138,162,204,.18); border-radius: 6px;\n  color: #c5d0e6; font-size: .9em; padding: 2px 8px; margin: 2px 3px 2px 0;\n}\n.a-status-window .sim-empty { color: #5a6885; font-size: .9em; }\n\n.a-foot { text-align: center; color: #6b7fa8; font-size: .85em; margin-top: 8px; opacity: .85; }\n\n@media (max-width: 768px) {\n  .a-status-window { padding: 12px 8px; font-size: 12.5px; }\n  .a-header { font-size: 1.25em; margin-bottom: 8px; }\n  .a-top-info-bar { flex-direction: column; align-items: flex-start; gap: 4px; }\n  .a-bars { grid-template-columns: 1fr; }\n  .a-stats-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }\n}\n</style><div class=\"a-status-window\"><div class=\"a-header\">STATUS WINDOW<small>Alter-Earth Hunter Interface</small></div><div class=\"a-top-info-bar\"><span class=\"a-info-item\">📅 {date} ({weekday})</span><span class=\"a-info-item\">{time}</span><span class=\"a-info-item\">{weather}</span><span class=\"a-info-item\">📍 {location}</span></div><div class=\"a-row\"><span>🌠 성신의 가호</span><span class=\"v\">{boon_quirk} → {boon_perk}</span></div><div class=\"a-core-row\"><div class=\"a-rank-badge\">{license}</div><div class=\"a-core-main\"><div class=\"a-name\">Lv.{level} · {job}</div><div class=\"a-sub\">측정 등급 {rank_est} · 소속 {guild} · 명성 {fame}</div></div></div><div class=\"a-bars\"><div class=\"a-bar-item a-hp\"><div class=\"a-bar-label\"><span>HP</span><span>{hp} / {hp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{hp_w}%\"></div></div></div><div class=\"a-bar-item a-mp\"><div class=\"a-bar-label\"><span>MP</span><span>{mp} / {mp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{mp_w}%\"></div></div></div><div class=\"a-bar-item a-sp\"><div class=\"a-bar-label\"><span>SP</span><span>{sp} / {sp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{sp_w}%\"></div></div></div><div class=\"a-bar-item a-exp\"><div class=\"a-bar-label\"><span>EXP</span><span>{exp} / {exp_need}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{exp_w}%\"></div></div></div></div><div class=\"a-stats-grid\"><div class=\"a-stat-cell\"><span class=\"k\">STR 근력</span><span class=\"v\">{str}</span></div><div class=\"a-stat-cell\"><span class=\"k\">CON 체질</span><span class=\"v\">{con}</span></div><div class=\"a-stat-cell\"><span class=\"k\">AGI 민첩</span><span class=\"v\">{agi}</span></div><div class=\"a-stat-cell\"><span class=\"k\">INT 지능</span><span class=\"v\">{intel}</span></div><div class=\"a-stat-cell\"><span class=\"k\">SEN 감각</span><span class=\"v\">{sen}</span></div></div><div class=\"a-row\"><span>미분배 포인트</span><span class=\"v\">{stat_pts}</span></div><div class=\"a-row\"><span>자산</span><span class=\"v\">{won} · {coin}</span></div><div class=\"a-sec\">EQUIPMENT</div><div class=\"a-row\"><span>무기</span><span class=\"v\">{weapons:tags}</span></div><div class=\"a-row\"><span>장신구</span><span class=\"v\">{accessories:tags}</span></div><div class=\"a-row\"><span>방어구</span><span class=\"v\">{armor}</span></div><div class=\"a-sec\">INVENTORY</div>{items:tags}<div class=\"a-sec\">SKILLS</div>{skills:tags}<div class=\"a-sec\">QUESTS</div>{quests:tags}<div class=\"a-sec\">EXPLORATION</div><div class=\"a-row\"><span>탐사도</span><span class=\"v\">{explore_txt}</span></div><div class=\"a-row\"><span>현재 구역</span><span class=\"v\">{room_txt}</span></div><div class=\"a-row\"><span>조사 포인트</span><span class=\"v\">{poi_txt}</span></div><div class=\"a-sec\">GATE BOARD</div><div class=\"a-row\"><span>최근 출현</span><span class=\"v\">{zone_txt} · {grade_txt}급</span></div><div class=\"a-row\"><span>브레이크 경보</span><span class=\"v\">{break_txt}</span></div><div class=\"a-row\"><span>교전 상대</span><span class=\"v\">{foe}</span></div>{fight}{gates:tags}<div class=\"a-sec\">PEOPLE — 인물 변동</div>{npc_notes:tags}{commands}</div>"
+        "template": "<style>/* 얼터헌터 상태창 — 원본 봇 CSS 규격(a-* 클래스, 다크네이비 + 스틸블루 + Rajdhani) 승계.\n   원본은 리수 CBS {{screen_width}} 분기로 반응형을 갰지만, 심코어 statusUI는 CBS를 안 거치므로\n   @media로 옮겼다. 원본 아이덴티티: #0e1015 바탕, #13151c→#1c1f29 카드, #8aa2cc 헤더. */\n@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Rajdhani:wght@400;500;600;700&display=swap');\n\n.a-status-window {\n  background: linear-gradient(145deg, #13151c, #1c1f29);\n  color: #c5d0e6;\n  font-family: 'Noto Sans KR', sans-serif;\n  border-radius: 12px;\n  box-shadow: 0 4px 20px rgba(0,0,0,.4), 0 0 0 1px rgba(82,110,157,.1);\n  margin: 6px auto;\n  padding: 16px 14px;\n  width: 98%;\n  max-width: 1000px;\n  text-align: left;\n  font-size: 13.5px;\n}\n.a-header {\n  font-family: 'Rajdhani', sans-serif;\n  color: #8aa2cc;\n  font-weight: 600;\n  letter-spacing: 2px;\n  text-align: center;\n  font-size: 1.45em;\n  border-bottom: 1px solid rgba(138,162,204,.15);\n  margin-bottom: 12px;\n  padding-bottom: 8px;\n}\n.a-header small { display: block; letter-spacing: .5px; font-size: .55em; color: #6b7fa8; font-weight: 400; }\n.a-top-info-bar {\n  display: flex; flex-wrap: wrap; gap: 6px 14px;\n  align-items: center; justify-content: space-between;\n  background: rgba(25,30,40,.5);\n  border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px;\n  padding: 8px 12px;\n  margin-bottom: 12px;\n}\n.a-info-item { font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; color: #a0b3d1; font-size: .95em; white-space: nowrap; }\n\n/* 코어 줄 — 랭크 배지 + 레벨/직업 */\n.a-core-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }\n.a-rank-badge {\n  font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.5em;\n  color: #8aa2cc; background: rgba(138,162,204,.08);\n  border: 1px solid rgba(138,162,204,.35); border-radius: 8px;\n  min-width: 44px; text-align: center; padding: 2px 8px;\n}\n.a-core-main { flex: 1; min-width: 140px; }\n.a-core-main .a-name { font-weight: 700; color: #dce6f5; }\n.a-core-main .a-sub { color: #8090ad; font-size: .92em; }\n\n/* 자원 바 (HP/MP/SP/EXP) */\n.a-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 12px; }\n.a-bar-item { min-width: 0; }\n.a-bar-label { display: flex; justify-content: space-between; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-size: .88em; color: #a0b3d1; margin-bottom: 2px; }\n.a-bar-track { height: 7px; background: rgba(10,12,18,.8); border-radius: 4px; overflow: hidden; border: 1px solid rgba(138,162,204,.12); }\n.a-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }\n.a-hp .a-bar-fill { background: linear-gradient(90deg, #b23a48, #e05563); }\n.a-mp .a-bar-fill { background: linear-gradient(90deg, #33549e, #4f7dd9); }\n.a-sp .a-bar-fill { background: linear-gradient(90deg, #2c8a68, #46b98c); }\n.a-exp .a-bar-fill { background: linear-gradient(90deg, #a3833f, #c9a86a); }\n\n/* 스탯 그리드 */\n.a-stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 12px; }\n.a-stat-cell {\n  background: rgba(25,30,40,.5); border: 1px solid rgba(138,162,204,.1);\n  border-radius: 8px; text-align: center; padding: 6px 2px;\n}\n.a-stat-cell .k { display: block; font-size: .78em; color: #6b7fa8; letter-spacing: 1px; font-family: 'Rajdhani', sans-serif; }\n.a-stat-cell .v { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.25em; color: #dce6f5; }\n\n/* 섹션 */\n.a-sec {\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 600;\n  color: #8aa2cc; letter-spacing: 1.5px; font-size: .92em;\n  border-bottom: 1px solid rgba(138,162,204,.12);\n  margin: 10px 0 6px; padding-bottom: 3px;\n}\n.a-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 2px; }\n.a-row .v { color: #dce6f5; font-weight: 500; text-align: right; }\n\n/* 목록 태그 ({id:tags}) */\n.a-status-window .sim-tag {\n  display: inline-block; background: rgba(25,30,40,.6);\n  border: 1px solid rgba(138,162,204,.18); border-radius: 6px;\n  color: #c5d0e6; font-size: .9em; padding: 2px 8px; margin: 2px 3px 2px 0;\n}\n.a-status-window .sim-empty { color: #5a6885; font-size: .9em; }\n\n.a-foot { text-align: center; color: #6b7fa8; font-size: .85em; margin-top: 8px; opacity: .85; }\n\n@media (max-width: 768px) {\n  .a-status-window { padding: 12px 8px; font-size: 12.5px; }\n  .a-header { font-size: 1.25em; margin-bottom: 8px; }\n  .a-top-info-bar { flex-direction: column; align-items: flex-start; gap: 4px; }\n  .a-bars { grid-template-columns: 1fr; }\n  .a-stats-grid { grid-template-columns: repeat(5, 1fr); gap: 4px; }\n}\n</style><div class=\"a-status-window\"><div class=\"a-header\">STATUS WINDOW<small>Alter-Earth Hunter Interface</small></div><div class=\"a-top-info-bar\"><span class=\"a-info-item\">📅 {date} ({weekday})</span><span class=\"a-info-item\">{time}</span><span class=\"a-info-item\">{weather}</span><span class=\"a-info-item\">📍 {location}</span></div><div class=\"a-row\"><span>🌠 성신의 가호</span><span class=\"v\">{boon_quirk} → {boon_perk}</span></div><div class=\"a-core-row\"><div class=\"a-rank-badge\">{license}</div><div class=\"a-core-main\"><div class=\"a-name\">Lv.{level} · {job}</div><div class=\"a-sub\">측정 등급 {rank_est} · 소속 {guild_txt} · 명성 {fame}</div></div></div><div class=\"a-bars\"><div class=\"a-bar-item a-hp\"><div class=\"a-bar-label\"><span>HP</span><span>{hp} / {hp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{hp_w}%\"></div></div></div><div class=\"a-bar-item a-mp\"><div class=\"a-bar-label\"><span>MP</span><span>{mp} / {mp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{mp_w}%\"></div></div></div><div class=\"a-bar-item a-sp\"><div class=\"a-bar-label\"><span>SP</span><span>{sp} / {sp_max}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{sp_w}%\"></div></div></div><div class=\"a-bar-item a-exp\"><div class=\"a-bar-label\"><span>EXP</span><span>{exp} / {exp_need}</span></div><div class=\"a-bar-track\"><div class=\"a-bar-fill\" style=\"width:{exp_w}%\"></div></div></div></div><div class=\"a-stats-grid\"><div class=\"a-stat-cell\"><span class=\"k\">STR 근력</span><span class=\"v\">{str}</span></div><div class=\"a-stat-cell\"><span class=\"k\">CON 체질</span><span class=\"v\">{con}</span></div><div class=\"a-stat-cell\"><span class=\"k\">AGI 민첩</span><span class=\"v\">{agi}</span></div><div class=\"a-stat-cell\"><span class=\"k\">INT 지능</span><span class=\"v\">{intel}</span></div><div class=\"a-stat-cell\"><span class=\"k\">SEN 감각</span><span class=\"v\">{sen}</span></div></div><div class=\"a-row\"><span>미분배 포인트</span><span class=\"v\">{stat_pts}</span></div><div class=\"a-row\"><span>자산</span><span class=\"v\">{won} · {coin}</span></div><div class=\"a-sec\">EQUIPMENT</div><div class=\"a-row\"><span>무기</span><span class=\"v\">{weapons:tags}</span></div><div class=\"a-row\"><span>장신구</span><span class=\"v\">{accessories:tags}</span></div><div class=\"a-row\"><span>방어구</span><span class=\"v\">{armor}</span></div><div class=\"a-sec\">INVENTORY</div>{items:tags}<div class=\"a-sec\">SKILLS</div>{skills:tags}<div class=\"a-sec\">QUESTS</div>{quests:tags}<div class=\"a-sec\">EXPLORATION</div><div class=\"a-row\"><span>탐사도</span><span class=\"v\">{explore_txt}</span></div><div class=\"a-row\"><span>현재 구역</span><span class=\"v\">{room_txt}</span></div><div class=\"a-row\"><span>조사 포인트</span><span class=\"v\">{poi_txt}</span></div><div class=\"a-sec\">GATE BOARD</div><div class=\"a-row\"><span>최근 출현</span><span class=\"v\">{zone_txt} · {grade_txt}급</span></div><div class=\"a-row\"><span>브레이크 경보</span><span class=\"v\">{break_txt}</span></div><div class=\"a-row\"><span>교전 상대</span><span class=\"v\">{foe}</span></div>{fight}{gates:tags}<div class=\"a-sec\">PEOPLE — 인물 변동</div>{npc_notes:tags}{commands}</div>"
       }
     ]
   },

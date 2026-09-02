@@ -236,7 +236,26 @@ const S = {
     { id: 'job', label: '클래스', type: 'text', init: '없음', maxLength: 30, cmd: '클래스',
       desc: 'Class name with disclosure rank, e.g. "궁수 (일반)", "저승 무사 (히든)". 없음 if none.' },
     { id: 'guild', label: '소속', type: 'text', init: '무소속', maxLength: 24, cmd: '소속',
-      desc: 'Guild/team/agency the hunter belongs to. 무소속 if none.' },
+      desc: 'Guild/team/agency the hunter belongs to. 무소속 if none. Once set, keep the EXACT same '
+        + 'spelling — a changed name reads as a transfer and resets guild standing.' },
+    // ── 길드 시스템 (P10, 2026-09-02 유저 요청) — "길드 안에서의 성장 축" ──
+    // 가입까진 있었는데 그 안에서 올라갈 데가 없었다. 직급 + 공헌도(보이는 숫자) 두 축.
+    // 승진은 라이선스 승급과 같은 규약: 문턱 도달 → 시스템이 심사 자격 안내(래치) → 심사
+    // 장면을 거쳐 보조가 직급을 한 단계 올린다. 입단/탈퇴/이적 전이는 guild_prev 거울로 감지.
+    // 일부러 안 넣은 것: 길드원 로스터(파티 4인과 겹침)·길드 자금/경영(주인공은 길드원이지
+    // 마스터가 아님)·길드별 시스템 분기(개성은 로어북 6종 몫).
+    { id: 'guild_rank', label: '길드 직급', type: 'enum', init: '—', cmd: '직급',
+      enum: ['—', '준회원', '정회원', '정예', '간부'],
+      desc: 'Rank inside the guild. — while 무소속 (system sets 준회원 on joining). Raise ONE step '
+        + 'ONLY when the narrative completes a promotion review the guild offered — never on merit alone.' },
+    { id: 'guild_merit', label: '공헌도', type: 'int', init: 0, min: 0, max: 9999, cmd: '공헌',
+      desc: 'Contribution points inside the guild. Write the GAIN when a guild job is completed on-screen '
+        + '(errand 5~15, joint hunt 20~40, raid/crisis 50+). Discipline may deduct. No evidence = 0. '
+        + 'System resets on join/leave/transfer.' },
+    { id: 'guild_prev', label: '(내부) 소속 거울', type: 'text', init: '무소속', maxLength: 24,
+      desc: '시스템 전용 — 입단/탈퇴/이적 전이 감지용. 직접 바꾸지 마라.' },
+    { id: 'guild_promo_seen', label: '(내부) 승진 안내', type: 'bool', init: false,
+      desc: '시스템 래치. 직접 바꾸지 마라.' },
     { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100,
       desc: 'How known the hunter is in hunter society and on HunterNet. Rises with public feats, '
         + 'falls with scandals. A rookie stays under 10 for a long while.' },
@@ -444,6 +463,15 @@ const S = {
       expr: `(boon_on and boon_i >= 1 and (boon_i <= ${BOON_BASE_N} or alter_on)) ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_i')}) : '—'` },
     { id: 'boon_prev_txt', label: '직전 가호 현상',
       expr: `boon_prev_i >= 1 ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_prev_i')}) : '—'` },
+    // 길드 (P10) — 직급 수치 · 다음 승진 문턱 (누적 공헌도) · 상태창 한 줄
+    { id: 'guild_rank_n', label: '(내부) 직급 수치',
+      expr: chain([["guild_rank == '간부'", '4'], ["guild_rank == '정예'", '3'],
+        ["guild_rank == '정회원'", '2'], ["guild_rank == '준회원'", '1']], '0') },
+    { id: 'merit_next', label: '다음 승진 공헌도',
+      expr: chain([['guild_rank_n == 1', '100'], ['guild_rank_n == 2', '300'], ['guild_rank_n == 3', '700']], '9999') },
+    { id: 'guild_txt', label: '소속 표시',
+      expr: `guild == '무소속' ? '무소속' : (guild_rank_n >= 4 ? guild + ' · ' + guild_rank + ' (공헌 ' + guild_merit + ')'`
+        + ` : guild + ' · ' + guild_rank + ' (공헌 ' + guild_merit + '/' + merit_next + ')')` },
     { id: 'boon_perk', label: '가호 효과',
       expr: `(boon_on and boon_i >= 1 and (boon_i <= ${BOON_BASE_N} or alter_on)) ? (${idx1(BOON_PAIRS.map((p) => p[1]), 'boon_i')}) : '—'` },
   ],
@@ -520,6 +548,33 @@ const S = {
         ],
         notify: '[급여] Guild payday — the monthly salary has landed (amount already settled in the '
           + 'state block). A guild also expects things: attach a small guild errand, notice or meeting.' },
+      // ── 길드 (P10) — 소속 전이는 거울(guild_prev)이 감지한다. 텍스트 set으로 리셋. ──
+      { id: 'guild_join', when: "guild != guild_prev and guild != '무소속'",
+        effects: [
+          { set: 'guild_prev', expr: 'guild' },
+          { set: 'guild_rank', expr: "'준회원'" },
+          { set: 'guild_merit', expr: '0' },
+          { set: 'guild_promo_seen', expr: 'false' },
+        ],
+        notify: '[길드] Joined as 준회원 — the bottom rung. Contribution points start at 0; guild work '
+          + 'earns them and a promotion review opens at 100. Show the onboarding: desk, badge, seniors.' },
+      { id: 'guild_leave', when: "guild != guild_prev and guild == '무소속'",
+        effects: [
+          { set: 'guild_prev', expr: 'guild' },
+          { set: 'guild_rank', expr: "'—'" },
+          { set: 'guild_merit', expr: '0' },
+          { set: 'guild_promo_seen', expr: 'false' },
+        ] },
+      // 승진 자격 — promo(라이선스) 래치 패턴. 자격까지만 시스템, 심사는 서사, 직급 갱신은 보조.
+      { id: 'guild_promo', when: "guild != '무소속' and guild_rank_n >= 1 and guild_rank_n < 4 "
+          + 'and guild_merit >= merit_next and not guild_promo_seen',
+        effects: [{ set: 'guild_promo_seen', expr: 'true' }],
+        notify: '[길드 승진 심사] The protagonist\'s contribution has reached the bar for the next rank — '
+          + 'the guild offers a promotion review (interview, trial job, or a vote). Play the review as a '
+          + 'scene; only when it concludes does the rank move up ONE step. Do not promote on the spot.' },
+      { id: 'guild_promo_clear',
+        when: "guild_promo_seen and (guild == '무소속' or guild_merit < merit_next or guild_rank_n >= 4)",
+        effects: [{ set: 'guild_promo_seen', expr: 'false' }] },
       // ── 게이트 브레이크 (P3) — 초읽기가 0에 닿으면 터진다 ──
       { id: 'gate_break', when: 'break_name != "" and break_in <= 0',
         effects: [
@@ -593,7 +648,8 @@ const S = {
           notify: '[길드] Guild life knocks — a joint hunt, a supply-run request, rookie mentoring, '
             + 'or an internal meeting with the protagonist\'s name on the roster. Small obligations '
             + 'that make the guild feel like a workplace. Scale the ask to the protagonist\'s rank '
-            + 'and fame — rookies get grunt work, names get named jobs.' },
+            + 'and fame — rookies get grunt work, names get named jobs. Completing it on-screen earns '
+            + 'guild contribution (guild_merit).' },
         { id: 'guild_friction', weight: 1, cooldown: 8, when: "guild != '무소속' and fame >= 10",
           notify: '[길드 경쟁] Friction with a rival guild — overlapping hunting grounds, a poached '
             + 'client, raid-share disputes, or trash talk on HunterNet. The protagonist\'s standing '
@@ -904,6 +960,19 @@ const S = {
       text: '[성신의 가호 — 교체됨] 직전 현상 "{boon_prev_txt}"은(는) 끝났다. 앞선 대화에 남아 있는 '
         + '그 말투·행동은 지난 주기의 흔적이니 더 이어 쓰지 마라 — 인물들은 이미 원래대로(또는 새 '
         + '현상대로) 돌아와 있고, 누군가 습관처럼 옛 말투가 튀어나오면 스스로 민망해하는 정도다.' },
+    // ── 길드 (P10) — 직급별 혜택·의무. 한 번에 하나만 실린다 ──
+    { id: 'guild_r1', when: "guild != '무소속' and guild_rank_n == 1",
+      text: '길드 직급 준회원 — 잡일과 심부름이 몫이고, 훈련장·창고 같은 시설은 선배 눈치를 봐야 쓴다. '
+        + '길드 일을 마치면 공헌도가 쌓이고(현재 {guild_merit}/{merit_next}), 100에서 정회원 심사가 열린다.' },
+    { id: 'guild_r2', when: "guild != '무소속' and guild_rank_n == 2",
+      text: '길드 직급 정회원 — 정식 파티 편성과 훈련장 자유 이용, 길드 매입 창구의 마정석 시세 우대. '
+        + '지명 의뢰는 아직 없다. 공헌도 {guild_merit}/{merit_next}, 정예 심사는 300.' },
+    { id: 'guild_r3', when: "guild != '무소속' and guild_rank_n == 3",
+      text: '길드 직급 정예 — 지명 의뢰와 합동 레이드 우선권이 오고, 후배가 붙는다. 길드의 얼굴 중 하나라 '
+        + '바깥 평판이 길드 평판이 된다. 공헌도 {guild_merit}/{merit_next}, 간부 심사는 700.' },
+    { id: 'guild_r4', when: "guild != '무소속' and guild_rank_n == 4",
+      text: '길드 직급 간부 — 운영 회의에 자리가 있고, 라이벌 길드와의 마찰은 주인공이 수습해야 하는 일이 된다. '
+        + '지시하는 쪽이지만 책임도 그쪽이다. 공헌도 {guild_merit} (최고 직급).' },
     { id: 'boon_npc', when: `boon_on and boon_i >= 1 and not boon_self and (boon_i <= ${BOON_BASE_N} or alter_on)`,
       text: '[성신의 가호 — 공인 주간 현상] 성신이 매주 전 세계 각성자에게 장난 같은 현상을 내린다. '
         + '이번 주 현상: "{boon_quirk}" — 딸린 효과: "{boon_perk}". 주인공을 제외한 모든 헌터에게 적용 '
@@ -993,6 +1062,9 @@ const S = {
       { id: 'license' },
       { id: 'job', maxLength: 30 },
       { id: 'guild', maxLength: 24 },
+      // 길드 (P10) — 공헌도는 근거 있는 증가만, 징계 감점 허용. 직급은 심사 후 한 단계.
+      { id: 'guild_merit', maxGain: 60, maxLoss: 30 },
+      { id: 'guild_rank' },
       { id: 'fame', maxGain: 8, maxLoss: 15 },
       { id: 'weapons' },
       { id: 'accessories' },
@@ -1433,7 +1505,7 @@ S.statusUI.templates = [{
     + '<div class="a-core-row">'
     + '<div class="a-rank-badge">{license}</div>'
     + '<div class="a-core-main"><div class="a-name">Lv.{level} · {job}</div>'
-    + '<div class="a-sub">측정 등급 {rank_est} · 소속 {guild} · 명성 {fame}</div></div>'
+    + '<div class="a-sub">측정 등급 {rank_est} · 소속 {guild_txt} · 명성 {fame}</div></div>'
     + '</div>'
     + '<div class="a-bars">'
     + bar('hp', 'HP', 'hp', 'hp_max', 'hp_w')
@@ -2240,6 +2312,57 @@ console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
   const off = engine.sendPhase(S, engine.toggleAction(S, send.state, 'offstage').state,
     { rng: seededRng('h', 132, 's') });
   ok('끄면 원래대로', off.offstage === false && !off.promptBlock.includes('주인공 부재'), '');
+}
+
+console.log('\n━━ P10 — 길드 시스템 (직급 · 공헌도 · 승진 래치 · 전이 리셋) ━━');
+{
+  const L = (v) => engine.makeLookup(S, v);
+  let t = fresh();
+  ok('무소속 — 직급 —, 표시 무소속', t.vars.guild_rank === '—' && L(t.vars)('guild_txt') === '무소속', '');
+  const p0 = engine.sendPhase(S, t, { rng: seededRng('h', 1100, 's') });
+  ok('무소속 — 직급 지시문 없음', !p0.promptBlock.includes('길드 직급'), '');
+  // 입단 — 준회원, 공헌 0, 통지
+  ({ st: t } = turn(p0.state, { guild: '청염 길드' }, 1101));
+  ok('입단 전이 — 준회원 · 공헌 0 · 거울 갱신', t.vars.guild_rank === '준회원' && t.vars.guild_merit === 0
+    && t.vars.guild_prev === '청염 길드' && t.meta.pendingNotifies.some((n) => n.includes('Joined as 준회원')), '');
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('h', 1102, 's') });
+  ok('준회원 지시문 + 문턱 100', p1.promptBlock.includes('길드 직급 준회원') && p1.promptBlock.includes('0/100'), '');
+  ok('상태창 — 소속 · 직급 (공헌 0/100)', (() => {
+    const html = SC.require('render').renderStatusHtml(S, p1.state, null, null, { uid: 12 });
+    return html.includes('청염 길드 · 준회원 (공헌 0/100)');
+  })(), '');
+  t = p1.state;
+  // 공헌 누적 → 문턱 → 승진 심사 래치 (직급은 안 움직인다)
+  ({ st: t } = turn(t, { guild_merit: 60 }, 1103));
+  ({ st: t } = turn(t, { guild_merit: 60 }, 1104));
+  ok('공헌 60+60 (턴당 캡 60 안)', t.vars.guild_merit === 120, String(t.vars.guild_merit));
+  ok('문턱 도달 — 승진 심사 안내 래치, 직급은 그대로', t.vars.guild_promo_seen === true
+    && t.vars.guild_rank === '준회원' && t.meta.pendingNotifies.some((n) => n.includes('promotion review')), '');
+  ({ st: t } = turn(t, {}, 1105));
+  ok('래치 유지 — 재안내 없음', !t.meta.pendingNotifies.some((n) => n.includes('promotion review')), '');
+  // 심사 장면 후 보조가 직급 갱신 → 래치 해제, 다음 문턱 300
+  ({ st: t } = turn(t, { guild_rank: '정회원' }, 1106));
+  ok('직급 갱신 — 래치 해제 · 다음 문턱 300', t.vars.guild_rank === '정회원' && t.vars.guild_promo_seen === false
+    && L(t.vars)('merit_next') === 300, '');
+  const p2 = engine.sendPhase(S, t, { rng: seededRng('h', 1107, 's') });
+  ok('정회원 지시문 (시세 우대) — 준회원 지시문 없음', p2.promptBlock.includes('길드 직급 정회원')
+    && !p2.promptBlock.includes('길드 직급 준회원'), '');
+  // 간부는 문턱 없음
+  const cap = { ...fresh().vars, guild: '청염 길드', guild_prev: '청염 길드', guild_rank: '간부', guild_merit: 900 };
+  ok('간부 — 표시에 문턱 없음, 승진 이벤트 잠김', L(cap)('guild_txt') === '청염 길드 · 간부 (공헌 900)'
+    && !truthy(evaluate(S.rules.events.find((e) => e.id === 'guild_promo').when, L(cap), null)), L(cap)('guild_txt'));
+  // 이적 — 이름이 바뀌면 리셋 (준회원부터)
+  t = p2.state;
+  ({ st: t } = turn(t, { guild: '백야 길드' }, 1108));
+  ok('이적 — 준회원 · 공헌 0 리셋', t.vars.guild_rank === '준회원' && t.vars.guild_merit === 0
+    && t.vars.guild_prev === '백야 길드', '');
+  // 탈퇴 — 전부 원위치
+  ({ st: t } = turn(t, { guild: '무소속' }, 1109));
+  ok('탈퇴 — 직급 — · 공헌 0 · 거울 무소속', t.vars.guild_rank === '—' && t.vars.guild_merit === 0
+    && t.vars.guild_prev === '무소속', '');
+  ok('보조 허용 — 공헌(캡)·직급만, 거울·래치 없음', S.updater.allow.some((a) => a.id === 'guild_merit' && a.maxGain === 60)
+    && S.updater.allow.some((a) => a.id === 'guild_rank')
+    && !S.updater.allow.some((a) => a.id === 'guild_prev' || a.id === 'guild_promo_seen'), '');
 }
 
 console.log('\n━━ 길드·상층부 이벤트 (2026-09-01 확충 — 소속·명성·랭크 게이트) ━━');

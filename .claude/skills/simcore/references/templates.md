@@ -99,6 +99,10 @@ peddler 랜덤) + **delve 1**(big_one — 노획 도박) + **zombie 2**(stranger
 그 역할을 물려받았다 — layout·whenArmed·checks(변수 vs)·suggest·choices를 전부 실기로 쓴다.
 새 기능을 만져 볼 때는 delve(중형) 또는 idol(대형)을 고르면 된다.
 
+**아직 어느 템플릿에도 없는 것 (v1.6.0 기준)**: 전투 안무 `checks[].fight`·`actions[].fightEnd`(실물은 얼헌 `gate_fight` —
+`얼헌/hunter-vars.js`), 막간 `actions[].offstage`(실물은 얼헌 `offstage`), 다중 상점 `shops[]`·표기 단위 `units`.
+템플릿에 실을지는 얼헌 실기 뒤 결정.
+
 ## 시간 체계를 쓰는 템플릿 (v0.49~)
 
 | 템플릿 | advance | start | 표시 | 진행 입구 |

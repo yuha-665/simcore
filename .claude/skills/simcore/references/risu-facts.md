@@ -232,3 +232,8 @@ DOM에 뜨는데 `showContainer('fullscreen')`한 플러그인 iframe이 그 위
   대조는 양쪽에서 확장자를 떼고 볼 것. 단 이름 안에 점이 있으면(`Nakano_Miku.default.avif`)
   꼬리 하나 떼는 규칙이 `.default`를 확장자로 착각해 진짜 이름까지 깎는다 — 오류 없이 얼굴만
   안 뜬다 (v0.83.2 실사고). "떼고/안 떼고" 네 조합을 다 맞춰 볼 것 (core/party.js matchAssetName)
+- **플러그인 API 세대**: SimCore는 `//@api 3.0`이고 호출 25종이 전부 `Risuai.*` 네임스페이스다 — 맨 전역을 쓰는
+  **레거시 v2/v2.1 플러그인이 아니다**. PocketRisu 1.11 핫픽스("레거시 플러그인 이슈")류는 해당 없음. 단 SimCore가 기대는
+  리수 동작(beforeRequest·display 훅·좌표 히트테스트·getDatabase)은 전에도 깨진 적이 있으니 "해당 없음 ≠ 안전"
+- `beforeRequest`의 `messages[]`는 `{ role, content }`이고 **content가 문자열이 아닐 수 있다**(멀티모달 배열) —
+  마지막 user 발화를 읽을 땐 `typeof content === 'string'` 확인 (v1.6.0 userText)

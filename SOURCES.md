@@ -7,7 +7,7 @@
 
 | 경로 | 내용 |
 |---|---|
-| `core/*.js` | 엔진 모듈 10개 (expr, rng, store, validate, engine, render, session, diagnose, editor, templates) |
+| `core/*.js` | 엔진 모듈 20개 — `build.js` `CORE` 순서: expr, rng, store, time, fight, validate, assets, party, calendar, scenario, board, messenger, shop, patch, engine, render, session, diagnose, editor, templates (새 모듈은 `CORE`에 넣어야 번들에 실린다) |
 | `adapter/risu-plugin.js` | 리스 어댑터 — `//@` 헤더 + 플러그인 본문 (버전·체인지로그도 여기) |
 | `build.js` | 번들러. `node build.js` → `dist/simcore.plugin.js` + `playground.html` |
 | `tools/unbundle.js` | **역추출기.** 번들을 직접 수정한 판본을 소스로 되돌린다: `node tools/unbundle.js <번들>` |

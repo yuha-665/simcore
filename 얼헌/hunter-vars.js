@@ -291,9 +291,11 @@ const S = {
       desc: '유저 정책값 (원본 alterNSFW 토글 승계). 끄면 확장 수위 이미지 팩이 잠긴다 '
         + '(기본 팩은 그대로). 시작 후 바꾸려면 /수위.' },
     // 성신의 가호 — 정책 2종. 축복은 전원 고정, 대가의 주인공 적용만 선택 (유저 판정 2026-09-01)
-    { id: 'boon_on', label: '성신의 가호', type: 'bool', init: true, cmd: '가호',
-      desc: '유저 정책값. 매주 성신이 전 세계 헌터에게 랜덤 축복+대가를 내리는 공인 현상. '
-        + '끄려면 /가호 0.' },
+    // 기본 꺼짐 (유저 판정 2026-09-02) — 원작 세계에 없는 개그 장치라 옵트인. 켜는 턴에 즉시
+    // 점화된다 (boon_prev -7 시계 그대로).
+    { id: 'boon_on', label: '성신의 가호', type: 'bool', init: false, cmd: '가호',
+      desc: '유저 정책값 (기본 꺼짐). 매주 성신이 전 세계 헌터에게 랜덤 현상+효과를 내리는 공인 '
+        + '개그 장치. 켜려면 🌠 버튼 또는 /가호 1, 끄려면 /가호 0.' },
     { id: 'boon_self', label: '가호 대가 주인공 적용', type: 'bool', init: true, cmd: '가호주인공',
       desc: '유저 정책값. 켜면 행동 대가가 주인공에게도 걸린다(저항 가능 — 대신 축복이 흐려진다). '
         + '끄면 대가는 NPC만. 바꾸려면 /가호주인공 0.' },
@@ -2335,11 +2337,22 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
 {
   const von = S.vars.find((x) => x.id === 'boon_on');
   const vself = S.vars.find((x) => x.id === 'boon_self');
-  ok('정책 토글 2종 — /가호, /가호주인공 (기본 둘 다 켬)', von.init === true && von.cmd === '가호'
+  ok('정책 토글 2종 — /가호(기본 꺼짐), /가호주인공(기본 켬)', von.init === false && von.cmd === '가호'
     && vself.init === true && vself.cmd === '가호주인공', '');
+  // 기본 꺼짐 — 아무 흔적 없이 굴러가다, 켜는 턴에 즉시 점화
+  const freshOn = () => { const f = fresh(); f.vars.boon_on = true; return f; };
+  let d = fresh();
+  ({ st: d } = turn(d, {}, 890));
+  const pd = engine.sendPhase(S, d, { rng: seededRng('h', 891, 's') });
+  ok('기본 꺼짐 — 점화 없음 · 지시문 없음 · 배너 —', d.vars.boon_i === 0
+    && !pd.promptBlock.includes('성신의 가호') && engine.makeLookup(S, d.vars)('boon_quirk') === '—', '');
+  d = pd.state; d.vars.boon_on = true;                                 // /가호 1
+  ({ st: d } = turn(d, {}, 892));
+  ok('켜는 턴에 즉시 점화 (시계 -7 그대로)', d.vars.boon_i >= 1
+    && d.meta.pendingNotifies.some((n) => n.includes('성신의 가호')), String(d.vars.boon_i));
 
   // 첫 턴 점화 — boon_prev init -7이라 elapsed 0에서 즉시 (가호는 세계 상수)
-  let t = fresh();
+  let t = freshOn();
   ({ st: t } = turn(t, {}, 900));
   ok(`첫 턴 점화 — 짝 배정 (1~${BOON_N})`, t.vars.boon_i >= 1 && t.vars.boon_i <= BOON_N, String(t.vars.boon_i));
   ok('점화 통지 대기', t.meta.pendingNotifies.some((n) => n.includes('성신의 가호')), '');
@@ -2374,7 +2387,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   ok(`로테이션 후 항상 1~${BOON_N} (랩어라운드 정합)`, inRange, String(prev));
 
   // ── 수위 게이트 — alter 꺼진 판에서는 수위 항목(6~7)이 절대 안 뽑힌다 ──
-  let a = fresh(); a.vars.alter_on = false;
+  let a = freshOn(); a.vars.alter_on = false;
   let alterLeak = false;
   ({ st: a } = turn(a, {}, 960));
   for (let w = 0; w < 20; w++) {
@@ -2383,7 +2396,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   }
   ok(`수위 꺼짐 — 20주 로테이션 전부 기본 항목(1~${BOON_BASE_N})`, !alterLeak, String(a.vars.boon_i));
   // 수위 항목 활성 중 /수위 0 — 지시문·표시 즉시 잠금, 다음 로테이션은 기본 폭으로 복귀
-  let b = fresh();
+  let b = freshOn();
   ({ st: b } = turn(b, {}, 985));
   b.vars.boon_i = BOON_N;              // 마지막 수위 항목을 강제 활성
   b.vars.alter_on = false;
@@ -2404,7 +2417,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   ok('7일째 — 갱신', t.vars.boon_i !== before, '');
 
   // 끄면 — 지시문·로테이션 정지, 상태창은 — 표기
-  let u = fresh();
+  let u = freshOn();
   ({ st: u } = turn(u, {}, 940));
   u.vars.boon_on = false;
   // 직전 턴 점화 통지([성신의 가호] 주간 갱신)는 이번 전송에 실리는 게 정상 — 지시문만 재라
@@ -2421,7 +2434,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   // ── 버튼 토글 (유저 요청) — 막간처럼 상태창 범례에서, oneshot 반전 ──
   const act = S.actions.find((x) => x.id === 'boon_toggle');
   ok('가호 토글 액션 존재 (oneshot)', !!act && (act.mode || 'oneshot') === 'oneshot', '');
-  let c = fresh();
+  let c = freshOn();
   ({ st: c } = turn(c, {}, 990));            // 점화된 상태에서 시작
   ok('전제 — 켜져 있음', c.vars.boon_on === true, '');
   c = engine.toggleAction(S, c, 'boon_toggle').state;
@@ -2438,7 +2451,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
 
   // ── 잔향 지우기 (유저 우려: 끄거나 바뀌어도 기록의 옛 말투가 이어진다) ──
   const FADE = '[성신의 가호 — 교체됨]';
-  let z = fresh();
+  let z = freshOn();
   ({ st: z } = turn(z, {}, 1000));                                   // 첫 점화
   const z0 = engine.sendPhase(S, z, { rng: seededRng('h', 1001, 's') });
   ok('첫 점화 — 잔향 지시문 없음 (직전이 없다)', !z0.promptBlock.includes(FADE), '');
@@ -2458,7 +2471,7 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   }
   ok('잔향은 몇 턴 뒤 스스로 꺼진다 (4턴 안에 소멸)', seen < 4 && z.vars.boon_fade === 0, String(seen));
   // 버튼으로 끄기 — 같은 턴부터 잔향 + 3턴 유지
-  let y = fresh();
+  let y = freshOn();
   ({ st: y } = turn(y, {}, 1020));
   const yi = y.vars.boon_i;
   y = engine.toggleAction(S, y, 'boon_toggle').state;

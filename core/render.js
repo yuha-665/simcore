@@ -1,7 +1,7 @@
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
+const { makeLookup, renderTemplate, quoteSafe, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
@@ -380,7 +380,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // CSS가 각자 자기 껍데기 안으로 갇혀서 서로를 덮어쓰지 않는다.
     const pick = pickTemplate(ui, lookup);
     if (pick) {
-      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras);
+      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras, quoteSafe);
       inner = pick.id ? `<div class="sim-tpl-${esc(pick.id)}">${html}</div>` : html;
     }
   } else {
@@ -803,7 +803,7 @@ function renderPanelTemplate(schema, state, tpl) {
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
-  return styleTag + renderTemplate(parts.html, lookup, extras);
+  return styleTag + renderTemplate(parts.html, lookup, extras, quoteSafe);
 }
 
 function evalSafe(src, lookup) {

@@ -1227,7 +1227,9 @@ function actionAvailability(schema, state, action) {
  * @param extras 수식이 아니라 미리 만들어 둔 조각 (예: {commands}).
  *   변수보다 **먼저** 본다 — 같은 이름의 변수가 있으면 검증이 경고로 잡는다.
  */
-function renderTemplate(tpl, lookup, extras = null) {
+// plain: 일반 값(목록 칩·extras 제외)의 마지막 변환 — 상태창 HTML 렌더는 여기로 큰따옴표를
+// &quot;로 바꾼다 (v1.6.1). 프롬프트 렌더(지시문·상태 블록)는 기본 항등이라 모델은 원문을 본다.
+function renderTemplate(tpl, lookup, extras = null, plain = (s) => s) {
   return tpl.replace(/\{([^{}]+)\}/g, (whole, inner, idx, all) => {
     // 리수 CBS({{...}})는 통째로 남긴다 (v0.76). 우리 정규식은 안쪽 한 겹을 무는데,
     // CBS 이름이 우리 변수·시간 노출 이름과 겹치면 값이 치환돼 CBS가 깨진다.
@@ -1251,13 +1253,20 @@ function renderTemplate(tpl, lookup, extras = null) {
           ? arr.map((x) => `<span class="sim-tag">${escapeHtml(String(x))}</span>`).join('')
           : '<span class="sim-empty">없음</span>';
       }
-      if (Array.isArray(v)) return v.length ? v.join(', ') : '(없음)';
-      return String(v);
+      if (Array.isArray(v)) return plain(v.length ? v.join(', ') : '(없음)');
+      return plain(String(v));
     } catch {
       return `{${inner}}`;
     }
   });
 }
+
+/**
+ * 상태창 HTML용 일반 값 변환 — 큰따옴표만 &quot;로 (v1.6.1 실사고: 가호 문구 "그대"를
+ * 유저의 대사 강조 정규식이 대사 박스로 감쌌다). 화면 글자는 그대로, 정규식만 못 문다.
+ * <>&는 건드리지 않는다 — 제작자가 텍스트 값에 HTML을 심어 쓰는 경우를 깨지 않기 위해.
+ */
+const quoteSafe = (s) => s.replace(/"/g, '&quot;');
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1781,7 +1790,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired,
-  renderTemplate, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, quoteSafe, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };

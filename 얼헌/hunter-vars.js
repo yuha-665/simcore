@@ -312,6 +312,13 @@ const S = {
     // 못 자르게 여유를 둔다 (effects가 순차라 +rand 직후 잠깐 8을 넘는다).
     { id: 'boon_i', label: '(내부) 가호 짝 번호', type: 'int', init: 0, min: 0, max: BOON_N * 2,
       desc: '시스템 전용 — 이번 주 축복·대가 짝 인덱스 (0=미점화). 직접 바꾸지 마라.' },
+    // 잔향 지우기 (유저 우려 2026-09-02: "중간에 끄면 컨텍 오염") — 현상이 바뀌거나 꺼진 뒤
+    // 3턴 동안 "직전 현상은 끝났다" 지시문을 싣는다. 지시문은 사라져도 채팅 기록엔 사흘치
+    // "…냥"이 남아 있고 모델은 기록을 더 세게 따른다. 매주 갱신 때도 같은 문제라 같이 받는다.
+    { id: 'boon_prev_i', label: '(내부) 직전 가호 짝', type: 'int', init: 0, min: 0, max: BOON_N * 2,
+      desc: '시스템 전용 — 직전 주기의 짝 인덱스 (잔향 지시문용). 직접 바꾸지 마라.' },
+    { id: 'boon_fade', label: '(내부) 가호 잔향', type: 'int', init: 0, min: 0, max: 3,
+      desc: '시스템 전용 — 교체·끔 뒤 잔향 지시문이 남는 턴 수 (매턴 -1). 직접 바꾸지 마라.' },
     { id: 'zone_i', label: '(내부) 최근 출현 권역', type: 'int', init: 0, min: 0, max: 5,
       desc: '시스템이 굴린다 (0=없음). 직접 바꾸지 마라.' },
     { id: 'grade_i', label: '(내부) 최근 출현 등급', type: 'int', init: 0, min: 0, max: 6,
@@ -433,6 +440,8 @@ const S = {
     // 성신의 가호 — 짝 번호 → 텍스트 (꺼짐/미점화/수위 항목+alter 꺼짐은 —)
     { id: 'boon_quirk', label: '가호 현상',
       expr: `(boon_on and boon_i >= 1 and (boon_i <= ${BOON_BASE_N} or alter_on)) ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_i')}) : '—'` },
+    { id: 'boon_prev_txt', label: '직전 가호 현상',
+      expr: `boon_prev_i >= 1 ? (${idx1(BOON_PAIRS.map((p) => p[0]), 'boon_prev_i')}) : '—'` },
     { id: 'boon_perk', label: '가호 효과',
       expr: `(boon_on and boon_i >= 1 and (boon_i <= ${BOON_BASE_N} or alter_on)) ? (${idx1(BOON_PAIRS.map((p) => p[1]), 'boon_i')}) : '—'` },
   ],
@@ -452,6 +461,8 @@ const S = {
       { set: 'day_prev', expr: 'elapsed' },
       // 급여 시계 — 무소속인 동안엔 거울이 따라가고(주기 정지), 가입한 날부터 30일을 센다.
       { set: 'pay_prev', expr: "guild == '무소속' ? elapsed : pay_prev" },
+      // 가호 잔향 — 교체·끔이 3으로 세우고, 매턴 하나씩 꺼진다
+      { set: 'boon_fade', expr: 'max(boon_fade - 1, 0)' },
     ],
     events: [
       // ── 레벨업 — 원본 루아 enforceExpRule의 공식을 시스템이 직접 집행 ──
@@ -485,6 +496,9 @@ const S = {
         effects: [
           // 직전과 반드시 다른 짝 — +rand(1,N-1) 후 랩어라운드. 같은 짝 재추첨이면
           // "갱신됐는데 그대로네"가 되고, 그건 매너리즘 방지 장치의 자기모순이다.
+          // 잔향 — 직전 짝을 기억하고 3턴 지시문 (첫 점화는 prev 0이라 안 뜬다)
+          { set: 'boon_prev_i', expr: 'boon_i' },
+          { set: 'boon_fade', expr: 'boon_i > 0 ? 3 : 0' },
           // 뽑기 폭 N은 점화 시점의 수위 정책을 따른다 (alter 꺼짐 = 수위 항목 제외).
           { set: 'boon_i', expr: `boon_i == 0 ? rand(1, ${BOON_POOL_N}) : boon_i + rand(1, ${BOON_POOL_N} - 1)` },
           // 빼기 두 패스 — 수위 항목(6~7) 활성 중 /수위 0으로 폭이 5로 줄면 한 번 빼기로는
@@ -758,7 +772,11 @@ const S = {
     // 누르면 ✅ 대기, 다음 전송의 액션 소비(1단계)가 반전시키므로 그 턴의 지시문·상태
     // 블록부터 새 정책이다. inject는 양방향을 한 문구로 커버한다.
     { id: 'boon_toggle', label: '🌠 가호 켬/끔', mode: 'oneshot',
-      effects: [{ set: 'boon_on', expr: 'boon_on ? false : true' }],
+      effects: [
+        { set: 'boon_prev_i', expr: 'boon_on ? boon_i : boon_prev_i' },   // 끄는 경우만 직전 짝 갱신
+        { set: 'boon_fade', expr: 'boon_on ? 3 : 0' },                     // 끄면 잔향 3, 켜면 0
+        { set: 'boon_on', expr: 'boon_on ? false : true' },
+      ],
       inject: '[성신의 가호] 가호 정책이 방금 전환되었다 — 상태 블록·지시문의 현재 상태를 따르라. '
         + '켜졌다면 성신의 장난이 돌아온 소동을, 꺼졌다면 세계가 문득 멀쩡해진 위화감을 짧게 그려라.' },
     // 전투 안무 (v1.6.0, 유저 결정 2026-09-02) — 라운드 입구는 이 버튼 하나. 안 누른 턴은 유저 구도
@@ -879,6 +897,11 @@ const S = {
         + '개그다. 주인공은 현상을 거스를 수 있으나 그 장면에서는 효과도 사라진다. 상태 블록의 수치는 '
         + '불변이다: 효과는 실전 발휘·서사로만 연출하라. 세계 전체가 이 현상을 알고, 매주 헌터넷의 '
         + '단골 소재다.' },
+    // 잔향 지우기 — 교체·끔 뒤 3턴. 기록에 남은 옛 말투를 "지난 주기의 흔적"으로 못 박는다.
+    { id: 'boon_fade_dir', when: 'boon_fade > 0 and boon_prev_i >= 1',
+      text: '[성신의 가호 — 교체됨] 직전 현상 "{boon_prev_txt}"은(는) 끝났다. 앞선 대화에 남아 있는 '
+        + '그 말투·행동은 지난 주기의 흔적이니 더 이어 쓰지 마라 — 인물들은 이미 원래대로(또는 새 '
+        + '현상대로) 돌아와 있고, 누군가 습관처럼 옛 말투가 튀어나오면 스스로 민망해하는 정도다.' },
     { id: 'boon_npc', when: `boon_on and boon_i >= 1 and not boon_self and (boon_i <= ${BOON_BASE_N} or alter_on)`,
       text: '[성신의 가호 — 공인 주간 현상] 성신이 매주 전 세계 각성자에게 장난 같은 현상을 내린다. '
         + '이번 주 현상: "{boon_quirk}" — 딸린 효과: "{boon_perk}". 주인공을 제외한 모든 헌터에게 적용 '
@@ -2412,6 +2435,41 @@ console.log('\n━━ 성신의 가호 — 컨텍스트 층 1호 (이벤트=점�
   const on1 = engine.sendPhase(S, c2, { rng: seededRng('h', 992, 's') });
   ok('버튼 2회 — 도로 켬 + 지시문 복귀 (boon_i 유지라 같은 주 재개)', on1.state.vars.boon_on === true
     && on1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]'), '');
+
+  // ── 잔향 지우기 (유저 우려: 끄거나 바뀌어도 기록의 옛 말투가 이어진다) ──
+  const FADE = '[성신의 가호 — 교체됨]';
+  let z = fresh();
+  ({ st: z } = turn(z, {}, 1000));                                   // 첫 점화
+  const z0 = engine.sendPhase(S, z, { rng: seededRng('h', 1001, 's') });
+  ok('첫 점화 — 잔향 지시문 없음 (직전이 없다)', !z0.promptBlock.includes(FADE), '');
+  z = z0.state;
+  const beforeI = z.vars.boon_i;
+  ({ st: z } = turn(z, { skip_day: 7 }, 1002));                      // 주간 교체
+  const z1 = engine.sendPhase(S, z, { rng: seededRng('h', 1003, 's') });
+  const prevTxt = engine.makeLookup(S, z1.state.vars)('boon_prev_txt');
+  ok('교체 직후 — 잔향 지시문 + 직전 현상 이름', z1.promptBlock.includes(FADE)
+    && z1.promptBlock.includes(`"${prevTxt}"`) && z.vars.boon_prev_i === beforeI, prevTxt);
+  ok('새 현상 지시문과 공존', z1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]'), '');
+  z = z1.state;
+  let seen = 0;
+  for (let i = 0; i < 4; i++) {
+    ({ st: z } = turn(z, {}, 1004 + i));
+    if (engine.sendPhase(S, z, { rng: seededRng('h', 1010 + i, 's') }).promptBlock.includes(FADE)) seen++;
+  }
+  ok('잔향은 몇 턴 뒤 스스로 꺼진다 (4턴 안에 소멸)', seen < 4 && z.vars.boon_fade === 0, String(seen));
+  // 버튼으로 끄기 — 같은 턴부터 잔향 + 3턴 유지
+  let y = fresh();
+  ({ st: y } = turn(y, {}, 1020));
+  const yi = y.vars.boon_i;
+  y = engine.toggleAction(S, y, 'boon_toggle').state;
+  const y1 = engine.sendPhase(S, y, { rng: seededRng('h', 1021, 's') });
+  ok('버튼 끔 — 같은 턴에 잔향 지시문 (현상 지시문은 없음)', y1.promptBlock.includes(FADE)
+    && !y1.promptBlock.includes('[성신의 가호 — 공인 주간 현상]') && y1.state.vars.boon_prev_i === yi, '');
+  ok('끌 때 잔향 3', y1.state.vars.boon_fade === 3, String(y1.state.vars.boon_fade));
+  // 도로 켜면 잔향 즉시 해제 (새 현상 통지가 있으니 잔향은 불필요)
+  let y2 = engine.toggleAction(S, y1.state, 'boon_toggle').state;
+  const y3 = engine.sendPhase(S, y2, { rng: seededRng('h', 1022, 's') });
+  ok('도로 켬 — 잔향 0', y3.state.vars.boon_fade === 0 && !y3.promptBlock.includes(FADE), '');
 }
 
 console.log('\n━━ 상태창 자리표시자 ━━');

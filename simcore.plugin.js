@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.1
-//@display-name SimCore (시뮬 엔진) v1.7.1 목록 기한 환산
+//@version 1.7.2
+//@display-name SimCore (시뮬 엔진) v1.7.2 게시판 사생활·삭제
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.2 ────────────────────────────────────────────────
+// **게시판이 주인공을 생중계하던 것** (실기 제보: "스토커 붙은 것마냥 자유게시판에 내 행동이
+// 라이브로 중계된다 — 파티끼리만 들어간 게이트 안 사냥도, 협회 마나 스캔 중 나눈 대화도").
+// 뿌리는 자율형 지시문의 "서사와 닿는 글은 … **최대 1개**" — 상한으로 쓴 문장을 모델이
+// **상시 허가**로 읽어 매턴 하나씩 썼고, 그게 쌓여 실시간 중계가 됐다 (허가는 초대가 된다).
+// - 원칙을 뒤집었다: 주인공 글감은 **금지가 기본**, 불특정 다수의 공개 목격만 예외(최대 1개).
+//   못 쓸 자리를 이름으로 못박는다 — 일행끼리만 있던 자리·닫힌 공간(게이트 내부)·1:1 대화·
+//   검사/진료/상담 같은 절차상 비공개·사적 공간. "실시간 중계면 그건 틀린 것"까지 명시.
+// - 출처 규칙 공통 줄 추가: 글쓴이가 **어떻게 알았는지** 스스로 답할 수 없으면 쓰지 마라.
+// - 치우는 수단 신설: 글 삭제(묘비 — 번호·시각은 남기고 "삭제된 게시글입니다") · 댓글 개별
+//   삭제 · 게시판 비우기. 둘 다 패널에서 두 번 누르기 확인(host alert 금지 규칙).
+//   지운 글은 digest·mainLine에서 빠져 보조가 다시 물지 않는다 — 오염 제거가 이 기능의 목적.
+//   ⚠ 비우기는 번호(seq)를 안 되돌린다 — 1로 되돌리면 옛 글과 겹쳐 댓글이 엉뚱한 글에 붙는다.
+// - 테스트 test-boardclean.js 23단언.
 //
 // ── v1.7.1 ────────────────────────────────────────────────
 // **목록 기한 환산** — `@D`(절대 경과값)는 저장에는 맞지만 읽는 쪽에는 뜻이 없다. 유저는
@@ -5813,7 +5828,7 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
   let replied = 0;
   for (const rep of delta.replies) {
     const post = board.posts.find((p) => p.id === rep.id);
-    if (!post) continue;
+    if (!post || post.del) continue;   // 묘비엔 댓글이 안 붙는다 (v1.7.2)
     const room = CAPS.RE_PER_POST - post.re.length;
     if (room <= 0) continue;
     post.re.push(...rep.re.slice(0, room));
@@ -5868,16 +5883,52 @@ function applyUserPost(schema, state, { title, author, body, cat }) {
 function applyUserComment(state, postId, { author, body }) {
   const board = ensureBoard(state);
   const post = board.posts.find((p) => p.id === postId);
-  if (!post || post.re.length >= CAPS.RE_PER_POST) return false;
+  if (!post || post.del || post.re.length >= CAPS.RE_PER_POST) return false;
   const rep = sanitizeReply({ author, body });
   if (!rep) return false;
   post.re.push(rep);
   return true;
 }
 
+/**
+ * 글 삭제 (v1.7.2) — 지우되 자리는 남긴다. 번호·시각은 그대로 두고 내용만 비워
+ * "삭제된 게시글입니다"로 보이게 한다 (커뮤니티 관례 + 번호가 밀리면 댓글 참조가 깨진다).
+ * 딸린 댓글도 함께 묘비로 — 원글이 지워졌는데 댓글만 남는 게시판은 없다.
+ * 지워진 글은 digest에서 빠져 보조가 다시 물지 않는다 — 오염된 글을 지우는 게 이 기능의 목적.
+ */
+function deletePost(state, id) {
+  const post = (state?.board?.posts || []).find((p) => p.id === Number(id));
+  if (!post || post.del) return false;
+  post.del = true;
+  post.title = ''; post.body = ''; post.author = '';
+  post.re = (post.re || []).map((r) => ({ ...r, del: true, author: '', body: '' }));
+  return true;
+}
+
+/** 댓글 하나만 삭제 — 같은 규약(자리는 남는다) */
+function deleteReply(state, postId, idx) {
+  const post = (state?.board?.posts || []).find((p) => p.id === Number(postId));
+  const rep = post && !post.del ? (post.re || [])[Number(idx)] : null;
+  if (!rep || rep.del) return false;
+  rep.del = true; rep.author = ''; rep.body = '';
+  return true;
+}
+
+/**
+ * 게시판 비우기 (v1.7.2) — 글을 통째로 없앤다. 묘비도 안 남긴다 (그건 삭제의 몫).
+ * ⚠ 번호(seq)는 되돌리지 않는다 — 1로 되돌리면 지난 글과 번호가 겹쳐 댓글이 엉뚱한 글에 붙는다.
+ * 화제 기사(hot)는 별도 슬롯이라 건드리지 않는다 (제 주기로 갈린다).
+ */
+function resetBoard(state) {
+  const board = ensureBoard(state);
+  const n = board.posts.length;
+  board.posts = [];
+  return n;
+}
+
 /** 보조 프롬프트용 현황 요약 — 최근 8개, 본문은 앞머리만 */
 function digest(state, n = 8) {
-  const posts = state?.board?.posts || [];
+  const posts = (state?.board?.posts || []).filter((p) => !p.del);
   if (!posts.length) return '(게시판이 비어 있다)';
   return posts.slice(0, n).map((p) =>
     `#${p.id}${p.cat ? ` [${p.cat}]` : ''} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
@@ -5894,7 +5945,10 @@ function auxSpec(schema, state, makeLookup) {
     ? `- 게시판은 세계와 함께 굴러간다: "board" 필드로 새 글 ${cfg.postsMin}~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 매턴 내라.`
     : `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`;
   const diversityLine = autonomous
-    ? '- 새 글 대부분은 주인공 일행과 **무관한** 것으로: 익명 개개인의 일상·하소연·자랑, 다른 지역·다른 사건 소식 — 세계가 주인공 없이도 굴러감을 보여라. 이번 턴 서사와 닿는 글은 공개적으로 목격될 만한 일이 실제로 있었을 때만, **최대 1개**.'
+    ? '- 새 글은 **주인공 일행과 무관한 것이 원칙**이다: 익명 개개인의 일상·하소연·자랑, 다른 지역·다른 사건 소식 — 세계가 주인공 없이도 굴러감을 보여라.\n'
+      + '- ⚠ 주인공 일행이 한 일을 글감으로 삼지 마라. 예외는 단 하나 — **불특정 다수가 있는 공개 장소**에서 벌어져 지나가던 사람이 실제로 목격했을 사건뿐이고, 그때도 최대 1개다.\n'
+      + '  다음은 절대 글감이 될 수 없다: 일행끼리만 있던 자리, 닫힌 공간(던전·게이트 내부 등) 안의 일, 1:1 대화, 검사·진료·상담처럼 절차상 비공개인 자리, 사적인 공간. 목격자가 없으면 글도 없다.\n'
+      + '  실시간 중계처럼 매턴 주인공 소식이 올라오면 그건 틀린 것이다 — 커뮤니티는 주인공을 감시하지 않는다.'
     : null;
   const hotSpec = hotDue(cfg, state)
     ? [
@@ -5913,6 +5967,7 @@ function auxSpec(schema, state, makeLookup) {
     cfg.categories ? `- 새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
+    '- 글쓴이가 그 사실을 **어떻게 알았는지** 스스로 답할 수 없으면 그 글은 쓰지 마라 (현장에 있었나, 누구에게 들었나, 어디에 공개됐나).',
     '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
     ...hotSpec,
     `- board 형식: {"new":[{"title":"제목","author":"닉네임"${cfg.categories ? ',"cat":"칸"' : ''},"body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}`,
@@ -5947,7 +6002,7 @@ function userEcho(schema, state, kind, payload) {
 function mainLine(schema, state) {
   const cfg = boardConfig(schema);
   if (!cfg || !cfg.mainInject) return null;
-  const posts = state?.board?.posts || [];
+  const posts = (state?.board?.posts || []).filter((p) => !p.del);
   const hot = cfg.hot && state?.board?.hot?.title
     ? `${cfg.hot.label} 기사: "${cut(state.board.hot.title, 50)}" / ` : '';
   if (!posts.length && !hot) return null;
@@ -6008,6 +6063,7 @@ function parseInteraction(text, extractJsonObject) {
 
 module.exports = {
   CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat, hotDue,
+  deletePost, deleteReply, resetBoard,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
   digest, auxSpec, mainLine, userEcho, interactionPrompt, parseInteraction,
 };
@@ -26273,6 +26329,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let gameCalSel = null;    // 달력에서 선택한 날 dom (하단 상세·일정 등록 칸이 열리는 날)
   // 커뮤니티 보드 패널 (v0.95) — 목록/읽기/쓰기 3면 상태 머신
   let boardView = { mode: 'list', postId: null, cat: null };  // mode: 'list' | 'read' | 'write', cat: 카테고리 필터(null=전체)
+  let boardDelArm = null;    // 두 번 누르기 확인 — 삭제 무장된 글 id (v1.7.2)
+  let boardWipeArm = false;  // 두 번 누르기 확인 — 게시판 비우기
   let boardBusy = false;                            // 보드 전용 보조 호출 진행 중 (이중 클릭 방지)
   // 상점 패널 (v0.96) — 카테고리 탭 + 매입(판매) 탭
   let shopView = { shopId: null, cat: null, exchQty: '' };  // shopId: 다중 상점 대상(null=단수/첫) · cat: 카테고리 | '__sell' | '__exch'
@@ -27389,6 +27447,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         border:1px solid #22304f; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
       #sc-game .scb-re { border-top:1px dashed #2a3a5e; padding:6px 4px; font-size:12.5px; }
       #sc-game .scb-re .scb-re-a { color:#9db8e8; margin-right:6px; }
+      #sc-game .scb-del { color:#6b7789; font-style:italic; }
+      #sc-game .scb-re-x { color:#6b7789; cursor:pointer; opacity:.5; }
+      #sc-game .scb-re-x:hover { color:#c98a7a; opacity:1; }
       #sc-game .scb-input, #sc-game .scb-ta { width:100%; background:#0e1526; border:1px solid #2a3a5e;
         border-radius:8px; color:#e6ebf5; padding:7px 10px; font-size:13px; margin-bottom:6px;
         font-family:inherit; }
@@ -28114,21 +28175,49 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const bar = el('div', 'scb-toolbar');
       bar.appendChild(btn('← 목록', () => { boardView = { ...boardView, mode: 'list', postId: null }; renderGamePanel(); }));
       card.appendChild(bar);
-      card.appendChild(el('div', 'scb-view-title', post.cat ? `[${post.cat}] ${post.title}` : post.title));
-      card.appendChild(el('div', 'scb-view-info',
-        `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
-      card.appendChild(el('div', 'scb-body', post.body));
-      for (const r of post.re) {
-        const row = el('div', 'scb-re');
-        row.appendChild(el('span', 'scb-re-a', r.author));
-        row.appendChild(document.createTextNode(r.body));
-        card.appendChild(row);
+      if (post.del) {
+        // 묘비 (v1.7.2) — 번호·시각은 남기고 내용만 지운 자리
+        card.appendChild(el('div', 'scb-view-title scb-del', '삭제된 게시글입니다'));
+        card.appendChild(el('div', 'scb-view-info', post.time));
+      } else {
+        card.appendChild(el('div', 'scb-view-title', post.cat ? `[${post.cat}] ${post.title}` : post.title));
+        card.appendChild(el('div', 'scb-view-info',
+          `${post.author} · ${post.time} · 조회 ${post.views} · 추천 ${post.up}`));
+        card.appendChild(el('div', 'scb-body', post.body));
       }
+      post.re.forEach((r, ri) => {
+        const row = el('div', r.del ? 'scb-re scb-del' : 'scb-re');
+        if (r.del) { row.appendChild(document.createTextNode('삭제된 댓글입니다')); }
+        else {
+          row.appendChild(el('span', 'scb-re-a', r.author));
+          row.appendChild(document.createTextNode(r.body));
+          const x = el('span', 'scb-re-x', ' 🗑');
+          x.addEventListener('click', async () => {
+            if (!boardMod.deleteReply(session.current, post.id, ri)) return;
+            await boardSaveNow('보드 댓글 삭제');
+            gameNotice = '✓ 댓글을 지웠어요';
+            renderGamePanel();
+          });
+          row.appendChild(x);
+        }
+        card.appendChild(row);
+      });
       const ci = el('input', 'scb-input'); ci.placeholder = '댓글 (닉네임은 "닉: 내용"으로, 없으면 익명)';
       ci.maxLength = boardMod.CAPS.RE_BODY + boardMod.CAPS.AUTHOR + 2;
-      card.appendChild(ci);
+      if (!post.del) card.appendChild(ci);
       const bar2 = el('div', 'scb-toolbar');
-      bar2.appendChild(btn('댓글 달기', async () => {
+      if (!post.del) {
+        // 글 삭제 — 두 번 누르기로 확인 (패널 중 host alert 금지 규칙)
+        bar2.appendChild(btn(boardDelArm === post.id ? '🗑 한 번 더 누르면 삭제' : '🗑 글 삭제', async () => {
+          if (boardDelArm !== post.id) { boardDelArm = post.id; renderGamePanel(); return; }
+          boardDelArm = null;
+          boardMod.deletePost(session.current, post.id);
+          await boardSaveNow('보드 글 삭제');
+          gameNotice = '✓ 지웠어요 — 자리는 "삭제된 게시글입니다"로 남아요';
+          renderGamePanel();
+        }));
+      }
+      if (!post.del) bar2.appendChild(btn('댓글 달기', async () => {
         const raw = ci.value.trim();
         if (!raw) return;
         const m = raw.match(/^([^:]{1,20}):\s*(.+)$/s);
@@ -28146,9 +28235,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       card.appendChild(bar2);
     } else {
       // ── 목록 ──
+      boardDelArm = null;   // 목록으로 오면 삭제 무장 해제
       const bar = el('div', 'scb-toolbar');
       bar.appendChild(btn('✍ 글쓰기', () => { boardView = { ...boardView, mode: 'write', postId: null }; renderGamePanel(); }));
       bar.appendChild(btn('🔄 새 소식', () => callBoardAux('refresh')));
+      // 비우기 (v1.7.2) — 오염된 게시판을 통째로 리셋. 두 번 누르기로 확인
+      if (board.posts.length) {
+        bar.appendChild(btn(boardWipeArm ? '🧹 한 번 더 누르면 비웁니다' : '🧹 비우기', async () => {
+          if (!boardWipeArm) { boardWipeArm = true; renderGamePanel(); return; }
+          boardWipeArm = false;
+          const n = boardMod.resetBoard(session.current);
+          await boardSaveNow('보드 비우기');
+          gameNotice = `✓ 글 ${n}개를 비웠어요`;
+          boardView = { ...boardView, mode: 'list', postId: null };
+          renderGamePanel();
+        }));
+      }
       card.appendChild(bar);
       // 카테고리 탭 (v0.98) — 전체 + 칸별 필터 (모집판 같은 "게시판 안의 게시판")
       if (cfg.categories) {

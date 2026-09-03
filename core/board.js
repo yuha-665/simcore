@@ -174,7 +174,7 @@ function applyDelta(schema, state, rawDelta, { rng } = {}) {
   let replied = 0;
   for (const rep of delta.replies) {
     const post = board.posts.find((p) => p.id === rep.id);
-    if (!post) continue;
+    if (!post || post.del) continue;   // 묘비엔 댓글이 안 붙는다 (v1.7.2)
     const room = CAPS.RE_PER_POST - post.re.length;
     if (room <= 0) continue;
     post.re.push(...rep.re.slice(0, room));
@@ -229,16 +229,52 @@ function applyUserPost(schema, state, { title, author, body, cat }) {
 function applyUserComment(state, postId, { author, body }) {
   const board = ensureBoard(state);
   const post = board.posts.find((p) => p.id === postId);
-  if (!post || post.re.length >= CAPS.RE_PER_POST) return false;
+  if (!post || post.del || post.re.length >= CAPS.RE_PER_POST) return false;
   const rep = sanitizeReply({ author, body });
   if (!rep) return false;
   post.re.push(rep);
   return true;
 }
 
+/**
+ * 글 삭제 (v1.7.2) — 지우되 자리는 남긴다. 번호·시각은 그대로 두고 내용만 비워
+ * "삭제된 게시글입니다"로 보이게 한다 (커뮤니티 관례 + 번호가 밀리면 댓글 참조가 깨진다).
+ * 딸린 댓글도 함께 묘비로 — 원글이 지워졌는데 댓글만 남는 게시판은 없다.
+ * 지워진 글은 digest에서 빠져 보조가 다시 물지 않는다 — 오염된 글을 지우는 게 이 기능의 목적.
+ */
+function deletePost(state, id) {
+  const post = (state?.board?.posts || []).find((p) => p.id === Number(id));
+  if (!post || post.del) return false;
+  post.del = true;
+  post.title = ''; post.body = ''; post.author = '';
+  post.re = (post.re || []).map((r) => ({ ...r, del: true, author: '', body: '' }));
+  return true;
+}
+
+/** 댓글 하나만 삭제 — 같은 규약(자리는 남는다) */
+function deleteReply(state, postId, idx) {
+  const post = (state?.board?.posts || []).find((p) => p.id === Number(postId));
+  const rep = post && !post.del ? (post.re || [])[Number(idx)] : null;
+  if (!rep || rep.del) return false;
+  rep.del = true; rep.author = ''; rep.body = '';
+  return true;
+}
+
+/**
+ * 게시판 비우기 (v1.7.2) — 글을 통째로 없앤다. 묘비도 안 남긴다 (그건 삭제의 몫).
+ * ⚠ 번호(seq)는 되돌리지 않는다 — 1로 되돌리면 지난 글과 번호가 겹쳐 댓글이 엉뚱한 글에 붙는다.
+ * 화제 기사(hot)는 별도 슬롯이라 건드리지 않는다 (제 주기로 갈린다).
+ */
+function resetBoard(state) {
+  const board = ensureBoard(state);
+  const n = board.posts.length;
+  board.posts = [];
+  return n;
+}
+
 /** 보조 프롬프트용 현황 요약 — 최근 8개, 본문은 앞머리만 */
 function digest(state, n = 8) {
-  const posts = state?.board?.posts || [];
+  const posts = (state?.board?.posts || []).filter((p) => !p.del);
   if (!posts.length) return '(게시판이 비어 있다)';
   return posts.slice(0, n).map((p) =>
     `#${p.id}${p.cat ? ` [${p.cat}]` : ''} "${p.title}" — ${p.author}, 추천${p.up}, 댓글${p.re.length}: ${cut(p.body, 60)}`).join('\n');
@@ -255,7 +291,10 @@ function auxSpec(schema, state, makeLookup) {
     ? `- 게시판은 세계와 함께 굴러간다: "board" 필드로 새 글 ${cfg.postsMin}~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 매턴 내라.`
     : `- 이번 턴 서사에 게시판이 반응할 만한 일이 있으면 "board" 필드로 새 글 0~${cfg.postsPerTurn}개("new")와 기존 글에 붙는 댓글("re")을 내라. 반응할 일이 없으면 board 필드를 아예 넣지 마라.`;
   const diversityLine = autonomous
-    ? '- 새 글 대부분은 주인공 일행과 **무관한** 것으로: 익명 개개인의 일상·하소연·자랑, 다른 지역·다른 사건 소식 — 세계가 주인공 없이도 굴러감을 보여라. 이번 턴 서사와 닿는 글은 공개적으로 목격될 만한 일이 실제로 있었을 때만, **최대 1개**.'
+    ? '- 새 글은 **주인공 일행과 무관한 것이 원칙**이다: 익명 개개인의 일상·하소연·자랑, 다른 지역·다른 사건 소식 — 세계가 주인공 없이도 굴러감을 보여라.\n'
+      + '- ⚠ 주인공 일행이 한 일을 글감으로 삼지 마라. 예외는 단 하나 — **불특정 다수가 있는 공개 장소**에서 벌어져 지나가던 사람이 실제로 목격했을 사건뿐이고, 그때도 최대 1개다.\n'
+      + '  다음은 절대 글감이 될 수 없다: 일행끼리만 있던 자리, 닫힌 공간(던전·게이트 내부 등) 안의 일, 1:1 대화, 검사·진료·상담처럼 절차상 비공개인 자리, 사적인 공간. 목격자가 없으면 글도 없다.\n'
+      + '  실시간 중계처럼 매턴 주인공 소식이 올라오면 그건 틀린 것이다 — 커뮤니티는 주인공을 감시하지 않는다.'
     : null;
   const hotSpec = hotDue(cfg, state)
     ? [
@@ -274,6 +313,7 @@ function auxSpec(schema, state, makeLookup) {
     cfg.categories ? `- 새 글마다 "cat"을 달아라 — 다음 중에서만: ${cfg.categories.join(' | ')}.` : null,
     cfg.guide ? `- ${cfg.guide}` : null,
     '- 글·댓글은 그 커뮤니티 말투 그대로. 게시판 사용자들은 주인공을 전지적으로 알지 못한다 — 목격담·소문·공개 정보 수준까지만.',
+    '- 글쓴이가 그 사실을 **어떻게 알았는지** 스스로 답할 수 없으면 그 글은 쓰지 마라 (현장에 있었나, 누구에게 들었나, 어디에 공개됐나).',
     '- 조회수·추천수는 시스템이 계산하니 쓰지 마라.',
     ...hotSpec,
     `- board 형식: {"new":[{"title":"제목","author":"닉네임"${cfg.categories ? ',"cat":"칸"' : ''},"body":"본문","re":[{"author":"닉","body":"댓글"}]}],"re":[{"id":글번호,"re":[{"author":"닉","body":"댓글"}]}]}`,
@@ -308,7 +348,7 @@ function userEcho(schema, state, kind, payload) {
 function mainLine(schema, state) {
   const cfg = boardConfig(schema);
   if (!cfg || !cfg.mainInject) return null;
-  const posts = state?.board?.posts || [];
+  const posts = (state?.board?.posts || []).filter((p) => !p.del);
   const hot = cfg.hot && state?.board?.hot?.title
     ? `${cfg.hot.label} 기사: "${cut(state.board.hot.title, 50)}" / ` : '';
   if (!posts.length && !hot) return null;
@@ -369,6 +409,7 @@ function parseInteraction(text, extractJsonObject) {
 
 module.exports = {
   CAPS, boardConfig, initBoard, ensureBoard, boardOpen, stampNow, normCat, hotDue,
+  deletePost, deleteReply, resetBoard,
   sanitizeDelta, applyDelta, applyUserPost, applyUserComment,
   digest, auxSpec, mainLine, userEcho, interactionPrompt, parseInteraction,
 };

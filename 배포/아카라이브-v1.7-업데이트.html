@@ -1,0 +1,282 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.2 &nbsp;→&nbsp; v1.7.1</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  얼터헌터 개조판은 이 엔진 위에서 굴러갑니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 에셋 실종 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">이미지(에셋)가 안 나오던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v1.5.4</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "에셋이 안 나온다"는 제보의 범인을 잡았습니다. 모델이 이미지 태그를
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">&lt;img="이름&nbsp;&nbsp;&nbsp;복장&nbsp;&nbsp;&nbsp;감정"&gt;</span>
+  처럼 <b style="color:#c98a7a;">칸 사이를 세 칸으로</b> 써서 이름 대조가 통째로 죽고 있었는데 —
+  알고 보니 세 칸을 가르친 게 <b style="color:#c98a7a;">플러그인 주입문 자신</b>이었습니다. 공백 구분 팩의 포맷 안내가 세 칸짜리 본보기를 만들고 있었습니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  주입문을 고쳤고, 표시 단계에서도 태그 안 연속 공백을 한 칸으로 정리합니다 —
+  <b style="color:#dbe2ea;">이미 세 칸으로 저장된 과거 메시지도 다시 열면 이미지가 뜹니다.</b>
+  시스템 프롬프트를 고치실 필요 없이 플러그인만 다시 임포트하면 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+세계가 <b style="color:#e0a94a;">스스로 놀거리를 만듭니다</b> — 주인공 없이 굴러가는 장면, 조사할 게 있는 던전,
+한 방에 안 끝나는 전투, 올라갈 데가 있는 길드.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+큰 덩어리는 다섯 — <b style="color:#dbe2ea;">막간</b>(v1.5.0), <b style="color:#dbe2ea;">전투 안무</b>(v1.6.0),
+<b style="color:#dbe2ea;">던전 탐사</b> · <b style="color:#dbe2ea;">길드 시스템</b> · <b style="color:#dbe2ea;">성신의 가호</b>(개조판).
+상점 엔진 확장과 굵직한 픽스가 그 뒤를 따릅니다.
+</p>
+
+<!-- ─────────── ① 막간 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🎬 막간 — 주인공 없이 세계가 움직이는 장면</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.5.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  조연들끼리의 뒷이야기나 흑막의 움직임을 보고 싶어도, <b style="color:#c98a7a;">페르소나가 있으면 모델이 주인공을 억지로 끌고 나옵니다.</b>
+  그동안은 작가노트에 "주인공 등장시키지 마"를 매번 손으로 적는 수밖에 없었습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  이제 상태창의 <b style="color:#e0a94a;">🎬 막간 버튼</b> 하나면 됩니다. 켜 둔 동안 —
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  · 프롬프트에서 <b style="color:#dbe2ea;">페르소나 원문을 걷어내고</b><br>
+  · "주인공의 대사·행동·시점을 쓰지 마라"는 연출 지시를 생성 직전 자리에 싣고<br>
+  · 유저 입력은 주인공의 말이 아니라 <b style="color:#dbe2ea;">"무엇을 비출지" 정하는 카메라 지시</b>로 바뀝니다
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  다시 누르면 원래대로. 제작자는 스키마 액션에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">offstage: true</span> 한 줄이면 자기 봇에도 달 수 있습니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 전투 안무 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">⚔ 전투 안무 — 한 응답에 끝나지 않는 싸움</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.6.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  판정을 굴려도 <b style="color:#c98a7a;">모델이 그 한 응답 안에서 전투를 끝내 버리는</b> 문제가 있었습니다.
+  주사위는 굴렀는데 결과가 "그래서 이겼다"로 흡수돼 버리니, 판정이 장식이 됩니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  이제 판정 등급이 <b style="color:#e0a94a;">상대 게이지에 누적</b>됩니다. ⚔ 버튼으로 한 라운드씩 누르고,
+  결착은 게이지가 냅니다 — 모델이 임의로 끝낼 수 있는 것이 아니게 됩니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  교전 중에는 상태창에 진행 칩이 뜨고, 도망(🏃)으로 이탈할 수 있습니다.
+  제작자는 판정에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">fight</span> 한 줄을 붙이면 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ③ 던전 탐사 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 개조판</span>
+    <span style="font-size:19px;font-weight:600;">🗺 던전 탐사 — "전투한다, 더 들어간다"의 종말</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  게이트 안에서 할 수 있는 게 전투랑 전진뿐이라 서사가 금방 마르던 문제.
+  이제 상태창에 <b style="color:#e0a94a;">EXPLORATION 섹션</b>이 생기고, 던전이 조사할 거리가 있는 공간이 됩니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">탐사도        62% · 보스 방 발견
+현재 구역     수맥이 흐르는 종유굴
+조사 포인트   무너진 제단 · 벽의 발톱자국 · 미지근한 물웅덩이</pre>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  · 매 응답 장면에 <b style="color:#dbe2ea;">조사 가능한 요소</b>가 깔리고, 조사하면 수확도 꽝도 정직하게 나옵니다<br>
+  · 탐사 이벤트 4종 — <b style="color:#dbe2ea;">보물상자</b>(미믹일 수도) · <b style="color:#dbe2ea;">채집</b>(캐는 동안 소음) · 탐사도 30%+부터 <b style="color:#dbe2ea;">숨겨진 공간</b> · 50%+부터 <b style="color:#dbe2ea;">앞선 공략대의 흔적</b><br>
+  · 탐사도 <b style="color:#dbe2ea;">85%에서 보스 방 발견</b> — 들어갈 타이밍은 유저가 정합니다<br>
+  · 드랍 기준표 내장 — 마정석은 처치의 6할, 장비는 1할 이하, 상자 내용물은 게이트 등급이 상한 (E급 상자에서 유니크 안 나옵니다)
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  게이트를 나가면 자동 리셋 — 다음 던전은 0%부터 새로 시작합니다.
+  </p>
+</div>
+
+<!-- ─────────── ④ 성신의 가호 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 개조판</span>
+    <span style="font-size:19px;font-weight:600;">🌠 성신의 가호 — 매주 뒤집히는 세계 현상</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  매주 성신이 전 세계 각성자에게 <b style="color:#e0a94a;">장난 같은 현상</b>을 내립니다.
+  현상을 수행해야만 딸린 효과가 붙는 구조 — NPC들은 진지한 얼굴로 충실히 수행 중이고, 그 대비가 개그입니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">말끝마다 "…냥"           → 모두가 조금 귀여워짐, 적의가 눅음
+스킬은 중2병 영창 필수    → 영창이 멋질수록 위력 상승 (서사가 채점)
+모든 결정이 가챠로        → 천장 보정 — 꽝 연속이면 다음 뽑기 확정 대박
+메스가키 중계 음성        → 얄밉지만 정확함 — 훈수가 약점·함정을 짚어줌</pre>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  총 <b style="color:#dbe2ea;">11종</b> (수위 현상 3종은 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">/수위</span>를 꺼두면 아예 안 뽑힙니다).
+  7일마다 자동 갱신되고 <b style="color:#dbe2ea;">직전 주와 반드시 다른 현상</b>이 옵니다.
+  주인공도 걸리는 게 기본이지만 거스를 수 있고 — 거스른 장면에선 효과도 사라집니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">기본은 꺼져 있습니다</b> — 원작에 없는 개그 장치라 원하는 분만 켜세요.
+  상태창 <b style="color:#dbe2ea;">🌠 버튼</b>이나
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">/가호 1</span>로 켜면 그 턴부터 바로 시작하고,
+  상단 🌠 배너에서 이번 주 현상을 봅니다. 끄면 3턴 동안 "옛 말투는 지난 주 흔적"이라는 잔향 정리가 붙어 세계가 깔끔하게 원래대로 돌아옵니다.
+  주인공만 빼고 싶으면 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">/가호주인공 0</span>.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 길드 시스템 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 개조판</span>
+    <span style="font-size:19px;font-weight:600;">🏛 길드 시스템 — 가입한 다음이 생겼습니다</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  전에는 길드에 <b style="color:#c98a7a;">가입까지만 있고 그 안에서 올라갈 데가 없었습니다.</b>
+  이제 직급과 공헌도가 붙습니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">준회원   잡일·심부름, 시설은 선배 눈치         →  공헌 100에서 심사
+정회원   정식 파티 편성, 마정석 시세 우대       →  공헌 300
+정예     지명 의뢰·레이드 우선권, 후배가 붙음   →  공헌 700
+간부     운영 회의 자리, 길드 마찰 수습 책임</pre>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  길드 일을 마치면 공헌도가 쌓이고(심부름 5~15, 합동 사냥 20~40, 레이드 50+),
+  문턱에 닿으면 <b style="color:#dbe2ea;">승진 심사</b>가 열립니다 — 면접·시험 임무·투표 중 하나로.
+  라이선스 승급과 같은 방식이라 <b style="color:#dbe2ea;">심사 장면을 치러야 직급이 오릅니다</b> (즉석 승진 없음).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  상태창에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">청염 길드 · 준회원 (공헌 60/100)</span>으로 보이고,
+  탈퇴·이적하면 준회원부터 다시 시작합니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑥ 세계가 성장에 반응 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 개조판</span>
+    <span style="font-size:19px;font-weight:600;">📈 세계가 성장에 반응합니다 — 길드·협회·명성 이벤트</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  전에는 명성 20, D급 위로는 세계가 반응할 줄 몰랐고, <b style="color:#c98a7a;">길드에 가입하면 오히려 이벤트가 안 늘었습니다</b> (월급뿐).
+  이제 크는 만큼 세계가 달라집니다.
+  </p>
+<pre style="background:#0d1117;border-radius:4px;padding:13px 16px;margin:0 0 14px;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.7;color:#a9b4c2;">명성 10~15   헌터넷 화제 · 스카웃 제안
+길드 가입    길드 일감(합동 사냥·신입 교육) · 라이벌 길드와 마찰
+측정치 초과  협회 승급 심사 안내가 자동으로
+명성 35~40   길드들의 영입 전쟁(무소속 한정) · 방송·팬·직찍
+A급 도달     협회 특무반 — 기밀 브리핑, 재해 대응 자문</pre>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  임무 난이도도 등급에 맞춰 옵니다 — 의뢰 보드가 <b style="color:#dbe2ea;">E급에게 A급 토벌을 던지지 않고</b>,
+  A급이 된 뒤에는 심부름만 오지 않습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑦ 상점 엔진 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🛠 제작자용</span>
+    <span style="font-size:19px;font-weight:600;">🏪 상점 엔진 확장 — 다중 상점 · 화폐 단위</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.3.0 · v1.4.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  상점이 <b style="color:#e0a94a;">봇 하나에 여러 개</b> 열립니다 — 잡화점·대장간·암시장을 따로 두고,
+  상점마다 지갑·재고·열리는 조건(<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">when</span>)이 독립입니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  화폐 <b style="color:#dbe2ea;">표기 단위 사다리</b>도 생겼습니다 — 내부는 코퍼 하나로 계산하고,
+  화면에는 "3골드 2실버 40코퍼"로 보여 줍니다. 환율 다른 화폐 여러 개를 오가는 환전도 짝만 선언하면 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑧ 모듈 에셋 팩 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🛠 제작자용</span>
+    <span style="font-size:19px;font-weight:600;">🧩 모듈 에셋 팩 연동 안정화</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.2.2~1.2.5</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  이미지 모듈에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">⚙simcore-pack</span> 로어북 한 장을 실으면
+  그 모듈의 에셋 출력 지침이 봇에 자동 병합되는 기능 — 실기 테스트에서 나온 사고 네 건을 전부 잡았습니다
+  (대조 해제가 되살아나던 것, 설치 재로드에 팩이 증발하던 것 등).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  에셋 관리자에 <b style="color:#dbe2ea;">실황 진단줄</b>도 생겼습니다 — 지금 실행 중인 봇이 실제로 뭘 싣고 있는지
+  (삽입 주체 · 팩 수 · 주입문 글자수 ≈ 토큰) 추측 대신 실측으로 보여 줍니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑨ 하루 넘김 · 기한 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🛠 제작자용</span>
+    <span style="font-size:19px;font-weight:600;">🌙 하루 넘김 대리 정산 · 기한이 며칠 남았는지</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.0 · v1.7.1</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "🌙 하루를 마친다" 같은 버튼을 만들어 두면, <b style="color:#c98a7a;">유저가 안 눌러도 서사는 밤을 넘겨 버립니다</b> —
+  그러면 일일 정산이 통째로 빠집니다. 이제 서사가 하루를 넘겼다고 보고되면
+  <b style="color:#e0a94a;">시스템이 그 버튼의 효과를 대신 한 벌 돌립니다</b> (이중 진행은 빗장으로 막습니다).
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  그리고 목록의 기한이 <b style="color:#dbe2ea;">며칠 남았는지로 보입니다</b> —
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">고블린 소탕 @455</span>처럼 뜻 없는 숫자로 나가던 것이
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">고블린 소탕 (3일)</span>로. 상태창과 프롬프트 양쪽 다 바뀌어서
+  <b style="color:#dbe2ea;">모델도 이제 마감이 코앞인 걸 압니다.</b>
+  </p>
+</div>
+
+<!-- ─────────── ⑩ 픽스 모음 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">그 밖의 수리</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">스토리 혼자 건너뛰던 것</b> (개조판) — 모델이 날짜·위치·소지금을 못 보는 채로 쓰고 있었습니다. 상태 블록을 프롬프트에 실어 고정하고, "한 응답 = 한 장면" 규칙을 심었습니다. 접수→측정→구인→입장이 한 턴에 뭉개지지 않습니다<br>
+  · <b style="color:#dbe2ea;">액션 버튼이 눌러도 1초 만에 사라져 보이던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.5.1</span> — 실제로는 눌려 있었는데 과거 메시지 임시 렌더가 표시를 지웠습니다<br>
+  · <b style="color:#dbe2ea;">에셋 자동 감지가 .webp를 이름에 섞던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.4.1</span> — 확장자 붙은 이름도 대조가 받아 줍니다<br>
+  · <b style="color:#dbe2ea;">감정 이미지가 첫 등장 인물에 안 붙던 것</b> (개조판) — "감정이 크게 움직이면"이라는 게이트 문구가 콜드 스타트를 막고 있었습니다<br>
+  · 에셋 관리자 비용 표기가 실황과 달라 보이던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.5.2</span> — 자·토큰 병기로 정리<br>
+  · 상태 변수는 있는데 모델용 상태 블록이 빈 스키마에 검증 경고 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.5.3</span> — 개조판 스토리 스킵의 뿌리가 이 빈칸이었습니다<br>
+  · <b style="color:#dbe2ea;">상태창 안 큰따옴표가 대사 박스로 변하던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.6.1</span> — 상태창 값에 든 따옴표를 봇의 대사 강조 정규식이 물어 레이아웃이 깨졌습니다<br>
+  · 좀비 템플릿의 하루가 8시간이던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.0</span> — 분 단위 상한이 밤넘김을 깎고 있었습니다
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.7.1</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 얼터헌터 개조판</b> — 새 번들 파일을 받아 세이브 페이지의 [번들 적용]으로 교체하세요.
+  던전 탐사·길드 시스템·성신의 가호·전투 안무 배선은 번들을 갈아야 들어옵니다.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 스샷과 함께 댓글 남겨 주세요 — 실기 제보가 이번 픽스 대부분의 출처였습니다.
+  </p>
+</div>
+
+</div>

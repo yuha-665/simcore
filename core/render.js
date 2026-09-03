@@ -1,7 +1,7 @@
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, quoteSafe, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
+const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
@@ -285,7 +285,7 @@ function scenarioChipHtml(schema, vars) {
  * 출처는 액션·판정·이벤트·랜덤·보조 AI만 — onTurn 틱·시간 소비는 매 턴 있는 배경이다.
  * statusUI.highlights: 'off' 로 끌 수 있다.
  */
-function highlightCards(schema, changeLog, varById) {
+function highlightCards(schema, changeLog, varById, dueNow = null) {
   if (schema.statusUI?.highlights === 'off') return '';
   if (!changeLog || !changeLog.length) return '';
   const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
@@ -331,8 +331,10 @@ function highlightCards(schema, changeLog, varById) {
       const added = ta.filter((x) => !fa.includes(x));
       const removed = fa.filter((x) => !ta.includes(x));
       if (!added.length && !removed.length) continue;
-      const bits = [...added.map((x) => `<span class="d-up">+${esc(String(x))}</span>`),
-        ...removed.map((x) => `<span class="d-down">−${esc(String(x))}</span>`)];
+      // 차집합은 저장된 원문끼리 낸 뒤, 글자만 환산해 보여준다 (v1.7.1)
+      const show = dueNow ? (x) => dueText(String(x), dueNow(id)) : String;
+      const bits = [...added.map((x) => `<span class="d-up">+${esc(show(x))}</span>`),
+        ...removed.map((x) => `<span class="d-down">−${esc(show(x))}</span>`)];
       varCards.push({ pri: 1, html: `<div class="sim-card">🎒 <b>${label}</b> ${bits.join(' ')}</div>` });
     } else if (typeof to === 'number' || typeof from === 'number') {
       const d = (Number(to) || 0) - (Number(from) || 0);
@@ -358,6 +360,7 @@ function highlightCards(schema, changeLog, varById) {
 function renderStatusHtml(schema, state, changeLog = null, actionStates = null, opts = {}) {
   const ui = schema.statusUI || {};
   const lookup = makeLookup(schema, state.vars);
+  const dueNow = dueClock(schema, state);   // 목록 기한 환산용 시계 (목록마다 1회 평가)
   // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.
   // 라디오/체크박스로 탭을 짤 때 id·name에 반드시 섞어야 메시지끼리 안 엉킨다.
   const uid = String(opts.uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
@@ -380,7 +383,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // CSS가 각자 자기 껍데기 안으로 갇혀서 서로를 덮어쓰지 않는다.
     const pick = pickTemplate(ui, lookup);
     if (pick) {
-      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras, quoteSafe);
+      const html = renderTemplate(extractTemplateParts(pick.template).html, lookup, extras, quoteSafe, dueNow);
       inner = pick.id ? `<div class="sim-tpl-${esc(pick.id)}">${html}</div>` : html;
     }
   } else {
@@ -399,8 +402,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         let valueHtml;
         if (def?.type === 'list' || Array.isArray(val)) {
           const items = Array.isArray(val) ? val : [];
+          // 기한 `@450`은 절대 경과값이라 칩에 그대로 뜨면 읽을 수 없다 → `(3일)`로 환산 (v1.7.1)
+          const now = dueNow(it.var);
           valueHtml = items.length
-            ? `<span class="sim-tags">${items.map((x) => `<span class="sim-tag">${esc(x)}</span>`).join('')}</span>`
+            ? `<span class="sim-tags">${items.map((x) => `<span class="sim-tag">${esc(dueText(x, now))}</span>`).join('')}</span>`
             : `<span class="sim-empty">비어 있음</span>`;
         } else if (def?.type === 'bool') {
           valueHtml = `<span class="sim-badge">${truthy(val) ? 'ON' : 'OFF'}</span>`;
@@ -507,10 +512,11 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
           const counted = (arr) => arr.reduce((m, x) => (m[x] = (m[x] || 0) + 1, m), {});
           const fc = counted(fromArr), tc = counted(toArr);
           const parts = [];
+          const shown = (k) => esc(dueText(String(k), dueNow(c.id)));
           for (const k of new Set([...fromArr, ...toArr])) {
             const d = (tc[k] || 0) - (fc[k] || 0);
-            if (d > 0) parts.push(`+${esc(k)}${d > 1 ? '×' + d : ''}`);
-            if (d < 0) parts.push(`-${esc(k)}${d < -1 ? '×' + -d : ''}`);
+            if (d > 0) parts.push(`+${shown(k)}${d > 1 ? '×' + d : ''}`);
+            if (d < 0) parts.push(`-${shown(k)}${d < -1 ? '×' + -d : ''}`);
           }
           diff = parts.join(', ') || '변화 없음';
         } else {
@@ -540,7 +546,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
   // 하이라이트 카드 (v0.86.4) — 접힌 상자 **바깥**, 상태창 맨 위. 이번 턴의 체감 나는
   // 변화(판정 성패·돈·소지품·스탯)를 게임 알림처럼 세운다. 실기 제보: 변화가 전부
   // 접힌 로그 속에 있어서 "플레이가 남긴 흔적"이 채팅에서 안 보였다.
-  const cards = highlightCards(schema, changeLog, varById);
+  const cards = highlightCards(schema, changeLog, varById, dueNow);
   const styleTag = opts.includeStyle ? `<style>${buildStatusCss(schema)}</style>` : '';
   // id에 uid를 섞는다 (규칙 #4) — 어댑터가 패널 조작 직후 이 손잡이로 상태창을 찾아
   // 제자리 갱신한다 (v0.85.4). 새니타이저 허용 속성이 id뿐이라 data-*는 못 쓴다.
@@ -803,7 +809,7 @@ function renderPanelTemplate(schema, state, tpl) {
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
-  return styleTag + renderTemplate(parts.html, lookup, extras, quoteSafe);
+  return styleTag + renderTemplate(parts.html, lookup, extras, quoteSafe, dueClock(schema, state));
 }
 
 function evalSafe(src, lookup) {

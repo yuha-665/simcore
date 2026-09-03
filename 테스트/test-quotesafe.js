@@ -51,7 +51,9 @@ ck('★ 지시문·상태 블록에는 &quot; 없음 (원문 따옴표)',
   && !send.promptBlock.includes('&quot;'), send.promptBlock.slice(0, 200));
 
 // ── 정적: 두 HTML 렌더 자리만 quoteSafe를 받는다 ──
-ck('render의 HTML 치환 두 자리에 quoteSafe', (src.match(/lookup, extras, quoteSafe\)/g) || []).length === 2, '');
+// 꼬리를 열어 둔다 — renderTemplate은 뒤로 인자가 더 붙는다 (v1.7.1의 dueNow). 지키려는 건
+// "HTML 렌더 두 자리만 quoteSafe를 받는다"는 것이지 인자 개수가 아니다.
+ck('render의 HTML 치환 두 자리에 quoteSafe', (src.match(/lookup, extras, quoteSafe[,)]/g) || []).length === 2, '');
 
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }

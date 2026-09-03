@@ -18,7 +18,7 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 |---|---|
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **20개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **72종, 3,700+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **73종, 3,780+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
@@ -122,6 +122,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 - **변수 `max`는 시스템 정산의 천장이고, AI 뇌절은 `allow`의 `maxGain`이 막는다.** 둘을 겸하게 하면 정산이 깎인다 —
   같은 사고를 두 번 냈다 (skip_day 캡 v1.5.5 / zombie `skip_min` max 480이 🌙의 1440분을 깎아 하루가 8시간이던 v1.7.0).
 - **자주 변하는 숫자는 목록 항목에 넣지 않는다.** 목록 끝자리 숫자는 안 변하는 값 전용.
+- **저장 표기와 읽는 표기는 다르다.** 목록 기한 `@450`은 "끝나는 시점"(절대 경과값)이라 저장에는 맞다 — 날짜를
+  며칠씩 건너뛰어도 저절로 맞으니까. 하지만 **읽는 쪽에는 아무 뜻이 없어** 화면·프롬프트에는 `(3일)`로 환산해 나간다
+  (v1.7.1, `dueText`). ⚠ **보조 AI 계약표만 원문 그대로** — 목록 remove가 저장 원문 완전일치라 환산 글자를 보여주면
+  지우기가 조용히 실패한다. 같은 값이라도 채널마다 읽는 주체가 다르다.
 - **금화 상한은 비대칭이다.** 지어낸 수입은 경제를 영구히 망가뜨리지만 손실은 min 0이 받쳐 준다.
   단 `maxGain`은 **밸브가 아니라 뇌절 백스톱**이다 — 경제를 상한으로 조절하려 들면 정산이 유령 잔금이 된다 (얼헌 수입 상한 10억).
 - **표기 단위 ≠ 화폐.** 골드/실버/코퍼는 돈 하나의 표기다 — 지갑·계산은 최소 단위 정수 하나, 표기만 `shop.units`로 쪼갠다.

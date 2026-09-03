@@ -713,18 +713,20 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
 
   // 3. 상태 블록 렌더
   const lookup = makeLookup(schema, state.vars);
+  // 목록 항목의 기한을 남은 일수로 환산해 내보낸다 (v1.7.1) — 모델은 '@455'로 며칠 남았는지 못 읽는다
+  const dueNow = dueClock(schema, state);
+  const rt = (t) => renderTemplate(t, lookup, null, undefined, dueNow);
   const ps = schema.promptState || {};
   const lines = [];
-  if (ps.template) lines.push(renderTemplate(ps.template, lookup));
+  if (ps.template) lines.push(rt(ps.template));
   const showEvents = ps.includeEvents !== false && notifies.length > 0;
   if (showEvents) {
     // 이벤트가 굴린 판정 결과([판정] 줄)는 통지로 실려 오지만 이벤트가 아니다 — 태그를 겹치지 않는다
     for (const n of notifies) lines.push(String(n).startsWith('[판정]') ? n : `[이벤트] ${n}`);
     // 충돌 해소 규칙은 이벤트가 실제로 있는 턴에만 붙인다 (없는 턴에 넣어봐야 토큰 낭비 + 헛된 편향)
     if (ps.eventPriority !== false) {
-      lines.push(renderTemplate(
-        typeof ps.eventPriority === 'string' && ps.eventPriority.trim()
-          ? ps.eventPriority : DEFAULT_EVENT_PRIORITY, lookup));
+      lines.push(rt(typeof ps.eventPriority === 'string' && ps.eventPriority.trim()
+        ? ps.eventPriority : DEFAULT_EVENT_PRIORITY));
     }
   }
   for (const inj of injects) lines.push(inj);
@@ -734,7 +736,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const hasCheckLine = injects.concat(showEvents ? notifies : []).some((s) => String(s).startsWith('[판정]'));
   if (hasCheckLine && ps.checkGuide !== false) {
     lines.push(typeof ps.checkGuide === 'string' && ps.checkGuide.trim()
-      ? renderTemplate(ps.checkGuide, lookup) : DEFAULT_CHECK_GUIDE);
+      ? rt(ps.checkGuide) : DEFAULT_CHECK_GUIDE);
   }
 
   // 3.5 상태 지시문: 조건을 만족하는 동안 매 턴 주입 (세션 0 중에는 제외)
@@ -743,7 +745,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     for (const d of schema.directives || []) {
       try {
         if (truthy(evaluate(d.when, lookup, null))) {
-          lines.push(renderTemplate(d.text, lookup));
+          lines.push(rt(d.text));
           activeDirectives.push(d.id);
         }
       } catch { /* 검증 단계에서 걸러지지만 방어 */ }
@@ -754,7 +756,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 전체 시나리오는 영영 안 실린다 — 은닉은 구조가 보장한다 (design-시나리오레이터 §3-1).
   // 지시문(3.5)과 같은 층·같은 제외 규칙 (세션 0 중에는 이야기 지시가 이르다).
   if (!isSetupPending(schema, state)) {
-    const scnBlock = scenarioInjectionText(schema, state.vars, (s) => renderTemplate(s, lookup));
+    const scnBlock = scenarioInjectionText(schema, state.vars, rt);
     if (scnBlock) lines.push(scnBlock);
   }
 
@@ -798,7 +800,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
     } else {
       const hold = typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD;
-      lines.push(renderTemplate(hold, lookup));
+      lines.push(rt(hold));
     }
   }
 
@@ -815,7 +817,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // (페르소나 칸 자체를 프롬프트에서 걷어내는 일은 어댑터 몫 — 엔진은 리수 DB를 모른다)
   if (offstageFired(schema, state) && ps.offstageGuide !== false) {
     lines.push(typeof ps.offstageGuide === 'string' && ps.offstageGuide.trim()
-      ? renderTemplate(ps.offstageGuide, lookup) : DEFAULT_OFFSTAGE);
+      ? rt(ps.offstageGuide) : DEFAULT_OFFSTAGE);
   }
 
   // 전송 단계에서 일어난 것(무장 액션 효과·시간 소비)도 "이미 반영됨"에 이어 붙인다 —
@@ -1275,12 +1277,64 @@ function actionAvailability(schema, state, action) {
 // ── 템플릿 & 보조 모델 프롬프트 ─────────────────────────────
 
 /**
+ * 이 목록의 expire 식이 지금 가리키는 값 — 항목의 `@D`와 같은 단위의 "현재".
+ * 규칙이 없거나 평가가 안 되면 null (기한을 남은 값으로 환산할 수 없다는 뜻).
+ */
+function listClockNow(schema, state, listId) {
+  const rule = (schema?.rules?.onTurn || []).find((r) => r && r.list === listId && r.expire);
+  if (!rule) return null;
+  try {
+    const v = Number(evaluate(rule.expire, makeLookup(schema, state.vars), null));
+    return isFinite(v) ? v : null;
+  } catch { return null; }
+}
+
+/** 한 번 그리는 동안 목록마다 식을 한 번만 굴린다 (상태창은 같은 목록을 여러 칸에 꽂는다) */
+function dueClock(schema, state) {
+  const cache = new Map();
+  return (id) => {
+    if (!cache.has(id)) cache.set(id, listClockNow(schema, state, id));
+    return cache.get(id);
+  };
+}
+
+// 낱말 끝까지 먹는다 — 제작자가 '바크 @3일'처럼 단위를 붙여 쓰면 숫자만 떼었을 때 '바크 일'이
+// 남는다 (party의 rosterName도 ' @'부터 끝까지 턴다). 기한을 **읽는** 규칙은 itemExpiry 그대로다
+const DUE_TAG = /@[+-]?\d+(?:\.\d+)?\S*/g;
+
+/**
+ * 화면·프롬프트에 나가는 항목 글자 — 기한 `@450`을 남은 일수 `(3일)`로 환산한다 (v1.7.1).
+ *
+ * `@D`는 "끝나는 시점"(절대 경과값)이라 저장에는 맞지만 **읽는 쪽에는 아무 뜻이 없다.**
+ * 유저는 상태창에서 `집중 +2 @450`을 봤고, 메인 모델은 `퀘스트 @455`를 받아 며칠 남았는지
+ * 알 길이 없었다 (얼헌 `진행 중 퀘스트: {quests}`).
+ *
+ * - `@+N` = 아직 안 굳은 상대 기한 → 그 자체가 "N일 뒤"라 시계 없이 읽힌다
+ * - 시계를 모르면(그 목록에 expire 규칙이 없으면) `@D`는 아무 일도 안 하는 죽은 글자 → 떼기만 한다
+ *
+ * ⚠ 보조 AI 계약표에는 쓰지 않는다 — 목록 remove가 저장된 원문 **완전일치**라
+ *   환산된 글자를 보여주면 지우기가 조용히 실패한다.
+ */
+function dueText(item, now) {
+  const raw = String(item);
+  const m = raw.match(/@([+-]?\d+(?:\.\d+)?)/);
+  if (!m) return raw;
+  const body = raw.replace(DUE_TAG, '').replace(/\s{2,}/g, ' ').trim();
+  const left = m[1][0] === '+' ? parseFloat(m[1])
+    : (now == null ? null : Math.round(parseFloat(m[1]) - now));
+  if (left == null) return body || raw;
+  const tail = left > 0 ? `(${left}일)` : left === 0 ? '(오늘)' : '(지남)';
+  return body ? `${body} ${tail}` : tail;
+}
+
+/**
  * @param extras 수식이 아니라 미리 만들어 둔 조각 (예: {commands}).
  *   변수보다 **먼저** 본다 — 같은 이름의 변수가 있으면 검증이 경고로 잡는다.
  */
 // plain: 일반 값(목록 칩·extras 제외)의 마지막 변환 — 상태창 HTML 렌더는 여기로 큰따옴표를
 // &quot;로 바꾼다 (v1.6.1). 프롬프트 렌더(지시문·상태 블록)는 기본 항등이라 모델은 원문을 본다.
-function renderTemplate(tpl, lookup, extras = null, plain = (s) => s) {
+// dueNow: 목록 id → 그 목록의 기한 시계 (dueClock). 주면 항목의 `@450`이 `(3일)`로 환산된다 (v1.7.1).
+function renderTemplate(tpl, lookup, extras = null, plain = (s) => s, dueNow = null) {
   return tpl.replace(/\{([^{}]+)\}/g, (whole, inner, idx, all) => {
     // 리수 CBS({{...}})는 통째로 남긴다 (v0.76). 우리 정규식은 안쪽 한 겹을 무는데,
     // CBS 이름이 우리 변수·시간 노출 이름과 겹치면 값이 치환돼 CBS가 깨진다.
@@ -1299,12 +1353,18 @@ function renderTemplate(tpl, lookup, extras = null, plain = (s) => s) {
       const v = evaluate(expr, lookup, null);
       if (filter === 'tags') {
         let arr = Array.isArray(v) ? v : [String(v)];
+        // 필터는 **저장된 원문**에 건다 (환산 전) — 걸러내는 낱말이 기한 표기와 무관해야 한다
         if (filterArg) arr = arr.filter((x) => String(x).includes(filterArg));
+        // dueNow를 안 준 호출부는 원문 그대로 (기한을 뗄지 말지는 시계를 아는 쪽이 정한다)
+        const due = dueNow ? (x) => dueText(x, dueNow(expr)) : String;
         return arr.length
-          ? arr.map((x) => `<span class="sim-tag">${escapeHtml(String(x))}</span>`).join('')
+          ? arr.map((x) => `<span class="sim-tag">${escapeHtml(due(x))}</span>`).join('')
           : '<span class="sim-empty">없음</span>';
       }
-      if (Array.isArray(v)) return plain(v.length ? v.join(', ') : '(없음)');
+      if (Array.isArray(v)) {
+        const due = dueNow ? (x) => dueText(x, dueNow(expr)) : String;
+        return plain(v.length ? v.map(due).join(', ') : '(없음)');
+      }
       return plain(String(v));
     } catch {
       return `{${inner}}`;
@@ -1783,7 +1843,8 @@ function applyChatCommands(schema, state, text, rng) {
           return `(시스템: ${def.label ?? def.id} — '${arg}'와 맞는 항목이 없음)`;
         }
         if (Array.isArray(hit)) {
-          return `(시스템: ${def.label ?? def.id} — '${arg}'에 여럿이 걸립니다: ${hit.join(' / ')}`
+          const clk = listClockNow(schema, { vars }, def.id);
+          return `(시스템: ${def.label ?? def.id} — '${arg}'에 여럿이 걸립니다: ${hit.map((h) => dueText(h, clk)).join(' / ')}`
             + '. 지울 것 하나만 가려지게 더 적어 주세요)';
         }
         removed = hit;
@@ -1824,8 +1885,10 @@ function applyChatCommands(schema, state, text, rng) {
     applied.push({ id: def.id, from, to, how });
     // 목록은 방금 건드린 항목만 보여준다. 제거는 유저가 친 말이 아니라
     // **실제로 지워진 항목**을 되돌려 준다 — 앞머리만 쳤을 때 뭐가 지워졌는지 확인할 자리다.
+    // 되돌려 주는 글자도 기한을 환산한다 (v1.7.1) — /퀘스트 소탕 @+5 를 치면 시스템은 @452로
+    // 굳혀 저장하는데, 그 숫자를 그대로 되비추면 유저는 자기가 친 5일이 어디 갔는지 모른다
     const shown = Array.isArray(to)
-      ? (minus ? (removed ?? arg) : (to[to.length - 1] ?? arg))
+      ? dueText(minus ? (removed ?? arg) : (to[to.length - 1] ?? arg), listClockNow(schema, { vars }, def.id))
       : String(to);
     return `(시스템: ${def.label ?? def.id} ${how} — ${shown})`;
   }).join('\n');
@@ -1855,7 +1918,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
-  renderTemplate, quoteSafe, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };

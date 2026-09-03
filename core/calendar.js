@@ -35,20 +35,17 @@ function calendarButtonSpec(schema) {
 
 /** 항목에서 기한 표기를 걷어낸 표시용 라벨 ("영화 약속 @12" → "영화 약속") */
 function planLabel(item) {
-  return String(item).replace(/@\+?\d+(?:\.\d+)?/g, '').trim();
+  // 음수 기한(@-22, 이미 지난 것)도 뗀다 — 안 떼면 달력 칸에 '-22'가 남는다.
+  // 낱말 끝까지 무는 것도 engine의 dueText와 같은 규칙 ('회의 @3일' → '회의', not '회의 일')
+  return String(item).replace(/@[+-]?\d+(?:\.\d+)?\S*/g, '').trim();
 }
 
 // 이 목록의 expire 식이 지금 가리키는 값 — @D와 같은 단위의 "현재". 규칙이 없거나
 // 평가가 안 되면 null (호출부가 elapsed 규약으로 폴백).
 function expireNow(schema, state, listId) {
-  const rule = (schema.rules?.onTurn || []).find((r) => r && r.list === listId && r.expire);
-  if (!rule) return null;
-  try {
-    const { evaluate } = require('./expr');
-    const { makeLookup } = require('./engine');   // 지연 require — 번들 순서 무관
-    const v = Number(evaluate(rule.expire, makeLookup(schema, state.vars), null));
-    return isFinite(v) ? v : null;
-  } catch { return null; }
+  // 지연 require — 번들 순서 무관 (engine은 calendar 뒤에 실린다). 상태창 칩의 기한 환산과
+  // 달력의 기한 표시가 같은 시계를 봐야 하므로 구현을 하나로 둔다 (v1.7.1).
+  try { return require('./engine').listClockNow(schema, state, listId); } catch { return null; }
 }
 
 /**

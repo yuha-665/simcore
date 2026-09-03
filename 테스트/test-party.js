@@ -588,7 +588,11 @@ const clone = (o) => JSON.parse(J(o));
   // 렌더 — 상태창과 같은 자리표시자, 패널 전용 규약 셋
   const html = renderPanelTemplate(T, st, T.party.tabs[1].template);
   ck('★ 자리표시자 치환 (변수·식)', html.includes('재정 120') && html.includes('동료 2명'), html);
-  ck(':tags 칩 + 목록 규약 꼬리 유지', html.includes('sim-tag') && html.includes('바크 @3일'), html);
+  // v1.7.1 — 칩은 기한 꼬리를 그대로 안 그린다. `@3일`은 예약 표기라 itemExpiry가 이미 기한 3으로
+  // 읽고 있고, allies에는 expire 규칙이 없어 아무 일도 안 하는 죽은 글자다 → 떼고 이름만 보인다
+  // (party의 rosterName이 잠금 판정에서 하던 것과 같은 결과). 숫자 꼬리(+2)는 기한이 아니라 그대로.
+  ck(':tags 칩 + 기한 꼬리 환산 (죽은 기한은 뗀다)',
+    html.includes('sim-tag') && html.includes('>바크<') && !html.includes('@3'), html);
   ck('임베드 <style>은 #sc-game로 스코핑', html.includes('#sc-game .led'), html);
   const html2 = renderPanelTemplate(T, st, '{uid}|{choices}|{{img::지도}}');
   ck('{uid}=scg 고정 · {choices}=빈칸 · CBS 통과', html2 === 'scg||{{img::지도}}', html2);

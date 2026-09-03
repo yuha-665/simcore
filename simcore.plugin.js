@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.6.1
-//@display-name SimCore (시뮬 엔진) v1.6.1 상태창 따옴표 보호
+//@version 1.7.0
+//@display-name SimCore (시뮬 엔진) v1.7.0 하루 넘김 대리 정산
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -3747,6 +3747,9 @@ function validateSchema(schema) {
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
+    // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
+    if (a.dayClose != null && typeof a.dayClose !== 'boolean')
+      err(p + '.dayClose', 'dayClose는 true/false (하루를 닫는 정산 액션 — 서사가 하루를 넘기면 시스템이 대신 돌린다)');
     // 교전 이탈 (v1.6.0) — 열린 교전을 닫는 액션. fight 달린 판정이 없으면 닫을 교전이 없다
     if (a.fightEnd != null && typeof a.fightEnd !== 'boolean') err(p + '.fightEnd', 'fightEnd는 true/false (교전 이탈 — 열린 교전을 닫는 액션)');
     else if (a.fightEnd === true && !fightMod.fightChecks(schema).length)
@@ -3754,6 +3757,18 @@ function validateSchema(schema) {
     checkRef(a, p);
   });
   {
+    // 하루 닫기 (v1.7.0) — 정산이 한 벌이어야 날짜가 안 튄다. 둘이면 어느 쪽이 대리로 돌지 모른다
+    const dcs = (schema.actions || []).filter((a) => a && a.dayClose === true);
+    if (dcs.length > 1)
+      warn('$.actions', `하루 닫기(dayClose) 액션이 ${dcs.length}개입니다 — 대리 정산은 맨 앞의 것만 씁니다. `
+        + '하루를 닫는 정산은 한 벌이어야 날짜가 안 튑니다 (버튼을 여러 개 두려면 효과는 한 액션에 모으세요)');
+    if (dcs.length === 1) {
+      const dcp = `$.actions[${(schema.actions || []).indexOf(dcs[0])}].dayClose`;
+      if (!(dcs[0].effects || []).length)
+        warn(dcp, '하루 닫기 액션에 효과(effects)가 없습니다 — 대신 돌릴 정산이 없어 날짜가 그대로입니다');
+      if ((dcs[0].mode || 'oneshot') !== 'oneshot')
+        warn(dcp, '하루 닫기는 1회성(oneshot)이어야 합니다 — 지속형은 켜 둔 내내 매 턴 하루가 넘어갑니다');
+    }
     const off = (schema.actions || []).filter((a) => a && a.offstage === true);
     if (off.length > 1) {
       warn('$.actions', `막간(offstage) 액션이 ${off.length}개입니다 — 하나면 충분해요 (어느 쪽이든 켜지면 같은 효과)`);
@@ -7249,6 +7264,27 @@ const DEFAULT_OFFSTAGE =
   + '배후 인물의 모의처럼 주인공이 모르는 곳의 이야기가 이 장면의 몫이다.\n'
   + '- 유저의 입력은 주인공의 말이나 행동이 아니라 "무엇을 비출지" 정하는 연출 지시다. 대사로 옮기지 말고 장면으로 만들어라.';
 
+/**
+ * 하루 넘김 대리 정산 (v1.7.0, actions[].dayClose).
+ *
+ * 계기(유저·에고서치 제보): "하루넘기기 안 누르고 그냥 채팅으로 '하루가 지났다' 하면 인식을 못 한다."
+ * 원인은 버그가 아니라 **입구가 봇마다 다른 것**이었다 — 보조에게 skip_day를 준 봇(romance)은
+ * 채팅으로 넘어가고, 버튼만 둔 봇(daily·zombie)은 날짜 권한 자체가 없어 영영 안 넘어갔다
+ * (v0.51 주석: "AI에게 열어 두면 서사가 '며칠 뒤'라고 흘리는 순간 날짜가 튄다"). 그 우려는
+ * 이제 낡았다 — desc 규칙·원장·유령 밤 빗장이 다 생겼고, 무엇보다 **달력은 서사를 따라간다**(v1.5.5).
+ *
+ * 그래서 날짜 권한을 여는 대신 **버튼을 대신 눌러 준다**: 정산은 여전히 그 액션의 effects 한 벌뿐이라
+ * 두 입구가 갈라질 수 없다 (idol이 손으로 만든 night_req 기제를 엔진으로 올린 것).
+ * 보조는 "하루가 넘어갔다"만 신고하고, 무엇이 정산되는지는 스키마가 정한다 — 기록자지 심판이 아니다.
+ */
+const DEFAULT_DAYCLOSE_NOTIFY =
+  '서사가 하루를 넘겼으므로 시스템이 하루 정산을 대신 마쳤다 (날짜·상태는 갱신됨). '
+  + '이미 지나간 그 하루를 다시 넘기지 말고, 새 날의 장면을 이어서 써라.';
+
+function dayCloseAction(schema) {
+  return (schema?.actions || []).find((a) => a && a.dayClose === true) || null;
+}
+
 // 갈림길이 걸려 있는 동안 매 전송 덧붙는다 — 지시문은 AI가 모르는 것만 말한다는 원칙대로,
 // 선택지 내용은 안 싣는다(그건 유저 상태창의 것이다). 모델이 대신 골라 버리는 것만 막는다.
 const DEFAULT_CHOICE_WAIT =
@@ -8208,7 +8244,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -8226,6 +8262,36 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // (다음 전송 한 번만 유효). 이 턴의 changes에 신고 변수가 섞여 있어도 5에서 이미
   // 게이트에 걸러졌다 — 신고와 반영이 같은 턴에 겹치는 일은 구조적으로 없다.
   consumeDetected(schema, state, detected);
+
+  // 5.4 하루 넘김 대리 정산 (v1.7.0) — 버튼을 안 눌렀는데 서사가 하루를 넘겼을 때.
+  // 돌리는 것은 **그 버튼과 똑같은 effects 한 벌**이라 두 입구가 갈라지지 않는다.
+  // 시간 소비(5.5)보다 먼저여서, 정산이 굳힌 skip_day/skip_min이 이번 턴 날짜에 바로 반영된다
+  // (day_break 깃발을 세우는 계열은 wake_at이 '미정'인 동안 동기화 이벤트가 안 도는 게 규격이라
+  //  이 자리에서 세워도 시각을 잘못 굳히지 않는다).
+  // 막는 것 셋: ① 유령 밤 — 이번 사이클에 그 버튼이 이미 발동했으면 무시 (버튼을 누른 턴의 밤
+  // 장면을 보조가 보고 또 신고하는 메아리. idol v0.87.2 실사고를 구조로 옮긴 것)
+  // ② 보조가 skip_day를 직접 올린 턴 — 명시한 숫자가 이긴다 (이중 진행 방지)
+  // ③ 액션의 when이 거짓이면 무시 (죽었는데 밤이 넘어가는 따위)
+  let dayClosed = false;
+  const dcAction = dayCloseAction(schema);
+  if (dayPassed === true && dcAction) {
+    const firedNow = !!state.meta.firedThisSend?.[dcAction.id];
+    const skipBumped = changeLog.some((c) => c.id === SKIP_DAY && c.source === 'llm' && Number(c.to) > Number(c.from));
+    let gateOpen = true;
+    if (dcAction.when) {
+      try { gateOpen = truthy(evaluate(dcAction.when, makeLookup(schema, state.vars), null)); }
+      catch { gateOpen = false; }
+    }
+    if (!firedNow && !skipBumped && gateOpen) {
+      applySets(schema, state, dcAction.effects, rng, changeLog, `action:${dcAction.id}`);
+      const ps = schema.promptState || {};
+      if (ps.dayCloseGuide !== false) {
+        state.meta.pendingNotifies.push(typeof ps.dayCloseGuide === 'string' && ps.dayCloseGuide.trim()
+          ? ps.dayCloseGuide : DEFAULT_DAYCLOSE_NOTIFY);
+      }
+      dayClosed = true;
+    }
+  }
 
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
@@ -8374,7 +8440,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이번 사이클의 원장을 새로 쓴다 (전송 단계 몫은 보조가 이미 봤으니 여기서 교체).
   recordChangeMemo(schema, state, changeLog, false);
 
-  return { state, changeLog, firedEvents };
+  return { state, changeLog, firedEvents, dayClosed };
 }
 
 // ── 액션 토글 ───────────────────────────────────────────────
@@ -8607,6 +8673,12 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const memo = (!opts.allowAll && state?.meta?.lastChanges?.length) ? state.meta.lastChanges : null;
   // 시간 규칙은 보조가 실제로 시간을 만질 수 있을 때만 (skip 우편함이 열려 있어야 뜻이 있다)
   const timeRule = nowLine && allow.some((a) => a.id === SKIP_DAY || a.id === SKIP_MIN);
+  // 하루 넘김 신고 (v1.7.0) — 하루를 닫는 액션이 있고, 보조에게 skip_day 창구가 **없을 때만**.
+  // 숫자를 직접 줄 수 있는 봇(romance)은 그쪽이 더 표현력이 크고, 두 창구를 같이 열면
+  // "자정 넘을 때만 skip_day" 규칙과 "하루 넘어가면 day_passed"가 서로 부딪친다.
+  // 브리지 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
+  const dayCloseSpec = (!opts.allowAll && !allow.some((a) => a.id === SKIP_DAY))
+    ? dayCloseAction(schema) : null;
 
   // 신고 전용 불일치 채널 (v0.71) — 허용 목록에 아예 없는 변수 = 서사가 손대면 안 되는
   // 시스템 항목(경성 축)이다. 서사가 그 변화를 선언하면 **보고만** 받는다: changes에 못
@@ -8650,6 +8722,11 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
     // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
     timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
+    // 하루 넘김 신고 (v1.7.0) — skip_day를 안 준 봇의 유일한 날짜 입구. 숫자 창구가 열려 있으면
+    // 안 붙인다 (한 가지를 두 가지 방법으로 말하게 하면 둘 다 틀린다).
+    dayCloseSpec
+      ? `- 서사가 하루를 넘겼는데(잠들고 이튿날이 됨, "다음 날 아침", 며칠 뒤로 건너뜀 등) 유저가 [${dayCloseSpec.label ?? dayCloseSpec.id}] 버튼을 누르지 않았다면 "day_passed": true를 넣어라 — 시스템이 그 버튼과 똑같은 하루 정산을 대신 돌린다. **날짜가 실제로 넘어간 장면에서만** 넣어라: 같은 날 안에서 시간만 흐른 것(저녁이 됨, 몇 시간 뒤)이면 절대 넣지 마라. 넘어가지 않았으면 day_passed를 아예 넣지 마라.`
+      : null,
     noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
     systemLabels.length
       ? `- 서사가 시스템 관리 항목(${systemLabels.join(', ')})의 변화를 명시적으로 선언했다면 그 값을 조정하려 하지 말고, "conflicts" 배열에 "무엇이 어떻게 선언됐는지"를 한 줄 문자열로 보고하라 (최대 3건). 선언이 없으면 conflicts를 아예 넣지 마라.`
@@ -8970,12 +9047,15 @@ function parseAuxResponse(text) {
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
-    msgr: Array.isArray(obj.msgr) ? obj.msgr : null };  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
+    // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
+    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1 };
 }
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -9893,6 +9973,7 @@ class SimSession {
       board: parsed.board ?? null, // 커뮤니티 보드 델타 (v0.95) — 같은 응답에 실려 온다
       shop: parsed.shop ?? null,   // 상점 첫 입고 (v0.96) — 같은 응답에 실려 온다
       msgr: parsed.msgr ?? null,   // 메신저 선톡 (v1.2.0) — 같은 응답에 실려 온다
+      dayPassed: parsed.dayPassed === true, // 하루 넘김 신고 (v1.7.0) — dayClose 액션을 대신 돌린다
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;
@@ -17511,6 +17592,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
         ),
+        // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
+        h('div', { class: 'sce-row' },
+          bindCheck(a.dayClose === true, (x) => { if (x) a.dayClose = true; else delete a.dayClose; rerender(); },
+            '하루 닫기 — 서사가 하루를 넘기면 버튼을 안 눌러도 이 정산을 돌린다'),
+          h('span', { class: 'sce-hint', style: 'margin:0' },
+            a.dayClose === true
+              ? '보조 AI가 "하루가 넘어갔다"를 신고하면 시스템이 이 액션의 효과를 그대로 돌립니다 — 정산은 버튼과 같은 한 벌이라 갈라지지 않습니다. 버튼을 누른 턴의 신고는 무시됩니다(같은 밤 두 번 방지). ⚠ skip_day를 보조에게 열어 뒀다면 그쪽이 우선이라 이 대리 정산은 꺼집니다.'
+              : '체크하지 않으면 날짜는 이 버튼을 눌러야만 넘어갑니다 — 채팅으로 "다음 날이 되었다"라고 써도 시계는 그대로입니다.'),
+        ),
         // 막간 (v1.5.0) — 주인공 없이 주변 인물·흑막 쪽 이야기를 굴리는 스위치
         h('div', { class: 'sce-row' },
           bindCheck(a.offstage === true, (x) => { if (x) a.offstage = true; else delete a.offstage; rerender(); },
@@ -17632,7 +17722,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function addEndDayAction() {
     if ((schema.actions || []).some((a) => (a.effects || []).some((f) => f.set === SKIP_DAY))) return;
     schema.actions.push({
-      id: 'end_day', label: '🌙 하루를 마친다',
+      // dayClose (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 정산을 대신 돌린다.
+      // 새로 만드는 봇은 전부 채팅 넘김이 되는 게 기본값이어야 한다 (유저 제보: 버튼만 있는 봇은
+      // "하루가 지났다"고 써도 날짜가 안 넘어간다). skip_day가 allow에 있으면 대리는 자동으로 꺼진다.
+      id: 'end_day', label: '🌙 하루를 마친다', dayClose: true,
       effects: [{ set: SKIP_DAY, expr: '1' }, { set: SKIP_MIN, expr: '0' }],
       inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
     });
@@ -21006,7 +21099,12 @@ const WAKE_HOUR = "(wake_at == '새벽' ? 5 : (wake_at == '아침' ? 8 : (wake_a
 const WAKE_TOTAL_MIN = `((${WAKE_HOUR} * 60 - (hour * 60 + minute)) + 1439) % 1440 + 1`;
 const WAKE_AT_VAR = {
   id: 'wake_at', label: '(내부) 다음 장면 시간대', type: 'enum', init: '미정', enum: WAKE_ENUM,
-  desc: "day_break가 true일 때만: 하루를 마친 뒤 새로 시작된 장면이 실제로 잡은 때를 장면에서 읽어 적어라 "
+  // v1.7.0: 하루 넘김을 신고하는 턴에도 같이 적게 한다 — 그래야 대리 정산이 깃발을 세운 그 턴에
+  // 동기화 이벤트(day_break and wake_at != '미정')가 바로 돌아 시계가 한 턴 늦지 않는다.
+  // 필드 이름(day_passed)은 일부러 안 쓴다 — 그 칸이 없는 봇(숫자 창구가 열린 romance)에서도
+  // 같은 문장이 실리므로, 없는 칸을 가리키면 보조가 헷갈린다.
+  desc: "day_break가 true일 때, 또는 이번 턴에 하루가 넘어갔다고 신고할 때만: 하루를 마친 뒤 새로 "
+    + "시작된 장면이 실제로 잡은 때를 장면에서 읽어 적어라 "
     + "(새벽/아침/정오/오후/저녁/밤/심야 — 심야는 자정 넘김). 아침이라 단정하지 마라. "
     + "시계는 시스템이 '다음으로 돌아오는 그 시간대'로 맞춘다.",
 };
@@ -21156,7 +21254,10 @@ const ROMANCE = {
     // 메인이 문맥에 맞는 다음날 장면(새벽/정오/저녁…)을 고르고, 보조가 그 시간대(wake_at)를
     // 읽어 오면 day_break_sync 이벤트가 분을 계산해 굳힌다. "아침 고정"은 군대물·야간
     // 서사에서 어긋난다는 실전 피드백의 반영.
-    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1,
+    // dayClose (v1.7.0): 이 봇은 skip_day 창구가 열려 있어 보조가 숫자로 직접 넘길 수 있으므로
+    // 대리 정산은 안 붙는다 (한 가지를 두 창구로 말하게 하지 않는다). 표시는 사실 그대로 남긴다 —
+    // allow에서 skip_day를 빼는 순간 이 버튼이 채팅 입구가 된다.
+    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1, dayClose: true,
       inject: '[시간] 오늘은 여기까지다. 다음 장면은 하루를 마치고 난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'day_break', expr: 'true' }] },
   ],
@@ -22228,7 +22329,10 @@ const DAILY = {
     // 하루 마무리 (v0.99 하루 경계 넘김) — 시계를 미리 돌리지 않는다. 깃발만 세우면 메인이
     // 문맥에 맞는 다음날 장면을 고르고, 보조가 그 시간대(wake_at)를 읽어 오면 day_break_sync
     // 이벤트가 분을 계산해 굳힌다. (예전엔 "다음 08:00" 고정 — 야근·교대 서사에서 어긋났다)
-    { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot',
+    // dayClose (v1.7.0) — 이 템플릿이 이 기능의 이유다. skip_day를 안 둔 대신 날짜 입구가 버튼
+    // 하나뿐이라, 채팅으로 "자고 일어나니 다음 날"이라고 써도 날짜가 영영 안 넘어갔다 (유저 제보).
+    // 이제 보조가 day_passed를 신고하면 시스템이 이 버튼을 대신 누른다 — 정산은 여전히 한 벌.
+    { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot', dayClose: true,
       inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 자고 일어난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'day_break', expr: 'true' }] },
   ],
@@ -23079,7 +23183,11 @@ const ZOMBIE = {
       desc: '지금 있는 곳. 나가기·돌아오기는 버튼이 하고, 어느 건물인지는 서사나 /장소 명령이 정한다. 병원일수록 약이 많지만 위험하다.' },
     { id: 'noise', label: '소음', type: 'int', init: 10, min: 0, max: 100,
       desc: '내가 낸 소리가 쌓인 값. 밤에 이만큼 몰려온다. 총을 쏘면 크게 오르고, 하루가 지나면 가라앉는다.' },
-    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 480,
+    // ⚠ max는 1440이어야 한다 (v1.7.0 수리). 480이던 시절, 🌙이 계산한 "다음 07:00까지의 분"이
+    // 최대 1440인데 변수 상한에 깎여 **버튼을 눌러도 하루가 안 넘어갔다** (07:00에 누르면 15:00 —
+    // 이 템플릿의 심장이 8시간짜리였다). 보조 뇌절은 변수 상한이 아니라 allow의 maxGain(240)이 막는다:
+    // 변수 max = 시스템 정산의 천장, allow maxGain = AI가 밀 수 있는 폭. 둘을 겸하게 하면 정산이 깎인다.
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
       desc: '이번 응답에서 흐른 시간(분). 짧은 대화는 0~10, 이동이나 수색은 30~120. 밤을 넘기는 건 버튼이 한다.' },
     // ── 몸 ──
     { id: 'hp', label: '체력', type: 'int', init: 70, min: 0, max: 100 },
@@ -23218,7 +23326,9 @@ const ZOMBIE = {
     // ── 하루를 닫는다 ──
     // daily의 💤과 같은 계산 — 지금이 몇 시든 **다음 날 07:00**으로 간다.
     // 감염·허기·소음 감쇠가 전부 여기서 하루치로 정산된다. 이 버튼이 이 템플릿의 심장이다.
-    { id: 'nightfall', label: '🌙 밤을 넘긴다', mode: 'oneshot', impactExempt: true,
+    // dayClose (v1.7.0) — daily와 같은 처지(날짜 입구가 버튼뿐)라 채팅 넘김을 함께 연다.
+    // when: 'not dead'는 대리 정산에도 그대로 걸린다 — 죽은 뒤에 밤이 넘어가지 않는다.
+    { id: 'nightfall', label: '🌙 밤을 넘긴다', mode: 'oneshot', impactExempt: true, dayClose: true,
       when: 'not dead',
       inject: '[행동] 불을 끄고 아침까지 버틴다. 밤에 무슨 소리를 들었는지 짧게 그려라.',
       effects: [

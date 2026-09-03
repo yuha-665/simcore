@@ -63,6 +63,27 @@ const DEFAULT_OFFSTAGE =
   + '배후 인물의 모의처럼 주인공이 모르는 곳의 이야기가 이 장면의 몫이다.\n'
   + '- 유저의 입력은 주인공의 말이나 행동이 아니라 "무엇을 비출지" 정하는 연출 지시다. 대사로 옮기지 말고 장면으로 만들어라.';
 
+/**
+ * 하루 넘김 대리 정산 (v1.7.0, actions[].dayClose).
+ *
+ * 계기(유저·에고서치 제보): "하루넘기기 안 누르고 그냥 채팅으로 '하루가 지났다' 하면 인식을 못 한다."
+ * 원인은 버그가 아니라 **입구가 봇마다 다른 것**이었다 — 보조에게 skip_day를 준 봇(romance)은
+ * 채팅으로 넘어가고, 버튼만 둔 봇(daily·zombie)은 날짜 권한 자체가 없어 영영 안 넘어갔다
+ * (v0.51 주석: "AI에게 열어 두면 서사가 '며칠 뒤'라고 흘리는 순간 날짜가 튄다"). 그 우려는
+ * 이제 낡았다 — desc 규칙·원장·유령 밤 빗장이 다 생겼고, 무엇보다 **달력은 서사를 따라간다**(v1.5.5).
+ *
+ * 그래서 날짜 권한을 여는 대신 **버튼을 대신 눌러 준다**: 정산은 여전히 그 액션의 effects 한 벌뿐이라
+ * 두 입구가 갈라질 수 없다 (idol이 손으로 만든 night_req 기제를 엔진으로 올린 것).
+ * 보조는 "하루가 넘어갔다"만 신고하고, 무엇이 정산되는지는 스키마가 정한다 — 기록자지 심판이 아니다.
+ */
+const DEFAULT_DAYCLOSE_NOTIFY =
+  '서사가 하루를 넘겼으므로 시스템이 하루 정산을 대신 마쳤다 (날짜·상태는 갱신됨). '
+  + '이미 지나간 그 하루를 다시 넘기지 말고, 새 날의 장면을 이어서 써라.';
+
+function dayCloseAction(schema) {
+  return (schema?.actions || []).find((a) => a && a.dayClose === true) || null;
+}
+
 // 갈림길이 걸려 있는 동안 매 전송 덧붙는다 — 지시문은 AI가 모르는 것만 말한다는 원칙대로,
 // 선택지 내용은 안 싣는다(그건 유저 상태창의 것이다). 모델이 대신 골라 버리는 것만 막는다.
 const DEFAULT_CHOICE_WAIT =
@@ -1022,7 +1043,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -1040,6 +1061,36 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // (다음 전송 한 번만 유효). 이 턴의 changes에 신고 변수가 섞여 있어도 5에서 이미
   // 게이트에 걸러졌다 — 신고와 반영이 같은 턴에 겹치는 일은 구조적으로 없다.
   consumeDetected(schema, state, detected);
+
+  // 5.4 하루 넘김 대리 정산 (v1.7.0) — 버튼을 안 눌렀는데 서사가 하루를 넘겼을 때.
+  // 돌리는 것은 **그 버튼과 똑같은 effects 한 벌**이라 두 입구가 갈라지지 않는다.
+  // 시간 소비(5.5)보다 먼저여서, 정산이 굳힌 skip_day/skip_min이 이번 턴 날짜에 바로 반영된다
+  // (day_break 깃발을 세우는 계열은 wake_at이 '미정'인 동안 동기화 이벤트가 안 도는 게 규격이라
+  //  이 자리에서 세워도 시각을 잘못 굳히지 않는다).
+  // 막는 것 셋: ① 유령 밤 — 이번 사이클에 그 버튼이 이미 발동했으면 무시 (버튼을 누른 턴의 밤
+  // 장면을 보조가 보고 또 신고하는 메아리. idol v0.87.2 실사고를 구조로 옮긴 것)
+  // ② 보조가 skip_day를 직접 올린 턴 — 명시한 숫자가 이긴다 (이중 진행 방지)
+  // ③ 액션의 when이 거짓이면 무시 (죽었는데 밤이 넘어가는 따위)
+  let dayClosed = false;
+  const dcAction = dayCloseAction(schema);
+  if (dayPassed === true && dcAction) {
+    const firedNow = !!state.meta.firedThisSend?.[dcAction.id];
+    const skipBumped = changeLog.some((c) => c.id === SKIP_DAY && c.source === 'llm' && Number(c.to) > Number(c.from));
+    let gateOpen = true;
+    if (dcAction.when) {
+      try { gateOpen = truthy(evaluate(dcAction.when, makeLookup(schema, state.vars), null)); }
+      catch { gateOpen = false; }
+    }
+    if (!firedNow && !skipBumped && gateOpen) {
+      applySets(schema, state, dcAction.effects, rng, changeLog, `action:${dcAction.id}`);
+      const ps = schema.promptState || {};
+      if (ps.dayCloseGuide !== false) {
+        state.meta.pendingNotifies.push(typeof ps.dayCloseGuide === 'string' && ps.dayCloseGuide.trim()
+          ? ps.dayCloseGuide : DEFAULT_DAYCLOSE_NOTIFY);
+      }
+      dayClosed = true;
+    }
+  }
 
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
@@ -1188,7 +1239,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이번 사이클의 원장을 새로 쓴다 (전송 단계 몫은 보조가 이미 봤으니 여기서 교체).
   recordChangeMemo(schema, state, changeLog, false);
 
-  return { state, changeLog, firedEvents };
+  return { state, changeLog, firedEvents, dayClosed };
 }
 
 // ── 액션 토글 ───────────────────────────────────────────────
@@ -1421,6 +1472,12 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const memo = (!opts.allowAll && state?.meta?.lastChanges?.length) ? state.meta.lastChanges : null;
   // 시간 규칙은 보조가 실제로 시간을 만질 수 있을 때만 (skip 우편함이 열려 있어야 뜻이 있다)
   const timeRule = nowLine && allow.some((a) => a.id === SKIP_DAY || a.id === SKIP_MIN);
+  // 하루 넘김 신고 (v1.7.0) — 하루를 닫는 액션이 있고, 보조에게 skip_day 창구가 **없을 때만**.
+  // 숫자를 직접 줄 수 있는 봇(romance)은 그쪽이 더 표현력이 크고, 두 창구를 같이 열면
+  // "자정 넘을 때만 skip_day" 규칙과 "하루 넘어가면 day_passed"가 서로 부딪친다.
+  // 브리지 굽기(allowAll)에는 안 싣는다 — 브리지는 changes/reasons만 회수한다.
+  const dayCloseSpec = (!opts.allowAll && !allow.some((a) => a.id === SKIP_DAY))
+    ? dayCloseAction(schema) : null;
 
   // 신고 전용 불일치 채널 (v0.71) — 허용 목록에 아예 없는 변수 = 서사가 손대면 안 되는
   // 시스템 항목(경성 축)이다. 서사가 그 변화를 선언하면 **보고만** 받는다: changes에 못
@@ -1464,6 +1521,11 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
     // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
     timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
+    // 하루 넘김 신고 (v1.7.0) — skip_day를 안 준 봇의 유일한 날짜 입구. 숫자 창구가 열려 있으면
+    // 안 붙인다 (한 가지를 두 가지 방법으로 말하게 하면 둘 다 틀린다).
+    dayCloseSpec
+      ? `- 서사가 하루를 넘겼는데(잠들고 이튿날이 됨, "다음 날 아침", 며칠 뒤로 건너뜀 등) 유저가 [${dayCloseSpec.label ?? dayCloseSpec.id}] 버튼을 누르지 않았다면 "day_passed": true를 넣어라 — 시스템이 그 버튼과 똑같은 하루 정산을 대신 돌린다. **날짜가 실제로 넘어간 장면에서만** 넣어라: 같은 날 안에서 시간만 흐른 것(저녁이 됨, 몇 시간 뒤)이면 절대 넣지 마라. 넘어가지 않았으면 day_passed를 아예 넣지 마라.`
+      : null,
     noVars ? null : '- 정기 수입·소비·시스템 이벤트로 인한 변화는 시스템이 별도 계산하니 반영하지 마라.',
     systemLabels.length
       ? `- 서사가 시스템 관리 항목(${systemLabels.join(', ')})의 변화를 명시적으로 선언했다면 그 값을 조정하려 하지 말고, "conflicts" 배열에 "무엇이 어떻게 선언됐는지"를 한 줄 문자열로 보고하라 (최대 3건). 선언이 없으면 conflicts를 아예 넣지 마라.`
@@ -1784,12 +1846,15 @@ function parseAuxResponse(text) {
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
-    msgr: Array.isArray(obj.msgr) ? obj.msgr : null };  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
+    // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
+    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1 };
 }
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired,
+  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

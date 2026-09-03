@@ -677,6 +677,9 @@ function validateSchema(schema) {
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
+    // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
+    if (a.dayClose != null && typeof a.dayClose !== 'boolean')
+      err(p + '.dayClose', 'dayClose는 true/false (하루를 닫는 정산 액션 — 서사가 하루를 넘기면 시스템이 대신 돌린다)');
     // 교전 이탈 (v1.6.0) — 열린 교전을 닫는 액션. fight 달린 판정이 없으면 닫을 교전이 없다
     if (a.fightEnd != null && typeof a.fightEnd !== 'boolean') err(p + '.fightEnd', 'fightEnd는 true/false (교전 이탈 — 열린 교전을 닫는 액션)');
     else if (a.fightEnd === true && !fightMod.fightChecks(schema).length)
@@ -684,6 +687,18 @@ function validateSchema(schema) {
     checkRef(a, p);
   });
   {
+    // 하루 닫기 (v1.7.0) — 정산이 한 벌이어야 날짜가 안 튄다. 둘이면 어느 쪽이 대리로 돌지 모른다
+    const dcs = (schema.actions || []).filter((a) => a && a.dayClose === true);
+    if (dcs.length > 1)
+      warn('$.actions', `하루 닫기(dayClose) 액션이 ${dcs.length}개입니다 — 대리 정산은 맨 앞의 것만 씁니다. `
+        + '하루를 닫는 정산은 한 벌이어야 날짜가 안 튑니다 (버튼을 여러 개 두려면 효과는 한 액션에 모으세요)');
+    if (dcs.length === 1) {
+      const dcp = `$.actions[${(schema.actions || []).indexOf(dcs[0])}].dayClose`;
+      if (!(dcs[0].effects || []).length)
+        warn(dcp, '하루 닫기 액션에 효과(effects)가 없습니다 — 대신 돌릴 정산이 없어 날짜가 그대로입니다');
+      if ((dcs[0].mode || 'oneshot') !== 'oneshot')
+        warn(dcp, '하루 닫기는 1회성(oneshot)이어야 합니다 — 지속형은 켜 둔 내내 매 턴 하루가 넘어갑니다');
+    }
     const off = (schema.actions || []).filter((a) => a && a.offstage === true);
     if (off.length > 1) {
       warn('$.actions', `막간(offstage) 액션이 ${off.length}개입니다 — 하나면 충분해요 (어느 쪽이든 켜지면 같은 효과)`);

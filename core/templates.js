@@ -722,7 +722,12 @@ const WAKE_HOUR = "(wake_at == '새벽' ? 5 : (wake_at == '아침' ? 8 : (wake_a
 const WAKE_TOTAL_MIN = `((${WAKE_HOUR} * 60 - (hour * 60 + minute)) + 1439) % 1440 + 1`;
 const WAKE_AT_VAR = {
   id: 'wake_at', label: '(내부) 다음 장면 시간대', type: 'enum', init: '미정', enum: WAKE_ENUM,
-  desc: "day_break가 true일 때만: 하루를 마친 뒤 새로 시작된 장면이 실제로 잡은 때를 장면에서 읽어 적어라 "
+  // v1.7.0: 하루 넘김을 신고하는 턴에도 같이 적게 한다 — 그래야 대리 정산이 깃발을 세운 그 턴에
+  // 동기화 이벤트(day_break and wake_at != '미정')가 바로 돌아 시계가 한 턴 늦지 않는다.
+  // 필드 이름(day_passed)은 일부러 안 쓴다 — 그 칸이 없는 봇(숫자 창구가 열린 romance)에서도
+  // 같은 문장이 실리므로, 없는 칸을 가리키면 보조가 헷갈린다.
+  desc: "day_break가 true일 때, 또는 이번 턴에 하루가 넘어갔다고 신고할 때만: 하루를 마친 뒤 새로 "
+    + "시작된 장면이 실제로 잡은 때를 장면에서 읽어 적어라 "
     + "(새벽/아침/정오/오후/저녁/밤/심야 — 심야는 자정 넘김). 아침이라 단정하지 마라. "
     + "시계는 시스템이 '다음으로 돌아오는 그 시간대'로 맞춘다.",
 };
@@ -872,7 +877,10 @@ const ROMANCE = {
     // 메인이 문맥에 맞는 다음날 장면(새벽/정오/저녁…)을 고르고, 보조가 그 시간대(wake_at)를
     // 읽어 오면 day_break_sync 이벤트가 분을 계산해 굳힌다. "아침 고정"은 군대물·야간
     // 서사에서 어긋난다는 실전 피드백의 반영.
-    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1,
+    // dayClose (v1.7.0): 이 봇은 skip_day 창구가 열려 있어 보조가 숫자로 직접 넘길 수 있으므로
+    // 대리 정산은 안 붙는다 (한 가지를 두 창구로 말하게 하지 않는다). 표시는 사실 그대로 남긴다 —
+    // allow에서 skip_day를 빼는 순간 이 버튼이 채팅 입구가 된다.
+    { id: 'end_day', label: '🌙 하루를 마친다', mode: 'oneshot', cooldown: 1, dayClose: true,
       inject: '[시간] 오늘은 여기까지다. 다음 장면은 하루를 마치고 난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'day_break', expr: 'true' }] },
   ],
@@ -1944,7 +1952,10 @@ const DAILY = {
     // 하루 마무리 (v0.99 하루 경계 넘김) — 시계를 미리 돌리지 않는다. 깃발만 세우면 메인이
     // 문맥에 맞는 다음날 장면을 고르고, 보조가 그 시간대(wake_at)를 읽어 오면 day_break_sync
     // 이벤트가 분을 계산해 굳힌다. (예전엔 "다음 08:00" 고정 — 야근·교대 서사에서 어긋났다)
-    { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot',
+    // dayClose (v1.7.0) — 이 템플릿이 이 기능의 이유다. skip_day를 안 둔 대신 날짜 입구가 버튼
+    // 하나뿐이라, 채팅으로 "자고 일어나니 다음 날"이라고 써도 날짜가 영영 안 넘어갔다 (유저 제보).
+    // 이제 보조가 day_passed를 신고하면 시스템이 이 버튼을 대신 누른다 — 정산은 여전히 한 벌.
+    { id: 'end_day', label: '💤 하루를 마친다', mode: 'oneshot', dayClose: true,
       inject: '[플레이어 액션] 하루를 마치고 잠자리에 든다. 다음 장면은 자고 일어난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'day_break', expr: 'true' }] },
   ],
@@ -2795,7 +2806,11 @@ const ZOMBIE = {
       desc: '지금 있는 곳. 나가기·돌아오기는 버튼이 하고, 어느 건물인지는 서사나 /장소 명령이 정한다. 병원일수록 약이 많지만 위험하다.' },
     { id: 'noise', label: '소음', type: 'int', init: 10, min: 0, max: 100,
       desc: '내가 낸 소리가 쌓인 값. 밤에 이만큼 몰려온다. 총을 쏘면 크게 오르고, 하루가 지나면 가라앉는다.' },
-    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 480,
+    // ⚠ max는 1440이어야 한다 (v1.7.0 수리). 480이던 시절, 🌙이 계산한 "다음 07:00까지의 분"이
+    // 최대 1440인데 변수 상한에 깎여 **버튼을 눌러도 하루가 안 넘어갔다** (07:00에 누르면 15:00 —
+    // 이 템플릿의 심장이 8시간짜리였다). 보조 뇌절은 변수 상한이 아니라 allow의 maxGain(240)이 막는다:
+    // 변수 max = 시스템 정산의 천장, allow maxGain = AI가 밀 수 있는 폭. 둘을 겸하게 하면 정산이 깎인다.
+    { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
       desc: '이번 응답에서 흐른 시간(분). 짧은 대화는 0~10, 이동이나 수색은 30~120. 밤을 넘기는 건 버튼이 한다.' },
     // ── 몸 ──
     { id: 'hp', label: '체력', type: 'int', init: 70, min: 0, max: 100 },
@@ -2934,7 +2949,9 @@ const ZOMBIE = {
     // ── 하루를 닫는다 ──
     // daily의 💤과 같은 계산 — 지금이 몇 시든 **다음 날 07:00**으로 간다.
     // 감염·허기·소음 감쇠가 전부 여기서 하루치로 정산된다. 이 버튼이 이 템플릿의 심장이다.
-    { id: 'nightfall', label: '🌙 밤을 넘긴다', mode: 'oneshot', impactExempt: true,
+    // dayClose (v1.7.0) — daily와 같은 처지(날짜 입구가 버튼뿐)라 채팅 넘김을 함께 연다.
+    // when: 'not dead'는 대리 정산에도 그대로 걸린다 — 죽은 뒤에 밤이 넘어가지 않는다.
+    { id: 'nightfall', label: '🌙 밤을 넘긴다', mode: 'oneshot', impactExempt: true, dayClose: true,
       when: 'not dead',
       inject: '[행동] 불을 끄고 아침까지 버틴다. 밤에 무슨 소리를 들었는지 짧게 그려라.',
       effects: [

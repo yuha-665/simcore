@@ -122,6 +122,7 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 | `mode` | `oneshot`(1회성) \| `hold`(지속형) |
 | `cooldown` | 턴 수 (0 이상). oneshot만 기록됨 |
 | `offstage` (v1.5.0) | true면 **막간** — 이 액션이 발동한 턴(hold면 켜 둔 내내)에 ① 주인공 부재 지시문이 프롬프트 **맨 끝**에 붙고 ② 어댑터가 **페르소나 원문을 프롬프트에서 걷어낸다**(db에서 읽어 문자열 일치 제거, 24자 미만이면 생략. 실패해도 지시문은 나간다). 조연들끼리의 장면·흑막 쪽 이야기용 — 페르소나가 있으면 모델이 주인공을 억지로 등장시키는 문제를 끈다. 2개 이상이면 경고, oneshot이면 "한 장면만" 경고 |
+| `dayClose` (v1.7.0) | true면 **하루를 닫는 정산** — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션의 effects를 그대로 돌린다 (아래) |
 | `fightEnd` (v1.6.0) | true면 **교전 이탈** — 열린 교전(`checks[].fight`)을 닫는다. check(회피 등)를 달면 그 판정이 이탈의 성패. fight 판정이 없으면 경고. `when: 'fight_on'`으로 교전 중에만 여는 게 규격 |
 | `when` | 사용 조건. 거짓이면 잠김(🔒) |
 | `inject` | 발동 시 AI에게 전달될 문장 |
@@ -170,6 +171,26 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 - 상태창: `{lastcheck}` 자리표시자(판정 전엔 빈 문자열) + 변화 로그에 🎲 줄
 - **hold 액션 + check = 상시 판정** (v0.43 trpg): 켜 둔 동안 매 전송마다 굴린다. 능력을 갈아끼우려면
   보정식이 enum 변수를 읽게 한다 (trpg check_stat — 보조 AI 유지 + `/능력` 즉석 지정)
+
+### actions[].dayClose — 하루 넘김 대리 정산 (v1.7.0, 옵트인)
+
+**증상(제보)**: "하루넘기기 버튼을 안 누르고 그냥 채팅으로 '하루가 지났다' 하면 인식을 못 한다."
+**뿌리**: 버그가 아니라 **날짜 입구가 봇마다 달랐던 것** — 보조에게 `skip_day`를 준 봇(romance)은 채팅으로 넘어가고,
+버튼만 둔 봇(daily·zombie)은 날짜 권한이 아예 없어 영영 안 넘어갔다 (v0.51: "AI에게 열어 두면 날짜가 튄다").
+**처방**: 날짜 권한을 여는 대신 **버튼을 대신 눌러 준다.** 정산은 여전히 그 액션의 `effects` 한 벌뿐이라 두 입구가 갈라질 수 없다.
+
+- 보조 규격에 `"day_passed": true` 칸이 자동으로 붙는다 — **`dayClose` 액션이 있고 `skip_day`가 `updater.allow`에
+  없을 때만**. 숫자 창구가 열려 있으면 안 붙는다 (한 가지를 두 방법으로 말하게 하면 둘 다 틀린다)
+- 신고가 오면 응답 단계 5.4(시간 소비 **직전**)에서 그 액션의 effects를 돌린다 → 날짜가 그 턴에 바로 굳는다.
+  이어서 통지("이미 지나간 그 하루를 다시 넘기지 마라")가 다음 전송에 실린다 (`promptState.dayCloseGuide`로 대체/`false`로 끔)
+- **막는 것 셋**: ① **유령 밤 빗장** — 이번 사이클에 그 버튼이 이미 발동했으면 무시 (버튼을 누른 턴의 밤 장면을
+  보조가 보고 또 신고하는 메아리. idol v0.87.2 실사고를 엔진으로 옮긴 것) ② 보조가 `skip_day`를 올린 턴이면 무시
+  (명시한 숫자가 이긴다) ③ 액션의 `when`이 거짓이면 무시 (죽었는데 밤이 넘어가지 않는다)
+- 정산이 **1회성(oneshot)**이어야 하고 effects가 있어야 한다 (아니면 경고). 2개 이상이면 맨 앞만 쓰고 경고
+- `outputPhase`가 `dayClosed`를 돌려준다. 변화 로그 source는 `action:<id>` — 버튼과 같은 자리다
+- **깃발 계열(v0.99 `day_break`)과의 합**: 깃발만 세우고 시각은 `wake_at` 동기화 이벤트가 정한다. 보조가 같은 응답에
+  `wake_at`을 함께 적으면 그 턴에 바로 맞고, 안 적으면 깃발만 서서 다음 턴에 맞는다 — **시각을 멋대로 굳히지 않는다**
+- 이벤트·`randomEvents`로는 못 연다. 하루를 닫는 것은 액션 한 벌이라는 규율 그대로
 
 ### checks[].fight — 전투 안무 (v1.6.0, 옵트인)
 
@@ -282,7 +303,8 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 
 ## promptState — 메인 AI에게 보낼 상태 요약
 
-`{ template, includeEvents, eventPriority, systemGuide, checkGuide, offstageGuide }`. `{변수id}` 자리표시자.
+`{ template, includeEvents, eventPriority, systemGuide, checkGuide, offstageGuide, dayCloseGuide }`. `{변수id}` 자리표시자.
+`dayCloseGuide`는 하루 넘김 대리 정산이 돈 턴 전용 (v1.7.0 — 문자열이면 대체, `false`면 끔).
 `eventPriority`는 이벤트 발동 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙을 자동으로 붙인다
 (문자열을 주면 그 문구로 대체). `checkGuide`도 같은 원칙 (판정 턴 전용, false로 끄기 가능). `offstageGuide`는 막간 턴 전용 (v1.5.0).
 

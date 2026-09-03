@@ -6239,6 +6239,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
         ),
+        // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
+        h('div', { class: 'sce-row' },
+          bindCheck(a.dayClose === true, (x) => { if (x) a.dayClose = true; else delete a.dayClose; rerender(); },
+            '하루 닫기 — 서사가 하루를 넘기면 버튼을 안 눌러도 이 정산을 돌린다'),
+          h('span', { class: 'sce-hint', style: 'margin:0' },
+            a.dayClose === true
+              ? '보조 AI가 "하루가 넘어갔다"를 신고하면 시스템이 이 액션의 효과를 그대로 돌립니다 — 정산은 버튼과 같은 한 벌이라 갈라지지 않습니다. 버튼을 누른 턴의 신고는 무시됩니다(같은 밤 두 번 방지). ⚠ skip_day를 보조에게 열어 뒀다면 그쪽이 우선이라 이 대리 정산은 꺼집니다.'
+              : '체크하지 않으면 날짜는 이 버튼을 눌러야만 넘어갑니다 — 채팅으로 "다음 날이 되었다"라고 써도 시계는 그대로입니다.'),
+        ),
         // 막간 (v1.5.0) — 주인공 없이 주변 인물·흑막 쪽 이야기를 굴리는 스위치
         h('div', { class: 'sce-row' },
           bindCheck(a.offstage === true, (x) => { if (x) a.offstage = true; else delete a.offstage; rerender(); },
@@ -6360,7 +6369,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function addEndDayAction() {
     if ((schema.actions || []).some((a) => (a.effects || []).some((f) => f.set === SKIP_DAY))) return;
     schema.actions.push({
-      id: 'end_day', label: '🌙 하루를 마친다',
+      // dayClose (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 정산을 대신 돌린다.
+      // 새로 만드는 봇은 전부 채팅 넘김이 되는 게 기본값이어야 한다 (유저 제보: 버튼만 있는 봇은
+      // "하루가 지났다"고 써도 날짜가 안 넘어간다). skip_day가 allow에 있으면 대리는 자동으로 꺼진다.
+      id: 'end_day', label: '🌙 하루를 마친다', dayClose: true,
       effects: [{ set: SKIP_DAY, expr: '1' }, { set: SKIP_MIN, expr: '0' }],
       inject: '[하루 마무리] 오늘은 여기까지다. 다음 서사는 이튿날 아침 장면으로 시작하라.',
     });

@@ -99,9 +99,23 @@ peddler 랜덤) + **delve 1**(big_one — 노획 도박) + **zombie 2**(stranger
 그 역할을 물려받았다 — layout·whenArmed·checks(변수 vs)·suggest·choices를 전부 실기로 쓴다.
 새 기능을 만져 볼 때는 delve(중형) 또는 idol(대형)을 고르면 된다.
 
-**아직 어느 템플릿에도 없는 것 (v1.6.0 기준)**: 전투 안무 `checks[].fight`·`actions[].fightEnd`(실물은 얼헌 `gate_fight` —
+**아직 어느 템플릿에도 없는 것 (v1.7.0 기준)**: 전투 안무 `checks[].fight`·`actions[].fightEnd`(실물은 얼헌 `gate_fight` —
 `얼헌/hunter-vars.js`), 막간 `actions[].offstage`(실물은 얼헌 `offstage`), 다중 상점 `shops[]`·표기 단위 `units`.
 템플릿에 실을지는 얼헌 실기 뒤 결정.
+
+**하루 넘김 대리 정산 (v1.7.0, `actions[].dayClose`)** — 하루를 닫는 세 방식이 이제 한 창구를 쓴다:
+
+| 템플릿 | 하루 닫기 | 채팅 넘김 |
+|---|---|---|
+| daily · zombie | 💤/🌙 버튼 (`dayClose: true`) | **된다** (`day_passed` 신고 → 그 버튼의 effects를 대리 실행) |
+| romance | 🌙 버튼 (`dayClose: true`, 표시만) | 된다 — 단 `skip_day`가 allow에 있어 **숫자 창구**로 (day_passed는 안 붙는다) |
+| idol | 🌙 + 손수 만든 `night_req` 깃발·유령 밤 빗장(v0.87.2) | 된다 (엔진 기능의 **원형**. 아직 미이관 — 이벤트 순서가 "무대 대리 정산 → 하루 넘김"이라 옮기면 순서가 뒤집힌다) |
+| survival · vtuber | 없음 (`advance: perTurn` — 1턴 = 1일) | 해당 없음 |
+
+⚠ **zombie `skip_min` 상한 사고 (v1.7.0에서 수리)**: 480이던 시절, 🌙이 계산한 "다음 07:00까지의 분"(최대 1440)이
+변수 상한에 깎여 **버튼을 눌러도 8시간만 흘렀다** (07:00 → 15:00). 이 템플릿의 심장이 반나절짜리였던 것.
+교훈은 skip_day 캡 건과 같다 — **변수 `max`는 시스템 정산의 천장이고, AI 뇌절은 `allow`의 `maxGain`이 막는다.**
+둘을 겸하게 하면 정산이 깎인다 (zombie는 max 1440 / maxGain 240으로 분리).
 
 ## 시간 체계를 쓰는 템플릿 (v0.49~)
 

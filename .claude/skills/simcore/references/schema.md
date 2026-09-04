@@ -321,7 +321,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 
 | 필드 | |
 |---|---|
-| `mode` | `auto`(그룹) \| `template`(HTML 직접) |
+| `mode` | `auto`(그룹) \| `template`(HTML 직접) — ⚠ **`template`이면 `groups`는 아예 안 그려진다.** `templates[]`(조건부)가 있으면 그쪽이 먼저고 `template`은 맨 뒤 보험. 편집기·AI 창구는 `activeTemplateSlot()`으로 지금 그려지는 칸을 짚어야 한다 — 다른 칸에 쓰면 "적용됐습니다"가 떠도 화면은 그대로 (v1.7.4 실기 사고) |
 | `layout` | `stack`(기본) \| `tabs` \| `accordion` \| `popover` — **auto 모드 전용** (템플릿 모드면 무시 경고) |
 | `position` | `bottom`(기본) \| `top` (v1.0.2) — 상태창을 본문 아래/위 어디에 그릴지. **렌더 위치만** 바꾼다: 저장 마커는 항상 본문 끝 고정(스트리밍 부분 반환·마커 복구·beforeRequest 제거가 "끝" 전제), display가 top이면 마커 자리를 비우고 본문 앞에 얹는다. 다른 값은 오류 |
 | `theme` | `clean` \| `parchment` \| `terminal` \| `card` … |

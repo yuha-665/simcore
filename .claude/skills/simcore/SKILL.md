@@ -18,7 +18,7 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 |---|---|
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **20개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **73종, 3,780+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **77종, 3,850+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
@@ -119,6 +119,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 - **달력은 서사를 따라간다.** 시간 도약 폭은 유저가 정하고, `skip_day`는 그 일수를 그대로 싣는다.
   버튼으로만 하루를 닫는 봇은 그 버튼에 `dayClose: true`를 달아 **채팅으로도 넘어가게** 한다 (v1.7.0) —
   정산은 여전히 그 액션 한 벌이라 입구가 둘이어도 결과가 갈라지지 않는다.
+- **스냅샷 `pre:U`는 `out:U-1`에서 파생된 캐시지 진실이 아니다.** 메시지 삭제 후 새 진행과 리롤은 인덱스만으로는
+  구분이 안 된다 — 전송 때 `pre:U`와 `out:U-1`의 혈통(무장 제외)을 대조해 다르면 `pre/send/out ≥ U`를 지우고 `out:U-1`에서
+  새로 출발한다 (v1.7.3, 실기 제보 "⟦simcore:456⟧이 지워도 되살아난다"). 세이브 가져오기(같은 채팅)는 **교체**지 병합이
+  아니고, 저장소를 비우면 어댑터 `histStates` 램 캐시도 같이 비운다 — 옛 상태창이 되살아나는 출처가 셋(pre 우선·병합·캐시)이었다.
 - **변수 `max`는 시스템 정산의 천장이고, AI 뇌절은 `allow`의 `maxGain`이 막는다.** 둘을 겸하게 하면 정산이 깎인다 —
   같은 사고를 두 번 냈다 (skip_day 캡 v1.5.5 / zombie `skip_min` max 480이 🌙의 1440분을 깎아 하루가 8시간이던 v1.7.0).
 - **자주 변하는 숫자는 목록 항목에 넣지 않는다.** 목록 끝자리 숫자는 안 변하는 값 전용.

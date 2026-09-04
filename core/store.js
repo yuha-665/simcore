@@ -44,6 +44,22 @@ class SnapshotStore {
     return best >= 0 ? { index: best, state: await this.load(phase, best) } : null;
   }
 
+  /**
+   * index 이상의 pre/send/out 스냅샷을 지운다 — 시간선이 갈라진 지점부터 "지워진 미래"를 치운다 (v1.7.3).
+   * 메시지를 지우고 새로 진행하면 옛 턴의 스냅샷이 저장소에 남아 채팅이 그 번호에 다시 닿는 순간
+   * 되살아났다 (실기 제보: ⟦simcore:456⟧). 반환: 지운 키 수
+   */
+  async pruneFrom(index) {
+    const re = new RegExp(`^${escapeRe(this.p)}:(pre|send|out):(\\d+)$`);
+    const doomed = [];
+    for (const k of await this.b.keys()) {
+      const m = k.match(re);
+      if (m && parseInt(m[2], 10) >= index) doomed.push(k);
+    }
+    await mapLimited(doomed, 12, (k) => this.b.remove(k));
+    return doomed.length;
+  }
+
   async _prune() {
     const re = new RegExp(`^${escapeRe(this.p)}:(pre|send|out):(\\d+)$`);
     const entries = [];

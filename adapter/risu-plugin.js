@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.2
-//@display-name SimCore (시뮬 엔진) v1.7.2 게시판 사생활·삭제
+//@version 1.7.3
+//@display-name SimCore (시뮬 엔진) v1.7.3 유령 시간선 차단
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -2976,6 +2976,14 @@
     session.store.save = async (phase, index, state) => {
       await origStoreSave(phase, index, state);
       if (phase === 'out') histPut(index, state);
+    };
+    // 유령 시간선 정리(v1.7.3)가 저장소에서 옛 미래를 지우면 램 캐시도 같이 비운다 — 안 비우면
+    // display 훅이 지워진 out:N을 캐시에서 꺼내 옛 상태창을 그대로 그린다
+    const origPruneFrom = session.store.pruneFrom.bind(session.store);
+    session.store.pruneFrom = async (index) => {
+      const n = await origPruneFrom(index);
+      for (const k of [...histStates.keys()]) if (k >= index) histStates.delete(k);
+      return n;
     };
 
     // 마지막 char 메시지 인덱스에서 상태 복원
@@ -6698,6 +6706,7 @@ count(목록)  has(목록, "항목")</pre>
       const rep = document.getElementById('sc-status');
       await withProgress(rep, ['sc-resetall', 'sc-reload'], '상태 초기화 중',
         (progress) => session.resetAll(progress));
+      histStates = new Map(); histPending.clear();   // 램 캐시도 비운다 (v1.7.3) — 옛 out:N이 상태창으로 되살아나지 않게
       lastOutIndex = -1;
       lastChangeLog = [];
       const chaIdx = await Risuai.getCurrentCharacterIndex();
@@ -6899,6 +6908,9 @@ count(목록)  has(목록, "항목")</pre>
           (progress) => session.importData(data, anchor, progress));
         if (!res || !res.ok) { rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return; }
         lastOutIndex = res.sameChat && typeof data.lastOutIndex === 'number' ? data.lastOutIndex : anchor;
+        // 저장소는 파일대로 갈아끼웠는데 램 캐시에 옛 out:N이 남으면 display 훅이 그걸로 옛 상태창을
+        // 그린다 (v1.7.3 — "세이브에서 지워도 어디서 똑같은 거 긁어온다"의 세 번째 출처)
+        histStates = new Map(); histPending.clear();
         await mirrorVars(chaIdx, chatIdx);
         await syncControls();
         rep.innerHTML = `<span class="status-ok">✓ 가져오기 완료 — 엔진 턴 ${session.current?.meta?.turn ?? '?'}, 변수 ${Object.keys(session.current?.vars ?? {}).length}개`

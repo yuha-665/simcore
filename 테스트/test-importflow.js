@@ -75,6 +75,7 @@ async function runImport({ checkboxChecked, installedSchema }) {
     'loadIntoEditor', 'installSchemaToCurrentChar', 'Risuai', 'lastCharIndex', 'mirrorVars',
     'syncControls', 'renderPanel', 'withProgress', 'SAVE_BTNS', 'ev', 'log',
     `let schema = schemaRef.get(), session = sessionRef.get(), lastOutIndex = -1;
+     let histStates = new Map(); const histPending = new Set();   // v1.7.3 — 가져오기 뒤 램 캐시 비움이 참조한다
      const _install = installSchemaToCurrentChar;
      installSchemaToCurrentChar = async (p) => { const r = await _install(p); schema = schemaRef.get(); session = sessionRef.get(); return r; };
      ${handler.replace("document.getElementById('sc-import-file').onchange = async (ev) => {", 'const __h = async (ev) => {').replace(/\};\s*$/, '};')}

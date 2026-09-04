@@ -10,8 +10,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.7.2', src.includes('//@version 1.7.2'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.7\.2/.test(src), '');
+  ck('버전 1.7.3', src.includes('//@version 1.7.3'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.7\.3/.test(src), '');
   // v1.0.6 회귀 — 실사고: 갓 임포트한 원본 카드에서 번들 적용이 안 먹힘
   ck('적용 후 되읽기 레이스 재시도 (v0.85.1 결)', src.includes('리수 반영이 늦어요'), '');
   ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약)', src.includes('if (editor) loadIntoEditor(bundled);'), '');

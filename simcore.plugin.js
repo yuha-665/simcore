@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.2
-//@display-name SimCore (시뮬 엔진) v1.7.2 게시판 사생활·삭제
+//@version 1.7.3
+//@display-name SimCore (시뮬 엔진) v1.7.3 유령 시간선 차단
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -2673,6 +2673,22 @@ class SnapshotStore {
       }
     }
     return best >= 0 ? { index: best, state: await this.load(phase, best) } : null;
+  }
+
+  /**
+   * index 이상의 pre/send/out 스냅샷을 지운다 — 시간선이 갈라진 지점부터 "지워진 미래"를 치운다 (v1.7.3).
+   * 메시지를 지우고 새로 진행하면 옛 턴의 스냅샷이 저장소에 남아 채팅이 그 번호에 다시 닿는 순간
+   * 되살아났다 (실기 제보: ⟦simcore:456⟧). 반환: 지운 키 수
+   */
+  async pruneFrom(index) {
+    const re = new RegExp(`^${escapeRe(this.p)}:(pre|send|out):(\\d+)$`);
+    const doomed = [];
+    for (const k of await this.b.keys()) {
+      const m = k.match(re);
+      if (m && parseInt(m[2], 10) >= index) doomed.push(k);
+    }
+    await mapLimited(doomed, 12, (k) => this.b.remove(k));
+    return doomed.length;
   }
 
   async _prune() {
@@ -10051,11 +10067,36 @@ SimCore.define("session", function (require, module, exports) {
 //
 // 리롤: 같은 U/C 키로 다시 돌므로 base가 같아 멱등. 랜덤은 (chatId, 인덱스) 시드로 고정.
 // 삭제: 전송 시 U가 과거로 돌아가면 pre:U가 이미 있어 그 시점 상태로 자연 복원.
+//
+// ⚠ 유령 시간선 (v1.7.3, 실기 제보 "⟦simcore:456⟧이 한번 박히니 이전 채팅을 지워도 456 차례가 되면
+// 옛 상태창을 그대로 불러온다"): pre:U는 out:U-1에서 파생된 **캐시**다. 메시지를 지우고 새로 진행하거나
+// 패널로 보정하면 out:U-1이 바뀌는데, 옛 pre:U가 그대로 남아 있으면 리롤과 구분이 안 돼 지워진 시간선이
+// 되살아났다. 그래서 전송 때 pre:U와 out:U-1의 혈통을 대조한다 — 다르면 pre:U는 유물이고, 그 번호부터의
+// 옛 미래(pre/send/out ≥ U)를 지운 뒤 out:U-1에서 새로 출발한다. 리롤은 out:U-1이 안 바뀌므로 그대로 멱등.
 
 const engine = require('./engine');
 const { SnapshotStore, mapLimited } = require('./store');
 const IO_CONCURRENCY = 12; // 샌드박스 브리지 동시 요청 수 (너무 키우면 브리지가 밀린다)
 const { seededRng, makeUnstableRng } = require('./rng');
+
+/** 키 순서에 안 흔들리는 직렬화 — 스냅샷을 두 경로로 만들면 키 순서가 달라질 수 있다 */
+function stableJson(x) {
+  if (Array.isArray(x)) return '[' + x.map(stableJson).join(',') + ']';
+  if (x && typeof x === 'object') {
+    return '{' + Object.keys(x).sort().map((k) => JSON.stringify(k) + ':' + stableJson(x[k])).join(',') + '}';
+  }
+  return JSON.stringify(x);
+}
+
+/**
+ * 스냅샷의 혈통 키 (v1.7.3). pre:U는 out:U-1에 턴 사이 무장(meta.armed)만 얹은 것이라, 무장을 빼고
+ * 비교하면 같은 시간선인지 알 수 있다. 양쪽 다 reconcile을 통과시켜 구세이브에 빠진 키가 차이로 안 잡히게.
+ */
+function lineageKey(schema, state) {
+  const s = engine.reconcileState(schema, JSON.parse(JSON.stringify(state)));
+  const { armed, ...meta } = s.meta || {};
+  return stableJson({ ...s, meta });
+}
 
 class SimSession {
   /**
@@ -10102,8 +10143,25 @@ class SimSession {
    */
   async onSend(sendIndex, userText = '') {
     const existingPre = await this.store.load('pre', sendIndex);
-    const base = existingPre ?? this.current ?? engine.initState(this.schema);
-    if (!existingPre) await this.store.save('pre', sendIndex, base);
+    let base = existingPre ?? this.current ?? engine.initState(this.schema);
+    let branched = false;
+    if (existingPre) {
+      // 유령 시간선 대조 (v1.7.3) — pre:U는 out:U-1(+턴 사이 무장)에서 파생된 캐시다. 직전 응답이
+      // 그 뒤로 바뀌었다면(메시지 삭제 후 새 진행·패널 보정) 이 pre:U는 지워진 시간선의 유물이다.
+      // 리롤은 out:U-1이 그대로라 혈통이 같고, 그때는 종전대로 pre:U로 멱등하게 돈다.
+      const prevOut = await this.store.load('out', sendIndex - 1);
+      if (prevOut) {
+        const keyPrev = lineageKey(this.schema, prevOut);
+        if (keyPrev !== lineageKey(this.schema, existingPre)) {
+          branched = true;
+          // current가 out:U-1과 같은 혈통이면(= 거기에 무장만 얹은 상태) 무장을 살려 current로,
+          // 아니면 out:U-1로. current를 무조건 쓰면 안 된다 — 리롤 중 패널 보정이면 current는 응답 뒤 상태다.
+          base = this.current && lineageKey(this.schema, this.current) === keyPrev ? this.current : prevOut;
+          await this.store.pruneFrom(sendIndex);   // 옛 미래(pre/send/out ≥ U)는 여기서 끝난다
+        }
+      }
+    }
+    if (!existingPre || branched) await this.store.save('pre', sendIndex, base);
     // userText (v1.6.0): 전투 안무의 맡김/내 수 판단용 — 굴림과 무관하니 리롤 안정성은 그대로
     const r = engine.sendPhase(this.schema, base, { rng: this._rng(sendIndex, 'send'), userText });
     await this.store.save('send', sendIndex, r.state);
@@ -10222,6 +10280,14 @@ class SimSession {
     const sameChat = !!data.chatId && data.chatId === this.chatId;
     const prefix = this.store.p + ':';
     if (sameChat) {
+      // 파일이 진실이다 (v1.7.3) — 파일에 없는 스냅샷은 지운다. 병합이면 유저가 파일에서 지운 턴이
+      // 저장소에 그대로 남아 채팅이 그 번호에 닿는 순간 되살아난다 (실기 제보: "세이브 내보내서
+      // 456 지워도 또 어디서 똑같은 거 긁어온다" — 완전 초기화 뒤 가져와야 비로소 먹혔다).
+      const stale = (await this.store.b.keys())
+        .filter((k) => k.startsWith(prefix) && /:(pre|send|out):\d+$/.test(k));
+      onProgress?.(0, stale.length, '기존 스냅샷 정리 중');
+      await mapLimited(stale, IO_CONCURRENCY, (k) => this.store.b.remove(k),
+        (d, t) => onProgress?.(d, t, '기존 스냅샷 정리 중'));
       const entries = Object.entries(data.snapshots || {})
         .filter(([suffix]) => /^(pre|send|out):\d+$/.test(suffix));
       onProgress?.(0, entries.length, '스냅샷 복원 중');
@@ -26412,6 +26478,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       await origStoreSave(phase, index, state);
       if (phase === 'out') histPut(index, state);
     };
+    // 유령 시간선 정리(v1.7.3)가 저장소에서 옛 미래를 지우면 램 캐시도 같이 비운다 — 안 비우면
+    // display 훅이 지워진 out:N을 캐시에서 꺼내 옛 상태창을 그대로 그린다
+    const origPruneFrom = session.store.pruneFrom.bind(session.store);
+    session.store.pruneFrom = async (index) => {
+      const n = await origPruneFrom(index);
+      for (const k of [...histStates.keys()]) if (k >= index) histStates.delete(k);
+      return n;
+    };
 
     // 마지막 char 메시지 인덱스에서 상태 복원
     const msgs = chat?.message ?? [];
@@ -30133,6 +30207,7 @@ count(목록)  has(목록, "항목")</pre>
       const rep = document.getElementById('sc-status');
       await withProgress(rep, ['sc-resetall', 'sc-reload'], '상태 초기화 중',
         (progress) => session.resetAll(progress));
+      histStates = new Map(); histPending.clear();   // 램 캐시도 비운다 (v1.7.3) — 옛 out:N이 상태창으로 되살아나지 않게
       lastOutIndex = -1;
       lastChangeLog = [];
       const chaIdx = await Risuai.getCurrentCharacterIndex();
@@ -30334,6 +30409,9 @@ count(목록)  has(목록, "항목")</pre>
           (progress) => session.importData(data, anchor, progress));
         if (!res || !res.ok) { rep.innerHTML = '<span class="status-bad">세이브 파일 형식이 아님</span>'; return; }
         lastOutIndex = res.sameChat && typeof data.lastOutIndex === 'number' ? data.lastOutIndex : anchor;
+        // 저장소는 파일대로 갈아끼웠는데 램 캐시에 옛 out:N이 남으면 display 훅이 그걸로 옛 상태창을
+        // 그린다 (v1.7.3 — "세이브에서 지워도 어디서 똑같은 거 긁어온다"의 세 번째 출처)
+        histStates = new Map(); histPending.clear();
         await mirrorVars(chaIdx, chatIdx);
         await syncControls();
         rep.innerHTML = `<span class="status-ok">✓ 가져오기 완료 — 엔진 턴 ${session.current?.meta?.turn ?? '?'}, 변수 ${Object.keys(session.current?.vars ?? {}).length}개`

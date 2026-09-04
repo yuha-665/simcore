@@ -16,7 +16,7 @@ const CARD_DRAG = true;
 const { validateSchema } = require('./validate');
 const { referencedVars, evaluate, truthy } = require('./expr');
 const { seededRng } = require('./rng');
-const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn } = require('./render');
+const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
 const { monthView } = require('./calendar');
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
@@ -1048,6 +1048,38 @@ function buildCssSpecPrompt(schema, styleReq = '', designPolish = true) {
   ].join('\n');
 }
 
+/**
+ * 지금 화면에 그려지고 있는 템플릿 칸을 짚는다 (v1.7.4).
+ *
+ * 렌더러가 고르는 것과 **같은 자리**여야 한다. 렌더러(pickTemplate)는 `templates[]`를 먼저 훑고
+ * 구버전 `template` 칸은 맨 뒤 보험이라, 규격서가 보여주는 템플릿과 생성 결과가 들어가는 칸이
+ * 어긋나면 "✅ 적용됐습니다"가 떠도 화면은 그대로다.
+ * (실기 제보 — 얼헌 개조판: templates[0]에만 템플릿이 있는데 규격서는 "자동 배치를 쓰고 있습니다"로
+ *  나가고, 결과는 영영 안 그려지는 ui.template에 꽂혔다.)
+ *
+ * 조건 평가는 **시작 상태 기준** — 편집기 미리보기와 같은 기준이라 눈에 보이는 것과 일치한다.
+ * 템플릿 모드인데 아무것도 안 채워졌으면 null — 그때는 렌더러도 그룹으로 되돌아간다.
+ */
+function activeTemplateSlot(schema) {
+  const ui = schema?.statusUI;
+  if (!ui || ui.mode !== 'template') return null;
+  const list = Array.isArray(ui.templates) ? ui.templates : [];
+  const legacy = typeof ui.template === 'string' && ui.template.trim() ? { id: null, template: ui.template } : null;
+  let pick = null;
+  try {
+    pick = pickTemplate(ui, engine.makeLookup(schema, engine.initState(schema).vars));
+  } catch (e) {
+    // 검증 오류로 시작 상태를 못 만들면 조건 평가를 포기하고 "조건 없는 첫 장"으로 근사한다
+    pick = list.find((t) => t && t.template && !(t.when && String(t.when).trim()))
+      || legacy || list.find((t) => t && t.template) || null;
+  }
+  if (!pick) return null;
+  const i = list.indexOf(pick);
+  return i >= 0
+    ? { kind: 'templates', i, id: list[i].id ?? null, when: list[i].when || '', text: list[i].template || '', count: list.length }
+    : { kind: 'template', i: -1, id: null, when: '', text: ui.template || '', count: list.length };
+}
+
 // ── 배치까지 AI에게 맡기는 규격서 (커스텀 템플릿 통째) ─────────
 // 스킨 규격(위)과 달리 클래스는 자유, 대신 {자리표시자} 계약이 생명이다 —
 // 목록에 없는 자리표시자는 검증기가 거부하므로 "실패해도 안전"이 여기서도 성립한다.
@@ -1063,7 +1095,7 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
       '- `{scn_label}` / `{scn_turns}` — 현재 막 라벨 글자만 / 이 막에서 보낸 턴 수',
     ] : []),
   ];
-  const cur = schema.statusUI?.mode === 'template' && (schema.statusUI.template || '').trim();
+  const slot = activeTemplateSlot(schema);
   return [
     'RisuAI용 SimCore 플러그인의 상태창을 **HTML 템플릿 + CSS로 통째로** 만들어 주세요.',
     '채팅 메시지마다 이 HTML이 그려지고, {자리표시자}가 실제 값으로 치환됩니다.',
@@ -1105,9 +1137,14 @@ function buildLayoutSpecPrompt(schema, styleReq = '', designPolish = true) {
     '  이름을 `{{img::지역_{지역변수}}}`로 조립하면 변수가 바뀔 때 그 지역의 색이 바뀝니다.',
     '- 접었다 펴는 지도는 체크박스 + `:checked ~` 로 (JS 불가). 이때도 `id`에 `{uid}`를 꼭 섞으세요.',
     '',
-    cur
+    slot && slot.text.trim()
       ? ['## 지금 쓰는 템플릿 — 이걸 바탕으로 고쳐도, 완전히 새로 만들어도 됩니다',
-        '```html', cur, '```'].join('\n')
+        // 조건부 템플릿이 여러 장이면 어느 장을 고치는지 이름으로 못박는다 — 결과가 들어가는 칸과 같다
+        ...(slot.kind === 'templates' && slot.count > 1
+          ? [`(이 봇은 조건부 템플릿 ${slot.count}장입니다. 지금 고치는 건 \`${slot.id}\` 한 장이고`
+            + `${slot.when ? ` (표시 조건: \`${slot.when}\`)` : ' (조건 없는 기본 장)'}, 나머지 장은 그대로 둡니다.)`]
+          : []),
+        '```html', slot.text, '```'].join('\n')
       : '(지금은 자동 배치를 쓰고 있습니다 — 위 자리표시자로 자유롭게 구성하세요.)',
   ].join('\n');
 }
@@ -2450,6 +2487,18 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     '',
   ];
 
+  // 상태창이 커스텀 템플릿이면 groups는 화면에 안 그려진다 — 여기서 그룹을 고쳐도 유저 화면은 그대로다.
+  // 요청서 첫머리에 못박아, AI가 JSON 대신 "그건 이 탭 밖입니다"로 답할 수 있게 한다 (v1.7.4 실기 제보).
+  const tplSlot = tabKey === 'status' ? activeTemplateSlot(schema) : null;
+  if (tplSlot) {
+    head.push('## ⚠ 먼저 알아둘 것 — 이 봇의 상태창은 커스텀 템플릿입니다',
+      '`statusUI.groups`는 **화면에 그려지지 않습니다.** 템플릿 HTML이 상태창 전체를 대신하고 있어서, '
+      + '여기서 그룹을 늘리거나 고쳐도 유저가 보는 화면은 그대로입니다.',
+      '보여줄 값을 바꾸는 요청이라면 JSON 대신 **그 사실을 먼저 알려주세요** — 그건 템플릿 HTML에 '
+      + '`{변수id}`를 넣어야 하는 일이고, [👁 결과 → 🎨 꾸미기 → 배치까지] 창구가 그걸 맡습니다.',
+      '');
+  }
+
   if (fixMode) {
     const s = opts.stats;
     head.push('## 진단에서 나온 문제 — 이걸 고쳐 주세요',
@@ -2493,7 +2542,10 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     ...(tabKey === 'presets'
       ? ['(갈아끼워지는 건 프리셋 목록뿐입니다. 같은 탭의 AI 최초설정은 그대로 남습니다.)'] : []),
     ...(tabKey === 'status'
-      ? ['(갈아끼워지는 건 그룹 목록과 배치뿐입니다. 커스텀 CSS·HTML 템플릿·테마는 그대로 남습니다 — 손대지 마세요.)'] : []),
+      ? [tplSlot
+        ? '(갈아끼워지는 건 그룹 목록과 배치뿐입니다. 커스텀 HTML 템플릿·CSS·테마는 그대로 남습니다 — 손대지 마세요. '
+          + '⚠ 위에 적었듯 이 봇에서는 그 그룹이 화면에 그려지지 않습니다.)'
+        : '(갈아끼워지는 건 그룹 목록과 배치뿐입니다. 커스텀 CSS·HTML 템플릿·테마는 그대로 남습니다 — 손대지 마세요.)'] : []),
     '',
     '지금 이 탭에 들어 있는 개수입니다 — 출력하기 전에 세어서 맞는지 확인하세요:',
     ...counts.map(([p, n]) => `- \`${p}\` **${n}개**`),
@@ -4623,6 +4675,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const compactMode = varsMode || commandsMode;
     const wrap = h('div', { class: `sce-block sce-tab-ai-tools${compactMode ? ' sce-tab-ai-vars sce-tab-ai-compact' : ''}` });
     if (!compactMode) wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+    // 커스텀 템플릿 봇에서 이 창구는 헛돈다 — groups는 그려지지 않는다 (v1.7.4 실기 제보).
+    // 편집기에는 추가돼 보이니, 말해 주지 않으면 유저는 "됐다"고 믿고 한참 헤맨다.
+    if (tabKey === 'status' && activeTemplateSlot(schema)) {
+      wrap.appendChild(h('div', { class: 'sce-warn' },
+        '이 봇의 상태창은 커스텀 템플릿이라, 여기서 만드는 표시 그룹은 화면에 그려지지 않아요 — '
+        + '편집기에는 추가돼 보여도 유저 화면은 그대로입니다. 보여줄 값을 바꾸려면 '
+        + '[👁 결과] 탭의 🎨 꾸미기 → [배치까지]를 쓰거나, 상태창 탭의 템플릿 칸에 {변수id}를 직접 넣으세요.'));
+    }
 
     // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
     // compact(변수·명령)는 내보내기|가져오기 2열 격자라, 이 블록만 두 열을 가로질러 맨 위에 눕힌다.
@@ -7174,6 +7234,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         schema.statusUI.mode = cssBackup.mode;
         schema.statusUI.template = cssBackup.template;
         schema.statusUI.customCSS = cssBackup.customCSS;
+        if (cssBackup.templates) schema.statusUI.templates = JSON.parse(JSON.stringify(cssBackup.templates));
         cssBackup = null; cssGen.note = null; rerender();
       } }, '꾸미기 되돌리기'));
     }
@@ -7229,7 +7290,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       rerender(); return;
     }
     const ui = schema.statusUI;
-    const takeBackup = () => { cssBackup = { mode: ui.mode, template: ui.template, customCSS: ui.customCSS }; };
+    // 되돌리기 1슬롯 — templates[]까지 떠 놓는다 (배치 적용이 그 안의 한 장을 갈아끼우므로)
+    const takeBackup = () => {
+      cssBackup = { mode: ui.mode, template: ui.template, customCSS: ui.customCSS,
+        templates: ui.templates ? JSON.parse(JSON.stringify(ui.templates)) : undefined };
+    };
+    const restoreBackup = () => {
+      ui.mode = cssBackup.mode; ui.template = cssBackup.template; ui.customCSS = cssBackup.customCSS;
+      if (cssBackup.templates) ui.templates = JSON.parse(JSON.stringify(cssBackup.templates));
+    };
 
     if (!layout) {
       let css = res.trim();
@@ -7257,20 +7326,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     // 원자 적용 — 자리표시자 계약은 검증기가 지킨다. 새 오류가 생기면 통째로 되돌린다.
     const beforeErrs = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
+    // 규격서가 보여준 그 칸에 넣는다 — 다른 칸에 쓰면 렌더러가 안 보고 "적용됐는데 그대로"가 된다 (v1.7.4)
+    const slot = activeTemplateSlot(schema);
     takeBackup();
     ui.mode = 'template';
-    ui.template = tpl;
+    if (slot && slot.kind === 'templates') ui.templates[slot.i].template = tpl;
+    else ui.template = tpl;
     const after = validateSchema(schema);
     const fresh = after.errors.filter((e) => !beforeErrs.has(e.path + '|' + e.msg));
     if (fresh.length) {
-      ui.mode = cssBackup.mode; ui.template = cssBackup.template; ui.customCSS = cssBackup.customCSS;
+      restoreBackup();
       cssBackup = null;
       cssGen.note = '⚠ 생성된 템플릿이 검증에서 거부됐습니다 (스키마는 안 바뀜) — '
         + fresh.slice(0, 3).map((e) => e.msg).join(' / ')
         + '. 다시 시키거나 더 강한 생성 모델을 쓰세요.';
       rerender(); return;
     }
-    cssGen.note = '✅ 배치가 적용됐습니다 — 아래 미리보기가 새 상태창입니다. 세부 수정은 3층 상태창 탭에서.';
+    cssGen.note = '✅ 배치가 적용됐습니다 — 아래 미리보기가 새 상태창입니다. 세부 수정은 3층 상태창 탭에서.'
+      + (slot && slot.kind === 'templates' && slot.count > 1 ? ` (조건부 템플릿 '${slot.id}' 장을 갈아끼웠습니다.)` : '');
     rerender();
   }
 
@@ -9017,4 +9090,5 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   };
 }
 
-module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost };
+module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost,
+  activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt };

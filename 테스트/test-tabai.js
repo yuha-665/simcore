@@ -7,10 +7,13 @@ const SC = globalThis.__SC;
 const { validateSchema } = SC.require('validate');
 const { TEMPLATES } = SC.require('templates');
 
-const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
-const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS',
-  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport, FEATURE_RECIPES };')(
-  validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS);
+// v1.7.4 — buildTabExportPrompt가 activeTemplateSlot(상태창이 커스텀 템플릿인지)을 본다.
+// 잘라 오는 구간을 그 함수부터로 넓히고, 그 함수가 쓰는 것을 같이 주입한다.
+const seg = src.slice(src.indexOf('function activeTemplateSlot('), src.indexOf('// 행 이동/삭제 버튼 묶음'));
+const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'EXPOSED_LABELS', 'pickTemplate', 'engine',
+  seg + '\nreturn { EVENT_PATTERNS, ACTION_PATTERNS, varContractTable, buildTabExportPrompt, pickTabFragment, TAB_SLICES, tabItemCounts, tabItemIds, planTabImport, FEATURE_RECIPES, activeTemplateSlot };')(
+  validateSchema, TEMPLATES, SC.require('time').timeConfig, SC.require('time').EXPOSED_LABELS,
+  SC.require('render').pickTemplate, SC.require('engine'));
 
 const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 const S = TEMPLATES.survival.schema;

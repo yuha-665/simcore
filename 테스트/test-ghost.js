@@ -131,7 +131,7 @@ const keysOf = (ses) => (ses.store.b.keys()).filter((k) => k.startsWith(ses.stor
     ok('pruneFrom 래퍼가 캐시를 같이 비운다', src.includes('session.store.pruneFrom = async (index) =>') && src.includes('histStates.delete(k)'), '');
     ok('완전 초기화 뒤 캐시 비움', /session\.resetAll\(progress\)\);\n\s*histStates = new Map\(\); histPending\.clear\(\);/.test(src), '');
     ok('세이브 가져오기 뒤 캐시 비움', /data\.lastOutIndex : anchor;\n(.*\n){0,3}\s*histStates = new Map\(\); histPending\.clear\(\);/.test(src), '');
-    ok('버전 1.7.3', src.includes('//@version 1.7.3'), '');
+    ok('v1.7.3 체인지로그 블록', src.includes('// ── v1.7.3 ──'), '');
   }
 
   let p = 0, f = 0;

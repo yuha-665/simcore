@@ -1166,12 +1166,33 @@ function diagnose(schema, opts = {}) {
 
   // ── 8. 상태창 노출 ──
   // 그룹은 { items:[{var}] } 형태다. 옛 { vars:[id] } 형태도 함께 받아 준다.
-  const shown = new Set((schema.statusUI?.groups || []).flatMap((g) => [
+  // ⚠ 템플릿 모드면 그룹은 **그려지지 않는다** (render.js — 템플릿이 있으면 그룹 분기를 아예 안 돈다).
+  // 그런데도 그룹을 '보이는 것'으로 세면, 제작자가 상태창 탭에 칸을 추가하고 화면엔 안 나오는데
+  // 진단만 조용한 상황이 된다 — 거짓 안심이 가장 오래 헤매게 만든다 (v1.7.4 실기 제보).
+  const uiD = schema.statusUI || {};
+  const tplDrawn = uiD.mode === 'template'
+    && ((typeof uiD.template === 'string' && uiD.template.trim())
+      || (uiD.templates || []).some((t) => t && t.template));
+  const groupIds = (uiD.groups || []).flatMap((g) => [
     ...(g.items || []).map((it) => (typeof it === 'string' ? it : it?.var)),
     ...(g.vars || []),
-  ]).filter(Boolean));
-  const tmpl = JSON.stringify(schema.statusUI ?? {}) + (schema.promptState?.template ?? '');
-  const inTmpl = new Set((tmpl.match(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g) || []).map((s) => s.slice(1, -1)));
+  ]).filter(Boolean);
+  const shown = new Set(tplDrawn ? [] : groupIds);
+  // ⚠ 훑는 건 **템플릿 본문만**이다. statusUI를 통째로 JSON으로 굳혀 훑으면 `{"var":"trait"}` 같은
+  // 구조 자체가 자리표시자처럼 잡혀, 그룹에만 있는 변수가 템플릿에 있는 것으로 둔갑한다 (v1.7.4).
+  const tmpl = [
+    typeof uiD.template === 'string' ? uiD.template : '',
+    ...(uiD.templates || []).map((t) => (t && typeof t.template === 'string' ? t.template : '')),
+    schema.promptState?.template ?? '',
+  ].join('\n');
+  // 자리표시자는 `{id}` 한 형태가 아니다 — `{id:tags}`(목록 칩)도, `{hp < 30 ? 'x' : 'y'}`(조건식)도
+  // 같은 노출이다. `{id}`만 세면 목록 칩으로 잘 보여주고 있는 변수를 "안 보인다"고 신고한다.
+  // 렌더러(engine.renderTemplate)와 같은 문법으로 훑고, 그 안의 이름을 전부 노출로 친다.
+  const inTmpl = new Set();
+  for (const m of tmpl.matchAll(/\{([^{}]+)\}/g)) {
+    const t = m[1].trim().match(/^(.*?):(tags)(?::(.+))?$/);
+    for (const id of ((t ? t[1] : m[1]).match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [])) inTmpl.add(id);
+  }
   // 시간 진행 입구는 엔진이 소비 후 0으로 되돌리는 우편함이라 상태창에 늘 0으로만 뜬다 —
   // "안 보인다"가 아니라 보일 값이 아니다 ('안 움직임' 면제와 같은 이유).
   const hidden = schema.vars.filter((x) => !shown.has(x.id) && !inTmpl.has(x.id)
@@ -1179,6 +1200,16 @@ function diagnose(schema, opts = {}) {
   if (hidden.length) {
     add('low', '표시 안 됨', `상태창에 안 보이는 변수 ${hidden.length}개: ${hidden.map((x) => x.id).join(', ')} — `
       + '내부용이면 정상이고, 플레이어가 알아야 할 값이면 상태창 탭에서 추가하세요.', 'status');
+  }
+  // 템플릿 모드인데 그룹에 항목이 남아 있다 — 그 칸은 편집기에만 있고 화면엔 없다.
+  if (tplDrawn && groupIds.length) {
+    const ghost = [...new Set(groupIds)].filter((id) => !inTmpl.has(id));
+    if (ghost.length) {
+      add('mid', '표시 안 됨',
+        `커스텀 템플릿을 쓰는 상태창인데 표시 그룹에 ${ghost.length}개가 남아 있습니다: ${ghost.join(', ')} — `
+        + '템플릿 모드에선 그룹이 그려지지 않아 이 값들은 화면에 안 나옵니다. '
+        + '템플릿 HTML 안에 `{변수id}`로 넣으세요 (👁 결과 → 🎨 꾸미기 → [배치까지]에 맡길 수 있습니다).', 'status');
+    }
   }
 
   stats.high = findings.filter((f) => f.sev === 'high').length;

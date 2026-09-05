@@ -1,0 +1,80 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #c98a7a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN &nbsp;·&nbsp; HOTFIX</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">긴급 수정</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.7.1 &nbsp;→&nbsp; v1.7.5</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·재정 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  얼터헌터 개조판은 이 엔진 위에서 굴러갑니다. 이 글은 기능 소개가 아니라 <b style="color:#dbe2ea;">긴급 수정 공지</b>입니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 보조 호출 반복 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#c98a7a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">⚠ 먼저</span>
+    <span style="font-size:19px;font-weight:600;">보조 모델이 한 턴에 수십 번 불리던 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#c98a7a;">v1.7.5</span></span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#c98a7a;">이런 증상이면 지금 쓰는 빌드가 그겁니다</b> —
+  응답 하나에 보조 모델 요청이 <b style="color:#c98a7a;">같은 내용으로 수십 번</b> 나가고,
+  불릴 때마다 상태 갱신이 <b style="color:#c98a7a;">겹쳐 적용</b>되고(호감도가 한 턴에 +2가 아니라 +40),
+  메인 응답 스트리밍이 <b style="color:#c98a7a;">멈추거나 뚝뚝 끊깁니다</b>.
+  보조 모델을 유료 API로 쓰고 계시면 요금이 그만큼 나갑니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  v1.0.1에서 잡았다고 했던 증상 그대로입니다. 그때 픽스가 <b style="color:#dbe2ea;">정규식이 없는 카드에서만</b> 검증됐던 게 문제였습니다.
+  플러그인은 리수가 글을 한 조각씩 흘려보내는 동안 "이건 스트리밍 중"이라는 판단을
+  <b style="color:#c98a7a;">저장된 글과 지금 조각의 앞부분이 같은지</b>로만 하고 있었는데,
+  카드에 <b style="color:#dbe2ea;">출력 정규식이 저장 글의 머리를 바꾸는 규칙</b>(상태창 래핑, 태그 삽입 등)이 있으면 매 조각 판단이 빗나갑니다.
+  그러면 조각마다 "응답 하나가 끝났다"고 보고 보조 호출·시간 진행·이벤트를 통째로 한 벌씩 돌립니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#e0a94a;">고친 것 두 가지</b> —<br>
+  · 리수가 스트리밍 동안 직접 세우는 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">isStreaming</span> 깃발을 으뜸 신호로 씁니다. 글자 비교는 그 깃발이 없는 옛 리수용 예비로만 남겼습니다.<br>
+  · 정산 함수 자체에 <b style="color:#dbe2ea;">한 전송에 한 번</b> 빗장을 걸었습니다. 어느 경로로 들어오든 같은 턴에 두 번은 안 돕니다. 판단이 또 빗나가도 최악이 1회지 수십 번은 아닙니다.
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  리수 버전과는 무관합니다 — PocketRisu 1.8.1과 1.11.2 소스를 대조해 스트리밍 쪽 변경이 없음을 확인했습니다.
+  UI 개조판이든 순정이든, <b style="color:#dbe2ea;">v1.7.4 이하는 전부 해당</b>됩니다.
+  진단과 재현을 잡아 주신 제보자분께 감사드립니다.
+  </p>
+</div>
+
+<!-- ─────────── 그 사이 픽스 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">v1.7.1 이후 같이 들어간 수리</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.2 ~ v1.7.4</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">게시판이 주인공을 생중계하던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.2</span> — 파티끼리만 들어간 게이트 안 사냥까지 자유게시판에 실시간으로 올라왔습니다. "서사와 닿는 글 최대 1개"를 모델이 상시 허가로 읽은 탓. 주인공 글감은 금지가 기본, 불특정 다수가 목격한 일만 예외로 뒤집었고, 이미 오염된 글을 치우는 <b style="color:#dbe2ea;">글 삭제·댓글 삭제·게시판 비우기</b>가 패널에 생겼습니다<br>
+  · <b style="color:#dbe2ea;">지운 턴의 상태창이 되살아나던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.3</span> — 채팅을 지우고 다시 진행해도 그 번호 차례가 되면 옛 상태창이 그대로 나왔습니다. 출처가 셋(전송 시 옛 스냅샷 우선·세이브 가져오기가 병합·램 캐시)이라 셋 다 막았습니다. 리롤은 종전대로 멱등입니다<br>
+  · <b style="color:#dbe2ea;">템플릿 상태창 봇에서 AI 창구가 헛돌던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.4</span> — "변수를 추가하고 AI로 상태창에 넣었는데 ✅ 적용됐다면서 화면은 그대로"의 뿌리. 창구가 렌더러와 다른 칸을 보고 있었습니다. 얼터헌터 개조판처럼 커스텀 템플릿을 쓰는 봇이 해당됩니다
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.7.5 스트리밍 판정 깃발화</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 얼터헌터 개조판 번들은 안 바꿔도 됩니다</b> — 이번 수정은 전부 플러그인 쪽입니다. 하던 채팅 그대로 이어서 하시면 됩니다.<br>
+  <b style="color:#c98a7a;">③ 이미 겹쳐 적용된 수치</b>는 자동으로 안 돌아옵니다. 상태는 메시지마다 따로 저장되니, 겹친 턴의 응답을 <b style="color:#dbe2ea;">리롤하거나 지우고 다시 보내면</b> 그 앞 턴 상태에서 새로 출발합니다 (v1.7.3부터 지운 턴이 되살아나지 않습니다).
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 임포트 뒤에도 같은 증상이면 <b style="color:#a9b4c2;">플러그인 목록의 이름</b>과 스샷을 같이 댓글로 남겨 주세요.
+  </p>
+</div>
+
+</div>

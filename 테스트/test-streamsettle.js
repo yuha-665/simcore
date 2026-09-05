@@ -146,6 +146,54 @@ async function boot() {
   ck('★ 비스트리밍 outIndex = length = 4', /⟦simcore:4⟧$/.test(o2), o2.slice(-30));
   ck('비스트리밍 hp 45 → 40', outVars(4)?.hp === 40, JSON.stringify(outVars(4)));
 
+  // ── v1.7.5 실사고 재현: editoutput 정규식이 저장 글의 **머리**를 바꾸는 카드 ──
+  // 리수는 우리 반환값에 카드 정규식을 돌린 결과를 저장한다. 머리가 바뀌면 "저장 글 ↔ 청크"
+  // 접두 비교가 매 청크 빗나가 청크마다 인라인(보조 호출+틱)으로 떨어졌다 — 한 턴에 수십 번.
+  const wrap = (s) => `<div class="card">${s}</div>`;   // 머리를 바꾸는 편집 정규식 재현
+
+  // 턴 3: 깃발 있는 리수(chat.isStreaming) — 글자 비교가 빗나가도 깃발로 스트리밍 판정
+  chat().message.push({ role: 'char', data: o2 });   // 턴 2 응답을 리수가 저장한 것 재현 (index 4)
+  chat().message.push({ role: 'user', data: '셋째' });
+  await hooks.beforeRequest([{ role: 'user', content: '셋째' }], 'model');
+  chat().message.push({ role: 'char', data: '' });
+  chat().isStreaming = true;
+  const q1 = await hooks.output('안개가');            chat().message[6].data = wrap(q1);
+  const q2 = await hooks.output('안개가 걷혔다.');    chat().message[6].data = wrap(q2);
+  const q3 = await hooks.output('안개가 걷혔다.');    chat().message[6].data = wrap(q3);
+  ck('★ 정규식 카드 + isStreaming 깃발: 부분 호출 3회 동안 보조 0회', world.llmCalls === 2, `${world.llmCalls}회`);
+  ck('부분 호출 마커는 outIndex = length-1 = 6', /⟦simcore:6⟧$/.test(q3), q3.slice(-30));
+  chat().isStreaming = false;
+  await global.__simcoreDrainTurn();
+  ck('★ 확정에서 보조 딱 1회 (누적 3회)', world.llmCalls === 3, `${world.llmCalls}회`);
+  ck('★ 델타 1회 (hp 40 → 35)', outVars(6)?.hp === 35, JSON.stringify(outVars(6)));
+
+  // 턴 4: 깃발 없는 옛 리수 + 정규식 카드 — 판정은 빗나가지만 인라인 걸쇠가 1회로 묶는다
+  delete chat().isStreaming;
+  chat().message.push({ role: 'user', data: '넷째' });
+  await hooks.beforeRequest([{ role: 'user', content: '넷째' }], 'model');
+  chat().message.push({ role: 'char', data: '' });
+  const w1 = await hooks.output('바람이');            chat().message[8].data = wrap(w1);
+  const after1 = world.llmCalls;
+  const w2 = await hooks.output('바람이 분다.');      chat().message[8].data = wrap(w2);
+  const after2 = world.llmCalls;
+  const w3 = await hooks.output('바람이 분다.');      chat().message[8].data = wrap(w3);
+  const w4 = await hooks.output('바람이 분다.');      chat().message[8].data = wrap(w4);
+  // 첫 청크는 빈 자리(bare === '')라 종전 규칙대로 settle(outIndex 8)로 미뤄지고, 정규식으로 머리가
+  // 바뀐 둘째 청크부터 판정이 빗나가 인라인(outIndex 9 — length)으로 떨어진다. 가드 전엔 이 뒤로 매 청크.
+  ck('깃발 없음: 첫 청크(빈 자리)는 settle로 미뤄진다 (보조 0)', after1 === 3, `${after1}회`);
+  ck('★ 판정이 빗나간 둘째 청크가 인라인 1회 (보조 +1)', after2 === 4, `${after2}회`);
+  ck('★ 이후 청크는 턴 가드로 보조 0회 (수십 번 재발 차단)', world.llmCalls === 4, `${world.llmCalls}회`);
+  ck('가드 반환에도 마커', /⟦simcore:\d+⟧$/.test(w4), w4.slice(-30));
+  await global.__simcoreDrainTurn();
+  // 첫 청크가 걸어 둔 settle(outIndex 8)이 여기서 확정을 시도한다 — 인라인은 9로 굴렀으므로
+  // outIndex 키였다면 둘 다 굴러 두 번 정산됐을 것. 턴(cha:chat) 키라 막힌다.
+  ck('★ 배수구의 뒤늦은 확정(다른 outIndex)도 턴 가드에 막힌다 — 추가 호출 없음', world.llmCalls === 4, `${world.llmCalls}회`);
+  // 다음 턴에서 걸쇠가 풀리는지 — 새 전송 뒤 비스트리밍 1회는 정상 처리돼야 한다
+  chat().message.push({ role: 'user', data: '다섯째' });
+  await hooks.beforeRequest([{ role: 'user', content: '다섯째' }], 'model');
+  await hooks.output('별이 떴다.');
+  ck('★ 새 턴엔 걸쇠가 풀려 정상 1회 (누적 5회)', world.llmCalls === 5, `${world.llmCalls}회`);
+
   try { await global.__unload?.(); } catch { /* 정리 실패는 결과와 무관 */ }
   let p = 0, f = 0;
   for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }

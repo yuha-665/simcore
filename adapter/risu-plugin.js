@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.4
-//@display-name SimCore (시뮬 엔진) v1.7.4 템플릿 봇 AI 창구 정합
+//@version 1.7.5
+//@display-name SimCore (시뮬 엔진) v1.7.5 스트리밍 판정 깃발화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,27 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.5 ────────────────────────────────────────────────
+// 긴급: **보조 호출이 한 턴에 수십 번 겹치던 것 재발** (실기 제보 — 아틀리에 개조 테스트 중,
+// 순정 v1.7.2에서도 동일 재현. 같은 submodel 요청 반복 + 상태 중복 갱신 + 메인 스트림 정지 =
+// v1.0.1과 같은 증상). UI 개조도 리수 버전도 아니었다 — **카드 의존** 결함이었다.
+// - [뿌리] output 핸들러의 스트리밍 판정이 "저장된 글 ↔ 이번 청크"의 **글자 접두 비교**뿐이었다.
+//   카드에 저장 글의 머리를 바꾸는 editoutput 정규식이 있으면(상태창 래핑·태그 삽입 등) 매 청크
+//   판정이 빗나가 비스트리밍 경로로 떨어진다 → 청크마다 processTurnOutput(보조 호출+틱+이벤트).
+//   v1.0.1 픽스는 정규식 없는 카드에서만 검증됐던 것.
+// - [판정] 리수가 스트림 동안 세우는 **`chat.isStreaming`** 깃발을 으뜸 신호로 쓴다
+//   (PocketRisu 1.8.1·1.11.2 index.svelte.ts 소스맵 실측: 시작에 true, finally에 false;
+//   getChatFromIndex 스냅샷에 그대로 실린다). 글자 비교는 깃발 없는 옛 리수용 폴백으로 남긴다.
+// - [가드] processTurnOutput 자체에 **턴당 1회 재진입 가드** (cha:chat 키, beforeRequest에서 해제 —
+//   협업자 진단: lastSettledKey는 확정 경로만 지켰고 인라인 재진입 방어가 없었다). 어느 경로로 오든
+//   한 전송에 한 정산이라 판정이 또 빗나가도 최악이 1회지 수십 번은 아니다. 키에 outIndex를 안 넣는
+//   이유: 빗나간 인라인(length)과 뒤늦은 확정(length-1)이 같은 글을 다른 번호로 부른다.
+// - 소스맵 대조에서 확인한 것: 스트리밍 루프·사전 push·플러그인 핸들러 디스패치·getChatFromIndex·
+//   runLLMModel은 1.8.1 ↔ 1.11.2 동일. 새 서버측 job 전송(jobFetch)·jobRecovery는 editoutput을
+//   재생하지 않는다. 즉 리수 쪽 회귀가 아니다.
+// - 테스트 test-streamsettle.js: 머리 바꾸는 정규식 카드 2케이스 (깃발 있음 → 보조 1회 확정 /
+//   깃발 없음 → 인라인 1회 + 걸쇠로 이후 0회).
 //
 // ── v1.7.4 ────────────────────────────────────────────────
 // **커스텀 템플릿 봇에서 AI 창구가 통째로 헛돌던 것** (실기 제보: "특성 변수를 추가하고
@@ -3189,6 +3210,7 @@
       // 직전 턴의 스트리밍 확정이 남아 있으면 먼저 정산한다 — onSend가 그 위에 서야 한다
       await flushOutputSettle();
       lastSettledKey = null;   // 새 턴 — 리롤이 같은 자리(outIndex)를 다시 쓸 수 있게 걸쇠 해제
+      turnProcessedKey = null; // 턴당 1회 정산 가드도 새 턴에 푼다 (v1.7.5) — 리롤이 같은 자리를 다시 굴릴 수 있게
       await loadForCurrentChar();
       if (!session) { turnBusy = false; return messages; }
 
@@ -3454,6 +3476,7 @@
   let outSettle = null;          // { key, chaIdx, chatIdx, outIndex, content, sess, timer }
   let outSettleRunning = null;   // 확정 처리 진행 중 promise (flush 대기용)
   let lastSettledKey = null;     // 같은 턴의 늦은 조각으로 두 번 확정하지 않는 걸쇠 (새 턴에 해제)
+  let turnProcessedKey = null;   // 이 턴에서 processTurnOutput을 이미 굴린 채팅(cha:chat) — 재진입 차단 (v1.7.5, 새 턴에 해제)
 
   function scheduleOutputSettle(chaIdx, chatIdx, outIndex, content) {
     const key = `${chaIdx}:${chatIdx}:${outIndex}`;
@@ -3557,8 +3580,13 @@
       let outIndex = msgs.length;
       if (last && last.role === 'char' && typeof last.data === 'string') {
         const bare = last.data.replace(MARKER_RE, '').trimEnd();
-        // 마지막 char 글이 이번 스트림의 부분 텍스트일 때만 (그룹챗 등 남의 완결 글이면 아님)
-        if (bare === '' || content.startsWith(bare) || bare.startsWith(content)
+        // ① 리수의 깃발이 으뜸 — chat.isStreaming은 스트림 시작에 true, finally에 false
+        //    (index.svelte.ts 실측: 1.8.1·1.11.2 동일). 글자 비교와 달리 카드 정규식에 안 흔들린다.
+        // ② 깃발이 없는 옛 리수: 마지막 char 글이 이번 스트림의 부분 텍스트일 때만 글자 비교
+        //    (그룹챗 등 남의 완결 글이면 아님). ⚠ editoutput 정규식이 저장 글의 머리를 바꾸는 카드에선
+        //    매 청크 빗나간다 — v1.7.5 실사고, 그래서 위 걸쇠와 ①이 있다.
+        if (chat?.isStreaming === true
+          || bare === '' || content.startsWith(bare) || bare.startsWith(content)
           || bare.slice(0, 120) === content.slice(0, 120)) {
           streaming = true; outIndex = msgs.length - 1;
         }
@@ -3570,6 +3598,8 @@
         lastOutIndex = outIndex;
         return content.includes('⟦simcore:') ? content : content + `\n\n⟦simcore:${outIndex}⟧`;
       }
+      // 판정이 빗나가 청크마다 여기로 떨어져도 processTurnOutput의 턴당 1회 가드가 두 번째부터
+      // 막는다 (v1.7.5) — 마커만 붙어 나간다.
       const r = await processTurnOutput(chaIdx, chatIdx, outIndex, content, chat);
       lastOutIndex = outIndex;
       return r.content + `\n\n⟦simcore:${outIndex}⟧`;
@@ -3590,6 +3620,20 @@
   // 한 턴의 실제 처리 — 최초설정/보조 델타/틱·이벤트/이미지. 마커는 붙이지 않는다 (호출자 몫).
   // 비스트리밍은 output 핸들러가 인라인으로, 스트리밍은 finalizeOutputSettle이 한 번만 부른다.
   async function processTurnOutput(chaIdx, chatIdx, outIndex, content, chat) {
+      // ── 턴당 1회 가드 (v1.7.5) — 어느 경로(인라인·스트리밍 확정·후처리 재호출)로 오든 한 전송에 한 정산 ──
+      // 실사고: editoutput 정규식이 저장 글의 머리를 바꾸는 카드에서 output 핸들러의 글자 접두 판정이
+      // 매 청크 빗나가 청크마다 여기까지 왔다 → 보조 호출·틱·이벤트가 한 턴에 수십 번 (상태 중복 갱신),
+      // 메인 스트림은 보조 응답을 기다리느라 정지 (v1.0.1 증상 재발). lastSettledKey는 확정 경로만
+      // 지켰고 인라인 재진입 방어가 없었다 (협업자 진단 그대로).
+      // 키는 outIndex를 안 넣고 채팅(cha:chat)까지만 — 판정이 빗나간 인라인은 length로, 뒤늦게 판정이
+      // 맞은 확정 경로는 length-1로 **같은 글을 다른 번호**로 부르므로 outIndex를 넣으면 둘 다 굴러간다.
+      // 가드는 beforeRequest(새 턴·리롤)에서 풀린다. multiline 다중 응답은 첫 글만 굴린다.
+      const turnKey = `${chaIdx}:${chatIdx}`;
+      if (turnKey === turnProcessedKey) {
+        console.log('[simcore] 같은 턴 재진입 차단 — 마커만 (outIndex', outIndex + ')');
+        return { content };
+      }
+      turnProcessedKey = turnKey;
       const mode = await resolveAuxMode();
       const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
 

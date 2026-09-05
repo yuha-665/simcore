@@ -286,9 +286,9 @@
         "맑은 물",
         "이름 모를 풀"
       ],
-      "maxItems": 24,
+      "maxItems": 99,
       "itemMaxLength": 30,
-      "desc": "보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 \"지역별 소재 배치\")."
+      "desc": "보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 \"지역별 소재 배치\"). 보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — \"보관고가 넘친다\" 통지가 오면 상한 것을 빼라."
     },
     {
       "id": "items",
@@ -310,7 +310,7 @@
       ],
       "maxItems": 30,
       "itemMaxLength": 30,
-      "desc": "배운 조합법. 배우지 않은 것은 만들 수 없다."
+      "desc": "배운 조합법. 배우지 않은 것은 만들 수 없다. **고급 레시피는 서고(library) 2단, 비전 레시피는 4단부터** 배울 수 있다 — 미달이면 올리지 마라."
     },
     {
       "id": "tools",
@@ -396,6 +396,14 @@
       "min": 0,
       "max": 5,
       "format": "{v}단"
+    },
+    {
+      "id": "harvest_due",
+      "label": "수확 대기",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
     }
   ],
   "derived": [
@@ -424,6 +432,18 @@
       "label": "남은 의뢰 칸",
       "expr": "3 - count(quests)",
       "format": "{v}칸"
+    },
+    {
+      "id": "mat_cap",
+      "label": "보관 용량",
+      "expr": "(storage <= 0 ? 10 : (storage == 1 ? 20 : (storage == 2 ? 35 : (storage == 3 ? 55 : (storage == 4 ? 75 : 99)))))",
+      "format": "{v}칸"
+    },
+    {
+      "id": "mat_n",
+      "label": "보관 중",
+      "expr": "count(materials)",
+      "format": "{v}종"
     },
     {
       "id": "year_no",
@@ -513,6 +533,22 @@
         "notify": "기한을 넘긴 의뢰가 취소됐다. 의뢰인이 남긴 말을 전해 들은 참이다 — 실망, 체념, 혹은 다음을 기약하는 한마디."
       },
       {
+        "id": "overflow",
+        "when": "mat_n > mat_cap",
+        "notify": "보관고가 넘친다 — 용량을 넘긴 만큼 소재가 상했다. 무엇이 못 쓰게 됐는지 서사가 정하고 넘친 수만큼 목록에서 빼라. 보관고를 늘리기 전엔 되풀이된다."
+      },
+      {
+        "id": "garden_harvest",
+        "when": "harvest_due > 0",
+        "effects": [
+          {
+            "set": "harvest_due",
+            "expr": "0"
+          }
+        ],
+        "notify": "아침, 약초밭에 나가 본다. 밭이 내준 약초를 거둬 소재 목록에 올려라 — 1~2단은 1종, 3~4단은 2종, 5단은 3종. 무엇이 났는지는 계절과 밭의 단에 맞춰 서사가 정한다 (상태 블록의 약초밭 단수를 본다)."
+      },
+      {
         "id": "collapse",
         "when": "stamina <= 0",
         "effects": [
@@ -553,19 +589,6 @@
           "cooldown": 6,
           "when": "area_tier == 0",
           "notify": "행상인이 공방 문을 두드렸다 — 흔치 않은 소재를 몇 가지 펼쳐 보인다."
-        },
-        {
-          "id": "spoil",
-          "weight": 2,
-          "cooldown": 8,
-          "when": "storage <= 1 and count(materials) >= 8",
-          "effects": [
-            {
-              "list": "materials",
-              "remove": []
-            }
-          ],
-          "notify": "보관이 시원찮아 소재 한 가지가 상했다. 무엇이 못 쓰게 됐는지 서사가 정하고 목록에서 빼라."
         },
         {
           "id": "puni",
@@ -631,6 +654,11 @@
       "id": "town",
       "when": "area_tier == 0 and location != '공방'",
       "text": "지금은 사람이 사는 곳이다. 채집이 아니라 사람·거래·의뢰·소문이 벌어지는 자리로 그려라."
+    },
+    {
+      "id": "workshop",
+      "when": "true",
+      "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(고급 레시피는 2단·비전은 4단부터 배울 수 있다), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(하루마다 수확). 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라."
     },
     {
       "id": "tired",
@@ -824,6 +852,10 @@
         {
           "set": "location",
           "expr": "'공방'"
+        },
+        {
+          "set": "harvest_due",
+          "expr": "garden"
         }
       ]
     }
@@ -907,7 +939,7 @@
       "id": "synth",
       "label": "조합",
       "roll": "rand(1, 20)",
-      "mod": "floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0) + (location == '공방' ? 0 : -4)",
+      "mod": "floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0) + (location == '공방' ? 0 : -4) + (synth_tier == '고급' and library < 2 ? -4 : 0) + (synth_tier == '비전' and (library < 4 or cauldron < 3) ? -6 : 0)",
       "vs": "synth_vs",
       "grades": [
         {
@@ -1339,7 +1371,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor} · 가마 {cauldron}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n의뢰({quest_slot} 남음): {quests}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n의뢰({quest_slot} 남음): {quests}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -1369,6 +1401,9 @@
           },
           {
             "var": "storage"
+          },
+          {
+            "var": "mat_cap"
           },
           {
             "var": "garden"
@@ -1534,22 +1569,32 @@
           {
             "var": "cauldron",
             "max": 5,
-            "cost": "cauldron * 3000"
+            "cost": "cauldron * 3000",
+            "note": "단마다 조합 +2 · 2단 이하면 가마 고장 소동 · 3단부터 비전 조합이 현실적",
+            "requires": "cauldron < 3 or (cauldron < 4 and renown > 350) or renown > 600",
+            "requiresLabel": "4단은 중급, 5단은 상급 연금술사부터"
           },
           {
             "var": "library",
             "max": 5,
-            "cost": "(library + 1) * 2000"
+            "cost": "(library + 1) * 2000",
+            "note": "단마다 탐사 +1 · 2단부터 고급 레시피, 4단부터 비전 레시피를 배울 수 있다",
+            "requires": "library < 2 or (library < 4 and renown > 150) or renown > 350",
+            "requiresLabel": "3단은 기초, 5단은 중급 연금술사부터"
           },
           {
             "var": "storage",
             "max": 5,
-            "cost": "(storage + 1) * 1500"
+            "cost": "(storage + 1) * 1500",
+            "note": "소재 용량 10 → 20 → 35 → 55 → 75 → 99 · 넘치면 상한다"
           },
           {
             "var": "garden",
             "max": 5,
-            "cost": "(garden + 1) * 1800"
+            "cost": "(garden + 1) * 1800",
+            "note": "단마다 채집 +1 · 하루를 마칠 때마다 약초 수확 (1~2단 1종 · 3~4단 2종 · 5단 3종)",
+            "requires": "garden < 3 or renown > 150",
+            "requiresLabel": "4단부터는 기초 연금술사부터"
           }
         ]
       },

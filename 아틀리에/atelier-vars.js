@@ -188,12 +188,13 @@ const S = {
     // ── 자원 ──
     { id: 'cole', label: '소지금', type: 'int', init: 300, min: 0, max: 99999999, format: '{v}콜',
       desc: '돈. 의뢰 보수·판매로 늘고 구매·숙박·수리로 준다. 의뢰 보수는 직접 더하지 말고 quest_pay를 쓴다.' },
-    { id: 'materials', label: '소재', type: 'list', init: ['맑은 물', '이름 모를 풀'], maxItems: 24, itemMaxLength: 30,
-      desc: '보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 "지역별 소재 배치").' },
+    { id: 'materials', label: '소재', type: 'list', init: ['맑은 물', '이름 모를 풀'], maxItems: 99, itemMaxLength: 30,
+      desc: '보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 "지역별 소재 배치"). '
+        + '보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — "보관고가 넘친다" 통지가 오면 상한 것을 빼라.' },
     { id: 'items', label: '아이템', type: 'list', init: [], maxItems: 20, itemMaxLength: 34,
       desc: '만들거나 얻은 완성품. 품질이 좋으면 이름에 얹는다 ("고품질 힐링 살브").' },
     { id: 'recipes', label: '레시피', type: 'list', init: ['중화제 적'], maxItems: 30, itemMaxLength: 30,
-      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다.' },
+      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **고급 레시피는 서고(library) 2단, 비전 레시피는 4단부터** 배울 수 있다 — 미달이면 올리지 마라.' },
     { id: 'tools', label: '채집 도구', type: 'list', init: ['채집 바구니'], maxItems: 8, itemMaxLength: 24,
       desc: '가진 채집 도구 (곡괭이·낫·낚싯대·채집망·폭탄 망치…). 도구 수가 곧 채집 보정이다.' },
     { id: 'areas', label: '아는 채집지', type: 'list', init: ['왕도 근교 (왕도 주변 들판)'], maxItems: 12, itemMaxLength: 40,
@@ -215,6 +216,9 @@ const S = {
     { id: 'library', label: '서고', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
     { id: 'storage', label: '보관고', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
     { id: 'garden', label: '약초밭', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    // 🌙 하루 마무리가 밭의 단수를 여기 옮겨 적고, 조건 이벤트가 다음 아침 수확 장면으로 바꾼다.
+    // (효과에는 조건이 없어 "밭이 있을 때만"을 직접 못 쓴다 — 래치가 그 조건이다)
+    { id: 'harvest_due', label: '수확 대기', type: 'int', init: 0, min: 0, max: 5 },
   ],
 
   derived: [
@@ -232,6 +236,12 @@ const S = {
     { id: 'synth_vs', label: '조합 목표치',
       expr: chain([["synth_tier == '기초'", '10'], ["synth_tier == '고급'", '15']], '20') },
     { id: 'quest_slot', label: '남은 의뢰 칸', expr: '3 - count(quests)', format: '{v}칸' },
+    // 보관고 = 용량. 목록 상한(maxItems)은 숫자만 받아 식이 안 되므로 파생 용량 + 넘침 이벤트로 만든다.
+    // 널널하게 — 5단이면 목록 상한(99)과 같다 (유저 판정).
+    { id: 'mat_cap', label: '보관 용량',
+      expr: chain([['storage <= 0', '10'], ['storage == 1', '20'], ['storage == 2', '35'],
+        ['storage == 3', '55'], ['storage == 4', '75']], '99'), format: '{v}칸' },
+    { id: 'mat_n', label: '보관 중', expr: 'count(materials)', format: '{v}종' },
     { id: 'year_no', label: '여정', expr: 'year - 999', format: '{v}년차' },
   ],
 
@@ -267,6 +277,14 @@ const S = {
       { id: 'quest_expired', when: 'quest_lost > 0',
         effects: [{ set: 'renown', expr: 'max(renown - 15 * quest_lost, 1)' }, { set: 'quest_lost', expr: '0' }],
         notify: '기한을 넘긴 의뢰가 취소됐다. 의뢰인이 남긴 말을 전해 들은 참이다 — 실망, 체념, 혹은 다음을 기약하는 한마디.' },
+      // 보관고 넘침 — 용량을 넘기는 동안 매 턴 되풀이된다 (치울 때까지). 옛 랜덤 spoil을 대체.
+      { id: 'overflow', when: 'mat_n > mat_cap',
+        notify: '보관고가 넘친다 — 용량을 넘긴 만큼 소재가 상했다. 무엇이 못 쓰게 됐는지 서사가 정하고 넘친 수만큼 목록에서 빼라. 보관고를 늘리기 전엔 되풀이된다.' },
+      // 약초밭 수확 — 🌙가 harvest_due에 밭 단수를 적어 두면 다음 아침에 한 번
+      { id: 'garden_harvest', when: 'harvest_due > 0',
+        effects: [{ set: 'harvest_due', expr: '0' }],
+        notify: '아침, 약초밭에 나가 본다. 밭이 내준 약초를 거둬 소재 목록에 올려라 — 1~2단은 1종, 3~4단은 2종, 5단은 3종. '
+          + '무엇이 났는지는 계절과 밭의 단에 맞춰 서사가 정한다 (상태 블록의 약초밭 단수를 본다).' },
       { id: 'collapse', when: 'stamina <= 0',
         effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "'공방'" },
           { set: 'skip_min', expr: 'skip_min + 480' }],
@@ -282,9 +300,6 @@ const S = {
       table: [
         { id: 'peddler', weight: 3, cooldown: 6, when: 'area_tier == 0',
           notify: '행상인이 공방 문을 두드렸다 — 흔치 않은 소재를 몇 가지 펼쳐 보인다.' },
-        { id: 'spoil', weight: 2, cooldown: 8, when: 'storage <= 1 and count(materials) >= 8',
-          effects: [{ list: 'materials', remove: [] }],
-          notify: '보관이 시원찮아 소재 한 가지가 상했다. 무엇이 못 쓰게 됐는지 서사가 정하고 목록에서 빼라.' },
         { id: 'puni', weight: 3, cooldown: 5, when: 'area_tier >= 1 and area_tier <= 2',
           notify: '푸니 떼가 길을 막고 통통거린다. 위험하진 않지만 성가시다.' },
         { id: 'weather', weight: 3, cooldown: 4, when: 'area_tier >= 1',
@@ -309,6 +324,10 @@ const S = {
       text: '지금은 {location}이다. 여기서 날 만한 소재·마주칠 만한 것만 등장시켜라. 격에 맞지 않는 희귀 소재를 흘리지 마라.' },
     { id: 'town', when: "area_tier == 0 and location != '공방'",
       text: '지금은 사람이 사는 곳이다. 채집이 아니라 사람·거래·의뢰·소문이 벌어지는 자리로 그려라.' },
+    { id: 'workshop', when: 'true',
+      text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(고급 레시피는 2단·비전은 4단부터 배울 수 있다), '
+        + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(하루마다 수확). '
+        + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라.' },
     { id: 'tired', when: 'stamina <= 25',
       text: '몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라.' },
     { id: 'broke', when: 'cole < 100',
@@ -362,7 +381,7 @@ const S = {
     { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', dayClose: true, when: 'not fight_on',
       inject: '하루를 접는다. 다음 장면은 하루가 지난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'skip_day', expr: 'skip_day + 1' }, { set: 'stamina', expr: 'stamina + 45' },
-        { set: 'location', expr: "'공방'" }] },
+        { set: 'location', expr: "'공방'" }, { set: 'harvest_due', expr: 'garden' }] },
   ],
 
   checks: [
@@ -399,8 +418,11 @@ const S = {
     { id: 'synth', label: '조합',
       roll: 'rand(1, 20)',
       // 분야 숙련(0~8) + 공방 도구(0~10) + 평판(0~6) — 설계 §4.3
+      // 설비가 열쇠다 — 서고 없이 고급, 서고·가마 없이 비전은 주사위로 안 넘어간다 (설비 개편)
       mod: 'floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0)'
-        + " + (location == '공방' ? 0 : -4)",
+        + " + (location == '공방' ? 0 : -4)"
+        + " + (synth_tier == '고급' and library < 2 ? -4 : 0)"
+        + " + (synth_tier == '비전' and (library < 4 or cauldron < 3) ? -6 : 0)",
       vs: 'synth_vs',
       grades: [
         { when: 'total >= vs + 8', label: '걸작',
@@ -514,7 +536,9 @@ const S = {
   promptState: {
     template: [
       '지금: {date}({weekday}) {clock} · {season} · {year_no} · {location}',
-      '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor} · 가마 {cauldron}',
+      '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
+      // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
+      '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단',
       '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
@@ -532,7 +556,7 @@ const S = {
     groups: [
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
-        { var: 'cauldron' }, { var: 'library' }, { var: 'storage' }, { var: 'garden' },
+        { var: 'cauldron' }, { var: 'library' }, { var: 'storage' }, { var: 'mat_cap' }, { var: 'garden' },
       ] },
       { label: '연금술사', visibility: 'show', items: [
         { var: 'renown', bar: { max: 1000 }, color: "'#b08968'" },
@@ -572,10 +596,20 @@ const S = {
       // fab은 탭이 여럿일 때 특정 탭으로 바로 가는 지름길이다.
       { id: 'facility', label: '설비', points: 'cole',
         items: [
-          { var: 'cauldron', max: 5, cost: 'cauldron * 3000' },
-          { var: 'library', max: 5, cost: '(library + 1) * 2000' },
-          { var: 'storage', max: 5, cost: '(storage + 1) * 1500' },
-          { var: 'garden', max: 5, cost: '(garden + 1) * 1800' },
+          // note는 "다음 단에서 뭐가 달라지나"를 탭에서 바로 읽게 한다 — 보이지 않는 +N은 안 산다 (유저 제보)
+          { var: 'cauldron', max: 5, cost: 'cauldron * 3000',
+            note: '단마다 조합 +2 · 2단 이하면 가마 고장 소동 · 3단부터 비전 조합이 현실적',
+            requires: 'cauldron < 3 or (cauldron < 4 and renown > 350) or renown > 600',
+            requiresLabel: '4단은 중급, 5단은 상급 연금술사부터' },
+          { var: 'library', max: 5, cost: '(library + 1) * 2000',
+            note: '단마다 탐사 +1 · 2단부터 고급 레시피, 4단부터 비전 레시피를 배울 수 있다',
+            requires: 'library < 2 or (library < 4 and renown > 150) or renown > 350',
+            requiresLabel: '3단은 기초, 5단은 중급 연금술사부터' },
+          { var: 'storage', max: 5, cost: '(storage + 1) * 1500',
+            note: '소재 용량 10 → 20 → 35 → 55 → 75 → 99 · 넘치면 상한다' },
+          { var: 'garden', max: 5, cost: '(garden + 1) * 1800',
+            note: '단마다 채집 +1 · 하루를 마칠 때마다 약초 수확 (1~2단 1종 · 3~4단 2종 · 5단 3종)',
+            requires: 'garden < 3 or renown > 150', requiresLabel: '4단부터는 기초 연금술사부터' },
         ] },
       // 지도 — 새 패널이 아니라 이 패널의 둘째 탭. fab은 달지 않는다 (버튼은 🏠 하나).
       { id: 'map', label: '지도', template: MAP_TEMPLATE },
@@ -923,7 +957,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'clues', 'last_quality',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'clues', 'last_quality',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -935,6 +969,73 @@ console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
   ok('보조가 숙련을 못 올린다', r.st.vars.sk_bomb === 0, String(r.st.vars.sk_bomb));
   const big = turn(t, { cole: 999999 }, 81);
   ok('수입 상한이 뇌절을 막는다', big.st.vars.cole === 300 + 15000, String(big.st.vars.cole));
+}
+
+console.log('\n━━ 설비 — 단이 오르면 세계가 바뀐다 (보이지 않는 +N은 안 산다) ━━');
+{
+  const party = SC.require('party');
+  const expr = SC.require('expr');
+  const tab = party.partyTabs(S).find((t) => t.id === 'facility');
+  const item = (id) => tab.items.find((i) => i.var === id);
+  ok('설비 4종 전부 설명(note)이 있다', tab.items.every((i) => typeof i.note === 'string' && i.note.length > 10), '');
+
+  // 보관고 → 용량
+  let t = fresh();
+  ok('보관고 0단 용량 10', look(t)('mat_cap') === 10, String(look(t)('mat_cap')));
+  t.vars.storage = 5;
+  ok('보관고 5단 용량 99 = 목록 상한', look(t)('mat_cap') === 99 && S.vars.find((v) => v.id === 'materials').maxItems === 99, '');
+  t.vars.storage = 0;
+  t.vars.materials = Array.from({ length: 12 }, (_, i) => '소재' + i);
+  let r = turn(t, {}, 200);
+  ok('용량(10)을 넘기면 넘침 이벤트', r.fired.some((e) => (e.id ?? e) === 'overflow'), JSON.stringify(r.fired));
+  const pOver = engine.sendPhase(S, r.st, { rng: seededRng('a', 201, 's') }).promptBlock;
+  ok('다음 장면에 "보관고가 넘친다" 통지 + 상태 블록 12/10', pOver.includes('보관고가 넘친다') && pOver.includes('보관고 12/10'),
+    pOver.split('\n').find((l) => l.includes('설비')) ?? '');
+  t.vars.storage = 1;
+  r = turn(t, {}, 202);
+  ok('보관고를 올리면(20) 같은 짐도 안 넘친다', !r.fired.some((e) => (e.id ?? e) === 'overflow'), '');
+  ok('옛 랜덤 spoil은 없다', !S.rules.randomEvents.table.some((e) => e.id === 'spoil'), '');
+
+  // 약초밭 → 아침 수확
+  t = fresh(); t.vars.garden = 2; t.vars.location = '공방';
+  t = engine.toggleAction(S, t, 'act_day').state;
+  r = turn(t, {}, 210);
+  ok('🌙 하루 마무리가 수확 이벤트를 깨운다', r.fired.some((e) => (e.id ?? e) === 'garden_harvest'), JSON.stringify(r.fired));
+  ok('래치는 되돌아간다', r.st.vars.harvest_due === 0, String(r.st.vars.harvest_due));
+  const pMorn = engine.sendPhase(S, r.st, { rng: seededRng('a', 211, 's') }).promptBlock;
+  ok('다음 아침에 수확 지시가 실린다', pMorn.includes('약초밭에 나가 본다'), '');
+  t = fresh(); t.vars.garden = 0; t.vars.location = '공방';
+  t = engine.toggleAction(S, t, 'act_day').state;
+  r = turn(t, {}, 212);
+  ok('밭이 없으면 수확도 없다', !r.fired.some((e) => (e.id ?? e) === 'garden_harvest'), '');
+
+  // 서고·가마 → 등급 열쇠 (조합 보정)
+  const synthMod = S.checks.find((c) => c.id === 'synth').mod;
+  const modAt = (vars) => { const u = fresh(); Object.assign(u.vars, { location: '공방', stamina: 80, ...vars }); return Number(expr.evaluate(synthMod, look(u), null)); };
+  ok('고급 레시피는 서고 2단 없이 -4', modAt({ synth_tier: '고급', library: 0 }) === modAt({ synth_tier: '고급', library: 2 }) - 4, '');
+  ok('비전은 서고 4단·가마 3단 없이 -6 (가마 한 단 = +2 별도)',
+    modAt({ synth_tier: '비전', library: 4, cauldron: 2 }) === modAt({ synth_tier: '비전', library: 4, cauldron: 3 }) - 6 - 2, '');
+  ok('기초는 설비 벌점이 없다', modAt({ synth_tier: '기초', library: 0 }) === modAt({ synth_tier: '기초', library: 4 }), '');
+
+  // 선행 조건 사다리 — 돈만으로는 못 산다
+  t = fresh(); t.vars.cole = 999999; t.vars.cauldron = 3; t.vars.renown = 100;
+  let st = party.itemState(S, t, tab, item('cauldron'));
+  ok('가마 4단은 견습(평판 100)에게 잠김', st.locked && st.reason.includes('중급'), JSON.stringify(st));
+  t.vars.renown = 400;
+  st = party.itemState(S, t, tab, item('cauldron'));
+  ok('중급(평판 400)이면 열린다', !st.locked && st.canBuy, JSON.stringify(st));
+  t.vars.cauldron = 1; t.vars.renown = 1;
+  ok('가마 2단은 아무나 산다', party.itemState(S, t, tab, item('cauldron')).canBuy, '');
+  t.vars.storage = 4;
+  ok('보관고는 조건 없이 돈만 (널널하게)', party.itemState(S, t, tab, item('storage')).canBuy, '');
+
+  // 메인이 설비를 안다
+  const p0 = engine.sendPhase(S, fresh(), { rng: seededRng('a', 220, 's') }).promptBlock;
+  ok('상태 블록에 설비 줄', p0.includes('설비: 가마 1단 · 서고 0단 · 보관고 2/10 · 약초밭 0단'),
+    p0.split('\n').find((l) => l.includes('설비')) ?? '');
+  ok('설비 지시문이 실린다 (서고 단수로 레시피를 막는다)', p0.includes('아직 읽어낼 수 없다'), '');
+  const left = (p0.match(/\{[a-z_]+\}/g) || []);
+  ok('프롬프트에 미치환 자리표시자 없음', left.length === 0, left.join(' '));
 }
 
 console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━━');

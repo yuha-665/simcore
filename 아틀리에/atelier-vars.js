@@ -82,6 +82,138 @@ const MAP_TEMPLATE = (() => {
 </style>`;
 })();
 
+// ══════════ 조합서 — 로어북 상세 항목(공격·회복·중간재·음식)을 도감으로 굽는다 ══════════
+// 컬렉션 탭. 배운 것(recipes)은 has()로 해금, 필요 소재는 보관고(materials)에 있으면 밝게.
+// ⚠ has()는 저장 문자열 완전일치 — recipes·materials desc가 "도감 이름 그대로, 수량·수식어 없이"를 시킨다.
+// 등급은 synth_tier와 같은 셋(기초·고급·비전). 고급은 서고 2단, 비전은 서고 4단부터 배울 수 있다 (설비 개편).
+// [이름, 등급, 효과 한 줄, 필요 소재]
+const RECIPE_BOOK = {
+  폭탄: [
+    ['프람', '기초', '불 폭탄 — 식물·짐승·얼음 장애물', ['연료', '화약', '불의 돌', '중화제 적']],
+    ['레헤른', '기초', '얼음 폭탄 — 불 속성 적·냉각 의뢰', ['맑은 물', '얼음 결정', '중화제 청']],
+    ['도나 스톤', '기초', '번개 돌 — 젖은 적·기계·골렘 마비', ['번개 돌', '광석', '중화제 황']],
+    ['크래프트', '기초', '물리 폭발 — 갑옷 몬스터·바위 벽', ['화약', '금속 조각', '단단한 껍질']],
+    ['유니백', '기초', '초보용 투척물 — 소형 몬스터·교란', ['유니', '천', '화약']],
+    ['루프트', '기초', '바람 폭탄 — 비행 몬스터·독가스 걷기', ['깃털', '바람 돌', '중화제 녹']],
+    ['테라 봄', '고급', '대형 폭발 — 큰 몬스터·성벽·잔해', ['고급 화약', '희귀 광석', '폭발 촉매']],
+    ['에이스 아이스 봄', '고급', '강화 얼음 폭탄 — 화염 유적·용암 근처', ['고급 얼음 결정', '정제수', '중화제 청']],
+    ['오메가 크래프트', '고급', '강화 물리 폭발 — 갑옷 파괴', ['고급 화약', '고급 잉곳', '몬스터 껍질']],
+    ['타우전트 블리츠', '고급', '연쇄 번개 — 기계·골렘·무리 마비', ['번개 결정', '희귀 번개 광석', '전도 금속']],
+    ['드라코 봄', '비전', '용의 불 — 맹렬한 화염과 방어 약화', ['드래곤 비늘', '강력 화약', '불의 돌']],
+    ['차원 폭탄', '비전', '공간이 뒤틀리는 폭발 — 이야기가 허락할 때만', ['희귀 결정', '별의 조각', '고급 화약']],
+  ],
+  약품: [
+    ['힐링 살브', '기초', '바르는 약 — 베임·타박·화상', ['약초', '기름', '맑은 물', '밀랍']],
+    ['약', '기초', '마시는 약 — 기력·통증·잔병', ['약초', '맑은 물', '꿀', '중화제 적']],
+    ['해독제', '기초', '독·마비·수면·동상 해제', ['쓴 풀', '해독 버섯', '맑은 물']],
+    ['힐링 아로마', '기초', '향으로 치유 — 무리·피로·불면', ['향기 꽃', '향나무 껍질', '기름']],
+    ['의료 붕대', '기초', '여행자용 붕대 — 기사·현장 노동자', ['천', '실', '힐링 살브']],
+    ['힐링 클라우드', '고급', '치유 안개 — 단체전 뒤·독가스', ['정제수', '향기 꽃', '약초', '중화제 청']],
+    ['SP 메디슨', '고급', '기력·집중 회복 — 전투 지구력', ['활력 약초', '꿀', '향신료', '정제수']],
+    ['넥타르', '고급', '강한 회복 — 중상·소생 근처', ['희귀 꽃', '정제수', '꿀', '정제 촉매']],
+    ['엘릭서', '비전', '고위 만능약 — 여러 병을 한 번에', ['희귀 약초', '정제수', '정령석', '현자의 소재']],
+    ['생명의 컵', '비전', '쓰러진 사람을 일으키는 응급약', ['성수', '넥타르', '희귀 꽃']],
+    ['드래곤즈 시크릿', '비전', '용의 힘으로 극심한 피로를 걷는다', ['드래곤 비늘', '희귀 약초', '정제수']],
+    ['홀리 챌리스', '비전', '정화의 잔 — 저주·맹독·의식 치유', ['성수', '은', '순백 천', '생명의 꽃']],
+    ['엔젤 파우더', '비전', '기적의 가루 — 중상·탈진', ['희귀 꽃', '빛의 소재', '정제수']],
+  ],
+  중간재: [
+    ['중화제 적', '기초', '붉은 안정제 — 불 계열 레시피의 바탕', ['맑은 물', '이름 모를 풀', '연료']],
+    ['중화제 청', '기초', '푸른 안정제 — 물·얼음 계열의 바탕', ['맑은 물', '이름 모를 풀', '얼음 결정']],
+    ['중화제 황', '기초', '노란 안정제 — 번개·광물 계열의 바탕', ['맑은 물', '이름 모를 풀', '광석']],
+    ['중화제 녹', '기초', '푸른빛 안정제 — 바람·식물 계열의 바탕', ['맑은 물', '이름 모를 풀', '깃털']],
+    ['보충제', '기초', '분야를 잇는 단순 재료 — 초보의 연습', ['이름 모를 풀', '맑은 물', '돌']],
+    ['제텔', '기초', '연금 종이 — 레시피·부적·도면', ['식물 섬유', '맑은 물', '풀 접착제']],
+    ['잉곳', '기초', '가공 금속 — 도구·무기·부품', ['광석', '연료', '연마제']],
+    ['클로스', '기초', '가공 천 — 가방·붕대·천막', ['실', '식물 섬유', '털가죽']],
+    ['연마제', '기초', '갈고 닦는 가루 — 보석·금속·유리', ['모래', '돌가루', '조개껍질']],
+    ['화약', '기초', '폭탄의 바탕 — 조심히 다룬다', ['연료', '유황', '숯']],
+    ['정제수', '기초', '불순물 없는 물 — 약·중화제·엘릭서', ['맑은 물', '여과지']],
+    ['고급 잉곳', '고급', '희귀 금속 — 고급 도구·갑옷', ['희귀 광석', '연료', '연마제', '내열 촉매']],
+    ['고급 클로스', '고급', '희귀 섬유 천 — 고급 장비', ['희귀 섬유', '몬스터 털', '염료']],
+    ['고급 화약', '고급', '고위 폭탄의 바탕', ['화약', '불의 모래', '초석']],
+  ],
+  도구: [
+    ['곡괭이', '기초', '광석 채집 — 낫으론 캘 수 없다', ['잉곳', '목재', '가죽']],
+    ['낫', '기초', '약초·풀 채집', ['잉곳', '목재']],
+    ['낚싯대', '기초', '물가 채집 — 생선·조개', ['목재', '실', '갈고리']],
+    ['채집망', '기초', '벌레·작은 것·물속 채집', ['클로스', '목재', '실']],
+    ['램프', '기초', '동굴·밤 채집', ['잉곳', '기름', '유리']],
+    ['폭탄 망치', '고급', '바위 깨기 — 숨은 광맥', ['잉곳', '화약', '목재']],
+    ['나침반', '고급', '길 찾기 — 오지·유적', ['잉곳', '마나 결정', '유리']],
+    ['다우징 로드', '고급', '숨은 소재·수맥 찾기', ['목재', '정령석']],
+  ],
+  음식: [
+    ['빵', '기초', '기본 양식 — 카페·여행', ['밀가루', '맑은 물', '우유']],
+    ['파이', '기초', '따뜻한 장면의 단골', ['밀가루', '과일', '꿀']],
+    ['휴대식량', '기초', '여행·던전용 보존식', ['밀가루', '말린 고기', '소금']],
+    ['차', '기초', '약초차 — 피로·손님 접대', ['약초', '맑은 물']],
+    ['사탕', '기초', '아이들·선물', ['설탕', '과일', '꿀']],
+    ['애플 타르트', '고급', '카페 간판 메뉴', ['밀가루', '사과', '꿀', '우유']],
+    ['수프', '고급', '여행 뒤 회복 — 온기', ['고기', '버섯', '향신료']],
+  ],
+  비전: [
+    ['현자의 돌', '비전', '잊혀진 연금술의 정점', ['현자의 소재', '영원의 결정', '드래곤 하트']],
+    ['에테르널 크리스탈', '비전', '영원의 결정 — 고위 촉매', ['영원의 결정', '마나 결정', '별가루']],
+    ['기적의 약', '비전', '죽음 직전을 되돌리는 약 — 대가가 따른다', ['둔켈하이트', '엘릭서', '성수']],
+    ['마도 제텔', '비전', '마법 도면 종이 — 고대 문헌 복원', ['제텔', '마법 페이지', '별가루']],
+  ],
+};
+const BOOK_ALL = Object.values(RECIPE_BOOK).flat();
+const TIER_LOCK = { 고급: ['library < 2', '서고 2단'], 비전: ['library < 4', '서고 4단'] };
+const BOOK_TEMPLATE = (() => {
+  const q = (x) => `'${x}'`;
+  const known = (list) => list.map(([n]) => `has(recipes,${q(n)})`).join(' + ');
+  const secs = Object.entries(RECIPE_BOOK).map(([cat, list]) => {
+    const rows = list.map(([name, tier, eff, mats]) => {
+      const on = `has(recipes,${q(name)})`;
+      const lock = TIER_LOCK[tier]
+        ? `{${on} ? '' : (${TIER_LOCK[tier][0]} ? '🔒 ${TIER_LOCK[tier][1]}' : '미습득')}`
+        : `{${on} ? '' : '미습득'}`;
+      const chips = mats.map((m) => `<i class="abk-m {has(materials,${q(m)}) ? 'have' : ''}">${m}</i>`).join('');
+      return `<div class="abk-row {${on} ? 'on' : 'off'}" title="${eff} · 필요: ${mats.join(', ')}">`
+        + `<span class="abk-ico">{${on} ? '✦' : '·'}</span>`
+        + `<span class="abk-nm">${name}</span><span class="abk-tier abk-${tier}">${tier}</span>`
+        + `<span class="abk-lock">${lock}</span>`
+        + `<div class="abk-eff">${eff}</div><div class="abk-mats">${chips}</div></div>`;
+    }).join('');
+    return `<div class="abk-sec"><div class="abk-sh">${cat}<span>{${known(list)}} / ${list.length}</span></div>${rows}</div>`;
+  }).join('\n  ');
+  return `
+<div class="abk">
+  <div class="abk-head">조합서<span class="abk-prog">{${known(BOOK_ALL)}} / ${BOOK_ALL.length} · 서고 {library}단</span></div>
+  ${secs}
+  <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · 고급은 서고 2단, 비전은 4단부터 배울 수 있다 · 도감 밖 레시피는 목록에만 남는다</div>
+</div>
+<style>
+.abk { font-family: Georgia, 'Nanum Myeongjo', serif; color: #ece2cc; }
+.abk-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 14px;
+  letter-spacing: .06em; color: #f0c674; border-bottom: 1px solid rgba(240,198,116,.35); padding-bottom: 5px; margin-bottom: 8px; }
+.abk-prog { font-size: 12px; font-weight: 400; color: #ffe4a8; }
+.abk-sec { margin-bottom: 10px; }
+.abk-sh { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; color: #ffe4a8;
+  border-bottom: 1px dashed rgba(240,198,116,.25); padding: 3px 0; margin-bottom: 4px; }
+.abk-sh span { font-weight: 400; color: #c9b58a; }
+.abk-row { display: grid; grid-template-columns: 16px 1fr auto auto; column-gap: 6px; align-items: baseline;
+  padding: 4px 6px; border-radius: 6px; margin: 2px 0; cursor: help; }
+.abk-row.on { background: rgba(240,198,116,.10); border: 1px solid rgba(240,198,116,.30); }
+.abk-row.off { opacity: .5; border: 1px solid transparent; }
+.abk-row:hover { background: rgba(240,198,116,.16); opacity: 1; }
+.abk-ico { color: #f0c674; font-size: 12px; }
+.abk-nm { font-size: 12.5px; font-weight: 700; color: #fff4dc; }
+.abk-tier { font-size: 10px; padding: 0 5px; border-radius: 4px; border: 1px solid rgba(240,198,116,.35); color: #c9b58a; }
+.abk-고급 { border-color: rgba(230,140,100,.5); color: #ffc9a8; }
+.abk-비전 { border-color: rgba(190,150,240,.5); color: #e2ccff; }
+.abk-lock { font-size: 10.5px; color: #9a8c70; }
+.abk-eff { grid-column: 2 / -1; font-size: 11px; color: #c9b58a; }
+.abk-mats { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.abk-m { font-style: normal; font-size: 10.5px; padding: 0 6px; border-radius: 5px; color: #7f7360;
+  border: 1px solid rgba(240,198,116,.18); background: rgba(0,0,0,.15); }
+.abk-m.have { color: #fff4dc; border-color: rgba(240,198,116,.55); background: rgba(240,198,116,.16); }
+.abk-foot { margin-top: 8px; font-size: 11px; color: #c9b58a; }
+</style>`;
+})();
+
 // ══════════ 분야표 — 로어북 38~48이 이미 갈라 놓은 그대로 ══════════
 const CATS = [
   ['폭탄', 'sk_bomb', '폭탄·투척', '로어북 38·45 (프람·레헤른·크래프트·도나 스톤)'],
@@ -190,11 +322,15 @@ const S = {
       desc: '돈. 의뢰 보수·판매로 늘고 구매·숙박·수리로 준다. 의뢰 보수는 직접 더하지 말고 quest_pay를 쓴다.' },
     { id: 'materials', label: '소재', type: 'list', init: ['맑은 물', '이름 모를 풀'], maxItems: 99, itemMaxLength: 30,
       desc: '보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 "지역별 소재 배치"). '
+        + '**이름만** 적는다 — 수량·수식어 없이 ("약초", "약초 3개"·"신선한 약초" 금지). 같은 것이 여럿이면 한 항목. '
         + '보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — "보관고가 넘친다" 통지가 오면 상한 것을 빼라.' },
     { id: 'items', label: '아이템', type: 'list', init: [], maxItems: 20, itemMaxLength: 34,
       desc: '만들거나 얻은 완성품. 품질이 좋으면 이름에 얹는다 ("고품질 힐링 살브").' },
     { id: 'recipes', label: '레시피', type: 'list', init: ['중화제 적'], maxItems: 30, itemMaxLength: 30,
-      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **고급 레시피는 서고(library) 2단, 비전 레시피는 4단부터** 배울 수 있다 — 미달이면 올리지 마라.' },
+      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **고급 레시피는 서고(library) 2단, 비전 레시피는 4단부터** 배울 수 있다 — 미달이면 올리지 마라. '
+        + '**도감에 있는 것은 도감 이름 그대로** 적는다 (조합서와 짝을 맞춘다): '
+        + Object.entries(RECIPE_BOOK).map(([c, l]) => `${c}=${l.map(([n]) => n).join('/')}`).join(' · ')
+        + '. 도감 밖 창작 레시피도 올릴 수 있다.' },
     { id: 'tools', label: '채집 도구', type: 'list', init: ['채집 바구니'], maxItems: 8, itemMaxLength: 24,
       desc: '가진 채집 도구 (곡괭이·낫·낚싯대·채집망·폭탄 망치…). 도구 수가 곧 채집 보정이다.' },
     { id: 'areas', label: '아는 채집지', type: 'list', init: ['왕도 근교 (왕도 주변 들판)'], maxItems: 12, itemMaxLength: 40,
@@ -219,6 +355,16 @@ const S = {
     // 🌙 하루 마무리가 밭의 단수를 여기 옮겨 적고, 조건 이벤트가 다음 아침 수확 장면으로 바꾼다.
     // (효과에는 조건이 없어 "밭이 있을 때만"을 직접 못 쓴다 — 래치가 그 조건이다)
     { id: 'harvest_due', label: '수확 대기', type: 'int', init: 0, min: 0, max: 5 },
+    // ── 진열대 (경영) — 내놓은 물건이 며칠 안에 팔려 돈이 된다. 의뢰 기한과 같은 기계(@+N 굳힘 → expire) ──
+    { id: 'display', label: '진열대', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    { id: 'shelf', label: '진열 상품', type: 'list', init: [], maxItems: 18, itemMaxLength: 40,
+      desc: '진열대에 내놓은 상품. **형식: "이름 @+팔릴날 가격"** — 가격은 반드시 맨 끝 숫자, 상점 밴드 안에서 '
+        + '(조악 5~60 · 보통 40~200 · 상등 150~800 · 희귀 800~5000). 팔릴 날: 기초 1~3일 · 고급 3~6일 · 비전 5~10일, '
+        + '고품질이면 하루 빠르게, 평판 600 이상이면 하루 빠르게. 예) "힐링 살브 @+2 120". '
+        + '진열은 items에서 빼서 여기로 옮긴다. **팔리는 것은 시스템이 한다 — 팔렸다고 여기서 지우지 마라.** '
+        + '거둬들일 때만 저장 원문 그대로 remove 하고 items에 되돌린다. 진열 칸(shelf_cap)을 넘기면 거둬들여라.' },
+    { id: 'shelf_prev', label: '진열 합계(전)', type: 'int', init: 0, min: 0, max: 99999999 },
+    { id: 'shelf_sold', label: '오늘 매출', type: 'int', init: 0, min: 0, max: 99999999, format: '{v}콜' },
   ],
 
   derived: [
@@ -242,6 +388,11 @@ const S = {
       expr: chain([['storage <= 0', '10'], ['storage == 1', '20'], ['storage == 2', '35'],
         ['storage == 3', '55'], ['storage == 4', '75']], '99'), format: '{v}칸' },
     { id: 'mat_n', label: '보관 중', expr: 'count(materials)', format: '{v}종' },
+    // 진열대 = 칸 수. 0단은 창가 선반 3칸 — 사기 전에도 장사는 된다
+    { id: 'shelf_cap', label: '진열 칸',
+      expr: chain([['display <= 0', '3'], ['display == 1', '6'], ['display == 2', '9'],
+        ['display == 3', '12'], ['display == 4', '15']], '18'), format: '{v}칸' },
+    { id: 'shelf_n', label: '진열 중', expr: 'count(shelf)', format: '{v}개' },
     { id: 'year_no', label: '여정', expr: 'year - 999', format: '{v}년차' },
   ],
 
@@ -267,6 +418,11 @@ const S = {
       // 납품으로 빠진 것(quest_pay > 0)은 만료가 아니다 — 보조 델타는 5단계, 이 틱은 6단계라 이미 빠져 있다
       { set: 'quest_lost', expr: 'max(quest_n - count(quests) - (quest_pay > 0 ? 1 : 0), 0)' },
       { set: 'quest_n', expr: 'count(quests)' },
+      // ── 진열대 정산: 합계를 적고 → 기한 온 것을 떨구고 → 줄어든 값이 곧 매출. 돈과 물건이 어긋날 수 없다 ──
+      { set: 'shelf_prev', expr: 'sum(shelf)' },
+      { list: 'shelf', expire: 'elapsed' },
+      { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
+      { set: 'cole', expr: 'cole + shelf_sold' },
     ],
 
     events: [
@@ -285,6 +441,12 @@ const S = {
         effects: [{ set: 'harvest_due', expr: '0' }],
         notify: '아침, 약초밭에 나가 본다. 밭이 내준 약초를 거둬 소재 목록에 올려라 — 1~2단은 1종, 3~4단은 2종, 5단은 3종. '
           + '무엇이 났는지는 계절과 밭의 단에 맞춰 서사가 정한다 (상태 블록의 약초밭 단수를 본다).' },
+      // 진열대 매출 — 액수는 상태 블록의 소지금 변화로 드러난다 (통지는 값을 못 싣는다)
+      { id: 'shelf_sale', when: 'shelf_sold > 0',
+        effects: [{ set: 'renown', expr: 'min(renown + 1, 1000)' }],
+        notify: '진열대의 물건이 팔렸다 — 장부에 값이 들어왔다(소지금 변화만큼). 누가 무엇을 사 갔는지 한 줄로 그려라. 팔린 물건은 이미 진열에서 빠져 있다.' },
+      { id: 'shelf_over', when: 'shelf_n > shelf_cap',
+        notify: '진열대가 좁다 — 칸을 넘긴 물건은 팔리지 않고 자리만 차지한다. 넘친 만큼 거둬들여 아이템으로 되돌려라.' },
       { id: 'collapse', when: 'stamina <= 0',
         effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "'공방'" },
           { set: 'skip_min', expr: 'skip_min + 480' }],
@@ -328,6 +490,9 @@ const S = {
       text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(고급 레시피는 2단·비전은 4단부터 배울 수 있다), '
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(하루마다 수확). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라.' },
+    { id: 'shelf_dir', when: 'count(shelf) > 0',
+      text: '진열대에 물건이 나가 있다: {shelf} — 며칠 안에 팔릴지는 시스템이 정한다. 손님이 사 가는 장면을 지어내 돈을 더하지 마라; '
+        + '"팔렸다" 통지가 왔을 때만 그 장면을 그린다. 진열대 앞을 기웃거리는 손님·흥정·구경은 자유다.' },
     { id: 'tired', when: 'stamina <= 25',
       text: '몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라.' },
     { id: 'broke', when: 'cole < 100',
@@ -520,7 +685,7 @@ const S = {
       { id: 'bombs', maxDelta: 8 },
       { id: 'foe_tier', maxDelta: 4 }, { id: 'foe_name', maxLength: 30 },
       { id: 'quest_pay', maxGain: 15000 },
-      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'tools' },
+      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'tools' }, { id: 'shelf' },
       { id: 'areas' }, { id: 'quests' }, { id: 'allies' },
       { id: 'skip_day', maxGain: 3650 }, { id: 'skip_min', maxGain: 1440 },
     ],
@@ -530,6 +695,7 @@ const S = {
       '중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라.',
       '의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다.',
       '소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다.',
+      '진열은 items에서 빼 shelf로 옮긴다("이름 @+팔릴날 가격"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라.',
     ].join(' '),
   },
 
@@ -542,6 +708,7 @@ const S = {
       '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
+      '진열대({shelf_n}/{shelf_cap}): {shelf}',
       '의뢰({quest_slot} 남음): {quests}',
     ].join('\n'),
     systemGuide: '수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. '
@@ -557,6 +724,7 @@ const S = {
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
         { var: 'cauldron' }, { var: 'library' }, { var: 'storage' }, { var: 'mat_cap' }, { var: 'garden' },
+        { var: 'display' },
       ] },
       { label: '연금술사', visibility: 'show', items: [
         { var: 'renown', bar: { max: 1000 }, color: "'#b08968'" },
@@ -565,7 +733,7 @@ const S = {
         ...CATS.map(([, id]) => ({ var: id, bar: { max: 100 } })),
       ] },
       { label: '소지', visibility: 'show', items: [
-        { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' },
+        { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' }, { var: 'shelf' },
         { var: 'recipes' }, { var: 'tools' },
       ] },
       { label: '여정', visibility: 'show', items: [
@@ -610,9 +778,13 @@ const S = {
           { var: 'garden', max: 5, cost: '(garden + 1) * 1800',
             note: '단마다 채집 +1 · 하루를 마칠 때마다 약초 수확 (1~2단 1종 · 3~4단 2종 · 5단 3종)',
             requires: 'garden < 3 or renown > 150', requiresLabel: '4단부터는 기초 연금술사부터' },
+          { var: 'display', max: 5, cost: '(display + 1) * 2500',
+            note: '진열 칸 3 → 6 → 9 → 12 → 15 → 18 · 내놓은 물건은 며칠 안에 팔려 돈이 된다 (하루를 넘길수록 장사가 된다)' },
         ] },
       // 지도 — 새 패널이 아니라 이 패널의 둘째 탭. fab은 달지 않는다 (버튼은 🏠 하나).
       { id: 'map', label: '지도', template: MAP_TEMPLATE },
+      // 조합서 — 컬렉션. 도감은 생성기에 굽고, 해금은 recipes의 has()로, 소재 보유는 materials의 has()로 본다.
+      { id: 'book', label: '조합서', template: BOOK_TEMPLATE },
     ],
   },
 
@@ -957,7 +1129,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'clues', 'last_quality',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'clues', 'last_quality',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -1036,6 +1208,43 @@ console.log('\n━━ 설비 — 단이 오르면 세계가 바뀐다 (보이지
   ok('설비 지시문이 실린다 (서고 단수로 레시피를 막는다)', p0.includes('아직 읽어낼 수 없다'), '');
   const left = (p0.match(/\{[a-z_]+\}/g) || []);
   ok('프롬프트에 미치환 자리표시자 없음', left.length === 0, left.join(' '));
+}
+
+console.log('\n━━ 진열대 — 기한이 온 것이 팔린 것, 돈과 물건이 어긋나지 않는다 ━━');
+{
+  let t = fresh();
+  ok('진열대 0단도 창가 3칸', look(t)('shelf_cap') === 3, String(look(t)('shelf_cap')));
+  t.vars.display = 5;
+  ok('5단이면 18칸 = 목록 상한', look(t)('shelf_cap') === 18 && S.vars.find((v) => v.id === 'shelf').maxItems === 18, '');
+  t.vars.display = 0;
+  const cole0 = t.vars.cole;
+  ({ st: t } = turn(t, { shelf: { add: ['힐링 살브 @+2 120', '약 @+1 60'] } }, 300));
+  ok('보조가 진열을 올린다 (allow) · 기한이 절대값으로 굳는다', t.vars.shelf.length === 2 && t.vars.shelf.every((x) => /@\d+ \d+$/.test(x)), JSON.stringify(t.vars.shelf));
+  ok('올린 턴에는 매출이 없다', t.vars.cole === cole0 && t.vars.shelf_sold === 0, cole0 + ' → ' + t.vars.cole);
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('a', 301, 's') }).promptBlock;
+  ok('상태 블록에 진열대 2/3 + (N일) 환산', p1.includes('진열대(2/3)') && /힐링 살브 120 \(2일\)/.test(p1),
+    p1.split('\n').find((l) => l.includes('진열대')) ?? '');
+  ok('진열 지시문이 "지어내 팔지 마라"를 건다', p1.includes('며칠 안에 팔릴지는 시스템이 정한다'), '');
+  // 이틀 뒤 — 약(@+1)은 팔리고 힐링 살브(@+2)는 당일이라 아직
+  let r = turn(t, { skip_day: 2 }, 302);
+  ok('약이 팔렸다 — 소지금 +60, 진열엔 힐링 살브만', r.st.vars.cole === cole0 + 60 && r.st.vars.shelf.length === 1 && r.st.vars.shelf[0].startsWith('힐링 살브'),
+    cole0 + ' → ' + r.st.vars.cole + ' · ' + JSON.stringify(r.st.vars.shelf));
+  ok('매출 이벤트가 떴다', r.fired.some((e) => (e.id ?? e) === 'shelf_sale'), JSON.stringify(r.fired));
+  const p2 = engine.sendPhase(S, r.st, { rng: seededRng('a', 303, 's') }).promptBlock;
+  ok('다음 장면에 "팔렸다" 통지', p2.includes('진열대의 물건이 팔렸다'), '');
+  // 보조가 도로 거둔 것은 매출이 아니다
+  const back = r.st.vars.shelf[0];
+  const r2 = turn(r.st, { shelf: { remove: [back] }, items: { add: ['힐링 살브'] } }, 304);
+  ok('거둬들인 것은 돈이 안 된다', r2.st.vars.cole === cole0 + 60 && r2.st.vars.shelf.length === 0 && r2.st.vars.shelf_sold === 0,
+    r2.st.vars.cole + ' · sold ' + r2.st.vars.shelf_sold);
+  ok('거둔 턴엔 매출 이벤트가 없다', !r2.fired.some((e) => (e.id ?? e) === 'shelf_sale'), '');
+  // 칸 넘침
+  t = fresh();
+  ({ st: t } = turn(t, { shelf: { add: ['a @+3 10', 'b @+3 10', 'c @+3 10', 'd @+3 10'] } }, 310));
+  ok('3칸에 4개면 넘침 통지', t.vars.shelf.length === 4 && engine.sendPhase(S, t, { rng: seededRng('a', 311, 's') }).promptBlock.includes('진열대가 좁다'), '');
+  // 설비 탭에 진열대
+  const tab = SC.require('party').partyTabs(S).find((x) => x.id === 'facility');
+  ok('설비 탭 다섯째가 진열대 (설명 있음)', tab.items.length === 5 && tab.items[4].var === 'display' && tab.items[4].note.includes('팔려'), '');
 }
 
 console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━━');
@@ -1173,6 +1382,41 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 조합서 탭 — 컬렉션은 has()로 채워진다 ━━');
+{
+  const partyMod = SC.require('party');
+  const book = partyMod.partyTabs(S).find((t) => t.id === 'book');
+  ok('공방 패널 셋째 탭이 조합서다 (버튼은 여전히 하나)', !!book && book.template && !book.fab, '');
+  ok('도감 58종 · 이름 중복 없음', BOOK_ALL.length === 58 && new Set(BOOK_ALL.map(([n]) => n)).size === 58, String(BOOK_ALL.length));
+  ok('도감 등급은 synth_tier 어휘와 같다', BOOK_ALL.every(([, t]) => ['기초', '고급', '비전'].includes(t)), '');
+  ok('시작 레시피(중화제 적)가 도감에 있다', BOOK_ALL.some(([n]) => n === '중화제 적'), '');
+  const t = fresh();
+  t.vars.recipes = ['중화제 적', '힐링 살브', '내 맘대로 만든 비약'];
+  t.vars.materials = ['맑은 물', '약초', '기름'];
+  const html = SC.require('render').renderPanelTemplate(S, t, book.template);
+  const body = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  const leftover = (body.match(/\{[^{}]+\}/g) || []);
+  ok('미치환 자리표시자 없음', leftover.length === 0, leftover.slice(0, 3).join(' '));
+  ok('진행도 2 / 58 · 서고 0단', html.includes('2 / 58 · 서고 0단'), '');
+  const rowOf = (n) => { const i = html.indexOf('<span class="abk-nm">' + n + '</span>'); return html.slice(html.lastIndexOf('<div class="abk-row', i), i + 400); };
+  ok('배운 힐링 살브는 on', rowOf('힐링 살브').includes('abk-row on') && rowOf('힐링 살브').includes('✦'), rowOf('힐링 살브').slice(0, 120));
+  ok('안 배운 프람은 off · 미습득', rowOf('프람').includes('abk-row off') && rowOf('프람').includes('미습득'), '');
+  ok('고급(테라 봄)은 서고 0단이라 🔒 서고 2단', rowOf('테라 봄').includes('🔒 서고 2단'), rowOf('테라 봄').slice(0, 200));
+  t.vars.library = 2;
+  const html2 = SC.require('render').renderPanelTemplate(S, t, book.template);
+  ok('서고 2단이면 고급 자물쇠가 미습득으로 바뀐다 (비전은 그대로)',
+    !html2.includes('🔒 서고 2단') && html2.includes('🔒 서고 4단'), '');
+  ok('보관고에 있는 소재(약초·기름)는 밝게, 없는 것(밀랍)은 흐리게',
+    rowOf('힐링 살브').includes('abk-m have">약초') && rowOf('힐링 살브').includes('abk-m have">기름') && rowOf('힐링 살브').includes('abk-m ">밀랍'),
+    rowOf('힐링 살브').slice(200, 400));
+  ok('도감 밖 창작 레시피는 책에 안 뜬다 (목록에는 남는다)', !html.includes('내 맘대로') && t.vars.recipes.includes('내 맘대로 만든 비약'), '');
+  ok('툴팁(title)에 효과·필요 소재', html.includes('title="바르는 약 — 베임·타박·화상 · 필요: 약초, 기름, 맑은 물, 밀랍"'), '');
+  ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .abk'), '');
+  ok('레시피 desc가 도감 이름표를 싣는다 (보조가 이름을 맞춘다)',
+    S.vars.find((v) => v.id === 'recipes').desc.includes('폭탄=프람/레헤른') && S.vars.find((v) => v.id === 'recipes').desc.includes('비전=현자의 돌'), '');
+  ok('소재 desc가 "이름만"을 시킨다 (has 완전일치)', S.vars.find((v) => v.id === 'materials').desc.includes('이름만'), '');
 }
 
 console.log('\n━━ 캐스트 맵 — 3,792토큰을 origin으로 쪼갠다 ━━');

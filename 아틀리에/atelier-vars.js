@@ -838,6 +838,7 @@ const S = {
 
   party: {
     label: '공방', icon: '🏠', nav: 'tabs',
+    wide: true,   // 조합서 분야 탭 6개·지도 사다리 — 440px에선 탭이 두 줄로 꺾인다 (실기 제보, v1.7.6)
     tabs: [
       // ⚠ fab을 달지 않는다 — 탭이 하나뿐인데 fab을 달면 패널 버튼(🏠 공방)과
       // 탭 버튼(🏠 설비)이 같은 곳을 여는 버튼 두 개가 된다 (실기 제보).
@@ -1481,6 +1482,7 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   const partyMod = SC.require('party');
   const book = partyMod.partyTabs(S).find((t) => t.id === 'book');
   ok('공방 패널 셋째 탭이 조합서다 (버튼은 여전히 하나)', !!book && book.template && !book.fab, '');
+  ok('공방 패널은 넓게(640px) — 분야 탭 6개가 한 줄', S.party.wide === true, '');
   ok('도감 104종 · 이름 중복 없음', BOOK_ALL.length === 104 && new Set(BOOK_ALL.map(([n]) => n)).size === 104, String(BOOK_ALL.length));
   ok('분야 6 · 도구 32(5종×6단계+2) · 음식 16', BOOK_CATS.length === 6 && RECIPE_BOOK.도구.length === 32 && RECIPE_BOOK.음식.length === 16,
     BOOK_CATS.map((c) => c + RECIPE_BOOK[c].length).join(' '));

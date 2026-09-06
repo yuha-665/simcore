@@ -5553,6 +5553,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         (P.tabs.length >= 8 && P.nav !== 'select')
           ? h('span', { class: 'sce-hint sce-warn' }, `탭이 ${P.tabs.length}개 — 셀렉트+검색을 권합니다`)
           : null,
+        // 넓은 패널 (v1.7.6) — 지도·도감처럼 가로가 넓은 대장 템플릿용 (440 → 640px)
+        bindCheck(P.wide === true, (x) => { if (x) P.wide = true; else delete P.wide; rerender(); }, '넓은 패널 (640px) — 지도·도감 템플릿용'),
       ));
       P.tabs.forEach((t, ti) => {
         t.slots = Array.isArray(t.slots) ? t.slots : [];

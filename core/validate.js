@@ -1007,6 +1007,8 @@ function validateSchema(schema) {
       if (P.nav != null && !['tabs', 'select'].includes(P.nav)) {
         err('$.party.nav', "nav는 'tabs'(탭 바) 또는 'select'(셀렉트+검색)");
       }
+      // 넓은 패널 (v1.7.6) — 대장 템플릿(지도·도감)이 넓을 때 640px
+      if (P.wide != null && typeof P.wide !== 'boolean') err('$.party.wide', 'wide는 true/false');
       // 초상 (v0.57) — 이름 → 에셋 이름. 오타는 이미지가 조용히 안 뜨는 사고가 되므로 여기서 잡는다
       if (P.portraits != null) {
         if (typeof P.portraits !== 'object' || Array.isArray(P.portraits)) {

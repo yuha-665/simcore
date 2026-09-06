@@ -1692,6 +1692,7 @@
     "label": "공방",
     "icon": "🏠",
     "nav": "tabs",
+    "wide": true,
     "tabs": [
       {
         "id": "facility",

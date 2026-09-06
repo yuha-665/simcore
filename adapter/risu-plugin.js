@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.5
-//@display-name SimCore (시뮬 엔진) v1.7.5 스트리밍 판정 깃발화
+//@version 1.7.6
+//@display-name SimCore (시뮬 엔진) v1.7.6 넓은 편성표 패널
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,11 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.6 ────────────────────────────────────────────────
+// **편성표 패널 너비 옵션** party.wide (아틀리에 실기 제보: 조합서 분야 탭 6개가 440px에서 두 줄로 꺾인다).
+// - true면 카드가 게시판과 같은 640px(scb-wide). 지도·도감처럼 가로가 넓은 대장 템플릿용.
+// - 검증(boolean) · 편집기 편성표 탭 체크박스 · schema.md.
 //
 // ── v1.7.5 ────────────────────────────────────────────────
 // 긴급: **보조 호출이 한 턴에 수십 번 겹치던 것 재발** (실기 제보 — 아틀리에 개조 테스트 중,
@@ -4321,7 +4326,8 @@
     if (!view) { root.innerHTML = ''; return; }
     root.innerHTML = '';
     const card = document.createElement('div');
-    card.className = 'scg-card';
+    // party.wide (v1.7.6) — 대장 템플릿이 넓을 때 게시판과 같은 640px
+    card.className = 'scg-card' + (schema.party?.wide === true ? ' scb-wide' : '');
     card.addEventListener('click', (ev) => ev.stopPropagation());
 
     const title = document.createElement('div');

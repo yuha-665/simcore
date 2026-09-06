@@ -317,6 +317,13 @@ const clone = (o) => JSON.parse(J(o));
   const navBad = clone(SK);
   navBad.party.nav = 'dropdown';
   ck('nav 오타 오류', validateSchema(navBad).errors.some((e) => /tabs.*select/.test(e.msg)), '');
+  // wide (v1.7.6) — 넓은 패널은 boolean
+  const wideOk = clone(SK); wideOk.party.wide = true;
+  ck('wide=true 검증 통과', validateSchema(wideOk).ok, '');
+  const wideBad = clone(SK); wideBad.party.wide = 'yes';
+  ck('wide 문자열 오류', validateSchema(wideBad).errors.some((e) => e.path === '$.party.wide'), '');
+  ck('어댑터가 wide를 scb-wide 클래스로 (게시판과 같은 640px)',
+    fs.readFileSync(__P('../adapter/risu-plugin.js'), 'utf8').includes("(schema.party?.wide === true ? ' scb-wide' : '')"), '');
 
   // 검증 — 새 오류들
   const badVar = clone(SK);

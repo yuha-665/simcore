@@ -434,6 +434,32 @@
       "max": 99999999
     },
     {
+      "id": "sales_month",
+      "label": "이달 진열 매출",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 99999999,
+      "format": "{v}콜"
+    },
+    {
+      "id": "tax_arrears",
+      "label": "세금 체납",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 2,
+      "format": "{v}개월"
+    },
+    {
+      "id": "tax_seen",
+      "label": "지난 세금",
+      "type": "int",
+      "init": 140004,
+      "min": 0,
+      "max": 99999999
+    },
+    {
       "id": "cauldron",
       "label": "가마",
       "type": "int",
@@ -523,6 +549,12 @@
       "id": "area_tier",
       "label": "지형의 격",
       "expr": "(location == '공방' ? 0 : (location == '왕도' ? 0 : (location == '별의 고치 카페' ? 0 : (location == '왕도 뒷골목' ? 0 : (location == '지방 도시' ? 0 : (location == '왕도 주변 들판' ? 1 : (location == '프리겐·시골' ? 1 : (location == '숲' ? 2 : (location == '꽃밭·초원' ? 2 : (location == '강가·폭포' ? 2 : (location == '해안' ? 2 : (location == '습지·늪' ? 3 : (location == '광산·동굴' ? 3 : (location == '설산 능선' ? 4 : (location == '사막' ? 4 : (location == '유적·마나 이상 지대' ? 4 : 5))))))))))))))))"
+    },
+    {
+      "id": "tax_due",
+      "label": "다음 세금",
+      "expr": "100 + (cauldron + library + storage + garden + display) * 60 + floor(sales_month / 10)",
+      "format": "{v}콜"
     },
     {
       "id": "sk_now",
@@ -659,9 +691,94 @@
       {
         "set": "cole",
         "expr": "cole + shelf_sold"
+      },
+      {
+        "set": "sales_month",
+        "expr": "sales_month + shelf_sold"
       }
     ],
     "events": [
+      {
+        "id": "tax_seize",
+        "when": "dom == 1 and tax_seen != year * 100 + month and cole < tax_due and tax_arrears >= 1",
+        "effects": [
+          {
+            "set": "display",
+            "expr": "max(display - 1, 0)"
+          },
+          {
+            "set": "renown",
+            "expr": "max(renown - 10, 1)"
+          },
+          {
+            "set": "cole",
+            "expr": "0"
+          },
+          {
+            "set": "tax_arrears",
+            "expr": "0"
+          },
+          {
+            "set": "sales_month",
+            "expr": "0"
+          },
+          {
+            "set": "tax_seen",
+            "expr": "year * 100 + month"
+          }
+        ],
+        "notify": "세금날 — 두 달째 잔고가 모자랐다. 징수관이 있는 돈을 다 걷고 진열대 한 단을 압류해 갔다(체납은 이걸로 정산). 이웃이 본다. 분한 장면을 짧게."
+      },
+      {
+        "id": "tax_short",
+        "when": "dom == 1 and tax_seen != year * 100 + month and cole < tax_due",
+        "effects": [
+          {
+            "set": "renown",
+            "expr": "max(renown - 10, 1)"
+          },
+          {
+            "set": "cole",
+            "expr": "0"
+          },
+          {
+            "set": "tax_arrears",
+            "expr": "min(tax_arrears + 1, 2)"
+          },
+          {
+            "set": "sales_month",
+            "expr": "0"
+          },
+          {
+            "set": "tax_seen",
+            "expr": "year * 100 + month"
+          }
+        ],
+        "notify": "세금날인데 잔고가 모자랐다 — 징수관이 있는 돈을 다 걷어 갔고 체납으로 남았다. 경고 한 마디: 다음 달에도 못 내면 진열대를 압류한다."
+      },
+      {
+        "id": "tax_paid",
+        "when": "dom == 1 and tax_seen != year * 100 + month and cole >= tax_due",
+        "effects": [
+          {
+            "set": "cole",
+            "expr": "cole - tax_due"
+          },
+          {
+            "set": "tax_arrears",
+            "expr": "0"
+          },
+          {
+            "set": "sales_month",
+            "expr": "0"
+          },
+          {
+            "set": "tax_seen",
+            "expr": "year * 100 + month"
+          }
+        ],
+        "notify": "세금날 — 징수관이 다녀갔다. 공방세와 진열대 매출의 1할이 나갔다(액수는 소지금 변화에 있다). 한 줄로 스치듯, 큰 장면으로 만들지 마라."
+      },
       {
         "id": "quest_paid",
         "when": "quest_pay > 0",
@@ -1053,6 +1170,16 @@
       "id": "workshop",
       "when": "true",
       "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. 조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라(같은 계열 대체는 한 가지까지). 조합서 밖의 것은 서사에 맡긴다."
+    },
+    {
+      "id": "tax_soon",
+      "when": "dom >= 28",
+      "text": "곧 세금날(매달 1일)이다 — 이번 달 세금 {tax_due}콜(공방세 + 진열 매출 1할). 징수관·이웃의 잡담으로 스치듯 상기시켜라. 걷는 건 시스템이 한다."
+    },
+    {
+      "id": "tax_arrears_dir",
+      "when": "tax_arrears > 0",
+      "text": "세금 체납 중 — 징수관이 눈에 띄고 이웃이 수군댄다. 다음 세금날({tax_due}콜)에 못 내면 진열대를 압류당한다."
     },
     {
       "id": "invent_dir",
@@ -2508,7 +2635,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라. 서사가 재료 부족으로 조합을 시작하지 않았으면 판정 결과와 무관하게 완성품을 올리지 말고 소재도 빼지 마라. 특수연금 등록(inventions)은 판정이 발명·성공일 때만 — 불안정·실패·사고 턴엔 건드리지 마라. 이름이 도감에 있으면 등록하지 말고 그 도감 레시피를 recipes에 올려라. 재료는 실험 당시 materials에 있던 이름만. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라. 매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단 · 다음 세금 {tax_due}콜\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -2584,6 +2711,16 @@
           },
           {
             "var": "mat_cap"
+          },
+          {
+            "var": "tax_due"
+          },
+          {
+            "var": "sales_month"
+          },
+          {
+            "var": "tax_arrears",
+            "when": "tax_arrears > 0"
           },
           {
             "var": "shelf_n",
@@ -2748,6 +2885,11 @@
         "label": "별의 고치 정기시",
         "dom": 1,
         "note": "카페 앞에 의뢰가 몰린다"
+      },
+      {
+        "label": "세금날",
+        "dom": 1,
+        "note": "공방세 + 진열 매출 1할 — 시스템이 걷는다"
       },
       {
         "label": "꽃맞이제",

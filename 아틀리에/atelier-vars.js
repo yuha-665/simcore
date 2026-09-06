@@ -561,6 +561,11 @@ const S = {
 
     // 축제 래치 — 연 1회 발화. year*100+month (한 달에 축제 하나)
     { id: 'fest_seen', label: '지난 축제', type: 'int', init: 0, min: 0, max: 99999999 },
+    // ── 세금 (돈이 나갈 구석 — 유저 결정 2026-09-06). 공방세(설비 규모 비례) + 상거래세(진열 매출 1할), 매달 1일 시스템이 걷는다 ──
+    { id: 'sales_month', label: '이달 진열 매출', type: 'int', init: 0, min: 0, max: 99999999, format: '{v}콜' },
+    { id: 'tax_arrears', label: '세금 체납', type: 'int', init: 0, min: 0, max: 2, format: '{v}개월' },
+    // 시작이 4월 1일이라 첫 세금날은 5월 1일 — 첫 턴에 걷히지 않게 4월을 이미 낸 것으로
+    { id: 'tax_seen', label: '지난 세금', type: 'int', init: 140004, min: 0, max: 99999999 },
 
     // ── 공방 설비: 편성표 탭이 관리한다. allow에 없다 ──
     { id: 'cauldron', label: '가마', type: 'int', init: 1, min: 1, max: 5, format: '{v}단' },
@@ -591,6 +596,7 @@ const S = {
     { id: 'area_tier', label: '지형의 격',
       expr: chain(PLACES.slice(0, -1).map(([p, t]) => [`location == '${p}'`, String(t)]),
         String(PLACES[PLACES.length - 1][1])) },
+    { id: 'tax_due', label: '다음 세금', expr: '100 + (cauldron + library + storage + garden + display) * 60 + floor(sales_month / 10)', format: '{v}콜' },
     { id: 'sk_now', label: '이 분야 숙련',
       expr: chain(CATS.slice(0, -1).map(([label, id]) => [`synth_cat == '${label}'`, id]),
         CATS[CATS.length - 1][1]) },
@@ -648,10 +654,31 @@ const S = {
       { list: 'shelf', expire: 'elapsed' },
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
       { set: 'cole', expr: 'cole + shelf_sold' },
+      { set: 'sales_month', expr: 'sales_month + shelf_sold' },   // 상거래세 근거 — 세금날에 0으로
     ],
 
     events: [
       // 정산은 이벤트여야 한다 — 액션 효과는 전송 단계(장면 전)라 보조가 적은 액수를 못 본다
+      { id: 'tax_seize', when: 'dom == 1 and tax_seen != year * 100 + month and cole < tax_due and tax_arrears >= 1',
+        effects: [
+          { set: 'display', expr: 'max(display - 1, 0)' }, { set: 'renown', expr: 'max(renown - 10, 1)' },
+          { set: 'cole', expr: '0' }, { set: 'tax_arrears', expr: '0' }, { set: 'sales_month', expr: '0' },
+          { set: 'tax_seen', expr: 'year * 100 + month' },
+        ],
+        notify: '세금날 — 두 달째 잔고가 모자랐다. 징수관이 있는 돈을 다 걷고 진열대 한 단을 압류해 갔다(체납은 이걸로 정산). 이웃이 본다. 분한 장면을 짧게.' },
+      { id: 'tax_short', when: 'dom == 1 and tax_seen != year * 100 + month and cole < tax_due',
+        effects: [
+          { set: 'renown', expr: 'max(renown - 10, 1)' }, { set: 'cole', expr: '0' },
+          { set: 'tax_arrears', expr: 'min(tax_arrears + 1, 2)' }, { set: 'sales_month', expr: '0' },
+          { set: 'tax_seen', expr: 'year * 100 + month' },
+        ],
+        notify: '세금날인데 잔고가 모자랐다 — 징수관이 있는 돈을 다 걷어 갔고 체납으로 남았다. 경고 한 마디: 다음 달에도 못 내면 진열대를 압류한다.' },
+      { id: 'tax_paid', when: 'dom == 1 and tax_seen != year * 100 + month and cole >= tax_due',
+        effects: [
+          { set: 'cole', expr: 'cole - tax_due' }, { set: 'tax_arrears', expr: '0' }, { set: 'sales_month', expr: '0' },
+          { set: 'tax_seen', expr: 'year * 100 + month' },
+        ],
+        notify: '세금날 — 징수관이 다녀갔다. 공방세와 진열대 매출의 1할이 나갔다(액수는 소지금 변화에 있다). 한 줄로 스치듯, 큰 장면으로 만들지 마라.' },
       { id: 'quest_paid', when: 'quest_pay > 0',
         effects: [{ set: 'cole', expr: 'cole + quest_pay' }, { set: 'quest_pay', expr: '0' }],
         notify: '약속된 보수를 받았다. 장부가 맞았다.' },
@@ -742,6 +769,10 @@ const S = {
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. '
         + '조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라(같은 계열 대체는 한 가지까지). 조합서 밖의 것은 서사에 맡긴다.' },
+    { id: 'tax_soon', when: 'dom >= 28',
+      text: '곧 세금날(매달 1일)이다 — 이번 달 세금 {tax_due}콜(공방세 + 진열 매출 1할). 징수관·이웃의 잡담으로 스치듯 상기시켜라. 걷는 건 시스템이 한다.' },
+    { id: 'tax_arrears_dir', when: 'tax_arrears > 0',
+      text: '세금 체납 중 — 징수관이 눈에 띄고 이웃이 수군댄다. 다음 세금날({tax_due}콜)에 못 내면 진열대를 압류당한다.' },
     { id: 'invent_dir', when: 'count(inventions) > 0',
       text: '특수연금 장부: {inventions} — 이 레시피는 적힌 재료로만 재현된다(보통 조합 판정으로). 재료가 빠지면 조합서와 같이 멈춰라.' },
     { id: 'invent_full', when: 'count(inventions) >= 12',
@@ -1036,7 +1067,7 @@ const S = {
       '지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}',
       '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
-      '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단',
+      '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단 · 다음 세금 {tax_due}콜',
       '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
@@ -1067,6 +1098,7 @@ const S = {
         { var: 'cauldron' }, { var: 'library' }, { var: 'garden' }, { var: 'display' },
         // 찬 정도 — 막대의 max가 설비 파생값. 값은 "12종", 막대가 용량 대비 비율 (bar.max는 식을 받는다)
         { var: 'storage' }, { var: 'mat_n', bar: { max: 'mat_cap' }, color: "'#b08968'" }, { var: 'mat_cap' },
+        { var: 'tax_due' }, { var: 'sales_month' }, { var: 'tax_arrears', when: 'tax_arrears > 0' },
         { var: 'shelf_n', bar: { max: 'shelf_cap' }, color: "'#c9a24a'" }, { var: 'shelf_cap' },
         { var: 'field_n', bar: { max: 'field_cap' }, color: "'#7fa87f'" }, { var: 'field_cap' },
       ] },
@@ -1095,6 +1127,7 @@ const S = {
     marks: [
       { label: '장날', weekday: '토', note: '왕도 광장에 좌판이 선다' },
       { label: '별의 고치 정기시', dom: 1, note: '카페 앞에 의뢰가 몰린다' },
+      { label: '세금날', dom: 1, note: '공방세 + 진열 매출 1할 — 시스템이 걷는다' },
       ...FESTIVALS.map(([, label, month, dom, note]) => ({ label, month, dom, note })),
     ],
   },
@@ -1567,7 +1600,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'clues', 'last_quality',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'clues', 'last_quality', 'sales_month', 'tax_arrears', 'tax_seen',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -1754,6 +1787,41 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
   ok('두 상점의 매입 대상이 다르다',
     shopMod.shopConfig(S, 'market').sellFrom === 'items'
     && shopMod.shopConfig(S, 'shade').sellFrom === 'materials', '');
+}
+
+console.log('\n━━ 세금 — 공방세(설비 비례) + 상거래세(진열 매출 1할), 매달 1일 시스템이 ━━');
+{
+  let t = fresh();
+  ok('시작 세액 160콜 (100 + 가마 1단×60)', look(t)('tax_due') === 160, String(look(t)('tax_due')));
+  ok('첫 턴(4월 1일)엔 걷지 않는다 (4월은 낸 것으로)', !turn(t, {}, 500).fired.some((e) => (e.id ?? e).startsWith('tax_')), '');
+  // 4월 한 달 진열 매출 누적 → 5월 1일 납부: 160 + floor(매출/10)
+  t = fresh(); t.vars.cole = 1000;
+  let r = turn(t, { shelf: { add: ['힐링 살브 @+3 200', '약 @+5 100'] } }, 501);   // 보조 델타로 넣어야 @+N이 굳는다
+  r = turn(r.st, { skip_day: 10 }, 502);                       // 열흘 → 둘 다 팔림 (300)
+  ok('진열 매출이 이달 매출에 누적된다', r.st.vars.sales_month === 300 && r.st.vars.cole === 1300, JSON.stringify([r.st.vars.sales_month, r.st.vars.cole]));
+  const due = look(r.st)('tax_due');
+  ok('세액 = 160 + 300/10 = 190', due === 190, String(due));
+  r = turn(r.st, { skip_day: 20 }, 503);                       // 5월 1일
+  ok('5월 1일 납부 사건 · 소지금 -190 · 매출 0 · 래치', r.fired.some((e) => (e.id ?? e) === 'tax_paid') && r.st.vars.cole === 1300 - 190 && r.st.vars.sales_month === 0 && r.st.vars.tax_seen === 140005, JSON.stringify([r.fired.map((e) => e.id ?? e), r.st.vars.cole, r.st.vars.tax_seen]));
+  ok('같은 달엔 다시 안 걷는다', !turn(r.st, {}, 504).fired.some((e) => (e.id ?? e).startsWith('tax_')), '');
+  ok('납부 통지가 다음 전송에', engine.sendPhase(S, r.st, { rng: seededRng('a', 505, 's') }).promptBlock.includes('징수관이 다녀갔다'), '');
+  // 체납 → 압류
+  t = fresh(); t.vars.cole = 50; t.vars.renown = 100; t.vars.display = 2;
+  r = turn(t, { skip_day: 30 }, 506);                          // 5월 1일, 50 < 160
+  ok('모자라면 체납: 소지금 0 · 평판 -10 · 체납 1', r.fired.some((e) => (e.id ?? e) === 'tax_short') && r.st.vars.cole === 0 && r.st.vars.renown === 90 && r.st.vars.tax_arrears === 1, JSON.stringify([r.st.vars.cole, r.st.vars.renown, r.st.vars.tax_arrears]));
+  const pA = engine.sendPhase(S, r.st, { rng: seededRng('a', 507, 's') }).promptBlock;
+  ok('체납 중 지시문 + 통지', pA.includes('세금 체납 중') && pA.includes('체납으로 남았다'), '');
+  r = turn(r.st, { skip_day: 31 }, 508);                       // 6월 1일, 여전히 0 < 세액
+  ok('두 달째면 압류: 진열대 -1 · 체납 정산 0', r.fired.some((e) => (e.id ?? e) === 'tax_seize') && r.st.vars.display === 1 && r.st.vars.tax_arrears === 0, JSON.stringify([r.fired.map((e) => e.id ?? e), r.st.vars.display, r.st.vars.tax_arrears]));
+  // 체납 1개월 뒤 제때 내면 풀린다
+  t = fresh(); t.vars.cole = 50; r = turn(t, { skip_day: 30 }, 509); r.st.vars.cole = 5000;
+  r = turn(r.st, { skip_day: 31 }, 510);
+  ok('다음 달 제때 내면 체납이 풀린다', r.fired.some((e) => (e.id ?? e) === 'tax_paid') && r.st.vars.tax_arrears === 0, '');
+  // 곧 세금날 지시문 (28일부터)
+  t = fresh(); r = turn(t, { skip_day: 27 }, 511);
+  ok('28일부터 "곧 세금날" 지시문 (세액 포함)', engine.sendPhase(S, r.st, { rng: seededRng('a', 512, 's') }).promptBlock.includes('곧 세금날') && engine.sendPhase(S, r.st, { rng: seededRng('a', 512, 's') }).promptBlock.includes('160콜'), '');
+  ok('설비 만렙이면 월 1,600콜', (() => { const u = fresh(); Object.assign(u.vars, { cauldron: 5, library: 5, storage: 5, garden: 5, display: 5 }); return look(u)('tax_due') === 1600; })(), '');
+  ok('달력에 세금날 · 상태 블록에 다음 세금', S.calendar.marks.some((m) => m.label === '세금날' && m.dom === 1) && S.promptState.template.includes('다음 세금 {tax_due}콜'), '');
 }
 
 console.log('\n━━ 특수연금 — 자기 레시피를 장부에 (12칸) ━━');
@@ -2055,7 +2123,7 @@ console.log('\n━━ 축제 — 달력 표식·준비 창·당일 이벤트가 
 {
   ok('축제 6개 · 달마다 하나 · 일은 4 이상 (준비 창이 달을 안 넘는다)',
     FESTIVALS.length === 6 && new Set(FESTIVALS.map((x) => x[2])).size === 6 && FESTIVALS.every((x) => x[3] >= 4), '');
-  ok('달력 표식에 축제 6 + 장날 + 정기시', S.calendar.marks.length === 8 && S.calendar.marks.some((m) => m.label === '한여름 별시장' && m.month === 6 && m.dom === 21), String(S.calendar.marks.length));
+  ok('달력 표식에 축제 6 + 장날 + 정기시 + 세금날', S.calendar.marks.length === 9 && S.calendar.marks.some((m) => m.label === '한여름 별시장' && m.month === 6 && m.dom === 21), String(S.calendar.marks.length));
   let t = fresh();                                         // 4월 1일
   const p0 = engine.sendPhase(S, t, { rng: seededRng('a', 400, 's') }).promptBlock;
   ok('4월 1일엔 꽃맞이제 준비 지시가 아직 없다', !p0.includes('꽃맞이제(4월 7일)가 다가온다'), '');

@@ -586,6 +586,11 @@ const CAST_HEAD = '아래 인물들은 각자의 일정·목표·관계·소속�
   + '늘 전원이 무대에 있을 필요는 없다. 영어·한국어·일본어 이름을 상황에 맞게 그대로 써라.';
 
 // ══════════════════ 스키마 ══════════════════
+// 🌙 하루 마무리가 굳히는 분 — "다음으로 돌아오는 07:00"까지 (0, 1440]. 로맨스 템플릿 WAKE_TOTAL_MIN과 같은 꼴, 시간대는 아침 고정
+// (연금술사의 하루는 아침에 시작한다 — 원작도 그렇다). 새벽 2시에 자면 같은 날 07:00(+300), 18:00에 자면 이튿날 07:00(+780).
+const WAKE_HOUR = 7;
+const SLEEP_TO_MORNING = `((${WAKE_HOUR} * 60 - (hour * 60 + minute)) + 1439) % 1440 + 1`;
+
 const S = {
   simcore: '0.1',
   meta: {
@@ -609,9 +614,9 @@ const S = {
       desc: '지금 있는 곳의 **지형**. 고유명사가 아니라 이 중 하나를 고른다 — 서사는 원하는 이름으로 불러도 된다. '
         + '이동하면 반드시 갱신. 채집 난이도가 여기서 자동으로 나온다.' },
     { id: 'skip_day', label: '넘긴 날', type: 'int', init: 0, min: 0, max: 3650,
-      desc: '이번 응답에서 지나간 **날 수**. 하루가 지났으면 1, "사흘 뒤"면 3, "한 달 뒤"면 30. 같은 날 안이면 0.' },
+      desc: '이번 응답에서 지나간 **날 수**. "사흘 뒤"면 3, "한 달 뒤"면 30. 같은 날 안이면 0. 날짜만 넘어가고 시각은 그대로 옮겨진다 — 잠들어 이튿날 아침에 깨는 장면은 유저의 🌙 버튼(잠든다/자러 간다)이 시계를 아침으로 맞추니 skip_day를 올리지 마라.' },
     { id: 'skip_min', label: '흐른 시간(분)', type: 'int', init: 0, min: 0, max: 1440,
-      desc: '그날 안에서 흐른 **분**. 대화 10~30, 이동 60~180, 반나절 240. 날이 바뀌었으면 skip_day를 쓴다.' },
+      desc: '흐른 **분**. 대화 10~30, 이동 60~180, 반나절 240. 잠들어 아침에 깨는 장면인데 시계가 아직 전날 밤이면 아침까지의 분(예: 22:00→07:00은 540). 며칠을 건너뛰면 skip_day를 쓴다.' },
 
     // ── 연금술사 ──
     { id: 'renown', label: '평판', type: 'int', init: 30, min: 1, max: 1000,
@@ -776,7 +781,7 @@ const S = {
     format: { date: 'YYYY년 M월 D일', clock: 'HH:mm' },
     weekdays: ['월', '화', '수', '목', '금', '토', '일'],
     seasons: ['봄', '여름', '가을', '겨울'],
-    expose: ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'elapsed'],
+    expose: ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'hour', 'minute', 'elapsed'],   // hour/minute: 🌙가 아침까지의 분을 계산한다 (v1.7.12)
   },
 
   rules: {
@@ -1023,9 +1028,13 @@ const S = {
     { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', keywords: ['쉰다', '휴식한다', '숨을 돌린다', '눕는다'], when: 'not fight_on',
       inject: '숨을 돌린다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina + 35' }] },
+    // 시계는 "다음으로 돌아오는 07:00"으로 — skip_day+1은 시각을 그대로 둔 채 24시간을 더해 18:00에 자면 이튿날 18:00이
+    // 되고, 보조가 아침 장면에 맞추려 분을 얹다 23:15 같은 시각이 났다 (2026-09-06 실기 제보). 새벽에 자면 같은 날 아침
+    // (+300 등)이라 29시간을 자지 않고, 정확히 07:00에 누르면 +1440. 총량 ≤ 1440이라 skip_min 하나로 실린다. set이지
+    // 더하기가 아니다 — 같은 전송에 😴 휴식이 먼저 쌓아 둔 분은 어차피 아침 안쪽이라 덮어도 결과가 같다.
     { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', keywords: ['잠든다', '자러 간다', '하루를 마친다', '잠자리에'], dayClose: true, when: 'not fight_on',
-      inject: '하루를 접는다. 다음 장면은 하루가 지난 뒤 — 시각은 문맥이 정한다.',
-      effects: [{ set: 'skip_day', expr: 'skip_day + 1' }, { set: 'stamina', expr: 'stamina + 45' },
+      inject: '하루를 접는다. 다음 장면은 잠에서 깬 이튿날 아침 — 시계가 아침으로 맞춰져 있으니 그 시각에서 시작한다.',
+      effects: [{ set: 'skip_min', expr: SLEEP_TO_MORNING }, { set: 'stamina', expr: 'stamina + 45' },
         { set: 'location', expr: "settled ? '공방' : location" }, { set: 'harvest_due', expr: 'garden' }] },   // 정착 전엔 잠자리가 공방이 아니다 — 여기서 정착시키면 첫 턴 사고가 하루 뒤로 미뤄질 뿐
   ],
 
@@ -1674,6 +1683,21 @@ console.log('\n━━ 시간 · 하루 넘김 ━━');
     const p = engine.sendPhase(S, t, { rng: seededRng('a', 62, 's') }).promptBlock;
     ok('상태 블록 첫 줄에 날씨 · 여정 1년차', (p.split('\n').find((l) => l.startsWith('지금:')) ?? '').includes('맑음 · 여정 1년차'),
       p.split('\n').find((l) => l.startsWith('지금:')) ?? '');
+  }
+  // 🌙 하루 마무리 = 다음 아침 07:00 (v1.7.12 — skip_day+1은 시각을 보존해 18:00→이튿날 18:00이었다)
+  {
+    const at = (clock) => { const u = fresh(); u.vars.time_epoch = u.vars.time_epoch + clock; return u; };   // 시작 14:00 기준 분 오프셋
+    const sleep = (u) => { u = engine.toggleAction(S, u, 'act_day').state; return engine.sendPhase(S, u, { rng: seededRng('a', 23, 's') }).state; };
+    const e = sleep(at(240));                                            // 18:00
+    ok('18:00에 🌙 → 이튿날 07:00 (23:15 아님)', look(e)('date') === '1400년 4월 2일' && look(e)('clock') === '07:00', look(e)('date') + ' ' + look(e)('clock'));
+    const d = sleep(at(720));                                            // 02:00 (4/2 새벽)
+    ok('새벽 02:00에 🌙 → 같은 날 07:00 (29시간 자지 않는다)', look(d)('date') === '1400년 4월 2일' && look(d)('clock') === '07:00', look(d)('date') + ' ' + look(d)('clock'));
+    const x = sleep(at(1020));                                           // 4/2 07:00 정각
+    ok('07:00 정각에 🌙 → 이튿날 07:00', look(x)('date') === '1400년 4월 3일' && look(x)('clock') === '07:00', look(x)('date') + ' ' + look(x)('clock'));
+    ok('🌙 효과에 skip_day가 없다 (시각 보존 +24h 금지)', !S.actions.find((a) => a.id === 'act_day').effects.some((f) => f.set === 'skip_day'), '');
+    ok('🌙 뒤 skip_min은 소비돼 0', e.vars.skip_min === 0 && e.vars.skip_day === 0, '');
+    ok('🌙 지시문이 아침을 말한다', /아침/.test(S.actions.find((a) => a.id === 'act_day').inject), '');
+    ok('hour/minute가 노출된다 (🌙 식의 재료)', look(e)('hour') === 7 && look(e)('minute') === 0, '');
   }
   // 버튼을 안 눌러도 서사가 하루를 넘기면 dayClose가 대신 돈다
   const r = turn(t, {}, 20);

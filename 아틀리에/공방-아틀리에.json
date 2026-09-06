@@ -883,7 +883,7 @@
     {
       "id": "workshop",
       "when": "true",
-      "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(하루마다 수확). 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라."
+      "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라."
     },
     {
       "id": "shelf_dir",
@@ -1832,7 +1832,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {

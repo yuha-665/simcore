@@ -644,7 +644,7 @@ const S = {
       text: '지금은 사람이 사는 곳이다. 채집이 아니라 사람·거래·의뢰·소문이 벌어지는 자리로 그려라.' },
     { id: 'workshop', when: 'true',
       text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), '
-        + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(하루마다 수확). '
+        + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라.' },
     { id: 'shelf_dir', when: 'count(shelf) > 0',
       text: '진열대에 물건이 나가 있다: {shelf} — 며칠 안에 팔릴지는 시스템이 정한다. 손님이 사 가는 장면을 지어내 돈을 더하지 마라; '
@@ -885,7 +885,7 @@ const S = {
 
   promptState: {
     template: [
-      '지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}',
+      '지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}',
       '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
       '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단',
@@ -1307,7 +1307,7 @@ console.log('\n━━ 시간 · 하루 넘김 ━━');
     ok('날씨는 보조가 적는다 (allow) · 어휘 밖은 거부', S.updater.allow.some((a) => a.id === 'weather')
       && turn(t, { weather: '비' }, 60).st.vars.weather === '비' && turn(t, { weather: '산성비' }, 61).st.vars.weather === '맑음', '');
     const p = engine.sendPhase(S, t, { rng: seededRng('a', 62, 's') }).promptBlock;
-    ok('상태 블록 첫 줄에 날씨', p.split('\n').find((l) => l.startsWith('지금:'))?.includes('맑음') === true,
+    ok('상태 블록 첫 줄에 날씨 · 여정 1년차', (p.split('\n').find((l) => l.startsWith('지금:')) ?? '').includes('맑음 · 여정 1년차'),
       p.split('\n').find((l) => l.startsWith('지금:')) ?? '');
   }
   // 버튼을 안 눌러도 서사가 하루를 넘기면 dayClose가 대신 돈다

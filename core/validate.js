@@ -1350,6 +1350,7 @@ function validateSchema(schema) {
       if (Q.icon != null && (typeof Q.icon !== 'string' || Q.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
       if (Q.unit != null && typeof Q.unit === 'string' && Q.unit.length > 8) err(`${P}.unit`, '보수 단위는 8자 이내');
       // 수락한 의뢰가 들어갈 목록 — list 변수 필수
+      if (Q.mainInject != null && typeof Q.mainInject !== 'boolean') err(`${P}.mainInject`, 'mainInject는 true/false여야 함');
       const lv = vars.find((v) => v && v.id === Q.listVar);
       if (!Q.listVar || typeof Q.listVar !== 'string') err(`${P}.listVar`, '수락한 의뢰가 들어갈 목록 변수(listVar)가 필요합니다');
       else if (!lv) err(`${P}.listVar`, `목록 변수 '${Q.listVar}'가 vars에 없음`);

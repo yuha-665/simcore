@@ -785,6 +785,13 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (bLine) lines.push(bLine);
   }
 
+  // 3.85 의뢰판 게시 목록 (v1.7.12) — 게시판과 달리 **원문을 싣는다**. 게시가 유한(≤12)하고, 모르면 모델이 벽보마다
+  // 제 의뢰를 지어 붙여 패널과 서사가 갈라진다 (아틀리에 실기). when이 닫힌 곳(의뢰판이 없는 장소)에선 빠진다.
+  if (!isSetupPending(schema, state)) {
+    const qLine = questMod.mainLine(schema, state, makeLookup);
+    if (qLine) lines.push(qLine);
+  }
+
   // 3.9 메신저 활성 방 (v1.2.0) — **유저가 활성화한 방 하나만** 대화 원문이 실린다.
   // 비활성 방은 순수 패널 전용 — 서사는 모른다 (유저 설계: 토큰은 고른 방만 쓴다).
   if (!isSetupPending(schema, state)) {

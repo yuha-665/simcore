@@ -65,6 +65,7 @@ function questConfig(schema) {
     cancel: effectsOf(q.cancel),
     guide: typeof q.guide === 'string' ? q.guide : '',
     when: typeof q.when === 'string' ? q.when : '',
+    mainInject: q.mainInject !== false,   // v1.7.12 — 게시 목록을 메인에 싣는다 (기본 켬)
     css: typeof q.css === 'string' ? q.css : '',
   };
 }
@@ -325,6 +326,33 @@ function auxSpec(schema, state, makeLookup) {
   return ['', `[${cfg.label} — 의뢰판 ${head}] (필수 항목)`, ...offerSpecBody(cfg, want)].join('\n');
 }
 
+/**
+ * 메인 프롬프트 한 덩이 (v1.7.12) — 지금 붙어 있는 게시를 **원문 그대로** 싣는다.
+ * 게시판(board)은 "화제 한 줄"만 주고 원문을 감추지만(토큰 절약이 존재 이유), 의뢰판은 반대다 — 게시가
+ * maxOffers(≤12)로 유한하고, 메인이 목록을 모르면 벽보 장면마다 여기 없는 의뢰를 지어 붙인다
+ * (아틀리에 실기: 패널엔 5건이 붙어 있는데 서사는 "하수구 쥐 퇴치 80콜" 같은 제 의뢰를 읊었다).
+ * 수락은 여전히 버튼이라, 모델에게는 "고르되 받았다고 쓰지 마라"까지 같이 말한다.
+ * when이 닫혀 있으면(의뢰판이 없는 장소) 안 싣는다 — 버튼과 같은 게이트.
+ */
+function mainLine(schema, state, makeLookup) {
+  const cfg = questConfig(schema);
+  if (!cfg || !cfg.mainInject) return null;
+  if (typeof makeLookup === 'function' && !questOpen(cfg, schema, state?.vars || {}, makeLookup)) return null;
+  const offers = state?.questBoard?.offers || [];
+  if (!offers.length) return null;
+  const now = nowOf(schema, state, makeLookup);
+  const items = offers.map((o) => {
+    const bits = [o.grade, `보수 ${payText(cfg, o.pay)}`, o.days ? `기한 ${o.days}일` : null].filter(Boolean).join(' · ');
+    const left = offerLeft(o, now);
+    return `- 「${o.client} · ${o.title}」(${bits}${left ? ` · 게시 ${left} 남음` : ''})${o.note ? ` — ${o.note}` : ''}`;
+  });
+  return [
+    `[${cfg.label}] 지금 붙어 있는 의뢰 ${offers.length}건:`,
+    ...items,
+    '서사에 의뢰판·벽보가 나오면 이 목록에서만 고른다 — 여기 없는 의뢰를 지어 붙이지 마라. 수락은 유저가 버튼으로 하니 주인공이 받았다고 쓰지 말고, 눈에 띈 것 한둘을 비추는 데서 멈춰라.',
+  ].join('\n');
+}
+
 /** 패널 [새로고침] 전용 프롬프트 — 채팅 없이 보조만 (통째 교체) */
 function interactionPrompt(schema, state, kind, payload = {}) {
   const cfg = questConfig(schema);
@@ -351,5 +379,5 @@ function parseInteraction(text, extractJsonObject) {
 module.exports = {
   CAPS, DEFAULT_FORMAT, questConfig, initQuestBoard, ensureQuestBoard, questOpen, nowOf, clampPay,
   sanitizeOffers, applyOffers, pruneExpired, offerLeft, formatEntry, accept, cancel,
-  auxSpec, interactionPrompt, parseInteraction,
+  auxSpec, mainLine, interactionPrompt, parseInteraction,
 };

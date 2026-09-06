@@ -142,6 +142,19 @@ console.log('━━ 수락 ━━');
   const sp = engine.sendPhase(S, st, { rng: seededRng('t', 1, 's') });
   ck('sendPhase 프롬프트에 통지가 실린다', sp.promptBlock.includes('감기약 3병'), '');
   ck('통지는 1회용 (소거)', (sp.state.meta.pendingNotifies || []).length === 0, '');
+  // 게시 목록이 메인에 실린다 (v1.7.12) — 남은 게시 'C · c' 1건
+  ck('게시 목록이 메인 프롬프트에 원문으로 실린다', sp.promptBlock.includes('[별의 고치 의뢰판] 지금 붙어 있는 의뢰 1건') && sp.promptBlock.includes('「C · c」(심부름 · 보수 100콜 · 기한 2일'), sp.promptBlock);
+  ck('수락한 의뢰는 게시 목록에 없다 (수첩으로 옮겨감)', !/「별의 고치 카페 · 감기약 3병」\(/.test(sp.promptBlock), '');
+  ck('지침: 목록에서만 고르고 받았다고 쓰지 마라', sp.promptBlock.includes('여기 없는 의뢰를 지어 붙이지 마라') && sp.promptBlock.includes('받았다고 쓰지 말고'), '');
+  const ml = quest.mainLine(S, st, engine.makeLookup);
+  ck('mainLine: 게시 남은 기간이 붙는다', typeof ml === 'string' && /게시 \d+일 남음/.test(ml), ml);
+  st.vars.in_town = false;
+  ck('when이 닫히면(도시 밖) 안 실린다', quest.mainLine(S, st, engine.makeLookup) === null, '');
+  st.vars.in_town = true;
+  ck('mainInject:false면 안 실린다', quest.mainLine({ ...S, questBoard: { ...S.questBoard, mainInject: false } }, st, engine.makeLookup) === null, '');
+  ck('게시가 비면 null', quest.mainLine(S, { ...st, questBoard: { ...st.questBoard, offers: [] } }, engine.makeLookup) === null, '');
+  const vt = validateSchema({ ...S, questBoard: { ...S.questBoard, mainInject: 'yes' } });
+  ck('mainInject 타입 오류', vt.errors.some((e) => e.path === '$.questBoard.mainInject'), J(vt.errors));
 }
 
 console.log('━━ 취소 ━━');

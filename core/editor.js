@@ -1334,6 +1334,7 @@ const SCHEMA_QUEST_RULES = [
   '- `accept`/`cancel`은 [{ "set": 변수id, "expr": 식 }] — 수락·취소 때 시스템이 적용하는 효과(취소하면 평판 -3 등). 식에서 pay·days·grade를 읽을 수 있습니다.',
   '- 수락·취소는 다음 전송에 통지 한 줄(의뢰인·제목·보수·기한·내용)로 실려 메인이 수주 장면을 씁니다. 게시판(board)에 의뢰를 얹으면 메인이 원문을 못 받으니, 의뢰는 여기로.',
   '- `when` 조건이 거짓이면 버튼째 숨습니다 (의뢰판이 없는 장소). `guide`에 어떤 의뢰가 붙는 곳인지·보수 감각을 적으세요.',
+  '- `mainInject`(기본 true)면 **지금 붙어 있는 게시 전부**(의뢰인·제목·등급·보수·기한·사정)가 메인 프롬프트에 실립니다 — 게시판(board)과 반대로 원문을 줍니다. 안 주면 모델이 벽보 장면마다 여기 없는 의뢰를 지어 붙입니다. when이 닫힌 곳에선 빠집니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -6090,6 +6091,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         pair('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); }, { cls: 'sce-w-s', ph: '2' }),
           '게시가 이 아래로 떨어지면 다음 턴에 보충'),
         pair('보충 간격(턴)', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); }, { cls: 'sce-w-s', ph: '3' })),
+        bindCheck(Q.mainInject !== false, (v) => { Q.mainInject = v ? undefined : false; rerender(); },
+          '메인 모델에 게시 목록 주입 (서사의 벽보가 패널과 같은 의뢰를 보이는 통로)'),
       ),
       h('div', { class: 'sce-row' },
         pair('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },

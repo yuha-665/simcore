@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.11
-//@display-name SimCore (시뮬 엔진) v1.7.11 첫 턴 에셋 지침
+//@version 1.7.12
+//@display-name SimCore (시뮬 엔진) v1.7.12 의뢰판 게시를 메인에
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.12 ───────────────────────────────────────────────
+// **의뢰판 게시 목록을 메인에** questBoard.mainInject (아틀리에 실사고: 패널엔 의뢰 5건이 붙어 있는데 서사의 벽보는
+// "하수구 쥐 퇴치 80콜" 같은 제 의뢰를 읊었다 — 메인이 게시를 몰랐다. 수락 통지만 갔다). 게시판(board)은 원문을 감추지만
+// 의뢰판은 게시가 유한(≤12)하니 반대로 원문을 싣는다: 의뢰인·제목·등급·보수·기한·사정 + "이 목록에서만 고르고, 받았다고
+// 쓰지 마라". when이 닫힌 곳에선 빠진다. 기본 켬, 편집기 [의뢰판] 탭 체크박스로 끔.
 //
 // ── v1.7.11 ───────────────────────────────────────────────
 // **첫 턴(최초설정) 에셋 지침** (아틀리에 실사고: "에셋 캐릭터가 대사치는데도 에셋 출력식을 하나도 출력 안 한다").
@@ -4574,6 +4580,7 @@ function validateSchema(schema) {
       if (Q.icon != null && (typeof Q.icon !== 'string' || Q.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
       if (Q.unit != null && typeof Q.unit === 'string' && Q.unit.length > 8) err(`${P}.unit`, '보수 단위는 8자 이내');
       // 수락한 의뢰가 들어갈 목록 — list 변수 필수
+      if (Q.mainInject != null && typeof Q.mainInject !== 'boolean') err(`${P}.mainInject`, 'mainInject는 true/false여야 함');
       const lv = vars.find((v) => v && v.id === Q.listVar);
       if (!Q.listVar || typeof Q.listVar !== 'string') err(`${P}.listVar`, '수락한 의뢰가 들어갈 목록 변수(listVar)가 필요합니다');
       else if (!lv) err(`${P}.listVar`, `목록 변수 '${Q.listVar}'가 vars에 없음`);
@@ -7154,6 +7161,7 @@ function questConfig(schema) {
     cancel: effectsOf(q.cancel),
     guide: typeof q.guide === 'string' ? q.guide : '',
     when: typeof q.when === 'string' ? q.when : '',
+    mainInject: q.mainInject !== false,   // v1.7.12 — 게시 목록을 메인에 싣는다 (기본 켬)
     css: typeof q.css === 'string' ? q.css : '',
   };
 }
@@ -7414,6 +7422,33 @@ function auxSpec(schema, state, makeLookup) {
   return ['', `[${cfg.label} — 의뢰판 ${head}] (필수 항목)`, ...offerSpecBody(cfg, want)].join('\n');
 }
 
+/**
+ * 메인 프롬프트 한 덩이 (v1.7.12) — 지금 붙어 있는 게시를 **원문 그대로** 싣는다.
+ * 게시판(board)은 "화제 한 줄"만 주고 원문을 감추지만(토큰 절약이 존재 이유), 의뢰판은 반대다 — 게시가
+ * maxOffers(≤12)로 유한하고, 메인이 목록을 모르면 벽보 장면마다 여기 없는 의뢰를 지어 붙인다
+ * (아틀리에 실기: 패널엔 5건이 붙어 있는데 서사는 "하수구 쥐 퇴치 80콜" 같은 제 의뢰를 읊었다).
+ * 수락은 여전히 버튼이라, 모델에게는 "고르되 받았다고 쓰지 마라"까지 같이 말한다.
+ * when이 닫혀 있으면(의뢰판이 없는 장소) 안 싣는다 — 버튼과 같은 게이트.
+ */
+function mainLine(schema, state, makeLookup) {
+  const cfg = questConfig(schema);
+  if (!cfg || !cfg.mainInject) return null;
+  if (typeof makeLookup === 'function' && !questOpen(cfg, schema, state?.vars || {}, makeLookup)) return null;
+  const offers = state?.questBoard?.offers || [];
+  if (!offers.length) return null;
+  const now = nowOf(schema, state, makeLookup);
+  const items = offers.map((o) => {
+    const bits = [o.grade, `보수 ${payText(cfg, o.pay)}`, o.days ? `기한 ${o.days}일` : null].filter(Boolean).join(' · ');
+    const left = offerLeft(o, now);
+    return `- 「${o.client} · ${o.title}」(${bits}${left ? ` · 게시 ${left} 남음` : ''})${o.note ? ` — ${o.note}` : ''}`;
+  });
+  return [
+    `[${cfg.label}] 지금 붙어 있는 의뢰 ${offers.length}건:`,
+    ...items,
+    '서사에 의뢰판·벽보가 나오면 이 목록에서만 고른다 — 여기 없는 의뢰를 지어 붙이지 마라. 수락은 유저가 버튼으로 하니 주인공이 받았다고 쓰지 말고, 눈에 띈 것 한둘을 비추는 데서 멈춰라.',
+  ].join('\n');
+}
+
 /** 패널 [새로고침] 전용 프롬프트 — 채팅 없이 보조만 (통째 교체) */
 function interactionPrompt(schema, state, kind, payload = {}) {
   const cfg = questConfig(schema);
@@ -7440,7 +7475,7 @@ function parseInteraction(text, extractJsonObject) {
 module.exports = {
   CAPS, DEFAULT_FORMAT, questConfig, initQuestBoard, ensureQuestBoard, questOpen, nowOf, clampPay,
   sanitizeOffers, applyOffers, pruneExpired, offerLeft, formatEntry, accept, cancel,
-  auxSpec, interactionPrompt, parseInteraction,
+  auxSpec, mainLine, interactionPrompt, parseInteraction,
 };
 
 });
@@ -8667,6 +8702,13 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   if (!isSetupPending(schema, state)) {
     const bLine = boardMod.mainLine(schema, state);
     if (bLine) lines.push(bLine);
+  }
+
+  // 3.85 의뢰판 게시 목록 (v1.7.12) — 게시판과 달리 **원문을 싣는다**. 게시가 유한(≤12)하고, 모르면 모델이 벽보마다
+  // 제 의뢰를 지어 붙여 패널과 서사가 갈라진다 (아틀리에 실기). when이 닫힌 곳(의뢰판이 없는 장소)에선 빠진다.
+  if (!isSetupPending(schema, state)) {
+    const qLine = questMod.mainLine(schema, state, makeLookup);
+    if (qLine) lines.push(qLine);
   }
 
   // 3.9 메신저 활성 방 (v1.2.0) — **유저가 활성화한 방 하나만** 대화 원문이 실린다.
@@ -13558,6 +13600,7 @@ const SCHEMA_QUEST_RULES = [
   '- `accept`/`cancel`은 [{ "set": 변수id, "expr": 식 }] — 수락·취소 때 시스템이 적용하는 효과(취소하면 평판 -3 등). 식에서 pay·days·grade를 읽을 수 있습니다.',
   '- 수락·취소는 다음 전송에 통지 한 줄(의뢰인·제목·보수·기한·내용)로 실려 메인이 수주 장면을 씁니다. 게시판(board)에 의뢰를 얹으면 메인이 원문을 못 받으니, 의뢰는 여기로.',
   '- `when` 조건이 거짓이면 버튼째 숨습니다 (의뢰판이 없는 장소). `guide`에 어떤 의뢰가 붙는 곳인지·보수 감각을 적으세요.',
+  '- `mainInject`(기본 true)면 **지금 붙어 있는 게시 전부**(의뢰인·제목·등급·보수·기한·사정)가 메인 프롬프트에 실립니다 — 게시판(board)과 반대로 원문을 줍니다. 안 주면 모델이 벽보 장면마다 여기 없는 의뢰를 지어 붙입니다. when이 닫힌 곳에선 빠집니다.',
 ];
 
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
@@ -18314,6 +18357,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         pair('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); }, { cls: 'sce-w-s', ph: '2' }),
           '게시가 이 아래로 떨어지면 다음 턴에 보충'),
         pair('보충 간격(턴)', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); }, { cls: 'sce-w-s', ph: '3' })),
+        bindCheck(Q.mainInject !== false, (v) => { Q.mainInject = v ? undefined : false; rerender(); },
+          '메인 모델에 게시 목록 주입 (서사의 벽보가 패널과 같은 의뢰를 보이는 통로)'),
       ),
       h('div', { class: 'sce-row' },
         pair('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },

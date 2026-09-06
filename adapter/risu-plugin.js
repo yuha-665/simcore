@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.9
-//@display-name SimCore (시뮬 엔진) v1.7.9 의뢰판
+//@version 1.7.10
+//@display-name SimCore (시뮬 엔진) v1.7.10 번들 정규식 덧붙이기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.10 ───────────────────────────────────────────────
+// **번들 정규식 덧붙이기** regexAdd (아틀리에 실사고: 퍼메 끝에 박힌 원본 카드의 옛 상태 로그를 지우는 정규식 3종을
+// 번들 `regex`로 실었더니, 그 계약이 "통째 교체"라 카드에 있던 에셋 정규식까지 날아가 이미지가 안 나왔다).
+// `regex`는 얼헌식 통째 교체 그대로 두고, `regexAdd`는 카드 정규식을 유지한 채 같은 comment만 갈아 끼우고 나머지를
+// 뒤에 붙인다. 적용 보고에 "N개 덧붙임 (카드 정규식 M개 유지)". 날아간 정규식은 [교체 되돌리기](적용 전 백업, 최근 3개)로.
 //
 // ── v1.7.9 ────────────────────────────────────────────────
 // **의뢰판** questBoard (아틀리에 실기: "의뢰가 게시판에 붙어 있으니 수주가 애매하다 — 댓글로 받나 서사로 받나").
@@ -2349,15 +2355,24 @@
     if (!data || data.simcoreBundle !== 1) return '개조 번들 파일이 아님 (simcoreBundle: 1 필요)';
     if (!Array.isArray(data.lorebook) || !data.lorebook.length) return '번들에 로어북이 비어 있음';
     if (data.regex != null && !Array.isArray(data.regex)) return 'regex는 배열이어야 함';
+    if (data.regexAdd != null && !Array.isArray(data.regexAdd)) return 'regexAdd는 배열이어야 함';
     return null;
   }
   /**
-   * 번들을 캐릭터에 교체 적용 — 로어북은 통째, 정규식은 번들에 있을 때만 통째.
+   * 번들을 캐릭터에 교체 적용 — 로어북은 통째, 정규식은 두 계약:
+   *   regex    — 통째 교체 (얼헌식 개조 번들: 원본 정규식 54종을 심코어판으로 갈아 끼운다)
+   *   regexAdd — 덧붙이기 (v1.7.10, 아틀리에 실사고: 퍼메 푸터 제거 3종을 regex로 실었더니 카드의 에셋 정규식까지
+   *              통째로 날아가 이미지가 안 나왔다). 카드 정규식은 그대로 두고, 같은 comment만 갈아 끼우고 나머지는 뒤에 붙인다.
    * 순수 함수: char를 고쳐서 돌려줄 뿐 저장(setCharacter)은 호출자 몫.
    */
   function applyBundleToChar(char, data) {
     char.globalLore = data.lorebook.map((l) => ({ ...l }));
     if (Array.isArray(data.regex)) char.customscript = data.regex.map((r) => ({ ...r }));
+    if (Array.isArray(data.regexAdd) && data.regexAdd.length) {
+      const names = new Set(data.regexAdd.map((r) => r.comment).filter(Boolean));
+      const kept = (char.customscript || []).filter((r) => !names.has(r.comment));
+      char.customscript = [...kept, ...data.regexAdd.map((r) => ({ ...r }))];
+    }
     return char;
   }
   // 테스트 배수구 (__simcoreDrainTurn과 같은 결) — 순수 로직만 노출, UI는 실기 확인
@@ -7297,7 +7312,8 @@ count(목록)  has(목록, "항목")</pre>
         }
         const settled = bundled && sig(schema ?? {}) === sig(bundled);
         rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
-          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}`
+          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개로 교체` : ''}`
+          + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
           + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
             : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
               : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;

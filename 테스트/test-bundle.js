@@ -10,8 +10,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.7.9', src.includes('//@version 1.7.9'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.7\.9/.test(src), '');
+  ck('버전 1.7.10', src.includes('//@version 1.7.10'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.7\.10/.test(src), '');
+  // v1.7.10 — 아틀리에 실사고: 번들 `regex`(통째 교체)로 퍼메 푸터 제거 3종을 실었더니 카드의 에셋 정규식까지 날아갔다.
+  // `regexAdd`는 카드 정규식을 유지한 채 같은 comment만 갈아 끼우고 나머지를 뒤에 붙인다. 순수 함수라 소스에서 꺼내 돌린다.
+  {
+    const m = src.match(/function applyBundleToChar\(char, data\) \{[\s\S]*?\n  \}/);
+    ck('applyBundleToChar를 소스에서 찾음', !!m, '');
+    const apply = m ? new Function('return ' + m[0])() : null;
+    const card = () => ({ globalLore: [{ comment: 'old' }], customscript: [
+      { comment: '에셋 표시', type: 'editdisplay', in: '<img="(.+?)">', out: '<img src="{{asset::$1}}">' },
+      { comment: '⚙simcore 옛 상태 로그 제거 (editdisplay)', type: 'editdisplay', in: 'OLD', out: '' },
+    ] });
+    const add = [
+      { comment: '⚙simcore 옛 상태 로그 제거 (editprocess)', type: 'editprocess', in: 'NEW', out: '' },
+      { comment: '⚙simcore 옛 상태 로그 제거 (editdisplay)', type: 'editdisplay', in: 'NEW', out: '' },
+    ];
+    const lore = [{ comment: '⚙simcore', content: '{}' }];
+    const a = apply && apply(card(), { simcoreBundle: 1, lorebook: lore, regexAdd: add });
+    ck('regexAdd — 카드 정규식(에셋 표시)은 남는다', !!a && a.customscript.some((r) => r.comment === '에셋 표시' && r.in.includes('img')), a && JSON.stringify(a.customscript.map((r) => r.comment)));
+    ck('regexAdd — 같은 comment는 갈아 끼우고(중복 없음) 새것은 뒤에 붙는다', !!a && a.customscript.length === 3
+      && a.customscript.filter((r) => r.comment.endsWith('(editdisplay)')).length === 1
+      && a.customscript.find((r) => r.comment.endsWith('(editdisplay)')).in === 'NEW'
+      && a.customscript[0].comment === '에셋 표시', a && JSON.stringify(a.customscript.map((r) => r.comment + ':' + r.in)));
+    ck('regexAdd — 로어북은 여전히 통째 교체', !!a && a.globalLore.length === 1 && a.globalLore[0].comment === '⚙simcore', '');
+    const b = apply && apply(card(), { simcoreBundle: 1, lorebook: lore, regex: add });
+    ck('regex — 통째 교체 계약은 그대로 (얼헌식)', !!b && b.customscript.length === 2 && !b.customscript.some((r) => r.comment === '에셋 표시'), '');
+    const c = apply && apply(card(), { simcoreBundle: 1, lorebook: lore });
+    ck('둘 다 없으면 카드 정규식은 손대지 않는다', !!c && c.customscript.length === 2 && c.customscript[0].comment === '에셋 표시', '');
+    ck('규격 검사가 regexAdd 배열을 요구한다', src.includes("if (data.regexAdd != null && !Array.isArray(data.regexAdd)) return 'regexAdd는 배열이어야 함';"), '');
+    ck('적용 보고에 유지된 카드 정규식 수', src.includes('개 덧붙임 (카드 정규식 '), '');
+    // 아틀리에 번들은 regexAdd로만 정규식을 싣는다 — regex(통째 교체)로 실으면 이 사고가 재발한다
+    try {
+      const at = JSON.parse(fs.readFileSync(__P('../아틀리에/아틀리에-번들.json'), 'utf8'));
+      ck('아틀리에 번들: regex(통째 교체) 없음 · regexAdd 3종', at.regex == null && Array.isArray(at.regexAdd) && at.regexAdd.length === 3, JSON.stringify(Object.keys(at)));
+    } catch (e) { ck('아틀리에 번들 읽기', false, e.message); }
+  }
   // v1.0.6 회귀 — 실사고: 갓 임포트한 원본 카드에서 번들 적용이 안 먹힘
   ck('적용 후 되읽기 레이스 재시도 (v0.85.1 결)', src.includes('리수 반영이 늦어요'), '');
   ck('적용 후 편집기 작업본 동기화 (세이브와 같은 규약)', src.includes('if (editor) loadIntoEditor(bundled);'), '');

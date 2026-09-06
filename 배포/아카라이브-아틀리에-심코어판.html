@@ -110,15 +110,15 @@
 <div style="background:#fffdf7;border:1px solid #f0dcc0;border-radius:12px;padding:20px 20px;margin-bottom:14px;">
   <p style="margin:0 0 10px;color:#7a6452;">원본 카드는 여기서 배포하지 않습니다 &mdash; 원작자님 배포처에서 받아 오세요. 이 글이 나눠 드리는 건 그 위에 얹는 시스템 층입니다.</p>
   <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">0. <b style="color:#5a4636;">원본 아틀리에 레슬레리아나 카드</b>를 원작자님 배포처에서 임포트 (이미지 에셋도 카드 것을 그대로 씁니다)</p>
-  <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">1. SimCore 플러그인 파일을 리스에 임포트 &mdash; 이미 쓰고 있어도 <b style="color:#5a4636;">v1.7.9로 재임포트</b> (플러그인 목록에 "v1.7.9 의뢰판"으로 보이면 맞습니다)</p>
+  <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">1. SimCore 플러그인 파일을 리스에 임포트 &mdash; 이미 쓰고 있어도 <b style="color:#5a4636;">v1.7.10으로 재임포트</b> (플러그인 목록에 "v1.7.9 의뢰판"으로 보이면 맞습니다)</p>
   <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">2. 원본 카드를 열고 SimCore 패널(⚙️ 버튼) &rarr; 💾 세이브 &rarr; <b style="color:#5a4636;">[번들 가져와 교체]</b>로 번들 파일 선택, 안내 확인 후 한 번 더 클릭 &mdash; 로어북 전체와 시스템(변수&middot;판정&middot;패널&middot;조합서)이 한 번에 교체됩니다</p>
-  <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">3. 카드 자체는 손댈 것 없습니다. 옛 상태창 지시는 로어북에 있던 것이라 번들이 이미 걷어냈고, 퍼스트 메시지 끝에 박힌 옛 상태 로그(<b style="color:#5a4636;">[아틀리에] 년도: 1 &hellip;</b>)는 번들에 든 정규식 3개가 화면&middot;프롬프트에서 지웁니다. 단, 카드에 직접 넣어 둔 정규식이 있었다면 번들이 그 자리를 덮으니 교체 뒤 다시 넣어 주세요 (원본 카드는 정규식 0개)</p>
+  <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">3. 카드 자체는 손댈 것 없습니다. 옛 상태창 지시는 로어북에 있던 것이라 번들이 이미 걷어냈고, 퍼스트 메시지 끝에 박힌 옛 상태 로그(<b style="color:#5a4636;">[아틀리에] 년도: 1 &hellip;</b>)는 번들에 든 정규식 3개가 화면&middot;프롬프트에서 지웁니다. 이 3개는 카드에 있던 정규식(에셋 표시 등) 뒤에 <b style="color:#5a4636;">덧붙는</b> 것이라 기존 정규식은 그대로 남습니다 &mdash; 플러그인 <b style="color:#5a4636;">v1.7.10 이상</b>이어야 합니다 (그 아래 판은 번들 정규식이 카드 정규식을 통째로 덮어 에셋이 안 나옵니다. 그렇게 됐다면 💾 세이브 &rarr; [교체 되돌리기]로 교체 전 상태가 돌아옵니다)</p>
   <p style="margin:0 0 4px;color:#7a6452;font-size:14px;">4. <b style="color:#5a4636;">새 채팅</b>으로 시작 &mdash; 날짜(1400년 4월 1일)는 채팅이 열릴 때 굳습니다</p>
   <p style="margin:0;color:#7a6452;font-size:14px;">5. 수치가 안 움직이면 SimCore 패널의 [보조 모델 연결 테스트] &mdash; 막힌 환경이면 안내에 따라 [루아 브리지 설치/갱신] 한 번</p>
 </div>
 
 <p style="margin:0 0 24px;">
-[링크: SimCore 플러그인 파일 (v1.7.9)]<br>
+[링크: SimCore 플러그인 파일 (v1.7.10)]<br>
 [링크: 아틀리에 개조 번들 JSON]
 </p>
 
@@ -126,10 +126,11 @@
 <div style="background:#fff3df;border:1px solid #f3b94f;border-radius:12px;padding:20px 20px;margin-bottom:24px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#5a4636;background:#f3b94f;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">플러그인</span>
-    <span style="font-size:18px;font-weight:600;">이 봇을 만들며 엔진에 들어간 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#9a836f;">v1.7.6 &rarr; v1.7.9</span></span>
+    <span style="font-size:18px;font-weight:600;">이 봇을 만들며 엔진에 들어간 것 <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#9a836f;">v1.7.6 &rarr; v1.7.10</span></span>
   </div>
   <p style="margin:0 0 6px;color:#7a6452;font-size:14px;"><b style="color:#5a4636;">낱말 자동 무장</b> (v1.7.7) &mdash; 액션에 낱말을 달면 유저 글에 그 말이 있을 때 버튼을 안 눌러도 판정이 무장됩니다.</p>
   <p style="margin:0 0 6px;color:#7a6452;font-size:14px;"><b style="color:#5a4636;">상점 시세 배율</b> (v1.7.8) &mdash; 상점마다 상태를 읽는 가격 배율 식. 진열가는 그대로 두고 화면&middot;결제&middot;매입에 배율만 얹습니다.</p>
+  <p style="margin:0 0 6px;color:#7a6452;font-size:14px;"><b style="color:#5a4636;">번들 정규식 덧붙이기</b> (v1.7.10) &mdash; 번들에 실린 정규식이 카드의 정규식을 덮지 않고 뒤에 붙습니다. 이 봇은 퍼스트 메시지 끝의 옛 상태 로그를 지우는 정규식 3개를 이 방식으로 싣습니다 (그 아래 판은 에셋 정규식까지 덮어 이미지가 안 나옵니다).</p>
   <p style="margin:0 0 6px;color:#7a6452;font-size:14px;"><b style="color:#5a4636;">의뢰판</b> (v1.7.9) &mdash; 보조가 게시하고 수락&middot;취소는 버튼인 퀘스트 보드 패널. 게시판에 의뢰를 얹으면 메인이 원문을 못 받던 문제를 구조로 잡았습니다. 편집기 [의뢰판] 탭.</p>
   <p style="margin:0;color:#7a6452;font-size:14px;"><b style="color:#5a4636;">넓은 편성표</b> (v1.7.6) &mdash; 탭이 많은 패널용 640px 폭 옵션. 다른 봇은 재임포트만 하면 되고 세이브는 그대로입니다.</p>
 </div>

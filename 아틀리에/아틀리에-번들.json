@@ -4154,7 +4154,7 @@
       "disabled": false
     }
   ],
-  "regex": [
+  "regexAdd": [
     {
       "comment": "⚙simcore 옛 상태 로그 제거 (editprocess)",
       "type": "editprocess",

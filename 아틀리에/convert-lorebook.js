@@ -172,7 +172,8 @@ if (bad) { console.log(`\n❗ ${bad}건 어긋남 — 출력하지 않는다`); 
 // 남겨 두면 심코어 상태 블록과 두 겹으로 충돌하고, 메인이 히스토리를 모방해 응답 끝마다 같은 형식을 찍는다.
 // 그래서 세 층에서 지운다: editprocess(프롬프트로 나가는 채팅 본문) · editdisplay(화면) · editoutput(혹시 모델이 따라 찍은 것).
 // 패턴은 "소재:" 줄까지 잡는다 — 스트리밍 도중 조각(소재 줄 전)엔 안 걸려 부분 삭제가 없고, 두 번 돌려도 같다.
-// ⚠ applyBundleToChar는 regex가 배열이면 카드의 customscript를 통째로 덮는다 — 원본 카드는 정규식 0개(6월판 charx)라 잃는 게 없다.
+// ⚠ 번들 `regex`는 카드의 customscript를 통째로 덮는다 (얼헌식) — 처음에 그걸로 실었다가 유저 카드의 에셋 정규식까지 날렸다
+//   (실사고 2026-09-06 "에셋 정규식까지 지워버려서 에셋이 안 나온다"). 그래서 `regexAdd`(v1.7.10) — 카드 정규식은 두고 덧붙인다.
 const FOOTER_IN = '\\s*\\[아틀리에\\]\\s*년도:[\\s\\S]*?\\n소재:[^\\n]*';
 const REGEX = ['editprocess', 'editdisplay', 'editoutput'].map((type) => ({
   comment: `⚙simcore 옛 상태 로그 제거 (${type})`, type, in: FOOTER_IN, out: '',
@@ -195,7 +196,7 @@ const bundle = {
   simcoreBundle: 1,
   name: '아틀리에 — 공방 경영 (심코어판)',
   lorebook: out,
-  regex: REGEX,   // 퍼메 푸터 제거 3종 — 카드의 customscript를 덮는다 (원본은 0개)
+  regexAdd: REGEX,   // 퍼메 푸터 제거 3종 — 카드 정규식은 그대로 두고 덧붙인다 (v1.7.10 계약; `regex`는 통째 교체라 금지)
 };
 fs.writeFileSync(__P('아틀리에-번들.json'), JSON.stringify(bundle, null, 2));
 fs.writeFileSync(__P('아틀리에-로어북.json'), JSON.stringify({ type: SRC.type, ver: SRC.ver, data: out }, null, 2));

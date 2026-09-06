@@ -605,7 +605,7 @@ const S = {
       desc: '첫 장면의 동행이 어느 아틀리에 계열인가. 세계는 언제나 란타르나다 — 이건 "누구와 시작했나"일 뿐.' },
 
     // ── 위치·시간 ──
-    { id: 'location', label: '위치', type: 'enum', enum: PLACES.map(([p]) => p), init: '공방', cmd: '위치',
+    { id: 'location', label: '위치', type: 'enum', enum: PLACES.map(([p]) => p), init: '왕도 주변 들판', cmd: '위치',
       desc: '지금 있는 곳의 **지형**. 고유명사가 아니라 이 중 하나를 고른다 — 서사는 원하는 이름으로 불러도 된다. '
         + '이동하면 반드시 갱신. 채집 난이도가 여기서 자동으로 나온다.' },
     { id: 'skip_day', label: '넘긴 날', type: 'int', init: 0, min: 0, max: 3650,
@@ -703,6 +703,9 @@ const S = {
     { id: 'tax_arrears', label: '세금 체납', type: 'int', init: 0, min: 0, max: 2, format: '{v}개월' },
     // 시작이 4월 1일이라 첫 세금날은 5월 1일 — 첫 턴에 걷히지 않게 4월을 이미 낸 것으로
     { id: 'tax_seen', label: '지난 세금', type: 'int', init: 140004, min: 0, max: 99999999 },
+    // 정착 — 첫 실기 사고: 상태 블록이 "공방 「이름 없는 공방」 — 어느 뒷골목의 셋방 · 스승 없음 · 가마 1단"을 첫 턴부터 말해
+    // 메인이 도입부(들판에서 발견되는 장면)를 버리고 뒷골목 셋방으로 순간이동했다. 공방에 닿기 전엔 공방을 말하지 않는다.
+    { id: 'settled', label: '공방 정착', type: 'bool', init: false },
 
     // ── 공방 설비: 편성표 탭이 관리한다. allow에 없다 ──
     { id: 'cauldron', label: '가마', type: 'int', init: 1, min: 1, max: 5, format: '{v}단' },
@@ -792,6 +795,7 @@ const S = {
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
       { set: 'cole', expr: 'cole + shelf_sold' },
       { set: 'sales_month', expr: 'sales_month + shelf_sold' },   // 상거래세 근거 — 세금날에 0으로
+      { set: 'settled', expr: "settled or location == '공방'" },   // 정착 래치 — 서사가 공방에 닿으면 굳는다
     ],
 
     events: [
@@ -901,7 +905,10 @@ const S = {
       text: '지금은 {location}이다. 여기서 날 만한 소재·마주칠 만한 것만 등장시켜라. 격에 맞지 않는 희귀 소재를 흘리지 마라.' },
     { id: 'town', when: "area_tier == 0 and location != '공방'",
       text: '지금은 사람이 사는 곳이다. 채집이 아니라 사람·거래·의뢰·소문이 벌어지는 자리로 그려라.' },
-    { id: 'workshop', when: 'true',
+    { id: 'unsettled', when: 'not settled',
+      text: '주인공은 아직 공방에 자리 잡지 않았다 — 상태에 보이는 공방·설비·레시피는 앞으로 갖게 될 밑천이지 지금 곁에 있는 것이 아니다. '
+        + '도입부가 놓은 자리에서 장면을 이어라. 공방을 지어내거나 그리로 건너뛰지 마라 — 공방에 닿는 것 자체가 이야기다.' },
+    { id: 'workshop', when: 'settled',
       text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), '
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. '
@@ -1202,9 +1209,9 @@ const S = {
   promptState: {
     template: [
       '지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}',
-      '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
+      "{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}",
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
-      '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단 · 다음 세금 {tax_due}콜',
+      "{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}",
       '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
@@ -1527,11 +1534,13 @@ const S = {
     ai: {
       enabled: true,
       vars: ['atelier_name', 'atelier_place', 'mentor', 'origin', 'location', 'allies', 'recipes', 'tools', 'materials'],
-      instruction: '[첫 장면] 지금 응답이 이 판의 시작이다. 앞의 도입부와 유저의 첫 입력을 근거로, '
-        + '공방의 이름과 자리·스승·함께 있는 사람들을 장면 안에서 자연스럽게 확정하라. '
+      instruction: '[첫 장면] 지금 응답이 이 판의 시작이다. **도입부가 놓은 자리와 시간에서 그대로 이어라** — 장소를 옮기거나 시간을 건너뛰지 마라. '
+        + '함께 있는 사람들(동행)은 도입부에서 읽는다. 공방·스승은 이 장면이 정하는 만큼만 — 동행이 "빈 공방을 안다"고 하거나 데려가겠다고 하는 식으로 '
+        + '**앞으로 어디에 자리 잡을지**가 장면 안에서 정해지면 충분하고, 지금 거기 있는 것처럼 쓰지 마라. '
         + '목록으로 나열하거나 설정을 설명하지 말고, 장면으로 보여 준 뒤 거기서 멈춰라.',
       guide: 'origin은 함께 시작한 인물이 어느 아틀리에 계열인지로 고른다 (란타르나 본편 인물뿐이면 "란타르나"). '
-        + 'location은 지형 목록에서 고르되 공방 안이면 "공방". 첫 장면에 나온 것만 적고, 안 나온 것은 기본값을 둔다.',
+        + 'location은 첫 장면이 끝난 자리의 지형 — 공방 안에 있을 때만 "공방"이다 (아직 안 갔으면 절대 "공방"이 아니다). '
+        + '공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다.',
     },
   },
 
@@ -1561,7 +1570,8 @@ const turn = (st, changes = {}, i = 0) => {
   const out = engine.outputPhase(S, send.state, changes, {}, { rng: seededRng('a', i, 'o') });
   return { st: out.state, prompt: send.promptBlock, fired: out.firedEvents || [] };
 };
-const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; return t; };
+// fresh() = 정착한 판 (공방에 있고 settled) — 대부분의 테스트 전제. 첫 턴(정착 전)은 raw initState로 따로 본다
+const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; t.vars.location = '공방'; t.vars.settled = true; return t; };
 const look = (st) => engine.makeLookup(S, st.vars);
 const canAct = (st, id) => engine.actionAvailability(S, st, S.actions.find((a) => a.id === id)).ok;
 
@@ -1721,7 +1731,7 @@ console.log('\n━━ 메인이 값을 받는 통로 ━━');
 {
   const t = fresh();
   const p = engine.sendPhase(S, t, { rng: seededRng('a', 70, 's') }).promptBlock;
-  ok('promptState.template이 실린다', p.includes('공방 「') && p.includes('평판 30'), '');
+  ok('promptState.template이 실린다 (정착한 판)', p.includes('공방 「') && p.includes('평판 30'), '');
   ok('날짜·위치가 실린다', p.includes('4월 1일') && p.includes('공방'), '');
   ok('진행 폭 앵커가 끝자락에', p.includes('장면을 넘길지는 유저가 정한다'), '');
 }
@@ -1927,6 +1937,31 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
     && shopMod.shopConfig(S, 'shade').sellFrom === 'materials', '');
 }
 
+console.log('\n━━ 첫 턴 — 공방에 닿기 전엔 공방을 말하지 않는다 (실기: 첫 응답이 셋방으로 순간이동) ━━');
+{
+  let t = engine.initState(S);
+  ok('시작 위치는 공방이 아니다 · 정착 false', t.vars.location === '왕도 주변 들판' && t.vars.settled === false, JSON.stringify([t.vars.location, t.vars.settled]));
+  const p0 = engine.sendPhase(S, t, { rng: seededRng('a', 600, 's') }).promptBlock;
+  ok('첫 턴 상태 블록: "공방: 아직 없다", 설비 줄 없음, 이름·셋방·스승 없음', p0.includes('공방: 아직 없다') && !p0.includes('설비: 가마') && !p0.includes('이름 없는 공방') && !p0.includes('셋방') && !p0.includes('스승 없음'), p0.split('\n').slice(0, 4).join(' | '));
+  // 설정 턴(turn 0)엔 엔진이 지시문 대신 setup.ai.instruction만 싣는다 — 정착 전 안내는 그 다음 턴부터
+  ok('첫 턴엔 설비 지시문이 없다 (설정 지시만)', !p0.includes('공방 설비는 서사에 실체가 있다') && p0.includes('[첫 장면]'), '');
+  {
+    const u = engine.initState(S); u.meta.setupDone = true;
+    const pu = engine.sendPhase(S, u, { rng: seededRng('a', 604, 's') }).promptBlock;
+    ok('정착 전 턴: "아직 자리 잡지 않았다" 지시문, 설비 지시문 없음', pu.includes('아직 공방에 자리 잡지 않았다') && !pu.includes('공방 설비는 서사에 실체가 있다'), pu.split('\n').filter((l) => /공방/.test(l)).slice(0, 3).join(' | '));
+  }
+  ok('설정 턴 지시가 순간이동을 막는다', S.setup.ai.instruction.includes('장소를 옮기거나 시간을 건너뛰지 마라') && S.setup.ai.guide.includes('절대 "공방"이 아니다'), '');
+  // 보조가 location='공방'을 적는 턴 → 다음 턴부터 정착 (되돌아가지 않는다)
+  t.meta.setupDone = true;
+  let r = turn(t, { location: '공방' }, 601);
+  ok('공방에 닿으면 정착 래치', r.st.vars.settled === true, String(r.st.vars.settled));
+  const p1 = engine.sendPhase(S, r.st, { rng: seededRng('a', 602, 's') }).promptBlock;
+  ok('정착 뒤 상태 블록에 공방·설비 줄', p1.includes('공방 「') && p1.includes('설비: 가마 1단') && p1.includes('다음 세금 160콜') && !p1.includes('아직 없다'), '');
+  r = turn(r.st, { location: '숲' }, 603);
+  ok('나갔다 와도 정착은 유지', r.st.vars.settled === true, '');
+  ok('settled는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'settled'), '');
+}
+
 console.log('\n━━ 스킨 — 아틀리에풍 (밝고 귀여운) 상태창·패널 ━━');
 {
   ok('상태창: clean 테마 + customCSS 스킨 (크림 종이·코코아 글자)', S.statusUI.theme === 'clean' && S.statusUI.customCSS.includes('.sim-status { background: #fffdf7; color: #5a4636'), '');
@@ -1972,7 +2007,7 @@ console.log('\n━━ 세금 — 공방세(설비 비례) + 상거래세(진열 
   t = fresh(); r = turn(t, { skip_day: 27 }, 511);
   ok('28일부터 "곧 세금날" 지시문 (세액 포함)', engine.sendPhase(S, r.st, { rng: seededRng('a', 512, 's') }).promptBlock.includes('곧 세금날') && engine.sendPhase(S, r.st, { rng: seededRng('a', 512, 's') }).promptBlock.includes('160콜'), '');
   ok('설비 만렙이면 월 1,600콜', (() => { const u = fresh(); Object.assign(u.vars, { cauldron: 5, library: 5, storage: 5, garden: 5, display: 5 }); return look(u)('tax_due') === 1600; })(), '');
-  ok('달력에 세금날 · 상태 블록에 다음 세금', S.calendar.marks.some((m) => m.label === '세금날' && m.dom === 1) && S.promptState.template.includes('다음 세금 {tax_due}콜'), '');
+  ok('달력에 세금날 · 상태 블록에 다음 세금', S.calendar.marks.some((m) => m.label === '세금날' && m.dom === 1) && S.promptState.template.includes("다음 세금 ' + tax_due + '콜"), '');
 }
 
 console.log('\n━━ 특수연금 — 자기 레시피를 장부에 (12칸) ━━');

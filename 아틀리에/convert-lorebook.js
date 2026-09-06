@@ -166,13 +166,36 @@ console.log(`  항목: ${src.length} → ${out.length} (⚙simcore 1개 포함)`
 
 if (bad) { console.log(`\n❗ ${bad}건 어긋남 — 출력하지 않는다`); process.exit(1); }
 
+// ══════════ 정규식 — 퍼메에 박힌 원본 카드의 옛 상태 로그를 걷어낸다 ══════════
+// 원본 카드 퍼메 17개(기본+대체 16) 본문 끝에 "[아틀리에] 년도: 1 / 날짜: … / 위치: … / 콜: 100 / 아이템 / 소재" 푸터가 박혀 있다
+// (원본의 always-on "상태창" 항목이 시키던 형식 — 그 항목은 심코어판에서 빠졌지만 퍼메는 카드 소유라 번들이 못 고친다).
+// 남겨 두면 심코어 상태 블록과 두 겹으로 충돌하고, 메인이 히스토리를 모방해 응답 끝마다 같은 형식을 찍는다.
+// 그래서 세 층에서 지운다: editprocess(프롬프트로 나가는 채팅 본문) · editdisplay(화면) · editoutput(혹시 모델이 따라 찍은 것).
+// 패턴은 "소재:" 줄까지 잡는다 — 스트리밍 도중 조각(소재 줄 전)엔 안 걸려 부분 삭제가 없고, 두 번 돌려도 같다.
+// ⚠ applyBundleToChar는 regex가 배열이면 카드의 customscript를 통째로 덮는다 — 원본 카드는 정규식 0개(6월판 charx)라 잃는 게 없다.
+const FOOTER_IN = '\\s*\\[아틀리에\\]\\s*년도:[\\s\\S]*?\\n소재:[^\\n]*';
+const REGEX = ['editprocess', 'editdisplay', 'editoutput'].map((type) => ({
+  comment: `⚙simcore 옛 상태 로그 제거 (${type})`, type, in: FOOTER_IN, out: '',
+}));
+{
+  const gp = __P('퍼메-원문.json');
+  if (fs.existsSync(gp)) {
+    const greets = JSON.parse(fs.readFileSync(gp, 'utf8')).filter((t) => t.trim());
+    const re = new RegExp(FOOTER_IN, 'g');
+    const left = greets.filter((t) => /\[아틀리에\]|년도:/.test(t.replace(re, '')));
+    const cut = greets.filter((t) => t.replace(re, '').length < t.length * 0.8);
+    if (left.length || cut.length) { console.log(`\n❗ 퍼메 푸터 정규식 어긋남 — 남음 ${left.length} · 과삭 ${cut.length}`); bad++; }
+    else console.log(`  퍼메 푸터 정규식: ${greets.length}/${greets.length} 걷어냄 (본문·이미지 요청 태그는 남긴다)`);
+  }
+}
+if (bad) { console.log(`\n❗ ${bad}건 어긋남 — 출력하지 않는다`); process.exit(1); }
+
 // ══════════ 출력 ══════════
 const bundle = {
   simcoreBundle: 1,
   name: '아틀리에 — 공방 경영 (심코어판)',
   lorebook: out,
-  // regex는 일부러 뺀다 — 원본 카드의 정규식을 건드리지 않기 위해서다.
-  // (applyBundleToChar는 regex가 배열일 때만 customscript를 덮는다)
+  regex: REGEX,   // 퍼메 푸터 제거 3종 — 카드의 customscript를 덮는다 (원본은 0개)
 };
 fs.writeFileSync(__P('아틀리에-번들.json'), JSON.stringify(bundle, null, 2));
 fs.writeFileSync(__P('아틀리에-로어북.json'), JSON.stringify({ type: SRC.type, ver: SRC.ver, data: out }, null, 2));

@@ -339,6 +339,56 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
   ck('상점 id 누락 오류', !validateSchema(b3).ok, '');
 }
 
+// ── 시세 배율 (v1.7.8) — 진열가는 원가 그대로, 화면·결제·매입에 배율만 (아틀리에 "날씨·외부 영향으로 값이 오르내리게") ──
+{
+  const SP = JSON.parse(J(S));
+  SP.vars.push({ id: 'market', label: '시세', type: 'enum', enum: ['평시', '품귀', '풍년'], init: '평시' });
+  SP.shop.priceMul = { '소모품': "market == '품귀' ? 1.5 : market == '풍년' ? 0.5 : 1", '*': "market == '품귀' ? 1.2 : 1" };
+  ck('★ priceMul 객체 검증 통과', validateSchema(SP).ok, J(validateSchema(SP).errors));
+  const mk = engine.makeLookup;
+  const t = engine.initState(SP); t.meta.setupDone = true;
+  shop.applyStock(SP, t, { stock: [
+    { cat: '소모품', name: '포션', grade: '일반', price: 20 },
+    { cat: '장비', name: '단검', grade: '레어', price: 60 },
+  ], buying: [{ name: '마정석', price: 10 }] });
+  const potion = () => t.shop.stock.find((x) => x.name === '포션');
+  const cfg = shop.shopConfig(SP);
+  ck('평시엔 배율 1 — 원가 그대로', shop.effectivePrice(cfg, potion(), mk(SP, t.vars)) === 20 && shop.priceMulTable(cfg, mk(SP, t.vars)).length === 0, '');
+  t.vars.market = '품귀';
+  ck('★ 품귀 — 소모품 ×1.5 (20 → 30), 장비는 "*" 기본 ×1.2 (60 → 72)',
+    shop.effectivePrice(cfg, potion(), mk(SP, t.vars)) === 30 && shop.effectivePrice(cfg, t.shop.stock.find((x) => x.name === '단검'), mk(SP, t.vars)) === 72, '');
+  // 명시 없는 칸(추천·장비)은 '*' 기본을 물려받으므로 표에도 그 값으로 선다 — 화면과 결제가 같은 배율
+  ck('시세 줄 재료 — 1이 아닌 칸만 (기본 물려받은 칸 포함)', J(shop.priceMulTable(cfg, mk(SP, t.vars))) === J([['추천', 1.2], ['소모품', 1.5], ['장비', 1.2], ['매입', 1.2]]), J(shop.priceMulTable(cfg, mk(SP, t.vars))));
+  let r = shop.buy(SP, t, potion().id, undefined, mk);
+  ck('★ 결제도 배율 — 지갑 100 → 70, 내역에 30', r.ok && t.vars.coin === 70 && r.line.includes('30'), J({ coin: t.vars.coin, line: r.line }));
+  ck('진열 원가는 안 건드린다 (상태가 돌아오면 값도 돌아온다)', potion().price === 20, String(potion().price));
+  t.vars.market = '풍년';
+  ck('풍년 — 소모품 ×0.5 (20 → 10)', shop.effectivePrice(cfg, potion(), mk(SP, t.vars)) === 10, '');
+  // 매입도 '*'
+  t.vars.market = '품귀'; t.vars.items = ['마정석'];
+  r = shop.sell(SP, t, '마정석', null, undefined, mk);
+  ck('★ 시세판 매입도 "*" 배율 (10 → 12)', r.ok && r.line.includes('12'), J(r));
+  // makeLookup을 안 넘기면 원가 (옛 호출자 호환)
+  const t2 = engine.initState(SP); t2.meta.setupDone = true; t2.vars.market = '품귀';
+  shop.applyStock(SP, t2, { stock: [{ cat: '소모품', name: '포션', grade: '일반', price: 20 }] });
+  r = shop.buy(SP, t2, t2.shop.stock[0].id);
+  ck('makeLookup 없는 호출은 원가 결제 (하위호환)', r.ok && t2.vars.coin === 80, String(t2.vars.coin));
+  // 묶기 — 0.2~5, 깨진 식은 1
+  const SQ = JSON.parse(J(SP)); SQ.shop.priceMul = '9';
+  ck('배율 상한 5로 묶인다', shop.effectivePrice(shop.shopConfig(SQ), { cat: '소모품', price: 10 }, mk(SQ, t.vars)) === 50, '');
+  const SR = JSON.parse(J(SP)); SR.shop.priceMul = '0';
+  ck('0이나 음수는 1', shop.effectivePrice(shop.shopConfig(SR), { cat: '소모품', price: 10 }, mk(SR, t.vars)) === 10, '');
+  // 검증
+  const b1 = JSON.parse(J(SP)); b1.shop.priceMul = { '소모품': '' };
+  ck('빈 식 오류', !validateSchema(b1).ok, '');
+  const b2 = JSON.parse(J(SP)); b2.shop.priceMul = { '없는칸': '1.5' };
+  ck('categories 밖 키는 경고', validateSchema(b2).ok && validateSchema(b2).warnings.some((w) => /없는칸/.test(w.msg)), '');
+  const b3 = JSON.parse(J(SP)); b3.shop.priceMul = "ghost == 1 ? 2 : 1";
+  ck('모르는 변수 식은 오류', !validateSchema(b3).ok, '');
+  ck('어댑터 — 표시·결제·매입이 같은 배율을 본다', src.includes('shopMod.effectivePrice(cfg, it, shopLookup)')
+    && src.includes('shopView.shopId ?? undefined, engine.makeLookup)') && src.includes("shopMod.priceMulFor(cfg, '*', shopLookup)"), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `— ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.7
-//@display-name SimCore (시뮬 엔진) v1.7.7 낱말 자동 무장
+//@version 1.7.8
+//@display-name SimCore (시뮬 엔진) v1.7.8 상점 시세 배율
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.8 ────────────────────────────────────────────────
+// **상점 시세 배율** shops[].priceMul (아틀리에: "날씨·외부 영향으로 상품이 비싸지거나 싸지게"). 식 하나(전 품목)
+// 또는 { 카테고리: 식, '*': 기본·매입 }. 진열가(보조가 밴드 안에서 정한 원가)는 그대로 두고 화면·결제·매입에
+// 배율만 얹는다 — 시세 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 0.2~5로 묶고, 식이 깨지면 1.
+// 패널 머리에 "📈 시세: 소재 ×0.6 · 식재료 ×1.7" 줄. 검증(식·카테고리 밖 키 경고) · 편집기 칸 · schema.md.
 //
 // ── v1.7.7 ────────────────────────────────────────────────
 // **낱말 자동 무장** actions[].keywords (아틀리에 실기: "버튼을 안 누르면 채집·조합·납품·교전이 판정 없이
@@ -5248,7 +5254,7 @@
 
   async function onShopBuy(itemId) {
     if (!session || !schema) return;
-    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined);
+    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined, engine.makeLookup);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
     else renderGamePanel();
@@ -5267,13 +5273,13 @@
   async function onShopSell(itemText) {
     if (!session || !schema) return;
     const sid = shopView.shopId ?? undefined;
-    let r = shopMod.sell(schema, session.current, itemText, null, sid);
+    let r = shopMod.sell(schema, session.current, itemText, null, sid, engine.makeLookup);
     if (!r.ok && r.needAppraisal) {
       const parsed = await callShopAux('appraise', { item: itemText });
       if (parsed == null) { renderGamePanel(); return; }
       const val = Number(parsed.appraisal);
       if (!isFinite(val) || val <= 0) { gameNotice = '⚠ 감정 불가 판정이에요 — 이 물건은 여기서 안 받아요'; renderGamePanel(); return; }
-      r = shopMod.sell(schema, session.current, itemText, val, sid);
+      r = shopMod.sell(schema, session.current, itemText, val, sid, engine.makeLookup);
     }
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 판매');
@@ -5346,7 +5352,11 @@
       tabs.appendChild(btn('💱 환전', `sch-tab${active === '__exch' ? ' sch-on' : ''}`, () => { shopView.cat = '__exch'; renderGamePanel(); }));
     }
     tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onShopRestock));
+    // 시세 (v1.7.8) — 1이 아닌 칸만 한 줄. 결제·표시가 같은 배율을 본다
+    const shopLookup = engine.makeLookup(schema, session.current.vars);
+    const mulRows = shopMod.priceMulTable(cfg, shopLookup);
     card.appendChild(tabs);
+    if (mulRows.length) card.appendChild(el('div', 'scg-note', '📈 시세: ' + mulRows.map(([c, m]) => `${c} ×${m.toFixed(2).replace(/\.?0+$/, '')}`).join(' · ')));
 
     if (active === '__exch') {
       // ── 환전 창구 (v0.97, v1.3.0 다짝) — 통화 ↔ 상대 지갑들, 환율·수수료는 시스템이 (뇌절 없음) ──
@@ -5379,7 +5389,8 @@
       for (const item of bag) {
         const row = el('div', 'sch-item');
         row.appendChild(el('span', 'sch-name', item));
-        const q = shopMod.quoteFor(shop, item);
+        const q0 = shopMod.quoteFor(shop, item);
+        const q = q0 != null ? Math.max(1, Math.round(q0 * shopMod.priceMulFor(cfg, '*', shopLookup))) : null;
         row.appendChild(el('span', 'sch-price', q != null ? `매입 ${shopMod.fmtMoney(cfg, q)}` : '감정 필요'));
         row.appendChild(btn('판매', 'scb-btn', () => onShopSell(item)));
         card.appendChild(row);
@@ -5406,8 +5417,9 @@
         row.appendChild(nm);
         if (it.grade) row.appendChild(el('span', 'sch-grade', it.grade));
         if (it.qty != null) row.appendChild(el('span', 'sch-qty', `한정 ${it.qty}`));
-        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, it.price)));
-        row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < it.price));
+        const eff = shopMod.effectivePrice(cfg, it, shopLookup);
+        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, eff)));
+        row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < eff));
         card.appendChild(row);
       }
     }

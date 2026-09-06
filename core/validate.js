@@ -1252,6 +1252,18 @@ function validateSchema(schema) {
         warn(`${P}.perCat`, `카테고리 ${SH.categories.length}개 × 최소 ${PC[0]}개 = ${PC[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
       }
     }
+    // 시세 (v1.7.8) — 식 하나 또는 { 카테고리: 식, '*': 기본 }. 값이 0.2~5 밖이면 엔진이 묶는다
+    if (SH.priceMul != null) {
+      if (typeof SH.priceMul === 'string') { if (SH.priceMul.trim()) checkExpr(SH.priceMul, `${P}.priceMul`, allIds, err, { allowRand: false }); }
+      else if (SH.priceMul && typeof SH.priceMul === 'object' && !Array.isArray(SH.priceMul)) {
+        for (const [k, v] of Object.entries(SH.priceMul)) {
+          if (typeof v !== 'string' || !v.trim()) err(`${P}.priceMul.${k}`, '시세 식은 비어 있지 않은 문자열');
+          else checkExpr(v, `${P}.priceMul.${k}`, allIds, err, { allowRand: false });
+          if (k !== '*' && Array.isArray(SH.categories) && SH.categories.length && !SH.categories.includes(k))
+            warn(`${P}.priceMul.${k}`, `'${k}'는 categories에 없는 칸입니다 — 영영 안 쓰입니다 ('*'는 기본·매입)`);
+        }
+      } else err(`${P}.priceMul`, "priceMul은 식 문자열 또는 { 카테고리: 식, '*': 기본 }");
+    }
     if (SH.when != null) {
       if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
       else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });

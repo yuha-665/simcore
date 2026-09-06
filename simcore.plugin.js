@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.7
-//@display-name SimCore (시뮬 엔진) v1.7.7 낱말 자동 무장
+//@version 1.7.8
+//@display-name SimCore (시뮬 엔진) v1.7.8 상점 시세 배율
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.8 ────────────────────────────────────────────────
+// **상점 시세 배율** shops[].priceMul (아틀리에: "날씨·외부 영향으로 상품이 비싸지거나 싸지게"). 식 하나(전 품목)
+// 또는 { 카테고리: 식, '*': 기본·매입 }. 진열가(보조가 밴드 안에서 정한 원가)는 그대로 두고 화면·결제·매입에
+// 배율만 얹는다 — 시세 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 0.2~5로 묶고, 식이 깨지면 1.
+// 패널 머리에 "📈 시세: 소재 ×0.6 · 식재료 ×1.7" 줄. 검증(식·카테고리 밖 키 경고) · 편집기 칸 · schema.md.
 //
 // ── v1.7.7 ────────────────────────────────────────────────
 // **낱말 자동 무장** actions[].keywords (아틀리에 실기: "버튼을 안 누르면 채집·조합·납품·교전이 판정 없이
@@ -4449,6 +4455,18 @@ function validateSchema(schema) {
         warn(`${P}.perCat`, `카테고리 ${SH.categories.length}개 × 최소 ${PC[0]}개 = ${PC[0] * SH.categories.length}개가 maxStock(${SH.maxStock})을 넘습니다 — 최소 요구를 채울 수 없어요`);
       }
     }
+    // 시세 (v1.7.8) — 식 하나 또는 { 카테고리: 식, '*': 기본 }. 값이 0.2~5 밖이면 엔진이 묶는다
+    if (SH.priceMul != null) {
+      if (typeof SH.priceMul === 'string') { if (SH.priceMul.trim()) checkExpr(SH.priceMul, `${P}.priceMul`, allIds, err, { allowRand: false }); }
+      else if (SH.priceMul && typeof SH.priceMul === 'object' && !Array.isArray(SH.priceMul)) {
+        for (const [k, v] of Object.entries(SH.priceMul)) {
+          if (typeof v !== 'string' || !v.trim()) err(`${P}.priceMul.${k}`, '시세 식은 비어 있지 않은 문자열');
+          else checkExpr(v, `${P}.priceMul.${k}`, allIds, err, { allowRand: false });
+          if (k !== '*' && Array.isArray(SH.categories) && SH.categories.length && !SH.categories.includes(k))
+            warn(`${P}.priceMul.${k}`, `'${k}'는 categories에 없는 칸입니다 — 영영 안 쓰입니다 ('*'는 기본·매입)`);
+        }
+      } else err(`${P}.priceMul`, "priceMul은 식 문자열 또는 { 카테고리: 식, '*': 기본 }");
+    }
     if (SH.when != null) {
       if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
       else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });
@@ -6563,6 +6581,10 @@ function parseShopBody(s, id) {
     grades: Array.isArray(s.grades) && s.grades.length ? s.grades.map(String) : null,
     bands: (s.bands && typeof s.bands === 'object') ? s.bands : null,  // { 등급: [최소, 최대] }
     sellRate: typeof s.sellRate === 'number' ? Math.max(0.1, Math.min(1, s.sellRate)) : 0.5,
+    // 시세 (v1.7.8) — 식 하나(전 품목) 또는 { 카테고리: 식, '*': 기본(매입·미분류) }. 진열가는 보조가 밴드 안에서
+    // 정한 원가 그대로 두고, 화면·결제·매입 때 배율만 얹는다 — 상태가 바뀌면 같은 재고의 값이 바로 달라진다.
+    priceMul: (typeof s.priceMul === 'string' && s.priceMul.trim()) ? s.priceMul.trim()
+      : (s.priceMul && typeof s.priceMul === 'object' && !Array.isArray(s.priceMul)) ? s.priceMul : null,
     maxStock: Math.max(4, Math.min(CAPS.STOCK_MAX, s.maxStock ?? 18)),
     // 카테고리마다 몇 개씩 채울지 [min, max]. 없으면 총량("8~maxStock개")만 지시한다.
     // 계기: 얼헌 실사고 — 총량 지시만으로는 모델이 카테고리당 1~2개로 뭉개서 진열이 휑했다.
@@ -6755,25 +6777,54 @@ function mergeIntoList(list, display, maxItems) {
   return true;
 }
 
-/** 구매 — 결정적, 보조 호출 없음. 반환 { ok, reason?, line? } */
-function buy(schema, state, itemId, shopId) {
+// ── 시세 배율 (v1.7.8) ──
+// lookup은 engine.makeLookup(schema, vars) — 순환 require를 피해 호출자가 넘긴다 (shopOpen과 같은 규약).
+// 값은 0.2~5로 묶는다 — 식이 깨지거나 0이면 1 (시세 때문에 상점이 죽지 않게).
+function priceMulFor(cfg, cat, lookup) {
+  if (!cfg?.priceMul || typeof lookup !== 'function') return 1;
+  const src = typeof cfg.priceMul === 'string' ? cfg.priceMul : (cfg.priceMul[cat] ?? cfg.priceMul['*'] ?? null);
+  if (src == null || String(src).trim() === '') return 1;
+  try {
+    const v = Number(evaluate(String(src), lookup, null));
+    return isFinite(v) && v > 0 ? Math.max(0.2, Math.min(5, v)) : 1;
+  } catch { return 1; }
+}
+/** 진열 항목의 실제 값 (원가 × 시세). 화면·결제가 같은 함수를 본다 */
+function effectivePrice(cfg, it, lookup) {
+  return Math.max(1, Math.round((Number(it.price) || 0) * priceMulFor(cfg, it.cat, lookup)));
+}
+/** 패널 머리 "시세" 줄 재료 — 1이 아닌 카테고리만 [[카테고리, 배율]] ('*'는 '매입') */
+function priceMulTable(cfg, lookup) {
+  const out = [];
+  if (!cfg?.priceMul) return out;
+  const cats = typeof cfg.priceMul === 'string' ? ['*'] : [...cfg.categories, '*'];
+  for (const c of cats) {
+    const m = priceMulFor(cfg, c, lookup);
+    if (Math.abs(m - 1) > 0.005) out.push([c === '*' ? (typeof cfg.priceMul === 'string' ? '전체' : '매입') : c, m]);
+  }
+  return out;
+}
+
+/** 구매 — 결정적, 보조 호출 없음. 반환 { ok, reason?, line? }. makeLookup(v1.7.8)은 시세 배율용 — 없으면 원가 */
+function buy(schema, state, itemId, shopId, makeLookup) {
   const cfg = shopConfig(schema, shopId);
   if (!cfg) return { ok: false, reason: '상점 없음' };
   const shop = shopStateOf(state, cfg);
   const it = shop.stock.find((x) => x.id === itemId);
   if (!it) return { ok: false, reason: '이미 팔린 물건이에요' };
   const wallet = Number(state.vars[cfg.currency]) || 0;
-  if (wallet < it.price) return { ok: false, reason: `잔액 부족 (${fmtMoney(cfg, wallet)} < ${fmtMoney(cfg, it.price)})` };
+  const price = typeof makeLookup === 'function' ? effectivePrice(cfg, it, makeLookup(schema, state.vars)) : it.price;
+  if (wallet < price) return { ok: false, reason: `잔액 부족 (${fmtMoney(cfg, wallet)} < ${fmtMoney(cfg, price)})` };
   const listDef = (schema.vars || []).find((v) => v.id === cfg.buyTo);
   const list = Array.isArray(state.vars[cfg.buyTo]) ? [...state.vars[cfg.buyTo]] : [];
   const display = it.grade ? `${it.name} (${it.grade})` : it.name;
   if (!mergeIntoList(list, display, listDef?.maxItems ?? 20)) {
     return { ok: false, reason: '소지품이 가득 찼어요' };
   }
-  state.vars[cfg.currency] = wallet - it.price;
+  state.vars[cfg.currency] = wallet - price;
   state.vars[cfg.buyTo] = list;
   if (it.qty != null) { it.qty -= 1; if (it.qty <= 0) shop.stock = shop.stock.filter((x) => x.id !== itemId); }
-  const line = `「${display}」 구매 (-${fmtMoney(cfg, it.price)}).`;
+  const line = `「${display}」 구매 (-${fmtMoney(cfg, price)}).`;
   logTx(cfg, state, line, shop);
   return { ok: true, line };
 }
@@ -6788,7 +6839,7 @@ function quoteFor(shop, itemText) {
 }
 
 /** 판매 — 시세판 매치는 즉시, 아니면 감정가(보조)가 와야 한다. price = 감정가(원가 기준) */
-function sell(schema, state, itemText, appraised = null, shopId) {
+function sell(schema, state, itemText, appraised = null, shopId, makeLookup) {
   const cfg = shopConfig(schema, shopId);
   if (!cfg || !cfg.sellFrom) return { ok: false, reason: '매입 창구 없음' };
   const shop = shopStateOf(state, cfg);
@@ -6799,8 +6850,9 @@ function sell(schema, state, itemText, appraised = null, shopId) {
   const gross = quoted != null ? quoted
     : appraised != null ? clampPrice(cfg, null, appraised) : null;
   if (gross == null) return { ok: false, needAppraisal: true };
-  // 시세판 가격은 이미 매입가, 감정가는 sellRate를 물린다
-  const payout = quoted != null ? quoted : Math.max(1, Math.round(gross * cfg.sellRate));
+  // 시세판 가격은 이미 매입가, 감정가는 sellRate를 물린다. 시세 배율('*')은 둘 다에 (v1.7.8)
+  const mul = typeof makeLookup === 'function' ? priceMulFor(cfg, '*', makeLookup(schema, state.vars)) : 1;
+  const payout = Math.max(1, Math.round((quoted != null ? quoted : gross * cfg.sellRate) * mul));
   // 끝수 수량("… N")이면 하나만 깎고, 아니면 항목 제거
   const m = itemText.match(/^(.*)\s(\d+)$/);
   if (m && Number(m[2]) > 1) list[idx] = `${m[1]} ${Number(m[2]) - 1}`;
@@ -6940,7 +6992,7 @@ function parseInteraction(text, extractJsonObject) {
 
 module.exports = {
   CAPS, shopConfig, shopConfigs, initShop, ensureShop, ensureShops, shopStateOf, shopOpen,
-  sanitizeStock, applyStock, buy, sell, quoteFor, mergeIntoList, clampPrice,
+  sanitizeStock, applyStock, buy, sell, quoteFor, mergeIntoList, clampPrice, priceMulFor, effectivePrice, priceMulTable,
   exchange, exchangeRates, exchangePair, fmtMoney, auxSpec, interactionPrompt, parseInteraction,
 };
 
@@ -17634,6 +17686,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         pair('매입률', bindInput(SH.sellRate ?? '', (x) => {
           const n = parseFloat(x); if (isFinite(n)) SH.sellRate = Math.max(0.1, Math.min(1, n)); else delete SH.sellRate; rerender();
         }, { cls: 'sce-w-s', ph: '0.5' }), '감정가 대비 지급 비율 (시세판 매치는 시세 그대로)'),
+      ),
+      // 시세 (v1.7.8) — 식 하나. 카테고리별 { 칸: 식, '*': 기본 }은 JSON 관리자에서
+      h('div', { class: 'sce-row' },
+        pair('시세 배율(식)', bindInput(typeof SH.priceMul === 'string' ? SH.priceMul : (SH.priceMul ? '(카테고리별 — JSON 관리자에서)' : ''), (x) => {
+          if (SH.priceMul && typeof SH.priceMul === 'object') return;
+          const t = String(x).trim(); if (t) SH.priceMul = t; else delete SH.priceMul; rerender();
+        }, { cls: 'sce-w-l', ph: "market == '품귀' ? 1.5 : 1" }),
+          '진열가·매입가에 곱한다 (0.2~5로 묶임). 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 카테고리별은 JSON 관리자에서 { "소재": "식", "*": "식" }'),
       ),
       pair('카테고리', bindInput((SH.categories ?? []).join(', '), (x) => {
         const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 8);
@@ -28902,7 +28962,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onShopBuy(itemId) {
     if (!session || !schema) return;
-    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined);
+    const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined, engine.makeLookup);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
     else renderGamePanel();
@@ -28921,13 +28981,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   async function onShopSell(itemText) {
     if (!session || !schema) return;
     const sid = shopView.shopId ?? undefined;
-    let r = shopMod.sell(schema, session.current, itemText, null, sid);
+    let r = shopMod.sell(schema, session.current, itemText, null, sid, engine.makeLookup);
     if (!r.ok && r.needAppraisal) {
       const parsed = await callShopAux('appraise', { item: itemText });
       if (parsed == null) { renderGamePanel(); return; }
       const val = Number(parsed.appraisal);
       if (!isFinite(val) || val <= 0) { gameNotice = '⚠ 감정 불가 판정이에요 — 이 물건은 여기서 안 받아요'; renderGamePanel(); return; }
-      r = shopMod.sell(schema, session.current, itemText, val, sid);
+      r = shopMod.sell(schema, session.current, itemText, val, sid, engine.makeLookup);
     }
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 판매');
@@ -29000,7 +29060,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       tabs.appendChild(btn('💱 환전', `sch-tab${active === '__exch' ? ' sch-on' : ''}`, () => { shopView.cat = '__exch'; renderGamePanel(); }));
     }
     tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onShopRestock));
+    // 시세 (v1.7.8) — 1이 아닌 칸만 한 줄. 결제·표시가 같은 배율을 본다
+    const shopLookup = engine.makeLookup(schema, session.current.vars);
+    const mulRows = shopMod.priceMulTable(cfg, shopLookup);
     card.appendChild(tabs);
+    if (mulRows.length) card.appendChild(el('div', 'scg-note', '📈 시세: ' + mulRows.map(([c, m]) => `${c} ×${m.toFixed(2).replace(/\.?0+$/, '')}`).join(' · ')));
 
     if (active === '__exch') {
       // ── 환전 창구 (v0.97, v1.3.0 다짝) — 통화 ↔ 상대 지갑들, 환율·수수료는 시스템이 (뇌절 없음) ──
@@ -29033,7 +29097,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       for (const item of bag) {
         const row = el('div', 'sch-item');
         row.appendChild(el('span', 'sch-name', item));
-        const q = shopMod.quoteFor(shop, item);
+        const q0 = shopMod.quoteFor(shop, item);
+        const q = q0 != null ? Math.max(1, Math.round(q0 * shopMod.priceMulFor(cfg, '*', shopLookup))) : null;
         row.appendChild(el('span', 'sch-price', q != null ? `매입 ${shopMod.fmtMoney(cfg, q)}` : '감정 필요'));
         row.appendChild(btn('판매', 'scb-btn', () => onShopSell(item)));
         card.appendChild(row);
@@ -29060,8 +29125,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         row.appendChild(nm);
         if (it.grade) row.appendChild(el('span', 'sch-grade', it.grade));
         if (it.qty != null) row.appendChild(el('span', 'sch-qty', `한정 ${it.qty}`));
-        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, it.price)));
-        row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < it.price));
+        const eff = shopMod.effectivePrice(cfg, it, shopLookup);
+        row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, eff)));
+        row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < eff));
         card.appendChild(row);
       }
     }

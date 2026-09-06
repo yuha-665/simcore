@@ -5928,6 +5928,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           const n = parseFloat(x); if (isFinite(n)) SH.sellRate = Math.max(0.1, Math.min(1, n)); else delete SH.sellRate; rerender();
         }, { cls: 'sce-w-s', ph: '0.5' }), '감정가 대비 지급 비율 (시세판 매치는 시세 그대로)'),
       ),
+      // 시세 (v1.7.8) — 식 하나. 카테고리별 { 칸: 식, '*': 기본 }은 JSON 관리자에서
+      h('div', { class: 'sce-row' },
+        pair('시세 배율(식)', bindInput(typeof SH.priceMul === 'string' ? SH.priceMul : (SH.priceMul ? '(카테고리별 — JSON 관리자에서)' : ''), (x) => {
+          if (SH.priceMul && typeof SH.priceMul === 'object') return;
+          const t = String(x).trim(); if (t) SH.priceMul = t; else delete SH.priceMul; rerender();
+        }, { cls: 'sce-w-l', ph: "market == '품귀' ? 1.5 : 1" }),
+          '진열가·매입가에 곱한다 (0.2~5로 묶임). 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 카테고리별은 JSON 관리자에서 { "소재": "식", "*": "식" }'),
+      ),
       pair('카테고리', bindInput((SH.categories ?? []).join(', '), (x) => {
         const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 8);
         if (arr.length) SH.categories = arr; else delete SH.categories; rerender();

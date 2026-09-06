@@ -41,6 +41,143 @@ const PLACES = [
 // 격(0~5)별 사다리에 지형을 놓고, 가 본 곳(areas)은 `{areas:tags:지형}` 필터로 제 칸에 꽂힌다 —
 // 그래서 areas 항목은 "이름 (지형)" 꼴이어야 한다 (desc가 그렇게 시킨다).
 const TIER_NAME = ['마을 · 채집 없음', '근교', '들과 물가', '땅속과 늪', '오지', '세계의 끝'];
+
+// ══════════ 스킨 — 아틀리에풍 (유저: "밝고 귀여운 느낌") ══════════
+// 상태창(customCSS, .sim-status 범위)과 게임 패널(각 패널의 css, #sc-game 범위)이 같은 팔레트를 쓴다.
+// 패널 css는 "지금 열린 패널"의 것만 주입되므로 party·calendar·board·questBoard·messenger·shops[4] 전부에 같은 문자열을 단다.
+// 바탕은 크림, 글자는 코코아 — 어두운 채팅 테마 위에서도 카드가 독립된 종이처럼 뜬다 (배경을 칠했으면 글자색도 같이).
+const SKIN = {
+  cream: '#fff8ec', paper: '#fffdf7', milk: '#fff3df', line: '#f0dcc0', lineSoft: '#f6e8d3',
+  ink: '#5a4636', muted: '#9a836f', faint: '#c4b09b',
+  peach: '#ff9d7a', honey: '#f3b94f', mint: '#7fcfae', sky: '#8cc4ea', lavender: '#c6a6ec', rose: '#f28ca6',
+  peachSoft: '#ffe3d6', honeySoft: '#fff0c8', mintSoft: '#dff5ea', skySoft: '#e0f0fb', lavenderSoft: '#eee3fb',
+  shadow: '0 8px 24px rgba(150,100,60,.14)',
+  font: "'Nunito', 'Quicksand', 'Noto Sans KR', 'Apple SD Gothic Neo', system-ui, sans-serif",
+};
+
+// 상태창 — 메시지 안 카드. 기본 CSS(.sim-*)를 크림 종이 위 코코아 글자로 덮는다
+const STATUS_CSS = `
+.sim-status { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 2px solid ${SKIN.line}; border-radius: 18px; box-shadow: ${SKIN.shadow};
+  font-family: ${SKIN.font}; padding: 12px 14px; }
+.sim-status summary { color: ${SKIN.peach}; font-weight: 800; letter-spacing: .02em; opacity: 1; }
+.sim-group { background: ${SKIN.cream}; border: 1px dashed ${SKIN.line}; border-radius: 14px; padding: 8px 11px; margin-top: 8px; }
+.sim-group-label { color: ${SKIN.honey}; font-weight: 800; opacity: 1; font-size: .86em; letter-spacing: .04em; }
+.sim-label { color: ${SKIN.muted}; opacity: 1; }
+.sim-value { color: ${SKIN.ink}; font-weight: 600; }
+.sim-bar { height: 10px; border-radius: 999px; background: ${SKIN.milk}; border: 1px solid ${SKIN.lineSoft}; }
+.sim-bar-fill { border-radius: 999px; background: linear-gradient(90deg, ${SKIN.peach}, ${SKIN.honey}); }
+.sim-badge { background: ${SKIN.honeySoft}; color: ${SKIN.ink}; border: 1px solid ${SKIN.line}; border-radius: 999px; }
+.sim-tag { background: ${SKIN.milk}; color: ${SKIN.ink}; border: 1px solid ${SKIN.line}; border-radius: 999px; padding: 1px 9px; }
+.sim-empty { color: ${SKIN.faint}; opacity: 1; }
+.sim-tabbar label, .sim-tabbar > * { border-radius: 999px; border: 1px solid ${SKIN.line}; background: ${SKIN.paper}; color: ${SKIN.muted}; }
+.sim-tabbar label:hover { background: ${SKIN.milk}; }
+.sim-cards { gap: 6px; }
+.sim-card { background: ${SKIN.cream}; color: ${SKIN.ink}; border: 1px solid ${SKIN.line}; border-left: 5px solid ${SKIN.sky}; border-radius: 12px; }
+.sim-card.good { border-left-color: ${SKIN.mint}; background: ${SKIN.mintSoft}; }
+.sim-card.bad { border-left-color: ${SKIN.rose}; background: #fdeaf0; }
+.sim-card .d-up { color: #3aa374; } .sim-card .d-down { color: #d9536f; }
+.sim-card-now, .sim-card-more { color: ${SKIN.muted}; opacity: 1; }
+.sim-scn { background: ${SKIN.lavenderSoft}; color: ${SKIN.ink}; border: 1px solid ${SKIN.lavender}; border-radius: 999px; }
+.sim-scn-prog { color: ${SKIN.muted}; opacity: 1; }
+.sim-choices { background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 12px; color: ${SKIN.ink}; }
+.sim-choices-title, .sim-choices-desc, .sim-choices-hint { color: ${SKIN.ink}; opacity: 1; }
+.sim-choices-hint { color: ${SKIN.muted}; }
+.sim-action { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 1.5px solid ${SKIN.line}; border-radius: 999px; padding: 4px 12px; box-shadow: 0 2px 0 ${SKIN.line}; }
+.sim-action:hover { background: ${SKIN.milk}; }
+.sim-action.sim-armed { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; color: #b34d2e; box-shadow: 0 2px 0 ${SKIN.peach}; }
+.sim-action.sim-disabled { opacity: .45; box-shadow: none; }
+.sim-action-state { color: ${SKIN.muted}; opacity: 1; }
+.sim-action-hint, .sim-actlocked summary { color: ${SKIN.muted}; opacity: 1; }
+.sim-log { color: ${SKIN.muted}; opacity: 1; }
+.sim-log-name { color: ${SKIN.ink}; }
+.sim-log-diff.plus { color: #3aa374; } .sim-log-diff.minus { color: #d9536f; }
+.sim-log-open .sim-log-item { border-bottom-color: ${SKIN.lineSoft}; }
+.sim-cmds { border-top: 1px dashed ${SKIN.line}; }
+.sim-cmds-open, .sim-cmds-hint, .sim-cmd-name, .sim-cmd-why { color: ${SKIN.muted}; opacity: 1; }
+.sim-cmd-syntax { background: ${SKIN.milk}; border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 8px; }
+`;
+
+// 게임 패널 — 배경막은 살구빛 반투명, 카드는 크림 종이. 기본 스킨이 색을 박은 클래스마다 덮는다
+const PANEL_CSS = `
+#sc-game { background: rgba(120, 70, 40, .38); font-family: ${SKIN.font}; color: ${SKIN.ink}; }
+.scg-card { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 2px solid ${SKIN.line}; border-radius: 20px; box-shadow: ${SKIN.shadow}; }
+.scg-title { color: ${SKIN.peach}; font-size: 16px; font-weight: 800; letter-spacing: .02em; }
+.scg-title .scg-x { color: ${SKIN.muted}; } .scg-title .scg-x:hover { background: ${SKIN.milk}; color: ${SKIN.ink}; }
+.scg-note { color: ${SKIN.muted}; }
+.scg-notice { color: #b34d2e; background: ${SKIN.peachSoft}; border-radius: 10px; padding: 6px 10px; }
+.scg-tpl .sim-tag { background: ${SKIN.milk}; border-color: ${SKIN.line}; color: ${SKIN.ink}; }
+.scg-tpl .sim-empty { color: ${SKIN.faint}; }
+.scg-tabs { border-bottom: 2px solid ${SKIN.line}; }
+.scg-tab { color: ${SKIN.muted}; border-radius: 12px 12px 0 0; }
+.scg-tab:hover { background: ${SKIN.milk}; }
+.scg-tab.scg-on { background: ${SKIN.peach}; border-color: ${SKIN.peach}; color: #fff; }
+.scg-nav-search, .scg-nav-sel { background: ${SKIN.cream}; color: ${SKIN.ink}; border: 1px solid ${SKIN.line}; border-radius: 12px; }
+.scg-nav-search:focus { border-color: ${SKIN.peach}; }
+.scg-slot { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; border-radius: 14px; }
+.scg-slot-row:hover { background: ${SKIN.milk}; }
+.scg-slot-label { color: ${SKIN.honey}; font-weight: 700; }
+.scg-slot-val { color: ${SKIN.ink}; } .scg-slot-val.scg-empty { color: ${SKIN.faint}; } .scg-slot-arrow { color: ${SKIN.faint}; }
+.scg-chip { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 1.5px solid ${SKIN.line}; box-shadow: 0 2px 0 ${SKIN.line}; }
+.scg-chip:hover { background: ${SKIN.milk}; border-color: ${SKIN.honey}; }
+.scg-chip.scg-on { background: ${SKIN.peach}; border-color: ${SKIN.peach}; color: #fff; box-shadow: 0 2px 0 #d9744f; }
+.scg-chip.scg-used { color: ${SKIN.muted}; }
+.scg-chip.scg-clear { background: #fdeaf0; border-color: ${SKIN.rose}; color: #b5405c; box-shadow: 0 2px 0 ${SKIN.rose}; }
+.scg-roster { color: ${SKIN.muted}; }
+.scg-points { color: #2f8f66; }
+.scg-item { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; border-radius: 14px; }
+.scg-item-name { color: ${SKIN.ink}; } .scg-item-lv { color: ${SKIN.muted}; } .scg-item-note { color: ${SKIN.muted}; }
+.scg-pips { color: ${SKIN.honey}; } .scg-pips .off { color: ${SKIN.line}; }
+.scg-cost { color: #c98a1a; } .scg-maxed { color: #2f8f66; }
+.scg-buy, .scb-btn, .scg-act, .scc-nav button, .scc-add button { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 1.5px solid ${SKIN.line};
+  border-radius: 12px; box-shadow: 0 2px 0 ${SKIN.line}; }
+.scg-buy:hover, .scb-btn:hover, .scg-act:hover, .scc-nav button:hover, .scc-add button:hover { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; box-shadow: 0 2px 0 ${SKIN.peach}; }
+.scg-buy:disabled, .scb-btn:disabled { box-shadow: none; }
+.scg-face { border-color: ${SKIN.line}; border-radius: 12px; }
+/* 상점·의뢰판 */
+.sch-wallet { color: #c98a1a; }
+.sch-tab { background: ${SKIN.paper}; color: ${SKIN.muted}; border: 1.5px solid ${SKIN.line}; }
+.sch-tab:hover { background: ${SKIN.milk}; }
+.sch-tab.sch-on { background: ${SKIN.peach}; border-color: ${SKIN.peach}; color: #fff; }
+.sch-item { border-bottom: 1px dashed ${SKIN.line}; }
+.sch-item .sch-name { color: ${SKIN.ink}; } .sch-item .sch-name small { color: ${SKIN.muted}; }
+.sch-grade { background: ${SKIN.lavenderSoft}; border-color: ${SKIN.lavender}; color: #6f4fa8; border-radius: 999px; }
+.sch-price { color: #c98a1a; } .sch-qty { color: #d9536f; }
+.sch-log { border-top: 1px dashed ${SKIN.line}; color: ${SKIN.muted}; }
+.sch-exch-qty { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 12px; }
+.scq-days { color: #3b86b8; } .scq-left { color: ${SKIN.muted}; } .scq-cap { color: #2f8f66; }
+/* 게시판 */
+.scb-row { border-bottom: 1px dashed ${SKIN.line}; } .scb-row:hover { background: ${SKIN.milk}; }
+.scb-row .scb-num { color: ${SKIN.faint}; } .scb-row .scb-title { color: ${SKIN.ink}; } .scb-row .scb-meta { color: ${SKIN.muted}; }
+.scb-view-title { color: ${SKIN.ink}; } .scb-view-info { color: ${SKIN.muted}; }
+.scb-body { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 14px; }
+.scb-re { border-top: 1px dashed ${SKIN.line}; color: ${SKIN.ink}; } .scb-re .scb-re-a { color: #3b86b8; }
+.scb-del, .scb-re-x { color: ${SKIN.faint}; } .scb-re-x:hover { color: #d9536f; }
+.scb-input, .scb-ta { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 12px; }
+.scb-empty { color: ${SKIN.faint}; }
+.scb-hot { background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 14px; }
+.scb-hot-head { color: #b8761a; } .scb-hot-body { color: ${SKIN.ink}; border-top: 1px dashed ${SKIN.honey}; } .scb-hot .scb-meta { color: ${SKIN.muted}; }
+/* 달력 */
+.scc-nav .scc-month { color: ${SKIN.peach}; }
+.scc-wd { color: ${SKIN.honey}; font-weight: 700; }
+.scc-day { background: ${SKIN.cream}; border: 1px solid ${SKIN.lineSoft}; border-radius: 10px; color: ${SKIN.ink}; }
+.scc-day:hover { background: ${SKIN.milk}; border-color: ${SKIN.line}; }
+.scc-day.scc-today { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; color: #b34d2e; }
+.scc-day.scc-sel { border-color: ${SKIN.honey}; box-shadow: 0 0 0 2px ${SKIN.honey} inset; }
+.scc-dot.scc-mark { background: ${SKIN.honey}; } .scc-dot.scc-plan { background: ${SKIN.sky}; } .scc-dot.scc-due { background: ${SKIN.rose}; }
+.scc-detail { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; border-radius: 14px; }
+.scc-detail-date { color: ${SKIN.peach}; } .scc-entry { color: ${SKIN.ink}; } .scc-entry .scc-kind { color: #3b86b8; }
+.scc-entry .scc-del { color: ${SKIN.muted}; } .scc-entry .scc-del:hover { background: #fdeaf0; color: #d9536f; }
+.scc-entry-note, .scc-legend { color: ${SKIN.muted}; }
+.scc-add input { background: ${SKIN.paper}; color: ${SKIN.ink}; border: 1px solid ${SKIN.line}; border-radius: 12px; }
+.scc-add input:focus { border-color: ${SKIN.peach}; }
+/* 서신 */
+.scm-bubble { background: ${SKIN.cream}; border: 1px solid ${SKIN.line}; border-radius: 16px 16px 16px 4px; }
+.scm-mine .scm-bubble { background: ${SKIN.skySoft}; border-color: ${SKIN.sky}; border-radius: 16px 16px 4px 16px; }
+.scm-from { color: #3b86b8; } .scm-body { color: ${SKIN.ink}; } .scm-time { color: ${SKIN.faint}; } .scm-head { color: ${SKIN.ink}; }
+.scm-pick { border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 12px; }
+.scm-pick.scm-on { background: ${SKIN.skySoft}; border-color: ${SKIN.sky}; color: ${SKIN.ink}; }
+`;
+
 const MAP_TEMPLATE = (() => {
   const rows = [];
   for (let t = 0; t <= 5; t++) {
@@ -57,28 +194,28 @@ const MAP_TEMPLATE = (() => {
   <div class="amap-foot">채집 목표치 = 8 + 격×2 · 탐사는 격 2부터 · 가 본 곳은 "이름 (지형)"으로 적혀야 제 칸에 든다</div>
 </div>
 <style>
-/* 게임 패널 바탕은 다크네이비다 — 양피지 갈색이 아니라 어두운 바탕 위의 밝은 글자로 */
-.amap { font-family: Georgia, 'Nanum Myeongjo', serif; color: #ece2cc; }
-.amap-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 14px;
-  letter-spacing: .06em; color: #f0c674; border-bottom: 1px solid rgba(240,198,116,.35); padding-bottom: 5px; margin-bottom: 8px; }
-.amap-now { font-size: 12px; font-weight: 400; color: #ffe4a8; }
-.amap-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed rgba(240,198,116,.18); }
-.amap-tier { display: flex; flex-direction: column; color: #f0c674; }
-.amap-tier b { font-size: 13px; } .amap-tier span { font-size: 11px; color: #c9b58a; }
+/* 아틀리에 스킨 — 크림 종이 위 코코아 글자 (SKIN 팔레트) */
+.amap { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
+.amap-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 14px;
+  letter-spacing: .04em; color: ${SKIN.peach}; border-bottom: 2px dashed ${SKIN.line}; padding-bottom: 5px; margin-bottom: 8px; }
+.amap-now { font-size: 12px; font-weight: 600; color: ${SKIN.honey}; }
+.amap-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed ${SKIN.lineSoft}; }
+.amap-tier { display: flex; flex-direction: column; color: ${SKIN.honey}; }
+.amap-tier b { font-size: 13px; } .amap-tier span { font-size: 11px; color: ${SKIN.muted}; }
 .amap-cells { display: flex; flex-wrap: wrap; gap: 6px; }
-.amap-town { font-size: 12px; color: #e0d3b8; background: rgba(240,198,116,.10); border: 1px solid rgba(240,198,116,.22); border-radius: 6px; padding: 2px 8px; }
-.amap-cell { min-width: 120px; flex: 1 1 120px; border: 1px solid rgba(240,198,116,.28); border-radius: 8px;
-  padding: 6px 8px; background: rgba(240,198,116,.07); }
-.amap-pn { font-size: 12.5px; font-weight: 700; color: #ffe4a8; margin-bottom: 3px; }
+.amap-town { font-size: 12px; color: ${SKIN.ink}; background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 999px; padding: 2px 10px; }
+.amap-cell { min-width: 120px; flex: 1 1 120px; border: 1px solid ${SKIN.line}; border-radius: 12px;
+  padding: 6px 9px; background: ${SKIN.cream}; }
+.amap-pn { font-size: 12.5px; font-weight: 800; color: ${SKIN.ink}; margin-bottom: 3px; }
 .amap-cell .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 2px 0; font-size: 11.5px;
-  background: rgba(240,198,116,.14); border: 1px solid rgba(240,198,116,.45); border-radius: 6px; padding: 1px 7px; color: #fff4dc; }
-.amap-cell .sim-empty { font-size: 11px; color: #9a8c70; }
-.amap-t3 .amap-cell { background: rgba(140,120,90,.16); border-color: rgba(200,170,120,.32); }
-.amap-t4 .amap-cell { background: rgba(170,90,60,.16); border-color: rgba(230,140,100,.35); }
-.amap-t4 .amap-pn { color: #ffc9a8; }
-.amap-t5 .amap-cell { background: rgba(120,80,170,.18); border-color: rgba(190,150,240,.45); }
-.amap-t5 .amap-pn { color: #e2ccff; }
-.amap-foot { margin-top: 8px; font-size: 11px; color: #c9b58a; }
+  background: ${SKIN.mintSoft}; border: 1px solid ${SKIN.mint}; border-radius: 999px; padding: 1px 8px; color: #2f6f55; }
+.amap-cell .sim-empty { font-size: 11px; color: ${SKIN.faint}; }
+.amap-t3 .amap-cell { background: ${SKIN.honeySoft}; border-color: ${SKIN.honey}; }
+.amap-t4 .amap-cell { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; }
+.amap-t4 .amap-pn { color: #b34d2e; }
+.amap-t5 .amap-cell { background: ${SKIN.lavenderSoft}; border-color: ${SKIN.lavender}; }
+.amap-t5 .amap-pn { color: #6f4fa8; }
+.amap-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
 </style>`;
 })();
 
@@ -287,42 +424,42 @@ const BOOK_TEMPLATE = (() => {
   <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · 묶음 머리의 서고 단부터 배울 수 있다 · 도감 밖의 창작은 특수 탭(장부)에</div>
 </div>
 <style>
-.abk { font-family: Georgia, 'Nanum Myeongjo', serif; color: #ece2cc; }
+.abk { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
 .abk .abk-r { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.abk-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 14px;
-  letter-spacing: .06em; color: #f0c674; border-bottom: 1px solid rgba(240,198,116,.35); padding-bottom: 5px; margin-bottom: 8px; }
-.abk-prog { font-size: 12px; font-weight: 400; color: #ffe4a8; }
+.abk-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 14px;
+  letter-spacing: .04em; color: ${SKIN.peach}; border-bottom: 2px dashed ${SKIN.line}; padding-bottom: 5px; margin-bottom: 8px; }
+.abk-prog { font-size: 12px; font-weight: 600; color: ${SKIN.honey}; }
 .abk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.abk-tab { cursor: pointer; font-size: 12px; padding: 3px 9px; border-radius: 999px; color: #c9b58a;
-  border: 1px solid rgba(240,198,116,.25); background: rgba(240,198,116,.06); user-select: none; }
+.abk-tab { cursor: pointer; font-size: 12px; padding: 3px 10px; border-radius: 999px; color: ${SKIN.muted};
+  border: 1.5px solid ${SKIN.line}; background: ${SKIN.paper}; box-shadow: 0 2px 0 ${SKIN.line}; }
 .abk-tab span { margin-left: 4px; font-size: 10.5px; opacity: .8; }
-.abk-tab:hover { background: rgba(240,198,116,.14); }
+.abk-tab:hover { background: ${SKIN.milk}; }
 .abk-page { display: none; }
 ${css}
-.abk-lv { margin-bottom: 8px; border-left: 2px solid rgba(240,198,116,.35); padding-left: 8px; }
-.abk-lv.shut { border-left-color: rgba(240,198,116,.12); }
-.abk-lh { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: #ffe4a8; padding: 2px 0 4px; }
-.abk-lv.shut .abk-lh { color: #9a8c70; }
-.abk-lh span { font-weight: 400; color: #c9b58a; font-size: 11px; }
+.abk-lv { margin-bottom: 8px; border-left: 3px solid ${SKIN.honey}; padding-left: 9px; }
+.abk-lv.shut { border-left-color: ${SKIN.lineSoft}; }
+.abk-lh { display: flex; justify-content: space-between; font-size: 12px; font-weight: 800; color: ${SKIN.honey}; padding: 2px 0 4px; }
+.abk-lv.shut .abk-lh { color: ${SKIN.faint}; }
+.abk-lh span { font-weight: 600; color: ${SKIN.muted}; font-size: 11px; }
 .abk-row { display: grid; grid-template-columns: 16px 1fr auto auto; column-gap: 6px; align-items: baseline;
-  padding: 4px 6px; border-radius: 6px; margin: 2px 0; cursor: help; }
-.abk-row.on { background: rgba(240,198,116,.10); border: 1px solid rgba(240,198,116,.30); }
-.abk-row.off { opacity: .5; border: 1px solid transparent; }
-.abk-row:hover { background: rgba(240,198,116,.16); opacity: 1; }
-.abk-ico { color: #f0c674; font-size: 12px; }
-.abk-nm { font-size: 12.5px; font-weight: 700; color: #fff4dc; }
-.abk-tier { font-size: 10px; padding: 0 5px; border-radius: 4px; border: 1px solid rgba(240,198,116,.35); color: #c9b58a; }
-.abk-고급 { border-color: rgba(230,140,100,.5); color: #ffc9a8; }
-.abk-비전 { border-color: rgba(190,150,240,.5); color: #e2ccff; }
-.abk-lock { font-size: 10.5px; color: #9a8c70; }
-.abk-eff { grid-column: 2 / -1; font-size: 11px; color: #c9b58a; }
+  padding: 5px 7px; border-radius: 10px; margin: 3px 0; cursor: help; }
+.abk-row.on { background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; }
+.abk-row.off { opacity: .55; border: 1px solid transparent; }
+.abk-row:hover { background: ${SKIN.milk}; opacity: 1; }
+.abk-ico { color: ${SKIN.peach}; font-size: 12px; }
+.abk-nm { font-size: 12.5px; font-weight: 800; color: ${SKIN.ink}; }
+.abk-tier { font-size: 10px; padding: 0 6px; border-radius: 999px; border: 1px solid ${SKIN.line}; color: ${SKIN.muted}; background: ${SKIN.paper}; }
+.abk-고급 { border-color: ${SKIN.peach}; color: #b34d2e; background: ${SKIN.peachSoft}; }
+.abk-비전 { border-color: ${SKIN.lavender}; color: #6f4fa8; background: ${SKIN.lavenderSoft}; }
+.abk-lock { font-size: 10.5px; color: ${SKIN.faint}; }
+.abk-eff { grid-column: 2 / -1; font-size: 11px; color: ${SKIN.muted}; }
 .abk-mats { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
-.abk-m { font-style: normal; font-size: 10.5px; padding: 0 6px; border-radius: 5px; color: #7f7360;
-  border: 1px solid rgba(240,198,116,.18); background: rgba(0,0,0,.15); }
-.abk-m.have { color: #fff4dc; border-color: rgba(240,198,116,.55); background: rgba(240,198,116,.16); }
-.abk-foot { margin-top: 8px; font-size: 11px; color: #c9b58a; }
+.abk-m { font-style: normal; font-size: 10.5px; padding: 0 7px; border-radius: 999px; color: ${SKIN.faint};
+  border: 1px solid ${SKIN.lineSoft}; background: ${SKIN.paper}; }
+.abk-m.have { color: #2f6f55; border-color: ${SKIN.mint}; background: ${SKIN.mintSoft}; }
+.abk-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
 .abk-inv .sim-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.abk-inv .sim-tag { font-size: 11.5px; padding: 3px 8px; border-radius: 6px; color: #fff4dc; background: rgba(190,150,240,.14); border: 1px solid rgba(190,150,240,.45); }
+.abk-inv .sim-tag { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; color: #6f4fa8; background: ${SKIN.lavenderSoft}; border: 1px solid ${SKIN.lavender}; }
 </style>`;
 })();
 
@@ -1085,7 +1222,8 @@ const S = {
   statusUI: {
     mode: 'auto',
     layout: 'tabs',
-    theme: 'parchment',
+    theme: 'clean',
+    customCSS: STATUS_CSS,   // 아틀리에 스킨 (SKIN 팔레트)
     changeLog: 'collapsed',
     groups: [
       // 날짜·시각·날씨·위치 — 유저 요청 ("상태창에 날짜 시간 날씨 현재 위치"). date/clock/weekday/season은 time.expose 이름
@@ -1123,7 +1261,7 @@ const S = {
   },
 
   calendar: {
-    label: '달력', icon: '📅', list: 'quests',
+    label: '달력', icon: '📅', list: 'quests', css: PANEL_CSS,
     marks: [
       { label: '장날', weekday: '토', note: '왕도 광장에 좌판이 선다' },
       { label: '별의 고치 정기시', dom: 1, note: '카페 앞에 의뢰가 몰린다' },
@@ -1133,7 +1271,7 @@ const S = {
   },
 
   party: {
-    label: '공방', icon: '🏠', nav: 'tabs',
+    label: '공방', icon: '🏠', nav: 'tabs', css: PANEL_CSS,
     wide: true,   // 조합서 분야 탭 6개·지도 사다리 — 440px에선 탭이 두 줄로 꺾인다 (실기 제보, v1.7.6)
     tabs: [
       // ⚠ fab을 달지 않는다 — 탭이 하나뿐인데 fab을 달면 패널 버튼(🏠 공방)과
@@ -1170,7 +1308,7 @@ const S = {
   // 밴드 밖 가격은 클램프되므로, "AI가 지어낸 터무니없는 가격"이 구조적으로 안 나온다.
   shops: [
     {
-      id: 'market', label: '왕도 상점가', icon: '🛒',
+      id: 'market', label: '왕도 상점가', icon: '🛒', css: PANEL_CSS,
       currency: 'cole', buyTo: 'materials', sellFrom: 'items',
       categories: ['소재', '도구', '식재료', '서적'],
       grades: ['조악', '보통', '상등', '희귀', '전설'],
@@ -1193,7 +1331,7 @@ const S = {
         + '완성품은 사들이지만 정가를 다 쳐주지 않는다.',
     },
     {
-      id: 'shade', label: '뒷골목 거래처', icon: '🌑',
+      id: 'shade', label: '뒷골목 거래처', icon: '🌑', css: PANEL_CSS,
       currency: 'cole', buyTo: 'materials', sellFrom: 'materials',
       categories: ['희귀 소재', '수상한 물건'],
       grades: ['상등', '희귀', '전설'],
@@ -1208,7 +1346,7 @@ const S = {
     },
     // 씨앗 상사 — 약초밭(설비)의 입구. 산 씨앗은 소재로 오고, 심으면 field로 옮겨 익는 날 작물이 된다
     {
-      id: 'seeds', label: '씨앗 상사', icon: '🌱',
+      id: 'seeds', label: '씨앗 상사', icon: '🌱', css: PANEL_CSS,
       currency: 'cole', buyTo: 'materials',
       categories: ['씨앗', '모종', '비료'],
       grades: ['조악', '보통', '상등', '희귀'],
@@ -1223,7 +1361,7 @@ const S = {
     },
     // 미끼 상점 — 물가 채집(낚시)의 짝. 미끼가 있으면 물가 채집 +3, 쓰면 하나 빠진다
     {
-      id: 'bait', label: '미끼 상점', icon: '🎣',
+      id: 'bait', label: '미끼 상점', icon: '🎣', css: PANEL_CSS,
       currency: 'cole', buyTo: 'materials', sellFrom: 'materials',
       categories: ['미끼', '낚시 도구', '물고기'],
       grades: ['조악', '보통', '상등', '희귀'],
@@ -1242,7 +1380,7 @@ const S = {
   // 의뢰판은 보조가 게시하고 유저가 [수락]·[취소] 버튼으로 받고 놓는다 — 수락 항목은 quests 형식 그대로라
   // 기한(@+N expire)·정산(끝수 보수 → quest_pay)·납품 판정이 그대로 돈다. 사람이 직접 부탁하는 의뢰는 여전히 서사로.
   questBoard: {
-    label: '별의 고치 의뢰판', icon: '📜', listVar: 'quests', unit: '콜',
+    label: '별의 고치 의뢰판', icon: '📜', listVar: 'quests', unit: '콜', css: PANEL_CSS,
     format: '{client} · {title} ({grade}) @+{days} +{pay}',
     grades: ['심부름', '기초', '필드', '위험', '중대'],
     bands: { 심부름: [50, 200], 기초: [150, 500], 필드: [500, 1500], 위험: [1500, 5000], 중대: [5000, 15000] },
@@ -1262,7 +1400,7 @@ const S = {
   // board는 단수 전용이라 카페 의뢰판과 "연금넷"을 한 판의 칸으로 나눈다.
   // 자율형 [2,3] — 반응형이면 매턴 주인공 서사가 박제돼 세계가 죽는다 (얼헌 v1.1.0 실사고).
   board: {
-    label: '별의 고치 게시판', icon: '📋',
+    label: '별의 고치 게시판', icon: '📋', css: PANEL_CSS,
     topics: '왕도와 근교의 소문, 몬스터·길 사정 목격담, 소재 시세와 물물교환, '
       + '연금술 문의와 실패담, 분실물과 사람 찾기, 장날·축제 공지, 손님들의 잡담',
     guide: '란타르나 왕도, 별의 고치 카페 벽에 붙는 **손글씨 벽보**다. 인터넷이 아니다 — '
@@ -1325,7 +1463,7 @@ const S = {
   // ══════════ P3 — 서신 (아틀리에엔 단말기가 없다) ══════════
   // 메신저 모듈을 편지 왕래로 쓴다. 방은 유저만 열고, AI는 방을 만들지도 없애지도 못한다.
   messenger: {
-    label: '서신', icon: '✉',
+    label: '서신', icon: '✉', css: PANEL_CSS,
     contactsVar: 'allies',
     notesVar: 'ally_notes',
     firstChance: 0.2, cooldown: 4,
@@ -1787,6 +1925,19 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
   ok('두 상점의 매입 대상이 다르다',
     shopMod.shopConfig(S, 'market').sellFrom === 'items'
     && shopMod.shopConfig(S, 'shade').sellFrom === 'materials', '');
+}
+
+console.log('\n━━ 스킨 — 아틀리에풍 (밝고 귀여운) 상태창·패널 ━━');
+{
+  ok('상태창: clean 테마 + customCSS 스킨 (크림 종이·코코아 글자)', S.statusUI.theme === 'clean' && S.statusUI.customCSS.includes('.sim-status { background: #fffdf7; color: #5a4636'), '');
+  const panels = [S.party, S.calendar, S.board, S.questBoard, S.messenger, ...S.shops];
+  ok('패널 9곳(공방·달력·게시판·의뢰판·서신·상점 4)이 같은 스킨을 단다', panels.every((p) => p && p.css === PANEL_CSS), panels.map((p) => !!p?.css).join(','));
+  ok('패널 스킨: 배경막·카드·탭·칩·상점·게시판·달력·서신 클래스를 다 덮는다',
+    ['#sc-game {', '.scg-card {', '.scg-tab.scg-on', '.scg-chip.scg-on', '.sch-tab.sch-on', '.scb-body', '.scc-day.scc-today', '.scm-mine .scm-bubble', '.scq-days'].every((k) => PANEL_CSS.includes(k)), '');
+  ok('조합서·지도 템플릿도 같은 팔레트 (어두운 금빛 없음)', !BOOK_TEMPLATE.includes('#ece2cc') && !MAP_TEMPLATE.includes('#ece2cc') && BOOK_TEMPLATE.includes(SKIN.ink) && MAP_TEMPLATE.includes(SKIN.ink), '');
+  const rendered = SC.require('render').renderPanelTemplate(S, fresh(), BOOK_TEMPLATE);
+  ok('스코핑 뒤에도 탭 규칙이 산다 (#sc-game .abk-r0:checked ~ .abk-p0)', rendered.includes('.abk-r0:checked ~ .abk-p0{') && rendered.includes('#sc-game .abk-page{'), '');
+  ok('상태창 CSS는 .sim-status 밖을 안 건드린다 (검증 통과 = scopeCss 대상)', validateSchema(S).ok, '');
 }
 
 console.log('\n━━ 세금 — 공방세(설비 비례) + 상거래세(진열 매출 1할), 매달 1일 시스템이 ━━');

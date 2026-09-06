@@ -504,7 +504,7 @@ const S = {
         + '난이도는 시스템이 지형에서 뽑는다.' },
     { id: 'quests', label: '수주 의뢰', type: 'list', init: [], maxItems: 3, itemMaxLength: 80,
       desc: '받은 의뢰. **최대 3개** — 꽉 차면 새 의뢰를 받지 마라. '
-        + '형식: "의뢰인 · 내용 (등급) @+기한일 +보수". 보수는 반드시 맨 끝. 예) "별의 고치 카페 · 감기약 3병 (중급) @+5 +800". '
+        + '형식: "의뢰인 · 내용 (등급) @+기한일 +보수". 등급은 심부름/기초/필드/위험/중대, 보수는 반드시 맨 끝. 예) "별의 고치 카페 · 감기약 3병 (기초) @+5 +400". '
         + '납품·포기로 지울 때는 여기 적힌 원문 그대로 remove 한다.' },
     { id: 'allies', label: '동행', type: 'list', init: [], maxItems: 8, itemMaxLength: 24,
       desc: '지금 함께 다니거나 가깝게 지내는 사람들. 이름만 적는다 — 서신을 주고받을 수 있는 상대가 된다.' },
@@ -738,8 +738,8 @@ const S = {
     { id: 'trusted_art', when: 'renown >= 600',
       text: '이제 연금술은 "저 사람이 하는 것"으로 통한다. 도움을 청하는 사람도, 견제하는 눈도 함께 늘었다.' },
     { id: 'board_quest', when: "area_tier == 0 and count(quests) < 3",
-      text: '게시판 「의뢰」 칸의 공고는 아직 수주한 것이 아니다 — 유저가 받겠다고 해야 수첩에 오른다. '
-        + '오를 때는 공고에 적힌 보수와 기한을 그대로 옮긴다.' },
+      text: '의뢰판(📜)의 공고는 유저가 버튼으로 받는다 — 서사에서 받았다고 해도 수첩에는 오르지 않는다. '
+        + '사람이 직접 찾아와 부탁하는 의뢰만 대화로 받고, 그때는 의뢰인·내용·보수·기한 넷을 서사에 밝혀라.' },
     // ── 캐스트 맵 (P3) — 로어북 144의 always-on 3,792t를 조건부로 쪼갠 것 ──
     // 코어는 늘, 적대 세력은 이야기가 거기까지 갔을 때, 이방인은 이 판의 계열만.
     { id: 'cast_core', when: 'true', text: `[란타르나의 사람들]\n${CAST_HEAD}\n\n${cast("Resna's Party / Lantarna Core")}` },
@@ -953,6 +953,7 @@ const S = {
       '평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 /',
       '중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라.',
       '의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다.',
+      '의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라.',
       '소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다.',
       '진열은 items에서 빼 shelf로 옮긴다("이름 @+팔릴날 가격"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라.',
       '매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — "고품질"은 밴드 상단, "조잡한"은 하단 근처, 접두어 없으면 중간.',
@@ -1132,24 +1133,42 @@ const S = {
     },
   ],
 
-  // ══════════ P2 경영 — 게시판 (의뢰판 + 연금술사들의 자리) ══════════
+  // ══════════ P2 경영 — 의뢰판 (v1.7.9) ══════════
+  // 벽보(board)에 의뢰를 얹으면 메인이 원문을 못 받고(화제 한 줄뿐) 수주가 보조 기록에만 기댔다 (실기: "댓글로 받나 서사로 받나").
+  // 의뢰판은 보조가 게시하고 유저가 [수락]·[취소] 버튼으로 받고 놓는다 — 수락 항목은 quests 형식 그대로라
+  // 기한(@+N expire)·정산(끝수 보수 → quest_pay)·납품 판정이 그대로 돈다. 사람이 직접 부탁하는 의뢰는 여전히 서사로.
+  questBoard: {
+    label: '별의 고치 의뢰판', icon: '📜', listVar: 'quests', unit: '콜',
+    format: '{client} · {title} ({grade}) @+{days} +{pay}',
+    grades: ['심부름', '기초', '필드', '위험', '중대'],
+    bands: { 심부름: [50, 200], 기초: [150, 500], 필드: [500, 1500], 위험: [1500, 5000], 중대: [5000, 15000] },
+    days: [2, 14], postDays: [3, 8], maxOffers: 6, minOffers: 2, refillEvery: 3,
+    // 포기하면 신용에 금이 간다 — 위험할수록, 보수가 클수록 더. 수락 자체엔 값이 없다 (받는 건 공짜, 어기는 게 비싸다)
+    cancel: [{ set: 'renown', expr: "max(renown - 3 - floor(pay / 1000), 1)" }],
+    when: 'area_tier == 0',
+    guide: '별의 고치 카페 벽과 왕도 곳곳에 붙는 부탁이다 — 감기약·벌레 퇴치·잃은 물건·호위·희귀 소재. '
+      + '연금술은 잊혀진 기술이라 "약을 지어 줄 사람"을 찾는 글이 대부분이고, 중대 의뢰는 평판이 높을 때(renown 400↑)만 드물게. '
+      + '심부름 50~200 / 기초 약품·흔한 소재 150~500 / 필드·호위·소규모 토벌 500~1,500 / 유적·희귀 소재·급한 약 1,500~5,000 / 중대사 5,000~15,000콜. '
+      + '기한은 급한 약 2~3일, 채집·심부름 5~7일, 먼 길 10일 이상. note에는 의뢰인의 사정 한 줄(왜 급한지, 무엇이 걸렸는지).',
+  },
+
+  // ══════════ P2 경영 — 게시판 (소문 + 연금술사들의 자리) ══════════
   // board는 단수 전용이라 카페 의뢰판과 "연금넷"을 한 판의 칸으로 나눈다.
   // 자율형 [2,3] — 반응형이면 매턴 주인공 서사가 박제돼 세계가 죽는다 (얼헌 v1.1.0 실사고).
   board: {
     label: '별의 고치 게시판', icon: '📋',
-    topics: '카페 벽에 붙는 의뢰 공고, 왕도와 근교의 소문, 몬스터·길 사정 목격담, 소재 시세와 물물교환, '
+    topics: '왕도와 근교의 소문, 몬스터·길 사정 목격담, 소재 시세와 물물교환, '
       + '연금술 문의와 실패담, 분실물과 사람 찾기, 장날·축제 공지, 손님들의 잡담',
     guide: '란타르나 왕도, 별의 고치 카페 벽에 붙는 **손글씨 벽보**다. 인터넷이 아니다 — '
       + '줄임말·이모티콘·인터넷 밈·"ㅋㅋ" 금지. 존댓말과 반말이 섞이고, 서명은 이름이나 별명 '
       + '(밀밭집 둘째, 이름 없는 손님, S., 삼거리 대장간). 연금술은 이 나라에서 잊혀진 기술이라 '
       + '신기해하거나, 의심하거나, 사기라고 몰아붙이는 글이 섞인다. '
-      + '"의뢰" 칸 글은 반드시 [의뢰인 · 무엇을 · 보수 · 기한] 넷을 담는다 — 보수는 심부름 50~200, '
-      + '기초 약품 150~500, 필드 의뢰 500~1,500, 위험한 일 1,500~5,000, 중대사 5,000~15,000 콜. '
+      + '의뢰 공고는 여기가 아니라 의뢰판(📜)에 붙는다 — 이 벽보에서는 의뢰를 소문으로만 다룬다 ("누가 약을 찾더라"). '
       + '"연금" 칸은 연금술을 아는 소수(약제사·학자·떠돌이 연금술사)가 서로 묻고 답하는 자리다 — '
       + '레시피 조각, 실패담, 소재 대체안, 옛 문헌 인용. 답을 다 주지 말고 다음 질문을 남겨라. '
       + '글이 다 진실일 필요는 없다 — 헛소문·과장·허풍도 게시판의 결이다. '
       + '주인공 이야기는 공개적으로 목격된 것만 오른다.',
-    categories: ['의뢰', '소문', '연금', '거래', '잡담'],
+    categories: ['소문', '연금', '거래', '잡담'],
     postsPerTurn: [2, 3], maxPosts: 20,
     hot: {
       label: '요즘 이야기', every: 5,
@@ -1664,14 +1683,54 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
     && shopMod.shopConfig(S, 'shade').sellFrom === 'materials', '');
 }
 
-console.log('\n━━ 게시판 — 의뢰판 + 연금술사의 자리 ━━');
+console.log('\n━━ 의뢰판 — 보조가 붙이고 버튼으로 받는다 ━━');
+{
+  const questMod = SC.require('quest');
+  const qc = questMod.questConfig(S);
+  ok('의뢰판이 있다 (quests 목록 · 콜)', qc && qc.listVar === 'quests' && qc.unit === '콜', '');
+  ok('등급·밴드가 보조 안내의 보수 감각과 같다', qc.bands.심부름[1] === 200 && qc.bands.중대[1] === 15000, '');
+  let t = fresh();
+  ok('도시에서 첫 게시 요청이 보조에 얹힌다', engine.buildAuxPrompt(S, t, '서사', null).includes('의뢰판 첫 게시]'), '');
+  const inField = { ...t, vars: { ...t.vars, location: '숲' } };
+  ok('들판에선 의뢰판이 닫힌다 (버튼·요청 모두)', !questMod.questOpen(qc, S, inField.vars, engine.makeLookup) && !engine.buildAuxPrompt(S, inField, '서사', null).includes('의뢰판 첫 게시]'), '');
+  // 게시 → 수락 → quests 형식 그대로 → 기한 기계·정산 기계가 그대로 돈다
+  let r = engine.outputPhase(S, t, {}, {}, { rng: seededRng('a', 300, 'o'), quests: { new: [
+    { client: '별의 고치 카페', title: '감기약 3병', grade: '기초', pay: 400, days: 5, note: '손님들이 콜록거린다' },
+    { client: '수상한 자', title: '드래곤 심장', grade: '전설', pay: 99999, days: 1 },
+    { client: '삼거리 대장간', title: '숫돌 기름', grade: '심부름', pay: 999, days: 3 },
+  ] } });
+  t = r.state;
+  ok('어휘 밖 등급은 거부 · 보수는 밴드 클램프', t.questBoard.offers.length === 2 && t.questBoard.offers[1].pay === 200, JSON.stringify(t.questBoard.offers));
+  const acc = questMod.accept(S, t, t.questBoard.offers[0].id, engine.makeLookup);
+  ok('수락 항목이 quests 형식 그대로 (@+5 → @5 굳힘)', acc.ok && t.vars.quests[0] === '별의 고치 카페 · 감기약 3병 (기초) @5 +400', JSON.stringify(t.vars.quests));
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('a', 301, 's') });
+  ok('다음 전송에 의뢰인·내용·보수·기한이 통지로 실린다', p1.promptBlock.includes('감기약 3병') && p1.promptBlock.includes('400콜') && p1.promptBlock.includes('콜록'), '');
+  ok('상태 블록의 의뢰 줄에도 (기한 환산)', p1.promptBlock.includes('감기약 3병 (기초)') && /\(5일\)/.test(p1.promptBlock), '');
+  // 납품 → 정산 기계 (quest_pay → cole) — 의뢰판이 넣은 항목도 같은 길
+  t = p1.state;
+  const before = t.vars.cole;
+  r = engine.outputPhase(S, t, { quest_pay: 400, quests: { remove: ['별의 고치 카페 · 감기약 3병 (기초) @5 +400'] } }, {}, { rng: seededRng('a', 302, 'o') });
+  ok('납품 정산이 그대로 돈다 (+400)', r.state.vars.cole === before + 400 && r.state.vars.quests.length === 0, `${before} → ${r.state.vars.cole}`);
+  // 포기 → 평판 벌점 (위험·고액일수록)
+  t = fresh(); t.vars.renown = 100; t.vars.quests = ['길드 · 와이번 둥지 (위험) @+10 +3000'];
+  const can = questMod.cancel(S, t, t.vars.quests[0], engine.makeLookup);
+  ok('포기하면 평판 -3 -floor(보수/1000) (100 → 94)', can.ok && t.vars.renown === 94, String(t.vars.renown));
+  // 게시 마감 — 8일 지나면 다 걷힌다
+  t = fresh();
+  t = engine.outputPhase(S, t, {}, {}, { rng: seededRng('a', 303, 'o'), quests: { new: [{ client: 'A', title: 'a', grade: '심부름', pay: 100, days: 3 }] } }).state;
+  t = engine.outputPhase(S, t, { skip_day: 9 }, {}, { rng: seededRng('a', 304, 'o') }).state;
+  ok('게시는 postDays(3~8) 안에 걷힌다', t.questBoard.offers.length === 0, JSON.stringify(t.questBoard.offers));
+  ok('걷히면 보충 요청 (minOffers 2 아래 · refillEvery 3턴 뒤)', (() => { t.meta.turn += 3; return engine.buildAuxPrompt(S, t, '서사', null).includes('의뢰판 보충 게시]'); })(), '');
+}
+
+console.log('\n━━ 게시판 — 소문 + 연금술사의 자리 ━━');
 {
   const t = fresh();
   t.vars.location = '별의 고치 카페';
   const after = engine.outputPhase(S, t, {}, {}, {
     rng: seededRng('a', 90, 'o'),
     board: { new: [
-      { title: '감기약을 구합니다', author: '밀밭집 둘째', cat: '의뢰',
+      { title: '감기약을 구합니다', author: '밀밭집 둘째', cat: '소문',
         body: '아이가 기침이 심합니다. 약을 지어 주실 분, 사례 800콜. 닷새 안에 부탁드립니다.' },
       { title: '중화제 색이 안 잡힙니다', author: 'S.', cat: '연금',
         body: '적을 만들려는데 자꾸 탁해집니다. 물을 바꿔야 할까요.' },
@@ -1680,8 +1739,8 @@ console.log('\n━━ 게시판 — 의뢰판 + 연금술사의 자리 ━━');
   });
   const posts = after.state.board.posts;
   ok('게시글이 등록된다', posts.length === 3, String(posts.length));
-  ok('의뢰 칸·연금 칸이 나뉜다',
-    posts.some((p) => p.cat === '의뢰') && posts.some((p) => p.cat === '연금'),
+  ok('소문 칸·연금 칸이 나뉜다 (의뢰 칸은 의뢰판으로 갔다)',
+    !S.board.categories.includes('의뢰') && posts.some((p) => p.cat === '소문') && posts.some((p) => p.cat === '연금'),
     JSON.stringify(posts.map((p) => p.cat)));
   ok('어휘 밖 카테고리는 첫 칸으로 보정', posts.every((p) => S.board.categories.includes(p.cat)),
     JSON.stringify(posts.map((p) => p.cat)));
@@ -1689,7 +1748,7 @@ console.log('\n━━ 게시판 — 의뢰판 + 연금술사의 자리 ━━');
   const p = engine.sendPhase(S, after.state, { rng: seededRng('a', 91, 's') }).promptBlock;
   ok('메인엔 화제 한 줄만 (본문 원문 금지)',
     p.includes('감기약을 구합니다') && !p.includes('아이가 기침이 심합니다'), '');
-  ok('수주 안내 지시문이 뜬다', p.includes('아직 수주한 것이 아니다'), '');
+  ok('수주 안내 지시문이 뜬다 (의뢰판 버튼)', p.includes('유저가 버튼으로 받는다'), '');
 
   // 자율형이라 매턴 세계의 글이 돈다 — 반응형이면 주인공 서사만 박제된다
   const aux = engine.buildAuxPrompt(S, after.state, '서사', null);
@@ -1713,6 +1772,8 @@ console.log('\n━━ 우상단 버튼 — 중복 없이 하나씩 ━━');
   if (cb) btns.push(['calendar', cb.label, cb.icon]);
   if (SC.require('board').boardConfig(S)) btns.push(['board', S.board.label, S.board.icon]);
   for (const sh of shopMod.shopConfigs(S)) btns.push([`shop_${sh.id}`, sh.label, sh.icon]);
+  const qcfg = SC.require('quest').questConfig(S);
+  if (qcfg) btns.push(['quest', qcfg.label, qcfg.icon]);
 
   const tabs = partyMod.partyTabs(S);
   ok('탭이 하나뿐인 편성표엔 fab을 달지 않는다',

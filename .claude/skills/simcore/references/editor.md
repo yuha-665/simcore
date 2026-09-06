@@ -52,7 +52,7 @@
 |---|---|---|
 | 📊 상태창 한 벌 | status | 변수 2개 이상 |
 | 🛒 상점 | actions | 숫자 변수 + 목록 변수 |
-| 📜 퀘스트 보드 | vars → rules | 시간 체계 |
+| 📜 의뢰판 | vars → quest → rules | 시간 체계 (v1.7.9 — 의뢰판 모듈로 재지정, 전엔 vars → rules 액션형) |
 | 📈 레벨·성장 | vars → rules | — |
 | 💕 호감도 인물 | vars → rules | — |
 | 🌳 스킬트리 | vars → rules → party | — |
@@ -74,6 +74,7 @@
 | `board` | 보드 (v0.95, 자율형 v1.1) |
 | `msgr` | 메신저 (v1.2.0) |
 | `shop` | 상점 (v0.96 — units·환전 다짝 v1.3, 다중 상점 탭·`[2호점 추가]` v1.4. `TAB_SLICES.shop.keys = ['shop','shops']`) |
+| `quest` | 의뢰판 (v1.7.9 — `TAB_SLICES.quest.keys = ['questBoard']`. 수락 목록·항목 형식·등급/보수 밴드·기한/게시 기간·보충 기준·수락/취소 효과("변수 = 식; …")·게시 지침·노출 조건·CSS) |
 | `rules` | 규칙·이벤트 |
 | `scenario` | 시나리오 (v0.91) |
 | `actions` | 액션 |

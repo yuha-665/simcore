@@ -1323,6 +1323,19 @@ const SCHEMA_SHOP_RULES = [
   + '상점마다 지갑·재고·categories·when이 독립이고 우상단 버튼도 하나씩 생깁니다. `shop`(단수)과 동시에 쓰면 안 됩니다 — 1개면 단수가 간단합니다.',
 ];
 
+// 의뢰판(questBoard, v1.7.9) — 시스템 퀘스트 보드.
+const SCHEMA_QUEST_RULES = [
+  '- 의뢰판은 **보조가 의뢰를 게시하고, 수락·취소는 유저 버튼이 처리하는 패널**입니다. `listVar`(수락한 의뢰가 들어갈 list 변수)가 필수입니다.',
+  '- 수락하면 `format`대로 항목이 만들어져 listVar에 들어갑니다 — 자리표는 {client} {title} {grade} {pay} {days} {note}. '
+  + '기본은 "{client} · {title} ({grade}) @+{days} +{pay}"로, 엔진의 목록 기한 규약("@+N"은 N일 뒤 만료)과 끝수 보수를 그대로 탑니다. 봇의 기존 의뢰 형식이 있으면 그 형식으로 맞추세요.',
+  '- `grades`(등급 어휘)와 `bands`(등급별 [최소, 최대] 보수)를 정하면 **밴드 밖 보수는 시스템이 클램프**하고 어휘 밖 등급은 거부합니다. 꼭 넣으세요.',
+  '- `days`는 의뢰 기한 범위, `postDays`는 게시가 붙어 있는 기간(지나면 시스템이 걷음). 시간 체계가 없으면 턴 수 기준입니다.',
+  '- 첫 게시는 자동(턴에 얹힘), 그 뒤엔 게시가 `minOffers` 아래로 떨어지고 `refillEvery`턴이 지났을 때만 보충합니다 — 평소 비용 0. 패널 [새로고침]은 통째 교체.',
+  '- `accept`/`cancel`은 [{ "set": 변수id, "expr": 식 }] — 수락·취소 때 시스템이 적용하는 효과(취소하면 평판 -3 등). 식에서 pay·days·grade를 읽을 수 있습니다.',
+  '- 수락·취소는 다음 전송에 통지 한 줄(의뢰인·제목·보수·기한·내용)로 실려 메인이 수주 장면을 씁니다. 게시판(board)에 의뢰를 얹으면 메인이 원문을 못 받으니, 의뢰는 여기로.',
+  '- `when` 조건이 거짓이면 버튼째 숨습니다 (의뢰판이 없는 장소). `guide`에 어떤 의뢰가 붙는 곳인지·보수 감각을 적으세요.',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -1952,6 +1965,11 @@ function varReferenceIndex(schema) {
     for (const e of sx) add(e?.var, tag, '환전 지갑');
     ex(s.when, tag, 'when');
   }
+  if (schema.questBoard) {
+    add(schema.questBoard.listVar, '의뢰판', '수락 목록');
+    for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
+    ex(schema.questBoard.when, '의뢰판', 'when');
+  }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
     fx(a?.onEnter, '시나리오', a?.id ?? '막');
@@ -2226,6 +2244,8 @@ const TAB_SLICES = {
   shop: { keys: ['shop', 'shops'], label: '상점' },
   // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   msgr: { keys: ['messenger'], label: '메신저' },
+  // 의뢰판(v1.7.9) — questBoard 객체 통째 교체. css·guide 원문 보존 규약.
+  quest: { keys: ['questBoard'], label: '의뢰판' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -2248,6 +2268,7 @@ const TAB_WANT_PH = {
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   msgr: '예: 단말기 문자 — 연락처는 동료 명부와 연동, 게이트 안에선 통신 두절',
+  quest: '예: 길드 의뢰판 — 등급은 F~A, 보수는 등급별 밴드, 취소하면 평판 -3, 던전 안에선 안 보임',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
@@ -2284,6 +2305,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
+  else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
@@ -2326,13 +2348,13 @@ const FEATURE_RECIPES = [
       + '살 돈이 모자라면 버튼이 잠기게 조건을 걸고, 산 물건은 소지품 목록에 들어가게 해 주세요.' }],
   },
   {
-    id: 'quest_board', icon: '📜', label: '퀘스트 보드',
-    desc: '의뢰가 뜨고, 수주를 고르고, 기한이 지나면 사라지는 한 벌',
+    id: 'quest_board', icon: '📜', label: '의뢰판',
+    desc: '보조가 의뢰를 게시하고 수락·취소는 버튼으로, 기한이 지난 의뢰는 목록에서 사라지는 한 벌',
     needs: (s) => (s.time ? null : '시간 체계가 필요합니다 — [시간] 탭에서 먼저 켜세요'),
     steps: [
-      { tab: 'vars', want: '의뢰 목록 변수(항목에 "@기한"이 붙는 list)와 평판·보수처럼 의뢰에 딸린 수치를 만들어 주세요.' },
-      { tab: 'rules', want: '가끔 새 의뢰가 붙는 랜덤 이벤트를 만들어 주세요 — 받을지 말지 고르는 갈림길을 달고, '
-        + '기한이 지난 의뢰는 목록에서 자동으로 사라지게 정리 규칙도 함께 주세요.' },
+      { tab: 'vars', want: '의뢰 목록 변수(항목에 "@+기한"이 붙는 list, 3~5칸)와 평판처럼 의뢰에 딸린 수치를 만들어 주세요.' },
+      { tab: 'quest', want: '그 목록 변수를 listVar로 쓰는 의뢰판을 만들어 주세요 — 이 세계에 맞는 등급 어휘와 등급별 보수 밴드, 취소하면 평판이 조금 깎이는 효과까지.' },
+      { tab: 'rules', want: '기한이 지난 의뢰는 목록에서 자동으로 사라지게 정리 규칙(expire)을 주세요.' },
     ],
   },
   {
@@ -2816,6 +2838,26 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
       '  "units": [{ "label": "골드", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
+      '```',
+      '');
+  } else if (tabKey === 'quest') {
+    const listsQ = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 의뢰판 규격', ...SCHEMA_QUEST_RULES, '',
+      '## 이미 있는 목록 변수 — listVar는 이 중에서만 고를 수 있습니다',
+      listsQ.length ? listsQ.map((v) => `- \`${v.id}\` ${v.label ?? ''}${v.desc ? ` — ${String(v.desc).slice(0, 80)}` : ''}`).join('\n') : '(없음 — [변수] 탭에서 의뢰 목록 list 변수를 먼저 만드세요)',
+      '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "questBoard": { "label": "길드 의뢰판", "icon": "📜", "listVar": "quests",',
+      '  "format": "{client} · {title} ({grade}) @+{days} +{pay}", "unit": "G",',
+      '  "grades": ["F", "E", "D", "C", "B"], "bands": { "F": [50, 200], "E": [150, 500], "D": [500, 1500], "C": [1500, 5000], "B": [5000, 15000] },',
+      '  "days": [2, 14], "postDays": [3, 8], "maxOffers": 6, "minOffers": 2, "refillEvery": 3,',
+      '  "cancel": [{ "set": "renown", "expr": "max(renown - 3, 0)" }], "when": "not in_dungeon",',
+      '  "guide": "길드 접수대에 붙는 의뢰 — 토벌·채집·호위·심부름. 보수는 위험과 품에 비례." } }',
       '```',
       '');
   } else if (tabKey === 'time') {
@@ -3393,7 +3435,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -4422,6 +4464,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
     [/^\$\.shops?\b/, '상점', false],
+    [/^\$\.questBoard\b/, '의뢰판', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
@@ -5973,6 +6016,100 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
         '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
     );
+  }
+
+  // 의뢰판 (v1.7.9) — 시스템 퀘스트 보드. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabQuest() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('quest'));
+    const lists = schema.vars.filter((v) => v.type === 'list');
+    const scalars = schema.vars.filter((v) => v.type !== 'list');
+    if (!schema.questBoard) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '의뢰판 — 세계 안의 시스템 퀘스트 보드입니다 (길드 접수대·카페 벽보·헌터 협회 공고). 채팅 우상단에 버튼이 '
+        + '생기고, 보조 AI가 의뢰를 게시하면 유저가 [수락]·[취소] 버튼으로 받고 놓습니다. 수락한 의뢰는 봇이 정한 형식 그대로 '
+        + '목록 변수에 들어가고(기한·정산 규칙이 그대로 돕니다), 다음 전송에 의뢰인·제목·보수·기한이 통지 한 줄로 실려 '
+        + '메인 모델이 수주 장면을 씁니다. 게시판(보드)에 의뢰를 얹으면 메인이 원문을 못 받아 보수·기한을 지어내던 문제를 잡는 장치입니다.'));
+      if (!lists.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, '수락한 의뢰가 들어갈 목록(list 변수)이 필요합니다 — [변수] 탭에서 먼저 만드세요.'));
+        return wrap;
+      }
+      wrap.appendChild(addBtn('의뢰판 만들기', () => {
+        schema.questBoard = { label: '의뢰판', icon: '📜', listVar: lists[0].id };
+        rerender();
+      }));
+      return wrap;
+    }
+    const Q = schema.questBoard;
+    const pairStr = (v) => (Array.isArray(v) ? v.join('~') : '');
+    const parsePair = (x, lo, hi) => {
+      const m = String(x).match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+      if (!m) return null;
+      const a = Math.max(lo, Math.min(hi, parseInt(m[1], 10))); const b = Math.max(lo, Math.min(hi, parseInt(m[2], 10)));
+      return [Math.min(a, b), Math.max(a, b)];
+    };
+    const fxStr = (arr) => (Array.isArray(arr) ? arr : []).map((e) => `${e?.set ?? ''} = ${e?.expr ?? ''}`).join('; ');
+    const parseFx = (x) => {
+      const out = [];
+      for (const seg of String(x).split(';')) {
+        const m = seg.trim().match(/^([A-Za-z_][\w]*)\s*=\s*(.+)$/);
+        if (m) out.push({ set: m[1], expr: m[2].trim() });
+      }
+      return out;
+    };
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('의뢰판 이름', bindInput(Q.label, (x) => { Q.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '의뢰판' })),
+        pair('아이콘', bindInput(Q.icon, (x) => { Q.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📜' })),
+        pair('수락 목록', bindSelect(Q.listVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { Q.listVar = x; rerender(); }), '수락한 의뢰가 들어갈 list 변수 — 완료·납품으로 지우는 건 보조 몫이라 AI 설정에서 열어 두세요'),
+        pair('보수 단위', bindInput(Q.unit ?? '', (x) => { const t = x.trim(); if (t) Q.unit = t.slice(0, 8); else delete Q.unit; rerender(); }, { cls: 'sce-w-s', ph: 'G' })),
+      ),
+      pair('항목 형식', bindInput(Q.format ?? '', (x) => { const t = x.trim(); if (t) Q.format = t; else delete Q.format; rerender(); },
+        { cls: 'sce-w-full', ph: '{client} · {title} ({grade}) @+{days} +{pay}  (비우면 이 기본)' }),
+        '수락하면 이 형식으로 목록에 들어갑니다. 자리표 {client} {title} {grade} {pay} {days} {note} — "@+N"은 엔진 기한 규약, 끝수 보수는 정산 규약'),
+      pair('등급 어휘', bindInput((Q.grades ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
+        if (arr.length) Q.grades = arr; else delete Q.grades; rerender();
+      }, { cls: 'sce-w-full', ph: '심부름, 기초, 필드, 위험, 중대 — 이 밖의 등급은 시스템이 거부' }), ''),
+      pair('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
+        (x) => {
+          const bands = {};
+          for (const seg of x.split(',')) {
+            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+            if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
+          }
+          if (Object.keys(bands).length) Q.bands = bands; else delete Q.bands; rerender();
+        }, { cls: 'sce-w-full', ph: '심부름 50~200, 기초 150~500, 필드 500~1500' }),
+        '등급별 [최소~최대] — 게시 보수를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
+      h('div', { class: 'sce-row' },
+        pair('기한 범위(일)', bindInput(pairStr(Q.days), (x) => { const p = parsePair(x, 1, 365); if (p) Q.days = p; else delete Q.days; rerender(); }, { cls: 'sce-w-s', ph: '1~30' })),
+        pair('게시 유지(일)', bindInput(pairStr(Q.postDays), (x) => { const p = parsePair(x, 1, 365); if (p) Q.postDays = p; else delete Q.postDays; rerender(); }, { cls: 'sce-w-s', ph: '3~10' }),
+          '지나면 시스템이 걷습니다 (시간 체계가 없으면 턴 수)'),
+        pair('게시 상한', bindInput(Q.maxOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.maxOffers = Math.max(3, Math.min(12, n)); else delete Q.maxOffers; rerender(); }, { cls: 'sce-w-s', ph: '6' })),
+        pair('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); }, { cls: 'sce-w-s', ph: '2' }),
+          '게시가 이 아래로 떨어지면 다음 턴에 보충'),
+        pair('보충 간격(턴)', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); }, { cls: 'sce-w-s', ph: '3' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },
+          { cls: 'sce-w-l', ph: '변수 = 식; 변수 = 식  (예: stamina = stamina - 5)' }), '식에서 pay·days·grade를 읽을 수 있어요'),
+        pair('취소 효과', bindInput(fxStr(Q.cancel), (x) => { const a = parseFx(x); if (a.length) Q.cancel = a; else delete Q.cancel; rerender(); },
+          { cls: 'sce-w-l', ph: '예: renown = max(renown - 3, 0)' }), scalars.length ? `쓸 수 있는 변수: ${scalars.slice(0, 8).map((v) => v.id).join(', ')}${scalars.length > 8 ? ' …' : ''}` : ''),
+      ),
+      pair('게시 지침', bindArea(Q.guide, (x) => { Q.guide = x || undefined; rerender(); },
+        '어떤 의뢰가 붙는 곳인지, 보수 감각의 기준 (예: 심부름 50~200 — 사소한 일에 큰 돈을 매기지 마라)'), ''),
+      h('div', { class: 'sce-row' },
+        pair('노출 조건', bindInput(Q.when, (x) => { Q.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: area_tier == 0 (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
+        h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+          if (confirm('의뢰판을 지울까요? (게시 상태는 세이브에 남아 있다가 다시 켜면 이어집니다)')) { delete schema.questBoard; rerender(); }
+        } }, '의뢰판 삭제'),
+      ),
+      pair('패널 CSS', bindArea(Q.css, (x) => { Q.css = x || undefined; rerender(); },
+        '.scq-* / .sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    return wrap;
   }
 
   // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
@@ -9014,7 +9151,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }

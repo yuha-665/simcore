@@ -126,6 +126,7 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 | `fightEnd` (v1.6.0) | true면 **교전 이탈** — 열린 교전(`checks[].fight`)을 닫는다. check(회피 등)를 달면 그 판정이 이탈의 성패. fight 판정이 없으면 경고. `when: 'fight_on'`으로 교전 중에만 여는 게 규격 |
 | `when` | 사용 조건. 거짓이면 잠김(🔒) |
 | `inject` | 발동 시 AI에게 전달될 문장 |
+| `keywords[]` (v1.7.7) | **낱말 자동 무장** — 유저 글에 이 낱말(부분 일치)이 있으면 버튼 없이 그 턴에 무장. 이미 무장이면 손대지 않고, when·쿨다운은 그대로(막히면 콘솔 로그). 한 글자면 경고, 두 액션에 같은 낱말이면 경고. "조합서"에 "조합"이 걸리듯 짧은 낱말은 오발 — 활용형("조합하", "채집하")으로 |
 | `effects[]` | rules와 같은 형식 |
 | `check` | 판정 id — 무장 → 전송 시 굴림, 같은 턴 서사 반영 |
 
@@ -481,6 +482,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `roster` | 공용 보유 목록 (list 변수 id) |
 | `points` | 공용 포인트 변수 (숫자 타입) — items 비용의 지갑 |
 | `nav` | `tabs`(탭 바) \| `select`(셀렉트+검색, 인물 많을 때) (v0.58.1) |
+| `wide` | `true`면 카드 640px (기본 440) — 지도·도감처럼 가로가 넓은 대장 템플릿용 (v1.7.6) |
 | `portraits` | `{ "이름": "에셋이름" }` — 슬롯 후보에 없는 이름은 경고 |
 | `tabs[]` | 아래. **tabs와 최상위 slots/actions/items/template을 섞으면 오류** (축약형 = 탭 하나) |
 
@@ -608,6 +610,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `categories` | 패널 탭 1~8개 (기본 ['일반']) — "추천"·"인기" 큐레이션 칸도 여기로 |
 | `grades` / `bands` | 등급 어휘 + `{ 등급: [최소, 최대] }` 가격 밴드 — **어휘 밖 등급은 거부, 밴드 밖 가격은 클램프** (뇌절 방지의 본체. 없으면 경고) |
 | `sellRate` | 감정가 대비 지급 비율 0<x≤1 (기본 0.5). 시세판 매치는 시세 그대로 |
+| `priceMul` (v1.7.8) | **시세 배율** — 식 하나(전 품목) 또는 `{ 카테고리: 식, '*': 기본 }`. 진열가(보조가 밴드 안에서 정한 원가)는 그대로, 화면·결제·매입(`'*'`)에 배율만 얹는다 — 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 0.2~5로 묶고 식이 깨지면 1. 패널 머리에 "📈 시세" 줄. categories 밖 키는 경고 |
 | `maxStock` | 진열 상한 4~48 (기본 18) |
 | `perCat` (v1.0.9) | `[최소, 최대]` (1≤min≤max≤9) — 입고 지시가 "카테고리마다 N~M개씩 (빈 카테고리 금지)"로. 없으면 총량 지시("8~maxStock개")만 — 모델이 카테고리당 1~2개로 뭉개는 실사고의 해법 |
 | `guide` | 입고 지침 — 무엇을 파는가·가격 감각 기준 (없으면 경고) |
@@ -628,6 +631,37 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
   상태: 단수=state.shop(옛 세이브 무접촉) / 배열=`state.shops[id]`, 단수→배열 전환 시 첫 상점이 state.shop을 물려받음(ensureShops).
   코어 API: `shopConfigs(schema)` / `shopConfig(schema, shopId?)` / `shopStateOf(state, cfg)` / buy·sell·exchange·applyStock·interactionPrompt에 shopId 인자.
   첫 입고 피기백은 **턴당 한 상점**(재고 빈 첫 상점) — 다상점이면 응답 "id" 에코 요구, applyStock이 라우팅(누락 시 빈 상점 폴백).
+
+## questBoard — 의뢰판 (v1.7.9, 옵트인)
+
+시스템 퀘스트 보드 (아틀리에 실기 "의뢰가 게시판에 붙어 있으니 수주가 애매하다"가 발단). 게시판(board)에
+의뢰를 얹으면 **메인이 원문을 못 받고**(화제 한 줄뿐) 수락이 **보조 기록에만** 기대 벽보 800콜이 수첩엔 500콜로
+적힌다. 의뢰판은 보조가 게시하고 **수락·취소를 유저 버튼**이 처리한다. 게시는 **state.questBoard**(스냅샷), 게임 패널 6호.
+
+| 필드 | |
+|---|---|
+| `listVar` | **필수** — 수락한 의뢰가 들어갈 list 변수. 완료·납품으로 지우는 건 보조 몫이라 `updater.allow`에 없으면 경고 |
+| `format` | 목록 항목 형식. 자리표 `{client} {title} {grade} {pay} {days} {note}`, 기본 `'{client} · {title} ({grade}) @+{days} +{pay}'` — 엔진 목록 기한 규약(`@+N`)과 끝수 보수를 그대로 탄다. 봇의 기존 의뢰 형식이 있으면 그 형식으로. `{title}` 없으면 경고, 시간 체계 없이 `@+{days}`면 경고 |
+| `grades` / `bands` | 등급 어휘 + `{ 등급: [최소, 최대] }` 보수 밴드 — **어휘 밖 등급은 거부, 밴드 밖 보수는 클램프** (상점과 같은 뇌절 방지). 어휘 밖 밴드 키는 경고 |
+| `days` / `postDays` | `[최소, 최대]` — 의뢰 기한 범위(기본 [1,30]) / 게시가 붙어 있는 기간(기본 [3,10], **시스템이 정한다** — 보조가 정하면 영구 게시 뇌절). 시간 체계면 경과일, 없으면 턴 수 |
+| `maxOffers` / `minOffers` / `refillEvery` | 게시 상한 3~12(기본 6) / 보충 기준(기본 2) / 보충 간격 턴(기본 3). **첫 게시는 즉시 피기백**, 그 뒤엔 게시가 minOffers 아래이고 refillEvery턴이 지났을 때만 보충 요청 — 평턴 비용 0 |
+| `unit` | 보수 단위 표기 (≤8자, "콜"·"G") — 표시·통지에만 |
+| `accept` / `cancel` | `[{ set, expr }]` — 수락·취소 때 시스템이 적용하는 효과 (포기하면 평판 -3 등). 식에서 `pay`·`days`·`grade`를 읽을 수 있다 (취소는 항목의 끝수 보수·@기한을 되읽음 — 등급은 빈 문자열). 목록 변수는 대상 불가, min/max 클램프 |
+| `guide` / `when` / `label` / `icon` / `css` | 게시 지침(어떤 의뢰가 붙는 곳인지·보수 감각) / 노출 게이트 — 거짓이면 **버튼째 숨고 게시 요청도 빠짐**(상점 규약) / 패널 제목·버튼·스킨(`.scq-*`, 상점 `.sch-*` 위에 얹음) |
+
+- **수락·취소는 보조 호출 0** — 수락은 format대로 항목을 만들어 listVar에 push (maxItems·itemMaxLength·중복 존중),
+  **`@+N`은 저장 전에 절대 경과값으로 굳힌다**(보조 델타는 엔진이 굳히지만 패널 삽입은 그 길을 안 지나므로 quest.js가
+  같은 규약으로 — 안 굳히면 (N일)이 영영 안 줄고 expire도 안 걸린다). 취소는 저장 원문 그대로 remove + cancel 효과. 패널 취소는 **두 번 누르기**(규칙 #6).
+- **통지 한 줄**이 다음 전송에 실린다: `[의뢰판] 「의뢰인 · 제목」 의뢰 수락 (보수 400콜 · 기한 5일 · 기초). 의뢰 내용: … 이번 서사에 반영하라 — 수첩 기록은 끝났으니 다시 적지 마라.`
+  — 메인이 넷을 다 알고 수주 장면을 쓴다. lastChanges 원장 + 패널 로그 6건 회전 (상점과 같은 수명).
+- 게시 델타: `{"quests":{"new":[{client,title,grade,pay,days,note}]}}` — 턴 피기백(첫 게시 3~max개 / 보충 1~빈칸)은 **append**(같은 제목 스킵), 패널 [새로고침]은 **통째 교체**.
+  outputPhase 5.95: 시간 소비 뒤에 `pruneExpired`(마감 걷기, changeLog `questBoard`) → `applyOffers`. 어댑터 auxCap +900.
+- 코어 API: `questConfig` / `ensureQuestBoard` / `questOpen` / `nowOf(schema,state,makeLookup)` → `{kind:'day'|'turn', value, turn}` /
+  `sanitizeOffers` / `applyOffers(schema,state,raw,{replace,now,rng})` / `pruneExpired` / `accept(schema,state,offerId,makeLookup)` /
+  `cancel(schema,state,itemText,makeLookup)` / `auxSpec` / `interactionPrompt`(refresh) / `parseInteraction`.
+- 편집기 [의뢰판] 탭 (TAB_SLICES.quest — keys `['questBoard']`). 기능 프리셋 📜 "의뢰판" 카드가 vars → quest → rules 순으로 요청한다.
+- **봇 설계 규약**: 벽보·게시판에서 "의뢰" 칸을 떼고 의뢰는 여기로 (아틀리에: board categories에서 '의뢰' 제거, 벽보는 소문으로만).
+  사람이 직접 찾아와 부탁하는 의뢰는 여전히 서사로 — 보조 guide에 "의뢰판 의뢰는 버튼이 넣는다, 직접 부탁만 quests에 올려라".
 
 ## scenario — 시나리오레이터 (v0.90, 옵트인)
 

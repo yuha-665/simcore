@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.8
-//@display-name SimCore (시뮬 엔진) v1.7.8 상점 시세 배율
+//@version 1.7.9
+//@display-name SimCore (시뮬 엔진) v1.7.9 의뢰판
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.9 ────────────────────────────────────────────────
+// **의뢰판** questBoard (아틀리에 실기: "의뢰가 게시판에 붙어 있으니 수주가 애매하다 — 댓글로 받나 서사로 받나").
+// 게시판 의뢰는 메인이 원문을 못 받고(화제 한 줄뿐) 수락도 보조 기록에만 기대 벽보 800콜이 수첩엔 500콜로 적혔다.
+// 게임 패널 6호: 보조가 의뢰를 게시(첫 게시 피기백 → minOffers 아래 + refillEvery턴 보충, [새로고침]은 교체)하고
+// [수락]·[취소]는 시스템 버튼 — 수락은 봇의 format대로 목록 변수에 넣고(기존 @+N 기한·끝수 정산 그대로), 취소는
+// 저장 원문 그대로 빼며 accept/cancel 효과([{set,expr}], 식에서 pay·days·grade)를 적용한다. 다음 전송에 통지
+// 한 줄(의뢰인·제목·보수·기한·내용)로 메인이 수주 장면을 쓴다. 보수는 등급 밴드 클램프, 게시 마감은 시스템이 걷는다
+// (시간 체계면 경과일, 없으면 턴). 검증·편집기 [의뢰판] 탭·기능 프리셋 재지정·schema.md.
 //
 // ── v1.7.8 ────────────────────────────────────────────────
 // **상점 시세 배율** shops[].priceMul (아틀리에: "날씨·외부 영향으로 상품이 비싸지거나 싸지게"). 식 하나(전 품목)
@@ -2316,6 +2325,7 @@
   const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
+  const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
@@ -2971,6 +2981,8 @@
   let shopBusy = false;
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
+  let questView = { tab: 'offers' };                // 의뢰판 (v1.7.9): 'offers' 게시 | 'mine' 수주 중
+  let questBusy = false;
   let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
@@ -3748,6 +3760,7 @@
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         if (auxPrompt.includes('먼저 메시지를 보낼')) auxCap += 300;   // 메신저 선톡 (v1.2.0)
+        if (auxPrompt.includes('의뢰판 첫 게시]') || auxPrompt.includes('의뢰판 보충 게시]')) auxCap += 900; // 의뢰판 (v1.7.9)
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -3768,6 +3781,10 @@
             // 메신저 선톡 (v1.2.0) — 지연 경로에서도 적용
             if (parsed.msgr && msgrMod.msgrConfig(schema)) {
               msgrMod.applyDelta(schema, session.current, parsed.msgr);
+            }
+            // 의뢰판 게시 (v1.7.9) — 지연 경로에서도 적용
+            if (parsed.quests && questMod.questConfig(schema)) {
+              questMod.applyOffers(schema, session.current, parsed.quests, { now: questMod.nowOf(schema, session.current, engine.makeLookup) });
             }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -3974,6 +3991,11 @@
         if (!shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) continue;
         specs.push({ key: sh.id == null ? 'shop' : `shop_${sh.id}`, kind: 'shop', tab: sh.id, label: sh.label, icon: sh.icon });
       }
+      // 의뢰판 (v1.7.9) — 게임 패널 6호. when이 닫히면 버튼째 숨긴다 (상점 규약 — 그 자리에 의뢰판이 없다)
+      const qb = questMod.questConfig(schema);
+      if (qb && questMod.questOpen(qb, schema, session.current?.vars || {}, engine.makeLookup)) {
+        specs.push({ key: 'quest', kind: 'quest', tab: null, label: qb.label, icon: qb.icon });
+      }
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
       if (mg) specs.push({ key: 'msgr', kind: 'msgr', tab: null, label: mg.label, icon: mg.icon });
@@ -4104,6 +4126,10 @@
         color:#7d8aa5; font-size:11.5px; }
       #sc-game .sch-exch-qty { flex:1; min-width:0; background:#131b2e; border:1px solid #3d5384;
         border-radius:8px; color:#e6ebf5; padding:6px 10px; font-size:13px; }
+      /* 의뢰판 (v1.7.9) — 기본 스킨 (상점 .sch-* 위에 얹는다). 봇의 questBoard.css가 덮어쓴다 */
+      #sc-game .scq-days { color:#9db8e8; font-size:11.5px; white-space:nowrap; }
+      #sc-game .scq-left { color:#7d8aa5; font-size:11px; white-space:nowrap; }
+      #sc-game .scq-cap { font-size:12px; color:#8fd6a8; margin:2px 0 6px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
@@ -4246,7 +4272,8 @@
       : gameKind === 'calendar' ? schema?.calendar?.css
         : gameKind === 'board' ? schema?.board?.css
           : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
-            : gameKind === 'msgr' ? schema?.messenger?.css : null;
+            : gameKind === 'msgr' ? schema?.messenger?.css
+              : gameKind === 'quest' ? schema?.questBoard?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -4270,6 +4297,7 @@
     // 상점은 열 때마다 첫 카테고리부터. 다중 상점(v1.4.0)은 버튼이 목적지 상점 id를 tab으로 들고 온다
     shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
+    questView = { tab: 'offers' };   // 의뢰판은 열 때마다 게시부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -4299,6 +4327,7 @@
     else if (gameKind === 'board') renderBoardPanel(root);
     else if (gameKind === 'shop') renderShopPanel(root);
     else if (gameKind === 'msgr') renderMsgrPanel(root);
+    else if (gameKind === 'quest') renderQuestPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -5425,6 +5454,128 @@
     }
 
     if (shop.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근 거래: ' + shop.log.join(' · ')));
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
+  }
+
+  // ── 의뢰판 패널 (v1.7.9) — 게임 패널 6호 ─────────────────────────
+  // 수락·취소는 보조 호출 없이 즉시 (숫자·목록은 시스템이). 새로고침만 전용 보조 호출.
+  // 통지는 meta.pendingNotifies로 다음 전송에 실리고 자동 소거 — 상점과 같은 규약.
+  async function onQuestRefresh() {
+    if (!session || !schema || questBusy) return;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
+    questBusy = true;
+    gameNotice = '⏳ 의뢰판을 새로 붙이는 중…';
+    renderGamePanel();
+    try {
+      const prompt = questMod.interactionPrompt(schema, session.current, 'refresh', { narrative: await boardNarrative() });
+      const res = await callAuxLLM(prompt, 1200);
+      if (res && res.blocked) { gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 새로고침은 쓸 수 없어요 (게시는 턴마다 채워져요)'; return; }
+      if (typeof res !== 'string') { gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요'; return; }
+      const parsed = questMod.parseInteraction(res, engine.extractJsonObject);
+      if (!parsed) { gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요'; console.log('[simcore] 의뢰판 파싱 실패:', res.slice(0, 200)); return; }
+      const r = questMod.applyOffers(schema, session.current, parsed, { replace: true, now: questMod.nowOf(schema, session.current, engine.makeLookup) });
+      await boardSaveNow('의뢰판 새로고침');
+      gameNotice = r.posted ? `✓ 새 의뢰 ${r.posted}건` + (r.rejected?.length ? ` (규격 밖 ${r.rejected.length}건 거부)` : '')
+        : '⚠ 쓸 만한 의뢰가 안 왔어요 — 다시 시도해 보세요';
+    } catch (e) {
+      gameNotice = `⚠ 의뢰판 호출 실패: ${e.message}`;
+    } finally {
+      questBusy = false;
+      renderGamePanel();
+    }
+  }
+
+  async function onQuestAccept(offerId) {
+    if (!session || !schema) return;
+    const r = questMod.accept(schema, session.current, offerId, engine.makeLookup);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) { questView.tab = 'mine'; await commitPanelChanges(r.changes, '의뢰 수락'); }
+    else renderGamePanel();
+  }
+
+  async function onQuestCancel(itemText) {
+    if (!session || !schema) return;
+    // 되돌릴 수 없는 조작 — 패널 안에서 두 번 누르기 (규칙 #6: alertConfirm은 패널에 가려진다)
+    if (questView.confirm !== itemText) { questView.confirm = itemText; gameNotice = '⚠ 한 번 더 누르면 의뢰를 포기해요'; renderGamePanel(); return; }
+    questView.confirm = null;
+    const r = questMod.cancel(schema, session.current, itemText, engine.makeLookup);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) await commitPanelChanges(r.changes, '의뢰 취소');
+    else renderGamePanel();
+  }
+
+  function renderQuestPanel(root) {
+    const cfg = questMod.questConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const qb = questMod.ensureQuestBoard(schema, session.current);
+    const now = questMod.nowOf(schema, session.current, engine.makeLookup);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, cls, onClick, disabled = false) => {
+      const b = el('button', cls, label);
+      b.type = 'button';
+      b.disabled = disabled || questBusy;
+      b.onclick = onClick;
+      return b;
+    };
+
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button'; x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    const listDef = schema.vars.find((v) => v.id === cfg.listVar);
+    const mine = Array.isArray(session.current.vars[cfg.listVar]) ? session.current.vars[cfg.listVar] : [];
+    const maxItems = listDef?.maxItems ?? 20;
+    card.appendChild(el('div', 'scq-cap', `📒 ${listDef?.label ?? cfg.listVar}: ${mine.length}/${maxItems}`));
+
+    const tabs = el('div', 'sch-tabs');
+    tabs.appendChild(btn(`📜 게시 (${qb.offers.length})`, `sch-tab${questView.tab === 'offers' ? ' sch-on' : ''}`, () => { questView.tab = 'offers'; questView.confirm = null; renderGamePanel(); }));
+    tabs.appendChild(btn(`📒 수주 중 (${mine.length})`, `sch-tab${questView.tab === 'mine' ? ' sch-on' : ''}`, () => { questView.tab = 'mine'; renderGamePanel(); }));
+    tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onQuestRefresh));
+    card.appendChild(tabs);
+
+    if (questView.tab === 'mine') {
+      card.appendChild(el('div', 'scg-note', '완료·납품은 이야기에서 — 시스템이 정산하고 목록에서 지웁니다. 여기서는 포기만 할 수 있어요.'));
+      if (!mine.length) card.appendChild(el('div', 'scb-empty', '받은 의뢰가 없어요.'));
+      for (const item of mine) {
+        const row = el('div', 'sch-item');
+        row.appendChild(el('span', 'sch-name', engine.dueText(item, engine.listClockNow(schema, session.current, cfg.listVar))));
+        row.appendChild(btn(questView.confirm === item ? '정말 포기' : '취소', 'scb-btn', () => onQuestCancel(item)));
+        card.appendChild(row);
+      }
+    } else {
+      card.appendChild(el('div', 'scg-note', '수락하면 수첩에 오르고, 다음 이야기에 의뢰인·내용·보수·기한이 그대로 전해져요.'));
+      if (!qb.offers.length) {
+        card.appendChild(el('div', 'scb-empty', qb.stocked
+          ? '붙어 있는 의뢰가 없어요 — 다음 턴에 새로 붙거나, [🔄 새로고침].'
+          : '첫 게시 대기 중 — 다음 응답이 오면 의뢰가 붙어요. 급하면 [🔄 새로고침].'));
+      }
+      for (const o of qb.offers) {
+        const row = el('div', 'sch-item');
+        const nm = el('span', 'sch-name', `${o.client} · ${o.title}`);
+        if (o.note) nm.appendChild(el('small', null, o.note));
+        row.appendChild(nm);
+        if (o.grade) row.appendChild(el('span', 'sch-grade', o.grade));
+        row.appendChild(el('span', 'scq-days', `기한 ${o.days}일`));
+        row.appendChild(el('span', 'sch-price', `+${o.pay}${cfg.unit}`));
+        const left = questMod.offerLeft(o, now);
+        if (left != null) row.appendChild(el('span', 'scq-left', `게시 ${left}`));
+        row.appendChild(btn('수락', 'scb-btn', () => onQuestAccept(o.id), mine.length >= maxItems));
+        card.appendChild(row);
+      }
+    }
+
+    if (qb.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근: ' + qb.log.join(' · ')));
     if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
     root.appendChild(card);
   }

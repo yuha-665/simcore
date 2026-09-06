@@ -71,6 +71,20 @@ for (const replacer of pluginV2.replacerbeforeRequest) {
 - **비스트리밍은 push 전에 한 번**만 돈다. 따라서 output 핸들러 시점의 메시지 배열은
   비스트리밍 = 응답 미포함(`outIndex = length`), 스트리밍 = 이미 포함(`outIndex = length - 1`).
   length로만 계산하면 스트리밍에서 +1로 밀린다 (v1.0.1 이전 실버그 — 마커·스냅샷 오배치).
+- **스트리밍 여부의 정답은 `chat.isStreaming` 깃발이다** (v1.7.5 실사고). 스트림 시작에 `true`, `finally`에
+  `false` — PocketRisu 1.8.1·1.11.2 `index.svelte.ts` 소스맵 실측 동일, `getChatFromIndex` 스냅샷에 그대로
+  실린다. "저장된 글 ↔ 이번 청크" 글자 접두 비교는 **카드에 저장 글의 머리를 바꾸는 editoutput 정규식**이
+  있으면 매 청크 빗나간다 → 청크마다 비스트리밍 경로(보조 호출+틱) → 한 턴에 수십 번 (v1.0.1 증상이 카드
+  의존으로 재발, 순정에서도). 깃발을 으뜸으로, 글자 비교는 깃발 없는 옛 리수 폴백으로만.
+- **`processTurnOutput`엔 턴당 1회 재진입 가드가 있다** (cha:chat 키, beforeRequest에서 해제). 어느 경로로
+  오든 한 전송에 한 정산. 키에 outIndex를 넣지 않는 이유: 판정이 빗나간 인라인은 `length`, 뒤늦은 확정은
+  `length-1`로 같은 글을 다른 번호로 부른다.
+- **1.11.x 요청 계층 변경은 이 사고와 무관** (소스맵 대조 확인): 서버측 job 전송(`jobFetch.ts`, 저널 스트림
+  재접속 backoff)·`jobRecovery.ts`(부팅 시 복구 — editoutput은 **재생하지 않는다**)·`streamingDisplayOptimizationMode`
+  (balanced=플러시 합치기, strong=편집 후처리를 스트림 끝에 1회). 플러시마다 editoutput이 도는 구조는 그대로다.
+  ⚠ 플러그인 `runLLMModel`은 프리셋 바인딩 채팅에서 `resolvePresetStreaming`이 `arg.useStreaming ?? true`라
+  **프리셋이 스트리밍이면 보조 호출도 `{type:'streaming', result: ReadableStream<{[k]:string}>}`로 온다** —
+  청크가 바이트가 아니라 누적 문자열 객체라 `TextDecoder`로는 못 읽는다 (extractLLMText 폴백 대상, 미해결).
 
 ## 메시지 HTML/CSS가 통과하는 규칙 (`parser.svelte.ts`)
 

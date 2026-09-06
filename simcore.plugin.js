@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.8
-//@display-name SimCore (시뮬 엔진) v1.7.8 상점 시세 배율
+//@version 1.7.9
+//@display-name SimCore (시뮬 엔진) v1.7.9 의뢰판
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.9 ────────────────────────────────────────────────
+// **의뢰판** questBoard (아틀리에 실기: "의뢰가 게시판에 붙어 있으니 수주가 애매하다 — 댓글로 받나 서사로 받나").
+// 게시판 의뢰는 메인이 원문을 못 받고(화제 한 줄뿐) 수락도 보조 기록에만 기대 벽보 800콜이 수첩엔 500콜로 적혔다.
+// 게임 패널 6호: 보조가 의뢰를 게시(첫 게시 피기백 → minOffers 아래 + refillEvery턴 보충, [새로고침]은 교체)하고
+// [수락]·[취소]는 시스템 버튼 — 수락은 봇의 format대로 목록 변수에 넣고(기존 @+N 기한·끝수 정산 그대로), 취소는
+// 저장 원문 그대로 빼며 accept/cancel 효과([{set,expr}], 식에서 pay·days·grade)를 적용한다. 다음 전송에 통지
+// 한 줄(의뢰인·제목·보수·기한·내용)로 메인이 수주 장면을 쓴다. 보수는 등급 밴드 클램프, 게시 마감은 시스템이 걷는다
+// (시간 체계면 경과일, 없으면 턴). 검증·편집기 [의뢰판] 탭·기능 프리셋 재지정·schema.md.
 //
 // ── v1.7.8 ────────────────────────────────────────────────
 // **상점 시세 배율** shops[].priceMul (아틀리에: "날씨·외부 영향으로 상품이 비싸지거나 싸지게"). 식 하나(전 품목)
@@ -4542,6 +4551,73 @@ function validateSchema(schema) {
     }
   }
 
+  // ── questBoard (의뢰판 v1.7.9 — 옵트인. 게시판 의뢰의 "메인이 원문을 모른다·수락이 보조 기록에만 의존한다"를 버튼으로 잡는다) ──
+  if (schema.questBoard != null) {
+    const Q = schema.questBoard; const P = '$.questBoard';
+    if (typeof Q !== 'object' || Array.isArray(Q)) err(P, 'questBoard는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['guide', '게시 지침'], ['css', 'CSS'], ['format', '항목 형식'], ['unit', '보수 단위']]) {
+        if (Q[k] != null && typeof Q[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (Q.icon != null && (typeof Q.icon !== 'string' || Q.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+      if (Q.unit != null && typeof Q.unit === 'string' && Q.unit.length > 8) err(`${P}.unit`, '보수 단위는 8자 이내');
+      // 수락한 의뢰가 들어갈 목록 — list 변수 필수
+      const lv = vars.find((v) => v && v.id === Q.listVar);
+      if (!Q.listVar || typeof Q.listVar !== 'string') err(`${P}.listVar`, '수락한 의뢰가 들어갈 목록 변수(listVar)가 필요합니다');
+      else if (!lv) err(`${P}.listVar`, `목록 변수 '${Q.listVar}'가 vars에 없음`);
+      else if (lv.type !== 'list') err(`${P}.listVar`, `'${Q.listVar}'는 list 타입이어야 함 (현재: ${lv.type})`);
+      else {
+        const allowed = Array.isArray(schema.updater?.allow) && schema.updater.allow.some((a) => a && a.id === Q.listVar);
+        if (!allowed) warn(`${P}.listVar`, `'${Q.listVar}'가 updater.allow에 없습니다 — 수락·취소는 버튼이 하지만, 완료·납품으로 지우는 건 보조의 몫이라 열려 있어야 합니다`);
+      }
+      const fmt = typeof Q.format === 'string' ? Q.format : '{client} · {title} ({grade}) @+{days} +{pay}';
+      if (!fmt.includes('{title}')) warn(`${P}.format`, '항목 형식에 {title}이 없습니다 — 무엇을 하는 의뢰인지 목록에 안 남습니다');
+      if (fmt.includes('@+{days}') && !timeConfig(schema)) warn(`${P}.format`, '시간 체계(time)가 없어 "@+{days}" 기한이 돌지 않습니다 — 기한을 쓰려면 [시간] 탭에서 먼저 켜세요');
+      if (Q.grades != null && (!Array.isArray(Q.grades) || !Q.grades.length || Q.grades.some((g) => typeof g !== 'string'))) {
+        err(`${P}.grades`, '등급 어휘는 문자열 배열');
+      }
+      if (Q.bands != null) {
+        if (typeof Q.bands !== 'object' || Array.isArray(Q.bands)) err(`${P}.bands`, 'bands는 { 등급: [최소, 최대] } 객체');
+        else for (const [g, band] of Object.entries(Q.bands)) {
+          if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0) || band[0] > band[1]) {
+            err(`${P}.bands.${g}`, '보수 밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
+          } else if (Array.isArray(Q.grades) && !Q.grades.includes(g)) warn(`${P}.bands.${g}`, `등급 '${g}'는 grades 어휘에 없습니다 — 이 밴드는 쓰이지 않습니다`);
+        }
+      }
+      const pairChk = (k, name, lo, hi) => {
+        if (Q[k] == null) return;
+        if (!Array.isArray(Q[k]) || Q[k].length !== 2 || !Q[k].every((n) => Number.isInteger(n) && n >= lo && n <= hi) || Q[k][0] > Q[k][1]) {
+          err(`${P}.${k}`, `${name}은 [최소, 최대] 정수 (${lo}~${hi}, 최소 ≤ 최대)`);
+        }
+      };
+      pairChk('days', '의뢰 기한 범위(days)', 1, 365);
+      pairChk('postDays', '게시 유지 기간(postDays)', 1, 365);
+      const intChk = (k, name, lo, hi) => {
+        if (Q[k] != null && (!Number.isInteger(Q[k]) || Q[k] < lo || Q[k] > hi)) err(`${P}.${k}`, `${name}은 ${lo}~${hi} 정수`);
+      };
+      intChk('maxOffers', '게시 상한(maxOffers)', 3, 12);
+      intChk('minOffers', '보충 기준(minOffers)', 0, 12);
+      intChk('refillEvery', '보충 간격(refillEvery)', 1, 20);
+      if (Number.isInteger(Q.minOffers) && Number.isInteger(Q.maxOffers) && Q.minOffers > Q.maxOffers) err(`${P}.minOffers`, 'minOffers는 maxOffers 이하');
+      // 수락·취소 효과 — [{ set, expr }]. 식은 그 의뢰의 pay·days·grade를 읽을 수 있다
+      const fxIds = new Set([...allIds, ...exposedNames, 'pay', 'days', 'grade']);
+      for (const k of ['accept', 'cancel']) {
+        if (Q[k] == null) continue;
+        if (!Array.isArray(Q[k])) { err(`${P}.${k}`, `${k}는 [{ set, expr }] 배열`); continue; }
+        Q[k].forEach((e, i) => {
+          const ep = `${P}.${k}[${i}]`;
+          if (!e || typeof e !== 'object') { err(ep, '{ set, expr } 객체여야 함'); return; }
+          const tv = vars.find((v) => v && v.id === e.set);
+          if (typeof e.set !== 'string' || !e.set) err(`${ep}.set`, '대상 변수(set)가 필요합니다');
+          else if (!tv) err(`${ep}.set`, `변수 '${e.set}'가 vars에 없음`);
+          else if (tv.type === 'list') err(`${ep}.set`, '효과는 목록 변수를 못 바꿉니다 (숫자·불·enum·text만)');
+          checkExpr(e.expr, `${ep}.expr`, fxIds, err, { allowRand: false });
+        });
+      }
+      if (Q.when != null) checkExpr(Q.when, `${P}.when`, new Set([...allIds, ...exposedNames]), err, { allowRand: false });
+    }
+  }
+
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
   // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.
@@ -6998,6 +7074,365 @@ module.exports = {
 
 });
 
+SimCore.define("quest", function (require, module, exports) {
+// 의뢰판 (v1.7.9) — 세계 안의 시스템 퀘스트 보드 (아틀리에 "벽보 의뢰 수주가 애매하다"가 발단).
+//
+// 게시판(board)에 의뢰를 얹으면 두 가지가 어긋난다:
+//   · 메인은 게시판 원문을 못 받는다 (화제 한 줄뿐) — 의뢰인·내용·보수·기한을 모른 채 수주 장면을 쓴다
+//   · "받았다"는 사실이 보조의 기록에만 의존한다 — 벽보 800콜이 수첩엔 500콜로 적힌다
+// 의뢰판은 **수락·취소를 시스템 버튼**으로 만든다. 수락하면 스키마의 목록 변수에 봇이 정한 형식
+// 그대로 항목이 들어가고(기존 기한·정산 기계가 그대로 돈다), 다음 전송에 통지 한 줄로 넷이 다 실린다.
+//
+// 상점(shop)과 같은 규약:
+//   · 게시는 보조가 채운다 — 첫 게시는 턴 피기백, 그 뒤엔 게시가 minOffers 아래로 떨어졌을 때만
+//     refillEvery턴 간격으로 보충 (평턴 비용 0에 가깝게), 패널 [새로고침]은 통째 교체
+//   · 보수는 등급 밴드로 클램프, 밴드 밖 등급은 거부 (뇌절 방지)
+//   · 수락·취소는 보조 호출 0 — 목록 변수·효과(effects)는 엔진이 결정적으로 처리
+//   · 통지는 meta.pendingNotifies로 다음 전송 1회, 원장은 meta.lastChanges (이중 계산 방지)
+//   · 게시물은 state.questBoard.offers (스냅샷 — 리롤과 함께 되감김). 게시 마감(until)은
+//     시간 체계가 있으면 경과일, 없으면 턴 수 기준 — 지나면 시스템이 걷는다
+//
+// 스키마 (옵트인):
+//   questBoard: { label, icon, listVar(필수), format?, grades?, bands?, days?, postDays?,
+//                 maxOffers?, minOffers?, refillEvery?, unit?, accept?, cancel?, guide?, when?, css? }
+//   · format: 목록 항목 형식. {client} {title} {grade} {pay} {days} {note} 자리 —
+//     기본 '{client} · {title} ({grade}) @+{days} +{pay}' (엔진 목록 기한 규약 "@+N"과 끝수 보수)
+//   · accept / cancel: [{ set, expr }] — 수락·취소 때 시스템이 적용하는 효과 (평판 -3 등).
+//     식에서 pay·days·grade를 읽을 수 있다 (그 의뢰의 값).
+
+const { evaluate, truthy } = require('./expr');
+const { timeConfig } = require('./time');
+
+const CAPS = {
+  CLIENT: 24, TITLE: 40, NOTE: 80, GRADE: 12, OFFERS_MAX: 12, LOG_MAX: 6, PAY_MAX: 100000000, DAYS_MAX: 365,
+};
+
+const cut = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+const intIn = (v, lo, hi, dflt) => (Number.isInteger(v) ? Math.max(lo, Math.min(hi, v)) : dflt);
+const pairIn = (v, lo, hi, dflt) => {
+  if (!Array.isArray(v) || v.length !== 2 || !Number.isInteger(v[0]) || !Number.isInteger(v[1])) return dflt;
+  const a = Math.max(lo, Math.min(hi, v[0])); const b = Math.max(lo, Math.min(hi, v[1]));
+  return [Math.min(a, b), Math.max(a, b)];
+};
+const effectsOf = (raw) => (Array.isArray(raw) ? raw : [])
+  .filter((e) => e && typeof e === 'object' && typeof e.set === 'string' && e.set && typeof e.expr === 'string' && e.expr.trim())
+  .map((e) => ({ set: e.set, expr: e.expr }));
+
+const DEFAULT_FORMAT = '{client} · {title} ({grade}) @+{days} +{pay}';
+
+function questConfig(schema) {
+  const q = schema?.questBoard;
+  if (!q || typeof q !== 'object' || Array.isArray(q)) return null;
+  if (typeof q.listVar !== 'string' || !q.listVar) return null;
+  const maxOffers = intIn(q.maxOffers, 3, CAPS.OFFERS_MAX, 6);
+  return {
+    label: typeof q.label === 'string' && q.label.trim() ? q.label.trim() : '의뢰판',
+    icon: typeof q.icon === 'string' && q.icon.trim() ? q.icon.trim() : '📜',
+    listVar: q.listVar,
+    format: typeof q.format === 'string' && q.format.trim() ? q.format.trim() : DEFAULT_FORMAT,
+    grades: Array.isArray(q.grades) && q.grades.length ? q.grades.map((g) => cut(g, CAPS.GRADE)).filter(Boolean) : null,
+    bands: (q.bands && typeof q.bands === 'object' && !Array.isArray(q.bands)) ? q.bands : null,
+    days: pairIn(q.days, 1, CAPS.DAYS_MAX, [1, 30]),
+    postDays: pairIn(q.postDays, 1, CAPS.DAYS_MAX, [3, 10]),
+    maxOffers,
+    minOffers: intIn(q.minOffers, 0, maxOffers, Math.min(2, maxOffers)),
+    refillEvery: intIn(q.refillEvery, 1, 20, 3),
+    unit: typeof q.unit === 'string' ? cut(q.unit, 8) : '',
+    accept: effectsOf(q.accept),
+    cancel: effectsOf(q.cancel),
+    guide: typeof q.guide === 'string' ? q.guide : '',
+    when: typeof q.when === 'string' ? q.when : '',
+    css: typeof q.css === 'string' ? q.css : '',
+  };
+}
+
+function initQuestBoard() { return { seq: 1, offers: [], log: [], stocked: false, lastFill: -1 }; }
+
+/** 상태 보장 — initState·reconcile이 부른다 (상점 ensureShops와 같은 규약) */
+function ensureQuestBoard(schema, state) {
+  if (!questConfig(schema)) return null;
+  const qb = state.questBoard;
+  if (!qb || typeof qb !== 'object' || !Array.isArray(qb.offers)) state.questBoard = initQuestBoard();
+  const s = state.questBoard;
+  s.log = Array.isArray(s.log) ? s.log : [];
+  if (typeof s.seq !== 'number' || !isFinite(s.seq)) s.seq = 1 + s.offers.reduce((m, x) => Math.max(m, x.id || 0), 0);
+  if (typeof s.lastFill !== 'number') s.lastFill = -1;
+  return s;
+}
+
+function questOpen(cfg, schema, vars, makeLookup) {
+  if (!cfg.when) return true;
+  try { return truthy(evaluate(cfg.when, makeLookup(schema, vars), null)); }
+  catch { return true; }
+}
+
+/** "지금" — 게시 마감의 기준. 시간 체계가 있으면 경과일(elapsed), 없으면 턴 수 */
+function nowOf(schema, state, makeLookup) {
+  const turn = Number(state?.meta?.turn) || 0;
+  if (timeConfig(schema) && typeof makeLookup === 'function') {
+    try {
+      const e = Number(makeLookup(schema, state.vars)('elapsed'));
+      if (isFinite(e)) return { kind: 'day', value: e, turn };
+    } catch { /* 폴백 */ }
+  }
+  return { kind: 'turn', value: turn, turn };
+}
+
+/** 보수를 등급 밴드로 클램프. 등급이 밴드 밖이면 null(거부) */
+function clampPay(cfg, grade, pay) {
+  let p = Math.round(Number(pay));
+  if (!isFinite(p) || p < 0) return null;
+  p = Math.min(p, CAPS.PAY_MAX);
+  if (cfg.bands && grade && Array.isArray(cfg.bands[grade]) && cfg.bands[grade].length === 2) {
+    const [lo, hi] = cfg.bands[grade];
+    p = Math.max(lo, Math.min(hi, p));
+  }
+  return p;
+}
+
+/** 보조가 준 게시를 규격으로 거른다 — 뇌절 방지의 실무 지점 */
+function sanitizeOffers(cfg, raw, now, rng = Math.random) {
+  const out = { offers: [], rejected: [] };
+  if (!raw || typeof raw !== 'object') return out;
+  const list = Array.isArray(raw.new) ? raw.new : Array.isArray(raw.offers) ? raw.offers : Array.isArray(raw) ? raw : [];
+  for (const it of list) {
+    if (out.offers.length >= cfg.maxOffers) break;
+    if (!it || typeof it !== 'object') continue;
+    const title = cut(it.title, CAPS.TITLE);
+    if (!title) continue;
+    const client = cut(it.client, CAPS.CLIENT) || '이름 없는 의뢰인';
+    let grade = it.grade != null ? cut(it.grade, CAPS.GRADE) : null;
+    if (cfg.grades && grade && !cfg.grades.includes(grade)) { out.rejected.push(`${title} (등급 '${grade}')`); continue; }
+    if (cfg.grades && !grade) grade = cfg.grades[0];
+    const pay = clampPay(cfg, grade, it.pay);
+    if (pay == null) { out.rejected.push(`${title} (보수 불명)`); continue; }
+    const d = Math.round(Number(it.days));
+    const days = isFinite(d) ? Math.max(cfg.days[0], Math.min(cfg.days[1], d)) : cfg.days[0];
+    // 게시 마감 — postDays 범위에서 시스템이 정한다 (보조가 정하면 "영구 게시" 뇌절)
+    const span = cfg.postDays[0] + Math.floor((rng() || 0) * (cfg.postDays[1] - cfg.postDays[0] + 1));
+    const until = (now?.value ?? 0) + Math.max(cfg.postDays[0], Math.min(cfg.postDays[1], span));
+    out.offers.push({ client, title, grade, pay, days, note: cut(it.note, CAPS.NOTE) || null, until });
+  }
+  return out;
+}
+
+/** 게시 적용 — replace(첫 게시·새로고침)는 통째 교체, 아니면 보충(append, 상한까지) */
+function applyOffers(schema, state, raw, { replace = false, now = null, rng = Math.random } = {}) {
+  const cfg = questConfig(schema);
+  if (!cfg) return { posted: 0 };
+  const qb = ensureQuestBoard(schema, state);
+  const clean = sanitizeOffers(cfg, raw, now, rng);
+  const turn = now?.turn ?? (Number(state?.meta?.turn) || 0);
+  if (!clean.offers.length) { qb.lastFill = turn; return { posted: 0, rejected: clean.rejected }; }
+  const stamped = clean.offers.map((o) => ({ id: qb.seq++, ...o }));
+  if (replace || !qb.stocked) qb.offers = stamped;
+  else {
+    // 보충 — 같은 제목은 안 겹치게, 상한까지만
+    const have = new Set(qb.offers.map((o) => o.title));
+    for (const o of stamped) {
+      if (qb.offers.length >= cfg.maxOffers) break;
+      if (have.has(o.title)) continue;
+      qb.offers.push(o); have.add(o.title);
+    }
+  }
+  qb.stocked = true;
+  qb.lastFill = turn;
+  return { posted: stamped.length, rejected: clean.rejected };
+}
+
+/** 게시 마감 걷기 — 매 턴 시스템이 (outputPhase). 반환: 걷힌 수 */
+function pruneExpired(schema, state, now) {
+  const cfg = questConfig(schema);
+  if (!cfg || !now) return 0;
+  const qb = ensureQuestBoard(schema, state);
+  const before = qb.offers.length;
+  qb.offers = qb.offers.filter((o) => !(typeof o.until === 'number' && o.until <= now.value));
+  return before - qb.offers.length;
+}
+
+/** 남은 게시일 — 패널 표기용 */
+function offerLeft(offer, now) {
+  if (!now || typeof offer?.until !== 'number') return null;
+  const n = offer.until - now.value;
+  return now.kind === 'day' ? `${Math.max(0, n)}일` : `${Math.max(0, n)}턴`;
+}
+
+/** 목록 항목 문자열 — 봇이 정한 형식 그대로 (기한·정산 기계가 이 문자열을 읽는다) */
+function formatEntry(cfg, o) {
+  const s = cfg.format
+    .replace(/\{client\}/g, o.client ?? '')
+    .replace(/\{title\}/g, o.title ?? '')
+    .replace(/\{grade\}/g, o.grade ?? '')
+    .replace(/\{pay\}/g, String(o.pay ?? ''))
+    .replace(/\{days\}/g, String(o.days ?? ''))
+    .replace(/\{note\}/g, o.note ?? '');
+  return s.replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** 거래 공통 마무리 — 통지(다음 턴 서사) + 원장 + 패널 로그 */
+function logTx(cfg, state, line, tail) {
+  const m = state.meta;
+  m.pendingNotifies = m.pendingNotifies || [];
+  m.pendingNotifies.push(`[${cfg.label}] ${line} ${tail}`);
+  m.lastChanges = [...(m.lastChanges || []), `${cfg.label}: ${line}`].slice(-12);
+  const qb = state.questBoard;   // 호출자(accept/cancel)가 ensureQuestBoard를 먼저 부른다
+  if (qb) qb.log = [line, ...(qb.log || [])].slice(0, CAPS.LOG_MAX);
+}
+
+/** 효과 적용 — [{set, expr}] 결정적. 식은 그 의뢰의 pay·days·grade를 읽을 수 있다 */
+function applyEffects(schema, state, effects, offer, makeLookup) {
+  const changes = {};
+  if (!effects.length || typeof makeLookup !== 'function') return changes;
+  const varDefs = schema.vars || [];
+  for (const e of effects) {
+    const def = varDefs.find((v) => v.id === e.set);
+    if (!def) continue;
+    const base = makeLookup(schema, state.vars);
+    const lookup = (name) => (name === 'pay' ? offer.pay : name === 'days' ? offer.days : name === 'grade' ? (offer.grade ?? '') : base(name));
+    let v;
+    try { v = evaluate(e.expr, lookup, null); } catch { continue; }
+    if (def.type === 'int' || def.type === 'float') {
+      let n = Number(v); if (!isFinite(n)) continue;
+      if (def.type === 'int') n = Math.round(n);
+      if (typeof def.min === 'number') n = Math.max(def.min, n);
+      if (typeof def.max === 'number') n = Math.min(def.max, n);
+      state.vars[e.set] = n; changes[e.set] = n;
+    } else if (def.type === 'bool') { state.vars[e.set] = truthy(v); changes[e.set] = state.vars[e.set]; }
+    else if (def.type === 'enum' || def.type === 'text') { state.vars[e.set] = String(v); changes[e.set] = state.vars[e.set]; }
+  }
+  return changes;
+}
+
+const payText = (cfg, n) => `${n}${cfg.unit}`;
+
+/** 목록 expire 식이 "지금"이다 — 그 값을 읽어 "@+N" → "@(지금+N)". 규칙이 없거나 식이 깨지면 그대로 */
+function listNow(schema, state, listId, makeLookup) {
+  const rule = (schema?.rules?.onTurn || []).find((r) => r && r.list === listId && r.expire);
+  if (!rule || typeof makeLookup !== 'function') return null;
+  try { const v = Number(evaluate(rule.expire, makeLookup(schema, state.vars), null)); return isFinite(v) ? v : null; }
+  catch { return null; }
+}
+function freezeRelative(schema, state, listId, entry, makeLookup) {
+  if (!/@\+\d/.test(entry)) return entry;
+  const now = listNow(schema, state, listId, makeLookup);
+  if (now == null) return entry;
+  return entry.replace(/@\+(\d+(?:\.\d+)?)/g, (_, n) => '@' + Math.round(now + parseFloat(n)));
+}
+
+/** 수락 — 결정적, 보조 호출 없음. 게시에서 빼 목록 변수에 형식대로 넣는다 */
+function accept(schema, state, offerId, makeLookup) {
+  const cfg = questConfig(schema);
+  if (!cfg) return { ok: false, reason: '의뢰판 없음' };
+  const qb = ensureQuestBoard(schema, state);
+  const o = qb.offers.find((x) => x.id === offerId);
+  if (!o) return { ok: false, reason: '이미 내려간 의뢰예요' };
+  const def = (schema.vars || []).find((v) => v.id === cfg.listVar);
+  const list = Array.isArray(state.vars[cfg.listVar]) ? [...state.vars[cfg.listVar]] : [];
+  const maxItems = def?.maxItems ?? 20;
+  if (list.length >= maxItems) return { ok: false, reason: `수첩이 가득 찼어요 (${maxItems}건)` };
+  let entry = formatEntry(cfg, o);
+  // "@+N"은 저장 전에 절대 경과값으로 굳힌다 — 보조 델타는 엔진(resolveRelativeExpiry)이 굳히지만 패널 삽입은
+  // 그 길을 안 지난다. 안 굳히면 (N일)이 영영 안 줄고 expire도 안 걸린다 (엔진과 같은 규약: 목록의 expire 식이 "지금")
+  entry = freezeRelative(schema, state, cfg.listVar, entry, makeLookup);
+  if (def?.itemMaxLength) entry = entry.slice(0, def.itemMaxLength);
+  if (!entry) return { ok: false, reason: '항목 형식이 비었어요' };
+  if (list.includes(entry)) return { ok: false, reason: '이미 받은 의뢰예요' };
+  list.push(entry);
+  state.vars[cfg.listVar] = list;
+  qb.offers = qb.offers.filter((x) => x.id !== offerId);
+  const changes = { [cfg.listVar]: list, ...applyEffects(schema, state, cfg.accept, o, makeLookup) };
+  const line = `「${o.client} · ${o.title}」 의뢰 수락 (보수 ${payText(cfg, o.pay)}${o.days ? ` · 기한 ${o.days}일` : ''}${o.grade ? ` · ${o.grade}` : ''}).`;
+  logTx(cfg, state, line, `${o.note ? `의뢰 내용: ${o.note} ` : ''}이번 서사에 자연스럽게 반영하라 — 의뢰인·수첩 기록은 이미 끝났으니 다시 적지 마라.`);
+  return { ok: true, line, entry, changes };
+}
+
+/** 취소(포기) — 목록 변수에서 저장 원문 그대로 뺀다. 효과(cancel)는 시스템이 */
+function cancel(schema, state, itemText, makeLookup) {
+  const cfg = questConfig(schema);
+  if (!cfg) return { ok: false, reason: '의뢰판 없음' };
+  ensureQuestBoard(schema, state);
+  const list = Array.isArray(state.vars[cfg.listVar]) ? [...state.vars[cfg.listVar]] : [];
+  const idx = list.indexOf(itemText);
+  if (idx < 0) return { ok: false, reason: '수첩에 없는 의뢰예요' };
+  list.splice(idx, 1);
+  state.vars[cfg.listVar] = list;
+  // 항목에서 보수·기한을 되읽는다 (형식 역파싱은 안 한다 — 끝수 보수·@기한만 규약). 기한은 남은 일수로
+  const pay = Number((String(itemText).match(/\+(\d+)\s*$/) || [])[1]) || 0;
+  const dueM = String(itemText).match(/@(\+?-?\d+(?:\.\d+)?)/);
+  let days = 0;
+  if (dueM) {
+    if (dueM[1].startsWith('+')) days = Math.max(0, Math.round(parseFloat(dueM[1].slice(1))));
+    else { const now = listNow(schema, state, cfg.listVar, makeLookup); days = now == null ? 0 : Math.max(0, Math.round(parseFloat(dueM[1]) - now)); }
+  }
+  const changes = { [cfg.listVar]: list, ...applyEffects(schema, state, cfg.cancel, { pay, days, grade: '' }, makeLookup) };
+  const line = `「${cut(itemText.replace(/\s*@\+?\d+.*$/, ''), 40)}」 의뢰 취소.`;
+  logTx(cfg, state, line, '의뢰인에게 알린 것으로 친다 — 이번 서사에 반응(실망·이해·다음 기회)을 자연스럽게 담아라.');
+  return { ok: true, line, changes };
+}
+
+const bandsText = (cfg) => cfg.bands
+  ? Object.entries(cfg.bands).map(([g, b]) => `${g} ${b[0]}~${b[1]}`).join(' / ') : null;
+
+/** 게시 지시 본문 — 턴 피기백(첫 게시·보충)과 수동 새로고침이 같은 규격을 쓴다 */
+function offerSpecBody(cfg, n) {
+  return [
+    `- "quests" 필드로 새 의뢰 게시("new") ${n[0]}~${n[1]}개를 내라. 각각 의뢰인(client)·제목(title)·보수(pay, 숫자 하나)·기한(days, ${cfg.days[0]}~${cfg.days[1]}일)·한 줄 내용(note).`,
+    cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
+    bandsText(cfg) ? `- 보수 밴드 (시스템이 강제한다): ${bandsText(cfg)}${cfg.unit ? ` (${cfg.unit})` : ''}.` : null,
+    cfg.guide ? `- ${cfg.guide}` : null,
+    '- 서사에 이미 나온 의뢰인·사건을 살려도 좋지만 대부분은 세계의 평범한 부탁이다. 주인공이 이미 받은 의뢰는 다시 내지 마라.',
+    '- quests 형식: {"new":[{"client":"의뢰인","title":"제목","grade":"등급","pay":숫자,"days":숫자,"note":"한 줄"}]}',
+  ].filter((x) => x !== null);
+}
+
+/** 턴 피기백 — 첫 게시는 즉시, 그 뒤엔 게시가 minOffers 아래이고 refillEvery턴이 지났을 때만 */
+function auxSpec(schema, state, makeLookup) {
+  const cfg = questConfig(schema);
+  if (!cfg) return '';
+  const qb = state.questBoard;   // 읽기 전용 (초기화는 엔진 몫)
+  if (!questOpen(cfg, schema, state.vars, makeLookup)) return '';
+  const turn = Number(state?.meta?.turn) || 0;
+  const live = qb?.offers?.length ?? 0;
+  if (qb?.stocked) {
+    if (live >= cfg.minOffers) return '';
+    if (turn - (qb.lastFill ?? -1) < cfg.refillEvery) return '';
+  }
+  const want = qb?.stocked ? [1, Math.max(1, cfg.maxOffers - live)] : [Math.min(3, cfg.maxOffers), cfg.maxOffers];
+  const head = qb?.stocked ? '보충 게시' : '첫 게시';
+  return ['', `[${cfg.label} — 의뢰판 ${head}] (필수 항목)`, ...offerSpecBody(cfg, want)].join('\n');
+}
+
+/** 패널 [새로고침] 전용 프롬프트 — 채팅 없이 보조만 (통째 교체) */
+function interactionPrompt(schema, state, kind, payload = {}) {
+  const cfg = questConfig(schema);
+  if (!cfg) return null;
+  const qb = ensureQuestBoard(schema, state);
+  return [
+    `너는 "${cfg.label}" — 이 세계의 의뢰판이다. 게시를 새로 짜라 (전부 교체 — 일부는 남겨도 된다).`,
+    '[지금 게시]',
+    qb.offers.length ? qb.offers.map((o) => `- ${o.client} · ${o.title}${o.grade ? ` (${o.grade})` : ''} ${o.pay}${cfg.unit} · ${o.days}일`).join('\n') : '(비어 있음)',
+    payload.narrative ? '[이야기 맥락]' : null,
+    payload.narrative ? String(payload.narrative).slice(0, 1600) : null,
+    '',
+    ...offerSpecBody(cfg, [Math.min(3, cfg.maxOffers), cfg.maxOffers]),
+    '',
+    '출력 형식 (JSON만, 다른 텍스트 금지): {"quests":{"new":[...]}}',
+  ].filter((x) => x !== null).join('\n');
+}
+
+function parseInteraction(text, extractJsonObject) {
+  const obj = extractJsonObject(text, 'quests');
+  return obj?.quests ?? null;
+}
+
+module.exports = {
+  CAPS, DEFAULT_FORMAT, questConfig, initQuestBoard, ensureQuestBoard, questOpen, nowOf, clampPay,
+  sanitizeOffers, applyOffers, pruneExpired, offerLeft, formatEntry, accept, cancel,
+  auxSpec, interactionPrompt, parseInteraction,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -7459,6 +7894,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
+const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
@@ -7555,6 +7991,7 @@ function initState(schema, opts = {}) {
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
   shopMod.ensureShops(schema, st); // 상점 (v0.96, v1.4.0 다중 — 단수 state.shop / 배열 state.shops[id])
+  questMod.ensureQuestBoard(schema, st); // 의뢰판 (v1.7.9)
   if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
@@ -7628,6 +8065,7 @@ function reconcileState(schema, state) {
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
+  questMod.ensureQuestBoard(schema, state); // 의뢰판 (v1.7.9) — 같은 규약
   if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
@@ -8482,7 +8920,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -8542,6 +8980,13 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
   // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
   if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
+  // 5.95 의뢰판 (v1.7.9) — 게시 마감은 매 턴 시스템이 걷고(시간 소비 뒤라 새 날짜 기준), 온 게시만 얹는다
+  if (questMod.questConfig(schema)) {
+    const qnow = questMod.nowOf(schema, state, makeLookup);
+    const gone = questMod.pruneExpired(schema, state, qnow);
+    if (gone) changeLog.push({ id: 'questBoard', from: '게시', to: `마감 ${gone}건`, source: 'system' });
+    if (quests != null) questMod.applyOffers(schema, state, quests, { now: qnow, rng });
+  }
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -9060,6 +9505,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     (!opts.allowAll && state) ? (shopMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 메신저 선톡 (v1.2.0, 옵트인) — 확률+쿨다운에 든 턴만 얹는다 (평턴 비용 0)
     (!opts.allowAll && state) ? (msgrMod.auxSpec(schema, state, makeLookup) || null) : null,
+    // 의뢰판 (v1.7.9, 옵트인) — 첫 게시·보충(minOffers 아래 + refillEvery)만 얹는다
+    (!opts.allowAll && state) ? (questMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -9095,6 +9542,7 @@ function auxHasWork(schema, state = null) {
   if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   if (shopMod.shopConfig(schema)) return true;   // 상점 첫 입고가 얹혀 간다 (v0.96)
   if (msgrMod.msgrConfig(schema)) return true;   // 메신저 선톡이 얹혀 간다 (v1.2.0)
+  if (questMod.questConfig(schema)) return true;  // 의뢰판 게시가 얹혀 간다 (v1.7.9)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -9365,6 +9813,7 @@ function parseAuxResponse(text) {
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    quests: (obj.quests && typeof obj.quests === 'object') ? obj.quests : null,  // 의뢰판 게시 (v1.7.9) — 정제는 quest 모듈이
     msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
@@ -10339,6 +10788,7 @@ class SimSession {
       detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
       board: parsed.board ?? null, // 커뮤니티 보드 델타 (v0.95) — 같은 응답에 실려 온다
       shop: parsed.shop ?? null,   // 상점 첫 입고 (v0.96) — 같은 응답에 실려 온다
+      quests: parsed.quests ?? null, // 의뢰판 게시 (v1.7.9) — 같은 응답에 실려 온다
       msgr: parsed.msgr ?? null,   // 메신저 선톡 (v1.2.0) — 같은 응답에 실려 온다
       dayPassed: parsed.dayPassed === true, // 하루 넘김 신고 (v1.7.0) — dayClose 액션을 대신 돌린다
     });
@@ -13082,6 +13532,19 @@ const SCHEMA_SHOP_RULES = [
   + '상점마다 지갑·재고·categories·when이 독립이고 우상단 버튼도 하나씩 생깁니다. `shop`(단수)과 동시에 쓰면 안 됩니다 — 1개면 단수가 간단합니다.',
 ];
 
+// 의뢰판(questBoard, v1.7.9) — 시스템 퀘스트 보드.
+const SCHEMA_QUEST_RULES = [
+  '- 의뢰판은 **보조가 의뢰를 게시하고, 수락·취소는 유저 버튼이 처리하는 패널**입니다. `listVar`(수락한 의뢰가 들어갈 list 변수)가 필수입니다.',
+  '- 수락하면 `format`대로 항목이 만들어져 listVar에 들어갑니다 — 자리표는 {client} {title} {grade} {pay} {days} {note}. '
+  + '기본은 "{client} · {title} ({grade}) @+{days} +{pay}"로, 엔진의 목록 기한 규약("@+N"은 N일 뒤 만료)과 끝수 보수를 그대로 탑니다. 봇의 기존 의뢰 형식이 있으면 그 형식으로 맞추세요.',
+  '- `grades`(등급 어휘)와 `bands`(등급별 [최소, 최대] 보수)를 정하면 **밴드 밖 보수는 시스템이 클램프**하고 어휘 밖 등급은 거부합니다. 꼭 넣으세요.',
+  '- `days`는 의뢰 기한 범위, `postDays`는 게시가 붙어 있는 기간(지나면 시스템이 걷음). 시간 체계가 없으면 턴 수 기준입니다.',
+  '- 첫 게시는 자동(턴에 얹힘), 그 뒤엔 게시가 `minOffers` 아래로 떨어지고 `refillEvery`턴이 지났을 때만 보충합니다 — 평소 비용 0. 패널 [새로고침]은 통째 교체.',
+  '- `accept`/`cancel`은 [{ "set": 변수id, "expr": 식 }] — 수락·취소 때 시스템이 적용하는 효과(취소하면 평판 -3 등). 식에서 pay·days·grade를 읽을 수 있습니다.',
+  '- 수락·취소는 다음 전송에 통지 한 줄(의뢰인·제목·보수·기한·내용)로 실려 메인이 수주 장면을 씁니다. 게시판(board)에 의뢰를 얹으면 메인이 원문을 못 받으니, 의뢰는 여기로.',
+  '- `when` 조건이 거짓이면 버튼째 숨습니다 (의뢰판이 없는 장소). `guide`에 어떤 의뢰가 붙는 곳인지·보수 감각을 적으세요.',
+];
+
 // 시나리오(scenario, v0.90) — 이야기의 척추. 생성 규칙은 루아 "중심 사건 생성기 v1.3"에서
 // 이식: 표면 상황만 / 내막·반전은 secret 칸으로 분리 / 주인공의 행동·결말 금지.
 // (그 규칙이 좋은 축을 만든다는 것은 v1.3이 실전에서 증명했다 — 설계 §1)
@@ -13711,6 +14174,11 @@ function varReferenceIndex(schema) {
     for (const e of sx) add(e?.var, tag, '환전 지갑');
     ex(s.when, tag, 'when');
   }
+  if (schema.questBoard) {
+    add(schema.questBoard.listVar, '의뢰판', '수락 목록');
+    for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
+    ex(schema.questBoard.when, '의뢰판', 'when');
+  }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
     fx(a?.onEnter, '시나리오', a?.id ?? '막');
@@ -13985,6 +14453,8 @@ const TAB_SLICES = {
   shop: { keys: ['shop', 'shops'], label: '상점' },
   // 메신저(v1.2.0) — messenger 객체 통째 교체. css·guide는 제작자 손값이라 원문 보존.
   msgr: { keys: ['messenger'], label: '메신저' },
+  // 의뢰판(v1.7.9) — questBoard 객체 통째 교체. css·guide 원문 보존 규약.
+  quest: { keys: ['questBoard'], label: '의뢰판' },
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
@@ -14007,6 +14477,7 @@ const TAB_WANT_PH = {
   calendar: '예: 마을 축제는 매년 10월 15일, 정산일은 매달 1일, 약속 목록 연결',
   board: '예: 헌터 익명 커뮤니티 — 게이트 소식과 소문, 반말 밈 말투, 게이트 안에선 갱신 정지',
   msgr: '예: 단말기 문자 — 연락처는 동료 명부와 연동, 게이트 안에선 통신 두절',
+  quest: '예: 길드 의뢰판 — 등급은 F~A, 보수는 등급별 밴드, 취소하면 평판 -3, 던전 안에선 안 보임',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
@@ -14043,6 +14514,7 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'board') { if (schema.board) out.push(['board', 1]); }
   else if (tabKey === 'shop') { if (schema.shop) out.push(['shop', 1]); if (schema.shops) out.push(['shops', schema.shops.length]); }
   else if (tabKey === 'msgr') { if (schema.messenger) out.push(['messenger', 1]); }
+  else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
   else if (tabKey === 'rules') {
@@ -14085,13 +14557,13 @@ const FEATURE_RECIPES = [
       + '살 돈이 모자라면 버튼이 잠기게 조건을 걸고, 산 물건은 소지품 목록에 들어가게 해 주세요.' }],
   },
   {
-    id: 'quest_board', icon: '📜', label: '퀘스트 보드',
-    desc: '의뢰가 뜨고, 수주를 고르고, 기한이 지나면 사라지는 한 벌',
+    id: 'quest_board', icon: '📜', label: '의뢰판',
+    desc: '보조가 의뢰를 게시하고 수락·취소는 버튼으로, 기한이 지난 의뢰는 목록에서 사라지는 한 벌',
     needs: (s) => (s.time ? null : '시간 체계가 필요합니다 — [시간] 탭에서 먼저 켜세요'),
     steps: [
-      { tab: 'vars', want: '의뢰 목록 변수(항목에 "@기한"이 붙는 list)와 평판·보수처럼 의뢰에 딸린 수치를 만들어 주세요.' },
-      { tab: 'rules', want: '가끔 새 의뢰가 붙는 랜덤 이벤트를 만들어 주세요 — 받을지 말지 고르는 갈림길을 달고, '
-        + '기한이 지난 의뢰는 목록에서 자동으로 사라지게 정리 규칙도 함께 주세요.' },
+      { tab: 'vars', want: '의뢰 목록 변수(항목에 "@+기한"이 붙는 list, 3~5칸)와 평판처럼 의뢰에 딸린 수치를 만들어 주세요.' },
+      { tab: 'quest', want: '그 목록 변수를 listVar로 쓰는 의뢰판을 만들어 주세요 — 이 세계에 맞는 등급 어휘와 등급별 보수 밴드, 취소하면 평판이 조금 깎이는 효과까지.' },
+      { tab: 'rules', want: '기한이 지난 의뢰는 목록에서 자동으로 사라지게 정리 규칙(expire)을 주세요.' },
     ],
   },
   {
@@ -14575,6 +15047,26 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "sellRate": 0.6, "when": "store_on", "perCat": [4, 6],',
       '  "units": [{ "label": "골드", "ratio": 100 }, { "label": "코퍼", "ratio": 1 }],',
       '  "guide": "E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격. 실용품 중심, 가끔 한정 상품." } }',
+      '```',
+      '');
+  } else if (tabKey === 'quest') {
+    const listsQ = (schema.vars || []).filter((v) => v.type === 'list');
+    body.push('## 의뢰판 규격', ...SCHEMA_QUEST_RULES, '',
+      '## 이미 있는 목록 변수 — listVar는 이 중에서만 고를 수 있습니다',
+      listsQ.length ? listsQ.map((v) => `- \`${v.id}\` ${v.label ?? ''}${v.desc ? ` — ${String(v.desc).slice(0, 80)}` : ''}`).join('\n') : '(없음 — [변수] 탭에서 의뢰 목록 list 변수를 먼저 만드세요)',
+      '',
+      '## ⚠ css·guide가 이미 있으면 원문 그대로 옮겨 담으세요',
+      '봇 제작자가 손으로 채운 값입니다. 고치라는 요청이 없는 한 지우지도, 지어내지도 마세요.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 목록의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "questBoard": { "label": "길드 의뢰판", "icon": "📜", "listVar": "quests",',
+      '  "format": "{client} · {title} ({grade}) @+{days} +{pay}", "unit": "G",',
+      '  "grades": ["F", "E", "D", "C", "B"], "bands": { "F": [50, 200], "E": [150, 500], "D": [500, 1500], "C": [1500, 5000], "B": [5000, 15000] },',
+      '  "days": [2, 14], "postDays": [3, 8], "maxOffers": 6, "minOffers": 2, "refillEvery": 3,',
+      '  "cancel": [{ "set": "renown", "expr": "max(renown - 3, 0)" }], "when": "not in_dungeon",',
+      '  "guide": "길드 접수대에 붙는 의뢰 — 토벌·채집·호위·심부름. 보수는 위험과 품에 비례." } }',
       '```',
       '');
   } else if (tabKey === 'time') {
@@ -15152,7 +15644,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -16181,6 +16673,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.calendar\b/, '달력', false],
     [/^\$\.board\b/, '보드', false],
     [/^\$\.shops?\b/, '상점', false],
+    [/^\$\.questBoard\b/, '의뢰판', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
@@ -17732,6 +18225,100 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
         '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
     );
+  }
+
+  // 의뢰판 (v1.7.9) — 시스템 퀘스트 보드. 규칙 #3: 엔진 기능엔 편집기 칸.
+  function tabQuest() {
+    const wrap = h('div');
+    wrap.appendChild(tabAiTools('quest'));
+    const lists = schema.vars.filter((v) => v.type === 'list');
+    const scalars = schema.vars.filter((v) => v.type !== 'list');
+    if (!schema.questBoard) {
+      wrap.appendChild(h('div', { class: 'sce-hint' },
+        '의뢰판 — 세계 안의 시스템 퀘스트 보드입니다 (길드 접수대·카페 벽보·헌터 협회 공고). 채팅 우상단에 버튼이 '
+        + '생기고, 보조 AI가 의뢰를 게시하면 유저가 [수락]·[취소] 버튼으로 받고 놓습니다. 수락한 의뢰는 봇이 정한 형식 그대로 '
+        + '목록 변수에 들어가고(기한·정산 규칙이 그대로 돕니다), 다음 전송에 의뢰인·제목·보수·기한이 통지 한 줄로 실려 '
+        + '메인 모델이 수주 장면을 씁니다. 게시판(보드)에 의뢰를 얹으면 메인이 원문을 못 받아 보수·기한을 지어내던 문제를 잡는 장치입니다.'));
+      if (!lists.length) {
+        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, '수락한 의뢰가 들어갈 목록(list 변수)이 필요합니다 — [변수] 탭에서 먼저 만드세요.'));
+        return wrap;
+      }
+      wrap.appendChild(addBtn('의뢰판 만들기', () => {
+        schema.questBoard = { label: '의뢰판', icon: '📜', listVar: lists[0].id };
+        rerender();
+      }));
+      return wrap;
+    }
+    const Q = schema.questBoard;
+    const pairStr = (v) => (Array.isArray(v) ? v.join('~') : '');
+    const parsePair = (x, lo, hi) => {
+      const m = String(x).match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+      if (!m) return null;
+      const a = Math.max(lo, Math.min(hi, parseInt(m[1], 10))); const b = Math.max(lo, Math.min(hi, parseInt(m[2], 10)));
+      return [Math.min(a, b), Math.max(a, b)];
+    };
+    const fxStr = (arr) => (Array.isArray(arr) ? arr : []).map((e) => `${e?.set ?? ''} = ${e?.expr ?? ''}`).join('; ');
+    const parseFx = (x) => {
+      const out = [];
+      for (const seg of String(x).split(';')) {
+        const m = seg.trim().match(/^([A-Za-z_][\w]*)\s*=\s*(.+)$/);
+        if (m) out.push({ set: m[1], expr: m[2].trim() });
+      }
+      return out;
+    };
+    wrap.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('의뢰판 이름', bindInput(Q.label, (x) => { Q.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '의뢰판' })),
+        pair('아이콘', bindInput(Q.icon, (x) => { Q.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📜' })),
+        pair('수락 목록', bindSelect(Q.listVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { Q.listVar = x; rerender(); }), '수락한 의뢰가 들어갈 list 변수 — 완료·납품으로 지우는 건 보조 몫이라 AI 설정에서 열어 두세요'),
+        pair('보수 단위', bindInput(Q.unit ?? '', (x) => { const t = x.trim(); if (t) Q.unit = t.slice(0, 8); else delete Q.unit; rerender(); }, { cls: 'sce-w-s', ph: 'G' })),
+      ),
+      pair('항목 형식', bindInput(Q.format ?? '', (x) => { const t = x.trim(); if (t) Q.format = t; else delete Q.format; rerender(); },
+        { cls: 'sce-w-full', ph: '{client} · {title} ({grade}) @+{days} +{pay}  (비우면 이 기본)' }),
+        '수락하면 이 형식으로 목록에 들어갑니다. 자리표 {client} {title} {grade} {pay} {days} {note} — "@+N"은 엔진 기한 규약, 끝수 보수는 정산 규약'),
+      pair('등급 어휘', bindInput((Q.grades ?? []).join(', '), (x) => {
+        const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
+        if (arr.length) Q.grades = arr; else delete Q.grades; rerender();
+      }, { cls: 'sce-w-full', ph: '심부름, 기초, 필드, 위험, 중대 — 이 밖의 등급은 시스템이 거부' }), ''),
+      pair('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
+        (x) => {
+          const bands = {};
+          for (const seg of x.split(',')) {
+            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+            if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
+          }
+          if (Object.keys(bands).length) Q.bands = bands; else delete Q.bands; rerender();
+        }, { cls: 'sce-w-full', ph: '심부름 50~200, 기초 150~500, 필드 500~1500' }),
+        '등급별 [최소~최대] — 게시 보수를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
+      h('div', { class: 'sce-row' },
+        pair('기한 범위(일)', bindInput(pairStr(Q.days), (x) => { const p = parsePair(x, 1, 365); if (p) Q.days = p; else delete Q.days; rerender(); }, { cls: 'sce-w-s', ph: '1~30' })),
+        pair('게시 유지(일)', bindInput(pairStr(Q.postDays), (x) => { const p = parsePair(x, 1, 365); if (p) Q.postDays = p; else delete Q.postDays; rerender(); }, { cls: 'sce-w-s', ph: '3~10' }),
+          '지나면 시스템이 걷습니다 (시간 체계가 없으면 턴 수)'),
+        pair('게시 상한', bindInput(Q.maxOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.maxOffers = Math.max(3, Math.min(12, n)); else delete Q.maxOffers; rerender(); }, { cls: 'sce-w-s', ph: '6' })),
+        pair('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); }, { cls: 'sce-w-s', ph: '2' }),
+          '게시가 이 아래로 떨어지면 다음 턴에 보충'),
+        pair('보충 간격(턴)', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); }, { cls: 'sce-w-s', ph: '3' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },
+          { cls: 'sce-w-l', ph: '변수 = 식; 변수 = 식  (예: stamina = stamina - 5)' }), '식에서 pay·days·grade를 읽을 수 있어요'),
+        pair('취소 효과', bindInput(fxStr(Q.cancel), (x) => { const a = parseFx(x); if (a.length) Q.cancel = a; else delete Q.cancel; rerender(); },
+          { cls: 'sce-w-l', ph: '예: renown = max(renown - 3, 0)' }), scalars.length ? `쓸 수 있는 변수: ${scalars.slice(0, 8).map((v) => v.id).join(', ')}${scalars.length > 8 ? ' …' : ''}` : ''),
+      ),
+      pair('게시 지침', bindArea(Q.guide, (x) => { Q.guide = x || undefined; rerender(); },
+        '어떤 의뢰가 붙는 곳인지, 보수 감각의 기준 (예: 심부름 50~200 — 사소한 일에 큰 돈을 매기지 마라)'), ''),
+      h('div', { class: 'sce-row' },
+        pair('노출 조건', bindInput(Q.when, (x) => { Q.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: area_tier == 0 (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
+        h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+          if (confirm('의뢰판을 지울까요? (게시 상태는 세이브에 남아 있다가 다시 켜면 이어집니다)')) { delete schema.questBoard; rerender(); }
+        } }, '의뢰판 삭제'),
+      ),
+      pair('패널 CSS', bindArea(Q.css, (x) => { Q.css = x || undefined; rerender(); },
+        '.scq-* / .sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
+    ));
+    return wrap;
   }
 
   // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
@@ -20773,7 +21360,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, body);
   }
@@ -26024,6 +26611,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const boardMod = SimCore.require('board');       // 커뮤니티 보드 (v0.95)
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
+  const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
@@ -26679,6 +27267,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   let shopBusy = false;
   // 메신저 패널 (v1.2.0) — 방 목록/방 안/방 만들기 3면 상태 머신
   let msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '' };
+  let questView = { tab: 'offers' };                // 의뢰판 (v1.7.9): 'offers' 게시 | 'mine' 수주 중
+  let questBusy = false;
   let msgrBusy = false;                             // 메신저 전용 보조 호출 진행 중
   let startPresetId = null;  // 이 캐릭터에 저장된 새 시작 프리셋 (v0.85.2 — 새 채팅마다 자동 적용)
   let startPresetKey = null; // 그 저장 키 (sim:start-preset:<캐릭터>)
@@ -27456,6 +28046,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         if (auxPrompt.includes('먼저 메시지를 보낼')) auxCap += 300;   // 메신저 선톡 (v1.2.0)
+        if (auxPrompt.includes('의뢰판 첫 게시]') || auxPrompt.includes('의뢰판 보충 게시]')) auxCap += 900; // 의뢰판 (v1.7.9)
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
@@ -27476,6 +28067,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             // 메신저 선톡 (v1.2.0) — 지연 경로에서도 적용
             if (parsed.msgr && msgrMod.msgrConfig(schema)) {
               msgrMod.applyDelta(schema, session.current, parsed.msgr);
+            }
+            // 의뢰판 게시 (v1.7.9) — 지연 경로에서도 적용
+            if (parsed.quests && questMod.questConfig(schema)) {
+              questMod.applyOffers(schema, session.current, parsed.quests, { now: questMod.nowOf(schema, session.current, engine.makeLookup) });
             }
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -27682,6 +28277,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (!shopMod.shopOpen(sh, schema, session.current?.vars || {}, engine.makeLookup)) continue;
         specs.push({ key: sh.id == null ? 'shop' : `shop_${sh.id}`, kind: 'shop', tab: sh.id, label: sh.label, icon: sh.icon });
       }
+      // 의뢰판 (v1.7.9) — 게임 패널 6호. when이 닫히면 버튼째 숨긴다 (상점 규약 — 그 자리에 의뢰판이 없다)
+      const qb = questMod.questConfig(schema);
+      if (qb && questMod.questOpen(qb, schema, session.current?.vars || {}, engine.makeLookup)) {
+        specs.push({ key: 'quest', kind: 'quest', tab: null, label: qb.label, icon: qb.icon });
+      }
       // 메신저 (v1.2.0) — 게임 패널 5호. 열람은 항상이므로 when이 닫혀도 버튼은 둔다 (보드 규약)
       const mg = msgrMod.msgrConfig(schema);
       if (mg) specs.push({ key: 'msgr', kind: 'msgr', tab: null, label: mg.label, icon: mg.icon });
@@ -27812,6 +28412,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         color:#7d8aa5; font-size:11.5px; }
       #sc-game .sch-exch-qty { flex:1; min-width:0; background:#131b2e; border:1px solid #3d5384;
         border-radius:8px; color:#e6ebf5; padding:6px 10px; font-size:13px; }
+      /* 의뢰판 (v1.7.9) — 기본 스킨 (상점 .sch-* 위에 얹는다). 봇의 questBoard.css가 덮어쓴다 */
+      #sc-game .scq-days { color:#9db8e8; font-size:11.5px; white-space:nowrap; }
+      #sc-game .scq-left { color:#7d8aa5; font-size:11px; white-space:nowrap; }
+      #sc-game .scq-cap { font-size:12px; color:#8fd6a8; margin:2px 0 6px; }
       /* 커뮤니티 보드 (v0.95) — 기본 스킨. 봇의 board.css가 덮어쓴다 */
       #sc-game .scg-card.scb-wide { width:min(640px, 100%); }
       #sc-game .scb-toolbar { display:flex; gap:6px; margin:6px 0 8px; flex-wrap:wrap; }
@@ -27954,7 +28558,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       : gameKind === 'calendar' ? schema?.calendar?.css
         : gameKind === 'board' ? schema?.board?.css
           : gameKind === 'shop' ? shopMod.shopConfig(schema, shopView?.shopId ?? undefined)?.css
-            : gameKind === 'msgr' ? schema?.messenger?.css : null;
+            : gameKind === 'msgr' ? schema?.messenger?.css
+              : gameKind === 'quest' ? schema?.questBoard?.css : null;
     el.textContent = css ? scopeCss(String(css), '#sc-game') : '';
   }
 
@@ -27978,6 +28583,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     // 상점은 열 때마다 첫 카테고리부터. 다중 상점(v1.4.0)은 버튼이 목적지 상점 id를 tab으로 들고 온다
     shopView = { shopId: kind === 'shop' ? tabId : null, cat: null, exchQty: '' };
     msgrView = { mode: 'list', roomId: null, kind: 'dm', picked: [], gname: '', draft: '' }; // 메신저는 방 목록부터
+    questView = { tab: 'offers' };   // 의뢰판은 열 때마다 게시부터
     applyGameCss();
     // 편집기 패널이 같은 컨테이너에 있다 — 겹치면 안 되므로 자리를 비켜 준다
     const editorRoot = document.getElementById('sc-root');
@@ -28007,6 +28613,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     else if (gameKind === 'board') renderBoardPanel(root);
     else if (gameKind === 'shop') renderShopPanel(root);
     else if (gameKind === 'msgr') renderMsgrPanel(root);
+    else if (gameKind === 'quest') renderQuestPanel(root);
   }
 
   // ── 초상 (v0.57) — party.portraits의 에셋 이름을 실물 이미지로 ────────────
@@ -29133,6 +29740,128 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     }
 
     if (shop.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근 거래: ' + shop.log.join(' · ')));
+    if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
+    root.appendChild(card);
+  }
+
+  // ── 의뢰판 패널 (v1.7.9) — 게임 패널 6호 ─────────────────────────
+  // 수락·취소는 보조 호출 없이 즉시 (숫자·목록은 시스템이). 새로고침만 전용 보조 호출.
+  // 통지는 meta.pendingNotifies로 다음 전송에 실리고 자동 소거 — 상점과 같은 규약.
+  async function onQuestRefresh() {
+    if (!session || !schema || questBusy) return;
+    if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
+    questBusy = true;
+    gameNotice = '⏳ 의뢰판을 새로 붙이는 중…';
+    renderGamePanel();
+    try {
+      const prompt = questMod.interactionPrompt(schema, session.current, 'refresh', { narrative: await boardNarrative() });
+      const res = await callAuxLLM(prompt, 1200);
+      if (res && res.blocked) { gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 새로고침은 쓸 수 없어요 (게시는 턴마다 채워져요)'; return; }
+      if (typeof res !== 'string') { gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요'; return; }
+      const parsed = questMod.parseInteraction(res, engine.extractJsonObject);
+      if (!parsed) { gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요'; console.log('[simcore] 의뢰판 파싱 실패:', res.slice(0, 200)); return; }
+      const r = questMod.applyOffers(schema, session.current, parsed, { replace: true, now: questMod.nowOf(schema, session.current, engine.makeLookup) });
+      await boardSaveNow('의뢰판 새로고침');
+      gameNotice = r.posted ? `✓ 새 의뢰 ${r.posted}건` + (r.rejected?.length ? ` (규격 밖 ${r.rejected.length}건 거부)` : '')
+        : '⚠ 쓸 만한 의뢰가 안 왔어요 — 다시 시도해 보세요';
+    } catch (e) {
+      gameNotice = `⚠ 의뢰판 호출 실패: ${e.message}`;
+    } finally {
+      questBusy = false;
+      renderGamePanel();
+    }
+  }
+
+  async function onQuestAccept(offerId) {
+    if (!session || !schema) return;
+    const r = questMod.accept(schema, session.current, offerId, engine.makeLookup);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) { questView.tab = 'mine'; await commitPanelChanges(r.changes, '의뢰 수락'); }
+    else renderGamePanel();
+  }
+
+  async function onQuestCancel(itemText) {
+    if (!session || !schema) return;
+    // 되돌릴 수 없는 조작 — 패널 안에서 두 번 누르기 (규칙 #6: alertConfirm은 패널에 가려진다)
+    if (questView.confirm !== itemText) { questView.confirm = itemText; gameNotice = '⚠ 한 번 더 누르면 의뢰를 포기해요'; renderGamePanel(); return; }
+    questView.confirm = null;
+    const r = questMod.cancel(schema, session.current, itemText, engine.makeLookup);
+    gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
+    if (r.ok) await commitPanelChanges(r.changes, '의뢰 취소');
+    else renderGamePanel();
+  }
+
+  function renderQuestPanel(root) {
+    const cfg = questMod.questConfig(schema);
+    if (!cfg) { root.innerHTML = ''; return; }
+    const qb = questMod.ensureQuestBoard(schema, session.current);
+    const now = questMod.nowOf(schema, session.current, engine.makeLookup);
+    root.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'scg-card scb-wide';
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const btn = (label, cls, onClick, disabled = false) => {
+      const b = el('button', cls, label);
+      b.type = 'button';
+      b.disabled = disabled || questBusy;
+      b.onclick = onClick;
+      return b;
+    };
+
+    const title = el('div', 'scg-title', `${cfg.icon} ${cfg.label}`);
+    const x = el('button', 'scg-x', '✕');
+    x.type = 'button'; x.onclick = closeGamePanel;
+    title.appendChild(x);
+    card.appendChild(title);
+
+    const listDef = schema.vars.find((v) => v.id === cfg.listVar);
+    const mine = Array.isArray(session.current.vars[cfg.listVar]) ? session.current.vars[cfg.listVar] : [];
+    const maxItems = listDef?.maxItems ?? 20;
+    card.appendChild(el('div', 'scq-cap', `📒 ${listDef?.label ?? cfg.listVar}: ${mine.length}/${maxItems}`));
+
+    const tabs = el('div', 'sch-tabs');
+    tabs.appendChild(btn(`📜 게시 (${qb.offers.length})`, `sch-tab${questView.tab === 'offers' ? ' sch-on' : ''}`, () => { questView.tab = 'offers'; questView.confirm = null; renderGamePanel(); }));
+    tabs.appendChild(btn(`📒 수주 중 (${mine.length})`, `sch-tab${questView.tab === 'mine' ? ' sch-on' : ''}`, () => { questView.tab = 'mine'; renderGamePanel(); }));
+    tabs.appendChild(btn('🔄 새로고침', 'sch-tab', onQuestRefresh));
+    card.appendChild(tabs);
+
+    if (questView.tab === 'mine') {
+      card.appendChild(el('div', 'scg-note', '완료·납품은 이야기에서 — 시스템이 정산하고 목록에서 지웁니다. 여기서는 포기만 할 수 있어요.'));
+      if (!mine.length) card.appendChild(el('div', 'scb-empty', '받은 의뢰가 없어요.'));
+      for (const item of mine) {
+        const row = el('div', 'sch-item');
+        row.appendChild(el('span', 'sch-name', engine.dueText(item, engine.listClockNow(schema, session.current, cfg.listVar))));
+        row.appendChild(btn(questView.confirm === item ? '정말 포기' : '취소', 'scb-btn', () => onQuestCancel(item)));
+        card.appendChild(row);
+      }
+    } else {
+      card.appendChild(el('div', 'scg-note', '수락하면 수첩에 오르고, 다음 이야기에 의뢰인·내용·보수·기한이 그대로 전해져요.'));
+      if (!qb.offers.length) {
+        card.appendChild(el('div', 'scb-empty', qb.stocked
+          ? '붙어 있는 의뢰가 없어요 — 다음 턴에 새로 붙거나, [🔄 새로고침].'
+          : '첫 게시 대기 중 — 다음 응답이 오면 의뢰가 붙어요. 급하면 [🔄 새로고침].'));
+      }
+      for (const o of qb.offers) {
+        const row = el('div', 'sch-item');
+        const nm = el('span', 'sch-name', `${o.client} · ${o.title}`);
+        if (o.note) nm.appendChild(el('small', null, o.note));
+        row.appendChild(nm);
+        if (o.grade) row.appendChild(el('span', 'sch-grade', o.grade));
+        row.appendChild(el('span', 'scq-days', `기한 ${o.days}일`));
+        row.appendChild(el('span', 'sch-price', `+${o.pay}${cfg.unit}`));
+        const left = questMod.offerLeft(o, now);
+        if (left != null) row.appendChild(el('span', 'scq-left', `게시 ${left}`));
+        row.appendChild(btn('수락', 'scb-btn', () => onQuestAccept(o.id), mine.length >= maxItems));
+        card.appendChild(row);
+      }
+    }
+
+    if (qb.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근: ' + qb.log.join(' · ')));
     if (gameNotice) card.appendChild(el('div', 'scg-notice', gameNotice));
     root.appendChild(card);
   }

@@ -1339,6 +1339,73 @@ function validateSchema(schema) {
     }
   }
 
+  // ── questBoard (의뢰판 v1.7.9 — 옵트인. 게시판 의뢰의 "메인이 원문을 모른다·수락이 보조 기록에만 의존한다"를 버튼으로 잡는다) ──
+  if (schema.questBoard != null) {
+    const Q = schema.questBoard; const P = '$.questBoard';
+    if (typeof Q !== 'object' || Array.isArray(Q)) err(P, 'questBoard는 객체여야 함');
+    else {
+      for (const [k, name] of [['label', '이름'], ['guide', '게시 지침'], ['css', 'CSS'], ['format', '항목 형식'], ['unit', '보수 단위']]) {
+        if (Q[k] != null && typeof Q[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (Q.icon != null && (typeof Q.icon !== 'string' || Q.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+      if (Q.unit != null && typeof Q.unit === 'string' && Q.unit.length > 8) err(`${P}.unit`, '보수 단위는 8자 이내');
+      // 수락한 의뢰가 들어갈 목록 — list 변수 필수
+      const lv = vars.find((v) => v && v.id === Q.listVar);
+      if (!Q.listVar || typeof Q.listVar !== 'string') err(`${P}.listVar`, '수락한 의뢰가 들어갈 목록 변수(listVar)가 필요합니다');
+      else if (!lv) err(`${P}.listVar`, `목록 변수 '${Q.listVar}'가 vars에 없음`);
+      else if (lv.type !== 'list') err(`${P}.listVar`, `'${Q.listVar}'는 list 타입이어야 함 (현재: ${lv.type})`);
+      else {
+        const allowed = Array.isArray(schema.updater?.allow) && schema.updater.allow.some((a) => a && a.id === Q.listVar);
+        if (!allowed) warn(`${P}.listVar`, `'${Q.listVar}'가 updater.allow에 없습니다 — 수락·취소는 버튼이 하지만, 완료·납품으로 지우는 건 보조의 몫이라 열려 있어야 합니다`);
+      }
+      const fmt = typeof Q.format === 'string' ? Q.format : '{client} · {title} ({grade}) @+{days} +{pay}';
+      if (!fmt.includes('{title}')) warn(`${P}.format`, '항목 형식에 {title}이 없습니다 — 무엇을 하는 의뢰인지 목록에 안 남습니다');
+      if (fmt.includes('@+{days}') && !timeConfig(schema)) warn(`${P}.format`, '시간 체계(time)가 없어 "@+{days}" 기한이 돌지 않습니다 — 기한을 쓰려면 [시간] 탭에서 먼저 켜세요');
+      if (Q.grades != null && (!Array.isArray(Q.grades) || !Q.grades.length || Q.grades.some((g) => typeof g !== 'string'))) {
+        err(`${P}.grades`, '등급 어휘는 문자열 배열');
+      }
+      if (Q.bands != null) {
+        if (typeof Q.bands !== 'object' || Array.isArray(Q.bands)) err(`${P}.bands`, 'bands는 { 등급: [최소, 최대] } 객체');
+        else for (const [g, band] of Object.entries(Q.bands)) {
+          if (!Array.isArray(band) || band.length !== 2 || !band.every((n) => typeof n === 'number' && n >= 0) || band[0] > band[1]) {
+            err(`${P}.bands.${g}`, '보수 밴드는 [최소, 최대] (0 이상, 최소 ≤ 최대)');
+          } else if (Array.isArray(Q.grades) && !Q.grades.includes(g)) warn(`${P}.bands.${g}`, `등급 '${g}'는 grades 어휘에 없습니다 — 이 밴드는 쓰이지 않습니다`);
+        }
+      }
+      const pairChk = (k, name, lo, hi) => {
+        if (Q[k] == null) return;
+        if (!Array.isArray(Q[k]) || Q[k].length !== 2 || !Q[k].every((n) => Number.isInteger(n) && n >= lo && n <= hi) || Q[k][0] > Q[k][1]) {
+          err(`${P}.${k}`, `${name}은 [최소, 최대] 정수 (${lo}~${hi}, 최소 ≤ 최대)`);
+        }
+      };
+      pairChk('days', '의뢰 기한 범위(days)', 1, 365);
+      pairChk('postDays', '게시 유지 기간(postDays)', 1, 365);
+      const intChk = (k, name, lo, hi) => {
+        if (Q[k] != null && (!Number.isInteger(Q[k]) || Q[k] < lo || Q[k] > hi)) err(`${P}.${k}`, `${name}은 ${lo}~${hi} 정수`);
+      };
+      intChk('maxOffers', '게시 상한(maxOffers)', 3, 12);
+      intChk('minOffers', '보충 기준(minOffers)', 0, 12);
+      intChk('refillEvery', '보충 간격(refillEvery)', 1, 20);
+      if (Number.isInteger(Q.minOffers) && Number.isInteger(Q.maxOffers) && Q.minOffers > Q.maxOffers) err(`${P}.minOffers`, 'minOffers는 maxOffers 이하');
+      // 수락·취소 효과 — [{ set, expr }]. 식은 그 의뢰의 pay·days·grade를 읽을 수 있다
+      const fxIds = new Set([...allIds, ...exposedNames, 'pay', 'days', 'grade']);
+      for (const k of ['accept', 'cancel']) {
+        if (Q[k] == null) continue;
+        if (!Array.isArray(Q[k])) { err(`${P}.${k}`, `${k}는 [{ set, expr }] 배열`); continue; }
+        Q[k].forEach((e, i) => {
+          const ep = `${P}.${k}[${i}]`;
+          if (!e || typeof e !== 'object') { err(ep, '{ set, expr } 객체여야 함'); return; }
+          const tv = vars.find((v) => v && v.id === e.set);
+          if (typeof e.set !== 'string' || !e.set) err(`${ep}.set`, '대상 변수(set)가 필요합니다');
+          else if (!tv) err(`${ep}.set`, `변수 '${e.set}'가 vars에 없음`);
+          else if (tv.type === 'list') err(`${ep}.set`, '효과는 목록 변수를 못 바꿉니다 (숫자·불·enum·text만)');
+          checkExpr(e.expr, `${ep}.expr`, fxIds, err, { allowRand: false });
+        });
+      }
+      if (Q.when != null) checkExpr(Q.when, `${P}.when`, new Set([...allIds, ...exposedNames]), err, { allowRand: false });
+    }
+  }
+
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
   // 은닉이 요점이라 검증도 그 축이다 — 영영 안 열리는 막·모델에게 새어 나갈 이름 충돌을 잡는다.

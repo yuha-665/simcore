@@ -10,13 +10,14 @@ description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
-도약 캡 철폐** → **v1.6 전투 안무**. 얼헌(얼터헌터) 개조가 이 기능들을 견인했다.
+도약 캡 철폐** → **v1.6 전투 안무** → **v1.7 하루 닫기·기한 환산·낱말 무장·시세·의뢰판**(v1.7.9). 얼헌(얼터헌터) 개조가
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **21개** (quest 추가 — build.js CORE에 shop 뒤).
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **20개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **21개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
 | 테스트 | `simcore\테스트\test-*.js` (실측 **77종, 3,850+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |

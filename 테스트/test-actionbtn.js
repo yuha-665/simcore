@@ -37,6 +37,7 @@ const calendarMod = globalThis.__SC.require('calendar');
 const boardMod = globalThis.__SC.require('board'); // v0.95 — syncUtilButtons가 보드 버튼도 본다
 const shopMod = globalThis.__SC.require('shop');   // v0.96 — 상점 버튼도
 const msgrMod = globalThis.__SC.require('messenger'); // v1.2.0 — 메신저 버튼도
+const questMod = globalThis.__SC.require('quest');   // v1.7.9 — 의뢰판 버튼도
 const engine2 = globalThis.__SC.require('engine'); // shop when 평가용 makeLookup
 if (!engine.makeLookup) engine.makeLookup = engine2.makeLookup;
 let panelBuilt = false;

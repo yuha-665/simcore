@@ -22,6 +22,7 @@ const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
+const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
@@ -118,6 +119,7 @@ function initState(schema, opts = {}) {
   // 커뮤니티 보드 (v0.95) — 첫 상태부터 빈 보드 (reconcile 없이 읽는 호출자 대비)
   if (boardMod.boardConfig(schema)) st.board = boardMod.initBoard();
   shopMod.ensureShops(schema, st); // 상점 (v0.96, v1.4.0 다중 — 단수 state.shop / 배열 state.shops[id])
+  questMod.ensureQuestBoard(schema, st); // 의뢰판 (v1.7.9)
   if (msgrMod.msgrConfig(schema)) st.msgr = msgrMod.initMsgr(); // 메신저 (v1.2.0)
   return st;
 }
@@ -191,6 +193,7 @@ function reconcileState(schema, state) {
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함
+  questMod.ensureQuestBoard(schema, state); // 의뢰판 (v1.7.9) — 같은 규약
   if (msgrMod.msgrConfig(schema)) msgrMod.ensureMsgr(state); // 메신저 (v1.2.0) — 같은 규약
   const m = (state.meta = state.meta || {});
   m.turn = m.turn ?? 0;
@@ -1045,7 +1048,7 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
@@ -1105,6 +1108,13 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
   // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
   if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
+  // 5.95 의뢰판 (v1.7.9) — 게시 마감은 매 턴 시스템이 걷고(시간 소비 뒤라 새 날짜 기준), 온 게시만 얹는다
+  if (questMod.questConfig(schema)) {
+    const qnow = questMod.nowOf(schema, state, makeLookup);
+    const gone = questMod.pruneExpired(schema, state, qnow);
+    if (gone) changeLog.push({ id: 'questBoard', from: '게시', to: `마감 ${gone}건`, source: 'system' });
+    if (quests != null) questMod.applyOffers(schema, state, quests, { now: qnow, rng });
+  }
 
   // 6. 정기 틱
   applySets(schema, state, schema.rules?.onTurn, rng, changeLog, 'onTurn');
@@ -1623,6 +1633,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     (!opts.allowAll && state) ? (shopMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 메신저 선톡 (v1.2.0, 옵트인) — 확률+쿨다운에 든 턴만 얹는다 (평턴 비용 0)
     (!opts.allowAll && state) ? (msgrMod.auxSpec(schema, state, makeLookup) || null) : null,
+    // 의뢰판 (v1.7.9, 옵트인) — 첫 게시·보충(minOffers 아래 + refillEvery)만 얹는다
+    (!opts.allowAll && state) ? (questMod.auxSpec(schema, state, makeLookup) || null) : null,
     // 다음 행동 제안 (v0.43, 옵트인) — 같은 호출에 얹어 추가 비용 없이 받는다
     schema.suggest ? '' : null,
     schema.suggest ? `- 이어서 "suggest"에 유저가 다음에 입력할 만한 행동 제안 ${Math.min(Math.max(schema.suggest.count ?? 3, 2), 4)}개를 담아라. 각각 유저 시점의 짧은 한 문장(40자 이내), 서로 다른 방향으로.${schema.suggest.guide ? ` ${schema.suggest.guide}` : ''}` : null,
@@ -1658,6 +1670,7 @@ function auxHasWork(schema, state = null) {
   if (boardMod.boardConfig(schema)) return true; // 보드 턴 갱신이 이 호출에 얹혀 간다 (v0.95)
   if (shopMod.shopConfig(schema)) return true;   // 상점 첫 입고가 얹혀 간다 (v0.96)
   if (msgrMod.msgrConfig(schema)) return true;   // 메신저 선톡이 얹혀 간다 (v1.2.0)
+  if (questMod.questConfig(schema)) return true;  // 의뢰판 게시가 얹혀 간다 (v1.7.9)
   // 이미지 — 'main'은 본 프롬프트에 직접 주입되므로 보조 호출과 무관하다.
   // 게이트가 전부 닫힌 턴에는 지시문이 비므로 그때는 부를 이유가 없다.
   if ((schema?.assets?.packs?.length ?? 0) > 0) {
@@ -1928,6 +1941,7 @@ function parseAuxResponse(text) {
       ? { ...(obj.board || {}), hot: obj.board?.hot ?? obj.hot }
       : (obj.board ?? null),
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
+    quests: (obj.quests && typeof obj.quests === 'object') ? obj.quests : null,  // 의뢰판 게시 (v1.7.9) — 정제는 quest 모듈이
     msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).

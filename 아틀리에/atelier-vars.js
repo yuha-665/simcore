@@ -247,8 +247,11 @@ const BOOK_TEMPLATE = (() => {
   const known = (list) => list.map(([n]) => `has(recipes,${q(n)})`).join(' + ');
   // 탭은 CSS만으로 — 라디오 + 라벨 + :checked ~ 페이지. 패널은 우리 화면이라 input이 살아남는다.
   // ⚠ 다시 그릴 때(상태 변화마다) 첫 탭으로 돌아온다 — 엔진이 템플릿 안 UI 상태를 기억하지 않는다.
-  const radios = BOOK_CATS.map((c, i) => `<input type="radio" name="abk-{uid}" id="abk-{uid}-${i}" class="abk-r abk-r${i}"${i === 0 ? ' checked' : ''}>`).join('');
-  const labels = BOOK_CATS.map((c, i) => `<label for="abk-{uid}-${i}" class="abk-tab">${c}<span>{${known(RECIPE_BOOK[c])}}/${RECIPE_BOOK[c].length}</span></label>`).join('');
+  // 특수연금 장부 탭 (유저: "자기만의 레시피를 창조해 조합서에 등록") — 도감이 아니라 목록 변수(inventions)를 그린다
+  const TABS = [...BOOK_CATS, '특수'];
+  const radios = TABS.map((c, i) => `<input type="radio" name="abk-{uid}" id="abk-{uid}-${i}" class="abk-r abk-r${i}"${i === 0 ? ' checked' : ''}>`).join('');
+  const labels = BOOK_CATS.map((c, i) => `<label for="abk-{uid}-${i}" class="abk-tab">${c}<span>{${known(RECIPE_BOOK[c])}}/${RECIPE_BOOK[c].length}</span></label>`).join('')
+    + `<label for="abk-{uid}-${BOOK_CATS.length}" class="abk-tab">특수<span>{count(inventions)}/12</span></label>`;
   const pages = BOOK_CATS.map((c, i) => {
     const list = RECIPE_BOOK[c];
     const groups = [];
@@ -269,8 +272,11 @@ const BOOK_TEMPLATE = (() => {
         + `<span>{${known(inLv)}}/${inLv.length}${lv > 0 ? ` · {library >= ${lv} ? '열림' : '🔒'}` : ''}</span></div>${rows}</div>`);
     }
     return `<div class="abk-page abk-p${i}">${groups.join('')}</div>`;
-  }).join('\n  ');
-  const css = BOOK_CATS.map((c, i) => `.abk .abk-r${i}:checked ~ .abk-tabs .abk-tab:nth-child(${i + 1}) { background: rgba(240,198,116,.22); color: #fff4dc; border-color: rgba(240,198,116,.6); }\n`
+  }).join('\n  ') + `
+  <div class="abk-page abk-p${BOOK_CATS.length}"><div class="abk-lv {library >= 2 ? 'open' : 'shut'}"><div class="abk-lh">특수연금 장부<span>{count(inventions)}/12 · 서고 2단부터 · {library >= 2 ? '열림' : '🔒'}</span></div>
+  <div class="abk-inv">{inventions:tags}</div>
+  <div class="abk-eff">가마 앞에서 조합서에 없는 것을 시도한다(🔮 특수연금). 재료 3~4종은 판정과 상관없이 사라지고, 발명·성공이면 재료법과 탄생물이 여기 남는다. 장부의 레시피는 적힌 재료로만 재현된다.</div></div></div>`;
+  const css = TABS.map((c, i) => `.abk .abk-r${i}:checked ~ .abk-tabs .abk-tab:nth-child(${i + 1}) { background: rgba(240,198,116,.22); color: #fff4dc; border-color: rgba(240,198,116,.6); }\n`
     + `.abk .abk-r${i}:checked ~ .abk-p${i} { display: block; }`).join('\n');
   return `
 <div class="abk">
@@ -278,7 +284,7 @@ const BOOK_TEMPLATE = (() => {
   <div class="abk-head">조합서<span class="abk-prog">{${known(BOOK_ALL)}} / ${BOOK_ALL.length} · 서고 {library}단</span></div>
   <div class="abk-tabs">${labels}</div>
   ${pages}
-  <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · 묶음 머리의 서고 단부터 배울 수 있다 · 도감 밖 레시피는 목록에만 남는다</div>
+  <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · 묶음 머리의 서고 단부터 배울 수 있다 · 도감 밖의 창작은 특수 탭(장부)에</div>
 </div>
 <style>
 .abk { font-family: Georgia, 'Nanum Myeongjo', serif; color: #ece2cc; }
@@ -315,6 +321,8 @@ ${css}
   border: 1px solid rgba(240,198,116,.18); background: rgba(0,0,0,.15); }
 .abk-m.have { color: #fff4dc; border-color: rgba(240,198,116,.55); background: rgba(240,198,116,.16); }
 .abk-foot { margin-top: 8px; font-size: 11px; color: #c9b58a; }
+.abk-inv .sim-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.abk-inv .sim-tag { font-size: 11.5px; padding: 3px 8px; border-radius: 6px; color: #fff4dc; background: rgba(190,150,240,.14); border: 1px solid rgba(190,150,240,.45); }
 </style>`;
 })();
 
@@ -518,7 +526,11 @@ const S = {
       desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **괄호 숫자는 배울 수 있는 서고(library) 단수** — 서고가 그보다 낮으면 올리지 마라 (없으면 처음부터). '
         + '**도감에 있는 것은 도감 이름 그대로** 적는다 (조합서와 짝을 맞춘다): '
         + Object.entries(RECIPE_BOOK).map(([c, l]) => `${c}=${l.map(([n, lib]) => n + (lib ? `(${lib})` : '')).join('/')}`).join(' · ')
-        + '. 도감 밖 창작 레시피도 올릴 수 있다.' },
+        + '. 도감 밖의 이름은 여기 올리지 마라 — 창작은 특수연금 장부(inventions)가 맡는다.' },
+    { id: 'inventions', label: '특수연금 장부', type: 'list', init: [], maxItems: 12, itemMaxLength: 90,
+      desc: '특수연금(invent 판정)이 발명·성공일 때만 올린다. **형식: "이름 ← 재료 · 재료 · 재료 (등급, 효과 한 줄)"** 예) "달빛 연고 ← 향기 꽃 · 기름 · 별가루 (기초, 밤눈이 밝아진다)". '
+        + '재료는 실험 당시 materials에 있던 이름만, 이름은 도감(recipes 설명의 목록)·이 장부에 없는 것, 등급은 서고 단수 이하(0~2 기초 · 3~4 고급 · 5 비전). '
+        + '불안정·실패·사고 턴엔 손대지 마라. 최대 12 — 꽉 차면 유저가 지우겠다고 한 것만 저장 원문 그대로 remove.' },
     { id: 'tools', label: '채집 도구', type: 'list', init: ['채집 바구니'], maxItems: 8, itemMaxLength: 24,
       desc: '가진 채집 도구 (곡괭이·낫·낚싯대·채집망·폭탄 망치…). 도구 수가 곧 채집 보정이다.' },
     { id: 'areas', label: '아는 채집지', type: 'list', init: ['왕도 근교 (왕도 주변 들판)'], maxItems: 12, itemMaxLength: 40,
@@ -730,6 +742,10 @@ const S = {
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. '
         + '조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라(같은 계열 대체는 한 가지까지). 조합서 밖의 것은 서사에 맡긴다.' },
+    { id: 'invent_dir', when: 'count(inventions) > 0',
+      text: '특수연금 장부: {inventions} — 이 레시피는 적힌 재료로만 재현된다(보통 조합 판정으로). 재료가 빠지면 조합서와 같이 멈춰라.' },
+    { id: 'invent_full', when: 'count(inventions) >= 12',
+      text: '특수연금 장부가 가득 찼다(12). 새 실험을 하려면 하나를 지워야 한다 — 어느 것을 버릴지는 유저가 정한다.' },
     { id: 'shelf_dir', when: 'count(shelf) > 0',
       text: '진열대에 물건이 나가 있다: {shelf} — 며칠 안에 팔릴지는 시스템이 정한다. 손님이 사 가는 장면을 지어내 돈을 더하지 마라; '
         + '"팔렸다" 통지가 왔을 때만 그 장면을 그린다. 진열대 앞을 기웃거리는 손님·흥정·구경은 자유다.' },
@@ -794,6 +810,11 @@ const S = {
     { id: 'act_synth', label: '🧪 조합', mode: 'oneshot', keywords: ['조합하', '조합한다', '조합을', '만든다', '만들어', '빚는다', '조제하'], check: 'synth', when: 'not fight_on',
       inject: '가마 앞에 선다. 재료를 넣고 마나를 흘린다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 180' }, { set: 'stamina', expr: 'stamina - 12' }] },
+    { id: 'act_invent', label: '🔮 특수연금', mode: 'oneshot', keywords: ['특수연금', '실험한다', '실험을', '새 레시피'], check: 'invent',
+      when: "location == '공방' and library >= 2 and not fight_on",
+      inject: '가마 앞에서 조합서에 없는 것을 시도한다. 소재 목록에서 3~4종을 골라 서사에 명시하고 판정과 상관없이 materials에서 뺀다 — 실험은 재료를 돌려주지 않는다. '
+        + '노리는 것의 격은 서고 단수 이하(0~2 기초 · 3~4 고급 · 5 비전). 장부가 12칸이면 새 실험 전에 하나를 지워야 한다.',
+      effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina - 24' }] },
     { id: 'act_deliver', label: '📮 납품', mode: 'oneshot', keywords: ['납품하', '납품한다', '가져다준다', '전달하', '건네준다'], check: 'deliver',
       when: 'count(quests) > 0 and area_tier == 0 and not fight_on',
       inject: '완성한 물건을 들고 의뢰인을 찾아간다.',
@@ -888,6 +909,30 @@ const S = {
             + '쓴 소재는 목록에서 빼고 완성품은 올리지 마라. 위험한 레시피(비전)일 때만 진짜 사고로 그린다 — 그래도 죽거나 영구 손상은 없다.' },
       ] },
 
+    { id: 'invent', label: '특수연금',
+      roll: 'rand(1, 20)',
+      // 설비(서고·가마) + 분야 숙련 + 단서 — 조합보다 목표치가 높다(18). 초반(서고 2·가마 1)은 성공 3할, 발명은 드물다
+      mod: 'library + cauldron + floor(sk_now / 10) + min(clues, 3) + (stamina < 30 ? -3 : 0)',
+      vs: '18',
+      grades: [
+        { when: 'total >= vs + 6', label: '발명',
+          effects: [{ set: 'last_quality', expr: "'걸작'" }, { set: 'renown', expr: 'renown + 8' }, ...skillGain(4)],
+          inject: '새 레시피가 태어났다. inventions에 "이름 ← 재료 · 재료 · 재료 (등급, 효과 한 줄)" 형식으로 올리고(이름은 도감·장부에 없는 것, 등급은 서고 단수 이하), '
+            + '완성품은 "고품질 이름"으로 items에. 무엇이 이 조합을 성립시켰는지 재료로 설명하라.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'last_quality', expr: "'상품'" }, { set: 'renown', expr: 'renown + 4' }, ...skillGain(3)],
+          inject: '됐다 — 재현할 수 있다. inventions에 같은 형식("이름 ← 재료 · 재료 (등급, 효과)")으로 올리고 완성품을 items에 올려라.' },
+        { when: 'total >= vs - 4', label: '불안정',
+          effects: [{ set: 'last_quality', expr: "'보통'" }, ...skillGain(2)],
+          inject: '무언가 나오긴 했는데 왜 됐는지 모른다 — 완성품은 items에 올리되 inventions에는 올리지 마라. 같은 재료로 다시 해도 같은 결과가 안 나온다.' },
+        { when: 'total >= vs - 9', label: '실패',
+          effects: [{ set: 'last_quality', expr: "'실패'" }, ...skillGain(1)],
+          inject: '아무것도 남지 않았다. 재료만 잃었다 — 어디서 어긋났는지 단서 하나를 남겨라. 완성품도 장부도 없다.' },
+        { label: '사고',
+          effects: [{ set: 'last_quality', expr: "'실패'" }, { set: 'stamina', expr: 'stamina - 15' }, ...skillGain(1)],
+          inject: '가마가 뒤집혔다 — 희극으로 그려라: 검댕·냄새·깨진 병·놀란 이웃. 죽거나 영구 손상은 없다. 완성품도 장부도 없다.' },
+      ] },
+
     { id: 'deliver', label: '납품',
       roll: 'rand(1, 20)',
       // 직전 조합 품질이 납품에 얹힌다 — "그 물건"이 아니라 "마지막에 만든 것"이라 납품 직전에 만들면 정확하다 (품질 개편)
@@ -968,7 +1013,7 @@ const S = {
       { id: 'bombs', maxDelta: 8 },
       { id: 'foe_tier', maxDelta: 4 }, { id: 'foe_name', maxLength: 30 },
       { id: 'quest_pay', maxGain: 15000 },
-      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'tools' }, { id: 'shelf' }, { id: 'field' },
+      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'inventions' }, { id: 'tools' }, { id: 'shelf' }, { id: 'field' },
       { id: 'areas' }, { id: 'quests' }, { id: 'allies' },
       { id: 'skip_day', maxGain: 3650 }, { id: 'skip_min', maxGain: 1440 },
     ],
@@ -979,6 +1024,7 @@ const S = {
       '의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다.',
       '의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라.',
       '서사가 재료 부족으로 조합을 시작하지 않았으면 판정 결과와 무관하게 완성품을 올리지 말고 소재도 빼지 마라.',
+      '특수연금 등록(inventions)은 판정이 발명·성공일 때만 — 불안정·실패·사고 턴엔 건드리지 마라. 이름이 도감에 있으면 등록하지 말고 그 도감 레시피를 recipes에 올려라. 재료는 실험 당시 materials에 있던 이름만.',
       '소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다.',
       '진열은 items에서 빼 shelf로 옮긴다("이름 @+팔릴날 가격"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라.',
       '매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — "고품질"은 밴드 상단, "조잡한"은 하단 근처, 접두어 없으면 중간.',
@@ -1032,7 +1078,7 @@ const S = {
       ] },
       { label: '소지', visibility: 'show', items: [
         { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' }, { var: 'shelf' }, { var: 'field' },
-        { var: 'recipes' }, { var: 'tools' },
+        { var: 'recipes' }, { var: 'inventions' }, { var: 'tools' },
       ] },
       { label: '여정', visibility: 'show', items: [
         { var: 'area_tier' }, { var: 'areas' },
@@ -1710,6 +1756,34 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
     && shopMod.shopConfig(S, 'shade').sellFrom === 'materials', '');
 }
 
+console.log('\n━━ 특수연금 — 자기 레시피를 장부에 (12칸) ━━');
+{
+  const a = S.actions.find((x) => x.id === 'act_invent');
+  ok('특수연금 액션 (공방 · 서고 2단 · 전투 아님 · 낱말 무장)', a && a.check === 'invent' && a.when.includes('library >= 2') && a.keywords.includes('특수연금'), '');
+  let t = fresh(); t.vars.location = '공방'; t.vars.library = 1;
+  ok('서고 1단이면 버튼이 잠긴다', !engine.actionAvailability(S, t, a).ok, JSON.stringify(engine.actionAvailability(S, t, a)));
+  t.vars.library = 2;
+  ok('서고 2단이면 열린다', engine.actionAvailability(S, t, a).ok, '');
+  const c = S.checks.find((x) => x.id === 'invent');
+  ok('등급 5단 (발명·성공·불안정·실패·사고)', c.grades.map((g) => g.label).join('/') === '발명/성공/불안정/실패/사고', '');
+  ok('불안정·실패·사고는 장부에 안 올린다', c.grades[2].inject.includes('inventions에는 올리지') && c.grades[3].inject.includes('장부도 없다') && c.grades[4].inject.includes('장부도 없다'), '');
+  ok('조합보다 어렵다 (목표 18 > 기초 10)', Number(c.vs) === 18, c.vs);
+  const inv = S.vars.find((v) => v.id === 'inventions');
+  ok('장부 12칸 · 보조가 쓴다 · 형식 규칙', inv.maxItems === 12 && S.updater.allow.some((x) => x.id === 'inventions') && inv.desc.includes('이름 ← 재료'), '');
+  t.vars.inventions = ['달빛 연고 ← 향기 꽃 · 기름 · 별가루 (기초, 밤눈이 밝아진다)'];
+  const p = engine.sendPhase(S, t, { rng: seededRng('a', 400, 's') }).promptBlock;
+  ok('장부가 있으면 재현 규칙 지시문 (재료 포함)', p.includes('달빛 연고 ← 향기 꽃') && p.includes('적힌 재료로만'), '');
+  ok('12칸 차면 지우라는 지시문', (() => { const u = fresh(); u.vars.inventions = Array.from({ length: 12 }, (_, i) => `실험 ${i} ← 돌 (기초, x)`); return engine.sendPhase(S, u, { rng: seededRng('a', 401, 's') }).promptBlock.includes('장부가 가득 찼다'); })(), '');
+  ok('조합서 특수 탭 (장부 칩 · N/12 · 서고 2단 잠금)', BOOK_TEMPLATE.includes('abk-r6') && BOOK_TEMPLATE.includes('{inventions:tags}') && BOOK_TEMPLATE.includes('{count(inventions)}/12') && BOOK_TEMPLATE.includes("library >= 2 ? 'open' : 'shut'"), '');
+  const html2 = SC.require('render').renderPanelTemplate(S, t, BOOK_TEMPLATE);
+  ok('렌더: 장부 항목이 칩으로 (sim-tag)', html2.includes('달빛 연고') && html2.includes('sim-tag'), html2.slice(html2.indexOf('abk-inv'), html2.indexOf('abk-inv') + 160));
+  // 실제 판정 — 서고 5·가마 5·단서 3이면 발명이 나온다 (보정 13 → 총 14~33 vs 18)
+  t = fresh(); t.vars.location = '공방'; t.vars.library = 5; t.vars.cauldron = 5; t.vars.clues = 3; t.vars.stamina = 90;
+  t = engine.toggleAction(S, t, 'act_invent').state;
+  const r = turn(t, {}, 402);
+  ok('판정이 돌고 품질이 남는다 · 체력 -24 · 4시간', r.st.vars.last_quality !== '—' && r.st.vars.stamina <= 66, JSON.stringify([r.st.vars.last_quality, r.st.vars.stamina]));
+}
+
 console.log('\n━━ 의뢰판 — 보조가 붙이고 버튼으로 받는다 ━━');
 {
   const questMod = SC.require('quest');
@@ -2039,7 +2113,7 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   ok('미치환 자리표시자 없음', leftover.length === 0, leftover.slice(0, 3).join(' '));
   ok('진행도 2 / 130 · 서고 0단', html.includes('2 / 130 · 서고 0단'), '');
   // 분야 탭 — CSS 라디오. 스크롤 압박을 끊는다 (유저 제보)
-  ok('분야 탭 6개 (라디오 + 라벨), 첫 탭이 켜져 있다', (html.match(/type="radio"/g) || []).length === 6 && (html.match(/class="abk-tab"/g) || []).length === 6
+  ok('분야 탭 6 + 특수 1 = 7 (라디오 + 라벨), 첫 탭이 켜져 있다', (html.match(/type="radio"/g) || []).length === 7 && (html.match(/class="abk-tab"/g) || []).length === 7
     && html.includes('id="abk-scg-0" class="abk-r abk-r0" checked'), '');
   ok('탭 라벨에 분야 진행도 (약품 1/36)', html.includes('약품<span>1/36</span>'), '');
   ok('페이지는 기본 숨김, 켜진 탭만 보인다 (CSS)', html.includes('#sc-game .abk-page{') && html.includes('.abk-r0:checked ~ .abk-p0{'), '');

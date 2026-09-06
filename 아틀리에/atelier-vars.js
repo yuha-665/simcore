@@ -656,47 +656,49 @@ const S = {
       text: '모아 둔 실마리가 하나의 그림을 향한다. 백색 혜성과 잊혀진 연금술의 조각을 조금씩, 답이 아니라 다음 질문의 형태로 흘려라.' },
   ],
 
+  // keywords(v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 무장. "버튼 안 누르면 판정 없이 서사로만 지나간다"(실기)의 답.
+  // 활용형으로 적는다 — 어간만 두면 "조합서"·"채집지" 같은 명사에 오발한다.
   actions: [
-    { id: 'act_gather', label: '⛏ 채집', mode: 'oneshot', check: 'gather',
+    { id: 'act_gather', label: '⛏ 채집', mode: 'oneshot', keywords: ['채집하', '채집한다', '캐러', '캔다', '뜯는다', '줍는다', '낚시한다', '낚시를'], check: 'gather',
       when: 'area_tier >= 1 and not fight_on',
       inject: '채집에 나선다. 얼마나 거뒀는지는 판정이 정한다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina - 15' }] },
-    { id: 'act_survey', label: '🔍 탐사', mode: 'oneshot', check: 'survey',
+    { id: 'act_survey', label: '🔍 탐사', mode: 'oneshot', keywords: ['탐사하', '탐사한다', '조사하', '조사한다', '살펴본다'], check: 'survey',
       when: 'area_tier >= 2 and not fight_on',
       inject: '유적·이상 지대를 살핀다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 300' }, { set: 'stamina', expr: 'stamina - 20' }] },
-    { id: 'act_synth', label: '🧪 조합', mode: 'oneshot', check: 'synth', when: 'not fight_on',
+    { id: 'act_synth', label: '🧪 조합', mode: 'oneshot', keywords: ['조합하', '조합한다', '조합을', '만든다', '만들어', '빚는다', '조제하'], check: 'synth', when: 'not fight_on',
       inject: '가마 앞에 선다. 재료를 넣고 마나를 흘린다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 180' }, { set: 'stamina', expr: 'stamina - 12' }] },
-    { id: 'act_deliver', label: '📮 납품', mode: 'oneshot', check: 'deliver',
+    { id: 'act_deliver', label: '📮 납품', mode: 'oneshot', keywords: ['납품하', '납품한다', '가져다준다', '전달하', '건네준다'], check: 'deliver',
       when: 'count(quests) > 0 and area_tier == 0 and not fight_on',
       inject: '완성한 물건을 들고 의뢰인을 찾아간다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 90' }] },
-    { id: 'act_fight', label: '⚔ 교전', mode: 'oneshot', check: 'battle',
+    { id: 'act_fight', label: '⚔ 교전', mode: 'oneshot', keywords: ['싸운다', '공격하', '공격한다', '던진다', '맞선다', '덤빈다'], check: 'battle',
       inject: '맞선다.' },
-    { id: 'act_flee', label: '🏃 이탈', mode: 'oneshot', fightEnd: true, check: 'guard', when: 'fight_on',
+    { id: 'act_flee', label: '🏃 이탈', mode: 'oneshot', keywords: ['도망친다', '도망간다', '물러난다', '달아난다', '빠져나간다'], fightEnd: true, check: 'guard', when: 'fight_on',
       inject: '물러날 자리를 찾는다.' },
     // ── 이동 — 버튼이 곧 안내다: 상점은 when으로 열려서 위치를 안 옮기면 버튼조차 안 보인다 (실기 제보) ──
-    { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', when: "location != '공방' and not fight_on",
+    { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', keywords: ['공방으로 돌아', '공방으로 간다', '공방에 돌아'], when: "location != '공방' and not fight_on",
       inject: '공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.',
       effects: [{ set: 'location', expr: "'공방'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
-    { id: 'go_town', label: '🏙 왕도로', mode: 'oneshot', when: "location != '왕도' and not fight_on",
+    { id: 'go_town', label: '🏙 왕도로', mode: 'oneshot', keywords: ['왕도로 간다', '왕도로 나간다', '왕도로 향한다', '왕도에 간다'], when: "location != '왕도' and not fight_on",
       inject: '왕도로 향한다. 도착한 거리의 풍경 — 상점가·씨앗 상사·어시장 좌판·별의 고치 카페가 있는 곳이다. 살 것과 팔 것이 여기 있다.',
       effects: [{ set: 'location', expr: "'왕도'" }, { set: 'skip_min', expr: 'skip_min + 90' }, { set: 'stamina', expr: 'stamina - 3' }] },
-    { id: 'go_shade', label: '🌑 뒷골목으로', mode: 'oneshot',
+    { id: 'go_shade', label: '🌑 뒷골목으로', mode: 'oneshot', keywords: ['뒷골목으로', '뒷골목에 간다'],
       when: "location != '왕도 뒷골목' and not fight_on and (renown >= 100 or clues >= 1)",
       inject: '왕도 뒷골목으로 든다 — 월영회의 그늘, 출처를 묻지 않는 거래처가 있는 곳. 낮에도 어둡다.',
       effects: [{ set: 'location', expr: "'왕도 뒷골목'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
-    { id: 'go_field', label: '🌿 들판으로', mode: 'oneshot', when: "location != '왕도 주변 들판' and not fight_on",
+    { id: 'go_field', label: '🌿 들판으로', mode: 'oneshot', keywords: ['들판으로', '들판에 간다', '근교로'], when: "location != '왕도 주변 들판' and not fight_on",
       inject: '왕도 근교 들판으로 나선다 — 약초·풀·꽃이 나는 곳, 푸니 정도가 어슬렁거린다. 더 깊이 갈지는 여기서 정한다.',
       effects: [{ set: 'location', expr: "'왕도 주변 들판'" }, { set: 'skip_min', expr: 'skip_min + 90' }, { set: 'stamina', expr: 'stamina - 5' }] },
-    { id: 'go_river', label: '🌊 강가로', mode: 'oneshot', when: "location != '강가·폭포' and not fight_on",
+    { id: 'go_river', label: '🌊 강가로', mode: 'oneshot', keywords: ['강가로', '강으로 간다', '폭포로'], when: "location != '강가·폭포' and not fight_on",
       inject: '강가로 나선다 — 물 소재와 낚시, 낚시꾼 오두막(미끼 상점)이 있는 곳. 미끼가 있으면 값을 한다.',
       effects: [{ set: 'location', expr: "'강가·폭포'" }, { set: 'skip_min', expr: 'skip_min + 120' }, { set: 'stamina', expr: 'stamina - 8' }] },
-    { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', when: 'not fight_on',
+    { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', keywords: ['쉰다', '휴식한다', '숨을 돌린다', '눕는다'], when: 'not fight_on',
       inject: '숨을 돌린다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina + 35' }] },
-    { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', dayClose: true, when: 'not fight_on',
+    { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', keywords: ['잠든다', '자러 간다', '하루를 마친다', '잠자리에'], dayClose: true, when: 'not fight_on',
       inject: '하루를 접는다. 다음 장면은 하루가 지난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'skip_day', expr: 'skip_day + 1' }, { set: 'stamina', expr: 'stamina + 45' },
         { set: 'location', expr: "'공방'" }, { set: 'harvest_due', expr: 'garden' }] },
@@ -1592,6 +1594,24 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 낱말 자동 무장 — 버튼을 안 눌러도 글이 곧 버튼 ━━');
+{
+  ok('액션 13개 전부 낱말이 있다', S.actions.every((a) => Array.isArray(a.keywords) && a.keywords.length >= 2), S.actions.filter((a) => !a.keywords).map((a) => a.id).join(' '));
+  let t = fresh(); t.vars.location = '왕도 주변 들판';
+  let r = engine.autoArmActions(S, t, '바구니를 들고 약초를 채집하러 나선다');
+  ok('"채집하러" → ⛏ 채집 무장', r.armed.join(',') === 'act_gather', JSON.stringify(r));
+  r = engine.autoArmActions(S, fresh(), '조합서를 펼쳐 레시피를 훑어본다');
+  ok('"조합서"엔 조합이 안 걸린다', r.armed.length === 0, JSON.stringify(r.armed));
+  r = engine.autoArmActions(S, fresh(), '가마 앞에서 힐링 살브를 조합한다');
+  ok('"조합한다" → 🧪 조합 무장', r.armed.join(',') === 'act_synth', JSON.stringify(r.armed));
+  r = engine.autoArmActions(S, fresh(), '짐을 꾸려 왕도로 간다');
+  ok('"왕도로 간다" → 🏙 왕도로 무장', r.armed.join(',') === 'go_town', JSON.stringify(r.armed));
+  r = engine.autoArmActions(S, fresh(), '공방에서 채집한다');
+  ok('공방(격 0)에선 채집이 조건 미충족으로 건너뛴다', r.armed.length === 0 && r.skipped[0]?.id === 'act_gather', JSON.stringify(r.skipped));
+  const v = validateSchema(S);
+  ok('낱말이 액션끼리 안 겹친다 (경고 없음)', !v.warnings.some((w) => /keywords/.test(w.path)), JSON.stringify(v.warnings.filter((w) => /keywords/.test(w.path))));
 }
 
 console.log('\n━━ 이동 — 버튼이 곧 안내 (상점이 있는지도 모르는 문제) ━━');

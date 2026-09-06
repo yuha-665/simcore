@@ -6301,6 +6301,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
         ),
+        // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 그 턴에 켜진다
+        h('div', { class: 'sce-row' },
+          pair('자동 무장 낱말', bindInput((a.keywords || []).join(', '),
+            (x) => { const ks = String(x).split(',').map((s) => s.trim()).filter(Boolean); if (ks.length) a.keywords = ks; else delete a.keywords; rerender(); },
+            { cls: 'sce-w-l', ph: '채집하, 캐러, 뜯 (쉼표로)' }),
+            '유저 글에 이 낱말이 있으면 버튼을 안 눌러도 그 턴에 켜진다 — 조건·쿨다운은 그대로. "조합서"에 "조합"이 걸리듯 짧은 낱말은 오발 주의'),
+        ),
         // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
         h('div', { class: 'sce-row' },
           bindCheck(a.dayClose === true, (x) => { if (x) a.dayClose = true; else delete a.dayClose; rerender(); },

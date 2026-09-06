@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.6
-//@display-name SimCore (시뮬 엔진) v1.7.6 넓은 편성표 패널
+//@version 1.7.7
+//@display-name SimCore (시뮬 엔진) v1.7.7 낱말 자동 무장
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.7 ────────────────────────────────────────────────
+// **낱말 자동 무장** actions[].keywords (아틀리에 실기: "버튼을 안 누르면 채집·조합·납품·교전이 판정 없이
+// 서사로만 지나간다 — 버튼 없이도 되게 못 하나"). 유저 글에 그 낱말이 있으면 input 훅에서 그 액션을
+// 무장한다 — 유저가 글로 밝힌 의도가 곧 버튼. 이미 무장이면 손대지 않고(끄지 않음), when·쿨다운은
+// toggleAction 그대로(막히면 로그에 이유). 검증(문자열 배열·한 글자 경고·중복 경고) · 편집기 액션 칸 · schema.md.
+// input 훅이 이제 '/' 없는 글도 본다 — 스키마에 keywords가 하나도 없으면 전처럼 바로 돌려준다.
 //
 // ── v1.7.6 ────────────────────────────────────────────────
 // **편성표 패널 너비 옵션** party.wide (아틀리에 실기 제보: 조합서 분야 탭 6개가 440px에서 두 줄로 꺾인다).
@@ -3865,6 +3872,12 @@ function validateSchema(schema) {
     if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+    // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 무장
+    if (a.keywords != null) {
+      if (!Array.isArray(a.keywords) || !a.keywords.length || a.keywords.some((k) => typeof k !== 'string' || !k.trim()))
+        err(p + '.keywords', 'keywords는 빈칸 없는 문자열 배열 — 유저 글에 이 낱말이 있으면 버튼 없이 무장');
+      else if (a.keywords.some((k) => k.trim().length < 2)) warn(p + '.keywords', '한 글자 낱말은 아무 글에나 걸립니다');
+    }
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
     // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
@@ -3876,6 +3889,17 @@ function validateSchema(schema) {
       warn(p + '.fightEnd', 'fight 달린 판정이 없어 닫을 교전이 없습니다 — checks[].fight를 먼저 두세요');
     checkRef(a, p);
   });
+  {
+    // 낱말 자동 무장 — 같은 낱말이 두 액션에 있으면 한 글에 둘 다 켜진다
+    const seen = new Map();
+    (schema.actions || []).forEach((a, i) => {
+      for (const k of (a && Array.isArray(a.keywords) ? a.keywords : [])) {
+        const kk = String(k).trim(); if (!kk) continue;
+        if (seen.has(kk)) warn(`$.actions[${i}].keywords`, `'${kk}'가 ${seen.get(kk)}에도 있습니다 — 한 글에 둘 다 무장됩니다`);
+        else seen.set(kk, a.id);
+      }
+    });
+  }
   {
     // 하루 닫기 (v1.7.0) — 정산이 한 벌이어야 날짜가 안 튄다. 둘이면 어느 쪽이 대리로 돌지 모른다
     const dcs = (schema.actions || []).filter((a) => a && a.dayClose === true);
@@ -8621,6 +8645,25 @@ function toggleAction(schema, prevState, actionId) {
   return { state, armed: true };
 }
 
+// ── 낱말 자동 무장 (v1.7.7) — 유저 글에 액션의 keywords가 있으면 버튼을 안 눌러도 그 턴에 무장 ──
+// 판정(채집·조합·납품·교전)은 버튼이 유일한 통로였다 — "버튼 안 누르면 서사로만 지나가 주사위가 안 구른다"
+// (아틀리에 실기). 유저가 글로 의도를 밝히면 그게 곧 버튼이다. 이미 무장이면 손대지 않고(끄지 않는다),
+// when·쿨다운은 toggleAction이 그대로 본다 — 조건 미충족이면 skipped에 이유가 남는다.
+function autoArmActions(schema, prevState, text) {
+  const acts = (schema?.actions || []).filter((a) => a && Array.isArray(a.keywords) && a.keywords.length);
+  const t = String(text || '');
+  if (!acts.length || !t.trim()) return { state: prevState, armed: [], skipped: [] };
+  let state = prevState;
+  const armed = [], skipped = [];
+  for (const a of acts) {
+    if (!a.keywords.some((k) => k && t.includes(String(k)))) continue;
+    if (state.meta?.armed?.[a.id]) continue;
+    const r = toggleAction(schema, state, a.id);
+    if (r.armed) { state = r.state; armed.push(a.id); } else skipped.push({ id: a.id, reason: r.blocked || '?' });
+  }
+  return { state, armed, skipped };
+}
+
 function actionAvailability(schema, state, action) {
   if (action.cooldown != null) {
     const last = state.meta.actionLastUsed[action.id];
@@ -9278,7 +9321,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
+  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -17964,6 +18007,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ),
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
+        ),
+        // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 그 턴에 켜진다
+        h('div', { class: 'sce-row' },
+          pair('자동 무장 낱말', bindInput((a.keywords || []).join(', '),
+            (x) => { const ks = String(x).split(',').map((s) => s.trim()).filter(Boolean); if (ks.length) a.keywords = ks; else delete a.keywords; rerender(); },
+            { cls: 'sce-w-l', ph: '채집하, 캐러, 뜯 (쉼표로)' }),
+            '유저 글에 이 낱말이 있으면 버튼을 안 눌러도 그 턴에 켜진다 — 조건·쿨다운은 그대로. "조합서"에 "조합"이 걸리듯 짧은 낱말은 오발 주의'),
         ),
         // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
         h('div', { class: 'sce-row' },
@@ -26723,27 +26773,39 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // [live-test] 'input' 훅이 유저 메시지 저장 전에 걸리는지, 반환값이 실제로 반영되는지 확인 필요.
   await Risuai.addRisuScriptHandler('input', async (content) => {
     try {
-      if (!content || !content.includes('/')) return content;
-      await loadForCurrentChar();
+      if (!content || !content.trim()) return content;
+      const hasCmd = content.includes('/');
+      // 낱말 자동 무장(v1.7.7)은 '/' 없는 글도 봐야 한다 — 스키마에 keywords가 없으면 전처럼 바로 돌려준다
+      if (!hasCmd) { await loadForCurrentChar(); if (!(schema?.actions || []).some((a) => Array.isArray(a.keywords) && a.keywords.length)) return content; }
+      else await loadForCurrentChar();
       if (!session || !schema) return content;
       await flushOutputSettle();   // 미확정 스트리밍 턴이 있으면 그 결과 위에 명령을 얹는다
+      const persist = async () => {
+        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+        const chaIdx = await Risuai.getCurrentCharacterIndex();
+        const chatIdx = await Risuai.getCurrentChatIndex();
+        await mirrorVars(chaIdx, chatIdx);
+        if (panelBuilt) renderPanel();
+      };
+      // ⓪-1 낱말 자동 무장 (v1.7.7) — 유저 글에 액션 낱말이 있으면 버튼 없이 그 턴에 켠다
+      let touched = false;
+      const kw = engine.autoArmActions(schema, session.current, content);
+      if (kw.armed.length) { session.current = kw.state; touched = true; console.log('[simcore] 낱말 무장', kw.armed.join(', ')); }
+      if (kw.skipped.length) console.log('[simcore] 낱말 무장 건너뜀', kw.skipped.map((x) => `${x.id}(${x.reason})`).join(', '));
+      if (!hasCmd) { if (touched) await persist(); return content; }
       const r = engine.applyChatCommands(schema, session.current, content);
       // ⚠ 상태가 안 바뀌어도 **엔진이 우리 명령으로 알아본 줄**은 답을 돌려줘야 한다.
       // 도움말(`/날짜`), 오류('읽을 수 없음'), 거부('쿨다운') 응답이 전부 여기 온다 —
       // applied 개수로 끊고 있어서 그것들이 통째로 버려졌고, 유저 글 '/날짜'가 그대로
       // 모델에게 나갔다(실측: "인풋에 치니 그냥 채팅이 보내진다"). 모르는 명령은 엔진이
       // 손대지 않으므로 text가 달라졌다 = 우리 명령이었다는 뜻이다.
-      if (!r.applied.length) return r.text !== content ? r.text : content;
+      if (!r.applied.length) { if (touched) await persist(); return r.text !== content ? r.text : content; }
       session.current.vars = r.vars;
       // /선택은 기록만 — 집행은 다음 전송 단계(sendPhase)가 한다. pre 스냅샷에 실려 리롤에도 산다.
       if (r.pick != null) session.current.meta = { ...session.current.meta, pendingChoicePick: r.pick };
       // /액션이 무장을 바꿨으면 meta 통째로 반영 (toggleAction이 만든 새 meta)
       if (r.meta) session.current.meta = r.pick != null ? { ...r.meta, pendingChoicePick: r.pick } : r.meta;
-      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
-      const chaIdx = await Risuai.getCurrentCharacterIndex();
-      const chatIdx = await Risuai.getCurrentChatIndex();
-      await mirrorVars(chaIdx, chatIdx);
-      if (panelBuilt) renderPanel();
+      await persist();
       console.log('[simcore] 채팅 명령', r.applied.map((a) => `${a.id} ${a.how}`).join(', '));
       return r.text;
     } catch (e) {

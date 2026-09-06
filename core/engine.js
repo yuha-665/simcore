@@ -1260,6 +1260,25 @@ function toggleAction(schema, prevState, actionId) {
   return { state, armed: true };
 }
 
+// ── 낱말 자동 무장 (v1.7.7) — 유저 글에 액션의 keywords가 있으면 버튼을 안 눌러도 그 턴에 무장 ──
+// 판정(채집·조합·납품·교전)은 버튼이 유일한 통로였다 — "버튼 안 누르면 서사로만 지나가 주사위가 안 구른다"
+// (아틀리에 실기). 유저가 글로 의도를 밝히면 그게 곧 버튼이다. 이미 무장이면 손대지 않고(끄지 않는다),
+// when·쿨다운은 toggleAction이 그대로 본다 — 조건 미충족이면 skipped에 이유가 남는다.
+function autoArmActions(schema, prevState, text) {
+  const acts = (schema?.actions || []).filter((a) => a && Array.isArray(a.keywords) && a.keywords.length);
+  const t = String(text || '');
+  if (!acts.length || !t.trim()) return { state: prevState, armed: [], skipped: [] };
+  let state = prevState;
+  const armed = [], skipped = [];
+  for (const a of acts) {
+    if (!a.keywords.some((k) => k && t.includes(String(k)))) continue;
+    if (state.meta?.armed?.[a.id]) continue;
+    const r = toggleAction(schema, state, a.id);
+    if (r.armed) { state = r.state; armed.push(a.id); } else skipped.push({ id: a.id, reason: r.blocked || '?' });
+  }
+  return { state, armed, skipped };
+}
+
 function actionAvailability(schema, state, action) {
   if (action.cooldown != null) {
     const last = state.meta.actionLastUsed[action.id];
@@ -1917,7 +1936,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
+  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

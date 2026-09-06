@@ -675,6 +675,12 @@ function validateSchema(schema) {
     if (a.when != null) checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     (a.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
     if (a.cooldown != null && (typeof a.cooldown !== 'number' || a.cooldown < 0)) err(p, 'cooldown은 0 이상');
+    // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 무장
+    if (a.keywords != null) {
+      if (!Array.isArray(a.keywords) || !a.keywords.length || a.keywords.some((k) => typeof k !== 'string' || !k.trim()))
+        err(p + '.keywords', 'keywords는 빈칸 없는 문자열 배열 — 유저 글에 이 낱말이 있으면 버튼 없이 무장');
+      else if (a.keywords.some((k) => k.trim().length < 2)) warn(p + '.keywords', '한 글자 낱말은 아무 글에나 걸립니다');
+    }
     // 막간 (v1.5.0) — 이 액션이 발동한 턴엔 주인공이 등장하지 않는다 (지시문 + 페르소나 칸 제거)
     if (a.offstage != null && typeof a.offstage !== 'boolean') err(p + '.offstage', 'offstage는 true/false');
     // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
@@ -686,6 +692,17 @@ function validateSchema(schema) {
       warn(p + '.fightEnd', 'fight 달린 판정이 없어 닫을 교전이 없습니다 — checks[].fight를 먼저 두세요');
     checkRef(a, p);
   });
+  {
+    // 낱말 자동 무장 — 같은 낱말이 두 액션에 있으면 한 글에 둘 다 켜진다
+    const seen = new Map();
+    (schema.actions || []).forEach((a, i) => {
+      for (const k of (a && Array.isArray(a.keywords) ? a.keywords : [])) {
+        const kk = String(k).trim(); if (!kk) continue;
+        if (seen.has(kk)) warn(`$.actions[${i}].keywords`, `'${kk}'가 ${seen.get(kk)}에도 있습니다 — 한 글에 둘 다 무장됩니다`);
+        else seen.set(kk, a.id);
+      }
+    });
+  }
   {
     // 하루 닫기 (v1.7.0) — 정산이 한 벌이어야 날짜가 안 튄다. 둘이면 어느 쪽이 대리로 돌지 모른다
     const dcs = (schema.actions || []).filter((a) => a && a.dayClose === true);

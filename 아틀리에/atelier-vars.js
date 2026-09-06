@@ -106,6 +106,7 @@ const RECIPE_BOOK = {
     ['글로브', 4, '고급', '별의 힘을 담은 구체 폭탄', ['보석', '고급 화약', '강력 촉매']],
     ['드라코 봄', 5, '비전', '용의 불 — 맹렬한 화염과 방어 약화', ['드래곤 비늘', '강력 화약', '불의 돌']],
     ['차원 폭탄', 5, '비전', '공간이 뒤틀리는 폭발 — 이야기가 허락할 때만', ['희귀 결정', '별의 조각', '고급 화약']],
+    ['서리 폭탄', 3, '고급', '겨울 한정 — 서리 결정으로 빚는 냉기 폭탄', ['서리 결정', '화약', '중화제 청']],
   ],
   약품: [
     ['힐링 살브', 0, '기초', '바르는 약 — 베임·타박·화상', ['약초', '기름', '맑은 물', '밀랍']],
@@ -124,6 +125,8 @@ const RECIPE_BOOK = {
     ['드래곤즈 시크릿', 5, '비전', '용의 힘으로 극심한 피로를 걷는다', ['드래곤 비늘', '희귀 약초', '정제수']],
     ['홀리 챌리스', 5, '비전', '정화의 잔 — 저주·맹독·의식 치유', ['성수', '은', '순백 천', '생명의 꽃']],
     ['둔켈하이트 영약', 5, '비전', '전설의 꽃으로 빚는 약 — 대가 없이 죽음을 되돌리지 않는다', ['둔켈하이트', '넥타르', '정제수']],
+    ['꽃맞이 향수', 1, '기초', '봄 한정 — 봄꽃 이슬로 빚는 향수, 꽃맞이제에 잘 팔린다', ['봄꽃 이슬', '일곱빛 꽃', '기름']],
+    ['냉각 물약', 2, '기초', '여름 한정 — 얼음꽃과 만년설 물, 더위 먹은 사람에게', ['얼음꽃', '만년설 물', '중화제 청']],
   ],
   중간재: [
     ['중화제 적', 0, '기초', '붉은 안정제 — 불 계열 레시피의 바탕', ['맑은 물', '이름 모를 풀', '연료']],
@@ -142,6 +145,7 @@ const RECIPE_BOOK = {
     ['고급 화약', 3, '고급', '고위 폭탄의 바탕', ['화약', '불의 모래', '초석']],
     ['마나 촉매', 4, '고급', '마나를 머금은 촉매 — 마법 도구의 심장', ['마나 결정', '정제수', '중화제 황']],
     ['현자의 촉매', 5, '비전', '비전 조합의 열쇠', ['현자의 소재', '마나 촉매', '별가루']],
+    ['봄 이슬 증류수', 1, '기초', '봄 한정 — 봄꽃 이슬로 내린 물, 고급 약의 바탕', ['봄꽃 이슬', '여과지']],
   ],
   // 도구 — 로어북엔 이름만 있다. 5종 × (기본 + 서고 1~5단 업그레이드). 격 k 지형에 맞는 도구 = k단
   도구: [
@@ -177,6 +181,7 @@ const RECIPE_BOOK = {
     ['용린 램프', 5, '비전', '격 5 — 극야를 밝힌다', ['별의 램프', '드래곤 하트', '현자의 촉매']],
     ['나침반', 2, '고급', '길 찾기 — 오지·유적', ['잉곳', '마나 결정', '유리']],
     ['다우징 로드', 3, '고급', '숨은 소재·수맥 찾기', ['목재', '정령석']],
+    ['반딧불 램프', 2, '기초', '여름 한정 — 반딧불 풀을 넣은 등, 밤 채집이 밝다', ['램프', '반딧불 풀', '유리']],
   ],
   음식: [
     ['빵', 0, '기초', '기본 양식 — 카페·여행', ['밀가루', '맑은 물', '우유']],
@@ -195,6 +200,8 @@ const RECIPE_BOOK = {
     ['약초 스튜', 4, '고급', '먹는 약 — 환자·노인', ['약초', '고기', '우유']],
     ['로로나식 파이', 5, '비전', '아를란드 전설의 파이 — 먹은 사람이 웃는다', ['파이', '희귀 꽃', '꿀']],
     ['별빛 케이크', 5, '비전', '혜성의 밤에만 굽는 케이크', ['밀가루', '별가루', '우유']],
+    ['수확제 잼', 1, '기초', '가을 한정 — 가을 열매로 조린 잼, 수확제 대목', ['가을 열매', '설탕', '꿀']],
+    ['설화차', 2, '기초', '겨울 한정 — 설산의 설화를 우린 차, 몸이 녹는다', ['설화', '약초', '맑은 물']],
   ],
   비전: [
     ['마도 제텔', 4, '비전', '마법 도면 종이 — 고대 문헌 복원', ['제텔', '마법 페이지', '별가루']],
@@ -205,6 +212,7 @@ const RECIPE_BOOK = {
     ['혜성석 촉매', 5, '비전', '백색 혜성의 흔적 — 세계의 끝으로 가는 열쇠', ['혜성석', '별가루', '현자의 촉매']],
     ['고대 파편 복원', 5, '비전', '극야의 연금당이 남긴 것을 읽어낸다', ['고대 파편', '마도 제텔', '마나 촉매']],
     ['연금 지팡이', 5, '비전', '연금술사의 상징 — 조합·채집 양쪽에 손이 간다', ['고급 잉곳', '현자의 촉매', '마나 결정']],
+    ['혜성 가루 정제', 5, '비전', '세계의 끝 여름 한정 — 혜성석 가루를 정제한 촉매', ['혜성석 가루', '별가루', '현자의 촉매']],
   ],
 };
 const BOOK_ALL = Object.values(RECIPE_BOOK).flat();
@@ -310,6 +318,33 @@ const ASSET_NSFW = ['Cowgirl-Normal', 'Cowgirl-Hard', 'Cowgirl-Cum', 'Doggystyle
   'Deep Kiss-Normal', 'Deep Kiss-Hard', 'Seduction-Normal', 'Seduction-Hard', 'Smelling penis',
   'Smelling penis masturbation', 'Smelling underwear masturbation', 'Lonely Masturbation', 'Masturbation-Cum',
   'after sex', 'cleanup fellatio', 'after fellatio', 'Breast massage'];
+
+// ══════════ 특산표 — 지형 × 계절 (유저: "지역마다 계절·날씨에 따라 채집 가능한 특수 재료") ══════════
+// 로어북엔 지역별 소재 배치만 있고 계절은 없다 → 계절·날씨 층은 창작. 한 표에서 (지형,계절) 지시문 48개와
+// 날씨 지시문 6개가 나온다 — 활성은 한 번에 지형 1 + 날씨 1이라 토큰은 두 줄뿐. 이름은 계절 레시피와 짝.
+const SEASONS = ['봄', '여름', '가을', '겨울'];
+const SPECIALS = {
+  '왕도 주변 들판': [['봄꽃 이슬', '민들레'], ['밀 이삭', '반딧불 풀'], ['가을 열매', '마른 풀'], ['겨울 뿌리', '서리 풀']],
+  '프리겐·시골': [['사과꽃'], ['햇밀'], ['호박'], ['훈제용 향나무']],
+  '숲': [['새순', '송진'], ['매미 허물', '숲 버섯'], ['도토리', '붉은 버섯'], ['겨우살이', '설목 껍질']],
+  '꽃밭·초원': [['일곱빛 꽃', '벌꿀'], ['해바라기 씨', '나비 비늘'], ['들국화'], ['얼음꽃']],
+  '강가·폭포': [['은어', '물이끼'], ['반딧불 조개', '여름 폭포수'], ['연어', '낙엽 물'], ['얼음 결정', '겨울 송어']],
+  '해안': [['바다 유리', '봄 김'], ['진주조개', '산호 조각'], ['폭풍 유목'], ['겨울 소금', '서리 조개']],
+  '습지·늪': [['늪 연꽃'], ['반딧불 이끼', '독개구리 점액'], ['늪 버섯', '검은 물'], ['얼어붙은 진흙']],
+  '광산·동굴': [['푸른 광석'], ['불의 돌', '유황'], ['번개 돌'], ['서리 결정', '얼음 광석']],
+  '설산 능선': [['설화'], ['만년설 물'], ['설산 약초'], ['영원의 결정 조각', '눈꽃 결정']],
+  '사막': [['사막 장미'], ['불의 모래', '사막 선인장'], ['별의 모래'], ['밤 사막 이슬']],
+  '유적·마나 이상 지대': [['마나 새싹'], ['마나 결정'], ['고대 파편'], ['별가루']],
+  '세계의 끝': [['둔켈하이트 봉오리'], ['혜성석 가루'], ['드래곤 비늘'], ['영원의 결정']],
+};
+const WEATHER_SPECIALS = {
+  '비': '이슬 버섯·빗물 — 비 온 뒤에만 돋는 것',
+  '안개': '안개 이끼 — 안개 속 바위에만 낀다',
+  '눈': '눈꽃 결정 — 눈이 그치기 전에 주워야 한다',
+  '바람': '바람 돌·떨어진 깃털 — 바람이 실어다 준 것',
+  '흐림': '그늘 버섯 — 해가 없는 날 그늘에서',
+  '맑음': '햇빛 꽃 — 해가 쨍한 날 활짝 핀 것',
+};
 
 // ══════════ 축제표 — 로어북엔 이름 붙은 축제가 없다 ("축제 물품·노점·마을 축제"와 혜성 설정뿐) ══════════
 // 그래서 계절·로어에서 지었다. 한 표에서 달력 표식 + 사흘 전 준비 지시문 + 당일 이벤트(연 1회)가 나온다.
@@ -479,6 +514,11 @@ const S = {
     { id: 'weather', label: '날씨', type: 'enum', enum: ['맑음', '흐림', '비', '바람', '안개', '눈'], init: '맑음',
       desc: '장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다.' },
 
+    // ── 시세 (경영) — 날씨·외부 사건이 상점 값을 밀고 당긴다. 시스템 소유 (allow 밖), 랜덤 이벤트가 세우고 기한이 오면 평시 ──
+    { id: 'market_state', label: '시세', type: 'enum', init: '평시',
+      enum: ['평시', '약초 풍년', '약초 품귀', '광석 품귀', '상단 도착', '흉년', '축제 특수'] },
+    { id: 'market_until', label: '시세 기한', type: 'int', init: 0, min: 0, max: 99999999 },
+
     // 수위 — 성애 이미지 팩의 게이트. 카드 규약(Image Command Instructions)이 NSFW를 지원하므로 기본 켬. /수위 0
     { id: 'nsfw_on', label: '수위', type: 'bool', init: true, cmd: '수위',
       desc: '성애 장면 이미지 허용. 유저가 /수위 로 끈다 — 보조는 손대지 않는다.' },
@@ -567,6 +607,7 @@ const S = {
       { set: 'quest_n', expr: 'count(quests)' },
       // ── 진열대 정산: 합계를 적고 → 기한 온 것을 떨구고 → 줄어든 값이 곧 매출. 돈과 물건이 어긋날 수 없다 ──
       { list: 'field', expire: 'elapsed' },          // 익은 날(오늘)까지 살아 있고, 안 거두면 다음 날 시든다
+      { set: 'market_state', expr: "market_state != '평시' and elapsed > market_until ? '평시' : market_state" },
       { set: 'shelf_prev', expr: 'sum(shelf)' },
       { list: 'shelf', expire: 'elapsed' },
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
@@ -601,7 +642,9 @@ const S = {
       // 축제 당일 — 표에서 굽는다. 래치가 같은 해 재발화를 막는다
       ...FESTIVALS.map(([id, , m, d, , , notify, effects]) => ({
         id: `fest_${id}`, when: `month == ${m} and dom == ${d} and fest_seen != year * 100 + ${m}`,
-        effects: [{ set: 'fest_seen', expr: `year * 100 + ${m}` }, ...(effects || [])], notify,
+        effects: [{ set: 'fest_seen', expr: `year * 100 + ${m}` },
+          { set: 'market_state', expr: "'축제 특수'" }, { set: 'market_until', expr: 'elapsed + 2' },   // 축제 이틀은 음식·완성품이 비싸게 팔린다
+          ...(effects || [])], notify,
       })),
       { id: 'collapse', when: 'stamina <= 0',
         effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "'공방'" },
@@ -616,6 +659,22 @@ const S = {
     randomEvents: {
       chancePerTurn: 0.22,
       table: [
+        // ── 시세 사건 (v1.7.8 priceMul과 짝) — 날씨·계절이 조건, 기한은 며칠 ──
+        { id: 'caravan', weight: 2, cooldown: 12, when: "area_tier == 0 and market_state == '평시'",
+          effects: [{ set: 'market_state', expr: "'상단 도착'" }, { set: 'market_until', expr: 'elapsed + 5' }],
+          notify: '큰 상단이 왕도에 들어왔다 — 닷새 동안 소재·도구·서적이 싸다. 상인들이 광장에 천막을 쳤다.' },
+        { id: 'herb_glut', weight: 2, cooldown: 15, when: "weather == '비' and season != '겨울' and market_state == '평시'",
+          effects: [{ set: 'market_state', expr: "'약초 풍년'" }, { set: 'market_until', expr: 'elapsed + 7' }],
+          notify: '비가 흡족히 내려 약초가 지천이다 — 이레 동안 소재 값이 뚝 떨어졌다. 채집꾼들이 바구니째 들고 온다.' },
+        { id: 'herb_short', weight: 2, cooldown: 15, when: "(season == '겨울' or weather == '눈') and market_state == '평시'",
+          effects: [{ set: 'market_state', expr: "'약초 품귀'" }, { set: 'market_until', expr: 'elapsed + 7' }],
+          notify: '추위에 들판이 말라 약초가 귀하다 — 이레 동안 소재 값이 올랐다. 약국 앞에 줄이 선다.' },
+        { id: 'ore_short', weight: 1, cooldown: 20, when: "market_state == '평시'",
+          effects: [{ set: 'market_state', expr: "'광석 품귀'" }, { set: 'market_until', expr: 'elapsed + 10' }],
+          notify: '광산 갱도가 무너져 광석이 끊겼다 — 열흘 동안 광석·도구 값이 뛰고, 뒷골목이 광석을 비싸게 부른다.' },
+        { id: 'famine', weight: 1, cooldown: 25, when: "(season == '가을' or season == '겨울') and market_state == '평시'",
+          effects: [{ set: 'market_state', expr: "'흉년'" }, { set: 'market_until', expr: 'elapsed + 14' }],
+          notify: '흉년이다 — 보름 동안 식재료 값이 치솟았다. 카페는 메뉴를 줄이고, 먹을 것 의뢰가 는다.' },
         { id: 'peddler', weight: 3, cooldown: 6, when: 'area_tier == 0',
           notify: '행상인이 공방 문을 두드렸다 — 흔치 않은 소재를 몇 가지 펼쳐 보인다.' },
         { id: 'puni', weight: 3, cooldown: 5, when: 'area_tier >= 1 and area_tier <= 2',
@@ -657,6 +716,18 @@ const S = {
       text: '밭: {field} — (오늘)로 표시된 작물은 익었다: 거두면 소재가 된다. 지나면 시든다. 익는 날은 시스템이 센다 — 앞당겨 거두지 마라.' },
     { id: 'bait_dir', when: "(location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼'))",
       text: '미끼가 있다 — 낚시가 잘 된다(채집 판정 +3). 낚시를 하면 쓴 미끼 하나를 소재에서 빼라. 마나 미끼는 마나가 흐르는 물에서만 값을 한다.' },
+    { id: 'market_dir', when: "market_state != '평시'",
+      text: '시세가 평시가 아니다 — {market_state}. 상점 값이 그에 맞게 올라 있거나 내려 있다(값은 시스템이 정한다). 상인·손님·게시판이 그 얘기를 한다. 기한이 오면 저절로 평시로 돌아온다.' },
+    // 특산 — (지형, 계절) 48개 중 한 번에 하나만 켜진다. 채집 만재 등급의 "하나는 이 자리에서만"과 맞물린다
+    ...Object.entries(SPECIALS).flatMap(([place, bySeason]) => bySeason.map((names, si) => ({
+      id: `sp_${Object.keys(SPECIALS).indexOf(place)}_${si}`,
+      when: `location == '${place}' and season == '${SEASONS[si]}'`,
+      text: `${SEASONS[si]}의 ${place} 특산: ${names.join('·')} — 이 계절에만 난다. 채집이 잘되면(만재·성과) 하나는 이것으로 하고, 소재 목록에 이 이름 그대로 올린다.`,
+    }))),
+    ...Object.entries(WEATHER_SPECIALS).map(([w, text], i) => ({
+      id: `wsp_${i}`, when: `area_tier >= 1 and weather == '${w}'`,
+      text: `날씨 특산(${w}): ${text}. 채집 장면에 한 줄 끼워 넣을 수 있다 — 얻으면 소재 목록에 그 이름으로.`,
+    })),
     { id: 'tired', when: 'stamina <= 25',
       text: '몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라.' },
     { id: 'broke', when: 'cole < 100',
@@ -894,7 +965,7 @@ const S = {
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
       '밭({field_n}/{field_cap}): {field}',
-      '여기 가게: {shops_here}',
+      '여기 가게: {shops_here} · 시세 {market_state}',
       '의뢰({quest_slot} 남음): {quests}',
       '도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}',
       '숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}',
@@ -912,7 +983,7 @@ const S = {
       // 날짜·시각·날씨·위치 — 유저 요청 ("상태창에 날짜 시간 날씨 현재 위치"). date/clock/weekday/season은 time.expose 이름
       { label: '지금', visibility: 'show', items: [
         { var: 'date' }, { var: 'weekday' }, { var: 'clock' }, { var: 'season' }, { var: 'weather' }, { var: 'location' },
-        { var: 'shops_here' },
+        { var: 'shops_here' }, { var: 'market_state' },
       ] },
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
@@ -996,6 +1067,14 @@ const S = {
       bands: { 조악: [5, 60], 보통: [40, 200], 상등: [150, 800], 희귀: [800, 5000], 전설: [4000, 20000] },
       sellRate: 0.45, maxStock: 20, perCat: [3, 5],
       when: "location == '왕도' or location == '지방 도시'",
+      // 시세 (v1.7.8) — 원가는 보조가 밴드 안에서, 배율은 시세 상태·날씨가. '*'는 매입(완성품 팔 때)
+      priceMul: {
+        '소재': "market_state == '약초 풍년' ? 0.6 : market_state == '약초 품귀' ? 1.6 : market_state == '광석 품귀' ? 1.4 : market_state == '상단 도착' ? 0.8 : 1",
+        '도구': "market_state == '상단 도착' ? 0.8 : market_state == '광석 품귀' ? 1.3 : 1",
+        '식재료': "market_state == '흉년' ? 1.8 : market_state == '축제 특수' ? 1.3 : weather == '눈' ? 1.2 : 1",
+        '서적': "market_state == '상단 도착' ? 0.7 : 1",
+        '*': "market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1",
+      },
       guide: '란타르나 왕도의 평범한 상점가. 연금술 전문점이 아니라 잡화·약재·철물·식료를 파는 가게들이다. '
         + '소재 칸은 흔한 약초·맑은 물·광석·꽃·조개 같은 것 (조악 5~60, 보통 40~200), 상등품은 상인이 어디선가 들여온 것. '
         + '도구 칸은 곡괭이·낫·낚싯대·채집망·나침반·램프 (보통 40~200, 상등 150~800). '
@@ -1011,6 +1090,7 @@ const S = {
       bands: { 상등: [300, 1200], 희귀: [1500, 8000], 전설: [6000, 30000] },
       sellRate: 0.65, maxStock: 8, perCat: [2, 4],
       when: "location == '왕도 뒷골목'",
+      priceMul: { '*': "market_state == '광석 품귀' ? 1.5 : market_state == '상단 도착' ? 1.1 : 1" },   // 품귀엔 뒷골목이 웃는다
       guide: '월영회의 그늘에 있는 거래처. 정규 상점에 없는 것만 소량으로 놓인다 — 드래곤 소재 조각, '
         + '마석, 별의 파편, 던켈하이트 같은 것, 출처를 묻지 않는 물건. 값은 비싸고 흥정은 없다. '
         + '대신 무엇이든 사 준다 — 소재를 넘길 때 어디서 났는지 캐묻지 않는 것이 이곳의 값어치다. '
@@ -1025,6 +1105,7 @@ const S = {
       bands: { 조악: [5, 30], 보통: [20, 80], 상등: [80, 300], 희귀: [400, 2000] },
       sellRate: 0.3, maxStock: 12, perCat: [2, 4],
       when: "location == '왕도' or location == '지방 도시' or location == '프리겐·시골'",
+      priceMul: { '*': "market_state == '흉년' ? 1.4 : season == '봄' ? 0.8 : season == '겨울' ? 1.5 : 1" },   // 흉년이 계절보다 먼저 — 씨앗은 봄에 싸고 겨울에 귀하다
       guide: '농사꾼 상대 씨앗 가게 — 연금술사가 오는 건 드물어 신기해한다. 씨앗 칸은 "약초 씨앗"·"이름 모를 풀 씨앗"·"밀 씨앗"(조악·보통), '
         + '"향기 꽃 씨앗"·"활력 약초 씨앗"·"쓴 풀 씨앗"(상등), "희귀 꽃 씨앗"·"생명의 꽃 씨앗"(희귀). 모종 칸은 "사과 모종"·"과일 모종"·"향나무 모종". '
         + '비료 칸은 "비료"(보통)·"마나 비료"(상등, 익는 날 하루 단축). 이름은 반드시 "X 씨앗"/"X 모종" 꼴 — 심으면 X가 작물 이름이 된다. '
@@ -1039,6 +1120,7 @@ const S = {
       bands: { 조악: [3, 20], 보통: [15, 60], 상등: [50, 200], 희귀: [300, 1500] },
       sellRate: 0.5, maxStock: 10, perCat: [2, 3],
       when: "location == '왕도' or location == '강가·폭포' or location == '해안'",
+      priceMul: { '미끼': "weather == '비' ? 0.8 : 1", '물고기': "weather == '비' ? 0.7 : market_state == '축제 특수' ? 1.3 : 1", '*': "market_state == '축제 특수' ? 1.2 : 1" },   // 비 오면 미끼·생선이 싸다
       guide: '강가·해안의 낚시꾼 오두막, 왕도에선 어시장 구석 좌판. 미끼 칸은 정확히 이 이름으로 — "지렁이 미끼"(조악), "반짝이 미끼"(보통), '
         + '"향미끼"(상등), "마나 미끼"(희귀, 마나가 흐르는 물에서만). 낚시 도구 칸은 "갈고리"·"실"·"낚싯대"(보통). '
         + '물고기 칸은 그날 잡힌 것 — "생선"·"조개"·"진주"(희귀). 생선·조개는 사 주기도 한다(sellFrom). 주인은 말수가 적고 날씨 얘기만 한다.',
@@ -1388,7 +1470,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'clues', 'last_quality',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'clues', 'last_quality',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -1737,6 +1819,61 @@ console.log('\n━━ 밭·미끼 — 씨앗은 심어야 작물이 되고, 미�
   ok('물가에 미끼가 있으면 지시문 (쓴 미끼는 빼라)', engine.sendPhase(S, t, { rng: seededRng('a', 507, 's') }).promptBlock.includes('쓴 미끼 하나를 소재에서 빼라'), '');
 }
 
+console.log('\n━━ 시세 · 특산 — 날씨와 사건이 값을 밀고, 계절이 소재를 정한다 ━━');
+{
+  const shopMod = SC.require('shop');
+  const mk = engine.makeLookup;
+  const cfgOf = (id) => shopMod.shopConfigs(S).find((c) => c.id === id);
+  // 특산 지시문 — (지형, 계절) 한 번에 하나
+  ok('특산표 12지형 × 4계절, 이름 중복 없음', Object.keys(SPECIALS).length === 12 && Object.values(SPECIALS).every((b) => b.length === 4)
+    && new Set(Object.values(SPECIALS).flat(2)).size === Object.values(SPECIALS).flat(2).length, '');
+  ok('특산 이름이 계절 레시피 재료와 짝 (봄꽃 이슬·얼음꽃·가을 열매·설화·서리 결정·반딧불 풀·혜성석 가루)',
+    ['봄꽃 이슬', '얼음꽃', '가을 열매', '설화', '서리 결정', '반딧불 풀', '혜성석 가루'].every((n) => Object.values(SPECIALS).flat(2).includes(n) && BOOK_ALL.some(([, , , , m]) => m.includes(n))), '');
+  let t = fresh(); t.vars.location = '숲';                       // 4월 = 봄
+  let p = engine.sendPhase(S, t, { rng: seededRng('a', 800, 's') }).promptBlock;
+  ok('봄의 숲 특산(새순·송진)만 실린다 — 여름 것은 안 실린다', p.includes('봄의 숲 특산: 새순·송진') && !p.includes('매미 허물'), '');
+  ok('특산 지시문은 한 번에 하나 (48개 중)', (p.match(/의 .* 특산: /g) || []).length === 1, String((p.match(/의 .* 특산: /g) || []).length));
+  t.vars.weather = '비';
+  p = engine.sendPhase(S, t, { rng: seededRng('a', 801, 's') }).promptBlock;
+  ok('비 오는 들판이면 날씨 특산도 한 줄', p.includes('날씨 특산(비): 이슬 버섯'), '');
+  t.vars.location = '공방';
+  p = engine.sendPhase(S, t, { rng: seededRng('a', 802, 's') }).promptBlock;
+  ok('공방(격 0)에선 특산·날씨 특산 둘 다 없다', !p.includes('특산:') && !p.includes('날씨 특산'), '');
+  // 시세 — 사건이 세우고 기한이 내린다, 값은 상점이 본다
+  t = fresh();
+  ok('시작은 평시, 상점가 소재 배율 1', look(t)('market_state') === '평시' && shopMod.priceMulFor(cfgOf('market'), '소재', mk(S, t.vars)) === 1, '');
+  t.vars.market_state = '약초 풍년'; t.vars.market_until = 99999;
+  ok('약초 풍년 — 소재 ×0.6, 도구는 그대로', shopMod.priceMulFor(cfgOf('market'), '소재', mk(S, t.vars)) === 0.6 && shopMod.priceMulFor(cfgOf('market'), '도구', mk(S, t.vars)) === 1, '');
+  t.vars.market_state = '흉년';
+  ok('흉년 — 식재료 ×1.8, 완성품 매입 ×0.9, 씨앗 ×1.4', shopMod.priceMulFor(cfgOf('market'), '식재료', mk(S, t.vars)) === 1.8
+    && shopMod.priceMulFor(cfgOf('market'), '*', mk(S, t.vars)) === 0.9 && shopMod.priceMulFor(cfgOf('seeds'), '씨앗', mk(S, t.vars)) === 1.4, '');
+  t.vars.market_state = '광석 품귀';
+  ok('광석 품귀 — 뒷골목 ×1.5', shopMod.priceMulFor(cfgOf('shade'), '희귀 소재', mk(S, t.vars)) === 1.5, '');
+  t.vars.market_state = '평시'; t.vars.weather = '비';
+  ok('비 — 미끼 ×0.8 · 생선 ×0.7 (시세와 무관한 날씨 배율)', shopMod.priceMulFor(cfgOf('bait'), '미끼', mk(S, t.vars)) === 0.8 && shopMod.priceMulFor(cfgOf('bait'), '물고기', mk(S, t.vars)) === 0.7, '');
+  p = engine.sendPhase(S, t, { rng: seededRng('a', 803, 's') }).promptBlock;
+  ok('평시엔 시세 지시문 없음, 상태 블록엔 시세 평시', !p.includes('시세가 평시가 아니다') && p.includes('시세 평시'), '');
+  // 기한 — 사건이 세운 시세는 며칠 뒤 평시로
+  t = fresh(); t.vars.market_state = '상단 도착'; t.vars.market_until = look(t)('elapsed') + 2;
+  p = engine.sendPhase(S, t, { rng: seededRng('a', 804, 's') }).promptBlock;
+  ok('시세가 평시가 아니면 지시문이 붙는다', p.includes('시세가 평시가 아니다 — 상단 도착'), '');
+  let r = turn(t, { skip_day: 1 }, 805);
+  ok('기한 전엔 유지', r.st.vars.market_state === '상단 도착', r.st.vars.market_state);
+  r = turn(r.st, { skip_day: 2 }, 806);
+  ok('기한이 지나면 평시로 (onTurn)', r.st.vars.market_state === '평시', r.st.vars.market_state);
+  // 축제 당일 → 축제 특수 이틀
+  t = fresh();
+  r = turn(t, { skip_day: 6 }, 807);                             // 4/7 꽃맞이제
+  ok('축제 당일 시세가 축제 특수로 (완성품 매입 ×1.3)', r.st.vars.market_state === '축제 특수' && shopMod.priceMulFor(cfgOf('market'), '*', mk(S, r.st.vars)) === 1.3, r.st.vars.market_state);
+  r = turn(r.st, { skip_day: 3 }, 808);
+  // 같은 턴에 랜덤 시세 사건(상단 도착 등)이 새로 설 수 있다 — "축제 특수가 걷혔나"만 본다
+  ok('사흘 뒤 축제 특수는 걷힌다', r.st.vars.market_state !== '축제 특수', r.st.vars.market_state);
+  // 사건 — 비 오는 봄 들판이면 약초 풍년이 뽑힐 수 있다 (조건이 맞아야만)
+  const tbl = S.rules.randomEvents.table;
+  ok('시세 사건 5종 · 전부 평시일 때만', ['caravan', 'herb_glut', 'herb_short', 'ore_short', 'famine'].every((id) => tbl.find((e) => e.id === id)?.when.includes("market_state == '평시'")), '');
+  ok('시세는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'market_state' || a.id === 'market_until'), '');
+}
+
 console.log('\n━━ 축제 — 달력 표식·준비 창·당일 이벤트가 한 표에서 ━━');
 {
   ok('축제 6개 · 달마다 하나 · 일은 4 이상 (준비 창이 달을 안 넘는다)',
@@ -1775,8 +1912,8 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   const book = partyMod.partyTabs(S).find((t) => t.id === 'book');
   ok('공방 패널 셋째 탭이 조합서다 (버튼은 여전히 하나)', !!book && book.template && !book.fab, '');
   ok('공방 패널은 넓게(640px) — 분야 탭 6개가 한 줄', S.party.wide === true, '');
-  ok('도감 104종 · 이름 중복 없음', BOOK_ALL.length === 104 && new Set(BOOK_ALL.map(([n]) => n)).size === 104, String(BOOK_ALL.length));
-  ok('분야 6 · 도구 32(5종×6단계+2) · 음식 16', BOOK_CATS.length === 6 && RECIPE_BOOK.도구.length === 32 && RECIPE_BOOK.음식.length === 16,
+  ok('도감 112종 (계절 한정 8 포함) · 이름 중복 없음', BOOK_ALL.length === 112 && new Set(BOOK_ALL.map(([n]) => n)).size === 112, String(BOOK_ALL.length));
+  ok('분야 6 · 도구 33(5종×6단계+2+계절 1) · 음식 18', BOOK_CATS.length === 6 && RECIPE_BOOK.도구.length === 33 && RECIPE_BOOK.음식.length === 18,
     BOOK_CATS.map((c) => c + RECIPE_BOOK[c].length).join(' '));
   ok('서고 단수 0~5 · 등급은 synth_tier 어휘', BOOK_ALL.every(([, lib, t]) => lib >= 0 && lib <= 5 && ['기초', '고급', '비전'].includes(t)), '');
   ok('분야마다 서고 1~5단에 항목이 깔린다 (단이 오르면 열리는 느낌)',
@@ -1795,11 +1932,11 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   const body = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
   const leftover = (body.match(/\{[^{}]+\}/g) || []);
   ok('미치환 자리표시자 없음', leftover.length === 0, leftover.slice(0, 3).join(' '));
-  ok('진행도 2 / 104 · 서고 0단', html.includes('2 / 104 · 서고 0단'), '');
+  ok('진행도 2 / 112 · 서고 0단', html.includes('2 / 112 · 서고 0단'), '');
   // 분야 탭 — CSS 라디오. 스크롤 압박을 끊는다 (유저 제보)
   ok('분야 탭 6개 (라디오 + 라벨), 첫 탭이 켜져 있다', (html.match(/type="radio"/g) || []).length === 6 && (html.match(/class="abk-tab"/g) || []).length === 6
     && html.includes('id="abk-scg-0" class="abk-r abk-r0" checked'), '');
-  ok('탭 라벨에 분야 진행도 (약품 1/16)', html.includes('약품<span>1/16</span>'), '');
+  ok('탭 라벨에 분야 진행도 (약품 1/18)', html.includes('약품<span>1/18</span>'), '');
   ok('페이지는 기본 숨김, 켜진 탭만 보인다 (CSS)', html.includes('#sc-game .abk-page{') && html.includes('.abk-r0:checked ~ .abk-p0{'), '');
   // 서고 단 묶음
   ok('묶음 머리 "처음부터"·"서고 1단"…', html.includes('처음부터') && html.includes('서고 1단<span>') && html.includes('서고 5단<span>'), '');

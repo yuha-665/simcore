@@ -287,6 +287,30 @@ ${css}
 </style>`;
 })();
 
+// ══════════ 에셋 이름표 — 카드 "Image Command Instructions" 그대로 (소문자, 순서 유지) ══════════
+const ASSET_FEMALE = ['reisalin', 'klaudia', 'lila', 'sophie', 'plachta', 'lydie', 'suelle', 'firis', 'resna', 'izana',
+  'marlone', 'judith', 'cuderia', 'totooria', 'rorolina', 'viorate', 'mimi', 'wilbell', 'marion', 'merurulince',
+  'piana', 'miruca', 'elmerulia', 'heidi', 'flocke', 'corneria', 'ilmeria', 'nio', 'odelia', 'shallotte',
+  'shallistera', 'escha', 'nelke', 'lionela', 'yumia', 'patricia', 'isla', 'serri', 'liane', 'eva',
+  'ayesha', 'elfir', 'pamela', 'tess', 'valeria'];
+const ASSET_MALE = ['roman', 'logix', 'sterkenburg'];
+const ASSET_PLAIN = ['antje', 'criselda', 'crow', 'geron', 'iksel', 'johanna', 'juna', 'keithgriff', 'lanze', 'lara',
+  'oskar', 'puni', 'walther'];
+const ASSET_STATUS = ['default', 'standing', 'angry', 'annoyed', 'aroused', 'blushing shyly', 'coughing', 'confused',
+  'contemptuous', 'curious', 'crying with eyes closed', 'crying with eyes open', 'dazed', 'depressed', 'disappointed',
+  'disgusted', 'embarrassed', 'flustered', 'fidgeting shyly', 'full-face blush', 'giggling', 'guilty', 'indifferent',
+  'joyful', 'lovestruck', 'laughing', 'looking away shyly', 'nervous', 'proud', 'sad', 'scared', 'serious', 'shocked',
+  'sleepy', 'smug', 'surprised', 'thinking', 'worried', 'comforted', 'childlike whining', 'excited', 'admiring',
+  'sniggering', 'suspicious', 'relieved', 'lustful', 'seductive smiling', 'crazy smiling', 'playful winking',
+  'evil smiling', 'smiling', 'pouting', 'nervous pouting', 'happy smiling', 'bored', 'determined', 'jealous',
+  'pleading', 'exhausted', 'happy tears', 'forced smiling'];
+const ASSET_NSFW = ['Cowgirl-Normal', 'Cowgirl-Hard', 'Cowgirl-Cum', 'Doggystyle-Normal', 'Doggystyle-Hard', 'Doggystyle-Cum',
+  'Missionary-Normal', 'Missionary-Hard', 'Missionary-Cum', 'Handjob-Normal', 'Handjob-Hard', 'Handjob-Cum',
+  'Blowjob-Normal', 'Blowjob-Hard', 'Blowjob-Cum', 'Paizuri-Normal', 'Paizuri-Hard', 'Paizuri-Cum',
+  'Deep Kiss-Normal', 'Deep Kiss-Hard', 'Seduction-Normal', 'Seduction-Hard', 'Smelling penis',
+  'Smelling penis masturbation', 'Smelling underwear masturbation', 'Lonely Masturbation', 'Masturbation-Cum',
+  'after sex', 'cleanup fellatio', 'after fellatio', 'Breast massage'];
+
 // ══════════ 축제표 — 로어북엔 이름 붙은 축제가 없다 ("축제 물품·노점·마을 축제"와 혜성 설정뿐) ══════════
 // 그래서 계절·로어에서 지었다. 한 표에서 달력 표식 + 사흘 전 준비 지시문 + 당일 이벤트(연 1회)가 나온다.
 // [id, 이름, 월, 일, 달력 note, 준비 지시문(D-3~D), 당일 통지, 당일 효과]
@@ -454,6 +478,10 @@ const S = {
 
     { id: 'weather', label: '날씨', type: 'enum', enum: ['맑음', '흐림', '비', '바람', '안개', '눈'], init: '맑음',
       desc: '장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다.' },
+
+    // 수위 — 성애 이미지 팩의 게이트. 카드 규약(Image Command Instructions)이 NSFW를 지원하므로 기본 켬. /수위 0
+    { id: 'nsfw_on', label: '수위', type: 'bool', init: true, cmd: '수위',
+      desc: '성애 장면 이미지 허용. 유저가 /수위 로 끈다 — 보조는 손대지 않는다.' },
 
     // 축제 래치 — 연 1회 발화. year*100+month (한 달에 축제 하나)
     { id: 'fest_seen', label: '지난 축제', type: 'int', init: 0, min: 0, max: 99999999 },
@@ -1096,22 +1124,46 @@ const S = {
   // ══════════ P3 — 에셋 팩 (뼈대만, 꺼진 채로 출고) ══════════
   // ⚠ 카드에 실제로 실린 에셋 이름을 모르는 채로 켜면 조합이 전부 대조 실패해 **이미지 0장**(조용한 실패)이다.
   // 카드의 에셋 이름을 확인하고 who 값·sep·format을 맞춘 뒤 enabled: true로 켠다.
+  // ══════════ 에셋 — 카드 "Image Command Instructions" 이식 (2026-09-06, 유저 제공) ══════════
+  // 규약: <img="[name]_[Status]"> / <img="[name]_[NSFW Scene]"> · 이름은 소문자 영문 · 구분자 '_'.
+  // 인물 셋: 여성 45(감정+성애) · 남성 3(감정만) · 기본 전용 13(default만). 유저 이미지는 내지 않는다.
+  // by:'main' — 원본이 "등장·주목·발화마다 인물별 1장"이라 메인이 서사 자리에 여러 장을 낸다 (얼헌과 같은 결정).
+  // verify:false — 이 환경은 에셋 이름 목록 대조가 안 된다 (얼헌과 같은 이유). 규약이 곧 실존.
   assets: {
-    by: 'aux',
+    by: 'main',
     packs: [
-      { id: 'cast', source: '아틀리에 카드 에셋', enabled: false, sep: '_',
-        format: '<img="{name}">',
-        usage: '인물이 말할 때마다 대화문 앞에 1장 — 이름 + 지금 감정. 못 고르겠으면 이름만.',
+      {
+        id: 'emotion', source: '아틀리에 카드 Image Command Instructions — Status',
+        sep: '_', format: '<img="{name}">', verify: false,
+        usage: '인물이 등장·주목·발화할 때마다 대화문 앞 1장 — 이름_지금감정(영문 status). 인물마다 따로. 못 고르겠으면 이름_default. 주인공(유저) 이미지는 내지 않는다.',
         slots: [
-          { id: 'who', label: '인물',
-            values: ['Resna', 'Izana', 'Roman', 'Saskia', 'Valeria', 'Heidi', 'Flocke'] },
-          { id: 'emo', label: '감정', fallback: 'normal',
-            values: ['normal', 'smile', 'shy', 'angry', 'sad', 'surprised'] },
-        ] },
+          { id: 'who', label: '인물', values: [...ASSET_FEMALE, ...ASSET_MALE] },
+          { id: 'status', label: '감정', values: ASSET_STATUS, fallback: 'default' },
+        ],
+      },
+      {
+        id: 'nsfw', source: '아틀리에 카드 Image Command Instructions — NSFW Scene',
+        sep: '_', format: '<img="{name}">', verify: false,
+        when: 'nsfw_on',   // /수위 0 이면 팩째 닫힌다
+        usage: '성애 장면에서만 — 여성 인물 이름_장면(체위-국면). 남성·기본 전용 인물은 감정/기본 이미지만. 장면 밖에선 감정 팩을 쓴다.',
+        slots: [
+          { id: 'who', label: '인물', values: ASSET_FEMALE },
+          { id: 'scene', label: '장면', values: ASSET_NSFW, fallback: 'after sex' },
+        ],
+      },
+      {
+        id: 'plain', source: '아틀리에 카드 Image Command Instructions — Default-Only',
+        sep: '_', format: '<img="{name}">', verify: false,
+        usage: '이 인물들은 기본 이미지 한 장뿐 — 등장할 때 이름_default. 감정·성애 접미사를 붙이지 않는다.',
+        slots: [
+          { id: 'who', label: '인물', values: ASSET_PLAIN },
+          { id: 'status', label: '기본', values: ['default'], fallback: 'default' },
+        ],
+      },
     ],
   },
 
-  setup: {
+    setup: {
     presets: [
       { id: 'gentle', label: '따뜻한 여정 — 밑천이 있다', set: { cole: 1200, renown: 60, cauldron: 2 } },
       { id: 'standard', label: '보통 — 갓 물려받은 공방', set: {} },
@@ -1410,7 +1462,8 @@ console.log('\n━━ 설비 — 단이 오르면 세계가 바뀐다 (보이지
   ok('상태 블록에 설비 줄', p0.includes('설비: 가마 1단 · 서고 0단 · 보관고 2/10 · 약초밭 0단'),
     p0.split('\n').find((l) => l.includes('설비')) ?? '');
   ok('설비 지시문이 실린다 (서고 단수로 레시피를 막는다)', p0.includes('아직 읽어낼 수 없다'), '');
-  const left = (p0.match(/\{[a-z_]+\}/g) || []);
+  // {name}은 에셋 팩 포맷 본보기(<img="{name}">)라 모델에게 그대로 보여 주는 게 맞다 — 미치환이 아니다
+  const left = (p0.match(/\{[a-z_]+\}/g) || []).filter((x) => x !== '{name}');
   ok('프롬프트에 미치환 자리표시자 없음', left.length === 0, left.join(' '));
 }
 
@@ -1838,14 +1891,31 @@ console.log('\n━━ 서신 — 편지지 단말기가 아니다 ━━');
     S.messenger.guide.includes('단말기가 아니라') && S.messenger.guide.includes('이모티콘 금지'), '');
 }
 
-console.log('\n━━ 에셋 — 꺼진 채 출고 (조용한 실패 방지) ━━');
+console.log('\n━━ 에셋 — 카드 규약 이식 (이름_상태 · 이름_장면 · 기본 전용) ━━');
 {
-  ok('에셋 팩은 꺼져 있다', S.assets.packs[0].enabled === false, '');
-  ok('usage가 매 응답 의무 꼴 (콜드 스타트 방지)',
-    S.assets.packs[0].usage.includes('말할 때마다'), S.assets.packs[0].usage);
+  const packs = S.assets.packs;
+  ok('팩 3 (감정·성애·기본 전용), 전부 켜짐, by main', packs.length === 3 && packs.every((p) => p.enabled !== false) && S.assets.by === 'main', '');
+  ok('여성 45 · 남성 3 · 기본 전용 13 · 상태 61 · 장면 31',
+    ASSET_FEMALE.length === 45 && ASSET_MALE.length === 3 && ASSET_PLAIN.length === 13 && ASSET_STATUS.length === 61 && ASSET_NSFW.length === 31,
+    [ASSET_FEMALE.length, ASSET_MALE.length, ASSET_PLAIN.length, ASSET_STATUS.length, ASSET_NSFW.length].join(' '));
+  ok('이름이 세 집합에 겹치지 않는다', new Set([...ASSET_FEMALE, ...ASSET_MALE, ...ASSET_PLAIN]).size === 61, '');
+  ok('남성은 감정 팩에만, 성애 팩에 없다', packs[0].slots[0].values.includes('roman') && !packs[1].slots[0].values.includes('roman'), '');
+  ok('기본 전용은 감정·성애 팩 어디에도 없다', !packs[0].slots[0].values.includes('puni') && !packs[1].slots[0].values.includes('puni') && packs[2].slots[0].values.includes('puni'), '');
+  ok('구분자 _ · 포맷 <img="{name}"> · verify 끔 (이름 목록 대조 불가 환경)', packs.every((p) => p.sep === '_' && p.format === '<img="{name}">' && p.verify === false), '');
+  ok('usage가 매 응답 의무 꼴 (콜드 스타트 방지)', packs[0].usage.includes('때마다'), packs[0].usage);
   const t = fresh();
   const p = engine.sendPhase(S, t, { rng: seededRng('a', 150, 's') }).promptBlock;
-  ok('꺼진 팩은 프롬프트에 안 실린다', !p.includes('<img='), '');
+  ok('메인 프롬프트에 이미지 규약이 실린다 (reisalin · flustered · Cowgirl-Normal)', p.includes('reisalin') && p.includes('flustered') && p.includes('Cowgirl-Normal'), '');
+  t.vars.nsfw_on = false;
+  const p2 = engine.sendPhase(S, t, { rng: seededRng('a', 151, 's') }).promptBlock;
+  ok('/수위 0 이면 성애 팩이 닫힌다 (감정 팩은 그대로)', !p2.includes('Cowgirl-Normal') && p2.includes('flustered'), '');
+  ok('수위는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'nsfw_on'), '');
+  ok('규약 예시가 조합으로 나온다 (reisalin_flustered · klaudia_Deep Kiss-Hard · lara_default)', (() => {
+    const assets = SC.require('assets');
+    const combos = [];
+    for (const pk of packs) for (const w of pk.slots[0].values) for (const v of pk.slots[1].values) combos.push(w + '_' + v);
+    return ['reisalin_flustered', 'klaudia_Deep Kiss-Hard', 'lara_default', 'roman_serious'].every((x) => combos.includes(x)) && !combos.includes('roman_Cowgirl-Normal') && !combos.includes('lara_smiling') && typeof assets === 'object';
+  })(), '');
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패`); process.exit(1); }

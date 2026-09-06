@@ -537,6 +537,11 @@
       "format": "{v}개"
     },
     {
+      "id": "shops_here",
+      "label": "여기 가게",
+      "expr": "(location == '왕도' ? '상점가·씨앗 상사·미끼 상점' : (location == '지방 도시' ? '상점가·씨앗 상사' : (location == '왕도 뒷골목' ? '뒷골목 거래처' : (location == '프리겐·시골' ? '씨앗 상사' : (location == '강가·폭포' or location == '해안' ? '미끼 상점' : '없음 — 왕도로 가면 열린다')))))"
+    },
+    {
       "id": "year_no",
       "label": "여정",
       "expr": "year - 1399",
@@ -1072,6 +1077,103 @@
       "check": "guard",
       "when": "fight_on",
       "inject": "물러날 자리를 찾는다."
+    },
+    {
+      "id": "go_home",
+      "label": "🏠 공방으로",
+      "mode": "oneshot",
+      "when": "location != '공방' and not fight_on",
+      "inject": "공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.",
+      "effects": [
+        {
+          "set": "location",
+          "expr": "'공방'"
+        },
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 60"
+        }
+      ]
+    },
+    {
+      "id": "go_town",
+      "label": "🏙 왕도로",
+      "mode": "oneshot",
+      "when": "location != '왕도' and not fight_on",
+      "inject": "왕도로 향한다. 도착한 거리의 풍경 — 상점가·씨앗 상사·어시장 좌판·별의 고치 카페가 있는 곳이다. 살 것과 팔 것이 여기 있다.",
+      "effects": [
+        {
+          "set": "location",
+          "expr": "'왕도'"
+        },
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 90"
+        },
+        {
+          "set": "stamina",
+          "expr": "stamina - 3"
+        }
+      ]
+    },
+    {
+      "id": "go_shade",
+      "label": "🌑 뒷골목으로",
+      "mode": "oneshot",
+      "when": "location != '왕도 뒷골목' and not fight_on and (renown >= 100 or clues >= 1)",
+      "inject": "왕도 뒷골목으로 든다 — 월영회의 그늘, 출처를 묻지 않는 거래처가 있는 곳. 낮에도 어둡다.",
+      "effects": [
+        {
+          "set": "location",
+          "expr": "'왕도 뒷골목'"
+        },
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 60"
+        }
+      ]
+    },
+    {
+      "id": "go_field",
+      "label": "🌿 들판으로",
+      "mode": "oneshot",
+      "when": "location != '왕도 주변 들판' and not fight_on",
+      "inject": "왕도 근교 들판으로 나선다 — 약초·풀·꽃이 나는 곳, 푸니 정도가 어슬렁거린다. 더 깊이 갈지는 여기서 정한다.",
+      "effects": [
+        {
+          "set": "location",
+          "expr": "'왕도 주변 들판'"
+        },
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 90"
+        },
+        {
+          "set": "stamina",
+          "expr": "stamina - 5"
+        }
+      ]
+    },
+    {
+      "id": "go_river",
+      "label": "🌊 강가로",
+      "mode": "oneshot",
+      "when": "location != '강가·폭포' and not fight_on",
+      "inject": "강가로 나선다 — 물 소재와 낚시, 낚시꾼 오두막(미끼 상점)이 있는 곳. 미끼가 있으면 값을 한다.",
+      "effects": [
+        {
+          "set": "location",
+          "expr": "'강가·폭포'"
+        },
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 120"
+        },
+        {
+          "set": "stamina",
+          "expr": "stamina - 8"
+        }
+      ]
     },
     {
       "id": "act_rest",
@@ -1637,7 +1739,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n의뢰({quest_slot} 남음): {quests}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here}\n의뢰({quest_slot} 남음): {quests}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -1667,6 +1769,9 @@
           },
           {
             "var": "location"
+          },
+          {
+            "var": "shops_here"
           }
         ]
       },

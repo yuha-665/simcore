@@ -507,6 +507,11 @@ const S = {
     // 약초밭 = 밭 칸. 0단이면 심을 데가 없다 — 씨앗을 사기 전에 밭부터
     { id: 'field_cap', label: '밭 칸', expr: 'garden * 2', format: '{v}칸' },
     { id: 'field_n', label: '심은 것', expr: 'count(field)', format: '{v}개' },
+    // 상점 when과 같은 표 — 버튼이 안 보이는 이유를 상태창이 말해 준다
+    { id: 'shops_here', label: '여기 가게',
+      expr: chain([["location == '왕도'", "'상점가·씨앗 상사·미끼 상점'"], ["location == '지방 도시'", "'상점가·씨앗 상사'"],
+        ["location == '왕도 뒷골목'", "'뒷골목 거래처'"], ["location == '프리겐·시골'", "'씨앗 상사'"],
+        ["location == '강가·폭포' or location == '해안'", "'미끼 상점'"]], "'없음 — 왕도로 가면 열린다'") },
     { id: 'year_no', label: '여정', expr: 'year - 1399', format: '{v}년차' },
   ],
 
@@ -671,6 +676,23 @@ const S = {
       inject: '맞선다.' },
     { id: 'act_flee', label: '🏃 이탈', mode: 'oneshot', fightEnd: true, check: 'guard', when: 'fight_on',
       inject: '물러날 자리를 찾는다.' },
+    // ── 이동 — 버튼이 곧 안내다: 상점은 when으로 열려서 위치를 안 옮기면 버튼조차 안 보인다 (실기 제보) ──
+    { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', when: "location != '공방' and not fight_on",
+      inject: '공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.',
+      effects: [{ set: 'location', expr: "'공방'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
+    { id: 'go_town', label: '🏙 왕도로', mode: 'oneshot', when: "location != '왕도' and not fight_on",
+      inject: '왕도로 향한다. 도착한 거리의 풍경 — 상점가·씨앗 상사·어시장 좌판·별의 고치 카페가 있는 곳이다. 살 것과 팔 것이 여기 있다.',
+      effects: [{ set: 'location', expr: "'왕도'" }, { set: 'skip_min', expr: 'skip_min + 90' }, { set: 'stamina', expr: 'stamina - 3' }] },
+    { id: 'go_shade', label: '🌑 뒷골목으로', mode: 'oneshot',
+      when: "location != '왕도 뒷골목' and not fight_on and (renown >= 100 or clues >= 1)",
+      inject: '왕도 뒷골목으로 든다 — 월영회의 그늘, 출처를 묻지 않는 거래처가 있는 곳. 낮에도 어둡다.',
+      effects: [{ set: 'location', expr: "'왕도 뒷골목'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
+    { id: 'go_field', label: '🌿 들판으로', mode: 'oneshot', when: "location != '왕도 주변 들판' and not fight_on",
+      inject: '왕도 근교 들판으로 나선다 — 약초·풀·꽃이 나는 곳, 푸니 정도가 어슬렁거린다. 더 깊이 갈지는 여기서 정한다.',
+      effects: [{ set: 'location', expr: "'왕도 주변 들판'" }, { set: 'skip_min', expr: 'skip_min + 90' }, { set: 'stamina', expr: 'stamina - 5' }] },
+    { id: 'go_river', label: '🌊 강가로', mode: 'oneshot', when: "location != '강가·폭포' and not fight_on",
+      inject: '강가로 나선다 — 물 소재와 낚시, 낚시꾼 오두막(미끼 상점)이 있는 곳. 미끼가 있으면 값을 한다.',
+      effects: [{ set: 'location', expr: "'강가·폭포'" }, { set: 'skip_min', expr: 'skip_min + 120' }, { set: 'stamina', expr: 'stamina - 8' }] },
     { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', when: 'not fight_on',
       inject: '숨을 돌린다.',
       effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina + 35' }] },
@@ -842,6 +864,7 @@ const S = {
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
       '밭({field_n}/{field_cap}): {field}',
+      '여기 가게: {shops_here}',
       '의뢰({quest_slot} 남음): {quests}',
     ].join('\n'),
     systemGuide: '수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. '
@@ -857,6 +880,7 @@ const S = {
       // 날짜·시각·날씨·위치 — 유저 요청 ("상태창에 날짜 시간 날씨 현재 위치"). date/clock/weekday/season은 time.expose 이름
       { label: '지금', visibility: 'show', items: [
         { var: 'date' }, { var: 'weekday' }, { var: 'clock' }, { var: 'season' }, { var: 'weather' }, { var: 'location' },
+        { var: 'shops_here' },
       ] },
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
@@ -1568,6 +1592,30 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 이동 — 버튼이 곧 안내 (상점이 있는지도 모르는 문제) ━━');
+{
+  const shopMod = SC.require('shop');
+  const openIds = (st) => shopMod.shopConfigs(S).filter((c) => shopMod.shopOpen(c, S, st.vars, engine.makeLookup)).map((c) => c.id);
+  let t = fresh();
+  ok('이동 액션 5 (공방·왕도·뒷골목·들판·강가)', ['go_home', 'go_town', 'go_shade', 'go_field', 'go_river'].every((id) => S.actions.some((a) => a.id === id)), '');
+  ok('공방에 있으면 공방으로 버튼은 숨고 왕도로는 열린다', !canAct(t, 'go_home') && canAct(t, 'go_town'), '');
+  ok('뒷골목은 평판 100 또는 단서가 있어야 (월영회의 그늘)', !canAct(t, 'go_shade'), '');
+  ok('시작(공방)엔 열린 가게가 없다 — 상태창이 이유를 말한다', openIds(t).length === 0 && look(t)('shops_here').includes('왕도로 가면'), look(t)('shops_here'));
+  t = engine.toggleAction(S, t, 'go_town').state;
+  let r = turn(t, {}, 600);
+  ok('왕도로 → 위치가 왕도, 1시간 반 지남', r.st.vars.location === '왕도' && r.prompt.includes('09:30'), r.st.vars.location + ' ' + r.prompt.split('\n')[0]);
+  ok('도착하면 상점가·씨앗·미끼 셋이 열린다', openIds(r.st).join(',') === 'market,seeds,bait', openIds(r.st).join(','));
+  ok('상태 블록에 "여기 가게" 줄', engine.sendPhase(S, r.st, { rng: seededRng('a', 601, 's') }).promptBlock.includes('여기 가게: 상점가·씨앗 상사·미끼 상점'), '');
+  ok('왕도에선 왕도로 버튼이 숨고 공방으로가 열린다', !canAct(r.st, 'go_town') && canAct(r.st, 'go_home'), '');
+  r.st.vars.clues = 1;
+  ok('단서가 생기면 뒷골목이 열린다', canAct(r.st, 'go_shade'), '');
+  t = engine.toggleAction(S, r.st, 'go_river').state;
+  r = turn(t, {}, 602);
+  ok('강가로 → 미끼 상점만', r.st.vars.location === '강가·폭포' && openIds(r.st).join(',') === 'bait', openIds(r.st).join(','));
+  t = fresh(); t.vars.fight_max = 50; t.vars.fight_gauge = 0;
+  ok('교전 중엔 이동 못 한다', !canAct(t, 'go_town') || !look(t)('fight_on'), '');
 }
 
 console.log('\n━━ 밭·미끼 — 씨앗은 심어야 작물이 되고, 미끼는 물가에서만 값을 한다 ━━');

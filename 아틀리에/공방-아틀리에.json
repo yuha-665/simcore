@@ -466,6 +466,13 @@
       "init": false
     },
     {
+      "id": "placed",
+      "label": "첫 장면 확정",
+      "type": "bool",
+      "init": false,
+      "desc": "첫 장면이 끝났으면 무조건 true."
+    },
+    {
       "id": "cauldron",
       "label": "가마",
       "type": "int",
@@ -627,7 +634,7 @@
     }
   ],
   "time": {
-    "start": "1400-04-01 08:00",
+    "start": "1400-04-01 14:00",
     "advance": "explicit",
     "calendar": "gregorian",
     "format": {
@@ -705,6 +712,10 @@
       {
         "set": "settled",
         "expr": "settled or location == '공방'"
+      },
+      {
+        "set": "placed",
+        "expr": "true"
       }
     ],
     "events": [
@@ -994,14 +1005,14 @@
           },
           {
             "set": "location",
-            "expr": "'공방'"
+            "expr": "settled ? '공방' : location"
           },
           {
             "set": "skip_min",
             "expr": "skip_min + 480"
           }
         ],
-        "notify": "체력이 바닥나 쓰러졌다. 누군가 공방까지 데려다 놓았고, 반나절이 그대로 날아갔다."
+        "notify": "체력이 바닥나 쓰러졌다. 누군가 거둬 눕혔고, 반나절이 그대로 날아갔다."
       },
       {
         "id": "first_name",
@@ -1763,7 +1774,7 @@
         "공방으로 간다",
         "공방에 돌아"
       ],
-      "when": "location != '공방' and not fight_on",
+      "when": "settled and location != '공방' and not fight_on",
       "inject": "공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.",
       "effects": [
         {
@@ -1923,7 +1934,7 @@
         },
         {
           "set": "location",
-          "expr": "'공방'"
+          "expr": "settled ? '공방' : location"
         },
         {
           "set": "harvest_due",
@@ -2650,7 +2661,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라. 서사가 재료 부족으로 조합을 시작하지 않았으면 판정 결과와 무관하게 완성품을 올리지 말고 소재도 빼지 마라. 특수연금 등록(inventions)은 판정이 발명·성공일 때만 — 불안정·실패·사고 턴엔 건드리지 마라. 이름이 도감에 있으면 등록하지 말고 그 도감 레시피를 recipes에 올려라. 재료는 실험 당시 materials에 있던 이름만. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라. 매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -3655,6 +3666,7 @@
     "ai": {
       "enabled": true,
       "vars": [
+        "placed",
         "atelier_name",
         "atelier_place",
         "mentor",
@@ -3666,7 +3678,7 @@
         "materials"
       ],
       "instruction": "[첫 장면] 지금 응답이 이 판의 시작이다. **도입부가 놓은 자리와 시간에서 그대로 이어라** — 장소를 옮기거나 시간을 건너뛰지 마라. 함께 있는 사람들(동행)은 도입부에서 읽는다. 공방·스승은 이 장면이 정하는 만큼만 — 동행이 \"빈 공방을 안다\"고 하거나 데려가겠다고 하는 식으로 **앞으로 어디에 자리 잡을지**가 장면 안에서 정해지면 충분하고, 지금 거기 있는 것처럼 쓰지 마라. 목록으로 나열하거나 설정을 설명하지 말고, 장면으로 보여 준 뒤 거기서 멈춰라.",
-      "guide": "origin은 함께 시작한 인물이 어느 아틀리에 계열인지로 고른다 (란타르나 본편 인물뿐이면 \"란타르나\"). location은 첫 장면이 끝난 자리의 지형 — 공방 안에 있을 때만 \"공방\"이다 (아직 안 갔으면 절대 \"공방\"이 아니다). 공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다."
+      "guide": "origin은 함께 시작한 인물이 어느 아틀리에 계열인지로 고른다 (란타르나 본편 인물뿐이면 \"란타르나\"). location은 첫 장면이 끝난 자리의 지형 — 공방 안에 있을 때만 \"공방\"이다 (아직 안 갔으면 절대 \"공방\"이 아니다). 공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다. placed는 첫 장면이 끝났으니 항상 true."
     }
   },
   "rerollStableRng": true

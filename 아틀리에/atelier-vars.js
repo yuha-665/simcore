@@ -706,6 +706,10 @@ const S = {
     // 정착 — 첫 실기 사고: 상태 블록이 "공방 「이름 없는 공방」 — 어느 뒷골목의 셋방 · 스승 없음 · 가마 1단"을 첫 턴부터 말해
     // 메인이 도입부(들판에서 발견되는 장면)를 버리고 뒷골목 셋방으로 순간이동했다. 공방에 닿기 전엔 공방을 말하지 않는다.
     { id: 'settled', label: '공방 정착', type: 'bool', init: false },
+    // 첫 장면 확정 — 설정 턴이 location을 도입부에서 읽어 오기 전엔 "지금" 줄이 자리를 단언하지 않는다.
+    // 퍼메 17개 중 15개는 왕도 근교 들판이지만 뒷골목(플로케)·숲(에스카)도 있다 — init '왕도 주변 들판'은 그 판에서 거짓이다.
+    // 설정 턴(setup.ai.vars)이 true로 적고, 놓쳐도 다음 정산(onTurn)이 굳힌다.
+    { id: 'placed', label: '첫 장면 확정', type: 'bool', init: false, desc: '첫 장면이 끝났으면 무조건 true.' },
 
     // ── 공방 설비: 편성표 탭이 관리한다. allow에 없다 ──
     { id: 'cauldron', label: '가마', type: 'int', init: 1, min: 1, max: 5, format: '{v}단' },
@@ -766,7 +770,7 @@ const S = {
   ],
 
   time: {
-    start: '1400-04-01 08:00',   // 중세 판타지 감각 — 유저 지정 (1400년 4월)
+    start: '1400-04-01 14:00',   // 중세 판타지 감각 — 유저 지정 (1400년 4월). 시각은 오후 — 퍼메 17개가 전부 오후 장면이다 (원본 푸터 오후 1~4시)
     advance: 'explicit',
     calendar: 'gregorian',
     format: { date: 'YYYY년 M월 D일', clock: 'HH:mm' },
@@ -796,6 +800,7 @@ const S = {
       { set: 'cole', expr: 'cole + shelf_sold' },
       { set: 'sales_month', expr: 'sales_month + shelf_sold' },   // 상거래세 근거 — 세금날에 0으로
       { set: 'settled', expr: "settled or location == '공방'" },   // 정착 래치 — 서사가 공방에 닿으면 굳는다
+      { set: 'placed', expr: 'true' },                                // 첫 장면 확정 백스톱 — 설정 턴이 놓쳐도 첫 정산에서 굳는다
     ],
 
     events: [
@@ -851,9 +856,9 @@ const S = {
           ...(effects || [])], notify,
       })),
       { id: 'collapse', when: 'stamina <= 0',
-        effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "'공방'" },
+        effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "settled ? '공방' : location" },   // 정착 전엔 눕힌 자리가 공방이 아니다
           { set: 'skip_min', expr: 'skip_min + 480' }],
-        notify: '체력이 바닥나 쓰러졌다. 누군가 공방까지 데려다 놓았고, 반나절이 그대로 날아갔다.' },
+        notify: '체력이 바닥나 쓰러졌다. 누군가 거둬 눕혔고, 반나절이 그대로 날아갔다.' },
       { id: 'first_name', when: 'renown >= 150', once: true,
         notify: '연금술사로서 이름이 조금씩 오르내리기 시작했다. 잊혀진 기술이 아니라 "쓸모 있는 것"으로 불리기 시작한 참이다.' },
       { id: 'known_name', when: 'renown >= 600', once: true,
@@ -999,7 +1004,7 @@ const S = {
     { id: 'act_flee', label: '🏃 이탈', mode: 'oneshot', keywords: ['도망친다', '도망간다', '물러난다', '달아난다', '빠져나간다'], fightEnd: true, check: 'guard', when: 'fight_on',
       inject: '물러날 자리를 찾는다.' },
     // ── 이동 — 버튼이 곧 안내다: 상점은 when으로 열려서 위치를 안 옮기면 버튼조차 안 보인다 (실기 제보) ──
-    { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', keywords: ['공방으로 돌아', '공방으로 간다', '공방에 돌아'], when: "location != '공방' and not fight_on",
+    { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', keywords: ['공방으로 돌아', '공방으로 간다', '공방에 돌아'], when: "settled and location != '공방' and not fight_on",   // 돌아갈 공방이 있어야 보인다
       inject: '공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.',
       effects: [{ set: 'location', expr: "'공방'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
     { id: 'go_town', label: '🏙 왕도로', mode: 'oneshot', keywords: ['왕도로 간다', '왕도로 나간다', '왕도로 향한다', '왕도에 간다'], when: "location != '왕도' and not fight_on",
@@ -1021,7 +1026,7 @@ const S = {
     { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', keywords: ['잠든다', '자러 간다', '하루를 마친다', '잠자리에'], dayClose: true, when: 'not fight_on',
       inject: '하루를 접는다. 다음 장면은 하루가 지난 뒤 — 시각은 문맥이 정한다.',
       effects: [{ set: 'skip_day', expr: 'skip_day + 1' }, { set: 'stamina', expr: 'stamina + 45' },
-        { set: 'location', expr: "'공방'" }, { set: 'harvest_due', expr: 'garden' }] },
+        { set: 'location', expr: "settled ? '공방' : location" }, { set: 'harvest_due', expr: 'garden' }] },   // 정착 전엔 잠자리가 공방이 아니다 — 여기서 정착시키면 첫 턴 사고가 하루 뒤로 미뤄질 뿐
   ],
 
   checks: [
@@ -1208,7 +1213,7 @@ const S = {
 
   promptState: {
     template: [
-      '지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}',
+      "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}",
       "{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}",
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
       "{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}",
@@ -1533,14 +1538,14 @@ const S = {
     ],
     ai: {
       enabled: true,
-      vars: ['atelier_name', 'atelier_place', 'mentor', 'origin', 'location', 'allies', 'recipes', 'tools', 'materials'],
+      vars: ['placed', 'atelier_name', 'atelier_place', 'mentor', 'origin', 'location', 'allies', 'recipes', 'tools', 'materials'],
       instruction: '[첫 장면] 지금 응답이 이 판의 시작이다. **도입부가 놓은 자리와 시간에서 그대로 이어라** — 장소를 옮기거나 시간을 건너뛰지 마라. '
         + '함께 있는 사람들(동행)은 도입부에서 읽는다. 공방·스승은 이 장면이 정하는 만큼만 — 동행이 "빈 공방을 안다"고 하거나 데려가겠다고 하는 식으로 '
         + '**앞으로 어디에 자리 잡을지**가 장면 안에서 정해지면 충분하고, 지금 거기 있는 것처럼 쓰지 마라. '
         + '목록으로 나열하거나 설정을 설명하지 말고, 장면으로 보여 준 뒤 거기서 멈춰라.',
       guide: 'origin은 함께 시작한 인물이 어느 아틀리에 계열인지로 고른다 (란타르나 본편 인물뿐이면 "란타르나"). '
         + 'location은 첫 장면이 끝난 자리의 지형 — 공방 안에 있을 때만 "공방"이다 (아직 안 갔으면 절대 "공방"이 아니다). '
-        + '공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다.',
+        + '공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다. placed는 첫 장면이 끝났으니 항상 true.',
     },
   },
 
@@ -1571,7 +1576,7 @@ const turn = (st, changes = {}, i = 0) => {
   return { st: out.state, prompt: send.promptBlock, fired: out.firedEvents || [] };
 };
 // fresh() = 정착한 판 (공방에 있고 settled) — 대부분의 테스트 전제. 첫 턴(정착 전)은 raw initState로 따로 본다
-const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; t.vars.location = '공방'; t.vars.settled = true; return t; };
+const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; t.vars.location = '공방'; t.vars.settled = true; t.vars.placed = true; return t; };
 const look = (st) => engine.makeLookup(S, st.vars);
 const canAct = (st, id) => engine.actionAvailability(S, st, S.actions.find((a) => a.id === id)).ok;
 
@@ -1609,7 +1614,7 @@ console.log('\n━━ 분야 숙련 (조합할 때 그 분야만 오른다) ━�
   ok('약품 숙련만 올랐다', after.sk_med > 0 && after.sk_bomb === 0 && after.sk_arcane === 0,
     CATS.map(([, id]) => `${id}=${after[id]}`).join(' '));
   ok('품질이 기록됐다', after.last_quality !== '—', after.last_quality);
-  ok('조합에 3시간 (skip_min 소비 → 시각 이동)', r.prompt.includes('11:00'), r.prompt.split('\n')[0]);
+  ok('조합에 3시간 (skip_min 소비 → 시각 이동)', r.prompt.includes('17:00'), r.prompt.split('\n')[0]);
 }
 
 console.log('\n━━ 의뢰 — 3칸 상한 · 정산 · 만료 ━━');
@@ -1655,13 +1660,13 @@ console.log('\n━━ 의뢰 — 3칸 상한 · 정산 · 만료 ━━');
 console.log('\n━━ 시간 · 하루 넘김 ━━');
 {
   let t = fresh();
-  ok('시작은 1400년 4월 1일 08:00', look(t)('date') === '1400년 4월 1일' && look(t)('clock') === '08:00',
+  ok('시작은 1400년 4월 1일 14:00 (퍼메 17개 전부 오후)', look(t)('date') === '1400년 4월 1일' && look(t)('clock') === '14:00',
     `${look(t)('date')} ${look(t)('clock')}`);
   ok('여정 1년차', look(t)('year_no') === 1, String(look(t)('year_no')));
   // 상태창 "지금" 그룹 — 날짜·요일·시각·계절·날씨·위치
   {
     const html = SC.require('render').renderStatusHtml(S, t, null, null, { uid: 9 });
-    ok('상태창에 날짜·시각·날씨·위치가 뜬다', html.includes('1400년 4월 1일') && html.includes('08:00') && html.includes('맑음') && html.includes('공방'),
+    ok('상태창에 날짜·시각·날씨·위치가 뜬다', html.includes('1400년 4월 1일') && html.includes('14:00') && html.includes('맑음') && html.includes('공방'),
       html.replace(/<[^>]+>/g, ' ').replace(/s+/g, ' ').slice(0, 200));
     ok('첫 그룹이 지금', S.statusUI.groups[0].label === '지금', S.statusUI.groups[0].label);
     ok('날씨는 보조가 적는다 (allow) · 어휘 밖은 거부', S.updater.allow.some((a) => a.id === 'weather')
@@ -1940,8 +1945,36 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
 console.log('\n━━ 첫 턴 — 공방에 닿기 전엔 공방을 말하지 않는다 (실기: 첫 응답이 셋방으로 순간이동) ━━');
 {
   let t = engine.initState(S);
-  ok('시작 위치는 공방이 아니다 · 정착 false', t.vars.location === '왕도 주변 들판' && t.vars.settled === false, JSON.stringify([t.vars.location, t.vars.settled]));
+  ok('시작 위치는 공방이 아니다 · 정착 false · 첫 장면 미확정', t.vars.location === '왕도 주변 들판' && t.vars.settled === false && t.vars.placed === false, JSON.stringify([t.vars.location, t.vars.settled, t.vars.placed]));
   const p0 = engine.sendPhase(S, t, { rng: seededRng('a', 600, 's') }).promptBlock;
+  // 퍼메 17개 중 뒷골목·숲에서 시작하는 것이 있다 — 설정 턴이 자리를 읽어 오기 전엔 "지금" 줄이 들판을 단언하지 않는다
+  ok('첫 턴 "지금" 줄은 자리를 단언하지 않는다 (14:00 · 도입부가 놓은 그곳)', p0.split('\n')[0].includes('14:00') && p0.split('\n')[0].includes('도입부가 놓은 그곳') && !p0.split('\n')[0].includes('왕도 주변 들판'), p0.split('\n')[0]);
+  {
+    // 설정 턴이 placed·location을 적는다 → 그 다음 턴부터 자리가 실린다 (뒷골목 퍼메)
+    const sp = engine.buildSetupPrompt(S, t, '…');
+    ok('설정 프롬프트가 placed를 요구한다', sp.includes('- placed') && sp.includes('무조건 true'), '');
+    const s1 = engine.setupPhase(S, t, { placed: true, location: '왕도 뒷골목' }, {});
+    const ps = engine.sendPhase(S, s1.state, { rng: seededRng('a', 605, 's') }).promptBlock.split('\n')[0];
+    ok('설정 뒤 "지금" 줄에 도입부의 자리(뒷골목)', ps.includes('왕도 뒷골목') && !ps.includes('도입부가 놓은 그곳'), ps);
+    // 설정 턴이 placed를 놓쳐도 첫 정산이 굳힌다
+    const s2 = engine.setupPhase(S, t, { location: '숲' }, {});
+    const r2 = turn(s2.state, {}, 606);
+    ok('placed 백스톱 — 첫 정산 뒤 true', s2.state.vars.placed === false && r2.st.vars.placed === true && r2.st.vars.location === '숲', JSON.stringify([s2.state.vars.placed, r2.st.vars.placed]));
+  }
+  {
+    // 정착 전에 location을 공방으로 보내던 구멍 셋 — 🌙 하루 마무리 · 탈진 · 🏠 공방으로
+    let u = engine.initState(S); u.meta.setupDone = true; u.vars.placed = true;
+    ok('정착 전엔 🏠 공방으로 버튼이 없다', !canAct(u, 'go_home'), '');
+    u = engine.toggleAction(S, u, 'act_day').state;
+    let ru = turn(u, {}, 607);
+    ok('정착 전 🌙 하루 마무리는 공방으로 보내지 않는다 (정착도 안 된다)', ru.st.vars.location === '왕도 주변 들판' && ru.st.vars.settled === false, JSON.stringify([ru.st.vars.location, ru.st.vars.settled]));
+    ru.st.vars.stamina = 0;
+    ru = turn(ru.st, {}, 608);
+    ok('정착 전 탈진도 공방으로 보내지 않는다', ru.fired.some((e) => (e.id ?? e) === 'collapse') && ru.st.vars.location === '왕도 주변 들판' && ru.st.vars.stamina === 25, JSON.stringify([ru.fired, ru.st.vars.location]));
+    const v = fresh(); v.vars.location = '숲'; v.vars.stamina = 0;
+    const rv = turn(v, {}, 609);
+    ok('정착 뒤 탈진은 공방으로 데려간다', rv.st.vars.location === '공방', rv.st.vars.location);
+  }
   ok('첫 턴 상태 블록: "공방: 아직 없다", 설비 줄 없음, 이름·셋방·스승 없음', p0.includes('공방: 아직 없다') && !p0.includes('설비: 가마') && !p0.includes('이름 없는 공방') && !p0.includes('셋방') && !p0.includes('스승 없음'), p0.split('\n').slice(0, 4).join(' | '));
   // 설정 턴(turn 0)엔 엔진이 지시문 대신 setup.ai.instruction만 싣는다 — 정착 전 안내는 그 다음 턴부터
   ok('첫 턴엔 설비 지시문이 없다 (설정 지시만)', !p0.includes('공방 설비는 서사에 실체가 있다') && p0.includes('[첫 장면]'), '');
@@ -2208,7 +2241,7 @@ console.log('\n━━ 이동 — 버튼이 곧 안내 (상점이 있는지도 �
   ok('시작(공방)엔 열린 가게가 없다 — 상태창이 이유를 말한다', openIds(t).length === 0 && look(t)('shops_here').includes('왕도로 가면'), look(t)('shops_here'));
   t = engine.toggleAction(S, t, 'go_town').state;
   let r = turn(t, {}, 600);
-  ok('왕도로 → 위치가 왕도, 1시간 반 지남', r.st.vars.location === '왕도' && r.prompt.includes('09:30'), r.st.vars.location + ' ' + r.prompt.split('\n')[0]);
+  ok('왕도로 → 위치가 왕도, 1시간 반 지남', r.st.vars.location === '왕도' && r.prompt.includes('15:30'), r.st.vars.location + ' ' + r.prompt.split('\n')[0]);
   ok('도착하면 상점가·씨앗·미끼 셋이 열린다', openIds(r.st).join(',') === 'market,seeds,bait', openIds(r.st).join(','));
   ok('상태 블록에 "여기 가게" 줄', engine.sendPhase(S, r.st, { rng: seededRng('a', 601, 's') }).promptBlock.includes('여기 가게: 상점가·씨앗 상사·미끼 상점'), '');
   ok('왕도에선 왕도로 버튼이 숨고 공방으로가 열린다', !canAct(r.st, 'go_town') && canAct(r.st, 'go_home'), '');

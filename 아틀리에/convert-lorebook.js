@@ -16,6 +16,7 @@ const fs = require('fs');
 
 const SRC = JSON.parse(fs.readFileSync(__P('lorebook_export.json'), 'utf8'));
 const SCHEMA = JSON.parse(fs.readFileSync(__P('공방-아틀리에.json'), 'utf8'));
+const BOOK = JSON.parse(fs.readFileSync(__P('조합서.json'), 'utf8')).book;   // atelier-vars.js가 쓴 사이드카
 const src = SRC.data;
 
 const tok = (s) => Math.round(String(s || '').length / 3.2);   // 로어북 표시와 같은 어림
@@ -69,6 +70,31 @@ for (const e of src) {
   report.kept++;
 }
 
+// ══════════ 조합서 — 레시피마다 키워드 활성 항목 (2026-09-06) ══════════
+// 메인은 조합서의 필요 소재를 못 받는다(패널 전용). 아는 레시피 전부를 지시문으로 실으면 배울수록 매턴 비용이
+// 는다 — 만들려는 것의 이름이 채팅에 나올 때만 그 한 벌이 실리는 로어북식이 맞다 (유저 선택).
+// 규칙은 항목 안에 같이 싣는다: 조합서에 있는 것은 적힌 소재로만, 없으면 멈춘다. 조합서 밖은 서사에.
+const RECIPE_FOLDER = 'folder:simcore-recipes';
+out.push({
+  key: RECIPE_FOLDER, comment: '조합서 (심코어)', content: '', mode: 'folder', insertorder: 100,
+  alwaysActive: false, secondkey: '', selective: false, bookVersion: 2, id: 'lm_simcore_recipes', disabled: false,
+});
+let recipeN = 0;
+// 한 글자 이름("약"·"빵")은 다른 낱말 안에서 매턴 걸린다 — 만드는 문맥의 어구로만 연다
+const keysOf = (name) => (name.length >= 2 ? [name] : [`${name}을 만`, `${name}을 빚`, `${name} 조합`, `${name}을 지어`]);
+for (const [cat, list] of Object.entries(BOOK)) {
+  for (const [name, lib, tier, effect, mats] of list) {
+    out.push({
+      key: keysOf(name).join(', '), comment: `📖 ${name}`, folder: RECIPE_FOLDER,
+      content: `[조합서] ${name} — ${cat} · ${tier} · 서고 ${lib}단부터\n효과: ${effect}\n필요 소재: ${mats.join(' · ')}\n`
+        + '소재 목록에 이 이름들이 다 있어야 가마에 불을 넣는다 — 빠진 것이 있으면 판정과 상관없이 무엇이 모자란지 말하고 멈춘다 (같은 계열 대체는 한 가지까지). '
+        + '배우지 않은 레시피면 먼저 서고에서 읽어야 한다 (서고 단수 미달이면 "아직 읽어낼 수 없다").',
+      mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false, useRegex: false,
+      bookVersion: 2, id: `lm_simcore_recipe_${++recipeN}`, disabled: false,
+    });
+  }
+}
+
 // ⚙simcore — 절대 안 뜨는 보관함 (adapter installSchemaToCurrentChar와 같은 모양)
 out.push({
   key: ' __simcore_never__', comment: '⚙simcore', content: JSON.stringify(SCHEMA),
@@ -94,7 +120,13 @@ for (const c of Object.keys(KEEP_ALWAYS)) {
 {
   const folders = out.filter((e) => e.mode === 'folder').length;
   const srcFolders = src.filter((e) => e.mode === 'folder').length;
-  if (folders !== srcFolders) fail(`폴더가 ${srcFolders} → ${folders}로 바뀌었다`);
+  if (folders !== srcFolders + 1) fail(`폴더가 ${srcFolders}+1(조합서) → ${folders}로 바뀌었다`);
+  const recipes = out.filter((e) => e.folder === RECIPE_FOLDER);
+  const bookN = Object.values(BOOK).flat().length;
+  if (recipes.length !== bookN) fail(`조합서 항목 ${recipes.length} ≠ 도감 ${bookN}`);
+  if (recipes.some((e) => e.alwaysActive)) fail('조합서 항목이 always-on이다 — 매턴 비용');
+  if (recipes.some((e) => String(e.key).split(',').some((k) => k.trim().length < 2))) fail('조합서 키에 한 글자가 있다 — 매턴 걸린다');
+  if (new Set(recipes.map((e) => e.key)).size !== recipes.length) fail('조합서 키가 겹친다');
   const vault = out.find((e) => e.comment === '⚙simcore');
   if (!vault) fail('⚙simcore 항목이 없다');
   else {
@@ -123,6 +155,7 @@ for (const [c, t, why] of report.demoted) {
   console.log(`  ↓ ${c} (${t}t) — ${why}${added}`);
   if (added) console.log(`      key: ${String(e.key).slice(0, 70)}…`);
 }
+console.log(`\n━━ 조합서 키워드 항목 ${recipeN}개 (레시피 이름이 채팅에 나올 때만 그 한 벌 ≈ ${tok(out.find((e) => e.folder === RECIPE_FOLDER).content)}t) ━━`);
 console.log('\n━━ always-on 유지 ━━');
 for (const [c, why] of Object.entries(KEEP_ALWAYS)) {
   console.log(`  = ${c} (${tok(out.find((x) => x.comment === c).content)}t) — ${why}`);

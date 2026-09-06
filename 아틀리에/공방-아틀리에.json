@@ -288,7 +288,16 @@
       ],
       "maxItems": 99,
       "itemMaxLength": 30,
-      "desc": "보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 \"지역별 소재 배치\"). **이름만** 적는다 — 수량·수식어 없이 (\"약초\", \"약초 3개\"·\"신선한 약초\" 금지). 같은 것이 여럿이면 한 항목. 보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — \"보관고가 넘친다\" 통지가 오면 상한 것을 빼라."
+      "desc": "보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 \"지역별 소재 배치\"). **이름만** 적는다 — 수량·수식어 없이 (\"약초\", \"약초 3개\"·\"신선한 약초\" 금지). 같은 것이 여럿이면 한 항목. 보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — \"보관고가 넘친다\" 통지가 오면 상한 것을 빼라. 씨앗·모종·미끼도 소재다 (상점에서 사면 여기로 온다). 씨앗을 심으면 여기서 빼고 field에 올린다; 낚시에 미끼를 쓰면 하나 뺀다."
+    },
+    {
+      "id": "field",
+      "label": "밭",
+      "type": "list",
+      "init": [],
+      "maxItems": 10,
+      "itemMaxLength": 30,
+      "desc": "약초밭에 심은 것. **형식: \"작물 @+익는날\"** (예: \"약초 @+3\", \"향기 꽃 @+5\") — 씨앗 이름에서 \"씨앗/모종\"을 뗀 작물 이름으로. 익는 날: 조악·보통 씨앗 2~3일, 상등 4~5일, 희귀 7일 이상, 비료를 쓰면 하루 빠르게. 심을 때 씨앗은 materials에서 뺀다. **(오늘)로 표시된 것은 익었다** — 거둬 materials에 작물 이름으로 올리고 여기서 저장 원문 그대로 remove. 밭 칸(field_cap)을 넘겨 심지 마라."
     },
     {
       "id": "items",
@@ -516,6 +525,18 @@
       "format": "{v}개"
     },
     {
+      "id": "field_cap",
+      "label": "밭 칸",
+      "expr": "garden * 2",
+      "format": "{v}칸"
+    },
+    {
+      "id": "field_n",
+      "label": "심은 것",
+      "expr": "count(field)",
+      "format": "{v}개"
+    },
+    {
       "id": "year_no",
       "label": "여정",
       "expr": "year - 1399",
@@ -569,6 +590,10 @@
       {
         "set": "quest_n",
         "expr": "count(quests)"
+      },
+      {
+        "list": "field",
+        "expire": "elapsed"
       },
       {
         "set": "shelf_prev",
@@ -625,14 +650,29 @@
       },
       {
         "id": "garden_harvest",
-        "when": "harvest_due > 0",
+        "when": "harvest_due > 0 and count(field) > 0",
         "effects": [
           {
             "set": "harvest_due",
             "expr": "0"
           }
         ],
-        "notify": "아침, 약초밭에 나가 본다. 밭이 내준 약초를 거둬 소재 목록에 올려라 — 1~2단은 1종, 3~4단은 2종, 5단은 3종. 무엇이 났는지는 계절과 밭의 단에 맞춰 서사가 정한다 (상태 블록의 약초밭 단수를 본다)."
+        "notify": "아침, 밭에 나가 본다. 상태 블록의 밭 목록에서 (오늘)인 작물은 익었다 — 거둬 소재로 올리고 밭에서 빼라. 아직인 것은 자라는 모습만."
+      },
+      {
+        "id": "garden_idle",
+        "when": "harvest_due > 0 and count(field) == 0",
+        "effects": [
+          {
+            "set": "harvest_due",
+            "expr": "0"
+          }
+        ]
+      },
+      {
+        "id": "field_over",
+        "when": "field_n > field_cap",
+        "notify": "밭이 좁다 — 칸을 넘겨 심은 것은 자라지 못한다. 넘친 만큼 뽑아 씨앗으로 되돌리거나 버려라."
       },
       {
         "id": "shelf_sale",
@@ -868,6 +908,16 @@
       "text": "혜성 관측일(12월 24일)이 다가온다. 백색 혜성이 사라진 날 — 학자·노인들이 옛 이야기를 꺼내고, 잊혀진 연금술을 묻는 사람이 생긴다. 밤하늘을 보러 오지로 나가는 이도 있다."
     },
     {
+      "id": "field_dir",
+      "when": "count(field) > 0",
+      "text": "밭: {field} — (오늘)로 표시된 작물은 익었다: 거두면 소재가 된다. 지나면 시든다. 익는 날은 시스템이 센다 — 앞당겨 거두지 마라."
+    },
+    {
+      "id": "bait_dir",
+      "when": "(location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼'))",
+      "text": "미끼가 있다 — 낚시가 잘 된다(채집 판정 +3). 낚시를 하면 쓴 미끼 하나를 소재에서 빼라. 마나 미끼는 마나가 흐르는 물에서만 값을 한다."
+    },
+    {
       "id": "tired",
       "when": "stamina <= 25",
       "text": "몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라."
@@ -1072,7 +1122,7 @@
       "id": "gather",
       "label": "채집",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden",
+      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       "vs": "8 + area_tier * 2",
       "grades": [
         {
@@ -1564,6 +1614,9 @@
         "id": "shelf"
       },
       {
+        "id": "field"
+      },
+      {
         "id": "areas"
       },
       {
@@ -1584,7 +1637,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n의뢰({quest_slot} 남음): {quests}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n의뢰({quest_slot} 남음): {quests}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -1729,6 +1782,9 @@
             "var": "shelf"
           },
           {
+            "var": "field"
+          },
+          {
             "var": "recipes"
           },
           {
@@ -1858,7 +1914,7 @@
             "var": "garden",
             "max": 5,
             "cost": "(garden + 1) * 1800",
-            "note": "단마다 채집 +1 · 하루를 마칠 때마다 약초 수확 (1~2단 1종 · 3~4단 2종 · 5단 3종)",
+            "note": "단마다 채집 +1 · 밭 2칸/단 — 씨앗 상사에서 씨앗을 사 심으면 익는 날 소재가 된다 (0단은 심을 데가 없다)",
             "requires": "garden < 3 or renown > 150",
             "requiresLabel": "4단부터는 기초 연금술사부터"
           },
@@ -1972,6 +2028,95 @@
       ],
       "when": "location == '왕도 뒷골목'",
       "guide": "월영회의 그늘에 있는 거래처. 정규 상점에 없는 것만 소량으로 놓인다 — 드래곤 소재 조각, 마석, 별의 파편, 던켈하이트 같은 것, 출처를 묻지 않는 물건. 값은 비싸고 흥정은 없다. 대신 무엇이든 사 준다 — 소재를 넘길 때 어디서 났는지 캐묻지 않는 것이 이곳의 값어치다. 진열은 적게(2~4개씩), 하나쯤은 note에 수상한 내력을 붙인다."
+    },
+    {
+      "id": "seeds",
+      "label": "씨앗 상사",
+      "icon": "🌱",
+      "currency": "cole",
+      "buyTo": "materials",
+      "categories": [
+        "씨앗",
+        "모종",
+        "비료"
+      ],
+      "grades": [
+        "조악",
+        "보통",
+        "상등",
+        "희귀"
+      ],
+      "bands": {
+        "조악": [
+          5,
+          30
+        ],
+        "보통": [
+          20,
+          80
+        ],
+        "상등": [
+          80,
+          300
+        ],
+        "희귀": [
+          400,
+          2000
+        ]
+      },
+      "sellRate": 0.3,
+      "maxStock": 12,
+      "perCat": [
+        2,
+        4
+      ],
+      "when": "location == '왕도' or location == '지방 도시' or location == '프리겐·시골'",
+      "guide": "농사꾼 상대 씨앗 가게 — 연금술사가 오는 건 드물어 신기해한다. 씨앗 칸은 \"약초 씨앗\"·\"이름 모를 풀 씨앗\"·\"밀 씨앗\"(조악·보통), \"향기 꽃 씨앗\"·\"활력 약초 씨앗\"·\"쓴 풀 씨앗\"(상등), \"희귀 꽃 씨앗\"·\"생명의 꽃 씨앗\"(희귀). 모종 칸은 \"사과 모종\"·\"과일 모종\"·\"향나무 모종\". 비료 칸은 \"비료\"(보통)·\"마나 비료\"(상등, 익는 날 하루 단축). 이름은 반드시 \"X 씨앗\"/\"X 모종\" 꼴 — 심으면 X가 작물 이름이 된다. 계절에 맞는 씨앗이 앞에 온다 (봄 꽃·여름 과일·가을 밀·겨울엔 물건이 적다)."
+    },
+    {
+      "id": "bait",
+      "label": "미끼 상점",
+      "icon": "🎣",
+      "currency": "cole",
+      "buyTo": "materials",
+      "sellFrom": "materials",
+      "categories": [
+        "미끼",
+        "낚시 도구",
+        "물고기"
+      ],
+      "grades": [
+        "조악",
+        "보통",
+        "상등",
+        "희귀"
+      ],
+      "bands": {
+        "조악": [
+          3,
+          20
+        ],
+        "보통": [
+          15,
+          60
+        ],
+        "상등": [
+          50,
+          200
+        ],
+        "희귀": [
+          300,
+          1500
+        ]
+      },
+      "sellRate": 0.5,
+      "maxStock": 10,
+      "perCat": [
+        2,
+        3
+      ],
+      "when": "location == '왕도' or location == '강가·폭포' or location == '해안'",
+      "guide": "강가·해안의 낚시꾼 오두막, 왕도에선 어시장 구석 좌판. 미끼 칸은 정확히 이 이름으로 — \"지렁이 미끼\"(조악), \"반짝이 미끼\"(보통), \"향미끼\"(상등), \"마나 미끼\"(희귀, 마나가 흐르는 물에서만). 낚시 도구 칸은 \"갈고리\"·\"실\"·\"낚싯대\"(보통). 물고기 칸은 그날 잡힌 것 — \"생선\"·\"조개\"·\"진주\"(희귀). 생선·조개는 사 주기도 한다(sellFrom). 주인은 말수가 적고 날씨 얘기만 한다."
     }
   ],
   "board": {

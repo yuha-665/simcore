@@ -422,7 +422,13 @@ const S = {
     { id: 'materials', label: '소재', type: 'list', init: ['맑은 물', '이름 모를 풀'], maxItems: 99, itemMaxLength: 30,
       desc: '보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 "지역별 소재 배치"). '
         + '**이름만** 적는다 — 수량·수식어 없이 ("약초", "약초 3개"·"신선한 약초" 금지). 같은 것이 여럿이면 한 항목. '
-        + '보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — "보관고가 넘친다" 통지가 오면 상한 것을 빼라.' },
+        + '보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — "보관고가 넘친다" 통지가 오면 상한 것을 빼라. '
+        + '씨앗·모종·미끼도 소재다 (상점에서 사면 여기로 온다). 씨앗을 심으면 여기서 빼고 field에 올린다; 낚시에 미끼를 쓰면 하나 뺀다.' },
+    // 밭 — 씨앗 상사에서 산 씨앗을 심으면 "작물 @+익는날"로 여기 온다. 익는 날 (오늘)로 보이고, 지나면 시든다(expire)
+    { id: 'field', label: '밭', type: 'list', init: [], maxItems: 10, itemMaxLength: 30,
+      desc: '약초밭에 심은 것. **형식: "작물 @+익는날"** (예: "약초 @+3", "향기 꽃 @+5") — 씨앗 이름에서 "씨앗/모종"을 뗀 작물 이름으로. '
+        + '익는 날: 조악·보통 씨앗 2~3일, 상등 4~5일, 희귀 7일 이상, 비료를 쓰면 하루 빠르게. 심을 때 씨앗은 materials에서 뺀다. '
+        + '**(오늘)로 표시된 것은 익었다** — 거둬 materials에 작물 이름으로 올리고 여기서 저장 원문 그대로 remove. 밭 칸(field_cap)을 넘겨 심지 마라.' },
     { id: 'items', label: '아이템', type: 'list', init: [], maxItems: 20, itemMaxLength: 34,
       desc: '만들거나 얻은 완성품. 품질이 좋으면 이름에 얹는다 ("고품질 힐링 살브").' },
     { id: 'recipes', label: '레시피', type: 'list', init: ['중화제 적'], maxItems: 30, itemMaxLength: 30,
@@ -498,6 +504,9 @@ const S = {
       expr: chain([['display <= 0', '3'], ['display == 1', '6'], ['display == 2', '9'],
         ['display == 3', '12'], ['display == 4', '15']], '18'), format: '{v}칸' },
     { id: 'shelf_n', label: '진열 중', expr: 'count(shelf)', format: '{v}개' },
+    // 약초밭 = 밭 칸. 0단이면 심을 데가 없다 — 씨앗을 사기 전에 밭부터
+    { id: 'field_cap', label: '밭 칸', expr: 'garden * 2', format: '{v}칸' },
+    { id: 'field_n', label: '심은 것', expr: 'count(field)', format: '{v}개' },
     { id: 'year_no', label: '여정', expr: 'year - 1399', format: '{v}년차' },
   ],
 
@@ -524,6 +533,7 @@ const S = {
       { set: 'quest_lost', expr: 'max(quest_n - count(quests) - (quest_pay > 0 ? 1 : 0), 0)' },
       { set: 'quest_n', expr: 'count(quests)' },
       // ── 진열대 정산: 합계를 적고 → 기한 온 것을 떨구고 → 줄어든 값이 곧 매출. 돈과 물건이 어긋날 수 없다 ──
+      { list: 'field', expire: 'elapsed' },          // 익은 날(오늘)까지 살아 있고, 안 거두면 다음 날 시든다
       { set: 'shelf_prev', expr: 'sum(shelf)' },
       { list: 'shelf', expire: 'elapsed' },
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
@@ -541,11 +551,14 @@ const S = {
       // 보관고 넘침 — 용량을 넘기는 동안 매 턴 되풀이된다 (치울 때까지). 옛 랜덤 spoil을 대체.
       { id: 'overflow', when: 'mat_n > mat_cap',
         notify: '보관고가 넘친다 — 용량을 넘긴 만큼 소재가 상했다. 무엇이 못 쓰게 됐는지 서사가 정하고 넘친 수만큼 목록에서 빼라. 보관고를 늘리기 전엔 되풀이된다.' },
-      // 약초밭 수확 — 🌙가 harvest_due에 밭 단수를 적어 두면 다음 아침에 한 번
-      { id: 'garden_harvest', when: 'harvest_due > 0',
+      // 아침 밭 확인 — 🌙가 harvest_due에 밭 단수를 적어 두면 다음 아침에 한 번. 심은 게 있을 때만
+      { id: 'garden_harvest', when: 'harvest_due > 0 and count(field) > 0',
         effects: [{ set: 'harvest_due', expr: '0' }],
-        notify: '아침, 약초밭에 나가 본다. 밭이 내준 약초를 거둬 소재 목록에 올려라 — 1~2단은 1종, 3~4단은 2종, 5단은 3종. '
-          + '무엇이 났는지는 계절과 밭의 단에 맞춰 서사가 정한다 (상태 블록의 약초밭 단수를 본다).' },
+        notify: '아침, 밭에 나가 본다. 상태 블록의 밭 목록에서 (오늘)인 작물은 익었다 — 거둬 소재로 올리고 밭에서 빼라. 아직인 것은 자라는 모습만.' },
+      { id: 'garden_idle', when: 'harvest_due > 0 and count(field) == 0',
+        effects: [{ set: 'harvest_due', expr: '0' }] },
+      { id: 'field_over', when: 'field_n > field_cap',
+        notify: '밭이 좁다 — 칸을 넘겨 심은 것은 자라지 못한다. 넘친 만큼 뽑아 씨앗으로 되돌리거나 버려라.' },
       // 진열대 매출 — 액수는 상태 블록의 소지금 변화로 드러난다 (통지는 값을 못 싣는다)
       { id: 'shelf_sale', when: 'shelf_sold > 0',
         effects: [{ set: 'renown', expr: 'min(renown + 1, 1000)' }],
@@ -607,6 +620,10 @@ const S = {
     ...FESTIVALS.map(([id, , m, d, , text]) => ({
       id: `prep_${id}`, when: `month == ${m} and dom >= ${d - 3} and dom <= ${d}`, text,
     })),
+    { id: 'field_dir', when: 'count(field) > 0',
+      text: '밭: {field} — (오늘)로 표시된 작물은 익었다: 거두면 소재가 된다. 지나면 시든다. 익는 날은 시스템이 센다 — 앞당겨 거두지 마라.' },
+    { id: 'bait_dir', when: "(location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼'))",
+      text: '미끼가 있다 — 낚시가 잘 된다(채집 판정 +3). 낚시를 하면 쓴 미끼 하나를 소재에서 빼라. 마나 미끼는 마나가 흐르는 물에서만 값을 한다.' },
     { id: 'tired', when: 'stamina <= 25',
       text: '몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라.' },
     { id: 'broke', when: 'cole < 100',
@@ -666,7 +683,8 @@ const S = {
   checks: [
     { id: 'gather', label: '채집',
       roll: 'rand(1, 20)',
-      mod: 'floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden',
+      mod: 'floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden'
+        + " + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       vs: '8 + area_tier * 2',
       grades: [
         { when: 'total >= vs + 8', label: '만재',
@@ -799,7 +817,7 @@ const S = {
       { id: 'bombs', maxDelta: 8 },
       { id: 'foe_tier', maxDelta: 4 }, { id: 'foe_name', maxLength: 30 },
       { id: 'quest_pay', maxGain: 15000 },
-      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'tools' }, { id: 'shelf' },
+      { id: 'materials' }, { id: 'items' }, { id: 'recipes' }, { id: 'tools' }, { id: 'shelf' }, { id: 'field' },
       { id: 'areas' }, { id: 'quests' }, { id: 'allies' },
       { id: 'skip_day', maxGain: 3650 }, { id: 'skip_min', maxGain: 1440 },
     ],
@@ -823,6 +841,7 @@ const S = {
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
+      '밭({field_n}/{field_cap}): {field}',
       '의뢰({quest_slot} 남음): {quests}',
     ].join('\n'),
     systemGuide: '수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. '
@@ -851,7 +870,7 @@ const S = {
         ...CATS.map(([, id]) => ({ var: id, bar: { max: 100 } })),
       ] },
       { label: '소지', visibility: 'show', items: [
-        { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' }, { var: 'shelf' },
+        { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' }, { var: 'shelf' }, { var: 'field' },
         { var: 'recipes' }, { var: 'tools' },
       ] },
       { label: '여정', visibility: 'show', items: [
@@ -894,7 +913,7 @@ const S = {
           { var: 'storage', max: 5, cost: '(storage + 1) * 1500',
             note: '소재 용량 10 → 20 → 35 → 55 → 75 → 99 · 넘치면 상한다' },
           { var: 'garden', max: 5, cost: '(garden + 1) * 1800',
-            note: '단마다 채집 +1 · 하루를 마칠 때마다 약초 수확 (1~2단 1종 · 3~4단 2종 · 5단 3종)',
+            note: '단마다 채집 +1 · 밭 2칸/단 — 씨앗 상사에서 씨앗을 사 심으면 익는 날 소재가 된다 (0단은 심을 데가 없다)',
             requires: 'garden < 3 or renown > 150', requiresLabel: '4단부터는 기초 연금술사부터' },
           { var: 'display', max: 5, cost: '(display + 1) * 2500',
             note: '진열 칸 3 → 6 → 9 → 12 → 15 → 18 · 내놓은 물건은 며칠 안에 팔려 돈이 된다 (하루를 넘길수록 장사가 된다)' },
@@ -937,6 +956,33 @@ const S = {
         + '마석, 별의 파편, 던켈하이트 같은 것, 출처를 묻지 않는 물건. 값은 비싸고 흥정은 없다. '
         + '대신 무엇이든 사 준다 — 소재를 넘길 때 어디서 났는지 캐묻지 않는 것이 이곳의 값어치다. '
         + '진열은 적게(2~4개씩), 하나쯤은 note에 수상한 내력을 붙인다.',
+    },
+    // 씨앗 상사 — 약초밭(설비)의 입구. 산 씨앗은 소재로 오고, 심으면 field로 옮겨 익는 날 작물이 된다
+    {
+      id: 'seeds', label: '씨앗 상사', icon: '🌱',
+      currency: 'cole', buyTo: 'materials',
+      categories: ['씨앗', '모종', '비료'],
+      grades: ['조악', '보통', '상등', '희귀'],
+      bands: { 조악: [5, 30], 보통: [20, 80], 상등: [80, 300], 희귀: [400, 2000] },
+      sellRate: 0.3, maxStock: 12, perCat: [2, 4],
+      when: "location == '왕도' or location == '지방 도시' or location == '프리겐·시골'",
+      guide: '농사꾼 상대 씨앗 가게 — 연금술사가 오는 건 드물어 신기해한다. 씨앗 칸은 "약초 씨앗"·"이름 모를 풀 씨앗"·"밀 씨앗"(조악·보통), '
+        + '"향기 꽃 씨앗"·"활력 약초 씨앗"·"쓴 풀 씨앗"(상등), "희귀 꽃 씨앗"·"생명의 꽃 씨앗"(희귀). 모종 칸은 "사과 모종"·"과일 모종"·"향나무 모종". '
+        + '비료 칸은 "비료"(보통)·"마나 비료"(상등, 익는 날 하루 단축). 이름은 반드시 "X 씨앗"/"X 모종" 꼴 — 심으면 X가 작물 이름이 된다. '
+        + '계절에 맞는 씨앗이 앞에 온다 (봄 꽃·여름 과일·가을 밀·겨울엔 물건이 적다).',
+    },
+    // 미끼 상점 — 물가 채집(낚시)의 짝. 미끼가 있으면 물가 채집 +3, 쓰면 하나 빠진다
+    {
+      id: 'bait', label: '미끼 상점', icon: '🎣',
+      currency: 'cole', buyTo: 'materials', sellFrom: 'materials',
+      categories: ['미끼', '낚시 도구', '물고기'],
+      grades: ['조악', '보통', '상등', '희귀'],
+      bands: { 조악: [3, 20], 보통: [15, 60], 상등: [50, 200], 희귀: [300, 1500] },
+      sellRate: 0.5, maxStock: 10, perCat: [2, 3],
+      when: "location == '왕도' or location == '강가·폭포' or location == '해안'",
+      guide: '강가·해안의 낚시꾼 오두막, 왕도에선 어시장 구석 좌판. 미끼 칸은 정확히 이 이름으로 — "지렁이 미끼"(조악), "반짝이 미끼"(보통), '
+        + '"향미끼"(상등), "마나 미끼"(희귀, 마나가 흐르는 물에서만). 낚시 도구 칸은 "갈고리"·"실"·"낚싯대"(보통). '
+        + '물고기 칸은 그날 잡힌 것 — "생선"·"조개"·"진주"(희귀). 생선·조개는 사 주기도 한다(sellFrom). 주인은 말수가 적고 날씨 얘기만 한다.',
     },
   ],
 
@@ -1302,14 +1348,16 @@ console.log('\n━━ 설비 — 단이 오르면 세계가 바뀐다 (보이지
   t = fresh(); t.vars.garden = 2; t.vars.location = '공방';
   t = engine.toggleAction(S, t, 'act_day').state;
   r = turn(t, {}, 210);
-  ok('🌙 하루 마무리가 수확 이벤트를 깨운다', r.fired.some((e) => (e.id ?? e) === 'garden_harvest'), JSON.stringify(r.fired));
+  t.vars.field = ['약초 @+2'];
+  r = turn(t, {}, 210);
+  ok('🌙 하루 마무리 + 심은 게 있으면 아침 밭 확인 이벤트', r.fired.some((e) => (e.id ?? e) === 'garden_harvest'), JSON.stringify(r.fired));
   ok('래치는 되돌아간다', r.st.vars.harvest_due === 0, String(r.st.vars.harvest_due));
   const pMorn = engine.sendPhase(S, r.st, { rng: seededRng('a', 211, 's') }).promptBlock;
-  ok('다음 아침에 수확 지시가 실린다', pMorn.includes('약초밭에 나가 본다'), '');
+  ok('다음 아침에 밭 확인 지시가 실린다', pMorn.includes('밭에 나가 본다'), '');
   t = fresh(); t.vars.garden = 0; t.vars.location = '공방';
   t = engine.toggleAction(S, t, 'act_day').state;
   r = turn(t, {}, 212);
-  ok('밭이 없으면 수확도 없다', !r.fired.some((e) => (e.id ?? e) === 'garden_harvest'), '');
+  ok('심은 게 없으면 밭 확인도 없다 (래치만 풀린다)', !r.fired.some((e) => (e.id ?? e) === 'garden_harvest') && r.st.vars.harvest_due === 0, '');
 
   // 서고·가마 → 등급 열쇠 (조합 보정)
   const synthMod = S.checks.find((c) => c.id === 'synth').mod;
@@ -1389,6 +1437,14 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
   ok('뒷골목 — 거래처만 열린다', !open(t, 'market') && open(t, 'shade'), '');
   t.vars.location = '숲';
   ok('들판에선 둘 다 닫힌다', !open(t, 'market') && !open(t, 'shade'), '');
+  // 씨앗 상사 · 미끼 상점 (유저 요청) — 상점 4개 = 상한
+  ok('상점 4곳 (상한)', S.shops.length === 4 && S.shops.some((x) => x.id === 'seeds') && S.shops.some((x) => x.id === 'bait'), '');
+  t.vars.location = '프리겐·시골';
+  ok('시골에선 씨앗 상사만', open(t, 'seeds') && !open(t, 'bait') && !open(t, 'market'), '');
+  t.vars.location = '해안';
+  ok('해안에선 미끼 상점만', open(t, 'bait') && !open(t, 'seeds'), '');
+  t.vars.location = '왕도';
+  ok('왕도에선 상점가·씨앗·미끼 셋', open(t, 'market') && open(t, 'seeds') && open(t, 'bait') && !open(t, 'shade'), '');
 
   // 어휘 밖 등급 거부 + 밴드 클램프 (로어북 150의 가격 감각을 시스템이 강제한다)
   t.vars.location = '왕도';
@@ -1512,6 +1568,35 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 밭·미끼 — 씨앗은 심어야 작물이 되고, 미끼는 물가에서만 값을 한다 ━━');
+{
+  const expr = SC.require('expr');
+  let t = fresh();
+  ok('약초밭 0단이면 밭 칸 0 (씨앗을 사도 심을 데가 없다)', look(t)('field_cap') === 0, '');
+  t.vars.garden = 2;
+  ok('2단이면 4칸', look(t)('field_cap') === 4, '');
+  ({ st: t } = turn(t, { field: { add: ['약초 @+2', '향기 꽃 @+4'] } }, 500));
+  ok('심은 것이 절대 날짜로 굳는다', t.vars.field.length === 2 && t.vars.field.every((x) => /@\d+$/.test(x)), JSON.stringify(t.vars.field));
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('a', 501, 's') }).promptBlock;
+  ok('상태 블록 밭 줄 (2/4) + (N일) 환산 + 밭 지시문', p1.includes('밭(2/4)') && /약초 \(2일\)/.test(p1) && p1.includes('앞당겨 거두지 마라'),
+    p1.split('\n').find((l) => l.startsWith('밭')) ?? '');
+  let r = turn(t, { skip_day: 2 }, 502);
+  const p2 = engine.sendPhase(S, r.st, { rng: seededRng('a', 503, 's') }).promptBlock;
+  ok('익는 날엔 (오늘)로 보이고 아직 밭에 있다', r.st.vars.field.length === 2 && /약초 \(오늘\)/.test(p2), p2.split('\n').find((l) => l.startsWith('밭')) ?? '');
+  r = turn(r.st, { skip_day: 1 }, 504);
+  ok('안 거두면 다음 날 시든다 (expire) — 향기 꽃만 남는다', r.st.vars.field.length === 1 && r.st.vars.field[0].startsWith('향기 꽃'), JSON.stringify(r.st.vars.field));
+  t = fresh(); t.vars.garden = 1;
+  ({ st: t } = turn(t, { field: { add: ['a @+3', 'b @+3', 'c @+3'] } }, 505));
+  ok('2칸에 3개면 넘침 통지', engine.sendPhase(S, t, { rng: seededRng('a', 506, 's') }).promptBlock.includes('밭이 좁다'), '');
+  // 미끼 — 물가에서만 +3
+  const gm = S.checks.find((c) => c.id === 'gather').mod;
+  const modAt = (vars) => { const u = fresh(); Object.assign(u.vars, { stamina: 80, ...vars }); return Number(expr.evaluate(gm, look(u), null)); };
+  ok('해안 + 미끼 = 채집 +3', modAt({ location: '해안', materials: ['반짝이 미끼'] }) === modAt({ location: '해안', materials: [] }) + 3, '');
+  ok('숲에선 미끼가 소용없다', modAt({ location: '숲', materials: ['반짝이 미끼'] }) === modAt({ location: '숲', materials: [] }), '');
+  t = fresh(); t.vars.location = '강가·폭포'; t.vars.materials = ['향미끼'];
+  ok('물가에 미끼가 있으면 지시문 (쓴 미끼는 빼라)', engine.sendPhase(S, t, { rng: seededRng('a', 507, 's') }).promptBlock.includes('쓴 미끼 하나를 소재에서 빼라'), '');
 }
 
 console.log('\n━━ 축제 — 달력 표식·준비 창·당일 이벤트가 한 표에서 ━━');

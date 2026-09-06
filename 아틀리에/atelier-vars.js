@@ -460,7 +460,7 @@ const S = {
       desc: `${label} 분야를 얼마나 손에 익혔나. 조합할 때마다 시스템이 올린다.`,
     })),
     { id: 'last_quality', label: '직전 조합 품질', type: 'enum', enum: ['—', '걸작', '상품', '보통', '조잡', '실패'], init: '—',
-      desc: '판정이 세운다. 직접 고치지 마라.' },
+      desc: '판정이 세운다. 직접 고치지 마라. 납품 판정에 얹힌다 (걸작 +4 · 상품 +2 · 조잡 -3 · 실패 -5) — 납품할 물건을 마지막에 만들면 그대로 반영된다.' },
     { id: 'foe_tier', label: '상대의 격', type: 'int', init: 1, min: 1, max: 5,
       desc: '교전 상대의 격. 보통은 지금 지형의 격과 같다 — 푸니·작은 짐승 1, 늑대·유령 2, 골렘·강한 무리 3, 와이번·정예 4, 드래곤·강적 5.' },
     { id: 'foe_name', label: '상대', type: 'text', init: '상대', maxLength: 30,
@@ -489,7 +489,8 @@ const S = {
         + '익는 날: 조악·보통 씨앗 2~3일, 상등 4~5일, 희귀 7일 이상, 비료를 쓰면 하루 빠르게. 심을 때 씨앗은 materials에서 뺀다. '
         + '**(오늘)로 표시된 것은 익었다** — 거둬 materials에 작물 이름으로 올리고 여기서 저장 원문 그대로 remove. 밭 칸(field_cap)을 넘겨 심지 마라.' },
     { id: 'items', label: '아이템', type: 'list', init: [], maxItems: 20, itemMaxLength: 34,
-      desc: '만들거나 얻은 완성품. 품질이 좋으면 이름에 얹는다 ("고품질 힐링 살브").' },
+      desc: '만들거나 얻은 완성품. 품질은 이름에 얹는다 — 걸작 "고품질 힐링 살브", 조잡 "조잡한 힐링 살브", 상품·보통은 접두어 없이. '
+        + '팔 때 감정가: "고품질"은 밴드 상단, "조잡한"은 하단 근처, 접두어 없으면 중간.' },
     { id: 'recipes', label: '레시피', type: 'list', init: ['중화제 적'], maxItems: 30, itemMaxLength: 30,
       desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **괄호 숫자는 배울 수 있는 서고(library) 단수** — 서고가 그보다 낮으면 올리지 마라 (없으면 처음부터). '
         + '**도감에 있는 것은 도감 이름 그대로** 적는다 (조합서와 짝을 맞춘다): '
@@ -539,7 +540,7 @@ const S = {
     { id: 'shelf', label: '진열 상품', type: 'list', init: [], maxItems: 18, itemMaxLength: 40,
       desc: '진열대에 내놓은 상품. **형식: "이름 @+팔릴날 가격"** — 가격은 반드시 맨 끝 숫자, 상점 밴드 안에서 '
         + '(조악 5~60 · 보통 40~200 · 상등 150~800 · 희귀 800~5000). 팔릴 날: 기초 1~3일 · 고급 3~6일 · 비전 5~10일, '
-        + '고품질이면 하루 빠르게, 평판 600 이상이면 하루 빠르게. 예) "힐링 살브 @+2 120". '
+        + '고품질이면 하루 빠르게·가격은 밴드 상단, 조잡하면 하루 늦게·밴드 하단, 평판 600 이상이면 하루 빠르게. 예) "고품질 힐링 살브 @+1 180". '
         + '진열은 items에서 빼서 여기로 옮긴다. **팔리는 것은 시스템이 한다 — 팔렸다고 여기서 지우지 마라.** '
         + '거둬들일 때만 저장 원문 그대로 remove 하고 items에 되돌린다. 진열 칸(shelf_cap)을 넘기면 거둬들여라.' },
     { id: 'shelf_prev', label: '진열 합계(전)', type: 'int', init: 0, min: 0, max: 99999999 },
@@ -864,7 +865,10 @@ const S = {
       ] },
 
     { id: 'deliver', label: '납품',
-      roll: 'rand(1, 20)', mod: 'floor(renown / 70) + floor(sk_now / 20)', vs: '12',
+      roll: 'rand(1, 20)',
+      // 직전 조합 품질이 납품에 얹힌다 — "그 물건"이 아니라 "마지막에 만든 것"이라 납품 직전에 만들면 정확하다 (품질 개편)
+      mod: "floor(renown / 70) + floor(sk_now / 20) + (last_quality == '걸작' ? 4 : last_quality == '상품' ? 2 : last_quality == '조잡' ? -3 : last_quality == '실패' ? -5 : 0)",
+      vs: '12',
       grades: [
         { when: 'total >= vs + 6', label: '대만족',
           effects: [{ set: 'renown', expr: 'renown + 12' }],
@@ -951,6 +955,7 @@ const S = {
       '의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다.',
       '소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다.',
       '진열은 items에서 빼 shelf로 옮긴다("이름 @+팔릴날 가격"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라.',
+      '매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — "고품질"은 밴드 상단, "조잡한"은 하단 근처, 접두어 없으면 중간.',
     ].join(' '),
   },
 
@@ -960,7 +965,7 @@ const S = {
       '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
       '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단',
-      '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}',
+      '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
@@ -995,7 +1000,7 @@ const S = {
       ] },
       { label: '연금술사', visibility: 'show', items: [
         { var: 'renown', bar: { max: 1000 }, color: "'#b08968'" },
-        { var: 'alch_tier' },
+        { var: 'alch_tier' }, { var: 'last_quality' },
         { var: 'stamina', bar: { max: 100 }, color: "'#7fa87f'" },
         ...CATS.map(([, id]) => ({ var: id, bar: { max: 100 } })),
       ] },
@@ -1531,6 +1536,16 @@ console.log('\n━━ 설비 — 단이 오르면 세계가 바뀐다 (보이지
   ok('비전은 서고 5단·가마 3단 없이 -6 (가마 한 단 = +2 별도)',
     modAt({ synth_tier: '비전', library: 5, cauldron: 2 }) === modAt({ synth_tier: '비전', library: 5, cauldron: 3 }) - 6 - 2, '');
   ok('기초는 설비 벌점이 없다', modAt({ synth_tier: '기초', library: 0 }) === modAt({ synth_tier: '기초', library: 5 }), '');
+
+  // 품질 → 납품 (품질 개편: 판정 라벨·이름 접두어만으로는 값에 안 얽혀 "허전하다"는 유저 제보)
+  const delMod = S.checks.find((c) => c.id === 'deliver').mod;
+  const dAt = (q) => { const u = fresh(); u.vars.last_quality = q; return Number(expr.evaluate(delMod, look(u), null)); };
+  ok('납품 보정: 걸작 +4 · 상품 +2 · 보통 0 · 조잡 -3 · 실패 -5',
+    dAt('걸작') === dAt('보통') + 4 && dAt('상품') === dAt('보통') + 2 && dAt('조잡') === dAt('보통') - 3 && dAt('실패') === dAt('보통') - 5 && dAt('—') === dAt('보통'),
+    ['걸작', '상품', '보통', '조잡', '실패', '—'].map((q) => q + '=' + dAt(q)).join(' '));
+  ok('직전 품질이 상태창 연금술사 그룹에', S.statusUI.groups.some((g) => g.label === '연금술사' && g.items.some((i) => i.var === 'last_quality')), '');
+  ok('직전 품질이 상태 블록에', S.promptState.template.includes('직전 조합 {last_quality}'), '');
+  ok('품질 접두어 → 가격 규칙이 보조 guide·items·shelf 셋에', S.updater.guide.includes('품질 접두어') && S.vars.find((v) => v.id === 'items').desc.includes('밴드 상단') && S.vars.find((v) => v.id === 'shelf').desc.includes('밴드 하단'), '');
 
   // 선행 조건 사다리 — 돈만으로는 못 산다
   t = fresh(); t.vars.cole = 999999; t.vars.cauldron = 3; t.vars.renown = 100;

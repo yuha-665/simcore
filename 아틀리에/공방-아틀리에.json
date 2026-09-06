@@ -205,7 +205,7 @@
         "실패"
       ],
       "init": "—",
-      "desc": "판정이 세운다. 직접 고치지 마라."
+      "desc": "판정이 세운다. 직접 고치지 마라. 납품 판정에 얹힌다 (걸작 +4 · 상품 +2 · 조잡 -3 · 실패 -5) — 납품할 물건을 마지막에 만들면 그대로 반영된다."
     },
     {
       "id": "foe_tier",
@@ -308,7 +308,7 @@
       ],
       "maxItems": 20,
       "itemMaxLength": 34,
-      "desc": "만들거나 얻은 완성품. 품질이 좋으면 이름에 얹는다 (\"고품질 힐링 살브\")."
+      "desc": "만들거나 얻은 완성품. 품질은 이름에 얹는다 — 걸작 \"고품질 힐링 살브\", 조잡 \"조잡한 힐링 살브\", 상품·보통은 접두어 없이. 팔 때 감정가: \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
     },
     {
       "id": "recipes",
@@ -484,7 +484,7 @@
       "init": [],
       "maxItems": 18,
       "itemMaxLength": 40,
-      "desc": "진열대에 내놓은 상품. **형식: \"이름 @+팔릴날 가격\"** — 가격은 반드시 맨 끝 숫자, 상점 밴드 안에서 (조악 5~60 · 보통 40~200 · 상등 150~800 · 희귀 800~5000). 팔릴 날: 기초 1~3일 · 고급 3~6일 · 비전 5~10일, 고품질이면 하루 빠르게, 평판 600 이상이면 하루 빠르게. 예) \"힐링 살브 @+2 120\". 진열은 items에서 빼서 여기로 옮긴다. **팔리는 것은 시스템이 한다 — 팔렸다고 여기서 지우지 마라.** 거둬들일 때만 저장 원문 그대로 remove 하고 items에 되돌린다. 진열 칸(shelf_cap)을 넘기면 거둬들여라."
+      "desc": "진열대에 내놓은 상품. **형식: \"이름 @+팔릴날 가격\"** — 가격은 반드시 맨 끝 숫자, 상점 밴드 안에서 (조악 5~60 · 보통 40~200 · 상등 150~800 · 희귀 800~5000). 팔릴 날: 기초 1~3일 · 고급 3~6일 · 비전 5~10일, 고품질이면 하루 빠르게·가격은 밴드 상단, 조잡하면 하루 늦게·밴드 하단, 평판 600 이상이면 하루 빠르게. 예) \"고품질 힐링 살브 @+1 180\". 진열은 items에서 빼서 여기로 옮긴다. **팔리는 것은 시스템이 한다 — 팔렸다고 여기서 지우지 마라.** 거둬들일 때만 저장 원문 그대로 remove 하고 items에 되돌린다. 진열 칸(shelf_cap)을 넘기면 거둬들여라."
     },
     {
       "id": "shelf_prev",
@@ -2025,7 +2025,7 @@
       "id": "deliver",
       "label": "납품",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 70) + floor(sk_now / 20)",
+      "mod": "floor(renown / 70) + floor(sk_now / 20) + (last_quality == '걸작' ? 4 : last_quality == '상품' ? 2 : last_quality == '조잡' ? -3 : last_quality == '실패' ? -5 : 0)",
       "vs": "12",
       "grades": [
         {
@@ -2264,10 +2264,10 @@
         "maxGain": 1440
       }
     ],
-    "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라."
+    "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라. 매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -2379,6 +2379,9 @@
           },
           {
             "var": "alch_tier"
+          },
+          {
+            "var": "last_quality"
           },
           {
             "var": "stamina",

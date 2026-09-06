@@ -377,6 +377,14 @@
       "desc": "장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다."
     },
     {
+      "id": "fest_seen",
+      "label": "지난 축제",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 99999999
+    },
+    {
       "id": "cauldron",
       "label": "가마",
       "type": "int",
@@ -643,6 +651,76 @@
         "notify": "진열대가 좁다 — 칸을 넘긴 물건은 팔리지 않고 자리만 차지한다. 넘친 만큼 거둬들여 아이템으로 되돌려라."
       },
       {
+        "id": "fest_blossom",
+        "when": "month == 4 and dom == 7 and fest_seen != year * 100 + 4",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 4"
+          }
+        ],
+        "notify": "꽃맞이제 당일. 거리마다 꽃, 광장에 노점, 사람들이 손에 향낭을 들었다. 연금술사의 향과 과자가 팔리기 좋은 날이다."
+      },
+      {
+        "id": "fest_starmarket",
+        "when": "month == 6 and dom == 21 and fest_seen != year * 100 + 6",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 6"
+          }
+        ],
+        "notify": "한여름 별시장의 밤. 등불이 광장을 메우고 밤새 장이 선다. 진열대 앞에 사람이 끊이지 않는다."
+      },
+      {
+        "id": "fest_founding",
+        "when": "month == 8 and dom == 8 and fest_seen != year * 100 + 8",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 8"
+          }
+        ],
+        "notify": "왕도 건국제. 기사단이 행진하고 밤에는 불꽃이 오른다. 연금술이 \"쓸모 있는 것\"으로 보이기 좋은 자리다."
+      },
+      {
+        "id": "fest_harvest",
+        "when": "month == 9 and dom == 15 and fest_seen != year * 100 + 9",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 9"
+          }
+        ],
+        "notify": "수확제. 광장에 수확물이 쌓이고 파이 굽는 냄새가 난다. 별의 고치 카페가 하루 종일 붐빈다."
+      },
+      {
+        "id": "fest_lantern",
+        "when": "month == 11 and dom == 11 and fest_seen != year * 100 + 11",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 11"
+          }
+        ],
+        "notify": "첫눈 등불제의 밤. 등불이 골목마다 흔들리고, 사람들이 첫눈을 기다리며 따뜻한 것을 찾는다."
+      },
+      {
+        "id": "fest_comet",
+        "when": "month == 12 and dom == 24 and fest_seen != year * 100 + 12",
+        "effects": [
+          {
+            "set": "fest_seen",
+            "expr": "year * 100 + 12"
+          },
+          {
+            "set": "clues",
+            "expr": "clues + 1"
+          }
+        ],
+        "notify": "혜성 관측일 밤. 혜성이 사라진 하늘을 사람들이 올려다본다 — 그리고 마나가 이상하게 출렁였다. 잊혀진 연금술의 흔적일지도 모른다."
+      },
+      {
         "id": "collapse",
         "when": "stamina <= 0",
         "effects": [
@@ -758,6 +836,36 @@
       "id": "shelf_dir",
       "when": "count(shelf) > 0",
       "text": "진열대에 물건이 나가 있다: {shelf} — 며칠 안에 팔릴지는 시스템이 정한다. 손님이 사 가는 장면을 지어내 돈을 더하지 마라; \"팔렸다\" 통지가 왔을 때만 그 장면을 그린다. 진열대 앞을 기웃거리는 손님·흥정·구경은 자유다."
+    },
+    {
+      "id": "prep_blossom",
+      "when": "month == 4 and dom >= 4 and dom <= 7",
+      "text": "꽃맞이제(4월 7일)가 다가온다. 왕도가 꽃과 향으로 단장한다 — 향기 꽃·기름·향나무 껍질을 찾는 사람이 늘고, 카페는 쿠키·도시락 주문이 밀린다."
+    },
+    {
+      "id": "prep_starmarket",
+      "when": "month == 6 and dom >= 18 and dom <= 21",
+      "text": "한여름 별시장(6월 21일)이 다가온다. 가장 긴 밤에 광장 밤장이 선다 — 램프·기름·얼음 폭탄(더위 식히기)·사탕이 잘 나가고, 뜨내기 상인이 희귀 소재를 들고 온다."
+    },
+    {
+      "id": "prep_founding",
+      "when": "month == 8 and dom >= 5 and dom <= 8",
+      "text": "왕도 건국제(8월 8일)가 다가온다. 기사단 행진과 불꽃놀이 — 협회가 불꽃용 폭탄·의료 붕대·휴대식량을 대량 주문하고, 경비가 늘어 뒷골목은 조용해진다."
+    },
+    {
+      "id": "prep_harvest",
+      "when": "month == 9 and dom >= 12 and dom <= 15",
+      "text": "수확제(9월 15일)가 다가온다. 들판이 결실을 맺고 카페는 파이·잼·벌꿀 술 주문으로 대목이다 — 과일·꿀·밀가루가 소재 시장에 넘친다."
+    },
+    {
+      "id": "prep_lantern",
+      "when": "month == 11 and dom >= 8 and dom <= 11",
+      "text": "첫눈 등불제(11월 11일)가 다가온다. 집집이 등을 걸고 첫눈을 기다린다 — 램프·기름·약초차·약초 스튜를 찾는다. 추위에 앓는 사람이 늘어 약 의뢰도 는다."
+    },
+    {
+      "id": "prep_comet",
+      "when": "month == 12 and dom >= 21 and dom <= 24",
+      "text": "혜성 관측일(12월 24일)이 다가온다. 백색 혜성이 사라진 날 — 학자·노인들이 옛 이야기를 꺼내고, 잊혀진 연금술을 묻는 사람이 생긴다. 밤하늘을 보러 오지로 나가는 이도 있다."
     },
     {
       "id": "tired",
@@ -1676,15 +1784,40 @@
         "note": "카페 앞에 의뢰가 몰린다"
       },
       {
+        "label": "꽃맞이제",
+        "month": 4,
+        "dom": 7,
+        "note": "왕도 거리에 꽃을 건다 — 향·꽃 소재가 귀해진다"
+      },
+      {
+        "label": "한여름 별시장",
+        "month": 6,
+        "dom": 21,
+        "note": "가장 긴 밤 — 광장에 밤장이 선다"
+      },
+      {
+        "label": "왕도 건국제",
+        "month": 8,
+        "dom": 8,
+        "note": "기사단 행진과 불꽃 — 협회 의뢰가 몰린다"
+      },
+      {
         "label": "수확제",
         "month": 9,
-        "dom": 15
+        "dom": 15,
+        "note": "들판의 결실 — 카페 대목"
+      },
+      {
+        "label": "첫눈 등불제",
+        "month": 11,
+        "dom": 11,
+        "note": "첫눈을 기다리며 등을 건다 — 램프·기름 수요"
       },
       {
         "label": "혜성 관측일",
         "month": 12,
         "dom": 24,
-        "note": "백색 혜성이 사라진 날"
+        "note": "백색 혜성이 사라진 날 — 마나가 흔들린다"
       }
     ]
   },

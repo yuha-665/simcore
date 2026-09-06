@@ -287,6 +287,32 @@ ${css}
 </style>`;
 })();
 
+// ══════════ 축제표 — 로어북엔 이름 붙은 축제가 없다 ("축제 물품·노점·마을 축제"와 혜성 설정뿐) ══════════
+// 그래서 계절·로어에서 지었다. 한 표에서 달력 표식 + 사흘 전 준비 지시문 + 당일 이벤트(연 1회)가 나온다.
+// [id, 이름, 월, 일, 달력 note, 준비 지시문(D-3~D), 당일 통지, 당일 효과]
+// ⚠ 일(dom)은 4 이상 — 준비 창(dom >= D-3)이 달을 넘지 않게. 한 달에 하나 — 래치가 year*100+month라서.
+const FESTIVALS = [
+  ['blossom', '꽃맞이제', 4, 7, '왕도 거리에 꽃을 건다 — 향·꽃 소재가 귀해진다',
+    '꽃맞이제(4월 7일)가 다가온다. 왕도가 꽃과 향으로 단장한다 — 향기 꽃·기름·향나무 껍질을 찾는 사람이 늘고, 카페는 쿠키·도시락 주문이 밀린다.',
+    '꽃맞이제 당일. 거리마다 꽃, 광장에 노점, 사람들이 손에 향낭을 들었다. 연금술사의 향과 과자가 팔리기 좋은 날이다.', null],
+  ['starmarket', '한여름 별시장', 6, 21, '가장 긴 밤 — 광장에 밤장이 선다',
+    '한여름 별시장(6월 21일)이 다가온다. 가장 긴 밤에 광장 밤장이 선다 — 램프·기름·얼음 폭탄(더위 식히기)·사탕이 잘 나가고, 뜨내기 상인이 희귀 소재를 들고 온다.',
+    '한여름 별시장의 밤. 등불이 광장을 메우고 밤새 장이 선다. 진열대 앞에 사람이 끊이지 않는다.', null],
+  ['founding', '왕도 건국제', 8, 8, '기사단 행진과 불꽃 — 협회 의뢰가 몰린다',
+    '왕도 건국제(8월 8일)가 다가온다. 기사단 행진과 불꽃놀이 — 협회가 불꽃용 폭탄·의료 붕대·휴대식량을 대량 주문하고, 경비가 늘어 뒷골목은 조용해진다.',
+    '왕도 건국제. 기사단이 행진하고 밤에는 불꽃이 오른다. 연금술이 "쓸모 있는 것"으로 보이기 좋은 자리다.', null],
+  ['harvest', '수확제', 9, 15, '들판의 결실 — 카페 대목',
+    '수확제(9월 15일)가 다가온다. 들판이 결실을 맺고 카페는 파이·잼·벌꿀 술 주문으로 대목이다 — 과일·꿀·밀가루가 소재 시장에 넘친다.',
+    '수확제. 광장에 수확물이 쌓이고 파이 굽는 냄새가 난다. 별의 고치 카페가 하루 종일 붐빈다.', null],
+  ['lantern', '첫눈 등불제', 11, 11, '첫눈을 기다리며 등을 건다 — 램프·기름 수요',
+    '첫눈 등불제(11월 11일)가 다가온다. 집집이 등을 걸고 첫눈을 기다린다 — 램프·기름·약초차·약초 스튜를 찾는다. 추위에 앓는 사람이 늘어 약 의뢰도 는다.',
+    '첫눈 등불제의 밤. 등불이 골목마다 흔들리고, 사람들이 첫눈을 기다리며 따뜻한 것을 찾는다.', null],
+  ['comet', '혜성 관측일', 12, 24, '백색 혜성이 사라진 날 — 마나가 흔들린다',
+    '혜성 관측일(12월 24일)이 다가온다. 백색 혜성이 사라진 날 — 학자·노인들이 옛 이야기를 꺼내고, 잊혀진 연금술을 묻는 사람이 생긴다. 밤하늘을 보러 오지로 나가는 이도 있다.',
+    '혜성 관측일 밤. 혜성이 사라진 하늘을 사람들이 올려다본다 — 그리고 마나가 이상하게 출렁였다. 잊혀진 연금술의 흔적일지도 모른다.',
+    [{ set: 'clues', expr: 'clues + 1' }]],
+];
+
 // ══════════ 분야표 — 로어북 38~48이 이미 갈라 놓은 그대로 ══════════
 const CATS = [
   ['폭탄', 'sk_bomb', '폭탄·투척', '로어북 38·45 (프람·레헤른·크래프트·도나 스톤)'],
@@ -423,6 +449,9 @@ const S = {
     { id: 'weather', label: '날씨', type: 'enum', enum: ['맑음', '흐림', '비', '바람', '안개', '눈'], init: '맑음',
       desc: '장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다.' },
 
+    // 축제 래치 — 연 1회 발화. year*100+month (한 달에 축제 하나)
+    { id: 'fest_seen', label: '지난 축제', type: 'int', init: 0, min: 0, max: 99999999 },
+
     // ── 공방 설비: 편성표 탭이 관리한다. allow에 없다 ──
     { id: 'cauldron', label: '가마', type: 'int', init: 1, min: 1, max: 5, format: '{v}단' },
     { id: 'library', label: '서고', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
@@ -523,6 +552,11 @@ const S = {
         notify: '진열대의 물건이 팔렸다 — 장부에 값이 들어왔다(소지금 변화만큼). 누가 무엇을 사 갔는지 한 줄로 그려라. 팔린 물건은 이미 진열에서 빠져 있다.' },
       { id: 'shelf_over', when: 'shelf_n > shelf_cap',
         notify: '진열대가 좁다 — 칸을 넘긴 물건은 팔리지 않고 자리만 차지한다. 넘친 만큼 거둬들여 아이템으로 되돌려라.' },
+      // 축제 당일 — 표에서 굽는다. 래치가 같은 해 재발화를 막는다
+      ...FESTIVALS.map(([id, , m, d, , , notify, effects]) => ({
+        id: `fest_${id}`, when: `month == ${m} and dom == ${d} and fest_seen != year * 100 + ${m}`,
+        effects: [{ set: 'fest_seen', expr: `year * 100 + ${m}` }, ...(effects || [])], notify,
+      })),
       { id: 'collapse', when: 'stamina <= 0',
         effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "'공방'" },
           { set: 'skip_min', expr: 'skip_min + 480' }],
@@ -569,6 +603,10 @@ const S = {
     { id: 'shelf_dir', when: 'count(shelf) > 0',
       text: '진열대에 물건이 나가 있다: {shelf} — 며칠 안에 팔릴지는 시스템이 정한다. 손님이 사 가는 장면을 지어내 돈을 더하지 마라; '
         + '"팔렸다" 통지가 왔을 때만 그 장면을 그린다. 진열대 앞을 기웃거리는 손님·흥정·구경은 자유다.' },
+    // 축제 준비 창 — 사흘 전부터 당일까지. 표에서 굽는다
+    ...FESTIVALS.map(([id, , m, d, , text]) => ({
+      id: `prep_${id}`, when: `month == ${m} and dom >= ${d - 3} and dom <= ${d}`, text,
+    })),
     { id: 'tired', when: 'stamina <= 25',
       text: '몸이 무겁다. 손이 떨리고 집중이 흩어진다 — 무리한 조합이나 먼 길은 그 대가를 보여라.' },
     { id: 'broke', when: 'cole < 100',
@@ -831,8 +869,7 @@ const S = {
     marks: [
       { label: '장날', weekday: '토', note: '왕도 광장에 좌판이 선다' },
       { label: '별의 고치 정기시', dom: 1, note: '카페 앞에 의뢰가 몰린다' },
-      { label: '수확제', month: 9, dom: 15 },
-      { label: '혜성 관측일', month: 12, dom: 24, note: '백색 혜성이 사라진 날' },
+      ...FESTIVALS.map(([, label, month, dom, note]) => ({ label, month, dom, note })),
     ],
   },
 
@@ -1222,7 +1259,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'clues', 'last_quality',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'clues', 'last_quality',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -1475,6 +1512,38 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 축제 — 달력 표식·준비 창·당일 이벤트가 한 표에서 ━━');
+{
+  ok('축제 6개 · 달마다 하나 · 일은 4 이상 (준비 창이 달을 안 넘는다)',
+    FESTIVALS.length === 6 && new Set(FESTIVALS.map((x) => x[2])).size === 6 && FESTIVALS.every((x) => x[3] >= 4), '');
+  ok('달력 표식에 축제 6 + 장날 + 정기시', S.calendar.marks.length === 8 && S.calendar.marks.some((m) => m.label === '한여름 별시장' && m.month === 6 && m.dom === 21), String(S.calendar.marks.length));
+  let t = fresh();                                         // 4월 1일
+  const p0 = engine.sendPhase(S, t, { rng: seededRng('a', 400, 's') }).promptBlock;
+  ok('4월 1일엔 꽃맞이제 준비 지시가 아직 없다', !p0.includes('꽃맞이제(4월 7일)가 다가온다'), '');
+  ({ st: t } = turn(t, { skip_day: 3 }, 401));            // 4월 4일 = D-3
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('a', 402, 's') }).promptBlock;
+  ok('4월 4일부터 준비 지시가 실린다', p1.includes('꽃맞이제(4월 7일)가 다가온다'), p1.split('\n').find((l) => l.includes('꽃맞이제')) ?? '');
+  let r = turn(t, { skip_day: 3 }, 403);                   // 4월 7일 = 당일
+  ok('당일에 축제 이벤트가 뜬다', r.fired.some((e) => (e.id ?? e) === 'fest_blossom'), JSON.stringify(r.fired));
+  ok('래치가 그 해로 굳는다', r.st.vars.fest_seen === 1400 * 100 + 4, String(r.st.vars.fest_seen));
+  const p2 = engine.sendPhase(S, r.st, { rng: seededRng('a', 404, 's') }).promptBlock;
+  ok('다음 장면에 당일 통지', p2.includes('꽃맞이제 당일'), '');
+  r = turn(r.st, {}, 405);                                 // 같은 날 다음 턴
+  ok('같은 날 다음 턴엔 다시 안 뜬다', !r.fired.some((e) => (e.id ?? e) === 'fest_blossom'), '');
+  ({ st: t } = turn(r.st, { skip_day: 1 }, 406));         // 4월 8일
+  const p3 = engine.sendPhase(S, t, { rng: seededRng('a', 407, 's') }).promptBlock;
+  ok('지나가면 준비 지시도 걷힌다', !p3.includes('꽃맞이제(4월 7일)가 다가온다'), '');
+  ({ st: t } = turn(t, { skip_day: 364 }, 408));          // 이듬해 4월 7일
+  r = turn(t, {}, 409);
+  ok('이듬해 같은 날엔 다시 뜬다 (연 1회)', look(t)('month') === 4 && look(t)('dom') === 7 && (t.vars.fest_seen === 1401 * 100 + 4 || r.st.vars.fest_seen === 1401 * 100 + 4),
+    look(t)('date') + ' · ' + t.vars.fest_seen);
+  // 혜성 관측일은 단서를 준다
+  t = fresh(); const c0 = t.vars.clues;
+  r = turn(t, { skip_day: 267 }, 410);                     // 4/1 + 267 = 12/24
+  ok('12월 24일 혜성 관측일 — 단서 +1', look(r.st)('month') === 12 && look(r.st)('dom') === 24 && r.st.vars.clues === c0 + 1, look(r.st)('date') + ' · clues ' + r.st.vars.clues);
+  ok('축제 래치는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'fest_seen'), '');
 }
 
 console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉션은 has()로 채워진다 ━━');

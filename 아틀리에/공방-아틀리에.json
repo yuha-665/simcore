@@ -1030,7 +1030,7 @@
       }
     ],
     "randomEvents": {
-      "chancePerTurn": 0.22,
+      "chancePerTurn": 0.07,
       "table": [
         {
           "id": "caravan",

@@ -871,7 +871,9 @@ const S = {
     ],
 
     randomEvents: {
-      chancePerTurn: 0.22,
+      // 0.22 → 0.07 (2026-09-07, 유저 실기 "발동 확률이 너무 높다" — 리수에서 7%로 직접 낮춤. 생성기에 되반영).
+      // 표가 11종뿐이라 확률을 올리면 같은 사건을 되풀이해 본다 — 확률 대신 **표를 늘리는 것**이 다음 일(§9 남은 것 3).
+      chancePerTurn: 0.07,
       table: [
         // ── 시세 사건 (v1.7.8 priceMul과 짝) — 날씨·계절이 조건, 기한은 며칠 ──
         { id: 'caravan', weight: 2, cooldown: 12, when: "area_tier == 0 and market_state == '평시'",

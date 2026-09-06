@@ -188,6 +188,10 @@ origin: 란타르나 | 잘부르그·그람나트 | 아를란드 | 황혼 | 신�
   상태 블록 "진열대(n/cap): …(N일)" 줄. 통지는 값을 못 실으니 액수는 소지금 변화로 드러난다.
 
 ### 시간
+시작 **1400년 4월 1일 08:00** (중세 판타지 감각, 유저 지정 2026-09-06 — 원래 1000년). 날짜 표기 `YYYY년 M월 D일`, `year_no = year - 1399`.
+상태창 첫 그룹 **지금**: 날짜·요일·시각·계절·날씨·위치 (date/clock/weekday/season은 time.expose 이름을 statusUI에 그대로 쓴다).
+날씨 `weather` enum(맑음/흐림/비/바람/안개/눈)은 보조가 서사를 따라 적는다 — 시스템 기상은 없다. 랜덤 이벤트는 `squall`로 개명.
+
 `time`: gregorian, start `0001-04-01 08:00`, `expose`에 **`year` 포함**(원본 "년도: 1"),
 format `M월 D일` / `HH:mm`, weekdays 월~일, seasons 봄여름가을겨울.
 `skip_day`(0~3650, **캡 금지**) · `skip_min`(0~1440).
@@ -364,7 +368,7 @@ vs  = 10 / 15 / 20                                ← 레시피 자체 난이도
 **이게 없으면 상태창은 유저만 보는 장식이다.** 얼헌 v1.5.3 실사고의 자리.
 
 ```
-지금: {date}({weekday}) {clock} · {season} · {location}
+지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}
 공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}
 설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단
 평판 {renown}({alch_tier}) · 소지금 {cole}콜 · 체력 {stamina}/100

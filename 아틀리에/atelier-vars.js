@@ -347,6 +347,9 @@ const S = {
       desc: '"이름 — 달라진 것" 꼴로 한 줄씩. 그 사람에게 생긴 변화만 적는다 '
         + '(예: "하이디 — 셋방 월세가 밀렸다", "이자나 — 기사 시험에 떨어졌다"). 서신을 쓸 때 근거가 된다.' },
 
+    { id: 'weather', label: '날씨', type: 'enum', enum: ['맑음', '흐림', '비', '바람', '안개', '눈'], init: '맑음',
+      desc: '장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다.' },
+
     // ── 공방 설비: 편성표 탭이 관리한다. allow에 없다 ──
     { id: 'cauldron', label: '가마', type: 'int', init: 1, min: 1, max: 5, format: '{v}단' },
     { id: 'library', label: '서고', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
@@ -393,14 +396,14 @@ const S = {
       expr: chain([['display <= 0', '3'], ['display == 1', '6'], ['display == 2', '9'],
         ['display == 3', '12'], ['display == 4', '15']], '18'), format: '{v}칸' },
     { id: 'shelf_n', label: '진열 중', expr: 'count(shelf)', format: '{v}개' },
-    { id: 'year_no', label: '여정', expr: 'year - 999', format: '{v}년차' },
+    { id: 'year_no', label: '여정', expr: 'year - 1399', format: '{v}년차' },
   ],
 
   time: {
-    start: '1000-04-01 08:00',
+    start: '1400-04-01 08:00',   // 중세 판타지 감각 — 유저 지정 (1400년 4월)
     advance: 'explicit',
     calendar: 'gregorian',
-    format: { date: 'M월 D일', clock: 'HH:mm' },
+    format: { date: 'YYYY년 M월 D일', clock: 'HH:mm' },
     weekdays: ['월', '화', '수', '목', '금', '토', '일'],
     seasons: ['봄', '여름', '가을', '겨울'],
     expose: ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'elapsed'],
@@ -464,7 +467,7 @@ const S = {
           notify: '행상인이 공방 문을 두드렸다 — 흔치 않은 소재를 몇 가지 펼쳐 보인다.' },
         { id: 'puni', weight: 3, cooldown: 5, when: 'area_tier >= 1 and area_tier <= 2',
           notify: '푸니 떼가 길을 막고 통통거린다. 위험하진 않지만 성가시다.' },
-        { id: 'weather', weight: 3, cooldown: 4, when: 'area_tier >= 1',
+        { id: 'squall', weight: 3, cooldown: 4, when: 'area_tier >= 1',
           notify: '날씨가 갑자기 돌아섰다. 채집을 접든지, 젖은 채로 계속하든지.' },
         { id: 'cafe_regular', weight: 2, cooldown: 7, when: 'area_tier == 0 and renown >= 100',
           notify: '카페 단골이 다급하게 부탁을 들고 왔다. 정식 의뢰는 아니지만 거절하기 어려운 부탁이다.' },
@@ -678,7 +681,7 @@ const S = {
     contextTurns: 2,
     allow: [
       { id: 'location' },
-      { id: 'synth_cat' }, { id: 'synth_tier' },
+      { id: 'synth_cat' }, { id: 'synth_tier' }, { id: 'weather' },
       { id: 'renown', maxGain: 20, maxLoss: 30 },
       { id: 'stamina', maxDelta: 40 },
       { id: 'cole', maxGain: 15000, maxLoss: 15000 },
@@ -701,7 +704,7 @@ const S = {
 
   promptState: {
     template: [
-      '지금: {date}({weekday}) {clock} · {season} · {year_no} · {location}',
+      '지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}',
       '공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}',
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
       '설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단',
@@ -721,6 +724,10 @@ const S = {
     theme: 'parchment',
     changeLog: 'collapsed',
     groups: [
+      // 날짜·시각·날씨·위치 — 유저 요청 ("상태창에 날짜 시간 날씨 현재 위치"). date/clock/weekday/season은 time.expose 이름
+      { label: '지금', visibility: 'show', items: [
+        { var: 'date' }, { var: 'weekday' }, { var: 'clock' }, { var: 'season' }, { var: 'weather' }, { var: 'location' },
+      ] },
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
         { var: 'cauldron' }, { var: 'library' }, { var: 'storage' }, { var: 'mat_cap' }, { var: 'garden' },
@@ -737,7 +744,7 @@ const S = {
         { var: 'recipes' }, { var: 'tools' },
       ] },
       { label: '여정', visibility: 'show', items: [
-        { var: 'location' }, { var: 'area_tier' }, { var: 'areas' },
+        { var: 'area_tier' }, { var: 'areas' },
         { var: 'allies' }, { var: 'clues' },
       ] },
       { label: '의뢰', visibility: 'show', items: [
@@ -1048,14 +1055,26 @@ console.log('\n━━ 의뢰 — 3칸 상한 · 정산 · 만료 ━━');
 console.log('\n━━ 시간 · 하루 넘김 ━━');
 {
   let t = fresh();
-  ok('시작은 4월 1일 08:00', look(t)('date') === '4월 1일' && look(t)('clock') === '08:00',
+  ok('시작은 1400년 4월 1일 08:00', look(t)('date') === '1400년 4월 1일' && look(t)('clock') === '08:00',
     `${look(t)('date')} ${look(t)('clock')}`);
   ok('여정 1년차', look(t)('year_no') === 1, String(look(t)('year_no')));
+  // 상태창 "지금" 그룹 — 날짜·요일·시각·계절·날씨·위치
+  {
+    const html = SC.require('render').renderStatusHtml(S, t, null, null, { uid: 9 });
+    ok('상태창에 날짜·시각·날씨·위치가 뜬다', html.includes('1400년 4월 1일') && html.includes('08:00') && html.includes('맑음') && html.includes('공방'),
+      html.replace(/<[^>]+>/g, ' ').replace(/s+/g, ' ').slice(0, 200));
+    ok('첫 그룹이 지금', S.statusUI.groups[0].label === '지금', S.statusUI.groups[0].label);
+    ok('날씨는 보조가 적는다 (allow) · 어휘 밖은 거부', S.updater.allow.some((a) => a.id === 'weather')
+      && turn(t, { weather: '비' }, 60).st.vars.weather === '비' && turn(t, { weather: '산성비' }, 61).st.vars.weather === '맑음', '');
+    const p = engine.sendPhase(S, t, { rng: seededRng('a', 62, 's') }).promptBlock;
+    ok('상태 블록 첫 줄에 날씨', p.split('\n').find((l) => l.startsWith('지금:'))?.includes('맑음') === true,
+      p.split('\n').find((l) => l.startsWith('지금:')) ?? '');
+  }
   // 버튼을 안 눌러도 서사가 하루를 넘기면 dayClose가 대신 돈다
   const r = turn(t, {}, 20);
   const st2 = engine.outputPhase(S, engine.sendPhase(S, r.st, { rng: seededRng('a', 21, 's') }).state,
     {}, {}, { rng: seededRng('a', 21, 'o'), dayPassed: true });
-  ok('dayClose 대리 정산 — 날짜가 넘어간다', look(st2.state)('date') === '4월 3일' || look(st2.state)('date') === '4월 2일',
+  ok('dayClose 대리 정산 — 날짜가 넘어간다', look(st2.state)('date') === '1400년 4월 3일' || look(st2.state)('date') === '1400년 4월 2일',
     look(st2.state)('date'));
   ok('대리 정산으로 체력도 회복', st2.state.vars.stamina >= 100, String(st2.state.vars.stamina));
   // 유저 주도 도약 — 캡이 없다

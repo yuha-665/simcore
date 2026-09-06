@@ -362,6 +362,21 @@
       "desc": "\"이름 — 달라진 것\" 꼴로 한 줄씩. 그 사람에게 생긴 변화만 적는다 (예: \"하이디 — 셋방 월세가 밀렸다\", \"이자나 — 기사 시험에 떨어졌다\"). 서신을 쓸 때 근거가 된다."
     },
     {
+      "id": "weather",
+      "label": "날씨",
+      "type": "enum",
+      "enum": [
+        "맑음",
+        "흐림",
+        "비",
+        "바람",
+        "안개",
+        "눈"
+      ],
+      "init": "맑음",
+      "desc": "장면의 날씨. 서사에 날씨가 나오면 따라 적는다 — 계절에 맞게 (봄·가을 비·바람, 여름 맑음·비, 겨울 눈·안개). 실내 장면이면 바깥 날씨를 유지한다."
+    },
+    {
       "id": "cauldron",
       "label": "가마",
       "type": "int",
@@ -495,16 +510,16 @@
     {
       "id": "year_no",
       "label": "여정",
-      "expr": "year - 999",
+      "expr": "year - 1399",
       "format": "{v}년차"
     }
   ],
   "time": {
-    "start": "1000-04-01 08:00",
+    "start": "1400-04-01 08:00",
     "advance": "explicit",
     "calendar": "gregorian",
     "format": {
-      "date": "M월 D일",
+      "date": "YYYY년 M월 D일",
       "clock": "HH:mm"
     },
     "weekdays": [
@@ -677,7 +692,7 @@
           "notify": "푸니 떼가 길을 막고 통통거린다. 위험하진 않지만 성가시다."
         },
         {
-          "id": "weather",
+          "id": "squall",
           "weight": 3,
           "cooldown": 4,
           "when": "area_tier >= 1",
@@ -1393,6 +1408,9 @@
         "id": "synth_tier"
       },
       {
+        "id": "weather"
+      },
+      {
         "id": "renown",
         "maxGain": 20,
         "maxLoss": 30
@@ -1458,7 +1476,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n의뢰({quest_slot} 남음): {quests}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · {year_no} · {location}\n공방 「{atelier_name}」 — {atelier_place} · 스승 {mentor}\n설비: 가마 {cauldron}단 · 서고 {library}단 · 보관고 {mat_n}/{mat_cap} · 약초밭 {garden}단\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n의뢰({quest_slot} 남음): {quests}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -1467,6 +1485,30 @@
     "theme": "parchment",
     "changeLog": "collapsed",
     "groups": [
+      {
+        "label": "지금",
+        "visibility": "show",
+        "items": [
+          {
+            "var": "date"
+          },
+          {
+            "var": "weekday"
+          },
+          {
+            "var": "clock"
+          },
+          {
+            "var": "season"
+          },
+          {
+            "var": "weather"
+          },
+          {
+            "var": "location"
+          }
+        ]
+      },
       {
         "label": "공방",
         "visibility": "show",
@@ -1590,9 +1632,6 @@
         "label": "여정",
         "visibility": "show",
         "items": [
-          {
-            "var": "location"
-          },
           {
             "var": "area_tier"
           },

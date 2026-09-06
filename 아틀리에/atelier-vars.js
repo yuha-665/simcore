@@ -896,6 +896,8 @@ const S = {
       '밭({field_n}/{field_cap}): {field}',
       '여기 가게: {shops_here}',
       '의뢰({quest_slot} 남음): {quests}',
+      '도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}',
+      '숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}',
     ].join('\n'),
     systemGuide: '수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. '
       + '지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다.',
@@ -914,8 +916,11 @@ const S = {
       ] },
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
-        { var: 'cauldron' }, { var: 'library' }, { var: 'storage' }, { var: 'mat_cap' }, { var: 'garden' },
-        { var: 'display' },
+        { var: 'cauldron' }, { var: 'library' }, { var: 'garden' }, { var: 'display' },
+        // 찬 정도 — 막대의 max가 설비 파생값. 값은 "12종", 막대가 용량 대비 비율 (bar.max는 식을 받는다)
+        { var: 'storage' }, { var: 'mat_n', bar: { max: 'mat_cap' }, color: "'#b08968'" }, { var: 'mat_cap' },
+        { var: 'shelf_n', bar: { max: 'shelf_cap' }, color: "'#c9a24a'" }, { var: 'shelf_cap' },
+        { var: 'field_n', bar: { max: 'field_cap' }, color: "'#7fa87f'" }, { var: 'field_cap' },
       ] },
       { label: '연금술사', visibility: 'show', items: [
         { var: 'renown', bar: { max: 1000 }, color: "'#b08968'" },
@@ -1647,6 +1652,18 @@ console.log('\n━━ 지도 탭 — 지형표에서 구운 격 사다리 ━━
   ok('지형 안 붙인 항목은 어느 칸에도 안 든다 (상태창 여정 탭에는 그대로 있다)',
     !html.includes('지형 안 붙인 곳') && t.vars.areas.includes('지형 안 붙인 곳'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .amap'), '');
+}
+
+console.log('\n━━ 상태창 찬 정도 · 상태 블록 누락분 ━━');
+{
+  const t = fresh(); t.vars.storage = 2; t.vars.materials = Array.from({ length: 14 }, (_, i) => '소재' + i);
+  const html = SC.require('render').renderStatusHtml(S, t, null, null, { uid: 11 });
+  const pane = html.slice(html.indexOf('보관 중'), html.indexOf('보관 용량'));
+  ok('공방 그룹에 "보관 중 14종" + 용량 대비 막대(14/35 = 40%)', pane.includes('14종') && /width:40\.0%/.test(pane), pane.slice(0, 200));
+  ok('진열·밭도 막대', html.includes('진열 중') && html.includes('심은 것') && (html.match(/sim-bar-fill/g) || []).length >= 3, '');
+  const p = engine.sendPhase(S, t, { rng: seededRng('a', 700, 's') }).promptBlock;
+  ok('상태 블록에 도구·동행·단서·채집지 줄', /도구: .*채집 바구니.*동행: .*단서 0.*아는 채집지: .*왕도 근교/.test(p), p.split('\n').find((l) => l.startsWith('도구')) ?? '');
+  ok('상태 블록에 숙련 6종', /숙련: 폭탄 0 · 약품 0 · 중간재 0 · 도구 0 · 음식 0 · 비전 0/.test(p), p.split('\n').find((l) => l.startsWith('숙련')) ?? '');
 }
 
 console.log('\n━━ 낱말 자동 무장 — 버튼을 안 눌러도 글이 곧 버튼 ━━');

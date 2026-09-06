@@ -1978,6 +1978,8 @@ console.log('\n━━ 첫 턴 — 공방에 닿기 전엔 공방을 말하지 �
   ok('첫 턴 상태 블록: "공방: 아직 없다", 설비 줄 없음, 이름·셋방·스승 없음', p0.includes('공방: 아직 없다') && !p0.includes('설비: 가마') && !p0.includes('이름 없는 공방') && !p0.includes('셋방') && !p0.includes('스승 없음'), p0.split('\n').slice(0, 4).join(' | '));
   // 설정 턴(turn 0)엔 엔진이 지시문 대신 setup.ai.instruction만 싣는다 — 정착 전 안내는 그 다음 턴부터
   ok('첫 턴엔 설비 지시문이 없다 (설정 지시만)', !p0.includes('공방 설비는 서사에 실체가 있다') && p0.includes('[첫 장면]'), '');
+  // 실사고: 설정 턴에 에셋 지침이 빠져 첫 응답이 이미지 0장 → 그 뒤로도 0장(히스토리 모방). v1.7.11부터 설정 턴에도 붙는다
+  ok('첫 턴(설정)에도 에셋 지침이 실린다 — 안 실리면 콜드 스타트', p0.includes('[Image tags]') && p0.includes('<img="{name}">') && p0.includes('reisalin'), p0.split('\n').filter((l) => /Image|img/.test(l)).slice(0, 2).join(' | '));
   {
     const u = engine.initState(S); u.meta.setupDone = true;
     const pu = engine.sendPhase(S, u, { rng: seededRng('a', 604, 's') }).promptBlock;

@@ -423,6 +423,14 @@ const E = SC.require('engine');
     E.sendPhase(Sm, E.initState(Sm)).promptBlock.includes('[Image tags]'), '');
   ck('by:aux면 promptBlock에는 없다 (이중 지시 방지)',
     !E.sendPhase(S, E.initState(S)).promptBlock.includes('[Image tags]'), '');
+  // v1.7.11 — 설정 턴(최초설정 대기)에도 붙는다. 아틀리에 실사고: 설정 턴이 곧 첫 장면인 봇에서 첫 응답이 0장 →
+  // 모델이 히스토리를 모방해 그 뒤로도 0장(콜드 스타트). 옛 가정("세션 0은 설정 대화")이 틀렸다.
+  {
+    const Ss = snap(); Ss.assets.by = 'main'; Ss.setup = { ...(Ss.setup || {}), ai: { ...((Ss.setup || {}).ai || {}), enabled: true } };
+    const st = E.initState(Ss);
+    ck('★ 설정 턴(setup pending)에도 by:main 주입문이 붙는다 (콜드 스타트 방지)',
+      E.isSetupPending(Ss, st) === true && E.sendPhase(Ss, st).promptBlock.includes('[Image tags]'), String(E.isSetupPending(Ss, st)));
+  }
 
   const parsed = E.parseAuxResponse('{"changes":{},"reasons":{},"image":{"who":"Hiromi","emo":"angry"}}');
   ck('★ parseAuxResponse가 image 필드를 통과시킨다', parsed && parsed.image && parsed.image.who === 'Hiromi', JSON.stringify(parsed));

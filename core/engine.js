@@ -769,8 +769,11 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   }
 
   // 3.7 에셋 팩 주입문 (by:'main') — 손으로 쓰던 이미지 지침 블록을 팩 선언에서 생성.
-  // 닫힌 팩은 통째로 빠지므로 매 전송 다시 계산한다. 세션 0(최초설정)엔 안 붙인다.
-  if (!isSetupPending(schema, state)) {
+  // 닫힌 팩은 통째로 빠지므로 매 전송 다시 계산한다.
+  // 세션 0(최초설정)에도 붙인다 (v1.7.11) — 설정 턴이 "설정 대화"가 아니라 첫 장면인 봇(아틀리에 "[첫 장면]")에서
+  // 첫 응답에 이미지가 0장이면 모델이 그 히스토리를 모방해 그 뒤로도 0장이다(규칙 #13 콜드 스타트). 실사고:
+  // "에셋 캐릭터가 대사치는데도 에셋 출력식을 하나도 출력 안 한다". 설정 대화형 봇이라도 지침이 있어 손해 볼 건 없다.
+  {
     const imgBlock = mainInjectionText(schema, lookup);
     if (imgBlock) lines.push(imgBlock);
   }

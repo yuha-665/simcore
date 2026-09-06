@@ -251,3 +251,4 @@ DOM에 뜨는데 `showContainer('fullscreen')`한 플러그인 iframe이 그 위
   리수 동작(beforeRequest·display 훅·좌표 히트테스트·getDatabase)은 전에도 깨진 적이 있으니 "해당 없음 ≠ 안전"
 - `beforeRequest`의 `messages[]`는 `{ role, content }`이고 **content가 문자열이 아닐 수 있다**(멀티모달 배열) —
   마지막 user 발화를 읽을 땐 `typeof content === 'string'` 확인 (v1.6.0 userText)
+- **리수 권한 팝업 z-index = 50** (커뮤니티 제보 2026-09-06). 메인 DOM에 그 이상을 얹는 플러그인은 권한 동의를 막는다. SimCore는 메인 DOM에 요소를 안 넣고(상태창은 메시지 안, z-index ≤5), 패널·편집기는 플러그인 iframe 안이라 무관. 컨테이너가 떠 있는 동안 alertConfirm이 가려지는 건 별개 문제(규칙 #6).

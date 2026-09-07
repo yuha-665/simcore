@@ -6492,14 +6492,14 @@
       /* Visual polish · play dashboard — match the approved blue-gray dashboard without
          reintroducing equal-height stretching on the variable/engine row. */
       #sc-root #sc-page-play {
-        --sc-play-surface:#202832; --sc-play-line:#465565; --sc-play-field:#182029;
-        --sc-play-muted:#c3ccd6;
+        --sc-play-surface:var(--sc-surface); --sc-play-line:var(--sc-line); --sc-play-field:var(--sc-field);
+        --sc-play-muted:var(--sc-muted);
       }
       #sc-root #sc-page-play .sc-card { background:var(--sc-play-surface); border-color:var(--sc-play-line); }
       #sc-root #sc-page-play .sc-card-desc, #sc-root #sc-page-play .muted { color:var(--sc-play-muted); }
       #sc-root #sc-page-play .sc-divider { background:var(--sc-play-line); }
       #sc-root #sc-page-play .sc-card-badge { background:var(--sc-play-field);
-        border-color:#596b7d; color:#cbd6e1; }
+        border-color:var(--sc-line-strong); color:var(--sc-text); }
       #sc-root #sc-page-play .sc-card-badge.ok { color:var(--sc-success); border-color:var(--sc-success); }
       #sc-root #sc-page-play .sc-card-badge.warn { color:var(--sc-warning); border-color:var(--sc-warning); }
       #sc-root #sc-page-play .sc-metric-grid, #sc-root #sc-page-play .sc-metric {

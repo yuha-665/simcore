@@ -130,7 +130,7 @@ const open = (t) => engine.auxAllowList(S, t).map((a) => a.id);
 {
   const tab = src.slice(src.indexOf('function tabAi()'), src.indexOf('// ── 탭: JSON'));
   ck('★ 허용 변수 행에 [등장할 때만] 체크가 있다', tab.includes("'등장할 때만'"));
-  ck('★ 낱말 칸이 있다 (쉼표로 여러 개)', /pair\('낱말'/.test(tab));
+  ck('★ 낱말 칸이 있다 (쉼표로 여러 개)', /pair\('(낱말|매칭 낱말)'/.test(tab));   // v1.7.13 개조본 tabAi 라벨
   ck('켜고 비우면 true — 변수 이름을 낱말로 쓴다', tab.includes('a.mentions = keys.length ? keys : true'));
   ck('끄면 필드가 삭제된다', tab.includes('else delete a.mentions'));
 }

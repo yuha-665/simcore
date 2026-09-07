@@ -46,10 +46,13 @@ function makeDom() {
     });
     Object.defineProperty(el, 'innerHTML', { get: () => el._html ?? '', set(v) { el._html = String(v); el.children = []; el.childNodes = []; } });
     Object.defineProperty(el, 'firstChild', { get: () => el.children[0] ?? null });
+    // v1.7.13 — 개조본 이식 탭(AI 설정 등)이 section.lastChild에 필드를 붙인다
+    Object.defineProperty(el, 'lastChild', { get: () => el.children[el.children.length - 1] ?? null });
     return el;
   };
   const doc = {
     createElement: mkEl,
+    createElementNS: (_ns, tag) => mkEl(tag),   // v1.7.13 — 규칙 탭의 SVG 아이콘 버튼(개조본 ruleIconButton)
     createTextNode: (t) => { const n = mkEl('#text'); n.nodeType = 3; n._text = String(t); return n; },
     createDocumentFragment: () => mkEl('#frag'),
     getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],

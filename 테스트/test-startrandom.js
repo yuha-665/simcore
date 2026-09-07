@@ -118,7 +118,7 @@ const calOf = (S, chat) => time.calendarOf(epochOf(S, chat), time.timeConfig(S).
   ck('★ 편집기에 토글 칸이 있다 (규칙 #3)',
     src.includes("'리롤 안정 (기본 켜짐)'") && src.includes('schema.rerollStableRng = on ? undefined : false'), '');
   ck('꺼짐/켜짐 설명이 갈린다', src.includes('리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다')
-    && src.includes('같은 눈으로 나옵니다'), '');
+    && src.includes('같은 지점에서는 같은 눈을 유지하고'), '');   // v1.7.13 개조본 tabAi 문구
 }
 
 // ── 편집기 배선 (규칙 #3) ──

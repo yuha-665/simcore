@@ -1001,6 +1001,101 @@ const S = {
         { id: 'grateful_gift', weight: 2, cooldown: 9, when: "location == '공방' and renown >= 150",
           effects: [{ set: 'cole', expr: 'cole + 100' }],
           notify: '예전 의뢰인이 감사의 표시를 두고 갔다. 작은 주머니에 콜이 들어 있다.' },
+
+        // ── 개그 (2026-09-07 밤, 유저 "주변 인물들로 하는 개그 이벤트") ──
+        // 란타르나 본대(레스나 일행·발레리아 쪽)는 origin과 무관하게 always-on이라 `settled and renown >= 60`으로만 게이트
+        // (초기 평판 30 → 공방이 알려진 뒤부터. 첫 며칠을 개그로 채우지 않는다). 이름 표기는 로어북 항목의 한글 그대로
+        // (로망·자스키아·플로케·란체 — 항목이 이름 키워드로 뜬다). 다른 세계 인물은 `origin == 계열`로 — 그 계열 캐스트 맵이
+        // always-on이라 무대에 있다. 통지는 상황만 던지고 대사·반응은 서사가 쓴다.
+        { id: 'gag_izana_training', weight: 2, cooldown: 12, when: "settled and renown >= 60 and location == '공방'",
+          notify: '이자나가 공방 앞마당에서 기사 훈련이랍시고 빗자루를 휘두르다 빨랫줄을 끊어 먹었다. 본인은 "실전 감각"이라 우긴다.' },
+        { id: 'gag_heidi_scheme', weight: 2, cooldown: 12, when: 'settled and renown >= 60 and area_tier == 0',
+          notify: '하이디가 "절대 손해 안 보는 장사"를 들고 왔다. 발레리아가 뒤에서 말없이 고개를 젓고 있다.' },
+        { id: 'gag_roman_serenade', weight: 2, cooldown: 12, when: 'settled and renown >= 60 and area_tier == 0',
+          notify: '로망이 연극조로 한쪽 무릎을 꿇고 "오늘의 약을 내게 주오" 하고 노래한다. 지나가던 사람들이 걸음을 멈췄다.' },
+        { id: 'gag_saskia_quiz', weight: 2, cooldown: 12, when: "settled and renown >= 60 and location == '공방'",
+          notify: '자스키아가 느긋하게 차를 마시다 갑자기 "이 소재의 속성 셋을 말해 봐"라며 불시 시험을 냈다.' },
+        { id: 'gag_lanze_drunk', weight: 2, cooldown: 10, when: "renown >= 60 and (location == '왕도 뒷골목' or location == '별의 고치 카페')",
+          notify: '란체가 거나하게 취해 뱃노래를 부르며 어깨동무를 하러 온다. 술 냄새가 소재에 밸 지경이다.' },
+        { id: 'gag_puni_pet', weight: 2, cooldown: 10, when: 'count(allies) >= 1 and area_tier >= 1 and area_tier <= 2',
+          notify: '동행이 푸니 한 마리를 품에 안고 "키우겠다"고 선언했다. 푸니는 이미 바구니 속 소재를 먹고 있다.' },
+        { id: 'gag_taste_failure', weight: 2, cooldown: 10, when: "count(allies) >= 1 and location == '공방' and (last_quality == '조잡' or last_quality == '실패')",
+          notify: '동행이 실패작을 "한 모금이면 괜찮겠지" 하고 마셨다. 얼굴색이 무지개처럼 바뀌고 있다.' },
+        { id: 'gag_shop_name', weight: 1, cooldown: 14, when: 'settled and renown >= 100 and area_tier == 0',
+          notify: '공방 이름이 엉뚱하게 잘못 전해져, 사람들이 전혀 다른 이름으로 부르고 있다. 정정할 틈이 없다.' },
+        { id: 'gag_tax_banter', weight: 1, cooldown: 14, when: "settled and renown >= 60 and location == '공방'",
+          notify: '세금 징수원이 "이번 달은 봐줄까" 하더니 곧바로 "농담이다"라고 했다. 웃는 사람은 그뿐이다.' },
+        { id: 'gag_stray_cat', weight: 2, cooldown: 12, when: "settled and renown >= 60 and location == '공방'",
+          notify: '길고양이가 가마 옆 따뜻한 자리에 눌러앉았다. 쫓아내도 돌아온다.' },
+        // 잘부르그·그람나트 — 마리(폭발)·엘리(치즈케이크)·유디(폭탄광)·비오(당근)
+        { id: 'gag_sal_marie_boom', weight: 2, cooldown: 12, when: "origin == '잘부르그·그람나트' and location == '공방'",
+          effects: [{ set: 'stamina', expr: 'stamina - 3' }],
+          notify: '마리가 "이 정도는 괜찮아"라며 가마에 뭔가 넣었다. 잠시 뒤 굴뚝에서 보라색 연기가 솟았다.' },
+        { id: 'gag_sal_elie_cake', weight: 2, cooldown: 12, when: "origin == '잘부르그·그람나트' and area_tier == 0",
+          notify: '엘리가 치즈케이크를 구워 왔다. 정성은 넘치는데 한 조각이 유난히 크게 부풀어 있다 — 소재를 잘못 넣은 모양이다.' },
+        { id: 'gag_sal_judie_bomb', weight: 2, cooldown: 12, when: "origin == '잘부르그·그람나트' and area_tier >= 1",
+          notify: '유디가 "길을 뚫겠다"며 폭탄을 꺼냈다. 길은 뚫렸는데 표지판도 같이 날아갔다.' },
+        { id: 'gag_sal_vio_carrot', weight: 2, cooldown: 12, when: "origin == '잘부르그·그람나트' and (location == '공방' or location == '별의 고치 카페')",
+          notify: '비오가 당근 요리 코스를 차렸다. 전채도 당근, 국물도 당근, 후식도 당근이다.' },
+        // 아를란드 — 로로나(파이)·메루루(개발)·스테르켄부르크(무서운 얼굴)·미미(츤)
+        { id: 'gag_arl_rorona_pie', weight: 2, cooldown: 12, when: "origin == '아를란드' and (location == '공방' or location == '별의 고치 카페')",
+          notify: '로로나가 파이를 구웠다. 문제는 이번 파이의 재료가 "어제 채집한 그것"이라는 점이다.' },
+        { id: 'gag_arl_meruru_dev', weight: 2, cooldown: 12, when: "origin == '아를란드' and area_tier == 0",
+          notify: '메루루가 공방 주변을 둘러보더니 "여기를 개발하면 인구가 늘 거야"라며 도면을 그리기 시작했다.' },
+        { id: 'gag_arl_sterk_smile', weight: 2, cooldown: 12, when: "origin == '아를란드' and area_tier == 0",
+          notify: '스테르켄부르크가 친근하게 웃어 보이려 애썼다. 근처 아이 하나가 울음을 터뜨렸다.' },
+        { id: 'gag_arl_mimi_tsun', weight: 2, cooldown: 12, when: "origin == '아를란드' and count(allies) >= 1",
+          notify: '미미가 "별로 걱정한 건 아니지만" 하며 약 한 병을 두고 갔다. 귀 끝이 빨갛다.' },
+        // 황혼 — 윌벨(빗자루)·에스카(사과 타르트)·마리온(귀여운 것에 약함)·아샤(약초 냄새)
+        { id: 'gag_dusk_wilbell_broom', weight: 2, cooldown: 12, when: "origin == '황혼' and area_tier >= 1",
+          notify: '윌벨이 빗자루 비행을 뽐내다 나뭇가지에 걸렸다. "일부러 그런 거야"라고 한다.' },
+        { id: 'gag_dusk_escha_tart', weight: 2, cooldown: 12, when: "origin == '황혼' and (location == '공방' or location == '별의 고치 카페')",
+          notify: '에스카가 사과 타르트를 들고 왔다. 로지가 뒤에서 "벌써 세 판째"라고 한숨을 쉰다.' },
+        { id: 'gag_dusk_marion_cute', weight: 2, cooldown: 12, when: "origin == '황혼' and area_tier == 0",
+          notify: '마리온이 서류 더미를 안고 지나가다 푸니 인형 앞에서 멈췄다. 한참을, 아무도 못 본 척했다.' },
+        { id: 'gag_dusk_ayesha_sneeze', weight: 2, cooldown: 12, when: "origin == '황혼' and area_tier >= 1",
+          notify: '아샤가 약초 냄새를 맡다 코를 박고 재채기를 연발했다. 니오가 손수건을 내민다.' },
+        // 신비 — 플라흐타(책)·코르네리아(복제)·오스카(식물과 대화)·피리스(길치)
+        { id: 'gag_mys_plachta_book', weight: 2, cooldown: 12, when: "origin == '신비' and location == '공방'",
+          notify: '서가에서 책이 말을 걸었다 — 플라흐타의 옛 버릇이다. 소피가 "또 들어갔어?" 하고 책을 두드린다.' },
+        { id: 'gag_mys_corneria_dup', weight: 2, cooldown: 12, when: "origin == '신비' and area_tier == 0",
+          notify: '코르네리아가 "복제해 드릴까요" 하고 물었다. 손에 든 건 하필 어제의 실패작이다.' },
+        { id: 'gag_mys_oskar_plants', weight: 2, cooldown: 12, when: "origin == '신비' and area_tier >= 1",
+          notify: '오스카가 풀과 대화를 시작했다. 풀이 "지금 뽑지 말라"고 했단다.' },
+        { id: 'gag_mys_firis_lost', weight: 2, cooldown: 12, when: "origin == '신비' and area_tier >= 1",
+          effects: [{ set: 'skip_min', expr: 'skip_min + 60' }],
+          notify: '피리스가 지도를 거꾸로 들고 "이쪽이 지름길"이라 했다. 한 시간 뒤, 같은 자리다.' },
+        // 비밀·추억 — 라이자(폭탄)·클라우디아(플루트)·파트리샤(연약하게 보지 마)·유미아(진지)
+        { id: 'gag_sec_ryza_bomb', weight: 2, cooldown: 12, when: "origin == '비밀·추억' and area_tier >= 1",
+          effects: [{ set: 'stamina', expr: 'stamina - 3' }],
+          notify: '라이자가 "이건 작은 폭탄"이라며 던졌다. 작지 않았다.' },
+        { id: 'gag_sec_klaudia_flute', weight: 2, cooldown: 12, when: "origin == '비밀·추억' and (location == '공방' or location == '별의 고치 카페')",
+          notify: '클라우디아가 플루트를 꺼냈다. 연주는 훌륭한데 푸니 떼가 몰려와 춤을 춘다.' },
+        { id: 'gag_sec_patty_strong', weight: 2, cooldown: 12, when: "origin == '비밀·추억' and area_tier == 0",
+          notify: '파트리샤가 "연약하게 보지 마세요"라며 짐을 전부 들었다. 다리가 후들거리는데 내려놓지 않는다.' },
+        { id: 'gag_sec_yumia_taboo', weight: 2, cooldown: 12, when: "origin == '비밀·추억' and location == '공방'",
+          notify: '유미아가 진지한 얼굴로 조합을 지켜보다 "이건 금기 아닌가요" 하고 물었다. 넣은 건 설탕이다.' },
+
+        // ── 럭키스케베 (유저 요청) — `nsfw_on`이 꺼지면 표에서 사라진다. 동행이 있어야 하고, 장소·작업 조건으로 반복을 막는다.
+        // 통지는 상황까지만 — 그 뒤는 서사. 무게 1(개그의 절반), 쿨다운 12~16.
+        { id: 'ls_waterfall', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '강가·폭포'",
+          notify: '폭포 뒤 웅덩이를 돌아가니 동행이 몸을 씻고 있었다. 물소리 때문에 발소리를 못 들은 모양이다.' },
+        { id: 'ls_rain_soaked', weight: 1, cooldown: 12, when: "nsfw_on and count(allies) >= 1 and weather == '비' and area_tier >= 1",
+          notify: '소나기에 둘 다 흠뻑 젖었다. 옷이 몸에 달라붙어 어디를 봐야 할지 모르겠다.' },
+        { id: 'ls_cave_squeeze', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '광산·동굴'",
+          notify: '좁은 갱도를 지나느라 동행과 몸이 완전히 밀착됐다. 숨소리가 귓가에 닿는다.' },
+        { id: 'ls_bomb_clothes', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '공방' and synth_cat == '폭탄'",
+          notify: '폭탄 실험이 어긋나 동행의 옷자락이 타 버렸다. 본인은 뒤늦게 알아채고 비명을 질렀다.' },
+        { id: 'ls_potion_heat', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '공방' and synth_cat == '약품' and (last_quality == '조잡' or last_quality == '실패')",
+          notify: '실패한 약의 증기를 마신 동행이 열에 들떠 옷깃을 풀어 헤친다. 시선 둘 곳이 없다.' },
+        { id: 'ls_cafe_drunk', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '별의 고치 카페'",
+          notify: '카페 신메뉴가 생각보다 독했다. 동행이 취해 어깨에 기대더니 그대로 안겨 왔다.' },
+        { id: 'ls_wrong_door', weight: 1, cooldown: 16, when: "nsfw_on and count(allies) >= 1 and location == '공방'",
+          notify: '옷을 갈아입는 중이란 걸 모르고 문을 열었다. 서로 굳은 채 한참을 서 있었다.' },
+        { id: 'ls_hot_spring', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '설산 능선'",
+          notify: '능선 아래 온천을 찾았다. 먼저 들어간 동행이 김 너머로 "보지 마"라고 한다 — 이미 늦었다.' },
+        { id: 'ls_oasis', weight: 1, cooldown: 14, when: "nsfw_on and count(allies) >= 1 and location == '사막'",
+          notify: '오아시스에서 동행이 겉옷을 벗어 던지고 물에 뛰어들었다. 젖은 천이 비쳐 보인다.' },
       ],
     },
   },
@@ -2463,11 +2558,11 @@ console.log('\n━━ 시세 · 특산 — 날씨와 사건이 값을 밀고, �
   ok('시세는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'market_state' || a.id === 'market_until'), '');
 }
 
-console.log('\n━━ 랜덤 이벤트 표 — 44종, 장소마다 뭔가 있다 ━━');
+console.log('\n━━ 랜덤 이벤트 표 — 83종, 장소마다 뭔가 있다 ━━');
 {
   const expr = SC.require('expr');
   const tbl = S.rules.randomEvents.table;
-  ok('44종 · id 중복 없음', tbl.length === 44 && new Set(tbl.map((e) => e.id)).size === 44, String(tbl.length));
+  ok('83종 · id 중복 없음', tbl.length === 83 && new Set(tbl.map((e) => e.id)).size === 83, String(tbl.length));
   ok('전부 when·cooldown·notify가 있다 (무조건 사건은 없다)', tbl.every((e) => e.when && e.cooldown >= 4 && e.notify), JSON.stringify(tbl.filter((e) => !(e.when && e.cooldown >= 4 && e.notify)).map((e) => e.id)));
   ok('통지엔 숫자가 없다 (숫자는 시스템이 말한다)', tbl.every((e) => !/[0-9]/.test(e.notify)), JSON.stringify(tbl.filter((e) => /[0-9]/.test(e.notify)).map((e) => e.id)));
   ok('발동 확률 0.07 (유저가 낮춘 값 되반영)', S.rules.randomEvents.chancePerTurn === 0.07, String(S.rules.randomEvents.chancePerTurn));
@@ -2486,6 +2581,19 @@ console.log('\n━━ 랜덤 이벤트 표 — 44종, 장소마다 뭔가 있다
     && !eligible({ mentor: '없음' }).includes('mentor_letter') && eligible({ mentor: '엠펠' }).includes('mentor_letter'), '');
   ok('평판 사건은 구간이 갈린다 (30: 없음 · 200: 아이들·의뢰인 · 600: 귀족)', !eligible({ renown: 30 }).includes('kids_play') && eligible({ renown: 200 }).includes('client_visit') && eligible({ renown: 600 }).includes('noble_envoy'), '');
   ok('공방 초기 상태(정착·평판 30)에서 뽑힐 후보가 5개 이하 — 공방이 사건 잔치가 되지 않는다', eligible({ location: '공방', renown: 30 }).length <= 5, JSON.stringify(eligible({ location: '공방', renown: 30 })));
+  // 개그·럭키스케베 (2026-09-07 밤)
+  const gags = tbl.filter((e) => e.id.startsWith('gag_')), ls = tbl.filter((e) => e.id.startsWith('ls_'));
+  ok('개그 30 · 럭키스케베 9', gags.length === 30 && ls.length === 9, gags.length + '/' + ls.length);
+  ok('럭키스케베는 전부 nsfw_on + 동행 게이트', ls.every((e) => e.when.startsWith('nsfw_on and count(allies) >= 1')), '');
+  ok('nsfw_on을 끄면 럭키스케베가 표에서 사라진다', eligible({ nsfw_on: false, allies: ['라이자'], location: '강가·폭포' }).every((id) => !id.startsWith('ls_'))
+    && eligible({ nsfw_on: true, allies: ['라이자'], location: '강가·폭포' }).includes('ls_waterfall'), '');
+  ok('다른 세계 개그는 origin 계열이 맞을 때만', eligible({ origin: '아를란드', location: '공방', allies: ['토토리'] }).includes('gag_arl_rorona_pie')
+    && !eligible({ origin: '아를란드', location: '공방' }).some((id) => /^gag_(sal|dusk|mys|sec)_/.test(id))
+    && !eligible({ origin: '란타르나', location: '공방', renown: 300 }).some((id) => /^gag_(sal|arl|dusk|mys|sec)_/.test(id)), '');
+  ok('계열마다 개그 4종', ['sal', 'arl', 'dusk', 'mys', 'sec'].every((k) => gags.filter((e) => e.id.startsWith('gag_' + k + '_')).length === 4), '');
+  ok('본대 개그는 공방이 알려진 뒤(평판 60)부터', !eligible({ location: '공방', renown: 30 }).some((id) => id.startsWith('gag_')) && eligible({ location: '공방', renown: 60 }).includes('gag_izana_training'), '');
+  ok('럭키스케베 무게는 개그의 절반', ls.every((e) => e.weight === 1) && gags.every((e) => e.weight >= 1 && e.weight <= 2), '');
+  ok('사건 효과 대상은 전부 변수 (검증 통과 = 식이 깨진 게 없다)', tbl.every((e) => (e.effects || []).every((f) => f.list ? S.vars.some((v) => v.id === f.list && v.type === 'list') : S.vars.some((v) => v.id === f.set))), '');
 }
 
 console.log('\n━━ 축제 — 달력 표식·준비 창·당일 이벤트가 한 표에서 ━━');

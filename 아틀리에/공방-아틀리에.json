@@ -418,6 +418,28 @@
       "max": 99999999
     },
     {
+      "id": "disaster",
+      "label": "재해",
+      "type": "enum",
+      "init": "없음",
+      "enum": [
+        "없음",
+        "홍수",
+        "산불",
+        "지진",
+        "역병",
+        "혜성 접근"
+      ]
+    },
+    {
+      "id": "disaster_until",
+      "label": "재해 기한",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 99999999
+    },
+    {
       "id": "nsfw_on",
       "label": "수위",
       "type": "bool",
@@ -690,6 +712,10 @@
       {
         "set": "market_state",
         "expr": "market_state != '평시' and elapsed > market_until ? '평시' : market_state"
+      },
+      {
+        "set": "disaster",
+        "expr": "disaster != '없음' and elapsed > disaster_until ? '없음' : disaster"
       },
       {
         "set": "shelf_prev",
@@ -1032,6 +1058,95 @@
     "randomEvents": {
       "chancePerTurn": 0.07,
       "table": [
+        {
+          "id": "dis_flood",
+          "weight": 1,
+          "cooldown": 30,
+          "when": "disaster == '없음' and weather == '비' and season != '겨울'",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "'홍수'"
+            },
+            {
+              "set": "disaster_until",
+              "expr": "elapsed + 4"
+            }
+          ],
+          "notify": "큰비에 강이 넘쳤다 — 물가 길이 끊기고 습지는 호수가 됐다. 물이 빠질 때까지 강가·해안·늪엔 못 간다."
+        },
+        {
+          "id": "dis_wildfire",
+          "weight": 1,
+          "cooldown": 35,
+          "when": "disaster == '없음' and (season == '여름' or season == '가을') and weather != '비' and weather != '눈'",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "'산불'"
+            },
+            {
+              "set": "disaster_until",
+              "expr": "elapsed + 5"
+            }
+          ],
+          "notify": "숲에 불이 났다. 연기가 왕도까지 흘러오고, 들판·숲·초원은 재가 가라앉을 때까지 닫혔다. 약초 값이 뛴다."
+        },
+        {
+          "id": "dis_quake",
+          "weight": 1,
+          "cooldown": 45,
+          "when": "disaster == '없음'",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "'지진'"
+            },
+            {
+              "set": "disaster_until",
+              "expr": "elapsed + 6"
+            },
+            {
+              "set": "stamina",
+              "expr": "stamina - 5"
+            }
+          ],
+          "notify": "땅이 흔들렸다. 갱도가 막히고 왕도 성벽에 금이 갔다 — 다친 사람이 많아 약 의뢰가 쏟아진다."
+        },
+        {
+          "id": "dis_plague",
+          "weight": 1,
+          "cooldown": 40,
+          "when": "disaster == '없음' and (season == '여름' or season == '겨울') and area_tier == 0",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "'역병'"
+            },
+            {
+              "set": "disaster_until",
+              "expr": "elapsed + 10"
+            }
+          ],
+          "notify": "왕도에 열병이 돈다. 카페는 문을 반만 열고, 약국 앞엔 줄이 섰다 — 약을 지을 줄 아는 사람이 지금 제일 귀하다."
+        },
+        {
+          "id": "dis_comet",
+          "weight": 1,
+          "cooldown": 40,
+          "when": "disaster == '없음' and clues >= 3",
+          "effects": [
+            {
+              "set": "disaster",
+              "expr": "'혜성 접근'"
+            },
+            {
+              "set": "disaster_until",
+              "expr": "elapsed + 7"
+            }
+          ],
+          "notify": "백색 혜성이 하늘에 가까워졌다. 밤이 낮처럼 밝고 마나가 요동친다 — 유적이 깨어나고, 꿈이 이상해진다."
+        },
         {
           "id": "caravan",
           "weight": 2,
@@ -1935,6 +2050,31 @@
       "text": "미끼가 있다 — 낚시가 잘 된다(채집 판정 +3). 낚시를 하면 쓴 미끼 하나를 소재에서 빼라. 마나 미끼는 마나가 흐르는 물에서만 값을 한다."
     },
     {
+      "id": "dis_flood_dir",
+      "when": "disaster == '홍수'",
+      "text": "재해: 홍수. 강가·해안·늪은 물에 잠겨 갈 수 없고 다리가 끊겼다. 물가 소재가 귀하다. 억지로 물가에 가면 채집이 어렵고 위험하다. 물이 빠지면 시스템이 알린다."
+    },
+    {
+      "id": "dis_wildfire_dir",
+      "when": "disaster == '산불'",
+      "text": "재해: 산불. 들판·숲·초원이 타고 있어 접근할 수 없다. 연기와 재, 피난 온 동물과 사람. 약초·목재 값이 뛰고 화상 약 의뢰가 는다. 불이 잡히면 시스템이 알린다."
+    },
+    {
+      "id": "dis_quake_dir",
+      "when": "disaster == '지진'",
+      "text": "재해: 지진. 갱도는 막혔고 왕도 곳곳에 금이 갔다. 여진이 온다. 다친 사람이 많아 약 의뢰가 쏟아지고, 부서진 것을 고칠 도구가 귀하다. 복구가 끝나면 시스템이 알린다."
+    },
+    {
+      "id": "dis_plague_dir",
+      "when": "disaster == '역병'",
+      "text": "재해: 역병. 왕도에 열병이 돌아 가게는 반만 열고 사람들은 얼굴을 가린다. 약 의뢰가 전부고 약값이 비싸다 — 연금술사의 평판이 크게 오르내릴 때다. 병이 잦아들면 시스템이 알린다."
+    },
+    {
+      "id": "dis_comet_dir",
+      "when": "disaster == '혜성 접근'",
+      "text": "재해: 백색 혜성 접근. 밤이 밝고 마나가 요동친다 — 유적이 반응하고 조합이 예측을 벗어나며 사람들은 이상한 꿈을 꾼다. 잊혀진 연금술의 실마리가 드러나기 쉬운 때다. 혜성이 멀어지면 시스템이 알린다."
+    },
+    {
       "id": "market_dir",
       "when": "market_state != '평시'",
       "text": "시세가 평시가 아니다 — {market_state}. 상점 값이 그에 맞게 올라 있거나 내려 있다(값은 시스템이 정한다). 상인·손님·게시판이 그 얘기를 한다. 기한이 오면 저절로 평시로 돌아온다."
@@ -2516,7 +2656,7 @@
         "들판에 간다",
         "근교로"
       ],
-      "when": "location != '왕도 주변 들판' and not fight_on",
+      "when": "location != '왕도 주변 들판' and not fight_on and disaster != '산불'",
       "inject": "왕도 근교 들판으로 나선다 — 약초·풀·꽃이 나는 곳, 푸니 정도가 어슬렁거린다. 더 깊이 갈지는 여기서 정한다.",
       "effects": [
         {
@@ -2542,7 +2682,7 @@
         "강으로 간다",
         "폭포로"
       ],
-      "when": "location != '강가·폭포' and not fight_on",
+      "when": "location != '강가·폭포' and not fight_on and disaster != '홍수'",
       "inject": "강가로 나선다 — 물 소재와 낚시, 낚시꾼 오두막(미끼 상점)이 있는 곳. 미끼가 있으면 값을 한다.",
       "effects": [
         {
@@ -2620,7 +2760,7 @@
       "id": "gather",
       "label": "채집",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
+      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden + (disaster == '홍수' and (location == '강가·폭포' or location == '해안' or location == '습지·늪') ? -4 : 0) + (disaster == '산불' and (location == '숲' or location == '꽃밭·초원' or location == '왕도 주변 들판') ? -4 : 0) + (disaster == '지진' and location == '광산·동굴' ? -4 : 0) + (disaster == '혜성 접근' and location == '유적·마나 이상 지대' ? 2 : 0) + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       "vs": "8 + area_tier * 2",
       "grades": [
         {
@@ -3333,7 +3473,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라. 서사가 재료 부족으로 조합을 시작하지 않았으면 판정 결과와 무관하게 완성품을 올리지 말고 소재도 빼지 마라. 특수연금 등록(inventions)은 판정이 발명·성공일 때만 — 불안정·실패·사고 턴엔 건드리지 마라. 이름이 도감에 있으면 등록하지 말고 그 도감 레시피를 recipes에 올려라. 재료는 실험 당시 materials에 있던 이름만. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라. 매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state} · 재해 {disaster}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -3370,6 +3510,9 @@
           },
           {
             "var": "market_state"
+          },
+          {
+            "var": "disaster"
           }
         ]
       },
@@ -3743,11 +3886,11 @@
       ],
       "when": "location == '왕도' or location == '지방 도시'",
       "priceMul": {
-        "소재": "market_state == '약초 풍년' ? 0.6 : market_state == '약초 품귀' ? 1.6 : market_state == '광석 품귀' ? 1.4 : market_state == '상단 도착' ? 0.8 : 1",
-        "도구": "market_state == '상단 도착' ? 0.8 : market_state == '광석 품귀' ? 1.3 : 1",
+        "소재": "disaster == '산불' ? 1.5 : disaster == '홍수' ? 1.3 : market_state == '약초 풍년' ? 0.6 : market_state == '약초 품귀' ? 1.6 : market_state == '광석 품귀' ? 1.4 : market_state == '상단 도착' ? 0.8 : 1",
+        "도구": "disaster == '지진' ? 1.4 : market_state == '상단 도착' ? 0.8 : market_state == '광석 품귀' ? 1.3 : 1",
         "식재료": "market_state == '흉년' ? 1.8 : market_state == '축제 특수' ? 1.3 : weather == '눈' ? 1.2 : 1",
         "서적": "market_state == '상단 도착' ? 0.7 : 1",
-        "*": "market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1"
+        "*": "disaster == '역병' ? 1.5 : disaster == '지진' ? 1.2 : market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1"
       },
       "guide": "란타르나 왕도의 평범한 상점가. 연금술 전문점이 아니라 잡화·약재·철물·식료를 파는 가게들이다. 소재 칸은 흔한 약초·맑은 물·광석·꽃·조개 같은 것 (조악 5~60, 보통 40~200), 상등품은 상인이 어디선가 들여온 것. 도구 칸은 곡괭이·낫·낚싯대·채집망·나침반·램프 (보통 40~200, 상등 150~800). 식재료 칸은 밀가루·기름·꿀·우유·달걀·향신료. 서적 칸은 초본지·지도·옛 문헌 필사본 — 드물게 레시피 조각. 전설 등급은 거의 들어오지 않는다 — 들어온다면 왜 여기 있는지 note에 한 줄. 완성품은 사들이지만 정가를 다 쳐주지 않는다."
     },

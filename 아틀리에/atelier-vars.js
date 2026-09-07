@@ -696,6 +696,11 @@ const S = {
     { id: 'market_state', label: '시세', type: 'enum', init: '평시',
       enum: ['평시', '약초 풍년', '약초 품귀', '광석 품귀', '상단 도착', '흉년', '축제 특수'] },
     { id: 'market_until', label: '시세 기한', type: 'int', init: 0, min: 0, max: 99999999 },
+    // ── 재해 (2026-09-07 밤, 유저 "자연재해는 확실히 있으면 좋고") — 시세와 같은 기계: 사건이 세우고 기한이 오면 없음.
+    //    시세는 값만 밀지만 재해는 길을 닫는다(이동 버튼 when·채집 보정·지시문). 한 번에 하나. 시스템 소유(allow 밖)
+    { id: 'disaster', label: '재해', type: 'enum', init: '없음',
+      enum: ['없음', '홍수', '산불', '지진', '역병', '혜성 접근'] },
+    { id: 'disaster_until', label: '재해 기한', type: 'int', init: 0, min: 0, max: 99999999 },
 
     // 수위 — 성애 이미지 팩의 게이트. 카드 규약(Image Command Instructions)이 NSFW를 지원하므로 기본 켬. /수위 0
     { id: 'nsfw_on', label: '수위', type: 'bool', init: true, cmd: '수위',
@@ -799,6 +804,7 @@ const S = {
       // ── 진열대 정산: 합계를 적고 → 기한 온 것을 떨구고 → 줄어든 값이 곧 매출. 돈과 물건이 어긋날 수 없다 ──
       { list: 'field', expire: 'elapsed' },          // 익은 날(오늘)까지 살아 있고, 안 거두면 다음 날 시든다
       { set: 'market_state', expr: "market_state != '평시' and elapsed > market_until ? '평시' : market_state" },
+      { set: 'disaster', expr: "disaster != '없음' and elapsed > disaster_until ? '없음' : disaster" },
       { set: 'shelf_prev', expr: 'sum(shelf)' },
       { list: 'shelf', expire: 'elapsed' },
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
@@ -875,6 +881,23 @@ const S = {
       // 표가 11종뿐이라 확률을 올리면 같은 사건을 되풀이해 본다 — 확률 대신 **표를 늘리는 것**이 다음 일(§9 남은 것 3).
       chancePerTurn: 0.07,
       table: [
+        // ── 재해 (2026-09-07 밤) — 며칠 가는 세계 상태. 시세와 달리 길을 닫고(이동 when), 채집을 깎고(gather mod), 지시문으로 서사를 민다.
+        //    한 번에 하나, 무게 1, 쿨다운 30~45턴 — 한 여정에 몇 번이면 충분하다. 설비는 안 부순다(유저가 돈 낸 것).
+        { id: 'dis_flood', weight: 1, cooldown: 30, when: "disaster == '없음' and weather == '비' and season != '겨울'",
+          effects: [{ set: 'disaster', expr: "'홍수'" }, { set: 'disaster_until', expr: 'elapsed + 4' }],
+          notify: '큰비에 강이 넘쳤다 — 물가 길이 끊기고 습지는 호수가 됐다. 물이 빠질 때까지 강가·해안·늪엔 못 간다.' },
+        { id: 'dis_wildfire', weight: 1, cooldown: 35, when: "disaster == '없음' and (season == '여름' or season == '가을') and weather != '비' and weather != '눈'",
+          effects: [{ set: 'disaster', expr: "'산불'" }, { set: 'disaster_until', expr: 'elapsed + 5' }],
+          notify: '숲에 불이 났다. 연기가 왕도까지 흘러오고, 들판·숲·초원은 재가 가라앉을 때까지 닫혔다. 약초 값이 뛴다.' },
+        { id: 'dis_quake', weight: 1, cooldown: 45, when: "disaster == '없음'",
+          effects: [{ set: 'disaster', expr: "'지진'" }, { set: 'disaster_until', expr: 'elapsed + 6' }, { set: 'stamina', expr: 'stamina - 5' }],
+          notify: '땅이 흔들렸다. 갱도가 막히고 왕도 성벽에 금이 갔다 — 다친 사람이 많아 약 의뢰가 쏟아진다.' },
+        { id: 'dis_plague', weight: 1, cooldown: 40, when: "disaster == '없음' and (season == '여름' or season == '겨울') and area_tier == 0",
+          effects: [{ set: 'disaster', expr: "'역병'" }, { set: 'disaster_until', expr: 'elapsed + 10' }],
+          notify: '왕도에 열병이 돈다. 카페는 문을 반만 열고, 약국 앞엔 줄이 섰다 — 약을 지을 줄 아는 사람이 지금 제일 귀하다.' },
+        { id: 'dis_comet', weight: 1, cooldown: 40, when: "disaster == '없음' and clues >= 3",
+          effects: [{ set: 'disaster', expr: "'혜성 접근'" }, { set: 'disaster_until', expr: 'elapsed + 7' }],
+          notify: '백색 혜성이 하늘에 가까워졌다. 밤이 낮처럼 밝고 마나가 요동친다 — 유적이 깨어나고, 꿈이 이상해진다.' },
         // ── 시세 사건 (v1.7.8 priceMul과 짝) — 날씨·계절이 조건, 기한은 며칠 ──
         { id: 'caravan', weight: 2, cooldown: 12, when: "area_tier == 0 and market_state == '평시'",
           effects: [{ set: 'market_state', expr: "'상단 도착'" }, { set: 'market_until', expr: 'elapsed + 5' }],
@@ -1136,6 +1159,17 @@ const S = {
       text: '밭: {field} — (오늘)로 표시된 작물은 익었다: 거두면 소재가 된다. 지나면 시든다. 익는 날은 시스템이 센다 — 앞당겨 거두지 마라.' },
     { id: 'bait_dir', when: "(location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼'))",
       text: '미끼가 있다 — 낚시가 잘 된다(채집 판정 +3). 낚시를 하면 쓴 미끼 하나를 소재에서 빼라. 마나 미끼는 마나가 흐르는 물에서만 값을 한다.' },
+    // 재해 지시문 — 무엇이 닫혔고 세상이 어떻게 굴러가는지. 숫자(며칠 남았나)는 시스템이 안다 — 서사는 징후로만
+    { id: 'dis_flood_dir', when: "disaster == '홍수'",
+      text: '재해: 홍수. 강가·해안·늪은 물에 잠겨 갈 수 없고 다리가 끊겼다. 물가 소재가 귀하다. 억지로 물가에 가면 채집이 어렵고 위험하다. 물이 빠지면 시스템이 알린다.' },
+    { id: 'dis_wildfire_dir', when: "disaster == '산불'",
+      text: '재해: 산불. 들판·숲·초원이 타고 있어 접근할 수 없다. 연기와 재, 피난 온 동물과 사람. 약초·목재 값이 뛰고 화상 약 의뢰가 는다. 불이 잡히면 시스템이 알린다.' },
+    { id: 'dis_quake_dir', when: "disaster == '지진'",
+      text: '재해: 지진. 갱도는 막혔고 왕도 곳곳에 금이 갔다. 여진이 온다. 다친 사람이 많아 약 의뢰가 쏟아지고, 부서진 것을 고칠 도구가 귀하다. 복구가 끝나면 시스템이 알린다.' },
+    { id: 'dis_plague_dir', when: "disaster == '역병'",
+      text: '재해: 역병. 왕도에 열병이 돌아 가게는 반만 열고 사람들은 얼굴을 가린다. 약 의뢰가 전부고 약값이 비싸다 — 연금술사의 평판이 크게 오르내릴 때다. 병이 잦아들면 시스템이 알린다.' },
+    { id: 'dis_comet_dir', when: "disaster == '혜성 접근'",
+      text: '재해: 백색 혜성 접근. 밤이 밝고 마나가 요동친다 — 유적이 반응하고 조합이 예측을 벗어나며 사람들은 이상한 꿈을 꾼다. 잊혀진 연금술의 실마리가 드러나기 쉬운 때다. 혜성이 멀어지면 시스템이 알린다.' },
     { id: 'market_dir', when: "market_state != '평시'",
       text: '시세가 평시가 아니다 — {market_state}. 상점 값이 그에 맞게 올라 있거나 내려 있다(값은 시스템이 정한다). 상인·손님·게시판이 그 얘기를 한다. 기한이 오면 저절로 평시로 돌아온다.' },
     // 특산 — (지형, 계절) 48개 중 한 번에 하나만 켜진다. 채집 만재 등급의 "하나는 이 자리에서만"과 맞물린다
@@ -1213,10 +1247,10 @@ const S = {
       when: "location != '왕도 뒷골목' and not fight_on and (renown >= 100 or clues >= 1)",
       inject: '왕도 뒷골목으로 든다 — 월영회의 그늘, 출처를 묻지 않는 거래처가 있는 곳. 낮에도 어둡다.',
       effects: [{ set: 'location', expr: "'왕도 뒷골목'" }, { set: 'skip_min', expr: 'skip_min + 60' }] },
-    { id: 'go_field', label: '🌿 들판으로', mode: 'oneshot', keywords: ['들판으로', '들판에 간다', '근교로'], when: "location != '왕도 주변 들판' and not fight_on",
+    { id: 'go_field', label: '🌿 들판으로', mode: 'oneshot', keywords: ['들판으로', '들판에 간다', '근교로'], when: "location != '왕도 주변 들판' and not fight_on and disaster != '산불'",
       inject: '왕도 근교 들판으로 나선다 — 약초·풀·꽃이 나는 곳, 푸니 정도가 어슬렁거린다. 더 깊이 갈지는 여기서 정한다.',
       effects: [{ set: 'location', expr: "'왕도 주변 들판'" }, { set: 'skip_min', expr: 'skip_min + 90' }, { set: 'stamina', expr: 'stamina - 5' }] },
-    { id: 'go_river', label: '🌊 강가로', mode: 'oneshot', keywords: ['강가로', '강으로 간다', '폭포로'], when: "location != '강가·폭포' and not fight_on",
+    { id: 'go_river', label: '🌊 강가로', mode: 'oneshot', keywords: ['강가로', '강으로 간다', '폭포로'], when: "location != '강가·폭포' and not fight_on and disaster != '홍수'",
       inject: '강가로 나선다 — 물 소재와 낚시, 낚시꾼 오두막(미끼 상점)이 있는 곳. 미끼가 있으면 값을 한다.',
       effects: [{ set: 'location', expr: "'강가·폭포'" }, { set: 'skip_min', expr: 'skip_min + 120' }, { set: 'stamina', expr: 'stamina - 8' }] },
     { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', keywords: ['쉰다', '휴식한다', '숨을 돌린다', '눕는다'], when: 'not fight_on',
@@ -1236,6 +1270,10 @@ const S = {
     { id: 'gather', label: '채집',
       roll: 'rand(1, 20)',
       mod: 'floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden'
+        + " + (disaster == '홍수' and (location == '강가·폭포' or location == '해안' or location == '습지·늪') ? -4 : 0)"
+        + " + (disaster == '산불' and (location == '숲' or location == '꽃밭·초원' or location == '왕도 주변 들판') ? -4 : 0)"
+        + " + (disaster == '지진' and location == '광산·동굴' ? -4 : 0)"
+        + " + (disaster == '혜성 접근' and location == '유적·마나 이상 지대' ? 2 : 0)"
         + " + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       vs: '8 + area_tier * 2',
       grades: [
@@ -1425,7 +1463,7 @@ const S = {
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
       '밭({field_n}/{field_cap}): {field}',
-      '여기 가게: {shops_here} · 시세 {market_state}',
+      '여기 가게: {shops_here} · 시세 {market_state} · 재해 {disaster}',
       '의뢰({quest_slot} 남음): {quests}',
       '도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}',
       '숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}',
@@ -1444,7 +1482,7 @@ const S = {
       // 날짜·시각·날씨·위치 — 유저 요청 ("상태창에 날짜 시간 날씨 현재 위치"). date/clock/weekday/season은 time.expose 이름
       { label: '지금', visibility: 'show', items: [
         { var: 'date' }, { var: 'weekday' }, { var: 'clock' }, { var: 'season' }, { var: 'weather' }, { var: 'location' },
-        { var: 'shops_here' }, { var: 'market_state' },
+        { var: 'shops_here' }, { var: 'market_state' }, { var: 'disaster' },
       ] },
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
@@ -1532,11 +1570,11 @@ const S = {
       when: "location == '왕도' or location == '지방 도시'",
       // 시세 (v1.7.8) — 원가는 보조가 밴드 안에서, 배율은 시세 상태·날씨가. '*'는 매입(완성품 팔 때)
       priceMul: {
-        '소재': "market_state == '약초 풍년' ? 0.6 : market_state == '약초 품귀' ? 1.6 : market_state == '광석 품귀' ? 1.4 : market_state == '상단 도착' ? 0.8 : 1",
-        '도구': "market_state == '상단 도착' ? 0.8 : market_state == '광석 품귀' ? 1.3 : 1",
+        '소재': "disaster == '산불' ? 1.5 : disaster == '홍수' ? 1.3 : market_state == '약초 풍년' ? 0.6 : market_state == '약초 품귀' ? 1.6 : market_state == '광석 품귀' ? 1.4 : market_state == '상단 도착' ? 0.8 : 1",
+        '도구': "disaster == '지진' ? 1.4 : market_state == '상단 도착' ? 0.8 : market_state == '광석 품귀' ? 1.3 : 1",
         '식재료': "market_state == '흉년' ? 1.8 : market_state == '축제 특수' ? 1.3 : weather == '눈' ? 1.2 : 1",
         '서적': "market_state == '상단 도착' ? 0.7 : 1",
-        '*': "market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1",
+        '*': "disaster == '역병' ? 1.5 : disaster == '지진' ? 1.2 : market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1",   // 역병·지진엔 약이 잘 팔린다
       },
       guide: '란타르나 왕도의 평범한 상점가. 연금술 전문점이 아니라 잡화·약재·철물·식료를 파는 가게들이다. '
         + '소재 칸은 흔한 약초·맑은 물·광석·꽃·조개 같은 것 (조악 5~60, 보통 40~200), 상등품은 상인이 어디선가 들여온 것. '
@@ -1971,7 +2009,7 @@ console.log('\n━━ 상태창 자리표시자 ━━');
 console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
-  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'clues', 'last_quality', 'sales_month', 'tax_arrears', 'tax_seen',
+  const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'disaster', 'disaster_until', 'clues', 'last_quality', 'sales_month', 'tax_arrears', 'tax_seen',
     'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
@@ -2558,11 +2596,49 @@ console.log('\n━━ 시세 · 특산 — 날씨와 사건이 값을 밀고, �
   ok('시세는 보조가 못 만진다', !S.updater.allow.some((a) => a.id === 'market_state' || a.id === 'market_until'), '');
 }
 
-console.log('\n━━ 랜덤 이벤트 표 — 83종, 장소마다 뭔가 있다 ━━');
+console.log('\n━━ 재해 — 며칠 가는 세계 상태 (시세와 같은 기계, 길을 닫는다) ━━');
+{
+  const expr = SC.require('expr');
+  const shopMod = SC.require('shop');
+  const mk = engine.makeLookup;
+  const cfgOf = (id) => shopMod.shopConfigs(S).find((c) => c.id === id);
+  const tbl = S.rules.randomEvents.table;
+  const dis = tbl.filter((e) => e.id.startsWith('dis_'));
+  ok('재해 5종 · 전부 재해 없음일 때만 · 무게 1 · 쿨다운 30↑', dis.length === 5 && dis.every((e) => e.when.startsWith("disaster == '없음'") && e.weight === 1 && e.cooldown >= 30), '');
+  ok('재해 사건은 설비를 안 부순다', dis.every((e) => !(e.effects || []).some((f) => ['cauldron', 'library', 'storage', 'garden', 'display'].includes(f.set))), '');
+  let t = fresh();
+  ok('시작은 재해 없음 · 강가 버튼 열림 · 상태 블록에 재해 없음', t.vars.disaster === '없음' && canAct(t, 'go_river') && engine.sendPhase(S, t, { rng: seededRng('a', 901, 's') }).promptBlock.includes('재해 없음'), '');
+  t.vars.disaster = '홍수'; t.vars.disaster_until = look(t)('elapsed') + 2;
+  ok('홍수: 강가 버튼이 닫힌다 · 들판은 열려 있다', !canAct(t, 'go_river') && canAct(t, 'go_field'), '');
+  let p = engine.sendPhase(S, t, { rng: seededRng('a', 902, 's') }).promptBlock;
+  ok('홍수 지시문이 붙는다', p.includes('재해: 홍수') && p.includes('재해 홍수'), '');
+  const gmod = S.checks.find((c) => c.id === 'gather').mod;
+  const modAt = (vars) => { const u = fresh(); Object.assign(u.vars, { stamina: 80, ...vars }); return Number(expr.evaluate(gmod, look(u), null)); };
+  ok('홍수 중 물가 채집 -4 · 들판은 그대로', modAt({ disaster: '홍수', location: '강가·폭포' }) === modAt({ disaster: '없음', location: '강가·폭포' }) - 4
+    && modAt({ disaster: '홍수', location: '왕도 주변 들판' }) === modAt({ disaster: '없음', location: '왕도 주변 들판' }), '');
+  ok('산불 중 들판 채집 -4 · 혜성 접근 중 유적 +2', modAt({ disaster: '산불', location: '숲' }) === modAt({ disaster: '없음', location: '숲' }) - 4
+    && modAt({ disaster: '혜성 접근', location: '유적·마나 이상 지대' }) === modAt({ disaster: '없음', location: '유적·마나 이상 지대' }) + 2, '');
+  let r = turn(t, { skip_day: 1 }, 903);
+  ok('기한 전엔 홍수 유지', r.st.vars.disaster === '홍수', r.st.vars.disaster);
+  r = turn(r.st, { skip_day: 2 }, 904);
+  ok('기한이 지나면 없음으로 (onTurn) · 강가 버튼 다시 열림', r.st.vars.disaster === '없음' && canAct(r.st, 'go_river'), r.st.vars.disaster);
+  t = fresh(); t.vars.disaster = '산불';
+  ok('산불: 들판 버튼이 닫힌다 · 소재 값 ×1.5 (시세보다 먼저)', !canAct(t, 'go_field') && shopMod.priceMulFor(cfgOf('market'), '소재', mk(S, t.vars)) === 1.5, '');
+  t.vars.disaster = '역병';
+  ok('역병: 완성품 매입 ×1.5 (약이 팔린다)', shopMod.priceMulFor(cfgOf('market'), '*', mk(S, t.vars)) === 1.5, '');
+  t.vars.disaster = '지진';
+  ok('지진: 도구 ×1.4', shopMod.priceMulFor(cfgOf('market'), '도구', mk(S, t.vars)) === 1.4, '');
+  const eligible = (vars) => { const u = fresh(); Object.assign(u.vars, vars); const L = look(u); return tbl.filter((e) => { try { return expr.truthy(expr.evaluate(e.when, L, null)); } catch (err) { return false; } }).map((e) => e.id); };
+  ok('재해 중엔 다른 재해가 안 뽑힌다', !eligible({ disaster: '홍수', weather: '비', clues: 5 }).some((id) => id.startsWith('dis_')), '');
+  ok('홍수는 비 오는 날만 · 혜성은 단서 셋부터', eligible({ weather: '비' }).includes('dis_flood') && !eligible({ weather: '맑음' }).includes('dis_flood')
+    && eligible({ clues: 3 }).includes('dis_comet') && !eligible({ clues: 2 }).includes('dis_comet'), '');
+}
+
+console.log('\n━━ 랜덤 이벤트 표 — 88종, 장소마다 뭔가 있다 ━━');
 {
   const expr = SC.require('expr');
   const tbl = S.rules.randomEvents.table;
-  ok('83종 · id 중복 없음', tbl.length === 83 && new Set(tbl.map((e) => e.id)).size === 83, String(tbl.length));
+  ok('88종 · id 중복 없음', tbl.length === 88 && new Set(tbl.map((e) => e.id)).size === 88, String(tbl.length));
   ok('전부 when·cooldown·notify가 있다 (무조건 사건은 없다)', tbl.every((e) => e.when && e.cooldown >= 4 && e.notify), JSON.stringify(tbl.filter((e) => !(e.when && e.cooldown >= 4 && e.notify)).map((e) => e.id)));
   ok('통지엔 숫자가 없다 (숫자는 시스템이 말한다)', tbl.every((e) => !/[0-9]/.test(e.notify)), JSON.stringify(tbl.filter((e) => /[0-9]/.test(e.notify)).map((e) => e.id)));
   ok('발동 확률 0.07 (유저가 낮춘 값 되반영)', S.rules.randomEvents.chancePerTurn === 0.07, String(S.rules.randomEvents.chancePerTurn));

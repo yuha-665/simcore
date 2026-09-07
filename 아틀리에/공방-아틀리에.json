@@ -1164,6 +1164,385 @@
           "cooldown": 9,
           "when": "location == '공방' and cauldron <= 2",
           "notify": "가마가 이상한 소리를 낸다. 손을 봐야 할 때다."
+        },
+        {
+          "id": "monsoon_mold",
+          "weight": 2,
+          "cooldown": 12,
+          "when": "season == '여름' and weather == '비' and location == '공방' and storage <= 1 and mat_n >= 5",
+          "notify": "장맛비에 보관고 구석이 눅눅하다 — 자루 하나에 곰팡이가 폈다. 젖은 소재는 버리는 수밖에."
+        },
+        {
+          "id": "frost_burst",
+          "weight": 2,
+          "cooldown": 10,
+          "when": "season == '겨울' and location == '공방' and cauldron <= 2",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 5"
+            }
+          ],
+          "notify": "밤새 물통이 얼어 터졌다. 가마 아래 불을 지피느라 새벽잠을 설쳤다."
+        },
+        {
+          "id": "bee_swarm",
+          "weight": 2,
+          "cooldown": 6,
+          "when": "season == '봄' and (location == '꽃밭·초원' or location == '왕도 주변 들판')",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 8"
+            }
+          ],
+          "notify": "꽃철 벌떼가 바구니 냄새를 맡고 몰려들었다. 도망치다 몇 방 쏘였다."
+        },
+        {
+          "id": "heat_wave",
+          "weight": 2,
+          "cooldown": 6,
+          "when": "season == '여름' and weather == '맑음' and area_tier >= 1",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 10"
+            }
+          ],
+          "notify": "한낮 볕이 살인적이다. 그늘을 찾아 쉬어도 땀이 마르질 않는다."
+        },
+        {
+          "id": "fog_lost",
+          "weight": 2,
+          "cooldown": 7,
+          "when": "weather == '안개' and area_tier >= 2",
+          "effects": [
+            {
+              "set": "skip_min",
+              "expr": "skip_min + 120"
+            },
+            {
+              "set": "stamina",
+              "expr": "stamina - 6"
+            }
+          ],
+          "notify": "안개에 길을 잃었다. 같은 바위를 세 번 지나고서야 방향을 잡았다 — 두 시간이 날아갔다."
+        },
+        {
+          "id": "snow_find",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "weather == '눈' and area_tier >= 2",
+          "effects": [
+            {
+              "list": "materials",
+              "add": [
+                "얼음 결정"
+              ]
+            }
+          ],
+          "notify": "눈 더미 밑에서 파랗게 빛나는 결정을 캤다. 이런 날에만 굳는 것이다."
+        },
+        {
+          "id": "windfall_feathers",
+          "weight": 2,
+          "cooldown": 7,
+          "when": "weather == '바람' and area_tier >= 1",
+          "effects": [
+            {
+              "list": "materials",
+              "add": [
+                "깃털"
+              ]
+            }
+          ],
+          "notify": "돌풍이 지나간 자리에 큰 새의 깃털이 흩어져 있다. 몇 개 주웠다."
+        },
+        {
+          "id": "pickpocket",
+          "weight": 2,
+          "cooldown": 10,
+          "when": "location == '왕도 뒷골목' and cole >= 200",
+          "effects": [
+            {
+              "set": "cole",
+              "expr": "cole - min(200, floor(cole / 5))"
+            }
+          ],
+          "notify": "뒷골목 인파 속에서 지갑이 가벼워졌다. 손이 스친 것도 못 느꼈다."
+        },
+        {
+          "id": "angler",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '강가·폭포' or location == '해안'",
+          "effects": [
+            {
+              "list": "materials",
+              "add": [
+                "지렁이 미끼"
+              ]
+            }
+          ],
+          "notify": "물가의 낚시꾼이 남은 미끼를 나눠 줬다 — \"연금술사가 낚시도 하나\" 하고 웃으며."
+        },
+        {
+          "id": "field_trader",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "area_tier >= 1 and area_tier <= 2",
+          "notify": "가도에서 떠돌이 상인과 마주쳤다. 바구니 속 소재를 눈여겨보며 값을 부른다 — 팔든 말든."
+        },
+        {
+          "id": "cave_fall",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '광산·동굴'",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 15"
+            },
+            {
+              "set": "skip_min",
+              "expr": "skip_min + 90"
+            }
+          ],
+          "notify": "갱도 천장이 무너졌다. 몸은 빠져나왔지만 우회로를 찾느라 한참 걸렸다."
+        },
+        {
+          "id": "blizzard",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '설산 능선'",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 12"
+            },
+            {
+              "set": "skip_min",
+              "expr": "skip_min + 180"
+            }
+          ],
+          "notify": "눈보라가 능선을 덮었다. 바위 그늘에 웅크려 지나가길 기다리는 수밖에."
+        },
+        {
+          "id": "mirage",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '사막'",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 12"
+            }
+          ],
+          "notify": "신기루를 물이라 믿고 한참을 걸었다. 목이 타고 다리가 무겁다."
+        },
+        {
+          "id": "leech",
+          "weight": 2,
+          "cooldown": 6,
+          "when": "location == '습지·늪'",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 8"
+            }
+          ],
+          "notify": "늪물에서 나와 보니 종아리에 거머리가 붙어 있다. 떼어 내는 데 손이 떨렸다."
+        },
+        {
+          "id": "ruin_glyph",
+          "weight": 1,
+          "cooldown": 10,
+          "when": "location == '유적·마나 이상 지대'",
+          "effects": [
+            {
+              "set": "clues",
+              "expr": "clues + 1"
+            }
+          ],
+          "notify": "벽면의 옛 문자가 손을 대자 희미하게 빛났다. 잊혀진 연금술의 필적이다."
+        },
+        {
+          "id": "edge_whisper",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "location == '세계의 끝'",
+          "effects": [
+            {
+              "set": "clues",
+              "expr": "clues + 2"
+            },
+            {
+              "set": "stamina",
+              "expr": "stamina - 10"
+            }
+          ],
+          "notify": "세계의 끝에서 바람이 말을 걸었다. 백색 혜성이 지나간 하늘 아래, 몸은 무겁고 머리는 맑다."
+        },
+        {
+          "id": "cafe_gossip",
+          "weight": 2,
+          "cooldown": 6,
+          "when": "location == '별의 고치 카페'",
+          "notify": "옆자리 손님들의 수다가 귀에 들어온다 — 누가 앓고, 어디 길이 막히고, 무엇이 귀해졌다는 이야기."
+        },
+        {
+          "id": "market_day",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '지방 도시'",
+          "notify": "마침 장날이다. 노점마다 낯선 소재와 싼 잡동사니가 쌓여 있다."
+        },
+        {
+          "id": "bookworm",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "location == '공방' and library >= 2",
+          "effects": [
+            {
+              "set": "skip_min",
+              "expr": "skip_min + 120"
+            }
+          ],
+          "notify": "서고에 좀벌레가 들었다. 책을 전부 꺼내 볕에 말리느라 반나절을 썼다."
+        },
+        {
+          "id": "mole",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '공방' and garden >= 1 and field_n >= 1",
+          "notify": "두더지가 밭을 헤집어 놓았다. 심은 것 하나가 뿌리째 뽑혔다 — 다시 심어야 한다."
+        },
+        {
+          "id": "storage_rat",
+          "weight": 2,
+          "cooldown": 9,
+          "when": "location == '공방' and storage <= 1 and mat_n >= 8",
+          "notify": "쥐가 소재 자루를 갉았다. 흩어진 것들을 쓸어 담았지만 몇 줌은 버려야 했다."
+        },
+        {
+          "id": "bomb_mishap",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '공방' and synth_cat == '폭탄' and cauldron <= 3",
+          "effects": [
+            {
+              "set": "stamina",
+              "expr": "stamina - 10"
+            }
+          ],
+          "notify": "가마 안에서 작은 폭발이 났다. 눈썹이 그을리고 귀가 한참 울렸다."
+        },
+        {
+          "id": "shelf_buzz",
+          "weight": 2,
+          "cooldown": 10,
+          "when": "display >= 1 and shelf_n >= 2 and renown >= 100 and area_tier == 0",
+          "effects": [
+            {
+              "set": "renown",
+              "expr": "renown + 3"
+            }
+          ],
+          "notify": "진열대 물건이 입소문을 탔다. 가게 앞을 기웃거리는 사람이 늘었다."
+        },
+        {
+          "id": "ally_visit",
+          "weight": 3,
+          "cooldown": 6,
+          "when": "location == '공방' and count(allies) >= 1",
+          "notify": "가까운 이가 불쑥 공방에 들렀다. 손에 뭔가 들고, 할 말이 있는 얼굴이다."
+        },
+        {
+          "id": "ally_news",
+          "weight": 2,
+          "cooldown": 10,
+          "when": "count(allies) >= 1",
+          "notify": "가까운 이에게 일이 생겼다는 전갈이 왔다. 좋은 일인지 나쁜 일인지는 전갈만으로는 모른다."
+        },
+        {
+          "id": "mentor_letter",
+          "weight": 2,
+          "cooldown": 12,
+          "when": "mentor != '없음'",
+          "notify": "스승·후견인에게서 편지가 왔다. 안부 끝에 짧은 당부가 붙어 있다."
+        },
+        {
+          "id": "old_alchemist",
+          "weight": 1,
+          "cooldown": 15,
+          "when": "area_tier >= 3 and clues >= 2",
+          "effects": [
+            {
+              "set": "clues",
+              "expr": "clues + 1"
+            }
+          ],
+          "notify": "잊혀진 연금술을 아는 듯한 노인과 마주쳤다. 많은 말은 않고, 실마리 하나만 흘리고 사라졌다."
+        },
+        {
+          "id": "kids_play",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "renown >= 200 and area_tier == 0",
+          "effects": [
+            {
+              "set": "renown",
+              "expr": "renown + 2"
+            }
+          ],
+          "notify": "아이들이 공방 앞에서 연금술 흉내를 낸다. 냄비를 두드리며 \"뿅\" 하고 외친다."
+        },
+        {
+          "id": "client_visit",
+          "weight": 2,
+          "cooldown": 8,
+          "when": "location == '공방' and renown >= 200 and quest_slot >= 1",
+          "notify": "의뢰인이 직접 공방을 찾아왔다. 벽보에 붙이기엔 사정이 있는 부탁이다."
+        },
+        {
+          "id": "slander",
+          "weight": 1,
+          "cooldown": 12,
+          "when": "renown >= 300 and area_tier == 0",
+          "effects": [
+            {
+              "set": "renown",
+              "expr": "renown - 8"
+            }
+          ],
+          "notify": "누군가 이 공방의 약이 가짜라는 헛소문을 퍼뜨렸다. 출처는 알 수 없다."
+        },
+        {
+          "id": "noble_envoy",
+          "weight": 1,
+          "cooldown": 20,
+          "when": "renown >= 600 and area_tier == 0",
+          "notify": "귀족 가문의 사자가 찾아왔다. 정중하지만 거절이 어려운 종류의 초대다."
+        },
+        {
+          "id": "inspection",
+          "weight": 1,
+          "cooldown": 15,
+          "when": "location == '공방' and renown >= 400",
+          "notify": "관청에서 사람이 나와 가마를 살펴본다. 잊혀진 기술이 어디까지 허용되는지, 아직 아무도 정하지 않았다."
+        },
+        {
+          "id": "grateful_gift",
+          "weight": 2,
+          "cooldown": 9,
+          "when": "location == '공방' and renown >= 150",
+          "effects": [
+            {
+              "set": "cole",
+              "expr": "cole + 100"
+            }
+          ],
+          "notify": "예전 의뢰인이 감사의 표시를 두고 갔다. 작은 주머니에 콜이 들어 있다."
         }
       ]
     }

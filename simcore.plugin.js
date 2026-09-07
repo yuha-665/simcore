@@ -13729,6 +13729,22 @@ const CSS = `
 }
 /* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
 .sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
+
+/* v1.7.13 보강 — 개조본이 버린 규칙 중 우리 DOM이 아직 쓰는 것 (상태창 탭 항목 행: master 원문 그대로) */
+.sce .sce-status-item-head, .sce .sce-status-item { display:grid;
+  grid-template-columns:minmax(210px,1.2fr) 68px minmax(155px,.9fr) minmax(150px,.85fr) auto;
+  gap:9px; align-items:end; }
+.sce .sce-status-item-head { padding:8px 0 5px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
+.sce .sce-status-item-max.is-disabled { display:flex; align-items:center; min-height:38px; padding:0 9px;
+  border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); color:var(--sce-muted); }
+.sce .sce-status-item-color { margin:0 0 7px; padding:7px 0 2px 12px;
+  border-left:2px solid var(--sce-line-strong); }
+@media (max-width:760px) {
+.sce .sce-status-item-head { display:none; }
+.sce .sce-status-item { grid-template-columns:minmax(0,1fr) auto; }
+.sce .sce-status-item > :nth-child(1), .sce .sce-status-item > :nth-child(3) { grid-column:1 / -1; }
+.sce .sce-status-item-color { padding-left:8px; }
+}
 `;
 
 const VAR_TYPES = [

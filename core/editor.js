@@ -39,9 +39,6 @@ const CSS = `
   --sce-accent-strong:var(--sc-accent-strong, #4f7fe8); --sce-focus:var(--sc-focus, #9ac2ff);
   --sce-success:var(--sc-success, #79d99a); --sce-warning:var(--sc-warning, #f1cb72);
   --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
-  /* 개조본이 참조만 하고 정의하지 않던 토큰 5종 — 폴백을 여기서 준다 (안 주면 그 속성이 통째로 무효가 된다) */
-  --sce-border:var(--sce-line); --sce-font-body:var(--sc-font-body, system-ui, sans-serif);
-  --sce-success-soft:rgba(121,217,154,.35); --sc-weekend-sat:#78a9ff; --sc-weekend-sun:#ff9292;
   --sce-weekend-sat:var(--sc-weekend-sat, #82b4ff); --sce-weekend-sun:var(--sc-weekend-sun, #ff9eaa);
   --sce-weekend-sat-bg:rgba(130,180,255,.055); --sce-weekend-sun-bg:rgba(255,158,170,.055);
   /* 심층 편집 작업 폭 — 탭 바부터 오류줄까지 이 한 값을 쓴다. 개별 상자에 숫자를 박으면
@@ -574,6 +571,81 @@ const CSS = `
    오른쪽 끝이 한 줄로 떨어진다. 안쪽 블록은 자기 폭을 다시 박지 않는다 (전부 100%/토큰). */
 .sce .sce-deep { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-deep-body { width:100%; }
+.sce .sce-time-workbench { display:grid; grid-template-columns:minmax(200px,.36fr) minmax(0,1.64fr);
+  border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-surface); overflow:clip; }
+.sce .sce-time-rail { min-width:0; padding:18px 16px; border-right:1px solid var(--sce-line);
+  background:var(--sce-field); }
+.sce .sce-time-overview-label { color:var(--sce-muted); font-size:11px; font-weight:700; }
+.sce .sce-time-overview-value { margin-top:5px; color:var(--sce-text-strong);
+  font-weight:750; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sce .sce-time-overview-date { display:block; font-size:18px; line-height:1.3; white-space:nowrap; }
+.sce .sce-time-overview-clock { display:block; margin-top:2px; font-size:17px; line-height:1.3; }
+.sce .sce-time-overview-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:12px; }
+.sce .sce-time-overview-note { margin-top:15px; padding-top:12px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
+.sce .sce-time-sheet { min-width:0; }
+.sce .sce-time-section { display:grid; grid-template-columns:minmax(145px,.38fr) minmax(0,1.62fr);
+  gap:18px; margin:0; padding:18px; border-bottom:1px solid var(--sce-line); background:transparent; }
+.sce .sce-time-section:last-child { border-bottom:0; }
+.sce .sce-time-section-head { min-width:0; }
+.sce .sce-time-section-title { color:var(--sce-text-strong); font-size:13px; font-weight:750; line-height:1.4; }
+.sce .sce-time-section-copy { margin-top:5px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-time-section-body { min-width:0; }
+.sce .sce-time-grid { display:grid; gap:10px; align-items:start; }
+.sce .sce-time-grid-core { grid-template-columns:minmax(180px,1.15fr) repeat(2,minmax(170px,1fr)); }
+.sce .sce-time-grid-format { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-time-field { display:grid; gap:4px; min-width:0; }
+.sce .sce-time-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:700; }
+.sce .sce-time-field > small { min-height:1lh; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-time-field > input, .sce .sce-time-field > select {
+  width:100% !important; min-width:0 !important; max-width:none !important; }
+.sce .sce-time-random-toggle { margin:0; }
+.sce .sce-time-random-toggle .sce-chip { width:100%; min-height:40px; padding:7px 9px; }
+.sce .sce-time-range-grid { grid-template-columns:repeat(3,minmax(110px,1fr)); margin-top:10px; }
+.sce .sce-time-inline-note { margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
+.sce .sce-time-inline-note.is-warning { color:var(--sce-warning); }
+.sce .sce-time-expose-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.sce .sce-time-expose-grid .sce-chip { min-width:0; min-height:38px; margin:0; padding:6px 8px; }
+.sce .sce-time-example { margin-top:10px; color:var(--sce-muted); font-size:11px; line-height:1.55; }
+.sce .sce-time-progress-status { padding:10px; border:1px solid var(--sce-line);
+  background:var(--sce-field); color:var(--sce-text); font-size:12px; line-height:1.55; }
+.sce .sce-time-progress-status.is-warning { border-color:var(--sce-warning); }
+.sce .sce-time-progress-status strong { color:var(--sce-text-strong); }
+.sce .sce-time-section-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
+.sce .sce-time-danger { display:flex; align-items:center; justify-content:space-between; gap:10px 18px;
+  flex-wrap:wrap; padding:15px 18px; background:var(--sce-danger-bg); }
+.sce .sce-time-danger-copy strong { display:block; color:var(--sce-danger); font-size:12.5px; }
+.sce .sce-time-danger-copy span { display:block; margin-top:2px; color:var(--sce-muted);
+  font-size:11px; line-height:1.45; }
+.sce .sce-time-empty { padding:18px; border:1px solid var(--sce-line); border-radius:5px;
+  background:var(--sce-surface); }
+.sce .sce-time-empty-title { color:var(--sce-text-strong); font-size:17px; font-weight:750; }
+.sce .sce-time-empty-copy { max-width:72ch; margin-top:5px; color:var(--sce-muted);
+  font-size:12.5px; line-height:1.6; }
+.sce .sce-time-enable-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px; align-items:stretch; margin-top:15px; }
+.sce .sce-time-enable-option { display:grid; grid-template-rows:auto 1fr; gap:6px; align-content:start;
+  width:100%; min-width:0; height:100%; padding:13px; overflow:hidden; white-space:normal;
+  border:1px solid var(--sce-line-strong); border-radius:5px; background:var(--sce-field);
+  color:var(--sce-text); text-align:left; cursor:pointer; font:inherit;
+  transition:background-color 180ms cubic-bezier(.16,1,.3,1), transform 100ms cubic-bezier(.16,1,.3,1); }
+.sce .sce-time-enable-option.is-recommended { border-color:var(--sce-accent); }
+.sce .sce-time-enable-option-head { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; min-width:0; }
+.sce .sce-time-enable-option b { min-width:0; color:var(--sce-text-strong); font-size:13.5px;
+  line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+.sce .sce-time-enable-option span { min-width:0; color:var(--sce-muted); font-size:11.5px;
+  line-height:1.5; white-space:normal; overflow-wrap:anywhere; word-break:normal; }
+.sce .sce-time-enable-option-copy span { display:block; }
+.sce .sce-time-enable-option-copy span + span { margin-top:2px; }
+.sce .sce-time-enable-option em { flex:none; width:fit-content; color:var(--sce-accent); font-size:10.5px;
+  font-style:normal; font-weight:700; }
+.sce .sce-time-enable-option:active { transform:translateY(1px); }
+.sce .sce-time-back-row { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+.sce .sce-time-back-row span { color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-time-legacy-alert { margin-top:12px; padding:9px 10px; border:1px solid var(--sce-warning);
+  color:var(--sce-warning); font-size:11.5px; line-height:1.5; }
 /* Hallmark restoration — Rules & Events.
  * Asymmetric first section, staged rail, compact controls, AI as secondary tool. */
 /* ---------------------------------------------------------------
@@ -1333,6 +1405,27 @@ const CSS = `
     flex-basis:100%; min-width:100%; }
 .sce .sce-deep-body .sce-row > select { width:100%; max-width:none; }
 .sce .sce-deep-body .sce-sub { padding-left:8px; }
+}
+@media (hover:hover) and (pointer:fine) {
+.sce .sce-time-enable-option:hover { background:var(--sce-surface-soft); }
+}
+@media (max-width:1040px) {
+.sce .sce-time-grid-core { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-time-range-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sce .sce-time-enable-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:760px) {
+.sce .sce-time-workbench { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-rail { border-right:0; border-bottom:1px solid var(--sce-line); }
+.sce .sce-time-section { grid-template-columns:minmax(0,1fr); gap:11px; padding:15px; }
+.sce .sce-time-grid-core, .sce .sce-time-grid-format, .sce .sce-time-range-grid {
+    grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-enable-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-expose-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:600px) {
+.sce .sce-time-expose-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-danger { align-items:stretch; flex-direction:column; }
 }
 @media (prefers-reduced-motion:reduce) {
 .sce *, .sce *::before, .sce *::after { scroll-behavior:auto !important; transition:none !important; }
@@ -4539,6 +4632,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 상태창 ────────────────────────────────────────────
   // 뼈대 덮어쓰기 확인용 — rerender()가 DOM을 새로 만들므로 tabStatus 밖에 둬야 살아남는다
   let tplArm = null;
+  let timeChooserOpen = false;   // 시간 탭 "진행 방식 다시 고르기" 열림 상태 (개조본 tabTime 이식, v1.7.13)
   const collapsedStatusGroups = new WeakSet();
   let statusMoveFeedback = null; // { item, position, kind } — 그룹과 항목 이동 뒤 한 번 표시
   function tabStatus() {
@@ -7201,43 +7295,47 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function tabTime() {
     const wrap = h('div');
-    wrap.appendChild(tabAiTools('time'));  // v1.0 #7 — 탭 단위 내보내기/가져오기 (일반 패치는 계속 금지)
+    const timeAiTools = tabAiTools('time');
     const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
 
-    if (!schema.time) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '날짜·시각을 시스템이 관리하게 한다. 요일·윤년·월별 일수·자릿수(07:05)는 엔진이 계산하고, '
-        + 'AI는 "며칠/몇 분 지났나"만 답한다 — 날짜 산술을 안 시킨다. '
-        + '켜면 date · clock · weekday · season · month · dom · hour · elapsed 같은 이름을 '
-        + '조건식({when})과 상태창({date})에서 변수처럼 바로 쓸 수 있다.'));
-      if (legacy.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          `이 봇에는 손으로 만든 날짜 변수가 있습니다 (${legacy.map((v) => v.id).join(', ')}) — `
-          + '켠 뒤 아래 정리 마법사로 걷어내면 노출 이름과의 충돌도 함께 풀립니다.'));
-      }
+    if (!schema.time || timeChooserOpen) {
       // 켜는 순간 완성품 (design-시간.md §결정 2) — 켜기만 하고 진행 입구가 없으면 시계가
       // 멈춘 채 박힌다. 상태창에 같은 날짜가 영원히 뜨는 건 날짜가 없는 것보다 나쁘다 —
       // 그래서 "그냥 켜기" 버튼을 두지 않고, 시간이 흐르는 방식을 같이 고르게 한다.
-      wrap.appendChild(h('h4', {}, '🕐 시간 체계 켜기 — 시간이 어떻게 흐르나요?'));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '켜기만 하면 시계가 멈춘 채 시작합니다. 흐르는 방식까지 골라야 완성품입니다 (켠 뒤에 바꿀 수 있어요).'));
       const enable = (advance) => {
-        schema.time = { start: '2026-01-01 09:00', advance, format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        if (!schema.time) {
+          schema.time = { start: '2026-01-01 09:00', advance, format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        } else {
+          schema.time.advance = advance;
+        }
+        timeChooserOpen = false;
       };
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('explicit'); ensureSkipVars(); addEndDayAction(); rerender();
-        } }, '🌙 버튼·보고로 — 일상물 표준 (하루 마무리 액션 + AI 장면 보고)')));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '유저가 [🌙 하루를 마친다]를 누르거나, 보조 AI가 장면마다 "몇 분 흘렀나"를 보고해 시간이 갑니다. 대부분의 봇은 이걸 고르세요.'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('explicit'); ensureSkipVars(); rerender();
-        } }, '📝 AI 보고로만 — 버튼 없이 서사 흐름 따라')));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('perTurn'); rerender();
-        } }, '📆 턴마다 하루 — 생존물·경영물형 (출력 1번 = 1일)')));
+      wrap.appendChild(h('section', { class: 'sce-time-empty' },
+        h('div', { class: 'sce-time-empty-title' }, '시간 체계 시작하기'),
+        h('div', { class: 'sce-time-empty-copy' },
+          '날짜·시각·요일·계절을 엔진이 한 시계로 관리합니다. 아래에서 시간이 흐르는 방식을 고르세요. 나중에 변경할 수 있습니다.'),
+        legacy.length ? h('div', { class: 'sce-time-legacy-alert' },
+          `직접 만든 날짜 변수가 있습니다: ${legacy.map((v) => v.id).join(', ')}. 시간 체계를 켠 뒤 정리 도구에서 충돌 여부를 확인할 수 있습니다.`) : null,
+        h('div', { class: 'sce-time-enable-grid' },
+          h('button', { type: 'button', class: 'sce-time-enable-option is-recommended', onclick: () => {
+            enable('explicit'); ensureSkipVars(); addEndDayAction(); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' },
+            h('b', {}, '버튼 + AI 보고'), h('em', {}, '권장')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, '하루 마무리 버튼과 AI의 장면 경과 보고를 함께 사용합니다.'),
+            h('span', {}, '일상·스토리형에 적합합니다.'))),
+          h('button', { type: 'button', class: 'sce-time-enable-option', onclick: () => {
+            enable('explicit'); ensureSkipVars(); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' }, h('b', {}, 'AI 보고만')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, '버튼 없이 AI가 보고한 경과 시간만 반영합니다.'),
+            h('span', {}, '자유로운 서사 진행에 적합합니다.'))),
+          h('button', { type: 'button', class: 'sce-time-enable-option', onclick: () => {
+            enable('perTurn'); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' }, h('b', {}, '출력마다 하루')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, 'AI 출력 1회를 하루로 계산합니다.'),
+            h('span', {}, '생존·경영처럼 하루 단위 진행에 적합합니다.'))))));
       return wrap;
     }
 
@@ -7245,154 +7343,183 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     T.format = T.format || {};
     const cfg = timeConfig(schema);
 
+    const timeField = (label, control, help = '') => h('label', { class: 'sce-time-field' },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const timeSection = (title, copy, ...children) => h('section', { class: 'sce-time-section' },
+      h('div', { class: 'sce-time-section-head' }, h('div', {},
+        h('div', { class: 'sce-time-section-title' }, title),
+        copy ? h('div', { class: 'sce-time-section-copy' }, copy) : null)),
+      h('div', { class: 'sce-time-section-body' }, ...children));
+
     // 시작 시점 미리보기 — 포맷·달력·요일 설정이 실제로 어떻게 보일지 그 자리에서 확인
-    {
-      const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
-    }
+    const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
+    const previewMeridiem = Number(cfg.start.h) < 12 ? 'AM' : 'PM';
+    const timeRail = h('aside', { class: 'sce-time-rail' },
+      h('div', {},
+        h('div', { class: 'sce-time-overview-label' }, '새 채팅의 시작 시점'),
+        h('div', { class: 'sce-time-overview-value' },
+          h('span', { class: 'sce-time-overview-date' }, `${pv.date} (${pv.weekday})`),
+          h('span', { class: 'sce-time-overview-clock' }, `${previewMeridiem} ${pv.clock}`))),
+      h('div', { class: 'sce-time-overview-tags' },
+        h('span', { class: 'sce-tag' }, pv.season),
+        h('span', { class: 'sce-tag' }, (T.advance ?? 'explicit') === 'explicit' ? '버튼·보고로 진행' : '턴마다 하루'),
+        h('span', { class: 'sce-tag' }, (T.calendar ?? 'gregorian') === 'gregorian' ? '실제 달력' : '30일 달력')),
+      h('div', { class: 'sce-time-overview-note' },
+        '이 값은 새 채팅에만 적용됩니다. 진행 중인 날짜는 /날짜 2026-10-05 명령이나 [새 시작] 프리셋으로 바꿔 주세요.'));
+    const timeSheet = h('div', { class: 'sce-time-sheet' });
 
-    // ⚠ 소급 안 됨 — 시계(time_epoch)는 채팅 시작 때 세이브에 박힌다. 여기를 고쳐도
-    //   진행 중인 채팅의 날짜는 안 바뀐다 (실측 문의: "작중은 10월인데 상태창이 3월").
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '시작 시점은 **새로 시작하는 채팅**에만 적용됩니다 — 진행 중인 채팅의 시계는 세이브에 '
-      + '저장돼 있어 여기서 안 바뀝니다. 진행 중인 판의 날짜를 옮기려면 채팅에 '
-      + '/날짜 2026-10-05 를 치거나, [새 시작] 탭의 프리셋 시작 시점(startAt)을 쓰세요.'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
-        { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
-      pair('진행', bindSelect(T.advance ?? 'explicit', [
-        ['explicit', '명시적 — 버튼·보고로만'], ['perTurn', '턴마다 하루 (구형)'],
-      ], (x) => { T.advance = x; rerender(); }),
-        '명시적: skip_day/skip_min에 쌓인 만큼만 흐른다. 턴마다 하루: 메시지 하나 = 하루 (장면 단위 RP를 부수므로 생존물 외 비권장)'),
-      pair('달력', bindSelect(T.calendar ?? 'gregorian', [
-        ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
-      ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
-    ));
+    const startInput = bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
+      { cls: 'sce-w-m', ph: '2026-04-01 07:30' });
+    const advanceSelect = bindSelect(T.advance ?? 'explicit', [
+      ['explicit', '버튼·AI 보고로만 진행 (권장)'], ['perTurn', '출력 1번마다 하루 진행'],
+    ], (x) => { T.advance = x; rerender(); });
+    const calendarSelect = bindSelect(T.calendar ?? 'gregorian', [
+      ['gregorian', '그레고리력 — 실제 달력·윤년'], ['flat30', '판타지력 — 매달 30일'],
+    ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); });
+    timeSheet.appendChild(timeSection('기본 시간', '시작점·진행 규칙·달력을 한 번에 정합니다.',
+      h('div', { class: 'sce-time-grid sce-time-grid-core' },
+        timeField('시작 시점', startInput, 'YYYY-MM-DD 또는 YYYY-MM-DD HH:mm'),
+        timeField('시간 진행 방식', advanceSelect,
+          '대부분은 버튼·AI 보고 방식을 권장합니다.'),
+        timeField('달력 체계', calendarSelect, '현실 달력 또는 월별 30일 고정'))));
+
     // 시작 시각 무작위 (v0.80) — 켜면 판마다 시작점이 달라진다. 안 켠 칸은 위 시작 시점 그대로.
-    // 규칙 #3: 엔진에만 넣고 칸을 안 만들면 JSON 손편집 말고는 쓸 방법이 없다.
-    {
-      const RF = [
-        ['hour', '시각', 0, 23, '6, 22'],
-        ['minute', '분', 0, 59, '0, 59'],
-        ['dom', '일', 1, 31, '1, 28'],
-        ['month', '월', 1, 12, '3, 5'],
-        ['year', '년', 1, 9999, '2024, 2026'],
-      ];
-      const on = !!T.startRandom;
-      wrap.appendChild(h('h4', {}, '시작 시각 무작위'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        bindCheck(on, (v) => {
-          // 켤 때 시각 범위를 기본으로 채워 준다 — 빈 껍데기를 켜 두면 아무것도 안 바뀐다
-          T.startRandom = v ? { hour: [6, 22] } : undefined;
+    const RF = [
+      ['hour', '시각', 0, 23, '8, 20', '오전 8시부터 오후 8시'],
+      ['minute', '분', 0, 59, '0, 30', '정각부터 30분'],
+      ['dom', '일', 1, 31, '1, 15', '1일부터 15일'],
+      ['month', '월', 1, 12, '1, 6', '1월부터 6월'],
+      ['year', '년', 1, 9999, '2026, 2030', '2026년부터 2030년'],
+    ];
+    const randomOn = !!T.startRandom;
+    const randomBody = [h('div', { class: 'sce-time-random-toggle' },
+      bindCheck(randomOn, (v) => {
+        T.startRandom = v ? { hour: [6, 22] } : undefined;   // 기본 범위는 우리 v0.80 값 유지 (개조본은 8~20)
+        rerender();
+      }, '새 채팅마다 시작 시점을 범위 안에서 무작위로 정하기'))];
+    if (randomOn) {
+      const SR = T.startRandom;
+      const rangeGrid = h('div', { class: 'sce-time-grid sce-time-range-grid' });
+      for (const [key, label, lo, hi, ph, meaning] of RF) {
+        const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
+        rangeGrid.appendChild(timeField(`${label} 범위`, bindInput(cur, (x) => {
+          const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
+          if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
+          else delete SR[key];
           rerender();
-        }, '판마다 시작 시각을 다르게')));
-      if (on) {
-        const SR = T.startRandom;
-        const row = h('div', { class: 'sce-row' });
-        for (const [key, label, lo, hi, ph] of RF) {
-          const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
-          row.appendChild(pair(label, bindInput(cur, (x) => {
-            const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
-            if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
-            else delete SR[key];   // 비우면 그 칸은 고정 (시작 시점 값을 그대로 쓴다)
-            rerender();
-          }, { cls: 'sce-w-s', ph }), `${lo}~${hi} · 비우면 고정`));
-        }
-        wrap.appendChild(row);
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '채운 칸만 굴립니다 — 비운 칸은 위 [시작 시점]의 값을 그대로 씁니다 (예: 시각만 채우면 날짜는 고정). '
-          + '**같은 채팅 안에서는 늘 같은 시각**이라 리롤해도 안 흔들리고, 새 채팅을 열면 새로 굴립니다. '
-          + '[현황]의 판 초기화로도 다시 굴러갑니다. 없는 날짜(2월 31일 등)는 그 달 말일로 당겨집니다.'));
-        if (!Object.keys(SR).length) {
-          wrap.appendChild(h('div', { class: 'sce-hint' },
-            '⚠ 범위가 하나도 없어 지금은 꺼진 것과 같습니다 — 칸을 하나 이상 채우세요.'));
-        }
+        }, { cls: 'sce-w-s', ph }), `예: ${ph} = ${meaning} · 허용 ${lo}~${hi} · 비우면 고정`));
       }
+      randomBody.push(rangeGrid);
+      randomBody.push(h('div', { class: 'sce-time-inline-note' },
+        '값을 입력한 항목만 무작위로 정합니다. 결과는 같은 채팅 안에서 유지되며 새 채팅이나 판 초기화 때 다시 결정됩니다. 없는 날짜는 해당 월의 마지막 날로 조정됩니다.'));
+      if (!Object.keys(SR).length) randomBody.push(h('div', { class: 'sce-time-inline-note is-warning' },
+        '범위가 하나도 없습니다. 무작위로 바꿀 항목을 하나 이상 입력해 주세요.'));
     }
+    timeSheet.appendChild(timeSection('시작 시점 무작위',
+      '선택 사항입니다. 날짜는 고정하고 시각만 바꾸는 식으로 필요한 항목만 설정할 수 있습니다.', ...randomBody));
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
-        { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),
-      pair('시각 형식', bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
-        { cls: 'sce-w-m', ph: 'HH:mm' }), '토큰: HH H mm m — 예: "H시 m분". 자릿수는 형식이 책임진다 (07:05)'),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('요일', bindInput((T.weekdays || []).join(', '), (x) => {
-        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
-        T.weekdays = a.length ? a : undefined; rerender();
-      }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일 (비우면 기본) — 첫 칸이 월요일' })),
-      pair('계절', bindInput((T.seasons || []).join(', '), (x) => {
-        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
-        T.seasons = a.length ? a : undefined; rerender();
-      }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (비우면 기본)' })),
-    ));
+    const dateFormat = bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
+      { cls: 'sce-w-m', ph: 'YYYY-MM-DD' });
+    const clockFormat = bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
+      { cls: 'sce-w-m', ph: 'HH:mm' });
+    const weekdaysInput = bindInput((T.weekdays || []).join(', '), (x) => {
+      const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+      T.weekdays = a.length ? a : undefined; rerender();
+    }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일' });
+    const seasonsInput = bindInput((T.seasons || []).join(', '), (x) => {
+      const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+      T.seasons = a.length ? a : undefined; rerender();
+    }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울' });
+    timeSheet.appendChild(timeSection('표시 형식', '날짜·시각과 요일·계절의 표기를 바꿉니다.',
+      h('div', { class: 'sce-time-grid sce-time-grid-format' },
+        timeField('날짜 형식', dateFormat, '토큰: YYYY, YY, MM, M, DD, D · 예: M월 D일'),
+        timeField('시각 형식', clockFormat, '토큰: HH, H, mm, m · 예: H시 m분'),
+        timeField('요일 이름', weekdaysInput, '월요일부터 7개를 쉼표로 구분'),
+        timeField('계절 이름', seasonsInput, '봄부터 4개를 쉼표로 구분'))));
 
     // 노출 이름 — 체크한 것만 조건식·상태창에서 변수처럼 열린다
-    wrap.appendChild(h('h4', {}, '노출 이름 (조건식·상태창에서 변수처럼 쓴다)'));
-    const exposeRow = h('div', { class: 'sce-row' });
+    const exposeGrid = h('div', { class: 'sce-time-expose-grid' });
     for (const n of EXPOSABLE) {
-      exposeRow.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
+      exposeGrid.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
         const cur = new Set(cfg.expose);
         if (on) cur.add(n); else cur.delete(n);
         T.expose = EXPOSABLE.filter((k) => cur.has(k));
         rerender();
-      }, `${EXPOSED_LABELS[n]}(${n})`));
+      }, `${EXPOSED_LABELS[n]} · ${n}`));
     }
-    wrap.appendChild(exposeRow);
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '예: 이벤트 조건 `dom == 1`(매달 1일), `weekday == "토"`, `hour >= 22`. '
-      + '상태창 항목·템플릿에는 {date} {clock}처럼 꽂는다. 같은 이름의 변수가 있으면 검증이 알려 준다.'));
+    timeSheet.appendChild(timeSection('사용할 시간값',
+      '체크한 값만 읽기 전용 변수처럼 사용할 수 있습니다. 필요한 것만 켜 두세요.',
+      exposeGrid,
+      h('div', { class: 'sce-time-example' },
+        '예: dom == 1 · weekday == "토" · hour >= 22 · 상태창과 템플릿에서는 {date}, {clock}')));
 
     // 진행 입구 — explicit이면 skip 변수가 있어야 시간이 흐른다
+    const progressChildren = [];
     if ((T.advance ?? 'explicit') === 'explicit') {
-      wrap.appendChild(h('h4', {}, '진행 입구'));
       const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
       const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
       if (!hasDay && !hasMin) {
-        wrap.appendChild(h('div', { class: 'sce-warn' },
-          `⚠ ${SKIP_DAY}/${SKIP_MIN} 변수가 없어 시간이 흐를 입구가 없습니다.`));
-        wrap.appendChild(addBtn(`진행 입구 만들기 — ${SKIP_DAY}·${SKIP_MIN} 변수 + AI 허용`, () => {
-          ensureSkipVars();
-          rerender();
-        }));
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '⚠ 진행 규칙은 변수의 "설명"(desc)에 산다 — 지시문(directives)은 메인 AI 전용이라 상태를 갱신하는 보조 AI가 못 읽는다.'));
+        progressChildren.push(h('div', { class: 'sce-time-progress-status is-warning' },
+          h('strong', {}, '시간을 진행할 변수가 없습니다.'),
+          ` ${SKIP_DAY}와 ${SKIP_MIN}을 만들면 보조 AI가 지난 일수와 분을 보고할 수 있습니다.`));
+        progressChildren.push(h('div', { class: 'sce-time-section-actions' },
+          addBtn(`진행 변수 만들기 — ${SKIP_DAY} · ${SKIP_MIN} + AI 허용`, () => {
+            ensureSkipVars(); rerender();
+          })));
+        progressChildren.push(h('div', { class: 'sce-time-inline-note is-warning' },
+          '시간 진행 규칙은 각 변수의 AI용 설명에 입력해야 합니다. 지시문은 보조 AI가 읽지 않습니다.'));
       } else {
-        wrap.appendChild(h('div', { class: 'sce-ok' },
-          `✓ 진행 입구: ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')} `
-          + '(엔진이 매 턴 소비 후 0으로 되돌린다)'));
+        progressChildren.push(h('div', { class: 'sce-time-progress-status' },
+          h('strong', {}, '시간 진행 준비 완료'),
+          ` · ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')}를 엔진이 매 턴 사용한 뒤 0으로 되돌립니다.`));
         const hasEndDay = (schema.actions || []).some((a) =>
           (a.effects || []).some((f) => f.set === SKIP_DAY));
-        if (hasDay && !hasEndDay) {
-          wrap.appendChild(addBtn("🌙 '하루를 마친다' 액션 추가", () => {
-            ensureSkipVars();   // skip_min이 없던 봇이면 함께 — 액션 효과가 그 변수를 만진다
+        if (hasDay && !hasEndDay) progressChildren.push(h('div', { class: 'sce-time-section-actions' },
+          addBtn("🌙 '하루를 마친다' 액션 추가", () => {
+            ensureSkipVars();
             addEndDayAction();
             rerender();
-          }));
-        }
+          })));
       }
+    } else {
+      progressChildren.push(h('div', { class: 'sce-time-progress-status' },
+        h('strong', {}, '턴마다 하루 진행'),
+        ' · AI 출력 한 번을 하루로 계산합니다. 별도의 진행 변수는 필요하지 않습니다.'));
     }
+    timeSheet.appendChild(timeSection('진행 연결',
+      '선택한 진행 방식에 필요한 연결 상태를 확인합니다.', ...progressChildren));
 
     // 옛 날짜 변수 정리 — v0.45 정리 마법사 재사용 (참조까지 함께 걷는다)
     if (legacy.length) {
-      wrap.appendChild(h('h4', {}, '옛 날짜 변수 정리'));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        `손으로 만든 날짜 변수가 남아 있습니다: ${legacy.map((v) => `${v.id}(${v.label ?? ''})`).join(', ')} — `
-        + '시간 체계와 겹치면 노출 이름 충돌이 나고, 안 겹쳐도 두 시계가 따로 돕니다.'));
-      wrap.appendChild(addBtn('🧹 정리 마법사로 한꺼번에 지우기 (변수 탭에서 확인 후 적용)', () => {
-        const ids = legacy.map((v) => v.id);
-        const plan = planVarPurge(schema, ids);
-        purge = { id: ids[0], label: ids.join(', '), plan };
-        activeTab = 'vars';
-        rerender();
-      }));
+      timeSheet.appendChild(timeSection('이전 날짜 변수 정리',
+        '직접 만든 날짜 변수와 시간 체계를 함께 사용하면 값이 충돌하거나 두 시계가 따로 움직일 수 있습니다.',
+        h('div', { class: 'sce-time-inline-note is-warning' },
+          `정리 대상: ${legacy.map((v) => `${v.id}${v.label ? ` (${v.label})` : ''}`).join(', ')}`),
+        h('div', { class: 'sce-time-section-actions' },
+          addBtn('🧹 변수 탭에서 정리 계획 확인', () => {
+            const ids = legacy.map((v) => v.id);
+            const plan = planVarPurge(schema, ids);
+            purge = { id: ids[0], label: ids.join(', '), plan };
+            activeTab = 'vars';
+            rerender();
+          }))));
     }
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기'),
-      h('span', { class: 'sce-hint' }, '꺼도 세이브의 time_epoch는 그대로 남는다 — 다시 켜면 이어진다.'),
-    ));
+    timeSheet.appendChild(h('section', { class: 'sce-time-danger' },
+      h('div', { class: 'sce-time-danger-copy' },
+        h('strong', {}, '시간 체계 끄기'),
+        h('span', {}, '세이브의 time_epoch는 남아 있으므로 다시 켜면 이전 시점에서 이어집니다.')),
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기')));
+    wrap.appendChild(h('div', { class: 'sce-time-back-row' },
+      h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+        timeChooserOpen = true;
+        rerender();
+      } }, '← 뒤로가기'),
+      h('span', {}, '시간 진행 방식을 다시 선택합니다. 현재 설정은 선택을 확정할 때까지 유지됩니다.')));
+    wrap.appendChild(h('div', { class: 'sce-time-workbench' }, timeRail, timeSheet));
+    wrap.appendChild(h('details', { class: 'sce-time-ai-tools' },
+      h('summary', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+      timeAiTools));
     return wrap;
   }
 

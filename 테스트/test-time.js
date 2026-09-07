@@ -220,8 +220,10 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // ── 7. 번들 — 편집기 시간 탭이 실려 있다 ─────────────────────
 {
-  ck('★ 번들: 시간 탭', src.includes("['time', '시간']") && src.includes('🕐 시간 체계 켜기'), '');
-  ck('번들: 진행 입구 생성 버튼', src.includes('진행 입구 만들기'), '');
+  // v1.7.13 — 시간 탭 DOM을 개조본으로 교체하며 문구가 바뀌었다 ('🕐 시간 체계 켜기' → '시간 체계 시작하기',
+  // '진행 입구 만들기' → '진행 변수 만들기 — skip_day · skip_min + AI 허용'). 동작(켜기·ensureSkipVars)은 그대로.
+  ck('★ 번들: 시간 탭', src.includes("['time', '시간']") && src.includes('시간 체계 시작하기'), '');
+  ck('번들: 진행 입구 생성 버튼', src.includes('진행 변수 만들기 — '), '');
   ck('번들: 🌙 액션 추가 버튼', src.includes("'하루를 마친다' 액션 추가"), '');
   ck('번들: 옛 날짜 변수 정리 마법사 연계', src.includes('옛 날짜 변수 정리'), '');
   ck("번들: desc가 규칙의 자리라는 안내 (지시문은 메인 전용)", src.includes('보조 AI가 못 읽는다'), '');

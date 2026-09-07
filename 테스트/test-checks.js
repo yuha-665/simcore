@@ -190,7 +190,7 @@ const armSend = (st, seed) =>
 {
   ck('판정 탭 등록', src.includes("['checks', '판정']"), '');
   ck('탭 디스패치에 tabChecks', src.includes('checks: tabChecks'), '');
-  ck('액션 행에 판정 선택 칸', src.includes("pair('판정', bindSelect(a.check"), '');
+  ck('액션 행에 판정 선택 칸', /(?:pair|field)\('판정', bindSelect\(a\.check/.test(src), '');   // v1.7.13 개조본 field()
   ck('액션 버튼 만들기 도우미', src.includes('액션 버튼 만들기'), '');
   ck('AI 내보내기 슬라이스', src.includes("checks: { keys: ['checks'], label: '판정' }"), '');
 }

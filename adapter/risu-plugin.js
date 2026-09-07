@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
 //@version 1.7.13
-//@display-name SimCore (시뮬 엔진) v1.7.13 편집기 CSS 개조 이식
+//@display-name SimCore (시뮬 엔진) v1.7.13 편집기·관리 패널 UI 개조본 이식
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -4101,7 +4101,10 @@
       #sc-game { position:fixed; inset:0; z-index:2147483100; display:flex; align-items:center;
         justify-content:center; padding:18px; background:rgba(6,10,20,.72);
         font-family: system-ui, 'Apple SD Gothic Neo', sans-serif; font-size:14px; line-height:1.5;
-        color:#e6ebf5; text-align:left; }
+        color:#e6ebf5; text-align:left; --scc-surface:#131b2e; --scc-surface-soft:#0e1526;
+        --scc-line:#2a3a5e; --scc-line-strong:#3d5384; --scc-text:#dfe7f5; --scc-muted:#8a99b5;
+        --scc-sat:#82b4ff; --scc-sun:#ff9eaa; --scc-sat-bg:rgba(130,180,255,.055);
+        --scc-sun-bg:rgba(255,158,170,.055); --scc-focus:#6b93f2; --scc-selected:#c8a050; }
       #sc-game * { box-sizing:border-box; }
       #sc-game .scg-card { width:min(440px, 100%); max-height:calc(100vh - 36px); overflow:auto;
         background:#131b2e; border:1px solid #35486e; border-radius:14px; padding:16px 16px 14px;
@@ -4149,6 +4152,13 @@
         color:#9db8e8; white-space:nowrap; }
       #sc-game .sch-price { color:#ffd166; font-size:12.5px; font-weight:700; white-space:nowrap; }
       #sc-game .sch-qty { color:#e2938f; font-size:11px; white-space:nowrap; }
+      @media (max-width:620px) {
+        #sc-game .sch-item.sch-stock-item { flex-wrap:wrap; gap:5px 8px; }
+        #sc-game .sch-item.sch-stock-item .sch-name { flex:1 0 100%; overflow-wrap:anywhere; }
+        #sc-game .sch-item.sch-stock-item .sch-name small { overflow-wrap:anywhere; }
+        #sc-game .sch-item.sch-stock-item .sch-grade { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+        #sc-game .sch-item.sch-stock-item > .scb-btn { margin-left:auto; white-space:nowrap; }
+      }
       #sc-game .sch-log { margin-top:8px; border-top:1px dashed #2a3a5e; padding-top:6px;
         color:#7d8aa5; font-size:11.5px; }
       #sc-game .sch-exch-qty { flex:1; min-width:0; background:#131b2e; border:1px solid #3d5384;
@@ -4167,10 +4177,16 @@
       #sc-game .scb-row { display:flex; gap:8px; align-items:baseline; padding:7px 8px; cursor:pointer;
         border-bottom:1px solid #22304f; }
       #sc-game .scb-row:hover { background:#16203a; }
+      #sc-game .scb-row:focus-visible { outline:2px solid #9db8e8; outline-offset:2px; }
       #sc-game .scb-row .scb-num { color:#5d6b87; font-size:11.5px; min-width:26px; }
       #sc-game .scb-row .scb-title { flex:1; color:#e6ebf5; font-size:13px; overflow:hidden;
         text-overflow:ellipsis; white-space:nowrap; }
       #sc-game .scb-row .scb-meta { color:#7d8aa5; font-size:11.5px; white-space:nowrap; }
+      @media (max-width:620px) {
+        #sc-game .scb-row { flex-wrap:wrap; }
+        #sc-game .scb-row .scb-title { min-width:0; }
+        #sc-game .scb-row .scb-meta { flex-basis:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; }
+      }
       #sc-game .scb-view-title { font-size:14.5px; font-weight:700; color:#fff; margin:4px 0 2px; }
       #sc-game .scb-view-info { color:#7d8aa5; font-size:11.5px; margin-bottom:8px; }
       #sc-game .scb-body { white-space:pre-wrap; color:#dfe7f5; font-size:13px; background:#0e1526;
@@ -4243,27 +4259,45 @@
       #sc-game .scg-act:hover { background:#24345c; border-color:#5b8def; }
       #sc-game .scg-act.scg-armed { border-color:#c8a050; background:rgba(200,160,80,.18); color:#ffe2a8; font-weight:600; }
       #sc-game .scg-act.scg-locked { opacity:.4; cursor:not-allowed; }
-      #sc-game .scc-nav { display:flex; align-items:center; gap:6px; margin:2px 0 10px; }
-      #sc-game .scc-nav .scc-month { flex:1; text-align:center; font-weight:700; color:#fff; font-size:14px; }
-      #sc-game .scc-nav button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
-        color:#dfe7f5; padding:4px 10px; font-size:13px; cursor:pointer; }
+      #sc-game .scg-card.scc-card { border-color:var(--scc-line-strong); border-radius:12px;
+        background:var(--scc-surface); box-shadow:0 16px 42px rgba(0,0,0,.42); }
+      #sc-game .scc-card > .scg-title { margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--scc-line); }
+      #sc-game .scc-nav { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto;
+        align-items:center; gap:5px; margin:0 0 10px; }
+      #sc-game .scc-nav .scc-month { min-width:0; text-align:center; font-weight:700; color:#fff;
+        font-size:14px; font-variant-numeric:tabular-nums; }
+      #sc-game .scc-nav button { min-width:34px; min-height:31px; border:1px solid var(--scc-line-strong);
+        border-radius:5px; background:#1c2740; color:var(--scc-text); padding:4px 9px; font-size:13px; cursor:pointer; }
       #sc-game .scc-nav button:hover { background:#24345c; border-color:#5b8def; }
-      #sc-game .scc-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; }
-      #sc-game .scc-wd { text-align:center; color:#9db8e8; font-size:11px; padding:2px 0 4px; letter-spacing:.04em; }
-      #sc-game .scc-day { min-height:40px; border:1px solid #2a3a5e; border-radius:8px; background:#0e1526;
-        padding:3px 4px; cursor:pointer; font-size:12px; color:#dfe7f5; position:relative; }
-      #sc-game .scc-day:hover { background:#16203a; border-color:#3d5384; }
+      #sc-game .scc-grid { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px; }
+      #sc-game .scc-wd { text-align:center; color:#9db8e8; font-size:11px; font-weight:650;
+        padding:2px 0 4px; letter-spacing:.04em; }
+      #sc-game .scc-wd.scc-sat { color:var(--scc-sat); }
+      #sc-game .scc-wd.scc-sun { color:var(--scc-sun); }
+      #sc-game .scc-day { min-height:40px; border:1px solid var(--scc-line); border-radius:4px;
+        background:var(--scc-surface-soft); padding:4px 5px; cursor:pointer; font-size:12px;
+        color:var(--scc-text); position:relative; }
+      #sc-game .scc-day.scc-sat { background:var(--scc-sat-bg); }
+      #sc-game .scc-day.scc-sun { background:var(--scc-sun-bg); }
+      #sc-game .scc-day.scc-sat .scc-num { color:var(--scc-sat); }
+      #sc-game .scc-day.scc-sun .scc-num { color:var(--scc-sun); }
+      #sc-game .scc-day:hover { background:#16203a; border-color:var(--scc-line-strong); }
       #sc-game .scc-day.scc-blank { visibility:hidden; }
-      #sc-game .scc-day.scc-today { border-color:#6b93f2; background:#1a2a52; font-weight:700; }
-      #sc-game .scc-day.scc-sel { border-color:#c8a050; box-shadow:0 0 0 1px #c8a050 inset; }
+      #sc-game .scc-day.scc-today { border-color:var(--scc-focus); background:#1a2a52; font-weight:700; }
+      #sc-game .scc-day.scc-sel { border-color:var(--scc-selected); box-shadow:0 0 0 1px var(--scc-selected) inset; }
       #sc-game .scc-day .scc-num { font-variant-numeric:tabular-nums; }
       #sc-game .scc-dots { display:flex; gap:2px; flex-wrap:wrap; margin-top:2px; }
       #sc-game .scc-dot { width:6px; height:6px; border-radius:50%; }
       #sc-game .scc-dot.scc-mark { background:#c8a050; }
       #sc-game .scc-dot.scc-plan { background:#5b8def; }
       #sc-game .scc-dot.scc-due { background:#e06c75; }
-      #sc-game .scc-detail { margin-top:10px; border:1px solid #2a3a5e; border-radius:10px;
-        background:#0e1526; padding:9px 12px; }
+      #sc-game .scc-detail { margin-top:10px; border:1px solid var(--scc-line); border-radius:6px;
+        background:var(--scc-surface-soft); padding:9px 10px; }
+      #sc-game .scc-detail-slot { min-height:132px; max-height:220px; overflow-y:auto; margin-top:9px;
+        padding-top:9px; border-top:1px solid var(--scc-line); scrollbar-gutter:stable; }
+      #sc-game .scc-detail-slot .scc-detail { margin-top:0; }
+      #sc-game .scc-detail-empty { min-height:38px; display:flex; align-items:center;
+        padding:8px 10px; color:#7d8aa5; font-size:12px; }
       #sc-game .scc-detail-date { font-weight:700; color:#fff; font-size:13px; margin-bottom:5px; }
       #sc-game .scc-entry { display:flex; align-items:center; gap:7px; font-size:13px; padding:2px 0; }
       #sc-game .scc-entry .scc-kind { font-size:11px; color:#9db8e8; flex:0 0 auto; }
@@ -4278,8 +4312,17 @@
       #sc-game .scc-add button { border:1px solid #3d5384; border-radius:8px; background:#1c2740;
         color:#dfe7f5; padding:6px 12px; font-size:13px; cursor:pointer; }
       #sc-game .scc-add button:hover { background:#24345c; border-color:#5b8def; }
-      #sc-game .scc-legend { display:flex; gap:12px; margin-top:8px; color:#7d8aa5; font-size:11px; }
+      #sc-game .scc-legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:9px; padding-top:8px;
+        border-top:1px solid var(--scc-line); color:#7d8aa5; font-size:11px; }
       #sc-game .scc-legend .scc-dot { display:inline-block; vertical-align:0; margin-right:4px; }
+      #sc-game .scg-title .scg-x:focus-visible, #sc-game .scg-chip:focus-visible,
+      #sc-game .scg-tab:focus-visible, #sc-game .scg-act:focus-visible, #sc-game .scg-buy:focus-visible,
+      #sc-game .sch-tab:focus-visible, #sc-game .scb-btn:focus-visible, #sc-game .scc-nav button:focus-visible,
+      #sc-game .scc-day:focus-visible, #sc-game .scc-entry .scc-del:focus-visible,
+      #sc-game .scc-add button:focus-visible, #sc-game .scg-nav-search:focus-visible,
+      #sc-game .scg-nav-sel:focus-visible, #sc-game .sch-exch-qty:focus-visible,
+      #sc-game .scb-input:focus-visible, #sc-game .scb-ta:focus-visible,
+      #sc-game .scc-add input:focus-visible { outline:2px solid #9db8e8; outline-offset:2px; }
     `;
     document.head.appendChild(style);
     const root = document.createElement('div');
@@ -4594,7 +4637,7 @@
         chip.dataset.act = a.id;
         chip.textContent = `${a.label}${a.armed ? ' ●' : ''}`;
         if (a.disabled) chip.title = a.reason || '지금은 쓸 수 없음';
-        else chip.title = a.armed ? '눌러서 해제 — 전송하면 반영' : '눌러서 무장 — 전송하면 반영';
+        else chip.title = a.armed ? '눌러서 해제 — 전송하면 반영' : '눌러서 준비 — 다음 메시지에 반영';
         chip.onclick = () => onActionButton(a.id); // 범례·조작줄과 같은 토글 경로 (syncControls가 패널도 다시 그린다)
         acts.appendChild(chip);
       }
@@ -4623,7 +4666,7 @@
     if (!view) { root.innerHTML = ''; return; }
     root.innerHTML = '';
     const card = document.createElement('div');
-    card.className = 'scg-card';
+    card.className = 'scg-card scc-card';
     card.addEventListener('click', (ev) => ev.stopPropagation());
 
     const c = schema.calendar || {};
@@ -4651,18 +4694,28 @@
       next, todayBtn);
     card.appendChild(nav);
 
-    // 그리드 — 요일 헤더 + 1일 앞 공백 + 날짜 칸 (점 = 그 날의 마크, 최대 4개)
+    // 그리드 — 요일 헤더 + 항상 42칸(6주) 날짜 영역 (점 = 그 날의 마크, 최대 4개)
     const grid = document.createElement('div');
     grid.className = 'scc-grid';
-    for (const wd of view.weekdays) {
-      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-wd', textContent: wd }));
-    }
+    const blankCell = () => {
+      const blank = Object.assign(document.createElement('div'), { className: 'scc-day scc-blank' });
+      blank.setAttribute('aria-hidden', 'true');
+      return blank;
+    };
+    view.weekdays.forEach((wd, weekday) => {
+      grid.appendChild(Object.assign(document.createElement('div'), {
+        className: `scc-wd${weekday === 5 ? ' scc-sat' : weekday === 6 ? ' scc-sun' : ''}`,
+        textContent: wd,
+      }));
+    });
     for (let i = 0; i < view.lead; i++) {
-      grid.appendChild(Object.assign(document.createElement('div'), { className: 'scc-day scc-blank' }));
+      grid.appendChild(blankCell());
     }
     for (const cell of view.cells) {
       const el = document.createElement('div');
-      el.className = 'scc-day' + (cell.today ? ' scc-today' : '') + (gameCalSel === cell.dom ? ' scc-sel' : '');
+      el.className = 'scc-day'
+        + (cell.weekday === 5 ? ' scc-sat' : cell.weekday === 6 ? ' scc-sun' : '')
+        + (cell.today ? ' scc-today' : '') + (gameCalSel === cell.dom ? ' scc-sel' : '');
       el.appendChild(Object.assign(document.createElement('div'), { className: 'scc-num', textContent: String(cell.dom) }));
       if (cell.marks.length) {
         const dots = document.createElement('div');
@@ -4675,6 +4728,8 @@
       el.onclick = () => { gameCalSel = gameCalSel === cell.dom ? null : cell.dom; gameNotice = null; renderGamePanel(); };
       grid.appendChild(el);
     }
+    const trailing = Math.max(0, 42 - (view.lead + view.cells.length));
+    for (let i = 0; i < trailing; i++) grid.appendChild(blankCell());
     card.appendChild(grid);
 
     const legend = document.createElement('div');
@@ -4684,7 +4739,10 @@
       + '<span><span class="scc-dot scc-due"></span>기한</span>';
     card.appendChild(legend);
 
-    // 선택한 날 상세 — 마크 풀이 + 일정 삭제(달력이 등록한 것만) + 등록 칸
+    // 선택한 날 상세 — 항상 공간을 예약해 월 이동·날짜 선택 때 팝업 높이를 안정화한다
+    const detailSlot = document.createElement('div');
+    detailSlot.className = 'scc-detail-slot';
+    detailSlot.setAttribute('aria-live', 'polite');
     const sel = view.cells.find((cl) => cl.dom === gameCalSel);
     if (sel) {
       const box = document.createElement('div');
@@ -4724,8 +4782,16 @@
         add.append(inp, btn);
         box.appendChild(add);
       }
-      card.appendChild(box);
+      detailSlot.appendChild(box);
+    } else {
+      const empty = Object.assign(document.createElement('div'), {
+        className: 'scc-detail scc-detail-empty',
+        textContent: '날짜를 선택하면 일정과 기념일을 확인할 수 있어요.',
+      });
+      empty.setAttribute('aria-hidden', 'true');
+      detailSlot.appendChild(empty);
     }
+    card.appendChild(detailSlot);
 
     if (gameNotice) card.appendChild(Object.assign(document.createElement('div'), { className: 'scg-notice', textContent: gameNotice }));
     root.appendChild(card);
@@ -4887,10 +4953,29 @@
         }
         card.appendChild(ci);
       }
-      card.appendChild(ti); card.appendChild(ai); card.appendChild(ta);
+      // 빈 칸 안내 (v1.7.13 개조본 이식) — 공지 한 줄 대신 칸 바로 아래에, 포커스도 옮긴다
+      const titleError = el('div', 'scg-notice');
+      const bodyError = el('div', 'scg-notice');
+      titleError.id = 'scb-write-title-error'; bodyError.id = 'scb-write-body-error';
+      titleError.hidden = true; bodyError.hidden = true;
+      titleError.setAttribute('role', 'status'); bodyError.setAttribute('role', 'status');
+      ti.setAttribute('aria-describedby', titleError.id);
+      ta.setAttribute('aria-describedby', bodyError.id);
+      ti.oninput = () => { if (ti.value.trim()) { titleError.hidden = true; ti.removeAttribute('aria-invalid'); } };
+      ta.oninput = () => { if (ta.value.trim()) { bodyError.hidden = true; ta.removeAttribute('aria-invalid'); } };
+      card.appendChild(ti); card.appendChild(titleError); card.appendChild(ai);
+      card.appendChild(ta); card.appendChild(bodyError);
       const bar = el('div', 'scb-toolbar');
       bar.appendChild(btn('등록', async () => {
-        if (!ti.value.trim() || !ta.value.trim()) { gameNotice = '⚠ 제목과 내용을 채워 주세요'; renderGamePanel(); return; }
+        if (!ti.value.trim() || !ta.value.trim()) {
+          titleError.textContent = '제목을 입력해 주세요.';
+          bodyError.textContent = '내용을 입력해 주세요.';
+          titleError.hidden = !!ti.value.trim(); bodyError.hidden = !!ta.value.trim();
+          ti.setAttribute('aria-invalid', String(!ti.value.trim()));
+          ta.setAttribute('aria-invalid', String(!ta.value.trim()));
+          (!ti.value.trim() ? ti : ta).focus();
+          return;
+        }
         const cat = ci ? ci.value : undefined;
         const postId = boardMod.applyUserPost(schema, session.current,
           { title: ti.value, author: ai.value, body: ta.value, cat });
@@ -5023,6 +5108,14 @@
       }
       for (const p of posts) {
         const row = el('div', 'scb-row');
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', `글 보기: ${p.title}`);
+        row.onkeydown = (ev) => {
+          if (ev.key !== 'Enter' && ev.key !== ' ') return;
+          ev.preventDefault();
+          if (!ev.repeat) row.click();
+        };
         row.appendChild(el('span', 'scb-num', `#${p.id}`));
         row.appendChild(el('span', 'scb-title',
           `${p.cat && !boardView.cat ? `[${p.cat}] ` : ''}${p.title}${p.re.length ? ` [${p.re.length}]` : ''}`));
@@ -5467,7 +5560,7 @@
         card.appendChild(el('div', 'scb-empty', '이 칸은 지금 비어 있어요.'));
       }
       for (const it of items) {
-        const row = el('div', 'sch-item');
+        const row = el('div', 'sch-item sch-stock-item');
         const nm = el('span', 'sch-name', it.name);
         if (it.note) nm.appendChild(el('small', null, it.note));
         row.appendChild(nm);
@@ -5904,7 +5997,7 @@
         html += '</div>';
       }
       if (armed.length) {
-        html += '<div><span style="opacity:.65;font-size:.8em">⚡ 무장</span> ';
+        html += '<div><span style="opacity:.65;font-size:.8em">⚡ 준비된 행동</span> ';
         for (const s of armed) {
           html += `<span class="sim-hit sim-hitact-${s.id}" style="${chip};border-color:#c8a050">${escapeText(s.label)} ✕</span>`;
         }
@@ -6187,6 +6280,8 @@
         background:transparent !important; box-shadow:inset 0 -2px 0 var(--sc-accent); font-weight:650; }
       #sc-root .sce .sce-btn.sce-add { border-style:dashed !important; color:var(--sc-accent) !important; }
       #sc-root .sce .sce-btn.sce-danger { color:var(--sc-danger) !important; }
+      #sc-root .sce .sce-status-primary { background:var(--sc-accent-strong) !important;
+        border-color:var(--sc-accent) !important; color:#ffffff !important; }
       /* ⚠ 관리 패널의 #sc-root input { width:130px } 는 id 특이도라 편집기의 .sce-w-* 폭 체계를
          전부 이긴다 (v0.47.8의 탭 색 사고와 같은 종류다 — 그때는 button이었고 이번엔 input이다).
          flex 컨테이너 안에서는 .sce-w-l의 flex:1이 대신 버텨 줘서 여태 안 드러났고, **격자로
@@ -6195,13 +6290,18 @@
       #sc-root .sce input { width:auto; }
       #sc-root .sce input.sce-w-s { width:76px; }
       #sc-root .sce input.sce-w-m { width:120px; }
+      #sc-root .sce .sce-setup-start-at { min-width:0; max-width:100%; }
+      #sc-root .sce input.sce-setup-start-at-input { width:180px; min-width:0; max-width:100%; }
       #sc-root .sce input.sce-w-l { width:100%; min-width:140px; }
       #sc-root .sce input[type="checkbox"] { width:auto; }
       #sc-root .sc-maintabs { display:flex; gap:4px; overflow-x:auto; scrollbar-width:thin;
         border-bottom:1px solid var(--sc-line); margin-top:16px; margin-bottom:14px; }
       #sc-root .sc-maintab { border:1px solid transparent !important; border-bottom:none !important;
         border-radius:6px 6px 0 0 !important; background:transparent !important; color:var(--sc-muted) !important;
-        flex:0 0 auto; }
+        display:inline-flex; align-items:center; gap:8px; line-height:1.3; flex:0 0 auto; }
+      #sc-root .sc-nav-icon { width:17px; height:17px; flex:0 0 17px; display:block;
+        fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round;
+        overflow:visible; }
       #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:var(--sc-surface-soft) !important;
         border-color:var(--sc-line-strong) !important; font-weight:650; }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
@@ -6388,12 +6488,43 @@
         gap:8px; margin-top:7px; font-size:12px; }
       #sc-root .sc-schema-validation-path { color:var(--sc-muted); font-family:var(--sc-font-mono); }
       #sc-root .sc-schema-validation-message { color:var(--sc-text); }
+
+      /* Visual polish · play dashboard — match the approved blue-gray dashboard without
+         reintroducing equal-height stretching on the variable/engine row. */
+      #sc-root #sc-page-play {
+        --sc-play-surface:#202832; --sc-play-line:#465565; --sc-play-field:#182029;
+        --sc-play-muted:#c3ccd6;
+      }
+      #sc-root #sc-page-play .sc-card { background:var(--sc-play-surface); border-color:var(--sc-play-line); }
+      #sc-root #sc-page-play .sc-card-desc, #sc-root #sc-page-play .muted { color:var(--sc-play-muted); }
+      #sc-root #sc-page-play .sc-divider { background:var(--sc-play-line); }
+      #sc-root #sc-page-play .sc-card-badge { background:var(--sc-play-field);
+        border-color:#596b7d; color:#cbd6e1; }
+      #sc-root #sc-page-play .sc-card-badge.ok { color:var(--sc-success); border-color:var(--sc-success); }
+      #sc-root #sc-page-play .sc-card-badge.warn { color:var(--sc-warning); border-color:var(--sc-warning); }
+      #sc-root #sc-page-play .sc-metric-grid, #sc-root #sc-page-play .sc-metric {
+        border-color:var(--sc-play-line); }
+      #sc-root .sc-play-grid > .sc-card:nth-child(1),
+      #sc-root .sc-play-grid > .sc-card:nth-child(2) { align-self:stretch; }
+      #sc-root .sc-play-grid > .sc-card:nth-child(1) > .sc-card-body,
+      #sc-root .sc-play-grid > .sc-card:nth-child(2) > .sc-card-body { flex:1 1 auto; }
+
       #sc-root .sc-play-grid, #sc-root .sc-connect-grid { display:grid;
-        grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; align-items:stretch; }
-      #sc-root .sc-play-grid > .sc-card, #sc-root .sc-connect-grid > .sc-card { height:100%; }
+        grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; align-items:start; }
+      #sc-root .sc-play-grid > .sc-card, #sc-root .sc-connect-grid > .sc-card {
+        display:flex; flex-direction:column; min-height:0; }
+      #sc-root .sc-play-grid > .sc-card { height:auto; align-self:start; }
+      #sc-root .sc-connect-grid > .sc-card { height:100%; }
+      #sc-root .sc-play-grid > .sc-card:not(#sc-clock-card) > .sc-card-head { min-height:78px; }
+      #sc-root .sc-play-grid > .sc-card > .sc-card-body,
+      #sc-root .sc-connect-grid > .sc-card > .sc-card-body { flex:1 1 auto; min-width:0; }
+      #sc-root .sc-play-grid > .sc-card > .sc-card-actions { margin-top:auto; }
+      #sc-root .sc-play-grid > #sc-clock-card { grid-column:1 / -1; }
       #sc-root .sc-connect-grid { margin-top:10px; align-items:start; }
       #sc-root .sc-connect-grid > .sc-card { border-top-color:var(--sc-line-strong); }
       #sc-root .sc-table-wrap { width:100%; min-width:0; overflow-x:auto; }
+      #sc-root #sc-vars { max-height:min(420px, 52vh); overflow-x:auto; overflow-y:auto;
+        overscroll-behavior:contain; scrollbar-gutter:stable; }
       #sc-root #sc-vars table { width:100%; min-width:0; table-layout:fixed; }
       #sc-root #sc-vars th, #sc-root #sc-vars td { padding-left:6px; padding-right:6px; }
       #sc-root #sc-vars th:first-child, #sc-root #sc-vars td:first-child { width:36%; }
@@ -6406,6 +6537,8 @@
       }
       #sc-root #sc-vars input, #sc-root #sc-vars select { width:100%; min-width:0; }
       #sc-root #sc-vars td:nth-child(2) { font-variant-numeric:tabular-nums; }
+      #sc-root #sc-vars .sc-var-current { max-height:132px; overflow-y:auto; overflow-x:hidden;
+        overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; scrollbar-gutter:stable; }
       #sc-root #sc-vars td:nth-child(4) button { width:100%; min-width:48px; padding-left:7px !important;
         padding-right:7px !important; }
       #sc-root #sc-actions { display:flex; gap:9px; flex-wrap:wrap; align-items:flex-start; }
@@ -6448,6 +6581,8 @@
       #sc-root .sc-option-card { margin-top:12px; }
       @media (hover:hover) and (pointer:fine) {
         #sc-root button:hover:not(:disabled) { background:#2c343d !important; border-color:var(--sc-accent) !important; }
+        #sc-root .sce .sce-feature-button:hover:not(:disabled) { background:transparent !important;
+          border-color:transparent !important; color:var(--sce-accent) !important; }
         #sc-root button.primary:hover:not(:disabled) { background:#5b8cf0 !important; }
         #sc-root button.danger:hover:not(:disabled), #sc-root .chip button:hover:not(:disabled),
         #sc-root .sce .sce-btn.sce-danger:hover:not(:disabled) {
@@ -6465,7 +6600,7 @@
         #sc-root .sc-template-row { grid-template-columns:1fr; }
         #sc-root .sc-template-row button { width:100%; }
         #sc-root .sc-save-grid { grid-template-columns:1fr; }
-        #sc-root #sc-vars { overflow:visible; }
+        #sc-root #sc-vars { overflow-x:auto; overflow-y:auto; }
         #sc-root .sc-metric-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
         #sc-root .sc-metric { border-right:1px solid var(--sc-line); border-bottom:1px solid var(--sc-line); }
         #sc-root .sc-metric:nth-child(2n) { border-right:0; }
@@ -6511,17 +6646,17 @@
             </span>
           </h1>
           <div class="sc-maintabs">
-            <button class="sc-maintab on" data-page="play">📊 현황</button>
+            <button class="sc-maintab on" data-page="play"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19v-6M10 19V9M15 19V5M20 19v-8"/></svg><span>현황</span></button>
             <div class="sc-navcat">작업도구</div>
-            <button class="sc-maintab" data-page="edit" data-floor="top">✨ AI 어시스턴트</button>
-            <button class="sc-maintab" data-page="edit" data-floor="json">🧾 JSON 관리자</button>
-            <button class="sc-maintab" data-page="edit" data-floor="assets">🎨 에셋 관리자</button>
-            <button class="sc-maintab" data-page="edit" data-floor="deep">🧰 세부 편집기</button>
+            <button class="sc-maintab" data-page="edit" data-floor="top"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l8.5-8.5M9.5 14.5l3 3M15 3l.7 2.3L18 6l-2.3.7L15 9l-.7-2.3L12 6l2.3-.7L15 3zM19 12l.5 1.5L21 14l-1.5.5L19 16l-.5-1.5L17 14l1.5-.5L19 12z"/></svg><span>AI 어시스턴트</span></button>
+            <button class="sc-maintab" data-page="edit" data-floor="json"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg><span>JSON 관리자</span></button>
+            <button class="sc-maintab" data-page="edit" data-floor="assets"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.4"/><path d="m4 17 4.5-4.5 3.5 3.5 2.5-2.5L20 19"/></svg><span>에셋 관리자</span></button>
+            <button class="sc-maintab" data-page="edit" data-floor="deep"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6M14 7h6M10 4v6M4 17h2M10 17h10M6 14v6"/></svg><span>세부 편집기</span></button>
             <div class="sc-navcat">파일관리</div>
-            <button class="sc-maintab" data-page="work">🗂️ 편집 작업공간</button>
-            <button class="sc-maintab" data-page="save">💾 세이브</button>
+            <button class="sc-maintab" data-page="work"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3zM3 7V5h7l2 2"/></svg><span>편집 작업공간</span></button>
+            <button class="sc-maintab" data-page="save"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7"/></svg><span>세이브</span></button>
             <div class="sc-navdiv"></div>
-            <button class="sc-maintab" data-page="help">❓ 도움말</button>
+            <button class="sc-maintab" data-page="help"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 114.2 1.6c-.9.9-2 1.3-2 3M12 17h.01"/></svg><span>도움말</span></button>
           </div>
         </div>
         <div class="sc-main">
@@ -6553,8 +6688,8 @@
             <section class="sc-card">
               <div class="sc-card-head">
                 <div>
-                  <h3 class="sc-card-title">다음 행동(액션 무장)</h3>
-                  <p class="sc-card-desc">선택한 행동은 다음 메시지를 보낼 때 적용돼요.<br>사용할 수 없는 행동에는 잠긴 이유가 표시돼요.</p>
+                  <h3 class="sc-card-title">다음 행동 준비</h3>
+                  <p class="sc-card-desc">다음 메시지에서 사용할 행동을 미리 골라둘 수 있어요.<br>지금 쓸 수 없는 행동은 이유를 함께 보여줘요.</p>
                 </div>
                 <span id="sc-actions-count" class="sc-card-badge">0개 선택</span>
               </div>
@@ -6570,16 +6705,6 @@
               </div>
               <div id="sc-vars" class="sc-card-body sc-table-wrap muted">스키마 로드 후 표시</div>
             </section>
-            <section class="sc-card" id="sc-clock-card" style="display:none">
-              <div class="sc-card-head">
-                <div>
-                  <h3 class="sc-card-title">세션 시계</h3>
-                  <p class="sc-card-desc">지금 이야기 속 시각이에요. 서사와 어긋났다면 여기서 바로 맞출 수 있어요.</p>
-                </div>
-                <span class="sc-card-badge">시간</span>
-              </div>
-              <div id="sc-clock" class="sc-card-body muted">-</div>
-            </section>
             <section class="sc-card">
               <div class="sc-card-head">
                 <div>
@@ -6589,6 +6714,16 @@
                 <span id="sc-engine-badge" class="sc-card-badge">확인 중</span>
               </div>
               <div id="sc-info" class="sc-card-body sc-summary muted"></div>
+            </section>
+            <section class="sc-card" id="sc-clock-card" style="display:none">
+              <div class="sc-card-head">
+                <div>
+                  <h3 class="sc-card-title">세션 시계</h3>
+                  <p class="sc-card-desc">지금 이야기 속 시각이에요. 서사와 어긋났다면 여기서 바로 맞출 수 있어요.</p>
+                </div>
+                <span class="sc-card-badge">시간</span>
+              </div>
+              <div id="sc-clock" class="sc-card-body muted">-</div>
             </section>
           </div>
           <div class="sc-connect-grid">
@@ -6911,10 +7046,10 @@
 조건: 진상 미공개      → "범인을 직접 말하지 마라. 단서만 흘려라"</pre>
 
             <h3 id="sc-help-actions">액션 (actions)</h3>
-            <p>유저가 직접 선택하는 행동 버튼이에요. 버튼을 누르면 즉시 실행되지 않고 <b>무장(●)</b> 상태가 돼요.
+            <p>유저가 직접 선택하는 행동 버튼이에요. 버튼을 누르면 바로 실행되지 않고 <b>다음 메시지에 쓸 행동으로 준비(●)</b>돼요.
               이후 <b>다음 메시지를 보낼 때</b> 효과와 AI 전달문을 함께 적용해요.</p>
             <ul class="sc-help-grid">
-              <li><b>1회성</b> — 한 번 적용하면 자동으로 무장이 풀려요.</li>
+              <li><b>1회성</b> — 한 번 적용하면 자동으로 준비 상태가 풀려요.</li>
               <li><b>지속</b> — 직접 끌 때까지 다음 턴에도 계속 적용해요.</li>
               <li><b>조건(when)</b>을 만족하지 않거나 <b>쿨다운</b> 중이면 사용할 수 없어요.</li>
             </ul>
@@ -7022,7 +7157,7 @@ count(목록)  has(목록, "항목")</pre>
         const parsed = JSON.parse(await Risuai.pluginStorage.getItem(latest));
         loadIntoEditor(parsed);
         const when = new Date(parseInt(latest.slice(prefix.length), 10)).toLocaleString();
-        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [설치]를 눌러야 적용됨 (백업 ${keys.length}개 보유)</span>`;
+        rep.innerHTML = `<span class="status-ok">✓ ${escapeText(when)} 백업을 편집기에 불러옴 — 내용 확인 후 [캐릭터에 적용]을 눌러야 적용됨 (백업 ${keys.length}개 보유)</span>`;
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">백업 해석 실패: ${escapeText(e.message)}</span>`;
       }
@@ -7812,6 +7947,9 @@ count(목록)  has(목록, "항목")</pre>
         const items = Array.isArray(cur) ? cur : [];
         tr.innerHTML = nameCell;
         const tdCur = document.createElement('td');
+        tdCur.className = 'sc-var-current';
+        tdCur.tabIndex = 0;
+        tdCur.setAttribute('aria-label', `${v.label ?? v.id} 현재값`);
         const chips = document.createElement('div');
         chips.className = 'chips';
         if (!items.length) chips.innerHTML = '<span class="muted">(비어 있음)</span>';
@@ -7850,6 +7988,10 @@ count(목록)  has(목록, "항목")</pre>
         const addIn = document.createElement('input');
         addIn.placeholder = '항목 추가 (끝에 숫자)';
         tdAdd.appendChild(addIn);
+        const addError = document.createElement('div');
+        addError.className = 'status-bad'; addError.setAttribute('role', 'status');
+        addError.hidden = true;
+        tdAdd.appendChild(addError);
         const tdAddBtn = document.createElement('td');
         const addBtn = document.createElement('button');
         addBtn.textContent = '추가';
@@ -7860,7 +8002,9 @@ count(목록)  has(목록, "항목")</pre>
           if (!text) return;
           const to = engine.applyListOps(v, items, { add: [text] });
           if (to === undefined || JSON.stringify(to) === JSON.stringify(items)) {
-            addBtn.textContent = '거부됨'; setTimeout(() => (addBtn.textContent = '추가'), 1000); return;
+            addError.hidden = false;
+            addError.textContent = '항목이 추가되지 않았어요. 목록 개수·항목 길이 제한을 확인해 주세요. 예: 회복약 1';
+            return;
           }
           session.current.vars[v.id] = to;
           await commitVars();
@@ -7872,7 +8016,8 @@ count(목록)  has(목록, "항목")</pre>
         continue;
       }
 
-      tr.innerHTML = nameCell + `<td>${escapeText(String(cur))}</td>`;
+      tr.innerHTML = nameCell
+        + `<td><div class="sc-var-current" tabindex="0" aria-label="${escapeText(v.label ?? v.id)} 현재값">${escapeText(String(cur))}</div></td>`;
       const tdIn = document.createElement('td');
       const input = document.createElement(v.type === 'bool' ? 'select' : 'input');
       if (v.type === 'bool') {
@@ -7885,6 +8030,17 @@ count(목록)  has(목록, "항목")</pre>
       }
       input.value = String(cur);
       tdIn.appendChild(input);
+      const editError = document.createElement('div');
+      editError.className = 'status-bad'; editError.setAttribute('role', 'status');
+      editError.hidden = true;
+      tdIn.appendChild(editError);
+      const showEditError = (invalid) => {
+        editError.hidden = !invalid;
+        input.setAttribute('aria-invalid', String(invalid));
+        if (invalid) editError.textContent = v.type === 'enum'
+          ? `등록된 선택지와 일치하지 않아요. 입력 가능한 값: ${(v.enum || []).join(', ')}${v.enum?.length ? ` · 예: ${v.enum[0]}` : ' · 변수 탭에서 선택지를 먼저 설정해 주세요.'}`
+          : '이 변수 형식으로 저장할 수 없는 값이에요. 변수 탭의 값 형식과 시작값 예시를 확인해 주세요.';
+      };
       const tdBtn = document.createElement('td');
       const btn = document.createElement('button');
       const wasJustApplied = lastManualApply.id === v.id && Date.now() - lastManualApply.at < 1400;
@@ -7898,6 +8054,7 @@ count(목록)  has(목록, "항목")</pre>
       const syncApplyState = () => {
         const to = readEditedValue();
         const changed = to !== undefined && JSON.stringify(to) !== JSON.stringify(cur);
+        showEditError(to === undefined);
         btn.disabled = !changed;
         if (changed || !wasJustApplied) btn.textContent = '적용';
       };
@@ -7906,7 +8063,7 @@ count(목록)  has(목록, "항목")</pre>
       syncApplyState();
       btn.onclick = async () => {
         const to = readEditedValue();
-        if (to === undefined) { btn.textContent = '거부됨'; setTimeout(() => (btn.textContent = '적용'), 1000); return; }
+        if (to === undefined) { showEditError(true); return; }
         session.current.vars[v.id] = to;
         lastManualApply = { id: v.id, at: Date.now() };
         await commitVars();
@@ -7972,13 +8129,16 @@ count(목록)  has(목록, "항목")</pre>
         clockIn.value = `${String(cal.h).padStart(2, '0')}:${String(cal.mi).padStart(2, '0')}`;
         clockIn.placeholder = 'HH:mm';
         clockIn.setAttribute('aria-label', '시각 (HH:mm)');
+        const clockError = document.createElement('div');
+        clockError.className = 'status-bad'; clockError.setAttribute('role', 'status');
+        clockError.hidden = true;
         const applyBtn = document.createElement('button');
         applyBtn.textContent = '적용';
         applyBtn.onclick = async () => {
           const parts = timeMod.parseStart(`${dateIn.value.trim()} ${clockIn.value.trim()}`.trim(), tcfg.calendar);
           if (!parts) {
-            applyBtn.textContent = '형식 오류';
-            setTimeout(() => (applyBtn.textContent = '적용'), 1200);
+            clockError.hidden = false;
+            clockError.textContent = '날짜·시각 형식이 맞지 않거나 현재 달력에 없는 날짜예요. 예: 2026-01-15 / 09:30 (시 00~23, 분 00~59)';
             return;
           }
           await setEpoch(timeMod.epochFrom(parts, tcfg.calendar));
@@ -7987,6 +8147,7 @@ count(목록)  has(목록, "항목")</pre>
         setRow.appendChild(clockIn);
         setRow.appendChild(applyBtn);
         clockDiv.appendChild(setRow);
+        clockDiv.appendChild(clockError);
       }
     }
 
@@ -8033,7 +8194,7 @@ count(목록)  has(목록, "항목")</pre>
       ['엔진 턴', session.current.meta.turn],
       ['마지막 출력', lastOutIndex],
       ['대기 이벤트', `${session.current.meta.pendingNotifies.length}건`],
-      ['무장 행동', armedSummary],
+      ['선택한 행동', armedSummary],
       ['마지막 AI 적용', `${lastAux.applied}건`],
       ['허용 변수', `${schema?.updater?.allow?.length ?? 0}개`],
     ];
@@ -8080,6 +8241,19 @@ count(목록)  has(목록, "항목")</pre>
     await Risuai.registerSetting('SimCore 관리 패널', openPanel, '⚙️', 'html');
   } catch (e) {
     console.log('[simcore] UI 등록 실패:', e.message);
+  }
+
+  // Risu 본체 사이드 메뉴(햄버거)에서도 관리 패널을 바로 연다 (v1.7.13 개조본 이식) — 구형 Risu엔 없는 위치라 실패해도 조용히
+  try {
+    await Risuai.registerButton({
+      name: 'SimCore',
+      icon: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg>',
+      iconType: 'html',
+      location: 'hamburger',
+      id: 'simcore-hamburger',
+    }, openPanel);
+  } catch (e) {
+    console.log('[simcore] hamburger launcher 등록 실패:', e.message);
   }
 
   await Risuai.onUnload(() => {

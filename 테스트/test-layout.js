@@ -219,8 +219,8 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('한 글자 공통은 버린다', clp([{ label: '노가' }, { label: '노나' }]) === '', '');
 
   ck('★ 편집기에 접두사 묶음 배치 버튼이 있다', src.includes('접두사로 그룹 묶어 배치'), '');
-  ck('묶음 그룹은 기본 접힘으로 만든다', /visibility: 'collapsed',\s*\n\s*items: arr\.map\(mkItem\)/.test(src), '');
-  ck('접두사 없는 나머지는 기타 그룹으로', src.includes("label: '기타', items: rest.map(mkItem)"), '');
+  ck('묶음 그룹은 기본 접힘으로 만든다', /visibility: 'collapsed',\s*\n\s*items: arr\.map\((?:mkItem|makeStatusItem)\)/.test(src), '');
+  ck('접두사 없는 나머지는 기타 그룹으로', /label: '기타', items: rest\.map\((?:mkItem|makeStatusItem)\)/.test(src), '');
   // 문구가 아니라 **동작**을 본다 — v0.66 UI 재편에서 라벨만 바뀌고 로직은 그대로였는데
   // 문구를 보던 옛 어서션이 깨졌다. 기능 손실과 이름 바뀜을 구별 못 하는 테스트는 쓸모가 적다.
   ck('★ 그룹 통째 합치기 셀렉트가 있다 (v0.44.2)',
@@ -235,9 +235,10 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
   ck('★ 표시 핸들러가 마커의 메시지 번호를 uid로 넘긴다', /includeStyle: true, uid: idxStr/.test(src), '');
   // v0.47.1부터 미리보기는 공유 함수(statusPreviewEl)로 — 상태창 탭 'pv', 1층 'pv1' 서로도 안 겹침
   ck('편집기 미리보기는 메시지와 안 겹치는 uid를 쓴다',
-    /includeStyle: true, uid \}/.test(src) && src.includes("statusPreviewEl('pv')") && src.includes("statusPreviewEl('pv1')"), '');
-  ck('편집기에 배치 고르는 칸이 있다', src.includes("statusField('여러 그룹 배치'"), '');
-  ck('편집기에서 뼈대를 뽑을 수 있다', src.includes("tplBtn('tabs'") && src.includes("tplBtn('popover'"), '');
+    /includeStyle: true, uid \}/.test(src) && /statusPreviewEl\('(?:pv|core-pv)'\)/.test(src) && src.includes("statusPreviewEl('pv1')"), '');
+  // v1.7.13 개조본 이식 — 칸 이름 '그룹 표시 방식', 뼈대 버튼 tplChoice (기능 동일)
+  ck('편집기에 배치 고르는 칸이 있다', /statusField\('(?:여러 그룹 배치|그룹 표시 방식)'/.test(src), '');
+  ck('편집기에서 뼈대를 뽑을 수 있다', /tpl(?:Btn|Choice)\('tabs'/.test(src) && /tpl(?:Btn|Choice)\('popover'/.test(src), '');
   ck('★ 뼈대 덮어쓰기는 패널 UI로 확인받는다 (호스트 대화상자는 패널에 가려 못 쓴다)',
     src.includes('tplArm !== kind') && !/\bif \([^)]*!confirm\(/.test(src), '');
 }

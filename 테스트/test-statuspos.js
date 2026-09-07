@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 {
   ck('display에 위치 분기 존재', src.includes("statusUI?.position === 'top'"), '');
   ck('★ 저장 마커는 끝 고정 — output 반환은 위치와 무관', src.includes('저장되는 마커는 항상 끝 고정'), '');
-  ck('편집기 [상태창] 탭에 위치 선택 (규칙 #3)', src.includes('상태창 위치') && src.includes('본문 위 — 수치부터 보임'), '');
+  ck('편집기 [상태창] 탭에 위치 선택 (규칙 #3)', /상태창 (?:출력 )?위치/.test(src) && /본문 위 — 수치부터 보임|최상단 — 답변보다 먼저 표시/.test(src), '');
   ck('AI 규격서에 position 행', src.includes('`"position"`: `bottom`(기본, 본문 아래)'), '');
   ck('탭 슬라이스 subOpt에 position (왕복에 실림)', src.includes("subOpt: ['layout', 'position']"), '');
 }

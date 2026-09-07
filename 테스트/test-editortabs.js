@@ -244,8 +244,9 @@ if (ed) {
     if (!w || !DEEP.test(sel)) continue;
     const v = w[1].trim();
     // 허용: 공용 토큰 | 부모를 그대로 따름 | 화면 폭 기준(드래그 고스트) | 해제
+    // | 글줄 길이(ch — 빈 상태 안내문 같은 읽기 폭, 기둥 폭이 아니라 탭 정렬과 무관. v1.7.13 개조본 CSS)
     if (/^var\(--sce-(work-w|variable-work-width)\)$/.test(v) || v === '100%'
-      || v.startsWith('calc(100vw') || v === 'none' || v === 'none !important') continue;
+      || v.startsWith('calc(100vw') || v === 'none' || v === 'none !important' || /^\d+ch$/.test(v)) continue;
     strays.push(`${sel} → ${v}`);
   }
   ck('★ 심층 편집 폭 상한이 공용 토큰 하나로 모여 있다 (px 직접 박기 금지)',

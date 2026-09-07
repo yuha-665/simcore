@@ -76,7 +76,7 @@ const st = (S) => engine.initState(S);
 // ── 편집기·CSS 배선 ──
 {
   ck('★ 편집기 상태창 탭에 [변화 로그] 선택 칸 (규칙 #3)',
-    src.includes("statusField('변화 로그'") && src.includes('영수증처럼 항상 표시'), '');
+    /statusField\('(?:변화 로그|이번 턴 변화)'/.test(src) && /영수증처럼 항상 표시|항상 펼치기/.test(src), '');
   ck('기본값은 스키마에 안 남긴다', src.includes("ui.changeLog = x === 'collapsed' ? undefined : x"), '');
   ck('★ 영수증 CSS — 색·오른쪽 정렬 사유·행 구분선', src.includes('.sim-log-diff.plus{color:')
     && src.includes('.sim-log-reason{margin-left:auto') && src.includes('.sim-log-open .sim-log-item{padding:'), '');

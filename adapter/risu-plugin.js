@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.14
-//@display-name SimCore (시뮬 엔진) v1.7.14 상점 상시 재고 — 늘 있는 것 / 오늘의 물건
+//@version 1.7.15
+//@display-name SimCore (시뮬 엔진) v1.7.15 편집기 사이드 탭 · 상태창 한 줄
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.15 ──────────────────────────────────
+// **편집기 손질 셋** (v1.7.13 개조본 이식 직후 실기 제보 — 아틀리에 상태창 탭 스샷 셋).
+// ① 관리 패널 사이드 내비에 색 — 항목마다 --sc-nav-* 토큰(현황 accent · AI 어시스턴트 보라 · JSON warning · 에셋 success ·
+//    세부 편집기 하늘 · 작업공간 주황 · 세이브 민트 · 도움말 muted). 아이콘은 늘 그 색, 켜진 항목은 왼쪽 띠 + 그 색 14% 바탕.
+// ② 세부 편집기 탭 묶음(기본·세계·진행·자동화)이 넓은 화면(1041px↑)에선 **오른쪽 sticky 사이드**로 — "오른쪽이 많이 남는데
+//    스크롤을 내려도 바로 옮겨가게". 개조본 DOM(.sce-tab-groups)엔 규칙이 아예 없어 맨 CSS로 돌고 있었다. 묶음마다 색 점.
+//    좁은 화면은 위쪽 가로 묶음 그대로. 패널 폭 상한 1440 → 1600px.
+// ③ 상태창 탭 한 기둥 — 좌(설정 2열)·우(미리보기 280px) 분할을 버리고 설정 3열 한 줄씩, 그 아래 미리보기 전폭
+//    (테마 카드 | 실제 렌더 1.6배). "상태창 영역이 너무 적다".
 //
 // ── v1.7.14 ───────────────────────────────────────────────
 // **상점 상시 재고** shops[].staples (아틀리에 실사고: 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차
@@ -6259,6 +6269,8 @@
         --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
         --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
         --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
+        --sc-nav-play:#78a9ff; --sc-nav-ai:#c9a6ff; --sc-nav-json:#f1cb72; --sc-nav-assets:#79d99a;
+        --sc-nav-deep:#7fd3e8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
         --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
           'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
         --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
@@ -6334,9 +6346,20 @@
         overflow:visible; }
       #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:var(--sc-surface-soft) !important;
         border-color:var(--sc-line-strong) !important; font-weight:650; }
+      /* v1.7.15 사이드 내비 색 — 항목마다 토큰 하나(--nav). 아이콘은 늘 그 색, 켜지면 띠 + 옅은 바탕 */
+      #sc-root .sc-maintab[data-page="play"] { --nav:var(--sc-nav-play); }
+      #sc-root .sc-maintab[data-floor="top"] { --nav:var(--sc-nav-ai); }
+      #sc-root .sc-maintab[data-floor="json"] { --nav:var(--sc-nav-json); }
+      #sc-root .sc-maintab[data-floor="assets"] { --nav:var(--sc-nav-assets); }
+      #sc-root .sc-maintab[data-floor="deep"] { --nav:var(--sc-nav-deep); }
+      #sc-root .sc-maintab[data-page="work"] { --nav:var(--sc-nav-work); }
+      #sc-root .sc-maintab[data-page="save"] { --nav:var(--sc-nav-save); }
+      #sc-root .sc-maintab[data-page="help"] { --nav:var(--sc-nav-help); }
+      #sc-root .sc-maintab .sc-nav-icon { color:var(--nav, currentColor); }
+      #sc-root .sc-maintab.on { box-shadow:inset 0 -2px 0 var(--nav, var(--sc-accent)); }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
       @media (min-width:920px) {
-        #sc-root .wrap { max-width:1440px; display:grid; grid-template-columns:210px minmax(0,1fr);
+        #sc-root .wrap { max-width:1600px; display:grid; grid-template-columns:210px minmax(0,1fr);
           gap:4px 28px; align-items:start; }
         #sc-root .sc-side { position:sticky; top:16px; }
         #sc-root .sc-header-actions { display:grid; grid-template-columns:1fr; margin-top:12px; }
@@ -6344,7 +6367,8 @@
           padding-right:8px; margin-bottom:0; }
         #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:5px !important;
           text-align:left !important; padding:9px 12px !important; }
-        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; }
+        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; border-left:3px solid var(--nav, var(--sc-accent)) !important;
+          box-shadow:none; background:color-mix(in srgb, var(--nav, var(--sc-accent)) 14%, var(--sc-surface-soft)) !important; }
         #sc-root .sc-navcat { color:var(--sc-muted); }
       }
       #sc-root .status-ok { color:var(--sc-success); font-weight:650; }

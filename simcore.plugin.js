@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.14
-//@display-name SimCore (시뮬 엔진) v1.7.14 상점 상시 재고 — 늘 있는 것 / 오늘의 물건
+//@version 1.7.15
+//@display-name SimCore (시뮬 엔진) v1.7.15 편집기 사이드 탭 · 상태창 한 줄
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.15 ──────────────────────────────────
+// **편집기 손질 셋** (v1.7.13 개조본 이식 직후 실기 제보 — 아틀리에 상태창 탭 스샷 셋).
+// ① 관리 패널 사이드 내비에 색 — 항목마다 --sc-nav-* 토큰(현황 accent · AI 어시스턴트 보라 · JSON warning · 에셋 success ·
+//    세부 편집기 하늘 · 작업공간 주황 · 세이브 민트 · 도움말 muted). 아이콘은 늘 그 색, 켜진 항목은 왼쪽 띠 + 그 색 14% 바탕.
+// ② 세부 편집기 탭 묶음(기본·세계·진행·자동화)이 넓은 화면(1041px↑)에선 **오른쪽 sticky 사이드**로 — "오른쪽이 많이 남는데
+//    스크롤을 내려도 바로 옮겨가게". 개조본 DOM(.sce-tab-groups)엔 규칙이 아예 없어 맨 CSS로 돌고 있었다. 묶음마다 색 점.
+//    좁은 화면은 위쪽 가로 묶음 그대로. 패널 폭 상한 1440 → 1600px.
+// ③ 상태창 탭 한 기둥 — 좌(설정 2열)·우(미리보기 280px) 분할을 버리고 설정 3열 한 줄씩, 그 아래 미리보기 전폭
+//    (테마 카드 | 실제 렌더 1.6배). "상태창 영역이 너무 적다".
 //
 // ── v1.7.14 ───────────────────────────────────────────────
 // **상점 상시 재고** shops[].staples (아틀리에 실사고: 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차
@@ -12921,6 +12931,29 @@ const CSS = `
    오른쪽 끝이 한 줄로 떨어진다. 안쪽 블록은 자기 폭을 다시 박지 않는다 (전부 100%/토큰). */
 .sce .sce-deep { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-deep-body { width:100%; }
+/* 탭 내비 묶음 (v1.7.15) — 개조본 DOM(.sce-tab-groups)에 규칙이 없어 맨 CSS로 돌던 것. 그룹마다 색 하나(--g):
+   기본=accent · 세계=success · 진행=warning · 자동화=weekend-sun. 좁은 화면은 위쪽 가로 묶음, 넓은 화면(1041px↑)은
+   오른쪽 사이드 기둥(sticky)이라 스크롤을 내려도 탭이 손 닿는 자리에 있다 (실측 제보 "오른쪽이 많이 남는다"). */
+.sce .sce-tab-groups { display:flex; flex-wrap:wrap; gap:6px 22px; padding-bottom:6px; border-bottom:1px solid var(--sce-line); margin-bottom:12px; }
+.sce .sce-tab-group { --g:var(--sce-accent); display:flex; flex-direction:column; gap:2px; min-width:0; }
+.sce .sce-tab-group:nth-child(2) { --g:var(--sce-success); }
+.sce .sce-tab-group:nth-child(3) { --g:var(--sce-warning); }
+.sce .sce-tab-group:nth-child(4) { --g:var(--sce-weekend-sun); }
+.sce .sce-tab-group-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:750; letter-spacing:.08em; color:var(--g); }
+.sce .sce-tab-group-label::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--g); }
+.sce .sce-tab-group-tabs { display:flex; flex-wrap:wrap; gap:0 14px; }
+.sce .sce-tab-group .sce-tab.on { box-shadow:inset 0 -2px 0 var(--g); }
+@media (min-width:1041px) {
+.sce .sce-deep.sce-deep-side { display:grid; grid-template-columns:minmax(0,1fr) 168px; grid-template-areas:"body nav" "report nav";
+  gap:0 22px; align-items:start; }
+.sce .sce-deep-side > .sce-deep-body { grid-area:body; min-width:0; }
+.sce .sce-deep-side > .sce-report { grid-area:report; }
+.sce .sce-deep-side > .sce-tab-groups { grid-area:nav; position:sticky; top:10px; flex-direction:column; flex-wrap:nowrap; gap:14px;
+  margin:0; padding:10px 0 12px 14px; border-bottom:0; border-left:1px solid var(--sce-line); }
+.sce .sce-deep-side .sce-tab-group-tabs { flex-direction:column; gap:1px; }
+.sce .sce-deep-side .sce-tab { min-height:32px; padding:5px 10px; text-align:left; border-radius:5px; border-left:3px solid transparent; }
+.sce .sce-deep-side .sce-tab.on { box-shadow:none; border-left-color:var(--g); background:color-mix(in srgb, var(--g) 14%, transparent); }
+}
 .sce .sce-time-workbench { display:grid; grid-template-columns:minmax(200px,.36fr) minmax(0,1.64fr);
   border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-surface); overflow:clip; }
 .sce .sce-time-rail { min-width:0; padding:18px 16px; border-right:1px solid var(--sce-line);
@@ -13994,15 +14027,17 @@ const CSS = `
   width:100%; margin:0; padding:0 0 11px 10px; border-left:2px solid var(--sce-accent); }
 .sce .sce-status-intro-title { color:var(--sce-text-strong); font-size:15px; font-weight:750; }
 .sce .sce-status-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
-.sce .sce-status-core-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,280px);
+/* v1.7.15 — 좌(설정 2열)·우(미리보기 280px) 분할을 버리고 한 기둥으로: 설정은 3열 한 줄씩, 미리보기는 그 아래
+   전폭(테마 카드 | 실제 렌더 1.6배). 미리보기 기둥이 너무 좁아 상태창이 손톱만 했다 (실측 제보 "상태창 영역이 너무 적다"). */
+.sce .sce-status-core-layout { display:grid; grid-template-columns:minmax(0,1fr);
   gap:14px; padding-top:12px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-settings { min-width:0; padding:0; }
 .sce .sce-status-settings-grid { display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  grid-template-areas:"title mode" "theme layout" "log highlights" "position .";
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-areas:"title mode theme" "layout log highlights" "position . .";
   column-gap:14px; row-gap:0; align-items:start; align-content:start; }
 .sce .sce-status-settings-grid.is-template {
-  grid-template-areas:"title mode" "theme log" "highlights position"; }
+  grid-template-areas:"title mode theme" "log highlights position"; }
 .sce .sce-status-field-title { grid-area:title; }
 .sce .sce-status-field-mode { grid-area:mode; }
 .sce .sce-status-field-theme { grid-area:theme; }
@@ -14011,9 +14046,9 @@ const CSS = `
 .sce .sce-status-field-layout { grid-area:layout; }
 .sce .sce-status-field-highlights { grid-area:highlights; }
 .sce .sce-status-field-title, .sce .sce-status-field-log { width:100%; }
-.sce .sce-status-options { display:grid; grid-template-columns:minmax(0,1fr);
-  grid-template-areas:"title" "summary" "toggle" "copy" "preview" "live"; align-content:start; min-width:0;
-  padding:0 0 0 14px; border-left:1px solid var(--sce-line); }
+.sce .sce-status-options { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,1.6fr);
+  grid-template-areas:"title live" "summary live" "toggle live" "copy live" "preview live" ". live"; align-content:start; min-width:0;
+  gap:0 18px; padding:12px 0 0; border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-title { grid-area:title; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
 .sce .sce-status-options-summary { grid-area:summary; display:flex; align-items:baseline; gap:5px; margin-top:3px;
   color:var(--sce-muted); font-size:11.5px; }
@@ -14047,7 +14082,7 @@ const CSS = `
   background:rgba(128,128,128,.28); }
 .sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
 .sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
-.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:10px; padding-top:9px;
+.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:0; padding-top:0;
   border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-live-title { margin-bottom:6px; color:var(--sce-text-strong);
   font-size:11.5px; font-weight:750; }
@@ -14402,10 +14437,7 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
-    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
-    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
-.sce .sce-status-options-theme-preview { margin-top:0; }
+.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-slot-head { align-items:stretch; flex-direction:column; }
@@ -14506,10 +14538,7 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
-    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
-    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
-.sce .sce-status-options-theme-preview { margin-top:0; }
+.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-section-head { flex-direction:column; }
@@ -25493,9 +25522,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } else if (floorView === 'assets') {
         root.appendChild(assetsFloor());
       } else if (floorView === 'deep') {
-        root.appendChild(deepTabs());
-        root.appendChild(deepBody());
-        root.appendChild(reportEl);
+        // v1.7.15: 한 기둥(.sce-deep-side)에 묶는다 — 넓은 화면에서 탭 묶음이 오른쪽 sticky 사이드로 간다
+        root.appendChild(h('div', { class: 'sce-deep sce-deep-side' }, deepTabs(), deepBody(), reportEl));
       } else {
         root.appendChild(topFloor());
       }
@@ -34605,6 +34633,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         --sc-line:#3b4652; --sc-line-strong:#526171; --sc-text:#e3e7eb; --sc-text-strong:#f7f9fb;
         --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
         --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
+        --sc-nav-play:#78a9ff; --sc-nav-ai:#c9a6ff; --sc-nav-json:#f1cb72; --sc-nav-assets:#79d99a;
+        --sc-nav-deep:#7fd3e8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
         --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
           'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
         --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
@@ -34680,9 +34710,20 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         overflow:visible; }
       #sc-root .sc-maintab.on { color:var(--sc-text-strong) !important; background:var(--sc-surface-soft) !important;
         border-color:var(--sc-line-strong) !important; font-weight:650; }
+      /* v1.7.15 사이드 내비 색 — 항목마다 토큰 하나(--nav). 아이콘은 늘 그 색, 켜지면 띠 + 옅은 바탕 */
+      #sc-root .sc-maintab[data-page="play"] { --nav:var(--sc-nav-play); }
+      #sc-root .sc-maintab[data-floor="top"] { --nav:var(--sc-nav-ai); }
+      #sc-root .sc-maintab[data-floor="json"] { --nav:var(--sc-nav-json); }
+      #sc-root .sc-maintab[data-floor="assets"] { --nav:var(--sc-nav-assets); }
+      #sc-root .sc-maintab[data-floor="deep"] { --nav:var(--sc-nav-deep); }
+      #sc-root .sc-maintab[data-page="work"] { --nav:var(--sc-nav-work); }
+      #sc-root .sc-maintab[data-page="save"] { --nav:var(--sc-nav-save); }
+      #sc-root .sc-maintab[data-page="help"] { --nav:var(--sc-nav-help); }
+      #sc-root .sc-maintab .sc-nav-icon { color:var(--nav, currentColor); }
+      #sc-root .sc-maintab.on { box-shadow:inset 0 -2px 0 var(--nav, var(--sc-accent)); }
       #sc-root .sc-side, #sc-root .sc-main { min-width:0; }
       @media (min-width:920px) {
-        #sc-root .wrap { max-width:1440px; display:grid; grid-template-columns:210px minmax(0,1fr);
+        #sc-root .wrap { max-width:1600px; display:grid; grid-template-columns:210px minmax(0,1fr);
           gap:4px 28px; align-items:start; }
         #sc-root .sc-side { position:sticky; top:16px; }
         #sc-root .sc-header-actions { display:grid; grid-template-columns:1fr; margin-top:12px; }
@@ -34690,7 +34731,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           padding-right:8px; margin-bottom:0; }
         #sc-root .sc-maintab { border:1px solid transparent !important; border-radius:5px !important;
           text-align:left !important; padding:9px 12px !important; }
-        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; }
+        #sc-root .sc-maintab.on { border-color:var(--sc-line-strong) !important; border-left:3px solid var(--nav, var(--sc-accent)) !important;
+          box-shadow:none; background:color-mix(in srgb, var(--nav, var(--sc-accent)) 14%, var(--sc-surface-soft)) !important; }
         #sc-root .sc-navcat { color:var(--sc-muted); }
       }
       #sc-root .status-ok { color:var(--sc-success); font-weight:650; }

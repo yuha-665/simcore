@@ -575,6 +575,29 @@ const CSS = `
    오른쪽 끝이 한 줄로 떨어진다. 안쪽 블록은 자기 폭을 다시 박지 않는다 (전부 100%/토큰). */
 .sce .sce-deep { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-deep-body { width:100%; }
+/* 탭 내비 묶음 (v1.7.15) — 개조본 DOM(.sce-tab-groups)에 규칙이 없어 맨 CSS로 돌던 것. 그룹마다 색 하나(--g):
+   기본=accent · 세계=success · 진행=warning · 자동화=weekend-sun. 좁은 화면은 위쪽 가로 묶음, 넓은 화면(1041px↑)은
+   오른쪽 사이드 기둥(sticky)이라 스크롤을 내려도 탭이 손 닿는 자리에 있다 (실측 제보 "오른쪽이 많이 남는다"). */
+.sce .sce-tab-groups { display:flex; flex-wrap:wrap; gap:6px 22px; padding-bottom:6px; border-bottom:1px solid var(--sce-line); margin-bottom:12px; }
+.sce .sce-tab-group { --g:var(--sce-accent); display:flex; flex-direction:column; gap:2px; min-width:0; }
+.sce .sce-tab-group:nth-child(2) { --g:var(--sce-success); }
+.sce .sce-tab-group:nth-child(3) { --g:var(--sce-warning); }
+.sce .sce-tab-group:nth-child(4) { --g:var(--sce-weekend-sun); }
+.sce .sce-tab-group-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:750; letter-spacing:.08em; color:var(--g); }
+.sce .sce-tab-group-label::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--g); }
+.sce .sce-tab-group-tabs { display:flex; flex-wrap:wrap; gap:0 14px; }
+.sce .sce-tab-group .sce-tab.on { box-shadow:inset 0 -2px 0 var(--g); }
+@media (min-width:1041px) {
+.sce .sce-deep.sce-deep-side { display:grid; grid-template-columns:minmax(0,1fr) 168px; grid-template-areas:"body nav" "report nav";
+  gap:0 22px; align-items:start; }
+.sce .sce-deep-side > .sce-deep-body { grid-area:body; min-width:0; }
+.sce .sce-deep-side > .sce-report { grid-area:report; }
+.sce .sce-deep-side > .sce-tab-groups { grid-area:nav; position:sticky; top:10px; flex-direction:column; flex-wrap:nowrap; gap:14px;
+  margin:0; padding:10px 0 12px 14px; border-bottom:0; border-left:1px solid var(--sce-line); }
+.sce .sce-deep-side .sce-tab-group-tabs { flex-direction:column; gap:1px; }
+.sce .sce-deep-side .sce-tab { min-height:32px; padding:5px 10px; text-align:left; border-radius:5px; border-left:3px solid transparent; }
+.sce .sce-deep-side .sce-tab.on { box-shadow:none; border-left-color:var(--g); background:color-mix(in srgb, var(--g) 14%, transparent); }
+}
 .sce .sce-time-workbench { display:grid; grid-template-columns:minmax(200px,.36fr) minmax(0,1.64fr);
   border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-surface); overflow:clip; }
 .sce .sce-time-rail { min-width:0; padding:18px 16px; border-right:1px solid var(--sce-line);
@@ -1648,15 +1671,17 @@ const CSS = `
   width:100%; margin:0; padding:0 0 11px 10px; border-left:2px solid var(--sce-accent); }
 .sce .sce-status-intro-title { color:var(--sce-text-strong); font-size:15px; font-weight:750; }
 .sce .sce-status-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
-.sce .sce-status-core-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,280px);
+/* v1.7.15 — 좌(설정 2열)·우(미리보기 280px) 분할을 버리고 한 기둥으로: 설정은 3열 한 줄씩, 미리보기는 그 아래
+   전폭(테마 카드 | 실제 렌더 1.6배). 미리보기 기둥이 너무 좁아 상태창이 손톱만 했다 (실측 제보 "상태창 영역이 너무 적다"). */
+.sce .sce-status-core-layout { display:grid; grid-template-columns:minmax(0,1fr);
   gap:14px; padding-top:12px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-settings { min-width:0; padding:0; }
 .sce .sce-status-settings-grid { display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  grid-template-areas:"title mode" "theme layout" "log highlights" "position .";
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-areas:"title mode theme" "layout log highlights" "position . .";
   column-gap:14px; row-gap:0; align-items:start; align-content:start; }
 .sce .sce-status-settings-grid.is-template {
-  grid-template-areas:"title mode" "theme log" "highlights position"; }
+  grid-template-areas:"title mode theme" "log highlights position"; }
 .sce .sce-status-field-title { grid-area:title; }
 .sce .sce-status-field-mode { grid-area:mode; }
 .sce .sce-status-field-theme { grid-area:theme; }
@@ -1665,9 +1690,9 @@ const CSS = `
 .sce .sce-status-field-layout { grid-area:layout; }
 .sce .sce-status-field-highlights { grid-area:highlights; }
 .sce .sce-status-field-title, .sce .sce-status-field-log { width:100%; }
-.sce .sce-status-options { display:grid; grid-template-columns:minmax(0,1fr);
-  grid-template-areas:"title" "summary" "toggle" "copy" "preview" "live"; align-content:start; min-width:0;
-  padding:0 0 0 14px; border-left:1px solid var(--sce-line); }
+.sce .sce-status-options { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,1.6fr);
+  grid-template-areas:"title live" "summary live" "toggle live" "copy live" "preview live" ". live"; align-content:start; min-width:0;
+  gap:0 18px; padding:12px 0 0; border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-title { grid-area:title; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
 .sce .sce-status-options-summary { grid-area:summary; display:flex; align-items:baseline; gap:5px; margin-top:3px;
   color:var(--sce-muted); font-size:11.5px; }
@@ -1701,7 +1726,7 @@ const CSS = `
   background:rgba(128,128,128,.28); }
 .sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
 .sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
-.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:10px; padding-top:9px;
+.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:0; padding-top:0;
   border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-live-title { margin-bottom:6px; color:var(--sce-text-strong);
   font-size:11.5px; font-weight:750; }
@@ -2056,10 +2081,7 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
-    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
-    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
-.sce .sce-status-options-theme-preview { margin-top:0; }
+.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-slot-head { align-items:stretch; flex-direction:column; }
@@ -2160,10 +2182,7 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
-    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
-    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
-.sce .sce-status-options-theme-preview { margin-top:0; }
+.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-section-head { flex-direction:column; }
@@ -13147,9 +13166,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } else if (floorView === 'assets') {
         root.appendChild(assetsFloor());
       } else if (floorView === 'deep') {
-        root.appendChild(deepTabs());
-        root.appendChild(deepBody());
-        root.appendChild(reportEl);
+        // v1.7.15: 한 기둥(.sce-deep-side)에 묶는다 — 넓은 화면에서 탭 묶음이 오른쪽 sticky 사이드로 간다
+        root.appendChild(h('div', { class: 'sce-deep sce-deep-side' }, deepTabs(), deepBody(), reportEl));
       } else {
         root.appendChild(topFloor());
       }

@@ -496,7 +496,6 @@ const MAP_TEMPLATE = (() => {
 
 const BOOK_CATS = Object.keys(RECIPE_BOOK);
 // 서고 단수별 묶음 머리 — "이 단부터 열린다"가 곧 진행 사다리
-const LIB_NAME = ['처음부터', '서고 1단', '서고 2단', '서고 3단', '서고 4단', '서고 5단'];
 const BOOK_TEMPLATE = (() => {
   const q = (x) => `'${x}'`;
   const known = (list) => list.map(([n]) => `has(recipes,${q(n)})`).join(' + ');
@@ -527,12 +526,16 @@ const BOOK_TEMPLATE = (() => {
   const pages = BOOK_CATS.map((c, i) => {
     const list = RECIPE_BOOK[c];
     const groups = [];
+    // 음식은 서고가 아니라 부엌이 연다 (살림 2026-09-08) — 요리를 서고에서 배운다는 건 이상했다. 단수 뜻은 같다
+    const gate = c === '음식' ? 'kitchen' : 'library';
+    const gateName = c === '음식' ? '부엌' : '서고';
+    const lvName = (lv) => (lv === 0 ? '처음부터' : `${gateName} ${lv}단`);
     for (let lv = 0; lv <= 5; lv++) {
       const inLv = list.filter(([, lib]) => lib === lv);
       if (!inLv.length) continue;
       const rows = inLv.map(([name, lib, tier, eff, mats]) => {
         const on = `has(recipes,${q(name)})`;
-        const lock = lib > 0 ? `{${on} ? '' : (library < ${lib} ? '🔒 서고 ${lib}단' : '미습득')}` : `{${on} ? '' : '미습득'}`;
+        const lock = lib > 0 ? `{${on} ? '' : (${gate} < ${lib} ? '🔒 ${gateName} ${lib}단' : '미습득')}` : `{${on} ? '' : '미습득'}`;
         const chips = mats.map(matChip).join('');
         return `<div class="abk-row {${on} ? 'on' : 'off'}" title="${eff} · 필요: ${mats.map(matLabel).join(', ')}">`
           + `<span class="abk-ico">{${on} ? '✦' : '·'}</span>`
@@ -540,8 +543,8 @@ const BOOK_TEMPLATE = (() => {
           + `<span class="abk-lock">${lock}</span>`
           + `<div class="abk-eff">${eff}</div><div class="abk-mats">${chips}</div></div>`;
       }).join('');
-      groups.push(`<div class="abk-lv {library >= ${lv} ? 'open' : 'shut'}"><div class="abk-lh">${LIB_NAME[lv]}`
-        + `<span>{${known(inLv)}}/${inLv.length}${lv > 0 ? ` · {library >= ${lv} ? '열림' : '🔒'}` : ''}</span></div>${rows}</div>`);
+      groups.push(`<div class="abk-lv {${gate} >= ${lv} ? 'open' : 'shut'}"><div class="abk-lh">${lvName(lv)}`
+        + `<span>{${known(inLv)}}/${inLv.length}${lv > 0 ? ` · {${gate} >= ${lv} ? '열림' : '🔒'}` : ''}</span></div>${rows}</div>`);
     }
     return `<div class="abk-page abk-p${i}">${groups.join('')}</div>`;
   }).join('\n  ') + `
@@ -740,8 +743,9 @@ const S = {
     // ── 연금술사 ──
     { id: 'renown', label: '평판', type: 'int', init: 30, min: 1, max: 1000,
       desc: '세상이 나를 얼마나 믿는가. 의뢰를 완수하면 오르고, 실패·기한 초과로 내린다. 솜씨 자체는 분야 숙련이 따로 잰다.' },
-    { id: 'stamina', label: '체력', type: 'int', init: 100, min: 0, max: 100, format: '{v}/100',
-      desc: '컨디션. 채집·조합·이동·피격이 깎고 휴식·식사·수면이 올린다. 0이면 쓰러진다.' },
+    // max 150 = 침실 5단(체력 최대 100 + 10/단)의 천장. 실제 상한은 파생 stamina_max — onTurn이 그 위를 깎는다 (살림 2026-09-08)
+    { id: 'stamina', label: '체력', type: 'int', init: 100, min: 0, max: 150, format: '{v}',
+      desc: '컨디션. 채집·조합·이동·피격이 깎고 휴식·식사·수면이 올린다. 0이면 쓰러진다. 상한은 체력 최대(stamina_max) — 침실이 좋을수록 높다.' },
     { id: 'synth_cat', label: '조합 분야', type: 'enum', enum: CATS.map(([c]) => c), init: '약품', cmd: '분야',
       desc: '지금 만들려는 것이 어느 분야인가. ' + CATS.map(([c, , , src]) => `${c}=${src}`).join(' · ') },
     { id: 'synth_tier', label: '레시피 난이도', type: 'enum', enum: ['기초', '고급', '비전'], init: '기초', cmd: '난이도',
@@ -786,7 +790,7 @@ const S = {
       desc: '만들거나 얻은 완성품. 품질은 이름에 얹는다 — 걸작 "고품질 힐링 살브", 조잡 "조잡한 힐링 살브", 상품·보통은 접두어 없이. '
         + '팔 때 감정가: "고품질"은 밴드 상단, "조잡한"은 하단 근처, 접두어 없으면 중간.' },
     { id: 'recipes', label: '레시피', type: 'list', init: ['중화제 적'], maxItems: 30, itemMaxLength: 30,
-      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **괄호 숫자는 배울 수 있는 서고(library) 단수** — 서고가 그보다 낮으면 올리지 마라 (없으면 처음부터). '
+      desc: '배운 조합법. 배우지 않은 것은 만들 수 없다. **괄호 숫자는 배울 수 있는 서고(library) 단수, 음식만은 부엌(kitchen) 단수** — 그보다 낮으면 올리지 마라 (없으면 처음부터). '
         + '**도감에 있는 것은 도감 이름 그대로** 적는다 (조합서와 짝을 맞춘다): '
         + Object.entries(RECIPE_BOOK).map(([c, l]) => `${c}=${l.map(([n, lib]) => n + (lib ? `(${lib})` : '')).join('/')}`).join(' · ')
         + '. 도감 밖의 이름은 여기 올리지 마라 — 창작은 특수연금 장부(inventions)가 맡는다.' },
@@ -852,6 +856,19 @@ const S = {
     { id: 'harvest_due', label: '수확 대기', type: 'int', init: 0, min: 0, max: 5 },
     // ── 진열대 (경영) — 내놓은 물건이 며칠 안에 팔려 돈이 된다. 의뢰 기한과 같은 기계(@+N 굳힘 → expire) ──
     { id: 'display', label: '진열대', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    // ── 살림 (2026-09-08, 유저 "공방 업그레이드가 허전한 이유 — 집 업그레이드가 없어서") ──
+    // 설비 다섯은 전부 일터였다. 침실 = 체력 최대·수면 회복, 부엌 = 요리 묶음의 자물쇠 + 식사 회복, 응접실 = 손님·의뢰인·명사 방문.
+    { id: 'bedroom', label: '침실', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    { id: 'kitchen', label: '부엌', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    { id: 'parlor', label: '응접실', type: 'int', init: 0, min: 0, max: 5, format: '{v}단' },
+    // 식사 — 요리 티어의 출구. 보조가 먹은 음식의 등급을 적으면 조건 이벤트가 체력·하루 보정을 주고 비운다
+    { id: 'meal', label: '이번 식사', type: 'enum', enum: ['없음', '기초', '고급', '비전'], init: '없음',
+      desc: '이번 턴 서사에서 **음식을 먹었을 때만** — 그 음식을 items에서 빼고 여기에 등급(조합서의 기초/고급/비전, 도감 밖 음식은 기초)을 적는다. 체력 회복과 하루 보정은 시스템이 주고 도로 비운다. 안 먹었으면 손대지 마라.' },
+    { id: 'meal_buff', label: '식사 보정', type: 'int', init: 0, min: 0, max: 2 },
+    { id: 'meal_until', label: '식사 보정 기한', type: 'int', init: 0, min: 0, max: 999999 },
+    // 설비 통지 래치 — 단수 합이 래치를 넘으면 "무엇이 달라졌는지 공방 풍경으로" 통지 (유저 "설비가 좋아진 걸 알려주면 서사가 반영")
+    { id: 'work_seen', label: '설비 통지', type: 'int', init: 1, min: 0, max: 25 },
+    { id: 'home_seen', label: '살림 통지', type: 'int', init: 0, min: 0, max: 15 },
     { id: 'shelf', label: '진열 상품', type: 'list', init: [], maxItems: 18, itemMaxLength: 40,
       desc: '진열대에 내놓은 상품. **형식: "이름 @+팔릴날 가격"** — 가격은 반드시 맨 끝 숫자, 상점 밴드 안에서 '
         + '(조악 5~60 · 보통 40~200 · 상등 150~800 · 희귀 800~5000). 팔릴 날: 기초 1~3일 · 고급 3~6일 · 비전 5~10일, '
@@ -871,7 +888,9 @@ const S = {
     { id: 'area_tier', label: '지형의 격',
       expr: chain(PLACES.slice(0, -1).map(([p, t]) => [`location == '${p}'`, String(t)]),
         String(PLACES[PLACES.length - 1][1])) },
-    { id: 'tax_due', label: '다음 세금', expr: '100 + (cauldron + library + storage + garden + display) * 60 + floor(sales_month / 10)', format: '{v}콜' },
+    { id: 'tax_due', label: '다음 세금', expr: '100 + (cauldron + library + storage + garden + display + bedroom + kitchen + parlor) * 60 + floor(sales_month / 10)', format: '{v}콜' },
+    // 체력 최대 — 침실 단마다 +10 (살림 2026-09-08). 상태창 막대·상태 블록·onTurn 클램프가 이걸 본다
+    { id: 'stamina_max', label: '체력 최대', expr: '100 + bedroom * 10' },
     { id: 'sk_now', label: '이 분야 숙련',
       expr: chain(CATS.slice(0, -1).map(([label, id]) => [`synth_cat == '${label}'`, id]),
         CATS[CATS.length - 1][1]) },
@@ -926,6 +945,8 @@ const S = {
       { list: 'field', expire: 'elapsed' },          // 익은 날(오늘)까지 살아 있고, 안 거두면 다음 날 시든다
       { set: 'market_state', expr: "market_state != '평시' and elapsed > market_until ? '평시' : market_state" },
       { set: 'disaster', expr: "disaster != '없음' and elapsed > disaster_until ? '없음' : disaster" },
+      // 체력 상한은 침실이 정한다 (변수 max 150은 천장일 뿐) — 보조가 넘겨 적어도 여기서 깎인다 (살림)
+      { set: 'stamina', expr: 'min(stamina, stamina_max)' },
       { set: 'shelf_prev', expr: 'sum(shelf)' },
       { list: 'shelf', expire: 'elapsed' },
       { set: 'shelf_sold', expr: 'max(shelf_prev - sum(shelf), 0)' },
@@ -987,6 +1008,20 @@ const S = {
           { set: 'market_state', expr: "'축제 특수'" }, { set: 'market_until', expr: 'elapsed + 2' },   // 축제 이틀은 음식·완성품이 비싸게 팔린다
           ...(effects || [])], notify,
       })),
+      // ── 살림 (2026-09-08) ──
+      // 식사 — 보조가 meal에 등급을 적으면 회복·하루 보정을 주고 비운다. 부엌 단마다 회복 +2. 고급 이상은 그날 판정 +1/+2
+      { id: 'meal_eat', when: "meal != '없음'",
+        effects: [{ set: 'stamina', expr: "min(stamina + (meal == '기초' ? 10 : meal == '고급' ? 20 : 30) + kitchen * 2, stamina_max)" },
+          { set: 'meal_buff', expr: "meal == '기초' ? 0 : meal == '고급' ? 1 : 2" }, { set: 'meal_until', expr: 'elapsed + 1' },
+          { set: 'meal', expr: "'없음'" }],
+        notify: '든든히 먹었다 — 몸이 가볍다. 좋은 음식이었다면 오늘 하루 손이 잘 풀린다(회복·보정은 시스템이 줬다). 먹은 것을 다시 목록에 올리지 마라.' },
+      // 설비·살림이 올랐다 — 단수 합이 래치를 넘은 턴에 한 번. 무엇이 달라졌는지는 상태의 단수를 보고 공방 풍경으로 (유저 요청)
+      { id: 'fac_up', when: 'cauldron + library + storage + garden + display > work_seen',
+        effects: [{ set: 'work_seen', expr: 'cauldron + library + storage + garden + display' }],
+        notify: '공방 설비가 올랐다. 상태 블록의 설비 단수를 보고 새로 달라진 곳(가마·서고·보관고·약초밭·진열대)을 공방 풍경으로 한 장면 보여라 — 일꾼·물건·냄새·소리로.' },
+      { id: 'home_up', when: 'bedroom + kitchen + parlor > home_seen',
+        effects: [{ set: 'home_seen', expr: 'bedroom + kitchen + parlor' }],
+        notify: '살림이 나아졌다. 상태 블록의 살림 단수(침실·부엌·응접실)를 보고 새로 달라진 방을 풍경으로 보여라 — 침대·창·화덕·손님 자리처럼 눈에 보이는 것으로. 이 집이 좋아졌다는 실감이 목적이다.' },
       { id: 'collapse', when: 'stamina <= 0',
         effects: [{ set: 'stamina', expr: '25' }, { set: 'location', expr: "settled ? '공방' : location" },   // 정착 전엔 눕힌 자리가 공방이 아니다
           { set: 'skip_min', expr: 'skip_min + 480' }],
@@ -1171,6 +1206,15 @@ const S = {
           notify: '세금 징수원이 "이번 달은 봐줄까" 하더니 곧바로 "농담이다"라고 했다. 웃는 사람은 그뿐이다.' },
         { id: 'gag_stray_cat', weight: 2, cooldown: 12, when: "settled and renown >= 60 and location == '공방'",
           notify: '길고양이가 가마 옆 따뜻한 자리에 눌러앉았다. 쫓아내도 돌아온다.' },
+        // ── 응접실 (살림 2026-09-08) — 손님을 맞을 자리가 있어야 사람이 온다. 단이 오를수록 격이 있는 손님 ──
+        { id: 'parlor_guest', weight: 2, cooldown: 8, when: "settled and parlor >= 1 and location == '공방'",
+          effects: [{ set: 'renown', expr: 'renown + 1' }],
+          notify: '공방 문을 두드리는 소리 — 응접실에 손님이 앉았다. 이웃이나 카페 단골, 소소한 부탁이나 소문을 들고 왔다.' },
+        { id: 'parlor_client', weight: 2, cooldown: 10, when: "settled and parlor >= 3 and location == '공방'",
+          notify: '응접실로 의뢰인이 직접 찾아왔다 — 의뢰판을 거치지 않은 부탁이다. 서사에서 받으면 quests에 올린다(보수는 quest_pay 규칙, 등급은 위험과 품에 맞게).' },
+        { id: 'parlor_noble', weight: 1, cooldown: 20, when: "settled and parlor >= 5 and renown >= 350 and location == '공방'",
+          effects: [{ set: 'renown', expr: 'renown + 3' }],
+          notify: '이름 있는 손님이 응접실에 들었다 — 귀족이나 상단주, 왕도의 관리. 이 공방이 어디까지 알려졌는지 보여 주는 장면이다.' },
         // 잘부르그·그람나트 — 마리(폭발)·엘리(치즈케이크)·유디(폭탄광)·비오(당근)
         { id: 'gag_sal_marie_boom', weight: 2, cooldown: 12, when: "origin == '잘부르그·그람나트' and location == '공방'",
           effects: [{ set: 'stamina', expr: 'stamina - 3' }],
@@ -1259,7 +1303,8 @@ const S = {
     { id: 'workshop', when: 'settled',
       text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), '
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
-        + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. '
+        + '살림 — 침실 {bedroom}단(체력 최대 {stamina_max}, 잠자리의 질), 부엌 {kitchen}단(요리는 부엌 단수부터 — 0단은 아궁이뿐), 응접실 {parlor}단(손님을 맞는 자리 — 0단이면 문간에서 맞는다). 단수가 낮은 방은 초라하게, 높은 방은 그만큼 좋게 그려라. '
+        + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비·살림을 올리면 그 변화를 공방 풍경으로 보여라. '
         + '조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라. '
         + '(연료)처럼 괄호로 적힌 재료는 그 분류(아틀리에 어휘)의 어느 소재든 된다; 고유명 재료는 같은 분류의 다른 소재로 한 가지까지만 대신할 수 있다. 조합서 밖의 것은 서사에 맡긴다.' },
     { id: 'tax_soon', when: 'dom >= 28',
@@ -1383,21 +1428,26 @@ const S = {
       effects: [{ set: 'location', expr: "'강가·폭포'" }, { set: 'skip_min', expr: 'skip_min + 120' }, { set: 'stamina', expr: 'stamina - 8' }] },
     { id: 'act_rest', label: '😴 휴식', mode: 'oneshot', keywords: ['쉰다', '휴식한다', '숨을 돌린다', '눕는다'], when: 'not fight_on',
       inject: '숨을 돌린다.',
-      effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina + 35' }] },
+      effects: [{ set: 'skip_min', expr: 'skip_min + 240' }, { set: 'stamina', expr: 'stamina + 35 + bedroom * 2' }] },   // 침실이 좋으면 낮잠도 낫다 (살림)
+    // 식사 — 요리 티어의 출구 (살림 2026-09-08). 무엇을 먹었는지는 보조가 items에서 빼고 meal에 등급을 적는다 → meal_eat 이벤트
+    // ⚠ `not a and b`는 `not (a and b)`로 읽힌다 — 괄호 필수
+    { id: 'act_meal', label: '🍽 식사', mode: 'oneshot', keywords: ['먹는다', '식사한다', '한 끼', '도시락을 먹'], when: '(not fight_on) and count(items) > 0',
+      inject: '가진 음식(아이템 목록) 하나를 먹는다 — 무엇을 먹었는지 이름을 명시하라. 음식이 없으면 먹지 못했다고 쓴다. 회복과 보정은 시스템이 준다.',
+      effects: [{ set: 'skip_min', expr: 'skip_min + 30' }] },
     // 시계는 "다음으로 돌아오는 07:00"으로 — skip_day+1은 시각을 그대로 둔 채 24시간을 더해 18:00에 자면 이튿날 18:00이
     // 되고, 보조가 아침 장면에 맞추려 분을 얹다 23:15 같은 시각이 났다 (2026-09-06 실기 제보). 새벽에 자면 같은 날 아침
     // (+300 등)이라 29시간을 자지 않고, 정확히 07:00에 누르면 +1440. 총량 ≤ 1440이라 skip_min 하나로 실린다. set이지
     // 더하기가 아니다 — 같은 전송에 😴 휴식이 먼저 쌓아 둔 분은 어차피 아침 안쪽이라 덮어도 결과가 같다.
     { id: 'act_day', label: '🌙 하루를 마친다', mode: 'oneshot', keywords: ['잠든다', '자러 간다', '하루를 마친다', '잠자리에'], dayClose: true, when: 'not fight_on',
       inject: '하루를 접는다. 다음 장면은 잠에서 깬 이튿날 아침 — 시계가 아침으로 맞춰져 있으니 그 시각에서 시작한다.',
-      effects: [{ set: 'skip_min', expr: SLEEP_TO_MORNING }, { set: 'stamina', expr: 'stamina + 45' },
+      effects: [{ set: 'skip_min', expr: SLEEP_TO_MORNING }, { set: 'stamina', expr: 'stamina + 45 + bedroom * 8' },   // 침실 단마다 +8 (살림)
         { set: 'location', expr: "settled ? '공방' : location" }, { set: 'harvest_due', expr: 'garden' }] },   // 정착 전엔 잠자리가 공방이 아니다 — 여기서 정착시키면 첫 턴 사고가 하루 뒤로 미뤄질 뿐
   ],
 
   checks: [
     { id: 'gather', label: '채집',
       roll: 'rand(1, 20)',
-      mod: 'floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden'
+      mod: 'floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden + (meal_until >= elapsed ? meal_buff : 0)'
         + " + (disaster == '홍수' and (location == '강가·폭포' or location == '해안' or location == '습지·늪') ? -4 : 0)"
         + " + (disaster == '산불' and (location == '숲' or location == '꽃밭·초원' or location == '왕도 주변 들판') ? -4 : 0)"
         + " + (disaster == '지진' and location == '광산·동굴' ? -4 : 0)"
@@ -1417,7 +1467,7 @@ const S = {
       ] },
 
     { id: 'survey', label: '탐사',
-      roll: 'rand(1, 20)', mod: 'floor(renown / 80) + library',
+      roll: 'rand(1, 20)', mod: 'floor(renown / 80) + library + (meal_until >= elapsed ? meal_buff : 0)',
       vs: '10 + area_tier * 2',
       grades: [
         { when: 'total >= vs + 7', label: '발견',
@@ -1435,7 +1485,7 @@ const S = {
       roll: 'rand(1, 20)',
       // 분야 숙련(0~8) + 공방 도구(0~10) + 평판(0~6) — 설계 §4.3
       // 설비가 열쇠다 — 서고 없이 고급, 서고·가마 없이 비전은 주사위로 안 넘어간다 (설비 개편)
-      mod: 'floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0)'
+      mod: 'floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0) + (meal_until >= elapsed ? meal_buff : 0)'
         + " + (location == '공방' ? 0 : -4)"
         + " + (synth_tier == '고급' and library < 3 ? -4 : 0)"
         + " + (synth_tier == '비전' and (library < 5 or cauldron < 3) ? -6 : 0)",
@@ -1559,6 +1609,7 @@ const S = {
       { id: 'synth_cat' }, { id: 'synth_tier' }, { id: 'weather' },
       { id: 'renown', maxGain: 20, maxLoss: 30 },
       { id: 'stamina', maxDelta: 40 },
+      { id: 'meal' },   // 먹은 음식의 등급 — 시스템이 회복·보정을 주고 비운다 (살림)
       { id: 'cole', maxGain: 15000, maxLoss: 15000 },
       { id: 'bombs', maxDelta: 8 },
       { id: 'foe_tier', maxDelta: 4 }, { id: 'foe_name', maxLength: 30 },
@@ -1586,8 +1637,8 @@ const S = {
       "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}",
       "{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}",
       // 상태 블록은 변수 format을 안 입힌다 — 단위는 여기 직접 쓴다
-      "{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 다음 세금 ' + tax_due + '콜' : ''}",
-      '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina} · 투척 {bombs} · 직전 조합 {last_quality}',
+      "{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 살림: 침실 ' + bedroom + '단 · 부엌 ' + kitchen + '단 · 응접실 ' + parlor + '단 · 다음 세금 ' + tax_due + '콜' : ''}",
+      '평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina}/{stamina_max} · 투척 {bombs} · 직전 조합 {last_quality}',
       '소재: {materials}',
       '아이템: {items} · 레시피: {recipes}',
       '진열대({shelf_n}/{shelf_cap}): {shelf}',
@@ -1616,6 +1667,7 @@ const S = {
       { label: '공방', visibility: 'show', items: [
         { var: 'atelier_name' }, { var: 'atelier_place' }, { var: 'mentor' },
         { var: 'cauldron' }, { var: 'library' }, { var: 'garden' }, { var: 'display' },
+        { var: 'bedroom' }, { var: 'kitchen' }, { var: 'parlor' },   // 살림 (2026-09-08)
         // 찬 정도 — 막대의 max가 설비 파생값. 값은 "12종", 막대가 용량 대비 비율 (bar.max는 식을 받는다)
         { var: 'storage' }, { var: 'mat_n', bar: { max: 'mat_cap' }, color: "'#b08968'" }, { var: 'mat_cap' },
         { var: 'tax_due' }, { var: 'sales_month' }, { var: 'tax_arrears', when: 'tax_arrears > 0' },
@@ -1625,7 +1677,8 @@ const S = {
       { label: '연금술사', visibility: 'show', items: [
         { var: 'renown', bar: { max: 1000 }, color: "'#b08968'" },
         { var: 'alch_tier' }, { var: 'last_quality' },
-        { var: 'stamina', bar: { max: 100 }, color: "'#7fa87f'" },
+        { var: 'stamina', bar: { max: 'stamina_max' }, color: "'#7fa87f'" }, { var: 'stamina_max' },   // 침실이 최대를 올린다 (살림)
+        { var: 'meal_buff', when: 'meal_until >= elapsed and meal_buff > 0' },
         ...CATS.map(([, id]) => ({ var: id, bar: { max: 100 } })),
       ] },
       { label: '소지', visibility: 'show', items: [
@@ -1677,6 +1730,17 @@ const S = {
             requires: 'garden < 3 or renown > 150', requiresLabel: '4단부터는 기초 연금술사부터' },
           { var: 'display', max: 5, cost: '(display + 1) * 2500',
             note: '진열 칸 3 → 6 → 9 → 12 → 15 → 18 · 내놓은 물건은 며칠 안에 팔려 돈이 된다 (하루를 넘길수록 장사가 된다)' },
+        ] },
+      // 살림 (2026-09-08) — 설비 다섯이 전부 일터라 "집이 좋아진다"가 없었다 (유저). 침실·부엌·응접실, 세금은 설비와 같이 오른다
+      { id: 'home', label: '살림', points: 'cole',
+        items: [
+          { var: 'bedroom', max: 5, cost: '(bedroom + 1) * 1200',
+            note: '단마다 체력 최대 +10 (100 → 150) · 🌙 하루 마침 회복 +8 · 😴 휴식 +2 — 잠자리가 곧 컨디션' },
+          { var: 'kitchen', max: 5, cost: '(kitchen + 1) * 1500',
+            note: '조합서 음식 묶음이 부엌 단수로 열린다 (0단은 아궁이 — 빵·차뿐) · 🍽 식사 회복 +2/단 · 고급 음식은 그날 판정 +1, 비전은 +2' },
+          { var: 'parlor', max: 5, cost: '(parlor + 1) * 2000',
+            note: '손님을 맞는 자리 — 1단부터 이웃·단골이 들르고(평판), 3단부터 의뢰인이 직접 찾아오고, 5단은 이름 있는 손님',
+            requires: 'parlor < 3 or renown > 150', requiresLabel: '4단부터는 기초 연금술사부터' },
         ] },
       // 지도 — 새 패널이 아니라 이 패널의 둘째 탭. fab은 달지 않는다 (버튼은 🏠 하나).
       { id: 'map', label: '지도', template: MAP_TEMPLATE },
@@ -2789,7 +2853,7 @@ console.log('\n━━ 랜덤 이벤트 표 — 88종, 장소마다 뭔가 있다
 {
   const expr = SC.require('expr');
   const tbl = S.rules.randomEvents.table;
-  ok('88종 · id 중복 없음', tbl.length === 88 && new Set(tbl.map((e) => e.id)).size === 88, String(tbl.length));
+  ok('91종 (응접실 3 포함) · id 중복 없음', tbl.length === 91 && new Set(tbl.map((e) => e.id)).size === 91, String(tbl.length));
   ok('전부 when·cooldown·notify가 있다 (무조건 사건은 없다)', tbl.every((e) => e.when && e.cooldown >= 4 && e.notify), JSON.stringify(tbl.filter((e) => !(e.when && e.cooldown >= 4 && e.notify)).map((e) => e.id)));
   ok('통지엔 숫자가 없다 (숫자는 시스템이 말한다)', tbl.every((e) => !/[0-9]/.test(e.notify)), JSON.stringify(tbl.filter((e) => /[0-9]/.test(e.notify)).map((e) => e.id)));
   ok('발동 확률 0.07 (유저가 낮춘 값 되반영)', S.rules.randomEvents.chancePerTurn === 0.07, String(S.rules.randomEvents.chancePerTurn));
@@ -2992,6 +3056,75 @@ console.log('\n━━ 산지표 — 어디서 나는가: 상시 재고 / 채집 
   const html = SC.require('render').renderPanelTemplate(S, fresh(), BOOK_TEMPLATE);
   ok('조합서 칩 툴팁에 분류 — 산지 (불의 돌: 광산·동굴 + 여름 특산, 뒷골목 아님)', html.includes('title="분류: 화약 · 광석 — 산지: 광산·동굴 · 광산·동굴(여름)">불의 돌'), (html.match(/title="[^"]*">불의 돌/) || [])[0]);
   ok('소재 탭 칩 툴팁은 산지 (맑은 물: 들판·강가·상점가)', html.includes('title="산지: 왕도 주변 들판 · 강가·폭포 · 상점가">맑은 물</i>'), (html.match(/title="산지: [^"]*">맑은 물/) || [])[0]);
+}
+
+console.log('\n━━ 살림 — 침실·부엌·응접실, 식사가 요리 티어의 출구 (2026-09-08) ━━');
+{
+  const partyMod = SC.require('party');
+  const tabs = partyMod.partyTabs(S);
+  const home = tabs.find((t) => t.id === 'home');
+  ok('공방 패널에 살림 탭 (설비·살림·지도·조합서 = 4)', !!home && home.items.length === 3 && tabs.map((t) => t.id).join() === 'facility,home,map,book', tabs.map((t) => t.id).join());
+  ok('세금은 살림 설비도 센다', S.derived.find((d) => d.id === 'tax_due').expr.includes('bedroom + kitchen + parlor'), '');
+
+  // 침실 — 체력 최대. 변수 max 150은 천장, 실제 상한은 stamina_max + onTurn 클램프
+  let t = fresh();
+  ok('체력 최대 100 (침실 0단)', engine.makeLookup(S, t.vars)('stamina_max') === 100, '');
+  let r = turn(t, { stamina: 140 }, 1);
+  ok('★ 침실 0단이면 보조가 140을 적어도 100으로 깎인다 (onTurn 클램프)', r.st.vars.stamina === 100, String(r.st.vars.stamina));
+  t = fresh(); t.vars.cole = 20000;
+  const up = partyMod.applyUpgrade(S, t, 'bedroom');
+  ok('침실 1단 구매 1200콜', up.ok && up.changes.bedroom === 1 && up.changes.cole === 18800, JSON.stringify(up));
+  t.vars.bedroom = 3;
+  r = turn(t, { stamina: 140 }, 2);
+  ok('침실 3단이면 최대 130 — 140은 130으로', r.st.vars.stamina === 130 && engine.makeLookup(S, r.st.vars)('stamina_max') === 130, String(r.st.vars.stamina));
+  ok('★ 살림이 오르면 통지 한 번 (home_up) — 다음 턴엔 안 온다', r.fired.some((e) => (e.id ?? e) === 'home_up') && r.st.vars.home_seen === 3
+    && !turn(r.st, {}, 3).fired.some((e) => (e.id ?? e) === 'home_up'), JSON.stringify(r.fired));
+  t = fresh(); t.vars.cauldron = 2;
+  r = turn(t, {}, 4);
+  ok('설비가 올라도 통지 (fac_up, 래치 1 → 2)', r.fired.some((e) => (e.id ?? e) === 'fac_up') && r.st.vars.work_seen === 2, JSON.stringify(r.fired));
+  // 🌙·😴 회복이 침실을 본다
+  const day = S.actions.find((a) => a.id === 'act_day'), rest = S.actions.find((a) => a.id === 'act_rest');
+  ok('🌙 회복 45 + 침실×8 · 😴 35 + 침실×2', day.effects.some((e) => e.expr === 'stamina + 45 + bedroom * 8') && rest.effects.some((e) => e.expr === 'stamina + 35 + bedroom * 2'), '');
+
+  // 부엌 — 음식 묶음이 부엌으로 열린다
+  const book = tabs.find((t) => t.id === 'book');
+  t = fresh(); t.vars.library = 5; t.vars.kitchen = 0;
+  // 렌더는 <style>을 앞으로 올린다 — 페이지를 자르려면 스타일을 떼고 본다
+  const noStyle = (h) => h.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  let html = noStyle(SC.require('render').renderPanelTemplate(S, t, book.template));
+  const foodPage = html.slice(html.indexOf('abk-p4'), html.indexOf('abk-p5'));
+  ok('★ 서고 5단이어도 부엌 0단이면 음식 1단 묶음은 잠김 (🔒 부엌 1단)', /abk-lv shut"><div class="abk-lh">부엌 1단/.test(foodPage) && foodPage.includes('🔒 부엌 1단') && !foodPage.includes('서고'), foodPage.slice(0, 300));
+  ok('약품은 여전히 서고가 연다', /abk-lv open"><div class="abk-lh">서고 1단/.test(html.slice(html.indexOf('abk-p1'), html.indexOf('abk-p2'))), '');
+  t.vars.kitchen = 3;
+  html = noStyle(SC.require('render').renderPanelTemplate(S, t, book.template));
+  ok('부엌 3단이면 음식 3단까지 열림 (수프 미습득 · 축제 과자 🔒 부엌 4단)', /부엌 3단<span>[^<]*열림/.test(html) && html.includes('🔒 부엌 4단'), '');
+  ok('레시피 desc: 음식만은 부엌 단수', S.vars.find((v) => v.id === 'recipes').desc.includes('음식만은 부엌(kitchen) 단수'), '');
+
+  // 식사 — 보조가 meal에 등급을 적으면 회복·보정을 주고 비운다
+  t = fresh(); t.vars.stamina = 50; t.vars.items = ['수프']; t.vars.kitchen = 2;
+  const bare = fresh(); bare.vars.items = [];   // 초기 items엔 푸니 구슬이 있다 — 빈 상태는 따로 만든다
+  ok('🍽 식사 버튼은 아이템이 있을 때만', canAct(t, 'act_meal') && !canAct(bare, 'act_meal'), '');
+  r = turn(t, { meal: '고급', items: { remove: ['수프'] } }, 5);
+  ok('★ 고급 음식: 체력 +20 +부엌 2×2 = 74 · 보정 1 · 기한 = 오늘 · meal은 비워진다',
+    r.st.vars.stamina === 74 && r.st.vars.meal_buff === 1 && r.st.vars.meal_until >= engine.makeLookup(S, r.st.vars)('elapsed') && r.st.vars.meal === '없음' && r.fired.some((e) => (e.id ?? e) === 'meal_eat'), JSON.stringify([r.st.vars.stamina, r.st.vars.meal_buff, r.st.vars.meal_until, engine.makeLookup(S, r.st.vars)('elapsed'), r.st.vars.meal]));
+  ok('보정이 채집·조합·탐사 mod에 붙는다 (meal_until >= elapsed)', ['gather', 'synth', 'survey'].every((id) => S.checks.find((c) => c.id === id).mod.includes('(meal_until >= elapsed ? meal_buff : 0)')), '');
+  const before = engine.makeLookup(S, t.vars), after = engine.makeLookup(S, r.st.vars);
+  {
+    const expr = SC.require('expr');
+    const mod = S.checks.find((c) => c.id === 'synth').mod;
+    ok('먹은 날은 조합 mod +1 (실측)', expr.evaluate(mod, after, null) - expr.evaluate(mod, before, null) === 1, String(expr.evaluate(mod, after, null) - expr.evaluate(mod, before, null)));
+  }
+  r = turn(r.st, { meal: '비전' }, 6);
+  ok('비전 음식은 +30 · 보정 2 · 최대(100)를 안 넘는다 (이벤트 안에서 클램프)', r.st.vars.meal_buff === 2 && r.st.vars.stamina === 100, JSON.stringify([r.st.vars.stamina, r.st.vars.meal_buff]));
+  ok('보조가 meal을 적을 수 있다 (allow)', S.updater.allow.some((a) => a.id === 'meal'), '');
+
+  // 응접실 — 손님 이벤트가 단수로 열린다
+  const tbl = S.rules.randomEvents.table;
+  ok('응접실 이벤트 3 (1단 손님 · 3단 의뢰인 · 5단 명사)', ['parlor_guest', 'parlor_client', 'parlor_noble'].every((id) => tbl.some((e) => e.id === id))
+    && tbl.find((e) => e.id === 'parlor_client').when.includes('parlor >= 3') && tbl.find((e) => e.id === 'parlor_noble').when.includes('parlor >= 5'), '');
+  ok('메인 지시문에 살림 단수 + "낮은 방은 초라하게"', S.directives.find((d) => d.id === 'workshop').text.includes('살림 — 침실 {bedroom}단') && S.directives.find((d) => d.id === 'workshop').text.includes('초라하게'), '');
+  ok('상태 블록: 살림 줄 · 체력 {stamina}/{stamina_max}', String(S.promptState.template).includes("살림: 침실 ' + bedroom") && String(S.promptState.template).includes('체력 {stamina}/{stamina_max}'), '');
+  ok('상태창: 체력 막대 max가 stamina_max', S.statusUI.groups.some((g) => g.items.some((it) => it.var === 'stamina' && it.bar?.max === 'stamina_max')), '');
 }
 
 console.log('\n━━ 캐스트 맵 — 3,792토큰을 origin으로 쪼갠다 ━━');

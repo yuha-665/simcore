@@ -1268,6 +1268,27 @@ function validateSchema(schema) {
       if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
       else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });
     }
+    // 상시 재고 (v1.7.14) — 보조가 못 빼는 고정 진열. 가격이 없으면 등급 밴드 중간값이라 밴드도 없으면 값을 못 정한다
+    if (SH.staples != null) {
+      if (!Array.isArray(SH.staples) || SH.staples.length > 20) err(`${P}.staples`, '상시 재고(staples)는 { name, cat?, grade?, price?, note? } 최대 20개 배열');
+      else {
+        const names = new Set();
+        SH.staples.forEach((st, i) => {
+          const Q = `${P}.staples[${i}]`;
+          if (!st || typeof st !== 'object' || typeof st.name !== 'string' || !st.name.trim() || st.name.length > 30) { err(Q, '이름(name)은 1~30자 문자열'); return; }
+          if (names.has(st.name)) warn(Q, `'${st.name}'이 상시 재고에 두 번 있습니다 — 뒤의 것은 무시됩니다`);
+          names.add(st.name);
+          if (st.cat != null && Array.isArray(SH.categories) && SH.categories.length && !SH.categories.includes(st.cat))
+            warn(`${Q}.cat`, `'${st.cat}'는 categories에 없는 칸입니다 — 첫 칸('${SH.categories[0]}')으로 들어갑니다`);
+          if (st.grade != null && Array.isArray(SH.grades) && !SH.grades.includes(st.grade))
+            err(`${Q}.grade`, `등급 '${st.grade}'는 grades 어휘에 없습니다`);
+          if (st.price != null && (typeof st.price !== 'number' || st.price < 0)) err(`${Q}.price`, '가격은 0 이상 숫자');
+          const g = st.grade ?? (Array.isArray(SH.grades) ? SH.grades[0] : null);
+          if (st.price == null && !(SH.bands && g && SH.bands[g])) err(`${Q}.price`, `가격이 없고 등급${g ? ` '${g}'` : ''}의 밴드도 없어 값을 정할 수 없습니다 — price를 적거나 bands를 두세요`);
+          if (st.note != null && (typeof st.note !== 'string' || st.note.length > 60)) err(`${Q}.note`, '메모(note)는 60자 이내 문자열');
+        });
+      }
+    }
     if (!SH.guide) warn(P, '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
     if (!SH.grades || !SH.bands) warn(P, '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
     // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리

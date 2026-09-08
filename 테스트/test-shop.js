@@ -389,6 +389,67 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
     && src.includes('shopView.shopId ?? undefined, engine.makeLookup)') && src.includes("shopMod.priceMulFor(cfg, '*', shopLookup)"), '');
 }
 
+// ── v1.7.14 상시 재고 — 보조가 못 빼는 고정 진열 ("늘 있는 것 / 오늘의 물건") ──
+// 계기(아틀리에): 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차 "오늘은 없다"가 됐다.
+{
+  const ST = JSON.parse(J(S));
+  ST.shop.staples = [
+    { name: '하급 회복 포션', cat: '소모품', grade: '일반', price: 10, note: '늘 있음' },
+    { name: '붕대', cat: '소모품' },                            // 등급·가격 생략 → 첫 등급(일반) 밴드 [1,60] 중간값 31
+    { name: '강화 전술복', cat: '장비', grade: '레어', price: 5 }, // 밴드 아래 → 60으로 클램프
+    { name: '하급 회복 포션', cat: '소모품', price: 99 },       // 이름 중복 → 뒤의 것 무시
+    { name: '이상한 것', cat: '없는칸', grade: '일반', price: 1 }, // 카테고리 보정 → 첫 칸(추천)
+  ];
+  const v = validateSchema(ST);
+  ck('★ 상시 재고 스키마 통과 (중복·없는 칸은 경고)', v.ok && v.warnings.some((w) => /두 번/.test(w.msg)) && v.warnings.some((w) => /없는 칸/.test(w.msg)), J(v.errors) + J(v.warnings));
+  const cfg = shop.shopConfig(ST);
+  ck('정규화: 4개 (중복 제거), id st:N, 수량 무제한', cfg.staples.length === 4 && cfg.staples.every((s, i) => s.id === `st:${i}` && s.qty === null && s.staple === true), J(cfg.staples));
+  ck('가격: 지정값 그대로 · 생략은 밴드 중간(31) · 밴드 밖은 클램프(60)',
+    cfg.staples[0].price === 10 && cfg.staples[1].price === 31 && cfg.staples[1].grade === '일반' && cfg.staples[2].price === 60, J(cfg.staples.map((s) => [s.name, s.grade, s.price])));
+  ck('카테고리 밖은 첫 칸으로', cfg.staples[3].cat === '추천', cfg.staples[3].cat);
+
+  // 검증 오류 셋
+  const b1 = JSON.parse(J(ST)); b1.shop.staples = [{ name: '유령', grade: '레전더리', price: 1 }];
+  ck('grades 밖 등급은 오류', !validateSchema(b1).ok, '');
+  const b2 = JSON.parse(J(ST)); delete b2.shop.bands; b2.shop.staples = [{ name: '값 없는 것' }];
+  ck('가격도 밴드도 없으면 오류 (값을 정할 수 없다)', !validateSchema(b2).ok && validateSchema(b2).errors.some((e) => /정할 수 없/.test(e.msg)), J(validateSchema(b2).errors));
+  const b3 = JSON.parse(J(ST)); b3.shop.staples = Array.from({ length: 21 }, (_, i) => ({ name: 'x' + i, price: 1 }));
+  ck('21개는 오류', !validateSchema(b3).ok, '');
+
+  // 구매 — 진열(상태)을 안 건드리고, 몇 번이든 산다
+  const t = engine.initState(ST); t.meta.setupDone = true;
+  shop.applyStock(ST, t, { stock: [{ cat: '소모품', name: '마나 포션', grade: '일반', price: 20 }], buying: [] });
+  const before = J(t.shop.stock);
+  const r1 = shop.buy(ST, t, 'st:0');
+  const r2 = shop.buy(ST, t, 'st:0');
+  ck('★ 상시 재고 구매 — 지갑 -10 ×2, 소지품 병합("… 2"), 진열 무접촉',
+    r1.ok && r2.ok && t.vars.coin === 80 && t.vars.items.includes('하급 회복 포션 (일반) 2') && J(t.shop.stock) === before, J([r1, r2, t.vars]));
+  ck('통지·원장에 실린다 (변동 진열과 같은 길)', t.meta.pendingNotifies.some((n) => /하급 회복 포션/.test(n)) && t.shop.log.length === 2, '');
+  const r3 = shop.buy(ST, t, 'st:9');
+  ck('없는 상시 id는 거부', !r3.ok, '');
+  const r4 = shop.buy(ST, t, t.shop.stock[0].id);
+  ck('숫자 id는 여전히 변동 진열', r4.ok && t.vars.items.includes('마나 포션 (일반)'), J(r4));
+  // 잔액 부족은 상시도 같다
+  t.vars.coin = 3;
+  ck('잔액 부족', !shop.buy(ST, t, 'st:0').ok, '');
+
+  // 변동 진열은 상시 이름을 못 쓴다 · 입고 지시에 "다시 넣지 마라"
+  const clean = shop.sanitizeStock(cfg, { stock: [
+    { cat: '소모품', name: '하급 회복 포션', grade: '일반', price: 12 },
+    { cat: '소모품', name: '중급 회복 포션', grade: '레어', price: 100 },
+  ] });
+  ck('★ 상시 재고와 같은 이름의 변동 진열은 거부', clean.stock.length === 1 && clean.stock[0].name === '중급 회복 포션' && clean.rejected.some((x) => /상시 재고와 겹침/.test(x)), J(clean));
+  const spec = shop.auxSpec(ST, engine.initState(ST), engine.makeLookup);
+  ck('첫 입고 지시에 상시 재고 목록 + "다시 넣지 마라"', /상시 재고.*다시 넣지 마라.*하급 회복 포션 · 붕대 · 강화 전술복 · 이상한 것/.test(spec), spec);
+  const plain = shop.auxSpec(S, engine.initState(S), engine.makeLookup);
+  ck('상시 재고 없는 상점은 지시 그대로', !/상시 재고/.test(plain), '');
+
+  // 어댑터 — 두 묶음 · CSS
+  ck('어댑터: "늘 있는 것 / 오늘의 물건" 두 묶음, 상시 행에 sch-staple',
+    src.includes("el('div', 'sch-sect', '📌 늘 있는 것')") && src.includes("el('div', 'sch-sect', '🧺 오늘의 물건')") && src.includes("sch-staple") && src.includes('#sc-game .sch-sect {'), '');
+  ck('편집기: [상점] 상시 재고 칸 (한 줄에 이름 | 카테고리 | 등급 | 가격 | 메모)', src.includes("shopField('상시 재고'") && src.includes('function parseStaples('), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `— ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

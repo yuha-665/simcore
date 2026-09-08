@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.13
-//@display-name SimCore (시뮬 엔진) v1.7.13 편집기·관리 패널 UI 개조본 이식
+//@version 1.7.14
+//@display-name SimCore (시뮬 엔진) v1.7.14 상점 상시 재고 — 늘 있는 것 / 오늘의 물건
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.14 ───────────────────────────────────────────────
+// **상점 상시 재고** shops[].staples (아틀리에 실사고: 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차
+// "오늘은 없다"가 됐고, 채집도 보조가 이름을 지어 조합서와 안 맞았다 — 유저 "상시 재고랑 변동 재료 두 가지로 나누면 모양새가
+// 낫겠다"). 원작 아틀리에처럼 기본 재료는 상점에 늘 있고 변동 진열은 그 밖의 것만. staples는 상태가 아니라 설정에서
+// 나오므로 물갈이·리롤·세이브와 무관, 수량 무제한, id 'st:N'(buy가 숫자 id와 한 인자로 가른다). 가격은 밴드 클램프·없으면
+// 등급 밴드 중간값. 패널은 "📌 늘 있는 것 / 🧺 오늘의 물건" 두 묶음, 입고 지시에 "상시 재고는 다시 넣지 마라" + 겹치는
+// 이름은 sanitizeStock이 거른다. 검증·편집기 [상점] 02 "상시 재고"(한 줄에 이름 | 카테고리 | 등급 | 가격 | 메모)·schema.md.
 //
 // ── v1.7.13 ───────────────────────────────────────────────
 // **편집기·관리 패널 UI 개조본 이식** (커뮤니티 개조판 v1.0.7 UI mod — docs/기여-UI개조판-v1.0.7-요청.md, 설계 docs/design-UI-크롬.md §0).
@@ -4510,6 +4518,27 @@ function validateSchema(schema) {
       if (typeof SH.when !== 'string') err(`${P}.when`, 'when은 표현식 문자열이어야 함');
       else if (SH.when.trim()) checkExpr(SH.when, `${P}.when`, allIds, err, { allowRand: false });
     }
+    // 상시 재고 (v1.7.14) — 보조가 못 빼는 고정 진열. 가격이 없으면 등급 밴드 중간값이라 밴드도 없으면 값을 못 정한다
+    if (SH.staples != null) {
+      if (!Array.isArray(SH.staples) || SH.staples.length > 20) err(`${P}.staples`, '상시 재고(staples)는 { name, cat?, grade?, price?, note? } 최대 20개 배열');
+      else {
+        const names = new Set();
+        SH.staples.forEach((st, i) => {
+          const Q = `${P}.staples[${i}]`;
+          if (!st || typeof st !== 'object' || typeof st.name !== 'string' || !st.name.trim() || st.name.length > 30) { err(Q, '이름(name)은 1~30자 문자열'); return; }
+          if (names.has(st.name)) warn(Q, `'${st.name}'이 상시 재고에 두 번 있습니다 — 뒤의 것은 무시됩니다`);
+          names.add(st.name);
+          if (st.cat != null && Array.isArray(SH.categories) && SH.categories.length && !SH.categories.includes(st.cat))
+            warn(`${Q}.cat`, `'${st.cat}'는 categories에 없는 칸입니다 — 첫 칸('${SH.categories[0]}')으로 들어갑니다`);
+          if (st.grade != null && Array.isArray(SH.grades) && !SH.grades.includes(st.grade))
+            err(`${Q}.grade`, `등급 '${st.grade}'는 grades 어휘에 없습니다`);
+          if (st.price != null && (typeof st.price !== 'number' || st.price < 0)) err(`${Q}.price`, '가격은 0 이상 숫자');
+          const g = st.grade ?? (Array.isArray(SH.grades) ? SH.grades[0] : null);
+          if (st.price == null && !(SH.bands && g && SH.bands[g])) err(`${Q}.price`, `가격이 없고 등급${g ? ` '${g}'` : ''}의 밴드도 없어 값을 정할 수 없습니다 — price를 적거나 bands를 두세요`);
+          if (st.note != null && (typeof st.note !== 'string' || st.note.length > 60)) err(`${Q}.note`, '메모(note)는 60자 이내 문자열');
+        });
+      }
+    }
     if (!SH.guide) warn(P, '입고 지침(guide)이 없습니다 — 무엇을 파는 상점인지, 가격 감각을 적어 주세요 (뇌절 방지의 절반은 지침입니다)');
     if (!SH.grades || !SH.bands) warn(P, '등급 어휘(grades)와 가격 밴드(bands)가 없으면 진열가를 시스템이 강제할 수 없습니다 — 로어북 상점의 뇌절이 재현됩니다');
     // 표기 단위 (v1.3.0) — 골드/실버/코퍼는 화폐 3개가 아니라 돈 하나의 표기 사다리
@@ -6626,9 +6655,15 @@ SimCore.define("shop", function (require, module, exports) {
 
 const { evaluate, truthy } = require('./expr');
 
+// 상시 재고 (v1.7.14): staples: [{ name, cat?, grade?, price?, note? }] (최대 20) — 보조가 못 빼는 고정 진열.
+//   계기(아틀리에): 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차 "오늘은 없다"가 됐다.
+//   원작 아틀리에처럼 기본 재료는 상점에 늘 있고, 변동 진열은 그 밖의 것만. 상태가 아니라 설정에서 나오므로
+//   물갈이·리롤·세이브와 무관하고 수량 무제한. 가격은 밴드 클램프, 없으면 등급 밴드 중간값. 패널은 "늘 있는 것 /
+//   오늘의 물건" 두 묶음으로 나눠 그리고, 입고 지시는 "상시 재고는 다시 넣지 마라" — 겹치는 이름은 sanitizeStock이 거른다.
+
 const CAPS = {
   NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 48, BUYING_MAX: 12, LOG_MAX: 6,
-  QTY_MAX: 9, PRICE_MAX: 100000000,
+  QTY_MAX: 9, PRICE_MAX: 100000000, STAPLES_MAX: 20,
 };
 
 /** 환전 창구 정규화 — 객체·배열 모두 받아 유효한 창구 배열로 (최대 4, var 중복은 선착) */
@@ -6676,7 +6711,7 @@ function parseShopBody(s, id) {
   if (typeof s.currency !== 'string' || !s.currency) return null;
   if (typeof s.buyTo !== 'string' || !s.buyTo) return null;
   const exchanges = normalizeExchanges(s.exchange);
-  return {
+  const cfg = {
     id,
     label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : '상점',
     icon: typeof s.icon === 'string' && s.icon.trim() ? s.icon.trim() : '🛒',
@@ -6706,6 +6741,32 @@ function parseShopBody(s, id) {
     exchanges,
     exchange: exchanges[0] ?? null,   // 하위호환 — 기존 소비처("환전 창구가 있나" 판단 등)
   };
+  cfg.staples = normalizeStaples(s.staples, cfg);
+  return cfg;
+}
+
+/** 상시 재고 정규화 (v1.7.14) — 카테고리·등급은 어휘 안으로, 가격은 밴드 클램프(없으면 등급 밴드 중간값, 그것도 없으면 탈락).
+ *  id는 'st:N' — 진열(state.stock)의 숫자 id와 겹치지 않아 buy()가 한 인자로 둘을 가른다. 이름 중복은 선착 */
+function normalizeStaples(raw, cfg) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const it of raw) {
+    if (out.length >= CAPS.STAPLES_MAX) break;
+    if (!it || typeof it !== 'object') continue;
+    const name = cut(it.name, CAPS.NAME);
+    if (!name || seen.has(name)) continue;
+    const cat = cfg.categories.includes(cut(it.cat, CAPS.CAT)) ? cut(it.cat, CAPS.CAT) : cfg.categories[0];
+    let grade = it.grade != null ? cut(it.grade, 12) : null;
+    if (cfg.grades) grade = grade && cfg.grades.includes(grade) ? grade : cfg.grades[0];
+    let price = null;
+    if (typeof it.price === 'number') price = clampPrice(cfg, grade, it.price);
+    else if (cfg.bands && grade && cfg.bands[grade]) price = Math.round((cfg.bands[grade][0] + cfg.bands[grade][1]) / 2);
+    if (price == null) continue;
+    seen.add(name);
+    out.push({ id: `st:${out.length}`, cat, name, grade, price, qty: null, note: cut(it.note, CAPS.NOTE) || null, staple: true });
+  }
+  return out;
 }
 
 /** 상점 구성 전부 (v1.4.0) — 단수 shop은 id null(상태 state.shop), shops[]는 id(상태 state.shops[id]) */
@@ -6817,6 +6878,8 @@ function sanitizeStock(cfg, raw) {
     if (!it || typeof it !== 'object') continue;
     const name = cut(it.name, CAPS.NAME);
     if (!name) continue;
+    // 상시 재고와 같은 이름은 변동 진열에 못 들어온다 — 두 묶음이 겹치면 "늘 있는 것"의 뜻이 없다 (v1.7.14)
+    if (cfg.staples.some((st) => st.name === name)) { out.rejected.push(`${name} (상시 재고와 겹침)`); continue; }
     let grade = it.grade != null ? cut(it.grade, 12) : null;
     // 등급 어휘 통제 — 스키마에 없는 등급(레전더리 등)은 그 항목째 거부한다
     if (cfg.grades && grade && !cfg.grades.includes(grade)) { out.rejected.push(`${name} (등급 '${grade}')`); continue; }
@@ -6917,7 +6980,10 @@ function buy(schema, state, itemId, shopId, makeLookup) {
   const cfg = shopConfig(schema, shopId);
   if (!cfg) return { ok: false, reason: '상점 없음' };
   const shop = shopStateOf(state, cfg);
-  const it = shop.stock.find((x) => x.id === itemId);
+  // 상시 재고('st:N')는 설정에서, 변동 진열(숫자 id)은 상태에서 — 결제·합류는 같은 길 (v1.7.14)
+  const it = typeof itemId === 'string' && itemId.startsWith('st:')
+    ? cfg.staples.find((x) => x.id === itemId)
+    : shop.stock.find((x) => x.id === itemId);
   if (!it) return { ok: false, reason: '이미 팔린 물건이에요' };
   const wallet = Number(state.vars[cfg.currency]) || 0;
   const price = typeof makeLookup === 'function' ? effectivePrice(cfg, it, makeLookup(schema, state.vars)) : it.price;
@@ -7035,6 +7101,8 @@ function stockSpecBody(cfg) {
     : null;
   return [
     stockLine,
+    // 상시 재고 (v1.7.14) — 시스템이 늘 진열하니 변동 진열에 다시 넣지 않게. 겹치면 sanitizeStock이 거른다
+    cfg.staples.length ? `- 상시 재고(시스템이 늘 진열한다 — 다시 넣지 마라, 변동 상품은 이것 밖의 것): ${cfg.staples.map((s) => s.name).join(' · ')}.` : null,
     `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}.${cfg.perCat ? '' : ' 카테고리마다 골고루.'}`,
     cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
     bandsText(cfg) ? `- 가격 밴드 (시스템이 강제한다): ${bandsText(cfg)}.` : null,
@@ -21567,6 +21635,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-shop-section-copy' }, copy)),
       h('div', { class: 'sce-shop-section-body' }, ...children));
   }
+  // 상시 재고 (v1.7.14) — 한 줄에 하나 "이름 | 카테고리 | 등급 | 가격 | 메모" (이름 뒤는 전부 선택, 가격 비우면 등급 밴드 중간값)
+  function staplesText(arr) {
+    if (!Array.isArray(arr)) return '';
+    return arr.map((s) => [s.name, s.cat ?? '', s.grade ?? '', s.price ?? '', s.note ?? ''].join(' | ').replace(/(\s\|\s*)+$/, '')).join('\n');
+  }
+  function parseStaples(text) {
+    const out = [];
+    for (const line of String(text || '').split('\n')) {
+      const [name, cat, grade, price, note] = line.split('|').map((x) => x.trim());
+      if (!name) continue;
+      const st = { name };
+      if (cat) st.cat = cat;
+      if (grade) st.grade = grade;
+      if (price !== undefined && price !== '' && isFinite(Number(price))) st.price = Number(price);
+      if (note) st.note = note;
+      out.push(st);
+    }
+    return out.slice(0, 20);
+  }
   function shopFieldBlock(SH, nums, lists) {
     // 상점 하나의 설정 섹션 묶음 — 개조본 6단 뼈대(v1.7.13) 위에 우리 칸을 되살렸다:
     // 카테고리당 개수(perCat) · 시세 배율(priceMul v1.7.8) · 표기 단위(units) · 다중 환전 창구(exchangeRows)
@@ -21629,7 +21716,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             }
             if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
           }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
-            '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요', true))),
+            '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요', true),
+          // 상시 재고 (v1.7.14) — 보조가 못 빼는 고정 진열. 패널은 "늘 있는 것 / 오늘의 물건" 두 묶음
+          shopField('상시 재고', bindArea(staplesText(SH.staples), (x) => {
+            const arr = parseStaples(x); if (arr.length) SH.staples = arr; else delete SH.staples; rerender();
+          }, '한 줄에 하나 — 이름 | 카테고리 | 등급 | 가격 | 메모\n맑은 물 | 소재 | 조악 | 10\n약초 | 소재 | 조악\n밀가루 | 식재료'),
+            '보조가 못 빼는 고정 진열 (최대 20). 패널에 "늘 있는 것"으로 따로 뜨고 변동 진열은 이 이름을 못 씁니다. 이름 뒤는 전부 선택 — 가격을 비우면 등급 밴드 중간값', true))),
 
       shopSection('03', '판매 설정', '플레이어가 가진 물건을 꺼내 팔 수 있는 매입 창구를 설정해요.',
         h('div', { class: 'sce-shop-field-grid sce-shop-workgroup' },
@@ -32426,6 +32518,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         color:#9db8e8; white-space:nowrap; }
       #sc-game .sch-price { color:#ffd166; font-size:12.5px; font-weight:700; white-space:nowrap; }
       #sc-game .sch-qty { color:#e2938f; font-size:11px; white-space:nowrap; }
+      #sc-game .sch-sect { margin:10px 0 2px; font-size:11px; font-weight:600; letter-spacing:.04em; color:#7d8aa5; }
+      #sc-game .sch-item.sch-staple { background:rgba(255,255,255,.025); }
       @media (max-width:620px) {
         #sc-game .sch-item.sch-stock-item { flex-wrap:wrap; gap:5px 8px; }
         #sc-game .sch-item.sch-stock-item .sch-name { flex:1 0 100%; overflow-wrap:anywhere; }
@@ -33824,17 +33918,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         card.appendChild(bx);
       }
     } else {
-      // ── 진열 — 카테고리 필터 ──
-      const items = shop.stock.filter((it) => it.cat === active);
-      if (!shop.stock.length) {
-        card.appendChild(el('div', 'scb-empty', shop.stocked
-          ? '진열이 비었어요 — [🔄 새로고침]으로 새 물건을 받아 보세요.'
-          : '첫 입고 대기 중 — 다음 응답이 오면 상품이 채워져요. 급하면 [🔄 새로고침].'));
-      } else if (!items.length) {
-        card.appendChild(el('div', 'scb-empty', '이 칸은 지금 비어 있어요.'));
-      }
-      for (const it of items) {
-        const row = el('div', 'sch-item sch-stock-item');
+      // ── 진열 — 카테고리 필터. 상시 재고(v1.7.14, 설정)와 변동 진열(상태)을 두 묶음으로 ──
+      const stockRow = (it) => {
+        const row = el('div', `sch-item sch-stock-item${it.staple ? ' sch-staple' : ''}`);
         const nm = el('span', 'sch-name', it.name);
         if (it.note) nm.appendChild(el('small', null, it.note));
         row.appendChild(nm);
@@ -33843,8 +33929,24 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const eff = shopMod.effectivePrice(cfg, it, shopLookup);
         row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, eff)));
         row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < eff));
-        card.appendChild(row);
+        return row;
+      };
+      const staples = cfg.staples.filter((it) => it.cat === active);
+      const items = shop.stock.filter((it) => it.cat === active);
+      const split = cfg.staples.length > 0;   // 상시 재고가 있는 상점만 묶음 머리를 단다
+      if (staples.length) {
+        card.appendChild(el('div', 'sch-sect', '📌 늘 있는 것'));
+        for (const it of staples) card.appendChild(stockRow(it));
       }
+      if (split) card.appendChild(el('div', 'sch-sect', '🧺 오늘의 물건'));
+      if (!shop.stock.length) {
+        card.appendChild(el('div', 'scb-empty', shop.stocked
+          ? '진열이 비었어요 — [🔄 새로고침]으로 새 물건을 받아 보세요.'
+          : '첫 입고 대기 중 — 다음 응답이 오면 상품이 채워져요. 급하면 [🔄 새로고침].'));
+      } else if (!items.length) {
+        card.appendChild(el('div', 'scb-empty', split ? '오늘은 이 칸에 새 물건이 없어요.' : '이 칸은 지금 비어 있어요.'));
+      }
+      for (const it of items) card.appendChild(stockRow(it));
     }
 
     if (shop.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근 거래: ' + shop.log.join(' · ')));

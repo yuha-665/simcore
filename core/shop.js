@@ -40,9 +40,15 @@
 
 const { evaluate, truthy } = require('./expr');
 
+// 상시 재고 (v1.7.14): staples: [{ name, cat?, grade?, price?, note? }] (최대 20) — 보조가 못 빼는 고정 진열.
+//   계기(아틀리에): 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차 "오늘은 없다"가 됐다.
+//   원작 아틀리에처럼 기본 재료는 상점에 늘 있고, 변동 진열은 그 밖의 것만. 상태가 아니라 설정에서 나오므로
+//   물갈이·리롤·세이브와 무관하고 수량 무제한. 가격은 밴드 클램프, 없으면 등급 밴드 중간값. 패널은 "늘 있는 것 /
+//   오늘의 물건" 두 묶음으로 나눠 그리고, 입고 지시는 "상시 재고는 다시 넣지 마라" — 겹치는 이름은 sanitizeStock이 거른다.
+
 const CAPS = {
   NAME: 30, NOTE: 60, CAT: 12, STOCK_MAX: 48, BUYING_MAX: 12, LOG_MAX: 6,
-  QTY_MAX: 9, PRICE_MAX: 100000000,
+  QTY_MAX: 9, PRICE_MAX: 100000000, STAPLES_MAX: 20,
 };
 
 /** 환전 창구 정규화 — 객체·배열 모두 받아 유효한 창구 배열로 (최대 4, var 중복은 선착) */
@@ -90,7 +96,7 @@ function parseShopBody(s, id) {
   if (typeof s.currency !== 'string' || !s.currency) return null;
   if (typeof s.buyTo !== 'string' || !s.buyTo) return null;
   const exchanges = normalizeExchanges(s.exchange);
-  return {
+  const cfg = {
     id,
     label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : '상점',
     icon: typeof s.icon === 'string' && s.icon.trim() ? s.icon.trim() : '🛒',
@@ -120,6 +126,32 @@ function parseShopBody(s, id) {
     exchanges,
     exchange: exchanges[0] ?? null,   // 하위호환 — 기존 소비처("환전 창구가 있나" 판단 등)
   };
+  cfg.staples = normalizeStaples(s.staples, cfg);
+  return cfg;
+}
+
+/** 상시 재고 정규화 (v1.7.14) — 카테고리·등급은 어휘 안으로, 가격은 밴드 클램프(없으면 등급 밴드 중간값, 그것도 없으면 탈락).
+ *  id는 'st:N' — 진열(state.stock)의 숫자 id와 겹치지 않아 buy()가 한 인자로 둘을 가른다. 이름 중복은 선착 */
+function normalizeStaples(raw, cfg) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const it of raw) {
+    if (out.length >= CAPS.STAPLES_MAX) break;
+    if (!it || typeof it !== 'object') continue;
+    const name = cut(it.name, CAPS.NAME);
+    if (!name || seen.has(name)) continue;
+    const cat = cfg.categories.includes(cut(it.cat, CAPS.CAT)) ? cut(it.cat, CAPS.CAT) : cfg.categories[0];
+    let grade = it.grade != null ? cut(it.grade, 12) : null;
+    if (cfg.grades) grade = grade && cfg.grades.includes(grade) ? grade : cfg.grades[0];
+    let price = null;
+    if (typeof it.price === 'number') price = clampPrice(cfg, grade, it.price);
+    else if (cfg.bands && grade && cfg.bands[grade]) price = Math.round((cfg.bands[grade][0] + cfg.bands[grade][1]) / 2);
+    if (price == null) continue;
+    seen.add(name);
+    out.push({ id: `st:${out.length}`, cat, name, grade, price, qty: null, note: cut(it.note, CAPS.NOTE) || null, staple: true });
+  }
+  return out;
 }
 
 /** 상점 구성 전부 (v1.4.0) — 단수 shop은 id null(상태 state.shop), shops[]는 id(상태 state.shops[id]) */
@@ -231,6 +263,8 @@ function sanitizeStock(cfg, raw) {
     if (!it || typeof it !== 'object') continue;
     const name = cut(it.name, CAPS.NAME);
     if (!name) continue;
+    // 상시 재고와 같은 이름은 변동 진열에 못 들어온다 — 두 묶음이 겹치면 "늘 있는 것"의 뜻이 없다 (v1.7.14)
+    if (cfg.staples.some((st) => st.name === name)) { out.rejected.push(`${name} (상시 재고와 겹침)`); continue; }
     let grade = it.grade != null ? cut(it.grade, 12) : null;
     // 등급 어휘 통제 — 스키마에 없는 등급(레전더리 등)은 그 항목째 거부한다
     if (cfg.grades && grade && !cfg.grades.includes(grade)) { out.rejected.push(`${name} (등급 '${grade}')`); continue; }
@@ -331,7 +365,10 @@ function buy(schema, state, itemId, shopId, makeLookup) {
   const cfg = shopConfig(schema, shopId);
   if (!cfg) return { ok: false, reason: '상점 없음' };
   const shop = shopStateOf(state, cfg);
-  const it = shop.stock.find((x) => x.id === itemId);
+  // 상시 재고('st:N')는 설정에서, 변동 진열(숫자 id)은 상태에서 — 결제·합류는 같은 길 (v1.7.14)
+  const it = typeof itemId === 'string' && itemId.startsWith('st:')
+    ? cfg.staples.find((x) => x.id === itemId)
+    : shop.stock.find((x) => x.id === itemId);
   if (!it) return { ok: false, reason: '이미 팔린 물건이에요' };
   const wallet = Number(state.vars[cfg.currency]) || 0;
   const price = typeof makeLookup === 'function' ? effectivePrice(cfg, it, makeLookup(schema, state.vars)) : it.price;
@@ -449,6 +486,8 @@ function stockSpecBody(cfg) {
     : null;
   return [
     stockLine,
+    // 상시 재고 (v1.7.14) — 시스템이 늘 진열하니 변동 진열에 다시 넣지 않게. 겹치면 sanitizeStock이 거른다
+    cfg.staples.length ? `- 상시 재고(시스템이 늘 진열한다 — 다시 넣지 마라, 변동 상품은 이것 밖의 것): ${cfg.staples.map((s) => s.name).join(' · ')}.` : null,
     `- 카테고리(cat)는 다음 중에서만: ${cfg.categories.join(' | ')}.${cfg.perCat ? '' : ' 카테고리마다 골고루.'}`,
     cfg.grades ? `- 등급(grade)은 다음 중에서만: ${cfg.grades.join(' | ')}. 그 밖의 등급은 시스템이 거부한다.` : null,
     bandsText(cfg) ? `- 가격 밴드 (시스템이 강제한다): ${bandsText(cfg)}.` : null,

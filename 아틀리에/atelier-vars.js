@@ -36,6 +36,33 @@ const PLACES = [
   ['세계의 끝', 5],
 ];
 
+// ══════════ 특산표 — 지형 × 계절 (유저: "지역마다 계절·날씨에 따라 채집 가능한 특수 재료") ══════════
+// 로어북엔 지역별 소재 배치만 있고 계절은 없다 → 계절·날씨 층은 창작. 한 표에서 (지형,계절) 지시문 48개와
+// 날씨 지시문 6개가 나온다 — 활성은 한 번에 지형 1 + 날씨 1이라 토큰은 두 줄뿐. 이름은 계절 레시피와 짝.
+const SEASONS = ['봄', '여름', '가을', '겨울'];
+const SPECIALS = {
+  '왕도 주변 들판': [['봄꽃 이슬', '민들레'], ['밀 이삭', '반딧불 풀'], ['가을 열매', '마른 풀'], ['겨울 뿌리', '서리 풀']],
+  '프리겐·시골': [['사과꽃'], ['햇밀'], ['호박'], ['훈제용 향나무']],
+  '숲': [['새순', '송진'], ['매미 허물', '숲 버섯'], ['도토리', '붉은 버섯'], ['겨우살이', '설목 껍질']],
+  '꽃밭·초원': [['일곱빛 꽃', '벌꿀'], ['해바라기 씨', '나비 비늘'], ['들국화'], ['얼음꽃']],
+  '강가·폭포': [['은어', '물이끼'], ['반딧불 조개', '여름 폭포수'], ['연어', '낙엽 물'], ['얼음 결정', '겨울 송어']],
+  '해안': [['바다 유리', '봄 김'], ['진주조개', '산호 조각'], ['폭풍 유목'], ['겨울 소금', '서리 조개']],
+  '습지·늪': [['늪 연꽃'], ['반딧불 이끼', '독개구리 점액'], ['늪 버섯', '검은 물'], ['얼어붙은 진흙']],
+  '광산·동굴': [['푸른 광석'], ['불의 돌', '유황'], ['번개 돌'], ['서리 결정', '얼음 광석']],
+  '설산 능선': [['설화'], ['만년설 물'], ['설산 약초'], ['영원의 결정 조각', '눈꽃 결정']],
+  '사막': [['사막 장미'], ['불의 모래', '사막 선인장'], ['별의 모래'], ['밤 사막 이슬']],
+  '유적·마나 이상 지대': [['마나 새싹'], ['마나 결정'], ['고대 파편'], ['별가루']],
+  '세계의 끝': [['둔켈하이트 봉오리'], ['혜성석 가루'], ['드래곤 비늘'], ['영원의 결정']],
+};
+const WEATHER_SPECIALS = {
+  '비': '이슬 버섯·빗물 — 비 온 뒤에만 돋는 것',
+  '안개': '안개 이끼 — 안개 속 바위에만 낀다',
+  '눈': '눈꽃 결정 — 눈이 그치기 전에 주워야 한다',
+  '바람': '바람 돌·떨어진 깃털 — 바람이 실어다 준 것',
+  '흐림': '그늘 버섯 — 해가 없는 날 그늘에서',
+  '맑음': '햇빛 꽃 — 해가 쨍한 날 활짝 핀 것',
+};
+
 // ══════════ 지도 탭 — 지형표에서 그대로 굽는다 (표와 어긋날 수 없다) ══════════
 // 새 패널이 아니라 공방 패널의 대장 템플릿 탭 (얼헌 서울 지도와 같은 문법).
 // 격(0~5)별 사다리에 지형을 놓고, 가 본 곳(areas)은 `{areas:tags:지형}` 필터로 제 칸에 꽂힌다 —
@@ -177,47 +204,6 @@ const PANEL_CSS = `
 .scm-pick { border: 1px solid ${SKIN.line}; color: ${SKIN.ink}; border-radius: 12px; }
 .scm-pick.scm-on { background: ${SKIN.skySoft}; border-color: ${SKIN.sky}; color: ${SKIN.ink}; }
 `;
-
-const MAP_TEMPLATE = (() => {
-  const rows = [];
-  for (let t = 0; t <= 5; t++) {
-    const cells = PLACES.filter(([, tier]) => tier === t).map(([p]) => t === 0
-      ? `<span class="amap-town">${p}</span>`
-      : `<div class="amap-cell"><div class="amap-pn">${p}</div>{areas:tags:${p}}</div>`).join('');
-    rows.push(`<div class="amap-row amap-t${t}"><div class="amap-tier"><b>격 ${t}</b><span>${TIER_NAME[t]}</span></div>`
-      + `<div class="amap-cells">${cells}</div></div>`);
-  }
-  return `
-<div class="amap">
-  <div class="amap-head">란타르나 채집 지도<span class="amap-now">지금 {location} · 격 {area_tier}</span></div>
-  ${rows.join('\n  ')}
-  <div class="amap-foot">채집 목표치 = 8 + 격×2 · 탐사는 격 2부터 · 가 본 곳은 "이름 (지형)"으로 적혀야 제 칸에 든다</div>
-</div>
-<style>
-/* 아틀리에 스킨 — 크림 종이 위 코코아 글자 (SKIN 팔레트) */
-.amap { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
-.amap-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 14px;
-  letter-spacing: .04em; color: ${SKIN.peach}; border-bottom: 2px dashed ${SKIN.line}; padding-bottom: 5px; margin-bottom: 8px; }
-.amap-now { font-size: 12px; font-weight: 600; color: ${SKIN.honey}; }
-.amap-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed ${SKIN.lineSoft}; }
-.amap-tier { display: flex; flex-direction: column; color: ${SKIN.honey}; }
-.amap-tier b { font-size: 13px; } .amap-tier span { font-size: 11px; color: ${SKIN.muted}; }
-.amap-cells { display: flex; flex-wrap: wrap; gap: 6px; }
-.amap-town { font-size: 12px; color: ${SKIN.ink}; background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 999px; padding: 2px 10px; }
-.amap-cell { min-width: 120px; flex: 1 1 120px; border: 1px solid ${SKIN.line}; border-radius: 12px;
-  padding: 6px 9px; background: ${SKIN.cream}; }
-.amap-pn { font-size: 12.5px; font-weight: 800; color: ${SKIN.ink}; margin-bottom: 3px; }
-.amap-cell .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 2px 0; font-size: 11.5px;
-  background: ${SKIN.mintSoft}; border: 1px solid ${SKIN.mint}; border-radius: 999px; padding: 1px 8px; color: #2f6f55; }
-.amap-cell .sim-empty { font-size: 11px; color: ${SKIN.faint}; }
-.amap-t3 .amap-cell { background: ${SKIN.honeySoft}; border-color: ${SKIN.honey}; }
-.amap-t4 .amap-cell { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; }
-.amap-t4 .amap-pn { color: #b34d2e; }
-.amap-t5 .amap-cell { background: ${SKIN.lavenderSoft}; border-color: ${SKIN.lavender}; }
-.amap-t5 .amap-pn { color: #6f4fa8; }
-.amap-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
-</style>`;
-})();
 
 // ══════════ 조합서 — 로어북 상세 항목(공격·회복·중간재·음식)을 도감으로 굽는다 ══════════
 // 컬렉션 탭. 배운 것(recipes)은 has()로 해금, 필요 소재는 보관고(materials)에 있으면 밝게.
@@ -425,11 +411,89 @@ for (const [c, names] of Object.entries(MAT_CLASS)) for (const n of names) (CLAS
 // 분류명으로 적힌 재료 → 분류. 레시피 표에서 이 이름은 "그 분류 하나"다 — 분류 구성원에 같은 이름의 소재도 들어 있어 옛 저장값도 그대로 통한다.
 const GENERIC = { 연료: '연료', 광석: '광석', 약초: '약재', 천: '천', 실: '실', 기름: '기름', 보석: '보석', 과일: '과일', 돌: '광석',
   목재: '목재', 모래: '모래', 독액: '독의 재료' };
+// ══════════ 산지표 — 소재가 어디서 나는가 (2026-09-08, 유저 "막상 재료를 어디서 구해야 할지 어렵다") ══════════
+// 채집 이름은 보조가 짓고 상점 진열도 매번 새로 짓는데 둘 다 조합서 표를 안 봐서, 재료와 상관없는 것만 쌓였다.
+// 원작 아틀리에의 답을 그대로: 기본 재료는 상점에 늘 있고(staples), 채집지는 뭐가 나는지 정해져 있고, 희귀한 것은
+// 특정 장소·특산·드롭. 재량은 "뭐가 나오나"가 아니라 "몇 개·어떤 품질로"에 둔다 — 표 밖 소재도 격이 맞으면 한 가지까지.
+// 산지 = 채집 지형 12(격 1~5) + 상점가·뒷골목·씨앗 상사·미끼 상점 + 드롭(교전 뒤) — 계절 특산(SPECIALS)과 조합(완성품)은 자동으로 붙는다.
+const MAT_SOURCE = {
+  '왕도 주변 들판': ['이름 모를 풀', '약초', '맑은 물', '돌', '과일', '버섯', '유니', '깃털', '식물 섬유', '꿀'],
+  '프리겐·시골': ['이름 모를 풀', '약초', '사과', '과일', '꿀', '우유', '밀랍', '목재', '가죽', '털가죽', '고기', '말린 고기', '돌'],
+  숲: ['약초', '쓴 풀', '해독 버섯', '버섯', '목재', '향나무 껍질', '식물 섬유', '활력 약초', '깃털', '가죽', '털가죽', '풀 접착제', '희귀 섬유'],
+  '꽃밭·초원': ['향기 꽃', '희귀 꽃', '꿀', '밀랍', '활력 약초', '약초', '염료', '식물 섬유', '유니'],
+  '강가·폭포': ['맑은 물', '정제수', '모래', '돌', '조개껍질', '물이끼', '생선', '갈고리'],
+  해안: ['소금', '조개껍질', '모래', '생선', '조개', '진주', '유리'],
+  '습지·늪': ['독액', '쓴 풀', '해독 버섯', '검은 물', '식물 섬유', '몬스터 껍질', '단단한 껍질'],
+  '광산·동굴': ['광석', '희귀 광석', '돌', '돌가루', '유황', '초석', '불의 돌', '금속 조각', '보석', '희귀 결정', '은', '단단한 껍질', '모래', '전도 금속'],
+  '설산 능선': ['얼음 결정', '고급 얼음 결정', '서리 결정', '희귀 약초', '만년설 물', '설화', '은', '희귀 결정', '희귀 꽃', '바람 돌'],
+  사막: ['불의 모래', '모래', '별가루', '초석', '유황', '희귀 광석', '보석', '향신료', '사막 장미', '사막 선인장', '바람 돌'],
+  '유적·마나 이상 지대': ['마나 결정', '정령석', '마법 페이지', '고대 파편', '별가루', '빛의 소재', '번개 결정', '희귀 번개 광석', '전도 금속', '별의 조각',
+    '현자의 소재', '성수', '폭발 촉매', '강력 촉매', '정제 촉매', '내열 촉매', '희귀 섬유'],
+  '세계의 끝': ['둔켈하이트', '영원의 결정', '혜성석', '드래곤 비늘', '드래곤 하트', '현자의 소재', '별의 조각', '생명의 꽃', '성수'],
+  상점가: ['맑은 물', '이름 모를 풀', '약초', '연료', '숯', '기름', '밀랍', '천', '실', '광석', '유리병', '유리', '여과지', '밀가루', '소금', '설탕', '우유',
+    '꿀', '향신료', '고기', '말린 고기', '과일', '사과', '버섯', '목재', '갈고리', '풀 접착제', '염료', '가죽', '정제수', '모래', '순백 천'],
+  뒷골목: ['드래곤 비늘', '별의 조각', '둔켈하이트', '마법 페이지', '정령석', '현자의 소재', '빛의 소재', '성수', '폭발 촉매', '강력 촉매', '정제 촉매',
+    '내열 촉매', '강력 화약', '희귀 섬유', '순백 천', '희귀 번개 광석', '마나 결정', '푸니볼', '검은 광석'],
+  '씨앗 상사': MAT_CLASS.씨앗,
+  '미끼 상점': [...MAT_CLASS.미끼, '생선', '조개', '진주', '갈고리'],
+  드롭: ['유니', '푸니볼', '단단한 껍질', '몬스터 껍질', '몬스터 털', '독액', '깃털', '가죽', '털가죽', '드래곤 비늘', '드래곤 하트'],
+};
+const GATHER_PLACES = PLACES.filter(([, t]) => t >= 1).map(([p]) => p);
+// 이름 → 산지 목록. 채집 지형 → 상점 → 드롭 → 계절 특산 "지형(계절)" → 조합 순서 (첫 산지가 칩 꼬리표의 대표)
+const SOURCE_OF = {};
+const addSrc = (n, src) => { (SOURCE_OF[n] ??= []).includes(src) || SOURCE_OF[n].push(src); };
+for (const [src, names] of Object.entries(MAT_SOURCE)) for (const n of names) addSrc(n, src);
+for (const [place, bySeason] of Object.entries(SPECIALS)) bySeason.forEach((names, si) => names.forEach((n) => addSrc(n, `${place}(${SEASONS[si]})`)));
+for (const [n] of BOOK_ALL) addSrc(n, '조합');
 // 조합서 사이드카 — convert-lorebook.js가 읽어 레시피마다 키워드 활성 로어북 항목을 굽는다.
 // 아는 레시피 전부를 지시문으로 실으면 배울수록 매턴 비용이 는다 — 만들려는 것의 이름이 채팅에 나올 때만
 // 그 한 벌(효과·필요 소재·규칙)이 실리는 게 로어북식이고, 유저가 고른 방식이다 (2026-09-06).
-// 분류표·분류명 재료도 같이 싣는다 — 변환기가 "(연료 — 연료·숯·… 중 하나)"로 굽는다.
-require('fs').writeFileSync(__P('조합서.json'), JSON.stringify({ book: RECIPE_BOOK, classes: MAT_CLASS, generic: GENERIC }, null, 1));
+// 분류표·분류명 재료·산지표도 같이 싣는다 — 변환기가 "(연료 — 연료·숯·… 중 하나)"와 "산지: …"로 굽는다.
+require('fs').writeFileSync(__P('조합서.json'), JSON.stringify({ book: RECIPE_BOOK, classes: MAT_CLASS, generic: GENERIC, sources: SOURCE_OF }, null, 1));
+
+const MAP_TEMPLATE = (() => {
+  const rows = [];
+  for (let t = 0; t <= 5; t++) {
+    // 나는 것 — 산지표의 조합서 재료 (계절 특산은 특산표가 따로 말한다). "어디서 구하나"의 정답지가 지도다 (2026-09-08)
+    const cells = PLACES.filter(([, tier]) => tier === t).map(([p]) => t === 0
+      ? `<span class="amap-town">${p}</span>`
+      : `<div class="amap-cell"><div class="amap-pn">${p}</div>{areas:tags:${p}}<div class="amap-src">${(MAT_SOURCE[p] || []).join(' · ')}</div></div>`).join('');
+    rows.push(`<div class="amap-row amap-t${t}"><div class="amap-tier"><b>격 ${t}</b><span>${TIER_NAME[t]}</span></div>`
+      + `<div class="amap-cells">${cells}</div></div>`);
+  }
+  return `
+<div class="amap">
+  <div class="amap-head">란타르나 채집 지도<span class="amap-now">지금 {location} · 격 {area_tier}</span></div>
+  ${rows.join('\n  ')}
+  <div class="amap-foot">채집 목표치 = 8 + 격×2 · 탐사는 격 2부터 · 가 본 곳은 "이름 (지형)"으로 적혀야 제 칸에 든다 · 작은 글씨는 거기서 나는 조합서 재료 (계절 특산은 따로)</div>
+</div>
+<style>
+/* 아틀리에 스킨 — 크림 종이 위 코코아 글자 (SKIN 팔레트) */
+.amap { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
+.amap-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 14px;
+  letter-spacing: .04em; color: ${SKIN.peach}; border-bottom: 2px dashed ${SKIN.line}; padding-bottom: 5px; margin-bottom: 8px; }
+.amap-now { font-size: 12px; font-weight: 600; color: ${SKIN.honey}; }
+.amap-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px dashed ${SKIN.lineSoft}; }
+.amap-tier { display: flex; flex-direction: column; color: ${SKIN.honey}; }
+.amap-tier b { font-size: 13px; } .amap-tier span { font-size: 11px; color: ${SKIN.muted}; }
+.amap-cells { display: flex; flex-wrap: wrap; gap: 6px; }
+.amap-town { font-size: 12px; color: ${SKIN.ink}; background: ${SKIN.honeySoft}; border: 1px solid ${SKIN.honey}; border-radius: 999px; padding: 2px 10px; }
+.amap-cell { min-width: 120px; flex: 1 1 120px; border: 1px solid ${SKIN.line}; border-radius: 12px;
+  padding: 6px 9px; background: ${SKIN.cream}; }
+.amap-pn { font-size: 12.5px; font-weight: 800; color: ${SKIN.ink}; margin-bottom: 3px; }
+.amap-cell .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 2px 0; font-size: 11.5px;
+  background: ${SKIN.mintSoft}; border: 1px solid ${SKIN.mint}; border-radius: 999px; padding: 1px 8px; color: #2f6f55; }
+.amap-cell .sim-empty { font-size: 11px; color: ${SKIN.faint}; }
+.amap-src { margin-top: 3px; font-size: 10.5px; line-height: 1.35; color: ${SKIN.muted}; }
+.amap-t3 .amap-cell { background: ${SKIN.honeySoft}; border-color: ${SKIN.honey}; }
+.amap-t4 .amap-cell { background: ${SKIN.peachSoft}; border-color: ${SKIN.peach}; }
+.amap-t4 .amap-pn { color: #b34d2e; }
+.amap-t5 .amap-cell { background: ${SKIN.lavenderSoft}; border-color: ${SKIN.lavender}; }
+.amap-t5 .amap-pn { color: #6f4fa8; }
+.amap-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
+</style>`;
+})();
+
 const BOOK_CATS = Object.keys(RECIPE_BOOK);
 // 서고 단수별 묶음 머리 — "이 단부터 열린다"가 곧 진행 사다리
 const LIB_NAME = ['처음부터', '서고 1단', '서고 2단', '서고 3단', '서고 4단', '서고 5단'];
@@ -451,8 +515,11 @@ const BOOK_TEMPLATE = (() => {
       return `<i class="abk-m abk-cat {(${members.map((n) => `has(materials,${q(n)})`).join(' or ')}) ? 'have' : ''}" title="분류 (${GENERIC[m]}) — 이 중 하나면 된다: ${members.join(' · ')}">(${GENERIC[m]})</i>`;
     }
     const cls = CLASS_OF[m] || [];
-    return `<i class="abk-m {has(materials,${q(m)}) ? 'have' : ''}"${cls.length ? ` title="분류: ${cls.join(' · ')}"` : ''}>${m}${cls.length ? `<em>${cls[0]}</em>` : ''}</i>`;
+    const tip = [cls.length ? `분류: ${cls.join(' · ')}` : '', SOURCE_OF[m] ? `산지: ${SOURCE_OF[m].join(' · ')}` : ''].filter(Boolean).join(' — ');
+    return `<i class="abk-m {has(materials,${q(m)}) ? 'have' : ''}"${tip ? ` title="${tip}"` : ''}>${m}${cls.length ? `<em>${cls[0]}</em>` : ''}</i>`;
   };
+  // 소재 탭 칩 — 묶음이 분류를 말하니 툴팁은 산지만
+  const srcChip = (n) => `<i class="abk-m {has(materials,${q(n)}) ? 'have' : ''}"${SOURCE_OF[n] ? ` title="산지: ${SOURCE_OF[n].join(' · ')}"` : ''}>${n}</i>`;
   const radios = TABS.map((c, i) => `<input type="radio" name="abk-{uid}" id="abk-{uid}-${i}" class="abk-r abk-r${i}"${i === 0 ? ' checked' : ''}>`).join('');
   const labels = BOOK_CATS.map((c, i) => `<label for="abk-{uid}-${i}" class="abk-tab">${c}<span>{${known(RECIPE_BOOK[c])}}/${RECIPE_BOOK[c].length}</span></label>`).join('')
     + `<label for="abk-{uid}-${BOOK_CATS.length}" class="abk-tab">특수<span>{count(inventions)}/12</span></label>`
@@ -482,8 +549,8 @@ const BOOK_TEMPLATE = (() => {
   <div class="abk-inv">{inventions:tags}</div>
   <div class="abk-eff">가마 앞에서 조합서에 없는 것을 시도한다(🔮 특수연금). 재료 3~4종은 판정과 상관없이 사라지고, 발명·성공이면 재료법과 탄생물이 여기 남는다. 장부의 레시피는 적힌 재료로만 재현된다.</div></div></div>
   <div class="abk-page abk-p${MAT_TAB}"><div class="abk-lv open"><div class="abk-lh">소재 분류 — 아틀리에 원작 어휘<span>보관고 {count(materials)}/{mat_cap}</span></div>
-  <div class="abk-eff">소재 하나가 여러 분류에 든다 — 불의 돌은 광석이자 화약. 조합서에 (연료)처럼 괄호로 적힌 재료는 그 분류의 어느 소재든 된다. 밝은 것이 보관고에 있는 것 · 표 밖 이름은 여기 안 뜬다.</div></div>
-  ${ATELIER_CLASSES.map((c) => `<div class="abk-cls"><div class="abk-ch">${c}<span>{${owned(MAT_CLASS[c])}}/${MAT_CLASS[c].length}</span></div><div class="abk-mats">${MAT_CLASS[c].map((n) => `<i class="abk-m {has(materials,${q(n)}) ? 'have' : ''}">${n}</i>`).join('')}</div></div>`).join('\n  ')}</div>`;
+  <div class="abk-eff">소재 하나가 여러 분류에 든다 — 불의 돌은 광석이자 화약. 조합서에 (연료)처럼 괄호로 적힌 재료는 그 분류의 어느 소재든 된다. 밝은 것이 보관고에 있는 것 · 마우스를 올리면 산지 · 표 밖 이름은 여기 안 뜬다.</div></div>
+  ${ATELIER_CLASSES.map((c) => `<div class="abk-cls"><div class="abk-ch">${c}<span>{${owned(MAT_CLASS[c])}}/${MAT_CLASS[c].length}</span></div><div class="abk-mats">${MAT_CLASS[c].map(srcChip).join('')}</div></div>`).join('\n  ')}</div>`;
   const css = TABS.map((c, i) => `.abk .abk-r${i}:checked ~ .abk-tabs .abk-tab:nth-child(${i + 1}) { background: rgba(240,198,116,.22); color: #fff4dc; border-color: rgba(240,198,116,.6); }\n`
     + `.abk .abk-r${i}:checked ~ .abk-p${i} { display: block; }`).join('\n');
   return `
@@ -565,33 +632,6 @@ const ASSET_NSFW = ['Cowgirl-Normal', 'Cowgirl-Hard', 'Cowgirl-Cum', 'Doggystyle
   'Deep Kiss-Normal', 'Deep Kiss-Hard', 'Seduction-Normal', 'Seduction-Hard', 'Smelling penis',
   'Smelling penis masturbation', 'Smelling underwear masturbation', 'Lonely Masturbation', 'Masturbation-Cum',
   'after sex', 'cleanup fellatio', 'after fellatio', 'Breast massage'];
-
-// ══════════ 특산표 — 지형 × 계절 (유저: "지역마다 계절·날씨에 따라 채집 가능한 특수 재료") ══════════
-// 로어북엔 지역별 소재 배치만 있고 계절은 없다 → 계절·날씨 층은 창작. 한 표에서 (지형,계절) 지시문 48개와
-// 날씨 지시문 6개가 나온다 — 활성은 한 번에 지형 1 + 날씨 1이라 토큰은 두 줄뿐. 이름은 계절 레시피와 짝.
-const SEASONS = ['봄', '여름', '가을', '겨울'];
-const SPECIALS = {
-  '왕도 주변 들판': [['봄꽃 이슬', '민들레'], ['밀 이삭', '반딧불 풀'], ['가을 열매', '마른 풀'], ['겨울 뿌리', '서리 풀']],
-  '프리겐·시골': [['사과꽃'], ['햇밀'], ['호박'], ['훈제용 향나무']],
-  '숲': [['새순', '송진'], ['매미 허물', '숲 버섯'], ['도토리', '붉은 버섯'], ['겨우살이', '설목 껍질']],
-  '꽃밭·초원': [['일곱빛 꽃', '벌꿀'], ['해바라기 씨', '나비 비늘'], ['들국화'], ['얼음꽃']],
-  '강가·폭포': [['은어', '물이끼'], ['반딧불 조개', '여름 폭포수'], ['연어', '낙엽 물'], ['얼음 결정', '겨울 송어']],
-  '해안': [['바다 유리', '봄 김'], ['진주조개', '산호 조각'], ['폭풍 유목'], ['겨울 소금', '서리 조개']],
-  '습지·늪': [['늪 연꽃'], ['반딧불 이끼', '독개구리 점액'], ['늪 버섯', '검은 물'], ['얼어붙은 진흙']],
-  '광산·동굴': [['푸른 광석'], ['불의 돌', '유황'], ['번개 돌'], ['서리 결정', '얼음 광석']],
-  '설산 능선': [['설화'], ['만년설 물'], ['설산 약초'], ['영원의 결정 조각', '눈꽃 결정']],
-  '사막': [['사막 장미'], ['불의 모래', '사막 선인장'], ['별의 모래'], ['밤 사막 이슬']],
-  '유적·마나 이상 지대': [['마나 새싹'], ['마나 결정'], ['고대 파편'], ['별가루']],
-  '세계의 끝': [['둔켈하이트 봉오리'], ['혜성석 가루'], ['드래곤 비늘'], ['영원의 결정']],
-};
-const WEATHER_SPECIALS = {
-  '비': '이슬 버섯·빗물 — 비 온 뒤에만 돋는 것',
-  '안개': '안개 이끼 — 안개 속 바위에만 낀다',
-  '눈': '눈꽃 결정 — 눈이 그치기 전에 주워야 한다',
-  '바람': '바람 돌·떨어진 깃털 — 바람이 실어다 준 것',
-  '흐림': '그늘 버섯 — 해가 없는 날 그늘에서',
-  '맑음': '햇빛 꽃 — 해가 쨍한 날 활짝 핀 것',
-};
 
 // ══════════ 축제표 — 로어북엔 이름 붙은 축제가 없다 ("축제 물품·노점·마을 축제"와 혜성 설정뿐) ══════════
 // 그래서 계절·로어에서 지었다. 한 표에서 달력 표식 + 사흘 전 준비 지시문 + 당일 이벤트(연 1회)가 나온다.
@@ -1254,6 +1294,12 @@ const S = {
       text: '재해: 백색 혜성 접근. 밤이 밝고 마나가 요동친다 — 유적이 반응하고 조합이 예측을 벗어나며 사람들은 이상한 꿈을 꾼다. 잊혀진 연금술의 실마리가 드러나기 쉬운 때다. 혜성이 멀어지면 시스템이 알린다.' },
     { id: 'market_dir', when: "market_state != '평시'",
       text: '시세가 평시가 아니다 — {market_state}. 상점 값이 그에 맞게 올라 있거나 내려 있다(값은 시스템이 정한다). 상인·손님·게시판이 그 얘기를 한다. 기한이 오면 저절로 평시로 돌아온다.' },
+    // 산지 — 지형 12개 중 한 번에 하나만 켜진다 (2026-09-08). 채집 등급 inject의 "여기서 나는 것" 목록이 이것.
+    // 표 밖 소재는 격이 맞으면 한 가지까지 — 재량은 "뭐가 나오나"가 아니라 "몇 개·어떤 품질로"에 둔다
+    ...GATHER_PLACES.map((place, i) => ({
+      id: `src_${i}`, when: `location == '${place}'`,
+      text: `여기서 나는 것(조합서 재료): ${MAT_SOURCE[place].join('·')}. 채집으로 얻는 소재는 이 목록에서 이 이름 그대로 고른다 — 목록 밖은 이 격에 맞는 것으로 한 가지까지. 드롭 소재(껍질·털·독액·비늘)는 교전 뒤에만.`,
+    })),
     // 특산 — (지형, 계절) 48개 중 한 번에 하나만 켜진다. 채집 만재 등급의 "하나는 이 자리에서만"과 맞물린다
     ...Object.entries(SPECIALS).flatMap(([place, bySeason]) => bySeason.map((names, si) => ({
       id: `sp_${Object.keys(SPECIALS).indexOf(place)}_${si}`,
@@ -1359,12 +1405,13 @@ const S = {
         + " + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       vs: '8 + area_tier * 2',
       grades: [
+        // 산지표(2026-09-08) — "이 지형에서 날 만한 것"을 보조가 짓지 않고 산지 목록(지시문 "여기서 나는 것")에서 뽑는다
         { when: 'total >= vs + 8', label: '만재',
-          inject: '바구니가 넘친다. 이 지형에서 날 만한 소재를 **5종** 골라 서사에 명시하고 목록에 올려라. 그중 하나는 이 자리에서만 나는 것으로.' },
+          inject: '바구니가 넘친다. 소재 **5종** — 셋 이상은 "여기서 나는 것" 목록에서 그 이름 그대로, 하나는 이 자리에서만 나는 것(특산이 있으면 그것)으로. 서사에 명시하고 목록에 올려라.' },
         { when: 'total >= vs', label: '성과',
-          inject: '쓸 만큼 거뒀다. 이 지형에 맞는 소재를 **3종** 골라 명시하고 목록에 올려라.' },
+          inject: '쓸 만큼 거뒀다. 소재 **3종** — 둘 이상은 "여기서 나는 것" 목록에서 그 이름 그대로. 명시하고 목록에 올려라.' },
         { when: 'total >= vs - 4', label: '빈손에 가깝다',
-          inject: '별로 없다. 소재를 **1종**만 명시하고 목록에 올려라. 왜 없었는지도 한 줄.' },
+          inject: '별로 없다. "여기서 나는 것" 중 **1종**만 명시하고 목록에 올려라. 왜 없었는지도 한 줄.' },
         { label: '헛수고', effects: [{ set: 'stamina', expr: 'stamina - 5' }],
           inject: '허탕이다. 소재는 얻지 못했다 — 시간과 기운만 썼다. 아무것도 목록에 올리지 마라.' },
       ] },
@@ -1658,8 +1705,21 @@ const S = {
         '서적': "market_state == '상단 도착' ? 0.7 : 1",
         '*': "disaster == '역병' ? 1.5 : disaster == '지진' ? 1.2 : market_state == '축제 특수' ? 1.3 : market_state == '흉년' ? 0.9 : 1",   // 역병·지진엔 약이 잘 팔린다
       },
+      // 상시 재고 (v1.7.14) — 원작처럼 기본 재료는 늘 있다. 조합서 (분류) 재료 12개 중 상점에 있을 법한 것 + 식재료 기본.
+      // 변동 소재 칸은 이것 밖의 것 — 격 1~2 산지 소재·계절 특산·타 지방 것 (guide가 목록을 준다)
+      staples: [
+        { name: '맑은 물', cat: '소재', grade: '조악', price: 5 }, { name: '이름 모를 풀', cat: '소재', grade: '조악', price: 8 },
+        { name: '약초', cat: '소재', grade: '조악', price: 15 }, { name: '숯', cat: '소재', grade: '조악', price: 12 },
+        { name: '실', cat: '소재', grade: '조악', price: 10 }, { name: '연료', cat: '소재', grade: '보통', price: 45 },
+        { name: '기름', cat: '소재', grade: '보통', price: 50 }, { name: '밀랍', cat: '소재', grade: '보통', price: 60 },
+        { name: '천', cat: '소재', grade: '보통', price: 70 }, { name: '광석', cat: '소재', grade: '보통', price: 60 },
+        { name: '유리병', cat: '소재', grade: '보통', price: 45 }, { name: '여과지', cat: '소재', grade: '보통', price: 40 },
+        { name: '밀가루', cat: '식재료', grade: '조악', price: 20 }, { name: '소금', cat: '식재료', grade: '조악', price: 10 },
+        { name: '설탕', cat: '식재료', grade: '조악', price: 30 }, { name: '우유', cat: '식재료', grade: '조악', price: 15 },
+        { name: '꿀', cat: '식재료', grade: '보통', price: 50 },
+      ],
       guide: '란타르나 왕도의 평범한 상점가. 연금술 전문점이 아니라 잡화·약재·철물·식료를 파는 가게들이다. '
-        + '소재 칸은 흔한 약초·맑은 물·광석·꽃·조개 같은 것 (조악 5~60, 보통 40~200), 상등품은 상인이 어디선가 들여온 것. '
+        + '소재 칸(변동)은 상시 재고 밖의 것 — 근교·들과 물가 산지 소재(' + [...new Set([...MAT_SOURCE['왕도 주변 들판'], ...MAT_SOURCE['프리겐·시골'], ...MAT_SOURCE.숲, ...MAT_SOURCE['꽃밭·초원'], ...MAT_SOURCE['강가·폭포'], ...MAT_SOURCE.해안])].filter((n) => !['맑은 물', '이름 모를 풀', '약초', '숯', '실', '연료', '기름', '밀랍', '천', '광석', '유리병', '여과지', '꿀'].includes(n)).join('·') + ')를 이 이름 그대로 (조악 5~60, 보통 40~200), 상등품은 상인이 어디선가 들여온 계절 특산·타 지방 것. '
         + '도구 칸은 곡괭이·낫·낚싯대·채집망·나침반·램프 (보통 40~200, 상등 150~800). '
         + '식재료 칸은 밀가루·기름·꿀·우유·달걀·향신료. 서적 칸은 초본지·지도·옛 문헌 필사본 — 드물게 레시피 조각. '
         + '전설 등급은 거의 들어오지 않는다 — 들어온다면 왜 여기 있는지 note에 한 줄. '
@@ -1689,6 +1749,10 @@ const S = {
       sellRate: 0.3, maxStock: 12, perCat: [2, 4],
       when: "location == '왕도' or location == '지방 도시' or location == '프리겐·시골'",
       priceMul: { '*': "market_state == '흉년' ? 1.4 : season == '봄' ? 0.8 : season == '겨울' ? 1.5 : 1" },   // 흉년이 계절보다 먼저 — 씨앗은 봄에 싸고 겨울에 귀하다
+      staples: [
+        { name: '약초 씨앗', cat: '씨앗', grade: '조악', price: 10 }, { name: '이름 모를 풀 씨앗', cat: '씨앗', grade: '조악', price: 6 },
+        { name: '비료', cat: '비료', grade: '보통', price: 40 },
+      ],
       guide: '농사꾼 상대 씨앗 가게 — 연금술사가 오는 건 드물어 신기해한다. 씨앗 칸은 "약초 씨앗"·"이름 모를 풀 씨앗"·"밀 씨앗"(조악·보통), '
         + '"향기 꽃 씨앗"·"활력 약초 씨앗"·"쓴 풀 씨앗"(상등), "희귀 꽃 씨앗"·"생명의 꽃 씨앗"(희귀). 모종 칸은 "사과 모종"·"과일 모종"·"향나무 모종". '
         + '비료 칸은 "비료"(보통)·"마나 비료"(상등, 익는 날 하루 단축). 이름은 반드시 "X 씨앗"/"X 모종" 꼴 — 심으면 X가 작물 이름이 된다. '
@@ -1704,6 +1768,10 @@ const S = {
       sellRate: 0.5, maxStock: 10, perCat: [2, 3],
       when: "location == '왕도' or location == '강가·폭포' or location == '해안'",
       priceMul: { '미끼': "weather == '비' ? 0.8 : 1", '물고기': "weather == '비' ? 0.7 : market_state == '축제 특수' ? 1.3 : 1", '*': "market_state == '축제 특수' ? 1.2 : 1" },   // 비 오면 미끼·생선이 싸다
+      staples: [
+        { name: '지렁이 미끼', cat: '미끼', grade: '조악', price: 5 }, { name: '반짝이 미끼', cat: '미끼', grade: '보통', price: 20 },
+        { name: '갈고리', cat: '낚시 도구', grade: '보통', price: 25 },
+      ],
       guide: '강가·해안의 낚시꾼 오두막, 왕도에선 어시장 구석 좌판. 미끼 칸은 정확히 이 이름으로 — "지렁이 미끼"(조악), "반짝이 미끼"(보통), '
         + '"향미끼"(상등), "마나 미끼"(희귀, 마나가 흐르는 물에서만). 낚시 도구 칸은 "갈고리"·"실"·"낚싯대"(보통). '
         + '물고기 칸은 그날 잡힌 것 — "생선"·"조개"·"진주"(희귀). 생선·조개는 사 주기도 한다(sellFrom). 주인은 말수가 적고 날씨 얘기만 한다.',
@@ -2248,16 +2316,17 @@ console.log('\n━━ 상점 — 어디서 열리나 · 뇌절이 막히나 ━�
   const r = shopMod.applyStock(S, t, {
     id: 'market',
     stock: [
-      { cat: '소재', name: '이름 모를 풀', grade: '조악', price: 9999 },   // 밴드 초과 → 60으로
+      { cat: '소재', name: '민들레', grade: '조악', price: 9999 },   // 밴드 초과 → 60으로
       { cat: '도구', name: '낡은 곡괭이', grade: '보통', price: 120 },      // 정상
       { cat: '서적', name: '금서', grade: '신화', price: 500 },             // 어휘 밖 → 거부
+      { cat: '소재', name: '이름 모를 풀', grade: '조악', price: 8 },      // 상시 재고와 겹침 → 거부 (v1.7.14)
     ],
     buying: [{ name: '푸니 구슬', price: 12 }],
   }, 'market');
   const stock = shopMod.shopStateOf(t, shopMod.shopConfig(S, 'market')).stock;
-  ok('어휘 밖 등급은 거부된다', r.stocked === 2 && r.rejected.length === 1, JSON.stringify(r));
+  ok('어휘 밖 등급·상시 재고 겹침은 거부된다', r.stocked === 2 && r.rejected.length === 2 && r.rejected.some((x) => /상시 재고와 겹침/.test(x)), JSON.stringify(r));
   ok('밴드 밖 가격은 클램프된다 (9999 → 60)',
-    stock.find((x) => x.name === '이름 모를 풀')?.price === 60,
+    stock.find((x) => x.name === '민들레')?.price === 60,
     JSON.stringify(stock.map((x) => [x.name, x.price])));
 
   // 구매 — 결제·잔액·목록 합류 전부 엔진 (보조 호출 0)
@@ -2836,7 +2905,7 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   // 분류명 재료(약초→(약재), 기름→(기름))는 괄호 칩 — 분류 구성원이 하나라도 있으면 밝다. 고유명(밀랍)은 이름 + 분류 꼬리표
   ok('보관고에 있는 소재((약재)·(기름))는 밝게, 없는 것(밀랍)은 흐리게',
     rowOf(html, '힐링 살브').includes('abk-m abk-cat have"') && rowOf(html, '힐링 살브').includes('>(약재)</i>') && rowOf(html, '힐링 살브').includes('>(기름)</i>')
-    && rowOf(html, '힐링 살브').includes('abk-m " title="분류: 연료 · 기름 · 동물 소재">밀랍<em>연료</em>'), rowOf(html, '힐링 살브'));
+    && rowOf(html, '힐링 살브').includes('abk-m " title="분류: 연료 · 기름 · 동물 소재 — 산지: 프리겐·시골 · 꽃밭·초원 · 상점가">밀랍<em>연료</em>'), rowOf(html, '힐링 살브'));
   ok('도감 밖 창작 레시피는 책에 안 뜬다 (목록에는 남는다)', !html.includes('내 맘대로') && t.vars.recipes.includes('내 맘대로 만든 비약'), '');
   ok('툴팁(title)에 효과·필요 소재 — 분류명 재료는 괄호', html.includes('title="바르는 약 — 베임·타박·화상 · 필요: (약재), (기름), 맑은 물, 밀랍"'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .abk'), '');
@@ -2872,16 +2941,57 @@ console.log('\n━━ 소재 분류표 — 아틀리에 원작 어휘, 조합서
   ok('미치환 자리표시자 없음 (소재 탭·분류 칩 포함)', (body.match(/\{[^{}]+\}/g) || []).length === 0, (body.match(/\{[^{}]+\}/g) || []).slice(0, 3).join(' '));
   const rowOf = (h, n) => { const i = h.indexOf('<span class="abk-nm">' + n + '</span>'); return h.slice(h.lastIndexOf('<div class="abk-row', i), i + 600); };
   ok('프람의 (연료) 칩은 숯만 있어도 밝다', rowOf(html, '프람').includes('abk-m abk-cat have" title="분류 (연료) — 이 중 하나면 된다: 연료 · 숯'), rowOf(html, '프람').slice(0, 300));
-  ok('고유명 칩은 이름 + 분류 꼬리표 (불의 돌 ·화약)', rowOf(html, '프람').includes('불의 돌<em>화약</em>') && rowOf(html, '프람').includes('title="분류: 화약 · 광석"'), '');
+  ok('고유명 칩은 이름 + 분류 꼬리표 (불의 돌 ·화약)', rowOf(html, '프람').includes('불의 돌<em>화약</em>') && rowOf(html, '프람').includes('title="분류: 화약 · 광석 — 산지: '), '');
   ok('완성품 재료(중화제 적)도 분류 꼬리표 (중화제)', rowOf(html, '프람').includes('중화제 적<em>중화제</em>'), '');
   ok('소재 탭 라벨 = 보관고 4/10', html.includes('소재<span>4/10</span>'), '');
   const matPage = body.slice(body.indexOf('abk-p7'), body.indexOf('abk-foot'));
   ok('소재 탭에 분류 26묶음, 원작 어휘 순서 (식물 → … → 미끼)', (matPage.match(/class="abk-cls"/g) || []).length === 26 && matPage.indexOf('>식물<span>') < matPage.indexOf('>연료<span>') && matPage.indexOf('>연료<span>') < matPage.indexOf('>미끼<span>'), '');
   ok('묶음 머리에 보유/전체 (연료 1/9 · 화약 2/8 · 광석 1/13 · 중화제 1/4)', matPage.includes('>연료<span>1/9</span>') && matPage.includes('>화약<span>2/8</span>') && matPage.includes('>광석<span>1/13</span>') && matPage.includes('>중화제<span>1/4</span>'),
     (matPage.match(/>(연료|화약|광석|중화제)<span>[^<]*</g) || []).join(' '));
-  ok('가진 것만 밝다 (숯 have · 연료 흐림)', matPage.includes('abk-m have">숯</i>') && matPage.includes('abk-m ">연료</i>'), '');
+  ok('가진 것만 밝다 (숯 have · 연료 흐림) · 툴팁은 산지', /abk-m have" title="산지: [^"]*">숯<\/i>/.test(matPage) && /abk-m " title="산지: 상점가">연료<\/i>/.test(matPage), '');
   ok('보조 계약: 분류는 안 적고 분류 어휘 안에서 이름 짓기', S.vars.find((v) => v.id === 'materials').desc.includes('분류는 적지 않는다') && S.vars.find((v) => v.id === 'materials').desc.includes('신비의 힘'), '');
   ok('메인 규칙: 괄호 재료는 분류 아무거나 · 고유명 대체는 같은 분류에서 한 가지', S.directives.find((d) => d.id === 'workshop').text.includes('괄호로 적힌 재료는 그 분류') && S.directives.find((d) => d.id === 'workshop').text.includes('한 가지까지만'), '');
+}
+
+console.log('\n━━ 산지표 — 어디서 나는가: 상시 재고 / 채집 산지 / 지도 (2026-09-08) ━━');
+{
+  const products = new Set(BOOK_ALL.map(([n]) => n));
+  const rawIngs = [...new Set(BOOK_ALL.flatMap(([, , , , mats]) => mats))].filter((m) => !products.has(m));
+  const noSrc = rawIngs.filter((m) => !SOURCE_OF[m] || !SOURCE_OF[m].length);
+  ok(`조합서 순수 재료 ${rawIngs.length}종 전부 산지가 있다`, noSrc.length === 0, noSrc.join(', '));
+  ok('산지표의 이름은 전부 분류표에도 있다 (표끼리 어긋나지 않는다)', Object.values(MAT_SOURCE).flat().every((n) => CLASS_OF[n]), Object.values(MAT_SOURCE).flat().filter((n) => !CLASS_OF[n]).join(', '));
+  ok('채집 지형 12곳 전부 산지 목록이 있다 (격 1~5)', GATHER_PLACES.length === 12 && GATHER_PLACES.every((p) => (MAT_SOURCE[p] || []).length >= 6), GATHER_PLACES.filter((p) => !(MAT_SOURCE[p] || []).length).join(','));
+  ok('계절 특산은 "지형(계절)"로, 완성품은 "조합"으로 자동 산지', SOURCE_OF['불의 돌'].includes('광산·동굴(여름)') && SOURCE_OF['중화제 적'].includes('조합') && SOURCE_OF['새순'].join() === '숲(봄)', JSON.stringify([SOURCE_OF['불의 돌'], SOURCE_OF['새순']]));
+  ok('희귀한 것은 오지·뒷골목·드롭에만 (드래곤 비늘: 세계의 끝·뒷골목·드롭 + 가을 특산)', SOURCE_OF['드래곤 비늘'].join('·') === '세계의 끝·뒷골목·드롭·세계의 끝(가을)' && !SOURCE_OF['드래곤 비늘'].includes('상점가'), SOURCE_OF['드래곤 비늘'].join('·'));
+  ok('사이드카에 산지표', (() => { const j = JSON.parse(require('fs').readFileSync(__P('조합서.json'), 'utf8')); return j.sources && j.sources['불의 돌'].includes('광산·동굴(여름)'); })(), '');
+
+  // 상시 재고 — 원작처럼 기본 재료는 상점에 늘 있다
+  const market = S.shops.find((s) => s.id === 'market');
+  ok('왕도 상점가 상시 재고 17 — (분류) 재료 12개 중 상점에 있을 법한 것 + 식재료 기본', market.staples.length === 17 && ['맑은 물', '약초', '연료', '광석', '천', '실', '기름', '밀가루', '소금'].every((n) => market.staples.some((s) => s.name === n)), market.staples.map((s) => s.name).join(','));
+  ok('씨앗 상사·미끼 상점도 기본은 늘 (약초 씨앗·비료 / 지렁이 미끼)', S.shops.find((s) => s.id === 'seeds').staples.some((s) => s.name === '약초 씨앗') && S.shops.find((s) => s.id === 'bait').staples.some((s) => s.name === '지렁이 미끼'), '');
+  const shopMod = SC.require('shop');
+  const cfg = shopMod.shopConfig(S, 'market');
+  ok('상시 재고가 정규화되어 실린다 (id st:N · 가격은 밴드 안)', cfg.staples.length === 17 && cfg.staples[0].id === 'st:0' && cfg.staples.every((s) => s.price >= 5), '');
+  {
+    const t = fresh(); t.vars.location = '왕도'; t.vars.cole = 100;
+    const r = shopMod.buy(S, t, 'st:0', 'market', engine.makeLookup);
+    ok('★ 맑은 물을 언제든 산다 (5콜, 소재 목록 합류)', r.ok && t.vars.cole === 95 && t.vars.materials.includes('맑은 물 (조악)'), JSON.stringify([r, t.vars.materials]));
+    const spec = shopMod.auxSpec(S, t, engine.makeLookup);
+    ok('첫 입고 지시: 상시 재고 다시 넣지 마라 + 변동 소재는 산지 목록에서', /상시 재고.*다시 넣지 마라/.test(spec) && spec.includes('근교·들과 물가 산지 소재(') && !/산지 소재\([^)]*맑은 물/.test(spec), spec.slice(0, 600));
+  }
+  ok('산지 지시문 12 — 지형마다 하나, 한 번에 하나만', S.directives.filter((d) => /^src_/.test(d.id)).length === 12 && (() => {
+    const t = fresh(); t.vars.location = '광산·동굴'; t.vars.placed = true; t.vars.settled = true;
+    const p = engine.sendPhase(S, t, { rng: seededRng('src', 1, 's') }).promptBlock;
+    return p.includes('여기서 나는 것(조합서 재료): 광석·희귀 광석·돌') && (p.match(/여기서 나는 것/g) || []).length === 1 && !p.includes('여기서 나는 것(조합서 재료): 이름 모를 풀');
+  })(), '');
+  ok('채집 등급 inject가 산지 목록을 가리킨다 (만재 셋 이상 · 성과 둘 이상 · 빈손 1종)', (() => {
+    const g = S.checks.find((c) => c.id === 'gather').grades;
+    return g[0].inject.includes('셋 이상은 "여기서 나는 것"') && g[1].inject.includes('둘 이상은 "여기서 나는 것"') && g[2].inject.includes('"여기서 나는 것" 중 **1종**');
+  })(), '');
+  ok('지도 탭: 지형 칸마다 나는 것 한 줄 (광산·동굴 → 광석·희귀 광석…)', MAP_TEMPLATE.includes('<div class="amap-src">광석 · 희귀 광석 · 돌') && MAP_TEMPLATE.includes('.amap-src {'), '');
+  const html = SC.require('render').renderPanelTemplate(S, fresh(), BOOK_TEMPLATE);
+  ok('조합서 칩 툴팁에 분류 — 산지 (불의 돌: 광산·동굴 + 여름 특산, 뒷골목 아님)', html.includes('title="분류: 화약 · 광석 — 산지: 광산·동굴 · 광산·동굴(여름)">불의 돌'), (html.match(/title="[^"]*">불의 돌/) || [])[0]);
+  ok('소재 탭 칩 툴팁은 산지 (맑은 물: 들판·강가·상점가)', html.includes('title="산지: 왕도 주변 들판 · 강가·폭포 · 상점가">맑은 물</i>'), (html.match(/title="산지: [^"]*">맑은 물/) || [])[0]);
 }
 
 console.log('\n━━ 캐스트 맵 — 3,792토큰을 origin으로 쪼갠다 ━━');

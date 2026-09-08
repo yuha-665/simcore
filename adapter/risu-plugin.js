@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.13
-//@display-name SimCore (시뮬 엔진) v1.7.13 편집기·관리 패널 UI 개조본 이식
+//@version 1.7.14
+//@display-name SimCore (시뮬 엔진) v1.7.14 상점 상시 재고 — 늘 있는 것 / 오늘의 물건
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.14 ───────────────────────────────────────────────
+// **상점 상시 재고** shops[].staples (아틀리에 실사고: 조합서 재료는 정해져 있는데 진열이 매번 랜덤이라 기본 재료조차
+// "오늘은 없다"가 됐고, 채집도 보조가 이름을 지어 조합서와 안 맞았다 — 유저 "상시 재고랑 변동 재료 두 가지로 나누면 모양새가
+// 낫겠다"). 원작 아틀리에처럼 기본 재료는 상점에 늘 있고 변동 진열은 그 밖의 것만. staples는 상태가 아니라 설정에서
+// 나오므로 물갈이·리롤·세이브와 무관, 수량 무제한, id 'st:N'(buy가 숫자 id와 한 인자로 가른다). 가격은 밴드 클램프·없으면
+// 등급 밴드 중간값. 패널은 "📌 늘 있는 것 / 🧺 오늘의 물건" 두 묶음, 입고 지시에 "상시 재고는 다시 넣지 마라" + 겹치는
+// 이름은 sanitizeStock이 거른다. 검증·편집기 [상점] 02 "상시 재고"(한 줄에 이름 | 카테고리 | 등급 | 가격 | 메모)·schema.md.
 //
 // ── v1.7.13 ───────────────────────────────────────────────
 // **편집기·관리 패널 UI 개조본 이식** (커뮤니티 개조판 v1.0.7 UI mod — docs/기여-UI개조판-v1.0.7-요청.md, 설계 docs/design-UI-크롬.md §0).
@@ -4164,6 +4172,8 @@
         color:#9db8e8; white-space:nowrap; }
       #sc-game .sch-price { color:#ffd166; font-size:12.5px; font-weight:700; white-space:nowrap; }
       #sc-game .sch-qty { color:#e2938f; font-size:11px; white-space:nowrap; }
+      #sc-game .sch-sect { margin:10px 0 2px; font-size:11px; font-weight:600; letter-spacing:.04em; color:#7d8aa5; }
+      #sc-game .sch-item.sch-staple { background:rgba(255,255,255,.025); }
       @media (max-width:620px) {
         #sc-game .sch-item.sch-stock-item { flex-wrap:wrap; gap:5px 8px; }
         #sc-game .sch-item.sch-stock-item .sch-name { flex:1 0 100%; overflow-wrap:anywhere; }
@@ -5562,17 +5572,9 @@
         card.appendChild(bx);
       }
     } else {
-      // ── 진열 — 카테고리 필터 ──
-      const items = shop.stock.filter((it) => it.cat === active);
-      if (!shop.stock.length) {
-        card.appendChild(el('div', 'scb-empty', shop.stocked
-          ? '진열이 비었어요 — [🔄 새로고침]으로 새 물건을 받아 보세요.'
-          : '첫 입고 대기 중 — 다음 응답이 오면 상품이 채워져요. 급하면 [🔄 새로고침].'));
-      } else if (!items.length) {
-        card.appendChild(el('div', 'scb-empty', '이 칸은 지금 비어 있어요.'));
-      }
-      for (const it of items) {
-        const row = el('div', 'sch-item sch-stock-item');
+      // ── 진열 — 카테고리 필터. 상시 재고(v1.7.14, 설정)와 변동 진열(상태)을 두 묶음으로 ──
+      const stockRow = (it) => {
+        const row = el('div', `sch-item sch-stock-item${it.staple ? ' sch-staple' : ''}`);
         const nm = el('span', 'sch-name', it.name);
         if (it.note) nm.appendChild(el('small', null, it.note));
         row.appendChild(nm);
@@ -5581,8 +5583,24 @@
         const eff = shopMod.effectivePrice(cfg, it, shopLookup);
         row.appendChild(el('span', 'sch-price', shopMod.fmtMoney(cfg, eff)));
         row.appendChild(btn('구매', 'scb-btn', () => onShopBuy(it.id), walletVal < eff));
-        card.appendChild(row);
+        return row;
+      };
+      const staples = cfg.staples.filter((it) => it.cat === active);
+      const items = shop.stock.filter((it) => it.cat === active);
+      const split = cfg.staples.length > 0;   // 상시 재고가 있는 상점만 묶음 머리를 단다
+      if (staples.length) {
+        card.appendChild(el('div', 'sch-sect', '📌 늘 있는 것'));
+        for (const it of staples) card.appendChild(stockRow(it));
       }
+      if (split) card.appendChild(el('div', 'sch-sect', '🧺 오늘의 물건'));
+      if (!shop.stock.length) {
+        card.appendChild(el('div', 'scb-empty', shop.stocked
+          ? '진열이 비었어요 — [🔄 새로고침]으로 새 물건을 받아 보세요.'
+          : '첫 입고 대기 중 — 다음 응답이 오면 상품이 채워져요. 급하면 [🔄 새로고침].'));
+      } else if (!items.length) {
+        card.appendChild(el('div', 'scb-empty', split ? '오늘은 이 칸에 새 물건이 없어요.' : '이 칸은 지금 비어 있어요.'));
+      }
+      for (const it of items) card.appendChild(stockRow(it));
     }
 
     if (shop.log.length) card.appendChild(el('div', 'sch-log', '🧾 최근 거래: ' + shop.log.join(' · ')));

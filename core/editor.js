@@ -9289,6 +9289,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-shop-section-copy' }, copy)),
       h('div', { class: 'sce-shop-section-body' }, ...children));
   }
+  // 상시 재고 (v1.7.14) — 한 줄에 하나 "이름 | 카테고리 | 등급 | 가격 | 메모" (이름 뒤는 전부 선택, 가격 비우면 등급 밴드 중간값)
+  function staplesText(arr) {
+    if (!Array.isArray(arr)) return '';
+    return arr.map((s) => [s.name, s.cat ?? '', s.grade ?? '', s.price ?? '', s.note ?? ''].join(' | ').replace(/(\s\|\s*)+$/, '')).join('\n');
+  }
+  function parseStaples(text) {
+    const out = [];
+    for (const line of String(text || '').split('\n')) {
+      const [name, cat, grade, price, note] = line.split('|').map((x) => x.trim());
+      if (!name) continue;
+      const st = { name };
+      if (cat) st.cat = cat;
+      if (grade) st.grade = grade;
+      if (price !== undefined && price !== '' && isFinite(Number(price))) st.price = Number(price);
+      if (note) st.note = note;
+      out.push(st);
+    }
+    return out.slice(0, 20);
+  }
   function shopFieldBlock(SH, nums, lists) {
     // 상점 하나의 설정 섹션 묶음 — 개조본 6단 뼈대(v1.7.13) 위에 우리 칸을 되살렸다:
     // 카테고리당 개수(perCat) · 시세 배율(priceMul v1.7.8) · 표기 단위(units) · 다중 환전 창구(exchangeRows)
@@ -9351,7 +9370,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             }
             if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
           }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
-            '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요', true))),
+            '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요', true),
+          // 상시 재고 (v1.7.14) — 보조가 못 빼는 고정 진열. 패널은 "늘 있는 것 / 오늘의 물건" 두 묶음
+          shopField('상시 재고', bindArea(staplesText(SH.staples), (x) => {
+            const arr = parseStaples(x); if (arr.length) SH.staples = arr; else delete SH.staples; rerender();
+          }, '한 줄에 하나 — 이름 | 카테고리 | 등급 | 가격 | 메모\n맑은 물 | 소재 | 조악 | 10\n약초 | 소재 | 조악\n밀가루 | 식재료'),
+            '보조가 못 빼는 고정 진열 (최대 20). 패널에 "늘 있는 것"으로 따로 뜨고 변동 진열은 이 이름을 못 씁니다. 이름 뒤는 전부 선택 — 가격을 비우면 등급 밴드 중간값', true))),
 
       shopSection('03', '판매 설정', '플레이어가 가진 물건을 꺼내 팔 수 있는 매입 창구를 설정해요.',
         h('div', { class: 'sce-shop-field-grid sce-shop-workgroup' },

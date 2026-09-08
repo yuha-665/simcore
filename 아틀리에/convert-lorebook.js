@@ -83,8 +83,10 @@ let recipeN = 0;
 // 한 글자 이름("약"·"빵")은 다른 낱말 안에서 매턴 걸린다 — 만드는 문맥의 어구로만 연다
 const keysOf = (name) => (name.length >= 2 ? [name] : [`${name}을 만`, `${name}을 빚`, `${name} 조합`, `${name}을 지어`]);
 // 분류명 재료(2026-09-08) — "연료"는 고유 소재가 아니라 분류 (燃料) 하나. 구성원을 같이 실어 메인이 소재 목록과 대조할 수 있게.
-const { classes: CLASSES = {}, generic: GENERIC = {} } = JSON.parse(fs.readFileSync(__P('조합서.json'), 'utf8'));
-const matText = (m) => (GENERIC[m] ? `(${GENERIC[m]} — ${CLASSES[GENERIC[m]].join('·')} 중 하나)` : m);
+const { classes: CLASSES = {}, generic: GENERIC = {}, sources: SOURCES = {} } = JSON.parse(fs.readFileSync(__P('조합서.json'), 'utf8'));
+// 고유명 재료엔 산지 앞 둘 — 레시피 이름이 나올 때 "어디서 구하나"까지 한 벌에 (산지표 2026-09-08)
+const matText = (m) => (GENERIC[m] ? `(${GENERIC[m]} — ${CLASSES[GENERIC[m]].join('·')} 중 하나)`
+  : SOURCES[m] ? `${m}[${SOURCES[m].filter((x) => x !== '조합').slice(0, 2).join('·') || '조합'}]` : m);
 for (const [cat, list] of Object.entries(BOOK)) {
   for (const [name, lib, tier, effect, mats] of list) {
     out.push({

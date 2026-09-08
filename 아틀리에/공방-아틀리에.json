@@ -575,6 +575,23 @@
       "format": "{v}단"
     },
     {
+      "id": "bath",
+      "label": "욕실",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5,
+      "format": "{v}단"
+    },
+    {
+      "id": "bath_until",
+      "label": "목욕 기한",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 999999
+    },
+    {
       "id": "meal",
       "label": "이번 식사",
       "type": "enum",
@@ -660,7 +677,7 @@
     {
       "id": "tax_due",
       "label": "다음 세금",
-      "expr": "100 + (cauldron + library + storage + garden + display + bedroom + kitchen + parlor) * 60 + floor(sales_month / 10)",
+      "expr": "100 + (cauldron + library + storage + garden + display + bedroom + kitchen + parlor + bath) * 60 + floor(sales_month / 10)",
       "format": "{v}콜"
     },
     {
@@ -1140,14 +1157,14 @@
       },
       {
         "id": "home_up",
-        "when": "bedroom + kitchen + parlor > home_seen",
+        "when": "bedroom + kitchen + parlor + bath > home_seen",
         "effects": [
           {
             "set": "home_seen",
-            "expr": "bedroom + kitchen + parlor"
+            "expr": "bedroom + kitchen + parlor + bath"
           }
         ],
-        "notify": "살림이 나아졌다. 상태 블록의 살림 단수(침실·부엌·응접실)를 보고 새로 달라진 방을 풍경으로 보여라 — 침대·창·화덕·손님 자리처럼 눈에 보이는 것으로. 이 집이 좋아졌다는 실감이 목적이다."
+        "notify": "살림이 나아졌다. 상태 블록의 살림 단수(침실·부엌·응접실·욕실)를 보고 새로 달라진 방을 풍경으로 보여라 — 침대·창·화덕·손님 자리처럼 눈에 보이는 것으로. 이 집이 좋아졌다는 실감이 목적이다."
       },
       {
         "id": "collapse",
@@ -2141,7 +2158,7 @@
     {
       "id": "workshop",
       "when": "settled",
-      "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). 살림 — 침실 {bedroom}단(체력 최대 {stamina_max}, 잠자리의 질), 부엌 {kitchen}단(요리는 부엌 단수부터 — 0단은 아궁이뿐), 응접실 {parlor}단(손님을 맞는 자리 — 0단이면 문간에서 맞는다). 단수가 낮은 방은 초라하게, 높은 방은 그만큼 좋게 그려라. 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비·살림을 올리면 그 변화를 공방 풍경으로 보여라. 조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라. (연료)처럼 괄호로 적힌 재료는 그 분류(아틀리에 어휘)의 어느 소재든 된다; 고유명 재료는 같은 분류의 다른 소재로 한 가지까지만 대신할 수 있다. 조합서 밖의 것은 서사에 맡긴다."
+      "text": "공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), 보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). 살림 — 침실 {bedroom}단(체력 최대 {stamina_max}, 잠자리의 질), 부엌 {kitchen}단(요리는 부엌 단수부터 — 0단은 아궁이뿐), 응접실 {parlor}단(손님을 맞는 자리 — 0단이면 문간에서 맞는다), 욕실 {bath}단(0단이면 대야와 우물물). 단수가 낮은 방은 초라하게, 높은 방은 그만큼 좋게 그려라. 새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 \"아직 읽어낼 수 없다\"로 막아라. 설비·살림을 올리면 그 변화를 공방 풍경으로 보여라. 조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라. (연료)처럼 괄호로 적힌 재료는 그 분류(아틀리에 어휘)의 어느 소재든 된다; 고유명 재료는 같은 분류의 다른 소재로 한 가지까지만 대신할 수 있다. 조합서 밖의 것은 서사에 맡긴다."
     },
     {
       "id": "tax_soon",
@@ -2961,6 +2978,33 @@
       ]
     },
     {
+      "id": "act_bath",
+      "label": "🛁 목욕",
+      "mode": "oneshot",
+      "keywords": [
+        "목욕한다",
+        "씻는다",
+        "탕에 몸을",
+        "몸을 담근다"
+      ],
+      "when": "(not fight_on) and settled and location == '공방' and bath >= 1",
+      "inject": "욕실에서 몸을 씻는다 — 욕실 단수만큼의 호사로. 피로가 풀린 뒤의 장면으로 이어라.",
+      "effects": [
+        {
+          "set": "skip_min",
+          "expr": "skip_min + 60"
+        },
+        {
+          "set": "stamina",
+          "expr": "min(stamina + 15 + bath * 5, stamina_max)"
+        },
+        {
+          "set": "bath_until",
+          "expr": "elapsed + 1"
+        }
+      ]
+    },
+    {
       "id": "act_day",
       "label": "🌙 하루를 마친다",
       "mode": "oneshot",
@@ -2998,7 +3042,7 @@
       "id": "gather",
       "label": "채집",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 ? -3 : 0) + garden + (meal_until >= elapsed ? meal_buff : 0) + (disaster == '홍수' and (location == '강가·폭포' or location == '해안' or location == '습지·늪') ? -4 : 0) + (disaster == '산불' and (location == '숲' or location == '꽃밭·초원' or location == '왕도 주변 들판') ? -4 : 0) + (disaster == '지진' and location == '광산·동굴' ? -4 : 0) + (disaster == '혜성 접근' and location == '유적·마나 이상 지대' ? 2 : 0) + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
+      "mod": "floor(renown / 100) + count(tools) + (stamina < 30 and bath_until <= elapsed ? -3 : 0) + garden + (meal_until > elapsed ? meal_buff : 0) + (disaster == '홍수' and (location == '강가·폭포' or location == '해안' or location == '습지·늪') ? -4 : 0) + (disaster == '산불' and (location == '숲' or location == '꽃밭·초원' or location == '왕도 주변 들판') ? -4 : 0) + (disaster == '지진' and location == '광산·동굴' ? -4 : 0) + (disaster == '혜성 접근' and location == '유적·마나 이상 지대' ? 2 : 0) + ((location == '강가·폭포' or location == '해안') and (has(materials,'지렁이 미끼') or has(materials,'반짝이 미끼') or has(materials,'향미끼') or has(materials,'마나 미끼')) ? 3 : 0)",
       "vs": "8 + area_tier * 2",
       "grades": [
         {
@@ -3032,7 +3076,7 @@
       "id": "survey",
       "label": "탐사",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 80) + library + (meal_until >= elapsed ? meal_buff : 0)",
+      "mod": "floor(renown / 80) + library + (meal_until > elapsed ? meal_buff : 0)",
       "vs": "10 + area_tier * 2",
       "grades": [
         {
@@ -3072,7 +3116,7 @@
       "id": "synth",
       "label": "조합",
       "roll": "rand(1, 20)",
-      "mod": "floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 ? -3 : 0) + (meal_until >= elapsed ? meal_buff : 0) + (location == '공방' ? 0 : -4) + (synth_tier == '고급' and library < 3 ? -4 : 0) + (synth_tier == '비전' and (library < 5 or cauldron < 3) ? -6 : 0)",
+      "mod": "floor(sk_now / 12) + cauldron * 2 + floor(renown / 150) + (stamina < 30 and bath_until <= elapsed ? -3 : 0) + (meal_until > elapsed ? meal_buff : 0) + (location == '공방' ? 0 : -4) + (synth_tier == '고급' and library < 3 ? -4 : 0) + (synth_tier == '비전' and (library < 5 or cauldron < 3) ? -6 : 0)",
       "vs": "synth_vs",
       "grades": [
         {
@@ -3271,7 +3315,7 @@
       "id": "invent",
       "label": "특수연금",
       "roll": "rand(1, 20)",
-      "mod": "library + cauldron + floor(sk_now / 10) + min(clues, 3) + (stamina < 30 ? -3 : 0)",
+      "mod": "library + cauldron + floor(sk_now / 10) + min(clues, 3) + (stamina < 30 and bath_until <= elapsed ? -3 : 0)",
       "vs": "18",
       "grades": [
         {
@@ -3518,7 +3562,7 @@
       "id": "battle",
       "label": "교전",
       "roll": "rand(1, 20)",
-      "mod": "floor(renown / 80) + min(bombs, 3) + (stamina < 30 ? -3 : 0)",
+      "mod": "floor(renown / 80) + min(bombs, 3) + (stamina < 30 and bath_until <= elapsed ? -3 : 0)",
       "vs": "10 + foe_tier * 2",
       "fight": {
         "gauge": "25 + foe_tier * 20",
@@ -3714,7 +3758,7 @@
     "guide": "의뢰 보수는 위험과 품에 맞춘다 — 심부름·간단한 채집 50~200 / 기초 약품·흔한 소재 150~500 / 평범한 필드 의뢰·호위·소규모 토벌 500~1,500 / 위험한 유적·희귀 소재·급한 약 1,500~5,000 / 중대한 위협·정치적 사안 5,000~15,000. 사소한 일에 큰 돈을 매기지 마라. 의뢰 보수는 cole에 직접 더하지 말고 quest_pay에 옮겨 적는다 — 지급은 시스템이 한다. 의뢰판의 의뢰는 유저가 버튼으로 받는다(시스템이 quests에 넣는다) — 서사에서 사람이 직접 부탁한 의뢰만 quests에 올리고, 벽보·게시판 글로는 올리지 마라. 서사가 재료 부족으로 조합을 시작하지 않았으면 판정 결과와 무관하게 완성품을 올리지 말고 소재도 빼지 마라. 특수연금 등록(inventions)은 판정이 발명·성공일 때만 — 불안정·실패·사고 턴엔 건드리지 마라. 이름이 도감에 있으면 등록하지 말고 그 도감 레시피를 recipes에 올려라. 재료는 실험 당시 materials에 있던 이름만. 소재·아이템은 서사에 실제로 나온 것만 올린다. 근거 없이 생기지 않는다. 진열은 items에서 빼 shelf로 옮긴다(\"이름 @+팔릴날 가격\"). 팔리는 것은 시스템이 하니 shelf에서 지우지 마라. 매입 감정가와 진열 가격은 이름의 품질 접두어를 따른다 — \"고품질\"은 밴드 상단, \"조잡한\"은 하단 근처, 접두어 없으면 중간."
   },
   "promptState": {
-    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 살림: 침실 ' + bedroom + '단 · 부엌 ' + kitchen + '단 · 응접실 ' + parlor + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina}/{stamina_max} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state} · 재해 {disaster}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
+    "template": "지금: {date}({weekday}) {clock} · {season} · {weather} · 여정 {year_no}년차 · {placed ? location : '자리는 도입부가 놓은 그곳'}\n{settled ? '공방 「' + atelier_name + '」 — ' + atelier_place + ' · 스승 ' + mentor : '공방: 아직 없다 — 자리 잡는 장면부터가 이야기다'}\n{settled ? '설비: 가마 ' + cauldron + '단 · 서고 ' + library + '단 · 보관고 ' + mat_n + '/' + mat_cap + ' · 약초밭 ' + garden + '단 · 살림: 침실 ' + bedroom + '단 · 부엌 ' + kitchen + '단 · 응접실 ' + parlor + '단 · 욕실 ' + bath + '단 · 다음 세금 ' + tax_due + '콜' : ''}\n평판 {renown}({alch_tier}) · 소지금 {cole} · 체력 {stamina}/{stamina_max} · 투척 {bombs} · 직전 조합 {last_quality}\n소재: {materials}\n아이템: {items} · 레시피: {recipes}\n진열대({shelf_n}/{shelf_cap}): {shelf}\n밭({field_n}/{field_cap}): {field}\n여기 가게: {shops_here} · 시세 {market_state} · 재해 {disaster}\n의뢰({quest_slot} 남음): {quests}\n도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}\n숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}",
     "systemGuide": "수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다."
   },
   "statusUI": {
@@ -3792,6 +3836,9 @@
             "var": "parlor"
           },
           {
+            "var": "bath"
+          },
+          {
             "var": "storage"
           },
           {
@@ -3865,7 +3912,7 @@
           },
           {
             "var": "meal_buff",
-            "when": "meal_until >= elapsed and meal_buff > 0"
+            "when": "meal_until > elapsed and meal_buff > 0"
           },
           {
             "var": "sk_bomb",
@@ -4103,6 +4150,12 @@
             "note": "손님을 맞는 자리 — 1단부터 이웃·단골이 들르고(평판), 3단부터 의뢰인이 직접 찾아오고, 5단은 이름 있는 손님",
             "requires": "parlor < 3 or renown > 150",
             "requiresLabel": "4단부터는 기초 연금술사부터"
+          },
+          {
+            "var": "bath",
+            "max": 5,
+            "cost": "(bath + 1) * 1000",
+            "note": "🛁 목욕 (1단부터) — 체력 +15 +5/단, 씻은 날은 피로 벌점(체력 30 미만 -3)이 없다 · 5단은 온천 수준"
           }
         ]
       },

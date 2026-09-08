@@ -9002,7 +9002,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     });
     if (!selectedFormation.slots.length) previewCard.appendChild(h('p', { class: 'scg-note' }, '이 편성표에는 아직 자리가 없습니다.'));
     previewRoot.appendChild(previewCard);
-    if (P.css) previewRoot.appendChild(h('style', {}, scopeCss(String(P.css), '.sce-party-live-preview')));
+    if (P.css) previewRoot.appendChild(h('style', {}, scopeCssFn(String(P.css), '.sce-party-live-preview')));   // v1.7.16: 별칭(scopeCssFn) — scopeCss는 이 파일에 없다. 아틀리에 실사고 "편성표 누르면 화면이 빈다"
     const htmlFold = h('details', { class: 'sce-party-optional' },
       h('summary', {}, '생성 HTML 보기', h('span', {}, '복사·확인용')),
       h('pre', { class: 'sce-party-preview-code' }, previewCard.outerHTML));

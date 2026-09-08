@@ -276,6 +276,42 @@ if (ed) {
   }
 }
 
+// ── v1.7.16 — 호스트 층(floor) 모드 + 실제 봇 스키마 ──
+// 스택형 폴백만 돌려 봤더니 편성표에 css가 있는 봇(아틀리에)에서 편성표 탭이 "scopeCss is not defined"로 죽는 걸
+// 못 잡았다 (v1.7.13 이식 때 별칭 scopeCssFn을 안 따른 한 줄). 실기 제보 "탭 누르니 화면이 전부 지워짐".
+// 실험대 스키마는 그 경로(P.css)를 안 탄다 — 배포 봇 둘을 층 모드로 띄워 16탭을 전부 누른다.
+{
+  const BOTS = [['아틀리에', '../아틀리에/공방-아틀리에.json'], ['얼헌', '../얼헌/헌터-신안.json']];
+  for (const [name, rel] of BOTS) {
+    let schema = null;
+    try { schema = JSON.parse(fs.readFileSync(__P(rel), 'utf8')); } catch (e) { ck(`${name} 스키마 읽기`, false, e.message); continue; }
+    const box = document.createElement('div');
+    let fe = null, fed = null;
+    try { fed = createSchemaEditor(box, schema, { onChange: () => {}, floor: 'deep' }); } catch (e) { fe = e; }
+    ck(`★ [${name}] 층 모드(deep)로 편집기가 뜬다`, !fe && !!fed, fe && fe.message);
+    if (!fed) continue;
+    for (const floor of ['deep', 'json', 'assets', 'top', 'deep']) {
+      let err = null; try { fed.setFloor(floor); } catch (e) { err = e; }
+      ck(`★ [${name}] setFloor(${floor}) 예외 없음`, !err, err && (err.message + ' | ' + (err.stack || '').split('\n')[1]));
+    }
+    // deep 층: 탭 버튼을 전부 누른다 — 렌더 중 예외 하나면 화면은 빈다
+    const seen = new Set(); let guard = 0;
+    while (guard++ < 30) {
+      const tabs = findAll(box, (e) => e.tagName === 'BUTTON' && e.className.includes('sce-tab') && !e.className.includes('sce-tab-ai'));
+      const next = tabs.find((b) => !seen.has(b.textContent));
+      if (!next) break;
+      seen.add(next.textContent);
+      let err = null; try { next.click(); } catch (e) { err = e; }
+      ck(`★ [${name}] 층 모드 탭 [${next.textContent}] 렌더 예외 없음`, !err, err && (err.message + ' | ' + (err.stack || '').split('\n')[1]));
+      if (err) break;
+    }
+    ck(`[${name}] 층 모드에서 누른 탭이 12개 이상`, seen.size >= 12, String(seen.size));
+    ck(`[${name}] 층 모드 탭 묶음이 사이드 기둥(.sce-deep-side) 안에 있다 (v1.7.15)`,
+      findAll(box, (e) => String(e.className).includes('sce-deep-side')).length === 1
+      && findAll(box, (e) => String(e.className).includes('sce-tab-groups')).length === 1, '');
+  }
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

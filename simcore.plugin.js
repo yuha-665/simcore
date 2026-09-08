@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.16
-//@display-name SimCore (시뮬 엔진) v1.7.16 편성표 탭 빈 화면 수정
+//@version 1.7.17
+//@display-name SimCore (시뮬 엔진) v1.7.17 상태창 미리보기 한 기둥
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,10 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.7.17 ──────────────────────────────────
+// **상태창 탭 미리보기 두 칸도 한 기둥** (실기 제보 "이 부분도 그냥 한 줄로"). 표시 방식(테마 카드) 아래에 실제 렌더,
+// 렌더 폭은 채팅 폭에 가깝게 860px 상한 — 전폭으로 펴면 채팅에서 보이는 모양과 달라진다.
 //
 // ── v1.7.16 ──────────────────────────────────
 // **편성표 탭이 빈 화면** (아틀리에 실사고: 세부 편집기에서 탭을 누르니 화면이 전부 지워짐). v1.7.13 이식 때 편성표 탭의
@@ -14052,9 +14056,12 @@ const CSS = `
 .sce .sce-status-field-layout { grid-area:layout; }
 .sce .sce-status-field-highlights { grid-area:highlights; }
 .sce .sce-status-field-title, .sce .sce-status-field-log { width:100%; }
-.sce .sce-status-options { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,1.6fr);
-  grid-template-areas:"title live" "summary live" "toggle live" "copy live" "preview live" ". live"; align-content:start; min-width:0;
-  gap:0 18px; padding:12px 0 0; border-top:1px solid var(--sce-line); }
+/* v1.7.17 — 미리보기 두 칸도 한 기둥: 표시 방식(테마 카드) 아래에 실제 렌더. 렌더 폭은 채팅 폭에 가깝게 상한(860px) */
+.sce .sce-status-options { display:grid; grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"title" "summary" "toggle" "copy" "preview" "live"; align-content:start; min-width:0;
+  padding:12px 0 0; border-top:1px solid var(--sce-line); }
+/* 렌더 폭은 채팅 폭에 가깝게 — 기둥 폭(--sce-work-w) 상한이 아니라 "미리보기 폭"이라 width로 준다 */
+.sce .sce-status-options-theme-preview { width:min(860px,100%); }
 .sce .sce-status-options-title { grid-area:title; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
 .sce .sce-status-options-summary { grid-area:summary; display:flex; align-items:baseline; gap:5px; margin-top:3px;
   color:var(--sce-muted); font-size:11.5px; }
@@ -14088,7 +14095,7 @@ const CSS = `
   background:rgba(128,128,128,.28); }
 .sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
 .sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
-.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:0; padding-top:0;
+.sce .sce-status-options-live { grid-area:live; min-width:0; width:min(860px,100%); margin-top:14px; padding-top:12px; border-top:1px dashed var(--sce-line);
   border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-live-title { margin-bottom:6px; color:var(--sce-text-strong);
   font-size:11.5px; font-weight:750; }
@@ -14443,7 +14450,6 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-slot-head { align-items:stretch; flex-direction:column; }
@@ -14544,7 +14550,6 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-section-head { flex-direction:column; }

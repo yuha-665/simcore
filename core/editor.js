@@ -1690,9 +1690,12 @@ const CSS = `
 .sce .sce-status-field-layout { grid-area:layout; }
 .sce .sce-status-field-highlights { grid-area:highlights; }
 .sce .sce-status-field-title, .sce .sce-status-field-log { width:100%; }
-.sce .sce-status-options { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,1.6fr);
-  grid-template-areas:"title live" "summary live" "toggle live" "copy live" "preview live" ". live"; align-content:start; min-width:0;
-  gap:0 18px; padding:12px 0 0; border-top:1px solid var(--sce-line); }
+/* v1.7.17 — 미리보기 두 칸도 한 기둥: 표시 방식(테마 카드) 아래에 실제 렌더. 렌더 폭은 채팅 폭에 가깝게 상한(860px) */
+.sce .sce-status-options { display:grid; grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"title" "summary" "toggle" "copy" "preview" "live"; align-content:start; min-width:0;
+  padding:12px 0 0; border-top:1px solid var(--sce-line); }
+/* 렌더 폭은 채팅 폭에 가깝게 — 기둥 폭(--sce-work-w) 상한이 아니라 "미리보기 폭"이라 width로 준다 */
+.sce .sce-status-options-theme-preview { width:min(860px,100%); }
 .sce .sce-status-options-title { grid-area:title; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
 .sce .sce-status-options-summary { grid-area:summary; display:flex; align-items:baseline; gap:5px; margin-top:3px;
   color:var(--sce-muted); font-size:11.5px; }
@@ -1726,7 +1729,7 @@ const CSS = `
   background:rgba(128,128,128,.28); }
 .sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
 .sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
-.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:0; padding-top:0;
+.sce .sce-status-options-live { grid-area:live; min-width:0; width:min(860px,100%); margin-top:14px; padding-top:12px; border-top:1px dashed var(--sce-line);
   border-top:1px solid var(--sce-line); }
 .sce .sce-status-options-live-title { margin-bottom:6px; color:var(--sce-text-strong);
   font-size:11.5px; font-weight:750; }
@@ -2081,7 +2084,6 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-slot-head { align-items:stretch; flex-direction:column; }
@@ -2182,7 +2184,6 @@ const CSS = `
 }
 @media (max-width:1180px) {
 .sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
-.sce .sce-status-options { grid-template-columns:minmax(220px,1fr) minmax(0,1.3fr); }
 }
 @media (max-width:760px) {
 .sce .sce-party-intro, .sce .sce-party-section-head { flex-direction:column; }

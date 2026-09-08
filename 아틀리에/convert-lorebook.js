@@ -82,12 +82,16 @@ out.push({
 let recipeN = 0;
 // 한 글자 이름("약"·"빵")은 다른 낱말 안에서 매턴 걸린다 — 만드는 문맥의 어구로만 연다
 const keysOf = (name) => (name.length >= 2 ? [name] : [`${name}을 만`, `${name}을 빚`, `${name} 조합`, `${name}을 지어`]);
+// 분류명 재료(2026-09-08) — "연료"는 고유 소재가 아니라 분류 (燃料) 하나. 구성원을 같이 실어 메인이 소재 목록과 대조할 수 있게.
+const { classes: CLASSES = {}, generic: GENERIC = {} } = JSON.parse(fs.readFileSync(__P('조합서.json'), 'utf8'));
+const matText = (m) => (GENERIC[m] ? `(${GENERIC[m]} — ${CLASSES[GENERIC[m]].join('·')} 중 하나)` : m);
 for (const [cat, list] of Object.entries(BOOK)) {
   for (const [name, lib, tier, effect, mats] of list) {
     out.push({
       key: keysOf(name).join(', '), comment: `📖 ${name}`, folder: RECIPE_FOLDER,
-      content: `[조합서] ${name} — ${cat} · ${tier} · 서고 ${lib}단부터\n효과: ${effect}\n필요 소재: ${mats.join(' · ')}\n`
-        + '소재 목록에 이 이름들이 다 있어야 가마에 불을 넣는다 — 빠진 것이 있으면 판정과 상관없이 무엇이 모자란지 말하고 멈춘다 (같은 계열 대체는 한 가지까지). '
+      content: `[조합서] ${name} — ${cat} · ${tier} · 서고 ${lib}단부터\n효과: ${effect}\n필요 소재: ${mats.map(matText).join(' · ')}\n`
+        + '소재 목록에 이 이름들이 다 있어야 가마에 불을 넣는다 — 빠진 것이 있으면 판정과 상관없이 무엇이 모자란지 말하고 멈춘다. '
+        + '괄호로 적힌 분류 재료는 그 분류의 어느 소재든 되고, 고유명 재료는 같은 분류의 다른 소재로 한 가지까지만 대신할 수 있다. '
         + '배우지 않은 레시피면 먼저 서고에서 읽어야 한다 (서고 단수 미달이면 "아직 읽어낼 수 없다").',
       mode: 'normal', insertorder: 100, alwaysActive: false, secondkey: '', selective: false, useRegex: false,
       bookVersion: 2, id: `lm_simcore_recipe_${++recipeN}`, disabled: false,

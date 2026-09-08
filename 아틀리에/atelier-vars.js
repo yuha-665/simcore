@@ -372,10 +372,64 @@ const RECIPE_BOOK = {
   ],
 };
 const BOOK_ALL = Object.values(RECIPE_BOOK).flat();
+
+// ══════════ 소재 분류표 — 아틀리에 원작 어휘 (2026-09-08, 유저 "이름만 보고 이게 연료인지 뭔지 알기 힘들다") ══════════
+// 원작의 (燃料)·(鉱石)·(薬材) 분류를 그대로 옮겼다. 소재 하나가 여러 분류에 든다 — 불의 돌은 광석이자 화약 (원작과 같다).
+// 쓰임 셋 — 전부 생성기 안, 플러그인 무접촉:
+//   ① 조합서 재료 칩에 분류 꼬리표 (불의 돌 ·광석)
+//   ② 분류명으로 적힌 재료(GENERIC) — 레시피 표의 "연료"·"약초"·"광석"은 고유 소재가 아니라 "그 분류 하나" → 칩은 (연료)로
+//      그리고 has()를 분류 구성원 전부에 걸어 펼친다. 옛 "같은 계열 대체 한 가지"가 드디어 정의된 셈.
+//   ③ 조합서 여덟째 탭 "소재" — 분류별 도감, 가진 것만 밝게.
+// 보조는 분류를 저장하지 않는다 — 이름만 저장하고 분류는 이 표에서 본다 (표 밖 이름은 꼬리표 없이 그대로 뜬다).
+const ATELIER_CLASSES = ['식물', '약재', '꽃', '물', '연료', '화약', '광석', '보석', '금속', '모래', '실', '천', '기름', '종이', '목재',
+  '동물 소재', '마물 소재', '용 소재', '해산물', '독의 재료', '신비의 힘', '식재료', '과일', '중화제', '씨앗', '미끼'];
+const MAT_CLASS = {
+  식물: ['이름 모를 풀', '마른 풀', '새순', '민들레', '반딧불 풀', '서리 풀', '겨울 뿌리', '식물 섬유', '풀 접착제', '염료', '겨우살이',
+    '물이끼', '반딧불 이끼', '안개 이끼', '마나 새싹', '밀 이삭', '햇밀', '해바라기 씨', '도토리', '유니', '버섯', '숲 버섯', '붉은 버섯',
+    '늪 버섯', '이슬 버섯', '그늘 버섯', '해독 버섯', '향나무 껍질', '설목 껍질', '희귀 섬유', '향신료', '사막 선인장'],
+  약재: ['약초', '활력 약초', '희귀 약초', '설산 약초', '쓴 풀', '해독 버섯', '이름 모를 풀', '겨울 뿌리', '서리 풀', '겨우살이', '들국화',
+    '얼음꽃', '늪 연꽃', '설화', '이슬 버섯', '안개 이끼', '생명의 꽃'],
+  꽃: ['향기 꽃', '희귀 꽃', '생명의 꽃', '일곱빛 꽃', '얼음꽃', '사과꽃', '민들레', '들국화', '늪 연꽃', '사막 장미', '설화', '햇빛 꽃',
+    '둔켈하이트 봉오리', '둔켈하이트'],
+  물: ['맑은 물', '정제수', '성수', '만년설 물', '여름 폭포수', '낙엽 물', '검은 물', '봄꽃 이슬', '밤 사막 이슬', '빗물', '물이끼'],
+  연료: ['연료', '숯', '기름', '송진', '목재', '마른 풀', '훈제용 향나무', '폭풍 유목', '밀랍'],
+  화약: ['화약', '고급 화약', '강력 화약', '유황', '초석', '불의 돌', '불의 모래', '폭발 촉매'],
+  광석: ['광석', '희귀 광석', '푸른 광석', '얼음 광석', '희귀 번개 광석', '검은 광석', '돌', '돌가루', '번개 돌', '불의 돌', '바람 돌', '유황', '초석'],
+  보석: ['보석', '진주', '별의 조각', '희귀 결정', '서리 결정', '얼음 결정', '고급 얼음 결정', '번개 결정', '마나 결정', '눈꽃 결정',
+    '영원의 결정', '영원의 결정 조각', '혜성석', '바다 유리', '산호 조각', '진주조개', '유리', '유리병'],
+  금속: ['금속 조각', '전도 금속', '은', '갈고리', '잉곳', '고급 잉곳'],
+  모래: ['모래', '돌가루', '불의 모래', '별의 모래', '얼어붙은 진흙', '연마제', '혜성석 가루'],
+  실: ['실', '식물 섬유', '희귀 섬유', '몬스터 털'],
+  천: ['천', '순백 천', '클로스', '고급 클로스'],
+  기름: ['기름', '밀랍', '해바라기 씨', '송진'],
+  종이: ['여과지', '마법 페이지', '제텔', '마도 제텔'],
+  목재: ['목재', '훈제용 향나무', '폭풍 유목', '설목 껍질', '향나무 껍질'],
+  '동물 소재': ['깃털', '가죽', '털가죽', '밀랍', '꿀', '벌꿀', '우유', '매미 허물', '나비 비늘', '독개구리 점액', '고기', '말린 고기'],
+  '마물 소재': ['단단한 껍질', '몬스터 껍질', '몬스터 털', '독액', '유니', '푸니볼'],
+  '용 소재': ['드래곤 비늘', '드래곤 하트'],
+  해산물: ['생선', '조개', '조개껍질', '은어', '연어', '겨울 송어', '반딧불 조개', '진주조개', '서리 조개', '산호 조각', '봄 김'],
+  '독의 재료': ['독액', '독개구리 점액', '붉은 버섯', '늪 버섯', '검은 물'],
+  '신비의 힘': ['정령석', '현자의 소재', '빛의 소재', '마나 결정', '별가루', '별의 조각', '별의 모래', '고대 파편', '혜성석', '혜성석 가루',
+    '마법 페이지', '반딧불 풀', '반딧불 이끼', '반딧불 조개', '일곱빛 꽃', '나비 비늘', '번개 돌', '마나 새싹', '영원의 결정', '영원의 결정 조각',
+    '둔켈하이트', '둔켈하이트 봉오리', '햇빛 꽃', '정제 촉매', '강력 촉매', '내열 촉매', '마나 촉매', '현자의 촉매'],
+  식재료: ['밀가루', '설탕', '소금', '겨울 소금', '꿀', '벌꿀', '우유', '향신료', '고기', '말린 고기', '버섯', '숲 버섯', '그늘 버섯', '호박',
+    '새순', '밀 이삭', '햇밀', '도토리', '봄 김', '생선', '사막 선인장'],
+  과일: ['과일', '사과', '가을 열매'],
+  중화제: ['중화제 적', '중화제 청', '중화제 황', '중화제 녹'],
+  씨앗: ['약초 씨앗', '이름 모를 풀 씨앗', '밀 씨앗', '향기 꽃 씨앗', '활력 약초 씨앗', '쓴 풀 씨앗', '희귀 꽃 씨앗', '생명의 꽃 씨앗',
+    '사과 모종', '과일 모종', '향나무 모종', '비료', '마나 비료'],
+  미끼: ['지렁이 미끼', '반짝이 미끼', '향미끼', '마나 미끼'],
+};
+const CLASS_OF = {};
+for (const [c, names] of Object.entries(MAT_CLASS)) for (const n of names) (CLASS_OF[n] ??= []).push(c);
+// 분류명으로 적힌 재료 → 분류. 레시피 표에서 이 이름은 "그 분류 하나"다 — 분류 구성원에 같은 이름의 소재도 들어 있어 옛 저장값도 그대로 통한다.
+const GENERIC = { 연료: '연료', 광석: '광석', 약초: '약재', 천: '천', 실: '실', 기름: '기름', 보석: '보석', 과일: '과일', 돌: '광석',
+  목재: '목재', 모래: '모래', 독액: '독의 재료' };
 // 조합서 사이드카 — convert-lorebook.js가 읽어 레시피마다 키워드 활성 로어북 항목을 굽는다.
 // 아는 레시피 전부를 지시문으로 실으면 배울수록 매턴 비용이 는다 — 만들려는 것의 이름이 채팅에 나올 때만
 // 그 한 벌(효과·필요 소재·규칙)이 실리는 게 로어북식이고, 유저가 고른 방식이다 (2026-09-06).
-require('fs').writeFileSync(__P('조합서.json'), JSON.stringify({ book: RECIPE_BOOK }, null, 1));
+// 분류표·분류명 재료도 같이 싣는다 — 변환기가 "(연료 — 연료·숯·… 중 하나)"로 굽는다.
+require('fs').writeFileSync(__P('조합서.json'), JSON.stringify({ book: RECIPE_BOOK, classes: MAT_CLASS, generic: GENERIC }, null, 1));
 const BOOK_CATS = Object.keys(RECIPE_BOOK);
 // 서고 단수별 묶음 머리 — "이 단부터 열린다"가 곧 진행 사다리
 const LIB_NAME = ['처음부터', '서고 1단', '서고 2단', '서고 3단', '서고 4단', '서고 5단'];
@@ -385,10 +439,24 @@ const BOOK_TEMPLATE = (() => {
   // 탭은 CSS만으로 — 라디오 + 라벨 + :checked ~ 페이지. 패널은 우리 화면이라 input이 살아남는다.
   // ⚠ 다시 그릴 때(상태 변화마다) 첫 탭으로 돌아온다 — 엔진이 템플릿 안 UI 상태를 기억하지 않는다.
   // 특수연금 장부 탭 (유저: "자기만의 레시피를 창조해 조합서에 등록") — 도감이 아니라 목록 변수(inventions)를 그린다
-  const TABS = [...BOOK_CATS, '특수'];
+  // 소재 탭 (2026-09-08) — 분류별 도감. 재료 칩의 분류 꼬리표·(분류) 재료와 한 표(MAT_CLASS)에서 나온다.
+  const TABS = [...BOOK_CATS, '특수', '소재'];
+  const MAT_TAB = TABS.length - 1;
+  const owned = (names) => names.map((n) => `has(materials,${q(n)})`).join(' + ');
+  // 재료 칩 — 분류명 재료는 "(연료)"로 그리고 분류 구성원 어느 것이든 있으면 밝힌다. 고유명은 이름 + 분류 꼬리표.
+  const matLabel = (m) => (GENERIC[m] ? `(${GENERIC[m]})` : m);
+  const matChip = (m) => {
+    if (GENERIC[m]) {
+      const members = MAT_CLASS[GENERIC[m]];
+      return `<i class="abk-m abk-cat {(${members.map((n) => `has(materials,${q(n)})`).join(' or ')}) ? 'have' : ''}" title="분류 (${GENERIC[m]}) — 이 중 하나면 된다: ${members.join(' · ')}">(${GENERIC[m]})</i>`;
+    }
+    const cls = CLASS_OF[m] || [];
+    return `<i class="abk-m {has(materials,${q(m)}) ? 'have' : ''}"${cls.length ? ` title="분류: ${cls.join(' · ')}"` : ''}>${m}${cls.length ? `<em>${cls[0]}</em>` : ''}</i>`;
+  };
   const radios = TABS.map((c, i) => `<input type="radio" name="abk-{uid}" id="abk-{uid}-${i}" class="abk-r abk-r${i}"${i === 0 ? ' checked' : ''}>`).join('');
   const labels = BOOK_CATS.map((c, i) => `<label for="abk-{uid}-${i}" class="abk-tab">${c}<span>{${known(RECIPE_BOOK[c])}}/${RECIPE_BOOK[c].length}</span></label>`).join('')
-    + `<label for="abk-{uid}-${BOOK_CATS.length}" class="abk-tab">특수<span>{count(inventions)}/12</span></label>`;
+    + `<label for="abk-{uid}-${BOOK_CATS.length}" class="abk-tab">특수<span>{count(inventions)}/12</span></label>`
+    + `<label for="abk-{uid}-${MAT_TAB}" class="abk-tab">소재<span>{count(materials)}/{mat_cap}</span></label>`;
   const pages = BOOK_CATS.map((c, i) => {
     const list = RECIPE_BOOK[c];
     const groups = [];
@@ -398,8 +466,8 @@ const BOOK_TEMPLATE = (() => {
       const rows = inLv.map(([name, lib, tier, eff, mats]) => {
         const on = `has(recipes,${q(name)})`;
         const lock = lib > 0 ? `{${on} ? '' : (library < ${lib} ? '🔒 서고 ${lib}단' : '미습득')}` : `{${on} ? '' : '미습득'}`;
-        const chips = mats.map((m) => `<i class="abk-m {has(materials,${q(m)}) ? 'have' : ''}">${m}</i>`).join('');
-        return `<div class="abk-row {${on} ? 'on' : 'off'}" title="${eff} · 필요: ${mats.join(', ')}">`
+        const chips = mats.map(matChip).join('');
+        return `<div class="abk-row {${on} ? 'on' : 'off'}" title="${eff} · 필요: ${mats.map(matLabel).join(', ')}">`
           + `<span class="abk-ico">{${on} ? '✦' : '·'}</span>`
           + `<span class="abk-nm">${name}</span><span class="abk-tier abk-${tier}">${tier}</span>`
           + `<span class="abk-lock">${lock}</span>`
@@ -412,7 +480,10 @@ const BOOK_TEMPLATE = (() => {
   }).join('\n  ') + `
   <div class="abk-page abk-p${BOOK_CATS.length}"><div class="abk-lv {library >= 2 ? 'open' : 'shut'}"><div class="abk-lh">특수연금 장부<span>{count(inventions)}/12 · 서고 2단부터 · {library >= 2 ? '열림' : '🔒'}</span></div>
   <div class="abk-inv">{inventions:tags}</div>
-  <div class="abk-eff">가마 앞에서 조합서에 없는 것을 시도한다(🔮 특수연금). 재료 3~4종은 판정과 상관없이 사라지고, 발명·성공이면 재료법과 탄생물이 여기 남는다. 장부의 레시피는 적힌 재료로만 재현된다.</div></div></div>`;
+  <div class="abk-eff">가마 앞에서 조합서에 없는 것을 시도한다(🔮 특수연금). 재료 3~4종은 판정과 상관없이 사라지고, 발명·성공이면 재료법과 탄생물이 여기 남는다. 장부의 레시피는 적힌 재료로만 재현된다.</div></div></div>
+  <div class="abk-page abk-p${MAT_TAB}"><div class="abk-lv open"><div class="abk-lh">소재 분류 — 아틀리에 원작 어휘<span>보관고 {count(materials)}/{mat_cap}</span></div>
+  <div class="abk-eff">소재 하나가 여러 분류에 든다 — 불의 돌은 광석이자 화약. 조합서에 (연료)처럼 괄호로 적힌 재료는 그 분류의 어느 소재든 된다. 밝은 것이 보관고에 있는 것 · 표 밖 이름은 여기 안 뜬다.</div></div>
+  ${ATELIER_CLASSES.map((c) => `<div class="abk-cls"><div class="abk-ch">${c}<span>{${owned(MAT_CLASS[c])}}/${MAT_CLASS[c].length}</span></div><div class="abk-mats">${MAT_CLASS[c].map((n) => `<i class="abk-m {has(materials,${q(n)}) ? 'have' : ''}">${n}</i>`).join('')}</div></div>`).join('\n  ')}</div>`;
   const css = TABS.map((c, i) => `.abk .abk-r${i}:checked ~ .abk-tabs .abk-tab:nth-child(${i + 1}) { background: rgba(240,198,116,.22); color: #fff4dc; border-color: rgba(240,198,116,.6); }\n`
     + `.abk .abk-r${i}:checked ~ .abk-p${i} { display: block; }`).join('\n');
   return `
@@ -421,7 +492,7 @@ const BOOK_TEMPLATE = (() => {
   <div class="abk-head">조합서<span class="abk-prog">{${known(BOOK_ALL)}} / ${BOOK_ALL.length} · 서고 {library}단</span></div>
   <div class="abk-tabs">${labels}</div>
   ${pages}
-  <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · 묶음 머리의 서고 단부터 배울 수 있다 · 도감 밖의 창작은 특수 탭(장부)에</div>
+  <div class="abk-foot">✦ 배운 것 · 밝은 소재는 보관고에 있는 것 · (연료)처럼 괄호 재료는 그 분류 아무거나 · 묶음 머리의 서고 단부터 배울 수 있다 · 도감 밖의 창작은 특수 탭(장부)에 · 분류표는 소재 탭</div>
 </div>
 <style>
 .abk { font-family: ${SKIN.font}; color: ${SKIN.ink}; }
@@ -457,6 +528,14 @@ ${css}
 .abk-m { font-style: normal; font-size: 10.5px; padding: 0 7px; border-radius: 999px; color: ${SKIN.faint};
   border: 1px solid ${SKIN.lineSoft}; background: ${SKIN.paper}; }
 .abk-m.have { color: #2f6f55; border-color: ${SKIN.mint}; background: ${SKIN.mintSoft}; }
+.abk-m em { font-style: normal; margin-left: 4px; font-size: 9px; color: ${SKIN.faint}; letter-spacing: .02em; }
+.abk-m.have em { color: #5a9a7e; }
+.abk-m.abk-cat { border-style: dashed; font-weight: 700; color: ${SKIN.muted}; }
+.abk-m.abk-cat.have { color: #2f6f55; }
+.abk-cls { margin: 0 0 7px; padding: 5px 8px; border: 1px solid ${SKIN.lineSoft}; border-radius: 10px; background: ${SKIN.paper}; }
+.abk-ch { display: flex; justify-content: space-between; font-size: 12px; font-weight: 800; color: ${SKIN.honey}; margin-bottom: 3px; }
+.abk-ch span { font-weight: 600; color: ${SKIN.muted}; font-size: 11px; }
+.abk-cls .abk-mats { margin-top: 0; }
 .abk-foot { margin-top: 8px; font-size: 11px; color: ${SKIN.muted}; }
 .abk-inv .sim-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .abk-inv .sim-tag { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; color: #6f4fa8; background: ${SKIN.lavenderSoft}; border: 1px solid ${SKIN.lavender}; }
@@ -654,6 +733,8 @@ const S = {
     { id: 'materials', label: '소재', type: 'list', init: ['맑은 물', '이름 모를 풀'], maxItems: 99, itemMaxLength: 30,
       desc: '보유 소재. 채집·구매·선물로 늘고 조합·판매로 준다. 지금 있는 지형에서 날 만한 것만 (로어북 "지역별 소재 배치"). '
         + '**이름만** 적는다 — 수량·수식어 없이 ("약초", "약초 3개"·"신선한 약초" 금지). 같은 것이 여럿이면 한 항목. '
+        + '분류는 적지 않는다 — 조합서 소재 탭의 분류표(아틀리에 원작 어휘: ' + ATELIER_CLASSES.join('·') + ')가 이름으로 알아본다. '
+        + '새 소재 이름은 그 분류 중 하나에 들도록 짓고, 표에 있는 이름이면 그 이름 그대로. '
         + '보관고 용량(mat_cap)을 넘긴 만큼은 상한다 — "보관고가 넘친다" 통지가 오면 상한 것을 빼라. '
         + '씨앗·모종·미끼도 소재다 (상점에서 사면 여기로 온다). 씨앗을 심으면 여기서 빼고 field에 올린다; 낚시에 미끼를 쓰면 하나 뺀다.' },
     // 밭 — 씨앗 상사에서 산 씨앗을 심으면 "작물 @+익는날"로 여기 온다. 익는 날 (오늘)로 보이고, 지나면 시든다(expire)
@@ -1139,7 +1220,8 @@ const S = {
       text: '공방 설비는 서사에 실체가 있다 — 가마 {cauldron}단(3단 미만이면 비전 조합은 무리), 서고 {library}단(조합서의 묶음 머리에 적힌 단부터 배울 수 있다 — 대략 기초 0~2·고급 3~4·비전 5), '
         + '보관고 {mat_n}/{mat_cap}(넘치면 상한다), 약초밭 {garden}단(밭 2칸/단 — 심은 것이 익는 날 소재가 된다). '
         + '새 레시피를 배우는 장면은 서고 단수를 보고 미달이면 "아직 읽어낼 수 없다"로 막아라. 설비를 올리면 그 변화를 공방 풍경으로 보여라. '
-        + '조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라(같은 계열 대체는 한 가지까지). 조합서 밖의 것은 서사에 맡긴다.' },
+        + '조합서에 있는 것은 거기 적힌 필요 소재로만 시작된다 — 그 이름이 소재 목록에 없으면 판정 결과와 상관없이 가마에 불을 넣지 말고 무엇이 모자란지 말하고 멈춰라. '
+        + '(연료)처럼 괄호로 적힌 재료는 그 분류(아틀리에 어휘)의 어느 소재든 된다; 고유명 재료는 같은 분류의 다른 소재로 한 가지까지만 대신할 수 있다. 조합서 밖의 것은 서사에 맡긴다.' },
     { id: 'tax_soon', when: 'dom >= 28',
       text: '곧 세금날(매달 1일)이다 — 이번 달 세금 {tax_due}콜(공방세 + 진열 매출 1할). 징수관·이웃의 잡담으로 스치듯 상기시켜라. 걷는 건 시스템이 한다.' },
     { id: 'tax_arrears_dir', when: 'tax_arrears > 0',
@@ -2734,14 +2816,15 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   ok('미치환 자리표시자 없음', leftover.length === 0, leftover.slice(0, 3).join(' '));
   ok('진행도 2 / 130 · 서고 0단', html.includes('2 / 130 · 서고 0단'), '');
   // 분야 탭 — CSS 라디오. 스크롤 압박을 끊는다 (유저 제보)
-  ok('분야 탭 6 + 특수 1 = 7 (라디오 + 라벨), 첫 탭이 켜져 있다', (html.match(/type="radio"/g) || []).length === 7 && (html.match(/class="abk-tab"/g) || []).length === 7
+  ok('분야 탭 6 + 특수 1 + 소재 1 = 8 (라디오 + 라벨), 첫 탭이 켜져 있다', (html.match(/type="radio"/g) || []).length === 8 && (html.match(/class="abk-tab"/g) || []).length === 8
     && html.includes('id="abk-scg-0" class="abk-r abk-r0" checked'), '');
   ok('탭 라벨에 분야 진행도 (약품 1/36)', html.includes('약품<span>1/36</span>'), '');
   ok('페이지는 기본 숨김, 켜진 탭만 보인다 (CSS)', html.includes('#sc-game .abk-page{') && html.includes('.abk-r0:checked ~ .abk-p0{'), '');
   // 서고 단 묶음
   ok('묶음 머리 "처음부터"·"서고 1단"…', html.includes('처음부터') && html.includes('서고 1단<span>') && html.includes('서고 5단<span>'), '');
   ok('서고 0단이면 1단 묶음부터 잠김(shut)', /abk-lv shut"><div class="abk-lh">서고 1단/.test(html) && /abk-lv open"><div class="abk-lh">처음부터/.test(html), '');
-  const rowOf = (h, n) => { const i = h.indexOf('<span class="abk-nm">' + n + '</span>'); return h.slice(h.lastIndexOf('<div class="abk-row', i), i + 400); };
+  // 분류 칩의 title(구성원 목록)이 길어 한 행이 1KB를 넘는다 — 넉넉히 자른다
+  const rowOf = (h, n) => { const i = h.indexOf('<span class="abk-nm">' + n + '</span>'); return h.slice(h.lastIndexOf('<div class="abk-row', i), i + 1600); };
   ok('배운 힐링 살브는 on', rowOf(html, '힐링 살브').includes('abk-row on') && rowOf(html, '힐링 살브').includes('✦'), rowOf(html, '힐링 살브').slice(0, 120));
   ok('안 배운 0단 프람은 off · 미습득', rowOf(html, '프람').includes('abk-row off') && rowOf(html, '프람').includes('미습득'), '');
   ok('1단 레헤른은 🔒 서고 1단, 3단 테라 봄은 🔒 서고 3단', rowOf(html, '레헤른').includes('🔒 서고 1단') && rowOf(html, '테라 봄').includes('🔒 서고 3단'), '');
@@ -2750,15 +2833,55 @@ console.log('\n━━ 조합서 탭 — 분야 탭 × 서고 단 묶음, 컬렉�
   ok('서고 3단이면 1~3단 자물쇠가 풀리고(미습득) 4·5단만 남는다',
     rowOf(html3, '테라 봄').includes('미습득') && !html3.includes('🔒 서고 1단') && html3.includes('🔒 서고 4단') && html3.includes('🔒 서고 5단'), '');
   ok('묶음 머리도 열린다 (서고 3단 열림 / 4단 🔒)', /서고 3단<span>[^<]*열림/.test(html3) && /서고 4단<span>[^<]*🔒/.test(html3), '');
-  ok('보관고에 있는 소재(약초·기름)는 밝게, 없는 것(밀랍)은 흐리게',
-    rowOf(html, '힐링 살브').includes('abk-m have">약초') && rowOf(html, '힐링 살브').includes('abk-m have">기름') && rowOf(html, '힐링 살브').includes('abk-m ">밀랍'), '');
+  // 분류명 재료(약초→(약재), 기름→(기름))는 괄호 칩 — 분류 구성원이 하나라도 있으면 밝다. 고유명(밀랍)은 이름 + 분류 꼬리표
+  ok('보관고에 있는 소재((약재)·(기름))는 밝게, 없는 것(밀랍)은 흐리게',
+    rowOf(html, '힐링 살브').includes('abk-m abk-cat have"') && rowOf(html, '힐링 살브').includes('>(약재)</i>') && rowOf(html, '힐링 살브').includes('>(기름)</i>')
+    && rowOf(html, '힐링 살브').includes('abk-m " title="분류: 연료 · 기름 · 동물 소재">밀랍<em>연료</em>'), rowOf(html, '힐링 살브'));
   ok('도감 밖 창작 레시피는 책에 안 뜬다 (목록에는 남는다)', !html.includes('내 맘대로') && t.vars.recipes.includes('내 맘대로 만든 비약'), '');
-  ok('툴팁(title)에 효과·필요 소재', html.includes('title="바르는 약 — 베임·타박·화상 · 필요: 약초, 기름, 맑은 물, 밀랍"'), '');
+  ok('툴팁(title)에 효과·필요 소재 — 분류명 재료는 괄호', html.includes('title="바르는 약 — 베임·타박·화상 · 필요: (약재), (기름), 맑은 물, 밀랍"'), '');
   ok('CSS가 #sc-game 범위로 갇힌다', html.includes('#sc-game .abk'), '');
   const rd = S.vars.find((v) => v.id === 'recipes').desc;
   ok('레시피 desc가 도감 이름표 + 서고 단수를 싣는다 (보조가 이름·문턱을 맞춘다)',
     rd.includes('폭탄=프람/유니백/레헤른(1)') && rd.includes('용린 낚싯대(5)'), rd.slice(0, 160));
   ok('소재 desc가 "이름만"을 시킨다 (has 완전일치)', S.vars.find((v) => v.id === 'materials').desc.includes('이름만'), '');
+}
+
+console.log('\n━━ 소재 분류표 — 아틀리에 원작 어휘, 조합서 소재 탭 · (분류) 재료 (2026-09-08) ━━');
+{
+  const products = new Set(BOOK_ALL.map(([n]) => n));
+  const rawIngs = [...new Set(BOOK_ALL.flatMap(([, , , , mats]) => mats))].filter((m) => !products.has(m));
+  const specials = [...new Set(Object.values(SPECIALS).flat(2))];
+  ok('분류 26종 전부 표에 있고 표의 키는 분류 목록 그대로', ATELIER_CLASSES.length === 26 && ATELIER_CLASSES.every((c) => Array.isArray(MAT_CLASS[c]) && MAT_CLASS[c].length)
+    && Object.keys(MAT_CLASS).every((c) => ATELIER_CLASSES.includes(c)), Object.keys(MAT_CLASS).filter((c) => !ATELIER_CLASSES.includes(c)).join(','));
+  const noClass = rawIngs.filter((m) => !CLASS_OF[m]);
+  ok(`조합서 순수 재료 ${rawIngs.length}종 전부 분류가 있다`, noClass.length === 0, noClass.join(', '));
+  const noSpec = specials.filter((m) => !CLASS_OF[m]);
+  ok(`계절 특산 ${specials.length}종 전부 분류가 있다`, noSpec.length === 0, noSpec.join(', '));
+  ok('한 소재가 여러 분류에 든다 (불의 돌 = 광석·화약, 밀랍 = 연료·기름·동물 소재)',
+    CLASS_OF['불의 돌'].join('·') === '화약·광석' && CLASS_OF['밀랍'].length === 3, JSON.stringify(CLASS_OF['불의 돌']));
+  ok('분류명 재료는 제 분류의 구성원이기도 하다 (옛 저장값 "연료"·"약초"가 그대로 통한다)',
+    Object.entries(GENERIC).every(([name, cls]) => MAT_CLASS[cls].includes(name) && ATELIER_CLASSES.includes(cls)), '');
+  ok('분류표 안 이름 중복 없음 (한 분류 안에서)', Object.values(MAT_CLASS).every((l) => new Set(l).size === l.length), '');
+  ok('사이드카에 분류표·분류명 재료가 실린다', (() => { const j = JSON.parse(require('fs').readFileSync(__P('조합서.json'), 'utf8')); return j.classes && j.classes.연료.includes('숯') && j.generic.약초 === '약재'; })(), '');
+
+  const t = fresh();
+  t.vars.recipes = ['프람'];
+  t.vars.materials = ['숯', '화약', '불의 돌', '중화제 적'];          // 연료 대신 숯 — 분류로 통한다
+  const html = SC.require('render').renderPanelTemplate(S, t, BOOK_TEMPLATE);
+  const body = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  ok('미치환 자리표시자 없음 (소재 탭·분류 칩 포함)', (body.match(/\{[^{}]+\}/g) || []).length === 0, (body.match(/\{[^{}]+\}/g) || []).slice(0, 3).join(' '));
+  const rowOf = (h, n) => { const i = h.indexOf('<span class="abk-nm">' + n + '</span>'); return h.slice(h.lastIndexOf('<div class="abk-row', i), i + 600); };
+  ok('프람의 (연료) 칩은 숯만 있어도 밝다', rowOf(html, '프람').includes('abk-m abk-cat have" title="분류 (연료) — 이 중 하나면 된다: 연료 · 숯'), rowOf(html, '프람').slice(0, 300));
+  ok('고유명 칩은 이름 + 분류 꼬리표 (불의 돌 ·화약)', rowOf(html, '프람').includes('불의 돌<em>화약</em>') && rowOf(html, '프람').includes('title="분류: 화약 · 광석"'), '');
+  ok('완성품 재료(중화제 적)도 분류 꼬리표 (중화제)', rowOf(html, '프람').includes('중화제 적<em>중화제</em>'), '');
+  ok('소재 탭 라벨 = 보관고 4/10', html.includes('소재<span>4/10</span>'), '');
+  const matPage = body.slice(body.indexOf('abk-p7'), body.indexOf('abk-foot'));
+  ok('소재 탭에 분류 26묶음, 원작 어휘 순서 (식물 → … → 미끼)', (matPage.match(/class="abk-cls"/g) || []).length === 26 && matPage.indexOf('>식물<span>') < matPage.indexOf('>연료<span>') && matPage.indexOf('>연료<span>') < matPage.indexOf('>미끼<span>'), '');
+  ok('묶음 머리에 보유/전체 (연료 1/9 · 화약 2/8 · 광석 1/13 · 중화제 1/4)', matPage.includes('>연료<span>1/9</span>') && matPage.includes('>화약<span>2/8</span>') && matPage.includes('>광석<span>1/13</span>') && matPage.includes('>중화제<span>1/4</span>'),
+    (matPage.match(/>(연료|화약|광석|중화제)<span>[^<]*</g) || []).join(' '));
+  ok('가진 것만 밝다 (숯 have · 연료 흐림)', matPage.includes('abk-m have">숯</i>') && matPage.includes('abk-m ">연료</i>'), '');
+  ok('보조 계약: 분류는 안 적고 분류 어휘 안에서 이름 짓기', S.vars.find((v) => v.id === 'materials').desc.includes('분류는 적지 않는다') && S.vars.find((v) => v.id === 'materials').desc.includes('신비의 힘'), '');
+  ok('메인 규칙: 괄호 재료는 분류 아무거나 · 고유명 대체는 같은 분류에서 한 가지', S.directives.find((d) => d.id === 'workshop').text.includes('괄호로 적힌 재료는 그 분류') && S.directives.find((d) => d.id === 'workshop').text.includes('한 가지까지만'), '');
 }
 
 console.log('\n━━ 캐스트 맵 — 3,792토큰을 origin으로 쪼갠다 ━━');

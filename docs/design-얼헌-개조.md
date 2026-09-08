@@ -240,3 +240,14 @@ P1~P3은 기존 심코어 기능만으로 구현 가능 — 신규 엔진 작업
     모집 칸 글 형식 + 명단(cast) 헌터의 지원 댓글 지침(랭크대 게이팅 준수).
   · 게이트 지도: 편성표 대장 템플릿 탭(v0.89) + `{gates:tags:권역}` 필터(v0.98 신설) —
     서울 5권역 그리드에 게이트 보드를 나눠 꽂는다. fab 🗺️로 바로 열림. a-* 팔레트.
+
+### P8' — 의뢰 보드 → 의뢰판 questBoard (2026-09-08, 유저 "얼헌도 퀘스트보드 생긴 김에 의뢰판으로, 아틀리에와 같이 배포")
+옛 P8은 보조가 `offers` 목록에 "[발주처] 내용 (보상) @+기한"을 적고 수락은 이야기에서였다 — 아틀리에 실기에서 드러난 병(v1.7.9)과 같다:
+수락이 보조 기록에만 기대고 메인은 게시 원문을 몰랐다. `questBoard`(v1.7.9)로 교체 — 코어 무접촉, 생성기만.
+- `questBoard`: 협회 의뢰판 📋, listVar quests, unit 원, format `[{client}] {title} ({grade} · {pay}원) @+{days}` — 옛 [발주처] 접두 규약을 잇는다(quests desc에 "시스템이 넣는다, 직접 올리지 마라").
+  grades E급~S급, 보수 밴드 E 20~80만 … S 1억~5억(원). days [2,14] · postDays [3,8] · maxOffers 6 · minOffers 2 · refillEvery 3. 포기 `fame -2`. **when `not in_gate`** — 게이트 안 통신 두절이라 버튼·게시 요청 모두 닫힘.
+  guide: client는 협회 / 소속 길드 이름(guild 무소속 아닐 때) / 개인 이름·업체, 난이도는 license ±1랭크.
+- 제거: `offers` 변수·allow·onTurn expire, 랜덤 이벤트 `offer_post`, 지시문 `offer_rule`(mainInject가 게시 원문을 메인에 싣는다), 파티 패널 "의뢰 보드" 템플릿 탭(.hqb).
+  보수 지급은 옛 규약 그대로 — 완료 장면에서 보조가 won에 (quest_pay 정산 기계는 안 붙였다: 얼헌 quests는 끝수 보수 형식이 아니다).
+- 옛 세이브: offers 값은 reconcile이 버린다(변수가 사라졌으니). 진행 중 quests는 무접촉.
+- 배포: 아틀리에(feat/mat-class — 분류표·산지표·상시 재고·살림)와 함께.

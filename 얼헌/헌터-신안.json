@@ -319,7 +319,7 @@
       "maxItems": 5,
       "itemMaxLength": 48,
       "cmd": "퀘스트",
-      "desc": "Active quests — \"제목 — 목표 (보상)\". No progress numbers inside; narrate progress instead. Remove on completion/failure. A deadline may be tagged \"@+days\" — the system expires it."
+      "desc": "Active quests — \"제목 — 목표 (보상)\". No progress numbers inside; narrate progress instead. Remove on completion/failure. A deadline may be tagged \"@+days\" — the system expires it. Quests taken from the quest board (📋) are inserted BY THE SYSTEM as \"[발주처] 제목 (등급 · 보수원) @+기한\" — never add those yourself; on completion narrate the payout into won and remove the entry."
     },
     {
       "id": "won",
@@ -556,18 +556,6 @@
       "type": "bool",
       "init": false,
       "desc": "시스템 래치 — 탐사도 85+에서 한 번만 발화. 직접 바꾸지 마라."
-    },
-    {
-      "id": "offers",
-      "label": "의뢰 보드",
-      "type": "list",
-      "init": [
-        "[협회] 도심권 하수도 정화 지원 (80만원) @+5"
-      ],
-      "maxItems": 6,
-      "itemMaxLength": 44,
-      "cmd": "의뢰보드",
-      "desc": "Association quest board — commissions NOT yet accepted. Format \"[발주처] 내용 (보상) @+기한\", 발주처 is one of 협회 / 길드 / 개인 (e.g. \"[길드] 마정석 30개 납품 (300만원) @+7\"). When the protagonist accepts one ON-SCREEN, remove it here and add it to quests. An expired offer vanished — other hunters took it."
     },
     {
       "id": "in_gate",
@@ -939,10 +927,6 @@
       },
       {
         "list": "gates",
-        "expire": "elapsed"
-      },
-      {
-        "list": "offers",
         "expire": "elapsed"
       },
       {
@@ -1513,12 +1497,6 @@
           "notify": "[변종] An aberrant appears — a mutated or unidentifiable entity that does not belong at this gate grade. Treat it as a real anomaly (the Association will want a report), never as the norm."
         },
         {
-          "id": "offer_post",
-          "weight": 2,
-          "cooldown": 3,
-          "notify": "[의뢰] New work hits the quest board — register 1~2 offers on the offers board, format \"[협회|길드|개인] 내용 (보상) @+days\". Pitch difficulty at the protagonist's license band (±1 rank) — a board never hands an E-rank an A-rank subjugation, and a high-ranker gets work worth their license. Rewards follow the economy (E-rank errands run 수십만원대); post a 길드 offer only if the protagonist belongs to one. Mention it in one line at most — a terminal ping, not a scene."
-        },
-        {
           "id": "gate_race",
           "weight": 1,
           "cooldown": 6,
@@ -1939,11 +1917,6 @@
       "id": "img_rules",
       "when": "true",
       "text": "Image rules: whenever a listed character appears, is spotlighted, or speaks, put one <img=\"…\"> tag in that character's paragraph — one tag per character, even if none were shown last turn. Base tag is the name alone; append an emotion only when their state visibly shifts. NEVER print an image for the protagonist/user. Characters not in the lists are extras: use <img=\"Male\"> or <img=\"Female\"> only, no emotion."
-    },
-    {
-      "id": "offer_rule",
-      "when": "true",
-      "text": "The offers board lists OPEN commissions no one has taken — picking one up requires accepting it in the scene (association terminal, guild desk, the client). Only then does it become an active quest. Never treat an unaccepted offer as already in progress."
     }
   ],
   "updater": {
@@ -2055,9 +2028,6 @@
         "id": "quests"
       },
       {
-        "id": "offers"
-      },
-      {
         "id": "npc_notes"
       },
       {
@@ -2148,6 +2118,66 @@
       }
     ]
   },
+  "questBoard": {
+    "label": "협회 의뢰판",
+    "icon": "📋",
+    "listVar": "quests",
+    "unit": "원",
+    "format": "[{client}] {title} ({grade} · {pay}원) @+{days}",
+    "grades": [
+      "E급",
+      "D급",
+      "C급",
+      "B급",
+      "A급",
+      "S급"
+    ],
+    "bands": {
+      "E급": [
+        200000,
+        800000
+      ],
+      "D급": [
+        800000,
+        3000000
+      ],
+      "C급": [
+        3000000,
+        10000000
+      ],
+      "B급": [
+        10000000,
+        30000000
+      ],
+      "A급": [
+        30000000,
+        100000000
+      ],
+      "S급": [
+        100000000,
+        500000000
+      ]
+    },
+    "days": [
+      2,
+      14
+    ],
+    "postDays": [
+      3,
+      8
+    ],
+    "maxOffers": 6,
+    "minOffers": 2,
+    "refillEvery": 3,
+    "cancel": [
+      {
+        "set": "fame",
+        "expr": "max(fame - 2, 0)"
+      }
+    ],
+    "when": "not in_gate",
+    "guide": "협회 단말기에 뜨는 공인 의뢰, 소속 길드의 내부 의뢰, 개인·사설 일감이다. client는 \"협회\" / 소속 길드 이름(상태의 guild가 무소속이 아닐 때만) / 개인은 의뢰인 이름이나 업체명. 난이도(grade)는 주인공 라이선스(상태의 license) ±1랭크 — 의뢰판이 E급에게 A급 토벌을 주지 않고, 고랭커에겐 라이선스값을 하는 일이 온다. 보수 밴드(원): E급 20~80만 / D급 80~300만 / C급 300~1,000만 / B급 1,000~3,000만 / A급 3,000만~1억 / S급 1억~5억. 심부름·정화 지원·자재 운반은 E급, 마정석 납품·D급 게이트 토벌 지원은 D급, 실종자 수색·희귀 소재·호위는 C급, 그 위는 브레이크·대형 토벌·요인 경호. 기한은 급한 일 2~3일, 납품·수색 5~7일, 원정 10일 이상. note에는 의뢰의 사정 한 줄(왜 급한지, 누가 걸렸는지). 단말기 알림이지 장면이 아니다."
+  },
   "board": {
     "label": "헌터넷",
     "icon": "🌐",
@@ -2202,15 +2232,9 @@
         "label": "게이트 지도",
         "fab": "🗺️",
         "template": "\n<div class=\"hmap\">\n  <div class=\"hmap-head\">SEOUL GATE MAP<span class=\"hmap-hz\">위험도 {hazard}</span></div>\n  <div class=\"hmap-grid\">\n    <div class=\"hmap-zone hmz-nw\"><div class=\"hmap-zn\">서북권</div><div class=\"hmap-zd\">은평 · 서대문 · 마포</div>{gates:tags:서북권}</div>\n    <div class=\"hmap-zone hmz-ne\"><div class=\"hmap-zn\">동북권</div><div class=\"hmap-zd\">성북 · 노원 · 강북</div>{gates:tags:동북권}</div>\n    <div class=\"hmap-zone hmz-ct\"><div class=\"hmap-zn\">도심권</div><div class=\"hmap-zd\">종로 · 중구 · 용산</div>{gates:tags:도심권}</div>\n    <div class=\"hmap-zone hmz-sw\"><div class=\"hmap-zn\">서남권</div><div class=\"hmap-zd\">양천 · 구로 · 영등포 · 관악</div>{gates:tags:서남권}</div>\n    <div class=\"hmap-zone hmz-se\"><div class=\"hmap-zn\">동남권</div><div class=\"hmap-zd\">서초 · 강남 · 송파 · 강동</div>{gates:tags:동남권}</div>\n  </div>\n  <div class=\"hmap-foot\">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>\n</div>"
-      },
-      {
-        "id": "questboard",
-        "label": "의뢰 보드",
-        "fab": "📋",
-        "template": "\n<div class=\"hqb\">\n  <div class=\"hmap-head\">QUEST BOARD<span class=\"hmap-hz\">수락은 이야기에서</span></div>\n  <div class=\"hqb-grid\">\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">협회</div><div class=\"hmap-zd\">공인 의뢰 · 토벌 지원</div>{offers:tags:[협회]}</div>\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">길드</div><div class=\"hmap-zd\">소속 길드 내부 의뢰</div>{offers:tags:[길드]}</div>\n    <div class=\"hmap-zone\"><div class=\"hmap-zn\">개인·사설</div><div class=\"hmap-zd\">사연 있는 일감</div>{offers:tags:[개인]}</div>\n  </div>\n  <div class=\"hqb-foot\">진행 중 퀘스트는 상태창에 · 기한(@+N)이 지난 의뢰는 다른 헌터가 가져간다</div>\n</div>"
       }
     ],
-    "css": "\n.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }\n.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }\n.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\n  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }\n.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }\n.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }\n.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;\n  background: rgba(10,12,18,.55); min-height: 72px; }\n.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;\n  letter-spacing: 1px; font-size: 13px; }\n.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }\n.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;\n  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;\n  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }\n.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }\n.hqb-grid { display: grid; gap: 8px; }\n.hqb-foot { color: #5f6c85; font-size: 10.5px; margin-top: 8px; }\n.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);\n  padding-top: 6px; }"
+    "css": "\n.scg-card { background: linear-gradient(145deg, #13151c, #1c1f29); border-color: rgba(82,110,157,.35); }\n.scg-title { color: #8aa2cc; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; letter-spacing: 1px; }\n.hmap-head { display: flex; justify-content: space-between; align-items: baseline; color: #8aa2cc;\n  font-family: 'Rajdhani', 'Noto Sans KR', sans-serif; font-weight: 700; letter-spacing: 2px; margin: 2px 0 8px; }\n.hmap-hz { font-size: 11.5px; color: #c9a86a; letter-spacing: 0; }\n.hmap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;\n  grid-template-areas: 'nw ne' 'ct ct' 'sw se'; }\n.hmz-nw { grid-area: nw } .hmz-ne { grid-area: ne } .hmz-ct { grid-area: ct }\n.hmz-sw { grid-area: sw } .hmz-se { grid-area: se }\n.hmap-zone { border: 1px solid rgba(138,162,204,.22); border-radius: 10px; padding: 8px 9px;\n  background: rgba(10,12,18,.55); min-height: 72px; }\n.hmap-zn { color: #8aa2cc; font-weight: 700; font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;\n  letter-spacing: 1px; font-size: 13px; }\n.hmap-zd { color: #5f6c85; font-size: 10.5px; margin: 1px 0 6px; }\n.hmap-zone .sim-tag { display: block; width: fit-content; max-width: 100%; margin: 3px 0;\n  background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;\n  padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }\n.hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }\n.hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);\n  padding-top: 6px; }"
   },
   "messenger": {
     "label": "단말기",

@@ -276,7 +276,9 @@ const S = {
       desc: 'Learned skills, name only — no numbers. Skills come from skill books, training, Awakening moments.' },
     { id: 'quests', label: '퀘스트', type: 'list', init: [], maxItems: 5, itemMaxLength: 48, cmd: '퀘스트',
       desc: 'Active quests — "제목 — 목표 (보상)". No progress numbers inside; narrate progress instead. '
-        + 'Remove on completion/failure. A deadline may be tagged "@+days" — the system expires it.' },
+        + 'Remove on completion/failure. A deadline may be tagged "@+days" — the system expires it. '
+        + 'Quests taken from the quest board (📋) are inserted BY THE SYSTEM as "[발주처] 제목 (등급 · 보수원) @+기한" — '
+        + 'never add those yourself; on completion narrate the payout into won and remove the entry.' },
 
     // ── 재화 ──
     // ⚠ 상한 비대칭 원칙: 지어낸 수입은 경제를 영구히 망가뜨리지만 손실은 min 0이 받쳐 준다.
@@ -377,14 +379,8 @@ const S = {
     { id: 'boss_found', label: '(내부) 보스 방 발견', type: 'bool', init: false,
       desc: '시스템 래치 — 탐사도 85+에서 한 번만 발화. 직접 바꾸지 마라.' },
 
-    // ── 의뢰 보드 (P8) — 게이트 보드와 같은 규약: 이벤트가 시키고 보조가 등록, 기한 자동 소멸 ──
-    // quests(진행 중)와 별개인 "수락 전 대기열". 발주처 접두가 패널 칸 분류 키다 ({offers:tags:[협회]}).
-    { id: 'offers', label: '의뢰 보드', type: 'list', init: ['[협회] 도심권 하수도 정화 지원 (80만원) @+5'],
-      maxItems: 6, itemMaxLength: 44, cmd: '의뢰보드',
-      desc: 'Association quest board — commissions NOT yet accepted. Format "[발주처] 내용 (보상) @+기한", '
-        + '발주처 is one of 협회 / 길드 / 개인 (e.g. "[길드] 마정석 30개 납품 (300만원) @+7"). '
-        + 'When the protagonist accepts one ON-SCREEN, remove it here and add it to quests. '
-        + 'An expired offer vanished — other hunters took it.' },
+    // ── 의뢰 보드 (P8) → v1.7.9 의뢰판(questBoard)으로 교체 (2026-09-08). 옛 offers 목록은 사라졌다 —
+    //    게시는 state.questBoard(보조가 붙인다), 수락·취소는 유저 버튼, 수락 항목은 quests에 시스템이 넣는다.
 
     // ── 헌터넷 (P4) — 게이트 안 통신 두절 게이트 ──
     { id: 'in_gate', label: '게이트 안', type: 'bool', init: false,
@@ -485,7 +481,6 @@ const S = {
       // 기한 퀘스트·게이트(@절대경과값) 자동 만료 — '@+3' 상대 기한이 이 시계로 굳는다.
       { list: 'quests', expire: 'elapsed' },
       { list: 'gates', expire: 'elapsed' },
-      { list: 'offers', expire: 'elapsed' },   // 기한 지난 의뢰 = 다른 헌터가 가져갔다
       // 브레이크 초읽기 — 흐른 날수만큼 깎는다. ⚠ day_prev 갱신은 반드시 이 뒤에.
       { set: 'break_in', expr: 'break_name != "" ? max(break_in - (elapsed - day_prev), 0) : 0' },
       { set: 'day_prev', expr: 'elapsed' },
@@ -785,13 +780,6 @@ const S = {
           notify: '[변종] An aberrant appears — a mutated or unidentifiable entity that does not '
             + 'belong at this gate grade. Treat it as a real anomaly (the Association will want a '
             + 'report), never as the norm.' },
-        { id: 'offer_post', weight: 2, cooldown: 3,
-          notify: '[의뢰] New work hits the quest board — register 1~2 offers on the offers board, '
-            + 'format "[협회|길드|개인] 내용 (보상) @+days". Pitch difficulty at the protagonist\'s '
-            + 'license band (±1 rank) — a board never hands an E-rank an A-rank subjugation, and a '
-            + 'high-ranker gets work worth their license. Rewards follow the economy (E-rank errands '
-            + 'run 수십만원대); post a 길드 offer only if the protagonist belongs to one. '
-            + 'Mention it in one line at most — a terminal ping, not a scene.' },
         { id: 'gate_race', weight: 1, cooldown: 6,
           notify: '[경쟁] Another party is moving on the same gate or quarry — permits, speed, or a '
             + 'split negotiation. Rivals today can be allies tomorrow; prefer the registered cast.' },
@@ -1030,11 +1018,6 @@ const S = {
         + 'shown last turn. Base tag is the name alone; append an emotion only when their state '
         + 'visibly shifts. NEVER print an image for the protagonist/user. Characters not in the '
         + 'lists are extras: use <img="Male"> or <img="Female"> only, no emotion.' },
-    // 의뢰 보드 (P8) — 수락 전 대기열이라는 것을 메인도 알아야 한다
-    { id: 'offer_rule', when: 'true',
-      text: 'The offers board lists OPEN commissions no one has taken — picking one up requires '
-        + 'accepting it in the scene (association terminal, guild desk, the client). Only then does '
-        + 'it become an active quest. Never treat an unaccepted offer as already in progress.' },
   ],
 
   updater: {
@@ -1072,7 +1055,6 @@ const S = {
       { id: 'items' },
       { id: 'skills' },
       { id: 'quests' },
-      { id: 'offers' },
       { id: 'npc_notes' },
       { id: 'allies' },
       { id: 'in_gate' },
@@ -1138,6 +1120,26 @@ const S = {
   // ── 헌터넷 (P4) — 커뮤니티 보드 (v0.95 엔진 기능) ──
   // 원본 헌터넷의 개념만 승계한 자체 구현. 게이트 안(in_gate)에서는 새 글이 안 올라온다
   // (단말기 통신 두절 — 원본 로어북 "Inaccessible in Gates" 승계).
+  // ══════════ 의뢰판 (v1.7.9 questBoard) — P8 offers 목록을 대체 (2026-09-08) ══════════
+  // 옛 P8은 보조가 offers 목록에 적고 "수락은 이야기에서"였다 — 아틀리에 실기와 같은 병: 수락이 보조 기록에만 기대고
+  // 메인은 게시 원문을 몰랐다. 이제 보조가 게시하고 유저가 [수락]·[취소] 버튼으로 받는다 (통지 한 줄 + 메인에 게시 원문).
+  // 게이트 안(in_gate)은 통신 두절 — 버튼도 게시 요청도 닫힌다. 포기하면 명성 -2.
+  questBoard: {
+    label: '협회 의뢰판', icon: '📋', listVar: 'quests', unit: '원',
+    format: '[{client}] {title} ({grade} · {pay}원) @+{days}',
+    grades: ['E급', 'D급', 'C급', 'B급', 'A급', 'S급'],
+    bands: { 'E급': [200000, 800000], 'D급': [800000, 3000000], 'C급': [3000000, 10000000],
+      'B급': [10000000, 30000000], 'A급': [30000000, 100000000], 'S급': [100000000, 500000000] },
+    days: [2, 14], postDays: [3, 8], maxOffers: 6, minOffers: 2, refillEvery: 3,
+    cancel: [{ set: 'fame', expr: 'max(fame - 2, 0)' }],
+    when: 'not in_gate',
+    guide: '협회 단말기에 뜨는 공인 의뢰, 소속 길드의 내부 의뢰, 개인·사설 일감이다. client는 "협회" / 소속 길드 이름(상태의 guild가 무소속이 아닐 때만) / 개인은 의뢰인 이름이나 업체명. '
+      + '난이도(grade)는 주인공 라이선스(상태의 license) ±1랭크 — 의뢰판이 E급에게 A급 토벌을 주지 않고, 고랭커에겐 라이선스값을 하는 일이 온다. '
+      + '보수 밴드(원): E급 20~80만 / D급 80~300만 / C급 300~1,000만 / B급 1,000~3,000만 / A급 3,000만~1억 / S급 1억~5억. '
+      + '심부름·정화 지원·자재 운반은 E급, 마정석 납품·D급 게이트 토벌 지원은 D급, 실종자 수색·희귀 소재·호위는 C급, 그 위는 브레이크·대형 토벌·요인 경호. '
+      + '기한은 급한 일 2~3일, 납품·수색 5~7일, 원정 10일 이상. note에는 의뢰의 사정 한 줄(왜 급한지, 누가 걸렸는지). 단말기 알림이지 장면이 아니다.',
+  },
+
   board: {
     label: '헌터넷', icon: '🌐',
     topics: '게이트 출현·공략 소식, 헌터 목격담과 소문, 장비·마정석 시세, 협회/길드 뒷말, '
@@ -1207,18 +1209,6 @@ const S = {
   </div>
   <div class="hmap-foot">최근 출현: {zone_txt} · 기한(@+N)이 지난 게이트는 다른 헌터들이 공략한다</div>
 </div>` },
-      // 의뢰 보드 (P8) — 발주처 접두([협회]/[길드]/[개인])가 칸 분류 키
-      { id: 'questboard', label: '의뢰 보드', fab: '📋',
-        template: `
-<div class="hqb">
-  <div class="hmap-head">QUEST BOARD<span class="hmap-hz">수락은 이야기에서</span></div>
-  <div class="hqb-grid">
-    <div class="hmap-zone"><div class="hmap-zn">협회</div><div class="hmap-zd">공인 의뢰 · 토벌 지원</div>{offers:tags:[협회]}</div>
-    <div class="hmap-zone"><div class="hmap-zn">길드</div><div class="hmap-zd">소속 길드 내부 의뢰</div>{offers:tags:[길드]}</div>
-    <div class="hmap-zone"><div class="hmap-zn">개인·사설</div><div class="hmap-zd">사연 있는 일감</div>{offers:tags:[개인]}</div>
-  </div>
-  <div class="hqb-foot">진행 중 퀘스트는 상태창에 · 기한(@+N)이 지난 의뢰는 다른 헌터가 가져간다</div>
-</div>` },
     ],
     // 상태창과 같은 다크네이비/스틸블루 규격 + 지도 전용 스타일
     css: `
@@ -1240,8 +1230,6 @@ const S = {
   background: rgba(138,162,204,.1); border: 1px solid rgba(138,162,204,.28); border-radius: 7px;
   padding: 2px 7px; color: #dce6f5; font-size: 11.5px; }
 .hmap-zone .sim-empty { color: #4d5870; font-size: 11px; }
-.hqb-grid { display: grid; gap: 8px; }
-.hqb-foot { color: #5f6c85; font-size: 10.5px; margin-top: 8px; }
 .hmap-foot { margin-top: 8px; color: #7d8aa5; font-size: 11px; border-top: 1px dashed rgba(138,162,204,.18);
   padding-top: 6px; }`,
   },
@@ -2268,29 +2256,36 @@ console.log('\n━━ P6 — 파티 편성 + 게이트 지도 + 모집판 ━━
   ok('어휘 밖 칸 → 첫 칸(자유) 보정', t.board.posts.find((x) => x.title === '아무말').cat === '자유', '');
 }
 
-console.log('\n━━ P8 — 의뢰 보드 (수락 전 대기열) ━━');
+console.log('\n━━ P8 — 의뢰판 (questBoard) — 보조가 붙이고 버튼으로 받는다 (2026-09-08) ━━');
 {
+  const questMod = SC.require('quest');
+  const qc = questMod.questConfig(S);
+  ok('의뢰판이 있다 (quests 목록 · 원 · 게이트 안이면 닫힘)', qc && qc.listVar === 'quests' && qc.unit === '원' && qc.when === 'not in_gate', JSON.stringify(qc && [qc.listVar, qc.unit, qc.when]));
+  ok('옛 offers 목록·이벤트·지시문·탭·allow는 사라졌다', !S.vars.some((v) => v.id === 'offers') && !S.rules.randomEvents.table.some((r) => r.id === 'offer_post')
+    && !S.directives.some((d) => d.id === 'offer_rule') && !S.party.tabs.some((x) => x.id === 'questboard') && !S.updater.allow.some((a) => a.id === 'offers'), '');
   let t = fresh();
-  ok('시드 의뢰 1건 ([협회] 접두)', t.vars.offers.length === 1 && t.vars.offers[0].startsWith('[협회]'),
-    JSON.stringify(t.vars.offers));
-  t.vars.offers = ['[협회] 하수도 정화 (80만원) @+5', '[길드] 마정석 납품 (300만원) @+7', '[개인] 실종자 수색 (150만원) @+3'];
-  const tpl = S.party.tabs.find((x) => x.id === 'questboard').template;
-  const html = SC.require('render').renderPanelTemplate(S, t, tpl);
-  const col = (name) => html.split(`>${name}<`)[1].split('hmap-zone')[0];
-  ok('발주처별 칸 분류 ([협회]/[길드]/[개인] 접두 필터)',
-    col('협회').includes('하수도') && !col('협회').includes('납품')
-    && col('길드').includes('납품') && col('개인·사설').includes('실종자'), '');
-  const leftover = (html.match(/\{[a-z_]+(?::[^}]*)?\}/g) || []);
-  ok('미치환 자리표시자 없음', leftover.length === 0, leftover.join(' '));
-  // 기한 만료 — 보조 add 경로로 등록해야 상대 기한(@+N)이 그 시점에 굳는다 (quests와 같은 규약)
-  let u = fresh(); u.vars.offers = [];
-  ({ st: u } = turn(u, { offers: { add: ['[개인] 실종자 수색 (150만원) @+3', '[길드] 마정석 납품 (300만원) @+7'] } }, 119));
-  ({ st: u } = turn(u, { skip_day: 4 }, 120));
-  ({ st: u } = turn(u, {}, 121));
-  ok('나흘 뒤 @+3 의뢰만 소멸', !u.vars.offers.some((o) => o.includes('실종자'))
-    && u.vars.offers.some((o) => o.includes('납품')), JSON.stringify(u.vars.offers));
-  ok('의뢰 게시 이벤트 존재', !!S.rules.randomEvents.table.find((r) => r.id === 'offer_post'), '');
-  ok('수락 규칙 지시문 존재', S.directives.some((d) => d.id === 'offer_rule'), '');
+  ok('밖에선 첫 게시 요청이 보조에 얹힌다', engine.buildAuxPrompt(S, t, '서사', null).includes('의뢰판 첫 게시]'), '');
+  const inGate = { ...t, vars: { ...t.vars, in_gate: true } };
+  ok('게이트 안(통신 두절)에선 닫힌다 — 버튼도 요청도', !questMod.questOpen(qc, S, inGate.vars, engine.makeLookup) && !engine.buildAuxPrompt(S, inGate, '서사', null).includes('의뢰판 첫 게시]'), '');
+  let r = engine.outputPhase(S, t, {}, {}, { rng: seededRng('q', 1, 'o'), quests: { new: [
+    { client: '협회', title: '도심권 하수도 정화 지원', grade: 'E급', pay: 800000, days: 5, note: '악취 민원이 쌓였다' },
+    { client: '수상한 브로커', title: 'S급 게이트 단독 공략', grade: 'SS급', pay: 9000000000, days: 1 },
+    { client: '개인', title: '실종자 수색', grade: 'C급', pay: 100, days: 3 },
+  ] } });
+  t = r.state;
+  ok('어휘 밖 등급(SS급) 거부 · 보수는 밴드 클램프 (C급 100 → 300만)', t.questBoard.offers.length === 2 && t.questBoard.offers[1].pay === 3000000, JSON.stringify(t.questBoard.offers));
+  const acc = questMod.accept(S, t, t.questBoard.offers[0].id, engine.makeLookup);
+  ok('★ 수락 항목이 quests 형식 그대로 — [협회] 접두 · 등급 · 보수원 · @+5 굳힘', acc.ok && t.vars.quests[0] === '[협회] 도심권 하수도 정화 지원 (E급 · 800000원) @5', JSON.stringify([acc, t.vars.quests]));
+  const p1 = engine.sendPhase(S, t, { rng: seededRng('q', 2, 's') });
+  ok('다음 전송에 통지 (의뢰인·제목·보수·사정)', p1.promptBlock.includes('하수도 정화 지원') && p1.promptBlock.includes('800000원') && p1.promptBlock.includes('악취'), '');
+  ok('메인에 남은 게시 원문 (mainInject — 실종자 수색)', p1.promptBlock.includes('실종자 수색') && p1.promptBlock.includes('붙어 있는 의뢰'), '');
+  t = fresh(); t.vars.fame = 10; t.vars.quests = ['[길드] 마정석 납품 (D급 · 3000000원) @+7'];
+  const can = questMod.cancel(S, t, t.vars.quests[0], engine.makeLookup);
+  ok('포기하면 명성 -2 (10 → 8)', can.ok && t.vars.fame === 8 && t.vars.quests.length === 0, JSON.stringify([can, t.vars.fame]));
+  t = fresh();
+  t = engine.outputPhase(S, t, {}, {}, { rng: seededRng('q', 3, 'o'), quests: { new: [{ client: '협회', title: 'a', grade: 'E급', pay: 300000, days: 3 }] } }).state;
+  t = engine.outputPhase(S, t, { skip_day: 9 }, {}, { rng: seededRng('q', 4, 'o') }).state;
+  ok('게시는 postDays(3~8) 안에 걷힌다 — 다른 헌터가 가져갔다', t.questBoard.offers.length === 0, JSON.stringify(t.questBoard.offers));
 }
 
 console.log('\n━━ P7 — 막간 (주인공 부재) ━━');
@@ -2390,7 +2385,7 @@ console.log('\n━━ 길드·상층부 이벤트 (2026-09-01 확충 — 소속�
   const aT = engine.makeLookup(S, { ...fresh().vars, license: 'A' });
   ok('협회 특무 — A급(lic_n 5)은 열리고 신입은 잠김', truthy(evaluate(row('assoc_task').when, aT, null)), '');
   // 임무 등급 비례 (2026-09-01 후속) — 의뢰·길드·협회가 난이도를 주인공 대역에 맞춘다
-  ok('의뢰 보드 — 라이선스 대역 ±1 지시', row('offer_post').notify.includes('license band (±1 rank)'), '');
+  ok('의뢰판 — 라이선스 ±1랭크 지시 (guide, 옛 offer_post 이벤트는 사라졌다)', S.questBoard.guide.includes('±1랭크') && !row('offer_post'), '');
   ok('길드 일감 — 랭크·명성 비례 지시', row('guild_task').notify.includes('Scale the ask'), '');
   ok('협회 심부름 — 대역 정합 지시', row('assoc_call').notify.includes('license band (±1 rank)'), '');
 }

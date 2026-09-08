@@ -118,18 +118,19 @@ const calOf = (S, chat) => time.calendarOf(epochOf(S, chat), time.timeConfig(S).
   ck('★ 편집기에 토글 칸이 있다 (규칙 #3)',
     src.includes("'리롤 안정 (기본 켜짐)'") && src.includes('schema.rerollStableRng = on ? undefined : false'), '');
   ck('꺼짐/켜짐 설명이 갈린다', src.includes('리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다')
-    && src.includes('같은 눈으로 나옵니다'), '');
+    && src.includes('같은 지점에서는 같은 눈을 유지하고'), '');   // v1.7.13 개조본 tabAi 문구
 }
 
 // ── 편집기 배선 (규칙 #3) ──
 {
-  ck('★ 시간 탭에 무작위 토글', src.includes("'판마다 시작 시각을 다르게'"), '');
+  // v1.7.13 — 시간 탭 DOM을 개조본으로 교체하며 토글 문구가 바뀌었다. 기본 범위 6~22는 우리 값 유지 (아래 단언).
+  ck('★ 시간 탭에 무작위 토글', src.includes("'새 채팅마다 시작 시점을 범위 안에서 무작위로 정하기'"), '');
   ck('★ 켜면 시각 범위를 기본으로 채운다 (빈 껍데기 방지)',
     src.includes('T.startRandom = v ? { hour: [6, 22] } : undefined'), '');
   ck('★ 다섯 칸 전부 입력 가능', ['hour', 'minute', 'dom', 'month', 'year']
     .every((k) => new RegExp(`\\['${k}', '`).test(src)), '');
   ck('빈 칸은 고정으로 되돌린다', src.includes('else delete SR[key];'), '');
-  ck('빈 껍데기 경고', src.includes('범위가 하나도 없어 지금은 꺼진 것과 같습니다'), '');
+  ck('빈 껍데기 경고', src.includes('범위가 하나도 없습니다. 무작위로 바꿀 항목을 하나 이상'), '');
 }
 
 // ── 세션 배선 ──

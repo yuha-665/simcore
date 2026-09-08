@@ -92,8 +92,8 @@ const SCHEMA = {
 (async () => {
   const { world, buttons, store } = await boot();
 
-  // ⚙️ 진입 버튼은 항상 있다 — 유틸(게임 패널) 버튼만 센다
-  const utilBtns = () => [...buttons.keys()].filter((k) => k !== 'SimCore');
+  // ⚙️ 진입 버튼은 항상 있다 — 유틸(게임 패널) 버튼만 센다 (v1.7.13: 사이드 메뉴 런처 simcore-hamburger도 진입 버튼)
+  const utilBtns = () => [...buttons.keys()].filter((k) => k !== 'SimCore' && k !== 'simcore-hamburger');
   ck('스키마 없는 캐릭터에서는 유틸 버튼이 없다', utilBtns().length === 0, utilBtns().join(','));
   ck('진입 버튼(⚙️)은 스키마와 무관하게 항상 있다', buttons.has('SimCore'), [...buttons.keys()].join(','));
 

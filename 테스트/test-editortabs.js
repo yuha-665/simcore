@@ -46,10 +46,13 @@ function makeDom() {
     });
     Object.defineProperty(el, 'innerHTML', { get: () => el._html ?? '', set(v) { el._html = String(v); el.children = []; el.childNodes = []; } });
     Object.defineProperty(el, 'firstChild', { get: () => el.children[0] ?? null });
+    // v1.7.13 — 개조본 이식 탭(AI 설정 등)이 section.lastChild에 필드를 붙인다
+    Object.defineProperty(el, 'lastChild', { get: () => el.children[el.children.length - 1] ?? null });
     return el;
   };
   const doc = {
     createElement: mkEl,
+    createElementNS: (_ns, tag) => mkEl(tag),   // v1.7.13 — 규칙 탭의 SVG 아이콘 버튼(개조본 ruleIconButton)
     createTextNode: (t) => { const n = mkEl('#text'); n.nodeType = 3; n._text = String(t); return n; },
     createDocumentFragment: () => mkEl('#frag'),
     getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
@@ -241,8 +244,9 @@ if (ed) {
     if (!w || !DEEP.test(sel)) continue;
     const v = w[1].trim();
     // 허용: 공용 토큰 | 부모를 그대로 따름 | 화면 폭 기준(드래그 고스트) | 해제
+    // | 글줄 길이(ch — 빈 상태 안내문 같은 읽기 폭, 기둥 폭이 아니라 탭 정렬과 무관. v1.7.13 개조본 CSS)
     if (/^var\(--sce-(work-w|variable-work-width)\)$/.test(v) || v === '100%'
-      || v.startsWith('calc(100vw') || v === 'none' || v === 'none !important') continue;
+      || v.startsWith('calc(100vw') || v === 'none' || v === 'none !important' || /^\d+ch$/.test(v)) continue;
     strays.push(`${sel} → ${v}`);
   }
   ck('★ 심층 편집 폭 상한이 공용 토큰 하나로 모여 있다 (px 직접 박기 금지)',

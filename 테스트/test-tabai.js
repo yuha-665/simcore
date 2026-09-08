@@ -380,8 +380,10 @@ const P = TEMPLATES.politics.schema;
   ck('★ 결과·되돌리기를 카드와 탭이 같이 씀 (tabResultEl)',
     (src.match(/tabResultEl\(/g) || []).length >= 3, String((src.match(/tabResultEl\(/g) || []).length));
   // §결정 2 (design-시간.md) — "그냥 켜기"를 없애고 진행 입구 3택을 강제 (켜는 순간 완성품)
+  // v1.7.13 — 시간 탭 DOM을 개조본으로 교체하며 문구는 바뀌었지만 3택 구조는 그대로다:
+  // enable('explicit')+버튼+AI / enable('explicit')+AI만 / enable('perTurn'). 문구 대신 그 세 갈래를 센다.
   ck('★ 시간 켜기 = 진행 입구 3택 강제',
-    src.includes('시간이 어떻게 흐르나요') && src.includes('턴마다 하루 — 생존물')
+    (src.match(/enable\('explicit'\)/g) || []).length >= 2 && src.includes("enable('perTurn')")
     && src.includes('ensureSkipVars(); addEndDayAction();'), '');
   // §결정 1 — 상태창의 날짜 자리는 시간 탭으로만 통하는 문
   ck('★ 상태창 날짜 자리 = 시간 탭으로 보내는 문',

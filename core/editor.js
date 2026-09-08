@@ -26,6 +26,9 @@ const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText }
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 const { INTENSITIES } = require('./scenario');
 
+// 편집기 크롬 CSS — v1.7.13: 커뮤니티 UI 개조본(v1.0.7 기준, 그래파이트·얇은 선·파란 강조·반응형)의 CSS 층을 이식.
+// 개조본 DOM 전용 셀렉터(우리 DOM에 없는 클래스 1,233규칙)는 걸러냈고, 기존 클래스 재스타일·토큰·@media만 남겼다.
+// 재구성된 탭 DOM은 이식하지 않았다 — docs/기여-UI개조판-v0.61.md, 배포/UPSTREAM 요청 문서 참조.
 const CSS = `
 .sce {
   --sce-bg:var(--sc-bg, #171a1f); --sce-surface:var(--sc-surface, #1d2127);
@@ -36,6 +39,8 @@ const CSS = `
   --sce-accent-strong:var(--sc-accent-strong, #4f7fe8); --sce-focus:var(--sc-focus, #9ac2ff);
   --sce-success:var(--sc-success, #79d99a); --sce-warning:var(--sc-warning, #f1cb72);
   --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
+  --sce-weekend-sat:var(--sc-weekend-sat, #82b4ff); --sce-weekend-sun:var(--sc-weekend-sun, #ff9eaa);
+  --sce-weekend-sat-bg:rgba(130,180,255,.055); --sce-weekend-sun-bg:rgba(255,158,170,.055);
   /* 심층 편집 작업 폭 — 탭 바부터 오류줄까지 이 한 값을 쓴다. 개별 상자에 숫자를 박으면
      새 상자를 넣을 때마다 하나씩 어긋난다 (실측: 소개 상자만 끝까지 늘어나 있었다).
      100% = 패널을 채운다. 재설계 전 탭(규칙·이벤트 뒤쪽)이 원래 이렇게 도는데, 앞쪽 넷만
@@ -61,7 +66,8 @@ const CSS = `
   border:1px solid var(--sce-line-strong); border-radius:5px; padding:6px 9px; font:inherit; font-size:13.5px; }
 .sce input::placeholder, .sce textarea::placeholder { color:#929ca7; opacity:1; }
 .sce input[type=checkbox] { width:auto; min-height:auto; accent-color:var(--sce-accent-strong); }
-.sce input.sce-w-s { width:76px; } .sce input.sce-w-m { width:120px; }
+.sce input.sce-w-s { width:76px; }
+.sce input.sce-w-m { width:120px; }
 .sce input.sce-w-l { width:100%; flex:1; min-width:140px; }
 .sce textarea { width:100%; min-height:72px; font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace); resize:vertical; }
 .sce .sce-btn { min-height:38px; background:var(--sce-surface-soft); color:var(--sce-text-strong);
@@ -151,10 +157,12 @@ const CSS = `
   background:transparent; color:var(--sce-muted); font:inherit; font-size:12px; cursor:pointer; }
 .sce .sce-mode-btn.on { background:var(--sce-surface-soft); color:var(--sce-text-strong); font-weight:700;
   border-color:var(--sce-accent); box-shadow:inset 0 -2px 0 var(--sce-accent); }
-.sce .sce-design-actions { display:grid; grid-template-columns:minmax(0,1fr); gap:7px; align-items:start; }
+.sce .sce-design-actions { display:grid; grid-template-columns:minmax(240px,.82fr) minmax(320px,1.18fr);
+  gap:10px 14px; align-items:start; }
 .sce .sce-design-request { width:100%; min-height:112px; padding:9px 10px; font-family:inherit;
   line-height:1.55; resize:vertical; }
-.sce .sce-design-controls { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.sce .sce-design-controls { display:grid; grid-template-columns:auto minmax(240px,1fr); gap:7px 10px;
+  align-items:start; min-width:0; }
 .sce .sce-design-controls .sce-btn { flex:none; }
 .sce .sce-design-controls .sce-btn.sce-ai-primary { min-width:100px; }
 .sce .sce-generation-state { min-height:20px; margin-top:7px; color:var(--sce-muted); font-size:12px; }
@@ -395,12 +403,10 @@ const CSS = `
 .sce .sce-variable-field > input, .sce .sce-variable-field > select, .sce .sce-variable-field > textarea {
   width:100% !important; min-width:0 !important; max-width:none !important; }
 .sce .sce-variable-field > textarea { min-height:78px; resize:vertical; line-height:1.45; }
-.sce .sce-variable-grid.values.is-enum .sce-variable-field > textarea,
-.sce .sce-variable-grid.values.is-list .sce-variable-field > textarea {
+.sce .sce-variable-grid.values.is-enum .sce-variable-field > textarea, .sce .sce-variable-grid.values.is-list .sce-variable-field > textarea {
   min-height:118px; height:118px; }
 .sce .sce-variable-field.is-wide { grid-column:1 / -1; }
-.sce .sce-variable-field.has-error > input, .sce .sce-variable-field.has-error > select,
-.sce .sce-variable-field.has-error > textarea {
+.sce .sce-variable-field.has-error > input, .sce .sce-variable-field.has-error > select, .sce .sce-variable-field.has-error > textarea {
   border-color:var(--sce-danger); }
 .sce .sce-variable-reference-note { width:100%; max-width:var(--sce-variable-work-width); margin-top:5px;
   padding:5px 8px; border-left:2px solid var(--sce-warning); background:var(--sce-field);
@@ -415,26 +421,38 @@ const CSS = `
   border-radius:8px; background:var(--sce-field); font-size:12px; }
 .sce .sce-preset-preview-status { margin-top:4px; max-height:420px; overflow:auto;
   border:1px solid var(--sce-border); border-radius:8px; padding:6px; }
-/* 달력 미리보기 (v1.0 #2) — 어댑터 패널의 scc-* 기본 스킨 축약본. 사용자 CSS가 위에 얹힌다 */
+/* 달력 미리보기 (v1.0 #2) — 실제 popup과 같은 표면·주말·상세 위계를 쓴다. */
 .sce .sce-cal-preview { max-width:420px; }
-.sce .sce-cal-preview .scg-card { border:1px solid var(--sce-border); border-radius:12px;
-  padding:10px 12px; background:var(--sce-field); color:var(--sce-text); }
-.sce .sce-cal-preview .scg-title { font-weight:700; margin-bottom:4px; }
-.sce .sce-cal-preview .scg-note { color:var(--sce-muted); font-size:11.5px; margin-bottom:6px; }
-.sce .sce-cal-preview .scc-nav { display:flex; justify-content:center; margin:2px 0 6px; }
-.sce .sce-cal-preview .scc-month { font-weight:600; }
-.sce .sce-cal-preview .scc-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; }
-.sce .sce-cal-preview .scc-wd { text-align:center; color:var(--sce-muted); font-size:10.5px; }
-.sce .sce-cal-preview .scc-day { min-height:34px; border:1px solid var(--sce-border); border-radius:6px;
-  padding:2px 4px; font-size:11px; position:relative; }
-.sce .sce-cal-preview .scc-day.scc-today { border-color:var(--sce-accent, #5b8def); box-shadow:0 0 0 1px var(--sce-accent, #5b8def) inset; }
+.sce .sce-cal-preview .scg-card { border:1px solid var(--sce-line-strong); border-radius:8px;
+  padding:11px 12px 12px; background:var(--sce-surface-soft); color:var(--sce-text); }
+.sce .sce-cal-preview .scg-title { margin:0 0 7px; padding-bottom:7px; border-bottom:1px solid var(--sce-line);
+  color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-cal-preview .scg-note { color:var(--sce-muted); font-size:11.5px; margin:0 0 8px; line-height:1.45; }
+.sce .sce-cal-preview .scc-nav { display:flex; align-items:center; justify-content:center; min-height:30px;
+  margin:0 0 8px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-cal-preview .scc-month { color:var(--sce-text-strong); font-weight:700; font-variant-numeric:tabular-nums; }
+.sce .sce-cal-preview .scc-grid { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px; }
+.sce .sce-cal-preview .scc-wd { padding:1px 0 3px; text-align:center; color:var(--sce-muted);
+  font-size:10.5px; font-weight:650; }
+.sce .sce-cal-preview .scc-wd.scc-sat { color:var(--sce-weekend-sat); }
+.sce .sce-cal-preview .scc-wd.scc-sun { color:var(--sce-weekend-sun); }
+.sce .sce-cal-preview .scc-day { min-height:34px; border:1px solid var(--sce-line); border-radius:4px;
+  padding:3px 4px; background:var(--sce-field); font-size:11px; position:relative;
+  font-variant-numeric:tabular-nums; }
+.sce .sce-cal-preview .scc-day.scc-sat { background:var(--sce-weekend-sat-bg); color:var(--sce-weekend-sat); }
+.sce .sce-cal-preview .scc-day.scc-sun { background:var(--sce-weekend-sun-bg); color:var(--sce-weekend-sun); }
+.sce .sce-cal-preview .scc-day.scc-blank { visibility:hidden; }
+.sce .sce-cal-preview .scc-day.scc-today { border-color:var(--sce-accent); background:var(--sce-surface); font-weight:750; }
 .sce .sce-cal-preview .scc-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin:0 1px; }
 .sce .sce-cal-preview .scc-dot.scc-mark { background:#c9a86a; }
 .sce .sce-cal-preview .scc-dot.scc-plan { background:#5b8def; }
 .sce .sce-cal-preview .scc-dot.scc-due { background:#d05555; }
-.sce .sce-cal-preview .scc-detail { margin-top:6px; border-top:1px dashed var(--sce-border);
-  padding-top:5px; font-size:11px; color:var(--sce-muted); }
-.sce .sce-cal-preview .scc-detail-date { font-weight:600; color:var(--sce-text); }
+.sce .sce-cal-preview .scc-legend { display:flex; flex-wrap:wrap; gap:9px; margin-top:8px; padding-top:7px;
+  border-top:1px solid var(--sce-line); color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-cal-preview .scc-detail { min-height:58px; margin-top:8px; padding:7px 8px; border:1px solid var(--sce-line);
+  border-radius:5px; background:var(--sce-field); font-size:11px; color:var(--sce-muted); }
+.sce .sce-cal-preview .scc-detail-date { margin-bottom:3px; font-weight:650; color:var(--sce-text-strong); }
+.sce .sce-cal-preview .scc-entry { line-height:1.45; }
 .sce .sce-trial-phase { margin-top:7px; font-weight:600; color:var(--sce-text); font-size:11.5px; }
 .sce .sce-variable-type-help { margin:4px 0 0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
 .sce .sce-variable-description { width:100%; max-width:var(--sce-variable-work-width); margin-top:6px; }
@@ -557,22 +575,1137 @@ const CSS = `
    오른쪽 끝이 한 줄로 떨어진다. 안쪽 블록은 자기 폭을 다시 박지 않는다 (전부 100%/토큰). */
 .sce .sce-deep { width:100%; max-width:var(--sce-work-w); }
 .sce .sce-deep-body { width:100%; }
-.sce .sce-status-editor { width:100%; max-width:var(--sce-work-w); }
-.sce .sce-status-intro {
+.sce .sce-time-workbench { display:grid; grid-template-columns:minmax(200px,.36fr) minmax(0,1.64fr);
+  border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-surface); overflow:clip; }
+.sce .sce-time-rail { min-width:0; padding:18px 16px; border-right:1px solid var(--sce-line);
+  background:var(--sce-field); }
+.sce .sce-time-overview-label { color:var(--sce-muted); font-size:11px; font-weight:700; }
+.sce .sce-time-overview-value { margin-top:5px; color:var(--sce-text-strong);
+  font-weight:750; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.sce .sce-time-overview-date { display:block; font-size:18px; line-height:1.3; white-space:nowrap; }
+.sce .sce-time-overview-clock { display:block; margin-top:2px; font-size:17px; line-height:1.3; }
+.sce .sce-time-overview-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:12px; }
+.sce .sce-time-overview-note { margin-top:15px; padding-top:12px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
+.sce .sce-time-sheet { min-width:0; }
+.sce .sce-time-section { display:grid; grid-template-columns:minmax(145px,.38fr) minmax(0,1.62fr);
+  gap:18px; margin:0; padding:18px; border-bottom:1px solid var(--sce-line); background:transparent; }
+.sce .sce-time-section:last-child { border-bottom:0; }
+.sce .sce-time-section-head { min-width:0; }
+.sce .sce-time-section-title { color:var(--sce-text-strong); font-size:13px; font-weight:750; line-height:1.4; }
+.sce .sce-time-section-copy { margin-top:5px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-time-section-body { min-width:0; }
+.sce .sce-time-grid { display:grid; gap:10px; align-items:start; }
+.sce .sce-time-grid-core { grid-template-columns:minmax(180px,1.15fr) repeat(2,minmax(170px,1fr)); }
+.sce .sce-time-grid-format { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-time-field { display:grid; gap:4px; min-width:0; }
+.sce .sce-time-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:700; }
+.sce .sce-time-field > small { min-height:1lh; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-time-field > input, .sce .sce-time-field > select {
+  width:100% !important; min-width:0 !important; max-width:none !important; }
+.sce .sce-time-random-toggle { margin:0; }
+.sce .sce-time-random-toggle .sce-chip { width:100%; min-height:40px; padding:7px 9px; }
+.sce .sce-time-range-grid { grid-template-columns:repeat(3,minmax(110px,1fr)); margin-top:10px; }
+.sce .sce-time-inline-note { margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
+.sce .sce-time-inline-note.is-warning { color:var(--sce-warning); }
+.sce .sce-time-expose-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.sce .sce-time-expose-grid .sce-chip { min-width:0; min-height:38px; margin:0; padding:6px 8px; }
+.sce .sce-time-example { margin-top:10px; color:var(--sce-muted); font-size:11px; line-height:1.55; }
+.sce .sce-time-progress-status { padding:10px; border:1px solid var(--sce-line);
+  background:var(--sce-field); color:var(--sce-text); font-size:12px; line-height:1.55; }
+.sce .sce-time-progress-status.is-warning { border-color:var(--sce-warning); }
+.sce .sce-time-progress-status strong { color:var(--sce-text-strong); }
+.sce .sce-time-section-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
+.sce .sce-time-danger { display:flex; align-items:center; justify-content:space-between; gap:10px 18px;
+  flex-wrap:wrap; padding:15px 18px; background:var(--sce-danger-bg); }
+.sce .sce-time-danger-copy strong { display:block; color:var(--sce-danger); font-size:12.5px; }
+.sce .sce-time-danger-copy span { display:block; margin-top:2px; color:var(--sce-muted);
+  font-size:11px; line-height:1.45; }
+.sce .sce-time-empty { padding:18px; border:1px solid var(--sce-line); border-radius:5px;
+  background:var(--sce-surface); }
+.sce .sce-time-empty-title { color:var(--sce-text-strong); font-size:17px; font-weight:750; }
+.sce .sce-time-empty-copy { max-width:72ch; margin-top:5px; color:var(--sce-muted);
+  font-size:12.5px; line-height:1.6; }
+.sce .sce-time-enable-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px; align-items:stretch; margin-top:15px; }
+.sce .sce-time-enable-option { display:grid; grid-template-rows:auto 1fr; gap:6px; align-content:start;
+  width:100%; min-width:0; height:100%; padding:13px; overflow:hidden; white-space:normal;
+  border:1px solid var(--sce-line-strong); border-radius:5px; background:var(--sce-field);
+  color:var(--sce-text); text-align:left; cursor:pointer; font:inherit;
+  transition:background-color 180ms cubic-bezier(.16,1,.3,1), transform 100ms cubic-bezier(.16,1,.3,1); }
+.sce .sce-time-enable-option.is-recommended { border-color:var(--sce-accent); }
+.sce .sce-time-enable-option-head { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; min-width:0; }
+.sce .sce-time-enable-option b { min-width:0; color:var(--sce-text-strong); font-size:13.5px;
+  line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+.sce .sce-time-enable-option span { min-width:0; color:var(--sce-muted); font-size:11.5px;
+  line-height:1.5; white-space:normal; overflow-wrap:anywhere; word-break:normal; }
+.sce .sce-time-enable-option-copy span { display:block; }
+.sce .sce-time-enable-option-copy span + span { margin-top:2px; }
+.sce .sce-time-enable-option em { flex:none; width:fit-content; color:var(--sce-accent); font-size:10.5px;
+  font-style:normal; font-weight:700; }
+.sce .sce-time-enable-option:active { transform:translateY(1px); }
+.sce .sce-time-back-row { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+.sce .sce-time-back-row span { color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-time-legacy-alert { margin-top:12px; padding:9px 10px; border:1px solid var(--sce-warning);
+  color:var(--sce-warning); font-size:11.5px; line-height:1.5; }
+/* Hallmark restoration — Rules & Events.
+ * Asymmetric first section, staged rail, compact controls, AI as secondary tool. */
+.sce .sce-rules-editor { min-width:0; }
+.sce .sce-rules-head { display:flex; align-items:flex-start; justify-content:space-between;
+  gap:14px 24px; padding:2px 0 16px; border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-rules-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; line-height:1.3;
+  letter-spacing:-.02em; }
+.sce .sce-rules-head p { max-width:68ch; margin:4px 0 0; color:var(--sce-muted);
+  font-size:12.5px; line-height:1.55; }
+.sce .sce-rules-counts { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-rules-count { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 8px;
+  border:1px solid var(--sce-line-strong); border-radius:999px; background:var(--sce-field);
+  color:var(--sce-muted); font-size:10.5px; line-height:1; white-space:nowrap; }
+.sce .sce-rules-count b { color:inherit; font-weight:700; }
+.sce .sce-rules-count em { font-style:normal; color:var(--sce-text-strong); font-variant-numeric:tabular-nums; }
+.sce .sce-rules-count.is-tick { color:var(--sce-accent); border-color:color-mix(in srgb, var(--sce-accent) 36%, transparent); background:color-mix(in srgb, var(--sce-accent) 8%, transparent); }
+.sce .sce-rules-count.is-directive { color:var(--sce-text); border-color:color-mix(in srgb, var(--sce-line-strong) 80%, transparent); background:color-mix(in srgb, var(--sce-muted) 8%, transparent); }
+.sce .sce-rules-count.is-event { color:var(--sce-warning); border-color:color-mix(in srgb, var(--sce-warning) 34%, transparent); background:color-mix(in srgb, var(--sce-warning) 8%, transparent); }
+.sce .sce-rules-count.is-random { color:var(--sce-danger); border-color:color-mix(in srgb, var(--sce-danger) 30%, transparent); background:color-mix(in srgb, var(--sce-danger) 7%, transparent); }
+.sce .sce-rules-section { display:grid; grid-template-columns:minmax(150px,190px) minmax(0,1fr);
+  gap:24px; padding:18px 0; border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-rules-rail { min-width:0; padding-top:2px; }
+.sce .sce-rules-step { width:34px; height:34px; display:grid; place-items:center; margin-bottom:9px;
+  border:1px solid var(--sce-line-strong); border-radius:50%; background:var(--sce-surface-soft);
+  color:var(--sce-accent); font-family:var(--sc-font-mono,monospace); font-size:12px; font-weight:750; }
+.sce .sce-rules-rail-title { color:var(--sce-text-strong); font-size:14px; font-weight:780; line-height:1.4; }
+.sce .sce-rules-rail-copy { margin-top:5px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-rules-section-body { display:grid; gap:10px; min-width:0; }
+.sce .sce-rules-primary-grid { display:grid; grid-template-columns:minmax(235px,.62fr) minmax(0,1.38fr);
+  gap:12px; align-items:start; }
+.sce .sce-rules-panel { min-width:0; border:1px solid var(--sce-line); border-radius:5px;
+  background:var(--sce-surface); box-shadow:0 7px 20px rgba(0,0,0,.08); }
+.sce .sce-rules-panel-head { min-height:59px; padding:11px 12px 9px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-rules-panel-head strong { display:block; color:var(--sce-text-strong); font-size:13px; font-weight:760; }
+.sce .sce-rules-panel-head span { display:block; margin-top:3px; color:var(--sce-muted);
+  font-size:10.5px; line-height:1.45; }
+.sce .sce-rules-panel-body { display:grid; gap:9px; min-width:0; padding:11px 12px; }
+.sce .sce-rules-toggle-row { display:flex; align-items:center; min-height:36px; padding:7px 8px;
+  border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); }
+.sce .sce-rules-state { padding:7px 8px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); color:var(--sce-muted); font-size:10.8px; line-height:1.45; }
+.sce .sce-rules-state.is-warning { border-left-color:var(--sce-warning); }
+.sce .sce-rules-ticks > .sce-sub { margin:0; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row { margin:0; padding:6px 0;
+  border-bottom:1px solid var(--sce-line); flex-wrap:nowrap; align-items:center; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row:last-child { padding-bottom:0; border-bottom:0; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row > select { min-width:190px; flex:0 1 42%; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row > input.sce-w-l { min-width:180px; flex:1 1 auto; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row > .sce-pair { min-width:0; }
+.sce .sce-rules-ticks > .sce-sub > .sce-row:last-child > .sce-btn { min-height:34px; }
+.sce .sce-rules-list { display:grid; gap:8px; min-width:0; }
+.sce .sce-rules-card { min-width:0; border:1px solid var(--sce-line); border-radius:5px;
+  background:var(--sce-surface); }
+.sce .sce-rules-card-head { display:flex; align-items:center; justify-content:space-between;
+  gap:10px 16px; min-height:50px; padding:9px 11px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-rules-card-head > div:first-child { min-width:0; }
+.sce .sce-rules-card-head strong { display:block; color:var(--sce-text-strong); font-size:12.5px;
+  font-weight:750; line-height:1.4; overflow-wrap:anywhere; }
+.sce .sce-rules-card-head span { display:block; margin-top:2px; color:var(--sce-muted);
+  font-size:10.5px; line-height:1.4; }
+.sce .sce-rules-card-actions { display:flex; align-items:center; justify-content:flex-end;
+  gap:6px; flex:none; }
+.sce .sce-rules-card-body { display:grid; gap:10px; min-width:0; padding:11px; }
+.sce .sce-rules-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; min-width:0; }
+.sce .sce-rules-field-grid-random { grid-template-columns:minmax(150px,1fr) minmax(80px,.34fr)
+  minmax(80px,.34fr) minmax(210px,1.4fr); }
+.sce .sce-rules-field { display:grid; gap:4px; min-width:0; color:var(--sce-muted); font-size:11px; font-weight:650; }
+.sce .sce-rules-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-rules-field > small { color:var(--sce-muted); font-size:10.3px; font-weight:400; line-height:1.4; }
+.sce .sce-rules-field > input, .sce .sce-rules-field > select, .sce .sce-rules-field > textarea {
+  width:100% !important; min-width:0 !important; max-width:none !important; }
+.sce .sce-rules-field > textarea { min-height:82px; resize:vertical; }
+.sce .sce-rules-field.is-wide { grid-column:1 / -1; }
+.sce .sce-rules-effect-block { min-width:0; padding-top:1px; }
+.sce .sce-rules-subtitle { margin-bottom:5px; color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-rules-effect-block > .sce-sub { margin:0; }
+.sce .sce-rules-empty { padding:13px 14px; border:1px dashed var(--sce-line-strong);
+  border-radius:5px; background:var(--sce-field); color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-rules-section-actions { display:flex; gap:7px; flex-wrap:wrap; }
+.sce .sce-rules-section-actions > .sce-row { margin:0; }
+.sce .sce-rules-random-config { padding:11px; border:1px solid var(--sce-line);
+  border-radius:5px; background:var(--sce-field); }
+.sce .sce-rules-random-config .sce-rules-field { max-width:640px; }
+.sce .sce-rules-trial > .sce-block { margin:0; }
+.sce .sce-rules-ai { margin-top:14px; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line-strong); background:transparent; }
+.sce .sce-rules-ai > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:14px; padding:13px 2px; cursor:pointer; list-style:none; }
+.sce .sce-rules-ai > summary::-webkit-details-marker { display:none; }
+.sce .sce-rules-ai > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-rules-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted);
+  font-size:10.5px; line-height:1.45; font-weight:400; }
+.sce .sce-rules-ai-chevron { color:var(--sce-muted); font-size:15px; transition:transform .16s ease; }
+.sce .sce-rules-ai[open] .sce-rules-ai-chevron { transform:rotate(180deg); }
+.sce .sce-rules-ai-body { padding:0 0 14px; }
+.sce .sce-rules-ai-body > .sce-tab-ai-tools { margin:0; padding:12px;
+  border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-field); }
+.sce .sce-rules-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+@media (max-width:1080px) {
+.sce .sce-rules-section { grid-template-columns:minmax(125px,155px) minmax(0,1fr); gap:16px; }
+.sce .sce-rules-primary-grid { grid-template-columns:minmax(210px,.75fr) minmax(0,1.25fr); }
+.sce .sce-rules-field-grid-random { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:820px) {
+.sce .sce-rules-head { display:grid; }
+.sce .sce-rules-counts { justify-content:flex-start; }
+.sce .sce-rules-section { grid-template-columns:minmax(0,1fr); gap:10px; }
+.sce .sce-rules-rail { display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 10px; align-items:center; }
+.sce .sce-rules-step { grid-row:1 / span 2; margin:0; }
+.sce .sce-rules-rail-copy { margin-top:2px; }
+.sce .sce-rules-primary-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-rules-ticks > .sce-sub > .sce-row { flex-wrap:wrap; }
+}
+@media (max-width:620px) {
+.sce .sce-rules-field-grid, .sce .sce-rules-field-grid-random { grid-template-columns:minmax(0,1fr); }
+.sce .sce-rules-card-head { align-items:flex-start; }
+.sce .sce-rules-card-actions { flex-wrap:wrap; }
+.sce .sce-rules-count { border-radius:5px; }
+}
+/* ---------------------------------------------------------------
+ * V3 visual corrections — old reviewed AI assistant UI + Hallmark
+ * Rules/Events refinement. Presentation only.
+ * --------------------------------------------------------------- */
+/* Quick feature add: restore the reviewed compact two-column table. */
+.sce .sce-feature-box {
+  padding:12px 13px !important;
+  border:1px solid var(--sce-line-strong) !important;
+  border-radius:5px !important;
+  background:var(--sce-surface) !important;
+}
+.sce .sce-feature-head { padding-bottom:9px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-feature-title { margin:0; font-size:14px; }
+.sce .sce-feature-copy { margin-top:3px; max-width:88ch; font-size:12px; line-height:1.5; }
+.sce .sce-feature-list {
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  margin:0 !important;
+  border:0 !important;
+}
+.sce .sce-feature-item {
+  display:grid !important;
+  grid-template-columns:minmax(154px,.42fr) minmax(0,1fr) auto !important;
+  grid-template-areas:"action copy meta" !important;
+  align-items:center !important;
+  gap:8px 10px !important;
+  min-height:56px !important;
+  padding:8px 10px !important;
+  border-bottom:1px solid var(--sce-line) !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+.sce .sce-feature-item:nth-child(odd) { border-right:1px solid var(--sce-line) !important; }
+.sce .sce-feature-item.is-blocked { background:rgba(255,255,255,.015) !important; }
+.sce .sce-feature-button {
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:7px !important;
+  width:fit-content !important;
+  min-height:36px !important;
+  padding:0 10px !important;
+  border:1px solid var(--sce-line-strong) !important;
+  border-radius:5px !important;
+  background:var(--sce-field) !important;
+  color:var(--sce-text-strong) !important;
+  font-size:12.5px !important;
+  font-weight:720 !important;
+}
+.sce .sce-feature-button:hover:not(:disabled) {
+  border-color:var(--sce-accent) !important;
+  background:var(--sce-surface-soft) !important;
+}
+.sce .sce-feature-icon { width:18px; text-align:center; flex:none; }
+.sce .sce-feature-status { font-size:11.5px !important; line-height:1.45 !important; }
+.sce .sce-feature-meta { gap:6px !important; }
+.sce .sce-feature-step { border-radius:4px !important; }
+.sce .sce-feature-request {
+  margin-top:9px !important;
+  padding-top:9px !important;
+  border-top:1px solid var(--sce-line) !important;
+}
+.sce .sce-feature-request input { width:100% !important; }
+/* First install: reviewed four-step horizontal strip on wide screens. */
+.sce .sce-first-install-guide {
+  padding:12px !important;
+  border-radius:5px !important;
+}
+.sce .sce-first-install-steps {
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:6px !important;
+}
+.sce .sce-first-install-step {
+  display:grid !important;
+  grid-template-columns:auto minmax(0,1fr) !important;
+  gap:3px 8px !important;
+  min-width:0 !important;
+  min-height:62px !important;
+  padding:8px 9px !important;
+  border-radius:4px !important;
+}
+.sce .sce-first-install-number {
+  white-space:nowrap;
+  font-size:10px !important;
+}
+.sce .sce-first-install-step b {
+  font-size:11.5px !important;
+}
+.sce .sce-first-install-step span:last-child {
+  grid-column:1 / -1 !important;
+  font-size:11px !important;
+  line-height:1.4 !important;
+}
+/* Rules / Events — stronger card depth, refined forms, clearer controls. */
+.sce .sce-rules-editor {
+  --rules-card:var(--sce-surface);
+  --rules-card-2:var(--sce-surface-soft);
+  --rules-field:var(--sce-field);
+  --rules-line:var(--sce-line);
+  --rules-blue:var(--sce-accent);
+  --rules-purple:var(--sce-accent);
+}
+.sce .sce-rules-head {
+  padding:4px 0 19px !important;
+}
+.sce .sce-rules-head h3 {
+  font-size:19px !important;
+  letter-spacing:-.025em !important;
+}
+.sce .sce-rules-count {
+  min-height:29px !important;
+  padding:5px 9px !important;
+  border-radius:999px !important;
+  box-shadow:0 4px 12px rgba(0,0,0,.12);
+}
+.sce .sce-rules-section {
+  gap:28px !important;
+  padding:22px 0 !important;
+}
+.sce .sce-rules-step {
+  width:38px !important;
+  height:38px !important;
+  margin-bottom:10px !important;
+  border-radius:50% !important;
+  background:var(--sce-surface-soft) !important;
+  box-shadow:0 5px 14px rgba(0,0,0,.16);
+}
+.sce .sce-rules-rail-title { font-size:15px !important; }
+.sce .sce-rules-rail-copy { font-size:11.8px !important; line-height:1.55 !important; }
+.sce .sce-rules-panel, .sce .sce-rules-card {
+  border-color:var(--rules-line) !important;
+  border-radius:9px !important;
+  background:linear-gradient(180deg,var(--rules-card-2),var(--rules-card)) !important;
+  box-shadow:0 10px 24px rgba(0,0,0,.18) !important;
+  overflow:hidden;
+}
+.sce .sce-rules-panel-head, .sce .sce-rules-card-head {
+  border-bottom-color:var(--sce-line) !important;
+}
+.sce .sce-rules-panel-head {
+  min-height:64px !important;
+  padding:13px 14px 10px !important;
+}
+.sce .sce-rules-panel-body {
+  padding:13px 14px !important;
+}
+.sce .sce-rules-card-head {
+  min-height:54px !important;
+  padding:10px 12px !important;
+}
+.sce .sce-rules-card-body {
+  padding:13px !important;
+  gap:12px !important;
+}
+/* Modernized, but still SimCore-shaped form controls. */
+.sce .sce-rules-editor input, .sce .sce-rules-editor select, .sce .sce-rules-editor textarea {
+  min-height:38px;
+  border-color:var(--sce-line) !important;
+  border-radius:6px !important;
+  background:var(--rules-field) !important;
+}
+.sce .sce-rules-editor textarea { min-height:88px; }
+.sce .sce-rules-editor input:focus, .sce .sce-rules-editor select:focus, .sce .sce-rules-editor textarea:focus {
+  border-color:var(--rules-blue) !important;
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--sce-accent) 18%, transparent) !important;
+}
+.sce .sce-rules-effect-expr input {
+  font-family:var(--sc-font-mono,'D2Coding',ui-monospace,monospace) !important;
+  letter-spacing:.01em;
+}
+/* Variable name gets the space; the expression/value field no longer dominates. */
+.sce .sce-rules-effect-row {
+  display:grid !important;
+  grid-template-columns:minmax(250px,1.65fr) 18px minmax(150px,.9fr) auto !important;
+  gap:8px !important;
+  align-items:center !important;
+  margin:0 !important;
+  padding:7px 0 !important;
+  border-bottom:1px solid var(--sce-line);
+}
+.sce .sce-rules-effect-row:last-of-type { border-bottom:0; }
+.sce .sce-rules-effect-var, .sce .sce-rules-effect-expr { min-width:0; }
+.sce .sce-rules-effect-var select, .sce .sce-rules-effect-expr input { width:100% !important; max-width:none !important; }
+.sce .sce-rules-eq {
+  color:var(--sce-muted);
+  text-align:center;
+  font-family:var(--sc-font-mono,monospace);
+}
+.sce .sce-rules-effect-row.is-list {
+  grid-template-columns:minmax(240px,1.15fr) minmax(0,1.4fr) auto !important;
+}
+.sce .sce-rules-effect-list-fields {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+}
+.sce .sce-rules-effect-add { margin-top:8px !important; }
+.sce .sce-rules-effect-add .sce-btn.sce-add {
+  min-height:34px;
+  border-color:var(--sce-accent) !important;
+  color:var(--sce-accent) !important;
+  background:color-mix(in srgb, var(--sce-accent) 12%, transparent) !important;
+}
+/* Heroicon-like line controls; deliberately spaced, never glued together. */
+.sce .sce-rules-grip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  flex:none;
+}
+.sce .sce-rules-icon-btn {
+  width:34px;
+  height:34px;
+  display:inline-grid;
+  place-items:center;
+  padding:0 !important;
+  border:1px solid var(--sce-line-strong) !important;
+  border-radius:6px !important;
+  background:var(--sce-surface-soft) !important;
+  color:var(--sce-text) !important;
+  cursor:pointer;
+}
+.sce .sce-rules-icon-btn:hover:not(:disabled) {
+  border-color:var(--rules-blue) !important;
+  background:var(--sce-surface) !important;
+}
+.sce .sce-rules-icon-btn:disabled {
+  opacity:.3;
+  cursor:not-allowed;
+}
+.sce .sce-rules-icon {
+  width:17px;
+  height:17px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+/* State directives: collapsible card with a full-width readable summary target. */
+.sce .sce-rules-card-summary {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-width:0;
+  flex:1 1 auto;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.sce .sce-rules-card-summary > span:last-child { min-width:0; }
+.sce .sce-rules-card-summary strong { display:block; }
+.sce .sce-rules-card-summary span span {
+  display:block;
+  margin-top:2px;
+  color:var(--sce-muted);
+  font-size:10.5px;
+}
+.sce .sce-rules-directive.is-collapsed .sce-rules-card-head {
+  border-bottom:0 !important;
+}
+.sce .sce-rules-card-actions { gap:8px !important; }
+/* A little more breathing room without turning the tab into oversized tiles. */
+.sce .sce-rules-field-grid { gap:11px !important; }
+.sce .sce-rules-random-config { padding:13px !important; border-radius:8px !important; }
+.sce .sce-rules-ai > summary { padding:15px 2px !important; }
+/* Responsive restoration. */
+@media (max-width:1080px) {
+.sce .sce-first-install-steps { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+.sce .sce-feature-item {
+    grid-template-columns:minmax(140px,.45fr) minmax(0,1fr) auto !important;
+  }
+.sce .sce-rules-effect-row {
+    grid-template-columns:minmax(210px,1.4fr) 18px minmax(130px,.8fr) auto !important;
+  }
+}
+@media (max-width:760px) {
+.sce .sce-feature-list { grid-template-columns:1fr !important; }
+.sce .sce-feature-item:nth-child(odd) { border-right:0 !important; }
+.sce .sce-first-install-steps { grid-template-columns:1fr !important; }
+.sce .sce-rules-effect-row, .sce .sce-rules-effect-row.is-list {
+    grid-template-columns:minmax(0,1fr) !important;
+  }
+.sce .sce-rules-eq { display:none; }
+.sce .sce-rules-grip { justify-self:end; }
+.sce .sce-rules-effect-list-fields { grid-template-columns:1fr; }
+}
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
+/* Hallmark · genre: modern-minimal · macrostructure: Narrative Workflow
+ * scope: calendar editor only · audience: bot authors · tone: technical-utilitarian */
+.sce .sce-calendar-editor { min-width:0; }
+.sce .sce-calendar-editor .sce-btn { white-space:nowrap; }
+.sce .sce-calendar-workbench { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,360px);
+  gap:14px; align-items:start; }
+.sce .sce-calendar-preview-panel { position:sticky; top:10px; min-width:0; padding:14px;
+  border:1px solid var(--sce-line); border-radius:5px; background:var(--sce-surface); }
+.sce .sce-calendar-preview-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-calendar-preview-copy { margin:4px 0 10px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-calendar-preview-panel .sce-cal-preview { margin:0; }
+.sce .sce-calendar-empty { padding:18px; border:1px solid var(--sce-line); border-radius:5px;
+  background:var(--sce-surface); }
+.sce .sce-calendar-empty h3 { min-width:0; margin:0; color:var(--sce-text-strong); font-size:17px;
+  line-height:1.35; overflow-wrap:anywhere; }
+.sce .sce-calendar-empty p { max-width:68ch; margin:5px 0 14px; color:var(--sce-muted);
+  font-size:12.5px; line-height:1.6; }
+.sce .sce-calendar-empty-actions { display:flex; gap:7px; flex-wrap:wrap; }
+.sce .sce-calendar-flow { min-width:0; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line-strong); background:var(--sce-surface); }
+.sce .sce-calendar-head { display:flex; justify-content:space-between; align-items:flex-start;
+  gap:12px 24px; padding:16px 18px; }
+.sce .sce-calendar-head h3 { min-width:0; margin:0; color:var(--sce-text-strong); font-size:17px;
+  line-height:1.35; overflow-wrap:anywhere; }
+.sce .sce-calendar-head p { max-width:62ch; margin:3px 0 0; color:var(--sce-muted);
+  font-size:12px; line-height:1.55; }
+.sce .sce-calendar-head-state { display:flex; justify-content:flex-end; gap:5px; flex-wrap:wrap; }
+.sce .sce-calendar-section { display:grid; grid-template-columns:minmax(132px,.28fr) minmax(0,1.72fr);
+  gap:24px; padding:16px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-calendar-section-head { min-width:0; padding-top:2px; }
+.sce .sce-calendar-step { color:var(--sce-accent); font-size:10.5px; font-weight:750;
+  font-variant-numeric:tabular-nums; }
+.sce .sce-calendar-section-title { margin-top:2px; color:var(--sce-text-strong);
+  font-size:13px; font-weight:750; line-height:1.4; }
+.sce .sce-calendar-section-copy { margin-top:4px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-calendar-section-body { display:grid; gap:12px; min-width:0; }
+.sce .sce-calendar-field-grid { display:grid; grid-template-columns:minmax(130px,.8fr) minmax(80px,.4fr) minmax(220px,1.6fr);
+  gap:10px; align-items:start; }
+.sce .sce-calendar-field { display:grid; gap:4px; min-width:0; }
+.sce .sce-calendar-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:700; }
+.sce .sce-calendar-field > small { min-height:1lh; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-calendar-field > input, .sce .sce-calendar-field > select { width:100% !important;
+  min-width:0 !important; max-width:none !important; }
+.sce .sce-calendar-field.is-wide { grid-column:1 / -1; }
+.sce .sce-calendar-connections { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.sce .sce-calendar-connection { display:grid; grid-template-columns:minmax(0,1fr) auto;
+  gap:8px 12px; align-items:center; min-width:0; padding:12px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-calendar-connection:only-child { grid-column:1 / -1; }
+.sce .sce-calendar-connection-copy { min-width:0; }
+.sce .sce-calendar-connection-copy strong { display:block; color:var(--sce-text-strong);
+  font-size:12px; line-height:1.45; }
+.sce .sce-calendar-connection-copy span { display:block; margin-top:2px; color:var(--sce-muted);
+  font-size:11px; line-height:1.5; }
+.sce .sce-calendar-connection > .sce-btn { align-self:center; }
+.sce .sce-calendar-connection.is-warning strong { color:var(--sce-warning); }
+.sce .sce-calendar-recurrence { color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
+.sce .sce-calendar-marks { display:grid; gap:8px; }
+.sce .sce-calendar-mark { min-width:0; padding:11px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-calendar-mark-head { display:flex; justify-content:space-between; align-items:center;
+  gap:8px; margin-bottom:8px; }
+.sce .sce-calendar-mark-head strong { color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-calendar-mark-head span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-calendar-mark-grid { display:grid; grid-template-rows:auto auto; gap:8px; min-width:0; }
+.sce .sce-calendar-mark-core { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; min-width:0; }
+.sce .sce-calendar-mark-details { display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,2fr); gap:8px; min-width:0; }
+.sce .sce-calendar-mark-when { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; min-width:0; }
+.sce .sce-calendar-mark-when .sce-calendar-field { min-width:0; }
+.sce .sce-calendar-marks-empty { padding:12px 16px; border:1px dashed var(--sce-line-strong);
+  border-radius:4px; color:var(--sce-muted); background:var(--sce-surface-soft); font-size:12px; line-height:1.55; }
+.sce .sce-calendar-section-actions { display:flex; gap:7px; flex-wrap:wrap; }
+.sce .sce-calendar-css { border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); }
+.sce .sce-calendar-css > summary, .sce .sce-calendar-ai > summary { display:flex; justify-content:space-between;
+  gap:10px; padding:12px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; cursor:pointer; }
+.sce .sce-calendar-css[open] > summary { border-bottom:1px solid var(--sce-line); }
+.sce .sce-calendar-css-body { display:grid; gap:12px; padding:12px; }
+.sce .sce-calendar-css-copy { display:grid; gap:8px; color:var(--sce-muted); font-size:11px; line-height:1.45; }
+.sce .sce-calendar-css-copy > strong { color:var(--sce-text-strong); font-size:11.5px; }
+.sce .sce-calendar-css-hint { margin-top:-4px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-calendar-css-selectors { display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:16px; border-top:1px solid var(--sce-line); }
+.sce .sce-calendar-css-selector { display:grid;
+  grid-template-columns:minmax(92px,.72fr) minmax(0,1fr); align-items:baseline;
+  gap:12px; min-width:0; padding:8px 2px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-calendar-css-selector-label { min-width:0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
+.sce .sce-calendar-css-selector-code { display:block; width:auto; min-width:0; padding:0;
+  border:0; background:transparent; color:var(--sce-text-strong);
+  font-family:var(--sc-font-mono,'D2Coding',monospace); font-size:13px; font-weight:700;
+  line-height:1.4; letter-spacing:0; white-space:nowrap; direction:ltr; unicode-bidi:isolate;
+  text-decoration:none !important; text-shadow:none; opacity:1; }
+.sce .sce-calendar-css textarea { min-height:136px; }
+.sce .sce-calendar-ai { margin-top:12px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-calendar-ai > summary { padding:12px; }
+.sce .sce-calendar-css[open] > summary, .sce .sce-calendar-ai[open] > summary { color:var(--sce-accent); }
+.sce .sce-calendar-ai-body { padding:0 12px 12px; border-top:1px solid var(--sce-line); }
+.sce .sce-calendar-danger { display:flex; justify-content:space-between; align-items:center;
+  gap:10px 18px; margin-top:12px; padding:12px 0 0; border-top:1px solid var(--sce-line); }
+.sce .sce-calendar-danger span { color:var(--sce-muted); font-size:11.5px; }
+.sce input, .sce select, .sce textarea { min-height:38px; background:var(--sce-field); color:var(--sce-text-strong);
+  border:1px solid var(--sce-line-strong); border-radius:5px; padding:6px 9px; font:inherit; font-size:13.5px; }
+.sce input::placeholder, .sce textarea::placeholder { color:#929ca7; opacity:1; }
+.sce input[type=checkbox] { width:auto; min-height:auto; accent-color:var(--sce-accent-strong); }
+.sce input.sce-w-s { width:76px; }
+.sce input.sce-w-m { width:120px; }
+.sce input.sce-w-l { width:100%; flex:1; min-width:140px; }
+.sce textarea { width:100%; min-height:72px; font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace); resize:vertical; }
+.sce .sce-btn { min-height:38px; background:var(--sce-surface-soft); color:var(--sce-text-strong);
+  border:1px solid var(--sce-line-strong); border-radius:5px; padding:7px 11px; cursor:pointer;
+  font:inherit; font-size:13.5px; font-weight:600; line-height:1.25; word-break:keep-all; }
+.sce .sce-btn.sce-add { border-style:dashed; color:var(--sce-accent); width:100%; margin-top:2px; }
+.sce .sce-btn.sce-mini { min-height:32px; padding:4px 8px; font-size:12.5px; }
+.sce .sce-btn.sce-danger { color:var(--sce-danger); }
+.sce .sce-btn:disabled { opacity:.5; cursor:not-allowed; }
+.sce .sce-grip { display:flex; gap:3px; margin-left:auto; }
+.sce .sce-sub { margin-left:14px; padding-left:10px; border-left:2px solid var(--sce-line); }
+.sce .sce-hint { color:var(--sce-muted); font-size:12.5px; margin:3px 0 7px; line-height:1.6; }
+.sce .sce-field-label { display:block; margin:12px 0 5px; color:var(--sce-text-strong);
+  font-size:12.5px; font-weight:700; }
+.sce .sce-report { display:grid; gap:5px; margin-top:9px; font-family:var(--sce-font-body);
+  font-size:12.5px; white-space:normal; }
+.sce .sce-err, .sce .sce-warn { padding:5px 8px; border-left:2px solid currentColor;
+  background:var(--sce-field); line-height:1.5; overflow-wrap:anywhere; }
+.sce .sce-err { color:var(--sce-danger); font-weight:650; }
+.sce .sce-warn { color:var(--sce-warning); }
+.sce .sce-ok { color:var(--sce-success); font-weight:650; }
+.sce details.sce-fold { margin:4px 0; }
+.sce details.sce-fold > summary { cursor:pointer; user-select:none; color:var(--sce-text); }
+.sce details.sce-fold > div { margin-left:12px; }
+.sce .sce-tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; letter-spacing:.02em;
+  background:var(--sce-surface-soft); color:var(--sce-text); border:1px solid var(--sce-line-strong); }
+.sce .sce-preview { margin-top:10px; }
+.sce .sce-chips { display:flex; gap:6px; flex-wrap:wrap; }
+.sce .sce-chip { display:flex; align-items:center; gap:4px; border:1px solid var(--sce-line-strong);
+  border-radius:7px; padding:4px 8px; font-size:12.5px; color:var(--sce-text); }
+.sce h4 { margin:17px 0 7px; font-size:13.5px; color:var(--sce-text-strong); padding-left:9px;
+  border-left:3px solid var(--sce-accent); letter-spacing:-.01em; }
+.sce .sce-swatches { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.sce .sce-swatch { width:24px !important; height:24px !important; min-width:0 !important;
+  border-radius:5px !important; border:1px solid var(--sce-line-strong) !important;
+  cursor:pointer; padding:0 !important; flex:none; }
+.sce .sce-swatch.on { outline:2px solid var(--sce-focus) !important; outline-offset:2px; }
+.sce input[type=color] { width:34px !important; height:30px !important; min-width:0 !important;
+  padding:2px !important; border-radius:5px !important; background:transparent !important; cursor:pointer; }
+.sce .sce-colorbox { display:flex; flex-direction:column; gap:4px; margin:4px 0; padding:7px 9px;
+  border:1px dashed var(--sce-line-strong); border-radius:6px; }
+.sce .sce-top { border-left-color:#6f9ed6; border-radius:4px; background:var(--sce-surface); }
+.sce .sce-ai-setup { margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-ai-section-label { margin-bottom:7px; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-ai-request-head { display:flex; justify-content:space-between; align-items:end; gap:8px 14px;
+  margin:10px 0 5px; flex-wrap:wrap; }
+.sce .sce-ai-request-head .sce-field-label { margin:0; }
+.sce .sce-ai-request-mode { color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-ai-request { width:100% !important; min-height:104px !important; font-family:inherit; line-height:1.6; }
+.sce .sce-ai-settings-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:8px;
+  align-items:stretch; }
+.sce .sce-ai-setting-card { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:transparent; height:100%; }
+.sce .sce-ai-setting-name { margin-bottom:6px; color:var(--sce-text-strong); font-size:12px; font-weight:700; }
+.sce .sce-ai-context { display:grid; gap:6px; margin:0; align-items:start; }
+.sce .sce-ai-context-toggle { display:flex; align-items:flex-start; gap:8px; width:fit-content; max-width:100%;
+  color:var(--sce-text-strong); font-size:13px; font-weight:650; cursor:pointer; }
+.sce .sce-ai-context-toggle input { flex:none; margin-top:4px; }
+.sce .sce-ai-context-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  border-top:1px solid var(--sce-line); padding-top:5px; }
+.sce .sce-ai-context-meta span { min-width:0; padding:1px 8px 1px 0; color:var(--sce-muted);
+  font-size:11.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-ai-context-meta span:nth-child(even) { padding-left:8px; border-left:1px solid var(--sce-line); }
+.sce .sce-ai-model-row { display:grid; grid-template-columns:auto minmax(180px,1fr); gap:6px 8px; margin:0; }
+.sce .sce-ai-model-row > .sce-hint { align-self:center; }
+.sce .sce-ai-model-copy { grid-column:1 / -1; margin:0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-ai-context-note { display:block; color:var(--sce-muted); font-size:11.5px; font-weight:400; }
+.sce .sce-ai-action-hint { color:var(--sce-muted); font-size:12px; }
+.sce .sce-feature-box { width:100%; margin:0; }
+.sce .sce-feature-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-feature-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-feature-request { margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-feature-request .sce-field-label { margin:0 0 5px; }
+.sce .sce-feature-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  margin-top:9px; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-feature-item { display:grid; grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"action meta" "copy copy"; gap:2px 8px; align-content:start; min-width:0;
+  min-height:74px; padding:9px 10px; border-bottom:1px solid var(--sce-line); background:var(--sce-surface); }
+.sce .sce-feature-item:nth-last-child(-n+2) { border-bottom:0; }
+.sce .sce-feature-item:nth-child(odd) { border-right:1px solid var(--sce-line); }
+.sce .sce-feature-item.is-blocked { background:var(--sce-field); }
+.sce .sce-feature-button { grid-area:action; width:fit-content; min-width:0; min-height:28px; padding:0;
+  border:0; border-radius:0; background:transparent; color:var(--sce-text-strong); font:inherit;
+  font-size:13px; font-weight:700; text-align:left; cursor:pointer; }
+.sce .sce-feature-button:hover:not(:disabled) { color:var(--sce-accent); }
+.sce .sce-feature-button:disabled { color:var(--sce-muted); cursor:not-allowed; opacity:.62; }
+.sce .sce-feature-status { grid-area:copy; min-width:0; color:var(--sce-text); font-size:12px; line-height:1.45;
+  overflow-wrap:anywhere; }
+.sce .sce-feature-status.is-blocked { color:var(--sce-warning); }
+.sce .sce-feature-meta { grid-area:meta; display:flex; align-items:center; justify-content:flex-end; gap:5px; min-width:22px; }
+.sce .sce-feature-step { padding:2px 5px; border:1px solid var(--sce-line-strong); border-radius:3px;
+  color:var(--sce-muted); background:var(--sce-surface); font-size:10.5px; font-weight:750; white-space:nowrap; }
+.sce .sce-feature-alert { display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center;
+  border:1px solid var(--sce-warning); border-radius:50%; color:#171b20; background:var(--sce-warning);
+  font-size:11px; font-weight:900; line-height:1; }
+.sce .sce-btn.sce-ai-primary { min-width:124px; background:var(--sce-accent-strong);
+  border-color:var(--sce-accent); color:#fff; }
+.sce .sce-ai-alt { margin-top:13px; padding-top:11px; border-top:1px solid var(--sce-line); }
+.sce .sce-ai-alt-title { margin-bottom:2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:750; }
+.sce .sce-design-polish { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; margin:8px 0 10px;
+  padding:8px 0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); background:transparent; }
+.sce .sce-design-polish .sce-chip { flex:none; padding:0; border:0; border-radius:0; background:transparent; }
+.sce .sce-hallmark-link { display:inline-flex; align-items:center; gap:4px; padding:0; border:0;
+  background:transparent; color:var(--sce-accent); font:inherit; font-size:12px; font-weight:650;
+  text-decoration:none; white-space:nowrap; cursor:pointer; }
+.sce .sce-hallmark-link:hover { text-decoration:underline; text-underline-offset:2px; }
+.sce .sce-hallmark-link:active { color:var(--sce-text-strong); }
+.sce .sce-hallmark-link:disabled { opacity:.55; cursor:not-allowed; text-decoration:none; }
+.sce .sce-result-section { margin-top:14px; padding-top:13px; border-top:1px solid var(--sce-line); }
+.sce .sce-result-section:first-of-type { margin-top:0; padding-top:0; border-top:0; }
+.sce .sce-result-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:8px; }
+.sce .sce-result-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-result-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-mode-switch { display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%; margin:4px 0 9px; }
+.sce .sce-mode-btn { min-height:34px; padding:5px 10px; border:1px solid var(--sce-line-strong); border-radius:4px;
+  background:transparent; color:var(--sce-muted); font:inherit; font-size:12px; cursor:pointer; }
+.sce .sce-mode-btn.on { background:var(--sce-surface-soft); color:var(--sce-text-strong); font-weight:700;
+  border-color:var(--sce-accent); box-shadow:inset 0 -2px 0 var(--sce-accent); }
+.sce .sce-design-actions { display:grid; grid-template-columns:minmax(240px,.82fr) minmax(320px,1.18fr);
+  gap:10px 14px; align-items:start; }
+.sce .sce-design-request { width:100%; min-height:96px; padding:9px 10px; font-family:inherit;
+  line-height:1.55; resize:vertical; }
+.sce .sce-design-controls { display:grid; grid-template-columns:auto minmax(240px,1fr); gap:7px 10px;
+  align-items:start; min-width:0; }
+.sce .sce-design-controls .sce-btn { flex:none; }
+.sce .sce-design-controls .sce-btn.sce-ai-primary { min-width:100px; }
+.sce .sce-design-controls .sce-ai-model-row { min-width:0; width:100%; max-width:520px; }
+.sce .sce-design-controls .sce-generation-state { grid-column:1 / -1; margin-top:0; }
+.sce .sce-generation-state { min-height:20px; margin-top:7px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-generation-state.ok { color:var(--sce-success); }
+.sce .sce-generation-state.warn { color:var(--sce-warning); }
+.sce .sce-catalog-counts { display:flex; gap:6px 14px; flex-wrap:wrap; color:var(--sce-text);
+  font-size:12.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-catalog-counts b { color:var(--sce-text-strong); }
+.sce .sce-catalog-details { margin-top:8px; border-top:1px solid var(--sce-line); padding-top:8px; }
+.sce .sce-catalog-details > summary { width:fit-content; color:var(--sce-text); cursor:pointer; font-size:12.5px; }
+.sce .sce-catalog-group { margin-top:12px; }
+.sce .sce-catalog-group > h4 { margin-top:0; }
+.sce .sce-catalog-grid, .sce .sce-event-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px; align-items:stretch; }
+.sce .sce-catalog-item, .sce .sce-event-row { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-catalog-item-title { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; overflow-wrap:anywhere; }
+.sce .sce-catalog-item-detail { margin-top:3px; color:var(--sce-muted); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.sce .sce-event-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.sce .sce-event-kind { flex:none; padding:2px 6px; border:1px solid var(--sce-line-strong); border-radius:3px;
+  color:var(--sce-text); font-size:10.5px; font-weight:700; letter-spacing:.02em; }
+.sce .sce-event-title { min-width:0; color:var(--sce-text-strong); font-size:13px; font-weight:700;
+  overflow-wrap:anywhere; }
+.sce .sce-event-fields { display:grid; grid-template-columns:minmax(104px,auto) minmax(0,1fr); margin:0; }
+.sce .sce-event-fields dt, .sce .sce-event-fields dd { min-width:0; margin:0; padding:4px 0;
+  border-top:1px solid var(--sce-line); font-size:12px; line-height:1.5; }
+.sce .sce-event-fields dt { padding-right:10px; color:var(--sce-muted); font-weight:650; }
+.sce .sce-event-fields dd { color:var(--sce-text); overflow-wrap:anywhere; }
+.sce .sce-diag-intro { margin:3px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-diag-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-diag-intro p { margin:3px 0 0; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-diag-controls { display:grid; grid-template-columns:minmax(145px,190px) minmax(145px,190px) auto;
+  gap:8px; align-items:end; padding:10px 0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-diag-field { display:grid; grid-template-columns:auto minmax(72px,1fr); gap:2px 8px; align-items:center; }
+.sce .sce-diag-field > span { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-diag-field > small { grid-column:1 / -1; color:var(--sce-muted); font-size:11px; line-height:1.35; }
+.sce .sce-diag-field input { width:100%; }
+.sce .sce-diag-run { min-width:112px; }
+.sce .sce-diag-status { min-height:20px; margin:6px 0 0; color:var(--sce-muted); font-size:12px; }
+.sce .sce-diag-summary { margin:8px 0 12px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-line-strong); border-radius:4px; background:var(--sce-surface); }
+.sce .sce-diag-summary-head { display:flex; justify-content:space-between; gap:8px 16px; align-items:center; flex-wrap:wrap; }
+.sce .sce-diag-counts { display:flex; gap:7px 14px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-count { color:var(--sce-muted); font-size:12px; }
+.sce .sce-diag-count strong { margin-left:3px; color:var(--sce-text-strong); font-size:14px; }
+.sce .sce-diag-meta { color:var(--sce-text); font-size:12px; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-summary-detail { margin-top:6px; padding-top:6px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-diag-compare { margin:10px 0 13px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-surface); }
+.sce .sce-diag-compare-head { padding:9px 11px; border-bottom:1px solid var(--sce-line);
+  color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-diag-compare-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.sce .sce-diag-compare-metric { min-width:0; padding:8px 10px; border-right:1px solid var(--sce-line); }
+.sce .sce-diag-compare-metric:last-child { border-right:0; }
+.sce .sce-diag-compare-metric span { display:block; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-diag-compare-metric strong { display:block; margin-top:1px; color:var(--sce-text-strong);
+  font-size:13.5px; font-variant-numeric:tabular-nums; }
+.sce .sce-diag-compare-detail { display:grid; gap:4px; padding:9px 11px; border-top:1px solid var(--sce-line);
+  color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-clear { margin:10px 0 13px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-success); border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-clear strong { display:block; color:var(--sce-text-strong); font-size:13.5px; }
+.sce .sce-diag-clear span { display:block; margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-group { margin-top:14px; }
+.sce .sce-diag-group-head { display:flex; align-items:center; gap:7px; margin-bottom:7px; padding-left:8px;
+  border-left:3px solid var(--sce-accent); color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-diag-group-count { color:var(--sce-muted); font-size:12px; font-weight:600; }
+.sce .sce-diag-findings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; align-items:stretch; }
+.sce .sce-diag-finding { min-width:0; padding:11px 12px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-field); height:100%; }
+.sce .sce-diag-findings > .sce-diag-finding:only-child { grid-column:1 / -1; }
+.sce .sce-diag-group-high .sce-diag-finding { border-left:3px solid var(--sce-danger); }
+.sce .sce-diag-group-mid .sce-diag-finding { border-left:3px solid var(--sce-warning); }
+.sce .sce-diag-group-low .sce-diag-finding { border-left:3px solid var(--sce-accent); }
+.sce .sce-diag-finding .sce-tag { border-radius:3px; padding:3px 7px; font-size:11.5px; }
+.sce .sce-diag-finding-main { margin-top:7px; color:var(--sce-text-strong); font-size:13.5px; line-height:1.65;
+  overflow-wrap:anywhere; }
+.sce .sce-diag-finding-next { display:grid; grid-template-columns:72px minmax(0,1fr); gap:8px;
+  margin-top:8px; padding-top:7px; border-top:1px solid var(--sce-line); color:var(--sce-text);
+  font-size:12.5px; line-height:1.6; overflow-wrap:anywhere; }
+.sce .sce-diag-finding-next > span { color:var(--sce-muted); font-size:11.5px; font-weight:700; }
+.sce .sce-diag-group-fold { border-top:1px solid var(--sce-line); }
+.sce .sce-diag-group-fold > summary { width:fit-content; padding:9px 0 7px; color:var(--sce-text);
+  font-size:12.5px; font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai { margin-top:18px; padding-top:14px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-diag-ai-head { margin-bottom:9px; }
+.sce .sce-diag-ai-title { color:var(--sce-text-strong); font-size:15px; font-weight:750; }
+.sce .sce-diag-ai-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.6; }
+.sce .sce-diag-ai-primary { display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:11px 12px; border:1px solid var(--sce-line); border-left:3px solid var(--sce-accent);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-ai-primary-text { min-width:0; }
+.sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
+.sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
+.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
+  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
+.sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.sce .sce-diag-ai-export-card { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-diag-ai-export-card.is-primary { border-left:3px solid var(--sce-accent); }
+.sce .sce-diag-ai-export-card .sce-hint { margin-top:0; }
+.sce .sce-diag-ai-export-card .sce-row { margin-bottom:0; }
+.sce .sce-diag-rewrite { margin-top:2px; border-top:1px solid var(--sce-line); }
+.sce .sce-diag-rewrite > summary { padding:9px 0; color:var(--sce-text); font-size:12.5px;
+  font-weight:700; cursor:pointer; }
+.sce .sce-diag-rewrite-body { display:grid; gap:8px; padding:0 0 4px; }
+.sce .sce-diag-orphan { border-top:1px solid var(--sce-line); }
+.sce .sce-diag-orphan > summary { width:fit-content; padding:8px 0 4px; color:var(--sce-muted);
+  font-size:12px; cursor:pointer; }
+.sce .sce-diag-orphan > div { padding:3px 0 5px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-diag-ai-warning { margin:10px 0 5px; padding:8px 10px; border-left:2px solid var(--sce-warning);
+  color:var(--sce-muted); font-size:12px; line-height:1.6; background:var(--sce-field); }
+.sce .sce-result-external { margin-top:12px; padding:10px 11px; border-left:2px solid var(--sce-line-strong);
+  background:var(--sce-field); }
+.sce .sce-result-external .sce-ai-alt-title { font-size:12px; }
+.sce .sce-json-intro { margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-json-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-json-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-json-paths { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; align-items:stretch; }
+.sce .sce-json-path { min-width:0; padding:11px 12px; border:1px solid var(--sce-line); border-radius:4px;
+  background:var(--sce-surface); display:flex; flex-direction:column; height:100%; }
+.sce .sce-json-path.is-primary { border-left:3px solid var(--sce-accent); }
+.sce .sce-json-path-head { display:flex; justify-content:space-between; gap:8px; align-items:start; margin-bottom:5px; }
+.sce .sce-json-path-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-json-path-badge { flex:none; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
+.sce .sce-json-path-copy { min-height:38px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-json-path > .sce-hint { min-height:38px; margin:8px 0 0; }
+.sce .sce-json-path > .sce-row { margin:7px 0 0; }
+.sce .sce-json-path > .sce-row:last-of-type { margin-top:auto; padding-top:7px; }
+.sce .sce-json-path > .sce-copy-output { margin-top:8px; }
+.sce .sce-copy-output[hidden] { display:none !important; }
+.sce .sce-json-workspace { margin-top:14px; padding-top:13px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-json-section-head { display:flex; justify-content:space-between; gap:8px 16px; align-items:start;
+  margin-bottom:7px; flex-wrap:wrap; }
+.sce .sce-json-section-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-json-section-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-patch-input { min-height:138px; }
+.sce .sce-json-action-row { justify-content:space-between; margin-top:8px; }
+.sce .sce-json-action-state { color:var(--sce-muted); font-size:12px; }
+.sce .sce-json-validation { margin-top:15px; padding-top:13px; border-top:1px solid var(--sce-line-strong); }
+.sce .sce-json-validation-status { display:flex; gap:8px; align-items:flex-start; padding:8px 10px;
+  border-left:3px solid var(--sce-success); background:var(--sce-field); }
+.sce .sce-json-validation-status.is-error { border-left-color:var(--sce-danger); }
+.sce .sce-json-validation-mark { flex:none; color:var(--sce-success); font-weight:800; }
+.sce .sce-json-validation-status.is-error .sce-json-validation-mark { color:var(--sce-danger); }
+.sce .sce-json-validation-main { color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-json-validation-next { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-source { margin-top:14px; border-top:1px solid var(--sce-line-strong);
+  border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-source > summary { display:flex; justify-content:space-between; gap:10px; padding:11px 0;
+  color:var(--sce-text); font-size:12.5px; font-weight:700; cursor:pointer; }
+.sce .sce-json-source-body { padding:0 0 11px; }
+.sce .sce-json-source textarea { min-height:300px; }
+.sce .sce-json-source-state { min-height:20px; margin-top:6px; color:var(--sce-muted); font-size:12px; }
+.sce .sce-json-source-state.is-dirty { color:var(--sce-warning); }
+.sce .sce-json-import-preview { margin-top:9px; padding:10px 11px; border:1px solid var(--sce-line);
+  border-left:3px solid var(--sce-accent); border-radius:4px; background:var(--sce-field); }
+.sce .sce-json-import-preview.is-error { border-left-color:var(--sce-danger); }
+.sce .sce-json-import-title { color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-json-import-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
+.sce .sce-json-import-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); margin-top:8px;
+  border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-import-metric { min-width:0; padding:6px 8px; border-right:1px solid var(--sce-line); }
+.sce .sce-json-import-metric:last-child { border-right:0; }
+.sce .sce-json-import-metric span { display:block; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-json-import-metric strong { display:block; color:var(--sce-text-strong); font-size:13px;
+  font-variant-numeric:tabular-nums; }
+.sce .sce-json-import-errors { margin-top:8px; color:var(--sce-danger); font-size:12px; line-height:1.55; }
+.sce .sce-json-import-applied { display:flex; justify-content:space-between; align-items:center; gap:8px 12px;
+  margin-bottom:9px; padding:8px 10px; border-left:3px solid var(--sce-success); background:var(--sce-field); }
+.sce .sce-json-import-applied span { color:var(--sce-text); font-size:12px; line-height:1.5; }
+.sce .sce-vars-intro {
   width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
   background:var(--sce-field); }
-.sce .sce-status-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
-.sce .sce-status-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
-.sce .sce-status-settings { padding:10px 0; border-top:1px solid var(--sce-line);
+.sce .sce-vars-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-vars-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-vars-ai { width:100%; max-width:var(--sce-work-w); margin:0 0 13px; padding:11px 12px 12px;
+  border:1px solid var(--sce-line); border-left:2px solid var(--sce-accent); border-radius:4px;
+  background:var(--sce-surface); }
+.sce .sce-vars-ai-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px 14px;
+  margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-vars-ai-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-vars-ai-summary { color:var(--sce-muted); font-size:11.5px; font-weight:600; }
+.sce .sce-tab-ai-vars { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+  gap:0; margin:0; padding:0; border:0; background:transparent; }
+.sce .sce-vars-ai-direct { grid-column:1 / -1; min-width:0; padding:0 0 9px;
+  border-bottom:1px solid var(--sce-line); margin-bottom:4px; }
+.sce .sce-vars-ai-direct > .sce-hint { margin-top:5px; }
+.sce .sce-vars-ai-export, .sce .sce-vars-ai-import { display:flex; min-width:0; padding:5px 12px 3px 0;
+  flex-direction:column; }
+.sce .sce-vars-ai-import { padding-left:12px; padding-right:0; border-left:1px solid var(--sce-line); }
+.sce .sce-vars-ai-export > .sce-hint, .sce .sce-vars-ai-import > .sce-hint { margin-top:0; }
+.sce .sce-vars-ai-export > .sce-row, .sce .sce-vars-ai-import > .sce-row { margin-bottom:0; }
+.sce .sce-vars-ai-input { min-height:88px; height:88px; }
+.sce .sce-vars-ai-import > .sce-vars-ai-input { margin-top:7px; }
+.sce .sce-party-panel { display:grid; gap:10px; }
+.sce .sce-party-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:12px 20px;
+  padding:12px; border:1px solid var(--sce-line); border-left:3px solid var(--sce-accent);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-party-intro-main { min-width:0; }
+.sce .sce-party-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-party-copy { max-width:68ch; margin-top:4px; color:var(--sce-muted); font-size:14px; line-height:1.55; }
+.sce .sce-party-metrics { display:flex; flex:0 0 auto; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.sce .sce-party-metric { display:grid; min-width:72px; padding:4px 8px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-party-metric span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-party-metric strong { color:var(--sce-text-strong); font-size:13px; font-variant-numeric:tabular-nums; }
+.sce .sce-party-setup { display:block; padding:10px 12px; border:1px solid var(--sce-line-strong);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-party-setup.is-blocked { border-left:3px solid var(--sce-warning); }
+.sce .sce-party-setup-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-party-setup-copy { max-width:72ch; margin-top:3px; color:var(--sce-muted); font-size:13px; line-height:1.45; }
+.sce .sce-party-checks { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.sce .sce-party-check { padding:4px 8px; border:1px solid var(--sce-line); border-radius:4px;
+  color:var(--sce-muted); background:var(--sce-field); font-size:11.5px; }
+.sce .sce-party-check.is-ready { color:var(--sce-success); border-color:var(--sce-success-strong); }
+.sce .sce-party-check.is-needed { color:var(--sce-warning); }
+.sce .sce-party-setup-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+.sce .sce-party-primary { color:var(--sce-accent-ink); border-color:var(--sce-accent-strong); background:var(--sce-accent-strong); }
+.sce .sce-party-quick { display:grid; grid-template-columns:minmax(144px,220px) minmax(0,1fr) auto;
+  gap:8px; align-items:end; margin-top:12px; }
+.sce .sce-party-quick input { width:100%; min-width:0; }
+.sce .sce-party-quick-report { grid-column:1 / -1; min-height:1lh; margin-top:0; }
+.sce .sce-party-guide { margin:0; padding:6px 10px; border-left:2px solid var(--sce-line-strong);
+  color:var(--sce-muted); background:var(--sce-field); font-size:12.5px; line-height:1.45; }
+.sce .sce-party-section-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px 16px;
+  margin:2px 0 0; }
+.sce .sce-party-section-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-party-section-copy { max-width:68ch; margin-top:4px; color:var(--sce-muted); font-size:13.5px; line-height:1.5; }
+.sce .sce-party-settings { margin-bottom:0; }
+.sce .sce-party-slot-card, .sce .sce-party-item-card { margin:8px 0 0; background:var(--sce-field); }
+.sce .sce-party-slot-list { display:grid; gap:8px; }
+.sce .sce-party-slot-card { position:relative; margin:0; padding:0; overflow:hidden; }
+.sce .sce-party-slot-card.is-just-moved, .sce .sce-party-slot-card.is-newly-created { border-color:var(--sce-accent);
+  animation:sce-party-slot-ghost 1.25s var(--sce-ease-out) both; }
+.sce .sce-party-slot-card.is-just-moved::after, .sce .sce-party-slot-card.is-newly-created::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  border:2px solid var(--sce-accent); opacity:.72; }
+.sce .sce-party-slot-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px;
+  padding:9px 10px; border-bottom:1px solid var(--sce-line); background:var(--sce-surface); }
+.sce .sce-party-slot-identity { display:flex; align-items:center; gap:8px; min-width:0; }
+.sce .sce-party-slot-index { flex:none; color:var(--sce-accent); font-size:11px; font-weight:800; }
+.sce .sce-party-slot-name { min-width:0; color:var(--sce-text-strong); font-size:13.5px; font-weight:750;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sce .sce-party-slot-count { flex:none; padding:3px 7px; border:1px solid var(--sce-line); border-radius:999px;
+  color:var(--sce-muted); background:var(--sce-field); font-size:10.5px; }
+.sce .sce-party-slot-body { display:grid; grid-template-columns:minmax(144px,220px) minmax(0,1fr) auto;
+  gap:8px; align-items:end; padding:10px; }
+.sce .sce-party-slot-body > .sce-pair { width:100%; min-width:0; }
+.sce .sce-party-slot-body input { width:100%; min-width:0; max-width:none; }
+.sce .sce-party-slot-actions { display:flex; align-items:end; gap:5px; }
+.sce .sce-party-slot-actions .sce-btn { padding-inline:10px; }
+.sce .sce-party-slot-move-feedback { flex:none; padding:3px 7px; border:1px solid var(--sce-success);
+  border-radius:3px; color:var(--sce-success); background:rgba(54,142,94,.14); font-size:10.5px;
+  font-weight:750; white-space:nowrap; animation:sce-variable-feedback-pop .45s var(--sce-ease-out) both; }
+.sce .sce-party-slot-meta { grid-column:1 / -1; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  color:var(--sce-muted); font-size:11px; }
+.sce .sce-party-slot-meta details { min-width:min(100%,360px); }
+.sce .sce-party-slot-meta summary { cursor:pointer; color:var(--sce-muted); }
+.sce .sce-party-slot-meta .sce-pair { margin-top:7px; }
+.sce .sce-party-slot-create { display:grid; grid-template-columns:minmax(144px,220px) minmax(0,1fr) auto;
+  gap:8px; align-items:end; margin-top:8px; padding:10px; border:1px dashed var(--sce-line-strong);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-party-slot-create > .sce-pair { width:100%; min-width:0; }
+.sce .sce-party-slot-create input { width:100%; min-width:0; max-width:none; }
+.sce .sce-party-slot-create-report { grid-column:1 / -1; min-height:1lh; margin:0; }
+.sce .sce-party-existing-list { display:grid; gap:5px; margin-top:8px; }
+.sce .sce-party-existing-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center;
+  padding:6px 8px; border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); }
+.sce .sce-party-existing-main { min-width:0; }
+.sce .sce-party-existing-name { color:var(--sce-text-strong); font-size:12.5px; font-weight:750; }
+.sce .sce-party-existing-meta { margin-top:1px; color:var(--sce-muted); font-size:11px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sce .sce-party-formations { display:grid; gap:8px; }
+.sce .sce-party-formation-nav { display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding-bottom:8px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-party-formation-tab { min-width:108px; }
+.sce .sce-party-formation-tab.is-active { color:var(--sce-accent-ink); border-color:var(--sce-accent-strong);
+  background:var(--sce-accent-strong); }
+.sce .sce-party-formation-add { margin-left:auto; }
+.sce .sce-party-formation-editor { display:grid; gap:8px; }
+.sce .sce-party-formation-head { display:grid; grid-template-columns:minmax(180px,260px) minmax(0,1fr) auto;
+  gap:8px; align-items:end; padding:8px 0 10px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-party-formation-head > .sce-pair { width:100%; min-width:0; }
+.sce .sce-party-formation-head input { width:100%; min-width:0; max-width:none; }
+.sce .sce-party-optional { margin:0; border-top:1px solid var(--sce-line); }
+.sce .sce-party-optional > summary { display:flex; align-items:center; justify-content:space-between; gap:8px;
+  min-height:42px; cursor:pointer; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
+.sce .sce-party-optional > summary span { color:var(--sce-muted); font-size:11px; font-weight:500; }
+.sce .sce-party-optional-body { display:grid; gap:8px; padding:0 0 10px; }
+.sce .sce-party-preview-shell { display:grid; gap:8px; }
+.sce .sce-party-live-preview { min-width:0; padding:12px; border:1px solid var(--sce-line-strong);
+  border-radius:4px; background:#080d18; }
+.sce .sce-party-live-preview .scg-card { width:min(440px,100%); margin:0 auto; padding:14px;
+  border:1px solid #35486e; border-radius:10px; color:#dfe7f5; background:#11182a; }
+.sce .sce-party-live-preview .scg-title { display:flex; justify-content:space-between; gap:8px;
+  margin-bottom:8px; color:#fff; font-size:15px; font-weight:750; }
+.sce .sce-party-live-preview .scg-tabs { display:flex; gap:4px; flex-wrap:wrap; margin:0 0 8px;
+  border-bottom:2px solid #24304a; }
+.sce .sce-party-live-preview .scg-tab { padding:5px 10px; border:1px solid transparent; border-bottom:0;
+  border-radius:7px 7px 0 0; color:#a7b4cc; background:transparent; }
+.sce .sce-party-live-preview .scg-tab.scg-on { color:#fff; border-color:#6b93f2; background:#3660d9; }
+.sce .sce-party-live-preview .scg-note { margin:5px 0 8px; color:#9db0cc; font-size:12px; }
+.sce .sce-party-live-preview .scg-slot { margin-top:7px; border:1px solid #2a3a5e; border-radius:8px; background:#0e1526; }
+.sce .sce-party-live-preview .scg-slot-row { display:flex; align-items:center; gap:9px; padding:8px 10px; }
+.sce .sce-party-live-preview .scg-slot-label { min-width:48px; color:#9db8e8; font-size:12px; }
+.sce .sce-party-live-preview .scg-slot-val { color:#f2ecff; font-weight:700; }
+.sce .sce-party-live-preview .scg-slot-arrow { margin-left:auto; color:#72819e; font-size:11px; }
+.sce .sce-party-live-preview .scg-cands { display:flex; gap:5px; flex-wrap:wrap; padding:0 10px 9px; }
+.sce .sce-party-live-preview .scg-chip { min-height:32px; padding:4px 9px; border:1px solid #3d5384;
+  border-radius:999px; color:#dfe7f5; background:#1c2740; }
+.sce .sce-party-live-preview .scg-chip.scg-on { color:#fff; border-color:#6b93f2; background:#3660d9; }
+.sce .sce-party-preview-code { max-height:180px; overflow:auto; margin:0; padding:9px;
+  border:1px solid var(--sce-line); border-radius:4px; color:var(--sce-muted); background:var(--sce-field);
+  font-family:var(--sc-font-mono,'D2Coding',ui-monospace,monospace); font-size:11px; white-space:pre-wrap; }
+@keyframes sce-party-slot-ghost {
+  0% { background:#20314a; box-shadow:0 0 0 3px rgba(120,169,255,.32); }
+  65% { background:#19243a; box-shadow:0 0 0 2px rgba(120,169,255,.2); }
+  100% { background:var(--sce-field); box-shadow:none; }
+}
+.sce details.sce-party-ai, .sce details.sce-party-advanced { margin:0; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-surface); }
+.sce details.sce-party-ai > summary, .sce details.sce-party-advanced > summary { display:flex; align-items:center;
+  justify-content:space-between; gap:8px; min-height:44px; padding:8px 12px; cursor:pointer; user-select:none;
+  color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
+.sce details.sce-party-ai > summary span, .sce details.sce-party-advanced > summary span {
+  color:var(--sce-muted); font-size:11.5px; font-weight:500; }
+.sce details.sce-party-ai[open] > summary, .sce details.sce-party-advanced[open] > summary {
   border-bottom:1px solid var(--sce-line); }
+.sce details.sce-party-ai > .sce-tab-ai-tools { margin:12px; }
+.sce .sce-party-advanced-body { padding:12px; }
+.sce .sce-party-advanced-body > .sce-hint:first-child { margin-top:0; }
+.sce .sce-party-danger { border-color:var(--sce-danger); }
+.sce .sce-party-panel .sce-btn, .sce .sce-party-panel input, .sce .sce-party-panel select, .sce .sce-party-panel textarea { outline:2px solid transparent; outline-offset:1px; }
+.sce .sce-party-panel .sce-btn, .sce .sce-party-panel input, .sce .sce-party-panel select {
+  min-height:44px; }
+.sce .sce-party-panel .sce-btn { white-space:nowrap; }
+.sce .sce-party-panel .sce-btn:focus-visible, .sce .sce-party-panel input:focus-visible, .sce .sce-party-panel select:focus-visible, .sce .sce-party-panel textarea:focus-visible, .sce details.sce-party-ai > summary:focus-visible, .sce details.sce-party-advanced > summary:focus-visible {
+  outline:2px solid var(--sce-focus); outline-offset:2px; }
+.sce .sce-party-panel .sce-btn:active:not(:disabled) { border-color:var(--sce-text-strong); }
+/* Hallmark · status editor static review · modern-minimal · restrained technical tone
+ * states and 320–1180px responsive rules reviewed; live Risu rendering remains pending */
+.sce .sce-status-editor { width:100%; max-width:var(--sce-work-w); }
+.sce .sce-status-core { width:100%; max-width:var(--sce-work-w); margin:2px 0 15px; padding:12px 0 14px;
+  border:0; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line);
+  border-radius:0; background:transparent; }
+.sce .sce-status-intro {
+  width:100%; margin:0; padding:0 0 11px 10px; border-left:2px solid var(--sce-accent); }
+.sce .sce-status-intro-title { color:var(--sce-text-strong); font-size:15px; font-weight:750; }
+.sce .sce-status-intro-copy { margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-status-core-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(250px,280px);
+  gap:14px; padding-top:12px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-settings { min-width:0; padding:0; }
 .sce .sce-status-settings-grid { display:grid;
-  grid-template-columns:minmax(220px,1.25fr) minmax(220px,1fr) minmax(130px,.55fr) minmax(150px,.6fr);
-  gap:8px; align-items:end; }
-.sce .sce-status-field { display:grid; gap:4px; min-width:0; color:var(--sce-muted);
-  font-size:11.5px; font-weight:650; }
-.sce .sce-status-field > input, .sce .sce-status-field > select,
-.sce .sce-status-field > .sce-chip { width:100%; min-width:0; max-width:none; }
-.sce .sce-status-field > .sce-chip { min-height:38px; align-items:center; }
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-areas:"title mode" "theme layout" "log highlights" "position .";
+  column-gap:14px; row-gap:0; align-items:start; align-content:start; }
+.sce .sce-status-settings-grid.is-template {
+  grid-template-areas:"title mode" "theme log" "highlights position"; }
+.sce .sce-status-field-title { grid-area:title; }
+.sce .sce-status-field-mode { grid-area:mode; }
+.sce .sce-status-field-theme { grid-area:theme; }
+.sce .sce-status-field-position { grid-area:position; }
+.sce .sce-status-field-log { grid-area:log; }
+.sce .sce-status-field-layout { grid-area:layout; }
+.sce .sce-status-field-highlights { grid-area:highlights; }
+.sce .sce-status-field-title, .sce .sce-status-field-log { width:100%; }
+.sce .sce-status-options { display:grid; grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"title" "summary" "toggle" "copy" "preview" "live"; align-content:start; min-width:0;
+  padding:0 0 0 14px; border-left:1px solid var(--sce-line); }
+.sce .sce-status-options-title { grid-area:title; color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-status-options-summary { grid-area:summary; display:flex; align-items:baseline; gap:5px; margin-top:3px;
+  color:var(--sce-muted); font-size:11.5px; }
+.sce .sce-status-options-summary strong { color:var(--sce-text-strong); font-weight:700; }
+.sce .sce-status-options > .sce-chip { grid-area:toggle; min-height:40px; margin-top:9px; padding:7px 0;
+  border:0; border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line);
+  border-radius:0; background:transparent; white-space:nowrap; }
+.sce .sce-status-options-copy { grid-area:copy; margin-top:5px; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
+.sce .sce-status-field { display:grid; grid-template-rows:auto minmax(40px,auto) minmax(1.45em,auto);
+  align-content:start; gap:5px; min-width:0; padding:10px 0 11px; border-top:1px solid var(--sce-line);
+  color:var(--sce-text); font-size:12px; font-weight:700; }
+.sce .sce-status-field-title, .sce .sce-status-field-mode { padding-top:0; border-top:0; }
+.sce .sce-status-field > small { min-height:1.45em; color:var(--sce-muted); font-size:11px;
+  font-weight:500; line-height:1.45; }
+.sce .sce-status-field > input, .sce .sce-status-field > select, .sce .sce-status-field > .sce-chip { width:100% !important; min-width:0 !important; max-width:none !important; }
+.sce .sce-status-field > input, .sce .sce-status-field > select, .sce .sce-status-field > .sce-chip { min-height:40px; }
+.sce .sce-status-field > .sce-chip { align-items:center; }
+.sce .sce-status-theme-control { display:grid; gap:5px; min-width:0; }
+.sce .sce-status-theme-control > select { width:100%; min-width:0; max-width:none; }
+.sce .sce-status-theme-preview { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); color:var(--sce-text); font-size:11.5px; font-weight:500; }
+.sce .sce-status-theme-preview-head { display:flex; justify-content:space-between; align-items:baseline; gap:6px;
+  margin-bottom:6px; }
+.sce .sce-status-theme-preview-head strong { color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-status-theme-preview-head span { color:var(--sce-muted); font-size:11.5px; white-space:nowrap; }
+.sce .sce-status-theme-preview-row { display:grid; grid-template-columns:auto minmax(28px,1fr) auto;
+  align-items:center; gap:5px; }
+.sce .sce-status-theme-preview-copy { margin-top:6px; color:inherit; opacity:.88; font-size:11.5px;
+  line-height:1.4; }
+.sce .sce-status-theme-preview-bar { display:block; height:7px; overflow:hidden; border-radius:3px;
+  background:rgba(128,128,128,.28); }
+.sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
+.sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
+.sce .sce-status-options-live { grid-area:live; min-width:0; margin-top:10px; padding-top:9px;
+  border-top:1px solid var(--sce-line); }
+.sce .sce-status-options-live-title { margin-bottom:6px; color:var(--sce-text-strong);
+  font-size:11.5px; font-weight:750; }
+.sce .sce-status-options-live .sim-status { margin:0; }
 .sce .sce-status-layout { width:min(420px,100%); margin-top:8px; }
 .sce .sce-status-layout select { width:100%; min-width:0; max-width:none; }
 .sce .sce-status-note {
@@ -582,12 +1715,18 @@ const CSS = `
   border-left:3px solid var(--sce-accent); background:var(--sce-surface-soft); border-radius:0 4px 4px 0; }
 .sce .sce-status-timegate > button { flex:none; }
 .sce .sce-status-section-head { display:flex; align-items:flex-start; justify-content:space-between;
-  gap:8px 14px; margin:14px 0 7px; }
+  gap:8px 14px; margin:15px 0 9px; padding-bottom:9px; border-bottom:1px solid var(--sce-line); }
 .sce .sce-status-section-head h4 { margin:0; }
 .sce .sce-status-section-head p { margin:2px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.5; }
 .sce .sce-status-section-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
-.sce .sce-status-count { min-width:34px; padding:4px 7px; border:1px solid var(--sce-line-strong);
-  border-radius:999px; color:var(--sce-text); font-size:11.5px; font-weight:700; text-align:center; }
+.sce .sce-status-section-actions .sce-btn { white-space:nowrap; }
+.sce .sce-status-count { flex:none; padding:0 3px; color:var(--sce-muted); font-size:11.5px;
+  font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sce .sce-status-primary { color:#ffffff; border-color:var(--sce-accent-strong);
+  background:var(--sce-accent-strong); white-space:nowrap;
+  transition:background-color 160ms ease, border-color 160ms ease,
+    transform 100ms ease; }
+.sce .sce-status-primary:active:not(:disabled) { transform:translateY(1px); }
 .sce .sce-status-groups { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
 .sce .sce-status-group { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
   border-radius:4px; background:var(--sce-surface); }
@@ -600,30 +1739,56 @@ const CSS = `
 .sce .sce-status-group-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; flex:none; }
 .sce .sce-status-group-body { margin-top:8px; padding-top:8px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-group-settings { display:grid;
-  grid-template-columns:minmax(170px,.7fr) minmax(190px,.8fr) minmax(220px,1.1fr);
-  gap:10px; align-items:end; }
-.sce .sce-status-group-settings .sce-status-field > input,
-.sce .sce-status-group-settings .sce-status-field > select { width:100%; min-width:0; max-width:none; }
+  grid-template-columns:minmax(160px,220px) minmax(170px,220px) minmax(240px,1fr);
+  gap:8px; align-items:end; justify-content:start; }
+.sce .sce-status-group-settings .sce-status-field > input, .sce .sce-status-group-settings .sce-status-field > select { width:100%; min-width:0; max-width:none; }
 .sce .sce-status-items { margin-top:12px; border-top:1px solid var(--sce-line); }
-.sce .sce-status-item-head, .sce .sce-status-item { display:grid;
-  grid-template-columns:minmax(210px,1.2fr) 68px minmax(155px,.9fr) minmax(150px,.85fr) auto;
-  gap:9px; align-items:end; }
-.sce .sce-status-item-head { padding:8px 0 5px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
-.sce .sce-status-item { padding:9px 0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-item { min-width:0; padding:9px 0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-item-main { display:grid;
+  grid-template-columns:minmax(240px,1.2fr) minmax(130px,.65fr) minmax(180px,.85fr) auto;
+  gap:8px; align-items:center; }
 .sce .sce-status-item select, .sce .sce-status-item input { width:100%; min-width:0; max-width:none; }
 /* 손잡이가 없을 수도 있다 (CARD_DRAG=false) — 고정 폭 격자 열로 잡으면 그때 셀렉트가
    손잡이 자리로 밀려 들어가 30px로 찌그러진다. flex는 있으면 붙고 없으면 그냥 사라진다. */
 .sce .sce-status-value-control { display:flex; gap:6px; align-items:center; min-width:0; }
 .sce .sce-status-value-control > select { flex:1; min-width:0; }
-.sce .sce-status-drag-handle { width:30px; min-width:30px; padding:0; color:var(--sce-muted);
-  cursor:grab; touch-action:none; letter-spacing:-.08em; }
+.sce .sce-status-item-index { flex:none; color:var(--sce-muted); font-family:var(--sc-font-mono,
+  'D2Coding',ui-monospace,monospace); font-size:11px; font-weight:750; }
+.sce .sce-status-item-meta { display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-width:0; }
+.sce .sce-status-item-meta span { padding:2px 5px; border:1px solid var(--sce-line); border-radius:999px;
+  color:var(--sce-muted); background:var(--sce-field); font-size:10.5px; line-height:1.35; }
+.sce .sce-status-item-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:2px 7px;
+  align-items:center; min-width:0; padding:5px 7px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-status-item-preview > span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-status-item-preview > strong { min-width:0; color:var(--sce-text-strong); font-size:11.5px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sce .sce-status-item-preview-gauge { grid-column:1 / -1; display:grid;
+  grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:center; }
+.sce .sce-status-item-preview-bar { display:block; height:5px; overflow:hidden;
+  border-radius:3px; background:rgba(128,128,128,.28); }
+.sce .sce-status-item-preview-bar > i { display:block; height:100%; background:var(--sce-accent); }
+.sce .sce-status-item-preview-percent { color:var(--sce-muted); font-size:10.5px; font-weight:650; }
+.sce .sce-status-drag-handle { display:inline-flex; align-items:center; justify-content:center;
+  width:30px; min-width:30px; padding:0; color:var(--sce-muted); cursor:grab; touch-action:none;
+  font-family:var(--sc-font-mono,'D2Coding',ui-monospace,monospace); font-size:16px; line-height:1; letter-spacing:0; text-align:center; }
 .sce .sce-status-drag-handle:active { cursor:grabbing; }
 .sce .sce-status-item .sce-chip { min-height:38px; padding:5px 6px; justify-content:center; white-space:nowrap; }
-.sce .sce-status-item-max.is-disabled { display:flex; align-items:center; min-height:38px; padding:0 9px;
-  border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-field); color:var(--sce-muted); }
 .sce .sce-status-item-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; align-self:end; }
-.sce .sce-status-item-color { margin:0 0 7px; padding:7px 0 2px 12px;
-  border-left:2px solid var(--sce-line-strong); }
+.sce .sce-status-item-options-toggle { white-space:nowrap; }
+.sce .sce-status-item-settings { display:flex; align-items:end; gap:7px 10px; flex-wrap:wrap;
+  margin:7px 0 0 36px; padding-top:7px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-item-gauge { display:flex; align-items:end; gap:7px; flex-wrap:wrap; min-width:0; }
+.sce .sce-status-item-gauge-title { align-self:center; color:var(--sce-text-strong); font-size:11px; font-weight:750; }
+.sce .sce-status-item-gauge-max { display:grid; gap:3px; min-width:180px; color:var(--sce-muted);
+  font-size:10.5px; font-weight:650; }
+.sce .sce-status-item-advanced { display:grid; grid-template-columns:minmax(240px,.85fr) minmax(0,1.15fr);
+  gap:9px; margin:7px 0 0 36px; padding:8px 9px; border-left:2px solid var(--sce-line-strong);
+  background:var(--sce-field); }
+.sce .sce-status-item-color-panel { min-width:0; }
+.sce .sce-status-item-color-title { margin-bottom:4px; color:var(--sce-text-strong);
+  font-size:11px; font-weight:750; }
+.sce .sce-status-item-color-copy { color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
 .sce .sce-status-draggable.is-just-moved { border-color:var(--sce-accent); }
 .sce .sce-status-draggable.is-just-moved.moved-up { animation:sce-variable-move-up .72s cubic-bezier(.2,.9,.25,1); }
 .sce .sce-status-draggable.is-just-moved.moved-down { animation:sce-variable-move-down .72s cubic-bezier(.2,.9,.25,1); }
@@ -645,10 +1810,59 @@ const CSS = `
   font-weight:750; white-space:nowrap; animation:sce-variable-feedback-pop .45s ease both; }
 .sce .sce-status-empty {
   width:100%; max-width:var(--sce-work-w); padding:11px 0; color:var(--sce-muted); font-size:12px; text-align:center; }
+.sce .sce-status-groups-empty { display:grid; justify-items:start; gap:4px; padding:16px;
+  border:1px dashed var(--sce-line-strong); border-radius:4px; background:var(--sce-surface-soft);
+  text-align:left; }
+.sce .sce-status-groups-empty strong { color:var(--sce-text-strong); font-size:14px; }
+.sce .sce-status-groups-empty span { max-width:68ch; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-status-empty-actions { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-top:7px; }
 .sce .sce-status-add-item { width:100%; margin-top:4px; }
-.sce .sce-status-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap;
-  width:100%; max-width:var(--sce-work-w); margin-top:9px; padding-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-status-template { width:100%; max-width:var(--sce-work-w); margin-top:12px; }
+.sce .sce-status-tools { display:flex; align-items:center; justify-content:space-between; gap:9px 16px;
+  width:100%; max-width:var(--sce-work-w); margin-top:10px; padding:10px 0;
+  border-top:1px solid var(--sce-line); border-bottom:1px solid var(--sce-line); }
+.sce .sce-status-tools-copy { min-width:0; }
+.sce .sce-status-tools-copy strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-status-tools-copy span { display:block; margin-top:2px; color:var(--sce-muted); font-size:11.5px;
+  line-height:1.45; }
+.sce .sce-status-tools-actions { display:flex; align-items:center; justify-content:flex-end; gap:7px;
+  flex-wrap:wrap; flex:none; }
+.sce .sce-status-tools-actions .sce-btn { white-space:nowrap; }
+.sce .sce-status-template { display:grid; gap:10px; width:100%; max-width:var(--sce-work-w); margin-top:12px; }
+.sce .sce-status-template-intro { padding:9px 11px; border-left:2px solid var(--sce-accent);
+  background:var(--sce-field); }
+.sce .sce-status-template-intro-head { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.sce .sce-status-template-intro-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:750; }
+.sce .sce-status-template-intro-tag { padding:2px 6px; border:1px solid var(--sce-warning); border-radius:999px;
+  color:var(--sce-warning); font-size:10px; font-weight:750; }
+.sce .sce-status-template-intro-copy { margin-top:4px; color:var(--sce-text); font-size:12px; line-height:1.5; }
+.sce .sce-status-template-step { min-width:0; padding:10px 11px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-surface); }
+.sce .sce-status-template-step-head { display:grid; grid-template-columns:24px minmax(0,1fr); gap:7px;
+  align-items:start; margin-bottom:8px; }
+.sce .sce-status-template-step-no { display:grid; place-items:center; width:24px; height:24px;
+  border:1px solid var(--sce-accent); border-radius:50%; color:var(--sce-accent); font-size:11px; font-weight:800; }
+.sce .sce-status-template-step-title { color:var(--sce-text-strong); font-size:13px; font-weight:750; }
+.sce .sce-status-template-step-copy { margin-top:2px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-status-template-main-input { width:100%; min-height:150px; resize:vertical; line-height:1.5; }
+.sce .sce-status-template-examples { display:flex; gap:5px 10px; flex-wrap:wrap; margin-top:7px;
+  color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-status-template-examples code { color:var(--sce-text-strong); font-family:var(--sc-font-mono,
+  'D2Coding',ui-monospace,monospace); }
+.sce .sce-status-template-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.sce .sce-status-template-choice { display:grid; gap:2px; min-height:62px; padding:8px 9px;
+  text-align:left; white-space:normal; }
+.sce .sce-status-template-choice strong { color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-status-template-choice span { color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-status-template-choice.is-armed { border-color:var(--sce-warning); background:var(--sce-field); }
+.sce .sce-status-template-tech { margin-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-status-template-tech > summary { padding-top:7px; color:var(--sce-muted); font-size:11px; cursor:pointer; }
+.sce .sce-status-template-tech > div { padding:6px 0 1px; color:var(--sce-text); font-size:11px; line-height:1.5; }
+.sce .sce-status-conditional-list { display:grid; gap:8px; }
+.sce .sce-status-conditional-card { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-status-conditional-head { display:grid; grid-template-columns:120px minmax(0,1fr) auto;
+  gap:8px; align-items:end; }
+.sce .sce-status-conditional-card > textarea { width:100%; min-height:108px; margin-top:7px; resize:vertical; }
 .sce .sce-status-design { width:100%; max-width:var(--sce-work-w); margin-top:15px; border-top:1px solid var(--sce-line-strong);
   border-bottom:1px solid var(--sce-line); }
 .sce .sce-status-design > summary { padding:11px 0; color:var(--sce-text-strong); font-size:13px;
@@ -656,6 +1870,35 @@ const CSS = `
 .sce .sce-status-design-body { padding:0 0 12px; }
 .sce .sce-status-preview { width:100%; max-width:var(--sce-work-w); margin-top:15px; }
 .sce .sce-status-preview h4 { margin-bottom:7px; }
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · component: asset pack editor · genre: modern-minimal · theme: SimCore inherited
+ * states: default · hover · focus · active · disabled · success; loading/error: local control에는 해당 없음
+ * contrast: pass (40-41) · responsive: static contract pass */
+.sce .sce-party-panel { display:grid; gap:10px; }
+.sce .sce-party-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:12px 20px;
+  padding:12px; border:1px solid var(--sce-line); border-radius:4px; background:var(--sce-surface); }
+.sce .sce-party-intro-main { min-width:0; }
+.sce .sce-party-title { color:var(--sce-text-strong); font-size:14px; font-weight:750; }
+.sce .sce-party-copy { max-width:68ch; margin-top:3px; color:var(--sce-muted); font-size:12.5px; line-height:1.55; }
+.sce .sce-party-metrics { display:flex; flex:none; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+.sce .sce-party-metric { display:grid; min-width:72px; padding:5px 8px; border:1px solid var(--sce-line);
+  border-radius:4px; background:var(--sce-field); }
+.sce .sce-party-metric span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-party-metric strong { color:var(--sce-text-strong); font-size:13px; font-variant-numeric:tabular-nums; }
+.sce .sce-party-slot-list { display:grid; gap:8px; }
+.sce .sce-party-slot-card { margin:0; }
+.sce .sce-party-slot-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px;
+  margin-bottom:8px; }
+.sce .sce-party-slot-identity { display:flex; align-items:center; gap:8px; min-width:0; }
+.sce .sce-party-slot-index { color:var(--sce-accent); font-size:11px; font-weight:800; }
+.sce .sce-party-slot-name { min-width:0; color:var(--sce-text-strong); font-size:13px; font-weight:750;
+  overflow-wrap:anywhere; }
+.sce .sce-party-slot-count { padding:3px 7px; border:1px solid var(--sce-line); border-radius:999px;
+  color:var(--sce-muted); font-size:10.5px; white-space:nowrap; }
+.sce .sce-party-slot-move-feedback { padding:3px 7px; border:1px solid var(--sce-success); border-radius:3px;
+  color:var(--sce-success); font-size:10.5px; font-weight:750; white-space:nowrap; }
+.sce .sce-party-slot-card.is-newly-created, .sce .sce-party-slot-card.is-just-moved {
+  border-color:var(--sce-accent); box-shadow:0 0 0 1px var(--sce-accent); }
 .sce .sce-assets { min-width:0; }
 .sce .sce-assets-intro {
   width:100%; max-width:var(--sce-work-w); margin:2px 0 12px; padding:9px 11px; border-left:2px solid var(--sce-accent);
@@ -668,8 +1911,6 @@ const CSS = `
 .sce .sce-assets-mode { min-width:0; }
 .sce .sce-assets-mode .sce-pair { display:grid; grid-template-columns:auto minmax(0,1fr); }
 .sce .sce-assets-mode select { width:100%; min-width:0; }
-/* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
-.sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
 .sce .sce-assets-tools {
   width:100%; max-width:var(--sce-work-w); justify-content:flex-end; margin:0; }
 .sce .sce-assets-note { grid-column:1 / -1; padding:7px 9px; border-left:3px solid var(--sce-warning);
@@ -775,8 +2016,7 @@ const CSS = `
   background:var(--sce-field); }
 .sce .sce-first-install-number { color:var(--sce-muted); font-family:var(--sc-font-mono, 'D2Coding', ui-monospace, monospace);
   font-size:10.5px; font-weight:700; letter-spacing:.04em; }
-.sce .sce-first-install-step.on .sce-first-install-number,
-.sce .sce-first-install-step.on b { color:var(--sce-accent); }
+.sce .sce-first-install-step.on .sce-first-install-number, .sce .sce-first-install-step.on b { color:var(--sce-accent); }
 .sce .sce-first-install-step.done .sce-first-install-number { color:var(--sce-success); }
 .sce .sce-first-install-step b { color:var(--sce-text-strong); font-size:12.5px; }
 .sce .sce-first-install-step span:last-child { grid-column:1 / -1; color:var(--sce-muted); font-size:12px; line-height:1.5; }
@@ -785,96 +2025,1330 @@ const CSS = `
 .sce details.sce-lower > summary { cursor:pointer; user-select:none; color:var(--sce-text-strong); font-weight:650;
   padding:8px; border:1px solid var(--sce-line); border-radius:7px; background:var(--sce-surface); }
 .sce details.sce-lower[open] > summary { border-radius:7px 7px 0 0; margin-bottom:10px; }
-.sce button:focus-visible, .sce input:focus-visible, .sce select:focus-visible,
-.sce textarea:focus-visible, .sce summary:focus-visible, .sce a:focus-visible {
+.sce button:focus-visible, .sce input:focus-visible, .sce select:focus-visible, .sce textarea:focus-visible, .sce summary:focus-visible, .sce a:focus-visible {
   outline:2px solid var(--sce-focus); outline-offset:2px; border-color:var(--sce-accent);
 }
 @media (hover:hover) and (pointer:fine) {
-  .sce .sce-tab:hover:not(:disabled), .sce .sce-btn:hover:not(:disabled) {
+.sce .sce-tab:hover:not(:disabled), .sce .sce-btn:hover:not(:disabled) {
     background:#2c343d; border-color:var(--sce-accent);
   }
-  .sce .sce-mode-btn:hover:not(:disabled) { background:#2c343d; border-color:var(--sce-accent); }
-  .sce .sce-btn.sce-danger:hover:not(:disabled) {
+.sce .sce-mode-btn:hover:not(:disabled) { background:#2c343d; border-color:var(--sce-accent); }
+.sce .sce-btn.sce-danger:hover:not(:disabled) {
     border-color:var(--sce-danger); background:var(--sce-danger-bg); color:#ffc1c1;
   }
-  .sce .sce-first-install-close:hover { color:var(--sce-text-strong); border-color:var(--sce-line-strong); }
+.sce .sce-first-install-close:hover { color:var(--sce-text-strong); border-color:var(--sce-line-strong); }
 }
 @media (max-width:1040px) {
-  .sce .sce-status-settings-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-status-group-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options {
+.sce .sce-status-settings-grid { grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-areas:"title mode" "theme layout" "log highlights" "position ."; }
+.sce .sce-status-settings-grid.is-template {
+    grid-template-areas:"title mode" "theme log" "highlights highlights" "position ."; }
+.sce .sce-status-group-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options {
     grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-asset-toggle { align-self:end; }
-  .sce .sce-asset-slot-main { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:1 / -1; }
+.sce .sce-asset-toggle { align-self:end; }
+.sce .sce-asset-slot-main { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:1 / -1; }
+}
+@media (max-width:1180px) {
+.sce .sce-calendar-workbench { grid-template-columns:minmax(0,1fr); }
+.sce .sce-calendar-preview-panel { position:static; }
+}
+@media (max-width:1180px) {
+.sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
+.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
+    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
+    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-options-theme-preview { margin-top:0; }
 }
 @media (max-width:760px) {
-  .sce .sce-tab-ai-vars { grid-template-columns:1fr; }
-  .sce .sce-vars-ai-export, .sce .sce-vars-ai-import { padding:5px 0; }
-  .sce .sce-vars-ai-import { margin-top:7px; padding-top:9px; border-left:0; border-top:1px solid var(--sce-line); }
-  .sce .sce-editor-section-head { align-items:stretch; flex-direction:column; }
-  .sce .sce-editor-section-actions { justify-content:flex-start; }
-  .sce .sce-variable-card-head { align-items:stretch; flex-direction:column; }
-  .sce .sce-variable-card-title { align-items:flex-start; flex-wrap:wrap; }
-  .sce .sce-variable-title-field { width:100%; }
-  .sce .sce-variable-card-actions { justify-content:flex-end; }
-  .sce .sce-variable-grid, .sce .sce-variable-grid.values, .sce .sce-variable-grid.values.is-text,
-  .sce .sce-variable-grid.values.is-enum, .sce .sce-variable-grid.values.is-list,
-  .sce .sce-variable-grid.values.is-bool, .sce .sce-derived-grid { grid-template-columns:1fr; }
-  .sce .sce-variable-grid.values.is-list .sce-variable-field:first-child,
-  .sce .sce-variable-field.is-wide { grid-column:auto; }
-  .sce .sce-vars-undo { align-items:stretch; flex-direction:column; }
-  .sce .sce-command-create, .sce .sce-command-grid { grid-template-columns:1fr; }
-  .sce .sce-command-card-head, .sce .sce-command-visibility { align-items:stretch; flex-direction:column; }
-  .sce .sce-command-card-actions { width:100%; }
-  .sce .sce-command-usage-line { grid-template-columns:1fr; gap:1px; }
-  .sce .sce-status-settings-grid, .sce .sce-status-group-settings { grid-template-columns:1fr; }
-  .sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
-  .sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
-  .sce .sce-status-item-head { display:none; }
-  .sce .sce-status-item { grid-template-columns:minmax(0,1fr) auto; }
-  .sce .sce-status-item > :nth-child(1), .sce .sce-status-item > :nth-child(3) { grid-column:1 / -1; }
-  .sce .sce-status-item-color { padding-left:8px; }
-  .sce .sce-ai-settings-grid, .sce .sce-first-install-steps { grid-template-columns:1fr; }
-  .sce .sce-catalog-grid, .sce .sce-event-list, .sce .sce-diag-findings { grid-template-columns:1fr; }
-  .sce .sce-diag-ai-export-grid { grid-template-columns:1fr; }
-  .sce .sce-json-paths { grid-template-columns:1fr; }
-  .sce .sce-json-import-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-json-import-metric { border-bottom:1px solid var(--sce-line); }
-  .sce .sce-json-import-applied { align-items:stretch; flex-direction:column; }
-  .sce .sce-assets-controls { grid-template-columns:1fr; align-items:stretch; }
-  .sce .sce-assets-tools { justify-content:flex-start; }
-  .sce .sce-assets-note, .sce .sce-assets-count { grid-column:auto; }
-  .sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options,
-  .sce .sce-asset-slot-main { grid-template-columns:1fr; }
-  .sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:auto; }
-  .sce .sce-asset-slot-options { align-items:stretch; flex-direction:column; }
-  .sce .sce-asset-slot-options .sce-asset-field { width:100%; }
-  .sce .sce-diag-ai-primary { align-items:stretch; flex-direction:column; }
-  .sce .sce-diag-ai-primary .sce-btn { width:100%; }
-  .sce .sce-diag-compare-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-diag-compare-metric:nth-child(2) { border-right:0; }
-  .sce .sce-diag-compare-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
-  .sce .sce-diag-controls { grid-template-columns:1fr 1fr; }
-  .sce .sce-diag-run { grid-column:1 / -1; width:100%; }
-  .sce .sce-patch-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .sce .sce-patch-metric:nth-child(2) { border-right:0; }
-  .sce .sce-patch-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+.sce .sce-party-intro, .sce .sce-party-slot-head { align-items:stretch; flex-direction:column; }
+.sce .sce-party-metrics { justify-content:flex-start; }
+.sce .sce-tab-ai-vars { grid-template-columns:1fr; }
+.sce .sce-vars-ai-export, .sce .sce-vars-ai-import { padding:5px 0; }
+.sce .sce-vars-ai-import { margin-top:7px; padding-top:9px; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-editor-section-head { align-items:stretch; flex-direction:column; }
+.sce .sce-editor-section-actions { justify-content:flex-start; }
+.sce .sce-variable-card-head { align-items:stretch; flex-direction:column; }
+.sce .sce-variable-card-title { align-items:flex-start; flex-wrap:wrap; }
+.sce .sce-variable-title-field { width:100%; }
+.sce .sce-variable-card-actions { justify-content:flex-end; }
+.sce .sce-variable-grid, .sce .sce-variable-grid.values, .sce .sce-variable-grid.values.is-text, .sce .sce-variable-grid.values.is-enum, .sce .sce-variable-grid.values.is-list, .sce .sce-variable-grid.values.is-bool, .sce .sce-derived-grid { grid-template-columns:1fr; }
+.sce .sce-variable-grid.values.is-list .sce-variable-field:first-child, .sce .sce-variable-field.is-wide { grid-column:auto; }
+.sce .sce-vars-undo { align-items:stretch; flex-direction:column; }
+.sce .sce-command-create, .sce .sce-command-grid { grid-template-columns:1fr; }
+.sce .sce-command-card-head, .sce .sce-command-visibility { align-items:stretch; flex-direction:column; }
+.sce .sce-command-card-actions { width:100%; }
+.sce .sce-command-usage-line { grid-template-columns:1fr; gap:1px; }
+.sce .sce-status-core-layout { grid-template-columns:1fr; }
+.sce .sce-status-options { grid-template-columns:1fr; grid-template-areas:none;
+    padding:9px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-options > *, .sce .sce-status-options-theme-preview, .sce .sce-status-options-live { grid-area:auto; }
+.sce .sce-status-settings-grid, .sce .sce-status-group-settings { grid-template-columns:1fr; grid-template-areas:none; }
+.sce .sce-status-field-title, .sce .sce-status-field-mode, .sce .sce-status-field-theme, .sce .sce-status-field-position, .sce .sce-status-field-layout, .sce .sce-status-field-log, .sce .sce-status-field-highlights { grid-area:auto; grid-column:auto; grid-row:auto; }
+.sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
+.sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
+.sce .sce-status-conditional-head { grid-template-columns:1fr; align-items:stretch; }
+.sce .sce-status-conditional-head > .sce-grip { justify-self:end; }
+.sce .sce-status-item-main { grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+.sce .sce-status-item-main > .sce-status-value-control { grid-column:1; grid-row:1; }
+.sce .sce-status-item-main > .sce-status-item-actions { grid-column:2; grid-row:1; }
+.sce .sce-status-item-meta, .sce .sce-status-item-preview { grid-column:1 / -1; }
+.sce .sce-status-item-settings, .sce .sce-status-item-advanced { margin-left:0; }
+.sce .sce-status-item-advanced { grid-template-columns:1fr; }
+.sce .sce-ai-settings-grid, .sce .sce-first-install-steps { grid-template-columns:1fr; }
+.sce .sce-catalog-grid, .sce .sce-event-list, .sce .sce-diag-findings { grid-template-columns:1fr; }
+.sce .sce-diag-ai-export-grid { grid-template-columns:1fr; }
+.sce .sce-json-paths { grid-template-columns:1fr; }
+.sce .sce-json-import-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-json-import-metric { border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-import-applied { align-items:stretch; flex-direction:column; }
+.sce .sce-assets-controls { grid-template-columns:1fr; align-items:stretch; }
+.sce .sce-assets-tools { justify-content:flex-start; }
+.sce .sce-assets-note, .sce .sce-assets-count { grid-column:auto; }
+.sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options, .sce .sce-asset-slot-main { grid-template-columns:1fr; }
+.sce .sce-asset-slot-main .sce-asset-field:last-child { grid-column:auto; }
+.sce .sce-asset-slot-options { align-items:stretch; flex-direction:column; }
+.sce .sce-asset-slot-options .sce-asset-field { width:100%; }
+.sce .sce-diag-ai-primary { align-items:stretch; flex-direction:column; }
+.sce .sce-diag-ai-primary .sce-btn { width:100%; }
+.sce .sce-diag-compare-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-diag-compare-metric:nth-child(2) { border-right:0; }
+.sce .sce-diag-compare-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+.sce .sce-diag-controls { grid-template-columns:1fr 1fr; }
+.sce .sce-diag-run { grid-column:1 / -1; width:100%; }
+.sce .sce-patch-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-patch-metric:nth-child(2) { border-right:0; }
+.sce .sce-patch-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
 }
 @media (max-width:600px) {
-  .sce { font-size:14px; }
-  .sce .sce-tab, .sce .sce-btn, .sce input, .sce select, .sce textarea { min-height:44px; }
-  .sce .sce-btn.sce-mini { min-height:40px; }
-  .sce .sce-btn.sce-ai-primary { width:100%; }
-  .sce .sce-mode-btn, .sce .sce-design-controls .sce-btn.sce-mini { min-height:44px; }
-  .sce .sce-design-controls .sce-btn.sce-ai-primary { width:auto; }
-  .sce .sce-event-fields { grid-template-columns:minmax(92px,auto) minmax(0,1fr); }
-  .sce .sce-diag-controls { grid-template-columns:1fr; }
-  .sce .sce-diag-run { grid-column:auto; }
+.sce { font-size:14px; }
+.sce .sce-tab, .sce .sce-btn, .sce input, .sce select, .sce textarea { min-height:44px; }
+.sce .sce-btn.sce-mini { min-height:40px; }
+.sce .sce-btn.sce-ai-primary { width:100%; }
+.sce .sce-mode-btn, .sce .sce-design-controls .sce-btn.sce-mini { min-height:44px; }
+.sce .sce-design-controls .sce-btn.sce-ai-primary { width:auto; }
+.sce .sce-event-fields { grid-template-columns:minmax(92px,auto) minmax(0,1fr); }
+.sce .sce-diag-controls { grid-template-columns:1fr; }
+.sce .sce-diag-run { grid-column:auto; }
+}
+@media (hover:hover) and (pointer:fine) {
+.sce .sce-tab:hover:not(:disabled), .sce .sce-btn:hover:not(:disabled) {
+    background:#2c343d; border-color:var(--sce-accent);
+  }
+.sce .sce-mode-btn:hover:not(:disabled) { background:#2c343d; border-color:var(--sce-accent); }
+.sce .sce-btn.sce-danger:hover:not(:disabled) {
+    border-color:var(--sce-danger); background:var(--sce-danger-bg); color:#ffc1c1;
+  }
+.sce .sce-status-primary:hover:not(:disabled) { color:var(--sce-accent-ink);
+    border-color:var(--sce-focus-contrast); background:var(--sce-accent-strong); }
+#sc-root .sce .sce-asset-pack-core > .sce-asset-toggle input[type=checkbox]:hover:not(:disabled) {
+    box-shadow:0 0 0 2px var(--sce-success-soft); }
+.sce .sce-first-install-close:hover { color:var(--sce-text-strong); border-color:var(--sce-line-strong); }
+.sce .sce-party-primary:hover:not(:disabled) { color:var(--sce-accent-ink);
+    border-color:var(--sce-focus-contrast); background:var(--sce-accent-strong); }
+.sce details.sce-party-ai > summary:hover, .sce details.sce-party-advanced > summary:hover {
+    background:var(--sce-surface-soft); }
+}
+@media (max-width:1040px) {
+.sce .sce-status-settings-grid { grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-areas:"title mode" "theme layout" "log highlights" "position ."; }
+.sce .sce-status-settings-grid.is-template {
+    grid-template-areas:"title mode" "theme log" "highlights highlights" "position ."; }
+.sce .sce-asset-pack-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-asset-pack-settings > div > * { grid-column:auto !important; grid-row:auto !important; }
+}
+@media (max-width:1180px) {
+.sce .sce-status-core-layout { grid-template-columns:minmax(0,1fr); }
+.sce .sce-status-options { grid-template-columns:minmax(0,1fr) minmax(250px,320px);
+    grid-template-areas:"title preview" "summary preview" "toggle preview" "copy preview" "live live";
+    gap:0 14px; padding:12px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-options-theme-preview { margin-top:0; }
+}
+@media (max-width:760px) {
+.sce .sce-party-intro, .sce .sce-party-section-head { flex-direction:column; }
+.sce .sce-party-metrics { width:100%; justify-content:flex-start; }
+.sce .sce-party-setup { grid-template-columns:1fr; }
+.sce .sce-party-setup-actions { justify-content:flex-start; }
+.sce .sce-party-quick { grid-template-columns:1fr; }
+.sce .sce-party-quick-report { grid-column:1; }
+.sce .sce-party-slot-body, .sce .sce-party-slot-create { grid-template-columns:1fr; }
+.sce .sce-party-slot-actions { justify-content:flex-start; }
+.sce .sce-party-slot-meta, .sce .sce-party-slot-create-report { grid-column:1; }
+.sce .sce-party-formation-add { margin-left:0; }
+.sce .sce-party-formation-head { grid-template-columns:1fr; }
+.sce .sce-feature-list { grid-template-columns:1fr; }
+.sce .sce-feature-item:nth-child(odd) { border-right:0; }
+.sce .sce-feature-item:nth-last-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+.sce .sce-feature-item:last-child { border-bottom:0; }
+.sce .sce-design-actions, .sce .sce-design-controls { grid-template-columns:1fr; }
+.sce .sce-design-controls .sce-generation-state { grid-column:1; }
+.sce .sce-design-controls .sce-ai-model-row { min-width:0; width:100%; }
+.sce .sce-tab-ai-vars { grid-template-columns:1fr; }
+.sce .sce-vars-ai-export, .sce .sce-vars-ai-import { padding:5px 0; }
+.sce .sce-vars-ai-import { margin-top:7px; padding-top:9px; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-editor-section-head { align-items:stretch; flex-direction:column; }
+.sce .sce-editor-section-actions { justify-content:flex-start; }
+.sce .sce-variable-card-head { align-items:stretch; flex-direction:column; }
+.sce .sce-variable-card-title { align-items:flex-start; flex-wrap:wrap; }
+.sce .sce-variable-title-field { width:100%; }
+.sce .sce-variable-card-actions { justify-content:flex-end; }
+.sce .sce-derived-grid { grid-template-columns:1fr; }
+.sce .sce-variable-field.is-wide { grid-column:auto; }
+.sce .sce-vars-undo { align-items:stretch; flex-direction:column; }
+.sce .sce-command-create, .sce .sce-command-grid { grid-template-columns:1fr; }
+.sce .sce-command-card-head, .sce .sce-command-visibility { align-items:stretch; flex-direction:column; }
+.sce .sce-command-card-actions { width:100%; }
+.sce .sce-command-usage-line { grid-template-columns:1fr; gap:1px; }
+.sce .sce-status-core-layout { grid-template-columns:1fr; }
+.sce .sce-status-options { padding:9px 0 0; border-left:0; border-top:1px solid var(--sce-line); }
+.sce .sce-status-settings-grid, .sce .sce-status-group-settings { grid-template-columns:1fr; }
+.sce .sce-status-settings-grid, .sce .sce-status-settings-grid.is-template { grid-template-areas:none; }
+.sce .sce-status-field-title, .sce .sce-status-field-mode, .sce .sce-status-field-theme, .sce .sce-status-field-layout, .sce .sce-status-field-log, .sce .sce-status-field-highlights {
+    grid-area:auto; grid-column:auto; grid-row:auto; }
+.sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
+.sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
+.sce .sce-status-conditional-head { grid-template-columns:1fr; align-items:stretch; }
+.sce .sce-status-conditional-head > .sce-grip { justify-self:end; }
+.sce .sce-status-item-main { grid-template-columns:minmax(0,1fr) auto; align-items:start; }
+.sce .sce-status-item-main > .sce-status-value-control { grid-column:1; grid-row:1; }
+.sce .sce-status-item-main > .sce-status-item-actions { grid-column:2; grid-row:1; }
+.sce .sce-status-item-meta, .sce .sce-status-item-preview { grid-column:1 / -1; }
+.sce .sce-status-item-settings, .sce .sce-status-item-advanced { margin-left:0; }
+.sce .sce-status-item-advanced { grid-template-columns:1fr; }
+.sce .sce-ai-settings-grid { grid-template-columns:1fr; }
+.sce .sce-first-install-steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-catalog-grid, .sce .sce-event-list, .sce .sce-diag-findings { grid-template-columns:1fr; }
+.sce .sce-diag-ai-export-grid { grid-template-columns:1fr; }
+.sce .sce-json-paths { grid-template-columns:1fr; }
+.sce .sce-json-import-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-json-import-metric { border-bottom:1px solid var(--sce-line); }
+.sce .sce-json-import-applied { align-items:stretch; flex-direction:column; }
+.sce .sce-assets-controls { grid-template-columns:1fr; align-items:stretch; }
+.sce .sce-assets-tools { justify-content:flex-start; }
+.sce .sce-assets-note, .sce .sce-assets-count { grid-column:auto; }
+.sce .sce-asset-pack-settings { grid-template-columns:1fr; }
+.sce .sce-asset-slot-main { grid-template-columns:30px 28px minmax(0,1fr); }
+.sce .sce-asset-slot-index { grid-column:2; grid-row:1; }
+.sce .sce-asset-slot-main > .sce-asset-field:nth-child(3) { grid-column:3; grid-row:1; }
+.sce .sce-asset-slot-main > .sce-asset-field:nth-child(4) { grid-column:3; grid-row:2; }
+.sce .sce-asset-slot-main .sce-grip { grid-column:3; grid-row:3; justify-self:end; }
+.sce .sce-asset-slot-options { grid-template-columns:66px minmax(0,1fr); gap:6px 8px; padding-left:0; }
+.sce .sce-asset-slot-options > .sce-asset-toggle { grid-column:2; grid-row:2; justify-self:start; }
+.sce .sce-diag-ai-primary { align-items:stretch; flex-direction:column; }
+.sce .sce-diag-ai-primary .sce-btn { width:100%; }
+.sce .sce-diag-compare-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-diag-compare-metric:nth-child(2) { border-right:0; }
+.sce .sce-diag-compare-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+.sce .sce-diag-controls { grid-template-columns:1fr 1fr; }
+.sce .sce-diag-run { grid-column:1 / -1; width:100%; }
+.sce .sce-patch-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-patch-metric:nth-child(2) { border-right:0; }
+.sce .sce-patch-metric:nth-child(-n+2) { border-bottom:1px solid var(--sce-line); }
+}
+@media (max-width:600px) {
+.sce { font-size:14px; }
+.sce .sce-first-install-steps { grid-template-columns:1fr; }
+.sce .sce-asset-issue { grid-template-columns:1fr; gap:1px; }
+.sce .sce-tab, .sce .sce-btn, .sce input, .sce select, .sce textarea { min-height:44px; }
+.sce .sce-btn.sce-mini { min-height:40px; }
+.sce .sce-btn.sce-ai-primary { width:100%; }
+.sce .sce-status-options { grid-template-columns:minmax(0,1fr);
+    grid-template-areas:"title" "summary" "toggle" "copy" "preview"; gap:0; }
+.sce .sce-status-options-theme-preview { margin-top:10px; }
+.sce .sce-status-tools { align-items:stretch; flex-direction:column; }
+.sce .sce-status-tools-actions { justify-content:stretch; width:100%; }
+.sce .sce-status-tools-actions .sce-btn, .sce .sce-status-empty-actions, .sce .sce-status-empty-actions .sce-btn { width:100%; }
+.sce .sce-mode-btn, .sce .sce-design-controls .sce-btn.sce-mini { min-height:44px; }
+.sce .sce-design-controls .sce-btn.sce-ai-primary { width:auto; }
+.sce .sce-event-fields { grid-template-columns:minmax(92px,auto) minmax(0,1fr); }
+.sce .sce-diag-controls { grid-template-columns:1fr; }
+.sce .sce-diag-run { grid-column:auto; }
+.sce .sce-status-template-choices { grid-template-columns:1fr; }
+.sce .sce-status-item-gauge { align-items:stretch; flex-direction:column; width:100%; }
+.sce .sce-status-item-gauge-max { min-width:0; width:100%; }
+.sce .sce-deep-body .sce-row > input.sce-w-l {
+    flex-basis:100%; min-width:100%; }
+.sce .sce-deep-body .sce-row > select { width:100%; max-width:none; }
+.sce .sce-deep-body .sce-sub { padding-left:8px; }
+}
+@media (hover:hover) and (pointer:fine) {
+.sce .sce-time-enable-option:hover { background:var(--sce-surface-soft); }
+}
+@media (pointer:coarse) {
+.sce .sce-feature-button { min-height:44px; }
+}
+@media (max-width:1040px) {
+.sce .sce-time-grid-core { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-time-range-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sce .sce-time-enable-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:760px) {
+.sce .sce-time-workbench { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-rail { border-right:0; border-bottom:1px solid var(--sce-line); }
+.sce .sce-time-section { grid-template-columns:minmax(0,1fr); gap:11px; padding:15px; }
+.sce .sce-time-grid-core, .sce .sce-time-grid-format, .sce .sce-time-range-grid {
+    grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-enable-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-expose-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-calendar-head { align-items:stretch; flex-direction:column; }
+.sce .sce-calendar-head-state { justify-content:flex-start; }
+.sce .sce-calendar-section { grid-template-columns:minmax(0,1fr); gap:10px; padding:15px; }
+.sce .sce-calendar-field-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-calendar-mark-core, .sce .sce-calendar-mark-details { grid-template-columns:minmax(0,1fr); }
+.sce .sce-calendar-css-selectors { grid-template-columns:minmax(0,1fr); }
+.sce .sce-calendar-mark-when { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-calendar-connections { grid-template-columns:minmax(0,1fr); }
+.sce .sce-calendar-connection { grid-template-columns:minmax(0,1fr); align-items:stretch; }
+.sce .sce-calendar-connection > .sce-btn { justify-self:start; }
+.sce .sce-calendar-danger { align-items:stretch; flex-direction:column; }
+}
+@media (max-width:600px) {
+.sce .sce-time-expose-grid { grid-template-columns:minmax(0,1fr); }
+.sce .sce-time-danger { align-items:stretch; flex-direction:column; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .sce *, .sce *::before, .sce *::after { scroll-behavior:auto !important; transition:none !important; }
+.sce *, .sce *::before, .sce *::after { scroll-behavior:auto !important; transition:none !important; }
 }
+/* === V5 final cascade fixes =================================================
+ * These rules are intentionally at the very end of EDITOR_CSS so older
+ * migration CSS cannot undo reviewed spacing/alignment.
+ * ========================================================================== */
+/* Quick feature add — equal rows, equal action widths, consistent 2-col rhythm. */
+.sce .sce-feature-list {
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  grid-auto-rows:minmax(64px,auto) !important;
+  align-items:stretch !important;
+}
+.sce .sce-feature-item {
+  height:100% !important;
+  min-height:64px !important;
+  grid-template-columns:164px minmax(0,1fr) auto !important;
+  grid-template-areas:"action copy meta" !important;
+  align-items:center !important;
+  gap:8px 10px !important;
+  padding:8px 10px !important;
+}
+.sce .sce-feature-button {
+  width:164px !important;
+  min-width:164px !important;
+  min-height:38px !important;
+  justify-content:flex-start !important;
+  padding:0 10px !important;
+}
+.sce .sce-feature-status {
+  align-self:center !important;
+  min-width:0 !important;
+}
+.sce .sce-feature-meta {
+  min-width:34px !important;
+  justify-self:end !important;
+}
+/* Direct edit request + generation settings: one contained workflow. */
+/* Rules & Events — icon visibility + explicit separation. */
+.sce .sce-rules-card-actions, .sce .sce-rules-grip {
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:8px !important;
+}
+.sce .sce-rules-icon-btn {
+  width:36px !important;
+  height:36px !important;
+  flex:0 0 36px !important;
+  margin:0 !important;
+  padding:0 !important;
+  display:inline-grid !important;
+  place-items:center !important;
+}
+.sce .sce-rules-icon-btn + .sce-rules-icon-btn {
+  margin-left:0 !important;
+}
+.sce .sce-rules-icon {
+  width:17px !important;
+  height:17px !important;
+  display:block !important;
+  fill:none !important;
+  stroke:currentColor !important;
+  stroke-width:1.8 !important;
+  stroke-linecap:round !important;
+  stroke-linejoin:round !important;
+  pointer-events:none !important;
+}
+.sce .sce-rules-card-summary {
+  min-height:34px !important;
+}
+/* Narrow layouts. */
+@media (max-width:860px) {
+.sce .sce-feature-list { grid-template-columns:1fr !important; }
+.sce .sce-feature-item {
+    grid-template-columns:154px minmax(0,1fr) auto !important;
+  }
+.sce .sce-feature-button {
+    width:154px !important;
+    min-width:154px !important;
+  }
+}
+/* === V6 reviewed UI fixes ================================================ */
+.sce .sce-rules-bulk {
+  display:flex; align-items:center; justify-content:space-between; gap:10px 16px;
+  min-height:44px; padding:7px 9px; border:1px solid var(--sce-line);
+  border-radius:6px; background:var(--sce-field);
+}
+.sce .sce-rules-bulk-copy { color:var(--sce-muted); font-size:11px; font-weight:650; }
+.sce .sce-rules-bulk-actions { display:flex; align-items:center; gap:7px; }
+.sce .sce-rules-bulk-actions .sce-btn { min-height:32px; padding:0 10px; }
+.sce .sce-rules-directive .sce-rules-card-head { min-height:58px !important; padding:10px 12px !important; }
+.sce .sce-rules-directive .sce-rules-card-summary { padding:0 2px !important; }
+.sce .sce-rules-directive .sce-rules-card-actions {
+  display:flex !important; align-items:center !important; gap:8px !important; padding-left:8px;
+}
+.sce .sce-rules-collapse-btn { min-width:58px !important; min-height:36px !important; margin:0 !important; }
+.sce .sce-rules-directive .sce-rules-grip { display:flex !important; gap:7px !important; }
+.sce .sce-rules-directive .sce-rules-icon-btn { margin:0 !important; }
+.sce .sce-ai-alt-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:780; }
+.sce .sce-assets-list { gap:12px !important; }
+.sce .sce-asset-pack {
+  padding:0 !important; border:1px solid var(--sce-line) !important; border-radius:8px !important;
+  background:linear-gradient(180deg,var(--sce-surface-soft),var(--sce-surface)) !important;
+  box-shadow:0 10px 24px rgba(0,0,0,.15) !important; overflow:hidden;
+}
+.sce .sce-asset-pack-head {
+  min-height:64px; margin:0 !important; padding:11px 12px !important; align-items:center !important;
+  border-bottom:1px solid var(--sce-line) !important; background:rgba(255,255,255,.015);
+}
+.sce .sce-asset-pack-title { font-size:14px !important; letter-spacing:-.01em; }
+.sce .sce-asset-pack-sub { margin-top:3px !important; }
+.sce .sce-asset-pack-head .sce-grip, .sce .sce-asset-slot-head .sce-grip { display:flex !important; gap:7px !important; }
+.sce .sce-asset-pack-head .sce-grip .sce-btn {
+  width:38px; height:38px; min-width:38px; padding:0;
+}
+.sce .sce-asset-pack-settings {
+  display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:0 !important; padding:0 12px;
+}
+.sce .sce-asset-pack-group {
+  min-width:0; padding:12px 0; border-bottom:1px solid var(--sce-line);
+}
+.sce .sce-asset-pack-group:nth-child(odd) {
+  padding-right:12px; border-right:1px solid var(--sce-line);
+}
+.sce .sce-asset-pack-group:nth-child(even) { padding-left:12px; }
+.sce .sce-asset-pack-group:last-child {
+  grid-column:1 / -1; padding-left:0; padding-right:0; border-right:0;
+}
+.sce .sce-asset-pack-group-head { min-height:37px; margin-bottom:8px; }
+.sce .sce-asset-pack-group-head strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-asset-pack-group-head span {
+  display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; line-height:1.4;
+}
+.sce .sce-asset-pack-core {
+  grid-template-columns:minmax(145px,.8fr) minmax(170px,1fr) minmax(190px,1.15fr) !important;
+  gap:8px !important;
+}
+.sce .sce-asset-pack-layout {
+  grid-template-columns:minmax(110px,.4fr) minmax(230px,1.6fr) !important; gap:8px !important;
+}
+.sce .sce-asset-pack-options {
+  grid-template-columns:minmax(220px,1.5fr) minmax(170px,1fr) minmax(170px,1fr) minmax(155px,.7fr) !important;
+  gap:8px !important;
+}
+.sce .sce-asset-toggle-card {
+  min-height:38px !important; padding:0 9px !important; border:1px solid var(--sce-line);
+  border-radius:6px; background:var(--sce-field);
+}
+.sce .sce-asset-field > input, .sce .sce-asset-field > select {
+  min-height:38px; border-radius:6px !important;
+}
+.sce .sce-asset-slots-head { margin:0 12px !important; padding:12px 0 8px !important; }
+.sce .sce-asset-slot {
+  margin:8px 12px 0 !important; padding:0 !important; border:1px solid var(--sce-line) !important;
+  border-radius:7px !important; background:color-mix(in srgb, var(--sce-field) 60%, transparent); overflow:hidden;
+}
+.sce .sce-asset-slot-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  min-height:54px; padding:8px 10px; border-bottom:1px solid var(--sce-line);
+  background:rgba(255,255,255,.015);
+}
+.sce .sce-asset-slot-identity { display:flex; align-items:center; gap:9px; min-width:0; }
+.sce .sce-asset-slot-index {
+  flex:none; color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace);
+  font-size:10.5px; font-weight:800;
+}
+.sce .sce-asset-slot-identity strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-asset-slot-identity small { display:block; margin-top:1px; color:var(--sce-muted); font-size:10px; }
+.sce .sce-asset-slot-head .sce-grip .sce-btn {
+  width:36px; height:36px; min-width:36px; padding:0;
+}
+.sce .sce-asset-slot-main {
+  grid-template-columns:minmax(150px,.7fr) minmax(180px,.85fr) minmax(280px,1.8fr) !important;
+  gap:8px !important; padding:10px !important;
+}
+.sce .sce-asset-slot-options {
+  justify-content:flex-start !important; gap:8px !important; margin:0 !important; padding:0 10px 10px !important;
+}
+.sce .sce-asset-slot-options .sce-asset-field { width:min(260px,100%) !important; }
+.sce .sce-asset-pack > .sce-btn.sce-add, .sce .sce-asset-pack > .sce-row > .sce-btn.sce-add {
+  margin:10px 12px 12px !important; width:calc(100% - 24px) !important;
+}
+.sce .sce-asset-pack-status, .sce .sce-asset-issues { margin-left:12px !important; margin-right:12px !important; }
+@media (max-width:1100px) {
+.sce .sce-asset-pack-settings { grid-template-columns:1fr !important; }
+.sce .sce-asset-pack-group:nth-child(odd), .sce .sce-asset-pack-group:nth-child(even) {
+    padding:11px 0; border-right:0;
+  }
+.sce .sce-asset-pack-group:last-child { grid-column:auto; }
+.sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options {
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+}
+@media (max-width:720px) {
+.sce .sce-rules-bulk { align-items:flex-start; flex-direction:column; }
+.sce .sce-rules-bulk-actions { width:100%; }
+.sce .sce-rules-bulk-actions .sce-btn { flex:1; }
+.sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options, .sce .sce-asset-slot-main { grid-template-columns:1fr !important; }
+.sce .sce-asset-slot-options { flex-direction:column; align-items:stretch; }
+.sce .sce-asset-slot-options .sce-asset-field { width:100% !important; }
+}
+/* V7 · quick feature matrix: exact row rhythm on wide screens. */
+@media (min-width:861px) {
+.sce .sce-feature-list {
+    grid-auto-rows:64px !important;
+  }
+.sce .sce-feature-item {
+    height:64px !important;
+    min-height:64px !important;
+    padding:0 10px !important;
+    align-items:center !important;
+    align-content:center !important;
+  }
+.sce .sce-feature-button, .sce .sce-feature-status, .sce .sce-feature-meta {
+    align-self:center !important;
+  }
+.sce .sce-feature-status {
+    display:flex !important;
+    align-items:center !important;
+    min-height:38px !important;
+    line-height:1.4 !important;
+  }
+}
+/* V7 · directive actions: reviewed text-glyph controls, spaced like other editors. */
+.sce .sce-rules-directive .sce-rules-card-actions {
+  display:flex !important;
+  align-items:center !important;
+  gap:7px !important;
+}
+.sce .sce-rules-directive .sce-rules-grip {
+  display:flex !important;
+  align-items:center !important;
+  gap:6px !important;
+}
+.sce .sce-rules-directive .sce-rules-icon-btn {
+  width:38px !important;
+  min-width:38px !important;
+  height:38px !important;
+  min-height:38px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:1px solid var(--sce-line-strong) !important;
+  border-radius:6px !important;
+  background:var(--sce-surface-soft) !important;
+  color:var(--sce-text-strong) !important;
+  font-family:inherit !important;
+  font-size:15px !important;
+  font-weight:800 !important;
+  line-height:1 !important;
+}
+.sce .sce-rules-directive .sce-rules-icon-btn:hover:not(:disabled) {
+  border-color:var(--sce-accent) !important;
+  background:var(--sce-surface) !important;
+}
+.sce .sce-rules-directive .sce-rules-icon-btn:disabled {
+  opacity:.28 !important;
+}
+.sce .sce-rules-directive .sce-rules-collapse-btn {
+  min-width:58px !important;
+  height:38px !important;
+  min-height:38px !important;
+  margin:0 !important;
+}
+/* V7 · asset pack settings: collapsible, separated Hallmark groups, no border collisions. */
+.sce .sce-asset-pack-head-actions {
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  flex:none;
+}
+.sce .sce-asset-settings-toggle {
+  min-width:72px !important;
+  min-height:38px !important;
+  margin:0 !important;
+}
+.sce .sce-asset-pack-head-actions .sce-grip {
+  display:flex !important;
+  gap:7px !important;
+}
+.sce .sce-asset-pack-settings {
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:10px !important;
+  padding:12px !important;
+  background:color-mix(in srgb, var(--sce-field) 40%, transparent);
+}
+.sce .sce-asset-pack-group {
+  min-width:0 !important;
+  padding:11px 12px 13px !important;
+  border:1px solid var(--sce-line) !important;
+  border-radius:7px !important;
+  background:color-mix(in srgb, var(--sce-field) 70%, transparent) !important;
+}
+.sce .sce-asset-pack-group:nth-child(odd), .sce .sce-asset-pack-group:nth-child(even) {
+  padding-left:12px !important;
+  padding-right:12px !important;
+  border-right:1px solid var(--sce-line) !important;
+}
+.sce .sce-asset-pack-group:last-child {
+  grid-column:1 / -1 !important;
+}
+.sce .sce-asset-pack-group-head {
+  min-height:0 !important;
+  margin-bottom:10px !important;
+  padding-bottom:8px !important;
+  border-bottom:1px solid var(--sce-line);
+}
+.sce .sce-asset-pack-layout, .sce .sce-asset-pack-core, .sce .sce-asset-pack-options {
+  align-items:end !important;
+}
+.sce .sce-asset-pack-layout {
+  grid-template-columns:minmax(105px,.42fr) minmax(240px,1.58fr) !important;
+  gap:10px !important;
+}
+.sce .sce-asset-pack-use {
+  min-height:38px !important;
+  display:flex !important;
+  align-items:center !important;
+  padding:0 2px !important;
+  border:0 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+}
+.sce .sce-asset-pack-use label {
+  margin:0 !important;
+}
+/* V7 · anniversary editor: actions stay inside the card header. */
+.sce .sce-calendar-mark {
+  overflow:hidden !important;
+}
+.sce .sce-calendar-mark-head {
+  min-height:42px !important;
+  margin-bottom:10px !important;
+}
+.sce .sce-calendar-mark-title {
+  min-width:0;
+}
+.sce .sce-calendar-mark-title strong, .sce .sce-calendar-mark-title span {
+  display:block;
+}
+.sce .sce-calendar-mark-title span {
+  margin-top:2px;
+}
+.sce .sce-calendar-mark-actions {
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  max-width:150px;
+}
+.sce .sce-calendar-mark-actions .sce-grip {
+  display:flex !important;
+  gap:6px !important;
+  margin:0 !important;
+}
+.sce .sce-calendar-mark-actions .sce-grip .sce-btn {
+  width:38px !important;
+  min-width:38px !important;
+  height:38px !important;
+  min-height:38px !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+.sce .sce-calendar-mark-grid {
+  gap:8px !important;
+  min-width:0 !important;
+}
+/* V8 Rules */
+.sce .sce-rules-field-grid > .sce-rules-field { grid-template-rows:auto 40px minmax(30px,auto) !important; align-content:start !important; }
+.sce .sce-rules-field-grid > .sce-rules-field > input, .sce .sce-rules-field-grid > .sce-rules-field > select { height:40px !important; min-height:40px !important; }
+.sce .sce-rules-field-grid > .sce-rules-field > small { min-height:30px !important; display:block !important; padding-top:2px !important; }
+/* V8 Board */
+.sce .sce-board-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-board-head > div, .sce .sce-board-toggle-copy, .sce .sce-board-ai > summary > span { min-width:0; }
+.sce .sce-board-summary span { min-width:0; max-width:100%; box-sizing:border-box; }
+.sce .sce-board-field > input { box-sizing:border-box; max-width:100%; }
+.sce .sce-board-field > textarea { white-space:pre-wrap; overflow-wrap:anywhere; }
+.sce .sce-board-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px; padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-board-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-board-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-board-summary { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-board-summary span { display:inline-flex; align-items:center; min-height:27px; padding:4px 8px; border:1px solid var(--sce-line); border-radius:999px; background:var(--sce-field); color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-board-section { display:grid; grid-template-columns:minmax(145px,185px) minmax(0,1fr); gap:24px; padding:18px 0; border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-board-section-head { min-width:0; padding-top:2px; }
+.sce .sce-board-step { width:34px; height:34px; display:grid; place-items:center; margin-bottom:8px; border:1px solid var(--sce-line-strong); border-radius:50%; background:var(--sce-surface-soft); color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:11px; font-weight:800; }
+.sce .sce-board-section-title { color:var(--sce-text-strong); font-size:14px; font-weight:780; }
+.sce .sce-board-section-copy { margin-top:4px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-board-section-body, .sce .sce-board-stack { display:grid; gap:10px; min-width:0; }
+.sce .sce-board-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.sce .sce-board-field { display:grid; grid-template-rows:auto 40px minmax(30px,auto); gap:4px; min-width:0; }
+.sce .sce-board-field.is-wide { grid-column:1 / -1; }
+.sce .sce-board-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-board-field > small { min-height:30px; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-board-field > input, .sce .sce-board-field > select { width:100% !important; height:40px !important; min-height:40px !important; min-width:0 !important; }
+.sce .sce-board-field > textarea { width:100% !important; min-height:94px !important; min-width:0 !important; resize:vertical; }
+.sce .sce-board-toggle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.sce .sce-board-toggle { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-height:78px; padding:10px 11px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-board-toggle-copy strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-board-toggle-copy span { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-board-advanced { border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-board-advanced > summary { padding:10px 11px; color:var(--sce-text-strong); font-size:11.5px; font-weight:720; cursor:pointer; }
+.sce .sce-board-advanced-body { padding:0 11px 11px; }
+.sce .sce-board-danger { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:16px; padding:11px 12px; border:1px solid color-mix(in srgb, var(--sce-danger) 45%, transparent); border-radius:6px; background:color-mix(in srgb, var(--sce-danger-bg) 55%, transparent); }
+.sce .sce-board-danger strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-board-danger span { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-board-empty { display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px; margin-top:14px; padding:14px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-board-empty-icon { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--sce-line-strong); border-radius:6px; color:var(--sce-accent); font-size:18px; }
+.sce .sce-board-empty h4 { margin:0; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-board-empty p { margin:3px 0 0; color:var(--sce-muted); font-size:11px; line-height:1.5; }
+.sce .sce-board-ai { margin-top:14px; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-board-ai > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 2px; list-style:none; cursor:pointer; }
+.sce .sce-board-ai > summary::-webkit-details-marker { display:none; }
+.sce .sce-board-ai > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-board-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-board-ai-chevron { color:var(--sce-muted); transition:transform .15s ease; }
+.sce .sce-board-ai[open] .sce-board-ai-chevron { transform:rotate(180deg); }
+.sce .sce-board-ai-body { padding:0 0 14px; }
+.sce .sce-board-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
+.sce .sce-board-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+@media (max-width:900px) {
+.sce .sce-board-section { grid-template-columns:1fr; gap:9px; }
+.sce .sce-board-section-head { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:0 9px; }
+.sce .sce-board-step { grid-row:1 / span 2; margin:0; }
+.sce .sce-board-field-grid, .sce .sce-board-toggle-grid { grid-template-columns:1fr; }
+.sce .sce-board-summary { justify-content:flex-start; }
+}
+@media (max-width:620px) {
+.sce .sce-board-head { display:grid; }
+.sce .sce-board-empty { grid-template-columns:1fr; }
+.sce .sce-board-danger { align-items:flex-start; flex-direction:column; }
+}
+/* V9 · readable helper lines */
+.sce .sce-trial-copy > div + div, .sce .sce-choice-enable-copy > div + div, .sce .sce-choice-help > div + div {
+  margin-top:4px;
+}
+.sce .sce-choice-enable {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  align-items:center;
+  gap:10px 12px;
+  padding:9px 10px;
+  border-left:2px solid var(--sce-accent);
+  background:var(--sce-field);
+}
+.sce .sce-choice-enable-copy {
+  min-width:0;
+  color:var(--sce-muted);
+  font-size:11px;
+  line-height:1.5;
+}
+.sce .sce-choice-help {
+  line-height:1.5;
+}
+/* V9 · beginner-friendly validation report */
+.sce .sce-diag-tech {
+  margin-top:3px;
+}
+.sce .sce-diag-tech > summary {
+  width:max-content;
+  color:var(--sce-muted);
+  font-size:10px;
+  cursor:pointer;
+}
+.sce .sce-diag-tech code {
+  display:block;
+  margin-top:4px;
+  padding:5px 7px;
+  border:1px solid var(--sce-line);
+  border-radius:4px;
+  background:var(--sce-field);
+  color:var(--sce-muted);
+  font-size:10px;
+  overflow-wrap:anywhere;
+}
+/* V9 · Board spacing/overflow polish */
+.sce .sce-board-section {
+  padding:16px 0 17px !important;
+}
+.sce .sce-board-section-body, .sce .sce-board-stack {
+  gap:8px !important;
+  min-width:0 !important;
+}
+.sce .sce-board-field {
+  min-width:0 !important;
+}
+.sce .sce-board-field.is-wide {
+  grid-template-rows:auto auto auto !important;
+}
+.sce .sce-board-field > small {
+  margin:0 !important;
+  padding:0 1px 2px !important;
+}
+.sce .sce-board-field > textarea {
+  box-sizing:border-box !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-height:84px !important;
+  margin:0 !important;
+}
+.sce .sce-board-advanced {
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+}
+.sce .sce-board-advanced-body {
+  min-width:0 !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+  padding:0 10px 10px !important;
+}
+.sce .sce-board-advanced-body .sce-board-field {
+  width:100% !important;
+  max-width:100% !important;
+}
+.sce .sce-board-advanced-body textarea {
+  box-sizing:border-box !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  min-height:82px !important;
+}
+.sce .sce-board-toggle {
+  min-height:72px !important;
+}
+.sce .sce-board-danger {
+  margin-top:14px !important;
+}
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+.sce .sce-board-workgroup {
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+  padding:10px 11px;
+  border:1px solid var(--sce-line);
+  border-radius:6px;
+  background:var(--sce-surface);
+}
+.sce .sce-board-workgroup.sce-board-field-grid, .sce .sce-board-workgroup.sce-board-stack {
+  gap:10px !important;
+}
+.sce .sce-board-group-part {
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+.sce .sce-board-group-part + .sce-board-group-part {
+  margin-top:2px;
+  padding-top:10px;
+  border-top:1px solid var(--sce-line);
+}
+.sce .sce-board-group-label {
+  color:var(--sce-muted);
+  font-size:10.5px;
+  font-weight:720;
+  line-height:1.4;
+}
+.sce .sce-board-content-group .sce-board-field > textarea {
+  min-height:108px !important;
+}
+/* Hallmark · shop hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-shop-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-shop-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px;
+  padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-shop-head > div { min-width:0; }
+.sce .sce-shop-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-shop-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-shop-section {
+  display:grid; grid-template-columns:minmax(145px,185px) minmax(0,1fr); gap:24px;
+  padding:16px 0 17px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-shop-section-head { min-width:0; padding-top:2px; }
+.sce .sce-shop-step {
+  width:34px; height:34px; display:grid; place-items:center; margin-bottom:8px;
+  border:1px solid var(--sce-line-strong); border-radius:50%; background:var(--sce-surface-soft);
+  color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:11px; font-weight:800;
+}
+.sce .sce-shop-section-title { color:var(--sce-text-strong); font-size:14px; font-weight:780; }
+.sce .sce-shop-section-copy { margin-top:4px; color:var(--sce-muted); font-size:11.5px; line-height:1.5; }
+.sce .sce-shop-section-body, .sce .sce-shop-stack { display:grid; gap:10px; min-width:0; }
+.sce .sce-shop-workgroup {
+  min-width:0; max-width:100%; box-sizing:border-box; padding:10px 11px;
+  border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-shop-workgroup.is-secondary { background:transparent; }
+.sce .sce-shop-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.sce .sce-shop-field { display:grid; grid-template-rows:auto 40px auto; gap:4px; min-width:0; }
+.sce .sce-shop-field.is-wide, .sce .sce-shop-inline-hint.is-wide { grid-column:1 / -1; }
+.sce .sce-shop-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-shop-field > small { min-height:1.4em; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
+.sce .sce-shop-field > input, .sce .sce-shop-field > select {
+  width:100% !important; min-width:0 !important; max-width:100%; height:40px !important; min-height:40px !important;
+}
+.sce .sce-shop-field > textarea {
+  width:100% !important; min-width:0 !important; max-width:100%; box-sizing:border-box;
+  min-height:96px !important; margin:0 !important; resize:vertical; white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.sce .sce-shop-guide-group .sce-shop-field { grid-template-rows:auto auto auto; }
+.sce .sce-shop-inline-hint { color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-shop-advanced { width:100%; min-width:0; overflow:hidden; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-shop-advanced > summary { padding:10px 11px; color:var(--sce-text-strong); font-size:11.5px; font-weight:720; cursor:pointer; }
+.sce .sce-shop-advanced-body { min-width:0; padding:0 11px 11px; }
+.sce .sce-shop-danger {
+  display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:14px;
+  padding:11px 12px; border:1px solid color-mix(in srgb, var(--sce-danger) 45%, transparent); border-radius:6px; background:color-mix(in srgb, var(--sce-danger-bg) 55%, transparent);
+}
+.sce .sce-shop-danger strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-shop-danger span { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-shop-empty {
+  display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px;
+  margin-top:14px; padding:14px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-shop-empty-icon { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--sce-line-strong); border-radius:6px; color:var(--sce-accent); font-size:18px; }
+.sce .sce-shop-empty h4 { margin:0; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-shop-empty p { margin:3px 0 0; color:var(--sce-muted); font-size:11px; line-height:1.5; }
+.sce .sce-shop-ai { margin-top:14px; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-shop-ai > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 2px; list-style:none; cursor:pointer; }
+.sce .sce-shop-ai > summary::-webkit-details-marker { display:none; }
+.sce .sce-shop-ai > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-shop-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-shop-ai-chevron { color:var(--sce-muted); }
+.sce .sce-shop-ai[open] .sce-shop-ai-chevron { transform:rotate(180deg); }
+.sce .sce-shop-ai-body { padding:0 0 14px; }
+.sce .sce-shop-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
+.sce .sce-shop-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+@media (max-width:900px) {
+.sce .sce-shop-section { grid-template-columns:1fr; gap:9px; }
+.sce .sce-shop-section-head { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:0 9px; }
+.sce .sce-shop-step { grid-row:1 / span 2; margin:0; }
+.sce .sce-shop-field-grid { grid-template-columns:1fr; }
+.sce .sce-shop-field.is-wide, .sce .sce-shop-inline-hint.is-wide { grid-column:auto; }
+}
+@media (max-width:620px) {
+.sce .sce-shop-head { display:grid; }
+.sce .sce-shop-empty { grid-template-columns:1fr; }
+.sce .sce-shop-danger { align-items:flex-start; flex-direction:column; }
+}
+/* Hallmark · scenario hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-scenario-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-scenario-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px;
+  padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-scenario-head > div { min-width:0; }
+.sce .sce-scenario-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-scenario-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-scenario-summary { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-scenario-summary span {
+  display:inline-flex; align-items:center; min-height:27px; max-width:100%; box-sizing:border-box;
+  padding:4px 8px; border:1px solid var(--sce-line); border-radius:999px;
+  background:var(--sce-field); color:var(--sce-muted); font-size:10.5px;
+}
+.sce .sce-scenario-overview {
+  display:grid; gap:8px; min-width:0; margin:14px 0 16px; padding:10px 11px;
+  border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-scenario-note { color:var(--sce-muted); font-size:10.5px; line-height:1.5; }
+.sce .sce-scenario-note.is-diagnostic { padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-scenario-act {
+  min-width:0; margin:0 0 14px; overflow:hidden;
+  border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface);
+}
+.sce .sce-scenario-act-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  min-height:58px; padding:9px 11px; border-bottom:1px solid var(--sce-line-strong); background:var(--sce-surface-soft);
+}
+.sce .sce-scenario-act-identity { display:flex; align-items:center; gap:9px; min-width:0; }
+.sce .sce-scenario-act-index {
+  flex:none; min-width:36px; padding:4px 6px; border:1px solid var(--sce-line-strong); border-radius:5px;
+  color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:10.5px; font-weight:800; text-align:center;
+}
+.sce .sce-scenario-act-identity > div { min-width:0; }
+.sce .sce-scenario-act-identity strong { display:block; overflow-wrap:anywhere; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-scenario-act-identity small { display:block; margin-top:2px; overflow-wrap:anywhere; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-scenario-act-head > .sce-grip { flex:none; margin-left:auto; }
+.sce .sce-scenario-act-section { display:grid; gap:8px; min-width:0; padding:11px 12px; }
+.sce .sce-scenario-act-section + .sce-scenario-act-section { border-top:1px solid var(--sce-line); }
+.sce .sce-scenario-group-title { color:var(--sce-text-strong); font-size:11.5px; font-weight:760; }
+.sce .sce-scenario-field-grid { display:grid; gap:10px; min-width:0; }
+.sce .sce-scenario-field-grid.is-core { grid-template-columns:minmax(115px,.65fr) minmax(150px,1fr) minmax(150px,1fr); }
+.sce .sce-scenario-field-grid.is-progress { grid-template-columns:minmax(0,1fr) minmax(130px,.35fr); }
+.sce .sce-scenario-field { display:grid; grid-template-rows:auto auto auto; gap:4px; min-width:0; }
+.sce .sce-scenario-field.is-wide { width:100%; }
+.sce .sce-scenario-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-scenario-field > small { min-height:1.4em; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-scenario-field > input, .sce .sce-scenario-field > select {
+  width:100% !important; min-width:0 !important; max-width:100%; height:40px !important; min-height:40px !important;
+}
+.sce .sce-scenario-field > textarea {
+  width:100% !important; min-width:0 !important; max-width:100%; box-sizing:border-box;
+  min-height:104px !important; margin:0 !important; resize:vertical; white-space:pre-wrap; overflow-wrap:anywhere;
+}
+.sce .sce-scenario-secret { background:var(--sce-surface-soft); }
+.sce .sce-scenario-secret-copy, .sce .sce-scenario-effects-copy, .sce .sce-scenario-first-note {
+  color:var(--sce-muted); font-size:10.5px; line-height:1.5;
+}
+.sce .sce-scenario-notify .sce-scenario-field > input { width:100% !important; }
+.sce .sce-scenario-effects > .sce-sub { min-width:0; margin:0; }
+.sce .sce-scenario-add { display:flex; margin:2px 0 14px; }
+.sce .sce-scenario-add > .sce-btn { width:100%; }
+.sce .sce-scenario-danger {
+  display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:14px;
+  padding:11px 12px; border:1px solid color-mix(in srgb, var(--sce-danger) 45%, transparent); border-radius:6px; background:color-mix(in srgb, var(--sce-danger-bg) 55%, transparent);
+}
+.sce .sce-scenario-danger strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-scenario-danger span { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-scenario-empty {
+  display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px;
+  margin-top:14px; padding:14px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-scenario-empty-index {
+  width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--sce-line-strong); border-radius:6px;
+  color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:11px; font-weight:800;
+}
+.sce .sce-scenario-empty h4 { margin:0; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-scenario-empty p { margin:3px 0 0; color:var(--sce-muted); font-size:11px; line-height:1.5; }
+.sce .sce-scenario-ai { margin-top:14px; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-scenario-ai > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 2px; list-style:none; cursor:pointer; }
+.sce .sce-scenario-ai > summary::-webkit-details-marker { display:none; }
+.sce .sce-scenario-ai > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-scenario-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-scenario-ai-chevron { color:var(--sce-muted); }
+.sce .sce-scenario-ai[open] .sce-scenario-ai-chevron { transform:rotate(180deg); }
+.sce .sce-scenario-ai-body { padding:0 0 14px; }
+.sce .sce-scenario-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
+.sce .sce-scenario-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+@media (max-width:760px) {
+.sce .sce-scenario-head { display:grid; }
+.sce .sce-scenario-summary { justify-content:flex-start; }
+.sce .sce-scenario-field-grid.is-core, .sce .sce-scenario-field-grid.is-progress { grid-template-columns:1fr; }
+.sce .sce-scenario-act-head { align-items:stretch; flex-direction:column; }
+.sce .sce-scenario-act-head > .sce-grip { margin-left:0; align-self:flex-end; }
+.sce .sce-scenario-empty { grid-template-columns:1fr; }
+.sce .sce-scenario-danger { align-items:flex-start; flex-direction:column; }
+}
+/* Hallmark · actions hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-actions-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-actions-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px;
+  padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-actions-head > div { min-width:0; }
+.sce .sce-actions-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-actions-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-actions-summary { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-actions-summary span {
+  display:inline-flex; align-items:center; min-height:27px; max-width:100%; box-sizing:border-box;
+  padding:4px 8px; border:1px solid var(--sce-line); border-radius:999px;
+  background:var(--sce-field); color:var(--sce-muted); font-size:10.5px;
+}
+.sce .sce-actions-note {
+  margin:14px 0; padding:9px 10px; border:1px solid var(--sce-line); border-radius:6px;
+  background:var(--sce-surface); color:var(--sce-muted); font-size:10.8px; line-height:1.5;
+}
+.sce .sce-action-card {
+  min-width:0; margin:0 0 14px; overflow:hidden;
+  border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface);
+}
+.sce .sce-action-card-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  min-height:58px; padding:9px 11px; border-bottom:1px solid var(--sce-line-strong); background:var(--sce-surface-soft);
+}
+.sce .sce-action-identity { display:flex; align-items:center; gap:9px; min-width:0; }
+.sce .sce-action-index {
+  flex:none; min-width:32px; padding:4px 6px; border:1px solid var(--sce-line-strong); border-radius:5px;
+  color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:10.5px; font-weight:800; text-align:center;
+}
+.sce .sce-action-identity > div { min-width:0; }
+.sce .sce-action-identity strong { display:block; overflow-wrap:anywhere; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-action-identity small { display:block; margin-top:2px; overflow-wrap:anywhere; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-action-card-head > .sce-grip { flex:none; margin-left:auto; }
+.sce .sce-action-card-section { display:grid; gap:8px; min-width:0; padding:11px 12px; }
+.sce .sce-action-card-section + .sce-action-card-section { border-top:1px solid var(--sce-line); }
+.sce .sce-action-group-title { color:var(--sce-text-strong); font-size:11.5px; font-weight:760; }
+.sce .sce-action-group-copy { color:var(--sce-muted); font-size:10.5px; line-height:1.5; }
+.sce .sce-action-field-grid { display:grid; gap:10px; min-width:0; }
+.sce .sce-action-field-grid.is-basic { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-action-field-grid.is-advanced { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-action-field { display:grid; grid-template-rows:auto auto auto; gap:4px; min-width:0; }
+.sce .sce-action-field.is-wide { width:100%; }
+.sce .sce-action-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-action-field > small { min-height:1.4em; color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-action-field > input, .sce .sce-action-field > select {
+  width:100% !important; min-width:0 !important; max-width:100%; height:40px !important; min-height:40px !important;
+}
+.sce .sce-action-check-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px; min-width:0; }
+.sce .sce-action-check-row > .sce-btn { min-height:40px; white-space:nowrap; }
+.sce .sce-action-effects > .sce-sub { min-width:0; margin:0; }
+.sce .sce-action-effects .sce-row { min-width:0; }
+.sce .sce-action-effects .sce-row > input.sce-w-l { flex:1 1 180px; min-width:0; }
+.sce .sce-action-inject { background:var(--sce-surface-soft); }
+.sce .sce-action-advanced { background:transparent; }
+.sce .sce-actions-add { display:flex; margin:2px 0 14px; }
+.sce .sce-actions-add > .sce-btn { width:100%; }
+.sce .sce-actions-trial { margin:14px 0 0; }
+.sce .sce-actions-trial > .sce-trial { margin:0 !important; }
+.sce .sce-actions-empty {
+  display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px;
+  margin:14px 0; padding:14px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-actions-empty-icon {
+  width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--sce-line-strong); border-radius:6px;
+  color:var(--sce-accent); font-size:15px;
+}
+.sce .sce-actions-empty h4 { margin:0; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-actions-empty p { margin:3px 0 0; color:var(--sce-muted); font-size:11px; line-height:1.5; }
+.sce .sce-actions-ai { margin-top:14px; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-actions-ai > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 2px; list-style:none; cursor:pointer; }
+.sce .sce-actions-ai > summary::-webkit-details-marker { display:none; }
+.sce .sce-actions-ai > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-actions-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-actions-ai-chevron { color:var(--sce-muted); }
+.sce .sce-actions-ai[open] .sce-actions-ai-chevron { transform:rotate(180deg); }
+.sce .sce-actions-ai-body { padding:0 0 14px; }
+.sce .sce-actions-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
+.sce .sce-actions-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+@media (max-width:760px) {
+.sce .sce-actions-head { display:grid; }
+.sce .sce-actions-summary { justify-content:flex-start; }
+.sce .sce-action-field-grid.is-basic, .sce .sce-action-field-grid.is-advanced { grid-template-columns:1fr; }
+.sce .sce-action-check-row { grid-template-columns:1fr; align-items:stretch; }
+.sce .sce-action-check-row > .sce-btn { justify-self:start; }
+.sce .sce-action-card-head { align-items:stretch; flex-direction:column; }
+.sce .sce-action-card-head > .sce-grip { margin-left:0; align-self:flex-end; }
+.sce .sce-actions-empty { grid-template-columns:1fr; }
+}
+/* Hallmark · checks hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-checks-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-checks-head, .sce .sce-setup-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px;
+  padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-checks-head > div, .sce .sce-setup-head > div { min-width:0; }
+.sce .sce-checks-head h3, .sce .sce-setup-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-checks-head p, .sce .sce-setup-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-checks-summary, .sce .sce-setup-summary { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-checks-summary span, .sce .sce-setup-summary span {
+  display:inline-flex; align-items:center; min-height:27px; max-width:100%; box-sizing:border-box;
+  padding:4px 8px; border:1px solid var(--sce-line); border-radius:999px;
+  background:var(--sce-field); color:var(--sce-muted); font-size:10.5px;
+}
+.sce .sce-checks-note, .sce .sce-setup-note {
+  margin:14px 0; padding:9px 10px; border:1px solid var(--sce-line); border-radius:6px;
+  background:var(--sce-surface); color:var(--sce-muted); font-size:10.8px; line-height:1.5;
+}
+.sce .sce-check-card, .sce .sce-setup-card {
+  min-width:0; margin:0 0 14px; overflow:hidden;
+  border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface);
+}
+.sce .sce-check-card-head, .sce .sce-setup-card-head {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  min-height:58px; padding:9px 11px; border-bottom:1px solid var(--sce-line-strong); background:var(--sce-surface-soft);
+}
+.sce .sce-check-identity, .sce .sce-setup-identity { display:flex; align-items:center; gap:9px; min-width:0; }
+.sce .sce-check-index, .sce .sce-setup-index {
+  flex:none; min-width:32px; padding:4px 6px; border:1px solid var(--sce-line-strong); border-radius:5px;
+  color:var(--sce-accent); font-family:var(--sc-font-mono,ui-monospace,monospace); font-size:10.5px; font-weight:800; text-align:center;
+}
+.sce .sce-check-identity > div, .sce .sce-setup-identity > div { min-width:0; }
+.sce .sce-check-identity strong, .sce .sce-setup-identity strong { display:block; overflow-wrap:anywhere; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-check-identity small, .sce .sce-setup-identity small { display:block; margin-top:2px; overflow-wrap:anywhere; color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-check-card-head > .sce-grip { flex:none; margin-left:auto; }
+.sce .sce-check-card-section, .sce .sce-setup-card-section { display:grid; gap:8px; min-width:0; padding:11px 12px; }
+.sce .sce-check-card-section + .sce-check-card-section, .sce .sce-setup-card-section + .sce-setup-card-section { border-top:1px solid var(--sce-line); }
+.sce .sce-check-group-title, .sce .sce-setup-group-title { color:var(--sce-text-strong); font-size:11.5px; font-weight:760; }
+.sce .sce-check-group-copy, .sce .sce-setup-group-copy { color:var(--sce-muted); font-size:10.5px; line-height:1.5; }
+.sce .sce-check-field-grid, .sce .sce-setup-field-grid { display:grid; gap:10px; min-width:0; }
+.sce .sce-check-field-grid.is-basic, .sce .sce-setup-field-grid.is-basic { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.sce .sce-check-field-grid.is-roll { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sce .sce-check-field-grid.is-grade { grid-template-columns:minmax(0,1.5fr) minmax(120px,.5fr); }
+.sce .sce-check-field, .sce .sce-setup-field { display:grid; grid-template-rows:auto auto auto; gap:4px; min-width:0; }
+.sce .sce-check-field.is-wide, .sce .sce-setup-field.is-wide { width:100%; }
+.sce .sce-check-field > span, .sce .sce-setup-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-check-field > small, .sce .sce-setup-field > small { color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-check-field > input, .sce .sce-check-field > select, .sce .sce-setup-field > input, .sce .sce-setup-field > select {
+  width:100% !important; min-width:0 !important; max-width:100%; height:40px !important; min-height:40px !important;
+}
+.sce .sce-check-grade { display:grid; gap:9px; min-width:0; padding:10px 11px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface-soft); }
+.sce .sce-check-grade + .sce-check-grade { margin-top:2px; }
+.sce .sce-check-grade-head { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--sce-muted); font-size:10.5px; font-weight:700; }
+.sce .sce-check-grade-head > .sce-grip { margin-left:auto; }
+.sce .sce-check-subtitle { margin-bottom:5px; color:var(--sce-text-strong); font-size:10.8px; font-weight:700; }
+.sce .sce-check-effect-group > .sce-sub { min-width:0; margin:0; }
+.sce .sce-check-text-group { padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-check-grade-actions { display:flex; gap:8px; min-width:0; }
+.sce .sce-checks-add, .sce .sce-setup-add { display:flex; margin:2px 0 14px; }
+.sce .sce-checks-add > .sce-btn, .sce .sce-setup-add > .sce-btn { width:100%; }
+.sce .sce-checks-empty {
+  display:grid; grid-template-columns:42px minmax(0,1fr) auto; align-items:center; gap:12px;
+  margin:14px 0; padding:14px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface);
+}
+.sce .sce-checks-empty-icon { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--sce-line-strong); border-radius:6px; color:var(--sce-accent); font-size:16px; }
+.sce .sce-checks-empty h4 { margin:0; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-checks-empty p { margin:3px 0 0; color:var(--sce-muted); font-size:11px; line-height:1.5; }
+.sce .sce-checks-ai, .sce .sce-setup-ai-tools { margin-top:14px; border-top:1px solid var(--sce-line-strong); border-bottom:1px solid var(--sce-line-strong); }
+.sce .sce-checks-ai > summary, .sce .sce-setup-ai-tools > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 2px; list-style:none; cursor:pointer; }
+.sce .sce-checks-ai > summary::-webkit-details-marker, .sce .sce-setup-ai-tools > summary::-webkit-details-marker { display:none; }
+.sce .sce-checks-ai > summary strong, .sce .sce-setup-ai-tools > summary strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-checks-ai > summary small, .sce .sce-setup-ai-tools > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-checks-ai[open] .sce-checks-ai-chevron, .sce .sce-setup-ai-tools[open] .sce-setup-ai-chevron { transform:rotate(180deg); }
+.sce .sce-checks-ai-body, .sce .sce-setup-ai-tools-body { padding:0 0 14px; }
+.sce .sce-checks-ai-body > .sce-tab-ai-tools, .sce .sce-setup-ai-tools-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
+.sce .sce-checks-ai-body > .sce-tab-ai-tools > h4:first-child, .sce .sce-setup-ai-tools-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+/* Hallmark · setup hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-setup-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-setup-card-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.sce .sce-setup-card-actions > .sce-grip { flex:none; }
+.sce .sce-setup-time-section { background:var(--sce-surface-soft); }
+.sce .sce-setup-start-at { width:100%; }
+.sce .sce-setup-value-row { display:grid; grid-template-columns:minmax(150px,.8fr) auto minmax(180px,1.2fr) auto; align-items:center; gap:8px; min-width:0; }
+.sce .sce-setup-value-row > select, .sce .sce-setup-value-row > input { width:100% !important; min-width:0 !important; max-width:100%; }
+.sce .sce-setup-values > .sce-btn { justify-self:start; }
+.sce .sce-setup-preview { background:var(--sce-surface-soft); }
+.sce .sce-setup-preview > .sce-preset-preview { min-width:0; max-width:100%; margin:0; overflow-wrap:anywhere; }
+.sce .sce-setup-ai-config { display:grid; gap:9px; min-width:0; margin-top:14px; padding:11px 12px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-setup-ai-config-head strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-setup-ai-config-head small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
+.sce .sce-setup-ai-toggle { display:flex; align-items:center; }
+.sce .sce-setup-ai-config .sce-setup-field > textarea { width:100%; min-width:0; max-width:100%; box-sizing:border-box; resize:vertical; }
+@media (max-width:760px) {
+.sce .sce-checks-head, .sce .sce-setup-head { display:grid; }
+.sce .sce-checks-summary, .sce .sce-setup-summary { justify-content:flex-start; }
+.sce .sce-check-field-grid.is-basic, .sce .sce-check-field-grid.is-roll, .sce .sce-check-field-grid.is-grade, .sce .sce-setup-field-grid.is-basic { grid-template-columns:1fr; }
+.sce .sce-check-card-head, .sce .sce-setup-card-head { align-items:stretch; flex-direction:column; }
+.sce .sce-check-card-head > .sce-grip { margin-left:0; align-self:flex-end; }
+.sce .sce-setup-card-actions { margin-left:0; justify-content:flex-end; flex-wrap:wrap; }
+.sce .sce-check-grade-actions { flex-direction:column; }
+.sce .sce-setup-value-row { grid-template-columns:1fr auto; }
+.sce .sce-setup-value-row > select, .sce .sce-setup-value-row > input { grid-column:1; }
+.sce .sce-setup-value-row > span, .sce .sce-setup-value-row > .sce-danger { grid-column:2; }
+.sce .sce-checks-empty { grid-template-columns:1fr; }
+}
+/* Hallmark · AI settings hierarchy: P5 H5 E5 S5 R5 V4 */
+.sce .sce-ai-settings-editor { min-width:0; overflow-wrap:anywhere; }
+.sce .sce-ai-settings-head {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px 24px;
+  padding:3px 0 16px; border-bottom:1px solid var(--sce-line-strong);
+}
+.sce .sce-ai-settings-head > div { min-width:0; }
+.sce .sce-ai-settings-head h3 { margin:0; color:var(--sce-text-strong); font-size:18px; letter-spacing:-.02em; }
+.sce .sce-ai-settings-head p { max-width:72ch; margin:4px 0 0; color:var(--sce-muted); font-size:12px; line-height:1.55; }
+.sce .sce-ai-settings-summary { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.sce .sce-ai-settings-summary span {
+  display:inline-flex; align-items:center; min-height:27px; max-width:100%; box-sizing:border-box;
+  padding:4px 8px; border:1px solid var(--sce-line); border-radius:999px;
+  background:var(--sce-field); color:var(--sce-muted); font-size:10.5px;
+}
+.sce .sce-ai-settings-note {
+  margin:14px 0; padding:9px 10px; border:1px solid var(--sce-line); border-radius:6px;
+  background:var(--sce-surface); color:var(--sce-muted); font-size:10.8px; line-height:1.5;
+}
+.sce .sce-ai-settings-section {
+  min-width:0; margin:0 0 14px; overflow:hidden;
+  border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface);
+}
+.sce .sce-ai-settings-section-head { padding:10px 12px; border-bottom:1px solid var(--sce-line); background:var(--sce-surface-soft); }
+.sce .sce-ai-settings-section-head strong { display:block; color:var(--sce-text-strong); font-size:12.5px; }
+.sce .sce-ai-settings-section-head small { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; font-weight:400; }
+.sce .sce-ai-settings-section-body { display:grid; gap:10px; min-width:0; padding:11px 12px; }
+.sce .sce-ai-settings-field { display:grid; grid-template-rows:auto auto auto; gap:4px; min-width:0; }
+.sce .sce-ai-settings-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:720; }
+.sce .sce-ai-settings-field > small, .sce .sce-ai-settings-help { color:var(--sce-muted); font-size:10.5px; line-height:1.5; }
+.sce .sce-ai-settings-field > input, .sce .sce-ai-settings-field > select {
+  width:100% !important; min-width:0 !important; max-width:100%; height:40px !important; min-height:40px !important;
+}
+.sce .sce-ai-settings-field > textarea {
+  width:100%; min-width:0; max-width:100%; box-sizing:border-box; min-height:92px; margin:0; resize:vertical; overflow-wrap:anywhere;
+}
+.sce .sce-ai-settings-auto { justify-self:start; }
+.sce .sce-ai-settings-toggle-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; min-width:0; }
+.sce .sce-ai-settings-safety-note { padding:9px 10px; border-left:2px solid var(--sce-accent); background:var(--sce-surface-soft); }
+.sce .sce-ai-settings-safety-note strong { display:block; color:var(--sce-text-strong); font-size:11px; }
+.sce .sce-ai-settings-safety-note span { display:block; margin-top:3px; color:var(--sce-muted); font-size:10.5px; line-height:1.5; }
+.sce .sce-ai-settings-suggest-row { display:flex; align-items:end; flex-wrap:wrap; gap:8px; }
+.sce .sce-ai-settings-allow-summary { display:flex; align-items:baseline; flex-wrap:wrap; gap:5px 9px; }
+.sce .sce-ai-settings-allow-summary strong { color:var(--sce-text-strong); font-size:11.5px; }
+.sce .sce-ai-settings-allow-summary span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-ai-settings-allow-card {
+  display:flex; flex-wrap:wrap; align-items:end; gap:9px; min-width:0; padding:10px 11px;
+  border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface-soft);
+}
+.sce .sce-ai-settings-allow-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex:1 0 100%; min-width:0; padding-bottom:7px; border-bottom:1px solid var(--sce-line); }
+.sce .sce-ai-settings-allow-head > div { min-width:0; }
+.sce .sce-ai-settings-allow-head strong { display:block; overflow-wrap:anywhere; color:var(--sce-text-strong); font-size:11.5px; }
+.sce .sce-ai-settings-allow-head small { display:block; margin-top:2px; overflow-wrap:anywhere; color:var(--sce-muted); font-size:10px; }
+.sce .sce-ai-settings-allow-head > .sce-grip { flex:none; }
+.sce .sce-ai-settings-allow-card > select { flex:1 1 190px; min-width:0; max-width:100%; }
+.sce .sce-ai-settings-allow-card > .sce-pair { flex:1 1 180px; min-width:0; }
+.sce .sce-ai-settings-allow-card > .sce-pair input { width:100% !important; min-width:0 !important; max-width:100%; }
+.sce .sce-ai-settings-gate { display:grid; gap:7px; flex:1 0 100%; min-width:0; padding-top:8px; border-top:1px solid var(--sce-line); }
+.sce .sce-ai-settings-gate-head strong { display:block; color:var(--sce-text-strong); font-size:11px; }
+.sce .sce-ai-settings-gate-head small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; line-height:1.45; font-weight:400; }
+.sce .sce-ai-settings-gate > .sce-pair { min-width:0; }
+.sce .sce-ai-settings-gate > .sce-pair input { width:100% !important; min-width:0 !important; max-width:100%; }
+.sce .sce-ai-settings-allow-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.sce .sce-ai-settings-allow-actions .sce-ai-settings-help { flex:1 0 100%; }
+@media (max-width:760px) {
+.sce .sce-ai-settings-head { display:grid; }
+.sce .sce-ai-settings-summary { justify-content:flex-start; }
+.sce .sce-ai-settings-auto { width:100%; }
+.sce .sce-ai-settings-suggest-row { align-items:stretch; flex-direction:column; }
+.sce .sce-ai-settings-allow-card { align-items:stretch; flex-direction:column; }
+.sce .sce-ai-settings-allow-card > select, .sce .sce-ai-settings-allow-card > .sce-pair { width:100%; flex:auto; }
+.sce .sce-ai-settings-allow-actions { align-items:stretch; flex-direction:column; }
+}
+@media (max-width:620px) {
+.sce .sce-choice-enable {
+    grid-template-columns:1fr;
+  }
+}
+/* Hallmark · pre-emit critique: P5 H4 E4 S5 R5 V3 */
+/* 펼친 변수 카드의 내부 여백 */
+.sce .sce-variable-card:not(.is-collapsed) {
+  padding: 11px 12px;
+}
+/* 헤더 구분선과 첫 입력 행 사이 */
+.sce .sce-variable-card .sce-variable-card-body {
+  padding-top: 9px;
+}
+/* 참조 안내줄 위아래 간격 */
+.sce .sce-variable-card .sce-variable-reference-note {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+/* 라벨과 입력칸 사이의 일정한 간격 */
+.sce .sce-variable-card .sce-variable-field {
+  row-gap: 4px;
+}
+/* 선택지·시작값 영역과 AI용 설명 사이 */
+.sce .sce-variable-card .sce-variable-description {
+  margin-top: 10px;
+}
+/* 실행 중 실황 진단줄 (v1.2.4) — 2열 그리드의 전폭 행으로. 셀에 흘러들면 셀렉트가 짜부라진다 (실사고) */
+.sce .sce-assets-live { grid-column:1 / -1; min-width:0; margin:0; overflow-wrap:anywhere; line-height:1.5; }
 `;
 
 const VAR_TYPES = [
@@ -3668,6 +6142,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         class: `sce-block sce-variable-card${collapsed ? ' is-collapsed' : ''}`
           + (moveFeedback ? ` is-just-moved moved-${moveFeedback.kind}` : '')
           + (newlyCreated ? ' is-newly-created' : ''),
+        'data-sce-validation-path': `$.${list === schema.derived ? 'derived' : 'vars'}[${index}]`,
       },
         h('div', { class: 'sce-variable-card-head' },
           h('div', { class: 'sce-variable-card-title' },
@@ -3935,6 +6410,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 상태창 ────────────────────────────────────────────
   // 뼈대 덮어쓰기 확인용 — rerender()가 DOM을 새로 만들므로 tabStatus 밖에 둬야 살아남는다
   let tplArm = null;
+  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['진행', ['rules', 'scenario', 'actions', 'checks', 'time', 'setup']], ['자동화', ['ai']]]; // 탭 내비 묶음 (v1.7.13 개조본 이식) — 메신저·의뢰판은 우리 쪽 탭
+  const collapsedAssetPackSettings = new WeakSet();
+  let partySlotMoveFeedback = null; // { item, position, kind } — 자리 이동 뒤 한 번 표시
+  let createdPartySlot = null;
+  let partyEditorIndex = 0;
+  const collapsedStatusItemOptions = new WeakSet();
+  const expandedStatusItemOptions = new WeakSet();
+  let validationJumpSeq = 0;
+  let timeChooserOpen = false;   // 시간 탭 "진행 방식 다시 고르기" 열림 상태 (개조본 tabTime 이식, v1.7.13)
+  const collapsedRuleDirectives = new WeakSet();   // 규칙 탭 지시문 카드 접힘 (개조본 tabRules 이식) — rerender를 살아남아야 해서 밖에
   const collapsedStatusGroups = new WeakSet();
   let statusMoveFeedback = null; // { item, position, kind } — 그룹과 항목 이동 뒤 한 번 표시
   function tabStatus() {
@@ -3944,7 +6429,63 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                     ...schema.derived.map((d) => [d.id, `${d.label ?? d.id} (${d.id}, 자동)`]),
                     // 시간 노출 파생 — 시간 체계가 켜져 있으면 날짜·시각도 상태창 항목이 된다
                     ...(timeConfig(schema)?.expose ?? []).map((n) => [n, `${EXPOSED_LABELS[n]} (${n}, 시간)`])];
-    const statusField = (label, control, hint = '') => h('div', { class: 'sce-status-field' },
+    const initialStatusState = engine.initState(schema);
+    const statusLookup = engine.makeLookup(schema, initialStatusState.vars);
+    const statusValidation = validateSchema(schema);
+    const exposedTimeIds = new Set(timeConfig(schema)?.expose ?? []);
+    const statusTypeLabels = {
+      int: '정수', float: '실수', text: '텍스트', bool: 'ON/OFF', enum: '선택지', list: '목록',
+    };
+    const statusItemDef = (id) => {
+      const variable = schema.vars.find((v) => v.id === id);
+      if (variable) return { def: variable, kind: 'variable' };
+      const derived = schema.derived.find((d) => d.id === id);
+      if (derived) return { def: derived, kind: 'derived' };
+      if (exposedTimeIds.has(id)) return {
+        def: { id, label: EXPOSED_LABELS[id] ?? id,
+          type: ['date', 'clock', 'weekday', 'season'].includes(id) ? 'text' : 'int' },
+        kind: 'time',
+      };
+      return { def: { id, type: null }, kind: 'missing' };
+    };
+    const statusItemMeta = ({ def, kind }) => {
+      if (kind === 'derived') return ['자동 계산', `식 ${String(def.expr || '0').slice(0, 24)}`];
+      if (kind === 'time') return ['시간 체계', statusTypeLabels[def.type] || def.type];
+      if (kind === 'missing') return ['정의되지 않음'];
+      const out = [statusTypeLabels[def.type] || def.type || '형식 미정'];
+      if (def.type === 'int' || def.type === 'float') {
+        if (def.min != null || def.max != null) out.push(`${def.min ?? '−∞'} ~ ${def.max ?? '∞'}`);
+        else out.push('범위 제한 없음');
+      } else if (def.type === 'text' && def.maxLength) out.push(`최대 ${def.maxLength}자`);
+      else if (def.type === 'enum') out.push(`${(def.enum || []).length}개 선택지`);
+      else if (def.type === 'list') out.push(def.maxItems ? `최대 ${def.maxItems}개` : '여러 항목');
+      return out;
+    };
+    const statusItemValue = (id) => {
+      try { return statusLookup(id); } catch (_) { return undefined; }
+    };
+    const statusItemPreviewText = (it, descriptor, value) => {
+      if (value === undefined) return descriptor.kind === 'missing' ? '변수를 찾을 수 없음' : '미리보기 불가';
+      if (Array.isArray(value)) return value.length
+        ? `${value.length}개 · ${value.slice(0, 2).join(' · ')}${value.length > 2 ? '…' : ''}` : '비어 있음';
+      if (typeof value === 'boolean') return value ? '켜짐' : '꺼짐';
+      if (typeof value === 'number') {
+        const shown = value.toLocaleString('ko-KR');
+        return descriptor.def.format ? String(descriptor.def.format).replace(/\{v\}/g, shown) : shown;
+      }
+      return String(value || '').trim() || '빈 값';
+    };
+    const statusItemGaugePercent = (it, descriptor, value) => {
+      const n = Number(value);
+      let max = Number(it.bar?.max);
+      if (!Number.isFinite(max) && it.bar?.max != null) max = Number(statusItemValue(String(it.bar.max)));
+      const min = Number(descriptor.def.min ?? 0);
+      if (!Number.isFinite(n) || !Number.isFinite(max) || max <= min) return null;
+      return Math.max(0, Math.min(100, ((n - min) / (max - min)) * 100));
+    };
+    const statusField = (label, control, hint = '', extraClass = '') => h('div', {
+      class: `sce-status-field${extraClass ? ` ${extraClass}` : ''}`,
+    },
       h('span', {}, label), control, hint ? h('small', {}, hint) : null);
     const statusDragElements = new Map();
     const beginStatusDrag = (item, list, event, handle) => {
@@ -4044,64 +6585,128 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         element.querySelector('.sce-status-move-feedback')?.remove();
       }, 1500);
     };
-    wrap.appendChild(h('section', { class: 'sce-status-intro' },
-      h('div', { class: 'sce-status-intro-title' }, '플레이어에게 보여줄 상태를 정리해요'),
+    const statusCore = h('section', { class: 'sce-status-core' });
+    statusCore.appendChild(h('div', { class: 'sce-status-intro' },
+      h('div', { class: 'sce-status-intro-title' }, '상태창 기본 설정'),
       h('div', { class: 'sce-status-intro-copy' },
-        '저장된 값 중 필요한 것만 그룹으로 묶습니다. 여기서 순서와 표시 방식을 바꿔도 변수나 규칙의 값은 바뀌지 않아요.')));
+        '채팅에 표시할 제목과 모양을 정합니다. 그룹을 편집해도 변수 값과 규칙은 바뀌지 않습니다.')));
     const settings = h('section', { class: 'sce-status-settings' });
-    settings.appendChild(h('div', { class: 'sce-status-settings-grid' },
+    const themeInfo = {
+      clean: { label: '깔끔한 기본형', tone: '선·여백', copy: '얇은 선과 기본 강조색을 쓰는 가장 무난한 형태예요.' },
+      parchment: { label: '양피지 문서형', tone: '갈색·금색', copy: '장부나 판타지 문서처럼 따뜻한 갈색 계열로 보여요.' },
+      terminal: { label: '터미널 화면형', tone: '검정·초록', copy: '검은 바탕과 초록 글자, 고정폭 글꼴을 사용해요.' },
+      card: { label: '카드 패널형', tone: '둥근 그룹', copy: '그룹을 둥근 카드로 나누고 파란 계열 강조를 사용해요.' },
+    };
+    const layoutInfo = {
+      stack: { label: '차례로 쌓기', copy: '모든 그룹을 위에서 아래로 보여요.' },
+      tabs: { label: '탭으로 전환', copy: '한 번에 한 그룹만 보여요.' },
+      accordion: { label: '접기·펼치기', copy: '필요한 그룹만 열어 볼 수 있어요.' },
+      popover: { label: '버튼 팝업', copy: '버튼을 눌렀을 때 그룹이 떠요.' },
+    };
+    const themeKey = Object.hasOwn(themeInfo, ui.theme) ? ui.theme : 'clean';
+    const layoutKey = Object.hasOwn(layoutInfo, ui.layout) ? ui.layout : 'stack';
+    const displayModeLabel = ui.mode === 'template' ? 'HTML 직접 작성' : layoutInfo[layoutKey].label;
+    const displayModeCopy = ui.mode === 'template'
+      ? '작성한 HTML 구조를 그대로 표시합니다.'
+      : layoutInfo[layoutKey].copy;
+    const themeSelect = bindSelect(themeKey, Object.entries(themeInfo).map(([key, info]) => [key, info.label]),
+      (x) => { ui.theme = x === 'clean' ? undefined : x; rerender(); });
+    const themePreview = h('div', { class: `sce-status-theme-preview sce-status-options-theme-preview is-${themeKey}` },
+      h('div', { class: 'sce-status-theme-preview-head' },
+        h('strong', {}, themeInfo[themeKey].label), h('span', {}, themeInfo[themeKey].tone)),
+      h('div', { class: 'sce-status-theme-preview-row' },
+        h('span', {}, '호감도'), h('i', { class: 'sce-status-theme-preview-bar' }), h('b', {}, '72')),
+      h('div', { class: 'sce-status-theme-preview-copy' }, themeInfo[themeKey].copy));
+    const themeControl = h('div', { class: 'sce-status-theme-control' }, themeSelect);
+    const collapsibleControl = bindCheck(ui.collapsible !== false,
+      (x) => { ui.collapsible = x; rerender(); }, '플레이어 접기 허용');
+    collapsibleControl.classList.add('sce-status-options-toggle');
+    const settingsGrid = h('div', {
+      class: `sce-status-settings-grid${ui.mode === 'template' ? ' is-template' : ''}`,
+    },
       // 제목은 여기가 유일한 입력칸 — meta는 패치·탭별 내보내기 어느 쪽도 안 다루는 영역이라
       // 이 칸이 없으면 JSON 직접 수정이 강제된다 (실전 제보로 발견된 구멍, v0.44.3)
       statusField('상태창 제목', bindInput(schema.meta?.name, (x) => {
         schema.meta = schema.meta || {};
         schema.meta.name = x.trim() || undefined; rerender();
-      }, { cls: 'sce-w-m', ph: '비우면 상태' })),
+      }, { cls: 'sce-w-m', ph: '비우면 상태' }), '', 'sce-status-field-title'),
       statusField('구성 방식', bindSelect(ui.mode ?? 'auto', [
-        ['auto', '자동 구성 (그룹/항목)'], ['template', '커스텀 HTML 템플릿 (고급)'],
-      ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); })),
-      statusField('기본 테마', bindSelect(ui.theme ?? 'clean', Object.keys(THEMES).map((t) => [t, t]),
-        (x) => { ui.theme = x; rerender(); })),
-      statusField('메시지 표시', bindCheck(ui.collapsible !== false,
-        (x) => { ui.collapsible = x; rerender(); }, '상태창 접기 허용')),
-      // 위치 (v1.0.2) — 렌더 위치만 바꾼다. 저장 마커는 항상 본문 끝 고정 (스트리밍·복구 전제)
-      statusField('상태창 위치', bindSelect(ui.position ?? 'bottom', [
-        ['bottom', '본문 아래 (기본)'], ['top', '본문 위 — 수치부터 보임'],
+        ['auto', '그룹으로 구성 (권장)'], ['template', 'HTML 직접 작성 (고급)'],
+      ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
+      '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다.', 'sce-status-field-mode'),
+      statusField('기본 테마', themeControl, '', 'sce-status-field-theme'),
+      statusField('상태창 출력 위치', bindSelect(ui.position ?? 'bottom', [
+        ['bottom', '최하단 — 답변 뒤에 표시 (기본)'],
+        ['top', '최상단 — 답변보다 먼저 표시'],
       ], (x) => { ui.position = x === 'bottom' ? undefined : x; rerender(); }),
-      '긴 응답에서 스크롤 없이 수치부터 확인하고 싶으면 위로.'),
+      '상태 수치를 먼저 보고 싶으면 최상단을 선택해 주세요.', 'sce-status-field-position'),
       // 변화 로그 (v0.72) — 엔진이 실제로 커밋한 변화의 영수증. 서사가 뭘 바꿨는지
       // 매 턴 눈으로 확인하고 싶으면 펼침으로 (수동 보정 판단에도 도움이 된다)
-      statusField('변화 로그', bindSelect(ui.changeLog ?? 'collapsed', [
-        ['collapsed', '접힘 (기본) — 눌러야 보임'], ['open', '펼침 — 영수증처럼 항상 표시'], ['off', '숨김'],
-      ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
-      '이번 턴에 실제 반영된 변수 변화와 사유를 상태창 아래에 보여줘요.'),
-      // 하이라이트 카드 (v0.86.4) — 판정 성패·돈·소지품·스탯 변화를 게임 알림처럼 세운다
-      statusField('하이라이트 카드', bindSelect(ui.highlights ?? 'on', [
-        ['on', '켬 (기본) — 판정·돈·소지품 변화를 카드로'], ['off', '끔'],
-      ], (x) => { ui.highlights = x === 'on' ? undefined : x; rerender(); }),
-      '이번 턴의 체감 나는 변화만 골라 상태창 맨 위에 카드로 세워요.'),
-    ));
+    );
     if ((ui.mode ?? 'auto') !== 'template') {
-      settings.appendChild(h('div', { class: 'sce-status-layout' },
-        statusField('여러 그룹 배치', bindSelect(ui.layout ?? 'stack', [
-          ['stack', '쌓기 (기본)'], ['tabs', '탭 — 한 번에 한 장'],
-          ['accordion', '접기/펼치기 — 여러 장 동시에'], ['popover', '버튼 팝업 — 눌러야 뜸'],
-        ], (x) => { ui.layout = x === 'stack' ? undefined : x; rerender(); })),
-      ));
+      settingsGrid.appendChild(statusField('그룹 표시 방식', bindSelect(ui.layout ?? 'stack', [
+          ['stack', '차례로 쌓기 (기본)'], ['tabs', '탭으로 전환'],
+          ['accordion', '접기·펼치기'], ['popover', '버튼 팝업'],
+        ], (x) => { ui.layout = x === 'stack' ? undefined : x; rerender(); }),
+      '그룹이 여러 개일 때 채팅에 놓이는 방식입니다.', 'sce-status-field-layout'));
       if (['tabs', 'popover'].includes(ui.layout)) {
         settings.appendChild(h('div', { class: 'sce-status-note' },
           '탭·팝업 선택은 새 상태 메시지가 만들어지면 첫 그룹으로 돌아가요.'));
       }
     }
-    wrap.appendChild(settings);
+    settingsGrid.appendChild(statusField('이번 턴 변화', bindSelect(ui.changeLog ?? 'collapsed', [
+      ['collapsed', '접어 두기 (기본)'], ['open', '항상 펼치기'], ['off', '표시하지 않기'],
+    ], (x) => { ui.changeLog = x === 'collapsed' ? undefined : x; rerender(); }),
+    '이번 턴에 실제로 바뀐 값과 이유를 상태창 아래에 표시해요.', 'sce-status-field-log'));
+    settingsGrid.appendChild(statusField('중요 변화 강조', bindSelect(ui.highlights ?? 'on', [
+      ['on', '변화 카드 표시 (기본)'], ['off', '변화 카드 숨김'],
+    ], (x) => { ui.highlights = x === 'on' ? undefined : x; rerender(); }),
+    '이번 턴의 체감 나는 변화만 골라 상태창 맨 위에 카드로 세워요.', 'sce-status-field-highlights'));
+    settingsGrid.appendChild(statusField('액션 사용 안내', bindSelect(ui.actionHint === 'off' ? 'off' : 'on', [
+      ['on', '표시 — 상태창에 사용법 안내 표시 (기본)'], ['off', '숨김 — 안내 문구만 숨김'],
+    ], (x) => { ui.actionHint = x === 'on' ? undefined : x; rerender(); }),
+    '안내 문구만 숨기며 액션과 잠긴 액션 목록은 그대로 표시해요.', 'sce-status-field-action-hint'));
+    settings.prepend(settingsGrid);
+    const displayOptions = h('aside', { class: 'sce-status-options' },
+      h('div', { class: 'sce-status-options-title' }, '표시 방식 미리보기'),
+      h('div', { class: 'sce-status-options-summary' },
+        h('strong', {}, themeInfo[themeKey].label),
+        h('span', {}, `· ${displayModeLabel} · ${ui.collapsible !== false ? '접기 허용' : '항상 펼침'}`)),
+      collapsibleControl,
+      h('div', { class: 'sce-status-options-copy' },
+        `${displayModeCopy} ${ui.collapsible !== false
+          ? '플레이어가 접거나 펼칠 수 있습니다.'
+          : '항상 펼친 상태로 표시합니다.'}`),
+      themePreview,
+      h('div', { class: 'sce-status-options-live' },
+        h('div', { class: 'sce-status-options-live-title' }, '현재 시작값으로 렌더링'),
+        statusPreviewEl('core-pv')));
+    statusCore.appendChild(h('div', { class: 'sce-status-core-layout' }, settings, displayOptions));
+    wrap.appendChild(statusCore);
 
     if (ui.mode === 'template') {
       const templateBox = h('section', { class: 'sce-status-template' });
-      templateBox.appendChild(h('div', { class: 'sce-hint' },
-        'AI가 만들어준 결과물을 <style> 포함 통째로 이 칸에 붙여넣어도 됨 — CSS는 자동 분리·스코핑됨. ' +
-        'HTML 안에 {변수id}가 실제 값으로 치환되고, 목록은 {변수id:tags}로 칩 렌더. ' +
-        '팝업(체크박스 토글) 구조 가능. 팁: 팝업형이면 "접을 수 있게" 끄기.'));
-      templateBox.appendChild(bindArea(ui.template, (x) => { ui.template = x; rerender(); },
-        '<div class="my-ledger">\n  <b>재정:</b> {gold}G | <b>사기:</b> {morale_grade}\n  <div>{facilities:tags}</div>\n</div>'));
+      const templateStepHead = (no, title, copy) => h('div', { class: 'sce-status-template-step-head' },
+        h('span', { class: 'sce-status-template-step-no' }, String(no)),
+        h('div', {}, h('div', { class: 'sce-status-template-step-title' }, title),
+          h('div', { class: 'sce-status-template-step-copy' }, copy)));
+      templateBox.appendChild(h('div', { class: 'sce-status-template-intro' },
+        h('div', { class: 'sce-status-template-intro-head' },
+          h('div', { class: 'sce-status-template-intro-title' }, '커스텀 HTML 템플릿'),
+          h('span', { class: 'sce-status-template-intro-tag' }, '고급 기능')),
+        h('div', { class: 'sce-status-template-intro-copy' },
+          '자동 구성으로 만들기 어려운 특별한 배치가 필요할 때만 사용해요. 단순히 그룹을 탭이나 팝업으로 나누려면 자동 구성의 [그룹 표시 방식]이 더 간단합니다.')));
+      const templateInput = bindArea(ui.template, (x) => { ui.template = x; rerender(); },
+        '<style>.my-ledger{...}</style>\n<div class="my-ledger">\n  <b>재정:</b> {gold}G\n</div>');
+      templateInput.classList.add('sce-status-template-main-input');
+      templateBox.appendChild(h('section', { class: 'sce-status-template-step' },
+        templateStepHead(1, '기본 템플릿 붙여넣기',
+          'AI가 만든 HTML을 <style>까지 통째로 붙여넣어도 돼요. CSS는 자동으로 분리되고 이 상태창 안에만 적용됩니다.'),
+        templateInput,
+        h('div', { class: 'sce-status-template-examples' },
+          h('span', {}, h('code', {}, '{gold}'), ' → 변수 값'),
+          h('span', {}, h('code', {}, '{inventory:tags}'), ' → 목록 칩'),
+          h('span', {}, h('code', {}, '{uid}'), ' → 메시지별 고유 번호'))));
 
       // 다중 패널 뼈대 — 빈 예제를 주면 결국 변수명을 하나씩 갈아 끼워야 하므로,
       // 이 봇의 그룹·변수로 채워서 뽑아 준다. 그대로 써도 되고 뜯어고쳐도 된다.
@@ -4114,61 +6719,94 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ui.template = multiPanelTemplate(schema, kind);
         rerender();
       };
-      const tplBtn = (kind, label) => addBtn(tplArm === kind ? `정말 덮어쓸까요? — ${label}` : label, putTpl(kind));
-      templateBox.appendChild(h('div', { class: 'sce-hint' },
-        '여러 패널로 나누고 싶으면 아래에서 뼈대를 뽑아 쓰세요 — 이 봇의 그룹·변수가 이미 채워져 나옵니다. '
-        + '탭은 {uid}(이 상태창이 그려진 메시지 번호)를 라디오 id·name에 씁니다. '
-        + '빼면 메시지끼리 탭이 엉켜서 최신 글의 탭을 눌렀는데 맨 위 글이 바뀝니다. '
-        + '그냥 쓰기만 할 거면 표시 방식을 "자동 구성"으로 두고 [그룹 배치]에서 고르는 쪽이 간단합니다.'));
-      templateBox.appendChild(h('div', { class: 'sce-row' },
-        tplBtn('tabs', '탭 뼈대 넣기'),
-        tplBtn('accordion', '접기/펼치기 뼈대'),
-        tplBtn('popover', '버튼 팝업 뼈대'),
-      ));
+      const tplChoice = (kind, title, copy) => h('button', {
+        class: `sce-btn sce-status-template-choice${tplArm === kind ? ' is-armed' : ''}`,
+        onclick: putTpl(kind),
+      }, h('strong', {}, tplArm === kind ? '한 번 더 눌러 덮어쓰기' : title), h('span', {}, copy));
+      templateBox.appendChild(h('section', { class: 'sce-status-template-step' },
+        templateStepHead(2, '배치 뼈대 선택',
+          '현재 그룹과 변수가 채워진 HTML을 1번 칸에 넣어 줍니다. 이미 작성한 내용이 있으면 같은 버튼을 두 번 눌러야 덮어써요.'),
+        h('div', { class: 'sce-status-template-choices' },
+          tplChoice('tabs', '탭으로 나누기', '한 번에 한 패널만 보여요.'),
+          tplChoice('accordion', '접기·펼치기', '여러 패널을 동시에 열 수 있어요.'),
+          tplChoice('popover', '버튼 팝업', '버튼을 눌렀을 때 패널이 떠요.')),
+        h('details', { class: 'sce-status-template-tech' },
+          h('summary', {}, '탭 뼈대를 직접 수정할 때 주의할 점'),
+          h('div', {}, '{uid}는 상태창마다 라디오 id와 name이 겹치지 않게 해요. 탭 뼈대에서 이 값을 지우면 다른 메시지의 탭까지 함께 바뀔 수 있습니다.'))));
 
       // ── 조건부 템플릿: 한 봇에 두 가지 플레이가 있을 때 상태창을 통째로 갈아끼운다 ──
       ui.templates = ui.templates || [];
-      templateBox.appendChild(h('h4', {}, '조건부 템플릿 (한 봇에 여러 판이 있을 때)'));
-      templateBox.appendChild(h('div', { class: 'sce-hint' },
-        '조건이 참인 첫 번째 것만 그려진다. 예: 영지 운영이면 A, 왕궁 시종이면 B. '
-        + '각 템플릿의 <style>은 자기 id 껍데기(.sim-tpl-<id>) 안으로 자동 격리되므로, '
-        + '두 템플릿이 똑같은 클래스명을 써도 서로를 덮어쓰지 않는다. '
-        + '위 칸(조건 없는 기본 템플릿)은 어느 조건도 안 맞을 때의 보험으로 남겨두면 좋다.'));
+      const conditionalList = h('div', { class: 'sce-status-conditional-list' });
       ui.templates.forEach((t, i) => {
-        templateBox.appendChild(h('div', { class: 'sce-block' },
-          h('div', { class: 'sce-row' },
-            pair('id', bindInput(t.id, (x) => { t.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: 'estate' }),
-              'CSS 격리에 쓰이는 이름 — 영문·숫자·_만'),
+        conditionalList.appendChild(h('div', { class: 'sce-status-conditional-card' },
+          h('div', { class: 'sce-status-conditional-head' },
+            pair('템플릿 ID', bindInput(t.id, (x) => { t.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: 'estate' }),
+              '영문·숫자·_만'),
             pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
-              { cls: 'sce-w-l', ph: '(비우면 항상 — 맨 뒤에 두세요) mode == "영지"' })),
+              { cls: 'sce-w-l', ph: '예: mode == "영지" · 비우면 항상 표시' })),
             grip(ui.templates, i, rerender),
           ),
           bindArea(t.template, (x) => { t.template = x; rerender(); },
             '<style>.ledger{...}</style>\n<div class="ledger">{gold}G</div>'),
         ));
       });
-      templateBox.appendChild(addBtn('조건부 템플릿 추가', () => {
-        ui.templates.push({ id: 'tpl' + (ui.templates.length + 1), when: '', template: '' });
-        rerender();
-      }));
+      const conditionalStep = h('section', { class: 'sce-status-template-step' },
+        templateStepHead(3, '조건에 따라 템플릿 바꾸기',
+          '한 봇에서 영지 운영·전투처럼 화면 구성이 완전히 달라질 때만 추가해요. 위 기본 템플릿은 어떤 조건도 맞지 않을 때 사용됩니다.'),
+        conditionalList,
+        addBtn('조건부 템플릿 추가', () => {
+          ui.templates.push({ id: 'tpl' + (ui.templates.length + 1), when: '', template: '' });
+          rerender();
+        }));
+      if (!ui.templates.length) conditionalList.appendChild(h('div', { class: 'sce-hint' },
+        '조건부 템플릿이 없어요. 한 가지 화면만 쓴다면 추가하지 않아도 됩니다.'));
+      templateBox.appendChild(conditionalStep);
       wrap.appendChild(templateBox);
     } else {
 
+    // 아직 상태창에 없는 변수·파생은 빈 상태와 빠른 구성에서 같은 계산을 쓴다.
+    const usedStatusIds = new Set(ui.groups.flatMap((g2) => (g2.items || []).map((it) => it.var)));
+    const missingStatusItems = [
+      ...schema.vars.filter((v) => !usedStatusIds.has(v.id)),
+      ...schema.derived.filter((d) => !usedStatusIds.has(d.id)).map((d) => ({ ...d, _derived: true })),
+    ];
+    const makeStatusItem = (v) => {
+      const item = { var: v.id };
+      if (!v._derived && (v.type === 'int' || v.type === 'float') && v.min != null && v.max != null) {
+        item.bar = { max: v.max };
+      }
+      return item;
+    };
+    const addStatusGroup = () => { ui.groups.push({ label: '', items: [] }); rerender(); };
+    const placeMissingStatusItems = () => {
+      if (!missingStatusItems.length) return;
+      let target = ui.groups[ui.groups.length - 1];
+      if (!target) { target = { label: '상태', items: [] }; ui.groups.push(target); }
+      target.items = target.items || [];
+      for (const v of missingStatusItems) target.items.push(makeStatusItem(v));
+      rerender();
+    };
+    const groupActions = h('div', { class: 'sce-status-section-actions' },
+      h('span', { class: 'sce-status-count' }, `그룹 ${ui.groups.length}개`));
+    if (ui.groups.length) {
+      const allGroupsCollapsed = ui.groups.every((group) => collapsedStatusGroups.has(group));
+      const allGroupsExpanded = ui.groups.every((group) => !collapsedStatusGroups.has(group));
+      groupActions.appendChild(h('button', { class: 'sce-btn sce-mini', disabled: allGroupsCollapsed || undefined,
+        onclick: () => {
+          ui.groups.forEach((group) => collapsedStatusGroups.add(group)); rerender();
+        } }, '전체 접기'));
+      groupActions.appendChild(h('button', { class: 'sce-btn sce-mini', disabled: allGroupsExpanded || undefined,
+        onclick: () => {
+          ui.groups.forEach((group) => collapsedStatusGroups.delete(group)); rerender();
+        } }, '전체 펼치기'));
+      groupActions.appendChild(h('button', { class: 'sce-btn sce-mini sce-status-primary', onclick: addStatusGroup },
+        '+ 그룹 추가'));
+    }
     const groupsHead = h('div', { class: 'sce-status-section-head' },
       h('div', {},
-        h('h4', {}, '표시 그룹'),
-        h('p', {}, '관련된 값을 묶고, 플레이어가 읽을 순서대로 정리해요.')),
-      h('div', { class: 'sce-status-section-actions' },
-        h('span', { class: 'sce-status-count' }, `${ui.groups.length}개`),
-        h('button', { class: 'sce-btn sce-mini', onclick: () => {
-          ui.groups.forEach((group) => collapsedStatusGroups.add(group)); rerender();
-        } }, '모두 접기'),
-        h('button', { class: 'sce-btn sce-mini', onclick: () => {
-          ui.groups.forEach((group) => collapsedStatusGroups.delete(group)); rerender();
-        } }, '모두 펼치기'),
-        h('button', { class: 'sce-btn sce-mini', onclick: () => {
-          ui.groups.push({ label: '', items: [] }); rerender();
-        } }, '+ 그룹 추가')));
+        h('h4', {}, '상태창 그룹과 항목'),
+        h('p', {}, '채팅에 보일 순서입니다. 그룹과 항목을 끌어 옮길 수 있습니다.')),
+      groupActions);
     wrap.appendChild(groupsHead);
     const groupsList = h('div', { class: 'sce-status-groups' });
     ui.groups.forEach((g, gi) => {
@@ -4180,7 +6818,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const groupLabel = g.label || '이름 없는 그룹';
       const groupDragHandle = statusDragHandle(g, ui.groups, groupLabel);
       const block = h('section', { class: `sce-status-group sce-status-draggable${collapsed ? ' is-collapsed' : ''}`
-        + (groupMoveFeedback ? ` is-just-moved moved-${groupMoveFeedback.kind}` : '') });
+        + (groupMoveFeedback ? ` is-just-moved moved-${groupMoveFeedback.kind}` : ''),
+        'data-sce-validation-path': `$.statusUI.groups[${gi}]` });
       const body = h('div', { class: 'sce-status-group-body' });
       const toggle = h('button', { class: 'sce-btn sce-mini', onclick: () => {
         if (collapsedStatusGroups.has(g)) collapsedStatusGroups.delete(g);
@@ -4226,11 +6865,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               }))));
         }
         const items = h('div', { class: 'sce-status-items' });
-        if (g.items.length) {
-          items.appendChild(h('div', { class: 'sce-status-item-head' },
-            h('span', {}, '표시할 값'), h('span', {}, '게이지'), h('span', {}, '표시 조건'),
-            h('span', {}, '게이지 최대값'), h('span', {}, '순서')));
-        } else {
+        if (!g.items.length) {
           items.appendChild(h('div', { class: 'sce-status-empty' },
             '아직 표시할 값이 없어요. 아래에서 항목을 추가하세요.'));
         }
@@ -4239,19 +6874,61 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           if (itemMoveFeedback) statusMoveFeedback = null;
           const itemLabel = allIds.find(([id]) => id === it.var)?.[1] || it.var || '상태창 항목';
           const itemDragHandle = statusDragHandle(it, g.items, itemLabel);
-          const row = h('div', { class: 'sce-status-item sce-status-draggable'
-            + (itemMoveFeedback ? ` is-just-moved moved-${itemMoveFeedback.kind}` : '') },
-            h('div', { class: 'sce-status-value-control' }, itemDragHandle,
+          const descriptor = statusItemDef(it.var);
+          const meta = statusItemMeta(descriptor);
+          const previewValue = statusItemValue(it.var);
+          const previewText = statusItemPreviewText(it, descriptor, previewValue);
+          const previewPercent = it.bar ? statusItemGaugePercent(it, descriptor, previewValue) : null;
+          const itemPath = `$.statusUI.groups[${gi}].items[${ii}]`;
+          const itemIssues = statusValidation.errors.filter((e) => e.path === itemPath || e.path.startsWith(itemPath + '.'));
+          const configuredAdvanced = !!(it.showWhen || it.color);
+          const advancedOpen = !!itemIssues.length || expandedStatusItemOptions.has(it)
+            || (configuredAdvanced && !collapsedStatusItemOptions.has(it));
+          const toggleAdvanced = () => {
+            if (advancedOpen) {
+              expandedStatusItemOptions.delete(it);
+              collapsedStatusItemOptions.add(it);
+            } else {
+              collapsedStatusItemOptions.delete(it);
+              expandedStatusItemOptions.add(it);
+            }
+            rerender();
+          };
+          const valueControl = h('div', { class: 'sce-status-value-control' }, itemDragHandle,
+              h('span', { class: 'sce-status-item-index' }, String(ii + 1).padStart(2, '0')),
               bindSelect(it.var, allIds.length ? allIds : [['', '(변수 없음)']],
-                (x) => { it.var = x; rerender(); })),
+                (x) => { it.var = x; rerender(); }));
+          const preview = h('div', { class: 'sce-status-item-preview' },
+            h('span', {}, '미리보기'), h('strong', { title: previewText }, previewText));
+          if (it.bar) preview.appendChild(h('span', { class: 'sce-status-item-preview-gauge' },
+            h('span', { class: 'sce-status-item-preview-bar' },
+              h('i', { style: `width:${previewPercent ?? 50}%` })),
+            h('b', { class: 'sce-status-item-preview-percent' },
+              previewPercent == null ? '계산 불가' : `${Math.round(previewPercent)}%`)));
+          const actions = h('span', { class: 'sce-status-item-actions' },
+            h('button', { class: `sce-btn sce-mini sce-status-item-options-toggle${advancedOpen ? ' on' : ''}`,
+              'aria-expanded': String(advancedOpen), onclick: toggleAdvanced }, advancedOpen ? '조건·색상 닫기' : '조건·색상'),
+            itemMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
+              `✓ ${itemMoveFeedback.position}번째로 이동`) : null,
+            grip(g.items, ii, rerender, null, (movedItem, nextIndex, direction) => {
+              statusMoveFeedback = {
+                item: movedItem,
+                position: nextIndex + 1,
+                kind: direction < 0 ? 'up' : 'down',
+              };
+            }));
+          const main = h('div', { class: 'sce-status-item-main' }, valueControl,
+            h('div', { class: 'sce-status-item-meta' }, ...meta.map((text) => h('span', {}, text))),
+            preview, actions);
+          const gauge = h('div', { class: 'sce-status-item-gauge' },
+            h('span', { class: 'sce-status-item-gauge-title' }, '게이지'),
             bindCheck(!!it.bar, (x) => {
               if (x) it.bar = it.bar || { max: 100 }; else delete it.bar;
               rerender();
-            }, '사용'),
-            bindInput(it.showWhen, (x) => { it.showWhen = x || undefined; rerender(); },
-              { cls: 'sce-w-m', ph: '항상 표시' }),
-            it.bar
-              ? bindInput(it.bar.max, (x) => {
+            }, '게이지 사용'));
+          if (it.bar) gauge.appendChild(h('label', { class: 'sce-status-item-gauge-max' },
+            h('span', {}, '최대값'),
+            bindInput(it.bar.max, (x) => {
                 it.bar.max = x;
                 // % 기준 위험 전환 색은 최대값을 수식에 품고 있으므로 같이 재생성
                 const spec = parseColorSpec(it.color, it.var);
@@ -4259,24 +6936,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                   it.color = buildColorSpec(spec, it.var, x);
                 }
                 rerender();
-              }, { cls: 'sce-w-m', ph: '100 또는 max_hp' })
-              : h('div', { class: 'sce-status-item-max is-disabled' }, '사용 안 함'),
-            h('span', { class: 'sce-status-item-actions' },
-              itemMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
-                `✓ ${itemMoveFeedback.position}번째로 이동`) : null,
-              grip(g.items, ii, rerender, null, (movedItem, nextIndex, direction) => {
-                statusMoveFeedback = {
-                  item: movedItem,
-                  position: nextIndex + 1,
-                  kind: direction < 0 ? 'up' : 'down',
-                };
-              })),
-          );
+              }, { cls: 'sce-w-m', ph: '100 또는 max_hp' })));
+          const row = h('section', { class: 'sce-status-item sce-status-draggable'
+            + (itemMoveFeedback ? ` is-just-moved moved-${itemMoveFeedback.kind}` : '') },
+            main, h('div', { class: 'sce-status-item-settings' }, gauge));
+          if (advancedOpen) {
+            const conditionField = statusField('표시 조건', bindInput(it.showWhen, (x) => {
+              it.showWhen = x || undefined; rerender();
+            }, { cls: 'sce-w-m', ph: '비우면 항상 표시 · 예: hp < 50' }),
+            '조건이 참일 때만 이 항목을 보여요. 비우면 항상 표시합니다.');
+            const colorPanel = h('div', { class: 'sce-status-item-color-panel' },
+              h('div', { class: 'sce-status-item-color-title' }, '게이지 색상'),
+              it.bar ? colorBuilder(it, it.var, rerender)
+                : h('div', { class: 'sce-status-item-color-copy' }, '게이지를 켜면 기본색·단색·위험 전환을 설정할 수 있어요.'));
+            row.appendChild(h('div', { class: 'sce-status-item-advanced' }, conditionField, colorPanel));
+          }
           statusDragElements.set(it, row);
           finishStatusMoveFeedback(row, itemMoveFeedback);
           items.appendChild(row);
-          if (it.bar) items.appendChild(h('div', { class: 'sce-status-item-color' },
-            colorBuilder(it, it.var, rerender)));
         });
         items.appendChild(h('button', { class: 'sce-btn sce-add sce-status-add-item', onclick: () => {
           g.items.push({ var: schema.vars[0]?.id ?? '' }); rerender();
@@ -4288,8 +6965,23 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       finishStatusMoveFeedback(block, groupMoveFeedback);
       groupsList.appendChild(block);
     });
-    if (!ui.groups.length) groupsList.appendChild(h('div', { class: 'sce-status-empty' },
-      '아직 그룹이 없어요. 위의 [그룹 추가]로 상태창 구성을 시작하세요.'));
+    if (!ui.groups.length) {
+      const emptyActions = h('div', { class: 'sce-status-empty-actions' });
+      if (missingStatusItems.length) {
+        emptyActions.appendChild(h('button', { class: 'sce-btn sce-status-primary', onclick: placeMissingStatusItems },
+          `미배치 변수 ${missingStatusItems.length}개로 첫 그룹 만들기`));
+        emptyActions.appendChild(h('button', { class: 'sce-btn', onclick: addStatusGroup }, '빈 그룹 만들기'));
+      } else {
+        emptyActions.appendChild(h('button', { class: 'sce-btn sce-status-primary', onclick: addStatusGroup },
+          '첫 그룹 만들기'));
+      }
+      groupsList.appendChild(h('section', { class: 'sce-status-empty sce-status-groups-empty' },
+        h('strong', {}, '표시할 그룹이 없습니다.'),
+        h('span', {}, missingStatusItems.length
+          ? `미배치 변수 ${missingStatusItems.length}개를 기본 상태 그룹에 넣어 바로 시작할 수 있습니다.`
+          : '첫 그룹을 만든 뒤 채팅에 표시할 항목을 추가하세요.'),
+        emptyActions));
+    }
     wrap.appendChild(groupsList);
     // 날짜 자리 = 시간 탭으로만 통하는 문 (design-시간.md §결정 1) — day 같은 int 변수를
     // 손으로 만들어 꽂는 길이 열려 있는 한 사람도 AI도 그리로 샌다 (실측 사고 5건 전부 그 길).
@@ -4302,37 +6994,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           '🕐 시간 탭으로')));
     }
 
-    // 자동 배치: 아직 상태창에 없는 변수·파생을 한 번에 채워넣기
-    const usedIds = new Set(ui.groups.flatMap((g2) => (g2.items || []).map((it) => it.var)));
-    const missing = [
-      ...schema.vars.filter((v) => !usedIds.has(v.id)),
-      ...schema.derived.filter((d) => !usedIds.has(d.id)).map((d) => ({ ...d, _derived: true })),
-    ];
-    // 최소·최대가 모두 잡힌 숫자 변수는 게이지 자동 설정
-    const mkItem = (v) => {
-      const item = { var: v.id };
-      if (!v._derived && (v.type === 'int' || v.type === 'float') && v.min != null && v.max != null) {
-        item.bar = { max: v.max };
-      }
-      return item;
-    };
-    const autoBtn = h('button', { class: 'sce-btn sce-add', onclick: () => {
-      if (!missing.length) return;
-      let target = ui.groups[ui.groups.length - 1];
-      if (!target) { target = { label: '상태', items: [] }; ui.groups.push(target); }
-      target.items = target.items || [];
-      for (const v of missing) target.items.push(mkItem(v));
-      rerender();
-    } }, missing.length
-      ? `⚡ 빠진 변수 자동 배치 (${missing.length}개 — 마지막 그룹에 추가)`
-      : '⚡ 자동 배치 — 모든 변수가 이미 배치됨');
-    if (!missing.length) { autoBtn.disabled = true; autoBtn.style.opacity = .45; }
-    const statusTools = h('div', { class: 'sce-status-tools' }, autoBtn);
-
     // 접두사 묶음 배치 — noz_aff·noz_mood처럼 접두사를 공유하는 변수들을 인물·주제별 그룹으로.
     // 다인 봇(입주자 8명 × 수치 6개 = 그룹 8개 손조립)의 노가다를 없앤다.
     const buckets = new Map(); // 접두사 → 변수들
-    for (const v of missing) {
+    for (const v of missingStatusItems) {
       const m = /^([a-zA-Z][a-zA-Z0-9]*)_./.exec(v.id);
       if (!m) continue;
       const key = m[1].toLowerCase();
@@ -4340,26 +7005,41 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       buckets.get(key).push(v);
     }
     for (const [k, arr] of [...buckets]) if (arr.length < 2) buckets.delete(k);
-    if (buckets.size >= 2) {
-      statusTools.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
-        const placed = new Set();
-        for (const [pre, arr] of buckets) {
-          const g = {
-            label: commonLabelPrefix(arr) || pre,
-            visibility: 'collapsed',
-            items: arr.map(mkItem),
-          };
-          for (const v of arr) placed.add(v.id);
-          ui.groups.push(g);
-        }
-        const rest = missing.filter((v) => !placed.has(v.id));
-        if (rest.length) ui.groups.push({ label: '기타', items: rest.map(mkItem) });
-        rerender();
-      } }, `⚡ 접두사로 그룹 묶어 배치 (${buckets.size}묶음 — ${[...buckets.keys()].slice(0, 3).map((k) => k + '_*').join(', ')}${buckets.size > 3 ? ' …' : ''})`));
-      statusTools.appendChild(h('div', { class: 'sce-status-note' },
-        '같은 접두사를 쓰는 변수들을 별도 그룹으로 묶어요.'));
+    if (missingStatusItems.length) {
+      const statusToolsActions = h('div', { class: 'sce-status-tools-actions' });
+      if (ui.groups.length) {
+        statusToolsActions.appendChild(h('button', { class: 'sce-btn', onclick: placeMissingStatusItems },
+          `마지막 그룹에 ${missingStatusItems.length}개 배치`));
+      }
+      if (buckets.size >= 2) {
+        statusToolsActions.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+          const placed = new Set();
+          for (const [pre, arr] of buckets) {
+            const g = {
+              label: commonLabelPrefix(arr) || pre,
+              visibility: 'collapsed',
+              items: arr.map(makeStatusItem),
+            };
+            for (const v of arr) placed.add(v.id);
+            ui.groups.push(g);
+          }
+          const rest = missingStatusItems.filter((v) => !placed.has(v.id));
+          if (rest.length) ui.groups.push({ label: '기타', items: rest.map(makeStatusItem) });
+          rerender();
+        } }, `접두사별 그룹 만들기 (${buckets.size}묶음)`));
+      }
+      if (ui.groups.length || buckets.size >= 2) {
+        wrap.appendChild(h('section', { class: 'sce-status-tools' },
+          h('div', { class: 'sce-status-tools-copy' },
+            h('strong', {}, ui.groups.length
+              ? `미배치 변수 ${missingStatusItems.length}개`
+              : `접두사 묶음 ${buckets.size}개`),
+            h('span', {}, ui.groups.length
+              ? '아직 어떤 그룹에도 들어가지 않았습니다.'
+              : '같은 접두사의 변수를 그룹별로 나눠 배치할 수 있습니다.')),
+          statusToolsActions));
+      }
     }
-    wrap.appendChild(statusTools);
     // 🤖 구조 창구 — "무엇을 보여줄까". 아래 꾸미기 창구와 짝이다.
     // 템플릿 모드에서는 그룹이 그려지지 않으므로 자동 구성일 때만 띄운다 (만들어도 안 보이면 사고다).
     wrap.appendChild(tabAiTools('status'));
@@ -4422,9 +7102,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('div', { class: 'sce-editor-section-head' }, h('div', {},
       h('div', { class: 'sce-editor-section-title' }, '🎨 꾸미기도 AI에게 맡기기'),
       h('div', { class: 'sce-editor-section-copy' },
-        '구조 창구가 무엇을 보여줄지(그룹·항목)를 만든다면, 이쪽은 어떻게 보일지를 만들어요. '
-        + '[스킨만]은 아래 커스텀 CSS 칸을 채우고, [배치까지]는 커스텀 HTML 템플릿을 통째로 짜 넣습니다. '
-        + '배치까지 맡기면 표시 방식이 커스텀으로 바뀌어 그룹 목록 대신 그 템플릿이 그려져요.'))));
+        '상태창의 색과 글꼴만 바꾸거나, 항목 배치까지 새로 만들 수 있어요. 범위를 고른 뒤 원하는 분위기를 적어 주세요.'))));
     wrap.appendChild(cssAiTools());
 
     designBody.appendChild(h('h4', {}, '커스텀 CSS'));
@@ -4435,11 +7113,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     design.appendChild(designBody);
     wrap.appendChild(design);
 
-    // 미리보기 — 1층 결과 창구와 같은 렌더러 (uid만 다르게, 접기 상태가 서로를 건드리면 안 된다)
-    wrap.appendChild(h('section', { class: 'sce-status-preview' },
-      h('h4', {}, '미리보기'),
-      h('div', { class: 'sce-status-note' }, '현재 시작값을 기준으로 보여요.'),
-      statusPreviewEl('pv')));
     return wrap;
   }
 
@@ -4609,34 +7282,60 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function featureBox() {
-    const wrap = h('div', { class: 'sce-block' });
-    wrap.appendChild(h('h4', {}, '🧩 기능 추가 — 굴러가는 봇에 서브시스템 하나 얹기'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '고정된 조각을 밀어 넣는 게 아닙니다 — **이 봇의 변수를 보고** AI가 그 자리에 맞게 만듭니다. '
-      + '만드는 절의 규격서와 변수 계약이 그대로 나가고, 넣기 전에 사라지는 것을 보여주는 확인도 똑같이 붙습니다.'));
+    const wrap = h('div', { class: 'sce-block sce-feature-box' });
+    wrap.appendChild(h('div', { class: 'sce-feature-head' },
+      h('div', {},
+        h('h4', { class: 'sce-feature-title' }, '빠른 기능 추가'),
+        h('div', { class: 'sce-feature-copy' },
+          '기능을 고르면 현재 작업본을 살펴보고 필요한 변수와 규칙을 단계별로 만들어요. '
+          + '적용하기 전에는 바뀌거나 사라질 항목을 먼저 보여줘요.'))));
 
     if (!ai || !ai.generate) {
       wrap.appendChild(h('div', { class: 'sce-hint' },
-        '이 환경은 플러그인에서 LLM을 직접 못 부릅니다 — 🧰 세부 편집기의 각 탭에서 '
-        + '[📤 규격 내보내기]로 복사해 웹 AI에게 주세요. 나오는 요청서는 카드가 쓰는 것과 같습니다.'));
+        '이 환경에서는 플러그인이 AI를 직접 부를 수 없어요. '
+        + '🧰 세부 편집기의 각 탭에서 [규격 내보내기]를 눌러 요청서를 복사한 뒤 웹 AI에 붙여 넣어 주세요.'));
       return wrap;
     }
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      bindInput(featureWant, (x) => { featureWant = x; },
-        { cls: 'sce-w-l', ph: '(선택) 덧붙일 요구 — 예: 판타지 분위기로 / 인물 이름은 히로미로' })));
-
+    const list = h('div', { class: 'sce-feature-list' });
     for (const r of FEATURE_RECIPES) {
       let blocked = null;
       try { blocked = r.needs(schema); } catch { blocked = null; }
-      const btn = h('button', { class: 'sce-btn sce-add', style: 'width:auto',
-        onclick: () => { if (!blocked) runFeature(r, 0); } }, `${r.icon} ${r.label}`);
-      if (blocked || tabGen.busy) { btn.disabled = true; btn.style.opacity = .45; }
-      wrap.appendChild(h('div', { class: 'sce-row' }, btn,
-        h('span', { class: 'sce-hint', style: 'margin:0' },
-          blocked ? `⛔ ${blocked}`
-            : r.desc + (r.steps.length > 1 ? ` · ${r.steps.length}단계` : ''))));
+
+      const btn = h('button', {
+        class: 'sce-feature-button',
+        onclick: () => { if (!blocked) runFeature(r, 0); },
+      },
+        h('span', { class: 'sce-feature-icon', 'aria-hidden': 'true' }, r.icon),
+        h('span', {}, r.label),
+      );
+      if (blocked || tabGen.busy) btn.disabled = true;
+
+      const meta = h('span', { class: 'sce-feature-meta' });
+      if (r.steps.length > 1) {
+        meta.appendChild(h('span', { class: 'sce-feature-step' }, `${r.steps.length}단계`));
+      }
+      if (blocked) {
+        meta.appendChild(h('span', {
+          class: 'sce-feature-alert', title: blocked, 'aria-label': '먼저 준비할 항목이 있어요',
+        }, '!'));
+      }
+
+      list.appendChild(h('div', {
+        class: `sce-feature-item${blocked ? ' is-blocked' : ''}`,
+      },
+        btn,
+        h('span', { class: `sce-feature-status${blocked ? ' is-blocked' : ''}` },
+          blocked ? blocked : r.desc),
+        meta,
+      ));
     }
+    wrap.appendChild(list);
+
+    wrap.appendChild(h('div', { class: 'sce-feature-request' },
+      h('div', { class: 'sce-field-label' }, '선택한 기능에 덧붙일 조건 (선택)'),
+      bindInput(featureWant, (x) => { featureWant = x; },
+        { cls: 'sce-w-l', ph: '예: 판타지 분위기로, 인물 이름은 히로미로' })));
 
     // 진행 중인 기능 — 단계 표시 + 결과(계획 확인·되돌리기) + 다음 단계
     if (featureRun) {
@@ -4646,10 +7345,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(h('h4', {},
         `${fr.icon} ${fr.label} — ${fr.step + 1}/${fr.total}단계 · ${TAB_SLICES[fr.tab].label}`));
       if (tabGen.busy && tabGen.key === fr.tab) {
-        box.appendChild(h('div', { class: 'sce-hint' }, '⏳ 만드는 중… (수십 초 걸릴 수 있음)'));
+        box.appendChild(h('div', { class: 'sce-hint' }, '⏳ 만드는 중이에요. 조금 걸릴 수 있어요.'));
       }
       box.appendChild(tabResultEl(fr.tab));
-      // 앞 단계가 들어간 뒤에야 다음으로 간다 — 확인 대기 중이면 다음 버튼을 안 띄운다
       const settled = !tabGen.busy && !tabPending && tabUndo && tabUndo.tabKey === fr.tab;
       if (settled && r && fr.step + 1 < fr.total) {
         const nx = r.steps[fr.step + 1];
@@ -4658,14 +7356,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             onclick: () => runFeature(r, fr.step + 1) },
           `▶ 다음 — ${fr.step + 2}/${fr.total} ${TAB_SLICES[nx.tab].label}`),
           h('span', { class: 'sce-hint', style: 'margin:0' },
-            '앞 단계가 만든 것을 보고 다음 절을 만듭니다 — 한꺼번에 시키면 없는 이름을 지어냅니다.')));
+            '앞 단계에서 만든 내용을 확인한 다음, 그 결과를 바탕으로 다음 단계를 만들어요.')));
       } else if (settled) {
         box.appendChild(h('div', { class: 'sce-hint' },
-          `✅ ${fr.label} 완료. 🔬 진단으로 한 번 굴려 보세요 — 새로 생긴 수치가 상태창에 안 보이면 `
-          + '🧰 세부 편집기의 [상태창] 탭에서 배치하면 됩니다.'));
+          `✅ ${fr.label} 만들기가 끝났어요. 🔬 진단에서 한 번 굴려 보세요. `
+          + '새 수치가 상태창에 보이지 않으면 🧰 세부 편집기의 [상태창] 탭에서 배치하면 돼요.'));
       }
       box.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn sce-mini', onclick: () => { featureRun = null; rerender(); } }, '닫기')));
+        h('button', { class: 'sce-btn sce-mini',
+          onclick: () => { featureRun = null; rerender(); } }, '닫기')));
       wrap.appendChild(box);
     }
     return wrap;
@@ -4834,23 +7533,23 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       `· [${SRC(String(c.source ?? '?'))}] ${nameOf(c.id)}: ${fmt(c.from)} → `, h('b', {}, fmt(c.to)));
 
     const wrap = h('div', { class: 'sce-block sce-trial' });
-    wrap.appendChild(h('h4', {}, '🧪 1턴 시험 실행'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '채팅 없이 시스템만 한 턴 굴려 봅니다 — 액션 효과 → 판정 → 시간 진행 → 정기 틱 → 조건 이벤트 → 랜덤 이벤트 순서 그대로. '
-      + '보조 AI가 서사에서 적어 올 변화는 없는 시스템 축 전용 시뮬입니다.'));
+    wrap.appendChild(h('h4', {}, '🧪 1턴 시험'));
+    wrap.appendChild(h('div', { class: 'sce-hint sce-trial-copy' },
+      h('div', {}, '채팅을 보내지 않고 현재 규칙만 한 턴 시험해요. 행동 효과 → 판정 → 시간 → 정기 틱 → 조건 이벤트 → 랜덤 이벤트 순서로 실제 엔진과 똑같이 계산해요.'),
+      h('div', {}, '보조 AI가 장면을 읽고 바꾸는 값은 이 시험에 포함하지 않아요.')));
     wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('시작', bindSelect(trial.preset,
+      pair('시작 상태', bindSelect(trial.preset,
         [['', '기본 시작값'], ...(schema.setup?.presets ?? []).map((p) => [p.id, p.label || p.id])],
         (x) => { trial.preset = x; })),
-      pair('액션', bindSelect(trial.action,
+      pair('행동', bindSelect(trial.action,
         [['', '(액션 없이)'], ...(schema.actions ?? []).map((a) => [a.id, a.label ?? a.id])],
-        (x) => { trial.action = x; }), '고르면 무장된 채로 턴이 시작됩니다'),
-      pair('시드', bindInput(trial.seed, (x) => { trial.seed = x; }, { cls: 'sce-w-s', ph: '1' }),
-        '랜덤 굴림 고정용 — 같은 시드는 같은 운'),
-      h('button', { class: 'sce-btn', onclick: runTrial }, '▶ 실행'),
+        (x) => { trial.action = x; }), '고르면 이 행동을 준비한 채로 턴이 시작돼요'),
+      pair('랜덤 시드', bindInput(trial.seed, (x) => { trial.seed = x; }, { cls: 'sce-w-s', ph: '1' }),
+        '같은 시드를 쓰면 같은 랜덤 결과가 나와요.'),
+      h('button', { class: 'sce-btn', onclick: runTrial }, '▶ 시험 실행'),
       trial.result ? h('button', { class: 'sce-btn sce-mini', onclick: () => {
         trial.seed = String((parseInt(trial.seed, 10) || 0) + 1); runTrial();
-      } }, '🎲 다른 운으로') : null,
+      } }, '🎲 다른 결과로 다시') : null,
     ));
     const r = trial.result;
     if (!r) return wrap;
@@ -4859,11 +7558,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return wrap;
     }
     const box = h('div', { class: 'sce-preset-preview' });
-    if (r.blocked) box.appendChild(h('div', { class: 'sce-ref-line' }, `⚠ 액션 무장 실패: ${r.blocked} — 액션 없이 진행했습니다`));
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 전송 단계 (장면이 쓰이기 전)'));
+    if (r.blocked) box.appendChild(h('div', { class: 'sce-ref-line' }, `⚠ 행동 준비 실패: ${r.blocked} — 액션 없이 진행했습니다`));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 전송 단계 · 장면이 쓰이기 전'));
     if (r.send.changeLog.length) r.send.changeLog.forEach((c) => box.appendChild(logLine(c)));
     else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 응답 단계 (장면이 끝난 뒤)'));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 응답 단계 · 장면이 끝난 뒤'));
     if (r.out.changeLog.length) r.out.changeLog.forEach((c) => box.appendChild(logLine(c)));
     else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
     if (r.out.firedEvents?.length) {
@@ -4872,10 +7571,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const notifies = r.out.state.meta?.pendingNotifies ?? [];
     if (notifies.length) {
-      box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 다음 턴 AI에게 갈 통지'));
+      box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 다음 턴 AI에게 전달할 내용'));
       notifies.forEach((n) => box.appendChild(h('div', { class: 'sce-ref-line' }, `· ${n}`)));
     }
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 최종 변경값 (턴 시작 대비)'));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 최종 변경값 · 시작값과 비교'));
     const changedIds = schema.vars.filter((v) => JSON.stringify(r.before[v.id]) !== JSON.stringify(r.out.state.vars[v.id]));
     if (changedIds.length) changedIds.forEach((v) => box.appendChild(h('div', { class: 'sce-ref-line' },
       `· ${v.label ?? v.id}: ${fmt(r.before[v.id])} → `, h('b', {}, fmt(r.out.state.vars[v.id])))));
@@ -4885,67 +7584,323 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function tabRules() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('rules'));
-
-    // 리롤 안정 난수 (v0.80에 칸이 생김 — 배선은 처음부터 있었다). 규칙 #3의 재발이었다:
-    // 스키마 키만 있고 칸이 없어서, "리롤해도 랜덤이 똑같다"를 버그로 겪고도 끌 방법이 없었다.
-    wrap.appendChild(h('h4', {}, '난수'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      bindCheck(schema.rerollStableRng !== false,
-        (on) => { schema.rerollStableRng = on ? undefined : false; rerender(); },
-        '리롤 안정 (기본 켜짐)')));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      schema.rerollStableRng === false
-        ? '**꺼짐** — 리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다. 마음에 안 드는 결과를 '
-          + '다시 굴릴 수 있는 대신, 같은 지점에서 계속 굴려 원하는 결과를 뽑아낼 수도 있습니다.'
-        : '**켜짐** — 같은 지점에서 리롤하면 랜덤 이벤트·판정이 같은 눈으로 나옵니다. 서사 표현만 '
-          + '다시 뽑고 결과는 못 바꾸게 하는 설정이라, TRPG·생존물처럼 판정이 무거운 봇에 맞습니다. '
-          + '"리롤해도 변수가 그대로다"가 불편하면 끄세요.'));
-
-    wrap.appendChild(h('h4', {}, '매 턴 자동 처리 (수입·소비 같은 정기 틱)'));
-    wrap.appendChild(effectRows(schema, schema.rules.onTurn, rerender));
-
-    wrap.appendChild(h('h4', {}, '상태 지시문 — 조건을 만족하는 동안 매 턴 AI에게 전달'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '이벤트(발동 순간 1회 통지)와 달리, 조건이 참인 동안 계속 주입되는 지시/정보. ' +
-      '예: 호감도 30 미만이면 "차갑게 대하라", 허기 20 이하면 "매우 배가 고픈 상태다". {변수id}로 값 삽입 가능.'));
-    schema.directives.forEach((d, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          bindInput(d.id, (x) => { d.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '지시문id' }),
-          pair('조건', bindInput(d.when, (x) => { d.when = x; rerender(); }, { cls: 'sce-w-l', ph: 'affection < 30 / hunger <= 20' })),
-          grip(schema.directives, i, rerender),
-        ),
-        bindArea(d.text, (x) => { d.text = x; rerender(); },
-          '예: {{char}}는 아직 마음을 열지 않았다. 차갑고 퉁명스럽게 대하라. (현재 호감도 {affection})'),
-      ));
-    });
-    wrap.appendChild(addBtn('상태 지시문', () => {
-      schema.directives.push({ id: 'directive' + (schema.directives.length + 1), when: '', text: '' });
-      rerender();
-    }));
-
-    wrap.appendChild(h('h4', {}, '조건 이벤트 (조건을 만족하면 자동 발동)'));
-    schema.rules.events.forEach((ev, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '이벤트id' }),
-          pair('조건', bindInput(ev.when, (x) => { ev.when = x; rerender(); }, { cls: 'sce-w-l', ph: 'food <= 0 and not famine' })),
-          bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
-          grip(schema.rules.events, i, rerender),
-        ),
-        effectRows(schema, ev.effects = ev.effects || [], rerender),
-        h('div', { class: 'sce-row' },
-          pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '다음 턴에 AI에게 전달될 서술 (예: 기근이 시작되었다...)' })),
-        ),
-        choiceEditor(ev),
-      ));
-    });
-    wrap.appendChild(addBtn('조건 이벤트', () => { schema.rules.events.push({ id: 'event' + (schema.rules.events.length + 1), when: '', effects: [] }); rerender(); }));
-
+    const wrap = h('div', { class: 'sce-rules-editor' });
     const re = schema.rules.randomEvents;
-    wrap.appendChild(h('h4', {}, '랜덤 이벤트'));
+    const ruleIcon = (kind) => {
+      const d = {
+        up: 'M18 15l-6-6-6 6',
+        down: 'M6 9l6 6 6-6',
+        trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5',
+        collapse: 'M6 9l6 6 6-6',
+      }[kind];
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('class', 'sce-rules-icon');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('focusable', 'false');
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+      return svg;
+    };
+    const ruleIconButton = (kind, title, onclick, disabled = false, active = false) => {
+      const glyph = { up: '▲', down: '▼', trash: '×' }[kind] || '';
+      const b = h('button', {
+        type: 'button',
+        class: `sce-rules-icon-btn is-${kind}${active ? ' is-active' : ''}`,
+        title, 'aria-label': title, onclick,
+      }, glyph);
+      b.disabled = disabled;
+      return b;
+    };
+    const ruleGrip = (list, i) => {
+      const move = (d) => {
+        const j = i + d;
+        if (j < 0 || j >= list.length) return;
+        [list[i], list[j]] = [list[j], list[i]];
+        rerender();
+      };
+      return h('span', { class: 'sce-rules-grip' },
+        ruleIconButton('up', '위로 이동', () => move(-1), i === 0),
+        ruleIconButton('down', '아래로 이동', () => move(1), i === list.length - 1),
+        ruleIconButton('trash', '삭제', () => { list.splice(i, 1); rerender(); }),
+      );
+    };
+    const ruleEffectRows = (effects) => {
+      const box = h('div', { class: 'sce-sub sce-rules-effect-rows' });
+      const nonListVars = schema.vars.filter((v) => v.type !== 'list');
+      const listVars = schema.vars.filter((v) => v.type === 'list');
+      const varOpts = nonListVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+      const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+
+      effects.forEach((ef, i) => {
+        if (ef.list !== undefined) {
+          box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
+            h('span', { class: 'sce-rules-effect-var' },
+              bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']],
+                (v) => { ef.list = v; rerender(); })),
+            h('span', { class: 'sce-rules-effect-list-fields' },
+              pair('추가', bindInput((ef.add || []).join(', '), (x) => {
+                ef.add = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
+              }, { cls: 'sce-w-m', ph: '회복약' })),
+              pair('제거', bindInput((ef.remove || []).join(', '), (x) => {
+                ef.remove = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
+              }, { cls: 'sce-w-m', ph: '녹슨 검' }))),
+            ruleGrip(effects, i),
+          ));
+          return;
+        }
+
+        box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row' },
+          h('span', { class: 'sce-rules-effect-var' },
+            bindSelect(ef.set, varOpts.length ? varOpts : [['', '(변수 없음)']],
+              (v) => { ef.set = v; rerender(); })),
+          h('span', { class: 'sce-rules-eq', 'aria-hidden': 'true' }, '='),
+          h('span', { class: 'sce-rules-effect-expr' },
+            bindInput(ef.expr, (v) => { ef.expr = v; rerender(); },
+              { cls: 'sce-w-l', ph: '수식 예: gold + 100, loyalty - 5' })),
+          ruleGrip(effects, i),
+        ));
+      });
+
+      const btnRow = h('div', { class: 'sce-row sce-rules-effect-add' });
+      btnRow.appendChild(h('button', {
+        class: 'sce-btn sce-add', style: 'flex:1',
+        onclick: () => {
+          effects.push({ set: nonListVars[0]?.id ?? '', expr: '' });
+          rerender();
+        },
+      }, '+ 수치 효과'));
+      if (listVars.length) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => {
+            effects.push({ list: listVars[0].id, add: [], remove: [] });
+            rerender();
+          },
+        }, '+ 아이템 효과'));
+      }
+      box.appendChild(btnRow);
+      return box;
+    };
+
+    const field = (label, control, help = '', extra = '') => h('label',
+      { class: `sce-rules-field${extra ? ` ${extra}` : ''}` },
+      h('span', {}, label),
+      control,
+      help ? h('small', {}, help) : null,
+    );
+    const badge = (cls, label, value) => h('span',
+      { class: `sce-rules-count ${cls}` },
+      h('b', {}, label),
+      h('em', {}, String(value)),
+    );
+    const section = (step, title, copy, ...children) => h('section',
+      { class: 'sce-rules-section' },
+      h('div', { class: 'sce-rules-rail' },
+        h('div', { class: 'sce-rules-step' }, step),
+        h('div', { class: 'sce-rules-rail-title' }, title),
+        copy ? h('div', { class: 'sce-rules-rail-copy' }, copy) : null,
+      ),
+      h('div', { class: 'sce-rules-section-body' }, ...children),
+    );
+    const panel = (cls, title, copy, ...children) => h('div',
+      { class: `sce-rules-panel ${cls || ''}`.trim() },
+      h('div', { class: 'sce-rules-panel-head' },
+        h('strong', {}, title),
+        copy ? h('span', {}, copy) : null,
+      ),
+      h('div', { class: 'sce-rules-panel-body' }, ...children),
+    );
+
+    wrap.appendChild(h('header', { class: 'sce-rules-head' },
+      h('div', {},
+        h('h3', {}, '규칙 · 이벤트'),
+        h('p', {}, '매 턴 처리, 조건 지시, 자동 이벤트와 랜덤 사건을 한 흐름에서 관리해요.'),
+      ),
+      h('div', { class: 'sce-rules-counts', 'aria-label': '규칙 구성 요약' },
+        badge('is-tick', '정기 틱', schema.rules.onTurn.length),
+        badge('is-directive', '지시문', schema.directives.length),
+        badge('is-event', '조건 이벤트', schema.rules.events.length),
+        badge('is-random', '랜덤', re.table.length),
+      ),
+    ));
+
+    const rerollPanel = panel(
+      'is-reroll',
+      '리롤 안정 난수',
+      '같은 지점에서 리롤했을 때 같은 결과를 유지할지 정해요.',
+      h('div', { class: 'sce-rules-toggle-row' },
+        bindCheck(schema.rerollStableRng !== false,
+          (on) => { schema.rerollStableRng = on ? undefined : false; rerender(); },
+          '리롤 안정 (기본 켜짐)'),
+      ),
+      h('div', { class: `sce-rules-state${schema.rerollStableRng === false ? ' is-warning' : ''}` },
+        schema.rerollStableRng === false
+          ? '꺼짐 — 리롤할 때마다 랜덤 이벤트·판정이 새로 굴러갑니다.'
+          : '켜짐 — 같은 지점에서는 같은 눈을 유지하고 서사 표현만 다시 뽑습니다.'),
+    );
+
+    const tickPanel = panel(
+      'is-ticks',
+      '매 턴 자동 처리',
+      '수입·소비·회복처럼 매 턴 반복되는 시스템 효과예요.',
+      h('div', { class: 'sce-rules-ticks' },
+        ruleEffectRows(schema.rules.onTurn)),
+    );
+
+    wrap.appendChild(section(
+      '01',
+      '기본 실행 규칙',
+      '판의 랜덤성과 매 턴 반복 처리를 먼저 정해요. 두 설정은 서로 독립적으로 움직여요.',
+      h('div', { class: 'sce-rules-primary-grid' }, rerollPanel, tickPanel),
+    ));
+
+    const directivesList = h('div', { class: 'sce-rules-list' });
+    if (schema.directives.length) {
+      directivesList.appendChild(h('div', { class: 'sce-rules-bulk' },
+        h('span', { class: 'sce-rules-bulk-copy' }, `상태 지시문 ${schema.directives.length}개`),
+        h('div', { class: 'sce-rules-bulk-actions' },
+          h('button', {
+            type: 'button', class: 'sce-btn sce-mini',
+            onclick: () => {
+              for (const item of schema.directives) collapsedRuleDirectives.add(item);
+              rerender();
+            },
+          }, '전체 접기'),
+          h('button', {
+            type: 'button', class: 'sce-btn sce-mini',
+            onclick: () => {
+              for (const item of schema.directives) collapsedRuleDirectives.delete(item);
+              rerender();
+            },
+          }, '전체 펼치기'))));
+    }
+    schema.directives.forEach((d, i) => {
+      const collapsed = collapsedRuleDirectives.has(d);
+      directivesList.appendChild(h('article', {
+        class: `sce-rules-card sce-rules-directive${collapsed ? ' is-collapsed' : ''}`,
+        'data-sce-validation-path': `$.directives[${i}]`,
+      },
+        h('div', { class: 'sce-rules-card-head' },
+          h('button', {
+            type: 'button', class: 'sce-rules-card-summary',
+            'aria-expanded': String(!collapsed),
+            onclick: () => {
+              if (collapsed) collapsedRuleDirectives.delete(d);
+              else collapsedRuleDirectives.add(d);
+              rerender();
+            },
+          },
+            h('span', {},
+              h('strong', {}, d.id || `지시문 ${i + 1}`),
+              h('span', {}, collapsed
+                ? (d.when ? `조건: ${d.when}` : '조건 없이 매 턴 전달')
+                : '조건이 참인 동안 매 턴 AI에게 전달'),
+            ),
+          ),
+          h('div', { class: 'sce-rules-card-actions' },
+            h('button', {
+              type: 'button',
+              class: 'sce-btn sce-mini sce-rules-collapse-btn',
+              onclick: (event) => {
+                event.stopPropagation();
+                if (collapsed) collapsedRuleDirectives.delete(d);
+                else collapsedRuleDirectives.add(d);
+                rerender();
+              },
+            }, collapsed ? '펼치기' : '접기'),
+            ruleGrip(schema.directives, i)),
+        ),
+        collapsed ? null : h('div', { class: 'sce-rules-card-body' },
+          h('div', { class: 'sce-rules-field-grid' },
+            field('지시문 ID',
+              bindInput(d.id, (x) => { d.id = x.trim(); rerender(); },
+                { cls: 'sce-w-l', ph: 'directive_id' }),
+              '이 지시문을 구분하는 이름이에요. 다른 지시문과 겹치지 않게 적어 주세요.'),
+            field('조건',
+              bindInput(d.when, (x) => { d.when = x; rerender(); },
+                { cls: 'sce-w-l', ph: 'affection < 30 / hunger <= 20' }),
+              '이 조건이 참인 동안 아래 문장을 계속 AI에게 전달해요.'),
+          ),
+          field('AI 전달문',
+            bindArea(d.text, (x) => { d.text = x; rerender(); },
+              '예: {{char}}는 아직 마음을 열지 않았다. 차갑고 퉁명스럽게 대하라. (현재 호감도 {affection})'),
+            '{변수id} 자리에 현재 값을 넣을 수 있어요.',
+            'is-wide'),
+        ),
+      ));
+    });
+    if (!schema.directives.length) {
+      directivesList.appendChild(h('div', { class: 'sce-rules-empty' },
+        '아직 상태 지시문이 없습니다. 조건이 유지되는 동안 AI가 계속 알아야 할 상태가 있을 때 추가하세요.'));
+    }
+    directivesList.appendChild(h('div', { class: 'sce-rules-section-actions' },
+      addBtn('상태 지시문', () => {
+        schema.directives.push({ id: 'directive' + (schema.directives.length + 1), when: '', text: '' });
+        rerender();
+      }),
+    ));
+    wrap.appendChild(section(
+      '02',
+      '상태 지시문',
+      '한 번만 알리는 사건이 아니라, 조건이 유지되는 동안 AI가 계속 기억해야 할 분위기나 상태를 적어요.',
+      directivesList,
+    ));
+
+    const eventsList = h('div', { class: 'sce-rules-list' });
+    schema.rules.events.forEach((ev, i) => {
+      eventsList.appendChild(h('article', { class: 'sce-rules-card', 'data-sce-validation-path': `$.rules.events[${i}]` },
+        h('div', { class: 'sce-rules-card-head' },
+          h('div', {},
+            h('strong', {}, ev.id || `조건 이벤트 ${i + 1}`),
+            h('span', {}, ev.once ? '조건 충족 시 한 번만 발동' : '조건 충족 시 자동 발동'),
+          ),
+          h('div', { class: 'sce-rules-card-actions' },
+            bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
+            ruleGrip(schema.rules.events, i),
+          ),
+        ),
+        h('div', { class: 'sce-rules-card-body' },
+          h('div', { class: 'sce-rules-field-grid' },
+            field('이벤트 ID',
+              bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); },
+                { cls: 'sce-w-l', ph: 'event_id' })),
+            field('발동 조건',
+              bindInput(ev.when, (x) => { ev.when = x; rerender(); },
+                { cls: 'sce-w-l', ph: 'food <= 0 and not famine' })),
+          ),
+          h('div', { class: 'sce-rules-effect-block' },
+            h('div', { class: 'sce-rules-subtitle' }, '발동 효과'),
+            ruleEffectRows(ev.effects = ev.effects || []),
+          ),
+          field('AI 통지',
+            bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '다음 턴에 전달할 문장 — 예: 기근이 시작되었다…' }),
+            '이벤트가 일어났다는 사실을 다음 장면의 AI에게 알려줘요.',
+            'is-wide'),
+          choiceEditor(ev),
+        ),
+      ));
+    });
+    if (!schema.rules.events.length) {
+      eventsList.appendChild(h('div', { class: 'sce-rules-empty' },
+        '아직 조건 이벤트가 없어요. 특정 조건이 맞는 순간 자동으로 값을 바꾸고 싶을 때 추가해 주세요.'));
+    }
+    eventsList.appendChild(h('div', { class: 'sce-rules-section-actions' },
+      addBtn('조건 이벤트', () => {
+        schema.rules.events.push({ id: 'event' + (schema.rules.events.length + 1), when: '', effects: [] });
+        rerender();
+      }),
+    ));
+    wrap.appendChild(section(
+      '03',
+      '조건 이벤트',
+      '조건이 맞으면 자동으로 발동해요. 한 번만 일어날 사건과 반복 가능한 변화를 여기서 나눠요.',
+      eventsList,
+    ));
+
     // 실효 확률 미리보기 (v1.0 #5) — 시작 상태 기준: 발동확률 × weight/Σ(후보 weight).
     // 쿨다운·최초설정·다른 이벤트와의 경합은 뺀 근사다 — 감을 잡는 용도.
     const reProb = (() => {
@@ -4968,47 +7923,103 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (!reProb) return null;
       if (!reProb.elig[i]) {
         return h('div', { class: 'sce-derived-now sce-derived-now-err' },
-          '시작 상태에선 조건 불충족 — 지금은 후보가 아니에요 (조건이 참이 되는 판에서만 추첨)');
+          '시작 상태에선 조건 불충족 — 지금은 후보가 아니며 조건이 참이 되는 판에서만 추첨됩니다.');
       }
       const p = reProb.total > 0 ? reProb.chance * ((ev.weight ?? 1) / reProb.total) : 0;
       return h('div', { class: 'sce-derived-now' },
-        `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% (발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} — 쿨다운 제외 근사)`);
+        `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% · 발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} · 쿨다운 제외`);
     };
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('턴당 발동 확률', bindInput(
-        typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
-        (x) => {
-          // 숫자는 % 로, 식은 그대로 (v0.89.1 — 0~1 스케일). 빈 칸은 0.
-          const t = String(x).trim();
-          const n = Number(t);
-          if (!t) re.chancePerTurn = 0;
-          else if (isFinite(n)) re.chancePerTurn = Math.max(0, Math.min(100, n)) / 100;
-          else re.chancePerTurn = t;
-          rerender();
-        }, { cls: 'sce-w-l', ph: '15 (%) 또는 식: 0.04 + hardship * 0.001' }),
-        '숫자면 % · 식이면 0~1 스케일 — 식이 난이도 변수를 읽으면 프리셋마다 사건 빈도가 달라진다'),
+
+    const randomList = h('div', { class: 'sce-rules-list' });
+    randomList.appendChild(h('div', { class: 'sce-rules-random-config' },
+      field('턴당 발동 확률',
+        bindInput(
+          typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
+          (x) => {
+            const t = String(x).trim();
+            const n = Number(t);
+            if (!t) re.chancePerTurn = 0;
+            else if (isFinite(n)) re.chancePerTurn = Math.max(0, Math.min(100, n)) / 100;
+            else re.chancePerTurn = t;
+            rerender();
+          },
+          { cls: 'sce-w-l', ph: '15 (%) 또는 식: 0.04 + hardship * 0.001' },
+        ),
+        '숫자는 %로 입력해요. 식을 쓰면 0~1 값으로 계산하고, 난이도 같은 변수도 읽을 수 있어요.'),
     ));
     re.table.forEach((ev, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '이벤트id' }),
-          pair('가중치', bindInput(ev.weight ?? 1, (x) => { ev.weight = num(x) || 1; rerender(); }, { cls: 'sce-w-s' })),
-          pair('쿨다운', bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '턴' })),
-          grip(re.table, i, rerender),
+      randomList.appendChild(h('article', { class: 'sce-rules-card', 'data-sce-validation-path': `$.rules.randomEvents.table[${i}]` },
+        h('div', { class: 'sce-rules-card-head' },
+          h('div', {},
+            h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
+            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
+          ),
+          h('div', { class: 'sce-rules-card-actions' }, ruleGrip(re.table, i)),
         ),
-        h('div', { class: 'sce-row' },
-          pair('조건', bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+        h('div', { class: 'sce-rules-card-body' },
+          h('div', { class: 'sce-rules-field-grid sce-rules-field-grid-random' },
+            field('이벤트 ID',
+              bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); },
+                { cls: 'sce-w-l', ph: 'random_event' })),
+            field('가중치',
+              bindInput(ev.weight ?? 1, (x) => { ev.weight = num(x) || 1; rerender(); },
+                { cls: 'sce-w-s' })),
+            field('쿨다운',
+              bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); },
+                { cls: 'sce-w-s', ph: '턴' })),
+            field('후보 조건',
+              bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
+                { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+          ),
+          h('div', { class: 'sce-rules-effect-block' },
+            h('div', { class: 'sce-rules-subtitle' }, '발동 효과'),
+            ruleEffectRows(ev.effects = ev.effects || []),
+          ),
+          field('AI 통지',
+            bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '산적이 상단을 습격했다…' }),
+            '사건이 실제로 일어났을 때 다음 장면의 AI에게 알려줄 문장이에요.',
+            'is-wide'),
+          reProbLine(ev, i),
+          choiceEditor(ev),
         ),
-        effectRows(schema, ev.effects = ev.effects || [], rerender),
-        h('div', { class: 'sce-row' },
-          pair('AI 통지', bindInput(ev.notify, (x) => { ev.notify = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '산적이 상단을 습격했다...' })),
-        ),
-        reProbLine(ev, i),
-        choiceEditor(ev),
       ));
     });
-    wrap.appendChild(addBtn('랜덤 이벤트', () => { re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 }); rerender(); }));
-    wrap.appendChild(trialRunBlock());
+    if (!re.table.length) {
+      randomList.appendChild(h('div', { class: 'sce-rules-empty' },
+        '아직 랜덤 이벤트가 없어요. 매번이 아니라 가끔만 일어나야 하는 사건을 여기에 추가해 주세요.'));
+    }
+    randomList.appendChild(h('div', { class: 'sce-rules-section-actions' },
+      addBtn('랜덤 이벤트', () => {
+        re.table.push({ id: 'random' + (re.table.length + 1), weight: 1 });
+        rerender();
+      }),
+    ));
+    wrap.appendChild(section(
+      '04',
+      '랜덤 이벤트',
+      '먼저 이번 턴에 사건이 생길지 굴리고, 조건에 맞는 후보 중 가중치로 하나를 골라요.',
+      randomList,
+    ));
+
+    wrap.appendChild(section(
+      '05',
+      '1턴 시험',
+      '현재 규칙을 실제 엔진 순서대로 한 턴만 굴려 효과·판정·이벤트 흐름을 확인해요.',
+      h('div', { class: 'sce-rules-trial' }, trialRunBlock()),
+    ));
+
+    wrap.appendChild(h('details', { class: 'sce-rules-ai' },
+      h('summary', {},
+        h('span', {},
+          h('strong', {}, 'AI로 규칙 · 이벤트 만들기'),
+          h('small', {}, '부분 수정은 위 편집기가 더 안전합니다. 전면 생성·외부 AI 왕복이 필요할 때만 펼치세요.'),
+        ),
+        h('span', { class: 'sce-rules-ai-chevron', 'aria-hidden': 'true' }, '⌄'),
+      ),
+      h('div', { class: 'sce-rules-ai-body' }, tabAiTools('rules')),
+    ));
+
     return wrap;
   }
 
@@ -5017,17 +8028,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function choiceEditor(ev) {
     const box = h('div', { class: 'sce-sub' });
     if (!Array.isArray(ev.choices)) {
-      box.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: () => {
-        ev.choices = [{ label: '', effects: [] }, { label: '', effects: [] }];
-        ev.timeout = ev.timeout ?? 3;
-        rerender();
-      } }, '⌛ 갈림길로 만들기 — 터지면 선택지를 내밀고 유저가 /선택으로 고를 때까지 기다린다'));
+      box.appendChild(h('div', { class: 'sce-choice-enable' },
+        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+          ev.choices = [{ label: '', effects: [] }, { label: '', effects: [] }];
+          ev.timeout = ev.timeout ?? 3;
+          rerender();
+        } }, '⌛ 갈림길로 만들기'),
+        h('div', { class: 'sce-choice-enable-copy' },
+          h('div', {}, '이 이벤트가 발동하면 상태창에 선택지가 보여요.'),
+          h('div', {}, '플레이어가 채팅에 /선택 번호를 입력할 때까지 결과를 기다려요.'))));
       return box;
     }
-    box.appendChild(h('div', { class: 'sce-hint' },
-      '이 이벤트는 갈림길이다: 터지면 상태창에 선택지가 뜨고, 유저가 채팅에 /선택 번호 를 칠 때까지 기다린다. '
-      + '기다리는 동안 이 선택지들이 만질 변수는 보조 AI에서 빠진다(결과 선점 방지). '
-      + '타임아웃이 지나면 맨 마지막 항목이 자동 결정되므로, 마지막은 조건 없는 "외면한다"류로 둘 것.'));
+    box.appendChild(h('div', { class: 'sce-hint sce-choice-help' },
+      h('div', {}, '갈림길이 발동하면 상태창에 선택지가 보이고, 플레이어가 /선택 번호로 고를 때까지 기다려요.'),
+      h('div', {}, '기다리는 동안 선택지가 바꿀 변수는 AI가 먼저 건드리지 않고, 제한 시간이 지나면 마지막 선택지가 자동으로 골라져요.')));
     ev.choices.forEach((c, ci) => {
       box.appendChild(h('div', { class: 'sce-block' },
         h('div', { class: 'sce-row' },
@@ -5035,13 +8049,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '선택지 이름 (예: 토벌대를 보낸다)' }),
           pair('조건', bindInput(c.when, (x) => { c.when = String(x).trim() || undefined; rerender(); },
             { cls: 'sce-w-m', ph: '(비우면 항상) gold >= 100' }),
-            '거짓이면 잠김(🔒)으로 표시되고 고를 수 없다. 번호는 유지된다'),
+            '조건이 맞지 않으면 잠금(🔒)으로 보여요. 선택지 번호는 그대로 유지돼요.'),
           grip(ev.choices, ci, rerender),
         ),
         effectRows(schema, c.effects = c.effects || [], rerender),
         h('div', { class: 'sce-row' },
           pair('AI 전달문', bindInput(c.inject, (x) => { c.inject = x || undefined; rerender(); },
-            { cls: 'sce-w-l', ph: '(선택) 고른 턴에 AI에게 덧붙는 문장 — "[선택] 이름"은 자동으로 나간다' })),
+            { cls: 'sce-w-l', ph: '(선택) 고른 턴에 AI에게 덧붙는 문장 — "[선택] 이름"은 자동으로 전달돼요' })),
         ),
       ));
     });
@@ -5051,7 +8065,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } }, '+ 선택지'),
       pair('타임아웃', bindInput(ev.timeout, (x) => { ev.timeout = numOrNull(x) ?? undefined; rerender(); },
         { cls: 'sce-w-s', ph: '턴' }),
-        '안 고르고 이만큼 지나면 마지막 항목 자동. 비우면 고를 때까지 무한정 기다린다 (비추)'),
+        '이 턴 수만큼 고르지 않으면 마지막 선택지가 자동으로 선택돼요. 비우면 직접 고를 때까지 계속 기다려요.'),
       h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
         delete ev.choices; delete ev.timeout; rerender();
       } }, '갈림길 떼기'),
@@ -5305,6 +8319,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const issueCount = issues.errors.length + issues.warnings.length;
       const card = h('section', {
         class: `sce-block sce-command-card${collapsed ? ' is-collapsed' : ''}${newlyCreated ? ' is-newly-created' : ''}`,
+        'data-sce-validation-path': `$.vars[${schema.vars.indexOf(v)}].cmd`,
       },
         h('div', { class: 'sce-command-card-head' },
           h('div', { class: 'sce-command-card-title' },
@@ -5400,50 +8415,148 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 채팅 화면 우상단에 버튼이 생기고, 누르면 팝업에서 슬롯을 채운다 — 저장은 변수라서
   // 상태창 when 분기·지시문·AI 프롬프트가 전부 그대로 읽는다 (새 표시 문법 없음).
   function tabParty() {
-    const wrap = h('div');
+    const wrap = h('div', { class: 'sce-party-panel' });
     const enums = schema.vars.filter((v) => v.type === 'enum');
     const lists = schema.vars.filter((v) => v.type === 'list');
 
-    wrap.appendChild(tabAiTools('party'));
+    const sectionHead = (title, copy, badge) => h('div', { class: 'sce-party-section-head' },
+      h('div', {},
+        h('div', { class: 'sce-party-section-title' }, title),
+        copy ? h('div', { class: 'sce-party-section-copy' }, copy) : null),
+      badge ? h('span', { class: 'sce-tag' }, badge) : null);
+    const intro = (copy, metrics) => h('section', { class: 'sce-party-intro' },
+      h('div', { class: 'sce-party-intro-main' },
+        h('div', { class: 'sce-party-title' }, '편성표 설정'),
+        h('div', { class: 'sce-party-copy' }, copy)),
+      h('div', { class: 'sce-party-metrics' },
+        ...metrics.map(([label, value]) => h('div', { class: 'sce-party-metric' },
+          h('span', {}, label), h('strong', {}, value)))));
+    const aiTools = () => h('details', { class: 'sce-party-ai' },
+      h('summary', {}, 'AI로 편성표 만들기·교체', h('span', {}, '필요할 때만 펼치기')),
+      tabAiTools('party'));
 
     if (!schema.party) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '파티 편성표 — 채팅 화면 우상단에 버튼을 달고, 누르면 팝업에서 슬롯에 인물을 앉힙니다. '
-        + '슬롯 하나 = enum 변수 하나 (그 enum의 값 목록이 편성 후보), 보유 목록(list)을 지정하면 '
-        + '목록에 있는 인물만 고를 수 있습니다 (영입해야 열리는 구조). '
-        + '저장되는 건 변수 값이라 상태창·지시문·프롬프트의 조건 분기가 전부 그대로 읽습니다.'));
-      if (!enums.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-          '슬롯으로 쓸 enum 변수가 아직 없습니다 — [변수] 탭에서 먼저 만드세요. '
-          + '예: id "front", 타입 enum, 값 ["없음","아린","바크","셀레네"], 시작값 "없음".'));
-      }
-      wrap.appendChild(addBtn('편성표 만들기', () => {
-        schema.party = {
-          label: '편성표', icon: '⚔️', empty: '없음',
-          slots: enums.length ? [{ var: enums[0].id }] : [],
-        };
+      const ready = enums.length > 0;
+      const slotName = bindInput('전위', () => {}, { cls: 'sce-w-l', ph: '예: 전위' });
+      const memberNames = bindInput('', () => {}, { cls: 'sce-w-l', ph: '예: 아린, 바크, 셀레네' });
+      const quickReport = h('div', { class: 'sce-hint sce-party-quick-report', 'aria-live': 'polite' });
+      const makeParty = () => {
+        const names = [...new Set(String(memberNames.value || '').split(/[,，\n]/)
+          .map((x) => x.trim()).filter((x) => x && x !== '없음'))];
+        if (!names.length) {
+          quickReport.className = 'sce-warn sce-party-quick-report';
+          quickReport.textContent = '편성할 캐릭터 이름을 한 명 이상 적어 주세요. 여러 명은 쉼표로 나눕니다.';
+          memberNames.focus();
+          return;
+        }
+        const label = String(slotName.value || '').trim() || '전위';
+        let n = 1;
+        let id = 'party_slot';
+        const ids = new Set(schema.vars.map((v) => v.id));
+        while (ids.has(id)) id = `party_slot${++n}`;
+        schema.vars.push({ id, label, type: 'enum', init: '없음', enum: ['없음', ...names] });
+        schema.party = { label: '편성표', icon: '⚔️', empty: '없음',
+          tabs: [{ id: 'formation1', label: '편성표 1', slots: [{ var: id, label }] }] };
+        partyEditorIndex = 0;
         rerender();
-      }));
+      };
+      wrap.appendChild(intro(
+        '먼저 편성표 1을 만든 뒤 같은 화면에서 편성표 2·3을 계속 추가할 수 있습니다.',
+        [['기존 자리', `${enums.length}개`], ['편성표', '아직 없음']],
+      ));
+      wrap.appendChild(h('section', { class: `sce-party-setup${ready ? '' : ' is-blocked'}` },
+        h('div', {},
+          h('div', { class: 'sce-party-setup-title' }, ready
+            ? '기존 자리를 쓰거나 새 자리로 편성표 1을 만드세요.' : '편성표 1의 첫 자리를 만들어 주세요.'),
+          h('div', { class: 'sce-party-setup-copy' }, ready
+            ? `기존 자리 ${enums.length}개를 선택할 수 있습니다. 다른 설정에서 사용하지 않는 자리만 여기서 삭제할 수 있습니다.`
+            : '자리 이름과 캐릭터 후보만 적으면 저장 변수까지 자동으로 만듭니다.'),
+          h('div', { class: 'sce-party-checks' },
+            h('span', { class: `sce-party-check ${ready ? 'is-ready' : 'is-needed'}` },
+              ready ? `✓ 기존 자리 ${enums.length}개 있음` : '새 자리 1개 필요'),
+            h('span', { class: 'sce-party-check' }, '편성표 2·3은 만든 뒤 추가')),
+          ready ? h('div', { class: 'sce-party-existing-list' }, ...enums.map((v) =>
+            h('div', { class: 'sce-party-existing-row' },
+              h('div', { class: 'sce-party-existing-main' },
+                h('div', { class: 'sce-party-existing-name' }, v.label || v.id),
+                h('div', { class: 'sce-party-existing-meta' },
+                  `후보 ${(v.enum || []).filter((x) => x !== '없음').join(', ') || '없음'} · 저장 변수 ${v.id}`)),
+              h('button', { class: 'sce-btn sce-danger', onclick: () => {
+                const index = schema.vars.indexOf(v);
+                if (index < 0 || schema.party) { rerender(); return; }
+                // 초기 설정에는 Party 슬롯이 없다. 함께 정리할 allow만 검사에서 제외한다.
+                // 인덱스 결과에서 allow를 거르면 기존 기타 참조 보완이 가려질 수 있다.
+                const remainingAllow = schema.updater?.allow?.filter((a) => a.id !== v.id);
+                const referenceSchema = remainingAllow
+                  ? { ...schema, updater: { ...schema.updater, allow: remainingAllow } } : schema;
+                const refs = varReferenceIndex(referenceSchema).get(v.id) || [];
+                if (refs.length) {
+                  const uses = [...new Set(refs.map((r) => `${r.where}: ${r.what}`))];
+                  quickReport.className = 'sce-warn sce-party-quick-report';
+                  quickReport.replaceChildren(
+                    h('div', {}, '이 변수는 다른 설정에서도 사용 중이라 여기서 바로 삭제할 수 없어요.'),
+                    h('div', {}, `${v.label || v.id} · ${uses.slice(0, 3).join(' · ')}${uses.length > 3 ? ` · 외 ${uses.length - 3}곳` : ''}`),
+                    h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+                      activeTab = 'vars'; rerender();
+                    } }, '변수 탭에서 확인'));
+                  return;
+                }
+                schema.vars.splice(index, 1);
+                if (remainingAllow) schema.updater.allow = remainingAllow;
+                rerender();
+              } }, '기존 자리 삭제')))) : null,
+          h('div', { class: 'sce-party-quick' },
+            pair('자리 이름', slotName, '편성 화면에 보일 자리 이름'),
+            pair('들어갈 캐릭터', memberNames, '쉼표로 여러 이름을 나눕니다'),
+            h('button', { class: 'sce-btn sce-party-primary', onclick: makeParty }, '편성표 1 만들기'),
+            quickReport)),
+        h('div', { class: 'sce-party-setup-actions' },
+          ready ? h('button', { class: 'sce-btn sce-party-primary', onclick: () => {
+            schema.party = {
+              label: '편성표', icon: '⚔️', empty: '없음',
+              tabs: [{ id: 'formation1', label: '편성표 1', slots: [{ var: enums[0].id }] }],
+            };
+            partyEditorIndex = 0;
+            rerender();
+          } }, '첫 기존 자리로 편성표 1 만들기') : null)));
+      wrap.appendChild(h('div', { class: 'sce-party-guide' },
+        '편성표 1을 만든 다음 위쪽의 [편성표 추가]를 누르면 편성표 2·3을 계속 만들 수 있습니다.'));
+      wrap.appendChild(aiTools());
       return wrap;
     }
 
     const P = schema.party;
     const hasTabs = Array.isArray(P.tabs) && P.tabs.length > 0;
     if (!hasTabs) P.slots = Array.isArray(P.slots) ? P.slots : [];
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '버튼은 스키마를 설치한 봇의 채팅 화면 우상단에 뜹니다. 팝업에서 고른 값은 슬롯 변수에 '
-      + '저장됩니다 — 상태창에 보이게 하려면 [상태창] 탭에서 그 변수를 넣으세요 '
-      + '(showWhen으로 "편성했을 때만 표시" 같은 분기도 됩니다). '
-      + '편성표가 있으면 deployed(편성 슬롯에 앉은 이름 목록)가 자동 제공됩니다 — '
-      + 'has(deployed, "아린")을 상태창 showWhen·지시문·이벤트 조건 어디서든 쓸 수 있습니다.'));
+    const partyTabs = hasTabs ? P.tabs : [P];
+    const partySlots = partyTabs.flatMap((t) => (Array.isArray(t.slots) ? t.slots : []));
+    const partyItems = partyTabs.flatMap((t) => (Array.isArray(t.items) ? t.items : []));
+    const partyActions = [...new Set(partyTabs.flatMap((t) => (Array.isArray(t.actions) ? t.actions : [])))];
+    wrap.appendChild(intro(
+      '편성표를 여러 개 만들고, 각 편성표마다 자리를 따로 구성할 수 있습니다.',
+      [['편성표', `${hasTabs ? P.tabs.length : 1}개`], ['전체 자리', `${partySlots.length}개`],
+        ['업그레이드', `${partyItems.length}개`], ['연결 액션', `${partyActions.length}개`]],
+    ));
+    wrap.appendChild(h('div', { class: 'sce-party-guide' },
+      '위의 편성표 이름을 눌러 전환하세요. [편성표 추가]로 편성표 2·3을 만들고, 각 편성표 안에서 자리를 추가하거나 삭제할 수 있습니다.'));
+    if (!enums.length) wrap.appendChild(h('section', { class: 'sce-party-setup is-blocked' },
+      h('div', {},
+        h('div', { class: 'sce-party-setup-title' }, '사용할 수 있는 슬롯 변수가 없어요.'),
+        h('div', { class: 'sce-party-setup-copy' },
+          '편성 슬롯은 enum 변수에 저장됩니다. 변수 탭에서 enum 변수를 만든 뒤 이곳으로 돌아오세요.')),
+      h('div', { class: 'sce-party-setup-actions' },
+        h('button', { class: 'sce-btn sce-party-primary', onclick: () => { activeTab = 'vars'; rerender(); } },
+          '변수 탭으로 이동'))));
+    wrap.appendChild(aiTools());
 
-    wrap.appendChild(h('div', { class: 'sce-block' },
+    wrap.appendChild(sectionHead('기본 설정', '채팅 화면에 보일 버튼과 편성 공통 규칙입니다.'));
+    wrap.appendChild(h('div', { class: 'sce-block sce-party-settings' },
       h('div', { class: 'sce-row' },
         pair('버튼 이름', bindInput(P.label, (x) => { P.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '편성표' })),
         pair('아이콘', bindInput(P.icon, (x) => { P.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '⚔️' }),
           '우상단 버튼에 들어가는 글리프 하나'),
-        pair('빈값', bindInput(P.empty, (x) => { P.empty = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '없음' }),
-          '슬롯을 비울 때 넣는 값 — 각 슬롯 enum 목록에 이 값이 있어야 한다'),
+        pair('빈 자리 표시', bindInput(P.empty, (x) => { P.empty = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '없음' }),
+          '자리에 아무도 없을 때 저장하고 보여줄 글자입니다. 보통 “없음”을 사용합니다.'),
       ),
       h('div', { class: 'sce-row' },
         pair('보유 목록', bindSelect(P.roster ?? '',
@@ -5452,6 +8565,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           '지정하면 이 목록에 있는 이름만 편성 가능 — 영입(목록 추가)해야 열린다'),
         bindCheck(P.unique !== false, (x) => { if (x) delete P.unique; else P.unique = false; rerender(); },
           '중복 편성 금지 (이미 앉은 인물을 고르면 이동/맞교환)'),
+        hasTabs ? pair('편성표 선택 방식', bindSelect(P.nav ?? 'tabs',
+          [['tabs', '이름 버튼으로 전환'], ['select', '목록에서 검색해 선택']],
+          (x) => { if (x === 'tabs') delete P.nav; else P.nav = x; rerender(); })) : null,
+        // 넓은 패널 (v1.7.6) — 지도·도감처럼 가로가 넓은 대장 템플릿용 (440 → 640px)
+        bindCheck(P.wide === true, (x) => { if (x) P.wide = true; else delete P.wide; rerender(); }, '넓은 패널 (640px) — 지도·도감 템플릿용'),
       ),
       h('div', { class: 'sce-row' },
         pair('설명', bindInput(P.note, (x) => { P.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단에 보이는 한 줄 (비워도 됨)' })),
@@ -5460,30 +8578,131 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // ── 슬롯·액션 편집 조각 (축약형과 탭 양쪽에서 재사용) ──
     const allFlatSlots = () => (hasTabs ? P.tabs.flatMap((t) => (Array.isArray(t.slots) ? t.slots : [])) : P.slots);
+    const makeSlotVar = (label, names = []) => {
+      const ids = new Set(schema.vars.map((v) => v.id));
+      let id = 'party_slot', n = 2;
+      while (ids.has(id)) id = `party_slot${n++}`;
+      const choices = [...new Set(names.map((x) => String(x).trim()).filter((x) => x && x !== (P.empty ?? '없음')))];
+      schema.vars.push({ id, label, type: 'enum', init: P.empty ?? '없음', enum: [P.empty ?? '없음', ...choices] });
+      return id;
+    };
     const slotBlocks = (list) => {
-      const frag = h('div');
+      const frag = h('div', { class: 'sce-party-slot-list' });
       list.forEach((s, i) => {
         const def = schema.vars.find((v) => v.id === s.var);
-        frag.appendChild(h('div', { class: 'sce-block' },
-          h('div', { class: 'sce-row' },
-            pair('변수', bindSelect(s.var ?? '',
-              enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-              (x) => { s.var = x; rerender(); }),
-              '이 슬롯이 저장되는 enum 변수'),
-            pair('슬롯 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: def?.label ?? '(변수 라벨)' })),
-            grip(list, i, rerender),
-          ),
-          def ? h('div', { class: 'sce-hint' }, `후보: ${(def.enum || []).join(', ')}`) : null,
-        ));
-      });
-      if (enums.length) {
-        frag.appendChild(addBtn('슬롯 추가', () => {
-          const used = new Set(allFlatSlots().map((s) => s.var));
-          const next = enums.find((v) => !used.has(v.id)) ?? enums[0];
-          list.push({ var: next.id });
+        const choices = (def?.enum || []).filter((x) => x !== (P.empty ?? '없음'));
+        const slotLabel = s.label || def?.label || `자리 ${i + 1}`;
+        const nameInput = bindInput(slotLabel, (x) => {
+          const label = String(x).trim() || `자리 ${i + 1}`;
+          s.label = label;
+          if (def) def.label = label;
           rerender();
-        }));
-      }
+        }, { cls: 'sce-w-l', ph: '예: 전위' });
+        const membersInput = bindInput(choices.join(', '), (x) => {
+          const names = [...new Set(String(x).split(/[,，\n]/).map((v) => v.trim())
+            .filter((v) => v && v !== (P.empty ?? '없음')))];
+          let target = schema.vars.find((v) => v.id === s.var);
+          if (target && allFlatSlots().filter((slot) => slot.var === s.var).length > 1) {
+            s.var = makeSlotVar(s.label || target.label || `자리 ${i + 1}`, names);
+            target = schema.vars.find((v) => v.id === s.var);
+          }
+          if (!target) {
+            s.var = makeSlotVar(s.label || `자리 ${i + 1}`, names);
+            target = schema.vars.find((v) => v.id === s.var);
+          }
+          target.enum = [P.empty ?? '없음', ...names];
+          if (!target.enum.includes(target.init)) target.init = P.empty ?? '없음';
+          rerender();
+        }, { cls: 'sce-w-l', ph: '예: 아린, 바크, 셀레네' });
+        const moveFeedback = partySlotMoveFeedback?.item === s ? partySlotMoveFeedback : null;
+        if (moveFeedback) partySlotMoveFeedback = null;
+        const newlyCreated = createdPartySlot === s;
+        if (newlyCreated) createdPartySlot = null;
+        const slotStatus = moveFeedback
+          ? h('span', { class: 'sce-party-slot-move-feedback', role: 'status', 'aria-live': 'polite' },
+            `✓ ${moveFeedback.position}번째로 이동`)
+          : newlyCreated
+            ? h('span', { class: 'sce-party-slot-move-feedback', role: 'status', 'aria-live': 'polite' },
+              '✓ 새 자리 추가됨')
+            : h('span', { class: 'sce-party-slot-count' }, `후보 ${choices.length}명`);
+        const slotCard = h('div', {
+          class: `sce-block sce-party-slot-card${moveFeedback ? ` is-just-moved moved-${moveFeedback.kind}` : ''}`
+            + (newlyCreated ? ' is-newly-created' : ''),
+        },
+          h('div', { class: 'sce-party-slot-head' },
+            h('div', { class: 'sce-party-slot-identity' },
+              h('span', { class: 'sce-party-slot-index' }, `자리 ${String(i + 1).padStart(2, '0')}`),
+              h('span', { class: 'sce-party-slot-name' }, slotLabel)),
+            slotStatus),
+          h('div', { class: 'sce-party-slot-body' },
+            pair('자리 이름', nameInput, '편성 화면에 표시되는 이름'),
+            pair('들어갈 캐릭터', membersInput, '쉼표로 여러 이름을 나눕니다'),
+            h('div', { class: 'sce-party-slot-actions', 'aria-label': `${slotLabel} 자리 관리` },
+              h('button', { class: 'sce-btn', disabled: i === 0 || undefined, onclick: () => {
+                if (i > 0) {
+                  [list[i - 1], list[i]] = [list[i], list[i - 1]];
+                  partySlotMoveFeedback = { item: s, position: i, kind: 'up' };
+                }
+                rerender();
+              } }, '위로'),
+              h('button', { class: 'sce-btn', disabled: i === list.length - 1 || undefined, onclick: () => {
+                if (i < list.length - 1) {
+                  [list[i], list[i + 1]] = [list[i + 1], list[i]];
+                  partySlotMoveFeedback = { item: s, position: i + 2, kind: 'down' };
+                }
+                rerender();
+              } }, '아래로'),
+              h('button', { class: 'sce-btn sce-danger', onclick: () => { list.splice(i, 1); rerender(); } }, '삭제')),
+            h('div', { class: 'sce-party-slot-meta' },
+              h('span', {}, '후보 이름은 쉼표로 구분합니다.'),
+              h('details', {},
+                h('summary', {}, '고급 설정 · 저장 위치 변경'),
+                pair('저장 변수', bindSelect(s.var ?? '',
+                  enums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+                  (x) => { s.var = x; rerender(); }), '기존 enum 변수를 연결할 때만 바꿉니다'))),
+          ),
+        );
+        frag.appendChild(slotCard);
+        if (moveFeedback || newlyCreated) setTimeout(() => {
+          slotCard.classList.remove('is-just-moved', 'is-newly-created',
+            ...(moveFeedback ? [`moved-${moveFeedback.kind}`] : []));
+          slotStatus.className = 'sce-party-slot-count';
+          slotStatus.removeAttribute('role');
+          slotStatus.removeAttribute('aria-live');
+          slotStatus.textContent = `후보 ${choices.length}명`;
+        }, 1250);
+        if (newlyCreated) requestAnimationFrame(() => {
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          slotCard.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+          try { nameInput.focus({ preventScroll: true }); } catch (_) { nameInput.focus(); }
+        });
+      });
+      const defaults = ['전위', '중위', '후위'];
+      const usedLabels = new Set(list.map((s) => s.label || schema.vars.find((v) => v.id === s.var)?.label));
+      const nextLabel = defaults.find((x) => !usedLabels.has(x)) || `자리 ${list.length + 1}`;
+      const newName = bindInput(nextLabel, () => {}, { cls: 'sce-w-l', ph: '예: 후위' });
+      const newMembers = bindInput('', () => {}, { cls: 'sce-w-l', ph: '예: 아린, 바크, 셀레네' });
+      const report = h('div', { class: 'sce-hint sce-party-slot-create-report', 'aria-live': 'polite' });
+      const addSlot = () => {
+        const label = String(newName.value || '').trim();
+        if (!label) {
+          report.className = 'sce-warn sce-party-slot-create-report';
+          report.textContent = '자리 이름을 적어 주세요. 예: 전위, 중위, 후위';
+          newName.focus();
+          return;
+        }
+        const names = [...new Set(String(newMembers.value || '').split(/[,，\n]/)
+          .map((x) => x.trim()).filter((x) => x && x !== (P.empty ?? '없음')))];
+        const created = { var: makeSlotVar(label, names), label };
+        list.push(created);
+        createdPartySlot = created;
+        rerender();
+      };
+      frag.appendChild(h('div', { class: 'sce-party-slot-create' },
+        pair('새 자리 이름', newName, '예: 전위, 중위, 후위, 지원'),
+        pair('들어갈 캐릭터', newMembers, '지금 비워 두고 나중에 적어도 됩니다'),
+        h('button', { class: 'sce-btn sce-party-primary', onclick: addSlot }, '자리 추가'),
+        report));
       return frag;
     };
     // 탭의 버튼 = 기존 액션 연결. 액션이 이미 이벤트·규칙·판정 배선이라(effects/check/inject)
@@ -5520,7 +8739,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const list = () => (owner.items = Array.isArray(owner.items) ? owner.items : []);
       (owner.items || []).forEach((it, i) => {
         const def = schema.vars.find((v) => v.id === it.var);
-        frag.appendChild(h('div', { class: 'sce-block' },
+        frag.appendChild(h('div', { class: 'sce-block sce-party-item-card' },
           h('div', { class: 'sce-row' },
             pair('변수', bindSelect(it.var ?? '', ints.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
               (x) => { it.var = x; rerender(); }), '레벨이 저장되는 int 변수'),
@@ -5548,6 +8767,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         frag.appendChild(addBtn('업그레이드 항목 추가', () => { list().push({ var: ints[0].id, cost: 1 }); rerender(); }));
       } else {
         frag.appendChild(h('div', { class: 'sce-hint' }, '업그레이드 항목은 int 변수가 필요합니다 — [변수] 탭에서 먼저 만드세요 (예: skill_sword, init 0, max 5).'));
+        frag.appendChild(h('button', { class: 'sce-btn', onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동'));
       }
       return frag;
     };
@@ -5557,94 +8777,114 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         'enum 변수가 없어 슬롯을 만들 수 없습니다 — [변수] 탭에서 먼저 만드세요.'));
     }
 
-    if (!hasTabs) {
-      // 단일 편성 (축약형)
-      wrap.appendChild(h('h4', {}, `슬롯 (${P.slots.length}개)`));
-      wrap.appendChild(slotBlocks(P.slots));
-      wrap.appendChild(h('h4', {}, `업그레이드 (${(P.items || []).length}개) — 스킬 레벨·시설·특성 찍기`));
-      wrap.appendChild(h('div', { class: 'sce-row' }, pointsSelect(P, '(포인트 없음)')));
-      wrap.appendChild(itemBlocks(P));
-      wrap.appendChild(actionPicks(P));
-      // 대장 템플릿 (v0.89) — 축약형에도 열어 둔다 (엔진 지원과 편집기 칸의 짝, 규칙 #3)
-      wrap.appendChild(h('details', { class: 'sce-fold', ...(P.template ? { open: '' } : {}) },
-        h('summary', {}, `📜 대장 템플릿 ${P.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 팝업에 그린다`),
-        h('div', { class: 'sce-hint' },
-          '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
-          + '<style>은 자동으로 팝업 범위로 갇힌다 ({choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
-        bindArea(P.template, (x) => { P.template = x || undefined; rerender(); },
-          '<div class="ledger">인구 {pop} · 재정 {gold}</div>')));
-      // 칸코레식 확장 — 함대 여러 개 + 수복·제작 같은 시설 탭
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          P.tabs = [{ id: 'tab1', label: '편성 1', slots: P.slots,
-            ...(P.actions ? { actions: P.actions } : {}),
-            ...(P.items ? { items: P.items } : {}),
-            ...(P.points ? { points: P.points } : {}) }];
-          delete P.slots; delete P.actions; delete P.items; delete P.points;
-          rerender();
-        } }, '🗂 탭 구조로 전환 (편성 여러 개 · 수복/제작 같은 시설 탭)')));
-    } else {
-      // 여러 탭 (칸코레 모델) — 슬롯 있는 탭 = 편성, 슬롯 없이 액션만 = 시설(수복·제작)
-      wrap.appendChild(h('h4', {}, `탭 (${P.tabs.length}개)`));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '탭 = 편성 하나 또는 시설 하나. 슬롯을 채우면 편성 탭, 슬롯 없이 액션만 걸면 '
-        + '수복·제작 같은 시설 탭이 됩니다. 인물은 탭이 달라도 한 자리에만 앉습니다 (이동/맞교환).'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        pair('탭 표시 방식', bindSelect(P.nav ?? 'tabs',
-          [['tabs', '탭 바 — 몇 개 안 될 때'], ['select', '셀렉트 + 검색 — 인물별 탭이 많을 때']],
-          (x) => { if (x === 'tabs') delete P.nav; else P.nav = x; rerender(); }),
-          '탭이 십수 개(인물별 스킬트리 등)면 셀렉트+검색이 찾기 쉽다'),
-        (P.tabs.length >= 8 && P.nav !== 'select')
-          ? h('span', { class: 'sce-hint sce-warn' }, `탭이 ${P.tabs.length}개 — 셀렉트+검색을 권합니다`)
-          : null,
-        // 넓은 패널 (v1.7.6) — 지도·도감처럼 가로가 넓은 대장 템플릿용 (440 → 640px)
-        bindCheck(P.wide === true, (x) => { if (x) P.wide = true; else delete P.wide; rerender(); }, '넓은 패널 (640px) — 지도·도감 템플릿용'),
-      ));
-      P.tabs.forEach((t, ti) => {
-        t.slots = Array.isArray(t.slots) ? t.slots : [];
-        wrap.appendChild(h('div', { class: 'sce-block' },
-          h('div', { class: 'sce-row' },
-            pair('탭 이름', bindInput(t.label, (x) => { t.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: `탭${ti + 1}` })),
-            pair('id', bindInput(t.id, (x) => { const v = String(x).trim(); if (v) t.id = v; else delete t.id; rerender(); }, { cls: 'sce-w-s', ph: `tab${ti + 1}` }),
-              '안 적으면 자동 (tabN)'),
-            pair('보유 목록', bindSelect(t.roster ?? '',
-              [['', P.roster ? `(공용 — ${P.roster})` : '(제한 없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-              (x) => { if (x) t.roster = x; else delete t.roster; rerender(); }),
-              '이 탭만 다른 목록을 쓸 때 (예: 수복 대기열)'),
-            // 삭제를 onDelete가 전담하고 false를 돌려 grip의 기본 splice를 막는다 (이중 삭제 방지)
-            grip(P.tabs, ti, rerender, () => { P.tabs.splice(ti, 1); if (!P.tabs.length) delete P.tabs; rerender(); return false; }),
-          ),
-          h('div', { class: 'sce-row' },
-            pair('탭 설명', bindInput(t.note, (x) => { t.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '탭 상단 한 줄 (비워도 됨)' })),
-            pointsSelect(t, P.points ? `(공용 — ${P.points})` : '(포인트 없음)'),
-          ),
-          h('div', { class: 'sce-row' },
-            pair('표시 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 표시) has(deployed, "아린")' }),
-              '거짓이면 탭이 통째로 숨는다 — 인물별 스킬트리 탭을 편성된 인물만 남기는 용도'),
-            pair('플로팅 버튼', bindInput(t.fab, (x) => { t.fab = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📋' }),
-              '아이콘을 적으면 우상단에 이 탭 전용 버튼이 생긴다 — 누르면 이 탭으로 바로 열림'),
-          ),
-          // 대장(臺帳) 템플릿 (v0.89) — 상태창과 같은 자리표시자 HTML. 슬롯·액션 없이 이것만 있는
-          // 탭도 된다 (인물 대장·영지 대장처럼 "열었을 때만 보는" 참고 화면).
-          h('details', { class: 'sce-fold', ...(t.template ? { open: '' } : {}) },
-            h('summary', {}, `📜 대장 템플릿 ${t.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 탭에 그린다`),
-            h('div', { class: 'sce-hint' },
-              '상태창 템플릿과 같은 문법: {변수} {목록:tags} {commands} {lastcheck} {scenario}. '
-              + '<style>은 자동으로 팝업 범위로 갇힌다. 상태창에서 옮길 조각을 그대로 붙여 넣으면 된다 '
-              + '(단 {choices}는 패널에서 안 눌리므로 빈칸으로 나온다).'),
-            bindArea(t.template, (x) => { t.template = x || undefined; rerender(); },
-              '<div class="ledger">인구 {pop} · 재정 {gold}</div>\n<div>{contacts:tags}</div>')),
-          slotBlocks(t.slots),
-          h('div', { class: 'sce-hint' }, `업그레이드 항목 ${(t.items || []).length}개 — 스킬 레벨·시설·특성(max 1) 찍기`),
-          itemBlocks(t),
-          actionPicks(t),
-        ));
-      });
-      wrap.appendChild(addBtn('탭 추가', () => {
-        P.tabs.push({ id: `tab${P.tabs.length + 1}`, label: `편성 ${P.tabs.length + 1}`, slots: [] });
+    const convertToFormations = () => {
+      if (Array.isArray(P.tabs) && P.tabs.length) return;
+      P.tabs = [{ id: 'formation1', label: '편성표 1', slots: P.slots,
+        ...(P.actions ? { actions: P.actions } : {}),
+        ...(P.items ? { items: P.items } : {}),
+        ...(P.points ? { points: P.points } : {}),
+        ...(P.template ? { template: P.template } : {}),
+        ...(P.fab ? { fab: P.fab } : {}) }];
+      delete P.slots; delete P.actions; delete P.items; delete P.points; delete P.template; delete P.fab;
+    };
+    const addFormation = () => {
+      convertToFormations();
+      const ids = new Set(P.tabs.map((t) => t.id));
+      let n = P.tabs.length + 1;
+      while (ids.has(`formation${n}`)) n++;
+      const slotVar = makeSlotVar('전위', []);
+      const firstSlot = { var: slotVar, label: '전위' };
+      P.tabs.push({ id: `formation${n}`, label: `편성표 ${n}`, slots: [firstSlot] });
+      createdPartySlot = firstSlot;
+      partyEditorIndex = P.tabs.length - 1;
+      rerender();
+    };
+    const formations = hasTabs ? P.tabs : [P];
+    partyEditorIndex = Math.max(0, Math.min(partyEditorIndex, formations.length - 1));
+    const selectedFormation = formations[partyEditorIndex];
+    selectedFormation.slots = Array.isArray(selectedFormation.slots) ? selectedFormation.slots : [];
+    const formationLabel = hasTabs ? (selectedFormation.label || `편성표 ${partyEditorIndex + 1}`) : '편성표 1';
+
+    const formationNav = h('div', { class: 'sce-party-formation-nav', role: 'tablist', 'aria-label': '편성표 선택' });
+    formations.forEach((t, i) => formationNav.appendChild(h('button', {
+      class: `sce-btn sce-party-formation-tab${i === partyEditorIndex ? ' is-active' : ''}`,
+      role: 'tab', 'aria-selected': String(i === partyEditorIndex), onclick: () => { partyEditorIndex = i; rerender(); },
+    }, hasTabs ? (t.label || `편성표 ${i + 1}`) : '편성표 1')));
+    formationNav.appendChild(h('button', { class: 'sce-btn sce-party-primary sce-party-formation-add', onclick: addFormation },
+      '+ 편성표 추가'));
+
+    const formationName = bindInput(formationLabel, (x) => {
+      const label = String(x).trim() || `편성표 ${partyEditorIndex + 1}`;
+      if (!hasTabs) {
+        convertToFormations();
+        P.tabs[0].label = label;
+      } else selectedFormation.label = label;
+      rerender();
+    }, { cls: 'sce-w-l', ph: `편성표 ${partyEditorIndex + 1}` });
+    const formationNote = bindInput(selectedFormation.note, (x) => {
+      if (!hasTabs) {
+        convertToFormations();
+        if (x) P.tabs[0].note = x; else delete P.tabs[0].note;
+      } else if (x) selectedFormation.note = x; else delete selectedFormation.note;
+      rerender();
+    }, { cls: 'sce-w-l', ph: '예: 탐험용 기본 편성' });
+    const deleteFormation = h('button', {
+      class: 'sce-btn sce-danger', disabled: !hasTabs || P.tabs.length <= 1 || undefined,
+      title: !hasTabs || P.tabs.length <= 1 ? '마지막 편성표는 아래의 전체 삭제에서 제거할 수 있습니다.' : '',
+      onclick: () => {
+        if (!hasTabs || P.tabs.length <= 1) return;
+        P.tabs.splice(partyEditorIndex, 1);
+        partyEditorIndex = Math.max(0, partyEditorIndex - 1);
         rerender();
-      }));
-    }
+      },
+    }, '이 편성표 삭제');
+
+    const partyPreviewMount = h('div', { class: 'sce-party-preview-mount' });
+    const formationEditor = h('section', { class: 'sce-party-formation-editor', role: 'tabpanel' },
+      h('div', { class: 'sce-party-formation-head' },
+        pair('편성표 이름', formationName, '채팅 팝업에서 보이는 이름'),
+        pair('짧은 설명', formationNote, '비워 두어도 됩니다'),
+        deleteFormation),
+      sectionHead('편성 자리', '전위·중위·후위처럼 자리를 만들고 캐릭터 후보를 적으세요.', `${selectedFormation.slots.length}개`),
+      slotBlocks(selectedFormation.slots),
+      partyPreviewMount,
+      h('details', { class: 'sce-party-optional' },
+        h('summary', {}, '업그레이드 설정', h('span', {}, `${(selectedFormation.items || []).length}개`)),
+        h('div', { class: 'sce-party-optional-body' },
+          h('div', { class: 'sce-row' }, pointsSelect(selectedFormation, '(포인트 없음)')),
+          itemBlocks(selectedFormation))),
+      h('details', { class: 'sce-party-optional' },
+        h('summary', {}, '연결 액션', h('span', {}, `${(selectedFormation.actions || []).length}개`)),
+        h('div', { class: 'sce-party-optional-body' }, actionPicks(selectedFormation))),
+      h('details', { class: 'sce-party-optional' },
+        h('summary', {}, '편성표 고급 설정', h('span', {}, '필요할 때만')),
+        h('div', { class: 'sce-party-optional-body' },
+          h('div', { class: 'sce-row' },
+            pair('내부 ID', bindInput(selectedFormation.id, (x) => {
+              const value = String(x).trim(); if (value) selectedFormation.id = value; else delete selectedFormation.id; rerender();
+            }, { cls: 'sce-w-m', ph: `formation${partyEditorIndex + 1}` })),
+            pair('보유 목록', bindSelect(selectedFormation.roster ?? '',
+              [['', P.roster ? `(공용 — ${P.roster})` : '(제한 없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+              (x) => { if (x) selectedFormation.roster = x; else delete selectedFormation.roster; rerender(); }))),
+          h('div', { class: 'sce-row' },
+            pair('표시 조건', bindInput(selectedFormation.when, (x) => {
+              if (x) selectedFormation.when = x; else delete selectedFormation.when; rerender();
+            }, { cls: 'sce-w-l', ph: '(비우면 항상 표시)' }),
+            pair('플로팅 버튼', bindInput(selectedFormation.fab, (x) => {
+              selectedFormation.fab = String(x).trim() || undefined; rerender();
+            }, { cls: 'sce-w-s', ph: '📋' }),
+            '아이콘을 적으면 우상단에 이 편성표 전용 버튼이 생깁니다.')),
+          h('details', { class: 'sce-fold', ...(selectedFormation.template ? { open: '' } : {}) },
+            h('summary', {}, `📜 대장 템플릿 ${selectedFormation.template ? '(있음)' : '(없음)'} — 자리표시자 HTML을 편성표에 그려요`),
+            h('div', { class: 'sce-hint' },
+              '상태창과 같은 문법을 사용합니다: {변수} {목록:tags} {commands} {lastcheck}. '
+              + '<style>은 편성표 범위로 제한되며, {choices}는 이 패널에서 비어 보입니다.'),
+            bindArea(selectedFormation.template, (x) => {
+              selectedFormation.template = x || undefined; rerender();
+            }, '<div class="ledger">인구 {pop} · 재정 {gold}</div>\n<div>{contacts:tags}</div>'))))));
+
+    wrap.appendChild(sectionHead('편성표 관리', '편성표를 선택해 편집하거나 새 편성표를 추가하세요.', `${formations.length}개`));
+    wrap.appendChild(h('div', { class: 'sce-party-formations' }, formationNav, formationEditor));
 
     // AI가 편성을 서사로 움직이게 할지 — 슬롯 변수를 allow에 넣으면 된다 (선택 사항)
     const allowIds = new Set((schema.updater?.allow || []).map((a) => a.id));
@@ -5717,17 +8957,53 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }
     }
 
-    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨 — 앱 UI를 못 깨뜨림)'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '쓸 수 있는 클래스: .scg-card(카드) .scg-title(제목) .scg-slot(슬롯 상자) .scg-slot-label '
-      + '.scg-slot-val(현재값) .scg-chip(후보 칩) .scg-chip.scg-on(현재 편성) .scg-chip.scg-locked(미보유) '
-      + '.scg-roster(보유 줄). 슬롯·칩에는 data-slot / data-val 속성이 있어 인물별 색도 됩니다 — '
-      + '예: .scg-chip[data-val="아린"] { border-color: gold; }'));
-    wrap.appendChild(bindArea(P.css, (x) => { P.css = x || undefined; rerender(); },
-      '.scg-card { background:#1a1030; border-color:#7a5cd0; }\n.scg-chip.scg-on { background:#7a5cd0; }'));
+    const previewRoot = h('div', { class: 'sce-party-live-preview' });
+    const previewCard = h('div', { class: 'scg-card' },
+      h('div', { class: 'scg-title' }, h('span', {}, `${P.icon || '⚔️'} ${P.label || '편성표'}`), h('span', {}, '×')),
+      P.note ? h('p', { class: 'scg-note' }, P.note) : null);
+    if (formations.length > 1) previewCard.appendChild(h('div', { class: 'scg-tabs' },
+      ...formations.map((t, i) => h('button', {
+        class: `scg-tab${i === partyEditorIndex ? ' scg-on' : ''}`, type: 'button', disabled: true,
+      }, t.label || `편성표 ${i + 1}`))));
+    if (selectedFormation.note) previewCard.appendChild(h('p', { class: 'scg-note' }, selectedFormation.note));
+    selectedFormation.slots.forEach((slot, index) => {
+      const def = schema.vars.find((v) => v.id === slot.var);
+      const names = (def?.enum || []).filter((x) => x !== (P.empty ?? '없음'));
+      const value = names[0] || P.empty || '없음';
+      previewCard.appendChild(h('div', { class: 'scg-slot' },
+        h('div', { class: 'scg-slot-row' },
+          h('span', { class: 'scg-slot-label' }, slot.label || def?.label || `자리 ${index + 1}`),
+          h('span', { class: `scg-slot-val${names.length ? '' : ' scg-empty'}` }, names.length ? value : '(비어 있음)'),
+          h('span', { class: 'scg-slot-arrow' }, '▲')),
+        h('div', { class: 'scg-cands' },
+          ...(names.length ? names : ['후보 없음']).map((name, i) => h('button', {
+            class: `scg-chip${i === 0 && names.length ? ' scg-on' : ''}`, type: 'button', disabled: true,
+          }, name)),
+          names.length ? h('button', { class: 'scg-chip', type: 'button', disabled: true }, '비우기') : null)));
+    });
+    if (!selectedFormation.slots.length) previewCard.appendChild(h('p', { class: 'scg-note' }, '이 편성표에는 아직 자리가 없습니다.'));
+    previewRoot.appendChild(previewCard);
+    if (P.css) previewRoot.appendChild(h('style', {}, scopeCss(String(P.css), '.sce-party-live-preview')));
+    const htmlFold = h('details', { class: 'sce-party-optional' },
+      h('summary', {}, '생성 HTML 보기', h('span', {}, '복사·확인용')),
+      h('pre', { class: 'sce-party-preview-code' }, previewCard.outerHTML));
+    const cssFold = h('details', { class: 'sce-party-advanced', open: true },
+      h('summary', {}, '편성표 HTML/CSS 미리보기', h('span', {}, P.css ? '사용자 CSS 적용 중' : '기본 디자인')),
+      h('div', { class: 'sce-party-advanced-body sce-party-preview-shell' },
+        previewRoot,
+        htmlFold,
+        h('div', { class: 'sce-hint' },
+          '아래 CSS는 위 미리보기에 바로 적용됩니다. 주요 클래스: .scg-card(카드), .scg-slot(자리), '
+          + '.scg-chip(후보), .scg-chip.scg-on(선택된 후보).'),
+        bindArea(P.css, (x) => { P.css = x || undefined; rerender(); },
+          '.scg-card { background:#1a1030; border-color:#7a5cd0; }\n.scg-chip.scg-on { background:#7a5cd0; }')));
+    partyPreviewMount.appendChild(cssFold);
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 제거')));
+    wrap.appendChild(h('details', { class: 'sce-party-advanced sce-party-danger' },
+      h('summary', {}, '편성표 삭제', h('span', {}, '설정 전체 제거')),
+      h('div', { class: 'sce-party-advanced-body' },
+        h('div', { class: 'sce-hint' }, '편성표 설정만 삭제하며, 연결된 변수와 액션은 그대로 남습니다.'),
+        h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.party; rerender(); } }, '편성표 삭제'))));
     return wrap;
   }
 
@@ -5738,112 +9014,138 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 배포자가 이야기의 척추를 표로 적는 자리. 은닉이 요점이라 UI도 그 축이다 —
   // secret 칸에 "모델은 이 막부터 본다"를 계속 상기시킨다.
   function tabScenario() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('scenario'));
+    const wrap = h('div', { class: 'sce-scenario-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-scenario-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-scenario-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 시나리오 만들기'),
+          h('small', {}, '런타임의 막 진행과는 별개로, 시나리오 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-scenario-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+      h('div', { class: 'sce-scenario-ai-body' }, tabAiTools('scenario')));
 
     if (!schema.scenario) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '시나리오 — 중심 이야기를 막(act) 단위로 등록해 두면, 조건을 만족할 때마다 다음 막이 '
-        + '해금됩니다. 모델은 전체 시나리오를 못 보고 **현재 막의 연출 지시와 이미 밝혀진 내막만** '
-        + '받습니다 — 이야기 속도와 스포일러를 시스템이 지킵니다. '
-        + '(추리 사건 게임이 필요하면 이건 그 용도가 아닙니다 — 이야기 페이스 제어용입니다.)'));
-      wrap.appendChild(addBtn('시나리오 만들기 (3막 골격)', () => {
-        schema.scenario = {
-          label: '',
-          acts: [
-            { id: 'act1', label: '잠복', intensity: '잠복', direct: '', secret: '' },
-            { id: 'act2', label: '전개', unlock: '', minTurns: 5, intensity: '전개', direct: '', secret: '' },
-            { id: 'act3', label: '절정', unlock: '', minTurns: 8, intensity: '절정', direct: '', secret: '' },
-          ],
-        };
-        rerender();
-      }));
+      wrap.appendChild(h('header', { class: 'sce-scenario-head' }, h('div', {},
+        h('h3', {}, '선형 시나리오'),
+        h('p', {}, '이야기를 여러 막으로 나누고, 조건과 최소 체류 턴에 따라 다음 막을 여는 페이스 제어 기능이에요.'))));
+      wrap.appendChild(h('section', { class: 'sce-scenario-empty' },
+        h('div', { class: 'sce-scenario-empty-index', 'aria-hidden': 'true' }, '03'),
+        h('div', {}, h('h4', {}, '3막 골격으로 시작해 보세요'),
+          h('p', {}, '현재 막의 공개 연출 지시와 이미 열린 내막만 모델에 전달되어 이후 막의 비밀을 보호해요.')),
+        addBtn('시나리오 만들기 (3막 골격)', () => {
+          schema.scenario = {
+            label: '',
+            acts: [
+              { id: 'act1', label: '잠복', intensity: '잠복', direct: '', secret: '' },
+              { id: 'act2', label: '전개', unlock: '', minTurns: 5, intensity: '전개', direct: '', secret: '' },
+              { id: 'act3', label: '절정', unlock: '', minTurns: 8, intensity: '절정', direct: '', secret: '' },
+            ],
+          };
+          rerender();
+        })));
+      wrap.appendChild(aiTools());
       return wrap;
     }
 
     const S = schema.scenario;
     S.acts = S.acts || [];
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('시나리오 제목', bindInput(S.label, (x) => { S.label = x || undefined; rerender(); },
-        { cls: 'sce-w-l', ph: '제1장 — 혈마심경 (프롬프트 머리글에 실림, 비워도 됨)' })),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '막은 위에서 아래로 한 방향으로만 진행됩니다. 전환은 **조건이 참이 된 턴**에 일어나고, '
-      + '최소 체류 턴을 채우기 전엔 조건이 차도 기다립니다. 상태창·조건식에서 '
-      + '{scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 쓸 수 있습니다. '
-      + '유저에게는 상태창 진행 칩(자동 구성이면 맨 위, 템플릿이면 {scenario} 자리)과 '
-      + '전환 순간의 📖 하이라이트 카드로 보입니다 — 라벨만, 스포일러 없이.'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '해금이 읽는 변수를 보조 AI가 움직인다면(자동 갱신 허용 목록), 그 변수의 **desc가 곧 페이스 '
-      + '손잡이**입니다 — 보조 AI는 desc를 보고 언제 움직일지 정합니다. 변수 탭에서 기록 기준을 '
-      + '적어 두세요 (예: "서사에서 조각을 실제로 확보했을 때만 +1. 언급·추측은 세지 않는다"). '
-      + 'AI에게 "해금해도 되는지"를 판단시키는 게 아니라 일어난 일만 기록시키는 겁니다 — '
-      + '판단은 해금식과 최소 체류 턴이 합니다.'));
+    wrap.appendChild(h('header', { class: 'sce-scenario-head' },
+      h('div', {}, h('h3', {}, '선형 시나리오'),
+        h('p', {}, '막은 위에서 아래로 진행하며, 해금 조건과 최소 체류 턴이 이야기의 전환 시점을 제어해요.')),
+      h('div', { class: 'sce-scenario-summary' },
+        h('span', {}, `${S.acts.length}막`),
+        h('span', {}, '한 방향 진행'))));
+    wrap.appendChild(h('section', { class: 'sce-scenario-overview' },
+      field('시나리오 제목', bindInput(S.label, (x) => { S.label = x || undefined; rerender(); },
+        { cls: 'sce-w-l', ph: '제1장 — 혈마심경 (프롬프트 머리글에 실림, 비워도 됨)' }),
+        '프롬프트 머리글에 표시하는 선택 항목이에요. 비워도 됩니다.', true),
+      h('div', { class: 'sce-scenario-note' },
+        '상태창·조건식에서는 {scn_label}(현재 막 라벨) · scn_act(막 id) · scn_turns(막 경과 턴)를 사용할 수 있어요. 전환 순간에는 스포일러 없이 막 라벨만 표시됩니다.'),
+      h('div', { class: 'sce-scenario-note is-diagnostic' },
+        '해금 조건이 읽는 변수를 보조 AI가 움직인다면 변수 설명에 기록 기준을 적어 주세요. AI는 일어난 사실만 기록하고, 전환 판단은 해금식과 최소 체류 턴이 맡습니다.')));
 
     const INTENSITY_OPTS = [['', '(없음 — direct만)'],
       ...Object.keys(INTENSITIES).map((k) => [k, k])];
     S.acts.forEach((a, i) => {
-      const p = h('div', { class: 'sce-block' });
-      p.appendChild(h('div', { class: 'sce-row' },
-        h('b', {}, `${i + 1}막`),
-        pair('id', bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `act${i + 1}` }),
-          '조건식에서 scn_act == "이 값"으로 참조'),
-        pair('라벨', bindInput(a.label, (x) => { a.label = x || undefined; rerender(); },
-          { cls: 'sce-w-m', ph: '잠복 / 전개 / …' }), '유저에게 보이는 이름 — 스포일러 없이'),
-        pair('국면', bindSelect(a.intensity ?? '', INTENSITY_OPTS,
-          (x) => { if (x) a.intensity = x; else delete a.intensity; rerender(); }),
-          '기본 연출 문구 자동 첨부 — direct는 그 위에 얹는 봇 고유 지시'),
-        grip(S.acts, i, rerender),
-      ));
+      const p = h('article', { class: 'sce-scenario-act', 'data-sce-validation-path': `$.scenario.acts[${i}]` });
+      p.appendChild(h('header', { class: 'sce-scenario-act-head' },
+        h('div', { class: 'sce-scenario-act-identity' },
+          h('span', { class: 'sce-scenario-act-index' }, `${i + 1}막`),
+          h('div', {},
+            h('strong', {}, a.label || `이름 없는 ${i + 1}막`),
+            h('small', {}, `${a.id || `act${i + 1}`} · ${a.intensity || '국면 없음'}`))),
+        grip(S.acts, i, rerender)));
+      p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-core' },
+        h('div', { class: 'sce-scenario-group-title' }, '기본 정보'),
+        h('div', { class: 'sce-scenario-field-grid is-core' },
+          field('ID', bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `act${i + 1}` }),
+            '조건식에서 scn_act와 비교하는 기술 식별자예요.'),
+          field('라벨', bindInput(a.label, (x) => { a.label = x || undefined; rerender(); },
+            { cls: 'sce-w-m', ph: '잠복 / 전개 / …' }), '사용자에게 스포일러 없이 보이는 이름이에요.'),
+          field('국면', bindSelect(a.intensity ?? '', INTENSITY_OPTS,
+            (x) => { if (x) a.intensity = x; else delete a.intensity; rerender(); }),
+            '기본 연출 문구를 붙이고, 연출 지시는 그 위에 더해져요.'))));
       if (i > 0) {
-        p.appendChild(h('div', { class: 'sce-row' },
-          pair('해금 조건', bindInput(a.unlock, (x) => { a.unlock = x || undefined; rerender(); },
-            { cls: 'sce-w-l', ph: 'finds >= 2 or day >= 30' }),
-            '이 조건이 참이 되면 이전 막에서 넘어온다 — 플레이가 움직이는 변수를 읽을 것 (rand() 금지)'),
-          pair('최소 체류', bindInput(a.minTurns, (x) => {
-            const n = parseInt(x, 10);
-            if (isFinite(n) && n > 0) a.minTurns = n; else delete a.minTurns;
-            rerender();
-          }, { cls: 'sce-w-s', ph: '0' }), '직전 막에서 최소 몇 턴을 보내야 넘어올 수 있나 — 페이스 바닥'),
-        ));
+        p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-progress' },
+          h('div', { class: 'sce-scenario-group-title' }, '진행 조건'),
+          h('div', { class: 'sce-scenario-field-grid is-progress' },
+            field('해금 조건', bindInput(a.unlock, (x) => { a.unlock = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: 'finds >= 2 or day >= 30' }),
+              '상태 조건이 참이 되면 이전 막에서 넘어와요. 플레이가 움직이는 변수를 사용하며 rand()는 쓸 수 없습니다.'),
+            field('최소 체류', bindInput(a.minTurns, (x) => {
+              const n = parseInt(x, 10);
+              if (isFinite(n) && n > 0) a.minTurns = n; else delete a.minTurns;
+              rerender();
+            }, { cls: 'sce-w-s', ph: '0' }), '조건이 먼저 충족돼도 이전 막에서 최소한 머무를 턴 수예요.'))));
       } else {
-        p.appendChild(h('div', { class: 'sce-hint' }, '첫 막은 즉시 시작합니다 — 해금 조건이 없습니다.'));
+        p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-progress is-first' },
+          h('div', { class: 'sce-scenario-group-title' }, '진행 조건'),
+          h('div', { class: 'sce-scenario-first-note' }, '첫 막은 즉시 시작하므로 해금 조건과 최소 체류 설정을 사용하지 않아요.')));
       }
-      p.appendChild(pair('연출 지시', null, ''));
-      p.appendChild(bindArea(a.direct, (x) => { a.direct = x || undefined; rerender(); },
-        '이 막이 열려 있는 동안 매 턴 모델에게 가는 지시 — 표면 상황만. {변수} 삽입 가능.'));
-      p.appendChild(h('div', { class: 'sce-hint' },
-        '🔒 내막(secret) — **이 막이 열리는 순간부터** 모델에게 공개됩니다. 반전·정체·진상은 '
-        + '전부 여기에: 이전 막에서는 프롬프트에 아예 실리지 않습니다.'));
-      p.appendChild(bindArea(a.secret, (x) => { a.secret = x || undefined; rerender(); },
-        '(비워도 됨) 예: 흑막은 문파 안에 있다.'));
-      p.appendChild(h('div', { class: 'sce-row' },
-        pair('전환 통지', bindInput(a.notify, (x) => { a.notify = x || undefined; rerender(); },
+      p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-direction' },
+        h('div', { class: 'sce-scenario-group-title' }, '공개 연출 지시'),
+        field('연출 지시', bindArea(a.direct, (x) => { a.direct = x || undefined; rerender(); },
+          '이 막이 열려 있는 동안 매 턴 모델에게 가는 지시 — 표면 상황만. {변수} 삽입 가능.'),
+          '현재 막에서 어떤 상황과 흐름을 연출할지 적어요. 결말을 확정하기보다 진행 방향을 안내하는 칸이에요.', true)));
+      p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-secret' },
+        h('div', { class: 'sce-scenario-group-title' }, '🔒 비공개 내막'),
+        h('div', { class: 'sce-scenario-secret-copy' },
+          '이 막이 열리는 순간부터 모델에게 공개됩니다. 반전·정체·진상은 이전 막의 프롬프트에 실리지 않아요.'),
+        field('내막', bindArea(a.secret, (x) => { a.secret = x || undefined; rerender(); },
+          '(비워도 됨) 예: 흑막은 문파 안에 있다.'), '아직 공개되지 않은 비밀을 적어요. 비워도 됩니다.', true)));
+      p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-notify' },
+        h('div', { class: 'sce-scenario-group-title' }, '전환 통지'),
+        field('통지 문구', bindInput(a.notify, (x) => { a.notify = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '(비워도 됨) [이야기] 수면 아래에서 무언가 움직이기 시작했다.' }),
-          '막이 열리는 턴, [이벤트] 줄로 모델에게 1회 전달'),
-      ));
+          '막이 열리는 턴에 [이벤트] 줄로 모델에게 한 번 전달해요. 비워도 됩니다.', true)));
       // 전환 순간 1회 효과 — 이벤트 효과와 같은 형식·같은 편집 UI
       a.onEnter = a.onEnter || [];
       if (a.onEnter.length || i > 0) {
-        p.appendChild(h('div', { class: 'sce-hint', style: 'margin-bottom:0' }, '전환 효과 (열리는 순간 1회):'));
-        p.appendChild(effectRows(schema, a.onEnter, rerender));
+        p.appendChild(h('section', { class: 'sce-scenario-act-section sce-scenario-effects' },
+          h('div', { class: 'sce-scenario-group-title' }, '진입 효과'),
+          h('div', { class: 'sce-scenario-effects-copy' }, '이 막이 열리는 순간에 한 번만 적용됩니다.'),
+          effectRows(schema, a.onEnter, rerender)));
       }
       wrap.appendChild(p);
     });
-    wrap.appendChild(addBtn('막 추가', () => {
+    wrap.appendChild(h('div', { class: 'sce-scenario-add' }, addBtn('막 추가', () => {
       S.acts.push({ id: `act${S.acts.length + 1}`, label: '', unlock: '', direct: '', secret: '' });
       rerender();
-    }));
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    })));
+    wrap.appendChild(h('section', { class: 'sce-scenario-danger' },
+      h('div', {}, h('strong', {}, '시나리오 설정 삭제'),
+        h('span', {}, '진행 중인 세이브의 막 위치는 남으며, 다시 켜면 1막부터 시작합니다.')),
       h('button', { class: 'sce-btn sce-danger', onclick: () => {
         delete schema.scenario; rerender();
-      } }, '시나리오 삭제'),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '진행 중 세이브의 막 위치는 세이브에 남습니다 — 다시 켜면 1막부터.')));
+      } }, '시나리오 삭제')));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
   // 환전 창구 행들 (v1.3.0 다짝) — 저장 꼴: 0개=삭제, 1개=객체(하위호환), 2개+=배열
   function exchangeRows(SH, nums) {
+    // 환전 창구 여러 개 (지갑마다 하나씩, 최대 4) — 창구 하나 = 개조본 필드 격자 한 벌
     const exArr = Array.isArray(SH.exchange) ? SH.exchange : SH.exchange ? [SH.exchange] : [];
     const setEx = (arr) => {
       if (!arr.length) delete SH.exchange;
@@ -5851,85 +9153,110 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       rerender();
     };
     const taken = (self) => exArr.filter((e) => e !== self).map((e) => e.var);
-    const rows = exArr.map((EX, i) => h('div', { class: 'sce-row' },
-      pair('환전 상대 지갑', bindSelect(EX.var ?? '',
+    const rows = exArr.map((EX, i) => h('div', { class: 'sce-shop-field-grid sce-shop-workgroup is-secondary' },
+      shopField('환전 상대 지갑', bindSelect(EX.var ?? '',
         nums.filter((v) => v.id !== SH.currency && !taken(EX).includes(v.id)).map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-        (x) => { EX.var = x; setEx(exArr); }), i === 0 ? '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)' : ''),
-      pair('환율', bindInput(EX.rate ?? '', (x) => {
+        (x) => { EX.var = x; setEx(exArr); }), '상점 통화와 맞바꿀 다른 숫자 지갑 (예: 코인 ↔ 현금)'),
+      shopField('환율', bindInput(EX.rate ?? '', (x) => {
         const n = parseFloat(x); if (isFinite(n) && n > 0) { EX.rate = n; setEx(exArr); }
-      }, { cls: 'sce-w-s', ph: '1000' }), i === 0 ? '통화 1 = 상대 지갑 얼마' : ''),
-      pair('수수료', bindInput(EX.spread ?? '', (x) => {
+      }, { cls: 'sce-w-s', ph: '1000' }), '통화 1 = 상대 지갑 얼마'),
+      shopField('수수료', bindInput(EX.spread ?? '', (x) => {
         const n = parseFloat(x); if (isFinite(n)) EX.spread = Math.max(0, Math.min(0.9, n)); else delete EX.spread; setEx(exArr);
-      }, { cls: 'sce-w-s', ph: '0.2' }), i === 0 ? '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템' : ''),
-      pair('창구 이름', bindInput(EX.label ?? '', (x) => {
+      }, { cls: 'sce-w-s', ph: '0.2' }), '살 때 ×(1+s), 팔 때 ×(1-s) — 계산은 전부 시스템'),
+      shopField('창구 이름', bindInput(EX.label ?? '', (x) => {
         if (x) EX.label = x; else delete EX.label; setEx(exArr);
-      }, { cls: 'sce-w-m', ph: '환전' }), i === 0 ? '거래 통지의 접두 (예: 암거래 환전)' : ''),
-      h('button', { class: 'sce-btn sce-mini sce-danger', title: '이 창구 삭제',
-        onclick: () => setEx(exArr.filter((_, j) => j !== i)) }, '✕'),
+      }, { cls: 'sce-w-m', ph: '환전' }), '거래 통지의 접두 (예: 암거래 환전)'),
+      h('div', { class: 'sce-shop-inline-hint is-wide' },
+        h('button', { class: 'sce-btn sce-mini sce-danger', title: '이 창구 삭제',
+          onclick: () => setEx(exArr.filter((_, j) => j !== i)) }, '✕ 이 창구 닫기')),
     ));
     const avail = nums.filter((v) => v.id !== SH.currency && !exArr.some((e) => e.var === v.id));
     if (exArr.length < 4 && avail.length) {
-      rows.push(h('div', { class: 'sce-row' },
+      rows.push(h('div', { class: 'sce-shop-inline-hint is-wide' },
         addBtn(exArr.length ? '환전 창구 추가' : '환전 창구 열기', () => setEx([...exArr, { var: avail[0].id, rate: 1 }])),
-        exArr.length ? h('span', { class: 'sce-hint', style: 'margin:0' }, '지갑이 여럿이면(원·달러·엔) 창구를 지갑마다 하나씩 (최대 4)') : null));
+        !exArr.length ? h('span', {}, '창구를 열면 환율·수수료·창구 이름을 입력할 수 있어요.') : null));
+    } else if (!exArr.length) {
+      rows.push(h('div', { class: 'sce-shop-inline-hint is-wide' }, '상점 통화 말고 다른 숫자 변수가 있어야 환전 창구를 열 수 있어요.'));
     }
     return rows;
   }
 
   // 상점 (v0.96) — 시스템 상점. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabShop() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('shop'));
+    const wrap = h('div', { class: 'sce-shop-editor' });
+    const aiTools = () => h('details', { class: 'sce-shop-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 상점 만들기'),
+          h('small', {}, '상품 입고 지침과는 별개로, 상점 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-shop-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+      h('div', { class: 'sce-shop-ai-body' }, tabAiTools('shop')));
     const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
     const lists = schema.vars.filter((v) => v.type === 'list');
     const shopsArr = Array.isArray(schema.shops) ? schema.shops : null;
     if (!schema.shop && !shopsArr) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '상점 — 세계 안의 시스템 상점입니다 (알터 스토어·잡화점·포인트샵). 채팅 우상단에 버튼이 '
-        + '생기고, 카테고리 진열·구매·판매(감정)·매입 시세판이 굴러갑니다. 결제·잔액·수량은 전부 '
-        + '시스템이 처리하고, 등급 어휘·가격 밴드를 정해 두면 AI의 뇌절 진열(밴드 밖 가격, 없는 등급)을 '
-        + '시스템이 거부합니다. 거래 내역은 다음 전송에 한 번 실려 서사에 반영되고 자동으로 비워집니다.'));
+      wrap.appendChild(h('header', { class: 'sce-shop-head' }, h('div', {},
+        h('h3', {}, '시스템 상점'),
+        h('p', {}, '채팅 안에서 상품을 진열하고 구매·판매·환전을 처리하는 상점이에요. 결제와 수량은 시스템이 계산합니다.'))));
       if (!nums.length || !lists.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-          '상점에는 지갑(숫자 변수)과 구매품이 들어갈 목록(list 변수)이 필요합니다 — [변수] 탭에서 먼저 만드세요.'));
+        wrap.appendChild(h('section', { class: 'sce-shop-empty' },
+          h('div', { class: 'sce-shop-empty-icon', 'aria-hidden': 'true' }, '▤'),
+          h('div', {}, h('h4', {}, '먼저 상점용 변수가 필요해요'),
+            h('p', {}, '결제에 쓸 숫자 변수와 구매품을 담을 목록 변수를 변수 탭에서 만들어 주세요.')),
+          h('button', { class: 'sce-btn', onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동')));
+        wrap.appendChild(aiTools());
         return wrap;
       }
-      wrap.appendChild(addBtn('상점 만들기', () => {
-        schema.shop = { label: '상점', icon: '🛒', currency: nums[0].id, buyTo: lists[0].id };
-        rerender();
-      }));
+      wrap.appendChild(h('section', { class: 'sce-shop-empty' },
+        h('div', { class: 'sce-shop-empty-icon', 'aria-hidden': 'true' }, '▤'),
+        h('div', {}, h('h4', {}, '아직 상점이 없어요'),
+          h('p', {}, '기본 상점을 만든 뒤 이름, 가격 규칙, 판매와 환전 설정을 조정할 수 있어요.')),
+        addBtn('상점 만들기', () => {
+          schema.shop = { label: '상점', icon: '🛒', currency: nums[0].id, buyTo: lists[0].id };
+          rerender();
+        })));
+      wrap.appendChild(aiTools());
       return wrap;
     }
-    // 다중 상점 (v1.4.0) — 상점마다 같은 필드 한 벌씩. 상태·버튼은 id로 갈린다
+    wrap.appendChild(h('header', { class: 'sce-shop-head' }, h('div', {},
+      h('h3', {}, '시스템 상점'),
+      h('p', {}, shopsArr
+        ? `상점 ${shopsArr.length}개 — 지갑·재고·노출 조건이 상점마다 독립이고 우상단 버튼도 하나씩 생깁니다.`
+        : '상점 기본 정보부터 가격 규칙, 판매·환전과 상품 입고 지침까지 한곳에서 관리해요.'))));
+
+    // 다중 상점 (v1.4.0) — 상점마다 같은 섹션 한 벌씩. 상태·버튼은 id로 갈린다
     if (shopsArr) {
       shopsArr.forEach((SH, i) => {
-        wrap.appendChild(h('div', { class: 'sce-row' },
-          pair(`상점 ${i + 1} — id`, bindInput(SH.id ?? '', (x) => { SH.id = x.trim(); rerender(); },
-            { cls: 'sce-w-m', ph: '예: store, black_market' }),
-            '상태·버튼이 이 id로 갈립니다 — 운영 중에 바꾸면 그 상점 진열이 새로 시작돼요'),
-          h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-            if (confirm(`상점 '${SH.label ?? SH.id ?? i + 1}'을(를) 지울까요?`)) {
-              shopsArr.splice(i, 1);
-              if (!shopsArr.length) delete schema.shops;
-              rerender();
-            }
-          } }, '✕ 이 상점 삭제')));
-        wrap.appendChild(shopFieldBlock(SH, nums, lists));
+        wrap.appendChild(shopSection(String(i + 1), `상점 ${i + 1} — ${SH.label || SH.id || '이름 없음'}`,
+          '상태·버튼이 이 id로 갈립니다 — 운영 중에 바꾸면 그 상점 진열이 새로 시작돼요.',
+          h('div', { class: 'sce-shop-field-grid sce-shop-workgroup' },
+            shopField('id', bindInput(SH.id ?? '', (x) => { SH.id = x.trim(); rerender(); },
+              { cls: 'sce-w-m', ph: '예: store, black_market' }), '영문 식별자. 다른 상점과 겹치면 안 돼요.'),
+            h('div', { class: 'sce-shop-inline-hint' },
+              h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+                if (confirm(`상점 '${SH.label ?? SH.id ?? i + 1}'을(를) 지울까요?`)) {
+                  shopsArr.splice(i, 1);
+                  if (!shopsArr.length) delete schema.shops;
+                  rerender();
+                }
+              } }, '✕ 이 상점 삭제')))));
+        for (const sec of shopFieldBlock(SH, nums, lists)) wrap.appendChild(sec);
       });
-      wrap.appendChild(h('div', { class: 'sce-row' },
+      wrap.appendChild(h('section', { class: 'sce-shop-danger' },
+        h('div', {}, h('strong', {}, '상점 추가'),
+          h('span', {}, '상점은 최대 4개 — 지갑·재고·노출 조건이 상점마다 독립이고 우상단 버튼도 하나씩 생깁니다.')),
         shopsArr.length < 4 ? addBtn('상점 추가', () => {
           shopsArr.push({ id: `shop${shopsArr.length + 1}`, label: `상점 ${shopsArr.length + 1}`, icon: '🛒', currency: nums[0].id, buyTo: lists[0].id });
           rerender();
-        }) : null,
-        h('span', { class: 'sce-hint', style: 'margin:0' }, '상점은 최대 4개 — 지갑·재고·노출 조건이 상점마다 독립이고 우상단 버튼도 하나씩 생깁니다.')));
+        }) : null));
+      wrap.appendChild(aiTools());
       return wrap;
     }
+
     const SH = schema.shop;
-    wrap.appendChild(shopFieldBlock(SH, nums, lists));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      addBtn('상점 삭제', () => {
-        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
-      }),
+    for (const sec of shopFieldBlock(SH, nums, lists)) wrap.appendChild(sec);
+    wrap.appendChild(h('section', { class: 'sce-shop-danger' },
+      h('div', {}, h('strong', {}, '지점 확장 · 상점 설정 삭제'),
+        h('span', {}, '진열·시세·거래 로그는 진행 중인 세이브에 남고, 리롤하면 상점 상태도 함께 되감깁니다. 2호점 전환 시 기존 진열은 1호점이 물려받아요.')),
       addBtn('2호점 추가 (다중 상점으로 전환)', () => {
         schema.shops = [
           { id: 'shop1', ...SH },
@@ -5938,85 +9265,120 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         delete schema.shop;
         rerender();
       }),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '진열·시세·거래 로그는 세이브(스냅샷)에 삽니다 — 리롤하면 상점도 같이 되감깁니다. 2호점 전환 시 기존 진열은 1호점이 물려받아요.')));
+      h('button', { class: 'sce-btn sce-danger', onclick: () => {
+        if (confirm('상점 설정을 지울까요? (진행 중 세이브의 진열·시세는 세이브에 남습니다)')) { delete schema.shop; rerender(); }
+      } }, '상점 삭제')));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
   // 상점 필드 한 벌 — 단수·다중이 같은 블록을 쓴다 (v1.4.0)
+  // ── 개조본 이식 헬퍼 (v1.7.13): 검증 오류 친절화·점프 ──
+  // ── 상점 탭 공용 부품 (v1.7.13 개조본 이식) — 개조본은 tabShop 안의 지역 함수였으나 우리는
+  // shopFieldBlock(다중 상점 v1.4.0)이 상점마다 같은 섹션을 찍으므로 최상위로 올린다 ──
+  function shopField(label, control, help = '', wide = false) {
+    return h('label', { class: `sce-shop-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+  }
+
+  function shopSection(step, title, copy, ...children) {
+    return h('section', { class: 'sce-shop-section' },
+      h('div', { class: 'sce-shop-section-head' },
+        h('div', { class: 'sce-shop-step' }, step),
+        h('div', { class: 'sce-shop-section-title' }, title),
+        h('div', { class: 'sce-shop-section-copy' }, copy)),
+      h('div', { class: 'sce-shop-section-body' }, ...children));
+  }
   function shopFieldBlock(SH, nums, lists) {
-    return h('div', { class: 'sce-block' },
-      h('div', { class: 'sce-row' },
-        pair('상점 이름', bindInput(SH.label, (x) => { SH.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '상점' })),
-        pair('아이콘', bindInput(SH.icon, (x) => { SH.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🛒' })),
-        pair('지갑', bindSelect(SH.currency ?? '', nums.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-          (x) => { SH.currency = x; rerender(); }), '결제에 쓰는 숫자 변수'),
-        pair('진열 상한', bindInput(SH.maxStock ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(48, n)); else delete SH.maxStock; rerender();
-        }, { cls: 'sce-w-s', ph: '18' })),
-        pair('카테고리당 개수', bindInput(Array.isArray(SH.perCat) ? SH.perCat.join('~') : '', (x) => {
-          const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
-          if (m) {
-            const lo = Math.max(1, Math.min(9, parseInt(m[1], 10)));
-            SH.perCat = [lo, Math.max(lo, Math.min(9, parseInt(m[2], 10)))];
-          } else delete SH.perCat;
-          rerender();
-        }, { cls: 'sce-w-s', ph: '4~6' }), '입고 지시가 "카테고리마다 N~M개씩"이 됩니다 (비우면 총량 지시)'),
-      ),
-      h('div', { class: 'sce-row' },
-        pair('구매품 목록', bindSelect(SH.buyTo ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-          (x) => { SH.buyTo = x; rerender(); }), '산 물건이 들어갈 list 변수'),
-        pair('매입 대상 목록', bindSelect(SH.sellFrom ?? '',
-          [['', '(없음 — 판매 창구 닫힘)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-          (x) => { if (x) SH.sellFrom = x; else delete SH.sellFrom; rerender(); }), '팔 물건을 꺼낼 list 변수'),
-        pair('매입률', bindInput(SH.sellRate ?? '', (x) => {
-          const n = parseFloat(x); if (isFinite(n)) SH.sellRate = Math.max(0.1, Math.min(1, n)); else delete SH.sellRate; rerender();
-        }, { cls: 'sce-w-s', ph: '0.5' }), '감정가 대비 지급 비율 (시세판 매치는 시세 그대로)'),
-      ),
-      // 시세 (v1.7.8) — 식 하나. 카테고리별 { 칸: 식, '*': 기본 }은 JSON 관리자에서
-      h('div', { class: 'sce-row' },
-        pair('시세 배율(식)', bindInput(typeof SH.priceMul === 'string' ? SH.priceMul : (SH.priceMul ? '(카테고리별 — JSON 관리자에서)' : ''), (x) => {
-          if (SH.priceMul && typeof SH.priceMul === 'object') return;
-          const t = String(x).trim(); if (t) SH.priceMul = t; else delete SH.priceMul; rerender();
-        }, { cls: 'sce-w-l', ph: "market == '품귀' ? 1.5 : 1" }),
-          '진열가·매입가에 곱한다 (0.2~5로 묶임). 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 카테고리별은 JSON 관리자에서 { "소재": "식", "*": "식" }'),
-      ),
-      pair('카테고리', bindInput((SH.categories ?? []).join(', '), (x) => {
-        const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 8);
-        if (arr.length) SH.categories = arr; else delete SH.categories; rerender();
-      }, { cls: 'sce-w-full', ph: '추천, 인기, 소모품, 장비 (쉼표 구분, 최대 8)' }), '패널 탭이 됩니다'),
-      pair('등급 어휘', bindInput((SH.grades ?? []).join(', '), (x) => {
-        const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
-        if (arr.length) SH.grades = arr; else delete SH.grades; rerender();
-      }, { cls: 'sce-w-full', ph: '일반, 레어, 유니크 — 이 밖의 등급은 시스템이 거부' }), ''),
-      pair('가격 밴드', bindInput(SH.bands ? Object.entries(SH.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
-        (x) => {
-          const bands = {};
-          for (const seg of x.split(',')) {
-            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
-            if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
-          }
-          if (Object.keys(bands).length) SH.bands = bands; else delete SH.bands; rerender();
-        }, { cls: 'sce-w-full', ph: '일반 1~60, 레어 60~400, 유니크 400~3000' }),
-        '등급별 [최소~최대] — 진열가를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
-      pair('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
-        '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'), ''),
-      pair('표기 단위', bindInput((Array.isArray(SH.units) ? SH.units : []).map((u) => `${u.label}=${u.ratio}`).join(', '), (x) => {
-        const arr = [];
-        for (const seg of x.split(',')) {
-          const m = seg.trim().match(/^(.+?)\s*=\s*(\d+)$/);
-          if (m) arr.push({ label: m[1], ratio: Number(m[2]) });
-        }
-        if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
-      }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
-        '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요'),
-      ...exchangeRows(SH, nums),
-      h('div', { class: 'sce-row' },
-        pair('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
-      ),
-      pair('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
-        '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    );
+    // 상점 하나의 설정 섹션 묶음 — 개조본 6단 뼈대(v1.7.13) 위에 우리 칸을 되살렸다:
+    // 카테고리당 개수(perCat) · 시세 배율(priceMul v1.7.8) · 표기 단위(units) · 다중 환전 창구(exchangeRows)
+    const varOpt = (v) => [v.id, `${v.label ?? v.id} (${v.id})`];
+    return [
+      shopSection('01', '기본 설정', '채팅에 보이는 상점과 구매에 사용할 변수를 정해요.',
+        h('div', { class: 'sce-shop-field-grid sce-shop-workgroup' },
+          shopField('상점 이름', bindInput(SH.label, (x) => { SH.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '상점' })),
+          shopField('아이콘', bindInput(SH.icon, (x) => { SH.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '🛒' })),
+          shopField('지갑', bindSelect(SH.currency ?? '', nums.map(varOpt),
+            (x) => { SH.currency = x; rerender(); }), '결제에 쓰는 숫자 변수'),
+          shopField('진열 상한', bindInput(SH.maxStock ?? '', (x) => {
+            const n = parseInt(x, 10); if (isFinite(n)) SH.maxStock = Math.max(4, Math.min(48, n)); else delete SH.maxStock; rerender();
+          }, { cls: 'sce-w-s', ph: '18' }), '한 번에 유지할 진열 상품 수예요. 4~48 사이로 설정해요.'),
+          shopField('카테고리당 개수', bindInput(Array.isArray(SH.perCat) ? SH.perCat.join('~') : '', (x) => {
+            const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
+            if (m) {
+              const lo = Math.max(1, Math.min(9, parseInt(m[1], 10)));
+              SH.perCat = [lo, Math.max(lo, Math.min(9, parseInt(m[2], 10)))];
+            } else delete SH.perCat;
+            rerender();
+          }, { cls: 'sce-w-s', ph: '4~6' }), '입고 지시가 "카테고리마다 N~M개씩"이 됩니다 (비우면 총량 지시)'),
+          shopField('구매품 목록', bindSelect(SH.buyTo ?? '', lists.map(varOpt),
+            (x) => { SH.buyTo = x; rerender(); }), '산 물건이 들어갈 list 변수'),
+          shopField('노출 조건', bindInput(SH.when, (x) => { SH.when = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '예: store_on (비우면 항상)' }), '조건이 거짓이면 상점 버튼도 숨겨져요.'))),
+
+      shopSection('02', '상품 분류와 가격 규칙', '카테고리와 등급별 가격 범위를 함께 정해 진열 규칙을 제한해요.',
+        h('div', { class: 'sce-shop-stack sce-shop-workgroup' },
+          shopField('카테고리', bindInput((SH.categories ?? []).join(', '), (x) => {
+            const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 8);
+            if (arr.length) SH.categories = arr; else delete SH.categories; rerender();
+          }, { cls: 'sce-w-full', ph: '추천, 인기, 소모품, 장비 (쉼표 구분, 최대 8)' }), '쉼표로 구분한 항목이 상점 패널의 카테고리 탭이 돼요.', true),
+          shopField('등급 어휘', bindInput((SH.grades ?? []).join(', '), (x) => {
+            const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
+            if (arr.length) SH.grades = arr; else delete SH.grades; rerender();
+          }, { cls: 'sce-w-full', ph: '일반, 레어, 유니크 — 이 밖의 등급은 시스템이 거부' }),
+            '상품에 사용할 수 있는 등급 이름을 쉼표로 구분해요.', true),
+          shopField('가격 밴드', bindInput(SH.bands ? Object.entries(SH.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
+            (x) => {
+              const bands = {};
+              for (const seg of x.split(',')) {
+                const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+                if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
+              }
+              if (Object.keys(bands).length) SH.bands = bands; else delete SH.bands; rerender();
+            }, { cls: 'sce-w-full', ph: '일반 1~60, 레어 60~400, 유니크 400~3000' }),
+            '등급별 최소~최대 가격이에요. 진열가는 시스템이 이 범위 안으로 제한해요 (뇌절 방지의 본체).', true),
+          // 시세 (v1.7.8) — 식 하나. 카테고리별 { 칸: 식, '*': 기본 }은 JSON 관리자에서
+          shopField('시세 배율(식)', bindInput(typeof SH.priceMul === 'string' ? SH.priceMul : (SH.priceMul ? '(카테고리별 — JSON 관리자에서)' : ''), (x) => {
+            if (SH.priceMul && typeof SH.priceMul === 'object') return;
+            const t = String(x).trim(); if (t) SH.priceMul = t; else delete SH.priceMul; rerender();
+          }, { cls: 'sce-w-full', ph: "market == '품귀' ? 1.5 : 1" }),
+            '진열가·매입가에 곱한다 (0.2~5로 묶임). 상태가 바뀌면 같은 재고의 값이 바로 달라진다. 카테고리별은 JSON 관리자에서 { "소재": "식", "*": "식" }', true),
+          shopField('표기 단위', bindInput((Array.isArray(SH.units) ? SH.units : []).map((u) => `${u.label}=${u.ratio}`).join(', '), (x) => {
+            const arr = [];
+            for (const seg of x.split(',')) {
+              const m = seg.trim().match(/^(.+?)\s*=\s*(\d+)$/);
+              if (m) arr.push({ label: m[1], ratio: Number(m[2]) });
+            }
+            if (arr.length) SH.units = arr.slice(0, 4); else delete SH.units; rerender();
+          }, { cls: 'sce-w-full', ph: '골드=10000, 실버=100, 코퍼=1 (비우면 숫자 그대로)' }),
+            '지갑·가격 표기를 단위 사다리로 쪼갭니다 (123456 → 12골드 34실버 56코퍼). 지갑·계산은 여전히 최소 단위(ratio 1) 정수 하나 — 단위마다 지갑 변수를 쪼개지 마세요', true))),
+
+      shopSection('03', '판매 설정', '플레이어가 가진 물건을 꺼내 팔 수 있는 매입 창구를 설정해요.',
+        h('div', { class: 'sce-shop-field-grid sce-shop-workgroup' },
+          shopField('매입 대상 목록', bindSelect(SH.sellFrom ?? '',
+            [['', '(없음 — 판매 창구 닫힘)'], ...lists.map(varOpt)],
+            (x) => { if (x) SH.sellFrom = x; else delete SH.sellFrom; rerender(); }), '팔 물건을 꺼낼 list 변수'),
+          shopField('매입률', bindInput(SH.sellRate ?? '', (x) => {
+            const n = parseFloat(x); if (isFinite(n)) SH.sellRate = Math.max(0.1, Math.min(1, n)); else delete SH.sellRate; rerender();
+          }, { cls: 'sce-w-s', ph: '0.5' }), '감정가 대비 지급 비율이에요. 시세판에 있는 물건은 표시된 시세를 그대로 사용해요.'))),
+
+      shopSection('04', '환전 설정', '상점 통화와 다른 숫자 지갑을 맞바꾸는 보조 창구예요. 지갑이 여럿이면(원·달러·엔) 창구를 지갑마다 하나씩 (최대 4).',
+        ...exchangeRows(SH, nums)),
+
+      shopSection('05', '상점 운영 지침', 'AI가 세계관과 가격 규칙에 맞는 상품을 입고하도록 기준을 적어요.',
+        h('div', { class: 'sce-shop-stack sce-shop-workgroup sce-shop-guide-group' },
+          shopField('입고 지침', bindArea(SH.guide, (x) => { SH.guide = x || undefined; rerender(); },
+            '무엇을 파는 상점인지, 가격 감각의 기준 (예: E랭크 몬스터 처치가 1~5코인 — 거기에 맞는 상대 가격)'),
+            '상품의 종류, 등급·가격 기준과 세계관상 허용하거나 피할 내용을 함께 적어 주세요.', true))),
+
+      shopSection('06', '화면 꾸미기', '필요할 때만 상점 패널의 CSS를 직접 조정해요.',
+        h('details', { class: 'sce-shop-advanced' },
+          h('summary', {}, '고급 CSS 열기'),
+          h('div', { class: 'sce-shop-advanced-body' },
+            shopField('패널 CSS', bindArea(SH.css, (x) => { SH.css = x || undefined; rerender(); },
+              '.sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'),
+              'CSS를 비워 두면 기본 디자인을 사용해요.', true)))),
+    ];
   }
 
   // 의뢰판 (v1.7.9) — 시스템 퀘스트 보드. 규칙 #3: 엔진 기능엔 편집기 칸.
@@ -6117,26 +9479,60 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 커뮤니티 보드 (v0.95) — 세계 안의 미니 게시판. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabBoard() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('board'));
+    const wrap = h('div', { class: 'sce-board-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const section = (step, title, copy, ...children) => h('section',
+      { class: 'sce-board-section' },
+      h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, step),
+        h('div', { class: 'sce-board-section-title' }, title),
+        h('div', { class: 'sce-board-section-copy' }, copy)),
+      h('div', { class: 'sce-board-section-body' }, ...children));
+    const toggleCard = (title, copy, control) => h('div', { class: 'sce-board-toggle' },
+      h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, title), h('span', {}, copy)), control);
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 보드 만들기'),
+          h('small', {}, '게시글 생성 지침과는 별개로, 보드 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('board')));
+
     if (!schema.board) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '커뮤니티 보드 — 봇 세계 안의 미니 게시판입니다 (헌터넷·학내 커뮤니티·왕국 방보 등). '
-        + '채팅 우상단에 버튼이 생기고, 매 턴 보조 AI가 서사에 반응하는 글·댓글을 올립니다 '
-        + '(기존 보조 호출에 얹혀서 추가 호출 없음). 패널에서 유저가 글·댓글을 쓰면 채팅 턴을 '
-        + '쓰지 않고 보조만 불러 반응이 달립니다. 메인 모델에는 화제 한 줄만 갑니다.'));
-      wrap.appendChild(addBtn('보드 만들기', () => {
-        schema.board = { label: '게시판', icon: '💬', topics: '' };
-        rerender();
-      }));
+      wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+        h('h3', {}, '커뮤니티 보드'),
+        h('p', {}, '채팅 안에서 열어 보는 커뮤니티 게시판이에요. NPC가 글과 댓글을 올리고, 플레이어도 채팅 턴을 쓰지 않고 참여할 수 있어요.'))));
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '▦'),
+        h('div', {}, h('h4', {}, '아직 보드가 없어요'),
+          h('p', {}, '헌터넷, 학내 커뮤니티, 왕국 방보처럼 세계관에 맞는 게시판을 추가할 수 있어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          schema.board = { label: '게시판', icon: '💬', topics: '' }; rerender();
+        } }, '보드 만들기')));
+      wrap.appendChild(aiTools());
       return wrap;
     }
+
     const B = schema.board;
-    wrap.appendChild(h('div', { class: 'sce-block' },
-      h('div', { class: 'sce-row' },
-        pair('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '게시판' })),
-        pair('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '💬' })),
-        pair('턴당 새 글', bindInput(
+    const cats = Array.isArray(B.categories) ? B.categories : [];
+    wrap.appendChild(h('header', { class: 'sce-board-head' },
+      h('div', {}, h('h3', {}, '커뮤니티 보드'),
+        h('p', {}, '채팅 안에서 열어 보는 커뮤니티 게시판이에요. 이름과 글감, 새 글 생성 조건, 대화에 전달할 내용을 설정해요.')),
+      h('div', { class: 'sce-board-summary' },
+        h('span', {}, `${B.icon || '💬'} ${B.label || '게시판'}`),
+        h('span', {}, `턴당 글 ${Array.isArray(B.postsPerTurn) ? B.postsPerTurn.join('~') : (B.postsPerTurn ?? 2)}`),
+        h('span', {}, `보존 ${B.maxPosts ?? 20}`),
+        h('span', {}, `카테고리 ${cats.length}`))));
+
+    wrap.appendChild(section('01', '기본 정보', '채팅에 보이는 이름과 한 턴에 올라올 글 수를 정해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('보드 이름', bindInput(B.label, (x) => { B.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '게시판' }), '채팅 상단 버튼과 보드 제목에 보여요.'),
+        field('아이콘', bindInput(B.icon, (x) => { B.icon = x || undefined; rerender(); },
+          { cls: 'sce-w-s', ph: '💬' }), '보드 버튼 앞에 표시할 아이콘이에요.'),
+        // 범위 표기 = 자율형 (우리 쪽 v1.7.x — 개조본 이식 뒤 되살림)
+        field('턴당 새 글', bindInput(
           Array.isArray(B.postsPerTurn) ? B.postsPerTurn.join('~') : (B.postsPerTurn ?? ''), (x) => {
             const m = x.match(/^\s*(\d+)\s*[~\-]\s*(\d+)\s*$/);
             if (m) {
@@ -6149,54 +9545,78 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           }, { cls: 'sce-w-s', ph: '2' }),
         '숫자(0~6) = 서사에 반응할 때만. "4~5"처럼 범위 = 매턴 그만큼, 대부분 주인공과 무관한 세계의 글 (자율형)'),
-        pair('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
-          const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n)); else delete B.maxPosts; rerender();
-        }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 내려갑니다 (4~40)'),
-      ),
-      pair('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
-        { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 욕' }),
-        '게시판이 무엇에 대해 떠드는 곳인지 — 보조 AI의 글감이 됩니다'),
-      pair('카테고리', bindInput((B.categories ?? []).join(', '), (x) => {
-        const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6);
-        if (arr.length) B.categories = arr; else delete B.categories; rerender();
-      }, { cls: 'sce-w-full', ph: '자유, 정보, 모집 (쉼표 구분, 최대 6 — 비우면 탭 없음)' }),
-        '패널이 탭으로 나뉘고 글마다 칸이 붙습니다 — 모집판 같은 "게시판 안의 게시판"'),
-      pair('생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
-        '말투·익명성·금기 등. 예: 익명 커뮤니티 말투(반말, 마침표 생략, 밈). 닉네임은 짧은 한국어. 유저를 전지적으로 알지 못한다.'),
-        ''),
-      h('div', { class: 'sce-row' },
-        pair('생성 조건', bindInput(B.when, (x) => { B.when = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
-          '거짓인 턴에는 새 글이 안 올라옵니다 (열람은 항상 가능) — 게이트 안 통신 두절 같은 것'),
-        bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); },
-          '메인 모델에 화제 한 줄 주입 (서사가 여론을 아는 통로)'),
-        bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); },
-          '주인공 글·댓글 1회 되울림 — 다음 턴에 스레드째 서사 소스로 (안 쓰이면 버려짐)'),
-      ),
-      // 현재 화제 기사 (v1.1.0) — N턴 주기 세계 뉴스 슬롯
-      h('div', { class: 'sce-row' },
-        pair('화제 기사', bindInput(B.hot ? (B.hot.label ?? '현재 화제') : '', (x) => {
+        field('보존 글 수', bindInput(B.maxPosts ?? '', (x) => {
+          const n = parseInt(x, 10); if (isFinite(n)) B.maxPosts = Math.max(4, Math.min(40, n));
+          else delete B.maxPosts; rerender();
+        }, { cls: 'sce-w-s', ph: '20' }), '이 수를 넘으면 오래된 글부터 정리해요. 4~40 사이로 설정해요.'))));
+
+    wrap.appendChild(section('02', '게시판 주제',
+      '어떤 이야기가 올라오는 곳인지 정해요. AI는 이 내용을 보고 글의 분위기와 소재를 잡아요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup sce-board-content-group' },
+        field('관심사', bindInput(B.topics, (x) => { B.topics = x || undefined; rerender(); },
+          { cls: 'sce-w-full', ph: '예: 게이트 공략 정보, 헌터 소문, 장비 시세, 협회 이야기' }),
+          '게시판에서 주로 다룰 화제와 소재를 적어 주세요.', true),
+        field('카테고리', bindInput(cats.join(', '), (x) => {
+          const arr = x.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 6);
+          if (arr.length) B.categories = arr; else delete B.categories; rerender();
+        }, { cls: 'sce-w-full', ph: '자유, 정보, 모집 · 쉼표로 구분 · 최대 6개' }),
+          '쉼표로 구분해 최대 6개까지 입력해요. 보드 안에 카테고리 탭이 생기며, 필요 없으면 비워 두세요.', true),
+        field('글 생성 지침', bindArea(B.guide, (x) => { B.guide = x || undefined; rerender(); },
+          '예: 익명 커뮤니티 말투를 사용해요. 닉네임은 짧게 만들고, 등장인물이 알 수 없는 정보는 쓰지 않아요.'),
+          '말투, 익명성, 금기, 닉네임 규칙처럼 게시판만의 분위기를 적어 주세요.', true))));
+
+    wrap.appendChild(section('03', '자동 동작',
+      '언제 새 글을 만들고, 게시판 내용을 메인 장면에 얼마나 연결할지 정해요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        h('div', { class: 'sce-board-group-part' },
+          h('div', { class: 'sce-board-group-label' }, '생성 제어'),
+          field('새 글 생성 조건', bindInput(B.when, (x) => { B.when = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '예: not in_gate · 비우면 항상 생성 가능' }),
+            '변수를 사용하는 조건식이에요. 비우면 항상 생성 가능하며, 조건을 만족하지 않아도 기존 글은 계속 볼 수 있어요.', true)),
+        h('div', { class: 'sce-board-group-part' },
+          h('div', { class: 'sce-board-group-label' }, '서사 연동'),
+          h('div', { class: 'sce-board-toggle-grid' },
+            toggleCard('메인 서사에 게시판 화제 전달',
+              '게시판의 주요 화제를 한 줄로 정리해 메인 모델에도 알려줘요.',
+              bindCheck(B.mainInject !== false, (v) => { B.mainInject = v ? undefined : false; rerender(); }, '사용')),
+            toggleCard('내 글·댓글을 다음 턴에 반영',
+              '플레이어가 쓴 글이나 댓글을 다음 턴에 한 번만 서사 참고자료로 전달해요.',
+              bindCheck(B.echo !== false, (v) => { B.echo = v ? undefined : false; rerender(); }, '사용')))))));
+
+    // 현재 화제 기사 (v1.1.0) — N턴 주기 세계 뉴스 슬롯 (우리 쪽 추가분, 개조본 이식 뒤 되살림)
+    wrap.appendChild(section('04', '화제 기사', 'N턴마다 갱신되는 세계 뉴스 기사 한 편 — 패널 최상단 고정, 메인엔 헤드라인 한 줄.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('화제 기사', bindInput(B.hot ? (B.hot.label ?? '현재 화제') : '', (x) => {
           if (x.trim()) B.hot = { ...(B.hot || {}), label: x.trim() };
           else delete B.hot;
           rerender();
-        }, { cls: 'sce-w-m', ph: '(비우면 끔) 예: 현재 화제' }),
-        'N턴마다 갱신되는 세계 뉴스 기사 한 편 — 패널 최상단 고정, 메인엔 헤드라인 한 줄'),
-        B.hot ? pair('갱신 주기(턴)', bindInput(B.hot.every ?? '', (x) => {
+        }, { cls: 'sce-w-m', ph: '(비우면 끔) 예: 현재 화제' }), '기사 슬롯의 제목이에요. 비우면 기능이 꺼져요.'),
+        B.hot ? field('갱신 주기(턴)', bindInput(B.hot.every ?? '', (x) => {
           const n = parseInt(x, 10);
           if (isFinite(n)) B.hot.every = Math.max(2, Math.min(20, n)); else delete B.hot.every;
           rerender();
-        }, { cls: 'sce-w-s', ph: '5' })) : null,
-      ),
-      B.hot ? pair('기사 지침', bindArea(B.hot.guide, (x) => { B.hot.guide = x || undefined; rerender(); },
-        '예: S랭크 헌터 동향, 게이트 브레이크 활약담, 협회 발표, 길드 스캔들 — 주인공과 무관한 세계급 화제'), '') : null,
-      pair('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
-        '.scb-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      addBtn('보드 삭제', () => {
-        if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) { delete schema.board; rerender(); }
-      }),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '글·댓글 데이터는 스키마가 아니라 세이브(스냅샷)에 삽니다 — 리롤하면 게시판도 같이 되감깁니다.')));
+        }, { cls: 'sce-w-s', ph: '5' }), '2~20턴. 비우면 5턴마다.') : null,
+        B.hot ? field('기사 지침', bindArea(B.hot.guide, (x) => { B.hot.guide = x || undefined; rerender(); },
+          '예: S랭크 헌터 동향, 게이트 브레이크 활약담, 협회 발표, 길드 스캔들 — 주인공과 무관한 세계급 화제'),
+          '어떤 급의 화제를 기사로 쓸지 적어요.', true) : null)));
+
+    wrap.appendChild(section('05', '화면 꾸미기', '필요할 때만 보드 패널의 CSS를 직접 조정해요.',
+      h('details', { class: 'sce-board-advanced' },
+        h('summary', {}, '고급 CSS 열기'),
+        h('div', { class: 'sce-board-advanced-body' },
+          field('패널 CSS', bindArea(B.css, (x) => { B.css = x || undefined; rerender(); },
+            '.scb-* 클래스를 덮어써 보드 패널의 겉모습을 바꿀 수 있어요. #sc-game 범위로 자동 격리돼요.'),
+            'CSS를 비워 두면 기본 디자인을 사용해요.', true)))));
+
+    wrap.appendChild(h('section', { class: 'sce-board-danger' },
+      h('div', {}, h('strong', {}, '보드 설정 삭제'),
+        h('span', {}, '편집기 설정만 지워요. 진행 중인 세이브에 이미 저장된 게시글은 그대로 남아요.')),
+      h('button', { type: 'button', class: 'sce-btn sce-danger', onclick: () => {
+        if (confirm('보드 설정을 지울까요? (진행 중 세이브의 게시글은 세이브에 남습니다)')) {
+          delete schema.board; rerender();
+        }
+      } }, '보드 삭제')));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
@@ -6256,51 +9676,85 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return wrap;
   }
 
+
   function tabCalendar() {
-    const wrap = h('div');
+    const wrap = h('div', { class: 'sce-calendar-editor' });
     const tcfg = timeConfig(schema);
     if (!tcfg) {
-      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-        '달력 패널은 시간 체계 위에서 섭니다 — 시계 없는 달력은 그릴 날짜가 없습니다. '
-        + '[시간] 탭에서 먼저 켜고 오세요.'));
+      wrap.appendChild(h('section', { class: 'sce-calendar-empty' },
+        h('h3', {}, '시간 체계를 먼저 설정해 주세요'),
+        h('p', {}, '달력은 날짜와 시각을 기준으로 움직입니다. 시간 체계를 켠 뒤 이 탭으로 돌아오면 달력을 만들 수 있습니다.'),
+        h('div', { class: 'sce-calendar-empty-actions' },
+          h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+            activeTab = 'time'; rerender();
+          } }, '시간 탭으로 이동'))));
       return wrap;
     }
     const lists = schema.vars.filter((v) => v.type === 'list');
-
-    wrap.appendChild(tabAiTools('calendar'));
+    const calendarAiTools = () => h('details', { class: 'sce-calendar-ai' },
+      h('summary', {}, h('span', {}, 'AI로 달력 초안 만들기'), h('span', { class: 'sce-tag' }, '선택')),
+      h('div', { class: 'sce-calendar-ai-body' }, tabAiTools('calendar')));
 
     if (!schema.calendar) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '달력 패널 — 채팅 화면 우상단에 [📅] 버튼을 달고, 누르면 이번 달 달력이 뜹니다. '
-        + '계약·버프의 @기한이 자동으로 표시되고, 기념일(생일·축제·월세일)을 박아 둘 수 있고, '
-        + '일정 목록을 지정하면 날짜를 눌러 약속을 등록할 수 있습니다 (일상물·학원물·경영물용).'));
-      wrap.appendChild(addBtn('달력 만들기', () => {
-        schema.calendar = { label: '달력', icon: '📅' };
-        rerender();
-      }));
+      wrap.appendChild(h('section', { class: 'sce-calendar-empty' },
+        h('h3', {}, '채팅에 달력 버튼 추가하기'),
+        h('p', {}, '이번 달을 확인하고 생일·축제·정산일을 표시합니다. 일정 목록을 연결하면 날짜를 눌러 약속도 등록할 수 있습니다.'),
+        h('div', { class: 'sce-calendar-empty-actions' },
+          h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+            schema.calendar = { label: '달력', icon: '📅' };
+            rerender();
+          } }, '달력 만들기'))));
+      wrap.appendChild(calendarAiTools());
       return wrap;
     }
 
     const C = schema.calendar;
-    wrap.appendChild(h('div', { class: 'sce-block' },
-      h('div', { class: 'sce-row' },
-        pair('버튼 이름', bindInput(C.label, (x) => { C.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '달력' })),
-        pair('아이콘', bindInput(C.icon, (x) => { C.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📅' })),
-        pair('설명', bindInput(C.note, (x) => { C.note = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '팝업 상단 한 줄 (비워도 됨)' })),
-      ),
-      h('div', { class: 'sce-row' },
-        pair('일정 목록', bindSelect(C.list ?? '',
-          [['', '(없음 — 보기 전용 달력)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-          (x) => { if (x) C.list = x; else delete C.list; rerender(); }),
-          '지정하면 달력에서 날짜를 눌러 일정을 등록할 수 있다 — 항목은 "내용 @경과일"로 저장'),
-      ),
-    ));
+    C.marks = Array.isArray(C.marks) ? C.marks : [];
+    const hasExpire = !!C.list && (schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire);
+    const allowed = !!C.list && (schema.updater?.allow || []).some((a) => a.id === C.list);
+    const calendarField = (label, control, help = '', wide = false) => h('label', {
+      class: 'sce-calendar-field' + (wide ? ' is-wide' : '')
+    }, h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const calendarSection = (step, title, copy, ...children) => h('section', { class: 'sce-calendar-section' },
+      h('div', { class: 'sce-calendar-section-head' },
+        h('div', { class: 'sce-calendar-step' }, step),
+        h('div', { class: 'sce-calendar-section-title' }, title),
+        h('div', { class: 'sce-calendar-section-copy' }, copy)),
+      h('div', { class: 'sce-calendar-section-body' }, ...children));
+    const connection = (title, text, action = null, warning = false) => h('div', {
+      class: 'sce-calendar-connection' + (warning ? ' is-warning' : '')
+    }, h('div', { class: 'sce-calendar-connection-copy' }, h('strong', {}, title), h('span', {}, text)), action);
+
+    const flow = h('div', { class: 'sce-calendar-flow' });
+    flow.appendChild(h('header', { class: 'sce-calendar-head' },
+      h('div', {}, h('h3', {}, '달력 설정'),
+        h('p', {}, '채팅의 달력 버튼, 일정 등록, 반복 기념일과 1회 지정 날짜를 한곳에서 관리합니다.')),
+      h('div', { class: 'sce-calendar-head-state' },
+        h('span', { class: 'sce-tag' }, `${C.icon || '📅'} ${C.label || '달력'}`),
+        h('span', { class: 'sce-tag' }, C.list ? '일정 등록 켜짐' : '보기 전용'),
+        h('span', { class: 'sce-tag' }, `기념일 ${C.marks.length}개`))));
+
+    flow.appendChild(calendarSection('01', '기본 표시', '채팅에 보이는 버튼과 팝업 설명을 정합니다.',
+      h('div', { class: 'sce-calendar-field-grid' },
+        calendarField('버튼 이름', bindInput(C.label, (x) => { C.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '달력' })),
+        calendarField('아이콘', bindInput(C.icon, (x) => { C.icon = x || undefined; rerender(); },
+          { cls: 'sce-w-s', ph: '📅' })),
+        calendarField('팝업 설명', bindInput(C.note, (x) => { C.note = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '이번 달 일정과 기념일' }), '비우면 설명을 표시하지 않습니다.'))));
+
+    const scheduleField = calendarField('일정 저장 목록', bindSelect(C.list ?? '',
+      [['', '연결 안 함 — 보기 전용'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+      (x) => { if (x) C.list = x; else delete C.list; rerender(); }),
+      '목록을 연결하면 날짜를 눌러 일정을 등록할 수 있습니다.', true);
+    const scheduleConnections = [];
 
     if (!C.list) {
-      // 일정 목록 골격 — 변수 + 만료 규칙을 한 번에. 이름이 겹치면 만들지 않는다 (직접 고르게)
       const canScaffold = !schema.vars.some((v) => v.id === 'plans');
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        canScaffold ? h('button', { class: 'sce-btn', onclick: () => {
+      scheduleConnections.push(connection('현재는 보기 전용입니다.',
+        canScaffold ? '일정 목록을 만들면 날짜별 약속을 저장하고 지난 일정을 자동으로 정리할 수 있습니다.'
+          : 'plans 변수가 이미 있습니다. 위 목록에서 사용할 list 변수를 직접 선택해 주세요.',
+        canScaffold ? h('button', { type: 'button', class: 'sce-btn', onclick: () => {
           schema.vars.push({ id: 'plans', label: '일정', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
             desc: '앞으로 잡힌 약속·일정. 날짜가 지나면 자동으로 지워진다.' });
           if (tcfg.expose.includes('elapsed')) {
@@ -6308,70 +9762,141 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             schema.rules.onTurn = schema.rules.onTurn || [];
             schema.rules.onTurn.push({ list: 'plans', expire: 'elapsed' });
           }
-          C.list = 'plans';
-          rerender();
-        } }, '📝 일정 목록 만들기 (plans 변수 + 자동 정리 규칙)') : null,
-        h('span', { class: 'sce-hint' }, canScaffold
-          ? '누르면 list 변수 하나와 "지난 일정 자동 삭제" 규칙이 같이 생깁니다.'
-          : 'plans 변수가 이미 있습니다 — 위에서 직접 고르세요.'),
-      ));
+          C.list = 'plans'; rerender();
+        } }, '일정 목록 만들기') : null));
     } else {
-      const hasExpire = (schema.rules?.onTurn || []).some((r) => r && r.list === C.list && r.expire);
-      if (!hasExpire && tcfg.expose.includes('elapsed')) {
-        wrap.appendChild(h('div', { class: 'sce-row' },
-          h('button', { class: 'sce-btn', onclick: () => {
-            schema.rules = schema.rules || {};
-            schema.rules.onTurn = schema.rules.onTurn || [];
-            schema.rules.onTurn.push({ list: C.list, expire: 'elapsed' });
-            rerender();
-          } }, '🧹 지난 일정 자동 정리 규칙 추가'),
-          h('span', { class: 'sce-hint sce-warn' }, '지금은 지난 일정이 목록에 계속 남습니다.'),
-        ));
-      }
-      const allowed = (schema.updater?.allow || []).some((a) => a.id === C.list);
-      wrap.appendChild(h('div', { class: 'sce-hint' }, allowed
-        ? `보조 AI도 일정을 잡을 수 있습니다 ('${C.list}'가 [AI 설정] 허용 목록에 있음) — `
-          + '서사에서 "일요일에 보자"가 나오면 AI가 "@+N"(며칠 뒤)으로 등록하고, 시스템이 날짜로 굳힙니다.'
-        : `지금은 유저만 일정을 등록합니다 — AI도 서사 따라 잡게 하려면 '${C.list}'를 [AI 설정] 허용 목록에 넣으세요.`));
+      const cleanupAction = hasExpire ? null : tcfg.expose.includes('elapsed')
+        ? h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          schema.rules = schema.rules || {};
+          schema.rules.onTurn = schema.rules.onTurn || [];
+          schema.rules.onTurn.push({ list: C.list, expire: 'elapsed' });
+          rerender();
+        } }, '자동 정리 켜기')
+        : h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          activeTab = 'time'; rerender();
+        } }, '시간값 설정 열기');
+      scheduleConnections.push(connection(hasExpire ? '지난 일정 자동 정리 켜짐' : '지난 일정 자동 정리 꺼짐',
+        hasExpire ? `'${C.list}'에서 날짜가 지난 항목을 자동으로 지웁니다.`
+          : tcfg.expose.includes('elapsed') ? '지금은 날짜가 지난 일정도 목록에 계속 남습니다.'
+            : '자동 정리에 필요한 경과일(elapsed) 시간값이 꺼져 있습니다.',
+        cleanupAction, !hasExpire));
+      scheduleConnections.push(connection(allowed ? 'AI 일정 등록 허용됨' : '유저만 일정 등록 가능',
+        allowed ? `보조 AI가 서사의 약속을 '${C.list}'에 등록할 수 있습니다.`
+          : `AI도 일정을 등록하게 하려면 '${C.list}'를 AI 설정의 허용 목록에 추가해 주세요.`,
+        allowed ? null : h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          activeTab = 'ai'; rerender();
+        } }, 'AI 설정 열기')));
     }
 
-    // 기념일 (marks) — 적힌 성분이 전부 맞는 날에 뜬다
-    C.marks = Array.isArray(C.marks) ? C.marks : [];
-    wrap.appendChild(h('h4', {}, `기념일 (${C.marks.length}개)`));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '반복은 적는 칸이 정합니다 — 월+일 = 매년 (생일·축제) · 일만 = 매달 (월세일·정산일) · 요일만 = 매주 (수업·정기 모임). '
-      + '메모는 그 날을 눌렀을 때 보입니다.'));
+    flow.appendChild(calendarSection('02', '일정 등록', '목록 연결과 자동 정리, AI 일정 등록 권한을 관리합니다.',
+      scheduleField,
+      h('div', { class: 'sce-calendar-connections' }, ...scheduleConnections)));
+
+    const marksHost = h('div', { class: 'sce-calendar-marks' });
+    if (!C.marks.length) marksHost.appendChild(h('div', { class: 'sce-calendar-marks-empty' },
+      '등록된 날짜 표식이 없습니다. 한 번만 있는 사건이나 반복되는 생일·축제·정산일을 추가해 보세요.'));
     C.marks.forEach((mk, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          pair('이름', bindInput(mk.label, (x) => { mk.label = x; rerender(); }, { cls: 'sce-w-m', ph: '생일' })),
-          pair('월', bindInput(mk.month, (x) => { mk.month = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
-          pair('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '-' })),
-          pair('요일', bindSelect(mk.weekday ?? '',
-            [['', '(무관)'], ...tcfg.weekdays.map((w) => [w, w])],
-            (x) => { if (x) mk.weekday = x; else delete mk.weekday; rerender(); })),
-          pair('메모', bindInput(mk.note, (x) => { mk.note = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비워도 됨)' })),
-          grip(C.marks, i, rerender),
-        ),
-      ));
+      const repeatMode = mk.year != null ? 'once' : mk.month != null ? 'yearly'
+        : mk.dom != null ? 'monthly' : mk.weekday ? 'weekly' : 'yearly';
+      // 편집기에서는 한 방식만 저장한다. 예전 혼합 조합도 현재 선택 방식에 맞춰 정리한다.
+      if (repeatMode === 'once') delete mk.weekday;
+      else if (repeatMode === 'yearly') { delete mk.year; delete mk.weekday; }
+      else if (repeatMode === 'monthly') { delete mk.year; delete mk.month; delete mk.weekday; }
+      else { delete mk.year; delete mk.month; delete mk.dom; }
+      const repeat = repeatMode === 'once' ? `${mk.year ?? 1}년 ${mk.month ?? 1}월 ${mk.dom ?? 1}일 · 1회`
+        : repeatMode === 'yearly' ? '매년 반복'
+        : repeatMode === 'monthly' ? '매달 반복' : '매주 반복';
+      const setRepeatMode = (mode) => {
+        const year = mk.year;
+        const month = mk.month;
+        const dom = mk.dom;
+        const weekday = mk.weekday;
+        delete mk.year; delete mk.month; delete mk.dom; delete mk.weekday;
+        if (mode === 'once') {
+          mk.year = year ?? tcfg.start.y;
+          mk.month = month ?? 1;
+          mk.dom = dom ?? 1;
+        } else if (mode === 'yearly') {
+          mk.month = month ?? 1;
+          mk.dom = dom ?? 1;
+        } else if (mode === 'monthly') mk.dom = dom ?? 1;
+        else mk.weekday = weekday ?? tcfg.weekdays[0];
+        rerender();
+      };
+      const whenFields = repeatMode === 'once'
+        ? [
+            calendarField('연도', bindInput(mk.year, (x) => { mk.year = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: String(tcfg.start.y) }), '1–9999'),
+            calendarField('월', bindInput(mk.month, (x) => { mk.month = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: '1' }), '1–12'),
+            calendarField('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: '1' }), tcfg.calendar === 'flat30' ? '1–30' : '1–31')
+          ]
+        : repeatMode === 'yearly'
+        ? [
+            calendarField('월', bindInput(mk.month, (x) => { mk.month = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: '1' }), '1–12'),
+            calendarField('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: '1' }), '1–31')
+          ]
+        : repeatMode === 'monthly'
+          ? [calendarField('일', bindInput(mk.dom, (x) => { mk.dom = numOrNull(x) ?? undefined; rerender(); },
+              { cls: 'sce-w-s', ph: '1' }), '1–31')]
+          : [calendarField('요일', bindSelect(mk.weekday ?? tcfg.weekdays[0],
+              tcfg.weekdays.map((w) => [w, w]),
+              (x) => { mk.weekday = x; rerender(); }))];
+      marksHost.appendChild(h('article', { class: 'sce-calendar-mark' },
+        h('div', { class: 'sce-calendar-mark-head' },
+          h('div', { class: 'sce-calendar-mark-title' },
+            h('strong', {}, mk.label || `기념일 ${i + 1}`),
+            h('span', {}, repeat)),
+          h('div', { class: 'sce-calendar-mark-actions' }, grip(C.marks, i, rerender))),
+        h('div', { class: 'sce-calendar-mark-grid' },
+          h('div', { class: 'sce-calendar-mark-core' },
+            calendarField('이름', bindInput(mk.label, (x) => { mk.label = x; rerender(); },
+              { cls: 'sce-w-m', ph: '월간 정산' })),
+            calendarField('반복 방식', bindSelect(repeatMode,
+              [['once', '1회 지정 · 연/월/일'], ['yearly', '매년 · 월/일'], ['monthly', '매달 · 일'], ['weekly', '매주 · 요일']],
+              setRepeatMode))),
+          h('div', { class: `sce-calendar-mark-details is-${repeatMode}` },
+            h('div', { class: `sce-calendar-mark-when is-${repeatMode}` }, ...whenFields),
+            calendarField('날짜 메모', bindInput(mk.note, (x) => { mk.note = x || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '그날 눌렀을 때 표시할 내용' }))))));
     });
-    wrap.appendChild(addBtn('기념일 추가', () => {
-      (C.marks = Array.isArray(C.marks) ? C.marks : []).push({ label: '기념일', month: 1, dom: 1 });
-      rerender();
-    }));
+    flow.appendChild(calendarSection('03', `기념일 · ${C.marks.length}개`,
+      '표시 방식을 먼저 고르면 필요한 날짜만 나타납니다.',
+      h('div', { class: 'sce-calendar-recurrence' },
+        '1회 지정은 연·월·일에 한 번만 표시되고, 매년은 월·일 · 매달은 일 · 매주는 요일을 기준으로 반복됩니다.'),
+      marksHost,
+      h('div', { class: 'sce-calendar-section-actions' },
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          (C.marks = Array.isArray(C.marks) ? C.marks : []).push({ label: '기념일', month: 1, dom: 1 });
+          rerender();
+        } }, '기념일 추가'))));
     if (!C.marks.length) delete C.marks;   // 빈 배열은 스키마에 안 남긴다 (addBtn이 되살린다)
 
-    wrap.appendChild(h('h4', {}, '팝업 커스텀 CSS (자동으로 팝업 범위로 제한됨)'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '쓸 수 있는 클래스: .scc-day(날짜 칸) .scc-day.scc-today(오늘) .scc-day.scc-sel(선택) '
-      + '.scc-dot.scc-mark(기념일 점) .scc-dot.scc-plan(일정 점) .scc-dot.scc-due(기한 점) '
-      + '.scc-nav(달 이동 줄) .scc-detail(하단 상세). 카드·제목은 편성표와 같은 .scg-card/.scg-title.'));
-    wrap.appendChild(bindArea(C.css, (x) => { C.css = x || undefined; rerender(); },
-      '.scg-card { background:#141018; border-color:#8a6d3b; }\n.scc-day.scc-today { border-color:#e0a94a; }'));
+    flow.appendChild(calendarSection('04', '팝업 꾸미기', '필요할 때만 달력 팝업 안쪽 CSS를 수정합니다.',
+      h('details', { class: 'sce-calendar-css' },
+        h('summary', {}, h('span', {}, '커스텀 CSS 편집기 열기'), h('span', { class: 'sce-tag' }, C.css?.trim() ? '사용 중' : '선택')),
+        h('div', { class: 'sce-calendar-css-body' },
+          h('div', { class: 'sce-calendar-css-copy' },
+            h('strong', {}, '사용할 수 있는 선택자'),
+            h('span', { class: 'sce-calendar-css-hint' }, '선택자 이름을 그대로 CSS에 사용하세요.'),
+            h('div', { class: 'sce-calendar-css-selectors' },
+              ...[
+                ['날짜 칸', '.scc-day'], ['오늘', '.scc-today'], ['선택한 날짜', '.scc-sel'],
+                ['기념일 점', '.scc-mark'], ['일정 점', '.scc-plan'], ['기한 점', '.scc-due'],
+                ['달 이동', '.scc-nav'], ['상세 영역', '.scc-detail'],
+              ].map(([label, selector]) => h('div', { class: 'sce-calendar-css-selector' },
+                h('span', { class: 'sce-calendar-css-selector-code' }, selector),
+                h('span', { class: 'sce-calendar-css-selector-label' }, label))))),
+          bindArea(C.css, (x) => { C.css = x || undefined; rerender(); },
+            '.scg-card { background:#141018; border-color:#8a6d3b; }\n.scc-day.scc-today { border-color:#e0a94a; }')))));
 
-    // 미리보기 (v1.0 #2) — 채팅에 안 들어가고 시작 날짜 기준 실제 달력 카드를 본다.
-    // 기념일·일정 점·사용자 CSS까지 monthView(코어)와 같은 데이터로 그린다.
-    wrap.appendChild(h('h4', {}, '미리보기 (시작 날짜 기준)'));
+    const previewPanel = h('aside', { class: 'sce-calendar-preview-panel' },
+      h('div', { class: 'sce-calendar-preview-title' }, '공식 달력 미리보기'),
+      h('div', { class: 'sce-calendar-preview-copy' },
+        '최신 공식 monthView 결과를 새 채팅의 시작 날짜 기준으로 보여 줍니다.'));
     try {
       const pvState = engine.initState(schema);
       const mv = monthView(schema, pvState, {});
@@ -6387,75 +9912,139 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (C.note) card.appendChild(h('div', { class: 'scg-note' }, C.note));
         card.appendChild(h('div', { class: 'scc-nav' }, h('span', { class: 'scc-month' }, mv.label)));
         const grid = h('div', { class: 'scc-grid' });
-        for (const w of mv.weekdays) grid.appendChild(h('div', { class: 'scc-wd' }, w));
-        for (let i = 0; i < mv.lead; i++) grid.appendChild(h('div', { class: 'scc-blank' }));
+        mv.weekdays.forEach((w, weekday) => grid.appendChild(h('div', {
+          class: `scc-wd${weekday === 5 ? ' scc-sat' : weekday === 6 ? ' scc-sun' : ''}`,
+        }, w)));
+        for (let i = 0; i < mv.lead; i++) grid.appendChild(h('div', { class: 'scc-day scc-blank' }));
         for (const cell of mv.cells) {
           const dots = cell.marks.map((mk) =>
             h('span', { class: `scc-dot scc-${mk.kind}`, title: mk.label }));
-          grid.appendChild(h('div', { class: `scc-day${cell.today ? ' scc-today' : ''}`,
+          grid.appendChild(h('div', { class: `scc-day${cell.weekday === 5 ? ' scc-sat' : cell.weekday === 6 ? ' scc-sun' : ''}${cell.today ? ' scc-today' : ''}`,
             title: cell.marks.map((mk) => mk.label).join(', ') },
           h('span', {}, String(cell.dom)), ...dots));
         }
+        const previewTrailing = Math.max(0, 42 - (mv.lead + mv.cells.length));
+        for (let i = 0; i < previewTrailing; i++) grid.appendChild(h('div', { class: 'scc-day scc-blank' }));
         card.appendChild(grid);
-        const todays = mv.cells.filter((cx) => cx.marks.length);
-        if (todays.length) {
-          card.appendChild(h('div', { class: 'scc-detail' },
-            h('div', { class: 'scc-detail-date' }, '이번 달 표시:'),
-            ...todays.slice(0, 8).map((cx) => h('div', { class: 'scc-entry' },
-              `${cx.dom}일 — ${cx.marks.map((mk) => `${mk.kind === 'mark' ? '기념일' : mk.kind === 'plan' ? '일정' : '기한'} ${mk.label}`).join(', ')}`))));
-        }
+        card.appendChild(h('div', { class: 'scc-legend' },
+          h('span', {}, h('span', { class: 'scc-dot scc-mark' }), '기념일'),
+          h('span', {}, h('span', { class: 'scc-dot scc-plan' }), '일정'),
+          h('span', {}, h('span', { class: 'scc-dot scc-due' }), '기한')));
+        const markedDays = mv.cells.filter((cell) => cell.marks.length);
+        card.appendChild(h('div', { class: 'scc-detail' },
+          h('div', { class: 'scc-detail-date' }, '이번 달 표시:'),
+          ...(markedDays.length
+            ? markedDays.slice(0, 8).map((cell) => h('div', { class: 'scc-entry' },
+                `${cell.dom}일 — ${cell.marks.map((mk) => `${mk.kind === 'mark' ? '기념일' : mk.kind === 'plan' ? '일정' : '기한'} ${mk.label}`).join(', ')}`))
+            : [h('div', { class: 'scc-entry' }, '표시할 기념일·일정·기한이 없습니다.')])));
         cal.appendChild(card);
-        wrap.appendChild(cal);
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '점: 기념일(mark)·일정(plan)·기한(due). 실제 패널의 달 이동·날짜 클릭 등록은 채팅 화면에서만 동작합니다.'));
+        previewPanel.appendChild(cal);
+        previewPanel.appendChild(h('div', { class: 'sce-hint' },
+          '점은 기념일·일정·기한을 뜻합니다. 달 이동과 날짜 클릭 등록은 실제 채팅 화면에서 확인하세요.'));
       }
     } catch (e) {
-      wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, `미리보기 실패 — ${e.message}`));
+      previewPanel.appendChild(h('div', { class: 'sce-hint sce-warn' }, `미리보기 실패 — ${e.message}`));
     }
-
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.calendar; rerender(); } }, '달력 제거')));
+    wrap.appendChild(h('div', { class: 'sce-calendar-workbench' }, flow, previewPanel));
+    wrap.appendChild(calendarAiTools());
+    wrap.appendChild(h('div', { class: 'sce-calendar-danger' },
+      h('span', {}, '달력 버튼과 기념일 설정을 작업본에서 제거합니다.'),
+      h('button', { type: 'button', class: 'sce-btn sce-danger', onclick: () => {
+        delete schema.calendar; rerender();
+      } }, '달력 제거')));
     return wrap;
   }
 
   // ── 탭: 액션 ──────────────────────────────────────────────
   function tabActions() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('actions'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '켜고 끄는 자리는 상태창 아래 범례다 — 클릭 조작(권한 1회)이 켜져 있으면 범례를 직접 누르고, '
-      + '안 켜져 있으면 /액션 명령으로 토글한다 (예: /액션 공격). 라벨을 이모지로 시작하면 범례에서 알아보기 좋다 — 예: 🔥 화로 최대. '
-      + '누르면 무장(ON)되고 다음 전송에 반영 — 1회성은 자동 OFF, 지속형은 끌 때까지 매 턴 적용. '
-      + '(v0.55부터 우상단 플로팅 버튼은 없다 — 그 자리는 편성표 같은 게임 패널 버튼 몫이다.)'));
+    const wrap = h('div', { class: 'sce-actions-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-action-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-actions-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 액션 만들기'),
+          h('small', {}, '런타임의 액션 실행과는 별개로, 액션 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-actions-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+      h('div', { class: 'sce-actions-ai-body' }, tabAiTools('actions')));
+    const addAction = () => {
+      schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] });
+      rerender();
+    };
+    wrap.appendChild(h('header', { class: 'sce-actions-head' },
+      h('div', {}, h('h3', {}, '플레이어 액션'),
+        h('p', {}, '사용자가 직접 준비해 다음 메시지에 적용하는 조작이에요. 조건·판정·효과와 메인 모델 전달문을 연결할 수 있어요.')),
+      h('div', { class: 'sce-actions-summary' },
+        h('span', {}, `${schema.actions.length}개 액션`),
+        h('span', {}, '상태창 · /액션 연결'))));
+    wrap.appendChild(h('div', { class: 'sce-actions-note' },
+      '조건을 만족한 액션만 사용할 수 있어요. 상태창의 액션 버튼을 누르거나 /액션 이름 명령으로 준비하며, 1회성은 적용 후 꺼지고 지속형은 직접 해제할 때까지 유지됩니다.'));
+    if (!schema.actions.length) {
+      wrap.appendChild(h('section', { class: 'sce-actions-empty' },
+        h('div', { class: 'sce-actions-empty-icon', 'aria-hidden': 'true' }, '▶'),
+        h('div', {}, h('h4', {}, '아직 액션이 없어요'),
+          h('p', {}, '액션을 추가한 뒤 사용 조건, 판정과 실행 효과를 설정할 수 있어요.')),
+        addBtn('액션 추가', addAction)));
+      wrap.appendChild(h('section', { class: 'sce-actions-trial' }, trialRunBlock()));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
     schema.actions.forEach((a, i) => {
-      wrap.appendChild(h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
-          bindInput(a.label, (x) => { a.label = x; rerender(); }, { cls: 'sce-w-m', ph: '버튼 이름' }),
-          bindSelect(a.mode ?? 'oneshot', [['oneshot', '1회성'], ['hold', '지속형']], (x) => { a.mode = x; rerender(); }),
-          pair('쿨다운', bindInput(a.cooldown, (x) => { a.cooldown = numOrNull(x) ?? undefined; rerender(); }, { cls: 'sce-w-s', ph: '턴' })),
-          grip(schema.actions, i, rerender),
-        ),
-        h('div', { class: 'sce-row' },
-          pair('사용 조건', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' })),
-          // 판정(check) — 이 버튼을 켠 턴에 그 판정을 굴려 [판정] 결과 줄을 서사에 함께 준다
-          pair('판정', bindSelect(a.check ?? '',
+      const card = h('article', { class: 'sce-action-card', 'data-sce-validation-path': `$.actions[${i}]` });
+      card.appendChild(h('header', { class: 'sce-action-card-head' },
+        h('div', { class: 'sce-action-identity' },
+          h('span', { class: 'sce-action-index' }, String(i + 1).padStart(2, '0')),
+          h('div', {},
+            h('strong', {}, a.label || `이름 없는 액션 ${i + 1}`),
+            h('small', {}, `${a.id || `action${i + 1}`} · ${a.mode === 'hold' ? '지속형' : '1회성'} · ${a.when ? '조건부' : '항상 사용 가능'}`))),
+        grip(schema.actions, i, rerender)));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-basic' },
+        h('div', { class: 'sce-action-group-title' }, '기본 정보'),
+        h('div', { class: 'sce-action-field-grid is-basic' },
+          field('ID', bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
+            '명령과 다른 설정에서 이 액션을 가리키는 기술 식별자예요.'),
+          field('버튼 이름', bindInput(a.label, (x) => { a.label = x; rerender(); }, { cls: 'sce-w-m', ph: '버튼 이름' }),
+            '상태창과 액션 목록에서 사용자에게 보이는 이름이에요.'))));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-condition' },
+        h('div', { class: 'sce-action-group-title' }, '사용 조건'),
+        field('조건식', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' }),
+          '조건이 참일 때만 액션을 준비할 수 있어요. 비우면 항상 사용할 수 있습니다.', true)));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-check' },
+        h('div', { class: 'sce-action-group-title' }, '판정 연결'),
+        h('div', { class: 'sce-action-check-row' },
+          field('판정', bindSelect(a.check ?? '',
             [['', '(없음)'], ...schema.checks.map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
             (x) => { if (x) a.check = x; else delete a.check; rerender(); }),
             schema.checks.length
-              ? '버튼을 켠 턴에 이 판정을 굴린다. 굴림식·등급은 [판정] 탭에서'
-              : '아직 판정이 없다 — [판정] 탭에서 먼저 만들 것'),
-        ),
-        h('div', { class: 'sce-row' },
-          pair('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); }, { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' })),
-        ),
+              ? '액션을 켠 턴에 이 판정을 굴려요. 굴림식과 등급은 판정 탭에서 관리합니다.'
+              : '아직 판정이 없어요. 판정 탭에서 먼저 만들어 주세요.'),
+          !schema.checks.length ? h('button', { class: 'sce-btn',
+            onclick: () => { activeTab = 'checks'; rerender(); } }, '판정 탭으로 이동') : null)));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-effects' },
+        h('div', { class: 'sce-action-group-title' }, '실행 효과'),
+        h('div', { class: 'sce-action-group-copy' }, '이 액션을 적용할 때 실제로 바뀌는 변수와 목록을 설정해요.'),
+        effectRows(schema, a.effects = a.effects || [], rerender)));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-inject' },
+        h('div', { class: 'sce-action-group-title' }, '메인 모델 전달'),
+        field('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' }),
+          '상태 변화와 별개로 액션 실행 사실을 메인 모델의 서사에 전달하는 문구예요.', true)));
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-advanced' },
+        h('div', { class: 'sce-action-group-title' }, '고급 동작'),
+        h('div', { class: 'sce-action-field-grid is-advanced' },
+          field('사용 방식', bindSelect(a.mode ?? 'oneshot', [['oneshot', '1회성'], ['hold', '지속형']],
+            (x) => { a.mode = x; rerender(); }), '1회성은 적용 후 꺼지고, 지속형은 직접 해제할 때까지 유지돼요.'),
+          field('쿨다운', bindInput(a.cooldown, (x) => { a.cooldown = numOrNull(x) ?? undefined; rerender(); },
+            { cls: 'sce-w-s', ph: '턴' }), '다시 사용할 수 있을 때까지 기다릴 턴 수예요.'))));
+      // 버튼 없이 켜지는 길 — 우리 쪽 v1.5.0~v1.7.7 추가분 (개조본 이식 뒤 되살림, v1.7.13)
+      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-auto' },
+        h('div', { class: 'sce-action-group-title' }, '자동 동작'),
         // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 그 턴에 켜진다
-        h('div', { class: 'sce-row' },
-          pair('자동 무장 낱말', bindInput((a.keywords || []).join(', '),
-            (x) => { const ks = String(x).split(',').map((s) => s.trim()).filter(Boolean); if (ks.length) a.keywords = ks; else delete a.keywords; rerender(); },
-            { cls: 'sce-w-l', ph: '채집하, 캐러, 뜯 (쉼표로)' }),
-            '유저 글에 이 낱말이 있으면 버튼을 안 눌러도 그 턴에 켜진다 — 조건·쿨다운은 그대로. "조합서"에 "조합"이 걸리듯 짧은 낱말은 오발 주의'),
-        ),
+        field('자동 무장 낱말', bindInput((a.keywords || []).join(', '),
+          (x) => { const ks = String(x).split(',').map((s) => s.trim()).filter(Boolean); if (ks.length) a.keywords = ks; else delete a.keywords; rerender(); },
+          { cls: 'sce-w-l', ph: '채집하, 캐러, 뜯 (쉼표로)' }),
+          '유저 글에 이 낱말이 있으면 버튼을 안 눌러도 그 턴에 켜진다 — 조건·쿨다운은 그대로. "조합서"에 "조합"이 걸리듯 짧은 낱말은 오발 주의', true),
         // 하루 닫기 (v1.7.0) — 버튼을 안 눌러도 서사가 하루를 넘기면 시스템이 이 액션을 대신 돌린다
         h('div', { class: 'sce-row' },
           bindCheck(a.dayClose === true, (x) => { if (x) a.dayClose = true; else delete a.dayClose; rerender(); },
@@ -6473,12 +10062,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             a.offstage === true
               ? '주인공 부재 지시문이 프롬프트 맨 끝에 붙고, 페르소나 칸도 그 턴만 프롬프트에서 빠집니다 (유저 입력은 "무엇을 비출지" 연출 지시로 읽힙니다). 껄 때까지 계속 두려면 지속형으로.'
               : '조연들끼리의 장면·흑막의 뒷이야기용. 페르소나가 있으면 모델이 주인공을 억지로 등장시키는 문제를 버튼 하나로 끕니다.'),
-        ),
-        effectRows(schema, a.effects = a.effects || [], rerender),
-      ));
+        )));
+      wrap.appendChild(card);
     });
-    wrap.appendChild(addBtn('액션 추가', () => { schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] }); rerender(); }));
-    wrap.appendChild(trialRunBlock());
+    wrap.appendChild(h('div', { class: 'sce-actions-add' }, addBtn('액션 추가', addAction)));
+    wrap.appendChild(h('section', { class: 'sce-actions-trial' }, trialRunBlock()));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
@@ -6486,52 +10075,88 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // "완벽 주사위" — 굴림은 엔진이 하고, AI는 결과를 받아 서사만 쓴다. 결과는 변수가 아니라
   // 시스템 기록(meta.lastCheck)에 남아 보조 AI가 건드릴 방법이 없고, 시드 굴림이라 리롤해도 같은 눈이다.
   function tabChecks() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('checks'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '주사위 판정. 실행은 액션 버튼에 단다 — 아래 [🎲 액션 버튼 만들기]를 누르거나 [액션] 탭에서 '
-      + '판정 칸에 고르면 된다. 버튼을 켠 턴에 시스템이 굴려 [판정] 결과 줄이 같은 턴 서사에 반영된다. '
-      + '등급은 위에서부터 첫 매치 — 맨 마지막에 조건 없는 기본 등급을 둘 것. '
-      + '등급의 조건·효과에서는 roll(굴린 눈)·mod(보정)·total(합계)·vs(목표치)를 그대로 쓸 수 있다. '
-      + '결과는 AI가 못 건드리고, 리롤해도 같은 눈이 나온다.'));
+    const wrap = h('div', { class: 'sce-checks-editor' });
+    const checkField = (label, control, help = '', extra = '') => h('label',
+      { class: `sce-check-field${extra ? ` ${extra}` : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-checks-ai' },
+      h('summary', {}, h('span', {},
+        h('strong', {}, 'AI로 판정 만들기'),
+        h('small', {}, '판정 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
+      h('span', { class: 'sce-checks-ai-chevron' }, '⌄')),
+      h('div', { class: 'sce-checks-ai-body' }, tabAiTools('checks')));
+    wrap.appendChild(h('div', { class: 'sce-checks-head' },
+      h('div', {}, h('h3', {}, '판정'),
+        h('p', {}, '액션이나 이벤트가 호출할 주사위·수치 판정 규칙을 정의합니다. 액션은 여기서 만든 판정 ID를 참조해 실행합니다.')),
+      h('div', { class: 'sce-checks-summary' },
+        h('span', {}, `판정 ${schema.checks.length}개`),
+        h('span', {}, `액션 연결 ${(schema.actions || []).filter((a) => a.check).length}개`))));
+    wrap.appendChild(h('div', { class: 'sce-checks-note' },
+      '시스템이 굴림과 결과를 확정하고 같은 턴의 서사에 전달합니다. 등급은 위에서부터 처음 맞는 항목을 사용하므로 마지막에는 조건 없는 기본 등급을 두세요.'));
+    if (!schema.checks.length) wrap.appendChild(h('div', { class: 'sce-checks-empty' },
+      h('div', { class: 'sce-checks-empty-icon' }, '🎲'),
+      h('div', {}, h('h4', {}, '아직 판정이 없습니다'),
+        h('p', {}, '직접 판정을 추가하거나 아래 AI 도구로 초안을 만들 수 있습니다.')),
+      addBtn('판정 추가', () => {
+        schema.checks.push({ id: 'check1', label: '', roll: 'rand(1, 20)', vs: 13,
+          grades: [{ when: 'roll == 20', label: '대성공' }, { when: 'roll == 1', label: '대실패' },
+            { when: 'total >= vs', label: '성공' }, { label: '실패' }] });
+        rerender();
+      })));
     schema.checks.forEach((c, i) => {
       const hasBtn = (schema.actions || []).some((a) => a.check === c.id);
-      const block = h('div', { class: 'sce-block' },
-        h('div', { class: 'sce-row' },
-          bindInput(c.id, (x) => { c.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: attack)' }),
-          bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 공격 판정)' }),
-          grip(schema.checks, i, rerender),
-        ),
-        h('div', { class: 'sce-row' },
-          pair('굴림식', bindInput(c.roll, (x) => { c.roll = x; rerender(); }, { cls: 'sce-w-m', ph: 'rand(1, 20)' }),
-            '주사위 자체. rand()는 여기서만 허용된다. 이점 굴림은 adv ? max(rand(1,20), rand(1,20)) : rand(1,20) 식으로'),
-          pair('보정식', bindInput(c.mod, (x) => { c.mod = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비우면 0) str_mod' }),
-            '능력치 보너스. 변수·파생을 읽는다. rand 불가'),
-          pair('목표치', bindInput(c.vs, (x) => {
+      const block = h('article', { class: 'sce-check-card', 'data-sce-validation-path': `$.checks[${i}]` });
+      block.appendChild(h('div', { class: 'sce-check-card-head' },
+        h('div', { class: 'sce-check-identity' }, h('span', { class: 'sce-check-index' }, String(i + 1).padStart(2, '0')),
+          h('div', {}, h('strong', {}, c.label || '이름 없는 판정'),
+            h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}`))),
+        grip(schema.checks, i, rerender)));
+      block.appendChild(h('section', { class: 'sce-check-card-section' },
+        h('div', { class: 'sce-check-group-title' }, '기본 정보'),
+        h('div', { class: 'sce-check-field-grid is-basic' },
+          checkField('ID', bindInput(c.id, (x) => { c.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: attack)' }),
+            '액션과 이벤트가 참조하는 기술 식별자입니다.'),
+          checkField('표시 이름', bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 공격 판정)' }),
+            '사용자에게 보이는 판정 이름입니다.'))));
+      block.appendChild(h('section', { class: 'sce-check-card-section' },
+        h('div', { class: 'sce-check-group-title' }, '굴림과 계산'),
+        h('div', { class: 'sce-check-group-copy' }, '굴린 눈에 보정을 더한 합계를 목표치와 비교합니다.'),
+        h('div', { class: 'sce-check-field-grid is-roll' },
+          checkField('굴림식', bindInput(c.roll, (x) => { c.roll = x; rerender(); }, { cls: 'sce-w-m', ph: 'rand(1, 20)' }),
+            'rand()는 이 칸에서만 사용할 수 있습니다.'),
+          checkField('보정식', bindInput(c.mod, (x) => { c.mod = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-m', ph: '(비우면 0) str_mod' }),
+            '변수·파생값을 읽는 보너스 식입니다. rand는 사용할 수 없습니다.'),
+          checkField('목표치', bindInput(c.vs, (x) => {
             const t = String(x).trim();
             if (!t) { c.vs = undefined; } else { const n = Number(t); c.vs = isFinite(n) && String(n) === t ? n : t; }
             rerender();
           }, { cls: 'sce-w-s', ph: 'dc 또는 13' }),
-            '넘어야 하는 값. 숫자나 수식. 비우면 목표치 없는 판정. 등급 조건에서 vs로 읽는다'),
-        ),
-      );
+            '숫자나 수식입니다. 비우면 목표치 없이 판정합니다.'))));
       c.grades = c.grades || [];
+      const grades = h('section', { class: 'sce-check-card-section sce-check-grades' },
+        h('div', { class: 'sce-check-group-title' }, '결과 등급과 효과'),
+        h('div', { class: 'sce-check-group-copy' }, '조건은 위에서부터 검사합니다. 효과는 상태를 바꾸고, 연출 지시는 결과를 메인 AI에 전달합니다.'));
       c.grades.forEach((g, gi) => {
-        block.appendChild(h('div', { class: 'sce-sub' },
-          h('div', { class: 'sce-row' },
-            pair('조건', bindInput(g.when, (x) => { g.when = String(x).trim() || undefined; rerender(); },
-              { cls: 'sce-w-m', ph: '(비우면 항상 — 기본 등급) roll == 20' })),
-            bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-s', ph: '등급 이름' }),
+        grades.appendChild(h('div', { class: 'sce-check-grade' },
+          h('div', { class: 'sce-check-grade-head' },
+            h('span', {}, `결과 ${gi + 1}`),
             grip(c.grades, gi, rerender),
           ),
-          effectRows(schema, g.effects = g.effects || [], rerender),
-          h('div', { class: 'sce-row' },
-            pair('연출 지시', bindInput(g.inject, (x) => { g.inject = x || undefined; rerender(); },
-              { cls: 'sce-w-l', ph: '(선택) 이 등급일 때 AI에게 덧붙는 지시 — 예: 기대 이상의 성과를 극적으로 그려라.' })),
-          ),
-        ));
+          h('div', { class: 'sce-check-field-grid is-grade' },
+            checkField('조건', bindInput(g.when, (x) => { g.when = String(x).trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '(비우면 항상 — 기본 등급) roll == 20' }),
+              'roll · mod · total · vs를 사용할 수 있습니다.'),
+            checkField('등급 이름', bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-s', ph: '등급 이름' }),
+              '판정 결과에 표시할 이름입니다.')),
+          h('div', { class: 'sce-check-effect-group' },
+            h('div', { class: 'sce-check-subtitle' }, '상태 효과'),
+            effectRows(schema, g.effects = g.effects || [], rerender)),
+          h('div', { class: 'sce-check-text-group' },
+            checkField('연출 지시', bindInput(g.inject, (x) => { g.inject = x || undefined; rerender(); },
+              { cls: 'sce-w-l', ph: '(선택) 이 등급일 때 AI에게 덧붙는 지시 — 예: 기대 이상의 성과를 극적으로 그려라.' }),
+              '상태 효과와 별도로, 이 결과를 어떻게 서술할지 메인 AI에 전달합니다.', 'is-wide'))));
       });
-      block.appendChild(h('div', { class: 'sce-row' },
+      grades.appendChild(h('div', { class: 'sce-check-grade-actions' },
         h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
           c.grades.push({ label: '등급' + (c.grades.length + 1) });
           rerender();
@@ -6545,20 +10170,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           rerender();
         } }, hasBtn ? '✓ 액션 버튼 있음' : '🎲 액션 버튼 만들기'),
       ));
+      block.appendChild(grades);
       wrap.appendChild(block);
     });
-    wrap.appendChild(addBtn('판정 추가', () => {
-      schema.checks.push({
-        id: 'check' + (schema.checks.length + 1), label: '', roll: 'rand(1, 20)', vs: 13,
-        grades: [
-          { when: 'roll == 20', label: '대성공' },
-          { when: 'roll == 1', label: '대실패' },
-          { when: 'total >= vs', label: '성공' },
-          { label: '실패' },
-        ],
-      });
+    if (schema.checks.length) wrap.appendChild(h('div', { class: 'sce-checks-add' }, addBtn('판정 추가', () => {
+      schema.checks.push({ id: 'check' + (schema.checks.length + 1), label: '', roll: 'rand(1, 20)', vs: 13,
+        grades: [{ when: 'roll == 20', label: '대성공' }, { when: 'roll == 1', label: '대실패' },
+          { when: 'total >= vs', label: '성공' }, { label: '실패' }] });
       rerender();
-    }));
+    })));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
@@ -6597,43 +10218,47 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   function tabTime() {
     const wrap = h('div');
-    wrap.appendChild(tabAiTools('time'));  // v1.0 #7 — 탭 단위 내보내기/가져오기 (일반 패치는 계속 금지)
+    const timeAiTools = tabAiTools('time');
     const legacy = schema.vars.filter((v) => LEGACY_TIME_RE.test(v.id));
 
-    if (!schema.time) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '날짜·시각을 시스템이 관리하게 한다. 요일·윤년·월별 일수·자릿수(07:05)는 엔진이 계산하고, '
-        + 'AI는 "며칠/몇 분 지났나"만 답한다 — 날짜 산술을 안 시킨다. '
-        + '켜면 date · clock · weekday · season · month · dom · hour · elapsed 같은 이름을 '
-        + '조건식({when})과 상태창({date})에서 변수처럼 바로 쓸 수 있다.'));
-      if (legacy.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          `이 봇에는 손으로 만든 날짜 변수가 있습니다 (${legacy.map((v) => v.id).join(', ')}) — `
-          + '켠 뒤 아래 정리 마법사로 걷어내면 노출 이름과의 충돌도 함께 풀립니다.'));
-      }
+    if (!schema.time || timeChooserOpen) {
       // 켜는 순간 완성품 (design-시간.md §결정 2) — 켜기만 하고 진행 입구가 없으면 시계가
       // 멈춘 채 박힌다. 상태창에 같은 날짜가 영원히 뜨는 건 날짜가 없는 것보다 나쁘다 —
       // 그래서 "그냥 켜기" 버튼을 두지 않고, 시간이 흐르는 방식을 같이 고르게 한다.
-      wrap.appendChild(h('h4', {}, '🕐 시간 체계 켜기 — 시간이 어떻게 흐르나요?'));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '켜기만 하면 시계가 멈춘 채 시작합니다. 흐르는 방식까지 골라야 완성품입니다 (켠 뒤에 바꿀 수 있어요).'));
       const enable = (advance) => {
-        schema.time = { start: '2026-01-01 09:00', advance, format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        if (!schema.time) {
+          schema.time = { start: '2026-01-01 09:00', advance, format: { date: 'YYYY-MM-DD', clock: 'HH:mm' } };
+        } else {
+          schema.time.advance = advance;
+        }
+        timeChooserOpen = false;
       };
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('explicit'); ensureSkipVars(); addEndDayAction(); rerender();
-        } }, '🌙 버튼·보고로 — 일상물 표준 (하루 마무리 액션 + AI 장면 보고)')));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '유저가 [🌙 하루를 마친다]를 누르거나, 보조 AI가 장면마다 "몇 분 흘렀나"를 보고해 시간이 갑니다. 대부분의 봇은 이걸 고르세요.'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('explicit'); ensureSkipVars(); rerender();
-        } }, '📝 AI 보고로만 — 버튼 없이 서사 흐름 따라')));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        h('button', { class: 'sce-btn', onclick: () => {
-          enable('perTurn'); rerender();
-        } }, '📆 턴마다 하루 — 생존물·경영물형 (출력 1번 = 1일)')));
+      wrap.appendChild(h('section', { class: 'sce-time-empty' },
+        h('div', { class: 'sce-time-empty-title' }, '시간 체계 시작하기'),
+        h('div', { class: 'sce-time-empty-copy' },
+          '날짜·시각·요일·계절을 엔진이 한 시계로 관리합니다. 아래에서 시간이 흐르는 방식을 고르세요. 나중에 변경할 수 있습니다.'),
+        legacy.length ? h('div', { class: 'sce-time-legacy-alert' },
+          `직접 만든 날짜 변수가 있습니다: ${legacy.map((v) => v.id).join(', ')}. 시간 체계를 켠 뒤 정리 도구에서 충돌 여부를 확인할 수 있습니다.`) : null,
+        h('div', { class: 'sce-time-enable-grid' },
+          h('button', { type: 'button', class: 'sce-time-enable-option is-recommended', onclick: () => {
+            enable('explicit'); ensureSkipVars(); addEndDayAction(); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' },
+            h('b', {}, '버튼 + AI 보고'), h('em', {}, '권장')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, '하루 마무리 버튼과 AI의 장면 경과 보고를 함께 사용합니다.'),
+            h('span', {}, '일상·스토리형에 적합합니다.'))),
+          h('button', { type: 'button', class: 'sce-time-enable-option', onclick: () => {
+            enable('explicit'); ensureSkipVars(); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' }, h('b', {}, 'AI 보고만')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, '버튼 없이 AI가 보고한 경과 시간만 반영합니다.'),
+            h('span', {}, '자유로운 서사 진행에 적합합니다.'))),
+          h('button', { type: 'button', class: 'sce-time-enable-option', onclick: () => {
+            enable('perTurn'); rerender();
+          } }, h('div', { class: 'sce-time-enable-option-head' }, h('b', {}, '출력마다 하루')),
+          h('div', { class: 'sce-time-enable-option-copy' },
+            h('span', {}, 'AI 출력 1회를 하루로 계산합니다.'),
+            h('span', {}, '생존·경영처럼 하루 단위 진행에 적합합니다.'))))));
       return wrap;
     }
 
@@ -6641,165 +10266,199 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     T.format = T.format || {};
     const cfg = timeConfig(schema);
 
+    const timeField = (label, control, help = '') => h('label', { class: 'sce-time-field' },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const timeSection = (title, copy, ...children) => h('section', { class: 'sce-time-section' },
+      h('div', { class: 'sce-time-section-head' }, h('div', {},
+        h('div', { class: 'sce-time-section-title' }, title),
+        copy ? h('div', { class: 'sce-time-section-copy' }, copy) : null)),
+      h('div', { class: 'sce-time-section-body' }, ...children));
+
     // 시작 시점 미리보기 — 포맷·달력·요일 설정이 실제로 어떻게 보일지 그 자리에서 확인
-    {
-      const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        `시작 시점 미리보기: ${pv.date} (${pv.weekday}) ${pv.clock} · ${pv.season}`));
-    }
+    const pv = exposedValues({ ...cfg, expose: EXPOSABLE }, cfg.startEpoch);
+    const previewMeridiem = Number(cfg.start.h) < 12 ? 'AM' : 'PM';
+    const timeRail = h('aside', { class: 'sce-time-rail' },
+      h('div', {},
+        h('div', { class: 'sce-time-overview-label' }, '새 채팅의 시작 시점'),
+        h('div', { class: 'sce-time-overview-value' },
+          h('span', { class: 'sce-time-overview-date' }, `${pv.date} (${pv.weekday})`),
+          h('span', { class: 'sce-time-overview-clock' }, `${previewMeridiem} ${pv.clock}`))),
+      h('div', { class: 'sce-time-overview-tags' },
+        h('span', { class: 'sce-tag' }, pv.season),
+        h('span', { class: 'sce-tag' }, (T.advance ?? 'explicit') === 'explicit' ? '버튼·보고로 진행' : '턴마다 하루'),
+        h('span', { class: 'sce-tag' }, (T.calendar ?? 'gregorian') === 'gregorian' ? '실제 달력' : '30일 달력')),
+      h('div', { class: 'sce-time-overview-note' },
+        '이 값은 새 채팅에만 적용됩니다. 진행 중인 날짜는 /날짜 2026-10-05 명령이나 [새 시작] 프리셋으로 바꿔 주세요.'));
+    const timeSheet = h('div', { class: 'sce-time-sheet' });
 
-    // ⚠ 소급 안 됨 — 시계(time_epoch)는 채팅 시작 때 세이브에 박힌다. 여기를 고쳐도
-    //   진행 중인 채팅의 날짜는 안 바뀐다 (실측 문의: "작중은 10월인데 상태창이 3월").
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '시작 시점은 **새로 시작하는 채팅**에만 적용됩니다 — 진행 중인 채팅의 시계는 세이브에 '
-      + '저장돼 있어 여기서 안 바뀝니다. 진행 중인 판의 날짜를 옮기려면 채팅에 '
-      + '/날짜 2026-10-05 를 치거나, [새 시작] 탭의 프리셋 시작 시점(startAt)을 쓰세요.'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('시작 시점', bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
-        { cls: 'sce-w-m', ph: '2026-04-01 07:30' }), '"YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm" — 실재하는 날짜여야 한다'),
-      pair('진행', bindSelect(T.advance ?? 'explicit', [
-        ['explicit', '명시적 — 버튼·보고로만'], ['perTurn', '턴마다 하루 (구형)'],
-      ], (x) => { T.advance = x; rerender(); }),
-        '명시적: skip_day/skip_min에 쌓인 만큼만 흐른다. 턴마다 하루: 메시지 하나 = 하루 (장면 단위 RP를 부수므로 생존물 외 비권장)'),
-      pair('달력', bindSelect(T.calendar ?? 'gregorian', [
-        ['gregorian', '그레고리력 (실제 달력·윤년)'], ['flat30', '판타지 — 한 달 30일 × 12달'],
-      ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); })),
-    ));
+    const startInput = bindInput(T.start, (x) => { T.start = x.trim(); rerender(); },
+      { cls: 'sce-w-m', ph: '2026-04-01 07:30' });
+    const advanceSelect = bindSelect(T.advance ?? 'explicit', [
+      ['explicit', '버튼·AI 보고로만 진행 (권장)'], ['perTurn', '출력 1번마다 하루 진행'],
+    ], (x) => { T.advance = x; rerender(); });
+    const calendarSelect = bindSelect(T.calendar ?? 'gregorian', [
+      ['gregorian', '그레고리력 — 실제 달력·윤년'], ['flat30', '판타지력 — 매달 30일'],
+    ], (x) => { T.calendar = x === 'gregorian' ? undefined : x; rerender(); });
+    timeSheet.appendChild(timeSection('기본 시간', '시작점·진행 규칙·달력을 한 번에 정합니다.',
+      h('div', { class: 'sce-time-grid sce-time-grid-core' },
+        timeField('시작 시점', startInput, 'YYYY-MM-DD 또는 YYYY-MM-DD HH:mm'),
+        timeField('시간 진행 방식', advanceSelect,
+          '대부분은 버튼·AI 보고 방식을 권장합니다.'),
+        timeField('달력 체계', calendarSelect, '현실 달력 또는 월별 30일 고정'))));
+
     // 시작 시각 무작위 (v0.80) — 켜면 판마다 시작점이 달라진다. 안 켠 칸은 위 시작 시점 그대로.
-    // 규칙 #3: 엔진에만 넣고 칸을 안 만들면 JSON 손편집 말고는 쓸 방법이 없다.
-    {
-      const RF = [
-        ['hour', '시각', 0, 23, '6, 22'],
-        ['minute', '분', 0, 59, '0, 59'],
-        ['dom', '일', 1, 31, '1, 28'],
-        ['month', '월', 1, 12, '3, 5'],
-        ['year', '년', 1, 9999, '2024, 2026'],
-      ];
-      const on = !!T.startRandom;
-      wrap.appendChild(h('h4', {}, '시작 시각 무작위'));
-      wrap.appendChild(h('div', { class: 'sce-row' },
-        bindCheck(on, (v) => {
-          // 켤 때 시각 범위를 기본으로 채워 준다 — 빈 껍데기를 켜 두면 아무것도 안 바뀐다
-          T.startRandom = v ? { hour: [6, 22] } : undefined;
+    const RF = [
+      ['hour', '시각', 0, 23, '8, 20', '오전 8시부터 오후 8시'],
+      ['minute', '분', 0, 59, '0, 30', '정각부터 30분'],
+      ['dom', '일', 1, 31, '1, 15', '1일부터 15일'],
+      ['month', '월', 1, 12, '1, 6', '1월부터 6월'],
+      ['year', '년', 1, 9999, '2026, 2030', '2026년부터 2030년'],
+    ];
+    const randomOn = !!T.startRandom;
+    const randomBody = [h('div', { class: 'sce-time-random-toggle' },
+      bindCheck(randomOn, (v) => {
+        T.startRandom = v ? { hour: [6, 22] } : undefined;   // 기본 범위는 우리 v0.80 값 유지 (개조본은 8~20)
+        rerender();
+      }, '새 채팅마다 시작 시점을 범위 안에서 무작위로 정하기'))];
+    if (randomOn) {
+      const SR = T.startRandom;
+      const rangeGrid = h('div', { class: 'sce-time-grid sce-time-range-grid' });
+      for (const [key, label, lo, hi, ph, meaning] of RF) {
+        const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
+        rangeGrid.appendChild(timeField(`${label} 범위`, bindInput(cur, (x) => {
+          const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
+          if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
+          else delete SR[key];
           rerender();
-        }, '판마다 시작 시각을 다르게')));
-      if (on) {
-        const SR = T.startRandom;
-        const row = h('div', { class: 'sce-row' });
-        for (const [key, label, lo, hi, ph] of RF) {
-          const cur = Array.isArray(SR[key]) ? SR[key].join(', ') : '';
-          row.appendChild(pair(label, bindInput(cur, (x) => {
-            const nums = String(x).split(/[,~\-\s]+/).map((n) => n.trim()).filter(Boolean).map(Number);
-            if (nums.length === 2 && nums.every((n) => isFinite(n))) SR[key] = [Math.floor(nums[0]), Math.floor(nums[1])];
-            else delete SR[key];   // 비우면 그 칸은 고정 (시작 시점 값을 그대로 쓴다)
-            rerender();
-          }, { cls: 'sce-w-s', ph }), `${lo}~${hi} · 비우면 고정`));
-        }
-        wrap.appendChild(row);
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '채운 칸만 굴립니다 — 비운 칸은 위 [시작 시점]의 값을 그대로 씁니다 (예: 시각만 채우면 날짜는 고정). '
-          + '**같은 채팅 안에서는 늘 같은 시각**이라 리롤해도 안 흔들리고, 새 채팅을 열면 새로 굴립니다. '
-          + '[현황]의 판 초기화로도 다시 굴러갑니다. 없는 날짜(2월 31일 등)는 그 달 말일로 당겨집니다.'));
-        if (!Object.keys(SR).length) {
-          wrap.appendChild(h('div', { class: 'sce-hint' },
-            '⚠ 범위가 하나도 없어 지금은 꺼진 것과 같습니다 — 칸을 하나 이상 채우세요.'));
-        }
+        }, { cls: 'sce-w-s', ph }), `예: ${ph} = ${meaning} · 허용 ${lo}~${hi} · 비우면 고정`));
       }
+      randomBody.push(rangeGrid);
+      randomBody.push(h('div', { class: 'sce-time-inline-note' },
+        '값을 입력한 항목만 무작위로 정합니다. 결과는 같은 채팅 안에서 유지되며 새 채팅이나 판 초기화 때 다시 결정됩니다. 없는 날짜는 해당 월의 마지막 날로 조정됩니다.'));
+      if (!Object.keys(SR).length) randomBody.push(h('div', { class: 'sce-time-inline-note is-warning' },
+        '범위가 하나도 없습니다. 무작위로 바꿀 항목을 하나 이상 입력해 주세요.'));
     }
+    timeSheet.appendChild(timeSection('시작 시점 무작위',
+      '선택 사항입니다. 날짜는 고정하고 시각만 바꾸는 식으로 필요한 항목만 설정할 수 있습니다.', ...randomBody));
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('날짜 형식', bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
-        { cls: 'sce-w-m', ph: 'YYYY-MM-DD' }), '토큰: YYYY YY MM M DD D — 예: "M월 D일", "YY/MM/DD"'),
-      pair('시각 형식', bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
-        { cls: 'sce-w-m', ph: 'HH:mm' }), '토큰: HH H mm m — 예: "H시 m분". 자릿수는 형식이 책임진다 (07:05)'),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      pair('요일', bindInput((T.weekdays || []).join(', '), (x) => {
-        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
-        T.weekdays = a.length ? a : undefined; rerender();
-      }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일 (비우면 기본) — 첫 칸이 월요일' })),
-      pair('계절', bindInput((T.seasons || []).join(', '), (x) => {
-        const a = x.split(',').map((s) => s.trim()).filter(Boolean);
-        T.seasons = a.length ? a : undefined; rerender();
-      }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울 (비우면 기본)' })),
-    ));
+    const dateFormat = bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
+      { cls: 'sce-w-m', ph: 'YYYY-MM-DD' });
+    const clockFormat = bindInput(T.format.clock, (x) => { T.format.clock = x || undefined; rerender(); },
+      { cls: 'sce-w-m', ph: 'HH:mm' });
+    const weekdaysInput = bindInput((T.weekdays || []).join(', '), (x) => {
+      const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+      T.weekdays = a.length ? a : undefined; rerender();
+    }, { cls: 'sce-w-l', ph: '월, 화, 수, 목, 금, 토, 일' });
+    const seasonsInput = bindInput((T.seasons || []).join(', '), (x) => {
+      const a = x.split(',').map((s) => s.trim()).filter(Boolean);
+      T.seasons = a.length ? a : undefined; rerender();
+    }, { cls: 'sce-w-l', ph: '봄, 여름, 가을, 겨울' });
+    timeSheet.appendChild(timeSection('표시 형식', '날짜·시각과 요일·계절의 표기를 바꿉니다.',
+      h('div', { class: 'sce-time-grid sce-time-grid-format' },
+        timeField('날짜 형식', dateFormat, '토큰: YYYY, YY, MM, M, DD, D · 예: M월 D일'),
+        timeField('시각 형식', clockFormat, '토큰: HH, H, mm, m · 예: H시 m분'),
+        timeField('요일 이름', weekdaysInput, '월요일부터 7개를 쉼표로 구분'),
+        timeField('계절 이름', seasonsInput, '봄부터 4개를 쉼표로 구분'))));
 
     // 노출 이름 — 체크한 것만 조건식·상태창에서 변수처럼 열린다
-    wrap.appendChild(h('h4', {}, '노출 이름 (조건식·상태창에서 변수처럼 쓴다)'));
-    const exposeRow = h('div', { class: 'sce-row' });
+    const exposeGrid = h('div', { class: 'sce-time-expose-grid' });
     for (const n of EXPOSABLE) {
-      exposeRow.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
+      exposeGrid.appendChild(bindCheck(cfg.expose.includes(n), (on) => {
         const cur = new Set(cfg.expose);
         if (on) cur.add(n); else cur.delete(n);
         T.expose = EXPOSABLE.filter((k) => cur.has(k));
         rerender();
-      }, `${EXPOSED_LABELS[n]}(${n})`));
+      }, `${EXPOSED_LABELS[n]} · ${n}`));
     }
-    wrap.appendChild(exposeRow);
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '예: 이벤트 조건 `dom == 1`(매달 1일), `weekday == "토"`, `hour >= 22`. '
-      + '상태창 항목·템플릿에는 {date} {clock}처럼 꽂는다. 같은 이름의 변수가 있으면 검증이 알려 준다.'));
+    timeSheet.appendChild(timeSection('사용할 시간값',
+      '체크한 값만 읽기 전용 변수처럼 사용할 수 있습니다. 필요한 것만 켜 두세요.',
+      exposeGrid,
+      h('div', { class: 'sce-time-example' },
+        '예: dom == 1 · weekday == "토" · hour >= 22 · 상태창과 템플릿에서는 {date}, {clock}')));
 
     // 진행 입구 — explicit이면 skip 변수가 있어야 시간이 흐른다
+    const progressChildren = [];
     if ((T.advance ?? 'explicit') === 'explicit') {
-      wrap.appendChild(h('h4', {}, '진행 입구'));
       const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
       const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
       if (!hasDay && !hasMin) {
-        wrap.appendChild(h('div', { class: 'sce-warn' },
-          `⚠ ${SKIP_DAY}/${SKIP_MIN} 변수가 없어 시간이 흐를 입구가 없습니다.`));
-        wrap.appendChild(addBtn(`진행 입구 만들기 — ${SKIP_DAY}·${SKIP_MIN} 변수 + AI 허용`, () => {
-          ensureSkipVars();
-          rerender();
-        }));
-        wrap.appendChild(h('div', { class: 'sce-hint' },
-          '⚠ 진행 규칙은 변수의 "설명"(desc)에 산다 — 지시문(directives)은 메인 AI 전용이라 상태를 갱신하는 보조 AI가 못 읽는다.'));
+        progressChildren.push(h('div', { class: 'sce-time-progress-status is-warning' },
+          h('strong', {}, '시간을 진행할 변수가 없습니다.'),
+          ` ${SKIP_DAY}와 ${SKIP_MIN}을 만들면 보조 AI가 지난 일수와 분을 보고할 수 있습니다.`));
+        progressChildren.push(h('div', { class: 'sce-time-section-actions' },
+          addBtn(`진행 변수 만들기 — ${SKIP_DAY} · ${SKIP_MIN} + AI 허용`, () => {
+            ensureSkipVars(); rerender();
+          })));
+        progressChildren.push(h('div', { class: 'sce-time-inline-note is-warning' },
+          '시간 진행 규칙은 각 변수의 AI용 설명에 입력해야 합니다. 지시문은 보조 AI가 읽지 않습니다.'));
       } else {
-        wrap.appendChild(h('div', { class: 'sce-ok' },
-          `✓ 진행 입구: ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')} `
-          + '(엔진이 매 턴 소비 후 0으로 되돌린다)'));
+        progressChildren.push(h('div', { class: 'sce-time-progress-status' },
+          h('strong', {}, '시간 진행 준비 완료'),
+          ` · ${[hasDay ? SKIP_DAY : null, hasMin ? SKIP_MIN : null].filter(Boolean).join(' · ')}를 엔진이 매 턴 사용한 뒤 0으로 되돌립니다.`));
         const hasEndDay = (schema.actions || []).some((a) =>
           (a.effects || []).some((f) => f.set === SKIP_DAY));
-        if (hasDay && !hasEndDay) {
-          wrap.appendChild(addBtn("🌙 '하루를 마친다' 액션 추가", () => {
-            ensureSkipVars();   // skip_min이 없던 봇이면 함께 — 액션 효과가 그 변수를 만진다
+        if (hasDay && !hasEndDay) progressChildren.push(h('div', { class: 'sce-time-section-actions' },
+          addBtn("🌙 '하루를 마친다' 액션 추가", () => {
+            ensureSkipVars();
             addEndDayAction();
             rerender();
-          }));
-        }
+          })));
       }
+    } else {
+      progressChildren.push(h('div', { class: 'sce-time-progress-status' },
+        h('strong', {}, '턴마다 하루 진행'),
+        ' · AI 출력 한 번을 하루로 계산합니다. 별도의 진행 변수는 필요하지 않습니다.'));
     }
+    timeSheet.appendChild(timeSection('진행 연결',
+      '선택한 진행 방식에 필요한 연결 상태를 확인합니다.', ...progressChildren));
 
     // 옛 날짜 변수 정리 — v0.45 정리 마법사 재사용 (참조까지 함께 걷는다)
     if (legacy.length) {
-      wrap.appendChild(h('h4', {}, '옛 날짜 변수 정리'));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        `손으로 만든 날짜 변수가 남아 있습니다: ${legacy.map((v) => `${v.id}(${v.label ?? ''})`).join(', ')} — `
-        + '시간 체계와 겹치면 노출 이름 충돌이 나고, 안 겹쳐도 두 시계가 따로 돕니다.'));
-      wrap.appendChild(addBtn('🧹 정리 마법사로 한꺼번에 지우기 (변수 탭에서 확인 후 적용)', () => {
-        const ids = legacy.map((v) => v.id);
-        const plan = planVarPurge(schema, ids);
-        purge = { id: ids[0], label: ids.join(', '), plan };
-        activeTab = 'vars';
-        rerender();
-      }));
+      timeSheet.appendChild(timeSection('이전 날짜 변수 정리',
+        '직접 만든 날짜 변수와 시간 체계를 함께 사용하면 값이 충돌하거나 두 시계가 따로 움직일 수 있습니다.',
+        h('div', { class: 'sce-time-inline-note is-warning' },
+          `정리 대상: ${legacy.map((v) => `${v.id}${v.label ? ` (${v.label})` : ''}`).join(', ')}`),
+        h('div', { class: 'sce-time-section-actions' },
+          addBtn('🧹 변수 탭에서 정리 계획 확인', () => {
+            const ids = legacy.map((v) => v.id);
+            const plan = planVarPurge(schema, ids);
+            purge = { id: ids[0], label: ids.join(', '), plan };
+            activeTab = 'vars';
+            rerender();
+          }))));
     }
 
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기'),
-      h('span', { class: 'sce-hint' }, '꺼도 세이브의 time_epoch는 그대로 남는다 — 다시 켜면 이어진다.'),
-    ));
+    timeSheet.appendChild(h('section', { class: 'sce-time-danger' },
+      h('div', { class: 'sce-time-danger-copy' },
+        h('strong', {}, '시간 체계 끄기'),
+        h('span', {}, '세이브의 time_epoch는 남아 있으므로 다시 켜면 이전 시점에서 이어집니다.')),
+      h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.time; rerender(); } }, '시간 체계 끄기')));
+    wrap.appendChild(h('div', { class: 'sce-time-back-row' },
+      h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+        timeChooserOpen = true;
+        rerender();
+      } }, '← 뒤로가기'),
+      h('span', {}, '시간 진행 방식을 다시 선택합니다. 현재 설정은 선택을 확정할 때까지 유지됩니다.')));
+    wrap.appendChild(h('div', { class: 'sce-time-workbench' }, timeRail, timeSheet));
+    wrap.appendChild(h('details', { class: 'sce-time-ai-tools' },
+      h('summary', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+      timeAiTools));
     return wrap;
   }
 
   // ── 탭: 새 시작 ───────────────────────────────────────────
   function tabSetup() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('presets'));
-    wrap.appendChild(h('h4', {}, '시작 프리셋 (플레이어가 고르는 난이도/배경 세트)'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '새 채팅을 시작할 때 패널에서 한 번 누르는 버튼. 여기 적은 변수만 그 값으로 세팅되고 나머지는 시작값 그대로 간다. '
-      + '값만 쓸 수 있고 수식은 안 된다. 난이도 이름을 붙였다면 [🔬 진단]에서 실제로 굴려 순서가 맞는지 확인할 것.'));
+    const wrap = h('div', { class: 'sce-setup-editor' });
+    const setupField = (label, control, help = '', extra = '') => h('label',
+      { class: `sce-setup-field${extra ? ` ${extra}` : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const presetAiTools = tabAiTools('presets');
+    wrap.appendChild(h('div', { class: 'sce-setup-head' },
+      h('div', {}, h('h3', {}, '새 시작'),
+        h('p', {}, '새 채팅에서 사용할 프리셋입니다. 변수 시작값과 작중 시작 시점을 한 번에 정하며, 현재 진행 중인 세이브의 값과는 구분됩니다.')),
+      h('div', { class: 'sce-setup-summary' }, h('span', {}, `프리셋 ${schema.setup.presets.length}개`))));
+    wrap.appendChild(h('div', { class: 'sce-setup-note' },
+      '프리셋에는 바꿀 변수만 적습니다. 나머지는 각 변수의 기본 시작값을 사용하며 값만 입력할 수 있습니다. 진행 중인 채팅에서 프리셋을 누르면 지정한 값과 시점이 적용될 수 있습니다.'));
     // 프리셋 미리보기 (v1.0 #3) — 기본→적용값 비교 + 그 상태의 상태창. 채팅에 들어가지 않고
     // "이 프리셋으로 시작하면 어떻게 보이나"를 확인한다.
     const presetPreviewBlock = (p) => {
@@ -6839,28 +10498,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       return box;
     };
     schema.setup.presets.forEach((p, i) => {
-      const block = h('div', { class: 'sce-block' });
-      block.appendChild(h('div', { class: 'sce-row' },
-        bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
-        bindInput(p.label, (x) => { p.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
-        h('button', { class: 'sce-btn sce-mini', onclick: () => {
+      const block = h('article', { class: 'sce-setup-card', 'data-sce-validation-path': `$.setup.presets[${i}]` });
+      block.appendChild(h('div', { class: 'sce-setup-card-head' },
+        h('div', { class: 'sce-setup-identity' }, h('span', { class: 'sce-setup-index' }, String(i + 1).padStart(2, '0')),
+          h('div', {}, h('strong', {}, p.label || '이름 없는 프리셋'),
+            h('small', {}, `${p.id || 'ID 없음'}${schema.time ? ` · ${p.startAt || '기본 시작 시점'}` : ''}`))),
+        h('div', { class: 'sce-setup-card-actions' }, h('button', { class: 'sce-btn sce-mini', onclick: () => {
           presetPreview = presetPreview === p.id ? null : p.id; rerender();
         } }, presetPreview === p.id ? '👁 미리보기 닫기' : '👁 미리보기'),
-        // 시간 체계가 켜져 있으면 시계도 시작값의 일부다 — "주말 오후에 시작" 같은 배경 프리셋용.
-        // epoch은 set으로 못 건드리는 예약 키라 이 칸이 유일한 통로다.
-        schema.time ? pair('시작 시점', bindInput(p.startAt, (x) => {
+        grip(schema.setup.presets, i, rerender))));
+      block.appendChild(h('section', { class: 'sce-setup-card-section' },
+        h('div', { class: 'sce-setup-group-title' }, '기본 정보'),
+        h('div', { class: 'sce-setup-field-grid is-basic' },
+          setupField('ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
+            '프리셋을 구분하는 기술 식별자입니다.'),
+          setupField('표시 이름', bindInput(p.label, (x) => { p.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름' }),
+            '플레이어가 선택할 때 보이는 이름입니다.'))));
+      // 시간 체계가 켜져 있으면 시계도 시작값의 일부다 — "주말 오후에 시작" 같은 배경 프리셋용.
+      // epoch은 set으로 못 건드리는 예약 키라 이 칸이 유일한 통로다.
+      if (schema.time) block.appendChild(h('section', { class: 'sce-setup-card-section sce-setup-time-section' },
+        h('div', { class: 'sce-setup-group-title' }, '시작 시점'),
+        Object.assign(setupField('시작 시점', bindInput(p.startAt, (x) => {
           p.startAt = x.trim() || undefined; rerender();
-        }, { cls: 'sce-w-m', ph: `(비우면 ${schema.time.start})` }),
+        }, { cls: 'sce-w-m sce-setup-start-at-input', ph: `(비우면 ${schema.time.start})` }),
         '이 프리셋으로 시작할 때의 작중 날짜·시각 ("YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm"). '
         + '진행 중 채팅에서 눌러도 시계가 이 시점으로 점프한다 — 변수를 안 적으면 시계만 옮긴다. '
-        + '한 번만 옮길 거면 채팅에 /날짜 2026-10-05 를 쳐도 된다') : null,
-        grip(schema.setup.presets, i, rerender),
-      ));
+        + '한 번만 옮길 거면 채팅에 /날짜 2026-10-05 를 쳐도 된다', 'sce-setup-start-at'),
+        { className: 'sce-setup-field sce-setup-start-at' })));
       p.set = p.set || {};
       const entries = Object.entries(p.set);
-      const sub = h('div', { class: 'sce-sub' });
+      const sub = h('section', { class: 'sce-setup-card-section sce-setup-values' },
+        h('div', { class: 'sce-setup-group-title' }, '시작 변수값'),
+        h('div', { class: 'sce-setup-group-copy' }, '기존 변수 중 이 프리셋에서 바꿀 값만 선택합니다. 비워 둔 변수는 원래 시작값을 사용합니다.'));
       entries.forEach(([id, val], ei) => {
-        sub.appendChild(h('div', { class: 'sce-row' },
+        sub.appendChild(h('div', { class: 'sce-setup-value-row' },
           bindSelect(id, schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]), (nid) => {
             delete p.set[id]; p.set[nid] = val; rerender();
           }),
@@ -6871,24 +10542,34 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { delete p.set[id]; rerender(); } }, '✕'),
         ));
       });
-      sub.appendChild(addBtn('시작값', () => {
+      const addStartValue = addBtn('시작값', () => {
         const unused = schema.vars.find((v) => !(v.id in p.set));
         if (unused) { p.set[unused.id] = unused.init ?? 0; rerender(); }
-      }));
+      });
+      addStartValue.disabled = !schema.vars.some((v) => !(v.id in p.set));
+      sub.appendChild(addStartValue);
+      if (addStartValue.disabled) sub.appendChild(h('div', { class: 'sce-hint' },
+        schema.vars.length ? '모든 변수의 시작값이 이미 추가되어 있어요.' : '변수를 먼저 만들면 시작값을 추가할 수 있어요.'));
+      if (!schema.vars.length) sub.appendChild(h('button', { class: 'sce-btn',
+        onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동'));
       block.appendChild(sub);
-      if (presetPreview === p.id) block.appendChild(presetPreviewBlock(p));
+      if (presetPreview === p.id) block.appendChild(h('section', { class: 'sce-setup-card-section sce-setup-preview' },
+        h('div', { class: 'sce-setup-group-title' }, '적용 결과 미리보기'), presetPreviewBlock(p)));
       wrap.appendChild(block);
     });
-    wrap.appendChild(addBtn('프리셋 추가', () => { schema.setup.presets.push({ id: 'preset' + (schema.setup.presets.length + 1), label: '', set: {} }); rerender(); }));
+    wrap.appendChild(h('div', { class: 'sce-setup-add' }, addBtn('프리셋 추가', () => { schema.setup.presets.push({ id: 'preset' + (schema.setup.presets.length + 1), label: '', set: {} }); rerender(); })));
 
     const ai = schema.setup.ai;
-    wrap.appendChild(h('h4', {}, 'AI 최초설정 (세션 0 — 첫 대화로 시작 상황을 정함)'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    const aiSetup = h('section', { class: 'sce-setup-ai-config' },
+      h('div', { class: 'sce-setup-ai-config-head' },
+        h('strong', {}, 'AI 최초설정'),
+        h('small', {}, '첫 대화에서 시작 상황을 정하는 선택 기능입니다.')),
+      h('div', { class: 'sce-setup-ai-toggle' },
       bindCheck(ai.enabled, (x) => { ai.enabled = x; rerender(); }, '사용'),
-    ));
+      ));
     if (ai.enabled) {
       ai.vars = ai.vars || [];
-      wrap.appendChild(h('div', { class: 'sce-hint' }, 'AI가 정할 수 있는 변수 선택:'));
+      aiSetup.appendChild(h('div', { class: 'sce-setup-group-copy' }, 'AI가 정할 수 있는 변수 선택:'));
       const chips = h('div', { class: 'sce-chips' });
       for (const v of schema.vars) {
         chips.appendChild(bindCheck(ai.vars.includes(v.id), (on) => {
@@ -6897,25 +10578,50 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           rerender();
         }, v.label ?? v.id));
       }
-      wrap.appendChild(chips);
-      wrap.appendChild(h('h4', {}, '설정 대화 중 메인 AI에게 줄 지침'));
-      wrap.appendChild(bindArea(ai.instruction, (x) => { ai.instruction = x || undefined; rerender(); },
-        '[최초 설정 진행 중] 유저와 함께 시작 상황을 정하는 대화를 하라...'));
-      wrap.appendChild(h('h4', {}, '값 결정 가이드 (보조 AI용)'));
-      wrap.appendChild(bindArea(ai.guide, (x) => { ai.guide = x || undefined; rerender(); },
-        '유저가 명시한 값은 그대로, 나머지는 배경에 어울리게 정하라.'));
+      aiSetup.appendChild(chips);
+      aiSetup.appendChild(setupField('설정 대화 중 메인 AI에게 줄 지침',
+        bindArea(ai.instruction, (x) => { ai.instruction = x || undefined; rerender(); },
+          '[최초 설정 진행 중] 유저와 함께 시작 상황을 정하는 대화를 하라...'), '', 'is-wide'));
+      aiSetup.appendChild(setupField('값 결정 가이드 (보조 AI용)',
+        bindArea(ai.guide, (x) => { ai.guide = x || undefined; rerender(); },
+          '유저가 명시한 값은 그대로, 나머지는 배경에 어울리게 정하라.'), '', 'is-wide'));
     }
+    wrap.appendChild(aiSetup);
+    wrap.appendChild(h('details', { class: 'sce-setup-ai-tools' },
+      h('summary', {}, h('span', {}, h('strong', {}, 'AI로 프리셋 만들기'),
+        h('small', {}, '프리셋 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
+      h('span', { class: 'sce-setup-ai-chevron' }, '⌄')),
+      h('div', { class: 'sce-setup-ai-tools-body' }, presetAiTools)));
     return wrap;
   }
 
   // ── 탭: AI 설정 (프롬프트 + 보조 모델) ────────────────────
   function tabAi() {
-    const wrap = h('div');
+    const wrap = h('div', { class: 'sce-ai-settings-editor' });
     const ps = schema.promptState;
-    wrap.appendChild(h('h4', {}, 'AI에게 매 턴 보낼 상태 요약 (자리표시자 {변수id})'));
-    wrap.appendChild(bindArea(ps.template, (x) => { ps.template = x; rerender(); },
-      '[영지 현황 — {turn}개월차]\\n자금 {gold}G | 식량 {food} ...'));
-    wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+    const aiField = (label, control, help = '', extra = '') => h('label',
+      { class: `sce-ai-settings-field${extra ? ` ${extra}` : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiSection = (title, copy, ...children) => h('section', { class: 'sce-ai-settings-section' },
+      h('div', { class: 'sce-ai-settings-section-head' },
+        h('strong', {}, title), copy ? h('small', {}, copy) : null),
+      h('div', { class: 'sce-ai-settings-section-body' }, ...children));
+    wrap.appendChild(h('div', { class: 'sce-ai-settings-head' },
+      h('div', {}, h('h3', {}, 'AI 설정'),
+        h('p', {}, 'SimCore가 상태를 요약하고 갱신할 때 사용하는 AI 전달 규칙을 조정합니다. 캐릭터와 대화하는 메인 모델 전체를 설정하는 화면은 아닙니다.')),
+      h('div', { class: 'sce-ai-settings-summary' },
+        h('span', {}, `갱신 허용 ${schema.updater.allow.length}개`),
+        h('span', {}, `최근 대화 ${schema.updater.contextTurns ?? 1}턴`))));
+    wrap.appendChild(h('div', { class: 'sce-ai-settings-note' },
+      '허용 목록과 감지 안전장치를 바꾸면 보조 AI가 확인하거나 갱신할 수 있는 상태 범위가 달라집니다. 각 변수의 한도와 잠금 조건을 함께 확인하세요.'));
+
+    const promptSection = aiSection('메인 AI에 전달할 상태와 규칙',
+      '상태 요약과 이벤트 규칙을 매 턴 메인 AI에 전달합니다. 보조 AI의 상태 갱신 허용 범위와는 별개입니다.');
+    promptSection.lastChild.appendChild(aiField('매 턴 보낼 상태 요약',
+      bindArea(ps.template, (x) => { ps.template = x; rerender(); },
+        '[영지 현황 — {turn}개월차]\\n자금 {gold}G | 식량 {food} ...'),
+      '자리표시자 {변수id}를 사용해 현재 상태를 구성합니다.', 'is-wide'));
+    promptSection.lastChild.appendChild(h('button', { class: 'sce-btn sce-add sce-ai-settings-auto', onclick: () => {
       const line = (v) => {
         const name = v.label || v.id;
         if (v.format) return name + ' ' + v.format.replace('{v}', '{' + v.id + '}');
@@ -6926,65 +10632,79 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         + (schema.derived.length ? '\n' + schema.derived.map(line).join(' | ') : '');
       rerender();
     } }, '⚡ 변수로 자동 생성 (지금 내용 덮어씀 — 생성 후 다듬기 권장)'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    promptSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-toggle-row' },
       bindCheck(ps.includeEvents !== false, (x) => { ps.includeEvents = x; rerender(); }, '이벤트 통지 포함'),
       bindCheck(ps.eventPriority !== false, (x) => { ps.eventPriority = x ? undefined : false; rerender(); },
         '이벤트 우선 규칙 붙이기'),
     ));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
+    promptSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-help' },
       '이벤트가 발동한 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙이 자동으로 붙는다 — '
-      + '서사가 이벤트를 무시해 수치와 어긋나는 걸 막는다. 아래에 직접 쓰면 그 문구로 대체된다.'));
-    wrap.appendChild(bindArea(typeof ps.eventPriority === 'string' ? ps.eventPriority : '',
-      (x) => { ps.eventPriority = x.trim() ? x : undefined; rerender(); },
-      '(비우면 기본 문구 사용)'));
-    wrap.appendChild(h('h4', {}, '메인 AI 지침 (비우면 기본: "수치는 시스템이 관리, 서사에 집중")'));
-    wrap.appendChild(bindArea(ps.systemGuide, (x) => { ps.systemGuide = x || undefined; rerender(); }, ''));
+      + '서사가 이벤트를 무시해 수치와 어긋나는 일을 막아줘요. 아래에 직접 쓰면 그 문구로 바뀌어요.'));
+    promptSection.lastChild.appendChild(aiField('이벤트 우선 규칙 문구',
+      bindArea(typeof ps.eventPriority === 'string' ? ps.eventPriority : '',
+        (x) => { ps.eventPriority = x.trim() ? x : undefined; rerender(); }, '(비우면 기본 문구 사용)'),
+      '비우면 기본 규칙을 사용합니다.', 'is-wide'));
+    promptSection.lastChild.appendChild(aiField('메인 AI 지침',
+      bindArea(ps.systemGuide, (x) => { ps.systemGuide = x || undefined; rerender(); }, ''),
+      '비우면 “수치는 시스템이 관리하고 서사에 집중”하는 기본 지침을 사용합니다.', 'is-wide'));
+    wrap.appendChild(promptSection);
 
-    wrap.appendChild(h('h4', {}, '보조 AI에게 함께 보낼 최근 대화'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    const contextSection = aiSection('상태 갱신 기본 설정',
+      '보조 AI가 현재 턴을 판단할 때 함께 읽을 최근 대화 범위를 정합니다.');
+    contextSection.lastChild.appendChild(aiField('보조 AI에게 함께 보낼 최근 대화',
       bindSelect(String(schema.updater.contextTurns ?? 1),
         [['1', '1턴 — 이번 턴만 (기본, 가장 저렴)'], ['2', '2턴'], ['3', '3턴 — 권장'], ['4', '4턴'], ['5', '5턴 — 맥락 최대, 토큰 많이 씀']],
-        (x) => { const n = parseInt(x, 10); schema.updater.contextTurns = n > 1 ? n : undefined; rerender(); })));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
+        (x) => { const n = parseInt(x, 10); schema.updater.contextTurns = n > 1 ? n : undefined; rerender(); }),
+      '길수록 맥락 판단은 쉬워지지만 턴마다 사용하는 토큰이 늘어납니다.'));
+    contextSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-help' },
       '앞선 대화를 같이 보내면 "아까 준 선물" 같은 맥락을 보조 AI가 이해해 판단이 정확해진다. '
       + '다만 턴마다 토큰을 더 쓰고, 이미 반영한 변화를 다시 셀 위험도 조금 생긴다 (그러지 말라는 지시는 자동으로 붙는다).'));
+    wrap.appendChild(contextSection);
 
     // 감지 신고 (v0.74) — 낱말 게이트의 안전망. 기본 켜짐, 끄기만 저장 (규칙 #3)
-    wrap.appendChild(h('h4', {}, '잠긴 변수 감지 신고'));
-    wrap.appendChild(h('div', { class: 'sce-row' },
+    const detectSection = aiSection('잠긴 변수 감지 신고',
+      '낱말 없이 명백한 변화가 서술되었을 때 다음 턴에 한 번 확인할 기회를 주는 안전망입니다.');
+    detectSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-toggle-row' },
       bindCheck(schema.updater.wordDetect !== false,
         (on) => { schema.updater.wordDetect = on ? undefined : false; rerender(); }, '감지 신고 켜기 (기본)')));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
+    detectSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-safety-note' },
+      h('strong', {}, '신고만 하며 값을 직접 바꾸지 않습니다.'),
+      h('span', {},
       '등장 낱말로 잠근 변수를 서사가 낱말 없이 서술하면("발을 헛디뎠고 일어서지 못했다") 보조 AI가 '
       + '그 사실만 신고하고, 그 변수가 다음 턴 한 번 열린다. 신고 자체는 값을 못 바꾸고, 열린 뒤에도 '
-      + '증감 한도는 그대로 걸린다. 낱말 잠금을 안 쓰는 봇에는 아무 영향이 없다.'));
+      + '증감 한도는 그대로 적용돼요. 낱말 잠금을 쓰지 않는 봇에는 아무 영향이 없어요.')));
+    wrap.appendChild(detectSection);
 
     // 다음 행동 제안 (v0.43) — 보조 응답에 얹혀 오는 옵트인 기능. 스키마 키는 suggest 하나.
-    wrap.appendChild(h('h4', {}, '다음 행동 제안'));
+    const suggestSection = aiSection('다음 행동 제안',
+      '상태 갱신과 같은 보조 호출에서 다음 입력 후보를 함께 만듭니다.');
     if (!schema.suggest) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
+      suggestSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-help' },
         '켜면 매 턴 보조 AI가 "유저가 다음에 입력할 만한 행동" 2~4개를 만들어 입력창 위 조작줄에 칩으로 띄운다. '
         + '칩을 누르면 그 문장이 그대로 전송된다 (전송 권한 확인 1회, 거부해도 표시는 된다). '
-        + '상태 갱신과 같은 보조 호출에 얹혀 가서 추가 호출 비용이 없다. 루아 브리지 모드에서는 아직 안 뜬다.'));
-      wrap.appendChild(addBtn('다음 행동 제안 켜기', () => { schema.suggest = { count: 3 }; rerender(); }));
+        + '상태 갱신과 같은 보조 호출에 함께 실려서 추가 호출 비용이 없어요. 루아 브리지 모드에서는 아직 표시되지 않아요.'));
+      suggestSection.lastChild.appendChild(addBtn('다음 행동 제안 켜기', () => { schema.suggest = { count: 3 }; rerender(); }));
     } else {
-      wrap.appendChild(h('div', { class: 'sce-row' },
+      suggestSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-suggest-row' },
         pair('개수', bindSelect(String(schema.suggest.count ?? 3), [['2', '2개'], ['3', '3개 (기본)'], ['4', '4개']],
           (x) => { schema.suggest.count = parseInt(x, 10); rerender(); })),
         h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { delete schema.suggest; rerender(); } }, '제안 끄기'),
       ));
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '제안 지침 (선택) — 제안의 결을 정한다. 예: "공방 일과에 어울리는 행동으로, 하나는 뜻밖의 것을 섞어라."'));
-      wrap.appendChild(bindArea(schema.suggest.guide, (x) => { schema.suggest.guide = x.trim() ? x : undefined; rerender(); }, '(비우면 기본 지침만)'));
+      suggestSection.lastChild.appendChild(aiField('제안 지침 (선택)',
+        bindArea(schema.suggest.guide, (x) => { schema.suggest.guide = x.trim() ? x : undefined; rerender(); }, '(비우면 기본 지침만)'),
+        '제안의 분위기와 방향을 정합니다. 예: “공방 일과에 어울리는 행동으로, 하나는 뜻밖의 것을 섞어라.”', 'is-wide'));
     }
+    wrap.appendChild(suggestSection);
 
-    wrap.appendChild(h('h4', {}, '보조 AI가 조정할 수 있는 변수와 한도'));
-    wrap.appendChild(h('div', { class: 'sce-hint' },
-      '숫자형은 턴당 최대 증감폭, 텍스트는 최대 글자수. 목록에 없는 변수는 AI가 절대 못 건드림.'));
+    const allowSection = aiSection('보조 AI가 조정할 수 있는 변수',
+      '허용한 변수만 상태 갱신 대상이 됩니다. 숫자는 턴당 증감폭, 텍스트는 최대 글자 수를 제한할 수 있습니다.');
+    allowSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-allow-summary' },
+      h('strong', {}, `현재 ${schema.updater.allow.length}개 허용`),
+      h('span', {}, '목록에 없는 변수는 보조 AI가 변경할 수 없습니다.')));
     const allow = schema.updater.allow;
     allow.forEach((a, i) => {
       const def = schema.vars.find((v) => v.id === a.id);
-      const row = h('div', { class: 'sce-row' },
+      const row = h('div', { class: 'sce-ai-settings-allow-card' },
         bindSelect(a.id, schema.vars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]), (x) => { a.id = x; rerender(); }),
       );
       if (def && (def.type === 'int' || def.type === 'float')) {
@@ -7013,49 +10733,66 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       // 등장 낱말(mentions) — 켜면 그 말이 이번 턴 글에 있을 때만 보조 AI에게 열린다.
       // 켜기만 하고 낱말을 비우면 true(=변수 이름을 낱말로 씀). 인물 호감도는 label이 곧 이름이라 그게 맞다.
       const onMention = a.mentions != null;
-      row.append(bindCheck(onMention, (on) => {
+      const mentionGroup = h('div', { class: 'sce-ai-settings-gate' },
+        h('div', { class: 'sce-ai-settings-gate-head' },
+          h('strong', {}, '낱말 게이트'),
+          h('small', {}, '정해 둔 표현이 이번 턴 서사에 등장할 때만 이 변수를 엽니다.')),
+        bindCheck(onMention, (on) => {
         if (on) a.mentions = true; else delete a.mentions;
         rerender();
       }, '등장할 때만'));
       if (onMention) {
-        row.append(pair('낱말', bindInput(a.mentions === true ? '' : [].concat(a.mentions).join(', '),
+        mentionGroup.append(pair('매칭 낱말', bindInput(a.mentions === true ? '' : [].concat(a.mentions).join(', '),
           (x) => {
             const keys = String(x).split(',').map((s) => s.trim()).filter(Boolean);
             a.mentions = keys.length ? keys : true;
             rerender();
           }, { cls: 'sce-w-m', ph: def?.label ? `${def.label} (비우면 이 이름)` : '(비우면 변수 이름)' }),
-          '이번 턴 서사에 이 말이 나왔을 때만 보조 AI가 이 변수를 볼 수 있다. 쉼표로 여러 개. '
+          '이번 턴 서사에 이 말이 나왔을 때만 보조 AI가 이 변수를 볼 수 있어요. 여러 개라면 쉼표로 나눠 주세요. '
           + '별명이 있으면 같이 적을 것 — 짧은 이름이 긴 이름 안에 들어 있으면 긴 쪽이 이긴다. '
           + '상태어(부상·평판 등)는 유의어를 여러 개, 명사 위주로 — 동사는 "다쳤다" 대신 끝의 다를 뗀 "다쳤"으로 적으면 다쳤다·다쳤고에 다 걸리고, "다친" 같은 다른 꼴도 같이 적을 것. '
           + '⚠ 채팅 언어의 낱말이어야 한다 — 영어로도 놀 봇이면 두 언어를 다 적을 것 (예: 골드, gold). '
           + '"골드"처럼 매 턴 상태창에 찍히는 단위 말은 넣지 말 것 (항상 열려서 잠금이 무의미해진다).'));
       }
+      row.appendChild(mentionGroup);
       // 액션 잠금(whenArmed) — 그 액션이 무장·발동된 턴에만 보조 AI에게 열린다.
       // 낱말과 달리 채팅 언어와 무관·결정적. "개인 지갑 vs 가게 금고" 같은 이중 장부에 특효.
       {
         const actionOpts = (schema.actions || []).map((x) => x.id).join(', ');
-        row.append(pair('액션 잠금', bindInput([].concat(a.whenArmed || []).join(', '),
+        row.append(h('div', { class: 'sce-ai-settings-gate' },
+          h('div', { class: 'sce-ai-settings-gate-head' },
+            h('strong', {}, '액션 잠금'),
+            h('small', {}, '정해 둔 액션이 준비 중이거나 발동된 턴에만 이 변수를 엽니다.')),
+          pair('액션 ID', bindInput([].concat(a.whenArmed || []).join(', '),
           (x) => {
             const ids = String(x).split(',').map((s) => s.trim()).filter(Boolean);
             if (ids.length) a.whenArmed = ids.length === 1 ? ids[0] : ids; else delete a.whenArmed;
             rerender();
           }, { cls: 'sce-w-m', ph: '액션 id (비우면 잠금 없음)' }),
-          '적으면 그 액션 버튼이 무장 중이거나 방금 발동된 턴에만 보조 AI가 이 변수를 고칠 수 있다. '
-          + '쉼표로 여러 개 (하나만 무장돼도 열림). 낱말 잠금과 달리 어떤 언어로 채팅해도 똑같이 작동한다. '
-          + '돈처럼 AI가 자꾸 멋대로 만지는 변수에 걸어두면, 유저가 버튼을 켠 턴에만 움직인다.'
-          + (actionOpts ? ` 현재 액션: ${actionOpts}` : ' (⚠ 아직 액션이 없다 — [액션] 탭에서 먼저 만들 것)')));
+          '적어두면 그 액션 버튼이 준비 중이거나 방금 발동된 턴에만 보조 AI가 이 변수를 고칠 수 있어요. '
+          + '여러 개라면 쉼표로 나눠 주세요. 하나만 준비돼도 열려요. 낱말 잠금과 달리 어떤 언어로 채팅해도 똑같이 작동해요. '
+          + '돈처럼 AI가 자꾸 임의로 바꾸는 변수에 걸어두면, 유저가 버튼을 켠 턴에만 움직여요.'
+          + (actionOpts ? ` 현재 액션: ${actionOpts}` : ' (⚠ 아직 액션이 없다 — [액션] 탭에서 먼저 만들 것)'))));
       }
-      row.appendChild(grip(allow, i, rerender));
-      wrap.appendChild(h('div', { class: 'sce-block' }, row));
+      row.prepend(h('div', { class: 'sce-ai-settings-allow-head' },
+        h('div', {}, h('strong', {}, def?.label || a.id || '변수 미선택'), h('small', {}, a.id || 'ID 없음')),
+        grip(allow, i, rerender)));
+      allowSection.lastChild.appendChild(row);
     });
-    wrap.appendChild(addBtn('허용 변수', () => {
+    const addAllowedVar = addBtn('허용 변수', () => {
       const unused = schema.vars.find((v) => !allow.some((a) => a.id === v.id));
       allow.push({ id: (unused ?? schema.vars[0])?.id ?? '', maxDelta: unused?.type === 'int' ? 100 : undefined });
       rerender();
-    }));
+    });
     const missingAllow = schema.vars.filter((v) => !allow.some((a) => a.id === v.id));
+    addAllowedVar.disabled = !missingAllow.length;
+    const allowActions = h('div', { class: 'sce-ai-settings-allow-actions' }, addAllowedVar);
+    if (!missingAllow.length) allowActions.appendChild(h('div', { class: 'sce-ai-settings-help' },
+      schema.vars.length ? '모든 변수가 이미 허용 목록에 있어요.' : '변수를 먼저 만들면 허용 목록에 추가할 수 있어요.'));
+    if (!schema.vars.length) allowActions.appendChild(h('button', { class: 'sce-btn',
+      onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동'));
     if (missingAllow.length) {
-      wrap.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
+      allowActions.appendChild(h('button', { class: 'sce-btn sce-add', onclick: () => {
         for (const v of missingAllow) {
           const entry = { id: v.id };
           if (v.type === 'text') entry.maxLength = v.maxLength;
@@ -7064,9 +10801,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         rerender();
       } }, `⚡ 빠진 변수 모두 추가 (${missingAllow.length}개 — 숫자 한도는 직접 채우는 걸 권장)`));
     }
-    wrap.appendChild(h('h4', {}, '보조 AI 추가 지시'));
-    wrap.appendChild(bindArea(schema.updater.guide, (x) => { schema.updater.guide = x || undefined; rerender(); },
-      '서사에 명시된 변화만 반영...'));
+    allowSection.lastChild.appendChild(allowActions);
+    wrap.appendChild(allowSection);
+    wrap.appendChild(aiSection('보조 AI 추가 지시',
+      '상태 갱신 판단에 필요한 세계관 규칙이나 예외만 적습니다.',
+      aiField('추가 지시', bindArea(schema.updater.guide, (x) => { schema.updater.guide = x || undefined; rerender(); },
+        '서사에 명시된 변화만 반영...'), '기존 허용 목록과 한도·잠금 규칙은 그대로 적용됩니다.', 'is-wide')));
     return wrap;
   }
 
@@ -8364,6 +12104,137 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     mid: ['🟡', '개선하면 좋은 항목'],
     low: ['🔵', '확인이 필요한 항목'],
   };
+  // ── 개조본 이식 헬퍼 (v1.7.13): 검증 오류 친절화·점프 ──
+  function friendlyValidationIssue(path, msg) {
+    const p = String(path ?? '');
+    const raw = String(msg ?? '');
+    const indexLabel = (kind, match) => `${kind} ${Number(match[1]) + 1}번`;
+
+    let where = '작업본 설정';
+    let m;
+    if ((m = /^\$\.rules\.events\[(\d+)\](?:\.([^.]+))?/.exec(p))) {
+      const field = { when: '발동 조건', notify: 'AI 통지', effects: '발동 효과', choices: '갈림길' }[m[2]] || '';
+      where = `${indexLabel('조건 이벤트', m)}${field ? ` · ${field}` : ''}`;
+    } else if ((m = /^\$\.rules\.randomEvents\.table\[(\d+)\](?:\.([^.]+))?/.exec(p))) {
+      const field = { when: '후보 조건', notify: 'AI 통지', weight: '가중치', cooldown: '쿨다운' }[m[2]] || '';
+      where = `${indexLabel('랜덤 이벤트', m)}${field ? ` · ${field}` : ''}`;
+    } else if ((m = /^\$\.directives\[(\d+)\](?:\.([^.]+))?/.exec(p))) {
+      const field = { when: '조건', text: 'AI 전달문', id: '지시문 ID' }[m[2]] || '';
+      where = `${indexLabel('상태 지시문', m)}${field ? ` · ${field}` : ''}`;
+    } else if ((m = /^\$\.actions\[(\d+)\](?:\.([^.]+))?/.exec(p))) {
+      where = `${indexLabel('행동', m)}${m[2] === 'when' ? ' · 사용 조건' : ''}`;
+    } else if ((m = /^\$\.vars\[(\d+)\](?:\.([^.]+))?/.exec(p))) {
+      where = `${indexLabel('변수', m)}${m[2] ? ` · ${m[2]}` : ''}`;
+    } else if ((m = /^\$\.calendar\.marks\[(\d+)\]/.exec(p))) {
+      where = indexLabel('기념일', m);
+    } else if (p.startsWith('$.calendar')) {
+      where = '달력 설정';
+    } else if (p.startsWith('$.board')) {
+      where = '커뮤니티 보드';
+    } else if (p.startsWith('$.assets')) {
+      where = '에셋 설정';
+    } else if (p.startsWith('$.statusUI')) {
+      where = '상태창 설정';
+    }
+
+    let message = raw;
+    if (raw === '표현식 필요') {
+      message = '조건이 비어 있어요. 이 항목이 언제 작동할지 발동 조건을 입력해 주세요.';
+    } else if (/관심사\(topics\)도 생성 지침\(guide\)도 없습니다/.test(raw)) {
+      message = '게시판의 관심사와 글 생성 지침이 모두 비어 있어요. 둘 중 하나는 적어 주세요. 그래야 AI가 게시판 주제를 마음대로 만들지 않아요.';
+    } else if (/언제인지가 없습니다/.test(raw)) {
+      message = '날짜가 비어 있어요. 반복 방식에 맞는 월·일 또는 요일을 정해 주세요.';
+    } else if (/label 필요/.test(raw)) {
+      message = '화면에 보여줄 이름이 비어 있어요. 알아보기 쉬운 이름을 적어 주세요.';
+    } else if (/id 필요/.test(raw)) {
+      message = '항목을 구분할 ID가 비어 있어요. 다른 항목과 겹치지 않는 ID를 적어 주세요.';
+    } else if (/vars에 없음/.test(raw)) {
+      message = '연결한 변수를 찾을 수 없어요. 변수 탭에서 실제로 존재하는 변수를 다시 선택해 주세요.';
+    } else if (/배열이어야 함/.test(raw)) {
+      message = '목록 형식이 맞지 않아요. 해당 항목을 편집기에서 다시 저장해 주세요.';
+    } else if (/시간 체계\(time\).*켜/.test(raw)) {
+      message = '이 기능은 시간 체계가 필요해요. 먼저 [시간] 탭에서 날짜와 시간 설정을 켜 주세요.';
+    } else if (!/[요다][.!?]?$/.test(message)) {
+      message = `${message}. 설정값을 확인해 주세요.`;
+    }
+    return { where, message, technical: `${p} — ${raw}` };
+  }
+
+  function validationTarget(issue) {
+    const path = String(issue.path || '');
+    if (!/^\$\.[A-Za-z_][\w]*(?:[.\[]|$)/.test(path)) return null;
+    const command = /^\$\.vars\[\d+\]\.cmd(?:[.\[]|$)/.test(path)
+      || (/^\$\.vars\[\d+\]$/.test(path)
+        && /^(?:cmd는 |cmd '|중복된 cmd: |'선택'은 갈림길 선택 명령)/.test(String(issue.msg || '')));
+    let tab, floor = 'deep';
+    if (command) tab = 'commands';
+    else if (/^\$\.(vars|derived)(?:[.\[]|$)/.test(path)) tab = 'vars';
+    else if (/^\$\.checks(?:[.\[]|$)/.test(path)) tab = 'checks';
+    else if (/^\$\.assets(?:[.\[]|$)/.test(path)) floor = 'assets';
+    else if (/^\$\.suggest(?:[.\[]|$)/.test(path)) tab = 'ai';
+    else {
+      const hit = PATH_TABS.find(([re]) => re.test(path));
+      tab = hit && TABS.find(([, label]) => label === hit[1].replace('(프리셋)', ''))?.[0];
+    }
+    if (!tab && floor !== 'assets') return null;
+    const match = /^\$\.(vars|derived|actions|checks|directives|rules\.events|rules\.randomEvents\.table|statusUI\.groups|assets\.packs|scenario\.acts|setup\.presets)\[(\d+)\](?:[.\[]|$)/.exec(path);
+    const parts = match ? match[1].split('.') : null;
+    const list = parts?.reduce((value, key) => value?.[key], schema);
+    const item = Array.isArray(list) ? list[Number(match[2])] : null;
+    return { tab, floor, parts, item: item && typeof item === 'object' ? item : null, command };
+  }
+
+
+  function jumpToValidation(target) {
+    if (destroyed) return;
+    const seq = ++validationJumpSeq;
+    const currentPath = () => {
+      const list = target.parts?.reduce((value, key) => value?.[key], schema);
+      if (!target.item || !Array.isArray(list)) return null;
+      const index = list.indexOf(target.item);
+      if (index < 0 || list.lastIndexOf(target.item) !== index) return null;
+      return `$.${target.parts.join('.')}[${index}]${target.command ? '.cmd' : ''}`;
+    };
+    if (currentPath()) {
+      const folded = target.command ? collapsedCommandCards
+        : target.tab === 'vars' ? collapsedVariableCards
+          : target.tab === 'status' ? collapsedStatusGroups
+            : target.tab === 'rules' ? collapsedRuleDirectives
+              : target.floor === 'assets' ? collapsedAssetPackSettings : null;
+      folded?.delete(target.item);
+    }
+    if (target.tab) activeTab = target.tab;
+    if (target.floor === 'assets') assetsOpen = true;
+    else lowerOpen = true;
+    // 기존 호스트 층 전환을 사용해 사이드바 선택도 함께 바꾼다.
+    let hostRendered = false;
+    if (floorView && floorView !== target.floor && onRequestFloor) {
+      try {
+        onRequestFloor(target.floor);
+        hostRendered = floorView === target.floor;
+      } catch (_) { /* 호스트 전환을 사용할 수 없으면 편집기 내부 층 전환으로 폴백 */ }
+    }
+    if (floorView) floorView = target.floor;
+    if (!hostRendered) render();
+    requestAnimationFrame(() => {
+      if (destroyed || seq !== validationJumpSeq
+        || (floorView && floorView !== target.floor)
+        || (target.tab && activeTab !== target.tab)) return;
+      try {
+        const path = currentPath();
+        const card = path && [...root.querySelectorAll('[data-sce-validation-path]')]
+          .find((el) => el.getAttribute('data-sce-validation-path') === path);
+        const destination = card || root.querySelector(target.floor === 'assets' ? '.sce-assets-intro' : '.sce-deep-body');
+        if (!destination) return; // 정확한 항목이 없으면 이미 완료된 탭 이동만 유지한다.
+        for (let parent = destination.parentElement; parent && parent !== root; parent = parent.parentElement) {
+          if (parent.tagName === 'DETAILS') parent.open = true;
+        }
+        // 실제 호스트 스크롤 영역은 #sc-root(overflow:auto). window 스크롤은 사용하지 않는다.
+        destination.scrollIntoView?.({ block: card ? 'center' : 'start', behavior: 'auto' });
+      } catch (_) { /* 호스트 DOM/스크롤이 지원되지 않아도 탭 전환은 유지 */ }
+    });
+  }
+
 
   function tabDiag() {
     const wrap = h('div');
@@ -8502,13 +12373,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const grid = h('div', { class: 'sce-diag-findings' });
         for (const f of group) {
           const parts = String(f.text || '').split(/\s+—\s+/);
-          const finding = parts.shift() || '';
-          const next = parts.join(' — ');
+          let finding = parts.shift() || '';
+          let next = parts.join(' — ');
+          let tech = '';
+          if (f.tag === '검증' && finding.startsWith('$')) {
+            const friendly = friendlyValidationIssue(finding, next);
+            finding = friendly.where;
+            next = friendly.message;
+            tech = friendly.technical;
+          }
           grid.appendChild(h('article', { class: 'sce-diag-finding' },
             h('span', { class: 'sce-tag' }, f.tag),
             h('div', { class: 'sce-diag-finding-main' }, finding),
             ...(next ? [h('div', { class: 'sce-diag-finding-next' },
-              h('span', {}, '확인할 점'), next)] : [])));
+              h('span', {}, '확인할 점'), next)] : []),
+            ...(tech ? [h('details', { class: 'sce-diag-tech' },
+              h('summary', {}, '기술 정보'), h('code', {}, tech))] : [])));
         }
         if (sev === 'low' && group.length > 4) {
           section.appendChild(h('details', { class: 'sce-diag-group-fold' },
@@ -8540,7 +12420,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             h('div', { class: 'sce-diag-ai-primary-text' },
               h('div', { class: 'sce-diag-ai-primary-title' }, '부분 패치 만들기'),
               h('div', { class: 'sce-diag-ai-primary-copy' },
-                '현재 생성 모델이 필요한 부분만 수정해요. 완성되면 창작 탭에서 변경 계획을 확인합니다.')),
+                '현재 생성 모델이 필요한 부분만 수정해요. 완성되면 AI 어시스턴트에서 변경 계획을 확인합니다.')),
             h('button', { class: 'sce-btn sce-ai-primary', onclick: () => runAiGenerate({ findings, stats: diagResult.stats }) },
               `패치 만들기 · ${fixable.length}건`)));
         }
@@ -8770,6 +12650,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       controls.appendChild(h('div', { class: 'sce-assets-mode' },
         h('div', { class: 'sce-hint', style: 'margin:0' }, '아직 활성화된 팩이 없어요. 자동 감지하거나 빈 팩을 추가해 시작하세요.')));
     }
+
     // 실행 중 실황 (v1.2.4) — 작업본이 아니라 지금 설치·병합된 스키마 기준. "설정은 했는데
     // 왜 안 나오지"의 답이 이 한 줄에 있다: 저장 안 됨 / 팩 유실 / 주입문 0자 전부 여기서 갈린다
     {
@@ -8937,59 +12818,104 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         packList.appendChild(card);
         return;
       }
-      const card = h('section', { class: 'sce-asset-pack' });
+      const settingsCollapsed = collapsedAssetPackSettings.has(p);
+      const card = h('section', { class: 'sce-asset-pack', 'data-sce-validation-path': `$.assets.packs[${i}]` });
       card.appendChild(h('div', { class: 'sce-asset-pack-head' },
         h('div', {},
           h('div', { class: 'sce-asset-pack-title' }, p.id || `팩 ${i + 1}`),
           h('div', { class: 'sce-asset-pack-sub' }, `${(p.slots || []).length}개 칸 · ${p.enabled === false ? '꺼짐' : '사용 중'}`)),
-        grip(packs, i, rerender)));
+        h('div', { class: 'sce-asset-pack-head-actions' },
+          h('button', {
+            type: 'button',
+            class: 'sce-btn sce-mini sce-asset-settings-toggle',
+            onclick: () => {
+              if (settingsCollapsed) collapsedAssetPackSettings.delete(p);
+              else collapsedAssetPackSettings.add(p);
+              rerender();
+            },
+          }, settingsCollapsed ? '설정 펼치기' : '설정 접기'),
+          grip(packs, i, rerender))));
       const settings = h('div', { class: 'sce-asset-pack-settings' });
-      card.appendChild(settings);
-      settings.appendChild(h('div', { class: 'sce-asset-pack-core' },
-        h('div', { class: 'sce-asset-toggle' },
-          bindCheck(p.enabled !== false, (x) => { if (x) delete p.enabled; else p.enabled = false; rerender(); }, '이 팩 사용')),
-        assetField('팩 ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); },
-          { cls: 'sce-w-l', ph: '예: mansion' })),
-        assetField('출처', bindInput(p.source, (x) => { p.source = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '모듈 또는 봇 이름' }))));
-      settings.appendChild(h('div', { class: 'sce-asset-pack-layout' },
-        assetField('이름 구분자', bindInput(p.sep ?? '_', (x) => {
-          if (x === '_' || x === '') delete p.sep; else p.sep = x; rerender();
-        }, { cls: 'sce-w-l', ph: '_' })),
-        assetField('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
-          { cls: 'sce-w-l', ph: '<img="{name}">' }))));
-      settings.appendChild(h('div', { class: 'sce-asset-pack-options' },
-        assetField('쓰임새 (AI 선택 기준)', bindInput(p.usage, (x) => { p.usage = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '선택 · 예: 성행위 장면에서만 / 일반 표정 연출' })),
-        assetField('게이트 조건', bindInput(p.when, (x) => { p.when = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '선택 · 예: nsfw_on' })),
-        assetField('고정 인물', bindInput((p.chars || []).join(', '), (x) => {
-          const v = x.split(',').map((s) => s.trim()).filter(Boolean);
-          if (v.length) p.chars = v; else delete p.chars; rerender();
-        }, { cls: 'sce-w-l', ph: '선택 · 쉼표로 구분' })),
-        h('div', { class: 'sce-asset-toggle' },
-          bindCheck(p.verify !== false, (x) => { if (x) delete p.verify; else p.verify = false; rerender(); }, '실제 파일과 대조'))));
+      if (!settingsCollapsed) card.appendChild(settings);
+
+      const packGroup = (title, copy, body) => h('section',
+        { class: 'sce-asset-pack-group' },
+        h('div', { class: 'sce-asset-pack-group-head' },
+          h('strong', {}, title),
+          copy ? h('span', {}, copy) : null),
+        body);
+
+      settings.appendChild(packGroup(
+        '기본 정보',
+        '팩의 이름과 출처, 사용 여부를 정해요.',
+        h('div', { class: 'sce-asset-pack-core' },
+          h('div', { class: 'sce-asset-toggle sce-asset-pack-use' },
+            bindCheck(p.enabled !== false, (x) => {
+              if (x) delete p.enabled; else p.enabled = false; rerender();
+            }, '이 팩 사용')),
+          assetField('팩 ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); },
+            { cls: 'sce-w-l', ph: '예: mansion' })),
+          assetField('출처', bindInput(p.source, (x) => { p.source = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '모듈 또는 봇 이름' })))));
+
+      settings.appendChild(packGroup(
+        '출력 규칙',
+        '파일 이름을 어떻게 조합하고 어떤 태그로 출력할지 정해요.',
+        h('div', { class: 'sce-asset-pack-layout' },
+          assetField('이름 구분자', bindInput(p.sep ?? '_', (x) => {
+            if (x === '_' || x === '') delete p.sep; else p.sep = x; rerender();
+          }, { cls: 'sce-w-l', ph: '_' })),
+          assetField('출력 태그', bindInput(p.format, (x) => { p.format = x; rerender(); },
+            { cls: 'sce-w-l', ph: '<img="{name}">' })))));
+
+      settings.appendChild(packGroup(
+        '선택 조건',
+        'AI가 이 팩을 언제 고를지 정하고 실제 파일 대조 여부를 설정해요.',
+        h('div', { class: 'sce-asset-pack-options' },
+          assetField('쓰임새 (AI 선택 기준)', bindInput(p.usage, (x) => {
+            p.usage = x || undefined; rerender();
+          }, { cls: 'sce-w-l', ph: '선택 · 예: 성행위 장면에서만 / 일반 표정 연출' })),
+          assetField('게이트 조건', bindInput(p.when, (x) => {
+            p.when = x || undefined; rerender();
+          }, { cls: 'sce-w-l', ph: '선택 · 예: nsfw_on' })),
+          assetField('고정 인물', bindInput((p.chars || []).join(', '), (x) => {
+            const v = x.split(',').map((s) => s.trim()).filter(Boolean);
+            if (v.length) p.chars = v; else delete p.chars; rerender();
+          }, { cls: 'sce-w-l', ph: '선택 · 쉼표로 구분' })),
+          h('div', { class: 'sce-asset-toggle sce-asset-toggle-card' },
+            bindCheck(p.verify !== false, (x) => {
+              if (x) delete p.verify; else p.verify = false; rerender();
+            }, '실제 파일과 대조')))));
+
       card.appendChild(h('div', { class: 'sce-asset-slots-head' },
         h('div', { class: 'sce-asset-slots-title' }, `칸 설정 · ${(p.slots || []).length}개`),
         h('span', { class: 'sce-hint', style: 'margin:0' }, 'ID · 표시명 · 어휘 · 폴백')));
       (p.slots || []).forEach((s, j) => {
-        card.appendChild(h('div', { class: 'sce-asset-slot' },
+        card.appendChild(h('section', { class: 'sce-asset-slot' },
+          h('div', { class: 'sce-asset-slot-head' },
+            h('div', { class: 'sce-asset-slot-identity' },
+              h('span', { class: 'sce-asset-slot-index' }, String(j + 1).padStart(2, '0')),
+              h('div', {},
+                h('strong', {}, s.label || s.id || `칸 ${j + 1}`),
+                h('small', {}, s.id ? `ID · ${s.id}` : '칸 ID를 정해 주세요.'))),
+            grip(p.slots, j, rerender)),
           h('div', { class: 'sce-asset-slot-main' },
             assetField('칸 ID', bindInput(s.id, (x) => { s.id = x.trim(); rerender(); },
               { cls: 'sce-w-l', ph: '예: who, emo' })),
-            assetField('표시명', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); },
-              { cls: 'sce-w-l', ph: '예: 인물, 감정' })),
+            assetField('표시명', bindInput(s.label, (x) => {
+              s.label = x || undefined; rerender();
+            }, { cls: 'sce-w-l', ph: '예: 인물, 감정' })),
             assetField('어휘', bindInput((s.values || []).join(', '), (x) => {
               s.values = x.split(',').map((t) => t.trim()).filter(Boolean); rerender();
             }, { cls: 'sce-w-l', ph: '예: angry, smile, neutral · 쉼표로 구분' }))),
           h('div', { class: 'sce-asset-slot-options' },
-            h('div', { class: 'sce-asset-toggle' },
-              bindCheck(!!s.optional, (x) => { if (x) s.optional = true; else delete s.optional; rerender(); }, '이 칸 생략 가능')),
+            h('div', { class: 'sce-asset-toggle sce-asset-toggle-card' },
+              bindCheck(!!s.optional, (x) => {
+                if (x) s.optional = true; else delete s.optional; rerender();
+              }, '이 칸 생략 가능')),
             assetField('없을 때 사용할 폴백', bindInput(s.fallback, (x) => {
               s.fallback = x || undefined; rerender();
-            }, { cls: 'sce-w-l', ph: '예: neutral' })),
-            grip(p.slots, j, rerender)),
-        ));
+            }, { cls: 'sce-w-l', ph: '예: neutral' })))));
       });
       card.appendChild(addBtn('칸 추가', () => {
         p.slots = p.slots || [];
@@ -9007,7 +12933,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const cov = packCoverage(p, nameSet);
       if (cov.skipped) {
         status.appendChild(h('div', {},
-          `대조 제외 — 조합 ${cov.combos}개를 검사 없이 신뢰한다. 에셋이 모듈에 살아서 이름 목록을 못 읽는 환경용 ` +
+          `대조 제외 — 조합 ${cov.combos}개를 검사 없이 신뢰해요. 에셋이 모듈에 있어서 이름 목록을 읽을 수 없는 환경에서 사용해요. ` +
           '(어휘가 지침 그대로면 안전하지만, 오타 조합은 깨진 이미지로 나간다).'));
       } else if (cov.exist != null) {
         // 실질 구멍 = 정조합도 없고 폴백 사다리도 못 받는 조합. 이것만 ⚠의 근거가 된다 —
@@ -9020,7 +12946,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           (holes === 0 ? '✓ ' : '⚠ ') + line));
         if (holes > 0 && !cov.rescued && (p.slots || []).every((s) => s.fallback == null))
           status.appendChild(h('div', {},
-            '폴백이 하나도 없다 — 감정 칸에 "어떤 조합으로도 실존하는 값"을 폴백으로 주면 구멍 대부분이 구제된다.'));
+            '폴백이 하나도 없어요. 감정 칸에 "어떤 조합으로도 실존하는 값"을 폴백으로 넣어두면 대부분의 빈 조합을 보완할 수 있어요.'));
       } else if (cov.capped) {
         status.appendChild(h('div', { class: 'sce-warn' },
           `⚠ 필수 조합이 ${cov.combos}개 — 너무 많아 대조를 생략했다 (어휘를 줄이거나 칸을 생략 가능으로)`));
@@ -9094,7 +13020,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             const obj = engine.extractJsonObject(text, 'packs');
             if (!obj) { assetImportNote = '변환 응답에서 JSON을 못 찾았다 — 원문: ' + text.slice(0, 120); return; }
             const got = Array.isArray(obj && obj.packs) ? obj.packs : null;
-            if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없다.'; return; }
+            if (!got || !got.length) { assetImportNote = '변환 결과에 팩이 없어요.'; return; }
             // 변환 결과 청소 — AI가 "비워 둬라"를 빈 문자열/빈 배열로 내는 건 정상이니 여기서 걷는다
             for (const g of got) {
               if (!g || typeof g !== 'object') continue;
@@ -9113,7 +13039,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             } else {
               assetImportText = '';
               assetImportNote = `팩 ${got.length}개 변환 반영 — 게이트(when)와 출력 태그는 눈으로 확인할 것.`
-                + (before ? ' ⚠ 기존 오류가 남아 있다 — 설치 전에 위 팩 카드의 오류(빈 어휘 등)를 지워야 한다.' : '');
+                + (before ? ' ⚠ 기존 오류가 남아 있어요. 설치하기 전에 위 팩 카드의 오류(빈 어휘 등)를 먼저 해결해 주세요.' : '');
             }
           } finally { assetBusy = false; rerender(); }
         } }, assetBusy ? '변환 중…' : '팩으로 변환');
@@ -9140,14 +13066,22 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   function deepTabs() {
-    const tabs = h('div', { class: 'sce-tabs' });
-    for (const [key, label] of TABS) {
-      tabs.appendChild(h('button', {
-        class: 'sce-tab' + (activeTab === key ? ' on' : ''),
-        onclick: () => { activeTab = key; render(); },
-      }, label));
+    const labels = Object.fromEntries(TABS);
+    const groups = h('div', { class: 'sce-tab-groups' });
+    for (const [groupLabel, keys] of TAB_GROUPS) {
+      const tabs = h('div', { class: 'sce-tab-group-tabs', role: 'tablist', 'aria-label': groupLabel });
+      for (const key of keys) {
+        tabs.appendChild(h('button', {
+          class: 'sce-tab' + (activeTab === key ? ' on' : ''),
+          role: 'tab',
+          'aria-selected': String(activeTab === key),
+          onclick: () => { activeTab = key; render(); },
+        }, labels[key]));
+      }
+      groups.appendChild(h('section', { class: 'sce-tab-group' },
+        h('div', { class: 'sce-tab-group-label' }, groupLabel), tabs));
     }
-    return tabs;
+    return groups;
   }
 
   // 심층 편집 몸통 — 폭 상한을 **여기 한 곳에서** 건다.

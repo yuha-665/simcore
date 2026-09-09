@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.0
-//@display-name SimCore (시뮬 엔진) v1.9.0 💬 대화형 어시스턴트 — 규격서를 든 채 논의·수정, 편집기 만드는 순서
+//@version 1.9.1
+//@display-name SimCore (시뮬 엔진) v1.9.1 AI 어시스턴트 안에서 템플릿 열기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.1 ───────────────────────────────────────────────
+// **AI 어시스턴트 안에서 템플릿 열기.** 실기 제보: 대화는 1층 AI 어시스턴트에 있는데 템플릿은 [편집 작업공간 → 템플릿에서
+// 시작]에만 있어 찾기 불편하다 + 빈 작업본으로 대화하면 통짜 규격서가 매 턴 나가(42K) 빈 템플릿만 열어도 부분 수정
+// 규격(8.6K)으로 떨어지는데 그 첫 수를 유도할 자리가 없었다. 1층 ✍ 창작·💬 대화 둘 다에 [템플릿에서 시작] 카드 —
+// 빈 작업본이면 펼친 카드(대화 탭엔 전송량 안내), 작업본이 있으면 접힌 칸 + 두 번 누르기(덮어쓰기, 규칙 #6). 패널의
+// 기존 카드는 그대로. test-aichat ⑨.
 //
 // ── v1.9.0 ───────────────────────────────────────────────
 // **💬 대화형 어시스턴트** (실기 제보 2026-09-09: "AI 어시스턴트가 결과물을 diff로만 내서 리테이크·논의가 안 된다.
@@ -13380,6 +13387,14 @@ const CSS = `
 .sce .sce-chat-input { width:100% !important; min-height:72px !important; font-family:inherit; line-height:1.6; }
 .sce .sce-chat-input-actions { display:flex; align-items:center; gap:8px; }
 .sce .sce-chat-input-actions .sce-ai-action-hint { margin-left:auto; }
+/* 템플릿에서 시작 — 1층 창작·대화 (v1.9.1) */
+.sce .sce-tpl-card { margin:10px 0; height:auto; }
+.sce .sce-tpl-card > .sce-hint { margin:0 0 8px; }
+.sce .sce-tpl-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.sce .sce-tpl-row select { flex:1 1 220px; min-width:0; }
+.sce .sce-tpl-details { margin:10px 0; }
+.sce .sce-tpl-details > summary { cursor:pointer; color:var(--sce-muted); font-size:12px; }
+.sce .sce-tpl-details[open] > summary { margin-bottom:6px; }
 .sce .sce-tab-group:nth-child(4) { --g:var(--sce-weekend-sun); }
 .sce .sce-tab-group-label { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:750; letter-spacing:.08em; color:var(--g); }
 .sce .sce-tab-group-label::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--g); }
@@ -23978,6 +23993,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 💬 대화 상태 (v1.9.0) — 편집기 인스턴스에만 산다(닫으면 사라진다). msgs[]: { role:'user'|'ai', text, json?, pending?, applied?, jsonError? }
   // sent/got = 이 대화에서 보낸·받은 토큰 추정 누적 — 리수 호출 결과에 사용량이 안 실려 와서 추정이 한계다.
   let chat = { msgs: [], busy: false, seq: 0, note: null, sent: 0, got: 0, draft: '' };
+  // 템플릿에서 시작 (v1.9.1) — 1층 창작·대화 탭 안에서도 내장 템플릿을 연다. 패널의 [편집 작업공간 → 템플릿에서 시작]과 같은 일.
+  // 실기 제보: "대화는 AI 어시스턴트에 있는데 템플릿은 다른 메뉴라 찾기 불편하다" + 빈 작업본은 통짜 규격서(42K)가 나가고
+  // 빈 템플릿만 열어도 패치 경로(8.6K)로 떨어진다 — 대화로 새 봇을 만들 때 첫 수가 템플릿이어야 싸다.
+  let startTplPick = 'blank';
+  let startTplArm = false; // 작업본이 있을 때 덮어쓰기는 두 번 누르기 (규칙 #6: 패널 위 confirm 금지)
   /** 계획 상자에 떠 있던 대화 패치가 사라졌으면(취소·다른 경로가 덮음) 그 메시지를 "적용 안 됨"으로 */
   function syncChatPending() {
     for (const m of chat.msgs) {
@@ -24574,6 +24594,39 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
   }
 
+  /** 템플릿에서 시작 — 빈 작업본이면 카드로 바로, 작업본이 있으면 접힌 칸(덮어쓰기라 두 번 누르기) */
+  function templateStartBlock(where) {
+    const blank = schemaIsBlank(schema);
+    const sel = h('select', { class: 'sce-tpl-select', 'aria-label': '시작할 템플릿' },
+      ...Object.entries(TEMPLATES).map(([k, t]) => {
+        const o = h('option', { value: k }, t.label);
+        if (k === startTplPick) o.selected = true;
+        return o;
+      }));
+    sel.onchange = () => { startTplPick = sel.value; startTplArm = false; btnEl.textContent = btnLabel(); };
+    const btnLabel = () => blank ? '편집기에 열기' : (startTplArm ? '한 번 더 누르면 지금 작업본을 버려요' : '템플릿으로 갈아끼우기');
+    const apply = () => {
+      const t = TEMPLATES[startTplPick];
+      if (!t) return;
+      if (!blank && !startTplArm) { startTplArm = true; btnEl.textContent = btnLabel(); btnEl.classList.add('sce-danger'); return; }
+      schema = JSON.parse(JSON.stringify(t.schema));
+      patchPlan = null; patchChoices = {}; aiFull = null; startTplArm = false;
+      for (const m of chat.msgs) if (m.pending) m.pending = false;
+      rerender(); // emit → 호스트가 '설치본과 다름'을 띄운다. 캐릭터는 [캐릭터에 적용] 전엔 안 바뀐다
+    };
+    const btnEl = h('button', { class: 'sce-btn sce-tpl-open' + (startTplArm ? ' sce-danger' : ''), onclick: apply }, btnLabel());
+    const card = h('div', { class: 'sce-ai-setting-card sce-tpl-card' },
+      h('div', { class: 'sce-ai-setting-name' }, '템플릿에서 시작'),
+      h('div', { class: 'sce-hint' }, blank
+        ? (where === 'chat'
+          ? '내장 템플릿을 작업본으로 열고 대화로 다듬는 길이에요. 빈 작업본은 매 턴 통짜 규격서가 나가서 비싸고, 빈 템플릿 하나만 열어도 부분 수정 규격으로 바뀌어 전송량이 크게 줄어요.'
+          : '내장 템플릿을 작업본으로 열어요. 장르가 비슷한 걸 고르고 창작·대화로 고쳐 나가면 처음부터 짓는 것보다 빠르고, 전송량도 줄어요.')
+        : '지금 작업본을 버리고 고른 템플릿으로 갈아끼워요. 캐릭터는 화면 위쪽의 [캐릭터에 적용]을 누르기 전엔 바뀌지 않아요.'),
+      h('div', { class: 'sce-tpl-row' }, sel, btnEl));
+    if (blank) return card;
+    return h('details', { class: 'sce-tpl-details' }, h('summary', {}, '템플릿에서 새로 시작 (작업본 갈아끼우기)'), card);
+  }
+
   function chatPane() {
     syncChatPending();
     const box = h('div', { class: 'sce-chat' });
@@ -24581,6 +24634,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(h('div', { class: 'sce-hint' },
       '규격서와 지금 작업본을 든 채 대화해요. 심코어 구조를 묻거나 설계를 논의할 수 있고, 바꾸기로 하면 수정안이 아래 변경 계획으로 와요 — '
       + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요.'));
+    box.appendChild(templateStartBlock('chat'));
 
     // 설정 — 모델(메인급 권장) + 전송 정보(캐릭터 동봉·토큰 추정)
     const grid = h('div', { class: 'sce-ai-settings-grid' });
@@ -24815,9 +24869,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 빈 봇에는 안 띄운다 (얹을 대상이 없다 — 통짜 생성이나 템플릿이 먼저다).
     if (!blank) box.appendChild(featureBox());
 
+    box.appendChild(templateStartBlock('make'));
     box.appendChild(h('div', { class: 'sce-hint' },
       blank
-        ? '아직 작업본이 없어요. 원하는 내용을 입력한 뒤 [작업본 생성]을 눌러 주세요. AI가 전체 작업본을 만들어요.'
+        ? '아직 작업본이 없어요. 원하는 내용을 입력한 뒤 [작업본 생성]을 눌러 주세요. AI가 전체 작업본을 만들어요. 위의 템플릿을 먼저 열고 고쳐 나가도 돼요.'
         : '바꾸고 싶은 내용을 적으면 AI가 필요한 부분만 수정해요. 적용 전에는 변경 계획을 보여드리고, 충돌이 있으면 확인을 요청해요.'));
 
     // 통짜 생성 결과 — 반영 전 확인 상자 (💬 대화가 낸 통짜는 대화 탭에 뜬다)

@@ -316,6 +316,36 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   createSchemaEditor(c3, JSON.parse(JSON.stringify(BASE)), { onChange: () => {} });
   ck('ai 없음 → 대화 탭 없음', !btn(c3, '💬 대화'), '');
 
+  // ⑨ 템플릿에서 시작 (v1.9.1) — 1층 창작·대화 안에서 내장 템플릿을 연다
+  {
+    let changed = 0;
+    const c4 = document.createElement('div');
+    const ed4 = createSchemaEditor(c4, {}, { onChange: () => { changed++; }, ai });
+    const ids = (x) => ((x.getSchema ? x.getSchema() : x).vars || []).map((v) => v.id).join(',') || '(none)'; // normalize()가 기본값을 채우므로 통짜 비교는 안 맞는다
+    const sel = () => findAll(c4, (e) => e.tagName === 'SELECT' && e.className.includes('sce-tpl-select'))[0];
+    ck('★ 빈 작업본 창작 탭에 [템플릿에서 시작] 카드 + 16종 선택', !!sel() && sel().children.length === 16 && !!btn(c4, '편집기에 열기'), sel() && String(sel().children.length));
+    ck('빈 작업본이면 접히지 않은 카드', findAll(c4, (e) => e.tagName === 'DETAILS' && e.className.includes('sce-tpl-details')).length === 0, '');
+    btn(c4, '💬 대화').click();
+    ck('★ 대화 탭에도 같은 카드 + 전송량 안내', !!sel() && !!btn(c4, '편집기에 열기') && (c4.textContent || '').includes('전송량이 크게 줄어요'), '');
+    sel().value = 'daily'; sel().onchange();
+    btn(c4, '편집기에 열기').click(); await settle();
+    ck('★ [편집기에 열기] → 작업본이 daily 템플릿', ed4.getSchema().vars.length > 0 && ids(ed4) === ids(TEMPLATES.daily.schema), '');
+    ck('onChange가 울린다 (호스트가 설치본과 다름 표시)', changed >= 1, String(changed));
+    ck('작업본이 생기면 결과·진단 탭이 뜬다', !!btn(c4, '👁 결과') && !!btn(c4, '🔬 진단'), '');
+    // 작업본이 있을 때: 접힌 칸 + 두 번 누르기
+    const det = () => findAll(c4, (e) => e.tagName === 'DETAILS' && e.className.includes('sce-tpl-details'))[0];
+    ck('★ 작업본 있으면 접힌 칸으로', !!det() && !btn(c4, '편집기에 열기') && !!btn(c4, '템플릿으로 갈아끼우기'), '');
+    sel().value = 'rpg'; sel().onchange();
+    btn(c4, '템플릿으로 갈아끼우기').click(); await settle();
+    ck('★ 첫 누름은 무장만 — 작업본 그대로 + 경고 문구', ids(ed4) === ids(TEMPLATES.daily.schema) && !!btn(c4, '한 번 더 누르면'), '');
+    btn(c4, '한 번 더 누르면').click(); await settle();
+    ck('★ 두 번째 누름 → rpg 템플릿으로 갈아끼움', ids(ed4) === ids(TEMPLATES.rpg.schema), '');
+    btn(c4, '✍ 창작').click();
+    ck('창작 탭도 접힌 칸 (덮어쓰기라 눈에 안 띄게)', !!det() && !!btn(c4, '템플릿으로 갈아끼우기'), '');
+    sel().value = 'zombie'; sel().onchange();
+    ck('템플릿을 바꾸면 무장 해제 (다시 첫 누름부터)', !!btn(c4, '템플릿으로 갈아끼우기') && !btn(c4, '한 번 더 누르면'), '');
+  }
+
   finish();
 })().catch((e) => { ck('★ 비동기 왕복 예외 없음', false, e.stack.split('\n').slice(0, 3).join(' | ')); finish(); });
 

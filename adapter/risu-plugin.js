@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.8.0
-//@display-name SimCore (시뮬 엔진) v1.8.0 갈림길 확장 — 판정·강제·보조가 쓰는 선택지
+//@version 1.9.0
+//@display-name SimCore (시뮬 엔진) v1.9.0 💬 대화형 어시스턴트 — 규격서를 든 채 논의·수정, 편집기 만드는 순서
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.0 ───────────────────────────────────────────────
+// **💬 대화형 어시스턴트** (실기 제보 2026-09-09: "AI 어시스턴트가 결과물을 diff로만 내서 리테이크·논의가 안 된다.
+// 외부 AI(AD)는 심코어 구조를 몰라 논의 상대가 못 되고, 공홈은 성인 설정을 안 받고, 리수 OOC는 RP로 샌다").
+// 단발 생성(요청 → 패치 → 계획 → 적용)의 반대편 — 1층 [💬 대화] 탭. 규격서(통짜/패치)+현재 작업본 다이제스트를 매 턴 새로
+// 조립해 시스템으로 싣고, 이력은 산문과 "[적용됨 — …]/[적용되지 않음]" 요약만(최근 12개·24KB). 응답은 사람 말 + 선택적
+// JSON 코드펜스 하나 — 산문은 말풍선에, JSON은 **기존 변경 계획 → 적용 → 되돌리기 파이프라인** 그대로(빈 작업본이면
+// 통짜 확인 상자). 형식 불합격은 1회 재요청 후 버림. 구조 질문은 규격서가 함께 가니 플러그인 안에서 풀린다.
+// 토큰: 리수 호출 결과에 사용량이 안 실려 와서 추정(±30%) — 이번 전송·대화 누적(보낸/받은)을 표시, 초기화로 0.
+// 모델은 유저 몫(메인급 권장 문구만, 막지 않음). 어댑터 callGenLLM이 { system, messages } 입력을 받는다 — 보조·메인·직접
+// 지정 세 경로 모두 이력을 그대로 싣는다 (callAuxLLM messages 인자 — AUX_NUDGE가 없어 출력 상한 걸쇠엔 안 걸린다, 의도).
+// **편집기 만드는 순서** (같은 제보: "[세계]가 필수 흐름 중간에 있어 [규칙·이벤트]를 못 보고 규칙을 변수 설명에 적었다"):
+// 3층 묶음 순서 기본 → 진행 → 세계 → 자동화, 본문 머리에 "만드는 순서" 띠(① 변수 → ② AI 설정 → ③ 규칙·이벤트 → ④ 상태창),
+// 변수 [AI용 설명] 칸이 "규칙은 여기가 아니라 [규칙·이벤트]"라고 직접 말한다.
 //
 // ── v1.8.0 ───────────────────────────────────────────────
 // **갈림길 확장 셋** (유저: 옛날에 노우코메("내 뇌내 선택지가 학원 러브코메를 전력으로 방해하고 있다")류 봇을
@@ -2488,7 +2502,9 @@
     return null;
   }
 
-  async function callAuxLLM(promptText, maxTokens) {
+  // messages(선택, v1.9.0) — 💬 대화형 어시스턴트가 이력을 통째로 준다. 없으면 system+AUX_NUDGE 단발.
+  //   대화 메시지엔 AUX_NUDGE가 없어 아래 출력 상한 걸쇠 ②에 안 걸린다 — 의도한 것(긴 답이 필요한 자리).
+  async function callAuxLLM(promptText, maxTokens, messages = null) {
     // 확정 시그니처 (리스 소스 requestChatDataMain / plugin API 기준):
     //   runLLMModel({ mode, messages, staticModel?, allowPlugins? }) → { type:'success'|'fail', result }
     // - mode: 'submodel' = 보조모델 (그 외 'model'|'memory'|'emotion'|'otherAx'|'translate')
@@ -2502,7 +2518,7 @@
     try {
       const res = await Risuai.runLLMModel({
         mode: 'submodel',
-        messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
+        messages: messages || [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
         allowPlugins: true,
       });
       const text = await extractLLMText(res);
@@ -2677,21 +2693,25 @@
 
   // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
   // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
-  async function callGenLLM(promptText) {
+  // input: 프롬프트 문자열(단발 생성) 또는 { system, messages:[{role:'user'|'assistant', content}] } (💬 대화, v1.9.0).
+  // 대화는 시스템 뒤에 이력이 그대로 붙는다 — 세 경로(보조·메인·직접 지정) 모두 같은 배열을 쓴다.
+  async function callGenLLM(input) {
+    const chatIn = input && typeof input === 'object' ? input : null;
+    const promptText = chatIn ? String(chatIn.system || '') : String(input ?? '');
+    const buildMessages = (sys) => chatIn
+      ? [{ role: 'system', content: sys }, ...(chatIn.messages || []).map((m) => ({
+          role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))]
+      : [{ role: 'system', content: sys }, { role: 'user', content: AUX_NUDGE }];
     const gm = await getGenModel();
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
-      const r = await callAuxLLM(promptText, 8000);
+      const r = await callAuxLLM(promptText, 8000, chatIn ? buildMessages(promptText) : null);
       if (r === null) return { error: `보조 경로: ${lastAux.status}` };
       return r; // 문자열 또는 { blocked }
     }
     try {
       const req = gm.choice === 'main'
-        ? { mode: 'model',
-            messages: [{ role: 'system', content: GEN_SENTINEL + '\n' + promptText }, { role: 'user', content: AUX_NUDGE }],
-            allowPlugins: true }
-        : { mode: 'submodel', staticModel: gm.staticId.trim(),
-            messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
-            allowPlugins: true };
+        ? { mode: 'model', messages: buildMessages(GEN_SENTINEL + '\n' + promptText), allowPlugins: true }
+        : { mode: 'submodel', staticModel: gm.staticId.trim(), messages: buildMessages(promptText), allowPlugins: true };
       const res = await Risuai.runLLMModel(req);
       const text = await extractLLMText(res);
       console.log(`[simcore] 생성 호출(${gm.choice}) →`, res?.type,

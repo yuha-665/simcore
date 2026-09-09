@@ -14,12 +14,12 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ buildGenModelRow로 추출됨', src.includes('function buildGenModelRow(compact)'), '');
 
   const calls = (src.match(/buildGenModelRow\(/g) || []).length;
-  // 정의 1 + 호출 3 (AI 어시스턴트 / 에셋 임포터 / 꾸미기)
-  ck('★ 생성 지점 세 곳에서 호출 (정의 포함 4회)', calls === 4, `실제 ${calls}회`);
+  // 정의 1 + 호출 4 (AI 어시스턴트 / 💬 대화(v1.9.0) / 에셋 임포터 / 꾸미기)
+  ck('★ 생성 지점 네 곳에서 호출 (정의 포함 5회)', calls === 5, `실제 ${calls}회`);
 
   ck('★ AI 어시스턴트: 넓은 형태(compact=false)', src.includes('buildGenModelRow(false)'), '');
   const compacts = (src.match(/buildGenModelRow\(true\)/g) || []).length;
-  ck('★ 에셋 변환 + 꾸미기: 좁은 형태 2곳', compacts === 2, `실제 ${compacts}곳`);
+  ck('★ 대화 + 에셋 변환 + 꾸미기: 좁은 형태 3곳', compacts === 3, `실제 ${compacts}곳`);
 
   // 에셋 임포터 안에 있어야 한다 — 팩 변환 프롬프트 근처
   const impAt = src.indexOf('buildPackImportPrompt(assetImportText)');

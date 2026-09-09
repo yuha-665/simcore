@@ -93,21 +93,25 @@ let lastAux = { status: '', raw: '', applied: 0 };
 
   // 실패는 { error: '사유' }로 돌려준다 — 편집기가 그대로 화면에 띄운다.
   // "이동은 했는데 아무것도 안 옴"은 디버깅이 불가능한 최악의 실패 모양이다 (실기 제보).
-  async function callGenLLM(promptText) {
+  // input: 프롬프트 문자열(단발 생성) 또는 { system, messages:[{role:'user'|'assistant', content}] } (💬 대화, v1.9.0).
+  // 대화는 시스템 뒤에 이력이 그대로 붙는다 — 세 경로(보조·메인·직접 지정) 모두 같은 배열을 쓴다.
+  async function callGenLLM(input) {
+    const chatIn = input && typeof input === 'object' ? input : null;
+    const promptText = chatIn ? String(chatIn.system || '') : String(input ?? '');
+    const buildMessages = (sys) => chatIn
+      ? [{ role: 'system', content: sys }, ...(chatIn.messages || []).map((m) => ({
+          role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))]
+      : [{ role: 'system', content: sys }, { role: 'user', content: AUX_NUDGE }];
     const gm = await getGenModel();
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
-      const r = await callAuxLLM(promptText, 8000);
+      const r = await callAuxLLM(promptText, 8000, chatIn ? buildMessages(promptText) : null);
       if (r === null) return { error: `보조 경로: ${lastAux.status}` };
       return r; // 문자열 또는 { blocked }
     }
     try {
       const req = gm.choice === 'main'
-        ? { mode: 'model',
-            messages: [{ role: 'system', content: GEN_SENTINEL + '\n' + promptText }, { role: 'user', content: AUX_NUDGE }],
-            allowPlugins: true }
-        : { mode: 'submodel', staticModel: gm.staticId.trim(),
-            messages: [{ role: 'system', content: promptText }, { role: 'user', content: AUX_NUDGE }],
-            allowPlugins: true };
+        ? { mode: 'model', messages: buildMessages(GEN_SENTINEL + '\n' + promptText), allowPlugins: true }
+        : { mode: 'submodel', staticModel: gm.staticId.trim(), messages: buildMessages(promptText), allowPlugins: true };
       const res = await Risuai.runLLMModel(req);
       const text = await extractLLMText(res);
       console.log(`[simcore] 생성 호출(${gm.choice}) →`, res?.type,

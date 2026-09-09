@@ -10,8 +10,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── 소스 정적 확인 ──
 {
-  ck('버전 1.8.0', src.includes('//@version 1.8.0'), '');
-  ck('display-name 동반 범프', /\/\/@display-name .*v1\.8\.0/.test(src), '');
+  ck('버전 1.9.0', src.includes('//@version 1.9.0'), '');
+  ck('display-name 동반 범프', /\/\/@display-name .*v1\.9\.0/.test(src), '');
   // v1.7.10 — 아틀리에 실사고: 번들 `regex`(통째 교체)로 퍼메 푸터 제거 3종을 실었더니 카드의 에셋 정규식까지 날아갔다.
   // `regexAdd`는 카드 정규식을 유지한 채 같은 comment만 갈아 끼우고 나머지를 뒤에 붙인다. 순수 함수라 소스에서 꺼내 돌린다.
   {

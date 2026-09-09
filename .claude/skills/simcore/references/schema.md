@@ -4,7 +4,7 @@
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
-· `party` · `assets` · `scenario` · `rerollStableRng`
+· `party` · `assets` · `scenario` · `liveChoices`(v1.8.0) · `rerollStableRng`
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
 - **엔진 예약 키** (세이브 vars에 살지만 스키마 vars로 만들면 오류): `time_epoch`(시간),
@@ -96,6 +96,16 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 - 상태창: 그룹 모드는 자동 블록, 템플릿 모드는 `{choices}` 자리 (없으면 경고).
   변수 cmd에 '선택'을 쓰면 경고 (내장 명령과 충돌)
 - 이벤트 자체 `effects`는 발동 즉시(플래그 세우기 등), 선택지 `effects`는 고른 뒤 — 역할이 다르다
+- **선택지 판정 `choices[].check`** (v1.8.0) — 고르면 그 판정을 굴린다. 액션과 같은 순서(굴림 먼저, 선택지 효과 나중),
+  [판정] 줄·등급 전달문은 **같은 턴** 서사에. 타임아웃 자동 결정도 굴린다(통지로 다음 전송). 없는 판정 id는 오류
+- **강제 갈림길 `events[].strict`** (v1.8.0) — `true`/`'last'`: 고르지 않고 보내면 열린 것 중 **맨 끝**(최악 규약 =
+  타임아웃과 같은 자리), `'random'`: 열린 것 중 무작위(시드 rng — 리롤 안정). 유저 원문은 **모델이 못 본다**: 어댑터가
+  마지막 유저 메시지를 `[선택 강제] N. 라벨 — …` 대체문으로 바꾸고(sendPhase `userTextOverride`), 프롬프트에
+  `[선택 강제]` 안내(`promptState.forcedChoiceGuide` — 문자열 대체 · `false` 끔). 채팅 로그의 원문은 그대로.
+  `[선택]` 줄에 "(유저가 고르지 않아 시스템이 정했다)". strict면 timeout 없음 경고가 안 뜬다(어차피 다음 전송에 풀린다).
+  열린 항목이 하나도 없으면 "선택의 순간이 지나갔다"로 풀린다. 상태창 안내가 "고르지 않고 보내면 …으로 흘러간다"로 바뀐다
+- `events[].liveChoices: true` (v1.8.0) — 발동하면 **보조가 쓰는 갈림길**(아래 `liveChoices`)의 부탁 깃발을 세운다
+  (보조 호출은 이미 지났으니 **다음 턴** 응답 뒤에 선택지가 온다). 설정이 없으면 무시(경고)
 
 ---
 
@@ -304,8 +314,9 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 
 ## promptState — 메인 AI에게 보낼 상태 요약
 
-`{ template, includeEvents, eventPriority, systemGuide, checkGuide, offstageGuide, dayCloseGuide }`. `{변수id}` 자리표시자.
+`{ template, includeEvents, eventPriority, systemGuide, checkGuide, offstageGuide, dayCloseGuide, forcedChoiceGuide }`. `{변수id}` 자리표시자.
 `dayCloseGuide`는 하루 넘김 대리 정산이 돈 턴 전용 (v1.7.0 — 문자열이면 대체, `false`면 끔).
+`forcedChoiceGuide`는 강제 갈림길(strict)이 유저 대신 정한 턴 전용 (v1.8.0 — 같은 규약).
 `eventPriority`는 이벤트 발동 턴에만 "사건은 확정 사실, 유저 행동은 시도" 규칙을 자동으로 붙인다
 (문자열을 주면 그 문구로 대체). `checkGuide`도 같은 원칙 (판정 턴 전용, false로 끄기 가능). `offstageGuide`는 막간 턴 전용 (v1.5.0).
 
@@ -664,6 +675,44 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 - 편집기 [의뢰판] 탭 (TAB_SLICES.quest — keys `['questBoard']`). 기능 프리셋 📜 "의뢰판" 카드가 vars → quest → rules 순으로 요청한다.
 - **봇 설계 규약**: 벽보·게시판에서 "의뢰" 칸을 떼고 의뢰는 여기로 (아틀리에: board categories에서 '의뢰' 제거, 벽보는 소문으로만).
   사람이 직접 찾아와 부탁하는 의뢰는 여전히 서사로 — 보조 guide에 "의뢰판 의뢰는 버튼이 넣는다, 직접 부탁만 quests에 올려라".
+
+## liveChoices — 보조가 쓰는 갈림길 (v1.8.0, 옵트인)
+
+코어 모듈 22호 `core/choice.js`. 설계 `docs/design-갈림길-확장.md`. 선택지를 미리 적는 대신 **보조 AI가 지금 장면·곁에 있는
+인물에 맞춰 즉석에서 쓴다.** 의뢰판과 같은 규약 — 보조가 쓰고 시스템이 쥔다. 결과는 **태그**가 정한다(어휘가 스키마에
+고정돼 라벨이 즉석이어도 판정·효과·전달문은 시스템 손에).
+
+```js
+liveChoices: {
+  label: '절대선택', icon: '⚡',
+  when: 'curse_on and not fight_on',   // 게이트 — 거짓이면 추첨도 부탁도 없다 (온오프 변수를 넣는 자리)
+  chance: 'curse / 100',               // 0~1 숫자 또는 식 — 매 전송 추첨 (시드 rng). 0이면 트리거로만
+  count: [2, 3],                       // 보조가 쓰는 개수 (2~4)
+  tags: [{ id: '굴욕', desc: '남 앞에서 망신당하는 행동', check: 'humiliate', effects: [...], inject: '…' }, …], // ≤8
+  worst: '최악',                        // 이 태그 항목은 맨 끝 — "안 고르면 최악"
+  strict: 'last',                       // true/'last' | 'random' | false — 강제 (events[].strict와 같은 뜻)
+  timeout: 2, guide: '둘 다 개막장이어야 한다…', desc: '머릿속에 선택지가 떠올랐다', showTags: true,
+}
+```
+
+- **흐름**: 전송 단계 `rollAsk`(when 열림 · 걸린 갈림길 없음 · chance 추첨) 또는 `events[].liveChoices: true` →
+  `meta.liveAsk` 깃발 → 보조 호출에 `[label — 선택지 쓰기]` 얹힘(평턴 비용 0, `auxHasWork`도 깃발을 본다) → 응답
+  `"choices": {"desc", "items": [{"label", "tag"}]}` → 응답 단계 `applyLive`가 정제해 `meta.pendingChoice = { id: '@live',
+  turn, live: { desc, items } }`로 건다(깃발 소비). 다른 갈림길이 걸려 있으면 깃발을 남기고 다음 턴에
+- **정제** `sanitizeItems`: 라벨 60자 · 공백 무시 중복 거부 · 태그 어휘 밖 거부(앞머리·부분 일치 한 번 구제) · count[1] 상한 ·
+  count[0] 미달이면 통째 버림 · worst 항목은 하나만 맨 끝. 태그 어휘가 없으면 문자열 배열도 받는다(결과는 서사만)
+- **그 뒤는 스키마 갈림길과 같은 기계** — 엔진 `pendingChoiceEvent(schema, state)`가 `'@live'`면 합성 이벤트
+  `{ live: true, label, icon, notify: desc, timeout, strict, showTags, choices: [{ label, tag, check, effects, inject }] }`를
+  돌려준다. /선택·클릭·타임아웃·strict·allow 동결(태그 효과 변수)·`[선택 대기]`·상태창 `{choices}` 전부 공용.
+  `findChoiceEvent(schema, id)`는 스키마 갈림길 전용으로 남고, 갈림길의 출처는 `pendingChoiceEvent` 한 군데서 가른다
+- 상태창 제목이 `icon label`, 항목에 태그 꼬리표 `<em class="sim-choice-tag">`(showTags: false로 숨김). 조작줄도 같은 제목
+- 세션 0(최초설정)엔 추첨하지 않는다. 설정이 사라지면 걸린 것은 다음 전송에 방어적으로 풀린다
+- 검증: strict 어휘 · worst ∈ tags · 태그 id 중복/16자 · check 참조 · effects는 checkSet · count [2~4] · chance 0~1/식 ·
+  chance 없고 트리거도 없으면 경고 · timeout·strict 둘 다 없으면 경고 · 태그 없으면 경고(서사만 갈린다) ·
+  템플릿 모드 `{choices}` 없음 경고는 liveChoices만 있어도 뜬다
+- 편집기 [규칙·이벤트] 05 "보조가 쓰는 갈림길" (1턴 시험은 06으로). 이벤트 블록 갈림길 칸에 판정·강제 드롭다운 + 트리거 체크
+
+---
 
 ## scenario — 시나리오레이터 (v0.90, 옵트인)
 

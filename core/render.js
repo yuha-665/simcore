@@ -1,7 +1,7 @@
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, findChoiceEvent } = require('./engine');
+const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
@@ -75,6 +75,7 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
+.sim-choice-tag{font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
 .sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
 .sim-scn-prog{opacity:.55;font-size:.9em}
 .sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
@@ -208,12 +209,13 @@ function actionGlyph(label) {
  * (상태창 안 버튼은 리스가 클릭 target을 잘라 구조적으로 못 쓴다 — 그래서 /선택 채팅 명령이 통로다)
  */
 function choicesHtml(schema, state) {
-  const pc = state.meta?.pendingChoice;
-  if (!pc) return '';
-  const ev = findChoiceEvent(schema, pc.id);
+  if (!state.meta?.pendingChoice) return '';
+  // 스키마 갈림길·보조가 쓴 갈림길(v1.8.0 liveChoices) 공용 — 출처는 엔진이 가른다
+  const ev = pendingChoiceEvent(schema, state);
   if (!ev) return '';
   const lookup = makeLookup(schema, state.vars);
-  let out = '<div class="sim-choices"><div class="sim-choices-title">⌛ 선택의 순간</div>';
+  const title = ev.live ? `${ev.icon} ${ev.label}` : '⌛ 선택의 순간';
+  let out = `<div class="sim-choices${ev.live ? ' sim-choices-live' : ''}"><div class="sim-choices-title">${esc(title)}</div>`;
   // 무엇에 대한 선택인지 — 발동 순간의 notify를 다시 보여준다. 알림은 그 턴에 흘러가 버려서
   // 다음 메시지의 선택 블록만 보면 맥락이 없었다 (실기 제보: 빚 얘긴 줄 알았는데 일감 제안이었다)
   if (ev.notify) out += `<div class="sim-choices-desc">${esc(String(ev.notify))}</div>`;
@@ -222,10 +224,16 @@ function choicesHtml(schema, state) {
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
     // 잠긴 항목에는 히트 클래스를 안 붙인다 — 눌러도 안 되는 걸 버튼처럼 보이게 하지 않는다
     const hit = locked ? '' : ` sim-hit sim-hitchoice-${i}`;
-    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${locked ? ' 🔒' : ''}</div>`;
+    // 보조 갈림길의 태그 꼬리표 — 결과(판정·효과)는 태그가 정하니 유저가 무게를 잴 근거다 (showTags로 숨김)
+    const tag = ev.live && ev.showTags !== false && c.tag ? ` <em class="sim-choice-tag">${esc(String(c.tag))}</em>` : '';
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${tag}${locked ? ' 🔒' : ''}</div>`;
   });
-  out += '<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)'
-    + (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '') + '</div></div>';
+  // 강제(strict, v1.8.0): 고르지 않고 보내면 그 자리에서 시스템이 정한다 — 타임아웃 안내 대신 이 말이 맞다
+  const strict = ev.strict === true || ev.strict === 'last' ? 'last' : ev.strict === 'random' ? 'random' : null;
+  const tail = strict
+    ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : '마지막 항목'}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
+    : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '');
+  out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)${tail}</div></div>`;
   return out;
 }
 

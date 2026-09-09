@@ -209,6 +209,93 @@ const send = (st, seed) => engine.sendPhase(S, st, { rng: seededRng('h', seed, '
   ck('AI 내보내기에 갈림길 안내', src.includes('갈림길 (이벤트에 choices 달기'), '');
 }
 
+// ═══ v1.8.0 — 선택지 판정 (choices[].check) ═══
+// 고른 선택지가 판정을 굴린다. 액션과 같은 순서(굴림 먼저, 선택지 효과 나중), [판정] 줄은 같은 턴.
+{
+  const S3 = clone(S);
+  S3.checks = [{ id: 'persuade', label: '설득', roll: 'rand(1, 20)', mod: '0',
+    grades: [{ label: '성공', when: 'total >= 10', effects: [{ set: 'mood', expr: 'mood + 5' }], inject: '설득이 먹혔다.' },
+      { label: '실패', effects: [{ set: 'mood', expr: 'mood - 5' }], inject: '설득은 통하지 않았다.' }] }];
+  S3.rules.events[0].choices[0].check = 'persuade';
+  const v = validateSchema(S3);
+  ck('[판정] 선택지 check 참조 통과', v.ok, JSON.stringify(v.errors));
+  const badRef = clone(S3); badRef.rules.events[0].choices[0].check = 'nope';
+  ck('[판정] 없는 판정 id = 오류', !validateSchema(badRef).ok, '');
+  const fresh3 = () => { const s = engine.initState(S3); s.meta.setupDone = true; s.meta.turn = 1; return s; };
+  const o = engine.outputPhase(S3, fresh3(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  const st = clone(o.state); st.meta.pendingChoicePick = 0;
+  const s = engine.sendPhase(S3, st, { rng: seededRng('h', 4, 'send') });
+  ck('[판정] 고르면 굴린다 — [판정] 줄이 같은 턴 프롬프트에', s.promptBlock.includes('[판정] 설득:'), s.promptBlock);
+  ck('[판정] [선택] 줄도 함께', s.promptBlock.includes('[선택] 토벌대를 보낸다'), '');
+  const grade = s.state.meta.lastCheck?.grade;
+  ck('[판정] lastCheck 기록', grade === '성공' || grade === '실패', JSON.stringify(s.state.meta.lastCheck));
+  const expectMood = grade === '성공' ? 56 : 46; // plain 이벤트가 응답 단계에 +1 (50 → 51) 한 뒤 ±5
+  ck('[판정] 등급 효과 적용 + 선택지 효과(병력 -20)', s.state.vars.mood === expectMood && s.state.vars.military === 30,
+    `mood ${s.state.vars.mood} mil ${s.state.vars.military}`);
+  ck('[판정] 등급 전달문', s.promptBlock.includes(grade === '성공' ? '설득이 먹혔다.' : '설득은 통하지 않았다.'), '');
+  ck('[판정] 리롤 = 같은 눈', engine.sendPhase(S3, st, { rng: seededRng('h', 4, 'send') }).state.meta.lastCheck.roll === s.state.meta.lastCheck.roll);
+  // 타임아웃 자동 결정도 굴린다 — 마지막 항목에 check를 달아 본다 (통지로 다음 전송)
+  const S4 = clone(S3); S4.rules.events[0].choices[2].check = 'persuade'; S4.rules.events[0].timeout = 1;
+  const o4 = engine.outputPhase(S4, fresh3(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  const st4 = clone(o4.state); st4.meta.turn = 5;
+  const o5 = engine.outputPhase(S4, st4, {}, {}, { rng: seededRng('h', 2, 'out') });
+  // raid가 풀리자 같은 턴에 raid2가 새로 걸린다 — raid는 끝났고 [판정] 줄이 통지에 있으면 된다
+  ck('[판정] 타임아웃 자동 결정도 굴린다 (통지에 [판정])', o5.state.meta.pendingChoice?.id !== 'raid'
+    && o5.state.meta.pendingNotifies.some((n) => n.startsWith('[판정] 설득')), JSON.stringify(o5.state.meta.pendingNotifies));
+  ck('[판정] 편집기: 선택지 칸에 판정 드롭다운', src.includes("pair('판정', bindSelect(c.check"), '');
+}
+
+// ═══ v1.8.0 — 강제 갈림길 (events[].strict) ═══
+// 고르지 않고 보내면 그 자리에서 시스템이 정한다. 'last' = 열린 것 중 맨 끝, 'random' = 열린 것 중 무작위(시드).
+// 유저 글은 어댑터가 대체문으로 바꾼다 (userTextOverride).
+{
+  const S5 = clone(S); S5.rules.events[0].strict = true; delete S5.rules.events[0].timeout;
+  const v = validateSchema(S5);
+  ck('[강제] strict true 통과 · timeout 없어도 경고 없음', v.ok && !v.warnings.some((w) => w.msg.includes('timeout이 없습니다')), JSON.stringify(v.warnings));
+  const badS = clone(S5); badS.rules.events[0].strict = 'always';
+  ck('[강제] strict 어휘 밖 = 오류', !validateSchema(badS).ok, '');
+  const orphan = clone(S); orphan.rules.events[2].strict = true;
+  ck('[강제] choices 없는 이벤트의 strict = 경고', validateSchema(orphan).warnings.some((w) => w.msg.includes('strict는 choices')), '');
+  const fresh5 = () => { const s = engine.initState(S5); s.meta.setupDone = true; s.meta.turn = 1; return s; };
+  const o = engine.outputPhase(S5, fresh5(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  ck('[강제] 발동 → pending', o.state.meta.pendingChoice?.id === 'raid', '');
+  // 고르지 않고 보냄 — 마지막(외면한다)으로
+  const s = engine.sendPhase(S5, clone(o.state), { rng: seededRng('h', 4, 'send'), userText: '나는 산적 두목과 술을 마신다' });
+  ck('[강제] 안 고르면 마지막 항목 집행 (mood 51 -10)', s.state.vars.mood === 41 && s.state.meta.pendingChoice === null, `mood ${s.state.vars.mood}`);
+  ck('[강제] forcedChoice 반환', s.forcedChoice?.idx === 2 && s.forcedChoice.label === '외면한다' && s.forcedChoice.mode === 'last', JSON.stringify(s.forcedChoice));
+  ck('[강제] 유저 글 대체문', typeof s.userTextOverride === 'string' && s.userTextOverride.includes('[선택 강제] 3. 외면한다'), s.userTextOverride);
+  ck('[강제] [선택] 줄에 "시스템이 정했다" + [선택 강제] 안내', s.promptBlock.includes('[선택] 외면한다 (유저가 고르지 않아 시스템이 정했다)')
+    && s.promptBlock.includes('[선택 강제]'), s.promptBlock);
+  ck('[강제] 대기 줄은 없음', !s.promptBlock.includes('[선택 대기]'), '');
+  ck('[강제] changeLog에 시스템 결정', s.changeLog.some((c) => c.id === '갈림길' && String(c.to).includes('시스템 결정')), JSON.stringify(s.changeLog));
+  // 골랐으면 그대로 — 강제 아님
+  const picked = clone(o.state); picked.meta.pendingChoicePick = 0;
+  const s2 = engine.sendPhase(S5, picked, { rng: seededRng('h', 4, 'send') });
+  ck('[강제] 골랐으면 그 항목 · 대체문 없음', s2.state.vars.military === 30 && !s2.forcedChoice && s2.userTextOverride === null, '');
+  // 마지막이 잠겨 있으면 그 앞의 열린 것 — 'last'는 "열린 것 중 맨 끝"
+  const S6 = clone(S5); S6.rules.events[0].choices[2].when = 'gold >= 999';
+  const o6 = engine.outputPhase(S6, (() => { const st = engine.initState(S6); st.meta.setupDone = true; st.meta.turn = 1; return st; })(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  const s6 = engine.sendPhase(S6, clone(o6.state), { rng: seededRng('h', 4, 'send') });
+  ck("[강제] 'last'는 열린 것 중 맨 끝 (잠긴 마지막은 건너뜀 → 금화로 무마)", s6.forcedChoice?.idx === 1 && s6.state.vars.gold === 100, JSON.stringify(s6.forcedChoice));
+  // random — 시드 안정
+  const S7 = clone(S5); S7.rules.events[0].strict = 'random';
+  const o7 = engine.outputPhase(S7, (() => { const st = engine.initState(S7); st.meta.setupDone = true; st.meta.turn = 1; return st; })(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  const a = engine.sendPhase(S7, clone(o7.state), { rng: seededRng('h', 4, 'send') });
+  const b = engine.sendPhase(S7, clone(o7.state), { rng: seededRng('h', 4, 'send') });
+  ck("[강제] 'random' — 열린 것 중 하나, 리롤 = 같은 결정", a.forcedChoice && a.forcedChoice.mode === 'random' && a.forcedChoice.idx === b.forcedChoice.idx, JSON.stringify(a.forcedChoice));
+  // 상태창 안내 문구
+  const html = renderStatusHtml(S5, o.state, null, null, { uid: 'x' });
+  ck('[강제] 상태창 안내 — "선택지 밖의 행동은 없었던 일"', html.includes('마지막 항목으로 흘러간다') && html.includes('없었던 일'), '');
+  ck('[강제] 편집기: 강제 드롭다운 + 어댑터 대체 배선', src.includes("pair('강제', bindSelect(ev.strict") && src.includes('lastUser.content = r.userTextOverride'), '');
+  // promptState.forcedChoiceGuide 끄기·교체
+  const S8 = clone(S5); S8.promptState.forcedChoiceGuide = false;
+  const s8 = engine.sendPhase(S8, clone(o.state), { rng: seededRng('h', 4, 'send') });
+  ck('[강제] forcedChoiceGuide: false면 안내 줄 없음 (대체문은 그대로)', !s8.promptBlock.includes('[선택 강제]') && s8.userTextOverride, '');
+  const S9 = clone(S5); S9.promptState.forcedChoiceGuide = '떠밀렸다: {mood}';
+  const s9 = engine.sendPhase(S9, clone(o.state), { rng: seededRng('h', 4, 'send') });
+  ck('[강제] forcedChoiceGuide 문자열 = 템플릿 교체', s9.promptBlock.includes('떠밀렸다: 41'), s9.promptBlock);
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

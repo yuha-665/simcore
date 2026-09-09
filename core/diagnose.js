@@ -42,6 +42,8 @@ function writerMap(schema) {
   for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
     for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
+  // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
+  for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
@@ -324,6 +326,7 @@ function diagnose(schema, opts = {}) {
       for (const f of (e.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
       for (const c of (e.choices || [])) for (const f of (c.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
     }
+    for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) openSites.add(f.set ?? f.list); // 보조 갈림길(v1.8.0)은 편성표 게이트 밖
     for (const c of (schema.checks || [])) {
       const open = ckOpen.has(c.id) ? ckOpen.get(c.id) : true; // 아무 액션도 안 여는 판정은 열림으로 친다(보수적)
       for (const g of (c.grades || [])) for (const f of (g.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);

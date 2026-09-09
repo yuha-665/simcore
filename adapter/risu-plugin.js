@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.7.17
-//@display-name SimCore (시뮬 엔진) v1.7.17 상태창 미리보기 한 기둥
+//@version 1.8.0
+//@display-name SimCore (시뮬 엔진) v1.8.0 갈림길 확장 — 판정·강제·보조가 쓰는 선택지
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,26 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.8.0 ───────────────────────────────────────────────
+// **갈림길 확장 셋** (유저: 옛날에 노우코메("내 뇌내 선택지가 학원 러브코메를 전력으로 방해하고 있다")류 봇을
+// 만들려다 기술이 안 돼 포기 — "무조건 선택지를 고르게 하고 안 고르면 최악의 선택지·전개로"). 로어북·정규식만으로는
+// 모델이 선택지도 내고 강제도 해야 해서, 유저가 무시하면 모델도 따라갔다. 세 조각을 전부 시스템 손에 둔다
+// (docs/design-갈림길-확장.md):
+// ① 선택지 판정 `choices[].check` — 고른 선택지가 판정을 굴린다. 액션과 같은 순서(굴림 먼저, 선택지 효과 나중),
+//    [판정] 줄은 같은 턴 서사에. 타임아웃 자동 결정도 굴린다(통지로 다음 전송).
+// ② 강제 갈림길 `events[].strict` — 고르지 않고 보내면 시스템이 정한다: true/'last'는 열린 것 중 맨 끝(최악 규약 =
+//    타임아웃과 같은 자리), 'random'은 열린 것 중 무작위(시드 rng, 리롤 안정). 유저 원문은 **모델이 못 본다** —
+//    beforeRequest가 마지막 유저 메시지를 "[선택 강제] N. 라벨 …" 대체문으로 바꾸고, 프롬프트 끝에 [선택 강제] 안내
+//    (promptState.forcedChoiceGuide로 교체·끄기). 채팅 로그의 원문은 그대로 남는다(리수 메시지는 안 고친다).
+// ③ 보조가 쓰는 갈림길 `liveChoices` (코어 모듈 22호 core/choice.js) — 의뢰판과 같은 규약(보조가 쓰고 시스템이 쥔다).
+//    전송 단계에서 chance(숫자·식)로 "이번 응답 뒤 부탁할까"를 추첨(meta.liveAsk, when 게이트) 또는
+//    events[].liveChoices: true 트리거 → 보조 호출에 얹혀 라벨+태그 2~4개 → 응답 단계에서 정제해 pendingChoice('@live')로.
+//    결과는 **태그**가 정한다(tags[].check/effects/inject — 어휘가 스키마에 고정돼 라벨이 즉석이어도 결과는 시스템 손에).
+//    worst 태그 항목은 맨 끝(안 고르면 최악). 그 뒤는 스키마 갈림길과 같은 기계(/선택·클릭·타임아웃·strict·allow 동결).
+//    엔진 pendingChoiceEvent가 출처를 한 군데서 가른다(합성 이벤트). 상태창 제목·아이콘은 설정, 태그 꼬리표 표시.
+// 검증(strict 어휘·check 참조·liveChoices 전부)·편집기([규칙·이벤트] 05 "보조가 쓰는 갈림길" + 갈림길 칸에 판정·강제)·
+// schema.md·테스트(test-choices +, test-livechoices 신설).
 //
 // ── v1.7.17 ──────────────────────────────────
 // **상태창 탭 미리보기 두 칸도 한 기둥** (실기 제보 "이 부분도 그냥 한 줄로"). 표시 방식(테마 카드) 아래에 실제 렌더,
@@ -3335,6 +3355,12 @@
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
       const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
+      // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
+      // (채팅 로그의 원문은 그대로 — 리수 메시지는 안 고친다). 리롤도 같은 길을 타므로 같은 대체문이 나간다.
+      if (r.userTextOverride && lastUser && typeof lastUser.content === 'string') {
+        lastUser.content = r.userTextOverride;
+        console.log('[simcore] 강제 갈림길 — 유저 글 대체:', r.forcedChoice?.label);
+      }
       messages.push({ role: 'system', content: r.promptBlock });
       // 막간 (v1.5.0) — 이 턴만 페르소나 칸을 걷어낸다 (지시문은 promptBlock 끝에 이미 실렸다)
       if (r.offstage) messages = await stripPersona(messages);
@@ -6028,13 +6054,12 @@
     try {
       if (!session || !schema) { await Risuai.setChatPanel(null, { id: 'simcore-strip' }); return; }
       const armed = currentActionStates().filter((s) => s.armed);
-      const pc = session.current.meta.pendingChoice;
-      const ev = pc ? engine.findChoiceEvent(schema, pc.id) : null;
+      const ev = engine.pendingChoiceEvent(schema, session.current); // 스키마 갈림길·보조 갈림길(v1.8.0) 공용
       const pick = session.current.meta.pendingChoicePick;
       const chip = 'display:inline-block;margin:2px 4px 2px 0;padding:2px 9px;border:1px solid rgba(128,128,128,.45);border-radius:9px;font-size:.85em;cursor:pointer';
       let html = '';
       if (ev) {
-        html += '<div><span style="opacity:.65;font-size:.8em">⌛ 선택</span> ';
+        html += `<div><span style="opacity:.65;font-size:.8em">${ev.live ? escapeText(`${ev.icon} ${ev.label}`) : '⌛ 선택'}</span> `;
         ev.choices.forEach((c, i) => {
           const ok = engine.pickChoice(schema, session.current, i).ok;
           const picked = pick === i;

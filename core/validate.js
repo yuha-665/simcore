@@ -259,27 +259,40 @@ function validateSchema(schema) {
       err(p, `check '${x.check}'가 checks(판정)에 없음`);
   };
   // 갈림길(choices) — 이벤트의 속성. 터지면 pending으로 들어가 유저가 /선택으로 고른다.
+  // strict(v1.8.0) 어휘 — true/'last'(맨 끝 = 최악 규약) · 'random' · false/없음
+  const strictOk = (v) => v == null || v === true || v === false || v === 'last' || v === 'random';
+  // 보조 갈림길 트리거 (v1.8.0) — events[].liveChoices: true. 설정(liveChoices)이 없으면 깃발은 안 선다
+  const checkLiveTrigger = (e, p) => {
+    if (e.liveChoices == null) return;
+    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false (보조 갈림길 트리거)'); return; }
+    if (e.liveChoices && !schema.liveChoices) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
+    if (e.liveChoices && Array.isArray(e.choices) && e.choices.length) warn(p, '이 이벤트는 스키마 갈림길(choices)이라 보조 갈림길 트리거는 그 갈림길이 풀린 뒤에야 듣습니다 (동시 1개)');
+  };
   const checkChoices = (e, p) => {
     if (e.choices == null) {
       if (e.timeout != null) warn(p, 'timeout은 choices(갈림길)와 함께 쓰는 값입니다 — choices가 없어 무시됩니다');
+      if (e.strict != null) warn(p, 'strict는 choices(갈림길)와 함께 쓰는 값입니다 — choices가 없어 무시됩니다');
       return;
     }
     if (!Array.isArray(e.choices) || !e.choices.length) { err(p, 'choices는 비어있지 않은 배열이어야 함'); return; }
     if (e.choices.length === 1) warn(p, '선택지가 하나뿐입니다 — 갈림길이 아닙니다. 둘 이상을 두거나 choices를 빼세요');
+    if (!strictOk(e.strict)) err(p, "strict는 true/false 또는 'last'/'random'이어야 함 (고르지 않고 보내면 시스템이 정하는 강제 갈림길)");
     e.choices.forEach((c, ci) => {
       const cp = `${p}.choices[${ci}]`;
       if (!c.label || typeof c.label !== 'string' || !c.label.trim()) err(cp, '선택지 label 필요');
       if (c.when != null) checkExpr(c.when, cp + '.when', allIds, err, { allowRand: false });
       (c.effects || []).forEach((r, j) => checkSet(r, `${cp}.effects[${j}]`));
       if (c.inject != null && typeof c.inject !== 'string') err(cp, 'inject는 문자열');
+      checkRef(c, cp); // 선택지 판정 (v1.8.0) — 고르면 굴린다
     });
     const last = e.choices[e.choices.length - 1];
+    const strict = e.strict === true || e.strict === 'last' || e.strict === 'random';
     if (last && last.when)
       warn(p, '마지막 선택지에 조건(when)이 있습니다 — 타임아웃 자동 결정은 마지막 항목을 고르는데, '
         + '잠겨 있으면 아무 효과 없이 지나갑니다. 마지막은 조건 없는 항목("외면한다"류)을 권합니다');
-    if (e.timeout == null)
+    if (e.timeout == null && !strict)
       warn(p, 'timeout이 없습니다 — 고를 때까지 다른 갈림길이 전부 막히고, 선택지가 만질 변수는 보조 AI에서 계속 빠집니다. 2~4턴을 권합니다');
-    else if (typeof e.timeout !== 'number' || !Number.isInteger(e.timeout) || e.timeout < 1)
+    else if (e.timeout != null && (typeof e.timeout !== 'number' || !Number.isInteger(e.timeout) || e.timeout < 1))
       err(p, 'timeout은 1 이상의 정수여야 함');
     const seen = new Set();
     for (const c of e.choices) {
@@ -341,6 +354,7 @@ function validateSchema(schema) {
     if (e.notify != null && typeof e.notify !== 'string') err(p, 'notify는 문자열');
     checkRef(e, p);
     checkChoices(e, p);
+    checkLiveTrigger(e, p);
   });
   const re = rules.randomEvents;
   if (re) {
@@ -359,6 +373,7 @@ function validateSchema(schema) {
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
       checkChoices(e, p);
+      checkLiveTrigger(e, p);
     });
   }
 
@@ -562,7 +577,8 @@ function validateSchema(schema) {
     // (그룹 모드는 자동으로 붙으므로 해당 없음)
     {
       const hasChoiceEvents = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
-        .some((e) => Array.isArray(e.choices) && e.choices.length);
+        .some((e) => Array.isArray(e.choices) && e.choices.length)
+        || (schema.liveChoices != null && typeof schema.liveChoices === 'object'); // 보조 갈림길(v1.8.0)도 같은 자리에 그려진다
       const hasSlot = (typeof ui.template === 'string' && ui.template.includes('{choices}'))
         || conds.some((t) => String(t.template || '').includes('{choices}'));
       if (hasChoiceEvents && !hasSlot)
@@ -1425,6 +1441,60 @@ function validateSchema(schema) {
         });
       }
       if (Q.when != null) checkExpr(Q.when, `${P}.when`, new Set([...allIds, ...exposedNames]), err, { allowRand: false });
+    }
+  }
+
+  // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
+  if (schema.liveChoices != null) {
+    const L = schema.liveChoices; const P = '$.liveChoices';
+    if (typeof L !== 'object' || Array.isArray(L)) err(P, 'liveChoices는 객체여야 함');
+    else {
+      const exprIds = new Set([...allIds, ...exposedNames]);
+      for (const [k, name] of [['label', '이름'], ['guide', '지침'], ['desc', '기본 설명']]) {
+        if (L[k] != null && typeof L[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
+      }
+      if (L.icon != null && (typeof L.icon !== 'string' || L.icon.length > 8)) err(`${P}.icon`, '아이콘은 이모지 한두 글자 (8자 이내)');
+      if (L.when != null) checkExpr(L.when, `${P}.when`, exprIds, err, { allowRand: false });
+      if (typeof L.chance === 'string') checkExpr(L.chance, `${P}.chance`, exprIds, err, { allowRand: false });
+      else if (L.chance != null && (typeof L.chance !== 'number' || L.chance < 0 || L.chance > 1)) err(`${P}.chance`, 'chance는 0~1 사이 숫자 또는 식(0~1 스케일)');
+      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])].some((e) => e && e.liveChoices === true);
+      if ((L.chance == null || L.chance === 0) && !hasTrigger)
+        warn(`${P}.chance`, 'chance가 없고(0) 트리거(events[].liveChoices: true)도 없습니다 — 선택지가 영영 안 옵니다');
+      if (L.count != null && (!Array.isArray(L.count) || L.count.length !== 2 || !L.count.every((n) => Number.isInteger(n) && n >= 2 && n <= 4) || L.count[0] > L.count[1]))
+        err(`${P}.count`, 'count는 [최소, 최대] 정수 (2~4, 최소 ≤ 최대)');
+      if (L.strict != null && !strictOk(L.strict)) err(`${P}.strict`, "strict는 true/false 또는 'last'/'random'");
+      if (L.timeout != null && (!Number.isInteger(L.timeout) || L.timeout < 1)) err(`${P}.timeout`, 'timeout은 1 이상의 정수');
+      if (L.showTags != null && typeof L.showTags !== 'boolean') err(`${P}.showTags`, 'showTags는 true/false');
+      const tagIds = new Set();
+      if (L.tags != null) {
+        if (!Array.isArray(L.tags)) err(`${P}.tags`, 'tags는 [{ id, desc?, check?, effects?, inject? }] 배열');
+        else {
+          if (L.tags.length > 8) err(`${P}.tags`, '태그는 8개까지');
+          L.tags.forEach((t, i) => {
+            const tp = `${P}.tags[${i}]`;
+            if (!t || typeof t !== 'object') { err(tp, '{ id, … } 객체여야 함'); return; }
+            if (typeof t.id !== 'string' || !t.id.trim()) err(`${tp}.id`, '태그 id 필요 (보조가 항목에 붙일 낱말)');
+            else if (t.id.length > 16) err(`${tp}.id`, '태그 id는 16자 이내');
+            else if (tagIds.has(t.id)) err(`${tp}.id`, `중복 태그 '${t.id}'`);
+            else tagIds.add(t.id);
+            if (t.desc != null && typeof t.desc !== 'string') err(`${tp}.desc`, 'desc는 문자열');
+            if (t.inject != null && typeof t.inject !== 'string') err(`${tp}.inject`, 'inject는 문자열');
+            checkRef(t, tp);
+            if (t.effects != null) {
+              if (!Array.isArray(t.effects)) err(`${tp}.effects`, 'effects는 배열');
+              else t.effects.forEach((r, j) => checkSet(r, `${tp}.effects[${j}]`));
+            }
+          });
+        }
+      }
+      if (L.worst != null) {
+        if (typeof L.worst !== 'string') err(`${P}.worst`, 'worst는 태그 id 문자열');
+        else if (!tagIds.has(L.worst)) err(`${P}.worst`, `worst 태그 '${L.worst}'가 tags에 없습니다`);
+      }
+      const strict = L.strict === true || L.strict === 'last' || L.strict === 'random';
+      if (L.timeout == null && !strict)
+        warn(`${P}.timeout`, 'timeout이 없고 strict도 아닙니다 — 고를 때까지 다른 갈림길이 전부 막힙니다. timeout 2~4턴 또는 strict를 권합니다');
+      if (!tagIds.size) warn(`${P}.tags`, '태그가 없습니다 — 선택지는 라벨뿐이라 판정·효과 없이 서사만 갈립니다 (그게 의도면 그대로 두세요)');
     }
   }
 

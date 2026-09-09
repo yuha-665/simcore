@@ -4465,6 +4465,11 @@ function varReferenceIndex(schema) {
     for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
     ex(schema.questBoard.when, '의뢰판', 'when');
   }
+  if (schema.liveChoices) { // 보조 갈림길 (v1.8.0)
+    ex(schema.liveChoices.when, '보조 갈림길', 'when');
+    if (typeof schema.liveChoices.chance === 'string') ex(schema.liveChoices.chance, '보조 갈림길', 'chance');
+    for (const t of (Array.isArray(schema.liveChoices.tags) ? schema.liveChoices.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
+  }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
     fx(a?.onEnter, '시나리오', a?.id ?? '막');
@@ -4808,6 +4813,7 @@ function tabItemCounts(schema, tabKey) {
     push('rules.events', schema.rules?.events);
     push('rules.randomEvents.table', schema.rules?.randomEvents?.table);
     push('directives', schema.directives);
+    if (schema.liveChoices) out.push(['liveChoices', 1]);
   }
   return out;
 }
@@ -5126,6 +5132,19 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- 선택지는 2~4개. **맨 마지막은 조건(when) 없는 항목**으로 — 타임아웃이 지나면 마지막이 자동 결정됩니다.',
       '- `when`이 거짓인 선택지는 잠김(🔒)으로 표시만 되고 고를 수 없습니다.',
       '- 효과가 큰 결정에만 쓰세요 — 잦으면 흐름이 계속 끊깁니다.',
+      '- (v1.8.0) 선택지에 `check`를 달면 고를 때 그 판정을 굴립니다. 이벤트에 `strict: true`(또는 `"last"`/`"random"`)를 달면 고르지 않고 보낸 글은 무효가 되고 시스템이 정합니다 (true = 마지막 항목).',
+      '',
+      '## 보조가 쓰는 갈림길 (최상위 liveChoices, v1.8.0)',
+      '선택지를 미리 적는 대신 보조 AI가 지금 장면·곁에 있는 인물에 맞춰 즉석에서 씁니다. 결과는 **태그**가 정합니다.',
+      '```json',
+      '{ "liveChoices": { "label": "절대선택", "icon": "⚡", "when": "curse_on", "chance": "curse / 100", "count": [2, 3],',
+      '  "strict": "last", "worst": "최악",',
+      '  "tags": [ { "id": "굴욕", "desc": "남 앞에서 망신당하는 행동", "check": "humiliate", "effects": [{ "set": "shame", "expr": "shame + 5" }] },',
+      '            { "id": "최악", "desc": "가장 처참한 길", "effects": [{ "set": "sanity", "expr": "sanity - 10" }], "inject": "최악의 길로 떠밀렸다." } ],',
+      '  "guide": "둘 다 개막장이어야 한다 — 멀쩡한 길은 열에 하나." } }',
+      '```',
+      '- `chance` 확률(숫자 또는 식)로 매 전송 추첨하거나, 이벤트에 `"liveChoices": true`를 달아 트리거합니다. `when`이 거짓이면 닫힙니다 (온오프 변수를 넣으세요).',
+      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다.',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -7152,7 +7171,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 검증 오류 경로 → 그 오류가 속한 탭. 변수를 갈아끼웠을 때 어디를 고쳐야 하는지 알려준다.
   const PATH_TABS = [
-    [/^\$\.(rules|directives)\b/, '규칙·이벤트', true],
+    [/^\$\.(rules|directives|liveChoices)\b/, '규칙·이벤트', true],
     [/^\$\.actions\b/, '액션', true],
     [/^\$\.party\b/, '편성표', false],
     [/^\$\.calendar\b/, '달력', false],
@@ -8024,6 +8043,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     wrap.appendChild(section(
       '05',
+      '보조가 쓰는 갈림길',
+      '보조 AI가 지금 장면에 맞춘 선택지를 즉석에서 쓰고, 결과는 태그가 정해요. 강제를 켜면 선택지 밖의 글은 무효가 돼요.',
+      liveChoicesEditor(),
+    ));
+
+    wrap.appendChild(section(
+      '06',
       '1턴 시험',
       '현재 규칙을 실제 엔진 순서대로 한 턴만 굴려 효과·판정·이벤트 흐름을 확인해요.',
       h('div', { class: 'sce-rules-trial' }, trialRunBlock()),
@@ -8047,6 +8073,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // (조건 이벤트·랜덤 이벤트 공용)
   function choiceEditor(ev) {
     const box = h('div', { class: 'sce-sub' });
+    // 보조 갈림길 트리거 (v1.8.0) — liveChoices 설정이 있는 봇에서만 보인다 (설정이 없으면 깃발이 안 선다)
+    const liveTrigger = () => (schema.liveChoices
+      ? h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
+        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`))
+      : null);
     if (!Array.isArray(ev.choices)) {
       box.appendChild(h('div', { class: 'sce-choice-enable' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => {
@@ -8057,11 +8088,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-choice-enable-copy' },
           h('div', {}, '이 이벤트가 발동하면 상태창에 선택지가 보여요.'),
           h('div', {}, '플레이어가 채팅에 /선택 번호를 입력할 때까지 결과를 기다려요.'))));
+      { const lt = liveTrigger(); if (lt) box.appendChild(lt); }
       return box;
     }
     box.appendChild(h('div', { class: 'sce-hint sce-choice-help' },
       h('div', {}, '갈림길이 발동하면 상태창에 선택지가 보이고, 플레이어가 /선택 번호로 고를 때까지 기다려요.'),
       h('div', {}, '기다리는 동안 선택지가 바꿀 변수는 AI가 먼저 건드리지 않고, 제한 시간이 지나면 마지막 선택지가 자동으로 골라져요.')));
+    const checkOpts = [['', '(없음)'], ...(schema.checks || []).map((k) => [k.id, `${k.label ?? k.id} (${k.id})`])];
     ev.choices.forEach((c, ci) => {
       box.appendChild(h('div', { class: 'sce-block' },
         h('div', { class: 'sce-row' },
@@ -8070,6 +8103,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           pair('조건', bindInput(c.when, (x) => { c.when = String(x).trim() || undefined; rerender(); },
             { cls: 'sce-w-m', ph: '(비우면 항상) gold >= 100' }),
             '조건이 맞지 않으면 잠금(🔒)으로 보여요. 선택지 번호는 그대로 유지돼요.'),
+          // 선택지 판정 (v1.8.0) — 고르면 그 판정을 굴려 같은 턴 서사에 [판정] 줄이 실려요
+          pair('판정', bindSelect(c.check ?? '', checkOpts, (x) => { if (x) c.check = x; else delete c.check; rerender(); }),
+            (schema.checks || []).length ? '고르면 굴려요 — 성공·실패는 판정의 등급 효과가 정해요' : '[판정] 탭에서 먼저 판정을 만들면 여기서 고를 수 있어요'),
           grip(ev.choices, ci, rerender),
         ),
         effectRows(schema, c.effects = c.effects || [], rerender),
@@ -8086,9 +8122,90 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       pair('타임아웃', bindInput(ev.timeout, (x) => { ev.timeout = numOrNull(x) ?? undefined; rerender(); },
         { cls: 'sce-w-s', ph: '턴' }),
         '이 턴 수만큼 고르지 않으면 마지막 선택지가 자동으로 선택돼요. 비우면 직접 고를 때까지 계속 기다려요.'),
+      // 강제 갈림길 (v1.8.0) — 고르지 않고 보내면 그 자리에서 시스템이 정한다. 유저 글은 모델이 못 본다
+      pair('강제', bindSelect(ev.strict === true ? 'last' : (ev.strict || ''), [['', '안 함 — 고를 때까지 기다림'], ['last', '마지막 항목으로 (최악 규약)'], ['random', '열린 항목 중 무작위']],
+        (x) => { if (x) ev.strict = x; else delete ev.strict; rerender(); }),
+        '켜면 선택지 밖의 글을 보내도 그 턴에 시스템이 정해요 — 플레이어 글은 AI에게 안 가고 "[선택 강제]"로 바뀌어요'),
       h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-        delete ev.choices; delete ev.timeout; rerender();
+        delete ev.choices; delete ev.timeout; delete ev.strict; rerender();
       } }, '갈림길 떼기'),
+    ));
+    { const lt = liveTrigger(); if (lt) box.appendChild(lt); }
+    return box;
+  }
+
+  // 보조가 쓰는 갈림길 (v1.8.0 liveChoices) — [규칙·이벤트] 05. 규칙 #3: 엔진 기능엔 편집기 칸.
+  // 라벨은 보조가 즉석에서 쓰고, 결과(판정·효과·전달문)는 여기 적는 태그가 정한다.
+  function liveChoicesEditor() {
+    const box = h('div', { class: 'sce-live-choices' });
+    if (!schema.liveChoices) {
+      box.appendChild(h('div', { class: 'sce-hint' },
+        '보조 AI가 지금 장면·곁에 있는 인물에 맞춰 선택지 2~4개를 즉석에서 쓰고, 플레이어가 고릅니다. 미리 적는 갈림길(위 이벤트의 choices)과 달리 '
+        + '"이 순간 이 사람들에게" 맞춘 선택지가 됩니다. 결과는 태그가 정해요 — 보조는 라벨과 태그만 쓰고, 태그마다 여기서 정한 판정·효과·전달문이 붙습니다. '
+        + '강제(strict)를 켜면 선택지 밖의 글은 무효가 되고 시스템이 대신 정합니다 (노우코메식 "절대선택").'));
+      box.appendChild(addBtn('보조가 쓰는 갈림길 만들기', () => {
+        schema.liveChoices = { label: '선택지', icon: '⌛', chance: 0.3, count: [2, 3], timeout: 2, tags: [] };
+        rerender();
+      }));
+      return box;
+    }
+    const L = schema.liveChoices;
+    L.tags = Array.isArray(L.tags) ? L.tags : [];
+    const checkOpts = [['', '(없음)'], ...(schema.checks || []).map((k) => [k.id, `${k.label ?? k.id} (${k.id})`])];
+    const tagOpts = [['', '(없음 — 마지막 항목이 그냥 마지막)'], ...L.tags.filter((t) => t && t.id).map((t) => [t.id, t.id])];
+    box.appendChild(h('div', { class: 'sce-block' },
+      h('div', { class: 'sce-row' },
+        pair('이름', bindInput(L.label, (x) => { L.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '선택지' }), '상태창 제목이 돼요 (예: 절대선택)'),
+        pair('아이콘', bindInput(L.icon, (x) => { L.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '⌛' })),
+        pair('발동 확률', bindInput(L.chance ?? '', (x) => {
+          const t = String(x).trim(); if (!t) { delete L.chance; rerender(); return; }
+          const n = Number(t); L.chance = isFinite(n) ? Math.max(0, Math.min(1, n)) : t; rerender();
+        }, { cls: 'sce-w-m', ph: '0.3 또는 curse / 100' }), '매 전송 이 확률로 "이번 응답 뒤 선택지를 써라"를 걸어요. 식이면 변수를 읽어요 (0~1)'),
+        pair('개수', bindInput(Array.isArray(L.count) ? L.count.join('~') : '', (x) => {
+          const m = String(x).match(/^\s*(\d)\s*[~\-]\s*(\d)\s*$/);
+          if (m) { const a = Math.max(2, Math.min(4, +m[1])); const b = Math.max(2, Math.min(4, +m[2])); L.count = [Math.min(a, b), Math.max(a, b)]; }
+          else delete L.count; rerender();
+        }, { cls: 'sce-w-s', ph: '2~3' })),
+      ),
+      h('div', { class: 'sce-row' },
+        pair('강제', bindSelect(L.strict === true ? 'last' : (L.strict || ''), [['', '안 함 — 고를 때까지 기다림'], ['last', '마지막 항목으로 (최악 규약)'], ['random', '열린 항목 중 무작위']],
+          (x) => { if (x) L.strict = x; else delete L.strict; rerender(); }),
+          '켜면 선택지 밖의 글을 보내도 그 턴에 시스템이 정해요 — 플레이어 글은 AI에게 안 가요'),
+        pair('타임아웃', bindInput(L.timeout ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n) && n >= 1) L.timeout = n; else delete L.timeout; rerender(); }, { cls: 'sce-w-s', ph: '턴' }),
+          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목'),
+        pair('최악 태그', bindSelect(L.worst ?? '', tagOpts, (x) => { if (x) L.worst = x; else delete L.worst; rerender(); }),
+          '보조가 이 태그를 하나 꼭 쓰고, 시스템이 그 항목을 맨 끝에 둬요 — 안 고르면 그리로'),
+        bindCheck(L.showTags !== false, (v) => { L.showTags = v ? undefined : false; rerender(); }, '상태창 선택지에 태그 꼬리표 표시'),
+      ),
+      pair('노출 조건', bindInput(L.when, (x) => { L.when = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: curse_on and not fight_on (비우면 항상)' }),
+        '거짓이면 추첨도 부탁도 안 해요 — 온오프 변수를 하나 두고 여기 넣으면 플레이어가 /명령·버튼으로 끄고 켤 수 있어요'),
+      pair('보조 지침', bindArea(L.guide, (x) => { L.guide = x || undefined; rerender(); },
+        '어떤 선택지를 내는 곳인지 (예: 둘 다 개막장이어야 한다 — 멀쩡한 길은 열에 하나. 곁에 있는 히로인의 이름을 넣어라)'), ''),
+      pair('기본 설명', bindInput(L.desc, (x) => { L.desc = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: 머릿속에 선택지가 떠올랐다 — 고를 때까지 두통이 멎지 않는다' }),
+        '보조가 desc를 안 쓴 턴에 상태창 선택 블록 머리에 붙는 한 줄'),
+    ));
+    box.appendChild(h('div', { class: 'sce-hint' }, '태그 — 보조가 항목마다 붙이는 낱말. 결과는 전부 여기서 정해요 (판정·효과·AI 전달문). 태그가 없으면 라벨뿐이라 서사만 갈려요.'));
+    L.tags.forEach((t, ti) => {
+      box.appendChild(h('div', { class: 'sce-block' },
+        h('div', { class: 'sce-row' },
+          bindInput(t.id, (x) => { t.id = String(x).trim().slice(0, 16); rerender(); }, { cls: 'sce-w-s', ph: '태그 (예: 굴욕)' }),
+          pair('뜻', bindInput(t.desc, (x) => { t.desc = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '보조에게 보이는 한 줄 (예: 남 앞에서 망신당하는 행동)' })),
+          pair('판정', bindSelect(t.check ?? '', checkOpts, (x) => { if (x) t.check = x; else delete t.check; rerender(); }),
+            (schema.checks || []).length ? '이 태그를 고르면 굴려요' : '[판정] 탭에서 먼저 만들면 고를 수 있어요'),
+          grip(L.tags, ti, rerender),
+        ),
+        effectRows(schema, t.effects = t.effects || [], rerender),
+        h('div', { class: 'sce-row' },
+          pair('AI 전달문', bindInput(t.inject, (x) => { t.inject = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: '(선택) 이 태그를 고른 턴에 AI에게 덧붙는 문장' })),
+        ),
+      ));
+    });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => { L.tags.push({ id: '', effects: [] }); rerender(); } }, '+ 태그'),
+      h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) { delete schema.liveChoices; rerender(); }
+      } }, '떼기'),
     ));
     return box;
   }

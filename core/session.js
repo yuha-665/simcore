@@ -127,6 +127,7 @@ class SimSession {
       board: parsed.board ?? null, // 커뮤니티 보드 델타 (v0.95) — 같은 응답에 실려 온다
       shop: parsed.shop ?? null,   // 상점 첫 입고 (v0.96) — 같은 응답에 실려 온다
       quests: parsed.quests ?? null, // 의뢰판 게시 (v1.7.9) — 같은 응답에 실려 온다
+      choices: parsed.choices ?? null, // 보조 갈림길 (v1.8.0) — 부탁한 턴에만 실려 온다
       msgr: parsed.msgr ?? null,   // 메신저 선톡 (v1.2.0) — 같은 응답에 실려 온다
       dayPassed: parsed.dayPassed === true, // 하루 넘김 신고 (v1.7.0) — dayClose 액션을 대신 돌린다
     });

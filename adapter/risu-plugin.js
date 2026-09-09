@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.3
-//@display-name SimCore (시뮬 엔진) v1.9.3 상태창 탭 테마 칸·테마 카드 · 달력 메모 칸 손질
+//@version 1.9.4
+//@display-name SimCore (시뮬 엔진) v1.9.4 갈림길 — 항목 글을 그대로 보내도 고른 것
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.4 ───────────────────────────────────────────────
+// **갈림길 — 항목 글을 그대로 보내도 고른 것.** 실기: 리수는 플러그인이 입력창을 못 채워, 유저가 상태창의 선택지 라벨을
+// 복사해 본문으로 보내는 습관이 있었다. 그 글은 어느 통로(클릭 예약·/선택)에도 안 걸려 효과·판정이 안 굴렀고, 강제
+// 갈림길(v1.8.0)에선 "안 고른 것"으로 최악에 떠밀리며 원문이 대체문으로 바뀌었다. sendPhase 0.5에 본문 대조
+// (choice.matchTypedChoice) — 예약이 없을 때만, 완전일치만: `N` · `N. 라벨` · `N) 라벨` · `라벨` (+태그 꼬리표·✅🔒·끝 마침표
+// 무시). 잠긴 항목·덧붙인 말은 여전히 "안 고른 것" (strict는 strict다). 리롤은 같은 글이라 같은 결정. 상태창 안내 문구 갱신.
+// 반환 `typedChoice` (어댑터 로그). test-choices +12.
 //
 // ── v1.9.3 ───────────────────────────────────────────────
 // 편집기 실기 제보 셋 (스크린샷).
@@ -3401,6 +3409,7 @@
       lastChangeLog = r.changeLog;
       // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
       // (채팅 로그의 원문은 그대로 — 리수 메시지는 안 고친다). 리롤도 같은 길을 타므로 같은 대체문이 나간다.
+      if (r.typedChoice) console.log('[simcore] 갈림길 본문 선택:', r.typedChoice.idx + 1, r.typedChoice.label);
       if (r.userTextOverride && lastUser && typeof lastUser.content === 'string') {
         lastUser.content = r.userTextOverride;
         console.log('[simcore] 강제 갈림길 — 유저 글 대체:', r.forcedChoice?.label);

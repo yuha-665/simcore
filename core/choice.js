@@ -205,4 +205,28 @@ function overrideText(forced) {
   return `[선택 강제] ${forced.idx + 1}. ${forced.label} — 유저는 선택지 밖의 행동을 적었고, 시스템이 이 항목으로 정했다.`;
 }
 
-module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText };
+/** 본문으로 고르기 (v1.9.4) — 이번 유저 글이 선택지 항목 **그대로**면 그 번호. 리수는 클릭이 입력창을 못 채워 유저가
+ *  상태창의 라벨을 복사해 그대로 보내는 습관이 있다 (실기) — 그 글은 "선택지 밖의 입력"이 아니다. 받는 꼴은 완전일치만:
+ *  `N` · `N. 라벨` · `N) 라벨` · `라벨` (+ 보조 갈림길의 태그 꼬리표, 앞뒤 ✅🔒 표식, 끝 마침표는 무시).
+ *  일부만 같거나 말을 덧붙이면 null — 회색지대는 안 받는다 (강제 갈림길에선 그게 "안 고른 것"이다). 열림 검사는 호출자 몫. */
+function normChoiceText(v) {
+  return String(v ?? '').replace(/[✅🔒]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.。!]+$/, '').trim().toLowerCase();
+}
+function matchTypedChoice(ev, text) {
+  const t = normChoiceText(text);
+  if (!t || t.length > 200 || !ev || !Array.isArray(ev.choices)) return null;
+  const n = ev.choices.length;
+  if (/^\d+$/.test(t)) { const i = Number(t) - 1; return i >= 0 && i < n ? i : null; }
+  for (let i = 0; i < n; i++) {
+    const c = ev.choices[i];
+    const label = normChoiceText(c && c.label);
+    if (!label) continue;
+    const forms = [label, `${i + 1}. ${label}`, `${i + 1}) ${label}`, `${i + 1} ${label}`];
+    const tag = normChoiceText(c.tag);
+    if (tag) for (const f of forms.slice()) forms.push(`${f} ${tag}`);
+    if (forms.includes(t)) return i;
+  }
+  return null;
+}
+
+module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };

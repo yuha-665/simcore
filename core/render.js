@@ -233,7 +233,7 @@ function choicesHtml(schema, state) {
   const tail = strict
     ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : '마지막 항목'}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
     : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '');
-  out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)${tail}</div></div>`;
+  out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1) — 항목 글을 그대로 보내도 된다${tail}</div></div>`;
   return out;
 }
 

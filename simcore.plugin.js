@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.3
-//@display-name SimCore (시뮬 엔진) v1.9.3 상태창 탭 테마 칸·테마 카드 · 달력 메모 칸 손질
+//@version 1.9.4
+//@display-name SimCore (시뮬 엔진) v1.9.4 갈림길 — 항목 글을 그대로 보내도 고른 것
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.4 ───────────────────────────────────────────────
+// **갈림길 — 항목 글을 그대로 보내도 고른 것.** 실기: 리수는 플러그인이 입력창을 못 채워, 유저가 상태창의 선택지 라벨을
+// 복사해 본문으로 보내는 습관이 있었다. 그 글은 어느 통로(클릭 예약·/선택)에도 안 걸려 효과·판정이 안 굴렀고, 강제
+// 갈림길(v1.8.0)에선 "안 고른 것"으로 최악에 떠밀리며 원문이 대체문으로 바뀌었다. sendPhase 0.5에 본문 대조
+// (choice.matchTypedChoice) — 예약이 없을 때만, 완전일치만: `N` · `N. 라벨` · `N) 라벨` · `라벨` (+태그 꼬리표·✅🔒·끝 마침표
+// 무시). 잠긴 항목·덧붙인 말은 여전히 "안 고른 것" (strict는 strict다). 리롤은 같은 글이라 같은 결정. 상태창 안내 문구 갱신.
+// 반환 `typedChoice` (어댑터 로그). test-choices +12.
 //
 // ── v1.9.3 ───────────────────────────────────────────────
 // 편집기 실기 제보 셋 (스크린샷).
@@ -7916,7 +7924,31 @@ function overrideText(forced) {
   return `[선택 강제] ${forced.idx + 1}. ${forced.label} — 유저는 선택지 밖의 행동을 적었고, 시스템이 이 항목으로 정했다.`;
 }
 
-module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText };
+/** 본문으로 고르기 (v1.9.4) — 이번 유저 글이 선택지 항목 **그대로**면 그 번호. 리수는 클릭이 입력창을 못 채워 유저가
+ *  상태창의 라벨을 복사해 그대로 보내는 습관이 있다 (실기) — 그 글은 "선택지 밖의 입력"이 아니다. 받는 꼴은 완전일치만:
+ *  `N` · `N. 라벨` · `N) 라벨` · `라벨` (+ 보조 갈림길의 태그 꼬리표, 앞뒤 ✅🔒 표식, 끝 마침표는 무시).
+ *  일부만 같거나 말을 덧붙이면 null — 회색지대는 안 받는다 (강제 갈림길에선 그게 "안 고른 것"이다). 열림 검사는 호출자 몫. */
+function normChoiceText(v) {
+  return String(v ?? '').replace(/[✅🔒]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.。!]+$/, '').trim().toLowerCase();
+}
+function matchTypedChoice(ev, text) {
+  const t = normChoiceText(text);
+  if (!t || t.length > 200 || !ev || !Array.isArray(ev.choices)) return null;
+  const n = ev.choices.length;
+  if (/^\d+$/.test(t)) { const i = Number(t) - 1; return i >= 0 && i < n ? i : null; }
+  for (let i = 0; i < n; i++) {
+    const c = ev.choices[i];
+    const label = normChoiceText(c && c.label);
+    if (!label) continue;
+    const forms = [label, `${i + 1}. ${label}`, `${i + 1}) ${label}`, `${i + 1} ${label}`];
+    const tag = normChoiceText(c.tag);
+    if (tag) for (const f of forms.slice()) forms.push(`${f} ${tag}`);
+    if (forms.includes(t)) return i;
+  }
+  return null;
+}
+
+module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };
 
 });
 
@@ -9041,11 +9073,23 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 보조가 쓴 갈림길(liveChoices)도 같은 길 — pendingChoiceEvent가 합성해 준다.
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   let forcedChoice = null;
+  let typedChoiceOut = null;
   if (state.meta.pendingChoice) {
     const ev = pendingChoiceEvent(schema, state);
     if (!ev) { state.meta.pendingChoice = null; state.meta.pendingChoicePick = null; } // 스키마에서 사라진 갈림길 — 방어
     else {
       let idx = state.meta.pendingChoicePick;
+      // 본문으로 고르기 (v1.9.4): 예약이 없고 이번 유저 글이 열린 항목 그대로(번호·'N. 라벨'·라벨)면 그걸 고른 것으로.
+      // 리수는 클릭이 입력창을 못 채워 라벨을 복사해 보내는 습관이 있다 (실기) — 강제 갈림길에서 그 글이 "안 고른 것"으로
+      // 최악에 떠밀리면 안 된다. 완전일치만 — 잠긴 항목·덧붙인 말은 안 받는다 (그건 여전히 안 고른 것). 리롤은 같은 글이라 같은 결정.
+      let typedChoice = null;
+      if (idx == null && userText) {
+        const ti = choiceMod.matchTypedChoice(ev, userText);
+        if (ti != null && choiceOpen(schema, state.vars, ev.choices[ti])) {
+          idx = ti; typedChoice = { idx: ti, label: String(ev.choices[ti].label ?? '') }; typedChoiceOut = typedChoice;
+          changeLog.push({ id: '갈림길', from: null, to: `본문으로 선택 — ${typedChoice.label}`, source: `choice:${ev.id}` });
+        }
+      }
       const mode = choiceMod.strictMode(ev.strict);
       if (idx == null && mode) {
         const open = ev.choices.map((c, i) => i).filter((i) => choiceOpen(schema, state.vars, ev.choices[i]));
@@ -9259,7 +9303,8 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives,
     offstage: offstageFired(schema, state),
     // 강제 갈림길 (v1.8.0) — 어댑터가 마지막 유저 메시지 본문을 이 글로 바꾼다 (모델은 원문을 못 본다)
-    forcedChoice, userTextOverride: forcedChoice ? choiceMod.overrideText(forcedChoice) : null };
+    forcedChoice, userTextOverride: forcedChoice ? choiceMod.overrideText(forcedChoice) : null,
+    typedChoice: typedChoiceOut }; // 본문으로 고른 갈림길 (v1.9.4) — 어댑터 로그용
 }
 
 // ── ②' 최초설정 응답 단계 — 절대값 적용, 정기 틱·이벤트 없음 ──
@@ -10641,7 +10686,7 @@ function choicesHtml(schema, state) {
   const tail = strict
     ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : '마지막 항목'}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
     : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '');
-  out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1)${tail}</div></div>`;
+  out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1) — 항목 글을 그대로 보내도 된다${tail}</div></div>`;
   return out;
 }
 
@@ -32703,6 +32748,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       lastChangeLog = r.changeLog;
       // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
       // (채팅 로그의 원문은 그대로 — 리수 메시지는 안 고친다). 리롤도 같은 길을 타므로 같은 대체문이 나간다.
+      if (r.typedChoice) console.log('[simcore] 갈림길 본문 선택:', r.typedChoice.idx + 1, r.typedChoice.label);
       if (r.userTextOverride && lastUser && typeof lastUser.content === 'string') {
         lastUser.content = r.userTextOverride;
         console.log('[simcore] 강제 갈림길 — 유저 글 대체:', r.forcedChoice?.label);

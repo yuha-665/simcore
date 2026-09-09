@@ -682,11 +682,23 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 보조가 쓴 갈림길(liveChoices)도 같은 길 — pendingChoiceEvent가 합성해 준다.
   const checkById = Object.fromEntries((schema.checks || []).map((c) => [c.id, c]));
   let forcedChoice = null;
+  let typedChoiceOut = null;
   if (state.meta.pendingChoice) {
     const ev = pendingChoiceEvent(schema, state);
     if (!ev) { state.meta.pendingChoice = null; state.meta.pendingChoicePick = null; } // 스키마에서 사라진 갈림길 — 방어
     else {
       let idx = state.meta.pendingChoicePick;
+      // 본문으로 고르기 (v1.9.4): 예약이 없고 이번 유저 글이 열린 항목 그대로(번호·'N. 라벨'·라벨)면 그걸 고른 것으로.
+      // 리수는 클릭이 입력창을 못 채워 라벨을 복사해 보내는 습관이 있다 (실기) — 강제 갈림길에서 그 글이 "안 고른 것"으로
+      // 최악에 떠밀리면 안 된다. 완전일치만 — 잠긴 항목·덧붙인 말은 안 받는다 (그건 여전히 안 고른 것). 리롤은 같은 글이라 같은 결정.
+      let typedChoice = null;
+      if (idx == null && userText) {
+        const ti = choiceMod.matchTypedChoice(ev, userText);
+        if (ti != null && choiceOpen(schema, state.vars, ev.choices[ti])) {
+          idx = ti; typedChoice = { idx: ti, label: String(ev.choices[ti].label ?? '') }; typedChoiceOut = typedChoice;
+          changeLog.push({ id: '갈림길', from: null, to: `본문으로 선택 — ${typedChoice.label}`, source: `choice:${ev.id}` });
+        }
+      }
       const mode = choiceMod.strictMode(ev.strict);
       if (idx == null && mode) {
         const open = ev.choices.map((c, i) => i).filter((i) => choiceOpen(schema, state.vars, ev.choices[i]));
@@ -900,7 +912,8 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   return { state, promptBlock: lines.join('\n'), consumedActions, changeLog, activeDirectives,
     offstage: offstageFired(schema, state),
     // 강제 갈림길 (v1.8.0) — 어댑터가 마지막 유저 메시지 본문을 이 글로 바꾼다 (모델은 원문을 못 본다)
-    forcedChoice, userTextOverride: forcedChoice ? choiceMod.overrideText(forcedChoice) : null };
+    forcedChoice, userTextOverride: forcedChoice ? choiceMod.overrideText(forcedChoice) : null,
+    typedChoice: typedChoiceOut }; // 본문으로 고른 갈림길 (v1.9.4) — 어댑터 로그용
 }
 
 // ── ②' 최초설정 응답 단계 — 절대값 적용, 정기 틱·이벤트 없음 ──

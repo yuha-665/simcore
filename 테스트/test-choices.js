@@ -296,6 +296,45 @@ const send = (st, seed) => engine.sendPhase(S, st, { rng: seededRng('h', seed, '
   ck('[강제] forcedChoiceGuide 문자열 = 템플릿 교체', s9.promptBlock.includes('떠밀렸다: 41'), s9.promptBlock);
 }
 
+// ═══ v1.9.4 — 본문으로 고르기 (라벨을 복사해 그대로 보내는 습관) ═══
+{
+  const choiceMod = SimCore.require('choice');
+  const ev = { choices: [{ label: '토벌대를 보낸다' }, { label: '금화로 무마한다.', tag: '굴욕' }, { label: '외면한다' }] };
+  const M = (t) => choiceMod.matchTypedChoice(ev, t);
+  ck('[본문] 라벨 그대로', M('외면한다') === 2 && M('토벌대를 보낸다') === 0, '');
+  ck('[본문] "N. 라벨" · "N) 라벨" · "N 라벨"', M('3. 외면한다') === 2 && M('1) 토벌대를 보낸다') === 0 && M('3 외면한다') === 2, '');
+  ck('[본문] 번호만', M('2') === 1 && M('3.') === 2 && M('4') === null && M('0') === null, '');
+  ck('[본문] 태그 꼬리표·✅🔒·끝 마침표·공백 무시', M('2. 금화로 무마한다 굴욕') === 1 && M('✅ 2. 금화로 무마한다') === 1 && M('  외면한다.  ') === 2 && M('금화로 무마한다') === 1, '');
+  ck('[본문] 덧붙인 말·일부만·빈 글은 null (회색지대는 안 받는다)', M('외면한다 그리고 술을 마신다') === null && M('외면') === null && M('') === null && M('나는 산적 두목과 술을 마신다') === null, '');
+
+  // 엔진 왕복 — 강제 갈림길에서 라벨을 그대로 보내면 최악에 떠밀리지 않는다
+  const S5 = clone(S); S5.rules.events[0].strict = true; delete S5.rules.events[0].timeout;
+  const st0 = (() => { const x = engine.initState(S5); x.meta.setupDone = true; x.meta.turn = 1; return x; })();
+  const o = engine.outputPhase(S5, st0, {}, {}, { rng: seededRng('h', 1, 'out') });
+  const s1 = engine.sendPhase(S5, clone(o.state), { rng: seededRng('h', 4, 'send'), userText: '1. 토벌대를 보낸다' });
+  ck('★ [본문] 강제 갈림길 — 항목 글 그대로 = 고른 것 (military 30 · 강제 아님 · 대체문 없음)',
+    s1.state.vars.military === 30 && !s1.forcedChoice && s1.userTextOverride === null && s1.typedChoice?.idx === 0, JSON.stringify({ m: s1.state.vars.military, f: s1.forcedChoice, t: s1.typedChoice }));
+  ck('[본문] [선택] 줄은 유저가 고른 꼴 · changeLog "본문으로 선택"', s1.promptBlock.includes('[선택] 토벌대를 보낸다') && !s1.promptBlock.includes('시스템이 정했다')
+    && s1.changeLog.some((c) => c.id === '갈림길' && String(c.to).includes('본문으로 선택')), s1.promptBlock);
+  const s1b = engine.sendPhase(S5, clone(o.state), { rng: seededRng('h', 4, 'send'), userText: '1. 토벌대를 보낸다' });
+  ck('[본문] 리롤 = 같은 결정', s1b.state.vars.military === 30 && s1b.typedChoice?.idx === 0, '');
+  const s2 = engine.sendPhase(S5, clone(o.state), { rng: seededRng('h', 4, 'send'), userText: '토벌대를 보낸다, 그리고 나도 따라간다' });
+  ck('[본문] 덧붙인 말은 여전히 안 고른 것 → 강제(최악)', s2.forcedChoice?.idx === 2 && s2.state.vars.mood === 41 && !s2.typedChoice, JSON.stringify(s2.forcedChoice));
+  const S6 = clone(S5); S6.rules.events[0].choices[1].when = 'gold >= 999';
+  const o6 = engine.outputPhase(S6, (() => { const x = engine.initState(S6); x.meta.setupDone = true; x.meta.turn = 1; return x; })(), {}, {}, { rng: seededRng('h', 1, 'out') });
+  const s6 = engine.sendPhase(S6, clone(o6.state), { rng: seededRng('h', 4, 'send'), userText: '금화로 무마한다' });
+  ck('[본문] 잠긴 항목 글은 안 고른 것 (strict는 strict다) → 최악', s6.forcedChoice?.idx === 2 && s6.state.vars.gold === 200 && !s6.typedChoice, JSON.stringify(s6.forcedChoice));
+  const picked = clone(o.state); picked.meta.pendingChoicePick = 2;
+  const s7 = engine.sendPhase(S5, picked, { rng: seededRng('h', 4, 'send'), userText: '1. 토벌대를 보낸다' });
+  ck('[본문] 예약(클릭·/선택)이 있으면 예약이 이긴다', s7.state.vars.mood === 41 && s7.state.vars.military === 50 && !s7.typedChoice, '');
+  // 일반(비강제) 갈림길도 같은 길 — 효과가 굴러가고 대기가 풀린다
+  const oN = out(fresh(), 1);
+  const sN = engine.sendPhase(S, clone(oN.state), { rng: seededRng('h', 4, 'send'), userText: '외면한다' });
+  ck('★ [본문] 일반 갈림길 — 라벨 그대로 보내면 집행 + 대기 해제 (예전엔 효과 없이 계속 열려 있었다)', sN.state.vars.mood === 41 && sN.state.meta.pendingChoice === null && !sN.promptBlock.includes('[선택 대기]'), `mood ${sN.state.vars.mood}`);
+  const html = renderStatusHtml(S, oN.state, null, null, { uid: 'x' });
+  ck('[본문] 상태창 안내 — "항목 글을 그대로 보내도 된다"', html.includes('항목 글을 그대로 보내도 된다'), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

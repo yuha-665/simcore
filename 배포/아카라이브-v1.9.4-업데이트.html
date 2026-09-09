@@ -4,7 +4,7 @@
 <div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
   <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
   <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
-  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.7.5 &nbsp;→&nbsp; v1.7.17</div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.7.5 &nbsp;→&nbsp; v1.9.4</div>
 </div>
 
 <!-- ─────────── 처음 보는 사람용 ─────────── -->
@@ -14,7 +14,7 @@
   SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
   식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
   얼터헌터 개조판과 아틀리에 레슬레리아나 SimCore판이 이 엔진 위에서 굴러갑니다.
-  이번 글은 v1.7.5 긴급 수정 이후 들어간 것을 한 번에 정리한 <b style="color:#dbe2ea;">정식 업데이트 공지</b>입니다.
+  이번 글은 v1.7.5 긴급 수정 이후 들어간 것을 한 번에 정리한 <b style="color:#dbe2ea;">정식 업데이트 공지</b>입니다. 좀 깁니다 — 큰 것부터 위에 뒀습니다.
   </p>
 </div>
 
@@ -43,16 +43,76 @@
 <!-- ─────────── 한 줄 ─────────── -->
 <div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
 <p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
-세계가 <b style="color:#e0a94a;">사람과 거래를 합니다</b> — 벽보에 붙은 의뢰를 버튼으로 받고, 날씨 따라 값이 오르내리는 상점에
-늘 있는 물건이 생기고, 글로 "채집한다"고 쓰면 버튼을 안 눌러도 판정이 돕니다.
+편집기 안에서 <b style="color:#e0a94a;">AI와 대화하며 봇을 고치고</b>, 세계가 <b style="color:#e0a94a;">사람과 거래를 하고</b>,
+선택지는 <b style="color:#e0a94a;">고르지 않으면 시스템이 정합니다</b>.
 </p>
 <p style="margin:0 0 24px;color:#a9b4c2;">
-큰 덩어리는 넷 — <b style="color:#dbe2ea;">의뢰판</b>(v1.7.9·1.7.12), <b style="color:#dbe2ea;">상점 시세·상시 재고</b>(v1.7.8·1.7.14),
+큰 덩어리는 여섯 — <b style="color:#dbe2ea;">대화형 어시스턴트</b>(v1.9.0), <b style="color:#dbe2ea;">갈림길 확장</b>(v1.8.0),
+<b style="color:#dbe2ea;">의뢰판</b>(v1.7.9·1.7.12), <b style="color:#dbe2ea;">상점 시세·상시 재고</b>(v1.7.8·1.7.14),
 <b style="color:#dbe2ea;">낱말 자동 준비</b>(v1.7.7), 그리고 커뮤니티 개조판에서 들여온 <b style="color:#dbe2ea;">편집기 새 얼굴</b>(v1.7.13).
-전부 아틀리에 봇을 만들며 실제로 부딪힌 문제에서 나왔습니다.
+전부 아틀리에 봇을 만들고 굴리며 실제로 부딪힌 문제에서 나왔습니다.
 </p>
 
-<!-- ─────────── ① 의뢰판 ─────────── -->
+<!-- ─────────── ① 대화형 어시스턴트 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">💬 대화형 어시스턴트 — 규격서를 든 AI와 이야기하며 봇을 고칩니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.0 · v1.9.1 · v1.9.2</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지금까지 편집기의 AI 창구는 <b style="color:#c98a7a;">"이거 넣어줘" 한 번 던지고 결과를 받는 일방통행</b>이었습니다.
+  이제 AI 어시스턴트에 <b style="color:#e0a94a;">[💬 대화] 탭</b>이 생겼습니다. SimCore 규격서와 지금 작업본을 든 채로 대화합니다 —
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">"지금 이벤트들이 왜 이렇게 짜였는지 설명해줘"</span>,
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">"산적 습격을 넣고 싶은데 어느 탭에 뭘 두면 돼?"</span>,
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">"그럼 그렇게 반영해줘"</span>.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  바꾸기로 하면 수정안이 <b style="color:#dbe2ea;">기존의 변경 계획 상자</b>로 옵니다. 적용을 누르기 전엔 작업본이 안 바뀌고, 되돌리기도 그대로입니다.
+  AI가 형식을 어기면 한 번 자동으로 다시 요청하고, 적용된 수정안은 대화 이력에 "적용됨 — 요약"으로 접혀 다음 턴에 실립니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  · 받은 봇을 고치는 쪽에 특히 맞습니다 — 규약을 몰라도 "세금 없애고 싶어"라고 말하면 패치가 나옵니다<br>
+  · 모델은 <b style="color:#dbe2ea;">메인급을 권합니다</b>. 보조 자리엔 보통 번역·요약용 싼 모델이 꽂혀 있어 답이 얕습니다. 제미니 계열 확인됨<br>
+  · 매 턴 전송량이 표시됩니다(±30% 추정). 아틀리에 같은 큰 봇은 3만 토큰대 — 대부분 봇 자신의 지시문·이벤트 전문이라 봇이 클수록 비쌉니다<br>
+  · <b style="color:#dbe2ea;">v1.9.1</b> — 창작·대화 탭 안에서 바로 내장 템플릿 16종을 열 수 있습니다. 빈 작업본은 통짜 규격서가 나가 비싸고(4만 토큰대), 빈 템플릿 하나만 열어도 부분 수정 규격으로 바뀌어 9천 토큰 안팎으로 떨어집니다 — 새 봇을 대화로 만들 땐 템플릿부터<br>
+  · <b style="color:#dbe2ea;">v1.9.2</b> — 제미니의 추론 블록(&lt;Thoughts&gt;)이 말풍선에 그대로 실리던 것을 뗐습니다<br>
+  · 대화는 편집기를 닫으면 사라집니다. 이력은 최근 12개 안에서만 접힙니다
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  같은 제보의 다른 반 — <b style="color:#dbe2ea;">편집기 만드는 순서</b>도 손봤습니다. 세부 편집기 탭 묶음이 "기본 → 진행 → 세계 → 자동화" 순서로 바뀌고,
+  본문 머리에 "① 변수 → ② AI 설정에서 열기 → ③ 규칙·이벤트 → ④ 상태창" 띠가 붙어 누르면 그 탭으로 갑니다.
+  변수의 [AI용 설명] 칸은 "규칙은 여기가 아니라 [규칙·이벤트]"라고 직접 말합니다 — 규칙을 설명에 적으면 모델이 읽어 얼추 돌다가 판정·정산에서 깨지는 함정 때문입니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 갈림길 확장 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">⌛ 갈림길 확장 — 판정 · 강제 · 보조가 쓰는 선택지</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.8.0 · v1.9.4</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "무조건 선택지를 고르게 만들고, 안 고르면 최악의 전개로 진행시켜 버리는" 봇(노우코메 같은)을 로어북·정규식만으로 만들면
+  <b style="color:#c98a7a;">모델이 선택지도 내고 강제도 해야 해서 유저가 무시하면 모델도 따라갑니다</b>. 세 조각을 전부 시스템 손에 뒀습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">선택지 판정</b> — 선택지마다 판정을 달 수 있습니다. 고르면 주사위가 그 행동의 성공·실패를 정하고, 등급별 결과는 판정이 이미 맡던 그대로<br>
+  · <b style="color:#dbe2ea;">강제 갈림길</b> — 고르지 않고 보내면 열린 것 중 <b style="color:#e0a94a;">맨 끝(최악)</b> 또는 무작위로 시스템이 정합니다. 선택지 밖에 쓴 글은 <b style="color:#dbe2ea;">모델이 못 봅니다</b> — "유저가 스스로 고른 것처럼 쓰지 말고, 고르지 못해 그 길로 떠밀리는 장면을 써라"로 대체됩니다. 채팅 로그의 원문은 그대로<br>
+  · <b style="color:#dbe2ea;">보조가 쓰는 갈림길</b> — 선택지를 미리 적는 대신 보조 AI가 지금 장면·곁에 있는 인물에 맞춰 즉석에서 씁니다. 라벨은 즉석이라도 <b style="color:#dbe2ea;">태그</b>(굴욕·폭주·최악 …)는 봇이 정한 어휘라, 태그마다 판정·효과를 매핑하면 결과는 시스템 손에 남습니다. 추가 호출 0<br>
+  · 강제는 갈림길마다 따로 — 같은 봇 안에서 절대선택은 강제, 일반 갈림길은 자유로 섞입니다. 편집기 [규칙·이벤트] 탭의 갈림길 칸에 판정·강제 드롭다운, "보조가 쓰는 갈림길" 절이 생겼습니다
+  </p>
+  <p style="margin:0;color:#dbe2ea;">
+  <b style="color:#e0a94a;">v1.9.4 — 선택지 글을 그대로 보내도 고른 것</b>. 리수는 플러그인이 입력창을 못 채워서, 상태창의 선택지를 눌러도
+  입력창에 글이 들어가지 않습니다(누르면 <b style="color:#dbe2ea;">예약</b>이 걸리고 조작줄에 ✅가 뜹니다). 그래서 라벨을 복사해 그대로 보내는 분이 많았는데,
+  그 글은 어느 통로에도 안 걸려 <b style="color:#c98a7a;">효과가 안 굴러가고, 강제 갈림길에선 "안 고른 것"으로 최악에 떠밀렸습니다</b>.
+  이제 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">2</span>·<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">2. 외면한다</span>·<span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">외면한다</span>처럼
+  항목과 똑같이 보내면 고른 것으로 칩니다. 말을 덧붙이거나 일부만 쓰면 여전히 안 고른 것입니다 — 고르는 통로는 셋(누르기 · /선택 번호 · 항목 글 그대로), 전부 다음 전송에 집행됩니다.
+  </p>
+</div>
+
+<!-- ─────────── ③ 의뢰판 ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
@@ -79,7 +139,7 @@
   </p>
 </div>
 
-<!-- ─────────── ② 상점 ─────────── -->
+<!-- ─────────── ④ 상점 ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
@@ -101,7 +161,7 @@
   </p>
 </div>
 
-<!-- ─────────── ③ 낱말 자동 준비 ─────────── -->
+<!-- ─────────── ⑤ 낱말 자동 준비 ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
@@ -118,24 +178,25 @@
   </p>
 </div>
 
-<!-- ─────────── ④ 편집기 UI ─────────── -->
+<!-- ─────────── ⑥ 편집기 UI ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 UI</span>
     <span style="font-size:19px;font-weight:600;">편집기·관리 패널 새 얼굴 — 커뮤니티 개조판 이식</span>
-    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.13</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.13 · v1.7.15 · v1.9.3</span>
   </div>
   <p style="margin:0 0 12px;color:#dbe2ea;">
   v1.0.7 기준으로 편집기와 관리 패널의 화면 구성을 다듬은 <b style="color:#e0a94a;">UI 개조판</b>을 만들어 전달해 주신 분이 계셨습니다.
   기능은 손대지 않고 편집 난이도·정보 밀도·좁은 화면 배치만 고친 작업이라, 시간 탭부터 시험해 본 뒤 편집기 15탭과 관리 패널 전체를 그 구성으로 옮겼습니다.
   </p>
   <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
-  · 탭 내비가 <b style="color:#dbe2ea;">기본·세계·진행·자동화</b> 네 묶음으로 갈립니다<br>
+  · 탭 내비가 네 묶음으로 갈립니다 (v1.9.0부터 <b style="color:#dbe2ea;">기본·진행·세계·자동화</b> — 만드는 순서대로)<br>
   · 검증 오류가 친절해지고, 누르면 그 칸으로 뜁니다<br>
   · 관리 패널에 변수표 스크롤·인라인 오류 안내, 달력에 주말색·6주 고정<br>
   · 리수 사이드 메뉴(햄버거)에 SimCore 런처가 생겼습니다<br>
   · 문구 "무장" → "준비"<br>
-  · <b style="color:#dbe2ea;">v1.7.15</b> — 이식 직후 손질: 사이드 내비에 항목별 색, 세부 편집기의 탭 묶음이 넓은 화면에선 오른쪽에 붙어 스크롤을 내려도 따라오고, 상태창 탭은 미리보기가 전폭으로
+  · <b style="color:#dbe2ea;">v1.7.15</b> — 이식 직후 손질: 사이드 내비에 항목별 색, 세부 편집기의 탭 묶음이 넓은 화면에선 오른쪽에 붙어 스크롤을 내려도 따라오고, 상태창 탭은 미리보기가 전폭으로<br>
+  · <b style="color:#dbe2ea;">v1.9.3</b> — 제보 셋: 상태창 탭의 [기본 테마] 칸만 선이 하나 더 그어지고 높이가 틀어지던 것, 테마를 바꿔도 테마 미리보기 카드가 그대로던 것(CSS가 아예 없었습니다), 달력 탭 기념일의 [날짜 메모] 칸이 세로로 늘어나던 것
   </p>
   <p style="margin:0;color:#a9b4c2;font-size:14px;">
   색감은 원래 SimCore 팔레트 그대로입니다. v1.0.7 이후 붙은 기능(의뢰판·메신저·다중 상점·시세 등)은 같은 디자인 규칙으로 맞췄습니다.
@@ -143,15 +204,35 @@
   </p>
 </div>
 
-<!-- ─────────── ⑤ 픽스 모음 ─────────── -->
+<!-- ─────────── ⑦ 아틀리에 봇 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🧪 봇</span>
+    <span style="font-size:19px;font-weight:600;">아틀리에 레슬레리아나 SimCore판 — 같은 기간에 바뀐 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">번들 재적용</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  · <b style="color:#dbe2ea;">랜덤 이벤트 11종 → 91종</b> — 시세·계절·장소·설비·인물·평판에 자연재해 5종(홍수·산불·지진·역병·혜성 접근 — 며칠 가는 세계 상태라 채집지·시세·이동이 같이 바뀝니다), 주변 인물 개그 30종, 럭키스케베 9종(성인 설정 + 동행이 있을 때만). 발동 확률은 7%로 내렸습니다<br>
+  · <b style="color:#dbe2ea;">전투 숙련</b> — 교전 판정이 폭탄·명성·체력만 읽어 검사 페르소나도 "폭탄 없는 연금술사"로 굴렀습니다. 검·활·주먹·공격 마법을 통틀은 숙련 하나가 생겨 첫 장면에서 페르소나 시트로 정해지고 유효타가 올립니다. 상태창 연금술사 그룹에 막대가 하나 늘었습니다<br>
+  · <b style="color:#dbe2ea;">살림</b> — 침실(체력 최대)·부엌(요리)·응접실(손님)·욕실(🛁 목욕) 탭과 🍽 식사<br>
+  · <b style="color:#dbe2ea;">🌙 하루를 마친다</b>가 18시에 눌러도 이튿날 23시로 가던 것 → 다음 날 07시로<br>
+  · 조합서 재료 분류표, 상점 상시 재고와 채집 산지표
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  진행 중인 세이브도 그대로 이어집니다. 새 변수(재해·전투 숙련)는 0에서 시작하니, 전투형 페르소나로 이미 굴리던 채팅은 편집기에서 전투 숙련 시작값을 올려 두거나 새 채팅에서 첫 장면을 다시 받으세요.
+  </p>
+</div>
+
+<!-- ─────────── ⑧ 픽스 모음 ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
     <span style="font-size:19px;font-weight:600;">그 밖의 수리</span>
-    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.6 · v1.7.10</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.7.6 · v1.7.10 · v1.7.16</span>
   </div>
   <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
   · <b style="color:#dbe2ea;">번들이 카드 정규식을 통째로 덮던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.10</span> — 개조 번들의 정규식은 "통째 교체" 계약이라, 카드에 원래 있던 에셋 표시 정규식까지 날아가 이미지가 안 나왔습니다. 번들에 <b style="color:#dbe2ea;">덧붙이기</b> 방식이 생겨 카드 정규식은 그대로 두고 같은 이름만 갈아 끼웁니다. 적용 보고에 "N개 덧붙임 (카드 정규식 M개 유지)"라고 나오면 정상. 이미 날아간 정규식은 세이브 페이지 <b style="color:#dbe2ea;">[교체 되돌리기]</b>로 (적용 전 백업 최근 3개)<br>
+  · <b style="color:#dbe2ea;">세부 편집기에서 편성표 탭을 누르면 화면이 통째로 비던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.16</span> — 편성표에 CSS가 있는 봇(아틀리에·얼헌)에서만 났습니다<br>
   · <b style="color:#dbe2ea;">편성표 패널 너비</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.7.6</span> — 탭이 여섯 개쯤 되면 두 줄로 꺾이던 것. 제작자가 넓게(640px) 켤 수 있습니다
   </p>
 </div>
@@ -161,7 +242,7 @@
   <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
   <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
   <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
-  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.7.17 상태창 미리보기 한 기둥</span>인지 확인하세요.<br>
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.9.4 갈림길 — 항목 글을 그대로 보내도 고른 것</span>인지 확인하세요.<br>
   <b style="color:#c98a7a;">② 얼터헌터 개조판</b> — 새 번들 파일을 받아 세이브 페이지의 [번들 가져와 교체]로 교체하세요. 협회 의뢰판은 번들을 갈아야 들어옵니다.<br>
   <b style="color:#c98a7a;">③ 아틀리에 레슬레리아나 SimCore판</b> — 봇 소개글의 번들이 최신입니다. 그쪽 글 순서대로 번들을 다시 적용하면 됩니다.<br>
   <b style="color:#c98a7a;">④ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다. 새 변수는 자동으로 채워집니다.

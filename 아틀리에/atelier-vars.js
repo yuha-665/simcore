@@ -1694,6 +1694,7 @@ const S = {
         { var: 'stamina', bar: { max: 'stamina_max' }, color: "'#7fa87f'" }, { var: 'stamina_max' },   // 침실이 최대를 올린다 (살림)
         { var: 'meal_buff', when: 'meal_until > elapsed and meal_buff > 0' },
         ...CATS.map(([, id]) => ({ var: id, bar: { max: 100 } })),
+        { var: 'sk_fight', bar: { max: 100 }, color: "'#a86a5a'" },   // 전투 숙련 — 분야 숙련 뒤, 색만 갈라 둔다
       ] },
       { label: '소지', visibility: 'show', items: [
         { var: 'cole' }, { var: 'bombs' }, { var: 'materials' }, { var: 'items' }, { var: 'shelf' }, { var: 'field' },
@@ -2223,6 +2224,7 @@ console.log('\n━━ 전투 숙련 — 페르소나가 싸울 줄 알면 숫자
   const rt = turn((() => { let t = fresh(); t.vars.foe_tier = 1; t.vars.sk_fight = 0; return engine.toggleAction(S, t, 'act_fight').state; })(), { sk_fight: 90 }, 7);
   ok('보조가 전투 숙련을 못 올린다 (판정 산물)', rt.st.vars.sk_fight < 90, String(rt.st.vars.sk_fight));
   ok('상태 블록 숙련 줄에 전투', S.promptState.template.includes('전투 {sk_fight}'), '');
+  ok('상태창 연금술사 그룹에도 전투 숙련 막대 (실기: "따로 안 보인다")', S.statusUI.groups.find((g) => g.label === '연금술사').items.some((it) => it.var === 'sk_fight' && it.bar), '');
 }
 
 console.log('\n━━ 최초설정 (세션 0) — 첫 응답이 공방을 정한다 ━━');

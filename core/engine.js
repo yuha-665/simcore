@@ -760,10 +760,13 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     }
     if (fightRound) injects.push(...fightRound.lines);
     // 이탈 (v1.6.0) — fightEnd 액션은 열린 교전을 닫는다. 판정이 달렸으면 [판정] 줄이 위에 이미 실렸다
-    if (action.fightEnd === true && fightMod.fightActive(state.vars)) {
+    // v1.9.5: fightEnd가 문자열이면 그 줄이 기본 이탈 안내("이탈했다 — 위 판정을 따르라")를 대신한다 — 판정 없이
+    // 교전만 닫는 "종료" 버튼용 (실기: 서사가 결착을 앞서 써서 게이지가 안 찬 채 교전 중이 남는다)
+    const fightEndLine = typeof action.fightEnd === 'string' && action.fightEnd.trim() ? action.fightEnd.trim() : null;
+    if ((action.fightEnd === true || fightEndLine) && fightMod.fightActive(state.vars)) {
       fightMod.clearFight(state);
-      injects.push(fightMod.DEFAULT_FIGHT_LEAVE);
-      changeLog.push({ id: '교전', from: null, to: '이탈', source: `fight:${action.id}` });
+      injects.push(fightEndLine || fightMod.DEFAULT_FIGHT_LEAVE);
+      changeLog.push({ id: '교전', from: null, to: fightEndLine ? '종료' : '이탈', source: `fight:${action.id}` });
     }
     consumedActions.push(action.id);
     state.meta.firedThisSend[action.id] = true;

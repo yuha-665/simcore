@@ -164,6 +164,24 @@ const press = (st, actionId, i, userText = '') => {
   ck('이탈 판정엔 판정 규칙 줄이 붙는다 (평판정)', q.pb.includes('※ 위 [판정]'), '');
 }
 
+// ── 5b. 종료 (fightEnd 문자열, v1.9.5) — 판정 없이 교전만 닫고 안내 줄을 봇이 정한다 ──
+{
+  const S2 = clone(S);
+  S2.actions.push({ id: 'settle', label: '🏳 교전 종료', mode: 'oneshot', when: 'fight_on', fightEnd: '[교전 종료] 유저가 교전을 닫았다 — 새 공방을 쓰지 마라.' });
+  ck('fightEnd 문자열은 검증 통과', validateSchema(S2).ok, J(validateSchema(S2).errors));
+  const bad = clone(S2); bad.actions[bad.actions.length - 1].fightEnd = 7;
+  ck('fightEnd 숫자는 오류', !validateSchema(bad).ok, '');
+  let st = fresh(); st.vars.foe = 'C';
+  let r = engine.outputPhase(S2, engine.sendPhase(S2, engine.toggleAction(S2, st, 'atk').state, { rng: rng(85, 's'), userText: '싸운다' }).state, {}, {}, { rng: rng(85, 'o') }).state;
+  ck('교전 중', fight.fightActive(r.vars), '');
+  const hpBefore = r.vars.hp;
+  const send = engine.sendPhase(S2, engine.toggleAction(S2, r, 'settle').state, { rng: rng(86, 's'), userText: '싸움은 끝났다' });
+  ck('★ 🏳 → 교전 닫힘 + 봇이 정한 [교전 종료] 줄, 기본 이탈 안내는 없음', !fight.fightActive(send.state.vars) && send.promptBlock.includes('[교전 종료] 유저가 교전을 닫았다') && !send.promptBlock.includes('유저가 교전에서 이탈'), send.promptBlock);
+  ck('판정이 없으니 [판정] 줄도 피해도 없다', !send.promptBlock.includes('[판정]') && send.state.vars.hp === hpBefore, '');
+  ck('변화 로그에 종료', send.changeLog.some((c) => c.id === '교전' && c.to === '종료'), J(send.changeLog));
+  ck('교전 중이 아니면 안 열린다', !engine.toggleAction(S2, fresh(), 'settle').state.meta.armed.settle, '');
+}
+
 // ── 6. 이벤트 굴림은 평판정 — 교전을 열지 않는다 ──
 {
   let st = fresh(); st.vars.foe = 'S';

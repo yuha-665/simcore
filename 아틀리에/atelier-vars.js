@@ -1418,6 +1418,13 @@ const S = {
       inject: '맞선다.' },
     { id: 'act_flee', label: '🏃 이탈', mode: 'oneshot', keywords: ['도망친다', '도망간다', '물러난다', '달아난다', '빠져나간다'], fightEnd: true, check: 'guard', when: 'fight_on',
       inject: '물러날 자리를 찾는다.' },
+    // 교전 종료 (2026-09-09, 실기: 서사가 결착을 앞서 써서 게이지가 안 찬 채 "교전 중"이 상태창에 남는다 — 이탈은 대응 굴림을
+    // 받아 맞지도 않은 피해가 날 수 있고, 방치 정리는 8턴). 판정 없이 교전만 닫는다. 승리 보상(명성·드롭 소재)은 없다 —
+    // 이기는 길은 여전히 ⚔로 게이지를 채우는 것뿐이라 "결착은 게이지에서만"은 그대로다.
+    { id: 'act_fight_end', label: '🏳 교전 종료', mode: 'oneshot', keywords: ['싸움은 끝났다', '싸움을 끝낸다', '교전을 끝낸다', '교전 종료'], when: 'fight_on',
+      fightEnd: '[교전 종료] 유저가 교전을 닫았다 — 싸움은 이미 끝난 것으로 다뤄라. 서사가 결착을 앞서 썼다면 그 결과 그대로(쓰러뜨렸든 물러갔든), '
+        + '새 공방·새 피해를 쓰지 마라. 시스템이 인정한 승리가 아니라 명성·몬스터 소재는 없다 — 그건 ⚔로 게이지를 채웠을 때만.',
+      inject: '싸움을 정리한다.' },
     // ── 이동 — 버튼이 곧 안내다: 상점은 when으로 열려서 위치를 안 옮기면 버튼조차 안 보인다 (실기 제보) ──
     { id: 'go_home', label: '🏠 공방으로', mode: 'oneshot', keywords: ['공방으로 돌아', '공방으로 간다', '공방에 돌아'], when: "settled and location != '공방' and not fight_on",   // 돌아갈 공방이 있어야 보인다
       inject: '공방으로 돌아온다. 오는 길과 문을 열었을 때의 공방 풍경 한 줄.',
@@ -2197,6 +2204,13 @@ console.log('\n━━ 전투 — 결착은 게이지에서만 ━━');
   f = turn(f, {}, 50).st;
   ok('교전 중 이탈 버튼이 열린다', canAct(f, 'act_flee'), '');
   ok('교전 중 채집 버튼은 잠긴다', !canAct(f, 'act_gather'), '');
+  // 🏳 교전 종료 — 판정 없이 닫는다 (실기: 서사가 먼저 끝낸 싸움)
+  ok('교전 중 종료 버튼이 열린다 · 평소엔 닫힘', canAct(f, 'act_fight_end') && !canAct(fresh(), 'act_fight_end'), '');
+  const st0 = f.vars.stamina, rn0 = f.vars.renown;
+  const e = turn(engine.toggleAction(S, f, 'act_fight_end').state, {}, 51);
+  ok('★ 🏳 → 교전 닫힘 · 체력·명성 그대로 · 봇 문구', !look(e.st)('fight_on') && e.st.vars.stamina === st0 && e.st.vars.renown === rn0
+    && e.prompt.includes('[교전 종료] 유저가 교전을 닫았다') && !e.prompt.includes('[판정] 대응'), e.prompt.split('\n').filter((l) => l.includes('교전')).join(' | '));
+  ok('낱말 "싸움은 끝났다"가 종료 버튼을 준비한다', (S.actions.find((a) => a.id === 'act_fight_end').keywords || []).includes('싸움은 끝났다'), '');
 }
 
 console.log('\n━━ 전투 숙련 — 페르소나가 싸울 줄 알면 숫자에도 든다 ━━');

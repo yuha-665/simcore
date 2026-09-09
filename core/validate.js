@@ -703,8 +703,8 @@ function validateSchema(schema) {
     if (a.dayClose != null && typeof a.dayClose !== 'boolean')
       err(p + '.dayClose', 'dayClose는 true/false (하루를 닫는 정산 액션 — 서사가 하루를 넘기면 시스템이 대신 돌린다)');
     // 교전 이탈 (v1.6.0) — 열린 교전을 닫는 액션. fight 달린 판정이 없으면 닫을 교전이 없다
-    if (a.fightEnd != null && typeof a.fightEnd !== 'boolean') err(p + '.fightEnd', 'fightEnd는 true/false (교전 이탈 — 열린 교전을 닫는 액션)');
-    else if (a.fightEnd === true && !fightMod.fightChecks(schema).length)
+    if (a.fightEnd != null && typeof a.fightEnd !== 'boolean' && typeof a.fightEnd !== 'string') err(p + '.fightEnd', 'fightEnd는 true/false 또는 문자열 (교전을 닫는 액션 — 문자열이면 그 줄이 [교전 종료] 안내를 대신한다, v1.9.5)');
+    else if ((a.fightEnd === true || (typeof a.fightEnd === 'string' && a.fightEnd.trim())) && !fightMod.fightChecks(schema).length)
       warn(p + '.fightEnd', 'fight 달린 판정이 없어 닫을 교전이 없습니다 — checks[].fight를 먼저 두세요');
     checkRef(a, p);
   });

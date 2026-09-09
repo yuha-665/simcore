@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.2
-//@display-name SimCore (시뮬 엔진) v1.9.2 대화 말풍선에서 추론 블록 제거
+//@version 1.9.3
+//@display-name SimCore (시뮬 엔진) v1.9.3 상태창 탭 테마 칸·테마 카드 · 달력 메모 칸 손질
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.3 ───────────────────────────────────────────────
+// 편집기 실기 제보 셋 (스크린샷).
+// - [상태창 탭] **기본 테마 칸만 선이 하나 더 그어지고 높이가 틀어짐** — 첫 줄(제목·구성·테마) 중 테마만 border-top
+//   면제에서 빠져 있었고, 셀렉트가 래퍼 div 안에 있어 형제 칸의 40px 규칙을 못 받았다. 면제에 넣고 래퍼를 없앤다.
+//   좁은 폭(2열)에선 테마가 둘째 줄로 내려가므로 거기선 선을 돌려주고, 한 기둥에선 구성·테마도 선을 받는다.
+// - [상태창 탭] **테마를 바꿔도 테마 카드(호감도 72)가 안 바뀜** — is-<테마> 클래스는 붙었는데 CSS가 한 줄도 없어 라벨
+//   글자만 바뀌었다. render.js THEMES 팔레트(양피지 갈색·금색 / 터미널 검정·초록·고정폭 / 카드 둥근·파랑 그라데이션)를 축약해 입힌다.
+// - [달력 탭] **기념일 날짜 메모 칸이 세로로 늘어남** (유저 UI 개조본에서도 남아 있던 것) — .sce-calendar-field(grid)가 격자 셀
+//   높이만큼 늘어나며 align-content 기본(stretch)이 입력 줄을 함께 늘렸다. align-content:start.
+// test-editortabs에 CSS 모양 회귀 8건.
 //
 // ── v1.9.2 ───────────────────────────────────────────────
 // **💬 대화 말풍선에 제미니 추론 블록이 샌다** (실기: 첫 답이 "<Thoughts>**Testing SimCore Connection**…</Thoughts>네, 잘
@@ -13940,7 +13951,7 @@ const CSS = `
 .sce .sce-calendar-section-body { display:grid; gap:12px; min-width:0; }
 .sce .sce-calendar-field-grid { display:grid; grid-template-columns:minmax(130px,.8fr) minmax(80px,.4fr) minmax(220px,1.6fr);
   gap:10px; align-items:start; }
-.sce .sce-calendar-field { display:grid; gap:4px; min-width:0; }
+.sce .sce-calendar-field { display:grid; gap:4px; min-width:0; align-content:start; } /* v1.9.3: 셀이 늘어나도 입력 줄은 제 높이 */
 .sce .sce-calendar-field > span { color:var(--sce-text-strong); font-size:11.5px; font-weight:700; }
 .sce .sce-calendar-field > small { min-height:1lh; color:var(--sce-muted); font-size:10.5px; line-height:1.4; }
 .sce .sce-calendar-field > input, .sce .sce-calendar-field > select { width:100% !important;
@@ -14526,14 +14537,12 @@ const CSS = `
 .sce .sce-status-field { display:grid; grid-template-rows:auto minmax(40px,auto) minmax(1.45em,auto);
   align-content:start; gap:5px; min-width:0; padding:10px 0 11px; border-top:1px solid var(--sce-line);
   color:var(--sce-text); font-size:12px; font-weight:700; }
-.sce .sce-status-field-title, .sce .sce-status-field-mode { padding-top:0; border-top:0; }
+.sce .sce-status-field-title, .sce .sce-status-field-mode, .sce .sce-status-field-theme { padding-top:0; border-top:0; } /* 첫 줄 셋 (v1.9.3: theme 누락으로 선이 하나 더) */
 .sce .sce-status-field > small { min-height:1.45em; color:var(--sce-muted); font-size:11px;
   font-weight:500; line-height:1.45; }
 .sce .sce-status-field > input, .sce .sce-status-field > select, .sce .sce-status-field > .sce-chip { width:100% !important; min-width:0 !important; max-width:none !important; }
 .sce .sce-status-field > input, .sce .sce-status-field > select, .sce .sce-status-field > .sce-chip { min-height:40px; }
 .sce .sce-status-field > .sce-chip { align-items:center; }
-.sce .sce-status-theme-control { display:grid; gap:5px; min-width:0; }
-.sce .sce-status-theme-control > select { width:100%; min-width:0; max-width:none; }
 .sce .sce-status-theme-preview { min-width:0; padding:9px 10px; border:1px solid var(--sce-line);
   border-radius:4px; background:var(--sce-field); color:var(--sce-text); font-size:11.5px; font-weight:500; }
 .sce .sce-status-theme-preview-head { display:flex; justify-content:space-between; align-items:baseline; gap:6px;
@@ -14547,6 +14556,20 @@ const CSS = `
 .sce .sce-status-theme-preview-bar { display:block; height:7px; overflow:hidden; border-radius:3px;
   background:rgba(128,128,128,.28); }
 .sce .sce-status-theme-preview-bar::after { content:""; display:block; width:68%; height:100%; background:var(--sce-accent); }
+/* 테마 카드가 고른 테마를 실제로 입는다 (v1.9.3) — 렌더 THEMES(render.js) 팔레트를 그대로 축약. 글자색은 렌더처럼 상속 */
+.sce .sce-status-theme-preview.is-parchment { background:rgba(233,221,196,.14); border-color:#8a6d3b88; }
+.sce .sce-status-theme-preview.is-parchment .sce-status-theme-preview-head strong { color:#c9a86a; }
+.sce .sce-status-theme-preview.is-parchment .sce-status-theme-preview-bar { background:#8a6d3b33; }
+.sce .sce-status-theme-preview.is-parchment .sce-status-theme-preview-bar::after { background:#a8865a; }
+.sce .sce-status-theme-preview.is-terminal { background:#04110a; border-color:#1f5c3d; color:#86efac;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.sce .sce-status-theme-preview.is-terminal .sce-status-theme-preview-head strong { color:#4ade80; }
+.sce .sce-status-theme-preview.is-terminal .sce-status-theme-preview-head span { color:#86efac; opacity:.8; }
+.sce .sce-status-theme-preview.is-terminal .sce-status-theme-preview-bar { background:#14351f; }
+.sce .sce-status-theme-preview.is-terminal .sce-status-theme-preview-bar::after { background:#22c55e; }
+.sce .sce-status-theme-preview.is-card { background:rgba(91,141,239,.08); border-color:transparent; border-radius:12px;
+  box-shadow:0 2px 12px rgba(0,0,0,.25); }
+.sce .sce-status-theme-preview.is-card .sce-status-theme-preview-bar::after { background:linear-gradient(90deg,#5b8def,#8b5bef); }
 .sce .sce-status-options-theme-preview { grid-area:preview; margin-top:10px; }
 .sce .sce-status-options-live { grid-area:live; min-width:0; width:min(860px,100%); margin-top:14px; padding-top:12px; border-top:1px dashed var(--sce-line);
   border-top:1px solid var(--sce-line); }
@@ -14890,6 +14913,7 @@ const CSS = `
     grid-template-areas:"title mode" "theme layout" "log highlights" "position ."; }
 .sce .sce-status-settings-grid.is-template {
     grid-template-areas:"title mode" "theme log" "highlights highlights" "position ."; }
+.sce .sce-status-field-theme { padding-top:10px; border-top:1px solid var(--sce-line); } /* 둘째 줄로 내려오면 선 (v1.9.3) */
 .sce .sce-status-group-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .sce .sce-asset-pack-core, .sce .sce-asset-pack-layout, .sce .sce-asset-pack-options {
     grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -14929,6 +14953,7 @@ const CSS = `
 .sce .sce-status-options > *, .sce .sce-status-options-theme-preview, .sce .sce-status-options-live { grid-area:auto; }
 .sce .sce-status-settings-grid, .sce .sce-status-group-settings { grid-template-columns:1fr; grid-template-areas:none; }
 .sce .sce-status-field-title, .sce .sce-status-field-mode, .sce .sce-status-field-theme, .sce .sce-status-field-position, .sce .sce-status-field-layout, .sce .sce-status-field-log, .sce .sce-status-field-highlights { grid-area:auto; grid-column:auto; grid-row:auto; }
+.sce .sce-status-field-mode, .sce .sce-status-field-theme { padding-top:10px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
 .sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
 .sce .sce-status-conditional-head { grid-template-columns:1fr; align-items:stretch; }
@@ -14998,6 +15023,7 @@ const CSS = `
     grid-template-areas:"title mode" "theme layout" "log highlights" "position ."; }
 .sce .sce-status-settings-grid.is-template {
     grid-template-areas:"title mode" "theme log" "highlights highlights" "position ."; }
+.sce .sce-status-field-theme { padding-top:10px; border-top:1px solid var(--sce-line); } /* 둘째 줄로 내려오면 선 (v1.9.3) */
 .sce .sce-asset-pack-settings { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .sce .sce-asset-pack-settings > div > * { grid-column:auto !important; grid-row:auto !important; }
 }
@@ -15045,6 +15071,7 @@ const CSS = `
 .sce .sce-status-settings-grid, .sce .sce-status-settings-grid.is-template { grid-template-areas:none; }
 .sce .sce-status-field-title, .sce .sce-status-field-mode, .sce .sce-status-field-theme, .sce .sce-status-field-layout, .sce .sce-status-field-log, .sce .sce-status-field-highlights {
     grid-area:auto; grid-column:auto; grid-row:auto; }
+.sce .sce-status-field-mode, .sce .sce-status-field-theme { padding-top:10px; border-top:1px solid var(--sce-line); }
 .sce .sce-status-section-head, .sce .sce-status-group-head { align-items:stretch; flex-direction:column; }
 .sce .sce-status-section-actions, .sce .sce-status-group-actions { justify-content:flex-start; }
 .sce .sce-status-conditional-head { grid-template-columns:1fr; align-items:stretch; }
@@ -19601,7 +19628,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-status-theme-preview-row' },
         h('span', {}, '호감도'), h('i', { class: 'sce-status-theme-preview-bar' }), h('b', {}, '72')),
       h('div', { class: 'sce-status-theme-preview-copy' }, themeInfo[themeKey].copy));
-    const themeControl = h('div', { class: 'sce-status-theme-control' }, themeSelect);
     const collapsibleControl = bindCheck(ui.collapsible !== false,
       (x) => { ui.collapsible = x; rerender(); }, '플레이어 접기 허용');
     collapsibleControl.classList.add('sce-status-options-toggle');
@@ -19618,7 +19644,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['auto', '그룹으로 구성 (권장)'], ['template', 'HTML 직접 작성 (고급)'],
       ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
       '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다.', 'sce-status-field-mode'),
-      statusField('기본 테마', themeControl, '', 'sce-status-field-theme'),
+      statusField('기본 테마', themeSelect, '', 'sce-status-field-theme'), // 래퍼 없이 — 형제 칸과 같은 40px (v1.9.3)
       statusField('상태창 출력 위치', bindSelect(ui.position ?? 'bottom', [
         ['bottom', '최하단 — 답변 뒤에 표시 (기본)'],
         ['top', '최상단 — 답변보다 먼저 표시'],

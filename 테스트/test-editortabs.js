@@ -225,6 +225,17 @@ if (ed) {
   ck('★ 손잡이 자리는 고정 폭 격자 열이 아니다 (없어도 안 찌그러진다)',
     /display:flex/.test(rule) && !/grid-template-columns/.test(rule), rule.replace(/\s+/g, ' ').trim());
 
+  // ── v1.9.3 상태창 탭·달력 탭 실기 제보 셋 ──
+  // 기본 테마 칸만 선이 하나 더 + 높이 틀어짐 / 테마 카드가 안 바뀜 / 달력 날짜 메모 칸이 세로로 늘어남
+  ck('★ 첫 줄 세 칸(제목·구성·테마) 모두 윗선 없음', /\.sce-status-field-title, \.sce \.sce-status-field-mode, \.sce \.sce-status-field-theme \{ padding-top:0; border-top:0; \}/.test(css), '');
+  ck('좁은 폭(2열)에선 테마 칸이 둘째 줄이라 선을 돌려준다', (css.match(/\.sce-status-field-theme \{ padding-top:10px; border-top:1px solid var\(--sce-line\); \}/g) || []).length >= 2, '');
+  ck('한 기둥에선 구성·테마 칸도 선', /\.sce-status-field-mode, \.sce \.sce-status-field-theme \{ padding-top:10px; border-top:1px solid/.test(css), '');
+  ck('테마 셀렉트에 래퍼 없음 (형제 칸과 같은 40px 규칙을 받는다)', !css.includes('sce-status-theme-control') && !src.includes('sce-status-theme-control'), '');
+  for (const t of ['parchment', 'terminal', 'card']) {
+    ck(`★ 테마 카드 CSS — is-${t} (라벨만 바뀌고 카드는 그대로였다)`, css.includes(`.sce .sce-status-theme-preview.is-${t} {`) && css.includes(`.sce-status-theme-preview.is-${t} .sce-status-theme-preview-bar::after`), '');
+  }
+  ck('★ 달력 칸은 align-content:start (셀이 늘어나도 입력 줄은 제 높이)', /\.sce \.sce-calendar-field \{[^}]*align-content:start/.test(css), '');
+
   // 폭 층은 두 개까지 — 패널폭 → 작업폭. 카드 안에 세 번째 숫자를 박으면 전부 어긋나 보인다.
   ck('★ 카드 안쪽은 카드 폭을 따른다 (세 번째 폭 층 없음)',
     /--sce-variable-work-width:100%/.test(css), (css.match(/--sce-variable-work-width:[^;]*/) || ['없음'])[0]);

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.1
-//@display-name SimCore (시뮬 엔진) v1.9.1 AI 어시스턴트 안에서 템플릿 열기
+//@version 1.9.2
+//@display-name SimCore (시뮬 엔진) v1.9.2 대화 말풍선에서 추론 블록 제거
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.2 ───────────────────────────────────────────────
+// **💬 대화 말풍선에 제미니 추론 블록이 샌다** (실기: 첫 답이 "<Thoughts>**Testing SimCore Connection**…</Thoughts>네, 잘
+// 들립니다!"). 직결 호출(runLLMModel)은 채팅 화면의 후처리를 안 거쳐 <Thoughts>·<thinking>·<think>·<reasoning> 블록이
+// 본문에 그대로 온다 — splitChatResponse 앞에서 뗀다(말풍선·이력 둘 다). 같은 실기에서 설계 문서 미결 ①(이력 배열이
+// 메인 경로로 통과, assistant 역할 수용)이 제미니 메인 모델로 확인됐다.
 //
 // ── v1.9.1 ───────────────────────────────────────────────
 // **AI 어시스턴트 안에서 템플릿 열기.** 실기 제보: 대화는 1층 AI 어시스턴트에 있는데 템플릿은 [편집 작업공간 → 템플릿에서

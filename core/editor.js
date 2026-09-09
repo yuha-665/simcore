@@ -4282,9 +4282,16 @@ function chatHistoryMessages(msgs, opts = {}) {
   return out;
 }
 
+/** 추론 블록 떼기 (v1.9.2) — 직결 호출은 리수의 후처리를 안 거쳐 제미니의 <Thoughts>…</Thoughts>가 본문에 그대로 온다
+ *  (실기 제보). 말풍선·이력에서 뗀다. 닫힘 없는 여는 태그 하나만 있으면 그대로 둔다(본문을 통째 먹지 않게). */
+const THOUGHT_TAG_RE = /<(thoughts?|thinking|think|reasoning)>[\s\S]*?<\/\1>\s*/gi;
+function stripThoughts(raw) {
+  return String(raw ?? '').replace(THOUGHT_TAG_RE, '').trim();
+}
+
 /** 응답을 사람 말 + JSON(마지막 ```json 펜스, 없으면 통째 JSON)으로 가른다 */
 function splitChatResponse(raw) {
-  const text = String(raw ?? '').trim();
+  const text = stripThoughts(raw);
   const re = /```(?:json|JSON)?[ \t]*\r?\n?([\s\S]*?)```/g;
   let m, last = null;
   while ((m = re.exec(text))) {

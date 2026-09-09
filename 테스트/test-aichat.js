@@ -98,6 +98,15 @@ ck('실험대 스키마 유효', validateSchema(BASE).ok, validateSchema(BASE).e
   ck('태그 없는 펜스도, 앞뒤 산문은 합쳐진다', r3.json === '{"a":1}' && r3.prose === '앞말\n뒷말', JSON.stringify(r3));
   const r4 = S('예시는 이렇고\n```json\n{"x":1}\n```\n실제는 이것\n```json\n{"y":2}\n```');
   ck('★ 여러 펜스면 마지막 것', r4.json === '{"y":2}' && r4.prose.includes('{"x":1}'), JSON.stringify(r4));
+  // v1.9.2 — 제미니 직결 호출은 추론 블록이 본문에 실려 온다 (실기: "<Thoughts>**Testing SimCore Connection** …</Thoughts>네, 잘 들립니다!")
+  const t5 = S('<Thoughts>\n\n**Testing SimCore Connection**\n\nI am verifying.\n\n</Thoughts>\n\n네, 잘 들립니다!');
+  ck('★ <Thoughts> 블록은 말풍선에서 뗀다', t5.prose === '네, 잘 들립니다!' && t5.json === null, JSON.stringify(t5));
+  const t6 = S('<thinking>plan</thinking>\n산적을 넣었어요.\n\n```json\n{"patchVersion":1,"add":{}}\n```');
+  ck('<thinking> 뗀 뒤에도 산문·JSON 분리 그대로', t6.prose === '산적을 넣었어요.' && t6.json === '{"patchVersion":1,"add":{}}', JSON.stringify(t6));
+  const t7 = S('<think>a</think><think>b</think>둘 다 뗌');
+  ck('여러 블록도 전부', t7.prose === '둘 다 뗌', JSON.stringify(t7));
+  const t8 = S('<Thoughts>닫히지 않은 태그 — 본문을 통째 먹지 않는다');
+  ck('닫힘 없는 여는 태그는 그대로 둔다', t8.prose.includes('닫히지 않은'), JSON.stringify(t8));
   const r5 = S('식은 이렇게\n```js\ngold + 1\n```');
   ck('{로 안 시작하는 펜스(코드 예시)는 산문', r5.json === null && r5.prose.includes('gold + 1'), '');
   const r6 = S('{"patchVersion":1}');

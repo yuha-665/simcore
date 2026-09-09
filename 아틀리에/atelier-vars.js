@@ -755,6 +755,12 @@ const S = {
       id, label: `${short} 숙련`, type: 'int', init: 0, min: 0, max: 100,
       desc: `${label} 분야를 얼마나 손에 익혔나. 조합할 때마다 시스템이 올린다.`,
     })),
+    // 전투 숙련 (2026-09-09, 유저: "무기숙련 부분을 하나 추가하면 적당하지 않을까") — 페르소나가 검사·기사여도 교전 판정은
+    // 폭탄·명성·체력만 읽어 "폭탄 없는 연금술사"로 굴렀다 (들개 무리에 맞아 죽을 뻔한 실기). 비전 숙련은 마법이 아니라
+    // 최상위 조합 분야라 마법사 페르소나도 기댈 데가 없었다 — 검·활·주먹·공격 마법을 통틀어 "몸으로 싸우는 솜씨" 하나.
+    // 첫 장면(setup.ai)에서 페르소나 시트로 정하고, 그 뒤엔 교전 판정만 올린다 (분야 숙련과 같은 규약 — allow 금지).
+    { id: 'sk_fight', label: '전투 숙련', type: 'int', init: 0, min: 0, max: 100,
+      desc: '몸으로 싸우는 솜씨 — 검·활·주먹·공격 마법을 통틀어. 첫 장면에서 페르소나 시트로 정해지고, 그 뒤엔 교전 판정이 올린다. 직접 고치지 마라.' },
     { id: 'last_quality', label: '직전 조합 품질', type: 'enum', enum: ['—', '걸작', '상품', '보통', '조잡', '실패'], init: '—',
       desc: '판정이 세운다. 직접 고치지 마라. 납품 판정에 얹힌다 (걸작 +4 · 상품 +2 · 조잡 -3 · 실패 -5) — 납품할 물건을 마지막에 만들면 그대로 반영된다.' },
     { id: 'foe_tier', label: '상대의 격', type: 'int', init: 1, min: 1, max: 5,
@@ -1561,14 +1567,15 @@ const S = {
 
     { id: 'battle', label: '교전',
       roll: 'rand(1, 20)',
-      mod: 'floor(renown / 80) + min(bombs, 3) + (stamina < 30 and bath_until <= elapsed ? -3 : 0)',
+      // 전투 숙련 20마다 +1 (만숙 +5) — 폭탄 3개와 같은 무게. 얼헌의 "주 스탯 10마다 +1"과 같은 자리
+      mod: 'floor(sk_fight / 20) + floor(renown / 80) + min(bombs, 3) + (stamina < 30 and bath_until <= elapsed ? -3 : 0)',
       vs: '10 + foe_tier * 2',
       fight: {
         gauge: '25 + foe_tier * 20',
         reply: 'guard',
         foe: '{foe_name}',
         idleTurns: 8,
-        rule: '연금술사의 싸움이다 — 검이 아니라 준비한 물건과 지형으로 푼다. 던진 폭탄은 개수에서 뺀다.',
+        rule: '준비한 물건·지형·몸에 익은 기술로 푼다 — 전투 숙련({sk_fight})이 낮으면 물건과 지형이, 높으면 기술이 앞선다. 던진 폭탄은 개수에서 뺀다.',
         win: {
           effects: [{ set: 'renown', expr: 'renown + 5' }],
           inject: '결착이다. 쓰러뜨렸거나 물러가게 했다. 몬스터 소재를 얻었다면 무엇인지 명시하고 목록에 올려라.',
@@ -1584,9 +1591,9 @@ const S = {
         ],
       },
       grades: [
-        { when: 'total >= vs + 8', label: '정확히 먹혔다', gain: 22,
+        { when: 'total >= vs + 8', label: '정확히 먹혔다', gain: 22, effects: [{ set: 'sk_fight', expr: 'min(sk_fight + 2, 100)' }],
           inject: '노린 곳에 정확히 들어갔다.' },
-        { when: 'total >= vs', label: '통했다', gain: 14,
+        { when: 'total >= vs', label: '통했다', gain: 14, effects: [{ set: 'sk_fight', expr: 'min(sk_fight + 1, 100)' }],
           inject: '유효타다. 상대가 흔들린다.' },
         { when: 'total >= vs - 4', label: '스쳤다', gain: 6,
           inject: '얕게 들어갔다. 판을 뒤집을 정도는 아니다.' },
@@ -1595,7 +1602,7 @@ const S = {
       ] },
 
     { id: 'guard', label: '대응',
-      roll: 'rand(1, 20)', mod: 'floor(stamina / 20)', vs: '10 + foe_tier * 2',
+      roll: 'rand(1, 20)', mod: 'floor(stamina / 20) + floor(sk_fight / 25)', vs: '10 + foe_tier * 2',
       grades: [
         { when: 'total >= vs + 5', label: '회피', inject: '완전히 피했다.' },
         { when: 'total >= vs', label: '스침', effects: [{ set: 'stamina', expr: 'stamina - 6' }],
@@ -1653,7 +1660,7 @@ const S = {
       '여기 가게: {shops_here} · 시세 {market_state} · 재해 {disaster}',
       '의뢰({quest_slot} 남음): {quests}',
       '도구: {tools} · 동행: {allies} · 단서 {clues} · 아는 채집지: {areas}',
-      '숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane}',
+      '숙련: 폭탄 {sk_bomb} · 약품 {sk_med} · 중간재 {sk_mat} · 도구 {sk_tool} · 음식 {sk_food} · 비전 {sk_arcane} · 전투 {sk_fight}',
     ].join('\n'),
     systemGuide: '수치·소지품·날짜는 시스템이 관리한다 — 임의로 지어내거나 되풀이해 적지 마라. '
       + '지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라. 장면을 넘길지는 유저가 정한다.',
@@ -2002,14 +2009,15 @@ const S = {
     ],
     ai: {
       enabled: true,
-      vars: ['placed', 'atelier_name', 'atelier_place', 'mentor', 'origin', 'location', 'allies', 'recipes', 'tools', 'materials'],
+      vars: ['placed', 'atelier_name', 'atelier_place', 'mentor', 'origin', 'location', 'allies', 'recipes', 'tools', 'materials', 'sk_fight'],
       instruction: '[첫 장면] 지금 응답이 이 판의 시작이다. **도입부가 놓은 자리와 시간에서 그대로 이어라** — 장소를 옮기거나 시간을 건너뛰지 마라. '
         + '함께 있는 사람들(동행)은 도입부에서 읽는다. 공방·스승은 이 장면이 정하는 만큼만 — 동행이 "빈 공방을 안다"고 하거나 데려가겠다고 하는 식으로 '
         + '**앞으로 어디에 자리 잡을지**가 장면 안에서 정해지면 충분하고, 지금 거기 있는 것처럼 쓰지 마라. '
         + '목록으로 나열하거나 설정을 설명하지 말고, 장면으로 보여 준 뒤 거기서 멈춰라.',
       guide: 'origin은 함께 시작한 인물이 어느 아틀리에 계열인지로 고른다 (란타르나 본편 인물뿐이면 "란타르나"). '
         + 'location은 첫 장면이 끝난 자리의 지형 — 공방 안에 있을 때만 "공방"이다 (아직 안 갔으면 절대 "공방"이 아니다). '
-        + '공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다. placed는 첫 장면이 끝났으니 항상 true.',
+        + '공방 이름·자리·스승은 장면에서 정해진 것만 적고, 안 나온 것은 기본값을 둔다. placed는 첫 장면이 끝났으니 항상 true. '
+        + 'sk_fight는 페르소나 시트의 싸우는 솜씨로 — 전투 직업(검사·기사·헌터·전투 마법사) 40~60, 싸울 줄 아는 정도 15~30, 비전투 0~10.',
     },
   },
 
@@ -2190,6 +2198,33 @@ console.log('\n━━ 전투 — 결착은 게이지에서만 ━━');
   ok('교전 중 채집 버튼은 잠긴다', !canAct(f, 'act_gather'), '');
 }
 
+console.log('\n━━ 전투 숙련 — 페르소나가 싸울 줄 알면 숫자에도 든다 ━━');
+{
+  const expr = SC.require('expr');
+  const battle = S.checks.find((c) => c.id === 'battle'), guard = S.checks.find((c) => c.id === 'guard');
+  const modOf = (chk, vars) => Number(expr.evaluate(chk.mod, look({ vars: { ...fresh().vars, ...vars } }), null));
+  ok('교전 보정: 숙련 0 = 0 · 60 = +3 · 100 = +5', modOf(battle, { sk_fight: 0 }) === 0 && modOf(battle, { sk_fight: 60 }) === 3 && modOf(battle, { sk_fight: 100 }) === 5,
+    [0, 60, 100].map((n) => modOf(battle, { sk_fight: n })).join(','));
+  ok('대응 보정: 체력 100 + 숙련 100 = +9 (5 + 4)', modOf(guard, { stamina: 100, sk_fight: 100 }) === 9, String(modOf(guard, { stamina: 100, sk_fight: 100 })));
+  ok('교전 규칙 문구가 숙련을 읽는다 (검사 페르소나와 안 어긋난다)', battle.fight.rule.includes('{sk_fight}') && !battle.fight.rule.includes('검이 아니라'), battle.fight.rule);
+  ok('첫 장면(setup.ai)이 페르소나 시트로 sk_fight를 정한다', S.setup.ai.vars.includes('sk_fight') && S.setup.ai.guide.includes('sk_fight'), '');
+  const r0 = engine.setupPhase(S, engine.initState(S), { placed: true, location: '왕도', sk_fight: 55 }, {});
+  ok('setup에서 55로 잡힌다', r0.state.vars.sk_fight === 55, String(r0.state.vars.sk_fight));
+  // 라운드를 굴려 유효타가 숙련을 올린다 (시드를 훑어 통했다 이상이 나온 라운드를 잡는다)
+  let grew = false, tried = 0;
+  for (let i = 0; i < 40 && !grew; i++) {
+    let t = fresh(); t.vars.foe_tier = 1; t.vars.foe_name = '들개'; t.vars.sk_fight = 10;
+    t = engine.toggleAction(S, t, 'act_fight').state;
+    const r = turn(t, {}, 300 + i); tried++;
+    const g = r.st.meta.lastCheck?.grade;
+    if (g === '통했다' || g === '정확히 먹혔다') grew = r.st.vars.sk_fight > 10;
+  }
+  ok('유효타(통했다·정확히)가 전투 숙련을 올린다', grew, `${tried}라운드 훑음`);
+  const rt = turn((() => { let t = fresh(); t.vars.foe_tier = 1; t.vars.sk_fight = 0; return engine.toggleAction(S, t, 'act_fight').state; })(), { sk_fight: 90 }, 7);
+  ok('보조가 전투 숙련을 못 올린다 (판정 산물)', rt.st.vars.sk_fight < 90, String(rt.st.vars.sk_fight));
+  ok('상태 블록 숙련 줄에 전투', S.promptState.template.includes('전투 {sk_fight}'), '');
+}
+
 console.log('\n━━ 최초설정 (세션 0) — 첫 응답이 공방을 정한다 ━━');
 {
   const t0 = engine.initState(S);
@@ -2233,7 +2268,7 @@ console.log('\n━━ 허용 경계 (잠근 것은 잠겨 있나) ━━');
 {
   const t = fresh();
   const locked = ['cauldron', 'library', 'storage', 'garden', 'harvest_due', 'display', 'shelf_prev', 'shelf_sold', 'fest_seen', 'market_state', 'market_until', 'disaster', 'disaster_until', 'clues', 'last_quality', 'sales_month', 'tax_arrears', 'tax_seen',
-    'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin',
+    'quest_n', 'quest_lost', 'atelier_name', 'atelier_place', 'mentor', 'origin', 'sk_fight',
     ...CATS.map(([, id]) => id)];
   const allowed = new Set(S.updater.allow.map((a) => a.id));
   ok('설비·판정 산물·카운터·정체성은 allow 밖', locked.every((id) => !allowed.has(id)),

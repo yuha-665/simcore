@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.6
-//@display-name SimCore (시뮬 엔진) v1.9.6 대화 탭 스크롤 보존 · 어시스턴트에 편집기 지도
+//@version 1.9.7
+//@display-name SimCore (시뮬 엔진) v1.9.7 작업 내역 — 적용한 변경이 캐릭터에 남는다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.7 ───────────────────────────────────────────────
+// **🗂 작업 내역** — 유저 결정(2026-09-10): 대화를 통째 남기지 않고 "적용한 변경"만 정리해 보관. 적용 시점(패치·통짜, 창작·대화·
+// JSON 어느 길이든)에 언제·어느 통로·요청 한 줄·이유 한 줄(어시스턴트가 JSON 앞에 쓴 산문 첫 문장)·결과 요약·바뀐 id를 한 줄로
+// 남긴다. 되돌리면 지우지 않고 표식. 캐릭터별 pluginStorage(sim:worklog:<chaId>), 최근 50건. 1층 창작·대화 탭에 접이 카드
+// (내역 비우기는 두 번 누르기). 대화 시스템 프롬프트 끝에 최근 10건이 한 줄씩 실려 편집기를 다시 열어도 어시스턴트가
+// "어제 한 것"을 알고 시작한다 (매 턴 수백 토큰). 패치 원문은 안 남긴다 — 작업본에 이미 있다. test-aichat ⑩.
 //
 // ── v1.9.6 ───────────────────────────────────────────────
 // 대화형 어시스턴트 실기 피드백 둘 (2026-09-10, 커뮤니티 유저).
@@ -7807,6 +7814,16 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        // 작업 내역 (v1.9.7) — 캐릭터별 pluginStorage(기기 로컬). 편집기는 리수를 모르니 읽기·쓰기만 준다.
+        // 대화는 안 남긴다 — 적용된 변경의 요약만 (유저 결정 2026-09-10).
+        loadWorkLog: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:worklog:${currentChaId}`); const l = raw ? JSON.parse(raw) : []; return Array.isArray(l) ? l : []; }
+          catch { return []; }
+        },
+        saveWorkLog: async (list) => {
+          try { await Risuai.pluginStorage.setItem(`sim:worklog:${currentChaId}`, JSON.stringify(list || [])); }
+          catch (e) { console.log('[simcore] 작업 내역 저장 실패:', e.message); }
+        },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },
         // 출처 구성·모듈 접근 실패 사유까지 — "왜 0개인가"를 편집기가 말할 수 있게 (v0.54.4).

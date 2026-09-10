@@ -608,6 +608,18 @@ const CSS = `
 .sce .sce-chat-input { width:100% !important; min-height:72px !important; font-family:inherit; line-height:1.6; }
 .sce .sce-chat-input-actions { display:flex; align-items:center; gap:8px; }
 .sce .sce-chat-input-actions .sce-ai-action-hint { margin-left:auto; }
+/* 작업 내역 (v1.9.7) */
+.sce .sce-worklog { margin:10px 0; }
+.sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
+.sce .sce-worklog-item { padding:7px 0; border-top:1px dashed var(--sce-line); font-size:12.5px; }
+.sce .sce-worklog-item.is-undone { opacity:.6; }
+.sce .sce-worklog-head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.sce .sce-worklog-when, .sce .sce-worklog-via { color:var(--sce-muted); font-size:11.5px; font-family:ui-monospace,Consolas,monospace; }
+.sce .sce-worklog-via { padding:0 6px; border:1px solid var(--sce-line); border-radius:8px; }
+.sce .sce-worklog-undone { color:var(--sce-warning); font-size:11.5px; }
+.sce .sce-worklog-req { margin-top:2px; color:var(--sce-text); }
+.sce .sce-worklog-why { margin-top:2px; color:var(--sce-muted); }
+.sce .sce-worklog-ids { margin-top:2px; color:var(--sce-muted); font-size:11.5px; font-family:ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
 /* 템플릿에서 시작 — 1층 창작·대화 (v1.9.1) */
 .sce .sce-tpl-card { margin:10px 0; height:auto; }
 .sce .sce-tpl-card > .sce-hint { margin:0 0 8px; }
@@ -4263,13 +4275,45 @@ function chatRules(blank) {
   ];
 }
 
-/** 대화 시스템 프롬프트 — 규약 + 기존 규격서(통짜/패치, 대화용 꼬리) + 우선순위 한 줄. 매 턴 새로 조립한다 */
-function buildChatSystemPrompt(schema, botCtxText) {
+// ── 작업 내역 (v1.9.7) — 대화가 아니라 "무엇을 왜 바꿨나"만 남긴다 ──
+// 유저 결정(2026-09-10): "무조건 다 남겨야 하나 — 편집기를 닫아도 남길 건 작업 내역을 따로 정리해서 보관하면 될 것 같다".
+// 적용 시점에 이미 만들어지는 요약(추가·교체·삭제)에 요청 한 줄·이유 한 줄(어시스턴트가 JSON 앞에 쓴 산문의 첫 문장)을 붙여
+// 캐릭터별로 남긴다 (어댑터 ai.loadWorkLog/saveWorkLog — 코어는 리수를 모른다). 패치 원문은 안 남긴다(작업본에 이미 있다).
+// 대화 탭 시스템 프롬프트 끝에 최근 10건이 한 줄씩 실려, 편집기를 다시 열어도 어시스턴트가 "어제 한 것"을 알고 시작한다.
+const WORKLOG_MAX = 50;
+const WORKLOG_PROMPT_N = 10;
+const WORKLOG_VIA = { chat: '대화', make: '창작', json: 'JSON', full: '통짜' };
+function clipText(v, n) { const t = String(v ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+function workLogStamp(ts) {
+  const d = new Date(Number(ts) || 0);
+  const p = (x) => String(x).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+/** 저장소에서 온 것을 믿지 않는다 — 모양을 맞추고 상한을 자른다 */
+function sanitizeWorkLog(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((e) => e && typeof e === 'object').slice(0, WORKLOG_MAX).map((e) => ({
+    ts: Number(e.ts) || 0, via: WORKLOG_VIA[e.via] ? e.via : 'json',
+    req: clipText(e.req, 160), why: clipText(e.why, 200), sum: clipText(e.sum, 200),
+    ids: Array.isArray(e.ids) ? e.ids.slice(0, 40).map((x) => String(x)) : [], undone: e.undone === true,
+  }));
+}
+/** 대화 시스템 프롬프트 꼬리 — 최근 n건 한 줄씩 (되돌린 것은 표식). 없으면 빈 문자열 */
+function workLogPromptText(list, n = WORKLOG_PROMPT_N) {
+  const rows = sanitizeWorkLog(list).slice(0, n);
+  if (!rows.length) return '';
+  return ['', '## 이 봇에 지금까지 한 작업 (새것부터 — 대화 이력이 아니라 적용된 변경의 요약입니다. 사용자가 "아까·전에 한 것"을 말하면 여기를 근거로)',
+    ...rows.map((e) => `- ${workLogStamp(e.ts)} [${WORKLOG_VIA[e.via]}]${e.undone ? ' (되돌림)' : ''} ${e.req ? '"' + e.req + '" → ' : ''}${e.sum}${e.ids.length ? ' (' + e.ids.join(', ') + ')' : ''}${e.why ? ' — ' + e.why : ''}`),
+  ].join('\n');
+}
+
+/** 대화 시스템 프롬프트 — 규약 + 기존 규격서(통짜/패치, 대화용 꼬리) + 작업 내역 꼬리. 매 턴 새로 조립한다 */
+function buildChatSystemPrompt(schema, botCtxText, workLog = null) {
   const blank = schemaIsBlank(schema);
   const spec = blank
     ? buildSchemaSpecPrompt('business', true, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true })
     : buildPatchExportPrompt(schema, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true });
-  return chatRules(blank).join('\n') + '\n' + spec;
+  return chatRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
 }
 
 /**
@@ -11241,6 +11285,27 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 템플릿에서 시작 (v1.9.1) — 1층 창작·대화 탭 안에서도 내장 템플릿을 연다. 패널의 [편집 작업공간 → 템플릿에서 시작]과 같은 일.
   // 실기 제보: "대화는 AI 어시스턴트에 있는데 템플릿은 다른 메뉴라 찾기 불편하다" + 빈 작업본은 통짜 규격서(42K)가 나가고
   // 빈 템플릿만 열어도 패치 경로(8.6K)로 떨어진다 — 대화로 새 봇을 만들 때 첫 수가 템플릿이어야 싸다.
+  // 작업 내역 (v1.9.7) — 적용된 변경의 영수증. 어댑터가 캐릭터별로 저장(ai.loadWorkLog/saveWorkLog); 없으면 이 인스턴스에만
+  let workLog = [];
+  let lastWorkEntry = null;   // 되돌리기가 표식을 남길 자리
+  let workLogClearArm = false;
+  const workLogPersist = () => { if (ai && typeof ai.saveWorkLog === 'function') { try { Promise.resolve(ai.saveWorkLog(workLog)).catch(() => {}); } catch { /* 방어 */ } } };
+  function recordWork(entry) {
+    const e = sanitizeWorkLog([{ ts: Date.now(), ...entry }])[0];
+    if (!e) return;
+    workLog.unshift(e);
+    if (workLog.length > WORKLOG_MAX) workLog.length = WORKLOG_MAX;
+    lastWorkEntry = e;
+    workLogPersist();
+  }
+  function markWorkUndone() { if (lastWorkEntry && workLog.includes(lastWorkEntry)) { lastWorkEntry.undone = true; workLogPersist(); } lastWorkEntry = null; }
+  const lastChatUserText = () => { for (let i = chat.msgs.length - 1; i >= 0; i--) if (chat.msgs[i].role === 'user') return chat.msgs[i].text; return ''; };
+  const lastChatAiWhy = () => { for (let i = chat.msgs.length - 1; i >= 0; i--) if (chat.msgs[i].role === 'ai') return String(chat.msgs[i].text || '').split('\n').map((l) => l.trim()).find(Boolean) || ''; return ''; };
+  if (ai && typeof ai.loadWorkLog === 'function') {
+    try {
+      Promise.resolve(ai.loadWorkLog()).then((list) => { if (destroyed) return; workLog = sanitizeWorkLog(list); if (workLog.length) render(); }).catch(() => {});
+    } catch { /* 방어 */ }
+  }
   let startTplPick = 'blank';
   let startTplArm = false; // 작업본이 있을 때 덮어쓰기는 두 번 누르기 (규칙 #6: 패널 위 confirm 금지)
   /** 계획 상자에 떠 있던 대화 패치가 사라졌으면(취소·다른 경로가 덮음) 그 메시지를 "적용 안 됨"으로 */
@@ -11732,6 +11797,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             schema = aiFull.schema;
             aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}. 아래층 탭에서 세부를 다듬을 수 있습니다.`;
             if (patchSource === 'chat') chatMarkApplied(summary);
+            recordWork({ via: patchSource === 'chat' ? 'chat' : 'full', req: patchSource === 'chat' ? lastChatUserText() : aiReq,
+              why: patchSource === 'chat' ? lastChatAiWhy() : '', sum: '작업본 통째 반영 — ' + summary, ids: [] }); // 작업 내역 (v1.9.7)
             aiFull = null;
             lowerOpen = true; // 무엇이 생겼는지 바로 보이게
             rerender();
@@ -11744,7 +11811,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', {}, aiFullReport),
         h('div', { class: 'sce-row' },
           patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
-            schema = patchBackup; patchBackup = null; aiFullReport = null; rerender();
+            schema = patchBackup; patchBackup = null; aiFullReport = null; markWorkUndone(); rerender();
           } }, '↩ 되돌리기 (반영 전으로)') : null,
           h('button', { class: 'sce-btn', onclick: () => { aiFullReport = null; rerender(); } }, '확인'),
         )));
@@ -11771,7 +11838,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (chat.seq !== mySeq || destroyed) return;
 
     const blank = schemaIsBlank(schema);
-    const system = buildChatSystemPrompt(schema, ctxText);
+    const system = buildChatSystemPrompt(schema, ctxText, workLog);
     const messages = [...chatHistoryMessages(chat.msgs.slice(0, -1)), { role: 'user', content: text }];
     chat.sent += chatTurnEstimate(system, messages);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
@@ -11839,6 +11906,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
   }
 
+  /** 🗂 작업 내역 카드 (v1.9.7) — 적용한 것만, 새것부터. 저장 통로가 없고(플레이그라운드) 내역도 없으면 안 그린다 */
+  function workLogBlock() {
+    const canStore = !!(ai && typeof ai.loadWorkLog === 'function');
+    if (!canStore && !workLog.length) return null;
+    const items = workLog.map((e) => h('div', { class: 'sce-worklog-item' + (e.undone ? ' is-undone' : '') },
+      h('div', { class: 'sce-worklog-head' },
+        h('span', { class: 'sce-worklog-when' }, workLogStamp(e.ts)),
+        h('span', { class: 'sce-worklog-via' }, WORKLOG_VIA[e.via]),
+        h('b', {}, e.sum), e.undone ? h('span', { class: 'sce-worklog-undone' }, '되돌림') : null),
+      e.req ? h('div', { class: 'sce-worklog-req' }, '"' + e.req + '"') : null,
+      e.why ? h('div', { class: 'sce-worklog-why' }, e.why) : null,
+      e.ids.length ? h('div', { class: 'sce-worklog-ids' }, e.ids.join(' · ')) : null));
+    const clearBtn = h('button', { class: 'sce-btn sce-mini' + (workLogClearArm ? ' sce-danger' : ''), onclick: () => {
+      if (!workLogClearArm) { workLogClearArm = true; clearBtn.textContent = '한 번 더 누르면 내역을 지워요'; clearBtn.classList.add('sce-danger'); return; }
+      workLog = []; lastWorkEntry = null; workLogClearArm = false; workLogPersist(); rerender();
+    } }, workLogClearArm ? '한 번 더 누르면 내역을 지워요' : '내역 비우기');
+    return h('details', { class: 'sce-fold sce-worklog' },
+      h('summary', {}, `🗂 작업 내역 ${workLog.length}건 — 이 캐릭터에 지금까지 적용한 변경`),
+      h('div', { class: 'sce-hint' }, canStore
+        ? '적용한 것만 남아요. 대화는 편집기를 닫으면 사라지지만 이 내역은 캐릭터에 남고, 대화 탭의 어시스턴트가 최근 10건을 알고 시작해요.'
+        : '이 환경엔 저장 통로가 없어 편집기를 닫으면 사라져요.'),
+      ...(items.length ? items : [h('div', { class: 'sce-hint' }, '아직 없어요 — 창작·대화·JSON 어느 길로든 적용하면 여기 쌓여요.')]),
+      items.length ? h('div', { class: 'sce-row' }, clearBtn) : null);
+  }
+
   /** 템플릿에서 시작 — 빈 작업본이면 카드로 바로, 작업본이 있으면 접힌 칸(덮어쓰기라 두 번 누르기) */
   function templateStartBlock(where) {
     const blank = schemaIsBlank(schema);
@@ -11880,6 +11972,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       '규격서와 지금 작업본을 든 채 대화해요. 심코어 구조를 묻거나 설계를 논의할 수 있고, 바꾸기로 하면 수정안이 아래 변경 계획으로 와요 — '
       + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요.'));
     box.appendChild(templateStartBlock('chat'));
+    { const wl = workLogBlock(); if (wl) box.appendChild(wl); }
 
     // 설정 — 모델(메인급 권장) + 전송 정보(캐릭터 동봉·토큰 추정)
     const grid = h('div', { class: 'sce-ai-settings-grid' });
@@ -11901,7 +11994,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       meter.replaceChildren();
       if (baseTok == null) {
         const ctxText = aiCtxOn && aiBotCtx ? assembleBotContext(aiBotCtx).text : '';
-        baseTok = chatTurnEstimate(buildChatSystemPrompt(schema, ctxText), chatHistoryMessages(chat.msgs));
+        baseTok = chatTurnEstimate(buildChatSystemPrompt(schema, ctxText, workLog), chatHistoryMessages(chat.msgs));
       }
       meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(chat.draft)).toLocaleString()} 토큰`));
       meter.appendChild(h('span', {}, `이 대화 누적 보낸 약 ${chat.sent.toLocaleString()} · 받은 약 ${chat.got.toLocaleString()}`));
@@ -12120,6 +12213,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!blank) box.appendChild(featureBox());
 
     box.appendChild(templateStartBlock('make'));
+    { const wl = workLogBlock(); if (wl) box.appendChild(wl); }
     box.appendChild(h('div', { class: 'sce-hint' },
       blank
         ? '아직 작업본이 없어요. 원하는 내용을 입력한 뒤 [작업본 생성]을 눌러 주세요. AI가 전체 작업본을 만들어요. 위의 템플릿을 먼저 열고 고쳐 나가도 돼요.'
@@ -12519,6 +12613,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             chatMarkApplied([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
               .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음');
           }
+          { // 작업 내역 (v1.9.7) — 통로가 무엇이든 적용된 것은 남긴다
+            const a = r.applied;
+            recordWork({ via: patchSource === 'chat' ? 'chat' : patchSource === 'top' ? 'make' : 'json',
+              req: patchSource === 'chat' ? lastChatUserText() : patchSource === 'top' ? aiReq : '',
+              why: patchSource === 'chat' ? lastChatAiWhy() : '',
+              sum: [['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(' · ') || '변화 없음',
+              ids: [...a.added, ...a.updated, ...a.removed] });
+          }
           patchText = ''; patchPlan = null; patchChoices = {};
           schema = r.schema;
           rerender();
@@ -12549,7 +12651,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : repWarns),
       h('div', { class: 'sce-row' },
         patchBackup ? h('button', { class: 'sce-btn', onclick: () => {
-          schema = patchBackup; patchBackup = null; patchReport = null; rerender();
+          schema = patchBackup; patchBackup = null; patchReport = null; markWorkUndone(); rerender();
         } }, '적용 전으로 되돌리기') : null,
         h('button', { class: 'sce-btn', onclick: () => { patchReport = null; rerender(); } }, '확인'),
       ));

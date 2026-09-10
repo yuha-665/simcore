@@ -14,7 +14,7 @@ const { TEMPLATES } = SC.require('templates');
 const { estTokens } = SC.require('editor');
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
 const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig', 'estTokens',
-  seg + '\nreturn { chatRules, buildChatSystemPrompt, chatHistoryMessages, splitChatResponse, chatTurnEstimate, buildPatchExportPrompt, buildSchemaSpecPrompt, CHAT_HISTORY_MAX, CHAT_HISTORY_BYTES };')(
+  seg + '\nreturn { chatRules, buildChatSystemPrompt, chatHistoryMessages, splitChatResponse, chatTurnEstimate, buildPatchExportPrompt, buildSchemaSpecPrompt, CHAT_HISTORY_MAX, CHAT_HISTORY_BYTES, workLogPromptText, sanitizeWorkLog };')(
   validateSchema, TEMPLATES, SC.require('time').timeConfig, estTokens);
 
 const BASE = {
@@ -49,6 +49,18 @@ ck('실험대 스키마 유효', validateSchema(BASE).ok, validateSchema(BASE).e
   // v1.9.6 — 패치 밖 영역의 세부 편집기 지도 (실기: "변화 로그 끄는 법"에 "옵션 메뉴"라고 얼버무림)
   ck('★ 규약에 세부 편집기 지도 — 이번 턴 변화(변화 로그) 자리', p.includes('이번 턴 변화') && p.includes('표시하지 않기') && p.includes('[상태창] 탭') && p.includes('[새 시작] 탭'), '');
   ck('빈 작업본 규약엔 지도 없음 (고칠 작업본이 없다)', !M.buildChatSystemPrompt({}, '').includes('세부 편집기 지도'), '');
+  // v1.9.7 — 작업 내역 꼬리
+  {
+    const log = [
+      { ts: Date.UTC(2026, 8, 10, 5, 2), via: 'chat', req: '세금 없애줘', why: '월세 대신 세금이 있었는데 서사에 안 맞아 뺐어요.', sum: '삭제 2', ids: ['tax_due', 'tax_pay'] },
+      { ts: Date.UTC(2026, 8, 9, 14, 30), via: 'make', req: '산적 습격 추가', sum: '추가 2', ids: ['raid_alert', 'ev_raid'], undone: true },
+      { ts: 1, via: 'zzz', req: 'x'.repeat(500), sum: 'y', ids: 'nope' },
+    ];
+    const t = M.workLogPromptText(log);
+    ck('★ 작업 내역 꼬리 — 머리 + 한 줄씩 (통로·요청·요약·id·이유)', t.includes('## 이 봇에 지금까지 한 작업') && t.includes('[대화] "세금 없애줘" → 삭제 2 (tax_due, tax_pay) — 월세 대신') && t.includes('[창작] (되돌림) "산적 습격 추가" → 추가 2'), t);
+    ck('저장소에서 온 것은 모양을 맞춘다 (via 어휘 밖 → JSON, 긴 요청 자름, ids 배열 아님 → 빈 배열)', (() => { const z = M.sanitizeWorkLog(log)[2]; return z.via === 'json' && z.req.length <= 160 && Array.isArray(z.ids) && z.ids.length === 0; })(), JSON.stringify(M.sanitizeWorkLog(log)[2]));
+    ck('없으면 빈 문자열 · 시스템 프롬프트에 꼬리가 붙는다', M.workLogPromptText([]) === '' && M.buildChatSystemPrompt(BASE, '', log).includes('tax_due') && !M.buildChatSystemPrompt(BASE, '').includes('지금까지 한 작업'), '');
+  }
   ck('단발 patch 규격서는 그대로 (chat 없으면 마감 문구 유지)', M.buildPatchExportPrompt(BASE, { request: 'x' }).includes('**패치 JSON 하나만** 출력하세요'), '');
 
   const b = M.buildChatSystemPrompt({}, '');
@@ -356,6 +368,45 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
     ck('창작 탭도 접힌 칸 (덮어쓰기라 눈에 안 띄게)', !!det() && !!btn(c4, '템플릿으로 갈아끼우기'), '');
     sel().value = 'zombie'; sel().onchange();
     ck('템플릿을 바꾸면 무장 해제 (다시 첫 누름부터)', !!btn(c4, '템플릿으로 갈아끼우기') && !btn(c4, '한 번 더 누르면'), '');
+  }
+
+  // ⑩ 작업 내역 (v1.9.7) — 적용하면 캐릭터에 남고, 다음 대화가 그걸 알고 시작한다
+  {
+    let saved = null;
+    const preset = [{ ts: Date.UTC(2026, 8, 9, 3, 0), via: 'chat', req: '세금 없애줘', why: '서사에 안 맞아 뺐어요.', sum: '삭제 2', ids: ['tax_due', 'tax_pay'] }];
+    const calls2 = [];
+    let reply2 = () => '산적 경계를 넣었어요. 이유: 습격 이벤트 조건이 필요해요.\n\n```json\n{"patchVersion":1,"add":{"vars":[{"id":"raid_alert","label":"산적 경계","type":"int","init":0,"min":0,"max":10}]}}\n```';
+    const ai2 = { ...ai, generate: async (input) => { calls2.push(input); return reply2(input); },
+      loadWorkLog: async () => JSON.parse(JSON.stringify(preset)), saveWorkLog: async (l) => { saved = JSON.parse(JSON.stringify(l)); } };
+    const c5 = document.createElement('div');
+    const ed5 = createSchemaEditor(c5, JSON.parse(JSON.stringify(BASE)), { onChange: () => {}, ai: ai2 });
+    await settle();
+    const wl = () => findAll(c5, (e) => e.tagName === 'DETAILS' && String(e.className).includes('sce-worklog'))[0];
+    ck('★ 창작 탭에 🗂 작업 내역 카드 — 저장된 1건이 실려 있다', !!wl() && (wl().textContent || '').includes('작업 내역 1건') && (wl().textContent || '').includes('세금 없애줘'), wl() && wl().textContent.slice(0, 120));
+    btn(c5, '💬 대화').click();
+    ck('대화 탭에도 같은 카드', !!wl(), '');
+    const a5 = findAll(c5, (e) => e.tagName === 'TEXTAREA' && e.className.includes('sce-chat-input'))[0];
+    a5.value = '산적 경계 넣어줘'; a5.oninput(); btn(c5, '보내기').click(); await settle();
+    ck('★ 시스템 프롬프트 끝에 지난 작업 (tax_due)', calls2.length === 1 && calls2[0].system.includes('지금까지 한 작업') && calls2[0].system.includes('tax_due'), '');
+    btn(c5, '패치 적용').click(); await settle();
+    ck('★ 적용 → 저장 통로로 2건 (새것이 앞) · 통로 대화 · 요청·이유·id', !!saved && saved.length === 2 && saved[0].via === 'chat' && saved[0].req === '산적 경계 넣어줘' && saved[0].why.startsWith('산적 경계를 넣었어요') && saved[0].ids.some((x) => x.includes('raid_alert')) && saved[0].sum === '추가 1', JSON.stringify(saved && saved[0]));
+    ck('카드가 2건으로', (wl().textContent || '').includes('작업 내역 2건') && (wl().textContent || '').includes('raid_alert'), '');
+    btn(c5, '적용 전으로 되돌리기').click(); await settle();
+    ck('★ 되돌리면 지우지 않고 표식', saved.length === 2 && saved[0].undone === true && !ed5.getSchema().vars.some((v) => v.id === 'raid_alert'), JSON.stringify(saved[0]));
+    ck('카드에 되돌림 표식', (wl().textContent || '').includes('되돌림'), '');
+    // 다음 턴 프롬프트엔 새 항목이 (되돌림)으로 실린다
+    reply2 = () => '알겠어요.';
+    a5.value = '지금까지 뭐 했지?'; a5.oninput(); btn(c5, '보내기').click(); await settle();
+    ck('다음 턴 프롬프트에 (되돌림) 표식으로 실린다', calls2[1].system.includes('[대화] (되돌림) "산적 경계 넣어줘"'), calls2[1].system.split('지금까지 한 작업')[1]);
+    // 비우기 — 두 번 누르기
+    btn(c5, '내역 비우기').click();
+    ck('비우기 첫 누름은 무장만', saved.length === 2 && !!btn(c5, '한 번 더 누르면 내역을 지워요'), '');
+    btn(c5, '한 번 더 누르면 내역을 지워요').click(); await settle();
+    ck('★ 두 번째 누름 → 비움 + 저장', saved.length === 0 && (wl().textContent || '').includes('아직 없어요'), '');
+    // 저장 통로 없는 편집기(플레이그라운드)엔 내역이 없으면 카드도 없다
+    const c6 = document.createElement('div');
+    createSchemaEditor(c6, JSON.parse(JSON.stringify(BASE)), { onChange: () => {}, ai });
+    ck('저장 통로 없고 내역 없으면 카드 없음', !findAll(c6, (e) => e.tagName === 'DETAILS' && String(e.className).includes('sce-worklog')).length, '');
   }
 
   finish();

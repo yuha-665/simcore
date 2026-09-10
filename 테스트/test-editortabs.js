@@ -236,6 +236,26 @@ if (ed) {
   }
   ck('★ 달력 칸은 align-content:start (셀이 늘어나도 입력 줄은 제 높이)', /\.sce \.sce-calendar-field \{[^}]*align-content:start/.test(css), '');
 
+  // ── v1.9.6 — 다시 그릴 때 스크롤 보존 (실기: 대화 탭에서 답이 올 때마다 맨 위로 튄다) ──
+  {
+    const host = document.createElement('div'); // 스크롤 부모 흉내 — #sc-root
+    host.scrollTop = 480;
+    const inner = document.createElement('div');
+    host.appendChild(inner);
+    let ed2 = null, e2 = null;
+    try { ed2 = createSchemaEditor(inner, { simcore: '0.1', meta: { name: 'scroll' }, vars: [{ id: 'a', label: 'A', type: 'int', init: 0 }], rules: { events: [] }, statusUI: { mode: 'auto', groups: [] } }, { onChange: () => {} }); } catch (e) { e2 = e; }
+    ck('스크롤 시험용 편집기가 뜬다', !e2 && !!ed2, e2 && e2.message);
+    if (ed2) {
+      host.scrollTop = 0; // 비우는 순간 브라우저가 0으로 잘라 버리는 상황을 흉내 — 편집기가 잡아 둔 값으로 되돌려야 한다
+      // 되돌림은 "그리기 전 값"이므로 다시 480으로 두고 rerender를 일으킨다
+      host.scrollTop = 480;
+      const tab = findAll(inner, (e) => e.tagName === 'BUTTON' && e.className.includes('sce-tab') && (e.textContent || '').includes('결과'))[0];
+      if (tab) { tab.click(); }
+      ck('★ 탭을 눌러 다시 그려도 스크롤 부모의 scrollTop이 그대로 (480)', host.scrollTop === 480, String(host.scrollTop));
+      ck('render가 captureScroll/restoreScroll로 감싸여 있다', src.includes('function captureScroll()') && src.includes('try { renderBody(); } finally { restoreScroll(kept); }'), '');
+    }
+  }
+
   // 폭 층은 두 개까지 — 패널폭 → 작업폭. 카드 안에 세 번째 숫자를 박으면 전부 어긋나 보인다.
   ck('★ 카드 안쪽은 카드 폭을 따른다 (세 번째 폭 층 없음)',
     /--sce-variable-work-width:100%/.test(css), (css.match(/--sce-variable-work-width:[^;]*/) || ['없음'])[0]);

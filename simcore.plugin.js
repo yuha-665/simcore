@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.5
-//@display-name SimCore (시뮬 엔진) v1.9.5 교전 종료 버튼 (fightEnd 문구) · 갈림길 항목 글 그대로
+//@version 1.9.6
+//@display-name SimCore (시뮬 엔진) v1.9.6 대화 탭 스크롤 보존 · 어시스턴트에 편집기 지도
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,15 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.6 ───────────────────────────────────────────────
+// 대화형 어시스턴트 실기 피드백 둘 (2026-09-10, 커뮤니티 유저).
+// - **답이 올 때마다 화면이 맨 위로** — 편집기 render()가 root.innerHTML=''로 비우는 순간 스크롤 부모(#sc-root,
+//   position:fixed overflow:auto)의 높이가 무너져 scrollTop이 0으로 잘렸다. 다시 그리기 전 스크롤 부모들의 scrollTop을
+//   잡아 두고 뒤에 되돌린다(captureScroll/restoreScroll — 모든 탭에 듣는다). 대화 로그(60vh 상자)는 새 말풍선이 붙으면 맨 아래로.
+// - **"변화 로그 어디서 끄나"에 어시스턴트가 "옵션 메뉴"라고 얼버무림** — statusUI는 패치 밖이라 말로 안내하라고만 했지
+//   그 탭의 지도를 안 줬다. 대화 규약에 세부 편집기 지도 한 줄(상태창 탭 기본 설정의 칸 목록 — "이번 턴 변화" 접기/펼치기/
+//   표시하지 않기 포함 · onTurn/setup/meta/편성표/달력의 탭).
 //
 // ── v1.9.5 ───────────────────────────────────────────────
 // **교전 종료 버튼 — `actions[].fightEnd`에 문자열.** 실기(아틀리에): 서사가 결착을 앞서 써서 게이지가 안 찬 채 상태창에
@@ -17106,7 +17115,9 @@ function chatRules(blank) {
     '- JSON을 붙일 때는 **무엇을 왜 바꾸는지** 사람 말로 짧게 요약한 뒤 코드펜스를 둡니다. 코드펜스 뒤에는 아무 말도 쓰지 않습니다.',
     '- 이력의 "[적용됨 …]"은 사용자가 그 JSON을 작업본에 넣었다는 뜻, "[적용되지 않음]"은 버렸다는 뜻입니다. '
       + (blank ? '' : '아래 "이미 있는 항목"이 지금의 작업본이니 그것을 기준으로 답하세요.'),
-    ...(blank ? [] : ['- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.']),
+    ...(blank ? [] : ['- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
+      '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
+      + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭.']),
     '',
   ];
 }
@@ -24807,6 +24818,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (chat.busy) log.appendChild(h('div', { class: 'sce-generation-state' }, '답을 기다리고 있어요… 다른 탭을 봐도 결과는 여기에 남아요.'));
     if (chat.note) log.appendChild(h('div', { class: 'sce-warn' }, chat.note));
     box.appendChild(log);
+    // 새 말풍선·계획 상자가 붙었으면 로그를 맨 아래로 (v1.9.6). 붙은 뒤 레이아웃이 잡혀야 scrollHeight가 맞는다
+    if (chat.msgs.length) {
+      const toBottom = () => { try { log.scrollTop = log.scrollHeight; } catch { /* 가짜 DOM */ } };
+      (typeof window !== 'undefined' && window.requestAnimationFrame) ? window.requestAnimationFrame(toBottom) : setTimeout(toBottom, 0);
+    }
 
     // 입력줄
     const area = h('textarea', { class: 'sce-chat-input', 'aria-label': '어시스턴트에게 보낼 말',
@@ -26566,7 +26582,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
   }
 
+  /** 스크롤 보존 (v1.9.6) — 다시 그리는 동안 root가 비면 스크롤 부모의 scrollTop이 0으로 잘린다. 그리기 전 잡아 두고 뒤에 되돌린다 */
+  function captureScroll() {
+    const kept = [];
+    let n = root.parentNode;
+    while (n && n.nodeType === 1) { if (typeof n.scrollTop === 'number' && n.scrollTop > 0) kept.push([n, n.scrollTop]); n = n.parentNode; }
+    try { const se = document.scrollingElement; if (se && se.scrollTop > 0) kept.push([se, se.scrollTop]); } catch { /* 가짜 DOM */ }
+    return kept;
+  }
+  function restoreScroll(kept) { for (const [n, top] of kept) { try { n.scrollTop = top; } catch { /* 방어 */ } } }
   function render() {
+    const kept = captureScroll();
+    try { renderBody(); } finally { restoreScroll(kept); }
+  }
+  function renderBody() {
     root.innerHTML = '';
     // ── 삼층 구조 (docs/design-접근성.md §2) ──
     // 1층 = AI에게 맡기기(창작/결과/진단), 2층 = JSON 작업대, 3층 = 심층 편집 탭.

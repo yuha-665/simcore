@@ -46,6 +46,9 @@ ck('실험대 스키마 유효', validateSchema(BASE).ok, validateSchema(BASE).e
   ck('★ 단발용 마감 "패치 JSON 하나만 출력하세요"는 빠지고 대화용 꼬리', !p.includes('**패치 JSON 하나만** 출력하세요') && p.includes('## 대화 규약이 우선'), '');
   ck('요청 칸은 "대화 이력에 있다"로', p.includes('대화 이력과 마지막 메시지에 있습니다'), '');
   ck('봇 컨텍스트 동봉', M.buildChatSystemPrompt(BASE, '### 봇 설명\n겨울 영지').includes('겨울 영지'), '');
+  // v1.9.6 — 패치 밖 영역의 세부 편집기 지도 (실기: "변화 로그 끄는 법"에 "옵션 메뉴"라고 얼버무림)
+  ck('★ 규약에 세부 편집기 지도 — 이번 턴 변화(변화 로그) 자리', p.includes('이번 턴 변화') && p.includes('표시하지 않기') && p.includes('[상태창] 탭') && p.includes('[새 시작] 탭'), '');
+  ck('빈 작업본 규약엔 지도 없음 (고칠 작업본이 없다)', !M.buildChatSystemPrompt({}, '').includes('세부 편집기 지도'), '');
   ck('단발 patch 규격서는 그대로 (chat 없으면 마감 문구 유지)', M.buildPatchExportPrompt(BASE, { request: 'x' }).includes('**패치 JSON 하나만** 출력하세요'), '');
 
   const b = M.buildChatSystemPrompt({}, '');

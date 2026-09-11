@@ -13811,12 +13811,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body);
   }
 
-  // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 많으면 접는다 (수백 줄이 오류를 가리는 것 방지)
+  // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 둘 이상이면 접는다 (수백 줄이 오류를 가리는 것 방지).
+  // 문턱 3건 → 2건 (v1.9.10, 커뮤니티 제보 "고칠 때마다 경고가 바로바로 쌓여 불편") — 한 건이면 그대로 보인다.
   function buildReport(v) {
     let html = '';
     for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
     const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
-    if (v.warnings.length > 3) {
+    if (v.warnings.length > 1) {
       html += `<details class="sce-fold"${reportWarnOpen ? ' open' : ''}><summary class="sce-warn">⚠ 경고 ${v.warnings.length}건 — 눌러서 펼치기</summary>${wHtml}</details>`;
     } else html += wHtml;
     if (v.ok) html += `<div class="sce-ok">✓ 스키마 유효${v.warnings.length ? ` (경고 ${v.warnings.length})` : ''}</div>`;

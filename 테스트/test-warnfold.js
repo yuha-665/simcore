@@ -86,8 +86,13 @@ const mk = (packs) => ({
 // ── 화면: 넘치면 접는가 ──
 {
   ck('★ 패널이 앞 몇 줄만 펼치고 나머지를 접는다', src.includes('sc-report-more') && src.includes('줄 더 보기'), '');
-  ck('★ 오류·경고 둘 다 같은 규칙', src.includes("list(panelStatus.report, 'status-bad', '✗')")
-    && src.includes("list(panelStatus.warnings, 'status-warn', '⚠')"), '');
+  ck('★ 오류는 앞 6줄 규칙', src.includes("list(panelStatus.report, 'status-bad', '✗')"), '');
+  // v1.9.10 — 경고는 항상 한 줄 (커뮤니티 제보: 낱말 경고 여섯 줄이 상단 고정)
+  ck('★ 경고는 건수 한 줄로 접는다', src.includes('warnList(panelStatus.warnings)')
+    && src.includes('<summary>⚠ 경고 ${items.length}건 — 눌러서 펼치기</summary>'), '');
+  ck('★ 경고 한 건이면 접지 않는다', src.includes('if (items.length === 1) return row(items[0]);'), '');
+  ck('★ 접기 상태가 다시 그려도 유지', src.includes('let panelWarnOpen = false;') && src.includes('panelWarnOpen = warnFold.open;'), '');
+  ck('★ 편집기 라이브 리포트는 2건부터 접는다', src.includes('if (v.warnings.length > 1) {') && src.includes('⚠ 경고 ${v.warnings.length}건 — 눌러서 펼치기'), '');
   ck('★ 짧으면 접지 않는다 (SHOW+2 이하는 그대로)', src.includes('items.length <= SHOW + 2'), '');
   ck('지적 본문을 이스케이프한다', src.includes('${escapeText(e.path)} — ${escapeText(e.msg)}'), '');
   ck('접기 요약 CSS 존재', src.includes('.sc-report-more > summary'), '');

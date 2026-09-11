@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.9
-//@display-name SimCore (시뮬 엔진) v1.9.9 보조 출력 예산 — 변수 많은 봇도 갱신된다
+//@version 1.9.10
+//@display-name SimCore (시뮬 엔진) v1.9.10 경고 접기 — 상단 경고는 한 줄로
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.10 ──────────────────────────────────────────────
+// **경고는 한 줄로 접는다** — 커뮤니티 제보(2026-09-11, 변수 51개 봇 제작자): 낱말 경고("한 글자짜리", "6개 변수가 같이
+// 씁니다", "걸쳐 있습니다")가 패널 맨 위에 여섯 줄 고정으로 붙어 "길어져서 사실상 의미가 없는 수준", 편집기에서도
+// 고칠 때마다 바로바로 쌓인다. 패널 상태칸(SHOW 6줄 규칙)은 오류만 그대로 두고 경고는 "⚠ 경고 N건 — 눌러서 펼치기"
+// 한 줄(panelWarnOpen이 매 턴 다시 그려도 유지). 편집기 라이브 리포트는 접는 문턱 3건 → 2건. 한 건이면 둘 다 그대로 보인다.
 //
 // ── v1.9.9 ───────────────────────────────────────────────
 // v1.9.8 후속 — 유저 판단(2026-09-11): "플래시·소넷급 보조는 성능이 올라 제약의 실익이 비용뿐이고, 상태값이 매 턴 바뀌어
@@ -3138,6 +3144,7 @@
   // v1.0.4부터 이 값을 쓰므로 선언이 그보다 앞에 있어야 한다 (TDZ — utilBtn류와 같은 사연).
   let lastOutIndex = -1;
   let panelStatus = { state: 'init', charName: null, report: null }; // 패널 표시용
+  let panelWarnOpen = false; // 상태칸 경고 접기 상태 — renderPanel이 매 턴 다시 그려도 유지 (v1.9.10)
   // 사이드바(우상단) 유틸 버튼 상태 (구현은 아래 '사이드바 = 게임 패널 launcher' 절).
   // v0.55: 액션별 플로팅 버튼을 없애고 이 자리를 게임 UI(편성표 등) 여는 버튼에 내줬다 —
   // 액션 토글은 상태창 범례 클릭(v0.42)·조작줄·/액션 명령이 담당한다.
@@ -7999,9 +8006,21 @@ count(목록)  has(목록, "항목")</pre>
         + `<details class="sc-report-more"><summary>${rest}줄 더 보기</summary>`
         + items.slice(SHOW).map(row).join('') + '</details>';
     };
+    // 경고는 **항상 한 줄**로 접는다 (v1.9.10) — 커뮤니티 제보(변수 51개 봇): 낱말 경고 여섯 줄이 상단에 고정으로
+    // 붙어 "길어져서 사실상 의미가 없는 수준". 오류는 급하니 위 규칙(앞 6줄) 그대로, 경고는 건수만 보이고 눌러야 펼쳐진다.
+    // 딱 한 건이면 접을 이유가 없어 그대로 보인다.
+    const warnList = (items) => {
+      if (!items || !items.length) return '';
+      const row = (e) => `<div class="report status-warn">⚠ ${escapeText(e.path)} — ${escapeText(e.msg)}</div>`;
+      if (items.length === 1) return row(items[0]);
+      return `<details class="sc-report-more sc-report-warns"${panelWarnOpen ? ' open' : ''}><summary>⚠ 경고 ${items.length}건 — 눌러서 펼치기</summary>`
+        + items.map(row).join('') + '</details>';
+    };
     st.innerHTML = `<div class="${stateMsg[1]}">${stateMsg[0]}</div>`
       + list(panelStatus.report, 'status-bad', '✗')
-      + list(panelStatus.warnings, 'status-warn', '⚠');
+      + warnList(panelStatus.warnings);
+    const warnFold = st.querySelector('details.sc-report-warns');
+    if (warnFold) warnFold.addEventListener('toggle', () => { panelWarnOpen = warnFold.open; });
 
     // 편집기 내용 ≠ 설치본 경고 — [설치]가 설치본을 덮어쓰기 전에 눈으로 알 수 있게.
     // 편집 도구(작업 중)와 편집 작업공간([적용] 버튼이 있는 곳) 양쪽에 같은 배너를 띄운다

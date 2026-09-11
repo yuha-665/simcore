@@ -1590,28 +1590,28 @@
       "comment": "에셋 찐빠 수정4",
       "in": "(<img) src=\"([^\"]*)\">",
       "out": "$1=\"$2\">",
-      "type": "editoutput",
+      "type": "disabled",
       "ableFlag": false
     },
     {
       "comment": "에셋 찐빠 수정5",
       "in": "<img=\"(Male|Female)(.+?)\">",
       "out": "<img=\"$1\">",
-      "type": "editoutput",
+      "type": "disabled",
       "ableFlag": false
     },
     {
       "comment": "에셋 찐빠 수정6",
       "in": "<img=\"(?!(?:(?:Alice Croft|Baek Hwi-Sung|Choi (?:Min-jun|Tae-joon|Yoo-jin|Yu-na|Tae-hyun)|Go Eun-bi|Ha Wol-young|Han (?:Ji-won|Seo-yeon)|Haru Ito|Im Jin-tae|Isabelle Hayes|Jake Miller|Jang Eun-seo|Jin So-hee|Joo Ah-ram|Kang (?:Min-hyuk|Woo-seok|Yoo-ra|Tae-shik)|Kim Min-soo|Lee (?:Ha-eun|Ji-hye|So-yoon)|Lim Seol-hee|Min Chae-rin|Na Sun-young|Oh Ha-na|Park (?:Jun-ho|So-won|Hye-in)|Rivea|Sasaki Yua|Seo Ji-han|Song Ha-neul|Yoo (?:Jin-hyuk|Sun-hwa|Jin-seong)|Yoon (?:Mirae|Ji-ho)|Chae Ha-yoon|Kwon (?:Jae-hyun|Do-yoon)|Ahn Do-hyun|Shin Woo-hyun|Baek Eun-ha) (?:acting cute double v|acting cute heart hands|acting cute Rabbit pose|acting coy|angry|annoyed|aroused|bathing in bathtub|blushing shyly|bored|bridling|buttjob over clothes|cheek pulling|chuunibyou|confused|contemptuous|coughing|crying with eyes (?:closed|open)|curious|default|depressed|determined|disappointed|disgusted|embarrassed|enraged|eureka|excited|finger sucking|full-face blush|giggling|grabbing breast(?: open (?:clothes|bra))?|grudging|guilty|handjob(?: over clothes)?|happy tears|indifferent|jealous|laughing|lustful|middle finger|mixed-bathing washing (?:back|body|hair)|nervous(?: pouting)?|nipple pull open bra|nude(?: grabbing breast| nipple pull)?|paizuri(?: cum)?|pillow humping|pleading|pouting|proud|relieved|sad|scared|serious|sexual frustration(?: (?:standing|sitting|doggystyle))?|smile|smirk|smug|sniggering|headpat|stupefied|surprised|suspicious|thinking|underwear only|worried|french kiss(?: during sex)?|(?:(?:imminent|after) )?kiss|deepthroat|orgasm|masturbation|cunnilingus|fellatio(?: cum| skilled)?|(?:reverse )?footjob(?: cum)?|licking (?:glans|testicle)|cum on (?:back|belly|face)|after sex|(?:(?:handholding )?cowgirl|upright straddle) (?:after sex|ejaculation|grinding|happy sex|hard sex|imminent penetration|sex)|(?:doggystyle|(?:handholding )?missionary|(?:reverse )?standing) (?:after sex|ejaculation|fingering|happy sex|hard sex|imminent penetration|sex)|(?:anal|reverse cowgirl) (?:after sex|ejaculation|happy sex|imminent penetration|sex))|(?:Female|Male)))[^\"]+\">",
       "out": "",
-      "type": "editoutput",
+      "type": "disabled",
       "ableFlag": false
     },
     {
       "comment": "에셋 찐빠 수정7",
       "in": "<img=“([^”]*)”>",
       "out": "<img=\"$1\">",
-      "type": "editoutput",
+      "type": "disabled",
       "ableFlag": false
     },
     {

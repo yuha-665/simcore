@@ -23,7 +23,7 @@ const J = JSON.stringify;
 // v1.0.9 — perCat(카테고리마다 4~6개, 최대 36개)에 맞춰 상한 동반 상향.
 // v1.1.0 — 가산식 재편: 바닥 400 + 실린 항목만큼 (첫 입고 +2400, 자율형 게시판 +800, 기사 +400)
 ck('출력 상한 바닥 400 + 첫 입고 가산 2400',
-  src.includes('let auxCap = 400;')
+  src.includes('let auxCap = Math.max(400, engine.auxOutputBudget(schema, session.current, seenText));')
   && src.includes("if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;"), '');
 ck('새로고침(물갈이)도 2400', src.includes('const res = await callAuxLLM(prompt, 2400);'), '');
 

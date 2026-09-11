@@ -1019,7 +1019,61 @@ function extractJsonObject(text, requiredKey) {
     }
     if (fallback) break; // 이 후보 텍스트에서 뭐라도 건졌으면 다음 후보는 안 봄
   }
-  return fallback;
+  // 필수 키를 가진 객체가 없다 = 출력 상한에 잘렸을 가능성이 크다 (v1.9.8). 완성된 항목까지만 살린다.
+  // (폴백은 잘린 바깥 객체 안의 균형 잡힌 조각 — {"hp":-5,"gold":10} — 일 때가 많아 구제가 먼저다)
+  if (fallback && (!requiredKey || requiredKey in fallback)) return fallback;
+  return salvageTruncatedJson(fence ? fence[1] : src, requiredKey) || fallback;
+}
+
+/**
+ * 잘린 JSON 구제 (v1.9.8). 출력 상한에 걸려 끝이 없는 응답에서 **완성된 항목까지**만 살린다.
+ * 실사고(2026-09-11, 롤 프로게이머 시뮬 · 변수 51 · 목록 18): 경기 턴엔 10명짜리 목록 일곱이 add/remove
+ * 쌍으로 다시 써져 JSON이 상한을 넘겼고, 잘린 응답은 통째로 버려져 "변수가 하나도 안 변하고 제안도 안 뜬다"가 됐다.
+ * 자르는 자리는 1~2층(최상위 키 경계 · changes/reasons 안의 항목 경계)뿐 — 목록 연산 하나가 반쯤 써진 채로
+ * (add만 있고 remove가 없는) 들어가면 중복 항목이 생기니 그 변수는 통째로 버린다. 살린 객체엔 비열거 __truncated 표식.
+ * 후보를 뒤에서부터 JSON.parse로 확인하므로 키 뒤에서 자른 것 같은 틀린 자리는 저절로 걸러진다.
+ */
+function salvageTruncatedJson(text, requiredKey) {
+  if (typeof text !== 'string') return null;
+  const closers = (stack) => stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+  // 시작 후보마다 — 앞의 { 가 산문 괄호("{메모}")였다면 그건 균형이 맞아 닫히니 건너뛰고 다음 { 에서 다시 본다
+  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+    const stack = [];
+    const cuts = [];               // [잘라낼 끝(배타), 그 자리에서 닫아야 할 괄호들]
+    let inStr = false, esc = false, broken = false, closed = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') { inStr = false; if (stack.length && stack.length <= 2) cuts.push([i + 1, closers(stack)]); }
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{' || ch === '[') { stack.push(ch); continue; }
+      if (ch === '}' || ch === ']') {
+        if (!stack.length) { broken = true; break; }   // 짝 안 맞는 닫힘 — 이 시작점은 버린다
+        stack.pop();
+        if (!stack.length) { closed = true; break; }   // 균형 잡힌 객체 — 잘린 게 아니다 (못 읽은 건 다른 이유)
+        if (stack.length <= 2) cuts.push([i + 1, closers(stack)]);
+        continue;
+      }
+      if (ch === ',' && stack.length && stack.length <= 2) cuts.push([i, closers(stack)]);
+    }
+    if (broken || closed) continue;
+    for (let k = cuts.length - 1, tries = 0; k >= 0 && tries < 400; k--, tries++) {
+      const [end, close] = cuts[k];
+      const cand = text.slice(start, end).replace(/,\s*$/, '') + close;
+      try {
+        const obj = JSON.parse(cand);
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !Object.keys(obj).length) continue;
+        if (requiredKey && !(requiredKey in obj)) continue;
+        Object.defineProperty(obj, '__truncated', { value: true, enumerable: false });
+        return obj;
+      } catch { /* 다음 후보 */ }
+    }
+  }
+  return null;
 }
 
 /** 최초설정 응답 파싱 */
@@ -1757,6 +1811,41 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
 }
 
 /**
+ * 이번 턴 보조 호출의 출력 예산(토큰) — 열린 변수만큼 (v1.9.8).
+ *
+ * 상한이 400(클램프 후 1000토큰) 고정이던 때의 실사고: 롤 프로게이머 시뮬(변수 51 · 목록 18)의 경기 턴은
+ * 10명짜리 목록 일곱(KDA·레벨·CS·아이템·스펠·궁·자원)이 remove+add 두 벌로 다시 써져 JSON만 3천 토큰.
+ * 매 턴 잘렸고 잘린 응답은 버려져 "변수가 하나도 안 변하고 제안도 안 뜬다"가 됐다 — 변수를 줄이니 되살아났다는
+ * 제보가 그 증거. 그래서 이번 턴 프롬프트에 실린 변수(낱말·액션 게이트 통과분)만 세어 예산을 잡는다:
+ * · 목록: 지금 항목 수 × 항목 크기 × 2(갈아엎으면 remove+add) + 사유 한 줄. 빈 목록은 서너 개 얹을 몫
+ * · 텍스트: 상한 글자 수 그대로 · 숫자/선택/참거짓: 값 + 사유 한 줄
+ * · 봉투: 형식 + suggest 서너 줄 + conflicts/detected 여지
+ * 어댑터는 이 값과 바닥 400 중 큰 쪽을 쓰고, 상점 첫 입고·게시판 같은 얹힘은 그 위에 더한다.
+ *
+ * @param text 프롬프트를 만들 때 본 글(서사+유저 발화+맥락) — 낱말 게이트 판정이 buildAuxPrompt와 같아야 한다
+ */
+function auxOutputBudget(schema, state, text) {
+  const tok = (s) => Math.ceil(String(s ?? '').length / 1.6);   // 한글 섞인 JSON — 대략 1.6자/토큰
+  const varById = Object.fromEntries((schema?.vars || []).map((v) => [v.id, v]));
+  let sum = 250;   // 봉투 — {"changes":…,"reasons":…,"suggest":[3줄]} + 신고 여지
+  for (const a of auxAllowList(schema, text, state)) {
+    const v = varById[a.id];
+    if (!v) continue;
+    if (v.type === 'list') {
+      const cur = Array.isArray(state?.vars?.[a.id]) ? state.vars[a.id] : [];
+      const n = Math.min(v.max ?? DEFAULT_LIST_MAX_ITEMS, cur.length);
+      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLen ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
+      sum += n ? n * per * 2 + 30 : per * 3 + 30;
+    } else if (v.type === 'text') {
+      sum += tok('x'.repeat(Math.min(v.maxLen ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+    } else {
+      sum += 30;
+    }
+  }
+  return Math.min(6000, Math.ceil(sum / 100) * 100);
+}
+
+/**
  * 이번 턴 보조 호출에 시킬 일이 있나 — 호출을 건너뛸지 판단하는 유일한 기준.
  *
  * ⚠ 예전에는 `updater.allow.length > 0`으로만 판단했다. 그런데 상태 갱신 호출에는 이미지와
@@ -2049,13 +2138,14 @@ function parseAuxResponse(text) {
     msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
-    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1 };
+    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1,
+    truncated: obj.__truncated === true };  // 잘린 응답을 구제한 것 (v1.9.8) — 어댑터가 상태줄·콘솔에 알린다
 }
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
-  renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };

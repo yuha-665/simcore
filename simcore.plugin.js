@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.7
-//@display-name SimCore (시뮬 엔진) v1.9.7 작업 내역 — 적용한 변경이 캐릭터에 남는다
+//@version 1.9.8
+//@display-name SimCore (시뮬 엔진) v1.9.8 보조 출력 예산 — 변수 많은 봇도 갱신된다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,19 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.8 ───────────────────────────────────────────────
+// **보조 출력 상한이 변수 수를 안 따라가던 버그** — 실기 제보(2026-09-11, 롤 프로게이머 시뮬 · 변수 51 · 목록 18):
+// "첫 응답은 되는데 경기에 들어가면 변수가 하나도 안 변하고 선택지도 안 뜬다 — 변수를 정리하니 다시 된다".
+// 원인은 변수 수가 아니라 **출력 상한 400(클램프 후 1000토큰) 고정**: 경기 턴엔 10명짜리 목록 일곱(KDA·레벨·CS·
+// 아이템·스펠·궁·자원)이 remove+add 두 벌로 다시 써져 JSON만 3천 토큰 — 매 턴 잘렸고, 잘린 JSON은 통째로
+// 버려져(재시도도 같은 상한) 잘 되던 스칼라 변수와 suggest까지 같이 죽었다. Gemini는 thinking 512도 그 상한 안이라 더 좁았다.
+// - engine.auxOutputBudget(schema, state, text) — 이번 턴 프롬프트에 실린 변수만 세어 예산: 목록은 항목 수×크기×2,
+//   텍스트는 상한 글자, 스칼라는 값+사유 한 줄, 봉투 250. 어댑터는 max(400, 예산) 위에 상점·게시판 얹힘을 더한다 (천장 6000).
+// - salvageTruncatedJson — 그래도 잘리면 **완성된 항목까지만** 살린다 (1~2층 경계에서만 자름 — add만 있고 remove가
+//   없는 반쪽 목록 연산은 그 변수째 버린다). parseAuxResponse가 truncated를 올리고 패널 [보조 모델] 상태줄에 ⚠로 보인다.
+// - 파싱 실패 재시도는 원문이 200자 넘으면 상한 곱절로.
+// test-auxbudget.js (예산·구제·어댑터 배선), test-parse.js에 잘림 케이스 다섯.
 //
 // ── v1.9.7 ───────────────────────────────────────────────
 // **🗂 작업 내역** — 유저 결정(2026-09-10): 대화를 통째 남기지 않고 "적용한 변경"만 정리해 보관. 적용 시점(패치·통짜, 창작·대화·
@@ -9432,7 +9445,61 @@ function extractJsonObject(text, requiredKey) {
     }
     if (fallback) break; // 이 후보 텍스트에서 뭐라도 건졌으면 다음 후보는 안 봄
   }
-  return fallback;
+  // 필수 키를 가진 객체가 없다 = 출력 상한에 잘렸을 가능성이 크다 (v1.9.8). 완성된 항목까지만 살린다.
+  // (폴백은 잘린 바깥 객체 안의 균형 잡힌 조각 — {"hp":-5,"gold":10} — 일 때가 많아 구제가 먼저다)
+  if (fallback && (!requiredKey || requiredKey in fallback)) return fallback;
+  return salvageTruncatedJson(fence ? fence[1] : src, requiredKey) || fallback;
+}
+
+/**
+ * 잘린 JSON 구제 (v1.9.8). 출력 상한에 걸려 끝이 없는 응답에서 **완성된 항목까지**만 살린다.
+ * 실사고(2026-09-11, 롤 프로게이머 시뮬 · 변수 51 · 목록 18): 경기 턴엔 10명짜리 목록 일곱이 add/remove
+ * 쌍으로 다시 써져 JSON이 상한을 넘겼고, 잘린 응답은 통째로 버려져 "변수가 하나도 안 변하고 제안도 안 뜬다"가 됐다.
+ * 자르는 자리는 1~2층(최상위 키 경계 · changes/reasons 안의 항목 경계)뿐 — 목록 연산 하나가 반쯤 써진 채로
+ * (add만 있고 remove가 없는) 들어가면 중복 항목이 생기니 그 변수는 통째로 버린다. 살린 객체엔 비열거 __truncated 표식.
+ * 후보를 뒤에서부터 JSON.parse로 확인하므로 키 뒤에서 자른 것 같은 틀린 자리는 저절로 걸러진다.
+ */
+function salvageTruncatedJson(text, requiredKey) {
+  if (typeof text !== 'string') return null;
+  const closers = (stack) => stack.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+  // 시작 후보마다 — 앞의 { 가 산문 괄호("{메모}")였다면 그건 균형이 맞아 닫히니 건너뛰고 다음 { 에서 다시 본다
+  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+    const stack = [];
+    const cuts = [];               // [잘라낼 끝(배타), 그 자리에서 닫아야 할 괄호들]
+    let inStr = false, esc = false, broken = false, closed = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (esc) { esc = false; continue; }
+      if (inStr) {
+        if (ch === '\\') esc = true;
+        else if (ch === '"') { inStr = false; if (stack.length && stack.length <= 2) cuts.push([i + 1, closers(stack)]); }
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{' || ch === '[') { stack.push(ch); continue; }
+      if (ch === '}' || ch === ']') {
+        if (!stack.length) { broken = true; break; }   // 짝 안 맞는 닫힘 — 이 시작점은 버린다
+        stack.pop();
+        if (!stack.length) { closed = true; break; }   // 균형 잡힌 객체 — 잘린 게 아니다 (못 읽은 건 다른 이유)
+        if (stack.length <= 2) cuts.push([i + 1, closers(stack)]);
+        continue;
+      }
+      if (ch === ',' && stack.length && stack.length <= 2) cuts.push([i, closers(stack)]);
+    }
+    if (broken || closed) continue;
+    for (let k = cuts.length - 1, tries = 0; k >= 0 && tries < 400; k--, tries++) {
+      const [end, close] = cuts[k];
+      const cand = text.slice(start, end).replace(/,\s*$/, '') + close;
+      try {
+        const obj = JSON.parse(cand);
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !Object.keys(obj).length) continue;
+        if (requiredKey && !(requiredKey in obj)) continue;
+        Object.defineProperty(obj, '__truncated', { value: true, enumerable: false });
+        return obj;
+      } catch { /* 다음 후보 */ }
+    }
+  }
+  return null;
 }
 
 /** 최초설정 응답 파싱 */
@@ -10170,6 +10237,41 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
 }
 
 /**
+ * 이번 턴 보조 호출의 출력 예산(토큰) — 열린 변수만큼 (v1.9.8).
+ *
+ * 상한이 400(클램프 후 1000토큰) 고정이던 때의 실사고: 롤 프로게이머 시뮬(변수 51 · 목록 18)의 경기 턴은
+ * 10명짜리 목록 일곱(KDA·레벨·CS·아이템·스펠·궁·자원)이 remove+add 두 벌로 다시 써져 JSON만 3천 토큰.
+ * 매 턴 잘렸고 잘린 응답은 버려져 "변수가 하나도 안 변하고 제안도 안 뜬다"가 됐다 — 변수를 줄이니 되살아났다는
+ * 제보가 그 증거. 그래서 이번 턴 프롬프트에 실린 변수(낱말·액션 게이트 통과분)만 세어 예산을 잡는다:
+ * · 목록: 지금 항목 수 × 항목 크기 × 2(갈아엎으면 remove+add) + 사유 한 줄. 빈 목록은 서너 개 얹을 몫
+ * · 텍스트: 상한 글자 수 그대로 · 숫자/선택/참거짓: 값 + 사유 한 줄
+ * · 봉투: 형식 + suggest 서너 줄 + conflicts/detected 여지
+ * 어댑터는 이 값과 바닥 400 중 큰 쪽을 쓰고, 상점 첫 입고·게시판 같은 얹힘은 그 위에 더한다.
+ *
+ * @param text 프롬프트를 만들 때 본 글(서사+유저 발화+맥락) — 낱말 게이트 판정이 buildAuxPrompt와 같아야 한다
+ */
+function auxOutputBudget(schema, state, text) {
+  const tok = (s) => Math.ceil(String(s ?? '').length / 1.6);   // 한글 섞인 JSON — 대략 1.6자/토큰
+  const varById = Object.fromEntries((schema?.vars || []).map((v) => [v.id, v]));
+  let sum = 250;   // 봉투 — {"changes":…,"reasons":…,"suggest":[3줄]} + 신고 여지
+  for (const a of auxAllowList(schema, text, state)) {
+    const v = varById[a.id];
+    if (!v) continue;
+    if (v.type === 'list') {
+      const cur = Array.isArray(state?.vars?.[a.id]) ? state.vars[a.id] : [];
+      const n = Math.min(v.max ?? DEFAULT_LIST_MAX_ITEMS, cur.length);
+      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLen ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
+      sum += n ? n * per * 2 + 30 : per * 3 + 30;
+    } else if (v.type === 'text') {
+      sum += tok('x'.repeat(Math.min(v.maxLen ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+    } else {
+      sum += 30;
+    }
+  }
+  return Math.min(6000, Math.ceil(sum / 100) * 100);
+}
+
+/**
  * 이번 턴 보조 호출에 시킬 일이 있나 — 호출을 건너뛸지 판단하는 유일한 기준.
  *
  * ⚠ 예전에는 `updater.allow.length > 0`으로만 판단했다. 그런데 상태 갱신 호출에는 이미지와
@@ -10462,13 +10564,14 @@ function parseAuxResponse(text) {
     msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
-    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1 };
+    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1,
+    truncated: obj.__truncated === true };  // 잘린 응답을 구제한 것 (v1.9.8) — 어댑터가 상태줄·콘솔에 알린다
 }
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
-  renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, formatHistory, applyChatCommands, commandSpecs,
+  renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
 };
@@ -33383,11 +33486,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         // 출력 상한 — 이번 턴 요청에 실린 항목만큼 가산 (v1.1.0에서 가산식으로 재편).
-        // 바닥 400(클램프 후 1000토큰)은 상태 갱신 + 반응형 게시판용. 얹히는 항목:
+        // 바닥은 400(클램프 후 1000토큰)과 **열린 변수 예산**(v1.9.8 auxOutputBudget) 중 큰 쪽 — 변수 51개짜리
+        // 봇의 경기 턴이 400 고정에 잘려 통째로 버려진 실사고. 얹히는 항목:
         // · 상점 첫 입고(재고 빈 동안만): +2400 — perCat 최대 36개 JSON (v1.0.8~9 실사고)
         // · 자율형 게시판(매턴 min~max개, v1.1.0): +800 — 4~5글이 400엔 안 담긴다
         // · 현재 화제 기사(N턴마다, v1.1.0): +400 — 기사 한 편
-        let auxCap = 400;
+        let auxCap = Math.max(400, engine.auxOutputBudget(schema, session.current, seenText));
         if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
@@ -33400,6 +33504,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           scheduleDeferredAux(auxPrompt, auxCap, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
+            if (parsed.truncated) console.log('[simcore] 지연 응답 잘림 — 완성된 항목만 반영');
             const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             // 보드 델타 (v0.95) — 지연 경로에서도 적용. 표류 rng는 비시드(소급이라 리롤 정합 무관)
@@ -33430,8 +33535,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           }, '델타');
           auxText = null; // 즉시 경로에서는 변화 없이 진행 (틱·이벤트는 아래에서 정상 처리)
         } else if (typeof auxText === 'string' && !engine.parseAuxResponse(auxText)) {
-          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도. 원문:', auxText.slice(0, 200));
-          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', auxCap);
+          // 긴 응답인데 못 읽었다 = 완성된 항목 하나 없이 잘렸을 가능성 — 상한을 곱절로 다시 (v1.9.8)
+          const retryCap = auxText.length > 200 ? auxCap * 2 : auxCap;
+          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도(상한 ' + retryCap + '). 원문:', auxText.slice(0, 200));
+          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', retryCap);
           auxText = typeof retry === 'string' ? retry : null;
         }
         if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
@@ -33447,6 +33554,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      // 잘린 응답 구제 (v1.9.8) — 완성된 항목만 들어갔다. 패널 [보조 모델]과 콘솔에서 보이게
+      if (r.auxParsed?.truncated) {
+        lastAux.status = (lastAux.status || '') + ' · ⚠ 보조 응답이 출력 상한에 잘려 완성된 항목만 반영 (' + lastAux.applied + '건) — 보조 모델의 최대 응답 길이를 올려라';
+        console.log('[simcore] 보조 응답 잘림 — 완성된 항목만 반영:', lastAux.applied + '건');
+      }
       // 불일치 신고 (v0.71) — 변수에는 반영 안 됨. 패널 [보조 모델] 요약과 콘솔에서 보인다
       const confs = engine.sanitizeConflicts(r.auxParsed?.conflicts);
       if (confs.length) {

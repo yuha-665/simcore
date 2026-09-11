@@ -36,6 +36,16 @@ const tests = [
   // 10. 다음 행동 제안(v0.43) — 같은 응답에 suggest 배열이 실려 온다
   ['with-suggest', '{"changes":{"hp":1},"reasons":{},"suggest":["쉰다","싸운다"]}',
     { changes: { hp: 1 }, reasons: {}, suggest: ['쉰다', '싸운다'] }],
+  // 11~15. 출력 상한에 잘린 응답 (v1.9.8) — 완성된 항목까지만 살린다
+  ['trunc-in-reasons', '{"changes":{"hp":-5,"gold":10},"reasons":{"hp":"전투","gold":"보상을 받',
+    { changes: { hp: -5, gold: 10 }, reasons: { hp: '전투' } }],
+  ['trunc-in-list-op', '{"changes":{"hp":-5,"items":{"add":["검","방패"],"remove":["막대',
+    { changes: { hp: -5 }, reasons: {} }],
+  ['trunc-fence', '```json\n{"changes":{"hp":2},"reasons":{"hp":"휴식"},"suggest":["쉰다","싸',
+    { changes: { hp: 2 }, reasons: { hp: '휴식' }, suggest: ['쉰다'] }],
+  ['trunc-prose-brace', '<Thoughts>생각 {메모} 중\n{"changes":{"mp":3,"hp":1},"reasons":{"mp":"명상","hp":"휴',
+    { changes: { mp: 3, hp: 1 }, reasons: { mp: '명상' } }],
+  ['trunc-nothing-done', '{"changes":{"hp"', null],
 ];
 
 let pass = 0, fail = 0;

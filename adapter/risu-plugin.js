@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.7
-//@display-name SimCore (시뮬 엔진) v1.9.7 작업 내역 — 적용한 변경이 캐릭터에 남는다
+//@version 1.9.8
+//@display-name SimCore (시뮬 엔진) v1.9.8 보조 출력 예산 — 변수 많은 봇도 갱신된다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,19 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.8 ───────────────────────────────────────────────
+// **보조 출력 상한이 변수 수를 안 따라가던 버그** — 실기 제보(2026-09-11, 롤 프로게이머 시뮬 · 변수 51 · 목록 18):
+// "첫 응답은 되는데 경기에 들어가면 변수가 하나도 안 변하고 선택지도 안 뜬다 — 변수를 정리하니 다시 된다".
+// 원인은 변수 수가 아니라 **출력 상한 400(클램프 후 1000토큰) 고정**: 경기 턴엔 10명짜리 목록 일곱(KDA·레벨·CS·
+// 아이템·스펠·궁·자원)이 remove+add 두 벌로 다시 써져 JSON만 3천 토큰 — 매 턴 잘렸고, 잘린 JSON은 통째로
+// 버려져(재시도도 같은 상한) 잘 되던 스칼라 변수와 suggest까지 같이 죽었다. Gemini는 thinking 512도 그 상한 안이라 더 좁았다.
+// - engine.auxOutputBudget(schema, state, text) — 이번 턴 프롬프트에 실린 변수만 세어 예산: 목록은 항목 수×크기×2,
+//   텍스트는 상한 글자, 스칼라는 값+사유 한 줄, 봉투 250. 어댑터는 max(400, 예산) 위에 상점·게시판 얹힘을 더한다 (천장 6000).
+// - salvageTruncatedJson — 그래도 잘리면 **완성된 항목까지만** 살린다 (1~2층 경계에서만 자름 — add만 있고 remove가
+//   없는 반쪽 목록 연산은 그 변수째 버린다). parseAuxResponse가 truncated를 올리고 패널 [보조 모델] 상태줄에 ⚠로 보인다.
+// - 파싱 실패 재시도는 원문이 200자 넘으면 상한 곱절로.
+// test-auxbudget.js (예산·구제·어댑터 배선), test-parse.js에 잘림 케이스 다섯.
 //
 // ── v1.9.7 ───────────────────────────────────────────────
 // **🗂 작업 내역** — 유저 결정(2026-09-10): 대화를 통째 남기지 않고 "적용한 변경"만 정리해 보관. 적용 시점(패치·통짜, 창작·대화·
@@ -3919,11 +3932,12 @@
         trackMentionGates(seenText); // 침묵 실패 감지용 개방 통계
         const auxPrompt = engine.buildAuxPrompt(schema, session.current, content, lastUserText, historyText);
         // 출력 상한 — 이번 턴 요청에 실린 항목만큼 가산 (v1.1.0에서 가산식으로 재편).
-        // 바닥 400(클램프 후 1000토큰)은 상태 갱신 + 반응형 게시판용. 얹히는 항목:
+        // 바닥은 400(클램프 후 1000토큰)과 **열린 변수 예산**(v1.9.8 auxOutputBudget) 중 큰 쪽 — 변수 51개짜리
+        // 봇의 경기 턴이 400 고정에 잘려 통째로 버려진 실사고. 얹히는 항목:
         // · 상점 첫 입고(재고 빈 동안만): +2400 — perCat 최대 36개 JSON (v1.0.8~9 실사고)
         // · 자율형 게시판(매턴 min~max개, v1.1.0): +800 — 4~5글이 400엔 안 담긴다
         // · 현재 화제 기사(N턴마다, v1.1.0): +400 — 기사 한 편
-        let auxCap = 400;
+        let auxCap = Math.max(400, engine.auxOutputBudget(schema, session.current, seenText));
         if (auxPrompt.includes('시스템 상점 첫 입고')) auxCap += 2400;
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
@@ -3936,6 +3950,7 @@
           scheduleDeferredAux(auxPrompt, auxCap, async (text) => {
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
+            if (parsed.truncated) console.log('[simcore] 지연 응답 잘림 — 완성된 항목만 반영');
             const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
             session.current = amended.state;
             // 보드 델타 (v0.95) — 지연 경로에서도 적용. 표류 rng는 비시드(소급이라 리롤 정합 무관)
@@ -3966,8 +3981,10 @@
           }, '델타');
           auxText = null; // 즉시 경로에서는 변화 없이 진행 (틱·이벤트는 아래에서 정상 처리)
         } else if (typeof auxText === 'string' && !engine.parseAuxResponse(auxText)) {
-          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도. 원문:', auxText.slice(0, 200));
-          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', auxCap);
+          // 긴 응답인데 못 읽었다 = 완성된 항목 하나 없이 잘렸을 가능성 — 상한을 곱절로 다시 (v1.9.8)
+          const retryCap = auxText.length > 200 ? auxCap * 2 : auxCap;
+          console.log('[simcore] 보조 응답 JSON 파싱 실패 — 재시도(상한 ' + retryCap + '). 원문:', auxText.slice(0, 200));
+          const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', retryCap);
           auxText = typeof retry === 'string' ? retry : null;
         }
         if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
@@ -3983,6 +4000,11 @@
       lastChangeLog = r.changeLog;
       lastOutIndex = outIndex;
       lastAux.applied = r.changeLog.filter((c) => c.source === 'llm').length;
+      // 잘린 응답 구제 (v1.9.8) — 완성된 항목만 들어갔다. 패널 [보조 모델]과 콘솔에서 보이게
+      if (r.auxParsed?.truncated) {
+        lastAux.status = (lastAux.status || '') + ' · ⚠ 보조 응답이 출력 상한에 잘려 완성된 항목만 반영 (' + lastAux.applied + '건) — 보조 모델의 최대 응답 길이를 올려라';
+        console.log('[simcore] 보조 응답 잘림 — 완성된 항목만 반영:', lastAux.applied + '건');
+      }
       // 불일치 신고 (v0.71) — 변수에는 반영 안 됨. 패널 [보조 모델] 요약과 콘솔에서 보인다
       const confs = engine.sanitizeConflicts(r.auxParsed?.conflicts);
       if (confs.length) {

@@ -33,7 +33,7 @@ console.log('── 카드별');
   ck('판정: 머리에 접기 버튼', src.includes("foldBtn(c, c.label || c.id || `판정 ${i + 1}`),\n        grip(schema.checks, i, rerender)));"), '');
   ck('판정: 목록 위 모두 접기 줄', src.includes('appendFoldBar(wrap, schema.checks);'), '');
   // 파생 변수는 변수 카드와 같은 틀 — 이미 접힌다 (제보의 "파생엔 없음"은 구판)
-  ck('파생 변수는 variableCard(접기 있음)로 그려진다', src.includes("derivedList.appendChild(variableCard(d, `파생 변수 ${i + 1}`, schema.derived, i,"), '');
+  ck('파생 변수는 variableCard(접기 있음)로 그려진다', src.includes("derivedCards.push(variableCard(d, `파생 변수 ${i + 1}`, schema.derived, i,"), '');
   ck('파생 변수 목록에도 모두 접기(bulkControls)', src.includes("...bulkControls(schema.derived, '$.derived'),"), '');
 }
 

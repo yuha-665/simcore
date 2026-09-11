@@ -369,6 +369,14 @@ const CSS = `
 .sce .sce-editor-section-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.5; }
 .sce .sce-editor-section-actions { display:flex; justify-content:flex-end; align-items:center; gap:7px; flex-wrap:wrap; }
 .sce .sce-variable-list { display:grid; gap:8px; width:100%; max-width:var(--sce-work-w); }
+/* 변수 그룹 (v1.9.14) — 보기용 묶음 */
+.sce .sce-var-group { display:grid; gap:8px; width:100%; min-width:0; padding:8px 10px; border:1px solid var(--sce-line); border-radius:6px; }
+.sce .sce-var-group.is-none { border-style:dashed; }
+.sce .sce-var-group-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+.sce .sce-var-group-head .sce-var-group-name { max-width:240px; font-weight:700; }
+.sce .sce-var-group-head .sce-var-group-none { color:var(--sce-muted); }
+.sce .sce-var-group-tools { display:flex; gap:6px; margin-left:auto; }
+.sce .sce-var-group.is-collapsed { padding-bottom:8px; }
 .sce .sce-variable-card { min-width:0; padding:9px 10px; }
 .sce .sce-variable-card.is-collapsed { padding:8px 10px; background:transparent; }
 .sce .sce-variable-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px 14px; }
@@ -4182,6 +4190,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update로 전문을 다시 쓸 때 기존 `group`을 빠뜨리지 마세요 (편집기 묶음이 풀립니다).',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
@@ -4590,6 +4599,7 @@ const VAR_FIELD_SPEC = [
   '| `maxLength` | text 전용, 최대 글자수 |',
   '| `format` | 상태창 표시 형식. `{v}` 자리에 값이 들어갑니다 (예: `{v}G`, `{v}°C`, `{v}명`) |',
   '| `desc` | (선택) 이 항목이 무슨 뜻인지 AI에게 알려주는 한 줄 |',
+  '| `group` | (선택) 편집기에서 묶어 보여 주는 그룹 이름 — 새 변수는 **가장 가까운 기존 그룹**을 붙이세요 (예: 경제, 인물-리아나). 순서·동작엔 영향 없음. 파생 변수에도 붙습니다 |',
   '',
   '파생 변수(`derived`)는 `{ "id", "label", "expr" }`(+ 선택 `format`)만 씁니다.',
   '**읽기 전용**이라 `set` 대상이 될 수 없고 `rand()`도 쓸 수 없습니다.',
@@ -4912,6 +4922,16 @@ function varContractTable(schema) {
     rows.push(`| \`${v.id}\` | ${v.label ?? v.id} | ${v.type} | ${range} | ${JSON.stringify(v.init)} |`);
   }
   const out = [rows.join('\n')];
+  // 변수 그룹 (v1.9.14) — 편집기 묶음 이름. AI가 새 변수에 가장 가까운 그룹을 붙이고 update 때 빠뜨리지 않게 알려 준다
+  const groups = new Map();
+  for (const it of [...(schema.vars || []), ...(schema.derived || [])]) {
+    const g = typeof it?.group === 'string' ? it.group.trim() : '';
+    if (g) (groups.get(g) || groups.set(g, []).get(g)).push(it.id);
+  }
+  if (groups.size) {
+    out.push('', '그룹(`group`, 편집기 묶음 — 새 항목엔 가장 가까운 그룹을 붙이고 update 때 유지): '
+      + [...groups].map(([g, ids]) => `**${g}**(${ids.join(', ')})`).join(' · '));
+  }
   if ((schema.derived || []).length) {
     out.push('',
       '### 파생 변수 — **읽기 전용**입니다. 조건에는 쓸 수 있지만 `set` 대상이 될 수 없습니다.',
@@ -6127,6 +6147,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let purge = null, purgeDone = null, purgeBackup = null;
   // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
   const collapsedVariableCards = new WeakSet();
+  const collapsedVarGroups = new Set();   // 변수 그룹 접힘 (v1.9.14) — 이름 키, 다시 그려도 유지
   // 접기 (v1.9.12) — 조건 이벤트·랜덤 이벤트·액션·판정 카드. 커뮤니티 제보: "기본 변수·지시문엔 접기가 있는데 이벤트·액션엔
   // 없어 직접 보려면 한참 스크롤한다". 변수 카드와 같은 규약(WeakSet — 다시 그려도 유지, 스키마엔 안 남는다).
   const collapsedCards = new WeakSet();
@@ -6560,6 +6581,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           rerender();
         } }, '되돌리기')));
     }
+    // 변수 그룹 (v1.9.14) — 커뮤니티 제보 "변수가 늘수록 순서가 뒤죽박죽 — 상태창처럼 그룹으로 묶고 싶다".
+    // 항목의 group 문자열로 **화면만** 묶는다. 저장 순서·엔진 동작·패치 순서는 그대로 (규칙은 순서가 곧 동작이라 안 건드린다).
+    // 그룹 이름은 첫 등장 순, 그룹 없는 항목은 맨 아래 "그룹 없음". 그룹이 하나도 없으면 예전 평면 목록 그대로.
+    const groupNames = (list) => [...new Set(list.map((it) => (typeof it?.group === 'string' ? it.group.trim() : '')).filter(Boolean))];
+    const groupDl = 'sce-var-groups-' + Math.random().toString(36).slice(2, 7);
+    wrap.appendChild(h('datalist', { id: groupDl }, ...groupNames([...schema.vars, ...schema.derived]).map((n) => h('option', { value: n }))));
+    const groupField = (item) => {
+      const inp = bindInput(typeof item.group === 'string' ? item.group : '', (x) => {
+        const t = String(x).trim(); if (t) item.group = t; else delete item.group; rerender();
+      }, { cls: 'sce-w-l', ph: '예: 경제 · 인물-리아나 (비우면 그룹 없음)' });
+      inp.setAttribute('list', groupDl);
+      return variableField('그룹', inp, { title: '편집기에서 묶어 보여 주는 이름이에요. 저장 순서와 동작에는 영향이 없습니다.' });
+    };
+    const groupedAppend = (container, list, cards) => {
+      const names = groupNames(list);
+      if (!names.length) { cards.forEach((c) => container.appendChild(c)); return; }
+      const buckets = new Map(names.map((n) => [n, []]));
+      const none = [];
+      list.forEach((it, i) => {
+        const g = typeof it?.group === 'string' ? it.group.trim() : '';
+        (g ? buckets.get(g) : none).push({ it, card: cards[i] });
+      });
+      const section = (name, rows) => {
+        const folded = collapsedVarGroups.has(name || '');
+        const head = h('div', { class: 'sce-var-group-head' },
+          h('button', { class: 'sce-btn sce-mini', type: 'button', 'aria-expanded': String(!folded), onclick: () => {
+            if (folded) collapsedVarGroups.delete(name || ''); else collapsedVarGroups.add(name || ''); rerender();
+          } }, folded ? '▸' : '▾'),
+          name
+            ? bindInput(name, (x) => {
+              const t = String(x).trim();
+              list.forEach((it) => { if (it && it.group === name) { if (t) it.group = t; else delete it.group; } });
+              rerender();
+            }, { cls: 'sce-w-m sce-var-group-name', ph: '그룹 이름' })
+            : h('strong', { class: 'sce-var-group-none' }, '그룹 없음'),
+          h('span', { class: 'sce-tag' }, rows.length + '개'),
+          h('span', { class: 'sce-var-group-tools' },
+            h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => { rows.forEach((r) => collapsedVariableCards.add(r.it)); rerender(); } }, '모두 접기'),
+            h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => { rows.forEach((r) => collapsedVariableCards.delete(r.it)); rerender(); } }, '모두 펼치기')));
+        const body = h('div', { class: 'sce-variable-list' }, ...rows.map((r) => r.card));
+        return h('section', { class: 'sce-var-group' + (folded ? ' is-collapsed' : '') + (name ? '' : ' is-none') }, head, folded ? null : body);
+      };
+      for (const n of names) container.appendChild(section(n, buckets.get(n)));
+      if (none.length) container.appendChild(section('', none));
+      container.appendChild(h('div', { class: 'sce-hint' }, '그룹은 보기용이에요. 순서 이동(⠿·위/아래)은 저장 순서 기준으로 움직입니다.'));
+    };
     const addVariable = () => {
       const item = { id: nextEditorId('var'), label: '', type: 'int', init: 0 };
       schema.vars.push(item);
@@ -6584,7 +6651,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         : '게임에서 기억할 값 하나를 먼저 만들어 주세요.'),
       h('button', { class: 'sce-btn', onclick: addVariable }, '변수 만들기')));
 
-    const variableList = h('div', { class: 'sce-variable-list' });
+    const variableList = h('div', { class: 'sce-variable-list sce-variable-list-root' });
+    const varCards = [];
     schema.vars.forEach((v, i) => {
       const path = `$.vars[${i}]`;
       const issues = itemErrors(path);
@@ -6592,7 +6660,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         variableField('변수 ID', bindInput(v.id, (x) => { v.id = x.trim(); rerender(); },
           { cls: 'sce-w-l', ph: '영문 ID (예: gold)' }), { issues: fieldIssues(path, 'id') }),
         variableField('값 형식', bindSelect(v.type, VAR_TYPES, (x) => { changeVarType(v, x); rerender(); }),
-          { issues: fieldIssues(path, 'type') }));
+          { issues: fieldIssues(path, 'type') }),
+        groupField(v));
       const typeHelp = h('div', { class: 'sce-variable-type-help' }, ({
         int: '정수는 소수점 없는 숫자예요. 시작값과 범위를 정할 수 있어요.',
         float: '실수는 소수점이 필요한 숫자예요. 시작값과 범위를 정할 수 있어요.',
@@ -6664,7 +6733,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const formatted = v.format ? String(v.format).replace(/\{v\}/g, shown) : shown;
         preview = h('div', { class: 'sce-variable-preview' }, '상태창 미리보기: ', h('strong', {}, formatted));
       }
-      variableList.appendChild(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
+      varCards.push(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
         [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description)], issues, () => {
           if (!v.id) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           const plan = planVarPurge(schema, [v.id]);
@@ -6674,6 +6743,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           return false;
         }, variableSummary(v)));
     });
+    groupedAppend(variableList, schema.vars, varCards);
     wrap.appendChild(variableList);
 
     const addDerived = () => {
@@ -6695,19 +6765,21 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('strong', {}, '아직 파생 변수가 없어요'),
       h('span', {}, '기본 변수의 값을 계산해서 보여줄 항목이 필요할 때 추가하면 됩니다.'),
       h('button', { class: 'sce-btn', onclick: addDerived }, '파생 변수 만들기')));
-    const derivedList = h('div', { class: 'sce-variable-list' });
+    const derivedList = h('div', { class: 'sce-variable-list sce-variable-list-root' });
+    const derivedCards = [];
     schema.derived.forEach((d, i) => {
       const path = `$.derived[${i}]`;
       const issues = itemErrors(path);
-      derivedList.appendChild(variableCard(d, `파생 변수 ${i + 1}`, schema.derived, i,
+      derivedCards.push(variableCard(d, `파생 변수 ${i + 1}`, schema.derived, i,
         [h('div', { class: 'sce-derived-grid' },
           variableField('변수 ID', bindInput(d.id, (x) => { d.id = x.trim(); rerender(); },
             { cls: 'sce-w-l', ph: '영문 ID' }), { issues: fieldIssues(path, 'id') }),
           variableField('계산식', bindInput(d.expr, (x) => { d.expr = x; rerender(); },
             { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
-            { issues: fieldIssues(path, 'expr', 'card') })), derivedNow(d), referenceNote(d)], issues,
+            { issues: fieldIssues(path, 'expr', 'card') }), groupField(d)), derivedNow(d), referenceNote(d)], issues,
         () => deleteWithUndo('derived', i, `파생 변수 ${i + 1}`), variableSummary(d, true)));
     });
+    groupedAppend(derivedList, schema.derived, derivedCards);
     wrap.appendChild(derivedList);
     return wrap;
   }

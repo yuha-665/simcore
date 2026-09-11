@@ -1623,7 +1623,15 @@ function validateSchema(schema) {
       ['$.directives', schema.directives], ['$.actions', schema.actions], ['$.updater.allow', schema.updater && schema.updater.allow]];
     for (const [base, arr] of lists) {
       if (!Array.isArray(arr)) continue;
-      arr.forEach((e, i) => { if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식'); });
+      arr.forEach((e, i) => {
+        if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식');
+        // 변수 그룹 (v1.9.14) — 변수·파생만. 편집기 묶음 이름이라 짧은 문자열
+        if ((base === '$.vars' || base === '$.derived') && e && e.group != null) {
+          if (typeof e.group !== 'string') err(`${base}[${i}].group`, 'group은 문자열 — 편집기 묶음 이름');
+          else if (!e.group.trim()) warn(`${base}[${i}].group`, 'group이 비어 있습니다 — 지우거나 이름을 적으세요');
+          else if (e.group.length > 40) warn(`${base}[${i}].group`, 'group 이름이 40자를 넘습니다 — 편집기 머리가 길어집니다');
+        }
+      });
     }
   }
 

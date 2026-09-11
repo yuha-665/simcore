@@ -3156,6 +3156,15 @@ const CSS = `
   margin:14px 0; padding:9px 10px; border:1px solid var(--sce-line); border-radius:6px;
   background:var(--sce-surface); color:var(--sce-muted); font-size:10.8px; line-height:1.5;
 }
+/* 접기 (v1.9.12) — 이벤트·액션·판정 카드. 몸통 통은 display:contents라 섹션 경계선 규칙이 그대로 산다 */
+.sce .sce-card-body-contents { display:contents; }
+.sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
+.sce .sce-action-card-head > .sce-fold-btn, .sce .sce-check-card-head > .sce-fold-btn { flex:none; margin-left:auto; }
+.sce .sce-action-card-head > .sce-fold-btn + .sce-grip, .sce .sce-check-card-head > .sce-fold-btn + .sce-grip { margin-left:8px; }
+.sce .sce-rules-card.is-collapsed > .sce-rules-card-head { border-bottom:0; }
+@media (max-width:760px) {
+  .sce .sce-action-card-head > .sce-fold-btn, .sce .sce-check-card-head > .sce-fold-btn { margin-left:0; align-self:flex-end; }
+}
 .sce .sce-action-card {
   min-width:0; margin:0 0 14px; overflow:hidden;
   border:1px solid var(--sce-line-strong); border-radius:7px; background:var(--sce-surface);
@@ -6102,6 +6111,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let purge = null, purgeDone = null, purgeBackup = null;
   // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
   const collapsedVariableCards = new WeakSet();
+  // 접기 (v1.9.12) — 조건 이벤트·랜덤 이벤트·액션·판정 카드. 커뮤니티 제보: "기본 변수·지시문엔 접기가 있는데 이벤트·액션엔
+  // 없어 직접 보려면 한참 스크롤한다". 변수 카드와 같은 규약(WeakSet — 다시 그려도 유지, 스키마엔 안 남는다).
+  const collapsedCards = new WeakSet();
+  const foldBtn = (item, title) => {
+    const folded = collapsedCards.has(item);
+    return h('button', {
+      class: 'sce-btn sce-mini sce-fold-btn', type: 'button', 'aria-expanded': String(!folded),
+      title: folded ? title + ' 펼치기' : title + ' 접기',
+      onclick: () => { if (collapsedCards.has(item)) collapsedCards.delete(item); else collapsedCards.add(item); rerender(); },
+    }, folded ? '펼치기' : '접기');
+  };
+  // 둘 이상일 때만 "모두 접기/펼치기" 줄을 붙인다
+  const appendFoldBar = (container, list) => {
+    if (!Array.isArray(list) || list.length < 2) return;
+    container.appendChild(h('div', { class: 'sce-fold-bar' },
+      h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => { list.forEach((x) => collapsedCards.add(x)); rerender(); } }, '모두 접기'),
+      h('button', { class: 'sce-btn sce-mini', type: 'button', onclick: () => { list.forEach((x) => collapsedCards.delete(x)); rerender(); } }, '모두 펼치기')));
+  };
   let deletedVariableCard = null;
   let variableMoveFeedback = null; // { item, position, kind } — 다음 렌더에서 한 번 소비
   let createdVariableCard = null;
@@ -8120,8 +8147,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     ));
 
     const eventsList = h('div', { class: 'sce-rules-list' });
+    appendFoldBar(eventsList, schema.rules.events);
     schema.rules.events.forEach((ev, i) => {
-      eventsList.appendChild(h('article', { class: 'sce-rules-card', 'data-sce-validation-path': `$.rules.events[${i}]` },
+      const evFold = collapsedCards.has(ev);
+      eventsList.appendChild(h('article', { class: 'sce-rules-card' + (evFold ? ' is-collapsed' : ''), 'data-sce-validation-path': `$.rules.events[${i}]` },
         h('div', { class: 'sce-rules-card-head' },
           h('div', {},
             h('strong', {}, ev.id || `조건 이벤트 ${i + 1}`),
@@ -8129,10 +8158,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ),
           h('div', { class: 'sce-rules-card-actions' },
             bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
+            foldBtn(ev, ev.id || `조건 이벤트 ${i + 1}`),
             ruleGrip(schema.rules.events, i),
           ),
         ),
-        h('div', { class: 'sce-rules-card-body' },
+        evFold ? null : h('div', { class: 'sce-rules-card-body' },
           h('div', { class: 'sce-rules-field-grid' },
             field('이벤트 ID',
               bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); },
@@ -8217,16 +8247,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ),
         '숫자는 %로 입력해요. 식을 쓰면 0~1 값으로 계산하고, 난이도 같은 변수도 읽을 수 있어요.'),
     ));
+    appendFoldBar(randomList, re.table);
     re.table.forEach((ev, i) => {
-      randomList.appendChild(h('article', { class: 'sce-rules-card', 'data-sce-validation-path': `$.rules.randomEvents.table[${i}]` },
+      const rnFold = collapsedCards.has(ev);
+      randomList.appendChild(h('article', { class: 'sce-rules-card' + (rnFold ? ' is-collapsed' : ''), 'data-sce-validation-path': `$.rules.randomEvents.table[${i}]` },
         h('div', { class: 'sce-rules-card-head' },
           h('div', {},
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
             h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
           ),
-          h('div', { class: 'sce-rules-card-actions' }, ruleGrip(re.table, i)),
+          h('div', { class: 'sce-rules-card-actions' }, foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
-        h('div', { class: 'sce-rules-card-body' },
+        rnFold ? null : h('div', { class: 'sce-rules-card-body' },
           h('div', { class: 'sce-rules-field-grid sce-rules-field-grid-random' },
             field('이벤트 ID',
               bindInput(ev.id, (x) => { ev.id = x.trim(); rerender(); },
@@ -10381,28 +10413,32 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(aiTools());
       return wrap;
     }
+    appendFoldBar(wrap, schema.actions);
     schema.actions.forEach((a, i) => {
-      const card = h('article', { class: 'sce-action-card', 'data-sce-validation-path': `$.actions[${i}]` });
+      const acFold = collapsedCards.has(a);
+      const card = h('article', { class: 'sce-action-card' + (acFold ? ' is-collapsed' : ''), 'data-sce-validation-path': `$.actions[${i}]` });
+      const body = h('div', { class: 'sce-card-body-contents' });   // display:contents — 접힌 카드는 이 통을 안 붙인다
       card.appendChild(h('header', { class: 'sce-action-card-head' },
         h('div', { class: 'sce-action-identity' },
           h('span', { class: 'sce-action-index' }, String(i + 1).padStart(2, '0')),
           h('div', {},
             h('strong', {}, a.label || `이름 없는 액션 ${i + 1}`),
             h('small', {}, `${a.id || `action${i + 1}`} · ${a.mode === 'hold' ? '지속형' : '1회성'} · ${a.when ? '조건부' : '항상 사용 가능'}`))),
+        foldBtn(a, a.label || `액션 ${i + 1}`),
         grip(schema.actions, i, rerender)));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-basic' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-basic' },
         h('div', { class: 'sce-action-group-title' }, '기본 정보'),
         h('div', { class: 'sce-action-field-grid is-basic' },
           field('ID', bindInput(a.id, (x) => { a.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id' }),
             '명령과 다른 설정에서 이 액션을 가리키는 기술 식별자예요.'),
           field('버튼 이름', bindInput(a.label, (x) => { a.label = x; rerender(); }, { cls: 'sce-w-m', ph: '버튼 이름' }),
             '상태창과 액션 목록에서 사용자에게 보이는 이름이에요.'))));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-condition' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-condition' },
         h('div', { class: 'sce-action-group-title' }, '사용 조건'),
         field('조건식', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '(비우면 항상 가능) turn >= 2' }),
           '조건이 참일 때만 액션을 준비할 수 있어요. 비우면 항상 사용할 수 있습니다.', true)));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-check' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-check' },
         h('div', { class: 'sce-action-group-title' }, '판정 연결'),
         h('div', { class: 'sce-action-check-row' },
           field('판정', bindSelect(a.check ?? '',
@@ -10413,16 +10449,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               : '아직 판정이 없어요. 판정 탭에서 먼저 만들어 주세요.'),
           !schema.checks.length ? h('button', { class: 'sce-btn',
             onclick: () => { activeTab = 'checks'; rerender(); } }, '판정 탭으로 이동') : null)));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-effects' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-effects' },
         h('div', { class: 'sce-action-group-title' }, '실행 효과'),
         h('div', { class: 'sce-action-group-copy' }, '이 액션을 적용할 때 실제로 바뀌는 변수와 목록을 설정해요.'),
         effectRows(schema, a.effects = a.effects || [], rerender)));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-inject' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-inject' },
         h('div', { class: 'sce-action-group-title' }, '메인 모델 전달'),
         field('AI 전달문', bindInput(a.inject, (x) => { a.inject = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '[플레이어 액션] 영주는 특별 징세를 단행한다.' }),
           '상태 변화와 별개로 액션 실행 사실을 메인 모델의 서사에 전달하는 문구예요.', true)));
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-advanced' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-advanced' },
         h('div', { class: 'sce-action-group-title' }, '고급 동작'),
         h('div', { class: 'sce-action-field-grid is-advanced' },
           field('사용 방식', bindSelect(a.mode ?? 'oneshot', [['oneshot', '1회성'], ['hold', '지속형']],
@@ -10430,7 +10466,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           field('쿨다운', bindInput(a.cooldown, (x) => { a.cooldown = numOrNull(x) ?? undefined; rerender(); },
             { cls: 'sce-w-s', ph: '턴' }), '다시 사용할 수 있을 때까지 기다릴 턴 수예요.'))));
       // 버튼 없이 켜지는 길 — 우리 쪽 v1.5.0~v1.7.7 추가분 (개조본 이식 뒤 되살림, v1.7.13)
-      card.appendChild(h('section', { class: 'sce-action-card-section sce-action-auto' },
+      body.appendChild(h('section', { class: 'sce-action-card-section sce-action-auto' },
         h('div', { class: 'sce-action-group-title' }, '자동 동작'),
         // 낱말 자동 무장 (v1.7.7) — 유저 글에 이 낱말이 있으면 버튼 없이 그 턴에 켜진다
         field('자동 무장 낱말', bindInput((a.keywords || []).join(', '),
@@ -10455,6 +10491,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               ? '주인공 부재 지시문이 프롬프트 맨 끝에 붙고, 페르소나 칸도 그 턴만 프롬프트에서 빠집니다 (유저 입력은 "무엇을 비출지" 연출 지시로 읽힙니다). 껄 때까지 계속 두려면 지속형으로.'
               : '조연들끼리의 장면·흑막의 뒷이야기용. 페르소나가 있으면 모델이 주인공을 억지로 등장시키는 문제를 버튼 하나로 끕니다.'),
         )));
+      if (!acFold) card.appendChild(body);
       wrap.appendChild(card);
     });
     wrap.appendChild(h('div', { class: 'sce-actions-add' }, addBtn('액션 추가', addAction)));
@@ -10495,22 +10532,26 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             { when: 'total >= vs', label: '성공' }, { label: '실패' }] });
         rerender();
       })));
+    appendFoldBar(wrap, schema.checks);
     schema.checks.forEach((c, i) => {
       const hasBtn = (schema.actions || []).some((a) => a.check === c.id);
-      const block = h('article', { class: 'sce-check-card', 'data-sce-validation-path': `$.checks[${i}]` });
+      const ckFold = collapsedCards.has(c);
+      const block = h('article', { class: 'sce-check-card' + (ckFold ? ' is-collapsed' : ''), 'data-sce-validation-path': `$.checks[${i}]` });
+      const body = h('div', { class: 'sce-card-body-contents' });
       block.appendChild(h('div', { class: 'sce-check-card-head' },
         h('div', { class: 'sce-check-identity' }, h('span', { class: 'sce-check-index' }, String(i + 1).padStart(2, '0')),
           h('div', {}, h('strong', {}, c.label || '이름 없는 판정'),
             h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}`))),
+        foldBtn(c, c.label || c.id || `판정 ${i + 1}`),
         grip(schema.checks, i, rerender)));
-      block.appendChild(h('section', { class: 'sce-check-card-section' },
+      body.appendChild(h('section', { class: 'sce-check-card-section' },
         h('div', { class: 'sce-check-group-title' }, '기본 정보'),
         h('div', { class: 'sce-check-field-grid is-basic' },
           checkField('ID', bindInput(c.id, (x) => { c.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: '영문id (예: attack)' }),
             '액션과 이벤트가 참조하는 기술 식별자입니다.'),
           checkField('표시 이름', bindInput(c.label, (x) => { c.label = x; rerender(); }, { cls: 'sce-w-m', ph: '표시 이름 (예: 공격 판정)' }),
             '사용자에게 보이는 판정 이름입니다.'))));
-      block.appendChild(h('section', { class: 'sce-check-card-section' },
+      body.appendChild(h('section', { class: 'sce-check-card-section' },
         h('div', { class: 'sce-check-group-title' }, '굴림과 계산'),
         h('div', { class: 'sce-check-group-copy' }, '굴린 눈에 보정을 더한 합계를 목표치와 비교합니다.'),
         h('div', { class: 'sce-check-field-grid is-roll' },
@@ -10562,7 +10603,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           rerender();
         } }, hasBtn ? '✓ 액션 버튼 있음' : '🎲 액션 버튼 만들기'),
       ));
-      block.appendChild(grades);
+      body.appendChild(grades);
+      if (!ckFold) block.appendChild(body);
       wrap.appendChild(block);
     });
     if (schema.checks.length) wrap.appendChild(h('div', { class: 'sce-checks-add' }, addBtn('판정 추가', () => {

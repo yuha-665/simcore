@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.12
-//@display-name SimCore (시뮬 엔진) v1.9.12 카드 접기 — 이벤트·액션·판정도 접힌다
+//@version 1.9.13
+//@display-name SimCore (시뮬 엔진) v1.9.13 🔒 보호 — AI가 못 건드리는 항목
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.13 ──────────────────────────────────────────────
+// **🔒 보호(keep)** — 커뮤니티 제보(2026-09-11): "AI가 지워서는 안 될 변수·파생·규칙을 유저가 체크하는 기능. 바이브 코딩이
+// 기억력 한계로 기존 작업을 날리는 경우가 왕왕". 항목(변수·파생·판정·이벤트·랜덤·지시문·액션)에 keep:true — 편집기 카드마다
+// [🔓/🔒 보호] 토글 (스키마에 남는 표식이라 접기와 다르다). 세 겹으로 지킨다:
+// ① 패치: 보호 항목의 update/remove/같은 id add(교체)를 건너뛰고 경고 (planPatch.protected, 나머지는 그대로 적용).
+//    변수가 보호되면 그 allow 항목도 같이. ② 프롬프트: 다이제스트 맨 위 "🔒 보호 항목" 목록 + 규칙 한 줄 + 대화 규약 한 줄
+//    ("잠겨 있으니 풀어 달라"고 말하고 JSON은 붙이지 마라). ③ 통짜 교체(창작·대화 "편집기에 넣기"): patchMod.restoreKept가
+//    빠진 것은 되살리고 고쳐 온 것은 원본으로 되돌려 보고. JSON 관리자의 수동 통짜 붙여넣기는 사람 손이라 안 막는다.
+// 검증: keep은 불린. test-keep.js.
 //
 // ── v1.9.12 ──────────────────────────────────────────────
 // **카드 접기** — 커뮤니티 제보(2026-09-11): "기본 변수·상태 지시문엔 접기가 있는데 파생·조건 이벤트·랜덤 이벤트·액션엔
@@ -5045,6 +5055,18 @@ function validateSchema(schema) {
     }
   }
 
+  // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
+  {
+    const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
+      ['$.rules.events', schema.rules && schema.rules.events],
+      ['$.rules.randomEvents.table', schema.rules && schema.rules.randomEvents && schema.rules.randomEvents.table],
+      ['$.directives', schema.directives], ['$.actions', schema.actions], ['$.updater.allow', schema.updater && schema.updater.allow]];
+    for (const [base, arr] of lists) {
+      if (!Array.isArray(arr)) continue;
+      arr.forEach((e, i) => { if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식'); });
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
@@ -8256,8 +8278,51 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
  *   conflicts[]: { key: 'events:bandit_raid', section, id, existing, incoming,
  *                  options: ['replace'|'rename'|'skip'], reason }
  */
+// ── 🔒 보호 (v1.9.13) ──────────────────────────────────────
+// 커뮤니티 제보: "바이브 코딩이 기억력 한계로 기존 작업을 날리는 경우가 왕왕 있다 — 절대 건드리지 말 것을 유저가 체크하는
+// 기능". 항목의 keep:true. 패치는 그 항목의 update/remove/add(교체)를 건너뛰고 경고로 알린다(원자성은 그대로 — 나머지는 적용).
+// 통짜 교체(restoreKept)는 원본 항목을 그대로 되살린다. 변수가 보호되면 그 allow 항목도 같이 보호된다.
+function isKept(schema, key, id) {
+  const list = getList(schema, key) || [];
+  const e = list.find((x) => x && x.id === id);
+  if (e && e.keep === true) return true;
+  if (key === 'allow') return (schema.vars || []).some((v) => v && v.id === id && v.keep === true);
+  return false;
+}
+function keptEntries(schema) {
+  const out = [];
+  for (const key of SECTION_KEYS) {
+    for (const e of (getList(schema, key) || [])) if (e && e.id != null && isKept(schema, key, e.id)) out.push({ section: key, id: e.id });
+  }
+  return out;
+}
+/**
+ * 통짜 교체 뒤 보호 항목 되살리기 — next의 같은 id를 원본 전문으로 되돌리고(reverted), 없으면 붙인다(restored).
+ * 순서는 next 것을 따른다 (되살린 것은 끝에). 반환 { schema, restored: ['vars:hp'], reverted: ['actions:work'] }
+ */
+function restoreKept(prev, next) {
+  const merged = JSON.parse(JSON.stringify(next));
+  const restored = [], reverted = [];
+  for (const { section, id } of keptEntries(prev)) {
+    const orig = (getList(prev, section) || []).find((e) => e && e.id === id);
+    const list = (getList(merged, section) || []).slice();
+    const idx = list.findIndex((e) => e && e.id === id);
+    if (idx >= 0) {
+      if (JSON.stringify(list[idx]) !== JSON.stringify(orig)) { list[idx] = JSON.parse(JSON.stringify(orig)); reverted.push(section + ':' + id); }
+    } else { list.push(JSON.parse(JSON.stringify(orig))); restored.push(section + ':' + id); }
+    setList(merged, section, list);
+  }
+  return { schema: merged, restored, reverted };
+}
+
 function planPatch(schema, patch) {
-  const errors = [], warnings = [], ops = [], conflicts = [];
+  const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
+  const guard = (key, id, op) => {
+    if (!isKept(schema, key, id)) return false;
+    protectedOps.push({ section: key, id, op });
+    warnings.push(`🔒 보호된 항목 ${SECTIONS[key].label} '${id}' — ${op === 'add' ? 'add(교체)' : op} 건너뜀 (풀려면 편집기에서 🔒 해제)`);
+    return true;
+  };
   const err = (m) => errors.push(m);
   const warn = (m) => warnings.push(m);
 
@@ -8289,6 +8354,7 @@ function planPatch(schema, patch) {
       if (!claim(ns, e.id, 'add', key)) continue;
       if (!ID_RE.test(e.id)) { err(`add.${key}: 잘못된 id '${e.id}' (영문자/숫자/_, 영문자 시작)`); continue; }
       const owner = nsOwner[ns] && nsOwner[ns].get(e.id);
+      if (owner && guard(owner, e.id, 'add')) continue;   // 🔒 보호 항목과 같은 id의 add — 교체가 되니 건너뛴다
       if (owner === key) {
         conflicts.push({
           key: `${key}:${e.id}`, section: key, id: e.id,
@@ -8315,6 +8381,7 @@ function planPatch(schema, patch) {
       if (!claim(ns, e.id, 'update', key)) continue;
       const cur = existing[key].get(e.id);
       if (!cur) { err(`update.${key}: '${e.id}'가 스키마에 없음 — AI가 없는 항목을 고치려 함 (add로 의도했다면 add로)`); continue; }
+      if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
       ops.push({ op: 'update', section: key, id: e.id, entry: e, previous: cur });
@@ -8326,6 +8393,7 @@ function planPatch(schema, patch) {
     for (const id of ids) {
       if (!claim(ns, id, 'remove', key)) continue;
       if (!existing[key].has(id)) { warn(`remove.${key}: '${id}'는 원래 없음 — 무시됨`); continue; }
+      if (guard(key, id, 'remove')) continue;
       ops.push({ op: 'remove', section: key, id, previous: existing[key].get(id) });
     }
   }
@@ -8337,8 +8405,8 @@ function planPatch(schema, patch) {
 
   const count = (op) => ops.filter((o) => o.op === op).length;
   return {
-    ops, conflicts, errors, warnings,
-    summary: { add: count('add'), update: count('update'), remove: count('remove'), conflicts: conflicts.length },
+    ops, conflicts, errors, warnings, protected: protectedOps,
+    summary: { add: count('add'), update: count('update'), remove: count('remove'), conflicts: conflicts.length, protected: protectedOps.length },
   };
 }
 
@@ -8465,7 +8533,8 @@ function applyPatch(schema, patch0, resolutions = {}) {
 
   // 병합 — 깊은 사본에만 쓴다
   const merged = JSON.parse(JSON.stringify(schema));
-  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings };
+  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings,
+    protected: plan.protected.map((p) => `${p.section}:${p.id} (${p.op})`) };   // 🔒 건너뛴 것 (v1.9.13)
   for (const o of plan.ops) {
     const list = (getList(merged, o.section) || []).slice();
     const idx = list.findIndex((e) => e && e.id === o.id);
@@ -8506,7 +8575,7 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
-module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS };
+module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
 
 });
 
@@ -16286,6 +16355,8 @@ const CSS = `
 }
 /* 접기 (v1.9.12) — 이벤트·액션·판정 카드. 몸통 통은 display:contents라 섹션 경계선 규칙이 그대로 산다 */
 .sce .sce-card-body-contents { display:contents; }
+/* 🔒 보호 (v1.9.13) */
+.sce .sce-keep-btn.is-on { background:#e0a94a; color:#1a1a1a; border-color:#e0a94a; font-weight:700; }
 .sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
 .sce .sce-action-card-head > .sce-fold-btn, .sce .sce-check-card-head > .sce-fold-btn { flex:none; margin-left:auto; }
 .sce .sce-action-card-head > .sce-fold-btn + .sce-grip, .sce .sce-check-card-head > .sce-fold-btn + .sce-grip { margin-left:8px; }
@@ -17189,7 +17260,19 @@ function buildFixPrompt(schema, v) {
 // 본문을 모르면 AI가 update를 겁내 remove+add로 우회하다 가져오기에서 막힌다 (실전 사고).
 // 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
-  const out = ['### 변수', varContractTable(schema)];
+  const out = [];
+  // 🔒 보호 항목 (v1.9.13) — 맨 위. 어시스턴트가 못 건드리는 id 목록 (가져오기가 건너뛰고 경고한다)
+  // (patchMod 대신 인라인 — 이 구간은 테스트가 단독 평가해서 모듈을 못 부른다)
+  const kept = [];
+  const keptOf = (sec, arr) => (arr || []).forEach((e) => { if (e && e.keep === true && e.id != null) kept.push('`' + sec + ':' + e.id + '`'); });
+  keptOf('vars', schema.vars); keptOf('derived', schema.derived); keptOf('checks', schema.checks);
+  keptOf('events', schema.rules && schema.rules.events); keptOf('randomEvents', schema.rules && schema.rules.randomEvents && schema.rules.randomEvents.table);
+  keptOf('directives', schema.directives); keptOf('actions', schema.actions);
+  if (kept.length) {
+    out.push('### 🔒 보호 항목 — update/remove 금지, 같은 id로 add 금지 (참조만). 사용자가 잠근 것이라 가져오기가 그 작업을 건너뜁니다',
+      kept.join(' '), '');
+  }
+  out.push('### 변수', varContractTable(schema));
   // 시간 체계가 켜진 봇 — 노출 이름은 조건식에 쓸 수 있는 읽기 전용 값이다. 다이제스트에
   // 안 실으면 AI가 기존 조건식에서 눈치로 배워야 한다 (실측: 시설 패치 때 운 좋게 통했다).
   const tcfg = timeConfig(schema);
@@ -17292,6 +17375,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  기존 본문은 아래 다이제스트에 전문이 있으니, 그걸 바탕으로 고쳐 쓰세요.',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`로 전문을 다시 쓰면 결과가 같습니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
+    '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
@@ -17413,7 +17497,8 @@ function chatRules(blank) {
     '- JSON을 붙일 때는 **무엇을 왜 바꾸는지** 사람 말로 짧게 요약한 뒤 코드펜스를 둡니다. 코드펜스 뒤에는 아무 말도 쓰지 않습니다.',
     '- 이력의 "[적용됨 …]"은 사용자가 그 JSON을 작업본에 넣었다는 뜻, "[적용되지 않음]"은 버렸다는 뜻입니다. '
       + (blank ? '' : '아래 "이미 있는 항목"이 지금의 작업본이니 그것을 기준으로 답하세요.'),
-    ...(blank ? [] : ['- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
+    ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
+      '- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
       '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
       + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭.']),
     '',
@@ -19250,6 +19335,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       onclick: () => { if (collapsedCards.has(item)) collapsedCards.delete(item); else collapsedCards.add(item); rerender(); },
     }, folded ? '펼치기' : '접기');
   };
+  // 🔒 보호 (v1.9.13) — 커뮤니티 제보 "AI가 지워서는 안 될 변수·규칙을 유저가 체크하는 기능". 항목의 keep:true.
+  // 패치는 그 항목의 update/remove를 건너뛰고, 통짜 교체는 원본을 되살린다. 스키마에 남는 표식(카드 접기와 다르다).
+  const keepBtn = (item, title) => {
+    const on = item.keep === true;
+    return h('button', {
+      class: 'sce-btn sce-mini sce-keep-btn' + (on ? ' is-on' : ''), type: 'button', 'aria-pressed': String(on),
+      title: on ? title + ' — 보호 중. AI 패치가 이 항목을 고치거나 지우지 못하고, 통짜 교체에서도 되살아난다 (누르면 해제)'
+        : title + ' — AI 보호 켜기. 어시스턴트가 이 항목을 못 건드린다',
+      onclick: () => { if (on) delete item.keep; else item.keep = true; rerender(); },
+    }, on ? '🔒 보호' : '🔓');
+  };
   // 둘 이상일 때만 "모두 접기/펼치기" 줄을 붙인다
   const appendFoldBar = (container, list) => {
     if (!Array.isArray(list) || list.length < 2) return;
@@ -19552,7 +19648,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             dragHandle,
             h('span', { class: 'sce-variable-card-index' }, String(index + 1).padStart(2, '0')),
             collapsed
-              ? h('span', { class: 'sce-variable-title-display' }, title)
+              ? h('span', { class: 'sce-variable-title-display' }, (item.keep === true ? '🔒 ' : '') + title)
               : h('label', { class: 'sce-variable-title-field' }, h('span', {}, '표시 이름'), titleInput),
             collapsed ? h('span', { class: 'sce-variable-card-summary' }, summary) : null,
             firstIssue ? h('span', { class: 'sce-card-issue-summary', title: firstIssue },
@@ -19560,6 +19656,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-variable-card-actions' },
             moveFeedback ? h('span', { class: 'sce-variable-move-feedback', role: 'status', 'aria-live': 'polite' },
               `✓ ${moveFeedback.position}번째로 이동`) : null,
+            keepBtn(item, title),
             h('button', {
               class: 'sce-btn sce-mini',
               'aria-expanded': String(!collapsed),
@@ -21226,6 +21323,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             ),
           ),
           h('div', { class: 'sce-rules-card-actions' },
+            keepBtn(d, d.id || `지시문 ${i + 1}`),
             h('button', {
               type: 'button',
               class: 'sce-btn sce-mini sce-rules-collapse-btn',
@@ -21286,6 +21384,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ),
           h('div', { class: 'sce-rules-card-actions' },
             bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
+            keepBtn(ev, ev.id || `조건 이벤트 ${i + 1}`),
             foldBtn(ev, ev.id || `조건 이벤트 ${i + 1}`),
             ruleGrip(schema.rules.events, i),
           ),
@@ -21384,7 +21483,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
             h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
           ),
-          h('div', { class: 'sce-rules-card-actions' }, foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
+          h('div', { class: 'sce-rules-card-actions' }, keepBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
         rnFold ? null : h('div', { class: 'sce-rules-card-body' },
           h('div', { class: 'sce-rules-field-grid sce-rules-field-grid-random' },
@@ -23552,6 +23651,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', {},
             h('strong', {}, a.label || `이름 없는 액션 ${i + 1}`),
             h('small', {}, `${a.id || `action${i + 1}`} · ${a.mode === 'hold' ? '지속형' : '1회성'} · ${a.when ? '조건부' : '항상 사용 가능'}`))),
+        keepBtn(a, a.label || `액션 ${i + 1}`),
         foldBtn(a, a.label || `액션 ${i + 1}`),
         grip(schema.actions, i, rerender)));
       body.appendChild(h('section', { class: 'sce-action-card-section sce-action-basic' },
@@ -23670,6 +23770,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-check-identity' }, h('span', { class: 'sce-check-index' }, String(i + 1).padStart(2, '0')),
           h('div', {}, h('strong', {}, c.label || '이름 없는 판정'),
             h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}`))),
+        keepBtn(c, c.label || c.id || `판정 ${i + 1}`),
         foldBtn(c, c.label || c.id || `판정 ${i + 1}`),
         grip(schema.checks, i, rerender)));
       body.appendChild(h('section', { class: 'sce-check-card-section' },
@@ -25011,8 +25112,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => {
             patchBackup = JSON.parse(JSON.stringify(schema));
-            schema = aiFull.schema;
-            aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}. 아래층 탭에서 세부를 다듬을 수 있습니다.`;
+            // 🔒 보호 항목 (v1.9.13) — 통짜가 빠뜨리거나 고쳐 온 보호 항목은 원본으로 되돌린다
+            const kept = patchMod.restoreKept(schema, aiFull.schema);
+            schema = kept.schema;
+            const keptNote = (kept.restored.length || kept.reverted.length)
+              ? ` 🔒 보호 항목 유지 — ${[...kept.restored.map((x) => x + ' 되살림'), ...kept.reverted.map((x) => x + ' 원본 유지')].join(', ')}.` : '';
+            aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}.${keptNote} 아래층 탭에서 세부를 다듬을 수 있습니다.`;
             if (patchSource === 'chat') chatMarkApplied(summary);
             recordWork({ via: patchSource === 'chat' ? 'chat' : 'full', req: patchSource === 'chat' ? lastChatUserText() : aiReq,
               why: patchSource === 'chat' ? lastChatAiWhy() : '', sum: '작업본 통째 반영 — ' + summary, ids: [] }); // 작업 내역 (v1.9.7)

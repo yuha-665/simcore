@@ -179,8 +179,51 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
  *   conflicts[]: { key: 'events:bandit_raid', section, id, existing, incoming,
  *                  options: ['replace'|'rename'|'skip'], reason }
  */
+// ── 🔒 보호 (v1.9.13) ──────────────────────────────────────
+// 커뮤니티 제보: "바이브 코딩이 기억력 한계로 기존 작업을 날리는 경우가 왕왕 있다 — 절대 건드리지 말 것을 유저가 체크하는
+// 기능". 항목의 keep:true. 패치는 그 항목의 update/remove/add(교체)를 건너뛰고 경고로 알린다(원자성은 그대로 — 나머지는 적용).
+// 통짜 교체(restoreKept)는 원본 항목을 그대로 되살린다. 변수가 보호되면 그 allow 항목도 같이 보호된다.
+function isKept(schema, key, id) {
+  const list = getList(schema, key) || [];
+  const e = list.find((x) => x && x.id === id);
+  if (e && e.keep === true) return true;
+  if (key === 'allow') return (schema.vars || []).some((v) => v && v.id === id && v.keep === true);
+  return false;
+}
+function keptEntries(schema) {
+  const out = [];
+  for (const key of SECTION_KEYS) {
+    for (const e of (getList(schema, key) || [])) if (e && e.id != null && isKept(schema, key, e.id)) out.push({ section: key, id: e.id });
+  }
+  return out;
+}
+/**
+ * 통짜 교체 뒤 보호 항목 되살리기 — next의 같은 id를 원본 전문으로 되돌리고(reverted), 없으면 붙인다(restored).
+ * 순서는 next 것을 따른다 (되살린 것은 끝에). 반환 { schema, restored: ['vars:hp'], reverted: ['actions:work'] }
+ */
+function restoreKept(prev, next) {
+  const merged = JSON.parse(JSON.stringify(next));
+  const restored = [], reverted = [];
+  for (const { section, id } of keptEntries(prev)) {
+    const orig = (getList(prev, section) || []).find((e) => e && e.id === id);
+    const list = (getList(merged, section) || []).slice();
+    const idx = list.findIndex((e) => e && e.id === id);
+    if (idx >= 0) {
+      if (JSON.stringify(list[idx]) !== JSON.stringify(orig)) { list[idx] = JSON.parse(JSON.stringify(orig)); reverted.push(section + ':' + id); }
+    } else { list.push(JSON.parse(JSON.stringify(orig))); restored.push(section + ':' + id); }
+    setList(merged, section, list);
+  }
+  return { schema: merged, restored, reverted };
+}
+
 function planPatch(schema, patch) {
-  const errors = [], warnings = [], ops = [], conflicts = [];
+  const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
+  const guard = (key, id, op) => {
+    if (!isKept(schema, key, id)) return false;
+    protectedOps.push({ section: key, id, op });
+    warnings.push(`🔒 보호된 항목 ${SECTIONS[key].label} '${id}' — ${op === 'add' ? 'add(교체)' : op} 건너뜀 (풀려면 편집기에서 🔒 해제)`);
+    return true;
+  };
   const err = (m) => errors.push(m);
   const warn = (m) => warnings.push(m);
 
@@ -212,6 +255,7 @@ function planPatch(schema, patch) {
       if (!claim(ns, e.id, 'add', key)) continue;
       if (!ID_RE.test(e.id)) { err(`add.${key}: 잘못된 id '${e.id}' (영문자/숫자/_, 영문자 시작)`); continue; }
       const owner = nsOwner[ns] && nsOwner[ns].get(e.id);
+      if (owner && guard(owner, e.id, 'add')) continue;   // 🔒 보호 항목과 같은 id의 add — 교체가 되니 건너뛴다
       if (owner === key) {
         conflicts.push({
           key: `${key}:${e.id}`, section: key, id: e.id,
@@ -238,6 +282,7 @@ function planPatch(schema, patch) {
       if (!claim(ns, e.id, 'update', key)) continue;
       const cur = existing[key].get(e.id);
       if (!cur) { err(`update.${key}: '${e.id}'가 스키마에 없음 — AI가 없는 항목을 고치려 함 (add로 의도했다면 add로)`); continue; }
+      if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
       ops.push({ op: 'update', section: key, id: e.id, entry: e, previous: cur });
@@ -249,6 +294,7 @@ function planPatch(schema, patch) {
     for (const id of ids) {
       if (!claim(ns, id, 'remove', key)) continue;
       if (!existing[key].has(id)) { warn(`remove.${key}: '${id}'는 원래 없음 — 무시됨`); continue; }
+      if (guard(key, id, 'remove')) continue;
       ops.push({ op: 'remove', section: key, id, previous: existing[key].get(id) });
     }
   }
@@ -260,8 +306,8 @@ function planPatch(schema, patch) {
 
   const count = (op) => ops.filter((o) => o.op === op).length;
   return {
-    ops, conflicts, errors, warnings,
-    summary: { add: count('add'), update: count('update'), remove: count('remove'), conflicts: conflicts.length },
+    ops, conflicts, errors, warnings, protected: protectedOps,
+    summary: { add: count('add'), update: count('update'), remove: count('remove'), conflicts: conflicts.length, protected: protectedOps.length },
   };
 }
 
@@ -388,7 +434,8 @@ function applyPatch(schema, patch0, resolutions = {}) {
 
   // 병합 — 깊은 사본에만 쓴다
   const merged = JSON.parse(JSON.stringify(schema));
-  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings };
+  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings,
+    protected: plan.protected.map((p) => `${p.section}:${p.id} (${p.op})`) };   // 🔒 건너뛴 것 (v1.9.13)
   for (const o of plan.ops) {
     const list = (getList(merged, o.section) || []).slice();
     const idx = list.findIndex((e) => e && e.id === o.id);
@@ -429,4 +476,4 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
-module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS };
+module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };

@@ -3158,6 +3158,8 @@ const CSS = `
 }
 /* 접기 (v1.9.12) — 이벤트·액션·판정 카드. 몸통 통은 display:contents라 섹션 경계선 규칙이 그대로 산다 */
 .sce .sce-card-body-contents { display:contents; }
+/* 🔒 보호 (v1.9.13) */
+.sce .sce-keep-btn.is-on { background:#e0a94a; color:#1a1a1a; border-color:#e0a94a; font-weight:700; }
 .sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
 .sce .sce-action-card-head > .sce-fold-btn, .sce .sce-check-card-head > .sce-fold-btn { flex:none; margin-left:auto; }
 .sce .sce-action-card-head > .sce-fold-btn + .sce-grip, .sce .sce-check-card-head > .sce-fold-btn + .sce-grip { margin-left:8px; }
@@ -4061,7 +4063,19 @@ function buildFixPrompt(schema, v) {
 // 본문을 모르면 AI가 update를 겁내 remove+add로 우회하다 가져오기에서 막힌다 (실전 사고).
 // 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
-  const out = ['### 변수', varContractTable(schema)];
+  const out = [];
+  // 🔒 보호 항목 (v1.9.13) — 맨 위. 어시스턴트가 못 건드리는 id 목록 (가져오기가 건너뛰고 경고한다)
+  // (patchMod 대신 인라인 — 이 구간은 테스트가 단독 평가해서 모듈을 못 부른다)
+  const kept = [];
+  const keptOf = (sec, arr) => (arr || []).forEach((e) => { if (e && e.keep === true && e.id != null) kept.push('`' + sec + ':' + e.id + '`'); });
+  keptOf('vars', schema.vars); keptOf('derived', schema.derived); keptOf('checks', schema.checks);
+  keptOf('events', schema.rules && schema.rules.events); keptOf('randomEvents', schema.rules && schema.rules.randomEvents && schema.rules.randomEvents.table);
+  keptOf('directives', schema.directives); keptOf('actions', schema.actions);
+  if (kept.length) {
+    out.push('### 🔒 보호 항목 — update/remove 금지, 같은 id로 add 금지 (참조만). 사용자가 잠근 것이라 가져오기가 그 작업을 건너뜁니다',
+      kept.join(' '), '');
+  }
+  out.push('### 변수', varContractTable(schema));
   // 시간 체계가 켜진 봇 — 노출 이름은 조건식에 쓸 수 있는 읽기 전용 값이다. 다이제스트에
   // 안 실으면 AI가 기존 조건식에서 눈치로 배워야 한다 (실측: 시설 패치 때 운 좋게 통했다).
   const tcfg = timeConfig(schema);
@@ -4164,6 +4178,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  기존 본문은 아래 다이제스트에 전문이 있으니, 그걸 바탕으로 고쳐 쓰세요.',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`로 전문을 다시 쓰면 결과가 같습니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
+    '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
@@ -4285,7 +4300,8 @@ function chatRules(blank) {
     '- JSON을 붙일 때는 **무엇을 왜 바꾸는지** 사람 말로 짧게 요약한 뒤 코드펜스를 둡니다. 코드펜스 뒤에는 아무 말도 쓰지 않습니다.',
     '- 이력의 "[적용됨 …]"은 사용자가 그 JSON을 작업본에 넣었다는 뜻, "[적용되지 않음]"은 버렸다는 뜻입니다. '
       + (blank ? '' : '아래 "이미 있는 항목"이 지금의 작업본이니 그것을 기준으로 답하세요.'),
-    ...(blank ? [] : ['- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
+    ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
+      '- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
       '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
       + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭.']),
     '',
@@ -6122,6 +6138,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       onclick: () => { if (collapsedCards.has(item)) collapsedCards.delete(item); else collapsedCards.add(item); rerender(); },
     }, folded ? '펼치기' : '접기');
   };
+  // 🔒 보호 (v1.9.13) — 커뮤니티 제보 "AI가 지워서는 안 될 변수·규칙을 유저가 체크하는 기능". 항목의 keep:true.
+  // 패치는 그 항목의 update/remove를 건너뛰고, 통짜 교체는 원본을 되살린다. 스키마에 남는 표식(카드 접기와 다르다).
+  const keepBtn = (item, title) => {
+    const on = item.keep === true;
+    return h('button', {
+      class: 'sce-btn sce-mini sce-keep-btn' + (on ? ' is-on' : ''), type: 'button', 'aria-pressed': String(on),
+      title: on ? title + ' — 보호 중. AI 패치가 이 항목을 고치거나 지우지 못하고, 통짜 교체에서도 되살아난다 (누르면 해제)'
+        : title + ' — AI 보호 켜기. 어시스턴트가 이 항목을 못 건드린다',
+      onclick: () => { if (on) delete item.keep; else item.keep = true; rerender(); },
+    }, on ? '🔒 보호' : '🔓');
+  };
   // 둘 이상일 때만 "모두 접기/펼치기" 줄을 붙인다
   const appendFoldBar = (container, list) => {
     if (!Array.isArray(list) || list.length < 2) return;
@@ -6424,7 +6451,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             dragHandle,
             h('span', { class: 'sce-variable-card-index' }, String(index + 1).padStart(2, '0')),
             collapsed
-              ? h('span', { class: 'sce-variable-title-display' }, title)
+              ? h('span', { class: 'sce-variable-title-display' }, (item.keep === true ? '🔒 ' : '') + title)
               : h('label', { class: 'sce-variable-title-field' }, h('span', {}, '표시 이름'), titleInput),
             collapsed ? h('span', { class: 'sce-variable-card-summary' }, summary) : null,
             firstIssue ? h('span', { class: 'sce-card-issue-summary', title: firstIssue },
@@ -6432,6 +6459,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', { class: 'sce-variable-card-actions' },
             moveFeedback ? h('span', { class: 'sce-variable-move-feedback', role: 'status', 'aria-live': 'polite' },
               `✓ ${moveFeedback.position}번째로 이동`) : null,
+            keepBtn(item, title),
             h('button', {
               class: 'sce-btn sce-mini',
               'aria-expanded': String(!collapsed),
@@ -8098,6 +8126,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             ),
           ),
           h('div', { class: 'sce-rules-card-actions' },
+            keepBtn(d, d.id || `지시문 ${i + 1}`),
             h('button', {
               type: 'button',
               class: 'sce-btn sce-mini sce-rules-collapse-btn',
@@ -8158,6 +8187,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ),
           h('div', { class: 'sce-rules-card-actions' },
             bindCheck(ev.once, (x) => { ev.once = x || undefined; rerender(); }, '1회만'),
+            keepBtn(ev, ev.id || `조건 이벤트 ${i + 1}`),
             foldBtn(ev, ev.id || `조건 이벤트 ${i + 1}`),
             ruleGrip(schema.rules.events, i),
           ),
@@ -8256,7 +8286,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
             h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
           ),
-          h('div', { class: 'sce-rules-card-actions' }, foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
+          h('div', { class: 'sce-rules-card-actions' }, keepBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
         rnFold ? null : h('div', { class: 'sce-rules-card-body' },
           h('div', { class: 'sce-rules-field-grid sce-rules-field-grid-random' },
@@ -10424,6 +10454,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('div', {},
             h('strong', {}, a.label || `이름 없는 액션 ${i + 1}`),
             h('small', {}, `${a.id || `action${i + 1}`} · ${a.mode === 'hold' ? '지속형' : '1회성'} · ${a.when ? '조건부' : '항상 사용 가능'}`))),
+        keepBtn(a, a.label || `액션 ${i + 1}`),
         foldBtn(a, a.label || `액션 ${i + 1}`),
         grip(schema.actions, i, rerender)));
       body.appendChild(h('section', { class: 'sce-action-card-section sce-action-basic' },
@@ -10542,6 +10573,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-check-identity' }, h('span', { class: 'sce-check-index' }, String(i + 1).padStart(2, '0')),
           h('div', {}, h('strong', {}, c.label || '이름 없는 판정'),
             h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}`))),
+        keepBtn(c, c.label || c.id || `판정 ${i + 1}`),
         foldBtn(c, c.label || c.id || `판정 ${i + 1}`),
         grip(schema.checks, i, rerender)));
       body.appendChild(h('section', { class: 'sce-check-card-section' },
@@ -11883,8 +11915,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' },
           h('button', { class: 'sce-btn sce-add', style: 'width:auto', onclick: () => {
             patchBackup = JSON.parse(JSON.stringify(schema));
-            schema = aiFull.schema;
-            aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}. 아래층 탭에서 세부를 다듬을 수 있습니다.`;
+            // 🔒 보호 항목 (v1.9.13) — 통짜가 빠뜨리거나 고쳐 온 보호 항목은 원본으로 되돌린다
+            const kept = patchMod.restoreKept(schema, aiFull.schema);
+            schema = kept.schema;
+            const keptNote = (kept.restored.length || kept.reverted.length)
+              ? ` 🔒 보호 항목 유지 — ${[...kept.restored.map((x) => x + ' 되살림'), ...kept.reverted.map((x) => x + ' 원본 유지')].join(', ')}.` : '';
+            aiFullReport = `✅ 생성된 스키마를 반영했습니다 — ${summary}.${keptNote} 아래층 탭에서 세부를 다듬을 수 있습니다.`;
             if (patchSource === 'chat') chatMarkApplied(summary);
             recordWork({ via: patchSource === 'chat' ? 'chat' : 'full', req: patchSource === 'chat' ? lastChatUserText() : aiReq,
               why: patchSource === 'chat' ? lastChatAiWhy() : '', sum: '작업본 통째 반영 — ' + summary, ids: [] }); // 작업 내역 (v1.9.7)

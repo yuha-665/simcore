@@ -1615,6 +1615,18 @@ function validateSchema(schema) {
     }
   }
 
+  // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
+  {
+    const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
+      ['$.rules.events', schema.rules && schema.rules.events],
+      ['$.rules.randomEvents.table', schema.rules && schema.rules.randomEvents && schema.rules.randomEvents.table],
+      ['$.directives', schema.directives], ['$.actions', schema.actions], ['$.updater.allow', schema.updater && schema.updater.allow]];
+    for (const [base, arr] of lists) {
+      if (!Array.isArray(arr)) continue;
+      arr.forEach((e, i) => { if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식'); });
+    }
+  }
+
   return { ok: errors.length === 0, errors, warnings };
 }
 

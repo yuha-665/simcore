@@ -4,7 +4,7 @@
 <div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
   <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
   <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
-  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.7.5 &nbsp;→&nbsp; v1.9.12</div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.7.5 &nbsp;→&nbsp; v1.9.13</div>
 </div>
 
 <!-- ─────────── 처음 보는 사람용 ─────────── -->
@@ -226,6 +226,20 @@
   </p>
 </div>
 
+<!-- ─────────── ⑦⅓ 🔒 보호 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔒 보호</span>
+    <span style="font-size:19px;font-weight:600;">AI가 못 건드리는 항목</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.13</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 제보대로 어시스턴트가 기억력 한계로 <b style="color:#dbe2ea;">기존 작업을 밀어 버리는</b> 일이 있었습니다. 이제 변수·파생·판정·이벤트·지시문·액션 카드마다 <b style="color:#dbe2ea;">[🔓] 버튼</b>이 있고, 누르면 [🔒 보호]가 됩니다<br>
+  · 보호된 항목은 <b style="color:#dbe2ea;">패치가 고치거나 지우지 못하고</b>(그 작업만 건너뛰고 경고, 나머지는 적용), 어시스턴트에게는 "잠긴 목록"이 프롬프트 맨 위에 실려 고쳐 달라고 해도 "먼저 🔒를 풀어 달라"고 답합니다. 창작·대화의 <b style="color:#dbe2ea;">통짜 교체</b>에서 빠지거나 바뀌어 와도 원본으로 되살아납니다<br>
+  · 표식은 스키마에 남으니 번들·세이브를 따라갑니다. JSON 관리자에서 사람이 직접 붙여넣는 통짜 교체는 막지 않습니다
+  </p>
+</div>
+
 <!-- ─────────── ⑦½ 시간 고정표 ─────────── -->
 <div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
@@ -262,7 +276,7 @@
   <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
   <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
   <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
-  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.9.12 카드 접기 — 이벤트·액션·판정도 접힌다</span>인지 확인하세요.<br>
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.9.13 🔒 보호 — AI가 못 건드리는 항목</span>인지 확인하세요.<br>
   <b style="color:#c98a7a;">② 얼터헌터 개조판</b> — 새 번들 파일을 받아 세이브 페이지의 [번들 가져와 교체]로 교체하세요. 협회 의뢰판은 번들을 갈아야 들어옵니다.<br>
   <b style="color:#c98a7a;">③ 아틀리에 레슬레리아나 SimCore판</b> — 봇 소개글의 번들이 최신입니다. 그쪽 글 순서대로 번들을 다시 적용하면 됩니다.<br>
   <b style="color:#c98a7a;">④ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다. 새 변수는 자동으로 채워집니다.

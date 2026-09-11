@@ -42,7 +42,7 @@ console.log('── 예산');
   const st = engine.initState(big);
   const b = engine.auxOutputBudget(big, st, '경기 시작');
   ck('큰 봇(목록 7×10 + 스칼라 16) 예산이 2500 이상', b >= 2500, b);
-  ck('예산은 천장 6000 이하', b <= 6000, b);
+  ck('예산은 천장 10000 이하', b <= 10000, b);
   const s = engine.auxOutputBudget(small, engine.initState(small), '안녕');
   // 장난감 봇 500 → 클램프(요청분×2, 최소 1000) 뒤엔 예전 400과 똑같이 1000 — 작은 봇의 비용은 안 변한다
   ck('장난감 봇 예산은 500 이하 (클램프 후 1000, 이전과 동일)', s <= 500, s);
@@ -96,7 +96,8 @@ console.log('── 어댑터 배선');
   ck('파싱 실패 재시도는 긴 원문이면 상한 곱절', src.includes('const retryCap = auxText.length > 200 ? auxCap * 2 : auxCap;'), '');
   ck('지연 경로도 잘림을 알린다', src.includes("if (parsed.truncated) console.log('[simcore] 지연 응답 잘림"), '');
   ck('parseAuxResponse가 truncated를 올린다', src.includes('truncated: obj.__truncated === true'), '');
-  ck('클램프는 요청분×2 그대로 (thinking 여유)', src.includes('auxCapInFlight = Math.max(1000, (Number(maxTokens) || 0) * 2);'), '');
+  ck('클램프는 요청분×2 + 추론 예산 (Gemini는 thinking이 maxOutputTokens 안)', src.includes('auxCapInFlight = Math.max(1000, (Number(maxTokens) || 0) * 2) + AUX_THINK_CAP;'), '');
+  ck('추론 예산 2048 (v1.9.9)', src.includes('const AUX_THINK_CAP = 2048;'), '');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

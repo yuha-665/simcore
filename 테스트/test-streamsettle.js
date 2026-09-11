@@ -129,8 +129,8 @@ async function boot() {
   {
     ck('클램프가 보조 요청에 돌았다', world.clamped.length === 1, `${world.clamped.length}회`);
     const b = JSON.parse(world.clamped[0] ?? '{}');
-    ck('★ maxOutputTokens 10000 → 1000 (요청 400×2, 최소 1000)', b?.generationConfig?.maxOutputTokens === 1000, JSON.stringify(b?.generationConfig));
-    ck('★ thinking 동적(-1) → 512 예산', b?.generationConfig?.thinkingConfig?.thinkingBudget === 512, '');
+    ck('★ maxOutputTokens 10000 → 3048 (요청분×2 최소 1000 + 추론 2048, v1.9.9)', b?.generationConfig?.maxOutputTokens === 3048, JSON.stringify(b?.generationConfig));
+    ck('★ thinking 동적(-1) → 2048 예산 (v1.9.9)', b?.generationConfig?.thinkingConfig?.thinkingBudget === 2048, '');
     // 보조 호출이 없는 동안엔 어떤 바디도 건드리지 않는다 (걸쇠 ①)
     const idle = JSON.stringify({ contents: [{ parts: [{ text: AUX_NUDGE }] }], generationConfig: { maxOutputTokens: 9999 } });
     ck('★ 보조 미진행 중엔 원본 그대로 (메인 요청 오폭 없음)', await global.__bodyCb(idle, 'gemini_base') === idle, '');

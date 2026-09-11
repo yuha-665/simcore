@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.8
-//@display-name SimCore (시뮬 엔진) v1.9.8 보조 출력 예산 — 변수 많은 봇도 갱신된다
+//@version 1.9.9
+//@display-name SimCore (시뮬 엔진) v1.9.9 보조 출력 예산 — 변수 많은 봇도 갱신된다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,13 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.9.9 ───────────────────────────────────────────────
+// v1.9.8 후속 — 유저 판단(2026-09-11): "플래시·소넷급 보조는 성능이 올라 제약의 실익이 비용뿐이고, 상태값이 매 턴 바뀌어
+// 캐싱도 안 먹으니 큰 의미 없는 제약". 보조 추론 예산 512 → **2048**, 출력 예산 천장 6000 → **10000**.
+// Gemini는 thinking이 maxOutputTokens 안에 들므로 클램프를 **요청분×2 + 추론 예산**으로 — 안 그러면 추론 2048이
+// 바닥 1000을 다 먹어 JSON이 0이 된다. 장난감 봇도 1000 → 3048로 오르지만 그건 여유일 뿐 실제 출력은 그대로.
+// 대가는 지연(플래시 1~3초)뿐 — 보조는 응답 뒤 상태창이 뜨기까지의 대기다.
+//
 // ── v1.9.8 ───────────────────────────────────────────────
 // **보조 출력 상한이 변수 수를 안 따라가던 버그** — 실기 제보(2026-09-11, 롤 프로게이머 시뮬 · 변수 51 · 목록 18):
 // "첫 응답은 되는데 경기에 들어가면 변수가 하나도 안 변하고 선택지도 안 뜬다 — 변수를 정리하니 다시 된다".
@@ -17,7 +24,7 @@
 // 아이템·스펠·궁·자원)이 remove+add 두 벌로 다시 써져 JSON만 3천 토큰 — 매 턴 잘렸고, 잘린 JSON은 통째로
 // 버려져(재시도도 같은 상한) 잘 되던 스칼라 변수와 suggest까지 같이 죽었다. Gemini는 thinking 512도 그 상한 안이라 더 좁았다.
 // - engine.auxOutputBudget(schema, state, text) — 이번 턴 프롬프트에 실린 변수만 세어 예산: 목록은 항목 수×크기×2,
-//   텍스트는 상한 글자, 스칼라는 값+사유 한 줄, 봉투 250. 어댑터는 max(400, 예산) 위에 상점·게시판 얹힘을 더한다 (천장 6000).
+//   텍스트는 상한 글자, 스칼라는 값+사유 한 줄, 봉투 250. 어댑터는 max(400, 예산) 위에 상점·게시판 얹힘을 더한다 (천장 6000 → v1.9.9 10000).
 // - salvageTruncatedJson — 그래도 잘리면 **완성된 항목까지만** 살린다 (1~2층 경계에서만 자름 — add만 있고 remove가
 //   없는 반쪽 목록 연산은 그 변수째 버린다). parseAuxResponse가 truncated를 올리고 패널 [보조 모델] 상태줄에 ⚠로 보인다.
 // - 파싱 실패 재시도는 원문이 200자 넘으면 상한 곱절로.
@@ -538,7 +545,7 @@
 //   staticModel/allowPlugins만 통과). 보조가 메인과 같은 db.maxResponse(예: 10000) +
 //   thinking 켜진 채 나가고 있었다. bodyIntercepter('replacer' 권한, 기보유)로 우리 보조
 //   요청만 이중 걸쇠(호출 진행 중 + AUX_NUDGE 문장 실존)로 식별해 상한을 **낮추기만** 한다:
-//   출력 = 요청분×2(최소 1000), Gemini thinking 예산 512, Claude thinking 1024.
+//   출력 = 요청분×2(최소 1000)+추론 예산, Gemini thinking 예산 2048(v1.9.9, 처음엔 512), Claude thinking 1024.
 // - 테스트 test-streamsettle.js 신설 (가짜 리수 스트리밍 시뮬 — 보조 1회·틱 1회·인덱스·클램프).
 //   테스트·디버그 배수구 globalThis.__simcoreDrainTurn (대기 중 확정을 즉시 끝냄).
 //
@@ -2580,8 +2587,9 @@
     //   ("Plugin calls are blocked by the caller." 의 실제 원인이 이 가드였음)
     // ⚠ maxTokens는 이 API로 전달되지 않는다 (리수 v3.svelte.ts — 위 4개 인자만
     //   requestChatDataMain에 넘긴다). 상한은 bodyIntercepter가 HTTP 바디에서 직접 조인다.
-    //   요청분×2(최소 1000) — thinking·JSON 여유. 낮추기만 하므로 유저 설정이 작으면 그대로.
-    auxCapInFlight = Math.max(1000, (Number(maxTokens) || 0) * 2);
+    //   요청분×2(최소 1000) + 추론 예산 — 낮추기만 하므로 유저 설정이 작으면 그대로.
+    // ⚠ Gemini는 thinking이 maxOutputTokens **안**에 든다 — 추론 예산을 더해 두지 않으면 추론이 JSON 몫을 먹는다 (v1.9.9)
+    auxCapInFlight = Math.max(1000, (Number(maxTokens) || 0) * 2) + AUX_THINK_CAP;
     try {
       const res = await Risuai.runLLMModel({
         mode: 'submodel',
@@ -2630,7 +2638,9 @@
   // ② 바디에 AUX_NUDGE 문장 실존. 남의 요청(동시 진행 메인 스트림 포함)엔 ②가 없다.
   // 상한은 **낮추기만** 한다 — 유저가 이미 작게 잡았다면 손대지 않는다.
   let auxCapInFlight = null;   // 진행 중인 보조 호출의 출력 상한 (토큰). null = 보조 호출 없음
-  const AUX_THINK_CAP = 512;   // Gemini thinking 예산 상한 (0은 안 쓴다 — pro 계열은 완전 끄면 400)
+  // v1.9.9: 512 → 2048. 유저 판단(2026-09-11) — 요즘 보조로 쓰는 플래시·소넷급은 성능이 올라 제약의 실익이 비용뿐인데,
+  // 보조 프롬프트는 상태값이 매 턴 바뀌어 캐싱도 거의 안 먹고 단가도 낮아 아낄 게 없다. 목록 일곱을 정리하는 턴엔 오히려 돕는다.
+  const AUX_THINK_CAP = 2048;  // Gemini thinking 예산 상한 (0은 안 쓴다 — pro 계열은 완전 끄면 400)
 
   function clampAuxBody(obj, cap) {
     let touched = false;

@@ -1820,7 +1820,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
  * · 목록: 지금 항목 수 × 항목 크기 × 2(갈아엎으면 remove+add) + 사유 한 줄. 빈 목록은 서너 개 얹을 몫
  * · 텍스트: 상한 글자 수 그대로 · 숫자/선택/참거짓: 값 + 사유 한 줄
  * · 봉투: 형식 + suggest 서너 줄 + conflicts/detected 여지
- * 어댑터는 이 값과 바닥 400 중 큰 쪽을 쓰고, 상점 첫 입고·게시판 같은 얹힘은 그 위에 더한다.
+ * 어댑터는 이 값과 바닥 400 중 큰 쪽을 쓰고, 상점 첫 입고·게시판 같은 얹힘은 그 위에 더한다. 천장 10000 (v1.9.9).
  *
  * @param text 프롬프트를 만들 때 본 글(서사+유저 발화+맥락) — 낱말 게이트 판정이 buildAuxPrompt와 같아야 한다
  */
@@ -1842,7 +1842,7 @@ function auxOutputBudget(schema, state, text) {
       sum += 30;
     }
   }
-  return Math.min(6000, Math.ceil(sum / 100) * 100);
+  return Math.min(10000, Math.ceil(sum / 100) * 100);   // 천장 6000 → 10000 (v1.9.9, 유저 판단)
 }
 
 /**

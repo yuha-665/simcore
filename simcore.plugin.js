@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.10
-//@display-name SimCore (시뮬 엔진) v1.9.10 경고 접기 — 상단 경고는 한 줄로
+//@version 1.9.11
+//@display-name SimCore (시뮬 엔진) v1.9.11 시간 고정표 — 흐른 시간만큼 정산
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.11 ──────────────────────────────────────────────
+// **시간 고정표 + 흐른 시간 노출** — 커뮤니티 제보(2026-09-11): "매 턴 자동 처리가 10분이나 10년이나 한 턴으로 잡아
+// 시간당 소모를 쓸 수 없다". 유저 결정: 시간은 기본으로 AI가 잡되(서사를 가장 자연스럽게 따라가는 건 AI뿐),
+// 사람이 정한 행동·상황만 고정값이 이긴다.
+// - `time.pins`: [{ action | mentions, min, mode: set|add }]. 액션 항목은 전송 단계에서 효과가 적은 skip_min을 덮고(set)
+//   깃발(meta.timePin)을 세워 응답 단계의 보조 추정을 버린다(보조 허용에서도 skip_min이 빠지고 프롬프트에 "굳혔다" 한 줄).
+//   낱말 항목은 응답 단계에서 서사·유저 글에 대조. add는 어느 쪽이든 위에 더한다. skip_day(유저 선언)는 안 건드린다.
+// - 예약 키 `turn_min`(vars) + lookup 파생 `turn_hour`·`turn_day`: 두 번의 시간 소비가 쌓이고 응답 단계 끝에 0으로.
+//   onTurn이 `hunger - turn_hour * 5`로 시간 비례 소모를 쓴다. 시간 체계 없는 봇은 아무것도 안 바뀐다.
+// - 편집기 시간 탭 [시간 고정표] 카드, 매 턴 규칙 카드 안내, 규격서(시간 탭·시간 규칙). 검증: pins 형식·액션 실존·
+//   한 글자 낱말 경고·skip_min 부재 경고·turn_* 이름 충돌. test-timepins.js.
 //
 // ── v1.9.10 ──────────────────────────────────────────────
 // **경고는 한 줄로 접는다** — 커뮤니티 제보(2026-09-11, 변수 51개 봇 제작자): 낱말 경고("한 글자짜리", "6개 변수가 같이
@@ -2998,6 +3010,32 @@ const DEFAULT_DATE_FMT = 'YYYY-MM-DD';
 const DEFAULT_CLOCK_FMT = 'HH:mm';
 const DEFAULT_EXPOSE = ['date', 'clock', 'weekday', 'season', 'month', 'dom', 'hour', 'minute', 'elapsed'];
 const EXPOSABLE = ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'hour', 'minute', 'elapsed'];
+// 이번 정산에서 흐른 시간 (v1.9.11) — turn_min은 엔진 예약 키(vars에 산다), turn_hour/turn_day는 lookup이 나눠 준다.
+// 매 턴 규칙이 "응답 한 번"이 아니라 "흐른 시간"에 비례해 깎을 수 있게 하는 유일한 통로 (실측 제보: 10분 대화와
+// 열흘 도약이 같은 한 번으로 정산되던 문제). 시간 체계가 없는 봇엔 없다.
+const TURN_MIN_KEY = 'turn_min';
+const TURN_EXPOSED = ['turn_min', 'turn_hour', 'turn_day'];
+
+/**
+ * 시간 고정표 정규화 (v1.9.11, 유저 결정 2026-09-11: "AI가 시간을 잡는 걸 기본으로 두고, 사람이 정한 행동·상황만 따로").
+ * 항목: { label?, action?: 액션 id, mentions?: [낱말], min: 분, mode: 'set'|'add' }. action 또는 mentions 하나는 있어야 한다.
+ * set은 그 턴의 보조 추정(skip_min)을 버리고 이 값, add는 그 위에 더한다. skip_day(유저 선언 "사흘 뒤")는 어느 쪽도 안 건드린다.
+ */
+function normPins(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const min = Number(p.min);
+    if (!isFinite(min) || min < 0) continue;
+    const action = typeof p.action === 'string' && p.action.trim() ? p.action.trim() : null;
+    const mentions = Array.isArray(p.mentions)
+      ? p.mentions.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim()) : [];
+    if (!action && !mentions.length) continue;
+    out.push({ label: typeof p.label === 'string' ? p.label.trim() : '', action, mentions, min: Math.floor(min), mode: p.mode === 'add' ? 'add' : 'set' });
+  }
+  return out;
+}
 
 // 진행 입구 — 이 이름의 int 변수가 있으면 엔진이 매 턴 소비한다 (설계 §진행 — 두 입구)
 const SKIP_DAY = 'skip_day';
@@ -3136,6 +3174,7 @@ function timeConfig(schema) {
       ? t.expose.filter((n) => EXPOSABLE.includes(n))
       : DEFAULT_EXPOSE,
     startRandom: normStartRandom(t.startRandom),   // 없으면 null = 늘 start에서 시작 (v0.80)
+    pins: normPins(t.pins),                         // 시간 고정표 (v1.9.11) — 없으면 []
   };
 }
 
@@ -3231,7 +3270,7 @@ function exposedDefs(schema) {
 
 module.exports = {
   MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
-  DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS,
+  DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS, TURN_MIN_KEY, TURN_EXPOSED, normPins,
   parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex, rollStart, normStartRandom, RANDOM_BOUNDS,
   formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
 };
@@ -3386,7 +3425,7 @@ SimCore.define("validate", function (require, module, exports) {
 
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
-const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
@@ -3503,6 +3542,8 @@ function validateSchema(schema) {
   const tcfg = timeConfig(schema);
   const exposedNames = new Set(tcfg ? tcfg.expose : []);
   for (const n of exposedNames) allIds.add(n);
+  // 이번 정산에서 흐른 시간 (v1.9.11) — 시간이 켜진 봇은 turn_min/turn_hour/turn_day를 조건식·onTurn에서 읽는다
+  if (tcfg) for (const n of TURN_EXPOSED) allIds.add(n);
   // 편성 가상 목록 (v0.59) — 편성표가 있으면 'deployed'(편성 슬롯에 앉은 이름들)를
   // 어느 조건식·자리표시자에서든 쓸 수 있다: has(deployed, '아린'). 실행은 engine.makeLookup이 맡는다.
   if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
@@ -3621,6 +3662,32 @@ function validateSchema(schema) {
       }
       if (ids.has(EPOCH_KEY))
         err('$.vars', `'${EPOCH_KEY}'는 시간 체계가 쓰는 예약 키입니다 — 변수 id를 바꾸세요`);
+      for (const rn of TURN_EXPOSED) {
+        if (ids.has(rn)) err('$.vars', `'${rn}'은 시간 체계의 예약 이름입니다(이번 정산에서 흐른 시간) — 변수 id를 바꾸세요`);
+      }
+      // 시간 고정표 (v1.9.11) — 사람이 정한 행동·상황의 고정 시간
+      if (T.pins != null) {
+        if (!Array.isArray(T.pins)) err('$.time.pins', 'pins는 배열 — [{ action 또는 mentions, min, mode }]');
+        else {
+          const actionIds = new Set((schema.actions || []).map((a) => a && a.id).filter(Boolean));
+          T.pins.forEach((p, i) => {
+            const pp = `$.time.pins[${i}]`;
+            if (!p || typeof p !== 'object' || Array.isArray(p)) { err(pp, '고정 항목은 객체여야 함'); return; }
+            const min = Number(p.min);
+            if (!isFinite(min) || min < 0) err(pp + '.min', 'min은 0 이상의 분(숫자) — 한 시간 60, 반나절 360, 하루 1440');
+            const hasAct = typeof p.action === 'string' && p.action.trim();
+            const hasWords = Array.isArray(p.mentions) && p.mentions.some((k) => typeof k === 'string' && k.trim());
+            if (!hasAct && !hasWords) err(pp, '행동(action) 또는 낱말(mentions) 중 하나는 있어야 함');
+            if (hasAct && !actionIds.has(p.action.trim())) err(pp + '.action', `'${p.action}' 액션이 없음`);
+            if (p.mode != null && !['set', 'add'].includes(p.mode)) err(pp + '.mode', 'mode는 set(고정 — 추정을 버림) | add(더하기)');
+            if (hasWords) for (const k of p.mentions) {
+              if (typeof k === 'string' && k.trim().length === 1) warn(pp + '.mentions', `낱말 '${k}'는 한 글자라 아무 문장에나 걸립니다`);
+            }
+          });
+          if (T.pins.length && !vars.some((v) => v.id === SKIP_MIN))
+            warn('$.time.pins', `고정표는 ${SKIP_MIN} 변수에 굳힙니다 — 변수가 없어 고정값이 버려집니다. 시간 탭 [진행 변수 만들기]로 만드세요`);
+        }
+      }
       // 진행 입구 — explicit인데 skip 변수가 하나도 없으면 시간이 영영 안 흐른다
       const skipDefs = vars.filter((v) => v.id === SKIP_DAY || v.id === SKIP_MIN);
       if ((T.advance ?? 'explicit') === 'explicit' && !skipDefs.length)
@@ -8457,7 +8524,7 @@ const { mainInjectionText, auxImageSpec } = require('./assets');
 const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal, scenarioTransition,
   scenarioInjectionText } = require('./scenario');
 const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
-  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, rollStart } = require('./time');
+  MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_MIN_KEY, rollStart } = require('./time');
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
 const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
@@ -8629,6 +8696,7 @@ function reconcileState(schema, state) {
   // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
   const tcfg = timeConfig(schema);
   if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
+  if (tcfg && typeof state.vars[TURN_MIN_KEY] !== 'number') state.vars[TURN_MIN_KEY] = 0;   // 이번 정산에서 흐른 분 (v1.9.11)
   // 시나리오 예약 키 (v0.90) — time_epoch과 같은 계열. 진행 중 세이브에 시나리오를 나중에
   // 켜면 1막부터 시작한다 (이야기 척추는 소급하지 않는다).
   if (scenarioConfig(schema)) {
@@ -8781,6 +8849,11 @@ function makeLookup(schema, vars) {
   };
   const lookup = (name) => {
     if (name in vars) return vars[name];
+    // 이번 정산에서 흐른 시간 (v1.9.11) — turn_min은 vars에 살아 위에서 잡혔고, 시·일은 여기서 나눈다
+    if (tcfg && (name === 'turn_hour' || name === 'turn_day')) {
+      const m = Number(vars[TURN_MIN_KEY]) || 0;
+      return name === 'turn_hour' ? m / 60 : m / MIN_PER_DAY;
+    }
     const tv = timeVal(name);
     if (tv !== undefined) return tv;
     // 시나리오 노출 (v0.90) — scn_act(현재 막 id)·scn_label(라벨)은 예약 키 scn_idx에서 계산.
@@ -8936,6 +9009,33 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
   }
 }
 
+// ── 시간 고정표 (v1.9.11) ────────────────────────────────────
+// 유저 결정(2026-09-11): 시간은 기본으로 AI가 장면을 읽고 잡는다 — 그게 서사를 가장 자연스럽게 따라간다.
+// 사람이 정한 행동·상황(time.pins)만 고정값이 이긴다. set은 그 턴의 보조 추정을 버리고, add는 위에 얹는다.
+// 날짜 도약(skip_day)은 유저 선언("사흘 뒤")이라 어느 쪽도 안 건드린다 — 고정표는 분(分)만 다룬다.
+function pinMatchesText(pin, text) {
+  if (!pin.mentions.length || !text) return false;
+  const hay = String(text).toLowerCase();
+  return pin.mentions.some((k) => hay.includes(k.toLowerCase()));
+}
+
+/** 걸린 항목들을 skip_min에 굳힌다. set은 가장 큰 값으로 갈아끼우고 add는 더한다. 반환: 적용된 set 항목(없으면 null) */
+function applyTimePins(schema, state, pins, changeLog, source) {
+  if (!pins.length) return null;
+  if (!schema.vars.some((v) => v.id === SKIP_MIN)) return null;   // 굳힐 진행 변수가 없다 (검증이 경고)
+  const sets = pins.filter((p) => p.mode === 'set');
+  const adds = pins.filter((p) => p.mode === 'add');
+  const from = Number(state.vars[SKIP_MIN]) || 0;
+  let to = from;
+  let setPin = null;
+  if (sets.length) { setPin = sets.reduce((a, b) => (b.min > a.min ? b : a)); to = setPin.min; }
+  for (const p of adds) to += p.min;
+  if (to !== from) { state.vars[SKIP_MIN] = to; changeLog.push({ id: SKIP_MIN, from, to, source }); }
+  const name = (p) => (p.label || p.action || p.mentions[0]) + ' ' + (p.mode === 'add' ? '+' : '') + p.min + '분';
+  changeLog.push({ id: '시간 고정', from: null, to: pins.map(name).join(' · '), source });
+  return setPin;
+}
+
 // ── 시간 진행 소비 ──────────────────────────────────────────
 // skip_day/skip_min에 쌓인 진행량을 epoch에 굳히고 0으로 되돌린다.
 // 두 곳에서 부른다: 전송 단계(액션 효과 직후 — 🌙 버튼이 굳힌 하루가 이번 프롬프트의
@@ -8956,6 +9056,9 @@ function consumeTimeSkips(schema, state, changeLog, { perTurnTick = false } = {}
     const from = state.vars[EPOCH_KEY];
     state.vars[EPOCH_KEY] = from + addMin;
     changeLog.push({ id: EPOCH_KEY, from, to: state.vars[EPOCH_KEY], source: 'time' });
+    // 이번 정산에서 흐른 분을 쌓는다 (v1.9.11) — 전송 단계(액션)와 응답 단계(보조) 두 번의 소비가 합쳐져
+    // onTurn·이벤트가 turn_min/turn_hour/turn_day로 읽고, 응답 단계 끝에서 0으로 돌아간다.
+    state.vars[TURN_MIN_KEY] = (Number(state.vars[TURN_MIN_KEY]) || 0) + addMin;
   }
   if (hasDay && state.vars[SKIP_DAY] !== 0) state.vars[SKIP_DAY] = 0;
   if (hasMin && state.vars[SKIP_MIN] !== 0) state.vars[SKIP_MIN] = 0;
@@ -9213,6 +9316,15 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       delete state.meta.armed[action.id];
       state.meta.actionLastUsed[action.id] = state.meta.turn;
     }
+  }
+
+  // 1.4 시간 고정표 — 액션 항목 (v1.9.11). 눌린 액션에 고정 시간이 있으면 효과가 적은 skip_min을 덮거나(set) 더한다(add).
+  // set이면 응답 단계의 보조 추정도 버려야 하므로 깃발(meta.timePin)을 세워 둔다 — 보조 프롬프트도 이 깃발을 본다.
+  {
+    const tcfgP = timeConfig(schema);
+    const hit = tcfgP ? tcfgP.pins.filter((p) => p.action && consumedActions.includes(p.action)) : [];
+    const setPin = applyTimePins(schema, state, hit, changeLog, 'timePin');
+    state.meta.timePin = setPin ? { min: setPin.min, label: setPin.label || setPin.action } : null;
   }
 
   // 1.5 시간 진행 소비 — 액션(🌙 하루를 마친다 등)이 굳힌 진행량을 지금 반영해야
@@ -9678,6 +9790,27 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     }
   }
 
+  // 5.45 시간 고정표 — 낱말 항목 + 전송 단계 액션 set의 마무리 (v1.9.11).
+  // 액션 set이 이미 굳었으면 이번 턴 보조 추정(skip_min 델타)은 0으로 버리고, 낱말 add만 그 위에 더한다.
+  // 아니면 낱말 항목을 그대로 적용한다 (set은 추정을 갈아끼움, add는 얹음).
+  {
+    const tcfgP = timeConfig(schema);
+    if (tcfgP && tcfgP.pins.length) {
+      const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, seenText));
+      if (state.meta.timePin) {
+        const from = Number(state.vars[SKIP_MIN]) || 0;
+        if (from !== 0 && schema.vars.some((v) => v.id === SKIP_MIN)) {
+          state.vars[SKIP_MIN] = 0;
+          changeLog.push({ id: SKIP_MIN, from, to: 0, source: 'timePin' });
+        }
+        applyTimePins(schema, state, hit.filter((p) => p.mode === 'add'), changeLog, 'timePin');
+      } else {
+        applyTimePins(schema, state, hit, changeLog, 'timePin');
+      }
+    }
+    state.meta.timePin = null;
+  }
+
   // 5.5 시간 진행 소비 — 보조가 보고한 진행량(skip_day/skip_min 델타)을 epoch에 굳힌다.
   // onTurn·이벤트보다 먼저라, 날짜 조건(dom == 1 등)이 걸린 이벤트가 새 날짜를 보고 발동한다.
   consumeTimeSkips(schema, state, changeLog, { perTurnTick: true });
@@ -9837,6 +9970,9 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
     }
   }
+
+  // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
+  if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
 
   // 9. 턴 카운터
   state.meta.turn += 1;
@@ -10040,6 +10176,8 @@ function auxAllowList(schema, text, state = null) {
   let allow = schema.updater?.allow || [];
   // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
   if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
+  // 시간 고정 턴 (v1.9.11) — 액션 set 항목이 굳힌 턴엔 보조 추정을 받아도 버리니 창구를 아예 닫는다
+  if (state?.meta?.timePin) allow = allow.filter((a) => a.id !== SKIP_MIN);
   // 갈림길 대기 중엔 그 선택지들이 만질 변수만 잠깐 뺀다 — 서사가 결과를 앞질러 굳히는 것을 막는다.
   // 전부 잠그면 선택과 무관한 값(호감도 등)까지 얼어붙으므로, 해당 변수만이다.
   if (state?.meta?.pendingChoice) {
@@ -10202,6 +10340,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     memo ? '- 위 "이미 반영된 변화"는 시스템이 이미 끝낸 일이다. 같은 것을 다시 세지 마라. 이번 턴 서사에서 **새로** 일어난 것만 보고하라.' : null,
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
     // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
+    state?.meta?.timePin ? `- 이번 턴에 흐르는 시간은 시스템이 "${state.meta.timePin.label}" ${state.meta.timePin.min}분으로 굳혔다 — ${SKIP_MIN}은 적지 마라.` : null,
     timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
     // 하루 넘김 신고 (v1.7.0) — skip_day를 안 준 봇의 유일한 날짜 입구. 숫자 창구가 열려 있으면
     // 안 붙인다 (한 가지를 두 가지 방법으로 말하게 하면 둘 다 틀린다).
@@ -13660,6 +13799,11 @@ const CSS = `
 .sce .sce-time-inline-note { margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line);
   color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
 .sce .sce-time-inline-note.is-warning { color:var(--sce-warning); }
+.sce .sce-time-pins { display:grid; gap:6px; }
+.sce .sce-time-pin-row { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,.5fr) minmax(0,1.2fr) auto; gap:10px; align-items:end; padding:8px 0; border-bottom:1px solid var(--sce-line); }
+.sce .sce-time-pin-row:last-child { border-bottom:0; }
+.sce .sce-time-pin-row > .sce-btn { margin-bottom:6px; }
+@media (max-width:760px) { .sce .sce-time-pin-row { grid-template-columns:1fr; } }
 .sce .sce-time-expose-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
 .sce .sce-time-expose-grid .sce-chip { min-width:0; min-height:38px; margin:0; padding:6px 8px; }
 .sce .sce-time-example { margin-top:10px; color:var(--sce-muted); font-size:11px; line-height:1.55; }
@@ -16769,6 +16913,9 @@ const SCHEMA_TIME_RULES = [
   '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
   '  `date` `clock` `weekday` `season` `month` `dom` `hour` `minute` `elapsed`(경과일)를',
   '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
+  '- **매 턴 소모를 응답 횟수에 걸지 마세요.** 시간이 켜진 봇은 onTurn에서 `turn_hour`/`turn_day`(이번 정산에서',
+  '  흐른 시간)를 곱해 흐른 시간에 비례하게 깎으세요 — `stamina - turn_hour * 3`. 10분 대화와 열흘 도약이 같은',
+  '  한 번으로 깎이는 것이 실측 제보의 뿌리입니다. 특정 행동·상황의 시간을 사람이 정하려면 `time.pins`.',
   '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
   '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
   '- **skip_day에 도약 캡을 두지 마세요** (max/maxGain 7·14·30 금지). 유저가 "한 달 뒤"라 하면',
@@ -18564,6 +18711,8 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- `format`: { "date": "M월 D일", "clock": "HH:mm" } — 표시 서식. clock을 주면 분 시계 봇입니다.',
       '- `weekdays` / `seasons`: 요일·계절 이름 배열 (선택 — 세계관 고유 이름 가능).',
       '- `expose`: 조건식·상태창에서 쓸 노출 이름 선택 (date/clock/weekday/season/year/month/dom/hour/minute/elapsed).',
+      '- `pins` (v1.9.11): 시간 고정표 — [{ "action": "액션id" 또는 "mentions": ["수업"], "min": 50, "mode": "set"|"add" }]. 기본은 보조가 장면을 읽고 시간을 추정하고, 여기 적은 행동·낱말이 걸린 턴만 사람이 정한 값이 이깁니다 (set은 추정을 버림, add는 얹음). skip_day는 안 건드립니다.',
+      '- 시간이 켜져 있으면 조건식·onTurn에서 `turn_min`·`turn_hour`·`turn_day`(이번 정산에서 흐른 시간)를 읽을 수 있습니다 — 시간당 소모는 `hunger - turn_hour * 5`처럼. 응답 횟수가 아니라 흐른 시간에 비례하니 대화만 한 턴은 0입니다.',
       '',
       '## ⚠ 진행 중인 봇의 달력을 바꾸지 마세요',
       '`calendar`를 바꾸면 같은 시계(epoch)가 **다른 날짜로 읽힙니다** — 진행 중 세이브의 날짜가 통째로 튑니다.',
@@ -20987,7 +21136,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const tickPanel = panel(
       'is-ticks',
       '매 턴 자동 처리',
-      '수입·소비·회복처럼 매 턴 반복되는 시스템 효과예요.',
+      '수입·소비·회복처럼 매 턴 반복되는 시스템 효과예요. 시간 체계가 켜져 있으면 turn_hour·turn_day(이번 정산에서 흐른 시간)를 곱해 시간당 소모로 쓸 수 있어요 — 예: hunger - turn_hour * 5. 시간이 안 흐른 턴은 0이라 안 깎여요.',
       h('div', { class: 'sce-rules-ticks' },
         ruleEffectRows(schema.rules.onTurn)),
     );
@@ -23704,6 +23853,43 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     timeSheet.appendChild(timeSection('시작 시점 무작위',
       '선택 사항입니다. 날짜는 고정하고 시각만 바꾸는 식으로 필요한 항목만 설정할 수 있습니다.', ...randomBody));
+
+    // 시간 고정표 (v1.9.11) — 유저 결정: 시간은 기본으로 AI가 잡되, 사람이 정한 행동·상황만 고정값이 이긴다.
+    // 스키마엔 항목이 있을 때만 pins를 둔다 (탭을 열기만 해도 작업본이 달라지면 안 된다).
+    const pins = Array.isArray(T.pins) ? T.pins : [];
+    const pinRows = h('div', { class: 'sce-time-pins' });
+    const actionOpts = [['', '(행동 없음 — 낱말로만)']].concat((schema.actions || []).map((a) => [a.id, (a.label || a.id) + ' · ' + a.id]));
+    pins.forEach((p, i) => {
+      pinRows.appendChild(h('div', { class: 'sce-time-pin-row' },
+        timeField('행동', bindSelect(p.action || '', actionOpts, (x) => { if (x) p.action = x; else delete p.action; rerender(); }), '이 버튼이 눌린 턴'),
+        timeField('낱말', bindInput(Array.isArray(p.mentions) ? p.mentions.join(', ') : '', (x) => {
+          const a = String(x).split(',').map((s) => s.trim()).filter(Boolean);
+          if (a.length) p.mentions = a; else delete p.mentions;
+          rerender();
+        }, { cls: 'sce-w-m', ph: '수업, 강의' }), '서사·유저 글에 나온 턴 (쉼표로 여러 개)'),
+        timeField('분', bindInput(String(p.min ?? ''), (x) => {
+          const n = Number(x); p.min = isFinite(n) && n >= 0 ? Math.floor(n) : 0; rerender();
+        }, { cls: 'sce-w-s', ph: '60' }), '한 시간 60 · 반나절 360 · 하루 1440'),
+        timeField('방식', bindSelect(p.mode === 'add' ? 'add' : 'set', [
+          ['set', '고정 — AI 추정을 버리고 이 값'], ['add', '더하기 — AI 추정 위에 얹기'],
+        ], (x) => { p.mode = x; rerender(); })),
+        h('button', { class: 'sce-btn sce-mini sce-danger', type: 'button', onclick: () => {
+          pins.splice(i, 1); if (!pins.length) delete T.pins; rerender();
+        } }, '삭제')));
+    });
+    const pinChildren = [
+      h('div', { class: 'sce-time-inline-note' },
+        '기본은 AI가 장면을 읽고 흐른 시간을 보고합니다. 여기 적은 행동·상황만 사람이 정한 값으로 굳힙니다 — "고정"은 그 턴의 AI 추정을 버리고, "더하기"는 그 위에 얹습니다. 날짜 도약(' + SKIP_DAY + ', "사흘 뒤")은 건드리지 않습니다.'),
+      pinRows,
+      h('div', { class: 'sce-time-section-actions' }, addBtn('고정 항목 추가', () => {
+        T.pins = pins; pins.push({ min: 60, mode: 'set', mentions: [] }); rerender();
+      })),
+    ];
+    if (pins.length && !schema.vars.some((v) => v.id === SKIP_MIN)) pinChildren.unshift(h('div', { class: 'sce-time-inline-note is-warning' },
+      '고정값은 ' + SKIP_MIN + ' 변수에 굳힙니다. 아래 [진행 변수 만들기]로 먼저 만드세요.'));
+    timeSheet.appendChild(timeSection('시간 고정표',
+      '특정 행동이나 상황에 흐르는 시간을 사람이 정합니다. 매 턴 규칙에서는 turn_hour·turn_day(이번 정산에서 흐른 시간)로 시간당 소모를 쓸 수 있습니다 — 예: hunger - turn_hour * 5',
+      ...pinChildren));
 
     const dateFormat = bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
       { cls: 'sce-w-m', ph: 'YYYY-MM-DD' });

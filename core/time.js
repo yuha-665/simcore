@@ -16,6 +16,32 @@ const DEFAULT_DATE_FMT = 'YYYY-MM-DD';
 const DEFAULT_CLOCK_FMT = 'HH:mm';
 const DEFAULT_EXPOSE = ['date', 'clock', 'weekday', 'season', 'month', 'dom', 'hour', 'minute', 'elapsed'];
 const EXPOSABLE = ['date', 'clock', 'weekday', 'season', 'year', 'month', 'dom', 'hour', 'minute', 'elapsed'];
+// 이번 정산에서 흐른 시간 (v1.9.11) — turn_min은 엔진 예약 키(vars에 산다), turn_hour/turn_day는 lookup이 나눠 준다.
+// 매 턴 규칙이 "응답 한 번"이 아니라 "흐른 시간"에 비례해 깎을 수 있게 하는 유일한 통로 (실측 제보: 10분 대화와
+// 열흘 도약이 같은 한 번으로 정산되던 문제). 시간 체계가 없는 봇엔 없다.
+const TURN_MIN_KEY = 'turn_min';
+const TURN_EXPOSED = ['turn_min', 'turn_hour', 'turn_day'];
+
+/**
+ * 시간 고정표 정규화 (v1.9.11, 유저 결정 2026-09-11: "AI가 시간을 잡는 걸 기본으로 두고, 사람이 정한 행동·상황만 따로").
+ * 항목: { label?, action?: 액션 id, mentions?: [낱말], min: 분, mode: 'set'|'add' }. action 또는 mentions 하나는 있어야 한다.
+ * set은 그 턴의 보조 추정(skip_min)을 버리고 이 값, add는 그 위에 더한다. skip_day(유저 선언 "사흘 뒤")는 어느 쪽도 안 건드린다.
+ */
+function normPins(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const min = Number(p.min);
+    if (!isFinite(min) || min < 0) continue;
+    const action = typeof p.action === 'string' && p.action.trim() ? p.action.trim() : null;
+    const mentions = Array.isArray(p.mentions)
+      ? p.mentions.filter((k) => typeof k === 'string' && k.trim()).map((k) => k.trim()) : [];
+    if (!action && !mentions.length) continue;
+    out.push({ label: typeof p.label === 'string' ? p.label.trim() : '', action, mentions, min: Math.floor(min), mode: p.mode === 'add' ? 'add' : 'set' });
+  }
+  return out;
+}
 
 // 진행 입구 — 이 이름의 int 변수가 있으면 엔진이 매 턴 소비한다 (설계 §진행 — 두 입구)
 const SKIP_DAY = 'skip_day';
@@ -154,6 +180,7 @@ function timeConfig(schema) {
       ? t.expose.filter((n) => EXPOSABLE.includes(n))
       : DEFAULT_EXPOSE,
     startRandom: normStartRandom(t.startRandom),   // 없으면 null = 늘 start에서 시작 (v0.80)
+    pins: normPins(t.pins),                         // 시간 고정표 (v1.9.11) — 없으면 []
   };
 }
 
@@ -249,7 +276,7 @@ function exposedDefs(schema) {
 
 module.exports = {
   MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
-  DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS,
+  DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS, TURN_MIN_KEY, TURN_EXPOSED, normPins,
   parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex, rollStart, normStartRandom, RANDOM_BOUNDS,
   formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
 };

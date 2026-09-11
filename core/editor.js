@@ -678,6 +678,11 @@ const CSS = `
 .sce .sce-time-inline-note { margin-top:10px; padding-top:9px; border-top:1px solid var(--sce-line);
   color:var(--sce-muted); font-size:11.5px; line-height:1.55; }
 .sce .sce-time-inline-note.is-warning { color:var(--sce-warning); }
+.sce .sce-time-pins { display:grid; gap:6px; }
+.sce .sce-time-pin-row { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,.5fr) minmax(0,1.2fr) auto; gap:10px; align-items:end; padding:8px 0; border-bottom:1px solid var(--sce-line); }
+.sce .sce-time-pin-row:last-child { border-bottom:0; }
+.sce .sce-time-pin-row > .sce-btn { margin-bottom:6px; }
+@media (max-width:760px) { .sce .sce-time-pin-row { grid-template-columns:1fr; } }
 .sce .sce-time-expose-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
 .sce .sce-time-expose-grid .sce-chip { min-width:0; min-height:38px; margin:0; padding:6px 8px; }
 .sce .sce-time-example { margin-top:10px; color:var(--sce-muted); font-size:11px; line-height:1.55; }
@@ -3787,6 +3792,9 @@ const SCHEMA_TIME_RULES = [
   '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
   '  `date` `clock` `weekday` `season` `month` `dom` `hour` `minute` `elapsed`(경과일)를',
   '  조건식·상태창에서 변수처럼 쓸 수 있습니다. day/clock 정수 조각을 직접 만들면 서로 어긋납니다.',
+  '- **매 턴 소모를 응답 횟수에 걸지 마세요.** 시간이 켜진 봇은 onTurn에서 `turn_hour`/`turn_day`(이번 정산에서',
+  '  흐른 시간)를 곱해 흐른 시간에 비례하게 깎으세요 — `stamina - turn_hour * 3`. 10분 대화와 열흘 도약이 같은',
+  '  한 번으로 깎이는 것이 실측 제보의 뿌리입니다. 특정 행동·상황의 시간을 사람이 정하려면 `time.pins`.',
   '- 시간을 흐르게 하는 규칙(skip_day/skip_min 사용법)은 그 **변수의 `desc`**에 쓰세요 —',
   '  `directives`는 메인 모델 전용이라 상태를 갱신하는 보조 AI가 못 읽습니다.',
   '- **skip_day에 도약 캡을 두지 마세요** (max/maxGain 7·14·30 금지). 유저가 "한 달 뒤"라 하면',
@@ -5582,6 +5590,8 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '- `format`: { "date": "M월 D일", "clock": "HH:mm" } — 표시 서식. clock을 주면 분 시계 봇입니다.',
       '- `weekdays` / `seasons`: 요일·계절 이름 배열 (선택 — 세계관 고유 이름 가능).',
       '- `expose`: 조건식·상태창에서 쓸 노출 이름 선택 (date/clock/weekday/season/year/month/dom/hour/minute/elapsed).',
+      '- `pins` (v1.9.11): 시간 고정표 — [{ "action": "액션id" 또는 "mentions": ["수업"], "min": 50, "mode": "set"|"add" }]. 기본은 보조가 장면을 읽고 시간을 추정하고, 여기 적은 행동·낱말이 걸린 턴만 사람이 정한 값이 이깁니다 (set은 추정을 버림, add는 얹음). skip_day는 안 건드립니다.',
+      '- 시간이 켜져 있으면 조건식·onTurn에서 `turn_min`·`turn_hour`·`turn_day`(이번 정산에서 흐른 시간)를 읽을 수 있습니다 — 시간당 소모는 `hunger - turn_hour * 5`처럼. 응답 횟수가 아니라 흐른 시간에 비례하니 대화만 한 턴은 0입니다.',
       '',
       '## ⚠ 진행 중인 봇의 달력을 바꾸지 마세요',
       '`calendar`를 바꾸면 같은 시계(epoch)가 **다른 날짜로 읽힙니다** — 진행 중 세이브의 날짜가 통째로 튑니다.',
@@ -8005,7 +8015,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const tickPanel = panel(
       'is-ticks',
       '매 턴 자동 처리',
-      '수입·소비·회복처럼 매 턴 반복되는 시스템 효과예요.',
+      '수입·소비·회복처럼 매 턴 반복되는 시스템 효과예요. 시간 체계가 켜져 있으면 turn_hour·turn_day(이번 정산에서 흐른 시간)를 곱해 시간당 소모로 쓸 수 있어요 — 예: hunger - turn_hour * 5. 시간이 안 흐른 턴은 0이라 안 깎여요.',
       h('div', { class: 'sce-rules-ticks' },
         ruleEffectRows(schema.rules.onTurn)),
     );
@@ -10722,6 +10732,43 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     timeSheet.appendChild(timeSection('시작 시점 무작위',
       '선택 사항입니다. 날짜는 고정하고 시각만 바꾸는 식으로 필요한 항목만 설정할 수 있습니다.', ...randomBody));
+
+    // 시간 고정표 (v1.9.11) — 유저 결정: 시간은 기본으로 AI가 잡되, 사람이 정한 행동·상황만 고정값이 이긴다.
+    // 스키마엔 항목이 있을 때만 pins를 둔다 (탭을 열기만 해도 작업본이 달라지면 안 된다).
+    const pins = Array.isArray(T.pins) ? T.pins : [];
+    const pinRows = h('div', { class: 'sce-time-pins' });
+    const actionOpts = [['', '(행동 없음 — 낱말로만)']].concat((schema.actions || []).map((a) => [a.id, (a.label || a.id) + ' · ' + a.id]));
+    pins.forEach((p, i) => {
+      pinRows.appendChild(h('div', { class: 'sce-time-pin-row' },
+        timeField('행동', bindSelect(p.action || '', actionOpts, (x) => { if (x) p.action = x; else delete p.action; rerender(); }), '이 버튼이 눌린 턴'),
+        timeField('낱말', bindInput(Array.isArray(p.mentions) ? p.mentions.join(', ') : '', (x) => {
+          const a = String(x).split(',').map((s) => s.trim()).filter(Boolean);
+          if (a.length) p.mentions = a; else delete p.mentions;
+          rerender();
+        }, { cls: 'sce-w-m', ph: '수업, 강의' }), '서사·유저 글에 나온 턴 (쉼표로 여러 개)'),
+        timeField('분', bindInput(String(p.min ?? ''), (x) => {
+          const n = Number(x); p.min = isFinite(n) && n >= 0 ? Math.floor(n) : 0; rerender();
+        }, { cls: 'sce-w-s', ph: '60' }), '한 시간 60 · 반나절 360 · 하루 1440'),
+        timeField('방식', bindSelect(p.mode === 'add' ? 'add' : 'set', [
+          ['set', '고정 — AI 추정을 버리고 이 값'], ['add', '더하기 — AI 추정 위에 얹기'],
+        ], (x) => { p.mode = x; rerender(); })),
+        h('button', { class: 'sce-btn sce-mini sce-danger', type: 'button', onclick: () => {
+          pins.splice(i, 1); if (!pins.length) delete T.pins; rerender();
+        } }, '삭제')));
+    });
+    const pinChildren = [
+      h('div', { class: 'sce-time-inline-note' },
+        '기본은 AI가 장면을 읽고 흐른 시간을 보고합니다. 여기 적은 행동·상황만 사람이 정한 값으로 굳힙니다 — "고정"은 그 턴의 AI 추정을 버리고, "더하기"는 그 위에 얹습니다. 날짜 도약(' + SKIP_DAY + ', "사흘 뒤")은 건드리지 않습니다.'),
+      pinRows,
+      h('div', { class: 'sce-time-section-actions' }, addBtn('고정 항목 추가', () => {
+        T.pins = pins; pins.push({ min: 60, mode: 'set', mentions: [] }); rerender();
+      })),
+    ];
+    if (pins.length && !schema.vars.some((v) => v.id === SKIP_MIN)) pinChildren.unshift(h('div', { class: 'sce-time-inline-note is-warning' },
+      '고정값은 ' + SKIP_MIN + ' 변수에 굳힙니다. 아래 [진행 변수 만들기]로 먼저 만드세요.'));
+    timeSheet.appendChild(timeSection('시간 고정표',
+      '특정 행동이나 상황에 흐르는 시간을 사람이 정합니다. 매 턴 규칙에서는 turn_hour·turn_day(이번 정산에서 흐른 시간)로 시간당 소모를 쓸 수 있습니다 — 예: hunger - turn_hour * 5',
+      ...pinChildren));
 
     const dateFormat = bindInput(T.format.date, (x) => { T.format.date = x || undefined; rerender(); },
       { cls: 'sce-w-m', ph: 'YYYY-MM-DD' });

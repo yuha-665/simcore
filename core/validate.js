@@ -2,7 +2,7 @@
 
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
-const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY,
+const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
@@ -119,6 +119,8 @@ function validateSchema(schema) {
   const tcfg = timeConfig(schema);
   const exposedNames = new Set(tcfg ? tcfg.expose : []);
   for (const n of exposedNames) allIds.add(n);
+  // 이번 정산에서 흐른 시간 (v1.9.11) — 시간이 켜진 봇은 turn_min/turn_hour/turn_day를 조건식·onTurn에서 읽는다
+  if (tcfg) for (const n of TURN_EXPOSED) allIds.add(n);
   // 편성 가상 목록 (v0.59) — 편성표가 있으면 'deployed'(편성 슬롯에 앉은 이름들)를
   // 어느 조건식·자리표시자에서든 쓸 수 있다: has(deployed, '아린'). 실행은 engine.makeLookup이 맡는다.
   if (schema.party != null && typeof schema.party === 'object' && !Array.isArray(schema.party)) {
@@ -237,6 +239,32 @@ function validateSchema(schema) {
       }
       if (ids.has(EPOCH_KEY))
         err('$.vars', `'${EPOCH_KEY}'는 시간 체계가 쓰는 예약 키입니다 — 변수 id를 바꾸세요`);
+      for (const rn of TURN_EXPOSED) {
+        if (ids.has(rn)) err('$.vars', `'${rn}'은 시간 체계의 예약 이름입니다(이번 정산에서 흐른 시간) — 변수 id를 바꾸세요`);
+      }
+      // 시간 고정표 (v1.9.11) — 사람이 정한 행동·상황의 고정 시간
+      if (T.pins != null) {
+        if (!Array.isArray(T.pins)) err('$.time.pins', 'pins는 배열 — [{ action 또는 mentions, min, mode }]');
+        else {
+          const actionIds = new Set((schema.actions || []).map((a) => a && a.id).filter(Boolean));
+          T.pins.forEach((p, i) => {
+            const pp = `$.time.pins[${i}]`;
+            if (!p || typeof p !== 'object' || Array.isArray(p)) { err(pp, '고정 항목은 객체여야 함'); return; }
+            const min = Number(p.min);
+            if (!isFinite(min) || min < 0) err(pp + '.min', 'min은 0 이상의 분(숫자) — 한 시간 60, 반나절 360, 하루 1440');
+            const hasAct = typeof p.action === 'string' && p.action.trim();
+            const hasWords = Array.isArray(p.mentions) && p.mentions.some((k) => typeof k === 'string' && k.trim());
+            if (!hasAct && !hasWords) err(pp, '행동(action) 또는 낱말(mentions) 중 하나는 있어야 함');
+            if (hasAct && !actionIds.has(p.action.trim())) err(pp + '.action', `'${p.action}' 액션이 없음`);
+            if (p.mode != null && !['set', 'add'].includes(p.mode)) err(pp + '.mode', 'mode는 set(고정 — 추정을 버림) | add(더하기)');
+            if (hasWords) for (const k of p.mentions) {
+              if (typeof k === 'string' && k.trim().length === 1) warn(pp + '.mentions', `낱말 '${k}'는 한 글자라 아무 문장에나 걸립니다`);
+            }
+          });
+          if (T.pins.length && !vars.some((v) => v.id === SKIP_MIN))
+            warn('$.time.pins', `고정표는 ${SKIP_MIN} 변수에 굳힙니다 — 변수가 없어 고정값이 버려집니다. 시간 탭 [진행 변수 만들기]로 만드세요`);
+        }
+      }
       // 진행 입구 — explicit인데 skip 변수가 하나도 없으면 시간이 영영 안 흐른다
       const skipDefs = vars.filter((v) => v.id === SKIP_DAY || v.id === SKIP_MIN);
       if ((T.advance ?? 'explicit') === 'explicit' && !skipDefs.length)

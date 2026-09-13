@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.21
-//@display-name SimCore (시뮬 엔진) v1.9.21 📝 작업본 비교 — 패치 노트 초안이 딸칵
+//@version 1.9.22
+//@display-name SimCore (시뮬 엔진) v1.9.22 어시스턴트가 매 턴 정산(onTurn)을 읽는다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.22 ──────────────────────────────────────────────
+// **어시스턴트가 매 턴 정산(onTurn)을 읽는다** — 커뮤니티 제보(2026-09-13, 에렌샤): "onTurn으로 이식한 HP·MP 차감 공식을
+// 어시스턴트가 '없다'고 판단한다. 노터치 존이라도 읽기라도 되게". 다이제스트가 변수·이벤트·판정·지시문·액션·allow·편성표·달력은
+// 싣고 onTurn만 빠뜨리고 있었다(못 고치는 건 id 없는 순서 목록이라서 — 못 읽게 할 이유는 없었음). 이제 "### 매 턴 정산
+// (rules.onTurn) — 참조만" 절에 줄 번호와 set=expr / 목록 add·remove·expire 전문을 싣고, 규칙에도 "거기 있는 공식을 없다고 하지
+// 마라 · 고칠 땐 [규칙·이벤트] 탭 첫 절 N번째 줄로 안내"를 적었다. 대화·창작·JSON 복붙 경로 전부. test-onturndigest.js.
 //
 // ── v1.9.21 ──────────────────────────────────────────────
 // **📝 작업본 비교·패치 노트 초안** — 커뮤니티 제보(2026-09-13, 에렌샤): "공개 뒤엔 '0.1→0.2 사이 뭐가 바뀌었나'를 묻게 된다.
@@ -17542,6 +17549,19 @@ function patchIdDigest(schema) {
         : []),
       '- 조건식에서는 `deployed`(편성 슬롯에 앉은 이름들, 읽기 전용 목록)를 쓸 수 있습니다 — `has(deployed, "이름")`');
   }
+  // 매 턴 정산(onTurn, v1.9.22) — 커뮤니티 제보(에렌샤): "onTurn으로 옮긴 HP·MP 차감 공식을 어시스턴트가 '없다'고 한다".
+  // 패치로 못 고치는 건 id 없는 순서 목록이라서(부분 패치 불성립)지만 못 읽게 할 이유는 없었다 — 편성표처럼 참조 절로 전문을 싣는다.
+  // (인라인 구간 — 모듈 호출 없이 JSON만 쓴다)
+  {
+    const ot = Array.isArray(schema.rules?.onTurn) ? schema.rules.onTurn.filter((r) => r && typeof r === 'object') : [];
+    if (ot.length) {
+      const J = (v) => JSON.stringify(v);
+      out.push('', '### 매 턴 정산 (rules.onTurn) — 응답마다 위에서부터 이 순서로 실행됩니다. **패치로 못 다룹니다**(id 없는 순서 목록이라 부분 패치가 없음) — 참조만. 이 공식이 있는데 "없다"고 하지 마세요. 고쳐야 하면 "[규칙·이벤트] 탭 첫 절(매 턴 자동 처리)에서 N번째 줄을 이렇게"라고 말로 안내하세요',
+        ...ot.map((r, i) => r.list != null
+          ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`` : ''].filter(Boolean).join(' · ')}`
+          : `${i + 1}. \`${r.set}\` = \`${r.expr}\``));
+    }
+  }
   // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
   if (schema.calendar && typeof schema.calendar === 'object' && schema.calendar.list) {
     out.push('', '### 달력 (calendar) — 패치로 못 다룹니다',
@@ -17600,7 +17620,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
-    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
+    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요. 단 onTurn(매 턴 정산)의 전문은 아래 다이제스트에 있으니 읽고 답하세요 — 거기 있는 공식을 "없다"고 하면 안 됩니다.',
     '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update는 기존 `group`을 자동으로 유지합니다.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',

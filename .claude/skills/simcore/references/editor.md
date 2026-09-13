@@ -383,3 +383,9 @@ patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린�
 [📝 패치 노트 초안 — 어시스턴트에게]는 `chat.draft`에 넣고 `activeTab='ai'; topTab='chat'`으로 옮길 뿐 전송은 유저가 한다
 (토큰이 보이게). ai.generate 없으면 복사 위젯만. 방향 주의: "지금 작업본"이 이전 판, "붙여넣은 판"이 새 판 — 옛 파일을
 붙여넣으면 반대라 안내문이 알린다. 테스트 `테스트/test-schemadiff.js`.
+
+## 다이제스트의 매 턴 정산 절 (v1.9.22)
+
+`patchIdDigest`가 `rules.onTurn`을 "### 매 턴 정산 — 참조만" 절로 싣는다 (줄 번호 · `set` = `expr` / 목록 add·remove·expire).
+못 고치는 이유(id 없는 순서 목록)와 못 읽는 것은 별개 — 에렌샤 제보 "onTurn 공식을 어시스턴트가 없다고 한다". 인라인 구간이라
+모듈 호출 없이 JSON만 쓴다(test-aiguard가 `new Function('varContractTable','timeConfig', …)`로 단독 평가). 테스트 `테스트/test-onturndigest.js`.

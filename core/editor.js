@@ -3748,6 +3748,7 @@ const SCHEMA_HARD_RULES = [
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
   '- `directives[].when`은 필수입니다 (항상 켜 둘 지시문은 `"true"`). `events[].when`도 필수입니다.',
+  '- 파생 변수는 **목록 순서와 무관하게** 다른 파생을 읽을 수 있습니다 (새 파생을 맨 아래 붙여도 됩니다). 서로 읽는 순환만 오류입니다.',
   '- JSON에는 주석을 쓸 수 없습니다(`//` 금지).',
 ];
 

@@ -141,6 +141,11 @@ function validateSchema(schema) {
       allIds.add(rid);
     }
   }
+  // 파생 순서 무관 (v1.9.16) — 엔진(makeLookup)은 파생을 이름으로 지연 계산해 순서를 안 타는데, 검증만
+  // 위에서부터 id를 하나씩 등록해 "앞 파생이 뒤 파생을 참조"를 알 수 없는 변수로 거부했다. 커뮤니티 제보(에렌샤):
+  // 어시스턴트가 새 파생을 맨 아래 붙이니 기존 표시용 파생이 걸려 "드래그로 내려 달라"를 매번 시켰다.
+  // 이제 id를 먼저 전부 등록하고 식을 검사하며, 순환(a→b→a·자기 참조)만 오류로 잡는다.
+  const derivedOk = [];   // 이름이 유효한 파생 — 식 검사·순환 검사는 이들만
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -151,6 +156,38 @@ function validateSchema(schema) {
         + `[시간] 탭의 노출 목록에서 '${d.id}'를 빼세요 (직접 계산하는 달력을 쓰려면 시간 체계를 끄세요)`);
     } else if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
     allIds.add(d.id);
+    derivedOk.push(i);
+  }
+  {
+    // 순환 검사 — 참조 그래프를 DFS. 식이 안 풀리는 항목은 아래 checkExpr가 따로 잡으니 여기선 건너뛴다.
+    const idxOf = new Map(derivedOk.map((i) => [derived[i].id, i]));
+    const refs = new Map();
+    for (const i of derivedOk) {
+      try { refs.set(i, referencedVars(derived[i].expr || '').filter((n) => idxOf.has(n)).map((n) => idxOf.get(n))); }
+      catch { refs.set(i, []); }
+    }
+    const state = new Map();   // 0 진행 중 · 1 끝
+    const reported = new Set();
+    const walk = (i, trail) => {
+      if (state.get(i) === 1) return;
+      if (state.get(i) === 0) {
+        const at = trail.indexOf(i);
+        const cyc = trail.slice(at).concat(i).map((k) => derived[k].id);
+        const key = cyc.slice().sort().join('>');
+        if (!reported.has(key)) {
+          reported.add(key);
+          err(`$.derived[${i}].expr`, `파생 순환 참조: ${cyc.join(' → ')} — 서로가 서로를 읽어 값을 정할 수 없습니다`);
+        }
+        return;
+      }
+      state.set(i, 0);
+      for (const j of refs.get(i) || []) walk(j, trail.concat(i));
+      state.set(i, 1);
+    };
+    for (const i of derivedOk) walk(i, []);
+  }
+  for (const i of derivedOk) {
+    const d = derived[i], p = `$.derived[${i}]`;
     checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
     if (codebookDigits(d.label) >= 3) {
       warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `

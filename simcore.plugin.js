@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.15
-//@display-name SimCore (시뮬 엔진) v1.9.15 지시문 when 누락 보정 — 패치가 true로 채운다
+//@version 1.9.16
+//@display-name SimCore (시뮬 엔진) v1.9.16 파생 순서 무관 — 검증이 뒤의 파생도 안다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.16 ──────────────────────────────────────────────
+// **파생 순서 무관** — 커뮤니티 제보(2026-09-13, 에렌샤): "새로 붙인 파생(아래)을 기존 파생(위)이 인식 못해 어시스턴트가
+// 위 파생을 드래그로 맨 아래 내려 달라고 매번 시킨다". 엔진 makeLookup은 파생을 이름으로 지연 계산해 원래 순서를 안 탔고,
+// 검증만 위에서부터 id를 등록하며 식을 검사해 앞→뒤 참조를 "알 수 없는 변수"로 거부하던 것. 이제 id를 먼저 전부 등록하고
+// 순환(a→b→a·자기 참조)만 오류 "파생 순환 참조: a → b → a". 규격에 "파생은 순서 무관" 한 줄. test-derivedorder.js.
 //
 // ── v1.9.15 ──────────────────────────────────────────────
 // **지시문 when 누락 보정** — 커뮤니티 제보(2026-09-13, 에렌샤): 대화형 어시스턴트 패치가 "검증 실패"로 실질 적용이 안 됨.
@@ -3597,6 +3603,11 @@ function validateSchema(schema) {
       allIds.add(rid);
     }
   }
+  // 파생 순서 무관 (v1.9.16) — 엔진(makeLookup)은 파생을 이름으로 지연 계산해 순서를 안 타는데, 검증만
+  // 위에서부터 id를 하나씩 등록해 "앞 파생이 뒤 파생을 참조"를 알 수 없는 변수로 거부했다. 커뮤니티 제보(에렌샤):
+  // 어시스턴트가 새 파생을 맨 아래 붙이니 기존 표시용 파생이 걸려 "드래그로 내려 달라"를 매번 시켰다.
+  // 이제 id를 먼저 전부 등록하고 식을 검사하며, 순환(a→b→a·자기 참조)만 오류로 잡는다.
+  const derivedOk = [];   // 이름이 유효한 파생 — 식 검사·순환 검사는 이들만
   for (let i = 0; i < derived.length; i++) {
     const d = derived[i], p = `$.derived[${i}]`;
     if (!d.id || !ID_RE.test(d.id)) { err(p, `잘못된 id: '${d.id}'`); continue; }
@@ -3607,6 +3618,38 @@ function validateSchema(schema) {
         + `[시간] 탭의 노출 목록에서 '${d.id}'를 빼세요 (직접 계산하는 달력을 쓰려면 시간 체계를 끄세요)`);
     } else if (allIds.has(d.id)) err(p, `중복된 id: '${d.id}'`);
     allIds.add(d.id);
+    derivedOk.push(i);
+  }
+  {
+    // 순환 검사 — 참조 그래프를 DFS. 식이 안 풀리는 항목은 아래 checkExpr가 따로 잡으니 여기선 건너뛴다.
+    const idxOf = new Map(derivedOk.map((i) => [derived[i].id, i]));
+    const refs = new Map();
+    for (const i of derivedOk) {
+      try { refs.set(i, referencedVars(derived[i].expr || '').filter((n) => idxOf.has(n)).map((n) => idxOf.get(n))); }
+      catch { refs.set(i, []); }
+    }
+    const state = new Map();   // 0 진행 중 · 1 끝
+    const reported = new Set();
+    const walk = (i, trail) => {
+      if (state.get(i) === 1) return;
+      if (state.get(i) === 0) {
+        const at = trail.indexOf(i);
+        const cyc = trail.slice(at).concat(i).map((k) => derived[k].id);
+        const key = cyc.slice().sort().join('>');
+        if (!reported.has(key)) {
+          reported.add(key);
+          err(`$.derived[${i}].expr`, `파생 순환 참조: ${cyc.join(' → ')} — 서로가 서로를 읽어 값을 정할 수 없습니다`);
+        }
+        return;
+      }
+      state.set(i, 0);
+      for (const j of refs.get(i) || []) walk(j, trail.concat(i));
+      state.set(i, 1);
+    };
+    for (const i of derivedOk) walk(i, []);
+  }
+  for (const i of derivedOk) {
+    const d = derived[i], p = `$.derived[${i}]`;
     checkExpr(d.expr, p + '.expr', allIds, err, { allowRand: false });
     if (codebookDigits(d.label) >= 3) {
       warn(p, `라벨에 숫자 대응표가 보입니다 ('${d.label}') — 파생은 식이 낱말을 직접 반환할 수 있습니다. `
@@ -16980,6 +17023,7 @@ const SCHEMA_HARD_RULES = [
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
   '- `directives[].when`은 필수입니다 (항상 켜 둘 지시문은 `"true"`). `events[].when`도 필수입니다.',
+  '- 파생 변수는 **목록 순서와 무관하게** 다른 파생을 읽을 수 있습니다 (새 파생을 맨 아래 붙여도 됩니다). 서로 읽는 순환만 오류입니다.',
   '- JSON에는 주석을 쓸 수 없습니다(`//` 금지).',
 ];
 

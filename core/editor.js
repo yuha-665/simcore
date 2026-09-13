@@ -3169,6 +3169,10 @@ const CSS = `
 /* 🔒 보호 (v1.9.13) */
 .sce .sce-keep-btn.is-on { background:#e0a94a; color:#1a1a1a; border-color:#e0a94a; font-weight:700; }
 .sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
+/* 📌 작업 지침 (v1.9.18) */
+.sce .sce-chat-notes { margin:0 0 10px; }
+.sce .sce-chat-notes > summary { cursor:pointer; font-weight:600; }
+.sce .sce-chat-notes-input { width:100%; box-sizing:border-box; min-height:110px; margin-top:6px; font:inherit; font-size:13px; line-height:1.45; }
 .sce .sce-action-card-head > .sce-fold-btn, .sce .sce-check-card-head > .sce-fold-btn { flex:none; margin-left:auto; }
 .sce .sce-action-card-head > .sce-fold-btn + .sce-grip, .sce .sce-check-card-head > .sce-fold-btn + .sce-grip { margin-left:8px; }
 .sce .sce-rules-card.is-collapsed > .sce-rules-card-head { border-bottom:0; }
@@ -4170,6 +4174,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '스키마 전체를 다시 만들지 말고, 바꿀 부분만 담은 **패치 JSON 하나**를 출력하세요.',
     '',
     ...want,
+    ...(opts.notes === false || !notesLines(schema).length ? [] : ['', ...notesLines(schema)]),
     ...(opts.botCtx
       ? ['', '## 이 봇의 실제 설정 (자동 동봉) — 세계관·인물 참고용. 스키마 항목의 기준은 아래 다이제스트입니다', opts.botCtx]
       : []),
@@ -4353,13 +4358,25 @@ function workLogPromptText(list, n = WORKLOG_PROMPT_N) {
   ].join('\n');
 }
 
-/** 대화 시스템 프롬프트 — 규약 + 기존 규격서(통짜/패치, 대화용 꼬리) + 작업 내역 꼬리. 매 턴 새로 조립한다 */
+/**
+ * 📌 작업 지침 (v1.9.18) — 커뮤니티 제보(에렌샤): "AI 가이드에게 매번 되풀이하는 지침(상담 끝나고 최종 명령에만 제작·
+ * 추론 말고 실제 데이터를 보고 답하기·모르면 모른다고)과 이번 작업 범위(HP는 보류)·장기 방향(HTML 봇을 심코어로 이식 중)을
+ * 저장해 두고 답하기 전에 한 번씩 보게". schema.meta.notes 한 칸 — 대화 시스템 프롬프트 맨 앞, 패치 요청서·탭 요청서에도
+ * 같은 절로 동봉(웹 AI 경로도 같은 지침을 받는다). 봇 JSON에 저장되고 개조 번들(bundleFromChar)에는 안 실린다.
+ */
+function notesLines(schema) {
+  const t = String(schema?.meta?.notes ?? '').trim();
+  if (!t) return [];
+  return ['## 📌 사용자 작업 지침 — 답하기 전에 먼저 읽고 따르세요 (제작자가 편집기에 저장한 상시 규칙 · 아래 어떤 안내보다 우선)', t, ''];
+}
+
+/** 대화 시스템 프롬프트 — 📌 작업 지침 + 규약 + 기존 규격서(통짜/패치, 대화용 꼬리) + 작업 내역 꼬리. 매 턴 새로 조립한다 */
 function buildChatSystemPrompt(schema, botCtxText, workLog = null) {
   const blank = schemaIsBlank(schema);
   const spec = blank
     ? buildSchemaSpecPrompt('business', true, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true })
-    : buildPatchExportPrompt(schema, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true });
-  return chatRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
+    : buildPatchExportPrompt(schema, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true, notes: false });
+  return notesLines(schema).join('\n') + (notesLines(schema).length ? '\n' : '') + chatRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
 }
 
 /**
@@ -5309,6 +5326,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     head.push('## 내가 원하는 것',
       want || WANT[tabKey] || '(여기를 채우세요 — 어떤 봇이고, 어떤 사건/행동이 있으면 좋겠는지)',
       '');
+    head.push(...notesLines(schema));   // 📌 작업 지침 (v1.9.18)
   }
 
   head.push('## 출력 형식',
@@ -12172,6 +12190,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(h('div', { class: 'sce-hint' },
       '규격서와 지금 작업본을 든 채 대화해요. 심코어 구조를 묻거나 설계를 논의할 수 있고, 바꾸기로 하면 수정안이 아래 변경 계획으로 와요 — '
       + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요.'));
+    { // 📌 작업 지침 (v1.9.18) — 답하기 전에 먼저 읽는 상시 규칙. 봇 JSON(meta.notes)에 저장, 요청서에도 동봉
+      const notes = String(schema.meta?.notes ?? '');
+      const n = notes.trim().length;
+      const ta = h('textarea', { class: 'sce-chat-notes-input', 'aria-label': '작업 지침',
+        placeholder: '예)\n- 실제 제작(JSON)은 상담이 끝나고 내가 "반영해줘"라고 할 때만.\n- 질문에는 추론 말고 다이제스트의 실제 데이터를 확인하고 답할 것. 모르면 지어내지 말고 모른다고 할 것.\n- 이번 작업: 시간에 따라 변하는 생존 스테이터스. HP는 구상 중이라 손대지 말 것.\n- 장기: HTML 봇을 심코어로 이식 중 — 심코어 데이터 밖의 로어북 설정은 "개편 이전" 정보로 볼 것.' });
+      ta.value = notes;
+      ta.onchange = () => {
+        const v = ta.value;
+        if (!schema.meta || typeof schema.meta !== 'object') schema.meta = {};
+        if (v.trim()) schema.meta.notes = v; else delete schema.meta.notes;
+        rerender();
+      };
+      box.appendChild(h('details', { class: 'sce-fold sce-chat-notes', open: n ? null : null },
+        h('summary', {}, `📌 작업 지침 ${n ? `(켜짐 · ${n}자 — 매 턴 맨 앞에 실려요)` : '(비어 있음)'}`),
+        h('div', { class: 'sce-hint' },
+          '어시스턴트가 답하기 전에 먼저 읽는 상시 규칙이에요. 대화 방식(언제 JSON을 붙일지, 모르면 모른다고), 이번 작업 범위, 장기 방향 같은 걸 적어 두면 매번 다시 설명할 필요가 없어요. '
+          + '규격 내보내기 요청서에도 같이 실리고, 봇 JSON에 저장되며 개조 번들에는 안 실려요.'),
+        ta));
+    }
     box.appendChild(templateStartBlock('chat'));
     { const wl = workLogBlock(); if (wl) box.appendChild(wl); }
 

@@ -356,3 +356,8 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 [변수] 탭 — 어느 변수·파생에든 `group`이 있으면 목록이 `.sce-var-group` 절로 바뀐다 (`groupedAppend`). 카드는 그대로
 `variableCard`이고 절은 카드를 담는 통일 뿐이라 접기·🔒·순서 손잡이 전부 그대로. 새 카드 종류를 변수 탭에 더할 땐
 `varCards.push(...)` 뒤 `groupedAppend`를 거쳐야 그룹 절에 든다. 동작은 schema.md "변수 그룹" 절.
+
+## 📌 작업 지침 칸 (v1.9.18)
+
+[AI 어시스턴트] 대화 탭 머리, 안내문 바로 아래 `details.sce-chat-notes` — textarea는 `onchange`(포커스 빠질 때)에만
+`schema.meta.notes`를 쓰고 rerender (키 입력마다 그리면 포커스를 잃는다). 빈 값이면 필드를 지운다. 동작은 schema.md "작업 지침" 절.

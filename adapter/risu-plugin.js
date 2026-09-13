@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.17
-//@display-name SimCore (시뮬 엔진) v1.9.17 패치 update 병합 — 보낸 필드만 덮는다
+//@version 1.9.18
+//@display-name SimCore (시뮬 엔진) v1.9.18 📌 작업 지침 — 어시스턴트가 먼저 읽는 상시 규칙
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.18 ──────────────────────────────────────────────
+// **📌 작업 지침(meta.notes)** — 커뮤니티 제보(2026-09-13, 에렌샤): "AI 가이드에게 매번 되풀이하는 지침(상담 끝나고 최종 명령에만
+// 제작·추론 말고 실제 데이터 확인·모르면 모른다고)과 단기 범위(HP는 보류)·장기 방향(HTML 봇 이식 중, 심코어 밖은 개편 이전)을
+// 저장해 두고 답하기 전에 한 번씩 보게". 대화 탭 머리의 접이식 칸 하나(schema.meta.notes) — 대화 시스템 프롬프트 맨 앞
+// "## 📌 사용자 작업 지침 — 답하기 전에 먼저 읽고 따르세요", 패치 요청서('내가 원하는 것' 다음)·탭 요청서에도 같은 절.
+// 봇 JSON에 저장, 개조 번들(bundleFromChar)에선 스키마 로어의 notes만 빼고 싣는다. 검증: 문자열·4000자 경고. test-notes.js.
 //
 // ── v1.9.17 ──────────────────────────────────────────────
 // **패치 update 병합** — 커뮤니티 제보(2026-09-13, 에렌샤): "패치 적용 때 삭제·변경 확인 항목이 모두 오류". update가 항목
@@ -2566,11 +2573,21 @@
   // 리수에 로어북·정규식 일괄삭제가 없어 받는 쪽이 원본 항목을 하나씩 지워야 했다.
   // 번들은 **전체 교체**라 그 수작업이 없다. 스키마 항목(⚙simcore)도 로어북에 실려 함께 간다.
   // 트리거스크립트(루아 브리지 자리)·인사말·이미지는 안 건드린다 — 원본 카드의 것 유지.
+  // 📌 작업 지침(meta.notes, v1.9.18)은 제작자 메모라 배포 번들에서 뺀다 — 스키마 로어의 JSON만 다시 쓴다(다른 로어는 그대로)
+  function stripNotesFromLore(l) {
+    if (!l || l.comment !== SCHEMA_LORE_COMMENT || typeof l.content !== 'string') return { ...l };
+    try {
+      const s = JSON.parse(l.content);
+      if (!s || typeof s !== 'object' || !s.meta || s.meta.notes == null) return { ...l };
+      delete s.meta.notes;
+      return { ...l, content: JSON.stringify(s) };
+    } catch { return { ...l }; }
+  }
   function bundleFromChar(char, name) {
     return {
       simcoreBundle: 1,
       name: String(name || char?.name || '개조 번들'),
-      lorebook: (char?.globalLore || []).map((l) => ({ ...l })),
+      lorebook: (char?.globalLore || []).map(stripNotesFromLore),
       regex: (char?.customscript || []).map((r) => ({ ...r })),
     };
   }

@@ -41,6 +41,11 @@ function validateSchema(schema) {
     return { ok: false, errors: [{ path: '$', msg: '스키마가 JSON 객체가 아님' }], warnings };
   }
   if (schema.simcore !== '0.1') warn('$.simcore', `지원 버전은 0.1 (현재: ${schema.simcore})`);
+  // 📌 작업 지침 (v1.9.18) — 어시스턴트·요청서가 답하기 전에 먼저 읽는 제작자 상시 규칙. 문자열만, 너무 길면 경고.
+  if (schema.meta && schema.meta.notes != null) {
+    if (typeof schema.meta.notes !== 'string') err('$.meta.notes', '작업 지침(notes)은 문자열이어야 함');
+    else if (schema.meta.notes.length > 4000) warn('$.meta.notes', `작업 지침이 ${schema.meta.notes.length}자 — 매 턴 프롬프트에 실리니 4000자 안으로 줄이는 게 좋습니다`);
+  }
 
   // ── vars ──
   const vars = Array.isArray(schema.vars) ? schema.vars : [];

@@ -3747,6 +3747,7 @@ const SCHEMA_HARD_RULES = [
   '- `updater.allow[].id`도 `vars`에 있어야 하며, 숫자형에는 `maxDelta`를 주는 것이 좋습니다(없으면 AI가 무제한으로 바꿉니다).',
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
+  '- `directives[].when`은 필수입니다 (항상 켜 둘 지시문은 `"true"`). `events[].when`도 필수입니다.',
   '- JSON에는 주석을 쓸 수 없습니다(`//` 금지).',
 ];
 
@@ -4188,6 +4189,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
+    '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update로 전문을 다시 쓸 때 기존 `group`을 빠뜨리지 마세요 (편집기 묶음이 풀립니다).',
@@ -5368,7 +5370,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
-      '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
+      '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
       '## 갈림길 (이벤트에 choices 달기 — 선택형 이벤트)',

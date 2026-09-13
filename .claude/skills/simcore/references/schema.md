@@ -125,6 +125,10 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 지시하면 경고 — 그 규칙은 정작 상태를 갱신하는 보조 AI가 영영 못 읽는다.
 변수의 `desc`나 `updater.guide`로 옮긴다.
 
+**`when`은 필수** — 항상 켜 둘 지시문은 `"when": "true"`(expr가 true를 1로 읽는다). 패치(add·update)로 온 지시문이
+`when`을 빠뜨리면 patch.js `fillDirectiveWhen`이 `"true"`로 채우고 경고한다 (v1.9.15, 에렌샤 제보 "검증 실패로 실질 적용이 안 된다"
+— 요청서에 필수가 안 적혀 AI가 빼고 보냈던 것). 이벤트의 when 누락은 "매 턴 발동"이 되니 채우지 않는다.
+
 ---
 
 ## actions — 유저가 누르는 버튼

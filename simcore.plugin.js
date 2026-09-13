@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.14
-//@display-name SimCore (시뮬 엔진) v1.9.14 변수 그룹 — 편집기에서 묶어 본다
+//@version 1.9.15
+//@display-name SimCore (시뮬 엔진) v1.9.15 지시문 when 누락 보정 — 패치가 true로 채운다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.15 ──────────────────────────────────────────────
+// **지시문 when 누락 보정** — 커뮤니티 제보(2026-09-13, 에렌샤): 대화형 어시스턴트 패치가 "검증 실패"로 실질 적용이 안 됨.
+// 클로드에 물으니 "directives 항목은 when이 필수라 항상 켜두려면 iron >= 0 같은 항상 참 식을" — 그 규칙이 요청서(규격)에
+// 없어서 AI가 when을 빼고 보냈고, 검증(표현식 필요)이 패치를 통째로 거부했다. 제보자 제안대로 규격에 필수를 못박고,
+// 그래도 빠지면 patch.js가 when:"true"로 채워 적용은 되게 한다(경고 동봉). 이벤트 when은 "매 턴 발동"이 되니 안 채운다.
+// - patch.js fillDirectiveWhen (add·update, 사본) · 규격 3곳(패치 규칙·규칙 탭·공용) · test-dirwhen.js
 //
 // ── v1.9.14 ──────────────────────────────────────────────
 // **변수 그룹(group)** — 커뮤니티 제보(2026-09-11): "변수가 늘수록 순서가 뒤죽박죽. 상태창처럼 그룹으로 묶으면 가까운 변수끼리
@@ -8332,6 +8339,17 @@ function restoreKept(prev, next) {
   return { schema: merged, restored, reverted };
 }
 
+// 지시문 when 누락 (v1.9.15) — 커뮤니티 제보(2026-09-13, 에렌샤): 대화형 어시스턴트가 지시문을 when 없이 보내
+// 검증(표현식 필요)에서 통째로 거부돼 "검증 실패, 실질 적용이 안 된다". 규격에 필수를 못박고, 그래도 빠지면
+// 항상 참(true)으로 채워 적용은 되게 한다 — 지시문은 "조건 없음 = 항상 켜짐"이 자연스러운 뜻이라 이벤트와 달리 안전.
+// 이벤트·랜덤은 when 없음이 "매 턴 발동"이라 채우지 않는다(검증이 막는다). 원본 항목은 안 건드리고 사본을 만든다.
+function fillDirectiveWhen(section, e, op, warn) {
+  if (section !== 'directives' || !e || typeof e !== 'object') return e;
+  if (typeof e.when === 'string' && e.when.trim()) return e;
+  warn(`${op}.directives '${e.id}': 조건(when) 없음 → 항상 켜짐("true")으로 채움 — 조건을 두려면 편집기에서 고치세요`);
+  return { ...e, when: 'true' };
+}
+
 function planPatch(schema, patch) {
   const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
   const guard = (key, id, op) => {
@@ -8388,7 +8406,7 @@ function planPatch(schema, patch) {
           reason: `'${e.id}'는 ${SECTIONS[owner].label} 이름과 겹침 — 교체 불가, 개명하거나 건너뛰세요`,
         });
       }
-      ops.push({ op: 'add', section: key, id: e.id, entry: e });
+      ops.push({ op: 'add', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'add', warn) });
     }
   }
 
@@ -8401,7 +8419,7 @@ function planPatch(schema, patch) {
       if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
-      ops.push({ op: 'update', section: key, id: e.id, entry: e, previous: cur });
+      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'update', warn), previous: cur });
     }
   }
 
@@ -16961,6 +16979,7 @@ const SCHEMA_HARD_RULES = [
   '- `updater.allow[].id`도 `vars`에 있어야 하며, 숫자형에는 `maxDelta`를 주는 것이 좋습니다(없으면 AI가 무제한으로 바꿉니다).',
   '- `updater.contextTurns`는 1~5 정수입니다.',
   '- `promptState.template`, `directives[].text`, `statusUI` 안의 `{이름}` 자리표시자도 정의된 변수여야 합니다.',
+  '- `directives[].when`은 필수입니다 (항상 켜 둘 지시문은 `"true"`). `events[].when`도 필수입니다.',
   '- JSON에는 주석을 쓸 수 없습니다(`//` 금지).',
 ];
 
@@ -17402,6 +17421,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
+    '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
     '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update로 전문을 다시 쓸 때 기존 `group`을 빠뜨리지 마세요 (편집기 묶음이 풀립니다).',
@@ -18582,7 +18602,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
-      '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다.',
+      '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
       '## 갈림길 (이벤트에 choices 달기 — 선택형 이벤트)',

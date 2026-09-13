@@ -216,6 +216,17 @@ function restoreKept(prev, next) {
   return { schema: merged, restored, reverted };
 }
 
+// 지시문 when 누락 (v1.9.15) — 커뮤니티 제보(2026-09-13, 에렌샤): 대화형 어시스턴트가 지시문을 when 없이 보내
+// 검증(표현식 필요)에서 통째로 거부돼 "검증 실패, 실질 적용이 안 된다". 규격에 필수를 못박고, 그래도 빠지면
+// 항상 참(true)으로 채워 적용은 되게 한다 — 지시문은 "조건 없음 = 항상 켜짐"이 자연스러운 뜻이라 이벤트와 달리 안전.
+// 이벤트·랜덤은 when 없음이 "매 턴 발동"이라 채우지 않는다(검증이 막는다). 원본 항목은 안 건드리고 사본을 만든다.
+function fillDirectiveWhen(section, e, op, warn) {
+  if (section !== 'directives' || !e || typeof e !== 'object') return e;
+  if (typeof e.when === 'string' && e.when.trim()) return e;
+  warn(`${op}.directives '${e.id}': 조건(when) 없음 → 항상 켜짐("true")으로 채움 — 조건을 두려면 편집기에서 고치세요`);
+  return { ...e, when: 'true' };
+}
+
 function planPatch(schema, patch) {
   const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
   const guard = (key, id, op) => {
@@ -272,7 +283,7 @@ function planPatch(schema, patch) {
           reason: `'${e.id}'는 ${SECTIONS[owner].label} 이름과 겹침 — 교체 불가, 개명하거나 건너뛰세요`,
         });
       }
-      ops.push({ op: 'add', section: key, id: e.id, entry: e });
+      ops.push({ op: 'add', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'add', warn) });
     }
   }
 
@@ -285,7 +296,7 @@ function planPatch(schema, patch) {
       if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
-      ops.push({ op: 'update', section: key, id: e.id, entry: e, previous: cur });
+      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'update', warn), previous: cur });
     }
   }
 

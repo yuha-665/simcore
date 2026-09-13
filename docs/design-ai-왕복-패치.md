@@ -42,7 +42,8 @@
 ```
 
 - **add/update 분리 = INSERT vs UPDATE.** upsert(같은 id 조용히 교체) 금지
-- update는 **항목 단위 통 교체** — 항목 내부 부분 패치는 안 한다 (단순성)
+- update는 ~~항목 단위 통 교체~~ → **v1.9.17부터 필드 병합**: 보낸 필드만 덮고 나머지는 유지, null이면 필드 삭제(id 제외),
+  배열·객체 필드는 통째 교체. 통 교체 시절엔 AI가 바꿀 필드만 보내 when·type·group이 사라져 검증이 패치를 통째 거부했다 (에렌샤 제보)
 - 병합 대상 = id 있는 목록 전부: vars / derived / rules.events / randomEvents.table /
   directives / actions / checks (+ updater.allow는 변수 id 키)
 - **예외**: `rules.onTurn[]`은 id가 없음 → v1 병합 제외 (통 교체 유지). statusUI → §6

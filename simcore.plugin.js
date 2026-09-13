@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.16
-//@display-name SimCore (시뮬 엔진) v1.9.16 파생 순서 무관 — 검증이 뒤의 파생도 안다
+//@version 1.9.17
+//@display-name SimCore (시뮬 엔진) v1.9.17 패치 update 병합 — 보낸 필드만 덮는다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.17 ──────────────────────────────────────────────
+// **패치 update 병합** — 커뮤니티 제보(2026-09-13, 에렌샤): "패치 적용 때 삭제·변경 확인 항목이 모두 오류". update가 항목
+// 전문 교체 계약이라 AI가 바꿀 필드만 보내면 when·type·min·group이 사라져 항목마다 검증 오류 → 패치 통째 거부. v1.9.15의
+// when 누락도 같은 뿌리. 이제 update는 기존 항목 위에 보낸 필드만 덮는다(patch.js mergeUpdate). 필드 삭제는 null(id 제외),
+// 배열·객체 필드(effects·choices·grades·mentions…)는 통째 교체 — 부분 병합이 뜻을 가질 수 없어서. 규격 6곳 문구 교체,
+// 다이제스트 전문은 그대로 싣는다(배열 전문이 여전히 필요). test-updatemerge.js · test-patch/vargroups/dirwhen 계약 갱신.
 //
 // ── v1.9.16 ──────────────────────────────────────────────
 // **파생 순서 무관** — 커뮤니티 제보(2026-09-13, 에렌샤): "새로 붙인 파생(아래)을 기존 파생(위)이 인식 못해 어시스턴트가
@@ -8393,6 +8400,21 @@ function fillDirectiveWhen(section, e, op, warn) {
   return { ...e, when: 'true' };
 }
 
+// update 병합 (v1.9.17) — 커뮤니티 제보(에렌샤): "패치 적용 때 삭제·변경 확인 항목이 모두 오류". update가 항목 전문
+// 교체라 AI가 바꿀 필드만 보내면 when·type·min·group이 사라져 항목마다 검증 오류가 났다(v1.9.15 when 누락도 같은 뿌리).
+// 이제 기존 항목 위에 보낸 필드만 덮는다. 필드를 없애려면 null(id는 못 없앰). 배열·객체 필드(effects·choices·grades·
+// mentions·fight…)는 깊이 섞지 않고 통째로 바뀐다 — 부분 병합은 "effects 세 개 중 하나만"을 뜻할 수 없어서.
+function mergeUpdate(cur, e) {
+  if (!cur || typeof cur !== 'object' || !e || typeof e !== 'object') return e;
+  const out = { ...cur };
+  for (const [k, v] of Object.entries(e)) {
+    if (v === null) { if (k !== 'id') delete out[k]; }
+    else out[k] = v;
+  }
+  out.id = cur.id;
+  return out;
+}
+
 function planPatch(schema, patch) {
   const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
   const guard = (key, id, op) => {
@@ -8462,7 +8484,7 @@ function planPatch(schema, patch) {
       if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
-      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'update', warn), previous: cur });
+      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, mergeUpdate(cur, e), 'update', warn), previous: cur });
     }
   }
 
@@ -8653,7 +8675,8 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
-module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
+module.exports = {
+  mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
 
 });
 
@@ -17344,8 +17367,9 @@ function buildFixPrompt(schema, v) {
 // (2) 출력 형식을 못박는 것. 스키마 통짜 대신 다이제스트를 보내는 이유: 베리디아급이면
 // 절반이 상태창 HTML/CSS라, 참조에 필요한 것만 추리면 붙여넣기 부담과 실수 확률이 같이 준다.
 
-// 이벤트·액션·판정·지시문·allow는 **전문**을 실어 보낸다 — update가 항목 통 교체라, 기존
-// 본문을 모르면 AI가 update를 겁내 remove+add로 우회하다 가져오기에서 막힌다 (실전 사고).
+// 이벤트·액션·판정·지시문·allow는 **전문**을 실어 보낸다 — 기존 본문을 모르면 AI가 update를 겁내
+// remove+add로 우회하다 가져오기에서 막힌다 (실전 사고). v1.9.17부터 update는 보낸 필드만 덮지만
+// effects 같은 배열은 통째라 전문은 여전히 필요하다.
 // 용량 주범(상태창 HTML/CSS)은 여전히 제외라 다이제스트의 취지는 유지된다.
 function patchIdDigest(schema) {
   const out = [];
@@ -17375,7 +17399,7 @@ function patchIdDigest(schema) {
   const evs = [...(schema.rules?.events || []),
     ...((schema.rules?.randomEvents?.table || []).map((e) => ({ ...e, _rnd: true })))];
   if (evs.length) {
-    out.push('', '### 이벤트 (events / randomEvents) — update로 고칠 땐 이 전문을 바탕으로 다시 쓰세요',
+    out.push('', '### 이벤트 (events / randomEvents) — update로 고칠 땐 바꿀 필드만 보내면 됩니다 (effects 같은 배열은 통째)',
       ...evs.map((e) => `- ${e._rnd ? '(랜덤) ' : ''}${body(e)}`));
   }
   const fullLine = (label, arr) => {
@@ -17459,16 +17483,16 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '}',
     '```',
     '- `add` = 새로 만드는 항목. **아래 "이미 있는 id"와 겹치면 안 됩니다** — 뜻이 비슷해도 반드시 새 id를 지으세요.',
-    '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, 항목을 **통째로 다시** 씁니다 — 바꿀 필드만 주면 나머지 필드가 사라집니다.',
-    '  기존 본문은 아래 다이제스트에 전문이 있으니, 그걸 바탕으로 고쳐 쓰세요.',
-    '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`로 전문을 다시 쓰면 결과가 같습니다.',
+    '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, **보낸 필드만 덮고 나머지 필드는 그대로** 남습니다 — 바꿀 필드만 주면 됩니다.',
+    '  필드를 없애려면 `"max": null`처럼 null을 주세요. 단 `effects`·`choices`·`grades`·`mentions` 같은 배열·객체 필드는 **통째로** 바뀌니 그 배열은 전문을 다시 쓰세요 (아래 다이제스트에 전문이 있습니다).',
+    '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
     '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요.',
-    '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update로 전문을 다시 쓸 때 기존 `group`을 빠뜨리지 마세요 (편집기 묶음이 풀립니다).',
+    '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update는 기존 `group`을 자동으로 유지합니다.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
@@ -17481,7 +17505,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     ...SCHEMA_EVENT_PATTERN_RULES,
     ...(schema.time ? ['', '## 시간 진행', ...SCHEMA_TIME_RULES] : []),
     '',
-    '## 이미 있는 항목 — add가 이 id들과 겹치면 가져오기에서 정지되고, update는 이 전문을 기준으로 다시 씁니다',
+    '## 이미 있는 항목 — add가 이 id들과 겹치면 가져오기에서 정지되고, update는 이 전문 위에 보낸 필드만 덮습니다',
     patchIdDigest(schema),
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -18207,7 +18231,7 @@ function varContractTable(schema) {
     if (g) (groups.get(g) || groups.set(g, []).get(g)).push(it.id);
   }
   if (groups.size) {
-    out.push('', '그룹(`group`, 편집기 묶음 — 새 항목엔 가장 가까운 그룹을 붙이고 update 때 유지): '
+    out.push('', '그룹(`group`, 편집기 묶음 — 새 항목엔 가장 가까운 그룹을 붙이세요 — update는 자동 유지): '
       + [...groups].map(([g, ids]) => `**${g}**(${ids.join(', ')})`).join(' · '));
   }
   if ((schema.derived || []).length) {

@@ -45,7 +45,9 @@ console.log('── 엔진·패치는 group을 모른다 (보기용)');
   const r = P.applyPatch(S, P.parsePatch(J({ patchVersion: 1, update: { vars: [{ id: 'hp', label: '체력', type: 'int', init: 90, group: '전투' }] } })).patch);
   ck('패치 update가 group을 실어 오면 그대로 남는다', r.ok && r.schema.vars.find((v) => v.id === 'hp').group === '전투', J(r.errors));
   const r2 = P.applyPatch(S, P.parsePatch(J({ patchVersion: 1, update: { vars: [{ id: 'gold', label: '금화', type: 'int', init: 5 }] } })).patch);
-  ck('update가 group을 빠뜨리면 풀린다 (전문 교체 계약 — 규격이 빠뜨리지 말라고 경고)', r2.ok && r2.schema.vars.find((v) => v.id === 'gold').group === undefined, '');
+  ck('update가 group을 빠뜨려도 유지된다 (v1.9.17 병합)', r2.ok && r2.schema.vars.find((v) => v.id === 'gold').group === '경제', '');
+  const r3 = P.applyPatch(S, P.parsePatch(J({ patchVersion: 1, update: { vars: [{ id: 'gold', group: null }] } })).patch);
+  ck('group: null 로 그룹을 푼다', r3.ok && r3.schema.vars.find((v) => v.id === 'gold').group === undefined, J(r3.errors));
   ck('저장 순서는 그룹과 무관하게 그대로', r.schema.vars.map((v) => v.id).join() === 'gold,hp,tax,liana_aff', '');
 }
 
@@ -68,8 +70,8 @@ console.log('── 편집기');
 console.log('── 규격서·다이제스트');
 {
   ck('변수 필드 표에 group 행', src.includes("'| `group` | (선택) 편집기에서 묶어 보여 주는 그룹 이름"), '');
-  ck('패치 규칙: 새 변수엔 가장 가까운 그룹, update 때 유지', src.includes('새 변수·파생에는 `group`을 붙이세요') && src.includes('기존 `group`을 빠뜨리지 마세요'), '');
-  ck('변수 계약표 아래 그룹 한 줄 코드', src.includes("out.push('', '그룹(`group`, 편집기 묶음 — 새 항목엔 가장 가까운 그룹을 붙이고 update 때 유지): '"), '');
+  ck('패치 규칙: 새 변수엔 가장 가까운 그룹, update는 자동 유지', src.includes('새 변수·파생에는 `group`을 붙이세요') && src.includes('update는 기존 `group`을 자동으로 유지합니다'), '');
+  ck('변수 계약표 아래 그룹 한 줄 코드', src.includes("out.push('', '그룹(`group`, 편집기 묶음 — 새 항목엔 가장 가까운 그룹을 붙이세요 — update는 자동 유지): '"), '');
   // 실물 — 계약표 함수를 번들에서 잘라 실행 (timeConfig·EXPOSED_LABELS 주입)
   const start = src.indexOf('function varContractTable(schema) {');
   const end = src.indexOf('\n}\n', start) + 3;

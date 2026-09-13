@@ -194,12 +194,13 @@ const baseJson = JSON.stringify(BASE);
   ck('깨진 식도 병합 후 검증에서 잡힘', !bad.ok, '');
 }
 
-// ── update = 항목 통 교체 ──
+// ── update = 보낸 필드만 덮기 (v1.9.17 — 그 전엔 항목 통 교체) ──
 {
   const S = snap();
   const r = P.applyPatch(S, P.parsePatch({ update: { actions: [{ id: 'work', label: '⚒ 중노동', effects: [{ set: 'gold', expr: 'gold + 30' }] }] } }).patch);
   ck('update 성공', r.ok, JSON.stringify(r.errors));
-  ck('항목이 통째로 바뀜 (mode 필드도 사라짐)', r.ok && r.schema.actions[0].mode === undefined && r.schema.actions[0].label === '⚒ 중노동', '');
+  ck('보낸 필드만 바뀜 (mode 필드는 남는다)', r.ok && r.schema.actions[0].mode === S.actions[0].mode && r.schema.actions[0].label === '⚒ 중노동'
+    && r.schema.actions[0].effects[0].expr === 'gold + 30', JSON.stringify(r.ok && r.schema.actions[0]));
 }
 
 // ── remove ──
@@ -282,7 +283,7 @@ const baseJson = JSON.stringify(BASE);
   S.statusUI = { mode: 'custom', template: '<div>ZZZ_CSS_MARKER</div>', groups: [] };
   const pr = M.buildPatchExportPrompt(S);
   ck('프롬프트: 패치 형식 명세 포함', pr.includes('patchVersion') && pr.includes('"add"'), '');
-  ck('프롬프트: add/update/remove 규칙 설명', pr.includes('새 id를 지으세요') && pr.includes('통째로 다시') && pr.includes('명시적으로 지워달라고 한 것만'), '');
+  ck('프롬프트: add/update/remove 규칙 설명', pr.includes('새 id를 지으세요') && pr.includes('보낸 필드만 덮고') && pr.includes('명시적으로 지워달라고 한 것만'), '');
   ck('★ 기존 id 다이제스트 동봉 (변수·이벤트·액션·판정)',
     pr.includes('`gold`') && pr.includes('"id":"broke"') && pr.includes('"id":"work"') && pr.includes('"id":"luck"'), '');
   ck('다이제스트에 이벤트 when 실림', pr.includes('gold < 1 and not famine'), '');

@@ -227,6 +227,21 @@ function fillDirectiveWhen(section, e, op, warn) {
   return { ...e, when: 'true' };
 }
 
+// update 병합 (v1.9.17) — 커뮤니티 제보(에렌샤): "패치 적용 때 삭제·변경 확인 항목이 모두 오류". update가 항목 전문
+// 교체라 AI가 바꿀 필드만 보내면 when·type·min·group이 사라져 항목마다 검증 오류가 났다(v1.9.15 when 누락도 같은 뿌리).
+// 이제 기존 항목 위에 보낸 필드만 덮는다. 필드를 없애려면 null(id는 못 없앰). 배열·객체 필드(effects·choices·grades·
+// mentions·fight…)는 깊이 섞지 않고 통째로 바뀐다 — 부분 병합은 "effects 세 개 중 하나만"을 뜻할 수 없어서.
+function mergeUpdate(cur, e) {
+  if (!cur || typeof cur !== 'object' || !e || typeof e !== 'object') return e;
+  const out = { ...cur };
+  for (const [k, v] of Object.entries(e)) {
+    if (v === null) { if (k !== 'id') delete out[k]; }
+    else out[k] = v;
+  }
+  out.id = cur.id;
+  return out;
+}
+
 function planPatch(schema, patch) {
   const errors = [], warnings = [], ops = [], conflicts = [], protectedOps = [];
   const guard = (key, id, op) => {
@@ -296,7 +311,7 @@ function planPatch(schema, patch) {
       if (guard(key, e.id, 'update')) continue;
       if (key === 'vars' && e.type && cur.type && e.type !== cur.type)
         warn(`update.vars '${e.id}': 타입 변경 ${cur.type}→${e.type} — 진행 중인 채팅의 저장값과 충돌할 수 있음`);
-      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, e, 'update', warn), previous: cur });
+      ops.push({ op: 'update', section: key, id: e.id, entry: fillDirectiveWhen(key, mergeUpdate(cur, e), 'update', warn), previous: cur });
     }
   }
 
@@ -487,4 +502,5 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
-module.exports = { parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
+module.exports = {
+  mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };

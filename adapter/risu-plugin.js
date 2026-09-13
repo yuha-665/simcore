@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.16
-//@display-name SimCore (시뮬 엔진) v1.9.16 파생 순서 무관 — 검증이 뒤의 파생도 안다
+//@version 1.9.17
+//@display-name SimCore (시뮬 엔진) v1.9.17 패치 update 병합 — 보낸 필드만 덮는다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.17 ──────────────────────────────────────────────
+// **패치 update 병합** — 커뮤니티 제보(2026-09-13, 에렌샤): "패치 적용 때 삭제·변경 확인 항목이 모두 오류". update가 항목
+// 전문 교체 계약이라 AI가 바꿀 필드만 보내면 when·type·min·group이 사라져 항목마다 검증 오류 → 패치 통째 거부. v1.9.15의
+// when 누락도 같은 뿌리. 이제 update는 기존 항목 위에 보낸 필드만 덮는다(patch.js mergeUpdate). 필드 삭제는 null(id 제외),
+// 배열·객체 필드(effects·choices·grades·mentions…)는 통째 교체 — 부분 병합이 뜻을 가질 수 없어서. 규격 6곳 문구 교체,
+// 다이제스트 전문은 그대로 싣는다(배열 전문이 여전히 필요). test-updatemerge.js · test-patch/vargroups/dirwhen 계약 갱신.
 //
 // ── v1.9.16 ──────────────────────────────────────────────
 // **파생 순서 무관** — 커뮤니티 제보(2026-09-13, 에렌샤): "새로 붙인 파생(아래)을 기존 파생(위)이 인식 못해 어시스턴트가

@@ -361,3 +361,9 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 
 [AI 어시스턴트] 대화 탭 머리, 안내문 바로 아래 `details.sce-chat-notes` — textarea는 `onchange`(포커스 빠질 때)에만
 `schema.meta.notes`를 쓰고 rerender (키 입력마다 그리면 포커스를 잃는다). 빈 값이면 필드를 지운다. 동작은 schema.md "작업 지침" 절.
+
+## 대화 말풍선 지우기 (v1.9.19)
+
+[💬 대화] 말풍선 머리 `.sce-chat-tools` — [✕] 하나, [⌫ 여기부터] 아래 전부(마지막 말풍선엔 없음). `chatDrop(idx, count)`가
+`chat.msgs.splice` — 이력이 곧 프롬프트라 지우면 다음 전송부터 안 실린다. pending(계획 상자에 뜬 수정안) 말풍선을 지우면
+patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린다. 테스트 `테스트/test-chatdel.js`.

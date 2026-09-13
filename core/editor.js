@@ -607,6 +607,11 @@ const CSS = `
 .sce .sce-chat-msg { max-width:92%; padding:8px 11px; border:1px solid var(--sce-line); border-radius:10px; background:var(--sce-surface); }
 .sce .sce-chat-msg.is-user { align-self:flex-end; border-color:var(--sce-accent); background:color-mix(in srgb, var(--sce-accent) 10%, transparent); }
 .sce .sce-chat-msg.is-ai { align-self:flex-start; }
+/* 말풍선 지우기 (v1.9.19) */
+.sce .sce-chat-who { display:flex; align-items:center; gap:8px; }
+.sce .sce-chat-tools { margin-left:auto; display:inline-flex; gap:4px; opacity:.45; }
+.sce .sce-chat-msg:hover .sce-chat-tools, .sce .sce-chat-msg:focus-within .sce-chat-tools { opacity:1; }
+.sce .sce-chat-del { padding:0 6px; line-height:1.4; }
 .sce .sce-chat-who { margin-bottom:3px; color:var(--sce-muted); font-size:11px; font-weight:700; }
 .sce .sce-chat-text { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; font-size:13px; }
 .sce .sce-chat-tag { margin-top:6px; font-size:12px; }
@@ -12189,7 +12194,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const blank = schemaIsBlank(schema);
     box.appendChild(h('div', { class: 'sce-hint' },
       '규격서와 지금 작업본을 든 채 대화해요. 심코어 구조를 묻거나 설계를 논의할 수 있고, 바꾸기로 하면 수정안이 아래 변경 계획으로 와요 — '
-      + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요.'));
+      + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요. 끝난 곁가지는 말풍선의 ✕로 지우면 다음 전송부터 안 실려 토큰을 아껴요.'));
     { // 📌 작업 지침 (v1.9.18) — 답하기 전에 먼저 읽는 상시 규칙. 봇 JSON(meta.notes)에 저장, 요청서에도 동봉
       const notes = String(schema.meta?.notes ?? '');
       const n = notes.trim().length;
@@ -12263,9 +12268,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ? '예: "학원 러브코메 봇인데 머릿속 선택지가 주인공을 괴롭히는 구조로 만들고 싶어. 변수는 뭘 두면 좋을까?"'
           : '예: "지금 이벤트들이 왜 이렇게 짜였는지 설명해줘" · "산적 습격을 넣고 싶은데 어느 탭에 뭘 두면 돼?" · "그럼 그렇게 반영해줘"'));
     }
+    // 말풍선 지우기 (v1.9.19) — 커뮤니티 제보(에렌샤): "A를 논의하다 파생된 B를 풀고 A로 돌아오면 B는 이미 끝난 불필요한
+    // 데이터. 리수처럼 특정 질문·답만 지우고 올릴 내용만 보내고 싶다". 이력은 chat.msgs가 곧 프롬프트라 빼면 다음 전송부터
+    // 안 실린다. 계획 상자에 떠 있던 수정안(pending)을 지우면 상자도 같이 치운다 — 근거 말풍선 없는 계획은 남기지 않는다.
+    const chatDrop = (idx, count) => {
+      if (chat.busy) return;
+      const removed = chat.msgs.splice(idx, count);
+      if (removed.some((m) => m.pending) && patchSource === 'chat') { patchPlan = null; patchChoices = {}; aiFull = null; }
+      rerender();
+    };
     chat.msgs.forEach((m, i) => {
+      const tools = chat.busy ? null : h('span', { class: 'sce-chat-tools' },
+        h('button', { class: 'sce-btn sce-mini sce-chat-del', title: '이 말풍선만 지우기 — 다음 전송부터 안 실려요',
+          'aria-label': '이 말풍선 지우기', onclick: () => chatDrop(i, 1) }, '✕'),
+        i < chat.msgs.length - 1
+          ? h('button', { class: 'sce-btn sce-mini sce-chat-del', title: '여기부터 아래 전부 지우기',
+            'aria-label': '여기부터 아래 지우기', onclick: () => chatDrop(i, chat.msgs.length - i) }, '⌫ 여기부터')
+          : null);
       const bubble = h('div', { class: 'sce-chat-msg ' + (m.role === 'ai' ? 'is-ai' : 'is-user') },
-        h('div', { class: 'sce-chat-who' }, m.role === 'ai' ? '🤖 어시스턴트' : '🙂 나'),
+        h('div', { class: 'sce-chat-who' }, h('span', {}, m.role === 'ai' ? '🤖 어시스턴트' : '🙂 나'), tools),
         h('div', { class: 'sce-chat-text' }, m.text));
       if (m.role === 'ai') {
         if (m.applied) bubble.appendChild(h('div', { class: 'sce-ok sce-chat-tag' }, `✅ 적용됨 — ${m.applied}`));

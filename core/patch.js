@@ -502,5 +502,61 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
+// ── 작업본 비교 (v1.9.21) — 커뮤니티 제보(에렌샤): "공개 뒤엔 '0.1→0.2 사이 뭐가 바뀌었나' 패치 로그를 묻게 된다.
+// 가져오기를 덮어쓰지 말고 지금 작업본과 비교해 차이만 AI가 읽으면 딸칵 패치 노트 초안". id 있는 섹션은 항목 단위
+// (추가/삭제/바뀐 필드), 나머지 최상위 영역(statusUI·promptState·onTurn·setup·meta·time·…)은 통째 비교해 이름만 든다.
+const DIFF_AREAS = [
+  ['meta', (s) => s?.meta, '이름·설명(meta)'], ['promptState', (s) => s?.promptState, '메인 프롬프트(promptState)'],
+  ['statusUI', (s) => s?.statusUI, '상태창(statusUI)'], ['onTurn', (s) => s?.rules?.onTurn, '매 턴 정산(onTurn)'],
+  ['randomEventsChance', (s) => s?.rules?.randomEvents?.chancePerTurn, '랜덤 이벤트 발동률'],
+  ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
+  ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
+  ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
+  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
+];
+const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
+function diffSchemas(a, b) {
+  const J = (x) => JSON.stringify(x ?? null);
+  const out = { added: [], removed: [], changed: [], areas: [], same: true };
+  for (const key of SECTION_KEYS) {
+    const la = (getList(a, key) || []).filter((e) => e && e.id != null), lb = (getList(b, key) || []).filter((e) => e && e.id != null);
+    const ma = new Map(la.map((e) => [e.id, e])), mb = new Map(lb.map((e) => [e.id, e]));
+    for (const [id, e] of mb) if (!ma.has(id)) out.added.push({ section: key, id, name: nameOfEntry(e) });
+    for (const [id, e] of ma) if (!mb.has(id)) out.removed.push({ section: key, id, name: nameOfEntry(e) });
+    for (const [id, ea] of ma) {
+      const eb = mb.get(id);
+      if (!eb || J(ea) === J(eb)) continue;
+      const fields = [...new Set([...Object.keys(ea), ...Object.keys(eb)])].filter((k) => J(ea[k]) !== J(eb[k])).sort();
+      out.changed.push({ section: key, id, name: nameOfEntry(eb) || nameOfEntry(ea), fields,
+        before: Object.fromEntries(fields.map((k) => [k, ea[k]])), after: Object.fromEntries(fields.map((k) => [k, eb[k]])) });
+    }
+  }
+  for (const [key, pick, label] of DIFF_AREAS) if (J(pick(a)) !== J(pick(b))) out.areas.push({ key, label });
+  out.same = !out.added.length && !out.removed.length && !out.changed.length && !out.areas.length;
+  return out;
+}
+/** 비교 결과를 사람·AI가 읽는 줄글로 — UI 목록과 패치 노트 프롬프트가 같은 글을 쓴다 */
+function diffText(d, { before = '이전 판', after = '새 판', values = true } = {}) {
+  if (d.same) return `${before}과 ${after}이 같습니다 — 바뀐 것이 없습니다.`;
+  const L = (s) => (SECTIONS[s] ? SECTIONS[s].label : s);
+  const nm = (x) => x.name ? `${x.id}(${String(x.name).slice(0, 30)})` : x.id;
+  const V = (v) => { const s = JSON.stringify(v); return s === undefined ? '(없음)' : s.length > 80 ? s.slice(0, 79) + '…' : s; };
+  const lines = [`## ${before} → ${after} 비교`];
+  if (d.added.length) lines.push('', `### 추가 ${d.added.length}건`, ...d.added.map((x) => `- ${L(x.section)} ${nm(x)}`));
+  if (d.removed.length) lines.push('', `### 삭제 ${d.removed.length}건`, ...d.removed.map((x) => `- ${L(x.section)} ${nm(x)}`));
+  if (d.changed.length) lines.push('', `### 변경 ${d.changed.length}건`, ...d.changed.map((x) => `- ${L(x.section)} ${nm(x)} — ${x.fields.join(', ')}`
+    + (values ? x.fields.map((k) => `\n    · ${k}: ${V(x.before[k])} → ${V(x.after[k])}`).join('') : '')));
+  if (d.areas.length) lines.push('', `### 통째로 바뀐 영역 ${d.areas.length}곳`, ...d.areas.map((x) => `- ${x.label}`));
+  return lines.join('\n');
+}
+/** 패치 노트 초안 요청문 — 어시스턴트 초안 칸·복사 위젯이 같은 글을 쓴다 */
+function patchNotePrompt(d, opts = {}) {
+  return ['아래는 이 봇의 심코어 작업본 두 판을 기계적으로 비교한 결과입니다. 이걸 바탕으로 **플레이어에게 보여줄 패치 노트 초안**을 써 주세요.',
+    '- 항목 id가 아니라 플레이어가 겪는 변화로 풀어 쓰고, 비슷한 변경은 한 줄로 묶으세요. 내부 정리(이름만 바뀐 것, 그룹·설명 문구)는 "기타"로 짧게.',
+    '- 이전 판을 이어 하는 사람에게 영향이 있는 변경(변수 삭제·타입 변경·시작값)은 따로 ⚠로 표시하세요.',
+    '- 패치 JSON은 붙이지 마세요 — 이번 요청은 글만입니다.', '', diffText(d, { ...opts, values: true })].join('\n');
+}
+
 module.exports = {
-  mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
+  diffSchemas, diffText, patchNotePrompt, DIFF_AREAS, mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };

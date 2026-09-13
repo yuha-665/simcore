@@ -3181,6 +3181,10 @@ const CSS = `
 /* 🔒 보호 (v1.9.13) */
 .sce .sce-keep-btn.is-on { background:#e0a94a; color:#1a1a1a; border-color:#e0a94a; font-weight:700; }
 .sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
+/* 📝 작업본 비교 (v1.9.21) */
+.sce .sce-json-diff { margin-top:8px; }
+.sce .sce-json-diff > summary { cursor:pointer; font-weight:600; }
+.sce .sce-json-diff-text { white-space:pre-wrap; font-size:12px; line-height:1.45; margin:6px 0; max-height:320px; overflow:auto; }
 /* 📌 작업 지침 (v1.9.18) */
 .sce .sce-chat-notes { margin:0 0 10px; }
 .sce .sce-chat-notes > summary { cursor:pointer; font-weight:600; }
@@ -13037,7 +13041,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // ── 원본 편집 ──
     const sourceBody = h('div', { class: 'sce-json-source-body' },
       h('div', { class: 'sce-hint' },
-        '전체 JSON을 직접 고치거나 외부에서 받은 작업본으로 교체할 때만 사용하세요. 불러온 뒤에도 캐릭터에는 자동 반영되지 않아요.'));
+        '전체 JSON을 직접 고치거나 외부에서 받은 작업본으로 교체할 때만 사용하세요. 불러온 뒤에도 캐릭터에는 자동 반영되지 않아요. '
+        + '[불러오기 전 검사]는 교체 없이 지금 작업본과의 차이(추가·삭제·변경)도 보여 주니, 옛 판을 붙여넣어 패치 노트 초안을 뽑는 데도 써요.'));
     const source = h('details', { class: 'sce-json-source',
       open: jsonImportPreview || jsonImportApplied || jsonDraftDirty ? 'open' : null },
       h('summary', {}, h('span', {}, '스키마 원본 직접 편집'), h('span', { class: 'sce-json-path-badge' }, '고급 작업')),
@@ -13092,6 +13097,33 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         preview.appendChild(h('div', { class: 'sce-json-import-errors' },
           ...validation.errors.slice(0, 5).map((e) => h('div', {}, `${e.path} — ${e.msg}`)),
           ...(validation.errors.length > 5 ? [h('div', {}, `외 ${validation.errors.length - 5}건`)] : [])));
+      }
+      { // 📝 지금 작업본과 비교 (v1.9.21) — 교체하지 않아도 차이를 보고, 패치 노트 초안을 어시스턴트나 웹 AI에 시킬 수 있다
+        const d = patchMod.diffSchemas(schema, candidate);
+        const n = d.added.length + d.removed.length + d.changed.length + d.areas.length;
+        const cmp = h('details', { class: 'sce-fold sce-json-diff', open: n && n <= 12 ? 'open' : null },
+          h('summary', {}, d.same ? '📝 지금 작업본과 같아요 — 바뀐 것이 없어요'
+            : `📝 지금 작업본과 비교 — 추가 ${d.added.length} · 삭제 ${d.removed.length} · 변경 ${d.changed.length}${d.areas.length ? ` · 통째 영역 ${d.areas.length}` : ''}`));
+        if (!d.same) {
+          const pre = h('pre', { class: 'sce-json-diff-text' });
+          pre.textContent = patchMod.diffText(d, { before: '지금 작업본', after: '붙여넣은 판', values: false });
+          cmp.appendChild(pre);
+          cmp.appendChild(h('div', { class: 'sce-hint' },
+            '교체하지 않아도 비교만 볼 수 있어요. 패치 노트 초안은 어시스턴트가 이 비교를 읽고 플레이어 말로 풀어 써요 — 이전 판 파일을 붙여넣고 "지금 작업본"을 새 판으로 두면 방향이 반대이니, 요청문의 이전/새 판 표기를 확인하세요.'));
+          const row = h('div', { class: 'sce-row' });
+          if (ai && ai.generate) {
+            row.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+              chat.draft = patchMod.patchNotePrompt(d, { before: '지금 작업본(이전 판)', after: '붙여넣은 판(새 판)' });
+              activeTab = 'ai'; topTab = 'chat'; rerender();
+            } }, '📝 패치 노트 초안 — 어시스턴트에게'));
+          }
+          const cp = h('div');
+          copyWidget('패치 노트 요청문 복사', '웹 AI에 붙여 넣으면 비교를 읽고 패치 노트 초안을 써 줘요.',
+            () => patchMod.patchNotePrompt(d, { before: '지금 작업본(이전 판)', after: '붙여넣은 판(새 판)' }), [], { collapsible: true }).mount(cp);
+          cmp.appendChild(row);
+          cmp.appendChild(cp);
+        }
+        preview.appendChild(cmp);
       }
       preview.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {

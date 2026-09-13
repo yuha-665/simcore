@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.20
-//@display-name SimCore (시뮬 엔진) v1.9.20 🧪 N턴 시험 — 시간 간격을 정해 토큰 없이 굴린다
+//@version 1.9.21
+//@display-name SimCore (시뮬 엔진) v1.9.21 📝 작업본 비교 — 패치 노트 초안이 딸칵
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.21 ──────────────────────────────────────────────
+// **📝 작업본 비교·패치 노트 초안** — 커뮤니티 제보(2026-09-13, 에렌샤): "공개 뒤엔 '0.1→0.2 사이 뭐가 바뀌었나'를 묻게 된다.
+// 가져오기를 덮어쓰지 말고 지금 작업본과 비교해 차이만 AI가 읽으면 딸칵 패치 노트 초안". 🧾 JSON 관리자 [불러오기 전 검사]
+// 상자에 "지금 작업본과 비교" 접이식 — id 섹션은 항목 단위(추가·삭제·바뀐 필드), 나머지 영역(상태창·onTurn·setup·meta·시간…)은
+// 통째 비교해 이름만. 교체 없이 비교만 봐도 된다. [📝 패치 노트 초안 — 어시스턴트에게]는 요청문을 대화 초안에 넣고 💬 대화로
+// 이동(전송은 유저가), 복사 위젯은 웹 AI용. patch.js diffSchemas/diffText/patchNotePrompt (순수). test-schemadiff.js.
 //
 // ── v1.9.20 ──────────────────────────────────────────────
 // **🧪 N턴 시험** — 커뮤니티 제보(2026-09-13, 에렌샤): "1턴 시험은 액션 한 번이 끝이라 쓸 일이 없다. 10분·30분·100분 간격으로
@@ -8700,8 +8707,64 @@ function applyPatch(schema, patch0, resolutions = {}) {
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
+// ── 작업본 비교 (v1.9.21) — 커뮤니티 제보(에렌샤): "공개 뒤엔 '0.1→0.2 사이 뭐가 바뀌었나' 패치 로그를 묻게 된다.
+// 가져오기를 덮어쓰지 말고 지금 작업본과 비교해 차이만 AI가 읽으면 딸칵 패치 노트 초안". id 있는 섹션은 항목 단위
+// (추가/삭제/바뀐 필드), 나머지 최상위 영역(statusUI·promptState·onTurn·setup·meta·time·…)은 통째 비교해 이름만 든다.
+const DIFF_AREAS = [
+  ['meta', (s) => s?.meta, '이름·설명(meta)'], ['promptState', (s) => s?.promptState, '메인 프롬프트(promptState)'],
+  ['statusUI', (s) => s?.statusUI, '상태창(statusUI)'], ['onTurn', (s) => s?.rules?.onTurn, '매 턴 정산(onTurn)'],
+  ['randomEventsChance', (s) => s?.rules?.randomEvents?.chancePerTurn, '랜덤 이벤트 발동률'],
+  ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
+  ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
+  ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
+  ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
+];
+const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
+function diffSchemas(a, b) {
+  const J = (x) => JSON.stringify(x ?? null);
+  const out = { added: [], removed: [], changed: [], areas: [], same: true };
+  for (const key of SECTION_KEYS) {
+    const la = (getList(a, key) || []).filter((e) => e && e.id != null), lb = (getList(b, key) || []).filter((e) => e && e.id != null);
+    const ma = new Map(la.map((e) => [e.id, e])), mb = new Map(lb.map((e) => [e.id, e]));
+    for (const [id, e] of mb) if (!ma.has(id)) out.added.push({ section: key, id, name: nameOfEntry(e) });
+    for (const [id, e] of ma) if (!mb.has(id)) out.removed.push({ section: key, id, name: nameOfEntry(e) });
+    for (const [id, ea] of ma) {
+      const eb = mb.get(id);
+      if (!eb || J(ea) === J(eb)) continue;
+      const fields = [...new Set([...Object.keys(ea), ...Object.keys(eb)])].filter((k) => J(ea[k]) !== J(eb[k])).sort();
+      out.changed.push({ section: key, id, name: nameOfEntry(eb) || nameOfEntry(ea), fields,
+        before: Object.fromEntries(fields.map((k) => [k, ea[k]])), after: Object.fromEntries(fields.map((k) => [k, eb[k]])) });
+    }
+  }
+  for (const [key, pick, label] of DIFF_AREAS) if (J(pick(a)) !== J(pick(b))) out.areas.push({ key, label });
+  out.same = !out.added.length && !out.removed.length && !out.changed.length && !out.areas.length;
+  return out;
+}
+/** 비교 결과를 사람·AI가 읽는 줄글로 — UI 목록과 패치 노트 프롬프트가 같은 글을 쓴다 */
+function diffText(d, { before = '이전 판', after = '새 판', values = true } = {}) {
+  if (d.same) return `${before}과 ${after}이 같습니다 — 바뀐 것이 없습니다.`;
+  const L = (s) => (SECTIONS[s] ? SECTIONS[s].label : s);
+  const nm = (x) => x.name ? `${x.id}(${String(x.name).slice(0, 30)})` : x.id;
+  const V = (v) => { const s = JSON.stringify(v); return s === undefined ? '(없음)' : s.length > 80 ? s.slice(0, 79) + '…' : s; };
+  const lines = [`## ${before} → ${after} 비교`];
+  if (d.added.length) lines.push('', `### 추가 ${d.added.length}건`, ...d.added.map((x) => `- ${L(x.section)} ${nm(x)}`));
+  if (d.removed.length) lines.push('', `### 삭제 ${d.removed.length}건`, ...d.removed.map((x) => `- ${L(x.section)} ${nm(x)}`));
+  if (d.changed.length) lines.push('', `### 변경 ${d.changed.length}건`, ...d.changed.map((x) => `- ${L(x.section)} ${nm(x)} — ${x.fields.join(', ')}`
+    + (values ? x.fields.map((k) => `\n    · ${k}: ${V(x.before[k])} → ${V(x.after[k])}`).join('') : '')));
+  if (d.areas.length) lines.push('', `### 통째로 바뀐 영역 ${d.areas.length}곳`, ...d.areas.map((x) => `- ${x.label}`));
+  return lines.join('\n');
+}
+/** 패치 노트 초안 요청문 — 어시스턴트 초안 칸·복사 위젯이 같은 글을 쓴다 */
+function patchNotePrompt(d, opts = {}) {
+  return ['아래는 이 봇의 심코어 작업본 두 판을 기계적으로 비교한 결과입니다. 이걸 바탕으로 **플레이어에게 보여줄 패치 노트 초안**을 써 주세요.',
+    '- 항목 id가 아니라 플레이어가 겪는 변화로 풀어 쓰고, 비슷한 변경은 한 줄로 묶으세요. 내부 정리(이름만 바뀐 것, 그룹·설명 문구)는 "기타"로 짧게.',
+    '- 이전 판을 이어 하는 사람에게 영향이 있는 변경(변수 삭제·타입 변경·시작값)은 따로 ⚠로 표시하세요.',
+    '- 패치 JSON은 붙이지 마세요 — 이번 요청은 글만입니다.', '', diffText(d, { ...opts, values: true })].join('\n');
+}
+
 module.exports = {
-  mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
+  diffSchemas, diffText, patchNotePrompt, DIFF_AREAS, mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
 
 });
 
@@ -16504,6 +16567,10 @@ const CSS = `
 /* 🔒 보호 (v1.9.13) */
 .sce .sce-keep-btn.is-on { background:#e0a94a; color:#1a1a1a; border-color:#e0a94a; font-weight:700; }
 .sce .sce-fold-bar { display:flex; gap:6px; justify-content:flex-end; margin:0 0 8px; }
+/* 📝 작업본 비교 (v1.9.21) */
+.sce .sce-json-diff { margin-top:8px; }
+.sce .sce-json-diff > summary { cursor:pointer; font-weight:600; }
+.sce .sce-json-diff-text { white-space:pre-wrap; font-size:12px; line-height:1.45; margin:6px 0; max-height:320px; overflow:auto; }
 /* 📌 작업 지침 (v1.9.18) */
 .sce .sce-chat-notes { margin:0 0 10px; }
 .sce .sce-chat-notes > summary { cursor:pointer; font-weight:600; }
@@ -26360,7 +26427,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // ── 원본 편집 ──
     const sourceBody = h('div', { class: 'sce-json-source-body' },
       h('div', { class: 'sce-hint' },
-        '전체 JSON을 직접 고치거나 외부에서 받은 작업본으로 교체할 때만 사용하세요. 불러온 뒤에도 캐릭터에는 자동 반영되지 않아요.'));
+        '전체 JSON을 직접 고치거나 외부에서 받은 작업본으로 교체할 때만 사용하세요. 불러온 뒤에도 캐릭터에는 자동 반영되지 않아요. '
+        + '[불러오기 전 검사]는 교체 없이 지금 작업본과의 차이(추가·삭제·변경)도 보여 주니, 옛 판을 붙여넣어 패치 노트 초안을 뽑는 데도 써요.'));
     const source = h('details', { class: 'sce-json-source',
       open: jsonImportPreview || jsonImportApplied || jsonDraftDirty ? 'open' : null },
       h('summary', {}, h('span', {}, '스키마 원본 직접 편집'), h('span', { class: 'sce-json-path-badge' }, '고급 작업')),
@@ -26415,6 +26483,33 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         preview.appendChild(h('div', { class: 'sce-json-import-errors' },
           ...validation.errors.slice(0, 5).map((e) => h('div', {}, `${e.path} — ${e.msg}`)),
           ...(validation.errors.length > 5 ? [h('div', {}, `외 ${validation.errors.length - 5}건`)] : [])));
+      }
+      { // 📝 지금 작업본과 비교 (v1.9.21) — 교체하지 않아도 차이를 보고, 패치 노트 초안을 어시스턴트나 웹 AI에 시킬 수 있다
+        const d = patchMod.diffSchemas(schema, candidate);
+        const n = d.added.length + d.removed.length + d.changed.length + d.areas.length;
+        const cmp = h('details', { class: 'sce-fold sce-json-diff', open: n && n <= 12 ? 'open' : null },
+          h('summary', {}, d.same ? '📝 지금 작업본과 같아요 — 바뀐 것이 없어요'
+            : `📝 지금 작업본과 비교 — 추가 ${d.added.length} · 삭제 ${d.removed.length} · 변경 ${d.changed.length}${d.areas.length ? ` · 통째 영역 ${d.areas.length}` : ''}`));
+        if (!d.same) {
+          const pre = h('pre', { class: 'sce-json-diff-text' });
+          pre.textContent = patchMod.diffText(d, { before: '지금 작업본', after: '붙여넣은 판', values: false });
+          cmp.appendChild(pre);
+          cmp.appendChild(h('div', { class: 'sce-hint' },
+            '교체하지 않아도 비교만 볼 수 있어요. 패치 노트 초안은 어시스턴트가 이 비교를 읽고 플레이어 말로 풀어 써요 — 이전 판 파일을 붙여넣고 "지금 작업본"을 새 판으로 두면 방향이 반대이니, 요청문의 이전/새 판 표기를 확인하세요.'));
+          const row = h('div', { class: 'sce-row' });
+          if (ai && ai.generate) {
+            row.appendChild(h('button', { class: 'sce-btn', onclick: () => {
+              chat.draft = patchMod.patchNotePrompt(d, { before: '지금 작업본(이전 판)', after: '붙여넣은 판(새 판)' });
+              activeTab = 'ai'; topTab = 'chat'; rerender();
+            } }, '📝 패치 노트 초안 — 어시스턴트에게'));
+          }
+          const cp = h('div');
+          copyWidget('패치 노트 요청문 복사', '웹 AI에 붙여 넣으면 비교를 읽고 패치 노트 초안을 써 줘요.',
+            () => patchMod.patchNotePrompt(d, { before: '지금 작업본(이전 판)', after: '붙여넣은 판(새 판)' }), [], { collapsible: true }).mount(cp);
+          cmp.appendChild(row);
+          cmp.appendChild(cp);
+        }
+        preview.appendChild(cmp);
       }
       preview.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn', onclick: () => {

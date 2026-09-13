@@ -375,3 +375,11 @@ patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린�
 매 턴 시간은 `skip_min`에 직접 실어 `consumeTimeSkips`가 소비하게 한다(보조 AI 추정 자리를 고정값으로) — skip_min이 없으면
 1440분 단위로 skip_day, 시간 체계가 꺼져 있으면 무시하고 `timeNote`로 알린다. 변수의 max(예: skip_min max 480)는 그대로 먹는다.
 결과 `rows[{turn, vars, fired, when}]` — UI는 40행 넘으면 등간격 표본. turns=1이면 결과 모양이 예전 1턴 시험과 같다(before/send/out/blocked).
+
+## 📝 작업본 비교·패치 노트 초안 (v1.9.21)
+
+🧾 JSON 관리자 "스키마 원본 직접 편집" → [불러오기 전 검사] 상자 안 `details.sce-json-diff`. `patchMod.diffSchemas(schema, candidate)`
+(id 섹션 항목 단위 + `DIFF_AREAS` 통째 영역) → `diffText`(UI, 값 생략) / `patchNotePrompt`(어시스턴트 초안·복사, 값 포함).
+[📝 패치 노트 초안 — 어시스턴트에게]는 `chat.draft`에 넣고 `activeTab='ai'; topTab='chat'`으로 옮길 뿐 전송은 유저가 한다
+(토큰이 보이게). ai.generate 없으면 복사 위젯만. 방향 주의: "지금 작업본"이 이전 판, "붙여넣은 판"이 새 판 — 옛 파일을
+붙여넣으면 반대라 안내문이 알린다. 테스트 `테스트/test-schemadiff.js`.

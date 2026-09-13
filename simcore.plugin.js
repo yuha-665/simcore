@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.22
-//@display-name SimCore (시뮬 엔진) v1.9.22 어시스턴트가 매 턴 정산(onTurn)을 읽는다
+//@version 1.9.23
+//@display-name SimCore (시뮬 엔진) v1.9.23 turn_hour·turn_day가 계약표에 — 어시스턴트가 오락가락 안 한다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.23 ──────────────────────────────────────────────
+// **turn_min·turn_hour·turn_day를 계약표에** — 커뮤니티 제보(2026-09-13, 에렌샤): "turn_hour 계산은 잘 도는데 어시스턴트가
+// 어떨 땐 그런 변수가 없다고, 어떨 땐 내장에 있다고 한다 — 환각인지 심코어 문제인지". 심코어 문제였다. v1.9.11이 이름을
+// 엔진·검증·규칙 문장에는 넣고, AI가 "있는 이름"의 근거로 삼는 두 표(varContractTable 시간 표 · patchIdDigest 시간 절)에는
+// 안 실었다 — 표엔 없고 문장엔 있으니 오락가락. 두 표에 "이번 정산에서 흐른 시간 · 응답마다 0으로 돌아감(누적 아님)" 행을 싣는다.
+// test-turnexposed.js. (배포글 v1.9.23 — ⑪ 카드 한 줄)
 //
 // ── v1.9.22 ──────────────────────────────────────────────
 // **어시스턴트가 매 턴 정산(onTurn)을 읽는다** — 커뮤니티 제보(2026-09-13, 에렌샤): "onTurn으로 이식한 HP·MP 차감 공식을
@@ -17506,6 +17513,7 @@ function patchIdDigest(schema) {
   if (tcfg) {
     out.push('', '### 시간 체계 (읽기 전용 — 조건식·자리표시자에 변수처럼 사용 가능)',
       `- 사용 가능한 이름: ${tcfg.expose.map((n) => `\`${n}\``).join(' ')}`,
+      '- 이번 정산에서 흐른 시간(읽기 전용, onTurn·조건식): `turn_min` `turn_hour` `turn_day` — 실제로 존재하는 내장 이름입니다. 응답마다 끝에 0으로 돌아가니 "누적"으로 읽지 마세요',
       `- 시작 \`${schema.time.start}\` · 진행 ${tcfg.advance === 'explicit' ? '명시적(skip_day/skip_min 소비)' : '턴마다 하루'} · 달력 ${tcfg.calendar}`,
       '- 이 이름들은 `set` 대상이 될 수 없고, `time` 섹션 자체도 일반 패치로는 못 다룹니다 '
       + '([시간] 탭의 손편집 또는 탭 단위 내보내기/가져오기 전용 — v1.0).');
@@ -18390,7 +18398,12 @@ function varContractTable(schema) {
       '### 시간 체계가 켜져 있습니다 — 아래 이름은 **읽기 전용**으로 그냥 쓸 수 있습니다.',
       '날짜·시각 변수를 새로 만들지 마세요. 날짜 계산도 하지 마세요 — 요일·윤년·자릿수는 엔진이 처리합니다.',
       '| id | 뜻 |', '|---|---|',
-      ...exposed.map((n) => `| \`${n}\` | ${EXPOSED_LABELS[n] ?? n} |`));
+      ...exposed.map((n) => `| \`${n}\` | ${EXPOSED_LABELS[n] ?? n} |`),
+      // 이번 정산에서 흐른 시간 (v1.9.11) — 여기 안 실으면 AI가 규칙 문장에서만 보고 "있다/없다"를 오락가락한다
+      // (에렌샤 제보, v1.9.23). 인라인 리터럴 — 이 함수는 테스트가 timeConfig·EXPOSED_LABELS만 주입해 단독 평가한다.
+      '| `turn_min` | 이번 정산에서 흐른 분 — onTurn·조건식용, 응답마다 끝에 0으로 돌아감 (누적 아님) |',
+      '| `turn_hour` | 이번 정산에서 흐른 시간 (turn_min/60) — 시간당 소모 `hp - turn_hour * 2` |',
+      '| `turn_day` | 이번 정산에서 흐른 일 (turn_min/1440) — 일당 소모·이자 |');
   }
   return out.join('\n');
 }

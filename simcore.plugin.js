@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.19
-//@display-name SimCore (시뮬 엔진) v1.9.19 대화 말풍선 지우기 — 끝난 곁가지는 빼고 보낸다
+//@version 1.9.20
+//@display-name SimCore (시뮬 엔진) v1.9.20 🧪 N턴 시험 — 시간 간격을 정해 토큰 없이 굴린다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.20 ──────────────────────────────────────────────
+// **🧪 N턴 시험** — 커뮤니티 제보(2026-09-13, 에렌샤): "1턴 시험은 액션 한 번이 끝이라 쓸 일이 없다. 10분·30분·100분 간격으로
+// 굴려 자연 증감을 보고 싶은데 어시스턴트에게 물어 토큰을 쓴다. 밸런스는 수치 조금 고치고 돌리기의 반복". [규칙·이벤트] 1턴 시험에
+// 턴 수(1~500)·매 턴 시간(분, skip_min에 실어 consumeTimeSkips가 소비 — skip_min 없으면 1440 단위로 skip_day)·행동 반복(첫 턴만/매 턴)·
+// 지켜볼 변수(비우면 바뀐 변수 전부, 최대 10). 결과: 턴별 표(40행 넘으면 등간격 표본+마지막, 시각 열, 발동 이벤트)·발동 횟수·
+// 마지막 턴 타임라인·N턴 뒤 비교. 순수 함수 runTrialTurns(editor 모듈 export, turns=1이면 1턴 시험과 동일). test-multiturn.js.
 //
 // ── v1.9.19 ──────────────────────────────────────────────
 // **대화 말풍선 지우기** — 커뮤니티 제보(2026-09-13, 에렌샤): "A를 논의하다 파생된 B를 풀고 A로 돌아오면 B는 이미 끝난 불필요한
@@ -13778,6 +13785,13 @@ const CSS = `
 .sce .sce-cal-preview .scc-detail-date { margin-bottom:3px; font-weight:650; color:var(--sce-text-strong); }
 .sce .sce-cal-preview .scc-entry { line-height:1.45; }
 .sce .sce-trial-phase { margin-top:7px; font-weight:600; color:var(--sce-text); font-size:11.5px; }
+/* N턴 시험 (v1.9.20) */
+.sce .sce-trial-table-wrap { overflow-x:auto; margin:4px 0; }
+.sce .sce-trial-table { border-collapse:collapse; font-size:11.5px; white-space:nowrap; }
+.sce .sce-trial-table th, .sce .sce-trial-table td { padding:2px 8px; border-bottom:1px solid var(--sce-line); text-align:right; }
+.sce .sce-trial-table th { font-weight:600; color:var(--sce-muted); }
+.sce .sce-trial-table td:first-child, .sce .sce-trial-table th:first-child { text-align:left; color:var(--sce-muted); }
+.sce .sce-trial-ev { text-align:left !important; color:var(--sce-muted); max-width:260px; white-space:normal; }
 .sce .sce-variable-type-help { margin:4px 0 0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
 .sce .sce-variable-description { width:100%; max-width:var(--sce-variable-work-width); margin-top:6px; }
 .sce .sce-variable-bool { display:flex; gap:6px; }
@@ -19475,6 +19489,53 @@ function effectRows(schema, effects, rerender) {
   return wrap;
 }
 
+/**
+ * 🧪 N턴 시험 (v1.9.20) — 커뮤니티 제보(에렌샤): "1턴 시험은 액션 한 번이 끝이라 쓸 일이 없다. 10분·30분·100분 간격으로 N턴
+ * 굴려 자연 증감을 보고 싶은데 지금은 어시스턴트에게 물어 토큰을 쓴다. 밸런스는 수치 조금 고치고 돌리기의 반복이다".
+ * 1턴 시험과 같은 헤드리스 경로(sendPhase→outputPhase, 보조 AI 없음)를 turns번 잇는다. 매 턴 시간은 skip_min(없으면 1440분
+ * 단위로 skip_day)에 직접 실어 consumeTimeSkips가 소비하게 한다 — 보조 AI가 추정하던 자리를 고정값으로 채우는 것.
+ * 결과: 턴별 vars 스냅샷 + 발동 이벤트 + 시각. turns=1이면 1턴 시험과 완전히 같다.
+ */
+function runTrialTurns(schema, { preset = '', action = '', actionEvery = false, seed = '1', turns = 1, everyMin = 0 } = {}) {
+  const N = Math.max(1, Math.min(500, Math.floor(Number(turns) || 1)));
+  const mins = Math.max(0, Math.floor(Number(everyMin) || 0));
+  const hasMin = schema.vars.some((v) => v.id === SKIP_MIN);
+  const hasDay = schema.vars.some((v) => v.id === SKIP_DAY);
+  const tcfg = timeConfig(schema);
+  let timeNote = null;
+  if (mins > 0) {
+    if (!tcfg) timeNote = '시간 체계가 꺼져 있어 시간 진행은 무시했어요.';
+    else if (!hasMin && !hasDay) timeNote = 'skip_min·skip_day 변수가 없어 시간 진행은 무시했어요 ([시간] 탭에서 진행 변수를 만드세요).';
+    else if (!hasMin && mins % 1440 !== 0) timeNote = `skip_min이 없어 ${Math.floor(mins / 1440)}일 단위로만 진행했어요 (분 단위는 skip_min 필요).`;
+  }
+  let st = engine.initState(schema);
+  st.meta.setupDone = true;
+  if (preset) st = engine.applyPreset(schema, st, preset).state;
+  const before = JSON.parse(JSON.stringify(st.vars));
+  let blocked = null;
+  const rows = [];
+  let send = null, out = null;
+  for (let t = 1; t <= N; t++) {
+    if (action && (t === 1 || actionEvery)) {
+      const tg = engine.toggleAction(schema, st, action);
+      if (tg.blocked) { if (t === 1) blocked = tg.blocked; } else st = tg.state;
+    }
+    send = engine.sendPhase(schema, st, { rng: seededRng('trial', String(seed ?? '1'), 's' + (N === 1 ? '' : t)) });
+    st = send.state;
+    if (mins > 0 && tcfg) {
+      if (hasMin) st.vars[SKIP_MIN] = mins;
+      else if (hasDay && mins >= 1440) st.vars[SKIP_DAY] = Math.floor(mins / 1440);
+    }
+    out = engine.outputPhase(schema, st, {}, {}, { rng: seededRng('trial', String(seed ?? '1'), 'o' + (N === 1 ? '' : t)) });
+    st = out.state;
+    const L = engine.makeLookup(schema, st.vars);
+    const when = tcfg ? [safeLook(L, 'date'), safeLook(L, 'clock')].filter((x) => x != null && x !== '').join(' ') : '';
+    rows.push({ turn: t, vars: JSON.parse(JSON.stringify(st.vars)), fired: (out.firedEvents || []).slice(), when });
+  }
+  return { before, send, out, blocked, rows, turns: N, everyMin: mins, timeNote };
+}
+function safeLook(L, name) { try { const v = L(name); return v === undefined ? null : v; } catch { return null; } }
+
 function createSchemaEditor(container, initialSchema, opts = {}) {
   const { onChange, ai, floor, onRequestFloor, isInstalled,
     getFirstInstallGuideDismissed, setFirstInstallGuideDismissed } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
@@ -20866,7 +20927,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 스키마는 아직 안 건드린 상태다 (취소 = 무변화).
   let tabPending = null;
   let presetPreview = null; // v1.0 #3 — 미리보기가 열린 프리셋 id (하나만)
-  let trial = { preset: '', action: '', seed: '1', result: null }; // v1.0 #4 — 1턴 시험 실행
+  let trial = { preset: '', action: '', seed: '1', result: null, turns: '1', everyMin: '', actionEvery: false, watch: '' }; // v1.0 #4 — 1턴 시험 · v1.9.20 N턴
   let featureWant = '';  // 🧩 카드에 덧붙이는 요구 (선택)
   let featureRun = null; // { id, icon, label, step, total, tab } — 여러 단계짜리 기능의 진행 위치
 
@@ -21240,19 +21301,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 출처(source)를 사람 말로 풀어 타임라인으로 보여준다. 보조 AI는 없다 — 시스템 축 전용.
   function runTrial() {
     try {
-      let st = engine.initState(schema);
-      st.meta.setupDone = true;
-      if (trial.preset) st = engine.applyPreset(schema, st, trial.preset).state;
-      const before = JSON.parse(JSON.stringify(st.vars));
-      let blocked = null;
-      if (trial.action) {
-        const t = engine.toggleAction(schema, st, trial.action);
-        if (t.blocked) blocked = t.blocked; else st = t.state;
-      }
-      const seed = String(trial.seed ?? '1');
-      const send = engine.sendPhase(schema, st, { rng: seededRng('trial', seed, 's') });
-      const out = engine.outputPhase(schema, send.state, {}, {}, { rng: seededRng('trial', seed, 'o') });
-      trial.result = { before, send, out, blocked };
+      trial.result = runTrialTurns(schema, { preset: trial.preset, action: trial.action, actionEvery: trial.actionEvery,
+        seed: String(trial.seed ?? '1'), turns: trial.turns, everyMin: trial.everyMin });
     } catch (e) {
       trial.result = { error: e.message };
     }
@@ -21273,10 +21323,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       `· [${SRC(String(c.source ?? '?'))}] ${nameOf(c.id)}: ${fmt(c.from)} → `, h('b', {}, fmt(c.to)));
 
     const wrap = h('div', { class: 'sce-block sce-trial' });
-    wrap.appendChild(h('h4', {}, '🧪 1턴 시험'));
+    const multi = (parseInt(trial.turns, 10) || 1) > 1;
+    wrap.appendChild(h('h4', {}, multi ? `🧪 ${parseInt(trial.turns, 10)}턴 시험` : '🧪 1턴 시험'));
     wrap.appendChild(h('div', { class: 'sce-hint sce-trial-copy' },
-      h('div', {}, '채팅을 보내지 않고 현재 규칙만 한 턴 시험해요. 행동 효과 → 판정 → 시간 → 정기 틱 → 조건 이벤트 → 랜덤 이벤트 순서로 실제 엔진과 똑같이 계산해요.'),
-      h('div', {}, '보조 AI가 장면을 읽고 바꾸는 값은 이 시험에 포함하지 않아요.')));
+      h('div', {}, '채팅을 보내지 않고 현재 규칙만 시험해요. 행동 효과 → 판정 → 시간 → 정기 틱 → 조건 이벤트 → 랜덤 이벤트 순서로 실제 엔진과 똑같이 계산해요.'),
+      h('div', {}, '보조 AI가 장면을 읽고 바꾸는 값은 이 시험에 포함하지 않아요. 턴 수를 올리면 같은 턴을 이어 굴리고, "매 턴 시간"은 보조 AI가 추정하던 흐른 시간을 고정값으로 채워요 — 10분·30분·100분 간격의 자연 증감을 토큰 없이 볼 수 있어요.')));
     wrap.appendChild(h('div', { class: 'sce-row' },
       pair('시작 상태', bindSelect(trial.preset,
         [['', '기본 시작값'], ...(schema.setup?.presets ?? []).map((p) => [p.id, p.label || p.id])],
@@ -21286,7 +21337,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         (x) => { trial.action = x; }), '고르면 이 행동을 준비한 채로 턴이 시작돼요'),
       pair('랜덤 시드', bindInput(trial.seed, (x) => { trial.seed = x; }, { cls: 'sce-w-s', ph: '1' }),
         '같은 시드를 쓰면 같은 랜덤 결과가 나와요.'),
-      h('button', { class: 'sce-btn', onclick: runTrial }, '▶ 시험 실행'),
+    ));
+    // N턴 (v1.9.20)
+    wrap.appendChild(h('div', { class: 'sce-row sce-trial-multi' },
+      pair('턴 수', bindInput(trial.turns, (x) => { trial.turns = x; }, { cls: 'sce-w-s', ph: '1' }), '1~500. 2 이상이면 턴별 표가 나와요.'),
+      pair('매 턴 시간(분)', bindInput(trial.everyMin, (x) => { trial.everyMin = x; }, { cls: 'sce-w-s', ph: '0' }),
+        timeConfig(schema) ? '매 턴 이만큼 흐른 걸로 쳐요 (skip_min에 실림). 비우면 액션 고정값·정기 틱만.' : '시간 체계가 꺼져 있어요 — [시간] 탭에서 켜면 써요.'),
+      pair('행동 반복', bindSelect(trial.actionEvery ? 'every' : 'once', [['once', '첫 턴만'], ['every', '매 턴']], (x) => { trial.actionEvery = x === 'every'; }),
+        '위에서 고른 행동을 첫 턴에만 준비할지, 매 턴 준비할지.'),
+      pair('지켜볼 변수', bindInput(trial.watch, (x) => { trial.watch = x; }, { ph: 'hp, hunger, gold' }),
+        '쉼표로 id를 적어요. 비우면 시험 중 바뀐 변수를 전부 보여줘요.'),
+    ));
+    wrap.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn', onclick: runTrial }, multi ? `▶ ${parseInt(trial.turns, 10)}턴 돌리기` : '▶ 시험 실행'),
       trial.result ? h('button', { class: 'sce-btn sce-mini', onclick: () => {
         trial.seed = String((parseInt(trial.seed, 10) || 0) + 1); runTrial();
       } }, '🎲 다른 결과로 다시') : null,
@@ -21299,10 +21362,42 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const box = h('div', { class: 'sce-preset-preview' });
     if (r.blocked) box.appendChild(h('div', { class: 'sce-ref-line' }, `⚠ 행동 준비 실패: ${r.blocked} — 액션 없이 진행했습니다`));
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 전송 단계 · 장면이 쓰이기 전'));
+    if (r.timeNote) box.appendChild(h('div', { class: 'sce-ref-line sce-warn' }, `⚠ ${r.timeNote}`));
+    if (r.rows && r.rows.length > 1) {
+      // 턴별 표 (v1.9.20) — 지켜볼 변수(없으면 바뀐 변수 전부, 최대 10), 40행 넘으면 등간격 표본 + 마지막
+      const idsAll = [...schema.vars.map((v) => v.id)];
+      const want = String(trial.watch || '').split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+      const known = new Set([...idsAll, ...(schema.derived || []).map((d) => d.id)]);
+      let cols = want.filter((id) => known.has(id));
+      const last = r.rows[r.rows.length - 1].vars;
+      if (!cols.length) cols = idsAll.filter((id) => JSON.stringify(r.before[id]) !== JSON.stringify(last[id])).slice(0, 10);
+      const unknown = want.filter((id) => !known.has(id));
+      if (unknown.length) box.appendChild(h('div', { class: 'sce-ref-line' }, `· 모르는 변수는 건너뜀: ${unknown.join(', ')}`));
+      const step = r.rows.length > 40 ? Math.ceil(r.rows.length / 40) : 1;
+      const picked = r.rows.filter((row, i) => i % step === 0 || i === r.rows.length - 1);
+      const cell = (v) => { const s = fmt(v); return s.length > 24 ? s.slice(0, 23) + '…' : s; };
+      const val = (row, id) => (id in row.vars) ? row.vars[id] : safeLook(engine.makeLookup(schema, row.vars), id);
+      box.appendChild(h('div', { class: 'sce-trial-phase' }, `― 턴별 값 · ${r.rows.length}턴${step > 1 ? ` (${step}턴마다 표본)` : ''}${r.everyMin ? ` · 매 턴 ${r.everyMin}분` : ''}`));
+      if (!cols.length) box.appendChild(h('div', { class: 'sce-ref-line' }, '· (바뀐 변수가 없어요 — 지켜볼 변수를 적으면 그 값을 보여줘요)'));
+      else {
+        const hasWhen = r.rows.some((row) => row.when);
+        const table = h('table', { class: 'sce-trial-table' },
+          h('thead', {}, h('tr', {}, h('th', {}, '턴'), hasWhen ? h('th', {}, '시각') : null,
+            ...cols.map((id) => h('th', { title: id }, nameOf(id))), h('th', {}, '이벤트'))),
+          h('tbody', {}, ...picked.map((row) => h('tr', {}, h('td', {}, String(row.turn)), hasWhen ? h('td', {}, row.when || '') : null,
+            ...cols.map((id) => h('td', {}, cell(val(row, id)))),
+            h('td', { class: 'sce-trial-ev' }, row.fired.map(SRC).join(' · '))))));
+        box.appendChild(h('div', { class: 'sce-trial-table-wrap' }, table));
+      }
+      const firedCount = {};
+      for (const row of r.rows) for (const f of row.fired) firedCount[f] = (firedCount[f] || 0) + 1;
+      const fk = Object.keys(firedCount);
+      if (fk.length) box.appendChild(h('div', { class: 'sce-ref-line' }, '· 발동 횟수: ' + fk.map((k) => `${SRC(k)} ×${firedCount[k]}`).join(' · ')));
+    }
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, r.rows && r.rows.length > 1 ? '― 마지막 턴 · 전송 단계' : '― 전송 단계 · 장면이 쓰이기 전'));
     if (r.send.changeLog.length) r.send.changeLog.forEach((c) => box.appendChild(logLine(c)));
     else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 응답 단계 · 장면이 끝난 뒤'));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, r.rows && r.rows.length > 1 ? '― 마지막 턴 · 응답 단계' : '― 응답 단계 · 장면이 끝난 뒤'));
     if (r.out.changeLog.length) r.out.changeLog.forEach((c) => box.appendChild(logLine(c)));
     else box.appendChild(h('div', { class: 'sce-ref-line' }, '· (변화 없음)'));
     if (r.out.firedEvents?.length) {
@@ -21314,7 +21409,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 다음 턴 AI에게 전달할 내용'));
       notifies.forEach((n) => box.appendChild(h('div', { class: 'sce-ref-line' }, `· ${n}`)));
     }
-    box.appendChild(h('div', { class: 'sce-trial-phase' }, '― 최종 변경값 · 시작값과 비교'));
+    box.appendChild(h('div', { class: 'sce-trial-phase' }, r.rows && r.rows.length > 1 ? `― ${r.rows.length}턴 뒤 · 시작값과 비교` : '― 최종 변경값 · 시작값과 비교'));
     const changedIds = schema.vars.filter((v) => JSON.stringify(r.before[v.id]) !== JSON.stringify(r.out.state.vars[v.id]));
     if (changedIds.length) changedIds.forEach((v) => box.appendChild(h('div', { class: 'sce-ref-line' },
       `· ${v.label ?? v.id}: ${fmt(r.before[v.id])} → `, h('b', {}, fmt(r.out.state.vars[v.id])))));
@@ -27488,7 +27583,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 }
 
 module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost,
-  activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt };
+  activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt, runTrialTurns };
 
 });
 

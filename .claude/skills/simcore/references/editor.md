@@ -367,3 +367,11 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 [💬 대화] 말풍선 머리 `.sce-chat-tools` — [✕] 하나, [⌫ 여기부터] 아래 전부(마지막 말풍선엔 없음). `chatDrop(idx, count)`가
 `chat.msgs.splice` — 이력이 곧 프롬프트라 지우면 다음 전송부터 안 실린다. pending(계획 상자에 뜬 수정안) 말풍선을 지우면
 patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린다. 테스트 `테스트/test-chatdel.js`.
+
+## 🧪 N턴 시험 (v1.9.20)
+
+[규칙·이벤트] 1턴 시험 칸에 턴 수·매 턴 시간(분)·행동 반복·지켜볼 변수 줄이 붙었다. 계산은 모듈 최상위 순수 함수
+`runTrialTurns(schema, {preset, action, actionEvery, seed, turns, everyMin})` (export) — 1턴 시험과 같은 헤드리스 경로를 잇는다.
+매 턴 시간은 `skip_min`에 직접 실어 `consumeTimeSkips`가 소비하게 한다(보조 AI 추정 자리를 고정값으로) — skip_min이 없으면
+1440분 단위로 skip_day, 시간 체계가 꺼져 있으면 무시하고 `timeNote`로 알린다. 변수의 max(예: skip_min max 480)는 그대로 먹는다.
+결과 `rows[{turn, vars, fired, when}]` — UI는 40행 넘으면 등간격 표본. turns=1이면 결과 모양이 예전 1턴 시험과 같다(before/send/out/blocked).

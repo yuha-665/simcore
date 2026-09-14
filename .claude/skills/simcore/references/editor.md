@@ -396,3 +396,9 @@ patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린�
 (`assets.moduleManifests: true`)를 켜는 순간 assets째 사라져 체크가 되돌아갔다 (실기 제보 "백날 클릭해도 체크가 안 된다",
 v0.94부터 잠복). 이제 moduleManifests가 true면 남긴다. **assets/scenario처럼 "비면 걷는" 섹션에 새 스위치를 달 땐 이 불변식과
 충돌하는지 먼저 볼 것.** 테스트 `테스트/test-modpacktoggle.js`.
+
+## 삽입 주체 선택기의 표시 조건 (v1.9.26)
+
+에셋 탭의 삽입 주체(aux / aux_flow / main)는 `a.packs.length || a.moduleManifests === true`일 때 그린다. 모듈 팩만 받는 봇은
+자체 팩 0개라 예전 조건(`packs.length`)에서 선택기가 안 떠 기본값 aux에 묶였다 (실기 "메인·보조를 정할 수가 없다").
+런타임은 병합된 팩과 `assets.by`를 그대로 읽으니 UI 조건만의 문제였다. 변수 없는 봇의 "에셋 전용" 안내도 같은 조건.

@@ -94,9 +94,18 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   const { validateSchema } = SC.require('validate');
   ck('팩 0개 + 옵트인 스키마가 검증 통과', validateSchema(ed.getSchema()).ok, JSON.stringify(validateSchema(ed.getSchema()).errors));
 
+  // 삽입 주체 (v1.9.26) — 모듈 팩만 받는 봇도 고를 수 있다
+  const bySel = () => findAll(container, (e) => e.tagName === 'SELECT' && (e.parentNode?.textContent || '').includes('삽입 주체'))[0];
+  ck('★ 체크가 켜지면 삽입 주체 선택기가 뜬다 (자체 팩 0개)', !!bySel() && bySel().value === 'aux', '');
+  bySel().value = 'main'; bySel().onchange();
+  ck('★ 메인으로 바꾸면 저장본 assets.by = main, 옵트인 유지', ed.getSchema().assets?.by === 'main' && ed.getSchema().assets.moduleManifests === true, JSON.stringify(ed.getSchema().assets));
+  bySel().value = 'aux'; bySel().onchange();
+  ck('보조로 되돌리면 by 필드 제거', ed.getSchema().assets && !('by' in ed.getSchema().assets), '');
+
   // 끄기 — 팩 0개면 assets가 걷힌다 ("없음 = 꺼짐" 불변식 유지)
   box().checked = false; box().onchange();
   ck('★ 끄면 assets가 다시 걷힌다', !ed.getSchema().assets && box().checked === false, JSON.stringify(ed.getSchema().assets));
+  ck('끄면 선택기도 사라진다', !bySel(), '');
 
   // 팩이 있는 봇은 예전 그대로
   const withPack = { ...JSON.parse(JSON.stringify(BASE)), assets: { by: 'aux', packs: [{ id: 'p', who: ['리아나'], emotions: ['기쁨'], pattern: '{who}_{emotion}' }] } };

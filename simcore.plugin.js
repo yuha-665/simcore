@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.25
-//@display-name SimCore (시뮬 엔진) v1.9.25 모듈 팩 다시 읽기 — 왜 안 읽혔는지 말해 준다
+//@version 1.9.26
+//@display-name SimCore (시뮬 엔진) v1.9.26 모듈 팩만 받는 봇도 삽입 주체를 고른다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.26 ──────────────────────────────────────────────
+// **모듈 팩만 받는 봇의 삽입 주체** — 실기(2026-09-14): 모듈 팩 병합은 됐는데 "메인·보조를 정할 수가 없어 맨 위 에셋 하나만
+// 나오는 게 고정". 에셋 탭의 삽입 주체(보조 1장 / 보조 서사 위치 여러 장 / 메인) 선택기가 자체 팩이 1개 이상일 때만 그려져,
+// 자체 팩 0개인 수신 봇은 기본값 aux에 묶였다. 런타임(resolveImageTag·mainInjectionText)은 병합된 팩과 assets.by를 그대로
+// 읽으므로 선택기만 보이면 된다 — moduleManifests가 켜진 봇에도 그린다. 변수 없는 봇의 "에셋 전용" 안내도 같은 조건.
+// test-modpacktoggle.js에 선택기 케이스 추가.
 //
 // ── v1.9.25 ──────────────────────────────────────────────
 // **모듈 팩 다시 읽기 진단** — 실기(2026-09-14): 모듈에 ⚙simcore-pack 항목을 둘 만들었는데 "왜 안 될까". 결과 문구가 "항목이
@@ -27167,7 +27174,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 에셋 전용 설치 (v0.64) — 변수를 하나도 안 만들어도 설치되고 돈다.
     // 이 안내가 없으면 "변수 탭이 비었는데 괜찮은 건가"에서 손이 멈춘다 (실제 문의).
     if (!schema.vars.length) {
-      const packed = !!(a && a.packs && a.packs.length);
+      const packed = !!(a && ((a.packs && a.packs.length) || a.moduleManifests === true));
       box.appendChild(h('div', { class: `sce-assets-note${packed ? ' is-ok' : ''}` },
         packed
           ? '✅ 변수 없이 에셋만 쓰는 봇이에요. 이대로 저장하면 됩니다. 상태창·명령·시간은 뜨지 않고 이미지만 붙어요. '
@@ -27176,7 +27183,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const controls = h('section', { class: 'sce-assets-controls' });
     box.appendChild(controls);
-    if (a && a.packs && a.packs.length) {
+    // 삽입 주체 선택기 — 자체 팩이 있거나 모듈 팩을 받는 봇(v1.9.26). 모듈 팩만 받는 봇은 자체 팩 0개라 이 선택기가 안 그려져
+    // 보조·1장 기본값에 묶였다 (실기: "모듈 팩만 적용하니 메인·보조를 정할 수가 없다"). 런타임은 assets.by를 그대로 읽는다.
+    if (a && ((a.packs && a.packs.length) || a.moduleManifests === true)) {
       controls.appendChild(h('div', { class: 'sce-assets-mode' },
         pair('삽입 주체', bindSelect(a.by ?? 'aux', [
           ['aux', '보조 모델 · 첫 위치에 1장 (권장)'],

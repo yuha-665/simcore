@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.23
-//@display-name SimCore (시뮬 엔진) v1.9.23 turn_hour·turn_day가 계약표에 — 어시스턴트가 오락가락 안 한다
+//@version 1.9.24
+//@display-name SimCore (시뮬 엔진) v1.9.24 모듈 팩 체크가 팩 0개 봇에서도 켜진다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,14 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.24 ──────────────────────────────────────────────
+// **모듈 팩 매니페스트 체크가 안 켜지던 것** — 실기 제보(2026-09-14): 에셋 관리자의 "활성 모듈의 ⚙simcore-pack 항목에서 팩을
+// 자동으로 읽어와요"를 백날 클릭해도 체크가 안 됨. 편집기 normalize()가 "팩 0개면 assets를 통째로 걷는다"(없음 = 꺼짐 불변식)라서,
+// 팩이 없는 봇에서 체크를 켜면 ensureAssets → moduleManifests:true → rerender → normalize가 assets째 삭제 → 체크가 되돌아갔다.
+// 모듈 팩을 **받는** 봇은 자체 팩 0개가 정상이라 기능이 성립하지 않았던 것 (v0.94부터). 런타임 병합(adapter scanModulePacks·
+// assets.mergeModulePacks)은 옵트인만 보고 자체 팩 유무를 안 따지므로 편집기 한 줄만 고친다 — moduleManifests가 true면 남긴다.
+// test-modpacktoggle.js (가짜 DOM으로 체크 → 저장본 확인 → 해제 → assets 걷힘).
 //
 // ── v1.9.23 ──────────────────────────────────────────────
 // **turn_min·turn_hour·turn_day를 계약표에** — 커뮤니티 제보(2026-09-13, 에렌샤): "turn_hour 계산은 잘 도는데 어시스턴트가
@@ -19715,8 +19723,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     schema.setup = schema.setup || {};
     schema.setup.presets = schema.setup.presets || [];
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
-    // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지
-    if (schema.assets && !(schema.assets.packs || []).length) delete schema.assets;
+    // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지.
+    // 단 모듈 팩 매니페스트 옵트인(moduleManifests)은 남긴다 (v1.9.24) — 모듈 팩을 **받는** 봇은 자체 팩이 0개인 게
+    // 정상인데, 체크를 켜는 순간 여기서 assets가 통째로 걷혀 체크가 되돌아가던 실사고 ("백날 클릭해도 체크가 안 된다").
+    if (schema.assets && !(schema.assets.packs || []).length && schema.assets.moduleManifests !== true) delete schema.assets;
     // 막을 다 지우면 scenario도 걷는다 — 같은 불변식
     if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
   }

@@ -6315,8 +6315,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     schema.setup = schema.setup || {};
     schema.setup.presets = schema.setup.presets || [];
     schema.setup.ai = schema.setup.ai || { enabled: false, vars: [] };
-    // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지
-    if (schema.assets && !(schema.assets.packs || []).length) delete schema.assets;
+    // 팩을 다 지우면 assets 자체를 걷는다 — "없음 = 꺼짐"을 JSON에도 유지.
+    // 단 모듈 팩 매니페스트 옵트인(moduleManifests)은 남긴다 (v1.9.24) — 모듈 팩을 **받는** 봇은 자체 팩이 0개인 게
+    // 정상인데, 체크를 켜는 순간 여기서 assets가 통째로 걷혀 체크가 되돌아가던 실사고 ("백날 클릭해도 체크가 안 된다").
+    if (schema.assets && !(schema.assets.packs || []).length && schema.assets.moduleManifests !== true) delete schema.assets;
     // 막을 다 지우면 scenario도 걷는다 — 같은 불변식
     if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
   }

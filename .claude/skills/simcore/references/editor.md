@@ -389,3 +389,10 @@ patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린�
 `patchIdDigest`가 `rules.onTurn`을 "### 매 턴 정산 — 참조만" 절로 싣는다 (줄 번호 · `set` = `expr` / 목록 add·remove·expire).
 못 고치는 이유(id 없는 순서 목록)와 못 읽는 것은 별개 — 에렌샤 제보 "onTurn 공식을 어시스턴트가 없다고 한다". 인라인 구간이라
 모듈 호출 없이 JSON만 쓴다(test-aiguard가 `new Function('varContractTable','timeConfig', …)`로 단독 평가). 테스트 `테스트/test-onturndigest.js`.
+
+## normalize()의 "없음 = 꺼짐" 불변식과 모듈 팩 옵트인 (v1.9.24)
+
+`normalize()`는 팩 0개면 `schema.assets`를 통째로 걷는다. 그런데 모듈 팩을 **받는** 봇은 자체 팩 0개가 정상이라, 체크
+(`assets.moduleManifests: true`)를 켜는 순간 assets째 사라져 체크가 되돌아갔다 (실기 제보 "백날 클릭해도 체크가 안 된다",
+v0.94부터 잠복). 이제 moduleManifests가 true면 남긴다. **assets/scenario처럼 "비면 걷는" 섹션에 새 스위치를 달 땐 이 불변식과
+충돌하는지 먼저 볼 것.** 테스트 `테스트/test-modpacktoggle.js`.

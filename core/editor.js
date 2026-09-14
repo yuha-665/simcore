@@ -13842,7 +13842,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             const r = await ai.getModulePacks();
             modulePackNote = (r.merged.length
               ? '병합된 모듈 팩: ' + r.merged.map((p) => `${p.id} (${p.source})`).join(', ')
-              : r.scanned ? '활성 모듈에 ⚙simcore-pack 항목이 없어요 — 설치된 스키마 기준이라, 방금 켰다면 저장(설치) 후 다시 읽어 주세요.'
+              : r.scanned
+                ? (r.activeCount === 0
+                  ? '활성 모듈이 0개예요 — 모듈이 전역(모듈 메뉴의 켜기) 또는 이 채팅에서 켜져 있어야 읽어요. 설치된 스키마 기준이라, 방금 켰다면 저장(설치) 후 다시 읽어 주세요.'
+                  : `활성 모듈 ${r.activeCount}개를 훑었는데 ⚙simcore-pack 항목이 ${r.entryCount || 0}개예요${r.entryCount ? ' — 전부 검증에서 제외됐어요(아래 ⚠)' : ' — 로어북 항목 이름(코멘트)이 ⚙simcore-pack인지 확인하세요'}.`)
                 : '스캔 안 됨 — 설치된 스키마에서 이 스위치가 꺼져 있어요 (저장 후 다시).')
               + (r.warnings.length ? ' · ⚠ ' + r.warnings.join(' | ') : '');
           } catch (e) { modulePackNote = '모듈 읽기 실패: ' + e.message; }

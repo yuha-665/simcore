@@ -373,6 +373,11 @@ function auxImageSpec(schema, lookup) {
 // 싣는다 (⚙simcore 세이브 동봉 스키마와 같은 규약 계열). 스키마가 assets.moduleManifests로
 // 옵트인하면 어댑터가 활성 모듈을 스캔해 여기 병합기로 팩을 얹는다 — 받는 쪽은 임포트만.
 const MANIFEST_COMMENT = '⚙simcore-pack';
+/** 로어북 이름(코멘트)이 매니페스트 표식인가 — 이모지 변형 선택자(U+FE0F)·앞뒤 공백·대소문자는 무시한다 (v1.9.25).
+ *  실기: 리수 로어북 이름 칸에 ⚙️(변형 선택자 붙은 이모지)로 들어가면 정확 일치가 깨져 "항목이 없어요"만 떴다. */
+function isManifestComment(c) {
+  return String(c ?? '').replace(/\uFE0F/g, '').trim().toLowerCase() === MANIFEST_COMMENT;
+}
 
 /** 매니페스트 내용 → 팩 후보 배열. {packs:[...]} / [...] / 단일 팩 객체 다 받는다 */
 function parseManifest(text) {
@@ -426,5 +431,5 @@ module.exports = {
   packOpen, openPacks, packChars, whoSlot, routePack, routePacks,
   composeName, renderTag, resolveInPack, resolveImage, findAnchor, placeImages,
   mainInjectionText, auxImageSpec,
-  MANIFEST_COMMENT, parseManifest, mergeModulePacks,
+  MANIFEST_COMMENT, isManifestComment, parseManifest, mergeModulePacks,
 };

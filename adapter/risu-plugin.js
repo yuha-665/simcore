@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.24
-//@display-name SimCore (시뮬 엔진) v1.9.24 모듈 팩 체크가 팩 0개 봇에서도 켜진다
+//@version 1.9.25
+//@display-name SimCore (시뮬 엔진) v1.9.25 모듈 팩 다시 읽기 — 왜 안 읽혔는지 말해 준다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,13 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.25 ──────────────────────────────────────────────
+// **모듈 팩 다시 읽기 진단** — 실기(2026-09-14): 모듈에 ⚙simcore-pack 항목을 둘 만들었는데 "왜 안 될까". 결과 문구가 "항목이
+// 없어요"뿐이라 모듈이 꺼진 건지·이름이 다른 건지·검증에서 빠진 건지 알 수 없었다. (1) 이름 비교를 isManifestComment로 —
+// 이모지 변형 선택자(⚙️ U+FE0F)·앞뒤 공백·대소문자 무시(리수 이름 칸에 ⚙️로 들어가면 정확 일치가 깨진다). (2) 스캔이 훑은
+// 활성 모듈 수·항목 수를 돌려주고, 문구가 "활성 모듈 0개 — 전역/채팅에서 켜야" / "N개 훑었는데 항목 M개 — 검증 제외(⚠)/이름 확인"
+// 으로 갈린다. test-manifestcomment.js.
 //
 // ── v1.9.24 ──────────────────────────────────────────────
 // **모듈 팩 매니페스트 체크가 안 켜지던 것** — 실기 제보(2026-09-14): 에셋 관리자의 "활성 모듈의 ⚙simcore-pack 항목에서 팩을
@@ -3717,12 +3724,13 @@
   async function scanModulePacks(ask) {
     const reset = () => {
       if (schema?.assets?.packs) schema.assets.packs = schema.assets.packs.filter((p) => p.origin !== 'module');
-      modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false };
+      modulePackState = { merged: [], warnings: [], moduleAssetNames: [], scanned: false, activeCount: 0, entryCount: 0 };
     };
     if (!schema?.assets || schema.assets.moduleManifests !== true) { reset(); return modulePackState; }
     const warnings = [];
     const manifests = [];
     const assetNames = [];
+    let activeSeen = 0, entrySeen = 0;   // 진단 (v1.9.25) — "항목이 없어요"만으로는 모듈이 꺼진 건지 이름이 다른 건지 모른다
     const db = await readModulesDb(ask);
     if (db && db.__err) warnings.push('모듈 읽기 실패: ' + db.__err);
     else if (!db || typeof db !== 'object') {
@@ -3737,8 +3745,10 @@
       } catch { /* 채팅 접근 실패 — 전역 활성만으로 진행 */ }
       for (const m of db.modules || []) {
         if (!m || !active.has(m.id)) continue;
-        const entries = (m.lorebook || []).filter((l) => l && l.comment === assetsMod.MANIFEST_COMMENT);
+        activeSeen++;
+        const entries = (m.lorebook || []).filter((l) => l && assetsMod.isManifestComment(l.comment));
         if (!entries.length) continue;
+        entrySeen += entries.length;
         const label = m.name ?? m.id;
         for (const l of entries) manifests.push({ label, content: l.content });
         assetNames.push(...collectAssetNames(m.assets));   // 매니페스트 모듈의 이미지는 대조에 필요
@@ -3752,6 +3762,8 @@
       warnings: [...warnings, ...r.warnings],
       moduleAssetNames: assetNames,
       scanned: true,
+      activeCount: activeSeen,
+      entryCount: entrySeen,
     };
     if (r.packs.length || modulePackState.warnings.length) {
       console.log('[simcore] 모듈 팩:', r.packs.map((p) => p.id).join(', ') || '(없음)',

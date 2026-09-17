@@ -64,6 +64,23 @@ const NO_TAB = new Set(['simcore', 'meta', 'rerollStableRng']);
     && /exportBox\.appendChild\(jumpRow/.test(editorSrc), '');
 }
 
+// ── 접이식 창구에 "눌러서 펼치기" 힌트 (실기 제보 v1.9.28) ──
+// "접이식은 좋은데 숨겨져 있으면 모를 수도 있으니 힌트는 필요하겠다" — 꺾쇠(⌄)만으론 약했다.
+// 글자는 DOM이 아니라 CSS ::after가 넣는다 (다시 그리지 않고 펼침/접힘에 따라 뒤집히려면 그 방법뿐).
+{
+  ck('★ 접이식 AI 창구에 "눌러서 펼치기" 힌트',
+    /\.sce-board-ai-toggle::after \{ content:'눌러서 펼치기'; \}/.test(editorSrc), '');
+  ck('★ 펼치면 "접기"로 뒤집힌다',
+    /\.sce-board-ai\[open\] \.sce-board-ai-toggle::after \{ content:'접기'; \}/.test(editorSrc), '');
+  ck('중첩된 "외부 AI로 만들기" 접이식에도 (꺾쇠가 없어 더 안 보인다)',
+    /sce-tab-ai-world-fallback > summary \.sce-board-ai-toggle::after \{ content:'· 눌러서 펼치기'; \}/.test(editorSrc), '');
+  // 세 탭(의뢰판·메신저 + 원래 있던 보드) 전부 — 하나만 빠지면 그 탭만 안 보인다
+  const marks = (editorSrc.match(/class: 'sce-board-ai-toggle'/g) ?? []).length;
+  ck('★ 요약줄 네 곳 전부에 붙었다 (의뢰판·메신저·보드 + 외부 AI 폴백)', marks === 4, `${marks}곳`);
+  ck('힌트는 꺾쇠와 한 묶음으로 오른쪽에 (space-between이 흩뜨리지 않게)',
+    /sce-board-ai-more/.test(editorSrc) && /\.sce-board-ai-more \{ display:flex; flex:none;/.test(editorSrc), '');
+}
+
 // ── 새 CSS가 쓰는 변수가 정의돼 있는가 (var()가 무효면 감싼 color-mix까지 죽는다) ──
 {
   // 폴백 있는 var(--x, 기본값)은 정의가 없어도 산다 — 폴백 없는 것만 본다

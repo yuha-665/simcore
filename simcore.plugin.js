@@ -16302,6 +16302,15 @@ const CSS = `
 .sce .sce-board-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
 .sce .sce-board-ai-chevron { color:var(--sce-muted); transition:transform .15s ease; }
 .sce .sce-board-ai[open] .sce-board-ai-chevron { transform:rotate(180deg); }
+/* 접힌 창구는 있는 줄도 모른다 (실기 제보 v1.9.28) — 꺾쇠만으론 약해서 말로 붙인다.
+   글자는 CSS가 넣는다(::after) — 펼치면 "접기"로 뒤집혀야 하는데 DOM을 다시 그리지 않고 하려면 이 방법뿐 */
+.sce .sce-board-ai-more { display:flex; flex:none; align-items:center; gap:6px; }
+.sce .sce-board-ai-toggle { color:var(--sce-muted); font-size:10.5px; font-weight:400; white-space:nowrap; }
+.sce .sce-board-ai-toggle::after { content:'눌러서 펼치기'; }
+.sce .sce-board-ai[open] .sce-board-ai-toggle::after { content:'접기'; }
+/* 이쪽 요약줄엔 이미 "직접 생성이 안 될 때만"이 붙어 있다 — 가운뎃점으로 갈라야 한 문장으로 안 읽힌다 */
+.sce .sce-tab-ai-world-fallback > summary .sce-board-ai-toggle::after { content:'· 눌러서 펼치기'; }
+.sce .sce-tab-ai-world-fallback[open] > summary .sce-board-ai-toggle::after { content:'· 접기'; }
 .sce .sce-board-ai-body { padding:0 0 14px; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
@@ -21527,7 +21536,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       exportBox.appendChild(area);
       exportBox.appendChild(row);
       wrap.appendChild(h('details', { class: 'sce-tab-ai-world-fallback' },
-        h('summary', {}, h('strong', {}, '외부 AI로 만들기·가져오기'), h('span', {}, '직접 생성이 안 될 때만')),
+        h('summary', {}, h('strong', {}, '외부 AI로 만들기·가져오기'),
+          h('span', { class: 'sce-board-ai-more' },
+            h('span', {}, '직접 생성이 안 될 때만'),
+            h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }))),
         exportBox));
     } else {
       wrap.appendChild(note);
@@ -23605,7 +23617,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 의뢰판 설정 만들기'),
           h('small', {}, '게시되는 의뢰가 아니라 의뢰판 설정 자체를 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-board-ai-more' },
+          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('quest')));
     if (!schema.questBoard) {
       wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
@@ -23757,7 +23771,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 보드 만들기'),
           h('small', {}, '게시글 생성 지침과는 별개로, 보드 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-board-ai-more' },
+          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('board')));
 
     if (!schema.board) {
@@ -23899,7 +23915,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 메신저 설정 만들기'),
           h('small', {}, '현재 설정을 직접 다듬는 흐름과 분리된 선택 도구예요.')),
-        h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-board-ai-more' },
+          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('msgr')));
     if (!schema.messenger) {
       wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},

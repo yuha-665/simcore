@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.28
-//@display-name SimCore (시뮬 엔진) v1.9.28 의뢰판·메신저 탭 개편 + 검증 리포트가 어느 탭인지 알려준다
+//@version 1.9.29
+//@display-name SimCore (시뮬 엔진) v1.9.29 변수 접기 기억 + 변수 카드에서 보조 AI 허용
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.29 ──────────────────────────────────────────────
+// **변수 카드 접힘 기억 + 변수 카드에서 보조 AI 허용** — 커뮤니티 제보 둘(2026-09-17).
+// (1) "변수 접고 AI 가이드 보고 돌아오면 도로 펼쳐져 있어 매번 다시 접는다" — 접힘이 카드 **객체**를 열쇠로 한 WeakSet이라
+//     어시스턴트 패치·되돌리기·가져오기처럼 스키마 객체가 갈리는 순간 전부 풀렸고, 편집기를 닫으면 사라졌다.
+//     이제 변수 id를 열쇠로, 목록(기본/파생)마다 기본 모드를 두고([모두 접기] = 앞으로도 접힌 채 시작), 편집기 uiPrefs 훅으로
+//     캐릭터별 pluginStorage(`sim:ui:editor:<chaId>`)에 저장 — 다시 열어도 그대로. 그룹 접힘(v1.9.14)도 같이. 새로 만든 카드는
+//     기본이 접기여도 펼쳐서 보여준다.
+// (2) "AI 설정 탭이 필수인 줄 알고 변수 만들 때마다 등록했는데, 비워 놔도 문제없더라 — 뭐 하는 곳이냐" — 허용 목록(updater.allow)은
+//     "서사를 보고 보조 AI가 값을 적어도 되는 변수" 명단이지 필수가 아니다(규칙·이벤트·버튼이 움직이는 값은 없어도 됨. 단 이야기 흐름 따라
+//     바뀌어야 하는 값이 목록에 없으면 영영 안 움직인다). 탭 설명문("AI 전달 규칙을 조정합니다")이 이 혼동의 출처라 문구를 바꾸고,
+//     **변수 카드에 🤖 체크** 하나를 두어 같은 목록을 카드에서 켜고 끈다 (접힌 카드 요약에도 표시). 탭을 오갈 일 자체를 없앤다.
 //
 // ── v1.9.28 ──────────────────────────────────────────────
 // **의뢰판·메신저 탭 개편 + 초보자용 검증 리포트** — 커뮤니티 UI 기여본(v1.9.23 기준, 2026-09-17 수령)을 이식.
@@ -8047,6 +8059,17 @@ count(목록)  has(목록, "항목")</pre>
     // 여기서 안 걸러내면 편집기 저장이 스키마에 눌러 붙여 모듈 제거 후에도 유령으로 남는다.
     if (base.assets?.packs) base.assets.packs = base.assets.packs.filter((p) => p.origin !== 'module');
     editor = createSchemaEditor(document.getElementById('sc-editor'), base, {
+      // 편집 화면 취향 (v1.9.29) — 변수 카드 접힘·기본 모드. 캐릭터별 pluginStorage(기기 로컬). 스키마엔 안 남는다.
+      uiPrefs: {
+        load: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:ui:editor:${currentChaId}`); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        save: async (prefs) => {
+          try { await Risuai.pluginStorage.setItem(`sim:ui:editor:${currentChaId}`, JSON.stringify(prefs || {})); }
+          catch (e) { console.log('[simcore] 편집 화면 취향 저장 실패:', e.message); }
+        },
+      },
       ai: {
         // ⚠ 자기 정산 함정 — callGenLLM만 쓸 것. 'main' 선택 시에도 GEN_SENTINEL로
         //   우리 beforeRequest가 자기 요청을 알아보고 무개입 통과한다.

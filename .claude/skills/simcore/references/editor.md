@@ -334,12 +334,19 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 
 | 카드 | 접기 버튼 | 모두 접기/펼치기 | 상태 저장소 |
 |---|---|---|---|
-| 기본 변수 · 파생 변수 | `variableCard` 머리 (이전부터) | 섹션 머리 `bulkControls` | `collapsedVariableCards` (WeakSet) |
+| 기본 변수 · 파생 변수 | `variableCard` 머리 (이전부터) | 섹션 머리 `bulkControls` = **기본 모드**(v1.9.29) | `collapsedVariableCards` — **변수 id 열쇠** + 목록별 mode(open/closed)·예외 집합, `uiPrefs`로 캐릭터별 저장 (v1.9.29) |
 | 명령 | 카드 머리 (이전부터) | 있음 | `collapsedCommandCards` |
 | 상태창 그룹 · 상태 지시문 | 있음 (이전부터) | 있음 | `collapsedStatusGroups` / 지시문 자체 Set |
 | **조건 이벤트 · 랜덤 이벤트 · 액션 · 판정** | 카드 머리 `foldBtn` (손잡이 앞) | 목록 위 `appendFoldBar` (둘 이상일 때만) | `collapsedCards` (WeakSet) |
 
-- 접힘 상태는 전부 WeakSet — **스키마에 안 남고**, 다시 그려도 유지되며, 편집기를 닫으면 사라진다.
+- 이벤트·액션·판정·명령·상태창 접힘은 WeakSet — **스키마에 안 남고**, 다시 그려도 유지되며, 편집기를 닫으면 사라진다.
+- **변수 카드는 다르다 (v1.9.29)** — 객체 열쇠 WeakSet이라 어시스턴트 패치·되돌리기·가져오기(스키마 객체 교체)에 전부 풀리던 것을
+  id 열쇠로 바꿨다. `foldPrefs = { vars:{mode, except}, derived:{…} }`: `has(it)` = (mode==='closed') XOR except.has(id).
+  [모두 접기]/[모두 펼치기]는 그 목록의 mode를 바꾸고 예외를 비운다("앞으로도 그렇게 시작"). 새로 만든 카드는 mode가 closed여도 펼친다.
+  호스트가 `opts.uiPrefs = { load, save }`를 주면 `{ fold: { vars, derived, groups } }`로 저장 — 어댑터는 `sim:ui:editor:<chaId>`(pluginStorage).
+  그룹 접힘 Set도 같이 실린다. 테스트: `테스트/test-foldmem.js`.
+- **변수 카드 🤖 체크 (v1.9.29)** — `updater.allow`와 같은 목록을 카드에서 켜고 끈다 (켜면 `{id}`(+text maxLength), 끄면 filter).
+  접힌 요약에 "· 🤖 보조 AI". [AI 설정] 탭 설명문도 "허용 = 서사를 보고 보조가 적어도 되는 변수, 필수 아님"으로 바꿈.
 - 액션·판정은 섹션 여러 개가 카드에 직접 붙던 구조라 `display:contents` 통(`.sce-card-body-contents`)에 담아
   접힐 때 통째로 뺀다 — 섹션 경계선 CSS(`+` 형제 선택자)는 그대로 산다. 새 섹션을 더할 땐 `body.appendChild`로.
 - 이벤트 카드는 몸통(`sce-rules-card-body`)을 `evFold ? null : …`로 생략한다. 머리의 id·요약 줄이 접힌 상태의 요약이다.

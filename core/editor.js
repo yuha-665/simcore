@@ -482,6 +482,11 @@ const CSS = `
 .sce .sce-trial-ev { text-align:left !important; color:var(--sce-muted); max-width:260px; white-space:normal; }
 .sce .sce-variable-type-help { margin:4px 0 0; color:var(--sce-muted); font-size:11.5px; line-height:1.45; }
 .sce .sce-variable-description { width:100%; max-width:var(--sce-variable-work-width); margin-top:6px; }
+.sce .sce-variable-ai-allow { width:100%; max-width:var(--sce-variable-work-width); margin-top:8px; display:flex; flex-direction:column; gap:3px; padding:6px 8px;
+  border:1px dashed var(--sce-line); border-radius:8px; }
+.sce .sce-variable-ai-allow.is-on { border-style:solid; border-color:color-mix(in srgb, var(--sce-accent) 55%, var(--sce-line)); }
+.sce .sce-variable-ai-allow small { color:var(--sce-muted); line-height:1.4; }
+.sce .sce-btn.sce-mini.is-on { outline:1px solid var(--sce-accent); }
 .sce .sce-variable-bool { display:flex; gap:6px; }
 .sce .sce-variable-bool .sce-mode-btn { min-width:76px; }
 .sce .sce-field-error { color:var(--sce-danger); font-size:11.5px; font-weight:600; line-height:1.45; }
@@ -6311,7 +6316,9 @@ function safeLook(L, name) { try { const v = L(name); return v === undefined ? n
 
 function createSchemaEditor(container, initialSchema, opts = {}) {
   const { onChange, ai, floor, onRequestFloor, isInstalled,
-    getFirstInstallGuideDismissed, setFirstInstallGuideDismissed } = opts; // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
+    getFirstInstallGuideDismissed, setFirstInstallGuideDismissed, uiPrefs } = opts;
+  // uiPrefs = { load()→Promise<obj|null>, save(obj)→Promise } — 편집 화면 취향(변수 카드 접힘 등)을 호스트가 캐릭터별로 보관.
+  // 스키마가 아니라 "이 사람의 편집 화면" 상태다 — 어댑터는 pluginStorage(기기 로컬)에 둔다 (v1.9.29). // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
   // onRequestFloor(f): 편집기 안에서 층 이동이 필요할 때 호스트에게 부탁 — 사이드바 하이라이트까지 같이 옮기라고
   // floor: 'top'|'json'|'assets'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
   // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
@@ -6323,8 +6330,43 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 변수 정리 상태 — rerender가 DOM을 새로 만들므로 탭 함수 바깥에 둔다
   let purge = null, purgeDone = null, purgeBackup = null;
   // 변수 카드의 접힘 상태는 편집 화면에만 남기고 스키마에는 기록하지 않는다.
-  const collapsedVariableCards = new WeakSet();
+  // v1.9.29: 예전엔 카드 **객체**를 열쇠로 한 WeakSet이라, 어시스턴트 패치·되돌리기·가져오기처럼 스키마 객체가 통째로 바뀌는
+  // 순간 전부 풀렸고 편집기를 닫으면 사라졌다 (커뮤니티 제보: "변수 접고 AI 가이드 보고 돌아오면 도로 펼쳐져 있어 매번 다시 접는다").
+  // 이제 변수 **id**를 열쇠로 하고, 목록(기본/파생)마다 기본 모드(open/closed)를 둔다 — [모두 접기]는 "앞으로도 접힌 채 시작"이다.
+  // 호스트가 uiPrefs를 주면 캐릭터별로 저장해 편집기를 다시 열어도 그대로다. 그룹 접힘(v1.9.14)도 같이 저장.
+  const foldPrefs = { vars: { mode: 'open', except: new Set() }, derived: { mode: 'open', except: new Set() } };
   const collapsedVarGroups = new Set();   // 변수 그룹 접힘 (v1.9.14) — 이름 키, 다시 그려도 유지
+  const foldListOf = (it) => (it && typeof it === 'object' && 'expr' in it ? 'derived' : 'vars');
+  const foldKey = (it) => String(it?.id ?? '');
+  let foldSaveTimer = null;
+  const saveFoldPrefs = () => {
+    if (!uiPrefs?.save) return;
+    clearTimeout(foldSaveTimer);
+    foldSaveTimer = setTimeout(() => {
+      const pack = (p) => ({ mode: p.mode, except: [...p.except] });
+      Promise.resolve(uiPrefs.save({ fold: { vars: pack(foldPrefs.vars), derived: pack(foldPrefs.derived), groups: [...collapsedVarGroups] } })).catch(() => {});
+    }, 250);
+  };
+  const collapsedVariableCards = {
+    has: (it) => { const p = foldPrefs[foldListOf(it)]; return (p.mode === 'closed') !== p.except.has(foldKey(it)); },
+    add: (it) => { const p = foldPrefs[foldListOf(it)]; if (p.mode === 'closed') p.except.delete(foldKey(it)); else p.except.add(foldKey(it)); saveFoldPrefs(); },
+    delete: (it) => { const p = foldPrefs[foldListOf(it)]; if (p.mode === 'closed') p.except.add(foldKey(it)); else p.except.delete(foldKey(it)); saveFoldPrefs(); },
+    /** 목록 전체의 기본 모드 — [모두 접기]/[모두 펼치기]. 예외는 비운다 */
+    setMode: (list, mode) => { const p = foldPrefs[list === schema.derived ? 'derived' : 'vars']; p.mode = mode; p.except.clear(); saveFoldPrefs(); },
+    modeOf: (list) => foldPrefs[list === schema.derived ? 'derived' : 'vars'].mode,
+  };
+  if (uiPrefs?.load) {
+    Promise.resolve(uiPrefs.load()).then((saved) => {
+      const f = saved?.fold;
+      if (destroyed || !f) return;
+      for (const k of ['vars', 'derived']) {
+        if (f[k]?.mode === 'closed' || f[k]?.mode === 'open') foldPrefs[k].mode = f[k].mode;
+        if (Array.isArray(f[k]?.except)) foldPrefs[k].except = new Set(f[k].except.map(String));
+      }
+      if (Array.isArray(f.groups)) for (const g of f.groups) collapsedVarGroups.add(String(g));
+      rerender();
+    }).catch(() => {});
+  }
   // 접기 (v1.9.12) — 조건 이벤트·랜덤 이벤트·액션·판정 카드. 커뮤니티 제보: "기본 변수·지시문엔 접기가 있는데 이벤트·액션엔
   // 없어 직접 보려면 한참 스크롤한다". 변수 카드와 같은 규약(WeakSet — 다시 그려도 유지, 스키마엔 안 남는다).
   const collapsedCards = new WeakSet();
@@ -6527,10 +6569,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const bulkControls = (list, pathBase) => {
       const errorIndexes = new Set(list.map((_, i) => itemErrors(`${pathBase}[${i}]`).length ? i : -1).filter((i) => i >= 0));
       return [
-        h('button', { class: 'sce-btn sce-mini', disabled: !list.length ? 'disabled' : undefined,
-          onclick: () => { list.forEach((item) => collapsedVariableCards.add(item)); rerender(); } }, '모두 접기'),
-        h('button', { class: 'sce-btn sce-mini', disabled: !list.length ? 'disabled' : undefined,
-          onclick: () => { list.forEach((item) => collapsedVariableCards.delete(item)); rerender(); } }, '모두 펼치기'),
+        h('button', { class: 'sce-btn sce-mini' + (collapsedVariableCards.modeOf(list) === 'closed' ? ' is-on' : ''), disabled: !list.length ? 'disabled' : undefined,
+          title: '전부 접고, 앞으로도 접힌 채 시작해요 (편집기를 닫았다 열어도 기억)',
+          onclick: () => { collapsedVariableCards.setMode(list, 'closed'); rerender(); } }, '모두 접기'),
+        h('button', { class: 'sce-btn sce-mini' + (collapsedVariableCards.modeOf(list) === 'open' ? ' is-on' : ''), disabled: !list.length ? 'disabled' : undefined,
+          title: '전부 펼치고, 앞으로도 펼친 채 시작해요',
+          onclick: () => { collapsedVariableCards.setMode(list, 'open'); rerender(); } }, '모두 펼치기'),
         h('button', { class: 'sce-btn sce-mini', disabled: !errorIndexes.size ? 'disabled' : undefined,
           onclick: () => {
             list.forEach((item, i) => {
@@ -6624,9 +6668,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       try { handle.setPointerCapture?.(pointerId); } catch (e) { /* 문서 이벤트로 계속 처리 */ }
     };
     const variableCard = (item, fallbackTitle, list, index, body, issues, onDelete, summary) => {
-      const collapsed = collapsedVariableCards.has(item);
       const newlyCreated = createdVariableCard === item;
-      if (newlyCreated) createdVariableCard = null;
+      if (newlyCreated) { createdVariableCard = null; if (collapsedVariableCards.has(item)) collapsedVariableCards.delete(item); }
+      const collapsed = collapsedVariableCards.has(item);
       const title = item.label?.trim() || fallbackTitle;
       const firstIssue = issues[0]?.msg;
       const moveFeedback = variableMoveFeedback?.item === item ? variableMoveFeedback : null;
@@ -6786,7 +6830,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const folded = collapsedVarGroups.has(name || '');
         const head = h('div', { class: 'sce-var-group-head' },
           h('button', { class: 'sce-btn sce-mini', type: 'button', 'aria-expanded': String(!folded), onclick: () => {
-            if (folded) collapsedVarGroups.delete(name || ''); else collapsedVarGroups.add(name || ''); rerender();
+            if (folded) collapsedVarGroups.delete(name || ''); else collapsedVarGroups.add(name || ''); saveFoldPrefs(); rerender();
           } }, folded ? '▸' : '▾'),
           name
             ? bindInput(name, (x) => {
@@ -6912,15 +6956,28 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const formatted = v.format ? String(v.format).replace(/\{v\}/g, shown) : shown;
         preview = h('div', { class: 'sce-variable-preview' }, '상태창 미리보기: ', h('strong', {}, formatted));
       }
+      // 보조 AI 허용 (v1.9.29) — updater.allow와 같은 목록을 카드에서 켜고 끈다. 커뮤니티 제보: "변수 만들 때마다 AI 설정 탭에
+      // 가서 등록하는 줄 알았다 / 비워 놔도 문제없더라" — 허용은 필수가 아니라 "서사를 보고 보조가 값을 적어도 되는 변수" 명단이다.
+      // 규칙·이벤트·액션(버튼)이 움직이는 값은 여기 없어도 되고, 이야기 흐름 따라 바뀌어야 하는 값(호감도 등)은 없으면 영영 안 움직인다.
+      const allowEntry = schema.updater.allow.find((a) => a && a.id === v.id);
+      const aiAllowRow = h('div', { class: 'sce-variable-ai-allow' + (allowEntry ? ' is-on' : '') },
+        bindCheck(!!allowEntry, (on) => {
+          schema.updater.allow = schema.updater.allow.filter((a) => !(a && a.id === v.id));
+          if (on) { const entry = { id: v.id }; if (v.type === 'text' && v.maxLength) entry.maxLength = v.maxLength; schema.updater.allow.push(entry); }
+          rerender();
+        }, '🤖 서사를 보고 보조 AI가 값을 적음'),
+        h('small', {}, allowEntry
+          ? '허용 목록에 있어요 — 턴당 한도·등장 낱말 잠금은 [AI 설정] 탭에서.'
+          : '꺼짐 — 규칙·이벤트·액션(버튼)만 이 값을 바꿔요. 이야기 흐름에 따라 바뀌어야 하는 값(호감도·평판 같은 것)이면 켜세요.'));
       varCards.push(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
-        [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description)], issues, () => {
+        [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description), aiAllowRow], issues, () => {
           if (!v.id) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           const plan = planVarPurge(schema, [v.id]);
           if (!plan.notes.length && !plan.errors.length) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           purge = { id: v.id, label: v.label ?? v.id, plan };
           rerender();
           return false;
-        }, variableSummary(v)));
+        }, variableSummary(v) + (allowEntry ? ' · 🤖 보조 AI' : '')));
     });
     groupedAppend(variableList, schema.vars, varCards);
     wrap.appendChild(variableList);
@@ -6973,7 +7030,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 만드는 순서 띠 (v1.9.0) — 3층 머리에. 처음 설치 순서(1층)와 같은 모양으로 "변수 → AI 설정 → 규칙 → 상태창"
   const DEEP_FLOW = [
     ['vars', '① 변수', '추적할 값을 만들어요 — 설명(desc)에는 뜻만, 언제 어떻게 바뀌는지는 ③에'],
-    ['ai', '② AI 설정에서 열기', '서사에 따라 AI(보조)가 움직여도 되는 변수를 허용 목록에 등록해요'],
+    ['ai', '② AI 설정에서 열기', '서사를 보고 AI(보조)가 값을 적어도 되는 변수만 허용해요 — 변수 카드의 🤖 체크로도 같은 일이 돼요. 버튼·규칙이 움직이는 값은 안 열어도 됩니다'],
     ['rules', '③ 규칙·이벤트', '값이 언제 어떻게 움직이는지 — 조건·효과·통지. 규칙은 전부 여기'],
     ['status', '④ 상태창', '무엇을 어떻게 보여줄지'],
   ];
@@ -11538,7 +11595,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-ai-settings-section-body' }, ...children));
     wrap.appendChild(h('div', { class: 'sce-ai-settings-head' },
       h('div', {}, h('h3', {}, 'AI 설정'),
-        h('p', {}, 'SimCore가 상태를 요약하고 갱신할 때 사용하는 AI 전달 규칙을 조정합니다. 캐릭터와 대화하는 메인 모델 전체를 설정하는 화면은 아닙니다.')),
+        h('p', {}, '두 AI에게 무엇을 보낼지 정하는 곳이에요. 메인 AI에는 매 턴 상태 요약(값을 아는 유일한 통로), 보조 AI에는 "서사를 보고 값을 적어도 되는 변수"(허용 목록). '
+          + '허용 목록은 필수가 아니에요 — 규칙·이벤트·버튼이 움직이는 값은 없어도 되고, 변수 카드의 🤖 체크와 같은 목록이에요. 캐릭터와 대화하는 메인 모델 자체를 고르는 화면은 아닙니다.')),
       h('div', { class: 'sce-ai-settings-summary' },
         h('span', {}, `갱신 허용 ${schema.updater.allow.length}개`),
         h('span', {}, `최근 대화 ${schema.updater.contextTurns ?? 1}턴`))));
@@ -11630,7 +11688,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       '허용한 변수만 상태 갱신 대상이 됩니다. 숫자는 턴당 증감폭, 텍스트는 최대 글자 수를 제한할 수 있습니다.');
     allowSection.lastChild.appendChild(h('div', { class: 'sce-ai-settings-allow-summary' },
       h('strong', {}, `현재 ${schema.updater.allow.length}개 허용`),
-      h('span', {}, '목록에 없는 변수는 보조 AI가 변경할 수 없습니다.')));
+      h('span', {}, '목록에 없는 변수는 보조 AI가 변경할 수 없어요 (서사가 언급해도 신고만). 변수 카드의 🤖 체크와 같은 목록이라 어느 쪽에서 켜도 같아요.')));
     const allow = schema.updater.allow;
     allow.forEach((a, i) => {
       const def = schema.vars.find((v) => v.id === a.id);

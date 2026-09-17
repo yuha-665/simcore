@@ -61,7 +61,7 @@ console.log('── 편집기');
   ck('그룹 없음은 맨 아래 점선 절', src.includes("if (none.length) container.appendChild(section('', none));") && src.includes('.sce .sce-var-group.is-none { border-style:dashed; }'), '');
   ck('절 머리: 이름 칸(그룹 전부 개명)·개수·모두 접기/펼치기·절 접기', src.includes("list.forEach((it) => { if (it && it.group === name) { if (t) it.group = t; else delete it.group; } });")
     && src.includes("rows.forEach((r) => collapsedVariableCards.add(r.it)); rerender(); } }, '모두 접기')")
-    && src.includes("if (folded) collapsedVarGroups.delete(name || ''); else collapsedVarGroups.add(name || ''); rerender();"), '');
+    && src.includes("if (folded) collapsedVarGroups.delete(name || ''); else collapsedVarGroups.add(name || ''); saveFoldPrefs(); rerender();"), ''); // v1.9.29: 그룹 접힘도 저장
   ck('변수·파생 목록이 groupedAppend를 거친다', src.includes('groupedAppend(variableList, schema.vars, varCards);') && src.includes('groupedAppend(derivedList, schema.derived, derivedCards);'), '');
   ck('순서 이동은 저장 순서 기준 힌트', src.includes('그룹은 보기용이에요. 순서 이동(⠿·위/아래)은 저장 순서 기준으로 움직입니다.'), '');
   ck('CSS 그룹 절', src.includes('.sce .sce-var-group {') && src.includes('.sce .sce-var-group-tools { display:flex; gap:6px; margin-left:auto; }'), '');

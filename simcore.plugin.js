@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.10.0
-//@display-name SimCore (시뮬 엔진) v1.10.0 비밀 — 모르는 건 말할 수 없다
+//@version 1.10.1
+//@display-name SimCore (시뮬 엔진) v1.10.1 비밀 — 모르는 건 말할 수 없다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,20 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.10.1 ──────────────────────────────────────────────
+// **현황 탭에서 목록 변수의 ✕가 잘려 항목을 지울 수 없던 것** (커뮤니티 제보, 2026-09-17). 항목이 칸보다 조금만 길면
+// 지울 방법이 아예 없었다 — 보이지 않는 버튼은 없는 버튼이다.
+// 두 가지가 겹쳐 있었다. ① 칩이 `white-space:nowrap`이라 길이에 맞춰 칸 밖으로 자란다. ② 칩을 감싼 .sc-var-current가
+// `overflow-x:hidden`이라 칸 밖을 잘라 낸다 — 가로 스크롤조차 없다. ✕는 칩의 **맨 끝**이라 가장 먼저 잘린다.
+// - [칩] white-space:normal + max-width:100% — 글자만 접는다. 숫자·기한·✕는 flex:0 0 auto로 안 쪼개지고 항상 보인다.
+//   반지름 999px → 14px (한 줄일 땐 같아 보이고, 두 줄이 되면 999px가 옆구리를 뭉갠다).
+// - [칸] 목록 행의 현재값 칸을 colSpan 3으로 — 표가 table-layout:fixed라 현재값 열이 18% 고정인데, 칩을 그 폭에 접어
+//   넣으면 두세 글자마다 줄이 바뀐다. 추가 입력은 칩 아래 .sc-var-add 한 줄로 내렸다(가로로 나눌 폭이 없다).
+// - [구조] .sc-var-current를 td에서 안쪽 div로 내렸다 — 스칼라 행과 같은 모양. 안 그러면 max-height:132px 스크롤 상자에
+//   추가 입력까지 갇힌다. 목록 행만 td에 클래스를 달고 있던 예외를 없앴다.
+// ⚠ 교훈: **잘라 내는 상자 안에 조작 버튼을 두지 마라.** overflow:hidden은 보기 좋으라고 넣지만, 그 안에 누를 것이
+//   있으면 기능이 조용히 사라진다. 잘려도 되는 건 글자뿐이다.
 //
 // ── v1.10.0 ──────────────────────────────────────────────
 // **비밀 — 모르는 건 말할 수 없다** (core/secret.js 23호, 설계 docs/design-비밀.md). 유저 제안(2026-09-17): "사람들이 가장
@@ -37783,13 +37797,21 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root button:active:not(:disabled) { transform:translateY(1px); }
       #sc-root button:disabled { opacity:.5 !important; cursor:not-allowed !important; }
       #sc-root button[aria-busy="true"] { cursor:progress !important; }
-      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; min-width:0; }
+      /* 칩은 접힌다 (v1.10.1). nowrap이면 항목이 칸보다 조금만 길어도 칩이 칸 밖으로 자라고,
+         감싼 .sc-var-current의 overflow-x:hidden이 그 바깥을 잘라 낸다 — ✕는 칩의 맨 끝에 있으니
+         가장 먼저 잘린다. 보이지도 않고 누를 수도 없어 목록 항목을 지울 방법이 사라졌다(실기 제보).
+         글자만 접고 숫자·기한·✕는 flex:0 0 auto로 안 쪼갠다. 반지름 999px → 14px: 한 줄일 땐
+         같아 보이고, 여러 줄이 되면 999px가 옆구리를 뭉갠다. */
       #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:2px 4px 2px 8px;
-        border:1px solid var(--sc-line-strong); border-radius:999px; background:var(--sc-surface-soft);
-        font-size:12.5px; white-space:nowrap; }
-      #sc-root .chip .num { color:var(--sc-success); font-variant-numeric:tabular-nums; }
-      #sc-root .chip .nonum { color:var(--sc-muted-soft); font-size:11.5px; }
-      #sc-root .chip button { min-height:28px; padding:0 6px !important; font-size:12px !important;
+        border:1px solid var(--sc-line-strong); border-radius:14px; background:var(--sc-surface-soft);
+        font-size:12.5px; white-space:normal; max-width:100%; min-width:0; }
+      #sc-root .chip > span:first-child { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+      #sc-root .chip .num { flex:0 0 auto; white-space:nowrap;
+        color:var(--sc-success); font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { flex:0 0 auto; white-space:nowrap;
+        color:var(--sc-muted-soft); font-size:11.5px; }
+      #sc-root .chip button { flex:0 0 auto; min-height:28px; padding:0 6px !important; font-size:12px !important;
         line-height:1.4 !important; border:none !important; background:transparent !important;
         color:var(--sc-muted) !important; border-radius:999px !important; }
       #sc-root .chip-sum { color:var(--sc-text); font-size:12.5px; margin-left:2px; }
@@ -38071,7 +38093,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root #sc-vars input, #sc-root #sc-vars select { width:100%; min-width:0; }
       #sc-root #sc-vars td:nth-child(2) { font-variant-numeric:tabular-nums; }
       #sc-root #sc-vars .sc-var-current { max-height:132px; overflow-y:auto; overflow-x:hidden;
-        overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; scrollbar-gutter:stable; }
+        overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; scrollbar-gutter:stable;
+        min-width:0; }
+      /* 목록 행: 칩 아래 한 줄 (v1.10.1). 칸을 가로로 나눌 폭이 없어 추가 입력을 밑으로 내렸다 */
+      #sc-root #sc-vars .sc-var-add { display:flex; gap:6px; align-items:center; margin-top:8px; min-width:0; }
+      #sc-root #sc-vars .sc-var-add input { flex:1 1 auto; min-width:0; width:auto; }
+      #sc-root #sc-vars .sc-var-add button { flex:0 0 auto; }
       #sc-root #sc-vars td:nth-child(4) button { width:100%; min-width:48px; padding-left:7px !important;
         padding-right:7px !important; }
       #sc-root #sc-actions { display:flex; gap:9px; flex-wrap:wrap; align-items:flex-start; }
@@ -39501,10 +39528,15 @@ count(목록)  has(목록, "항목")</pre>
       if (v.type === 'list') {
         const items = Array.isArray(cur) ? cur : [];
         tr.innerHTML = nameCell;
+        // 목록 행은 현재값 칸이 나머지 열을 다 쓴다 (v1.10.1). 표가 table-layout:fixed라
+        // 현재값 열이 18%로 고정인데, 칩을 그 폭에 욱여넣으면 항목이 조금만 길어도 ✕가
+        // 칸 밖으로 밀려 잘린다. 추가 칸은 칩 아래로 내린다 — 가로로 나눌 폭이 없다.
         const tdCur = document.createElement('td');
-        tdCur.className = 'sc-var-current';
-        tdCur.tabIndex = 0;
-        tdCur.setAttribute('aria-label', `${v.label ?? v.id} 현재값`);
+        tdCur.colSpan = 3;
+        const curBox = document.createElement('div');
+        curBox.className = 'sc-var-current';
+        curBox.tabIndex = 0;
+        curBox.setAttribute('aria-label', `${v.label ?? v.id} 현재값`);
         const chips = document.createElement('div');
         chips.className = 'chips';
         if (!items.length) chips.innerHTML = '<span class="muted">(비어 있음)</span>';
@@ -39529,25 +39561,24 @@ count(목록)  has(목록, "항목")</pre>
           chip.appendChild(x);
           chips.appendChild(chip);
         });
-        tdCur.appendChild(chips);
+        curBox.appendChild(chips);
         if (items.some((it) => itemValue(it) !== null)) {
           const s = items.reduce((a, it) => a + (itemValue(it) ?? 0), 0);
           const tot = document.createElement('div');
           tot.className = 'chip-sum';
           tot.textContent = `sum() = ${s}`;
-          tdCur.appendChild(tot);
+          curBox.appendChild(tot);
         }
-        tr.appendChild(tdCur);
+        tdCur.appendChild(curBox);
 
-        const tdAdd = document.createElement('td');
+        const addRow = document.createElement('div');
+        addRow.className = 'sc-var-add';
         const addIn = document.createElement('input');
         addIn.placeholder = '항목 추가 (끝에 숫자)';
-        tdAdd.appendChild(addIn);
+        addRow.appendChild(addIn);
         const addError = document.createElement('div');
         addError.className = 'status-bad'; addError.setAttribute('role', 'status');
         addError.hidden = true;
-        tdAdd.appendChild(addError);
-        const tdAddBtn = document.createElement('td');
         const addBtn = document.createElement('button');
         addBtn.textContent = '추가';
         addBtn.disabled = true;
@@ -39564,9 +39595,10 @@ count(목록)  has(목록, "항목")</pre>
           session.current.vars[v.id] = to;
           await commitVars();
         };
-        tdAddBtn.appendChild(addBtn);
-        tr.appendChild(tdAdd);
-        tr.appendChild(tdAddBtn);
+        addRow.appendChild(addBtn);
+        tdCur.appendChild(addRow);
+        tdCur.appendChild(addError);
+        tr.appendChild(tdCur);
         table.appendChild(tr);
         continue;
       }

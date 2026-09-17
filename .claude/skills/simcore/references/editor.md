@@ -72,9 +72,9 @@
 | `party` | 편성표 (v0.60) |
 | `calendar` | 달력 (v0.63) |
 | `board` | 보드 (v0.95, 자율형 v1.1) |
-| `msgr` | 메신저 (v1.2.0) |
+| `msgr` | 메신저 (v1.2.0 — v1.9.28 번호 섹션 개편, 아래 `sce-board-*` 규약) |
 | `shop` | 상점 (v0.96 — units·환전 다짝 v1.3, 다중 상점 탭·`[2호점 추가]` v1.4. `TAB_SLICES.shop.keys = ['shop','shops']`) |
-| `quest` | 의뢰판 (v1.7.9 — `TAB_SLICES.quest.keys = ['questBoard']`. 수락 목록·항목 형식·등급/보수 밴드·기한/게시 기간·보충 기준·수락/취소 효과("변수 = 식; …")·게시 지침·노출 조건·CSS) |
+| `quest` | 의뢰판 (v1.7.9 — `TAB_SLICES.quest.keys = ['questBoard']`. 수락 목록·항목 형식·등급/보수 밴드·기한/게시 기간·보충 기준·수락/취소 효과("변수 = 식; …")·게시 지침·노출 조건·CSS. v1.9.28 번호 섹션 개편, 아래 `sce-board-*` 규약) |
 | `rules` | 규칙·이벤트 |
 | `scenario` | 시나리오 (v0.91) |
 | `actions` | 액션 |
@@ -402,3 +402,33 @@ v0.94부터 잠복). 이제 moduleManifests가 true면 남긴다. **assets/scena
 에셋 탭의 삽입 주체(aux / aux_flow / main)는 `a.packs.length || a.moduleManifests === true`일 때 그린다. 모듈 팩만 받는 봇은
 자체 팩 0개라 예전 조건(`packs.length`)에서 선택기가 안 떠 기본값 aux에 묶였다 (실기 "메인·보조를 정할 수가 없다").
 런타임은 병합된 팩과 `assets.by`를 그대로 읽으니 UI 조건만의 문제였다. 변수 없는 봇의 "에셋 전용" 안내도 같은 조건.
+
+## 세계 탭 번호 섹션 + 초보자용 검증 리포트 (v1.9.28)
+
+커뮤니티 UI 기여본(v1.9.23 기준) 이식. **의뢰판·메신저**는 한 덩어리 `sce-block`이 아니라
+**번호 섹션**으로 짠다 — `section(step, title, copy, ...children)` + `field(label, control, help, wide)`
+헬퍼가 탭 함수 안에 산다. 규약:
+
+- `sce-board-head`(제목 + `sce-board-summary` 요약 칩) → `sce-board-section` 01·02·… → 맨 아래
+  `sce-board-danger`(삭제) → `aiTools()`(접이식 AI 창구). **AI 창구는 맨 아래**다 — 맨 위에 두면
+  설정을 보러 온 사람이 매번 지나쳐야 한다.
+- 기능이 꺼져 있으면 `sce-board-empty` 카드(아이콘 + 한 줄 설명 + 다음 행동 버튼). 선행 조건이
+  없을 때(list 변수 0개)는 **[변수 탭으로 이동] 버튼**까지 준다 — 안내만 하고 길을 안 내면 헤맨다.
+- `tabAiTools(tabKey)`의 `guidedWorldMode`(= `msgr`·`quest`): 직결 생성 상자 하나만 크게 두고,
+  내보내기·가져오기는 `<details>`("외부 AI로 만들기 · 직접 생성이 안 될 때만")로 내린다.
+  **직결이 되는데 규격서도 복사해 외부 AI를 또 돌리는 겹침**을 문구 대신 구조로 막는 장치.
+  ⚠ 이때도 "이미 있는 변수 목록이 함께 나가서 없는 이름을 못 지어낸다"는 보증 문구와
+  💬 어시스턴트로 가는 `jumpRow`는 **지우지 말 것** (기여본이 둘 다 뺐던 자리 — test-reportarea.js가 잡는다).
+
+**검증 리포트**(`buildReport`)는 경로 대신 사람 말이 앞에 온다: `$.questBoard[0].when` →
+"의뢰판에서 확인이 필요해요", 경로는 `[기술 위치 보기]` 접기 뒤. 변수가 하나도 없으면 오류 대신
+`sce-validation-start` 카드 + **[기본 변수 만들기]** 버튼.
+
+- ⚠ **`areaLabel`의 이름은 3층 탭 이름(TABS) 그대로 써야 한다.** 경로를 접기 뒤로 숨긴 마당에
+  이름표가 틀리거나 빠지면("작업본에서 확인이 필요해요") 갈 곳을 알 수가 없다. 새 스키마 절을
+  추가하면 **여기도 같이 늘린다** — `테스트/test-reportarea.js`가 validate의 경로 접두를 전수로
+  대조해 빠진 것을 잡는다(탭이 없는 `simcore`·`meta`·`rerollStableRng`만 예외).
+- ⚠ **폴백 없는 `var(--sce-*)`는 정의가 없으면 그 선언 한 줄을 통째로 죽인다** (오류 없이 모양만
+  어긋난다). 감싼 `color-mix()`까지 같이 죽는다. 기여본이 `--sce-warning-bg`·`--sce-success-bg`를
+  정의 없이 썼고, 우리 팔레트에도 `--sce-border`·`--sce-accent-ink` 등 일곱이 같은 상태로 잠복해
+  있었다(v1.9.28에 전부 메움). 같은 테스트가 전수로 본다.

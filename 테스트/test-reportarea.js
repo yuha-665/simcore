@@ -91,6 +91,24 @@ const NO_TAB = new Set(['simcore', 'meta', 'rerollStableRng']);
     !/chevron'[^}]*\}, *h\('span', \{ class: 'sce-ai-fold-hint'/.test(editorSrc), '');
 }
 
+// ── 편집기 글자엔 마크다운이 안 통한다 (실기 스샷 v1.9.28) ──
+// "**이미 정의된 변수 목록이 함께 나가서**"가 별표째 화면에 나왔다. 편집기는 마크다운을 안 거치므로
+// 강조는 <b> 요소로 하거나 별표를 뗀다. 프롬프트 문자열(build*Prompt 등)의 마크다운은 정상이다
+// — 그건 AI에게 가는 글이라 오히려 있어야 한다. 그래서 **UI를 그리는 함수 안**만 본다.
+{
+  const lines = editorSrc.split('\n');
+  const uiStar = [];
+  let fn = '';
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^\s{0,2}(?:async )?function ([A-Za-z_][\w]*)\s*\(/);
+    if (m) fn = m[1];
+    if (!/^\s*\/\//.test(lines[i]) && /'[^']*\*\*[^']*'/.test(lines[i])
+      && /^(tab|render|build.*(?:Box|Row|Pane|Card|UI)$)/.test(fn)) uiStar.push(`${i + 1}:${fn}`);
+  }
+  ck('★ UI를 그리는 함수의 글자에 리터럴 ** 가 없다', uiStar.length === 0, uiStar.join(', '));
+  ck('강조는 <b>로 남아 있다', /h\('b', \{\}, '고친 것만'\)/.test(editorSrc), '');
+}
+
 // ── 검증 리포트 성공 카드 줄바꿈 (실기 스샷 v1.9.28) ──
 // "설정 확인 완료확인할 내용 1개가 있지만…"으로 붙어 나왔다 — 오류·경고 카드(sce-validation-copy)는
 // strong·span 둘 다 display:block인데 성공 카드만 빠져 있었다.

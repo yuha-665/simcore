@@ -21414,8 +21414,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         box.appendChild(h('div', { class: 'sce-hint' },
           `새로 생기는 것 ${p.gained.length}개 — ${cut(p.gained)}`));
       }
+      // ⚠ 편집기 글자는 마크다운을 안 거친다 — 강조는 **별표**가 아니라 <b>로 (실기 스샷 v1.9.28)
       box.appendChild(h('div', { class: 'sce-hint' },
-        'AI가 **고친 것만** 돌려주면 나머지가 통째로 없어집니다. 의도한 삭제가 아니면 [취소]를 누르고 '
+        'AI가 ', h('b', {}, '고친 것만'), ' 돌려주면 나머지가 통째로 없어집니다. 의도한 삭제가 아니면 [취소]를 누르고 '
         + '"손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.'));
       box.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn sce-danger', onclick: () => {
@@ -21510,7 +21511,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ? '명령은 이미 만든 변수에 연결돼요. 전체 명령표를 새로 만들 때 변수 목록과 타입별 문법을 함께 넘깁니다.'
         : guidedWorldMode
           ? '① 규격을 복사해 외부 AI에게 전달하세요. 현재 변수와 작성 예시가 포함됩니다. 가져오면 이 탭의 설정 전체가 교체되므로, 일부 수정은 AI 어시스턴트를 이용하세요.'
-        : '이 탭 몫만 떼어내 AI에게 맡깁니다. **이미 정의된 변수 목록이 함께 나가서** 없는 변수를 지어내지 못하고, '
+        // copyWidget의 안내는 textContent로도 다시 쓰이므로 요소를 못 섞는다 — 별표는 그냥 뗀다
+        : '이 탭 몫만 떼어내 AI에게 맡깁니다. 이미 정의된 변수 목록이 함께 나가서 없는 변수를 지어내지 못하고, '
           + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
       () => buildTabExportPrompt(schema, tabKey),
     ).mount(exportBox);

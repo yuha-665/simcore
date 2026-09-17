@@ -412,10 +412,15 @@ v0.94부터 잠복). 이제 moduleManifests가 true면 남긴다. **assets/scena
 - `sce-board-head`(제목 + `sce-board-summary` 요약 칩) → `sce-board-section` 01·02·… → 맨 아래
   `sce-board-danger`(삭제) → `aiTools()`(접이식 AI 창구). **AI 창구는 맨 아래**다 — 맨 위에 두면
   설정을 보러 온 사람이 매번 지나쳐야 한다.
-- ⚠ **접힌 것은 있는 줄도 모른다** (실기 제보) — 꺾쇠(⌄)만으론 약해서 `sce-board-ai-toggle`이
+- ⚠ **접힌 것은 있는 줄도 모른다** (실기 제보) — 꺾쇠(⌄)만으론 약해서 `sce-ai-fold-hint`가
   "눌러서 펼치기"를 말로 붙인다. 글자는 DOM이 아니라 **CSS `::after`**가 넣는다 — 다시 그리지 않고
-  펼침/접힘에 따라 "접기"로 뒤집히려면 그 방법뿐. 요약줄 네 곳 전부에 붙는다(의뢰판·메신저·보드 +
-  중첩된 "외부 AI로 만들기" 폴백 — 이쪽은 꺾쇠도 없어 더 안 보인다). test-reportarea.js가 개수까지 본다.
+  펼침/접힘에 따라 "접기"로 뒤집히려면 그 방법뿐(`details[open] > summary`로 받아 새 창구도 저절로).
+  ⚠ 힌트는 꺾쇠 **밖**(`sce-ai-fold-more`)에 둔다 — 꺾쇠는 `[open]`에 180° 회전하므로 안에 넣으면
+  글자가 뒤집힌다.
+  ★ **AI 창구 접이식은 전부 단다 (14곳).** 몇 곳만 달면 "힌트 있는 줄 알았는데 여긴 없네"가 되어
+  안 다느니만 못하다 — 실기에서 [새 시작] 탭 창구가 빠진 게 그렇게 드러났다. 꺾쇠가 아예 없던
+  시간·진단·편성표·달력 창구는 요약줄 서식(`display:flex; justify-content:space-between`)부터 준다.
+  test-reportarea.js가 **창구 수와 힌트 수를 대조**하므로 새 창구를 만들면 거기서 걸린다.
 - 기능이 꺼져 있으면 `sce-board-empty` 카드(아이콘 + 한 줄 설명 + 다음 행동 버튼). 선행 조건이
   없을 때(list 변수 0개)는 **[변수 탭으로 이동] 버튼**까지 준다 — 안내만 하고 길을 안 내면 헤맨다.
 - `tabAiTools(tabKey)`의 `guidedWorldMode`(= `msgr`·`quest`): 직결 생성 상자 하나만 크게 두고,

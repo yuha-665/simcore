@@ -270,8 +270,8 @@ const CSS = `
 .sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
 .sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
 .sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
-  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:10px 0 7px; color:var(--sce-text); font-size:12.5px; font-weight:650; cursor:pointer; }
 .sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
 .sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
 .sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -1494,8 +1494,8 @@ const CSS = `
 .sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
 .sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
 .sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
-  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:10px 0 7px; color:var(--sce-text); font-size:12.5px; font-weight:650; cursor:pointer; }
 .sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
 .sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
 .sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -2847,14 +2847,20 @@ const CSS = `
 .sce .sce-board-ai-chevron { color:var(--sce-muted); transition:transform .15s ease; }
 .sce .sce-board-ai[open] .sce-board-ai-chevron { transform:rotate(180deg); }
 /* 접힌 창구는 있는 줄도 모른다 (실기 제보 v1.9.28) — 꺾쇠만으론 약해서 말로 붙인다.
-   글자는 CSS가 넣는다(::after) — 펼치면 "접기"로 뒤집혀야 하는데 DOM을 다시 그리지 않고 하려면 이 방법뿐 */
-.sce .sce-board-ai-more { display:flex; flex:none; align-items:center; gap:6px; }
-.sce .sce-board-ai-toggle { color:var(--sce-muted); font-size:10.5px; font-weight:400; white-space:nowrap; }
-.sce .sce-board-ai-toggle::after { content:'눌러서 펼치기'; }
-.sce .sce-board-ai[open] .sce-board-ai-toggle::after { content:'접기'; }
+   **AI 창구 접이식 11곳 전부**에 같은 것을 단다: 몇 곳만 달면 "힌트 있는 줄 알았는데 여긴 없네"가 되어
+   안 다느니만 못하다. 글자는 CSS가 넣는다(::after) — 펼치면 "접기"로 뒤집혀야 하는데 DOM을 다시
+   그리지 않고 하려면 이 방법뿐. [open] 규칙은 details 전체를 받아 새 창구가 생겨도 저절로 따라온다.
+   ⚠ 힌트는 꺾쇠 **밖**에 둔다 — 꺾쇠는 [open]에 180° 회전하므로 안에 넣으면 글자가 뒤집힌다. */
+.sce .sce-ai-fold-more { display:flex; flex:none; align-items:center; gap:6px; }
+.sce .sce-ai-fold-hint { color:var(--sce-muted); font-size:10.5px; font-weight:400; white-space:nowrap; }
+.sce .sce-ai-fold-hint::after { content:'눌러서 펼치기'; }
+.sce details[open] > summary .sce-ai-fold-hint::after { content:'접기'; }
+/* 시간 탭 창구만 요약줄 서식이 아예 없었다 — 힌트가 제목에 붙어 버려서 최소한만 준다 */
+.sce .sce-time-ai-tools > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:6px 2px; cursor:pointer; }
 /* 이쪽 요약줄엔 이미 "직접 생성이 안 될 때만"이 붙어 있다 — 가운뎃점으로 갈라야 한 문장으로 안 읽힌다 */
-.sce .sce-tab-ai-world-fallback > summary .sce-board-ai-toggle::after { content:'· 눌러서 펼치기'; }
-.sce .sce-tab-ai-world-fallback[open] > summary .sce-board-ai-toggle::after { content:'· 접기'; }
+.sce .sce-tab-ai-world-fallback > summary .sce-ai-fold-hint::after { content:'· 눌러서 펼치기'; }
+.sce .sce-tab-ai-world-fallback[open] > summary .sce-ai-fold-hint::after { content:'· 접기'; }
 .sce .sce-board-ai-body { padding:0 0 14px; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
@@ -2929,8 +2935,10 @@ const CSS = `
 .sce .sce-validation-ok { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px; align-items:center; padding:8px 10px; border-left:3px solid var(--sce-success); background:var(--sce-field); }
 .sce .sce-validation-ok-mark { width:22px; height:22px; display:grid; place-items:center; border-radius:50%; background:var(--sce-success-bg); color:var(--sce-success); font-size:11px; font-weight:850; }
 .sce .sce-validation-ok-copy { min-width:0; }
-.sce .sce-validation-ok strong { color:var(--sce-text-strong); font-size:12px; }
-.sce .sce-validation-ok span { color:var(--sce-muted); font-size:11px; }
+/* ⚠ display:block이 빠져 있어 "설정 확인 완료확인할 내용 1개가…"로 붙어 나왔다 (실기 스샷 v1.9.28).
+   바로 위 sce-validation-copy(오류·경고 카드)는 둘 다 block인데 성공 카드만 빠졌던 것 */
+.sce .sce-validation-ok strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-validation-ok span { display:block; margin-top:2px; color:var(--sce-muted); font-size:11px; }
 @media (max-width:620px) {
   .sce .sce-tab-ai-world-generate { grid-template-columns:1fr; }
   .sce .sce-tab-ai-world-generate .sce-btn { width:100% !important; min-height:44px; }
@@ -8081,9 +8089,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       exportBox.appendChild(row);
       wrap.appendChild(h('details', { class: 'sce-tab-ai-world-fallback' },
         h('summary', {}, h('strong', {}, '외부 AI로 만들기·가져오기'),
-          h('span', { class: 'sce-board-ai-more' },
+          h('span', { class: 'sce-ai-fold-more' },
             h('span', {}, '직접 생성이 안 될 때만'),
-            h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }))),
+            h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }))),
         exportBox));
     } else {
       wrap.appendChild(note);
@@ -8661,7 +8669,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('strong', {}, 'AI로 규칙 · 이벤트 만들기'),
           h('small', {}, '부분 수정은 위 편집기가 더 안전합니다. 전면 생성·외부 AI 왕복이 필요할 때만 펼치세요.'),
         ),
-        h('span', { class: 'sce-rules-ai-chevron', 'aria-hidden': 'true' }, '⌄'),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-rules-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
       ),
       h('div', { class: 'sce-rules-ai-body' }, tabAiTools('rules')),
     ));
@@ -9169,7 +9177,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ...metrics.map(([label, value]) => h('div', { class: 'sce-party-metric' },
           h('span', {}, label), h('strong', {}, value)))));
     const aiTools = () => h('details', { class: 'sce-party-ai' },
-      h('summary', {}, 'AI로 편성표 만들기·교체', h('span', {}, '필요할 때만 펼치기')),
+      h('summary', {}, 'AI로 편성표 만들기·교체',
+        h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })),
       tabAiTools('party'));
 
     if (!schema.party) {
@@ -9759,7 +9768,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 시나리오 만들기'),
           h('small', {}, '런타임의 막 진행과는 별개로, 시나리오 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-scenario-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-scenario-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-scenario-ai-body' }, tabAiTools('scenario')));
 
     if (!schema.scenario) {
@@ -9925,7 +9934,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 상점 만들기'),
           h('small', {}, '상품 입고 지침과는 별개로, 상점 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-shop-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-shop-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-shop-ai-body' }, tabAiTools('shop')));
     const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
     const lists = schema.vars.filter((v) => v.type === 'list');
@@ -10161,9 +10170,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 의뢰판 설정 만들기'),
           h('small', {}, '게시되는 의뢰가 아니라 의뢰판 설정 자체를 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-board-ai-more' },
-          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
-          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('quest')));
     if (!schema.questBoard) {
       wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
@@ -10315,9 +10322,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 보드 만들기'),
           h('small', {}, '게시글 생성 지침과는 별개로, 보드 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-board-ai-more' },
-          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
-          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('board')));
 
     if (!schema.board) {
@@ -10459,9 +10464,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 메신저 설정 만들기'),
           h('small', {}, '현재 설정을 직접 다듬는 흐름과 분리된 선택 도구예요.')),
-        h('span', { class: 'sce-board-ai-more' },
-          h('span', { class: 'sce-board-ai-toggle', 'aria-hidden': 'true' }),
-          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('msgr')));
     if (!schema.messenger) {
       wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
@@ -10560,7 +10563,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const lists = schema.vars.filter((v) => v.type === 'list');
     const calendarAiTools = () => h('details', { class: 'sce-calendar-ai' },
-      h('summary', {}, h('span', {}, 'AI로 달력 초안 만들기'), h('span', { class: 'sce-tag' }, '선택')),
+      h('summary', {}, h('span', {}, 'AI로 달력 초안 만들기'),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-tag' }, '선택'),
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }))),
       h('div', { class: 'sce-calendar-ai-body' }, tabAiTools('calendar')));
 
     if (!schema.calendar) {
@@ -10833,7 +10838,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 액션 만들기'),
           h('small', {}, '런타임의 액션 실행과는 별개로, 액션 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-actions-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-actions-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-actions-ai-body' }, tabAiTools('actions')));
     const addAction = () => {
       schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] });
@@ -10957,7 +10962,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {}, h('span', {},
         h('strong', {}, 'AI로 판정 만들기'),
         h('small', {}, '판정 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
-      h('span', { class: 'sce-checks-ai-chevron' }, '⌄')),
+      h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-checks-ai-chevron' }, '⌄'))),
       h('div', { class: 'sce-checks-ai-body' }, tabAiTools('checks')));
     wrap.appendChild(h('div', { class: 'sce-checks-head' },
       h('div', {}, h('h3', {}, '판정'),
@@ -11358,7 +11363,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('span', {}, '시간 진행 방식을 다시 선택합니다. 현재 설정은 선택을 확정할 때까지 유지됩니다.')));
     wrap.appendChild(h('div', { class: 'sce-time-workbench' }, timeRail, timeSheet));
     wrap.appendChild(h('details', { class: 'sce-time-ai-tools' },
-      h('summary', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+      h('summary', {}, h('span', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+        h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })),
       timeAiTools));
     return wrap;
   }
@@ -11507,7 +11513,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('details', { class: 'sce-setup-ai-tools' },
       h('summary', {}, h('span', {}, h('strong', {}, 'AI로 프리셋 만들기'),
         h('small', {}, '프리셋 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
-      h('span', { class: 'sce-setup-ai-chevron' }, '⌄')),
+      h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-setup-ai-chevron' }, '⌄'))),
       h('div', { class: 'sce-setup-ai-tools-body' }, presetAiTools)));
     return wrap;
   }
@@ -13731,7 +13737,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               `수정 필요·개선 권장 ${fixable.length}건만 대상으로 삼아요. 확인 필요 항목은 자동 수정에서 제외합니다.`)));
         const moreBody = h('div', { class: 'sce-diag-ai-more-body' });
         const more = h('details', { class: 'sce-diag-ai-more', open: (!ai || !ai.generate) ? 'open' : null },
-          h('summary', {}, '외부 AI와 전체 재작성 옵션'), moreBody);
+          h('summary', {}, h('span', {}, '외부 AI와 전체 재작성 옵션'),
+            h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })), moreBody);
         out.appendChild(aiSection);
 
         // 직결 경로 (v0.47) — 복사 왕복 없이 그 자리에서 생성. 계획·충돌 확인은 똑같이 거친다.

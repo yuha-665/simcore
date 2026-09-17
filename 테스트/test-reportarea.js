@@ -68,17 +68,36 @@ const NO_TAB = new Set(['simcore', 'meta', 'rerollStableRng']);
 // "접이식은 좋은데 숨겨져 있으면 모를 수도 있으니 힌트는 필요하겠다" — 꺾쇠(⌄)만으론 약했다.
 // 글자는 DOM이 아니라 CSS ::after가 넣는다 (다시 그리지 않고 펼침/접힘에 따라 뒤집히려면 그 방법뿐).
 {
-  ck('★ 접이식 AI 창구에 "눌러서 펼치기" 힌트',
-    /\.sce-board-ai-toggle::after \{ content:'눌러서 펼치기'; \}/.test(editorSrc), '');
-  ck('★ 펼치면 "접기"로 뒤집힌다',
-    /\.sce-board-ai\[open\] \.sce-board-ai-toggle::after \{ content:'접기'; \}/.test(editorSrc), '');
-  ck('중첩된 "외부 AI로 만들기" 접이식에도 (꺾쇠가 없어 더 안 보인다)',
-    /sce-tab-ai-world-fallback > summary \.sce-board-ai-toggle::after \{ content:'· 눌러서 펼치기'; \}/.test(editorSrc), '');
-  // 세 탭(의뢰판·메신저 + 원래 있던 보드) 전부 — 하나만 빠지면 그 탭만 안 보인다
-  const marks = (editorSrc.match(/class: 'sce-board-ai-toggle'/g) ?? []).length;
-  ck('★ 요약줄 네 곳 전부에 붙었다 (의뢰판·메신저·보드 + 외부 AI 폴백)', marks === 4, `${marks}곳`);
+  ck('★ 접이식에 "눌러서 펼치기" 힌트',
+    /\.sce-ai-fold-hint::after \{ content:'눌러서 펼치기'; \}/.test(editorSrc), '');
+  ck('★ 펼치면 "접기"로 뒤집힌다 (details 전체를 받아 새 창구도 저절로)',
+    /details\[open\] > summary \.sce-ai-fold-hint::after \{ content:'접기'; \}/.test(editorSrc), '');
+  ck('중첩된 "외부 AI로 만들기"는 가운뎃점으로 가른다 (옆에 다른 말이 이미 있다)',
+    /sce-tab-ai-world-fallback > summary \.sce-ai-fold-hint::after \{ content:'· 눌러서 펼치기'; \}/.test(editorSrc), '');
+
+  // ★ AI 창구 접이식 **전부**에 붙어야 한다 — 몇 곳만 붙으면 "힌트 있는 줄 알았는데 여긴 없네"가
+  //   되어 안 다느니만 못하다 (실기에서 [새 시작] 탭 창구가 빠진 게 이렇게 드러났다).
+  const aiFolds = [...editorSrc.matchAll(/h\('details', \{ class: '(sce-[a-z-]*(?:-ai|-ai-tools|-fallback)[a-z-]*)'/g)]
+    .map((m) => m[1]).filter((c) => !c.includes('advanced'));
+  const uniq = [...new Set(aiFolds)];
+  ck('AI 창구 접이식 목록 추출', uniq.length >= 10, `${aiFolds.length}곳 / ${uniq.length}종`);
+  const hints = (editorSrc.match(/class: 'sce-ai-fold-hint'/g) ?? []).length;
+  ck('★ AI 창구 수만큼 힌트가 붙어 있다 (하나라도 빠지면 그 탭만 조용히 안 보인다)',
+    hints >= aiFolds.length, `창구 ${aiFolds.length}곳 / 힌트 ${hints}곳`);
   ck('힌트는 꺾쇠와 한 묶음으로 오른쪽에 (space-between이 흩뜨리지 않게)',
-    /sce-board-ai-more/.test(editorSrc) && /\.sce-board-ai-more \{ display:flex; flex:none;/.test(editorSrc), '');
+    /\.sce-ai-fold-more \{ display:flex; flex:none;/.test(editorSrc), '');
+  // ⚠ 꺾쇠는 [open]에 180° 회전한다 — 힌트를 그 **안**에 넣으면 글자가 뒤집힌다
+  ck('★ 힌트가 회전하는 꺾쇠 안에 들어가지 않았다',
+    !/chevron'[^}]*\}, *h\('span', \{ class: 'sce-ai-fold-hint'/.test(editorSrc), '');
+}
+
+// ── 검증 리포트 성공 카드 줄바꿈 (실기 스샷 v1.9.28) ──
+// "설정 확인 완료확인할 내용 1개가 있지만…"으로 붙어 나왔다 — 오류·경고 카드(sce-validation-copy)는
+// strong·span 둘 다 display:block인데 성공 카드만 빠져 있었다.
+{
+  const okStrong = /\.sce-validation-ok strong \{ display:block;/.test(editorSrc);
+  const okSpan = /\.sce-validation-ok span \{ display:block;/.test(editorSrc);
+  ck('★ 성공 카드 제목·설명이 각자 줄을 쓴다', okStrong && okSpan, `strong=${okStrong} span=${okSpan}`);
 }
 
 // ── 새 CSS가 쓰는 변수가 정의돼 있는가 (var()가 무효면 감싼 color-mix까지 죽는다) ──

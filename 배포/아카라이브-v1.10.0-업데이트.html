@@ -1,0 +1,199 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.9.27 &nbsp;→&nbsp; v1.10.0</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 짧습니다 — <b style="color:#dbe2ea;">큰 것 하나</b>와 편집기 화면 손질입니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 6px;font-size:18px;line-height:1.7;">
+모델에게 <b style="color:#e0a94a;">"말하지 마라"</b>고 부탁하는 대신, <b style="color:#e0a94a;">아직 안 알려 줍니다</b>.
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+🔒 <b style="color:#dbe2ea;">비밀</b>(v1.10.0)이 이번의 전부입니다. 나머지는 커뮤니티에서 받은
+<b style="color:#dbe2ea;">의뢰판·메신저 탭 개편</b>과 <b style="color:#dbe2ea;">초보자용 검증 리포트</b>(v1.9.28) — 편집기 화면만 바뀝니다.
+</p>
+
+<!-- ─────────── ① 비밀 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🔒 비밀 — 모르는 건 말할 수 없다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.10.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#c98a7a;">"LLM은 비밀 유지를 뭔 짓을 해도 못 한다."</b> 대문자로 쓰고, 별표를 치고, 시스템 프롬프트 맨 위에 박아도
+  결국 샙니다. 당연합니다 — <b style="color:#dbe2ea;">프롬프트에 적힌 건 전부 "아는 것"</b>이고,
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">절대 말하지 마라</span>는 그 정보 <b style="color:#dbe2ea;">옆에 붙은 또 하나의 텍스트</b>일 뿐입니다.
+  확률을 낮출 뿐이고, 100턴이면 한 번은 샙니다. 한 번 새면 그 뒤론 모델이 자기가 쓴 글을 흉내 내니 되돌릴 수도 없습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  확실한 방법은 하나뿐입니다. <b style="color:#e0a94a;">프롬프트에 없으면 못 샌다.</b><br>
+  이제 비밀을 <b style="color:#dbe2ea;">단계</b>로 적습니다. 각 단계에는 여는 조건이 붙고,
+  <b style="color:#e0a94a;">조건이 열려야 그 글이 프롬프트에 실립니다.</b> 안 열린 단계의 글은 프롬프트 어디에도 없습니다 — 모델은 볼 방법이 없습니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">기본 rpg 템플릿에 들어 있는 실물 — "아린의 과거" (인물)</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    <b style="color:#dbe2ea;">1단계 · 낌새</b> <span style="font-size:12px;color:#8b98a9;">(처음부터 열림)</span><br>
+    <span style="color:#dbe2ea;">아린은 감시탑 문장을 보면 시선을 피한다. 봉인 이야기가 나오면 화제를 돌린다.</span><br><br>
+    <b style="color:#dbe2ea;">2단계</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act == "shadow"</span> 일 때<br>
+    <span style="color:#dbe2ea;">아린은 감시탑 출신이다. 탑을 떠난 이유는 아직 말하지 않는다.</span><br><br>
+    <b style="color:#dbe2ea;">3단계</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act == "clash"</span> 일 때<br>
+    <span style="color:#dbe2ea;">봉인을 삭게 만든 배신의 한복판에 아린의 스승이 있었다. 아린은 그것을 막지 못했고, 그 죄책감으로 탑을 떠났다.</span>
+    </p>
+  </div>
+  <p style="margin:0 0 16px;color:#a9b4c2;font-size:14px;">
+  1막을 도는 동안 <b style="color:#dbe2ea;">2·3단계의 저 문장들은 모델에게 한 글자도 가지 않습니다.</b>
+  세 번째 막에 들어가야 스승 이야기가 프롬프트에 붙습니다. 캐물어도, 유도해도, 탈옥을 해도 없는 걸 말할 수는 없습니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">숨기기만 하면 이야기가 밋밋해집니다 — 그래서 둘을 더 넣었습니다</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">① 복선은 "이유 없는 행동"으로.</b> 1단계에는 <b style="color:#dbe2ea;">왜인지를 빼고 행동만</b> 적습니다.
+  "감시탑 문장을 보면 시선을 피한다" — 모델은 <b style="color:#dbe2ea;">이유를 모른 채 그 행동을 합니다.</b>
+  배우는 극본 결말을 몰라도 "뭔가 숨기는 사람"을 연기할 수 있으니까요. 나중에 2단계가 열리면
+  플레이어가 이미 열 번쯤 본 그 장면들이 한꺼번에 의미를 갖습니다.
+  </p>
+  <p style="margin:0 0 16px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">② 존재는 알리되 내용은 안 줍니다.</b>
+  아무것도 안 알려 주면 모델이 빈칸을 <b style="color:#c98a7a;">자기 설정으로 메웁니다</b> — 캐물으면 그 자리에서 없는 과거를 지어내죠.
+  그래서 기본값은 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">"○○에게는 말 못 할 사정이 있다. 너도 그 내용은 모른다 — 숨기는 사람답게 굴되 지어내지 마라. 밝혀지는 순간이 오면 따로 알려 준다"</span>입니다.
+  모르는 상태를 <b style="color:#dbe2ea;">연기 지시로</b> 바꾼 것입니다. 단 <b style="color:#dbe2ea;">반전</b>은 반대입니다 — "뭔가 있다"는 신호 자체가 스포일러라 기본이 <b style="color:#dbe2ea;">안 알림</b>입니다.
+  </p>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">종류는 셋</b> — <b style="color:#dbe2ea;">인물</b>(누군가 숨기는 것) · <b style="color:#dbe2ea;">세계</b>(아직 드러나지 않은 사실) · <b style="color:#dbe2ea;">반전</b>(이야기의 진상).
+    기계는 하나이고 종류는 <b style="color:#dbe2ea;">어법과 기본값만</b> 가릅니다 — 뭘 비밀이라고 부르는지는 만드는 사람마다 다르니까요<br>
+  · <b style="color:#dbe2ea;">여는 조건은 아무거나</b> — 막(<span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act</span>)·호감도·턴 수·아이템·판정 결과·다른 비밀의 단계까지. 조건식 쓰는 자리는 전부 같습니다<br>
+  · <b style="color:#dbe2ea;">한 번 열리면 안 닫힙니다</b> — 호감도가 도로 떨어져도 밝혀진 진실은 잊히지 않습니다. 낮은 단계는 누적으로 실립니다<br>
+  · <b style="color:#dbe2ea;">상태창에 🔒 칩</b> — "아린의 과거 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;">0/2</span>" 처럼 <b style="color:#dbe2ea;">밝혀낸 개수만</b> 보입니다(수집 요소). 낌새는 발견이 아니라 안 셉니다. <b style="color:#dbe2ea;">반전 비밀은 칩이 아예 안 뜹니다</b> — 유저 눈에도 은닉<br>
+  · <b style="color:#dbe2ea;">열리는 순간</b> 변화 로그에 🔓 카드가 뜨고, 적어 둔 알림 문구가 그 턴에 나갑니다<br>
+  · <b style="color:#dbe2ea;">조건식·상태창에서 읽을 수 있습니다</b> — <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">sec_arin</span> = 열린 최고 단계(−1이면 아직). "3단계까지 열렸으면 엔딩 분기" 같은 걸 이벤트로 짤 수 있습니다<br>
+  · <b style="color:#dbe2ea;">보조 모델에게는 아무것도 안 갑니다</b> — 보조는 숫자만 세면 되니까요. 변화 로그·🔓 카드에도 <b style="color:#dbe2ea;">라벨과 단계 번호만</b> 실립니다(로그는 보조도 봅니다). 내용은 그쪽으로도 안 샙니다<br>
+  · <b style="color:#dbe2ea;">진단</b>에 "닫힌 비밀"이 생겼습니다 — 마지막 단계까지 못 간 비밀이 있으면 왜인지(조건이 설정에 걸렸는지, 판이 짧아서인지, AI가 문턱을 못 넘는지) 짚어 줍니다
+  </p>
+
+  <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:4px;padding:14px 16px;margin-bottom:14px;">
+    <p style="margin:0;color:#dbe2ea;font-size:14px;line-height:1.85;">
+    <b style="color:#c98a7a;">⚠ 이것부터 하셔야 효과가 있습니다.</b>
+    <b style="color:#dbe2ea;">캐릭터 카드 설명·페르소나·로어북에 적힌 비밀은 모델이 이미 보고 있습니다.</b>
+    거기에 "정체는 실은 ○○이다. 절대 말하지 말 것"이라고 적어 두셨다면, 비밀 탭을 켜도 그건 그대로 샙니다.
+    <b style="color:#e0a94a;">그쪽에서 잘라 내고 여기로 옮겨야</b> 합니다. 막는 건 지시문이 아니라 <b style="color:#dbe2ea;">프롬프트에 없다는 사실</b>뿐입니다.
+    </p>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — 세부 편집기 <b style="color:#dbe2ea;">[진행] 묶음 → [비밀] 탭</b>. 카드마다 종류·대상·존재 알림·단계 사다리가 있고,
+  탭 맨 아래 AI 창구에서 <b style="color:#dbe2ea;">[AI로 비밀 만들기]</b>로 통째로 만들거나 고칠 수 있습니다.
+  💬 어시스턴트에게 "아린이 사실은 감시탑 출신인 걸 3막에 밝혀지게 해줘"라고 말해도 됩니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  덧 — 시나리오레이터의 <b style="color:#a9b4c2;">막마다 붙이는 비밀</b>은 그대로 있습니다. 막에 딱 붙는 건 거기가 편하고,
+  막과 무관하거나 여러 단계로 나뉘는 건 [비밀] 탭입니다. 보장하는 방식은 양쪽이 같습니다.<br>
+  이 기능이 실제로 새지 않는다는 건 <b style="color:#a9b4c2;">테스트가 프롬프트 문자열을 통째로 뒤져 안 열린 단계의 글자가 없음을 확인</b>하는 방식으로 못 박혀 있습니다.
+  모델이 잘 참아 주길 비는 게 아니라, 애초에 실리지 않았다는 쪽입니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 의뢰판·메신저 탭 개편 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 편집기</span>
+    <span style="font-size:19px;font-weight:600;">의뢰판 · 메신저 탭 개편 — 커뮤니티 기여</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.28</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">[기여자 닉네임]</b> 님이 편집기 UI 개조본을 보내 주셨습니다. 검토해서 이식했습니다 — 고맙습니다.
+  의뢰판·메신저 탭이 <b style="color:#c98a7a;">설정이 한 덩어리로 쏟아지던 화면</b>에서
+  <b style="color:#e0a94a;">번호 붙은 섹션</b>(01 기본 정보 ~ 06 화면 꾸미기)으로 나뉘고, 칸마다 무슨 뜻인지 한 줄씩 붙었습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 상단에 <b style="color:#dbe2ea;">요약 칩</b> — 지금 몇 개가 설정돼 있는지 먼저 보입니다<br>
+  · 쓸 변수가 없으면 오류 대신 <b style="color:#dbe2ea;">빈 상태 카드 + [변수 탭으로 이동]</b> 버튼<br>
+  · <b style="color:#dbe2ea;">삭제는 맨 아래 위험 구역</b>으로 — 설정하다가 잘못 누르던 자리였습니다<br>
+  · 이 두 탭의 AI 창구는 <b style="color:#dbe2ea;">생성 상자 하나만 크게</b> 보이고, 규격서 내보내기·가져오기는
+    "외부 AI로 만들기 · 직접 생성이 안 될 때만"으로 접혀 내려갑니다. 직결 생성이 되는데 규격서까지 복사해 외부 AI를 또 돌리는 겹침을,
+    안내 문구가 아니라 <b style="color:#dbe2ea;">화면 구조로</b> 막습니다
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  받은 그대로 얹지 않고 넷을 고쳐서 넣었습니다 — 경고·성공 카드 바탕색이 안 칠해지던 CSS 변수 누락,
+  검증 리포트가 새 시작·갈림길 영역을 "작업본"으로 뭉개던 것, 직결 생성 안내에서 빠진 보증 한 줄, 어시스턴트로 가는 버튼 한 개.
+  </p>
+</div>
+
+<!-- ─────────── ③ 검증 리포트 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 편집기</span>
+    <span style="font-size:19px;font-weight:600;">검증 리포트가 "어느 탭인지"를 알려줍니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.28</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 지금까지는 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#c98a7a;">$.questBoard[0].when</span> 이라고만 떴습니다.
+    처음 만드는 분은 <b style="color:#dbe2ea;">그게 어디인지를 알 방법이 없습니다.</b> 이제 <b style="color:#e0a94a;">"의뢰판에서 확인이 필요해요"</b>라고 말하고,
+    JSON 경로는 <b style="color:#dbe2ea;">[기술 위치 보기]</b> 접기 뒤로 내려갔습니다<br>
+  · 변수가 하나도 없는 작업본에는 오류를 쏟는 대신 <b style="color:#dbe2ea;">[기본 변수 만들기]</b> 버튼을 냅니다<br>
+  · 검증이 가리키는 영역은 <b style="color:#dbe2ea;">전부 탭 이름이 있어야 한다</b>는 규칙으로 못 박았습니다 — 새 시작·갈림길·행동 제안처럼
+    갈 탭이 따로 있는데 "작업본"으로 뭉개지던 자리가 있었습니다
+  </p>
+</div>
+
+<!-- ─────────── ④ 픽스 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">그 밖의 수리 (전부 편집기 화면)</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.28</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">접힌 AI 창구에 "눌러서 펼치기"</b> — 꺾쇠(⌄) 하나로는 접혀 있다는 걸 못 알아채서, 있는 줄도 모르고 지나치던 창구가 있었습니다.
+    말로 붙였고 <b style="color:#dbe2ea;">14곳 전부</b>에 넣었습니다(몇 곳만 있으면 "여긴 왜 없지"가 되어 안 다느니만 못합니다)<br>
+  · <b style="color:#dbe2ea;">경고·성공 카드 바탕색이 안 칠해지던 것</b> — 팔레트에 색 정의 9종이 빠져 있었습니다. 카드가 투명하게 뜨던 자리<br>
+  · <b style="color:#dbe2ea;">성공 카드가 한 줄로 붙던 것</b> — "설정 확인 완료확인할 내용 1개가…" 처럼 제목과 본문이 붙어 나왔습니다<br>
+  · <b style="color:#dbe2ea;">편집기 글자에 <span style="font-family:ui-monospace,Consolas,monospace;">**별표**</span>가 그대로 보이던 것</b> — 편집기 화면은 마크다운을 안 거칩니다
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.10.0 비밀 — 모르는 건 말할 수 없다</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 번들 교체는 필요 없습니다</b> — 이번 것은 <b style="color:#dbe2ea;">플러그인만</b> 갈면 끝입니다.
+  얼터헌터 개조판·아틀리에 SimCore판 쓰시는 분도 번들은 그대로 두세요.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다.
+  비밀은 안 만들면 아무 일도 안 일어납니다(없음 = 꺼짐). 만들어 둔 봇이면 새 변수가 자동으로 채워집니다.<br>
+  <b style="color:#c98a7a;">④ 비밀을 쓰실 제작자 분께 — 이 순서로 하세요.</b>
+  <b style="color:#dbe2ea;">(1)</b> 캐릭터 카드 설명·페르소나·로어북에서 <b style="color:#dbe2ea;">비밀을 잘라 내고</b>,
+  <b style="color:#dbe2ea;">(2)</b> 세부 편집기 [진행] → [비밀] 탭에 단계로 나눠 붙이고,
+  <b style="color:#dbe2ea;">(3)</b> 1단계에는 <b style="color:#dbe2ea;">이유 없이 행동만</b> 적으세요.
+  <b style="color:#c98a7a;">(1)을 건너뛰면 켜도 샙니다</b> — 로어북에 남은 원문은 플러그인이 어쩌지 못합니다.<br>
+  <b style="color:#c98a7a;">⑤ 이미 진행 중인 채팅에 비밀을 새로 다는 경우</b> — 그 대화창엔 앞서 샌 내용이 남아 있을 수 있습니다.
+  제대로 보려면 새 채팅으로 시작하세요.<br>
+  <b style="color:#c98a7a;">⑥ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화·외부 접속이 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  이번 비밀 기능도 <b style="color:#a9b4c2;">"이게 제일 안 되는 것"이라는 이야기</b>에서 나왔습니다.
+  </p>
+</div>
+
+</div>

@@ -2,6 +2,7 @@
 
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
+const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -95,7 +96,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight' || v.id === 'secrets') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -136,6 +137,9 @@ function validateSchema(schema) {
   if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
     for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
   }
+  // 비밀 예약 이름 (v1.10.0) — sec_<id> = 열린 최고 단계(-1=아직). 조건식·상태창이 읽는다 (`sec_lina >= 1`).
+  // 같은 id의 변수/파생이 있으면 조건이 비밀이 아니라 그 변수를 읽는다 — 아래 secrets 절에서 오류로 잡는다.
+  for (const n of secretMod.secretExposedNames(schema)) allIds.add(n);
   // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
   // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
   // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
@@ -1657,6 +1661,63 @@ function validateSchema(schema) {
     }
   }
 
+  // ── secrets (비밀 v1.10.0 — 설계 docs/design-비밀.md) ──
+  // 모르는 건 말할 수 없다: 단계(tiers)가 열려야 text가 프롬프트에 실린다. 은닉이 요점이라 검증도 그 축이다 —
+  // 예약 이름 충돌(조건이 비밀 대신 변수를 읽는다)·영영 안 열리는 단계(when 없음)·빈 text(열려도 줄 게 없다)를 잡는다.
+  if (schema.secrets != null) {
+    if (!Array.isArray(schema.secrets)) err('$.secrets', 'secrets는 배열이어야 함');
+    else {
+      const secIds = new Set();
+      schema.secrets.forEach((s, i) => {
+        const p = `$.secrets[${i}]`;
+        if (!s || typeof s !== 'object') { err(p, '비밀은 객체여야 함'); return; }
+        if (s.id != null && !ID_RE.test(s.id)) err(p, `잘못된 비밀 id: '${s.id}' (영문자로 시작, 영문·숫자·_만)`);
+        const sid = s.id || `secret${i + 1}`;
+        if (secIds.has(sid)) err(p, `중복 비밀 id: '${sid}'`);
+        secIds.add(sid);
+        // 예약 이름 충돌 — sec_<id>는 세이브 예약 키이자 조건식 노출 이름
+        const rn = secretMod.secKey(sid);
+        if (ids.has(rn) || derived.some((d) => d && d.id === rn)) {
+          err(p, `'${rn}'는 이 비밀이 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+        if (s.kind != null && !secretMod.KINDS.includes(s.kind)) {
+          err(p, `kind는 ${secretMod.KINDS.join('/')} 중 하나 (현재: '${s.kind}')`);
+        }
+        if (s.tell != null && !secretMod.TELLS.includes(s.tell)) {
+          err(p, `tell은 ${secretMod.TELLS.join('/')} 중 하나 (현재: '${s.tell}')`);
+        }
+        if (s.about != null && typeof s.about !== 'string') err(p, 'about(누구·무엇의 비밀인가)은 문자열이어야 함');
+        if (s.label != null && typeof s.label !== 'string') err(p, 'label은 문자열이어야 함');
+        const kind = secretMod.KINDS.includes(s.kind) ? s.kind : 'person';
+        const tell = secretMod.TELLS.includes(s.tell) ? s.tell : secretMod.defaultTell(kind);
+        // 존재를 알리는데 누구의 비밀인지 없으면 모델이 "누가 숨기는지"를 모른다
+        if (tell === 'exists' && !String(s.about || '').trim() && !String(s.label || '').trim()) {
+          warn(p, '존재를 알리는(tell: exists) 비밀인데 about(누구·무엇)이 비어 있습니다 — 모델이 누가 숨기는지 모릅니다');
+        }
+        // 반전에 존재 신호는 스포일러다 — 막지는 않되 알린다 (제작자가 일부러 그럴 수도 있다)
+        if (kind === 'plot' && s.tell === 'exists') {
+          warn(p, '반전(plot) 비밀에 tell: exists — "숨긴 게 있다"는 신호 자체가 반전을 예고합니다. 의도가 아니면 tell을 지우세요');
+        }
+        const tiers = Array.isArray(s.tiers) ? s.tiers : null;
+        if (!tiers || !tiers.length) { err(p, '단계(tiers)가 최소 1개 필요합니다'); return; }
+        tiers.forEach((t, j) => {
+          const tp = `${p}.tiers[${j}]`;
+          if (!t || typeof t !== 'object') { err(tp, '단계는 객체여야 함'); return; }
+          // 0단계는 when 생략 = 처음부터(복선). 그 뒤 단계는 when이 없으면 영영 안 열린다
+          if (j > 0 && (typeof t.when !== 'string' || !t.when.trim())) {
+            err(tp, `${j + 1}단계에 조건(when)이 없습니다 — 이 단계부터 영영 안 열립니다`);
+          } else if (typeof t.when === 'string' && t.when.trim()) {
+            // rand() 금지 — 공개는 결정적이어야 진단·리롤·세이브가 어긋나지 않는다 (시나리오와 같은 이유)
+            checkExpr(t.when, tp + '.when', allIds, err, { allowRand: false });
+          }
+          if (typeof t.text !== 'string' || !t.text.trim()) err(tp, '단계의 text(밝혀지는 내용)가 비어 있습니다');
+          else checkTemplateRefs(t.text, tp + '.text', allIds, err);
+          if (t.notify != null && typeof t.notify !== 'string') err(tp, 'notify는 문자열이어야 함');
+        });
+      });
+    }
+  }
+
   // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
   {
     const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
@@ -1698,7 +1759,7 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
 // scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight']); // fight: 교전 게이지 칩 (v1.6.0)
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight', 'secrets']); // fight: 교전 게이지 칩 (v1.6.0) / secrets: 비밀 자물쇠 칩 (v1.10.0)
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

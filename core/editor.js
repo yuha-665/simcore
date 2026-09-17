@@ -25,6 +25,7 @@ const patchMod = require('./patch');
 const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 const { INTENSITIES } = require('./scenario');
+const secretMod = require('./secret'); // 비밀 (v1.10.0) — 종류·존재 알림 상수
 
 // 편집기 크롬 CSS — v1.7.13: 커뮤니티 UI 개조본(v1.0.7 기준, 그래파이트·얇은 선·파란 강조·반응형)의 CSS 층을 이식.
 // 개조본 DOM 전용 셀렉터(우리 DOM에 없는 클래스 1,233규칙)는 걸러냈고, 기존 클래스 재스타일·토큰·@media만 남겼다.
@@ -4034,6 +4035,24 @@ const SCHEMA_SCENARIO_RULES = [
   '- 조건식에서 `scn_act`(현재 막 id)·`scn_turns`(현재 막 경과 턴)를 쓸 수 있습니다 — 지시문·이벤트를 막에 연동할 때.',
 ];
 
+// 비밀(secrets, v1.10.0) — "모르는 건 말할 수 없다". 규격의 요점은 단계 나누기와 복선 어법이다 —
+// 여기서 AI가 0단계에 이유를 적으면 그 순간 복선이 스포일러가 된다.
+const SCHEMA_SECRET_RULES = [
+  '- 비밀(`secrets`)은 **밝혀지기 전엔 모델이 몰라야 하는 것**입니다. 단계(`tiers`)가 열려야 그 `text`가 프롬프트에 실리고, '
+  + '안 열린 단계는 프롬프트 어디에도 없습니다 — "말하지 마라"가 아니라 **모르니까 말할 수 없다**입니다.',
+  '- `kind` = `person`(인물이 숨기는 것) / `world`(아직 드러나지 않은 사실) / `plot`(이야기의 반전). 기계는 같고 어법·기본값만 다릅니다.',
+  '- `about` = 누구·무엇의 비밀인가 (인물 이름·장소). `label` = 상태창·로그에 보이는 이름 — **스포일러 없이**.',
+  '- `tell` = 존재 알림. `exists`면 "X에겐 말 못 할 사정이 있다 — 너도 내용은 모른다, 지어내지 마라"가 나가 모델이 숨기는 사람을 연기합니다. '
+  + '`none`이면 신호도 없습니다. 기본: 인물·세계 = exists, 반전 = none (**반전에 존재 신호는 예고입니다**).',
+  '- `tiers[0]` = 낌새(복선). when 생략 = 처음부터 열림. **이유 없는 행동만 쓰세요** — "왕가 문장을 보면 움찔한다"까지만, 왜는 다음 단계에. '
+  + '모델은 이유를 모른 채 그 행동을 합니다.',
+  '- `tiers[1..]` = `when`(조건식 — 플레이가 세우는 변수·`scn_act`·판정 결과, rand() 금지) + `text`(그 단계에서 밝혀지는 내용) '
+  + '+ `notify`(선택, 열리는 순간 한 줄). 공개는 누적 — 높은 단계가 열리면 아래도 함께, 한 번 열리면 안 닫힙니다.',
+  '- 조건식·상태창에서 `sec_<id>`(열린 최고 단계, -1=아직)를 읽을 수 있습니다 — `sec_lina >= 1`이면 지시문을 바꾸는 식으로.',
+  '- **카드·페르소나·로어북에 적힌 비밀은 이미 새고 있습니다.** 그쪽에서 빼고 여기에만 두세요 — 이 창구는 그 이동을 돕는 것이지 대체가 아닙니다.',
+  '- 유저 자신의 비밀(잠입 설정)도 됩니다 — `about`을 유저로, 여는 조건을 "들켰다" 변수로.',
+];
+
 // 상태창 구조(statusUI.groups/layout) — 꾸미기(CSS·커스텀 템플릿)와 창구를 나눈 쪽의 규격.
 // "무엇을 보여줄까"만 다룬다. 색·폰트·배치 HTML은 🎨 꾸미기 창구가 따로 맡는다.
 const SCHEMA_STATUS_RULES = [
@@ -4072,7 +4091,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -4102,6 +4121,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 시나리오(scenario) — 중심 이야기를 막 단위로 끌고 가는 봇이면 (선택)',
     ...SCHEMA_SCENARIO_RULES,
+    '',
+    '## 비밀(secrets) — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇이면 (선택)',
+    ...SCHEMA_SECRET_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -4242,6 +4264,25 @@ function patchIdDigest(schema) {
           ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`` : ''].filter(Boolean).join(' · ')}`
           : `${i + 1}. \`${r.set}\` = \`${r.expr}\``));
     }
+  }
+  // 비밀(v1.10.0) — 패치 대상이 아니지만 참조를 알아야 한다: 조건식이 sec_<id>를 읽고, 단계 when이 변수를 읽는다.
+  // ⚠ 내용(text)은 여기 안 싣는다 — 이 다이제스트는 제작 어시스턴트에게 가지만, 다른 프롬프트에 습관적으로 복사되면
+  //   그게 곧 유출이다. 무엇이 있는지·몇 단계인지·무슨 변수를 읽는지까지만. (인라인 구간 — 모듈을 못 부른다)
+  if (Array.isArray(schema.secrets) && schema.secrets.length) {
+    out.push('', '### 비밀 (secrets) — 패치로 못 다룹니다 ([비밀] 탭 또는 탭 단위 내보내기/가져오기). 참조만 알아 두세요',
+      ...schema.secrets.filter((s) => s && typeof s === 'object').map((s, i) => {
+        const id = s.id || `secret${i + 1}`;
+        const refs = new Set();
+        for (const t of (Array.isArray(s.tiers) ? s.tiers : [])) {
+          if (typeof t?.when !== 'string') continue;
+          for (const m of t.when.replace(/"[^"]*"|'[^']*'/g, '').matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+            if (!/^(and|or|not|true|false)$/.test(m[0])) refs.add(m[0]);
+          }
+        }
+        return `- \`${id}\` (${s.kind || 'person'}${s.about ? `, ${s.about}` : ''}) — 단계 ${(s.tiers || []).length}개, `
+          + `조건이 읽는 변수: ${[...refs].map((r) => `\`${r}\``).join(' ') || '(없음)'} — **remove 금지**. `
+          + `조건식에서 \`sec_${id}\`(열린 최고 단계, -1=아직)를 읽을 수 있습니다`;
+      }));
   }
   // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
   if (schema.calendar && typeof schema.calendar === 'object' && schema.calendar.list) {
@@ -4424,7 +4465,7 @@ function chatRules(blank) {
     ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
       '- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
       '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
-      + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭.']),
+      + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭, 비밀(밝혀지기 전엔 모델이 몰라야 하는 것 — 단계·여는 조건·존재 알림)은 [비밀] 탭.']),
     '',
   ];
 }
@@ -5130,6 +5171,8 @@ const TAB_SLICES = {
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
+  // 비밀(v1.10.0) — secrets 배열 통째 교체. 단계는 누적 사다리라 부분 교체가 어긋난다 (시나리오와 같은 이유).
+  secrets: { keys: ['secrets'], label: '비밀' },
   // 시간(v1.0 #7) — time 객체 통째 교체. 일반 패치는 계속 금지 (예약 이름·달력 전환 위험)
   // 지만 탭 왕복은 [시간] 탭 손편집과 같은 위험 수준이라 연다 — 요청서가 달력 전환 경고 동봉.
   time: { keys: ['time'], label: '시간' },
@@ -5152,6 +5195,7 @@ const TAB_WANT_PH = {
   quest: '예: 길드 의뢰판 — 등급은 F~A, 보수는 등급별 밴드, 취소하면 평판 -3, 던전 안에선 안 보임',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
+  secrets: '예: 동료 리나의 정체 — 호감 60에 사정을, 편지를 찾으면 전모를',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
 };
 
@@ -5189,6 +5233,11 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
+  else if (tabKey === 'secrets') {
+    push('secrets', schema.secrets);
+    // 비밀 수만으로는 부족하다 — AI가 비밀은 남기고 단계만 솎아내면 전모가 사라진다
+    out.push(['단계(전체)', (schema.secrets || []).reduce((n, s) => n + ((s && s.tiers) || []).length, 0)]);
+  }
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
     push('rules.events', schema.rules?.events);
@@ -5300,6 +5349,14 @@ const FEATURE_RECIPES = [
       + '막마다 표면에서 보이는 것은 direct에, 아직 숨겨진 진상은 secret에 나눠 담고, '
       + '막 전환 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
   },
+  {
+    id: 'secrets', icon: '🔒', label: '비밀',
+    desc: '밝혀지기 전엔 모델이 몰라야 하는 것 — 낌새 → 부분 → 전모, 조건이 열 때까지 프롬프트에 없음',
+    // 여는 조건이 읽을 흔적이 있어야 한다 — 변수가 하나도 없으면 단계가 열릴 계기가 없다
+    needs: (s) => ((s.vars || []).length >= 1 ? null : '여는 조건이 읽을 변수가 최소 1개 필요합니다'),
+    steps: [{ tab: 'secrets', want: '이 봇의 설정에서 밝혀지기 전엔 모델이 몰라야 하는 것(인물의 과거·세계의 진상·반전)을 1~3개 골라 '
+      + '낌새 → 부분 → 전모의 단계로 짜 주세요. 낌새는 이유 없는 행동만, 여는 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
+  },
 ];
 
 /**
@@ -5336,6 +5393,8 @@ function tabItemIds(schema, tabKey) {
     add('기념일', schema.calendar?.marks, 'label');
     // 일정 목록 연결은 스칼라지만 잃어버리면 등록 기능이 통째로 죽는다 — 신원으로 취급해 지킨다
     if (schema.calendar?.list) out.push(`일정 목록 ${schema.calendar.list}`);
+  } else if (tabKey === 'secrets') {
+    (schema.secrets || []).forEach((s, i) => out.push(`비밀 ${s?.label || s?.about || s?.id || `#${i + 1}`}`));
   } else if (tabKey === 'scenario') {
     (schema.scenario?.acts || []).forEach((a, i) => out.push(`막 ${a?.label || a?.id || `#${i + 1}`}`));
   } else if (tabKey === 'rules') {
@@ -5805,6 +5864,34 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "id": "act3", "label": "절정", "unlock": "threat >= 60", "minTurns": 8, "intensity": "절정",',
       '      "direct": "더 이상 숨길 것이 없다 — 정면 충돌을 무대 중앙에 세워라." }',
       '  ] } }',
+      '```',
+      '');
+  } else if (tabKey === 'secrets') {
+    body.push('## 비밀 규격', ...SCHEMA_SECRET_RULES, '',
+      '## 쓰는 순서 — 이 순서로 생각하면 안 새는 비밀이 나옵니다',
+      '1. 이 봇에서 **밝혀지기 전엔 모델이 몰라야 하는 것**을 고른다 (인물의 과거·세계의 진상·반전). 이미 카드에 적혀 있으면 그건 새는 중이다.',
+      '2. 비밀마다 끝(전모)을 먼저 쓰고, 거꾸로 낌새 → 부분 → 전모로 잘라 단계에 담는다.',
+      '3. 낌새 단계엔 이유 없는 행동만. 부분·전모의 조건은 위 계약표의 변수로 — 플레이가 실제로 움직이는 값이어야 합니다.',
+      '4. 종류를 고른다 — 인물·세계는 존재를 알리고, 반전은 알리지 않는다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "secrets": [',
+      '  { "id": "lina_origin", "kind": "person", "about": "리나", "label": "리나의 과거",',
+      '    "tiers": [',
+      '      { "text": "궁정 예법에 익숙하다. 왕가 문장을 보면 움찔한다." },',
+      '      { "when": "affinity >= 60", "text": "수도를 나쁜 사정으로 떠났다.", "notify": "[비밀] 리나가 수도를 떠난 사정을 조금 털어놓았다." },',
+      '      { "when": "letter_found", "text": "추방된 왕녀다. 동생이 왕위를 찬탈했다.", "notify": "[비밀] 리나의 정체가 밝혀졌다." }',
+      '    ] },',
+      '  { "id": "ruins", "kind": "world", "about": "고대 유적", "label": "유적의 정체",',
+      '    "tiers": [',
+      '      { "text": "유적 근처에서 나침반이 돈다는 소문이 있다." },',
+      '      { "when": "explored >= 3", "text": "유적은 신전이 아니라 봉인 장치다." }',
+      '    ] },',
+      '  { "id": "twist", "kind": "plot", "label": "진상",',
+      '    "tiers": [ { "when": "scn_act == \\"act3\\"", "text": "의뢰인이 곧 범인이다." } ] }',
+      '] }',
       '```',
       '');
   } else {
@@ -6394,6 +6481,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (schema.assets && !(schema.assets.packs || []).length && schema.assets.moduleManifests !== true) delete schema.assets;
     // 막을 다 지우면 scenario도 걷는다 — 같은 불변식
     if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
+    // 비밀을 다 지우면 secrets도 걷는다 — 같은 불변식 (v1.10.0)
+    if (Array.isArray(schema.secrets) && !schema.secrets.length) delete schema.secrets;
   }
   normalize();
   let firstInstallGuideDismissed = false;
@@ -6412,7 +6501,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -6969,7 +7058,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 탭 내비 묶음 (v1.7.13 개조본 이식) — 메신저·의뢰판은 우리 쪽 탭.
   // v1.9.0: 기본 → 진행 → 세계 순. 세계 묶음은 전부 선택 모듈인데 필수 흐름(변수 → 규칙) 한가운데 앉아 있어서
   // 처음 만드는 사람이 [규칙·이벤트]를 못 보고 규칙을 변수 설명에 적었다 (실기 제보 — 얼추 돌다가 정산에서 깨짐).
-  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
+  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
   // 만드는 순서 띠 (v1.9.0) — 3층 머리에. 처음 설치 순서(1층)와 같은 모양으로 "변수 → AI 설정 → 규칙 → 상태창"
   const DEEP_FLOW = [
     ['vars', '① 변수', '추적할 값을 만들어요 — 설명(desc)에는 뜻만, 언제 어떻게 바뀌는지는 ③에'],
@@ -7717,6 +7806,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.questBoard\b/, '의뢰판', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
+    [/^\$\.secrets\b/, '비밀', true],
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -9892,6 +9982,107 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('button', { class: 'sce-btn sce-danger', onclick: () => {
         delete schema.scenario; rerender();
       } }, '시나리오 삭제')));
+    wrap.appendChild(aiTools());
+    return wrap;
+  }
+
+  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다. 규칙 #3: 엔진 기능엔 편집기 칸. 설계 docs/design-비밀.md
+  // 의뢰판·메신저와 같은 번호 섹션 골격(sce-board-*)을 그대로 쓴다 — 비밀 하나 = 카드 하나, 단계는 카드 안의 사다리.
+  function tabSecrets() {
+    const wrap = h('div', { class: 'sce-board-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 비밀 만들기'),
+          h('small', {}, '비밀의 단계·여는 조건·존재 알림 설정을 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-ai-fold-more' },
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('secrets')));
+    const KIND_OPTS = [['person', '인물 — 누군가 숨기는 것'], ['world', '세계 — 아직 드러나지 않은 사실'], ['plot', '반전 — 이야기의 진상']];
+    const TELL_OPTS = [['', '(종류 기본 — 인물·세계는 알림, 반전은 안 알림)'], ['exists', '알림 — "숨기는 게 있다"만'], ['none', '안 알림 — 신호도 없음']];
+    const list = Array.isArray(schema.secrets) ? schema.secrets : [];
+    const newSecret = (n) => ({ id: `secret${n}`, kind: 'person', about: '', tiers: [{ text: '' }, { when: '', text: '' }] });
+
+    wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+      h('h3', {}, '비밀'),
+      h('p', {}, '밝혀지기 전엔 모델이 몰라야 하는 것. 단계의 조건이 열려야 그 글이 프롬프트에 실리고, 안 열린 글은 프롬프트 어디에도 없어요 — 모르는 건 말할 수 없으니까요.')),
+      list.length ? h('div', { class: 'sce-board-summary' },
+        h('span', {}, `비밀 ${list.length}개`),
+        h('span', {}, `단계 ${list.reduce((n, s) => n + ((s && s.tiers) || []).length, 0)}개`)) : null));
+    // 기능의 절반 — 카드·페르소나에 적힌 비밀은 심코어 밖이라 이미 새고 있다. 옮기라고 말해 주지 않으면 "켰는데 왜 새냐"가 된다
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '⚠ 캐릭터 카드·페르소나·로어북에 적힌 비밀은 모델이 이미 봅니다. 그쪽에서 잘라 내고 여기로 옮겨야 효과가 있어요. '
+      + '"말하지 마라"는 지시가 막는 게 아니라, 프롬프트에 없는 것이 유일한 보장입니다.'));
+
+    if (!list.length) {
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '🔒'),
+        h('div', {}, h('h4', {}, '아직 비밀이 없어요'),
+          h('p', {}, '인물의 과거, 세계의 진상, 이야기의 반전 — 조건이 맞을 때까지 모델이 몰라야 하는 것을 낌새 → 부분 → 전모로 적어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => { schema.secrets = [newSecret(1)]; rerender(); } }, '비밀 만들기')));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
+
+    list.forEach((s, i) => {
+      if (!s || typeof s !== 'object') return;
+      s.tiers = Array.isArray(s.tiers) ? s.tiers : [];
+      const kind = secretMod.KINDS.includes(s.kind) ? s.kind : 'person';
+      const sid = s.id || `secret${i + 1}`;
+      const card = h('article', { class: 'sce-board-section', 'data-sce-validation-path': `$.secrets[${i}]` });
+      card.appendChild(h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, String(i + 1).padStart(2, '0')),
+        h('div', { class: 'sce-board-section-title' }, s.label || s.about || sid),
+        h('div', { class: 'sce-board-section-copy' }, `조건식·상태창에서 sec_${sid} = 열린 최고 단계 (−1이면 아직)`),
+        grip(list, i, rerender)));
+      const body = h('div', { class: 'sce-board-section-body' });
+      body.appendChild(h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('ID', bindInput(s.id, (x) => { s.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `secret${i + 1}` }),
+          '영문 식별자. 예약 이름 sec_<ID>가 생겨요.'),
+        field('종류', bindSelect(kind, KIND_OPTS, (x) => { s.kind = x; rerender(); }),
+          '기계는 같아요 — 어법과 기본값만 달라요.'),
+        field('누구·무엇의 비밀', bindInput(s.about, (x) => { s.about = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '리나 / 고대 유적 / (반전은 비워도)' }), '존재를 알릴 때 "누가 숨기는지"로 쓰여요.'),
+        field('표시 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '리나의 과거' }), '상태창 자물쇠 칩·변화 로그에 보이는 이름 — 스포일러 없이.'),
+        field('존재 알림', bindSelect(s.tell ?? '', TELL_OPTS, (x) => { if (x) s.tell = x; else delete s.tell; rerender(); }),
+          kind === 'plot'
+            ? '반전은 "숨긴 게 있다"는 신호 자체가 예고예요 — 기본은 안 알림.'
+            : '알리면 모델이 "숨기는 사람"을 연기하되, 내용은 못 지어내요.')));
+
+      const tiersBox = h('div', { class: 'sce-board-stack sce-board-workgroup' });
+      tiersBox.appendChild(h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '밝혀지는 순서'),
+        h('span', {}, '낮은 단계부터 누적으로 공개돼요. 높은 단계 조건이 먼저 참이 되면 그 아래도 함께 열리고, 한 번 열리면 안 닫혀요.')));
+      s.tiers.forEach((t, j) => {
+        if (!t || typeof t !== 'object') return;
+        const row = h('div', { class: 'sce-board-field-grid', 'data-sce-validation-path': `$.secrets[${i}].tiers[${j}]` });
+        row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' },
+          h('strong', {}, j === 0 ? '1단계 — 낌새 (복선)' : `${j + 1}단계`),
+          h('span', {}, j === 0
+            ? '처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
+            : '조건이 참이 되는 순간 열려요.')));
+        if (j > 0) {
+          row.appendChild(field('여는 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: 'affinity >= 60 / letter_found / scn_act == "act3"' }),
+            '플레이가 세우는 변수로. rand()는 안 돼요 — 우연에 걸려면 랜덤 이벤트가 세운 변수를 읽게 하세요.', true));
+        }
+        row.appendChild(field('밝혀지는 내용', bindArea(t.text, (x) => { t.text = x; rerender(); },
+          j === 0 ? '궁정 예법에 익숙하다. 왕가 문장을 보면 움찔한다.' : '수도를 나쁜 사정으로 떠났다.'),
+          '이 단계가 열리면 모델에게 가는 글. 열리기 전엔 프롬프트 어디에도 없어요.', true));
+        row.appendChild(field('열릴 때 통지', bindInput(t.notify, (x) => { t.notify = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '[비밀] 리나가 과거를 조금 털어놓았다.' }), '다음 전송에 한 줄로 실려요. 비워도 돼요.', true));
+        row.appendChild(h('div', { class: 'is-wide' }, grip(s.tiers, j, rerender)));
+        tiersBox.appendChild(row);
+      });
+      tiersBox.appendChild(addBtn('단계 추가', () => { s.tiers.push({ when: '', text: '' }); rerender(); }));
+      body.appendChild(tiersBox);
+      card.appendChild(body);
+      wrap.appendChild(card);
+    });
+    wrap.appendChild(h('div', {}, addBtn('비밀 추가', () => { list.push(newSecret(list.length + 1)); schema.secrets = list; rerender(); })));
     wrap.appendChild(aiTools());
     return wrap;
   }
@@ -14427,7 +14618,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, secrets: tabSecrets, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body);
   }
@@ -14455,6 +14646,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.actions')) return '액션';
       if (p.startsWith('$.checks')) return '판정';
       if (p.startsWith('$.scenario')) return '시나리오';
+      if (p.startsWith('$.secrets')) return '비밀';
       return '작업본';
     };
     const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`

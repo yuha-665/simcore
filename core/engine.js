@@ -25,6 +25,7 @@ const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
+const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -120,6 +121,8 @@ function initState(schema, opts = {}) {
   }
   // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
   if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
+  // 비밀(v1.10.0)도 같은 계열 — sec_<id> = -1 (아직 하나도 안 열림)
+  secretMod.ensureSecretKeys(schema, vars);
   const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -197,6 +200,8 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 비밀 (v1.10.0) — 진행 중 세이브에 나중에 켜면 "아직 하나도"에서 시작한다 (밝혀진 것은 소급하지 않는다)
+  secretMod.ensureSecretKeys(schema, state.vars);
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
@@ -883,6 +888,14 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (scnBlock) lines.push(scnBlock);
   }
 
+  // 3.5.6 비밀 (v1.10.0) — 열린 단계의 text + 존재 알림만. 안 열린 단계는 프롬프트 어디에도 없다.
+  // 은닉은 구조가 보장한다 (design-비밀 §3). 시나리오와 같은 층·같은 제외 규칙.
+  // ⚠ 보조 프롬프트(buildAuxPrompt)에는 아무것도 안 간다 — 보조는 변수만 세우면 되고 내용을 볼 이유가 없다.
+  if (!isSetupPending(schema, state)) {
+    const secBlock = secretMod.secretInjectionText(schema, state.vars, rt);
+    if (secBlock) lines.push(secBlock);
+  }
+
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
   if (state.meta.pendingChoice && pendingChoiceEvent(schema, state)) {
     lines.push(DEFAULT_CHOICE_WAIT);
@@ -1462,6 +1475,23 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
       if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
       firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
+    }
+  }
+
+  // 8.6 비밀 단계 열기 (v1.10.0) — 이벤트(⑦·⑧)·막 전환(8.5) 뒤라 이번 턴이 세운 변수·막을 조건이 바로 읽는다.
+  // 참인 가장 높은 단계까지 한 번에 연다 (편지를 찾았으면 낌새 단계는 지나갔다). 열린 건 안 내려간다.
+  // 전환은 원장(changeLog)에 남긴다 — 하이라이트 카드(🔓)·변화 로그·보조 원장이 한 줄에서 그려진다 (시나리오와 같은 길).
+  // ⚠ 원장에 남기는 것은 라벨·단계 번호뿐 — 내용(text)은 여기서도 안 샌다 (원장은 보조 AI에게도 간다).
+  {
+    const lookupS = makeLookup(schema, state.vars);
+    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS)) {
+      const s = tr.secret;
+      changeLog.push({ id: s.label || s.about || s.id, from: tr.from < 0 ? '아직' : `${tr.from + 1}단계`,
+        to: `${tr.to + 1}/${s.tiers.length}단계`, source: `secret:${s.id}` });
+      for (const n of tr.notifies) state.meta.pendingNotifies.push(n);
+      firedEvents.push(`secret:${s.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
+      // 단계별 키도 — 진단의 "긴 판이면 열리나" 재확인은 어느 단계가 열렸는지를 알아야 한다 (1단계 낌새는 첫 턴에 늘 열린다)
+      for (let k = tr.from + 1; k <= tr.to; k++) firedEvents.push(`secret:${s.id}:${k}`);
     }
   }
 

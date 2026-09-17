@@ -157,7 +157,7 @@ ck('실험대 스키마 유효', validateSchema(BASE).ok, validateSchema(BASE).e
 
 // ── 편집기 만드는 순서 (같은 제보) ──
 {
-  ck('★ 3층 묶음 순서 기본 → 진행 → 세계 → 자동화', src.includes("[['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'actions', 'checks', 'time', 'setup']], ['세계', ["), '');
+  ck('★ 3층 묶음 순서 기본 → 진행 → 세계 → 자동화', src.includes("[['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'actions', 'checks', 'time', 'setup']], ['세계', ["), '');
   ck('묶음 색은 이름을 따라간다 (2번째=진행=warning)', src.includes('.sce-tab-group:nth-child(2) { --g:var(--sce-warning); }') && src.includes('.sce-tab-group:nth-child(3) { --g:var(--sce-success); }'), '');
   ck('★ 만드는 순서 띠 — 변수 → AI 설정 → 규칙·이벤트 → 상태창', src.includes("['vars', '① 변수'") && src.includes("['ai', '② AI 설정에서 열기'") && src.includes("['rules', '③ 규칙·이벤트'") && src.includes("['status', '④ 상태창'"), '');
   ck('띠가 3층 본문 머리에', src.includes("h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body)"), '');

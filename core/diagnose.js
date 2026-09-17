@@ -8,6 +8,7 @@ const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig } = require('./scenario');
+const { secretsConfig, secKey } = require('./secret'); // 비밀 (v1.10.0) — 영영 안 열리는 단계 진단
 const { evaluate, truthy, referencedVars } = require('./expr');
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
@@ -439,7 +440,9 @@ function diagnose(schema, opts = {}) {
   const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id),
     ...(TCFG ? TCFG.expose : []),
     // 시나리오 노출 — scn_turns를 관측해야 그걸 읽는 조건의 병목(bottleneck)을 짚을 수 있다
-    ...(SCN ? ['scn_turns'] : [])];
+    ...(SCN ? ['scn_turns'] : []),
+    // 비밀 노출 (v1.10.0) — sec_<id>(열린 최고 단계)를 관측해야 "마지막 단계가 열렸나"를 판마다 읽을 수 있다
+    ...(secretsConfig(schema) || []).map((s) => secKey(s.id))];
   const note = (id, n) => {
     if (typeof n !== 'number' || !isFinite(n)) return;
     const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
@@ -912,6 +915,44 @@ function diagnose(schema, opts = {}) {
           + '기승전결이 초반에 소진되면 남은 판 내내 절정 이후를 맴돕니다. '
           + '막의 minTurns(최소 체류)를 올리거나 해금 문턱을 높여 이야기 속도를 잡으세요.', 'scenario');
       }
+    }
+  }
+
+  // ── 3.5 닫힌 비밀 (v1.10.0) — 마지막 단계가 판 안에 한 번도 안 열린 비밀. 은닉 설계라 결함의 값이 크다:
+  // 그 단계의 내용은 플레이어가 영영 못 본다. 변명 사다리는 닫힌 막과 같다 (설정 게이트 → 긴 판 → AI 문턱 → 진짜 결함).
+  // 단계는 누적 사다리라 **첫 안 열린 단계 하나만** 짚는다 — 뒤는 같은 문제의 그림자다.
+  for (const s of (secretsConfig(schema) || [])) {
+    const last = s.tiers.length - 1;
+    if (last < 1) continue;                                   // 단계 하나(=복선뿐)면 열릴 것이 없다
+    const o = obs[secKey(s.id)];
+    const reached = o && isFinite(o.max) ? o.max : -1;
+    if (reached >= last) continue;
+    const next = reached + 1;
+    const tier = s.tiers[next];
+    const name = s.label || s.about || s.id;
+    const rest = last - next;
+    const restNote = rest > 0 ? ` (그 뒤 ${rest}개 단계도 함께 잠겨 있습니다 — 원인은 이쪽 하나)` : '';
+    const b = bottleneck(tier.when, obs);
+    const where = b
+      ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
+        + (b.pct != null ? ` (${b.pct}%)` : '')
+      : `여는 조건: ${tier.when || '(없음)'}`;
+    const gate = gatedBySetting(tier.when, schema, writers, moved, null, finalStates);
+    if (gate && (gate.byPlayer || gate.byAI)) {
+      add('low', '설정 의존', `비밀 '${name}'의 ${next + 1}단계는 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 안 열립니다`
+        + (gate.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
+          : ' — 이 값은 보조 AI가 서사를 보고 세웁니다. 시뮬레이션에는 AI가 없어 영영 시작값인 것이고, 결함이 아닐 수 있습니다')
+        + restNote, null);
+    } else if (onlyLonger(`secret:${s.id}:${next}`, 'event')) {
+      add('low', '후반부 비밀', `비밀 '${name}'의 ${next + 1}단계는 ${turns}턴 안에 안 열렸습니다 — ${where}. ${laterNote}${restNote}`, null);
+    } else if (aiGated(schema, b, turns)) {
+      add('low', 'AI 담당 문턱', `비밀 '${name}'의 ${next + 1}단계 미공개 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 서사에 따라 `
+        + '움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — **문턱을 내리지 마세요.** '
+        + `실제로 열리는지는 채팅을 몇 턴 돌려서 보세요.${restNote}`, null);
+    } else {
+      add('mid', '닫힌 비밀', `비밀 '${name}'의 ${next + 1}단계가 영영 안 열립니다 — ${where}. `
+        + '여는 조건이 읽는 값을 올릴 경로(이벤트·판정·액션)를 주거나 문턱을 내리세요. '
+        + `이 단계부터의 내용은 플레이어가 영영 못 봅니다.${restNote}`, 'secrets');
     }
   }
 

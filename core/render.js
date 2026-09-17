@@ -6,6 +6,7 @@ const { evaluate, truthy } = require('./expr');
 const { exposedDefs } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
+const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -78,6 +79,10 @@ const BASE_CSS = `
 .sim-choice-tag{font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
 .sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
 .sim-scn-prog{opacity:.55;font-size:.9em}
+.sim-secs{display:inline-flex;flex-wrap:wrap;gap:6px}
+.sim-sec{display:inline-flex;align-items:baseline;gap:5px;padding:2px 9px;border-radius:8px;background:rgba(128,128,128,.12);border:1px dashed rgba(128,128,128,.35);font-size:.84em;opacity:.85}
+.sim-sec.is-open{border-style:solid;opacity:1}
+.sim-sec-prog{opacity:.55;font-size:.9em}
 .sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
 .sim-card{padding:7px 11px;border:1px solid rgba(128,128,160,.35);border-left:3px solid rgba(128,140,220,.9);border-radius:8px;font-size:.93em;line-height:1.45}
 .sim-card.good{border-left-color:rgba(80,180,120,.95)}
@@ -299,7 +304,7 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
   const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:'));
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'));
   if (!keep.length) return '';
   const cards = [];
   // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는
@@ -309,6 +314,11 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
   for (const c of keep) {
     if (!c.source?.startsWith('scenario:') || varById[c.id]) continue;
     cards.push(`<div class="sim-card">📖 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
+  }
+  // 비밀 단계 열림 (v1.10.0) — 밝혀지는 순간도 머리기사다. 원장엔 라벨·단계 번호만 있어 내용은 카드에도 안 샌다.
+  for (const c of keep) {
+    if (!c.source?.startsWith('secret:') || varById[c.id]) continue;
+    cards.push(`<div class="sim-card good">🔓 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
   }
   // 판정 요약줄 — 성패가 색을 정한다 (성공 계열 초록 / 실패 계열 붉음).
   // ⚠ 등급 효과의 변수 변화도 source가 check:라서, "요약줄 = id가 변수가 아닌 것"으로 가른다
@@ -378,6 +388,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state),
     scenario: scenarioChipHtml(schema, state.vars),
+    secrets: secretChipHtml(schema, state.vars, esc), // {secrets} = 비밀 자물쇠 칩 (v1.10.0, 없으면 빈 문자열)
     fight: fightChipHtml(state.vars, esc) };   // {fight} = 교전 게이지 칩 (교전 없으면 빈 문자열)
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
@@ -442,6 +453,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
     if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
     if (extras.fight) inner += `<div>${extras.fight}</div>`;       // 교전 게이지도 머리에 (v1.6.0)
+    if (extras.secrets) inner += `<div>${extras.secrets}</div>`;   // 비밀 자물쇠도 머리에 (v1.10.0) — 수집 요소
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
@@ -814,6 +826,7 @@ function renderPanelTemplate(schema, state, tpl) {
   const extras = { commands: commandsHtml(schema), uid: 'scg',
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
     scenario: scenarioChipHtml(schema, state.vars),
+    secrets: secretChipHtml(schema, state.vars, esc), // {secrets} = 비밀 자물쇠 칩 (v1.10.0, 없으면 빈 문자열)
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';

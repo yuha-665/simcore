@@ -98,6 +98,9 @@ const SCHEMA = {
   party: { label: '편성', roster: 'bag', tabs: [{ id: 'main', label: '편성', slots: [{ var: 'mood', label: '전위' }], actions: ['rest'] }] },
   assets: { packs: [{ id: 'p1', sep: '_', format: '<img="{name}">', slots: [{ id: 'who', label: '인물', values: ['Hiromi'] }] }] },
   suggest: { count: 2 },
+  // 비밀 (v1.10.0) — [비밀] 탭이 채워진 카드(종류·about·단계 사다리)까지 그리게 한다 (빈 상태만이 아니라)
+  secrets: [{ id: 'gold_src', kind: 'world', about: '재정의 출처', label: '돈의 비밀',
+    tiers: [{ text: '장부에 이상한 항목이 있다.' }, { when: 'gold >= 500', text: '재정은 밀수로 굴러간다.', notify: '[비밀] 밀수 장부가 드러났다.' }] }],
   statusUI: { mode: 'auto', layout: 'stack', groups: [{ label: '상태', items: [{ var: 'gold', bar: true, max: 9999 }, { var: 'mood' }] }] },
   updater: { model: 'aux', allow: [{ id: 'gold', maxGain: 50 }, { id: 'mood' }] },
   setup: { steps: [{ id: 's1', ask: '이름은?', set: 'name' }] },
@@ -123,7 +126,7 @@ ck('★ 편집기가 예외 없이 뜬다', !bootErr, bootErr && (bootErr.messag
 
 if (ed) {
   // ── 심층 편집 11탭 — 탭 버튼을 실제로 눌러 본다 ──
-  const DEEP = ['변수', '명령', '상태창', '편성표', '달력', '규칙·이벤트', '액션', '판정', '시간', '새 시작', 'AI 설정'];
+  const DEEP = ['변수', '명령', '상태창', '편성표', '달력', '규칙·이벤트', '비밀', '액션', '판정', '시간', '새 시작', 'AI 설정'];
   // 심층 편집 접이를 편다 (닫혀 있으면 탭 버튼이 안 그려진다)
   const openLower = () => {
     for (const d of findAll(container, (e) => e.tagName === 'DETAILS' && e.className.includes('sce-lower'))) d.open = true;

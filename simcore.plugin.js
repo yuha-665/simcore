@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.26
-//@display-name SimCore (시뮬 엔진) v1.9.26 모듈 팩만 받는 봇도 삽입 주체를 고른다
+//@version 1.9.27
+//@display-name SimCore (시뮬 엔진) v1.9.27 잘린 마커 때문에 상태창이 실종되던 것
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,16 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.9.27 ──────────────────────────────────────────────
+// **잘린 마커를 마커로 세던 것** — 포켓리스 제보(2026-09-16): 상태창이 안 뜨고 답변 끝에 `⟦simcore:`만 덩그러니 남는다
+// (기본 새 시뮬도 동일). 마커가 붙은 자리는 멀쩡한데, 스트리밍 조각이 `⟦simcore:12⟧` 한가운데서 잘린 채 저장되면 꼬리가
+// `⟦simcore:`로 끝난다. 우리 판정이 includes('⟦simcore:') 하나였던 게 화근 — **잘린 꼬리도 "마커 있음"**으로 읽혀
+// 그물 네 개가 한꺼번에 풀렸다: ① output이 "이미 있네" 하고 성한 마커를 안 붙임 ② display가 MARKER_RE에 안 걸려
+// 상태창을 못 그림(그래서 꼬리 글자만 남아 보임) ③ 마커 유실 복구가 "이미 있다"며 손을 뗌 — 바로 이런 사고를 위한
+// 그물인데 같은 검사라 같이 눈이 멀었다 ④ beforeRequest·맥락 추출(루아 브리지 포함)의 마커 제거가 꼬리를 못 지워 모델에게 샘.
+// → 판정은 완성형만(hasMarker = /⟦simcore:\d+⟧/), 지울 땐 꼬리까지(stripMarkers), 붙일 땐 걷어내고 끝에 하나만.
+// 이미 잘린 채 저장된 메시지는 복구 그물(4초·12초)이 꼬리를 갈아 성한 마커로 세운다. test-marker.js.
 //
 // ── v1.9.26 ──────────────────────────────────────────────
 // **모듈 팩만 받는 봇의 삽입 주체** — 실기(2026-09-14): 모듈 팩 병합은 됐는데 "메인·보조를 정할 수가 없어 맨 위 에셋 하나만
@@ -32906,6 +32916,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
+  // ── 완성된 ⟦simcore:N⟧만 마커다 (v1.9.27) ──────────────────
+  // 포켓리스 제보(2026-09-16): 상태창이 안 뜨고 답변 끝에 `⟦simcore:`만 덩그러니 남는다.
+  // 스트리밍 조각이 마커 한가운데서 잘린 채 저장되면 꼬리가 `⟦simcore:`로 끝나는데,
+  // 예전엔 판정이 includes('⟦simcore:') 하나여서 **잘린 꼬리도 "마커 있음"**으로 읽혔다.
+  // 그 한 줄이 그물 네 개를 동시에 풀었다:
+  //   ① output이 "이미 있네" 하고 성한 마커를 안 붙인다  ② display는 MARKER_RE에 안 걸려 상태창을 못 그린다
+  //   ③ 마커 유실 복구가 "이미 있다"며 손을 뗀다 (바로 이 사고를 위한 그물인데)
+  //   ④ beforeRequest·맥락 추출의 마커 제거가 꼬리를 못 지워 모델에게 새어 나간다
+  // → 판정은 완성형만(hasMarker), 꼬리는 지우고 새로 붙인다(stripMarkers).
+  const MARKER_ONE_RE = /⟦simcore:\d+⟧/;    // /g는 lastIndex를 끌고 다녀 test()에 쓰면 안 된다
+  // 끝에서 잘린 마커 — `⟦`부터 `⟦simcore:123`까지 어느 지점에서 잘렸든 (앞의 빈 줄까지 함께)
+  const MARKER_TAIL_RE = /\n*⟦(?:s(?:i(?:m(?:c(?:o(?:r(?:e(?::\d*)?)?)?)?)?)?)?)?$/;
+  const hasMarker = (t) => typeof t === 'string' && MARKER_ONE_RE.test(t);
+  const stripMarkers = (t) => (typeof t === 'string'
+    ? t.replace(MARKER_RE, '').replace(MARKER_TAIL_RE, '').trimEnd()
+    : t);
   const SCHEMA_LORE_COMMENT = '⚙simcore';
 
   // ── 개조 번들 (v1.0.5) — 로어북+정규식을 한 파일로 배포하고 한 번에 교체 적용 ──
@@ -33397,6 +33423,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       "    if #parts > 0 then hist = '[앞선 대화 흐름 — 참고용]\\n' .. table.concat(parts, '\\n') end",
       '  end',
       "  narr = string.gsub(narr, '⟦simcore:%d+⟧', '')",
+      // 잘려 저장된 꼬리(`⟦simcore:` · `⟦simcore:12`)도 지운다 — 보조에게 새면 안 된다 (v1.9.27)
+      "  narr = string.gsub(narr, '⟦simcore:%d*$', '')",
       '  local prompt = simcoreFill(id, tpl)',
       "  prompt = string.gsub(prompt, '⟦NARR⟧', function() return narr end)",
       "  prompt = string.gsub(prompt, '⟦USER⟧', function() return user end)",
@@ -33836,7 +33864,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
     // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
     for (const m of messages ?? []) {
-      if (m && typeof m.content === 'string') m.content = m.content.replace(MARKER_RE, '').trimEnd();
+      if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);
     }
     if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
 
@@ -34117,8 +34145,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const chat = await Risuai.getChatFromIndex(ca, ci);
         const msg = chat?.message?.[outIndex];
         if (!msg || msg.role !== 'char') return;
-        if (typeof msg.data !== 'string' || msg.data.includes('⟦simcore:')) return;
-        msg.data += `\n\n⟦simcore:${outIndex}⟧`;
+        if (typeof msg.data !== 'string' || hasMarker(msg.data)) return;
+        // 잘린 꼬리(`⟦simcore:`)가 남아 있으면 지우고 성한 것으로 갈아 붙인다 (v1.9.27 포켓리스)
+        msg.data = stripMarkers(msg.data) + `\n\n⟦simcore:${outIndex}⟧`;
         await Risuai.setChatToIndex(ca, ci, chat);
         console.log(`[simcore] 마커 유실 복구 (${label}):`, outIndex);
       } catch (e) { console.log('[simcore] 마커 복구 실패:', e.message); }
@@ -34156,7 +34185,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const chat = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
       const msg = chat?.message?.[s.outIndex];
       if (msg && msg.role === 'char' && typeof msg.data === 'string') {
-        const bare = msg.data.replace(MARKER_RE, '').trimEnd();
+        const bare = stripMarkers(msg.data);
         if (bare) return bare;
       }
     } catch { /* 저장 전이거나 읽기 실패 — null로 */ }
@@ -34184,7 +34213,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           }
         }
         // 저장 실물이 없으면(비정상·테스트 하네스) 마지막 부분 텍스트로라도 굴린다
-        if (text == null) text = s.content.replace(MARKER_RE, '').trimEnd();
+        if (text == null) text = stripMarkers(s.content);
         lastSettledKey = s.key;
         const chat = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
         const r = await processTurnOutput(s.chaIdx, s.chatIdx, s.outIndex, text, chat);
@@ -34239,7 +34268,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       let streaming = false;
       let outIndex = msgs.length;
       if (last && last.role === 'char' && typeof last.data === 'string') {
-        const bare = last.data.replace(MARKER_RE, '').trimEnd();
+        const bare = stripMarkers(last.data);
         // ① 리수의 깃발이 으뜸 — chat.isStreaming은 스트림 시작에 true, finally에 false
         //    (index.svelte.ts 실측: 1.8.1·1.11.2 동일). 글자 비교와 달리 카드 정규식에 안 흔들린다.
         // ② 깃발이 없는 옛 리수: 마지막 char 글이 이번 스트림의 부분 텍스트일 때만 글자 비교
@@ -34252,22 +34281,25 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         }
       }
       outIndexRef = outIndex;
+      // 들어온 글에 마커 자국이 있으면(우리 반환값을 도로 먹이는 프론트·잘려 저장된 꼬리) 전부 걷고
+      // 우리가 끝에 하나만 새로 붙인다 — "마커는 완성형 하나, 항상 끝" (v1.9.27)
+      const body = stripMarkers(content);
       if (streaming) {
         deferred = true;
-        scheduleOutputSettle(chaIdx, chatIdx, outIndex, content);
+        scheduleOutputSettle(chaIdx, chatIdx, outIndex, body);
         lastOutIndex = outIndex;
-        return content.includes('⟦simcore:') ? content : content + `\n\n⟦simcore:${outIndex}⟧`;
+        return body + `\n\n⟦simcore:${outIndex}⟧`;
       }
       // 판정이 빗나가 청크마다 여기로 떨어져도 processTurnOutput의 턴당 1회 가드가 두 번째부터
       // 막는다 (v1.7.5) — 마커만 붙어 나간다.
-      const r = await processTurnOutput(chaIdx, chatIdx, outIndex, content, chat);
+      const r = await processTurnOutput(chaIdx, chatIdx, outIndex, body, chat);
       lastOutIndex = outIndex;
       return r.content + `\n\n⟦simcore:${outIndex}⟧`;
     } catch (e) {
       console.log('[simcore] output 오류:', e.message);
       // 실패해도 마커는 붙인다 — 상태는 못 굴렸지만 상태창까지 죽을 이유는 없다
       // (표시 핸들러는 마커가 있으면 현재 상태를 그린다. 마커가 없으면 그 메시지의 상태창이 영영 실종)
-      return outIndexRef != null ? content + `\n\n⟦simcore:${outIndexRef}⟧` : content;
+      return outIndexRef != null ? stripMarkers(content) + `\n\n⟦simcore:${outIndexRef}⟧` : content;
     } finally {
       // 스트리밍 확정이 걸려 있으면 busy를 유지한다 — finalize의 finally가 푼다
       if (!deferred) {
@@ -34478,7 +34510,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       content = content.replace(/<(m?img)="([^"\n]+)">/g,
         (_, t, n) => `<${t}="${n.replace(/\s+/g, ' ').trim()}">`);
     }
-    if (!session || !content.includes('⟦simcore:')) return content;
+    if (!session) return content;
+    // 잘린 마커 꼬리는 화면에서도 치운다 (v1.9.27 포켓리스 — 답변 끝에 `⟦simcore:`가 덩그러니).
+    // 상태창 자체는 유실 복구가 성한 마커를 도로 붙인 다음 렌더부터 선다.
+    content = content.replace(MARKER_TAIL_RE, '');
+    if (!hasMarker(content)) return content;
     const renderFor = (idxStr) => {
       try {
         // 마지막 메시지의 마커는 실시간 상태, 과거 마커는 해당 시점 스냅샷 (v1.0 #1 —
@@ -35458,7 +35494,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       const msgs = (await Risuai.getChatFromIndex(chaIdx, chatIdx))?.message ?? [];
-      return msgs.slice(-4).map((m) => String(m.data || '').replace(MARKER_RE, '').trim())
+      return msgs.slice(-4).map((m) => stripMarkers(String(m.data || '')).trim())
         .filter(Boolean).join('\n---\n').slice(-2400);
     } catch { return ''; }
   }

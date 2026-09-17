@@ -92,7 +92,12 @@ const mk = (packs) => ({
     && src.includes('<summary>⚠ 경고 ${items.length}건 — 눌러서 펼치기</summary>'), '');
   ck('★ 경고 한 건이면 접지 않는다', src.includes('if (items.length === 1) return row(items[0]);'), '');
   ck('★ 접기 상태가 다시 그려도 유지', src.includes('let panelWarnOpen = false;') && src.includes('panelWarnOpen = warnFold.open;'), '');
-  ck('★ 편집기 라이브 리포트는 2건부터 접는다', src.includes('if (v.warnings.length > 1) {') && src.includes('⚠ 경고 ${v.warnings.length}건 — 눌러서 펼치기'), '');
+  // ⚠ 여기서 박을 것은 **문턱(2건부터)과 접힘 상태 유지**지 문구가 아니다 — v1.9.28 UI 개편이
+  // 편집기 쪽 문구만 "확인할 내용 N개"로 바꿨는데 문구까지 박아 둔 탓에 동작이 멀쩡한데도 깨졌다.
+  // 건수가 요약줄에 보이는지까지만 본다 (몇 건인지 모르면 펼칠지 판단할 수가 없다).
+  ck('★ 편집기 라이브 리포트는 2건부터 접는다', src.includes('if (v.warnings.length > 1) {'), '');
+  ck('★ 편집기 접기 요약줄에 건수가 보인다',
+    /<summary class="sce-warn">[^<]*\$\{v\.warnings\.length\}[^<]*<\/summary>/.test(src), '');
   ck('★ 짧으면 접지 않는다 (SHOW+2 이하는 그대로)', src.includes('items.length <= SHOW + 2'), '');
   ck('지적 본문을 이스케이프한다', src.includes('${escapeText(e.path)} — ${escapeText(e.msg)}'), '');
   ck('접기 요약 CSS 존재', src.includes('.sc-report-more > summary'), '');

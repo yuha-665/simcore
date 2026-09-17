@@ -39,6 +39,17 @@ const CSS = `
   --sce-accent-strong:var(--sc-accent-strong, #4f7fe8); --sce-focus:var(--sc-focus, #9ac2ff);
   --sce-success:var(--sc-success, #79d99a); --sce-warning:var(--sc-warning, #f1cb72);
   --sce-danger:var(--sc-danger, #ff9292); --sce-danger-bg:var(--sc-danger-bg, #3a2225);
+  /* 경고·성공 바탕 (v1.9.28) — 검증 리포트 카드가 쓴다. 없으면 var()가 무효가 되고
+     그걸 감싼 color-mix까지 통째로 죽어 바탕이 아예 안 칠해진다 (기여본에도 없던 값) */
+  --sce-warning-bg:var(--sc-warning-bg, #3a3322); --sce-success-bg:var(--sc-success-bg, #223a2b);
+  /* 아래 일곱은 **쓰기만 하고 정의가 없던 것** (v1.9.28에 메움 — UI 개조본 이식 때 딸려 온 이름들이
+     팔레트엔 없었다). 폴백 없는 var()가 무효면 그 선언 한 줄이 통째로 죽는다 — 테두리가 안 그려지고
+     애니메이션이 안 돌고 강조 버튼 글자가 배경색에 묻는 식으로, 오류 없이 모양만 어긋난다.
+     값은 기존 관례에 맞춤: 테두리=line, 강조 위 글자=흰색(.sce-status-primary와 같게) */
+  --sce-border:var(--sc-border, #3b4652); --sce-font-body:var(--sc-font-body, inherit);
+  --sce-accent-ink:var(--sc-accent-ink, #ffffff); --sce-focus-contrast:var(--sc-focus-contrast, #9ac2ff);
+  --sce-success-strong:var(--sc-success-strong, #4fbd7e); --sce-success-soft:var(--sc-success-soft, rgba(121,217,154,.35));
+  --sce-ease-out:var(--sc-ease-out, cubic-bezier(.2,.7,.3,1));
   --sce-weekend-sat:var(--sc-weekend-sat, #82b4ff); --sce-weekend-sun:var(--sc-weekend-sun, #ff9eaa);
   --sce-weekend-sat-bg:rgba(130,180,255,.055); --sce-weekend-sun-bg:rgba(255,158,170,.055);
   /* 심층 편집 작업 폭 — 탭 바부터 오류줄까지 이 한 값을 쓴다. 개별 상자에 숫자를 박으면
@@ -259,8 +270,8 @@ const CSS = `
 .sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
 .sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
 .sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
-  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:10px 0 7px; color:var(--sce-text); font-size:12.5px; font-weight:650; cursor:pointer; }
 .sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
 .sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
 .sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -1483,8 +1494,8 @@ const CSS = `
 .sce .sce-diag-ai-primary-title { color:var(--sce-text-strong); font-size:13.5px; font-weight:700; }
 .sce .sce-diag-ai-primary-copy { margin-top:2px; color:var(--sce-muted); font-size:12px; line-height:1.55; }
 .sce .sce-diag-ai-more { margin-top:9px; border-top:1px solid var(--sce-line); }
-.sce .sce-diag-ai-more > summary { padding:10px 0 7px; color:var(--sce-text); font-size:12.5px;
-  font-weight:650; cursor:pointer; }
+.sce .sce-diag-ai-more > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:10px 0 7px; color:var(--sce-text); font-size:12.5px; font-weight:650; cursor:pointer; }
 .sce .sce-diag-ai-more-body { display:grid; gap:10px; padding:2px 0 4px; }
 .sce .sce-diag-ai-subhead { margin:2px 0 -2px; color:var(--sce-text-strong); font-size:12.5px; font-weight:700; }
 .sce .sce-diag-ai-export-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -2835,9 +2846,38 @@ const CSS = `
 .sce .sce-board-ai > summary small { display:block; margin-top:2px; color:var(--sce-muted); font-size:10.5px; font-weight:400; }
 .sce .sce-board-ai-chevron { color:var(--sce-muted); transition:transform .15s ease; }
 .sce .sce-board-ai[open] .sce-board-ai-chevron { transform:rotate(180deg); }
+/* 접힌 창구는 있는 줄도 모른다 (실기 제보 v1.9.28) — 꺾쇠만으론 약해서 말로 붙인다.
+   **AI 창구 접이식 11곳 전부**에 같은 것을 단다: 몇 곳만 달면 "힌트 있는 줄 알았는데 여긴 없네"가 되어
+   안 다느니만 못하다. 글자는 CSS가 넣는다(::after) — 펼치면 "접기"로 뒤집혀야 하는데 DOM을 다시
+   그리지 않고 하려면 이 방법뿐. [open] 규칙은 details 전체를 받아 새 창구가 생겨도 저절로 따라온다.
+   ⚠ 힌트는 꺾쇠 **밖**에 둔다 — 꺾쇠는 [open]에 180° 회전하므로 안에 넣으면 글자가 뒤집힌다. */
+.sce .sce-ai-fold-more { display:flex; flex:none; align-items:center; gap:6px; }
+.sce .sce-ai-fold-hint { color:var(--sce-muted); font-size:10.5px; font-weight:400; white-space:nowrap; }
+.sce .sce-ai-fold-hint::after { content:'눌러서 펼치기'; }
+.sce details[open] > summary .sce-ai-fold-hint::after { content:'접기'; }
+/* 시간 탭 창구만 요약줄 서식이 아예 없었다 — 힌트가 제목에 붙어 버려서 최소한만 준다 */
+.sce .sce-time-ai-tools > summary { display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:6px 2px; cursor:pointer; }
+/* 이쪽 요약줄엔 이미 "직접 생성이 안 될 때만"이 붙어 있다 — 가운뎃점으로 갈라야 한 문장으로 안 읽힌다 */
+.sce .sce-tab-ai-world-fallback > summary .sce-ai-fold-hint::after { content:'· 눌러서 펼치기'; }
+.sce .sce-tab-ai-world-fallback[open] > summary .sce-ai-fold-hint::after { content:'· 접기'; }
 .sce .sce-board-ai-body { padding:0 0 14px; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools { margin:0 !important; padding:12px !important; border:1px solid var(--sce-line) !important; border-radius:6px !important; background:var(--sce-surface) !important; }
 .sce .sce-board-ai-body > .sce-tab-ai-tools > h4:first-child { display:none; }
+.sce .sce-board-ai-body > .sce-tab-ai-tools.sce-tab-ai-world { display:grid; gap:10px; padding:12px !important; background:var(--sce-surface) !important; }
+.sce .sce-tab-ai-world-direct { display:grid; gap:8px; }
+.sce .sce-tab-ai-world-head { display:grid; gap:2px; }
+.sce .sce-tab-ai-world-head strong { color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-tab-ai-world-head span { color:var(--sce-muted); font-size:10.5px; line-height:1.45; }
+.sce .sce-tab-ai-world-generate { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; }
+.sce .sce-tab-ai-world-generate > * { margin:0 !important; }
+.sce .sce-tab-ai-world-fallback { border-top:1px solid var(--sce-line); }
+.sce .sce-tab-ai-world-fallback > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 2px 0; cursor:pointer; list-style:none; }
+.sce .sce-tab-ai-world-fallback > summary::-webkit-details-marker { display:none; }
+.sce .sce-tab-ai-world-fallback > summary strong { color:var(--sce-text-strong); font-size:11.5px; }
+.sce .sce-tab-ai-world-fallback > summary span { color:var(--sce-muted); font-size:10px; font-weight:400; }
+.sce .sce-tab-ai-world-fallback-body { display:grid; gap:8px; padding-top:10px; }
+.sce .sce-tab-ai-world-fallback-body > textarea { box-sizing:border-box; width:100%; min-height:130px; margin:0; }
 @media (max-width:900px) {
 .sce .sce-board-section { grid-template-columns:1fr; gap:9px; }
 .sce .sce-board-section-head { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:0 9px; }
@@ -2873,6 +2913,39 @@ const CSS = `
   line-height:1.5;
 }
 /* V9 · beginner-friendly validation report */
+.sce .sce-validation-report { display:grid; gap:7px; margin-top:12px; }
+.sce .sce-validation-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:0 1px 3px; color:var(--sce-text-strong); }
+.sce .sce-validation-head strong { font-size:12.5px; }
+.sce .sce-validation-head span { color:var(--sce-muted); font-size:10.5px; }
+.sce .sce-validation-issue { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px 10px; padding:9px 10px; border:1px solid var(--sce-line); border-left:3px solid var(--sce-danger); border-radius:4px; background:var(--sce-field); }
+.sce .sce-validation-issue.is-warning { border-left-color:var(--sce-warning); }
+.sce .sce-validation-icon { width:22px; height:22px; display:grid; place-items:center; border-radius:50%; background:var(--sce-danger-bg); color:var(--sce-danger); font-size:11px; font-weight:850; }
+.sce .sce-validation-issue.is-warning .sce-validation-icon { background:var(--sce-warning-bg); color:var(--sce-warning); }
+.sce .sce-validation-copy { min-width:0; }
+.sce .sce-validation-copy strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-validation-copy span { display:block; margin-top:2px; color:var(--sce-text); font-size:11.5px; line-height:1.5; }
+.sce .sce-validation-tech { grid-column:2; width:max-content; max-width:100%; color:var(--sce-muted); font-size:10px; }
+.sce .sce-validation-tech summary { cursor:pointer; }
+.sce .sce-validation-tech code { display:block; margin-top:4px; padding:4px 6px; border:1px solid var(--sce-line); border-radius:3px; background:var(--sce-surface); overflow-wrap:anywhere; }
+.sce .sce-validation-start { justify-self:center; box-sizing:border-box; width:min(760px, calc(100% - 24px)); margin:16px 0; display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:10px 12px; padding:12px; border:1px solid color-mix(in srgb, var(--sce-warning) 55%, var(--sce-line)); border-radius:5px; background:color-mix(in srgb, var(--sce-warning-bg) 42%, var(--sce-field)); }
+.sce .sce-validation-start-mark { width:36px; height:36px; display:grid; place-items:center; border:1px solid var(--sce-warning); border-radius:5px; color:var(--sce-warning); font-size:17px; font-weight:850; }
+.sce .sce-validation-start strong { display:block; color:var(--sce-text-strong); font-size:13px; }
+.sce .sce-validation-start > div > span { display:block; margin-top:3px; color:var(--sce-text); font-size:11.5px; line-height:1.5; }
+.sce .sce-validation-start > .sce-validation-start-mark { display:flex; align-items:center; justify-content:center; flex:none; margin:0; padding:0; line-height:1; text-align:center; }
+.sce .sce-validation-ok { display:grid; grid-template-columns:24px minmax(0,1fr); gap:8px; align-items:center; padding:8px 10px; border-left:3px solid var(--sce-success); background:var(--sce-field); }
+.sce .sce-validation-ok-mark { width:22px; height:22px; display:grid; place-items:center; border-radius:50%; background:var(--sce-success-bg); color:var(--sce-success); font-size:11px; font-weight:850; }
+.sce .sce-validation-ok-copy { min-width:0; }
+/* ⚠ display:block이 빠져 있어 "설정 확인 완료확인할 내용 1개가…"로 붙어 나왔다 (실기 스샷 v1.9.28).
+   바로 위 sce-validation-copy(오류·경고 카드)는 둘 다 block인데 성공 카드만 빠졌던 것 */
+.sce .sce-validation-ok strong { display:block; color:var(--sce-text-strong); font-size:12px; }
+.sce .sce-validation-ok span { display:block; margin-top:2px; color:var(--sce-muted); font-size:11px; }
+@media (max-width:620px) {
+  .sce .sce-tab-ai-world-generate { grid-template-columns:1fr; }
+  .sce .sce-tab-ai-world-generate .sce-btn { width:100% !important; min-height:44px; }
+  .sce .sce-tab-ai-world-fallback > summary { align-items:flex-start; flex-direction:column; gap:2px; }
+  .sce .sce-validation-start { grid-template-columns:38px minmax(0,1fr); }
+  .sce .sce-validation-start .sce-btn { grid-column:1 / -1; width:100%; min-height:44px; }
+}
 .sce .sce-diag-tech {
   margin-top:3px;
 }
@@ -7885,8 +7958,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         box.appendChild(h('div', { class: 'sce-hint' },
           `새로 생기는 것 ${p.gained.length}개 — ${cut(p.gained)}`));
       }
+      // ⚠ 편집기 글자는 마크다운을 안 거친다 — 강조는 **별표**가 아니라 <b>로 (실기 스샷 v1.9.28)
       box.appendChild(h('div', { class: 'sce-hint' },
-        'AI가 **고친 것만** 돌려주면 나머지가 통째로 없어집니다. 의도한 삭제가 아니면 [취소]를 누르고 '
+        'AI가 ', h('b', {}, '고친 것만'), ' 돌려주면 나머지가 통째로 없어집니다. 의도한 삭제가 아니면 [취소]를 누르고 '
         + '"손대지 않은 항목까지 전부 포함해 한 세트로 다시 달라"고 요청하세요.'));
       box.appendChild(h('div', { class: 'sce-row' },
         h('button', { class: 'sce-btn sce-danger', onclick: () => {
@@ -7919,8 +7993,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const varsMode = tabKey === 'vars';
     const commandsMode = tabKey === 'commands';
     const compactMode = varsMode || commandsMode;
-    const wrap = h('div', { class: `sce-block sce-tab-ai-tools${compactMode ? ' sce-tab-ai-vars sce-tab-ai-compact' : ''}` });
-    if (!compactMode) wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
+    const guidedWorldMode = tabKey === 'msgr' || tabKey === 'quest';
+    const wrap = h('div', { class: `sce-block sce-tab-ai-tools${compactMode ? ' sce-tab-ai-vars sce-tab-ai-compact' : ''}${guidedWorldMode ? ' sce-tab-ai-world' : ''}` });
+    if (!compactMode && !guidedWorldMode) wrap.appendChild(h('h4', {}, `🤖 ${slice.label}만 AI에게 맡기기`));
     // 커스텀 템플릿 봇에서 이 창구는 헛돈다 — groups는 그려지지 않는다 (v1.7.4 실기 제보).
     // 편집기에는 추가돼 보이니, 말해 주지 않으면 유저는 "됐다"고 믿고 한참 헤맨다.
     if (tabKey === 'status' && activeTemplateSlot(schema)) {
@@ -7932,30 +8007,45 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // ① 직결 — 요구를 한 줄 쓰고 그 자리에서 받는다. 복사 왕복이 없으면 요구를 여러 번 고쳐 넣기 쉽다.
     // compact(변수·명령)는 내보내기|가져오기 2열 격자라, 이 블록만 두 열을 가로질러 맨 위에 눕힌다.
-    const directBox = compactMode ? h('div', { class: 'sce-vars-ai-direct' }) : wrap;
+    const directBox = compactMode
+      ? h('div', { class: 'sce-vars-ai-direct' })
+      : guidedWorldMode
+        ? h('section', { class: 'sce-tab-ai-world-direct' },
+          h('div', { class: 'sce-tab-ai-world-head' },
+            h('strong', {}, `원하는 ${slice.label} 설명`),
+            h('span', {}, '분위기와 작동 방식을 한두 문장으로 적으면 현재 변수에 맞춰 설정을 만듭니다.')))
+        : wrap;
     if (ai && ai.generate) {
-      const genRow = h('div', { class: 'sce-row' },
+      const genRow = h('div', { class: `sce-row${guidedWorldMode ? ' sce-tab-ai-world-generate' : ''}` },
         bindInput(tabWant[tabKey] ?? '', (x) => { tabWant[tabKey] = x; },
           { cls: 'sce-w-l', ph: TAB_WANT_PH[tabKey] ?? '원하는 것을 한 줄로' }));
       genRow.appendChild(tabGen.busy && tabGen.key === tabKey
         ? h('button', { class: 'sce-btn', onclick: () => { tabGen.seq++; tabGen.busy = false; rerender(); } }, '✋ 취소')
         : h('button', { class: 'sce-btn sce-add', style: 'width:auto',
-            onclick: () => runTabGenerate(tabKey) }, `✨ ${slice.label} 만들어 달라기`));
+            onclick: () => runTabGenerate(tabKey) }, guidedWorldMode ? '설정 생성' : `✨ ${slice.label} 만들어 달라기`));
       directBox.appendChild(genRow);
       directBox.appendChild(h('div', { class: 'sce-hint' },
         tabGen.busy && tabGen.key === tabKey
           ? '⏳ 생성 중이에요. 수십 초 걸릴 수 있어요.'
-          : '창작 탭의 생성 모델이 이 탭 몫만 만들어 와요. 규격서와 이 봇에 이미 있는 변수 목록이 함께 나가서 '
-            + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남아요.'));
+          : guidedWorldMode
+            // ⚠ "이미 있는 변수 목록이 함께 나간다"는 이 창구를 믿어도 되는 이유다 — 짧게 줄이더라도
+            //    없는 이름을 못 지어낸다는 보증은 남긴다 (기여본은 이 문장을 통째로 뺐었다)
+            ? '이 봇에 이미 있는 변수 목록이 함께 나가서 없는 이름은 지어내지 못해요. 결과는 검사를 거쳐 반영되고, 방금 적용한 내용은 한 번 되돌릴 수 있어요.'
+            : '창작 탭의 생성 모델이 이 탭 몫만 만들어 와요. 규격서와 이 봇에 이미 있는 변수 목록이 함께 나가서 '
+              + '없는 이름을 지어내지 못합니다. 받은 결과는 검사를 거쳐 들어가고 [↩ 되돌리기]가 한 번 남아요.'));
     }
 
     directBox.appendChild(tabResultEl(tabKey));
-    if (compactMode) wrap.appendChild(directBox);
+    if (compactMode || guidedWorldMode) wrap.appendChild(directBox);
 
-    const exportBox = compactMode ? h('div', { class: 'sce-vars-ai-export' }) : wrap;
+    const exportBox = compactMode
+      ? h('div', { class: 'sce-vars-ai-export' })
+      : guidedWorldMode
+        ? h('div', { class: 'sce-tab-ai-world-fallback-body' })
+        : wrap;
     // 표지판 (v0.94.1 실기 제보) — 직결 생성이 있는 환경에서 내보내기는 우회로다. 갈림길을
     // 안 세워두면 유저가 두 경로를 겹쳐 쓴다 (생성해 놓고 규격서도 복사해 외부 AI를 또 돌림).
-    if (ai && ai.generate) exportBox.appendChild(h('div', { class: 'sce-hint' },
+    if (ai && ai.generate && !guidedWorldMode) exportBox.appendChild(h('div', { class: 'sce-hint' },
       '아래 내보내기·가져오기는 위 ✨ 직결 생성이 안 되는 환경(호출 차단·웹 AI만 사용)용 우회로예요 — 직결이 되면 쓸 일이 없습니다.'));
     copyWidget(`📤 ${slice.label} 규격 내보내기`,
       tabKey === 'vars'
@@ -7963,10 +8053,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + '다른 탭에서 정의되지 않은 변수를 사용하는 오류를 줄일 수 있어요.'
         : commandsMode
           ? '명령은 이미 만든 변수에 연결돼요. 전체 명령표를 새로 만들 때 변수 목록과 타입별 문법을 함께 넘깁니다.'
-        : '이 탭 몫만 떼어내 AI에게 맡깁니다. **이미 정의된 변수 목록이 함께 나가서** 없는 변수를 지어내지 못하고, '
-          + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
+        : guidedWorldMode
+          ? '① 규격을 복사해 외부 AI에게 전달하세요. 현재 변수와 작성 예시가 포함됩니다. 가져오면 이 탭의 설정 전체가 교체되므로, 일부 수정은 AI 어시스턴트를 이용하세요.'
+        // 위 직결 안내가 이미 같은 보증("있는 변수 목록이 함께 나가서 없는 이름을 못 지어낸다")을 했다 —
+        // 여기서 되풀이하면 한 상자 안에 같은 말이 위아래로 두 번 뜬다 (실기 스샷 v1.9.28, 새 시작 탭).
+        // 직결이 없는 환경에선 이 문장이 그 보증을 혼자 져야 하므로 그때만 전문을 쓴다.
+        // ⚠ copyWidget의 안내는 textContent로도 다시 쓰이므로 요소를 못 섞는다 (강조는 별표 말고 생략)
+        : (ai && ai.generate)
+          ? '이 탭 몫의 규격서예요 — 지금 있는 변수 목록과 패턴 예시가 함께 들어갑니다.'
+          : '이 탭 몫만 떼어내 AI에게 맡깁니다. 이미 정의된 변수 목록이 함께 나가서 없는 변수를 지어내지 못하고, '
+            + '패턴 예시가 붙어 있어 형태도 흐트러지지 않습니다.',
       () => buildTabExportPrompt(schema, tabKey),
     ).mount(exportBox);
+    // 💬로 가는 길은 접이식 안에서도 남긴다 — 통 교체 경고 바로 옆이 그 말이 필요한 자리다
+    // (기여본은 guidedWorldMode에서 이 줄을 통째로 뺐었다)
     exportBox.appendChild(jumpRow(compactMode
       ? commandsMode
         ? '말로 설명해 명령 전체를 만들거나, 필요한 명령만 안전하게 고칠 수 있어요.'
@@ -7976,7 +8076,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     // 결과 안내·되돌리기는 위 tabResultEl이 맡는다 — 여기는 붙여넣기 사용법만 남긴다
     const note = h('div', { class: 'sce-hint' },
-      'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
+      guidedWorldMode ? '② AI의 응답을 아래에 붙여넣고 가져오기를 누르세요.' : 'AI가 준 JSON을 여기 붙여넣고 [가져오기]를 누르세요. 코드펜스(```)나 앞뒤 설명이 붙어 있어도 됩니다.');
     // 결과 문구(tabAiMsg)는 위 tabResultEl 한 곳에서만 띄운다 — 두 곳에 쓰면 같은 말이 겹친다
     const importKey = slice.merge ? 'commands' : (slice.sub ?? slice.keys[0]);
     const area = h('textarea', { class: compactMode ? 'sce-vars-ai-input' : '',
@@ -7990,6 +8090,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     // 되돌리기 버튼도 tabResultEl 한 곳이 맡는다 (여기 또 달면 버튼이 둘이 된다)
     if (compactMode) {
       wrap.appendChild(h('div', { class: 'sce-vars-ai-import' }, note, area, row));
+    } else if (guidedWorldMode) {
+      exportBox.appendChild(note);
+      exportBox.appendChild(area);
+      exportBox.appendChild(row);
+      wrap.appendChild(h('details', { class: 'sce-tab-ai-world-fallback' },
+        h('summary', {}, h('strong', {}, '외부 AI로 만들기·가져오기'),
+          h('span', { class: 'sce-ai-fold-more' },
+            h('span', {}, '직접 생성이 안 될 때만'),
+            h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }))),
+        exportBox));
     } else {
       wrap.appendChild(note);
       wrap.appendChild(area);
@@ -8566,7 +8676,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           h('strong', {}, 'AI로 규칙 · 이벤트 만들기'),
           h('small', {}, '부분 수정은 위 편집기가 더 안전합니다. 전면 생성·외부 AI 왕복이 필요할 때만 펼치세요.'),
         ),
-        h('span', { class: 'sce-rules-ai-chevron', 'aria-hidden': 'true' }, '⌄'),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-rules-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
       ),
       h('div', { class: 'sce-rules-ai-body' }, tabAiTools('rules')),
     ));
@@ -9074,7 +9184,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ...metrics.map(([label, value]) => h('div', { class: 'sce-party-metric' },
           h('span', {}, label), h('strong', {}, value)))));
     const aiTools = () => h('details', { class: 'sce-party-ai' },
-      h('summary', {}, 'AI로 편성표 만들기·교체', h('span', {}, '필요할 때만 펼치기')),
+      h('summary', {}, 'AI로 편성표 만들기·교체',
+        h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })),
       tabAiTools('party'));
 
     if (!schema.party) {
@@ -9664,7 +9775,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 시나리오 만들기'),
           h('small', {}, '런타임의 막 진행과는 별개로, 시나리오 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-scenario-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-scenario-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-scenario-ai-body' }, tabAiTools('scenario')));
 
     if (!schema.scenario) {
@@ -9830,7 +9941,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 상점 만들기'),
           h('small', {}, '상품 입고 지침과는 별개로, 상점 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-shop-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-shop-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-shop-ai-body' }, tabAiTools('shop')));
     const nums = schema.vars.filter((v) => v.type === 'int' || v.type === 'float');
     const lists = schema.vars.filter((v) => v.type === 'list');
@@ -10049,24 +10160,46 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 의뢰판 (v1.7.9) — 시스템 퀘스트 보드. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabQuest() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('quest'));
+    const wrap = h('div', { class: 'sce-board-editor' });
     const lists = schema.vars.filter((v) => v.type === 'list');
     const scalars = schema.vars.filter((v) => v.type !== 'list');
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const section = (step, title, copy, ...children) => h('section',
+      { class: 'sce-board-section' },
+      h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, step),
+        h('div', { class: 'sce-board-section-title' }, title),
+        h('div', { class: 'sce-board-section-copy' }, copy)),
+      h('div', { class: 'sce-board-section-body' }, ...children));
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 의뢰판 설정 만들기'),
+          h('small', {}, '게시되는 의뢰가 아니라 의뢰판 설정 자체를 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('quest')));
     if (!schema.questBoard) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '의뢰판 — 세계 안의 시스템 퀘스트 보드입니다 (길드 접수대·카페 벽보·헌터 협회 공고). 채팅 우상단에 버튼이 '
-        + '생기고, 보조 AI가 의뢰를 게시하면 유저가 [수락]·[취소] 버튼으로 받고 놓습니다. 수락한 의뢰는 봇이 정한 형식 그대로 '
-        + '목록 변수에 들어가고(기한·정산 규칙이 그대로 돕니다), 다음 전송에 의뢰인·제목·보수·기한이 통지 한 줄로 실려 '
-        + '메인 모델이 수주 장면을 씁니다. 게시판(보드)에 의뢰를 얹으면 메인이 원문을 못 받아 보수·기한을 지어내던 문제를 잡는 장치입니다.'));
+      wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+        h('h3', {}, '의뢰판'),
+        h('p', {}, '세계 안에 게시되는 의뢰를 시스템이 관리하고, 플레이어가 버튼으로 수락하거나 포기하는 작업대예요.'))));
       if (!lists.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' }, '수락한 의뢰가 들어갈 목록(list 변수)이 필요합니다 — [변수] 탭에서 먼저 만드세요.'));
+        wrap.appendChild(h('section', { class: 'sce-board-empty' },
+          h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '☷'),
+          h('div', {}, h('h4', {}, '수락 목록이 먼저 필요해요'),
+            h('p', {}, '[변수] 탭에서 진행 중인 의뢰를 담을 list 변수를 만든 뒤 돌아오세요.')),
+          h('button', { type: 'button', class: 'sce-btn', onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동')));
+        wrap.appendChild(aiTools());
         return wrap;
       }
-      wrap.appendChild(addBtn('의뢰판 만들기', () => {
-        schema.questBoard = { label: '의뢰판', icon: '📜', listVar: lists[0].id };
-        rerender();
-      }));
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '▤'),
+        h('div', {}, h('h4', {}, '아직 의뢰판이 없어요'),
+          h('p', {}, '길드 접수대, 카페 벽보, 협회 공고처럼 세계관에 맞는 의뢰판을 추가할 수 있어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          schema.questBoard = { label: '의뢰판', icon: '📜', listVar: lists[0].id }; rerender();
+        } }, '의뢰판 만들기')));
+      wrap.appendChild(aiTools());
       return wrap;
     }
     const Q = schema.questBoard;
@@ -10086,23 +10219,37 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }
       return out;
     };
-    wrap.appendChild(h('div', { class: 'sce-block' },
-      h('div', { class: 'sce-row' },
-        pair('의뢰판 이름', bindInput(Q.label, (x) => { Q.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '의뢰판' })),
-        pair('아이콘', bindInput(Q.icon, (x) => { Q.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📜' })),
-        pair('수락 목록', bindSelect(Q.listVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-          (x) => { Q.listVar = x; rerender(); }), '수락한 의뢰가 들어갈 list 변수 — 완료·납품으로 지우는 건 보조 몫이라 AI 설정에서 열어 두세요'),
-        pair('보수 단위', bindInput(Q.unit ?? '', (x) => { const t = x.trim(); if (t) Q.unit = t.slice(0, 8); else delete Q.unit; rerender(); }, { cls: 'sce-w-s', ph: 'G' })),
-      ),
-      pair('항목 형식', bindInput(Q.format ?? '', (x) => { const t = x.trim(); if (t) Q.format = t; else delete Q.format; rerender(); },
-        { cls: 'sce-w-full', ph: '{client} · {title} ({grade}) @+{days} +{pay}  (비우면 이 기본)' }),
-        '수락하면 이 형식으로 목록에 들어갑니다. 자리표 {client} {title} {grade} {pay} {days} {note} — "@+N"은 엔진 기한 규약, 끝수 보수는 정산 규약'),
-      pair('등급 어휘', bindInput((Q.grades ?? []).join(', '), (x) => {
+    wrap.appendChild(h('header', { class: 'sce-board-head' },
+      h('div', {}, h('h3', {}, '의뢰판'),
+        h('p', {}, '표시 정보, 게시 규격, 보충 주기, 수락·취소 효과를 순서대로 설정해요.')),
+      h('div', { class: 'sce-board-summary' },
+        h('span', {}, `${Q.icon || '📜'} ${Q.label || '의뢰판'}`),
+        h('span', {}, `게시 ${Q.maxOffers ?? 6}건`),
+        h('span', {}, `보충 ${Q.refillEvery ?? 3}턴`),
+        h('span', {}, `등급 ${(Q.grades ?? []).length || '기본'}`))));
+
+    wrap.appendChild(section('01', '기본 정보', '채팅에 보이는 이름과 수락한 의뢰가 들어갈 목록을 연결해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('의뢰판 이름', bindInput(Q.label, (x) => { Q.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '의뢰판' }), '채팅 상단 버튼과 패널 제목에 보여요.'),
+        field('아이콘', bindInput(Q.icon, (x) => { Q.icon = x || undefined; rerender(); },
+          { cls: 'sce-w-s', ph: '📜' }), '의뢰판 버튼 앞에 표시할 아이콘이에요.'),
+        field('수락 목록', bindSelect(Q.listVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { Q.listVar = x; rerender(); }), '수락한 의뢰를 저장할 list 변수예요. 완료·납품 처리는 보조 모델이 맡아요.'),
+        field('보수 단위', bindInput(Q.unit ?? '', (x) => { const t = x.trim(); if (t) Q.unit = t.slice(0, 8); else delete Q.unit; rerender(); },
+          { cls: 'sce-w-s', ph: 'G' }), '금액 뒤에 붙는 짧은 단위예요.'))));
+
+    wrap.appendChild(section('02', '의뢰 규격', '수락 목록에 저장될 문장과 등급별 보수 범위를 정해요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        field('항목 형식', bindInput(Q.format ?? '', (x) => { const t = x.trim(); if (t) Q.format = t; else delete Q.format; rerender(); },
+          { cls: 'sce-w-full', ph: '{client} · {title} ({grade}) @+{days} +{pay}  (비우면 기본 형식)' }),
+          '자리표 {client} {title} {grade} {pay} {days} {note}를 쓸 수 있어요. @+N은 엔진 기한 규약이에요.', true),
+        field('등급 어휘', bindInput((Q.grades ?? []).join(', '), (x) => {
         const arr = x.split(',').map((s) => s.trim()).filter(Boolean);
         if (arr.length) Q.grades = arr; else delete Q.grades; rerender();
-      }, { cls: 'sce-w-full', ph: '심부름, 기초, 필드, 위험, 중대 — 이 밖의 등급은 시스템이 거부' }), ''),
-      pair('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '',
-        (x) => {
+        }, { cls: 'sce-w-full', ph: '심부름, 기초, 필드, 위험, 중대' }),
+          '쉼표로 구분해 허용할 등급 이름을 적어요. 목록 밖 등급은 시스템이 거부해요.', true),
+        field('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '', (x) => {
           const bands = {};
           for (const seg of x.split(',')) {
             const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
@@ -10110,36 +10257,56 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           }
           if (Object.keys(bands).length) Q.bands = bands; else delete Q.bands; rerender();
         }, { cls: 'sce-w-full', ph: '심부름 50~200, 기초 150~500, 필드 500~1500' }),
-        '등급별 [최소~최대] — 게시 보수를 시스템이 이 범위로 강제합니다 (뇌절 방지의 본체)'),
-      h('div', { class: 'sce-row' },
-        pair('기한 범위(일)', bindInput(pairStr(Q.days), (x) => { const p = parsePair(x, 1, 365); if (p) Q.days = p; else delete Q.days; rerender(); }, { cls: 'sce-w-s', ph: '1~30' })),
-        pair('게시 유지(일)', bindInput(pairStr(Q.postDays), (x) => { const p = parsePair(x, 1, 365); if (p) Q.postDays = p; else delete Q.postDays; rerender(); }, { cls: 'sce-w-s', ph: '3~10' }),
-          '지나면 시스템이 걷습니다 (시간 체계가 없으면 턴 수)'),
-        pair('게시 상한', bindInput(Q.maxOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.maxOffers = Math.max(3, Math.min(12, n)); else delete Q.maxOffers; rerender(); }, { cls: 'sce-w-s', ph: '6' })),
-        pair('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); }, { cls: 'sce-w-s', ph: '2' }),
-          '게시가 이 아래로 떨어지면 다음 턴에 보충'),
-        pair('보충 간격(턴)', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); }, { cls: 'sce-w-s', ph: '3' })),
-        bindCheck(Q.mainInject !== false, (v) => { Q.mainInject = v ? undefined : false; rerender(); },
-          '메인 모델에 게시 목록 주입 (서사의 벽보가 패널과 같은 의뢰를 보이는 통로)'),
-      ),
-      h('div', { class: 'sce-row' },
-        pair('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },
-          { cls: 'sce-w-l', ph: '변수 = 식; 변수 = 식  (예: stamina = stamina - 5)' }), '식에서 pay·days·grade를 읽을 수 있어요'),
-        pair('취소 효과', bindInput(fxStr(Q.cancel), (x) => { const a = parseFx(x); if (a.length) Q.cancel = a; else delete Q.cancel; rerender(); },
-          { cls: 'sce-w-l', ph: '예: renown = max(renown - 3, 0)' }), scalars.length ? `쓸 수 있는 변수: ${scalars.slice(0, 8).map((v) => v.id).join(', ')}${scalars.length > 8 ? ' …' : ''}` : ''),
-      ),
-      pair('게시 지침', bindArea(Q.guide, (x) => { Q.guide = x || undefined; rerender(); },
-        '어떤 의뢰가 붙는 곳인지, 보수 감각의 기준 (예: 심부름 50~200 — 사소한 일에 큰 돈을 매기지 마라)'), ''),
-      h('div', { class: 'sce-row' },
-        pair('노출 조건', bindInput(Q.when, (x) => { Q.when = x || undefined; rerender(); },
-          { cls: 'sce-w-l', ph: '예: area_tier == 0 (비우면 항상)' }), '거짓이면 버튼째 숨습니다'),
-        h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-          if (confirm('의뢰판을 지울까요? (게시 상태는 세이브에 남아 있다가 다시 켜면 이어집니다)')) { delete schema.questBoard; rerender(); }
-        } }, '의뢰판 삭제'),
-      ),
-      pair('패널 CSS', bindArea(Q.css, (x) => { Q.css = x || undefined; rerender(); },
-        '.scq-* / .sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    ));
+          '각 등급의 최소~최대 보수를 시스템이 강제해 과도한 보상을 막아요.', true))));
+
+    wrap.appendChild(section('03', '게시 흐름', '의뢰가 붙어 있는 기간과 새 의뢰를 보충하는 시점을 조절해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('기한 범위', bindInput(pairStr(Q.days), (x) => { const p = parsePair(x, 1, 365); if (p) Q.days = p; else delete Q.days; rerender(); },
+          { cls: 'sce-w-s', ph: '1~30' }), '수락 후 완료까지 허용할 일수예요.'),
+        field('게시 유지', bindInput(pairStr(Q.postDays), (x) => { const p = parsePair(x, 1, 365); if (p) Q.postDays = p; else delete Q.postDays; rerender(); },
+          { cls: 'sce-w-s', ph: '3~10' }), '이 기간이 지나면 게시물만 내려가요. 시간 체계가 없으면 턴 수로 계산해요.'),
+        field('게시 상한', bindInput(Q.maxOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.maxOffers = Math.max(3, Math.min(12, n)); else delete Q.maxOffers; rerender(); },
+          { cls: 'sce-w-s', ph: '6' }), '동시에 붙어 있을 수 있는 의뢰 수예요. 3~12.'),
+        field('보충 기준', bindInput(Q.minOffers ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.minOffers = Math.max(0, Math.min(12, n)); else delete Q.minOffers; rerender(); },
+          { cls: 'sce-w-s', ph: '2' }), '게시 수가 이 값 아래로 내려가면 다음 보충 시점에 채워요.'),
+        field('보충 간격', bindInput(Q.refillEvery ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n)) Q.refillEvery = Math.max(1, Math.min(20, n)); else delete Q.refillEvery; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }), '새 의뢰를 확인하는 턴 간격이에요. 1~20.'),
+        h('div', { class: 'sce-board-toggle' },
+          h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '메인 서사에 게시 목록 전달'),
+            h('span', {}, '패널과 서사가 같은 의뢰인·제목·보수·기한을 보도록 원문 목록을 알려줘요.')),
+          bindCheck(Q.mainInject !== false, (v) => { Q.mainInject = v ? undefined : false; rerender(); }, '사용')))));
+
+    wrap.appendChild(section('04', '수락과 취소', '버튼을 눌렀을 때 함께 바뀔 변수를 식으로 지정해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('수락 효과', bindInput(fxStr(Q.accept), (x) => { const a = parseFx(x); if (a.length) Q.accept = a; else delete Q.accept; rerender(); },
+          { cls: 'sce-w-l', ph: 'stamina = stamina - 5; renown = renown + 1' }), '세미콜론으로 나눠 여러 효과를 쓸 수 있고 pay·days·grade를 읽을 수 있어요.'),
+        field('취소 효과', bindInput(fxStr(Q.cancel), (x) => { const a = parseFx(x); if (a.length) Q.cancel = a; else delete Q.cancel; rerender(); },
+          { cls: 'sce-w-l', ph: 'renown = max(renown - 3, 0)' }), scalars.length ? `사용 가능한 변수: ${scalars.slice(0, 8).map((v) => v.id).join(', ')}${scalars.length > 8 ? ' …' : ''}` : '효과에 사용할 일반 변수가 없어요.'))));
+
+    wrap.appendChild(section('05', '게시 지침과 노출', '어떤 의뢰가 만들어지고 어느 장소에서 버튼이 보일지 정해요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        field('게시 지침', bindArea(Q.guide, (x) => { Q.guide = x || undefined; rerender(); },
+          '예: 심부름은 50~200G. 사소한 일에 큰돈을 매기지 않고, 현재 지역에서 가능한 일만 게시해요.'),
+          '의뢰의 소재, 보수 감각, 금지할 내용처럼 이 의뢰판만의 운영 규칙을 적어요.', true),
+        field('노출 조건', bindInput(Q.when, (x) => { Q.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '예: area_tier == 0 (비우면 항상)' }),
+          '조건이 거짓이면 해당 장소에 의뢰판 버튼 자체가 나타나지 않아요.', true))));
+
+    wrap.appendChild(section('06', '화면 꾸미기', '필요할 때만 의뢰 목록과 버튼의 CSS를 조정해요.',
+      h('details', { class: 'sce-board-advanced' },
+        h('summary', {}, '고급 CSS 열기'),
+        h('div', { class: 'sce-board-advanced-body' },
+          field('패널 CSS', bindArea(Q.css, (x) => { Q.css = x || undefined; rerender(); },
+            '.scq-* / .sch-* 클래스를 덮어써 패널 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'),
+            '비워 두면 SimCore 기본 의뢰판 디자인을 사용해요.', true)))));
+
+    wrap.appendChild(h('section', { class: 'sce-board-danger' },
+      h('div', {}, h('strong', {}, '의뢰판 설정 삭제'),
+        h('span', {}, '설정만 지우며, 현재 세이브의 게시·수주 상태는 다시 켰을 때 이어집니다.')),
+      h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
+        if (confirm('의뢰판을 지울까요? (게시 상태는 세이브에 남아 있다가 다시 켜면 이어집니다)')) { delete schema.questBoard; rerender(); }
+      } }, '의뢰판 삭제')));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
@@ -10162,7 +10329,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 보드 만들기'),
           h('small', {}, '게시글 생성 지침과는 별개로, 보드 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-board-ai-body' }, tabAiTools('board')));
 
     if (!schema.board) {
@@ -10288,57 +10455,102 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 메신저 (v1.2.0) — 단말기 문자. 규칙 #3: 엔진 기능엔 편집기 칸.
   function tabMessenger() {
-    const wrap = h('div');
-    wrap.appendChild(tabAiTools('msgr'));
+    const wrap = h('div', { class: 'sce-board-editor' });
     const lists = schema.vars.filter((v) => v.type === 'list');
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const section = (step, title, copy, ...children) => h('section',
+      { class: 'sce-board-section' },
+      h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, step),
+        h('div', { class: 'sce-board-section-title' }, title),
+        h('div', { class: 'sce-board-section-copy' }, copy)),
+      h('div', { class: 'sce-board-section-body' }, ...children));
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 메신저 설정 만들기'),
+          h('small', {}, '현재 설정을 직접 다듬는 흐름과 분리된 선택 도구예요.')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('msgr')));
     if (!schema.messenger) {
-      wrap.appendChild(h('div', { class: 'sce-hint' },
-        '메신저 — 주인공의 단말기 문자 패널입니다 (1:1 5방 + 단체방 2방). 방은 유저만 팔 수 있고, '
-        + '유저가 활성화한 방 하나만 다음 인풋에 서사로 전달됩니다. 연락처는 동료 명부 같은 '
-        + 'list 변수와 함께 움직입니다.'));
+      wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+        h('h3', {}, '메신저'),
+        h('p', {}, '연락처 목록을 바탕으로 1:1·단체 대화를 열고, 선택한 방의 대화만 다음 장면에 전달해요.'))));
       if (!lists.length) {
-        wrap.appendChild(h('div', { class: 'sce-hint sce-warn' },
-          '연락처로 쓸 list 변수가 없습니다 — [변수] 탭에서 동료 명부(list)를 먼저 만들고 오세요.'));
+        wrap.appendChild(h('section', { class: 'sce-board-empty' },
+          h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '☷'),
+          h('div', {}, h('h4', {}, '연락처 목록이 먼저 필요해요'),
+            h('p', {}, '[변수] 탭에서 동료 명부처럼 이름을 담는 list 변수를 만든 뒤 돌아오세요.')),
+          h('button', { type: 'button', class: 'sce-btn', onclick: () => { activeTab = 'vars'; rerender(); } }, '변수 탭으로 이동')));
+        wrap.appendChild(aiTools());
         return wrap;
       }
-      wrap.appendChild(addBtn('메신저 만들기', () => {
-        schema.messenger = { label: '메신저', icon: '📱', contactsVar: lists[0].id };
-        rerender();
-      }));
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '✉'),
+        h('div', {}, h('h4', {}, '아직 메신저가 없어요'),
+          h('p', {}, '연락처 목록을 연결하면 채팅 상단에 메신저 버튼이 생겨요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => {
+          schema.messenger = { label: '메신저', icon: '📱', contactsVar: lists[0].id }; rerender();
+        } }, '메신저 만들기')));
+      wrap.appendChild(aiTools());
       return wrap;
     }
     const M = schema.messenger;
-    wrap.appendChild(h('div', { class: 'sce-block' },
-      h('div', { class: 'sce-row' },
-        pair('이름', bindInput(M.label, (x) => { M.label = x || undefined; rerender(); }, { cls: 'sce-w-m', ph: '메신저' })),
-        pair('아이콘', bindInput(M.icon, (x) => { M.icon = x || undefined; rerender(); }, { cls: 'sce-w-s', ph: '📱' })),
-        pair('연락처 목록', bindSelect(M.contactsVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
-          (x) => { M.contactsVar = x; rerender(); }), '방을 팔 수 있는 상대 풀 — 동료 명부 같은 이름 list 변수'),
-        pair('인물 변화 목록', bindSelect(M.notesVar ?? '',
-          [['', '(없음)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
-          (x) => { if (x) M.notesVar = x; else delete M.notesVar; rerender(); }), '"이름 — 변화" 꼴 델타 목록 — 답장 생성에 실립니다'),
-      ),
-      h('div', { class: 'sce-row' },
-        pair('선톡 확률', bindInput(M.firstChance ?? '', (x) => {
+    wrap.appendChild(h('header', { class: 'sce-board-head' },
+      h('div', {}, h('h3', {}, '메신저'),
+        h('p', {}, '연락처, 선톡 규칙, 문자 말투를 순서대로 설정해요. 방과 대화 기록은 현재 세이브에 보관됩니다.')),
+      h('div', { class: 'sce-board-summary' },
+        h('span', {}, `${M.icon || '📱'} ${M.label || '메신저'}`),
+        h('span', {}, `연락처 ${M.contactsVar || '미연결'}`),
+        h('span', {}, `선톡 ${M.firstChance ?? 0.25}`),
+        h('span', {}, `쿨 ${M.cooldown ?? 3}턴`))));
+
+    wrap.appendChild(section('01', '기본 정보', '채팅에 보이는 이름과 대화 상대가 되는 목록을 연결해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('메신저 이름', bindInput(M.label, (x) => { M.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '메신저' }), '채팅 상단 버튼과 패널 제목에 보여요.'),
+        field('아이콘', bindInput(M.icon, (x) => { M.icon = x || undefined; rerender(); },
+          { cls: 'sce-w-s', ph: '📱' }), '메신저 버튼 앞에 표시할 아이콘이에요.'),
+        field('연락처 목록', bindSelect(M.contactsVar ?? '', lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]),
+          (x) => { M.contactsVar = x; rerender(); }), '이 목록에 있는 이름으로만 새 대화방을 만들 수 있어요.'),
+        field('인물 변화 목록', bindSelect(M.notesVar ?? '',
+          [['', '(사용 안 함)'], ...lists.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])],
+          (x) => { if (x) M.notesVar = x; else delete M.notesVar; rerender(); }), '"이름 — 변화" 기록을 답장 생성에 참고해요.'))));
+
+    wrap.appendChild(section('02', '선톡과 통신', '상대가 먼저 연락하는 빈도와 통신이 가능한 상황을 정해요.',
+      h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('선톡 확률', bindInput(M.firstChance ?? '', (x) => {
           const n = parseFloat(x); if (isFinite(n)) M.firstChance = Math.max(0, Math.min(1, n)); else delete M.firstChance; rerender();
-        }, { cls: 'sce-w-s', ph: '0.25' }), '턴당 상대가 먼저 문자할 확률 (0이면 선톡 없음)'),
-        pair('선톡 쿨(턴)', bindInput(M.cooldown ?? '', (x) => {
+        }, { cls: 'sce-w-s', ph: '0.25' }), '턴마다 상대가 먼저 문자를 보낼 확률이에요. 0이면 선톡을 꺼요.'),
+        field('선톡 쿨다운', bindInput(M.cooldown ?? '', (x) => {
           const n = parseInt(x, 10); if (isFinite(n)) M.cooldown = Math.max(0, Math.min(20, n)); else delete M.cooldown; rerender();
-        }, { cls: 'sce-w-s', ph: '3' }), '같은 방이 다시 선톡하기까지의 최소 턴'),
-        pair('통신 조건', bindInput(M.when, (x) => { M.when = x || undefined; rerender(); },
+        }, { cls: 'sce-w-s', ph: '3' }), '같은 방이 다시 선톡하기까지 기다릴 턴 수예요.'),
+        field('통신 조건', bindInput(M.when, (x) => { M.when = x || undefined; rerender(); },
           { cls: 'sce-w-l', ph: '예: not in_gate (비우면 항상)' }),
-        '거짓인 턴엔 선톡·발신이 멈춥니다 (열람은 항상)'),
-      ),
-      pair('문자 말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
-        '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'), ''),
-      pair('패널 CSS', bindArea(M.css, (x) => { M.css = x || undefined; rerender(); },
-        '.scm-* 클래스를 덮어써 말풍선 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'), ''),
-    ));
-    wrap.appendChild(h('div', { class: 'sce-row' },
-      addBtn('메신저 삭제', () => {
+          '조건이 거짓이면 새 문자와 발신만 멈추고, 기존 대화는 계속 읽을 수 있어요.', true))));
+
+    wrap.appendChild(section('03', '문자 말투', '메신저에서만 사용할 문장 길이와 표현 습관을 정해요.',
+      h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        field('말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
+          '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'),
+          '인물 고유 말투는 캐릭터 설정을 따르고, 여기에는 문자 대화에서 공통으로 지킬 규칙을 적어요.', true))));
+
+    wrap.appendChild(section('04', '화면 꾸미기', '필요할 때만 메신저 패널의 말풍선 CSS를 조정해요.',
+      h('details', { class: 'sce-board-advanced' },
+        h('summary', {}, '고급 CSS 열기'),
+        h('div', { class: 'sce-board-advanced-body' },
+          field('패널 CSS', bindArea(M.css, (x) => { M.css = x || undefined; rerender(); },
+            '.scm-* 클래스를 덮어써 말풍선 겉모습을 바꿉니다 (#sc-game 범위로 자동 격리)'),
+            '비워 두면 SimCore 기본 메신저 디자인을 사용해요.', true)))));
+
+    wrap.appendChild(h('section', { class: 'sce-board-danger' },
+      h('div', {}, h('strong', {}, '메신저 설정 삭제'),
+        h('span', {}, '설정만 지우며, 진행 중인 방과 대화 기록은 세이브에 남아 다시 켜면 이어집니다.')),
+      h('button', { type: 'button', class: 'sce-btn sce-mini sce-danger', onclick: () => {
         if (confirm('메신저 설정을 지울까요? (진행 중 세이브의 방·대화는 세이브에 남습니다)')) { delete schema.messenger; rerender(); }
-      }),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '방·대화는 세이브(스냅샷)에 삽니다 — 리롤하면 그 턴의 대화도 같이 되감깁니다.')));
+      } }, '메신저 삭제')));
+    wrap.appendChild(aiTools());
     return wrap;
   }
 
@@ -10358,7 +10570,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     const lists = schema.vars.filter((v) => v.type === 'list');
     const calendarAiTools = () => h('details', { class: 'sce-calendar-ai' },
-      h('summary', {}, h('span', {}, 'AI로 달력 초안 만들기'), h('span', { class: 'sce-tag' }, '선택')),
+      h('summary', {}, h('span', {}, 'AI로 달력 초안 만들기'),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-tag' }, '선택'),
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }))),
       h('div', { class: 'sce-calendar-ai-body' }, tabAiTools('calendar')));
 
     if (!schema.calendar) {
@@ -10631,7 +10845,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {},
         h('span', {}, h('strong', {}, 'AI로 액션 만들기'),
           h('small', {}, '런타임의 액션 실행과는 별개로, 액션 설정 자체를 AI로 만들거나 고칠 때 사용해요.')),
-        h('span', { class: 'sce-actions-ai-chevron', 'aria-hidden': 'true' }, '⌄')),
+        h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-actions-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
       h('div', { class: 'sce-actions-ai-body' }, tabAiTools('actions')));
     const addAction = () => {
       schema.actions.push({ id: 'action' + (schema.actions.length + 1), label: '', mode: 'oneshot', effects: [] });
@@ -10755,7 +10969,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('summary', {}, h('span', {},
         h('strong', {}, 'AI로 판정 만들기'),
         h('small', {}, '판정 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
-      h('span', { class: 'sce-checks-ai-chevron' }, '⌄')),
+      h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-checks-ai-chevron' }, '⌄'))),
       h('div', { class: 'sce-checks-ai-body' }, tabAiTools('checks')));
     wrap.appendChild(h('div', { class: 'sce-checks-head' },
       h('div', {}, h('h3', {}, '판정'),
@@ -11156,7 +11370,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('span', {}, '시간 진행 방식을 다시 선택합니다. 현재 설정은 선택을 확정할 때까지 유지됩니다.')));
     wrap.appendChild(h('div', { class: 'sce-time-workbench' }, timeRail, timeSheet));
     wrap.appendChild(h('details', { class: 'sce-time-ai-tools' },
-      h('summary', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+      h('summary', {}, h('span', {}, 'AI 도구 · 시간 설정 내보내기와 가져오기'),
+        h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })),
       timeAiTools));
     return wrap;
   }
@@ -11305,7 +11520,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     wrap.appendChild(h('details', { class: 'sce-setup-ai-tools' },
       h('summary', {}, h('span', {}, h('strong', {}, 'AI로 프리셋 만들기'),
         h('small', {}, '프리셋 설정을 만들거나 고칠 때만 여는 보조 도구입니다.')),
-      h('span', { class: 'sce-setup-ai-chevron' }, '⌄')),
+      h('span', { class: 'sce-ai-fold-more' }, h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }), h('span', { class: 'sce-setup-ai-chevron' }, '⌄'))),
       h('div', { class: 'sce-setup-ai-tools-body' }, presetAiTools)));
     return wrap;
   }
@@ -13529,7 +13744,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               `수정 필요·개선 권장 ${fixable.length}건만 대상으로 삼아요. 확인 필요 항목은 자동 수정에서 제외합니다.`)));
         const moreBody = h('div', { class: 'sce-diag-ai-more-body' });
         const more = h('details', { class: 'sce-diag-ai-more', open: (!ai || !ai.generate) ? 'open' : null },
-          h('summary', {}, '외부 AI와 전체 재작성 옵션'), moreBody);
+          h('summary', {}, h('span', {}, '외부 AI와 전체 재작성 옵션'),
+            h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' })), moreBody);
         out.appendChild(aiSection);
 
         // 직결 경로 (v0.47) — 복사 왕복 없이 그 자리에서 생성. 계획·충돌 확인은 똑같이 거친다.
@@ -14219,16 +14435,65 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 라이브 검증 리포트 — 오류는 항상 보이고, 경고는 둘 이상이면 접는다 (수백 줄이 오류를 가리는 것 방지).
   // 문턱 3건 → 2건 (v1.9.10, 커뮤니티 제보 "고칠 때마다 경고가 바로바로 쌓여 불편") — 한 건이면 그대로 보인다.
   function buildReport(v) {
-    let html = '';
-    for (const e of v.errors) html += `<div class="sce-err">✗ ${escText(e.path)} — ${escText(e.msg)}</div>`;
-    const wHtml = v.warnings.map((w) => `<div class="sce-warn">⚠ ${escText(w.path)} — ${escText(w.msg)}</div>`).join('');
+    const areaLabel = (path) => {
+      const p = String(path || '');
+      // ⚠ 여기 이름은 **3층 탭 이름 그대로** 써야 한다 (TABS 목록) — 유저가 그 탭을 찾아가야
+      // 쓸모가 있다. 빠뜨린 경로는 '작업본'으로 뭉개져 어디로 갈지 알 수 없어진다 (v1.9.28).
+      if (p.startsWith('$.vars') || p.startsWith('$.derived')) return '변수';
+      if (p.startsWith('$.updater') || p.startsWith('$.promptState') || p.startsWith('$.suggest')) return 'AI 설정';
+      if (p.startsWith('$.rules') || p.startsWith('$.directives') || p.startsWith('$.liveChoices')) return '규칙·이벤트';
+      if (p.startsWith('$.statusUI')) return '상태창';
+      if (p.startsWith('$.party')) return '편성표';
+      if (p.startsWith('$.calendar')) return '달력';
+      if (p.startsWith('$.time')) return '시간';
+      if (p.startsWith('$.setup')) return '새 시작';
+      if (p.startsWith('$.messenger')) return '메신저';
+      if (p.startsWith('$.questBoard')) return '의뢰판';
+      if (p.startsWith('$.board')) return '보드';
+      if (p.startsWith('$.shop') || p.startsWith('$.shops')) return '상점';
+      if (p.startsWith('$.assets')) return '에셋 팩';
+      if (p.startsWith('$.actions')) return '액션';
+      if (p.startsWith('$.checks')) return '판정';
+      if (p.startsWith('$.scenario')) return '시나리오';
+      return '작업본';
+    };
+    const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`
+      + `<span class="sce-validation-icon" aria-hidden="true">${warning ? '!' : '×'}</span>`
+      + `<div class="sce-validation-copy"><strong>${escText(areaLabel(e.path))}에서 확인이 필요해요</strong>`
+      + `<span>${escText(e.msg)}</span></div>`
+      + `<details class="sce-validation-tech"><summary>기술 위치 보기</summary><code>${escText(e.path)}</code></details></div>`;
+    const needsFirstVariable = v.errors.some((e) => e.path === '$.vars'
+      && String(e.msg || '').includes('변수가 하나도 정의되지 않음'));
+    const visibleErrors = needsFirstVariable
+      ? v.errors.filter((e) => !(e.path === '$.vars' && String(e.msg || '').includes('변수가 하나도 정의되지 않음')))
+      : v.errors;
+    let html = '<div class="sce-validation-report">';
+    if (needsFirstVariable) html += '<div class="sce-validation-start">'
+      + '<span class="sce-validation-start-mark" aria-hidden="true">1</span>'
+      + '<div><strong>기본 변수를 하나 만들어 주세요</strong>'
+      + '<span>체력·호감도·돈처럼 시뮬레이션이 기억할 값을 먼저 정하면 나머지 기능을 연결할 수 있어요.</span></div>'
+      + '<button type="button" class="sce-btn" data-sce-create-first-var>기본 변수 만들기</button></div>';
+    if (visibleErrors.length) html += `<div class="sce-validation-head"><strong>고칠 항목 ${visibleErrors.length}개</strong><span>수정하면 바로 다시 확인돼요</span></div>`
+      + visibleErrors.map((e) => issueHtml(e, false)).join('');
+    const wHtml = v.warnings.map((w) => issueHtml(w, true)).join('');
     if (v.warnings.length > 1) {
-      html += `<details class="sce-fold"${reportWarnOpen ? ' open' : ''}><summary class="sce-warn">⚠ 경고 ${v.warnings.length}건 — 눌러서 펼치기</summary>${wHtml}</details>`;
+      html += `<details class="sce-fold"${reportWarnOpen ? ' open' : ''}><summary class="sce-warn">확인할 내용 ${v.warnings.length}개 · 눌러서 보기</summary>${wHtml}</details>`;
     } else html += wHtml;
-    if (v.ok) html += `<div class="sce-ok">✓ 스키마 유효${v.warnings.length ? ` (경고 ${v.warnings.length})` : ''}</div>`;
+    if (v.ok) html += '<div class="sce-validation-ok"><span class="sce-validation-ok-mark" aria-hidden="true">✓</span>'
+      + '<div class="sce-validation-ok-copy"><strong>설정 확인 완료</strong>'
+      + `<span>${v.warnings.length ? `확인할 내용 ${v.warnings.length}개가 있지만 저장할 수 있어요.` : '현재 형식에서 막히는 문제가 없어요.'}</span></div></div>`;
+    html += '</div>';
     reportEl.innerHTML = html;
     const fold = reportEl.querySelector('details.sce-fold');
     if (fold) fold.addEventListener('toggle', () => { reportWarnOpen = fold.open; });
+    const createFirst = reportEl.querySelector('[data-sce-create-first-var]');
+    if (createFirst) createFirst.addEventListener('click', () => {
+      const item = { id: nextEditorId('var'), label: '', type: 'int', init: 0 };
+      schema.vars.push(item);
+      createdVariableCard = item;
+      activeTab = 'vars';
+      rerender();
+    });
   }
 
   /** 스크롤 보존 (v1.9.6) — 다시 그리는 동안 root가 비면 스크롤 부모의 scrollTop이 0으로 잘린다. 그리기 전 잡아 두고 뒤에 되돌린다 */

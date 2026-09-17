@@ -1,29 +1,31 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.6.0 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·시나리오 포함), 편집기 15탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약을 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.10.1 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀 포함), 편집기 17탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약을 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
 
 봇에 **숫자로 굴러가는 상태**를 붙이는 RisuAI 플러그인. 스키마 하나로 변수·파생·규칙·이벤트·상태창을
-정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.6.0 기준, 2026-09-02**)
+정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.10.1 기준, 2026-09-17**)
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
-도약 캡 철폐** → **v1.6 전투 안무** → **v1.7 하루 닫기·기한 환산·낱말 무장·시세·의뢰판**(v1.7.9). 얼헌(얼터헌터) 개조가
-v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **23개** (quest·choice·**secret**(v1.10.0, 비밀 — 모르는 건 말할 수 없다) — build.js CORE에 shop 뒤 순서대로).
+도약 캡 철폐** → **v1.6 전투 안무** → **v1.7 하루 닫기·기한 환산·낱말 무장·시세·의뢰판**(v1.7.9) → **v1.8 보조가 쓰는 갈림길**(liveChoices) →
+**v1.9 제작 도구 묶음**(🔒 보호·변수 그룹·패치 병합·📌 작업 지침·🧪 N턴 시험·📝 작업본 비교·모듈 팩 진단·**v1.9.28 의뢰판·메신저 탭 번호 섹션 개편**(커뮤니티 기여본)) →
+**v1.10 🔒 비밀 — 모르는 건 말할 수 없다**(`core/secret.js`, v1.10.1 현황 탭 칩 ✕ 잘림 수리). 얼헌(얼터헌터) 개조가
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **23개**.
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **23개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **23개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **77종, 3,850+단언**) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **102종, 4,870단언** — 2026-09-17) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
-| 설계 문서 | `simcore\docs\design-*.md` (시간·시나리오레이터·에셋 슬롯·편성표·모듈 애드온·UI 크롬…) + `docs\ai-mistakes.md` |
+| 설계 문서 | `simcore\docs\design-*.md` (시간·시나리오레이터·에셋 슬롯·편성표·모듈 애드온·UI 크롬·**비밀**(`design-비밀.md`, §9 미결: SECTIONS 패치 합류·새 시작 페이지 단계 강제 열기/닫기)…) + `docs\ai-mistakes.md` |
 | 이 스킬 | `simcore\.claude\skills\simcore\` — 리포에 같이 산다. 기능이 자라면 같이 고친다 |
 | 임포트용 사본 | `E:\0.리수봇\플러그인\simcore.plugin.js` — 번들 갱신 시 여기도 같이 교체 |
 | ⚠ 손대지 말 것 | `simcore\이전판\` (백업), `dist\`·`playground.html` (빌드 산출물) |
@@ -35,7 +37,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 
 `E:\0.리수봇\simcore`는 **`yuha-665/simcore`(비공개) 리포 그 자체**다 — 고치면 커밋·푸시까지.
 회사 clone(`C:\claude\simcore`)·cowork(GitHub 커넥터)에서는 같은 경로를 리포 루트 기준으로 읽는다.
-**작업 브랜치는 `master`** (`feat/ai-patch`는 머지된 옛 브랜치). **작업 전 pull 먼저** — 집·회사가 번갈아 민다.
+**정본 브랜치는 `master`**, 기능은 `feat/*`에서 만들고 **집 실기(리수에서 돌려 봄) 뒤 `--no-ff`로 머지**한다 (v1.10.0 비밀 = `feat/secret`, 2026-09-17 실기 대기). **작업 전 pull 먼저** — 집·회사가 번갈아 민다.
 
 ## 고치고 나면 반드시
 
@@ -51,8 +53,8 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 
 - `//@version`과 `//@display-name`을 **같이** 올린다 — 배포받은 사람이 자기가 고친 빌드인지 확인할 자리는
   플러그인 목록의 display-name뿐. `테스트/test-bundle.js`가 두 줄 다 핀으로 잡고 있으니 같이 올린다.
-- `테스트/test-aischema.js`의 **규격서 크기 상한**(96KB)은 검증기 소스를 그대로 싣는 구조라 **검증기가 자라면
-  같이 자란다** — 규칙을 더했으면 상한 조정이 정상 (다섯 번 조정됨). 상한 자체를 손볼 때가 왔다.
+- `테스트/test-aischema.js`의 **규격서 크기 상한**은 검증기 소스를 그대로 싣는 구조라 **검증기가 자라면
+  같이 자란다** — 여덟 번 올린 끝에 "붙여넣기 상식선" **128KB** 하나로 못 박았다 (현재 96.5KB). 넘으면 상한을 올리지 말고 규격서에서 뺄 걸 찾는다.
 - PowerShell에서 한글 파일에 `Set-Content`/`-replace` 금지(인코딩 깨짐) — Edit 도구나 `node -e`로. 커밋 메시지에 `"` 넣지 말 것.
 - **유저에게 "다시 임포트하세요"를 반드시 말할 것.** 파일만 고치면 리수에서 도는 건 옛 빌드다.
   얼헌은 한 단계 더 — `헌터-신안.json` 재설치 + **개조 번들 재추출(리수에서만 가능)**까지 해야 배포본이 바뀐다.
@@ -61,8 +63,8 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 
 | 문서 | 내용 |
 |---|---|
-| [references/schema.md](references/schema.md) | 스키마 전 필드 · 타입 · 검증 규칙 · 표현식 문법 (전투 안무 `checks[].fight` v1.6 · 상점 units/exchange/shops v1.3~1.4 · 막간 v1.5 포함) |
-| [references/editor.md](references/editor.md) | 편집기 **15개 탭**의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드 9종 |
+| [references/schema.md](references/schema.md) | 스키마 전 필드 · 타입 · 검증 규칙 · 표현식 문법 (전투 안무 `checks[].fight` v1.6 · 상점 units/exchange/shops v1.3~1.4 · 막간 v1.5 · 의뢰판 v1.7.9 · liveChoices v1.8 · **secrets v1.10** 포함) |
+| [references/editor.md](references/editor.md) | 편집기 **17개 탭**의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드 10종, v1.9.28 번호 섹션(`sce-board-*`) 규약 |
 | [references/templates.md](references/templates.md) | 내장 템플릿 16종 실측표 — 뭘 열고 뭘 닫았나 |
 | [references/risu-facts.md](references/risu-facts.md) | 리수 내부 확정 사실 (소스맵 검증) — 여기 어긋나면 조용히 깨진다 |
 | [references/publishing.md](references/publishing.md) | 아카라이브 배포글·가이드 시리즈 규격과 현황 |
@@ -89,7 +91,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 6. **`Risuai.alert/alertConfirm`을 패널이 떠 있을 때 쓰는 것.** 우리 iframe이 덮어 보이지도
    눌리지도 않고, `alertConfirm`은 조용히 falsy로 떨어져 "취소"와 구분이 안 된다.
    패널이 열린 동안의 확인은 **패널 자체 UI**로 받을 것(두 번 누르기 등). `테스트/test-layout.js`가 `if (!confirm(` 꼴을 잡는다.
-7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**는
+7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**·**`sec_<id>`**(v1.10.0, 비밀의 열린 최고 단계)는
    엔진이 `state.vars`에 직접 관리하는 키다 — 스키마 vars로 선언하거나 `updater.allow`에 넣으면 안 되고,
    검증이 이름 충돌을 err로 잡는다. 노출 이름(date/clock/scn_act/scn_label/**fight_on**/deployed)은 makeLookup 위임.
 8. **편집기 세그먼트에 모듈급 의존성을 추가하고 테스트 하니스를 안 고치는 것.** `테스트/` 여러
@@ -116,6 +118,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
     "원본 카드엔 정규식이 없으니 괜찮다"고 실었다가 유저 카드의 **에셋 표시 정규식까지 날려 이미지가 안 나왔다** (아틀리에 실사고, 2026-09-06).
     원본에 없다는 건 배포받는 쪽 카드에 대한 가정일 뿐이다. 몇 개 얹을 땐 **`regexAdd`**(v1.7.10 — 카드 정규식 유지, 같은 comment만 교체, 뒤에 덧붙임)로.
     날아갔으면 💾 [교체 되돌리기](적용 전 백업 최근 3개, 한 번에 한 단계)로 복구.
+16. **잘라 내는 상자(`overflow:hidden`) 안에 조작 버튼을 두는 것.** 칩 `white-space:nowrap`(칸 밖으로 자란다) + 감싼 상자 `overflow-x:hidden`(칸 밖을 자른다)이
+    겹치면 칩 맨 끝의 ✕부터 사라진다 — 에러도 경고도 없이 "지울 수 없다"가 된다 (v1.10.1 실사고, 현황 탭 목록 변수). 자르기를 떼는 게 답이 아니라
+    (가로 스크롤이 생겨 ✕가 화면 밖으로 간다) **넘칠 일을 없앤다** — 글자만 접고 버튼·숫자는 `flex:0 0 auto`. `#sc-vars table`은 `table-layout:fixed`라
+    행마다 열 폭을 못 바꾼다(넓혀야 하면 `colSpan`뿐). 패널 스타일시트엔 같은 선택자가 **세 번**(옛 팔레트·v1.9 토큰·`@media`) 나오니 테스트는 캐스케이드로 본다 (`test-varchip.js`). 상세: risu-facts.md.
 
 ## 설계 원칙 (봇 스키마를 만들 때)
 
@@ -160,5 +166,10 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 - **보조 AI는 기록자지 심판이 아니다.** "해금해도 되는지"를 AI에게 판단시키지 말 것 — 변수 desc에
   기록 기준("언제 +1인지")만 적으면, 기록이 쌓여 조건이 알아서 찬다. 판정·이벤트가 세우는 변수는 그쪽 기계가 담당.
   **진행 규칙은 변수 `desc`에** 쓴다 — 지시문은 메인 전용이라 보조가 못 읽는다.
+- **비밀은 "말하지 마라"가 아니라 프롬프트에서 뺀다** (v1.10.0 `secrets`). 프롬프트에 적힌 건 전부 "아는 것"이고 금지문은 그 옆의 텍스트 하나라
+  100턴이면 한 번은 샌다. 단계(낌새 → 부분 → 전모)의 `when`이 열릴 때까지 그 `text`는 어디에도 안 실린다. **카드·페르소나·로어북에 적힌 비밀은
+  이미 새고 있다** — 그쪽에서 잘라 내지 않으면 켜도 샌다(기능의 절반이 이 안내). 낌새는 **이유 없는 행동만**("문장을 보면 움찔한다", 왜는 안 준다),
+  존재는 알리되 내용은 안 준다(`tell:'exists'`, 없으면 모델이 빈칸을 지어낸다), 반전(plot)만 존재 신호가 곧 스포일러라 기본 `tell:'none'`.
+  보조 모델엔 아무것도 안 간다 — 변수만 세우면 조건이 알아서 찬다. 막의 `secret`(시나리오)은 이것의 막 묶음 특수형이고 `scn_act == "act3"`로 맞물린다.
 - **이식 봇(얼헌)은 원본이 always-on 로어북으로 하던 몫을 셋으로 나눠 되살린다**: 값 → `promptState.template`,
   진행 폭 → `systemGuide` 앵커, 이미지 → 에셋 팩 `usage`. 셋 중 하나라도 빠지면 "원본보다 못하다"는 제보가 온다.

@@ -1,14 +1,14 @@
 # SimCore 스키마 레퍼런스
 
-**v0.93.1 기준.** 진실의 원천은 `core/validate.js`(검증 규칙 전부).
+**v1.10.1 기준.** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
-· `party` · `assets` · `scenario` · `liveChoices`(v1.8.0) · `rerollStableRng`
+· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng`
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
 - **엔진 예약 키** (세이브 vars에 살지만 스키마 vars로 만들면 오류): `time_epoch`(시간),
-  `scn_idx`·`scn_turns`(시나리오)
+  `scn_idx`·`scn_turns`(시나리오), `fight_max/gauge/round/foe/idle/check`(전투 안무 v1.6), **`sec_<id>`**(비밀 v1.10 — 열린 최고 단계, −1 = 아직)
 
 ---
 

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.10.1
-//@display-name SimCore (시뮬 엔진) v1.10.1 비밀 — 모르는 건 말할 수 없다
+//@version 1.10.2
+//@display-name SimCore (시뮬 엔진) v1.10.2 비밀 — 모르는 건 말할 수 없다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,25 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.10.2 ──────────────────────────────────────────────
+// **번역문에 상태창이 안 뜨던 것** (커뮤니티 제보, 2026-09-21). "번역문에는 ⟦simcore:14⟧가 누락돼 상태창이 안 뜬다.
+// 번역문을 손으로 고쳐 넣으면 뜬다. 번역가의 노트에 포함하라고 적어도 안 된다."
+// 마커를 지운 건 번역가가 아니라 **우리**였다. 리수의 LLM 번역 + [HTML 포맷 전 번역]은 저장 원문(마커 포함)을 그대로
+// 번역 요청에 넣는데, 그 요청이 우리 beforeRequest를 지나고 — v0.37.2부터 마커 제거는 전 타입 공통이다("번역문에 새면
+// 안 된다"). 번역가는 마커를 본 적이 없으니 노트에 뭐라 적든 넣을 번호가 없다. 결과는 마커 없이 번역 캐시에 들어가고,
+// 상태창(display)은 그 **뒤에** 그려지므로 설 자리가 없다. "새면 안 된다"가 "있어야 할 자리에서도 없앤다"가 돼 있었다.
+// - [되붙이기] 떼는 건 그대로 둔다(모델이 기호를 보존해 주길 기대하지 않는다). 대신 번역 요청에서 뗀 번호를 기억했다가
+//   리수의 **afterRequest** 리플레이서(성공 응답마다 `(result, type)`)에서 번역 결과 끝에 도로 붙인다. 저장 마커가 원래
+//   끝 고정이라 자리도 같다. 결과는 마커째로 번역 캐시에 들어가 다음부터는 요청 없이 선다.
+// - [짝짓기] 리수는 두 훅 사이에 요청 식별자를 안 준다. 떠 있는 번역이 하나면 그게 짝이다. 여럿이면(채팅을 열 때 동시
+//   번역) 번역을 거쳐도 남는 것 — 숫자와 태그 — 의 겹침으로 고르고, **애매하면 안 붙인다**. 틀린 마커는 남의 시점 상태창을
+//   세우지만 안 붙이면 예전과 같을 뿐이다. 마커 없는 번역(유저 글·HTML 번역 모드)도 대기열에 센다 — 안 세면 어긋남을 모른다.
+// - [안전] 실패한 요청은 afterRequest가 안 불린다 — 3분 지난 대기는 버린다. 재시도 루프·[다시 번역]은 같은 원문이라
+//   같은 대기로 합친다. afterRequest도 호출부에 try/catch가 없다 — 타입이 translate가 아니면 글자 하나 안 건드리고,
+//   안에서 던지지 않는다. 훅이 없는 옛 리수면 등록만 조용히 건너뛴다.
+// ⚠ 이미 마커 없이 캐시된 번역은 그대로다 — 그 메시지는 [다시 번역]을 한 번 눌러야 한다(번역 캐시는 플러그인이 못 만진다).
+// ⚠ 교훈: **"새면 안 된다"로 지운 것이 누군가에겐 있어야 하는 것이다.** 뗄 때는 돌려줄 자리도 같이 정한다.
 //
 // ── v1.10.1 ──────────────────────────────────────────────
 // **현황 탭에서 목록 변수의 ✕가 잘려 항목을 지울 수 없던 것** (커뮤니티 제보, 2026-09-17). 항목이 칸보다 조금만 길면
@@ -2715,6 +2734,86 @@
   const stripMarkers = (t) => (typeof t === 'string'
     ? t.replace(MARKER_RE, '').replace(MARKER_TAIL_RE, '').trimEnd()
     : t);
+  // ── 번역문에 마커 되붙이기 (v1.10.2) ────────────────────────
+  // beforeRequest는 번역 요청에서도 마커를 뗀다 → 번역 결과에 마커가 없다 → 번역문엔 상태창이 안 선다.
+  // 떼는 건 그대로 두고, 뗀 번호를 기억했다가 afterRequest에서 결과 끝에 도로 붙인다.
+  // 리수가 두 훅을 이어 주지 않으므로 짝은 우리가 맞춘다: 하나면 그것, 여럿이면 숫자·태그 겹침, 애매하면 포기.
+  const TR_TTL_MS = 180000;          // 실패한 요청은 afterRequest가 안 온다 — 이만큼 지나면 버린다
+  const trPending = [];              // { key, idx: number|null, fp, at }
+  let trUnmatched = 0;               // 짝을 못 찾고 지나간 결과 수 — 대기 수를 따라잡으면 전부 끝난 것이라 비운다
+  const trHash = (t) => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36) + ':' + t.length; };
+  const trFingerprint = (t) => {
+    const body = String(t ?? '');
+    return { nums: body.match(/\d+/g) ?? [], tags: body.match(/<[^<>\n]{1,120}>/g) ?? [] };
+  };
+  const trOverlap = (a, b) => {       // 다중집합 겹침 / 큰 쪽 크기. 둘 다 비면 null (잴 게 없다)
+    if (!a.length && !b.length) return null;
+    const bag = new Map();
+    for (const x of a) bag.set(x, (bag.get(x) ?? 0) + 1);
+    let hit = 0;
+    for (const x of b) { const n = bag.get(x) ?? 0; if (n > 0) { hit++; bag.set(x, n - 1); } }
+    return hit / Math.max(a.length, b.length);
+  };
+  const trScore = (src, out) => {
+    const parts = [trOverlap(src.nums, out.nums), trOverlap(src.tags, out.tags)].filter((v) => v != null);
+    return parts.length ? parts.reduce((x, y) => x + y, 0) / parts.length : null;
+  };
+  const trExpire = (now) => {
+    for (let i = trPending.length - 1; i >= 0; i--) if (now - trPending[i].at > TR_TTL_MS) trPending.splice(i, 1);
+    if (!trPending.length) trUnmatched = 0;
+  };
+  /** 떼기 **전에** 부른다 — 이 요청이 실어 온 마커 번호(마지막 것)와 그걸 실은 메시지 */
+  function trFindMarker(messages) {
+    let idx = null, carrier = null;
+    for (const m of messages ?? []) {
+      if (!m || typeof m.content !== 'string') continue;
+      const all = [...m.content.matchAll(MARKER_RE)];
+      if (all.length) { idx = Number(all[all.length - 1][1]); carrier = m; }
+    }
+    return { idx, carrier };
+  }
+  /** 뗀 **뒤에** 부른다 — 대기열에 올린다. 마커 없는 번역도 올린다(안 세면 어긋남을 모른다) */
+  function trRemember(messages, found) {
+    const now = Date.now();
+    trExpire(now);
+    const texts = (messages ?? []).map((m) => (m && typeof m.content === 'string' ? m.content : ''));
+    const key = trHash(texts.join('\u0001'));
+    // 같은 원문 = 같은 요청의 재시도(리수 재시도 루프는 이미 뗀 배열로 다시 온다)거나 [다시 번역] — 합친다.
+    // 재시도 때는 마커가 이미 없으니 번호를 null로 덮지 않는다.
+    const old = trPending.find((p) => p.key === key);
+    if (old) { old.at = now; if (found.idx != null) old.idx = found.idx; return; }
+    const body = found.carrier ? found.carrier.content : (texts[texts.length - 1] ?? '');
+    trPending.push({ key, idx: found.idx, fp: trFingerprint(body), at: now });
+    if (trPending.length > 40) trPending.shift();
+  }
+  /** 번역 결과에 제 마커를 도로 붙인다. 짝이 애매하면 손대지 않는다 */
+  function trRestore(content) {
+    const now = Date.now();
+    trExpire(now);
+    if (!trPending.length) return content;
+    const out = trFingerprint(stripMarkers(content));
+    let pick = null;
+    if (trPending.length === 1) {
+      // 하나뿐이면 그게 짝이다. 단 양쪽에 잴 것이 넉넉한데 전혀 안 겹치면 남의 것(제 대기가 만료된 드문 경우)
+      const only = trPending[0];
+      const s = trScore(only.fp, out);
+      const rich = (only.fp.nums.length + only.fp.tags.length >= 3) && (out.nums.length + out.tags.length >= 3);
+      if (!(rich && s != null && s < 0.2)) pick = only;
+    } else if (out.nums.length + out.tags.length >= 2) {
+      const scored = trPending.map((p) => ({ p, s: trScore(p.fp, out) ?? 0 })).sort((a, b) => b.s - a.s);
+      if (scored[0].s >= 0.7 && scored[0].s - scored[1].s >= 0.3) pick = scored[0].p;
+    }
+    if (!pick) {
+      trUnmatched++;
+      console.log(`[simcore] 번역 결과의 짝을 못 정함 (대기 ${trPending.length}) — 마커를 안 붙입니다. 상태창이 필요하면 [다시 번역]`);
+      if (trUnmatched >= trPending.length) { trPending.length = 0; trUnmatched = 0; }   // 떠 있던 번역이 전부 돌아왔다
+      return content;
+    }
+    trPending.splice(trPending.indexOf(pick), 1);
+    if (!trPending.length) trUnmatched = 0;
+    if (pick.idx == null) return content;
+    return stripMarkers(content) + `\n\n⟦simcore:${pick.idx}⟧`;
+  }
   const SCHEMA_LORE_COMMENT = '⚙simcore';
 
   // ── 개조 번들 (v1.0.5) — 로어북+정규식을 한 파일로 배포하고 한 번에 교체 적용 ──
@@ -3646,9 +3745,14 @@
   await Risuai.addRisuReplacer('beforeRequest', async (messages, type) => {
     // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
     // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
+    // 번역 요청만은 뗀 번호를 기억해 둔다 — afterRequest가 결과 끝에 도로 붙인다 (v1.10.2).
+    // 떼기 전에 찾고, 뗀 뒤에 올린다(대기열의 열쇠·지문은 뗀 글 기준 — 재시도는 뗀 배열로 다시 온다).
+    let trFound = null;
+    if (type === 'translate') { try { trFound = trFindMarker(messages); } catch { trFound = null; } }
     for (const m of messages ?? []) {
       if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);
     }
+    if (trFound) { try { trRemember(messages, trFound); } catch (e) { console.log('[simcore] 번역 마커 기억 실패:', e?.message ?? e); } }
     if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
 
     // 내장 AI 생성의 메인 모델 경로(callGenLLM 'main') — 우리가 만든 요청이다.
@@ -3702,6 +3806,22 @@
     }
     return messages;
   });
+
+  // ── 번역 결과에 마커 되붙이기 (v1.10.2) ───────────────────
+  // ⚠ 이 훅도 **모든** 성공 응답에 걸린다(메인 비스트리밍·보조·요약·남의 플러그인) — translate가 아니면 글자 하나
+  // 안 건드린다. 호출부(request.ts)에 try/catch가 없으니 안에서 던지지 않는다. 옛 리수엔 이 훅 이름이 없어
+  // 등록이 던질 수 있다 — 그러면 되붙이기만 조용히 포기한다(나머지 기능은 그대로).
+  try {
+    await Risuai.addRisuReplacer('afterRequest', async (content, type) => {
+      if (type !== 'translate' || typeof content !== 'string') return content;
+      try { return trRestore(content); } catch (e) {
+        console.log('[simcore] 번역 마커 되붙이기 실패:', e?.message ?? e);
+        return content;
+      }
+    });
+  } catch (e) {
+    console.log('[simcore] afterRequest 훅을 못 걸었습니다 — 번역문 마커 되붙이기 생략:', e?.message ?? e);
+  }
 
   // ── 에셋 이미지 (v0.48) ─────────────────────────────────
   // 보조가 고른 {who, 감정…}을 팩 규약으로 조합해 실물과 대조한 뒤 본문 맨 앞에 1장 삽입.

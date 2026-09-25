@@ -54,7 +54,7 @@ const SCENES = [
   },
   {
     id: 'special', open: 0, title: '빙의자 로제타 시점',
-    caption: '1장 · 로제타 안에는 다른 영혼 — 유저는 곁의 누군가',
+    caption: '1장 · 유저는 곁의 기사 — 평소 장면의 능력치 선택지 (킹덤컴식)',
     build() {
       const st = start('special');
       Object.assign(st.vars, {
@@ -63,7 +63,12 @@ const SCENES = [
         quests: ['[1장] 데뷔탕트를 무사히 넘긴다', '[서브] 서랍 속 작은 병의 정체'],
         ties: ['로니카 — 로제타를 비웃는 영애'], items: ['후작가 문장 단검'],
         possessor: '서른 살 사회부 기자. 냉소적이고 말이 빠르다',
+        st_sword: 38, st_talk: 22, st_charm: 30,
       });
+      // 평소 장면의 능력치 선택지 (보조가 쓰는 갈림길 'stat' 벌 — 킹덤컴식)
+      st.meta.pendingChoice = { id: '@live', turn: st.meta.turn, live: { cfg: 'stat', desc: '로니카가 부채 너머로 로제타를 비웃는다',
+        items: [{ label: '로니카의 말을 정중하게 되받아친다', tag: '화술' }, { label: '못 들은 척 로제타를 정원 안쪽으로 모신다', tag: '그냥' },
+          { label: '검집을 가볍게 울려 무례를 경고한다', tag: '검술' }] } };
       return { st, changeLog: [{ id: 'rosetta', from: 35, to: 41, source: 'llm' }] };
     },
   },
@@ -139,6 +144,7 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   <div class="notes">
     <p><b>현황</b> — 면접(시종 시점, 합격 전) · 로제타(파멸도·평판·몸) · 관계(호감 + 그 밖의 관계) · 진행(장소·퀘스트).</p>
     <p><b>나</b> — 신상(신분·회귀) · 가진 것(능력·소지품) · 회귀의 기억. 능력과 기억은 회귀해도 남고, 소지품과 신분은 세상과 함께 되감깁니다.</p>
+    <p><b>능력치</b> — 검술·마법·화술·매력·가사. 판정 달린 선택지 옆에 🎲 성공률이 뜨고, 성공하면 +1. 수련 버튼으로 작중 두 시간에 +1~3. 회귀해도 남습니다.</p>
     <p>능력·소지품은 보조 모델이 서사에 실제로 나온 것만 적고, 메인 모델도 매 턴 "유저: 신분 · 능력 · 소지품" 한 줄로 받습니다. 빙의자 로제타 시점에선 로제타 호감 줄이 보이고, 빙의자 설정은 상태창이 아니라 프롬프트로만 갑니다.</p>
   </div>
 </div>

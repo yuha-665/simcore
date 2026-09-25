@@ -351,7 +351,8 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `changeLog` | 변화 로그 표시 (v0.72): `open`(펼침) \| `collapsed`(기본, 접힘) \| `off`(숨김). 다른 값은 오류 |
 | `highlights` | 하이라이트 카드 (v0.86.4): 기본 켜짐, `'off'`로만 끈다. 이번 턴의 체감 나는 변화(판정 성패·돈·소지품·enum 전환)를 접힌 상자 **바깥** 맨 위에 게임 알림처럼 세운다. bool 변수·onTurn 틱·시간 소비는 안 세운다 |
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
-| `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
+| `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, tab, items[] }` |
+| `groups[].tab` | (v1.12.1) 묶을 장 이름 — `tabs`·`accordion`·`popover`에서 같은 이름의 그룹이 **한 장 안에 제 이름표를 달고 쌓인다**. 장 순서 = 그 이름이 처음 나온 자리, tab 없는 그룹은 예전처럼 한 장. `stack`은 무시(경고), 빈 글자는 오류. 고른 탭 색은 봇 CSS의 `--sim-tab-on-bg`·`--sim-tab-on-line`으로 (조퇴악녀 "현황 \| 빙의자"가 본보기) |
 | `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` — bar.max·color는 수식 가능 (rand 불가) |
 | `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{id:tags:필터}`(그 문자열을 품은 항목만 — 지도 대장의 구역별 칸, v0.98) · 예약 자리표시자(아래) |
 | `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리. id는 영문 식별자 (CSS 클래스가 됨). 조건 없는 템플릿 뒤의 항목은 도달 불가 경고, 전부 조건부면 "빈 상태창" 경고 |

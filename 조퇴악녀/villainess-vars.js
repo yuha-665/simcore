@@ -153,6 +153,14 @@ const S = {
       desc: '유저(빙의자)가 이번 판에서 알게 된 결정적 사실 — 다음 회귀에도 가져갈 만한 것만 한 줄씩 (예: "로제타는 동정받는 걸 가장 싫어한다"). 회귀해도 남는다.' },
     { id: 'ties', label: '그 밖의 관계', type: 'list', init: [], maxItems: 10, itemMaxLength: 40,
       desc: '호감 칸이 없는 인물과의 관계 한 줄 (예: "로니카 — 공공연한 앙숙"). 숫자 없이. 관계가 바뀌면 지우고 새로 적어라.' },
+    // 빙의자 탭 [유저 2026-09-25 "소지품이나 능력 관리는 페르소나 전용 탭이 제일 좋아 보인다"]
+    { id: 'role', label: '신분', type: 'text', init: '카르디온 공녀',
+      desc: '유저(빙의자)의 지금 신분·자리 한 줄. 서사에서 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등). 시종 면접 합격은 시스템이 적는다.' },
+    { id: 'skills', label: '능력', type: 'list', init: ['원작 지식'], maxItems: 10, itemMaxLength: 30,
+      desc: '유저(빙의자)가 할 수 있는 것 — 서사에서 실제로 해 보이거나 새로 익힌 것만 한 줄씩 (예: "궁정 예법", "독 감별"). 설정·짐작만으로 늘리지 마라. 회귀해도 남는다.' },
+    { id: 'items', label: '소지품', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
+      desc: '유저가 지니고 다니거나 따로 챙겨 둔 물건. 서사에서 손에 넣으면 추가, 쓰거나 잃거나 남에게 주면 원문 그대로 지운다. '
+        + '늘 걸치는 옷·평범한 장신구는 적지 말고 이야기에 쓰일 만한 것만. 회귀하면 세상과 함께 되감긴다.' },
     // 시스템 전용 — 보조 allow 밖
     { id: 'cleared', label: '결판난 장', type: 'int', init: 0, min: 0, max: 6 },
     { id: 'loop', label: '회귀', type: 'int', init: 0, min: 0, max: 999 },
@@ -182,6 +190,9 @@ const S = {
       { id: 'quests' },
       { id: 'memories' },
       { id: 'ties' },
+      { id: 'role', maxLength: 30 },
+      { id: 'skills' },
+      { id: 'items' },
       { id: 'skip_day', maxDelta: 3650 },
       { id: 'skip_min', maxDelta: 1440 },
     ],
@@ -200,7 +211,7 @@ const S = {
         effects: [{ set: 'iv_asking', expr: 'true' }], liveChoices: true,
         notify: '[면접] 로제타가 다음 질문을 던질 차례다 — 이번 응답에서 로제타의 질문 하나를 대사로 분명히 써라. 질문으로 장면을 끝내고, 지원자의 대답은 쓰지 마라.' },
       { id: 'iv_pass', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score >= ${IV.pass}`,
-        effects: [{ set: 'hired', expr: 'true' }, { set: 'rosetta', expr: 'rosetta + 10' }, { list: 'quests', remove: [Q_SERVANT] }],
+        effects: [{ set: 'hired', expr: 'true' }, { set: 'role', expr: '"로제타 전속 시종"' }, { set: 'rosetta', expr: 'rosetta + 10' }, { list: 'quests', remove: [Q_SERVANT] }],
         notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
       { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
         effects: gameOver, notify: '[게임오버] 면접에서 떨어졌다 — 로제타 곁에 설 길이 닫혔고, 원작은 그대로 흘러간다.' },
@@ -216,7 +227,7 @@ const S = {
   fronts: [CANON],
   secrets: SECRETS,
   checkpoint: {
-    keep: ['loop', 'memories'],
+    keep: ['loop', 'memories', 'skills'], // 영혼에 붙은 것은 남고, 몸·세상에 붙은 것(소지품·신분)은 되감긴다
     notify: '[회귀 {loop}회차] 눈을 뜨면 다시 그날이다 — {scn_label}이(가) 시작되던 그 시점. 세상과 사람들은 아무것도 기억하지 못하고, 유저만 이전 판을 기억한다. '
       + '되돌아온 그 장면에서 다시 시작하라. 유저가 기억하는 것: {memories}',
   },
@@ -273,38 +284,48 @@ const S = {
       text: '[1장 이후] 데뷔탕트의 밤이 지나갔다. 원작 2장(다과회와 소문)은 아직 준비 중이다 — 무도회의 여파와 일상을 자유롭게 이어 가라.' },
   ],
   promptState: {
-    template: '지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}',
+    template: '지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}\n빙의자: {role} · 능력: {skills} · 소지품: {items}',
     systemGuide: '한 응답 = 한 장면. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라 — 장면을 넘길지는 유저가 정한다. '
       + '수치·퀘스트·회귀는 시스템이 관리하니 숫자를 본문에 쓰지 마라.',
   },
+  // 상태창 — 두 장: 현황(원작·관계·진행) | 빙의자(신상·가진 것·기억). 꾸밈은 "밤의 무도회" [유저 2026-09-25 세 시안 중 선택]
   statusUI: {
-    mode: 'auto', layout: 'stack', theme: 'parchment', changeLog: 'collapsed',
+    mode: 'auto', layout: 'tabs', theme: 'clean', changeLog: 'collapsed',
+    customCSS: fs.readFileSync(__P('상태창/밤의무도회.css'), 'utf8'),
     groups: [
-      { label: '면접', visibility: 'show', showWhen: 'pov == "servant" and scn_act == "prologue" and not hired', items: [{ var: 'iv_q', label: '질문' }] },
-      { label: '로제타', visibility: 'show', items: [
-        { var: 'doom', label: '파멸도', bar: { max: 100 }, color: "doom >= 70 ? '#b03a2e' : doom >= 40 ? '#c9822b' : '#5b8c5a'" },
+      { tab: '현황', label: '면접', showWhen: 'pov == "servant" and scn_act == "prologue" and not hired', items: [{ var: 'iv_q', label: '질문' }] },
+      { tab: '현황', label: '로제타', items: [
+        { var: 'doom', label: '파멸도', bar: { max: 100 }, color: "doom >= 70 ? '#e36b7d' : doom >= 40 ? '#d4b26a' : '#9fc79a'" },
         { var: 'rep', label: '평판' },
-        { var: 'health', label: '로제타의 몸', bar: { max: 100 }, color: "health <= 30 ? '#b03a2e' : '#7a6f9b'" },
+        { var: 'health', label: '로제타의 몸', bar: { max: 100 }, color: "health <= 30 ? '#e36b7d' : '#b9a3e0'" },
       ] },
-      { label: '관계', visibility: 'show', items: [
+      { tab: '현황', label: '관계', items: [
         ...PEOPLE.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, ...(id === 'rosetta' ? { showWhen: 'pov == "servant"' } : {}) })),
-      ] },
-      { label: '진행', visibility: 'show', items: [
-        { var: 'location', label: '장소' },
-        { var: 'quests', label: '퀘스트' },
-        { var: 'loop', label: '회귀', showWhen: 'loop >= 1' },
-        { var: 'memories', label: '기억', showWhen: 'count(memories) > 0' },
         { var: 'ties', label: '그 밖의 관계', showWhen: 'count(ties) > 0' },
       ] },
+      { tab: '현황', label: '진행', items: [
+        { var: 'location', label: '장소' },
+        { var: 'quests', label: '퀘스트' },
+      ] },
+      { tab: '빙의자', label: '신상', items: [
+        { var: 'role', label: '신분' },
+        { var: 'loop', label: '회귀', showWhen: 'loop >= 1' },
+      ] },
+      { tab: '빙의자', label: '가진 것', items: [
+        { var: 'skills', label: '능력' },
+        { var: 'items', label: '소지품' },
+      ] },
+      { tab: '빙의자', label: '회귀의 기억', showWhen: 'count(memories) > 0', items: [{ var: 'memories', label: '기억' }] },
     ],
   },
   setup: {
     presets: [
       { id: 'rosetta', label: '💎 로제타 빙의 — 원작 악녀 본인으로', set: { pov: 'rosetta', quests: [Q_ROSETTA] }, startAt: '0472-03-01 08:00' },
-      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접부터', set: { pov: 'servant', quests: [Q_SERVANT], location: '카르디온 공작저 응접실' }, startAt: '0472-02-24 09:00' },
+      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접부터', set: { pov: 'servant', quests: [Q_SERVANT], location: '카르디온 공작저 응접실', role: '전속 시종 지원자' }, startAt: '0472-02-24 09:00' },
     ],
     ai: {
-      enabled: true, vars: ['location'],
+      enabled: true, vars: ['location', 'skills', 'items'],
+      guide: '능력·소지품은 첫 장면에 실제로 나온 것만 덧붙인다 — 안 나왔으면 기본값 그대로. 능력의 "원작 지식"은 지우지 마라.',
       instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
         + '시종 시점이면 카르디온 공작저에서 로제타 전속 시종 면접을 기다리는 자리에서. 목록으로 나열하지 말고 장면으로.',
     },
@@ -355,6 +376,14 @@ console.log('\n━━ 시종 시점 — 면접 합격 ━━');
   ok('1장 퀘스트로 교체', st.vars.quests.includes(Q_DEBUT) && !st.vars.quests.includes(Q_SERVANT) && Q_SUBS_1.every((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
   ok('로제타 호감 +10', st.vars.rosetta === 25, String(st.vars.rosetta));
   ok('1장 체크포인트 = 1장 시작', st.checkpoints.main.vars.scn_idx === 1, '');
+  ok('신분: 지원자 → 전속 시종', st.vars.role === '로제타 전속 시종' && st.checkpoints.main.vars.role === '로제타 전속 시종', st.vars.role);
+  // 상태창 두 장 — 현황 | 빙의자
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 9 });
+  const tabs = (html.match(/<label class="sim-tab[^>]*>[^<]*<\/label>/g) || []).map((x) => x.replace(/<[^>]+>/g, ''));
+  const persona = html.slice(html.indexOf('sim-panel-1'));
+  ok('★ 상태창 탭 두 장: 현황 | 빙의자', tabs.join('|') === '현황|빙의자', tabs.join('|'));
+  ok('빙의자 장: 신분·능력·소지품, 현황 수치는 없다', persona.includes('로제타 전속 시종') && persona.includes('원작 지식') && persona.includes('>소지품<') && !persona.includes('파멸도'), persona.slice(0, 300));
+  ok('프롬프트에 빙의자 한 줄', send(st).promptBlock.includes('빙의자: 로제타 전속 시종 · 능력: 원작 지식 · 소지품: (없음)'), '');
 }
 
 console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
@@ -362,11 +391,15 @@ console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
   let st = start('servant');
   st = turn(st).st;
   st.vars.memories = ['로제타는 동정받는 걸 가장 싫어한다'];
+  st.vars.skills = ['원작 지식', '독 감별'];
+  st.vars.items = ['낡은 추천서'];
   let last;
   for (const tag of ['실언', '무난', '실언']) { const r = answer(st, tag); if (r.err) { ok('면접 진행', false, r.err); break; } st = r.st; last = r.t; }
   ok('탈락 → 회귀 1회차 · 면접 처음부터', st.vars.loop === 1 && st.vars.iv_q === 0 && st.vars.iv_score === 0 && !st.vars.hired && L(st, 'scn_act') === 'prologue',
     JSON.stringify({ loop: st.vars.loop, q: st.vars.iv_q, act: L(st, 'scn_act') }));
   ok('기억은 남는다', st.vars.memories[0] === '로제타는 동정받는 걸 가장 싫어한다', JSON.stringify(st.vars.memories));
+  ok('능력은 남고 소지품·신분은 되감긴다', st.vars.skills.includes('독 감별') && st.vars.items.length === 0 && st.vars.role === '전속 시종 지원자',
+    JSON.stringify({ s: st.vars.skills, i: st.vars.items, r: st.vars.role }));
   ok('날짜도 되감김 (2월 24일)', L(st, 'date') === '2월 24일', L(st, 'date'));
   const p = send(st).promptBlock;
   ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[게임오버] 면접에서 떨어졌다') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));

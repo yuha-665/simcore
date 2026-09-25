@@ -1,0 +1,42 @@
+/* 밤의 무도회 — 자정의 연회장, 샴페인 금빛 테두리, 장밋빛 게이지 */
+.sim-status{background:radial-gradient(120% 80% at 50% 0%,#3a2a4a 0%,#221a2e 55%,#17121f 100%);color:#efe5d6;
+  border:1px solid #b8975d;border-radius:6px;padding:14px 16px 12px;
+  box-shadow:inset 0 0 0 3px #1c1626,inset 0 0 0 4px rgba(212,178,106,.35),0 4px 18px rgba(0,0,0,.4);
+  font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;line-height:1.6;
+  --sim-tab-on-bg:linear-gradient(180deg,rgba(212,178,106,.2),rgba(212,178,106,.04));--sim-tab-on-line:rgba(212,178,106,.6)}
+.sim-status>details>summary{color:#e2c47e;font-weight:700;text-align:center;letter-spacing:.1em;opacity:1;list-style:none;
+  text-shadow:0 0 8px rgba(226,196,126,.35);margin-bottom:4px}
+.sim-status>details>summary::-webkit-details-marker{display:none}
+.sim-status>details>summary::before{content:'✧ '}
+.sim-status>details>summary::after{content:' ✧'}
+.sim-group{margin-top:12px}
+.sim-group-label{display:flex;align-items:center;gap:8px;color:#d4b26a;font-size:.8em;letter-spacing:.08em;opacity:1;margin-bottom:6px}
+.sim-group-label::before,.sim-group-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(212,178,106,.55),transparent)}
+.sim-tabbar{justify-content:center;gap:6px;margin:12px 0 2px;border-bottom:1px solid rgba(212,178,106,.4)}
+.sim-tab{color:#e2c47e;letter-spacing:.14em;padding:5px 20px 4px;font-size:.9em;opacity:.45}
+.sim-tab:hover{opacity:.75}
+.sim-row{margin:5px 0}
+.sim-label{color:#b9a9bf;opacity:1;min-width:6.5em;font-size:.93em}
+.sim-value{color:#f4e9d8;font-weight:700}
+.sim-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px}
+.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#d4b26a,#e0879a);box-shadow:0 0 6px rgba(224,135,154,.45)}
+.sim-badge{background:rgba(212,178,106,.12);color:#efe5d6;border:1px solid rgba(212,178,106,.35)}
+.sim-tag{background:transparent;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px}
+.sim-empty{color:#8c7f93;opacity:1}
+.sim-scn{background:rgba(212,178,106,.1);color:#e9cf8f;border:1px solid #d4b26a;border-radius:99px;padding:3px 12px}
+.sim-scn-prog{color:#bfa577;opacity:1}
+.sim-secs{margin-top:6px}
+.sim-sec{background:transparent;border:1px dashed rgba(212,178,106,.5);color:#d8c7a4;border-radius:99px;opacity:1}
+.sim-sec.is-open{border-style:solid;background:rgba(212,178,106,.12)}
+.sim-choices{background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin-top:14px}
+.sim-choices-title{color:#e2c47e;opacity:1;letter-spacing:.06em}
+.sim-choices-desc{color:#c9bccd;opacity:1;font-style:italic}
+.sim-choice{padding:5px 6px;color:#efe5d6}
+.sim-choice+.sim-choice{border-top:1px solid rgba(255,255,255,.07)}
+.sim-choices-hint{color:#9d90a3;opacity:1}
+.sim-card{background:rgba(255,255,255,.05);color:#efe5d6;border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px}
+.sim-card.good{border-left-color:#9fc79a}
+.sim-card.bad{border-left-color:#e36b7d}
+.sim-card .d-up{color:#a8d8a0}
+.sim-card .d-down{color:#f08a98}
+.sim-log,.sim-cmds{color:#b9a9bf;border-top-color:rgba(212,178,106,.25)}

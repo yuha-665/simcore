@@ -1,0 +1,37 @@
+/* 장미 서신 — 상아빛 편지지, 금박 이중 테두리, 루비 봉랍 */
+.sim-status{background:#fbf6ef;color:#3b2a2c;border:1px solid #c9a27a;border-radius:4px;padding:14px 16px 12px;
+  box-shadow:inset 0 0 0 4px #fbf6ef,inset 0 0 0 5px #e6d2b5,0 2px 10px rgba(60,30,30,.18);
+  font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;line-height:1.6}
+.sim-status>details>summary{color:#8c2434;font-weight:700;text-align:center;letter-spacing:.08em;opacity:1;font-size:1.02em;list-style:none;margin-bottom:4px}
+.sim-status>details>summary::-webkit-details-marker{display:none}
+.sim-status>details>summary::before{content:'❦ ';color:#b8925a}
+.sim-status>details>summary::after{content:' ❦';color:#b8925a}
+.sim-group{margin-top:12px}
+.sim-group-label{display:flex;align-items:center;gap:8px;color:#a07c4e;font-size:.8em;letter-spacing:.08em;opacity:1;margin-bottom:6px}
+.sim-group-label::before,.sim-group-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#d8bf98,transparent)}
+.sim-row{margin:5px 0}
+.sim-label{color:#7a5f5a;opacity:1;min-width:6.5em;font-size:.93em}
+.sim-value{color:#3b2a2c;font-weight:700}
+.sim-bar{height:6px;background:#efe3d4;border-radius:99px;box-shadow:inset 0 1px 1px rgba(90,50,30,.12)}
+.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#d77b8a,#9e2a3a)}
+.sim-badge{background:#f3e7d7;color:#5a3b33;border:1px solid #e3cfb2;border-radius:3px}
+.sim-tag{background:#f8e8e8;color:#7d2f3b;border:1px solid #ebc9c9;border-radius:99px}
+.sim-empty{color:#a08a84;opacity:1}
+.sim-scn{background:#8c2434;color:#fbf1e8;border:none;border-radius:99px;padding:3px 12px;box-shadow:0 1px 0 #5e1522}
+.sim-scn-prog{color:#f0c9c9;opacity:1}
+.sim-secs{margin-top:6px}
+.sim-sec{background:transparent;border:1px dashed #c9a27a;color:#6d5140;border-radius:99px;opacity:1}
+.sim-sec.is-open{border-style:solid;background:#f5ead9}
+.sim-choices{border:1px solid #c9a27a;background:#fffaf3;border-radius:4px;padding:10px 12px;margin-top:14px;
+  box-shadow:inset 0 0 0 3px #fffaf3,inset 0 0 0 4px #efdcc0}
+.sim-choices-title{color:#8c2434;letter-spacing:.06em;opacity:1}
+.sim-choices-desc{color:#6d5a55;opacity:1;font-style:italic}
+.sim-choice{padding:5px 6px;color:#3b2a2c}
+.sim-choice+.sim-choice{border-top:1px dotted #e3cfb2}
+.sim-choices-hint{color:#9a8580;opacity:1}
+.sim-card{background:#fffaf3;color:#3b2a2c;border:1px solid #ead8bf;border-left:3px solid #9e2a3a;border-radius:3px}
+.sim-card.good{border-left-color:#6f8f6a}
+.sim-card.bad{border-left-color:#9e2a3a}
+.sim-card .d-up{color:#4f7d4b}
+.sim-card .d-down{color:#a8323f}
+.sim-log,.sim-cmds{color:#6d5a55;border-top-color:#e6d2b5}

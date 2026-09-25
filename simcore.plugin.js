@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.12.0
-//@display-name SimCore (시뮬 엔진) v1.12.0 무대 뒤 — 안 봐도 세상은 움직인다
+//@version 1.12.1
+//@display-name SimCore (시뮬 엔진) v1.12.1 무대 뒤 — 안 봐도 세상은 움직인다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.12.1 ──────────────────────────────────────────────
+// **상태창 탭 한 장에 여러 그룹** — "상태창 두 번째 탭으로 페르소나 전용 탭 하나 있는 게 좋지 않을까, 소지품이나 능력 관리하기엔
+// 그게 제일 좋아 보인다" (조퇴악녀, 2026-09-25 유저). 탭 배치는 그룹 하나 = 탭 하나라, 현황 그룹 넷 + 페르소나를 두 장으로
+// 나누려면 현황을 한 그룹에 몰아 이름표를 잃거나 템플릿 모드로 HTML을 손으로 짜야 했다.
+// - [묶기] `statusUI.groups[].tab: "장 이름"` — 같은 이름의 그룹이 한 장 안에 제 이름표를 달고 쌓인다. 장 순서 = 그 이름이 처음 나온 자리,
+//   tab 없는 그룹은 예전처럼 한 장. tabs·accordion·popover 공통, 쌓기(stack)는 장이 없어 무시(경고). 조건으로 다 숨은 장은 빠지고,
+//   한 장만 남으면 탭바 없이 묶기 전 그룹으로 쌓인다.
+// - [색] 고른 탭의 배경·테두리를 봇 CSS가 `--sim-tab-on-bg` / `--sim-tab-on-line`으로 덮는다 — 자리별 :checked 규칙을 손으로 안 찍게.
+// - [검증] tab이 빈 글자·글자 아님 오류, 쌓기인데 tab 경고, 탭·팝업 "두 장 이상" 경고가 묶인 장 수로 센다.
+// - [편집기] 그룹 설정에 "묶을 장 이름" 칸(탭·접기·팝업 배치일 때), 그룹 머리 요약에 장 이름. 규격서 상태창 규칙 한 줄.
 //
 // ── v1.12.0 ──────────────────────────────────────────────
 // **무대 뒤 — 유저가 안 봐도 세상은 움직인다** (core/front.js 25호, 설계 docs/design-조퇴악녀.md §15). 발단: 조퇴악녀 2부 설계 —
@@ -3695,6 +3706,8 @@ function varFreeWork(schema) {
   if (schema.suggest) return true;
   return false;
 }
+// 상태창 그룹이 묶일 장 이름 (v1.12.1) — render.mergeTabs와 같은 판정
+const tabName = (g) => (typeof g?.tab === 'string' && g.tab.trim()) || '';
 
 function validateSchema(schema) {
   const errors = [];
@@ -4355,12 +4368,15 @@ function validateSchema(schema) {
       warn('$.statusUI.layout', '템플릿 모드에서는 배치를 제작자가 정하므로 layout이 무시됩니다');
     else if (['tabs', 'popover'].includes(ui.layout)) {
       const shown = (ui.groups || []).filter((g) => (g.visibility ?? 'show') !== 'hidden');
-      if (shown.length < 2)
-        warn('$.statusUI.layout', `${ui.layout}는 보이는 그룹이 둘 이상일 때 동작합니다 (현재 ${shown.length}개) — 지금은 그냥 쌓입니다`);
-      if (shown.some((g) => !g.label))
+      const sheets = new Set(shown.map((g, i) => (tabName(g) ? 't:' + tabName(g) : i))).size; // 같은 tab은 한 장
+      if (sheets < 2)
+        warn('$.statusUI.layout', `${ui.layout}는 보이는 장이 둘 이상일 때 동작합니다 (현재 ${sheets}장) — 지금은 그냥 쌓입니다`);
+      if (shown.some((g) => !g.label && !tabName(g)))
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  if ((ui.layout ?? 'stack') === 'stack' && ui.mode !== 'template' && (ui.groups || []).some(tabName))
+    warn('$.statusUI.layout', '그룹에 tab이 있지만 배치가 쌓기라 안 묶입니다 — tabs·accordion·popover에서 한 장이 됩니다');
   // 위치 (v1.0.2) — 렌더 위치만 바꾼다 (저장 마커는 항상 끝). 값이 틀리면 조용히 하단이 된다
   if (ui.position != null && !['top', 'bottom'].includes(ui.position))
     err('$.statusUI.position', `position은 top|bottom (현재: '${ui.position}')`);
@@ -4371,6 +4387,7 @@ function validateSchema(schema) {
     if (g.visibility != null && !['show', 'collapsed', 'hidden'].includes(g.visibility))
       err(`$.statusUI.groups[${i}]`, `visibility는 show|collapsed|hidden (현재: '${g.visibility}')`);
     if (g.showWhen != null) checkExpr(g.showWhen, `$.statusUI.groups[${i}].showWhen`, allIds, err, { allowRand: false });
+    if (g.tab != null && !tabName(g)) err(`$.statusUI.groups[${i}].tab`, 'tab은 장 이름(글자) — 안 묶으려면 칸을 지운다');
     (g.items || []).forEach((it, j) => {
       const p = `$.statusUI.groups[${i}].items[${j}]`;
       if (!allIds.has(it.var)) err(p, `표시 대상 '${it.var}'이 정의되지 않음`);
@@ -12458,7 +12475,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         }
         rows += `<div class="sim-row"><span class="sim-label">${label}</span>${barHtml}${valueHtml}</div>`;
       }
-      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
+      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed',
+        tab: typeof g.tab === 'string' && g.tab.trim() ? g.tab.trim() : null });
     }
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
@@ -12644,42 +12662,68 @@ function scopeCss(css, prefix = '.sim-status') {
 function layoutGroups(panes, layout, uid) {
   if (!panes.length) return '';
   const u = String(uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
+  // 한 장에 여러 그룹 (v1.12.1) — 같은 `tab` 이름의 그룹은 한 장 안에 쌓여 들어간다. 쌓기는 장이 없으니 무시.
+  const sheets = layout === 'stack' ? panes : mergeTabs(panes);
 
   // 탭·팝업은 두 장 이상일 때만 의미가 있다 — 한 장짜리 탭바는 잡음이라 쌓기로 되돌린다.
-  if (layout === 'tabs' && panes.length > 1) {
+  if (layout === 'tabs' && sheets.length > 1) {
     let h = '<div class="sim-tabs">';
     // 입력·탭바·패널이 모두 형제여야 `:checked ~`가 닿는다 (그래서 input을 앞에 몰아 둔다)
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<input class="sim-tabin sim-tabin-${i}" type="radio" name="simtab-${u}"`
         + ` id="simtab-${u}-${i}"${i === 0 ? ' checked' : ''}>`;
     });
     h += '<div class="sim-tabbar">';
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<label class="sim-tab sim-tab-${i}" for="simtab-${u}-${i}">${esc(p.label)}</label>`;
     });
     h += '</div><div class="sim-panels">';
-    panes.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
+    sheets.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
     return h + '</div></div>';
   }
 
   if (layout === 'accordion') {
     // 첫 장만 펼쳐 둔다. 여러 장을 동시에 펼쳐 볼 수 있는 게 탭과 다른 점이다.
-    return panes.map((p, i) =>
+    return sheets.map((p, i) =>
       `<details class="sim-group sim-acc"${i === 0 ? ' open' : ''}>`
       + `<summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`).join('');
   }
 
-  if (layout === 'popover' && panes.length > 1) {
-    return '<div class="sim-pops">' + panes.map((p) =>
+  if (layout === 'popover' && sheets.length > 1) {
+    return '<div class="sim-pops">' + sheets.map((p) =>
       `<div class="sim-pop" tabindex="0"><span class="sim-pop-btn">${esc(p.label)}</span>`
       + `<div class="sim-pop-body">${p.rows}</div></div>`).join('') + '</div>';
   }
 
-  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다)
-  return panes.map((p) => p.collapsed
+  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다). 한 장으로 줄어든 탭도 여기로 — 묶기 전 그룹으로 쌓는다.
+  return panes.map(stackGroup).join('');
+}
+
+/** 쌓기 한 칸 — 탭 한 장 안에 묶인 그룹도 같은 모양으로 쌓인다 */
+function stackGroup(p) {
+  return p.collapsed
     ? `<details class="sim-group"><summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`
-    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`
-  ).join('');
+    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`;
+}
+
+/**
+ * 같은 `tab` 이름의 그룹을 한 장으로 (v1.12.1). 장 순서 = 그 이름이 처음 나온 자리.
+ * `tab`이 없는 그룹은 예전처럼 제 이름으로 한 장. 한 장에 묶인 그룹은 제 이름표를 달고 쌓인다 —
+ * 탭 "현황" 안에 "로제타"·"관계"가 나뉘어 보이게. 조건(showWhen)으로 다 숨은 이름은 장째로 빠진다.
+ */
+function mergeTabs(panes) {
+  if (!panes.some((p) => p.tab)) return panes;
+  const out = [];
+  const byName = new Map();
+  for (const p of panes) {
+    if (!p.tab) { out.push(p); continue; }
+    const sheet = byName.get(p.tab);
+    if (sheet) { sheet.rows += stackGroup(p); continue; }
+    const fresh = { label: p.tab, rows: stackGroup(p) };
+    byName.set(p.tab, fresh);
+    out.push(fresh);
+  }
+  return out;
 }
 
 /**
@@ -12689,10 +12733,11 @@ function layoutGroups(panes, layout, uid) {
  */
 function layoutCss(ui) {
   if ((ui.layout ?? 'stack') !== 'tabs') return '';
-  const n = (ui.groups || []).length;
+  const n = (ui.groups || []).length; // 묶인 탭(v1.12.1)은 장이 그룹보다 적다 — 남는 규칙은 닿을 데가 없을 뿐
   let css = '';
   for (let i = 0; i < n; i++) {
-    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:rgba(128,128,128,.14);border-color:rgba(128,128,128,.28)}\n`;
+    // 고른 탭의 색은 봇 CSS가 --sim-tab-on-bg / --sim-tab-on-line으로 덮는다 (v1.12.1) — 자리별 규칙을 손으로 안 찍게
+    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:var(--sim-tab-on-bg,rgba(128,128,128,.14));border-color:var(--sim-tab-on-line,rgba(128,128,128,.28))}\n`;
     css += `.sim-tabin-${i}:checked ~ .sim-panels .sim-panel-${i}{display:block}\n`;
   }
   return css;
@@ -18533,7 +18578,8 @@ const SCHEMA_STATUS_RULES = [
   + '골드·일수처럼 상한이 없는 값에 달면 눈금이 거짓말을 합니다.',
   '- `"showWhen"`은 그 줄의 표시 조건입니다. 평소엔 0이고 사건이 있을 때만 의미가 생기는 값(질투·부상·수배)에 쓰세요.',
   '- 그룹 `"visibility"`: `show`(기본) / `collapsed`(접어둠 — 자주 안 보는 묶음) / `hidden`(화면에서 감춤 — 규칙만 쓰는 내부 수치).',
-  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 그룹이 둘 이상일 때만** 동작합니다.',
+  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 장이 둘 이상일 때만** 동작합니다. '
+  + '그룹에 `"tab": "장 이름"`을 주면 같은 이름끼리 한 장에 쌓입니다(없으면 그룹 하나가 한 장).',
   '- `"position"`: `bottom`(기본, 본문 아래) / `top`(본문 위 — 수치부터). 상태창이 메시지 어디에 그려질지입니다.',
   '- 색은 조건식으로 줍니다: `"color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'"`. '
   + '**색 코드는 작은따옴표**로 감싸세요 — 편집기의 색 고르개가 그 형태만 되읽습니다.',
@@ -22054,7 +22100,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-status-group-identity' }, groupDragHandle,
           h('div', { class: 'sce-status-group-title' },
             h('strong', {}, `${String(gi + 1).padStart(2, '0')}  ${groupLabel}`),
-            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}`))),
+            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}${g.tab ? ` · 장 '${g.tab}'` : ''}`))),
         h('div', { class: 'sce-status-group-actions' },
           groupMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
             `✓ ${groupMoveFeedback.position}번째로 이동`) : null,
@@ -22074,6 +22120,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); })),
           statusField('그룹 표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
             { cls: 'sce-w-m', ph: '비우면 항상 표시' })),
+          // 한 장에 여러 그룹 (v1.12.1) — 쌓기엔 장이 없어 칸을 안 보인다 (값은 남는다)
+          ['tabs', 'accordion', 'popover'].includes(ui.layout)
+            ? statusField('묶을 장 이름', bindInput(g.tab, (x) => { g.tab = x.trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '비우면 이 그룹만 한 장' }), '같은 이름끼리 한 탭에 쌓여요') : null,
         ));
         if (ui.groups.length >= 2) {
           body.appendChild(h('div', { class: 'sce-status-layout' },

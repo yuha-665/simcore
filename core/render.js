@@ -447,7 +447,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         }
         rows += `<div class="sim-row"><span class="sim-label">${label}</span>${barHtml}${valueHtml}</div>`;
       }
-      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
+      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed',
+        tab: typeof g.tab === 'string' && g.tab.trim() ? g.tab.trim() : null });
     }
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
@@ -633,42 +634,68 @@ function scopeCss(css, prefix = '.sim-status') {
 function layoutGroups(panes, layout, uid) {
   if (!panes.length) return '';
   const u = String(uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
+  // 한 장에 여러 그룹 (v1.12.1) — 같은 `tab` 이름의 그룹은 한 장 안에 쌓여 들어간다. 쌓기는 장이 없으니 무시.
+  const sheets = layout === 'stack' ? panes : mergeTabs(panes);
 
   // 탭·팝업은 두 장 이상일 때만 의미가 있다 — 한 장짜리 탭바는 잡음이라 쌓기로 되돌린다.
-  if (layout === 'tabs' && panes.length > 1) {
+  if (layout === 'tabs' && sheets.length > 1) {
     let h = '<div class="sim-tabs">';
     // 입력·탭바·패널이 모두 형제여야 `:checked ~`가 닿는다 (그래서 input을 앞에 몰아 둔다)
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<input class="sim-tabin sim-tabin-${i}" type="radio" name="simtab-${u}"`
         + ` id="simtab-${u}-${i}"${i === 0 ? ' checked' : ''}>`;
     });
     h += '<div class="sim-tabbar">';
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<label class="sim-tab sim-tab-${i}" for="simtab-${u}-${i}">${esc(p.label)}</label>`;
     });
     h += '</div><div class="sim-panels">';
-    panes.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
+    sheets.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
     return h + '</div></div>';
   }
 
   if (layout === 'accordion') {
     // 첫 장만 펼쳐 둔다. 여러 장을 동시에 펼쳐 볼 수 있는 게 탭과 다른 점이다.
-    return panes.map((p, i) =>
+    return sheets.map((p, i) =>
       `<details class="sim-group sim-acc"${i === 0 ? ' open' : ''}>`
       + `<summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`).join('');
   }
 
-  if (layout === 'popover' && panes.length > 1) {
-    return '<div class="sim-pops">' + panes.map((p) =>
+  if (layout === 'popover' && sheets.length > 1) {
+    return '<div class="sim-pops">' + sheets.map((p) =>
       `<div class="sim-pop" tabindex="0"><span class="sim-pop-btn">${esc(p.label)}</span>`
       + `<div class="sim-pop-body">${p.rows}</div></div>`).join('') + '</div>';
   }
 
-  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다)
-  return panes.map((p) => p.collapsed
+  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다). 한 장으로 줄어든 탭도 여기로 — 묶기 전 그룹으로 쌓는다.
+  return panes.map(stackGroup).join('');
+}
+
+/** 쌓기 한 칸 — 탭 한 장 안에 묶인 그룹도 같은 모양으로 쌓인다 */
+function stackGroup(p) {
+  return p.collapsed
     ? `<details class="sim-group"><summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`
-    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`
-  ).join('');
+    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`;
+}
+
+/**
+ * 같은 `tab` 이름의 그룹을 한 장으로 (v1.12.1). 장 순서 = 그 이름이 처음 나온 자리.
+ * `tab`이 없는 그룹은 예전처럼 제 이름으로 한 장. 한 장에 묶인 그룹은 제 이름표를 달고 쌓인다 —
+ * 탭 "현황" 안에 "로제타"·"관계"가 나뉘어 보이게. 조건(showWhen)으로 다 숨은 이름은 장째로 빠진다.
+ */
+function mergeTabs(panes) {
+  if (!panes.some((p) => p.tab)) return panes;
+  const out = [];
+  const byName = new Map();
+  for (const p of panes) {
+    if (!p.tab) { out.push(p); continue; }
+    const sheet = byName.get(p.tab);
+    if (sheet) { sheet.rows += stackGroup(p); continue; }
+    const fresh = { label: p.tab, rows: stackGroup(p) };
+    byName.set(p.tab, fresh);
+    out.push(fresh);
+  }
+  return out;
 }
 
 /**
@@ -678,10 +705,11 @@ function layoutGroups(panes, layout, uid) {
  */
 function layoutCss(ui) {
   if ((ui.layout ?? 'stack') !== 'tabs') return '';
-  const n = (ui.groups || []).length;
+  const n = (ui.groups || []).length; // 묶인 탭(v1.12.1)은 장이 그룹보다 적다 — 남는 규칙은 닿을 데가 없을 뿐
   let css = '';
   for (let i = 0; i < n; i++) {
-    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:rgba(128,128,128,.14);border-color:rgba(128,128,128,.28)}\n`;
+    // 고른 탭의 색은 봇 CSS가 --sim-tab-on-bg / --sim-tab-on-line으로 덮는다 (v1.12.1) — 자리별 규칙을 손으로 안 찍게
+    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:var(--sim-tab-on-bg,rgba(128,128,128,.14));border-color:var(--sim-tab-on-line,rgba(128,128,128,.28))}\n`;
     css += `.sim-tabin-${i}:checked ~ .sim-panels .sim-panel-${i}{display:block}\n`;
   }
   return css;

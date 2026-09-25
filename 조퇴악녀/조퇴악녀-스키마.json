@@ -189,6 +189,33 @@
       "desc": "호감 칸이 없는 인물과의 관계 한 줄 (예: \"로니카 — 공공연한 앙숙\"). 숫자 없이. 관계가 바뀌면 지우고 새로 적어라."
     },
     {
+      "id": "role",
+      "label": "신분",
+      "type": "text",
+      "init": "카르디온 공녀",
+      "desc": "유저(빙의자)의 지금 신분·자리 한 줄. 서사에서 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등). 시종 면접 합격은 시스템이 적는다."
+    },
+    {
+      "id": "skills",
+      "label": "능력",
+      "type": "list",
+      "init": [
+        "원작 지식"
+      ],
+      "maxItems": 10,
+      "itemMaxLength": 30,
+      "desc": "유저(빙의자)가 할 수 있는 것 — 서사에서 실제로 해 보이거나 새로 익힌 것만 한 줄씩 (예: \"궁정 예법\", \"독 감별\"). 설정·짐작만으로 늘리지 마라. 회귀해도 남는다."
+    },
+    {
+      "id": "items",
+      "label": "소지품",
+      "type": "list",
+      "init": [],
+      "maxItems": 12,
+      "itemMaxLength": 30,
+      "desc": "유저가 지니고 다니거나 따로 챙겨 둔 물건. 서사에서 손에 넣으면 추가, 쓰거나 잃거나 남에게 주면 원문 그대로 지운다. 늘 걸치는 옷·평범한 장신구는 적지 말고 이야기에 쓰일 만한 것만. 회귀하면 세상과 함께 되감긴다."
+    },
+    {
       "id": "cleared",
       "label": "결판난 장",
       "type": "int",
@@ -351,6 +378,16 @@
         "id": "ties"
       },
       {
+        "id": "role",
+        "maxLength": 30
+      },
+      {
+        "id": "skills"
+      },
+      {
+        "id": "items"
+      },
+      {
         "id": "skip_day",
         "maxDelta": 3650
       },
@@ -420,6 +457,10 @@
           {
             "set": "hired",
             "expr": "true"
+          },
+          {
+            "set": "role",
+            "expr": "\"로제타 전속 시종\""
           },
           {
             "set": "rosetta",
@@ -858,7 +899,8 @@
   "checkpoint": {
     "keep": [
       "loop",
-      "memories"
+      "memories",
+      "skills"
     ],
     "notify": "[회귀 {loop}회차] 눈을 뜨면 다시 그날이다 — {scn_label}이(가) 시작되던 그 시점. 세상과 사람들은 아무것도 기억하지 못하고, 유저만 이전 판을 기억한다. 되돌아온 그 장면에서 다시 시작하라. 유저가 기억하는 것: {memories}"
   },
@@ -1004,18 +1046,19 @@
     }
   ],
   "promptState": {
-    "template": "지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}",
+    "template": "지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}\n빙의자: {role} · 능력: {skills} · 소지품: {items}",
     "systemGuide": "한 응답 = 한 장면. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라 — 장면을 넘길지는 유저가 정한다. 수치·퀘스트·회귀는 시스템이 관리하니 숫자를 본문에 쓰지 마라."
   },
   "statusUI": {
     "mode": "auto",
-    "layout": "stack",
-    "theme": "parchment",
+    "layout": "tabs",
+    "theme": "clean",
     "changeLog": "collapsed",
+    "customCSS": "/* 밤의 무도회 — 자정의 연회장, 샴페인 금빛 테두리, 장밋빛 게이지 */\n.sim-status{background:radial-gradient(120% 80% at 50% 0%,#3a2a4a 0%,#221a2e 55%,#17121f 100%);color:#efe5d6;\n  border:1px solid #b8975d;border-radius:6px;padding:14px 16px 12px;\n  box-shadow:inset 0 0 0 3px #1c1626,inset 0 0 0 4px rgba(212,178,106,.35),0 4px 18px rgba(0,0,0,.4);\n  font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;line-height:1.6;\n  --sim-tab-on-bg:linear-gradient(180deg,rgba(212,178,106,.2),rgba(212,178,106,.04));--sim-tab-on-line:rgba(212,178,106,.6)}\n.sim-status>details>summary{color:#e2c47e;font-weight:700;text-align:center;letter-spacing:.1em;opacity:1;list-style:none;\n  text-shadow:0 0 8px rgba(226,196,126,.35);margin-bottom:4px}\n.sim-status>details>summary::-webkit-details-marker{display:none}\n.sim-status>details>summary::before{content:'✧ '}\n.sim-status>details>summary::after{content:' ✧'}\n.sim-group{margin-top:12px}\n.sim-group-label{display:flex;align-items:center;gap:8px;color:#d4b26a;font-size:.8em;letter-spacing:.08em;opacity:1;margin-bottom:6px}\n.sim-group-label::before,.sim-group-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(212,178,106,.55),transparent)}\n.sim-tabbar{justify-content:center;gap:6px;margin:12px 0 2px;border-bottom:1px solid rgba(212,178,106,.4)}\n.sim-tab{color:#e2c47e;letter-spacing:.14em;padding:5px 20px 4px;font-size:.9em;opacity:.45}\n.sim-tab:hover{opacity:.75}\n.sim-row{margin:5px 0}\n.sim-label{color:#b9a9bf;opacity:1;min-width:6.5em;font-size:.93em}\n.sim-value{color:#f4e9d8;font-weight:700}\n.sim-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px}\n.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#d4b26a,#e0879a);box-shadow:0 0 6px rgba(224,135,154,.45)}\n.sim-badge{background:rgba(212,178,106,.12);color:#efe5d6;border:1px solid rgba(212,178,106,.35)}\n.sim-tag{background:transparent;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px}\n.sim-empty{color:#8c7f93;opacity:1}\n.sim-scn{background:rgba(212,178,106,.1);color:#e9cf8f;border:1px solid #d4b26a;border-radius:99px;padding:3px 12px}\n.sim-scn-prog{color:#bfa577;opacity:1}\n.sim-secs{margin-top:6px}\n.sim-sec{background:transparent;border:1px dashed rgba(212,178,106,.5);color:#d8c7a4;border-radius:99px;opacity:1}\n.sim-sec.is-open{border-style:solid;background:rgba(212,178,106,.12)}\n.sim-choices{background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin-top:14px}\n.sim-choices-title{color:#e2c47e;opacity:1;letter-spacing:.06em}\n.sim-choices-desc{color:#c9bccd;opacity:1;font-style:italic}\n.sim-choice{padding:5px 6px;color:#efe5d6}\n.sim-choice+.sim-choice{border-top:1px solid rgba(255,255,255,.07)}\n.sim-choices-hint{color:#9d90a3;opacity:1}\n.sim-card{background:rgba(255,255,255,.05);color:#efe5d6;border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px}\n.sim-card.good{border-left-color:#9fc79a}\n.sim-card.bad{border-left-color:#e36b7d}\n.sim-card .d-up{color:#a8d8a0}\n.sim-card .d-down{color:#f08a98}\n.sim-log,.sim-cmds{color:#b9a9bf;border-top-color:rgba(212,178,106,.25)}\n",
     "groups": [
       {
+        "tab": "현황",
         "label": "면접",
-        "visibility": "show",
         "showWhen": "pov == \"servant\" and scn_act == \"prologue\" and not hired",
         "items": [
           {
@@ -1025,8 +1068,8 @@
         ]
       },
       {
+        "tab": "현황",
         "label": "로제타",
-        "visibility": "show",
         "items": [
           {
             "var": "doom",
@@ -1034,7 +1077,7 @@
             "bar": {
               "max": 100
             },
-            "color": "doom >= 70 ? '#b03a2e' : doom >= 40 ? '#c9822b' : '#5b8c5a'"
+            "color": "doom >= 70 ? '#e36b7d' : doom >= 40 ? '#d4b26a' : '#9fc79a'"
           },
           {
             "var": "rep",
@@ -1046,13 +1089,13 @@
             "bar": {
               "max": 100
             },
-            "color": "health <= 30 ? '#b03a2e' : '#7a6f9b'"
+            "color": "health <= 30 ? '#e36b7d' : '#b9a3e0'"
           }
         ]
       },
       {
+        "tab": "현황",
         "label": "관계",
-        "visibility": "show",
         "items": [
           {
             "var": "elicia",
@@ -1096,12 +1139,17 @@
               "max": 100
             },
             "showWhen": "pov == \"servant\""
+          },
+          {
+            "var": "ties",
+            "label": "그 밖의 관계",
+            "showWhen": "count(ties) > 0"
           }
         ]
       },
       {
+        "tab": "현황",
         "label": "진행",
-        "visibility": "show",
         "items": [
           {
             "var": "location",
@@ -1110,21 +1158,46 @@
           {
             "var": "quests",
             "label": "퀘스트"
+          }
+        ]
+      },
+      {
+        "tab": "빙의자",
+        "label": "신상",
+        "items": [
+          {
+            "var": "role",
+            "label": "신분"
           },
           {
             "var": "loop",
             "label": "회귀",
             "showWhen": "loop >= 1"
+          }
+        ]
+      },
+      {
+        "tab": "빙의자",
+        "label": "가진 것",
+        "items": [
+          {
+            "var": "skills",
+            "label": "능력"
           },
+          {
+            "var": "items",
+            "label": "소지품"
+          }
+        ]
+      },
+      {
+        "tab": "빙의자",
+        "label": "회귀의 기억",
+        "showWhen": "count(memories) > 0",
+        "items": [
           {
             "var": "memories",
-            "label": "기억",
-            "showWhen": "count(memories) > 0"
-          },
-          {
-            "var": "ties",
-            "label": "그 밖의 관계",
-            "showWhen": "count(ties) > 0"
+            "label": "기억"
           }
         ]
       }
@@ -1151,7 +1224,8 @@
           "quests": [
             "[서장] 로제타의 시종 면접에 합격하라"
           ],
-          "location": "카르디온 공작저 응접실"
+          "location": "카르디온 공작저 응접실",
+          "role": "전속 시종 지원자"
         },
         "startAt": "0472-02-24 09:00"
       }
@@ -1159,8 +1233,11 @@
     "ai": {
       "enabled": true,
       "vars": [
-        "location"
+        "location",
+        "skills",
+        "items"
       ],
+      "guide": "능력·소지품은 첫 장면에 실제로 나온 것만 덧붙인다 — 안 나왔으면 기본값 그대로. 능력의 \"원작 지식\"은 지우지 마라.",
       "instruction": "[첫 장면] 지금 응답이 이 판의 첫 장면이다. 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, 시종 시점이면 카르디온 공작저에서 로제타 전속 시종 면접을 기다리는 자리에서. 목록으로 나열하지 말고 장면으로."
     }
   }

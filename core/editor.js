@@ -4080,7 +4080,8 @@ const SCHEMA_STATUS_RULES = [
   + '골드·일수처럼 상한이 없는 값에 달면 눈금이 거짓말을 합니다.',
   '- `"showWhen"`은 그 줄의 표시 조건입니다. 평소엔 0이고 사건이 있을 때만 의미가 생기는 값(질투·부상·수배)에 쓰세요.',
   '- 그룹 `"visibility"`: `show`(기본) / `collapsed`(접어둠 — 자주 안 보는 묶음) / `hidden`(화면에서 감춤 — 규칙만 쓰는 내부 수치).',
-  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 그룹이 둘 이상일 때만** 동작합니다.',
+  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 장이 둘 이상일 때만** 동작합니다. '
+  + '그룹에 `"tab": "장 이름"`을 주면 같은 이름끼리 한 장에 쌓입니다(없으면 그룹 하나가 한 장).',
   '- `"position"`: `bottom`(기본, 본문 아래) / `top`(본문 위 — 수치부터). 상태창이 메시지 어디에 그려질지입니다.',
   '- 색은 조건식으로 줍니다: `"color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'"`. '
   + '**색 코드는 작은따옴표**로 감싸세요 — 편집기의 색 고르개가 그 형태만 되읽습니다.',
@@ -7601,7 +7602,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-status-group-identity' }, groupDragHandle,
           h('div', { class: 'sce-status-group-title' },
             h('strong', {}, `${String(gi + 1).padStart(2, '0')}  ${groupLabel}`),
-            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}`))),
+            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}${g.tab ? ` · 장 '${g.tab}'` : ''}`))),
         h('div', { class: 'sce-status-group-actions' },
           groupMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
             `✓ ${groupMoveFeedback.position}번째로 이동`) : null,
@@ -7621,6 +7622,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); })),
           statusField('그룹 표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
             { cls: 'sce-w-m', ph: '비우면 항상 표시' })),
+          // 한 장에 여러 그룹 (v1.12.1) — 쌓기엔 장이 없어 칸을 안 보인다 (값은 남는다)
+          ['tabs', 'accordion', 'popover'].includes(ui.layout)
+            ? statusField('묶을 장 이름', bindInput(g.tab, (x) => { g.tab = x.trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '비우면 이 그룹만 한 장' }), '같은 이름끼리 한 탭에 쌓여요') : null,
         ));
         if (ui.groups.length >= 2) {
           body.appendChild(h('div', { class: 'sce-status-layout' },

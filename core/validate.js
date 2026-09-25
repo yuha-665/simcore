@@ -33,6 +33,8 @@ function varFreeWork(schema) {
   if (schema.suggest) return true;
   return false;
 }
+// 상태창 그룹이 묶일 장 이름 (v1.12.1) — render.mergeTabs와 같은 판정
+const tabName = (g) => (typeof g?.tab === 'string' && g.tab.trim()) || '';
 
 function validateSchema(schema) {
   const errors = [];
@@ -693,12 +695,15 @@ function validateSchema(schema) {
       warn('$.statusUI.layout', '템플릿 모드에서는 배치를 제작자가 정하므로 layout이 무시됩니다');
     else if (['tabs', 'popover'].includes(ui.layout)) {
       const shown = (ui.groups || []).filter((g) => (g.visibility ?? 'show') !== 'hidden');
-      if (shown.length < 2)
-        warn('$.statusUI.layout', `${ui.layout}는 보이는 그룹이 둘 이상일 때 동작합니다 (현재 ${shown.length}개) — 지금은 그냥 쌓입니다`);
-      if (shown.some((g) => !g.label))
+      const sheets = new Set(shown.map((g, i) => (tabName(g) ? 't:' + tabName(g) : i))).size; // 같은 tab은 한 장
+      if (sheets < 2)
+        warn('$.statusUI.layout', `${ui.layout}는 보이는 장이 둘 이상일 때 동작합니다 (현재 ${sheets}장) — 지금은 그냥 쌓입니다`);
+      if (shown.some((g) => !g.label && !tabName(g)))
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  if ((ui.layout ?? 'stack') === 'stack' && ui.mode !== 'template' && (ui.groups || []).some(tabName))
+    warn('$.statusUI.layout', '그룹에 tab이 있지만 배치가 쌓기라 안 묶입니다 — tabs·accordion·popover에서 한 장이 됩니다');
   // 위치 (v1.0.2) — 렌더 위치만 바꾼다 (저장 마커는 항상 끝). 값이 틀리면 조용히 하단이 된다
   if (ui.position != null && !['top', 'bottom'].includes(ui.position))
     err('$.statusUI.position', `position은 top|bottom (현재: '${ui.position}')`);
@@ -709,6 +714,7 @@ function validateSchema(schema) {
     if (g.visibility != null && !['show', 'collapsed', 'hidden'].includes(g.visibility))
       err(`$.statusUI.groups[${i}]`, `visibility는 show|collapsed|hidden (현재: '${g.visibility}')`);
     if (g.showWhen != null) checkExpr(g.showWhen, `$.statusUI.groups[${i}].showWhen`, allIds, err, { allowRand: false });
+    if (g.tab != null && !tabName(g)) err(`$.statusUI.groups[${i}].tab`, 'tab은 장 이름(글자) — 안 묶으려면 칸을 지운다');
     (g.items || []).forEach((it, j) => {
       const p = `$.statusUI.groups[${i}].items[${j}]`;
       if (!allIds.has(it.var)) err(p, `표시 대상 '${it.var}'이 정의되지 않음`);

@@ -28,7 +28,7 @@ const PEOPLE = [
   ['rical', '리칼', 5, ['리칼'], '이복오빠. 로제타를 가문의 수치라 부른다 [원본]'],
   ['duke', '카르디온 공작', 5, ['카르디온 공작', '공작 전하', '공작님', '아버지'], '로제타를 유리창 보듯 지나쳐 본다 [원본]'],
   ['anna', '안나', 85, ['안나'], '열 살 때부터 로제타를 돌본 전속 시녀. 로제타가 가면을 벗는 유일한 사람 [원본]'],
-  ['rosetta', '로제타', 15, ['로제타', '로즈', '아가씨'], '시종 시점 전용 — 로제타가 나(시종)를 믿는 정도'],
+  ['rosetta', '로제타', 15, ['로제타', '로즈', '아가씨'], '시종·빙의자 로제타 시점 전용 — 로제타가 유저를 믿는 정도'],
 ];
 
 // ══════════ 원작의 흐름 — 무대 뒤 진영 시계 [초안, 씨앗은 원본: 로니카의 조롱·로제타의 첫 데뷔탕트 망신] ══════════
@@ -81,6 +81,7 @@ const SECRETS = [
 const IV = { questions: 3, pass: 4 };
 const Q_SERVANT = '[서장] 로제타의 시종 면접에 합격하라';
 const Q_ROSETTA = '[서장] 지금이 원작의 어디쯤인지 알아낸다';
+const Q_SPECIAL = '[서장] 소문과 다른 악녀, 로제타를 만난다'; // 빙의자 로제타 시점 [초안]
 const Q_DEBUT = '[1장] 데뷔탕트를 무사히 넘긴다';
 const Q_SUBS_1 = ['[서브] 서랍 속 작은 병의 정체', '[서브] 로니카의 도발을 받아넘긴다'];
 
@@ -113,6 +114,22 @@ const DEBUT_CHOICES = {
     { label: '지켜본다', effects: [{ set: 'doom', expr: 'doom + 15' }, { set: 'rep', expr: 'rep - 10' }, { front: 'canon', add: '15' }],
       inject: '원작 그대로 — 시종이 지켜보는 앞에서 로제타의 질투가 연회장 한가운데서 터진다.' },
   ],
+  // 빙의자 로제타 [원본 모드 2 = Special, 유저 2026-09-25 "프리셋에 하나 넣자"] — 로제타 안의 빙의자도 이 장면을 안다. 그래도 원작이 떠민다
+  special: [
+    { label: '로제타의 손을 잡고 발코니로 이끈다', effects: [{ set: 'doom', expr: 'doom - 10' }, { set: 'rosetta', expr: 'rosetta + 10' }, { front: 'canon', add: '-20' }],
+      inject: '유저가 흔들리는 로제타를 발코니로 데려간다. 로제타 안의 빙의자가 처음으로 누군가에게 기댄다.' },
+    { label: '엘리시아에게 먼저 말을 걸어 두 사람을 잇는다', effects: [{ set: 'doom', expr: 'doom - 5' }, { set: 'elicia', expr: 'elicia + 10' }, { front: 'canon', add: '-10' }],
+      inject: '유저가 엘리시아에게 먼저 다가가 로제타 쪽으로 대화를 이끈다. 두 영애가 부딪치기 전에 다른 판이 깔린다.' },
+    { label: '로제타 대신 소란의 한가운데로 나선다', effects: [{ set: 'doom', expr: 'doom - 5' }, { set: 'rosetta', expr: 'rosetta + 5' }, { set: 'rep', expr: 'rep - 2' }],
+      inject: '유저가 일부러 소란을 일으켜 연회장의 시선을 자기에게로 돌린다. 로제타가 유저를 다시 본다.' },
+    { label: '지켜본다', effects: [{ set: 'doom', expr: 'doom + 15' }, { set: 'rep', expr: 'rep - 10' }, { front: 'canon', add: '15' }],
+      inject: '원작 그대로 — 빙의자가 버티려 애쓰지만, 로제타의 입에서 원작의 대사가 흘러나온다.' },
+  ],
+};
+const DEBUT_NOTIFY = {
+  rosetta: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.',
+  servant: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.',
+  special: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타를 질투 쪽으로 떠민다.',
 };
 
 // ══════════ 스키마 ══════════
@@ -126,7 +143,11 @@ const S = {
     expose: ['date', 'clock', 'year', 'month', 'dom', 'hour', 'minute', 'elapsed', 'season'],
   },
   vars: [
-    { id: 'pov', label: '시점', type: 'enum', enum: ['rosetta', 'servant'], init: 'rosetta' },
+    { id: 'pov', label: '시점', type: 'enum', enum: ['rosetta', 'servant', 'special'], init: 'rosetta' },
+    // 빙의자 로제타 시점의 빙의자 설정 — 원본은 로어북 "Possessor Profile" 칸을 채웠다. 번들을 다시 적용하면 로어북이 통째로
+    // 바뀌어 적은 게 지워지므로 채팅 상태(변수)로 옮겼다: 패널에서 적거나, 첫 메시지에 밝히면 최초 설정이 옮겨 적는다
+    { id: 'possessor', label: '빙의자 설정', type: 'text', init: '', maxLength: 400,
+      desc: '빙의자 로제타 시점 전용 — 로제타의 몸에 들어온 현대인의 설정(원래 나이·직업·성격·말투). 유저가 첫 메시지에서 밝혔을 때만 옮겨 적는다.' },
     { id: 'location', label: '장소', type: 'text', init: '카르디온 공작저', desc: '지금 장면이 벌어지는 곳 (예: 카르디온 공작저 로제타의 방, 황궁 대연회장). 장소가 바뀌면 고쳐 적는다.' },
     { id: 'doom', label: '파멸도', type: 'int', init: 40, min: 0, max: 100,
       desc: '원작 수렴도 — 로제타가 원작의 처형 결말로 끌려가는 정도. 원작의 악행과 같은 방향의 행동(엘리시아를 향한 공개적 적의·괴롭힘·사교계 추문)이 서사에 실제로 나오면 +1~3, '
@@ -136,7 +157,7 @@ const S = {
     { id: 'health', label: '로제타의 몸', type: 'int', init: 60, min: 0, max: 100,
       desc: '로제타의 몸 상태. 각혈·쓰러짐·밤샘이면 −, 쉬고 치료받으면 +. 서사에 몸의 변화가 나올 때만.' },
     ...PEOPLE.map(([id, label, init, , note]) => ({ id, label, type: 'int', init, min: 0, max: 100,
-      desc: `${label}${id === 'rosetta' ? '가 시종(유저)을' : '이(가) 유저를'} 향한 호감 — 관계의 거리. ${note}. 우정·충성·연애 중 무엇인지는 따지지 말고, `
+      desc: `${label}${id === 'rosetta' ? '가' : '이(가)'} 유저를 향한 호감 — 관계의 거리. ${note}. 우정·충성·연애 중 무엇인지는 따지지 말고, `
         + '서사에서 실제로 가까워지거나 멀어진 만큼만 ±1~8.' })),
     { id: 'awaken', label: '권능의 흔적', type: 'int', init: 0, min: 0, max: 2,
       desc: '로제타가 닿자 마법·신성력·마도구가 꺼지거나 사라지는 장면이 서사에 **실제로** 나왔을 때만 +1. 짐작·암시만으로는 올리지 마라.' },
@@ -145,19 +166,19 @@ const S = {
     { id: 'on_stage', label: '무대에 도착', type: 'bool', init: false,
       desc: '지금 장의 무대에 유저가 도착하면 true — 1장: 엘리시아의 데뷔탕트 무도회장(황궁 대연회장). 무대의 사건은 시스템이 연다.' },
     { id: 'dead', label: '사망', type: 'bool', init: false,
-      desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
+      desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
     { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 8, itemMaxLength: 48,
       desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. "[서장]"·"[1장]" 같은 메인 항목은 시스템이 지우니 건드리지 마라. '
         + '서사 속 인물이 유저에게 직접 부탁한 일이 생기면 "[서브] …"로 추가(서브는 최대 5개).' },
     { id: 'memories', label: '회귀의 기억', type: 'list', init: [], maxItems: 8, itemMaxLength: 60,
-      desc: '유저(빙의자)가 이번 판에서 알게 된 결정적 사실 — 다음 회귀에도 가져갈 만한 것만 한 줄씩 (예: "로제타는 동정받는 걸 가장 싫어한다"). 회귀해도 남는다.' },
+      desc: '유저가 이번 판에서 알게 된 결정적 사실 — 다음 회귀에도 가져갈 만한 것만 한 줄씩 (예: "로제타는 동정받는 걸 가장 싫어한다"). 회귀해도 남는다.' },
     { id: 'ties', label: '그 밖의 관계', type: 'list', init: [], maxItems: 10, itemMaxLength: 40,
       desc: '호감 칸이 없는 인물과의 관계 한 줄 (예: "로니카 — 공공연한 앙숙"). 숫자 없이. 관계가 바뀌면 지우고 새로 적어라.' },
     // 빙의자 탭 [유저 2026-09-25 "소지품이나 능력 관리는 페르소나 전용 탭이 제일 좋아 보인다"]
     { id: 'role', label: '신분', type: 'text', init: '카르디온 공녀',
-      desc: '유저(빙의자)의 지금 신분·자리 한 줄. 서사에서 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등). 시종 면접 합격은 시스템이 적는다.' },
+      desc: '유저의 지금 신분·자리 한 줄. 비어 있으면 서사에 드러난 유저의 자리를 적고, 그 뒤로는 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등). 시종 면접 합격은 시스템이 적는다.' },
     { id: 'skills', label: '능력', type: 'list', init: ['원작 지식'], maxItems: 10, itemMaxLength: 30,
-      desc: '유저(빙의자)가 할 수 있는 것 — 서사에서 실제로 해 보이거나 새로 익힌 것만 한 줄씩 (예: "궁정 예법", "독 감별"). 설정·짐작만으로 늘리지 마라. 회귀해도 남는다.' },
+      desc: '유저가 할 수 있는 것 — 서사에서 실제로 해 보이거나 새로 익힌 것만 한 줄씩 (예: "궁정 예법", "독 감별"). 설정·짐작만으로 늘리지 마라. 회귀해도 남는다.' },
     { id: 'items', label: '소지품', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
       desc: '유저가 지니고 다니거나 따로 챙겨 둔 물건. 서사에서 손에 넣으면 추가, 쓰거나 잃거나 남에게 주면 원문 그대로 지운다. '
         + '늘 걸치는 옷·평범한 장신구는 적지 말고 이야기에 쓰일 만한 것만. 회귀하면 세상과 함께 되감긴다.' },
@@ -216,10 +237,10 @@ const S = {
       { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
         effects: gameOver, notify: '[게임오버] 면접에서 떨어졌다 — 로제타 곁에 설 길이 닫혔고, 원작은 그대로 흘러간다.' },
       // 1장 절정 — 데뷔탕트 무도회. 무대 도착 · 그날 밤 · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
-      ...['rosetta', 'servant'].map((pov) => ({
+      ...['rosetta', 'servant', 'special'].map((pov) => ({
         id: `debut_${pov}`, once: true, strict: 'last',
         when: `pov == "${pov}" and scn_act == "debut" and cleared < 1 and (on_stage or ymd >= ${DEBUT_YMD} or scn_turns >= 14)`,
-        notify: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.',
+        notify: DEBUT_NOTIFY[pov],
         choices: DEBUT_CHOICES[pov].map((c, i, arr) => ({ ...c, effects: [...c.effects, ...debutClose] })),
       })),
     ],
@@ -253,12 +274,12 @@ const S = {
         direct: '원작 <사랑받는 후작 영애의 조건>의 초반이다. 엘리시아가 12년 만에 에버렛 후작가로 돌아왔고, 그녀의 데뷔탕트가 코앞이다. '
           + '로제타는 아직 원작의 악행을 하나도 저지르지 않았다. 지금은 빙의자가 자기 처지를 파악하는 시간이다.' },
       { id: 'debut', label: '1장 · 데뷔탕트', intensity: '전개',
-        unlock: '(pov == "rosetta" and scn_turns >= 3) or hired',
+        unlock: '(pov != "servant" and scn_turns >= 3) or hired',
         direct: '원작이라면 이 장에서: 제국력 472년 3월 10일 밤 황궁 대연회장에서 엘리시아가 화려하게 데뷔하고, 황태자 에르테미안이 그녀에게 호의를 보인다. '
           + '로제타는 자신의 비참했던 데뷔탕트가 떠올라 질투에 불탄다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. '
           + '무도회 전까지는 준비·소문·만남으로 그날을 향해 조여 가라.',
         onEnter: [
-          { list: 'quests', remove: [Q_ROSETTA, Q_SERVANT], add: [Q_DEBUT, ...Q_SUBS_1] },
+          { list: 'quests', remove: [Q_ROSETTA, Q_SERVANT, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
           { checkpoint: 'save' },
         ],
         notify: '[1장] 엘리시아의 데뷔탕트가 다가온다 — 3월 10일 밤, 황궁 대연회장.' },
@@ -271,6 +292,13 @@ const S = {
     { id: 'pov_servant', when: 'pov == "servant"',
       text: '[시점] 유저는 원작에 이름 한 줄 없는 인물의 몸에 빙의한 현대인이다 — 이름·성별·출신은 페르소나를 따른다. 빙의자는 원작 소설을 읽었다. '
         + '로제타는 빙의되지 않은 원래의 로제타다. 유저의 자리: 로제타 전속 시종(합격 전에는 지원자).' },
+    // 빙의자 로제타 [원본 Special Scenario + Possessor Profile을 옮김] — 빙의자는 유저가 아니라 로제타 안의 다른 사람
+    { id: 'pov_special', when: 'pov == "special"',
+      text: '[시점] 유저는 로제타가 아니다 — 이름·성별·신분은 페르소나를 따른다. 로제타 비올라 카르디온의 몸에는 현대 한국에서 온 다른 영혼(빙의자)이 들어 있다. '
+        + '빙의자는 원작 소설 <사랑받는 후작 영애의 조건>을 읽어 앞으로 올 일과 로제타의 비참한 결말을 안다. 빙의자 로제타는 유저가 움직이지 않는 인물이다 — '
+        + '처형을 피하려고 스스로 움직이고, 빙의 사실은 쉽게 털어놓지 않는다. 로제타답게 굴려 애쓰지만 원작의 로제타와 어긋나는 틈이 드러난다.' },
+    { id: 'possessor', when: 'pov == "special" and possessor != ""',
+      text: '[빙의자 설정] 로제타 안의 빙의자: {possessor}' },
     { id: 'interview', when: 'pov == "servant" and scn_act == "prologue" and not hired',
       text: '[면접] 지금은 카르디온 공작저에서 로제타 전속 시종 면접이 열리는 날이다. 로제타의 곁은 오래 버티는 사람이 없어 자리가 자주 빈다. '
         + '로제타가 직접 면접관이다 — 오만하고 날카롭게, 한 번에 질문 하나씩. 합격·탈락은 시스템이 정하니 서사가 먼저 결론을 내지 마라.' },
@@ -284,11 +312,12 @@ const S = {
       text: '[1장 이후] 데뷔탕트의 밤이 지나갔다. 원작 2장(다과회와 소문)은 아직 준비 중이다 — 무도회의 여파와 일상을 자유롭게 이어 가라.' },
   ],
   promptState: {
-    template: '지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}\n빙의자: {role} · 능력: {skills} · 소지품: {items}',
+    template: '지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}\n유저: {role} · 능력: {skills} · 소지품: {items}',
     systemGuide: '한 응답 = 한 장면. 지금 이 자리에서 벌어지는 일을 끝까지 그리고 거기서 멈춰라 — 장면을 넘길지는 유저가 정한다. '
       + '수치·퀘스트·회귀는 시스템이 관리하니 숫자를 본문에 쓰지 마라.',
   },
-  // 상태창 — 두 장: 현황(원작·관계·진행) | 빙의자(신상·가진 것·기억). 꾸밈은 "밤의 무도회" [유저 2026-09-25 세 시안 중 선택]
+  // 상태창 — 두 장: 현황(원작·관계·진행) | 나(신상·가진 것·기억 — 유저 "페르소나 전용 탭"). 꾸밈은 "밤의 무도회" [유저 2026-09-25 세 시안 중 선택]
+  // 둘째 장 이름은 "빙의자"였다가 "나"로 — 빙의자 로제타 시점에선 빙의자가 유저가 아니라 로제타다
   statusUI: {
     mode: 'auto', layout: 'tabs', theme: 'clean', changeLog: 'collapsed',
     customCSS: fs.readFileSync(__P('상태창/밤의무도회.css'), 'utf8'),
@@ -300,34 +329,38 @@ const S = {
         { var: 'health', label: '로제타의 몸', bar: { max: 100 }, color: "health <= 30 ? '#e36b7d' : '#b9a3e0'" },
       ] },
       { tab: '현황', label: '관계', items: [
-        ...PEOPLE.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, ...(id === 'rosetta' ? { showWhen: 'pov == "servant"' } : {}) })),
+        ...PEOPLE.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, ...(id === 'rosetta' ? { showWhen: 'pov != "rosetta"' } : {}) })),
         { var: 'ties', label: '그 밖의 관계', showWhen: 'count(ties) > 0' },
       ] },
       { tab: '현황', label: '진행', items: [
         { var: 'location', label: '장소' },
         { var: 'quests', label: '퀘스트' },
       ] },
-      { tab: '빙의자', label: '신상', items: [
-        { var: 'role', label: '신분' },
+      { tab: '나', label: '신상', items: [
+        { var: 'role', label: '신분', showWhen: 'role != ""' },
         { var: 'loop', label: '회귀', showWhen: 'loop >= 1' },
       ] },
-      { tab: '빙의자', label: '가진 것', items: [
+      { tab: '나', label: '가진 것', items: [
         { var: 'skills', label: '능력' },
         { var: 'items', label: '소지품' },
       ] },
-      { tab: '빙의자', label: '회귀의 기억', showWhen: 'count(memories) > 0', items: [{ var: 'memories', label: '기억' }] },
+      { tab: '나', label: '회귀의 기억', showWhen: 'count(memories) > 0', items: [{ var: 'memories', label: '기억' }] },
     ],
   },
   setup: {
     presets: [
       { id: 'rosetta', label: '💎 로제타 빙의 — 원작 악녀 본인으로', set: { pov: 'rosetta', quests: [Q_ROSETTA] }, startAt: '0472-03-01 08:00' },
       { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접부터', set: { pov: 'servant', quests: [Q_SERVANT], location: '카르디온 공작저 응접실', role: '전속 시종 지원자' }, startAt: '0472-02-24 09:00' },
+      { id: 'special', label: '🌹 빙의자 로제타 — 로제타 곁의 누군가로', set: { pov: 'special', quests: [Q_SPECIAL], role: '', skills: [] }, startAt: '0472-03-01 08:00' },
     ],
+    // 최초 설정은 프리셋이 정한 값(신분·능력)을 못 본다 — 보조 창구엔 스키마 init만 뜨고 값은 절대값으로 덮이니, 프리셋마다 다른 칸은 싣지 않는다
     ai: {
-      enabled: true, vars: ['location', 'skills', 'items'],
-      guide: '능력·소지품은 첫 장면에 실제로 나온 것만 덧붙인다 — 안 나왔으면 기본값 그대로. 능력의 "원작 지식"은 지우지 마라.',
+      enabled: true, vars: ['location', 'items', 'possessor'],
+      guide: '소지품은 첫 장면에 실제로 나온 것만 — 안 나왔으면 values에 넣지 마라. '
+        + 'possessor(빙의자 설정)는 유저가 첫 메시지에서 로제타 안의 빙의자를 설명했을 때만 그 설명을 옮겨 적는다 — 없으면 넣지 마라.',
       instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
-        + '시종 시점이면 카르디온 공작저에서 로제타 전속 시종 면접을 기다리는 자리에서. 목록으로 나열하지 말고 장면으로.',
+        + '시종 시점이면 카르디온 공작저에서 로제타 전속 시종 면접을 기다리는 자리에서, 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
+        + '소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로.',
     },
   },
 };
@@ -381,9 +414,33 @@ console.log('\n━━ 시종 시점 — 면접 합격 ━━');
   const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 9 });
   const tabs = (html.match(/<label class="sim-tab[^>]*>[^<]*<\/label>/g) || []).map((x) => x.replace(/<[^>]+>/g, ''));
   const persona = html.slice(html.indexOf('sim-panel-1'));
-  ok('★ 상태창 탭 두 장: 현황 | 빙의자', tabs.join('|') === '현황|빙의자', tabs.join('|'));
-  ok('빙의자 장: 신분·능력·소지품, 현황 수치는 없다', persona.includes('로제타 전속 시종') && persona.includes('원작 지식') && persona.includes('>소지품<') && !persona.includes('파멸도'), persona.slice(0, 300));
-  ok('프롬프트에 빙의자 한 줄', send(st).promptBlock.includes('빙의자: 로제타 전속 시종 · 능력: 원작 지식 · 소지품: (없음)'), '');
+  ok('★ 상태창 탭 두 장: 현황 | 나', tabs.join('|') === '현황|나', tabs.join('|'));
+  ok('나 장: 신분·능력·소지품, 현황 수치는 없다', persona.includes('로제타 전속 시종') && persona.includes('원작 지식') && persona.includes('>소지품<') && !persona.includes('파멸도'), persona.slice(0, 300));
+  ok('프롬프트에 유저 한 줄', send(st).promptBlock.includes('유저: 로제타 전속 시종 · 능력: 원작 지식 · 소지품: (없음)'), '');
+}
+
+console.log('\n━━ 빙의자 로제타 시점 (원본 Special) ━━');
+{
+  let st = start('special');
+  ok('시작: 3월 1일 · 서장 · 빙의자 로제타 퀘스트 · 신분·능력 빈칸', L(st, 'date') === '3월 1일' && st.vars.quests[0] === Q_SPECIAL && st.vars.role === '' && st.vars.skills.length === 0,
+    JSON.stringify({ q: st.vars.quests, r: st.vars.role, s: st.vars.skills }));
+  let p = send(st).promptBlock;
+  ok('프롬프트: 로제타 안의 다른 영혼 · 유저는 로제타가 아니다 · 면접·로제타 빙의 지시 없음',
+    p.includes('유저는 로제타가 아니다') && p.includes('다른 영혼(빙의자)') && !p.includes('[면접]') && !p.includes('로제타 비올라 카르디온의 몸에 빙의한 현대인'), '');
+  ok('빙의자 설정이 비면 설정 줄도 없다', !p.includes('[빙의자 설정]'), '');
+  // 최초 설정이 첫 메시지의 빙의자 설명을 옮겨 적는다
+  st = engine.setupPhase(S, st, { possessor: '서른 살 사회부 기자. 냉소적이고 말이 빠르다', skills: ['원작 지식'] }, {}).state;
+  ok('최초 설정: 빙의자 설정만 받고 능력은 안 받는다 (프리셋 값 보호)', st.vars.possessor.startsWith('서른 살') && st.vars.skills.length === 0, JSON.stringify(st.vars.skills));
+  p = send(st).promptBlock;
+  ok('빙의자 설정이 프롬프트에', p.includes('[빙의자 설정] 로제타 안의 빙의자: 서른 살 사회부 기자'), '');
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 3 });
+  ok('상태창: 로제타 호감 줄이 보이고, 빈 신분 줄은 숨는다', html.includes('>로제타</span>') && !html.includes('>신분<'), '');
+  for (let i = 0; i < 3; i++) st = turn(st, { skip_min: 30 }).st;
+  st = turn(st).st;
+  ok('서장 3턴 → 1장 · 퀘스트 교체', L(st, 'scn_act') === 'debut' && !st.vars.quests.includes(Q_SPECIAL) && st.vars.quests.includes(Q_DEBUT), JSON.stringify(st.vars.quests));
+  st = turn(st, { on_stage: true }).st;
+  ok('무도회장 → 빙의자 로제타 절정 갈림길', st.meta.pendingChoice?.id === 'debut_special', JSON.stringify(st.meta.pendingChoice));
+  ok('절정 통지: 빙의자도 이 장면을 안다', send(st).promptBlock.includes('로제타 안의 빙의자도 이 장면을 안다'), '');
 }
 
 console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');

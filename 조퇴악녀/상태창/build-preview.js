@@ -41,7 +41,7 @@ const SCENES = [
   },
   {
     id: 'servant', open: 1, title: '시종 시점',
-    caption: '서장 · 면접 두 번째 질문 · 회귀 2회차 — 빙의자 장을 펼친 채',
+    caption: '서장 · 면접 두 번째 질문 · 회귀 2회차 — 나 장을 펼친 채',
     build() {
       const st = start('servant');
       Object.assign(st.vars, {
@@ -50,6 +50,21 @@ const SCENES = [
         skills: ['원작 지식', '재봉'], items: ['낡은 추천서'],
       });
       return { st, changeLog: null };
+    },
+  },
+  {
+    id: 'special', open: 0, title: '빙의자 로제타 시점',
+    caption: '1장 · 로제타 안에는 다른 영혼 — 유저는 곁의 누군가',
+    build() {
+      const st = start('special');
+      Object.assign(st.vars, {
+        scn_idx: 1, scn_turns: 2, doom: 34, rep: -28, health: 55, elicia: 32, ert: 12, rical: 8, duke: 5, anna: 80, rosetta: 41,
+        location: '카르디온 공작저 정원', role: '에버렛 후작가 기사',
+        quests: ['[1장] 데뷔탕트를 무사히 넘긴다', '[서브] 서랍 속 작은 병의 정체'],
+        ties: ['로니카 — 로제타를 비웃는 영애'], items: ['후작가 문장 단검'],
+        possessor: '서른 살 사회부 기자. 냉소적이고 말이 빠르다',
+      });
+      return { st, changeLog: [{ id: 'rosetta', from: 35, to: 41, source: 'llm' }] };
     },
   },
 ];
@@ -90,7 +105,7 @@ const page = `<title>악녀의 상태창</title>
 }
 :root[data-theme="dark"]{ --bg:#151217; --ink:#ece5e8; --muted:#a3959c; --line:#2d262c; --accent:#e58a9a; --panel:#1b171d; color-scheme:dark; }
 body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.6}
-.wrap{max-width:1040px; margin:0 auto; padding-inline:16px; padding-block:28px 40px}
+.wrap{max-width:1180px; margin:0 auto; padding-inline:16px; padding-block:28px 40px}
 .top{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px 24px; border-bottom:1px solid var(--line); padding-bottom:18px}
 h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter-spacing:.02em; text-wrap:balance}
 .lede{margin:.4rem 0 0; color:var(--muted); max-width:62ch}
@@ -98,7 +113,7 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
 .toggle button{font:inherit; font-size:.85rem; border:0; background:transparent; color:var(--muted); padding:.35rem .9rem; border-radius:999px; cursor:pointer}
 .toggle button[aria-pressed="true"]{background:var(--accent); color:#fff}
 .toggle button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr)); gap:28px; margin-top:26px; align-items:start}
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr)); gap:28px; margin-top:26px; align-items:start}
 .variant{display:flex; flex-direction:column; gap:12px; min-width:0}
 .variant-head h2{font-family:var(--serif); font-size:1.3rem; margin:0}
 .variant-head p{margin:.15rem 0 0; color:var(--muted); font-size:.9rem}
@@ -112,7 +127,7 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   <div class="top">
     <div>
       <h1>악녀의 상태창</h1>
-      <p class="lede">밤의 무도회 + 두 장(현황 | 빙의자). SimCore 렌더러가 실제 스키마로 그린 화면이고, 탭은 눌러서 넘길 수 있습니다.</p>
+      <p class="lede">밤의 무도회 + 두 장(현황 | 나), 시점 셋. SimCore 렌더러가 실제 스키마로 그린 화면이고, 탭은 눌러서 넘길 수 있습니다.</p>
     </div>
     <div class="toggle" role="group" aria-label="채팅 배경">
       <button type="button" id="bg-dark" aria-pressed="true">어두운 채팅</button>
@@ -123,8 +138,8 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   </div>
   <div class="notes">
     <p><b>현황</b> — 면접(시종 시점, 합격 전) · 로제타(파멸도·평판·몸) · 관계(호감 + 그 밖의 관계) · 진행(장소·퀘스트).</p>
-    <p><b>빙의자</b> — 신상(신분·회귀) · 가진 것(능력·소지품) · 회귀의 기억. 능력과 기억은 회귀해도 남고, 소지품과 신분은 세상과 함께 되감깁니다.</p>
-    <p>능력·소지품은 보조 모델이 서사에 실제로 나온 것만 적고, 메인 모델도 매 턴 "빙의자: 신분 · 능력 · 소지품" 한 줄로 받습니다.</p>
+    <p><b>나</b> — 신상(신분·회귀) · 가진 것(능력·소지품) · 회귀의 기억. 능력과 기억은 회귀해도 남고, 소지품과 신분은 세상과 함께 되감깁니다.</p>
+    <p>능력·소지품은 보조 모델이 서사에 실제로 나온 것만 적고, 메인 모델도 매 턴 "유저: 신분 · 능력 · 소지품" 한 줄로 받습니다. 빙의자 로제타 시점에선 로제타 호감 줄이 보이고, 빙의자 설정은 상태창이 아니라 프롬프트로만 갑니다.</p>
   </div>
 </div>
 <script>

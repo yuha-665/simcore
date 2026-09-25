@@ -28,7 +28,7 @@ const DROP = {
   상태창: '심코어 상태창이 대체 — 남기면 <StatusWindow> 블록과 상태창이 두 겹',
   '원작 타임라인': '시나리오 막(direct)으로 쪼개 옮겼다 — 남기면 4막 전체가 한꺼번에 보여 모델이 앞질러 간다',
   '빙의 지침': '심코어 시점 지시문(pov_rosetta·pov_servant)이 대체',
-  'Special Scenario': '원본 모드 2(로제타에 다른 빙의자)는 이번 범위 밖 — 남기면 scenario_mode 2에서 시점이 충돌',
+  'Special Scenario': '🌹 빙의자 로제타 프리셋(pov_special 지시문 + possessor 변수)이 대체 — Possessor Profile을 로어북에 적으면 번들을 다시 적용할 때 지워진다',
 };
 
 // 비밀 잘라 내기 — [인물 항목, 지울 것, 바꿀 것]. 지울 것은 정규식(줄바꿈·들여쓰기 무관), 바꿀 것이 없으면 통째 삭제.

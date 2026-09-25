@@ -2,7 +2,7 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 // 조기퇴장 악녀에 빙의해버렸다 — 원작 탈출 사망회귀 시나리오 (docs/design-조퇴악녀.md)
 //
 // 원본 봇: 세계관 + 인물 사전 27명 + 원작 줄거리 요약 4막(상시 로어북, 기본 꺼짐). 숫자 상태 0개.
-// 이 생성기가 그 위에 진행 장치를 얹는다 — 1부 = 서장 + 원작 4막(1~4장) + 5장 심판 + 원작 이후. 2부는 막을 뒤에 덧붙인다(세이브 안 깨짐).
+// 이 생성기가 그 위에 진행 장치를 얹는다 — 1부 = 서장 + 원작 4막(1~4장) + 5장 심판 / 2부 = 원작 이후 막 안의 진영 줄기 다섯 + 무대 뒤. 막은 덧붙이기 전용(세이브 안 깨짐).
 //
 // 출처 꼬리표 (설계 §11~16):
 //   [원본] 로어북에 적힌 사실 — 원작 사건 순서·인물 성격·비밀 내용
@@ -414,6 +414,206 @@ const CANON_LIVE = {
   desc: '원작이 이야기를 되돌리려 한다',
 };
 
+// ══════════ 2부 — 진영 줄기 + 무대 뒤 [유저 §15: "조건을 달성할 때마다 서브 퀘스트 줄기로 열리게, 언제 해도 되는 줄기만,
+// 아웃풋에 안 나와도 NPC들이 움직이다가 표면으로 나올 때 이벤트가 터지게"] ══════════
+// 씨앗 = 인물 로어북의 Goal·Fear·Secret [원본] / 줄기로 묶은 전개·선택지·문턱 [초안]. 로제타의 어머니 줄기는 유저 결정 대기(원본 빈칸)
+//
+// 줄기 한 벌: ql_<id> 0 닫힘 → 1 열림 → 2 진상 → 결판 3·4·5(선택지별) / 9 놓침(무대 뒤 시계가 끝까지 감)
+//   열림 = 유저가 이룬 것(접점·호감) 또는 무대 뒤 표면화(frs ≥ 2 — 세상이 먼저 찾아온다)
+//   진상 = 진척 qp_<id> 2 (보조가 "그 일에 실제로 한 걸음 다가간 장면"만 +1) · 결판 = 진척 4 또는 시계 85
+//   지시문은 지금 단계 하나만 — 다음 단계는 모델이 모른다. 순서 무관: 줄기는 자기 단계·공용 상태만 읽고, 다른 줄기 결과는 대체 경로·양념으로만
+const PEOPLE2 = [
+  // id, 라벨, 낱말, 비고 — 호감 칸 = 줄기의 문을 여는 인물 [유저 §16]. 처음 0, 만나면 상태창에 나타난다
+  ['dianne', '디안느', ['디안느', '안느', '성녀'], '에오스 교단의 성녀. 경건한 가면 아래 빈민가 출신의 현실주의자 [원본]'],
+  ['aldric', '알드릭', ['알드릭', '추기경'], '역대 최연소 추기경. 부드러운 얼굴의 야심가 [원본]'],
+  ['doris', '도리스', ['도리스', '클라인 자작'], '잠만 자는 척하는 클라인 자작. 병약한 여동생 엘시밖에 모른다 [원본]'],
+  ['clene', '클레네', ['클레네'], '실버버그 남작 영애. 사교계 정상을 노리는 야심가 [원본]'],
+  ['ishtvan', '이슈트반', ['이슈트반', '대공'], '빌테온 대공. 황궁을 떠난 황자, 누이 드미트리샤를 멀리서 지킨다 [원본]'],
+  ['misha', '드미트리샤', ['드미트리샤', '미샤', '황녀'], '별궁의 병약한 황녀(17, 미성년자 — 관계는 우정·보호로만) [원본·유저 §16]'],
+  ['yuon', '유온', ['유온', '동방'], '동방의 막내 왕자. 모두에게 웃어 주는 관찰자 [원본]'],
+  ['ecsion', '에크시온', ['에크시온', '마탑주', '탑주'], '마탑주. 세상일에 관심 없는 척하는 대마법사 [원본]'],
+  ['leah', '레아', ['레아'], '마탑주의 수제자이자 대행. 탑을 실제로 굴린다 [원본]'],
+];
+const ql = (id, v) => ({ set: `ql_${id}`, expr: String(v) });
+const LINES = [
+  { id: 'temple', label: '신전', quest: '[신전] 대신전의 암투에 발을 들인다',
+    words: ['신전', '대신관', '고해', '구호소', '심문', '횡령'],
+    open: 'power_public and (dianne >= 10 or aldric >= 10)',
+    openNotify: '[2부 · 신전] 대신전이 로제타의 권능을 주목한다 — 신성력마저 지우는 힘은 신전에겐 이단이자 무기다. 성녀 디안느와 추기경 알드릭이 각자 다른 속셈으로 다가온다.',
+    stage1: '[신전 줄기 · 1] 대신전 안이 둘로 갈려 있다 — 겉은 평온하지만 구호소가 자주 문을 닫고, 성녀와 대신관 사이가 차갑다. 디안느는 경건한 성녀를 연기하지만 속은 빈민가 출신의 현실주의자고, '
+      + '알드릭은 부드러운 얼굴로 모두와 거래한다. 무엇이 걸려 있는지는 유저가 캐내야 드러난다.',
+    deepNotify: '[신전] 대신관이 구호 자금을 빼돌려 왔다 — 디안느는 몰래 증거를 모으고 있고, 알드릭은 귀족들의 고해를 적은 장부를 쥐고 있다.',
+    stage2: '[신전 줄기 · 2] 대신관의 횡령이 드러났다. 디안느는 대신관을 끌어내리려 하고, 알드릭의 고해 장부에는 귀족들의 약점 — 어쩌면 카르디온가의 이름도 — 이 적혀 있다. '
+      + '대신관은 성녀를 이단으로 몰아 먼저 치려 한다.',
+    climaxNotify: '[신전 · 결판] 대신관이 성녀를 이단으로 몰 심문회가 열린다. 디안느의 증거, 알드릭의 장부, 그리고 로제타의 권능이 한자리에 놓였다.',
+    choices: [
+      { label: '디안느의 증거를 들고 심문회에 선다', check: 'c_talk_h', effects: [ql('temple', 'chk_ok ? 3 : 5'), ok2('dianne', 15, 5), ok2('rep', 10, -5)],
+        inject: '유저가 성녀의 증거를 들고 심문회 한가운데 선다. 대신관을 끌어내릴지, 말이 막혀 판이 뒤집힐지는 판정이 정한다.' },
+      { label: '알드릭과 거래한다 — 장부를 쥔 쪽에 선다', effects: [ql('temple', 4), d('aldric', 15), d('dianne', -10)],
+        inject: '유저가 추기경의 손을 잡는다. 대신관은 무너지지만, 신전을 쥐는 건 성녀가 아니라 알드릭이다.' },
+      { label: '대신관이 내민 성물에 로제타의 권능을 닿게 한다', effects: [ql('temple', 3), d('dianne', 5), d('rep', -5)],
+        inject: '대신관이 "이단을 가려낸다"며 내민 성물의 빛이 로제타의 손끝에서 꺼진다 — 모두가 숨을 삼킨 사이, 성물에 숨겨 둔 장치까지 드러난다. 사람들은 대신관보다 로제타를 더 두려워하게 된다.' },
+      { label: '신전 일에서 손을 뗀다', effects: [ql('temple', 5), d('dianne', -10)],
+        inject: '유저가 심문회에 나서지 않는다. 디안느는 혼자 버틴다.' },
+    ],
+    results: { 3: '[신전] 대신관이 물러나고 성녀 디안느가 신전을 다시 세우고 있다. 구호소가 다시 문을 연다.',
+      4: '[신전] 추기경 알드릭이 대신전을 쥐었다 — 신전은 이제 제국 정치에 손을 뻗는다.',
+      5: '[신전] 대신관은 자리를 지켰고, 성녀 디안느는 숨을 죽인 채 때를 기다린다.',
+      9: '[신전] 성녀 디안느가 이단 혐의로 쫓겨났다. 대신전은 대신관의 것이다.' },
+    front: { about: '대신전', label: '신전의 암투', rate: 1.5, stages: [
+      { at: 25, hint: '대신전 앞 구호소가 요즘 자주 문을 닫는다. 신관들이 성녀의 이름을 낮춰 부른다.' },
+      { at: 50, backstage: '대신관이 구호 자금을 빼돌려 추기경단의 표를 사고 있다. 성녀는 장부의 구멍을 눈치챘고, 추기경 알드릭은 귀족들의 고해 장부를 쥐고 양쪽을 저울질한다.' },
+      { at: 70, surface: '대신전이 "성녀가 이단의 힘에 물들었다"는 심문 공고를 붙였다.', backstage: '혐의는 대신관이 꾸몄다 — 성녀가 쥔 증거가 세상에 나오기 전에 입을 막으려는 것이다.' },
+      { at: 100, surface: '성녀 디안느가 이단 혐의로 대신전에서 쫓겨났다 — 대신관의 자리는 더 단단해졌다.', lost: true },
+    ] } },
+  { id: 'klein', label: '뒷골목', quest: '[뒷골목] 마석 가루의 출처를 쫓는다',
+    words: ['밤의 눈', '암시장', '마석 가루', '은신처', '약값', '엘시', '뒷골목'],
+    open: 'sec_powder >= 1 and doris >= 10',
+    openNotify: '[2부 · 뒷골목] 로제타가 삼켜 온 마석 가루의 끈을 당기자, 정보 길드 "밤의 눈"과 잠만 자는 척하는 클라인 자작이 걸려 나온다.',
+    stage1: '[뒷골목 줄기 · 1] 로제타가 먹던 마석 가루는 뒷골목 암시장에서 왔다. 암시장의 정보는 "밤의 눈"이 쥐고 있고, 그 길드장은 사교계에서 "잠만 자는 자작"으로 불리는 도리스다 — '
+      + '유저가 그걸 알아내기 전까지는 드러내지 마라. 도리스는 병약한 여동생 엘시를 끔찍이 아낀다.',
+    deepNotify: '[뒷골목] 엘시의 약은 암시장에서 천문학적인 값에 들어온다 — 도리스는 그 값을 대려고 점점 위험한 손님과 거래하고 있다. 로제타의 마석 가루도 같은 암시장 공급선에서 나왔다.',
+    stage2: '[뒷골목 줄기 · 2] 도리스가 엘시의 약값 때문에 위험한 손님과 거래하고 있다. 암시장의 마석 가루와 엘시의 약은 같은 공급선을 탄다. '
+      + '엘시는 오빠가 무슨 일을 하는지 모른다 — 대신 유모와 몰래 만든 비밀 통로로 저택을 빠져나가곤 한다. 엘시는 미성년자다(16) — 관계는 우정·보호로만.',
+    climaxNotify: '[뒷골목 · 결판] 밤의 눈의 은신처로 추격자들이 들이닥친다. 도리스는 엘시부터 빼내려 하고, 공급선의 장부가 유저 손 닿는 곳에 있다.',
+    choices: [
+      { label: '추격자들을 막아서며 도리스를 빼낸다', check: 'c_sword_h', effects: [ql('klein', 'chk_ok ? 3 : 5'), ok2('doris', 20, 8)],
+        inject: '유저가 은신처 입구에서 추격자들을 막아선다. 도리스가 빠져나갈 시간을 벌지, 함께 쫓기는 몸이 될지는 판정이 정한다.' },
+      { label: '공급선 장부를 챙겨 가루의 뿌리를 끊는다', effects: [ql('klein', 4), d('doris', -5)],
+        inject: '유저가 불길 속에서 장부를 챙긴다. 마석 가루가 어디서 캐여 어떻게 흘러왔는지가 거기 적혀 있다 — 도리스는 은신처 하나를 잃는다.' },
+      { label: '엘시의 비밀 통로로 남매를 피신시킨다', effects: [ql('klein', 3), d('doris', 12)],
+        inject: '엘시가 몰래 만든 통로가 남매를 살린다. 도리스는 여동생이 그런 길을 알고 있었다는 데 한 번, 유저가 그걸 알았다는 데 한 번 놀란다.' },
+      { label: '뒷골목 일에서 손을 뗀다', effects: [ql('klein', 5), d('doris', -10)],
+        inject: '유저가 발을 뺀다. 밤의 눈은 은신처를 잃고 더 깊이 숨는다.' },
+    ],
+    results: { 3: '[뒷골목] 밤의 눈은 살아남았고, 도리스는 유저에게 빚을 졌다. 엘시의 약은 끊기지 않았다.',
+      4: '[뒷골목] 마석 가루의 공급선 장부가 유저 손에 있다 — 가루가 어디서 캐이는지 적혀 있다.',
+      5: '[뒷골목] 밤의 눈은 은신처를 잃고 더 깊이 숨었다. 도리스는 여전히 위험한 거래를 한다.',
+      9: '[뒷골목] 밤의 눈이 무너졌다. 클라인 자작은 자취를 감췄고, 엘시의 약도 끊겼다.' },
+    front: { about: '뒷골목', label: '밤의 눈', rate: 2, stages: [
+      { at: 25, hint: '뒷골목 약재상들이 값을 두 배로 올렸다. 클라인 자작가의 마차가 밤늦게 드나든다.' },
+      { at: 50, backstage: '엘시의 병세가 나빠져 약값이 치솟았다. 도리스는 약을 대려고 밤의 눈의 정보를 점점 위험한 손님에게 팔고 있다.' },
+      { at: 70, surface: '밤의 눈의 은신처 하나가 습격당했다 — 정체 모를 자들이 정보상들을 쫓고 있다.', backstage: '도리스가 판 정보의 값을 치르러 온 자들이다.' },
+      { at: 100, surface: '밤의 눈이 무너졌다. 클라인 자작은 자취를 감췄고, 엘시의 약도 끊겼다.', lost: true },
+    ] } },
+  { id: 'silver', label: '실버버그', quest: '[실버버그] 실버버그가의 돈줄을 캔다',
+    words: ['실버버그', '광산', '갱도', '광맥', '채굴'],
+    // 뒷골목 줄기 결과는 대체 경로로만 — 클레네와의 접점만으로도 열린다 (순서 무관 ③)
+    open: 'ql_klein >= 2 or clene >= 15',
+    openNotify: '[2부 · 실버버그] 사교계의 신흥 명문 실버버그 — 그 돈이 어디서 나오는지 묻는 사람은 없었다. 클레네는 아버지의 일을 모르는 척한다.',
+    stage1: '[실버버그 줄기 · 1] 실버버그 남작가의 갑작스러운 부의 출처가 수상하다. 클레네는 사교계 정상을 노리는 야심가로, 아버지가 자기를 도구로만 본다는 두려움을 숨긴다. '
+      + '아버지의 불법은 모르는 척하는 중이다.',
+    deepNotify: '[실버버그] 실버버그 남작은 허가 없이 마석 광맥을 캐고 있고, 그 부스러기가 암시장으로 흘러 마석 가루가 된다 — 로제타를 망가뜨린 가루의 뿌리다. 갱도는 무리한 채굴로 한계에 가깝다.',
+    stage2: '[실버버그 줄기 · 2] 불법 광산의 정체가 드러났다. 무너지기 직전의 갱도에는 광부들이 있고, 클레네는 아버지와 자기 자리 사이에서 흔들린다.',
+    climaxNotify: '[실버버그 · 결판] 광산의 갱도가 무너지기 직전이다. 증거는 유저 손에 있고, 클레네가 유저를 막아선다.',
+    choices: [
+      { label: '클레네를 설득해 스스로 고발하게 한다', check: 'c_talk_h', effects: [ql('silver', 'chk_ok ? 3 : 5'), ok2('clene', 20, -10)],
+        inject: '유저가 클레네에게 아버지의 광산을 스스로 고발하라고 말한다. 클레네가 처음으로 돈으로 못 사는 쪽을 고를지, 등을 돌릴지는 판정이 정한다.' },
+      { label: '황실에 증거를 넘긴다', effects: [ql('silver', 4), d('clene', -20)],
+        inject: '유저가 증거를 황실에 넘긴다. 광산은 봉쇄되고 가루의 뿌리가 끊기지만, 실버버그가는 무너진다. 클레네가 유저를 본다.' },
+      { label: '광부들부터 대피시킨다', check: 'c_charm', effects: [ql('silver', 'chk_ok ? 3 : 5'), ok2('rep', 8, 0), ok2('clene', 8, 0)],
+        inject: '유저가 갱도 입구에서 광부들을 불러낸다. 사람들이 유저의 말을 따를지는 판정이 정한다 — 따른다면 무너지는 갱도에 아무도 남지 않는다.' },
+      { label: '모른 척한다', effects: [ql('silver', 5)],
+        inject: '유저가 증거를 덮는다. 광산은 오늘도 돌아간다.' },
+    ],
+    results: { 3: '[실버버그] 광부들은 살았고, 클레네가 아버지의 광산을 멈추는 쪽에 섰다 — 가루의 뿌리 하나가 끊겼다.',
+      4: '[실버버그] 불법 광산이 황실에 봉쇄됐다. 실버버그가는 몰락했고, 클레네는 모든 걸 잃었다.',
+      5: '[실버버그] 광산은 여전히 돌아가고, 클레네는 계속 모르는 척한다.',
+      9: '[실버버그] 광산이 무너지고 불법 채굴이 발각됐다 — 실버버그가는 작위를 잃었고, 갱도에 광부들이 묻혔다.' },
+    front: { about: '실버버그 남작가', label: '불법 광산', rate: 1.2, stages: [
+      { at: 25, hint: '실버버그 남작가의 씀씀이가 부쩍 크다. 클레네의 드레스가 매번 새것이다.' },
+      { at: 50, backstage: '실버버그 남작이 허가 없이 마석 광맥을 캐고 있다. 캐낸 부스러기는 암시장으로 흘러 마석 가루가 된다. 갱도는 무리한 채굴로 한계에 다다랐다.' },
+      { at: 70, surface: '실버버그 영지의 광산에서 갱도 일부가 무너졌다는 소문이 수도까지 올라왔다.' },
+      { at: 100, surface: '실버버그 광산이 무너지고 불법 채굴이 발각됐다 — 남작가는 작위를 잃었고, 갱도에 광부들이 묻혔다.', lost: true },
+    ] } },
+  { id: 'palace', label: '황궁', quest: '[황궁] 황궁의 비어 있는 자리를 들여다본다',
+    words: ['황궁', '별궁', '장부', '사절단', '보고서'],
+    open: 'ert >= 50 or misha >= 10 or ishtvan >= 10',
+    openNotify: '[2부 · 황궁] 황궁에 발을 들이자 보이지 않던 것이 보인다 — 별궁의 "유령 황녀" 드미트리샤, 황궁을 떠난 대공 이슈트반, 그리고 모두에게 웃어 주는 동방의 왕자 유온.',
+    stage1: '[황궁 줄기 · 1] 드미트리샤는 황제·황후의 눈 밖에 날까 봐 숨죽여 사는 병약한 천재고, 에르테미안은 형 이슈트반이 황궁으로 돌아오길 바란다. 이슈트반이 왜 떠났는지 드미트리샤는 모른다. '
+      + '유온은 모두에게 친절한 관찰자다. 드미트리샤는 미성년자다(17) — 관계는 우정·보호로만.',
+    deepNotify: '[황궁] 유온이 본국에 보내는 보고서와 별개로, 황실의 약점을 적은 두 번째 장부를 쌓고 있다 — 이슈트반이 황궁을 떠난 사정도 거기 있다.',
+    stage2: '[황궁 줄기 · 2] 유온의 이중 장부에 황실의 약점이 적혀 있고, 본국의 형들은 유온을 "쓸모없는 패"로 돌리기 직전이다. '
+      + '이슈트반은 누이를 겨누는 칼끝에서 벗어나게 하려고 황궁을 떠났다 — 누구에게도, 드미트리샤에게는 더더욱 말하지 않는다.',
+    climaxNotify: '[황궁 · 결판] 동방 사절단의 연회. 유온의 이중 장부가 누구 손에 들어가느냐에 따라 황실의 약점이 동방으로 넘어간다.',
+    choices: [
+      { label: '유온과 거래한다 — 장부를 묻는 대신 본국에서의 자리를 돕는다', check: 'c_talk_h', effects: [ql('palace', 'chk_ok ? 3 : 5'), ok2('yuon', 20, -5)],
+        inject: '유저가 유온에게 거래를 건다. 관찰자였던 유온이 처음으로 편을 고를지, 웃는 얼굴로 빠져나갈지는 판정이 정한다.' },
+      { label: '장부를 빼돌려 이슈트반에게 넘긴다', effects: [ql('palace', 4), d('ishtvan', 15), d('yuon', -20)],
+        inject: '장부가 이슈트반의 손에 들어간다. 황실의 약점은 지켜졌지만, 유온은 누가 자기를 팔았는지 안다.' },
+      { label: '드미트리샤를 연회장에서 데리고 나온다', effects: [ql('palace', 5), d('misha', 12), d('ishtvan', 5)],
+        inject: '유저가 연회장 구석에서 떨고 있던 드미트리샤를 데리고 나온다. 장부는 동방으로 가지만, 황녀는 그 밤 누구의 수에도 쓰이지 않는다.' },
+      { label: '끼어들지 않는다', effects: [ql('palace', 5)],
+        inject: '유저가 연회를 지켜보기만 한다. 장부는 조용히 동방의 손으로 넘어간다.' },
+    ],
+    results: { 3: '[황궁] 유온이 제국 쪽에 한 발을 걸쳤다 — 이중 장부는 봉해졌고, 유온은 유저에게 빚을 졌다.',
+      4: '[황궁] 이슈트반이 유온의 장부를 쥐었다. 황실의 약점은 지켜졌지만 동방은 누가 막았는지 안다.',
+      5: '[황궁] 유온의 장부는 동방으로 건너갔다. 황실은 아직 그걸 모른다.',
+      9: '[황궁] 동방이 황실의 약점을 쥐고 교역 조건을 밀어붙였다. 드미트리샤 황녀를 동방에 볼모로 보내자는 말이 황궁 안에서 오간다.' },
+    front: { about: '황궁', label: '동방의 수', rate: 1, stages: [
+      { at: 25, hint: '동방 왕자 유온이 요즘 황궁 서고와 귀족 연회에 부쩍 자주 보인다.' },
+      { at: 50, backstage: '유온은 본국 보고서와 별개로 황실의 약점을 적은 이중 장부를 쌓고 있다 — 이슈트반이 황궁을 떠난 사정까지. 본국의 형들은 유온을 쓸모없는 패로 돌리기 직전이다.' },
+      { at: 70, surface: '동방 사절단이 수도에 도착했다 — 명목은 교역이다.' },
+      { at: 100, surface: '동방이 황실의 약점을 쥐고 교역 조건을 밀어붙였다. 드미트리샤 황녀를 동방에 볼모로 보내자는 말이 황궁 안에서 오간다.', lost: true },
+    ] } },
+  { id: 'tower', label: '마탑', quest: '[마탑] 마탑이 권능을 노린다',
+    words: ['마탑', '원로', '엘로웬', '인장', '소환장'],
+    open: 'power_public and (ecsion >= 10 or leah >= 10)', frontWhen: 'power_public',
+    openNotify: '[2부 · 마탑] 마력을 지우는 힘 — 마탑에게 로제타의 권능은 위협이자 수수께끼다. 탑주 대행 레아가 먼저 찾아온다.',
+    stage1: '[마탑 줄기 · 1] 마탑은 가문도 작위도 안 보고 능력만 본다 — 그래서 로제타의 권능에 누구보다 먼저 눈을 번뜩인다. 실무는 레아가 쥐고 있고, 탑주 에크시온은 세상일에 관심 없는 척 빈둥댄다. '
+      + '수도 밖에는 "마법은 모두의 것"을 외치다 떠난 전 부탑주 엘로웬이 산다.',
+    deepNotify: '[마탑] 원로들이 로제타를 "살아 있는 반마법 표본"으로 들이려 한다. 레아가 막고 있지만 오래 못 버틴다. 엘로웬은 아직 부탑주의 인장을 지니고 있다.',
+    stage2: '[마탑 줄기 · 2] 원로들의 계획이 드러났다 — 권능을 조사하고, 안 되면 봉인한다. 레아는 탑의 규칙과 사람 사이에서 버티고, 에크시온은 레아가 곤란해지는 걸 싫어한다. '
+      + '엘로웬의 인장은 원로회에서 한 표가 된다.',
+    climaxNotify: '[마탑 · 결판] 마탑 원로회가 로제타의 권능을 두고 열린다. 연구냐, 봉인이냐, 그대로 두느냐.',
+    choices: [
+      { label: '엘로웬을 설득해 부탑주의 인장으로 원로회를 막는다', check: 'c_talk_h', effects: [ql('tower', 'chk_ok ? 3 : 5'), ok2('leah', 8, 0)],
+        inject: '유저가 망명한 전 부탑주를 찾아간다. 엘로웬이 다시 인장을 꺼내 들지, 문을 닫을지는 판정이 정한다.' },
+      { label: '레아와 조건을 건다 — 연구에 협조하되 봉인은 없다', effects: [ql('tower', 4), d('leah', 15), d('ecsion', 5)],
+        inject: '유저가 레아와 조건을 맞춘다. 로제타의 권능은 마탑의 연구 대상이 되지만, 봉인 이야기는 원로회에서 사라진다.' },
+      { label: '원로회 앞에서 권능으로 방어 마법을 지워 보인다', effects: [ql('tower', 5), d('ecsion', 10), d('rep', -5)],
+        inject: '원로회를 두른 방어 마법이 로제타의 손끝에서 꺼진다. 원로들은 물러서지만, 이제 마탑 전체가 로제타를 경계한다. 에크시온만 처음으로 흥미로운 얼굴을 한다.' },
+      { label: '소환에 응하지 않는다', effects: [ql('tower', 5), d('leah', -5)],
+        inject: '유저가 소환장을 무시한다. 마탑은 일단 물러서지만, 기록은 남는다.' },
+    ],
+    results: { 3: '[마탑] 엘로웬의 인장이 원로회를 막았다 — 로제타의 권능은 누구의 표본도 아니다.',
+      4: '[마탑] 로제타의 권능은 마탑과의 약속 아래 연구된다. 레아가 그 약속을 지킨다.',
+      5: '[마탑] 마탑은 물러섰지만 로제타의 권능을 경계 목록에 올려 두었다.',
+      9: '[마탑] 마탑 원로회가 황실의 묵인 아래 로제타의 권능을 "봉인 대상"으로 등록했다.' },
+    front: { about: '마탑', label: '마탑의 관심', rate: 1.5, stages: [
+      { at: 25, hint: '로제타가 지나간 자리마다 마탑 인장을 단 마법사가 하나씩 보인다.' },
+      { at: 50, backstage: '마탑 원로들이 마력을 지우는 권능을 "살아 있는 반마법 표본"이라 부르며 연구하려 든다. 레아가 탑주 대행으로 막고 있지만, 에크시온은 늘 그렇듯 관심 없는 척한다.' },
+      { at: 70, surface: '마탑이 로제타 앞으로 공식 소환장을 보냈다 — 권능을 조사하겠다는 통보다.' },
+      { at: 100, surface: '마탑 원로회가 황실의 묵인 아래 로제타의 권능을 "봉인 대상"으로 등록했다.', lost: true },
+    ] } },
+];
+// 줄기 → 스키마 조각. 진척 칸의 낱말은 장소·사건 — 인물 이름은 호감 칸 몫이라 겹치지 않게 (인물이 나오는 장면엔 대개 이 낱말도 같이 나온다)
+const lineVars = LINES.flatMap((ln) => [
+  { id: `ql_${ln.id}`, label: `${ln.label} 줄기`, type: 'int', init: 0, min: 0, max: 9 }, // 시스템 전용
+  { id: `qp_${ln.id}`, label: `${ln.label} 진척`, type: 'int', init: 0, min: 0, max: 4,
+    desc: `${ln.label} 줄기(퀘스트 "${ln.quest}")가 열린 뒤, 유저가 그 일에 실제로 한 걸음 다가간 장면(단서를 손에 넣음·관계자를 설득함·현장을 확인함)이 서사에 나왔을 때만 +1. `
+      + '퀘스트 목록에 그 줄이 없으면 건드리지 마라.' },
+]);
+const lineFronts = LINES.map((ln) => ({
+  id: ln.id, about: ln.front.about, label: ln.front.label, rate: ln.front.rate,
+  when: `scn_act == "after" and ql_${ln.id} < 3${ln.frontWhen ? ` and ${ln.frontWhen}` : ''}`,
+  stages: ln.front.stages.map(({ lost, ...stg }) => (lost ? { ...stg, effects: [ql(ln.id, 9), { list: 'quests', remove: [ln.quest] }] } : stg)),
+}));
+const lineEvents = LINES.flatMap((ln) => [
+  { id: `${ln.id}_open`, when: `scn_act == "after" and ql_${ln.id} == 0 and (${ln.open} or frs_${ln.id} >= 2)`,
+    effects: [ql(ln.id, 1), { list: 'quests', add: [ln.quest] }], notify: ln.openNotify },
+  { id: `${ln.id}_deep`, when: `ql_${ln.id} == 1 and qp_${ln.id} >= 2`,
+    effects: [ql(ln.id, 2), { front: ln.id, add: '-15' }], notify: ln.deepNotify },
+  { id: `${ln.id}_climax`, once: true, timeout: 2, when: `ql_${ln.id} == 2 and (qp_${ln.id} >= 4 or fr_${ln.id} >= 85)`, notify: ln.climaxNotify,
+    // 결판마다 저장 — 2부에서 죽으면 마지막으로 매듭지은 줄기 뒤로 돌아간다
+    choices: ln.choices.map((c) => ({ ...c, effects: [...c.effects, { list: 'quests', remove: [ln.quest] }, { checkpoint: 'save' }] })) },
+]);
+const lineDirectives = LINES.flatMap((ln) => [
+  { id: `${ln.id}_1`, when: `ql_${ln.id} == 1`, text: ln.stage1 },
+  { id: `${ln.id}_2`, when: `ql_${ln.id} == 2`, text: ln.stage2 },
+  ...Object.entries(ln.results).map(([n, text]) => ({ id: `${ln.id}_r${n}`, when: `ql_${ln.id} == ${n}`, text })),
+]);
+
 // ══════════ 스키마 ══════════
 const S = {
   simcore: '0.1',
@@ -442,6 +642,10 @@ const S = {
     ...PEOPLE.map(([id, label, init, , note]) => ({ id, label, type: 'int', init, min: 0, max: 100,
       desc: `${label}${id === 'rosetta' ? '가' : '이(가)'} 유저를 향한 호감 — 관계의 거리. ${note}. 우정·충성·연애 중 무엇인지는 따지지 말고, `
         + '서사에서 실제로 가까워지거나 멀어진 만큼만 ±1~8.' })),
+    ...PEOPLE2.map(([id, label, , note]) => ({ id, label, type: 'int', init: 0, min: 0, max: 100,
+      desc: `${label}이(가) 유저를 향한 호감 — 관계의 거리. ${note}. 처음 만나 말을 섞으면 +5 안팎, 그 뒤로는 서사에서 실제로 가까워지거나 멀어진 만큼만 ±1~8.` })),
+    { id: 'power_public', label: '권능이 알려짐', type: 'bool', init: false }, // 2부 각성 사건이 세운다 — 시스템 전용
+    ...lineVars,
     { id: 'awaken', label: '권능의 흔적', type: 'int', init: 0, min: 0, max: 2,
       desc: '로제타가 닿자 마법·신성력·마도구가 꺼지거나 사라지는 장면이 서사에 **실제로** 나왔을 때만 +1. 짐작·암시만으로는 올리지 마라.' },
     { id: 'bottle_found', label: '작은 병을 찾음', type: 'bool', init: false,
@@ -499,6 +703,8 @@ const S = {
       { id: 'rep', maxDelta: 8 },
       { id: 'health', maxDelta: 10 },
       ...PEOPLE.map(([id, , , words]) => ({ id, maxDelta: 8, mentions: words })),
+      ...PEOPLE2.map(([id, , words]) => ({ id, maxDelta: 8, mentions: words })),
+      ...LINES.map((ln) => ({ id: `qp_${ln.id}`, maxGain: 1, maxLoss: 0, mentions: ln.words })),
       { id: 'awaken', maxGain: 1, maxLoss: 0 },
       { id: 'bottle_found' },
       { id: 'on_stage' },
@@ -552,9 +758,15 @@ const S = {
         effects: [{ list: 'quests', add: [SUB_SWEETS] }, fr(10)],
         notify: '[3장] 로제타의 이름이 적힌 "화해의 선물" 과자 상자가 에버렛가에 도착했다. 원작이라면 그 과자에는 약한 독이 들어 있고, 엘리시아는 통찰로 악의를 알아채 먹지 않는다. '
           + '이번에 누가 보냈는지는 지금까지의 서사가 정한다.' },
+      // 2부 첫 사건 — 권능이 사람들 앞에서 드러난다 [설계 §14 2부 막 1 "각성" 초안]. 신전·마탑 줄기의 문이 된다
+      { id: 'awakening', once: true, when: 'scn_act == "after" and not power_public and scn_turns >= 2',
+        effects: [{ set: 'power_public', expr: 'true' }, { set: 'awaken', expr: '2' }],
+        notify: '[2부 · 각성] 사람들 앞에서 일이 벌어진다 — 로제타 곁의 마도구 불빛이 한꺼번에 꺼지고, 로제타에게 닿은 마법과 신성력이 흔적도 없이 사라진다. '
+          + '권능 없는 실패작이라던 카르디온의 사생아에게서. 이 광경을 본 눈이 많다 — 신전과 마탑의 귀에도 곧 들어간다.' },
+      ...lineEvents,
     ],
   },
-  fronts: [CANON],
+  fronts: [CANON, ...lineFronts],
   secrets: SECRETS,
   checkpoint: {
     keep: ['loop', 'memories', 'skills', ...STATS.map(([id]) => st(id))], // 영혼에 붙은 것(기억·능력·능력치)은 남고, 몸·세상에 붙은 것(소지품·신분)은 되감긴다
@@ -632,10 +844,11 @@ const S = {
           + '심판의 날까지 며칠이 남았다. 누가 로제타의 편에 설지는 지금까지 쌓은 관계가 정한다 — 면회·편지·설득으로 그날을 향해 조여 가라.',
         onEnter: enterCh('verdict', SUBS.night),
         notify: '[5장] 로제타가 에버렛 영애를 해치려 했다는 고발이 황궁에 올라갔다 — 심판의 날이 잡혔다.' },
-      // 원작 이후 — 2부(진영 줄기·무대 뒤, 설계 §15)는 여기 뒤에 덧붙인다
+      // 원작 이후 — 2부는 이 막 안에서 진영 줄기(LINES)·무대 뒤로 돈다 (설계 §15·§19). 새 막은 이 뒤에 덧붙인다
       { id: 'after', label: '원작 이후', intensity: '해소', unlock: 'cleared >= 5',
         direct: '원작의 마지막 장이 지나갔다 — 로제타는 처형대에 서지 않았다(결말: {ending}). 빙의자의 원작 지식은 여기서 끝난다. 이제부터는 누구도 모르는 이야기다. '
-          + '인물들의 풀리지 않은 목표·두려움·비밀이 새 사건의 씨앗이다 — 결말이 남긴 것(도주라면 추격, 추방이라면 떨어진 거리)을 이어 가라.',
+          + '인물들의 풀리지 않은 목표·두려움·비밀이 새 사건의 씨앗이다 — 결말이 남긴 것(도주라면 추격, 추방이라면 떨어진 거리)을 이어 가라. '
+          + '신전·뒷골목·황궁·마탑에도 저마다의 일이 있고, 유저가 보지 않는 사이에도 흘러간다.',
         onEnter: [{ list: 'quests', remove: SUBS.verdict }, { set: 'on_stage', expr: 'false' }, { checkpoint: 'save' }],
         notify: '[원작 이후] 처형대는 비어 있다. 원작이 끝난 세계 — 여기서부터는 아무도 모르는 이야기다.' },
     ],
@@ -677,6 +890,7 @@ const S = {
     // 5장 — 파멸도가 낮으면 심판이 아니라 해명의 자리 [설계 §6]
     { id: 'verdict_trial', when: 'scn_act == "verdict" and cleared < 5 and doom > 30',
       text: '[심판] 로제타는 에버렛 영애를 해치려 한 혐의를 받고 있다. 증거보다 소문이 먼저 심판정에 도착해 있고, 원작의 결말이 로제타를 기다린다.' },
+    ...lineDirectives,
     { id: 'verdict_hearing', when: 'scn_act == "verdict" and cleared < 5 and doom <= 30',
       text: '[해명] 로제타에게 혐의가 씌워졌지만 증거가 엇갈린다 — 심판이라기보다 해명의 자리다. 원작의 결말은 아직 로제타를 놓지 않았지만, 틈이 있다.' },
   ],
@@ -699,6 +913,7 @@ const S = {
       ] },
       { tab: '현황', label: '관계', items: [
         ...PEOPLE.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, ...(id === 'rosetta' ? { showWhen: 'pov != "rosetta"' } : {}) })),
+        ...PEOPLE2.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, showWhen: `${id} > 0` })),
         { var: 'ties', label: '그 밖의 관계', showWhen: 'count(ties) > 0' },
       ] },
       { tab: '현황', label: '진행', items: [
@@ -1109,6 +1324,73 @@ console.log('\n━━ 원작 보정력 — 파멸도가 부른다 ━━');
   const f = send(o.state, { userText: '로제타는 잠시 멈춰 서서 엘리시아를 내려다본다.' });
   const f2 = out(f.state);
   ok('★ 직접 쓰면 타협 (파멸도 −1)', f2.state.vars.doom === 69 && !f2.state.meta.pendingChoice, JSON.stringify({ d: f2.state.vars.doom, p: f2.state.meta.pendingChoice?.id }));
+}
+
+console.log('\n━━ 2부 — 각성 · 진영 줄기 · 무대 뒤 ━━');
+{
+  const LN = Object.fromEntries(LINES.map((l) => [l.id, l]));
+  const after0 = () => { const st = start('rosetta'); Object.assign(st.vars, { scn_idx: 6, scn_turns: 0, cleared: 5, ending: '엘리시아의 변호', doom: 20 }); return st; };
+  let st = after0();
+  ok('원작 이후 막 = 7번째 · 줄기는 전부 닫힘', L(st, 'scn_act') === 'after' && LINES.every((l) => st.vars[`ql_${l.id}`] === 0), '');
+  const p0 = send(st).promptBlock;
+  ok('★ 은닉: 열리기 전엔 줄기 지시·밑작업이 프롬프트에 없다', LINES.every((l) => !p0.includes(l.stage1.slice(0, 12)) && !p0.includes(l.deepNotify.slice(4, 20))) && !p0.includes('구호 자금'), '');
+  let n = 0;
+  while (!st.vars.power_public && n < 5) { st = turn(st, { skip_min: 30 }).st; n++; }
+  ok(`★ 원작 이후 ${n}턴째 각성 — 권능이 알려지고 비밀 전모가 열린다`, n <= 3 && st.vars.power_public === true && st.vars.awaken === 2 && st.vars.sec_power === 2
+    && send(st).promptBlock.includes('[2부 · 각성]') && send(st).promptBlock.includes('여덟 살 각성식'), JSON.stringify({ p: st.vars.power_public, s: st.vars.sec_power }));
+  // 신전 — 성녀와 접점 → 열림 → 진척 2 → 진상 → 진척 4 → 결판
+  st = turn(st, { dianne: 8, skip_min: 30 }).st;
+  st = turn(st, { dianne: 4, skip_min: 30 }).st;
+  const p1 = send(st).promptBlock;
+  ok('★ 신전 열림 (각성 + 디안느 10↑) — 퀘스트 · 1단계 지시만', st.vars.ql_temple === 1 && st.vars.quests.includes(LN.temple.quest) && p1.includes('[신전 줄기 · 1]') && !p1.includes('[신전 줄기 · 2]')
+    && !p1.includes('구호 자금을 빼돌려'), JSON.stringify({ ql: st.vars.ql_temple, d: st.vars.dianne }));
+  const html2 = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 21 });
+  ok('상태창: 만난 디안느만 나타나고 안 만난 유온은 없다 · 시계는 안 보인다', html2.includes('>디안느</span>') && !html2.includes('>유온</span>') && !/fr_temple|>신전의 암투/.test(html2), '');
+  const fr0 = st.vars.fr_temple;
+  st = turn(st, { qp_temple: 1 }).st;
+  st = turn(st, { qp_temple: 1 }).st;
+  const p2 = send(st).promptBlock;
+  ok('★ 진척 2 → 진상: 횡령 통지 · 2단계 지시 · 시계 −15', st.vars.ql_temple === 2 && p2.includes('[신전] 대신관이 구호 자금을') && p2.includes('[신전 줄기 · 2]') && !p2.includes('[신전 줄기 · 1]')
+    && st.vars.fr_temple <= Math.max(0, fr0 - 14), JSON.stringify({ ql: st.vars.ql_temple, fr: [fr0, st.vars.fr_temple] }));
+  st = turn(st, { qp_temple: 1 }).st;
+  st = turn(st, { qp_temple: 1 }).st;
+  ok('진척 4 → 신전 결판 갈림길', st.meta.pendingChoice?.id === 'temple_climax', JSON.stringify(st.meta.pendingChoice));
+  st = turn(pickBy(st, '알드릭과 거래한다 — 장부를 쥔 쪽에 선다')).st;
+  const p3 = send(st).promptBlock;
+  ok('★ 결판: 추기경의 신전 · 퀘스트 걷힘 · 결과 한 줄 · 체크포인트', st.vars.ql_temple === 4 && !st.vars.quests.includes(LN.temple.quest) && p3.includes('[신전] 추기경 알드릭이 대신전을 쥐었다')
+    && !p3.includes('[신전 줄기') && st.checkpoints.main.vars.ql_temple === 4, JSON.stringify({ ql: st.vars.ql_temple }));
+  const frT = st.vars.fr_temple;
+  st = turn(st, { skip_day: 5 }).st;
+  ok('결판난 줄기의 시계는 멈춘다', st.vars.fr_temple === frT, `${frT} → ${st.vars.fr_temple}`);
+}
+{
+  // 방치 — 무대 뒤가 먼저 찾아오고(표면화 = 줄기 열림), 끝까지 두면 결말이 굳는다
+  const LN = Object.fromEntries(LINES.map((l) => [l.id, l]));
+  let st = start('rosetta');
+  Object.assign(st.vars, { scn_idx: 6, scn_turns: 5, cleared: 5, power_public: true, awaken: 2 });
+  st = turn(st, { skip_day: 15 }).st; // 뒷골목 30
+  let p = send(st).promptBlock;
+  ok('뒷골목 징후만 (밑작업은 표면화 전엔 없다)', p.includes('약재상들이 값을 두 배로') && !p.includes('엘시의 병세가 나빠져'), '');
+  st = turn(st, { skip_day: 21 }).st; // 72 → 표면화
+  p = send(st).promptBlock;
+  ok('★ 안 가도 표면화(은신처 습격) · 밑작업 공개', p.includes('은신처 하나가 습격당했다') && p.includes('엘시의 병세가 나빠져'), '');
+  st = turn(st).st; // 표면화 다음 턴 — 세상이 먼저 찾아와 줄기가 열린다
+  ok('★ 표면화 다음 턴에 줄기가 열린다', st.vars.ql_klein === 1 && st.vars.quests.includes(LN.klein.quest) && send(st).promptBlock.includes('[2부 · 뒷골목]'),
+    JSON.stringify({ ql: st.vars.ql_klein, fr: st.vars.fr_klein }));
+  st = turn(st, { skip_day: 15 }).st; // 100
+  p = send(st).promptBlock;
+  ok('★ 끝까지 두면 놓친다 — 밤의 눈이 무너졌다 · 퀘스트 걷힘', st.vars.ql_klein === 9 && !st.vars.quests.includes(LN.klein.quest) && p.includes('[뒷골목] 밤의 눈이 무너졌다'),
+    JSON.stringify({ ql: st.vars.ql_klein, fr: st.vars.fr_klein, q: st.vars.quests }));
+  // 순서 무관 — 실버버그는 뒷골목을 안 거쳐도 클레네와의 접점으로 열린다
+  let s2 = start('rosetta');
+  Object.assign(s2.vars, { scn_idx: 6, scn_turns: 5, cleared: 5, power_public: true, clene: 16 });
+  s2 = turn(s2).st;
+  ok('★ 순서 무관: 실버버그는 클레네 접점만으로도 열린다 (뒷골목 0)', s2.vars.ql_silver === 1 && s2.vars.ql_klein === 0, JSON.stringify({ s: s2.vars.ql_silver }));
+  // 황궁 — 1부의 황태자 호감이 문을 연다 · 미성년 지시
+  let s3 = start('rosetta');
+  Object.assign(s3.vars, { scn_idx: 6, scn_turns: 5, cleared: 5, power_public: true, ert: 55 });
+  s3 = turn(s3).st;
+  ok('황궁: 1부 황태자 호감 50↑으로 열린다 · 드미트리샤 미성년 지시', s3.vars.ql_palace === 1 && send(s3).promptBlock.includes('드미트리샤는 미성년자다'), '');
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

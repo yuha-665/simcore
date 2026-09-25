@@ -3,7 +3,7 @@
 
 const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
-const { exposedDefs } = require('./time');
+const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
@@ -301,10 +301,13 @@ function scenarioChipHtml(schema, vars) {
 function highlightCards(schema, changeLog, varById, dueNow = null) {
   if (schema.statusUI?.highlights === 'off') return '';
   if (!changeLog || !changeLog.length) return '';
-  const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
+  const keep = changeLog.filter((c) => (c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'));
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'))
+    // 시간 우편함(skip_day/skip_min)은 보조가 적어도 카드가 아니다 — 같은 턴에 시각으로 굳고 0이 된다 (v1.12.2,
+    // 조퇴악녀 실기 "📊 분 진행 +5 (현재 5)": 현재는 이미 0인데 스탯 오른 것처럼 섰다. 보조 원장 changeMemoLines와 같은 규칙)
+    && c.id !== SKIP_DAY && c.id !== SKIP_MIN);
   if (!keep.length) return '';
   const cards = [];
   // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는

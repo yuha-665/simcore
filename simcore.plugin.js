@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.12.1
-//@display-name SimCore (시뮬 엔진) v1.12.1 무대 뒤 — 안 봐도 세상은 움직인다
+//@version 1.12.2
+//@display-name SimCore (시뮬 엔진) v1.12.2 무대 뒤 — 안 봐도 세상은 움직인다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,11 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.12.2 ──────────────────────────────────────────────
+// **하이라이트에 "📊 분 진행 +5 (현재 5)"가 서던 것** (조퇴악녀 실기, 2026-09-25). 보조가 적은 시간 진행(skip_day/skip_min)은 출처가 llm이라
+// 하이라이트 허용 목록을 통과해 스탯이 오른 것처럼 카드로 섰다 — 그 값은 같은 턴에 시각으로 굳고 0이 되므로 "현재 5"도 거짓이었다.
+// 보조 원장(changeMemoLines)은 v1.x부터 우편함을 건너뛰었는데 하이라이트만 빠져 있었다. 이제 같은 규칙. 전체 영수증(이번 턴 변화)은 그대로.
 //
 // ── v1.12.1 ──────────────────────────────────────────────
 // **상태창 탭 한 장에 여러 그룹** — "상태창 두 번째 탭으로 페르소나 전용 탭 하나 있는 게 좋지 않을까, 소지품이나 능력 관리하기엔
@@ -12031,7 +12036,7 @@ SimCore.define("render", function (require, module, exports) {
 
 const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent } = require('./engine');
 const { evaluate, truthy } = require('./expr');
-const { exposedDefs } = require('./time');
+const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
 const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
@@ -12329,10 +12334,13 @@ function scenarioChipHtml(schema, vars) {
 function highlightCards(schema, changeLog, varById, dueNow = null) {
   if (schema.statusUI?.highlights === 'off') return '';
   if (!changeLog || !changeLog.length) return '';
-  const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
+  const keep = changeLog.filter((c) => (c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'));
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'))
+    // 시간 우편함(skip_day/skip_min)은 보조가 적어도 카드가 아니다 — 같은 턴에 시각으로 굳고 0이 된다 (v1.12.2,
+    // 조퇴악녀 실기 "📊 분 진행 +5 (현재 5)": 현재는 이미 0인데 스탯 오른 것처럼 섰다. 보조 원장 changeMemoLines와 같은 규칙)
+    && c.id !== SKIP_DAY && c.id !== SKIP_MIN);
   if (!keep.length) return '';
   const cards = [];
   // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는

@@ -325,6 +325,13 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     memo.some((l) => /호감도 10 → 15 \(\+5\) — 도서관에서 웃어 줬다/.test(l)), J(memo));
   ck('★ skip 우편함 자체는 원장에 안 나온다 (시각 줄과 두 번 말하기 금지)',
     !memo.some((l) => /skip_min|skip_day/.test(l)), J(memo));
+  // v1.12.2 — 조퇴악녀 실기: 하이라이트에 "📊 분 진행 +5 (현재 5)"가 섰다 (이미 시각으로 굳어 0인데). 원장과 같은 규칙
+  {
+    const html = renderStatusHtml(R2, st, o1.changeLog);
+    const cards = (html.match(/<div class="sim-card[^"]*">[\s\S]*?<\/div>/g) || []).join('');
+    ck('★ 하이라이트에 skip 우편함 카드가 안 선다 (보조가 적은 시간 진행)',
+      o1.changeLog.some((c) => c.id === 'skip_min' && c.source === 'llm') && !/흐른 시간/.test(cards) && /호감도/.test(cards), cards);
+  }
 
   // ④ 다음 턴 프롬프트에 실리고, 다시 세지 말라는 못이 박힌다
   const st2 = engine.sendPhase(R2, st).state;

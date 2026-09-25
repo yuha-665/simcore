@@ -84,6 +84,8 @@ const SECRETS = [
 // 로제타의 질문 3개 — 질문마다 보조가 로제타 성격에 맞춰 답변지를 쓰고, 태그가 점수를 쥔다. 6점 만점, 4점 이상 합격.
 const IV = { questions: 3, pass: 4 };
 const Q_SERVANT = '[서장] 로제타의 시종 면접에 합격하라';
+// 면접 전 — 낯선 몸에서 눈을 뜨고 처지를 파악한다 [유저 2026-09-26 "빙의한 거 눈치채고 지금 무슨 상황인지 파악하고 면접 보러 가야"]
+const Q_WAKE = '[서장] 이 몸이 누구인지, 지금이 언제인지 알아낸다';
 const Q_ROSETTA = '[서장] 지금이 원작의 어디쯤인지 알아낸다';
 const Q_SPECIAL = '[서장] 소문과 다른 악녀, 로제타를 만난다'; // 빙의자 로제타 시점 [초안]
 // 1부 메인 퀘스트 — 막 onEnter가 넣고 절정 결판이 지운다 [설계 §3]
@@ -447,6 +449,8 @@ const S = {
     // 보조는 지금이 몇 장인지 모른다 — 장에 매이지 않게: 원작의 사건은 늘 두 사람이 한자리에 모이는 공식 자리에서 터진다
     { id: 'on_stage', label: '무대에 도착', type: 'bool', init: false,
       desc: '유저가 엘리시아와 로제타가 함께 있는 공식 자리(무도회·다과회·연회·저녁 모임)나 심판정에 도착하면 true. 무대의 사건은 시스템이 연다.' },
+    { id: 'iv_ready', label: '면접장 도착', type: 'bool', init: false,
+      desc: '시종 지원자인 유저가 카르디온 공작저에 도착해 면접 자리로 안내받았으면 true. 셋방·거리에 있는 동안은 false.' },
     { id: 'dead', label: '사망', type: 'bool', init: false,
       desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
     { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 10, itemMaxLength: 48,
@@ -498,6 +502,7 @@ const S = {
       { id: 'awaken', maxGain: 1, maxLoss: 0 },
       { id: 'bottle_found' },
       { id: 'on_stage' },
+      { id: 'iv_ready' },
       { id: 'dead' },
       { id: 'quests' },
       { id: 'memories' },
@@ -526,9 +531,15 @@ const S = {
       { id: 'go_dead', when: 'dead', effects: gameOver, notify: '[게임오버] 죽음이 찾아왔다.' },
       { id: 'go_doom', when: 'doom >= 100', effects: gameOver, notify: '[게임오버] 원작의 결말이 굳었다 — 로제타는 처형대로 끌려간다.' },
       // 면접 — 질문을 부탁한다 (다음 응답에 로제타의 질문 → 그 뒤 보조가 답변지를 쓴다)
-      { id: 'iv_ask', when: `pov == "servant" and scn_act == "prologue" and not hired and not iv_asking and iv_q < ${IV.questions}`,
+      { id: 'iv_ask', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_ready and not iv_asking and iv_q < ${IV.questions}`,
         effects: [{ set: 'iv_asking', expr: 'true' }], liveChoices: 'interview',
         notify: '[면접] 로제타가 다음 질문을 던질 차례다 — 이번 응답에서 로제타의 질문 하나를 대사로 분명히 써라. 질문으로 장면을 끝내고, 지원자의 대답은 쓰지 마라.' },
+      // 면접 시각 — 셋방에서 오래 머물면 면접이 부른다 (질문 부탁보다 뒤에 두어 도착과 첫 질문이 한 응답에 몰리지 않게)
+      { id: 'iv_call', when: 'pov == "servant" and scn_act == "prologue" and not hired and not iv_ready and scn_turns >= 5',
+        effects: [{ set: 'iv_ready', expr: 'true' }],
+        notify: '[면접 시각] 면접 시각이 다가왔다 — 이번 응답에서 유저가 카르디온 공작저에 도착해 면접 자리로 안내받는 장면까지 그려라. 로제타의 질문은 아직이다.' },
+      { id: 'iv_arrive', when: `pov == "servant" and iv_ready and has(quests, "${Q_WAKE}")`,
+        effects: [{ list: 'quests', remove: [Q_WAKE] }, { set: 'location', expr: '"카르디온 공작저 응접실"' }] },
       { id: 'iv_pass', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score >= ${IV.pass}`,
         effects: [{ set: 'hired', expr: 'true' }, { set: 'role', expr: '"로제타 전속 시종"' }, { set: 'rosetta', expr: 'rosetta + 10' }, { list: 'quests', remove: [Q_SERVANT] }],
         notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
@@ -591,7 +602,7 @@ const S = {
           + '로제타는 자신의 비참했던 데뷔탕트가 떠올라 질투에 불탄다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. '
           + '무도회 전까지는 준비·소문·만남으로 그날을 향해 조여 가라.',
         onEnter: [
-          { list: 'quests', remove: [Q_ROSETTA, Q_SERVANT, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
+          { list: 'quests', remove: [Q_ROSETTA, Q_WAKE, Q_SERVANT, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
           { checkpoint: 'save' },
         ],
         notify: '[1장] 엘리시아의 데뷔탕트가 다가온다 — 3월 10일 밤, 황궁 대연회장.' },
@@ -643,7 +654,13 @@ const S = {
         + '처형을 피하려고 스스로 움직이고, 빙의 사실은 쉽게 털어놓지 않는다. 로제타답게 굴려 애쓰지만 원작의 로제타와 어긋나는 틈이 드러난다.' },
     { id: 'possessor', when: 'pov == "special" and possessor != ""',
       text: '[빙의자 설정] 로제타 안의 빙의자: {possessor}' },
-    { id: 'interview', when: 'pov == "servant" and scn_act == "prologue" and not hired',
+    // 면접 전 — 빙의 자각과 처지 파악 [유저 2026-09-26]. 몸의 신상은 페르소나(메인만 본다), 스키마는 "지원자"라는 자리만 안다
+    { id: 'wake_servant', when: 'pov == "servant" and scn_act == "prologue" and not hired and not iv_ready',
+      text: '[빙의 직후] 유저는 오늘 아침 이 몸에서 막 눈을 떴다 — 원작에 나오지 않는 평범한 사람의 몸이고, 몸의 원래 기억은 조각으로만 떠오른다(이 몸이 누구인지는 페르소나를 따른다). '
+        + '오늘 오전 카르디온 공작저에서 로제타 전속 시종 면접이 있다. 방 안의 단서(추천서·면접 통지 같은 것)와 떠오르는 기억 조각으로 유저가 스스로 알아차리게 하고, '
+        + '지금이 원작의 어디쯤인지(에버렛가 영애의 귀환, 다가오는 데뷔탕트)는 하숙집 주인·거리의 소문으로 흘려라. 한 번에 다 알려 주지 말고 한 장면씩. '
+        + '면접장에 들어서는 건 유저가 공작저로 갔을 때다.' },
+    { id: 'interview', when: 'pov == "servant" and scn_act == "prologue" and not hired and iv_ready',
       text: '[면접] 지금은 카르디온 공작저에서 로제타 전속 시종 면접이 열리는 날이다. 로제타의 곁은 오래 버티는 사람이 없어 자리가 자주 빈다. '
         + '로제타가 직접 면접관이다 — 오만하고 날카롭게, 한 번에 질문 하나씩. 합격·탈락은 시스템이 정하니 서사가 먼저 결론을 내지 마라.' },
     { id: 'bond', when: 'true',
@@ -704,7 +721,7 @@ const S = {
   setup: {
     presets: [
       { id: 'rosetta', label: '💎 로제타 빙의 — 원작 악녀 본인으로', set: { pov: 'rosetta', quests: [Q_ROSETTA], ...ROSETTA_STATS }, startAt: '0472-03-01 08:00' },
-      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접부터', set: { pov: 'servant', quests: [Q_SERVANT], location: '카르디온 공작저 응접실', role: '전속 시종 지원자' }, startAt: '0472-02-24 09:00' },
+      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접 날 아침부터', set: { pov: 'servant', quests: [Q_WAKE, Q_SERVANT], location: '수도 외곽의 셋방', role: '전속 시종 지원자' }, startAt: '0472-02-24 07:00' },
       { id: 'special', label: '🌹 빙의자 로제타 — 로제타 곁의 누군가로', set: { pov: 'special', quests: [Q_SPECIAL], role: '', skills: [] }, startAt: '0472-03-01 08:00' },
     ],
     // 최초 설정은 프리셋이 정한 값(신분·능력)을 못 본다 — 보조 창구엔 스키마 init만 뜨고 값은 절대값으로 덮이니, 프리셋마다 다른 칸은 싣지 않는다
@@ -714,7 +731,7 @@ const S = {
         + '능력치(st_*)는 유저가 첫 메시지에서 자기 배경을 밝혔을 때만 기본값에서 ±30 안으로 조정한다 — 로제타의 몸에 빙의한 판(거울 속 분홍 머리)이면 넣지 마라. '
         + 'possessor(빙의자 설정)는 유저가 첫 메시지에서 로제타 안의 빙의자를 설명했을 때만 그 설명을 옮겨 적는다 — 없으면 넣지 마라.',
       instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
-        + '시종 시점이면 카르디온 공작저에서 로제타 전속 시종 면접을 기다리는 자리에서, 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
+        + '시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
         + '소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로.',
     },
   },
@@ -739,6 +756,8 @@ const turn = (st, ch = {}, opt = {}) => { const s = send(st, opt.send || {}); co
 const L = (st, n) => engine.makeLookup(S, st.vars)(n);
 const ANSWERS = (tags) => ({ desc: '로제타의 질문', items: [{ label: '당신은 버려질까 두려운 게 아니라, 쓸모를 증명하고 싶은 겁니다.', tag: '정답' },
   { label: '성실히 모시겠습니다.', tag: '무난' }, { label: '분홍 머리가 참 예쁘시네요, 가엾게도.', tag: '실언' }].filter((x) => tags.includes(x.tag)) });
+// 시종 판의 첫 두 턴 — 셋방에서 눈뜬 장면 → 공작저 도착(보조 기록)
+const toMansion = (st) => turn(turn(st).st, { iv_ready: true }).st;
 // 면접 한 문항: 질문 부탁(앞 턴) → 보조 답변지 → 유저 선택
 function answer(st, tag) {
   let t = turn(st, {}, { out: { choices: ANSWERS(['정답', '무난', '실언']) } });
@@ -752,12 +771,17 @@ function answer(st, tag) {
 console.log('\n━━ 시종 시점 — 면접 합격 ━━');
 {
   let st = start('servant');
-  ok('시작: 2월 24일 · 면접 퀘스트 · 서장', L(st, 'date') === '2월 24일' && st.vars.quests[0] === Q_SERVANT && L(st, 'scn_act') === 'prologue', `${L(st, 'date')} ${st.vars.quests}`);
+  ok('시작: 2월 24일 07:00 셋방 · 처지 파악 + 면접 퀘스트 · 서장', L(st, 'date') === '2월 24일' && L(st, 'clock') === '07:00' && st.vars.location === '수도 외곽의 셋방'
+    && st.vars.quests.join('|') === [Q_WAKE, Q_SERVANT].join('|') && L(st, 'scn_act') === 'prologue', `${L(st, 'date')} ${L(st, 'clock')} ${st.vars.quests}`);
   const p0 = send(st).promptBlock;
-  ok('프롬프트: 시종 시점 · 면접 지시 · 금지 줄', p0.includes('로제타 전속 시종') && p0.includes('[면접]') && p0.includes('미성년자'), '');
+  ok('★ 프롬프트: 빙의 직후 — 면접 지시는 아직 · 금지 줄', p0.includes('[빙의 직후]') && p0.includes('로제타 전속 시종') && !p0.includes('[면접]') && p0.includes('미성년자'), '');
   ok('프롬프트: 제국력 472년', p0.includes('제국력 472년 2월 24일'), p0.slice(0, 120));
-  let t = turn(st); st = t.st; // 첫 장면 → 저장 + 첫 질문 부탁
-  ok('첫 턴: 체크포인트 저장 · 질문 부탁', st.checkpoints?.main && st.vars.iv_asking === true && st.meta.liveAsk === true, JSON.stringify({ a: st.vars.iv_asking, l: st.meta.liveAsk }));
+  let t = turn(st); st = t.st; // 첫 장면(셋방) → 저장, 질문은 아직
+  ok('★ 첫 턴: 체크포인트 저장 · 셋방에선 질문 부탁 없음', st.checkpoints?.main && !st.vars.iv_asking && !st.meta.liveAsk && st.checkpoints.main.vars.iv_ready === false,
+    JSON.stringify({ a: st.vars.iv_asking, l: st.meta.liveAsk }));
+  t = turn(st, { iv_ready: true }); st = t.st; // 공작저 도착 → 첫 질문 부탁
+  ok('★ 공작저 도착: 처지 파악 퀘스트 걷힘 · 장소 응접실 · 질문 부탁', st.vars.iv_asking === true && st.meta.liveAsk === true && !st.vars.quests.includes(Q_WAKE)
+    && st.vars.location === '카르디온 공작저 응접실', JSON.stringify({ a: st.vars.iv_asking, q: st.vars.quests, loc: st.vars.location }));
   ok('질문 부탁이 다음 프롬프트에', send(st).promptBlock.includes('[면접] 로제타가 다음 질문을'), '');
   for (const tag of ['정답', '정답', '무난']) { const r = answer(st, tag); if (r.err) { ok('면접 진행', false, r.err); break; } st = r.st; }
   ok('3문항 뒤 합격 → 1장', st.vars.hired === true && L(st, 'scn_act') === 'debut', JSON.stringify({ q: st.vars.iv_q, s: st.vars.iv_score, act: L(st, 'scn_act') }));
@@ -787,7 +811,7 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
   const t = turn(st, { skip_min: 15 });
   ok('★ 수련: 화술 +1~3 · [판정] 화술 수련', t.st.vars.st_talk >= talk0 + 1 && t.st.vars.st_talk <= talk0 + 3 && t.s.promptBlock.includes('[판정] 화술 수련:'),
     `${talk0} → ${t.st.vars.st_talk}`);
-  ok('수련은 작중 두 시간 (보조 추정 15분은 버린다)', L(t.st, 'clock') === '11:00' && clock0 === '09:00', `${clock0} → ${L(t.st, 'clock')}`);
+  ok('수련은 작중 두 시간 (보조 추정 15분은 버린다)', L(t.st, 'clock') === '09:00' && clock0 === '07:00', `${clock0} → ${L(t.st, 'clock')}`);
   ok('채팅 낱말로도 무장 ("검술 수련")', engine.autoArmActions(S, t.st, '오늘은 검술 수련을 하러 연무장에 간다').state.meta.armed.train_sword === true, '');
   // 로제타의 몸 — 마법은 흩어지고 권능의 흔적이 선다
   let r = start('rosetta');
@@ -807,13 +831,13 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
     (qh.match(/🎲[^<]*|'그냥' 항목으로/g) || []).join(' · '));
   // 회귀해도 능력치는 남는다
   let g = start('servant');
-  g = turn(g).st;
+  g = toMansion(g);
   g.vars.st_talk = 44;
   for (const tag of ['실언', '실언', '실언']) { const a = answer(g, tag); if (a.err) break; g = a.st; }
   ok('★ 회귀해도 능력치는 남는다', g.vars.loop === 1 && g.vars.st_talk === 44, JSON.stringify({ loop: g.vars.loop, talk: g.vars.st_talk }));
   // 면접에서 직접 답하면 무난(1점)
   let f = start('servant');
-  f = turn(f).st;
+  f = toMansion(f);
   f = turn(f, {}, { out: { choices: ANSWERS(['정답', '무난', '실언']) } }).st;
   const f2 = turn(f, {}, { send: { userText: '저는 아가씨가 가진 걸 증명하도록 곁에서 돕고 싶습니다.' } });
   ok('★ 면접에서 직접 답하면 무난(1점) — 다음 응답 단계에서 바로', f2.st.vars.iv_q === 1 && f2.st.vars.iv_score === 1 && !f2.st.meta.pendingChoice,
@@ -848,10 +872,25 @@ console.log('\n━━ 빙의자 로제타 시점 (원본 Special) ━━');
   ok('절정 통지: 빙의자도 이 장면을 안다', send(st).promptBlock.includes('로제타 안의 빙의자도 이 장면을 안다'), '');
 }
 
+console.log('\n━━ 시종 시점 — 면접 전: 빙의 자각 · 면접 시각 ━━');
+{
+  let st = start('servant');
+  let asked = -1, called = -1;
+  for (let i = 1; i <= 8 && asked < 0; i++) {
+    st = turn(st, { skip_min: 20 }).st;
+    if (called < 0 && st.vars.iv_ready) called = i;
+    if (st.vars.iv_asking) asked = i;
+  }
+  ok('★ 셋방에서 머물러도 5턴이면 면접 시각이 부른다 → 다음 턴에 첫 질문', called >= 4 && asked === called + 1, JSON.stringify({ called, asked }));
+  ok('도착하면 처지 파악 퀘스트 걷힘', !st.vars.quests.includes(Q_WAKE), JSON.stringify(st.vars.quests));
+  const sp = S.setup.ai.instruction;
+  ok('첫 장면 지시: 시종은 셋방에서 눈뜬 순간 · 면접장까지 가지 않는다', sp.includes('수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간') && sp.includes('면접장까지 가지 마라'), '');
+}
+
 console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
 {
   let st = start('servant');
-  st = turn(st).st;
+  st = toMansion(st);
   st.vars.memories = ['로제타는 동정받는 걸 가장 싫어한다'];
   st.vars.skills = ['원작 지식', '독 감별'];
   st.vars.items = ['낡은 추천서'];
@@ -865,9 +904,11 @@ console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
   ok('날짜도 되감김 (2월 24일)', L(st, 'date') === '2월 24일', L(st, 'date'));
   const p = send(st).promptBlock;
   ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[게임오버] 면접에서 떨어졌다') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));
-  // 회귀한 판에서 다시 면접이 열린다
-  st = turn(st).st;
-  ok('회귀 뒤 질문 부탁이 다시 선다', st.vars.iv_asking === true, '');
+  ok('★ 회귀하면 셋방으로 — 처지 파악 퀘스트·빙의 직후 지시가 돌아온다', st.vars.location === '수도 외곽의 셋방' && !st.vars.iv_ready && st.vars.quests.includes(Q_WAKE) && p.includes('[빙의 직후]'),
+    JSON.stringify({ loc: st.vars.location, q: st.vars.quests }));
+  // 회귀한 판에서 — 기억을 가진 유저는 곧장 공작저로 갈 수 있다
+  st = turn(st, { iv_ready: true }).st;
+  ok('회귀 뒤 공작저로 가면 질문 부탁이 다시 선다', st.vars.iv_asking === true, '');
 }
 
 console.log('\n━━ 로제타 시점 — 서장 → 1장 → 데뷔탕트 ━━');

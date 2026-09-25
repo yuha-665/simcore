@@ -45,7 +45,8 @@ const SCENES = [
     build() {
       const st = start('servant');
       Object.assign(st.vars, {
-        iv_q: 1, iv_score: 2, loop: 2, rosetta: 15,
+        iv_ready: true, iv_q: 1, iv_score: 2, loop: 2, rosetta: 15,
+        location: '카르디온 공작저 응접실', quests: ['[서장] 로제타의 시종 면접에 합격하라'],
         memories: ['로제타는 동정받는 걸 가장 싫어한다', '"성실히 모시겠습니다"로는 눈에 안 띈다'],
         skills: ['원작 지식', '재봉'], items: ['낡은 추천서'],
       });

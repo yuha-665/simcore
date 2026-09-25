@@ -459,5 +459,15 @@
       "id": "lm_simcore_schema",
       "disabled": false
     }
+  ],
+  "regexAdd": [
+    {
+      "comment": "설정 패널",
+      "in": "{{#if {{not_equal::{{lastmessageid}}::-1}} }}${{/}}{{#if {{equal::{{lastmessageid}}::-1}} }}※{{/}}",
+      "out": "",
+      "type": "editdisplay",
+      "ableFlag": true,
+      "flag": "gu<cbs>"
+    }
   ]
 }

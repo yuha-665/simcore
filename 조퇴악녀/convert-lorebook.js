@@ -8,7 +8,9 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 //   1. 심코어가 대체하는 항목 삭제 — 상태창(심코어 상태창)·원작 타임라인(시나리오 막)·빙의 지침(시점 지시문)·Special Scenario(범위 밖)
 //   2. **비밀 잘라 내기** — 인물 항목에 적힌 비밀은 이름만 나오면 모델이 본다. 심코어 secrets로 옮긴 줄을 원본에서 지운다
 //   3. ⚙simcore 스키마 항목 첨부
-//   4. 정규식은 싣지 않는다 — 카드의 에셋 정규식을 지키려고 `regex`(통째 교체)는 금지, 덧붙일 것도 없다
+//   4. 정규식은 `regexAdd`로 하나만 — 카드의 ⚙️ 설정 패널(원작 로어북·상태창 ON/OFF)을 같은 comment로 갈아 끼워 끈다.
+//      그 스위치가 켜고 끄던 로어북 항목은 1에서 지웠다 (유저 실기 2026-09-25 "기존 상태창이랑 시나리오 로어북 쓰는 거야? CSS가 남아 있어서").
+//      `regex`(통째 교체)는 금지 — 카드의 에셋 정규식을 지킨다
 //
 // 실행: node 조퇴악녀/villainess-vars.js && node 조퇴악녀/convert-lorebook.js
 const fs = require('fs');
@@ -100,7 +102,14 @@ for (const who of LEAK_SCOPE) {
   const lore = out.filter((e) => e.comment !== '⚙simcore').map((e) => e.content).join('\n');
   for (const s of SCHEMA.secrets) for (const t of s.tiers.slice(1)) if (lore.includes(t.text.slice(0, 20))) fail(`비밀 '${s.id}' 문장이 로어북에 있다`);
 }
-if (!bad) console.log('  ✓ 삭제·잘라 내기·유출 검사·폴더·스키마 전부 계획대로');
+// ⚙️ 설정 패널 끄기 — in·flag는 원본 그대로 두고 out만 비운다: 퍼메의 ※ 자리는 비고, 다른 메시지 끝($)엔 빈 글자가 붙을 뿐.
+// 패널의 두 스위치(original_mode·status_window)를 읽던 항목은 DROP의 상태창·원작 타임라인뿐이다 — 번들에 남았으면 끄면 안 된다.
+const RGX = JSON.parse(fs.readFileSync(__P('원본-정규식.json'), 'utf8'));
+const panel = (Array.isArray(RGX) ? RGX : (RGX.data || RGX.customscript || [])).find((r) => r.comment === '설정 패널');
+if (!panel) fail("카드 정규식에서 '설정 패널'을 못 찾았다 — 원본이 바뀌었나");
+if (/original_mode|status_window/.test(JSON.stringify(out))) fail('번들 로어북이 아직 설정 패널 스위치를 읽는다 — 패널을 끄면 안 된다');
+const regexAdd = panel ? [{ ...panel, out: '' }] : [];
+if (!bad) console.log('  ✓ 삭제·잘라 내기·유출 검사·폴더·스키마·설정 패널 끄기 전부 계획대로');
 
 console.log('\n━━ 삭제 ━━');
 for (const [c, t, why] of report.dropped) console.log(`  − ${c} (${t}t) — ${why}`);
@@ -116,7 +125,9 @@ const bundle = {
   simcoreBundle: 1,
   name: '조기퇴장 악녀 — 원작 탈출 (심코어판)',
   lorebook: out,
-  // regex 없음 — 카드 정규식(에셋 표시·운명의 선택 버튼·설정 패널)은 그대로 둔다. `regex`는 통째 교체라 금지 (아틀리에 2026-09-06 실사고)
+  // regexAdd = 같은 comment만 교체, 나머지 카드 정규식(에셋 표시·운명의 선택 버튼·옛 <StatusWindow> 그리기)은 그대로.
+  // `regex`는 통째 교체라 금지 (아틀리에 2026-09-06 실사고). 되돌리기: 💾 [교체 되돌리기]
+  regexAdd,
 };
 fs.writeFileSync(__P('조퇴악녀-번들.json'), JSON.stringify(bundle, null, 2));
 fs.writeFileSync(__P('조퇴악녀-로어북.json'), JSON.stringify({ type: SRC.type, ver: SRC.ver, data: out }, null, 2));

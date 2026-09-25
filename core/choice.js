@@ -17,6 +17,13 @@
 //   · chance: 0~1 숫자 또는 식 — 매 전송 추첨. 0이면 이벤트 트리거(events[].liveChoices: true)로만 연다
 //   · tags: [{ id, desc?, check?, effects?, inject? }] — 보조가 항목마다 붙이는 어휘. 없으면 라벨만(결과는 서사)
 //   · strict: true('last') | 'last' | 'random' | false — 고르지 않고 보내면 시스템이 정한다
+//
+// 여러 벌 (v1.13.0, 조퇴악녀 "면접은 면접대로, 평소엔 능력치 판정 선택지"): liveChoices가 **배열**이면 벌마다 { id, … }.
+//   · 추첨은 배열 순서대로 — 먼저 열리고 먼저 붙은 한 벌만 (동시 1개 상한은 그대로)
+//   · 깃발 meta.liveAsk = true(첫 벌 — 옛 세이브·한 벌 봇과 같은 값) | 'id'(둘째 벌부터). 이벤트 트리거는 true | 'id'
+//   · 걸린 것엔 벌 id가 같이 산다(pendingChoice.live.cfg) — 합성·집행이 그 벌의 태그를 쓴다
+// 섞기 (v1.13.0, 조퇴악녀 실기 "실언은 늘 3번, 정답은 늘 1번"): shuffle: true면 항목 순서를 시드 rng로 섞는다.
+//   worst를 맨 끝에 두지 않는 대신 타임아웃·strict 'last'가 **자리 대신 worst 태그**로 떨어질 곳을 찾는다 (fallbackIndex)
 
 const { evaluate, truthy } = require('./expr');
 
@@ -35,9 +42,40 @@ function strictMode(v) {
   return null;
 }
 
-function liveConfig(schema) {
+/** 스키마의 벌 원본들 — 객체 하나면 [그것], 배열이면 객체만 (v1.13.0) */
+function liveRaw(schema) {
   const L = schema?.liveChoices;
-  if (!L || typeof L !== 'object' || Array.isArray(L)) return null;
+  if (Array.isArray(L)) return L.filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+  return L && typeof L === 'object' ? [L] : [];
+}
+const DEFAULT_LIVE_ID = 'main';
+
+/** 정규화한 벌 전부 */
+function liveConfigs(schema) {
+  return liveRaw(schema).map((L, i) => normLive(L, i));
+}
+
+/** 벌 하나 — id 없으면(또는 true) 첫 벌. 한 벌 봇에서 쓰던 liveConfig(schema)는 예전 그대로 첫(유일한) 벌 */
+function liveConfig(schema, id = null) {
+  const all = liveConfigs(schema);
+  if (!all.length) return null;
+  if (id == null || id === true) return all[0];
+  return all.find((c) => c.id === id) || null;
+}
+
+/** 깃발이 가리키는 벌 — true = 첫 벌, 'id' = 그 벌. 사라진 벌이면 null */
+function askedConfig(schema, m) {
+  if (!m?.liveAsk) return null;
+  return liveConfig(schema, m.liveAsk === true ? null : m.liveAsk);
+}
+
+/** 깃발 값 — 첫 벌은 true(옛 값 그대로), 그 뒤는 id */
+function askValue(schema, cfg) {
+  const all = liveConfigs(schema);
+  return all.length && all[0].id === cfg.id ? true : cfg.id;
+}
+
+function normLive(L, i = 0) {
   let count = [CAPS.COUNT_MIN, 3];
   if (Array.isArray(L.count) && L.count.length === 2 && L.count.every((n) => Number.isInteger(n))) {
     const a = Math.max(CAPS.COUNT_MIN, Math.min(CAPS.COUNT_MAX, L.count[0]));
@@ -56,6 +94,7 @@ function liveConfig(schema) {
     }));
   const worst = typeof L.worst === 'string' && tags.some((t) => t.id === L.worst) ? L.worst : null;
   return {
+    id: typeof L.id === 'string' && L.id.trim() ? L.id.trim() : (i === 0 ? DEFAULT_LIVE_ID : `set${i + 1}`),
     label: typeof L.label === 'string' && L.label.trim() ? L.label.trim() : '선택지',
     icon: typeof L.icon === 'string' && L.icon.trim() ? L.icon.trim() : '⌛',
     when: typeof L.when === 'string' ? L.when : '',
@@ -68,6 +107,7 @@ function liveConfig(schema) {
     guide: typeof L.guide === 'string' ? L.guide.slice(0, CAPS.GUIDE) : '',
     desc: typeof L.desc === 'string' && L.desc.trim() ? L.desc.trim() : '',
     showTags: L.showTags !== false,
+    shuffle: L.shuffle === true,
   };
 }
 
@@ -92,19 +132,22 @@ function liveChance(cfg, schema, vars, makeLookup) {
  * 이미 깃발이 서 있으면(이벤트 트리거) 추첨하지 않는다.
  */
 function rollAsk(schema, state, rng, makeLookup) {
-  const cfg = liveConfig(schema);
-  if (!cfg || !rng) return false;
+  const cfgs = liveConfigs(schema);
+  if (!cfgs.length || !rng) return false;
   const m = state.meta;
   if (m.liveAsk || m.pendingChoice) return false;
-  if (!liveOpen(cfg, schema, state.vars, makeLookup)) return false;
-  const p = liveChance(cfg, schema, state.vars, makeLookup);
-  if (p <= 0) return false;
-  if (rng() < p) { m.liveAsk = true; return true; }
+  // 여러 벌은 배열 순서대로 — 열리고 확률이 있는 벌만 rng를 쓴다 (한 벌 봇의 시드 순서는 예전 그대로)
+  for (const cfg of cfgs) {
+    if (!liveOpen(cfg, schema, state.vars, makeLookup)) continue;
+    const p = liveChance(cfg, schema, state.vars, makeLookup);
+    if (p <= 0) continue;
+    if (rng() < p) { m.liveAsk = askValue(schema, cfg); return true; }
+  }
   return false;
 }
 
-/** 보조가 준 선택지를 규격으로 거른다 — 라벨 길이·태그 어휘·중복·개수. worst 태그는 맨 끝으로 */
-function sanitizeItems(cfg, raw) {
+/** 보조가 준 선택지를 규격으로 거른다 — 라벨 길이·태그 어휘·중복·개수. worst 태그는 맨 끝으로 (섞는 벌은 전부 섞는다) */
+function sanitizeItems(cfg, raw, rng = null) {
   const out = { desc: '', items: [], rejected: [] };
   if (!raw || typeof raw !== 'object') return out;
   const list = Array.isArray(raw) ? raw : Array.isArray(raw.items) ? raw.items : Array.isArray(raw.choices) ? raw.choices : [];
@@ -139,25 +182,46 @@ function sanitizeItems(cfg, raw) {
       out.items = [...rest, ...ws.slice(1), ws[0]];
     }
   }
+  // 섞기 (v1.13.0) — 모델은 좋은 답을 먼저 쓰는 버릇이 있고, worst는 늘 끝이라 자리만 봐도 답이 보였다. 시드 rng라 리롤에 안정
+  if (cfg.shuffle && typeof rng === 'function') {
+    for (let i = out.items.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1)) % (i + 1);
+      [out.items[i], out.items[j]] = [out.items[j], out.items[i]];
+    }
+  }
   return out;
+}
+
+/**
+ * 안 고르면 떨어질 자리 (v1.13.0) — 타임아웃·strict 'last' 공용. worst 태그가 있는 보조 갈림길은 그 항목(섞여 있어도),
+ * 아니면 예전처럼 맨 끝. open을 주면 그 안에서만 (강제는 열린 것 중에서 고른다).
+ */
+function fallbackIndex(ev, open = null) {
+  const idxs = open || (ev?.choices || []).map((c, i) => i);
+  if (!idxs.length) return null;
+  if (ev?.worst) {
+    const w = idxs.find((i) => ev.choices[i]?.tag === ev.worst);
+    if (w != null) return w;
+  }
+  return idxs[idxs.length - 1];
 }
 
 /**
  * 응답 단계 — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
  * 다른 갈림길이 걸려 있으면 깃발을 **남긴다** (auxSpec도 그때는 안 물었다 — 다음 턴에 다시).
  */
-function applyLive(schema, state, raw) {
-  const cfg = liveConfig(schema);
-  if (!cfg) return { posted: 0 };
+function applyLive(schema, state, raw, rng = null) {
   const m = state.meta;
   if (!m.liveAsk) return { posted: 0 };
+  const cfg = askedConfig(schema, m);
+  if (!cfg) { m.liveAsk = false; return { posted: 0 }; } // 스키마에서 사라진 벌 — 깃발만 치운다
   if (m.pendingChoice) return { posted: 0, deferred: true };
   m.liveAsk = false;
-  const clean = sanitizeItems(cfg, raw);
-  if (!clean.items.length) return { posted: 0, rejected: clean.rejected };
-  m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { desc: clean.desc || cfg.desc || '', items: clean.items } };
+  const clean = sanitizeItems(cfg, raw, rng);
+  if (!clean.items.length) return { posted: 0, rejected: clean.rejected, cfg };
+  m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { cfg: cfg.id, desc: clean.desc || cfg.desc || '', items: clean.items } };
   m.pendingChoicePick = null;
-  return { posted: clean.items.length, rejected: clean.rejected };
+  return { posted: clean.items.length, rejected: clean.rejected, cfg };
 }
 
 /**
@@ -165,8 +229,9 @@ function applyLive(schema, state, raw) {
  * 스키마 갈림길과 같은 코드로 돌게. 항목의 판정·효과·전달문은 태그에서 온다.
  */
 function synthEvent(schema, pc) {
-  const cfg = liveConfig(schema);
-  if (!cfg || !pc || pc.id !== LIVE_ID || !pc.live || !Array.isArray(pc.live.items)) return null;
+  if (!pc || pc.id !== LIVE_ID || !pc.live || !Array.isArray(pc.live.items)) return null;
+  const cfg = liveConfig(schema, pc.live.cfg ?? null); // 옛 세이브(cfg 없음)는 첫 벌
+  if (!cfg) return null;
   const byTag = Object.fromEntries(cfg.tags.map((t) => [t.id, t]));
   const choices = pc.live.items.map((it) => {
     const t = it.tag ? byTag[it.tag] : null;
@@ -174,22 +239,22 @@ function synthEvent(schema, pc) {
   });
   if (!choices.length) return null;
   return { id: LIVE_ID, live: true, label: cfg.label, icon: cfg.icon, notify: pc.live.desc || '',
-    timeout: cfg.timeout, strict: cfg.strict, showTags: cfg.showTags, choices };
+    timeout: cfg.timeout, strict: cfg.strict, showTags: cfg.showTags, worst: cfg.worst, shuffle: cfg.shuffle, choices };
 }
 
 /** 보조 지시 본문 — 부탁한 턴에만 얹힌다 (평턴 비용 0) */
 function auxSpec(schema, state, makeLookup) {
-  const cfg = liveConfig(schema);
-  if (!cfg) return '';
   const m = state?.meta;
   if (!m?.liveAsk || m.pendingChoice) return '';
+  const cfg = askedConfig(schema, m);
+  if (!cfg) return '';
   if (!liveOpen(cfg, schema, state.vars, makeLookup)) return '';
   const n = cfg.count;
   const tagLine = cfg.tags.length
     ? `- 항목마다 태그(tag)를 다음 중 하나로만 붙여라: ${cfg.tags.map((t) => t.desc ? `${t.id}(${t.desc})` : t.id).join(' | ')}. 그 밖의 태그는 시스템이 버린다.`
     : null;
   const worstLine = cfg.worst
-    ? `- 그중 정확히 하나는 태그 '${cfg.worst}' — 유저가 고르지 않으면 그 항목으로 흘러가는 최악의 길이다.`
+    ? `- 그중 정확히 하나는 태그 '${cfg.worst}' — 유저가 고르지 않으면 그 항목으로 흘러간다.`
     : null;
   return ['',
     `[${cfg.label} — 선택지 쓰기] (필수 항목)`,
@@ -230,4 +295,5 @@ function matchTypedChoice(ev, text) {
   return null;
 }
 
-module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };
+module.exports = { LIVE_ID, DEFAULT_LIVE_ID, CAPS, strictMode, liveRaw, liveConfigs, liveConfig, askedConfig, askValue, liveOpen, liveChance, rollAsk,
+  sanitizeItems, fallbackIndex, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };

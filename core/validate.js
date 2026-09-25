@@ -343,10 +343,16 @@ function validateSchema(schema) {
   // strict(v1.8.0) 어휘 — true/'last'(맨 끝 = 최악 규약) · 'random' · false/없음
   const strictOk = (v) => v == null || v === true || v === false || v === 'last' || v === 'random';
   // 보조 갈림길 트리거 (v1.8.0) — events[].liveChoices: true. 설정(liveChoices)이 없으면 깃발은 안 선다
+  // 여러 벌(v1.13.0): 배열이면 벌마다 id — 트리거는 true(첫 벌) 또는 그 id
+  const liveSets = Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices != null ? [schema.liveChoices] : [];
   const checkLiveTrigger = (e, p) => {
     if (e.liveChoices == null) return;
-    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false (보조 갈림길 트리거)'); return; }
-    if (e.liveChoices && !schema.liveChoices) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
+    if (typeof e.liveChoices === 'string') {
+      if (!liveSets.some((L) => L?.id === e.liveChoices)) err(p, `liveChoices '${e.liveChoices}' — 그 id의 보조 갈림길 벌이 없습니다`);
+      return;
+    }
+    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false 또는 벌 id (보조 갈림길 트리거)'); return; }
+    if (e.liveChoices && !liveSets.length) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
     if (e.liveChoices && Array.isArray(e.choices) && e.choices.length) warn(p, '이 이벤트는 스키마 갈림길(choices)이라 보조 갈림길 트리거는 그 갈림길이 풀린 뒤에야 듣습니다 (동시 1개)');
   };
   const checkChoices = (e, p) => {
@@ -1551,10 +1557,18 @@ function validateSchema(schema) {
   }
 
   // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
-  if (schema.liveChoices != null) {
-    const L = schema.liveChoices; const P = '$.liveChoices';
-    if (typeof L !== 'object' || Array.isArray(L)) err(P, 'liveChoices는 객체여야 함');
+  const liveIds = new Set();
+  liveSets.forEach((L, li) => {
+    const multi = Array.isArray(schema.liveChoices);
+    const P = multi ? `$.liveChoices[${li}]` : '$.liveChoices';
+    if (!L || typeof L !== 'object' || Array.isArray(L)) err(P, multi ? '벌마다 { id, … } 객체' : 'liveChoices는 객체(한 벌) 또는 배열(여러 벌)');
     else {
+      if (multi || L.id != null) {
+        if (typeof L.id !== 'string' || !ID_RE.test(L.id)) err(`${P}.id`, '벌 id 필요 (영문 식별자 — 이벤트 트리거가 부른다)');
+        else if (liveIds.has(L.id)) err(`${P}.id`, `중복 벌 id '${L.id}'`);
+        else liveIds.add(L.id);
+      }
+      if (L.shuffle != null && typeof L.shuffle !== 'boolean') err(`${P}.shuffle`, 'shuffle은 true/false');
       const exprIds = new Set([...allIds, ...exposedNames]);
       for (const [k, name] of [['label', '이름'], ['guide', '지침'], ['desc', '기본 설명']]) {
         if (L[k] != null && typeof L[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
@@ -1563,7 +1577,8 @@ function validateSchema(schema) {
       if (L.when != null) checkExpr(L.when, `${P}.when`, exprIds, err, { allowRand: false });
       if (typeof L.chance === 'string') checkExpr(L.chance, `${P}.chance`, exprIds, err, { allowRand: false });
       else if (L.chance != null && (typeof L.chance !== 'number' || L.chance < 0 || L.chance > 1)) err(`${P}.chance`, 'chance는 0~1 사이 숫자 또는 식(0~1 스케일)');
-      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])].some((e) => e && e.liveChoices === true);
+      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
+        .some((e) => e && ((e.liveChoices === true && li === 0) || (L.id != null && e.liveChoices === L.id)));
       if ((L.chance == null || L.chance === 0) && !hasTrigger)
         warn(`${P}.chance`, 'chance가 없고(0) 트리거(events[].liveChoices: true)도 없습니다 — 선택지가 영영 안 옵니다');
       if (L.count != null && (!Array.isArray(L.count) || L.count.length !== 2 || !L.count.every((n) => Number.isInteger(n) && n >= 2 && n <= 4) || L.count[0] > L.count[1]))
@@ -1601,8 +1616,11 @@ function validateSchema(schema) {
       if (L.timeout == null && !strict)
         warn(`${P}.timeout`, 'timeout이 없고 strict도 아닙니다 — 고를 때까지 다른 갈림길이 전부 막힙니다. timeout 2~4턴 또는 strict를 권합니다');
       if (!tagIds.size) warn(`${P}.tags`, '태그가 없습니다 — 선택지는 라벨뿐이라 판정·효과 없이 서사만 갈립니다 (그게 의도면 그대로 두세요)');
+      if (L.shuffle === true && !L.worst && (L.timeout != null || strict))
+        warn(`${P}.shuffle`, '섞는데 worst가 없습니다 — 안 고르면 섞인 순서의 맨 끝(아무 항목)으로 흘러갑니다');
     }
-  }
+  });
+  if (Array.isArray(schema.liveChoices) && !liveSets.length) warn('$.liveChoices', '빈 배열 — 보조 갈림길이 없습니다');
 
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.

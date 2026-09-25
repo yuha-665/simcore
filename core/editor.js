@@ -4158,9 +4158,11 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   if (includeValidator) {
     parts.push('',
       '## 부록: 검증기 원문',
-      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다.',
+      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다 (주석 줄만 뺐습니다).',
       '```js',
-      String(validateSchema),
+      // 주석만 있는 줄은 뺀다 (v1.13.0) — 코드는 한 글자도 안 바뀐다. 개발 경위 주석이 검증기의 1할이 넘어
+      // 128KB 붙여넣기 상한에 닿았다 (test-aischema: 닿으면 상한을 올리지 말고 검증기 원문 동봉을 재고할 것)
+      String(validateSchema).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n'),
       '```');
   }
   // 대화형(v1.9.0) 꼬리 — "JSON 하나만"은 코드펜스 안의 규칙이지 답 전체의 규칙이 아니다
@@ -4903,10 +4905,11 @@ function varReferenceIndex(schema) {
     for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
     ex(schema.questBoard.when, '의뢰판', 'when');
   }
-  if (schema.liveChoices) { // 보조 갈림길 (v1.8.0)
-    ex(schema.liveChoices.when, '보조 갈림길', 'when');
-    if (typeof schema.liveChoices.chance === 'string') ex(schema.liveChoices.chance, '보조 갈림길', 'chance');
-    for (const t of (Array.isArray(schema.liveChoices.tags) ? schema.liveChoices.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
+  for (const L of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) { // 보조 갈림길 (v1.8.0, 여러 벌 v1.13.0)
+    if (!L || typeof L !== 'object') continue;
+    ex(L.when, '보조 갈림길', 'when');
+    if (typeof L.chance === 'string') ex(L.chance, '보조 갈림길', 'chance');
+    for (const t of (Array.isArray(L.tags) ? L.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
   }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
@@ -5633,7 +5636,9 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "guide": "둘 다 개막장이어야 한다 — 멀쩡한 길은 열에 하나." } }',
       '```',
       '- `chance` 확률(숫자 또는 식)로 매 전송 추첨하거나, 이벤트에 `"liveChoices": true`를 달아 트리거합니다. `when`이 거짓이면 닫힙니다 (온오프 변수를 넣으세요).',
-      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다.',
+      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다. `"shuffle": true`면 순서를 섞고, 안 고르면 여전히 worst 항목으로 갑니다.',
+      '- (v1.13.0) 성격이 다른 갈림길이 둘이면 **배열**로: `"liveChoices": [{ "id": "interview", … }, { "id": "stat", … }]`. 이벤트 트리거는 `"liveChoices": "interview"` (true = 첫 벌). 추첨은 배열 순서대로.',
+      '- 태그에 `check`를 달면 상태창 선택지 옆에 "🎲 판정이름 성공%"가 뜹니다 (vs가 있는 판정만).',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -8906,10 +8911,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function choiceEditor(ev) {
     const box = h('div', { class: 'sce-sub' });
     // 보조 갈림길 트리거 (v1.8.0) — liveChoices 설정이 있는 봇에서만 보인다 (설정이 없으면 깃발이 안 선다)
-    const liveTrigger = () => (schema.liveChoices
-      ? h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
-        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`))
-      : null);
+    const liveTrigger = () => {
+      if (!schema.liveChoices) return null;
+      if (Array.isArray(schema.liveChoices)) { // 여러 벌 (v1.13.0) — 어느 벌을 열지 고른다
+        const sets = schema.liveChoices.filter((L) => L && L.id);
+        const cur = ev.liveChoices === true ? (sets[0]?.id ?? '') : (typeof ev.liveChoices === 'string' ? ev.liveChoices : '');
+        return h('div', { class: 'sce-row' }, pair('발동하면 여는 보조 갈림길', bindSelect(cur, [['', '(안 연다)'],
+          ...sets.map((L) => [L.id, `${L.icon ?? '⌛'} ${L.label ?? L.id} (${L.id})`])],
+        (x) => { if (x) ev.liveChoices = x; else delete ev.liveChoices; rerender(); }), '다음 턴 응답 뒤에 선택지가 와요'));
+      }
+      return h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
+        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`));
+    };
     if (!Array.isArray(ev.choices)) {
       box.appendChild(h('div', { class: 'sce-choice-enable' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => {
@@ -8981,8 +8994,30 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }));
       return box;
     }
-    const L = schema.liveChoices;
+    // 여러 벌 (v1.13.0) — 면접용·평소용처럼 성격이 다른 갈림길을 따로. 한 벌이면 객체 그대로 둔다 (옛 스키마 무변화)
+    const multi = Array.isArray(schema.liveChoices);
+    const sets = multi ? schema.liveChoices : [schema.liveChoices];
+    sets.forEach((L, si) => { if (L && typeof L === 'object') box.appendChild(liveSetEditor(L, si, multi)); });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+        const arr = multi ? schema.liveChoices : [schema.liveChoices];
+        arr.forEach((x, i) => { if (!x.id) x.id = i === 0 ? 'main' : `set${i + 1}`; });
+        let n = arr.length + 1;
+        while (arr.some((x) => x.id === `set${n}`)) n++;
+        arr.push({ id: `set${n}`, label: '선택지', icon: '⌛', chance: 0.1, count: [2, 3], timeout: 2, tags: [] });
+        schema.liveChoices = arr; rerender();
+      } }, '+ 갈림길 한 벌 더 (예: 면접용·평소용을 따로)')));
+    return box;
+  }
+
+  function liveSetEditor(L, si, multi) {
+    const box = h('div', { class: 'sce-live-set' });
     L.tags = Array.isArray(L.tags) ? L.tags : [];
+    if (multi) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        pair(`${si + 1}번째 벌 id`, bindInput(L.id, (x) => { L.id = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: 'interview' }),
+          si === 0 ? '이벤트 트리거가 이 id로 불러요 — 첫 벌은 "켜기"(true)로도 불려요' : '이벤트 트리거가 이 id로 불러요. 추첨은 위 벌부터 차례로')));
+    }
     const checkOpts = [['', '(없음)'], ...(schema.checks || []).map((k) => [k.id, `${k.label ?? k.id} (${k.id})`])];
     const tagOpts = [['', '(없음 — 마지막 항목이 그냥 마지막)'], ...L.tags.filter((t) => t && t.id).map((t) => [t.id, t.id])];
     box.appendChild(h('div', { class: 'sce-block' },
@@ -9004,10 +9039,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           (x) => { if (x) L.strict = x; else delete L.strict; rerender(); }),
           '켜면 선택지 밖의 글을 보내도 그 턴에 시스템이 정해요 — 플레이어 글은 AI에게 안 가요'),
         pair('타임아웃', bindInput(L.timeout ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n) && n >= 1) L.timeout = n; else delete L.timeout; rerender(); }, { cls: 'sce-w-s', ph: '턴' }),
-          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목'),
+          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목 (최악 태그가 있으면 그 항목)'),
         pair('최악 태그', bindSelect(L.worst ?? '', tagOpts, (x) => { if (x) L.worst = x; else delete L.worst; rerender(); }),
-          '보조가 이 태그를 하나 꼭 쓰고, 시스템이 그 항목을 맨 끝에 둬요 — 안 고르면 그리로'),
+          '보조가 이 태그를 하나 꼭 쓰고, 안 고르면 그 항목으로 흘러가요 (섞지 않으면 맨 끝에 둬요)'),
         bindCheck(L.showTags !== false, (v) => { L.showTags = v ? undefined : false; rerender(); }, '상태창 선택지에 태그 꼬리표 표시'),
+        // 섞기 (v1.13.0) — 모델은 좋은 답을 먼저 쓰고, 최악은 늘 끝이라 자리만 봐도 답이 보인다 (조퇴악녀 면접)
+        bindCheck(L.shuffle === true, (v) => { if (v) L.shuffle = true; else delete L.shuffle; rerender(); }, '항목 순서 섞기 (자리로 답이 안 보이게)'),
       ),
       pair('노출 조건', bindInput(L.when, (x) => { L.when = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: curse_on and not fight_on (비우면 항상)' }),
         '거짓이면 추첨도 부탁도 안 해요 — 온오프 변수를 하나 두고 여기 넣으면 플레이어가 /명령·버튼으로 끄고 켤 수 있어요'),
@@ -9036,8 +9073,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => { L.tags.push({ id: '', effects: [] }); rerender(); } }, '+ 태그'),
       h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) { delete schema.liveChoices; rerender(); }
-      } }, '떼기'),
+        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) {
+          if (multi) { schema.liveChoices.splice(si, 1); if (!schema.liveChoices.length) delete schema.liveChoices; }
+          else delete schema.liveChoices;
+          rerender();
+        }
+      } }, multi ? '이 벌 떼기' : '떼기'),
     ));
     return box;
   }

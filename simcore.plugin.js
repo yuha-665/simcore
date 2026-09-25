@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.12.2
-//@display-name SimCore (시뮬 엔진) v1.12.2 무대 뒤 — 안 봐도 세상은 움직인다
+//@version 1.13.0
+//@display-name SimCore (시뮬 엔진) v1.13.0 능력치 판정 — 고르기 전에 무게를 잰다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,22 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.13.0 ──────────────────────────────────────────────
+// **능력치 판정 — 고르기 전에 무게를 잰다.** 발단: 조퇴악녀 "시종에도 스테이터스(검술·마법·화술·매력·가사) — 가끔 선택지가 수치 판정으로
+// 성공·실패하게, 킹덤컴처럼" + 면접 실기 "실언은 늘 3번, 정답은 늘 1번" (2026-09-26 유저). 판정·선택지 판정은 v0.40·v1.8.0에 있었다 —
+// 모자랐던 건 넷: 보조 갈림길이 한 벌뿐(면접이 차지), 순서가 답을 흘림, 선택지만 보고는 판정인지·몇 %인지 모름, 최초 설정이 프리셋 값을 못 봄.
+// - [여러 벌] `liveChoices`가 **배열**이면 벌마다 `{ id, … }`. 추첨은 배열 순서대로 먼저 붙은 한 벌(동시 1개 상한 그대로). 깃발 meta.liveAsk =
+//   true(첫 벌 — 옛 세이브·한 벌 봇과 같은 값) | 'id'. 이벤트 트리거 `liveChoices: true | 'id'`. 걸린 것엔 벌 id(pendingChoice.live.cfg).
+//   한 벌(객체) 봇은 한 글자도 안 바뀐다. 편집기 [규칙·이벤트] 05에 "+ 갈림길 한 벌 더"·벌 id·트리거 고르기.
+// - [섞기] `shuffle: true` — 정제 뒤 시드 rng로 순서를 섞는다(리롤 안정). 안 고르면(타임아웃·strict last) **자리 대신 worst 태그 항목**
+//   (choice.fallbackIndex). 안 섞는 벌은 예전처럼 worst 맨 끝·"마지막 항목" 안내. 섞고 태그를 숨긴 벌은 안내가 자리를 말하지 않는다.
+// - [확률 칩] 판정 달린 선택지(스키마 갈림길 check·보조 갈림길 태그 check) 옆에 "🎲 화술 60%" — 성공 = total ≥ vs(vs 없는 판정은 안 뜸).
+//   engine.checkOdds: 굴림식이 무엇이든 고정 시드 표본 600번, 5% 단위, 상태를 안 건드린다. 칩이 있으면 태그 꼬리표는 안 단다.
+// - [최초 설정] 보조 창구의 "기본값"이 스키마 init이 아니라 **지금 값(프리셋이 정한 값)** — init을 보이면 보조가 그걸 절대값으로 되돌려
+//   적어 시점별 능력치·신분이 덮였다.
+// - [규격서] 동봉 검증기에서 **주석만 있는 줄**을 뺀다(코드는 그대로) — 127.3KB로 128KB 상한에 닿아 있었다 → 116.7KB.
+// - [검증] 배열 벌 id 필수·중복·ID 형식, 트리거가 없는 벌 id를 부르면 오류, shuffle 불, 섞는데 worst 없으면 경고, 빈 배열 경고.
 //
 // ── v1.12.2 ──────────────────────────────────────────────
 // **하이라이트에 "📊 분 진행 +5 (현재 5)"가 서던 것** (조퇴악녀 실기, 2026-09-25). 보조가 적은 시간 진행(skip_day/skip_min)은 출처가 llm이라
@@ -4021,10 +4037,16 @@ function validateSchema(schema) {
   // strict(v1.8.0) 어휘 — true/'last'(맨 끝 = 최악 규약) · 'random' · false/없음
   const strictOk = (v) => v == null || v === true || v === false || v === 'last' || v === 'random';
   // 보조 갈림길 트리거 (v1.8.0) — events[].liveChoices: true. 설정(liveChoices)이 없으면 깃발은 안 선다
+  // 여러 벌(v1.13.0): 배열이면 벌마다 id — 트리거는 true(첫 벌) 또는 그 id
+  const liveSets = Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices != null ? [schema.liveChoices] : [];
   const checkLiveTrigger = (e, p) => {
     if (e.liveChoices == null) return;
-    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false (보조 갈림길 트리거)'); return; }
-    if (e.liveChoices && !schema.liveChoices) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
+    if (typeof e.liveChoices === 'string') {
+      if (!liveSets.some((L) => L?.id === e.liveChoices)) err(p, `liveChoices '${e.liveChoices}' — 그 id의 보조 갈림길 벌이 없습니다`);
+      return;
+    }
+    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false 또는 벌 id (보조 갈림길 트리거)'); return; }
+    if (e.liveChoices && !liveSets.length) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
     if (e.liveChoices && Array.isArray(e.choices) && e.choices.length) warn(p, '이 이벤트는 스키마 갈림길(choices)이라 보조 갈림길 트리거는 그 갈림길이 풀린 뒤에야 듣습니다 (동시 1개)');
   };
   const checkChoices = (e, p) => {
@@ -5229,10 +5251,18 @@ function validateSchema(schema) {
   }
 
   // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
-  if (schema.liveChoices != null) {
-    const L = schema.liveChoices; const P = '$.liveChoices';
-    if (typeof L !== 'object' || Array.isArray(L)) err(P, 'liveChoices는 객체여야 함');
+  const liveIds = new Set();
+  liveSets.forEach((L, li) => {
+    const multi = Array.isArray(schema.liveChoices);
+    const P = multi ? `$.liveChoices[${li}]` : '$.liveChoices';
+    if (!L || typeof L !== 'object' || Array.isArray(L)) err(P, multi ? '벌마다 { id, … } 객체' : 'liveChoices는 객체(한 벌) 또는 배열(여러 벌)');
     else {
+      if (multi || L.id != null) {
+        if (typeof L.id !== 'string' || !ID_RE.test(L.id)) err(`${P}.id`, '벌 id 필요 (영문 식별자 — 이벤트 트리거가 부른다)');
+        else if (liveIds.has(L.id)) err(`${P}.id`, `중복 벌 id '${L.id}'`);
+        else liveIds.add(L.id);
+      }
+      if (L.shuffle != null && typeof L.shuffle !== 'boolean') err(`${P}.shuffle`, 'shuffle은 true/false');
       const exprIds = new Set([...allIds, ...exposedNames]);
       for (const [k, name] of [['label', '이름'], ['guide', '지침'], ['desc', '기본 설명']]) {
         if (L[k] != null && typeof L[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
@@ -5241,7 +5271,8 @@ function validateSchema(schema) {
       if (L.when != null) checkExpr(L.when, `${P}.when`, exprIds, err, { allowRand: false });
       if (typeof L.chance === 'string') checkExpr(L.chance, `${P}.chance`, exprIds, err, { allowRand: false });
       else if (L.chance != null && (typeof L.chance !== 'number' || L.chance < 0 || L.chance > 1)) err(`${P}.chance`, 'chance는 0~1 사이 숫자 또는 식(0~1 스케일)');
-      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])].some((e) => e && e.liveChoices === true);
+      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
+        .some((e) => e && ((e.liveChoices === true && li === 0) || (L.id != null && e.liveChoices === L.id)));
       if ((L.chance == null || L.chance === 0) && !hasTrigger)
         warn(`${P}.chance`, 'chance가 없고(0) 트리거(events[].liveChoices: true)도 없습니다 — 선택지가 영영 안 옵니다');
       if (L.count != null && (!Array.isArray(L.count) || L.count.length !== 2 || !L.count.every((n) => Number.isInteger(n) && n >= 2 && n <= 4) || L.count[0] > L.count[1]))
@@ -5279,8 +5310,11 @@ function validateSchema(schema) {
       if (L.timeout == null && !strict)
         warn(`${P}.timeout`, 'timeout이 없고 strict도 아닙니다 — 고를 때까지 다른 갈림길이 전부 막힙니다. timeout 2~4턴 또는 strict를 권합니다');
       if (!tagIds.size) warn(`${P}.tags`, '태그가 없습니다 — 선택지는 라벨뿐이라 판정·효과 없이 서사만 갈립니다 (그게 의도면 그대로 두세요)');
+      if (L.shuffle === true && !L.worst && (L.timeout != null || strict))
+        warn(`${P}.shuffle`, '섞는데 worst가 없습니다 — 안 고르면 섞인 순서의 맨 끝(아무 항목)으로 흘러갑니다');
     }
-  }
+  });
+  if (Array.isArray(schema.liveChoices) && !liveSets.length) warn('$.liveChoices', '빈 배열 — 보조 갈림길이 없습니다');
 
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
@@ -8363,6 +8397,13 @@ SimCore.define("choice", function (require, module, exports) {
 //   · chance: 0~1 숫자 또는 식 — 매 전송 추첨. 0이면 이벤트 트리거(events[].liveChoices: true)로만 연다
 //   · tags: [{ id, desc?, check?, effects?, inject? }] — 보조가 항목마다 붙이는 어휘. 없으면 라벨만(결과는 서사)
 //   · strict: true('last') | 'last' | 'random' | false — 고르지 않고 보내면 시스템이 정한다
+//
+// 여러 벌 (v1.13.0, 조퇴악녀 "면접은 면접대로, 평소엔 능력치 판정 선택지"): liveChoices가 **배열**이면 벌마다 { id, … }.
+//   · 추첨은 배열 순서대로 — 먼저 열리고 먼저 붙은 한 벌만 (동시 1개 상한은 그대로)
+//   · 깃발 meta.liveAsk = true(첫 벌 — 옛 세이브·한 벌 봇과 같은 값) | 'id'(둘째 벌부터). 이벤트 트리거는 true | 'id'
+//   · 걸린 것엔 벌 id가 같이 산다(pendingChoice.live.cfg) — 합성·집행이 그 벌의 태그를 쓴다
+// 섞기 (v1.13.0, 조퇴악녀 실기 "실언은 늘 3번, 정답은 늘 1번"): shuffle: true면 항목 순서를 시드 rng로 섞는다.
+//   worst를 맨 끝에 두지 않는 대신 타임아웃·strict 'last'가 **자리 대신 worst 태그**로 떨어질 곳을 찾는다 (fallbackIndex)
 
 const { evaluate, truthy } = require('./expr');
 
@@ -8381,9 +8422,40 @@ function strictMode(v) {
   return null;
 }
 
-function liveConfig(schema) {
+/** 스키마의 벌 원본들 — 객체 하나면 [그것], 배열이면 객체만 (v1.13.0) */
+function liveRaw(schema) {
   const L = schema?.liveChoices;
-  if (!L || typeof L !== 'object' || Array.isArray(L)) return null;
+  if (Array.isArray(L)) return L.filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+  return L && typeof L === 'object' ? [L] : [];
+}
+const DEFAULT_LIVE_ID = 'main';
+
+/** 정규화한 벌 전부 */
+function liveConfigs(schema) {
+  return liveRaw(schema).map((L, i) => normLive(L, i));
+}
+
+/** 벌 하나 — id 없으면(또는 true) 첫 벌. 한 벌 봇에서 쓰던 liveConfig(schema)는 예전 그대로 첫(유일한) 벌 */
+function liveConfig(schema, id = null) {
+  const all = liveConfigs(schema);
+  if (!all.length) return null;
+  if (id == null || id === true) return all[0];
+  return all.find((c) => c.id === id) || null;
+}
+
+/** 깃발이 가리키는 벌 — true = 첫 벌, 'id' = 그 벌. 사라진 벌이면 null */
+function askedConfig(schema, m) {
+  if (!m?.liveAsk) return null;
+  return liveConfig(schema, m.liveAsk === true ? null : m.liveAsk);
+}
+
+/** 깃발 값 — 첫 벌은 true(옛 값 그대로), 그 뒤는 id */
+function askValue(schema, cfg) {
+  const all = liveConfigs(schema);
+  return all.length && all[0].id === cfg.id ? true : cfg.id;
+}
+
+function normLive(L, i = 0) {
   let count = [CAPS.COUNT_MIN, 3];
   if (Array.isArray(L.count) && L.count.length === 2 && L.count.every((n) => Number.isInteger(n))) {
     const a = Math.max(CAPS.COUNT_MIN, Math.min(CAPS.COUNT_MAX, L.count[0]));
@@ -8402,6 +8474,7 @@ function liveConfig(schema) {
     }));
   const worst = typeof L.worst === 'string' && tags.some((t) => t.id === L.worst) ? L.worst : null;
   return {
+    id: typeof L.id === 'string' && L.id.trim() ? L.id.trim() : (i === 0 ? DEFAULT_LIVE_ID : `set${i + 1}`),
     label: typeof L.label === 'string' && L.label.trim() ? L.label.trim() : '선택지',
     icon: typeof L.icon === 'string' && L.icon.trim() ? L.icon.trim() : '⌛',
     when: typeof L.when === 'string' ? L.when : '',
@@ -8414,6 +8487,7 @@ function liveConfig(schema) {
     guide: typeof L.guide === 'string' ? L.guide.slice(0, CAPS.GUIDE) : '',
     desc: typeof L.desc === 'string' && L.desc.trim() ? L.desc.trim() : '',
     showTags: L.showTags !== false,
+    shuffle: L.shuffle === true,
   };
 }
 
@@ -8438,19 +8512,22 @@ function liveChance(cfg, schema, vars, makeLookup) {
  * 이미 깃발이 서 있으면(이벤트 트리거) 추첨하지 않는다.
  */
 function rollAsk(schema, state, rng, makeLookup) {
-  const cfg = liveConfig(schema);
-  if (!cfg || !rng) return false;
+  const cfgs = liveConfigs(schema);
+  if (!cfgs.length || !rng) return false;
   const m = state.meta;
   if (m.liveAsk || m.pendingChoice) return false;
-  if (!liveOpen(cfg, schema, state.vars, makeLookup)) return false;
-  const p = liveChance(cfg, schema, state.vars, makeLookup);
-  if (p <= 0) return false;
-  if (rng() < p) { m.liveAsk = true; return true; }
+  // 여러 벌은 배열 순서대로 — 열리고 확률이 있는 벌만 rng를 쓴다 (한 벌 봇의 시드 순서는 예전 그대로)
+  for (const cfg of cfgs) {
+    if (!liveOpen(cfg, schema, state.vars, makeLookup)) continue;
+    const p = liveChance(cfg, schema, state.vars, makeLookup);
+    if (p <= 0) continue;
+    if (rng() < p) { m.liveAsk = askValue(schema, cfg); return true; }
+  }
   return false;
 }
 
-/** 보조가 준 선택지를 규격으로 거른다 — 라벨 길이·태그 어휘·중복·개수. worst 태그는 맨 끝으로 */
-function sanitizeItems(cfg, raw) {
+/** 보조가 준 선택지를 규격으로 거른다 — 라벨 길이·태그 어휘·중복·개수. worst 태그는 맨 끝으로 (섞는 벌은 전부 섞는다) */
+function sanitizeItems(cfg, raw, rng = null) {
   const out = { desc: '', items: [], rejected: [] };
   if (!raw || typeof raw !== 'object') return out;
   const list = Array.isArray(raw) ? raw : Array.isArray(raw.items) ? raw.items : Array.isArray(raw.choices) ? raw.choices : [];
@@ -8485,25 +8562,46 @@ function sanitizeItems(cfg, raw) {
       out.items = [...rest, ...ws.slice(1), ws[0]];
     }
   }
+  // 섞기 (v1.13.0) — 모델은 좋은 답을 먼저 쓰는 버릇이 있고, worst는 늘 끝이라 자리만 봐도 답이 보였다. 시드 rng라 리롤에 안정
+  if (cfg.shuffle && typeof rng === 'function') {
+    for (let i = out.items.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1)) % (i + 1);
+      [out.items[i], out.items[j]] = [out.items[j], out.items[i]];
+    }
+  }
   return out;
+}
+
+/**
+ * 안 고르면 떨어질 자리 (v1.13.0) — 타임아웃·strict 'last' 공용. worst 태그가 있는 보조 갈림길은 그 항목(섞여 있어도),
+ * 아니면 예전처럼 맨 끝. open을 주면 그 안에서만 (강제는 열린 것 중에서 고른다).
+ */
+function fallbackIndex(ev, open = null) {
+  const idxs = open || (ev?.choices || []).map((c, i) => i);
+  if (!idxs.length) return null;
+  if (ev?.worst) {
+    const w = idxs.find((i) => ev.choices[i]?.tag === ev.worst);
+    if (w != null) return w;
+  }
+  return idxs[idxs.length - 1];
 }
 
 /**
  * 응답 단계 — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
  * 다른 갈림길이 걸려 있으면 깃발을 **남긴다** (auxSpec도 그때는 안 물었다 — 다음 턴에 다시).
  */
-function applyLive(schema, state, raw) {
-  const cfg = liveConfig(schema);
-  if (!cfg) return { posted: 0 };
+function applyLive(schema, state, raw, rng = null) {
   const m = state.meta;
   if (!m.liveAsk) return { posted: 0 };
+  const cfg = askedConfig(schema, m);
+  if (!cfg) { m.liveAsk = false; return { posted: 0 }; } // 스키마에서 사라진 벌 — 깃발만 치운다
   if (m.pendingChoice) return { posted: 0, deferred: true };
   m.liveAsk = false;
-  const clean = sanitizeItems(cfg, raw);
-  if (!clean.items.length) return { posted: 0, rejected: clean.rejected };
-  m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { desc: clean.desc || cfg.desc || '', items: clean.items } };
+  const clean = sanitizeItems(cfg, raw, rng);
+  if (!clean.items.length) return { posted: 0, rejected: clean.rejected, cfg };
+  m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { cfg: cfg.id, desc: clean.desc || cfg.desc || '', items: clean.items } };
   m.pendingChoicePick = null;
-  return { posted: clean.items.length, rejected: clean.rejected };
+  return { posted: clean.items.length, rejected: clean.rejected, cfg };
 }
 
 /**
@@ -8511,8 +8609,9 @@ function applyLive(schema, state, raw) {
  * 스키마 갈림길과 같은 코드로 돌게. 항목의 판정·효과·전달문은 태그에서 온다.
  */
 function synthEvent(schema, pc) {
-  const cfg = liveConfig(schema);
-  if (!cfg || !pc || pc.id !== LIVE_ID || !pc.live || !Array.isArray(pc.live.items)) return null;
+  if (!pc || pc.id !== LIVE_ID || !pc.live || !Array.isArray(pc.live.items)) return null;
+  const cfg = liveConfig(schema, pc.live.cfg ?? null); // 옛 세이브(cfg 없음)는 첫 벌
+  if (!cfg) return null;
   const byTag = Object.fromEntries(cfg.tags.map((t) => [t.id, t]));
   const choices = pc.live.items.map((it) => {
     const t = it.tag ? byTag[it.tag] : null;
@@ -8520,22 +8619,22 @@ function synthEvent(schema, pc) {
   });
   if (!choices.length) return null;
   return { id: LIVE_ID, live: true, label: cfg.label, icon: cfg.icon, notify: pc.live.desc || '',
-    timeout: cfg.timeout, strict: cfg.strict, showTags: cfg.showTags, choices };
+    timeout: cfg.timeout, strict: cfg.strict, showTags: cfg.showTags, worst: cfg.worst, shuffle: cfg.shuffle, choices };
 }
 
 /** 보조 지시 본문 — 부탁한 턴에만 얹힌다 (평턴 비용 0) */
 function auxSpec(schema, state, makeLookup) {
-  const cfg = liveConfig(schema);
-  if (!cfg) return '';
   const m = state?.meta;
   if (!m?.liveAsk || m.pendingChoice) return '';
+  const cfg = askedConfig(schema, m);
+  if (!cfg) return '';
   if (!liveOpen(cfg, schema, state.vars, makeLookup)) return '';
   const n = cfg.count;
   const tagLine = cfg.tags.length
     ? `- 항목마다 태그(tag)를 다음 중 하나로만 붙여라: ${cfg.tags.map((t) => t.desc ? `${t.id}(${t.desc})` : t.id).join(' | ')}. 그 밖의 태그는 시스템이 버린다.`
     : null;
   const worstLine = cfg.worst
-    ? `- 그중 정확히 하나는 태그 '${cfg.worst}' — 유저가 고르지 않으면 그 항목으로 흘러가는 최악의 길이다.`
+    ? `- 그중 정확히 하나는 태그 '${cfg.worst}' — 유저가 고르지 않으면 그 항목으로 흘러간다.`
     : null;
   return ['',
     `[${cfg.label} — 선택지 쓰기] (필수 항목)`,
@@ -8576,7 +8675,8 @@ function matchTypedChoice(ev, text) {
   return null;
 }
 
-module.exports = { LIVE_ID, CAPS, strictMode, liveConfig, liveOpen, liveChance, rollAsk, sanitizeItems, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };
+module.exports = { LIVE_ID, DEFAULT_LIVE_ID, CAPS, strictMode, liveRaw, liveConfigs, liveConfig, askedConfig, askValue, liveOpen, liveChance, rollAsk,
+  sanitizeItems, fallbackIndex, applyLive, synthEvent, auxSpec, overrideText, matchTypedChoice };
 
 });
 
@@ -10014,6 +10114,13 @@ function findChoiceEvent(schema, id) {
   return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
+/** 이벤트의 보조 갈림길 트리거 — liveChoices: true = 첫 벌, 'id' = 그 벌 (v1.13.0 여러 벌). 없는 벌이면 조용히 무시 (검증이 잡는다) */
+function triggerLive(schema, state, ev) {
+  if (!ev?.liveChoices) return;
+  const cfg = choiceMod.liveConfig(schema, ev.liveChoices === true ? null : ev.liveChoices);
+  if (cfg) state.meta.liveAsk = choiceMod.askValue(schema, cfg);
+}
+
 /**
  * 걸려 있는 갈림길의 이벤트 (v1.8.0) — 스키마 갈림길이면 그 이벤트, 보조가 쓴 갈림길(liveChoices)이면
  * 상태에서 합성한다. 집행·타임아웃·동결·렌더·명령이 전부 이걸 본다 — 갈림길의 출처를 한 군데서만 가른다.
@@ -10322,6 +10429,33 @@ function rollCheck(schema, state, check, rng, changeLog) {
   return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
+/**
+ * 판정 성공 확률 (v1.13.0) — 선택지 옆 "🎲 화술 60%" 칩용. 성공 = total ≥ vs (vs 없는 판정은 null).
+ * 굴림식이 무엇이든(이점 굴림 포함) 같은 시드 표본 600번으로 잰다 — 렌더마다 같은 숫자, 5% 단위로 반올림.
+ * 상태를 안 건드린다 (applySets 없음 · 게임 rng 안 씀).
+ */
+function checkOdds(schema, state, check) {
+  if (!check || check.vs == null) return null;
+  const lookup = makeLookup(schema, state.vars);
+  let mod, vs;
+  try {
+    mod = check.mod != null ? Number(evaluate(String(check.mod), lookup, null)) : 0;
+    vs = typeof check.vs === 'number' ? check.vs : Number(evaluate(String(check.vs), lookup, null));
+  } catch { return null; }
+  if (!isFinite(mod) || !isFinite(vs)) return null;
+  let seed = 0x9e3779b9;
+  const rng = () => { seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0; return (seed >>> 8) / 16777216; };
+  const N = 600;
+  let ok = 0;
+  for (let i = 0; i < N; i++) {
+    let roll;
+    try { roll = Number(evaluate(check.roll, lookup, rng)); } catch { return null; }
+    if (!isFinite(roll)) return null;
+    if (roll + mod >= vs) ok++;
+  }
+  return { label: check.label ?? check.id, pct: Math.round((ok / N) * 20) * 5 };
+}
+
 // ── 전투 안무 — 라운드 하나 (v1.6.0, checks[].fight; 배경·규약은 core/fight.js 머리말) ──
 // 공격 비트 = 그 판정을 그대로 굴린다(등급 effects·기록 그대로) + 등급 gain을 상대 게이지에.
 // 반격 비트 = fight.reply 판정(회피 등)을 굴린다 — 주인공 피해는 그 판정의 등급 effects가 낸다
@@ -10486,7 +10620,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       if (idx == null && mode) {
         const open = ev.choices.map((c, i) => i).filter((i) => choiceOpen(schema, state.vars, ev.choices[i]));
         if (open.length) {
-          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : open[open.length - 1];
+          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : choiceMod.fallbackIndex(ev, open); // v1.13.0 worst 태그 우선
           forcedChoice = { idx, label: String(ev.choices[idx].label ?? ''), mode };
           changeLog.push({ id: '갈림길', from: null, to: `시스템 결정 — ${forcedChoice.label}`, source: `choice:${ev.id}` });
         } else {
@@ -10755,8 +10889,12 @@ function buildSetupPrompt(schema, state, narrative) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   const ids = schema.setup?.ai?.vars ?? schema.vars.map((v) => v.id);
   const specs = ids.map((id) => {
-    const v = varById[id];
-    if (!v) return null;
+    const v0 = varById[id];
+    if (!v0) return null;
+    // 기본값 = 지금 값 (v1.13.0) — 프리셋이 정한 값이 여기 있다. 스키마 init을 보이면 보조가 그걸 "기본"으로 되돌려 적어
+    // 프리셋마다 다른 칸(시점별 능력치·신분)이 덮였다 (조퇴악녀 — 값은 절대값으로 적용된다)
+    const cur = state?.vars?.[id];
+    const v = cur === undefined ? v0 : { ...v0, init: cur };
     const d = v.desc ? ` — ${v.desc}` : '';
     const base = `- ${id} (${v.label ?? id}`;
     if (v.type === 'int' || v.type === 'float') {
@@ -11091,8 +11229,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.96 보조 갈림길 (v1.8.0) — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
   // 이벤트(7·8)보다 먼저라 이번 턴 스키마 갈림길은 "동시 1개" 규약대로 미뤄진다.
   if (choiceMod.liveConfig(schema)) {
-    const lr = choiceMod.applyLive(schema, state, choices);
-    if (lr.posted) changeLog.push({ id: choiceMod.liveConfig(schema).label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
+    const lr = choiceMod.applyLive(schema, state, choices, rng);
+    if (lr.posted) changeLog.push({ id: lr.cfg.label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
   }
 
   // 6. 정기 틱
@@ -11106,7 +11244,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoice = null; // 스키마에서 사라진 갈림길 — 방어
       state.meta.pendingChoicePick = null;
     } else if (pcEv.timeout != null && state.meta.turn - state.meta.pendingChoice.turn >= pcEv.timeout) {
-      const last = pcEv.choices[pcEv.choices.length - 1];
+      const last = pcEv.choices[choiceMod.fallbackIndex(pcEv)]; // v1.13.0 — 섞인 보조 갈림길은 worst 태그 항목
       const ok = choiceOpen(schema, state.vars, last);
       if (ok) {
         // 판정 달린 선택지(v1.8.0)는 여기서도 굴린다 — 이벤트 판정과 같이 [판정] 줄은 통지로 다음 전송에
@@ -11148,7 +11286,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoicePick = null;
     }
     // 보조 갈림길 트리거 (v1.8.0) — 깃발만 세운다. 보조 호출은 이미 지났으니 다음 턴 응답 뒤에 선택지가 온다
-    if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true;
+    triggerLive(schema, state, ev);
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -11199,7 +11337,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
             state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
             state.meta.pendingChoicePick = null;
           }
-          if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true; // (v1.8.0) 위 7과 같은 깃발
+          triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
           break;
@@ -12022,7 +12160,7 @@ module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
   frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
-  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
+  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, checkOdds, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,
@@ -12034,7 +12172,7 @@ SimCore.define("render", function (require, module, exports) {
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent } = require('./engine');
+const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent, checkOdds } = require('./engine');
 const { evaluate, truthy } = require('./expr');
 const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
@@ -12109,7 +12247,7 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
-.sim-choice-tag{font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
+.sim-choice-tag{display:inline-block;white-space:nowrap;font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
 .sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
 .sim-scn-prog{opacity:.55;font-size:.9em}
 .sim-secs{display:inline-flex;flex-wrap:wrap;gap:6px}
@@ -12252,6 +12390,7 @@ function choicesHtml(schema, state) {
   const ev = pendingChoiceEvent(schema, state);
   if (!ev) return '';
   const lookup = makeLookup(schema, state.vars);
+  const checkById = Object.fromEntries((schema.checks || []).map((k) => [k.id, k]));
   const title = ev.live ? `${ev.icon} ${ev.label}` : '⌛ 선택의 순간';
   let out = `<div class="sim-choices${ev.live ? ' sim-choices-live' : ''}"><div class="sim-choices-title">${esc(title)}</div>`;
   // 무엇에 대한 선택인지 — 발동 순간의 notify를 다시 보여준다. 알림은 그 턴에 흘러가 버려서
@@ -12262,15 +12401,21 @@ function choicesHtml(schema, state) {
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
     // 잠긴 항목에는 히트 클래스를 안 붙인다 — 눌러도 안 되는 걸 버튼처럼 보이게 하지 않는다
     const hit = locked ? '' : ` sim-hit sim-hitchoice-${i}`;
+    // 판정 달린 항목 (v1.13.0) — 무슨 판정이고 지금 몇 %인지. 킹덤컴식: 고르기 전에 무게를 잰다. 이 칩이 있으면 태그 꼬리표는 안 단다
+    // (보조 갈림길의 태그가 곧 판정 이름이라 두 번 말하게 된다)
+    const odds = c.check ? checkOdds(schema, state, checkById[c.check]) : null;
+    const chk = odds ? ` <em class="sim-choice-tag sim-choice-check">🎲 ${esc(String(odds.label))} ${odds.pct}%</em>` : '';
     // 보조 갈림길의 태그 꼬리표 — 결과(판정·효과)는 태그가 정하니 유저가 무게를 잴 근거다 (showTags로 숨김)
-    const tag = ev.live && ev.showTags !== false && c.tag ? ` <em class="sim-choice-tag">${esc(String(c.tag))}</em>` : '';
-    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${tag}${locked ? ' 🔒' : ''}</div>`;
+    const tag = !chk && ev.live && ev.showTags !== false && c.tag ? ` <em class="sim-choice-tag">${esc(String(c.tag))}</em>` : '';
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${chk}${tag}${locked ? ' 🔒' : ''}</div>`;
   });
   // 강제(strict, v1.8.0): 고르지 않고 보내면 그 자리에서 시스템이 정한다 — 타임아웃 안내 대신 이 말이 맞다
   const strict = ev.strict === true || ev.strict === 'last' ? 'last' : ev.strict === 'random' ? 'random' : null;
+  // (v1.13.0) 섞는 보조 갈림길(worst 태그)은 떨어질 곳이 "마지막"이 아니다 — 태그를 보이는 벌이면 그 태그로, 숨기는 벌이면 뭉뚱그린다
+  const fall = ev.live && ev.worst && ev.shuffle ? (ev.showTags !== false ? `'${ev.worst}' 항목` : '시스템이 정한 항목') : '마지막 항목';
   const tail = strict
-    ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : '마지막 항목'}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
-    : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '');
+    ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : fall}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
+    : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 ${fall}으로 흘러간다` : '');
   out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1) — 항목 글을 그대로 보내도 된다${tail}</div></div>`;
   return out;
 }
@@ -13210,6 +13355,8 @@ SimCore.define("diagnose", function (require, module, exports) {
 //
 // 순수 함수라 DOM이 필요 없다 — 편집기·테스트·플레이그라운드 어디서든 같은 결과가 나온다.
 
+// 보조 갈림길 태그 전부 — 한 벌(객체)·여러 벌(배열, v1.13.0) 공용
+const liveTags = (schema) => (Array.isArray(schema.liveChoices) ? schema.liveChoices : [schema.liveChoices]).flatMap((L) => L?.tags || []);
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
@@ -13251,7 +13398,7 @@ function writerMap(schema) {
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
     for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
-  for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
+  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
@@ -13534,7 +13681,7 @@ function diagnose(schema, opts = {}) {
       for (const f of (e.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
       for (const c of (e.choices || [])) for (const f of (c.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
     }
-    for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) openSites.add(f.set ?? f.list); // 보조 갈림길(v1.8.0)은 편성표 게이트 밖
+    for (const t of liveTags(schema)) for (const f of (t?.effects || [])) openSites.add(f.set ?? f.list); // 보조 갈림길(v1.8.0)은 편성표 게이트 밖
     for (const c of (schema.checks || [])) {
       const open = ckOpen.has(c.id) ? ckOpen.get(c.id) : true; // 아무 액션도 안 여는 판정은 열림으로 친다(보수적)
       for (const g of (c.grades || [])) for (const f of (g.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
@@ -18664,9 +18811,11 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   if (includeValidator) {
     parts.push('',
       '## 부록: 검증기 원문',
-      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다.',
+      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다 (주석 줄만 뺐습니다).',
       '```js',
-      String(validateSchema),
+      // 주석만 있는 줄은 뺀다 (v1.13.0) — 코드는 한 글자도 안 바뀐다. 개발 경위 주석이 검증기의 1할이 넘어
+      // 128KB 붙여넣기 상한에 닿았다 (test-aischema: 닿으면 상한을 올리지 말고 검증기 원문 동봉을 재고할 것)
+      String(validateSchema).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n'),
       '```');
   }
   // 대화형(v1.9.0) 꼬리 — "JSON 하나만"은 코드펜스 안의 규칙이지 답 전체의 규칙이 아니다
@@ -19409,10 +19558,11 @@ function varReferenceIndex(schema) {
     for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
     ex(schema.questBoard.when, '의뢰판', 'when');
   }
-  if (schema.liveChoices) { // 보조 갈림길 (v1.8.0)
-    ex(schema.liveChoices.when, '보조 갈림길', 'when');
-    if (typeof schema.liveChoices.chance === 'string') ex(schema.liveChoices.chance, '보조 갈림길', 'chance');
-    for (const t of (Array.isArray(schema.liveChoices.tags) ? schema.liveChoices.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
+  for (const L of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) { // 보조 갈림길 (v1.8.0, 여러 벌 v1.13.0)
+    if (!L || typeof L !== 'object') continue;
+    ex(L.when, '보조 갈림길', 'when');
+    if (typeof L.chance === 'string') ex(L.chance, '보조 갈림길', 'chance');
+    for (const t of (Array.isArray(L.tags) ? L.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
   }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
@@ -20139,7 +20289,9 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "guide": "둘 다 개막장이어야 한다 — 멀쩡한 길은 열에 하나." } }',
       '```',
       '- `chance` 확률(숫자 또는 식)로 매 전송 추첨하거나, 이벤트에 `"liveChoices": true`를 달아 트리거합니다. `when`이 거짓이면 닫힙니다 (온오프 변수를 넣으세요).',
-      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다.',
+      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다. `"shuffle": true`면 순서를 섞고, 안 고르면 여전히 worst 항목으로 갑니다.',
+      '- (v1.13.0) 성격이 다른 갈림길이 둘이면 **배열**로: `"liveChoices": [{ "id": "interview", … }, { "id": "stat", … }]`. 이벤트 트리거는 `"liveChoices": "interview"` (true = 첫 벌). 추첨은 배열 순서대로.',
+      '- 태그에 `check`를 달면 상태창 선택지 옆에 "🎲 판정이름 성공%"가 뜹니다 (vs가 있는 판정만).',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -23412,10 +23564,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function choiceEditor(ev) {
     const box = h('div', { class: 'sce-sub' });
     // 보조 갈림길 트리거 (v1.8.0) — liveChoices 설정이 있는 봇에서만 보인다 (설정이 없으면 깃발이 안 선다)
-    const liveTrigger = () => (schema.liveChoices
-      ? h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
-        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`))
-      : null);
+    const liveTrigger = () => {
+      if (!schema.liveChoices) return null;
+      if (Array.isArray(schema.liveChoices)) { // 여러 벌 (v1.13.0) — 어느 벌을 열지 고른다
+        const sets = schema.liveChoices.filter((L) => L && L.id);
+        const cur = ev.liveChoices === true ? (sets[0]?.id ?? '') : (typeof ev.liveChoices === 'string' ? ev.liveChoices : '');
+        return h('div', { class: 'sce-row' }, pair('발동하면 여는 보조 갈림길', bindSelect(cur, [['', '(안 연다)'],
+          ...sets.map((L) => [L.id, `${L.icon ?? '⌛'} ${L.label ?? L.id} (${L.id})`])],
+        (x) => { if (x) ev.liveChoices = x; else delete ev.liveChoices; rerender(); }), '다음 턴 응답 뒤에 선택지가 와요'));
+      }
+      return h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
+        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`));
+    };
     if (!Array.isArray(ev.choices)) {
       box.appendChild(h('div', { class: 'sce-choice-enable' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => {
@@ -23487,8 +23647,30 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }));
       return box;
     }
-    const L = schema.liveChoices;
+    // 여러 벌 (v1.13.0) — 면접용·평소용처럼 성격이 다른 갈림길을 따로. 한 벌이면 객체 그대로 둔다 (옛 스키마 무변화)
+    const multi = Array.isArray(schema.liveChoices);
+    const sets = multi ? schema.liveChoices : [schema.liveChoices];
+    sets.forEach((L, si) => { if (L && typeof L === 'object') box.appendChild(liveSetEditor(L, si, multi)); });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+        const arr = multi ? schema.liveChoices : [schema.liveChoices];
+        arr.forEach((x, i) => { if (!x.id) x.id = i === 0 ? 'main' : `set${i + 1}`; });
+        let n = arr.length + 1;
+        while (arr.some((x) => x.id === `set${n}`)) n++;
+        arr.push({ id: `set${n}`, label: '선택지', icon: '⌛', chance: 0.1, count: [2, 3], timeout: 2, tags: [] });
+        schema.liveChoices = arr; rerender();
+      } }, '+ 갈림길 한 벌 더 (예: 면접용·평소용을 따로)')));
+    return box;
+  }
+
+  function liveSetEditor(L, si, multi) {
+    const box = h('div', { class: 'sce-live-set' });
     L.tags = Array.isArray(L.tags) ? L.tags : [];
+    if (multi) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        pair(`${si + 1}번째 벌 id`, bindInput(L.id, (x) => { L.id = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: 'interview' }),
+          si === 0 ? '이벤트 트리거가 이 id로 불러요 — 첫 벌은 "켜기"(true)로도 불려요' : '이벤트 트리거가 이 id로 불러요. 추첨은 위 벌부터 차례로')));
+    }
     const checkOpts = [['', '(없음)'], ...(schema.checks || []).map((k) => [k.id, `${k.label ?? k.id} (${k.id})`])];
     const tagOpts = [['', '(없음 — 마지막 항목이 그냥 마지막)'], ...L.tags.filter((t) => t && t.id).map((t) => [t.id, t.id])];
     box.appendChild(h('div', { class: 'sce-block' },
@@ -23510,10 +23692,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           (x) => { if (x) L.strict = x; else delete L.strict; rerender(); }),
           '켜면 선택지 밖의 글을 보내도 그 턴에 시스템이 정해요 — 플레이어 글은 AI에게 안 가요'),
         pair('타임아웃', bindInput(L.timeout ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n) && n >= 1) L.timeout = n; else delete L.timeout; rerender(); }, { cls: 'sce-w-s', ph: '턴' }),
-          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목'),
+          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목 (최악 태그가 있으면 그 항목)'),
         pair('최악 태그', bindSelect(L.worst ?? '', tagOpts, (x) => { if (x) L.worst = x; else delete L.worst; rerender(); }),
-          '보조가 이 태그를 하나 꼭 쓰고, 시스템이 그 항목을 맨 끝에 둬요 — 안 고르면 그리로'),
+          '보조가 이 태그를 하나 꼭 쓰고, 안 고르면 그 항목으로 흘러가요 (섞지 않으면 맨 끝에 둬요)'),
         bindCheck(L.showTags !== false, (v) => { L.showTags = v ? undefined : false; rerender(); }, '상태창 선택지에 태그 꼬리표 표시'),
+        // 섞기 (v1.13.0) — 모델은 좋은 답을 먼저 쓰고, 최악은 늘 끝이라 자리만 봐도 답이 보인다 (조퇴악녀 면접)
+        bindCheck(L.shuffle === true, (v) => { if (v) L.shuffle = true; else delete L.shuffle; rerender(); }, '항목 순서 섞기 (자리로 답이 안 보이게)'),
       ),
       pair('노출 조건', bindInput(L.when, (x) => { L.when = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: curse_on and not fight_on (비우면 항상)' }),
         '거짓이면 추첨도 부탁도 안 해요 — 온오프 변수를 하나 두고 여기 넣으면 플레이어가 /명령·버튼으로 끄고 켤 수 있어요'),
@@ -23542,8 +23726,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => { L.tags.push({ id: '', effects: [] }); rerender(); } }, '+ 태그'),
       h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) { delete schema.liveChoices; rerender(); }
-      } }, '떼기'),
+        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) {
+          if (multi) { schema.liveChoices.splice(si, 1); if (!schema.liveChoices.length) delete schema.liveChoices; }
+          else delete schema.liveChoices;
+          rerender();
+        }
+      } }, multi ? '이 벌 떼기' : '떼기'),
     ));
     return box;
   }

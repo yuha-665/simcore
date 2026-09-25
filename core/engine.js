@@ -306,6 +306,13 @@ function findChoiceEvent(schema, id) {
   return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
 }
 
+/** 이벤트의 보조 갈림길 트리거 — liveChoices: true = 첫 벌, 'id' = 그 벌 (v1.13.0 여러 벌). 없는 벌이면 조용히 무시 (검증이 잡는다) */
+function triggerLive(schema, state, ev) {
+  if (!ev?.liveChoices) return;
+  const cfg = choiceMod.liveConfig(schema, ev.liveChoices === true ? null : ev.liveChoices);
+  if (cfg) state.meta.liveAsk = choiceMod.askValue(schema, cfg);
+}
+
 /**
  * 걸려 있는 갈림길의 이벤트 (v1.8.0) — 스키마 갈림길이면 그 이벤트, 보조가 쓴 갈림길(liveChoices)이면
  * 상태에서 합성한다. 집행·타임아웃·동결·렌더·명령이 전부 이걸 본다 — 갈림길의 출처를 한 군데서만 가른다.
@@ -614,6 +621,33 @@ function rollCheck(schema, state, check, rng, changeLog) {
   return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
+/**
+ * 판정 성공 확률 (v1.13.0) — 선택지 옆 "🎲 화술 60%" 칩용. 성공 = total ≥ vs (vs 없는 판정은 null).
+ * 굴림식이 무엇이든(이점 굴림 포함) 같은 시드 표본 600번으로 잰다 — 렌더마다 같은 숫자, 5% 단위로 반올림.
+ * 상태를 안 건드린다 (applySets 없음 · 게임 rng 안 씀).
+ */
+function checkOdds(schema, state, check) {
+  if (!check || check.vs == null) return null;
+  const lookup = makeLookup(schema, state.vars);
+  let mod, vs;
+  try {
+    mod = check.mod != null ? Number(evaluate(String(check.mod), lookup, null)) : 0;
+    vs = typeof check.vs === 'number' ? check.vs : Number(evaluate(String(check.vs), lookup, null));
+  } catch { return null; }
+  if (!isFinite(mod) || !isFinite(vs)) return null;
+  let seed = 0x9e3779b9;
+  const rng = () => { seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0; return (seed >>> 8) / 16777216; };
+  const N = 600;
+  let ok = 0;
+  for (let i = 0; i < N; i++) {
+    let roll;
+    try { roll = Number(evaluate(check.roll, lookup, rng)); } catch { return null; }
+    if (!isFinite(roll)) return null;
+    if (roll + mod >= vs) ok++;
+  }
+  return { label: check.label ?? check.id, pct: Math.round((ok / N) * 20) * 5 };
+}
+
 // ── 전투 안무 — 라운드 하나 (v1.6.0, checks[].fight; 배경·규약은 core/fight.js 머리말) ──
 // 공격 비트 = 그 판정을 그대로 굴린다(등급 effects·기록 그대로) + 등급 gain을 상대 게이지에.
 // 반격 비트 = fight.reply 판정(회피 등)을 굴린다 — 주인공 피해는 그 판정의 등급 effects가 낸다
@@ -778,7 +812,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       if (idx == null && mode) {
         const open = ev.choices.map((c, i) => i).filter((i) => choiceOpen(schema, state.vars, ev.choices[i]));
         if (open.length) {
-          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : open[open.length - 1];
+          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : choiceMod.fallbackIndex(ev, open); // v1.13.0 worst 태그 우선
           forcedChoice = { idx, label: String(ev.choices[idx].label ?? ''), mode };
           changeLog.push({ id: '갈림길', from: null, to: `시스템 결정 — ${forcedChoice.label}`, source: `choice:${ev.id}` });
         } else {
@@ -1047,8 +1081,12 @@ function buildSetupPrompt(schema, state, narrative) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   const ids = schema.setup?.ai?.vars ?? schema.vars.map((v) => v.id);
   const specs = ids.map((id) => {
-    const v = varById[id];
-    if (!v) return null;
+    const v0 = varById[id];
+    if (!v0) return null;
+    // 기본값 = 지금 값 (v1.13.0) — 프리셋이 정한 값이 여기 있다. 스키마 init을 보이면 보조가 그걸 "기본"으로 되돌려 적어
+    // 프리셋마다 다른 칸(시점별 능력치·신분)이 덮였다 (조퇴악녀 — 값은 절대값으로 적용된다)
+    const cur = state?.vars?.[id];
+    const v = cur === undefined ? v0 : { ...v0, init: cur };
     const d = v.desc ? ` — ${v.desc}` : '';
     const base = `- ${id} (${v.label ?? id}`;
     if (v.type === 'int' || v.type === 'float') {
@@ -1383,8 +1421,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.96 보조 갈림길 (v1.8.0) — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
   // 이벤트(7·8)보다 먼저라 이번 턴 스키마 갈림길은 "동시 1개" 규약대로 미뤄진다.
   if (choiceMod.liveConfig(schema)) {
-    const lr = choiceMod.applyLive(schema, state, choices);
-    if (lr.posted) changeLog.push({ id: choiceMod.liveConfig(schema).label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
+    const lr = choiceMod.applyLive(schema, state, choices, rng);
+    if (lr.posted) changeLog.push({ id: lr.cfg.label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
   }
 
   // 6. 정기 틱
@@ -1398,7 +1436,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoice = null; // 스키마에서 사라진 갈림길 — 방어
       state.meta.pendingChoicePick = null;
     } else if (pcEv.timeout != null && state.meta.turn - state.meta.pendingChoice.turn >= pcEv.timeout) {
-      const last = pcEv.choices[pcEv.choices.length - 1];
+      const last = pcEv.choices[choiceMod.fallbackIndex(pcEv)]; // v1.13.0 — 섞인 보조 갈림길은 worst 태그 항목
       const ok = choiceOpen(schema, state.vars, last);
       if (ok) {
         // 판정 달린 선택지(v1.8.0)는 여기서도 굴린다 — 이벤트 판정과 같이 [판정] 줄은 통지로 다음 전송에
@@ -1440,7 +1478,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoicePick = null;
     }
     // 보조 갈림길 트리거 (v1.8.0) — 깃발만 세운다. 보조 호출은 이미 지났으니 다음 턴 응답 뒤에 선택지가 온다
-    if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true;
+    triggerLive(schema, state, ev);
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
@@ -1491,7 +1529,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
             state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
             state.meta.pendingChoicePick = null;
           }
-          if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true; // (v1.8.0) 위 7과 같은 깃발
+          triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
           state.meta.eventLastFired[ev.id] = state.meta.turn;
           firedEvents.push(ev.id);
           break;
@@ -2314,7 +2352,7 @@ module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
   frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
-  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
+  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, checkOdds, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

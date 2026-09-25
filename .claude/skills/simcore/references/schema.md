@@ -735,6 +735,18 @@ liveChoices: {
   템플릿 모드 `{choices}` 없음 경고는 liveChoices만 있어도 뜬다
 - 편집기 [규칙·이벤트] 05 "보조가 쓰는 갈림길" (1턴 시험은 06으로). 이벤트 블록 갈림길 칸에 판정·강제 드롭다운 + 트리거 체크
 
+### 여러 벌 · 섞기 · 확률 칩 (v1.13.0, 조퇴악녀 "면접 + 킹덤컴식 능력치 선택지")
+- **여러 벌**: `liveChoices: [{ id: 'interview', … }, { id: 'stat', … }]` — 벌마다 id(영문 식별자) 필수. 추첨은 **배열 순서대로** 먼저 열리고
+  붙은 한 벌. 깃발 `meta.liveAsk` = `true`(첫 벌 — 한 벌 봇·옛 세이브와 같은 값) | `'id'`. 이벤트 트리거 `liveChoices: true | 'id'`.
+  걸린 것은 `pendingChoice.live.cfg`에 벌 id — 합성·집행이 그 벌의 태그를 쓴다. choice.js `liveConfigs`·`liveConfig(schema, id?)`·`askedConfig`
+- **섞기** `shuffle: true`: 정제 뒤 시드 rng로 순서를 섞는다(리롤 안정). worst를 끝에 두지 않는 대신 타임아웃·strict `'last'`가
+  **자리 대신 worst 태그 항목**으로 떨어진다(`fallbackIndex`). 섞고 `showTags: false`면 안내가 "시스템이 정한 항목", 태그를 보이면 "'그냥' 항목"
+- **확률 칩**: 판정 달린 선택지(스키마 갈림길 `check`·태그 `check`) 옆에 `🎲 판정라벨 N%` — 성공 = total ≥ vs(vs 없는 판정은 없음).
+  `engine.checkOdds(schema, state, check)`: 고정 시드 표본 600번 · 5% 단위 · 상태 불변. 칩이 있으면 태그 꼬리표는 생략
+- **판정 성패로 선택지 결과 가르기**: 등급 effects가 bool(예 `chk_ok`)을 세우고 선택지 effects가 `doom + (chk_ok ? -10 : 5)`로 읽는다
+  (순서: 굴림 → 등급 effects → 선택지 effects)
+- 검증: 배열 벌 id 필수·중복·형식 · 없는 벌 id 트리거 오류 · shuffle 불 · 섞는데 worst 없으면 경고 · 빈 배열 경고
+
 ---
 
 ## scenario — 시나리오레이터 (v0.90, 옵트인)

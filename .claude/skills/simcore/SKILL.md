@@ -1,28 +1,29 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.11.0 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기 포함), 편집기 17탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약을 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.12.0 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약을 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
 
 봇에 **숫자로 굴러가는 상태**를 붙이는 RisuAI 플러그인. 스키마 하나로 변수·파생·규칙·이벤트·상태창을
-정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.11.0 기준, 2026-09-25**)
+정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.12.0 기준, 2026-09-25**)
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
 도약 캡 철폐** → **v1.6 전투 안무** → **v1.7 하루 닫기·기한 환산·낱말 무장·시세·의뢰판**(v1.7.9) → **v1.8 보조가 쓰는 갈림길**(liveChoices) →
 **v1.9 제작 도구 묶음**(🔒 보호·변수 그룹·패치 병합·📌 작업 지침·🧪 N턴 시험·📝 작업본 비교·모듈 팩 진단·**v1.9.28 의뢰판·메신저 탭 번호 섹션 개편**(커뮤니티 기여본)) →
 **v1.10 🔒 비밀 — 모르는 건 말할 수 없다**(`core/secret.js`, v1.10.1 현황 탭 칩 ✕ 잘림 수리, v1.10.2 번역문 마커 되붙이기) →
-**v1.11 ⏪ 되감기 — 죽으면 그 아침으로**(`core/checkpoint.js`, 체크포인트 저장·되감기 효과, 조퇴악녀 사망회귀물 발단). 얼헌(얼터헌터) 개조가
-v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **24개**.
+**v1.11 ⏪ 되감기 — 죽으면 그 아침으로**(`core/checkpoint.js`, 체크포인트 저장·되감기 효과, 조퇴악녀 사망회귀물 발단) →
+**v1.12 🎭 무대 뒤 — 안 봐도 세상은 움직인다**(`core/front.js`, 진영 시계·징후·밑작업·표면화). 얼헌(얼터헌터) 개조가
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **25개**.
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **24개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **25개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **104종, 4,970+단언** — 2026-09-25) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **105종, 5,030+단언** — 2026-09-25) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
@@ -65,7 +66,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 | 문서 | 내용 |
 |---|---|
 | [references/schema.md](references/schema.md) | 스키마 전 필드 · 타입 · 검증 규칙 · 표현식 문법 (전투 안무 `checks[].fight` v1.6 · 상점 units/exchange/shops v1.3~1.4 · 막간 v1.5 · 의뢰판 v1.7.9 · liveChoices v1.8 · **secrets v1.10** 포함) |
-| [references/editor.md](references/editor.md) | 편집기 **17개 탭**의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드 10종, v1.9.28 번호 섹션(`sce-board-*`) 규약 |
+| [references/editor.md](references/editor.md) | 편집기 **18개 탭**(v1.12.0 [무대 뒤] 포함 — editor.md 본문은 17탭 기준)의 UI 라벨과 가져오기 동작 (`TAB_SLICES`), 3층 구조, 기능 추가 카드, v1.9.28 번호 섹션(`sce-board-*`) 규약 |
 | [references/templates.md](references/templates.md) | 내장 템플릿 16종 실측표 — 뭘 열고 뭘 닫았나 |
 | [references/risu-facts.md](references/risu-facts.md) | 리수 내부 확정 사실 (소스맵 검증) — 여기 어긋나면 조용히 깨진다 |
 | [references/publishing.md](references/publishing.md) | 아카라이브 배포글·가이드 시리즈 규격과 현황 |

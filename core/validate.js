@@ -4,6 +4,7 @@ const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
 const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
+const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -141,6 +142,9 @@ function validateSchema(schema) {
   // 비밀 예약 이름 (v1.10.0) — sec_<id> = 열린 최고 단계(-1=아직). 조건식·상태창이 읽는다 (`sec_lina >= 1`).
   // 같은 id의 변수/파생이 있으면 조건이 비밀이 아니라 그 변수를 읽는다 — 아래 secrets 절에서 오류로 잡는다.
   for (const n of secretMod.secretExposedNames(schema)) allIds.add(n);
+  // 무대 뒤 예약 이름 (v1.12.0) — fr_<id>(시계)·frs_<id>(열린 단계)
+  for (const n of frontMod.frontExposedNames(schema)) allIds.add(n);
+  const frontIds = new Set((frontMod.frontsConfig(schema) || []).map((f) => f.id));
   // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
   // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
   // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
@@ -378,13 +382,22 @@ function validateSchema(schema) {
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
-    // 체크포인트 효과 (v1.11.0) { checkpoint: 'save'|'load', slot? } — 수식·대상 변수가 없다
+    // 체크포인트 (v1.11.0)
     if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
       if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
       if (rule.slot != null && (typeof rule.slot !== 'string' || !cpMod.SLOT_RE.test(rule.slot)))
         err(p, `checkpoint slot은 영문 식별자 24자 이내 (현재: '${rule.slot}')`);
       if (rule.set !== undefined || rule.list !== undefined)
         err(p, 'checkpoint 효과에 set/list를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      return;
+    }
+    // 무대 뒤 개입 (v1.12.0)
+    if (rule && typeof rule === 'object' && rule.front !== undefined) {
+      if (!frontIds.has(rule.front)) err(p, `front 효과 대상 '${rule.front}'이 fronts에 없음`);
+      if (rule.set !== undefined || rule.list !== undefined || rule.checkpoint !== undefined)
+        err(p, 'front 효과에 set/list/checkpoint를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      if (rule.add == null || rule.add === '') err(p, 'front 효과엔 add(더할 양 — 음수면 늦춘다)가 필요함');
+      else checkExpr(String(rule.add), p + '.add', exprIds, err, { allowRand: true });
       return;
     }
     // 목록 효과 { list, add, remove, expire }
@@ -409,7 +422,6 @@ function validateSchema(schema) {
   const rules = schema.rules || {};
   (rules.onTurn || []).forEach((r, i) => {
     checkSet(r, `$.rules.onTurn[${i}]`);
-    // 매 턴 되감기 = 영영 같은 자리 (v1.11.0). 매 턴 저장(자동 저장)은 된다
     if (r && r.checkpoint === 'load') err(`$.rules.onTurn[${i}]`, 'onTurn에서 되감기(load)를 하면 매 턴 되감겨 이야기가 영영 제자리입니다 — 게임오버 이벤트·선택지에 두세요');
   });
   // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
@@ -1675,7 +1687,7 @@ function validateSchema(schema) {
     }
   }
 
-  // ── checkpoint (체크포인트 v1.11.0 — 설계 docs/design-조퇴악녀.md §12) ──
+  // ── checkpoint (v1.11.0) ──
   {
     const used = cpMod.slotsUsed(schema);
     const C = schema.checkpoint;
@@ -1697,6 +1709,78 @@ function validateSchema(schema) {
     }
     for (const slot of used.load) {
       if (!used.save.has(slot)) warn('$.checkpoint', `되감기 칸 '${slot}'을 저장하는 효과가 없습니다 — 저장된 적 없는 칸으로는 되감기가 아무 일도 안 합니다`);
+    }
+  }
+
+  // ── fronts (무대 뒤 v1.12.0) ──
+  if (schema.fronts != null) {
+    if (!Array.isArray(schema.fronts)) err('$.fronts', 'fronts는 배열이어야 함');
+    else {
+      const seen = new Set();
+      const touched = new Set();
+      for (const { effects } of cpMod.allEffectLists(schema)) for (const f of effects) if (f && f.front !== undefined) touched.add(f.front);
+      schema.fronts.forEach((f, i) => {
+        const p = `$.fronts[${i}]`;
+        if (!f || typeof f !== 'object') { err(p, '진영은 객체여야 함'); return; }
+        if (f.id != null && !ID_RE.test(f.id)) err(p, `잘못된 진영 id: '${f.id}' (영문자로 시작, 영문·숫자·_만)`);
+        const fid = f.id || `front${i + 1}`;
+        if (seen.has(fid)) err(p, `중복 진영 id: '${fid}'`);
+        seen.add(fid);
+        for (const rn of [frontMod.frKey(fid), frontMod.frsKey(fid)]) {
+          if (ids.has(rn) || derived.some((d) => d && d.id === rn)) err(p, `'${rn}'는 이 진영이 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+        for (const k of ['about', 'label']) if (f[k] != null && typeof f[k] !== 'string') err(p, `${k}는 문자열이어야 함`);
+        if (f.when != null) {
+          if (typeof f.when !== 'string') err(p, 'when(흐르는 조건)은 수식 문자열이어야 함');
+          else if (f.when.trim()) checkExpr(f.when, p + '.when', allIds, err, { allowRand: false });
+        }
+        const max = f.max == null ? frontMod.DEFAULT_MAX : Number(f.max);
+        if (f.max != null && !(typeof f.max === 'number' && f.max > 0)) err(p, 'max는 양수여야 함');
+        if (f.init != null && !(typeof f.init === 'number' && f.init >= 0 && f.init <= max)) err(p, `init은 0~${max} 숫자여야 함`);
+        if (f.rate != null) {
+          if (typeof f.rate === 'string') { if (f.rate.trim()) checkExpr(f.rate, p + '.rate', allIds, err, { allowRand: false }); }
+          else if (typeof f.rate !== 'number' || !Number.isFinite(f.rate)) err(p, 'rate(흐르는 속도)는 숫자 또는 수식이어야 함');
+        }
+        const rateZero = f.rate == null || f.rate === 0 || (typeof f.rate === 'string' && !f.rate.trim());
+        if (rateZero && !touched.has(fid)) warn(p, `'${fid}' 시계가 영영 안 흐릅니다 — rate가 0이고 이 시계를 건드리는 효과({ front, add })도 없습니다`);
+        const stages = Array.isArray(f.stages) ? f.stages : null;
+        if (!stages || !stages.length) { err(p, '문턱(stages)이 최소 1개 필요합니다'); return; }
+        let prev = -Infinity;
+        let lastSurface = -1;
+        stages.forEach((st, j) => { if (st && typeof st === 'object' && typeof st.surface === 'string' && st.surface.trim()) lastSurface = j; });
+        stages.forEach((st, j) => {
+          const sp = `${p}.stages[${j}]`;
+          if (!st || typeof st !== 'object') { err(sp, '문턱은 객체여야 함'); return; }
+          if (typeof st.at !== 'number' || !Number.isFinite(st.at) || st.at <= 0 || st.at > max) err(sp, `at(문턱)은 0 초과 ${max} 이하의 숫자여야 함`);
+          else if (st.at <= prev) err(sp, `문턱은 앞 단계보다 커야 함 (${prev} 다음에 ${st.at})`);
+          else prev = st.at;
+          for (const k of ['hint', 'backstage', 'surface']) {
+            if (st[k] == null) continue;
+            if (typeof st[k] !== 'string') err(sp, `${k}는 문자열이어야 함`);
+            else checkTemplateRefs(st[k], `${sp}.${k}`, allIds, err);
+          }
+          if (st.effects != null) {
+            if (!Array.isArray(st.effects)) err(sp, 'effects는 효과 배열이어야 함');
+            else st.effects.forEach((r, k) => checkSet(r, `${sp}.effects[${k}]`));
+          }
+          const has = ['hint', 'backstage', 'surface'].some((k) => typeof st[k] === 'string' && st[k].trim()) || (Array.isArray(st.effects) && st.effects.length);
+          if (!has) warn(sp, '이 문턱엔 징후·밑작업·표면화·효과가 하나도 없습니다 — 넘어도 아무 일도 안 일어납니다');
+          if (typeof st.backstage === 'string' && st.backstage.trim() && j > lastSurface) {
+            warn(sp, '이 밑작업 뒤로 표면화(surface) 단계가 없습니다 — 밑작업은 표면화될 때 열리므로 이 글은 영영 모델에게 안 갑니다');
+          }
+        });
+      });
+    }
+  }
+  {
+    const frNames = frontMod.frontExposedNames(schema);
+    const tpl = String(schema.promptState?.template || '');
+    const hit = frNames.find((n) => tpl.includes(`{${n}}`));
+    if (hit) warn('$.promptState.template', `메인 프롬프트에 무대 뒤 시계 {${hit}}가 실립니다 — 모델이 숨은 진행을 알게 됩니다`);
+    for (const [gi, g] of (Array.isArray(schema.statusUI?.groups) ? schema.statusUI.groups : []).entries()) {
+      for (const it of (Array.isArray(g?.items) ? g.items : [])) {
+        if (it && frNames.includes(it.var)) warn(`$.statusUI.groups[${gi}]`, `상태창에 무대 뒤 시계 '${it.var}'가 보입니다 — 유저가 숨은 진행을 봅니다`);
+      }
     }
   }
 

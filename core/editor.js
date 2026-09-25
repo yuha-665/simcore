@@ -4055,6 +4055,22 @@ const SCHEMA_SECRET_RULES = [
   '- 유저 자신의 비밀(잠입 설정)도 됩니다 — `about`을 유저로, 여는 조건을 "들켰다" 변수로.',
 ];
 
+// 무대 뒤(fronts, v1.12.0) — 유저가 안 봐도 흐르는 진영 시계. 규격의 요점은 세 겹(징후·밑작업·표면화)의 어법이다 —
+// 징후에 이유를 적으면 그 순간 밑작업이 샌다.
+const SCHEMA_FRONT_RULES = [
+  '- 무대 뒤(`fronts`)는 **유저가 안 보는 사이에도 움직이는 세력**입니다. 진영 하나 = 숨은 시계 하나(0~`max`, 기본 100). '
+  + '시계 값은 유저·모델·보조 AI 누구에게도 안 보이고, 문턱(`stages[].at`)을 넘을 때만 결과가 드러납니다.',
+  '- `rate` = 작중 **하루당** 오르는 양(시간 체계가 없으면 턴당). 숫자 또는 식(난이도 변수를 읽게). `when`이 거짓인 동안은 멈춥니다 — '
+  + '"이 세력이 움직이기 시작하는 조건"(예: 권능이 드러난 뒤부터).',
+  '- 문턱의 세 겹: `hint`(징후 — 모델에게 **이유 없이** 매 턴 깔림. "구호소가 자주 닫힌다"까지만) / `backstage`(밑작업 — 무대 뒤에서 벌어진 일. '
+  + '**표면화가 올 때까지 프롬프트에 없음**) / `surface`(표면화 — 사건이 터지는 통지 한 줄. 그 순간 그 단계까지의 밑작업이 모델에게 열림). '
+  + '`effects` = 문턱을 넘는 턴에 한 번 적용되는 결과(다른 줄기가 읽을 플래그).',
+  '- 유저의 개입은 효과 `{ "front": "진영id", "add": "-15" }` — 선택지·액션이 시계를 늦춥니다. 이미 열린 단계는 안 닫힙니다.',
+  '- 조건식에서 `fr_<id>`(시계 값)·`frs_<id>`(열린 최고 단계, -1=아직)를 읽을 수 있습니다 — 다른 줄기가 결과를 양념으로 읽을 때. '
+  + '**상태창·promptState.template에는 넣지 마세요** — 숨긴 의미가 없어집니다.',
+  '- 방치하면 언제 터지는지를 먼저 정하고(예: 한 달) 거꾸로 rate를 잡으세요. 표면화 단계가 없는 진영은 밑작업이 영영 안 열립니다.',
+];
+
 // 상태창 구조(statusUI.groups/layout) — 꾸미기(CSS·커스텀 템플릿)와 창구를 나눈 쪽의 규격.
 // "무엇을 보여줄까"만 다룬다. 색·폰트·배치 HTML은 🎨 꾸미기 창구가 따로 맡는다.
 const SCHEMA_STATUS_RULES = [
@@ -4093,7 +4109,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -4126,6 +4142,9 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 비밀(secrets) — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇이면 (선택)',
     ...SCHEMA_SECRET_RULES,
+    '',
+    '## 무대 뒤(fronts) — 유저가 안 봐도 움직이는 세력이 있는 봇이면 (선택)',
+    ...SCHEMA_FRONT_RULES,
     '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
@@ -4284,6 +4303,15 @@ function patchIdDigest(schema) {
         return `- \`${id}\` (${s.kind || 'person'}${s.about ? `, ${s.about}` : ''}) — 단계 ${(s.tiers || []).length}개, `
           + `조건이 읽는 변수: ${[...refs].map((r) => `\`${r}\``).join(' ') || '(없음)'} — **remove 금지**. `
           + `조건식에서 \`sec_${id}\`(열린 최고 단계, -1=아직)를 읽을 수 있습니다`;
+      }));
+  }
+  // 무대 뒤 (v1.12.0) — 비밀과 같은 규약: 패치로 못 다루고, 참조만 싣는다 (징후·밑작업 글은 안 싣는다)
+  if (Array.isArray(schema.fronts) && schema.fronts.length) {
+    out.push('', '### 무대 뒤 (fronts) — 패치로 못 다룹니다 ([무대 뒤] 탭 또는 탭 단위 내보내기/가져오기). 참조만 알아 두세요',
+      ...schema.fronts.filter((f) => f && typeof f === 'object').map((f, i) => {
+        const id = f.id || `front${i + 1}`;
+        return `- \`${id}\`${f.about ? ` (${f.about})` : ''} — 문턱 ${(f.stages || []).length}개. 조건식에서 \`fr_${id}\`(시계)·\`frs_${id}\`(열린 단계)를 읽고, `
+          + `효과 \`{ "front": "${id}", "add": "-10" }\`로 시계를 늦출 수 있습니다 — **remove 금지**`;
       }));
   }
   // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
@@ -5175,6 +5203,8 @@ const TAB_SLICES = {
   scenario: { keys: ['scenario'], label: '시나리오' },
   // 비밀(v1.10.0) — secrets 배열 통째 교체. 단계는 누적 사다리라 부분 교체가 어긋난다 (시나리오와 같은 이유).
   secrets: { keys: ['secrets'], label: '비밀' },
+  // 무대 뒤(v1.12.0) — fronts 배열 통째 교체. 문턱은 오름차순 사다리라 부분 교체가 어긋난다 (비밀과 같은 이유).
+  fronts: { keys: ['fronts'], label: '무대 뒤' },
   // 시간(v1.0 #7) — time 객체 통째 교체. 일반 패치는 계속 금지 (예약 이름·달력 전환 위험)
   // 지만 탭 왕복은 [시간] 탭 손편집과 같은 위험 수준이라 연다 — 요청서가 달력 전환 경고 동봉.
   time: { keys: ['time'], label: '시간' },
@@ -5198,6 +5228,7 @@ const TAB_WANT_PH = {
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
   secrets: '예: 동료 리나의 정체 — 호감 60에 사정을, 편지를 찾으면 전모를',
+  fronts: '예: 신전의 암투 — 한 달 방치하면 성녀가 이단 심문에 회부, 그 전엔 구호소가 닫히는 징후만',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
 };
 
@@ -5239,6 +5270,10 @@ function tabItemCounts(schema, tabKey) {
     push('secrets', schema.secrets);
     // 비밀 수만으로는 부족하다 — AI가 비밀은 남기고 단계만 솎아내면 전모가 사라진다
     out.push(['단계(전체)', (schema.secrets || []).reduce((n, s) => n + ((s && s.tiers) || []).length, 0)]);
+  }
+  else if (tabKey === 'fronts') {
+    push('fronts', schema.fronts);
+    out.push(['문턱(전체)', (schema.fronts || []).reduce((n, f) => n + ((f && f.stages) || []).length, 0)]);
   }
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
@@ -5359,6 +5394,14 @@ const FEATURE_RECIPES = [
     steps: [{ tab: 'secrets', want: '이 봇의 설정에서 밝혀지기 전엔 모델이 몰라야 하는 것(인물의 과거·세계의 진상·반전)을 1~3개 골라 '
       + '낌새 → 부분 → 전모의 단계로 짜 주세요. 낌새는 이유 없는 행동만, 여는 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
   },
+  {
+    id: 'fronts', icon: '🎭', label: '무대 뒤',
+    desc: '유저가 안 봐도 움직이는 세력 — 숨은 시계가 작중 시간으로 흐르다 문턱에서 표면화',
+    // 흐르는 조건·결과 플래그가 읽을 흔적 — 변수가 하나도 없으면 결과를 남길 자리가 없다
+    needs: (s) => ((s.vars || []).length >= 1 ? null : '결과를 남길 변수가 최소 1개 필요합니다'),
+    steps: [{ tab: 'fronts', want: '이 봇의 세계에서 유저가 안 보는 사이에도 움직이는 세력을 1~3개 골라 무대 뒤 시계로 짜 주세요. '
+      + '방치하면 언제 터지는지를 먼저 정하고, 징후(이유 없이) → 밑작업 → 표면화 순서로 문턱을 잡아 주세요.' }],
+  },
 ];
 
 /**
@@ -5397,6 +5440,8 @@ function tabItemIds(schema, tabKey) {
     if (schema.calendar?.list) out.push(`일정 목록 ${schema.calendar.list}`);
   } else if (tabKey === 'secrets') {
     (schema.secrets || []).forEach((s, i) => out.push(`비밀 ${s?.label || s?.about || s?.id || `#${i + 1}`}`));
+  } else if (tabKey === 'fronts') {
+    (schema.fronts || []).forEach((f, i) => out.push(`진영 ${f?.label || f?.about || f?.id || `#${i + 1}`}`));
   } else if (tabKey === 'scenario') {
     (schema.scenario?.acts || []).forEach((a, i) => out.push(`막 ${a?.label || a?.id || `#${i + 1}`}`));
   } else if (tabKey === 'rules') {
@@ -5868,6 +5913,28 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  ] } }',
       '```',
       '');
+  } else if (tabKey === 'fronts') {
+    body.push('## 무대 뒤 규격', ...SCHEMA_FRONT_RULES, '',
+      '## 쓰는 순서',
+      '1. 이 세계에서 유저가 안 보는 사이에도 움직이는 세력을 고른다 (음모·거래·재난·경쟁자).',
+      '2. 방치하면 결국 무엇이 터지는지(표면화)를 먼저 쓰고, 언제쯤 터질지로 rate를 정한다 (예: 100을 한 달에 → 하루 3).',
+      '3. 거꾸로 앞 문턱에 징후(이유 없는 겉모습)와 밑작업(아무도 모르는 진행)을 나눠 담는다.',
+      '4. 유저가 막을 수 있는 길을 규칙·이벤트 탭의 선택지 효과 { "front": id, "add": 음수 }로 따로 연결한다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "fronts": [',
+      '  { "id": "temple", "about": "대신전", "label": "신전의 암투", "when": "power_known", "rate": 3,',
+      '    "stages": [',
+      '      { "at": 20, "hint": "신전 앞 구호소가 요즘 자주 문을 닫는다." },',
+      '      { "at": 50, "backstage": "대신관이 구호 자금을 빼돌려 추기경단을 매수했다." },',
+      '      { "at": 80, "surface": "성녀를 이단 심문에 회부한다는 공고가 붙었다.", "backstage": "증거는 대신관이 꾸민 것이다.",',
+      '        "effects": [{ "set": "saintess_exiled", "expr": "true" }] }',
+      '    ] }',
+      '] }',
+      '```',
+      '');
   } else if (tabKey === 'secrets') {
     body.push('## 비밀 규격', ...SCHEMA_SECRET_RULES, '',
       '## 쓰는 순서 — 이 순서로 생각하면 안 새는 비밀이 나옵니다',
@@ -6320,6 +6387,16 @@ function checkpointEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
 }
 // 체크포인트 추가 버튼은 되감기를 켠 봇에만 (시나리오 탭 카드) — 이미 있는 줄은 언제나 그린다
 const checkpointOn = (schema) => !!schema.checkpoint && typeof schema.checkpoint === 'object';
+// 무대 뒤 개입 줄 (v1.12.0) { front, add } — 진영 시계를 늦추거나(음수) 당긴다. 진영이 있는 봇만 추가 버튼
+const frontIdsOf = (schema) => (Array.isArray(schema.fronts) ? schema.fronts : []).filter((f) => f && f.id).map((f) => f.id);
+function frontEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
+  const ids = frontIdsOf(schema);
+  return h('div', { class: `${cls} sce-effect-front`, title: '무대 뒤 진영 시계를 민다 — 음수면 늦추고, 양수면 당긴다. 이미 열린 단계는 안 닫힌다' },
+    h('span', {}, '🎭'),
+    bindSelect(ef.front, ids.length ? ids.map((x) => [x, `무대 뒤: ${x}`]) : [['', '(진영 없음)']], (v) => { ef.front = v; rerender(); }),
+    pair('더하기', bindInput(ef.add ?? '', (x) => { ef.add = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '-15' }), '음수면 늦춘다 (0~최대로 잘림)'),
+    gripEl);
+}
 
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
@@ -6329,6 +6406,7 @@ function effectRows(schema, effects, rerender) {
   const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   effects.forEach((ef, i) => {
     if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -6365,6 +6443,12 @@ function effectRows(schema, effects, rerender) {
       effects.push({ checkpoint: 'save' });
       rerender();
     } }, '+ ⏪ 체크포인트'));
+  }
+  if (frontIdsOf(schema).length) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ front: frontIdsOf(schema)[0], add: '-10' });
+      rerender();
+    } }, '+ 🎭 무대 뒤'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -6504,6 +6588,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
     // 비밀을 다 지우면 secrets도 걷는다 — 같은 불변식 (v1.10.0)
     if (Array.isArray(schema.secrets) && !schema.secrets.length) delete schema.secrets;
+    if (Array.isArray(schema.fronts) && !schema.fronts.length) delete schema.fronts;
   }
   normalize();
   let firstInstallGuideDismissed = false;
@@ -6522,7 +6607,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'], ['fronts', '무대 뒤'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -7079,7 +7164,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 탭 내비 묶음 (v1.7.13 개조본 이식) — 메신저·의뢰판은 우리 쪽 탭.
   // v1.9.0: 기본 → 진행 → 세계 순. 세계 묶음은 전부 선택 모듈인데 필수 흐름(변수 → 규칙) 한가운데 앉아 있어서
   // 처음 만드는 사람이 [규칙·이벤트]를 못 보고 규칙을 변수 설명에 적었다 (실기 제보 — 얼추 돌다가 정산에서 깨짐).
-  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
+  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'fronts', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
   // 만드는 순서 띠 (v1.9.0) — 3층 머리에. 처음 설치 순서(1층)와 같은 모양으로 "변수 → AI 설정 → 규칙 → 상태창"
   const DEEP_FLOW = [
     ['vars', '① 변수', '추적할 값을 만들어요 — 설명(desc)에는 뜻만, 언제 어떻게 바뀌는지는 ③에'],
@@ -7829,6 +7914,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.scenario\b/, '시나리오', true],
     [/^\$\.secrets\b/, '비밀', true],
     [/^\$\.checkpoint\b/, '시나리오', true], // 되감기 카드 (v1.11.0)
+    [/^\$\.fronts\b/, '무대 뒤', true], // v1.12.0
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -8395,6 +8481,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
       effects.forEach((ef, i) => {
         if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -8446,6 +8533,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           class: 'sce-btn sce-add', style: 'flex:1',
           onclick: () => { effects.push({ checkpoint: 'load' }); rerender(); },
         }, '+ ⏪ 체크포인트'));
+      }
+      if (frontIdsOf(schema).length) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ front: frontIdsOf(schema)[0], add: '-10' }); rerender(); },
+        }, '+ 🎭 무대 뒤'));
       }
       box.appendChild(btnRow);
       return box;
@@ -10147,6 +10240,111 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       wrap.appendChild(card);
     });
     wrap.appendChild(h('div', {}, addBtn('비밀 추가', () => { list.push(newSecret(list.length + 1)); schema.secrets = list; rerender(); })));
+    wrap.appendChild(aiTools());
+    return wrap;
+  }
+
+  // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계. 규칙 #3: 엔진 기능엔 편집기 칸. 설계 docs/design-조퇴악녀.md §15
+  // 비밀 탭과 같은 번호 섹션 골격(sce-board-*) — 진영 하나 = 카드 하나, 문턱은 카드 안의 사다리.
+  function tabFronts() {
+    const wrap = h('div', { class: 'sce-board-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 무대 뒤 만들기'),
+          h('small', {}, '진영 시계의 속도·문턱·징후·표면화를 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-ai-fold-more' },
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('fronts')));
+    const list = Array.isArray(schema.fronts) ? schema.fronts : [];
+    const unit = timeConfig(schema) ? '일' : '턴';
+    const newFront = (n) => ({ id: `front${n}`, about: '', rate: 3, stages: [{ at: 30, hint: '' }, { at: 60, backstage: '' }, { at: 90, surface: '' }] });
+    const numOrExpr = (x) => { const t = String(x ?? '').trim(); if (!t) return undefined; const n = Number(t); return Number.isFinite(n) ? n : t; };
+
+    wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+      h('h3', {}, '무대 뒤'),
+      h('p', {}, '유저가 안 보는 사이에도 움직이는 세력이에요. 숨은 시계가 작중 시간으로 흐르다가, 문턱을 넘으면 징후가 깔리고 결국 사건으로 터져요. '
+        + '시계 값은 유저·모델·보조 AI 누구에게도 안 보여요.')),
+      list.length ? h('div', { class: 'sce-board-summary' },
+        h('span', {}, `진영 ${list.length}개`),
+        h('span', {}, `문턱 ${list.reduce((n, f) => n + ((f && f.stages) || []).length, 0)}개`)) : null));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '유저가 막을 길은 [규칙·이벤트]의 선택지나 [액션] 효과에 "+ 🎭 무대 뒤"(시계 −N)로 연결해요. 이미 열린 문턱은 안 닫혀요. '
+      + '⏪ 되감기(체크포인트)를 쓰면 시계도 함께 되감겨요.'));
+
+    if (!list.length) {
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '🎭'),
+        h('div', {}, h('h4', {}, '아직 진영이 없어요'),
+          h('p', {}, '음모·거래·재난·경쟁자 — 유저가 손 놓고 있으면 결국 터지는 것을 징후 → 밑작업 → 표면화로 적어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => { schema.fronts = [newFront(1)]; rerender(); } }, '진영 만들기')));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
+
+    list.forEach((f, i) => {
+      if (!f || typeof f !== 'object') return;
+      f.stages = Array.isArray(f.stages) ? f.stages : [];
+      const fid = f.id || `front${i + 1}`;
+      const sched = engine.frontIdleSchedule(f);
+      const card = h('article', { class: 'sce-board-section', 'data-sce-validation-path': `$.fronts[${i}]` });
+      card.appendChild(h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, String(i + 1).padStart(2, '0')),
+        h('div', { class: 'sce-board-section-title' }, f.label || f.about || fid),
+        h('div', { class: 'sce-board-section-copy' }, `조건식에서 fr_${fid} = 시계 값 · frs_${fid} = 열린 최고 단계 (−1이면 아직)`),
+        grip(list, i, rerender)));
+      const body = h('div', { class: 'sce-board-section-body' });
+      body.appendChild(h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('ID', bindInput(f.id, (x) => { f.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `front${i + 1}` }),
+          '영문 식별자. 예약 이름 fr_<ID>·frs_<ID>가 생겨요.'),
+        field('무엇 (모델에게 보이는 이름)', bindInput(f.about, (x) => { f.about = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '대신전 / 뒷골목 / 북부' }), '징후·드러난 일 앞에 붙어요. 음모라는 말은 쓰지 마세요 — 그 자체가 스포일러예요.'),
+        field('편집용 이름', bindInput(f.label, (x) => { f.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '신전의 암투' }), '편집기·진단에만 보여요.'),
+        field(`속도 (${unit}당)`, bindInput(f.rate ?? '', (x) => { const v = numOrExpr(x); if (v === undefined) delete f.rate; else f.rate = v; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }), `작중 ${unit}마다 오르는 양. 숫자 또는 식(난이도 변수).`),
+        field('흐르는 조건', bindInput(f.when, (x) => { f.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '(비우면 처음부터) power_known and met_dianne' }), '거짓인 동안은 멈춰요. rand()는 안 돼요.', true),
+        field('최대', bindInput(f.max ?? '', (x) => { const n = Number(x); if (x !== '' && Number.isFinite(n) && n > 0) f.max = n; else delete f.max; rerender(); },
+          { cls: 'sce-w-s', ph: '100' }), '시계 상한.'),
+        field('시작값', bindInput(f.init ?? '', (x) => { const n = Number(x); if (x !== '' && Number.isFinite(n) && n >= 0) f.init = n; else delete f.init; rerender(); },
+          { cls: 'sce-w-s', ph: '0' }), '이미 진행 중인 음모면 올려 두세요.')));
+
+      const stagesBox = h('div', { class: 'sce-board-stack sce-board-workgroup' });
+      stagesBox.appendChild(h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '문턱'),
+        h('span', {}, '시계가 문턱을 넘으면 그 단계가 열려요(안 닫힘). 징후는 이유 없이 깔리고, 밑작업은 표면화가 올 때까지 숨어 있다가 그때 한꺼번에 열려요.')));
+      f.stages.forEach((st, j) => {
+        if (!st || typeof st !== 'object') return;
+        const when = sched && sched[j] != null ? ` — 방치하면 ${sched[j]}${unit}째` : '';
+        const row = h('div', { class: 'sce-board-field-grid', 'data-sce-validation-path': `$.fronts[${i}].stages[${j}]` });
+        row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' }, h('strong', {}, `${j + 1}단계${when}`)));
+        row.appendChild(field('문턱', bindInput(st.at ?? '', (x) => { const n = Number(x); if (Number.isFinite(n)) st.at = n; rerender(); },
+          { cls: 'sce-w-s', ph: '30' }), '시계가 이 값에 닿으면 열려요.'));
+        row.appendChild(field('징후', bindArea(st.hint, (x) => { st.hint = x || undefined; rerender(); },
+          '신전 앞 구호소가 요즘 자주 문을 닫는다.'), '모델에게 매 턴 깔리는 겉모습 — 이유는 쓰지 마세요.', true));
+        row.appendChild(field('밑작업', bindArea(st.backstage, (x) => { st.backstage = x || undefined; rerender(); },
+          '대신관이 구호 자금을 빼돌려 추기경단을 매수했다.'), '무대 뒤에서 벌어진 일. 표면화가 올 때까지 프롬프트 어디에도 없어요.', true));
+        row.appendChild(field('표면화', bindInput(st.surface, (x) => { st.surface = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '성녀를 이단 심문에 회부한다는 공고가 붙었다.' }), '사건이 터지는 통지 한 줄 — 이때 밑작업이 모델에게 열려요.', true));
+        st.effects = Array.isArray(st.effects) ? st.effects : [];
+        row.appendChild(h('div', { class: 'is-wide' }, h('small', {}, '결과 (문턱을 넘는 턴에 한 번 — 다른 줄기가 읽을 플래그)'),
+          effectRows(schema, st.effects, rerender)));
+        row.appendChild(h('div', { class: 'is-wide' }, grip(f.stages, j, rerender)));
+        stagesBox.appendChild(row);
+      });
+      stagesBox.appendChild(addBtn('문턱 추가', () => {
+        const last = f.stages.length ? Number(f.stages[f.stages.length - 1].at) || 0 : 0;
+        f.stages.push({ at: Math.min(Number(f.max) || 100, last + 20) });
+        rerender();
+      }));
+      body.appendChild(stagesBox);
+      card.appendChild(body);
+      wrap.appendChild(card);
+    });
+    wrap.appendChild(h('div', {}, addBtn('진영 추가', () => { list.push(newFront(list.length + 1)); schema.fronts = list; rerender(); })));
     wrap.appendChild(aiTools());
     return wrap;
   }
@@ -12476,6 +12674,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const fmtE = (e) => {
       if (e == null || typeof e !== 'object') return String(e);
       if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
+      if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -14683,7 +14882,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, secrets: tabSecrets, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, secrets: tabSecrets, fronts: tabFronts, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body);
   }
@@ -14713,6 +14912,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.scenario')) return '시나리오';
       if (p.startsWith('$.secrets')) return '비밀';
       if (p.startsWith('$.checkpoint')) return '시나리오'; // 되감기 카드 (v1.11.0)
+      if (p.startsWith('$.fronts')) return '무대 뒤';
       return '작업본';
     };
     const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`

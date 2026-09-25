@@ -881,6 +881,39 @@ liveChoices: {
 
 ---
 
+## fronts — 무대 뒤 (v1.12.0, 옵트인)
+
+코어 모듈 25호 `core/front.js`. 설계 `docs/design-조퇴악녀.md` §15 (발단: 조퇴악녀 2부 — "유저가 안 봐도 NPC가 움직이다가 표면으로 나올 때
+이벤트가 터지게"). 손조립(변수+onTurn+이벤트+비밀)은 패널 현황 탭(스키마 vars 전부)·변화 로그(이벤트·선택지 효과)로 샜다.
+
+```json
+"fronts": [{ "id": "temple", "about": "대신전", "label": "신전의 암투", "when": "power_known", "rate": 3,
+  "stages": [
+    { "at": 20, "hint": "신전 앞 구호소가 자주 문을 닫는다." },
+    { "at": 50, "backstage": "대신관이 구호 자금을 빼돌려 추기경단을 매수했다." },
+    { "at": 80, "surface": "성녀 이단 심문 공고가 붙었다.", "backstage": "증거는 꾸민 것이다.", "effects": [{ "set": "exiled", "expr": "true" }] } ] }]
+개입 효과: { "front": "temple", "add": "-15" }
+```
+
+| 필드 | |
+|---|---|
+| `id` / `about` / `label` | 영문 식별자(예약 키 `fr_<id>` 시계·`frs_<id>` 열린 단계 −1) / 모델에게 보이는 이름(징후·드러난 일 머리 — "음모"라고 쓰지 말 것) / 편집기·진단 전용 |
+| `rate` / `when` | 작중 **하루당**(시간 체계, `turn_min` 기준 — 대화만 한 턴 0, 한 달 도약은 한 달치) 또는 턴당 증가량, 숫자·식 / 흐르는 조건(거짓이면 멈춤). 둘 다 rand 금지 |
+| `max` / `init` | 기본 100 / 0 — 시계는 0~max로 잘린다 |
+| `stages[]` | `at`(0<at≤max, 오름차순) + `hint`(징후 — 이유 없이 매 턴, 다음 표면화가 오면 걷힘) + `backstage`(밑작업 — **표면화 전엔 프롬프트에 없음**) + `surface`(통지 한 줄 + 그 단계까지 밑작업 누적 공개) + `effects`(결과 한 번) |
+
+- 흐름·문턱 = 응답 단계 **8.55**(막 전환 8.5 뒤, 비밀 8.6 앞 — 비밀 when이 같은 턴 표면화를 읽는다). 넘은 문턱은 낮은 순서대로 전부 열리고 안 닫힌다
+- 개입 `{ front, add }`는 `applySets`가 즉시 반영(0~max 클램프), 문턱 판정은 8.55 한 곳. 열린 단계는 안 닫힌다
+- 프롬프트 블록 `[무대 뒤 — 세상은 유저와 상관없이 움직인다]`(sendPhase 3.5.7, 비밀 다음) — 징후(진영마다 최근 하나) + 드러난 일. `frontInjectionText`가 은닉 보장의 실체(`test-front.js` grep)
+- 원장 출처 `front:<id>…` — 변화 로그·하이라이트는 허용 목록이라 안 그리고, `changeMemoLines`가 보조 원장에서 뺀다. fired = `front:<id>:<단계>`
+- 예약 키는 vars에 살아 체크포인트 되감기가 같이 되감는다. ⚠ `mirrorVars`(채팅 변수 미러)엔 실린다 — sec_*와 같은 기존 동작
+- 검증: id·예약 이름 충돌·문턱 순서/범위·when/rate rand·없는 진영 개입·add 없음 오류 / 안 흐르는 시계(rate 0 + 개입 효과 없음)·표면화 없는 밑작업·빈 문턱·promptState.template·statusUI 노출 경고
+- 편집기 [무대 뒤] 탭(진행 묶음, 🎭 기능 카드, `tabFronts` — 방치하면 N일째 `engine.frontIdleSchedule`), 효과 편집기 둘에 `frontEffectRow`(진영이 있는 봇만 추가 버튼).
+  TAB_SLICES·규격서(`SCHEMA_FRONT_RULES`)·다이제스트 참조 절·DIFF_AREAS·UNSUPPORTED(일반 패치 미지원)
+- ⚠ **규격서 크기**: 검증기 원문(`String(validateSchema)`)이 주석째 실린다 — v1.12.0 기준 최대 126.8KB / 상한 128KB. 다음 검증 추가 전에 규격서에서 뺄 것을 찾을 것
+
+---
+
 ## 표현식 문법
 
 - 산술: `+ - * / %` (0 나눗셈·0 나머지는 0 — 봇이 죽는 것보다 낫다)

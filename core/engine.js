@@ -27,6 +27,7 @@ const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) �
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
 const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
+const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -124,6 +125,8 @@ function initState(schema, opts = {}) {
   if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
   // 비밀(v1.10.0)도 같은 계열 — sec_<id> = -1 (아직 하나도 안 열림)
   secretMod.ensureSecretKeys(schema, vars);
+  // 무대 뒤(v1.12.0)도 같은 계열 — fr_<id> = 시작값, frs_<id> = -1
+  frontMod.ensureFrontKeys(schema, vars);
   const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -203,6 +206,7 @@ function reconcileState(schema, state) {
   }
   // 비밀 (v1.10.0) — 진행 중 세이브에 나중에 켜면 "아직 하나도"에서 시작한다 (밝혀진 것은 소급하지 않는다)
   secretMod.ensureSecretKeys(schema, state.vars);
+  frontMod.ensureFrontKeys(schema, state.vars); // 무대 뒤 (v1.12.0) — 같은 규약 (나중에 켜면 시작값에서)
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
@@ -242,6 +246,8 @@ function changeMemoLines(schema, changeLog) {
   for (const c of changeLog || []) {
     if (out.length >= CHANGE_MEMO_MAX) break;
     if (c.source === 'onTurn') continue;
+    // 무대 뒤 (v1.12.0) — 시계·문턱·결과는 보조 원장에도 안 싣는다 (보조는 기록자고, 무대 뒤는 아무도 모르는 일이다)
+    if (String(c.source || '').startsWith(frontMod.SOURCE_PREFIX)) continue;
     // 시간 우편함(skip_day/skip_min)은 건너뛴다 — 소비 결과가 아래 '시각' 줄이라 두 번 말하게 된다
     if (c.id === SKIP_DAY || c.id === SKIP_MIN) continue;
     if (c.id === EPOCH_KEY) {
@@ -471,6 +477,12 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
   for (const rule of rules || []) {
     // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
     if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
+    // 무대 뒤 개입 (v1.12.0) { front, add } — 시계를 늦추거나 되돌린다. 문턱 판정은 응답 단계 8.55 한 곳에서만
+    if (frontMod.isFrontEffect(rule)) {
+      const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
+      if (c) changeLog.push(c);
+      continue;
+    }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];
@@ -920,6 +932,12 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   if (!isSetupPending(schema, state)) {
     const secBlock = secretMod.secretInjectionText(schema, state.vars, rt);
     if (secBlock) lines.push(secBlock);
+  }
+
+  // 3.5.7 무대 뒤 (v1.12.0) — 징후(이유 없이) + 표면화된 단계까지의 밑작업만. 시계 값·표면화 전 밑작업은 어디에도 없다.
+  if (!isSetupPending(schema, state)) {
+    const frBlock = frontMod.frontInjectionText(schema, state.vars, rt);
+    if (frBlock) lines.push(frBlock);
   }
 
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
@@ -1501,6 +1519,24 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       applySets(schema, state, tr.act.onEnter, rng, changeLog, `scenario:${tr.act.id}`);
       if (tr.act.notify) state.meta.pendingNotifies.push(tr.act.notify);
       firedEvents.push(`scenario:${tr.act.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
+    }
+  }
+
+  // 8.55 무대 뒤 (v1.12.0) — 진영 시계를 작중 시간만큼 흘리고, 넘은 문턱을 연다. 막 전환(8.5) 뒤라 막이 읽히고,
+  // 비밀(8.6) 앞이라 비밀의 여는 조건이 이번 턴 표면화(fr_·frs_·결과 플래그)를 바로 읽는다.
+  // 시간 체계가 있으면 흐른 시간(turn_min, 8.9에서 소진)만큼 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치. 없으면 턴당.
+  {
+    const tcfgF = timeConfig(schema);
+    const days = tcfgF ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : null;
+    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days)) {
+      const f = r.front, src = frontMod.SOURCE_PREFIX + f.id;
+      if (r.tick) changeLog.push({ id: frontMod.frKey(f.id), from: r.from, to: r.to, source: src });
+      for (const { index, stage } of r.stages) {
+        changeLog.push({ id: '무대 뒤', from: null, to: `${f.label || f.about || f.id} ${index + 1}/${f.stages.length}단계`, source: src });
+        applySets(schema, state, stage.effects, rng, changeLog, src);
+        if (stage.surface) state.meta.pendingNotifies.push(renderTemplate(stage.surface, makeLookup(schema, state.vars)));
+        firedEvents.push(`${src}:${index}`); // 진단·로그가 이벤트와 같은 창구로 본다
+      }
     }
   }
 
@@ -2277,6 +2313,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
+  frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,

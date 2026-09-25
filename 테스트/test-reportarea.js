@@ -44,7 +44,7 @@ const NO_TAB = new Set(['simcore', 'meta', 'rerollStableRng']);
   const tabs = new Set();
   const tabSeg = editorSrc.slice(editorSrc.indexOf('const TABS = ['));
   for (const m of tabSeg.slice(0, tabSeg.indexOf('];')).matchAll(/'[a-zA-Z]+', '([^']+)'/g)) tabs.add(m[1]);
-  ck('3층 탭 이름 목록 추출 (17개 — v1.10.0 [비밀] 포함)', tabs.size === 17, `${tabs.size}개: ${[...tabs].join(',')}`);
+  ck('3층 탭 이름 목록 추출 (18개 — v1.10.0 [비밀]·v1.12.0 [무대 뒤] 포함)', tabs.size === 18, `${tabs.size}개: ${[...tabs].join(',')}`);
   // 탭이 아닌 층(에셋 팩)은 예외
   const FLOOR = new Set(['에셋 팩']);
   const names = [...body.matchAll(/return '([^']+)';/g)].map((m) => m[1]);

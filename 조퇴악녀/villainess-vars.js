@@ -355,7 +355,7 @@ const verdictChoices = (pov) => [
     inject: pov === 'rosetta' ? '로제타가 심판정을 빠져나가 수도를 등진다. 살았지만, 이제 쫓기는 몸이다.'
       : '유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다.' },
   { label: pov === 'rosetta' ? '받아들인다' : '아무것도 하지 못한다', effects: gameOver,
-    inject: '원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다.' },
+    inject: '원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다. [시스템] 메인 임무 실패 — 페널티: 사망.' },
 ];
 const VERDICT_NOTIFY = '[5장 · 심판] 심판정. 카르디온 공작이 입을 연다 — 원작이라면 지금 파양이 선언되고, 처형이 뒤따른다.';
 
@@ -694,6 +694,9 @@ const S = {
   derived: [
     { id: 'ymd', label: '날짜 숫자', expr: 'year * 10000 + month * 100 + dom' },
     // 지금 몇 장 — 서장 0 · 1~5장 · 원작 이후 6
+    // 시스템 창 [유저 2026-09-26 "예전엔 강제 동기로 퀘스트창 — 메인 임무: 로제타의 처형을 막으시오 / 실패 시 사망 — 을 보여 주게 했다"]
+    { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
+    { id: 'penalty', label: '실패 시', expr: '"사망"' },
     { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : 0' },
   ],
   updater: {
@@ -734,8 +737,8 @@ const S = {
       // 판의 첫 저장 — 서장의 체크포인트 (첫 막은 onEnter가 안 돈다)
       { id: 'cp_open', when: 'true', once: true, effects: [{ checkpoint: 'save' }] },
       // 게임오버 — 사실 기록(dead)·원작 확정(doom 100)·면접 탈락. 보조에게 "벗어났나"를 판단시키지 않는다 [설계 §12]
-      { id: 'go_dead', when: 'dead', effects: gameOver, notify: '[게임오버] 죽음이 찾아왔다.' },
-      { id: 'go_doom', when: 'doom >= 100', effects: gameOver, notify: '[게임오버] 원작의 결말이 굳었다 — 로제타는 처형대로 끌려간다.' },
+      { id: 'go_dead', when: 'dead', effects: gameOver, notify: '[시스템] 사망 확인 — 메인 임무 실패.' },
+      { id: 'go_doom', when: 'doom >= 100', effects: gameOver, notify: '[시스템] 메인 임무 실패 — 원작의 결말이 굳었다. 로제타는 처형대로 끌려간다. 페널티: 사망.' },
       // 면접 — 질문을 부탁한다 (다음 응답에 로제타의 질문 → 그 뒤 보조가 답변지를 쓴다)
       { id: 'iv_ask', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_ready and not iv_asking and iv_q < ${IV.questions}`,
         effects: [{ set: 'iv_asking', expr: 'true' }], liveChoices: 'interview',
@@ -750,7 +753,7 @@ const S = {
         effects: [{ set: 'hired', expr: 'true' }, { set: 'role', expr: '"로제타 전속 시종"' }, { set: 'rosetta', expr: 'rosetta + 10' }, { list: 'quests', remove: [Q_SERVANT] }],
         notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
       { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
-        effects: gameOver, notify: '[게임오버] 면접에서 떨어졌다 — 로제타 곁에 설 길이 닫혔고, 원작은 그대로 흘러간다.' },
+        effects: gameOver, notify: '[시스템] 메인 임무 수행 불가 — 면접에서 떨어져 로제타 곁에 설 길이 닫혔다. 페널티: 사망.' },
       // 1~5장 절정 — 무대 도착 · 그날(1장) · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
       ...CLIMAX_EVENTS,
       // 3장 — 과자 상자. 원작에선 로제타가 독 과자를 보낸다. 이번엔 누가 보냈는지 서사가 정한다 [사건 원본, 범인 공백 초안]
@@ -817,7 +820,7 @@ const S = {
           { list: 'quests', remove: [Q_ROSETTA, Q_WAKE, Q_SERVANT, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
           { checkpoint: 'save' },
         ],
-        notify: '[1장] 엘리시아의 데뷔탕트가 다가온다 — 3월 10일 밤, 황궁 대연회장.' },
+        notify: `[퀘스트 갱신] ${Q.debut} — 엘리시아의 데뷔탕트가 다가온다. 3월 10일 밤, 황궁 대연회장.` },
       // ── 2장부터 [사건 원본: 원작 타임라인 2~4막·파양·처형 / 해금·여파·문장 초안] — 막은 덧붙이기 전용(세이브의 scn_idx는 번호) ──
       { id: 'tea', label: '2장 · 다과회와 소문', intensity: '전개', unlock: nextUnlock(1),
         direct: '원작이라면 이 장에서: 로제타가 다과회에 엘리시아를 초대하고, 하녀를 시켜 엘리시아의 드레스에 차를 쏟게 해 모두 앞에서 망신을 준다. '
@@ -825,32 +828,32 @@ const S = {
           + '에르테미안은 연회 파트너로 그녀를 고르고, 리칼은 우연히 그녀와 마주치고, 유온은 동방의 왕자로 다가오고, 테리안은 상단 일로 엇갈린다. '
           + '원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. 다과회 전까지는 초대장·소문·만남으로 그 자리를 향해 조여 가라.',
         onEnter: enterCh('tea', [...SUBS.debut]),
-        notify: '[2장] 다과회 초대장이 돌기 시작한다 — 사교계가 돌아온 에버렛 영애를 두고 수군거린다.' },
+        notify: `[퀘스트 갱신] ${Q.tea} — 다과회 초대장이 돌기 시작한다. 사교계가 돌아온 에버렛 영애를 두고 수군거린다.` },
       { id: 'stairs', label: '3장 · 계단과 과자', intensity: '고조', unlock: nextUnlock(2),
         direct: '원작이라면 이 장에서: 로제타가 하인을 매수해 엘리시아를 계단에서 떨어뜨린다(엘리시아는 근처의 도움으로 가벼운 상처에 그친다). '
           + '로제타는 화해하는 척 약한 독을 넣은 과자를 보내지만, 엘리시아는 통찰의 권능으로 악의를 알아채 먹지 않는다. '
           + '에르테미안과 엘리시아는 부쩍 가까워지고, 로제타는 사교계에서 고립되며 카르디온가의 냉대도 깊어진다. '
           + '원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다.',
         onEnter: enterCh('stairs', SUBS.tea),
-        notify: '[3장] 사교계의 공기가 달라졌다 — 엘리시아 곁엔 사람이 늘고, 로제타 곁엔 줄어든다.' },
+        notify: `[퀘스트 갱신] ${Q.stairs} — 사교계의 공기가 달라졌다. 엘리시아 곁엔 사람이 늘고, 로제타 곁엔 줄어든다.` },
       { id: 'night', label: '4장 · 파국의 밤', intensity: '절정', unlock: nextUnlock(3),
         direct: '원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. '
           + '원작의 이 사건은 어떤 형태로든 일어나려 한다 — 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다. '
           + '누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.',
         onEnter: enterCh('night', [...SUBS.stairs, SUB_SWEETS]),
-        notify: '[4장] 저녁 모임의 초대장이 왔다. 원작이라면 그 밤이 로제타의 마지막 밤이다.' },
+        notify: `[퀘스트 갱신] ${Q.night} — 저녁 모임의 초대장이 왔다. 원작이라면 그 밤이 로제타의 마지막 밤이다.` },
       { id: 'verdict', label: '5장 · 심판', intensity: '절정', unlock: nextUnlock(4),
         direct: '원작이라면 이 장에서: 카르디온 공작가가 로제타를 가문에서 파양하고, 공작도 리칼도 로제타를 버린다. 로제타는 처형된다 — 원작 속 로제타의 결말이다. '
           + '심판의 날까지 며칠이 남았다. 누가 로제타의 편에 설지는 지금까지 쌓은 관계가 정한다 — 면회·편지·설득으로 그날을 향해 조여 가라.',
         onEnter: enterCh('verdict', SUBS.night),
-        notify: '[5장] 로제타가 에버렛 영애를 해치려 했다는 고발이 황궁에 올라갔다 — 심판의 날이 잡혔다.' },
+        notify: `[퀘스트 갱신] ${Q.verdict} — 로제타가 에버렛 영애를 해치려 했다는 고발이 황궁에 올라갔다. 심판의 날이 잡혔다.` },
       // 원작 이후 — 2부는 이 막 안에서 진영 줄기(LINES)·무대 뒤로 돈다 (설계 §15·§19). 새 막은 이 뒤에 덧붙인다
       { id: 'after', label: '원작 이후', intensity: '해소', unlock: 'cleared >= 5',
         direct: '원작의 마지막 장이 지나갔다 — 로제타는 처형대에 서지 않았다(결말: {ending}). 빙의자의 원작 지식은 여기서 끝난다. 이제부터는 누구도 모르는 이야기다. '
           + '인물들의 풀리지 않은 목표·두려움·비밀이 새 사건의 씨앗이다 — 결말이 남긴 것(도주라면 추격, 추방이라면 떨어진 거리)을 이어 가라. '
           + '신전·뒷골목·황궁·마탑에도 저마다의 일이 있고, 유저가 보지 않는 사이에도 흘러간다.',
         onEnter: [{ list: 'quests', remove: SUBS.verdict }, { set: 'on_stage', expr: 'false' }, { checkpoint: 'save' }],
-        notify: '[원작 이후] 처형대는 비어 있다. 원작이 끝난 세계 — 여기서부터는 아무도 모르는 이야기다.' },
+        notify: '[시스템] 메인 임무 완료. — 처형대는 비어 있다. 원작이 끝난 세계, 여기서부터는 아무도 모르는 이야기다.' },
     ],
   },
   directives: [
@@ -872,10 +875,17 @@ const S = {
       text: '[빙의 직후] 유저는 오늘 아침 이 몸에서 막 눈을 떴다 — 원작에 나오지 않는 평범한 사람의 몸이고, 몸의 원래 기억은 조각으로만 떠오른다(이 몸이 누구인지는 페르소나를 따른다). '
         + '오늘 오전 카르디온 공작저에서 로제타 전속 시종 면접이 있다. 방 안의 단서(추천서·면접 통지 같은 것)와 떠오르는 기억 조각으로 유저가 스스로 알아차리게 하고, '
         + '지금이 원작의 어디쯤인지(에버렛가 영애의 귀환, 다가오는 데뷔탕트)는 하숙집 주인·거리의 소문으로 흘려라. 한 번에 다 알려 주지 말고 한 장면씩. '
-        + '면접장에 들어서는 건 유저가 공작저로 갔을 때다.' },
+        + '시스템 창의 메인 임무가 유저를 로제타 곁으로 떠민다 — 면접은 그 첫걸음이다. 면접장에 들어서는 건 유저가 공작저로 갔을 때다.' },
     { id: 'interview', when: 'pov == "servant" and scn_act == "prologue" and not hired and iv_ready',
       text: '[면접] 지금은 카르디온 공작저에서 로제타 전속 시종 면접이 열리는 날이다. 로제타의 곁은 오래 버티는 사람이 없어 자리가 자주 빈다. '
         + '로제타가 직접 면접관이다 — 오만하고 날카롭게, 한 번에 질문 하나씩. 합격·탈락은 시스템이 정하니 서사가 먼저 결론을 내지 마라.' },
+    // 시스템 창 — 강제 동기 [유저 2026-09-26]. 세계 밖에서 띄운 창이라 인물들은 모른다
+    { id: 'system', when: 'cleared < 5',
+      text: '[시스템 창] 유저의 눈앞에는 유저만 볼 수 있는 반투명한 시스템 창이 있다. 메인 임무: "{mission}" — 실패 시: 사망. '
+        + '누가 띄웠는지, 왜인지는 아무도 모르고 시스템도 설명하지 않는다. 창은 늘 떠 있지 않다 — 새 장이 열릴 때(통지의 [퀘스트 갱신]), 임무가 걸린 순간, 임무에 실패했을 때만 떠오른다. '
+        + '창은 [ ] 머리를 단 짧고 건조한 시스템 말투로 본문과 구분해 그려라. 창이 스스로 새 임무·보상·능력을 주지는 않는다. 다른 인물들은 창을 보지 못한다.' },
+    { id: 'system_done', when: 'cleared >= 5',
+      text: '[시스템 창] 메인 임무는 완료됐다. 창은 그 뒤로 퀘스트가 바뀔 때만 조용히 떠오른다 — 새 임무를 멋대로 내리지 않는다.' },
     { id: 'bond', when: 'true',
       text: '[관계] 호감은 관계의 거리다. 그 관계가 우정·충성·연애 중 어디로 자랄지는 유저의 행동과 페르소나가 정한다 — 인물의 성별로 연애 여부를 짐작하지 마라.' },
     { id: 'stats', when: 'true',
@@ -905,6 +915,13 @@ const S = {
     mode: 'auto', layout: 'tabs', theme: 'clean', changeLog: 'collapsed',
     customCSS: fs.readFileSync(__P('상태창/밤의무도회.css'), 'utf8'),
     groups: [
+      // 시스템 창 — 현황 장의 첫 그룹이어야 한다(밤의무도회.css가 .sim-panel-0 첫 그룹을 창으로 꾸민다). 실패 시 줄은 넷째 줄(빨강)
+      { tab: '현황', label: '퀘스트', items: [
+        { var: 'mission', label: '메인 임무', showWhen: 'cleared < 5' },
+        { var: 'mission', label: '완료한 임무', showWhen: 'cleared >= 5' },
+        { var: 'quests', label: '퀘스트' },
+        { var: 'penalty', label: '실패 시', showWhen: 'cleared < 5' },
+      ] },
       { tab: '현황', label: '면접', showWhen: 'pov == "servant" and scn_act == "prologue" and not hired', items: [{ var: 'iv_q', label: '질문' }] },
       { tab: '현황', label: '로제타', items: [
         { var: 'doom', label: '파멸도', bar: { max: 100 }, color: "doom >= 70 ? '#e36b7d' : doom >= 40 ? '#d4b26a' : '#9fc79a'" },
@@ -918,7 +935,6 @@ const S = {
       ] },
       { tab: '현황', label: '진행', items: [
         { var: 'location', label: '장소' },
-        { var: 'quests', label: '퀘스트' },
         { var: 'ending', label: '결말', showWhen: 'ending != ""' },
       ] },
       { tab: '나', label: '신상', items: [
@@ -945,7 +961,8 @@ const S = {
       guide: '소지품·능력은 첫 장면에 실제로 나온 것만 기본값에 덧붙인다 — 안 나왔으면 values에 넣지 마라. '
         + '능력치(st_*)는 유저가 첫 메시지에서 자기 배경을 밝혔을 때만 기본값에서 ±30 안으로 조정한다 — 로제타의 몸에 빙의한 판(거울 속 분홍 머리)이면 넣지 마라. '
         + 'possessor(빙의자 설정)는 유저가 첫 메시지에서 로제타 안의 빙의자를 설명했을 때만 그 설명을 옮겨 적는다 — 없으면 넣지 마라.',
-      instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
+      instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 눈을 뜬 유저 앞에 시스템 창이 처음 뜬다 — "[메인 임무] … / [실패 시] 사망" 두 줄만, 설명 없이(메인 임무 = 로제타 시점이면 "처형을 피하시오", 그 밖엔 "로제타의 처형을 막으시오"). '
+        + '위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
         + '시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
         + '소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로.',
     },
@@ -1102,6 +1119,28 @@ console.log('\n━━ 시종 시점 — 면접 전: 빙의 자각 · 면접 시�
   ok('첫 장면 지시: 시종은 셋방에서 눈뜬 순간 · 면접장까지 가지 않는다', sp.includes('수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간') && sp.includes('면접장까지 가지 마라'), '');
 }
 
+console.log('\n━━ 시스템 창 — 강제 동기 (메인 임무 · 실패 시 사망) ━━');
+{
+  let st = start('servant');
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 31 });
+  const first = (html.split('sim-panel-0">')[1] || '').split('<div class="sim-group">')[1] || '';
+  ok('★ 현황 탭 첫 그룹 = [ 퀘스트 ] 창 — 메인 임무 · 퀘스트 · 실패 시 사망', first.startsWith('<div class="sim-group-label">퀘스트</div>') && first.includes('로제타의 처형을 막으시오')
+    && first.includes('[서장] 이 몸이 누구인지') && first.includes('>사망<'), first.replace(/<[^>]+>/g, ' ').slice(0, 200));
+  const p = send(st).promptBlock;
+  ok('★ 프롬프트: [시스템 창] — 유저만 보는 창 · 메인 임무 · 실패 시 사망', p.includes('[시스템 창]') && p.includes('메인 임무: "로제타의 처형을 막으시오" — 실패 시: 사망'), '');
+  ok('첫 장면 지시에 시스템 창', S.setup.ai.instruction.includes('[메인 임무]') && S.setup.ai.instruction.includes('[실패 시] 사망'), '');
+  const r = start('rosetta');
+  ok('로제타 시점 임무 = 처형을 피하시오', send(r).promptBlock.includes('메인 임무: "처형을 피하시오"'), '');
+  const css = S.statusUI.customCSS;
+  ok('CSS: 현황 첫 그룹을 시스템 창으로 꾸민다', css.includes('.sim-panel-0>.sim-group:first-child'), '');
+  // 완료 — 원작 이후
+  const a = start('rosetta');
+  Object.assign(a.vars, { scn_idx: 6, cleared: 5, ending: '엘리시아의 변호' });
+  const ha = SC.require('render').renderStatusHtml(S, a, null, null, { uid: 32 });
+  ok('원작 이후: "완료한 임무"로 바뀌고 실패 시 줄은 사라진다 · 지시문도 완료로', ha.includes('완료한 임무') && !ha.includes('>실패 시<') && send(a).promptBlock.includes('메인 임무는 완료됐다')
+    && !send(a).promptBlock.includes('실패 시: 사망'), '');
+}
+
 console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
 {
   let st = start('servant');
@@ -1118,7 +1157,7 @@ console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
     JSON.stringify({ s: st.vars.skills, i: st.vars.items, r: st.vars.role }));
   ok('날짜도 되감김 (2월 24일)', L(st, 'date') === '2월 24일', L(st, 'date'));
   const p = send(st).promptBlock;
-  ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[게임오버] 면접에서 떨어졌다') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));
+  ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[시스템] 메인 임무 수행 불가') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));
   ok('★ 회귀하면 셋방으로 — 처지 파악 퀘스트·빙의 직후 지시가 돌아온다', st.vars.location === '수도 외곽의 셋방' && !st.vars.iv_ready && st.vars.quests.includes(Q_WAKE) && p.includes('[빙의 직후]'),
     JSON.stringify({ loc: st.vars.location, q: st.vars.quests }));
   // 회귀한 판에서 — 기억을 가진 유저는 곧장 공작저로 갈 수 있다

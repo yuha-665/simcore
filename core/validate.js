@@ -3,6 +3,7 @@
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
+const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -377,6 +378,15 @@ function validateSchema(schema) {
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
+    // 체크포인트 효과 (v1.11.0) { checkpoint: 'save'|'load', slot? } — 수식·대상 변수가 없다
+    if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
+      if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
+      if (rule.slot != null && (typeof rule.slot !== 'string' || !cpMod.SLOT_RE.test(rule.slot)))
+        err(p, `checkpoint slot은 영문 식별자 24자 이내 (현재: '${rule.slot}')`);
+      if (rule.set !== undefined || rule.list !== undefined)
+        err(p, 'checkpoint 효과에 set/list를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      return;
+    }
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -397,7 +407,11 @@ function validateSchema(schema) {
 
   // ── rules ──
   const rules = schema.rules || {};
-  (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  (rules.onTurn || []).forEach((r, i) => {
+    checkSet(r, `$.rules.onTurn[${i}]`);
+    // 매 턴 되감기 = 영영 같은 자리 (v1.11.0). 매 턴 저장(자동 저장)은 된다
+    if (r && r.checkpoint === 'load') err(`$.rules.onTurn[${i}]`, 'onTurn에서 되감기(load)를 하면 매 턴 되감겨 이야기가 영영 제자리입니다 — 게임오버 이벤트·선택지에 두세요');
+  });
   // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
   // 그 날 내내 매 턴 발동한다 (실측: 맨션봇 급여일 중복 지급). 진단 시뮬은 하루=1턴을 가정해
   // 이 사고를 못 보므로 정적 린트가 유일한 방어선이다. 랜덤 표는 추첨+쿨다운이 빈도를 이미
@@ -1658,6 +1672,31 @@ function validateSchema(schema) {
           }
         });
       }
+    }
+  }
+
+  // ── checkpoint (체크포인트 v1.11.0 — 설계 docs/design-조퇴악녀.md §12) ──
+  {
+    const used = cpMod.slotsUsed(schema);
+    const C = schema.checkpoint;
+    if (C != null) {
+      if (typeof C !== 'object' || Array.isArray(C)) err('$.checkpoint', 'checkpoint는 객체여야 함 ({ keep, keepSecrets, notify })');
+      else {
+        if (C.keep != null && !Array.isArray(C.keep)) err('$.checkpoint.keep', 'keep은 변수 id 배열이어야 함');
+        else (C.keep || []).forEach((id, i) => {
+          if (typeof id !== 'string' || !vars.some((v) => v && v.id === id)) err(`$.checkpoint.keep[${i}]`, `keep의 '${id}'가 vars에 없음 (derived·예약 키는 못 남긴다)`);
+        });
+        if (C.keepSecrets != null && typeof C.keepSecrets !== 'boolean') err('$.checkpoint.keepSecrets', 'keepSecrets는 true/false');
+        if (C.notify != null) {
+          if (typeof C.notify !== 'string') err('$.checkpoint.notify', 'notify는 문자열이어야 함');
+          else checkTemplateRefs(C.notify, '$.checkpoint.notify', allIds, err);
+        }
+        if (!used.save.size && !used.load.size)
+          warn('$.checkpoint', '체크포인트 설정은 있는데 저장·되감기 효과가 하나도 없습니다 — 막 onEnter에 저장, 게임오버 이벤트에 되감기를 두세요');
+      }
+    }
+    for (const slot of used.load) {
+      if (!used.save.has(slot)) warn('$.checkpoint', `되감기 칸 '${slot}'을 저장하는 효과가 없습니다 — 저장된 적 없는 칸으로는 되감기가 아무 일도 안 합니다`);
     }
   }
 

@@ -30,7 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('★ 떼기는 그대로 — beforeRequest의 전 타입 마커 제거가 남아 있다',
     /if \(m && typeof m\.content === 'string'\) m\.content = stripMarkers\(m\.content\);/.test(src), '');
   ck('번역 요청에서만 번호를 기억한다', src.includes("if (type === 'translate') { try { trFound = trFindMarker(messages); }"), '');
-  ck('버전이 v1.10.2 이상', /\/\/@version 1\.1[0-9]\.([2-9]|\d\d)/.test(adapter), '');
+  ck('버전이 v1.10.2 이상', /\/\/@version 1\.(1[1-9]\.\d+|10\.([2-9]|\d\d))/.test(adapter), '');
   ck('체인지로그에 v1.10.2 항목', adapter.includes('── v1.10.2 ─'), '');
 }
 

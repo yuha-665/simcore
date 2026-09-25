@@ -841,6 +841,46 @@ liveChoices: {
 
 ---
 
+## checkpoint — 되감기 (v1.11.0, 옵트인)
+
+코어 모듈 24호 `core/checkpoint.js`. 설계 `docs/design-조퇴악녀.md` §12 (발단: 조퇴악녀 사망회귀물). 회귀물·로그라이크·타임루프의
+"죽으면 그 아침으로". 효과(set)로는 예약 키(날짜·막·비밀)를 못 돌려서 스키마로 만들 수 없던 것.
+
+```json
+"scenario": { "acts": [ …, { "id": "ch1", "unlock": "cleared >= 1", "onEnter": [{ "checkpoint": "save" }] } ] },
+"rules": { "events": [ { "id": "gameover", "when": "dead",
+  "effects": [{ "set": "loop", "expr": "loop + 1" }, { "checkpoint": "load" }], "notify": "당신은 죽었다." } ] },
+"checkpoint": { "keep": ["loop", "memories"], "keepSecrets": true, "notify": "[회귀 {loop}회차] 눈을 뜨면 다시 그 아침이다." }
+```
+
+| | |
+|---|---|
+| 효과 `{ checkpoint: 'save'\|'load', slot? }` | 효과를 받는 곳 어디든 — 이벤트·선택지·액션·판정 등급·막 `onEnter`·보조 갈림길 태그(choice.js `effectsOf`가 통과시킨다). slot 기본 `main`, 영문 식별자 24자. 의뢰판 accept/cancel은 미지원(자체 효과 루프) |
+| `checkpoint.keep` | 되감아도 **지금 값**을 들고 가는 변수 (회귀 횟수·기억 목록). 스키마 vars만 |
+| `checkpoint.keepSecrets` | 기본 true — 열린 비밀(`sec_*`)은 안 닫힌다(둘 중 큰 단계). false면 비밀도 저장 시점 |
+| `checkpoint.notify` | 되감긴 턴 안내({변수} 가능). 비우면 `DEFAULT_LOAD_NOTIFY` |
+
+- **되감는 것** = `state.vars` 전부(예약 키 time_epoch·scn_idx·scn_turns·fight_*·sec_* 포함) + `meta.firedOnce`·`eventLastFired`
+  (once 사건이 다시 일어난다). 걸린 갈림길은 걷힌다. **안 되감는 것** = `meta.turn`(앞으로만)·채팅·보드·상점·메신저·의뢰판.
+  저장 뒤 스키마에 생긴 변수는 `reconcileState`가 init으로
+- **시점**: `applySets`는 `meta.cpQueue`에 줄만 세우고 엔진 `flushCheckpoints`가 단계 끝에 처리 — 전송 단계 1.3(액션·선택지 뒤,
+  시간 소비 앞: 고른 그 턴 프롬프트가 되감긴 날짜로 나가고 안내도 injects로 그 턴에), 응답 단계 8.95(이벤트·막 전환·비밀·turn_min
+  소진 뒤, 턴 +1 앞: onEnter 저장이 그 턴의 전환까지 담고, 안내는 pendingNotifies로 다음 턴). 같은 목록의 `loop + 1`은 순서 무관하게 산다
+- 칸은 `state.checkpoints[slot] = { vars, firedOnce, eventLastFired, turn }` — 메시지 스냅샷에 실려 리롤·삭제에 같이 되감긴다
+- 원장: `{ id: '체크포인트', from: null, to: '저장 (main)' | '되감기 (main) — N턴 전으로' | '되감기 실패 — 저장된 칸 없음 (x)' }` — 변수별 줄은 안 쓴다
+- **게임오버는 보조에게 판단시키지 않는다** — `dead` 같은 사실 기록, 강제 갈림길(strict)의 최악 항목, 판정 등급에서만 되감는다 (설계 원칙 "보조는 기록자")
+
+### 검증 규칙 요약
+
+- 동작이 save/load 아님 오류 · slot 식별자 오류 · 한 효과에 set/list 겸용 오류 · **onTurn의 load 오류**(매 턴 제자리 — save는 자동 저장으로 허용)
+- keep의 없는 변수 오류 · notify `{변수}` 참조 검사 · 저장하는 효과가 없는 칸의 load 경고 · 설정만 있고 효과 0 경고
+- 일반 패치 UNSUPPORTED(통 교체·JSON), 작업본 비교 DIFF_AREAS 합류. 오류 경로 `$.checkpoint` → [시나리오] 탭
+- 편집기: 효과 편집기 둘(`effectRows`·규칙 탭 `ruleEffectRows`)이 `checkpointEffectRow` 공용 — 기존 줄은 늘 그리고, **추가 버튼은
+  `schema.checkpoint`가 있는 봇만**. [시나리오] 탭 끝 "⏪ 되감기" 카드(`checkpointCard` — 켜기·남길 변수 체크·비밀 유지·안내·쓰는 칸 요약 `engine.checkpointSlots`)
+- 테스트 `테스트/test-checkpoint.js` (63단언)
+
+---
+
 ## 표현식 문법
 
 - 산술: `+ - * / %` (0 나눗셈·0 나머지는 0 — 봇이 죽는 것보다 낫다)

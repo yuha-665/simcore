@@ -25,7 +25,8 @@ const CAPS = { LABEL: 60, DESC: 160, TAG: 16, TAGS_MAX: 8, COUNT_MIN: 2, COUNT_M
 
 const cut = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const effectsOf = (raw) => (Array.isArray(raw) ? raw : [])
-  .filter((e) => e && typeof e === 'object' && ((typeof e.set === 'string' && e.set) || (typeof e.list === 'string' && e.list)));
+  .filter((e) => e && typeof e === 'object' && ((typeof e.set === 'string' && e.set) || (typeof e.list === 'string' && e.list)
+    || e.checkpoint === 'save' || e.checkpoint === 'load')); // 체크포인트 (v1.11.0) — "최악" 태그가 게임오버일 수 있다
 
 /** strict 값 → 모드. true는 'last'(맨 끝 = 최악 규약). 그 밖은 null(강제 아님) */
 function strictMode(v) {

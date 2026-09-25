@@ -4033,6 +4033,8 @@ const SCHEMA_SCENARIO_RULES = [
   '- `onEnter` = 전환 순간 1회 효과(이벤트 효과와 같은 형식), `notify` = 전환 통지 한 줄.',
   '- **주인공(유저)의 행동·선택·결말을 정해 두지 마세요.** 시나리오는 무대를 옮기는 것이지 배우를 조종하는 것이 아닙니다.',
   '- 조건식에서 `scn_act`(현재 막 id)·`scn_turns`(현재 막 경과 턴)를 쓸 수 있습니다 — 지시문·이벤트를 막에 연동할 때.',
+  '- **되감기(회귀물)**: 효과 `{ "checkpoint": "save" }`를 막 onEnter에, `{ "checkpoint": "load" }`를 게임오버 이벤트·선택지에 두면 '
+  + '날짜·막·변수가 저장 시점으로 돌아갑니다. 되감아도 남길 변수는 최상위 `checkpoint.keep` (예: 회귀 횟수). 유저가 원할 때만 쓰세요.',
 ];
 
 // 비밀(secrets, v1.10.0) — "모르는 건 말할 수 없다". 규격의 요점은 단계 나누기와 복선 어법이다 —
@@ -6307,6 +6309,18 @@ function colorBuilder(it, varId, rerender) {
 }
 
 // 효과 행 목록 — 수식 효과 {set, expr} + 아이템 효과 {list, add, remove}
+// 체크포인트 효과 줄 (v1.11.0) — 효과 편집기 둘(effectRows·규칙 탭 ruleEffectRows)이 같이 쓴다. 규칙 #3: 엔진 기능엔 편집기 칸
+const CP_OP_OPTS = [['save', '⏪ 체크포인트 저장'], ['load', '⏪ 체크포인트 되감기']];
+function checkpointEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-checkpoint`, title: '저장 = 지금 상태를 칸에 적는다 · 되감기 = 그 칸의 시점으로 날짜·막·변수를 돌린다 (되감아도 남는 변수는 [시나리오] 탭 되감기 카드)' },
+    bindSelect(ef.checkpoint, CP_OP_OPTS, (v) => { ef.checkpoint = v; rerender(); }),
+    pair('칸', bindInput(ef.slot ?? '', (x) => { const t = x.trim(); if (t && t !== 'main') ef.slot = t; else delete ef.slot; rerender(); },
+      { cls: 'sce-w-s', ph: 'main' }), '칸 이름 (영문) — 비우면 main. 챕터마다 칸을 나눌 때만 씁니다'),
+    gripEl);
+}
+// 체크포인트 추가 버튼은 되감기를 켠 봇에만 (시나리오 탭 카드) — 이미 있는 줄은 언제나 그린다
+const checkpointOn = (schema) => !!schema.checkpoint && typeof schema.checkpoint === 'object';
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -6314,6 +6328,7 @@ function effectRows(schema, effects, rerender) {
   const varOpts = nonListVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   effects.forEach((ef, i) => {
+    if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -6344,6 +6359,12 @@ function effectRows(schema, effects, rerender) {
       effects.push({ list: listVars[0].id, add: [], remove: [] });
       rerender();
     } }, '+ 아이템 효과'));
+  }
+  if (checkpointOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ checkpoint: 'save' });
+      rerender();
+    } }, '+ ⏪ 체크포인트'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -7807,6 +7828,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     [/^\$\.secrets\b/, '비밀', true],
+    [/^\$\.checkpoint\b/, '시나리오', true], // 되감기 카드 (v1.11.0)
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -8372,6 +8394,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
 
       effects.forEach((ef, i) => {
+        if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -8417,6 +8440,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           },
         }, '+ 아이템 효과'));
+      }
+      if (checkpointOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ checkpoint: 'load' }); rerender(); },
+        }, '+ ⏪ 체크포인트'));
       }
       box.appendChild(btnRow);
       return box;
@@ -9856,6 +9885,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 시나리오 (v0.91, 설계 docs/design-시나리오레이터.md) ──────
   // 배포자가 이야기의 척추를 표로 적는 자리. 은닉이 요점이라 UI도 그 축이다 —
   // secret 칸에 "모델은 이 막부터 본다"를 계속 상기시킨다.
+  // 되감기 카드 (v1.11.0 체크포인트) — 회귀물·타임루프. 효과 줄(저장·되감기)은 막 진입 효과·이벤트·선택지에 두고,
+  // 여기선 "되감아도 남는 것"과 안내 한 줄만 정한다. 설계 docs/design-조퇴악녀.md §12
+  function checkpointCard(field) {
+    const sec = h('section', { class: 'sce-scenario-act-section sce-scenario-checkpoint', 'data-sce-validation-path': '$.checkpoint' },
+      h('div', { class: 'sce-scenario-group-title' }, '⏪ 되감기 (체크포인트)'),
+      h('div', { class: 'sce-scenario-note' },
+        '회귀물·타임루프용이에요. 막의 진입 효과에 "체크포인트 저장", 게임오버 이벤트·선택지에 "체크포인트 되감기"를 넣으면 '
+        + '날짜·현재 막·변수가 저장 시점으로 돌아가요. 이벤트의 1회 기록도 되감겨 그 사건이 다시 일어나요. 턴 번호와 채팅은 그대로예요.'));
+    const C = schema.checkpoint;
+    if (!C || typeof C !== 'object') {
+      sec.appendChild(addBtn('되감기 켜기', () => { schema.checkpoint = { keep: [] }; rerender(); }));
+      return sec;
+    }
+    const used = engine.checkpointSlots(schema);
+    const keep = new Set(Array.isArray(C.keep) ? C.keep : []);
+    const setKeep = (id, on) => { if (on) keep.add(id); else keep.delete(id); C.keep = schema.vars.map((v) => v.id).filter((x) => keep.has(x)); rerender(); };
+    sec.appendChild(h('div', { class: 'sce-scenario-field is-wide' }, h('span', {}, '되감아도 남는 변수'),
+      h('div', { class: 'sce-row', style: 'flex-wrap:wrap' }, ...schema.vars.map((v) => bindCheck(keep.has(v.id), (on) => setKeep(v.id, on), ` ${v.label ?? v.id}`))),
+      h('small', {}, '회귀자의 기억 — 회귀 횟수·기억 목록 같은 것. 체크하지 않은 변수는 전부 저장 시점 값으로 돌아가요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, bindCheck(C.keepSecrets !== false, (on) => {
+      if (on) delete C.keepSecrets; else C.keepSecrets = false; rerender();
+    }, ' 열린 비밀은 되감아도 안 닫힘 (끄면 비밀도 저장 시점 단계로)')));
+    sec.appendChild(field('되감긴 턴 안내', bindArea(C.notify, (x) => { if (x && x.trim()) C.notify = x; else delete C.notify; rerender(); },
+      '비우면 기본 안내("시간이 체크포인트 시점으로 되돌아갔다…"). {변수} 가능 — 예: [회귀 {loop}회차] 눈을 뜨면 다시 그 아침이다.'),
+      '되감긴 턴에 모델에게 한 번 가는 줄이에요. 선택지로 되감으면 그 턴, 이벤트로 되감으면 다음 턴에 실려요.', true));
+    const fmt = (set) => (set.size ? [...set].join(', ') : '없음');
+    sec.appendChild(h('div', { class: 'sce-scenario-note is-diagnostic' },
+      `쓰는 칸 — 저장: ${fmt(used.save)} · 되감기: ${fmt(used.load)}`
+      + (used.save.size || used.load.size ? '' : ' — 아직 효과가 없어요. 효과 목록의 [+ ⏪ 체크포인트] 버튼으로 넣으세요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.checkpoint; rerender(); } },
+      '되감기 설정 지우기 (효과 줄은 남음)')));
+    return sec;
+  }
+
   function tabScenario() {
     const wrap = h('div', { class: 'sce-scenario-editor' });
     const field = (label, control, help = '', wide = false) => h('label',
@@ -9976,6 +10039,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       S.acts.push({ id: `act${S.acts.length + 1}`, label: '', unlock: '', direct: '', secret: '' });
       rerender();
     })));
+    wrap.appendChild(checkpointCard(field));
     wrap.appendChild(h('section', { class: 'sce-scenario-danger' },
       h('div', {}, h('strong', {}, '시나리오 설정 삭제'),
         h('span', {}, '진행 중인 세이브의 막 위치는 남으며, 다시 켜면 1막부터 시작합니다.')),
@@ -12411,6 +12475,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const wrap = h('div');
     const fmtE = (e) => {
       if (e == null || typeof e !== 'object') return String(e);
+      if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -14647,6 +14712,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.checks')) return '판정';
       if (p.startsWith('$.scenario')) return '시나리오';
       if (p.startsWith('$.secrets')) return '비밀';
+      if (p.startsWith('$.checkpoint')) return '시나리오'; // 되감기 카드 (v1.11.0)
       return '작업본';
     };
     const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`

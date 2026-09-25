@@ -98,7 +98,7 @@ ck('번들에 목록 행 colSpan이 실렸다', bundle.includes('tdCur.colSpan =
 ck('번들에 .sc-var-add 가 실렸다', bundle.includes("addRow.className = 'sc-var-add'"), '');
 
 // ── 버전 ─────────────────────────────────────────────────────────
-ck('버전이 v1.10.1 이상', /\/\/@version 1\.1[0-9]\.([1-9]|\d\d)/.test(src), '');
+ck('버전이 v1.10.1 이상', /\/\/@version 1\.(1[1-9]\.\d+|10\.([1-9]|\d\d))/.test(src), '');
 ck('체인지로그에 v1.10.1 항목', src.includes('── v1.10.1 ─'), '');
 
 let p = 0, f = 0;

@@ -30,7 +30,7 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time']);
+const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time', 'checkpoint']); // checkpoint(v1.11.0): 시나리오 탭 되감기 카드·JSON
 
 function getList(schema, key) {
   switch (key) {
@@ -514,6 +514,7 @@ const DIFF_AREAS = [
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
   ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
+  ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
 ];
 const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
 function diffSchemas(a, b) {

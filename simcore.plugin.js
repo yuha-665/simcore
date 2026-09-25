@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.10.2
-//@display-name SimCore (시뮬 엔진) v1.10.2 비밀 — 모르는 건 말할 수 없다
+//@version 1.11.0
+//@display-name SimCore (시뮬 엔진) v1.11.0 되감기 — 죽으면 그 아침으로
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,24 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.11.0 ──────────────────────────────────────────────
+// **체크포인트 — 되감기** (core/checkpoint.js 24호, 설계 docs/design-조퇴악녀.md §12). 회귀물·로그라이크·타임루프의
+// "죽으면 그 아침으로"를 스키마로 만들 수 없었다 — 효과(set)는 스키마 vars만 대상이라 예약 키(time_epoch 날짜·scn_idx 막·
+// sec_* 비밀)를 못 돌리고, 막은 앞으로만 가고, 시간은 음수 진행을 무시한다. 발단: 조퇴악녀 개조("시종 면접에 떨어지면 사망
+// 반복 — 사실상 사망회귀물", 2026-09-25 유저).
+// - [효과] `{ checkpoint: 'save'|'load', slot? }` — 효과를 받는 곳이면 어디든(이벤트·선택지·액션·판정 등급·막 onEnter·보조 갈림길
+//   태그). 정석은 막 onEnter에 저장, 게임오버 이벤트·선택지(강제 갈림길의 최악)에 되감기. 칸은 slot(기본 main)으로 여럿.
+// - [되감기] 변수 **전부**(예약 키 포함)와 이벤트 once·쿨다운 기록을 저장 시점으로. 남는 것 = `checkpoint.keep` 변수 + (기본)
+//   열린 비밀 — 회귀자의 기억. 턴 번호·채팅·보드·상점·메신저는 앞으로만 간다(이야기 안의 시간을 되감는 것이지 채팅 되돌리기가 아니다).
+//   걸린 갈림길은 걷힌다(되감기 전 세계가 내민 것). 저장 뒤 스키마에 생긴 변수는 init으로.
+// - [시점] applySets는 줄만 세우고(meta.cpQueue) 단계 끝에서 처리 — 전송 단계는 액션·선택지 뒤(고른 그 턴 프롬프트가 되감긴 날짜로
+//   나가고 안내도 그 턴에), 응답 단계는 이벤트·막 전환·비밀 뒤(onEnter 저장이 그 턴의 전환까지 담는다, 안내는 다음 턴 통지).
+//   그래서 같은 목록의 `loop + 1`은 되감기 앞이든 뒤든 산다. 칸은 state.checkpoints — 메시지 스냅샷에 실려 리롤에 안정.
+// - [안내] `checkpoint.notify`({변수} 가능, 비우면 기본 "시간이 체크포인트 시점으로 되돌아갔다…"). 원장엔 칸 이름 한 줄만.
+// - [검증] 동작·칸 이름·set 겸용 오류, onTurn 되감기 오류(매 턴 제자리), 저장 없는 칸 되감기 경고, keep 없는 변수 오류.
+// - [편집기] 효과 편집기 둘에 ⏪ 체크포인트 줄(되감기를 켠 봇만 추가 버튼), [시나리오] 탭 끝에 "⏪ 되감기" 카드(남길 변수·
+//   비밀 유지·안내·쓰는 칸 요약). 작업본 비교 영역에 합류, 일반 패치는 미지원(통 교체·JSON).
 //
 // ── v1.10.2 ──────────────────────────────────────────────
 // **번역문에 상태창이 안 뜨던 것** (커뮤니티 제보, 2026-09-21). "번역문에는 ⟦simcore:14⟧가 누락돼 상태창이 안 뜬다.
@@ -3631,6 +3649,7 @@ SimCore.define("validate", function (require, module, exports) {
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
+const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -4005,6 +4024,15 @@ function validateSchema(schema) {
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
+    // 체크포인트 효과 (v1.11.0) { checkpoint: 'save'|'load', slot? } — 수식·대상 변수가 없다
+    if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
+      if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
+      if (rule.slot != null && (typeof rule.slot !== 'string' || !cpMod.SLOT_RE.test(rule.slot)))
+        err(p, `checkpoint slot은 영문 식별자 24자 이내 (현재: '${rule.slot}')`);
+      if (rule.set !== undefined || rule.list !== undefined)
+        err(p, 'checkpoint 효과에 set/list를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      return;
+    }
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -4025,7 +4053,11 @@ function validateSchema(schema) {
 
   // ── rules ──
   const rules = schema.rules || {};
-  (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  (rules.onTurn || []).forEach((r, i) => {
+    checkSet(r, `$.rules.onTurn[${i}]`);
+    // 매 턴 되감기 = 영영 같은 자리 (v1.11.0). 매 턴 저장(자동 저장)은 된다
+    if (r && r.checkpoint === 'load') err(`$.rules.onTurn[${i}]`, 'onTurn에서 되감기(load)를 하면 매 턴 되감겨 이야기가 영영 제자리입니다 — 게임오버 이벤트·선택지에 두세요');
+  });
   // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
   // 그 날 내내 매 턴 발동한다 (실측: 맨션봇 급여일 중복 지급). 진단 시뮬은 하루=1턴을 가정해
   // 이 사고를 못 보므로 정적 린트가 유일한 방어선이다. 랜덤 표는 추첨+쿨다운이 빈도를 이미
@@ -5286,6 +5318,31 @@ function validateSchema(schema) {
           }
         });
       }
+    }
+  }
+
+  // ── checkpoint (체크포인트 v1.11.0 — 설계 docs/design-조퇴악녀.md §12) ──
+  {
+    const used = cpMod.slotsUsed(schema);
+    const C = schema.checkpoint;
+    if (C != null) {
+      if (typeof C !== 'object' || Array.isArray(C)) err('$.checkpoint', 'checkpoint는 객체여야 함 ({ keep, keepSecrets, notify })');
+      else {
+        if (C.keep != null && !Array.isArray(C.keep)) err('$.checkpoint.keep', 'keep은 변수 id 배열이어야 함');
+        else (C.keep || []).forEach((id, i) => {
+          if (typeof id !== 'string' || !vars.some((v) => v && v.id === id)) err(`$.checkpoint.keep[${i}]`, `keep의 '${id}'가 vars에 없음 (derived·예약 키는 못 남긴다)`);
+        });
+        if (C.keepSecrets != null && typeof C.keepSecrets !== 'boolean') err('$.checkpoint.keepSecrets', 'keepSecrets는 true/false');
+        if (C.notify != null) {
+          if (typeof C.notify !== 'string') err('$.checkpoint.notify', 'notify는 문자열이어야 함');
+          else checkTemplateRefs(C.notify, '$.checkpoint.notify', allIds, err);
+        }
+        if (!used.save.size && !used.load.size)
+          warn('$.checkpoint', '체크포인트 설정은 있는데 저장·되감기 효과가 하나도 없습니다 — 막 onEnter에 저장, 게임오버 이벤트에 되감기를 두세요');
+      }
+    }
+    for (const slot of used.load) {
+      if (!used.save.has(slot)) warn('$.checkpoint', `되감기 칸 '${slot}'을 저장하는 효과가 없습니다 — 저장된 적 없는 칸으로는 되감기가 아무 일도 안 합니다`);
     }
   }
 
@@ -8192,7 +8249,8 @@ const CAPS = { LABEL: 60, DESC: 160, TAG: 16, TAGS_MAX: 8, COUNT_MIN: 2, COUNT_M
 
 const cut = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const effectsOf = (raw) => (Array.isArray(raw) ? raw : [])
-  .filter((e) => e && typeof e === 'object' && ((typeof e.set === 'string' && e.set) || (typeof e.list === 'string' && e.list)));
+  .filter((e) => e && typeof e === 'object' && ((typeof e.set === 'string' && e.set) || (typeof e.list === 'string' && e.list)
+    || e.checkpoint === 'save' || e.checkpoint === 'load')); // 체크포인트 (v1.11.0) — "최악" 태그가 게임오버일 수 있다
 
 /** strict 값 → 모드. true는 'last'(맨 끝 = 최악 규약). 그 밖은 null(강제 아님) */
 function strictMode(v) {
@@ -8602,6 +8660,158 @@ module.exports = {
 
 });
 
+SimCore.define("checkpoint", function (require, module, exports) {
+// 체크포인트 — 되감기 (설계: docs/design-조퇴악녀.md §12, v1.11.0)
+//
+// 회귀물·로그라이크·타임루프의 "죽으면 그 아침으로" — 지금까지는 스키마로 만들 수 없었다.
+// 효과(set)는 스키마 vars만 대상이라 예약 키(time_epoch 날짜·scn_idx 현재 막·sec_* 비밀)를 못 돌리고,
+// 막은 앞으로만 가고, 시간은 음수 진행을 무시한다. 이 모듈이 그 셋을 한 번에 되감는 통로다.
+//
+// 효과 두 가지 (효과를 받는 곳이면 어디든 — 이벤트·선택지·액션·판정 등급·막 onEnter·보조 갈림길 태그):
+//   { checkpoint: 'save', slot?: 'main' }   지금 상태를 칸에 적는다 (막 onEnter가 정석 — "챕터 시작")
+//   { checkpoint: 'load', slot?: 'main' }   그 칸으로 되감는다 (게임오버 이벤트·선택지)
+// 설정 (선택):
+//   checkpoint: { keep: ['loop', 'memories'], keepSecrets: true, notify: '…' }
+//
+// 되감기는 **변수 전부**(예약 키 포함)와 이벤트의 once·쿨다운 기록을 저장 시점으로 돌린다.
+// 남는 것은 keep 변수와 (기본) 열린 비밀 — 회귀자의 기억이다. 턴 번호·채팅·보드·상점·메신저는 그대로 간다
+// (메시지 스냅샷은 앞으로만 쌓인다 — 되감기는 "이야기 안의 시간"이지 채팅 되돌리기가 아니다. 그건 메시지 삭제가 한다).
+//
+// 적용 시점: applySets는 **줄만 세우고**(meta.cpQueue), 단계 끝에서 한 번에 처리한다 — 전송 단계는 액션·선택지 뒤
+// (되감긴 상태로 이번 프롬프트가 나간다), 응답 단계는 이벤트·막 전환·비밀 뒤. 그래서 같은 효과 목록 안의
+// `loop + 1`은 순서와 무관하게 살아남고(keep이면), 막 onEnter의 저장은 그 턴의 막 전환·진입 효과까지 담는다.
+//
+// 칸은 state.checkpoints[slot]에 산다 — 메시지 스냅샷에 같이 실려 리롤·삭제에 같이 되감긴다.
+
+const CP_OPS = ['save', 'load'];
+const DEFAULT_SLOT = 'main';
+const SLOT_RE = /^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
+const QUEUE_MAX = 16; // 한 단계에 쌓일 줄 상한 — 식이 이상해도 무한히 늘지 않게
+
+const DEFAULT_LOAD_NOTIFY = '[되감기] 시간이 체크포인트 시점으로 되돌아갔다. 세상과 사람들은 그때 그대로다 — 그 뒤에 벌어진 일은 '
+  + '일어나지 않은 일이 됐고, 아무도 기억하지 못한다. 기억하는 것은 위 상태에 남은 것뿐이다. 되돌아온 그 시점의 장면에서 다시 시작하라.';
+
+/** 설정 정규화 — 효과를 안 써도 호출돼도 된다 (keep 빈 배열, 비밀 유지) */
+function checkpointConfig(schema) {
+  const c = schema?.checkpoint && typeof schema.checkpoint === 'object' && !Array.isArray(schema.checkpoint) ? schema.checkpoint : {};
+  return {
+    keep: Array.isArray(c.keep) ? c.keep.filter((x) => typeof x === 'string' && x) : [],
+    keepSecrets: c.keepSecrets !== false,
+    notify: typeof c.notify === 'string' ? c.notify : '',
+  };
+}
+
+const isCheckpointEffect = (rule) => !!rule && typeof rule === 'object' && rule.checkpoint !== undefined;
+const slotOf = (rule) => (typeof rule?.slot === 'string' && rule.slot.trim() ? rule.slot.trim() : DEFAULT_SLOT);
+
+/** applySets가 부른다 — 적용하지 않고 줄만 세운다 */
+function queueOp(state, rule, source) {
+  if (!CP_OPS.includes(rule.checkpoint)) return;
+  const m = state.meta;
+  if (!Array.isArray(m.cpQueue)) m.cpQueue = [];
+  if (m.cpQueue.length >= QUEUE_MAX) return;
+  m.cpQueue.push({ op: rule.checkpoint, slot: slotOf(rule), source: source || '' });
+}
+
+const copy = (x) => JSON.parse(JSON.stringify(x ?? null));
+
+function snapshot(state) {
+  return {
+    vars: copy(state.vars),
+    firedOnce: copy(state.meta.firedOnce || {}),
+    eventLastFired: copy(state.meta.eventLastFired || {}),
+    turn: state.meta.turn,
+  };
+}
+
+/**
+ * 되감기 — 칸의 변수로 갈아끼우되 keep 변수와 (keepSecrets면) 열린 비밀은 지금 값을 들고 간다.
+ * @param isSecretKey 예약 키 판별 (secret 모듈을 여기서 require하지 않는다 — 순서 의존 없이 엔진이 물려 준다)
+ */
+function restore(schema, state, snap, isSecretKey = () => false) {
+  const cfg = checkpointConfig(schema);
+  const cur = state.vars;
+  const next = copy(snap.vars) || {};
+  for (const id of cfg.keep) if (id in cur) next[id] = copy(cur[id]);
+  if (cfg.keepSecrets) {
+    for (const k of Object.keys(cur)) {
+      if (!isSecretKey(k)) continue;
+      const a = Number(cur[k]), b = Number(next[k]);
+      next[k] = Number.isFinite(b) ? Math.max(a, b) : cur[k]; // 밝혀진 진실은 되감아도 안 닫힌다
+    }
+  }
+  state.vars = next;
+  state.meta.firedOnce = copy(snap.firedOnce) || {};
+  state.meta.eventLastFired = copy(snap.eventLastFired) || {};
+  // 되감기 전 세계가 내민 갈림길은 되감긴 세계에 없다
+  state.meta.pendingChoice = null;
+  state.meta.pendingChoicePick = null;
+}
+
+/**
+ * 세워 둔 줄을 순서대로 처리한다. 엔진이 단계 끝에서 부른다.
+ * @returns {{ saved: string[], loaded: {slot, turn}|null, missing: string[] }}
+ */
+function flush(schema, state, isSecretKey) {
+  const q = Array.isArray(state.meta.cpQueue) ? state.meta.cpQueue : [];
+  state.meta.cpQueue = [];
+  const out = { saved: [], loaded: null, missing: [] };
+  if (!q.length) return out;
+  if (!state.checkpoints || typeof state.checkpoints !== 'object') state.checkpoints = {};
+  for (const it of q) {
+    if (it.op === 'save') {
+      state.checkpoints[it.slot] = snapshot(state);
+      out.saved.push(it.slot);
+    } else if (it.op === 'load') {
+      const snap = state.checkpoints[it.slot];
+      if (!snap || !snap.vars) { out.missing.push(it.slot); continue; }
+      restore(schema, state, snap, isSecretKey);
+      out.loaded = { slot: it.slot, turn: snap.turn };
+    }
+  }
+  return out;
+}
+
+/** 스키마 안의 모든 효과 목록 — 검증(저장 없는 되감기)과 편집기 요약이 같이 쓴다 */
+function allEffectLists(schema) {
+  const out = [];
+  const push = (arr, path) => { if (Array.isArray(arr)) out.push({ path, effects: arr }); };
+  const r = schema?.rules || {};
+  push(r.onTurn, '$.rules.onTurn');
+  (r.events || []).forEach((e, i) => {
+    push(e?.effects, `$.rules.events[${i}].effects`);
+    (e?.choices || []).forEach((c, j) => push(c?.effects, `$.rules.events[${i}].choices[${j}].effects`));
+  });
+  (r.randomEvents?.table || []).forEach((e, i) => {
+    push(e?.effects, `$.rules.randomEvents.table[${i}].effects`);
+    (e?.choices || []).forEach((c, j) => push(c?.effects, `$.rules.randomEvents.table[${i}].choices[${j}].effects`));
+  });
+  (schema?.actions || []).forEach((a, i) => push(a?.effects, `$.actions[${i}].effects`));
+  (schema?.checks || []).forEach((c, i) => (c?.grades || []).forEach((g, j) => push(g?.effects, `$.checks[${i}].grades[${j}].effects`)));
+  (schema?.scenario?.acts || []).forEach((a, i) => push(a?.onEnter, `$.scenario.acts[${i}].onEnter`));
+  (schema?.liveChoices?.tags || []).forEach((t, i) => push(t?.effects, `$.liveChoices.tags[${i}].effects`));
+  return out;
+}
+
+/** 스키마가 쓰는 칸 — { save: Set, load: Set } */
+function slotsUsed(schema) {
+  const save = new Set(), load = new Set();
+  for (const { effects } of allEffectLists(schema)) {
+    for (const f of effects) {
+      if (!isCheckpointEffect(f)) continue;
+      (f.checkpoint === 'save' ? save : f.checkpoint === 'load' ? load : new Set()).add(slotOf(f));
+    }
+  }
+  return { save, load };
+}
+
+module.exports = {
+  CP_OPS, DEFAULT_SLOT, SLOT_RE, DEFAULT_LOAD_NOTIFY,
+  checkpointConfig, isCheckpointEffect, slotOf, queueOp, snapshot, restore, flush, allEffectLists, slotsUsed,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -8635,7 +8845,7 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time']);
+const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time', 'checkpoint']); // checkpoint(v1.11.0): 시나리오 탭 되감기 카드·JSON
 
 function getList(schema, key) {
   switch (key) {
@@ -9119,6 +9329,7 @@ const DIFF_AREAS = [
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
   ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
+  ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
 ];
 const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
 function diffSchemas(a, b) {
@@ -9197,6 +9408,7 @@ const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
+const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -9639,6 +9851,8 @@ function applyListOps(varDef, current, ops) {
 function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   for (const rule of rules || []) {
+    // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
+    if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];
@@ -9871,6 +10085,25 @@ function offstageFired(schema, state) {
   return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
 }
 
+/**
+ * 체크포인트 처리 (v1.11.0) — applySets가 세운 줄(meta.cpQueue)을 순서대로. 되감겼으면 안내 한 줄을 돌려준다.
+ * 원장에는 칸 이름만 — 수십 개 변수가 한꺼번에 바뀐 것을 줄마다 적지 않는다 (하이라이트 카드·보조 원장이 한 줄로 본다).
+ */
+function flushCheckpoints(schema, state, changeLog) {
+  if (!state.meta.cpQueue?.length) return [];
+  const secIds = new Set((secretMod.secretsConfig(schema) || []).map((s) => secretMod.secKey(s.id)));
+  const r = cpMod.flush(schema, state, (k) => secIds.has(k));
+  for (const slot of r.saved) changeLog.push({ id: '체크포인트', from: null, to: `저장 (${slot})`, source: `checkpoint:${slot}` });
+  for (const slot of r.missing) changeLog.push({ id: '체크포인트', from: null, to: `되감기 실패 — 저장된 칸 없음 (${slot})`, source: `checkpoint:${slot}` });
+  if (!r.loaded) return [];
+  reconcileState(schema, state); // 저장 뒤에 스키마에 생긴 변수는 init으로 (옛 칸이 새 스키마를 만났을 때)
+  const back = state.meta.turn - (Number(r.loaded.turn) || 0);
+  changeLog.push({ id: '체크포인트', from: null, to: `되감기 (${r.loaded.slot}) — ${back}턴 전으로`, source: `checkpoint:${r.loaded.slot}` });
+  const cfg = cpMod.checkpointConfig(schema);
+  const text = cfg.notify.trim() ? cfg.notify : cpMod.DEFAULT_LOAD_NOTIFY;
+  return [renderTemplate(text, makeLookup(schema, state.vars))];
+}
+
 // userText (v1.6.0): 이번 전송의 유저 입력 원문 — 전투 안무의 맡김/내 수 판단에만 쓴다 (굴림엔 무관)
 function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const state = reconcileState(schema, clone(prevState));
@@ -9987,6 +10220,10 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       state.meta.actionLastUsed[action.id] = state.meta.turn;
     }
   }
+
+  // 1.3 체크포인트 (v1.11.0) — 선택지·액션이 세운 저장·되감기를 지금 처리한다. 되감겼으면 이번 프롬프트가 되감긴 상태로
+  // 나가고, 안내는 이번 턴 서사에 (고른 그 턴에 "눈을 뜨면 그 아침"을 쓴다). 시간 소비(1.5)보다 먼저 — 되감긴 날짜 위에 진행을 얹는다.
+  for (const line of flushCheckpoints(schema, state, changeLog)) injects.push(line);
 
   // 1.4 시간 고정표 — 액션 항목 (v1.9.11). 눌린 액션에 고정 시간이 있으면 효과가 적은 skip_min을 덮거나(set) 더한다(add).
   // set이면 응답 단계의 보조 추정도 버려야 하므로 깃발(meta.timePin)을 세워 둔다 — 보조 프롬프트도 이 깃발을 본다.
@@ -10668,6 +10905,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
   if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
+
+  // 8.95 체크포인트 (v1.11.0) — 이벤트·막 전환·비밀까지 다 끝난 뒤. 막 onEnter의 저장이 그 턴의 전환·진입 효과·열린 비밀까지 담고,
+  // 게임오버 이벤트의 되감기가 이번 턴에 벌어진 모든 것을 되돌린다. 안내는 다음 전송에 (통지).
+  for (const line of flushCheckpoints(schema, state, changeLog)) state.meta.pendingNotifies.push(line);
 
   // 9. 턴 카운터
   state.meta.turn += 1;
@@ -11417,6 +11658,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
+  checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
@@ -17903,6 +18145,8 @@ const SCHEMA_SCENARIO_RULES = [
   '- `onEnter` = 전환 순간 1회 효과(이벤트 효과와 같은 형식), `notify` = 전환 통지 한 줄.',
   '- **주인공(유저)의 행동·선택·결말을 정해 두지 마세요.** 시나리오는 무대를 옮기는 것이지 배우를 조종하는 것이 아닙니다.',
   '- 조건식에서 `scn_act`(현재 막 id)·`scn_turns`(현재 막 경과 턴)를 쓸 수 있습니다 — 지시문·이벤트를 막에 연동할 때.',
+  '- **되감기(회귀물)**: 효과 `{ "checkpoint": "save" }`를 막 onEnter에, `{ "checkpoint": "load" }`를 게임오버 이벤트·선택지에 두면 '
+  + '날짜·막·변수가 저장 시점으로 돌아갑니다. 되감아도 남길 변수는 최상위 `checkpoint.keep` (예: 회귀 횟수). 유저가 원할 때만 쓰세요.',
 ];
 
 // 비밀(secrets, v1.10.0) — "모르는 건 말할 수 없다". 규격의 요점은 단계 나누기와 복선 어법이다 —
@@ -20177,6 +20421,18 @@ function colorBuilder(it, varId, rerender) {
 }
 
 // 효과 행 목록 — 수식 효과 {set, expr} + 아이템 효과 {list, add, remove}
+// 체크포인트 효과 줄 (v1.11.0) — 효과 편집기 둘(effectRows·규칙 탭 ruleEffectRows)이 같이 쓴다. 규칙 #3: 엔진 기능엔 편집기 칸
+const CP_OP_OPTS = [['save', '⏪ 체크포인트 저장'], ['load', '⏪ 체크포인트 되감기']];
+function checkpointEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-checkpoint`, title: '저장 = 지금 상태를 칸에 적는다 · 되감기 = 그 칸의 시점으로 날짜·막·변수를 돌린다 (되감아도 남는 변수는 [시나리오] 탭 되감기 카드)' },
+    bindSelect(ef.checkpoint, CP_OP_OPTS, (v) => { ef.checkpoint = v; rerender(); }),
+    pair('칸', bindInput(ef.slot ?? '', (x) => { const t = x.trim(); if (t && t !== 'main') ef.slot = t; else delete ef.slot; rerender(); },
+      { cls: 'sce-w-s', ph: 'main' }), '칸 이름 (영문) — 비우면 main. 챕터마다 칸을 나눌 때만 씁니다'),
+    gripEl);
+}
+// 체크포인트 추가 버튼은 되감기를 켠 봇에만 (시나리오 탭 카드) — 이미 있는 줄은 언제나 그린다
+const checkpointOn = (schema) => !!schema.checkpoint && typeof schema.checkpoint === 'object';
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -20184,6 +20440,7 @@ function effectRows(schema, effects, rerender) {
   const varOpts = nonListVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   effects.forEach((ef, i) => {
+    if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -20214,6 +20471,12 @@ function effectRows(schema, effects, rerender) {
       effects.push({ list: listVars[0].id, add: [], remove: [] });
       rerender();
     } }, '+ 아이템 효과'));
+  }
+  if (checkpointOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ checkpoint: 'save' });
+      rerender();
+    } }, '+ ⏪ 체크포인트'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -21677,6 +21940,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
     [/^\$\.secrets\b/, '비밀', true],
+    [/^\$\.checkpoint\b/, '시나리오', true], // 되감기 카드 (v1.11.0)
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -22242,6 +22506,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
 
       effects.forEach((ef, i) => {
+        if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -22287,6 +22552,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           },
         }, '+ 아이템 효과'));
+      }
+      if (checkpointOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ checkpoint: 'load' }); rerender(); },
+        }, '+ ⏪ 체크포인트'));
       }
       box.appendChild(btnRow);
       return box;
@@ -23726,6 +23997,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 시나리오 (v0.91, 설계 docs/design-시나리오레이터.md) ──────
   // 배포자가 이야기의 척추를 표로 적는 자리. 은닉이 요점이라 UI도 그 축이다 —
   // secret 칸에 "모델은 이 막부터 본다"를 계속 상기시킨다.
+  // 되감기 카드 (v1.11.0 체크포인트) — 회귀물·타임루프. 효과 줄(저장·되감기)은 막 진입 효과·이벤트·선택지에 두고,
+  // 여기선 "되감아도 남는 것"과 안내 한 줄만 정한다. 설계 docs/design-조퇴악녀.md §12
+  function checkpointCard(field) {
+    const sec = h('section', { class: 'sce-scenario-act-section sce-scenario-checkpoint', 'data-sce-validation-path': '$.checkpoint' },
+      h('div', { class: 'sce-scenario-group-title' }, '⏪ 되감기 (체크포인트)'),
+      h('div', { class: 'sce-scenario-note' },
+        '회귀물·타임루프용이에요. 막의 진입 효과에 "체크포인트 저장", 게임오버 이벤트·선택지에 "체크포인트 되감기"를 넣으면 '
+        + '날짜·현재 막·변수가 저장 시점으로 돌아가요. 이벤트의 1회 기록도 되감겨 그 사건이 다시 일어나요. 턴 번호와 채팅은 그대로예요.'));
+    const C = schema.checkpoint;
+    if (!C || typeof C !== 'object') {
+      sec.appendChild(addBtn('되감기 켜기', () => { schema.checkpoint = { keep: [] }; rerender(); }));
+      return sec;
+    }
+    const used = engine.checkpointSlots(schema);
+    const keep = new Set(Array.isArray(C.keep) ? C.keep : []);
+    const setKeep = (id, on) => { if (on) keep.add(id); else keep.delete(id); C.keep = schema.vars.map((v) => v.id).filter((x) => keep.has(x)); rerender(); };
+    sec.appendChild(h('div', { class: 'sce-scenario-field is-wide' }, h('span', {}, '되감아도 남는 변수'),
+      h('div', { class: 'sce-row', style: 'flex-wrap:wrap' }, ...schema.vars.map((v) => bindCheck(keep.has(v.id), (on) => setKeep(v.id, on), ` ${v.label ?? v.id}`))),
+      h('small', {}, '회귀자의 기억 — 회귀 횟수·기억 목록 같은 것. 체크하지 않은 변수는 전부 저장 시점 값으로 돌아가요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, bindCheck(C.keepSecrets !== false, (on) => {
+      if (on) delete C.keepSecrets; else C.keepSecrets = false; rerender();
+    }, ' 열린 비밀은 되감아도 안 닫힘 (끄면 비밀도 저장 시점 단계로)')));
+    sec.appendChild(field('되감긴 턴 안내', bindArea(C.notify, (x) => { if (x && x.trim()) C.notify = x; else delete C.notify; rerender(); },
+      '비우면 기본 안내("시간이 체크포인트 시점으로 되돌아갔다…"). {변수} 가능 — 예: [회귀 {loop}회차] 눈을 뜨면 다시 그 아침이다.'),
+      '되감긴 턴에 모델에게 한 번 가는 줄이에요. 선택지로 되감으면 그 턴, 이벤트로 되감으면 다음 턴에 실려요.', true));
+    const fmt = (set) => (set.size ? [...set].join(', ') : '없음');
+    sec.appendChild(h('div', { class: 'sce-scenario-note is-diagnostic' },
+      `쓰는 칸 — 저장: ${fmt(used.save)} · 되감기: ${fmt(used.load)}`
+      + (used.save.size || used.load.size ? '' : ' — 아직 효과가 없어요. 효과 목록의 [+ ⏪ 체크포인트] 버튼으로 넣으세요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.checkpoint; rerender(); } },
+      '되감기 설정 지우기 (효과 줄은 남음)')));
+    return sec;
+  }
+
   function tabScenario() {
     const wrap = h('div', { class: 'sce-scenario-editor' });
     const field = (label, control, help = '', wide = false) => h('label',
@@ -23846,6 +24151,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       S.acts.push({ id: `act${S.acts.length + 1}`, label: '', unlock: '', direct: '', secret: '' });
       rerender();
     })));
+    wrap.appendChild(checkpointCard(field));
     wrap.appendChild(h('section', { class: 'sce-scenario-danger' },
       h('div', {}, h('strong', {}, '시나리오 설정 삭제'),
         h('span', {}, '진행 중인 세이브의 막 위치는 남으며, 다시 켜면 1막부터 시작합니다.')),
@@ -26281,6 +26587,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const wrap = h('div');
     const fmtE = (e) => {
       if (e == null || typeof e !== 'object') return String(e);
+      if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -28517,6 +28824,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.checks')) return '판정';
       if (p.startsWith('$.scenario')) return '시나리오';
       if (p.startsWith('$.secrets')) return '비밀';
+      if (p.startsWith('$.checkpoint')) return '시나리오'; // 되감기 카드 (v1.11.0)
       return '작업본';
     };
     const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`

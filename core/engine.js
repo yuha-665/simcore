@@ -26,6 +26,7 @@ const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
+const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -468,6 +469,8 @@ function applyListOps(varDef, current, ops) {
 function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   for (const rule of rules || []) {
+    // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
+    if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];
@@ -700,6 +703,25 @@ function offstageFired(schema, state) {
   return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
 }
 
+/**
+ * 체크포인트 처리 (v1.11.0) — applySets가 세운 줄(meta.cpQueue)을 순서대로. 되감겼으면 안내 한 줄을 돌려준다.
+ * 원장에는 칸 이름만 — 수십 개 변수가 한꺼번에 바뀐 것을 줄마다 적지 않는다 (하이라이트 카드·보조 원장이 한 줄로 본다).
+ */
+function flushCheckpoints(schema, state, changeLog) {
+  if (!state.meta.cpQueue?.length) return [];
+  const secIds = new Set((secretMod.secretsConfig(schema) || []).map((s) => secretMod.secKey(s.id)));
+  const r = cpMod.flush(schema, state, (k) => secIds.has(k));
+  for (const slot of r.saved) changeLog.push({ id: '체크포인트', from: null, to: `저장 (${slot})`, source: `checkpoint:${slot}` });
+  for (const slot of r.missing) changeLog.push({ id: '체크포인트', from: null, to: `되감기 실패 — 저장된 칸 없음 (${slot})`, source: `checkpoint:${slot}` });
+  if (!r.loaded) return [];
+  reconcileState(schema, state); // 저장 뒤에 스키마에 생긴 변수는 init으로 (옛 칸이 새 스키마를 만났을 때)
+  const back = state.meta.turn - (Number(r.loaded.turn) || 0);
+  changeLog.push({ id: '체크포인트', from: null, to: `되감기 (${r.loaded.slot}) — ${back}턴 전으로`, source: `checkpoint:${r.loaded.slot}` });
+  const cfg = cpMod.checkpointConfig(schema);
+  const text = cfg.notify.trim() ? cfg.notify : cpMod.DEFAULT_LOAD_NOTIFY;
+  return [renderTemplate(text, makeLookup(schema, state.vars))];
+}
+
 // userText (v1.6.0): 이번 전송의 유저 입력 원문 — 전투 안무의 맡김/내 수 판단에만 쓴다 (굴림엔 무관)
 function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const state = reconcileState(schema, clone(prevState));
@@ -816,6 +838,10 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       state.meta.actionLastUsed[action.id] = state.meta.turn;
     }
   }
+
+  // 1.3 체크포인트 (v1.11.0) — 선택지·액션이 세운 저장·되감기를 지금 처리한다. 되감겼으면 이번 프롬프트가 되감긴 상태로
+  // 나가고, 안내는 이번 턴 서사에 (고른 그 턴에 "눈을 뜨면 그 아침"을 쓴다). 시간 소비(1.5)보다 먼저 — 되감긴 날짜 위에 진행을 얹는다.
+  for (const line of flushCheckpoints(schema, state, changeLog)) injects.push(line);
 
   // 1.4 시간 고정표 — 액션 항목 (v1.9.11). 눌린 액션에 고정 시간이 있으면 효과가 적은 skip_min을 덮거나(set) 더한다(add).
   // set이면 응답 단계의 보조 추정도 버려야 하므로 깃발(meta.timePin)을 세워 둔다 — 보조 프롬프트도 이 깃발을 본다.
@@ -1497,6 +1523,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
   if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
+
+  // 8.95 체크포인트 (v1.11.0) — 이벤트·막 전환·비밀까지 다 끝난 뒤. 막 onEnter의 저장이 그 턴의 전환·진입 효과·열린 비밀까지 담고,
+  // 게임오버 이벤트의 되감기가 이번 턴에 벌어진 모든 것을 되돌린다. 안내는 다음 전송에 (통지).
+  for (const line of flushCheckpoints(schema, state, changeLog)) state.meta.pendingNotifies.push(line);
 
   // 9. 턴 카운터
   state.meta.turn += 1;
@@ -2246,6 +2276,7 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
+  checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,

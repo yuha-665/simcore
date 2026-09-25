@@ -1,4 +1,4 @@
-// 상태창 미리보기 — 생성된 조퇴악녀-스키마.json을 실제 SimCore 렌더러로 그린다 (시점 둘, 탭은 눌러 볼 수 있다).
+// 상태창 미리보기 — 생성된 조퇴악녀-스키마.json을 실제 SimCore 렌더러로 그린다 (시점 셋 + 5장 심판, 탭은 눌러 볼 수 있다).
 // 시안 셋(장미서신·밤의무도회·로제타.css) 비교를 거쳐 밤의 무도회로 확정 [유저 2026-09-25]. 다른 두 CSS는 참고로 남겨 둔다.
 // 실행: node 조퇴악녀/villainess-vars.js && node 조퇴악녀/상태창/build-preview.js <출력.html>
 const fs = require('fs');
@@ -72,6 +72,23 @@ const SCENES = [
       return { st, changeLog: [{ id: 'rosetta', from: 35, to: 41, source: 'llm' }] };
     },
   },
+  {
+    id: 'verdict', open: 0, title: '5장 · 심판',
+    caption: '시종 시점 · 회귀 3회차 — 잠긴 선택지(🔒)가 무엇이 로제타를 살릴 수 있었는지 보여 준다',
+    build() {
+      const st = start('servant');
+      Object.assign(st.vars, {
+        hired: true, role: '로제타 전속 시종', scn_idx: 5, scn_turns: 4, cleared: 4, loop: 3,
+        doom: 58, rep: -52, health: 41, elicia: 63, ert: 34, rical: 47, duke: 22, anna: 91, rosetta: 74,
+        location: '황궁 심판정', quests: ['[5장] 심판에서 살아남는다', '[서브] 심판정에서 편에 서 줄 사람을 찾는다'],
+        memories: ['4장 저녁 모임의 쪽지는 로제타의 필체가 아니다', '리칼은 약을 보낸 일을 숨긴다'],
+        skills: ['원작 지식', '재봉', '독 감별'], items: ['로제타 필체가 아닌 쪽지'],
+        st_sword: 34, st_talk: 41, st_house: 38,
+      });
+      st.meta.pendingChoice = { id: 'verdict_servant', turn: st.meta.turn };
+      return { st, changeLog: [{ id: 'elicia', from: 57, to: 63, source: 'llm' }] };
+    },
+  },
 ];
 
 const samples = SCENES.map((sc) => {
@@ -132,7 +149,7 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   <div class="top">
     <div>
       <h1>악녀의 상태창</h1>
-      <p class="lede">밤의 무도회 + 두 장(현황 | 나), 시점 셋. SimCore 렌더러가 실제 스키마로 그린 화면이고, 탭은 눌러서 넘길 수 있습니다.</p>
+      <p class="lede">밤의 무도회 + 두 장(현황 | 나), 시점 셋과 5장 심판. SimCore 렌더러가 실제 스키마로 그린 화면이고, 탭은 눌러서 넘길 수 있습니다.</p>
     </div>
     <div class="toggle" role="group" aria-label="채팅 배경">
       <button type="button" id="bg-dark" aria-pressed="true">어두운 채팅</button>
@@ -144,6 +161,7 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   <div class="notes">
     <p><b>현황</b> — 면접(시종 시점, 합격 전) · 로제타(파멸도·평판·몸) · 관계(호감 + 그 밖의 관계) · 진행(장소·퀘스트).</p>
     <p><b>나</b> — 신상(신분·회귀) · 가진 것(능력·소지품) · 회귀의 기억. 능력과 기억은 회귀해도 남고, 소지품과 신분은 세상과 함께 되감깁니다.</p>
+    <p><b>1부</b> — 서장 → 1장 데뷔탕트 → 2장 다과회 → 3장 계단과 과자 → 4장 파국의 밤 → 5장 심판 → 원작 이후. 장마다 절정 갈림길(안 고르면 원작대로), 심판은 관계가 여는 잠긴 선택지와 "받아들인다 = 처형 → 회귀".</p>
     <p><b>능력치</b> — 검술·마법·화술·매력·가사. 판정 달린 선택지 옆에 🎲 성공률이 뜨고, 성공하면 +1. 수련 버튼으로 작중 두 시간에 +1~3. 회귀해도 남습니다.</p>
     <p>능력·소지품은 보조 모델이 서사에 실제로 나온 것만 적고, 메인 모델도 매 턴 "유저: 신분 · 능력 · 소지품" 한 줄로 받습니다. 빙의자 로제타 시점에선 로제타 호감 줄이 보이고, 빙의자 설정은 상태창이 아니라 프롬프트로만 갑니다.</p>
   </div>

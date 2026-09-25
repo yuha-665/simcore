@@ -186,7 +186,7 @@
       "label": "무대에 도착",
       "type": "bool",
       "init": false,
-      "desc": "지금 장의 무대에 유저가 도착하면 true — 1장: 엘리시아의 데뷔탕트 무도회장(황궁 대연회장). 무대의 사건은 시스템이 연다."
+      "desc": "유저가 엘리시아와 로제타가 함께 있는 공식 자리(무도회·다과회·연회·저녁 모임)나 심판정에 도착하면 true. 무대의 사건은 시스템이 연다."
     },
     {
       "id": "dead",
@@ -202,7 +202,7 @@
       "init": [
         "[서장] 지금이 원작의 어디쯤인지 알아낸다"
       ],
-      "maxItems": 8,
+      "maxItems": 10,
       "itemMaxLength": 48,
       "desc": "진행 중인 퀘스트. \"[서브]\" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. \"[서장]\"·\"[1장]\" 같은 메인 항목은 시스템이 지우니 건드리지 마라. 서사 속 인물이 유저에게 직접 부탁한 일이 생기면 \"[서브] …\"로 추가(서브는 최대 5개)."
     },
@@ -311,6 +311,20 @@
       "max": 6
     },
     {
+      "id": "clear_at",
+      "label": "결판 턴",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 9999
+    },
+    {
+      "id": "ending",
+      "label": "결말",
+      "type": "text",
+      "init": ""
+    },
+    {
       "id": "loop",
       "label": "회귀",
       "type": "int",
@@ -371,6 +385,11 @@
       "id": "ymd",
       "label": "날짜 숫자",
       "expr": "year * 10000 + month * 100 + dom"
+    },
+    {
+      "id": "chapter",
+      "label": "장",
+      "expr": "scn_act == \"debut\" ? 1 : scn_act == \"tea\" ? 2 : scn_act == \"stairs\" ? 3 : scn_act == \"night\" ? 4 : scn_act == \"verdict\" ? 5 : scn_act == \"after\" ? 6 : 0"
     }
   ],
   "updater": {
@@ -1523,6 +1542,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1553,6 +1576,10 @@
               {
                 "set": "on_stage",
                 "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
               },
               {
                 "list": "quests",
@@ -1592,6 +1619,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1626,6 +1657,10 @@
               {
                 "set": "on_stage",
                 "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
               },
               {
                 "list": "quests",
@@ -1670,6 +1705,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1701,6 +1740,10 @@
               {
                 "set": "on_stage",
                 "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
               },
               {
                 "list": "quests",
@@ -1735,6 +1778,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1765,6 +1812,10 @@
               {
                 "set": "on_stage",
                 "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
               },
               {
                 "list": "quests",
@@ -1809,6 +1860,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1840,6 +1895,10 @@
               {
                 "set": "on_stage",
                 "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
               },
               {
                 "list": "quests",
@@ -1874,6 +1933,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1906,6 +1969,10 @@
                 "expr": "false"
               },
               {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
                 "list": "quests",
                 "remove": [
                   "[1장] 데뷔탕트를 무사히 넘긴다"
@@ -1915,6 +1982,2243 @@
             "inject": "원작 그대로 — 빙의자가 버티려 애쓰지만, 로제타의 입에서 원작의 대사가 흘러나온다."
           }
         ]
+      },
+      {
+        "id": "tea_rosetta",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"rosetta\" and scn_act == \"tea\" and cleared < 2 and (on_stage or scn_turns >= 14)",
+        "notify": "[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.",
+        "choices": [
+          {
+            "label": "쟁반을 든 하녀를 불러 세워 다른 심부름을 시킨다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : -3)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 8 : 3)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "로제타가 차를 엎으려는 하녀를 먼저 불러 세운다. 하녀가 말을 따를지, 쟁반이 결국 기울지는 판정이 정한다."
+          },
+          {
+            "label": "엘리시아를 핑계 대고 다과회에서 빼낸다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 5"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 5"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "로제타가 무례를 무릅쓰고 엘리시아를 자리에서 데리고 나간다. 뒤에서 \"또 악녀가 판을 깼다\"는 수군거림이 따라붙는다."
+          },
+          {
+            "label": "차를 뒤집어쓴 엘리시아에게 제 숄을 둘러 준다",
+            "check": "c_charm",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -8 : -2)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 12 : 5)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 5 : -3)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -10 : -3"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "차는 이미 쏟아졌다. 로제타가 모두의 시선 속에서 엘리시아에게 숄을 둘러 준다. 호의로 보일지 조롱으로 보일지는 판정이 정한다."
+          },
+          {
+            "label": "원작대로 하녀에게 눈짓한다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다."
+          }
+        ]
+      },
+      {
+        "id": "tea_servant",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"servant\" and scn_act == \"tea\" and cleared < 2 and (on_stage or scn_turns >= 14)",
+        "notify": "[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.",
+        "choices": [
+          {
+            "label": "하녀의 쟁반을 내가 먼저 받아 든다",
+            "check": "c_house",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : -4)"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + (chk_ok ? 5 : 0)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 0 : -2)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 하녀의 쟁반을 가로채 받아 든다. 찻잔 하나 흘리지 않을지, 쟁반이 기울어 제 옷을 적실지는 판정이 정한다."
+          },
+          {
+            "label": "급한 전갈이 왔다며 아가씨를 모셔 나온다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -6 : -2)"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + (chk_ok ? 3 : -5)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -10 : -3"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 거짓 전갈로 로제타를 다과회에서 빼낸다. 로제타가 속아 줄지, 시종을 매섭게 노려볼지는 판정이 정한다."
+          },
+          {
+            "label": "차를 쏟는 척 내 옷에 붓는다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 6"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 6"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 2"
+              },
+              {
+                "front": "canon",
+                "add": "-8"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 스스로 찻잔을 엎어 제 옷을 적신다. 웃음거리는 시종이 되고 엘리시아의 드레스는 무사하다. 로제타가 시종을 오래 본다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 시종이 지켜보는 앞에서 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 모두의 눈이 로제타를 향한다."
+          }
+        ]
+      },
+      {
+        "id": "tea_special",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"special\" and scn_act == \"tea\" and cleared < 2 and (on_stage or scn_turns >= 14)",
+        "notify": "[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타의 시선을 하녀 쪽으로 떠민다.",
+        "choices": [
+          {
+            "label": "쟁반을 든 하녀에게 말을 걸어 발을 붙잡는다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : -3)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 5 : 0)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "유저가 하녀를 붙잡고 말을 건다. 하녀의 발이 멈출지, 쟁반이 결국 엘리시아 쪽으로 갈지는 판정이 정한다."
+          },
+          {
+            "label": "로제타 곁에 앉아 떨리는 손을 붙잡는다",
+            "check": "c_charm",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -8 : -2)"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + (chk_ok ? 10 : -3)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -10 : -3"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "빙의자 로제타의 손끝이 원작의 눈짓을 하려는 듯 떨린다. 유저가 그 손을 붙잡는다. 로제타가 버텨 낼지는 판정이 정한다."
+          },
+          {
+            "label": "제 잔을 엎어 판을 깬다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 6"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 2"
+              },
+              {
+                "front": "canon",
+                "add": "-8"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "유저가 일부러 제 찻잔을 엎는다. 소란의 중심이 유저로 옮겨 가고, 로제타가 유저를 다시 본다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 2)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[2장] 다과회를 무사히 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 빙의자가 버티려 애쓰지만 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다."
+          }
+        ]
+      },
+      {
+        "id": "stairs_rosetta",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"rosetta\" and scn_act == \"stairs\" and cleared < 3 and (on_stage or scn_turns >= 14)",
+        "notify": "[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.",
+        "choices": [
+          {
+            "label": "계단 아래로 달려가 엘리시아를 받아 낸다",
+            "check": "c_sword",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -12 : -4)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 12 : 5)"
+              },
+              {
+                "set": "health",
+                "expr": "health + (chk_ok ? -3 : -12)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -20 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "로제타가 드레스 자락을 걷어쥐고 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다."
+          },
+          {
+            "label": "매수된 하인을 먼저 찾아 두 배를 쥐여 준다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : 3)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 0 : -5)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : 5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "로제타가 하인을 구석으로 불러 더 큰 돈을 내민다. 하인이 손을 뗄지, \"악녀가 입막음을 하려 했다\"는 말이 돌지는 판정이 정한다."
+          },
+          {
+            "label": "엘리시아를 계단에서 먼 곳으로 불러낸다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 5"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 3"
+              },
+              {
+                "front": "canon",
+                "add": "-5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "로제타가 핑계를 만들어 엘리시아를 계단에서 떼어 놓는다. 사고는 일어나지 않았지만, 하인은 아직 그 자리에 있다."
+          },
+          {
+            "label": "원작대로 하인에게 약속한 돈을 건넨다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다."
+          }
+        ]
+      },
+      {
+        "id": "stairs_servant",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"servant\" and scn_act == \"stairs\" and cleared < 3 and (on_stage or scn_turns >= 14)",
+        "notify": "[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.",
+        "choices": [
+          {
+            "label": "계단 아래로 달려가 엘리시아를 받아 낸다",
+            "check": "c_sword",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -12 : -4)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 10 : 4)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 3 : -2)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -20 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "시종이 몸을 날려 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다."
+          },
+          {
+            "label": "매수된 하인의 소매를 붙잡고 따진다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : 2)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : 3"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "시종이 하인을 붙잡는다. 누구에게 돈을 받았는지 털어놓을지, 오히려 \"카르디온 시종이 협박했다\"며 소리칠지는 판정이 정한다."
+          },
+          {
+            "label": "아가씨를 사람 많은 곳으로 모셔 알리바이를 만든다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 6"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 3"
+              },
+              {
+                "front": "canon",
+                "add": "-5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "시종이 로제타를 사람들 한가운데로 모신다. 무슨 일이 일어나도 로제타는 계단 근처에 없었다 — 그걸 본 눈이 많다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 매수된 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다."
+          }
+        ]
+      },
+      {
+        "id": "stairs_special",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"special\" and scn_act == \"stairs\" and cleared < 3 and (on_stage or scn_turns >= 14)",
+        "notify": "[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 엘리시아가 떨어지고, 사람들은 로제타를 본다.",
+        "choices": [
+          {
+            "label": "계단 아래로 달려가 엘리시아를 받아 낸다",
+            "check": "c_sword",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -12 : -4)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 10 : 4)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 3 : -2)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -20 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "유저가 몸을 날려 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다."
+          },
+          {
+            "label": "매수된 하인의 소매를 붙잡고 따진다",
+            "check": "c_talk",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -10 : 2)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : 3"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "유저가 하인을 붙잡는다. 누구에게 돈을 받았는지 털어놓을지, 오히려 소란만 키울지는 판정이 정한다."
+          },
+          {
+            "label": "로제타를 사람 많은 곳으로 이끌어 알리바이를 만든다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 6"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 3"
+              },
+              {
+                "front": "canon",
+                "add": "-5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "유저가 로제타를 사람들 한가운데로 이끈다. 무슨 일이 일어나도 로제타는 계단 근처에 없었다 — 그걸 본 눈이 많다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 10"
+              },
+              {
+                "front": "canon",
+                "add": "15"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 3)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[3장] 계단의 사고를 막는다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 빙의자 로제타가 막으려 했지만 한발 늦었다. 매수된 하인이 엘리시아의 등을 밀고, 사람들의 눈은 로제타를 향한다."
+          }
+        ]
+      },
+      {
+        "id": "night_rosetta",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"rosetta\" and scn_act == \"night\" and cleared < 4 and (on_stage or scn_turns >= 14)",
+        "notify": "[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.",
+        "choices": [
+          {
+            "label": "칼을 든 손목을 쳐낸다",
+            "check": "c_sword_h",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -15 : 5)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 15 : 5)"
+              },
+              {
+                "set": "ert",
+                "expr": "ert + (chk_ok ? 10 : 0)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 5 : -10)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -25 : 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "로제타가 어둠 속 칼날로 몸을 던진다. 칼을 쳐낼지, 칼자루를 쥔 채 붙잡히는 게 로제타가 될지는 판정이 정한다."
+          },
+          {
+            "label": "목청껏 소리쳐 사람들을 부른다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 8"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 3"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "로제타가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다 — 남은 건 그 자리에 선 로제타와 엘리시아뿐이다."
+          },
+          {
+            "label": "엘리시아의 손을 잡고 연회장으로 달린다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 10"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 8"
+              },
+              {
+                "set": "health",
+                "expr": "health - 5"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "로제타가 엘리시아의 손을 잡아끌고 불빛 쪽으로 달린다. 약한 몸이라 숨이 턱까지 차오른다."
+          },
+          {
+            "label": "원작대로 칼을 든다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 25"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 20"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia - 15"
+              },
+              {
+                "front": "canon",
+                "add": "20"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 로제타의 손에 칼이 들린다. 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다."
+          }
+        ]
+      },
+      {
+        "id": "night_servant",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"servant\" and scn_act == \"night\" and cleared < 4 and (on_stage or scn_turns >= 14)",
+        "notify": "[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.",
+        "choices": [
+          {
+            "label": "칼 앞을 몸으로 막아선다",
+            "check": "c_sword_h",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -15 : -5)"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + (chk_ok ? 10 : 5)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 10 : 5)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -25 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 칼 앞으로 몸을 던진다. 칼을 쳐낼지, 칼끝이 시종의 팔을 긋고 지나갈지는 판정이 정한다 (죽지는 않는다)."
+          },
+          {
+            "label": "아가씨를 연회장 한가운데로 모셔 알리바이를 만든다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 10"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 3"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 로제타를 불빛 한가운데 붙잡아 둔다. 칼이 번뜩인 그 시각, 로제타는 모두의 눈앞에 있었다."
+          },
+          {
+            "label": "목청껏 소리쳐 사람들을 부른다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 8"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "시종이 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 25"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 20"
+              },
+              {
+                "front": "canon",
+                "add": "20"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 칼을 든 로제타가 황태자에게 제압당한다. 시종은 그 장면을 멀리서 본다."
+          }
+        ]
+      },
+      {
+        "id": "night_special",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"special\" and scn_act == \"night\" and cleared < 4 and (on_stage or scn_turns >= 14)",
+        "notify": "[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 로제타가 칼을 든다.",
+        "choices": [
+          {
+            "label": "칼 앞을 몸으로 막아선다",
+            "check": "c_sword_h",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -15 : -5)"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + (chk_ok ? 10 : 5)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 10 : 5)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -25 : -5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "유저가 칼 앞으로 몸을 던진다. 칼을 쳐낼지, 칼끝이 유저의 팔을 긋고 지나갈지는 판정이 정한다 (죽지는 않는다)."
+          },
+          {
+            "label": "로제타를 연회장 한가운데 붙잡아 둔다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 10"
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 3"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "유저가 로제타를 불빛 한가운데 붙잡아 둔다. 칼이 번뜩인 그 시각, 로제타는 모두의 눈앞에 있었다."
+          },
+          {
+            "label": "목청껏 소리쳐 사람들을 부른다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom - 8"
+              },
+              {
+                "front": "canon",
+                "add": "-10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "유저가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다."
+          },
+          {
+            "label": "지켜본다",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + 25"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 20"
+              },
+              {
+                "front": "canon",
+                "add": "20"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다"
+                ]
+              }
+            ],
+            "inject": "원작 그대로 — 빙의자가 버티려 애쓰지만 로제타의 손에 칼이 들리고, 황태자가 로제타를 제압한다."
+          }
+        ]
+      },
+      {
+        "id": "verdict_rosetta",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"rosetta\" and scn_act == \"verdict\" and cleared < 5 and (on_stage or scn_turns >= 6)",
+        "notify": "[5장 · 심판] 심판정. 카르디온 공작이 입을 연다 — 원작이라면 지금 파양이 선언되고, 처형이 뒤따른다.",
+        "choices": [
+          {
+            "label": "리칼이 증언대에 선다",
+            "when": "rical >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"리칼의 증언\""
+              },
+              {
+                "set": "rical",
+                "expr": "rical + 5"
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "리칼이 증언대에 선다 — 가문의 수치라 부르던 이복동생을 위해. 그가 무엇을 봤는지 말한다."
+          },
+          {
+            "label": "엘리시아가 로제타를 감싼다",
+            "when": "elicia >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"엘리시아의 변호\""
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "피해자로 불려 나온 엘리시아가 로제타를 감싼다. 통찰의 권능을 지닌 그녀의 말에 심판정이 술렁인다."
+          },
+          {
+            "label": "황태자가 재심을 청한다",
+            "when": "ert >= 70",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"황태자의 재심 청원\""
+              },
+              {
+                "set": "ert",
+                "expr": "ert + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다."
+          },
+          {
+            "label": "공작이 가문의 이름으로 막아선다",
+            "when": "duke >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"공작의 이름\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
+          },
+          {
+            "label": "스스로 결백을 밝힌다",
+            "when": "doom <= 30",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"스스로 밝힌 결백\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다."
+          },
+          {
+            "label": "심판정을 빠져나가 도망친다",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"도주\""
+              },
+              {
+                "set": "role",
+                "expr": "\"쫓기는 몸\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 30"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "로제타가 심판정을 빠져나가 수도를 등진다. 살았지만, 이제 쫓기는 몸이다."
+          },
+          {
+            "label": "받아들인다",
+            "effects": [
+              {
+                "set": "loop",
+                "expr": "loop + 1"
+              },
+              {
+                "checkpoint": "load"
+              }
+            ],
+            "inject": "원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다."
+          }
+        ]
+      },
+      {
+        "id": "verdict_servant",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"servant\" and scn_act == \"verdict\" and cleared < 5 and (on_stage or scn_turns >= 6)",
+        "notify": "[5장 · 심판] 심판정. 카르디온 공작이 입을 연다 — 원작이라면 지금 파양이 선언되고, 처형이 뒤따른다.",
+        "choices": [
+          {
+            "label": "리칼이 증언대에 선다",
+            "when": "rical >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"리칼의 증언\""
+              },
+              {
+                "set": "rical",
+                "expr": "rical + 5"
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "리칼이 증언대에 선다 — 가문의 수치라 부르던 이복동생을 위해. 그가 무엇을 봤는지 말한다."
+          },
+          {
+            "label": "엘리시아가 로제타를 감싼다",
+            "when": "elicia >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"엘리시아의 변호\""
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "피해자로 불려 나온 엘리시아가 로제타를 감싼다. 통찰의 권능을 지닌 그녀의 말에 심판정이 술렁인다."
+          },
+          {
+            "label": "황태자가 재심을 청한다",
+            "when": "ert >= 70",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"황태자의 재심 청원\""
+              },
+              {
+                "set": "ert",
+                "expr": "ert + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다."
+          },
+          {
+            "label": "공작이 가문의 이름으로 막아선다",
+            "when": "duke >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"공작의 이름\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
+          },
+          {
+            "label": "내가 대신 죄를 쓴다",
+            "when": "rosetta >= 70",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"대신 진 죄\""
+              },
+              {
+                "set": "role",
+                "expr": "\"수도에서 추방된 몸\""
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 20"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "유저가 모든 죄를 자기가 꾸몄다고 자백한다. 로제타는 풀려나고, 유저는 수도에서 추방된다. 로제타가 그 뒷모습을 본다."
+          },
+          {
+            "label": "스스로 결백을 밝힌다",
+            "when": "doom <= 30",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"스스로 밝힌 결백\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다."
+          },
+          {
+            "label": "로제타를 데리고 도망친다",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"도주\""
+              },
+              {
+                "set": "role",
+                "expr": "\"쫓기는 몸\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 30"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다."
+          },
+          {
+            "label": "아무것도 하지 못한다",
+            "effects": [
+              {
+                "set": "loop",
+                "expr": "loop + 1"
+              },
+              {
+                "checkpoint": "load"
+              }
+            ],
+            "inject": "원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다."
+          }
+        ]
+      },
+      {
+        "id": "verdict_special",
+        "once": true,
+        "strict": "last",
+        "when": "pov == \"special\" and scn_act == \"verdict\" and cleared < 5 and (on_stage or scn_turns >= 6)",
+        "notify": "[5장 · 심판] 심판정. 카르디온 공작이 입을 연다 — 원작이라면 지금 파양이 선언되고, 처형이 뒤따른다.",
+        "choices": [
+          {
+            "label": "리칼이 증언대에 선다",
+            "when": "rical >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"리칼의 증언\""
+              },
+              {
+                "set": "rical",
+                "expr": "rical + 5"
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "리칼이 증언대에 선다 — 가문의 수치라 부르던 이복동생을 위해. 그가 무엇을 봤는지 말한다."
+          },
+          {
+            "label": "엘리시아가 로제타를 감싼다",
+            "when": "elicia >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"엘리시아의 변호\""
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "피해자로 불려 나온 엘리시아가 로제타를 감싼다. 통찰의 권능을 지닌 그녀의 말에 심판정이 술렁인다."
+          },
+          {
+            "label": "황태자가 재심을 청한다",
+            "when": "ert >= 70",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"황태자의 재심 청원\""
+              },
+              {
+                "set": "ert",
+                "expr": "ert + 5"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다."
+          },
+          {
+            "label": "공작이 가문의 이름으로 막아선다",
+            "when": "duke >= 60",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"공작의 이름\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
+          },
+          {
+            "label": "내가 대신 죄를 쓴다",
+            "when": "rosetta >= 70",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"대신 진 죄\""
+              },
+              {
+                "set": "role",
+                "expr": "\"수도에서 추방된 몸\""
+              },
+              {
+                "set": "rosetta",
+                "expr": "rosetta + 20"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "유저가 모든 죄를 자기가 꾸몄다고 자백한다. 로제타는 풀려나고, 유저는 수도에서 추방된다. 로제타가 그 뒷모습을 본다."
+          },
+          {
+            "label": "스스로 결백을 밝힌다",
+            "when": "doom <= 30",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"스스로 밝힌 결백\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다."
+          },
+          {
+            "label": "로제타를 데리고 도망친다",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"도주\""
+              },
+              {
+                "set": "role",
+                "expr": "\"쫓기는 몸\""
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 30"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다."
+          },
+          {
+            "label": "아무것도 하지 못한다",
+            "effects": [
+              {
+                "set": "loop",
+                "expr": "loop + 1"
+              },
+              {
+                "checkpoint": "load"
+              }
+            ],
+            "inject": "원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다."
+          }
+        ]
+      },
+      {
+        "id": "sweets",
+        "once": true,
+        "when": "scn_act == \"stairs\" and cleared < 3 and scn_turns >= 3",
+        "effects": [
+          {
+            "list": "quests",
+            "add": [
+              "[서브] 과자 상자를 보낸 사람을 찾는다"
+            ]
+          },
+          {
+            "front": "canon",
+            "add": "10"
+          }
+        ],
+        "notify": "[3장] 로제타의 이름이 적힌 \"화해의 선물\" 과자 상자가 에버렛가에 도착했다. 원작이라면 그 과자에는 약한 독이 들어 있고, 엘리시아는 통찰로 악의를 알아채 먹지 않는다. 이번에 누가 보냈는지는 지금까지의 서사가 정한다."
       }
     ]
   },
@@ -1923,7 +4227,7 @@
       "id": "canon",
       "about": "사교계",
       "label": "원작의 흐름",
-      "when": "scn_act != \"prologue\"",
+      "when": "scn_act != \"prologue\" and scn_act != \"after\"",
       "rate": 2,
       "stages": [
         {
@@ -1932,11 +4236,11 @@
         },
         {
           "at": 35,
-          "backstage": "로니카가 데뷔탕트를 앞두고 로제타의 첫 데뷔탕트 망신을 다시 퍼뜨리며, 돌아온 에버렛 영애와 나란히 비교하고 있다."
+          "backstage": "로니카가 로제타의 첫 데뷔탕트 망신을 다시 입에 올리며, 돌아온 에버렛 영애와 나란히 비교하고 있다."
         },
         {
           "at": 50,
-          "surface": "사교계에 \"카르디온의 악녀가 에버렛 영애의 데뷔탕트를 망치려 한다\"는 소문이 퍼졌다.",
+          "surface": "사교계에 \"카르디온의 악녀가 돌아온 에버렛 영애를 노린다\"는 소문이 퍼졌다.",
           "effects": [
             {
               "set": "doom",
@@ -1949,8 +4253,26 @@
           ]
         },
         {
+          "at": 65,
+          "hint": "로제타 앞으로 오던 초대장이 하나둘 끊기기 시작했다."
+        },
+        {
           "at": 80,
-          "hint": "로제타 앞으로 오던 다과회 초대장이 하나둘 끊기기 시작했다."
+          "backstage": "사교계의 귀가 전부 로제타의 다음 악행을 기다린다 — 무슨 일이 생기면 사람들은 증거보다 먼저 로제타를 본다."
+        },
+        {
+          "at": 95,
+          "surface": "카르디온 공작이 로제타의 외출을 금했다 — 사교계는 이미 로제타를 원작 속 악녀로 못 박았다.",
+          "effects": [
+            {
+              "set": "doom",
+              "expr": "doom + 10"
+            },
+            {
+              "set": "duke",
+              "expr": "duke - 5"
+            }
+          ]
         }
       ]
     }
@@ -2126,6 +4448,63 @@
       "showTags": false
     },
     {
+      "id": "canon",
+      "label": "원작 보정력",
+      "icon": "📖",
+      "when": "scn_act != \"prologue\" and scn_act != \"verdict\" and scn_act != \"after\"",
+      "chance": "max(0, doom - 30) / 250",
+      "count": [
+        3,
+        3
+      ],
+      "shuffle": true,
+      "worst": "타협",
+      "strict": false,
+      "timeout": 1,
+      "tags": [
+        {
+          "id": "이탈",
+          "desc": "원작의 흐름을 거스르는 행동 — 원작 속 로제타라면 하지 않았을 일",
+          "effects": [
+            {
+              "set": "doom",
+              "expr": "doom - 4"
+            },
+            {
+              "front": "canon",
+              "add": "-5"
+            }
+          ]
+        },
+        {
+          "id": "타협",
+          "desc": "원작을 거스르지도 따르지도 않는 무난한 행동",
+          "effects": [
+            {
+              "set": "doom",
+              "expr": "doom - 1"
+            }
+          ]
+        },
+        {
+          "id": "원작",
+          "desc": "원작 속 악녀 로제타의 길로 되돌아가는 행동 — 로제타가 직접 하거나, 유저가 돕거나 눈감는다",
+          "effects": [
+            {
+              "set": "doom",
+              "expr": "doom + 6"
+            },
+            {
+              "front": "canon",
+              "add": "5"
+            }
+          ]
+        }
+      ],
+      "guide": "지금 장면에서 원작이 스스로를 되돌리려는 순간을 잡아, 유저가 할 수 있는 서로 다른 행동 셋을 쓴다 — 원작 속 악녀 로제타다운 길(원작), 그 길을 거스르는 길(이탈), 그 사이(타협). 원작의 다음 사건을 미리 말하지 말고, 지금 장면 안의 행동만.",
+      "desc": "원작이 이야기를 되돌리려 한다"
+    },
+    {
       "id": "stat",
       "label": "어떻게 할까",
       "icon": "🎲",
@@ -2207,6 +4586,142 @@
           }
         ],
         "notify": "[1장] 엘리시아의 데뷔탕트가 다가온다 — 3월 10일 밤, 황궁 대연회장."
+      },
+      {
+        "id": "tea",
+        "label": "2장 · 다과회와 소문",
+        "intensity": "전개",
+        "unlock": "cleared >= 1 and scn_turns >= clear_at + 4",
+        "direct": "원작이라면 이 장에서: 로제타가 다과회에 엘리시아를 초대하고, 하녀를 시켜 엘리시아의 드레스에 차를 쏟게 해 모두 앞에서 망신을 준다. 로제타는 \"에버렛 영애가 실종된 동안 천한 곳에서 자랐다\"는 악소문을 사교계에 퍼뜨린다. 그사이 인물들이 하나씩 엘리시아와 얽힌다 — 에르테미안은 연회 파트너로 그녀를 고르고, 리칼은 우연히 그녀와 마주치고, 유온은 동방의 왕자로 다가오고, 테리안은 상단 일로 엇갈린다. 원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. 다과회 전까지는 초대장·소문·만남으로 그 자리를 향해 조여 가라.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[서브] 로니카의 도발을 받아넘긴다"
+            ],
+            "add": [
+              "[2장] 다과회를 무사히 넘긴다",
+              "[서브] 악소문의 출처를 알아낸다",
+              "[서브] 공작가의 저녁 식탁에 로제타의 자리를 만든다"
+            ]
+          },
+          {
+            "set": "on_stage",
+            "expr": "false"
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[2장] 다과회 초대장이 돌기 시작한다 — 사교계가 돌아온 에버렛 영애를 두고 수군거린다."
+      },
+      {
+        "id": "stairs",
+        "label": "3장 · 계단과 과자",
+        "intensity": "고조",
+        "unlock": "cleared >= 2 and scn_turns >= clear_at + 4",
+        "direct": "원작이라면 이 장에서: 로제타가 하인을 매수해 엘리시아를 계단에서 떨어뜨린다(엘리시아는 근처의 도움으로 가벼운 상처에 그친다). 로제타는 화해하는 척 약한 독을 넣은 과자를 보내지만, 엘리시아는 통찰의 권능으로 악의를 알아채 먹지 않는다. 에르테미안과 엘리시아는 부쩍 가까워지고, 로제타는 사교계에서 고립되며 카르디온가의 냉대도 깊어진다. 원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[서브] 악소문의 출처를 알아낸다",
+              "[서브] 공작가의 저녁 식탁에 로제타의 자리를 만든다"
+            ],
+            "add": [
+              "[3장] 계단의 사고를 막는다",
+              "[서브] 로제타의 기침을 봐 줄 의사를 찾는다"
+            ]
+          },
+          {
+            "set": "on_stage",
+            "expr": "false"
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[3장] 사교계의 공기가 달라졌다 — 엘리시아 곁엔 사람이 늘고, 로제타 곁엔 줄어든다."
+      },
+      {
+        "id": "night",
+        "label": "4장 · 파국의 밤",
+        "intensity": "절정",
+        "unlock": "cleared >= 3 and scn_turns >= clear_at + 4",
+        "direct": "원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다. 누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[서브] 로제타의 기침을 봐 줄 의사를 찾는다",
+              "[서브] 과자 상자를 보낸 사람을 찾는다"
+            ],
+            "add": [
+              "[4장] 파국의 밤을 넘긴다",
+              "[서브] 리칼에게 쓸모를 증명한다",
+              "[서브] 저녁 모임 전에 엘리시아와 이야기한다"
+            ]
+          },
+          {
+            "set": "on_stage",
+            "expr": "false"
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[4장] 저녁 모임의 초대장이 왔다. 원작이라면 그 밤이 로제타의 마지막 밤이다."
+      },
+      {
+        "id": "verdict",
+        "label": "5장 · 심판",
+        "intensity": "절정",
+        "unlock": "cleared >= 4 and scn_turns >= clear_at + 4",
+        "direct": "원작이라면 이 장에서: 카르디온 공작가가 로제타를 가문에서 파양하고, 공작도 리칼도 로제타를 버린다. 로제타는 처형된다 — 원작 속 로제타의 결말이다. 심판의 날까지 며칠이 남았다. 누가 로제타의 편에 설지는 지금까지 쌓은 관계가 정한다 — 면회·편지·설득으로 그날을 향해 조여 가라.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[서브] 리칼에게 쓸모를 증명한다",
+              "[서브] 저녁 모임 전에 엘리시아와 이야기한다"
+            ],
+            "add": [
+              "[5장] 심판에서 살아남는다",
+              "[서브] 심판정에서 편에 서 줄 사람을 찾는다"
+            ]
+          },
+          {
+            "set": "on_stage",
+            "expr": "false"
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[5장] 로제타가 에버렛 영애를 해치려 했다는 고발이 황궁에 올라갔다 — 심판의 날이 잡혔다."
+      },
+      {
+        "id": "after",
+        "label": "원작 이후",
+        "intensity": "해소",
+        "unlock": "cleared >= 5",
+        "direct": "원작의 마지막 장이 지나갔다 — 로제타는 처형대에 서지 않았다(결말: {ending}). 빙의자의 원작 지식은 여기서 끝난다. 이제부터는 누구도 모르는 이야기다. 인물들의 풀리지 않은 목표·두려움·비밀이 새 사건의 씨앗이다 — 결말이 남긴 것(도주라면 추격, 추방이라면 떨어진 거리)을 이어 가라.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[서브] 심판정에서 편에 서 줄 사람을 찾는다"
+            ]
+          },
+          {
+            "set": "on_stage",
+            "expr": "false"
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[원작 이후] 처형대는 비어 있다. 원작이 끝난 세계 — 여기서부터는 아무도 모르는 이야기다."
       }
     ]
   },
@@ -2257,9 +4772,19 @@
       "text": "[회귀 {loop}회차] 유저는 이미 한 번 이상 죽고 되돌아왔다. 이전 판을 기억하는 건 유저뿐이고, 세상과 다른 인물은 모든 걸 처음 겪는다. 유저가 기억하는 것: {memories}"
     },
     {
-      "id": "after_debut",
-      "when": "scn_act == \"debut\" and cleared >= 1",
-      "text": "[1장 이후] 데뷔탕트의 밤이 지나갔다. 원작 2장(다과회와 소문)은 아직 준비 중이다 — 무도회의 여파와 일상을 자유롭게 이어 가라."
+      "id": "aftermath",
+      "when": "chapter >= 1 and chapter <= 4 and cleared >= chapter",
+      "text": "[여파] 이 장의 원작 사건이 지나갔다. 다음 원작 사건은 아직 오지 않았다 — 여파와 일상을 자유롭게 이어 가라."
+    },
+    {
+      "id": "verdict_trial",
+      "when": "scn_act == \"verdict\" and cleared < 5 and doom > 30",
+      "text": "[심판] 로제타는 에버렛 영애를 해치려 한 혐의를 받고 있다. 증거보다 소문이 먼저 심판정에 도착해 있고, 원작의 결말이 로제타를 기다린다."
+    },
+    {
+      "id": "verdict_hearing",
+      "when": "scn_act == \"verdict\" and cleared < 5 and doom <= 30",
+      "text": "[해명] 로제타에게 혐의가 씌워졌지만 증거가 엇갈린다 — 심판이라기보다 해명의 자리다. 원작의 결말은 아직 로제타를 놓지 않았지만, 틈이 있다."
     }
   ],
   "promptState": {
@@ -2375,6 +4900,11 @@
           {
             "var": "quests",
             "label": "퀘스트"
+          },
+          {
+            "var": "ending",
+            "label": "결말",
+            "showWhen": "ending != \"\""
           }
         ]
       },

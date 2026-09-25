@@ -2,7 +2,7 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 // 조기퇴장 악녀에 빙의해버렸다 — 원작 탈출 사망회귀 시나리오 (docs/design-조퇴악녀.md)
 //
 // 원본 봇: 세계관 + 인물 사전 27명 + 원작 줄거리 요약 4막(상시 로어북, 기본 꺼짐). 숫자 상태 0개.
-// 이 생성기가 그 위에 진행 장치를 얹는다 — 1차 범위 = **1부 서장 + 1장(데뷔탕트)**. 2장부터는 막을 뒤에 덧붙인다(세이브 안 깨짐).
+// 이 생성기가 그 위에 진행 장치를 얹는다 — 1부 = 서장 + 원작 4막(1~4장) + 5장 심판 + 원작 이후. 2부는 막을 뒤에 덧붙인다(세이브 안 깨짐).
 //
 // 출처 꼬리표 (설계 §11~16):
 //   [원본] 로어북에 적힌 사실 — 원작 사건 순서·인물 성격·비밀 내용
@@ -34,13 +34,17 @@ const PEOPLE = [
 // ══════════ 원작의 흐름 — 무대 뒤 진영 시계 [초안, 씨앗은 원본: 로니카의 조롱·로제타의 첫 데뷔탕트 망신] ══════════
 const CANON = {
   id: 'canon', about: '사교계', label: '원작의 흐름',
-  when: 'scn_act != "prologue"', rate: 2,
+  // 1부 내내 흐른다(원작 이후엔 멈춘다). 문턱 문장은 어느 장에서 넘어도 맞게 — 단계엔 장 조건이 없다
+  when: 'scn_act != "prologue" and scn_act != "after"', rate: 2,
   stages: [
     { at: 15, hint: '하인들이 로제타가 지나가면 입을 다물고, 등 뒤에서 수군거린다.' },
-    { at: 35, backstage: '로니카가 데뷔탕트를 앞두고 로제타의 첫 데뷔탕트 망신을 다시 퍼뜨리며, 돌아온 에버렛 영애와 나란히 비교하고 있다.' },
-    { at: 50, surface: '사교계에 "카르디온의 악녀가 에버렛 영애의 데뷔탕트를 망치려 한다"는 소문이 퍼졌다.',
+    { at: 35, backstage: '로니카가 로제타의 첫 데뷔탕트 망신을 다시 입에 올리며, 돌아온 에버렛 영애와 나란히 비교하고 있다.' },
+    { at: 50, surface: '사교계에 "카르디온의 악녀가 돌아온 에버렛 영애를 노린다"는 소문이 퍼졌다.',
       effects: [{ set: 'doom', expr: 'doom + 10' }, { set: 'rep', expr: 'rep - 5' }] },
-    { at: 80, hint: '로제타 앞으로 오던 다과회 초대장이 하나둘 끊기기 시작했다.' },
+    { at: 65, hint: '로제타 앞으로 오던 초대장이 하나둘 끊기기 시작했다.' },
+    { at: 80, backstage: '사교계의 귀가 전부 로제타의 다음 악행을 기다린다 — 무슨 일이 생기면 사람들은 증거보다 먼저 로제타를 본다.' },
+    { at: 95, surface: '카르디온 공작이 로제타의 외출을 금했다 — 사교계는 이미 로제타를 원작 속 악녀로 못 박았다.',
+      effects: [{ set: 'doom', expr: 'doom + 10' }, { set: 'duke', expr: 'duke - 5' }] },
   ],
 };
 
@@ -82,8 +86,25 @@ const IV = { questions: 3, pass: 4 };
 const Q_SERVANT = '[서장] 로제타의 시종 면접에 합격하라';
 const Q_ROSETTA = '[서장] 지금이 원작의 어디쯤인지 알아낸다';
 const Q_SPECIAL = '[서장] 소문과 다른 악녀, 로제타를 만난다'; // 빙의자 로제타 시점 [초안]
-const Q_DEBUT = '[1장] 데뷔탕트를 무사히 넘긴다';
-const Q_SUBS_1 = ['[서브] 서랍 속 작은 병의 정체', '[서브] 로니카의 도발을 받아넘긴다'];
+// 1부 메인 퀘스트 — 막 onEnter가 넣고 절정 결판이 지운다 [설계 §3]
+const Q = {
+  debut: '[1장] 데뷔탕트를 무사히 넘긴다',
+  tea: '[2장] 다과회를 무사히 넘긴다',
+  stairs: '[3장] 계단의 사고를 막는다',
+  night: '[4장] 파국의 밤을 넘긴다',
+  verdict: '[5장] 심판에서 살아남는다',
+};
+// 서브 — 인물의 Goal·Secret을 부탁으로 [씨앗 원본, 문장 초안]. 다음 장에 들어서면 걷힌다(작은 병만 풀릴 때까지 남는다)
+const SUBS = {
+  debut: ['[서브] 서랍 속 작은 병의 정체', '[서브] 로니카의 도발을 받아넘긴다'],
+  tea: ['[서브] 악소문의 출처를 알아낸다', '[서브] 공작가의 저녁 식탁에 로제타의 자리를 만든다'],
+  stairs: ['[서브] 로제타의 기침을 봐 줄 의사를 찾는다'],
+  night: ['[서브] 리칼에게 쓸모를 증명한다', '[서브] 저녁 모임 전에 엘리시아와 이야기한다'],
+  verdict: ['[서브] 심판정에서 편에 서 줄 사람을 찾는다'],
+};
+const SUB_SWEETS = '[서브] 과자 상자를 보낸 사람을 찾는다'; // 3장 과자 상자 사건이 넣는다
+const Q_DEBUT = Q.debut;
+const Q_SUBS_1 = SUBS.debut;
 
 // 데뷔탕트 — 제국력 472년 3월 10일 밤 황궁 대연회장 [초안: 날짜·장소]
 const DEBUT_YMD = 4720310;
@@ -143,10 +164,12 @@ const trainCheck = ([id, label]) => ({
 const STAT_CHECKS = [...STATS.map((s) => statCheck(s, false)), ...STATS.map((s) => statCheck(s, true)), ...STATS.map(trainCheck)];
 // 판정 달린 선택지의 효과 — 성공/실패 두 값 (chk_ok는 방금 굴린 판정의 등급이 세웠다)
 const ok2 = (v, a, b) => ({ set: v, expr: `${v} + (chk_ok ? ${a} : ${b})` });
+const d = (v, n) => ({ set: v, expr: `${v} ${n < 0 ? '-' : '+'} ${Math.abs(n)}` });
+const fr = (n) => ({ front: 'canon', add: String(n) });
+const frOk = (a, b) => ({ front: 'canon', add: `chk_ok ? ${a} : ${b}` });
 
 // 1장 절정 — 시점마다 한 벌. 맨 끝 = 원작대로(안 고르면 그리로 흘러간다) [초안]
 // 판정 달린 항목(check)은 성공/실패로 결과가 갈린다 — 상태창에 "🎲 화술 60%"가 떠서 고르기 전에 무게를 잰다 (v1.13.0)
-const debutClose = [{ set: 'cleared', expr: 'max(cleared, 1)' }, { set: 'on_stage', expr: 'false' }, { list: 'quests', remove: [Q_DEBUT] }];
 const DEBUT_CHOICES = {
   rosetta: [
     { label: '엘리시아에게 먼저 다가가 데뷔를 축하한다', check: 'c_talk_h',
@@ -192,6 +215,203 @@ const DEBUT_NOTIFY = {
   special: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타를 질투 쪽으로 떠민다.',
 };
 
+// ══════════ 2~4장 절정 [사건 원본: 원작 타임라인 2~4막 / 선택지·수치 초안] ══════════
+// 원작의 사건은 범인이 바뀔 수 있다 — 로제타가 안 하면 다른 누군가가 한다. 절정은 그 사건이 "일어나려는 순간"이다 [설계 §2]
+const TEA_CHOICES = {
+  rosetta: [
+    { label: '쟁반을 든 하녀를 불러 세워 다른 심부름을 시킨다', check: 'c_talk',
+      effects: [ok2('doom', -10, -3), ok2('elicia', 8, 3), frOk(-15, -5)],
+      inject: '로제타가 차를 엎으려는 하녀를 먼저 불러 세운다. 하녀가 말을 따를지, 쟁반이 결국 기울지는 판정이 정한다.' },
+    { label: '엘리시아를 핑계 대고 다과회에서 빼낸다', effects: [d('doom', -5), d('rep', -5), d('elicia', 5), fr(-10)],
+      inject: '로제타가 무례를 무릅쓰고 엘리시아를 자리에서 데리고 나간다. 뒤에서 "또 악녀가 판을 깼다"는 수군거림이 따라붙는다.' },
+    { label: '차를 뒤집어쓴 엘리시아에게 제 숄을 둘러 준다', check: 'c_charm',
+      effects: [ok2('doom', -8, -2), ok2('elicia', 12, 5), ok2('rep', 5, -3), frOk(-10, -3)],
+      inject: '차는 이미 쏟아졌다. 로제타가 모두의 시선 속에서 엘리시아에게 숄을 둘러 준다. 호의로 보일지 조롱으로 보일지는 판정이 정한다.' },
+    { label: '원작대로 하녀에게 눈짓한다', effects: [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)],
+      inject: '원작 그대로 — 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다.' },
+  ],
+  servant: [
+    { label: '하녀의 쟁반을 내가 먼저 받아 든다', check: 'c_house',
+      effects: [ok2('doom', -10, -4), ok2('rosetta', 5, 0), ok2('rep', 0, -2), frOk(-15, -5)],
+      inject: '시종이 하녀의 쟁반을 가로채 받아 든다. 찻잔 하나 흘리지 않을지, 쟁반이 기울어 제 옷을 적실지는 판정이 정한다.' },
+    { label: '급한 전갈이 왔다며 아가씨를 모셔 나온다', check: 'c_talk',
+      effects: [ok2('doom', -6, -2), ok2('rosetta', 3, -5), frOk(-10, -3)],
+      inject: '시종이 거짓 전갈로 로제타를 다과회에서 빼낸다. 로제타가 속아 줄지, 시종을 매섭게 노려볼지는 판정이 정한다.' },
+    { label: '차를 쏟는 척 내 옷에 붓는다', effects: [d('doom', -6), d('rosetta', 6), d('rep', -2), fr(-8)],
+      inject: '시종이 스스로 찻잔을 엎어 제 옷을 적신다. 웃음거리는 시종이 되고 엘리시아의 드레스는 무사하다. 로제타가 시종을 오래 본다.' },
+    { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
+      inject: '원작 그대로 — 시종이 지켜보는 앞에서 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 모두의 눈이 로제타를 향한다.' },
+  ],
+  special: [
+    { label: '쟁반을 든 하녀에게 말을 걸어 발을 붙잡는다', check: 'c_talk',
+      effects: [ok2('doom', -10, -3), ok2('elicia', 5, 0), frOk(-15, -5)],
+      inject: '유저가 하녀를 붙잡고 말을 건다. 하녀의 발이 멈출지, 쟁반이 결국 엘리시아 쪽으로 갈지는 판정이 정한다.' },
+    { label: '로제타 곁에 앉아 떨리는 손을 붙잡는다', check: 'c_charm',
+      effects: [ok2('doom', -8, -2), ok2('rosetta', 10, -3), frOk(-10, -3)],
+      inject: '빙의자 로제타의 손끝이 원작의 눈짓을 하려는 듯 떨린다. 유저가 그 손을 붙잡는다. 로제타가 버텨 낼지는 판정이 정한다.' },
+    { label: '제 잔을 엎어 판을 깬다', effects: [d('doom', -6), d('rosetta', 5), d('rep', -2), fr(-8)],
+      inject: '유저가 일부러 제 찻잔을 엎는다. 소란의 중심이 유저로 옮겨 가고, 로제타가 유저를 다시 본다.' },
+    { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
+      inject: '원작 그대로 — 빙의자가 버티려 애쓰지만 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다.' },
+  ],
+};
+const STAIRS_CHOICES = {
+  rosetta: [
+    { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
+      effects: [ok2('doom', -12, -4), ok2('elicia', 12, 5), ok2('health', -3, -12), frOk(-20, -5)],
+      inject: '로제타가 드레스 자락을 걷어쥐고 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
+    { label: '매수된 하인을 먼저 찾아 두 배를 쥐여 준다', check: 'c_talk',
+      effects: [ok2('doom', -10, 3), ok2('rep', 0, -5), frOk(-15, 5)],
+      inject: '로제타가 하인을 구석으로 불러 더 큰 돈을 내민다. 하인이 손을 뗄지, "악녀가 입막음을 하려 했다"는 말이 돌지는 판정이 정한다.' },
+    { label: '엘리시아를 계단에서 먼 곳으로 불러낸다', effects: [d('doom', -5), d('elicia', 3), fr(-5)],
+      inject: '로제타가 핑계를 만들어 엘리시아를 계단에서 떼어 놓는다. 사고는 일어나지 않았지만, 하인은 아직 그 자리에 있다.' },
+    { label: '원작대로 하인에게 약속한 돈을 건넨다', effects: [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)],
+      inject: '원작 그대로 — 로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다.' },
+  ],
+  servant: [
+    { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
+      effects: [ok2('doom', -12, -4), ok2('elicia', 10, 4), ok2('rep', 3, -2), frOk(-20, -5)],
+      inject: '시종이 몸을 날려 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
+    { label: '매수된 하인의 소매를 붙잡고 따진다', check: 'c_talk',
+      effects: [ok2('doom', -10, 2), frOk(-15, 3)],
+      inject: '시종이 하인을 붙잡는다. 누구에게 돈을 받았는지 털어놓을지, 오히려 "카르디온 시종이 협박했다"며 소리칠지는 판정이 정한다.' },
+    { label: '아가씨를 사람 많은 곳으로 모셔 알리바이를 만든다', effects: [d('doom', -6), d('rosetta', 3), fr(-5)],
+      inject: '시종이 로제타를 사람들 한가운데로 모신다. 무슨 일이 일어나도 로제타는 계단 근처에 없었다 — 그걸 본 눈이 많다.' },
+    { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
+      inject: '원작 그대로 — 매수된 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다.' },
+  ],
+  special: [
+    { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
+      effects: [ok2('doom', -12, -4), ok2('elicia', 10, 4), ok2('rep', 3, -2), frOk(-20, -5)],
+      inject: '유저가 몸을 날려 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
+    { label: '매수된 하인의 소매를 붙잡고 따진다', check: 'c_talk',
+      effects: [ok2('doom', -10, 2), frOk(-15, 3)],
+      inject: '유저가 하인을 붙잡는다. 누구에게 돈을 받았는지 털어놓을지, 오히려 소란만 키울지는 판정이 정한다.' },
+    { label: '로제타를 사람 많은 곳으로 이끌어 알리바이를 만든다', effects: [d('doom', -6), d('rosetta', 3), fr(-5)],
+      inject: '유저가 로제타를 사람들 한가운데로 이끈다. 무슨 일이 일어나도 로제타는 계단 근처에 없었다 — 그걸 본 눈이 많다.' },
+    { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
+      inject: '원작 그대로 — 빙의자 로제타가 막으려 했지만 한발 늦었다. 매수된 하인이 엘리시아의 등을 밀고, 사람들의 눈은 로제타를 향한다.' },
+  ],
+};
+const NIGHT_CHOICES = {
+  rosetta: [
+    { label: '칼을 든 손목을 쳐낸다', check: 'c_sword_h',
+      effects: [ok2('doom', -15, 5), ok2('elicia', 15, 5), ok2('ert', 10, 0), ok2('rep', 5, -10), frOk(-25, 10)],
+      inject: '로제타가 어둠 속 칼날로 몸을 던진다. 칼을 쳐낼지, 칼자루를 쥔 채 붙잡히는 게 로제타가 될지는 판정이 정한다.' },
+    { label: '목청껏 소리쳐 사람들을 부른다', effects: [d('doom', -8), d('rep', -3), fr(-10)],
+      inject: '로제타가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다 — 남은 건 그 자리에 선 로제타와 엘리시아뿐이다.' },
+    { label: '엘리시아의 손을 잡고 연회장으로 달린다', effects: [d('doom', -10), d('elicia', 8), d('health', -5), fr(-10)],
+      inject: '로제타가 엘리시아의 손을 잡아끌고 불빛 쪽으로 달린다. 약한 몸이라 숨이 턱까지 차오른다.' },
+    { label: '원작대로 칼을 든다', effects: [d('doom', 25), d('rep', -20), d('elicia', -15), fr(20)],
+      inject: '원작 그대로 — 로제타의 손에 칼이 들린다. 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다.' },
+  ],
+  servant: [
+    { label: '칼 앞을 몸으로 막아선다', check: 'c_sword_h',
+      effects: [ok2('doom', -15, -5), ok2('rosetta', 10, 5), ok2('elicia', 10, 5), frOk(-25, -5)],
+      inject: '시종이 칼 앞으로 몸을 던진다. 칼을 쳐낼지, 칼끝이 시종의 팔을 긋고 지나갈지는 판정이 정한다 (죽지는 않는다).' },
+    { label: '아가씨를 연회장 한가운데로 모셔 알리바이를 만든다', effects: [d('doom', -10), d('rosetta', 3), fr(-10)],
+      inject: '시종이 로제타를 불빛 한가운데 붙잡아 둔다. 칼이 번뜩인 그 시각, 로제타는 모두의 눈앞에 있었다.' },
+    { label: '목청껏 소리쳐 사람들을 부른다', effects: [d('doom', -8), fr(-10)],
+      inject: '시종이 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다.' },
+    { label: '지켜본다', effects: [d('doom', 25), d('rep', -20), fr(20)],
+      inject: '원작 그대로 — 칼을 든 로제타가 황태자에게 제압당한다. 시종은 그 장면을 멀리서 본다.' },
+  ],
+  special: [
+    { label: '칼 앞을 몸으로 막아선다', check: 'c_sword_h',
+      effects: [ok2('doom', -15, -5), ok2('rosetta', 10, 5), ok2('elicia', 10, 5), frOk(-25, -5)],
+      inject: '유저가 칼 앞으로 몸을 던진다. 칼을 쳐낼지, 칼끝이 유저의 팔을 긋고 지나갈지는 판정이 정한다 (죽지는 않는다).' },
+    { label: '로제타를 연회장 한가운데 붙잡아 둔다', effects: [d('doom', -10), d('rosetta', 3), fr(-10)],
+      inject: '유저가 로제타를 불빛 한가운데 붙잡아 둔다. 칼이 번뜩인 그 시각, 로제타는 모두의 눈앞에 있었다.' },
+    { label: '목청껏 소리쳐 사람들을 부른다', effects: [d('doom', -8), fr(-10)],
+      inject: '유저가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다.' },
+    { label: '지켜본다', effects: [d('doom', 25), d('rep', -20), fr(20)],
+      inject: '원작 그대로 — 빙의자가 버티려 애쓰지만 로제타의 손에 칼이 들리고, 황태자가 로제타를 제압한다.' },
+  ],
+};
+
+// ══════════ 5장 심판 — 결말 갈림길 [사건 원본: 파양·처형 / 잠긴 선택지 설계 §6 / 수치 초안] ══════════
+// 잠긴 선택지(🔒)가 보인다 — 무엇이 로제타를 살릴 수 있었는지가 보이게. 맨 끝 = 받아들인다(원작 결말 = 죽음 → 회귀)
+const ending = (t) => ({ set: 'ending', expr: JSON.stringify(t) });
+const verdictChoices = (pov) => [
+  { label: '리칼이 증언대에 선다', when: 'rical >= 60', effects: [ending('리칼의 증언'), d('rical', 5), d('duke', 5)],
+    inject: '리칼이 증언대에 선다 — 가문의 수치라 부르던 이복동생을 위해. 그가 무엇을 봤는지 말한다.' },
+  { label: '엘리시아가 로제타를 감싼다', when: 'elicia >= 60', effects: [ending('엘리시아의 변호'), d('elicia', 5), d('rep', 10)],
+    inject: '피해자로 불려 나온 엘리시아가 로제타를 감싼다. 통찰의 권능을 지닌 그녀의 말에 심판정이 술렁인다.' },
+  { label: '황태자가 재심을 청한다', when: 'ert >= 70', effects: [ending('황태자의 재심 청원'), d('ert', 5), d('rep', 10)],
+    inject: '황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다.' },
+  { label: '공작이 가문의 이름으로 막아선다', when: 'duke >= 60', effects: [ending('공작의 이름'), d('duke', 10)],
+    inject: '카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다.' },
+  ...(pov === 'rosetta' ? [] : [
+    { label: '내가 대신 죄를 쓴다', when: 'rosetta >= 70',
+      effects: [ending('대신 진 죄'), { set: 'role', expr: '"수도에서 추방된 몸"' }, d('rosetta', 20)],
+      inject: '유저가 모든 죄를 자기가 꾸몄다고 자백한다. 로제타는 풀려나고, 유저는 수도에서 추방된다. 로제타가 그 뒷모습을 본다.' },
+  ]),
+  { label: '스스로 결백을 밝힌다', when: 'doom <= 30', effects: [ending('스스로 밝힌 결백'), d('rep', 10)],
+    inject: '엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다.' },
+  { label: pov === 'rosetta' ? '심판정을 빠져나가 도망친다' : '로제타를 데리고 도망친다',
+    effects: [ending('도주'), { set: 'role', expr: '"쫓기는 몸"' }, d('rep', -30)],
+    inject: pov === 'rosetta' ? '로제타가 심판정을 빠져나가 수도를 등진다. 살았지만, 이제 쫓기는 몸이다.'
+      : '유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다.' },
+  { label: pov === 'rosetta' ? '받아들인다' : '아무것도 하지 못한다', effects: gameOver,
+    inject: '원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다.' },
+];
+const VERDICT_NOTIFY = '[5장 · 심판] 심판정. 카르디온 공작이 입을 연다 — 원작이라면 지금 파양이 선언되고, 처형이 뒤따른다.';
+
+// 장 한 벌 = 막 + 절정 갈림길 × 시점 셋. 절정은 무대 도착(on_stage) · 그날(1장만 날짜) · 장에 오래 머묾 중 먼저 오는 것 — "원작의 강제력"
+// 결판이 cleared를 올리고, 다음 장은 여파 3턴 뒤(clear_at)에 열린다 [초안]
+const CHAPTERS = [
+  { id: 'debut', n: 1, choices: DEBUT_CHOICES, notify: DEBUT_NOTIFY, when: `on_stage or ymd >= ${DEBUT_YMD} or scn_turns >= 14` },
+  { id: 'tea', n: 2, choices: TEA_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
+    rosetta: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.',
+    servant: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.',
+    special: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타의 시선을 하녀 쪽으로 떠민다.' } },
+  { id: 'stairs', n: 3, choices: STAIRS_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
+    rosetta: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.',
+    servant: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.',
+    special: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 엘리시아가 떨어지고, 사람들은 로제타를 본다.' } },
+  { id: 'night', n: 4, choices: NIGHT_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
+    rosetta: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.',
+    servant: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.',
+    special: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 로제타가 칼을 든다.' } },
+  { id: 'verdict', n: 5, when: 'on_stage or scn_turns >= 6', notify: { rosetta: VERDICT_NOTIFY, servant: VERDICT_NOTIFY, special: VERDICT_NOTIFY },
+    choices: { rosetta: verdictChoices('rosetta'), servant: verdictChoices('servant'), special: verdictChoices('special') } },
+];
+const POVS = ['rosetta', 'servant', 'special'];
+const chClose = (c) => [{ set: 'cleared', expr: `max(cleared, ${c.n})` }, { set: 'on_stage', expr: 'false' }, { set: 'clear_at', expr: 'scn_turns' },
+  { list: 'quests', remove: [Q[c.id]] }];
+// 결판 — 원작 결말(받아들인다)은 회귀라 결판 효과를 안 붙인다 (되감기가 어차피 덮는다)
+const closeOf = (c, ch) => (ch.effects.some((e) => e.checkpoint === 'load') ? ch.effects : [...ch.effects, ...chClose(c)]);
+const CLIMAX_EVENTS = CHAPTERS.flatMap((c) => POVS.map((pov) => ({
+  id: `${c.id}_${pov}`, once: true, strict: 'last',
+  when: `pov == "${pov}" and scn_act == "${c.id}" and cleared < ${c.n} and (${c.when})`,
+  notify: c.notify[pov],
+  choices: c.choices[pov].map((ch) => ({ ...ch, effects: closeOf(c, ch) })),
+})));
+// 다음 장에 들어서면 — 메인·서브 교체, 무대 초기화, 체크포인트. 작은 병 서브만 풀릴 때까지 남는다
+const enterCh = (id, prevSubs) => [
+  { list: 'quests', remove: prevSubs.filter((q) => q !== SUBS.debut[0]), add: [Q[id], ...SUBS[id]] },
+  { set: 'on_stage', expr: 'false' },
+  { checkpoint: 'save' },
+];
+const nextUnlock = (n) => `cleared >= ${n} and scn_turns >= clear_at + 4`; // 고른 턴 + 여파 3턴
+
+// ══════════ 원작 보정력 — 평소 장면에서 원작이 스스로를 되돌리려는 순간 [설계 §4-② / 빈도·수치 초안] ══════════
+// 파멸도가 30을 넘으면 뜨기 시작해 원작에 가까울수록 잦아진다 (파멸도 40 → 4% · 60 → 12% · 80 → 20%/턴)
+const CANON_LIVE = {
+  id: 'canon', label: '원작 보정력', icon: '📖',
+  when: 'scn_act != "prologue" and scn_act != "verdict" and scn_act != "after"',
+  chance: 'max(0, doom - 30) / 250', count: [3, 3], shuffle: true, worst: '타협', strict: false, timeout: 1,
+  tags: [
+    { id: '이탈', desc: '원작의 흐름을 거스르는 행동 — 원작 속 로제타라면 하지 않았을 일', effects: [d('doom', -4), fr(-5)] },
+    { id: '타협', desc: '원작을 거스르지도 따르지도 않는 무난한 행동', effects: [d('doom', -1)] },
+    { id: '원작', desc: '원작 속 악녀 로제타의 길로 되돌아가는 행동 — 로제타가 직접 하거나, 유저가 돕거나 눈감는다', effects: [d('doom', 6), fr(5)] },
+  ],
+  // 안 고르고 직접 쓰면 타협 — 면접의 "직접 답 = 무난"과 같은 규약 [유저 2026-09-26]
+  guide: '지금 장면에서 원작이 스스로를 되돌리려는 순간을 잡아, 유저가 할 수 있는 서로 다른 행동 셋을 쓴다 — 원작 속 악녀 로제타다운 길(원작), 그 길을 거스르는 길(이탈), 그 사이(타협). '
+    + '원작의 다음 사건을 미리 말하지 말고, 지금 장면 안의 행동만.',
+  desc: '원작이 이야기를 되돌리려 한다',
+};
+
 // ══════════ 스키마 ══════════
 const S = {
   simcore: '0.1',
@@ -224,11 +444,12 @@ const S = {
       desc: '로제타가 닿자 마법·신성력·마도구가 꺼지거나 사라지는 장면이 서사에 **실제로** 나왔을 때만 +1. 짐작·암시만으로는 올리지 마라.' },
     { id: 'bottle_found', label: '작은 병을 찾음', type: 'bool', init: false,
       desc: '유저가 화장대 서랍 속 작은 병을 직접 손에 넣거나 열어 봤으면 true.' },
+    // 보조는 지금이 몇 장인지 모른다 — 장에 매이지 않게: 원작의 사건은 늘 두 사람이 한자리에 모이는 공식 자리에서 터진다
     { id: 'on_stage', label: '무대에 도착', type: 'bool', init: false,
-      desc: '지금 장의 무대에 유저가 도착하면 true — 1장: 엘리시아의 데뷔탕트 무도회장(황궁 대연회장). 무대의 사건은 시스템이 연다.' },
+      desc: '유저가 엘리시아와 로제타가 함께 있는 공식 자리(무도회·다과회·연회·저녁 모임)나 심판정에 도착하면 true. 무대의 사건은 시스템이 연다.' },
     { id: 'dead', label: '사망', type: 'bool', init: false,
       desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
-    { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 8, itemMaxLength: 48,
+    { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 10, itemMaxLength: 48,
       desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. "[서장]"·"[1장]" 같은 메인 항목은 시스템이 지우니 건드리지 마라. '
         + '서사 속 인물이 유저에게 직접 부탁한 일이 생기면 "[서브] …"로 추가(서브는 최대 5개).' },
     { id: 'memories', label: '회귀의 기억', type: 'list', init: [], maxItems: 8, itemMaxLength: 60,
@@ -250,6 +471,8 @@ const S = {
     // 시스템 전용 — 보조 allow 밖
     { id: 'chk_ok', label: '방금 판정 성공', type: 'bool', init: false }, // 판정 등급이 세우고 선택지 효과가 읽는다
     { id: 'cleared', label: '결판난 장', type: 'int', init: 0, min: 0, max: 6 },
+    { id: 'clear_at', label: '결판 턴', type: 'int', init: 0, min: 0, max: 9999 }, // 결판 때의 scn_turns — 다음 장은 여파 3턴 뒤
+    { id: 'ending', label: '결말', type: 'text', init: '' }, // 5장 심판이 적는다
     { id: 'loop', label: '회귀', type: 'int', init: 0, min: 0, max: 999 },
     { id: 'hired', label: '채용', type: 'bool', init: false },
     { id: 'iv_q', label: '면접 질문', type: 'int', init: 0, min: 0, max: IV.questions, format: '{v}/3' },
@@ -262,6 +485,8 @@ const S = {
   ],
   derived: [
     { id: 'ymd', label: '날짜 숫자', expr: 'year * 10000 + month * 100 + dom' },
+    // 지금 몇 장 — 서장 0 · 1~5장 · 원작 이후 6
+    { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : 0' },
   ],
   updater: {
     allow: [
@@ -309,13 +534,13 @@ const S = {
         notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
       { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
         effects: gameOver, notify: '[게임오버] 면접에서 떨어졌다 — 로제타 곁에 설 길이 닫혔고, 원작은 그대로 흘러간다.' },
-      // 1장 절정 — 데뷔탕트 무도회. 무대 도착 · 그날 밤 · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
-      ...['rosetta', 'servant', 'special'].map((pov) => ({
-        id: `debut_${pov}`, once: true, strict: 'last',
-        when: `pov == "${pov}" and scn_act == "debut" and cleared < 1 and (on_stage or ymd >= ${DEBUT_YMD} or scn_turns >= 14)`,
-        notify: DEBUT_NOTIFY[pov],
-        choices: DEBUT_CHOICES[pov].map((c, i, arr) => ({ ...c, effects: [...c.effects, ...debutClose] })),
-      })),
+      // 1~5장 절정 — 무대 도착 · 그날(1장) · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
+      ...CLIMAX_EVENTS,
+      // 3장 — 과자 상자. 원작에선 로제타가 독 과자를 보낸다. 이번엔 누가 보냈는지 서사가 정한다 [사건 원본, 범인 공백 초안]
+      { id: 'sweets', once: true, when: 'scn_act == "stairs" and cleared < 3 and scn_turns >= 3',
+        effects: [{ list: 'quests', add: [SUB_SWEETS] }, fr(10)],
+        notify: '[3장] 로제타의 이름이 적힌 "화해의 선물" 과자 상자가 에버렛가에 도착했다. 원작이라면 그 과자에는 약한 독이 들어 있고, 엘리시아는 통찰로 악의를 알아채 먹지 않는다. '
+          + '이번에 누가 보냈는지는 지금까지의 서사가 정한다.' },
     ],
   },
   fronts: [CANON],
@@ -325,7 +550,8 @@ const S = {
     notify: '[회귀 {loop}회차] 눈을 뜨면 다시 그날이다 — {scn_label}이(가) 시작되던 그 시점. 세상과 사람들은 아무것도 기억하지 못하고, 유저만 이전 판을 기억한다. '
       + '되돌아온 그 장면에서 다시 시작하라. 유저가 기억하는 것: {memories}',
   },
-  // 보조 갈림길 두 벌 (v1.13.0) — ① 면접 답변지(이벤트가 부른다) ② 평소 장면의 능력치 판정 선택지(킹덤컴식, 턴당 10%)
+  // 보조 갈림길 세 벌 (v1.13.0) — ① 면접 답변지(이벤트가 부른다) ② 원작 보정력(파멸도 30↑) ③ 평소 장면의 능력치 판정 선택지(킹덤컴식, 턴당 10%)
+  // 추첨은 배열 순서 — 원작 보정력이 능력치 선택지보다 먼저
   liveChoices: [{
     id: 'interview', label: '면접', icon: '📝',
     when: 'pov == "servant" and scn_act == "prologue" and not hired',
@@ -341,7 +567,7 @@ const S = {
       + '로제타는 오만하지만 버려질까 두려워하고, 동정을 가장 싫어하고, 쓸모를 증명하고 싶어 한다 — 이 성격을 근거로 세 답의 무게를 가려라. 세 답이 서로 뚜렷이 달라야 한다.',
     desc: '로제타의 질문에 뭐라고 답할까',
     showTags: false,
-  }, {
+  }, CANON_LIVE, {
     id: 'stat', label: '어떻게 할까', icon: '🎲',
     when: 'not (pov == "servant" and not hired)',
     chance: 0.1, count: [2, 3], shuffle: true, worst: '그냥', timeout: 2,
@@ -369,6 +595,38 @@ const S = {
           { checkpoint: 'save' },
         ],
         notify: '[1장] 엘리시아의 데뷔탕트가 다가온다 — 3월 10일 밤, 황궁 대연회장.' },
+      // ── 2장부터 [사건 원본: 원작 타임라인 2~4막·파양·처형 / 해금·여파·문장 초안] — 막은 덧붙이기 전용(세이브의 scn_idx는 번호) ──
+      { id: 'tea', label: '2장 · 다과회와 소문', intensity: '전개', unlock: nextUnlock(1),
+        direct: '원작이라면 이 장에서: 로제타가 다과회에 엘리시아를 초대하고, 하녀를 시켜 엘리시아의 드레스에 차를 쏟게 해 모두 앞에서 망신을 준다. '
+          + '로제타는 "에버렛 영애가 실종된 동안 천한 곳에서 자랐다"는 악소문을 사교계에 퍼뜨린다. 그사이 인물들이 하나씩 엘리시아와 얽힌다 — '
+          + '에르테미안은 연회 파트너로 그녀를 고르고, 리칼은 우연히 그녀와 마주치고, 유온은 동방의 왕자로 다가오고, 테리안은 상단 일로 엇갈린다. '
+          + '원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. 다과회 전까지는 초대장·소문·만남으로 그 자리를 향해 조여 가라.',
+        onEnter: enterCh('tea', [...SUBS.debut]),
+        notify: '[2장] 다과회 초대장이 돌기 시작한다 — 사교계가 돌아온 에버렛 영애를 두고 수군거린다.' },
+      { id: 'stairs', label: '3장 · 계단과 과자', intensity: '고조', unlock: nextUnlock(2),
+        direct: '원작이라면 이 장에서: 로제타가 하인을 매수해 엘리시아를 계단에서 떨어뜨린다(엘리시아는 근처의 도움으로 가벼운 상처에 그친다). '
+          + '로제타는 화해하는 척 약한 독을 넣은 과자를 보내지만, 엘리시아는 통찰의 권능으로 악의를 알아채 먹지 않는다. '
+          + '에르테미안과 엘리시아는 부쩍 가까워지고, 로제타는 사교계에서 고립되며 카르디온가의 냉대도 깊어진다. '
+          + '원작의 이 사건들은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다.',
+        onEnter: enterCh('stairs', SUBS.tea),
+        notify: '[3장] 사교계의 공기가 달라졌다 — 엘리시아 곁엔 사람이 늘고, 로제타 곁엔 줄어든다.' },
+      { id: 'night', label: '4장 · 파국의 밤', intensity: '절정', unlock: nextUnlock(3),
+        direct: '원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. '
+          + '원작의 이 사건은 어떤 형태로든 일어나려 한다 — 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다. '
+          + '누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.',
+        onEnter: enterCh('night', [...SUBS.stairs, SUB_SWEETS]),
+        notify: '[4장] 저녁 모임의 초대장이 왔다. 원작이라면 그 밤이 로제타의 마지막 밤이다.' },
+      { id: 'verdict', label: '5장 · 심판', intensity: '절정', unlock: nextUnlock(4),
+        direct: '원작이라면 이 장에서: 카르디온 공작가가 로제타를 가문에서 파양하고, 공작도 리칼도 로제타를 버린다. 로제타는 처형된다 — 원작 속 로제타의 결말이다. '
+          + '심판의 날까지 며칠이 남았다. 누가 로제타의 편에 설지는 지금까지 쌓은 관계가 정한다 — 면회·편지·설득으로 그날을 향해 조여 가라.',
+        onEnter: enterCh('verdict', SUBS.night),
+        notify: '[5장] 로제타가 에버렛 영애를 해치려 했다는 고발이 황궁에 올라갔다 — 심판의 날이 잡혔다.' },
+      // 원작 이후 — 2부(진영 줄기·무대 뒤, 설계 §15)는 여기 뒤에 덧붙인다
+      { id: 'after', label: '원작 이후', intensity: '해소', unlock: 'cleared >= 5',
+        direct: '원작의 마지막 장이 지나갔다 — 로제타는 처형대에 서지 않았다(결말: {ending}). 빙의자의 원작 지식은 여기서 끝난다. 이제부터는 누구도 모르는 이야기다. '
+          + '인물들의 풀리지 않은 목표·두려움·비밀이 새 사건의 씨앗이다 — 결말이 남긴 것(도주라면 추격, 추방이라면 떨어진 거리)을 이어 가라.',
+        onEnter: [{ list: 'quests', remove: SUBS.verdict }, { set: 'on_stage', expr: 'false' }, { checkpoint: 'save' }],
+        notify: '[원작 이후] 처형대는 비어 있다. 원작이 끝난 세계 — 여기서부터는 아무도 모르는 이야기다.' },
     ],
   },
   directives: [
@@ -396,8 +654,14 @@ const S = {
       text: '[금지] 드미트리샤(17)와 엘시(16)는 미성년자다. 이 둘과의 관계는 우정·보호로만 그리고, 연애·성적 묘사는 어떤 경우에도 쓰지 않는다.' },
     { id: 'loop', when: 'loop >= 1',
       text: '[회귀 {loop}회차] 유저는 이미 한 번 이상 죽고 되돌아왔다. 이전 판을 기억하는 건 유저뿐이고, 세상과 다른 인물은 모든 걸 처음 겪는다. 유저가 기억하는 것: {memories}' },
-    { id: 'after_debut', when: 'scn_act == "debut" and cleared >= 1',
-      text: '[1장 이후] 데뷔탕트의 밤이 지나갔다. 원작 2장(다과회와 소문)은 아직 준비 중이다 — 무도회의 여파와 일상을 자유롭게 이어 가라.' },
+    // 결판과 다음 장 사이의 여파 3턴
+    { id: 'aftermath', when: 'chapter >= 1 and chapter <= 4 and cleared >= chapter',
+      text: '[여파] 이 장의 원작 사건이 지나갔다. 다음 원작 사건은 아직 오지 않았다 — 여파와 일상을 자유롭게 이어 가라.' },
+    // 5장 — 파멸도가 낮으면 심판이 아니라 해명의 자리 [설계 §6]
+    { id: 'verdict_trial', when: 'scn_act == "verdict" and cleared < 5 and doom > 30',
+      text: '[심판] 로제타는 에버렛 영애를 해치려 한 혐의를 받고 있다. 증거보다 소문이 먼저 심판정에 도착해 있고, 원작의 결말이 로제타를 기다린다.' },
+    { id: 'verdict_hearing', when: 'scn_act == "verdict" and cleared < 5 and doom <= 30',
+      text: '[해명] 로제타에게 혐의가 씌워졌지만 증거가 엇갈린다 — 심판이라기보다 해명의 자리다. 원작의 결말은 아직 로제타를 놓지 않았지만, 틈이 있다.' },
   ],
   promptState: {
     template: '지금: 제국력 {year}년 {date} {clock} · {location}\n진행 중인 일: {quests}\n유저: {role} · 능력: {skills} · 소지품: {items}\n능력치: 검술 {st_sword} · 마법 {st_magic} · 화술 {st_talk} · 매력 {st_charm} · 가사 {st_house}',
@@ -423,6 +687,7 @@ const S = {
       { tab: '현황', label: '진행', items: [
         { var: 'location', label: '장소' },
         { var: 'quests', label: '퀘스트' },
+        { var: 'ending', label: '결말', showWhen: 'ending != ""' },
       ] },
       { tab: '나', label: '신상', items: [
         { var: 'role', label: '신분', showWhen: 'role != ""' },
@@ -621,7 +886,7 @@ let debutState;
   let t = turn(st, { skip_day: 8 }); st = t.st;
   ok('원작의 흐름: 1장부터 흐른다 (8일 × 2 + 전환 턴 30분)', Math.floor(st.vars.fr_canon) === 16 && st.vars.frs_canon === 0, `${st.vars.fr_canon} ${st.vars.frs_canon}`);
   const p1 = send(st).promptBlock;
-  ok('징후는 깔리고 시계·밑작업은 없다', p1.includes('하인들이 로제타가 지나가면') && !p1.includes('로니카가 데뷔탕트를') && !/fr_canon/.test(p1), '');
+  ok('징후는 깔리고 시계·밑작업은 없다', p1.includes('하인들이 로제타가 지나가면') && !p1.includes('로니카가 로제타의') && !/fr_canon/.test(p1), '');
   ok('상태창에 원작의 흐름이 안 보인다', !/원작의 흐름|fr_canon/.test(SC.require('render').renderStatusHtml(S, st, t.o.changeLog)), '');
   debutState = cp(st);
   t = turn(st, { on_stage: true }); st = t.st;
@@ -641,7 +906,7 @@ let debutState;
   ok('1장 결판', s.state.vars.cleared === 1 && !s.state.vars.quests.includes(Q_DEBUT) && s.state.vars.on_stage === false, JSON.stringify(s.state.vars.quests));
   ok('선택이 그 턴 프롬프트에', s.promptBlock.includes('[선택] 엘리시아에게 먼저 다가가'), '');
   st = out(s.state).state;
-  ok('1장 이후 안내', send(st).promptBlock.includes('[1장 이후]'), '');
+  ok('1장 이후 여파 안내', send(st).promptBlock.includes('[여파]'), '');
 }
 
 console.log('\n━━ 강제 — 안 고르면 원작대로 ━━');
@@ -676,7 +941,7 @@ console.log('\n━━ 무대 뒤 — 방치하면 소문이 표면화 ━━');
   let st = cp(debutState);
   st = turn(st, { skip_day: 17 }).st; // 16 + 34 = 50
   const p = send(st).promptBlock;
-  ok('50 → 표면화: 소문 통지 · 밑작업 공개 · 파멸도 +10 · 평판 −5', p.includes('카르디온의 악녀가 에버렛 영애의 데뷔탕트를') && p.includes('로니카가 데뷔탕트를 앞두고')
+  ok('50 → 표면화: 소문 통지 · 밑작업 공개 · 파멸도 +10 · 평판 −5', p.includes('카르디온의 악녀가 돌아온 에버렛 영애를 노린다') && p.includes('로니카가 로제타의 첫 데뷔탕트 망신을')
     && st.vars.doom === 50 && st.vars.rep === -45, JSON.stringify({ d: st.vars.doom, r: st.vars.rep }));
 }
 
@@ -685,6 +950,124 @@ console.log('\n━━ 호감 — 낱말 게이트 ━━');
   const allow = engine.auxAllowList(S, '엘리시아가 웃었다.', start('rosetta'));
   const ids = allow.map((a) => a.id || a);
   ok('엘리시아가 나온 턴: 엘리시아 칸만 열림', ids.includes('elicia') && !ids.includes('rical') && !ids.includes('ert'), JSON.stringify(ids));
+}
+
+console.log('\n━━ 1부 척추 — 2장 → 3장 → 4장 → 5장 심판 → 원작 이후 (로제타 시점) ━━');
+// 막이 바뀔 때까지 턴을 돌린다 — 몇 턴 걸렸는지 돌려준다
+const advance = (st, act, max = 8) => { for (let i = 1; i <= max; i++) { st = turn(st, { skip_min: 30 }).st; if (L(st, 'scn_act') === act) return { st, n: i }; } return { st, n: -1 }; };
+const pickBy = (st, label) => { st.meta.pendingChoicePick = S.rules.events.find((e) => e.id === st.meta.pendingChoice.id).choices.findIndex((c) => c.label === label); return st; };
+let verdictState;
+{
+  let st = cp(debutState);
+  st = turn(st, { on_stage: true }).st;
+  st = turn(pickBy(st, '질투가 치밀기 전에 무도회장을 빠져나온다')).st;
+  ok('1장 결판 → 여파 (다음 장은 아직)', st.vars.cleared === 1 && L(st, 'scn_act') === 'debut' && send(st).promptBlock.includes('[여파]'), L(st, 'scn_act'));
+  let a = advance(st, 'tea'); st = a.st;
+  ok('★ 여파 3턴 → 2장 · 메인 교체 · 로니카 서브는 걷히고 작은 병은 남는다 · 체크포인트 = 2장 시작',
+    a.n === 3 && st.vars.quests.includes(Q.tea) && st.vars.quests.includes(SUBS.debut[0]) && !st.vars.quests.includes(SUBS.debut[1])
+    && SUBS.tea.every((q) => st.vars.quests.includes(q)) && st.checkpoints.main.vars.scn_idx === 2, JSON.stringify({ n: a.n, q: st.vars.quests }));
+  const p2 = send(st).promptBlock;
+  ok('★ 2장 프롬프트: 다과회 원작만 — 3장(계단)·4장(칼)은 없다', p2.includes('하녀를 시켜 엘리시아의 드레스에') && !p2.includes('계단에서 떨어뜨린다') && !p2.includes('칼로 해치려') && !p2.includes('[여파]'), '');
+  st = turn(st, { on_stage: true }).st;
+  ok('다과회 도착 → 2장 절정', st.meta.pendingChoice?.id === 'tea_rosetta', JSON.stringify(st.meta.pendingChoice));
+  st = turn(pickBy(st, '엘리시아를 핑계 대고 다과회에서 빼낸다')).st;
+  ok('2장 결판', st.vars.cleared === 2 && !st.vars.quests.includes(Q.tea), JSON.stringify(st.vars.quests));
+  a = advance(st, 'stairs'); st = a.st;
+  ok('→ 3장 · 2장 서브 걷힘', a.n === 3 && st.vars.quests.includes(Q.stairs) && !SUBS.tea.some((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
+  // 과자 상자 — 3턴째 · 무대 없이 14턴이면 원작이 찾아온다
+  let sweetsSeen = false, n = 0;
+  while (!st.meta.pendingChoice && n < 20) { st = turn(st, { skip_min: 30 }).st; n++; if (send(st).promptBlock.includes('"화해의 선물" 과자 상자')) sweetsSeen = true; }
+  ok('★ 과자 상자 사건 (3턴째) — 서브 추가 · 통지', sweetsSeen && st.vars.quests.includes(SUB_SWEETS), JSON.stringify(st.vars.quests));
+  ok('★ 무대에 안 가도 14턴이면 3장 절정 (원작의 강제력)', st.meta.pendingChoice?.id === 'stairs_rosetta' && st.vars.scn_turns >= 14, `${n}턴 · scn_turns ${st.vars.scn_turns}`);
+  const doom0 = st.vars.doom;
+  const s = send(st, { userText: '(아무것도 안 고르고 보낸다)' });
+  ok('안 고르면 원작대로 — 하인에게 돈을 건넨다 (파멸도 +15)', s.forcedChoice?.label === '원작대로 하인에게 약속한 돈을 건넨다' && s.state.vars.doom === doom0 + 15 && s.state.vars.cleared === 3,
+    JSON.stringify({ f: s.forcedChoice?.label, d: s.state.vars.doom }));
+  st = out(s.state).state;
+  a = advance(st, 'night'); st = a.st;
+  ok('→ 4장 · 과자 상자 서브 걷힘', st.vars.quests.includes(Q.night) && !st.vars.quests.includes(SUB_SWEETS) && SUBS.night.every((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
+  st = turn(st, { on_stage: true }).st;
+  ok('저녁 모임 → 4장 절정 · 칼', st.meta.pendingChoice?.id === 'night_rosetta' && send(st).promptBlock.includes('칼날이 번뜩인다'), '');
+  st = turn(pickBy(st, '엘리시아의 손을 잡고 연회장으로 달린다')).st;
+  a = advance(st, 'verdict'); st = a.st;
+  ok('→ 5장 심판 · 체크포인트 = 5장 시작', st.vars.quests.includes(Q.verdict) && st.checkpoints.main.vars.scn_idx === 5, JSON.stringify(st.vars.quests));
+  verdictState = cp(st);
+}
+
+console.log('\n━━ 5장 심판 — 잠긴 선택지 · 원작 결말 = 회귀 · 결말 → 원작 이후 ━━');
+{
+  let st = cp(verdictState);
+  Object.assign(st.vars, { doom: 50, elicia: 65, rical: 10, ert: 10, duke: 5 });
+  ok('파멸도 50 → [심판] (해명 아님)', send(st).promptBlock.includes('[심판] 로제타는') && !send(st).promptBlock.includes('[해명]'), '');
+  st = turn(st, { on_stage: true }).st;
+  ok('심판정 → 결말 갈림길', st.meta.pendingChoice?.id === 'verdict_rosetta', JSON.stringify(st.meta.pendingChoice));
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 11 });
+  const rows = (html.match(/<div class="sim-choice[^"]*">.*?<\/div>/g) || []);
+  const locked = (label) => rows.some((r) => r.includes(label) && r.includes('🔒'));
+  ok('★ 잠긴 선택지가 보인다: 리칼·황태자·공작·결백 🔒 · 엘리시아는 열림 · 로제타 시점엔 "대신 죄"가 없다',
+    ['리칼이 증언대에', '황태자가 재심을', '공작이 가문의', '스스로 결백을'].every(locked) && !locked('엘리시아가 로제타를') && !html.includes('내가 대신 죄를'),
+    rows.map((x) => x.replace(/<[^>]+>/g, '')).join(' | ').slice(0, 500));
+  // 원작 결말 = 죽음 → 5장 시작으로 회귀
+  const loop0 = st.vars.loop;
+  const s = send(st, { userText: '(아무것도 안 고르고 보낸다)' });
+  ok('★ 안 고르면 받아들인다 → 처형 → 5장 시작으로 회귀', s.forcedChoice?.label === '받아들인다' && s.state.vars.loop === loop0 + 1 && L(s.state, 'scn_act') === 'verdict'
+    && s.state.vars.cleared === 4 && s.state.vars.ending === '' && s.promptBlock.includes('[회귀'), JSON.stringify({ f: s.forcedChoice?.label, loop: s.state.vars.loop, c: s.state.vars.cleared }));
+  st = out(s.state).state;
+  // 다시 — 이번엔 엘리시아가 감싼다
+  st.vars.elicia = 65;
+  st = turn(st, { on_stage: true }).st;
+  ok('회귀한 판에서 심판이 다시 열린다', st.meta.pendingChoice?.id === 'verdict_rosetta', JSON.stringify(st.meta.pendingChoice));
+  st = turn(pickBy(st, '엘리시아가 로제타를 감싼다')).st;
+  ok('결말: 엘리시아의 변호 · 5장 결판', st.vars.ending === '엘리시아의 변호' && st.vars.cleared === 5, st.vars.ending);
+  if (L(st, 'scn_act') !== 'after') st = turn(st).st;
+  const pa = send(st).promptBlock;
+  ok('★ 원작 이후 — 결말이 막 지시에 · 원작 지식은 끝', L(st, 'scn_act') === 'after' && pa.includes('결말: 엘리시아의 변호') && pa.includes('원작 지식은 여기서 끝난다'), L(st, 'scn_act'));
+  const fr0 = st.vars.fr_canon;
+  st = turn(st, { skip_day: 10 }).st;
+  ok('원작 이후엔 원작의 흐름이 멈춘다 · 원작 보정력도 닫힌다', st.vars.fr_canon === fr0 && !SC.require('choice').liveOpen(S.liveChoices.find((c) => c.id === 'canon'), S, st.vars, engine.makeLookup), `${fr0} → ${st.vars.fr_canon}`);
+  ok('상태창에 결말', SC.require('render').renderStatusHtml(S, st, null, null, { uid: 12 }).includes('엘리시아의 변호'), '');
+}
+{
+  // 파멸도가 낮으면 해명의 자리 — 결백 선택지가 열린다
+  let st = cp(verdictState);
+  st.vars.doom = 25;
+  ok('파멸도 25 → [해명]', send(st).promptBlock.includes('[해명]'), '');
+  st = turn(st, { on_stage: true }).st;
+  st = turn(pickBy(st, '스스로 결백을 밝힌다')).st;
+  ok('해명 → 결말: 스스로 밝힌 결백', st.vars.ending === '스스로 밝힌 결백' && st.vars.cleared === 5, st.vars.ending);
+}
+{
+  // 시종 시점 — "내가 대신 죄를 쓴다" (로제타 호감 70↑)
+  let st = start('servant');
+  Object.assign(st.vars, { hired: true, cleared: 4, scn_idx: 5, scn_turns: 0, rosetta: 75, doom: 60 });
+  st = turn(st, { on_stage: true }).st;
+  ok('시종 심판 갈림길', st.meta.pendingChoice?.id === 'verdict_servant', JSON.stringify(st.meta.pendingChoice));
+  st = turn(pickBy(st, '내가 대신 죄를 쓴다')).st;
+  ok('★ 대신 죄를 쓴다 → 추방 · 로제타 호감 +20', st.vars.ending === '대신 진 죄' && st.vars.role === '수도에서 추방된 몸' && st.vars.rosetta >= 95, JSON.stringify({ e: st.vars.ending, r: st.vars.role, ro: st.vars.rosetta }));
+}
+
+console.log('\n━━ 원작 보정력 — 파멸도가 부른다 ━━');
+{
+  const choiceMod = SC.require('choice');
+  const canon = S.liveChoices.find((c) => c.id === 'canon');
+  let st = start('rosetta');
+  Object.assign(st.vars, { scn_idx: 2, doom: 30 });
+  ok('파멸도 30 → 0% · 60 → 12% · 80 → 20%', choiceMod.liveChance(canon, S, st.vars, engine.makeLookup) === 0
+    && Math.abs(choiceMod.liveChance(canon, S, { ...st.vars, doom: 60 }, engine.makeLookup) - 0.12) < 1e-9
+    && Math.abs(choiceMod.liveChance(canon, S, { ...st.vars, doom: 80 }, engine.makeLookup) - 0.2) < 1e-9, '');
+  st.vars.doom = 70;
+  const probe = cp(st);
+  choiceMod.rollAsk(S, probe, () => 0.05, engine.makeLookup);
+  ok('추첨 순서: 원작 보정력이 능력치 선택지보다 먼저', probe.meta.liveAsk === 'canon', String(probe.meta.liveAsk));
+  st.meta.liveAsk = 'canon';
+  const qa = engine.buildAuxPrompt(S, st, '엘리시아가 넘어질 뻔하자 영애들이 로제타를 쳐다본다.', null, '');
+  ok('보조 지시: 원작 보정력 — 이탈·타협·원작', qa.includes('[원작 보정력 — 선택지 쓰기]') && ['이탈', '타협', '원작'].every((x) => qa.includes(x)), '');
+  const o = out(st, {}, { choices: { desc: '원작이 되돌리려 한다', items: [{ label: '비웃으며 지나친다', tag: '원작' }, { label: '손을 내민다', tag: '이탈' }, { label: '못 본 척한다', tag: '타협' }] } });
+  const h = SC.require('render').renderStatusHtml(S, o.state, null, null, { uid: 13 });
+  ok('상태창: 태그가 보이고, 안 고르면 타협', h.includes('>원작<') && h.includes("'타협' 항목으로"), (h.match(/'[^']+' 항목으로/g) || []).join(''));
+  const f = send(o.state, { userText: '로제타는 잠시 멈춰 서서 엘리시아를 내려다본다.' });
+  const f2 = out(f.state);
+  ok('★ 직접 쓰면 타협 (파멸도 −1)', f2.state.vars.doom === 69 && !f2.state.meta.pendingChoice, JSON.stringify({ d: f2.state.vars.doom, p: f2.state.meta.pendingChoice?.id }));
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

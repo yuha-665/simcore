@@ -383,7 +383,7 @@
       ],
       "maxItems": 10,
       "itemMaxLength": 48,
-      "desc": "진행 중인 퀘스트. \"[서브]\" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. \"[서장]\"·\"[1장]\" 같은 메인 항목은 시스템이 지우니 건드리지 마라. 서사 속 인물이 유저에게 직접 부탁한 일이 생기면 \"[서브] …\"로 추가(서브는 최대 5개)."
+      "desc": "진행 중인 퀘스트. \"[서브]\" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. \"[서장]\"·\"[1장]\" 같은 메인 항목과 \"[원작 이행]\" 항목은 시스템이 지우니 건드리지 마라. 서사 속 인물이 유저에게 직접 부탁한 일이 생기면 \"[서브] …\"로 추가(서브는 최대 5개)."
     },
     {
       "id": "memories",
@@ -574,6 +574,11 @@
       "id": "penalty",
       "label": "실패 시",
       "expr": "\"사망\""
+    },
+    {
+      "id": "forced",
+      "label": "거부 시",
+      "expr": "\"강제 이행\""
     },
     {
       "id": "chapter",
@@ -1862,14 +1867,70 @@
         "notify": "[시스템] 메인 임무 수행 불가 — 면접에서 떨어져 로제타 곁에 설 길이 닫혔다. 페널티: 사망."
       },
       {
+        "id": "duty_debut",
+        "once": true,
+        "when": "pov == \"rosetta\" and scn_act == \"debut\" and cleared < 1",
+        "effects": [
+          {
+            "list": "quests",
+            "add": [
+              "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
+            ]
+          }
+        ],
+        "notify": "[시스템] 원작 이행 임무 — \"모두 앞에서 엘리시아에게 질투를 드러내라\" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다."
+      },
+      {
+        "id": "duty_tea",
+        "once": true,
+        "when": "pov == \"rosetta\" and scn_act == \"tea\" and cleared < 2",
+        "effects": [
+          {
+            "list": "quests",
+            "add": [
+              "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
+            ]
+          }
+        ],
+        "notify": "[시스템] 원작 이행 임무 — \"다과회에서 엘리시아의 드레스에 차를 쏟게 하라\" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다."
+      },
+      {
+        "id": "duty_stairs",
+        "once": true,
+        "when": "pov == \"rosetta\" and scn_act == \"stairs\" and cleared < 3",
+        "effects": [
+          {
+            "list": "quests",
+            "add": [
+              "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
+            ]
+          }
+        ],
+        "notify": "[시스템] 원작 이행 임무 — \"하인을 매수해 계단에서 엘리시아를 떨어뜨려라\" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다."
+      },
+      {
+        "id": "duty_night",
+        "once": true,
+        "when": "pov == \"rosetta\" and scn_act == \"night\" and cleared < 4",
+        "effects": [
+          {
+            "list": "quests",
+            "add": [
+              "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
+            ]
+          }
+        ],
+        "notify": "[시스템] 원작 이행 임무 — \"엘리시아를 외진 곳으로 불러내 칼을 들어라\" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다."
+      },
+      {
         "id": "debut_rosetta",
         "once": true,
         "strict": "last",
         "when": "pov == \"rosetta\" and scn_act == \"debut\" and cleared < 1 and (on_stage or ymd >= 4720310 or scn_turns >= 14)",
-        "notify": "[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.",
+        "notify": "[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 로제타의 목구멍까지 원작의 대사가 차오른다 — 원작 이행의 순간이다.",
         "choices": [
           {
-            "label": "엘리시아에게 먼저 다가가 데뷔를 축하한다",
+            "label": "날 선 말투로 꼭 필요한 충고를 던진다",
             "check": "c_talk_h",
             "effects": [
               {
@@ -1903,22 +1964,27 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
-            "inject": "로제타가 원작과 달리 엘리시아에게 먼저 손을 내민다. 그 말이 어떻게 받아들여지는지는 판정이 정한다."
+            "inject": "로제타가 모두 앞에서 엘리시아에게 가시 돋친 말을 던진다 — 원작의 대사처럼 들리지만, 속에는 엘리시아가 오늘 밤 넘어지지 않을 충고가 들어 있다. 엘리시아가 그 속을 알아들을지, 가시만 남을지는 판정이 정한다."
           },
           {
-            "label": "질투가 치밀기 전에 무도회장을 빠져나온다",
+            "label": "질투의 칼끝을 엘리시아를 비웃던 로니카에게 돌린다",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom - 5"
+                "expr": "doom - 6"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 6"
               },
               {
                 "set": "rep",
-                "expr": "rep - 3"
+                "expr": "rep - 5"
               },
               {
                 "front": "canon",
@@ -1939,31 +2005,32 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
-            "inject": "로제타는 원작의 장면이 시작되기 전에 자리를 뜬다. 뒤에서 \"도망쳤다\"는 수군거림이 따라붙는다."
+            "inject": "로제타의 독설이 터진다 — 그런데 과녁은 엘리시아 뒤에서 부채로 입을 가리고 웃던 로니카다. 연회장은 \"악녀끼리 싸운다\"며 수군거리고, 엘리시아는 로제타를 다시 본다."
           },
           {
-            "label": "황태자에게 대놓고 춤을 청한다",
+            "label": "질투를 숨기지 않고 모두 앞에서 인정한다",
             "check": "c_charm",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom + (chk_ok ? 3 : 8)"
-              },
-              {
-                "set": "ert",
-                "expr": "ert + (chk_ok ? 8 : 0)"
-              },
-              {
-                "set": "rep",
-                "expr": "rep + (chk_ok ? 0 : -5)"
+                "expr": "doom + (chk_ok ? -8 : 0)"
               },
               {
                 "set": "elicia",
-                "expr": "elicia - 5"
+                "expr": "elicia + (chk_ok ? 10 : 2)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 5 : -5)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -15 : 0"
               },
               {
                 "set": "cleared",
@@ -1980,14 +2047,15 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
-            "inject": "로제타가 엘리시아 앞에서 황태자에게 춤을 청한다. 받아 줄지, 모두 앞에서 거절당할지는 판정이 정한다."
+            "inject": "로제타가 모두 앞에서 엘리시아에게 말한다 — \"당신이 부러워요.\" 질투는 분명히 드러났다. 그 솔직함이 품위로 보일지, 또 하나의 비꼼으로 들릴지는 판정이 정한다."
           },
           {
-            "label": "치미는 질투를 그대로 쏟아낸다",
+            "label": "원작 이행을 거부한다",
             "effects": [
               {
                 "set": "doom",
@@ -2020,11 +2088,12 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
-            "inject": "원작 그대로 — 로제타의 질투가 연회장 한가운데서 터진다."
+            "inject": "[시스템] 원작 이행 거부 — 강제 이행. 로제타의 몸이 제멋대로 움직이고, 원작의 대사가 입에서 먼저 흘러나온다. 질투가 연회장 한가운데서 원작의 말 그대로 터진다 — 빙의자는 제 입을 막지 못한다."
           }
         ]
       },
@@ -2066,7 +2135,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2103,7 +2173,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2139,7 +2210,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2175,7 +2247,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2221,7 +2294,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2258,7 +2332,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2294,7 +2369,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2330,7 +2406,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[1장] 데뷔탕트를 무사히 넘긴다"
+                  "[1장] 데뷔탕트를 무사히 넘긴다",
+                  "[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라"
                 ]
               }
             ],
@@ -2343,11 +2420,11 @@
         "once": true,
         "strict": "last",
         "when": "pov == \"rosetta\" and scn_act == \"tea\" and cleared < 2 and (on_stage or scn_turns >= 14)",
-        "notify": "[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.",
+        "notify": "[2장 · 다과회] 로제타가 연 다과회. 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 곁에 서서 로제타의 눈짓을 기다린다 — 원작 이행의 순간이다.",
         "choices": [
           {
-            "label": "쟁반을 든 하녀를 불러 세워 다른 심부름을 시킨다",
-            "check": "c_talk",
+            "label": "쏟게 하되, 같은 빛깔의 새 드레스를 선물로 준비해 둔다",
+            "check": "c_charm",
             "effects": [
               {
                 "set": "doom",
@@ -2355,7 +2432,11 @@
               },
               {
                 "set": "elicia",
-                "expr": "elicia + (chk_ok ? 8 : 3)"
+                "expr": "elicia + (chk_ok ? 12 : 3)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? 5 : -3)"
               },
               {
                 "front": "canon",
@@ -2376,30 +2457,31 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
-            "inject": "로제타가 차를 엎으려는 하녀를 먼저 불러 세운다. 하녀가 말을 따를지, 쟁반이 결국 기울지는 판정이 정한다."
+            "inject": "로제타의 눈짓에 찻잔이 기울고 엘리시아의 드레스가 젖는다 — 원작 그대로. 그런데 로제타가 미리 준비해 둔 같은 빛깔의 새 드레스를 내민다. 망신이 선물로 뒤집힐지, 더 교묘한 조롱으로 보일지는 판정이 정한다."
           },
           {
-            "label": "엘리시아를 핑계 대고 다과회에서 빼낸다",
+            "label": "하녀에게 눈짓하고, 제 드레스에도 찻잔을 엎는다",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom - 5"
+                "expr": "doom - 6"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + 6"
               },
               {
                 "set": "rep",
                 "expr": "rep - 5"
               },
               {
-                "set": "elicia",
-                "expr": "elicia + 5"
-              },
-              {
                 "front": "canon",
-                "add": "-10"
+                "add": "-8"
               },
               {
                 "set": "cleared",
@@ -2416,15 +2498,16 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
-            "inject": "로제타가 무례를 무릅쓰고 엘리시아를 자리에서 데리고 나간다. 뒤에서 \"또 악녀가 판을 깼다\"는 수군거림이 따라붙는다."
+            "inject": "찻잔이 기울어 엘리시아의 드레스가 젖는다. 그 순간 로제타가 제 찻잔을 제 드레스에 쏟는다. 두 영애가 나란히 젖은 채 서고, 웃음거리는 반으로 나뉜다."
           },
           {
-            "label": "차를 뒤집어쓴 엘리시아에게 제 숄을 둘러 준다",
-            "check": "c_charm",
+            "label": "식은 차로 바꿔 두고, 쏟은 하녀를 모두 앞에서 감싼다",
+            "check": "c_talk",
             "effects": [
               {
                 "set": "doom",
@@ -2432,15 +2515,15 @@
               },
               {
                 "set": "elicia",
-                "expr": "elicia + (chk_ok ? 12 : 5)"
+                "expr": "elicia + (chk_ok ? 5 : 2)"
               },
               {
                 "set": "rep",
-                "expr": "rep + (chk_ok ? 5 : -3)"
+                "expr": "rep + (chk_ok ? 3 : -5)"
               },
               {
                 "front": "canon",
-                "add": "chk_ok ? -10 : -3"
+                "add": "chk_ok ? -12 : -3"
               },
               {
                 "set": "cleared",
@@ -2457,14 +2540,15 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
-            "inject": "차는 이미 쏟아졌다. 로제타가 모두의 시선 속에서 엘리시아에게 숄을 둘러 준다. 호의로 보일지 조롱으로 보일지는 판정이 정한다."
+            "inject": "쏟아진 건 미리 식혀 둔 차다. 로제타가 떨고 있는 하녀 앞을 막아서며 \"제 하녀의 실수\"라고 머리를 숙인다. 이게 악녀의 체면치레로 보일지, 전혀 다른 얼굴로 보일지는 판정이 정한다."
           },
           {
-            "label": "원작대로 하녀에게 눈짓한다",
+            "label": "원작 이행을 거부한다",
             "effects": [
               {
                 "set": "doom",
@@ -2497,11 +2581,12 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
-            "inject": "원작 그대로 — 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다."
+            "inject": "[시스템] 원작 이행 거부 — 강제 이행. 로제타의 몸이 제멋대로 움직이고, 원작의 대사가 입에서 먼저 흘러나온다. 로제타의 눈짓에 뜨거운 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다."
           }
         ]
       },
@@ -2547,7 +2632,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2584,7 +2670,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2624,7 +2711,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2660,7 +2748,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2706,7 +2795,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2743,7 +2833,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2783,7 +2874,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2819,7 +2911,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[2장] 다과회를 무사히 넘긴다"
+                  "[2장] 다과회를 무사히 넘긴다",
+                  "[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라"
                 ]
               }
             ],
@@ -2832,10 +2925,10 @@
         "once": true,
         "strict": "last",
         "when": "pov == \"rosetta\" and scn_act == \"stairs\" and cleared < 3 and (on_stage or scn_turns >= 14)",
-        "notify": "[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.",
+        "notify": "[3장 · 계단] 계단 위, 엘리시아가 내려오려 한다. 뒤따르는 하인 하나가 로제타의 눈치를 살핀다 — 원작이라면 로제타의 돈이 그 손에 쥐어질 차례다. 원작 이행의 순간이다.",
         "choices": [
           {
-            "label": "계단 아래로 달려가 엘리시아를 받아 낸다",
+            "label": "매수하고, 계단 아래에는 제가 선다",
             "check": "c_sword",
             "effects": [
               {
@@ -2869,19 +2962,24 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
-            "inject": "로제타가 드레스 자락을 걷어쥐고 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다."
+            "inject": "로제타의 돈을 받은 하인이 엘리시아의 등을 민다 — 원작 그대로. 원작에서 엘리시아를 가벼운 상처로 그치게 한 \"근처의 도움\"이 이번엔 계단 아래 서 있던 로제타다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다."
           },
           {
-            "label": "매수된 하인을 먼저 찾아 두 배를 쥐여 준다",
+            "label": "매수한 하인에게 마지막 두 칸에서만 밀라고 못 박는다",
             "check": "c_talk",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom + (chk_ok ? -10 : 3)"
+                "expr": "doom + (chk_ok ? -8 : 3)"
+              },
+              {
+                "set": "elicia",
+                "expr": "elicia + (chk_ok ? 3 : 0)"
               },
               {
                 "set": "rep",
@@ -2889,7 +2987,7 @@
               },
               {
                 "front": "canon",
-                "add": "chk_ok ? -15 : 5"
+                "add": "chk_ok ? -12 : 5"
               },
               {
                 "set": "cleared",
@@ -2906,26 +3004,35 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
-            "inject": "로제타가 하인을 구석으로 불러 더 큰 돈을 내민다. 하인이 손을 뗄지, \"악녀가 입막음을 하려 했다\"는 말이 돌지는 판정이 정한다."
+            "inject": "하인이 엘리시아의 등을 민다 — 약속대로 마지막 두 칸에서. 엘리시아는 발목을 삐끗하고 끝날지, 하인이 겁에 질려 \"카르디온 공녀가 시켰다\"고 떠벌릴지는 판정이 정한다."
           },
           {
-            "label": "엘리시아를 계단에서 먼 곳으로 불러낸다",
+            "label": "엘리시아의 손을 잡은 채 함께 떨어져 밑에 깔린다",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom - 5"
+                "expr": "doom - 6"
               },
               {
                 "set": "elicia",
-                "expr": "elicia + 3"
+                "expr": "elicia + 8"
+              },
+              {
+                "set": "health",
+                "expr": "health - 10"
+              },
+              {
+                "set": "rep",
+                "expr": "rep - 3"
               },
               {
                 "front": "canon",
-                "add": "-5"
+                "add": "-10"
               },
               {
                 "set": "cleared",
@@ -2942,14 +3049,15 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
-            "inject": "로제타가 핑계를 만들어 엘리시아를 계단에서 떼어 놓는다. 사고는 일어나지 않았지만, 하인은 아직 그 자리에 있다."
+            "inject": "하인이 등을 민 순간 로제타가 엘리시아의 손을 붙잡는다. 두 사람이 함께 굴러떨어지고, 바닥에 먼저 닿는 건 로제타의 등이다. 사람들은 \"악녀가 엘리시아를 끌고 떨어졌다\"고도, 그 반대로도 말한다."
           },
           {
-            "label": "원작대로 하인에게 약속한 돈을 건넨다",
+            "label": "원작 이행을 거부한다",
             "effects": [
               {
                 "set": "doom",
@@ -2982,11 +3090,12 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
-            "inject": "원작 그대로 — 로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다."
+            "inject": "[시스템] 원작 이행 거부 — 강제 이행. 로제타의 몸이 제멋대로 움직이고, 원작의 대사가 입에서 먼저 흘러나온다. 로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다."
           }
         ]
       },
@@ -3032,7 +3141,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3065,7 +3175,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3101,7 +3212,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3137,7 +3249,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3187,7 +3300,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3220,7 +3334,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3256,7 +3371,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3292,7 +3408,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[3장] 계단의 사고를 막는다"
+                  "[3장] 계단의 사고를 막는다",
+                  "[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라"
                 ]
               }
             ],
@@ -3305,31 +3422,27 @@
         "once": true,
         "strict": "last",
         "when": "pov == \"rosetta\" and scn_act == \"night\" and cleared < 4 and (on_stage or scn_turns >= 14)",
-        "notify": "[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.",
+        "notify": "[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 로제타의 쪽지를 받고 나온 엘리시아가 서 있다. 로제타의 손에는 어느새 칼이 쥐어져 있고, 멀리서 황태자의 발소리가 가까워진다. 원작 이행의 순간이다.",
         "choices": [
           {
-            "label": "칼을 든 손목을 쳐낸다",
-            "check": "c_sword_h",
+            "label": "칼을 든 채 속삭인다 — \"몸이 멋대로 움직여요. 도망쳐요.\"",
+            "when": "elicia >= 40",
             "effects": [
               {
                 "set": "doom",
-                "expr": "doom + (chk_ok ? -15 : 5)"
+                "expr": "doom - 15"
               },
               {
                 "set": "elicia",
-                "expr": "elicia + (chk_ok ? 15 : 5)"
+                "expr": "elicia + 15"
               },
               {
                 "set": "ert",
-                "expr": "ert + (chk_ok ? 10 : 0)"
-              },
-              {
-                "set": "rep",
-                "expr": "rep + (chk_ok ? 5 : -10)"
+                "expr": "ert + 5"
               },
               {
                 "front": "canon",
-                "add": "chk_ok ? -25 : 10"
+                "add": "-25"
               },
               {
                 "set": "cleared",
@@ -3346,66 +3459,31 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
-            "inject": "로제타가 어둠 속 칼날로 몸을 던진다. 칼을 쳐낼지, 칼자루를 쥔 채 붙잡히는 게 로제타가 될지는 판정이 정한다."
+            "inject": "로제타의 손에 칼이 들렸다 — 원작 그대로. 그런데 칼끝이 떨리고, 입술이 원작에 없는 말을 한다. 엘리시아의 통찰이 로제타에게서 살의를 읽지 못한다. 황태자가 달려왔을 때, 로제타 앞을 먼저 막아서는 건 엘리시아다."
           },
           {
-            "label": "목청껏 소리쳐 사람들을 부른다",
-            "effects": [
-              {
-                "set": "doom",
-                "expr": "doom - 8"
-              },
-              {
-                "set": "rep",
-                "expr": "rep - 3"
-              },
-              {
-                "front": "canon",
-                "add": "-10"
-              },
-              {
-                "set": "cleared",
-                "expr": "max(cleared, 4)"
-              },
-              {
-                "set": "on_stage",
-                "expr": "false"
-              },
-              {
-                "set": "clear_at",
-                "expr": "scn_turns"
-              },
-              {
-                "list": "quests",
-                "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
-                ]
-              }
-            ],
-            "inject": "로제타가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다 — 남은 건 그 자리에 선 로제타와 엘리시아뿐이다."
-          },
-          {
-            "label": "엘리시아의 손을 잡고 연회장으로 달린다",
+            "label": "칼로 제 손바닥을 긋는다",
             "effects": [
               {
                 "set": "doom",
                 "expr": "doom - 10"
               },
               {
-                "set": "elicia",
-                "expr": "elicia + 8"
+                "set": "health",
+                "expr": "health - 8"
               },
               {
-                "set": "health",
-                "expr": "health - 5"
+                "set": "rep",
+                "expr": "rep - 5"
               },
               {
                 "front": "canon",
-                "add": "-10"
+                "add": "-15"
               },
               {
                 "set": "cleared",
@@ -3422,14 +3500,57 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
-            "inject": "로제타가 엘리시아의 손을 잡아끌고 불빛 쪽으로 달린다. 약한 몸이라 숨이 턱까지 차오른다."
+            "inject": "칼은 들렸고 피는 흘렀다 — 원작의 장면은 채워졌다. 다만 피를 흘리는 건 로제타 자신이다. 황태자가 달려왔을 때 그 자리에 다친 사람은 로제타뿐이고, \"악녀가 미쳤다\"는 말이 돈다."
           },
           {
-            "label": "원작대로 칼을 든다",
+            "label": "황태자의 발소리에 맞춰 칼을 내던지고 무릎 꿇는다",
+            "check": "c_charm",
+            "effects": [
+              {
+                "set": "doom",
+                "expr": "doom + (chk_ok ? -8 : 5)"
+              },
+              {
+                "set": "ert",
+                "expr": "ert + (chk_ok ? 8 : 0)"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + (chk_ok ? -5 : -10)"
+              },
+              {
+                "front": "canon",
+                "add": "chk_ok ? -12 : 5"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 4)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
+                ]
+              }
+            ],
+            "inject": "황태자가 모퉁이를 도는 순간 로제타가 칼을 바닥에 내던지고 무릎을 꿇는다. 로제타는 붙잡히지만, 살의가 없었다는 게 그 눈에 보일지 — 칼을 던지는 몸짓마저 휘두르는 것으로 보일지는 판정이 정한다."
+          },
+          {
+            "label": "원작 이행을 거부한다",
             "effects": [
               {
                 "set": "doom",
@@ -3462,11 +3583,12 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
-            "inject": "원작 그대로 — 로제타의 손에 칼이 들린다. 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다."
+            "inject": "[시스템] 원작 이행 거부 — 강제 이행. 로제타의 몸이 제멋대로 움직이고, 원작의 대사가 입에서 먼저 흘러나온다. 로제타의 손이 칼을 휘두르고, 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다."
           }
         ]
       },
@@ -3512,7 +3634,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3548,7 +3671,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3580,7 +3704,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3616,7 +3741,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3666,7 +3792,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3702,7 +3829,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3734,7 +3862,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -3770,7 +3899,8 @@
               {
                 "list": "quests",
                 "remove": [
-                  "[4장] 파국의 밤을 넘긴다"
+                  "[4장] 파국의 밤을 넘긴다",
+                  "[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라"
                 ]
               }
             ],
@@ -5902,7 +6032,7 @@
         "label": "4장 · 파국의 밤",
         "intensity": "절정",
         "unlock": "cleared >= 3 and scn_turns >= clear_at + 4",
-        "direct": "원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다. 누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.",
+        "direct": "원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.",
         "onEnter": [
           {
             "list": "quests",
@@ -6013,7 +6143,17 @@
     {
       "id": "system",
       "when": "cleared < 5",
-      "text": "[시스템 창] 유저의 눈앞에는 유저만 볼 수 있는 반투명한 시스템 창이 있다. 메인 임무: \"{mission}\" — 실패 시: 사망. 누가 띄웠는지, 왜인지는 아무도 모르고 시스템도 설명하지 않는다. 창은 늘 떠 있지 않다 — 새 장이 열릴 때(통지의 [퀘스트 갱신]), 임무가 걸린 순간, 임무에 실패했을 때만 떠오른다. 창은 [ ] 머리를 단 짧고 건조한 시스템 말투로 본문과 구분해 그려라. 창이 스스로 새 임무·보상·능력을 주지는 않는다. 다른 인물들은 창을 보지 못한다."
+      "text": "[시스템 창] 유저의 눈앞에는 유저만 볼 수 있는 반투명한 시스템 창이 있다. 메인 임무: \"{mission}\" — 실패 시: 사망. 누가 띄웠는지, 왜인지는 아무도 모르고 시스템도 설명하지 않는다. 창은 늘 떠 있지 않다 — 새 장이 열릴 때(통지의 [퀘스트 갱신]), 임무가 걸린 순간, 임무에 실패했을 때만 떠오른다. 창은 [ ] 머리를 단 짧고 건조한 시스템 말투로 본문과 구분해 그려라. 창이 스스로 새 임무·보상·능력을 지어내지는 않는다 — 임무는 통지로 온 것뿐이다. 다른 인물들은 창을 보지 못한다."
+    },
+    {
+      "id": "duty",
+      "when": "pov == \"rosetta\" and cleared < 4",
+      "text": "[원작 이행] 시스템 창에는 메인 임무 아래 제약이 하나 더 있다: \"원작의 장면은 원작대로 — 거부 시 강제 이행\". 장마다 원작 이행 임무(퀘스트의 \"[원작 이행]\" 항목 — 원작 속 로제타가 저지른 바로 그 장면)가 뜨고, 그 장면의 겉모양(누가 무엇을 했다)은 반드시 일어난다. 빙의자가 거부하거나 달아나면 강제 이행 — 몸이 제멋대로 원작대로 움직이고 원작의 대사가 입에서 먼저 흘러나온다. 빙의자가 비틀 수 있는 건 그 안이다: 어떻게, 어느 만큼, 그 앞뒤에 무엇을 하는지. 강제 이행은 그 장면에서만 걸린다 — 평소의 로제타는 자유롭고, 임무의 장면이 오기 전까지는 준비와 궁리의 시간이다(그 장면은 무대에서 시스템이 연다 — 서사가 먼저 치르지 마라)."
+    },
+    {
+      "id": "stand_in",
+      "when": "pov != \"rosetta\" and scn_act == \"night\" and cleared < 4",
+      "text": "[원작의 흐름] 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다 — 그 손이 누구의 것인지는 끝내 흐릿하다. 사람이 아니라 원작의 흐름 그 자체가 움직이는 것처럼."
     },
     {
       "id": "system_done",
@@ -6215,7 +6355,7 @@
     "layout": "tabs",
     "theme": "clean",
     "changeLog": "collapsed",
-    "customCSS": "/* 밤의 무도회 — 자정의 연회장, 샴페인 금빛 테두리, 장밋빛 게이지 */\n/* 넓은 채팅창에서 이름표와 값이 양끝으로 벌어지지 않게 — 폭을 묶고 가운데로 [유저 2026-09-26 실기] */\n.sim-status{max-width:620px;margin-left:auto;margin-right:auto;background:radial-gradient(120% 80% at 50% 0%,#3a2a4a 0%,#221a2e 55%,#17121f 100%);color:#efe5d6;\n  border:1px solid #b8975d;border-radius:6px;padding:14px 16px 12px;\n  box-shadow:inset 0 0 0 3px #1c1626,inset 0 0 0 4px rgba(212,178,106,.35),0 4px 18px rgba(0,0,0,.4);\n  font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;line-height:1.6;\n  --sim-tab-on-bg:linear-gradient(180deg,rgba(212,178,106,.2),rgba(212,178,106,.04));--sim-tab-on-line:rgba(212,178,106,.6)}\n.sim-status>details>summary{color:#e2c47e;font-weight:700;text-align:center;letter-spacing:.1em;opacity:1;list-style:none;\n  text-shadow:0 0 8px rgba(226,196,126,.35);margin-bottom:4px}\n.sim-status>details>summary::-webkit-details-marker{display:none}\n.sim-status>details>summary::before{content:'✧ '}\n.sim-status>details>summary::after{content:' ✧'}\n.sim-group{margin-top:12px}\n.sim-group-label{display:flex;align-items:center;gap:8px;color:#d4b26a;font-size:.8em;letter-spacing:.08em;opacity:1;margin-bottom:6px}\n.sim-group-label::before,.sim-group-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(212,178,106,.55),transparent)}\n.sim-tabbar{justify-content:center;gap:6px;margin:12px 0 2px;border-bottom:1px solid rgba(212,178,106,.4)}\n.sim-tab{color:#e2c47e;letter-spacing:.14em;padding:5px 20px 4px;font-size:.9em;opacity:.45}\n.sim-tab:hover{opacity:.75}\n.sim-row{margin:5px 0}\n.sim-label{color:#b9a9bf;opacity:1;min-width:6.5em;font-size:.93em}\n.sim-value{color:#f4e9d8;font-weight:700}\n.sim-bar+.sim-value{min-width:2em;text-align:right}\n.sim-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px}\n.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#d4b26a,#e0879a);box-shadow:0 0 6px rgba(224,135,154,.45)}\n.sim-badge{background:rgba(212,178,106,.12);color:#efe5d6;border:1px solid rgba(212,178,106,.35)}\n.sim-tag{background:transparent;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px}\n.sim-tags{justify-content:flex-start}\n.sim-empty{color:#8c7f93;opacity:1}\n.sim-scn{background:rgba(212,178,106,.1);color:#e9cf8f;border:1px solid #d4b26a;border-radius:99px;padding:3px 12px}\n.sim-scn-prog{color:#bfa577;opacity:1}\n.sim-secs{margin-top:6px}\n.sim-sec{background:transparent;border:1px dashed rgba(212,178,106,.5);color:#d8c7a4;border-radius:99px;opacity:1}\n.sim-sec.is-open{border-style:solid;background:rgba(212,178,106,.12)}\n.sim-choices{background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin-top:14px}\n.sim-choices-title{color:#e2c47e;opacity:1;letter-spacing:.06em}\n.sim-choices-desc{color:#c9bccd;opacity:1;font-style:italic}\n.sim-choice{padding:5px 6px;color:#efe5d6}\n.sim-choice+.sim-choice{border-top:1px solid rgba(255,255,255,.07)}\n.sim-choices-hint{color:#9d90a3;opacity:1}\n.sim-card{background:rgba(255,255,255,.05);color:#efe5d6;border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px}\n.sim-card.good{border-left-color:#9fc79a}\n.sim-card.bad{border-left-color:#e36b7d}\n.sim-card .d-up{color:#a8d8a0}\n.sim-card .d-down{color:#f08a98}\n.sim-log,.sim-cmds{color:#b9a9bf;border-top-color:rgba(212,178,106,.25)}\n/* 시스템 창 — 현황 장의 첫 그룹([ 퀘스트 ]: 메인 임무 · 퀘스트 · 실패 시). 세계 밖에서 띄운 창이라 연회장의 금빛과 결이 다르다 — 푸른 반투명 */\n.sim-panel-0>.sim-group:first-child{margin-top:10px;background:linear-gradient(180deg,rgba(120,180,230,.15),rgba(80,120,190,.06));\n  border:1px solid rgba(150,200,240,.55);border-radius:4px;padding:8px 12px 6px;\n  box-shadow:0 0 10px rgba(120,180,230,.22),inset 0 0 12px rgba(120,180,230,.08)}\n.sim-panel-0>.sim-group:first-child .sim-group-label,.sim-panel-0>.sim-group:first-child .sim-label{font-family:ui-monospace,'D2Coding','Consolas',monospace}\n.sim-panel-0>.sim-group:first-child .sim-group-label{justify-content:center;color:#a9d4f5;letter-spacing:.24em}\n.sim-panel-0>.sim-group:first-child .sim-group-label::before{content:'[';flex:0 0 auto;height:auto;background:none}\n.sim-panel-0>.sim-group:first-child .sim-group-label::after{content:']';flex:0 0 auto;height:auto;background:none}\n.sim-panel-0>.sim-group:first-child .sim-label{color:#8fb8d8;min-width:5.5em}\n.sim-panel-0>.sim-group:first-child .sim-badge{background:transparent;border:none;color:#e6f3ff;font-weight:700;padding:0}\n.sim-panel-0>.sim-group:first-child .sim-tag{color:#cfe6fa;border-color:rgba(150,200,240,.45)}\n.sim-panel-0>.sim-group:first-child .sim-row:nth-child(4) .sim-badge{color:#ff8f8f;letter-spacing:.1em}\n",
+    "customCSS": "/* 밤의 무도회 — 자정의 연회장, 샴페인 금빛 테두리, 장밋빛 게이지 */\n/* 넓은 채팅창에서 이름표와 값이 양끝으로 벌어지지 않게 — 폭을 묶고 가운데로 [유저 2026-09-26 실기] */\n.sim-status{max-width:620px;margin-left:auto;margin-right:auto;background:radial-gradient(120% 80% at 50% 0%,#3a2a4a 0%,#221a2e 55%,#17121f 100%);color:#efe5d6;\n  border:1px solid #b8975d;border-radius:6px;padding:14px 16px 12px;\n  box-shadow:inset 0 0 0 3px #1c1626,inset 0 0 0 4px rgba(212,178,106,.35),0 4px 18px rgba(0,0,0,.4);\n  font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;line-height:1.6;\n  --sim-tab-on-bg:linear-gradient(180deg,rgba(212,178,106,.2),rgba(212,178,106,.04));--sim-tab-on-line:rgba(212,178,106,.6)}\n.sim-status>details>summary{color:#e2c47e;font-weight:700;text-align:center;letter-spacing:.1em;opacity:1;list-style:none;\n  text-shadow:0 0 8px rgba(226,196,126,.35);margin-bottom:4px}\n.sim-status>details>summary::-webkit-details-marker{display:none}\n.sim-status>details>summary::before{content:'✧ '}\n.sim-status>details>summary::after{content:' ✧'}\n.sim-group{margin-top:12px}\n.sim-group-label{display:flex;align-items:center;gap:8px;color:#d4b26a;font-size:.8em;letter-spacing:.08em;opacity:1;margin-bottom:6px}\n.sim-group-label::before,.sim-group-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(212,178,106,.55),transparent)}\n.sim-tabbar{justify-content:center;gap:6px;margin:12px 0 2px;border-bottom:1px solid rgba(212,178,106,.4)}\n.sim-tab{color:#e2c47e;letter-spacing:.14em;padding:5px 20px 4px;font-size:.9em;opacity:.45}\n.sim-tab:hover{opacity:.75}\n.sim-row{margin:5px 0}\n.sim-label{color:#b9a9bf;opacity:1;min-width:6.5em;font-size:.93em}\n.sim-value{color:#f4e9d8;font-weight:700}\n.sim-bar+.sim-value{min-width:2em;text-align:right}\n.sim-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px}\n.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#d4b26a,#e0879a);box-shadow:0 0 6px rgba(224,135,154,.45)}\n.sim-badge{background:rgba(212,178,106,.12);color:#efe5d6;border:1px solid rgba(212,178,106,.35)}\n.sim-tag{background:transparent;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px}\n.sim-tags{justify-content:flex-start}\n.sim-empty{color:#8c7f93;opacity:1}\n.sim-scn{background:rgba(212,178,106,.1);color:#e9cf8f;border:1px solid #d4b26a;border-radius:99px;padding:3px 12px}\n.sim-scn-prog{color:#bfa577;opacity:1}\n.sim-secs{margin-top:6px}\n.sim-sec{background:transparent;border:1px dashed rgba(212,178,106,.5);color:#d8c7a4;border-radius:99px;opacity:1}\n.sim-sec.is-open{border-style:solid;background:rgba(212,178,106,.12)}\n.sim-choices{background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin-top:14px}\n.sim-choices-title{color:#e2c47e;opacity:1;letter-spacing:.06em}\n.sim-choices-desc{color:#c9bccd;opacity:1;font-style:italic}\n.sim-choice{padding:5px 6px;color:#efe5d6}\n.sim-choice+.sim-choice{border-top:1px solid rgba(255,255,255,.07)}\n.sim-choices-hint{color:#9d90a3;opacity:1}\n.sim-card{background:rgba(255,255,255,.05);color:#efe5d6;border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px}\n.sim-card.good{border-left-color:#9fc79a}\n.sim-card.bad{border-left-color:#e36b7d}\n.sim-card .d-up{color:#a8d8a0}\n.sim-card .d-down{color:#f08a98}\n.sim-log,.sim-cmds{color:#b9a9bf;border-top-color:rgba(212,178,106,.25)}\n/* 시스템 창 — 현황 장의 첫 그룹([ 퀘스트 ]: 메인 임무 · 퀘스트 · 실패 시). 세계 밖에서 띄운 창이라 연회장의 금빛과 결이 다르다 — 푸른 반투명 */\n.sim-panel-0>.sim-group:first-child{margin-top:10px;background:linear-gradient(180deg,rgba(120,180,230,.15),rgba(80,120,190,.06));\n  border:1px solid rgba(150,200,240,.55);border-radius:4px;padding:8px 12px 6px;\n  box-shadow:0 0 10px rgba(120,180,230,.22),inset 0 0 12px rgba(120,180,230,.08)}\n.sim-panel-0>.sim-group:first-child .sim-group-label,.sim-panel-0>.sim-group:first-child .sim-label{font-family:ui-monospace,'D2Coding','Consolas',monospace}\n.sim-panel-0>.sim-group:first-child .sim-group-label{justify-content:center;color:#a9d4f5;letter-spacing:.24em}\n.sim-panel-0>.sim-group:first-child .sim-group-label::before{content:'[';flex:0 0 auto;height:auto;background:none}\n.sim-panel-0>.sim-group:first-child .sim-group-label::after{content:']';flex:0 0 auto;height:auto;background:none}\n.sim-panel-0>.sim-group:first-child .sim-label{color:#8fb8d8;min-width:5.5em}\n.sim-panel-0>.sim-group:first-child .sim-badge{background:transparent;border:none;color:#e6f3ff;font-weight:700;padding:0}\n.sim-panel-0>.sim-group:first-child .sim-tag{color:#cfe6fa;border-color:rgba(150,200,240,.45)}\n.sim-panel-0>.sim-group:first-child .sim-row:nth-child(4) .sim-badge{color:#ff8f8f;letter-spacing:.1em}\n/* 거부 시 강제 이행 (로제타 시점 원작 이행 임무가 걸렸을 때만 다섯째 줄) */\n.sim-panel-0>.sim-group:first-child .sim-row:nth-child(5) .sim-badge{color:#ffc27a;letter-spacing:.1em}\n",
     "groups": [
       {
         "tab": "현황",
@@ -6239,6 +6379,11 @@
             "var": "penalty",
             "label": "실패 시",
             "showWhen": "cleared < 5"
+          },
+          {
+            "var": "forced",
+            "label": "거부 시",
+            "showWhen": "has(quests, \"[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라\") or has(quests, \"[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라\") or has(quests, \"[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라\") or has(quests, \"[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라\")"
           }
         ]
       },
@@ -6564,7 +6709,7 @@
         "st_house"
       ],
       "guide": "소지품·능력은 첫 장면에 실제로 나온 것만 기본값에 덧붙인다 — 안 나왔으면 values에 넣지 마라. 능력치(st_*)는 유저가 첫 메시지에서 자기 배경을 밝혔을 때만 기본값에서 ±30 안으로 조정한다 — 로제타의 몸에 빙의한 판(거울 속 분홍 머리)이면 넣지 마라. possessor(빙의자 설정)는 유저가 첫 메시지에서 로제타 안의 빙의자를 설명했을 때만 그 설명을 옮겨 적는다 — 없으면 넣지 마라.",
-      "instruction": "[첫 장면] 지금 응답이 이 판의 첫 장면이다. 눈을 뜬 유저 앞에 시스템 창이 처음 뜬다 — \"[메인 임무] … / [실패 시] 사망\" 두 줄만, 설명 없이(메인 임무 = 로제타 시점이면 \"처형을 피하시오\", 그 밖엔 \"로제타의 처형을 막으시오\"). 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, 시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로."
+      "instruction": "[첫 장면] 지금 응답이 이 판의 첫 장면이다. 눈을 뜬 유저 앞에 시스템 창이 처음 뜬다 — \"[메인 임무] … / [실패 시] 사망\" 두 줄만, 설명 없이(메인 임무 = 로제타 시점이면 \"처형을 피하시오\", 그 밖엔 \"로제타의 처형을 막으시오\"). 로제타 시점이면 한 줄이 더 붙는다 — \"[제약] 원작의 장면은 원작대로 · 거부 시 강제 이행\". 위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, 시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로."
     }
   }
 }

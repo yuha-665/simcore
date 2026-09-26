@@ -27,7 +27,7 @@ const SCENES = [
       Object.assign(st.vars, {
         scn_idx: 1, scn_turns: 6, doom: 52, rep: -35, health: 48, elicia: 45, ert: 18, rical: 12, duke: 5, anna: 88,
         loop: 1, location: '황궁 대연회장',
-        quests: ['[1장] 데뷔탕트를 무사히 넘긴다', '[서브] 로니카의 도발을 받아넘긴다'],
+        quests: ['[1장] 데뷔탕트를 무사히 넘긴다', '[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라', '[서브] 로니카의 도발을 받아넘긴다'],
         memories: ['로제타는 동정받는 걸 가장 싫어한다', '무도회 전날 로니카가 소문을 퍼뜨린다'],
         skills: ['원작 지식', '궁정 예법'], items: ['서랍 속 작은 병', '데뷔탕트 초대장'],
         sec_powder: 1,

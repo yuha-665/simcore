@@ -55,3 +55,5 @@
 .sim-panel-0>.sim-group:first-child .sim-badge{background:transparent;border:none;color:#e6f3ff;font-weight:700;padding:0}
 .sim-panel-0>.sim-group:first-child .sim-tag{color:#cfe6fa;border-color:rgba(150,200,240,.45)}
 .sim-panel-0>.sim-group:first-child .sim-row:nth-child(4) .sim-badge{color:#ff8f8f;letter-spacing:.1em}
+/* 거부 시 강제 이행 (로제타 시점 원작 이행 임무가 걸렸을 때만 다섯째 줄) */
+.sim-panel-0>.sim-group:first-child .sim-row:nth-child(5) .sim-badge{color:#ffc27a;letter-spacing:.1em}

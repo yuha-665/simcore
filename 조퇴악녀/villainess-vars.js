@@ -105,6 +105,18 @@ const SUBS = {
   verdict: ['[서브] 심판정에서 편에 서 줄 사람을 찾는다'],
 };
 const SUB_SWEETS = '[서브] 과자 상자를 보낸 사람을 찾는다'; // 3장 과자 상자 사건이 넣는다
+// 원작 이행 — 로제타 시점 전용 [유저 2026-09-26 "원작을 아예 안 따라가면 의미가 없으니 원작대로 행동할 수밖에 없는 이유를 — 미래는 알지만
+// 정해진 악행을 막을 수 없으니 어떻게든 우회하는 게 포인트"]. 장마다 시스템 창에 원작 속 로제타의 악행이 임무로 뜬다 [사건 원본, 문구 초안].
+// 겉모양(누가 무엇을 했다)은 반드시 치르고, 거부하면 강제 이행(몸이 원작대로 움직인다) = 절정 맨 끝 선택지. 5장은 로제타가 치를 악행이 없다
+const DUTY = {
+  debut: '[원작 이행] 모두 앞에서 엘리시아에게 질투를 드러내라', // 원본 1막은 "질투에 불탄다"까지 — 공개적으로 드러내는 건 초안
+  tea: '[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라',
+  stairs: '[원작 이행] 하인을 매수해 계단에서 엘리시아를 떨어뜨려라',
+  night: '[원작 이행] 엘리시아를 외진 곳으로 불러내 칼을 들어라',
+};
+const DUTY_REFUSE = '원작 이행을 거부한다';
+const refuse = (inject, effects) => ({ label: DUTY_REFUSE, effects,
+  inject: `[시스템] 원작 이행 거부 — 강제 이행. 로제타의 몸이 제멋대로 움직이고, 원작의 대사가 입에서 먼저 흘러나온다. ${inject}` });
 const Q_DEBUT = Q.debut;
 const Q_SUBS_1 = SUBS.debut;
 
@@ -173,17 +185,19 @@ const frOk = (a, b) => ({ front: 'canon', add: `chk_ok ? ${a} : ${b}` });
 // 1장 절정 — 시점마다 한 벌. 맨 끝 = 원작대로(안 고르면 그리로 흘러간다) [초안]
 // 판정 달린 항목(check)은 성공/실패로 결과가 갈린다 — 상태창에 "🎲 화술 60%"가 떠서 고르기 전에 무게를 잰다 (v1.13.0)
 const DEBUT_CHOICES = {
+  // 로제타 시점 = 원작 이행: 셋 다 "질투를 드러낸다"는 겉모양은 치른다 — 비트는 건 그 안 [초안]
   rosetta: [
-    { label: '엘리시아에게 먼저 다가가 데뷔를 축하한다', check: 'c_talk_h',
+    { label: '날 선 말투로 꼭 필요한 충고를 던진다', check: 'c_talk_h',
       effects: [ok2('doom', -10, -3), ok2('elicia', 15, 5), ok2('rep', 5, -3), { front: 'canon', add: 'chk_ok ? -20 : -5' }],
-      inject: '로제타가 원작과 달리 엘리시아에게 먼저 손을 내민다. 그 말이 어떻게 받아들여지는지는 판정이 정한다.' },
-    { label: '질투가 치밀기 전에 무도회장을 빠져나온다', effects: [{ set: 'doom', expr: 'doom - 5' }, { set: 'rep', expr: 'rep - 3' }, { front: 'canon', add: '-10' }],
-      inject: '로제타는 원작의 장면이 시작되기 전에 자리를 뜬다. 뒤에서 "도망쳤다"는 수군거림이 따라붙는다.' },
-    { label: '황태자에게 대놓고 춤을 청한다', check: 'c_charm',
-      effects: [ok2('doom', 3, 8), ok2('ert', 8, 0), ok2('rep', 0, -5), { set: 'elicia', expr: 'elicia - 5' }],
-      inject: '로제타가 엘리시아 앞에서 황태자에게 춤을 청한다. 받아 줄지, 모두 앞에서 거절당할지는 판정이 정한다.' },
-    { label: '치미는 질투를 그대로 쏟아낸다', effects: [{ set: 'doom', expr: 'doom + 15' }, { set: 'rep', expr: 'rep - 10' }, { set: 'elicia', expr: 'elicia - 10' }, { front: 'canon', add: '15' }],
-      inject: '원작 그대로 — 로제타의 질투가 연회장 한가운데서 터진다.' },
+      inject: '로제타가 모두 앞에서 엘리시아에게 가시 돋친 말을 던진다 — 원작의 대사처럼 들리지만, 속에는 엘리시아가 오늘 밤 넘어지지 않을 충고가 들어 있다. '
+        + '엘리시아가 그 속을 알아들을지, 가시만 남을지는 판정이 정한다.' },
+    { label: '질투의 칼끝을 엘리시아를 비웃던 로니카에게 돌린다', effects: [d('doom', -6), d('elicia', 6), d('rep', -5), fr(-10)],
+      inject: '로제타의 독설이 터진다 — 그런데 과녁은 엘리시아 뒤에서 부채로 입을 가리고 웃던 로니카다. 연회장은 "악녀끼리 싸운다"며 수군거리고, 엘리시아는 로제타를 다시 본다.' },
+    { label: '질투를 숨기지 않고 모두 앞에서 인정한다', check: 'c_charm',
+      effects: [ok2('doom', -8, 0), ok2('elicia', 10, 2), ok2('rep', 5, -5), frOk(-15, 0)],
+      inject: '로제타가 모두 앞에서 엘리시아에게 말한다 — "당신이 부러워요." 질투는 분명히 드러났다. 그 솔직함이 품위로 보일지, 또 하나의 비꼼으로 들릴지는 판정이 정한다.' },
+    refuse('질투가 연회장 한가운데서 원작의 말 그대로 터진다 — 빙의자는 제 입을 막지 못한다.',
+      [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
   servant: [
     { label: '아가씨의 손을 잡고 발코니로 모신다', check: 'c_charm',
@@ -212,7 +226,7 @@ const DEBUT_CHOICES = {
   ],
 };
 const DEBUT_NOTIFY = {
-  rosetta: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.',
+  rosetta: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 로제타의 목구멍까지 원작의 대사가 차오른다 — 원작 이행의 순간이다.',
   servant: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 원작이라면 지금 로제타의 질투가 터진다.',
   special: '[1장 · 데뷔탕트] 엘리시아가 연회장에 들어서고, 황태자의 시선이 그녀에게 머문다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타를 질투 쪽으로 떠민다.',
 };
@@ -220,17 +234,19 @@ const DEBUT_NOTIFY = {
 // ══════════ 2~4장 절정 [사건 원본: 원작 타임라인 2~4막 / 선택지·수치 초안] ══════════
 // 원작의 사건은 범인이 바뀔 수 있다 — 로제타가 안 하면 다른 누군가가 한다. 절정은 그 사건이 "일어나려는 순간"이다 [설계 §2]
 const TEA_CHOICES = {
+  // 로제타 시점 = 원작 이행: 차는 쏟아진다 — 비트는 건 그 앞뒤 [초안]
   rosetta: [
-    { label: '쟁반을 든 하녀를 불러 세워 다른 심부름을 시킨다', check: 'c_talk',
-      effects: [ok2('doom', -10, -3), ok2('elicia', 8, 3), frOk(-15, -5)],
-      inject: '로제타가 차를 엎으려는 하녀를 먼저 불러 세운다. 하녀가 말을 따를지, 쟁반이 결국 기울지는 판정이 정한다.' },
-    { label: '엘리시아를 핑계 대고 다과회에서 빼낸다', effects: [d('doom', -5), d('rep', -5), d('elicia', 5), fr(-10)],
-      inject: '로제타가 무례를 무릅쓰고 엘리시아를 자리에서 데리고 나간다. 뒤에서 "또 악녀가 판을 깼다"는 수군거림이 따라붙는다.' },
-    { label: '차를 뒤집어쓴 엘리시아에게 제 숄을 둘러 준다', check: 'c_charm',
-      effects: [ok2('doom', -8, -2), ok2('elicia', 12, 5), ok2('rep', 5, -3), frOk(-10, -3)],
-      inject: '차는 이미 쏟아졌다. 로제타가 모두의 시선 속에서 엘리시아에게 숄을 둘러 준다. 호의로 보일지 조롱으로 보일지는 판정이 정한다.' },
-    { label: '원작대로 하녀에게 눈짓한다', effects: [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)],
-      inject: '원작 그대로 — 로제타의 눈짓에 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다.' },
+    { label: '쏟게 하되, 같은 빛깔의 새 드레스를 선물로 준비해 둔다', check: 'c_charm',
+      effects: [ok2('doom', -10, -3), ok2('elicia', 12, 3), ok2('rep', 5, -3), frOk(-15, -5)],
+      inject: '로제타의 눈짓에 찻잔이 기울고 엘리시아의 드레스가 젖는다 — 원작 그대로. 그런데 로제타가 미리 준비해 둔 같은 빛깔의 새 드레스를 내민다. '
+        + '망신이 선물로 뒤집힐지, 더 교묘한 조롱으로 보일지는 판정이 정한다.' },
+    { label: '하녀에게 눈짓하고, 제 드레스에도 찻잔을 엎는다', effects: [d('doom', -6), d('elicia', 6), d('rep', -5), fr(-8)],
+      inject: '찻잔이 기울어 엘리시아의 드레스가 젖는다. 그 순간 로제타가 제 찻잔을 제 드레스에 쏟는다. 두 영애가 나란히 젖은 채 서고, 웃음거리는 반으로 나뉜다.' },
+    { label: '식은 차로 바꿔 두고, 쏟은 하녀를 모두 앞에서 감싼다', check: 'c_talk',
+      effects: [ok2('doom', -8, -2), ok2('elicia', 5, 2), ok2('rep', 3, -5), frOk(-12, -3)],
+      inject: '쏟아진 건 미리 식혀 둔 차다. 로제타가 떨고 있는 하녀 앞을 막아서며 "제 하녀의 실수"라고 머리를 숙인다. 이게 악녀의 체면치레로 보일지, 전혀 다른 얼굴로 보일지는 판정이 정한다.' },
+    refuse('로제타의 눈짓에 뜨거운 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 웃음소리가 번진다.',
+      [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
   servant: [
     { label: '하녀의 쟁반을 내가 먼저 받아 든다', check: 'c_house',
@@ -258,17 +274,19 @@ const TEA_CHOICES = {
   ],
 };
 const STAIRS_CHOICES = {
+  // 로제타 시점 = 원작 이행: 하인은 매수되고 엘리시아는 떨어진다 — 원작의 "근처의 도움"이 누구인지가 빈칸이다 [원본 3막, 선택지 초안]
   rosetta: [
-    { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
+    { label: '매수하고, 계단 아래에는 제가 선다', check: 'c_sword',
       effects: [ok2('doom', -12, -4), ok2('elicia', 12, 5), ok2('health', -3, -12), frOk(-20, -5)],
-      inject: '로제타가 드레스 자락을 걷어쥐고 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
-    { label: '매수된 하인을 먼저 찾아 두 배를 쥐여 준다', check: 'c_talk',
-      effects: [ok2('doom', -10, 3), ok2('rep', 0, -5), frOk(-15, 5)],
-      inject: '로제타가 하인을 구석으로 불러 더 큰 돈을 내민다. 하인이 손을 뗄지, "악녀가 입막음을 하려 했다"는 말이 돌지는 판정이 정한다.' },
-    { label: '엘리시아를 계단에서 먼 곳으로 불러낸다', effects: [d('doom', -5), d('elicia', 3), fr(-5)],
-      inject: '로제타가 핑계를 만들어 엘리시아를 계단에서 떼어 놓는다. 사고는 일어나지 않았지만, 하인은 아직 그 자리에 있다.' },
-    { label: '원작대로 하인에게 약속한 돈을 건넨다', effects: [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)],
-      inject: '원작 그대로 — 로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다.' },
+      inject: '로제타의 돈을 받은 하인이 엘리시아의 등을 민다 — 원작 그대로. 원작에서 엘리시아를 가벼운 상처로 그치게 한 "근처의 도움"이 이번엔 계단 아래 서 있던 로제타다. '
+        + '떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
+    { label: '매수한 하인에게 마지막 두 칸에서만 밀라고 못 박는다', check: 'c_talk',
+      effects: [ok2('doom', -8, 3), ok2('elicia', 3, 0), ok2('rep', 0, -5), frOk(-12, 5)],
+      inject: '하인이 엘리시아의 등을 민다 — 약속대로 마지막 두 칸에서. 엘리시아는 발목을 삐끗하고 끝날지, 하인이 겁에 질려 "카르디온 공녀가 시켰다"고 떠벌릴지는 판정이 정한다.' },
+    { label: '엘리시아의 손을 잡은 채 함께 떨어져 밑에 깔린다', effects: [d('doom', -6), d('elicia', 8), d('health', -10), d('rep', -3), fr(-10)],
+      inject: '하인이 등을 민 순간 로제타가 엘리시아의 손을 붙잡는다. 두 사람이 함께 굴러떨어지고, 바닥에 먼저 닿는 건 로제타의 등이다. 사람들은 "악녀가 엘리시아를 끌고 떨어졌다"고도, 그 반대로도 말한다.' },
+    refuse('로제타의 돈을 받은 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다.',
+      [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
   servant: [
     { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
@@ -296,16 +314,19 @@ const STAIRS_CHOICES = {
   ],
 };
 const NIGHT_CHOICES = {
+  // 로제타 시점 = 원작 이행: 칼은 들린다 — 엘리시아의 통찰은 악의를 알아챈다[원본]. 그러니 악의가 없다는 것도 본다[초안]
   rosetta: [
-    { label: '칼을 든 손목을 쳐낸다', check: 'c_sword_h',
-      effects: [ok2('doom', -15, 5), ok2('elicia', 15, 5), ok2('ert', 10, 0), ok2('rep', 5, -10), frOk(-25, 10)],
-      inject: '로제타가 어둠 속 칼날로 몸을 던진다. 칼을 쳐낼지, 칼자루를 쥔 채 붙잡히는 게 로제타가 될지는 판정이 정한다.' },
-    { label: '목청껏 소리쳐 사람들을 부른다', effects: [d('doom', -8), d('rep', -3), fr(-10)],
-      inject: '로제타가 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다 — 남은 건 그 자리에 선 로제타와 엘리시아뿐이다.' },
-    { label: '엘리시아의 손을 잡고 연회장으로 달린다', effects: [d('doom', -10), d('elicia', 8), d('health', -5), fr(-10)],
-      inject: '로제타가 엘리시아의 손을 잡아끌고 불빛 쪽으로 달린다. 약한 몸이라 숨이 턱까지 차오른다.' },
-    { label: '원작대로 칼을 든다', effects: [d('doom', 25), d('rep', -20), d('elicia', -15), fr(20)],
-      inject: '원작 그대로 — 로제타의 손에 칼이 들린다. 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다.' },
+    { label: '칼을 든 채 속삭인다 — "몸이 멋대로 움직여요. 도망쳐요."', when: 'elicia >= 40',
+      effects: [d('doom', -15), d('elicia', 15), d('ert', 5), fr(-25)],
+      inject: '로제타의 손에 칼이 들렸다 — 원작 그대로. 그런데 칼끝이 떨리고, 입술이 원작에 없는 말을 한다. 엘리시아의 통찰이 로제타에게서 살의를 읽지 못한다. '
+        + '황태자가 달려왔을 때, 로제타 앞을 먼저 막아서는 건 엘리시아다.' },
+    { label: '칼로 제 손바닥을 긋는다', effects: [d('doom', -10), d('health', -8), d('rep', -5), fr(-15)],
+      inject: '칼은 들렸고 피는 흘렀다 — 원작의 장면은 채워졌다. 다만 피를 흘리는 건 로제타 자신이다. 황태자가 달려왔을 때 그 자리에 다친 사람은 로제타뿐이고, "악녀가 미쳤다"는 말이 돈다.' },
+    { label: '황태자의 발소리에 맞춰 칼을 내던지고 무릎 꿇는다', check: 'c_charm',
+      effects: [ok2('doom', -8, 5), ok2('ert', 8, 0), ok2('rep', -5, -10), frOk(-12, 5)],
+      inject: '황태자가 모퉁이를 도는 순간 로제타가 칼을 바닥에 내던지고 무릎을 꿇는다. 로제타는 붙잡히지만, 살의가 없었다는 게 그 눈에 보일지 — 칼을 던지는 몸짓마저 휘두르는 것으로 보일지는 판정이 정한다.' },
+    refuse('로제타의 손이 칼을 휘두르고, 칼끝이 엘리시아에게 닿기 전에 황태자가 로제타를 제압한다.',
+      [d('doom', 25), d('rep', -20), d('elicia', -15), fr(20)]),
   ],
   servant: [
     { label: '칼 앞을 몸으로 막아선다', check: 'c_sword_h',
@@ -364,15 +385,15 @@ const VERDICT_NOTIFY = '[5장 · 심판] 심판정. 카르디온 공작이 입�
 const CHAPTERS = [
   { id: 'debut', n: 1, choices: DEBUT_CHOICES, notify: DEBUT_NOTIFY, when: `on_stage or ymd >= ${DEBUT_YMD} or scn_turns >= 14` },
   { id: 'tea', n: 2, choices: TEA_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
-    rosetta: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.',
+    rosetta: '[2장 · 다과회] 로제타가 연 다과회. 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 곁에 서서 로제타의 눈짓을 기다린다 — 원작 이행의 순간이다.',
     servant: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 원작이라면 지금 로제타의 눈짓 하나에 엘리시아의 드레스에 차가 쏟아진다.',
     special: '[2장 · 다과회] 찻잔이 돌고, 쟁반을 든 하녀가 엘리시아 쪽으로 걸음을 옮긴다. 로제타 안의 빙의자도 이 장면을 안다 — 그런데도 원작의 흐름이 로제타의 시선을 하녀 쪽으로 떠민다.' } },
   { id: 'stairs', n: 3, choices: STAIRS_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
-    rosetta: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.',
+    rosetta: '[3장 · 계단] 계단 위, 엘리시아가 내려오려 한다. 뒤따르는 하인 하나가 로제타의 눈치를 살핀다 — 원작이라면 로제타의 돈이 그 손에 쥐어질 차례다. 원작 이행의 순간이다.',
     servant: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 원작이라면 지금 엘리시아가 계단에서 떨어지고 — 사람들은 로제타를 본다.',
     special: '[3장 · 계단] 계단 위, 매수된 하인이 엘리시아의 뒤를 바싹 따른다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 엘리시아가 떨어지고, 사람들은 로제타를 본다.' } },
   { id: 'night', n: 4, choices: NIGHT_CHOICES, when: 'on_stage or scn_turns >= 14', notify: {
-    rosetta: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.',
+    rosetta: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 로제타의 쪽지를 받고 나온 엘리시아가 서 있다. 로제타의 손에는 어느새 칼이 쥐어져 있고, 멀리서 황태자의 발소리가 가까워진다. 원작 이행의 순간이다.',
     servant: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 원작이라면 지금 로제타가 칼을 들고, 황태자에게 제압당한다.',
     special: '[4장 · 파국의 밤] 연회장 뒤편 인적 없는 곳 — 엘리시아가 로제타의 이름으로 된 쪽지를 들고 서 있다. 어둠 속에서 칼날이 번뜩인다. 로제타 안의 빙의자도 이 장면을 안다 — 원작이라면 지금 로제타가 칼을 든다.' } },
   { id: 'verdict', n: 5, when: 'on_stage or scn_turns >= 6', notify: { rosetta: VERDICT_NOTIFY, servant: VERDICT_NOTIFY, special: VERDICT_NOTIFY },
@@ -380,7 +401,7 @@ const CHAPTERS = [
 ];
 const POVS = ['rosetta', 'servant', 'special'];
 const chClose = (c) => [{ set: 'cleared', expr: `max(cleared, ${c.n})` }, { set: 'on_stage', expr: 'false' }, { set: 'clear_at', expr: 'scn_turns' },
-  { list: 'quests', remove: [Q[c.id]] }];
+  { list: 'quests', remove: [Q[c.id], ...(DUTY[c.id] ? [DUTY[c.id]] : [])] }];
 // 결판 — 원작 결말(받아들인다)은 회귀라 결판 효과를 안 붙인다 (되감기가 어차피 덮는다)
 const closeOf = (c, ch) => (ch.effects.some((e) => e.checkpoint === 'load') ? ch.effects : [...ch.effects, ...chClose(c)]);
 const CLIMAX_EVENTS = CHAPTERS.flatMap((c) => POVS.map((pov) => ({
@@ -396,6 +417,13 @@ const enterCh = (id, prevSubs) => [
   { checkpoint: 'save' },
 ];
 const nextUnlock = (n) => `cleared >= ${n} and scn_turns >= clear_at + 4`; // 고른 턴 + 여파 3턴
+// 원작 이행 임무 — 로제타 시점, 장에 들어선 다음 턴 시스템 창에 뜬다. once는 되감기가 같이 돌려놓으니 회귀하면 다시 뜬다
+const DUTY_EVENTS = CHAPTERS.filter((c) => DUTY[c.id]).map((c) => ({
+  id: `duty_${c.id}`, once: true,
+  when: `pov == "rosetta" and scn_act == "${c.id}" and cleared < ${c.n}`,
+  effects: [{ list: 'quests', add: [DUTY[c.id]] }],
+  notify: `[시스템] 원작 이행 임무 — "${DUTY[c.id].replace('[원작 이행] ', '')}" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다.`,
+}));
 
 // ══════════ 원작 보정력 — 평소 장면에서 원작이 스스로를 되돌리려는 순간 [설계 §4-② / 빈도·수치 초안] ══════════
 // 파멸도가 30을 넘으면 뜨기 시작해 원작에 가까울수록 잦아진다 (파멸도 40 → 4% · 60 → 12% · 80 → 20%/턴)
@@ -658,7 +686,7 @@ const S = {
     { id: 'dead', label: '사망', type: 'bool', init: false,
       desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
     { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 10, itemMaxLength: 48,
-      desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. "[서장]"·"[1장]" 같은 메인 항목은 시스템이 지우니 건드리지 마라. '
+      desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. "[서장]"·"[1장]" 같은 메인 항목과 "[원작 이행]" 항목은 시스템이 지우니 건드리지 마라. '
         + '서사 속 인물이 유저에게 직접 부탁한 일이 생기면 "[서브] …"로 추가(서브는 최대 5개).' },
     { id: 'memories', label: '회귀의 기억', type: 'list', init: [], maxItems: 8, itemMaxLength: 60,
       desc: '유저가 이번 판에서 알게 된 결정적 사실 — 다음 회귀에도 가져갈 만한 것만 한 줄씩 (예: "로제타는 동정받는 걸 가장 싫어한다"). 회귀해도 남는다.' },
@@ -697,6 +725,7 @@ const S = {
     // 시스템 창 [유저 2026-09-26 "예전엔 강제 동기로 퀘스트창 — 메인 임무: 로제타의 처형을 막으시오 / 실패 시 사망 — 을 보여 주게 했다"]
     { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
     { id: 'penalty', label: '실패 시', expr: '"사망"' },
+    { id: 'forced', label: '거부 시', expr: '"강제 이행"' }, // 로제타 시점 원작 이행 임무의 벌 — 몸이 원작대로 움직인다
     { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : 0' },
   ],
   updater: {
@@ -754,6 +783,8 @@ const S = {
         notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
       { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
         effects: gameOver, notify: '[시스템] 메인 임무 수행 불가 — 면접에서 떨어져 로제타 곁에 설 길이 닫혔다. 페널티: 사망.' },
+      // 로제타 시점 원작 이행 임무 — 절정보다 앞 (같은 턴에 무대에 닿아도 임무가 먼저 뜬다)
+      ...DUTY_EVENTS,
       // 1~5장 절정 — 무대 도착 · 그날(1장) · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
       ...CLIMAX_EVENTS,
       // 3장 — 과자 상자. 원작에선 로제타가 독 과자를 보낸다. 이번엔 누가 보냈는지 서사가 정한다 [사건 원본, 범인 공백 초안]
@@ -838,8 +869,7 @@ const S = {
         notify: `[퀘스트 갱신] ${Q.stairs} — 사교계의 공기가 달라졌다. 엘리시아 곁엔 사람이 늘고, 로제타 곁엔 줄어든다.` },
       { id: 'night', label: '4장 · 파국의 밤', intensity: '절정', unlock: nextUnlock(3),
         direct: '원작이라면 이 장에서: 저녁 모임 날, 로제타가 엘리시아를 인적 없는 곳으로 꾀어내 칼로 해치려다 황태자 에르테미안을 비롯한 이들에게 그 자리에서 제압당한다. '
-          + '원작의 이 사건은 어떤 형태로든 일어나려 한다 — 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다. '
-          + '누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.',
+          + '원작의 이 사건은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. 저녁 모임 전까지는 초대·불안·엇갈림으로 그 밤을 향해 조여 가라.',
         onEnter: enterCh('night', [...SUBS.stairs, SUB_SWEETS]),
         notify: `[퀘스트 갱신] ${Q.night} — 저녁 모임의 초대장이 왔다. 원작이라면 그 밤이 로제타의 마지막 밤이다.` },
       { id: 'verdict', label: '5장 · 심판', intensity: '절정', unlock: nextUnlock(4),
@@ -883,7 +913,16 @@ const S = {
     { id: 'system', when: 'cleared < 5',
       text: '[시스템 창] 유저의 눈앞에는 유저만 볼 수 있는 반투명한 시스템 창이 있다. 메인 임무: "{mission}" — 실패 시: 사망. '
         + '누가 띄웠는지, 왜인지는 아무도 모르고 시스템도 설명하지 않는다. 창은 늘 떠 있지 않다 — 새 장이 열릴 때(통지의 [퀘스트 갱신]), 임무가 걸린 순간, 임무에 실패했을 때만 떠오른다. '
-        + '창은 [ ] 머리를 단 짧고 건조한 시스템 말투로 본문과 구분해 그려라. 창이 스스로 새 임무·보상·능력을 주지는 않는다. 다른 인물들은 창을 보지 못한다.' },
+        + '창은 [ ] 머리를 단 짧고 건조한 시스템 말투로 본문과 구분해 그려라. 창이 스스로 새 임무·보상·능력을 지어내지는 않는다 — 임무는 통지로 온 것뿐이다. 다른 인물들은 창을 보지 못한다.' },
+    // 원작 이행 — 로제타 시점 [유저 2026-09-26 "미래는 알지만 원작을 따라가야 해서 정해진 악행을 막을 수 없으니 어떻게든 우회"]. 강제 이행은 임무의 그 장면에서만
+    { id: 'duty', when: 'pov == "rosetta" and cleared < 4',
+      text: '[원작 이행] 시스템 창에는 메인 임무 아래 제약이 하나 더 있다: "원작의 장면은 원작대로 — 거부 시 강제 이행". 장마다 원작 이행 임무(퀘스트의 "[원작 이행]" 항목 — 원작 속 로제타가 저지른 바로 그 장면)가 뜨고, '
+        + '그 장면의 겉모양(누가 무엇을 했다)은 반드시 일어난다. 빙의자가 거부하거나 달아나면 강제 이행 — 몸이 제멋대로 원작대로 움직이고 원작의 대사가 입에서 먼저 흘러나온다. '
+        + '빙의자가 비틀 수 있는 건 그 안이다: 어떻게, 어느 만큼, 그 앞뒤에 무엇을 하는지. 강제 이행은 그 장면에서만 걸린다 — 평소의 로제타는 자유롭고, '
+        + '임무의 장면이 오기 전까지는 준비와 궁리의 시간이다(그 장면은 무대에서 시스템이 연다 — 서사가 먼저 치르지 마라).' },
+    // 원작의 흐름 — 로제타가 안 하면 누가? 이름 붙은 흑막은 없다 [유저 2026-09-26 (a) "보이지 않는 원작의 흐름"]
+    { id: 'stand_in', when: 'pov != "rosetta" and scn_act == "night" and cleared < 4',
+      text: '[원작의 흐름] 로제타가 칼을 들지 않아도, 원작은 칼을 든 누군가와 로제타의 이름을 준비해 둔다 — 그 손이 누구의 것인지는 끝내 흐릿하다. 사람이 아니라 원작의 흐름 그 자체가 움직이는 것처럼.' },
     { id: 'system_done', when: 'cleared >= 5',
       text: '[시스템 창] 메인 임무는 완료됐다. 창은 그 뒤로 퀘스트가 바뀔 때만 조용히 떠오른다 — 새 임무를 멋대로 내리지 않는다.' },
     { id: 'bond', when: 'true',
@@ -921,6 +960,7 @@ const S = {
         { var: 'mission', label: '완료한 임무', showWhen: 'cleared >= 5' },
         { var: 'quests', label: '퀘스트' },
         { var: 'penalty', label: '실패 시', showWhen: 'cleared < 5' },
+        { var: 'forced', label: '거부 시', showWhen: Object.values(DUTY).map((q) => `has(quests, "${q}")`).join(' or ') },
       ] },
       { tab: '현황', label: '면접', showWhen: 'pov == "servant" and scn_act == "prologue" and not hired', items: [{ var: 'iv_q', label: '질문' }] },
       { tab: '현황', label: '로제타', items: [
@@ -962,6 +1002,7 @@ const S = {
         + '능력치(st_*)는 유저가 첫 메시지에서 자기 배경을 밝혔을 때만 기본값에서 ±30 안으로 조정한다 — 로제타의 몸에 빙의한 판(거울 속 분홍 머리)이면 넣지 마라. '
         + 'possessor(빙의자 설정)는 유저가 첫 메시지에서 로제타 안의 빙의자를 설명했을 때만 그 설명을 옮겨 적는다 — 없으면 넣지 마라.',
       instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 눈을 뜬 유저 앞에 시스템 창이 처음 뜬다 — "[메인 임무] … / [실패 시] 사망" 두 줄만, 설명 없이(메인 임무 = 로제타 시점이면 "처형을 피하시오", 그 밖엔 "로제타의 처형을 막으시오"). '
+        + '로제타 시점이면 한 줄이 더 붙는다 — "[제약] 원작의 장면은 원작대로 · 거부 시 강제 이행". '
         + '위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
         + '시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
         + '소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로.',
@@ -1199,7 +1240,7 @@ let debutState;
       : s.state.vars.doom === 37 && s.state.vars.elicia === 35 && Math.abs(s.state.vars.fr_canon - 11.04) < 0.01 && s.state.vars.st_talk === talk0),
     JSON.stringify({ ok: s.state.vars.chk_ok, d: s.state.vars.doom, e: s.state.vars.elicia, c: s.state.vars.fr_canon, t: s.state.vars.st_talk }));
   ok('1장 결판', s.state.vars.cleared === 1 && !s.state.vars.quests.includes(Q_DEBUT) && s.state.vars.on_stage === false, JSON.stringify(s.state.vars.quests));
-  ok('선택이 그 턴 프롬프트에', s.promptBlock.includes('[선택] 엘리시아에게 먼저 다가가'), '');
+  ok('선택이 그 턴 프롬프트에', s.promptBlock.includes('[선택] 날 선 말투로'), '');
   st = out(s.state).state;
   ok('1장 이후 여파 안내', send(st).promptBlock.includes('[여파]'), '');
 }
@@ -1209,7 +1250,7 @@ console.log('\n━━ 강제 — 안 고르면 원작대로 ━━');
   let st = cp(debutState);
   st = turn(st, { on_stage: true }).st;
   const s = send(st, { userText: '(아무것도 안 고르고 보낸다)' });
-  ok('강제 결정 = 원작대로', s.forcedChoice?.label === '치미는 질투를 그대로 쏟아낸다' && s.state.vars.doom === 55, JSON.stringify({ f: s.forcedChoice, d: s.state.vars.doom }));
+  ok('강제 결정 = 원작 이행 거부 → 강제 이행 (원작대로)', s.forcedChoice?.label === DUTY_REFUSE && s.state.vars.doom === 55 && s.promptBlock.includes('강제 이행. 로제타의 몸이 제멋대로'), JSON.stringify({ f: s.forcedChoice, d: s.state.vars.doom }));
 }
 
 console.log('\n━━ 파멸도 100 → 회귀 (1장 시작으로) ━━');
@@ -1220,6 +1261,45 @@ console.log('\n━━ 파멸도 100 → 회귀 (1장 시작으로) ━━');
   ok('게임오버 → 1장 시작 시점', st.vars.loop === 1 && st.vars.doom === 40 && L(st, 'scn_act') === 'debut' && st.vars.fr_canon < 1,
     JSON.stringify({ loop: st.vars.loop, doom: st.vars.doom, act: L(st, 'scn_act'), c: st.vars.fr_canon }));
   ok('무대 뒤도 되감김', st.vars.frs_canon === -1, String(st.vars.frs_canon));
+  ok('★ 회귀하면 원작 이행 임무도 되감겼다가', !st.vars.quests.includes(DUTY.debut), JSON.stringify(st.vars.quests));
+  st = turn(st).st;
+  ok('★ 다음 턴 다시 뜬다 (once 기록도 되감김)', st.vars.quests.includes(DUTY.debut), JSON.stringify(st.vars.quests));
+}
+
+console.log('\n━━ 원작 이행 — 로제타 시점: 정해진 악행은 치르되 비튼다 ━━');
+{
+  let st = start('rosetta');
+  const p0 = send(st).promptBlock;
+  ok('서장부터 제약이 프롬프트에 · 첫 장면 지시에 [제약] 줄', p0.includes('[원작 이행] 시스템 창에는') && S.setup.ai.instruction.includes('[제약] 원작의 장면은 원작대로'), '');
+  for (let i = 0; i < 6 && L(st, 'scn_act') !== 'debut'; i++) st = turn(st, { skip_min: 30 }).st;
+  ok('1장에 들어선 턴엔 아직 없다', L(st, 'scn_act') === 'debut' && !st.vars.quests.includes(DUTY.debut), JSON.stringify(st.vars.quests));
+  const t = turn(st, { skip_min: 30 }); st = t.st;
+  ok('★ 다음 턴 시스템 창: 원작 이행 임무 · 거부 시 강제 이행', st.vars.quests.includes(DUTY.debut) && send(st).promptBlock.includes('[시스템] 원작 이행 임무 — "모두 앞에서 엘리시아에게 질투를 드러내라"'),
+    JSON.stringify(st.vars.quests));
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 41 });
+  const first = (html.split('sim-panel-0">')[1] || '').split('<div class="sim-group">')[1] || '';
+  const rowsQ = first.split('<div class="sim-row').length - 1;
+  ok('★ [ 퀘스트 ] 창 다섯째 줄 = 거부 시 강제 이행', rowsQ === 4 && first.includes('>거부 시<') && first.includes('강제 이행') && S.statusUI.customCSS.includes('nth-child(5)'),
+    first.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 220));
+  st = turn(st, { on_stage: true }).st;
+  const labels = S.rules.events.find((e) => e.id === 'debut_rosetta').choices.map((c) => c.label);
+  ok('절정: 우회 셋 + 맨 끝 = 원작 이행 거부 · "원작대로" 항목은 없다', labels.length === 4 && labels[3] === DUTY_REFUSE && !labels.some((l) => l.startsWith('원작대로')), JSON.stringify(labels));
+  ok('절정 통지: 원작 이행의 순간', send(st).promptBlock.includes('원작 이행의 순간이다'), '');
+  st.meta.pendingChoicePick = labels.indexOf('질투의 칼끝을 엘리시아를 비웃던 로니카에게 돌린다');
+  const s = send(st);
+  ok('우회 결판 → 임무 걷힘 · 창의 거부 시 줄도 사라진다', !s.state.vars.quests.includes(DUTY.debut)
+    && !SC.require('render').renderStatusHtml(S, s.state, null, null, { uid: 42 }).includes('>거부 시<'), JSON.stringify(s.state.vars.quests));
+  // 4장 — 엘리시아와 가까웠다면 칼을 든 채 진실을 속삭일 수 있다 (통찰이 살의가 없음을 본다)
+  const n4 = S.rules.events.find((e) => e.id === 'night_rosetta').choices;
+  ok('4장: "속삭인다"는 엘리시아 40↑에서만 열린다 · 나머지는 조건 없음', n4[0].when === 'elicia >= 40' && n4.slice(1).every((c) => !c.when), '');
+  // 다른 시점엔 임무가 없다
+  let sv = start('special');
+  for (let i = 0; i < 5; i++) sv = turn(sv, { skip_min: 30 }).st;
+  ok('빙의자 로제타 시점: 원작 이행 임무·제약 없음', L(sv, 'scn_act') === 'debut' && !Object.values(DUTY).some((q) => sv.vars.quests.includes(q)) && !send(sv).promptBlock.includes('[원작 이행]'),
+    JSON.stringify(sv.vars.quests));
+  const nightS = S.directives.find((x) => x.id === 'stand_in');
+  ok('4장 "칼을 든 누군가"는 로제타 시점이 아닐 때만 (막 지시문에서 뺐다)', nightS.when.startsWith('pov != "rosetta"')
+    && !S.scenario.acts.find((a) => a.id === 'night').direct.includes('칼을 든 누군가'), '');
 }
 
 console.log('\n━━ 비밀 — 관측 가능한 행동이 연다 ━━');
@@ -1255,7 +1335,7 @@ let verdictState;
 {
   let st = cp(debutState);
   st = turn(st, { on_stage: true }).st;
-  st = turn(pickBy(st, '질투가 치밀기 전에 무도회장을 빠져나온다')).st;
+  st = turn(pickBy(st, '질투의 칼끝을 엘리시아를 비웃던 로니카에게 돌린다')).st;
   ok('1장 결판 → 여파 (다음 장은 아직)', st.vars.cleared === 1 && L(st, 'scn_act') === 'debut' && send(st).promptBlock.includes('[여파]'), L(st, 'scn_act'));
   let a = advance(st, 'tea'); st = a.st;
   ok('★ 여파 3턴 → 2장 · 메인 교체 · 로니카 서브는 걷히고 작은 병은 남는다 · 체크포인트 = 2장 시작',
@@ -1265,7 +1345,7 @@ let verdictState;
   ok('★ 2장 프롬프트: 다과회 원작만 — 3장(계단)·4장(칼)은 없다', p2.includes('하녀를 시켜 엘리시아의 드레스에') && !p2.includes('계단에서 떨어뜨린다') && !p2.includes('칼로 해치려') && !p2.includes('[여파]'), '');
   st = turn(st, { on_stage: true }).st;
   ok('다과회 도착 → 2장 절정', st.meta.pendingChoice?.id === 'tea_rosetta', JSON.stringify(st.meta.pendingChoice));
-  st = turn(pickBy(st, '엘리시아를 핑계 대고 다과회에서 빼낸다')).st;
+  st = turn(pickBy(st, '하녀에게 눈짓하고, 제 드레스에도 찻잔을 엎는다')).st;
   ok('2장 결판', st.vars.cleared === 2 && !st.vars.quests.includes(Q.tea), JSON.stringify(st.vars.quests));
   a = advance(st, 'stairs'); st = a.st;
   ok('→ 3장 · 2장 서브 걷힘', a.n === 3 && st.vars.quests.includes(Q.stairs) && !SUBS.tea.some((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
@@ -1276,14 +1356,14 @@ let verdictState;
   ok('★ 무대에 안 가도 14턴이면 3장 절정 (원작의 강제력)', st.meta.pendingChoice?.id === 'stairs_rosetta' && st.vars.scn_turns >= 14, `${n}턴 · scn_turns ${st.vars.scn_turns}`);
   const doom0 = st.vars.doom;
   const s = send(st, { userText: '(아무것도 안 고르고 보낸다)' });
-  ok('안 고르면 원작대로 — 하인에게 돈을 건넨다 (파멸도 +15)', s.forcedChoice?.label === '원작대로 하인에게 약속한 돈을 건넨다' && s.state.vars.doom === doom0 + 15 && s.state.vars.cleared === 3,
+  ok('안 고르면 강제 이행 — 하인이 엘리시아를 민다 (파멸도 +15) · 임무 걷힘', s.forcedChoice?.label === DUTY_REFUSE && !s.state.vars.quests.includes(DUTY.stairs) && s.state.vars.doom === doom0 + 15 && s.state.vars.cleared === 3,
     JSON.stringify({ f: s.forcedChoice?.label, d: s.state.vars.doom }));
   st = out(s.state).state;
   a = advance(st, 'night'); st = a.st;
   ok('→ 4장 · 과자 상자 서브 걷힘', st.vars.quests.includes(Q.night) && !st.vars.quests.includes(SUB_SWEETS) && SUBS.night.every((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
   st = turn(st, { on_stage: true }).st;
-  ok('저녁 모임 → 4장 절정 · 칼', st.meta.pendingChoice?.id === 'night_rosetta' && send(st).promptBlock.includes('칼날이 번뜩인다'), '');
-  st = turn(pickBy(st, '엘리시아의 손을 잡고 연회장으로 달린다')).st;
+  ok('저녁 모임 → 4장 절정 · 칼', st.meta.pendingChoice?.id === 'night_rosetta' && send(st).promptBlock.includes('칼이 쥐어져 있고') && !send(st).promptBlock.includes('[원작의 흐름]'), '');
+  st = turn(pickBy(st, '칼로 제 손바닥을 긋는다')).st;
   a = advance(st, 'verdict'); st = a.st;
   ok('→ 5장 심판 · 체크포인트 = 5장 시작', st.vars.quests.includes(Q.verdict) && st.checkpoints.main.vars.scn_idx === 5, JSON.stringify(st.vars.quests));
   verdictState = cp(st);

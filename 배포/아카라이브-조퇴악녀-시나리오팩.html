@@ -1,0 +1,454 @@
+<div style="background:#17121f;background:radial-gradient(120% 900px at 50% 0%,#3a2a4a 0%,#221a2e 55%,#17121f 100%);color:#efe5d6;font-family:'Nanum Myeongjo','Noto Serif KR','AppleMyungjo','Batang','BatangChe',serif;font-size:15px;line-height:1.8;padding:28px 22px;border:1px solid #b8975d;border-radius:6px;box-shadow:inset 0 0 0 3px #1c1626,inset 0 0 0 4px rgba(212,178,106,.35),0 4px 18px rgba(0,0,0,.4);max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="text-align:center;border-bottom:1px solid rgba(212,178,106,.4);padding-bottom:18px;margin-bottom:24px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.2em;color:#bfa577;margin-bottom:10px;">RISUAI / POCKETRISU &middot; SIMCORE SCENARIO PACK</div>
+  <div style="font-size:30px;font-weight:700;line-height:1.3;color:#e2c47e;letter-spacing:.02em;">✧ 조기퇴장 악녀에 빙의해버렸다 ✧</div>
+  <div style="font-size:17px;color:#f2c6cf;margin-top:8px;letter-spacing:.06em;">로제타 시나리오팩 &mdash; 원작 탈출 &middot; 사망회귀</div>
+  <div style="margin-top:14px;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#17121f;background:#e0879a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">무책임 베타</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#17121f;background:#d4b26a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">플러그인 v1.13.0 필요</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#e9cf8f;border:1px solid #d4b26a;padding:1px 9px;border-radius:99px;white-space:nowrap;">시점 셋 &middot; 여덟 막</span>
+  </div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:rgba(0,0,0,.22);border-left:3px solid #d4b26a;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#bfa577;letter-spacing:.08em;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;line-height:1.8;">
+  SimCore는 봇에 <b style="color:#f4e9d8;">숫자로 굴러가는 상태</b>를 붙여 주는 리스 플러그인입니다.
+  이 글은 「조기퇴장 악녀에 빙의해버렸다」 봇에 <b style="color:#f4e9d8;">챕터&middot;퀘스트&middot;강제 선택지&middot;회귀</b>를 얹는 시나리오팩(개조 번들)을 나눕니다.
+  인물&middot;세계&middot;이미지는 원본 그대로입니다. 원작 타임라인을 한 번에 다 보여 주던 자리만 시스템이 쥐고, 한 장씩 넘깁니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="text-align:center;color:#d4b26a;font-size:13px;letter-spacing:.24em;margin-bottom:10px;">── 한 줄로 ──</div>
+<p style="margin:0 0 8px;font-size:18px;line-height:1.75;text-align:center;">
+원작에서 처형당하는 악녀 <b style="color:#f2c6cf;">로제타 카르디온</b>.<br>
+그 몸에, 혹은 그 곁에 빙의한 당신이 <b style="color:#e9cf8f;">원작의 흐름</b>을 비틀어 끝까지 살아남는 이야기입니다.
+</p>
+<p style="margin:0 0 22px;color:#b9a9bf;text-align:center;">실패하면 그 장이 시작되던 날로 돌아갑니다. 세상은 잊고, 당신만 기억합니다.</p>
+
+<!-- 시스템 창 견본 — 상태창 [ 퀘스트 ] 그대로 -->
+<div style="max-width:520px;margin:0 auto 10px;background:rgba(80,120,190,.1);background:linear-gradient(180deg,rgba(120,180,230,.15),rgba(80,120,190,.06));border:1px solid rgba(150,200,240,.55);border-radius:4px;padding:10px 16px 10px;box-shadow:0 0 10px rgba(120,180,230,.22),inset 0 0 12px rgba(120,180,230,.08);">
+  <div style="text-align:center;font-family:ui-monospace,'D2Coding',Consolas,monospace;color:#a9d4f5;letter-spacing:.24em;font-size:13px;margin-bottom:6px;">[ 퀘스트 ]</div>
+  <div style="margin:4px 0;"><span style="display:inline-block;width:5.5em;font-family:ui-monospace,'D2Coding',Consolas,monospace;color:#8fb8d8;font-size:14px;">메인 임무</span><b style="color:#e6f3ff;">처형을 피하시오</b></div>
+  <div style="margin:4px 0;"><span style="display:inline-block;width:5.5em;font-family:ui-monospace,'D2Coding',Consolas,monospace;color:#8fb8d8;font-size:14px;vertical-align:top;">퀘스트</span><span style="display:inline-block;max-width:calc(100% - 6em);"><span style="display:inline-block;color:#cfe6fa;border:1px solid rgba(150,200,240,.45);border-radius:99px;padding:0 9px;font-size:13px;margin:0 4px 4px 0;">[2장] 다과회를 무사히 넘긴다</span><span style="display:inline-block;color:#cfe6fa;border:1px solid rgba(150,200,240,.45);border-radius:99px;padding:0 9px;font-size:13px;margin:0 4px 4px 0;">[원작 이행] 다과회에서 엘리시아의 드레스에 차를 쏟게 하라</span></span></div>
+  <div style="margin:4px 0;"><span style="display:inline-block;width:5.5em;font-family:ui-monospace,'D2Coding',Consolas,monospace;color:#8fb8d8;font-size:14px;">실패 시</span><b style="color:#ff8f8f;letter-spacing:.1em;">사망</b></div>
+  <div style="margin:4px 0;"><span style="display:inline-block;width:5.5em;font-family:ui-monospace,'D2Coding',Consolas,monospace;color:#8fb8d8;font-size:14px;">거부 시</span><b style="color:#ffc27a;letter-spacing:.1em;">강제 이행</b></div>
+</div>
+<p style="margin:0 0 22px;color:#8c7f93;font-size:13px;text-align:center;">빙의자 눈앞에만 뜨는 시스템 창 &mdash; 💎 로제타 시점, 2장 다과회</p>
+
+<p style="margin:0 0 24px;color:#8c7f93;font-size:14px;text-align:center;">[스샷: 상태창 현황 장 한 장]</p>
+
+<!-- ─────────── 받을 것 ─────────── -->
+<div style="background:rgba(212,178,106,.08);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:14px 18px;margin-bottom:28px;">
+  <div style="color:#e2c47e;letter-spacing:.06em;margin-bottom:6px;font-weight:700;">받을 것</div>
+  <p style="margin:0;color:#efe5d6;font-size:14px;line-height:2;">
+  [링크: SimCore 플러그인 v1.13.0]<br>
+  [링크: 로제타 시나리오팩 &mdash; 조퇴악녀-번들.json]<br>
+  <span style="color:#b9a9bf;">원본 카드는 여기서 배포하지 않습니다 &mdash; 원작자님 배포처에서 받아 오세요.</span>
+  </p>
+</div>
+
+<!-- ═══════════ 무엇이 굴러가나 ═══════════ -->
+<div style="text-align:center;color:#d4b26a;font-size:13px;letter-spacing:.24em;margin-bottom:12px;">── ✧ 무엇이 굴러가나 ✧ ──</div>
+<p style="margin:0 0 14px;color:#8c7f93;font-size:13px;text-align:center;">항목을 누르면 펼쳐집니다</p>
+
+<!-- 1. 뼈대 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">📜 이야기의 뼈대 &mdash; 여덟 막과 원작의 흐름</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 10px;text-align:center;color:#e9cf8f;font-size:14px;line-height:2;">
+  서장 &middot; 빙의 → 1장 데뷔탕트 → 2장 다과회와 소문 → 3장 계단과 과자 → 4장 파국의 밤 → 5장 심판 → 원작 이후 → 에필로그
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  모델은 <b style="color:#e9cf8f;">지금 장에서 원작이라면 일어날 일</b>만 받습니다. 다음 장의 사건은 프롬프트에 없어서, 모델이 원작을 앞질러 가지 못합니다.
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  장마다 <b style="color:#e9cf8f;">절정</b>이 하나씩 있습니다. 무대(무도회&middot;다과회&middot;연회&middot;심판정)에 도착하거나, 그 장에서 14턴이 지나면 원작이 먼저 찾아옵니다.
+  무도회에 안 가고 버텨도 원작은 옵니다. 절정을 넘기면 여파가 3턴 이어지고 다음 장이 열립니다.
+  </p>
+  <p style="margin:0;color:#efe5d6;">
+  흑막은 이름 붙은 누군가가 아니라 <b style="color:#e9cf8f;">원작의 흐름</b> 그 자체입니다. 당신이 안 보는 사이에도 사교계의 소문은 자랍니다. 파멸도가 30을 넘으면 평소 장면에도
+  <b style="color:#f4e9d8;">📖 원작 보정력</b> 선택지가 끼어듭니다 &mdash; 이야기가 원작 쪽으로 스스로 되돌아가려는 순간입니다. 파멸도가 100에 닿으면 원작 결말이 굳어 게임오버입니다.
+  </p>
+</div>
+</details>
+
+<!-- 2. 시점 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🎭 세 가지 시점</summary>
+<div style="padding:2px 18px 16px;">
+  <div style="border-top:1px solid rgba(212,178,106,.25);padding-top:10px;margin-bottom:12px;">
+    <div style="color:#f2c6cf;font-weight:700;font-size:16px;margin-bottom:4px;">💎 로제타 빙의 &mdash; 원작 악녀 본인으로</div>
+    <p style="margin:0 0 6px;color:#b9a9bf;font-size:14px;">제국력 472년 3월 1일 아침, 거울 앞 &middot; 메인 임무 <b style="color:#f4e9d8;">처형을 피하시오</b> &middot; 카드 버튼 <b style="color:#f4e9d8;">💎 Original(빙의물)</b></p>
+    <p style="margin:0;color:#efe5d6;">
+    장마다 시스템 창에 원작 속 로제타의 악행이 <b style="color:#e9cf8f;">[원작 이행]</b> 임무로 뜹니다(질투 &middot; 찻물 &middot; 계단 &middot; 칼). 그 장면만큼은 겉모양을 반드시 치러야 하고, 거부하면 <b style="color:#ffc27a;">강제 이행</b>입니다 &mdash;
+    몸이 제멋대로 움직이고 원작의 대사가 입에서 먼저 흘러나옵니다. 미래를 알아도 정해진 악행은 막을 수 없으니, <b style="color:#f4e9d8;">어떻게 비트느냐</b>가 이 시점의 놀이입니다. 장면 밖의 로제타는 자유라서, 그 전까지가 준비할 시간입니다.
+    </p>
+  </div>
+  <div style="border-top:1px solid rgba(212,178,106,.25);padding-top:10px;margin-bottom:12px;">
+    <div style="color:#f2c6cf;font-weight:700;font-size:16px;margin-bottom:4px;">🕊️ 로제타의 시종 빙의 &mdash; 첫 출근 날부터</div>
+    <p style="margin:0 0 6px;color:#b9a9bf;font-size:14px;">3월 1일 새벽, 카르디온 공작저 사용인 숙소 &middot; 메인 임무 <b style="color:#f4e9d8;">로제타의 처형을 막으시오</b> &middot; 카드 버튼 <b style="color:#f4e9d8;">🕊️ Free</b></p>
+    <p style="margin:0;color:#efe5d6;">
+    어제 면접에 붙은 로제타 전속 시종의 몸으로 눈을 뜹니다. 오늘이 첫 출근이고, 선배 시녀 안나가 첫날의 일을 가르쳐 줍니다.
+    이 시점에선 <b style="color:#f4e9d8;">원래의 로제타</b>가 원작의 악행을 꾸밉니다. 당신은 장마다 <b style="color:#e9cf8f;">막을지 &middot; 도울지 &middot; 돌릴지</b>를 고릅니다.
+    로제타의 신뢰가 0이 되면 곁에서 내쳐집니다 &mdash; 임무 수행 불가, 회귀입니다. 원작에 이름 한 줄 없는 몸이라 이름&middot;성별&middot;경력은 페르소나가 정합니다(맨 아래에 범용 시트).
+    </p>
+  </div>
+  <div style="border-top:1px solid rgba(212,178,106,.25);padding-top:10px;margin-bottom:12px;">
+    <div style="color:#f2c6cf;font-weight:700;font-size:16px;margin-bottom:4px;">🌹 빙의자 로제타 &mdash; 로제타 곁의 누군가로</div>
+    <p style="margin:0 0 6px;color:#b9a9bf;font-size:14px;">3월 1일 아침 &middot; 메인 임무 <b style="color:#f4e9d8;">로제타의 처형을 막으시오</b> &middot; 카드 버튼 <b style="color:#f4e9d8;">🌹 Special(빙의자 로제타)</b></p>
+    <p style="margin:0;color:#efe5d6;">
+    원본의 Special 시나리오입니다. 로제타 안에 <b style="color:#f4e9d8;">다른 현대인</b>이 들어 있고, 당신은 그 곁의 누군가입니다. 빙의자가 어떤 사람인지는 첫 메시지에 밝히거나 SimCore 패널에서 적어 두면 됩니다.
+    </p>
+  </div>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;border-top:1px solid rgba(212,178,106,.25);padding-top:10px;">
+  호감은 성별과 무관합니다. 우정&middot;충성&middot;연애 중 무엇으로 자랄지는 당신의 페르소나와 행동이 정하고, 모델에게도 인물의 성별로 연애를 짐작하지 말라고 일러 둡니다.
+  </p>
+</div>
+</details>
+
+<!-- 3. 절정 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">⚔️ 장마다 절정 &mdash; 원작의 순간</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 10px;color:#efe5d6;">
+  절정은 선택지 창으로 뜹니다. <b style="color:#f4e9d8;">맨 끝 선택지가 원작 쪽</b>이고, 안 고르고 보내면 그리로 갑니다. 선택지 옆 🎲 칩은 판정이 붙는 항목, 🔒은 조건이 모자라 잠긴 항목입니다.
+  아래는 2장 다과회 &mdash; 하녀가 찻쟁반을 들고 엘리시아 쪽으로 가는 순간입니다.
+  </p>
+
+  <div style="background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin:0 0 12px;">
+    <div style="color:#e2c47e;letter-spacing:.06em;font-size:14px;margin-bottom:4px;">💎 로제타 &mdash; 우회 셋 + 거부</div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;">① 쏟게 하되, 같은 빛깔의 새 드레스를 선물로 준비해 둔다 <span style="font-size:12px;background:rgba(212,178,106,.12);border:1px solid rgba(212,178,106,.35);border-radius:3px;padding:0 6px;white-space:nowrap;">🎲 매력</span></div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">② 하녀에게 눈짓하고, 제 드레스에도 찻잔을 엎는다</div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">③ 식은 차로 바꿔 두고, 쏟은 하녀를 모두 앞에서 감싼다 <span style="font-size:12px;background:rgba(212,178,106,.12);border:1px solid rgba(212,178,106,.35);border-radius:3px;padding:0 6px;white-space:nowrap;">🎲 화술</span></div>
+    <div style="padding:5px 6px;color:#ffc27a;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">④ 원작 이행을 거부한다 &rarr; 강제 이행</div>
+  </div>
+
+  <div style="background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin:0 0 12px;">
+    <div style="color:#e2c47e;letter-spacing:.06em;font-size:14px;margin-bottom:4px;">🕊️ 시종 &mdash; 막기 &middot; 돕기 &middot; 돌리기</div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;">① 막는다 &mdash; 하녀의 쟁반을 가로채 받아 든다</div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">② 돕는다 &mdash; 아가씨 대신 내 손으로 찻잔을 기울인다</div>
+    <div style="padding:5px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">③ 돌린다 &mdash; 망신 대신 아가씨가 다과회의 주인으로 빛나게 거든다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 신뢰 30</span> <span style="font-size:12px;background:rgba(212,178,106,.12);border:1px solid rgba(212,178,106,.35);border-radius:3px;padding:0 6px;white-space:nowrap;">🎲 가사</span></div>
+    <div style="padding:5px 6px;color:#b9a9bf;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">④ 지켜본다</div>
+  </div>
+
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;"><b style="color:#a8d8a0;">막는다</b> &mdash; 파멸도는 확실히 내려가지만 로제타가 등을 돌립니다(신뢰 &minus;).</p>
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;"><b style="color:#f08a98;">돕는다</b> &mdash; 신뢰를 얻는 대신 공범이 됩니다(파멸도 +).</p>
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">돌린다</b> &mdash; 로제타가 원하던 걸 다른 길로 줍니다. 둘 다 좋아지지만 판정과 신뢰 문턱(2장 30 &middot; 3장 40 &middot; 4장 50)이 필요합니다.</p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">막기만 하면 신뢰가 깎여 돌리기가 잠기고 끝내 내쳐집니다. 돕기로 신뢰를 벌면 파멸도가 오릅니다. 그 사이에서 고르는 게 이 시점의 줄타기입니다.</p>
+</div>
+</details>
+
+<!-- 4. 회귀 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">⏪ 사망 회귀 &mdash; 죽으면 그날로</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 10px;color:#efe5d6;">
+  게임오버가 되면 <b style="color:#e9cf8f;">그 장이 시작되던 날</b>로 돌아갑니다. 상태창에 회귀 횟수가 하나 늘고, 이야기는 "눈을 뜨면 다시 그날이다"에서 다시 시작합니다.
+  </p>
+  <p style="margin:0 0 4px;color:#e2c47e;font-size:14px;letter-spacing:.04em;">게임오버가 되는 때</p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;line-height:1.9;">
+  당신이 서사 속에서 죽었다 &middot; 파멸도 100 &middot; 로제타의 몸 0 &middot; (시종) 로제타의 신뢰 0 &middot; 5장에서 처형을 받아들였다
+  </p>
+  <p style="margin:0 0 4px;color:#e2c47e;font-size:14px;letter-spacing:.04em;">되감기는 것 / 남는 것</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;">되감김 &mdash; 날짜 &middot; 장 &middot; 관계 &middot; 평판 &middot; 파멸도 &middot; 몸 &middot; 퀘스트 &middot; 소지품 &middot; 신분</p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;">남음 &mdash; 회귀 횟수 &middot; <b style="color:#f4e9d8;">회귀의 기억</b>(보조 AI가 죽기 직전의 서사에서 적어 둠) &middot; 능력치 &middot; 능력 &middot; 이미 열린 비밀</p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">
+  AI가 "너무 벗어났다"고 판단해서 게임을 끝내는 일은 없습니다. 게임오버는 선택지와 명백한 사실(죽음)에서만 나고, 자잘한 이탈은 파멸도로 쌓입니다.
+  </p>
+</div>
+</details>
+
+<!-- 5. 능력치 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🎲 능력치 &middot; 수련 &middot; 판정</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  <b style="color:#f4e9d8;">검술 &middot; 마법 &middot; 화술 &middot; 매력 &middot; 가사</b> 0~100. 판정은 d20 + 능력치/10이 12 이상(어려움 16)이면 성공이고, 성공하면 그 능력치가 +1(대성공 +2) 오릅니다.
+  고르기 전에 선택지 옆 칩에 성공률이 보입니다 &mdash; <span style="font-size:12px;background:rgba(212,178,106,.12);border:1px solid rgba(212,178,106,.35);border-radius:3px;padding:0 6px;white-space:nowrap;">🎲 화술 60%</span>
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  평소 장면에도 가끔 보조 AI가 능력치 선택지를 씁니다. 절정뿐 아니라 사교 대결이나 몸싸움 같은 순간에도 능력치가 결과를 가릅니다.
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  <b style="color:#f4e9d8;">수련 버튼 다섯</b> &mdash; 누르거나 채팅에 "검술 수련"처럼 쓰면 작중 2시간이 지나고 +1~3 오릅니다. 높을수록 크게 늘기 어렵습니다.
+  <b style="color:#e9cf8f;">자유 시간에만</b> 할 수 있습니다. 서장(첫날) &middot; 무대 위 &middot; 5장 심판을 기다리는 동안 &middot; 밤 22시~새벽 6시엔 버튼이 흐려집니다. 그때 채팅으로 수련하려 들면 서사가 자연스럽게 막습니다 &mdash; 누가 부르거나, 자리를 뜰 수 없거나.
+  </p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">
+  시작값: 💎 로제타의 몸은 화술 45 &middot; 매력 60 &middot; 마법 0, 시종&middot;곁의 누군가는 평범한 시종에서 시작하고 첫 응답이 페르소나 배경을 보고 조정합니다. 능력치는 회귀해도 남으니, 돌아올수록 강해집니다.
+  </p>
+</div>
+</details>
+
+<!-- 6. 서브 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🧾 서브 퀘스트 &mdash; 심판 날 누가 편이 되어 줄까</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  장마다 서브 퀘스트가 몇 개씩 붙습니다. 안 해도 이야기는 가지만, <b style="color:#f4e9d8;">끝낸 서브에는 결과가 붙습니다</b> &mdash; 그리고 5장 심판의 잠긴 선택지는 대부분 여기서 쌓은 관계로 열립니다.
+  </p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f2c6cf;">리칼</b> &mdash; 새벽 연무장에서 마주한다 &middot; 쓸모를 증명한다</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f2c6cf;">카르디온 공작</b> &mdash; 저녁 식탁에 로제타의 자리를 만든다 &middot; 공작 앞에 쓸모를 보일 일을 가져간다</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f2c6cf;">황태자 에르테미안</b> &mdash; 연회에서 제대로 말을 섞는다 &middot; 책상에 쌓이는 쪽지의 주인을 알아낸다</p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;"><b style="color:#f2c6cf;">그 밖</b> &mdash; 로니카의 도발 &middot; 악소문의 출처 &middot; 로제타의 기침을 봐 줄 의사 &middot; 저녁 모임 전 엘리시아와의 대화</p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">
+  서브가 이뤄졌는지는 보조 AI가 서사를 보고 적습니다. 시도나 약속만으로는 안 지워지고, 그 일이 실제로 벌어진 장면이 나와야 끝납니다.
+  </p>
+</div>
+</details>
+
+<!-- 7. 심판·결말 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">⚖️ 5장 심판과 결말 &mdash; 스포일러 약간</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 10px;color:#efe5d6;">
+  심판의 선택지 창에는 <b style="color:#f4e9d8;">잠긴 선택지(🔒)까지 전부 보입니다</b> &mdash; 무엇이 나를 살릴 수 있었는지 보이도록. 파멸도가 30 이하면 심판은 "재판"이 아니라 "해명"의 자리가 됩니다.
+  </p>
+  <div style="background:rgba(0,0,0,.25);border:1px solid rgba(212,178,106,.45);border-radius:6px;padding:10px 12px;margin:0 0 12px;">
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;">리칼이 증언대에 선다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 리칼 50</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">엘리시아가 로제타를 감싼다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 엘리시아 60</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">황태자가 재심을 청한다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 에르테미안 60</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">공작이 가문의 이름으로 막아선다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 공작 50</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">(시종 &middot; 곁의 누군가) 내가 대신 죄를 쓴다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 신뢰 70</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">스스로 결백을 밝힌다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 파멸도 30 이하</span></div>
+    <div style="padding:4px 6px;color:#efe5d6;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">심판정을 빠져나가 도망친다 <span style="font-size:12px;color:#f2c6cf;border:1px solid rgba(224,135,154,.45);border-radius:99px;padding:0 7px;white-space:nowrap;">🔒 몸 20 초과</span></div>
+    <div style="padding:4px 6px;color:#8c7f93;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">&hellip; 그리고 원작 속 로제타가 끝내 몰랐던 것 하나 (아래 스포일러)</div>
+    <div style="padding:4px 6px;color:#ff8f8f;font-size:14px;border-top:1px solid rgba(255,255,255,.07);">받아들인다 <span style="color:#b9a9bf;">(시종 &middot; 곁의 누군가: 아무것도 하지 못한다)</span> &rarr; 처형 &rarr; 5장 시작으로 회귀</div>
+  </div>
+
+  <p style="margin:0 0 6px;color:#e2c47e;font-size:14px;letter-spacing:.04em;">결말마다 2부가 다른 곳에서 시작합니다</p>
+  <p style="margin:0 0 8px;color:#b9a9bf;font-size:14px;">어느 결말로 살아남았는지가 원작 이후의 시작 장소 &middot; 처지 &middot; 첫 퀘스트 &middot; 먼저 열리는 줄기를 정합니다.</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">리칼의 증언</b> &mdash; 카르디온 공작저 &middot; 마탑 줄기부터</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">엘리시아의 변호</b> &mdash; 에버렛 후작저 &middot; 황궁 줄기부터</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">황태자의 재심 청원</b> &mdash; 황궁 동쪽 별관(보호이자 감시) &middot; 황궁 줄기부터</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">공작의 이름</b> &mdash; 카르디온 공작저 &middot; 신전 줄기부터</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">스스로 밝힌 결백</b> &mdash; 카르디온 공작저 &middot; 실버버그 줄기부터(사교계 쪽)</p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">대신 진 죄</b> &mdash; 실버버그 영지의 광산 마을(추방) &middot; 실버버그 줄기부터(광산 쪽)</p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;"><b style="color:#f4e9d8;">도주</b> &mdash; 수도 뒷골목의 버려진 창고 &middot; 뒷골목 줄기부터</p>
+
+  <details style="background:rgba(0,0,0,.25);border:1px dashed rgba(212,178,106,.5);border-radius:4px;margin:0;">
+  <summary style="cursor:pointer;padding:8px 12px;color:#d8c7a4;font-size:14px;">🔒 여덟째 결말 &mdash; 스포일러 (원본 로어북의 반전)</summary>
+  <div style="padding:2px 14px 12px;">
+    <p style="margin:0;color:#efe5d6;font-size:14px;">
+    <b style="color:#f4e9d8;">권능을 드러내 카르디온의 피를 증명한다</b> &mdash; 로제타의 권능은 사실 이미 깨어 있습니다. 1부에서 권능의 흔적이 두 번 드러나면 열리고, 결말은 <b style="color:#e9cf8f;">권능의 증명</b>입니다.
+    "처형대에 세우기엔 너무 귀한 힘." 2부는 카르디온 공작저에서, 신전 줄기부터 시작합니다. 그 인정이 로제타를 향한 건지 권능을 향한 건지는 이제부터의 이야기입니다.
+    </p>
+  </div>
+  </details>
+</div>
+</details>
+
+<!-- 8. 원작 이후 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🏛️ 원작 이후 &mdash; 2부 진영 줄기와 에필로그</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  원작은 처형에서 끝납니다. 살아남은 뒤부터 <b style="color:#f4e9d8;">빙의자의 원작 지식도 끝</b> &mdash; 이제는 미래를 모르는 회귀입니다.
+  2부는 원본 인물 로어북에 적힌 풀리지 않은 갈등을 씨앗 삼아 <b style="color:#e9cf8f;">진영 줄기 다섯</b>으로 묶었습니다.
+  </p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;line-height:2;text-align:center;">
+  <b style="color:#f2c6cf;">신전</b> 대신관의 부패와 고해 장부 &middot; <b style="color:#f2c6cf;">뒷골목</b> 정보 길드 밤의 눈 &middot; <b style="color:#f2c6cf;">실버버그</b> 불법 광산 &middot; <b style="color:#f2c6cf;">황궁</b> 떠난 황자와 동방의 이중 장부 &middot; <b style="color:#f2c6cf;">마탑</b> 권능을 향한 관심
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  <b style="color:#f4e9d8;">순서는 자유</b>입니다. 인물과의 접점 &middot; 호감 &middot; 단서 같은 조건을 채우면 줄기가 열리고, 열림 &rarr; 진상 &rarr; 결판(선택지 넷)으로 흘러갑니다. 모델은 지금 단계 하나만 받습니다.
+  </p>
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  <b style="color:#e9cf8f;">무대 뒤</b> &mdash; 줄기마다 당신이 안 봐도 흐르는 시계가 있습니다. 방치하면 사건이 먼저 터지고(세상이 먼저 찾아옵니다), 끝내 놓치면 되돌릴 수 없는 결과가 남습니다.
+  결판을 낼 때마다 저장되니, 2부에서 죽으면 마지막으로 매듭지은 줄기 뒤로 돌아갑니다.
+  </p>
+  <p style="margin:0 0 10px;color:#b9a9bf;font-size:14px;">
+  호감 칸이 아홉 명 늘어납니다 &mdash; 디안느 &middot; 알드릭 &middot; 도리스 &middot; 클레네 &middot; 이슈트반 &middot; 드미트리샤 &middot; 유온 &middot; 에크시온 &middot; 레아. 만나면 상태창에 나타납니다. 미성년 인물(드미트리샤 &middot; 엘시)과는 우정&middot;보호로만 이어집니다.
+  </p>
+  <p style="margin:0 0 6px;color:#e2c47e;font-size:14px;letter-spacing:.04em;">에필로그</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;">
+  매듭(좋게 맺었든 놓쳤든)이 셋 이상 쌓이면 시스템이 이야기를 맺을지 묻습니다. "아직"을 고르면 매듭이 하나 더 늘 때 다시 묻습니다.
+  에필로그는 계절이 한 번 바뀐 뒤 인물마다 짧은 장면으로 흘러가고, 마지막은 로제타의 얼굴입니다. 그 뒤로는 자유롭게 이어 가도 됩니다.
+  </p>
+  <p style="margin:0;color:#efe5d6;font-size:14px;text-align:center;line-height:2;">
+  제목은 넷 &mdash; <b style="color:#e9cf8f;">원작 밖의 봄</b> &middot; <b style="color:#e9cf8f;">새로 쓴 이야기</b> &middot; <b style="color:#e9cf8f;">살아남은 자의 겨울</b> &middot; <b style="color:#e9cf8f;">악녀의 다음 장</b>
+  </p>
+</div>
+</details>
+
+<!-- 9. 비밀과 몸 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🔒 비밀 &mdash; 모델도 아직 모르는 것</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  몇몇 인물은 숨기는 게 있습니다. 원본 로어북에 적혀 있던 비밀 줄은 번들이 잘라 냈고, 조건이 차기 전엔 <b style="color:#f4e9d8;">프롬프트 어디에도 없습니다</b>. 그러니 모델이 알고 흘리는 일이 없습니다.
+  처음엔 이유 없는 행동(낌새)만 보이고, 가까워지면 일부가, 그다음에 전모가 열립니다.
+  </p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;">
+  상태창에 이런 칩이 뜹니다 &mdash;
+  <span style="display:inline-block;font-size:12px;color:#d8c7a4;border:1px dashed rgba(212,178,106,.5);border-radius:99px;padding:0 8px;margin:2px 0;white-space:nowrap;">서랍 속 작은 병</span>
+  <span style="display:inline-block;font-size:12px;color:#d8c7a4;border:1px dashed rgba(212,178,106,.5);border-radius:99px;padding:0 8px;margin:2px 0;white-space:nowrap;">안나의 침묵</span>
+  <span style="display:inline-block;font-size:12px;color:#d8c7a4;border:1px dashed rgba(212,178,106,.5);border-radius:99px;padding:0 8px;margin:2px 0;white-space:nowrap;">리칼의 약</span>
+  <span style="display:inline-block;font-size:12px;color:#d8c7a4;border:1px dashed rgba(212,178,106,.5);border-radius:99px;padding:0 8px;margin:2px 0;white-space:nowrap;">엘리시아의 손수건</span>
+  &mdash; 그리고 칩으로도 안 보이는 것 하나.
+  </p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">
+  <b style="color:#f4e9d8;">로제타의 몸</b> 막대를 눈여겨보세요. 기침이 잦고, 가끔 로제타에게 이상한 순간이 찾아옵니다(선택지). 몸이 0이 되면 게임오버입니다.
+  작은 병의 정체가 드러나면 상태창에 줄이 하나 새로 생깁니다.
+  </p>
+</div>
+</details>
+
+<!-- 10. 상태창 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">🖥️ 상태창 &mdash; 밤의 무도회</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;">
+  자정의 자줏빛 연회장에 샴페인 금테를 두른 상태창입니다(이 글의 색 그대로). 두 장으로 나뉩니다.
+  </p>
+  <p style="margin:0 0 4px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">현황</b> &mdash; [ 퀘스트 ] 시스템 창 &middot; 로제타(파멸도 &middot; 평판 &middot; 몸) &middot; 관계 &middot; 진행(장소 &middot; 결말 &middot; 에필로그)</p>
+  <p style="margin:0 0 10px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">나</b> &mdash; 신분 &middot; 회귀 횟수 &middot; 능력치 &middot; 능력 &middot; 소지품 &middot; 회귀의 기억</p>
+  <p style="margin:0 0 10px;color:#b9a9bf;font-size:14px;">
+  맨 위의 푸른 [ 퀘스트 ] 창만 결이 다른 건 일부러입니다 &mdash; 세계 밖에서 빙의자에게만 띄운 창이라, 서사 속 인물은 아무도 못 봅니다. 모델도 이 창을 새 장이 열릴 때 &middot; 임무가 걸릴 때 &middot; 실패할 때만 건조한 말투로 띄웁니다.
+  </p>
+  <p style="margin:0;color:#8c7f93;font-size:14px;">[스샷: 나 장 / 절정 선택지 창]</p>
+</div>
+</details>
+
+<!-- ═══════════ 시작 ═══════════ -->
+<div style="text-align:center;color:#d4b26a;font-size:13px;letter-spacing:.24em;margin:28px 0 12px;">── ✧ 시작하기 ✧ ──</div>
+
+<!-- 11. 설치 -->
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #d4b26a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">📦 설치 &mdash; 순서가 중요합니다</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">0.</b> 원본 카드 「조기퇴장 악녀에 빙의해버렸다」를 원작자님 배포처에서 받아 임포트합니다. 표정 이미지와 추가 모듈도 원본 것을 그대로 씁니다.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">1.</b> SimCore 플러그인을 <b style="color:#f4e9d8;">v1.13.0 이상</b>으로 임포트합니다. 플러그인 목록에 "SimCore (시뮬 엔진) v1.13.0 능력치 판정"으로 보이면 맞습니다. 이미 쓰고 있어도 다시 임포트해 주세요.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">2.</b> 카드를 열고 SimCore 패널 &rarr; 💾 세이브 &rarr; <b style="color:#f4e9d8;">[번들 가져와 교체]</b>로 <b style="color:#f4e9d8;">조퇴악녀-번들.json</b>을 고르고, 안내를 확인한 뒤 한 번 더 누릅니다.
+  로어북과 시스템(변수 &middot; 막 &middot; 선택지 &middot; 상태창)이 한 번에 바뀝니다 &mdash; 원작 타임라인 &middot; 옛 상태창 &middot; 빙의 지침 &middot; Special 시나리오 항목은 시스템이 대신 맡으니 빠지고, 인물 비밀 줄은 잘려 나갑니다.
+  카드의 정규식(이미지 표시 등)은 그대로 두고, 이제 할 일이 없어진 ⚙️ 설정 패널 하나만 끕니다.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">3.</b> SimCore 패널 <b style="color:#f4e9d8;">[새 시작]</b>에서 시점 프리셋을 고릅니다 &mdash; 💎 로제타 / 🕊️ 시종 / 🌹 빙의자 로제타. 고른 프리셋에 ✓가 붙고, 새 채팅마다 그 시점으로 시작합니다.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">4.</b> <b style="color:#f4e9d8;">새 채팅</b>을 열고, 카드 첫 화면에서 <b style="color:#f4e9d8;">프리셋과 짝이 맞는 버튼</b>을 누릅니다.
+  💎 로제타 &harr; <b style="color:#f4e9d8;">💎 Original(빙의물)</b> &middot; 🕊️ 시종 &harr; <b style="color:#f4e9d8;">🕊️ Free</b> &middot; 🌹 빙의자 로제타 &harr; <b style="color:#f4e9d8;">🌹 Special(빙의자 로제타)</b>.
+  카드 버튼과 SimCore 프리셋은 따로 놀기 때문에 둘 다 맞춰야 합니다.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">5.</b> 🕊️ 시종으로 시작한다면 페르소나를 준비합니다 &mdash; 맨 아래 범용 시트를 쓰거나 직접 만들어도 됩니다. 🌹 빙의자 로제타는 첫 메시지에 당신의 자리와 로제타 안의 빙의자가 어떤 사람인지를 밝혀 주세요.</p>
+  <p style="margin:0;color:#efe5d6;font-size:14px;"><b style="color:#e9cf8f;">6.</b> 수치가 전혀 안 움직이면 SimCore 패널의 [보조 모델 연결 테스트]를 눌러 보세요. 막힌 환경이면 안내에 따라 [루아 브리지 설치/갱신]을 한 번 누르면 됩니다.</p>
+</div>
+</details>
+
+<!-- 12. 베타 -->
+<details style="background:rgba(227,107,125,.06);border:1px solid rgba(224,135,154,.45);border-left:3px solid #e36b7d;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#f2c6cf;font-size:17px;font-weight:700;letter-spacing:.03em;">🧪 무책임 베타 &mdash; 알려진 거친 곳</summary>
+<div style="padding:2px 18px 16px;">
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;">
+  생성기 자체 검사 186개는 다 통과했지만 <b style="color:#f4e9d8;">리스에서 끝까지 굴려 본 판은 아직 적습니다.</b> 문턱 &middot; 확률 &middot; 보상 수치는 전부 초안이라 실제 판을 보고 고칩니다.
+  </p>
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;">&middot; 로제타의 몸이 아주 낮은 채로 장이 시작되면, 회귀해도 금방 다시 쓰러질 수 있습니다. 너무 가혹하다 싶으면 알려 주세요.</p>
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;">&middot; 수련이 잠긴 동안에는 모델에게 "지금은 수련할 수 없다"는 한 줄이 계속 실립니다. 모델이 그 줄 때문에 엉뚱하게 굴면 제보 부탁드립니다.</p>
+  <p style="margin:0 0 6px;color:#efe5d6;font-size:14px;">&middot; 원본 카드에 들어 있는 모듈 쪽에 옛 로어북 사본이 따로 살아 있을 가능성이 있습니다. 응답에 다음 장의 원작 사건이 미리 새어 나오면 알려 주세요.</p>
+  <p style="margin:0 0 8px;color:#efe5d6;font-size:14px;">&middot; 서브 퀘스트 완료 &middot; 회귀의 기억 &middot; 소지품은 보조 AI가 적는 칸이라, 모델에 따라 빠뜨리거나 늦게 적을 수 있습니다.</p>
+  <p style="margin:0;color:#b9a9bf;font-size:14px;">
+  이상한 수치, 안 터지는 사건, 깨지는 상태창 전부 제보 환영입니다 &mdash; 어느 시점 &middot; 몇 장에서 무엇이 이상했는지 한 줄이면 충분합니다.
+  </p>
+</div>
+</details>
+
+<!-- ═══════════ 페르소나 ═══════════ -->
+<div style="text-align:center;color:#d4b26a;font-size:13px;letter-spacing:.24em;margin:28px 0 12px;">── ✧ 시종 범용 페르소나 시트 ✧ ──</div>
+<div style="background:rgba(0,0,0,.22);border-left:3px solid #d4b26a;border-radius:0 4px 4px 0;padding:12px 16px;margin-bottom:12px;">
+  <p style="margin:0;color:#b9a9bf;font-size:14px;line-height:1.8;">
+  🕊️ 시종 시점용 &mdash; <b style="color:#f4e9d8;">노엘 그레이</b>, 스무 살 평민. 원작에 없는 인물이고, 어제 로제타의 면접에 붙어 오늘이 첫 출근입니다. 여 &middot; 남 두 벌이 있습니다.
+  리스 페르소나 칸에 통째로 붙여 넣고, 맨 아래 <b style="color:#f4e9d8;">Possessor 세 줄</b>(빙의자의 성별 &middot; 전 직업 &middot; 성격)만 당신 것으로 채우세요. 한국어로 적어도 됩니다.
+  세상은 몸의 주인인 노엘로 대하고, 빙의자의 성별 &middot; 직업 &middot; 성격은 속마음 &middot; 말버릇 &middot; 아는 것에만 드러납니다 &mdash; 몸과 빙의자의 성별이 달라도 괜찮습니다.
+  </p>
+</div>
+
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 10px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">👤 노엘 그레이 &mdash; 여 (전속 시녀)</summary>
+<div style="padding:2px 18px 16px;">
+<pre style="white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;background:rgba(0,0,0,.3);border:1px solid rgba(212,178,106,.3);border-radius:4px;padding:12px 14px;margin:0;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.65;color:#efe5d6;">### Profile
+- Name: Noel Grey (노엘 그레이)
+- Age: 20
+- Gender: Female
+- Status: Commoner
+
+### Appearance
+- Body shape: Average height, slim but sturdy from years of chores.
+- Overall look: Black hair tied low at the nape or pinned up neatly, dark gray eyes. A tidy, unremarkable face that is easy to forget in a crowd.
+- Fashion style: The Cardion maid uniform—new, still stiff with starch.
+- Scent: Faint laundry starch.
+- Aura: Quiet and self-effacing—the kind of servant guests never notice.
+
+### Background
+- Strength: Ordinary. Can carry trays and linens all day; no training in combat.
+- Intelligence: Average. Reads, writes, and does simple sums—taught by a steward at her previous post.
+- Skill: Competent at housework—tea, laundry, mending, tidying. No magic.
+- Family: Parents deceased. No family in the capital.
+- Occupation: Rosetta's newly hired exclusive maid—today is her first day.
+- Residence: The servants' quarters of the Cardion mansion (moved in yesterday).
+
+### Backstory
+- Worked five years as a maid in a minor noble household in the capital. When that household left for its territory, she was let go with a letter of recommendation. The post at Rosetta's side was the only opening at the Cardion mansion—nobody lasts there long. She passed Rosetta's interview yesterday.
+
+### Key Relationships
+- Rosetta: Her new mistress, who hired her yesterday after a sharp interview. Noel knows her mostly by her reputation as the Cardion villainess.
+- Anna: Rosetta's exclusive maid and now Noel's senior—the one who will teach her the first day's work.
+
+### Special
+- Possession: Noel does not appear in the original novel. On the morning of her first day at work, a modern person who has read the novel wakes up in her body. The body keeps Noel's trained hands; Noel's own memories surface only in fragments. No one at the Cardion mansion knew Noel beyond yesterday's interview, so no one notices the change.
+
+### Possessor (the modern soul inside Noel)
+- Gender: (직접 적기 — 예: 여성 / 남성)
+- Former occupation: (직접 적기 — 예: 회사원, 간호사, 대학원생)
+- Personality: (직접 적기 — 예: 무뚝뚝하고 눈치 빠름, 겁 많지만 다정함)
+- Note: Others see and address Noel. The possessor's own gender, job, and personality show only in inner monologue, habits of speech, and what they know—not in how the world treats the body.</pre>
+</div>
+</details>
+
+<details style="background:rgba(255,255,255,.04);border:1px solid rgba(212,178,106,.25);border-left:3px solid #e0879a;border-radius:4px;margin:0 0 24px;">
+<summary style="cursor:pointer;padding:12px 16px;color:#e2c47e;font-size:17px;font-weight:700;letter-spacing:.03em;">👤 노엘 그레이 &mdash; 남 (전속 시종)</summary>
+<div style="padding:2px 18px 16px;">
+<pre style="white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;background:rgba(0,0,0,.3);border:1px solid rgba(212,178,106,.3);border-radius:4px;padding:12px 14px;margin:0;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.65;color:#efe5d6;">### Profile
+- Name: Noel Grey (노엘 그레이)
+- Age: 20
+- Gender: Male
+- Status: Commoner
+
+### Appearance
+- Body shape: Average height, lean build from years of chores.
+- Overall look: Short, neatly trimmed black hair, dark gray eyes. A tidy, unremarkable face that is easy to forget in a crowd.
+- Fashion style: The Cardion attendant's uniform—new, still stiff with starch.
+- Scent: Faint laundry starch.
+- Aura: Quiet and self-effacing—the kind of servant guests never notice.
+
+### Background
+- Strength: Ordinary. Can carry trays and luggage all day; no training in combat.
+- Intelligence: Average. Reads, writes, and does simple sums—taught by a steward at his previous post.
+- Skill: Competent at housework—tea, laundry, mending, tidying. No magic.
+- Family: Parents deceased. No family in the capital.
+- Occupation: Rosetta's newly hired exclusive attendant—today is his first day.
+- Residence: The servants' quarters of the Cardion mansion (moved in yesterday).
+
+### Backstory
+- Worked five years as a servant in a minor noble household in the capital. When that household left for its territory, he was let go with a letter of recommendation. The post at Rosetta's side was the only opening at the Cardion mansion—nobody lasts there long. He passed Rosetta's interview yesterday.
+
+### Key Relationships
+- Rosetta: His new mistress, who hired him yesterday after a sharp interview. Noel knows her mostly by her reputation as the Cardion villainess.
+- Anna: Rosetta's exclusive maid and now Noel's senior—the one who will teach him the first day's work.
+
+### Special
+- Possession: Noel does not appear in the original novel. On the morning of his first day at work, a modern person who has read the novel wakes up in his body. The body keeps Noel's trained hands; Noel's own memories surface only in fragments. No one at the Cardion mansion knew Noel beyond yesterday's interview, so no one notices the change.
+
+### Possessor (the modern soul inside Noel)
+- Gender: (직접 적기 — 예: 여성 / 남성)
+- Former occupation: (직접 적기 — 예: 회사원, 간호사, 대학원생)
+- Personality: (직접 적기 — 예: 무뚝뚝하고 눈치 빠름, 겁 많지만 다정함)
+- Note: Others see and address Noel. The possessor's own gender, job, and personality show only in inner monologue, habits of speech, and what they know—not in how the world treats the body.</pre>
+</div>
+</details>
+
+<!-- ─────────── 맺음 ─────────── -->
+<p style="margin:0;color:#8c7f93;font-size:13px;line-height:1.8;border-top:1px solid rgba(212,178,106,.3);padding-top:14px;">
+원작 「조기퇴장 악녀에 빙의해버렸다」 봇과 인물 &middot; 세계 &middot; 이미지는 원작자님의 것입니다. 이 시나리오팩은 그 위에 시스템 층을 얹은 2차 창작이고, 문제가 되면 내리겠습니다.
+원작 타임라인 1~4막 &middot; 파양 &middot; 처형과 인물들의 목표 &middot; 비밀은 원본 로어북을 따랐고, 장마다의 선택지 &middot; 서브 퀘스트 &middot; 2부 줄기의 전개 &middot; 결말의 연결 &middot; 수치는 이번에 새로 만든 것입니다.
+</p>
+
+</div>

@@ -40,17 +40,18 @@ const SCENES = [
     },
   },
   {
-    id: 'servant', open: 1, title: '시종 시점',
-    caption: '서장 · 면접 두 번째 질문 · 회귀 2회차 — 나 장을 펼친 채',
+    id: 'servant', open: 0, title: '시종 시점',
+    caption: '2장 다과회 · 회귀 2회차 — 막기·돕기·돌리기 (신뢰가 모자라 돌린다는 🔒)',
     build() {
       const st = start('servant');
       Object.assign(st.vars, {
-        iv_ready: true, iv_q: 1, iv_score: 2, loop: 2, rosetta: 15,
-        location: '카르디온 공작저 응접실', quests: ['[서장] 로제타의 시종 면접에 합격하라'],
-        memories: ['로제타는 동정받는 걸 가장 싫어한다', '"성실히 모시겠습니다"로는 눈에 안 띈다'],
-        skills: ['원작 지식', '재봉'], items: ['낡은 추천서'],
+        scn_idx: 2, scn_turns: 5, cleared: 1, loop: 2, rosetta: 27, doom: 44, rep: -38, elicia: 36, anna: 90,
+        location: '카르디온 공작저 온실', quests: ['[2장] 다과회를 무사히 넘긴다', '[서브] 악소문의 출처를 알아낸다'],
+        memories: ['로제타는 동정받는 걸 가장 싫어한다', '1장에서 막기만 하면 로제타가 등을 돌린다'],
+        skills: ['원작 지식', '재봉'], items: ['안나가 준 열쇠'],
       });
-      return { st, changeLog: null };
+      st.meta.pendingChoice = { id: 'tea_servant', turn: st.meta.turn };
+      return { st, changeLog: [{ id: 'rosetta', from: 33, to: 27, source: 'llm' }] };
     },
   },
   {
@@ -79,7 +80,7 @@ const SCENES = [
     build() {
       const st = start('servant');
       Object.assign(st.vars, {
-        hired: true, role: '로제타 전속 시종', scn_idx: 5, scn_turns: 4, cleared: 4, loop: 3,
+        role: '로제타 전속 시종', scn_idx: 5, scn_turns: 4, cleared: 4, loop: 3,
         doom: 58, rep: -52, health: 41, elicia: 63, ert: 34, rical: 47, duke: 22, anna: 91, rosetta: 74,
         location: '황궁 심판정', quests: ['[5장] 심판에서 살아남는다', '[서브] 심판정에서 편에 서 줄 사람을 찾는다'],
         memories: ['4장 저녁 모임의 쪽지는 로제타의 필체가 아니다', '리칼은 약을 보낸 일을 숨긴다'],
@@ -160,9 +161,9 @@ h1{font-family:var(--serif); font-weight:700; font-size:1.9rem; margin:0; letter
   <div class="grid">${cards}
   </div>
   <div class="notes">
-    <p><b>현황</b> — 면접(시종 시점, 합격 전) · 로제타(파멸도·평판·몸) · 관계(호감 + 그 밖의 관계) · 진행(장소·퀘스트).</p>
+    <p><b>현황</b> — [ 퀘스트 ] 시스템 창 · 로제타(파멸도·평판·몸) · 관계(호감 + 그 밖의 관계) · 진행(장소·퀘스트).</p>
     <p><b>나</b> — 신상(신분·회귀) · 가진 것(능력·소지품) · 회귀의 기억. 능력과 기억은 회귀해도 남고, 소지품과 신분은 세상과 함께 되감깁니다.</p>
-    <p><b>1부</b> — 서장 → 1장 데뷔탕트 → 2장 다과회 → 3장 계단과 과자 → 4장 파국의 밤 → 5장 심판 → 원작 이후. 장마다 절정 갈림길(안 고르면 원작대로), 심판은 관계가 여는 잠긴 선택지와 "받아들인다 = 처형 → 회귀".</p>
+    <p><b>1부</b> — 서장 → 1장 데뷔탕트 → 2장 다과회 → 3장 계단과 과자 → 4장 파국의 밤 → 5장 심판 → 원작 이후. 장마다 절정 갈림길(안 고르면 원작대로) — 로제타 시점은 원작 이행(정해진 악행을 치르되 비튼다), 시종 시점은 막기·돕기·돌리기(신뢰가 문을 연다). 심판은 관계가 여는 잠긴 선택지와 "받아들인다 = 처형 → 회귀".</p>
     <p><b>능력치</b> — 검술·마법·화술·매력·가사. 판정 달린 선택지 옆에 🎲 성공률이 뜨고, 성공하면 +1. 수련 버튼으로 작중 두 시간에 +1~3. 회귀해도 남습니다.</p>
     <p>능력·소지품은 보조 모델이 서사에 실제로 나온 것만 적고, 메인 모델도 매 턴 "유저: 신분 · 능력 · 소지품" 한 줄로 받습니다. 빙의자 로제타 시점에선 로제타 호감 줄이 보이고, 빙의자 설정은 상태창이 아니라 프롬프트로만 갑니다.</p>
   </div>

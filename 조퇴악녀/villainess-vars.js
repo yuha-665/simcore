@@ -6,8 +6,8 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 //
 // 출처 꼬리표 (설계 §11~16):
 //   [원본] 로어북에 적힌 사실 — 원작 사건 순서·인물 성격·비밀 내용
-//   [유저] 2026-09-25 결정 — 시점 둘, 시종 면접, 사망 회귀, 호감은 성별 무관·결말 인물만, 시종은 페르소나
-//   [초안] 진행 장치 — 수치·선택지·면접 채점·무대 뒤 문턱 문장·데뷔탕트 날짜
+//   [유저] 2026-09-25 결정 — 시점 둘, 시종 면접(09-26 첫 출근 날로 바꿈), 사망 회귀, 호감은 성별 무관·결말 인물만, 시종은 페르소나
+//   [초안] 진행 장치 — 수치·선택지·무대 뒤 문턱 문장·데뷔탕트 날짜
 //
 // 실행: node 조퇴악녀/villainess-vars.js  →  조퇴악녀-스키마.json (+ 자체 시험). 번들은 convert-lorebook.js
 const fs = require('fs');
@@ -80,12 +80,11 @@ const SECRETS = [
   ] },
 ];
 
-// ══════════ 면접 (시종 시점 서장) [유저: 첫 퀘스트, 채점은 초안] ══════════
-// 로제타의 질문 3개 — 질문마다 보조가 로제타 성격에 맞춰 답변지를 쓰고, 태그가 점수를 쥔다. 6점 만점, 4점 이상 합격.
-const IV = { questions: 3, pass: 4 };
-const Q_SERVANT = '[서장] 로제타의 시종 면접에 합격하라';
-// 면접 전 — 낯선 몸에서 눈을 뜨고 처지를 파악한다 [유저 2026-09-26 "빙의한 거 눈치채고 지금 무슨 상황인지 파악하고 면접 보러 가야"]
+// ══════════ 시종 시점 서장 — 첫 출근 날 [유저 2026-09-26 "면접 플레이가 애매 — 시작부터 시종으로 일하게 된 첫날이 자연스럽고 몰입도도 낫다"] ══════════
+// 면접(질문 3개 · 답변지 채점)은 걷었다. 이 몸의 주인은 어제 면접에 붙었고, 빙의자는 공작저 사용인 숙소에서 첫 출근 날 새벽에 눈을 뜬다
+// 낯선 몸에서 눈을 뜨고 처지를 파악한다 [유저 2026-09-26 "빙의한 거 눈치채고 지금 무슨 상황인지 파악하고"]
 const Q_WAKE = '[서장] 이 몸이 누구인지, 지금이 언제인지 알아낸다';
+const Q_FIRSTDAY = '[서장] 전속 시종의 첫날 — 로제타의 곁에서 하루를 버틴다'; // [초안]
 const Q_ROSETTA = '[서장] 지금이 원작의 어디쯤인지 알아낸다';
 const Q_SPECIAL = '[서장] 소문과 다른 악녀, 로제타를 만난다'; // 빙의자 로제타 시점 [초안]
 // 1부 메인 퀘스트 — 막 onEnter가 넣고 절정 결판이 지운다 [설계 §3]
@@ -123,7 +122,6 @@ const Q_SUBS_1 = SUBS.debut;
 // 데뷔탕트 — 제국력 472년 3월 10일 밤 황궁 대연회장 [초안: 날짜·장소]
 const DEBUT_YMD = 4720310;
 
-const doneTag = (t) => [{ set: 'iv_q', expr: 'iv_q + 1' }, { set: 'iv_asking', expr: 'false' }, ...(t ? [{ set: 'iv_score', expr: `iv_score + ${t}` }] : [])];
 const gameOver = [{ set: 'loop', expr: 'loop + 1' }, { checkpoint: 'load' }];
 
 // ══════════ 능력치 [유저 2026-09-26 "시종에도 스테이터스 — 검술·마법·화술·매력·가사, 킹덤컴 선택지처럼"] ══════════
@@ -199,16 +197,19 @@ const DEBUT_CHOICES = {
     refuse('질투가 연회장 한가운데서 원작의 말 그대로 터진다 — 빙의자는 제 입을 막지 못한다.',
       [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
+  // 시종 시점 = 막기·돕기·돌리기 [유저 2026-09-26] — 원래의 로제타가 원작의 악행을 꾸민다. 음모는 증상이고 원인은 상처다 [원본 Personality:
+  // 버려질까 두려움 · 쓸모를 증명해 아버지의 인정을 받고 싶다]. 막는다 = 확실하지만 로제타가 등을 돌린다(신뢰 −) · 돕는다 = 공범(신뢰 +, 원작 쪽) ·
+  // 돌린다 = 로제타가 원하던 걸 다른 길로(판정 + 2장부터 신뢰 문턱) · 지켜본다(맨 끝) = 원작대로, 안 고르면 이리로. 신뢰 0 = 로제타가 시종을 내친다(go_fired)
   servant: [
-    { label: '아가씨의 손을 잡고 발코니로 모신다', check: 'c_charm',
-      effects: [ok2('doom', -10, 5), ok2('rosetta', 10, -5), { front: 'canon', add: 'chk_ok ? -20 : 5' }],
-      inject: '시종이 질투가 터지기 직전의 로제타에게 손을 내민다. 로제타가 그 손을 잡을지 뿌리칠지는 판정이 정한다.' },
-    { label: '엘리시아 쪽 시녀에게 먼저 말을 걸어 두 사람을 잇는다', check: 'c_talk',
-      effects: [ok2('doom', -8, -2), ok2('elicia', 10, 3), { front: 'canon', add: 'chk_ok ? -15 : -5' }],
-      inject: '시종이 엘리시아 곁의 시녀와 말을 튼다. 두 영애가 부딪치기 전에 다른 판을 깔 수 있을지는 판정이 정한다.' },
-    { label: '아가씨 대신 내가 욕을 먹는다', effects: [{ set: 'doom', expr: 'doom - 5' }, { set: 'rosetta', expr: 'rosetta + 5' }, { set: 'rep', expr: 'rep - 2' }],
-      inject: '시종이 일부러 실수해 연회장의 시선을 자기에게로 돌린다. 로제타의 표정이 복잡해진다.' },
-    { label: '지켜본다', effects: [{ set: 'doom', expr: 'doom + 15' }, { set: 'rep', expr: 'rep - 10' }, { front: 'canon', add: '15' }],
+    { label: '막는다 — 질투가 터지기 전에 아가씨를 발코니로 끌어낸다', effects: [d('doom', -8), d('rosetta', -6), fr(-12)],
+      inject: '시종이 질투가 터지기 직전의 로제타를 발코니로 끌어낸다. 원작의 장면은 일어나지 않았다 — 대신 로제타가 시종의 손을 뿌리치며 싸늘하게 말한다. "감히 네가 뭔데."' },
+    { label: '돕는다 — 아가씨의 독설에 맞장구치며 판을 키운다', effects: [d('doom', 10), d('rosetta', 8), d('elicia', -5), d('rep', -5), fr(10)],
+      inject: '시종이 로제타 곁에 서서 엘리시아를 향한 조롱을 거든다. 로제타가 처음으로 시종을 제 편으로 본다 — 원작의 장면은 공범을 얻었다.' },
+    { label: '돌린다 — 오늘 밤 아가씨가 조롱이 아니라 시선을 받게 판을 깐다', check: 'c_talk',
+      effects: [ok2('doom', -10, -2), ok2('rosetta', 8, -2), ok2('rep', 5, -3), frOk(-15, -5)],
+      inject: '로제타가 원하는 건 엘리시아의 몰락이 아니라, 자기가 비웃음받지 않는 밤이다. 시종이 연회장의 말길을 돌려 로제타에게 춤 신청이 오게 만든다 — 질투할 틈이 없게. '
+        + '판이 제대로 깔릴지는 판정이 정한다.' },
+    { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
       inject: '원작 그대로 — 시종이 지켜보는 앞에서 로제타의 질투가 연회장 한가운데서 터진다.' },
   ],
   // 빙의자 로제타 [원본 모드 2 = Special, 유저 2026-09-25 "프리셋에 하나 넣자"] — 로제타 안의 빙의자도 이 장면을 안다. 그래도 원작이 떠민다
@@ -249,14 +250,14 @@ const TEA_CHOICES = {
       [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
   servant: [
-    { label: '하녀의 쟁반을 내가 먼저 받아 든다', check: 'c_house',
-      effects: [ok2('doom', -10, -4), ok2('rosetta', 5, 0), ok2('rep', 0, -2), frOk(-15, -5)],
-      inject: '시종이 하녀의 쟁반을 가로채 받아 든다. 찻잔 하나 흘리지 않을지, 쟁반이 기울어 제 옷을 적실지는 판정이 정한다.' },
-    { label: '급한 전갈이 왔다며 아가씨를 모셔 나온다', check: 'c_talk',
-      effects: [ok2('doom', -6, -2), ok2('rosetta', 3, -5), frOk(-10, -3)],
-      inject: '시종이 거짓 전갈로 로제타를 다과회에서 빼낸다. 로제타가 속아 줄지, 시종을 매섭게 노려볼지는 판정이 정한다.' },
-    { label: '차를 쏟는 척 내 옷에 붓는다', effects: [d('doom', -6), d('rosetta', 6), d('rep', -2), fr(-8)],
-      inject: '시종이 스스로 찻잔을 엎어 제 옷을 적신다. 웃음거리는 시종이 되고 엘리시아의 드레스는 무사하다. 로제타가 시종을 오래 본다.' },
+    { label: '막는다 — 하녀의 쟁반을 가로채 받아 든다', effects: [d('doom', -10), d('rosetta', -6), d('rep', -2), fr(-12)],
+      inject: '시종이 하녀의 쟁반을 가로채 받아 든다. 찻잔도 엘리시아의 드레스도 무사하다. 찻잔 너머로 로제타가 시종을 본다 — 제 판을 깬 사람을 보는 눈으로.' },
+    { label: '돕는다 — 아가씨 대신 내 손으로 찻잔을 기울인다', effects: [d('doom', 10), d('rosetta', 8), d('elicia', -5), d('rep', -5), fr(10)],
+      inject: '시종의 손에서 찻잔이 기울고 엘리시아의 드레스가 젖는다 — 원작 그대로. 웃음소리 속에서 로제타의 입꼬리가 올라간다. 이 시종은 이제 제 편이다.' },
+    { label: '돌린다 — 망신 대신 아가씨가 다과회의 주인으로 빛나게 거든다', check: 'c_house', when: 'rosetta >= 30',
+      effects: [ok2('doom', -10, -3), ok2('rosetta', 8, -2), ok2('duke', 3, 0), ok2('rep', 5, -3), frOk(-15, -5)],
+      inject: '시종이 로제타에게 속삭인다 — "오늘 모두가 기억할 건 누구의 드레스가 아니라, 누구의 다과회였는지입니다." 로제타가 하녀에게 보낼 눈짓을 거두고 주인 노릇에 나선다. '
+        + '다과회가 정말 빛날지는 판정(차림과 시중)이 정한다.' },
     { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
       inject: '원작 그대로 — 시종이 지켜보는 앞에서 찻잔이 기울고, 엘리시아의 드레스가 젖는다. 모두의 눈이 로제타를 향한다.' },
   ],
@@ -289,14 +290,14 @@ const STAIRS_CHOICES = {
       [d('doom', 15), d('rep', -10), d('elicia', -10), fr(15)]),
   ],
   servant: [
-    { label: '계단 아래로 달려가 엘리시아를 받아 낸다', check: 'c_sword',
-      effects: [ok2('doom', -12, -4), ok2('elicia', 10, 4), ok2('rep', 3, -2), frOk(-20, -5)],
-      inject: '시종이 몸을 날려 계단 아래로 뛴다. 떨어지는 엘리시아를 받아 낼지, 함께 굴러떨어질지는 판정이 정한다.' },
-    { label: '매수된 하인의 소매를 붙잡고 따진다', check: 'c_talk',
-      effects: [ok2('doom', -10, 2), frOk(-15, 3)],
-      inject: '시종이 하인을 붙잡는다. 누구에게 돈을 받았는지 털어놓을지, 오히려 "카르디온 시종이 협박했다"며 소리칠지는 판정이 정한다.' },
-    { label: '아가씨를 사람 많은 곳으로 모셔 알리바이를 만든다', effects: [d('doom', -6), d('rosetta', 3), fr(-5)],
-      inject: '시종이 로제타를 사람들 한가운데로 모신다. 무슨 일이 일어나도 로제타는 계단 근처에 없었다 — 그걸 본 눈이 많다.' },
+    { label: '막는다 — 매수된 하인을 계단 위에서 끌어낸다', effects: [d('doom', -10), d('rosetta', -8), fr(-15)],
+      inject: '시종이 계단 위의 하인을 붙잡아 끌어낸다. 엘리시아는 아무것도 모른 채 계단을 내려간다. 그날 밤 로제타가 시종을 불러 묻는다 — "넌 누구 편이지?"' },
+    { label: '돕는다 — 아가씨의 돈을 하인에게 대신 전한다', effects: [d('doom', 12), d('rosetta', 10), d('rep', -5), fr(12)],
+      inject: '시종이 로제타의 돈주머니를 하인의 손에 쥐여 준다. 하인이 엘리시아의 등을 민다 — 원작 그대로. 로제타는 이제 시종에게 비밀을 나눈다.' },
+    { label: '돌린다 — 공작 전하께 쓸모를 보일 일을 아가씨 손에 쥐여 준다', check: 'c_talk', when: 'rosetta >= 40',
+      effects: [ok2('doom', -12, -3), ok2('rosetta', 8, -3), ok2('duke', 8, 0), frOk(-20, -5)],
+      inject: '계단으로 향하던 로제타를 시종이 붙잡는다. 로제타가 원하는 건 엘리시아가 넘어지는 게 아니라, 아버지가 자기를 한 번이라도 보는 것이다. '
+        + '시종이 공작가가 골치를 앓는 일(무엇인지는 서사가 정한다)을 내민다 — "이걸 해내시면 전하께서 아가씨를 보실 겁니다." 로제타가 매수를 거둘지는 판정이 정한다.' },
     { label: '지켜본다', effects: [d('doom', 15), d('rep', -10), fr(15)],
       inject: '원작 그대로 — 매수된 하인이 엘리시아의 등을 민다. 엘리시아는 가벼운 상처로 그쳤지만, 사람들의 눈은 이미 로제타를 향한다.' },
   ],
@@ -329,13 +330,14 @@ const NIGHT_CHOICES = {
       [d('doom', 25), d('rep', -20), d('elicia', -15), fr(20)]),
   ],
   servant: [
-    { label: '칼 앞을 몸으로 막아선다', check: 'c_sword_h',
-      effects: [ok2('doom', -15, -5), ok2('rosetta', 10, 5), ok2('elicia', 10, 5), frOk(-25, -5)],
-      inject: '시종이 칼 앞으로 몸을 던진다. 칼을 쳐낼지, 칼끝이 시종의 팔을 긋고 지나갈지는 판정이 정한다 (죽지는 않는다).' },
-    { label: '아가씨를 연회장 한가운데로 모셔 알리바이를 만든다', effects: [d('doom', -10), d('rosetta', 3), fr(-10)],
-      inject: '시종이 로제타를 불빛 한가운데 붙잡아 둔다. 칼이 번뜩인 그 시각, 로제타는 모두의 눈앞에 있었다.' },
-    { label: '목청껏 소리쳐 사람들을 부른다', effects: [d('doom', -8), fr(-10)],
-      inject: '시종이 소리친다. 사람들이 몰려오고 칼은 어둠 속으로 사라진다.' },
+    { label: '막는다 — 아가씨의 손목을 붙잡아 칼을 빼앗는다', effects: [d('doom', -12), d('rosetta', -10), fr(-20)],
+      inject: '칼이 바닥에 떨어진다. 엘리시아는 달아나고, 로제타가 시종을 본다 — 배신당한 사람의 얼굴로. 멀리서 황태자의 발소리가 가까워진다.' },
+    { label: '돕는다 — 쪽지를 전하고 엘리시아를 외진 곳으로 데려온다', effects: [d('doom', 20), d('rosetta', 10), d('rep', -15), fr(15)],
+      inject: '시종이 로제타의 쪽지를 전하고 엘리시아를 인적 없는 곳으로 데려온다. 로제타의 손에 칼이 들린다 — 원작 그대로, 이번엔 공범과 함께. 칼끝이 닿기 전에 황태자가 로제타를 제압한다.' },
+    { label: '돌린다 — 칼을 든 아가씨 앞을 막아서서 설득한다', check: 'c_talk_h', when: 'rosetta >= 50',
+      effects: [ok2('doom', -15, -5), ok2('rosetta', 12, 3), ok2('elicia', 5, 0), frOk(-25, -5)],
+      inject: '시종이 칼과 엘리시아 사이가 아니라 로제타의 바로 앞에 선다. 로제타가 가장 두려워하는 건 버려지는 것이고, 그 칼은 로제타를 영영 버려지게 할 것이다 — 시종은 그걸 말한다. '
+        + '로제타가 칼을 내려놓을지는 판정이 정한다 (실패해도 칼은 떨어지지만, 황태자가 그 장면을 본다).' },
     { label: '지켜본다', effects: [d('doom', 25), d('rep', -20), fr(20)],
       inject: '원작 그대로 — 칼을 든 로제타가 황태자에게 제압당한다. 시종은 그 장면을 멀리서 본다.' },
   ],
@@ -681,8 +683,6 @@ const S = {
     // 보조는 지금이 몇 장인지 모른다 — 장에 매이지 않게: 원작의 사건은 늘 두 사람이 한자리에 모이는 공식 자리에서 터진다
     { id: 'on_stage', label: '무대에 도착', type: 'bool', init: false,
       desc: '유저가 엘리시아와 로제타가 함께 있는 공식 자리(무도회·다과회·연회·저녁 모임)나 심판정에 도착하면 true. 무대의 사건은 시스템이 연다.' },
-    { id: 'iv_ready', label: '면접장 도착', type: 'bool', init: false,
-      desc: '시종 지원자인 유저가 카르디온 공작저에 도착해 면접 자리로 안내받았으면 true. 셋방·거리에 있는 동안은 false.' },
     { id: 'dead', label: '사망', type: 'bool', init: false,
       desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
     { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 10, itemMaxLength: 48,
@@ -694,7 +694,7 @@ const S = {
       desc: '호감 칸이 없는 인물과의 관계 한 줄 (예: "로니카 — 공공연한 앙숙"). 숫자 없이. 관계가 바뀌면 지우고 새로 적어라.' },
     // 빙의자 탭 [유저 2026-09-25 "소지품이나 능력 관리는 페르소나 전용 탭이 제일 좋아 보인다"]
     { id: 'role', label: '신분', type: 'text', init: '카르디온 공녀',
-      desc: '유저의 지금 신분·자리 한 줄. 비어 있으면 서사에 드러난 유저의 자리를 적고, 그 뒤로는 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등). 시종 면접 합격은 시스템이 적는다.' },
+      desc: '유저의 지금 신분·자리 한 줄. 비어 있으면 서사에 드러난 유저의 자리를 적고, 그 뒤로는 신분이 실제로 바뀌었을 때만 고친다 (해고·승격·약혼 등).' },
     { id: 'skills', label: '능력', type: 'list', init: ['원작 지식'], maxItems: 10, itemMaxLength: 30,
       desc: '유저가 할 수 있는 것 — 서사에서 실제로 해 보이거나 새로 익힌 것만 한 줄씩 (예: "궁정 예법", "독 감별"). 설정·짐작만으로 늘리지 마라. 회귀해도 남는다.' },
     { id: 'items', label: '소지품', type: 'list', init: [], maxItems: 12, itemMaxLength: 30,
@@ -710,10 +710,6 @@ const S = {
     { id: 'clear_at', label: '결판 턴', type: 'int', init: 0, min: 0, max: 9999 }, // 결판 때의 scn_turns — 다음 장은 여파 3턴 뒤
     { id: 'ending', label: '결말', type: 'text', init: '' }, // 5장 심판이 적는다
     { id: 'loop', label: '회귀', type: 'int', init: 0, min: 0, max: 999 },
-    { id: 'hired', label: '채용', type: 'bool', init: false },
-    { id: 'iv_q', label: '면접 질문', type: 'int', init: 0, min: 0, max: IV.questions, format: '{v}/3' },
-    { id: 'iv_score', label: '면접 점수', type: 'int', init: 0, min: 0, max: IV.questions * 2 },
-    { id: 'iv_asking', label: '질문 대기', type: 'bool', init: false },
     { id: 'skip_day', label: '일 진행', type: 'int', init: 0, min: 0, max: 3650,
       desc: '서사에서 흐른 날짜 수. "사흘 뒤"면 3, 잠들어 다음 날이면 1. 같은 날 안이면 0.' },
     { id: 'skip_min', label: '분 진행', type: 'int', init: 0, min: 0, max: 1440,
@@ -740,7 +736,6 @@ const S = {
       { id: 'awaken', maxGain: 1, maxLoss: 0 },
       { id: 'bottle_found' },
       { id: 'on_stage' },
-      { id: 'iv_ready' },
       { id: 'dead' },
       { id: 'quests' },
       { id: 'memories' },
@@ -755,34 +750,21 @@ const S = {
       + '호감은 관계의 거리일 뿐 연애 여부를 뜻하지 않는다.',
   },
   checks: STAT_CHECKS,
-  // 수련 — 누르거나 채팅에 "검술 수련"처럼 쓰면 무장된다. 시종은 합격 뒤부터 (면접 중엔 수련할 틈이 없다)
+  // 수련 — 누르거나 채팅에 "검술 수련"처럼 쓰면 무장된다
   actions: STATS.map(([id, label, , icon, words]) => ({
     id: `train_${id}`, label: `${icon} ${label} 수련`, mode: 'oneshot', check: `t_${id}`, keywords: words,
-    when: 'not (pov == "servant" and not hired)',
     inject: `유저가 ${label}을(를) 수련한다 — 작중 두 시간쯤. 누구에게 배우는지·어디서 하는지는 지금까지의 서사를 따른다.`,
   })),
   rules: {
     events: [
       // 판의 첫 저장 — 서장의 체크포인트 (첫 막은 onEnter가 안 돈다)
       { id: 'cp_open', when: 'true', once: true, effects: [{ checkpoint: 'save' }] },
-      // 게임오버 — 사실 기록(dead)·원작 확정(doom 100)·면접 탈락. 보조에게 "벗어났나"를 판단시키지 않는다 [설계 §12]
+      // 게임오버 — 사실 기록(dead)·원작 확정(doom 100)·시종이 내쳐짐(신뢰 0). 보조에게 "벗어났나"를 판단시키지 않는다 [설계 §12]
       { id: 'go_dead', when: 'dead', effects: gameOver, notify: '[시스템] 사망 확인 — 메인 임무 실패.' },
       { id: 'go_doom', when: 'doom >= 100', effects: gameOver, notify: '[시스템] 메인 임무 실패 — 원작의 결말이 굳었다. 로제타는 처형대로 끌려간다. 페널티: 사망.' },
-      // 면접 — 질문을 부탁한다 (다음 응답에 로제타의 질문 → 그 뒤 보조가 답변지를 쓴다)
-      { id: 'iv_ask', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_ready and not iv_asking and iv_q < ${IV.questions}`,
-        effects: [{ set: 'iv_asking', expr: 'true' }], liveChoices: 'interview',
-        notify: '[면접] 로제타가 다음 질문을 던질 차례다 — 이번 응답에서 로제타의 질문 하나를 대사로 분명히 써라. 질문으로 장면을 끝내고, 지원자의 대답은 쓰지 마라.' },
-      // 면접 시각 — 셋방에서 오래 머물면 면접이 부른다 (질문 부탁보다 뒤에 두어 도착과 첫 질문이 한 응답에 몰리지 않게)
-      { id: 'iv_call', when: 'pov == "servant" and scn_act == "prologue" and not hired and not iv_ready and scn_turns >= 5',
-        effects: [{ set: 'iv_ready', expr: 'true' }],
-        notify: '[면접 시각] 면접 시각이 다가왔다 — 이번 응답에서 유저가 카르디온 공작저에 도착해 면접 자리로 안내받는 장면까지 그려라. 로제타의 질문은 아직이다.' },
-      { id: 'iv_arrive', when: `pov == "servant" and iv_ready and has(quests, "${Q_WAKE}")`,
-        effects: [{ list: 'quests', remove: [Q_WAKE] }, { set: 'location', expr: '"카르디온 공작저 응접실"' }] },
-      { id: 'iv_pass', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score >= ${IV.pass}`,
-        effects: [{ set: 'hired', expr: 'true' }, { set: 'role', expr: '"로제타 전속 시종"' }, { set: 'rosetta', expr: 'rosetta + 10' }, { list: 'quests', remove: [Q_SERVANT] }],
-        notify: '[면접 결과] 합격 — 로제타가 지원자를 전속 시종으로 들인다. 로제타답게, 칭찬 대신 조건을 붙여서.' },
-      { id: 'iv_fail', when: `pov == "servant" and scn_act == "prologue" and not hired and iv_q >= ${IV.questions} and iv_score < ${IV.pass}`,
-        effects: gameOver, notify: '[시스템] 메인 임무 수행 불가 — 면접에서 떨어져 로제타 곁에 설 길이 닫혔다. 페널티: 사망.' },
+      // 시종 시점 — 로제타의 신뢰가 바닥나면 곁에서 내쳐진다 [초안: 막기만 거듭하면 닿는다]. 면접 탈락이 쥐던 "자리를 잃는" 판돈의 후신
+      { id: 'go_fired', when: 'pov == "servant" and rosetta <= 0 and cleared < 5', effects: gameOver,
+        notify: '[시스템] 메인 임무 수행 불가 — 로제타가 유저를 곁에서 내쳤다. 페널티: 사망.' },
       // 로제타 시점 원작 이행 임무 — 절정보다 앞 (같은 턴에 무대에 닿아도 임무가 먼저 뜬다)
       ...DUTY_EVENTS,
       // 1~5장 절정 — 무대 도착 · 그날(1장) · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
@@ -807,26 +789,10 @@ const S = {
     notify: '[회귀 {loop}회차] 눈을 뜨면 다시 그날이다 — {scn_label}이(가) 시작되던 그 시점. 세상과 사람들은 아무것도 기억하지 못하고, 유저만 이전 판을 기억한다. '
       + '되돌아온 그 장면에서 다시 시작하라. 유저가 기억하는 것: {memories}',
   },
-  // 보조 갈림길 세 벌 (v1.13.0) — ① 면접 답변지(이벤트가 부른다) ② 원작 보정력(파멸도 30↑) ③ 평소 장면의 능력치 판정 선택지(킹덤컴식, 턴당 10%)
+  // 보조 갈림길 두 벌 (v1.13.0) — ① 원작 보정력(파멸도 30↑) ② 평소 장면의 능력치 판정 선택지(킹덤컴식, 턴당 10%). 면접 답변지는 서장 첫 출근으로 바꾸며 걷었다
   // 추첨은 배열 순서 — 원작 보정력이 능력치 선택지보다 먼저
-  liveChoices: [{
-    id: 'interview', label: '면접', icon: '📝',
-    when: 'pov == "servant" and scn_act == "prologue" and not hired',
-    chance: 0, count: [3, 3],
-    tags: [
-      { id: '정답', desc: '로제타의 속내(버려질까 두려움·쓸모를 증명하려는 조급함)를 꿰뚫되 동정하지 않는 답', effects: doneTag(2) },
-      { id: '무난', desc: '흠잡을 데 없지만 로제타의 눈에 띄지 않는 모범 답안', effects: doneTag(1) },
-      { id: '실언', desc: '로제타의 역린(무능·사생아 출신·분홍 머리)을 건드리거나 동정하는 답', effects: doneTag(0) },
-    ],
-    // 섞는다 — 모델은 좋은 답을 먼저 쓰고 최악은 늘 끝이라 자리만 봐도 답이 보였다 (실기). 안 고르고 직접 답하면 무난(1점)으로 친다 [유저 2026-09-26]
-    shuffle: true, worst: '무난', strict: false, timeout: 1,
-    guide: '방금 서사에서 로제타가 던진 면접 질문에 대한 지원자(유저)의 답변 후보를 쓴다. 답변은 지원자의 대사 한 줄로. '
-      + '로제타는 오만하지만 버려질까 두려워하고, 동정을 가장 싫어하고, 쓸모를 증명하고 싶어 한다 — 이 성격을 근거로 세 답의 무게를 가려라. 세 답이 서로 뚜렷이 달라야 한다.',
-    desc: '로제타의 질문에 뭐라고 답할까',
-    showTags: false,
-  }, CANON_LIVE, {
+  liveChoices: [CANON_LIVE, {
     id: 'stat', label: '어떻게 할까', icon: '🎲',
-    when: 'not (pov == "servant" and not hired)',
     chance: 0.1, count: [2, 3], shuffle: true, worst: '그냥', timeout: 2,
     tags: [
       ...STATS.map(([id, label, what]) => ({ id: label, desc: `${label} 판정이 걸린 도전 — ${what}`, check: `c_${id}` })),
@@ -843,12 +809,12 @@ const S = {
         direct: '원작 <사랑받는 후작 영애의 조건>의 초반이다. 엘리시아가 12년 만에 에버렛 후작가로 돌아왔고, 그녀의 데뷔탕트가 코앞이다. '
           + '로제타는 아직 원작의 악행을 하나도 저지르지 않았다. 지금은 빙의자가 자기 처지를 파악하는 시간이다.' },
       { id: 'debut', label: '1장 · 데뷔탕트', intensity: '전개',
-        unlock: '(pov != "servant" and scn_turns >= 3) or hired',
+        unlock: 'scn_turns >= 3',
         direct: '원작이라면 이 장에서: 제국력 472년 3월 10일 밤 황궁 대연회장에서 엘리시아가 화려하게 데뷔하고, 황태자 에르테미안이 그녀에게 호의를 보인다. '
           + '로제타는 자신의 비참했던 데뷔탕트가 떠올라 질투에 불탄다. 원작의 이 사건은 어떤 형태로든 일어나려 한다 — 누가, 어떻게는 지금까지의 서사가 정한다. '
           + '무도회 전까지는 준비·소문·만남으로 그날을 향해 조여 가라.',
         onEnter: [
-          { list: 'quests', remove: [Q_ROSETTA, Q_WAKE, Q_SERVANT, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
+          { list: 'quests', remove: [Q_ROSETTA, Q_WAKE, Q_FIRSTDAY, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
           { checkpoint: 'save' },
         ],
         notify: `[퀘스트 갱신] ${Q.debut} — 엘리시아의 데뷔탕트가 다가온다. 3월 10일 밤, 황궁 대연회장.` },
@@ -892,7 +858,7 @@ const S = {
         + '유저의 원래 이름이나 "플레이어"·"유저" 같은 말은 본문에 쓰지 마라. 빙의자는 원작 소설을 읽었다.' },
     { id: 'pov_servant', when: 'pov == "servant"',
       text: '[시점] 유저는 원작에 이름 한 줄 없는 인물의 몸에 빙의한 현대인이다 — 이름·성별·출신은 페르소나를 따른다. 빙의자는 원작 소설을 읽었다. '
-        + '로제타는 빙의되지 않은 원래의 로제타다. 유저의 자리: 로제타 전속 시종(합격 전에는 지원자).' },
+        + '로제타는 빙의되지 않은 원래의 로제타다. 유저의 자리: 로제타 전속 시종(이 몸의 주인이 면접에 붙었고, 이야기는 첫 출근 날부터다).' },
     // 빙의자 로제타 [원본 Special Scenario + Possessor Profile을 옮김] — 빙의자는 유저가 아니라 로제타 안의 다른 사람
     { id: 'pov_special', when: 'pov == "special"',
       text: '[시점] 유저는 로제타가 아니다 — 이름·성별·신분은 페르소나를 따른다. 로제타 비올라 카르디온의 몸에는 현대 한국에서 온 다른 영혼(빙의자)이 들어 있다. '
@@ -900,15 +866,13 @@ const S = {
         + '처형을 피하려고 스스로 움직이고, 빙의 사실은 쉽게 털어놓지 않는다. 로제타답게 굴려 애쓰지만 원작의 로제타와 어긋나는 틈이 드러난다.' },
     { id: 'possessor', when: 'pov == "special" and possessor != ""',
       text: '[빙의자 설정] 로제타 안의 빙의자: {possessor}' },
-    // 면접 전 — 빙의 자각과 처지 파악 [유저 2026-09-26]. 몸의 신상은 페르소나(메인만 본다), 스키마는 "지원자"라는 자리만 안다
-    { id: 'wake_servant', when: 'pov == "servant" and scn_act == "prologue" and not hired and not iv_ready',
-      text: '[빙의 직후] 유저는 오늘 아침 이 몸에서 막 눈을 떴다 — 원작에 나오지 않는 평범한 사람의 몸이고, 몸의 원래 기억은 조각으로만 떠오른다(이 몸이 누구인지는 페르소나를 따른다). '
-        + '오늘 오전 카르디온 공작저에서 로제타 전속 시종 면접이 있다. 방 안의 단서(추천서·면접 통지 같은 것)와 떠오르는 기억 조각으로 유저가 스스로 알아차리게 하고, '
-        + '지금이 원작의 어디쯤인지(에버렛가 영애의 귀환, 다가오는 데뷔탕트)는 하숙집 주인·거리의 소문으로 흘려라. 한 번에 다 알려 주지 말고 한 장면씩. '
-        + '시스템 창의 메인 임무가 유저를 로제타 곁으로 떠민다 — 면접은 그 첫걸음이다. 면접장에 들어서는 건 유저가 공작저로 갔을 때다.' },
-    { id: 'interview', when: 'pov == "servant" and scn_act == "prologue" and not hired and iv_ready',
-      text: '[면접] 지금은 카르디온 공작저에서 로제타 전속 시종 면접이 열리는 날이다. 로제타의 곁은 오래 버티는 사람이 없어 자리가 자주 빈다. '
-        + '로제타가 직접 면접관이다 — 오만하고 날카롭게, 한 번에 질문 하나씩. 합격·탈락은 시스템이 정하니 서사가 먼저 결론을 내지 마라.' },
+    // 첫 출근 날 — 빙의 자각과 처지 파악 [유저 2026-09-26 "면접 대신 시종으로 일하게 된 첫날부터"]. 몸의 신상은 페르소나(메인만 본다)
+    { id: 'wake_servant', when: 'pov == "servant" and scn_act == "prologue"',
+      text: '[빙의 직후] 유저는 오늘 새벽 이 몸에서 막 눈을 떴다 — 원작에 나오지 않는 평범한 사람의 몸이고, 몸의 원래 기억은 조각으로만 떠오른다(이 몸이 누구인지는 페르소나를 따른다). '
+        + '이 몸의 주인은 어제 로제타 전속 시종 면접에 붙었고, 오늘이 첫 출근이다. 여기는 카르디온 공작저 사용인 숙소다. '
+        + '방 안의 단서(의자에 걸린 새 제복·채용 통지 같은 것)와 떠오르는 기억 조각으로 유저가 스스로 알아차리게 하고, 지금이 원작의 어디쯤인지(에버렛가 영애의 귀환, 다가오는 데뷔탕트)는 사용인들의 수다로 흘려라. '
+        + '로제타의 곁은 오래 버티는 사람이 없어 자리가 자주 빈다 — 사용인들은 새 시종을 동정하거나 며칠 버틸지 내기를 건다. 첫날의 일은 로제타를 열 살 때부터 돌본 안나가 가르친다. '
+        + '로제타는 새 시종을 시험하듯 대한다 — 오만하고 날카롭게. 한 번에 다 알려 주지 말고 한 장면씩.' },
     // 시스템 창 — 강제 동기 [유저 2026-09-26]. 세계 밖에서 띄운 창이라 인물들은 모른다
     { id: 'system', when: 'cleared < 5',
       text: '[시스템 창] 유저의 눈앞에는 유저만 볼 수 있는 반투명한 시스템 창이 있다. 메인 임무: "{mission}" — 실패 시: 사망. '
@@ -962,7 +926,6 @@ const S = {
         { var: 'penalty', label: '실패 시', showWhen: 'cleared < 5' },
         { var: 'forced', label: '거부 시', showWhen: Object.values(DUTY).map((q) => `has(quests, "${q}")`).join(' or ') },
       ] },
-      { tab: '현황', label: '면접', showWhen: 'pov == "servant" and scn_act == "prologue" and not hired', items: [{ var: 'iv_q', label: '질문' }] },
       { tab: '현황', label: '로제타', items: [
         { var: 'doom', label: '파멸도', bar: { max: 100 }, color: "doom >= 70 ? '#e36b7d' : doom >= 40 ? '#d4b26a' : '#9fc79a'" },
         { var: 'rep', label: '평판' },
@@ -992,7 +955,7 @@ const S = {
   setup: {
     presets: [
       { id: 'rosetta', label: '💎 로제타 빙의 — 원작 악녀 본인으로', set: { pov: 'rosetta', quests: [Q_ROSETTA], ...ROSETTA_STATS }, startAt: '0472-03-01 08:00' },
-      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 면접 날 아침부터', set: { pov: 'servant', quests: [Q_WAKE, Q_SERVANT], location: '수도 외곽의 셋방', role: '전속 시종 지원자' }, startAt: '0472-02-24 07:00' },
+      { id: 'servant', label: '🕊️ 로제타의 시종 빙의 — 첫 출근 날부터', set: { pov: 'servant', quests: [Q_WAKE, Q_FIRSTDAY], location: '카르디온 공작저 사용인 숙소', role: '로제타 전속 시종', rosetta: 25 }, startAt: '0472-03-01 06:00' },
       { id: 'special', label: '🌹 빙의자 로제타 — 로제타 곁의 누군가로', set: { pov: 'special', quests: [Q_SPECIAL], role: '', skills: [] }, startAt: '0472-03-01 08:00' },
     ],
     // 최초 설정은 프리셋이 정한 값(신분·능력)을 못 본다 — 보조 창구엔 스키마 init만 뜨고 값은 절대값으로 덮이니, 프리셋마다 다른 칸은 싣지 않는다
@@ -1004,7 +967,7 @@ const S = {
       instruction: '[첫 장면] 지금 응답이 이 판의 첫 장면이다. 눈을 뜬 유저 앞에 시스템 창이 처음 뜬다 — "[메인 임무] … / [실패 시] 사망" 두 줄만, 설명 없이(메인 임무 = 로제타 시점이면 "처형을 피하시오", 그 밖엔 "로제타의 처형을 막으시오"). '
         + '로제타 시점이면 한 줄이 더 붙는다 — "[제약] 원작의 장면은 원작대로 · 거부 시 강제 이행". '
         + '위 [시점] 지시를 따라 장면을 연다 — 로제타 시점이면 거울 앞에서 깨어난 직후를 이어서, '
-        + '시종 시점이면 수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴 — 빙의를 깨닫는 데서 멈추고, 면접장까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
+        + '시종 시점이면 카르디온 공작저 사용인 숙소에서 이 몸으로 막 눈을 뜬 순간(낯선 천장·낯선 손·거울 속 낯선 얼굴·의자에 걸린 새 제복 — 빙의를 깨닫는 데서 멈추고, 로제타 앞까지 가지 마라), 빙의자 로제타 시점이면 유저가 첫 메시지에 밝힌 자리에서 '
         + '소문과 다른 로제타와 엇갈리는 순간을 향해. 목록으로 나열하지 말고 장면으로.',
     },
   },
@@ -1027,41 +990,25 @@ const send = (st, opt = {}) => engine.sendPhase(S, st, { rng: RNG('s'), ...opt }
 const out = (st, ch = {}, opt = {}) => engine.outputPhase(S, st, ch, {}, { rng: RNG('o'), ...opt });
 const turn = (st, ch = {}, opt = {}) => { const s = send(st, opt.send || {}); const o = out(s.state, ch, opt.out || {}); return { s, o, st: o.state }; };
 const L = (st, n) => engine.makeLookup(S, st.vars)(n);
-const ANSWERS = (tags) => ({ desc: '로제타의 질문', items: [{ label: '당신은 버려질까 두려운 게 아니라, 쓸모를 증명하고 싶은 겁니다.', tag: '정답' },
-  { label: '성실히 모시겠습니다.', tag: '무난' }, { label: '분홍 머리가 참 예쁘시네요, 가엾게도.', tag: '실언' }].filter((x) => tags.includes(x.tag)) });
-// 시종 판의 첫 두 턴 — 셋방에서 눈뜬 장면 → 공작저 도착(보조 기록)
-const toMansion = (st) => turn(turn(st).st, { iv_ready: true }).st;
-// 면접 한 문항: 질문 부탁(앞 턴) → 보조 답변지 → 유저 선택
-function answer(st, tag) {
-  let t = turn(st, {}, { out: { choices: ANSWERS(['정답', '무난', '실언']) } });
-  st = t.st;
-  if (st.meta.pendingChoice?.id !== '@live') return { st, err: '답변지가 안 걸렸다 ' + JSON.stringify(st.meta.pendingChoice) };
-  st.meta.pendingChoicePick = st.meta.pendingChoice.live.items.findIndex((x) => x.tag === tag); // 섞여 있다 (v1.13.0) — 자리 말고 태그로
-  t = turn(st);
-  return { st: t.st, t };
-}
-
-console.log('\n━━ 시종 시점 — 면접 합격 ━━');
+console.log('\n━━ 시종 시점 — 첫 출근 날 ━━');
 {
   let st = start('servant');
-  ok('시작: 2월 24일 07:00 셋방 · 처지 파악 + 면접 퀘스트 · 서장', L(st, 'date') === '2월 24일' && L(st, 'clock') === '07:00' && st.vars.location === '수도 외곽의 셋방'
-    && st.vars.quests.join('|') === [Q_WAKE, Q_SERVANT].join('|') && L(st, 'scn_act') === 'prologue', `${L(st, 'date')} ${L(st, 'clock')} ${st.vars.quests}`);
+  ok('시작: 3월 1일 06:00 사용인 숙소 · 처지 파악 + 첫날 퀘스트 · 이미 전속 시종 · 신뢰 25', L(st, 'date') === '3월 1일' && L(st, 'clock') === '06:00'
+    && st.vars.location === '카르디온 공작저 사용인 숙소' && st.vars.quests.join('|') === [Q_WAKE, Q_FIRSTDAY].join('|') && L(st, 'scn_act') === 'prologue'
+    && st.vars.role === '로제타 전속 시종' && st.vars.rosetta === 25, `${L(st, 'date')} ${L(st, 'clock')} ${st.vars.quests}`);
   const p0 = send(st).promptBlock;
-  ok('★ 프롬프트: 빙의 직후 — 면접 지시는 아직 · 금지 줄', p0.includes('[빙의 직후]') && p0.includes('로제타 전속 시종') && !p0.includes('[면접]') && p0.includes('미성년자'), '');
-  ok('프롬프트: 제국력 472년', p0.includes('제국력 472년 2월 24일'), p0.slice(0, 120));
-  let t = turn(st); st = t.st; // 첫 장면(셋방) → 저장, 질문은 아직
-  ok('★ 첫 턴: 체크포인트 저장 · 셋방에선 질문 부탁 없음', st.checkpoints?.main && !st.vars.iv_asking && !st.meta.liveAsk && st.checkpoints.main.vars.iv_ready === false,
-    JSON.stringify({ a: st.vars.iv_asking, l: st.meta.liveAsk }));
-  t = turn(st, { iv_ready: true }); st = t.st; // 공작저 도착 → 첫 질문 부탁
-  ok('★ 공작저 도착: 처지 파악 퀘스트 걷힘 · 장소 응접실 · 질문 부탁', st.vars.iv_asking === true && st.meta.liveAsk === true && !st.vars.quests.includes(Q_WAKE)
-    && st.vars.location === '카르디온 공작저 응접실', JSON.stringify({ a: st.vars.iv_asking, q: st.vars.quests, loc: st.vars.location }));
-  ok('질문 부탁이 다음 프롬프트에', send(st).promptBlock.includes('[면접] 로제타가 다음 질문을'), '');
-  for (const tag of ['정답', '정답', '무난']) { const r = answer(st, tag); if (r.err) { ok('면접 진행', false, r.err); break; } st = r.st; }
-  ok('3문항 뒤 합격 → 1장', st.vars.hired === true && L(st, 'scn_act') === 'debut', JSON.stringify({ q: st.vars.iv_q, s: st.vars.iv_score, act: L(st, 'scn_act') }));
-  ok('1장 퀘스트로 교체', st.vars.quests.includes(Q_DEBUT) && !st.vars.quests.includes(Q_SERVANT) && Q_SUBS_1.every((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
-  ok('로제타 호감 +10', st.vars.rosetta === 25, String(st.vars.rosetta));
-  ok('1장 체크포인트 = 1장 시작', st.checkpoints.main.vars.scn_idx === 1, '');
-  ok('신분: 지원자 → 전속 시종', st.vars.role === '로제타 전속 시종' && st.checkpoints.main.vars.role === '로제타 전속 시종', st.vars.role);
+  ok('★ 프롬프트: 빙의 직후 — 첫 출근 · 안나가 가르친다 · 면접 없음 · 금지 줄', p0.includes('[빙의 직후]') && p0.includes('오늘이 첫 출근') && p0.includes('안나가 가르친다')
+    && !p0.includes('[면접]') && p0.includes('미성년자'), '');
+  ok('프롬프트: 제국력 472년', p0.includes('제국력 472년 3월 1일'), p0.slice(0, 120));
+  ok('첫 장면 지시: 사용인 숙소에서 눈뜬 순간 · 로제타 앞까지 가지 않는다', S.setup.ai.instruction.includes('사용인 숙소에서 이 몸으로 막 눈을 뜬 순간') && S.setup.ai.instruction.includes('로제타 앞까지 가지 마라'), '');
+  st = turn(st).st;
+  ok('★ 첫 턴: 체크포인트 저장', !!st.checkpoints?.main, '');
+  for (let i = 0; i < 6 && L(st, 'scn_act') !== 'debut'; i++) st = turn(st, { skip_min: 30 }).st;
+  ok('서장 → 1장 · 퀘스트 교체 · 원작 이행 임무는 없다', L(st, 'scn_act') === 'debut' && st.vars.quests.includes(Q_DEBUT) && !st.vars.quests.includes(Q_WAKE) && !st.vars.quests.includes(Q_FIRSTDAY)
+    && Q_SUBS_1.every((q) => st.vars.quests.includes(q)) && !Object.values(DUTY).some((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
+  st = turn(st, { skip_min: 30 }).st;
+  ok('다음 턴에도 원작 이행 임무 없음 (로제타 시점 전용)', !Object.values(DUTY).some((q) => st.vars.quests.includes(q)), JSON.stringify(st.vars.quests));
+  ok('1장 체크포인트 = 1장 시작 · 신분 그대로', st.checkpoints.main.vars.scn_idx === 1 && st.checkpoints.main.vars.role === '로제타 전속 시종', '');
   // 상태창 두 장 — 현황 | 빙의자
   const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 9 });
   const tabs = (html.match(/<label class="sim-tab[^>]*>[^<]*<\/label>/g) || []).map((x) => x.replace(/<[^>]+>/g, ''));
@@ -1073,18 +1020,17 @@ console.log('\n━━ 시종 시점 — 면접 합격 ━━');
 
 console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━');
 {
-  // 면접 중엔 수련 잠김
+  // 시종 — 첫날부터 수련할 수 있다. 수련 한 번 = 두 시간, 능력치 +1~3
   let st = start('servant');
-  ok('면접 전 시종은 수련 잠김', engine.toggleAction(S, st, 'train_talk').blocked != null, JSON.stringify(engine.toggleAction(S, st, 'train_talk')));
-  // 합격한 시종 — 수련 한 번 = 두 시간, 능력치 +1~3
-  st.vars.hired = true; st.vars.scn_idx = 1;
+  ok('시종도 첫날부터 수련 가능', engine.toggleAction(S, st, 'train_talk').blocked == null, JSON.stringify(engine.toggleAction(S, st, 'train_talk').blocked));
+  st.vars.scn_idx = 1;
   const clock0 = L(st, 'clock');
   st = engine.toggleAction(S, st, 'train_talk').state;
   const talk0 = st.vars.st_talk;
   const t = turn(st, { skip_min: 15 });
   ok('★ 수련: 화술 +1~3 · [판정] 화술 수련', t.st.vars.st_talk >= talk0 + 1 && t.st.vars.st_talk <= talk0 + 3 && t.s.promptBlock.includes('[판정] 화술 수련:'),
     `${talk0} → ${t.st.vars.st_talk}`);
-  ok('수련은 작중 두 시간 (보조 추정 15분은 버린다)', L(t.st, 'clock') === '09:00' && clock0 === '07:00', `${clock0} → ${L(t.st, 'clock')}`);
+  ok('수련은 작중 두 시간 (보조 추정 15분은 버린다)', L(t.st, 'clock') === '08:00' && clock0 === '06:00', `${clock0} → ${L(t.st, 'clock')}`);
   ok('채팅 낱말로도 무장 ("검술 수련")', engine.autoArmActions(S, t.st, '오늘은 검술 수련을 하러 연무장에 간다').state.meta.armed.train_sword === true, '');
   // 로제타의 몸 — 마법은 흩어지고 권능의 흔적이 선다
   let r = start('rosetta');
@@ -1102,19 +1048,11 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
   const qh = SC.require('render').renderStatusHtml(S, qo.state, null, null, { uid: 6 });
   ok('★ 상태창: 🎲 판정 칩 (로제타 화술 45 → 65% · 매력 60 → 75%) · 그냥은 태그 · 안 고르면 그냥', qh.includes('🎲 화술 65%') && qh.includes('🎲 매력 75%') && qh.includes('sim-choice-tag">그냥') && qh.includes("'그냥' 항목으로"),
     (qh.match(/🎲[^<]*|'그냥' 항목으로/g) || []).join(' · '));
-  // 회귀해도 능력치는 남는다
-  let g = start('servant');
-  g = toMansion(g);
-  g.vars.st_talk = 44;
-  for (const tag of ['실언', '실언', '실언']) { const a = answer(g, tag); if (a.err) break; g = a.st; }
+  // 회귀해도 능력치는 남는다 (시종이 내쳐져 서장으로)
+  let g = turn(start('servant')).st;
+  g.vars.st_talk = 44; g.vars.rosetta = 0;
+  g = turn(g).st;
   ok('★ 회귀해도 능력치는 남는다', g.vars.loop === 1 && g.vars.st_talk === 44, JSON.stringify({ loop: g.vars.loop, talk: g.vars.st_talk }));
-  // 면접에서 직접 답하면 무난(1점)
-  let f = start('servant');
-  f = toMansion(f);
-  f = turn(f, {}, { out: { choices: ANSWERS(['정답', '무난', '실언']) } }).st;
-  const f2 = turn(f, {}, { send: { userText: '저는 아가씨가 가진 걸 증명하도록 곁에서 돕고 싶습니다.' } });
-  ok('★ 면접에서 직접 답하면 무난(1점) — 다음 응답 단계에서 바로', f2.st.vars.iv_q === 1 && f2.st.vars.iv_score === 1 && !f2.st.meta.pendingChoice,
-    JSON.stringify({ q: f2.st.vars.iv_q, s: f2.st.vars.iv_score }));
 }
 
 console.log('\n━━ 빙의자 로제타 시점 (원본 Special) ━━');
@@ -1145,21 +1083,6 @@ console.log('\n━━ 빙의자 로제타 시점 (원본 Special) ━━');
   ok('절정 통지: 빙의자도 이 장면을 안다', send(st).promptBlock.includes('로제타 안의 빙의자도 이 장면을 안다'), '');
 }
 
-console.log('\n━━ 시종 시점 — 면접 전: 빙의 자각 · 면접 시각 ━━');
-{
-  let st = start('servant');
-  let asked = -1, called = -1;
-  for (let i = 1; i <= 8 && asked < 0; i++) {
-    st = turn(st, { skip_min: 20 }).st;
-    if (called < 0 && st.vars.iv_ready) called = i;
-    if (st.vars.iv_asking) asked = i;
-  }
-  ok('★ 셋방에서 머물러도 5턴이면 면접 시각이 부른다 → 다음 턴에 첫 질문', called >= 4 && asked === called + 1, JSON.stringify({ called, asked }));
-  ok('도착하면 처지 파악 퀘스트 걷힘', !st.vars.quests.includes(Q_WAKE), JSON.stringify(st.vars.quests));
-  const sp = S.setup.ai.instruction;
-  ok('첫 장면 지시: 시종은 셋방에서 눈뜬 순간 · 면접장까지 가지 않는다', sp.includes('수도 외곽 셋방에서 이 몸으로 막 눈을 뜬 순간') && sp.includes('면접장까지 가지 마라'), '');
-}
-
 console.log('\n━━ 시스템 창 — 강제 동기 (메인 임무 · 실패 시 사망) ━━');
 {
   let st = start('servant');
@@ -1182,28 +1105,50 @@ console.log('\n━━ 시스템 창 — 강제 동기 (메인 임무 · 실패 �
     && !send(a).promptBlock.includes('실패 시: 사망'), '');
 }
 
-console.log('\n━━ 시종 시점 — 면접 탈락 → 회귀 ━━');
+console.log('\n━━ 시종 시점 — 신뢰 0 → 로제타가 내친다 → 회귀 ━━');
 {
-  let st = start('servant');
-  st = toMansion(st);
+  let st = turn(start('servant')).st;
   st.vars.memories = ['로제타는 동정받는 걸 가장 싫어한다'];
   st.vars.skills = ['원작 지식', '독 감별'];
-  st.vars.items = ['낡은 추천서'];
-  let last;
-  for (const tag of ['실언', '무난', '실언']) { const r = answer(st, tag); if (r.err) { ok('면접 진행', false, r.err); break; } st = r.st; last = r.t; }
-  ok('탈락 → 회귀 1회차 · 면접 처음부터', st.vars.loop === 1 && st.vars.iv_q === 0 && st.vars.iv_score === 0 && !st.vars.hired && L(st, 'scn_act') === 'prologue',
-    JSON.stringify({ loop: st.vars.loop, q: st.vars.iv_q, act: L(st, 'scn_act') }));
+  st.vars.items = ['안나가 준 열쇠'];
+  st.vars.rosetta = 0;
+  st = turn(st).st;
+  ok('신뢰 0 → 게임오버 → 회귀 1회차 · 서장 첫날로 · 신뢰 25', st.vars.loop === 1 && L(st, 'scn_act') === 'prologue' && st.vars.rosetta === 25 && L(st, 'date') === '3월 1일',
+    JSON.stringify({ loop: st.vars.loop, act: L(st, 'scn_act'), r: st.vars.rosetta }));
   ok('기억은 남는다', st.vars.memories[0] === '로제타는 동정받는 걸 가장 싫어한다', JSON.stringify(st.vars.memories));
-  ok('능력은 남고 소지품·신분은 되감긴다', st.vars.skills.includes('독 감별') && st.vars.items.length === 0 && st.vars.role === '전속 시종 지원자',
+  ok('능력은 남고 소지품은 되감긴다', st.vars.skills.includes('독 감별') && st.vars.items.length === 0 && st.vars.role === '로제타 전속 시종',
     JSON.stringify({ s: st.vars.skills, i: st.vars.items, r: st.vars.role }));
-  ok('날짜도 되감김 (2월 24일)', L(st, 'date') === '2월 24일', L(st, 'date'));
   const p = send(st).promptBlock;
-  ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[시스템] 메인 임무 수행 불가') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));
-  ok('★ 회귀하면 셋방으로 — 처지 파악 퀘스트·빙의 직후 지시가 돌아온다', st.vars.location === '수도 외곽의 셋방' && !st.vars.iv_ready && st.vars.quests.includes(Q_WAKE) && p.includes('[빙의 직후]'),
+  ok('게임오버 + 회귀 안내 + 기억이 프롬프트에', p.includes('[시스템] 메인 임무 수행 불가 — 로제타가 유저를 곁에서 내쳤다') && p.includes('[회귀 1회차]') && p.includes('동정받는 걸'), p.slice(0, 400));
+  ok('★ 회귀하면 사용인 숙소로 — 처지 파악 퀘스트·빙의 직후 지시가 돌아온다', st.vars.location === '카르디온 공작저 사용인 숙소' && st.vars.quests.includes(Q_WAKE) && p.includes('[빙의 직후]'),
     JSON.stringify({ loc: st.vars.location, q: st.vars.quests }));
-  // 회귀한 판에서 — 기억을 가진 유저는 곧장 공작저로 갈 수 있다
-  st = turn(st, { iv_ready: true }).st;
-  ok('회귀 뒤 공작저로 가면 질문 부탁이 다시 선다', st.vars.iv_asking === true, '');
+  let r = start('rosetta'); r.vars.rosetta = 0; r = turn(r).st;
+  ok('로제타 시점엔 신뢰 칸이 게임오버를 안 부른다', r.vars.loop === 0, String(r.vars.loop));
+}
+
+console.log('\n━━ 시종 시점 — 막기·돕기·돌리기 ━━');
+{
+  const ids = ['debut', 'tea', 'stairs', 'night'];
+  const sets = ids.map((id) => S.rules.events.find((e) => e.id === id + '_servant').choices);
+  ok('★ 1~4장 모두 막는다 · 돕는다 · 돌린다 · 지켜본다 순', sets.every((c) => c.length === 4 && ['막는다 —', '돕는다 —', '돌린다 —'].every((p, i) => c[i].label.startsWith(p)) && c[3].label === '지켜본다'),
+    JSON.stringify(sets.map((c) => c.map((x) => x.label.slice(0, 3)))));
+  const rdelta = (c) => { const e = c.effects.find((x) => x.set === 'rosetta'); return e ? e.expr : ''; };
+  ok('막는다 = 신뢰 − · 돕는다 = 신뢰 + · 파멸도 + · 돌린다 = 판정', sets.every((c) => /rosetta - /.test(rdelta(c[0])) && /rosetta \+ /.test(rdelta(c[1]))
+    && c[1].effects.some((x) => x.set === 'doom' && /doom \+ /.test(x.expr)) && !!c[2].check), '');
+  ok('돌린다 신뢰 문턱: 1장 없음 · 2장 30 · 3장 40 · 4장 50', !sets[0][2].when && sets[1][2].when === 'rosetta >= 30' && sets[2][2].when === 'rosetta >= 40' && sets[3][2].when === 'rosetta >= 50', '');
+  // 2장 다과회 — 신뢰 25면 돌린다가 잠겨 보이고, 막는다를 고르면 신뢰가 깎인다
+  let st = start('servant');
+  Object.assign(st.vars, { scn_idx: 2, cleared: 1, scn_turns: 0, rosetta: 25, clear_at: 0 });
+  st = turn(st, { on_stage: true }).st;
+  ok('다과회 → 시종 2장 절정', st.meta.pendingChoice?.id === 'tea_servant', JSON.stringify(st.meta.pendingChoice));
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 51 });
+  const rows = (html.match(/<div class="sim-choice[^"]*">.*?<\/div>/g) || []);
+  ok('★ 신뢰 25 → 돌린다 🔒', rows.some((r) => r.includes('돌린다 —') && r.includes('🔒')) && rows.some((r) => r.includes('막는다 —') && !r.includes('🔒')), rows.map((r) => r.replace(/<[^>]+>/g, '').slice(0, 30)).join(' / '));
+  const r0 = st.vars.rosetta, d0 = st.vars.doom;
+  st.meta.pendingChoicePick = 0;
+  const s = send(st);
+  ok('막는다 → 신뢰 −6 · 파멸도 −10 · 2장 결판', s.state.vars.rosetta === r0 - 6 && s.state.vars.doom === d0 - 10 && s.state.vars.cleared === 2,
+    JSON.stringify({ r: s.state.vars.rosetta, d: s.state.vars.doom }));
 }
 
 console.log('\n━━ 로제타 시점 — 서장 → 1장 → 데뷔탕트 ━━');
@@ -1217,7 +1162,6 @@ let debutState;
   for (let i = 0; i < 3; i++) st = turn(st, { skip_min: 30 }).st;
   st = turn(st).st;
   ok('서장 3턴 → 1장', L(st, 'scn_act') === 'debut', L(st, 'scn_act'));
-  ok('면접은 안 열린다', !st.vars.iv_asking && st.vars.iv_q === 0, '');
   // 무도회까지 며칠 — 무대 뒤가 흐른다
   let t = turn(st, { skip_day: 8 }); st = t.st;
   ok('원작의 흐름: 1장부터 흐른다 (8일 × 2 + 전환 턴 30분)', Math.floor(st.vars.fr_canon) === 16 && st.vars.frs_canon === 0, `${st.vars.fr_canon} ${st.vars.frs_canon}`);
@@ -1414,7 +1358,7 @@ console.log('\n━━ 5장 심판 — 잠긴 선택지 · 원작 결말 = 회귀
 {
   // 시종 시점 — "내가 대신 죄를 쓴다" (로제타 호감 70↑)
   let st = start('servant');
-  Object.assign(st.vars, { hired: true, cleared: 4, scn_idx: 5, scn_turns: 0, rosetta: 75, doom: 60 });
+  Object.assign(st.vars, { cleared: 4, scn_idx: 5, scn_turns: 0, rosetta: 75, doom: 60 });
   st = turn(st, { on_stage: true }).st;
   ok('시종 심판 갈림길', st.meta.pendingChoice?.id === 'verdict_servant', JSON.stringify(st.meta.pendingChoice));
   st = turn(pickBy(st, '내가 대신 죄를 쓴다')).st;
@@ -1433,7 +1377,7 @@ console.log('\n━━ 원작 보정력 — 파멸도가 부른다 ━━');
   st.vars.doom = 70;
   const probe = cp(st);
   choiceMod.rollAsk(S, probe, () => 0.05, engine.makeLookup);
-  ok('추첨 순서: 원작 보정력이 능력치 선택지보다 먼저', probe.meta.liveAsk === 'canon', String(probe.meta.liveAsk));
+  ok('추첨 순서: 원작 보정력(첫 벌 = true)이 능력치 선택지보다 먼저', probe.meta.liveAsk === true && S.liveChoices[0].id === 'canon', String(probe.meta.liveAsk));
   st.meta.liveAsk = 'canon';
   const qa = engine.buildAuxPrompt(S, st, '엘리시아가 넘어질 뻔하자 영애들이 로제타를 쳐다본다.', null, '');
   ok('보조 지시: 원작 보정력 — 이탈·타협·원작', qa.includes('[원작 보정력 — 선택지 쓰기]') && ['이탈', '타협', '원작'].every((x) => qa.includes(x)), '');

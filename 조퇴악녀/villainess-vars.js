@@ -96,10 +96,12 @@ const Q = {
   verdict: '[5장] 심판에서 살아남는다',
 };
 // 서브 — 인물의 Goal·Secret을 부탁으로 [씨앗 원본, 문장 초안]. 다음 장에 들어서면 걷힌다(작은 병만 풀릴 때까지 남는다)
+// 리칼·공작·황태자는 심판의 잠긴 선택지를 여는 인물인데 선택지로 호감을 올릴 곳이 거의 없었다 — 장마다 셋 중 누군가에게 가는 서브를 하나씩 [유저 2026-09-26 (가), 씨앗 원본:
+// 리칼 = 새벽 연무장 · 가문의 흠을 도려내려는 사람 / 공작 = 로제타를 유리창 보듯 지나친다 · 로제타의 꿈은 아버지의 인정 / 에르테미안 = 드미트리샤가 몰래 두고 가는 조언 쪽지를 모은다]
 const SUBS = {
-  debut: ['[서브] 서랍 속 작은 병의 정체', '[서브] 로니카의 도발을 받아넘긴다'],
-  tea: ['[서브] 악소문의 출처를 알아낸다', '[서브] 공작가의 저녁 식탁에 로제타의 자리를 만든다'],
-  stairs: ['[서브] 로제타의 기침을 봐 줄 의사를 찾는다'],
+  debut: ['[서브] 서랍 속 작은 병의 정체', '[서브] 로니카의 도발을 받아넘긴다', '[서브] 새벽 연무장에서 리칼과 마주한다'],
+  tea: ['[서브] 악소문의 출처를 알아낸다', '[서브] 공작가의 저녁 식탁에 로제타의 자리를 만든다', '[서브] 연회에서 황태자와 제대로 말을 섞는다'],
+  stairs: ['[서브] 로제타의 기침을 봐 줄 의사를 찾는다', '[서브] 공작 앞에 쓸모를 보일 일을 가져간다', '[서브] 황태자의 책상에 쌓이는 쪽지의 주인을 알아낸다'],
   night: ['[서브] 리칼에게 쓸모를 증명한다', '[서브] 저녁 모임 전에 엘리시아와 이야기한다'],
   verdict: ['[서브] 심판정에서 편에 서 줄 사람을 찾는다'],
 };
@@ -358,13 +360,13 @@ const NIGHT_CHOICES = {
 // 잠긴 선택지(🔒)가 보인다 — 무엇이 로제타를 살릴 수 있었는지가 보이게. 맨 끝 = 받아들인다(원작 결말 = 죽음 → 회귀)
 const ending = (t) => ({ set: 'ending', expr: JSON.stringify(t) });
 const verdictChoices = (pov) => [
-  { label: '리칼이 증언대에 선다', when: 'rical >= 60', effects: [ending('리칼의 증언'), d('rical', 5), d('duke', 5)],
+  { label: '리칼이 증언대에 선다', when: 'rical >= 50', effects: [ending('리칼의 증언'), d('rical', 5), d('duke', 5)],
     inject: '리칼이 증언대에 선다 — 가문의 수치라 부르던 이복동생을 위해. 그가 무엇을 봤는지 말한다.' },
   { label: '엘리시아가 로제타를 감싼다', when: 'elicia >= 60', effects: [ending('엘리시아의 변호'), d('elicia', 5), d('rep', 10)],
     inject: '피해자로 불려 나온 엘리시아가 로제타를 감싼다. 통찰의 권능을 지닌 그녀의 말에 심판정이 술렁인다.' },
-  { label: '황태자가 재심을 청한다', when: 'ert >= 70', effects: [ending('황태자의 재심 청원'), d('ert', 5), d('rep', 10)],
+  { label: '황태자가 재심을 청한다', when: 'ert >= 60', effects: [ending('황태자의 재심 청원'), d('ert', 5), d('rep', 10)],
     inject: '황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다.' },
-  { label: '공작이 가문의 이름으로 막아선다', when: 'duke >= 60', effects: [ending('공작의 이름'), d('duke', 10)],
+  { label: '공작이 가문의 이름으로 막아선다', when: 'duke >= 50', effects: [ending('공작의 이름'), d('duke', 10)],
     inject: '카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다.' },
   ...(pov === 'rosetta' ? [] : [
     { label: '내가 대신 죄를 쓴다', when: 'rosetta >= 70',
@@ -415,10 +417,31 @@ const CLIMAX_EVENTS = CHAPTERS.flatMap((c) => POVS.map((pov) => ({
 // 다음 장에 들어서면 — 메인·서브 교체, 무대 초기화, 체크포인트. 작은 병 서브만 풀릴 때까지 남는다
 const enterCh = (id, prevSubs) => [
   { list: 'quests', remove: prevSubs.filter((q) => q !== SUBS.debut[0]), add: [Q[id], ...SUBS[id]] },
+  { set: 'subs_ch', expr: String(CHAPTERS.find((c) => c.id === id).n) },
   { set: 'on_stage', expr: 'false' },
   { checkpoint: 'save' },
 ];
 const nextUnlock = (n) => `cleared >= ${n} and scn_turns >= clear_at + 4`; // 고른 턴 + 여파 3턴
+// 서브 완료 — 보조가 "이뤄졌다"며 목록에서 지운 서브에 결과를 준다 [유저 2026-09-26 (가) · 수치 초안]
+// 감지 = 그 장의 서브를 나눠 준 뒤(subs_ch — 장에 들어설 때 세운다) 그 장 안에서 목록에서 사라짐. 장이 바뀌며 걷힐 땐 scn_act가 이미 바뀌어 있어 안 걸린다.
+// once — 회귀하면 되감긴다. 작은 병(bottle_found)·과자 상자는 따로 돈다
+const SUB_DONE = [
+  ['debut', 1, 1, [d('rep', 5), d('doom', -3), fr(-5)], '로니카의 도발이 먹히지 않았다 — 부채 뒤의 웃음들이 그 장면을 봤다.'],
+  ['debut', 1, 2, [d('rical', 20)], '리칼의 칼끝이 멈췄다 — 가문의 흠을 보는 눈이 아니라, 처음으로 오래 머문 눈이다.'],
+  ['tea', 2, 0, [d('doom', -5), fr(-10)], '소문의 끝은 흐릿하지만, 퍼뜨리던 입 몇은 다물었다.'],
+  ['tea', 2, 1, [d('duke', 20)], '카르디온 공작이 식탁에서 처음으로 수저를 멈추고 로제타 쪽을 봤다.'],
+  ['tea', 2, 2, [d('ert', 20)], '에르테미안은 소문 속 악녀와 다른 얼굴을 기억해 둔다.'],
+  ['stairs', 3, 0, [d('health', 15)], '로제타의 기침을 봐 줄 사람이 생겼다.'],
+  ['stairs', 3, 1, [d('duke', 20)], '공작이 로제타의 이름을 처음으로 제대로 불렀다.'],
+  ['stairs', 3, 2, [d('ert', 20)], '쪽지의 주인은 별궁의 황녀 드미트리샤다. 에르테미안은 그 비밀을 지켜 준 사람을 잊지 않는다.'],
+  ['night', 4, 0, [d('rical', 20)], '리칼이 입꼬리를 비틀지 않고 고개를 끄덕였다.'],
+  ['night', 4, 1, [d('elicia', 10)], '그 밤 엘리시아는 로제타의 이름으로 온 쪽지를 한 번 더 의심할 것이다.'],
+];
+const SUB_EVENTS = SUB_DONE.map(([act, n, i, effects, note]) => ({
+  id: `sub_${act}_${i}`, once: true,
+  when: `scn_act == "${act}" and subs_ch == ${n} and not has(quests, "${SUBS[act][i]}")`,
+  effects, notify: `[서브 완료] ${SUBS[act][i].replace('[서브] ', '')} — ${note}`,
+}));
 // 원작 이행 임무 — 로제타 시점, 장에 들어선 다음 턴 시스템 창에 뜬다. once는 되감기가 같이 돌려놓으니 회귀하면 다시 뜬다
 const DUTY_EVENTS = CHAPTERS.filter((c) => DUTY[c.id]).map((c) => ({
   id: `duty_${c.id}`, once: true,
@@ -744,8 +767,8 @@ const S = {
       desc: '유저가 엘리시아와 로제타가 함께 있는 공식 자리(무도회·다과회·연회·저녁 모임)나 심판정에 도착하면 true. 무대의 사건은 시스템이 연다.' },
     { id: 'dead', label: '사망', type: 'bool', init: false,
       desc: '유저가 연기하는 인물이 서사 안에서 죽었을 때만 true. 시종·빙의자 로제타 시점이면 로제타가 죽었을 때도 true. 부상·기절은 아니다.' },
-    { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 10, itemMaxLength: 48,
-      desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 이뤄졌을 때만 원문 그대로 지워라. "[서장]"·"[1장]" 같은 메인 항목과 "[원작 이행]" 항목은 시스템이 지우니 건드리지 마라. '
+    { id: 'quests', label: '퀘스트', type: 'list', init: [Q_ROSETTA], maxItems: 14, itemMaxLength: 48,
+      desc: '진행 중인 퀘스트. "[서브]" 항목은 서사에서 그 일이 실제로 이뤄진 장면이 나왔을 때만 원문 그대로 지워라 — 시도했거나 약속만 했으면 남겨 둔다. "[서장]"·"[1장]" 같은 메인 항목과 "[원작 이행]" 항목은 시스템이 지우니 건드리지 마라. '
         + '서사 속 인물이 유저에게 직접 부탁한 일이 생기면 "[서브] …"로 추가(서브는 최대 5개).' },
     { id: 'memories', label: '회귀의 기억', type: 'list', init: [], maxItems: 8, itemMaxLength: 60,
       desc: '유저가 이번 판에서 알게 된 결정적 사실 — 다음 회귀에도 가져갈 만한 것만 한 줄씩 (예: "로제타는 동정받는 걸 가장 싫어한다"). 회귀해도 남는다.' },
@@ -766,7 +789,8 @@ const S = {
     // 시스템 전용 — 보조 allow 밖
     { id: 'chk_ok', label: '방금 판정 성공', type: 'bool', init: false }, // 판정 등급이 세우고 선택지 효과가 읽는다
     { id: 'cleared', label: '결판난 장', type: 'int', init: 0, min: 0, max: 6 },
-    { id: 'clear_at', label: '결판 턴', type: 'int', init: 0, min: 0, max: 9999 }, // 결판 때의 scn_turns — 다음 장은 여파 3턴 뒤
+    { id: 'clear_at', label: '결판 턴', type: 'int', init: 0, min: 0, max: 9999 },
+    { id: 'subs_ch', label: '서브를 나눠 준 장', type: 'int', init: 0, min: 0, max: 5 }, // 서브 완료 감지의 문 — 진행 중이던 옛 판에 공짜 보상이 안 가게 // 결판 때의 scn_turns — 다음 장은 여파 3턴 뒤
     { id: 'ending', label: '결말', type: 'text', init: '' }, // 5장 심판이 적는다
     { id: 'loop', label: '회귀', type: 'int', init: 0, min: 0, max: 999 },
     { id: 'skip_day', label: '일 진행', type: 'int', init: 0, min: 0, max: 3650,
@@ -828,6 +852,8 @@ const S = {
       ...DUTY_EVENTS,
       // 1~5장 절정 — 무대 도착 · 그날(1장) · 또는 이 장에서 오래 머물면 원작이 찾아온다 [설계 §2 원작의 강제력]
       ...CLIMAX_EVENTS,
+      // 서브 완료 — 보조가 지운 서브에 결과
+      ...SUB_EVENTS,
       // 3장 — 과자 상자. 원작에선 로제타가 독 과자를 보낸다. 이번엔 누가 보냈는지 서사가 정한다 [사건 원본, 범인 공백 초안]
       { id: 'sweets', once: true, when: 'scn_act == "stairs" and cleared < 3 and scn_turns >= 3',
         effects: [{ list: 'quests', add: [SUB_SWEETS] }, fr(10)],
@@ -875,6 +901,7 @@ const S = {
           + '무도회 전까지는 준비·소문·만남으로 그날을 향해 조여 가라.',
         onEnter: [
           { list: 'quests', remove: [Q_ROSETTA, Q_WAKE, Q_FIRSTDAY, Q_SPECIAL], add: [Q_DEBUT, ...Q_SUBS_1] },
+          { set: 'subs_ch', expr: '1' },
           { checkpoint: 'save' },
         ],
         notify: `[퀘스트 갱신] ${Q.debut} — 엘리시아의 데뷔탕트가 다가온다. 3월 10일 밤, 황궁 대연회장.` },
@@ -1557,6 +1584,42 @@ console.log('\n━━ 결말 → 2부의 출발점 ━━');
   ok('★ 2부 사망 → 원작 이후 시작으로 · 결말 퀘스트는 되감겼다가', g.vars.loop === 1 && L(g, 'scn_act') === 'after' && !g.vars.quests.includes('[2부] 공작이 건 이름의 값을 알아낸다'), JSON.stringify(g.vars.quests));
   g = turn(g).st;
   ok('★ 다음 턴 다시 뜬다', g.vars.quests.includes('[2부] 공작이 건 이름의 값을 알아낸다'), JSON.stringify(g.vars.quests));
+}
+
+console.log('\n━━ 서브 완료 — 리칼·공작·황태자로 가는 길 ━━');
+{
+  const gain = (who) => SUB_DONE.filter((r) => r[3].some((e) => e.set === who)).map((r) => r[0]);
+  ok('★ 리칼(1·4장) · 공작(2·3장) · 황태자(2·3장) — 서브 둘씩, +20씩', gain('rical').join() === 'debut,night' && gain('duke').join() === 'tea,stairs' && gain('ert').join() === 'tea,stairs'
+    && SUB_DONE.filter((r) => ['rical', 'duke', 'ert'].some((w) => r[3].some((e) => e.set === w))).every((r) => r[3][0].expr.endsWith('+ 20')), '');
+  const vc = verdictChoices('rosetta');
+  ok('심판 문턱: 리칼 50 · 공작 50 · 황태자 60 (서브 둘 + 평소 기록으로 닿게)', vc[0].when === 'rical >= 50' && vc[2].when === 'ert >= 60' && vc[3].when === 'duke >= 50', '');
+  // 1장 — 보조가 리칼 서브를 지우면 리칼 +20 · 통지 · 한 번만
+  let st = cp(debutState);
+  ok('1장에 들어서면 서브 셋 · subs_ch = 1', SUBS.debut.every((q) => st.vars.quests.includes(q)) && st.vars.subs_ch === 1, JSON.stringify(st.vars.quests));
+  const r0 = st.vars.rical;
+  st = turn(st, { quests: { remove: [SUBS.debut[2]] } }).st;
+  ok('★ 새벽 연무장 서브 완료 → 리칼 +20 · [서브 완료] 통지', st.vars.rical === r0 + 20 && send(st).promptBlock.includes('[서브 완료] 새벽 연무장에서 리칼과 마주한다'), `${r0} → ${st.vars.rical}`);
+  st = turn(st).st;
+  ok('한 번만', st.vars.rical === r0 + 20, String(st.vars.rical));
+  // 장이 바뀌며 걷히는 서브는 보상이 없다
+  let t = cp(debutState);
+  const t0 = { rical: t.vars.rical, rep: t.vars.rep };
+  t = turn(t, { on_stage: true }).st;
+  t = turn(pickBy(t, '질투의 칼끝을 엘리시아를 비웃던 로니카에게 돌린다')).st;
+  for (let i = 0; i < 6 && L(t, 'scn_act') !== 'tea'; i++) t = turn(t, { skip_min: 30 }).st;
+  t = turn(t, { skip_min: 30 }).st;
+  ok('★ 장이 바뀌며 걷힌 1장 서브엔 보상이 없다 · 2장 subs_ch = 2', L(t, 'scn_act') === 'tea' && t.vars.rical === t0.rical && !SUBS.debut.slice(1).some((q) => t.vars.quests.includes(q))
+    && t.vars.subs_ch === 2 && SUBS.tea.every((q) => t.vars.quests.includes(q)), JSON.stringify({ r: t.vars.rical, q: t.vars.quests }));
+  const d0 = t.vars.duke;
+  t = turn(t, { quests: { remove: [SUBS.tea[1]] } }).st;
+  ok('2장 저녁 식탁 서브 완료 → 공작 +20', t.vars.duke === d0 + 20, `${d0} → ${t.vars.duke}`);
+  // 진행 중이던 옛 판(subs_ch 0) — 서브가 목록에 없어도 공짜 보상 없음
+  let o = start('rosetta');
+  Object.assign(o.vars, { scn_idx: 3, cleared: 2, scn_turns: 1, quests: [Q.stairs] });
+  const o0 = { duke: o.vars.duke, ert: o.vars.ert, health: o.vars.health };
+  o = turn(o).st;
+  ok('★ 옛 판(서브를 나눠 받은 적 없음)엔 공짜 보상이 없다', o.vars.duke === o0.duke && o.vars.ert === o0.ert && o.vars.health === o0.health, JSON.stringify(o0));
+  ok('퀘스트 목록 상한 14 — 시스템 항목이 잘려 "완료"로 오인되지 않게', S.vars.find((v) => v.id === 'quests').maxItems === 14, '');
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

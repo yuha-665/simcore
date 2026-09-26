@@ -375,7 +375,7 @@ const verdictChoices = (pov) => [
     inject: '엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다.' },
   { label: pov === 'rosetta' ? '심판정을 빠져나가 도망친다' : '로제타를 데리고 도망친다',
     effects: [ending('도주'), { set: 'role', expr: '"쫓기는 몸"' }, d('rep', -30)],
-    inject: pov === 'rosetta' ? '로제타가 심판정을 빠져나가 수도를 등진다. 살았지만, 이제 쫓기는 몸이다.'
+    inject: pov === 'rosetta' ? '로제타가 심판정을 빠져나가 수도의 어둠 속으로 숨어든다. 살았지만, 이제 쫓기는 몸이다.'
       : '유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다.' },
   { label: pov === 'rosetta' ? '받아들인다' : '아무것도 하지 못한다', effects: gameOver,
     inject: '원작 그대로 — 카르디온 공작가가 로제타를 파양하고, 처형대가 기다린다. 칼날이 떨어지는 순간 세상이 어두워진다. [시스템] 메인 임무 실패 — 페널티: 사망.' },
@@ -617,6 +617,65 @@ const LINES = [
       { at: 100, surface: '마탑 원로회가 황실의 묵인 아래 로제타의 권능을 "봉인 대상"으로 등록했다.', lost: true },
     ] } },
 ];
+// ══════════ 결말 → 2부의 출발점 [유저 2026-09-26 (나) "결말마다 2부 출발점이 다르게"] ══════════
+// 결말 하나 = 시작 장소 · 처지(지시문 — 먼저 열리는 줄기가 결판날 때까지) · 첫 퀘스트 · 먼저 열리는 줄기(원작 이후 넷째 턴, 각성 다음 턴).
+// 입구는 결말이 남긴 것에서 [초안]. 씨앗은 인물 로어북 [원본] — 리칼: 권능을 실은 검 · 칼끝이 무뎌지는 게 가장 두렵다 /
+// 에르테미안: 제국의 부흥과 가족의 화목 / 클레네: 사교계 정상을 노리는 야심가. 알드릭 장부의 카르디온가 이름은 §19의 창작 연결 그대로
+const AFTERMATH = [
+  { key: 'rical', ending: '리칼의 증언', head: 'tower', location: '카르디온 공작저',
+    quest: '[2부] 증언대에 선 리칼이 치른 값을 알아낸다',
+    notify: '[2부 · 리칼의 증언 그 뒤] 공작저로 돌아왔다. 젊은 귀족들 사이에 "리칼이 가문의 수치를 감쌌다"는 말이 돈다 — 리칼은 아무 일 없다는 얼굴로 밤마다 혼자 검을 휘두른다.',
+    text: '[결말의 여파 · 리칼의 증언] 리칼이 증언대에 선 값을 치르는 중이다 — 그를 따르던 젊은 귀족들이 하나둘 등을 돌리고, 리칼은 그걸 아무에게도 말하지 않는다. '
+      + '리칼이 가장 두려워하는 건 칼끝이 무뎌지는 것이다. 로제타의 권능이 드러나면, 권능을 실어 휘두르는 리칼의 검이 로제타 곁에서만 힘을 잃는다는 걸 가장 먼저 알아채는 것도 리칼이다 — 그리고 마탑이 그 힘을 노린다.',
+    via: '[2부 · 마탑] 연무장에서 리칼의 검에 실린 권능이 로제타가 다가서는 순간 꺼졌다 — 그 장면을 본 마탑 인장의 마법사가 탑으로 돌아갔다. 탑주 대행 레아의 이름으로 공작저에 서신이 온다.' },
+  { key: 'elicia', ending: '엘리시아의 변호', head: 'palace', location: '에버렛 후작저',
+    quest: '[2부] 엘리시아의 손님으로 황궁에 발을 들인다',
+    notify: '[2부 · 엘리시아의 변호 그 뒤] 심판정 이후 처음으로 엘리시아가 로제타를 에버렛 후작저로 불렀다. 창백한 얼굴로 — 심판정에서 권능을 무리하게 쓴 뒤로 며칠을 앓았다고 한다.',
+    text: '[결말의 여파 · 엘리시아의 변호] 피해자가 악녀를 감쌌다 — 사교계는 이제 두 영애를 나란히 놓고 본다. 엘리시아는 심판정에서 통찰을 무리하게 써 며칠을 앓았고, 그 일을 가볍게 넘기려 한다. '
+      + '엘리시아 곁에는 황태자가 있다 — 엘리시아의 손님이라는 자격으로, 로제타에게 닫혀 있던 황궁의 문이 열리려 한다.',
+    via: '[2부 · 황궁] 엘리시아의 초대장이 왔다 — 황궁 연회에 엘리시아의 손님으로. 엘리시아 곁의 황태자, 별궁의 병약한 황녀, 모두에게 웃어 주는 동방의 왕자가 한자리에 있다.' },
+  { key: 'ert', ending: '황태자의 재심 청원', head: 'palace', location: '황궁 동쪽 별관',
+    quest: '[2부] 재심을 청한 황태자의 속내를 알아낸다',
+    notify: '[2부 · 재심 그 뒤] 재심은 받아들여졌다. 판결이 날 때까지 로제타는 황궁 동쪽 별관에 머물러야 한다 — 곁의 사람들까지 함께. 황태자의 보호이자 감시다.',
+    text: '[결말의 여파 · 황태자의 재심] 로제타는 황태자에게 빚을 졌다. 에르테미안이 바라는 건 제국의 부흥과 가족의 화목이다 — 재심을 청한 이유가 정의감만은 아니다. '
+      + '황궁 별관에 머무는 동안, 별궁에 숨어 사는 황녀와 황궁을 떠난 대공의 빈자리가 가까이 보인다.',
+    via: '[2부 · 황궁] 별관 창 너머로 황궁의 안쪽이 보이기 시작한다 — 별궁에 숨어 사는 황녀 드미트리샤, 황궁을 떠난 대공 이슈트반의 빈자리, 요즘 부쩍 황궁 서고에 드나드는 동방의 왕자 유온.' },
+  { key: 'duke', ending: '공작의 이름', head: 'temple', location: '카르디온 공작저',
+    quest: '[2부] 공작이 건 이름의 값을 알아낸다',
+    notify: '[2부 · 공작의 이름 그 뒤] 파양은 없었다. 대신 공작이 가문의 이름을 걸었다 — 그리고 그날 밤, 대신전의 추기경 알드릭이 공작저를 다녀갔다는 말이 사용인들 사이에 돈다.',
+    text: '[결말의 여파 · 공작의 이름] 카르디온 공작이 로제타를 위해 가문의 이름을 걸었다 — 로제타를 유리창 보듯 지나치던 눈이 처음으로 머문 것이다. 하지만 이름을 건 값은 누군가 받으러 온다: '
+      + '추기경 알드릭의 고해 장부에 카르디온가의 이름이 있다는 소문이 공작저까지 들어왔다. 공작은 그 값을 로제타에게 말하지 않는다.',
+    via: '[2부 · 신전] 추기경 알드릭이 다시 공작저를 찾아왔다 — 이번엔 로제타를 만나겠다며. 같은 날, 성녀 디안느가 보낸 사람이 로제타에게 조용히 쪽지를 건넨다.' },
+  { key: 'self', ending: '스스로 밝힌 결백', head: 'silver', location: '카르디온 공작저',
+    quest: '[2부] 결백을 밝힌 뒤의 사교계에 다시 선다',
+    notify: '[2부 · 결백 그 뒤] 누명은 벗었다. 누가 씌웠는지는 끝내 흐릿하다 — 사교계는 그 빈칸을 두고 다시 줄을 선다. 심판 뒤 첫 초대장은 뜻밖에도 실버버그 남작 영애 클레네에게서 왔다.',
+    text: '[결말의 여파 · 스스로 밝힌 결백] 로제타는 제 손으로 결백을 밝혔다 — 악녀라 부르던 사교계가 이제 로제타를 무엇이라 불러야 할지 모른다. 누명을 씌운 손은 끝내 드러나지 않았다(사람이 아니라 원작의 흐름 그 자체). '
+      + '사교계 정상을 노리는 클레네가 누구보다 먼저 로제타에게 손을 내민다 — 새 경쟁자인지 새 동맹인지 저울질하며.',
+    via: '[2부 · 실버버그] 클레네의 연회는 화려했다 — 너무 화려했다. 신흥 명문 실버버그가의 돈이 어디서 나오는지, 그 자리에서 묻는 얼굴을 한 건 로제타뿐이다.' },
+  { key: 'exile', ending: '대신 진 죄', head: 'silver', location: '실버버그 영지의 광산 마을',
+    quest: '[2부] 수도로, 로제타의 곁으로 돌아갈 길을 찾는다',
+    notify: '[2부 · 추방 그 뒤] 유저는 수도에서 추방되어 실버버그 영지의 광산 마을까지 흘러왔다. 로제타는 수도에 남았다 — 소식은 늦게, 조각으로만 온다.',
+    text: '[결말의 여파 · 대신 진 죄] 유저는 로제타의 죄를 대신 지고 수도에서 추방됐다 — 수도에 발을 들이다 들키면 잡힌다. 로제타는 수도에 남아 유저의 빈자리를 안다. 두 사람 사이의 거리가 이 판의 무게다. '
+      + '수도에서 로제타에게 일어나는 일은 유저에게 소문과 편지로만 닿는다. 유저가 흘러든 곳은 실버버그 영지의 광산 마을 — 갱도가 위태롭고, 캐낸 것의 부스러기가 밤마다 어디론가 실려 나간다.',
+    via: '[2부 · 실버버그] 광산 마을의 갱도가 또 삐걱인다. 광부들은 허가 없는 광맥이라 수군거리고, 캐낸 부스러기는 밤마다 수도 쪽으로 실려 간다 — 실버버그 남작가의 돈은 여기서 나온다.' },
+  { key: 'flee', ending: '도주', head: 'klein', location: '수도 뒷골목의 버려진 창고',
+    quest: '[2부] 추격을 따돌리고 몸을 숨길 곳을 찾는다',
+    notify: '[2부 · 도주 그 뒤] 심판정을 빠져나온 밤. 성문은 이미 닫혔고, 공작가와 황실의 추격대가 거리를 뒤진다. 숨을 곳은 뒷골목뿐이다.',
+    text: '[결말의 여파 · 도주] 로제타는 쫓기는 몸이다(곁의 유저도). 공작가와 황실의 추격대가 수도를 뒤지고, 얼굴이 알려진 로제타는 낮에 거리를 걸을 수 없다. '
+      + '뒷골목에서 도망자를 숨겨 주는 건 돈을 받는 정보 길드 "밤의 눈"뿐이다 — 그 값은 돈이 아닐 수도 있다.',
+    via: '[2부 · 뒷골목] 추격대의 횃불을 피해 들어선 골목 끝에서 누군가 문을 열어 준다 — "밤의 눈"의 정보상이다. 숨겨 주는 값은 나중에 받겠다고 한다.' },
+];
+const AM_LINE = Object.fromEntries(LINES.map((l) => [l.id, l]));
+const amIs = (a) => `scn_act == "after" and ending == ${JSON.stringify(a.ending)}`;
+// 줄기 여는 이벤트(lineEvents)보다 앞에 둔다 — 이벤트는 차례로 평가되니, 같은 턴에 평소 조건이 차도 두 번 열리지 않는다
+const aftermathEvents = AFTERMATH.flatMap((a) => [
+  { id: `am_${a.key}`, once: true, when: amIs(a),
+    effects: [{ set: 'location', expr: JSON.stringify(a.location) }, { list: 'quests', add: [a.quest] }], notify: a.notify },
+  { id: `am_${a.key}_line`, when: `${amIs(a)} and ql_${a.head} == 0 and scn_turns >= 3`,
+    effects: [ql(a.head, 1), { list: 'quests', remove: [a.quest], add: [AM_LINE[a.head].quest] }], notify: a.via },
+]);
+const aftermathDirectives = AFTERMATH.map((a) => ({ id: `am_${a.key}`, when: `${amIs(a)} and ql_${a.head} < 3`, text: a.text }));
+
 // 줄기 → 스키마 조각. 진척 칸의 낱말은 장소·사건 — 인물 이름은 호감 칸 몫이라 겹치지 않게 (인물이 나오는 장면엔 대개 이 낱말도 같이 나온다)
 const lineVars = LINES.flatMap((ln) => [
   { id: `ql_${ln.id}`, label: `${ln.label} 줄기`, type: 'int', init: 0, min: 0, max: 9 }, // 시스템 전용
@@ -631,7 +690,7 @@ const lineFronts = LINES.map((ln) => ({
 }));
 const lineEvents = LINES.flatMap((ln) => [
   { id: `${ln.id}_open`, when: `scn_act == "after" and ql_${ln.id} == 0 and (${ln.open} or frs_${ln.id} >= 2)`,
-    effects: [ql(ln.id, 1), { list: 'quests', add: [ln.quest] }], notify: ln.openNotify },
+    effects: [ql(ln.id, 1), { list: 'quests', add: [ln.quest], remove: AFTERMATH.filter((a) => a.head === ln.id).map((a) => a.quest) }], notify: ln.openNotify },
   { id: `${ln.id}_deep`, when: `ql_${ln.id} == 1 and qp_${ln.id} >= 2`,
     effects: [ql(ln.id, 2), { front: ln.id, add: '-15' }], notify: ln.deepNotify },
   { id: `${ln.id}_climax`, once: true, timeout: 2, when: `ql_${ln.id} == 2 and (qp_${ln.id} >= 4 or fr_${ln.id} >= 85)`, notify: ln.climaxNotify,
@@ -779,6 +838,7 @@ const S = {
         effects: [{ set: 'power_public', expr: 'true' }, { set: 'awaken', expr: '2' }],
         notify: '[2부 · 각성] 사람들 앞에서 일이 벌어진다 — 로제타 곁의 마도구 불빛이 한꺼번에 꺼지고, 로제타에게 닿은 마법과 신성력이 흔적도 없이 사라진다. '
           + '권능 없는 실패작이라던 카르디온의 사생아에게서. 이 광경을 본 눈이 많다 — 신전과 마탑의 귀에도 곧 들어간다.' },
+      ...aftermathEvents,
       ...lineEvents,
     ],
   },
@@ -903,6 +963,7 @@ const S = {
     // 5장 — 파멸도가 낮으면 심판이 아니라 해명의 자리 [설계 §6]
     { id: 'verdict_trial', when: 'scn_act == "verdict" and cleared < 5 and doom > 30',
       text: '[심판] 로제타는 에버렛 영애를 해치려 한 혐의를 받고 있다. 증거보다 소문이 먼저 심판정에 도착해 있고, 원작의 결말이 로제타를 기다린다.' },
+    ...aftermathDirectives,
     ...lineDirectives,
     { id: 'verdict_hearing', when: 'scn_act == "verdict" and cleared < 5 and doom <= 30',
       text: '[해명] 로제타에게 혐의가 씌워졌지만 증거가 엇갈린다 — 심판이라기보다 해명의 자리다. 원작의 결말은 아직 로제타를 놓지 않았지만, 틈이 있다.' },
@@ -1454,6 +1515,48 @@ console.log('\n━━ 2부 — 각성 · 진영 줄기 · 무대 뒤 ━━');
   Object.assign(s3.vars, { scn_idx: 6, scn_turns: 5, cleared: 5, power_public: true, ert: 55 });
   s3 = turn(s3).st;
   ok('황궁: 1부 황태자 호감 50↑으로 열린다 · 드미트리샤 미성년 지시', s3.vars.ql_palace === 1 && send(s3).promptBlock.includes('드미트리샤는 미성년자다'), '');
+}
+
+console.log('\n━━ 결말 → 2부의 출발점 ━━');
+{
+  const after = (pov, ending, extra = {}) => { const st = start(pov); Object.assign(st.vars, { scn_idx: 6, scn_turns: 0, cleared: 5, ending, doom: 20, ...extra }); return st; };
+  ok('결말 일곱 = 심판 선택지의 결말 전부 (받아들인다 빼고)', AFTERMATH.length === 7
+    && ['rosetta', 'servant'].every((pov) => verdictChoices(pov).filter((c) => c.effects.some((e) => e.set === 'ending')).every((c) => AFTERMATH.some((a) => c.effects.some((e) => e.set === 'ending' && e.expr === JSON.stringify(a.ending))))), '');
+  for (const a of AFTERMATH) {
+    const ln = LINES.find((l) => l.id === a.head);
+    let st = after(a.key === 'exile' ? 'servant' : 'rosetta', a.ending);
+    st = turn(st).st; // 원작 이후 첫 턴 — 결말 이벤트
+    const p1 = send(st).promptBlock;
+    const first = st.vars.location === a.location && st.vars.quests.includes(a.quest) && p1.includes(a.notify.slice(0, 24)) && p1.includes(a.text.slice(0, 20));
+    let n = 1;
+    while (st.vars['ql_' + a.head] === 0 && n < 8) { st = turn(st, { skip_min: 30 }).st; n++; }
+    const p2 = send(st).promptBlock;
+    const opened = st.vars['ql_' + a.head] === 1 && st.vars.quests.includes(ln.quest) && !st.vars.quests.includes(a.quest) && p2.includes(a.via.slice(0, 20)) && st.vars.power_public === true;
+    const alone = LINES.filter((l) => l.id !== a.head).every((l) => st.vars['ql_' + l.id] === 0) && AFTERMATH.filter((b) => b.key !== a.key).every((b) => !p2.includes(b.text.slice(0, 20)));
+    ok(`★ ${a.ending} → ${a.location} · 첫 퀘스트 · ${n}턴째 ${ln.label} 줄기가 먼저 열린다 (각성 뒤) · 다른 결말은 안 섞인다`, first && opened && alone,
+      JSON.stringify({ loc: st.vars.location, q: st.vars.quests, n, ql: LINES.map((l) => st.vars['ql_' + l.id]) }));
+  }
+  // 처지 지시문은 먼저 열린 줄기가 결판나면 걷힌다
+  let st = turn(after('rosetta', '도주')).st;
+  ok('처지 지시문이 2부 동안 실린다', send(st).promptBlock.includes('[결말의 여파 · 도주]'), '');
+  st.vars.ql_klein = 3;
+  ok('먼저 열린 줄기가 결판나면 처지 지시문은 걷힌다', !send(st).promptBlock.includes('[결말의 여파 · 도주]'), '');
+  // 평소 조건이 먼저 차도 결말 퀘스트는 걷히고, 줄기는 한 번만 열린다
+  let c = turn(after('rosetta', '스스로 밝힌 결백', { clene: 16 })).st;
+  const silverQ = LINES.find((l) => l.id === 'silver').quest;
+  ok('평소 조건(클레네 16)이 먼저 차도 → 결말 퀘스트 걷힘 · 줄기 퀘스트 하나', c.vars.ql_silver === 1 && !c.vars.quests.includes(AFTERMATH.find((a) => a.key === 'self').quest)
+    && c.vars.quests.filter((q) => q === silverQ).length === 1, JSON.stringify(c.vars.quests));
+  // 2부에서 죽으면 원작 이후 시작으로 — 결말 이벤트도 다시 뜬다
+  let g = after('rosetta', '공작의 이름');
+  g.vars.scn_idx = 5; g.vars.cleared = 5; // 5장 결판 직후 → 원작 이후 진입(onEnter 저장)
+  g = turn(g).st;
+  ok('원작 이후 진입 → 체크포인트 = 원작 이후 시작', L(g, 'scn_act') === 'after' && g.checkpoints.main.vars.scn_idx === 6, L(g, 'scn_act'));
+  g = turn(g).st;
+  ok('결말 이벤트 → 공작저 · 공작 퀘스트', g.vars.quests.includes('[2부] 공작이 건 이름의 값을 알아낸다'), JSON.stringify(g.vars.quests));
+  g = turn(g, { dead: true }).st;
+  ok('★ 2부 사망 → 원작 이후 시작으로 · 결말 퀘스트는 되감겼다가', g.vars.loop === 1 && L(g, 'scn_act') === 'after' && !g.vars.quests.includes('[2부] 공작이 건 이름의 값을 알아낸다'), JSON.stringify(g.vars.quests));
+  g = turn(g).st;
+  ok('★ 다음 턴 다시 뜬다', g.vars.quests.includes('[2부] 공작이 건 이름의 값을 알아낸다'), JSON.stringify(g.vars.quests));
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

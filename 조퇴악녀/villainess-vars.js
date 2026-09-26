@@ -894,6 +894,8 @@ const S = {
     // 시스템 창 [유저 2026-09-26 "예전엔 강제 동기로 퀘스트창 — 메인 임무: 로제타의 처형을 막으시오 / 실패 시 사망 — 을 보여 주게 했다"]
     { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
     { id: 'penalty', label: '실패 시', expr: '"사망"' },
+    // 자유 시간 = 서장(눈뜬 첫날)이 지났고 · 무대(무도회·다과회·연회·심판정) 위가 아니고 · 5장 심판을 기다리며 갇힌 동안이 아니고 · 밤(22~6시)이 아닐 때
+    { id: 'free_time', label: '자유 시간', expr: 'scn_act != "prologue" and not on_stage and not (scn_act == "verdict" and cleared < 5) and hour >= 6 and hour < 22' },
     ...EPI_DERIVED,
     { id: 'mana_stage', label: '마석 중독 단계', expr: 'mana_dep >= 75 ? "중독" : mana_dep >= 40 ? "의존" : mana_dep >= 10 ? "가끔" : "끊음"' },
     { id: 'forced', label: '거부 시', expr: '"강제 이행"' }, // 로제타 시점 원작 이행 임무의 벌 — 몸이 원작대로 움직인다
@@ -925,9 +927,9 @@ const S = {
       + '호감은 관계의 거리일 뿐 연애 여부를 뜻하지 않는다.',
   },
   checks: STAT_CHECKS,
-  // 수련 — 누르거나 채팅에 "검술 수련"처럼 쓰면 무장된다
+  // 수련 — 누르거나 채팅에 "검술 수련"처럼 쓰면 무장된다. 자유 시간에만 — 아니면 버튼이 흐려지고 눌러도(써도) 무장되지 않는다
   actions: STATS.map(([id, label, , icon, words]) => ({
-    id: `train_${id}`, label: `${icon} ${label} 수련`, mode: 'oneshot', check: `t_${id}`, keywords: words,
+    id: `train_${id}`, label: `${icon} ${label} 수련`, mode: 'oneshot', check: `t_${id}`, keywords: words, when: 'free_time',
     inject: `유저가 ${label}을(를) 수련한다 — 작중 두 시간쯤. 누구에게 배우는지·어디서 하는지는 지금까지의 서사를 따른다.`,
   })),
   rules: {
@@ -1225,8 +1227,18 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
 {
   // 시종 — 첫날부터 수련할 수 있다. 수련 한 번 = 두 시간, 능력치 +1~3
   let st = start('servant');
-  ok('시종도 첫날부터 수련 가능', engine.toggleAction(S, st, 'train_talk').blocked == null, JSON.stringify(engine.toggleAction(S, st, 'train_talk').blocked));
+  ok('서장(눈뜬 첫날)엔 수련 잠김', engine.toggleAction(S, st, 'train_talk').blocked != null, '');
   st.vars.scn_idx = 1;
+  ok('1장 아침 → 자유 시간 · 수련 가능', engine.toggleAction(S, st, 'train_talk').blocked == null, JSON.stringify(engine.toggleAction(S, st, 'train_talk').blocked));
+  const blockedBy = (patch) => engine.toggleAction(S, { ...st, vars: { ...st.vars, ...patch } }, 'train_talk').blocked != null;
+  ok('★ 자유 시간이 아니면 잠김: 무대 위 · 5장 심판 대기 · 밤 22시~ · 새벽 ~6시', blockedBy({ on_stage: true }) && blockedBy({ scn_idx: 5, cleared: 4 })
+    && blockedBy({ time_epoch: st.vars.time_epoch + 16 * 60 }) && blockedBy({ time_epoch: st.vars.time_epoch - 60 }), '');
+  ok('원작 이후엔 다시 열린다 (심판 뒤)', !blockedBy({ scn_idx: 6, cleared: 5 }), '');
+  const stage = { ...st, vars: { ...st.vars, on_stage: true } };
+  // 어댑터(currentActionStates)처럼 버튼 상태를 넘긴다 — 잠긴 건 disabled
+  const acts = S.actions.map((a) => { const av = engine.actionAvailability(S, stage, a); return { id: a.id, label: a.label, armed: false, disabled: !av.ok, reason: av.reason || '' }; });
+  const bh = SC.require('render').renderStatusHtml(S, stage, null, acts, { uid: 81 });
+  ok('잠긴 수련 버튼은 흐리게 그려진다', (bh.match(/sim-action[^"]*sim-disabled/g) || []).length === 5, String((bh.match(/sim-action[^"]*sim-disabled/g) || []).length));
   const clock0 = L(st, 'clock');
   st = engine.toggleAction(S, st, 'train_talk').state;
   const talk0 = st.vars.st_talk;
@@ -1237,6 +1249,7 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
   ok('채팅 낱말로도 무장 ("검술 수련")', engine.autoArmActions(S, t.st, '오늘은 검술 수련을 하러 연무장에 간다').state.meta.armed.train_sword === true, '');
   // 로제타의 몸 — 마법은 흩어지고 권능의 흔적이 선다
   let r = start('rosetta');
+  r.vars.scn_idx = 1;
   r = engine.toggleAction(S, r, 'train_magic').state;
   const rt = turn(r);
   ok('★ 로제타 마법 수련: 흩어짐 — 마법 0 그대로 · 권능 흔적 1 · 비밀 2단계', rt.st.vars.st_magic === 0 && rt.st.vars.awaken === 1 && rt.st.vars.sec_power >= 1

@@ -895,6 +895,10 @@ const S = {
     { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
     { id: 'penalty', label: '실패 시', expr: '"사망"' },
     // 자유 시간 = 서장(눈뜬 첫날)이 지났고 · 무대(무도회·다과회·연회·심판정) 위가 아니고 · 5장 심판을 기다리며 갇힌 동안이 아니고 · 밤(22~6시)이 아닐 때
+    { id: 'busy_why', label: '지금 못 하는 이유', expr: 'scn_act == "prologue" ? (pov == "servant" ? "첫 출근 날이다 — 안나를 따라다니며 일을 배우느라 틈이 없다" : "이야기가 막 시작됐다 — 낯선 몸과 처지를 파악하는 게 먼저다") '
+      + ': on_stage ? "공식 자리 한가운데다 — 지금 자리를 뜰 수 없다" '
+      + ': (scn_act == "verdict" and cleared < 5) ? (pov == "rosetta" ? "로제타는 심판을 기다리며 갇혀 있다" : "심판을 앞두고 로제타의 일로 쉴 틈이 없다") '
+      + ': "밤이 깊었다 — 연무장도 스승도 잠들었다"' },
     { id: 'free_time', label: '자유 시간', expr: 'scn_act != "prologue" and not on_stage and not (scn_act == "verdict" and cleared < 5) and hour >= 6 and hour < 22' },
     ...EPI_DERIVED,
     { id: 'mana_stage', label: '마석 중독 단계', expr: 'mana_dep >= 75 ? "중독" : mana_dep >= 40 ? "의존" : mana_dep >= 10 ? "가끔" : "끊음"' },
@@ -1096,6 +1100,10 @@ const S = {
     { id: 'mana', when: 'sec_powder >= 1 and mana_dep >= 10',
       text: '[마석 중독 · {mana_stage}] 로제타는 마석 가루를 끊지 못했다 — 중독이면 손이 떨리고 밤마다 서랍을 찾는다 · 의존이면 불안할 때마다 찾는다 · 가끔이면 참을 만하다. '
         + '지금 단계에 맞게 몸의 떨림·기침·눈 밑의 그늘로 드러내라. 삼키면 피를 토한다.' },
+    // 수련이 잠긴 동안 — 유저가 채팅으로 수련하려 들면 서사가 자연스럽게 막는다 (버튼은 흐리게 잠기고, 글은 모델에게 그대로 간다)
+    { id: 'busy', when: 'not free_time',
+      text: '[지금은 수련할 수 없다] {busy_why}. 유저가 수련(검술·마법·화술·매력·가사 연습)을 하려 하면 서사 안에서 자연스럽게 막아라 — 누가 부르거나, 자리를 뜰 수 없거나, 몸이 따르지 않거나. '
+        + '유저가 먼저 꺼내지 않으면 이 줄은 언급하지 마라.' },
     { id: 'aftermath', when: 'chapter >= 1 and chapter <= 4 and cleared >= chapter',
       text: '[여파] 이 장의 원작 사건이 지나갔다. 다음 원작 사건은 아직 오지 않았다 — 여파와 일상을 자유롭게 이어 가라.' },
     // 5장 — 파멸도가 낮으면 심판이 아니라 해명의 자리 [설계 §6]
@@ -1234,6 +1242,12 @@ console.log('\n━━ 능력치 — 수련 · 판정 선택지 · 회귀 ━━'
   ok('★ 자유 시간이 아니면 잠김: 무대 위 · 5장 심판 대기 · 밤 22시~ · 새벽 ~6시', blockedBy({ on_stage: true }) && blockedBy({ scn_idx: 5, cleared: 4 })
     && blockedBy({ time_epoch: st.vars.time_epoch + 16 * 60 }) && blockedBy({ time_epoch: st.vars.time_epoch - 60 }), '');
   ok('원작 이후엔 다시 열린다 (심판 뒤)', !blockedBy({ scn_idx: 6, cleared: 5 }), '');
+  const busyP = (patch, pov) => send({ ...st, vars: { ...st.vars, ...(pov ? { pov } : {}), ...patch } }).promptBlock;
+  ok('★ 잠긴 동안 메인에 "지금은 수련할 수 없다" + 이유 — 무대 위 · 심판 대기(로제타/시종) · 밤 · 서장(시종)',
+    busyP({ on_stage: true }).includes('[지금은 수련할 수 없다] 공식 자리 한가운데다') && busyP({ scn_idx: 5, cleared: 4 }, 'rosetta').includes('로제타는 심판을 기다리며 갇혀 있다')
+    && busyP({ scn_idx: 5, cleared: 4 }).includes('심판을 앞두고 로제타의 일로') && busyP({ time_epoch: st.vars.time_epoch + 16 * 60 }).includes('밤이 깊었다')
+    && busyP({ scn_idx: 0 }).includes('첫 출근 날이다'), '');
+  ok('자유 시간엔 그 줄이 없다', !send(st).promptBlock.includes('[지금은 수련할 수 없다]'), '');
   const stage = { ...st, vars: { ...st.vars, on_stage: true } };
   // 어댑터(currentActionStates)처럼 버튼 상태를 넘긴다 — 잠긴 건 disabled
   const acts = S.actions.map((a) => { const av = engine.actionAvailability(S, stage, a); return { id: a.id, label: a.label, armed: false, disabled: !av.ok, reason: av.reason || '' }; });

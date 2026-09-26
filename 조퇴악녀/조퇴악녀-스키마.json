@@ -570,6 +570,11 @@
       "expr": "\"사망\""
     },
     {
+      "id": "busy_why",
+      "label": "지금 못 하는 이유",
+      "expr": "scn_act == \"prologue\" ? (pov == \"servant\" ? \"첫 출근 날이다 — 안나를 따라다니며 일을 배우느라 틈이 없다\" : \"이야기가 막 시작됐다 — 낯선 몸과 처지를 파악하는 게 먼저다\") : on_stage ? \"공식 자리 한가운데다 — 지금 자리를 뜰 수 없다\" : (scn_act == \"verdict\" and cleared < 5) ? (pov == \"rosetta\" ? \"로제타는 심판을 기다리며 갇혀 있다\" : \"심판을 앞두고 로제타의 일로 쉴 틈이 없다\") : \"밤이 깊었다 — 연무장도 스승도 잠들었다\""
+    },
+    {
       "id": "free_time",
       "label": "자유 시간",
       "expr": "scn_act != \"prologue\" and not on_stage and not (scn_act == \"verdict\" and cleared < 5) and hour >= 6 and hour < 22"
@@ -6990,6 +6995,11 @@
       "id": "mana",
       "when": "sec_powder >= 1 and mana_dep >= 10",
       "text": "[마석 중독 · {mana_stage}] 로제타는 마석 가루를 끊지 못했다 — 중독이면 손이 떨리고 밤마다 서랍을 찾는다 · 의존이면 불안할 때마다 찾는다 · 가끔이면 참을 만하다. 지금 단계에 맞게 몸의 떨림·기침·눈 밑의 그늘로 드러내라. 삼키면 피를 토한다."
+    },
+    {
+      "id": "busy",
+      "when": "not free_time",
+      "text": "[지금은 수련할 수 없다] {busy_why}. 유저가 수련(검술·마법·화술·매력·가사 연습)을 하려 하면 서사 안에서 자연스럽게 막아라 — 누가 부르거나, 자리를 뜰 수 없거나, 몸이 따르지 않거나. 유저가 먼저 꺼내지 않으면 이 줄은 언급하지 마라."
     },
     {
       "id": "aftermath",

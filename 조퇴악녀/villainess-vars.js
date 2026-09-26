@@ -35,7 +35,7 @@ const PEOPLE = [
 const CANON = {
   id: 'canon', about: '사교계', label: '원작의 흐름',
   // 1부 내내 흐른다(원작 이후엔 멈춘다). 문턱 문장은 어느 장에서 넘어도 맞게 — 단계엔 장 조건이 없다
-  when: 'scn_act != "prologue" and scn_act != "after"', rate: 2,
+  when: 'scn_act != "prologue" and cleared < 5', rate: 2,
   stages: [
     { at: 15, hint: '하인들이 로제타가 지나가면 입을 다물고, 등 뒤에서 수군거린다.' },
     { at: 35, backstage: '로니카가 로제타의 첫 데뷔탕트 망신을 다시 입에 올리며, 돌아온 에버렛 영애와 나란히 비교하고 있다.' },
@@ -480,9 +480,9 @@ const CRAVE_OTHER = [
   { label: '모른 척한다', effects: [d('mana_dep', 10), d('health', -6)],
     inject: '유저가 방을 나선다. 문 너머로 서랍 여는 소리, 그리고 한참 이어지는 기침.' },
 ];
-const NEAR = 'not (scn_act == "after" and ending == "대신 진 죄")'; // 추방된 시종은 로제타 곁에 없다
+const NEAR = 'not (cleared >= 5 and ending == "대신 진 죄")'; // 추방된 시종은 로제타 곁에 없다
 const MANA_RANDOM = {
-  chancePerTurn: 'scn_act != "prologue" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0',
+  chancePerTurn: 'scn_act != "prologue" and scn_act != "epilogue" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0',
   table: [
     { id: 'crave_rosetta', when: 'pov == "rosetta"', weight: 3, cooldown: 5, timeout: 1, choices: CRAVE_ROSETTA,
       notify: '[로제타의 몸] 손끝이 떨리고 목이 탄다 — 몸이 화장대 서랍의 잠긴 칸을 기억한다. 이 갈증은 빙의자가 아니라 로제타의 몸에 붙어 있던 것이다.' },
@@ -506,7 +506,7 @@ const MANA_EVENTS = [
 // 파멸도가 30을 넘으면 뜨기 시작해 원작에 가까울수록 잦아진다 (파멸도 40 → 4% · 60 → 12% · 80 → 20%/턴)
 const CANON_LIVE = {
   id: 'canon', label: '원작 보정력', icon: '📖',
-  when: 'scn_act != "prologue" and scn_act != "verdict" and scn_act != "after"',
+  when: 'scn_act != "prologue" and scn_act != "verdict" and cleared < 5',
   chance: 'max(0, doom - 30) / 250', count: [3, 3], shuffle: true, worst: '타협', strict: false, timeout: 1,
   tags: [
     { id: '이탈', desc: '원작의 흐름을 거스르는 행동 — 원작 속 로제타라면 하지 않았을 일', effects: [d('doom', -4), fr(-5)] },
@@ -757,6 +757,35 @@ const aftermathEvents = AFTERMATH.flatMap((a) => [
 ]);
 const aftermathDirectives = AFTERMATH.map((a) => ({ id: `am_${a.key}`, when: `${amIs(a)} and ql_${a.head} < 3`, text: a.text }));
 
+// ══════════ 에필로그 — 2부를 맺는다 [유저 2026-09-26 (다) "줄기 결과를 모아 2부를 닫는 최종 엔딩"] ══════════
+// 줄기 다섯 중 셋 이상 매듭(결판 3·4·5 또는 놓침 9)이면 시스템이 맺을지 묻는다 — 맺으면 에필로그 막, "아직"이면 매듭이 하나 더 늘 때 다시 묻는다.
+// 에필로그 = 결말 · 제목(줄기 결과로 가른다) · 가까워진 사람 · 줄기 결과 줄(이미 지시문) · 마석 · 곁. 첫 응답이 에필로그 한 편, 그 뒤로는 자유롭게 이어 간다 [구조 유저 · 문구·제목·문턱 초안]
+const LINE_IDS = LINES.map((l) => l.id);
+const countOf = (cond) => LINE_IDS.map((id) => `(${cond(`ql_${id}`)})`).join(' + ');
+const CLOSE_PEOPLE = [...PEOPLE.filter(([id]) => id !== 'rosetta').map(([id, label]) => [id, label]), ...PEOPLE2.map(([id, label]) => [id, label])];
+const closeExpr = CLOSE_PEOPLE.map(([id, label]) => `(${id} >= 50 ? "${label}, " : "")`).join(' + ');
+const EPI_DERIVED = [
+  { id: 'settled', label: '매듭지은 줄기', expr: countOf((q) => `${q} >= 3`) },
+  { id: 'good_n', label: '좋게 맺은 줄기', expr: countOf((q) => `${q} == 3`) },
+  { id: 'lost_n', label: '놓친 줄기', expr: countOf((q) => `${q} == 9`) },
+  { id: 'epi_title', label: '에필로그', expr: 'good_n >= 3 and mana_dep < 10 ? "원작 밖의 봄" : good_n >= 3 ? "새로 쓴 이야기" : lost_n >= 3 ? "살아남은 자의 겨울" : "악녀의 다음 장"' },
+  { id: 'close_people', label: '가까워진 사람', expr: `(${closeExpr}) == "" ? "없다" : (${closeExpr})` },
+  { id: 'bond_word', label: '곁', expr: 'rosetta >= 70 ? "가장 가까운 사람" : rosetta >= 40 ? "곁을 지키는 사람" : "아직 거리가 있는 사람"' },
+];
+const EPI_OFFER = { id: 'epi_offer', timeout: 1,
+  when: 'scn_act == "after" and not epi_go and settled >= 3 and settled > epi_later',
+  notify: '[시스템] 매듭지은 일이 셋을 넘었다 — 이야기를 맺을 수 있다. 맺으면 에필로그로 가고, 그 뒤로도 이어서 지낼 수 있다. 창은 짧게.',
+  choices: [
+    { label: '이야기를 맺는다 — 에필로그로', effects: [{ set: 'epi_go', expr: 'true' }], inject: '유저가 이야기를 맺기로 한다. 다음 응답부터 에필로그다.' },
+    { label: '아직 — 남은 일을 더 본다', effects: [{ set: 'epi_later', expr: 'settled' }], inject: '유저는 아직 이야기를 맺지 않는다. 남은 일들이 계속 흘러간다.' },
+  ] };
+const EPI_DIRECTIVES = [
+  { id: 'epi_mana', when: 'scn_act == "epilogue" and sec_powder >= 1', text: '[에필로그 · 마석] 로제타와 마석 가루: {mana_stage}.' },
+  { id: 'epi_bond', when: 'scn_act == "epilogue" and pov != "rosetta"', text: '[에필로그 · 곁] 로제타에게 유저는 {bond_word}이다.' },
+  { id: 'epi_open', when: 'scn_act == "epilogue" and settled < 5',
+    text: '[에필로그 · 남은 일] 매듭짓지 못한 일도 있다 — 에필로그에선 "아직 남은 일"로 한 줄씩만 스치고, 풀어 주지 마라.' },
+];
+
 // 줄기 → 스키마 조각. 진척 칸의 낱말은 장소·사건 — 인물 이름은 호감 칸 몫이라 겹치지 않게 (인물이 나오는 장면엔 대개 이 낱말도 같이 나온다)
 const lineVars = LINES.flatMap((ln) => [
   { id: `ql_${ln.id}`, label: `${ln.label} 줄기`, type: 'int', init: 0, min: 0, max: 9 }, // 시스템 전용
@@ -772,15 +801,15 @@ const lineFronts = LINES.map((ln) => ({
 const lineEvents = LINES.flatMap((ln) => [
   { id: `${ln.id}_open`, when: `scn_act == "after" and ql_${ln.id} == 0 and (${ln.open} or frs_${ln.id} >= 2)`,
     effects: [ql(ln.id, 1), { list: 'quests', add: [ln.quest], remove: AFTERMATH.filter((a) => a.head === ln.id).map((a) => a.quest) }], notify: ln.openNotify },
-  { id: `${ln.id}_deep`, when: `ql_${ln.id} == 1 and qp_${ln.id} >= 2`,
+  { id: `${ln.id}_deep`, when: `scn_act == "after" and ql_${ln.id} == 1 and qp_${ln.id} >= 2`,
     effects: [ql(ln.id, 2), { front: ln.id, add: '-15' }], notify: ln.deepNotify },
-  { id: `${ln.id}_climax`, once: true, timeout: 2, when: `ql_${ln.id} == 2 and (qp_${ln.id} >= 4 or fr_${ln.id} >= 85)`, notify: ln.climaxNotify,
+  { id: `${ln.id}_climax`, once: true, timeout: 2, when: `scn_act == "after" and ql_${ln.id} == 2 and (qp_${ln.id} >= 4 or fr_${ln.id} >= 85)`, notify: ln.climaxNotify,
     // 결판마다 저장 — 2부에서 죽으면 마지막으로 매듭지은 줄기 뒤로 돌아간다
     choices: ln.choices.map((c) => ({ ...c, effects: [...c.effects, { list: 'quests', remove: [ln.quest] }, { checkpoint: 'save' }] })) },
 ]);
 const lineDirectives = LINES.flatMap((ln) => [
-  { id: `${ln.id}_1`, when: `ql_${ln.id} == 1`, text: ln.stage1 },
-  { id: `${ln.id}_2`, when: `ql_${ln.id} == 2`, text: ln.stage2 },
+  { id: `${ln.id}_1`, when: `scn_act == "after" and ql_${ln.id} == 1`, text: ln.stage1 },
+  { id: `${ln.id}_2`, when: `scn_act == "after" and ql_${ln.id} == 2`, text: ln.stage2 },
   ...Object.entries(ln.results).map(([n, text]) => ({ id: `${ln.id}_r${n}`, when: `ql_${ln.id} == ${n}`, text })),
 ]);
 
@@ -849,6 +878,8 @@ const S = {
     { id: 'chk_ok', label: '방금 판정 성공', type: 'bool', init: false }, // 판정 등급이 세우고 선택지 효과가 읽는다
     { id: 'cleared', label: '결판난 장', type: 'int', init: 0, min: 0, max: 6 },
     { id: 'clear_at', label: '결판 턴', type: 'int', init: 0, min: 0, max: 9999 },
+    { id: 'epi_go', label: '이야기를 맺음', type: 'bool', init: false }, // 에필로그 제안에서 "맺는다" — 시스템 전용
+    { id: 'epi_later', label: '미룬 매듭 수', type: 'int', init: 0, min: 0, max: 5 }, // "아직"을 고른 때의 매듭 수 — 하나 더 늘면 다시 묻는다
     { id: 'subs_ch', label: '서브를 나눠 준 장', type: 'int', init: 0, min: 0, max: 5 }, // 서브 완료 감지의 문 — 진행 중이던 옛 판에 공짜 보상이 안 가게 // 결판 때의 scn_turns — 다음 장은 여파 3턴 뒤
     { id: 'ending', label: '결말', type: 'text', init: '' }, // 5장 심판이 적는다
     { id: 'loop', label: '회귀', type: 'int', init: 0, min: 0, max: 999 },
@@ -863,9 +894,10 @@ const S = {
     // 시스템 창 [유저 2026-09-26 "예전엔 강제 동기로 퀘스트창 — 메인 임무: 로제타의 처형을 막으시오 / 실패 시 사망 — 을 보여 주게 했다"]
     { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
     { id: 'penalty', label: '실패 시', expr: '"사망"' },
+    ...EPI_DERIVED,
     { id: 'mana_stage', label: '마석 중독 단계', expr: 'mana_dep >= 75 ? "중독" : mana_dep >= 40 ? "의존" : mana_dep >= 10 ? "가끔" : "끊음"' },
     { id: 'forced', label: '거부 시', expr: '"강제 이행"' }, // 로제타 시점 원작 이행 임무의 벌 — 몸이 원작대로 움직인다
-    { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : 0' },
+    { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : scn_act == "epilogue" ? 7 : 0' },
   ],
   updater: {
     allow: [
@@ -929,6 +961,8 @@ const S = {
       ...MANA_EVENTS,
       ...aftermathEvents,
       ...lineEvents,
+      // 에필로그 제안
+      EPI_OFFER,
     ],
     // 마석 중독 — 금단 장면 (무작위 갈림길)
     randomEvents: MANA_RANDOM,
@@ -1002,6 +1036,12 @@ const S = {
           + '신전·뒷골목·황궁·마탑에도 저마다의 일이 있고, 유저가 보지 않는 사이에도 흘러간다.',
         onEnter: [{ list: 'quests', remove: SUBS.verdict }, { set: 'on_stage', expr: 'false' }, { checkpoint: 'save' }],
         notify: '[시스템] 메인 임무 완료. — 처형대는 비어 있다. 원작이 끝난 세계, 여기서부터는 아무도 모르는 이야기다.' },
+      { id: 'epilogue', label: '에필로그', intensity: '해소', unlock: 'epi_go',
+        direct: '[에필로그 · {epi_title}] 이야기를 맺는다 — 계절이 한 번 바뀐 뒤다. 심판의 결말은 "{ending}"이었다. '
+          + '로제타가 지금 어디서 무엇을 하는지, 유저는 로제타 곁 어디에 서 있는지, 그리고 아래 줄기의 결과들이 세상에 남긴 것을 인물마다 짧은 장면으로 이어 붙여라. '
+          + '가까워진 사람: {close_people}. 첫 응답은 에필로그 한 편이고, 마지막 장면은 로제타의 얼굴로 끝낸다. 그 뒤로는 에필로그 이후의 나날을 자유롭게 이어 간다.',
+        onEnter: [{ list: 'quests', remove: [...LINES.map((l) => l.quest), ...AFTERMATH.map((a) => a.quest)] }, { checkpoint: 'save' }],
+        notify: '[시스템] 모든 임무 종료. — 원작이 끝난 세계의 이야기가 한 매듭을 짓는다.' },
     ],
   },
   directives: [
@@ -1059,6 +1099,7 @@ const S = {
     { id: 'verdict_trial', when: 'scn_act == "verdict" and cleared < 5 and doom > 30',
       text: '[심판] 로제타는 에버렛 영애를 해치려 한 혐의를 받고 있다. 증거보다 소문이 먼저 심판정에 도착해 있고, 원작의 결말이 로제타를 기다린다.' },
     ...aftermathDirectives,
+    ...EPI_DIRECTIVES,
     ...lineDirectives,
     { id: 'verdict_hearing', when: 'scn_act == "verdict" and cleared < 5 and doom <= 30',
       text: '[해명] 로제타에게 혐의가 씌워졌지만 증거가 엇갈린다 — 심판이라기보다 해명의 자리다. 원작의 결말은 아직 로제타를 놓지 않았지만, 틈이 있다.' },
@@ -1096,6 +1137,7 @@ const S = {
       { tab: '현황', label: '진행', items: [
         { var: 'location', label: '장소' },
         { var: 'ending', label: '결말', showWhen: 'ending != ""' },
+        { var: 'epi_title', label: '에필로그', showWhen: 'scn_act == "epilogue"' },
       ] },
       { tab: '나', label: '신상', items: [
         { var: 'role', label: '신분', showWhen: 'role != ""' },
@@ -1753,6 +1795,55 @@ console.log('\n━━ 마석 중독 · 권능의 증명 · 몸 ━━');
   for (let i = 0; i < 4; i++) w = turn(w, { skip_min: 30 }).st;
   ok('권능의 증명 → 2부: 각성 사건은 다시 안 뜨고 · 신전 줄기가 먼저 열린다', w.vars.ql_temple === 1 && !w.meta.firedOnce.awakening && w.vars.location === '카르디온 공작저',
     JSON.stringify({ ql: w.vars.ql_temple, aw: w.meta.firedOnce.awakening, loc: w.vars.location }));
+}
+
+console.log('\n━━ 에필로그 — 2부를 맺는다 ━━');
+{
+  const LN = Object.fromEntries(LINES.map((l) => [l.id, l]));
+  const settle = (st, m) => { for (const [id, v] of Object.entries(m)) st.vars['ql_' + id] = v; return st; };
+  const base = () => { const st = start('rosetta'); Object.assign(st.vars, { scn_idx: 6, scn_turns: 10, cleared: 5, ending: '엘리시아의 변호', power_public: true, awaken: 2, elicia: 70, rical: 55, doris: 52 }); return st; };
+  let st = turn(settle(base(), { temple: 3, klein: 4 })).st;
+  ok('매듭 둘 → 아직 안 묻는다', !st.meta.pendingChoice && L(st, 'settled') === 2, String(L(st, 'settled')));
+  st = turn(settle(st, { silver: 9 })).st;
+  ok('★ 매듭 셋(놓침도 매듭) → 맺을지 묻는다', st.meta.pendingChoice?.id === 'epi_offer' && send(st).promptBlock.includes('이야기를 맺을 수 있다'), JSON.stringify(st.meta.pendingChoice));
+  ok('안 고르면 = 아직 (맨 끝)', EPI_OFFER.choices.slice(-1)[0].label.startsWith('아직'), '');
+  st.meta.pendingChoicePick = 1;
+  st = turn(st).st;
+  st = turn(st).st;
+  ok('아직 → 원작 이후 그대로 · 같은 매듭 수로는 다시 안 묻는다', L(st, 'scn_act') === 'after' && st.vars.epi_later === 3 && !st.meta.pendingChoice, JSON.stringify({ a: L(st, 'scn_act'), l: st.vars.epi_later }));
+  st.vars.quests = [LN.palace.quest, '[2부] 엘리시아의 손님으로 황궁에 발을 들인다', '[서브] 서랍 속 작은 병의 정체'];
+  st = turn(settle(st, { palace: 3 })).st;
+  ok('매듭이 하나 늘면 다시 묻는다', st.meta.pendingChoice?.id === 'epi_offer', '');
+  st.meta.pendingChoicePick = 0;
+  st = turn(st).st;
+  const p = send(st).promptBlock;
+  ok('★ 맺는다 → 에필로그 막 · 모든 임무 종료 통지', L(st, 'scn_act') === 'epilogue' && p.includes('[시스템] 모든 임무 종료') && st.checkpoints.main.vars.scn_idx === 7, L(st, 'scn_act'));
+  ok('★ 에필로그 지시: 제목 · 결말 · 가까워진 사람 · 줄기 결과 줄', p.includes('[에필로그 · 악녀의 다음 장]') && p.includes('"엘리시아의 변호"') && p.includes('가까워진 사람: 엘리시아, 리칼, 안나, 도리스,')
+    && p.includes(LN.temple.results[3]) && p.includes(LN.silver.results[9]) && p.includes(LN.palace.results[3]), p.slice(p.indexOf('[에필로그'), p.indexOf('[에필로그') + 200));
+  ok('매듭 못 지은 줄기(마탑)는 단계 지시 없이 "남은 일"로만 · 줄기·결말 퀘스트 걷힘', !p.includes('[마탑 줄기') && p.includes('[에필로그 · 남은 일]')
+    && !st.vars.quests.includes(LN.palace.quest) && !st.vars.quests.some((q) => q.startsWith('[2부]')) && st.vars.quests.includes('[서브] 서랍 속 작은 병의 정체'), JSON.stringify(st.vars.quests));
+  const html = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 71 });
+  ok('상태창 진행 줄: 결말 · 에필로그 제목 · 완료한 임무', html.includes('>에필로그<') && html.includes('악녀의 다음 장') && html.includes('완료한 임무'), '');
+  // 에필로그에선 무대 뒤·원작 보정력·금단 장면·줄기가 멈춘다
+  const fr0 = LINE_IDS.map((id) => st.vars['fr_' + id]);
+  const e2 = turn(st, { skip_day: 10 }).st;
+  const { evaluate } = SC.require('expr');
+  const lk = engine.makeLookup(S, e2.vars);
+  ok('★ 에필로그: 무대 뒤 시계 · 원작 보정력 · 금단 장면이 멈춘다', LINE_IDS.every((id, i) => e2.vars['fr_' + id] === fr0[i])
+    && !evaluate(S.liveChoices.find((c) => c.id === 'canon').when, lk, null) && evaluate(S.rules.randomEvents.chancePerTurn, engine.makeLookup(S, { ...e2.vars, mana_dep: 80 }), null) === 0
+    && !evaluate(CANON.when, lk, null), JSON.stringify({ fr0, fr: LINE_IDS.map((id) => e2.vars['fr_' + id]) }));
+  // 제목 넷
+  const title = (m, extra = {}) => L(Object.assign(settle(base(), m), { vars: { ...settle(base(), m).vars, ...extra } }), 'epi_title');
+  ok('★ 제목: 좋게 셋 + 가루 끊음 = 원작 밖의 봄 · 좋게 셋 = 새로 쓴 이야기 · 놓침 셋 = 살아남은 자의 겨울 · 그 밖 = 악녀의 다음 장',
+    title({ temple: 3, klein: 3, silver: 3 }, { mana_dep: 5 }) === '원작 밖의 봄' && title({ temple: 3, klein: 3, silver: 3 }, { mana_dep: 50 }) === '새로 쓴 이야기'
+    && title({ temple: 9, klein: 9, silver: 9 }) === '살아남은 자의 겨울' && title({ temple: 3, klein: 4, silver: 5 }) === '악녀의 다음 장', '');
+  // 시종 — 곁
+  const sv = start('servant');
+  Object.assign(sv.vars, { scn_idx: 7, cleared: 5, ending: '대신 진 죄', rosetta: 80, epi_go: true });
+  ok('시종 에필로그: 로제타에게 유저는 가장 가까운 사람', send(sv).promptBlock.includes('[에필로그 · 곁] 로제타에게 유저는 가장 가까운 사람이다'), '');
+  const nobody = start('rosetta');
+  Object.assign(nobody.vars, { elicia: 10, anna: 10 });
+  ok('가까워진 사람이 없으면 "없다"', L(nobody, 'close_people') === '없다', L(nobody, 'close_people'));
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

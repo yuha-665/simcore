@@ -499,6 +499,20 @@
       "max": 9999
     },
     {
+      "id": "epi_go",
+      "label": "이야기를 맺음",
+      "type": "bool",
+      "init": false
+    },
+    {
+      "id": "epi_later",
+      "label": "미룬 매듭 수",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 5
+    },
+    {
       "id": "subs_ch",
       "label": "서브를 나눠 준 장",
       "type": "int",
@@ -556,6 +570,36 @@
       "expr": "\"사망\""
     },
     {
+      "id": "settled",
+      "label": "매듭지은 줄기",
+      "expr": "(ql_temple >= 3) + (ql_klein >= 3) + (ql_silver >= 3) + (ql_palace >= 3) + (ql_tower >= 3)"
+    },
+    {
+      "id": "good_n",
+      "label": "좋게 맺은 줄기",
+      "expr": "(ql_temple == 3) + (ql_klein == 3) + (ql_silver == 3) + (ql_palace == 3) + (ql_tower == 3)"
+    },
+    {
+      "id": "lost_n",
+      "label": "놓친 줄기",
+      "expr": "(ql_temple == 9) + (ql_klein == 9) + (ql_silver == 9) + (ql_palace == 9) + (ql_tower == 9)"
+    },
+    {
+      "id": "epi_title",
+      "label": "에필로그",
+      "expr": "good_n >= 3 and mana_dep < 10 ? \"원작 밖의 봄\" : good_n >= 3 ? \"새로 쓴 이야기\" : lost_n >= 3 ? \"살아남은 자의 겨울\" : \"악녀의 다음 장\""
+    },
+    {
+      "id": "close_people",
+      "label": "가까워진 사람",
+      "expr": "((elicia >= 50 ? \"엘리시아, \" : \"\") + (ert >= 50 ? \"에르테미안, \" : \"\") + (rical >= 50 ? \"리칼, \" : \"\") + (duke >= 50 ? \"카르디온 공작, \" : \"\") + (anna >= 50 ? \"안나, \" : \"\") + (dianne >= 50 ? \"디안느, \" : \"\") + (aldric >= 50 ? \"알드릭, \" : \"\") + (doris >= 50 ? \"도리스, \" : \"\") + (clene >= 50 ? \"클레네, \" : \"\") + (ishtvan >= 50 ? \"이슈트반, \" : \"\") + (misha >= 50 ? \"드미트리샤, \" : \"\") + (yuon >= 50 ? \"유온, \" : \"\") + (ecsion >= 50 ? \"에크시온, \" : \"\") + (leah >= 50 ? \"레아, \" : \"\")) == \"\" ? \"없다\" : ((elicia >= 50 ? \"엘리시아, \" : \"\") + (ert >= 50 ? \"에르테미안, \" : \"\") + (rical >= 50 ? \"리칼, \" : \"\") + (duke >= 50 ? \"카르디온 공작, \" : \"\") + (anna >= 50 ? \"안나, \" : \"\") + (dianne >= 50 ? \"디안느, \" : \"\") + (aldric >= 50 ? \"알드릭, \" : \"\") + (doris >= 50 ? \"도리스, \" : \"\") + (clene >= 50 ? \"클레네, \" : \"\") + (ishtvan >= 50 ? \"이슈트반, \" : \"\") + (misha >= 50 ? \"드미트리샤, \" : \"\") + (yuon >= 50 ? \"유온, \" : \"\") + (ecsion >= 50 ? \"에크시온, \" : \"\") + (leah >= 50 ? \"레아, \" : \"\"))"
+    },
+    {
+      "id": "bond_word",
+      "label": "곁",
+      "expr": "rosetta >= 70 ? \"가장 가까운 사람\" : rosetta >= 40 ? \"곁을 지키는 사람\" : \"아직 거리가 있는 사람\""
+    },
+    {
       "id": "mana_stage",
       "label": "마석 중독 단계",
       "expr": "mana_dep >= 75 ? \"중독\" : mana_dep >= 40 ? \"의존\" : mana_dep >= 10 ? \"가끔\" : \"끊음\""
@@ -568,7 +612,7 @@
     {
       "id": "chapter",
       "label": "장",
-      "expr": "scn_act == \"debut\" ? 1 : scn_act == \"tea\" ? 2 : scn_act == \"stairs\" ? 3 : scn_act == \"night\" ? 4 : scn_act == \"verdict\" ? 5 : scn_act == \"after\" ? 6 : 0"
+      "expr": "scn_act == \"debut\" ? 1 : scn_act == \"tea\" ? 2 : scn_act == \"stairs\" ? 3 : scn_act == \"night\" ? 4 : scn_act == \"verdict\" ? 5 : scn_act == \"after\" ? 6 : scn_act == \"epilogue\" ? 7 : 0"
     }
   ],
   "updater": {
@@ -5313,7 +5357,7 @@
       },
       {
         "id": "temple_deep",
-        "when": "ql_temple == 1 and qp_temple >= 2",
+        "when": "scn_act == \"after\" and ql_temple == 1 and qp_temple >= 2",
         "effects": [
           {
             "set": "ql_temple",
@@ -5330,7 +5374,7 @@
         "id": "temple_climax",
         "once": true,
         "timeout": 2,
-        "when": "ql_temple == 2 and (qp_temple >= 4 or fr_temple >= 85)",
+        "when": "scn_act == \"after\" and ql_temple == 2 and (qp_temple >= 4 or fr_temple >= 85)",
         "notify": "[신전 · 결판] 대신관이 성녀를 이단으로 몰 심문회가 열린다. 디안느의 증거, 알드릭의 장부, 그리고 로제타의 권능이 한자리에 놓였다.",
         "choices": [
           {
@@ -5462,7 +5506,7 @@
       },
       {
         "id": "klein_deep",
-        "when": "ql_klein == 1 and qp_klein >= 2",
+        "when": "scn_act == \"after\" and ql_klein == 1 and qp_klein >= 2",
         "effects": [
           {
             "set": "ql_klein",
@@ -5479,7 +5523,7 @@
         "id": "klein_climax",
         "once": true,
         "timeout": 2,
-        "when": "ql_klein == 2 and (qp_klein >= 4 or fr_klein >= 85)",
+        "when": "scn_act == \"after\" and ql_klein == 2 and (qp_klein >= 4 or fr_klein >= 85)",
         "notify": "[뒷골목 · 결판] 밤의 눈의 은신처로 추격자들이 들이닥친다. 도리스는 엘시부터 빼내려 하고, 공급선의 장부가 유저 손 닿는 곳에 있다.",
         "choices": [
           {
@@ -5600,7 +5644,7 @@
       },
       {
         "id": "silver_deep",
-        "when": "ql_silver == 1 and qp_silver >= 2",
+        "when": "scn_act == \"after\" and ql_silver == 1 and qp_silver >= 2",
         "effects": [
           {
             "set": "ql_silver",
@@ -5617,7 +5661,7 @@
         "id": "silver_climax",
         "once": true,
         "timeout": 2,
-        "when": "ql_silver == 2 and (qp_silver >= 4 or fr_silver >= 85)",
+        "when": "scn_act == \"after\" and ql_silver == 2 and (qp_silver >= 4 or fr_silver >= 85)",
         "notify": "[실버버그 · 결판] 광산의 갱도가 무너지기 직전이다. 증거는 유저 손에 있고, 클레네가 유저를 막아선다.",
         "choices": [
           {
@@ -5739,7 +5783,7 @@
       },
       {
         "id": "palace_deep",
-        "when": "ql_palace == 1 and qp_palace >= 2",
+        "when": "scn_act == \"after\" and ql_palace == 1 and qp_palace >= 2",
         "effects": [
           {
             "set": "ql_palace",
@@ -5756,7 +5800,7 @@
         "id": "palace_climax",
         "once": true,
         "timeout": 2,
-        "when": "ql_palace == 2 and (qp_palace >= 4 or fr_palace >= 85)",
+        "when": "scn_act == \"after\" and ql_palace == 2 and (qp_palace >= 4 or fr_palace >= 85)",
         "notify": "[황궁 · 결판] 동방 사절단의 연회. 유온의 이중 장부가 누구 손에 들어가느냐에 따라 황실의 약점이 동방으로 넘어간다.",
         "choices": [
           {
@@ -5880,7 +5924,7 @@
       },
       {
         "id": "tower_deep",
-        "when": "ql_tower == 1 and qp_tower >= 2",
+        "when": "scn_act == \"after\" and ql_tower == 1 and qp_tower >= 2",
         "effects": [
           {
             "set": "ql_tower",
@@ -5897,7 +5941,7 @@
         "id": "tower_climax",
         "once": true,
         "timeout": 2,
-        "when": "ql_tower == 2 and (qp_tower >= 4 or fr_tower >= 85)",
+        "when": "scn_act == \"after\" and ql_tower == 2 and (qp_tower >= 4 or fr_tower >= 85)",
         "notify": "[마탑 · 결판] 마탑 원로회가 로제타의 권능을 두고 열린다. 연구냐, 봉인이냐, 그대로 두느냐.",
         "choices": [
           {
@@ -6002,10 +6046,38 @@
             "inject": "유저가 소환장을 무시한다. 마탑은 일단 물러서지만, 기록은 남는다."
           }
         ]
+      },
+      {
+        "id": "epi_offer",
+        "timeout": 1,
+        "when": "scn_act == \"after\" and not epi_go and settled >= 3 and settled > epi_later",
+        "notify": "[시스템] 매듭지은 일이 셋을 넘었다 — 이야기를 맺을 수 있다. 맺으면 에필로그로 가고, 그 뒤로도 이어서 지낼 수 있다. 창은 짧게.",
+        "choices": [
+          {
+            "label": "이야기를 맺는다 — 에필로그로",
+            "effects": [
+              {
+                "set": "epi_go",
+                "expr": "true"
+              }
+            ],
+            "inject": "유저가 이야기를 맺기로 한다. 다음 응답부터 에필로그다."
+          },
+          {
+            "label": "아직 — 남은 일을 더 본다",
+            "effects": [
+              {
+                "set": "epi_later",
+                "expr": "settled"
+              }
+            ],
+            "inject": "유저는 아직 이야기를 맺지 않는다. 남은 일들이 계속 흘러간다."
+          }
+        ]
       }
     ],
     "randomEvents": {
-      "chancePerTurn": "scn_act != \"prologue\" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0",
+      "chancePerTurn": "scn_act != \"prologue\" and scn_act != \"epilogue\" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0",
       "table": [
         {
           "id": "crave_rosetta",
@@ -6066,7 +6138,7 @@
         },
         {
           "id": "crave_other",
-          "when": "pov != \"rosetta\" and not (scn_act == \"after\" and ending == \"대신 진 죄\")",
+          "when": "pov != \"rosetta\" and not (cleared >= 5 and ending == \"대신 진 죄\")",
           "weight": 3,
           "cooldown": 5,
           "timeout": 1,
@@ -6145,7 +6217,7 @@
         },
         {
           "id": "cough",
-          "when": "mana_dep >= 40 and health > 10 and (pov == \"rosetta\" or not (scn_act == \"after\" and ending == \"대신 진 죄\"))",
+          "when": "mana_dep >= 40 and health > 10 and (pov == \"rosetta\" or not (cleared >= 5 and ending == \"대신 진 죄\"))",
           "weight": 1,
           "cooldown": 4,
           "effects": [
@@ -6164,7 +6236,7 @@
       "id": "canon",
       "about": "사교계",
       "label": "원작의 흐름",
-      "when": "scn_act != \"prologue\" and scn_act != \"after\"",
+      "when": "scn_act != \"prologue\" and cleared < 5",
       "rate": 2,
       "stages": [
         {
@@ -6505,7 +6577,7 @@
       "id": "canon",
       "label": "원작 보정력",
       "icon": "📖",
-      "when": "scn_act != \"prologue\" and scn_act != \"verdict\" and scn_act != \"after\"",
+      "when": "scn_act != \"prologue\" and scn_act != \"verdict\" and cleared < 5",
       "chance": "max(0, doom - 30) / 250",
       "count": [
         3,
@@ -6804,6 +6876,37 @@
           }
         ],
         "notify": "[시스템] 메인 임무 완료. — 처형대는 비어 있다. 원작이 끝난 세계, 여기서부터는 아무도 모르는 이야기다."
+      },
+      {
+        "id": "epilogue",
+        "label": "에필로그",
+        "intensity": "해소",
+        "unlock": "epi_go",
+        "direct": "[에필로그 · {epi_title}] 이야기를 맺는다 — 계절이 한 번 바뀐 뒤다. 심판의 결말은 \"{ending}\"이었다. 로제타가 지금 어디서 무엇을 하는지, 유저는 로제타 곁 어디에 서 있는지, 그리고 아래 줄기의 결과들이 세상에 남긴 것을 인물마다 짧은 장면으로 이어 붙여라. 가까워진 사람: {close_people}. 첫 응답은 에필로그 한 편이고, 마지막 장면은 로제타의 얼굴로 끝낸다. 그 뒤로는 에필로그 이후의 나날을 자유롭게 이어 간다.",
+        "onEnter": [
+          {
+            "list": "quests",
+            "remove": [
+              "[신전] 대신전의 암투에 발을 들인다",
+              "[뒷골목] 마석 가루의 출처를 쫓는다",
+              "[실버버그] 실버버그가의 돈줄을 캔다",
+              "[황궁] 황궁의 비어 있는 자리를 들여다본다",
+              "[마탑] 마탑이 권능을 노린다",
+              "[2부] 증언대에 선 리칼이 치른 값을 알아낸다",
+              "[2부] 엘리시아의 손님으로 황궁에 발을 들인다",
+              "[2부] 재심을 청한 황태자의 속내를 알아낸다",
+              "[2부] 공작이 건 이름의 값을 알아낸다",
+              "[2부] 카르디온의 권능을 지닌 딸로 선다",
+              "[2부] 결백을 밝힌 뒤의 사교계에 다시 선다",
+              "[2부] 수도로, 로제타의 곁으로 돌아갈 길을 찾는다",
+              "[2부] 추격을 따돌리고 몸을 숨길 곳을 찾는다"
+            ]
+          },
+          {
+            "checkpoint": "save"
+          }
+        ],
+        "notify": "[시스템] 모든 임무 종료. — 원작이 끝난 세계의 이야기가 한 매듭을 짓는다."
       }
     ]
   },
@@ -6929,13 +7032,28 @@
       "text": "[결말의 여파 · 도주] 로제타는 쫓기는 몸이다(곁의 유저도). 공작가와 황실의 추격대가 수도를 뒤지고, 얼굴이 알려진 로제타는 낮에 거리를 걸을 수 없다. 뒷골목에서 도망자를 숨겨 주는 건 돈을 받는 정보 길드 \"밤의 눈\"뿐이다 — 그 값은 돈이 아닐 수도 있다."
     },
     {
+      "id": "epi_mana",
+      "when": "scn_act == \"epilogue\" and sec_powder >= 1",
+      "text": "[에필로그 · 마석] 로제타와 마석 가루: {mana_stage}."
+    },
+    {
+      "id": "epi_bond",
+      "when": "scn_act == \"epilogue\" and pov != \"rosetta\"",
+      "text": "[에필로그 · 곁] 로제타에게 유저는 {bond_word}이다."
+    },
+    {
+      "id": "epi_open",
+      "when": "scn_act == \"epilogue\" and settled < 5",
+      "text": "[에필로그 · 남은 일] 매듭짓지 못한 일도 있다 — 에필로그에선 \"아직 남은 일\"로 한 줄씩만 스치고, 풀어 주지 마라."
+    },
+    {
       "id": "temple_1",
-      "when": "ql_temple == 1",
+      "when": "scn_act == \"after\" and ql_temple == 1",
       "text": "[신전 줄기 · 1] 대신전 안이 둘로 갈려 있다 — 겉은 평온하지만 구호소가 자주 문을 닫고, 성녀와 대신관 사이가 차갑다. 디안느는 경건한 성녀를 연기하지만 속은 빈민가 출신의 현실주의자고, 알드릭은 부드러운 얼굴로 모두와 거래한다. 무엇이 걸려 있는지는 유저가 캐내야 드러난다."
     },
     {
       "id": "temple_2",
-      "when": "ql_temple == 2",
+      "when": "scn_act == \"after\" and ql_temple == 2",
       "text": "[신전 줄기 · 2] 대신관의 횡령이 드러났다. 디안느는 대신관을 끌어내리려 하고, 알드릭의 고해 장부에는 귀족들의 약점 — 어쩌면 카르디온가의 이름도 — 이 적혀 있다. 대신관은 성녀를 이단으로 몰아 먼저 치려 한다."
     },
     {
@@ -6960,12 +7078,12 @@
     },
     {
       "id": "klein_1",
-      "when": "ql_klein == 1",
+      "when": "scn_act == \"after\" and ql_klein == 1",
       "text": "[뒷골목 줄기 · 1] 로제타가 먹던 마석 가루는 뒷골목 암시장에서 왔다. 암시장의 정보는 \"밤의 눈\"이 쥐고 있고, 그 길드장은 사교계에서 \"잠만 자는 자작\"으로 불리는 도리스다 — 유저가 그걸 알아내기 전까지는 드러내지 마라. 도리스는 병약한 여동생 엘시를 끔찍이 아낀다."
     },
     {
       "id": "klein_2",
-      "when": "ql_klein == 2",
+      "when": "scn_act == \"after\" and ql_klein == 2",
       "text": "[뒷골목 줄기 · 2] 도리스가 엘시의 약값 때문에 위험한 손님과 거래하고 있다. 암시장의 마석 가루와 엘시의 약은 같은 공급선을 탄다. 엘시는 오빠가 무슨 일을 하는지 모른다 — 대신 유모와 몰래 만든 비밀 통로로 저택을 빠져나가곤 한다. 엘시는 미성년자다(16) — 관계는 우정·보호로만."
     },
     {
@@ -6990,12 +7108,12 @@
     },
     {
       "id": "silver_1",
-      "when": "ql_silver == 1",
+      "when": "scn_act == \"after\" and ql_silver == 1",
       "text": "[실버버그 줄기 · 1] 실버버그 남작가의 갑작스러운 부의 출처가 수상하다. 클레네는 사교계 정상을 노리는 야심가로, 아버지가 자기를 도구로만 본다는 두려움을 숨긴다. 아버지의 불법은 모르는 척하는 중이다."
     },
     {
       "id": "silver_2",
-      "when": "ql_silver == 2",
+      "when": "scn_act == \"after\" and ql_silver == 2",
       "text": "[실버버그 줄기 · 2] 불법 광산의 정체가 드러났다. 무너지기 직전의 갱도에는 광부들이 있고, 클레네는 아버지와 자기 자리 사이에서 흔들린다."
     },
     {
@@ -7020,12 +7138,12 @@
     },
     {
       "id": "palace_1",
-      "when": "ql_palace == 1",
+      "when": "scn_act == \"after\" and ql_palace == 1",
       "text": "[황궁 줄기 · 1] 드미트리샤는 황제·황후의 눈 밖에 날까 봐 숨죽여 사는 병약한 천재고, 에르테미안은 형 이슈트반이 황궁으로 돌아오길 바란다. 이슈트반이 왜 떠났는지 드미트리샤는 모른다. 유온은 모두에게 친절한 관찰자다. 드미트리샤는 미성년자다(17) — 관계는 우정·보호로만."
     },
     {
       "id": "palace_2",
-      "when": "ql_palace == 2",
+      "when": "scn_act == \"after\" and ql_palace == 2",
       "text": "[황궁 줄기 · 2] 유온의 이중 장부에 황실의 약점이 적혀 있고, 본국의 형들은 유온을 \"쓸모없는 패\"로 돌리기 직전이다. 이슈트반은 누이를 겨누는 칼끝에서 벗어나게 하려고 황궁을 떠났다 — 누구에게도, 드미트리샤에게는 더더욱 말하지 않는다."
     },
     {
@@ -7050,12 +7168,12 @@
     },
     {
       "id": "tower_1",
-      "when": "ql_tower == 1",
+      "when": "scn_act == \"after\" and ql_tower == 1",
       "text": "[마탑 줄기 · 1] 마탑은 가문도 작위도 안 보고 능력만 본다 — 그래서 로제타의 권능에 누구보다 먼저 눈을 번뜩인다. 실무는 레아가 쥐고 있고, 탑주 에크시온은 세상일에 관심 없는 척 빈둥댄다. 수도 밖에는 \"마법은 모두의 것\"을 외치다 떠난 전 부탑주 엘로웬이 산다."
     },
     {
       "id": "tower_2",
-      "when": "ql_tower == 2",
+      "when": "scn_act == \"after\" and ql_tower == 2",
       "text": "[마탑 줄기 · 2] 원로들의 계획이 드러났다 — 권능을 조사하고, 안 되면 봉인한다. 레아는 탑의 규칙과 사람 사이에서 버티고, 에크시온은 레아가 곤란해지는 걸 싫어한다. 엘로웬의 인장은 원로회에서 한 표가 된다."
     },
     {
@@ -7294,6 +7412,11 @@
             "var": "ending",
             "label": "결말",
             "showWhen": "ending != \"\""
+          },
+          {
+            "var": "epi_title",
+            "label": "에필로그",
+            "showWhen": "scn_act == \"epilogue\""
           }
         ]
       },

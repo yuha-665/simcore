@@ -368,6 +368,12 @@ const verdictChoices = (pov) => [
     inject: '황태자 에르테미안이 일어나 재심을 청한다. 원작에서 로제타를 제압했던 그 사람이다.' },
   { label: '공작이 가문의 이름으로 막아선다', when: 'duke >= 50', effects: [ending('공작의 이름'), d('duke', 10)],
     inject: '카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다.' },
+  // ㄱ 권능의 증명 [유저 2026-09-26] — 카르디온의 권능은 "파괴", 직계는 저마다 다른 것을 부순다 [원본 제국과 4대가문]. 로제타의 권능(권능·신성력·마력을 지운다)은
+  // 곧 핏줄의 증거다 — "실패작" 낙인과 아버지의 인정이라는 로제타의 상처를 정면으로 뒤집는 결말 [연결 초안]. 1부에서 권능의 흔적이 두 번 드러났어야 열린다
+  { label: pov === 'rosetta' ? '권능을 드러내 카르디온의 피를 증명한다' : '로제타의 권능을 모두 앞에 드러낸다', when: 'awaken >= 2',
+    effects: [ending('권능의 증명'), d('duke', 15), d('rep', 10), { set: 'power_public', expr: 'true' }],
+    inject: '심판정의 결계와 성물의 빛이 로제타의 손끝에서 꺼진다 — 파괴의 권능. 카르디온 직계만이 지니는, 저마다 다른 것을 부수는 힘이다. '
+      + '여덟 살의 각성식이 "아무것도 없다"고 했던 건 이 힘이 지우는 힘이라서였다. 실패작이라던 사생아가 카르디온의 피를 증명한다 — 처형대에 세우기엔 너무 귀한 힘이다. 공작의 눈이 처음으로 로제타에게 머문다.' },
   ...(pov === 'rosetta' ? [] : [
     { label: '내가 대신 죄를 쓴다', when: 'rosetta >= 70',
       effects: [ending('대신 진 죄'), { set: 'role', expr: '"수도에서 추방된 몸"' }, d('rosetta', 20)],
@@ -375,7 +381,8 @@ const verdictChoices = (pov) => [
   ]),
   { label: '스스로 결백을 밝힌다', when: 'doom <= 30', effects: [ending('스스로 밝힌 결백'), d('rep', 10)],
     inject: '엇갈린 증거의 틈을 로제타 편이 파고든다. 원작의 결말이 로제타를 놓친다.' },
-  { label: pov === 'rosetta' ? '심판정을 빠져나가 도망친다' : '로제타를 데리고 도망친다',
+  // ㄷ 몸이 결말에 걸린다 [유저 2026-09-26] — 로제타의 몸이 무너져 가면 달아날 수도 없다
+  { label: pov === 'rosetta' ? '심판정을 빠져나가 도망친다' : '로제타를 데리고 도망친다', when: 'health > 20',
     effects: [ending('도주'), { set: 'role', expr: '"쫓기는 몸"' }, d('rep', -30)],
     inject: pov === 'rosetta' ? '로제타가 심판정을 빠져나가 수도의 어둠 속으로 숨어든다. 살았지만, 이제 쫓기는 몸이다.'
       : '유저가 로제타의 손을 잡고 심판정을 빠져나간다. 둘 다 살았지만, 이제 쫓기는 몸이다.' },
@@ -431,7 +438,7 @@ const SUB_DONE = [
   ['tea', 2, 0, [d('doom', -5), fr(-10)], '소문의 끝은 흐릿하지만, 퍼뜨리던 입 몇은 다물었다.'],
   ['tea', 2, 1, [d('duke', 20)], '카르디온 공작이 식탁에서 처음으로 수저를 멈추고 로제타 쪽을 봤다.'],
   ['tea', 2, 2, [d('ert', 20)], '에르테미안은 소문 속 악녀와 다른 얼굴을 기억해 둔다.'],
-  ['stairs', 3, 0, [d('health', 15)], '로제타의 기침을 봐 줄 사람이 생겼다.'],
+  ['stairs', 3, 0, [d('health', 15), d('mana_dep', -10)], '로제타의 기침을 봐 줄 사람이 생겼다 — 의사는 서랍 속 병 이야기를 꺼내지 않고도 알아챈다.'],
   ['stairs', 3, 1, [d('duke', 20)], '공작이 로제타의 이름을 처음으로 제대로 불렀다.'],
   ['stairs', 3, 2, [d('ert', 20)], '쪽지의 주인은 별궁의 황녀 드미트리샤다. 에르테미안은 그 비밀을 지켜 준 사람을 잊지 않는다.'],
   ['night', 4, 0, [d('rical', 20)], '리칼이 입꼬리를 비틀지 않고 고개를 끄덕였다.'],
@@ -449,6 +456,51 @@ const DUTY_EVENTS = CHAPTERS.filter((c) => DUTY[c.id]).map((c) => ({
   effects: [{ list: 'quests', add: [DUTY[c.id]] }],
   notify: `[시스템] 원작 이행 임무 — "${DUTY[c.id].replace('[원작 이행] ', '')}" · 거부 시: 강제 이행. 이번 응답에 이 창을 짧게 띄워라 — 설명은 붙이지 않는다.`,
 }));
+
+// ══════════ 마석 중독 [유저 2026-09-26 ㄴ "마석 중독" — 원본은 "권능을 깨우려 마석 가루를 몰래 계속 삼키고 자주 피를 토한다 · 권능이 마력을 지워 산다 ·
+// 안나는 안다"까지. 중독이라는 말·단계는 원본에 없다 → 단계·수치·금단 장면은 초안] ══════════
+// mana_dep 0~100 — 끊음 <10 · 가끔 <40 · 의존 <75 · 중독. 시작 55(의존). 시스템만 만진다(보조 allow 밖)
+// 오르는 길: 금단 장면에서 삼킨다(+10) / 내리는 길: 참는다·안나·곁을 지킨다·의사 서브·권능의 진실(가루는 필요 없었다, −25)
+// 금단 장면 = 무작위 갈림길 — 가루라는 말은 안 쓴다(작은 병의 정체는 비밀 powder). 병을 열거나 빼앗으면 bottle_found
+const CRAVE_ROSETTA = [
+  { label: '서랍 대신 안나를 부른다', when: 'anna >= 60', effects: [d('mana_dep', -12), d('anna', 3)],
+    inject: '로제타가 서랍 대신 안나를 부른다. 안나는 아무것도 묻지 않고 곁에 앉아 떨리는 손을 쥐어 준다 — 밤이 길다.' },
+  { label: '이를 악물고 참는다', effects: [d('mana_dep', -8), d('health', -3)],
+    inject: '로제타가 이를 악물고 버틴다. 식은땀과 떨림은 새벽이 되어서야 가라앉는다.' },
+  { label: '서랍 속 작은 병을 연다', effects: [d('mana_dep', 10), d('health', -6), { set: 'bottle_found', expr: 'true' }],
+    inject: '로제타의 손이 먼저 서랍을 연다. 작은 병의 쓴 가루를 삼키자 떨림이 멎는다 — 그리고 곧 기침, 손수건에 붉은 것이 번진다.' },
+];
+const CRAVE_OTHER = [
+  { label: '막는다 — 로제타의 손을 서랍에서 떼어 낸다', effects: [d('mana_dep', -8), d('rosetta', -6), { set: 'bottle_found', expr: 'true' }],
+    inject: '유저가 서랍으로 가던 로제타의 손목을 붙잡는다. 작은 병이 바닥을 구른다. 로제타가 유저를 노려본다 — "네가 뭘 안다고."' },
+  { label: '곁을 지킨다 — 떨림이 멎을 때까지 손을 잡는다', when: 'rosetta >= 40', effects: [d('mana_dep', -10), d('rosetta', 5), d('health', -2)],
+    inject: '유저가 아무것도 묻지 않고 로제타의 떨리는 손을 잡는다. 로제타는 뿌리치지 않는다 — 새벽까지.' },
+  { label: '돕는다 — 물 한 잔을 떠다 준다', effects: [d('mana_dep', 10), d('health', -6), d('rosetta', 4)],
+    inject: '유저가 말없이 물 한 잔을 내민다. 로제타가 서랍 속 병의 가루를 삼킨다. 떨림이 멎고 곧 기침 — 이 일을 아는 사람이 하나 늘었다는 걸 로제타는 싫어하지 않는 얼굴이다.' },
+  { label: '모른 척한다', effects: [d('mana_dep', 10), d('health', -6)],
+    inject: '유저가 방을 나선다. 문 너머로 서랍 여는 소리, 그리고 한참 이어지는 기침.' },
+];
+const NEAR = 'not (scn_act == "after" and ending == "대신 진 죄")'; // 추방된 시종은 로제타 곁에 없다
+const MANA_RANDOM = {
+  chancePerTurn: 'scn_act != "prologue" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0',
+  table: [
+    { id: 'crave_rosetta', when: 'pov == "rosetta"', weight: 3, cooldown: 5, timeout: 1, choices: CRAVE_ROSETTA,
+      notify: '[로제타의 몸] 손끝이 떨리고 목이 탄다 — 몸이 화장대 서랍의 잠긴 칸을 기억한다. 이 갈증은 빙의자가 아니라 로제타의 몸에 붙어 있던 것이다.' },
+    { id: 'crave_other', when: `pov != "rosetta" and ${NEAR}`, weight: 3, cooldown: 5, timeout: 1, choices: CRAVE_OTHER,
+      notify: '[로제타의 몸] 로제타의 손끝이 떨린다. 시선이 자꾸 화장대 서랍의 잠긴 칸으로 간다.' },
+    { id: 'cough', when: `mana_dep >= 40 and health > 10 and (pov == "rosetta" or ${NEAR})`, weight: 1, cooldown: 4, effects: [d('health', -4)],
+      notify: '[로제타의 몸] 기침이 멎지 않는다 — 로제타가 급히 손수건을 입가에 댄다. 붉은 것이 번진다.' },
+  ],
+};
+const MANA_EVENTS = [
+  // 권능의 진실 — 증명하려고 삼키던 걸 증명할 필요가 없었다 [원본: 권능은 이미 깨어 있었다 → 연결 초안]
+  { id: 'mana_truth', once: true, when: 'sec_power >= 2 and mana_dep >= 10', effects: [d('mana_dep', -25)],
+    notify: '[마석 중독] 권능은 처음부터 깨어 있었다 — 가루는 필요 없었다. 서랍으로 가던 손의 이유 하나가 사라졌다.' },
+  { id: 'mana_anna', once: true, when: 'sec_anna >= 1 and mana_dep >= 10', effects: [d('mana_dep', -10)],
+    notify: '[마석 중독] 안나가 알고 있던 것을 입 밖에 냈다 — 이제 밤마다 로제타의 방 앞을 지키는 사람이 있다.' },
+  { id: 'mana_quit', once: true, when: 'mana_dep < 10 and sec_powder >= 1', effects: [d('health', 10)],
+    notify: '[마석 중독] 서랍의 잠긴 칸이 며칠째 열리지 않았다 — 로제타의 기침이 잦아든다.' },
+];
 
 // ══════════ 원작 보정력 — 평소 장면에서 원작이 스스로를 되돌리려는 순간 [설계 §4-② / 빈도·수치 초안] ══════════
 // 파멸도가 30을 넘으면 뜨기 시작해 원작에 가까울수록 잦아진다 (파멸도 40 → 4% · 60 → 12% · 80 → 20%/턴)
@@ -669,6 +721,12 @@ const AFTERMATH = [
     text: '[결말의 여파 · 공작의 이름] 카르디온 공작이 로제타를 위해 가문의 이름을 걸었다 — 로제타를 유리창 보듯 지나치던 눈이 처음으로 머문 것이다. 하지만 이름을 건 값은 누군가 받으러 온다: '
       + '추기경 알드릭의 고해 장부에 카르디온가의 이름이 있다는 소문이 공작저까지 들어왔다. 공작은 그 값을 로제타에게 말하지 않는다.',
     via: '[2부 · 신전] 추기경 알드릭이 다시 공작저를 찾아왔다 — 이번엔 로제타를 만나겠다며. 같은 날, 성녀 디안느가 보낸 사람이 로제타에게 조용히 쪽지를 건넨다.' },
+  { key: 'power', ending: '권능의 증명', head: 'temple', location: '카르디온 공작저',
+    quest: '[2부] 카르디온의 권능을 지닌 딸로 선다',
+    notify: '[2부 · 권능의 증명 그 뒤] 파양은 없던 일이 됐다. 공작저의 사용인들이 로제타 앞에서 고개를 더 깊이 숙인다 — 두려움인지 존경인지는 아직 모른다.',
+    text: '[결말의 여파 · 권능의 증명] 실패작이라던 사생아가 카르디온의 권능을 증명했다 — 공작가는 이제 로제타를 가문의 힘으로 센다. 로제타가 평생 바라던 인정이다. '
+      + '그런데 그 인정이 로제타를 향한 건지, 권능을 향한 건지 로제타는 아직 모른다. 심판정에서 성물의 빛을 지운 힘을 대신전과 마탑이 똑똑히 봤다.',
+    via: '[2부 · 신전] 대신전이 공작저로 사람을 보냈다 — 심판정에서 성물의 빛을 지운 힘이 이단인지 축복인지 가리겠다는 명목이다. 성녀 디안느와 추기경 알드릭이 각자 다른 속셈으로 따라온다.' },
   { key: 'self', ending: '스스로 밝힌 결백', head: 'silver', location: '카르디온 공작저',
     quest: '[2부] 결백을 밝힌 뒤의 사교계에 다시 선다',
     notify: '[2부 · 결백 그 뒤] 누명은 벗었다. 누가 씌웠는지는 끝내 흐릿하다 — 사교계는 그 빈칸을 두고 다시 줄을 선다. 심판 뒤 첫 초대장은 뜻밖에도 실버버그 남작 영애 클레네에게서 왔다.',
@@ -751,6 +809,7 @@ const S = {
       desc: '로제타의 사교계 평판(−100 악녀 ~ +100 존경). 사교 자리에서 로제타를 보는 시선이 실제로 바뀌는 장면이 있을 때만 ±1~8.' },
     { id: 'health', label: '로제타의 몸', type: 'int', init: 60, min: 0, max: 100,
       desc: '로제타의 몸 상태. 각혈·쓰러짐·밤샘이면 −, 쉬고 치료받으면 +. 서사에 몸의 변화가 나올 때만.' },
+    { id: 'mana_dep', label: '마석 중독', type: 'int', init: 55, min: 0, max: 100 }, // 시스템 전용 — 금단 갈림길·이벤트·서브만 만진다
     ...PEOPLE.map(([id, label, init, , note]) => ({ id, label, type: 'int', init, min: 0, max: 100,
       desc: `${label}${id === 'rosetta' ? '가' : '이(가)'} 유저를 향한 호감 — 관계의 거리. ${note}. 우정·충성·연애 중 무엇인지는 따지지 말고, `
         + '서사에서 실제로 가까워지거나 멀어진 만큼만 ±1~8.' })),
@@ -804,6 +863,7 @@ const S = {
     // 시스템 창 [유저 2026-09-26 "예전엔 강제 동기로 퀘스트창 — 메인 임무: 로제타의 처형을 막으시오 / 실패 시 사망 — 을 보여 주게 했다"]
     { id: 'mission', label: '메인 임무', expr: 'pov == "rosetta" ? "처형을 피하시오" : "로제타의 처형을 막으시오"' },
     { id: 'penalty', label: '실패 시', expr: '"사망"' },
+    { id: 'mana_stage', label: '마석 중독 단계', expr: 'mana_dep >= 75 ? "중독" : mana_dep >= 40 ? "의존" : mana_dep >= 10 ? "가끔" : "끊음"' },
     { id: 'forced', label: '거부 시', expr: '"강제 이행"' }, // 로제타 시점 원작 이행 임무의 벌 — 몸이 원작대로 움직인다
     { id: 'chapter', label: '장', expr: 'scn_act == "debut" ? 1 : scn_act == "tea" ? 2 : scn_act == "stairs" ? 3 : scn_act == "night" ? 4 : scn_act == "verdict" ? 5 : scn_act == "after" ? 6 : 0' },
   ],
@@ -844,6 +904,8 @@ const S = {
       { id: 'cp_open', when: 'true', once: true, effects: [{ checkpoint: 'save' }] },
       // 게임오버 — 사실 기록(dead)·원작 확정(doom 100)·시종이 내쳐짐(신뢰 0). 보조에게 "벗어났나"를 판단시키지 않는다 [설계 §12]
       { id: 'go_dead', when: 'dead', effects: gameOver, notify: '[시스템] 사망 확인 — 메인 임무 실패.' },
+      // ㄷ 로제타의 몸이 무너지면 — 시점과 상관없이 로제타가 죽는다 [유저 2026-09-26]
+      { id: 'go_body', when: 'health <= 0', effects: gameOver, notify: '[시스템] 로제타의 몸이 버티지 못했다 — 메인 임무 실패. 페널티: 사망.' },
       { id: 'go_doom', when: 'doom >= 100', effects: gameOver, notify: '[시스템] 메인 임무 실패 — 원작의 결말이 굳었다. 로제타는 처형대로 끌려간다. 페널티: 사망.' },
       // 시종 시점 — 로제타의 신뢰가 바닥나면 곁에서 내쳐진다 [초안: 막기만 거듭하면 닿는다]. 면접 탈락이 쥐던 "자리를 잃는" 판돈의 후신
       { id: 'go_fired', when: 'pov == "servant" and rosetta <= 0 and cleared < 5', effects: gameOver,
@@ -864,9 +926,12 @@ const S = {
         effects: [{ set: 'power_public', expr: 'true' }, { set: 'awaken', expr: '2' }],
         notify: '[2부 · 각성] 사람들 앞에서 일이 벌어진다 — 로제타 곁의 마도구 불빛이 한꺼번에 꺼지고, 로제타에게 닿은 마법과 신성력이 흔적도 없이 사라진다. '
           + '권능 없는 실패작이라던 카르디온의 사생아에게서. 이 광경을 본 눈이 많다 — 신전과 마탑의 귀에도 곧 들어간다.' },
+      ...MANA_EVENTS,
       ...aftermathEvents,
       ...lineEvents,
     ],
+    // 마석 중독 — 금단 장면 (무작위 갈림길)
+    randomEvents: MANA_RANDOM,
   },
   fronts: [CANON, ...lineFronts],
   secrets: SECRETS,
@@ -985,6 +1050,9 @@ const S = {
     { id: 'loop', when: 'loop >= 1',
       text: '[회귀 {loop}회차] 유저는 이미 한 번 이상 죽고 되돌아왔다. 이전 판을 기억하는 건 유저뿐이고, 세상과 다른 인물은 모든 걸 처음 겪는다. 유저가 기억하는 것: {memories}' },
     // 결판과 다음 장 사이의 여파 3턴
+    { id: 'mana', when: 'sec_powder >= 1 and mana_dep >= 10',
+      text: '[마석 중독 · {mana_stage}] 로제타는 마석 가루를 끊지 못했다 — 중독이면 손이 떨리고 밤마다 서랍을 찾는다 · 의존이면 불안할 때마다 찾는다 · 가끔이면 참을 만하다. '
+        + '지금 단계에 맞게 몸의 떨림·기침·눈 밑의 그늘로 드러내라. 삼키면 피를 토한다.' },
     { id: 'aftermath', when: 'chapter >= 1 and chapter <= 4 and cleared >= chapter',
       text: '[여파] 이 장의 원작 사건이 지나갔다. 다음 원작 사건은 아직 오지 않았다 — 여파와 일상을 자유롭게 이어 가라.' },
     // 5장 — 파멸도가 낮으면 심판이 아니라 해명의 자리 [설계 §6]
@@ -1018,6 +1086,7 @@ const S = {
         { var: 'doom', label: '파멸도', bar: { max: 100 }, color: "doom >= 70 ? '#e36b7d' : doom >= 40 ? '#d4b26a' : '#9fc79a'" },
         { var: 'rep', label: '평판' },
         { var: 'health', label: '로제타의 몸', bar: { max: 100 }, color: "health <= 30 ? '#e36b7d' : '#b9a3e0'" },
+        { var: 'mana_stage', label: '마석 중독', showWhen: 'sec_powder >= 1' },
       ] },
       { tab: '현황', label: '관계', items: [
         ...PEOPLE.map(([id, label]) => ({ var: id, label, bar: { max: 100 }, ...(id === 'rosetta' ? { showWhen: 'pov != "rosetta"' } : {}) })),
@@ -1073,7 +1142,8 @@ for (const w of v.warnings) console.log(`  · 경고 ${w.path}: ${w.msg}`);
 
 let seedN = 0;
 const RNG = (tag) => seededRng('villainess', ++seedN, tag);
-const start = (preset) => { let st = engine.initState(S); st = engine.applyPreset(S, st, preset).state; st.meta.setupDone = true; return st; };
+// 마석 중독의 금단 장면은 무작위 갈림길이라 긴 흐름 시험의 절정 자리를 가로챈다 — 중독을 안 보는 시험은 0에서 (keepMana면 그대로)
+const start = (preset, keepMana) => { let st = engine.initState(S); st = engine.applyPreset(S, st, preset).state; st.meta.setupDone = true; if (!keepMana) st.vars.mana_dep = 0; return st; };
 const send = (st, opt = {}) => engine.sendPhase(S, st, { rng: RNG('s'), ...opt });
 const out = (st, ch = {}, opt = {}) => engine.outputPhase(S, st, ch, {}, { rng: RNG('o'), ...opt });
 const turn = (st, ch = {}, opt = {}) => { const s = send(st, opt.send || {}); const o = out(s.state, ch, opt.out || {}); return { s, o, st: o.state }; };
@@ -1547,7 +1617,7 @@ console.log('\n━━ 2부 — 각성 · 진영 줄기 · 무대 뒤 ━━');
 console.log('\n━━ 결말 → 2부의 출발점 ━━');
 {
   const after = (pov, ending, extra = {}) => { const st = start(pov); Object.assign(st.vars, { scn_idx: 6, scn_turns: 0, cleared: 5, ending, doom: 20, ...extra }); return st; };
-  ok('결말 일곱 = 심판 선택지의 결말 전부 (받아들인다 빼고)', AFTERMATH.length === 7
+  ok('결말 여덟 = 심판 선택지의 결말 전부 (받아들인다 빼고)', AFTERMATH.length === 8
     && ['rosetta', 'servant'].every((pov) => verdictChoices(pov).filter((c) => c.effects.some((e) => e.set === 'ending')).every((c) => AFTERMATH.some((a) => c.effects.some((e) => e.set === 'ending' && e.expr === JSON.stringify(a.ending))))), '');
   for (const a of AFTERMATH) {
     const ln = LINES.find((l) => l.id === a.head);
@@ -1620,6 +1690,69 @@ console.log('\n━━ 서브 완료 — 리칼·공작·황태자로 가는 길 
   o = turn(o).st;
   ok('★ 옛 판(서브를 나눠 받은 적 없음)엔 공짜 보상이 없다', o.vars.duke === o0.duke && o.vars.ert === o0.ert && o.vars.health === o0.health, JSON.stringify(o0));
   ok('퀘스트 목록 상한 14 — 시스템 항목이 잘려 "완료"로 오인되지 않게', S.vars.find((v) => v.id === 'quests').maxItems === 14, '');
+}
+
+console.log('\n━━ 마석 중독 · 권능의 증명 · 몸 ━━');
+{
+  const { evaluate } = SC.require('expr');
+  const chance = (st) => evaluate(S.rules.randomEvents.chancePerTurn, engine.makeLookup(S, st.vars), null);
+  const pickRandom = (st, id, label) => { st.meta.pendingChoice = { id, turn: st.meta.turn }; st.meta.eventLastFired[id] = st.meta.turn; // 추첨으로 뜬 것처럼 — 쿨다운이 선다
+    st.meta.pendingChoicePick = S.rules.randomEvents.table.find((e) => e.id === id).choices.findIndex((c) => c.label === label); return st; };
+  let st = start('rosetta', true);
+  ok('시작: 마석 중독 55 = 의존 · 서장엔 금단 장면 없음', st.vars.mana_dep === 55 && L(st, 'mana_stage') === '의존' && chance(st) === 0, String(chance(st)));
+  const h0 = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 61 });
+  ok('★ 병의 정체를 모르면 상태창에 마석 중독 줄이 없다 · 프롬프트에도 단계 없음', !h0.includes('>마석 중독<') && !send(st).promptBlock.includes('[마석 중독'), '');
+  st.vars.scn_idx = 1;
+  ok('1장부터 금단 장면 — 의존 18%/턴 · 중독 25% · 가끔 10% · 끊음 0', Math.abs(chance(st) - 0.18) < 1e-9 && Math.abs(chance({ vars: { ...st.vars, mana_dep: 80 } }) - 0.25) < 1e-9
+    && Math.abs(chance({ vars: { ...st.vars, mana_dep: 20 } }) - 0.1) < 1e-9 && chance({ vars: { ...st.vars, mana_dep: 5 } }) === 0, '');
+  // 로제타 시점 — 병을 열면 +10 · 몸 −6 · 병의 정체가 드러난다
+  const t = send(pickRandom(st, 'crave_rosetta', '서랍 속 작은 병을 연다'));
+  ok('★ 로제타: 서랍 속 작은 병을 연다 → 중독 +10 · 몸 −6 · 작은 병을 찾음', t.state.vars.mana_dep === 65 && t.state.vars.health === 54 && t.state.vars.bottle_found === true,
+    JSON.stringify({ m: t.state.vars.mana_dep, h: t.state.vars.health }));
+  st = out(t.state).state;
+  const h1 = SC.require('render').renderStatusHtml(S, st, null, null, { uid: 62 });
+  const p1 = send(st).promptBlock;
+  ok('병의 정체가 드러난 뒤 — 상태창 마석 중독 줄 · 프롬프트 [마석 중독 · 의존]', h1.includes('>마석 중독<') && p1.includes('[마석 중독 · 의존]'), JSON.stringify({ m: st.vars.mana_dep }));
+  ok('안 고르면 = 병을 연다 (맨 끝)', S.rules.randomEvents.table.find((e) => e.id === 'crave_rosetta').choices.slice(-1)[0].label === '서랍 속 작은 병을 연다', '');
+  // 비밀은 이벤트 뒤에 열린다 — 비밀에 걸린 이벤트는 한 턴 늦게 선다
+  st.vars.awaken = 2;
+  st = turn(st).st;
+  ok('다음 턴 안나가 털어놓는다 → 중독 −10', st.vars.mana_dep === 55 && send(st).promptBlock.includes('[마석 중독] 안나가 알고 있던 것을'), JSON.stringify({ m: st.vars.mana_dep }));
+  st = turn(st).st;
+  ok('★ 권능의 전모가 열리면 → 중독 −25 (가루는 필요 없었다) · 한 번만', st.vars.sec_power === 2 && st.vars.mana_dep === 30 && L(st, 'mana_stage') === '가끔'
+    && send(st).promptBlock.includes('가루는 필요 없었다'), JSON.stringify({ sp: st.vars.sec_power, m: st.vars.mana_dep }));
+  st.vars.mana_dep = 5; st = turn(st).st;
+  ok('끊으면 → 몸 +10 · 통지', send(st).promptBlock.includes('로제타의 기침이 잦아든다') && !send(st).promptBlock.includes('[마석 중독 ·'), '');
+  // 시종 시점 — 곁을 지킨다는 신뢰 40부터
+  const sv = start('servant', true);
+  ok('시종: 금단 장면 막는다·곁을 지킨다(신뢰 40)·돕는다·모른 척', S.rules.randomEvents.table.find((e) => e.id === 'crave_other').choices.map((c) => c.when || '').join('|') === '|rosetta >= 40||', '');
+  const ex = start('servant', true);
+  Object.assign(ex.vars, { scn_idx: 6, cleared: 5, ending: '대신 진 죄' });
+  const lk = engine.makeLookup(S, ex.vars);
+  ok('추방된 시종에겐 금단 장면이 안 온다 (로제타 곁에 없다)', !evaluate(S.rules.randomEvents.table.find((e) => e.id === 'crave_other').when, lk, null), '');
+  // ㄷ 몸 0 → 회귀
+  let b = turn(start('rosetta', true)).st;
+  b.vars.health = 0;
+  b = turn(b).st;
+  ok('★ 로제타의 몸 0 → 게임오버 → 회귀', b.vars.loop === 1 && b.vars.health === 60 && send(b).promptBlock.includes('로제타의 몸이 버티지 못했다'), JSON.stringify({ loop: b.vars.loop, h: b.vars.health }));
+  // ㄱ 권능의 증명 · ㄷ 도주는 몸이 버텨야
+  let v = cp(verdictState);
+  Object.assign(v.vars, { doom: 50, awaken: 1, health: 15 });
+  v = turn(v, { on_stage: true }).st;
+  const vh = SC.require('render').renderStatusHtml(S, v, null, null, { uid: 63 });
+  const rows = (vh.match(/<div class="sim-choice[^"]*">.*?<\/div>/g) || []);
+  const locked = (label) => rows.some((r) => r.includes(label) && r.includes('🔒'));
+  ok('★ 권능 흔적 1 → 권능의 증명 🔒 · 몸 15 → 도주 🔒', v.meta.pendingChoice?.id === 'verdict_rosetta' && locked('권능을 드러내') && locked('도망친다'), rows.map((r) => r.replace(/<[^>]+>/g, '').slice(0, 20)).join(' / '));
+  let w = cp(verdictState);
+  Object.assign(w.vars, { doom: 50, awaken: 2 });
+  w = turn(w, { on_stage: true }).st;
+  const d0 = w.vars.duke;
+  w = turn(pickBy(w, '권능을 드러내 카르디온의 피를 증명한다')).st;
+  ok('★ 권능 흔적 2 → 권능의 증명: 결말 · 권능이 알려짐 · 공작 +15 · 원작 이후', w.vars.ending === '권능의 증명' && w.vars.power_public === true && w.vars.duke === d0 + 15 && L(w, 'scn_act') === 'after',
+    JSON.stringify({ e: w.vars.ending, p: w.vars.power_public, d: [d0, w.vars.duke] }));
+  for (let i = 0; i < 4; i++) w = turn(w, { skip_min: 30 }).st;
+  ok('권능의 증명 → 2부: 각성 사건은 다시 안 뜨고 · 신전 줄기가 먼저 열린다', w.vars.ql_temple === 1 && !w.meta.firedOnce.awakening && w.vars.location === '카르디온 공작저',
+    JSON.stringify({ ql: w.vars.ql_temple, aw: w.meta.firedOnce.awakening, loc: w.vars.location }));
 }
 
 if (fails) { console.log(`\n❗ ${fails}건 실패 — 저장하지 않는다`); process.exit(1); }

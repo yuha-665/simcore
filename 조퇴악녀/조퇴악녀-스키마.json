@@ -112,6 +112,14 @@
       "desc": "로제타의 몸 상태. 각혈·쓰러짐·밤샘이면 −, 쉬고 치료받으면 +. 서사에 몸의 변화가 나올 때만."
     },
     {
+      "id": "mana_dep",
+      "label": "마석 중독",
+      "type": "int",
+      "init": 55,
+      "min": 0,
+      "max": 100
+    },
+    {
       "id": "elicia",
       "label": "엘리시아",
       "type": "int",
@@ -546,6 +554,11 @@
       "id": "penalty",
       "label": "실패 시",
       "expr": "\"사망\""
+    },
+    {
+      "id": "mana_stage",
+      "label": "마석 중독 단계",
+      "expr": "mana_dep >= 75 ? \"중독\" : mana_dep >= 40 ? \"의존\" : mana_dep >= 10 ? \"가끔\" : \"끊음\""
     },
     {
       "id": "forced",
@@ -1737,6 +1750,20 @@
           }
         ],
         "notify": "[시스템] 사망 확인 — 메인 임무 실패."
+      },
+      {
+        "id": "go_body",
+        "when": "health <= 0",
+        "effects": [
+          {
+            "set": "loop",
+            "expr": "loop + 1"
+          },
+          {
+            "checkpoint": "load"
+          }
+        ],
+        "notify": "[시스템] 로제타의 몸이 버티지 못했다 — 메인 임무 실패. 페널티: 사망."
       },
       {
         "id": "go_doom",
@@ -4000,6 +4027,47 @@
             "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
           },
           {
+            "label": "권능을 드러내 카르디온의 피를 증명한다",
+            "when": "awaken >= 2",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"권능의 증명\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "power_public",
+                "expr": "true"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "심판정의 결계와 성물의 빛이 로제타의 손끝에서 꺼진다 — 파괴의 권능. 카르디온 직계만이 지니는, 저마다 다른 것을 부수는 힘이다. 여덟 살의 각성식이 \"아무것도 없다\"고 했던 건 이 힘이 지우는 힘이라서였다. 실패작이라던 사생아가 카르디온의 피를 증명한다 — 처형대에 세우기엔 너무 귀한 힘이다. 공작의 눈이 처음으로 로제타에게 머문다."
+          },
+          {
             "label": "스스로 결백을 밝힌다",
             "when": "doom <= 30",
             "effects": [
@@ -4034,6 +4102,7 @@
           },
           {
             "label": "심판정을 빠져나가 도망친다",
+            "when": "health > 20",
             "effects": [
               {
                 "set": "ending",
@@ -4235,6 +4304,47 @@
             "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
           },
           {
+            "label": "로제타의 권능을 모두 앞에 드러낸다",
+            "when": "awaken >= 2",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"권능의 증명\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "power_public",
+                "expr": "true"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "심판정의 결계와 성물의 빛이 로제타의 손끝에서 꺼진다 — 파괴의 권능. 카르디온 직계만이 지니는, 저마다 다른 것을 부수는 힘이다. 여덟 살의 각성식이 \"아무것도 없다\"고 했던 건 이 힘이 지우는 힘이라서였다. 실패작이라던 사생아가 카르디온의 피를 증명한다 — 처형대에 세우기엔 너무 귀한 힘이다. 공작의 눈이 처음으로 로제타에게 머문다."
+          },
+          {
             "label": "내가 대신 죄를 쓴다",
             "when": "rosetta >= 70",
             "effects": [
@@ -4306,6 +4416,7 @@
           },
           {
             "label": "로제타를 데리고 도망친다",
+            "when": "health > 20",
             "effects": [
               {
                 "set": "ending",
@@ -4507,6 +4618,47 @@
             "inject": "카르디온 공작이 파양 대신 가문의 이름을 건다. 로제타를 유리창 보듯 지나쳐 보던 눈이 처음으로 로제타에게 머문다."
           },
           {
+            "label": "로제타의 권능을 모두 앞에 드러낸다",
+            "when": "awaken >= 2",
+            "effects": [
+              {
+                "set": "ending",
+                "expr": "\"권능의 증명\""
+              },
+              {
+                "set": "duke",
+                "expr": "duke + 15"
+              },
+              {
+                "set": "rep",
+                "expr": "rep + 10"
+              },
+              {
+                "set": "power_public",
+                "expr": "true"
+              },
+              {
+                "set": "cleared",
+                "expr": "max(cleared, 5)"
+              },
+              {
+                "set": "on_stage",
+                "expr": "false"
+              },
+              {
+                "set": "clear_at",
+                "expr": "scn_turns"
+              },
+              {
+                "list": "quests",
+                "remove": [
+                  "[5장] 심판에서 살아남는다"
+                ]
+              }
+            ],
+            "inject": "심판정의 결계와 성물의 빛이 로제타의 손끝에서 꺼진다 — 파괴의 권능. 카르디온 직계만이 지니는, 저마다 다른 것을 부수는 힘이다. 여덟 살의 각성식이 \"아무것도 없다\"고 했던 건 이 힘이 지우는 힘이라서였다. 실패작이라던 사생아가 카르디온의 피를 증명한다 — 처형대에 세우기엔 너무 귀한 힘이다. 공작의 눈이 처음으로 로제타에게 머문다."
+          },
+          {
             "label": "내가 대신 죄를 쓴다",
             "when": "rosetta >= 70",
             "effects": [
@@ -4578,6 +4730,7 @@
           },
           {
             "label": "로제타를 데리고 도망친다",
+            "when": "health > 20",
             "effects": [
               {
                 "set": "ending",
@@ -4707,9 +4860,13 @@
           {
             "set": "health",
             "expr": "health + 15"
+          },
+          {
+            "set": "mana_dep",
+            "expr": "mana_dep - 10"
           }
         ],
-        "notify": "[서브 완료] 로제타의 기침을 봐 줄 의사를 찾는다 — 로제타의 기침을 봐 줄 사람이 생겼다."
+        "notify": "[서브 완료] 로제타의 기침을 봐 줄 의사를 찾는다 — 로제타의 기침을 봐 줄 사람이 생겼다 — 의사는 서랍 속 병 이야기를 꺼내지 않고도 알아챈다."
       },
       {
         "id": "sub_stairs_1",
@@ -4792,6 +4949,42 @@
           }
         ],
         "notify": "[2부 · 각성] 사람들 앞에서 일이 벌어진다 — 로제타 곁의 마도구 불빛이 한꺼번에 꺼지고, 로제타에게 닿은 마법과 신성력이 흔적도 없이 사라진다. 권능 없는 실패작이라던 카르디온의 사생아에게서. 이 광경을 본 눈이 많다 — 신전과 마탑의 귀에도 곧 들어간다."
+      },
+      {
+        "id": "mana_truth",
+        "once": true,
+        "when": "sec_power >= 2 and mana_dep >= 10",
+        "effects": [
+          {
+            "set": "mana_dep",
+            "expr": "mana_dep - 25"
+          }
+        ],
+        "notify": "[마석 중독] 권능은 처음부터 깨어 있었다 — 가루는 필요 없었다. 서랍으로 가던 손의 이유 하나가 사라졌다."
+      },
+      {
+        "id": "mana_anna",
+        "once": true,
+        "when": "sec_anna >= 1 and mana_dep >= 10",
+        "effects": [
+          {
+            "set": "mana_dep",
+            "expr": "mana_dep - 10"
+          }
+        ],
+        "notify": "[마석 중독] 안나가 알고 있던 것을 입 밖에 냈다 — 이제 밤마다 로제타의 방 앞을 지키는 사람이 있다."
+      },
+      {
+        "id": "mana_quit",
+        "once": true,
+        "when": "mana_dep < 10 and sec_powder >= 1",
+        "effects": [
+          {
+            "set": "health",
+            "expr": "health + 10"
+          }
+        ],
+        "notify": "[마석 중독] 서랍의 잠긴 칸이 며칠째 열리지 않았다 — 로제타의 기침이 잦아든다."
       },
       {
         "id": "am_rical",
@@ -4946,6 +5139,44 @@
         "notify": "[2부 · 신전] 추기경 알드릭이 다시 공작저를 찾아왔다 — 이번엔 로제타를 만나겠다며. 같은 날, 성녀 디안느가 보낸 사람이 로제타에게 조용히 쪽지를 건넨다."
       },
       {
+        "id": "am_power",
+        "once": true,
+        "when": "scn_act == \"after\" and ending == \"권능의 증명\"",
+        "effects": [
+          {
+            "set": "location",
+            "expr": "\"카르디온 공작저\""
+          },
+          {
+            "list": "quests",
+            "add": [
+              "[2부] 카르디온의 권능을 지닌 딸로 선다"
+            ]
+          }
+        ],
+        "notify": "[2부 · 권능의 증명 그 뒤] 파양은 없던 일이 됐다. 공작저의 사용인들이 로제타 앞에서 고개를 더 깊이 숙인다 — 두려움인지 존경인지는 아직 모른다."
+      },
+      {
+        "id": "am_power_line",
+        "when": "scn_act == \"after\" and ending == \"권능의 증명\" and ql_temple == 0 and scn_turns >= 3",
+        "effects": [
+          {
+            "set": "ql_temple",
+            "expr": "1"
+          },
+          {
+            "list": "quests",
+            "remove": [
+              "[2부] 카르디온의 권능을 지닌 딸로 선다"
+            ],
+            "add": [
+              "[신전] 대신전의 암투에 발을 들인다"
+            ]
+          }
+        ],
+        "notify": "[2부 · 신전] 대신전이 공작저로 사람을 보냈다 — 심판정에서 성물의 빛을 지운 힘이 이단인지 축복인지 가리겠다는 명목이다. 성녀 디안느와 추기경 알드릭이 각자 다른 속셈으로 따라온다."
+      },
+      {
         "id": "am_self",
         "once": true,
         "when": "scn_act == \"after\" and ending == \"스스로 밝힌 결백\"",
@@ -5073,7 +5304,8 @@
               "[신전] 대신전의 암투에 발을 들인다"
             ],
             "remove": [
-              "[2부] 공작이 건 이름의 값을 알아낸다"
+              "[2부] 공작이 건 이름의 값을 알아낸다",
+              "[2부] 카르디온의 권능을 지닌 딸로 선다"
             ]
           }
         ],
@@ -5771,7 +6003,161 @@
           }
         ]
       }
-    ]
+    ],
+    "randomEvents": {
+      "chancePerTurn": "scn_act != \"prologue\" and mana_dep >= 10 ? (mana_dep >= 75 ? 0.25 : mana_dep >= 40 ? 0.18 : 0.1) : 0",
+      "table": [
+        {
+          "id": "crave_rosetta",
+          "when": "pov == \"rosetta\"",
+          "weight": 3,
+          "cooldown": 5,
+          "timeout": 1,
+          "choices": [
+            {
+              "label": "서랍 대신 안나를 부른다",
+              "when": "anna >= 60",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep - 12"
+                },
+                {
+                  "set": "anna",
+                  "expr": "anna + 3"
+                }
+              ],
+              "inject": "로제타가 서랍 대신 안나를 부른다. 안나는 아무것도 묻지 않고 곁에 앉아 떨리는 손을 쥐어 준다 — 밤이 길다."
+            },
+            {
+              "label": "이를 악물고 참는다",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep - 8"
+                },
+                {
+                  "set": "health",
+                  "expr": "health - 3"
+                }
+              ],
+              "inject": "로제타가 이를 악물고 버틴다. 식은땀과 떨림은 새벽이 되어서야 가라앉는다."
+            },
+            {
+              "label": "서랍 속 작은 병을 연다",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep + 10"
+                },
+                {
+                  "set": "health",
+                  "expr": "health - 6"
+                },
+                {
+                  "set": "bottle_found",
+                  "expr": "true"
+                }
+              ],
+              "inject": "로제타의 손이 먼저 서랍을 연다. 작은 병의 쓴 가루를 삼키자 떨림이 멎는다 — 그리고 곧 기침, 손수건에 붉은 것이 번진다."
+            }
+          ],
+          "notify": "[로제타의 몸] 손끝이 떨리고 목이 탄다 — 몸이 화장대 서랍의 잠긴 칸을 기억한다. 이 갈증은 빙의자가 아니라 로제타의 몸에 붙어 있던 것이다."
+        },
+        {
+          "id": "crave_other",
+          "when": "pov != \"rosetta\" and not (scn_act == \"after\" and ending == \"대신 진 죄\")",
+          "weight": 3,
+          "cooldown": 5,
+          "timeout": 1,
+          "choices": [
+            {
+              "label": "막는다 — 로제타의 손을 서랍에서 떼어 낸다",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep - 8"
+                },
+                {
+                  "set": "rosetta",
+                  "expr": "rosetta - 6"
+                },
+                {
+                  "set": "bottle_found",
+                  "expr": "true"
+                }
+              ],
+              "inject": "유저가 서랍으로 가던 로제타의 손목을 붙잡는다. 작은 병이 바닥을 구른다. 로제타가 유저를 노려본다 — \"네가 뭘 안다고.\""
+            },
+            {
+              "label": "곁을 지킨다 — 떨림이 멎을 때까지 손을 잡는다",
+              "when": "rosetta >= 40",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep - 10"
+                },
+                {
+                  "set": "rosetta",
+                  "expr": "rosetta + 5"
+                },
+                {
+                  "set": "health",
+                  "expr": "health - 2"
+                }
+              ],
+              "inject": "유저가 아무것도 묻지 않고 로제타의 떨리는 손을 잡는다. 로제타는 뿌리치지 않는다 — 새벽까지."
+            },
+            {
+              "label": "돕는다 — 물 한 잔을 떠다 준다",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep + 10"
+                },
+                {
+                  "set": "health",
+                  "expr": "health - 6"
+                },
+                {
+                  "set": "rosetta",
+                  "expr": "rosetta + 4"
+                }
+              ],
+              "inject": "유저가 말없이 물 한 잔을 내민다. 로제타가 서랍 속 병의 가루를 삼킨다. 떨림이 멎고 곧 기침 — 이 일을 아는 사람이 하나 늘었다는 걸 로제타는 싫어하지 않는 얼굴이다."
+            },
+            {
+              "label": "모른 척한다",
+              "effects": [
+                {
+                  "set": "mana_dep",
+                  "expr": "mana_dep + 10"
+                },
+                {
+                  "set": "health",
+                  "expr": "health - 6"
+                }
+              ],
+              "inject": "유저가 방을 나선다. 문 너머로 서랍 여는 소리, 그리고 한참 이어지는 기침."
+            }
+          ],
+          "notify": "[로제타의 몸] 로제타의 손끝이 떨린다. 시선이 자꾸 화장대 서랍의 잠긴 칸으로 간다."
+        },
+        {
+          "id": "cough",
+          "when": "mana_dep >= 40 and health > 10 and (pov == \"rosetta\" or not (scn_act == \"after\" and ending == \"대신 진 죄\"))",
+          "weight": 1,
+          "cooldown": 4,
+          "effects": [
+            {
+              "set": "health",
+              "expr": "health - 4"
+            }
+          ],
+          "notify": "[로제타의 몸] 기침이 멎지 않는다 — 로제타가 급히 손수건을 입가에 댄다. 붉은 것이 번진다."
+        }
+      ]
+    }
   },
   "fronts": [
     {
@@ -6488,6 +6874,11 @@
       "text": "[회귀 {loop}회차] 유저는 이미 한 번 이상 죽고 되돌아왔다. 이전 판을 기억하는 건 유저뿐이고, 세상과 다른 인물은 모든 걸 처음 겪는다. 유저가 기억하는 것: {memories}"
     },
     {
+      "id": "mana",
+      "when": "sec_powder >= 1 and mana_dep >= 10",
+      "text": "[마석 중독 · {mana_stage}] 로제타는 마석 가루를 끊지 못했다 — 중독이면 손이 떨리고 밤마다 서랍을 찾는다 · 의존이면 불안할 때마다 찾는다 · 가끔이면 참을 만하다. 지금 단계에 맞게 몸의 떨림·기침·눈 밑의 그늘로 드러내라. 삼키면 피를 토한다."
+    },
+    {
       "id": "aftermath",
       "when": "chapter >= 1 and chapter <= 4 and cleared >= chapter",
       "text": "[여파] 이 장의 원작 사건이 지나갔다. 다음 원작 사건은 아직 오지 않았다 — 여파와 일상을 자유롭게 이어 가라."
@@ -6516,6 +6907,11 @@
       "id": "am_duke",
       "when": "scn_act == \"after\" and ending == \"공작의 이름\" and ql_temple < 3",
       "text": "[결말의 여파 · 공작의 이름] 카르디온 공작이 로제타를 위해 가문의 이름을 걸었다 — 로제타를 유리창 보듯 지나치던 눈이 처음으로 머문 것이다. 하지만 이름을 건 값은 누군가 받으러 온다: 추기경 알드릭의 고해 장부에 카르디온가의 이름이 있다는 소문이 공작저까지 들어왔다. 공작은 그 값을 로제타에게 말하지 않는다."
+    },
+    {
+      "id": "am_power",
+      "when": "scn_act == \"after\" and ending == \"권능의 증명\" and ql_temple < 3",
+      "text": "[결말의 여파 · 권능의 증명] 실패작이라던 사생아가 카르디온의 권능을 증명했다 — 공작가는 이제 로제타를 가문의 힘으로 센다. 로제타가 평생 바라던 인정이다. 그런데 그 인정이 로제타를 향한 건지, 권능을 향한 건지 로제타는 아직 모른다. 심판정에서 성물의 빛을 지운 힘을 대신전과 마탑이 똑똑히 봤다."
     },
     {
       "id": "am_self",
@@ -6752,6 +7148,11 @@
               "max": 100
             },
             "color": "health <= 30 ? '#e36b7d' : '#b9a3e0'"
+          },
+          {
+            "var": "mana_stage",
+            "label": "마석 중독",
+            "showWhen": "sec_powder >= 1"
           }
         ]
       },

@@ -14,9 +14,14 @@
 //     막힌 사이에 100을 채워 두었다가 풀리자마자 터뜨리지 않는다.
 //   - 서사의 개입은 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 게이지를 당기거나(+) 늦춘다(−). 0~100으로 잘린다.
 //   - 항목 cooldown도 게이지 모드에선 **날** 단위(시간 체계가 있을 때) — 마지막 발동 시각(meta.eventLastAt, epoch 분)으로 잰다.
+//   - **징조** (v1.14.1, 유저 "주변에 징조가 있으면 갑자기 터지는 것보다 자연스럽다") — 게이지가 omenAt(기본 80)을 넘으면 다음에 올
+//     사건을 **미리 하나 뽑아 둔다**(re_next). 그 사건에 `omen` 글이 있으면 메인 프롬프트에 이유 없는 징후로 깔린다. 100이 되면
+//     그 사건이 터진다(그새 조건이 바뀌어 못 오게 됐으면 징조를 거두고 새로 뽑는다). 효과가 게이지를 선 아래로 내리면 징조가 걷힌다.
+//     "무언가 온다"를 두루뭉술하게 흘리지 않는 이유: 표에는 좋은 일도 섞여 있다 — 불길한 전조 뒤에 아기가 태어나면 서사가 어긋난다.
+//     omen이 없는 사건은 징조 없이 온다(작은 순풍은 갑자기 와도 된다). 한 턴에 선을 건너뛰어 100에 닿으면 징조 없이 터진다(며칠을 건너뛴 사이의 일).
 //
 // 예약 키 (vars에 산다 — scn_idx·fr_*와 같은 계열. 패널 현황 탭은 스키마 vars만 그리므로 안 보이고,
-// 스냅샷·체크포인트 되감기가 같이 되감는다): re_gauge (0~100), re_cool (남은 식힘 — 날 또는 턴).
+// 스냅샷·체크포인트 되감기가 같이 되감는다): re_gauge (0~100), re_cool (남은 식힘 — 날 또는 턴), re_next (징조가 가리키는 사건 id, 없으면 '').
 // 보조 AI는 못 만진다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80`으로 전조 지시문을 걸 수 있다.
 // 변화 원장에는 안 남긴다 — 변화 로그·하이라이트·보조 원장 어디에도 게이지가 새지 않는다(보이지 않는 게 요점).
 
@@ -24,9 +29,11 @@ const { evaluate } = require('./expr');
 
 const GAUGE_KEY = 're_gauge';
 const COOL_KEY = 're_cool';
+const NEXT_KEY = 're_next';
 const GAUGE_MAX = 100;
 const DEFAULT_JITTER = 0.5;
-const RESERVED = [GAUGE_KEY, COOL_KEY];
+const DEFAULT_OMEN_AT = 80;
+const RESERVED = [GAUGE_KEY, COOL_KEY, NEXT_KEY];
 
 const isRate = (x) => typeof x === 'number' || (typeof x === 'string' && x.trim() !== '');
 // 부동소수 찌꺼기 정리 — 99.99999999 때문에 100 문턱이 한 턴 늦지 않게
@@ -38,7 +45,14 @@ function gaugeConfig(schema) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return null;
   const j = Number(g.jitter);
   const cd = Number(g.cooldown);
+  // 징조 선 — 명시하면 그 값, 아니면 표에 omen이 하나라도 있을 때 80. 0 또는 false면 끈다
+  const table = Array.isArray(schema.rules.randomEvents.table) ? schema.rules.randomEvents.table : [];
+  const oa = Number(g.omenAt);
+  const omenAt = g.omenAt === false || g.omenAt === 0 ? null
+    : (g.omenAt != null && Number.isFinite(oa) ? Math.max(1, Math.min(GAUGE_MAX - 1, oa))
+      : (table.some((e) => e && typeof e.omen === 'string' && e.omen.trim()) ? DEFAULT_OMEN_AT : null));
   return {
+    omenAt,
     perDay: isRate(g.perDay) ? g.perDay : 0,
     perTurn: isRate(g.perTurn) ? g.perTurn : 0,
     jitter: g.jitter == null ? DEFAULT_JITTER : (Number.isFinite(j) ? Math.max(0, Math.min(1, j)) : DEFAULT_JITTER),
@@ -54,6 +68,24 @@ function ensureGaugeKeys(schema, vars) {
   if (!gaugeConfig(schema)) return;
   if (typeof vars[GAUGE_KEY] !== 'number') vars[GAUGE_KEY] = 0;
   if (typeof vars[COOL_KEY] !== 'number') vars[COOL_KEY] = 0;
+  if (typeof vars[NEXT_KEY] !== 'string') vars[NEXT_KEY] = '';
+}
+
+/**
+ * 메인 프롬프트 징조 블록 — 뽑아 둔 다음 사건에 omen이 있을 때만. 사건 이름·무엇의 징조인지는 싣지 않는다(글만).
+ * @param render {변수} 치환기 (엔진이 renderTemplate을 물려 준다)
+ */
+function omenInjectionText(schema, vars, render = (x) => x) {
+  if (!gaugeConfig(schema)) return '';
+  const id = typeof vars?.[NEXT_KEY] === 'string' ? vars[NEXT_KEY] : '';
+  if (!id) return '';
+  const ev = (schema.rules.randomEvents.table || []).find((e) => e && e.id === id);
+  const text = ev && typeof ev.omen === 'string' ? ev.omen.trim() : '';
+  if (!text) return '';
+  return '[징조 — 곧 무슨 일이 닥친다]\n'
+    + '아래는 그 일이 오기 전 주변에 비치는 겉모습이다. 무엇의 징조인지는 너도 모른다 — 이유를 짓거나 설명하지 말고, '
+    + '일이 벌어지게 하지도 마라. 풍경·사람들의 행동·소문으로 장면 배경에 스치듯 흘려라. 매번 언급할 필요는 없다.\n'
+    + `- ${render(text)}`;
 }
 
 const isGaugeEffect = (rule) => !!rule && typeof rule === 'object' && rule.gauge !== undefined;
@@ -92,6 +124,6 @@ function meanInterval(cfg, lookup = () => 0) {
 }
 
 module.exports = {
-  GAUGE_KEY, COOL_KEY, GAUGE_MAX, DEFAULT_JITTER, RESERVED,
-  gaugeConfig, gaugeExposedNames, ensureGaugeKeys, isGaugeEffect, applyGaugeEffect, fillAmount, meanInterval, tidy,
+  GAUGE_KEY, COOL_KEY, NEXT_KEY, GAUGE_MAX, DEFAULT_JITTER, DEFAULT_OMEN_AT, RESERVED,
+  gaugeConfig, gaugeExposedNames, ensureGaugeKeys, isGaugeEffect, applyGaugeEffect, fillAmount, meanInterval, omenInjectionText, tidy,
 };

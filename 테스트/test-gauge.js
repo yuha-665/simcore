@@ -267,6 +267,7 @@ const fireDays = (S, turns, skipOf, tag = 'r', st0 = null) => {
     ck('편집기: 발동 방식 · 하루에 차는 양 · 쉬는 날 칸', text.includes('발동 방식') && text.includes('하루에 차는 양') && text.includes('터진 뒤 쉬는 날'), '');
     ck('편집기: 미리보기 "평균 13.0일에 한 번"', text.includes('평균 13.0일에 한 번'), (text.match(/시작 상태 기준[^·]*/) || [''])[0]);
     ck('편집기: 게이지 모드에선 턴당 확률 칸이 없다', !text.includes('턴당 발동 확률'), '');
+    ck('편집기: 징조 선 칸 + 사건 카드마다 징조 칸 (v1.14.1)', text.includes('징조가 비치는 선') && (text.match(/게이지가 선을 넘어 이 사건이 다음 차례로/g) || []).length === 2, '');
     const sel = findAll(container, (e) => e.tagName === 'SELECT' && findAll(e, (o) => o.tagName === 'OPTION' && (o.textContent || '').includes('⏳ 게이지')).length)[0];
     ck('편집기: 방식 선택 상자가 있다', !!sel, '');
     if (sel) {
@@ -284,6 +285,67 @@ const fireDays = (S, turns, skipOf, tag = 'r', st0 = null) => {
     ck('편집기: [액션] 탭 — 게이지 효과 줄이 그려진다', !e3 && findAll(container, (e) => e.className && e.className.includes('sce-effect-gauge')).length >= 2, e3 && e3.message);
     ck('편집기: [액션] 탭 — "+ ⏳ 사건 게이지" 추가 버튼', container.textContent.includes('+ ⏳ 사건 게이지'), '');
   }
+}
+
+// ── ⑨ 징조 (v1.14.1) — 선을 넘으면 다음 사건을 미리 정하고, 그 사건의 omen 글이 메인에 깔린다 ──
+{
+  const RAIN_OMEN = '서쪽 하늘이 저녁마다 누렇게 탄다.';
+  const WIND_OMEN = '제비가 낮게 난다.';
+  const S = cp(BASE); S.directives = [];
+  S.rules.randomEvents.table[0].omen = RAIN_OMEN;
+  S.rules.randomEvents.table[1].omen = WIND_OMEN;
+  ck('⑨ 검증: omen이 있으면 선 기본 80', engine.gaugeConfig(S).omenAt === 80 && validateSchema(S).ok, JSON.stringify(validateSchema(S).errors));
+  let st = fresh(S); const seen = [];
+  for (let i = 0; i < 10; i++) {
+    const t = turn(S, st, 1, i, {}, 'om'); st = t.st;
+    const block = t.s.promptBlock;
+    seen.push({ d: day(S, st), next: st.vars.re_next, fired: t.o.firedEvents[0] || '', omenInSend: block.includes('[징조') });
+  }
+  const at8 = seen.find((x) => x.d === 8);
+  ck('⑨ 80을 넘는 날 다음 사건이 정해진다 (8일째)', at8 && (at8.next === 'rain' || at8.next === 'wind'), JSON.stringify(seen));
+  const picked = at8 && at8.next;
+  ck('⑨ ★ 정해 둔 그 사건이 100에 터진다 (10일째)', seen.find((x) => x.d === 10)?.fired === picked, JSON.stringify(seen));
+  ck('⑨ 정해진 다음 전송부터 메인에 징조가 깔린다 (9·10일째 전송)', seen.filter((x) => x.omenInSend).map((x) => x.d).join(',') === '9,10', JSON.stringify(seen.map((x) => [x.d, x.omenInSend])));
+  let pre = fresh(S); pre.vars.re_gauge = 85; pre.vars.re_next = 'rain';
+  const pb = engine.sendPhase(S, pre, { rng: seededRng('om', 1, 's') }).promptBlock;
+  ck('⑨ 징조 블록: 글과 틀(이유를 짓지 마라·일어나게 하지 마라)만', pb.includes(RAIN_OMEN) && pb.includes('이유를 짓거나 설명하지 말고') && pb.includes('일이 벌어지게 하지도 마라'), pb.slice(pb.indexOf('[징조'), pb.indexOf('[징조') + 200));
+  ck('⑨ ★ 징조 블록에 사건 이름·게이지 숫자가 없다', !/\brain\b|re_next|re_gauge|85/.test(pb.slice(pb.indexOf('[징조'))), '');
+  ck('⑨ 다른 사건의 징조는 안 깔린다', !pb.includes(WIND_OMEN), '');
+
+  // 걷힘 — 서사가 게이지를 선 아래로 내리면
+  let w = fresh(S); w.vars.re_gauge = 85; w.vars.re_next = 'rain';
+  w = engine.toggleAction(S, w, 'soothe').state;
+  const ws = engine.sendPhase(S, w, { rng: seededRng('om', 2, 's') });
+  const wo = engine.outputPhase(S, ws.state, { skip_day: 1 }, {}, { rng: seededRng('om', 2, 'o') }).state;
+  ck('⑨ 게이지가 선 아래로 내려가면 징조가 걷힌다', wo.vars.re_next === '' && !engine.sendPhase(S, wo, { rng: seededRng('om', 3, 's') }).promptBlock.includes('[징조'), `${wo.vars.re_gauge} · '${wo.vars.re_next}'`);
+
+  // 그새 못 오게 되면 거두고 다시 뽑는다
+  const S2 = cp(S); delete S2.rules.randomEvents.table[1].when;   // wind는 언제나
+  let c = fresh(S2); c.vars.re_gauge = 85; c.vars.re_next = 'rain';
+  c = turn(S2, c, 1, 1, { calm: false }, 'om2').st;
+  ck('⑨ 정해 둔 사건이 못 오게 되면 거두고 오는 것 중에서 다시 정한다', c.vars.re_next === 'wind', `'${c.vars.re_next}'`);
+
+  // 징조 없는 사건은 조용히 온다 · 선을 끄면 미리 안 정한다
+  const S3 = cp(BASE); S3.directives = [];
+  let q = fresh(S3); q.vars.re_gauge = 85;
+  q = turn(S3, q, 1, 1, {}, 'om3').st;
+  ck('⑨ omen이 하나도 없으면 선이 없다 — 미리 안 정한다', q.vars.re_next === '' && engine.gaugeConfig(S3).omenAt == null, `'${q.vars.re_next}'`);
+  const S4 = cp(S); S4.rules.randomEvents.table[1].omen = undefined; delete S4.rules.randomEvents.table[1].omen;
+  let n4 = fresh(S4); n4.vars.re_gauge = 85; n4.vars.re_next = 'wind';
+  ck('⑨ 정해진 사건에 omen이 없으면 블록도 없다', !engine.sendPhase(S4, n4, { rng: seededRng('om', 4, 's') }).promptBlock.includes('[징조'), '');
+  const S5 = cp(S); S5.rules.randomEvents.gauge.omenAt = 0;
+  let z = fresh(S5); z.vars.re_gauge = 85; z = turn(S5, z, 1, 1, {}, 'om5').st;
+  ck('⑨ omenAt 0이면 끈다', z.vars.re_next === '', `'${z.vars.re_next}'`);
+  const jump = fireDays(S, 6, () => 5, 'omj');
+  ck('⑨ 한 턴에 선을 건너뛰면 징조 없이 터진다 (며칠 사이의 일)', jump.days[0] === 10, jump.out.join(' '));
+
+  const bad = (mut, re, name) => { const X = cp(S); mut(X); const r = validateSchema(X); ck(name, r.errors.some((e) => re.test(e.path + ' ' + e.msg)), JSON.stringify(r.errors)); };
+  bad((X) => { X.rules.randomEvents.gauge.omenAt = 150; }, /omenAt/, '⑨ 검증: omenAt 1~99');
+  bad((X) => { X.rules.randomEvents.table[0].omen = 3; }, /omen은 문자열/, '⑨ 검증: omen 문자열');
+  const L = cp(S); delete L.rules.randomEvents.gauge; L.rules.randomEvents.chancePerTurn = 0.1; L.actions = [];
+  ck('⑨ 검증 경고: 확률 방식의 omen은 안 비친다', validateSchema(L).warnings.some((x) => /징조/.test(x.msg)), JSON.stringify(validateSchema(L).warnings));
+  const O = cp(S); O.rules.randomEvents.gauge.omenAt = 0;
+  ck('⑨ 검증 경고: 징조를 끄면 omen이 안 비친다', validateSchema(O).warnings.some((x) => /징조가 꺼져/.test(x.msg)), '');
 }
 
 // ── 패치·작업본 비교 ──

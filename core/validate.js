@@ -509,6 +509,11 @@ function validateSchema(schema) {
         if (zero(g.perDay) && zero(g.perTurn)) warn(gp, '게이지가 영영 안 찹니다 — perDay·perTurn이 둘 다 0이면 gauge 효과로만 찹니다');
         if (!tcfg && !zero(g.perDay)) warn(`${gp}.perDay`, '시간 체계(time)가 없는 봇이라 perDay는 한 턴 = 하루로 찹니다');
         if (re.chancePerTurn != null && re.chancePerTurn !== 0) warn('$.rules.randomEvents.chancePerTurn', '게이지(gauge)가 켜져 있어 chancePerTurn은 안 쓰입니다');
+        // 징조 선 (v1.14.1) — 1~99, 끄려면 0/false. 비우면 표에 omen이 있을 때 80
+        if (g.omenAt != null && g.omenAt !== false && (typeof g.omenAt !== 'number' || g.omenAt < 0 || g.omenAt >= 100))
+          err(`${gp}.omenAt`, 'omenAt은 1~99 (게이지가 이 선을 넘으면 다음 사건의 징조가 비친다) — 끄려면 0');
+        const omens = (re.table || []).filter((e) => e && typeof e.omen === 'string' && e.omen.trim()).length;
+        if ((g.omenAt === 0 || g.omenAt === false) && omens) warn(`${gp}.omenAt`, `징조가 꺼져 있어 omen ${omens}개가 안 비칩니다`);
       }
     } else if (typeof re.chancePerTurn === 'string') {
       // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
@@ -522,6 +527,11 @@ function validateSchema(schema) {
       else eventIds.add(e.id);
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
+      // 징조 글 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건이면 메인에 이유 없는 징후로 깔린다. 게이지가 없으면 비칠 자리가 없다
+      if (e.omen != null) {
+        if (typeof e.omen !== 'string') err(p + '.omen', 'omen은 문자열 (그 사건이 오기 전 주변에 비치는 겉모습)');
+        else if (e.omen.trim() && !gaugeOn) warn(p + '.omen', 'omen(징조)은 사건 게이지(gauge)에서만 비칩니다 — 확률 방식에선 다음 사건을 미리 모른다');
+      }
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
       checkChoices(e, p);

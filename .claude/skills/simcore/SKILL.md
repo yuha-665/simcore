@@ -96,7 +96,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 6. **`Risuai.alert/alertConfirm`을 패널이 떠 있을 때 쓰는 것.** 우리 iframe이 덮어 보이지도
    눌리지도 않고, `alertConfirm`은 조용히 falsy로 떨어져 "취소"와 구분이 안 된다.
    패널이 열린 동안의 확인은 **패널 자체 UI**로 받을 것(두 번 누르기 등). `테스트/test-layout.js`가 `if (!confirm(` 꼴을 잡는다.
-7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**·**`sec_<id>`**(v1.10.0, 비밀의 열린 최고 단계)·**`re_gauge`·`re_cool`**(v1.14.0, 사건 게이지)는
+7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**·**`sec_<id>`**(v1.10.0, 비밀의 열린 최고 단계)·**`re_gauge`·`re_cool`·`re_next`**(v1.14, 사건 게이지·징조)는
    엔진이 `state.vars`에 직접 관리하는 키다 — 스키마 vars로 선언하거나 `updater.allow`에 넣으면 안 되고,
    검증이 이름 충돌을 err로 잡는다. 노출 이름(date/clock/scn_act/scn_label/**fight_on**/deployed)은 makeLookup 위임.
 8. **편집기 세그먼트에 모듈급 의존성을 추가하고 테스트 하니스를 안 고치는 것.** `테스트/` 여러

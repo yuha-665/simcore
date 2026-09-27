@@ -5618,7 +5618,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
-      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 조건식에서 `re_gauge`를 읽어 전조 지시문을 걸 수 있다.',
+      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 항목에 `omen`(징조 글 — 그 사건이 오기 전 주변의 겉모습, 무엇의 징조인지는 쓰지 않는다)을 주면 게이지가 80(`omenAt`)을 넘을 때 다음 사건을 미리 정하고 그 글을 메인에 이유 없는 징후로 깐다 — 좋은 일에도 달 수 있다.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -8893,6 +8893,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         bindInput(re.gauge.cooldown ?? '', (x) => { const n = numOrNull(x); if (n == null || n <= 0) delete re.gauge.cooldown; else re.gauge.cooldown = n; rerender(); },
           { cls: 'sce-w-s', ph: '3' }),
         '이 동안은 게이지가 안 차요 — 사건이 연달아 붙지 않게') : null,
+      // 징조 선 (v1.14.1) — 비우면 표에 징조 글이 있을 때 80, 0이면 끔
+      gOn ? field('징조가 비치는 선',
+        bindInput(re.gauge.omenAt ?? '', (x) => {
+          const t = String(x).trim(), n = Number(t);
+          if (!t) delete re.gauge.omenAt; else if (isFinite(n)) re.gauge.omenAt = Math.max(0, Math.min(99, n));
+          rerender();
+        }, { cls: 'sce-w-s', ph: '80' }),
+        '게이지가 이 선을 넘으면 다음에 올 사건을 미리 하나 정하고, 그 사건의 "징조" 글을 메인에 이유 없는 징후로 깔아요. 비우면 80, 0이면 꺼요') : null,
       gOn ? null : field('턴당 발동 확률',
         bindInput(
           typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
@@ -8933,6 +8941,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             field('후보 조건',
               bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
                 { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+            // 징조 (v1.14.1) — 게이지 모드에서만 비친다. 이유 없는 겉모습만 (무엇의 징조인지 말하면 스포일러)
+            gOn || ev.omen ? field('징조',
+              bindInput(ev.omen ?? '', (x) => { const t = String(x).trim(); if (t) ev.omen = t; else delete ev.omen; rerender(); },
+                { cls: 'sce-w-l', ph: '(비우면 징조 없이 온다) 서쪽 하늘이 저녁마다 누렇게 탄다.' }),
+              '게이지가 선을 넘어 이 사건이 다음 차례로 정해지면 메인에 깔려요 — 무엇의 징조인지는 말하지 말고 겉모습만') : null,
           ),
           h('div', { class: 'sce-rules-effect-block' },
             h('div', { class: 'sce-rules-subtitle' }, '발동 효과'),
@@ -12846,6 +12859,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['발동·조건', condition.join(' · ') || '조건 없음'],
         ['효과·변수 변경', effects.join(' · ') || '변경 없음'],
         ['통지', e.notify || '통지 없음'],
+        ...(random && e.omen ? [['징조', e.omen]] : []),
       ];
       return h('article', { class: 'sce-event-row' },
         h('div', { class: 'sce-event-head' },

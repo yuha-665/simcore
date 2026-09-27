@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.0
-//@display-name SimCore (시뮬 엔진) v1.14.0 사건은 게이지로 온다
+//@version 1.14.1
+//@display-name SimCore (시뮬 엔진) v1.14.1 징조가 먼저 온다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,23 +10,19 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.0 ──────────────────────────────────────────────
-// **사건은 게이지로 온다 — 사건 게이지 `rules.randomEvents.gauge`.** 발단: 베리디아 사건 빈도 실측(2026-09-27). 랜덤 사건은 턴마다
-// chancePerTurn으로 굴려서 **작중 시간이 아니라 채팅 속도가 빈도를 정했다** — 보통 난이도 한 해 나쁜 일이 하루 세 턴이면 26번,
-// 한 턴이면 10번, 닷새에 한 턴이면 2번. 항목 쿨다운도 턴이라 같은 사건이 하루 세 턴 판에선 세 배 자주 돌아왔다.
-// 유저 제안: "정해진 턴수로 하지 말고 보이지 않는 게이지로 — 서사나 확률로 차고 100이면 발동, 0으로 초기화 + 쿨다운".
-// - [코어] core/gauge.js (새 모듈, 옵트인 — gauge가 없으면 옛 굴림이 한 알도 안 바뀐다: 베리디아 시드 산출 전체 동일로 확인).
-//   숨은 게이지 re_gauge(0~100)가 **작중 하루마다** perDay씩(turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치) + 턴마다 perTurn,
-//   흔들림 jitter(0.5면 ×0.5~×1.5)를 곱해 찬다. 100이면 후보 중 weight 비례로 하나 터지고 0으로, cooldown(날) 동안 쉰다(re_cool).
-//   식힘이 턴 도중에 끝나면 남은 날은 찬다. **후보가 없으면 안 찬다** — 재해 중 채워 두었다가 풀리자마자 터뜨리지 않는다.
-//   게이지 모드에선 항목 cooldown도 **날**(meta.eventLastAt, 체크포인트가 같이 되감는다). 시간 체계가 없으면 한 턴 = 하루.
-// - [코어] 서사의 개입 = 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 다음 사건을 당기거나(+) 늦춘다(−). 터진 사건의 효과면 여진
-//   (비운 뒤 얹힌다). perDay·perTurn은 식 — 서사가 만든 상태(위협·불안·난이도)가 속도를 민다.
-// - 보이지 않는다: 변화 원장·보조 원장·상태창·메인·보조 프롬프트 어디에도 없다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80` 전조 지시문.
-// - [검증] 예약 이름 충돌·jitter·cooldown·속도식·gauge 효과(게이지 없이 쓰면 오류)·chancePerTurn과 같이 두면 경고. gauge면 chancePerTurn 불요.
-// - [편집기] 규칙 탭 발동 방식(🎲 확률 / ⏳ 게이지) + 하루·턴 속도·흔들림·쉬는 날 칸, 미리보기 "평균 N일에 한 번", 쿨다운 단위 표기(일),
-//   효과 줄 ⏳(두 효과 편집기 다) + 추가 버튼, 목록 보기, 참조 색인, AI 규격서 한 줄. [패치] 게이지는 조용히 버리지 않고 알린다 · 작업본 비교 한 칸.
-// - 베리디아가 첫 사용처(perDay = 4 + 시련×0.05 + (위협+불안)×0.02) — 보통 한 해 나쁜 일: 하루 한 턴 9.2 · 세 턴 9.4 · 닷새에 한 턴 8.9.
+// ── v1.14.1 ──────────────────────────────────────────────
+// **징조가 먼저 온다 — 사건 게이지의 징조.** 유저: "주변에 뭔가 징조가 있으면 서사적으로 갑자기 터지는 것보다 자연스러울 테니".
+// "무언가 온다"를 두루뭉술하게 흘리면 안 된다 — 표에는 좋은 일도 섞여 있어 불길한 전조 뒤에 아기가 태어나면 서사가 어긋난다.
+// - [코어] 게이지가 omenAt(기본 80 — 표에 omen이 하나라도 있을 때, 0이면 끔)을 넘으면 **다음 사건을 미리 하나 뽑아 둔다**(예약 키 re_next).
+//   100이 되면 그 사건이 터진다. 그새 못 오게 됐으면(조건·쿨다운·갈림길 대기) 거두고 오는 것 중에서 다시 뽑고, 서사가 게이지를
+//   선 아래로 내리면({ gauge: -N }) 징조가 걷힌다. 한 턴에 선과 100을 한꺼번에 넘으면 징조 없이 터진다(며칠 사이의 일).
+// - [코어] 메인 프롬프트 3.5.8 [징조] 블록 — 뽑아 둔 사건의 `omen` 글만(사건 이름·게이지 숫자 없음), "무엇의 징조인지 너도 모른다 —
+//   이유를 짓지 말고 일이 벌어지게 하지도 말고 배경에 스치듯". omen이 없는 사건은 징조 없이 온다. 보조 프롬프트엔 아무것도 안 간다.
+// - [검증] omenAt 1~99 · omen 문자열 · 확률 방식에 omen이면 경고(다음 사건을 미리 모른다) · 징조를 끄면 경고.
+// - [편집기] 게이지 설정에 "징조가 비치는 선", 사건 카드마다 "징조" 칸(게이지 모드), 목록 보기에 징조 줄, AI 규격서 한 줄.
+// - 옛 굴림은 여전히 한 알도 안 바뀐다 (pick/fire를 둘로 나눴지만 rng 순서 그대로 — 베리디아 옛 생성기 산출 전체 동일로 재확인).
+// - 베리디아: 58개 중 54개에 징조(작은 순풍 넷 — 꿀·술통·고양이·감사 편지 — 만 갑자기). 보통 한 해: 하루 한 턴·세 턴이면 사건의
+//   약 90%가 평균 3일 앞서 징조를 보이고, 닷새에 한 턴이면 46%(한 턴에 선을 건너뛴다).
 
 
 const SimCore = (() => {
@@ -1466,6 +1462,11 @@ function validateSchema(schema) {
         if (zero(g.perDay) && zero(g.perTurn)) warn(gp, '게이지가 영영 안 찹니다 — perDay·perTurn이 둘 다 0이면 gauge 효과로만 찹니다');
         if (!tcfg && !zero(g.perDay)) warn(`${gp}.perDay`, '시간 체계(time)가 없는 봇이라 perDay는 한 턴 = 하루로 찹니다');
         if (re.chancePerTurn != null && re.chancePerTurn !== 0) warn('$.rules.randomEvents.chancePerTurn', '게이지(gauge)가 켜져 있어 chancePerTurn은 안 쓰입니다');
+        // 징조 선 (v1.14.1) — 1~99, 끄려면 0/false. 비우면 표에 omen이 있을 때 80
+        if (g.omenAt != null && g.omenAt !== false && (typeof g.omenAt !== 'number' || g.omenAt < 0 || g.omenAt >= 100))
+          err(`${gp}.omenAt`, 'omenAt은 1~99 (게이지가 이 선을 넘으면 다음 사건의 징조가 비친다) — 끄려면 0');
+        const omens = (re.table || []).filter((e) => e && typeof e.omen === 'string' && e.omen.trim()).length;
+        if ((g.omenAt === 0 || g.omenAt === false) && omens) warn(`${gp}.omenAt`, `징조가 꺼져 있어 omen ${omens}개가 안 비칩니다`);
       }
     } else if (typeof re.chancePerTurn === 'string') {
       // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
@@ -1479,6 +1480,11 @@ function validateSchema(schema) {
       else eventIds.add(e.id);
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
+      // 징조 글 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건이면 메인에 이유 없는 징후로 깔린다. 게이지가 없으면 비칠 자리가 없다
+      if (e.omen != null) {
+        if (typeof e.omen !== 'string') err(p + '.omen', 'omen은 문자열 (그 사건이 오기 전 주변에 비치는 겉모습)');
+        else if (e.omen.trim() && !gaugeOn) warn(p + '.omen', 'omen(징조)은 사건 게이지(gauge)에서만 비칩니다 — 확률 방식에선 다음 사건을 미리 모른다');
+      }
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
       checkChoices(e, p);
@@ -6630,9 +6636,14 @@ SimCore.define("gauge", function (require, module, exports) {
 //     막힌 사이에 100을 채워 두었다가 풀리자마자 터뜨리지 않는다.
 //   - 서사의 개입은 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 게이지를 당기거나(+) 늦춘다(−). 0~100으로 잘린다.
 //   - 항목 cooldown도 게이지 모드에선 **날** 단위(시간 체계가 있을 때) — 마지막 발동 시각(meta.eventLastAt, epoch 분)으로 잰다.
+//   - **징조** (v1.14.1, 유저 "주변에 징조가 있으면 갑자기 터지는 것보다 자연스럽다") — 게이지가 omenAt(기본 80)을 넘으면 다음에 올
+//     사건을 **미리 하나 뽑아 둔다**(re_next). 그 사건에 `omen` 글이 있으면 메인 프롬프트에 이유 없는 징후로 깔린다. 100이 되면
+//     그 사건이 터진다(그새 조건이 바뀌어 못 오게 됐으면 징조를 거두고 새로 뽑는다). 효과가 게이지를 선 아래로 내리면 징조가 걷힌다.
+//     "무언가 온다"를 두루뭉술하게 흘리지 않는 이유: 표에는 좋은 일도 섞여 있다 — 불길한 전조 뒤에 아기가 태어나면 서사가 어긋난다.
+//     omen이 없는 사건은 징조 없이 온다(작은 순풍은 갑자기 와도 된다). 한 턴에 선을 건너뛰어 100에 닿으면 징조 없이 터진다(며칠을 건너뛴 사이의 일).
 //
 // 예약 키 (vars에 산다 — scn_idx·fr_*와 같은 계열. 패널 현황 탭은 스키마 vars만 그리므로 안 보이고,
-// 스냅샷·체크포인트 되감기가 같이 되감는다): re_gauge (0~100), re_cool (남은 식힘 — 날 또는 턴).
+// 스냅샷·체크포인트 되감기가 같이 되감는다): re_gauge (0~100), re_cool (남은 식힘 — 날 또는 턴), re_next (징조가 가리키는 사건 id, 없으면 '').
 // 보조 AI는 못 만진다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80`으로 전조 지시문을 걸 수 있다.
 // 변화 원장에는 안 남긴다 — 변화 로그·하이라이트·보조 원장 어디에도 게이지가 새지 않는다(보이지 않는 게 요점).
 
@@ -6640,9 +6651,11 @@ const { evaluate } = require('./expr');
 
 const GAUGE_KEY = 're_gauge';
 const COOL_KEY = 're_cool';
+const NEXT_KEY = 're_next';
 const GAUGE_MAX = 100;
 const DEFAULT_JITTER = 0.5;
-const RESERVED = [GAUGE_KEY, COOL_KEY];
+const DEFAULT_OMEN_AT = 80;
+const RESERVED = [GAUGE_KEY, COOL_KEY, NEXT_KEY];
 
 const isRate = (x) => typeof x === 'number' || (typeof x === 'string' && x.trim() !== '');
 // 부동소수 찌꺼기 정리 — 99.99999999 때문에 100 문턱이 한 턴 늦지 않게
@@ -6654,7 +6667,14 @@ function gaugeConfig(schema) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return null;
   const j = Number(g.jitter);
   const cd = Number(g.cooldown);
+  // 징조 선 — 명시하면 그 값, 아니면 표에 omen이 하나라도 있을 때 80. 0 또는 false면 끈다
+  const table = Array.isArray(schema.rules.randomEvents.table) ? schema.rules.randomEvents.table : [];
+  const oa = Number(g.omenAt);
+  const omenAt = g.omenAt === false || g.omenAt === 0 ? null
+    : (g.omenAt != null && Number.isFinite(oa) ? Math.max(1, Math.min(GAUGE_MAX - 1, oa))
+      : (table.some((e) => e && typeof e.omen === 'string' && e.omen.trim()) ? DEFAULT_OMEN_AT : null));
   return {
+    omenAt,
     perDay: isRate(g.perDay) ? g.perDay : 0,
     perTurn: isRate(g.perTurn) ? g.perTurn : 0,
     jitter: g.jitter == null ? DEFAULT_JITTER : (Number.isFinite(j) ? Math.max(0, Math.min(1, j)) : DEFAULT_JITTER),
@@ -6670,6 +6690,24 @@ function ensureGaugeKeys(schema, vars) {
   if (!gaugeConfig(schema)) return;
   if (typeof vars[GAUGE_KEY] !== 'number') vars[GAUGE_KEY] = 0;
   if (typeof vars[COOL_KEY] !== 'number') vars[COOL_KEY] = 0;
+  if (typeof vars[NEXT_KEY] !== 'string') vars[NEXT_KEY] = '';
+}
+
+/**
+ * 메인 프롬프트 징조 블록 — 뽑아 둔 다음 사건에 omen이 있을 때만. 사건 이름·무엇의 징조인지는 싣지 않는다(글만).
+ * @param render {변수} 치환기 (엔진이 renderTemplate을 물려 준다)
+ */
+function omenInjectionText(schema, vars, render = (x) => x) {
+  if (!gaugeConfig(schema)) return '';
+  const id = typeof vars?.[NEXT_KEY] === 'string' ? vars[NEXT_KEY] : '';
+  if (!id) return '';
+  const ev = (schema.rules.randomEvents.table || []).find((e) => e && e.id === id);
+  const text = ev && typeof ev.omen === 'string' ? ev.omen.trim() : '';
+  if (!text) return '';
+  return '[징조 — 곧 무슨 일이 닥친다]\n'
+    + '아래는 그 일이 오기 전 주변에 비치는 겉모습이다. 무엇의 징조인지는 너도 모른다 — 이유를 짓거나 설명하지 말고, '
+    + '일이 벌어지게 하지도 마라. 풍경·사람들의 행동·소문으로 장면 배경에 스치듯 흘려라. 매번 언급할 필요는 없다.\n'
+    + `- ${render(text)}`;
 }
 
 const isGaugeEffect = (rule) => !!rule && typeof rule === 'object' && rule.gauge !== undefined;
@@ -6708,8 +6746,8 @@ function meanInterval(cfg, lookup = () => 0) {
 }
 
 module.exports = {
-  GAUGE_KEY, COOL_KEY, GAUGE_MAX, DEFAULT_JITTER, RESERVED,
-  gaugeConfig, gaugeExposedNames, ensureGaugeKeys, isGaugeEffect, applyGaugeEffect, fillAmount, meanInterval, tidy,
+  GAUGE_KEY, COOL_KEY, NEXT_KEY, GAUGE_MAX, DEFAULT_JITTER, DEFAULT_OMEN_AT, RESERVED,
+  gaugeConfig, gaugeExposedNames, ensureGaugeKeys, isGaugeEffect, applyGaugeEffect, fillAmount, meanInterval, omenInjectionText, tidy,
 };
 
 });
@@ -8273,6 +8311,12 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (frBlock) lines.push(frBlock);
   }
 
+  // 3.5.8 징조 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건의 omen 글만. 게이지 값·사건 이름은 어디에도 없다.
+  if (!isSetupPending(schema, state)) {
+    const omBlock = gaugeMod.omenInjectionText(schema, state.vars, rt);
+    if (omBlock) lines.push(omBlock);
+  }
+
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
   if (state.meta.pendingChoice && pendingChoiceEvent(schema, state)) {
     lines.push(DEFAULT_CHOICE_WAIT);
@@ -8807,40 +8851,40 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     }
     return true;
   });
-  // weight 비례로 하나 뽑아 터뜨린다 — 두 방식이 같은 한 벌을 쓴다
-  const fireOne = (eligible) => {
+  // weight 비례로 하나 뽑는다 — 두 방식이 같은 한 벌을 쓴다 (옛 방식의 굴림 순서 그대로: 합계가 0보다 클 때만 rng 한 알)
+  const pickOne = (eligible) => {
     const total = eligible.reduce((sum, e) => sum + (e.weight ?? 1), 0);
-    if (!(total > 0)) return false;
+    if (!(total > 0)) return null;
     let roll = rng() * total;
     for (const ev of eligible) {
       roll -= ev.weight ?? 1;
-      if (roll <= 0) {
-        let checkResult = null;
-        if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
-        applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
-        if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
-        if (checkResult) {
-          state.meta.pendingNotifies.push(checkResult.line);
-          if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
-        }
-        if (Array.isArray(ev.choices) && ev.choices.length) {
-          state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
-          state.meta.pendingChoicePick = null;
-        }
-        triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
-        state.meta.eventLastFired[ev.id] = state.meta.turn;
-        if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
-        firedEvents.push(ev.id);
-        return true;
-      }
+      if (roll <= 0) return ev;
     }
-    return false;
+    return null;
+  };
+  const fireEv = (ev) => {
+    let checkResult = null;
+    if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
+    applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+    if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (checkResult) {
+      state.meta.pendingNotifies.push(checkResult.line);
+      if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+    }
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+      state.meta.pendingChoicePick = null;
+    }
+    triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
+    state.meta.eventLastFired[ev.id] = state.meta.turn;
+    if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
+    firedEvents.push(ev.id);
   };
   if (gcfg) {
     if (rng) {
       // 사건 게이지 — 식힘(re_cool) 중엔 안 차고, 후보가 하나도 없으면 안 찬다(막힌 동안 채워 두었다가 풀리자마자 터뜨리지 않게).
       // 100이면 하나 터뜨리고 0으로, 식힘을 건다. 원장엔 안 남긴다 — 보이지 않는 게 요점이다.
-      const { GAUGE_KEY: GK, COOL_KEY: CK, GAUGE_MAX: GMAX } = gaugeMod;
+      const { GAUGE_KEY: GK, COOL_KEY: CK, NEXT_KEY: NK, GAUGE_MAX: GMAX } = gaugeMod;
       const days = tcfgR ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : 1;
       const eligible = eligibleNow();
       // 식힘이 이번 턴 도중에 끝나면 남은 날만큼은 찬다 — "닷새 뒤" 한 턴이 식힘 사흘에 통째로 먹히지 않게
@@ -8855,13 +8899,25 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       if (!(cool > 0) && eligible.length) {
         const add = gaugeMod.fillAmount(gcfg, makeLookup(schema, state.vars), fillDays, rng, !cooling);
         if (add > 0) state.vars[GK] = gaugeMod.tidy(Math.min(GMAX, (Number(state.vars[GK]) || 0) + add));
-        if ((Number(state.vars[GK]) || 0) >= GMAX) {
-          // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
-          const prev = state.vars[GK];
+      }
+      // 징조 (v1.14.1) — 선(omenAt)을 넘으면 다음 사건을 미리 하나 뽑아 둔다(re_next). 그새 못 오게 됐거나(조건·쿨다운) 게이지가
+      // 선 아래로 내려가면(서사의 { gauge: -N }) 거둔다. 뽑아 둔 사건의 omen 글이 메인 프롬프트에 징후로 깔린다(3.5.8).
+      const g = Number(state.vars[GK]) || 0;
+      let next = typeof state.vars[NK] === 'string' ? state.vars[NK] : '';
+      let nextEv = next ? eligible.find((e) => e.id === next) || null : null;
+      if (next && (!nextEv || gcfg.omenAt == null || g < gcfg.omenAt)) { state.vars[NK] = ''; next = ''; nextEv = null; }
+      if (!(cool > 0) && eligible.length && g >= GMAX) {
+        // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
+        const ev = nextEv || pickOne(eligible);
+        if (ev) {
           state.vars[GK] = 0;
-          if (fireOne(eligible)) state.vars[CK] = gcfg.cooldown;
-          else state.vars[GK] = prev;
+          state.vars[NK] = '';
+          fireEv(ev);
+          state.vars[CK] = gcfg.cooldown;
         }
+      } else if (!next && gcfg.omenAt != null && !(cool > 0) && eligible.length && g >= gcfg.omenAt) {
+        const ev = pickOne(eligible);
+        if (ev) state.vars[NK] = ev.id;
       }
     }
   } else if (re) {
@@ -8874,7 +8930,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
       reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
     } else reChance = re.chancePerTurn ?? 0;
-    if (rng && rng() < reChance) fireOne(eligibleNow());
+    if (rng && rng() < reChance) { const ev = pickOne(eligibleNow()); if (ev) fireEv(ev); }
   }
 
   // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
@@ -17904,7 +17960,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
-      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 조건식에서 `re_gauge`를 읽어 전조 지시문을 걸 수 있다.',
+      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 항목에 `omen`(징조 글 — 그 사건이 오기 전 주변의 겉모습, 무엇의 징조인지는 쓰지 않는다)을 주면 게이지가 80(`omenAt`)을 넘을 때 다음 사건을 미리 정하고 그 글을 메인에 이유 없는 징후로 깐다 — 좋은 일에도 달 수 있다.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -21179,6 +21235,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         bindInput(re.gauge.cooldown ?? '', (x) => { const n = numOrNull(x); if (n == null || n <= 0) delete re.gauge.cooldown; else re.gauge.cooldown = n; rerender(); },
           { cls: 'sce-w-s', ph: '3' }),
         '이 동안은 게이지가 안 차요 — 사건이 연달아 붙지 않게') : null,
+      // 징조 선 (v1.14.1) — 비우면 표에 징조 글이 있을 때 80, 0이면 끔
+      gOn ? field('징조가 비치는 선',
+        bindInput(re.gauge.omenAt ?? '', (x) => {
+          const t = String(x).trim(), n = Number(t);
+          if (!t) delete re.gauge.omenAt; else if (isFinite(n)) re.gauge.omenAt = Math.max(0, Math.min(99, n));
+          rerender();
+        }, { cls: 'sce-w-s', ph: '80' }),
+        '게이지가 이 선을 넘으면 다음에 올 사건을 미리 하나 정하고, 그 사건의 "징조" 글을 메인에 이유 없는 징후로 깔아요. 비우면 80, 0이면 꺼요') : null,
       gOn ? null : field('턴당 발동 확률',
         bindInput(
           typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
@@ -21219,6 +21283,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             field('후보 조건',
               bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
                 { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+            // 징조 (v1.14.1) — 게이지 모드에서만 비친다. 이유 없는 겉모습만 (무엇의 징조인지 말하면 스포일러)
+            gOn || ev.omen ? field('징조',
+              bindInput(ev.omen ?? '', (x) => { const t = String(x).trim(); if (t) ev.omen = t; else delete ev.omen; rerender(); },
+                { cls: 'sce-w-l', ph: '(비우면 징조 없이 온다) 서쪽 하늘이 저녁마다 누렇게 탄다.' }),
+              '게이지가 선을 넘어 이 사건이 다음 차례로 정해지면 메인에 깔려요 — 무엇의 징조인지는 말하지 말고 겉모습만') : null,
           ),
           h('div', { class: 'sce-rules-effect-block' },
             h('div', { class: 'sce-rules-subtitle' }, '발동 효과'),
@@ -25132,6 +25201,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ['발동·조건', condition.join(' · ') || '조건 없음'],
         ['효과·변수 변경', effects.join(' · ') || '변경 없음'],
         ['통지', e.notify || '통지 없음'],
+        ...(random && e.omen ? [['징조', e.omen]] : []),
       ];
       return h('article', { class: 'sce-event-row' },
         h('div', { class: 'sce-event-head' },
@@ -32626,6 +32696,24 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.0 ──────────────────────────────────────────────
+// **사건은 게이지로 온다 — 사건 게이지 `rules.randomEvents.gauge`.** 발단: 베리디아 사건 빈도 실측(2026-09-27). 랜덤 사건은 턴마다
+// chancePerTurn으로 굴려서 **작중 시간이 아니라 채팅 속도가 빈도를 정했다** — 보통 난이도 한 해 나쁜 일이 하루 세 턴이면 26번,
+// 한 턴이면 10번, 닷새에 한 턴이면 2번. 항목 쿨다운도 턴이라 같은 사건이 하루 세 턴 판에선 세 배 자주 돌아왔다.
+// 유저 제안: "정해진 턴수로 하지 말고 보이지 않는 게이지로 — 서사나 확률로 차고 100이면 발동, 0으로 초기화 + 쿨다운".
+// - [코어] core/gauge.js (새 모듈, 옵트인 — gauge가 없으면 옛 굴림이 한 알도 안 바뀐다: 베리디아 시드 산출 전체 동일로 확인).
+//   숨은 게이지 re_gauge(0~100)가 **작중 하루마다** perDay씩(turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치) + 턴마다 perTurn,
+//   흔들림 jitter(0.5면 ×0.5~×1.5)를 곱해 찬다. 100이면 후보 중 weight 비례로 하나 터지고 0으로, cooldown(날) 동안 쉰다(re_cool).
+//   식힘이 턴 도중에 끝나면 남은 날은 찬다. **후보가 없으면 안 찬다** — 재해 중 채워 두었다가 풀리자마자 터뜨리지 않는다.
+//   게이지 모드에선 항목 cooldown도 **날**(meta.eventLastAt, 체크포인트가 같이 되감는다). 시간 체계가 없으면 한 턴 = 하루.
+// - [코어] 서사의 개입 = 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 다음 사건을 당기거나(+) 늦춘다(−). 터진 사건의 효과면 여진
+//   (비운 뒤 얹힌다). perDay·perTurn은 식 — 서사가 만든 상태(위협·불안·난이도)가 속도를 민다.
+// - 보이지 않는다: 변화 원장·보조 원장·상태창·메인·보조 프롬프트 어디에도 없다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80` 전조 지시문.
+// - [검증] 예약 이름 충돌·jitter·cooldown·속도식·gauge 효과(게이지 없이 쓰면 오류)·chancePerTurn과 같이 두면 경고. gauge면 chancePerTurn 불요.
+// - [편집기] 규칙 탭 발동 방식(🎲 확률 / ⏳ 게이지) + 하루·턴 속도·흔들림·쉬는 날 칸, 미리보기 "평균 N일에 한 번", 쿨다운 단위 표기(일),
+//   효과 줄 ⏳(두 효과 편집기 다) + 추가 버튼, 목록 보기, 참조 색인, AI 규격서 한 줄. [패치] 게이지는 조용히 버리지 않고 알린다 · 작업본 비교 한 칸.
+// - 베리디아가 첫 사용처(perDay = 4 + 시련×0.05 + (위협+불안)×0.02) — 보통 한 해 나쁜 일: 하루 한 턴 9.2 · 세 턴 9.4 · 닷새에 한 턴 8.9.
 
 // ── v1.13.4 ──────────────────────────────────────────────
 // **갈림길 뒤도 연쇄다 — 진단.** 발단: 베리디아 혼담(2026-09-27). 청혼은 랜덤 갈림길이고 보조가 올리는 인식·호감이 문턱이라 시뮬에선 안 뜬다

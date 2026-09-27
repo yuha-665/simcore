@@ -985,6 +985,12 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (frBlock) lines.push(frBlock);
   }
 
+  // 3.5.8 징조 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건의 omen 글만. 게이지 값·사건 이름은 어디에도 없다.
+  if (!isSetupPending(schema, state)) {
+    const omBlock = gaugeMod.omenInjectionText(schema, state.vars, rt);
+    if (omBlock) lines.push(omBlock);
+  }
+
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
   if (state.meta.pendingChoice && pendingChoiceEvent(schema, state)) {
     lines.push(DEFAULT_CHOICE_WAIT);
@@ -1519,40 +1525,40 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     }
     return true;
   });
-  // weight 비례로 하나 뽑아 터뜨린다 — 두 방식이 같은 한 벌을 쓴다
-  const fireOne = (eligible) => {
+  // weight 비례로 하나 뽑는다 — 두 방식이 같은 한 벌을 쓴다 (옛 방식의 굴림 순서 그대로: 합계가 0보다 클 때만 rng 한 알)
+  const pickOne = (eligible) => {
     const total = eligible.reduce((sum, e) => sum + (e.weight ?? 1), 0);
-    if (!(total > 0)) return false;
+    if (!(total > 0)) return null;
     let roll = rng() * total;
     for (const ev of eligible) {
       roll -= ev.weight ?? 1;
-      if (roll <= 0) {
-        let checkResult = null;
-        if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
-        applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
-        if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
-        if (checkResult) {
-          state.meta.pendingNotifies.push(checkResult.line);
-          if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
-        }
-        if (Array.isArray(ev.choices) && ev.choices.length) {
-          state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
-          state.meta.pendingChoicePick = null;
-        }
-        triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
-        state.meta.eventLastFired[ev.id] = state.meta.turn;
-        if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
-        firedEvents.push(ev.id);
-        return true;
-      }
+      if (roll <= 0) return ev;
     }
-    return false;
+    return null;
+  };
+  const fireEv = (ev) => {
+    let checkResult = null;
+    if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
+    applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+    if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (checkResult) {
+      state.meta.pendingNotifies.push(checkResult.line);
+      if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+    }
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+      state.meta.pendingChoicePick = null;
+    }
+    triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
+    state.meta.eventLastFired[ev.id] = state.meta.turn;
+    if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
+    firedEvents.push(ev.id);
   };
   if (gcfg) {
     if (rng) {
       // 사건 게이지 — 식힘(re_cool) 중엔 안 차고, 후보가 하나도 없으면 안 찬다(막힌 동안 채워 두었다가 풀리자마자 터뜨리지 않게).
       // 100이면 하나 터뜨리고 0으로, 식힘을 건다. 원장엔 안 남긴다 — 보이지 않는 게 요점이다.
-      const { GAUGE_KEY: GK, COOL_KEY: CK, GAUGE_MAX: GMAX } = gaugeMod;
+      const { GAUGE_KEY: GK, COOL_KEY: CK, NEXT_KEY: NK, GAUGE_MAX: GMAX } = gaugeMod;
       const days = tcfgR ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : 1;
       const eligible = eligibleNow();
       // 식힘이 이번 턴 도중에 끝나면 남은 날만큼은 찬다 — "닷새 뒤" 한 턴이 식힘 사흘에 통째로 먹히지 않게
@@ -1567,13 +1573,25 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       if (!(cool > 0) && eligible.length) {
         const add = gaugeMod.fillAmount(gcfg, makeLookup(schema, state.vars), fillDays, rng, !cooling);
         if (add > 0) state.vars[GK] = gaugeMod.tidy(Math.min(GMAX, (Number(state.vars[GK]) || 0) + add));
-        if ((Number(state.vars[GK]) || 0) >= GMAX) {
-          // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
-          const prev = state.vars[GK];
+      }
+      // 징조 (v1.14.1) — 선(omenAt)을 넘으면 다음 사건을 미리 하나 뽑아 둔다(re_next). 그새 못 오게 됐거나(조건·쿨다운) 게이지가
+      // 선 아래로 내려가면(서사의 { gauge: -N }) 거둔다. 뽑아 둔 사건의 omen 글이 메인 프롬프트에 징후로 깔린다(3.5.8).
+      const g = Number(state.vars[GK]) || 0;
+      let next = typeof state.vars[NK] === 'string' ? state.vars[NK] : '';
+      let nextEv = next ? eligible.find((e) => e.id === next) || null : null;
+      if (next && (!nextEv || gcfg.omenAt == null || g < gcfg.omenAt)) { state.vars[NK] = ''; next = ''; nextEv = null; }
+      if (!(cool > 0) && eligible.length && g >= GMAX) {
+        // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
+        const ev = nextEv || pickOne(eligible);
+        if (ev) {
           state.vars[GK] = 0;
-          if (fireOne(eligible)) state.vars[CK] = gcfg.cooldown;
-          else state.vars[GK] = prev;
+          state.vars[NK] = '';
+          fireEv(ev);
+          state.vars[CK] = gcfg.cooldown;
         }
+      } else if (!next && gcfg.omenAt != null && !(cool > 0) && eligible.length && g >= gcfg.omenAt) {
+        const ev = pickOne(eligible);
+        if (ev) state.vars[NK] = ev.id;
       }
     }
   } else if (re) {
@@ -1586,7 +1604,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
       reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
     } else reChance = re.chancePerTurn ?? 0;
-    if (rng && rng() < reChance) fireOne(eligibleNow());
+    if (rng && rng() < reChance) { const ev = pickOne(eligibleNow()); if (ev) fireEv(ev); }
   }
 
   // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.

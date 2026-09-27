@@ -841,17 +841,20 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     // 안 뜬 이벤트가 세워 줘야 하는 플래그에 막혀 있다 — 원인은 그쪽 하나다.
-    const via = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
+    // 플래그(bool·enum)는 뒤집어 보고(blockedBy), 숫자는 문턱의 병목이 곧 그 값이면 같은 사정이다 (v1.13.3 — 베리디아 주교:
+    // 예고 이벤트만이 bishop_at(오는 날)을 세우니, 예고가 안 뜬 판에선 판단 셋이 `bishop_at > 0`에 막혀 "죽은 이벤트"로)
+    const b = bottleneck(e.when, obs);
+    const flagVia = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
+    const via = flagVia || (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null);
     if (via) {
       stats.deadEvents--;
       stats.cascadeEvents = (stats.cascadeEvents ?? 0) + 1;
       const src = allEv.filter((o) => o.id !== e.id && (o.effects || []).some((f) => (f.set ?? f.list) === via.id));
-      add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) 켜져야 뜨는데, 그 값을 세우는 `
+      add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) ${flagVia ? '켜져야' : `\`${b.op} ${b.need}\`이 돼야`} 뜨는데, 그 값을 세우는 `
         + `${src.length ? `이벤트(${src.map((o) => `'${o.id}'`).join(', ')})가` : '이벤트가'} 안 떴습니다 — `
         + '따로 고칠 것이 아니라 그쪽 하나가 원인입니다.', null);
       continue;
     }
-    const b = bottleneck(e.when, obs);
     const where = b
       ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
         + (b.pct != null ? ` (${b.pct}%)` : '')

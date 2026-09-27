@@ -507,6 +507,38 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
   ck('★ 시뮬 안 값만 옮겨 센 사본은 여전히 신고 (좁은 면제)', still('copy')?.sev === 'mid', JSON.stringify(still('copy')));
 }
 
+// ── v1.13.3 숫자 병목의 연쇄 ──
+// 계기: 베리디아 주교 — 예고 이벤트만이 bishop_at(오는 날, 숫자)을 세우는데, 예고가 안 뜬 판에선 판단 셋이 `bishop_at > 0`에
+// 막혀 🟡 죽은 이벤트로. 연쇄는 플래그(bool·enum)만 뒤집어 봤다 — 숫자는 병목이 곧 그 값이면 같은 사정이다.
+{
+  const s = {
+    simcore: '0.1', meta: { name: '예고와 판단' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'at', label: '오는 날', type: 'int', init: 0, min: 0 },
+      { id: 'seen', label: '본 횟수', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [{ set: 'gold', expr: 'gold + 1' }],
+      events: [
+        { id: 'notice', when: 'at == 0 and gold > 99999', effects: [{ set: 'at', expr: '5' }], notify: '온다' },
+        { id: 'judge', when: 'at > 0', effects: [{ set: 'at', expr: '0' }, { set: 'seen', expr: 'seen + 1' }], notify: '보고 갔다' },
+        // 반대쪽 — 시뮬 안에서 움직이는 값에 막힌 건 여전히 죽은 이벤트
+        { id: 'rich', when: 'gold > 99999', notify: '부자' },
+      ],
+    },
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'at' }, { var: 'seen' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const r = diagnose(s, { turns: 20, runs: 4 });
+  const of = (id) => r.findings.filter((f) => f.text.startsWith(`'${id}'`));
+  ck('★ 안 뜬 예고만이 세우는 숫자에 막힌 판단은 🔵 연쇄', of('judge').some((f) => f.tag === '연쇄' && f.sev === 'low')
+    && !of('judge').some((f) => f.tag === '죽은 이벤트'), of('judge').map((f) => `${f.sev} ${f.tag}`).join(','));
+  ck('연쇄 문구 — 숫자면 문턱을 말한다', of('judge').some((f) => f.text.includes('`> 0`이 돼야')), of('judge').map((f) => f.text.slice(0, 60)).join(' / '));
+  ck('★ 원인(예고)은 여전히 죽은 이벤트 · 시뮬 안 값에 막힌 것도', of('notice').some((f) => f.tag === '죽은 이벤트') && of('rich').some((f) => f.tag === '죽은 이벤트'),
+    [...of('notice'), ...of('rich')].map((f) => `${f.sev} ${f.tag}`).join(','));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

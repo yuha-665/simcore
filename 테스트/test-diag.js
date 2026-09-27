@@ -463,6 +463,50 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     && src.includes('choiceMod.fallbackIndex(ev, open)') && src.includes('st.meta.pendingChoicePick = pool['), '');
 }
 
+// ── v1.13.2 옮겨 세는 값 · 의뢰판 쓰기 경로 ──
+// 계기: 베리디아 청원함 — pet_n = count(petitions)는 onTurn이 쓰지만, petitions는 청원함 [수락]과 보조만 넣고 뺀다.
+// 시뮬은 버튼을 못 누르니 pet_n·pet_kept·pet_lost가 🟡 안 움직임, 그걸 읽는 통지 이벤트가 🟡 죽은 이벤트로.
+{
+  const base = {
+    simcore: '0.1', meta: { name: '청원 장부' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'asks', label: '맡은 청원', type: 'list', init: [] },
+      { id: 'ask_n', label: '청원 수', type: 'int', init: 0, min: 0 },
+      { id: 'ask_lost', label: '놓친 청원', type: 'int', init: 0, min: 0 },
+      // 반대쪽 — 시뮬 안에서만 움직이는(그런데 이 판엔 안 뜬) 값을 옮겨 센 것은 여전히 신고돼야 한다
+      { id: 'stuck', label: '막힘', type: 'int', init: 0, min: 0 },
+      { id: 'copy', label: '막힘 사본', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [
+        { set: 'ask_lost', expr: 'max(ask_n - count(asks), 0)' },
+        { set: 'ask_n', expr: 'count(asks)' },
+        { set: 'copy', expr: 'stuck' },
+        { set: 'gold', expr: 'gold + 1' },
+      ],
+      events: [
+        { id: 'lost', when: 'ask_lost > 0', notify: '청원을 놓쳤다' },
+        { id: 'jam', when: 'gold > 99999', effects: [{ set: 'stuck', expr: 'stuck + 1' }], notify: '막혔다' },
+      ],
+    },
+    updater: { model: 'aux', allow: [{ id: 'asks' }] },
+    questBoard: { label: '청원함', listVar: 'asks', guide: '마을 청원', accept: [{ set: 'ask_n', expr: 'ask_n + 1' }] },
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'asks' }, { var: 'ask_n' }, { var: 'copy' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const w = writerMap(base);
+  ck('★ 의뢰판 목록은 쓰기 경로 "의뢰판"이 있다', w.asks?.has('의뢰판'), JSON.stringify([...(w.asks || [])]));
+  ck('★ 의뢰판 수락 효과도 쓰기 경로', w.ask_n?.has('의뢰판'), JSON.stringify([...(w.ask_n || [])]));
+  const r = diagnose(base, { turns: 20, runs: 4 });
+  const still = (id) => r.findings.find((f) => f.tag === '안 움직임' && f.text.startsWith(`'${id}'`));
+  ck('★ 버튼·보조 값을 옮겨 센 변수는 🟡 안 움직임이 아니다', !still('ask_n') && !still('ask_lost'),
+    r.findings.filter((f) => f.tag === '안 움직임').map((f) => f.text.slice(0, 40)).join(' / '));
+  ck('★ 그 값을 읽는 이벤트는 🟡 죽은 이벤트가 아니라 🔵 담당 문턱', !r.findings.some((f) => f.tag === '죽은 이벤트' && f.text.startsWith("'lost'"))
+    && r.findings.some((f) => f.sev === 'low' && f.text.startsWith("'lost'")), r.findings.filter((f) => f.text.startsWith("'lost'")).map((f) => `${f.sev} ${f.tag}`).join(','));
+  ck('★ 시뮬 안 값만 옮겨 센 사본은 여전히 신고 (좁은 면제)', still('copy')?.sev === 'mid', JSON.stringify(still('copy')));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

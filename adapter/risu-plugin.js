@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.13.1
-//@display-name SimCore (시뮬 엔진) v1.13.1 기한은 세되 지우지 않는다
+//@version 1.13.2
+//@display-name SimCore (시뮬 엔진) v1.13.2 편지는 편지답게
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,23 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.13.2 ──────────────────────────────────────────────
+// **편지는 편지답게 — 메신저 `medium: 'letter'`.** 발단: 베리디아 서신(2026-09-27). 폰이 없는 세계(아틀리에·베리디아)는 메신저를
+// 편지 왕래로 쓰면서 guide에 "단말기가 아니라 편지다"라고 덧칠했는데, 엔진이 보조에게 먼저 "주인공의 단말기"·"문자 말투로 짧게"·
+// "즉답이 어색하면 뜸 들인 한 통"이라고 말하니 두 지시가 부딪혔다 — 귀족의 답장이 두 줄짜리 문자로 왔다.
+// - [엔진] messenger.medium 'text'(기본, 옛 동작 그대로) | 'letter'. 편지면 선톡·답장·메인 주입 세 곳의 말이 편지 말로
+//   (받은 편지에 답한다·한 통에 할 말을 담는다·격식과 서명·오가는 시간만큼 늦게 온 답장·모르는 사이면 모르는 사람에게 쓰듯),
+//   한 통 상한 300 → 600자, 메인 주입은 최근 6통 × 240자. 패널 문구("답장이 오는 중…"·"보내기")와 출력 상한(+700)도 따라간다.
+// - [어댑터] 답장 인격 발췌가 **정확히 맞는 것부터** (messenger.personaEntry, 순수 함수로 빼 테스트) — 부분 일치만 보다가
+//   "리아나"가 앞에 있는 "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의 인격으로 썼다.
+//   제목 = 이름 → 키워드 칸 = 이름 → 이름의 한 낱말(「알라릭 여왕」→ 알라릭·여왕) → 마지막에만 옛 부분 일치.
+// - [검증] medium은 text|letter. [편집기] [메신저] 03 말투 절에 "매체" 선택 + 요약 칩 ✉, 규격서 한 줄.
+// - [진단] 오탐 둘 — 지적을 줄이기만 한다 (베리디아 청원함이 계기). ① 의뢰판 [수락]이 목록에 줄을 넣고 accept/cancel 효과가 값을
+//   움직이는 것도 쓰기 경로 '의뢰판'. ② **옮겨 세는 값** — 시뮬이 쓰는 자리가 onTurn 식뿐이고 그 식이 읽는 변수가 전부 안 움직였고
+//   그중 하나라도 시뮬 밖(보조·명령·의뢰판·편성·달력)이 움직이는 값이면, 그 정지는 입력의 정지를 옮겨 적은 것 → 🟡 안 움직임이 아니라
+//   측정 불가, 그 값을 읽는 이벤트는 🟡 죽은 이벤트가 아니라 🔵 담당 문턱 (pet_n = count(petitions)). 목록 규칙·이벤트·파생이 끼면
+//   판단하지 않는다(좁게). 내장 템플릿 16 전후 동일, 봇 4는 줄기만 (아틀리에 진열대 shelf_sold·quest_n도 같은 오탐이었다).
+
 // ── v1.13.1 ──────────────────────────────────────────────
 // **기한은 세되 지우지 않는다 — 목록 규칙 `keepOverdue`.** 발단: 베리디아 점검(2026-09-27). 빚·약속(favors)은 "이행하거나 파기하기
 // 전엔 안 사라진다"가 설계라 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않는다 — v1.7.1부터 그게 화면·프롬프트에
@@ -4399,6 +4416,7 @@
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         if (auxPrompt.includes('먼저 메시지를 보낼')) auxCap += 300;   // 메신저 선톡 (v1.2.0)
+        if (auxPrompt.includes('먼저 편지를 보낼')) auxCap += 700;     // 편지 선톡 (v1.13.2 medium 'letter' — 한 통 600자)
         if (auxPrompt.includes('의뢰판 첫 게시]') || auxPrompt.includes('의뢰판 보충 게시]')) auxCap += 900; // 의뢰판 (v1.7.9)
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
@@ -5766,9 +5784,11 @@
       const char = await Risuai.getCharacter();
       const lore = Array.isArray(char?.globalLore) ? char.globalLore : [];
       const parts = [];
+      // v1.13.2 — 정확히 맞는 것부터 (messenger.personaEntry). 부분 일치만 보면 "리아나"가 앞에 있는
+      // "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의 인격으로 썼다 (베리디아).
+      const pool = lore.filter((l) => l && l.comment !== SCHEMA_LORE_COMMENT);
       for (const name of members) {
-        const hit = lore.find((l) => l && l.comment !== SCHEMA_LORE_COMMENT
-          && (String(l.key || '').includes(name) || String(l.comment || '').includes(name)));
+        const hit = msgrMod.personaEntry(pool, name);
         if (hit) parts.push(`◆ ${name}\n${String(hit.content || '').trim().slice(0, 700)}`);
       }
       return parts.join('\n').slice(0, 2800);
@@ -5780,15 +5800,17 @@
     if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
     const room = session.current.msgr?.rooms?.find((r) => r.id === roomId);
     if (!room) return;
+    const cfg = msgrMod.msgrConfig(schema);
     msgrBusy = true;
-    gameNotice = '⏳ 상대가 입력 중…';
+    gameNotice = cfg?.medium === 'letter' ? '⏳ 답장이 오는 중…' : '⏳ 상대가 입력 중…';
     renderGamePanel();
     try {
       const prompt = msgrMod.interactionPrompt(schema, session.current, roomId, {
         persona: await buildMsgrPersona(room.members),
         narrative: await boardNarrative(),
       });
-      const res = await callAuxLLM(prompt, room.kind === 'group' ? 1000 : 800);
+      const letter = cfg?.medium === 'letter';   // v1.13.2 — 편지 한 통은 600자까지
+      const res = await callAuxLLM(prompt, (room.kind === 'group' ? 1000 : 800) + (letter ? 700 : 0));
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 메신저 답장은 쓸 수 없어요';
       } else if (typeof res === 'string') {
@@ -5797,7 +5819,7 @@
           const r = msgrMod.applyDelta(schema, session.current, delta);
           msgrMod.markRead(session.current, roomId);   // 보고 있는 방 — 안읽음 즉시 소거
           await boardSaveNow('메신저 답장');
-          gameNotice = r.received ? null : '읽씹이네요 — 답이 없어요';
+          gameNotice = r.received ? null : (cfg?.medium === 'letter' ? '답장이 오지 않았어요' : '읽씹이네요 — 답이 없어요');
         } else {
           gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
           console.log('[simcore] 메신저 파싱 실패:', res.slice(0, 200));
@@ -5923,7 +5945,8 @@
         ? '이 방의 최근 대화가 다음 인풋에 서사로 전달됩니다 (활성은 한 방만).'
         : '패널 전용 대화예요 — 서사는 이 대화를 모릅니다. 전달하려면 활성으로.'));
       const log = el('div', 'scm-log');
-      if (!room.msgs.length) log.appendChild(el('div', 'scb-empty', '첫 메시지를 보내 보세요.'));
+      const letter = cfg.medium === 'letter';   // v1.13.2
+      if (!room.msgs.length) log.appendChild(el('div', 'scb-empty', letter ? '첫 편지를 보내 보세요.' : '첫 메시지를 보내 보세요.'));
       for (const m of room.msgs) {
         const mine = m.from === 'me';
         const row = el('div', `scm-row${mine ? ' scm-mine' : ''}`);
@@ -5936,8 +5959,9 @@
       }
       card.appendChild(log);
       const ta = el('textarea', 'scb-ta scm-input');
-      ta.placeholder = msgrBusy ? '상대가 입력 중…' : '메시지 (Enter 전송, Shift+Enter 줄바꿈)';
-      ta.maxLength = msgrMod.CAPS.MSG_LEN;
+      ta.placeholder = msgrBusy ? (letter ? '답장을 기다리는 중…' : '상대가 입력 중…')
+        : (letter ? '편지 (Enter 보내기, Shift+Enter 줄바꿈)' : '메시지 (Enter 전송, Shift+Enter 줄바꿈)');
+      ta.maxLength = msgrMod.msgLen(cfg);
       ta.value = msgrView.draft || '';
       ta.oninput = () => { msgrView.draft = ta.value; };
       const doSend = async () => {
@@ -5951,7 +5975,7 @@
       ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); } };
       card.appendChild(ta);
       const sendBar = el('div', 'scb-toolbar');
-      sendBar.appendChild(btn('전송', doSend));
+      sendBar.appendChild(btn(letter ? '보내기' : '전송', doSend));
       card.appendChild(sendBar);
       // 새 메시지가 보이게 스크롤 바닥으로 (렌더 뒤 한 틱)
       setTimeout(() => { try { log.scrollTop = log.scrollHeight; } catch {} }, 0);

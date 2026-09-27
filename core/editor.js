@@ -3977,6 +3977,7 @@ const SCHEMA_BOARD_RULES = [
 // 메신저(messenger, v1.2.0) — 단말기 문자.
 const SCHEMA_MSGR_RULES = [
   '- 메신저는 **주인공의 단말기 문자 패널**입니다 (헌터 단말기·스마트폰이 있는 세계에만). 방·대화는 세이브에 살고, 방은 **유저만** 팝니다 — AI가 만들거나 없애지 않습니다.',
+  '- 폰이 없는 세계면 `medium: "letter"`(v1.13.2) — 같은 패널을 **편지 왕래**로 씁니다. 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말(한 통에 할 말을 담는다·격식과 서명·오가는 시간만큼 늦은 답장)로 바뀌고 한 통이 600자까지 늡니다.',
   '- `contactsVar`(필수)가 연락처 풀입니다 — 동료 명부 같은 **이름 list 변수**를 연결하세요. "파티를 맺을 정도면 연락처는 안다"는 개념이라 별도 연락처 변수를 만들지 않습니다.',
   '- 1:1 방 최대 5개, 단체방 최대 2개 (상대 4명 + 본인 = 5인). 선톡은 `firstChance`(0~1, 기본 0.25) 확률 + `cooldown`(기본 3턴) — 뜬 턴만 보조 요청에 얹혀 평턴 비용 0.',
   '- **활성 방 하나만** 다음 인풋에 대화가 실립니다 — 비활성 방은 순수 패널 전용 (서사가 모름). 토큰 설계의 핵심이니 바꾸지 마세요.',
@@ -11019,7 +11020,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('span', {}, `${M.icon || '📱'} ${M.label || '메신저'}`),
         h('span', {}, `연락처 ${M.contactsVar || '미연결'}`),
         h('span', {}, `선톡 ${M.firstChance ?? 0.25}`),
-        h('span', {}, `쿨 ${M.cooldown ?? 3}턴`))));
+        h('span', {}, `쿨 ${M.cooldown ?? 3}턴`),
+        M.medium === 'letter' ? h('span', {}, '✉ 편지') : null)));
 
     wrap.appendChild(section('01', '기본 정보', '채팅에 보이는 이름과 대화 상대가 되는 목록을 연결해요.',
       h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
@@ -11047,6 +11049,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     wrap.appendChild(section('03', '문자 말투', '메신저에서만 사용할 문장 길이와 표현 습관을 정해요.',
       h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        // v1.13.2 — 폰이 없는 세계(아틀리에·베리디아)는 편지. 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말로 바뀐다
+        field('매체', bindSelect(M.medium ?? 'text', [['text', '문자 — 단말기 (기본)'], ['letter', '편지 — 한 통 600자, 격식·서명']],
+          (x) => { if (x === 'letter') M.medium = 'letter'; else delete M.medium; rerender(); }),
+          '편지로 두면 답장이 "실시간 대화"가 아니라 한 통의 편지로 오고, 서사에도 "오간 서신"으로 전달돼요.'),
         field('말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
           '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'),
           '인물 고유 말투는 캐릭터 설정을 따르고, 여기에는 문자 대화에서 공통으로 지킬 규칙을 적어요.', true))));

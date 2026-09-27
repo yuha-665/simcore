@@ -1321,6 +1321,10 @@ function validateSchema(schema) {
       if (M.cooldown != null && (!Number.isInteger(M.cooldown) || M.cooldown < 0 || M.cooldown > 20)) {
         err('$.messenger.cooldown', '선톡 쿨다운은 0~20턴 정수 (기본 3)');
       }
+      // v1.13.2 — 매체. 'letter'면 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말로 바뀐다
+      if (M.medium != null && M.medium !== 'text' && M.medium !== 'letter') {
+        err('$.messenger.medium', "매체(medium)는 'text'(단말기 문자, 기본) 또는 'letter'(편지)");
+      }
       if (M.when != null) {
         if (typeof M.when !== 'string') err('$.messenger.when', 'when은 표현식 문자열이어야 함');
         else if (M.when.trim()) checkExpr(M.when, '$.messenger.when', allIds, err, { allowRand: false });

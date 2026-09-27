@@ -68,6 +68,13 @@ function writerMap(schema) {
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
   }
+  // 의뢰판(v1.7.9) — [수락]이 목록에 줄을 넣고, 수락·취소 효과(accept/cancel)가 값을 움직인다. 패널 버튼이라 시뮬은 못 누른다
+  // (v1.13.2 — 베리디아 청원함의 pet_n이 "바꾸는 곳: onTurn"만 보여 🟡 안 움직임으로)
+  const qb = schema.questBoard;
+  if (qb && typeof qb === 'object' && !Array.isArray(qb)) {
+    if (qb.listVar) add(qb.listVar, '의뢰판');
+    for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
+  }
   return w;
 }
 
@@ -780,6 +787,31 @@ function diagnose(schema, opts = {}) {
   const laterNote = `${turns}턴 안에는 여기까지 가지 않을 뿐이고, ${longTurns}턴으로 늘리면 실제로 뜹니다 — `
     + '판이 짧아서지 결함이 아닙니다. 이 봇의 후반부까지 보려면 진단 턴 수를 올리세요.';
 
+  // 시뮬이 실제로 굴릴 수 있는 쓰기 자리 — 6. 수치의 움직임이 먼저 쓰던 것을 3. 죽은 이벤트도 쓴다 (v1.13.2 옮겨 세는 값)
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
+  const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
+  // 옮겨 세는 값 (v1.13.2) — 시뮬이 쓰는 자리가 onTurn의 식뿐이고, 그 식이 읽는 변수가 전부 이 판에서 안 움직였고,
+  // 그중 하나라도 시뮬 밖(보조 AI·명령·의뢰판·편성·달력)이 움직이는 값이면 — 이 값의 정지는 입력의 정지를 옮겨 적은 것이다.
+  // 베리디아 pet_n = count(petitions): 맡은 청원은 청원함 버튼과 보조만 넣고 뺀다. 결함이 아니라 잴 수 없는 것.
+  // 목록 규칙(expire 등)이 섞이거나 파생·이벤트가 끼면 판단하지 않는다 (좁게 — 진짜 결함을 덮지 않게).
+  const OUTSIDE = new Set(['AI', '명령', '의뢰판', '편성', '달력']);
+  const isStill = (id) => new Set([...idle, ...play].flatMap((r) => r.hist.map((h) => JSON.stringify(h[id])))).size === 1;
+  const followsOutside = (id) => {
+    const w = [...(writers[id] || [])].filter((who) => IN_PLAY.has(who));
+    if (!w.length || w.some((who) => who !== 'onTurn')) return false;
+    const rules = (schema.rules?.onTurn || []).filter((r) => r && (r.set === id || r.list === id));
+    if (!rules.length || rules.some((r) => !r.set || typeof r.expr !== 'string')) return false;
+    const refs = new Set();
+    for (const r of rules) {
+      let got;
+      try { got = referencedVars(r.expr); } catch { return false; }
+      for (const n of got) if (n !== id) refs.add(n);
+    }
+    if (!refs.size) return false;
+    for (const n of refs) if (!varIds.has(n) || !isStill(n)) return false;
+    return [...refs].some((n) => [...(writers[n] || [])].some((who) => OUTSIDE.has(who)));
+  };
+
   // ── 3. 죽은 이벤트 ──
   const everFired = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
   // 안 뜬 이벤트**만이** 세우는 값 — 그 값에 걸린 것들은 별개의 문제가 아니라 같은 문제의 그림자다.
@@ -873,6 +905,16 @@ function diagnose(schema, opts = {}) {
       add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 `
         + '서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — '
         + '**문턱을 내리지 마세요.** 실제 플레이에서 정말 안 뜨는지는 채팅을 몇 턴 돌려서 보세요.', null);
+      continue;
+    }
+    // 옮겨 세는 값에 걸린 문턱 (v1.13.2) — 조건의 값이 시뮬 밖(보조 AI·명령·패널 버튼)이 움직이는 값을 옮겨 센 것이라
+    // 시뮬에선 영영 시작값이다 (베리디아 pet_done: pet_kept > 0 — 청원을 맡는 건 청원함 [수락]). 6.과 같은 판정.
+    if (b && followsOutside(b.id)) {
+      stats.deadEvents--;
+      stats.aiGated = (stats.aiGated ?? 0) + 1;
+      add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI·명령·패널 버튼이 움직이는 값을 `
+        + '옮겨 세는 값이라, 그걸 누르지 않는 이 진단에서는 시작값에 머뭅니다 — **문턱을 내리지 마세요.** '
+        + '실제로 뜨는지는 채팅에서 그 패널을 써 보고 확인하세요.', null);
       continue;
     }
     add('mid', '죽은 이벤트', `'${e.id}' 미발동 — ${where}`
@@ -1141,9 +1183,7 @@ function diagnose(schema, opts = {}) {
   // ⚠ '새 시작'(시작 프리셋)도 여기서 빼야 한다. 최초설정과 똑같이 **시작값만** 정하는 곳이지
   // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
   // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
-  // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
-  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
-  const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
+  // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다. (IN_PLAY·simCanMove·followsOutside는 3. 앞에 있다)
   let aiOnlyStill = 0, cascadeStill = 0, partyGatedStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
@@ -1155,6 +1195,7 @@ function diagnose(schema, opts = {}) {
     const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
     if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
+      if (followsOutside(x.id)) { aiOnlyStill++; continue; }
       // 안 뜬 이벤트만이 세우는 플래그 — 원인은 그 이벤트 쪽이고 이미 3번에서 말했다.
       if (deadOnlyVars.has(x.id)) { cascadeStill++; continue; }
       // 쓰는 자리가 전부 편성 게이트 뒤 — 시뮬은 편성을 못 하니 시작값인 게 당연하다 (v0.84)
@@ -1197,7 +1238,7 @@ function diagnose(schema, opts = {}) {
   stats.aiOnlyVars = aiOnlyStill;
   if (aiOnlyStill) {
     add('low', '측정 불가',
-      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하거나 효과 안에서만 쓰이는 항목이라 `
+      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하거나, 효과 안에서만 쓰이거나, 그런 값을 옮겨 세는 항목이라 `
       + '이 진단으로는 움직임을 잴 수 없습니다 (시뮬레이션에는 AI가 없습니다). '
       + '결함이라는 뜻이 아니라 확인 대상이 아니라는 뜻입니다 — '
       + '실제로 갱신되는지는 채팅을 몇 턴 돌려서 눈으로 보세요.', null);

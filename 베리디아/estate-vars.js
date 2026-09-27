@@ -118,6 +118,14 @@ const thr = (v, op, at0, at100) => {
   return `${v} ${op} ${at0} ${k < 0 ? '-' : '+'} hardship * ${Math.abs(k)}`;
 };
 
+// ── 이번 정산에서 재고가 빈 날 수 (2026-09-27, 도약 캡 철폐의 짝) ──
+// 재고 x, 하루 증감 s, 흐른 날 span. s < 0이면 k일째 끝에 x + s·k <= 0이 되는 날부터 끝까지가 빈 날이다 —
+//   첫 빈 날 = ceil(x / -s) (x가 0이면 첫날부터), 그래서 span - ceil(x / -s) + 1 을 [0, span]으로 자른다.
+// s >= 0이면 재고가 안 준다 — x도 0이고 s도 0일 때만 내내 빈다 (옛 식 "깎은 뒤 0인가"와 같은 판정).
+// span이 1이면 "x + s <= 0"과 정확히 같다 → 하루씩 가는 평소 턴은 옛 식과 값이 한 끗도 안 다르다.
+const lackDays = (x, s) => `${s} >= 0 ? (${x} <= 0 and ${s} == 0 ? span : 0)`
+  + ` : clamp(span - ceil(${x} / (0 - ${s})) + 1, 0, span)`;
+
 const SPOTS = EXPLORE[0][4].length;
 const SPOT_TOTAL = EXPLORE.reduce((a, e) => a + e[4].length, 0);
 // 방향 → 그 방향의 발견물 이름(미탐사/탐사중 포함)을 돌려주는 조회식
@@ -320,8 +328,12 @@ const S = {
     // 시계(time_epoch)에 굳힌다. 옛 days_passed와 결정적 차이: **0이면 날짜가 안 흐른다.**
     // 같은 날 안의 장면 여러 턴이 며칠씩 흐르던 "1아웃풋=1일" 왜곡(design-시간.md)이 사라진다.
     // ⚠ 진행 규칙은 이 desc에 적는다 — 지시문은 메인 전용이라 보조가 못 읽는다.
-    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 14,
-      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, next week = 7. '
+    // 도약 캡 철폐 (2026-09-27, 플러그인 규칙 #10 "달력은 서사를 따라간다"): 옛 max 14는 "석 달 뒤"를 14일로 깎아
+    //   달력·정산이 서사에 뒤처지게 했다. 3650은 한계가 아니라 날짜 오기입(20260305) 백스톱 — 내장 템플릿과 같은 값.
+    //   긴 도약에서 곳간이 도중에 비는 경우는 아래 lack_* 가 굶은 날만큼만 벌한다.
+    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 3650,
+      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, next week = 7, a month later = 30, '
+        + 'a whole winter = 90 — write the full number the narration covers; there is no cap. '
         + 'Leave it at 0 while the scene stays within the same day — the date, daily consumption and '
         + 'harvest all move only with this.' },
     // 시각·날씨는 종류가 유한하다 → text로 두면 AI가 매번 다른 표기를 만든다. enum이면 못 벗어난다.
@@ -344,6 +356,15 @@ const S = {
       desc: '부임 후 며칠째. 시계(elapsed)에서 매 턴 동기화된다. 시스템이 센다. 손대지 말 것.' },
     { id: 'day_prev', label: '(내부) 지난 정산일', type: 'int', init: 0, min: 0,
       desc: '지난 턴 정산 시점의 경과일. 시스템 전용이니 직접 바꾸지 마라.' },
+    // 이번 정산(span일) 중 곳간·물·금고가 빈 날 수 (2026-09-27). 정산은 span배로 몰아 하는데, 옛 식은 "도약이 끝난
+    //   뒤 바닥인가"만 보고 span일 전부를 굶은 날로 쳤다 — 90일을 건너뛰다 85일째 비어도 90일치 벌. 도약 캡(14)이
+    //   그걸 가려 주고 있었다. 하루씩 가는 평소 턴(span 1)에선 옛 식과 값이 한 끗도 안 다르다 (생성기 대조로 확인).
+    { id: 'lack_food', label: '(내부) 이번 정산의 굶은 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 곳간이 빈 날 수.' },
+    { id: 'lack_water', label: '(내부) 이번 정산의 목마른 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 물이 빈 날 수.' },
+    { id: 'lack_gold', label: '(내부) 이번 정산의 빈 금고 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 금고가 빈 날 수.' },
 
     // ── 달력에 적어 두는 예정 하나 ──
     // "사흘 뒤 백작의 사자가 온다"를 AI가 기억하고 있을 거라 기대하면 안 된다.
@@ -556,7 +577,8 @@ const S = {
     // ⚠ 자동 만료를 걸지 않는다 — 빚은 만기가 오는 순간이 제일 중요한데, expire는 그날
     //   조용히 지운다. 기한은 @절대일로 굳혀 표시만 하고, 정리(이행·파기)는 서사가 한다.
     { id: 'favors', label: '빚·약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 40, cmd: '약속',
-      desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists.' },
+      desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists. '
+        + 'Past the deadline the line stays (shown overdue) until it is settled or broken.' },
     // 건설 큐 (P4-2) — 공사 중인 것들. "@+일수"가 완공일이 되고, 그날 시스템이 목록에서
     // 내리며 완공 이벤트가 "무엇이 완성됐는지 옮겨 적어라"를 통지한다.
     { id: 'projects', label: '공사 중', type: 'list', init: [], maxItems: 6, itemMaxLength: 40, cmd: '공사',
@@ -831,8 +853,16 @@ const S = {
       // 공사 완공 (P4-2) — 완공일이 지난 항목이 목록에서 내려간다. "무엇이 완성됐나"의 통지는
       // 아래 proj_done 이벤트 몫 (onTurn ⑥ → 조건 이벤트 ⑦ 순서라 같은 턴에 감지된다).
       { list: 'projects', expire: 'day' },
+      // 빚·약속 — 기한은 세되 지우지 않는다 (v1.13.1 keepOverdue, 2026-09-27). 약속은 이행·파기 전엔 안 사라지는 게 설계라
+      // 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않아 상태창·프롬프트에 "(30일)"이 영영 멈춰 있었다.
+      // 이제 같은 시계로 굳고 줄어들며, 지나면 "(지남)"으로 남아 서사가 독촉·파기를 쓸 거리가 된다.
+      { list: 'favors', expire: 'day', keepOverdue: true },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
+      // 빈 날 세기는 재고를 깎기 **전에** — 깎은 뒤엔 "언제 비었나"를 알 수 없다 (lackDays 주석 참고).
+      { set: 'lack_food', expr: lackDays('food', 'surplus') },
+      { set: 'lack_water', expr: lackDays('water', 'water_bal') },
+      { set: 'lack_gold', expr: lackDays('gold', 'net_gold') },
       { set: 'food', expr: 'max(0, food + surplus * span)' },
       { set: 'water', expr: 'max(0, water + water_bal * span)' },
       { set: 'gold', expr: 'max(0, gold + net_gold * span)' },
@@ -840,19 +870,23 @@ const S = {
       // (잉여가 나야 회복되게 짜면 교착이다 — 보건이 낮아 잉여가 안 나는데 잉여가 없어 보건도 안 오른다)
       // 의무·가사 담당의 회복 보정 (P3) — E 주특기 기준 +2/일. 굶는 날의 -7은 못 이긴다 (의도).
       // 배급 절약(P4)은 사기·보건을 매일 1씩 깎는다 — 소비 25% 절감의 대가.
-      { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },
-      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
+      // 굶은 날(곳간·물 둘 중 하나라도 빈 날)만 -7, 나머지 날은 회복 — 둘 다 뒤꼬리 구간이라 합집합은 큰 쪽이다.
+      { set: 'health', expr: 'clamp(health - 7 * max(lack_food, lack_water) + (surplus > 0 ? 2 : 1) * (span - max(lack_food, lack_water))'
+        + ' + (round(d_care * 0.5) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale - 6 * lack_food + (span - lack_food) + (round(d_home * 0.5) + min(floor(duty_idle / 3), 2)'
+        + ' - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
       // 급료를 못 준 병사가 얌전할 리 없다 — 군대를 키우는 데 재정이 물린다
       // 호위 담당은 경비 인력 몫으로(d_guard×2명), 행정 담당은 회복 보정으로 (P3)
-      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0)'
-        + ' + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span, 0, 100)' },
+      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3)'
+        + ' + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span'
+        + ' + 5 * lack_food + (army > 0 or count(corps) > 0 ? 3 * lack_gold : 0), 0, 100)' },
       // 명성은 "여기 가면 살 수 있다"는 소문
       { set: 'fame', expr: 'clamp(fame + ((surplus > 4 ? 2 : 0) - (unrest >= 60 ? 2 : 0)) * span, 0, 100)' },
       // 굶으면 사람이 줄고, 먹이고 이름이 나면 흘러든다.
       // 인구 변동은 비율이라 열흘치를 한 번에 곱하면 몰살이 된다 — 닷새분까지만 몰아서 친다.
       { set: 'pop', expr: 'max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0)'
-        + ' - (food <= 0 ? round(pop * 0.04) : 0) - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5))' },
+        + ' - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5) - round(pop * 0.04) * min(lack_food, 5))' },
       // ── 탐사 진척 ──
       // 한 줄이 세 가지를 겸한다: ① 끝난 방향은 손대지 않음 ② 100에 닿으면 결과를 굴림
       // 시작점 굴림. 반드시 진척도 규칙보다 **먼저** — 같은 턴에 진척도가 이 값을 읽는다.
@@ -926,6 +960,8 @@ const S = {
 
       // 반드시 마지막. 위 정산이 전부 span(=day - day_prev)을 읽은 뒤에 박자를 당겨야 한다.
       { set: 'day_prev', expr: 'day' },
+      // 빈 날 수는 이번 정산 안에서만 뜻이 있다 — 끝에 0으로 돌려 상태에 흔적을 안 남긴다 (진단도 임시 변수로 읽는다)
+      { set: 'lack_food', expr: '0' }, { set: 'lack_water', expr: '0' }, { set: 'lack_gold', expr: '0' },
     ],
     // ── 발견 ──
     // 어느 자리가 열렸는지는 onTurn이 이미 정했다. 여기는 그걸 서사에게 넘기는 자리다.
@@ -1531,7 +1567,7 @@ const S = {
       //   전사  유저가 "매일 12골드씩 60일"이라 씀 → 옮겨 적음      ← 이건 받아쓰기다
       // guide의 STANDING INCOME 항목이 "숫자가 명시됐을 때만"으로 그 선을 긋는다.
       // 그래도 틀리면 /계약- 이나 패널 ✕로 뺀다 — 목록이라 눈에 보이는 게 이 설계의 이점이다.
-      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'skip_day', maxGain: 14 },
+      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'skip_day', maxGain: 3650 },
       { id: 'route' }, { id: 'route_days', maxDelta: 40 },
       { id: 'stance' }, { id: 'exposed', maxDelta: 15 },   // 유저가 배분을 지시하면 반영
       // 방향은 열어 둔다. 계약과 달리 틀려도 복리로 어긋나지 않는다 —
@@ -1557,7 +1593,8 @@ const S = {
       + 'change are already settled by the system — never touch them. You change only what the story created as an '
       + 'exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\n'
       + 'TIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, '
-      + 'three days later = 3, next week = 7). Leave it at 0 while the scene stays within the same day — nothing is '
+      + 'three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). '
+      + 'Leave it at 0 while the scene stays within the same day — nothing is '
       + 'consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and '
       + 'the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a '
       + 'scheduled appointment; pass through it as a scene.\n'
@@ -1597,7 +1634,9 @@ const S = {
       + 'A project merely proposed or funded registers nothing.\n'
       + 'FAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each '
       + '("모르웬에게 곡물 200 상환 @+30"), the deadline as @+days when one exists. Register only what is actually '
-      + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently.\n'
+      + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. '
+      + 'The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you '
+      + 'remove it — an overdue debt is something the narration should press on or break.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -2295,6 +2334,40 @@ for (const t of S.party.tabs) {
   ok('구세이브 → day 스냅 · 하루치만 정산 (172일치 폭주 없음)',
     r.state.vars.day === engine.makeLookup(S, r.state.vars)('elapsed') && (fOld - r.state.vars.food) < 120,
     `day ${r.state.vars.day} · 식량 ${fOld} → ${r.state.vars.food}`);
+
+  // ④ 도약 캡 철폐 (2026-09-27) — "한 겨울이 지났다" = 90일이 그대로 90일. 옛 max 14는 14일로 깎았다
+  t = engine.initState(S); t.meta.setupDone = true;
+  r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('tm', 4, 's') }).state, { skip_day: 90 }, {}, { rng: seededRng('tm', 4, 'o') });
+  const L4 = engine.makeLookup(S, r.state.vars);
+  ok('skip 90 → 날짜 +90 (캡에 안 깎임)', L4('elapsed') === 90 && r.state.vars.day === 90, `${d0} → ${L4('date')} · 경과 ${L4('elapsed')}일`);
+
+  // ⑤ 긴 도약 중 곳간이 비면 **빈 날만** 굶는다. 보건 40이면 하루 -29(보건이 수확을 좌우 — 80이면 흑자라 안 빈다),
+  //   곳간 29×8 → 8일째 끝에 바닥, 10일 도약이면 굶은 날 3일: 보건 40 -7×3 +1×7 = 26.
+  //   옛 식은 "끝에 바닥이니 10일 내내 굶음"으로 40-70 → 0이었다.
+  //   onTurn만 재려고 이벤트·랜덤을 걷은 사본으로 굴린다 (재해·역병이 보건을 건드리면 식이 흔들린다).
+  const S0 = { ...S, rules: { ...S.rules, events: [], randomEvents: undefined } };
+  const base = () => { const s = engine.initState(S0); s.meta.setupDone = true; Object.assign(s.vars, { water: 5000, health: 40 }); return s; };
+  const leap = (food) => {
+    const s = base(); s.vars.food = food;
+    return _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('tm', 5, 's') }).state, { skip_day: 10 }, {}, { rng: seededRng('tm', 5, 'o') }).state;
+  };
+  const per = -engine.makeLookup(S0, base().vars)('surplus');
+  const a = leap(per * 8), b = leap(0);
+  ok(`10일 도약 · 8일째 곳간 바닥(하루 -${per}) → 굶은 3일만 벌 (보건 40→26)`, a.vars.health === 26 && a.vars.food === 0, `보건 ${a.vars.health} · 식량 ${a.vars.food}`);
+  ok('처음부터 바닥이면 10일 내내 (보건 40→0, 옛 식과 같음)', b.vars.health === 0, `보건 ${b.vars.health}`);
+  ok('빈 날 수는 정산 끝에 0으로 (상태에 흔적 없음)', a.vars.lack_food === 0 && a.vars.lack_water === 0 && a.vars.lack_gold === 0,
+    `${a.vars.lack_food}/${a.vars.lack_water}/${a.vars.lack_gold}`);
+
+  // ⑥ 빚·약속 — 기한은 세되 지우지 않는다 (v1.13.1 keepOverdue). 옛 판은 @+5가 안 굳어 "(5일)"로 영영 멈춰 있었다
+  t = engine.initState(S); t.meta.setupDone = true;
+  const due = (st) => (engine.sendPhase(S, st, { rng: seededRng('tm', 6, 's') }).promptBlock.match(/모르웬에게 곡물 200 상환[^|\n]*/) || ['(없음)'])[0].trim();
+  r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('tm', 6, 's') }).state, { favors: { add: ['모르웬에게 곡물 200 상환 @+5'] } }, {}, { rng: seededRng('tm', 6, 'o') });
+  const saved = r.state.vars.favors[0];
+  ok('약속 @+5 → 날짜로 굳음', /@\d+$/.test(saved), saved);
+  r = _outputPhase(S, r.state, { skip_day: 3 }, {}, { rng: seededRng('tm', 7, 'o') });
+  ok('사흘 뒤 → (2일)로 줄어든다', due(r.state).endsWith('(2일)'), due(r.state));
+  r = _outputPhase(S, r.state, { skip_day: 4 }, {}, { rng: seededRng('tm', 8, 'o') });
+  ok('기한 지남 → 목록에 남고 (지남)', r.state.vars.favors.includes(saved) && due(r.state).endsWith('(지남)'), due(r.state));
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

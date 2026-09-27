@@ -185,6 +185,14 @@
       "desc": "지난 턴 정산 시점의 경과일. 시스템 전용이니 직접 바꾸지 마라."
     },
     {
+      "id": "nsfw_on",
+      "label": "수위",
+      "type": "bool",
+      "init": true,
+      "cmd": "수위",
+      "desc": "성행위 장면 이미지(<🏰💕|…>) 허용. 유저가 /수위 로 끈다 — 보조는 손대지 않는다."
+    },
+    {
       "id": "lack_food",
       "label": "(내부) 이번 정산의 굶은 날",
       "type": "int",
@@ -3579,6 +3587,313 @@
       {
         "id": "estate",
         "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style><input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
+      }
+    ]
+  },
+  "assets": {
+    "by": "main",
+    "packs": [
+      {
+        "id": "noble",
+        "source": "베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System",
+        "sep": "_",
+        "format": "<🏰|{name}>",
+        "usage": "인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. 평소 복장은 casual(왕가 드레스·귀족 드레스·수녀복). 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: <🏰|Alaric_casual_smug>",
+        "slots": [
+          {
+            "id": "who",
+            "label": "인물",
+            "values": [
+              "Alaric",
+              "Cassandra",
+              "Orelia",
+              "Liliana",
+              "Eleonora",
+              "Silvana",
+              "Valerius",
+              "Liana",
+              "Morwen",
+              "Beatrix",
+              "Lapis",
+              "Celestia",
+              "Stella"
+            ]
+          },
+          {
+            "id": "state",
+            "label": "복장·상태",
+            "values": [
+              "casual",
+              "nude",
+              "pregnancy"
+            ],
+            "fallback": "casual"
+          },
+          {
+            "id": "emo",
+            "label": "감정",
+            "values": [
+              "admiring",
+              "ahegao",
+              "angry",
+              "aroused",
+              "bored",
+              "confused",
+              "crying",
+              "despair",
+              "determined",
+              "disgust",
+              "embarrassed",
+              "excited",
+              "happy",
+              "jealous",
+              "orgasm",
+              "sad",
+              "scared",
+              "shy",
+              "smug",
+              "surprised",
+              "thinking",
+              "worried"
+            ],
+            "fallback": "happy"
+          }
+        ]
+      },
+      {
+        "id": "maid",
+        "source": "베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System",
+        "sep": "_",
+        "format": "<🏰|{name}>",
+        "usage": "인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. 메이드의 평소 복장은 bunny(왕립 메이드단 근무복) — casual은 없다. 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: <🏰|Philia_bunny_shy>",
+        "slots": [
+          {
+            "id": "who",
+            "label": "인물",
+            "values": [
+              "Yustina",
+              "Algeria",
+              "Lirica",
+              "Cassia",
+              "Lulu",
+              "Lara",
+              "Fiora",
+              "Livia",
+              "Meryl",
+              "Serie",
+              "Philia"
+            ]
+          },
+          {
+            "id": "state",
+            "label": "복장·상태",
+            "values": [
+              "bunny",
+              "nude",
+              "pregnancy"
+            ],
+            "fallback": "bunny"
+          },
+          {
+            "id": "emo",
+            "label": "감정",
+            "values": [
+              "admiring",
+              "ahegao",
+              "angry",
+              "aroused",
+              "bored",
+              "confused",
+              "crying",
+              "despair",
+              "determined",
+              "disgust",
+              "embarrassed",
+              "excited",
+              "happy",
+              "jealous",
+              "orgasm",
+              "sad",
+              "scared",
+              "shy",
+              "smug",
+              "surprised",
+              "thinking",
+              "worried"
+            ],
+            "fallback": "happy"
+          }
+        ]
+      },
+      {
+        "id": "clarice",
+        "source": "베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System",
+        "sep": "_",
+        "format": "<🏰|{name}>",
+        "usage": "인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. 근무 중엔 bunny, 사복이면 casual. 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: <🏰|Clarice_casual_happy>",
+        "slots": [
+          {
+            "id": "who",
+            "label": "인물",
+            "values": [
+              "Clarice"
+            ]
+          },
+          {
+            "id": "state",
+            "label": "복장·상태",
+            "values": [
+              "bunny",
+              "casual",
+              "nude",
+              "pregnancy"
+            ],
+            "fallback": "bunny"
+          },
+          {
+            "id": "emo",
+            "label": "감정",
+            "values": [
+              "admiring",
+              "ahegao",
+              "angry",
+              "aroused",
+              "bored",
+              "confused",
+              "crying",
+              "despair",
+              "determined",
+              "disgust",
+              "embarrassed",
+              "excited",
+              "happy",
+              "jealous",
+              "orgasm",
+              "sad",
+              "scared",
+              "shy",
+              "smug",
+              "surprised",
+              "thinking",
+              "worried"
+            ],
+            "fallback": "happy"
+          }
+        ]
+      },
+      {
+        "id": "adere",
+        "source": "베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System",
+        "sep": "_",
+        "format": "<🏰|{name}>",
+        "usage": "인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. 아데레의 평소 복장은 cow_bikini — casual은 없다. 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: <🏰|Adere_cow_bikini_aroused>",
+        "slots": [
+          {
+            "id": "who",
+            "label": "인물",
+            "values": [
+              "Adere"
+            ]
+          },
+          {
+            "id": "state",
+            "label": "복장·상태",
+            "values": [
+              "cow_bikini",
+              "nude",
+              "pregnancy"
+            ],
+            "fallback": "cow_bikini"
+          },
+          {
+            "id": "emo",
+            "label": "감정",
+            "values": [
+              "admiring",
+              "ahegao",
+              "angry",
+              "aroused",
+              "bored",
+              "confused",
+              "crying",
+              "despair",
+              "determined",
+              "disgust",
+              "embarrassed",
+              "excited",
+              "happy",
+              "jealous",
+              "orgasm",
+              "sad",
+              "scared",
+              "shy",
+              "smug",
+              "surprised",
+              "thinking",
+              "worried"
+            ],
+            "fallback": "happy"
+          }
+        ]
+      },
+      {
+        "id": "nsfw",
+        "source": "베리디아 NSFW 에셋 모듈 — Veridian NSFW Image System",
+        "sep": "_",
+        "format": "<🏰💕|{name}>",
+        "when": "nsfw_on",
+        "usage": "성행위 장면에서만 — 그 행위를 하는 인물 이름_행위 1장. 행위 이름은 목록 그대로(숫자·변형 금지). 장면 밖에선 감정 팩을 쓴다. 예: <🏰💕|Yustina_nsfw_fellatio>",
+        "slots": [
+          {
+            "id": "who",
+            "label": "인물",
+            "values": [
+              "Alaric",
+              "Cassandra",
+              "Orelia",
+              "Liliana",
+              "Eleonora",
+              "Silvana",
+              "Valerius",
+              "Liana",
+              "Morwen",
+              "Beatrix",
+              "Lapis",
+              "Celestia",
+              "Stella",
+              "Yustina",
+              "Algeria",
+              "Lirica",
+              "Cassia",
+              "Lulu",
+              "Lara",
+              "Fiora",
+              "Livia",
+              "Meryl",
+              "Serie",
+              "Philia",
+              "Clarice",
+              "Adere"
+            ]
+          },
+          {
+            "id": "act",
+            "label": "행위",
+            "values": [
+              "nsfw_cowgirl_position_sex",
+              "nsfw_cowgirl_position_sex_cum",
+              "nsfw_doggystyle_sex",
+              "nsfw_doggystyle_sex_cum",
+              "nsfw_fellatio",
+              "nsfw_fellatio_cum",
+              "nsfw_missionary_sex",
+              "nsfw_missionary_sex_cum",
+              "nsfw_paizuri",
+              "nsfw_paizuri_cum"
+            ],
+            "fallback": "nsfw_missionary_sex"
+          }
+        ]
       }
     ]
   },

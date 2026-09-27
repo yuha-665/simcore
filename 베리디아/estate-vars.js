@@ -359,6 +359,10 @@ const S = {
     // 이번 정산(span일) 중 곳간·물·금고가 빈 날 수 (2026-09-27). 정산은 span배로 몰아 하는데, 옛 식은 "도약이 끝난
     //   뒤 바닥인가"만 보고 span일 전부를 굶은 날로 쳤다 — 90일을 건너뛰다 85일째 비어도 90일치 벌. 도약 캡(14)이
     //   그걸 가려 주고 있었다. 하루씩 가는 평소 턴(span 1)에선 옛 식과 값이 한 끗도 안 다르다 (생성기 대조로 확인).
+    // 성인 이미지 팩(nsfw) 게이트 — 원본 모듈 토글 toggle_TerritoryNSFW 승계. 심코어 식은 리수 전역 변수를 못 읽어서
+    //   얼헌(alter_on)·아틀리에(nsfw_on)처럼 봇 변수로 옮긴다. 유저가 /수위 0·1로 켜고 끈다 — 보조 계약표(allow)엔 없다.
+    { id: 'nsfw_on', label: '수위', type: 'bool', init: true, cmd: '수위',
+      desc: '성행위 장면 이미지(<🏰💕|…>) 허용. 유저가 /수위 로 끈다 — 보조는 손대지 않는다.' },
     { id: 'lack_food', label: '(내부) 이번 정산의 굶은 날', type: 'int', init: 0, min: 0,
       desc: '시스템 전용. 이번 정산 기간 중 곳간이 빈 날 수.' },
     { id: 'lack_water', label: '(내부) 이번 정산의 목마른 날', type: 'int', init: 0, min: 0,
@@ -1707,6 +1711,55 @@ const S = {
     includeEvents: true,
   },
   statusUI: { mode: 'template', collapsible: false, templates: [] },
+  // ── 에셋 팩 — 모듈 로어북의 이미지 지침 두 항목을 이식 (2026-09-27, 유저 제공 원문) ──
+  // 원본: <🏰|인물_상태_감정> (감정 에셋 모듈) · <🏰💕|인물_nsfw_행위> (NSFW 에셋 모듈, toggle_TerritoryNSFW=1 게이트).
+  // 그리는 쪽은 카드 정규식 '에셋'·'야스에셋'이 그대로 한다 — 번들은 정규식을 안 건드린다.
+  // by:'main' — 원본이 "인물 대사 바로 앞에 한 장"이라 메인이 서사 자리에 여러 장을 낸다 (얼헌·아틀리에와 같은 결정).
+  // ⚠ 원본 지침은 casual을 "그 역할의 기본 복장"이라고만 해서 메이드에게도 casual을 쓰게 뒀는데, 카드 에셋을 세어 보면
+  //   메이드는 casual이 없고 bunny뿐이다 (아데레는 cow_bikini뿐, 클라리스만 둘 다). main 모드는 실존 대조가 안 되니
+  //   **있는 조합만 보이게** 인물 묶음마다 팩을 나눈다 — 메릴에게 casual이 아예 안 보이면 Meryl_casual_happy를 못 쓴다.
+  //   카드 실측(2026-09-27, 1995장): 귀족·수녀 13명 casual·nude·pregnancy / 메이드 11명 bunny·nude·pregnancy /
+  //   클라리스 bunny·casual·nude·pregnancy / 아데레 cow_bikini·nude·pregnancy / 26명 전원 nsfw 10종. 감정 22종 공통.
+  assets: (() => {
+    const EMO = ['admiring', 'ahegao', 'angry', 'aroused', 'bored', 'confused', 'crying', 'despair', 'determined',
+      'disgust', 'embarrassed', 'excited', 'happy', 'jealous', 'orgasm', 'sad', 'scared', 'shy', 'smug', 'surprised',
+      'thinking', 'worried'];
+    const NOBLE = ['Alaric', 'Cassandra', 'Orelia', 'Liliana', 'Eleonora', 'Silvana', 'Valerius', 'Liana', 'Morwen',
+      'Beatrix', 'Lapis', 'Celestia', 'Stella'];
+    const MAID = ['Yustina', 'Algeria', 'Lirica', 'Cassia', 'Lulu', 'Lara', 'Fiora', 'Livia', 'Meryl', 'Serie', 'Philia'];
+    const ACT = ['cowgirl_position_sex', 'cowgirl_position_sex_cum', 'doggystyle_sex', 'doggystyle_sex_cum', 'fellatio',
+      'fellatio_cum', 'missionary_sex', 'missionary_sex_cum', 'paizuri', 'paizuri_cum'].map((a) => 'nsfw_' + a);
+    const SRC = '베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System';
+    const USE = '인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. ';
+    const emoPack = (id, who, states, dress, ex) => ({
+      id, source: SRC, sep: '_', format: '<🏰|{name}>',
+      usage: USE + dress + ' 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: ' + ex,
+      slots: [
+        { id: 'who', label: '인물', values: who },
+        { id: 'state', label: '복장·상태', values: states, fallback: states[0] },
+        { id: 'emo', label: '감정', values: EMO, fallback: 'happy' },
+      ],
+    });
+    return {
+      by: 'main',
+      packs: [
+        emoPack('noble', NOBLE, ['casual', 'nude', 'pregnancy'], '평소 복장은 casual(왕가 드레스·귀족 드레스·수녀복).', '<🏰|Alaric_casual_smug>'),
+        emoPack('maid', MAID, ['bunny', 'nude', 'pregnancy'], '메이드의 평소 복장은 bunny(왕립 메이드단 근무복) — casual은 없다.', '<🏰|Philia_bunny_shy>'),
+        emoPack('clarice', ['Clarice'], ['bunny', 'casual', 'nude', 'pregnancy'], '근무 중엔 bunny, 사복이면 casual.', '<🏰|Clarice_casual_happy>'),
+        emoPack('adere', ['Adere'], ['cow_bikini', 'nude', 'pregnancy'], '아데레의 평소 복장은 cow_bikini — casual은 없다.', '<🏰|Adere_cow_bikini_aroused>'),
+        {
+          id: 'nsfw', source: '베리디아 NSFW 에셋 모듈 — Veridian NSFW Image System',
+          sep: '_', format: '<🏰💕|{name}>',
+          when: 'nsfw_on',   // 원본 toggle_TerritoryNSFW 승계 — /수위 0이면 팩째 닫혀 프롬프트에서 빠진다
+          usage: '성행위 장면에서만 — 그 행위를 하는 인물 이름_행위 1장. 행위 이름은 목록 그대로(숫자·변형 금지). 장면 밖에선 감정 팩을 쓴다. 예: <🏰💕|Yustina_nsfw_fellatio>',
+          slots: [
+            { id: 'who', label: '인물', values: [...NOBLE, ...MAID, 'Clarice', 'Adere'] },
+            { id: 'act', label: '행위', values: ACT, fallback: 'nsfw_missionary_sex' },
+          ],
+        },
+      ],
+    };
+  })(),
   // ── 시작 프리셋 ──
   // 새 채팅에서 한 번 누르는 버튼. 수식은 못 쓰고 값만 쓴다. 안 적은 변수는 스키마 시작값 그대로 간다.
   //
@@ -2368,6 +2421,41 @@ for (const t of S.party.tabs) {
   ok('사흘 뒤 → (2일)로 줄어든다', due(r.state).endsWith('(2일)'), due(r.state));
   r = _outputPhase(S, r.state, { skip_day: 4 }, {}, { rng: seededRng('tm', 8, 'o') });
   ok('기한 지남 → 목록에 남고 (지남)', r.state.vars.favors.includes(saved) && due(r.state).endsWith('(지남)'), due(r.state));
+}
+
+// ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──
+// main 모드는 런타임 실존 대조가 없다(메인이 태그를 직접 쓴다). 그래서 **팩이 보여 주는 조합이 카드에 실제로 있나**를
+// 여기서 잰다. 이름 목록은 카드(jpeg 653MB)에서 떠 둔 카드-에셋-이름.json — 카드 에셋을 고치면 다시 뜬다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  const warn = (n, got) => console.log(`  ⚠ ${n} → ${got}`);
+  console.log('\n━━ 에셋 팩 — 카드 실측 대조 ━━');
+  const assetsMod = SC.require('assets');
+  const strip = (s) => String(s).replace(/\.(png|jpe?g|gif|webp|avif|bmp)$/i, '');
+  const CARD = JSON.parse(fs.readFileSync(__P('카드-에셋-이름.json'), 'utf8'));
+  const have = new Set(CARD.names.map(strip));
+  const reach = new Set();
+  const combos = (p) => p.slots.reduce((acc, s) => acc.flatMap((a) => s.values.map((v) => (a ? a + (p.sep ?? '_') : '') + v)), ['']);
+  for (const p of S.assets.packs) {
+    const all = combos(p); const miss = all.filter((n) => !have.has(n)); all.forEach((n) => reach.add(n));
+    (miss.length ? warn : (n, g) => ok(n, true, g))(`팩 ${p.id.padEnd(7)} ${all.length}조합 중 카드에 ${all.length - miss.length}`,
+      miss.length ? `없음 ${miss.length}: ${miss.join(', ')}` : '전부 있음');
+  }
+  // 원본 지침의 26명이 어느 팩에든 다 있나 (감정 팩 묶음 + 성인 팩)
+  const ROSTER = ['Alaric', 'Cassia', 'Cassandra', 'Algeria', 'Adere', 'Beatrix', 'Meryl', 'Livia', 'Lirica', 'Lulu', 'Lara', 'Yustina',
+    'Valerius', 'Stella', 'Silvana', 'Serie', 'Philia', 'Orelia', 'Morwen', 'Liliana', 'Liana', 'Lapis', 'Fiora', 'Eleonora', 'Celestia', 'Clarice'];
+  const emoWho = S.assets.packs.filter((p) => p.id !== 'nsfw').flatMap((p) => p.slots[0].values);
+  ok('원본 26명 — 감정 팩에 한 번씩', ROSTER.every((w) => emoWho.filter((x) => x === w).length === 1) && emoWho.length === 26, `${emoWho.length}명`);
+  ok('원본 26명 — 성인 팩에 전원', ROSTER.every((w) => S.assets.packs.find((p) => p.id === 'nsfw').slots[0].values.includes(w)), '');
+  // 어느 팩으로도 닿지 않는 카드 에셋 = 이름이 틀렸거나 지침 밖 (아이콘 등 제외)
+  const orphan = [...have].filter((n) => !reach.has(n) && !/^(iconx|main)$/.test(n));
+  (orphan.length ? warn : (n, g) => ok(n, true, g))('어느 팩으로도 안 닿는 카드 에셋', orphan.length ? orphan.join(', ') + ' — 이름을 고치면 닿는다' : '없음');
+  // 주입문 — 수위를 끄면 성인 팩이 통째로 빠진다
+  const inj = (on) => { const t = engine.initState(S); t.vars.nsfw_on = on; return assetsMod.mainInjectionText(S, engine.makeLookup(S, t.vars)); };
+  const on = inj(true), off = inj(false);
+  ok('주입문 — 수위 켬: 팩 다섯 · 성인 형식 실림', (on.match(/- pack "/g) || []).length === 5 && on.includes('<🏰💕|{name}>'), `${on.length}자`);
+  ok('주입문 — 수위 끔: 성인 팩이 프롬프트에서 빠짐', (off.match(/- pack "/g) || []).length === 4 && !off.includes('🏰💕'), `${off.length}자`);
+  ok('메이드 팩에 casual이 안 보인다', !/pack "maid"[^]*?state: [^\n]*casual/.test(on.split('- pack "clarice"')[0]), '');
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

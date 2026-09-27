@@ -282,3 +282,22 @@ v0.89 리메이크 뒤 플러그인이 v1.13까지 온 것과 맞대 봤다. 검
 
 **안 맞음**: 체크포인트·시나리오(열린 영지) / 상점·게시판·메신저·의뢰판(개방 원칙) / 계승 판세를 무대 뒤로
 (이미 onTurn 시계, 보이는 판세가 의도) / 보조 갈림길(자유 서사 운영과 취향이 갈림).
+
+## 13. 번들 + 에셋 팩 (2026-09-27)
+
+유저 "번들로 해서 에셋 명령어까지". 원본 = 카드에서 뜬 `simcore-bundle-베리디아_남작령.json`(로어북 52 · 정규식 5)과
+카드 jpeg(에셋 1995장 → `카드-에셋-이름.json`으로 이름만 떠 둠).
+
+- **`make-bundle.js`** → `베리디아-번들.json`: 원본 번들의 ⚙simcore만 생성기 산출물로 교체, 나머지는 한 글자도 안 바꿈(검사).
+  정규식은 안 싣는다 — 카드 정규식 '에셋'·'야스에셋'이 `<🏰|…>`·`<🏰💕|…>`를 그리므로 그대로 둬야 한다.
+- **에셋 팩 5종** (`by:'main'`, 얼헌·아틀리에와 같은 결 — 메인이 대사 앞마다 찍는다): 원본은 모듈 로어북 두 항목
+  (감정 에셋 / NSFW 에셋, 후자는 `toggle_TerritoryNSFW` 게이트). 카드 실측으로 **인물 묶음마다 팩을 나눴다** —
+  원본 지침은 casual을 "역할의 기본 복장"이라고만 해서 메이드도 casual을 쓸 수 있었는데, 메이드는 casual이 없고 bunny뿐이다.
+  noble 13(casual) · maid 11(bunny) · clarice(bunny+casual) · adere(cow_bikini) · nsfw 26(행위 10, `when: nsfw_on`).
+  main 모드는 실존 대조가 없으니 "있는 조합만 보인다"가 대조를 대신한다.
+- **수위** — 리수 전역 토글은 심코어 식이 못 읽어서 `nsfw_on`(bool, `/수위`, 기본 켬)으로. 끄면 성인 팩이 주입문에서 통째로 빠진다.
+- 카드 쪽 결함(생성기가 매번 보고): 없음 5 — Silvana_nude_shy · Lara_bunny_worried · Adere_cow_bikini_bored ·
+  Lapis_nsfw_paizuri_cum · Philia_nsfw_doggystyle_sex_cum / 이름 틀림 2 — `Serie_nude_admiring_00018_`(→ Serie_nude_admiring) ·
+  `Celestia_cowgirl_position_sex_cum`(→ Celestia_nsfw_cowgirl_position_sex_cum).
+- 모듈 두 개(감정·NSFW 에셋)는 꺼도 된다 — 모듈에만 있는 이름은 번호 붙은 옛 이름뿐이고 카드가 바른 이름으로 다 갖고 있다.
+  켜 두면 모듈 로어북 지침이 스키마 주입문과 **두 벌** 실린다.

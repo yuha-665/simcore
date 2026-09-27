@@ -154,6 +154,9 @@ const NEIGH = [
   ['rel_cap', '왕도', '알라릭 여왕',   '14일',   10],   // 세무서와 메이드 학원만, 그것도 서류상
 ];
 const REL_STEPS = [[85, '동맹'], [65, '우호'], [45, '거래 상대'], [25, '관망'], [10, '이름만 앎'], [0, '미인지']];
+// 광휘회(§14-3)의 시선은 이웃과 같은 눈금에 다른 말 — 교단은 거래 상대가 아니라 "빛 아래 두는가"를 본다.
+// 10 = 장부에만: 왕국의 모든 영지는 대성당 장부에 있다(국교). 모르는 게 아니라 볼 이유가 없는 것.
+const CH_STEPS = [[85, '축복'], [65, '신임'], [45, '인정'], [25, '지켜봄'], [10, '장부에만'], [0, '모름']];
 
 // ── 인물 호감도 ──
 // rel_*(영지)와 다른 축이다. 모르웬의 병사들이 베리디아를 인정해도 모르웬 본인은 남작을 싫어할 수 있다.
@@ -202,6 +205,8 @@ const TIER = [
   ['S', '상급', 3000, 50, 15], ['E', '정예', 8000, 75, 30],
 ];
 const CAST_ALL = Object.values(CAST).flat();
+// 고용할 수 있는 자매 셋 (주교는 빼고) — 머무는 자매 수(sis_n)와 교단의 등급 문턱(sis_open)이 이 이름으로 corps를 센다
+const SISTERS = CAST['광휘회'].filter(([, , , rank]) => rank).map(([, name]) => name);
 const RANKNAME = Object.fromEntries(TIER.map(([k, label]) => [k, label]));
 
 // ── 직무 배치 (리메이크 P3, docs/design-베리디아-리메이크.md §4-1) ──
@@ -259,7 +264,7 @@ const PET_CIRCLES = [
   ['유랑민', 0, 20, '관문 앞에 사람이 기다릴 때만(drifters) — 들여 달라, 일자리, 빵, 흩어진 식구 찾기, 병든 아이'],
   ['상단', 60, 500, '거래가 텄거나 이름이 났을 때 — 곡물·목재를 사겠다, 짐수레 호위(도적이 많을수록), 장터 자리, 창고 빌리기'],
   ['길드', 40, 300, '모험가 길드 연락소가 들어와 있을 때만 — 현상금 반씩 대기, 다친 모험가 치료, 사냥터 출입, 소란 뒷수습'],
-  ['광휘회', 0, 200, '예배당·수녀·역병과 얽혔을 때 — 예배당 손보기, 순례자 재워 주기, 구호 곡식, 십일조, 이단 소문 조사'],
+  ['광휘회', 0, 200, '교단이 지켜볼 때(rel_ch 25↑)나 예배당·자매·역병과 얽혔을 때 — 예배당 손보기, 순례자 재워 주기, 구호 곡식, 십일조, 이단 소문 조사'],
   ['이웃 영지', 100, 800, '그 영지가 이쪽을 "관망" 이상으로 알 때만(rel_* 25↑) — 이웃은 저마다 세는 것을 청한다'],
   ['왕도', 0, 400, '왕도가 이쪽을 볼 때만(rel_cap 35↑) — 호구 조사, 징발 명단, 감찰관 접대, 세납 앞당기기, 왕녀 쪽 부탁'],
 ];
@@ -551,6 +556,23 @@ const S = {
     ...NEIGH.map(([id, dir, name, , init]) => ({
       id, label: `${dir} ${name}`, type: 'int', init, min: 0, max: 100,
     })),
+    // ── 광휘회 (§14-3) ── 왕국의 유일한 국교이자 유일한 의사 [원본] — 왕실과 나란한 또 하나의 권력 [유저: 어머니회].
+    //   이웃(rel_*)과 같은 "저쪽이 이 땅을 어떻게 보나"지만 소수다: 십일조·자매·예배당이 하루 0.05~0.25씩 민다 (정수면 반올림에 먹힌다).
+    //   70부터는 저절로 안 오른다 — 그 위는 주교의 판단과 교단·왕실 사이의 선택이 올린다.
+    { id: 'rel_ch', label: '광휘회', type: 'float', init: 10, min: 0, max: 100,
+      desc: 'How the Sisterhood of Luminous Grace — the High Church — regards Veridia. The system moves it slowly by the tithe, '
+        + 'the sisters serving here and the chapel. Move it yourself only when something the Church hears of actually happens: '
+        + 'a donation delivered, a Luminary honoured or mistreated, a heresy sheltered, a vow kept before a priestess.' },
+    { id: 'tithe', label: '십일조', type: 'enum', enum: ['바치지 않음', '1할', '2할'], init: '바치지 않음', cmd: '십일조',
+      desc: 'The Baron\'s standing order on the Church\'s tenth of the daily income (paid every day by the system). '
+        + 'Change it only when the narration shows him giving that order.' },
+    // 예배당 — 0 폐허 · 1 다시 선 예배당(⛪ 버튼) · 2 광휘회 분원(교단이 인정). 로어북 "폐허 예배당" 항목의 결 그대로 [원본]
+    { id: 'chapel', label: '예배당', type: 'int', init: 0, min: 0, max: 2,
+      desc: '시스템 전용. 0 폐허 · 1 다시 선 예배당 · 2 광휘회 분원.' },
+    { id: 'chapel_at', label: '(내부) 예배당 완공일', type: 'int', init: 0, min: 0, desc: '시스템 전용. 0이면 공사 중이 아니다.' },
+    // 주교 — "파견되지 않는다, 보러 온다" [원본]. 오는 날(bishop_at)과 다시 볼 수 있는 날(bishop_next, 래치 — 조건 이벤트엔 쿨다운이 없다)
+    { id: 'bishop_at', label: '(내부) 주교가 오는 날', type: 'int', init: 0, min: 0, desc: '시스템 전용. 0이면 오는 중이 아니다.' },
+    { id: 'bishop_next', label: '(내부) 주교가 다시 볼 날', type: 'int', init: 60, min: 0, desc: '시스템 전용.' },
 
     // ── 동행자 ──
     // 캐릭터 시트는 로어북에 있다. 스키마가 들고 있어야 할 것은 로어북이 못 담는 것뿐 —
@@ -731,7 +753,8 @@ const S = {
     // 폐허 남작의 지지는 아무도 안 찾지만(시작값 2), 주민 400에 상비군을 세운 남작이
     // 어느 편에 서느냐는 판세를 흔든다. 두 판을 한 봇으로 묶는 이유가 이 한 줄이다.
     { id: 'my_weight', label: '내 지지의 무게',
-      expr: 'min(100, round(fame * 0.45 + min(army, 120) * 0.25 + min(gold, 3000) * 0.006 + rel_cap * 0.15))' },
+      // + 광휘회(§14-3) — 교단이 뒤에 있는 남작은 궁정도 무게를 잰다 (왕실과 나란한 권력 [유저])
+      expr: 'min(100, round(fame * 0.45 + min(army, 120) * 0.25 + min(gold, 3000) * 0.006 + rel_cap * 0.15 + rel_ch * 0.1))' },
     { id: 'weight_txt', label: '조정에서의 무게',
       expr: scale('my_weight', [[70, '판을 흔든다'], [45, '셈에 들어간다'], [22, '이름은 나온다'], [8, '변방 하나'], [0, '아무도 안 찾는다']]) },
     { id: 'exposed_txt', label: '알려진 정도',
@@ -871,7 +894,7 @@ const S = {
     { id: 'route_txt', label: '길',
       expr: 'route == "없음" ? "모두 열림" : route + " 막힘 (" + route_days + "일)"' },
     // 군대는 공짜가 아니다. 식량만 먹던 army에 급료가 붙는다.
-    { id: 'upkeep', label: '일 지출', expr: 'round(army * 1.2) + round(pop * 0.05) + payroll + import_cost' },
+    { id: 'upkeep', label: '일 지출', expr: 'round(army * 1.2) + round(pop * 0.05) + payroll + import_cost + tithe_amt' },
     { id: 'net_gold', label: '재정 수지', expr: 'income - upkeep' },
     // 세납일에 바칠 액수 — 이것도 AI가 어림잡을 게 아니라 시스템이 정한다.
     { id: 'tribute', label: '세납액', expr: 'round(pop * 1.5 + fame * 2 + 30)' },
@@ -926,6 +949,41 @@ const S = {
         `${JSON.stringify(`${dir} ${name} ${dist} `)} + ${id}_txt`).join(' + " | " + ') },
     { id: 'rel_top', label: '가장 아는 쪽',
       expr: `max(max(max(rel_n, rel_e), max(rel_s, rel_w)), rel_cap)` },
+
+    // ── 광휘회 (§14-3) ──
+    { id: 'rel_ch_txt', label: '교단의 시선', expr: scale('rel_ch', CH_STEPS) },
+    { id: 'chapel_txt', label: '예배당',
+      expr: 'chapel >= 2 ? "광휘회 분원" : (chapel == 1 ? "다시 선 예배당" : (chapel_at > 0 ? "다시 짓는 중 (" + max(0, chapel_at - day) + "일)" : "폐허"))' },
+    { id: 'sis_n', label: '머무는 자매', expr: SISTERS.map((n) => `(sum(corps, ${JSON.stringify(n)}) > 0 ? 1 : 0)`).join(' + '), format: '{v}명' },
+    // 교단은 제 눈으로 사람을 보낸다 — 아카데미 문턱(명성)과 별개로. 오지엔 신참이 신심을 증명하러 온다 [원본]
+    { id: 'sis_open', label: '교단이 보내는 자매',
+      expr: `rel_ch >= 45 ? "${SISTERS.join('·')}까지" : (rel_ch >= 25 ? "${SISTERS.slice(0, 2).join('·')}까지" : "${SISTERS[0]}(신참)만 — 오지는 신참이 신심을 증명하는 자리다")` },
+    // 십일조 — 그날 수입의 1할·2할. 지출에 붙는다(upkeep). 수입이 없는 날은 없다
+    { id: 'tithe_amt', label: '십일조', expr: 'tithe == "바치지 않음" ? 0 : round(max(0, income) * (tithe == "2할" ? 0.2 : 0.1))' },
+    // 교단의 시선이 저절로 움직이는 폭(하루) [초안]. 예배당을 세워 놓고 십일조를 안 내면 식는다 — 교구가 제 몫을 기다린다.
+    //   식는 건 장부(10)까지 — 괘씸한 것과 잊은 것은 다르다 (한 해 두면 "모름"까지 떨어지던 것)
+    { id: 'ch_drift',
+      expr: '(rel_ch < 70 ? (tithe == "2할" ? 0.25 : (tithe == "1할" ? 0.1 : 0)) + sis_n * 0.05 + chapel * 0.05 : 0)'
+        + ' - (chapel >= 1 and tithe == "바치지 않음" and rel_ch > 10 ? 0.1 : 0)' },
+    { id: 'chapel_cost', label: '예배당 재건비', expr: 'round(400 * hire_mult / 100)' },
+    { id: 'chapel_days', label: '예배당 공기', expr: 'clamp(36 - build_men * 2, 10, 36)' },
+    // 열병 구호 헌금 — 광휘회는 이 나라의 유일한 의사다 [원본]. 머무는 자매가 있으면 덜 청한다
+    { id: 'plague_cost', label: '구호 헌금', expr: 'max(50, round(100 + pop * 1.5) - sis_n * 50)' },
+    // 주교가 볼 것 — 앓는 이를 어떻게 두었나 · 영주가 무엇을 감추나 · 자매 · 분원. **돈은 없다**: 그녀의 인정은 살 수 없다 [원본].
+    // 숨김이 -2로 제일 무겁다 — "빛을 피해 숨는 것이 첫째 죄" [원본 베아트릭스]. 중립은 숨김이 아니다(감출 편이 없다).
+    { id: 'bish_care', expr: 'health >= 50 ? 1 : (health < 30 ? -1 : 0)' },
+    { id: 'bish_truth', expr: 'stance != "중립" and exposed < 40 ? -2 : 0' },
+    { id: 'bish_score', label: '주교의 판단', expr: 'bish_care + bish_truth + (sis_n > 0 ? 1 : 0) + (chapel >= 2 ? 1 : 0)' },
+    { id: 'bish_txt', label: '주교가 볼 것',
+      expr: '"앓는 이 " + (bish_care > 0 ? "잘 돌봄" : (bish_care < 0 ? "버려짐" : "그럭저럭"))'
+        + ' + " · 영주의 속 " + (bish_truth < 0 ? "감춘 편이 있다(" + stance + ")" : "감출 것이 없다")'
+        + ' + " · 자매 " + (sis_n > 0 ? sis_n + "명 머묾" : "없음") + " · 예배당 " + chapel_txt' },
+    { id: 'bishop_txt', label: '주교',
+      expr: 'bishop_at > 0 ? (bishop_at - day <= 0 ? "오늘 온다" : (bishop_at - day) + "일 뒤 온다") : "오는 길이 아니다"' },
+    { id: 'bish_in', expr: 'bishop_at - day <= 0 ? "today" : "in " + (bishop_at - day) + " days"' },
+    { id: 'ch_txt', label: '광휘회',
+      expr: 'rel_ch_txt + " · 예배당 " + chapel_txt + " · 십일조 " + tithe + (tithe_amt > 0 ? "(" + tithe_amt + "/일)" : "")'
+        + ' + " · 자매 " + sis_n + "명" + (bishop_at > 0 ? " · 주교 " + bishop_txt : "")' },
     { id: 'food_txt', label: '식량 사정',
       expr: 'food <= 0 ? "바닥 — 오늘 굶는다" : (food_days <= 3 ? "사흘치도 없다" : (surplus >= 0 ? "자급된다" : "축내는 중"))' },
     { id: 'water_txt', label: '식수 사정',
@@ -964,6 +1022,8 @@ const S = {
       { set: 'fame', expr: 'clamp(fame + pet_kept - pet_lost * 3, 0, 100)' },
       { set: 'morale', expr: 'clamp(morale + pet_kept - pet_lost * 2, 0, 100)' },
       { set: 'pet_n', expr: 'count(petitions)' },
+      // ── 광휘회 (§14-3) ── 교단의 시선이 십일조·자매·예배당만큼 흐른다 (ch_drift). 십일조 돈은 지출(upkeep)이 이미 뺐다
+      { set: 'rel_ch', expr: 'clamp(rel_ch + ch_drift * span, 0, 100)' },
       // ── 흘러드는 사람들 (§14) ── 도착 → 관문 방침대로 들이기·떠나보내기 → 떠난 이의 일부가 도적으로.
       // 식량 정산(아래 lack_*·food)보다 먼저 — 오늘 들어온 입도 오늘 먹는다.
       { set: 'drifters', expr: 'min(400, drifters + drift_rate * span)' },
@@ -993,7 +1053,7 @@ const S = {
       // 배급 절약(P4)은 사기·보건을 매일 1씩 깎는다 — 소비 25% 절감의 대가.
       // 굶은 날(곳간·물 둘 중 하나라도 빈 날)만 -7, 나머지 날은 회복 — 둘 다 뒤꼬리 구간이라 합집합은 큰 쪽이다.
       { set: 'health', expr: 'clamp(health - 7 * max(lack_food, lack_water) + (surplus > 0 ? 2 : 1) * (span - max(lack_food, lack_water))'
-        + ' + (round(d_care * 0.5) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },
+        + ' + (round(d_care * 0.5) + (chapel >= 2 ? 1 : 0) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },   // 분원 = 앓는 이를 들이는 방 (§14-3)
       { set: 'morale', expr: 'clamp(morale - 6 * lack_food + (span - lack_food) + (round(d_home * 0.5) + min(floor(duty_idle / 3), 2)'
         + ' - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
@@ -1156,6 +1216,44 @@ const S = {
       { id: 'pet_expired', when: 'pet_lost > 0',
         notify: '[청원 기한이 지났다] 맡아 놓고 기한 안에 못 한 청원이 장부에서 떨어졌다 — 어제까지 맡은 청원 목록에 (오늘)로 떠 있던 줄이다. '
           + '청원인은 영주가 잊었다고 여긴다. 실망이 어떤 모양으로 돌아오는지(원망, 체념, 다른 데 가서 하는 말)를 짧게.' },
+
+      // ── 광휘회 (§14-3) ── 예배당: ⛪ 버튼(재건비·공기) → 완공 → 교단이 인정하면 분원. 인프라 줄은 시스템이 직접 적는다
+      { id: 'chapel_done', when: 'chapel == 0 and chapel_at > 0 and day >= chapel_at',
+        effects: [{ set: 'chapel', expr: '1' }, { set: 'chapel_at', expr: '0' },
+          { set: 'rel_ch', expr: 'clamp(rel_ch + 5, 0, 100)' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
+          { list: 'infra', add: ['다시 세운 예배당'] }],
+        notify: '[예배당이 다시 섰다] 언덕 위 무너진 예배당에 지붕이 다시 얹혔고, 더럽혀진 제단을 닦아 냈다. 아직 머무는 자매는 없다 — '
+          + '빈 예배당이 대성당에 닿는 소식이 되고, 교단이 이 땅을 장부 밖에서 보기 시작한다. 인프라 목록엔 시스템이 올렸다.' },
+      // 분원 — "다시 세우고 헌금이 대성당에 닿으면 교단이 자매를 보낸다. 이름을 가진 사람으로 와서 머문다" [원본 영지 구역 5].
+      //   그래서 자매가 있어야 분원이 되는 게 아니라, 분원이 되면 자매가 온다 (재건비 + 교단의 인정 = 청과 헌금). 봉급은 영지가 댄다.
+      { id: 'chapel_branch', once: true, when: 'chapel == 1 and rel_ch >= 50',
+        effects: [{ set: 'chapel', expr: '2' }, { set: 'fame', expr: 'clamp(fame + 3, 0, 100)' },
+          { list: 'infra', remove: ['다시 세운 예배당'], add: ['광휘회 분원'] }],
+        notify: '[분원이 되었다] 대성당이 이 예배당을 광휘회의 분원으로 올리고 자매 한 사람을 보냈다 — 아직 이 땅에 없는 자매 중 '
+          + '교단이 보내는 등급 안에서 한 사람이 이름을 가진 사람으로 와서 머문다(셋 다 이미 있으면 새로 오지 않는다). '
+          + '누가 왔는지를 장면으로 보여라. 앓는 이를 들이는 방이 생겼고, 순례자가 들르는 길목이 된다.' },
+      // 주교 — "파견되지 않는다, 보러 온다. 판단하고 떠난다" [원본]. 예고(이레) → 그동안 지시문이 "무엇을 볼지"를 서사에 건넨다 → 판단 셋.
+      //   교단이 이 땅을 지켜보기 시작해야(35) 그리고 볼 예배당이 있어야 온다. 한 번 오면 150일은 안 온다.
+      { id: 'bishop_notice', when: 'bishop_at == 0 and day >= bishop_next and rel_ch >= 35 and chapel >= 1 and route != "남 가도"',
+        effects: [{ set: 'bishop_at', expr: 'day + 7' }, { set: 'bishop_next', expr: 'day + 150' }],
+        notify: '[주교가 온다] 대성당에서 전갈이 왔다 — 베아트릭스 주교가 이레 뒤 이 땅을 보러 온다. 돕는 걸음이 아니라 판단하는 걸음이다. '
+          + '무엇을 볼지는 상태 블록의 지시에 있다 — 영주에게 준비할 이레가 있다.' },
+      // 판단 셋 — 띠가 겹치지 않는다(bish_score 2↑ / 0~1 / 음수). 돈이 들어가는 항목이 없다: 그녀의 인정은 살 수 없다
+      { id: 'bishop_pleased', when: 'bishop_at > 0 and day >= bishop_at and bish_score >= 2',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 12, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix + 6, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 흡족] 베아트릭스 주교가 앓는 이들을 보고, 영주와 마주 앉고, 떠났다. 판단은 좋은 쪽이다 — '
+          + '대성당 장부에 이 땅이 "빛 아래 있는 곳"으로 적힌다. 그녀가 무엇을 보고 그렇게 여겼는지를 장면으로.' },
+      { id: 'bishop_even', when: 'bishop_at > 0 and day >= bishop_at and bish_score >= 0 and bish_score < 2',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 4, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix + 2, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 보류] 베아트릭스 주교는 판단을 미뤘다. 나쁘지 않으나 아직 모자란다 — 다음에 다시 볼 것이다. '
+          + '그녀가 무엇이 모자라다고 짚었는지를 짧게.' },
+      { id: 'bishop_cold', when: 'bishop_at > 0 and day >= bishop_at and bish_score < 0',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch - 10, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix - 5, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 차갑게] 베아트릭스 주교는 빛 아래 두지 못한 것을 보았다 — 버려진 앓는 이, 혹은 영주가 감춘 속. '
+          + '그녀는 돌려 말하지 않는다. 짚은 것을 그 자리에서 말하고 떠난다.' },
     ]),
 
     // ── 굴러 들어오는 것 ──
@@ -1233,7 +1331,20 @@ const S = {
           when: `${QUIET} and ${thr('health', '<=', 20, 60)} and crowd >= 85`,
           effects: [{ set: 'disaster', expr: '"열병"' }, { set: 'disaster_days', expr: '8 + rand(0, 10)' },
             { set: 'health', expr: 'clamp(health - 10, 0, 100)' }],
-          notify: '[열이 돈다] 한 집에서 시작한 것이 사흘 만에 옆집으로 갔다. 사람이 붙어 자니 막을 방법이 없다.' },
+          notify: '[열이 돈다] 한 집에서 시작한 것이 사흘 만에 옆집으로 갔다. 사람이 붙어 자니 막을 방법이 없다. '
+            + '이 나라의 의사는 광휘회의 자매뿐이다 — 교단에 손을 벌릴지는 영주가 정한다.',
+          // §14-3 치료 독점 — 교단은 오되 교단으로 온다: 헌금을 받고, 빚을 남긴다. 교단이 이 땅을 장부에서라도 알아야 온다
+          timeout: 2,
+          choices: [
+            { label: '광휘회에 구호를 청한다', when: 'rel_ch >= 10 and gold >= plague_cost',
+              effects: [{ set: 'gold', expr: 'max(0, gold - plague_cost)' }, { set: 'health', expr: 'clamp(health + 15, 0, 100)' },
+                { set: 'disaster_days', expr: 'max(1, disaster_days - 6)' }, { set: 'rel_ch', expr: 'clamp(rel_ch + 3, 0, 100)' },
+                { list: 'favors', add: ['광휘회에 열병 구호의 빚'] }],
+              inject: 'The Baron sends to the Sisterhood for help and pays the donation. Luminaries come and lay hands on the sick — '
+                + 'they come as the Church, not as hired hands, and the Church will remember that Veridia asked.' },
+            { label: '우리 손으로 버틴다',
+              inject: 'The Baron keeps the Church out of it. The village nurses its own with what it has.' },
+          ] },
         { id: 'drought', weight: 2, cooldown: 60,
           when: `${QUIET} and month >= 6 and month <= 8 and ${thr('wells', '<=', 0, 2)}`,
           effects: [{ set: 'disaster', expr: '"가뭄"' }, { set: 'disaster_days', expr: '12 + rand(0, 14)' }],
@@ -1371,12 +1482,32 @@ const S = {
           notify: '[부름을 받았다] 왕도에서 소환장이 왔다. 길이 십사 일이니 떠날 채비를 해야 하고, '
             + '떠나 있는 동안 영지는 누가 볼 것인지도 정해야 한다. 왜 지금 부르는지는 이번 장면에서 정하라.' },
 
+        // 문턱이 왕도(rel_cap)였던 것을 교단(rel_ch)으로 (§14-3) — 순회 자매를 보내는 건 대성당이다. 시작값에선 같은 판정
         { id: 'sister_visit', weight: 2, cooldown: 50,
-          when: `${QUIET} and health <= 55 and count(corps) <= 0 and ${thr('rel_cap', '>=', 0, 10)}`,
+          when: `${QUIET} and health <= 55 and count(corps) <= 0 and ${thr('rel_ch', '>=', 0, 10)}`,
           effects: [{ set: 'health', expr: 'clamp(health + 10, 0, 100)' },
             { set: 'b_stella', expr: 'clamp(b_stella + 4, -50, 100)' }],
           notify: '[광휘회에서 지나갔다] 순회 중이던 자매 하나가 하루 묵으며 앓는 이들을 봐 주었다. '
             + '고용이 아니라 지나는 길이었고, 내일이면 간다.' },
+        // 교단과 왕실 — 왕국과 나란한 교단 [유저]. 두 권력이 한 문제로 맞서고 이 땅의 영주에게 편을 묻는다.
+        //   무엇을 두고 맞섰는지는 서사가 — 시스템은 "누가 무엇을 원하나"까지. 안 고르면(3턴) 말을 아낀 것 = 양쪽이 조금씩 식는다
+        { id: 'church_crown', weight: 2, cooldown: 90,
+          when: `${QUIET} and rel_ch >= 40 and rel_cap >= 30`,
+          effects: [],
+          notify: '[교단과 왕실 사이] 대성당과 왕도가 한 문제를 두고 맞섰다 — 의사 임명권, 고아원 기금, 이단 심문, 십일조 면제 중 '
+            + '무엇인지는 이번 장면에서 정하라. 양쪽 사람이 저마다 이 땅의 영주에게 어느 편인지 묻는다. 답을 미루는 것도 답이다.',
+          timeout: 3,
+          choices: [
+            { label: '교단 편에 선다',
+              effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 8, 0, 100)' }, { set: 'rel_cap', expr: 'clamp(rel_cap - 6, 0, 100)' }],
+              inject: 'The Baron sides with the Sisterhood. The Cathedral will remember it — and so will the court.' },
+            { label: '왕실 편에 선다',
+              effects: [{ set: 'rel_cap', expr: 'clamp(rel_cap + 8, 0, 100)' }, { set: 'rel_ch', expr: 'clamp(rel_ch - 6, 0, 100)' }],
+              inject: 'The Baron sides with the Crown. The court will remember it — and so will the Cathedral.' },
+            { label: '말을 아낀다',
+              effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch - 2, 0, 100)' }, { set: 'rel_cap', expr: 'clamp(rel_cap - 2, 0, 100)' }],
+              inject: 'The Baron gives neither side an answer. Both notice the silence.' },
+          ] },
 
         // ── ⑧ 등급 사건 (난이도 프리셋 재설계, 2026-08-15) ──
         // 혈전급은 리얼리티에서 창이 세 배 넓지만 어느 판에도 있다 — 켜고 끄지 않는다(원칙).
@@ -1581,7 +1712,13 @@ const S = {
       text: '[RECRUITMENT] The treasury could cover a request to the Academy now — {hire_txt} in gold, and at this '
         + 'reputation they will release {hire_open}. Only the named graduates exist; the Corps does not send nameless '
         + 'girls, and nobody arrives until the Baron actually sends the request and the fee. '
-        + 'The Sisterhood works the same way but calls the fee a donation.' },
+        + 'The Sisterhood works the same way but calls the fee a donation — and it weighs its own regard, not the Academy\'s: '
+        + 'right now the Cathedral would send {sis_open}.' },
+    // 주교가 오는 이레 — 시스템만 아는 "그녀가 무엇을 볼지"를 서사에 건넨다 (§14-3). 영주가 준비할 수 있게 (공개된 채점표)
+    { id: 'bishop_coming', when: 'bishop_at > 0',
+      text: '[THE BISHOP IS COMING] Bishop Beatrix arrives {bish_in} to look at this place — she comes to judge, not to help, '
+        + 'and her regard cannot be bought. What she would see as things stand: {bish_txt}. She holds concealment to be the '
+        + 'first sin; a hidden allegiance or hidden suffering is what she looks for.' },
     // 급료가 밀리는 건 시스템만 아는 사실이다. 그리고 이 사람들은 갈 데가 있다.
     { id: 'wages_unpaid', when: 'gold <= 0 and count(corps) > 0',
       text: '[UNPAID] The treasury is empty and {payroll} a day in wages is owed to trained professionals with '
@@ -1791,6 +1928,12 @@ const S = {
       effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
       inject: "The Baron posts a bounty on the road bandits — at the Adventurers' Guild if there is one, otherwise on the "
         + 'board by the south gate — and pays it out of the treasury.' },
+    // §14-3 — 폐허 예배당 재건. 공사는 보통 서사(projects)지만 이건 교단 줄기의 문이라 버튼으로 — 값·공기·완공 통지가 시스템 몫
+    { id: 'act_chapel', label: '⛪ 예배당 재건', mode: 'oneshot',
+      when: 'chapel == 0 and chapel_at == 0 and gold >= chapel_cost',
+      effects: [{ set: 'gold', expr: 'max(0, gold - chapel_cost)' }, { set: 'chapel_at', expr: 'day + chapel_days' }],
+      inject: 'The Baron orders the ruined chapel on the hill rebuilt — timber, a mason, the defiled altar scrubbed clean — and pays '
+        + 'for it out of the treasury. It will take some weeks; the system announces when the roof is on.' },
   ],
 
   // ── AI 관할과 그 상한 ──
@@ -1808,6 +1951,8 @@ const S = {
       { id: 'favors' }, { id: 'projects' },
       // §14-2 맡은 청원 — 보조는 **지우기만** (이행). 넣는 건 청원함 버튼. 사례는 줄 끝 숫자를 옮겨 적는다 (두 건 한 턴까지)
       { id: 'petitions' }, { id: 'pet_pay', maxGain: 1600 },
+      // §14-3 광휘회 — 교단의 시선은 이웃처럼 "소식이 닿았을 때"만, 십일조는 영주의 명령일 때만. 예배당·주교는 시스템 것
+      { id: 'rel_ch', maxDelta: 6 }, { id: 'tithe' },
       // 이웃의 인식. 거리가 있으니 하루에 크게 움직일 수 없다 — 상한이 그걸 대신 지킨다.
       ...NEIGH.map(([id]) => ({ id, maxDelta: 8 })),
       { id: 'ally' }, { id: 'ally_role' },
@@ -1893,6 +2038,8 @@ const S = {
       + 'in progress puts nothing in the list. On arrival do three things together: add "Name wage" to corps taking '
       + 'the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first '
       + 'regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. '
+      + 'The one exception is a [분원] notice: the Cathedral itself sends a sister to the new branch house — when the narration '
+      + 'shows her arrive, add her line with her wage but take no fee (the chapel and the Church\'s regard were the donation). '
       + 'If one leaves, remove her line — the wage stops with her.\n'
       + 'PROJECTS: when construction actually begins in the narration, add one line to projects as "무엇 @+days" — '
       + 'set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). '
@@ -1909,6 +2056,11 @@ const S = {
       + 'soldiers lent — take those out as the narration hands them over. When a neighbouring domain\'s petition is done, move '
       + 'that domain\'s rel_* up once word reaches it. Past its deadline the system drops the line and counts the disappointment — '
       + 'do not remove it for that. A request the Baron grants in person during a scene is a promise: favors, not petitions.\n'
+      + 'THE SISTERHOOD: rel_ch is how the High Church regards Veridia. It drifts by itself with the tithe, the sisters serving '
+      + 'here and the chapel — move it only for what the Church actually hears of: a donation delivered, a Luminary honoured or '
+      + 'mistreated, a heresy sheltered. tithe is the Baron\'s standing order on the Church\'s tenth; change it only when he gives '
+      + 'that order — the system pays it daily. The chapel, the Bishop\'s visits and her judgement belong to the system; never write '
+      + 'them. The Sisterhood is the kingdom\'s only physicians: they come as the Church, never as hired hands.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -1969,6 +2121,7 @@ const S = {
       + '탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n'
       + '계승 {court_txt}\n'
       + '이웃 {neighbors}\n'
+      + '광휘회 {ch_txt}\n'
       + '동행 {ally}({ally_role}, 유대 {bond_txt})\n'
       + '군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n'
       + '호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n'
@@ -2062,6 +2215,7 @@ const S = {
           infra: ['낡은 병영', '연병장', '대장간', '마을 우물', '돌다리'],
           stock: ['목재 150', '보리 씨 40'],
           route: '없음', route_days: 0, rel_cap: 20, fame: 26,
+          rel_ch: 20,                                   // §14-3 — 스텔라가 곁에 있다: 대성당이 이 땅을 지켜보기 직전
           hardship: 10, hire_mult: 60,
           bandits: 0,                                   // §14 — 길 위가 조용한 판
           // 카드 시작 옵션(난이도 0): "중급메이드 메릴과 주니어 수녀 스텔라와 함께 시작" —
@@ -2082,6 +2236,7 @@ const S = {
           infra: ['무너진 병영', '잡초 연병장', '폐허 대장간', '마을 우물'],
           stock: ['목재 100', '보리 씨 20'],
           route: '없음', route_days: 0, rel_cap: 10, fame: 0,
+          rel_ch: 10,                                   // §14-3 — 대성당 장부에만 있는 땅
           hardship: 45, hire_mult: 100,                // "일반적으로 어려움" — 구 35/80에서 올림
           bandits: 12,                                  // §14 — 전쟁이 남긴 떠돌이 무리가 소문으로는 있다
           corps: ['메릴 8'], b_meryl: 20,              // 카드 시작 옵션(난이도 1): 메릴과 함께 시작
@@ -2106,6 +2261,7 @@ const S = {
           // 그동안 랜덤 사건이 안 겹치는 게 오히려 낫다 — 길이 열리는 날부터 세상이 때리기 시작한다.
           route: '북 산길', route_days: 14,
           rel_cap: 5, fame: 0,                          // 왕도조차 서류로만 안다
+          rel_ch: 5,                                    // §14-3 — 교단도 잊었다 (순회 자매도 안 들른다)
           hardship: 100, hire_mult: 180,
           bandits: 30,                                  // §14 — 갈 곳 없는 칼잡이가 이미 길 위에 있다
           // 카드 시작 옵션(난이도 2)도 메릴 동행 — 금고 0에 봉급 8/일이 첫날부터 밀린다.
@@ -2191,6 +2347,12 @@ S.statusUI.templates = [{
     + '<div class="status-section-title">📜 집무실</div>'
     + '<div class="status-entry status-span2"><span>맡은 청원:</span> <span class="val">{petitions} — 청원함은 📜</span></div>'
     + '<div class="status-entry status-span2"><span>빚·약속:</span> <span class="val">{favors}</span></div>'
+    // §14-3 — 교단. 예배당은 ⛪ 버튼, 십일조는 /십일조
+    + '<div class="status-section-title">⛪ 광휘회</div>'
+    + '<div class="status-entry"><span>교단의 시선:</span> <span class="val">{rel_ch_txt}</span></div>'
+    + '<div class="status-entry"><span>예배당:</span> <span class="val">{chapel_txt}</span></div>'
+    + '<div class="status-entry"><span>십일조:</span> <span class="val">{tithe} ({tithe_amt}/일)</span></div>'
+    + '<div class="status-entry"><span>주교:</span> <span class="val">{bishop_txt}</span></div>'
     + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
@@ -2314,7 +2476,14 @@ S.party = {
       + sec('주변 영지')
       + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('')
       + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}'
-      + sec('맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다') + '{petitions:tags}' },
+      + sec('맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다') + '{petitions:tags}'
+      // §14-3 — 왕실과 나란한 또 하나의 권력
+      + sec('광휘회 — {rel_ch_txt}')
+      + row('예배당', '{chapel_txt}')
+      + row('십일조 (/십일조)', '{tithe} · {tithe_amt}/일')
+      + row('머무는 자매', '{sis_n} — 교단이 보내는 자매: {sis_open}')
+      + row('주교', '{bishop_txt} · 호감 {b_beatrix}')
+      + '<div class="vled-p">주교가 볼 것 — {bish_txt}</div>' },
   ],
 };
 
@@ -2932,6 +3101,112 @@ for (const t of S.party.tabs) {
   const road = engine.initState(S0); road.vars.route = '남 가도';
   ok('편지는 편지 — 매체 letter · 남쪽 가도가 막히면 전령도 못 간다', mc.medium === 'letter'
     && msgrMod.msgrOpen(mc, S0, engine.initState(S0).vars, engine.makeLookup) && !msgrMod.msgrOpen(mc, S0, road.vars, engine.makeLookup), '');
+}
+
+// ── 광휘회 (§14-3) ──
+// 교단의 시선(rel_ch)이 십일조·자매·예배당으로 흐르고, 예배당은 버튼 → 완공 → 분원, 주교는 예고 → 이레 → 판단 셋,
+// 열병엔 교단에 손을 벌리는 갈림길, 교단과 왕실 사이의 갈림길. 전부 한 판씩 굴려 본다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 광휘회 ━━');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: undefined } };
+  const L = (st) => engine.makeLookup(S0, st.vars);
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('ch', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('ch', k, 'o') });
+  const base = () => { const s = engine.initState(S0); s.meta.setupDone = true; Object.assign(s.vars, { gold: 2000, food: 3000, water: 3000, health: 60 }); return s; };
+
+  // 십일조 — 지출에 붙고, 시선을 민다 (예배당·자매 없이 1할이면 하루 +0.1)
+  let t = base(); t.vars.tithe = '1할';
+  const inc = L(t)('income');
+  ok('십일조 1할 = 그날 수입의 1할이 지출로', L(t)('tithe_amt') === Math.round(Math.max(0, inc) * 0.1)
+    && L(t)('upkeep') - L({ vars: { ...t.vars, tithe: '바치지 않음' } })('upkeep') === L(t)('tithe_amt'), `수입 ${inc} → 십일조 ${L(t)('tithe_amt')}/일`);
+  let r = step(engine.clone(t), { skip_day: 10 }, 1);
+  ok('1할을 열흘 → 교단의 시선 +1', Math.abs(r.state.vars.rel_ch - 11) < 0.01, `10 → ${r.state.vars.rel_ch.toFixed(2)}`);
+
+  // 예배당 — ⛪ 버튼(값·공기) → 완공 이벤트가 인프라에 적고 시선 +5
+  t = base();
+  const cost = L(t)('chapel_cost'), days = L(t)('chapel_days');
+  const tg = engine.toggleAction(S0, t, 'act_chapel'); t = tg.state;
+  const sp = engine.sendPhase(S0, t, { rng: seededRng('ch', 2, 's') });
+  ok('⛪ 재건 → 재건비가 나가고 완공일이 잡힌다', sp.state.vars.gold === 2000 - cost && sp.state.vars.chapel_at === sp.state.vars.day + days,
+    `재건비 ${cost} · 공기 ${days}일 · ${L(sp.state)('chapel_txt')}`);
+  r = _outputPhase(S0, sp.state, { skip_day: days }, {}, { rng: seededRng('ch', 2, 'o') });
+  ok('완공 → 예배당 1 · 인프라에 시스템이 적는다 · 시선 +5 · 통지', r.state.vars.chapel === 1 && r.state.vars.infra.includes('다시 세운 예배당')
+    && r.firedEvents.includes('chapel_done') && r.state.vars.rel_ch >= 15, `${L(r.state)('chapel_txt')} · 시선 ${r.state.vars.rel_ch.toFixed(1)}`);
+  ok('예배당만 세우고 십일조를 안 내면 식는다 (교구가 제 몫을 기다린다)', L(r.state)('ch_drift') < 0, `하루 ${L(r.state)('ch_drift')}`);
+  ok('예배당이 서면 재건 버튼은 닫힌다', !engine.actionAvailability(S0, r.state, S0.actions.find((a) => a.id === 'act_chapel')).ok, '');
+
+  // 분원 — 교단의 인정(50)이면 분원으로 올리고 자매를 보낸다. 분원은 보건 +1/일
+  const b1 = engine.clone(r.state); b1.vars.rel_ch = 50; b1.vars.tithe = '1할';
+  const br = step(b1, {}, 3);
+  ok('인정 50 → 분원 · 인프라 교체 · 자매를 보낸다는 통지', br.state.vars.chapel === 2 && br.state.vars.infra.includes('광휘회 분원')
+    && !br.state.vars.infra.includes('다시 세운 예배당') && br.firedEvents.includes('chapel_branch'), JSON.stringify(br.state.vars.infra.slice(-2)));
+  const h2 = step(engine.clone(br.state), { skip_day: 5 }, 4), h1 = step(engine.clone({ ...br.state, vars: { ...br.state.vars, chapel: 1 } }), { skip_day: 5 }, 4);
+  ok('분원 = 앓는 이를 들이는 방 (보건 +1/일)', h2.state.vars.health - h1.state.vars.health === 5, `닷새 차이 ${h2.state.vars.health - h1.state.vars.health}`);
+
+  // 주교 — 예고(이레) 동안 지시문이 "무엇을 볼지"를 건넨다 → 판단은 돈 없이: 돌봄·숨김·자매·분원
+  const visit = (vars, k) => {
+    // day_prev도 같이 — 안 두면 첫 정산이 60일치(span 60)라 막힌 길이 그 안에 뚫린다
+    let s = base(); Object.assign(s.vars, { chapel: 1, rel_ch: 40, day: 60, day_prev: 60, bishop_next: 60 }, vars);
+    atDay(s, 60);
+    const a = step(s, {}, k);
+    const pb = engine.sendPhase(S0, engine.clone(a.state), { rng: seededRng('ch', k, 'p') }).promptBlock;
+    const b = step(a.state, { skip_day: 7 }, k + 1);
+    return { a, pb, b };
+  };
+  const v1 = visit({ stance: '중립', health: 60, corps: ['스텔라 4'] }, 10);
+  ok('예고 → 이레 뒤로 잡히고 다음 방문은 150일 뒤', v1.a.firedEvents.includes('bishop_notice') && v1.a.state.vars.bishop_at === v1.a.state.vars.day + 7
+    && v1.a.state.vars.bishop_next === v1.a.state.vars.day + 150, `오는 날 ${v1.a.state.vars.bishop_at} · 다음 ${v1.a.state.vars.bishop_next}`);
+  ok('이레 동안 지시문이 주교가 볼 것을 건넨다', /THE BISHOP IS COMING/.test(v1.pb) && /앓는 이 잘 돌봄/.test(v1.pb), (v1.pb.match(/\[THE BISHOP[^\n]*/) || [''])[0].slice(0, 140));
+  ok('돌봄 + 자매 → 흡족 (시선 +12 · 주교 호감 +6)', v1.b.firedEvents.includes('bishop_pleased') && v1.b.state.vars.bishop_at === 0
+    && v1.b.state.vars.b_beatrix === 6, `${v1.b.firedEvents.filter((x) => x.startsWith('bishop')).join(',')} · 호감 ${v1.b.state.vars.b_beatrix}`);
+  const v2 = visit({ stance: '카산드라', exposed: 10, health: 60 }, 20);
+  ok('★ 편을 감춘 영주 → 차갑게 (숨김이 첫째 죄 — 돌봄으로도 못 덮는다)', v2.b.firedEvents.includes('bishop_cold') && v2.b.state.vars.b_beatrix === -5,
+    `${L(v2.a.state)('bish_txt')}`);
+  const v3 = visit({ stance: '카산드라', exposed: 70, health: 40 }, 30);
+  ok('드러낸 지지는 숨김이 아니다 → 보류', v3.b.firedEvents.includes('bishop_even'), `점수 ${L(v3.a.state)('bish_score')}`);
+  const v4 = visit({ stance: '중립', health: 60, gold: 99999 }, 40);
+  ok('금고가 가득해도 판단은 그대로 (그녀의 인정은 살 수 없다)', L(v4.a.state)('bish_score') === L({ vars: { ...v4.a.state.vars, gold: 0 } })('bish_score'), '');
+  const shut = visit({ route: '남 가도', route_days: 5 }, 50);
+  ok('남쪽 가도가 막히면 주교도 못 온다', !shut.a.firedEvents.includes('bishop_notice'), '');
+
+  // 열병 — 교단에 손을 벌리는 갈림길 (광휘회는 이 나라의 유일한 의사다)
+  const plague = S.rules.randomEvents.table.find((e) => e.id === 'plague');
+  let p = base(); Object.assign(p.vars, { disaster: '열병', disaster_days: 12, health: 30, rel_ch: 10 });
+  p.meta.pendingChoice = { id: 'plague', turn: p.meta.turn };
+  const pc = L(p)('plague_cost');
+  ok('열병 갈림길 — 둘째(버틴다)는 늘 열림 · 교단이 모르면 첫째가 잠긴다', engine.pickChoice(S, p, 0).ok
+    && !engine.pickChoice(S, { ...p, vars: { ...p.vars, rel_ch: 5 } }, 0).ok && engine.pickChoice(S, p, 1).ok && plague.timeout === 2, `헌금 ${pc}`);
+  p.meta.pendingChoicePick = 0;
+  const ps = engine.sendPhase(S, p, { rng: seededRng('ch', 60, 's') });
+  ok('구호를 청하면 → 헌금 · 보건 +15 · 열병이 짧아진다 · 교단에 빚', ps.state.vars.gold === 2000 - pc && ps.state.vars.health === 45
+    && ps.state.vars.disaster_days === 6 && ps.state.vars.favors.includes('광휘회에 열병 구호의 빚'), `금 ${ps.state.vars.gold} · 보건 ${ps.state.vars.health} · 남은 날 ${ps.state.vars.disaster_days}`);
+
+  // 교단과 왕실 사이 — 편을 들면 한쪽이 오르고 한쪽이 식는다, 말을 아끼면 둘 다 조금
+  const cc = S.rules.randomEvents.table.find((e) => e.id === 'church_crown');
+  const pick = (k) => { const s = base(); Object.assign(s.vars, { rel_ch: 50, rel_cap: 40 }); s.meta.pendingChoice = { id: 'church_crown', turn: 0 }; s.meta.pendingChoicePick = k;
+    return engine.sendPhase(S, s, { rng: seededRng('ch', 70 + k, 's') }).state.vars; };
+  const [c0, c1, c2] = [0, 1, 2].map(pick);
+  ok('교단 편 +8/−6 · 왕실 편 −6/+8 · 말을 아낌 −2/−2', c0.rel_ch === 58 && c0.rel_cap === 34 && c1.rel_ch === 44 && c1.rel_cap === 48
+    && c2.rel_ch === 48 && c2.rel_cap === 38 && cc.timeout === 3, `${c0.rel_ch}/${c0.rel_cap} · ${c1.rel_ch}/${c1.rel_cap} · ${c2.rel_ch}/${c2.rel_cap}`);
+  const w0 = L({ vars: { ...base().vars, rel_ch: 0 } })('my_weight'), w1 = L({ vars: { ...base().vars, rel_ch: 80 } })('my_weight');
+  ok('교단이 뒤에 있으면 궁정의 셈에 든다 (지지의 무게)', w1 - w0 === 8, `${w0} → ${w1}`);
+  // 교단이 보내는 자매는 교단의 눈으로 — 아카데미 명성 문턱과 별개
+  ok('교단이 보내는 자매 — 지켜봄 전엔 신참만', /스텔라\(신참\)만/.test(L({ vars: { ...base().vars, rel_ch: 10 } })('sis_open'))
+    && /라피스/.test(L({ vars: { ...base().vars, rel_ch: 50 } })('sis_open')), L({ vars: { ...base().vars, rel_ch: 30 } })('sis_open'));
+
+  // 한 해 — 1할 · 예배당 세우고 · 자매 없이 (보통 프리셋, 이벤트 없이): 교단의 시선이 어디까지 가나. 참고용
+  console.log('  · 한 해(360일) 십일조별 — 보통 프리셋, 첫날 예배당 완공, 자매 없이, 이벤트 없이');
+  for (const tithe of ['바치지 않음', '1할', '2할']) {
+    let s = engine.applyPreset(S0, engine.initState(S0), 'normal').state; s.meta.setupDone = true;
+    Object.assign(s.vars, { tithe, chapel: 1 });
+    const S1 = { ...S0, rules: { ...S0.rules, events: [] } };
+    let paid = 0;
+    for (let d = 0; d < 360; d++) {
+      paid += engine.makeLookup(S1, s.vars)('tithe_amt');
+      s = _outputPhase(S1, engine.sendPhase(S1, s, { rng: seededRng('ty', d, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('ty', d, 'o') }).state;
+    }
+    console.log(`    ${tithe.padEnd(6)} 시선 ${s.vars.rel_ch.toFixed(1).padStart(5)} (${engine.makeLookup(S1, s.vars)('rel_ch_txt')})  낸 십일조 ${paid}  금고 ${s.vars.gold}`);
+  }
 }
 
 // ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──

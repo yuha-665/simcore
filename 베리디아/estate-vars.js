@@ -269,6 +269,68 @@ const PET_CIRCLES = [
   ['왕도', 0, 400, '왕도가 이쪽을 볼 때만(rel_cap 35↑) — 호구 조사, 징발 명단, 감찰관 접대, 세납 앞당기기, 왕녀 쪽 부탁'],
 ];
 
+// ── 혼담 (§14-4) ── 정조역전 [원본]: 여자가 원하는 남자를 "차지"하고 책임진다 — 남자에게 가장 큰 영예는 강한 여자에게 선택받아
+// 보호받는 것. 그래서 혼담은 남작이 청하는 게 아니라 가문(대개 그 집의 여자 본인)이 **차지하러 오는 것**이다. 번영할수록 온다.
+// 여왕은 없다 — "외교 혼담은 책상에서 밀어낸다" [원본 여왕]. 실바나는 가문의 뜻으로는 안 온다 — "누구와 혼인해야 하는지 정해 주는 것"을
+// 싫어한다 [원본 실바나]: 개인 호감으로만. 왕녀 셋은 계승 판세와 맞물린다 — 받아들이면 지지가 공개로 굳는다.
+//   { k: enum 값(= 사람 이름), label: 화면 이름, bond: 호감 변수, rel: 영지 인식 변수(없으면 null), gate: 청혼 조건,
+//     pw: 왕녀면 세력 변수, gift: 혼례 예물 효과, giftList: 목록 예물, gift_txt: 예물 한 줄, ask: 청혼 통지 }
+const SUITORS = [
+  { k: '모르웬', label: '모르웬 백작', bond: 'b_morwen', rel: 'rel_n', gate: '(rel_n >= 35 or b_morwen >= 25)',
+    gift: [{ set: 'army', expr: 'army + 20' }, { set: 'threat', expr: 'clamp(threat - 10, 0, 100)' }], gift_txt: '북부 병사 스물과 몬스터 전선의 칼',
+    ask: '[혼담 — 북에서] 모르웬 백작 쪽에서 사람이 왔다. 정치에 서툰 사람답게 돌려 말하지 않는다 — 모르웬 가문이 이 땅의 남작을 차지하고 '
+      + '책임지겠다는 것. 백작 본인이 나섰는지 가문의 누구를 내세웠는지는 이번 장면에서 정하라.' },
+  { k: '리아나', label: '리아나 백작', bond: 'b_liana', rel: 'rel_e', gate: '(rel_e >= 35 or b_liana >= 25)',
+    gift: [], giftList: ['리아나 가문 뱃길 +12'], gift_txt: '강 아래 뱃길 — 하루 +12',
+    ask: '[혼담 — 동에서] 리아나 백작의 혼담이 왔다. 계산이 붙어 있다는 걸 숨기지 않는다 — 무너진 부두, 쌓인 빚, 그걸 일으킬 사람과 땅. '
+      + '그래도 청은 청이고, 이 세계에서 여자가 남자를 차지하겠다는 건 책임지겠다는 말이다. 누가 나섰는지는 이번 장면에서 정하라.' },
+  { k: '발레리우스', label: '발레리우스 백작', bond: 'b_valerius', rel: 'rel_s', gate: '(rel_s >= 35 or b_valerius >= 25)',
+    gift: [{ set: 'food', expr: 'food + 2000' }], giftList: ['발레리우스 가문 곡물 거래 +8'], gift_txt: '곡물 2000과 곡물 거래 하루 +8',
+    ask: '[혼담 — 남에서] 발레리우스 가문이 혼담을 보냈다. 효율을 보는 집이다 — 이 땅의 수확, 그리고 그걸 거둔 남자. '
+      + '혼인이 흡수의 다른 이름일 수 있다는 걸 모두 안다. 백작 본인인지 가문의 누구인지는 이번 장면에서 정하라.' },
+  { k: '실바나', label: '실바나 후작', bond: 'b_silvana', rel: 'rel_w', gate: 'b_silvana >= 30',
+    gift: [{ set: 'fame', expr: 'clamp(fame + 3, 0, 100)' }], giftList: ['실바나 가문 숲 물산 +10'], gift_txt: '서쪽 숲의 물산 하루 +10',
+    ask: '[혼담 — 서에서] 가문이 아니라 실바나 본인이다. 정해 주는 혼인을 누구보다 싫어하던 그녀가 제 뜻으로 — 묶이는 걸 제일 싫어하는 '
+      + '사람이 먼저 이 남자를 차지하겠다고 한다. 바람 같은 청혼이다.' },
+  { k: '엘레오노라', label: '엘레오노라 공작', bond: 'b_eleonora', rel: null, gate: 'my_weight >= 25 and (rel_cap >= 30 or b_eleonora >= 25)',
+    gift: [{ set: 'gold', expr: 'gold + 3000' }, { set: 'unrest', expr: 'clamp(unrest - 15, 0, 100)' }], gift_txt: '금화 3000과 중앙 공작가의 질서',
+    ask: '[혼담 — 중앙 공작가] 엘레오노라 공작은 묻지 않는다 — 청이라기보다 통보에 가깝다. "남자를 데려가는 건 협상이 아니라 차지하는 것." '
+      + '공작가가 이 땅을 발밑에 두겠다는 뜻이기도 하다.' },
+  ...[['카산드라', 'b_cassandra', 'pw_cass', '제1왕녀 카산드라의 사람이 은밀히 왔다 — 판 위의 모든 말을 확인해야 직성이 풀리는 그녀가 이 땅의 남작을 제 판에 올리려 한다.'],
+    ['오렐리아', 'b_orelia', 'pw_orel', '제2왕녀 오렐리아가 다정한 편지로 청혼했다 — 고아원의 성녀. 그 얼굴 뒤를 아는 사람은 드물다.'],
+    ['릴리아나', 'b_liliana', 'pw_lili', '제3왕녀 릴리아나가 — 규칙을 싫어하는 그녀답게 — 느닷없이 청혼했다. 장난인지 진심인지는 장면이 정한다.'],
+  ].map(([k, bond, pw, line]) => ({
+    k, label: `${k} 왕녀`, bond, rel: 'rel_cap', pw,
+    gate: `rel_cap >= 35 and my_weight >= 30 and (stance == "${k}" or ${bond} >= 25 or (stance == "중립" and frontrunner == "${k}"))`,
+    gift: [{ set: 'gold', expr: 'gold + 2000' }, { set: pw, expr: `clamp(${pw} + 8, 5, 100)` }], gift_txt: `금화 2000과 궁정의 자리 (${k} 세력 +8)`,
+    ask: `[혼담 — 왕도에서] ${line} 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다.`,
+  })),
+];
+const SUIT_KEYS = SUITORS.map((s) => s.k);
+const suitId = (s) => s.bond.slice(2);   // 이벤트 id 꼬리 — b_morwen → morwen
+// 받아들임 = 혼약. 그 가문의 인식 +10 · 그 사람의 호감 +12 · 예순 날 뒤 혼례. 왕녀면 지지가 그 왕녀로 굳고 전부 드러난다(혼약은 못 숨긴다).
+const acceptFx = (s) => [
+  ...(s.rel ? [{ set: s.rel, expr: `clamp(${s.rel} + 10, 0, 100)` }] : []),
+  { set: s.bond, expr: `clamp(${s.bond} + 12, -50, 100)` },
+  ...(s.pw ? [{ set: 'stance', expr: JSON.stringify(s.k) }, { set: 'exposed', expr: '100' }] : []),
+  { set: 'spouse', expr: JSON.stringify(s.k) }, { set: 'wed_at', expr: 'day + 60' },
+];
+// 물림 = 원한. 엘레오노라는 더 — 그녀에겐 물음이 아니었다
+const refuseFx = (s, rel, bond) => [
+  ...(s.rel ? [{ set: s.rel, expr: `clamp(${s.rel} - ${rel}, 0, 100)` }] : []),
+  { set: s.bond, expr: `clamp(${s.bond} - ${s.k === '엘레오노라' ? bond + 4 : bond}, -50, 100)` },
+];
+// 누가 청했는지가 변수(suit·spouse)에 있을 때 — 같은 효과를 청혼인마다 갈래로 (답을 들으러 온 턴·혼약 파기)
+const byWho = (who, varId, per) => {
+  const arms = SUITORS.map((s) => [s.k, per(s)]).filter(([, e]) => e != null);
+  return { set: varId, expr: arms.reduceRight((acc, [k, e]) => `${who} == ${JSON.stringify(k)} ? ${e} : (${acc})`, varId) };
+};
+const RELS = [...new Set(SUITORS.map((s) => s.rel).filter(Boolean))];
+const fxByWho = (who, fx) => [
+  ...RELS.map((rv) => byWho(who, rv, (s) => { const e = fx(s).find((f) => f.set === rv); return e ? e.expr : null; })),
+  ...SUITORS.map((s) => byWho(who, s.bond, (x) => (x === s ? fx(s).find((f) => f.set === s.bond).expr : null))),
+];
+
 const FEST = [
   [1, 15, '한밤절', '한 해에서 밤이 가장 긴 무렵. 불을 끄지 않고 새운다. 이 밤에 화로가 꺼진 집은 한 해 내내 입에 오른다.'],
   [2, 5, '잿날', '겨울에 죽은 이를 태워 보내는 날. 언 땅에 묻지 못한 시신이 이날 한꺼번에 화장된다.'],
@@ -573,6 +635,14 @@ const S = {
     // 주교 — "파견되지 않는다, 보러 온다" [원본]. 오는 날(bishop_at)과 다시 볼 수 있는 날(bishop_next, 래치 — 조건 이벤트엔 쿨다운이 없다)
     { id: 'bishop_at', label: '(내부) 주교가 오는 날', type: 'int', init: 0, min: 0, desc: '시스템 전용. 0이면 오는 중이 아니다.' },
     { id: 'bishop_next', label: '(내부) 주교가 다시 볼 날', type: 'int', init: 60, min: 0, desc: '시스템 전용.' },
+    // ── 혼담 (§14-4) ── 전부 시스템 것 — 청혼(랜덤 갈림길) → 받아들임·물림·시간을 청함(30일 뒤 답을 들으러 온다) → 혼약 → 예순 날 뒤 혼례.
+    //   청혼은 한 번에 하나(suit), 오면 75일은 다른 청혼이 없다(suit_next 래치). 차지된 뒤(spouse)엔 아무도 안 온다.
+    { id: 'suit', label: '답을 기다리는 청혼', type: 'enum', enum: ['없음', ...SUIT_KEYS], init: '없음', desc: '시스템 전용.' },
+    { id: 'suit_until', label: '(내부) 답을 들으러 오는 날', type: 'int', init: 0, min: 0, desc: '시스템 전용.' },
+    { id: 'suit_next', label: '(내부) 다음 청혼이 올 수 있는 날', type: 'int', init: 90, min: 0, desc: '시스템 전용.' },
+    { id: 'spouse', label: '배필', type: 'enum', enum: ['없음', ...SUIT_KEYS], init: '없음',
+      desc: '시스템 전용. 이 남작을 차지한 쪽 — 혼약이든 혼인이든.' },
+    { id: 'wed_at', label: '(내부) 혼례일', type: 'int', init: 0, min: 0, desc: '시스템 전용. 혼례가 지나면 0.' },
 
     // ── 동행자 ──
     // 캐릭터 시트는 로어북에 있다. 스키마가 들고 있어야 할 것은 로어북이 못 담는 것뿐 —
@@ -981,6 +1051,13 @@ const S = {
     { id: 'bishop_txt', label: '주교',
       expr: 'bishop_at > 0 ? (bishop_at - day <= 0 ? "오늘 온다" : (bishop_at - day) + "일 뒤 온다") : "오는 길이 아니다"' },
     { id: 'bish_in', expr: 'bishop_at - day <= 0 ? "today" : "in " + (bishop_at - day) + " days"' },
+    // ── 혼담 (§14-4) ──
+    { id: 'suit_label', expr: SUITORS.reduceRight((acc, s) => `suit == "${s.k}" ? "${s.label}" : (${acc})`, '"없음"') },
+    { id: 'spouse_label', expr: SUITORS.reduceRight((acc, s) => `spouse == "${s.k}" ? "${s.label}" : (${acc})`, '"없음"') },
+    { id: 'suit_txt', label: '청혼',
+      expr: 'suit == "없음" ? "없음" : suit_label + " — 답을 기다린다 (" + max(0, suit_until - day) + "일 뒤 답을 들으러 온다)"' },
+    { id: 'spouse_txt', label: '배필',
+      expr: 'spouse == "없음" ? "없음" : spouse_label + (wed_at > 0 ? " — 혼약, 혼례 " + (wed_at - day <= 0 ? "오늘" : (wed_at - day) + "일 뒤") : " — 혼인")' },
     { id: 'ch_txt', label: '광휘회',
       expr: 'rel_ch_txt + " · 예배당 " + chapel_txt + " · 십일조 " + tithe + (tithe_amt > 0 ? "(" + tithe_amt + "/일)" : "")'
         + ' + " · 자매 " + sis_n + "명" + (bishop_at > 0 ? " · 주교 " + bishop_txt : "")' },
@@ -1024,6 +1101,11 @@ const S = {
       { set: 'pet_n', expr: 'count(petitions)' },
       // ── 광휘회 (§14-3) ── 교단의 시선이 십일조·자매·예배당만큼 흐른다 (ch_drift). 십일조 돈은 지출(upkeep)이 이미 뺐다
       { set: 'rel_ch', expr: 'clamp(rel_ch + ch_drift * span, 0, 100)' },
+      // ── 혼인한 가문 (§14-4) ── 차지한 쪽은 이 남작을 제 사람으로 센다 — 그 가문의 인식은 50(거래 상대↑) 밑으로 안 떨어진다
+      ...RELS.map((rv) => {
+        const ks = SUITORS.filter((s) => s.rel === rv).map((s) => `spouse == "${s.k}"`);
+        return { set: rv, expr: `(${ks.join(' or ')}) and wed_at == 0 ? max(${rv}, 50) : ${rv}` };
+      }),
       // ── 흘러드는 사람들 (§14) ── 도착 → 관문 방침대로 들이기·떠나보내기 → 떠난 이의 일부가 도적으로.
       // 식량 정산(아래 lack_*·food)보다 먼저 — 오늘 들어온 입도 오늘 먹는다.
       { set: 'drifters', expr: 'min(400, drifters + drift_rate * span)' },
@@ -1254,6 +1336,29 @@ const S = {
           { set: 'bishop_at', expr: '0' }],
         notify: '[주교가 보고 갔다 — 차갑게] 베아트릭스 주교는 빛 아래 두지 못한 것을 보았다 — 버려진 앓는 이, 혹은 영주가 감춘 속. '
           + '그녀는 돌려 말하지 않는다. 짚은 것을 그 자리에서 말하고 떠난다.' },
+
+      // ── 혼담 (§14-4) ── 시간을 청한 혼담 — 서른 날 뒤 답을 들으러 온다. 이번엔 미룰 수 없다(안 고르면 물린 것 — 기다리게 하고 물렸으니 더 아프다)
+      { id: 'suit_ask', when: 'suit != "없음" and day >= suit_until',
+        notify: '[답을 들으러 왔다] 시간을 청했던 혼담의 가문이 답을 들으러 왔다 — 누구인지는 상태 블록 "혼담" 줄에 있다. 이번엔 미룰 수 없다.',
+        timeout: 3,
+        choices: [
+          { label: '받아들인다',
+            effects: [...fxByWho('suit', (s) => acceptFx(s).filter((f) => f.set === s.rel || f.set === s.bond)),
+              byWho('suit', 'stance', (s) => (s.pw ? JSON.stringify(s.k) : null)), byWho('suit', 'exposed', (s) => (s.pw ? '100' : null)),
+              { set: 'spouse', expr: 'suit' }, { set: 'wed_at', expr: 'day + 60' }, { set: 'suit', expr: '"없음"' }],
+            inject: 'After taking time to think, the Baron accepts the suit — that house claims him. Betrothal now; the wedding in sixty days.' },
+          { label: '물린다',
+            effects: [...fxByWho('suit', (s) => refuseFx(s, 8, 10)), { set: 'suit', expr: '"없음"' }],
+            inject: 'After making them wait, the Baron declines the suit. Being kept waiting and then refused stings more than a quick no.' },
+        ] },
+      // 혼례 — 차지한 쪽이 책임의 예물을 가져온다 (정조역전: 여자가 남자를 차지하고 책임진다 [원본]). 명성·사기는 공통
+      ...SUITORS.map((s) => ({
+        id: `wedding_${suitId(s)}`, when: `spouse == "${s.k}" and wed_at > 0 and day >= wed_at`,
+        effects: [{ set: 'wed_at', expr: '0' }, { set: 'fame', expr: 'clamp(fame + 8, 0, 100)' }, { set: 'morale', expr: 'clamp(morale + 10, 0, 100)' },
+          ...s.gift, ...(s.giftList ? [{ list: 'contracts', add: s.giftList }] : [])],
+        notify: `[혼례] ${s.label} 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: ${s.gift_txt}`
+          + (s.giftList ? ' (지속 수입엔 시스템이 올렸다)' : '') + '. 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로.',
+      })),
     ]),
 
     // ── 굴러 들어오는 것 ──
@@ -1625,6 +1730,25 @@ const S = {
           effects: EXPLORE.map(([dir, v]) => ({ set: v, expr: `${v} < 100 and explore_dir == ${JSON.stringify(dir)} ? min(100, ${v} + 15) : ${v}` })),
           notify: '[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, '
             + '피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라.' },
+
+        // ── 혼담 (§14-4) ── 번영할수록 차지하러 온다 [유저]. 명성 30 · 90일 이후 · 한 번 오면 75일은 조용 · 차지된 뒤엔 안 온다.
+        //   누가 오나는 그 가문의 인식·그 사람의 호감·계승 판세가 가른다 (SUITORS.gate). 안 고르면(3턴) "시간을 청한다" — 서른 날 뒤 다시 온다.
+        ...SUITORS.map((s) => ({
+          id: `suit_${suitId(s)}`, weight: 2, cooldown: 180,
+          when: `${QUIET} and spouse == "없음" and suit == "없음" and day >= suit_next and fame >= 30 and ${s.gate}`,
+          effects: [{ set: 'suit_next', expr: 'day + 75' }],
+          notify: s.ask + ' 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.',
+          timeout: 3,
+          choices: [
+            { label: '받아들인다', effects: acceptFx(s),
+              inject: `The Baron accepts — ${s.label}'s side claims him. Betrothal now; the wedding in sixty days.` },
+            { label: '정중히 물린다', effects: refuseFx(s, 6, 8),
+              inject: `The Baron declines ${s.label}'s suit with courtesy. It will be remembered.` },
+            { label: '생각할 시간을 청한다',
+              effects: [{ set: 'suit', expr: JSON.stringify(s.k) }, { set: 'suit_until', expr: 'day + 30' }],
+              inject: `The Baron asks for time. ${s.label}'s side will come back for an answer in thirty days.` },
+          ],
+        })),
       ],
     },
   },
@@ -1715,6 +1839,10 @@ const S = {
         + 'The Sisterhood works the same way but calls the fee a donation — and it weighs its own regard, not the Academy\'s: '
         + 'right now the Cathedral would send {sis_open}.' },
     // 주교가 오는 이레 — 시스템만 아는 "그녀가 무엇을 볼지"를 서사에 건넨다 (§14-3). 영주가 준비할 수 있게 (공개된 채점표)
+    // 차지된 남작 (§14-4) — 정조역전에서 혼약·혼인이 무엇을 뜻하는지는 시스템만 안다(상태 블록엔 이름뿐). 매 턴 짧게
+    { id: 'claimed', when: 'spouse != "없음"',
+      text: '[CLAIMED] The Baron has been claimed — {spouse_txt}. In this world a woman claims a man and takes responsibility for him: '
+        + 'her side now counts him as its own, other houses no longer court him, and what he does reflects on her.' },
     { id: 'bishop_coming', when: 'bishop_at > 0',
       text: '[THE BISHOP IS COMING] Bishop Beatrix arrives {bish_in} to look at this place — she comes to judge, not to help, '
         + 'and her regard cannot be bought. What she would see as things stand: {bish_txt}. She holds concealment to be the '
@@ -1934,6 +2062,14 @@ const S = {
       effects: [{ set: 'gold', expr: 'max(0, gold - chapel_cost)' }, { set: 'chapel_at', expr: 'day + chapel_days' }],
       inject: 'The Baron orders the ruined chapel on the hill rebuilt — timber, a mason, the defiled altar scrubbed clean — and pays '
         + 'for it out of the treasury. It will take some weeks; the system announces when the roof is on.' },
+    // §14-4 — 혼약 파기. 혼례 전까지만 (혼인은 못 무른다). 차지하겠다던 쪽을 물린 것 — 그 가문과 그 사람에게 큰 원한, 소문도 난다.
+    //   버튼은 무장(다음 전송에 집행)이라 누른 채 보내기 전엔 되돌릴 수 있다.
+    { id: 'act_break_troth', label: '💔 혼약을 깬다', mode: 'oneshot',
+      when: 'spouse != "없음" and wed_at > 0',
+      effects: [...fxByWho('spouse', (s) => refuseFx(s, 25, 25)), { set: 'fame', expr: 'clamp(fame - 8, 0, 100)' },
+        { set: 'suit_next', expr: 'day + 120' }, { set: 'spouse', expr: '"없음"' }],
+      inject: 'The Baron breaks off the betrothal. In this world a woman who claimed a man has been refused after the fact — '
+        + 'her house takes it as an insult, and the story travels.' },
   ],
 
   // ── AI 관할과 그 상한 ──
@@ -2061,6 +2197,8 @@ const S = {
       + 'mistreated, a heresy sheltered. tithe is the Baron\'s standing order on the Church\'s tenth; change it only when he gives '
       + 'that order — the system pays it daily. The chapel, the Bishop\'s visits and her judgement belong to the system; never write '
       + 'them. The Sisterhood is the kingdom\'s only physicians: they come as the Church, never as hired hands.\n'
+      + 'MARRIAGE: in this world women claim men. Suits, betrothals and weddings are the system\'s — they arrive as notices and '
+      + 'choices; never write them yourself or record one in favors. What follows from them (regard, a visit, a letter) you record as usual.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -2122,6 +2260,7 @@ const S = {
       + '계승 {court_txt}\n'
       + '이웃 {neighbors}\n'
       + '광휘회 {ch_txt}\n'
+      + '혼담 청혼 {suit_txt} | 배필 {spouse_txt}\n'
       + '동행 {ally}({ally_role}, 유대 {bond_txt})\n'
       + '군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n'
       + '호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n'
@@ -2353,6 +2492,10 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>예배당:</span> <span class="val">{chapel_txt}</span></div>'
     + '<div class="status-entry"><span>십일조:</span> <span class="val">{tithe} ({tithe_amt}/일)</span></div>'
     + '<div class="status-entry"><span>주교:</span> <span class="val">{bishop_txt}</span></div>'
+    // §14-4 — 혼담. 청혼은 갈림길로 온다(보고서 밖 {choices}), 혼약 파기는 💔 버튼
+    + '<div class="status-section-title">💍 혼담</div>'
+    + '<div class="status-entry status-span2"><span>청혼:</span> <span class="val">{suit_txt}</span></div>'
+    + '<div class="status-entry status-span2"><span>배필:</span> <span class="val">{spouse_txt}</span></div>'
     + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
@@ -2483,7 +2626,10 @@ S.party = {
       + row('십일조 (/십일조)', '{tithe} · {tithe_amt}/일')
       + row('머무는 자매', '{sis_n} — 교단이 보내는 자매: {sis_open}')
       + row('주교', '{bishop_txt} · 호감 {b_beatrix}')
-      + '<div class="vled-p">주교가 볼 것 — {bish_txt}</div>' },
+      + '<div class="vled-p">주교가 볼 것 — {bish_txt}</div>'
+      // §14-4 — 혼담
+      + sec('혼담 — 이 세계에선 여자가 남자를 차지한다')
+      + row('청혼', '{suit_txt}') + row('배필', '{spouse_txt}') },
   ],
 };
 
@@ -3207,6 +3353,77 @@ for (const t of S.party.tabs) {
     }
     console.log(`    ${tithe.padEnd(6)} 시선 ${s.vars.rel_ch.toFixed(1).padStart(5)} (${engine.makeLookup(S1, s.vars)('rel_ch_txt')})  낸 십일조 ${paid}  금고 ${s.vars.gold}`);
   }
+}
+
+// ── 혼담 (§14-4) ──
+// 청혼(랜덤 갈림길) → 받아들임·물림·시간을 청함 → (서른 날 뒤 답을 들으러 옴) → 혼약 → 예순 날 뒤 혼례(책임의 예물) → 혼인한 가문은 우호 밑으로 안 떨어짐.
+// 왕녀의 청혼은 계승 판세와 맞물린다. 혼례 전엔 💔 파기.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 혼담 ━━');
+  const { evaluate, truthy } = SC.require('expr');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };   // 표는 두고(갈림길을 찾아야 한다) 굴림만 끈다
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const base = (vars = {}) => { const s = engine.initState(S); s.meta.setupDone = true;
+    Object.assign(s.vars, { gold: 1000, food: 3000, water: 3000, health: 60, fame: 40, day: 100, day_prev: 100 }, vars); atDay(s, s.vars.day); return s; };
+  const ev = (id) => S.rules.randomEvents.table.find((e) => e.id === id);
+  const open = (id, st) => truthy(evaluate(ev(id).when, L(st), null));
+  const pick = (st, id, k, n) => { const s = engine.clone(st); s.meta.pendingChoice = { id, turn: s.meta.turn }; s.meta.pendingChoicePick = k;
+    return engine.sendPhase(S, s, { rng: seededRng('mr', n, 's') }).state; };
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('mr', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('mr', k, 'o') });
+
+  ok('번영해야 온다 — 명성 30 · 90일 · 그 가문이 관망(35) 이상', open('suit_morwen', base({ rel_n: 35 }))
+    && !open('suit_morwen', base({ rel_n: 35, fame: 20 })) && !open('suit_morwen', base({ rel_n: 20 })) && !open('suit_morwen', base({ rel_n: 35, day: 60, day_prev: 60 })), '');
+  ok('실바나는 가문의 뜻으로는 안 온다 — 제 호감으로만 [원본]', !open('suit_silvana', base({ rel_w: 90 })) && open('suit_silvana', base({ b_silvana: 30 })), '');
+  ok('왕녀 — 중립이면 선두가, 지지하면 그 왕녀가, 호감이면 누구든', open('suit_cassandra', base({ rel_cap: 35, army: 60 }))
+    && !open('suit_orelia', base({ rel_cap: 35, army: 60 })) && open('suit_orelia', base({ rel_cap: 35, army: 60, stance: '오렐리아' })),
+    `무게 ${L(base({ rel_cap: 35, army: 60 }))('my_weight')} · 선두 ${L(base())('frontrunner')}`);
+  ok('차지된 뒤엔 아무도 안 온다 · 답을 기다리는 청혼이 있어도', !open('suit_morwen', base({ rel_n: 35, spouse: '리아나' })) && !open('suit_morwen', base({ rel_n: 35, suit: '리아나' })), '');
+
+  // 받아들임 = 혼약
+  let t = pick(base({ rel_n: 40 }), 'suit_morwen', 0, 1);
+  ok('받아들인다 → 혼약 · 모르웬 인식 +10 · 호감 +12 · 예순 날 뒤 혼례', t.vars.spouse === '모르웬' && t.vars.wed_at === t.vars.day + 60
+    && t.vars.rel_n === 50 && t.vars.b_morwen === 12, `${L(t)('spouse_txt')}`);
+  const ps = engine.sendPhase(S, engine.clone(t), { rng: seededRng('mr', 2, 'p') }).promptBlock;
+  ok('차지된 남작 — 지시문이 정조역전의 뜻을 건넨다', /\[CLAIMED\]/.test(ps) && ps.includes('모르웬 백작'), (ps.match(/\[CLAIMED[^\n]*/) || [''])[0].slice(0, 90));
+  const royal = pick(base({ rel_cap: 40, army: 60 }), 'suit_cassandra', 0, 3);
+  ok('★ 왕녀의 청혼을 받으면 지지가 그 왕녀로 굳고 전부 드러난다', royal.vars.stance === '카산드라' && royal.vars.exposed === 100 && royal.vars.spouse === '카산드라', '');
+  // 물림 = 원한
+  const no = pick(base({ rel_n: 40 }), 'suit_morwen', 1, 4), noE = pick(base({ rel_cap: 40, b_eleonora: 30, army: 60 }), 'suit_eleonora', 1, 5);
+  ok('정중히 물린다 → 인식 -6 · 호감 -8 (엘레오노라는 -12 — 그녀에겐 물음이 아니었다)', no.vars.rel_n === 34 && no.vars.b_morwen === -8 && noE.vars.b_eleonora === 18
+    && no.vars.spouse === '없음', `${no.vars.rel_n}/${no.vars.b_morwen} · 엘레오노라 ${noE.vars.b_eleonora}`);
+  // 시간을 청한다 → 서른 날 뒤 답을 들으러 온다 (조건 이벤트 갈림길)
+  // 길드 사람(guild_offer)도 갈림길이라 같은 턴이면 먼저 자리를 차지한다(동시 1개) — 여기선 길드를 멀리 둔다
+  let d = pick(base({ rel_e: 40, guild_ask: 9999 }), 'suit_liana', 2, 6);
+  ok('시간을 청한다 → 답을 기다리는 청혼 · 서른 날', d.vars.suit === '리아나' && d.vars.suit_until === d.vars.day + 30 && d.vars.spouse === '없음', L(d)('suit_txt'));
+  const back = step(engine.clone(d), { skip_day: 30 }, 7);
+  ok('서른 날 뒤 → 답을 들으러 온다 (갈림길)', back.state.meta.pendingChoice?.id === 'suit_ask' && back.firedEvents.includes('suit_ask'), back.state.meta.pendingChoice?.id ?? '없음');
+  const yes = pick(back.state, 'suit_ask', 0, 8), late = pick(back.state, 'suit_ask', 1, 9);
+  ok('답 — 받아들이면 리아나와 혼약', yes.vars.spouse === '리아나' && yes.vars.suit === '없음' && yes.vars.rel_e === back.state.vars.rel_e + 10 && yes.vars.b_liana === 12, L(yes)('spouse_txt'));
+  ok('답 — 기다리게 하고 물리면 더 아프다 (-8 · -10)', late.vars.spouse === '없음' && late.vars.suit === '없음'
+    && late.vars.rel_e === back.state.vars.rel_e - 8 && late.vars.b_liana === -10, `${late.vars.rel_e} · ${late.vars.b_liana}`);
+  const dRoyal = pick(pick(base({ rel_cap: 40, army: 60, stance: '오렐리아' }), 'suit_orelia', 2, 10), 'suit_ask', 0, 11);
+  ok('답을 들으러 온 왕녀를 받아들여도 지지가 굳는다', dRoyal.vars.spouse === '오렐리아' && dRoyal.vars.stance === '오렐리아' && dRoyal.vars.exposed === 100, '');
+
+  // 혼례 — 책임의 예물
+  const w = base({ spouse: '발레리우스', wed_at: 101, contracts: [] });
+  const wr = step(w, {}, 12);
+  ok('혼례 → 책임의 예물 (발레리우스: 곡물 2000 · 곡물 거래 +8) · 명성 +8 · 혼인', wr.firedEvents.includes('wedding_valerius') && wr.state.vars.wed_at === 0
+    && wr.state.vars.contracts.includes('발레리우스 가문 곡물 거래 +8') && L(wr.state)('spouse_txt').endsWith('혼인'), `${L(wr.state)('spouse_txt')} · ${JSON.stringify(wr.state.vars.contracts)}`);
+  const wm = step(base({ spouse: '모르웬', wed_at: 101, army: 10, threat: 50 }), {}, 13);
+  ok('모르웬의 예물은 칼 — 병사 +20 · 위협 -10', wm.state.vars.army >= 30 && wm.state.vars.threat <= 45, `상비군 ${wm.state.vars.army} · 위협 ${wm.state.vars.threat}`);
+  const fl = step(base({ spouse: '모르웬', wed_at: 0, rel_n: 20 }), {}, 14), fl2 = step(base({ spouse: '카산드라', wed_at: 0, rel_cap: 10 }), {}, 15);
+  ok('혼인한 가문은 우호 밑으로 안 떨어진다 (50)', fl.state.vars.rel_n === 50 && fl2.state.vars.rel_cap === 50, `${fl.state.vars.rel_n} · 왕도 ${fl2.state.vars.rel_cap}`);
+  ok('혼약 중(혼례 전)엔 바닥이 없다 — 아직 차지된 게 아니다', step(base({ spouse: '모르웬', wed_at: 150, rel_n: 20 }), {}, 16).state.vars.rel_n === 20, '');
+
+  // 💔 파기 — 혼례 전에만
+  let bk = base({ spouse: '리아나', wed_at: 150, rel_e: 60, b_liana: 30 });
+  const act = S.actions.find((a) => a.id === 'act_break_troth');
+  ok('💔 파기는 혼례 전에만 열린다', engine.actionAvailability(S, bk, act).ok && !engine.actionAvailability(S, base({ spouse: '리아나', wed_at: 0 }), act).ok, '');
+  bk = engine.toggleAction(S, bk, 'act_break_troth').state;
+  const bs = engine.sendPhase(S, bk, { rng: seededRng('mr', 17, 's') }).state;
+  ok('파기 → 인식 -25 · 호감 -25 · 명성 -8 · 120일은 청혼도 없다', bs.vars.spouse === '없음' && bs.vars.rel_e === 35 && bs.vars.b_liana === 5
+    && bs.vars.fame === 32 && bs.vars.suit_next === bs.vars.day + 120, `${bs.vars.rel_e} · ${bs.vars.b_liana} · 명성 ${bs.vars.fame}`);
 }
 
 // ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──

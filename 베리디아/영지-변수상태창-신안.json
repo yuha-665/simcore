@@ -738,6 +738,66 @@
       "desc": "시스템 전용."
     },
     {
+      "id": "suit",
+      "label": "답을 기다리는 청혼",
+      "type": "enum",
+      "enum": [
+        "없음",
+        "모르웬",
+        "리아나",
+        "발레리우스",
+        "실바나",
+        "엘레오노라",
+        "카산드라",
+        "오렐리아",
+        "릴리아나"
+      ],
+      "init": "없음",
+      "desc": "시스템 전용."
+    },
+    {
+      "id": "suit_until",
+      "label": "(내부) 답을 들으러 오는 날",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용."
+    },
+    {
+      "id": "suit_next",
+      "label": "(내부) 다음 청혼이 올 수 있는 날",
+      "type": "int",
+      "init": 90,
+      "min": 0,
+      "desc": "시스템 전용."
+    },
+    {
+      "id": "spouse",
+      "label": "배필",
+      "type": "enum",
+      "enum": [
+        "없음",
+        "모르웬",
+        "리아나",
+        "발레리우스",
+        "실바나",
+        "엘레오노라",
+        "카산드라",
+        "오렐리아",
+        "릴리아나"
+      ],
+      "init": "없음",
+      "desc": "시스템 전용. 이 남작을 차지한 쪽 — 혼약이든 혼인이든."
+    },
+    {
+      "id": "wed_at",
+      "label": "(내부) 혼례일",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용. 혼례가 지나면 0."
+    },
+    {
       "id": "ally",
       "label": "동행",
       "type": "text",
@@ -1994,6 +2054,24 @@
       "expr": "bishop_at - day <= 0 ? \"today\" : \"in \" + (bishop_at - day) + \" days\""
     },
     {
+      "id": "suit_label",
+      "expr": "suit == \"모르웬\" ? \"모르웬 백작\" : (suit == \"리아나\" ? \"리아나 백작\" : (suit == \"발레리우스\" ? \"발레리우스 백작\" : (suit == \"실바나\" ? \"실바나 후작\" : (suit == \"엘레오노라\" ? \"엘레오노라 공작\" : (suit == \"카산드라\" ? \"카산드라 왕녀\" : (suit == \"오렐리아\" ? \"오렐리아 왕녀\" : (suit == \"릴리아나\" ? \"릴리아나 왕녀\" : (\"없음\"))))))))"
+    },
+    {
+      "id": "spouse_label",
+      "expr": "spouse == \"모르웬\" ? \"모르웬 백작\" : (spouse == \"리아나\" ? \"리아나 백작\" : (spouse == \"발레리우스\" ? \"발레리우스 백작\" : (spouse == \"실바나\" ? \"실바나 후작\" : (spouse == \"엘레오노라\" ? \"엘레오노라 공작\" : (spouse == \"카산드라\" ? \"카산드라 왕녀\" : (spouse == \"오렐리아\" ? \"오렐리아 왕녀\" : (spouse == \"릴리아나\" ? \"릴리아나 왕녀\" : (\"없음\"))))))))"
+    },
+    {
+      "id": "suit_txt",
+      "label": "청혼",
+      "expr": "suit == \"없음\" ? \"없음\" : suit_label + \" — 답을 기다린다 (\" + max(0, suit_until - day) + \"일 뒤 답을 들으러 온다)\""
+    },
+    {
+      "id": "spouse_txt",
+      "label": "배필",
+      "expr": "spouse == \"없음\" ? \"없음\" : spouse_label + (wed_at > 0 ? \" — 혼약, 혼례 \" + (wed_at - day <= 0 ? \"오늘\" : (wed_at - day) + \"일 뒤\") : \" — 혼인\")"
+    },
+    {
       "id": "ch_txt",
       "label": "광휘회",
       "expr": "rel_ch_txt + \" · 예배당 \" + chapel_txt + \" · 십일조 \" + tithe + (tithe_amt > 0 ? \"(\" + tithe_amt + \"/일)\" : \"\") + \" · 자매 \" + sis_n + \"명\" + (bishop_at > 0 ? \" · 주교 \" + bishop_txt : \"\")"
@@ -2072,6 +2150,26 @@
       {
         "set": "rel_ch",
         "expr": "clamp(rel_ch + ch_drift * span, 0, 100)"
+      },
+      {
+        "set": "rel_n",
+        "expr": "(spouse == \"모르웬\") and wed_at == 0 ? max(rel_n, 50) : rel_n"
+      },
+      {
+        "set": "rel_e",
+        "expr": "(spouse == \"리아나\") and wed_at == 0 ? max(rel_e, 50) : rel_e"
+      },
+      {
+        "set": "rel_s",
+        "expr": "(spouse == \"발레리우스\") and wed_at == 0 ? max(rel_s, 50) : rel_s"
+      },
+      {
+        "set": "rel_w",
+        "expr": "(spouse == \"실바나\") and wed_at == 0 ? max(rel_w, 50) : rel_w"
+      },
+      {
+        "set": "rel_cap",
+        "expr": "(spouse == \"카산드라\" or spouse == \"오렐리아\" or spouse == \"릴리아나\") and wed_at == 0 ? max(rel_cap, 50) : rel_cap"
       },
       {
         "set": "drifters",
@@ -2723,6 +2821,372 @@
           }
         ],
         "notify": "[주교가 보고 갔다 — 차갑게] 베아트릭스 주교는 빛 아래 두지 못한 것을 보았다 — 버려진 앓는 이, 혹은 영주가 감춘 속. 그녀는 돌려 말하지 않는다. 짚은 것을 그 자리에서 말하고 떠난다."
+      },
+      {
+        "id": "suit_ask",
+        "when": "suit != \"없음\" and day >= suit_until",
+        "notify": "[답을 들으러 왔다] 시간을 청했던 혼담의 가문이 답을 들으러 왔다 — 누구인지는 상태 블록 \"혼담\" 줄에 있다. 이번엔 미룰 수 없다.",
+        "timeout": 3,
+        "choices": [
+          {
+            "label": "받아들인다",
+            "effects": [
+              {
+                "set": "rel_n",
+                "expr": "suit == \"모르웬\" ? clamp(rel_n + 10, 0, 100) : (rel_n)"
+              },
+              {
+                "set": "rel_e",
+                "expr": "suit == \"리아나\" ? clamp(rel_e + 10, 0, 100) : (rel_e)"
+              },
+              {
+                "set": "rel_s",
+                "expr": "suit == \"발레리우스\" ? clamp(rel_s + 10, 0, 100) : (rel_s)"
+              },
+              {
+                "set": "rel_w",
+                "expr": "suit == \"실바나\" ? clamp(rel_w + 10, 0, 100) : (rel_w)"
+              },
+              {
+                "set": "rel_cap",
+                "expr": "suit == \"카산드라\" ? clamp(rel_cap + 10, 0, 100) : (suit == \"오렐리아\" ? clamp(rel_cap + 10, 0, 100) : (suit == \"릴리아나\" ? clamp(rel_cap + 10, 0, 100) : (rel_cap)))"
+              },
+              {
+                "set": "b_morwen",
+                "expr": "suit == \"모르웬\" ? clamp(b_morwen + 12, -50, 100) : (b_morwen)"
+              },
+              {
+                "set": "b_liana",
+                "expr": "suit == \"리아나\" ? clamp(b_liana + 12, -50, 100) : (b_liana)"
+              },
+              {
+                "set": "b_valerius",
+                "expr": "suit == \"발레리우스\" ? clamp(b_valerius + 12, -50, 100) : (b_valerius)"
+              },
+              {
+                "set": "b_silvana",
+                "expr": "suit == \"실바나\" ? clamp(b_silvana + 12, -50, 100) : (b_silvana)"
+              },
+              {
+                "set": "b_eleonora",
+                "expr": "suit == \"엘레오노라\" ? clamp(b_eleonora + 12, -50, 100) : (b_eleonora)"
+              },
+              {
+                "set": "b_cassandra",
+                "expr": "suit == \"카산드라\" ? clamp(b_cassandra + 12, -50, 100) : (b_cassandra)"
+              },
+              {
+                "set": "b_orelia",
+                "expr": "suit == \"오렐리아\" ? clamp(b_orelia + 12, -50, 100) : (b_orelia)"
+              },
+              {
+                "set": "b_liliana",
+                "expr": "suit == \"릴리아나\" ? clamp(b_liliana + 12, -50, 100) : (b_liliana)"
+              },
+              {
+                "set": "stance",
+                "expr": "suit == \"카산드라\" ? \"카산드라\" : (suit == \"오렐리아\" ? \"오렐리아\" : (suit == \"릴리아나\" ? \"릴리아나\" : (stance)))"
+              },
+              {
+                "set": "exposed",
+                "expr": "suit == \"카산드라\" ? 100 : (suit == \"오렐리아\" ? 100 : (suit == \"릴리아나\" ? 100 : (exposed)))"
+              },
+              {
+                "set": "spouse",
+                "expr": "suit"
+              },
+              {
+                "set": "wed_at",
+                "expr": "day + 60"
+              },
+              {
+                "set": "suit",
+                "expr": "\"없음\""
+              }
+            ],
+            "inject": "After taking time to think, the Baron accepts the suit — that house claims him. Betrothal now; the wedding in sixty days."
+          },
+          {
+            "label": "물린다",
+            "effects": [
+              {
+                "set": "rel_n",
+                "expr": "suit == \"모르웬\" ? clamp(rel_n - 8, 0, 100) : (rel_n)"
+              },
+              {
+                "set": "rel_e",
+                "expr": "suit == \"리아나\" ? clamp(rel_e - 8, 0, 100) : (rel_e)"
+              },
+              {
+                "set": "rel_s",
+                "expr": "suit == \"발레리우스\" ? clamp(rel_s - 8, 0, 100) : (rel_s)"
+              },
+              {
+                "set": "rel_w",
+                "expr": "suit == \"실바나\" ? clamp(rel_w - 8, 0, 100) : (rel_w)"
+              },
+              {
+                "set": "rel_cap",
+                "expr": "suit == \"카산드라\" ? clamp(rel_cap - 8, 0, 100) : (suit == \"오렐리아\" ? clamp(rel_cap - 8, 0, 100) : (suit == \"릴리아나\" ? clamp(rel_cap - 8, 0, 100) : (rel_cap)))"
+              },
+              {
+                "set": "b_morwen",
+                "expr": "suit == \"모르웬\" ? clamp(b_morwen - 10, -50, 100) : (b_morwen)"
+              },
+              {
+                "set": "b_liana",
+                "expr": "suit == \"리아나\" ? clamp(b_liana - 10, -50, 100) : (b_liana)"
+              },
+              {
+                "set": "b_valerius",
+                "expr": "suit == \"발레리우스\" ? clamp(b_valerius - 10, -50, 100) : (b_valerius)"
+              },
+              {
+                "set": "b_silvana",
+                "expr": "suit == \"실바나\" ? clamp(b_silvana - 10, -50, 100) : (b_silvana)"
+              },
+              {
+                "set": "b_eleonora",
+                "expr": "suit == \"엘레오노라\" ? clamp(b_eleonora - 14, -50, 100) : (b_eleonora)"
+              },
+              {
+                "set": "b_cassandra",
+                "expr": "suit == \"카산드라\" ? clamp(b_cassandra - 10, -50, 100) : (b_cassandra)"
+              },
+              {
+                "set": "b_orelia",
+                "expr": "suit == \"오렐리아\" ? clamp(b_orelia - 10, -50, 100) : (b_orelia)"
+              },
+              {
+                "set": "b_liliana",
+                "expr": "suit == \"릴리아나\" ? clamp(b_liliana - 10, -50, 100) : (b_liliana)"
+              },
+              {
+                "set": "suit",
+                "expr": "\"없음\""
+              }
+            ],
+            "inject": "After making them wait, the Baron declines the suit. Being kept waiting and then refused stings more than a quick no."
+          }
+        ]
+      },
+      {
+        "id": "wedding_morwen",
+        "when": "spouse == \"모르웬\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "army",
+            "expr": "army + 20"
+          },
+          {
+            "set": "threat",
+            "expr": "clamp(threat - 10, 0, 100)"
+          }
+        ],
+        "notify": "[혼례] 모르웬 백작 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 북부 병사 스물과 몬스터 전선의 칼. 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_liana",
+        "when": "spouse == \"리아나\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "list": "contracts",
+            "add": [
+              "리아나 가문 뱃길 +12"
+            ]
+          }
+        ],
+        "notify": "[혼례] 리아나 백작 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 강 아래 뱃길 — 하루 +12 (지속 수입엔 시스템이 올렸다). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_valerius",
+        "when": "spouse == \"발레리우스\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "food",
+            "expr": "food + 2000"
+          },
+          {
+            "list": "contracts",
+            "add": [
+              "발레리우스 가문 곡물 거래 +8"
+            ]
+          }
+        ],
+        "notify": "[혼례] 발레리우스 백작 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 곡물 2000과 곡물 거래 하루 +8 (지속 수입엔 시스템이 올렸다). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_silvana",
+        "when": "spouse == \"실바나\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 3, 0, 100)"
+          },
+          {
+            "list": "contracts",
+            "add": [
+              "실바나 가문 숲 물산 +10"
+            ]
+          }
+        ],
+        "notify": "[혼례] 실바나 후작 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 서쪽 숲의 물산 하루 +10 (지속 수입엔 시스템이 올렸다). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_eleonora",
+        "when": "spouse == \"엘레오노라\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "gold",
+            "expr": "gold + 3000"
+          },
+          {
+            "set": "unrest",
+            "expr": "clamp(unrest - 15, 0, 100)"
+          }
+        ],
+        "notify": "[혼례] 엘레오노라 공작 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 금화 3000과 중앙 공작가의 질서. 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_cassandra",
+        "when": "spouse == \"카산드라\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "gold",
+            "expr": "gold + 2000"
+          },
+          {
+            "set": "pw_cass",
+            "expr": "clamp(pw_cass + 8, 5, 100)"
+          }
+        ],
+        "notify": "[혼례] 카산드라 왕녀 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 금화 2000과 궁정의 자리 (카산드라 세력 +8). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_orelia",
+        "when": "spouse == \"오렐리아\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "gold",
+            "expr": "gold + 2000"
+          },
+          {
+            "set": "pw_orel",
+            "expr": "clamp(pw_orel + 8, 5, 100)"
+          }
+        ],
+        "notify": "[혼례] 오렐리아 왕녀 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 금화 2000과 궁정의 자리 (오렐리아 세력 +8). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
+      },
+      {
+        "id": "wedding_liliana",
+        "when": "spouse == \"릴리아나\" and wed_at > 0 and day >= wed_at",
+        "effects": [
+          {
+            "set": "wed_at",
+            "expr": "0"
+          },
+          {
+            "set": "fame",
+            "expr": "clamp(fame + 8, 0, 100)"
+          },
+          {
+            "set": "morale",
+            "expr": "clamp(morale + 10, 0, 100)"
+          },
+          {
+            "set": "gold",
+            "expr": "gold + 2000"
+          },
+          {
+            "set": "pw_lili",
+            "expr": "clamp(pw_lili + 8, 5, 100)"
+          }
+        ],
+        "notify": "[혼례] 릴리아나 왕녀 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: 금화 2000과 궁정의 자리 (릴리아나 세력 +8). 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로."
       }
     ],
     "randomEvents": {
@@ -3632,6 +4096,550 @@
             }
           ],
           "notify": "[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, 피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "suit_morwen",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_n >= 35 or b_morwen >= 25)",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 북에서] 모르웬 백작 쪽에서 사람이 왔다. 정치에 서툰 사람답게 돌려 말하지 않는다 — 모르웬 가문이 이 땅의 남작을 차지하고 책임지겠다는 것. 백작 본인이 나섰는지 가문의 누구를 내세웠는지는 이번 장면에서 정하라. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_n",
+                  "expr": "clamp(rel_n + 10, 0, 100)"
+                },
+                {
+                  "set": "b_morwen",
+                  "expr": "clamp(b_morwen + 12, -50, 100)"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"모르웬\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 모르웬 백작's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_n",
+                  "expr": "clamp(rel_n - 6, 0, 100)"
+                },
+                {
+                  "set": "b_morwen",
+                  "expr": "clamp(b_morwen - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 모르웬 백작's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"모르웬\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 모르웬 백작's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_liana",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_e >= 35 or b_liana >= 25)",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 동에서] 리아나 백작의 혼담이 왔다. 계산이 붙어 있다는 걸 숨기지 않는다 — 무너진 부두, 쌓인 빚, 그걸 일으킬 사람과 땅. 그래도 청은 청이고, 이 세계에서 여자가 남자를 차지하겠다는 건 책임지겠다는 말이다. 누가 나섰는지는 이번 장면에서 정하라. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_e",
+                  "expr": "clamp(rel_e + 10, 0, 100)"
+                },
+                {
+                  "set": "b_liana",
+                  "expr": "clamp(b_liana + 12, -50, 100)"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"리아나\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 리아나 백작's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_e",
+                  "expr": "clamp(rel_e - 6, 0, 100)"
+                },
+                {
+                  "set": "b_liana",
+                  "expr": "clamp(b_liana - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 리아나 백작's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"리아나\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 리아나 백작's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_valerius",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_s >= 35 or b_valerius >= 25)",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 남에서] 발레리우스 가문이 혼담을 보냈다. 효율을 보는 집이다 — 이 땅의 수확, 그리고 그걸 거둔 남자. 혼인이 흡수의 다른 이름일 수 있다는 걸 모두 안다. 백작 본인인지 가문의 누구인지는 이번 장면에서 정하라. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_s",
+                  "expr": "clamp(rel_s + 10, 0, 100)"
+                },
+                {
+                  "set": "b_valerius",
+                  "expr": "clamp(b_valerius + 12, -50, 100)"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"발레리우스\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 발레리우스 백작's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_s",
+                  "expr": "clamp(rel_s - 6, 0, 100)"
+                },
+                {
+                  "set": "b_valerius",
+                  "expr": "clamp(b_valerius - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 발레리우스 백작's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"발레리우스\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 발레리우스 백작's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_silvana",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and b_silvana >= 30",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 서에서] 가문이 아니라 실바나 본인이다. 정해 주는 혼인을 누구보다 싫어하던 그녀가 제 뜻으로 — 묶이는 걸 제일 싫어하는 사람이 먼저 이 남자를 차지하겠다고 한다. 바람 같은 청혼이다. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_w",
+                  "expr": "clamp(rel_w + 10, 0, 100)"
+                },
+                {
+                  "set": "b_silvana",
+                  "expr": "clamp(b_silvana + 12, -50, 100)"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"실바나\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 실바나 후작's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_w",
+                  "expr": "clamp(rel_w - 6, 0, 100)"
+                },
+                {
+                  "set": "b_silvana",
+                  "expr": "clamp(b_silvana - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 실바나 후작's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"실바나\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 실바나 후작's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_eleonora",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and my_weight >= 25 and (rel_cap >= 30 or b_eleonora >= 25)",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 중앙 공작가] 엘레오노라 공작은 묻지 않는다 — 청이라기보다 통보에 가깝다. \"남자를 데려가는 건 협상이 아니라 차지하는 것.\" 공작가가 이 땅을 발밑에 두겠다는 뜻이기도 하다. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "b_eleonora",
+                  "expr": "clamp(b_eleonora + 12, -50, 100)"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"엘레오노라\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 엘레오노라 공작's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "b_eleonora",
+                  "expr": "clamp(b_eleonora - 12, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 엘레오노라 공작's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"엘레오노라\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 엘레오노라 공작's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_cassandra",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"카산드라\" or b_cassandra >= 25 or (stance == \"중립\" and frontrunner == \"카산드라\"))",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 왕도에서] 제1왕녀 카산드라의 사람이 은밀히 왔다 — 판 위의 모든 말을 확인해야 직성이 풀리는 그녀가 이 땅의 남작을 제 판에 올리려 한다. 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap + 10, 0, 100)"
+                },
+                {
+                  "set": "b_cassandra",
+                  "expr": "clamp(b_cassandra + 12, -50, 100)"
+                },
+                {
+                  "set": "stance",
+                  "expr": "\"카산드라\""
+                },
+                {
+                  "set": "exposed",
+                  "expr": "100"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"카산드라\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 카산드라 왕녀's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap - 6, 0, 100)"
+                },
+                {
+                  "set": "b_cassandra",
+                  "expr": "clamp(b_cassandra - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 카산드라 왕녀's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"카산드라\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 카산드라 왕녀's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_orelia",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"오렐리아\" or b_orelia >= 25 or (stance == \"중립\" and frontrunner == \"오렐리아\"))",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 왕도에서] 제2왕녀 오렐리아가 다정한 편지로 청혼했다 — 고아원의 성녀. 그 얼굴 뒤를 아는 사람은 드물다. 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap + 10, 0, 100)"
+                },
+                {
+                  "set": "b_orelia",
+                  "expr": "clamp(b_orelia + 12, -50, 100)"
+                },
+                {
+                  "set": "stance",
+                  "expr": "\"오렐리아\""
+                },
+                {
+                  "set": "exposed",
+                  "expr": "100"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"오렐리아\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 오렐리아 왕녀's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap - 6, 0, 100)"
+                },
+                {
+                  "set": "b_orelia",
+                  "expr": "clamp(b_orelia - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 오렐리아 왕녀's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"오렐리아\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 오렐리아 왕녀's side will come back for an answer in thirty days."
+            }
+          ]
+        },
+        {
+          "id": "suit_liliana",
+          "weight": 2,
+          "cooldown": 180,
+          "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"릴리아나\" or b_liliana >= 25 or (stance == \"중립\" and frontrunner == \"릴리아나\"))",
+          "effects": [
+            {
+              "set": "suit_next",
+              "expr": "day + 75"
+            }
+          ],
+          "notify": "[혼담 — 왕도에서] 제3왕녀 릴리아나가 — 규칙을 싫어하는 그녀답게 — 느닷없이 청혼했다. 장난인지 진심인지는 장면이 정한다. 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다. 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.",
+          "timeout": 3,
+          "choices": [
+            {
+              "label": "받아들인다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap + 10, 0, 100)"
+                },
+                {
+                  "set": "b_liliana",
+                  "expr": "clamp(b_liliana + 12, -50, 100)"
+                },
+                {
+                  "set": "stance",
+                  "expr": "\"릴리아나\""
+                },
+                {
+                  "set": "exposed",
+                  "expr": "100"
+                },
+                {
+                  "set": "spouse",
+                  "expr": "\"릴리아나\""
+                },
+                {
+                  "set": "wed_at",
+                  "expr": "day + 60"
+                }
+              ],
+              "inject": "The Baron accepts — 릴리아나 왕녀's side claims him. Betrothal now; the wedding in sixty days."
+            },
+            {
+              "label": "정중히 물린다",
+              "effects": [
+                {
+                  "set": "rel_cap",
+                  "expr": "clamp(rel_cap - 6, 0, 100)"
+                },
+                {
+                  "set": "b_liliana",
+                  "expr": "clamp(b_liliana - 8, -50, 100)"
+                }
+              ],
+              "inject": "The Baron declines 릴리아나 왕녀's suit with courtesy. It will be remembered."
+            },
+            {
+              "label": "생각할 시간을 청한다",
+              "effects": [
+                {
+                  "set": "suit",
+                  "expr": "\"릴리아나\""
+                },
+                {
+                  "set": "suit_until",
+                  "expr": "day + 30"
+                }
+              ],
+              "inject": "The Baron asks for time. 릴리아나 왕녀's side will come back for an answer in thirty days."
+            }
+          ]
         }
       ]
     }
@@ -3711,6 +4719,11 @@
       "id": "hire_ready",
       "when": "gold >= fee_J",
       "text": "[RECRUITMENT] The treasury could cover a request to the Academy now — {hire_txt} in gold, and at this reputation they will release {hire_open}. Only the named graduates exist; the Corps does not send nameless girls, and nobody arrives until the Baron actually sends the request and the fee. The Sisterhood works the same way but calls the fee a donation — and it weighs its own regard, not the Academy's: right now the Cathedral would send {sis_open}."
+    },
+    {
+      "id": "claimed",
+      "when": "spouse != \"없음\"",
+      "text": "[CLAIMED] The Baron has been claimed — {spouse_txt}. In this world a woman claims a man and takes responsibility for him: her side now counts him as its own, other houses no longer court him, and what he does reflects on her."
     },
     {
       "id": "bishop_coming",
@@ -4198,6 +5211,79 @@
         }
       ],
       "inject": "The Baron orders the ruined chapel on the hill rebuilt — timber, a mason, the defiled altar scrubbed clean — and pays for it out of the treasury. It will take some weeks; the system announces when the roof is on."
+    },
+    {
+      "id": "act_break_troth",
+      "label": "💔 혼약을 깬다",
+      "mode": "oneshot",
+      "when": "spouse != \"없음\" and wed_at > 0",
+      "effects": [
+        {
+          "set": "rel_n",
+          "expr": "spouse == \"모르웬\" ? clamp(rel_n - 25, 0, 100) : (rel_n)"
+        },
+        {
+          "set": "rel_e",
+          "expr": "spouse == \"리아나\" ? clamp(rel_e - 25, 0, 100) : (rel_e)"
+        },
+        {
+          "set": "rel_s",
+          "expr": "spouse == \"발레리우스\" ? clamp(rel_s - 25, 0, 100) : (rel_s)"
+        },
+        {
+          "set": "rel_w",
+          "expr": "spouse == \"실바나\" ? clamp(rel_w - 25, 0, 100) : (rel_w)"
+        },
+        {
+          "set": "rel_cap",
+          "expr": "spouse == \"카산드라\" ? clamp(rel_cap - 25, 0, 100) : (spouse == \"오렐리아\" ? clamp(rel_cap - 25, 0, 100) : (spouse == \"릴리아나\" ? clamp(rel_cap - 25, 0, 100) : (rel_cap)))"
+        },
+        {
+          "set": "b_morwen",
+          "expr": "spouse == \"모르웬\" ? clamp(b_morwen - 25, -50, 100) : (b_morwen)"
+        },
+        {
+          "set": "b_liana",
+          "expr": "spouse == \"리아나\" ? clamp(b_liana - 25, -50, 100) : (b_liana)"
+        },
+        {
+          "set": "b_valerius",
+          "expr": "spouse == \"발레리우스\" ? clamp(b_valerius - 25, -50, 100) : (b_valerius)"
+        },
+        {
+          "set": "b_silvana",
+          "expr": "spouse == \"실바나\" ? clamp(b_silvana - 25, -50, 100) : (b_silvana)"
+        },
+        {
+          "set": "b_eleonora",
+          "expr": "spouse == \"엘레오노라\" ? clamp(b_eleonora - 29, -50, 100) : (b_eleonora)"
+        },
+        {
+          "set": "b_cassandra",
+          "expr": "spouse == \"카산드라\" ? clamp(b_cassandra - 25, -50, 100) : (b_cassandra)"
+        },
+        {
+          "set": "b_orelia",
+          "expr": "spouse == \"오렐리아\" ? clamp(b_orelia - 25, -50, 100) : (b_orelia)"
+        },
+        {
+          "set": "b_liliana",
+          "expr": "spouse == \"릴리아나\" ? clamp(b_liliana - 25, -50, 100) : (b_liliana)"
+        },
+        {
+          "set": "fame",
+          "expr": "clamp(fame - 8, 0, 100)"
+        },
+        {
+          "set": "suit_next",
+          "expr": "day + 120"
+        },
+        {
+          "set": "spouse",
+          "expr": "\"없음\""
+        }
+      ],
+      "inject": "The Baron breaks off the betrothal. In this world a woman who claimed a man has been refused after the fact — her house takes it as an insult, and the story travels."
     }
   ],
   "updater": {
@@ -4522,10 +5608,10 @@
         "maxLoss": 30
       }
     ],
-    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). Leave it at 0 while the scene stays within the same day — nothing is consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nTHE GATE: drift_policy is the Baron's standing order at the south gate — change it only when the narration shows him giving that order. The system brings drifters in or sends them on every day by that order; never add them to pop yourself. Lower drifters only when a specific group is taken off the road in the narration — hired as soldiers (raise army by the same number), sent on with bread. Lower bandits only when the narration actually breaks a band. Never touch guild — the Guild comes and grows on its own, and bounties go through the Baron's buttons.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here EXCEPT anyone the corps list above already shows — a starting companion who came with the Baron (no request, no fee; she is simply here). Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. The one exception is a [분원] notice: the Cathedral itself sends a sister to the new branch house — when the narration shows her arrive, add her line with her wage but take no fee (the chapel and the Church's regard were the donation). If one leaves, remove her line — the wage stops with her.\nPROJECTS: when construction actually begins in the narration, add one line to projects as \"무엇 @+days\" — set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. A project merely proposed or funded registers nothing.\nFAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each (\"모르웬에게 곡물 200 상환 @+30\"), the deadline as @+days when one exists. Register only what is actually concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you remove it — an overdue debt is something the narration should press on or break.\nPETITIONS: petitions holds what the Baron took up from the petition box on his desk — the box's buttons write those lines, never you. When the narration shows one actually done, remove its line exactly as stored and copy the number at its end into pet_pay (the system pays it — do not also add it to gold). If it asked for goods or hands — grain sold, timber, soldiers lent — take those out as the narration hands them over. When a neighbouring domain's petition is done, move that domain's rel_* up once word reaches it. Past its deadline the system drops the line and counts the disappointment — do not remove it for that. A request the Baron grants in person during a scene is a promise: favors, not petitions.\nTHE SISTERHOOD: rel_ch is how the High Church regards Veridia. It drifts by itself with the tithe, the sisters serving here and the chapel — move it only for what the Church actually hears of: a donation delivered, a Luminary honoured or mistreated, a heresy sheltered. tithe is the Baron's standing order on the Church's tenth; change it only when he gives that order — the system pays it daily. The chapel, the Bishop's visits and her judgement belong to the system; never write them. The Sisterhood is the kingdom's only physicians: they come as the Church, never as hired hands.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. A dispatch is STANDING: the scouts stay out working that ground day after day until recalled — the Baron himself coming home does not recall them. But if the scene clearly ends with EVERYONE back and nobody left working the ground, that IS a recall — set \"없음\". The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific (a spring, a ruin, a beast trail), record it as \"이름 0\" in sites (known, not worked) or a location note in stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a [탐사] notice makes it real.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
+    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). Leave it at 0 while the scene stays within the same day — nothing is consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nTHE GATE: drift_policy is the Baron's standing order at the south gate — change it only when the narration shows him giving that order. The system brings drifters in or sends them on every day by that order; never add them to pop yourself. Lower drifters only when a specific group is taken off the road in the narration — hired as soldiers (raise army by the same number), sent on with bread. Lower bandits only when the narration actually breaks a band. Never touch guild — the Guild comes and grows on its own, and bounties go through the Baron's buttons.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here EXCEPT anyone the corps list above already shows — a starting companion who came with the Baron (no request, no fee; she is simply here). Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. The one exception is a [분원] notice: the Cathedral itself sends a sister to the new branch house — when the narration shows her arrive, add her line with her wage but take no fee (the chapel and the Church's regard were the donation). If one leaves, remove her line — the wage stops with her.\nPROJECTS: when construction actually begins in the narration, add one line to projects as \"무엇 @+days\" — set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. A project merely proposed or funded registers nothing.\nFAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each (\"모르웬에게 곡물 200 상환 @+30\"), the deadline as @+days when one exists. Register only what is actually concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you remove it — an overdue debt is something the narration should press on or break.\nPETITIONS: petitions holds what the Baron took up from the petition box on his desk — the box's buttons write those lines, never you. When the narration shows one actually done, remove its line exactly as stored and copy the number at its end into pet_pay (the system pays it — do not also add it to gold). If it asked for goods or hands — grain sold, timber, soldiers lent — take those out as the narration hands them over. When a neighbouring domain's petition is done, move that domain's rel_* up once word reaches it. Past its deadline the system drops the line and counts the disappointment — do not remove it for that. A request the Baron grants in person during a scene is a promise: favors, not petitions.\nTHE SISTERHOOD: rel_ch is how the High Church regards Veridia. It drifts by itself with the tithe, the sisters serving here and the chapel — move it only for what the Church actually hears of: a donation delivered, a Luminary honoured or mistreated, a heresy sheltered. tithe is the Baron's standing order on the Church's tenth; change it only when he gives that order — the system pays it daily. The chapel, the Bishop's visits and her judgement belong to the system; never write them. The Sisterhood is the kingdom's only physicians: they come as the Church, never as hired hands.\nMARRIAGE: in this world women claim men. Suits, betrothals and weddings are the system's — they arrive as notices and choices; never write them yourself or record one in favors. What follows from them (regard, a visit, a letter) you record as usual.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. A dispatch is STANDING: the scouts stay out working that ground day after day until recalled — the Baron himself coming home does not recall them. But if the scene clearly ends with EVERYONE back and nobody left working the ground, that IS a recall — set \"없음\". The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific (a spring, a ruin, a beast trail), record it as \"이름 0\" in sites (known, not worked) or a location note in stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a [탐사] notice makes it real.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
   },
   "promptState": {
-    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n공사 중 {projects} | 빚·약속 {favors} | 맡은 청원 {petitions}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n광휘회 {ch_txt}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n공사 중 {projects} | 빚·약속 {favors} | 맡은 청원 {petitions}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n광휘회 {ch_txt}\n혼담 청혼 {suit_txt} | 배필 {spouse_txt}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
     "includeEvents": true
   },
   "statusUI": {
@@ -4534,7 +5620,7 @@
     "templates": [
       {
         "id": "estate",
-        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style>{choices}<input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">🚪 관문과 길</div><div class=\"status-entry status-span2\"><span>관문:</span> <span class=\"val\">{gate_txt}</span></div><div class=\"status-entry\"><span>도적:</span> <span class=\"val\">{bandit_txt}</span></div><div class=\"status-entry\"><span>모험가 길드:</span> <span class=\"val\">{guild_txt}</span></div><div class=\"status-section-title\">📜 집무실</div><div class=\"status-entry status-span2\"><span>맡은 청원:</span> <span class=\"val\">{petitions} — 청원함은 📜</span></div><div class=\"status-entry status-span2\"><span>빚·약속:</span> <span class=\"val\">{favors}</span></div><div class=\"status-section-title\">⛪ 광휘회</div><div class=\"status-entry\"><span>교단의 시선:</span> <span class=\"val\">{rel_ch_txt}</span></div><div class=\"status-entry\"><span>예배당:</span> <span class=\"val\">{chapel_txt}</span></div><div class=\"status-entry\"><span>십일조:</span> <span class=\"val\">{tithe} ({tithe_amt}/일)</span></div><div class=\"status-entry\"><span>주교:</span> <span class=\"val\">{bishop_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
+        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style>{choices}<input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">🚪 관문과 길</div><div class=\"status-entry status-span2\"><span>관문:</span> <span class=\"val\">{gate_txt}</span></div><div class=\"status-entry\"><span>도적:</span> <span class=\"val\">{bandit_txt}</span></div><div class=\"status-entry\"><span>모험가 길드:</span> <span class=\"val\">{guild_txt}</span></div><div class=\"status-section-title\">📜 집무실</div><div class=\"status-entry status-span2\"><span>맡은 청원:</span> <span class=\"val\">{petitions} — 청원함은 📜</span></div><div class=\"status-entry status-span2\"><span>빚·약속:</span> <span class=\"val\">{favors}</span></div><div class=\"status-section-title\">⛪ 광휘회</div><div class=\"status-entry\"><span>교단의 시선:</span> <span class=\"val\">{rel_ch_txt}</span></div><div class=\"status-entry\"><span>예배당:</span> <span class=\"val\">{chapel_txt}</span></div><div class=\"status-entry\"><span>십일조:</span> <span class=\"val\">{tithe} ({tithe_amt}/일)</span></div><div class=\"status-entry\"><span>주교:</span> <span class=\"val\">{bishop_txt}</span></div><div class=\"status-section-title\">💍 혼담</div><div class=\"status-entry status-span2\"><span>청혼:</span> <span class=\"val\">{suit_txt}</span></div><div class=\"status-entry status-span2\"><span>배필:</span> <span class=\"val\">{spouse_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
       }
     ]
   },
@@ -5063,7 +6149,7 @@
       {
         "id": "court",
         "label": "정세",
-        "template": "<div class=\"vled-h\">정세 보고<small>{exposed_txt}</small></div><div class=\"vled-sec\">왕위 계승 — 선두 {frontrunner}</div><div class=\"vled-row\"><span>카산드라</span><span class=\"v\">{pw_cass_txt}</span></div><div class=\"vled-row\"><span>오렐리아</span><span class=\"v\">{pw_orel_txt}</span></div><div class=\"vled-row\"><span>릴리아나</span><span class=\"v\">{pw_lili_txt}</span></div><div class=\"vled-row\"><span>내 지지</span><span class=\"v\">{stance} ({weight_txt})</span></div><div class=\"vled-sec\">주변 영지</div><div class=\"vled-row\"><span>북 · 모르웬 백작 (5일)</span><span class=\"v\">{rel_n_txt}</span></div><div class=\"vled-row\"><span>동 · 리아나 백작 (강 4일·길 7일)</span><span class=\"v\">{rel_e_txt}</span></div><div class=\"vled-row\"><span>남 · 발레리우스 백작 (3일)</span><span class=\"v\">{rel_s_txt}</span></div><div class=\"vled-row\"><span>서 · 실바나 후작 (6일)</span><span class=\"v\">{rel_w_txt}</span></div><div class=\"vled-row\"><span>왕도 · 알라릭 여왕 (14일)</span><span class=\"v\">{rel_cap_txt}</span></div><div class=\"vled-sec\">빚·약속 — 이행하거나 파기하기 전엔 안 사라진다</div>{favors:tags}<div class=\"vled-sec\">맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다</div>{petitions:tags}<div class=\"vled-sec\">광휘회 — {rel_ch_txt}</div><div class=\"vled-row\"><span>예배당</span><span class=\"v\">{chapel_txt}</span></div><div class=\"vled-row\"><span>십일조 (/십일조)</span><span class=\"v\">{tithe} · {tithe_amt}/일</span></div><div class=\"vled-row\"><span>머무는 자매</span><span class=\"v\">{sis_n} — 교단이 보내는 자매: {sis_open}</span></div><div class=\"vled-row\"><span>주교</span><span class=\"v\">{bishop_txt} · 호감 {b_beatrix}</span></div><div class=\"vled-p\">주교가 볼 것 — {bish_txt}</div>"
+        "template": "<div class=\"vled-h\">정세 보고<small>{exposed_txt}</small></div><div class=\"vled-sec\">왕위 계승 — 선두 {frontrunner}</div><div class=\"vled-row\"><span>카산드라</span><span class=\"v\">{pw_cass_txt}</span></div><div class=\"vled-row\"><span>오렐리아</span><span class=\"v\">{pw_orel_txt}</span></div><div class=\"vled-row\"><span>릴리아나</span><span class=\"v\">{pw_lili_txt}</span></div><div class=\"vled-row\"><span>내 지지</span><span class=\"v\">{stance} ({weight_txt})</span></div><div class=\"vled-sec\">주변 영지</div><div class=\"vled-row\"><span>북 · 모르웬 백작 (5일)</span><span class=\"v\">{rel_n_txt}</span></div><div class=\"vled-row\"><span>동 · 리아나 백작 (강 4일·길 7일)</span><span class=\"v\">{rel_e_txt}</span></div><div class=\"vled-row\"><span>남 · 발레리우스 백작 (3일)</span><span class=\"v\">{rel_s_txt}</span></div><div class=\"vled-row\"><span>서 · 실바나 후작 (6일)</span><span class=\"v\">{rel_w_txt}</span></div><div class=\"vled-row\"><span>왕도 · 알라릭 여왕 (14일)</span><span class=\"v\">{rel_cap_txt}</span></div><div class=\"vled-sec\">빚·약속 — 이행하거나 파기하기 전엔 안 사라진다</div>{favors:tags}<div class=\"vled-sec\">맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다</div>{petitions:tags}<div class=\"vled-sec\">광휘회 — {rel_ch_txt}</div><div class=\"vled-row\"><span>예배당</span><span class=\"v\">{chapel_txt}</span></div><div class=\"vled-row\"><span>십일조 (/십일조)</span><span class=\"v\">{tithe} · {tithe_amt}/일</span></div><div class=\"vled-row\"><span>머무는 자매</span><span class=\"v\">{sis_n} — 교단이 보내는 자매: {sis_open}</span></div><div class=\"vled-row\"><span>주교</span><span class=\"v\">{bishop_txt} · 호감 {b_beatrix}</span></div><div class=\"vled-p\">주교가 볼 것 — {bish_txt}</div><div class=\"vled-sec\">혼담 — 이 세계에선 여자가 남자를 차지한다</div><div class=\"vled-row\"><span>청혼</span><span class=\"v\">{suit_txt}</span></div><div class=\"vled-row\"><span>배필</span><span class=\"v\">{spouse_txt}</span></div>"
       }
     ]
   },

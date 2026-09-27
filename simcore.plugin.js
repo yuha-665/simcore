@@ -22,6 +22,11 @@
 // - [진단] 오탐 둘 — 지적을 줄이기만 한다. ① 임시 변수(세웠다 같은 묶음에서 시작값으로 되돌림) 판별에 onTurn 묶음도
 //   (베리디아 lack_*가 "늘기만 한다"로). ② 채팅 명령(`cmd`)이 달린 변수는 쓰기 경로가 있다 (`/수위`로만 켜고 끄는
 //   성인 팩 게이트 nsfw_on이 🔴 고정 변수로).
+// - [진단] **놀이 판이 갈림길을 고른다** — 전엔 어느 판도 안 골라 타임아웃(맨 끝 = 외면한다)만 났다. "허가한다"처럼 앞 선택지로만
+//   열리는 값이 시뮬에 영영 안 와서 거기 달린 액션·이벤트가 🔴 못 쓰는 액션·죽은 이벤트로 (베리디아 모험가 길드 허가). 방치 판은 그대로,
+//   놀이 판은 시드 짝수만 고르고 타임아웃이 고를 자리(fallbackIndex)는 뺀다 — 전부 고르게 하면 "안 고르면 최악"으로만 가는 길이
+//   사라져 반대쪽 오탐(조퇴악녀 회귀 카운터 안 움직임), 동전 던지기면 고르는 판이 다 "거절"을 뽑는다. 버튼 짝비교는 안 고른다
+//   (좀비 '뒤진다' 함정 오탐). 내장 템플릿 16 + 배포 봇 4 전후 대조: 지적이 줄기만 했다 (조퇴악녀 low 하나가 다른 low로).
 // ⚠ 이미 `@+N`으로 적혀 있던 항목은 굳을 기회를 놓쳐 그대로다 — 한 번 지우고 다시 적어야 세기 시작한다.
 //
 // ── v1.13.0 ──────────────────────────────────────────────
@@ -13385,6 +13390,7 @@ const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./ti
 const { scenarioConfig } = require('./scenario');
 const { secretsConfig, secKey } = require('./secret'); // 비밀 (v1.10.0) — 영영 안 열리는 단계 진단
 const { evaluate, truthy, referencedVars } = require('./expr');
+const choiceMod = require('./choice'); // 놀이 판 갈림길 고르기 — 타임아웃이 고를 자리(fallbackIndex)를 빼고 고른다 (v1.13.1)
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -13864,6 +13870,25 @@ function diagnose(schema, opts = {}) {
       for (const a of avail) everAvail[a.id] = true;
       const pick = policy ? policy(avail, st, i, seed) : null;
       if (pick) { const t = engine.toggleAction(schema, st, pick.id); if (t.armed) st = t.state; }
+      // 갈림길 (v1.13.1) — 놀이 판(policy 있음)은 사람처럼 고른다: 걸린 갈림길의 열린 선택지 중 시드로 하나.
+      // 전엔 아무 판도 안 골라 타임아웃(맨 끝 = "외면한다")만 났다 — 허가·수락 같은 앞 선택지로만 열리는 상태가
+      // 시뮬에 영영 안 와서, 그 뒤에 달린 액션·이벤트가 전부 "못 쓴다·죽었다"로 오탐됐다 (베리디아 길드 허가).
+      // 방치 판(policy 없음)은 그대로 안 고른다 — 방치가 곧 타임아웃이다. 기록만 하고 집행은 전송 단계(/선택과 같은 길).
+      // ⚠ 놀이 판도 **절반만** 고른다(시드 끝자리 짝수). 전부 고르게 했더니 "안 고르면 최악"으로만 가는 길(회귀·몸 소모)이
+      //   시뮬에서 사라져 반대쪽 오탐이 났다(조퇴악녀 loop 안 움직임, 좀비 함정 액션). 두 갈래를 다 남겨 합집합으로 본다.
+      if (policy && opts.pickChoices !== false && /[02468]$/.test(String(seed))
+          && st.meta?.pendingChoice && st.meta.pendingChoicePick == null) {
+        const ev = engine.pendingChoiceEvent(schema, st);
+        const open = (ev?.choices || []).map((c, k) => k).filter((k) => engine.pickChoice(schema, st, k).ok);
+        // 타임아웃이 고를 자리(맨 끝 · 섞인 보조 갈림길은 worst 태그)는 안 고르는 판이 이미 맡는다 — 여기선 그 나머지에서.
+        // 동전 던지기로 두면 고르는 판 둘이 다 "거절"을 뽑아 앞 선택지 길이 또 안 열렸다 (test-diag 허가 갈림길)
+        const fb = choiceMod.fallbackIndex(ev, open);
+        const pool = open.length > 1 ? open.filter((k) => k !== fb) : open;
+        if (pool.length) {
+          const r = seededRng(seed, i, 'choice')();
+          st.meta.pendingChoicePick = pool[Math.min(pool.length - 1, Math.floor(r * pool.length))];
+        }
+      }
       st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
       const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
       st = o.state;
@@ -14451,8 +14476,10 @@ function diagnose(schema, opts = {}) {
         try {
           paired = Array.from({ length: impactRuns }, (_, k) => {
             const seed = `on${k}`;
-            const on = sim(seed, onPick(a));
-            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i));
+            // 짝비교는 갈림길을 안 고른다 (v1.13.1) — 무작위 고르기가 끼면 버튼의 몫과 고른 운이 섞여 좀비 '뒤진다'가
+            // 함정으로 오탐됐다. 버튼 하나의 기여만 재는 자리라 예전 기준(타임아웃)을 그대로 쓴다.
+            const on = sim(seed, onPick(a), turns, { pickChoices: false });
+            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false });
             return (on.lost ?? turns) - (off.lost ?? turns);
           });
         } catch (e) { continue; }

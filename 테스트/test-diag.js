@@ -539,6 +539,59 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     [...of('notice'), ...of('rich')].map((f) => `${f.sev} ${f.tag}`).join(','));
 }
 
+// ── v1.13.4 갈림길 뒤도 연쇄다 ──
+// 계기: 베리디아 혼담 — 청혼(랜덤)이 안 뜨면 받아들임(갈림길)이 세우는 배필(enum)·혼례일(숫자)이 안 서고, 혼례 이벤트가 🟡,
+// 혼례 전에만 열리는 파기 버튼이 🔴, 답을 기다리는 청혼(enum)이 "설정 의존 — 바꿀 수단이 없다" 🟡로. 연쇄는 이벤트 **효과**만 봤다.
+{
+  const s = {
+    simcore: '0.1', meta: { name: '청혼과 혼례' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100 },
+      { id: 'spouse', label: '배필', type: 'enum', enum: ['없음', '갑', '을'], init: '없음' },
+      { id: 'suit', label: '청혼', type: 'enum', enum: ['없음', '갑'], init: '없음' },
+      { id: 'wed_at', label: '혼례일', type: 'int', init: 0, min: 0 },
+      { id: 'turn_n', label: '턴', type: 'int', init: 0, min: 0 },
+      // 반대쪽 — 매 턴 처리도 쓰는 값은 연쇄가 아니다 (다른 길이 있다)
+      { id: 'mixed', label: '섞임', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [{ set: 'gold', expr: 'gold + 1' }, { set: 'turn_n', expr: 'turn_n + 1' }, { set: 'mixed', expr: 'gold > 99999 ? 1 : mixed' }],
+      events: [
+        { id: 'ask_again', when: 'suit != "없음" and turn_n >= 0', notify: '다시 묻는다', timeout: 2,
+          choices: [{ label: '받는다', effects: [{ set: 'spouse', expr: 'suit' }, { set: 'wed_at', expr: 'turn_n + 5' }, { set: 'suit', expr: '"없음"' }] },
+            { label: '안 받는다', effects: [{ set: 'suit', expr: '"없음"' }] }] },
+        { id: 'wedding', when: 'spouse == "갑" and wed_at > 0 and turn_n >= wed_at', effects: [{ set: 'wed_at', expr: '0' }], notify: '혼례' },
+        { id: 'mixed_ev', when: 'mixed > 0', notify: '섞임' },
+      ],
+      randomEvents: { chancePerTurn: 1, table: [
+        { id: 'suit_ev', weight: 1, cooldown: 99, when: 'fame >= 99', effects: [], notify: '청혼', timeout: 2,
+          choices: [{ label: '받는다', effects: [{ set: 'spouse', expr: '"갑"' }, { set: 'wed_at', expr: 'turn_n + 5' }] },
+            { label: '미룬다', effects: [{ set: 'suit', expr: '"갑"' }] }] },
+      ] },
+    },
+    actions: [
+      { id: 'break', label: '파기', mode: 'oneshot', when: 'spouse != "없음" and wed_at > 0', effects: [{ set: 'spouse', expr: '"없음"' }] },
+      { id: 'save', label: '아끼기', mode: 'oneshot', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+    ],
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'spouse' }, { var: 'suit' }, { var: 'wed_at' }, { var: 'mixed' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const r = diagnose(s, { turns: 20, runs: 4 });
+  const of = (id) => r.findings.filter((f) => f.text.startsWith(`'${id}'`));
+  const tags = (id) => of(id).map((f) => `${f.sev} ${f.tag}`).join(',');
+  ck('★ 갈림길이 세우는 숫자에 막힌 이벤트 → 🔵 연쇄', of('wedding').some((f) => f.tag === '연쇄') && !of('wedding').some((f) => f.sev !== 'low'), tags('wedding'));
+  ck('★ 갈림길이 세우는 enum 게이트 → "설정 의존" 🟡가 아니라 🔵 연쇄', of('ask_again').some((f) => f.tag === '연쇄') && !of('ask_again').some((f) => f.tag === '설정 의존'), tags('ask_again'));
+  ck('★ 그 값에 막힌 버튼 → 🔴 못 쓰는 액션이 아니라 🔵 연쇄', of('파기').some((f) => f.tag === '연쇄') && !of('파기').some((f) => f.tag === '못 쓰는 액션'), tags('파기'));
+  const srcList = (f) => (f.text.split('세우는 이벤트(')[1] || '').split(')')[0];
+  ck('연쇄 문구는 되돌리기만 하는 효과를 "세우는 이벤트"로 안 댄다', of('wedding').some((f) => !srcList(f).includes("'wedding'") && srcList(f).includes("'suit_ev'")),
+    of('wedding').map((f) => f.text.slice(0, 90)).join(' / '));
+  ck('★ 안 움직인 배필·혼례일·청혼은 🟡 안 움직임이 아니라 연쇄 묶음', !r.findings.some((f) => f.tag === '안 움직임' && /^'(spouse|wed_at|suit)'/.test(f.text)),
+    r.findings.filter((f) => f.tag === '안 움직임').map((f) => f.text.slice(0, 30)).join(' / '));
+  ck('★ 원인(청혼)은 여전히 신고된다', of('suit_ev').some((f) => f.tag === '죽은 이벤트'), tags('suit_ev'));
+  ck('매 턴 처리도 쓰는 값은 연쇄가 아니다 (좁은 면제)', of('mixed_ev').some((f) => f.tag === '죽은 이벤트'), tags('mixed_ev'));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

@@ -233,11 +233,12 @@ function numericTermsAllReached(when, obs) {
  *   이벤트가 안 뜨면 그 플래그도 안 움직인다. 그걸 근거로 "이 플래그 때문에 안 뜬다"고 하면
  *   원인과 결과가 뒤집힌 채 순환한다. 그 플래그는 false로 시작하므로 막고 있는 게 아니다.
  */
-function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null) {
+function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null, skip = null) {
   if (!when) return null;
   for (const v of schema.vars) {
     if (v.type !== 'enum' && v.type !== 'bool') continue;
     if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
+    if (skip && skip.has(v.id)) continue;                // 안 뜬 이벤트 뒤의 값 — 설정이 아니라 연쇄 (v1.13.4)
     if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
     if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
     // 극성 — 이름이 조건에 있다고 다 게이트가 아니다. `not unit_over`처럼 **시작값이 이미
@@ -818,18 +819,35 @@ function diagnose(schema, opts = {}) {
   // 래치 짝을 제대로 만든 봇일수록 손해를 본다: 위기가 안 뜨면 → 경보가 안 켜지고 → 회복도 안 뜨고
   // → 경보 변수도 '안 움직임'. 하나짜리 원인이 지적 셋이 된다 (실측: 맨션봇 시설 4종 = 12건).
   const finalStates = [...idle, ...play].map((r) => r.st.vars);
+  // v1.13.4 — 이벤트 효과만이 아니라 **그 이벤트의 갈림길 효과·랜덤 이벤트 효과**, 그리고 **한 번도 안 열린 버튼**의 효과도
+  // 같은 그늘이다 (베리디아 혼담: 청혼(랜덤·보조 문턱)이 안 뜨면 → 받아들임(선택)이 세우는 배필·혼례일이 안 서고 → 혼례 여덟이 🟡,
+  // 혼례 전에만 열리는 💔 파기 버튼이 🔴). 쓰는 곳이 전부 이벤트 계열(+ 안 열린 버튼)이고 그게 다 안 떴을 때만 — 매 턴 처리·보조·
+  // 명령·편성 같은 다른 길이 하나라도 있으면 아니다. 보조 갈림길(liveChoices) 태그가 쓰는 값은 발동 기록이 없어 빼 둔다.
+  const everAvailAct = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail || {})));
+  const setsVar = (fx, id) => (fx || []).some((f) => (f.set ?? f.list) === id);
+  // 연쇄 문구에 "그 값을 세우는" 이벤트로 이름을 댈 것 — 시작값으로 되돌리기만 하는 효과(혼례가 혼례일을 0으로)는 뺀다
+  const startOf = (id) => schema.vars.find((x) => x.id === id)?.init;
+  const raises = (fx, id) => (fx || []).some((f) => (f.set ?? f.list) === id
+    && !(f.set && [String(startOf(id)), JSON.stringify(startOf(id))].includes(String(f.expr).trim())));
+  const raisersOf = (id, exceptId = null) => allEv.filter((o) => o.id !== exceptId
+    && (raises(o.effects, id) || (o.choices || []).some((c) => raises(c.effects, id))));
+  const liveWritten = new Set(liveTags(schema).flatMap((t) => (t?.effects || []).map((f) => f.set ?? f.list)));
+  const EV_WRITERS = new Set(['이벤트', '랜덤', '선택']);
   const deadOnlyVars = new Set(schema.vars.filter((x) => {
     const w = writers[x.id];
-    if (!w || w.size !== 1 || !w.has('이벤트')) return false;
-    const setters = allEv.filter((o) => (o.effects || []).some((f) => (f.set ?? f.list) === x.id));
-    return setters.length > 0 && setters.every((o) => !everFired.has(o.id));
+    if (!w || liveWritten.has(x.id)) return false;
+    if (![...w].some((s) => EV_WRITERS.has(s)) || [...w].some((s) => !EV_WRITERS.has(s) && s !== '액션')) return false;
+    const setters = allEv.filter((o) => setsVar(o.effects, x.id) || (o.choices || []).some((c) => setsVar(c.effects, x.id)));
+    const acts = ACT.filter((a) => setsVar(a.effects, x.id));
+    return setters.length > 0 && setters.every((o) => !everFired.has(o.id)) && acts.every((a) => !everAvailAct.has(a.id));
   }).map((x) => x.id));
   stats.deadEvents = 0;
   for (const e of allEv) {
     if (everFired.has(e.id)) continue;
     stats.deadEvents++;
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
-    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates);
+    // 안 뜬 이벤트 뒤의 값은 "설정"이 아니다 — 아래 연쇄가 받는다 (v1.13.4)
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates, deadOnlyVars);
     if (gate) {
       const excused = gate.byPlayer || gate.byAI;
       add(excused ? 'low' : 'mid', '설정 의존',
@@ -849,9 +867,9 @@ function diagnose(schema, opts = {}) {
     if (via) {
       stats.deadEvents--;
       stats.cascadeEvents = (stats.cascadeEvents ?? 0) + 1;
-      const src = allEv.filter((o) => o.id !== e.id && (o.effects || []).some((f) => (f.set ?? f.list) === via.id));
+      const src = raisersOf(via.id, e.id);   // 갈림길로 세우는 것도, 되돌리기만 하는 건 빼고 (v1.13.4)
       add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) ${flagVia ? '켜져야' : `\`${b.op} ${b.need}\`이 돼야`} 뜨는데, 그 값을 세우는 `
-        + `${src.length ? `이벤트(${src.map((o) => `'${o.id}'`).join(', ')})가` : '이벤트가'} 안 떴습니다 — `
+        + `${src.length ? `이벤트(${src.slice(0, 4).map((o) => `'${o.id}'`).join(', ')}${src.length > 4 ? ' …' : ''})가` : '이벤트가'} 안 떴습니다 — `
         + '따로 고칠 것이 아니라 그쪽 하나가 원인입니다.', null);
       continue;
     }
@@ -1077,6 +1095,18 @@ function diagnose(schema, opts = {}) {
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
           + `다만 '${b.id}'은(는) 보조 AI가 서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 `
           + '시작값 근처에 머뭅니다 — **여는 조건을 낮추지 마세요.**', null);
+        continue;
+      }
+      // 안 뜬 이벤트만이 세우는 값에 막힌 버튼 (v1.13.4) — 이벤트 쪽의 연쇄와 같다: 원인은 그 이벤트 하나
+      //   (베리디아 💔 혼약 파기: 혼례일은 청혼을 받아들여야 선다 — 청혼이 안 뜬 판에선 🔴 못 쓰는 액션으로)
+      const actVia = (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null)
+        || schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(a.when, finalStates, schema, x));
+      if (actVia) {
+        stats.cascadeActions = (stats.cascadeActions ?? 0) + 1;
+        const src = raisersOf(actVia.id);
+        add('low', '연쇄', `'${a.label ?? a.id}'는 ${actVia.label ?? actVia.id}이(가) 서야 열리는데, 그 값을 세우는 `
+          + `${src.length ? `이벤트(${src.slice(0, 4).map((o) => `'${o.id}'`).join(', ')}${src.length > 4 ? ' …' : ''})가` : '이벤트가'} 안 떴습니다 — `
+          + '따로 고칠 것이 아니라 그쪽이 원인입니다.', null);
         continue;
       }
       // 조건 하나하나는 닿았는데 **동시에** 안 맞은 경우 (v0.83.3) — "못 쓰는 액션"이 아니다.

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.13.0
-//@display-name SimCore (시뮬 엔진) v1.13.0 능력치 판정 — 고르기 전에 무게를 잰다
+//@version 1.13.1
+//@display-name SimCore (시뮬 엔진) v1.13.1 기한은 세되 지우지 않는다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,17 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.13.1 ──────────────────────────────────────────────
+// **기한은 세되 지우지 않는다 — 목록 규칙 `keepOverdue`.** 발단: 베리디아 점검(2026-09-27). 빚·약속(favors)은 "이행하거나 파기하기
+// 전엔 안 사라진다"가 설계라 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않는다 — v1.7.1부터 그게 화면·프롬프트에
+// `(30일)`로 환산돼 **영영 안 줄어드는 남은 일수**로 읽혔다. 엔진엔 "재기만 하고 안 지우는" 길이 없었다.
+// - [엔진] onTurn(과 효과)의 `{ list, expire, keepOverdue: true }` — expire 식을 시계로만 쓰고 지난 항목을 안 거른다. 지우는 곳 한 군데만
+//   바뀌고, 시계를 읽는 나머지(@+N 굳히기·(N일) 환산·달력 점·의뢰판)는 expire를 그대로 보니 저절로 따라온다. 지난 항목은 `(지남)`.
+// - [검증] 불린 아니면 오류, expire 없이 쓰면 경고.
+// - [편집기] [규칙·이벤트] 목록 효과 줄에 "기한 시계" 칸(expire — 엔진·검증엔 처음부터 있었는데 **칸이 없어 JSON으로만** 넣던 것, 규칙 #3)
+//   + 시계가 있을 때 "지나도 안 지움" 체크. 다이제스트·작업본 요약·규격서(기한 만료 패턴·지속 효과 등록부)에 한 줄씩.
+// ⚠ 이미 `@+N`으로 적혀 있던 항목은 굳을 기회를 놓쳐 그대로다 — 한 번 지우고 다시 적어야 세기 시작한다.
 //
 // ── v1.13.0 ──────────────────────────────────────────────
 // **능력치 판정 — 고르기 전에 무게를 잰다.** 발단: 조퇴악녀 "시종에도 스테이터스(검술·마법·화술·매력·가사) — 가끔 선택지가 수치 판정으로
@@ -4110,6 +4121,11 @@ function validateSchema(schema) {
       if (rule.expire != null) {
         if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
         else checkExpr(rule.expire, p + '.expire', exprIds, err, { allowRand: false });
+      }
+      if (rule.keepOverdue != null) {
+        if (typeof rule.keepOverdue !== 'boolean') err(p, 'keepOverdue는 true/false');
+        else if (rule.keepOverdue && rule.expire == null)
+          warn(p, 'keepOverdue는 expire(기한 시계)와 같이 써야 뜻이 있음 — 시계가 없으면 @기한을 셀 수 없다');
       }
       if (rule.add == null && rule.remove == null && rule.expire == null)
         warn(p, 'add/remove/expire가 모두 없는 list 효과');
@@ -10305,8 +10321,10 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       const from = state.vars[rule.list];
       // expire: 항목의 `@숫자`가 이 값보다 작아지면 만료 — 기한이 다한 계약·부역이 스스로 빠진다.
       // (`@`가 없는 항목은 무기한이라 건드리지 않는다)
+      // keepOverdue (v1.13.1): 시계로만 쓰고 지우지 않는다 — 빚·약속처럼 기한이 지나도 이행·파기 전엔 남아야 하는 목록.
+      //   `@+N` 굳히기·`(N일)` 환산은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다.
       let base = from;
-      if (rule.expire) {
+      if (rule.expire && !rule.keepOverdue) {
         const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
         if (isFinite(now) && Array.isArray(from)) {
           base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });
@@ -13745,8 +13763,10 @@ function diagnose(schema, opts = {}) {
   // 한 효과 묶음 안에서 세웠다가 **같은 묶음에서 시작값으로 되돌리는** 계산용 임시 변수.
   // (맨션봇 `pay_tmp`: 여덟 집을 도는 수금 액션이 min(미납, 소지금)을 담았다가 마지막에 0으로.)
   // 턴이 끝난 뒤의 스냅샷에는 되돌린 값만 남으므로 '안 움직임'이 원리적으로 오탐이다.
+  // 매 턴 정산(onTurn)도 한 묶음이다 (v1.13.1 — 베리디아 lack_*: 정산 구간 중 곳간이 빈 날 수를 세어 쓰고 끝에 0으로).
   const SCRATCH = new Set();
   for (const g of [
+    schema.rules?.onTurn || [],
     ...(schema.rules?.events || []).map((e) => e.effects || []),
     ...(schema.rules?.randomEvents?.table || []).map((e) => e.effects || []),
     ...(schema.actions || []).map((a) => a.effects || []),
@@ -18938,7 +18958,7 @@ function patchIdDigest(schema) {
       const J = (v) => JSON.stringify(v);
       out.push('', '### 매 턴 정산 (rules.onTurn) — 응답마다 위에서부터 이 순서로 실행됩니다. **패치로 못 다룹니다**(id 없는 순서 목록이라 부분 패치가 없음) — 참조만. 이 공식이 있는데 "없다"고 하지 마세요. 고쳐야 하면 "[규칙·이벤트] 탭 첫 절(매 턴 자동 처리)에서 N번째 줄을 이렇게"라고 말로 안내하세요',
         ...ot.map((r, i) => r.list != null
-          ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`` : ''].filter(Boolean).join(' · ')}`
+          ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`${r.keepOverdue ? ' (keepOverdue — 지나도 안 지움)' : ''}` : ''].filter(Boolean).join(' · ')}`
           : `${i + 1}. \`${r.set}\` = \`${r.expr}\``));
     }
   }
@@ -19304,7 +19324,9 @@ const EVENT_PATTERNS = [
     + 'onTurn에 한 줄 둬도 되고, 예시처럼 목록이 비어 있지 않을 때만 도는 이벤트로 둬도 된다.\n'
     + '기준은 **이 턴이 끝나는 시점**이어야 한다. 시간 체계(time)를 켰다면 `"elapsed"`가 그대로 정답이다 — '
     + '엔진이 onTurn·이벤트보다 **먼저** 시간을 굳히므로 이미 이번 턴이 반영된 값이다. '
-    + '(시간 체계 없이 직접 만든 카운터라면 아직 안 올라간 값이라 `"day + 1"`처럼 더해 줘야 한 턴 늦게 빠지지 않는다.)',
+    + '(시간 체계 없이 직접 만든 카운터라면 아직 안 올라간 값이라 `"day + 1"`처럼 더해 줘야 한 턴 늦게 빠지지 않는다.)\n'
+    + '기한이 지나도 **지우면 안 되는** 목록(빚·약속 — 이행·파기 전엔 남아야 하는 것)은 `"keepOverdue": true`를 같이 둔다 — '
+    + '시계로만 쓰여 `@+N` 굳히기와 `(N일)` 표시는 그대로 돌고, 지난 항목은 `(지남)`으로 남는다.',
     '{ "id": "law_expiry", "when": "count(laws) > 0",\n'
     + '  "effects": [{ "list": "laws", "expire": "elapsed" }] }'],
   ['값 자르기', '범위를 벗어난 값을 되돌린다. 플레이어에게 알릴 게 없으므로 notify를 넣지 않는다.',
@@ -19418,7 +19440,9 @@ const VAR_PATTERNS = [
     + '미니 표현식엔 반복문이 없어 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞기 때문입니다.\n'
     + '단 **보조 AI에게는 `@+기간`으로 쓰게 하세요**(`"@+1080"`). 추가되는 순간 시스템이 '
     + '위 expire 식으로 절대값을 계산해 굳힙니다. "지금 경과일 + 1080"을 모델에게 시키면 틀리고, '
-    + '틀려도 조용합니다 — 3000년에 끝나는 계약이 생겨도 아무도 모릅니다.',
+    + '틀려도 조용합니다 — 3000년에 끝나는 계약이 생겨도 아무도 모릅니다. '
+    + '**expire 규칙이 없는 목록에선 `@+N`이 안 굳어** `(N일)`이 영영 안 줄어듭니다 — 기한이 지나도 지우면 안 되는 목록(빚·약속)이면 '
+    + '`{"list":"favors","expire":"day","keepOverdue":true}`로 시계만 거세요.',
     '{ "id": "contracts", "label": "지속 계약", "type": "list", "init": [], "maxItems": 8,\n'
     + '  "desc": "매일 들어오는 수입원. \\"이름 +숫자\\" 형태로 끝에 일당을 적는다. 기한이 있으면 \\"@끝나는경과일\\"을 앞에 넣는다." }'],
   ['예고 (두 개가 한 쌍)', '"무엇이 오나" + "몇 턴 뒤". 다가오는 위협을 미리 알려 준비할 시간을 주는 장치. 도착하면 이벤트에서 처리하고 둘 다 초기화합니다.',
@@ -23156,7 +23180,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               }, { cls: 'sce-w-m', ph: '회복약' })),
               pair('제거', bindInput((ef.remove || []).join(', '), (x) => {
                 ef.remove = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
-              }, { cls: 'sce-w-m', ph: '녹슨 검' }))),
+              }, { cls: 'sce-w-m', ph: '녹슨 검' })),
+              // 기한 시계(expire) — 항목의 `@끝나는날`을 재는 식. 엔진·검증엔 처음부터 있었는데 칸이 없어 JSON으로만 넣었다 (규칙 #3)
+              pair('기한 시계', bindInput(ef.expire ?? '', (x) => {
+                const v = x.trim();
+                if (v) ef.expire = v; else { delete ef.expire; delete ef.keepOverdue; }
+                rerender();
+              }, { cls: 'sce-w-m', ph: 'day · elapsed (비우면 기한 안 셈)',
+                title: '항목의 @기한을 재는 식. 이 값보다 지난 항목은 스스로 빠진다 — @+N 굳히기와 (N일) 표시도 이 식을 쓴다' })),
+              // keepOverdue (v1.13.1) — 빚·약속처럼 지나도 이행·파기 전엔 남아야 하는 목록
+              ef.expire ? bindCheck(ef.keepOverdue, (x) => {
+                if (x) ef.keepOverdue = true; else delete ef.keepOverdue;
+                rerender();
+              }, '지나도 안 지움 — (지남)으로 남김') : null),
             ruleGrip(effects, i),
           ));
           return;
@@ -27379,7 +27415,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const ops = [];
         if (e.add) ops.push(`추가 ${JSON.stringify(e.add)}`);
         if (e.remove) ops.push(`제거 ${JSON.stringify(e.remove)}`);
-        if (e.expire) ops.push(`기한만료 기준 ${e.expire}`);
+        if (e.expire) ops.push(`기한만료 기준 ${e.expire}${e.keepOverdue ? ' (지나도 안 지움)' : ''}`);
         return `목록 ${e.list}: ${ops.join(', ') || '(변경 없음)'}`;
       }
       return JSON.stringify(e);

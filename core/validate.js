@@ -417,6 +417,11 @@ function validateSchema(schema) {
         if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
         else checkExpr(rule.expire, p + '.expire', exprIds, err, { allowRand: false });
       }
+      if (rule.keepOverdue != null) {
+        if (typeof rule.keepOverdue !== 'boolean') err(p, 'keepOverdue는 true/false');
+        else if (rule.keepOverdue && rule.expire == null)
+          warn(p, 'keepOverdue는 expire(기한 시계)와 같이 써야 뜻이 있음 — 시계가 없으면 @기한을 셀 수 없다');
+      }
       if (rule.add == null && rule.remove == null && rule.expire == null)
         warn(p, 'add/remove/expire가 모두 없는 list 효과');
       return;

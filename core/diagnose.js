@@ -393,8 +393,10 @@ function diagnose(schema, opts = {}) {
   // 한 효과 묶음 안에서 세웠다가 **같은 묶음에서 시작값으로 되돌리는** 계산용 임시 변수.
   // (맨션봇 `pay_tmp`: 여덟 집을 도는 수금 액션이 min(미납, 소지금)을 담았다가 마지막에 0으로.)
   // 턴이 끝난 뒤의 스냅샷에는 되돌린 값만 남으므로 '안 움직임'이 원리적으로 오탐이다.
+  // 매 턴 정산(onTurn)도 한 묶음이다 (v1.13.1 — 베리디아 lack_*: 정산 구간 중 곳간이 빈 날 수를 세어 쓰고 끝에 0으로).
   const SCRATCH = new Set();
   for (const g of [
+    schema.rules?.onTurn || [],
     ...(schema.rules?.events || []).map((e) => e.effects || []),
     ...(schema.rules?.randomEvents?.table || []).map((e) => e.effects || []),
     ...(schema.actions || []).map((a) => a.effects || []),

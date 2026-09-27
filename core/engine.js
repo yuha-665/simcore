@@ -497,8 +497,10 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       const from = state.vars[rule.list];
       // expire: 항목의 `@숫자`가 이 값보다 작아지면 만료 — 기한이 다한 계약·부역이 스스로 빠진다.
       // (`@`가 없는 항목은 무기한이라 건드리지 않는다)
+      // keepOverdue (v1.13.1): 시계로만 쓰고 지우지 않는다 — 빚·약속처럼 기한이 지나도 이행·파기 전엔 남아야 하는 목록.
+      //   `@+N` 굳히기·`(N일)` 환산은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다.
       let base = from;
-      if (rule.expire) {
+      if (rule.expire && !rule.keepOverdue) {
         const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
         if (isFinite(now) && Array.isArray(from)) {
           base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });

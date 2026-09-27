@@ -530,8 +530,12 @@ const S = {
 
     // 밭이 상한 정도. arable이 목록의 합이 된 뒤로 재해가 농지를 때릴 방법이 없어졌다 —
     // 목록에서 항목을 빼려면 문자열을 글자까지 맞춰야 하니 이벤트가 못 한다. 그래서 감산 변수를 둔다.
-    // 하루 1씩 저절로 아문다. 밭 자체는 그대로 있고 그 해 소출만 죽는 것이다.
+    // 밭 자체는 그대로 있고 그 철 소출만 죽는 것이다 — 그래서 **그 철이 끝나는 날**(blight_until)에 한꺼번에 아문다 (§14-6).
+    //   옛 판은 하루 1씩 아물어 우박이 사흘~엿새면 원상이었다("올해 나올 것이 크게 줄었다"가 거짓말). 서서히 아물게 하려면
+    //   거듭제곱이 필요한데 식에 없다 — 선형으로 깎으면 한 턴에 열흘 넘기는 판과 하루씩 넘기는 판이 달라진다. 날짜는 둘 다 같다.
     { id: 'blight', label: '농지 피해', type: 'int', init: 0, min: 0, max: 8 },
+    { id: 'blight_until', label: '(내부) 밭이 아무는 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용 — 우박·늦서리·들불이 세운다. 이 날이 오면 농지 피해가 0이 된다.' },
     { id: 'wells', label: '식수원', type: 'int', init: 0, min: 0, max: 5,
       desc: 'How many usable wells and channels stand. At 0, water must be hauled from the river. '
         + 'Raise it only together with a matching entry in infra.' },
@@ -894,7 +898,8 @@ const S = {
     // 유저가 /경작지- 로 하나 빼면 수확이 바로 준다. 상한 12는 수확 공식이 견디는 범위라 남긴다.
     { id: 'arable', label: '경작 적성', expr: 'max(0, min(12, sum(farms)) - blight)' },
     { id: 'farm_txt', label: '경작지 상태',
-      expr: 'blight > 0 ? "적성 " + arable + " — 밭이 상했다(-" + blight + ")" : "적성 " + arable' },
+      expr: '(blight > 0 ? "적성 " + arable + " — 밭이 상했다(-" + blight + ", " + max(0, blight_until - day) + "일 뒤 아묾)" : "적성 " + arable)'
+        + ' + (dis_farm < 1 ? " · " + disaster + "(수확 -" + round((1 - dis_farm) * 100) + "%)" : "")' },
     { id: 'extract', label: '자원지 산출', expr: 'sum(sites)' },
     // 인구 상한. 이게 없으면 "마을을 늘려야 한다"는 동기가 서사에 안 생긴다.
     { id: 'cap', label: '수용 한계', expr: 'sum(houses)', format: '{v}명' },
@@ -919,12 +924,16 @@ const S = {
       expr: 'season == "⛄겨울" ? 0.4 : (season == "🍂가을" ? 1.35 : (season == "🌻여름" ? 1.05 : 0.85))' },
     { id: 'weather_water', label: '날씨 영향(취수)',
       expr: 'weather == "🌧비" or weather == "⛈폭풍우" ? 1.35 : (weather == "🔥폭염" ? 0.8 : 1)' },
+    // 재해가 수급을 친다 (§14-6 이름값) — 옛 판의 가뭄은 이름만 가뭄이었다(사기 −2/일뿐, 물도 소출도 그대로).
+    //   가뭄: 밭 ×0.6 · 강에서 길어 오는 물 ×0.5 · 우물 ×0.8 — 우물이 곧 가뭄 보험이다(가뭄 자체도 우물이 적어야 온다).
+    //   들불: 불을 끊는 동안 일손이 밭에 없다 ×0.8.
+    { id: 'dis_farm', label: '재해 영향(경작)', expr: 'disaster == "가뭄" ? 0.6 : (disaster == "들불" ? 0.8 : 1)' },
 
     // ── 수급: 이게 이 봇의 심장. AI가 절대 손으로 계산하면 안 되는 부분 ──
     { id: 'harvest', label: '일 수확',
-      expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)' },
+      expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm * dis_farm)' },
     { id: 'draw_water', label: '일 취수',
-      expr: 'round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)' },
+      expr: 'round((wells * 60 * efficiency * 0.01 * (disaster == "가뭄" ? 0.8 : 1) + pop * 0.9 * (disaster == "가뭄" ? 0.5 : 1)) * weather_water)' },
     // 가사 담당이 곳간 낭비를 줄인다 (라라의 빙결 보존이 대표 서사) — E 주특기 기준 -6/일.
     // 배급 절약은 25% 절감 — 대신 onTurn에서 사기·보건이 매일 샌다 (버튼의 대가).
     { id: 'eaten', label: '일 소비', expr: 'max(0, round((pop + army) * (rations == "절약" ? 0.75 : 1)) - round(d_home * 1.5))' },
@@ -1196,7 +1205,7 @@ const S = {
       // (day 증가는 사라졌다 — 시계는 엔진이 skip_day 소비로 굴리고, day는 elapsed 별칭이다)
       // 재해는 저절로 끝난다. AI가 "언제 끝났더라"를 기억할 필요가 없다.
       { set: 'disaster_days', expr: 'max(0, disaster_days - span)' },
-      { set: 'blight', expr: 'max(0, blight - span)' },   // 밭은 저절로 아문다
+      { set: 'blight', expr: 'day >= blight_until ? 0 : blight' },   // 그 철이 끝나는 날 한꺼번에 아문다 (§14-6)
       { set: 'disaster', expr: 'disaster_days <= 0 ? "" : disaster' },
       // 길도 같은 방식으로 저절로 뚫린다. 다만 AI가 route를 "없음"으로 바꾸면 그 즉시 열린다 —
       // 도적을 쳐내는 것도 길을 여는 방법이고, 그건 기다리는 것보다 나은 선택이어야 한다.
@@ -1498,19 +1507,27 @@ const S = {
           notify: '[밤새 바람이 불었다] 사람은 상하지 않았지만 세워 둔 것 몇 가지가 견디지 못했다. '
             + '무엇이 무너지고 무엇이 젖었는지는 이 영지에 실제로 서 있는 것들 중에서 골라라 — '
             + '물길을 냈다면 물길이 넘칠 수도 있고, 아직 아무것도 없다면 없는 대로 무너질 것이 있다.' },
+        // §14-6 이름값 — 밭 피해는 가진 밭의 몫으로(옛 판은 3~6 고정이라 밭 다섯이면 태반, 열둘이면 티끌), 아무는 날까지 간다.
+        //   우박 40~60% · 40~60일(여름 소출과 가을걷이 앞머리) / 늦서리 20~40% · 25~35일(다시 뿌려 올라올 때까지) / 들불 10~20% · 20일
         { id: 'hail', weight: 3, cooldown: 45,
           when: `${QUIET} and month >= 5 and month <= 8 and sum(farms) > 0`,
-          effects: [{ set: 'blight', expr: 'min(8, blight + 3 + rand(0, 3))' }],
+          effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(4, 6) / 10)))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 40 + rand(0, 20))' }],
           notify: '[우박이 왔다] 한나절 만에 이삭이 다 누웠다. 밭이 없어진 건 아니지만 올해 그 자리에서 '
             + '나올 것은 크게 줄었다. 몇 이랑이 살아남았는지는 이번 장면에서 정하라.' },
         { id: 'frost', weight: 2, cooldown: 60,
           when: `${QUIET} and month >= 3 and month <= 4 and sum(farms) > 0`,
-          effects: [{ set: 'blight', expr: 'min(8, blight + 2 + rand(0, 3))' }],
-          notify: '[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다.' },
+          effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(2, 4) / 10)))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 25 + rand(0, 10))' }],
+          notify: '[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다. '
+            + '다시 뿌려야 하고, 다시 올라올 때까지 그 자리는 빈 밭이다.' },
+        // 불을 끊는 동안은 일손이 밭에 없다 — 들불이 타는 날은 수확 ×0.8 (dis_farm). 탄 자리는 밭 피해로 남는다.
         { id: 'wildfire', weight: 2, cooldown: 50,
           when: `${QUIET} and month >= 6 and month <= 8 and weather == "☀️맑음"`,
           effects: [{ set: 'disaster', expr: '"들불"' }, { set: 'disaster_days', expr: '3 + rand(0, 4)' },
-            { set: 'threat', expr: 'clamp(threat - 6, 0, 100)' }],
+            { set: 'threat', expr: 'clamp(threat - 6, 0, 100)' },
+            { set: 'blight', expr: 'min(8, blight + round(min(12, sum(farms)) * rand(1, 2) / 10))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 20)' }],
           notify: '[들에 불이 붙었다] 마른 풀을 타고 번진다. 사람을 붙여 불길을 끊어야 한다. '
             + '탄 자리에서 무엇이 쫓겨 나왔는지는 이번 장면에서 정하라 — 짐승도 불은 피한다.' },
         { id: 'coldsnap', weight: 2, cooldown: 50,
@@ -3527,6 +3544,70 @@ for (const t of S.party.tabs) {
   for (const id of ['hope', 'normal', 'reality']) for (const [tag, v] of [['개막 그대로', {}], ['번영', RICH]]) {
     const y = year(id, v, tag);
     console.log(`  ${(S.setup.presets.find((p) => p.id === id).label.split(' — ')[0] + ' ' + tag).padEnd(20)} ${y.mon.toFixed(1).padStart(6)}  ${y.ban.toFixed(1).padStart(5)}  ${y.end.toFixed(0).padStart(6)}`);
+  }
+}
+
+// ── 하늘이 하는 일 — 이름값 (§14-6, 2026-09-27) ──
+// 옛 판: 우박·늦서리 밭 피해가 하루 1씩 아물어 사흘~엿새면 원상(90일 수확의 1%), 가뭄은 물·소출을 직접 안 건드렸다(사기만).
+// 이제 밭 피해는 가진 밭의 몫 · 아무는 날까지, 가뭄은 밭 ×0.6 · 강물 ×0.5 · 우물 ×0.8, 들불은 타는 동안 ×0.8 + 탄 자리.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 하늘이 하는 일 — 이름값 ━━');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };
+  const only = (id) => { const ev = S.rules.randomEvents.table.find((e) => e.id === id);
+    return { ...S, rules: { ...S.rules, randomEvents: { chancePerTurn: 1, table: [{ ...ev, when: undefined, cooldown: undefined }] } } }; };
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const at = (d, vars = {}) => { let t = engine.initState(S); t.meta.setupDone = true; t = engine.applyPreset(S, t, 'normal').state;
+    Object.assign(t.vars, { route: '없음', route_days: 0, weather: '☀️맑음', food: 8000, water: 8000, gold: 2000, health: 60, morale: 50 }, vars);
+    atDay(t, d); t.vars.day_prev = d; return t; };
+  const turn = (Sx, st, k, days = 1) => _outputPhase(Sx, engine.sendPhase(Sx, st, { rng: seededRng('sky', k, 's') }).state, { skip_day: days }, {}, { rng: seededRng('sky', k, 'o') });
+  const F12 = { farms: ['묵은 밭 4', '개간지 4', '개간지 4'], houses: ['장옥 200'] };
+
+  // 밭 피해 — 가진 밭의 몫, 아무는 날까지
+  const hits = (id, vars) => Array.from({ length: 12 }, (_, k) => { const o = turn(only(id), at(90, vars), 100 + k, 0).state;
+    return { b: o.vars.blight, left: o.vars.blight_until - o.vars.day }; });
+  const h5 = hits('hail', {}), h12 = hits('hail', F12);
+  const rng = (xs, f) => `${Math.min(...xs.map(f))}~${Math.max(...xs.map(f))}`;
+  ok('우박 — 가진 밭의 40~60% (밭 5 → 2~3 · 밭 12 → 5~7)', h5.every((x) => x.b >= 2 && x.b <= 3) && h12.every((x) => x.b >= 5 && x.b <= 7),
+    `밭 5: ${rng(h5, (x) => x.b)} · 밭 12: ${rng(h12, (x) => x.b)}`);
+  ok('우박 — 40~60일 간다 (여름 소출과 가을걷이 앞머리)', h12.every((x) => x.left >= 40 && x.left <= 60), `${rng(h12, (x) => x.left)}일`);
+  const f12 = hits('frost', F12);
+  ok('늦서리 — 20~40% · 25~35일 (다시 뿌려 올라올 때까지)', f12.every((x) => x.b >= 2 && x.b <= 5 && x.left >= 25 && x.left <= 35),
+    `${rng(f12, (x) => x.b)} · ${rng(f12, (x) => x.left)}일`);
+  let hs = turn(only('hail'), at(90, F12), 120, 0).state; const b0 = hs.vars.blight, until = hs.vars.blight_until;
+  hs = turn(S0, hs, 121, 30).state; const mid = hs.vars.blight;
+  hs = turn(S0, hs, 122, until - hs.vars.day).state;
+  ok('서른 날 뒤에도 그대로, 아무는 날에 한꺼번에 0 (옛 판: 하루 1씩 — 엿새면 원상)', mid === b0 && hs.vars.blight === 0, `${b0} → 30일 ${mid} → ${until}일째 ${hs.vars.blight}`);
+  const shown = L(turn(only('hail'), at(90, F12), 123, 0).state)('farm_txt');
+  ok('경작지 줄에 "며칠 뒤 아묾"이 보인다', /밭이 상했다\(-\d, \d+일 뒤 아묾\)/.test(shown), shown);
+
+  // 가뭄 — 밭 ×0.6 · 강물 ×0.5 · 우물 ×0.8
+  const dry = (vars) => { const a = at(120, vars), b = at(120, { ...vars, disaster: '가뭄', disaster_days: 20 });
+    return { h: [L(a)('harvest'), L(b)('harvest')], w: [L(a)('draw_water'), L(b)('draw_water')], txt: L(b)('farm_txt') }; };
+  const d0 = dry({ wells: 0 }), d2 = dry({ wells: 2 });
+  ok('가뭄 → 수확 ×0.6', Math.abs(d0.h[1] / d0.h[0] - 0.6) < 0.02, `${d0.h[0]} → ${d0.h[1]} · ${d0.txt}`);
+  ok('가뭄 → 강에서 길어 오는 물이 반 — 우물이 없으면 취수 반토막', Math.abs(d0.w[1] / d0.w[0] - 0.5) < 0.02, `우물 0: ${d0.w[0]} → ${d0.w[1]}`);
+  ok('우물이 곧 가뭄 보험 — 우물 둘이면 덜 준다', d2.w[1] / d2.w[0] > d0.w[1] / d0.w[0] + 0.1, `우물 2: ${d2.w[0]} → ${d2.w[1]} (${Math.round(d2.w[1] * 100 / d2.w[0])}%)`);
+  const fire = turn(only('wildfire'), at(120, F12), 130, 0).state;
+  ok('들불 → 타는 동안 수확 ×0.8 · 탄 자리는 밭 피해로 스무 날', L(fire)('dis_farm') === 0.8 && fire.vars.blight >= 1 && fire.vars.blight_until - fire.vars.day === 20,
+    `${L(fire)('farm_txt')}`);
+
+  // 한 번이 가져가는 것 — 사건 없는 판과 90일을 나란히 굴린 차이 (곳간·물은 넉넉히, 날씨 맑음, 하루 한 턴)
+  const loss = (id, d, vars) => {
+    let hc = 0, he = 0, df = 0, dw = 0, eaten = 0; const SEEDS = 4;   // 피해 폭·기간이 굴림이라 네 판 평균
+    for (let s = 0; s < SEEDS; s++) {
+      let c = at(d, vars), e = at(d, vars);
+      for (let i = 0; i < 90; i++) {
+        hc += L(c)('harvest'); he += L(e)('harvest');
+        c = turn(S0, c, 1000 * s + 200 + i).state; e = turn(i === 0 ? only(id) : S0, e, 1000 * s + 200 + i).state;
+      }
+      eaten += L(c)('eaten'); df += c.vars.food - e.vars.food; dw += c.vars.water - e.vars.water;
+    }
+    return `수확 -${String(Math.round((hc - he) * 100 / hc)).padStart(2)}% (${String(Math.round(df / eaten)).padStart(2)}일치) · 식수 ${(dw / eaten).toFixed(1)}일치`;
+  };
+  console.log('  한 번이 가져가는 것 (90일, 사건 없는 판과의 차이 · 네 판 평균 — 일치 = 하루 소비 기준)');
+  for (const [id, d, lab] of [['hail', 90, '우박 6월'], ['frost', 20, '늦서리 3월'], ['drought', 120, '가뭄 7월'], ['wildfire', 120, '들불 7월'], ['storm', 190, '큰바람 9월']]) {
+    console.log(`  ${lab.padEnd(8)} 보통 개막: ${loss(id, d, {})}   밭 12: ${loss(id, d, F12)}`);
   }
 }
 

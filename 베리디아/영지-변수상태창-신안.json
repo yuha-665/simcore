@@ -407,6 +407,14 @@
       "max": 8
     },
     {
+      "id": "blight_until",
+      "label": "(내부) 밭이 아무는 날",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용 — 우박·늦서리·들불이 세운다. 이 날이 오면 농지 피해가 0이 된다."
+    },
+    {
       "id": "wells",
       "label": "식수원",
       "type": "int",
@@ -1684,7 +1692,7 @@
     {
       "id": "farm_txt",
       "label": "경작지 상태",
-      "expr": "blight > 0 ? \"적성 \" + arable + \" — 밭이 상했다(-\" + blight + \")\" : \"적성 \" + arable"
+      "expr": "(blight > 0 ? \"적성 \" + arable + \" — 밭이 상했다(-\" + blight + \", \" + max(0, blight_until - day) + \"일 뒤 아묾)\" : \"적성 \" + arable) + (dis_farm < 1 ? \" · \" + disaster + \"(수확 -\" + round((1 - dis_farm) * 100) + \"%)\" : \"\")"
     },
     {
       "id": "extract",
@@ -1758,14 +1766,19 @@
       "expr": "weather == \"🌧비\" or weather == \"⛈폭풍우\" ? 1.35 : (weather == \"🔥폭염\" ? 0.8 : 1)"
     },
     {
+      "id": "dis_farm",
+      "label": "재해 영향(경작)",
+      "expr": "disaster == \"가뭄\" ? 0.6 : (disaster == \"들불\" ? 0.8 : 1)"
+    },
+    {
       "id": "harvest",
       "label": "일 수확",
-      "expr": "round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)"
+      "expr": "round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm * dis_farm)"
     },
     {
       "id": "draw_water",
       "label": "일 취수",
-      "expr": "round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)"
+      "expr": "round((wells * 60 * efficiency * 0.01 * (disaster == \"가뭄\" ? 0.8 : 1) + pop * 0.9 * (disaster == \"가뭄\" ? 0.5 : 1)) * weather_water)"
     },
     {
       "id": "eaten",
@@ -2306,7 +2319,7 @@
       },
       {
         "set": "blight",
-        "expr": "max(0, blight - span)"
+        "expr": "day >= blight_until ? 0 : blight"
       },
       {
         "set": "disaster",
@@ -3467,7 +3480,11 @@
           "effects": [
             {
               "set": "blight",
-              "expr": "min(8, blight + 3 + rand(0, 3))"
+              "expr": "min(8, blight + max(1, round(min(12, sum(farms)) * rand(4, 6) / 10)))"
+            },
+            {
+              "set": "blight_until",
+              "expr": "max(blight_until, day + 40 + rand(0, 20))"
             }
           ],
           "notify": "[우박이 왔다] 한나절 만에 이삭이 다 누웠다. 밭이 없어진 건 아니지만 올해 그 자리에서 나올 것은 크게 줄었다. 몇 이랑이 살아남았는지는 이번 장면에서 정하라."
@@ -3480,10 +3497,14 @@
           "effects": [
             {
               "set": "blight",
-              "expr": "min(8, blight + 2 + rand(0, 3))"
+              "expr": "min(8, blight + max(1, round(min(12, sum(farms)) * rand(2, 4) / 10)))"
+            },
+            {
+              "set": "blight_until",
+              "expr": "max(blight_until, day + 25 + rand(0, 10))"
             }
           ],
-          "notify": "[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다."
+          "notify": "[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다. 다시 뿌려야 하고, 다시 올라올 때까지 그 자리는 빈 밭이다."
         },
         {
           "id": "wildfire",
@@ -3502,6 +3523,14 @@
             {
               "set": "threat",
               "expr": "clamp(threat - 6, 0, 100)"
+            },
+            {
+              "set": "blight",
+              "expr": "min(8, blight + round(min(12, sum(farms)) * rand(1, 2) / 10))"
+            },
+            {
+              "set": "blight_until",
+              "expr": "max(blight_until, day + 20)"
             }
           ],
           "notify": "[들에 불이 붙었다] 마른 풀을 타고 번진다. 사람을 붙여 불길을 끊어야 한다. 탄 자리에서 무엇이 쫓겨 나왔는지는 이번 장면에서 정하라 — 짐승도 불은 피한다."

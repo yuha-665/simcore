@@ -556,10 +556,11 @@
     {
       "id": "threat",
       "label": "외부 위협",
-      "type": "int",
+      "type": "float",
       "init": 40,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "desc": "How much the wild and the lawless around Veridia are turned toward it. The system drifts it every day toward how much the holding has worth taking — an empty village is left alone, a thriving one is watched. Raise it only when the narration finds a new danger close by; lower it only when one is actually cleared. It settles back on its own afterwards."
     },
     {
       "id": "fame",
@@ -1912,6 +1913,26 @@
       "expr": "bandits >= 70 ? \"횡행 — 소굴이 있다\" : (bandits >= 40 ? \"출몰 — 길이 위험하다\" : (bandits >= 15 ? \"소문이 돈다\" : (\"잠잠함\")))"
     },
     {
+      "id": "lure",
+      "label": "탐낼 거리",
+      "expr": "clamp(round(cap * 0.12 + min(12, sum(farms)) * 1.5 + wells * 3 + max(0, count(infra) - 4) * 3 + max(0, sum(sites)) * 0.5 + max(0, deals) * 0.4 + guild * 4 + chapel * 3 + min(max(food, 0), 6000) / 600 + min(max(gold, 0), 5000) / 500), 0, 100)"
+    },
+    {
+      "id": "lure_txt",
+      "label": "눈길",
+      "expr": "lure >= 70 ? \"노리는 눈이 많다\" : (lure >= 45 ? \"눈에 띈다\" : (lure >= 20 ? \"지나가다 볼 만하다\" : (\"털 것이 없다\")))"
+    },
+    {
+      "id": "threat_goal",
+      "label": "위협이 향하는 곳",
+      "expr": "clamp(round(lure * (0.5 + hardship * 0.005)), 0, 100)"
+    },
+    {
+      "id": "threat_n",
+      "label": "외부 위협(표시)",
+      "expr": "round(threat)"
+    },
+    {
       "id": "morale_txt",
       "label": "사기",
       "expr": "morale >= 80 ? \"드높음\" : (morale >= 60 ? \"견실함\" : (morale >= 40 ? \"보통\" : (morale >= 25 ? \"흔들림\" : (morale >= 10 ? \"불안\" : (\"절망\")))))"
@@ -2198,6 +2219,10 @@
       {
         "set": "bandits",
         "expr": "clamp(bandits + drift_out * (0.3 - guild * 0.07) + (hardship * 0.004 - 0.5 - (guard_men + army * 2) / 60) * span, 0, 100)"
+      },
+      {
+        "set": "threat",
+        "expr": "clamp(threat + clamp(threat_goal - threat, -0.5 * span, 0.5 * span), 0, 100)"
       },
       {
         "set": "lack_food",
@@ -2628,14 +2653,14 @@
       },
       {
         "id": "guild_offer",
-        "when": "guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat >= 25 and route == \"없음\"",
+        "when": "guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat + bandits >= 25 and route == \"없음\"",
         "effects": [
           {
             "set": "guild_ask",
             "expr": "day + 60"
           }
         ],
-        "notify": "[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 몬스터 사냥으로 먹고산다 — 몬스터가 들끓는 이 땅은 그들에게 일터다. 연락소 하나 둘 자리와 영주의 허가를 청한다. 누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.",
+        "notify": "[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 몬스터 사냥과 현상금으로 먹고산다 — 숲의 것이든 길 위의 도적이든, 목에 값을 걸 일이 있는 이 땅은 그들에게 일터다. 연락소 하나 둘 자리와 영주의 허가를 청한다. 누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.",
         "timeout": 3,
         "choices": [
           {
@@ -3230,7 +3255,7 @@
           "id": "road_bandit",
           "weight": 3,
           "cooldown": 30,
-          "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300 or bandits >= 35) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)",
+          "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300 or (bandits >= 35 and lure >= 35 - hardship * 0.2)) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)",
           "effects": [
             {
               "set": "route",
@@ -4021,7 +4046,7 @@
           "id": "bandit_raid",
           "weight": 3,
           "cooldown": 25,
-          "when": "disaster == \"\" and route == \"없음\" and bandits >= 50 - hardship * 0.2 and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)",
+          "when": "disaster == \"\" and route == \"없음\" and bandits >= 50 - hardship * 0.2 and lure >= 35 - hardship * 0.2 and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)",
           "effects": [
             {
               "set": "food",
@@ -6087,7 +6112,7 @@
       {
         "id": "estate",
         "label": "영지",
-        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓</div><div class=\"vled-row\"><span>관문</span><span class=\"v\">{gate_txt} · 하루 {drift_rate}명 옴</span></div><div class=\"vled-row\"><span>도적</span><span class=\"v\">{bandit_txt} · 통행세 {bandit_toll}/일</span></div><div class=\"vled-row\"><span>모험가 길드</span><span class=\"v\">{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">공사 중 — 완공일이 오면 시스템이 알린다</div>{projects:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
+        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓</div><div class=\"vled-row\"><span>관문</span><span class=\"v\">{gate_txt} · 하루 {drift_rate}명 옴</span></div><div class=\"vled-row\"><span>도적</span><span class=\"v\">{bandit_txt} · 통행세 {bandit_toll}/일</span></div><div class=\"vled-row\"><span>탐낼 거리</span><span class=\"v\">{lure_txt} ({lure}) · 외부 위협 {threat_n} → {threat_goal}</span></div><div class=\"vled-row\"><span>모험가 길드</span><span class=\"v\">{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">공사 중 — 완공일이 오면 시스템이 알린다</div>{projects:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
       },
       {
         "id": "duty",

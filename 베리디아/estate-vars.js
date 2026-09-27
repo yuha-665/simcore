@@ -575,7 +575,12 @@ const S = {
     { id: 'rations', label: '배급', type: 'enum', init: '평시', enum: ['평시', '절약'],
       desc: '식량 배급 수위. 액션 버튼(배급 축소/복구)으로만 바꾼다.' },
     { id: 'unrest', label: '내부 불안', type: 'int', init: 15, min: 0, max: 100 },
-    { id: 'threat', label: '외부 위협', type: 'int', init: 40, min: 0, max: 100 },
+    // 위협은 탐낼 거리를 따라간다 (§14-5, 유저 2026-09-27: "아무것도 없는 마을에 도적도 몬스터도 굳이 오지 않는다").
+    //   시스템이 매일 0.5씩 threat_goal 쪽으로 민다 — 하루 1 미만이라 소수로 둔다 (bandits와 같은 이유).
+    { id: 'threat', label: '외부 위협', type: 'float', init: 40, min: 0, max: 100,
+      desc: 'How much the wild and the lawless around Veridia are turned toward it. The system drifts it every day toward how much '
+        + 'the holding has worth taking — an empty village is left alone, a thriving one is watched. Raise it only when the narration '
+        + 'finds a new danger close by; lower it only when one is actually cleared. It settles back on its own afterwards.' },
     { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100,
       desc: 'Standing among the folk of Veridia itself. What other domains think is rel_* — do not move both for the same event.' },
 
@@ -989,6 +994,20 @@ const S = {
     { id: 'bounty_cost', label: '현상금', expr: '40 + guild * 20' },
     { id: 'bandit_txt', label: '도적',
       expr: scale('bandits', [[70, '횡행 — 소굴이 있다'], [40, '출몰 — 길이 위험하다'], [15, '소문이 돈다'], [0, '잠잠함']]) },
+    // ⑤ 탐낼 거리 (§14-5) — 밖에서 보이는 이 땅의 값. 도적도 몬스터도 털 것이 있는 곳으로 온다.
+    //   세운 것(거처·밭·우물·새로 지은 인프라·길드·예배당) + 오가는 돈(계약·자원지) + 쌓인 것(곳간·금고, 각 10까지).
+    //   쌓인 것은 작게 — 곳간은 일손만큼 불어나서(경제 미결) 크게 두면 아무것도 안 지은 판이 곡식만으로 눈에 띈다. 유저 기준은 "시설".
+    //   인프라는 이름뿐이라 폐허도 한 줄로 센다 — 그래서 개막 네 줄을 빼고 "새로 선 것"만 센다.
+    //   프리셋 개막: 희망 42 · 보통 28 · 리얼리티 9. 거처 400·밭 12·우물 3·인프라 열 줄이면 100에 닿는다.
+    { id: 'lure', label: '탐낼 거리',
+      expr: 'clamp(round(cap * 0.12 + min(12, sum(farms)) * 1.5 + wells * 3 + max(0, count(infra) - 4) * 3'
+        + ' + max(0, sum(sites)) * 0.5 + max(0, deals) * 0.4 + guild * 4 + chapel * 3'
+        + ' + min(max(food, 0), 6000) / 600 + min(max(gold, 0), 5000) / 500), 0, 100)' },
+    { id: 'lure_txt', label: '눈길',
+      expr: scale('lure', [[70, '노리는 눈이 많다'], [45, '눈에 띈다'], [20, '지나가다 볼 만하다'], [0, '털 것이 없다']]) },
+    // 위협이 따라가는 곳 — 같은 값이어도 시련이 셀수록 더 많이 끈다 (희망 ×0.55 · 보통 ×0.73 · 리얼리티 ×1.0)
+    { id: 'threat_goal', label: '위협이 향하는 곳', expr: 'clamp(round(lure * (0.5 + hardship * 0.005)), 0, 100)' },
+    { id: 'threat_n', label: '외부 위협(표시)', expr: 'round(threat)' },
 
     // ── 표시용 척도: 지금 쓰던 말투 그대로 ──
     { id: 'morale_txt', label: '사기',
@@ -1120,6 +1139,9 @@ const S = {
       // 도적 — 갈 곳 없이 떠난 이의 일부가 길 위로(길드가 있으면 칼 든 이들이 모험가로 빠져 덜 간다) + 전후의 바탕(시련)
       //   − 경비·상비군이 매일 깎는다: 경비 15·상비군 0이면 하루 0.75, 상비군 30이면 1.75. 가만두면 저절로 잦아든다.
       { set: 'bandits', expr: 'clamp(bandits + drift_out * (0.3 - guild * 0.07) + (hardship * 0.004 - 0.5 - (guard_men + army * 2) / 60) * span, 0, 100)' },
+      // 위협 (§14-5) — 하루 0.5씩 탐낼 거리가 정한 곳으로. 몬스터가 올려 놓은 것도, 현상금이 깎은 것도 이 줄이 되돌린다
+      //   (옛 판은 위협을 내리는 길이 현상금뿐이라 리얼리티가 한 해 만에 100에 붙었다 — 몬스터가 위협을 올려 다시 몬스터를 불렀다)
+      { set: 'threat', expr: 'clamp(threat + clamp(threat_goal - threat, -0.5 * span, 0.5 * span), 0, 100)' },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
       // 빈 날 세기는 재고를 깎기 **전에** — 깎은 뒤엔 "언제 비었나"를 알 수 없다 (lackDays 주석 참고).
@@ -1265,11 +1287,14 @@ const S = {
 
       // ── 모험가 길드 (§14) ── 전쟁 용병이 몬스터 사냥으로 돌아서는 시기 [유저]. 몬스터가 들끓는 이 땅은 그들에게 일터다.
       // 갈림길 — 허가는 영주의 결단이라 버튼으로 묻는다. 안 고르면(3턴) 마지막 "아직은"이 된다. 거절해도 60일 뒤 다시 온다.
+      //   §14-5: 문턱은 위협 + 도적 (옛 위협 25) — 위협이 탐낼 거리를 따라 내려가면서 몬스터만으로는 못 넘게 됐다.
+      //   현상금 일감은 몬스터든 도적이든 같다 (grow2의 threat + bandits와 같은 셈)
       { id: 'guild_offer',
-        when: 'guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat >= 25 and route == "없음"',
+        when: 'guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat + bandits >= 25 and route == "없음"',
         effects: [{ set: 'guild_ask', expr: 'day + 60' }],
         notify: '[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 '
-          + '몬스터 사냥으로 먹고산다 — 몬스터가 들끓는 이 땅은 그들에게 일터다. 연락소 하나 둘 자리와 영주의 허가를 청한다. '
+          + '몬스터 사냥과 현상금으로 먹고산다 — 숲의 것이든 길 위의 도적이든, 목에 값을 걸 일이 있는 이 땅은 그들에게 일터다. '
+          + '연락소 하나 둘 자리와 영주의 허가를 청한다. '
           + '누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.',
         timeout: 3,
         choices: [
@@ -1386,8 +1411,9 @@ const S = {
           notify: '[고개가 닫혔다] 밤새 눈이 고개를 메웠다. 북쪽은 봄까지 남의 나라다.' },
         // 로어북의 WorldReactivity 그대로 — 살 만해지면 눈이 붙는다
         // §14: 도적 세력이 크면 번 게 없어도 앉고, 경비 문턱도 그만큼 높아진다 (bandits 0이면 옛 조건 그대로)
+        //   §14-5: 단, 오가는 짐이 있을 만한 땅이어야 — 털 것 없는 길목엔 무리가 크든 작든 앉지 않는다
         { id: 'road_bandit', weight: 3, cooldown: 30,
-          when: `${QUIET} and (deals >= 15 or gold >= 300 or bandits >= 35)`
+          when: `${QUIET} and (deals >= 15 or gold >= 300 or (bandits >= 35 and ${thr('lure', '>=', 35, 15)}))`
             + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)',
           effects: [{ set: 'route', expr: '"남 가도"' }, { set: 'route_days', expr: '4 + rand(0, 6)' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }],
@@ -1707,8 +1733,10 @@ const S = {
             + '별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다.' },
 
         // ⑥ 도적 (§14) — 몬스터가 아니라 사람. 돌려보낸 이들이 굶다 칼을 든 것이다.
+        //   §14-5: 굶는 자도 빈 마을은 안 턴다 — 탐낼 거리가 문턱을 넘어야 온다 (문턱은 시련이 낮춘다: 희망 33 · 보통 26 · 리얼리티 15)
         { id: 'bandit_raid', weight: 3, cooldown: 25,
-          when: `${QUIET} and ${thr('bandits', '>=', 50, 30)} and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)`,
+          when: `${QUIET} and ${thr('bandits', '>=', 50, 30)} and ${thr('lure', '>=', 35, 15)}`
+            + ' and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)',
           effects: [{ set: 'food', expr: 'max(0, food - 40 - rand(0, 40))' }, { set: 'gold', expr: 'max(0, gold - 30 - rand(0, 30))' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }, { set: 'bandits', expr: 'min(100, bandits + 3)' }],
           notify: '[도적이 변두리를 쳤다] 밤사이 외곽 곳간과 짐수레가 털렸다. 몬스터 짓이 아니다 — 발자국이 신발을 신었다. '
@@ -2569,6 +2597,8 @@ S.party = {
       + sec('관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓')
       + row('관문', '{gate_txt} · 하루 {drift_rate}명 옴')
       + row('도적', '{bandit_txt} · 통행세 {bandit_toll}/일')
+      // §14-5 — 왜 위협이 오르내리는지. 세운 만큼 눈길이 붙고, 위협은 하루 0.5씩 그쪽으로 간다
+      + row('탐낼 거리', '{lure_txt} ({lure}) · 외부 위협 {threat_n} → {threat_goal}')
       + row('모험가 길드', '{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}')
       + sec('보유 물자') + '{stock:tags}'
       + sec('주거 — 수용 {cap} ({crowd_txt} {crowd}%)') + '{houses:tags}'
@@ -3424,6 +3454,80 @@ for (const t of S.party.tabs) {
   const bs = engine.sendPhase(S, bk, { rng: seededRng('mr', 17, 's') }).state;
   ok('파기 → 인식 -25 · 호감 -25 · 명성 -8 · 120일은 청혼도 없다', bs.vars.spouse === '없음' && bs.vars.rel_e === 35 && bs.vars.b_liana === 5
     && bs.vars.fame === 32 && bs.vars.suit_next === bs.vars.day + 120, `${bs.vars.rel_e} · ${bs.vars.b_liana} · 명성 ${bs.vars.fame}`);
+}
+
+// ── 위협은 탐낼 거리를 따라간다 (§14-5, 2026-09-27) ──
+// 유저: "아무것도 없는 마을에 도적도 몬스터도 굳이 오지 않는다 — 시설이 늘면 쳐들어오는 게 맞다".
+// 옛 판: 위협이 저절로 안 움직여 희망·보통은 한 해 몬스터 0번, 리얼리티는 몬스터가 위협을 올려 한 해 만에 100에 붙었다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 위협은 탐낼 거리를 따라간다 ━━');
+  const { evaluate, truthy } = SC.require('expr');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const pre = (id, vars = {}) => { let t = engine.initState(S); t.meta.setupDone = true; t = engine.applyPreset(S, t, id).state;
+    Object.assign(t.vars, { route: '없음', route_days: 0 }, vars); return t; };
+  const open = (id, st) => truthy(evaluate(S.rules.randomEvents.table.find((e) => e.id === id).when, L(st), null));
+  const run = (st, days, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('lu', k, 's') }).state, { skip_day: days }, {}, { rng: seededRng('lu', k, 'o') }).state;
+  const RICH = { farms: ['묵은 밭 4', '개간지 4', '개간지 4'], wells: 3, houses: ['장옥 200', '오두막 200'], infra: Array.from({ length: 10 }, (_, i) => `시설 ${i + 1}`),
+    contracts: ['헤세 상단 곡물 30'], sites: ['채석장 20'], guild: 2, chapel: 1, food: 6000, gold: 3000 };
+
+  const [h, n, r] = ['hope', 'normal', 'reality'].map((id) => L(pre(id))('lure'));
+  ok('개막 — 세워 둔 만큼 눈에 띈다 (희망 > 보통 > 리얼리티, 리얼리티는 털 것이 없다)', h > n && n > r && L(pre('reality'))('lure_txt') === '털 것이 없다', `${h} · ${n} · ${r}`);
+  const steps = [{}, { farms: ['묵은 밭 4', '개간지 2', '개간지 2'], wells: 2 }, { houses: ['장옥 120', '오두막 80'], infra: ['무너진 병영', '잡초 연병장', '폐허 대장간', '마을 우물', '목책', '곡물 창고'] }, RICH];
+  let acc = {}; const ladder = steps.map((v) => { acc = { ...acc, ...v }; return L(pre('normal', acc))('lure'); });
+  ok('밭·우물 → 거처·인프라 → 번영: 세울수록 탐낼 거리가 는다', ladder.every((x, i) => i === 0 || x > ladder[i - 1]) && ladder[3] === 100, ladder.join(' → '));
+  const g = ['hope', 'normal', 'reality'].map((id) => L(pre(id, RICH))('threat_goal'));
+  ok('같은 번영이어도 시련이 셀수록 더 끈다 (×0.55 · ×0.73 · ×1.0)', g[0] < g[1] && g[1] < g[2] && g[2] === 100, g.join(' · '));
+
+  const t1 = run(pre('normal'), 10, 1);
+  ok('하루 0.5씩 따라간다 — 보통 개막 34는 열흘에 29 (목표 20)', Math.abs(t1.vars.threat - 29) < 0.01, `${t1.vars.threat} (목표 ${L(pre('normal'))('threat_goal')})`);
+  let rt = pre('reality', { threat: 100 }); for (let i = 0; i < 6; i++) rt = run(rt, 10, 10 + i);
+  ok('리얼리티의 100도 풀린다 — 털 것이 없으면 예순 날에 30 내려간다 (옛 판은 한 번 붙으면 영영)', Math.abs(rt.vars.threat - 70) < 0.01, `${rt.vars.threat}`);
+  let bt = pre('normal', { ...RICH, threat: 22 });
+  const shut = ['nest_near', 'goblin_raid'].filter((id) => !open(id, bt));
+  for (let i = 0; i < 10; i++) bt = run({ ...bt, vars: { ...bt.vars, ...RICH } }, 10, 20 + i);
+  ok('번영한 보통 — 백 날이면 위협이 올라 둥지·고블린 문이 열린다', shut.length === 2 && open('nest_near', bt) && open('goblin_raid', bt),
+    `위협 22 → ${bt.vars.threat.toFixed(1)} (${L(bt)('sec_out_txt')})`);
+  const bounty = pre('normal', { ...RICH, threat: 73 }); bounty.vars.threat -= 9;
+  const back = run(bounty, 4, 40);
+  ok('현상금이 깎은 것은 잠깐이다 — 목표가 위면 하루 0.5씩 되돌아온다', Math.abs(back.vars.threat - 66) < 0.01, `73 → 현상금 64 → 나흘 뒤 ${back.vars.threat}`);
+
+  // 도적 — 굶는 자도 빈 마을은 안 턴다
+  const lean = { bandits: 45, army: 0, pop: 70, labor_policy: '생존 우선' };
+  const empty = pre('reality', lean), built = pre('reality', { ...lean, farms: ['개간지 3', '개간지 3'], wells: 2 });
+  ok('도적 습격 — 리얼리티 개막(털 것 9)은 안 오고, 밭 여섯·우물 둘이면 온다', !open('bandit_raid', empty) && open('bandit_raid', built),
+    `털 것 ${L(empty)('lure')} → ${L(built)('lure')} (문턱 15)`);
+  const road0 = pre('normal', { bandits: 40, deals: 0, gold: 0, contracts: [], army: 0, food: 0, houses: ['움막 20'], farms: [], wells: 0, pop: 60 });
+  const road1 = pre('normal', { bandits: 40, gold: 0, contracts: [], army: 0, pop: 60 });
+  ok('가도 점거 — 무리가 커도 짐이 오갈 만한 땅이어야 앉는다', !open('road_bandit', road0) && open('road_bandit', road1),
+    `털 것 ${L(road0)('lure')} → ${L(road1)('lure')} (문턱 26)`);
+  const gd = S.rules.events.find((e) => e.id === 'guild_offer').when;
+  ok('길드는 현상금 일감(위협 + 도적)을 보고 온다', /threat \+ bandits >= 25/.test(gd), '');
+
+  // 한 해에 무엇이 쳐들어오나 — 곳간은 8일치 아래로 안 떨어지게 채운다(굶어 무너진 판은 이 질문의 답이 아니다)
+  const MON = new Set(['raid', 'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'horde', 'road_wood']);
+  const BAN = new Set(['road_bandit', 'bandit_raid']);
+  const year = (id, vars, tag) => {
+    let mon = 0, ban = 0, end = 0; const SEEDS = 6;
+    for (let s = 0; s < SEEDS; s++) {
+      let t = pre(id, vars);
+      for (let d = 0; d < 360; d++) {
+        t.vars.food = Math.max(t.vars.food, t.vars.pop * 8); t.vars.water = Math.max(t.vars.water, t.vars.pop * 8);
+        if (vars.houses) Object.assign(t.vars, { houses: vars.houses, farms: vars.farms, infra: vars.infra });   // 번영은 유지된다고 둔다
+        const o = engine.outputPhase(S, engine.sendPhase(S, t, { rng: seededRng(`yr-${id}-${tag}-${s}`, d, 's') }).state, {}, {},
+          { rng: seededRng(`yr-${id}-${tag}-${s}`, d, 'o') });
+        t = o.state; mon += o.firedEvents.filter((e) => MON.has(e)).length; ban += o.firedEvents.filter((e) => BAN.has(e)).length;
+      }
+      end += t.vars.threat;
+    }
+    return { mon: mon / SEEDS, ban: ban / SEEDS, end: end / SEEDS };
+  };
+  console.log('  한 해(하루 한 턴) · 곳간 채움     몬스터   도적   위협 끝값');
+  for (const id of ['hope', 'normal', 'reality']) for (const [tag, v] of [['개막 그대로', {}], ['번영', RICH]]) {
+    const y = year(id, v, tag);
+    console.log(`  ${(S.setup.presets.find((p) => p.id === id).label.split(' — ')[0] + ' ' + tag).padEnd(20)} ${y.mon.toFixed(1).padStart(6)}  ${y.ban.toFixed(1).padStart(5)}  ${y.end.toFixed(0).padStart(6)}`);
+  }
 }
 
 // ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──

@@ -571,6 +571,78 @@
       "desc": "Standing among the folk of Veridia itself. What other domains think is rel_* — do not move both for the same event."
     },
     {
+      "id": "drift_policy",
+      "label": "관문 방침",
+      "type": "enum",
+      "cmd": "관문",
+      "init": "가려 받음",
+      "enum": [
+        "받아들임",
+        "가려 받음",
+        "돌려보냄"
+      ],
+      "desc": "The Baron's standing order at the south gate for drifters (war refugees, discharged soldiers, masterless mercenaries). 받아들임 = let everyone in / 가려 받음 = only as many as there are beds, the rest wait or drift off / 돌려보냄 = nobody. Change it ONLY when the narration shows him giving that order. The system admits and turns people away every day."
+    },
+    {
+      "id": "drifters",
+      "label": "관문 앞 유랑민",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 400,
+      "format": "{v}명",
+      "desc": "People camped outside the south gate waiting to be let in. The system adds arrivals and admits or turns them away by the gate order — never move them into pop yourself. Lower it only when the narration sends a specific group elsewhere (hired as soldiers → also raise army; sent on with bread → just lower)."
+    },
+    {
+      "id": "bandits",
+      "label": "도적 세력",
+      "type": "float",
+      "init": 15,
+      "min": 0,
+      "max": 100,
+      "desc": "How strong the bandit bands on the roads around Veridia are (0 = none). The system moves it: people turned away with nowhere to go feed it, the guard and the army wear it down. Lower it only when the narration actually breaks a band — a fight won, a camp burned. Never raise it."
+    },
+    {
+      "id": "guild",
+      "label": "모험가 길드",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "max": 3
+    },
+    {
+      "id": "guild_since",
+      "label": "(내부) 길드 연 날",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용. 연락소를 허가한 날의 경과일 — 지부 승격이 이걸로 잰다."
+    },
+    {
+      "id": "guild_ask",
+      "label": "(내부) 길드가 다시 올 날",
+      "type": "int",
+      "init": 30,
+      "min": 0,
+      "desc": "시스템 전용. 길드 사람이 다시 찾아올 수 있는 가장 이른 경과일."
+    },
+    {
+      "id": "drift_adm",
+      "label": "(내부) 이번 정산에 들인 유랑민",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용."
+    },
+    {
+      "id": "drift_out",
+      "label": "(내부) 이번 정산에 떠난 유랑민",
+      "type": "int",
+      "init": 0,
+      "min": 0,
+      "desc": "시스템 전용."
+    },
+    {
       "id": "rel_n",
       "label": "북 모르웬 백작",
       "type": "int",
@@ -1590,7 +1662,17 @@
     {
       "id": "income",
       "label": "일 수입",
-      "expr": "tax + sold + deals_net + extract"
+      "expr": "tax + sold + deals_net + extract + guild_income - bandit_toll"
+    },
+    {
+      "id": "guild_income",
+      "label": "길드 수입",
+      "expr": "guild <= 0 ? 0 : guild * 2 + round(adv_n * 0.3)"
+    },
+    {
+      "id": "bandit_toll",
+      "label": "도적 통행세",
+      "expr": "round(max(0, deals_net) * bandits / 200)"
     },
     {
       "id": "route_txt",
@@ -1616,6 +1698,36 @@
       "id": "gold_txt",
       "label": "재정 사정",
       "expr": "net_gold < 0 and gold <= 0 ? \"빈 금고 — 급료가 밀린다\" : (net_gold < 0 ? \"축내는 중\" : (net_gold > 0 ? \"쌓이는 중\" : \"겨우 맞는다\"))"
+    },
+    {
+      "id": "drift_rate",
+      "label": "하루 유입",
+      "expr": "route == \"남 가도\" or fame < 5 or crowd >= 130 ? 0 : floor((floor(fame / 25) + (surplus > 4 ? 1 : 0) + (hardship >= 60 ? 1 : 0)) / (crowd >= 105 ? 2 : 1))"
+    },
+    {
+      "id": "gate_txt",
+      "label": "관문",
+      "expr": "(drifters > 0 ? drifters + \"명 대기\" : \"조용함\") + \" — 방침 \" + drift_policy"
+    },
+    {
+      "id": "adv_n",
+      "label": "모험가",
+      "expr": "guild <= 0 ? 0 : guild * 8 + round(threat / 8) + round(bandits / 10)"
+    },
+    {
+      "id": "guild_txt",
+      "label": "길드",
+      "expr": "guild <= 0 ? \"없음\" : (guild == 1 ? \"연락소\" : (guild == 2 ? \"지부\" : \"큰 지부\")) + \" · 모험가 \" + adv_n + \"명\""
+    },
+    {
+      "id": "bounty_cost",
+      "label": "현상금",
+      "expr": "40 + guild * 20"
+    },
+    {
+      "id": "bandit_txt",
+      "label": "도적",
+      "expr": "bandits >= 70 ? \"횡행 — 소굴이 있다\" : (bandits >= 40 ? \"출몰 — 길이 위험하다\" : (bandits >= 15 ? \"소문이 돈다\" : (\"잠잠함\")))"
     },
     {
       "id": "morale_txt",
@@ -1721,6 +1833,34 @@
         "list": "favors",
         "expire": "day",
         "keepOverdue": true
+      },
+      {
+        "set": "drifters",
+        "expr": "min(400, drifters + drift_rate * span)"
+      },
+      {
+        "set": "drift_adm",
+        "expr": "drift_policy == \"받아들임\" ? drifters : (drift_policy == \"가려 받음\" ? min(drifters, max(0, cap - pop)) : 0)"
+      },
+      {
+        "set": "drift_out",
+        "expr": "drift_policy == \"돌려보냄\" ? drifters - drift_adm : round((drifters - drift_adm) * min(1, 0.1 * span))"
+      },
+      {
+        "set": "pop",
+        "expr": "pop + drift_adm"
+      },
+      {
+        "set": "drifters",
+        "expr": "drifters - drift_adm - drift_out"
+      },
+      {
+        "set": "unrest",
+        "expr": "clamp(unrest + floor(drift_adm / 10), 0, 100)"
+      },
+      {
+        "set": "bandits",
+        "expr": "clamp(bandits + drift_out * (0.3 - guild * 0.07) + (hardship * 0.004 - 0.5 - (guard_men + army * 2) / 60) * span, 0, 100)"
       },
       {
         "set": "lack_food",
@@ -1876,6 +2016,14 @@
       },
       {
         "set": "lack_gold",
+        "expr": "0"
+      },
+      {
+        "set": "drift_adm",
+        "expr": "0"
+      },
+      {
+        "set": "drift_out",
         "expr": "0"
       }
     ],
@@ -2140,6 +2288,66 @@
           }
         ],
         "notify": "[공사가 끝났다] 공사 목록에서 기한이 찬 것이 내려갔다. 무엇이 완성되었는지 이번 장면에서 보여주고, 완성된 것을 인프라·경작지·식수원 중 맞는 자리에 옮겨 적어라 — 옮겨 적지 않으면 지은 것이 수치에 잡히지 않는다."
+      },
+      {
+        "id": "guild_offer",
+        "when": "guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat >= 25 and route == \"없음\"",
+        "effects": [
+          {
+            "set": "guild_ask",
+            "expr": "day + 60"
+          }
+        ],
+        "notify": "[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 몬스터 사냥으로 먹고산다 — 몬스터가 들끓는 이 땅은 그들에게 일터다. 연락소 하나 둘 자리와 영주의 허가를 청한다. 누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.",
+        "timeout": 3,
+        "choices": [
+          {
+            "label": "연락소를 허가한다",
+            "effects": [
+              {
+                "set": "guild",
+                "expr": "1"
+              },
+              {
+                "set": "guild_since",
+                "expr": "day"
+              },
+              {
+                "set": "fame",
+                "expr": "clamp(fame + 2, 0, 100)"
+              }
+            ],
+            "inject": "The Baron grants the Guild a house by the south gate. Adventurers will start drifting in — and the Baron can now post bounties there."
+          },
+          {
+            "label": "아직은 안 된다",
+            "inject": "The Baron turns the Guild down for now. The envoy leaves politely; the Guild will ask again in a season or two."
+          }
+        ]
+      },
+      {
+        "id": "guild_grow2",
+        "once": true,
+        "when": "guild == 1 and day - guild_since >= 60 and pop >= 150 and threat + bandits >= 30",
+        "effects": [
+          {
+            "set": "guild",
+            "expr": "2"
+          }
+        ],
+        "notify": "[연락소가 지부가 됐다] 길드 본부가 이곳을 지부로 올렸다. 게시판이 두 배가 되고, 제 무기를 고치러 대장간을 찾는 사람이 늘었다. 사냥감이 있는 한 모험가는 모인다."
+      },
+      {
+        "id": "guild_grow3",
+        "once": true,
+        "when": "guild == 2 and day - guild_since >= 180 and pop >= 280 and fame >= 45",
+        "effects": [
+          {
+            "set": "guild",
+            "expr": "3"
+          }
+        ],
+        "notify": "[큰 지부] 이름 있는 파티들이 이곳을 거점으로 삼기 시작했다. 다른 영지의 모험가가 여기 소문을 듣고 온다 — 돈과 말썽이 같이 온다."
       }
     ],
     "randomEvents": {
@@ -2183,7 +2391,7 @@
           "id": "road_bandit",
           "weight": 3,
           "cooldown": 30,
-          "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012))",
+          "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300 or bandits >= 35) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)",
           "effects": [
             {
               "set": "route",
@@ -2241,15 +2449,19 @@
           "when": "disaster == \"\" and route == \"없음\" and fame >= 2 + hardship * 0.16 and food > 200 and crowd < 125",
           "effects": [
             {
-              "set": "pop",
-              "expr": "pop + min(round(cap * 0.12) + rand(0, 8), 30)"
-            },
-            {
-              "set": "morale",
-              "expr": "clamp(morale - 3, 0, 100)"
+              "set": "drifters",
+              "expr": "min(400, drifters + min(round(cap * 0.12) + rand(0, 8), 30))"
             }
           ],
-          "notify": "[사람이 들어왔다] 남쪽 길로 한 무리가 걸어 들어왔다. 여기가 사람을 받는다는 말을 듣고 왔다고 한다. 재울 자리가 있는지는 그들이 알 바 아니다."
+          "notify": "[관문 앞에 무리가 섰다] 남쪽 가도로 한 무리가 걸어 와 관문 앞에 멈췄다. 여기가 사람을 받는다는 말을 듣고 왔다고 한다 — 전쟁에 집을 잃은 식구, 제대한 병사, 일거리를 잃은 칼잡이가 섞여 있다. 재울 자리가 있는지는 그들이 알 바 아니다. 들일지는 관문 방침이 정한다."
+        },
+        {
+          "id": "merc_band",
+          "weight": 2,
+          "cooldown": 40,
+          "when": "disaster == \"\" and route == \"없음\" and drifters >= 20 and guild == 0",
+          "effects": [],
+          "notify": "[칼잡이 한 패] 관문 앞 무리 속에 무장한 한 패가 있다 — 전쟁이 끝나 일거리를 잃은 용병단이다. 병사로 사겠다면 지금이고, 돌려보내면 그 칼은 길 위로 간다. 몇 명이고 누가 이끄는지는 이번 장면에서 정하라."
         },
         {
           "id": "peddler",
@@ -2876,6 +3088,86 @@
             }
           ],
           "notify": "[감사가 닿았다] 지난날 거둬 준 사람이 자리 잡은 곳에서 소식을 보내왔다. 별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다."
+        },
+        {
+          "id": "bandit_raid",
+          "weight": 3,
+          "cooldown": 25,
+          "when": "disaster == \"\" and route == \"없음\" and bandits >= 50 - hardship * 0.2 and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)",
+          "effects": [
+            {
+              "set": "food",
+              "expr": "max(0, food - 40 - rand(0, 40))"
+            },
+            {
+              "set": "gold",
+              "expr": "max(0, gold - 30 - rand(0, 30))"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 6, 0, 100)"
+            },
+            {
+              "set": "bandits",
+              "expr": "min(100, bandits + 3)"
+            }
+          ],
+          "notify": "[도적이 변두리를 쳤다] 밤사이 외곽 곳간과 짐수레가 털렸다. 몬스터 짓이 아니다 — 발자국이 신발을 신었다. 누구 무리인지, 어디로 갔는지는 이번 장면에서 정하라. 한 번 재미를 본 자들은 또 온다."
+        },
+        {
+          "id": "bandit_lair",
+          "weight": 2,
+          "cooldown": 90,
+          "when": "disaster == \"\" and route == \"없음\" and bandits >= 70",
+          "effects": [
+            {
+              "set": "bandits",
+              "expr": "min(100, bandits + 5)"
+            }
+          ],
+          "notify": "[소굴이 생겼다] 흩어져 있던 무리가 한 사람 밑으로 모였다. 두목의 이름과 소굴 자리를 이번 장면에서 정하라 — 전쟁 때 같은 깃발 아래 있던 얼굴일 수도 있다. 그대로 두면 길목마다 통행세를 걷기 시작한다."
+        },
+        {
+          "id": "guild_brawl",
+          "weight": 2,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and guild >= 1",
+          "effects": [
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest + 4, 0, 100)"
+            },
+            {
+              "set": "gold",
+              "expr": "max(0, gold - 10 - rand(0, 20))"
+            }
+          ],
+          "notify": "[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라."
+        },
+        {
+          "id": "adv_rumor",
+          "weight": 2,
+          "cooldown": 30,
+          "when": "disaster == \"\" and route == \"없음\" and guild >= 1 and explore_dir != \"없음\"",
+          "effects": [
+            {
+              "set": "exp_n",
+              "expr": "exp_n < 100 and explore_dir == \"북 산맥\" ? min(100, exp_n + 15) : exp_n"
+            },
+            {
+              "set": "exp_w",
+              "expr": "exp_w < 100 and explore_dir == \"서 숲\" ? min(100, exp_w + 15) : exp_w"
+            },
+            {
+              "set": "exp_s",
+              "expr": "exp_s < 100 and explore_dir == \"남 평원\" ? min(100, exp_s + 15) : exp_s"
+            },
+            {
+              "set": "exp_e",
+              "expr": "exp_e < 100 and explore_dir == \"동 강가\" ? min(100, exp_e + 15) : exp_e"
+            }
+          ],
+          "notify": "[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, 피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라."
         }
       ]
     }
@@ -2974,7 +3266,22 @@
     {
       "id": "housing_full",
       "when": "pop >= cap",
-      "text": "[HOUSING] Every roof is taken — {pop} people to {cap} places. Nobody new stays, whatever draws them here. The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out."
+      "text": "[HOUSING] Every roof is taken — {pop} people to {cap} places. Anyone let in through the gate now sleeps on someone else's floor. The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out."
+    },
+    {
+      "id": "gate_waiting",
+      "when": "drifters >= 15",
+      "text": "[AT THE GATE] {drifters} drifters are camped outside the south gate — families who lost their homes in the war, discharged soldiers, sellswords with no war left to sell to. The gate order stands at \"{drift_policy}\"; the system lets people in or sends them on each day by that order, so never settle them yourself. They belong in any scene at the gate or on the south road — hunger, bargaining, someone asking for the Baron by name."
+    },
+    {
+      "id": "bandits_out",
+      "when": "bandits >= 40",
+      "text": "[BANDITS] Bandits on the roads: {bandit_txt}. Most of them are people who had nowhere to go after the war. Caravans hire guards or stay away; travellers arrive robbed or not at all. Whose band it is and who leads it is yours to decide — keep it consistent once named."
+    },
+    {
+      "id": "guild_here",
+      "when": "guild >= 1",
+      "text": "[ADVENTURERS] The Adventurers' Guild keeps a {guild_txt} here — ex-mercenaries turned monster hunters who drink, brag, pick fights and spend money in town. They clear land only for posted bounties; a bounty is posted only on the Baron's order, so they do not sweep the country on their own."
     },
     {
       "id": "unknown_land",
@@ -3200,6 +3507,104 @@
           "inject": "The push goes badly — lost trails, a scare, someone hurt. They came back with little."
         }
       ]
+    },
+    {
+      "id": "chk_bounty_beast",
+      "label": "몬스터 현상금 판정",
+      "roll": "rand(1, 20)",
+      "mod": "guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))",
+      "vs": "10 + round(threat / 12)",
+      "grades": [
+        {
+          "when": "total >= vs + 5",
+          "label": "대성공",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat - 14, 0, 100)"
+            },
+            {
+              "set": "rel_n",
+              "expr": "clamp(rel_n + 3, 0, 100)"
+            },
+            {
+              "set": "fame",
+              "expr": "clamp(fame + 1, 0, 100)"
+            }
+          ],
+          "inject": "The adventurers bring back proof of a whole nest cleared — heads, hides, a map mark. The report travels north."
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat - 9, 0, 100)"
+            },
+            {
+              "set": "rel_n",
+              "expr": "clamp(rel_n + 2, 0, 100)"
+            }
+          ],
+          "inject": "The bounty is claimed — a pack thinned out near the holding."
+        },
+        {
+          "label": "실패",
+          "effects": [
+            {
+              "set": "threat",
+              "expr": "clamp(threat - 3, 0, 100)"
+            }
+          ],
+          "inject": "The adventurers come back with little and a wounded man — the money is mostly gone."
+        }
+      ]
+    },
+    {
+      "id": "chk_bounty_bandit",
+      "label": "도적 현상금 판정",
+      "roll": "rand(1, 20)",
+      "mod": "guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))",
+      "vs": "10 + round(bandits / 12)",
+      "grades": [
+        {
+          "when": "total >= vs + 5",
+          "label": "대성공",
+          "effects": [
+            {
+              "set": "bandits",
+              "expr": "max(0, bandits - 25)"
+            },
+            {
+              "set": "unrest",
+              "expr": "clamp(unrest - 3, 0, 100)"
+            }
+          ],
+          "inject": "The band is broken — its leader brought back in chains or not at all. The roads are quiet for a while."
+        },
+        {
+          "when": "total >= vs",
+          "label": "성공",
+          "effects": [
+            {
+              "set": "bandits",
+              "expr": "max(0, bandits - 15)"
+            }
+          ],
+          "inject": "A bandit camp is burned out; the rest scatter."
+        },
+        {
+          "label": "실패",
+          "effects": [
+            {
+              "set": "bandits",
+              "expr": "max(0, bandits - 4)"
+            }
+          ],
+          "inject": "The bandits knew the ground better. A skirmish, a few caught, the band itself untouched."
+        }
+      ]
     }
   ],
   "actions": [
@@ -3277,6 +3682,36 @@
         }
       ],
       "inject": "The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food."
+    },
+    {
+      "id": "act_bounty_beast",
+      "label": "🗡️ 몬스터 현상금",
+      "mode": "oneshot",
+      "cooldown": 7,
+      "when": "threat >= 10 and gold >= bounty_cost",
+      "check": "chk_bounty_beast",
+      "effects": [
+        {
+          "set": "gold",
+          "expr": "max(0, gold - bounty_cost)"
+        }
+      ],
+      "inject": "The Baron posts a monster bounty — at the Adventurers' Guild if there is one, otherwise on the board by the south gate where drifting sellswords read it — and pays it out of the treasury."
+    },
+    {
+      "id": "act_bounty_bandit",
+      "label": "🪓 도적 현상금",
+      "mode": "oneshot",
+      "cooldown": 7,
+      "when": "bandits >= 10 and gold >= bounty_cost",
+      "check": "chk_bounty_bandit",
+      "effects": [
+        {
+          "set": "gold",
+          "expr": "max(0, gold - bounty_cost)"
+        }
+      ],
+      "inject": "The Baron posts a bounty on the road bandits — at the Adventurers' Guild if there is one, otherwise on the board by the south gate — and pays it out of the treasury."
     }
   ],
   "updater": {
@@ -3572,12 +4007,25 @@
       {
         "id": "fame",
         "maxDelta": 10
+      },
+      {
+        "id": "drift_policy"
+      },
+      {
+        "id": "drifters",
+        "maxGain": 0,
+        "maxLoss": 200
+      },
+      {
+        "id": "bandits",
+        "maxGain": 0,
+        "maxLoss": 30
       }
     ],
-    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). Leave it at 0 while the scene stays within the same day — nothing is consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here EXCEPT anyone the corps list above already shows — a starting companion who came with the Baron (no request, no fee; she is simply here). Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPROJECTS: when construction actually begins in the narration, add one line to projects as \"무엇 @+days\" — set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. A project merely proposed or funded registers nothing.\nFAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each (\"모르웬에게 곡물 200 상환 @+30\"), the deadline as @+days when one exists. Register only what is actually concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you remove it — an overdue debt is something the narration should press on or break.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. A dispatch is STANDING: the scouts stay out working that ground day after day until recalled — the Baron himself coming home does not recall them. But if the scene clearly ends with EVERYONE back and nobody left working the ground, that IS a recall — set \"없음\". The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific (a spring, a ruin, a beast trail), record it as \"이름 0\" in sites (known, not worked) or a location note in stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a [탐사] notice makes it real.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
+    "guide": "Adjust figures only by what actually happened in the narration. Daily consumption, harvest and population change are already settled by the system — never touch them. You change only what the story created as an exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\nTIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). Leave it at 0 while the scene stays within the same day — nothing is consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a scheduled appointment; pass through it as a scene.\nWEATHER: pick only what fits the season (no heat wave in winter).\nDISASTER: fill disaster only when a new one begins, and put its duration in disaster_days — the system clears it.\nROADS: route is whichever road is shut. Set it back to \"없음\" the moment the narration clears it — bandits driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the point. Never shut a road yourself; only a system notice does that.\nTHE GATE: drift_policy is the Baron's standing order at the south gate — change it only when the narration shows him giving that order. The system brings drifters in or sends them on every day by that order; never add them to pop yourself. Lower drifters only when a specific group is taken off the road in the narration — hired as soldiers (raise army by the same number), sent on with bread. Lower bandits only when the narration actually breaks a band. Never touch guild — the Guild comes and grows on its own, and bounties go through the Baron's buttons.\nAPPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in (tomorrow = 1). The system counts it down and deletes it once past.\nIMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 and ending with the amount per day. The system pays for it automatically, so never also write the cost as a contract — that charges twice. A delivery that happens once moves food or gold directly and goes in no list. While a road is shut the deliveries stop on their own; do not remove the lines for it.\nSTANDING INCOME: register a standing item ONLY when BOTH are true — the narration or the user names an explicit recurring amount (\"12 gold a day\", \"for sixty days\"), AND the arrangement is actually concluded in this turn. An offer, a proposal, or terms still being haggled over is NOT a contract even when it names a number: \"the merchant offered twelve a day\" registers nothing; \"the baron set his seal to it\" does. Never infer one from vague talk. A wrong entry compounds every single day afterwards. When it does qualify, add one line to contracts as \"name +perDay\" — the number MUST come last with no unit after it (\"+12\", never \"+12G\"). For a fixed term add \"@+days\" (a year is 360 days); the system dates it and drops it when due. Touch gold directly only for money that changed hands once (a sale, a raid, a grant). Never add a deal already listed — check the current contents shown above.\nHIRING: fifteen women can be brought here — twelve maids of the Corps and three sisters. All of them start at the Academy and the Cathedral; none of them is here EXCEPT anyone the corps list above already shows — a starting companion who came with the Baron (no request, no fee; she is simply here). Bishop Beatrix is NOT one of them and can never be hired at any price; she visits and she judges. One joins corps ONLY when the narration shows the request sent, the fee paid and the arrival made; a request in progress puts nothing in the list. On arrival do three things together: add \"Name wage\" to corps taking the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. If one leaves, remove her line — the wage stops with her.\nPROJECTS: when construction actually begins in the narration, add one line to projects as \"무엇 @+days\" — set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). The system announces completion; when it does, write the finished thing into infra, farms or wells and describe it. A project merely proposed or funded registers nothing.\nFAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each (\"모르웬에게 곡물 200 상환 @+30\"), the deadline as @+days when one exists. Register only what is actually concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you remove it — an overdue debt is something the narration should press on or break.\nPEOPLE: in staff write only \"Name · role\" — never appearance or personality, and spell names exactly as the narration spells them (to remove someone the string must match character for character). contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. Before adding, read the current contents: one party gets one entry, never a second spelling of it.\nSUCCESSION: the three claimants rise and fall on their own — never touch pw_*. stance is whom the Baron backs, and it changes only when he actually commits: a letter sent, levies promised, a word given before witnesses. Wondering aloud is not backing, and neither is being asked. exposed moves by itself too; touch it only when the narration deliberately announces the allegiance or deliberately buries it.\nREGARD: b_* is how one named person feels about the Baron personally — 0 means nothing has passed between them yet, and it goes negative when they are on bad terms. Move one ONLY when that person actually appeared in this turn and something passed between them; a single polite remark is not worth 20. Meeting someone for the first time is a small number, not a large one. This is separate from rel_*: a countess can respect what Veridia is becoming while disliking its lord, and the reverse.\nNEIGHBOURS: rel_* is how much each neighbouring domain knows and thinks of Veridia, 0 meaning they have never heard of it. Move it only when contact actually reached them — an envoy arrived, a caravan stopped, word carried back. Setting out is not arriving: the travel days shown beside each name are the delay, both ways. One domain hearing something does not inform the others.\nSCOUTS: set explore_dir when the narration sends the scouts somewhere, \"없음\" when they are pulled back. A dispatch is STANDING: the scouts stay out working that ground day after day until recalled — the Baron himself coming home does not recall them. But if the scene clearly ends with EVERYONE back and nobody left working the ground, that IS a recall — set \"없음\". The system tracks how much ground is covered and announces WHEN something is found and of what kind — it never decides what the thing is. Add nothing from exploration unless a [탐사] notice appeared this turn, with ONE exception — a LEAD: when the Baron himself in the narration lays eyes on something real and specific (a spring, a ruin, a beast trail), record it as \"이름 0\" in sites (known, not worked) or a location note in stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a [탐사] notice makes it real.\nDISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a place you own: put it in stock as a location note (\"고블린 둥지 위치도\") and raise threat. Nothing else moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — do not invent a name to fill the slot.\nBUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. sites = places that yield goods to SELL (mines, quarries, salt, clay), number last = gold per day, and 0 while it is merely known about rather than worked. infra = everything else that keeps the place running (water works, baths, chapel, forge, walls, roads, storage), name only with no number. stock = goods in store, not places. A farm or a site written without a trailing number counts as zero and the work vanishes — always write the number. Add an entry only when the narration says the thing exists or is finished, never when it is merely planned."
   },
   "promptState": {
-    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n공사 중 {projects} | 빚·약속 {favors}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
+    "template": "[베리디아 남작령 — {date} {time} · {season} {weather} · {location} · 경과일 {day}]\n다음 축일 {fest_when} {fest} (D-{fest_in}) | 예정 {appt_txt}\n국면 {phase} | 주민 {pop} (가용 노동력 {able}, 배분 {labor_policy} → 경작 {farm_men}·건설 {build_men}·경비 {guard_men}·탐사 {scout_men})\n직무 배치 {duty_line}\n식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n지속 수입 {contracts} | 길 {route_txt}\n공사 중 {projects} | 빚·약속 {favors}\n수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n계승 {court_txt}\n이웃 {neighbors}\n동행 {ally}({ally_role}, 유대 {bond_txt})\n군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n아는 사람 {contacts}\n주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n인프라 {infra} | 물자 {stock}\n목표 {focus}{disaster}{alert}",
     "includeEvents": true
   },
   "statusUI": {
@@ -3586,7 +4034,7 @@
     "templates": [
       {
         "id": "estate",
-        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style><input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
+        "template": "<style>@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Noto+Serif+KR:wght@400;700&display=swap');\n\n/* ===== 안전장치: 마크다운이 끼워넣는 유령 <br> 무력화 ===== */\n.status-modal-window br, .status-grid br { display: none; }\n.status-modal-window, .status-modal-window * { box-sizing: border-box; }\n\n.status-checkbox { display: none; }\n\n/* 호출 버튼 */\n.status-open-label {\n    display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; padding: 6px 18px;\n    background: #4a2c2a; background-image: url('https://www.transparenttextures.com/patterns/leather.png');\n    border: 2px solid #bda27e; border-radius: 8px; color: #f0e5d1;\n    font-family: 'Noto Serif KR', serif; font-size: 14px; font-weight: bold; cursor: pointer;\n    transition: all 0.3s; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);\n}\n.status-open-label:hover { transform: scale(1.05); background-color: #5d3a37; }\n.status-open-label::before { content: '📜'; }\n\n/* 오버레이 (display 토글 금지 — opacity/visibility만) */\n.status-full-overlay {\n    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;\n    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(5px); z-index: 9999;\n    display: flex; align-items: center; justify-content: center;\n    opacity: 0; visibility: hidden; pointer-events: none; transition: all 0.4s ease;\n}\n.status-checkbox:checked ~ .status-full-overlay { opacity: 1; visibility: visible; pointer-events: auto; }\n.status-checkbox:checked ~ .status-full-overlay .status-modal-window { transform: scale(1); }\n\n/* 스테이터스 창 */\n.status-modal-window {\n    width: 95%; max-width: 520px; max-height: 90vh;\n    background-color: #f0e5d1; background-image: url('https://www.toptal.com/designers/subtlepatterns/uploads/old_paper.png');\n    border: 8px solid #4a2c2a; border-image: url('https://www.transparenttextures.com/patterns/leather.png') 30 stretch;\n    border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.8);\n    padding: 30px; position: relative; overflow-y: auto;\n    transform: scale(0.85); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);\n    font-family: 'Noto Serif KR', serif; color: #3D352A;\n}\n\n.status-header { text-align: center; border-bottom: 2px double #bda27e; margin-bottom: 20px; padding-bottom: 10px; }\n.status-header h1 { font-family: 'MedievalSharp', cursive; margin: 0; color: #4a2c2a; font-size: 1.8em; }\n\n.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; font-size: 0.92em; }\n\n.status-section-title {\n    grid-column: span 2; background: rgba(74, 44, 42, 0.15); padding: 5px; margin-top: 12px;\n    text-align: center; font-family: 'MedievalSharp', cursive; font-weight: bold;\n    border-top: 1px solid #bda27e; border-bottom: 1px solid #bda27e; color: #4a2c2a;\n}\n\n.status-entry { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #d3c4a8; padding: 2px 0; }\n.status-entry .val { font-weight: bold; color: #a12a2a; text-align: right; word-break: keep-all; }\n.status-span2 { grid-column: span 2; }\n\n.status-close-label { position: absolute; top: 10px; right: 15px; font-size: 30px; line-height: 1; cursor: pointer; color: #4a2c2a; z-index: 2; }\n\n.urgent-box { grid-column: span 2; margin-top: 15px; padding: 12px; background: #f5e3e3; border-left: 5px solid #a12a2a; font-size: 0.88em; }\n.urgent-box strong { color: #a12a2a; display: block; margin-bottom: 5px; }\n.urgent-box ul { list-style: disc; padding-left: 15px; margin: 0; }</style>{choices}<input type=\"checkbox\" id=\"sim_status_toggle\" class=\"status-checkbox\"><label for=\"sim_status_toggle\" class=\"status-open-label\">영지 보고서 확인</label><div class=\"status-full-overlay\"><div class=\"status-modal-window\"><label for=\"sim_status_toggle\" class=\"status-close-label\">×</label><div class=\"status-header\"><h1>Veridia Ledger</h1><small>베리디아 남작령 종합 행정 보고서</small></div><div class=\"status-grid\"><div class=\"status-section-title\">연대기 및 환경</div><div class=\"status-entry\"><span>연도:</span> <span class=\"val\">{date}</span></div><div class=\"status-entry\"><span>시각:</span> <span class=\"val\">{time}</span></div><div class=\"status-entry\"><span>계절:</span> <span class=\"val\">{season}</span></div><div class=\"status-entry\"><span>날씨:</span> <span class=\"val\">{weather}</span></div><div class=\"status-entry\"><span>위치:</span> <span class=\"val\">{location}</span></div><div class=\"status-entry\"><span>재해:</span> <span class=\"val\">{disaster}</span></div><div class=\"status-entry status-span2\"><span>난이도:</span> <span class=\"val\">{diff_txt}</span></div><div class=\"status-section-title\">🧭 답사</div><div class=\"status-entry status-span2\"><span>척후:</span> <span class=\"val\">{explore_dir} ({scouting}) — 영토 파악 {survey}, 지도는 🗺️</span></div><div class=\"status-section-title\">달력</div><div class=\"status-entry\"><span>다음 축일:</span> <span class=\"val\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"status-entry\"><span>예정:</span> <span class=\"val\">{appt_txt}</span></div><div class=\"status-section-title\">인구 및 노동</div><div class=\"status-entry\"><span>주민:</span> <span class=\"val\">{pop} / 수용 {cap}</span></div><div class=\"status-entry\"><span>거처:</span> <span class=\"val\">{crowd_txt} ({crowd}%)</span></div><div class=\"status-entry\"><span>국면:</span> <span class=\"val\">{phase}</span></div><div class=\"status-entry\"><span>가용 노동력:</span> <span class=\"val\">{able}</span></div><div class=\"status-entry\"><span>배분:</span> <span class=\"val\">{labor_policy}</span></div><div class=\"status-entry status-span2\"><span>경작/건설/경비/탐사:</span> <span class=\"val\">{farm_men} · {build_men} · {guard_men} · {scout_men}</span></div><div class=\"status-section-title\">재정 및 경제 지표</div><div class=\"status-entry\"><span>명성:</span> <span class=\"val\">{fame_txt}</span></div><div class=\"status-entry\"><span>재정:</span> <span class=\"val\">{gold} ({gold_txt})</span></div><div class=\"status-entry\"><span>일 수입:</span> <span class=\"val\">{income} / 지출 {upkeep} (봉급 {payroll})</span></div><div class=\"status-entry\"><span>재정 수지:</span> <span class=\"val\">{net_gold}/일</span></div><div class=\"status-entry status-span2\"><span>통행:</span> <span class=\"val\">{route_txt}</span></div><div class=\"status-entry status-span2\"><span>정기 유입:</span> <span class=\"val\">식량 +{sup_food} · 식수 +{sup_water} · 계약 +{deals}/일 — 명세는 📖</span></div><div class=\"status-entry\"><span>식량:</span> <span class=\"val\">{food} ({food_txt} · 배급 {rations})</span></div><div class=\"status-entry\"><span>식수:</span> <span class=\"val\">{water} ({water_txt})</span></div><div class=\"status-entry\"><span>일 수확:</span> <span class=\"val\">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div><div class=\"status-entry\"><span>식량 수지:</span> <span class=\"val\">{surplus}/일</span></div><div class=\"status-entry status-span2\"><span>기반:</span> <span class=\"val\">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div><div class=\"status-section-title\">민생 및 보안</div><div class=\"status-entry\"><span>사기:</span> <span class=\"val\">{morale_txt}</span></div><div class=\"status-entry\"><span>보건:</span> <span class=\"val\">{health_txt}</span></div><div class=\"status-entry\"><span>노동력:</span> <span class=\"val\">{labor_txt}</span></div><div class=\"status-entry\"><span>군사:</span> <span class=\"val\">{army_txt}</span></div><div class=\"status-entry\"><span>외부보안:</span> <span class=\"val\">{sec_out_txt}</span></div><div class=\"status-entry\"><span>내부보안:</span> <span class=\"val\">{sec_in_txt}</span></div><div class=\"status-section-title\">🚪 관문과 길</div><div class=\"status-entry status-span2\"><span>관문:</span> <span class=\"val\">{gate_txt}</span></div><div class=\"status-entry\"><span>도적:</span> <span class=\"val\">{bandit_txt}</span></div><div class=\"status-entry\"><span>모험가 길드:</span> <span class=\"val\">{guild_txt}</span></div><div class=\"status-section-title\">👯 곁에 있는 사람</div><div class=\"status-entry\"><span>동행:</span> <span class=\"val\">{ally} ({ally_role})</span></div><div class=\"status-entry\"><span>유대:</span> <span class=\"val\">{bond_txt}</span></div><div class=\"status-entry status-span2\"><span>사람들:</span> <span class=\"val\">아는 얼굴 {bond_known} · 군단 봉급 {payroll}/일 — 명부는 📋</span></div><div class=\"status-section-title\">현재 집중 목표</div><div class=\"status-span2\" style=\"text-align:center; padding:8px; font-weight:bold;\">{focus}</div><div class=\"status-span2\" style=\"padding:0 8px; font-size:.92em;\">{lastcheck}</div><div class=\"urgent-box\"><strong>⚠️ 긴급 통지</strong>{alert}</div><div class=\"status-span2\" style=\"text-align:center; padding:4px; opacity:.8; font-size:.9em;\">자세한 장부는 채팅 우상단 버튼 — 📖 영지 대장 · 📋 인물 명부 · 🗺️ 탐사 지도</div><div class=\"status-span2\">{commands}</div></div></div></div>"
       }
     ]
   },
@@ -3937,6 +4385,7 @@
           "fame": 26,
           "hardship": 10,
           "hire_mult": 60,
+          "bandits": 0,
           "corps": [
             "메릴 8",
             "스텔라 4"
@@ -3983,6 +4432,7 @@
           "fame": 0,
           "hardship": 45,
           "hire_mult": 100,
+          "bandits": 12,
           "corps": [
             "메릴 8"
           ],
@@ -4024,6 +4474,7 @@
           "fame": 0,
           "hardship": 100,
           "hire_mult": 180,
+          "bandits": 30,
           "corps": [
             "메릴 8"
           ],
@@ -4047,7 +4498,7 @@
       {
         "id": "estate",
         "label": "영지",
-        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">공사 중 — 완공일이 오면 시스템이 알린다</div>{projects:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
+        "template": "<div class=\"vled-h\">영지 대장<small>{date} · {season}</small></div><div class=\"vled-sec\">재정 — {gold} ({gold_txt})</div><div class=\"vled-row\"><span>일 수입 / 지출</span><span class=\"v\">{income} / {upkeep} (봉급 {payroll}) → {net_gold}/일</span></div><div class=\"vled-sec\">지속 수입 — +{deals}/일</div>{contracts:tags}<div class=\"vled-sec\">정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)</div>{supply:tags}<div class=\"vled-row\"><span>통행</span><span class=\"v\">{route_txt}</span></div><div class=\"vled-sec\">관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓</div><div class=\"vled-row\"><span>관문</span><span class=\"v\">{gate_txt} · 하루 {drift_rate}명 옴</span></div><div class=\"vled-row\"><span>도적</span><span class=\"v\">{bandit_txt} · 통행세 {bandit_toll}/일</span></div><div class=\"vled-row\"><span>모험가 길드</span><span class=\"v\">{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}</span></div><div class=\"vled-sec\">보유 물자</div>{stock:tags}<div class=\"vled-sec\">주거 — 수용 {cap} ({crowd_txt} {crowd}%)</div>{houses:tags}<div class=\"vled-sec\">경작지 — {farm_txt} · 일 수확 {harvest}</div>{farms:tags}<div class=\"vled-sec\">자원지 — 산출 {extract}/일</div>{sites:tags}<div class=\"vled-sec\">인프라 — 식수원 {wells}</div>{infra:tags}<div class=\"vled-sec\">공사 중 — 완공일이 오면 시스템이 알린다</div>{projects:tags}<div class=\"vled-sec\">달력</div><div class=\"vled-row\"><span>다음 축일</span><span class=\"v\">{fest} ({fest_when}, D-{fest_in})</span></div><div class=\"vled-p\">{fest_desc}</div>"
       },
       {
         "id": "duty",

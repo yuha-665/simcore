@@ -496,6 +496,38 @@ const S = {
     { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100,
       desc: 'Standing among the folk of Veridia itself. What other domains think is rel_* — do not move both for the same event.' },
 
+    // ── 흘러드는 사람들 · 모험가 길드 (2026-09-27, 설계 §14 — 생존 이후 콘텐츠 1차) ──
+    // 전쟁이 끝나고 풀려난 사람들(난민·퇴역병·일거리 잃은 용병)은 한 흐름이다 [유저 소재]. 명성이 끌어당기고,
+    // 들어오는 길은 남쪽 가도 하나뿐이라 [원본 영지 구역] 남쪽 관문 앞에 모인다. 무엇이 될지는 영주의 관문 방침이 정한다 [초안]:
+    // 들이면 주민·일손(대신 거처·식량·불안), 돌려보내면 갈 곳 없는 이의 일부가 길 위의 도적이 된다.
+    { id: 'drift_policy', label: '관문 방침', type: 'enum', cmd: '관문', init: '가려 받음',
+      enum: ['받아들임', '가려 받음', '돌려보냄'],
+      desc: "The Baron's standing order at the south gate for drifters (war refugees, discharged soldiers, masterless mercenaries). "
+        + '받아들임 = let everyone in / 가려 받음 = only as many as there are beds, the rest wait or drift off / 돌려보냄 = nobody. '
+        + 'Change it ONLY when the narration shows him giving that order. The system admits and turns people away every day.' },
+    { id: 'drifters', label: '관문 앞 유랑민', type: 'int', init: 0, min: 0, max: 400, format: '{v}명',
+      desc: 'People camped outside the south gate waiting to be let in. The system adds arrivals and admits or turns them away by '
+        + 'the gate order — never move them into pop yourself. Lower it only when the narration sends a specific group elsewhere '
+        + '(hired as soldiers → also raise army; sent on with bread → just lower).' },
+    // 소수로 둔다 — 하루 증감이 1 미만(떠난 이 3명 × 0.3 − 경비 0.75)이라 정수면 반올림이 증가분을 매 턴 먹는다
+    // 시작 15 = "소문이 돈다" — 전쟁 직후 길 위가 비어 있을 리 없다 (희망적 프리셋만 0). 경비가 있으면 곧 잦아든다.
+    { id: 'bandits', label: '도적 세력', type: 'float', init: 15, min: 0, max: 100,
+      desc: 'How strong the bandit bands on the roads around Veridia are (0 = none). The system moves it: people turned away with '
+        + 'nowhere to go feed it, the guard and the army wear it down. Lower it only when the narration actually breaks a band — '
+        + 'a fight won, a camp burned. Never raise it.' },
+    // 모험가 길드 — 전쟁 용병이 몬스터 사냥으로 돌아서는 시기 [유저 소재]. 0 없음 / 1 연락소 / 2 지부 / 3 큰 지부. 시스템만 움직인다.
+    { id: 'guild', label: '모험가 길드', type: 'int', init: 0, min: 0, max: 3 },
+    { id: 'guild_since', label: '(내부) 길드 연 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 연락소를 허가한 날의 경과일 — 지부 승격이 이걸로 잰다.' },
+    // 조건 이벤트엔 쿨다운이 없다 — 거절하면 이 날짜까지 다시 안 온다 (래치). 첫 달은 조용히.
+    { id: 'guild_ask', label: '(내부) 길드가 다시 올 날', type: 'int', init: 30, min: 0,
+      desc: '시스템 전용. 길드 사람이 다시 찾아올 수 있는 가장 이른 경과일.' },
+    // 이번 정산에 들인·떠난 유랑민 — 정산 안에서만 뜻이 있어 끝에 0 (lack_*와 같은 임시 변수)
+    { id: 'drift_adm', label: '(내부) 이번 정산에 들인 유랑민', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용.' },
+    { id: 'drift_out', label: '(내부) 이번 정산에 떠난 유랑민', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용.' },
+
     // ── 바깥 ──
     // 이 봇의 진짜 진행도다. 폐허를 일으키는 것보다 "아무도 모르는 땅"에서 벗어나는 쪽이 어렵다.
     // 다섯을 따로 두는 이유: 부두를 지으면 강 아래 리아나가 먼저 알고, 세납을 못 내면 왕도만 떨어진다.
@@ -795,7 +827,10 @@ const S = {
     // 길이 막히면 짐이 안 움직인다. 계약서가 살아 있어도 들어오는 건 절반 아래다 —
     // 계약을 지우지 않는 게 중요하다. 길이 뚫리면 그대로 되살아나야 하니까.
     { id: 'deals_net', label: '실수령 계약', expr: 'route == "없음" ? deals : round(deals * 0.4)' },
-    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract' },
+    // ④ 길드 (§14) — 모험가가 쓰고 가는 돈(여관·술집·수리) / 도적 통행세 — 계약 짐수레가 뜯기는 몫 (도적 100이면 절반)
+    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract + guild_income - bandit_toll' },
+    { id: 'guild_income', label: '길드 수입', expr: 'guild <= 0 ? 0 : guild * 2 + round(adv_n * 0.3)' },
+    { id: 'bandit_toll', label: '도적 통행세', expr: 'round(max(0, deals_net) * bandits / 200)' },
     { id: 'route_txt', label: '길',
       expr: 'route == "없음" ? "모두 열림" : route + " 막힘 (" + route_days + "일)"' },
     // 군대는 공짜가 아니다. 식량만 먹던 army에 급료가 붙는다.
@@ -806,6 +841,24 @@ const S = {
     { id: 'gold_txt', label: '재정 사정',
       expr: 'net_gold < 0 and gold <= 0 ? "빈 금고 — 급료가 밀린다"'
         + ' : (net_gold < 0 ? "축내는 중" : (net_gold > 0 ? "쌓이는 중" : "겨우 맞는다"))' },
+
+    // ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+    // 하루 유입 — "여기 가면 살 수 있다"(명성)가 끌어당기고 잉여가 소문을 키운다. 리얼리티는 갈 곳 없는 이가 더 많다.
+    //   남쪽 가도가 막히면 아무도 못 온다(유일한 입구). 명성 25마다 +1 → 중반(명성 50·잉여) 하루 3명 = 한 달 90명.
+    //   과밀이면 발길이 준다 — 거처 단계(crowd_txt) 그대로: 포화(105%↑) 절반, 터져 나감(130%↑) 끊김.
+    //   ⚠ 이게 없으면 받아들임이 한 해 만에 수용 120에 주민 1080이 됐다 (수확이 일손에 비례해 먹을 게 모자라지 않으므로).
+    { id: 'drift_rate', label: '하루 유입',
+      expr: 'route == "남 가도" or fame < 5 or crowd >= 130 ? 0'
+        + ' : floor((floor(fame / 25) + (surplus > 4 ? 1 : 0) + (hardship >= 60 ? 1 : 0)) / (crowd >= 105 ? 2 : 1))' },
+    { id: 'gate_txt', label: '관문',
+      expr: '(drifters > 0 ? drifters + "명 대기" : "조용함") + " — 방침 " + drift_policy' },
+    // 모험가 수 — 길드 규모 + 사냥감(몬스터 위협·도적 현상금)이 사람을 부른다
+    { id: 'adv_n', label: '모험가', expr: 'guild <= 0 ? 0 : guild * 8 + round(threat / 8) + round(bandits / 10)' },
+    { id: 'guild_txt', label: '길드',
+      expr: 'guild <= 0 ? "없음" : (guild == 1 ? "연락소" : (guild == 2 ? "지부" : "큰 지부")) + " · 모험가 " + adv_n + "명"' },
+    { id: 'bounty_cost', label: '현상금', expr: '40 + guild * 20' },
+    { id: 'bandit_txt', label: '도적',
+      expr: scale('bandits', [[70, '횡행 — 소굴이 있다'], [40, '출몰 — 길이 위험하다'], [15, '소문이 돈다'], [0, '잠잠함']]) },
 
     // ── 표시용 척도: 지금 쓰던 말투 그대로 ──
     { id: 'morale_txt', label: '사기',
@@ -861,6 +914,20 @@ const S = {
       // 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않아 상태창·프롬프트에 "(30일)"이 영영 멈춰 있었다.
       // 이제 같은 시계로 굳고 줄어들며, 지나면 "(지남)"으로 남아 서사가 독촉·파기를 쓸 거리가 된다.
       { list: 'favors', expire: 'day', keepOverdue: true },
+      // ── 흘러드는 사람들 (§14) ── 도착 → 관문 방침대로 들이기·떠나보내기 → 떠난 이의 일부가 도적으로.
+      // 식량 정산(아래 lack_*·food)보다 먼저 — 오늘 들어온 입도 오늘 먹는다.
+      { set: 'drifters', expr: 'min(400, drifters + drift_rate * span)' },
+      // 가려 받음 = 빈 잠자리만큼 (거처를 지어야 더 받는다)
+      { set: 'drift_adm', expr: 'drift_policy == "받아들임" ? drifters : (drift_policy == "가려 받음" ? min(drifters, max(0, cap - pop)) : 0)' },
+      // 돌려보냄 = 남은 이 전부가 떠난다 / 가려 받음 = 못 들어간 이 중 하루 10%가 기다리다 떠난다
+      { set: 'drift_out', expr: 'drift_policy == "돌려보냄" ? drifters - drift_adm : round((drifters - drift_adm) * min(1, 0.1 * span))' },
+      { set: 'pop', expr: 'pop + drift_adm' },
+      { set: 'drifters', expr: 'drifters - drift_adm - drift_out' },
+      // 새 얼굴은 마찰을 부른다 — 들인 열 명마다 불안 +1 (거처가 모자라면 아래 unrest 정산의 pop > cap이 또 민다)
+      { set: 'unrest', expr: 'clamp(unrest + floor(drift_adm / 10), 0, 100)' },
+      // 도적 — 갈 곳 없이 떠난 이의 일부가 길 위로(길드가 있으면 칼 든 이들이 모험가로 빠져 덜 간다) + 전후의 바탕(시련)
+      //   − 경비·상비군이 매일 깎는다: 경비 15·상비군 0이면 하루 0.75, 상비군 30이면 1.75. 가만두면 저절로 잦아든다.
+      { set: 'bandits', expr: 'clamp(bandits + drift_out * (0.3 - guild * 0.07) + (hardship * 0.004 - 0.5 - (guard_men + army * 2) / 60) * span, 0, 100)' },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
       // 빈 날 세기는 재고를 깎기 **전에** — 깎은 뒤엔 "언제 비었나"를 알 수 없다 (lackDays 주석 참고).
@@ -966,6 +1033,7 @@ const S = {
       { set: 'day_prev', expr: 'day' },
       // 빈 날 수는 이번 정산 안에서만 뜻이 있다 — 끝에 0으로 돌려 상태에 흔적을 안 남긴다 (진단도 임시 변수로 읽는다)
       { set: 'lack_food', expr: '0' }, { set: 'lack_water', expr: '0' }, { set: 'lack_gold', expr: '0' },
+      { set: 'drift_adm', expr: '0' }, { set: 'drift_out', expr: '0' },
     ],
     // ── 발견 ──
     // 어느 자리가 열렸는지는 onTurn이 이미 정했다. 여기는 그걸 서사에게 넘기는 자리다.
@@ -1002,6 +1070,34 @@ const S = {
         notify: '[공사가 끝났다] 공사 목록에서 기한이 찬 것이 내려갔다. 무엇이 완성되었는지 이번 장면에서'
           + ' 보여주고, 완성된 것을 인프라·경작지·식수원 중 맞는 자리에 옮겨 적어라 — 옮겨 적지 않으면'
           + ' 지은 것이 수치에 잡히지 않는다.' },
+
+      // ── 모험가 길드 (§14) ── 전쟁 용병이 몬스터 사냥으로 돌아서는 시기 [유저]. 몬스터가 들끓는 이 땅은 그들에게 일터다.
+      // 갈림길 — 허가는 영주의 결단이라 버튼으로 묻는다. 안 고르면(3턴) 마지막 "아직은"이 된다. 거절해도 60일 뒤 다시 온다.
+      { id: 'guild_offer',
+        when: 'guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat >= 25 and route == "없음"',
+        effects: [{ set: 'guild_ask', expr: 'day + 60' }],
+        notify: '[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 '
+          + '몬스터 사냥으로 먹고산다 — 몬스터가 들끓는 이 땅은 그들에게 일터다. 연락소 하나 둘 자리와 영주의 허가를 청한다. '
+          + '누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.',
+        timeout: 3,
+        choices: [
+          { label: '연락소를 허가한다',
+            effects: [{ set: 'guild', expr: '1' }, { set: 'guild_since', expr: 'day' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' }],
+            inject: 'The Baron grants the Guild a house by the south gate. Adventurers will start drifting in — and the Baron can now post bounties there.' },
+          { label: '아직은 안 된다',
+            inject: 'The Baron turns the Guild down for now. The envoy leaves politely; the Guild will ask again in a season or two.' },
+        ] },
+      // 승격 — 사냥감(몬스터·도적)과 사람이 있으면 커진다. 되돌아가지 않는다.
+      { id: 'guild_grow2', once: true,
+        when: 'guild == 1 and day - guild_since >= 60 and pop >= 150 and threat + bandits >= 30',
+        effects: [{ set: 'guild', expr: '2' }],
+        notify: '[연락소가 지부가 됐다] 길드 본부가 이곳을 지부로 올렸다. 게시판이 두 배가 되고, 제 무기를 고치러 대장간을 '
+          + '찾는 사람이 늘었다. 사냥감이 있는 한 모험가는 모인다.' },
+      { id: 'guild_grow3', once: true,
+        when: 'guild == 2 and day - guild_since >= 180 and pop >= 280 and fame >= 45',
+        effects: [{ set: 'guild', expr: '3' }],
+        notify: '[큰 지부] 이름 있는 파티들이 이곳을 거점으로 삼기 시작했다. 다른 영지의 모험가가 여기 소문을 듣고 온다 — '
+          + '돈과 말썽이 같이 온다.' },
     ]),
 
     // ── 굴러 들어오는 것 ──
@@ -1028,9 +1124,10 @@ const S = {
           effects: [{ set: 'route', expr: '"북 산길"' }, { set: 'route_days', expr: '8 + rand(0, 10)' }],
           notify: '[고개가 닫혔다] 밤새 눈이 고개를 메웠다. 북쪽은 봄까지 남의 나라다.' },
         // 로어북의 WorldReactivity 그대로 — 살 만해지면 눈이 붙는다
+        // §14: 도적 세력이 크면 번 게 없어도 앉고, 경비 문턱도 그만큼 높아진다 (bandits 0이면 옛 조건 그대로)
         { id: 'road_bandit', weight: 3, cooldown: 30,
-          when: `${QUIET} and (deals >= 15 or gold >= 300)`
-            + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012))',
+          when: `${QUIET} and (deals >= 15 or gold >= 300 or bandits >= 35)`
+            + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)',
           effects: [{ set: 'route', expr: '"남 가도"' }, { set: 'route_days', expr: '4 + rand(0, 6)' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }],
           notify: '[가도에 앉았다] 짐수레가 털렸다. 한 무리가 포장도로 길목을 잡고 통행세를 받는다. '
@@ -1048,10 +1145,17 @@ const S = {
         { id: 'refugees', weight: 3, cooldown: 25,
           // 터져 나가는 게 눈에 보이면 발길이 끊긴다 — 그래도 수용 한계까진 밀고 들어온다
           when: `${QUIET} and ${thr('fame', '>=', 2, 18)} and food > 200 and crowd < 125`,
-          effects: [{ set: 'pop', expr: 'pop + min(round(cap * 0.12) + rand(0, 8), 30)' },
-            { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' }],
-          notify: '[사람이 들어왔다] 남쪽 길로 한 무리가 걸어 들어왔다. 여기가 사람을 받는다는 말을 듣고 왔다고 한다. '
-            + '재울 자리가 있는지는 그들이 알 바 아니다.' },
+          // §14: 곧장 주민이 되지 않는다 — 관문 앞에 서고, 들일지는 관문 방침이 다음 정산에서 정한다
+          effects: [{ set: 'drifters', expr: 'min(400, drifters + min(round(cap * 0.12) + rand(0, 8), 30))' }],
+          notify: '[관문 앞에 무리가 섰다] 남쪽 가도로 한 무리가 걸어 와 관문 앞에 멈췄다. 여기가 사람을 받는다는 말을 듣고 '
+            + '왔다고 한다 — 전쟁에 집을 잃은 식구, 제대한 병사, 일거리를 잃은 칼잡이가 섞여 있다. 재울 자리가 있는지는 '
+            + '그들이 알 바 아니다. 들일지는 관문 방침이 정한다.' },
+        // 칼 든 이들이 섞여 있다 — 병사로 사거나(서사가 army를 올리고 drifters를 내린다) 돌려보내면 길 위로 간다
+        { id: 'merc_band', weight: 2, cooldown: 40,
+          when: `${QUIET} and drifters >= 20 and guild == 0`,
+          effects: [],
+          notify: '[칼잡이 한 패] 관문 앞 무리 속에 무장한 한 패가 있다 — 전쟁이 끝나 일거리를 잃은 용병단이다. '
+            + '병사로 사겠다면 지금이고, 돌려보내면 그 칼은 길 위로 간다. 몇 명이고 누가 이끄는지는 이번 장면에서 정하라.' },
         { id: 'peddler', weight: 3, cooldown: 20,
           when: `${QUIET} and rel_top >= 15`,
           effects: [],
@@ -1307,6 +1411,31 @@ const S = {
             { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
           notify: '[감사가 닿았다] 지난날 거둬 준 사람이 자리 잡은 곳에서 소식을 보내왔다. '
             + '별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다.' },
+
+        // ⑥ 도적 (§14) — 몬스터가 아니라 사람. 돌려보낸 이들이 굶다 칼을 든 것이다.
+        { id: 'bandit_raid', weight: 3, cooldown: 25,
+          when: `${QUIET} and ${thr('bandits', '>=', 50, 30)} and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)`,
+          effects: [{ set: 'food', expr: 'max(0, food - 40 - rand(0, 40))' }, { set: 'gold', expr: 'max(0, gold - 30 - rand(0, 30))' },
+            { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }, { set: 'bandits', expr: 'min(100, bandits + 3)' }],
+          notify: '[도적이 변두리를 쳤다] 밤사이 외곽 곳간과 짐수레가 털렸다. 몬스터 짓이 아니다 — 발자국이 신발을 신었다. '
+            + '누구 무리인지, 어디로 갔는지는 이번 장면에서 정하라. 한 번 재미를 본 자들은 또 온다.' },
+        { id: 'bandit_lair', weight: 2, cooldown: 90,
+          when: `${QUIET} and bandits >= 70`,
+          effects: [{ set: 'bandits', expr: 'min(100, bandits + 5)' }],
+          notify: '[소굴이 생겼다] 흩어져 있던 무리가 한 사람 밑으로 모였다. 두목의 이름과 소굴 자리를 이번 장면에서 정하라 — '
+            + '전쟁 때 같은 깃발 아래 있던 얼굴일 수도 있다. 그대로 두면 길목마다 통행세를 걷기 시작한다.' },
+        // ⑦ 모험가 (§14) — 돈과 말썽이 같이 온다
+        { id: 'guild_brawl', weight: 2, cooldown: 30,
+          when: `${QUIET} and guild >= 1`,
+          effects: [{ set: 'unrest', expr: 'clamp(unrest + 4, 0, 100)' }, { set: 'gold', expr: 'max(0, gold - 10 - rand(0, 20))' }],
+          notify: '[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 '
+            + '나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라.' },
+        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (자리가 열리기 직전(100↑)은 안 건드림)
+        { id: 'adv_rumor', weight: 2, cooldown: 30,
+          when: `${QUIET} and guild >= 1 and explore_dir != "없음"`,
+          effects: EXPLORE.map(([dir, v]) => ({ set: v, expr: `${v} < 100 and explore_dir == ${JSON.stringify(dir)} ? min(100, ${v} + 15) : ${v}` })),
+          notify: '[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, '
+            + '피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라.' },
       ],
     },
   },
@@ -1414,8 +1543,25 @@ const S = {
     // ── 거처 ──
     // 수용 한계는 시스템만 아는 숫자다. 이 줄이 없으면 모델은 사람이 계속 흘러드는 것처럼 쓴다.
     { id: 'housing_full', when: 'pop >= cap',
-      text: '[HOUSING] Every roof is taken — {pop} people to {cap} places. Nobody new stays, whatever draws them here. '
-        + 'The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out.' },
+      // §14: 누가 더 들어오나는 이제 관문 방침이 정한다 — 받아들임이면 거처가 없어도 들어와 남의 바닥에서 잔다
+      text: '[HOUSING] Every roof is taken — {pop} people to {cap} places. Anyone let in through the gate now sleeps on '
+        + "someone else's floor. The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out." },
+
+    // ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+    // 시스템만 아는 것: 관문 앞에 몇이 있고 방침이 무엇인지 — 모델은 이걸 모르면 관문 장면을 텅 비게 쓰거나 멋대로 들인다.
+    { id: 'gate_waiting', when: 'drifters >= 15',
+      text: '[AT THE GATE] {drifters} drifters are camped outside the south gate — families who lost their homes in the war, '
+        + 'discharged soldiers, sellswords with no war left to sell to. The gate order stands at "{drift_policy}"; the system lets '
+        + 'people in or sends them on each day by that order, so never settle them yourself. They belong in any scene at the gate '
+        + 'or on the south road — hunger, bargaining, someone asking for the Baron by name.' },
+    { id: 'bandits_out', when: 'bandits >= 40',   // bandit_txt "출몰"과 같은 문턱 — "소문"(15~39)엔 이 줄이 과하다
+      text: '[BANDITS] Bandits on the roads: {bandit_txt}. Most of them are people who had nowhere to go after the war. '
+        + 'Caravans hire guards or stay away; travellers arrive robbed or not at all. Whose band it is and who leads it is yours '
+        + 'to decide — keep it consistent once named.' },
+    { id: 'guild_here', when: 'guild >= 1',
+      text: "[ADVENTURERS] The Adventurers' Guild keeps a {guild_txt} here — ex-mercenaries turned monster hunters who drink, "
+        + 'brag, pick fights and spend money in town. They clear land only for posted bounties; a bounty is posted only on the '
+        + "Baron's order, so they do not sweep the country on their own." },
 
     // ── 바깥 ──
     // 모델의 제일 센 버릇을 거스르는 줄이다. 곤경에 빠뜨려 두면 모델은 누군가를 보낸다 —
@@ -1511,6 +1657,40 @@ const S = {
             { set: 'health', expr: 'clamp(health - 1, 0, 100)' }],
           inject: 'The push goes badly — lost trails, a scare, someone hurt. They came back with little.' },
       ] },
+    // ── 현상금 (§14) — 메이드를 보내는 대신 돈으로 치우는 길. 길드가 없으면 관문 게시판에 붙이고 관문 앞 칼잡이 떠돌이가 받는다
+    //   (떠돌이 20명마다 +1, 최대 +3). 길드가 있으면 전문가가 받아 크게 오른다(규모당 +3, 모험가 10명당 +1). 상대가 셀수록 어렵다.
+    // 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본 공작령 지도] — 성공하면 모르웬 쪽(rel_n)에 닿는다.
+    { id: 'chk_bounty_beast', label: '몬스터 현상금 판정',
+      roll: 'rand(1, 20)',
+      mod: 'guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))',
+      vs: '10 + round(threat / 12)',
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 14, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 3, 0, 100)' },
+            { set: 'fame', expr: 'clamp(fame + 1, 0, 100)' }],
+          inject: 'The adventurers bring back proof of a whole nest cleared — heads, hides, a map mark. The report travels north.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 9, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' }],
+          inject: 'The bounty is claimed — a pack thinned out near the holding.' },
+        { label: '실패',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 3, 0, 100)' }],
+          inject: 'The adventurers come back with little and a wounded man — the money is mostly gone.' },
+      ] },
+    { id: 'chk_bounty_bandit', label: '도적 현상금 판정',
+      roll: 'rand(1, 20)',
+      mod: 'guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))',
+      vs: '10 + round(bandits / 12)',
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 25)' }, { set: 'unrest', expr: 'clamp(unrest - 3, 0, 100)' }],
+          inject: 'The band is broken — its leader brought back in chains or not at all. The roads are quiet for a while.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 15)' }],
+          inject: 'A bandit camp is burned out; the rest scatter.' },
+        { label: '실패',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 4)' }],
+          inject: 'The bandits knew the ground better. A skirmish, a few caught, the band itself untouched.' },
+      ] },
   ],
 
   // ── 액션 (P4) — 보편 행정 스위치만, 사업 종류는 영구 금지 (개방 원칙 §1-4) ──
@@ -1540,6 +1720,19 @@ const S = {
       check: 'chk_survey',
       effects: [{ set: 'food', expr: 'max(0, food - 20)' }],
       inject: 'The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food.' },
+    // ── 현상금 (§14) — 길드가 없어도 건다(관문 게시판 — 칼잡이 떠돌이가 받는다). 돈은 거는 순간 나간다(결과와 무관).
+    { id: 'act_bounty_beast', label: '🗡️ 몬스터 현상금', mode: 'oneshot', cooldown: 7,
+      when: 'threat >= 10 and gold >= bounty_cost',
+      check: 'chk_bounty_beast',
+      effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
+      inject: "The Baron posts a monster bounty — at the Adventurers' Guild if there is one, otherwise on the board by the "
+        + 'south gate where drifting sellswords read it — and pays it out of the treasury.' },
+    { id: 'act_bounty_bandit', label: '🪓 도적 현상금', mode: 'oneshot', cooldown: 7,
+      when: 'bandits >= 10 and gold >= bounty_cost',
+      check: 'chk_bounty_bandit',
+      effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
+      inject: "The Baron posts a bounty on the road bandits — at the Adventurers' Guild if there is one, otherwise on the "
+        + 'board by the south gate — and pays it out of the treasury.' },
   ],
 
   // ── AI 관할과 그 상한 ──
@@ -1590,6 +1783,10 @@ const S = {
       { id: 'health', maxDelta: 12 }, { id: 'morale', maxDelta: 15 },
       { id: 'unrest', maxDelta: 20 }, { id: 'threat', maxDelta: 20 },
       { id: 'fame', maxDelta: 10 },
+      // §14 — 관문 방침은 영주의 명령이라 서사로 받는다. 유랑민·도적은 시스템이 굴리고 보조는 **내리기만** (고용해 간 무리, 깨뜨린 도당)
+      { id: 'drift_policy' },
+      { id: 'drifters', maxGain: 0, maxLoss: 200 },
+      { id: 'bandits', maxGain: 0, maxLoss: 30 },
     ],
     // 이 문장은 보조 모델 호출마다 **무조건** 나간다 — 조건부인 지시문보다 더 자주 든다.
     // 그래서 여기가 영어화 이득이 제일 크다. 유저는 이 글을 볼 일이 없다.
@@ -1607,6 +1804,11 @@ const S = {
       + 'ROADS: route is whichever road is shut. Set it back to "없음" the moment the narration clears it — bandits '
       + 'driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the '
       + 'point. Never shut a road yourself; only a system notice does that.\n'
+      + 'THE GATE: drift_policy is the Baron\'s standing order at the south gate — change it only when the narration shows him '
+      + 'giving that order. The system brings drifters in or sends them on every day by that order; never add them to pop yourself. '
+      + 'Lower drifters only when a specific group is taken off the road in the narration — hired as soldiers (raise army by the '
+      + 'same number), sent on with bread. Lower bandits only when the narration actually breaks a band. Never touch guild — '
+      + 'the Guild comes and grows on its own, and bounties go through the Baron\'s buttons.\n'
       + 'APPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in '
       + '(tomorrow = 1). The system counts it down and deletes it once past.\n'
       + 'IMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 '
@@ -1697,6 +1899,7 @@ const S = {
       + '공사 중 {projects} | 빚·약속 {favors}\n'
       + '수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n'
       + '사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n'
+      + '관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n'
       + '탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n'
       + '계승 {court_txt}\n'
       + '이웃 {neighbors}\n'
@@ -1794,6 +1997,7 @@ const S = {
           stock: ['목재 150', '보리 씨 40'],
           route: '없음', route_days: 0, rel_cap: 20, fame: 26,
           hardship: 10, hire_mult: 60,
+          bandits: 0,                                   // §14 — 길 위가 조용한 판
           // 카드 시작 옵션(난이도 0): "중급메이드 메릴과 주니어 수녀 스텔라와 함께 시작" —
           // 프리셋이 corps를 안 심으면 가이드("none of them is here")와 모순되어 보조가 영영 안 올린다 (실사고 2026-08-17)
           corps: ['메릴 8', '스텔라 4'], b_meryl: 20, b_stella: 20,
@@ -1813,6 +2017,7 @@ const S = {
           stock: ['목재 100', '보리 씨 20'],
           route: '없음', route_days: 0, rel_cap: 10, fame: 0,
           hardship: 45, hire_mult: 100,                // "일반적으로 어려움" — 구 35/80에서 올림
+          bandits: 12,                                  // §14 — 전쟁이 남긴 떠돌이 무리가 소문으로는 있다
           corps: ['메릴 8'], b_meryl: 20,              // 카드 시작 옵션(난이도 1): 메릴과 함께 시작
           focus: '겨울이 오기 전에 밭을 늘리는 것',
         },
@@ -1836,6 +2041,7 @@ const S = {
           route: '북 산길', route_days: 14,
           rel_cap: 5, fame: 0,                          // 왕도조차 서류로만 안다
           hardship: 100, hire_mult: 180,
+          bandits: 30,                                  // §14 — 갈 곳 없는 칼잡이가 이미 길 위에 있다
           // 카드 시작 옵션(난이도 2)도 메릴 동행 — 금고 0에 봉급 8/일이 첫날부터 밀린다.
           // wages_unpaid 지시문이 개막부터 붙는데, 그게 리얼리티의 맛이다 (의도)
           corps: ['메릴 8'], b_meryl: 20,
@@ -1859,6 +2065,9 @@ const oldCss = fs.readFileSync(__P('ledger.css'), 'utf8');
 S.statusUI.templates = [{
   id: 'estate',
   template: `<style>${oldCss}</style>`
+    // 갈림길(§14 길드 허가 등) — 보고서 모달 **밖**에 둔다. 안에 두면 "영지 보고서 확인"을 눌러야 보여 못 보고 지나친다.
+    // 걸린 갈림길이 없으면 빈 문자열이라 자리를 안 먹는다.
+    + '{choices}'
     + '<input type="checkbox" id="sim_status_toggle" class="status-checkbox">'
     + '<label for="sim_status_toggle" class="status-open-label">영지 보고서 확인</label>'
     + '<div class="status-full-overlay"><div class="status-modal-window">'
@@ -1908,6 +2117,10 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>군사:</span> <span class="val">{army_txt}</span></div>'
     + '<div class="status-entry"><span>외부보안:</span> <span class="val">{sec_out_txt}</span></div>'
     + '<div class="status-entry"><span>내부보안:</span> <span class="val">{sec_in_txt}</span></div>'
+    + '<div class="status-section-title">🚪 관문과 길</div>'
+    + '<div class="status-entry status-span2"><span>관문:</span> <span class="val">{gate_txt}</span></div>'
+    + '<div class="status-entry"><span>도적:</span> <span class="val">{bandit_txt}</span></div>'
+    + '<div class="status-entry"><span>모험가 길드:</span> <span class="val">{guild_txt}</span></div>'
     + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
@@ -1977,6 +2190,11 @@ S.party = {
       + sec('지속 수입 — +{deals}/일') + '{contracts:tags}'
       + sec('정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)') + '{supply:tags}'
       + row('통행', '{route_txt}')
+      // §14 — 관문·도적·길드. 현상금은 액션 버튼, 방침은 /관문 명령
+      + sec('관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓')
+      + row('관문', '{gate_txt} · 하루 {drift_rate}명 옴')
+      + row('도적', '{bandit_txt} · 통행세 {bandit_toll}/일')
+      + row('모험가 길드', '{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}')
       + sec('보유 물자') + '{stock:tags}'
       + sec('주거 — 수용 {cap} ({crowd_txt} {crowd}%)') + '{houses:tags}'
       + sec('경작지 — {farm_txt} · 일 수확 {harvest}') + '{farms:tags}'
@@ -2421,6 +2639,77 @@ for (const t of S.party.tabs) {
   ok('사흘 뒤 → (2일)로 줄어든다', due(r.state).endsWith('(2일)'), due(r.state));
   r = _outputPhase(S, r.state, { skip_day: 4 }, {}, { rng: seededRng('tm', 8, 'o') });
   ok('기한 지남 → 목록에 남고 (지남)', r.state.vars.favors.includes(saved) && due(r.state).endsWith('(지남)'), due(r.state));
+}
+
+// ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 흘러드는 사람들 · 모험가 길드 ━━');
+  // 이벤트·랜덤을 걷은 사본 — 정산 식만 잰다
+  const S0 = { ...S, rules: { ...S.rules, events: [], randomEvents: undefined } };
+  const gate = (policy, extra = {}) => {
+    const s = engine.initState(S0); s.meta.setupDone = true;
+    // 명성 0 → 하루 유입 0 (관문 앞 30명만 본다) · 빈 잠자리 10 · 도적 0 · 경비 효과를 보려고 그대로
+    Object.assign(s.vars, { fame: 0, drifters: 30, drift_policy: policy, bandits: 0, pop: 100, houses: ['오두막 110'], ...extra });
+    return _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('dr', 1, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('dr', 1, 'o') }).state;
+  };
+  const acc = gate('받아들임'), sel = gate('가려 받음'), rej = gate('돌려보냄');
+  ok('받아들임 → 30명 전부 들어온다', acc.vars.drifters === 0 && acc.vars.pop >= 128, `주민 ${acc.vars.pop} · 대기 ${acc.vars.drifters}`);
+  ok('가려 받음 → 빈 잠자리 10만큼, 남은 20 중 2명(10%)이 떠남', sel.vars.drifters === 18 && sel.vars.pop >= 108 && sel.vars.pop < 115,
+    `주민 ${sel.vars.pop} · 대기 ${sel.vars.drifters}`);
+  ok('돌려보냄 → 아무도 안 들이고 전부 떠나 도적이 는다', rej.vars.drifters === 0 && rej.vars.pop < 105 && rej.vars.bandits > 7,
+    `주민 ${rej.vars.pop} · 도적 ${rej.vars.bandits.toFixed(1)}`);
+  ok('들인·떠난 수는 정산 끝에 0 (임시 변수)', [acc, sel, rej].every((t) => t.vars.drift_adm === 0 && t.vars.drift_out === 0), '');
+  const L = (t) => engine.makeLookup(S0, t.vars);
+  const busy = gate('가려 받음', { fame: 60, drifters: 0 });
+  const shut = gate('가려 받음', { fame: 60, drifters: 0, route: '남 가도', route_days: 5 });
+  ok('명성이 끌어당긴다 (명성 60 → 하루 2~4명)', L(busy)('drift_rate') >= 2, `하루 ${L(busy)('drift_rate')}명`);
+  ok('남쪽 가도가 막히면 아무도 못 온다', L(shut)('drift_rate') === 0, `하루 ${L(shut)('drift_rate')}명`);
+  // 도적은 경비·상비군이 깎는다
+  const calm = gate('가려 받음', { drifters: 0, bandits: 40, army: 30 });
+  ok('상비군 30이면 도적이 하루 1 넘게 준다', 40 - calm.vars.bandits > 1, `40 → ${calm.vars.bandits.toFixed(2)}`);
+  const packed = gate('받아들임', { fame: 60, drifters: 0, pop: 150 });
+  ok('터져 나가면(130%↑) 발길이 끊긴다', engine.makeLookup(S0, packed.vars)('drift_rate') === 0, `거처 ${engine.makeLookup(S0, packed.vars)('crowd')}%`);
+
+  // 길드 — 사람이 오고(갈림길), 허가하면 연락소, 현상금이 전문가 몫으로
+  let t = engine.initState(S); t.meta.setupDone = true;
+  Object.assign(t.vars, { fame: 30, threat: 40, pop: 120, day: 40, day_prev: 39, guild_ask: 30, route: '없음' });
+  t.vars.time_epoch = EP0 + 40 * 1440;
+  let r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('gd', 1, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('gd', 1, 'o') });
+  ok('길드 사람이 온다 → 갈림길', r.state.meta.pendingChoice?.id === 'guild_offer' && r.state.vars.guild_ask > 40,
+    `${r.state.meta.pendingChoice?.id ?? '없음'} · 다시 올 날 ${r.state.vars.guild_ask}`);
+  const tpl = String(SC.require('render').renderStatusHtml(S, r.state, {}));
+  ok('상태창에 갈림길이 보고서 밖에 뜬다', tpl.indexOf('연락소를 허가한다') >= 0 && tpl.indexOf('연락소를 허가한다') < tpl.indexOf('status-full-overlay'), '');
+  r.state.meta.pendingChoicePick = 0;
+  r = _outputPhase(S, engine.sendPhase(S, r.state, { rng: seededRng('gd', 2, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('gd', 2, 'o') });
+  const Lg = engine.makeLookup(S, r.state.vars);
+  ok('허가 → 연락소 · 모험가 · 길드 수입', r.state.vars.guild === 1 && Lg('adv_n') > 0 && Lg('guild_income') > 0,
+    `${Lg('guild_txt')} · 수입 ${Lg('guild_income')}/일`);
+  const bare = engine.initState(S); bare.meta.setupDone = true; Object.assign(bare.vars, { threat: 40, gold: 500, drifters: 60 });
+  ok('현상금은 길드 없이도 건다 (관문 게시판)', engine.actionAvailability(S, bare, S.actions.find((a) => a.id === 'act_bounty_beast')).ok, '');
+  const modOf = (vars) => engine.makeLookup(S, vars)('guild') * 3 + Math.round(engine.makeLookup(S, vars)('adv_n') / 10) + Math.min(3, Math.floor(vars.drifters / 20));
+  ok('길드가 있으면 판정이 크게 오른다', modOf({ ...r.state.vars, drifters: 0 }) > modOf({ ...bare.vars, drifters: 0 }), `보정 ${modOf({ ...bare.vars, drifters: 0 })} → ${modOf({ ...r.state.vars, drifters: 0 })}`);
+  // 몬스터 현상금 한 번 — 돈이 나가고 위협이 는 적은 없다
+  let b = { ...r.state, vars: { ...r.state.vars, gold: 500, threat: 60 } };
+  const cost = engine.makeLookup(S, b.vars)('bounty_cost');
+  const tg = engine.toggleAction(S, b, 'act_bounty_beast'); b = tg.state;
+  const sp = engine.sendPhase(S, b, { rng: seededRng('gd', 3, 's') });
+  ok('몬스터 현상금 → 돈이 나가고 판정이 굴러 위협이 준다', sp.state.vars.gold <= 500 - cost && sp.state.vars.threat < 60 && /현상금/.test(sp.promptBlock),
+    `금 500 → ${sp.state.vars.gold} (현상금 ${cost}) · 위협 60 → ${sp.state.vars.threat}`);
+
+  // 한 해 — 관문 방침별로 (명성 50 고정 · 보통 프리셋 · 이벤트 걷음). 숫자는 참고용, 판정 없음.
+  console.log('  · 한 해(360일) 방침별 — 보통 프리셋, 명성 50 고정, 이벤트 없이');
+  for (const policy of ['받아들임', '가려 받음', '돌려보냄']) {
+    let s = engine.applyPreset(S0, engine.initState(S0), 'normal').state; s.meta.setupDone = true;
+    s.vars.drift_policy = policy;
+    for (let d = 0; d < 360; d++) {
+      s.vars.fame = 50;
+      s = _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('yr', d, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('yr', d, 'o') }).state;
+    }
+    const Ly = engine.makeLookup(S0, s.vars);
+    console.log(`    ${policy.padEnd(5)} 주민 ${String(s.vars.pop).padStart(3)}/${String(Ly('cap')).padStart(3)}  대기 ${String(s.vars.drifters).padStart(3)}`
+      + `  도적 ${s.vars.bandits.toFixed(0).padStart(3)} (${Ly('bandit_txt')})  불안 ${String(s.vars.unrest).padStart(3)}  식량 ${s.vars.food}`);
+  }
 }
 
 // ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──

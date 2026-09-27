@@ -248,6 +248,22 @@ const bondLine = (rows) => rows.map(([id, name, , rank]) =>
 const hireCost = (base) => `round(${base} * hire_mult * 0.01 * (1.3 - fame * 0.006))`;
 const hireWage = (w) => `round(${w} * hire_mult * 0.01)`;
 
+// ── 서신 상대 (§14-2) ── 영지 밖의 이름 있는 사람들: 왕가 넷 + 귀족 다섯 + 주교. 메이드·수녀는 고용 풀이라 뺀다(오면 곁에 있다).
+// 여왕은 CAST 표기("알라릭 여왕")를 그대로 — 어댑터가 이름의 한 낱말(알라릭·여왕)로도 로어북 문항을 찾는다 (v1.13.2).
+const PEN = [...CAST['왕가와 동행'].slice(1), ...CAST['귀족'], ['beatrix', '베아트릭스']].map(([, name]) => name);
+
+// ── 청원인 무리 (§14-2) ── 청원함의 등급 = 누가 청하나. 사례 밴드가 무리마다 다르다 — 영지민에게 금화를 바라는 영주는 없다.
+//   [무리, 사례 최소, 최대, 언제 청하나(보조 게시 지침)]
+const PET_CIRCLES = [
+  ['영지민', 0, 30, '언제나 — 우물·다리·밭 경계 다툼·혼례·장례·아픈 식구·겨울 땔감. 사례는 대개 달걀 한 바구니, 아니면 마음이다'],
+  ['유랑민', 0, 20, '관문 앞에 사람이 기다릴 때만(drifters) — 들여 달라, 일자리, 빵, 흩어진 식구 찾기, 병든 아이'],
+  ['상단', 60, 500, '거래가 텄거나 이름이 났을 때 — 곡물·목재를 사겠다, 짐수레 호위(도적이 많을수록), 장터 자리, 창고 빌리기'],
+  ['길드', 40, 300, '모험가 길드 연락소가 들어와 있을 때만 — 현상금 반씩 대기, 다친 모험가 치료, 사냥터 출입, 소란 뒷수습'],
+  ['광휘회', 0, 200, '예배당·수녀·역병과 얽혔을 때 — 예배당 손보기, 순례자 재워 주기, 구호 곡식, 십일조, 이단 소문 조사'],
+  ['이웃 영지', 100, 800, '그 영지가 이쪽을 "관망" 이상으로 알 때만(rel_* 25↑) — 이웃은 저마다 세는 것을 청한다'],
+  ['왕도', 0, 400, '왕도가 이쪽을 볼 때만(rel_cap 35↑) — 호구 조사, 징발 명단, 감찰관 접대, 세납 앞당기기, 왕녀 쪽 부탁'],
+];
+
 const FEST = [
   [1, 15, '한밤절', '한 해에서 밤이 가장 긴 무렵. 불을 끄지 않고 새운다. 이 밤에 화로가 꺼진 집은 한 해 내내 입에 오른다.'],
   [2, 5, '잿날', '겨울에 죽은 이를 태워 보내는 날. 언 땅에 묻지 못한 시신이 이날 한꺼번에 화장된다.'],
@@ -615,6 +631,27 @@ const S = {
     { id: 'favors', label: '빚·약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 40, cmd: '약속',
       desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists. '
         + 'Past the deadline the line stays (shown overdue) until it is settled or broken.' },
+    // ── 청원함 (§14-2) ── 집무실 청원함(의뢰판)에서 영주가 [수락]으로 맡은 청원. 줄은 버튼이 넣고, 이행은 서사가, 셈은 시스템이.
+    //   빚·약속(favors)과 가른 이유: 저쪽은 지나도 남는 약속(keepOverdue), 이쪽은 기한을 넘기면 떨어지고 실망이 세진다.
+    //   이행과 기한 넘김은 개수 차로 가른다 (onTurn) — 사례 0짜리 영지민 청원도 헷갈리지 않는다.
+    { id: 'petitions', label: '맡은 청원', type: 'list', init: [], maxItems: 4, itemMaxLength: 96, cmd: '청원',
+      desc: 'Petitions the Baron took up from the petition box. The box\'s [accept] button writes these lines — never add one yourself; '
+        + 'a request the Baron grants in person during a scene is a promise and goes in favors. Format "청원인 · 무엇 (무리) @기한 +사례". '
+        + 'When the narration shows one actually done, remove its line exactly as stored and copy the number at its end into pet_pay. '
+        + 'Past the deadline the system drops it by itself — do not remove it for that.' },
+    { id: 'pet_pay', label: '(내부) 청원 사례 정산', type: 'int', init: 0, min: 0, max: 2000,
+      desc: 'When a petition is fulfilled, copy the number at the end of its line here (+0 means 0). Never decide the amount yourself. '
+        + 'The system pays it into gold and resets it — do not also add it to gold.' },
+    { id: 'pet_n', label: '(내부) 맡은 청원 수', type: 'int', init: 0, min: 0, max: 4,
+      desc: '시스템 전용. 지난 정산 때의 맡은 청원 수 — 수락·취소 버튼이 같이 움직인다.' },
+    // 이번 정산에 이행한·기한 넘긴 청원 — onTurn이 매 턴 새로 세고 조건 이벤트가 읽는다 (다음 정산에 다시 센다)
+    { id: 'pet_kept', label: '(내부) 이번에 이행한 청원', type: 'int', init: 0, min: 0, max: 4, desc: '시스템 전용.' },
+    { id: 'pet_lost', label: '(내부) 이번에 기한 넘긴 청원', type: 'int', init: 0, min: 0, max: 4, desc: '시스템 전용.' },
+    // ── 서신 (§14-2) ── 메신저를 편지로 (플러그인 v1.13.2 medium 'letter'). 방은 유저가 연다.
+    //   ⚠ 이름은 로어북 문항 제목·키워드와 맞아야 답장에 그 사람의 인격이 실린다 (어댑터가 이름으로 문항을 찾는다).
+    //   만나기 전에도 쓸 수 있다 — 남작은 누구에게든 인장을 찍어 보낼 수 있고, 모르는 사이의 답장은 모르는 사람의 답장이다.
+    { id: 'pen', label: '서신 상대', type: 'list', init: PEN, maxItems: 14, itemMaxLength: 12, cmd: '서신',
+      desc: 'People the Baron can exchange letters with. The system keeps it; change it only by the user\'s command.' },
     // 건설 큐 (P4-2) — 공사 중인 것들. "@+일수"가 완공일이 되고, 그날 시스템이 목록에서
     // 내리며 완공 이벤트가 "무엇이 완성됐는지 옮겨 적어라"를 통지한다.
     { id: 'projects', label: '공사 중', type: 'list', init: [], maxItems: 6, itemMaxLength: 40, cmd: '공사',
@@ -914,6 +951,19 @@ const S = {
       // 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않아 상태창·프롬프트에 "(30일)"이 영영 멈춰 있었다.
       // 이제 같은 시계로 굳고 줄어들며, 지나면 "(지남)"으로 남아 서사가 독촉·파기를 쓸 거리가 된다.
       { list: 'favors', expire: 'day', keepOverdue: true },
+      // ── 맡은 청원 (§14-2) ── 이행과 기한 넘김을 **개수 차**로 가른다. 보조가 지운 줄(⑤ 보조 델타)은 여기 오기 전에 이미 빠져 있고
+      //   (= 이행), 기한 넘긴 줄은 바로 아래 expire가 떨군다 (= 실망). expire 앞뒤로 세면 둘이 안 섞인다 — 사례 0짜리 청원도.
+      //   pet_n은 지난 정산의 개수이고 [수락]·[취소] 버튼이 같이 움직인다(청원함 accept/cancel) — 패널이 넣고 뺀 건 이행이 아니다.
+      { set: 'pet_kept', expr: 'max(pet_n - count(petitions), 0)' },
+      { set: 'gold', expr: 'gold + (pet_kept > 0 ? pet_pay : 0)' },   // 지운 줄 없이 적힌 사례는 안 준다 (지어낸 수입 차단)
+      { set: 'pet_pay', expr: '0' },
+      { set: 'pet_lost', expr: 'count(petitions)' },
+      { list: 'petitions', expire: 'day' },
+      { set: 'pet_lost', expr: 'pet_lost - count(petitions)' },
+      // 말을 지킨 영주 / 잊은 영주 — 명성은 소문, 사기는 영지민이 보는 얼굴 [초안]
+      { set: 'fame', expr: 'clamp(fame + pet_kept - pet_lost * 3, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale + pet_kept - pet_lost * 2, 0, 100)' },
+      { set: 'pet_n', expr: 'count(petitions)' },
       // ── 흘러드는 사람들 (§14) ── 도착 → 관문 방침대로 들이기·떠나보내기 → 떠난 이의 일부가 도적으로.
       // 식량 정산(아래 lack_*·food)보다 먼저 — 오늘 들어온 입도 오늘 먹는다.
       { set: 'drifters', expr: 'min(400, drifters + drift_rate * span)' },
@@ -1098,6 +1148,14 @@ const S = {
         effects: [{ set: 'guild', expr: '3' }],
         notify: '[큰 지부] 이름 있는 파티들이 이곳을 거점으로 삼기 시작했다. 다른 영지의 모험가가 여기 소문을 듣고 온다 — '
           + '돈과 말썽이 같이 온다.' },
+
+      // ── 청원 (§14-2) ── 셈은 onTurn이 끝냈다 (금고·명성·사기). 여기는 서사에 건네는 말뿐.
+      { id: 'pet_done', when: 'pet_kept > 0',
+        notify: '[청원을 들어줬다] 맡았던 청원이 이행돼 장부에서 내려갔다 — 사례가 있었다면 금고에 들었다. '
+          + '말이 돈다: 이 영주는 청을 들어준다. 청원인의 반응은 다음에 마주칠 때 짧게 비추면 된다 — 따로 장면을 만들지 마라.' },
+      { id: 'pet_expired', when: 'pet_lost > 0',
+        notify: '[청원 기한이 지났다] 맡아 놓고 기한 안에 못 한 청원이 장부에서 떨어졌다 — 어제까지 맡은 청원 목록에 (오늘)로 떠 있던 줄이다. '
+          + '청원인은 영주가 잊었다고 여긴다. 실망이 어떤 모양으로 돌아오는지(원망, 체념, 다른 데 가서 하는 말)를 짧게.' },
     ]),
 
     // ── 굴러 들어오는 것 ──
@@ -1748,6 +1806,8 @@ const S = {
       // 빚·약속과 공사는 계약과 같은 전사(옮겨 적기) 규율 — guide의 FAVORS/PROJECTS 항목이 선을 긋는다.
       // projects_n은 절대 열지 않는다 (완공 감지 내부 카운터).
       { id: 'favors' }, { id: 'projects' },
+      // §14-2 맡은 청원 — 보조는 **지우기만** (이행). 넣는 건 청원함 버튼. 사례는 줄 끝 숫자를 옮겨 적는다 (두 건 한 턴까지)
+      { id: 'petitions' }, { id: 'pet_pay', maxGain: 1600 },
       // 이웃의 인식. 거리가 있으니 하루에 크게 움직일 수 없다 — 상한이 그걸 대신 지킨다.
       ...NEIGH.map(([id]) => ({ id, maxDelta: 8 })),
       { id: 'ally' }, { id: 'ally_role' },
@@ -1843,6 +1903,12 @@ const S = {
       + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. '
       + 'The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you '
       + 'remove it — an overdue debt is something the narration should press on or break.\n'
+      + 'PETITIONS: petitions holds what the Baron took up from the petition box on his desk — the box\'s buttons write those lines, '
+      + 'never you. When the narration shows one actually done, remove its line exactly as stored and copy the number at its end '
+      + 'into pet_pay (the system pays it — do not also add it to gold). If it asked for goods or hands — grain sold, timber, '
+      + 'soldiers lent — take those out as the narration hands them over. When a neighbouring domain\'s petition is done, move '
+      + 'that domain\'s rel_* up once word reaches it. Past its deadline the system drops the line and counts the disappointment — '
+      + 'do not remove it for that. A request the Baron grants in person during a scene is a promise: favors, not petitions.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -1896,7 +1962,7 @@ const S = {
       + '식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
       + '재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n'
       + '지속 수입 {contracts} | 길 {route_txt}\n'
-      + '공사 중 {projects} | 빚·약속 {favors}\n'
+      + '공사 중 {projects} | 빚·약속 {favors} | 맡은 청원 {petitions}\n'
       + '수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n'
       + '사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n'
       + '관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n'
@@ -2121,6 +2187,10 @@ S.statusUI.templates = [{
     + '<div class="status-entry status-span2"><span>관문:</span> <span class="val">{gate_txt}</span></div>'
     + '<div class="status-entry"><span>도적:</span> <span class="val">{bandit_txt}</span></div>'
     + '<div class="status-entry"><span>모험가 길드:</span> <span class="val">{guild_txt}</span></div>'
+    // §14-2 — 영주의 책상. 청원은 📜 청원함에서 맡고, 약속은 서사가 적는다
+    + '<div class="status-section-title">📜 집무실</div>'
+    + '<div class="status-entry status-span2"><span>맡은 청원:</span> <span class="val">{petitions} — 청원함은 📜</span></div>'
+    + '<div class="status-entry status-span2"><span>빚·약속:</span> <span class="val">{favors}</span></div>'
     + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
@@ -2243,8 +2313,86 @@ S.party = {
       + row('내 지지', '{stance} ({weight_txt})')
       + sec('주변 영지')
       + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('')
-      + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}' },
+      + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}'
+      + sec('맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다') + '{petitions:tags}' },
   ],
+};
+
+// ── 청원함 · 서신 (§14-2) — 패널 스킨 ──
+// 패널 css는 "지금 열린 패널"의 것만 주입된다 — 대장(party)의 양피지를 청원함·서신에도 같이 단다.
+// 기본 스킨이 색을 박은 클래스(.sch-* 상점 공용 / .scq-* 의뢰판 / .scb-* 버튼·목록 / .scm-* 말풍선)만 덮는다.
+const PARCH_PANEL = `
+.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
+  font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
+.scg-card.scb-wide { width:min(580px,100%); }
+.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
+.scg-title .scg-x { color:#4a2c2a; }
+.scg-title .scg-x:hover { background:#e2d3b6; color:#4a2c2a; }
+.scg-note { color:#6b5744; }
+.scg-notice { color:#8a3a2a; }
+.scb-btn { background:#f0e5d1; border:1px solid #bda27e; color:#3d352a; border-radius:3px; }
+.scb-btn:hover { background:#e2d3b6; border-color:#4a2c2a; }
+.scb-empty { color:#8a7a60; }
+.scb-row { border-bottom:1px dashed #d8c6a4; }
+.scb-row:hover { background:rgba(74,44,42,.06); }
+.scb-row .scb-num { color:#8a7a60; } .scb-row .scb-title { color:#3d352a; } .scb-row .scb-meta { color:#6b5744; }
+.scb-input, .scb-ta { background:rgba(255,255,255,.45); border:1px solid #bda27e; color:#3d352a; border-radius:3px; }
+.sch-tab { background:#f0e5d1; border:1px solid #bda27e; color:#6b5744; }
+.sch-tab.sch-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }
+.sch-item { border-bottom:1px dashed #d8c6a4; }
+.sch-item .sch-name { color:#3d352a; } .sch-item .sch-name small { color:#6b5744; }
+.sch-grade { border-color:#bda27e; color:#4a2c2a; background:rgba(74,44,42,.06); }
+.sch-price { color:#7a5a10; }
+.sch-log { border-top:1px dashed #bda27e; color:#6b5744; }
+.scq-days { color:#a12a2a; } .scq-left { color:#6b5744; } .scq-cap { color:#4a2c2a; }
+.scm-bubble { background:#fbf5e8; border:1px solid #bda27e; border-radius:2px; box-shadow:1px 1px 0 #d8c6a4; }
+.scm-mine .scm-bubble { background:#e9dbbf; border-color:#a0845c; border-radius:2px; }
+.scm-from { color:#4a2c2a; } .scm-body { color:#3d352a; } .scm-time { color:#8a7a60; } .scm-head { color:#4a2c2a; }
+.scm-pick { border:1px solid #bda27e; color:#3d352a; }
+.scm-pick.scm-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }`;
+
+// 청원함 = 의뢰판(v1.7.9). 영주 집무실에 영지 안팎의 청이 쌓인다 — "세상이 이 땅에 무엇을 원하나"의 전달면 [§14 전달면].
+// 이웃·교단·길드·마을·유랑민이 한 상자에 모인다 (의뢰판은 봇당 하나 — 무리는 등급으로 가른다).
+// 명성 10(미미함) 전엔 닫혀 있다 — 아무도 모르는 땅엔 청하러 오는 사람도 없다. 초반은 생존 루프가 할 일이다.
+S.questBoard = {
+  label: '영주 집무실 청원함', icon: '📜', listVar: 'petitions', unit: 'G', css: PARCH_PANEL,
+  format: '{client} · {title} ({grade}) @+{days} +{pay}',
+  grades: PET_CIRCLES.map(([g]) => g),
+  bands: Object.fromEntries(PET_CIRCLES.map(([g, lo, hi]) => [g, [lo, hi]])),
+  days: [5, 45], postDays: [6, 15], maxOffers: 5, minOffers: 2, refillEvery: 4,
+  when: 'fame >= 10',
+  // pet_n — 이행 판별의 기준 개수를 버튼이 같이 움직인다 (패널이 넣고 뺀 건 이행도 실망도 아니다)
+  accept: [{ set: 'pet_n', expr: 'pet_n + 1' }],
+  // 맡았다 물리면 말을 거둔 것 — 사례가 클수록 소문도 크다 [초안]. 기한 넘김(-3)보다는 가볍다: 미리 말한 것이니까
+  cancel: [{ set: 'pet_n', expr: 'max(pet_n - 1, 0)' }, { set: 'fame', expr: 'max(fame - 1 - floor(pay / 200), 0)' }],
+  guide: '베리디아 남작 집무실의 청원함에 들어오는 청원이다 — 영지 안팎의 누군가가 영주에게 해 달라는 일. '
+    + '의뢰인(client)은 누가 청하나(이름이나 무리 — "물레방앗간 한스", "관문 앞 유랑민 대표", "헤세 상단", "모르웬 백작"), '
+    + '등급(grade)은 청원인의 무리다. 무리마다 청하러 오는 때가 있다 — 지금 영지 사정(명성·이웃의 인식 rel_*·관문 앞 drifters·도적 bandits·위협 threat)을 보고 고른다: '
+    + PET_CIRCLES.map(([g, , , when]) => `${g} = ${when}`).join(' / ') + '. '
+    + '이웃은 저마다 세는 것을 청한다 — 북 모르웬 백작은 몬스터를 치운 땅(능선의 둥지·길목), 동 리아나 백작은 강과 부두(뱃길·짐·빚에 쫓긴다), '
+    + '남 발레리우스 백작은 수확(곡물을 사겠다·흉년에 나눠 달라), 서 실바나 후작은 숲의 희귀물(약초·단단한 목재·짐승). '
+    + '청원은 영주가 무언가를 해 주는 것이다 — 사람을 보내 달라, 곡식을 팔아 달라, 길을 치워 달라, 다툼을 가려 달라, 자리를 허락해 달라. '
+    + '물건을 청하면 사례(pay)가 그 값이다. 기한은 급한 일 5~10일, 보통 15~25일, 공사·먼 길 30일 이상. '
+    + '제목(title)은 20자 안으로 짧게, note에는 청하는 사정 한 줄(왜 지금인지, 무엇이 걸렸는지). '
+    + '한 번에 같은 무리만 내지 마라 — 섞여야 상자다.',
+};
+
+// 서신 = 메신저를 편지로 (플러그인 v1.13.2 medium 'letter'). 멀리 있는 인물과 닿는 길 [§14 전달면, 아틀리에 선례].
+// 활성 방 하나만 서사로 간다 — 편지가 오간 사실을 메인이 알고, 보조가 이웃 인식(rel_*)·호감(b_*)을 옮겨 적는다.
+// 길이 막히면(남 가도) 전령도 못 다닌다. 들어오는 길은 남쪽 가도 하나뿐이다 [원본].
+// 인물 최근 변화 = 빚·약속(favors) — 그 사람 이름이 걸린 채무·언약이 답장에 묻어난다 (포함 일치라 "모르웬에게 …"가 걸린다).
+S.messenger = {
+  label: '서신', icon: '✉', medium: 'letter', css: PARCH_PANEL,
+  contactsVar: 'pen', notesVar: 'favors',
+  firstChance: 0.15, cooldown: 5,
+  when: 'route != "남 가도"',
+  guide: '베리디아 남작과 바깥 사람들 사이에 오가는 편지다 — 인장 찍은 서신이 전령·상단 짐수레·광휘회 순례자 편으로 남쪽 가도를 오간다. '
+    + '귀족의 편지는 격식과 수사를 갖추고 본론을 뒤에 둔다. 서명은 그 사람의 직함대로. 줄임말·이모티콘 금지. '
+    + '거리가 있다 — 북 모르웬 5일, 동 리아나 강 4일·길 7일, 남 발레리우스 3일, 서 실바나 6일, 왕도 14일. 답장은 그만큼 늦게 온 것이다. '
+    + '편지는 그 사람이 지금 아는 것까지만 담는다 — 베리디아를 아직 모르는 이는 모르는 사람에게 쓰듯 쓰거나 비서가 대신 쓴다. '
+    + '이웃은 저마다 세는 것이 있다: 모르웬은 몬스터를 치운 땅, 리아나는 부두와 뱃길(그리고 빚), 발레리우스는 수확, 실바나는 숲의 희귀물. '
+    + '엘레오노라 공작은 중앙의 질서와 충성을 본다. 세 왕녀는 편지 한 통도 계승 다툼의 수로 읽는다 — 누구와 서신을 트는지가 곧 입장이 된다. '
+    + '여왕은 겉치레를 싫어하고 짧고 결단력 있게 쓴다. 베아트릭스 주교는 돌려 말하지 않는다.',
 };
 
 const v = validateSchema(S);
@@ -2710,6 +2858,80 @@ for (const t of S.party.tabs) {
     console.log(`    ${policy.padEnd(5)} 주민 ${String(s.vars.pop).padStart(3)}/${String(Ly('cap')).padStart(3)}  대기 ${String(s.vars.drifters).padStart(3)}`
       + `  도적 ${s.vars.bandits.toFixed(0).padStart(3)} (${Ly('bandit_txt')})  불안 ${String(s.vars.unrest).padStart(3)}  식량 ${s.vars.food}`);
   }
+}
+
+// ── 청원함 · 서신 (§14-2) ──
+// 청원: 게시(보조) → [수락](버튼) → 이행(보조가 줄을 지우고 사례를 옮겨 적음) / 기한 넘김(시스템) / [취소](버튼).
+// 이행과 기한 넘김을 개수 차로 가르는 게 핵심이라 둘을 한 판에서 다 굴려 본다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 청원함 · 서신 ━━');
+  const questMod = SC.require('quest'); const msgrMod = SC.require('messenger');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: undefined } };   // 조건 이벤트(통지)는 두고 랜덤만 걷는다
+  const qc = questMod.questConfig(S0);
+  let t = engine.initState(S0); t.meta.setupDone = true;
+  ok('명성 10 전엔 청원함이 닫혀 있다 (아무도 모르는 땅)', !questMod.questOpen(qc, S0, t.vars, engine.makeLookup), `명성 ${t.vars.fame}`);
+  t.vars.fame = 30; t.vars.gold = 1000;
+  ok('명성 10부터 열린다', questMod.questOpen(qc, S0, t.vars, engine.makeLookup), '');
+  const posted = questMod.applyOffers(S0, t, { new: [
+    { client: '모르웬 백작', title: '능선 고블린 길목 막기', grade: '이웃 영지', pay: 5000, days: 20, note: '겨울 전에 길목을 막아 달라' },
+    { client: '물레방앗간 한스', title: '방앗간 둑 고치기', grade: '영지민', pay: 0, days: 10, note: '물이 새서 방아가 안 돈다' },
+    { client: '떠돌이 기사', title: '수상한 부탁', grade: '용병', pay: 100, days: 5 },
+  ] }, { now: questMod.nowOf(S0, t, engine.makeLookup), rng: seededRng('pt', 0, 'q') });
+  const offers = t.questBoard.offers;
+  ok('어휘 밖 무리는 거부 · 사례는 무리 밴드로 (이웃 영지 5000 → 800)', offers.length === 2 && offers[0].pay === 800 && posted.rejected.length === 1,
+    offers.map((o) => `${o.grade} ${o.pay}`).join(' · '));
+  ok('메인은 붙은 청원을 원문으로 안다', (questMod.mainLine(S0, t, engine.makeLookup) || '').includes('능선 고블린 길목 막기'), '');
+  questMod.accept(S0, t, offers[0].id, engine.makeLookup);
+  questMod.accept(S0, t, t.questBoard.offers[0].id, engine.makeLookup);
+  ok('[수락] → 맡은 청원 두 줄 · pet_n 2 · 기한이 굳는다', t.vars.petitions.length === 2 && t.vars.pet_n === 2
+    && t.vars.petitions.every((x) => /\(.+\) @\d+ \+\d+$/.test(x)), JSON.stringify(t.vars.petitions));
+  const [morwen, hans] = t.vars.petitions;
+  // 이행 — 보조가 모르웬 줄을 지우고 사례 800을 옮겨 적는다. 같은 씨앗의 대조 판과 차이만 본다
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('pt', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('pt', k, 'o') });
+  const done = step(engine.clone(t), { petitions: { remove: [morwen] }, pet_pay: 800 }, 1);
+  const ctrl = step(engine.clone(t), {}, 1);
+  ok('이행 → 사례가 금고로 · 명성 +1 · 사기 +1 · 통지', done.state.vars.gold - ctrl.state.vars.gold === 800
+    && done.state.vars.fame - ctrl.state.vars.fame === 1 && done.state.vars.morale - ctrl.state.vars.morale === 1
+    && done.firedEvents.includes('pet_done') && !ctrl.firedEvents.includes('pet_done'),
+    `금 ${done.state.vars.gold - ctrl.state.vars.gold} · 명성 ${done.state.vars.fame - ctrl.state.vars.fame} · 사기 ${done.state.vars.morale - ctrl.state.vars.morale}`);
+  ok('사례 정산은 0으로 · 기준 개수 1', done.state.vars.pet_pay === 0 && done.state.vars.pet_n === 1, '');
+  const stray = step(engine.clone(t), { pet_pay: 800 }, 1);
+  ok('줄을 안 지우고 적은 사례는 안 준다 (지어낸 수입 차단)', stray.state.vars.gold === ctrl.state.vars.gold && stray.state.vars.pet_pay === 0,
+    `금 차이 ${stray.state.vars.gold - ctrl.state.vars.gold}`);
+  // 기한 넘김 — 한스의 둑(10일)을 넘겨 12일로 건너뛴다. 이행과 섞이지 않고 실망으로 세진다
+  const late = step(engine.clone(done.state), { skip_day: 11 }, 2);
+  const lateCtrl = step(engine.clone({ ...done.state, vars: { ...done.state.vars, petitions: [], pet_n: 0 } }), { skip_day: 11 }, 2);
+  ok('기한 넘김 → 떨어지고 명성 -3 · 사기 -2 · 통지 (이행으로 안 셈)', late.state.vars.petitions.length === 0 && late.state.vars.pet_lost === 1
+    && late.state.vars.pet_kept === 0 && late.firedEvents.includes('pet_expired')
+    && lateCtrl.state.vars.fame - late.state.vars.fame === 3 && lateCtrl.state.vars.morale - late.state.vars.morale === 2,
+    `놓침 ${late.state.vars.pet_lost} · 명성 ${late.state.vars.fame - lateCtrl.state.vars.fame} · 사기 ${late.state.vars.morale - lateCtrl.state.vars.morale}`);
+  // 기한 당일은 살아 있다 ((오늘)) — 넘긴 다음 날 떨어진다 (done은 1일째라 9일을 건너 10일째 = 한스의 기한 날)
+  const eve = step(engine.clone(done.state), { skip_day: 9 }, 3);
+  ok('기한 당일까지는 남아 (오늘)으로 보인다', eve.state.vars.petitions.includes(hans)
+    && engine.dueText(hans, engine.listClockNow(S0, eve.state, 'petitions')).endsWith('(오늘)'), engine.dueText(hans, engine.listClockNow(S0, eve.state, 'petitions')));
+  // [취소] — 말을 거둔다: 기준 개수도 같이 내려가 다음 정산이 이행으로 안 센다
+  const c = engine.clone(t);
+  const f0 = c.vars.fame;
+  const cr = questMod.cancel(S0, c, morwen, engine.makeLookup);
+  const after = step(c, {}, 4);
+  const afterCtrl = step(engine.clone({ ...t, vars: { ...t.vars, petitions: [hans], pet_n: 1 } }), {}, 4);
+  ok('[취소] → 명성 -(1 + 사례/200) · 다음 정산이 이행으로 안 센다', cr.ok && c.vars.fame === f0 - 5 && c.vars.pet_n === 1
+    && after.state.vars.pet_kept === 0 && !after.firedEvents.includes('pet_done') && after.state.vars.fame === afterCtrl.state.vars.fame - 5,
+    `명성 ${f0} → ${c.vars.fame} · 이행 ${after.state.vars.pet_kept}`);
+
+  // 서신 — 상대 열 명이 카드 로어북의 제 문항에 닿나 (어댑터 buildMsgrPersona가 쓰는 personaEntry 그대로)
+  const card = JSON.parse(fs.readFileSync(__P('simcore-bundle-베리디아_남작령.json'), 'utf8'));
+  const pool = (card.lorebook || []).filter((l) => l && l.comment !== '⚙simcore');
+  const want = { '알라릭 여왕': '여왕' };
+  const miss = PEN.filter((n) => msgrMod.personaEntry(pool, n)?.comment !== (want[n] ?? n));
+  ok(`서신 상대 ${PEN.length}명이 전부 제 로어북 문항에 닿는다`, miss.length === 0,
+    miss.length ? miss.map((n) => `${n}→${msgrMod.personaEntry(pool, n)?.comment}`).join(', ') : PEN.join('·'));
+  ok('리아나 ≠ 릴리아나 (부분 일치 사고)', msgrMod.personaEntry(pool, '리아나')?.comment === '리아나', '');
+  const mc = msgrMod.msgrConfig(S0);
+  const road = engine.initState(S0); road.vars.route = '남 가도';
+  ok('편지는 편지 — 매체 letter · 남쪽 가도가 막히면 전령도 못 간다', mc.medium === 'letter'
+    && msgrMod.msgrOpen(mc, S0, engine.initState(S0).vars, engine.makeLookup) && !msgrMod.msgrOpen(mc, S0, road.vars, engine.makeLookup), '');
 }
 
 // ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──

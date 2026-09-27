@@ -48,6 +48,9 @@ function writerMap(schema) {
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
   for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
+  // 채팅 명령(v.cmd) — 유저가 /수위 0 처럼 직접 바꾼다. 시뮬은 못 움직이지만 "바꾸는 곳이 없다"는 거짓이다
+  // (v1.13.1 — 베리디아 nsfw_on이 🔴 고정 변수로 오탐. 편성표·달력과 같은 이유로 쓰기 경로에 넣는다)
+  for (const v of (schema.vars || [])) if (v && v.cmd) add(v.id, '명령');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
   // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만

@@ -274,33 +274,42 @@ const PET_CIRCLES = [
 // 여왕은 없다 — "외교 혼담은 책상에서 밀어낸다" [원본 여왕]. 실바나는 가문의 뜻으로는 안 온다 — "누구와 혼인해야 하는지 정해 주는 것"을
 // 싫어한다 [원본 실바나]: 개인 호감으로만. 왕녀 셋은 계승 판세와 맞물린다 — 받아들이면 지지가 공개로 굳는다.
 //   { k: enum 값(= 사람 이름), label: 화면 이름, bond: 호감 변수, rel: 영지 인식 변수(없으면 null), gate: 청혼 조건,
-//     pw: 왕녀면 세력 변수, gift: 혼례 예물 효과, giftList: 목록 예물, gift_txt: 예물 한 줄, ask: 청혼 통지 }
+//     pw: 왕녀면 세력 변수, gift: 혼례 예물 효과, giftList: 목록 예물, gift_txt: 예물 한 줄, ask: 청혼 통지,
+//     omen: 청혼이 다음 차례로 정해졌을 때 주변에 비치는 징조 (§14-7 — 누가 무엇 하러 오는지는 말하지 않는다) }
 const SUITORS = [
   { k: '모르웬', label: '모르웬 백작', bond: 'b_morwen', rel: 'rel_n', gate: '(rel_n >= 35 or b_morwen >= 25)',
     gift: [{ set: 'army', expr: 'army + 20' }, { set: 'threat', expr: 'clamp(threat - 10, 0, 100)' }], gift_txt: '북부 병사 스물과 몬스터 전선의 칼',
+    omen: '북쪽에서 온 병사 몇이 주막에서 남작의 나이와 성품을 묻고 갔다고 한다.',
     ask: '[혼담 — 북에서] 모르웬 백작 쪽에서 사람이 왔다. 정치에 서툰 사람답게 돌려 말하지 않는다 — 모르웬 가문이 이 땅의 남작을 차지하고 '
       + '책임지겠다는 것. 백작 본인이 나섰는지 가문의 누구를 내세웠는지는 이번 장면에서 정하라.' },
   { k: '리아나', label: '리아나 백작', bond: 'b_liana', rel: 'rel_e', gate: '(rel_e >= 35 or b_liana >= 25)',
     gift: [], giftList: ['리아나 가문 뱃길 +12'], gift_txt: '강 아래 뱃길 — 하루 +12',
+    omen: '동쪽 뱃사람들이 요즘 남작 이야기를 자주 한다 — 누가 물어보라고 시킨 것처럼.',
     ask: '[혼담 — 동에서] 리아나 백작의 혼담이 왔다. 계산이 붙어 있다는 걸 숨기지 않는다 — 무너진 부두, 쌓인 빚, 그걸 일으킬 사람과 땅. '
       + '그래도 청은 청이고, 이 세계에서 여자가 남자를 차지하겠다는 건 책임지겠다는 말이다. 누가 나섰는지는 이번 장면에서 정하라.' },
   { k: '발레리우스', label: '발레리우스 백작', bond: 'b_valerius', rel: 'rel_s', gate: '(rel_s >= 35 or b_valerius >= 25)',
     gift: [{ set: 'food', expr: 'food + 2000' }], giftList: ['발레리우스 가문 곡물 거래 +8'], gift_txt: '곡물 2000과 곡물 거래 하루 +8',
+    omen: '남쪽 곡물상이 곳간 크기와 올해 수확을 유난히 꼼꼼히 묻고 갔다.',
     ask: '[혼담 — 남에서] 발레리우스 가문이 혼담을 보냈다. 효율을 보는 집이다 — 이 땅의 수확, 그리고 그걸 거둔 남자. '
       + '혼인이 흡수의 다른 이름일 수 있다는 걸 모두 안다. 백작 본인인지 가문의 누구인지는 이번 장면에서 정하라.' },
   { k: '실바나', label: '실바나 후작', bond: 'b_silvana', rel: 'rel_w', gate: 'b_silvana >= 30',
     gift: [{ set: 'fame', expr: 'clamp(fame + 3, 0, 100)' }], giftList: ['실바나 가문 숲 물산 +10'], gift_txt: '서쪽 숲의 물산 하루 +10',
+    omen: '서쪽 숲 쪽에서 매 한 마리가 며칠째 성채 위를 돈다.',
     ask: '[혼담 — 서에서] 가문이 아니라 실바나 본인이다. 정해 주는 혼인을 누구보다 싫어하던 그녀가 제 뜻으로 — 묶이는 걸 제일 싫어하는 '
       + '사람이 먼저 이 남자를 차지하겠다고 한다. 바람 같은 청혼이다.' },
   { k: '엘레오노라', label: '엘레오노라 공작', bond: 'b_eleonora', rel: null, gate: 'my_weight >= 25 and (rel_cap >= 30 or b_eleonora >= 25)',
     gift: [{ set: 'gold', expr: 'gold + 3000' }, { set: 'unrest', expr: 'clamp(unrest - 15, 0, 100)' }], gift_txt: '금화 3000과 중앙 공작가의 질서',
+    omen: '공작가 문장을 단 기수 둘이 가도에서 성채를 한참 올려다보고 갔다.',
     ask: '[혼담 — 중앙 공작가] 엘레오노라 공작은 묻지 않는다 — 청이라기보다 통보에 가깝다. "남자를 데려가는 건 협상이 아니라 차지하는 것." '
       + '공작가가 이 땅을 발밑에 두겠다는 뜻이기도 하다.' },
-  ...[['카산드라', 'b_cassandra', 'pw_cass', '제1왕녀 카산드라의 사람이 은밀히 왔다 — 판 위의 모든 말을 확인해야 직성이 풀리는 그녀가 이 땅의 남작을 제 판에 올리려 한다.'],
-    ['오렐리아', 'b_orelia', 'pw_orel', '제2왕녀 오렐리아가 다정한 편지로 청혼했다 — 고아원의 성녀. 그 얼굴 뒤를 아는 사람은 드물다.'],
-    ['릴리아나', 'b_liliana', 'pw_lili', '제3왕녀 릴리아나가 — 규칙을 싫어하는 그녀답게 — 느닷없이 청혼했다. 장난인지 진심인지는 장면이 정한다.'],
-  ].map(([k, bond, pw, line]) => ({
-    k, label: `${k} 왕녀`, bond, rel: 'rel_cap', pw,
+  ...[['카산드라', 'b_cassandra', 'pw_cass', '제1왕녀 카산드라의 사람이 은밀히 왔다 — 판 위의 모든 말을 확인해야 직성이 풀리는 그녀가 이 땅의 남작을 제 판에 올리려 한다.',
+      '왕도에서 온 서기 하나가 남작의 이력을 적어 갔다는 말이 돈다.'],
+    ['오렐리아', 'b_orelia', 'pw_orel', '제2왕녀 오렐리아가 다정한 편지로 청혼했다 — 고아원의 성녀. 그 얼굴 뒤를 아는 사람은 드물다.',
+      '고아원 수녀들이 남작을 위해 기도했다는 소식이 닿았다 — 누가 청했는지는 모른다.'],
+    ['릴리아나', 'b_liliana', 'pw_lili', '제3왕녀 릴리아나가 — 규칙을 싫어하는 그녀답게 — 느닷없이 청혼했다. 장난인지 진심인지는 장면이 정한다.',
+      '왕도 사교계에서 남작 이름으로 내기가 걸렸다는 소문이 돈다.'],
+  ].map(([k, bond, pw, line, omen]) => ({
+    k, label: `${k} 왕녀`, bond, rel: 'rel_cap', pw, omen,
     gate: `rel_cap >= 35 and my_weight >= 30 and (stance == "${k}" or ${bond} >= 25 or (stance == "중립" and frontrunner == "${k}"))`,
     gift: [{ set: 'gold', expr: 'gold + 2000' }, { set: pw, expr: `clamp(${pw} + 8, 5, 100)` }], gift_txt: `금화 2000과 궁정의 자리 (${k} 세력 +8)`,
     ask: `[혼담 — 왕도에서] ${line} 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다.`,
@@ -1408,15 +1417,20 @@ const S = {
       //   평균 23 · 17 · 12일에 한 번(쉬는 사흘 포함). 옛 방식을 하루 한 턴으로 놀던 빈도에 맞췄다 — 이제 하루에 몇 턴을 쓰든 그대로다.
       //   흔들림 ±50%, 터진 뒤 사흘은 안 찬다. 항목 cooldown도 이제 날(日)이다 — 숫자는 옛 "하루 한 턴" 가정 그대로라 뜻이 같다.
       // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다. 랜디 맛은 빈도보다 창(thr 세 배)이 낸다.
-      gauge: { perDay: '4 + hardship * 0.05 + (threat + unrest) * 0.02', jitter: 0.5, cooldown: 3 },
+      //   징조(v1.14.1, 유저 "주변에 징조가 있으면 갑자기 터지는 것보다 자연스럽다") — 게이지가 80을 넘으면 다음 사건이 미리 정해지고,
+      //   그 사건의 omen 글이 메인에 이유 없는 징후로 깔린다(보통 사나흘). 글은 겉모습만 — 무엇이 오는지 말하면 스포일러다.
+      //   작은 순풍 넷(꿀·술통·고양이·감사 편지)은 징조 없이 갑자기 온다 — 작은 기쁨은 갑자기 와야 맛이다.
+      gauge: { perDay: '4 + hardship * 0.05 + (threat + unrest) * 0.02', jitter: 0.5, cooldown: 3, omenAt: 80 },
       table: [
         // ① 길 — 무역로는 목록이 아니라 사건이다. 얼고, 무너지고, 도적이 앉는다.
         { id: 'road_ice', weight: 2, cooldown: 40,
+          omen: '강가 얕은 데 살얼음이 끼기 시작했다. 뱃사공들이 물빛을 오래 들여다본다.',
           when: `${QUIET} and (month >= 12 or month <= 2)`,
           effects: [{ set: 'route', expr: '"동 강길"' }, { set: 'route_days', expr: '10 + rand(0, 8)' }],
           notify: '[강이 얼었다] 나루에 배가 얼어붙었다. 하류에서 오던 것이 이제 안 온다. '
             + '녹기 전까지는 어느 쪽으로도 짐이 못 움직인다.' },
         { id: 'road_snow', weight: 2, cooldown: 40,
+          omen: '북쪽 고개 위 구름이 며칠째 내려오지 않는다. 산 쪽 바람이 무겁다.',
           when: `${QUIET} and (month >= 11 or month <= 3)`,
           effects: [{ set: 'route', expr: '"북 산길"' }, { set: 'route_days', expr: '8 + rand(0, 10)' }],
           notify: '[고개가 닫혔다] 밤새 눈이 고개를 메웠다. 북쪽은 봄까지 남의 나라다.' },
@@ -1424,6 +1438,7 @@ const S = {
         // §14: 도적 세력이 크면 번 게 없어도 앉고, 경비 문턱도 그만큼 높아진다 (bandits 0이면 옛 조건 그대로)
         //   §14-5: 단, 오가는 짐이 있을 만한 땅이어야 — 털 것 없는 길목엔 무리가 크든 작든 앉지 않는다
         { id: 'road_bandit', weight: 3, cooldown: 30,
+          omen: '남쪽 가도로 오는 짐수레가 줄었다. 오던 행상들이 길에서 본 얼굴들 이야기를 흐린다.',
           when: `${QUIET} and (deals >= 15 or gold >= 300 or (bandits >= 35 and ${thr('lure', '>=', 35, 15)}))`
             + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)',
           effects: [{ set: 'route', expr: '"남 가도"' }, { set: 'route_days', expr: '4 + rand(0, 6)' },
@@ -1431,16 +1446,19 @@ const S = {
           notify: '[가도에 앉았다] 짐수레가 털렸다. 한 무리가 포장도로 길목을 잡고 통행세를 받는다. '
             + '이건 저절로 안 풀린다 — 쫓아내면 그날로 길이 열린다.' },
         { id: 'road_wood', weight: 2, cooldown: 36,
+          omen: '서쪽 숲길에서 돌아오는 짐꾼이 자꾸 늦는다. 숲 가장자리가 이상하게 조용하다.',
           when: `${QUIET} and ${thr('threat', '>=', 68, 45)}`,
           effects: [{ set: 'route', expr: '"서 숲길"' }, { set: 'route_days', expr: '5 + rand(0, 8)' }],
           notify: '[숲길이 삼켜졌다] 서쪽으로 간 짐꾼이 돌아오지 않았다. 숲이 길을 지운 건지 무언가가 지키는 건지 모른다.' },
         { id: 'road_flood', weight: 2, cooldown: 40,
+          omen: '상류 쪽에서 흙탕물이 섞여 내려온다. 강 냄새가 달라졌다.',
           when: `${QUIET} and month >= 4 and month <= 8 and weather != "☀️맑음"`,
           effects: [{ set: 'route', expr: '"동 강길"' }, { set: 'route_days', expr: '4 + rand(0, 6)' }],
           notify: '[강이 넘쳤다] 물이 둔치를 삼키고 갈대밭까지 올라왔다. 나루 자리를 다시 찾아야 한다.' },
 
         // ② 밖에서 오는 사람 — 수용 한계가 있어야 이게 축복이자 부담이 된다
         { id: 'refugees', weight: 3, cooldown: 25,
+          omen: '남쪽 길에서 온 사람마다 같은 말을 한다 — 저 아래 마을들이 비어 간다고.',
           // 터져 나가는 게 눈에 보이면 발길이 끊긴다 — 그래도 수용 한계까진 밀고 들어온다
           when: `${QUIET} and ${thr('fame', '>=', 2, 18)} and food > 200 and crowd < 125`,
           // §14: 곧장 주민이 되지 않는다 — 관문 앞에 서고, 들일지는 관문 방침이 다음 정산에서 정한다
@@ -1450,11 +1468,13 @@ const S = {
             + '그들이 알 바 아니다. 들일지는 관문 방침이 정한다.' },
         // 칼 든 이들이 섞여 있다 — 병사로 사거나(서사가 army를 올리고 drifters를 내린다) 돌려보내면 길 위로 간다
         { id: 'merc_band', weight: 2, cooldown: 40,
+          omen: '관문 앞 무리 속에 칼 찬 이들이 따로 뭉쳐 다닌다. 서로 누구 눈치를 보는지가 보인다.',
           when: `${QUIET} and drifters >= 20 and guild == 0`,
           effects: [],
           notify: '[칼잡이 한 패] 관문 앞 무리 속에 무장한 한 패가 있다 — 전쟁이 끝나 일거리를 잃은 용병단이다. '
             + '병사로 사겠다면 지금이고, 돌려보내면 그 칼은 길 위로 간다. 몇 명이고 누가 이끄는지는 이번 장면에서 정하라.' },
         { id: 'peddler', weight: 3, cooldown: 20,
+          omen: '길 쪽에서 방울 소리를 들었다는 아이가 있다.',
           when: `${QUIET} and rel_top >= 15`,
           effects: [],
           notify: '[봇짐장수가 들렀다] 길을 잘못 든 장사치 하나가 하룻밤 묵어 간다. '
@@ -1462,6 +1482,7 @@ const S = {
 
         // ③ 밖에서 오는 위협
         { id: 'raid', weight: 3, cooldown: 22,
+          omen: '변두리 울타리 밖에 낯선 발자국이 찍혀 있었다. 개들이 밤새 한쪽을 보고 짖는다.',
           // 보건이 오르면 가용 노동력이 늘어 경비 인원도 같이 는다 — 예전 기준(pop*0.10)은
           // 자리를 잡은 순간 영원히 안 걸렸다. 상비군을 두 배로 세는 건 훈련된 병사가 척후 몇보다 낫기 때문.
           when: `${QUIET} and ${thr('threat', '>=', 80, 45)} and guard_men + army * 2 < round(pop * 0.15)`,
@@ -1470,6 +1491,7 @@ const S = {
           notify: '[변두리가 털렸다] 외곽 집 몇 채가 밤사이 비었다. 사람이 상했는지 도망친 건지는 아침에 안다. '
             + '경비가 모자라다는 걸 저쪽이 먼저 알아챘다.' },
         { id: 'plague', weight: 2, cooldown: 45,
+          omen: '기침하는 집이 하나둘 늘었다. 열이 올랐다 내렸다 한다는 말이 우물가에서 돈다.',
           when: `${QUIET} and ${thr('health', '<=', 20, 60)} and crowd >= 85`,
           effects: [{ set: 'disaster', expr: '"열병"' }, { set: 'disaster_days', expr: '8 + rand(0, 10)' },
             { set: 'health', expr: 'clamp(health - 10, 0, 100)' }],
@@ -1488,12 +1510,14 @@ const S = {
               inject: 'The Baron keeps the Church out of it. The village nurses its own with what it has.' },
           ] },
         { id: 'drought', weight: 2, cooldown: 60,
+          omen: '비가 올 듯하다 그치는 날이 이어진다. 개울 물소리가 작아졌다.',
           when: `${QUIET} and month >= 6 and month <= 8 and ${thr('wells', '<=', 0, 2)}`,
           effects: [{ set: 'disaster', expr: '"가뭄"' }, { set: 'disaster_days', expr: '12 + rand(0, 14)' }],
           notify: '[비가 그쳤다] 논둑이 갈라지기 시작했다. 강까지 물을 이고 나르는 줄이 길어진다.' },
 
         // ④ 밖에서 오는 눈길 — 이웃이 이쪽을 처음 쳐다보는 순간
         { id: 'assessor', weight: 3, cooldown: 50,
+          omen: '낯선 사람이 인근 마을에서 여기 곳간과 병영을 묻고 다녔다고 한다.',
           when: `${QUIET} and rel_top >= 30 and rel_top < 70`,
           effects: [],
           notify: '[누가 보러 왔다] 이웃 영지 사람이 볼일 없이 마을을 한 바퀴 돌고 갔다. 세는 눈이었다. '
@@ -1502,6 +1526,7 @@ const S = {
         // ⑤ 하늘이 하는 일 — 막을 수 없고 지나가기를 기다리는 것들.
         //    밭을 때리는 건 blight로, 곳간을 때리는 건 food로 간다. 목록에서 밭을 빼는 건 이벤트가 못 한다.
         { id: 'storm', weight: 3, cooldown: 30,
+          omen: '서쪽 하늘이 저녁마다 누렇게 탄다. 제비가 낮게 난다.',
           when: `${QUIET} and (month >= 3 and month <= 5 or month >= 9 and month <= 11)`,
           effects: [{ set: 'disaster', expr: '"큰바람"' }, { set: 'disaster_days', expr: '2 + rand(0, 3)' },
             { set: 'food', expr: 'max(0, food - round(pop * 0.6))' },
@@ -1512,12 +1537,14 @@ const S = {
         // §14-6 이름값 — 밭 피해는 가진 밭의 몫으로(옛 판은 3~6 고정이라 밭 다섯이면 태반, 열둘이면 티끌), 아무는 날까지 간다.
         //   우박 40~60% · 40~60일(여름 소출과 가을걷이 앞머리) / 늦서리 20~40% · 25~35일(다시 뿌려 올라올 때까지) / 들불 10~20% · 20일
         { id: 'hail', weight: 3, cooldown: 45,
+          omen: '한낮인데 공기가 이상하게 차다. 먹구름 밑이 푸르스름하다.',
           when: `${QUIET} and month >= 5 and month <= 8 and sum(farms) > 0`,
           effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(4, 6) / 10)))' },
             { set: 'blight_until', expr: 'max(blight_until, day + 40 + rand(0, 20))' }],
           notify: '[우박이 왔다] 한나절 만에 이삭이 다 누웠다. 밭이 없어진 건 아니지만 올해 그 자리에서 '
             + '나올 것은 크게 줄었다. 몇 이랑이 살아남았는지는 이번 장면에서 정하라.' },
         { id: 'frost', weight: 2, cooldown: 60,
+          omen: '해가 지면 바람이 갑자기 맵다. 늙은이들이 모종 덮을 거적을 찾는다.',
           when: `${QUIET} and month >= 3 and month <= 4 and sum(farms) > 0`,
           effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(2, 4) / 10)))' },
             { set: 'blight_until', expr: 'max(blight_until, day + 25 + rand(0, 10))' }],
@@ -1525,6 +1552,7 @@ const S = {
             + '다시 뿌려야 하고, 다시 올라올 때까지 그 자리는 빈 밭이다.' },
         // 불을 끊는 동안은 일손이 밭에 없다 — 들불이 타는 날은 수확 ×0.8 (dis_farm). 탄 자리는 밭 피해로 남는다.
         { id: 'wildfire', weight: 2, cooldown: 50,
+          omen: '마른 풀 냄새가 짙다. 먼 능선에 옅은 연기가 오른 날이 있었다.',
           when: `${QUIET} and month >= 6 and month <= 8 and weather == "☀️맑음"`,
           effects: [{ set: 'disaster', expr: '"들불"' }, { set: 'disaster_days', expr: '3 + rand(0, 4)' },
             { set: 'threat', expr: 'clamp(threat - 6, 0, 100)' },
@@ -1533,6 +1561,7 @@ const S = {
           notify: '[들에 불이 붙었다] 마른 풀을 타고 번진다. 사람을 붙여 불길을 끊어야 한다. '
             + '탄 자리에서 무엇이 쫓겨 나왔는지는 이번 장면에서 정하라 — 짐승도 불은 피한다.' },
         { id: 'coldsnap', weight: 2, cooldown: 50,
+          omen: '밤마다 한기가 한 겹씩 더 내려온다. 장작 값을 묻는 사람이 늘었다.',
           when: `${QUIET} and (month >= 12 or month <= 2) and crowd >= 90`,
           effects: [{ set: 'disaster', expr: '"한파"' }, { set: 'disaster_days', expr: '4 + rand(0, 5)' },
             { set: 'health', expr: 'clamp(health - 8, 0, 100)' }],
@@ -1540,12 +1569,14 @@ const S = {
 
         // ⑥ 병 — 여건이 나빠서 나는 것들이라 조건이 곧 원인이다.
         { id: 'foul_water', weight: 3, cooldown: 35,
+          omen: '강물에서 비린내가 난다. 배를 쓸어내리는 사람이 보인다.',
           when: `${QUIET} and wells <= 0 and ${thr('health', '<=', 25, 70)}`,
           effects: [{ set: 'disaster', expr: '"배앓이"' }, { set: 'disaster_days', expr: '5 + rand(0, 6)' },
             { set: 'health', expr: 'clamp(health - 7, 0, 100)' }],
           notify: '[강물 탓이다] 마을 절반이 같은 날 배를 잡았다. 오염된 우물을 두고 강물을 길어 온 대가다. '
             + '끓여 먹으라는 말은 지키는 사람만 지킨다.' },
         { id: 'murrain', weight: 2, cooldown: 55,
+          omen: '짐승들이 여물을 남긴다. 눈이 흐린 놈이 한둘 보인다.',
           when: `${QUIET} and sum(farms) >= 4`,
           effects: [{ set: 'food', expr: 'max(0, food - round(pop * 0.8))' },
             { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' }],
@@ -1555,24 +1586,28 @@ const S = {
         // ⑦ 짐승과 그보다 나쁜 것 — 방향마다 사는 게 다르다(로어북).
         //    경비가 모자랄 때만 온다. 저쪽이 그걸 먼저 안다.
         { id: 'goblin_raid', weight: 2, cooldown: 24,
+          omen: '북쪽 숲 가장자리에서 작은 발자국과 이빨 자국 난 뼈가 나왔다.',
           when: `${QUIET} and ${thr('threat', '>=', 70, 40)} and guard_men + army * 2 < round(pop * 0.18)`,
           effects: [{ set: 'food', expr: 'max(0, food - round(pop * 0.5))' },
             { set: 'threat', expr: 'clamp(threat + 6, 0, 100)' }],
           notify: '[북쪽에서 내려왔다] 고블린 한 떼가 밤에 곳간을 뒤졌다. 싸움이랄 것도 없이 지고 갔다. '
             + '한 번 성공한 자리는 다시 온다.' },
         { id: 'harpy', weight: 2, cooldown: 40,
+          omen: '능선 위로 큰 그림자가 도는 걸 봤다는 사람이 있다. 들새들이 조용하다.',
           when: `${QUIET} and ${thr('threat', '>=', 75, 45)} and month >= 4 and month <= 9`,
           effects: [{ set: 'pop', expr: 'max(0, pop - (1 + rand(0, 2)))' },
             { set: 'morale', expr: 'clamp(morale - 6, 0, 100)' }],
           notify: '[하늘에서 왔다] 능선 쪽에서 그림자가 돌더니 들에 있던 사람을 채 갔다. 활이 닿지 않는 높이였다. '
             + '누가 없어졌는지는 이번 장면에서 정하라.' },
         { id: 'orc_scout', weight: 2, cooldown: 45,
+          omen: '남쪽 평원 먼 곳에서 연기 몇 줄이 올랐다가 사라졌다.',
           when: `${QUIET} and ${thr('threat', '>=', 80, 55)}`,
           effects: [{ set: 'threat', expr: 'clamp(threat + 10, 0, 100)' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }],
           notify: '[재 너머에서 봤다] 남쪽 평원에 오크 척후가 다녀갔다. 약탈이 아니라 세러 온 것이다. '
             + '세고 갔다는 건 뒤에 본대가 있다는 뜻이다.' },
         { id: 'nest_near', weight: 2, cooldown: 40,
+          omen: '밤에 숲 쪽에서 들어 본 적 없는 소리가 난다. 덫에 걸리던 짐승이 줄었다.',
           when: `${QUIET} and ${thr('threat', '>=', 50, 30)}`,
           effects: [{ set: 'threat', expr: 'clamp(threat + 12, 0, 100)' }],
           notify: '[가까이에 자리를 잡았다] 마을에서 반나절도 안 되는 곳에 무언가가 둥지를 틀었다. '
@@ -1583,17 +1618,20 @@ const S = {
         //    문턱이 나쁜 일과 반대로 움직인다. 하드에서 행운이 사라지는 게 아니라,
         //    행운이 걸릴 만큼 뭔가를 세워 놓아야 걸린다.
         { id: 'bumper', weight: 3, cooldown: 60,
+          omen: '올해 이삭이 유난히 무겁게 고개를 숙였다. 늙은이들이 밭둑에 오래 서 있다.',
           when: `${QUIET} and month >= 9 and month <= 10 and ${thr('sum(farms)', '>=', 2, 8)} and blight <= 0`,
           effects: [{ set: 'food', expr: 'food + round(pop * 2.5)' },
             { set: 'morale', expr: 'clamp(morale + 8, 0, 100)' },
             { set: 'fame', expr: 'clamp(fame + 3, 0, 100)' }],
           notify: '[올해는 잘 됐다] 걷어 보니 예상보다 훨씬 많다. 이런 해는 자주 오지 않는다는 걸 늙은이들이 안다.' },
         { id: 'wanderer', weight: 3, cooldown: 30,
+          omen: '연장 꾸러미를 멘 낯선 이가 이웃 마을에서 여기 이야기를 묻고 갔다고 한다.',
           when: `${QUIET} and ${thr('fame', '>=', 4, 22)} and crowd < 110`,
           effects: [],
           notify: '[손을 가진 사람이 왔다] 떠돌던 장인 하나가 여기서 겨울을 나겠다고 한다. 무엇을 다루는 사람이고 '
             + '왜 떠돌았는지 이번 장면에서 정하고, 눌러앉기로 하면 현지 고용인에 올려라.' },
         { id: 'pilgrims', weight: 2, cooldown: 45,
+          omen: '인근 마을에서 이번 축일엔 여기로 가 볼까 하는 말이 들린다.',
           when: `${QUIET} and fest_in <= 3 and ${thr('fame', '>=', 0, 12)}`,
           effects: [{ set: 'morale', expr: 'clamp(morale + 6, 0, 100)' },
             { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
@@ -1601,24 +1639,28 @@ const S = {
           notify: '[축일을 쇠러 왔다] 인근에서 사람들이 걸어 들어왔다. 폐허라도 축일은 축일이라고. '
             + '쓰고 간 돈보다, 여기가 사람 사는 곳으로 보였다는 게 크다.' },
         { id: 'windfall', weight: 2, cooldown: 60,
+          omen: '터를 파던 인부들 삽 끝에 자꾸 옛 기와 조각이 걸린다.',
           when: `${QUIET} and ${thr('build_men', '>=', 2, 16)}`,
           effects: [{ set: 'gold', expr: 'gold + 120 + rand(0, 260)' }],
           notify: '[땅에서 나왔다] 터를 파던 인부가 항아리를 깼는데 안에 옛 주화가 들어 있었다. '
             + '누가 왜 묻었는지는 아무도 모른다.' },
         // ⑨ 왕도가 이쪽을 보기 시작할 때 — 계승 다툼이 영지까지 닿는다
         { id: 'envoy', weight: 3, cooldown: 40,
+          omen: '왕도 쪽 말을 탄 사람이 인근 역참에서 쉬어 갔다고 한다.',
           when: `${QUIET} and my_weight >= 15 and stance == "중립"`,
           effects: [],
           notify: '[사절이 왔다] 왕도에서 온 사람이 남작을 따로 청했다. 세 왕녀 중 누가 보냈고 무엇을 약속하는지, '
             + '그리고 그 대가로 무엇을 요구하는지는 이번 장면에서 정하라. 지금 판세와 이쪽의 무게를 보고 '
             + '어울리는 쪽이 보냈을 것이다. 답을 그 자리에서 줄 필요는 없다.' },
         { id: 'leak', weight: 3, cooldown: 30,
+          omen: '궁정 쪽에서 온 사람들이 남작이 누구와 서신을 주고받는지 넌지시 묻는다.',
           when: `${QUIET} and stance != "중립" and exposed >= 25 and exposed < 75`,
           effects: [{ set: 'exposed', expr: 'clamp(exposed + 20, 0, 100)' }],
           notify: '[말이 돌았다] 남작이 누구 편인지가 이제 궁정 밖에서도 오르내린다. 누구 입에서 나갔는지는 '
             + '이번 장면에서 정하라 — 밀서를 나른 자일 수도, 자랑을 한 식솔일 수도 있다. '
             + '반대편에 선 쪽이 이걸 모를 리 없다.' },
         { id: 'court_turn', weight: 2, cooldown: 55,
+          omen: '왕도에서 오는 소식이 뜸하다. 오는 사람마다 말을 아낀다.',
           when: `${QUIET} and day >= 40`,
           effects: [{ set: 'pw_cass', expr: 'clamp(pw_cass + rand(0, 16) - 8, 5, 100)' },
             { set: 'pw_orel', expr: 'clamp(pw_orel + rand(0, 16) - 8, 5, 100)' },
@@ -1627,6 +1669,7 @@ const S = {
             + '무엇 때문인지는 여기까지 정확히 오지 않는다. 어느 쪽이 웃고 어느 쪽이 다쳤는지는 '
             + '위 세력 수치를 보고 읽어라 — 이유는 지어내되 숫자와 어긋나면 안 된다.' },
         { id: 'summons', weight: 2, cooldown: 70,
+          omen: '왕실 인장을 단 전령이 근처 가도를 지났다고 한다.',
           when: `${QUIET} and rel_cap >= 35 and my_weight >= 25`,
           effects: [{ set: 'appt', expr: '"왕도 소환 — 알현"' }, { set: 'appt_in', expr: '14 + rand(0, 7)' }],
           notify: '[부름을 받았다] 왕도에서 소환장이 왔다. 길이 십사 일이니 떠날 채비를 해야 하고, '
@@ -1634,6 +1677,7 @@ const S = {
 
         // 문턱이 왕도(rel_cap)였던 것을 교단(rel_ch)으로 (§14-3) — 순회 자매를 보내는 건 대성당이다. 시작값에선 같은 판정
         { id: 'sister_visit', weight: 2, cooldown: 50,
+          omen: '순회하는 자매가 이웃 마을에 머물고 있다는 말이 들린다.',
           when: `${QUIET} and health <= 55 and count(corps) <= 0 and ${thr('rel_ch', '>=', 0, 10)}`,
           effects: [{ set: 'health', expr: 'clamp(health + 10, 0, 100)' },
             { set: 'b_stella', expr: 'clamp(b_stella + 4, -50, 100)' }],
@@ -1642,6 +1686,7 @@ const S = {
         // 교단과 왕실 — 왕국과 나란한 교단 [유저]. 두 권력이 한 문제로 맞서고 이 땅의 영주에게 편을 묻는다.
         //   무엇을 두고 맞섰는지는 서사가 — 시스템은 "누가 무엇을 원하나"까지. 안 고르면(3턴) 말을 아낀 것 = 양쪽이 조금씩 식는다
         { id: 'church_crown', weight: 2, cooldown: 90,
+          omen: '대성당 사람과 왕도 사람이 같은 주막에서 서로를 피해 앉았다고 한다.',
           when: `${QUIET} and rel_ch >= 40 and rel_cap >= 30`,
           effects: [],
           notify: '[교단과 왕실 사이] 대성당과 왕도가 한 문제를 두고 맞섰다 — 의사 임명권, 고아원 기금, 이단 심문, 십일조 면제 중 '
@@ -1663,6 +1708,7 @@ const S = {
         // 혈전급은 리얼리티에서 창이 세 배 넓지만 어느 판에도 있다 — 켜고 끄지 않는다(원칙).
         // 반대로 순풍급은 시련이 낮을수록 창이 넓다: thr의 기울기를 뒤집으면 된다.
         { id: 'horde', weight: 2, cooldown: 70,
+          omen: '짐승들이 한 방향에서 도망쳐 온다. 척후가 돌아와 말을 아낀다.',
           when: `${QUIET} and ${thr('threat', '>=', 92, 62)} and pop >= 40`,
           effects: [
             { set: 'pop', expr: 'max(pop - 6 - rand(0, 8), 20)' },
@@ -1673,24 +1719,28 @@ const S = {
           notify: '[무리가 내려왔다] 척후가 봤다던 것들이 한꺼번에 왔다. 밤새 싸웠고, 아침에 세어 보니 '
             + '빈자리가 있다. 저들은 물러난 것이지 사라진 게 아니다.' },
         { id: 'granary_rot', weight: 2, cooldown: 60,
+          omen: '곳간 밑단에서 눅눅한 냄새가 올라온다. 쥐가 늘었다.',
           when: `${QUIET} and ${thr('food', '>=', 1400, 600)}`,
           effects: [{ set: 'food', expr: 'max(food - round(food * (0.08 + hardship * 0.0012)), 0)' },
             { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' }],
           notify: '[곳간이 상했다] 밑단 가마니에서 쉰내가 올라왔다. 젖은 채로 쌓은 것이 속에서 썩었다. '
             + '상한 것을 골라내는 데 하루가 갔고, 골라낸 만큼이 줄었다.' },
         { id: 'deserters', weight: 2, cooldown: 45,
+          omen: '몇 집이 짐을 싸 두었다는 말이 돈다. 저녁마다 남쪽 길을 오래 보는 사람들이 있다.',
           when: `${QUIET} and ${thr('morale', '<=', 6, 28)} and pop >= 40`,
           effects: [{ set: 'pop', expr: 'max(pop - 3 - rand(0, 5), 20)' },
             { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' }],
           notify: '[사람이 떠났다] 새벽에 남쪽 길로 몇 집이 조용히 나갔다. 말리는 사람이 없었다는 것이 '
             + '더 나쁜 소식이다. 남은 이들이 그 빈집을 하루 종일 쳐다봤다.' },
         { id: 'settlers', weight: 2, cooldown: 45,
+          omen: '연장을 짊어진 가족이 인근에서 빈집이 있느냐고 물었다고 한다.',
           when: `${QUIET} and ${thr('fame', '>=', 6, 30)} and pop < cap and health >= 25`,
           effects: [{ set: 'pop', expr: 'pop + 3 + rand(0, 4)' },
             { set: 'morale', expr: 'clamp(morale + 4, 0, 100)' }],
           notify: '[가족이 정착했다] 손에 연장이 있는 가족이 들어와 빈집을 골랐다. 도망 온 것이 아니라 '
             + '골라서 온 것이다 — 이 땅 이야기가 밖에서 그렇게 돈다는 뜻이다.' },
         { id: 'patron', weight: 2, cooldown: 60,
+          omen: '이웃 영지 인장을 단 짐마차가 인근 길에서 보였다.',
           when: `${QUIET} and ${thr('rel_top', '>=', 25, 60)}`,
           effects: [{ set: 'gold', expr: 'gold + 80 + rand(0, 60)' },
             { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
@@ -1704,17 +1754,20 @@ const S = {
         // 그래서 같은 사건이 여러 번 와도 판마다 다른 이야기가 된다. 숫자는 가볍게만 민다 —
         // 진짜 결과는 서사가 정하고 보조 AI 상한이 받아 적는다.
         { id: 'trouble_market', weight: 2, cooldown: 35,
+          omen: '저잣거리 말소리가 날카롭다. 저울 이야기가 자주 나온다.',
           when: `${QUIET} and (deals >= 5 or gold >= 200)`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' }],
           notify: '[장터가 시끄럽다] 저잣거리에서 다툼이 났다. 저울인지 셈인지 자리싸움인지 — '
             + '무엇이 불씨인지는 현장이 안다. 남작이 나서기 전에는 안 가라앉을 크기다.' },
         { id: 'trouble_folk', weight: 2, cooldown: 35,
+          omen: '우물가에서 사람들이 편을 갈라 수군거린다.',
           when: `${QUIET} and pop >= 60`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' },
             { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
           notify: '[마을에 말썽이 났다] 집과 집 사이의 일이다. 혼사인지 빚인지 금 넘은 울타리인지 — '
             + '사정은 당사자들이 말할 것이다. 사람들이 편을 갈라 서기 시작했다는 게 문제다.' },
         { id: 'trouble_barracks', weight: 2, cooldown: 35,
+          omen: '병영에서 밤늦게 웃음소리와 고함이 섞여 들린다.',
           when: `${QUIET} and army >= 5`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 2, 0, 100)' },
             { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
@@ -1725,6 +1778,7 @@ const S = {
         // 숫자는 티끌(사기 +2~5, 식량 한 줌)이고 난이도 문턱을 안 건다 — 리얼리티의
         // 가뭄에도 단비는 온다. 그래서 쿨다운만 길게.
         { id: 'first_baby', weight: 2, cooldown: 90,
+          omen: '산파가 요즘 한 집을 자주 드나든다.',
           when: `${QUIET} and pop >= 40`,
           effects: [{ set: 'pop', expr: 'pop + 1' }, { set: 'morale', expr: 'clamp(morale + 5, 0, 100)' }],
           notify: '[아이가 태어났다] 부임 뒤 태어난 아이다. 이 땅에서 아이를 낳기로 한 집이 있다는 뜻이다. '
@@ -1754,6 +1808,7 @@ const S = {
         // ⑥ 도적 (§14) — 몬스터가 아니라 사람. 돌려보낸 이들이 굶다 칼을 든 것이다.
         //   §14-5: 굶는 자도 빈 마을은 안 턴다 — 탐낼 거리가 문턱을 넘어야 온다 (문턱은 시련이 낮춘다: 희망 33 · 보통 26 · 리얼리티 15)
         { id: 'bandit_raid', weight: 3, cooldown: 25,
+          omen: '외곽 곳간 근처에 낯선 신발 자국이 찍혀 있었다.',
           when: `${QUIET} and ${thr('bandits', '>=', 50, 30)} and ${thr('lure', '>=', 35, 15)}`
             + ' and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)',
           effects: [{ set: 'food', expr: 'max(0, food - 40 - rand(0, 40))' }, { set: 'gold', expr: 'max(0, gold - 30 - rand(0, 30))' },
@@ -1761,18 +1816,21 @@ const S = {
           notify: '[도적이 변두리를 쳤다] 밤사이 외곽 곳간과 짐수레가 털렸다. 몬스터 짓이 아니다 — 발자국이 신발을 신었다. '
             + '누구 무리인지, 어디로 갔는지는 이번 장면에서 정하라. 한 번 재미를 본 자들은 또 온다.' },
         { id: 'bandit_lair', weight: 2, cooldown: 90,
+          omen: '길 위 무리들이 한 사람의 이름을 입에 올리기 시작했다.',
           when: `${QUIET} and bandits >= 70`,
           effects: [{ set: 'bandits', expr: 'min(100, bandits + 5)' }],
           notify: '[소굴이 생겼다] 흩어져 있던 무리가 한 사람 밑으로 모였다. 두목의 이름과 소굴 자리를 이번 장면에서 정하라 — '
             + '전쟁 때 같은 깃발 아래 있던 얼굴일 수도 있다. 그대로 두면 길목마다 통행세를 걷기 시작한다.' },
         // ⑦ 모험가 (§14) — 돈과 말썽이 같이 온다
         { id: 'guild_brawl', weight: 2, cooldown: 30,
+          omen: '주막에서 모험가 패거리끼리 눈을 흘기는 게 보인다.',
           when: `${QUIET} and guild >= 1`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 4, 0, 100)' }, { set: 'gold', expr: 'max(0, gold - 10 - rand(0, 20))' }],
           notify: '[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 '
             + '나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라.' },
         // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (자리가 열리기 직전(100↑)은 안 건드림)
         { id: 'adv_rumor', weight: 2, cooldown: 30,
+          omen: '사냥에서 돌아온 모험가들이 척후가 가는 쪽 길을 두고 수군거린다.',
           when: `${QUIET} and guild >= 1 and explore_dir != "없음"`,
           effects: EXPLORE.map(([dir, v]) => ({ set: v, expr: `${v} < 100 and explore_dir == ${JSON.stringify(dir)} ? min(100, ${v} + 15) : ${v}` })),
           notify: '[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, '
@@ -1781,7 +1839,7 @@ const S = {
         // ── 혼담 (§14-4) ── 번영할수록 차지하러 온다 [유저]. 명성 30 · 90일 이후 · 한 번 오면 75일은 조용 · 차지된 뒤엔 안 온다.
         //   누가 오나는 그 가문의 인식·그 사람의 호감·계승 판세가 가른다 (SUITORS.gate). 안 고르면(3턴) "시간을 청한다" — 서른 날 뒤 다시 온다.
         ...SUITORS.map((s) => ({
-          id: `suit_${suitId(s)}`, weight: 2, cooldown: 180,
+          id: `suit_${suitId(s)}`, weight: 2, cooldown: 180, omen: s.omen,
           when: `${QUIET} and spouse == "없음" and suit == "없음" and day >= suit_next and fame >= 30 and ${s.gate}`,
           effects: [{ set: 'suit_next', expr: 'day + 75' }],
           notify: s.ask + ' 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.',
@@ -3610,6 +3668,46 @@ for (const t of S.party.tabs) {
   console.log('  한 번이 가져가는 것 (90일, 사건 없는 판과의 차이 · 네 판 평균 — 일치 = 하루 소비 기준)');
   for (const [id, d, lab] of [['hail', 90, '우박 6월'], ['frost', 20, '늦서리 3월'], ['drought', 120, '가뭄 7월'], ['wildfire', 120, '들불 7월'], ['storm', 190, '큰바람 9월']]) {
     console.log(`  ${lab.padEnd(8)} 보통 개막: ${loss(id, d, {})}   밭 12: ${loss(id, d, F12)}`);
+  }
+}
+
+// ── 사건 게이지와 징조 (§14-7, 플러그인 v1.14.0~1) ──
+// 게이지가 80을 넘으면 다음 사건이 미리 정해지고 그 사건의 징조가 메인에 깔린다. 여기서 재는 것: 징조가 빠짐없이 달렸나,
+// 한 해를 굴리면 사건의 몇 할이 징조를 먼저 보이고 오나, 며칠 앞서 보이나 — 하루 한 턴·세 턴·닷새 턴.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 사건 게이지와 징조 ━━');
+  const T = S.rules.randomEvents.table;
+  const SUDDEN = ['honey_find', 'old_cask', 'cat_hero', 'thanks_letter'];   // 작은 기쁨은 갑자기 온다
+  const bare = T.filter((e) => !(typeof e.omen === 'string' && e.omen.trim())).map((e) => e.id);
+  ok(`징조 — ${T.length - bare.length}/${T.length}개 사건 (작은 순풍 넷만 갑자기)`, JSON.stringify(bare.sort()) === JSON.stringify([...SUDDEN].sort()), bare.join(','));
+  ok('징조 글은 짧고 이름을 안 댄다 (90자 이내 · 대괄호 없음)', T.every((e) => !e.omen || (e.omen.length <= 90 && !/[[\]]/.test(e.omen))),
+    T.filter((e) => e.omen && (e.omen.length > 90 || /[[\]]/.test(e.omen))).map((e) => e.id).join(','));
+  ok('선 80 · 하루 속도는 시련·위협·불안이 민다', engine.gaugeConfig(S).omenAt === 80 && /hardship/.test(S.rules.randomEvents.gauge.perDay) && /threat/.test(S.rules.randomEvents.gauge.perDay), '');
+  const pre = (id) => { let t = engine.initState(S); t.meta.setupDone = true; return engine.applyPreset(S, t, id).state; };
+  const lead = (pid, skipOf, turns) => {
+    let fired = 0, warned = 0, leadDays = 0; const SEEDS = 4;
+    for (let s = 0; s < SEEDS; s++) {
+      let t = pre(pid); Object.assign(t.vars, { route: '없음', route_days: 0 }); let since = null;
+      for (let i = 0; i < turns; i++) {
+        t.vars.food = Math.max(t.vars.food, t.vars.pop * 8); t.vars.water = Math.max(t.vars.water, t.vars.pop * 8);
+        const sp = engine.sendPhase(S, t, { rng: seededRng(`om-${pid}-${s}`, i, 's') });
+        if (sp.promptBlock.includes('[징조') && since == null) since = t.vars.day;
+        const o = _outputPhase(S, sp.state, { skip_day: skipOf(i) }, {}, { rng: seededRng(`om-${pid}-${s}`, i, 'o') });
+        t = o.state;
+        const ev = o.firedEvents.find((x) => T.some((e) => e.id === x));
+        if (ev) {
+          fired++;
+          if (since != null) { warned++; leadDays += t.vars.day - since; }
+          since = null;
+        }
+      }
+    }
+    return `${String(Math.round(warned * 100 / Math.max(1, fired))).padStart(3)}% 징조 먼저 · 평균 ${(leadDays / Math.max(1, warned)).toFixed(1)}일 앞`;
+  };
+  console.log('  한 해(보통) — 사건 중 징조가 먼저 보인 몫 · 앞선 날');
+  for (const [lab, f, n] of [['하루 한 턴', () => 1, 360], ['하루 세 턴', (i) => (i % 3 === 2 ? 1 : 0), 1080], ['닷새에 한 턴', () => 5, 72]]) {
+    console.log(`  ${lab.padEnd(8)} ${lead('normal', f, n)}`);
   }
 }
 

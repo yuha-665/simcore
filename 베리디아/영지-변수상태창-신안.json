@@ -3231,13 +3231,15 @@
       "gauge": {
         "perDay": "4 + hardship * 0.05 + (threat + unrest) * 0.02",
         "jitter": 0.5,
-        "cooldown": 3
+        "cooldown": 3,
+        "omenAt": 80
       },
       "table": [
         {
           "id": "road_ice",
           "weight": 2,
           "cooldown": 40,
+          "omen": "강가 얕은 데 살얼음이 끼기 시작했다. 뱃사공들이 물빛을 오래 들여다본다.",
           "when": "disaster == \"\" and route == \"없음\" and (month >= 12 or month <= 2)",
           "effects": [
             {
@@ -3255,6 +3257,7 @@
           "id": "road_snow",
           "weight": 2,
           "cooldown": 40,
+          "omen": "북쪽 고개 위 구름이 며칠째 내려오지 않는다. 산 쪽 바람이 무겁다.",
           "when": "disaster == \"\" and route == \"없음\" and (month >= 11 or month <= 3)",
           "effects": [
             {
@@ -3272,6 +3275,7 @@
           "id": "road_bandit",
           "weight": 3,
           "cooldown": 30,
+          "omen": "남쪽 가도로 오는 짐수레가 줄었다. 오던 행상들이 길에서 본 얼굴들 이야기를 흐린다.",
           "when": "disaster == \"\" and route == \"없음\" and (deals >= 15 or gold >= 300 or (bandits >= 35 and lure >= 35 - hardship * 0.2)) and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)",
           "effects": [
             {
@@ -3293,6 +3297,7 @@
           "id": "road_wood",
           "weight": 2,
           "cooldown": 36,
+          "omen": "서쪽 숲길에서 돌아오는 짐꾼이 자꾸 늦는다. 숲 가장자리가 이상하게 조용하다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 68 - hardship * 0.23",
           "effects": [
             {
@@ -3310,6 +3315,7 @@
           "id": "road_flood",
           "weight": 2,
           "cooldown": 40,
+          "omen": "상류 쪽에서 흙탕물이 섞여 내려온다. 강 냄새가 달라졌다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 4 and month <= 8 and weather != \"☀️맑음\"",
           "effects": [
             {
@@ -3327,6 +3333,7 @@
           "id": "refugees",
           "weight": 3,
           "cooldown": 25,
+          "omen": "남쪽 길에서 온 사람마다 같은 말을 한다 — 저 아래 마을들이 비어 간다고.",
           "when": "disaster == \"\" and route == \"없음\" and fame >= 2 + hardship * 0.16 and food > 200 and crowd < 125",
           "effects": [
             {
@@ -3340,6 +3347,7 @@
           "id": "merc_band",
           "weight": 2,
           "cooldown": 40,
+          "omen": "관문 앞 무리 속에 칼 찬 이들이 따로 뭉쳐 다닌다. 서로 누구 눈치를 보는지가 보인다.",
           "when": "disaster == \"\" and route == \"없음\" and drifters >= 20 and guild == 0",
           "effects": [],
           "notify": "[칼잡이 한 패] 관문 앞 무리 속에 무장한 한 패가 있다 — 전쟁이 끝나 일거리를 잃은 용병단이다. 병사로 사겠다면 지금이고, 돌려보내면 그 칼은 길 위로 간다. 몇 명이고 누가 이끄는지는 이번 장면에서 정하라."
@@ -3348,6 +3356,7 @@
           "id": "peddler",
           "weight": 3,
           "cooldown": 20,
+          "omen": "길 쪽에서 방울 소리를 들었다는 아이가 있다.",
           "when": "disaster == \"\" and route == \"없음\" and rel_top >= 15",
           "effects": [],
           "notify": "[봇짐장수가 들렀다] 길을 잘못 든 장사치 하나가 하룻밤 묵어 간다. 팔 것과 살 것이 있다면 오늘이다 — 계약이 성사되면 그 조건을 적어라."
@@ -3356,6 +3365,7 @@
           "id": "raid",
           "weight": 3,
           "cooldown": 22,
+          "omen": "변두리 울타리 밖에 낯선 발자국이 찍혀 있었다. 개들이 밤새 한쪽을 보고 짖는다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 80 - hardship * 0.35 and guard_men + army * 2 < round(pop * 0.15)",
           "effects": [
             {
@@ -3373,6 +3383,7 @@
           "id": "plague",
           "weight": 2,
           "cooldown": 45,
+          "omen": "기침하는 집이 하나둘 늘었다. 열이 올랐다 내렸다 한다는 말이 우물가에서 돈다.",
           "when": "disaster == \"\" and route == \"없음\" and health <= 20 + hardship * 0.4 and crowd >= 85",
           "effects": [
             {
@@ -3430,6 +3441,7 @@
           "id": "drought",
           "weight": 2,
           "cooldown": 60,
+          "omen": "비가 올 듯하다 그치는 날이 이어진다. 개울 물소리가 작아졌다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 6 and month <= 8 and wells <= 0 + hardship * 0.02",
           "effects": [
             {
@@ -3447,6 +3459,7 @@
           "id": "assessor",
           "weight": 3,
           "cooldown": 50,
+          "omen": "낯선 사람이 인근 마을에서 여기 곳간과 병영을 묻고 다녔다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and rel_top >= 30 and rel_top < 70",
           "effects": [],
           "notify": "[누가 보러 왔다] 이웃 영지 사람이 볼일 없이 마을을 한 바퀴 돌고 갔다. 세는 눈이었다. 어느 쪽에서 왔고 무엇을 세고 갔는지는 이번 장면에서 정하라."
@@ -3455,6 +3468,7 @@
           "id": "storm",
           "weight": 3,
           "cooldown": 30,
+          "omen": "서쪽 하늘이 저녁마다 누렇게 탄다. 제비가 낮게 난다.",
           "when": "disaster == \"\" and route == \"없음\" and (month >= 3 and month <= 5 or month >= 9 and month <= 11)",
           "effects": [
             {
@@ -3480,6 +3494,7 @@
           "id": "hail",
           "weight": 3,
           "cooldown": 45,
+          "omen": "한낮인데 공기가 이상하게 차다. 먹구름 밑이 푸르스름하다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 5 and month <= 8 and sum(farms) > 0",
           "effects": [
             {
@@ -3497,6 +3512,7 @@
           "id": "frost",
           "weight": 2,
           "cooldown": 60,
+          "omen": "해가 지면 바람이 갑자기 맵다. 늙은이들이 모종 덮을 거적을 찾는다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 3 and month <= 4 and sum(farms) > 0",
           "effects": [
             {
@@ -3514,6 +3530,7 @@
           "id": "wildfire",
           "weight": 2,
           "cooldown": 50,
+          "omen": "마른 풀 냄새가 짙다. 먼 능선에 옅은 연기가 오른 날이 있었다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 6 and month <= 8 and weather == \"☀️맑음\"",
           "effects": [
             {
@@ -3543,6 +3560,7 @@
           "id": "coldsnap",
           "weight": 2,
           "cooldown": 50,
+          "omen": "밤마다 한기가 한 겹씩 더 내려온다. 장작 값을 묻는 사람이 늘었다.",
           "when": "disaster == \"\" and route == \"없음\" and (month >= 12 or month <= 2) and crowd >= 90",
           "effects": [
             {
@@ -3564,6 +3582,7 @@
           "id": "foul_water",
           "weight": 3,
           "cooldown": 35,
+          "omen": "강물에서 비린내가 난다. 배를 쓸어내리는 사람이 보인다.",
           "when": "disaster == \"\" and route == \"없음\" and wells <= 0 and health <= 25 + hardship * 0.45",
           "effects": [
             {
@@ -3585,6 +3604,7 @@
           "id": "murrain",
           "weight": 2,
           "cooldown": 55,
+          "omen": "짐승들이 여물을 남긴다. 눈이 흐린 놈이 한둘 보인다.",
           "when": "disaster == \"\" and route == \"없음\" and sum(farms) >= 4",
           "effects": [
             {
@@ -3602,6 +3622,7 @@
           "id": "goblin_raid",
           "weight": 2,
           "cooldown": 24,
+          "omen": "북쪽 숲 가장자리에서 작은 발자국과 이빨 자국 난 뼈가 나왔다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 70 - hardship * 0.3 and guard_men + army * 2 < round(pop * 0.18)",
           "effects": [
             {
@@ -3619,6 +3640,7 @@
           "id": "harpy",
           "weight": 2,
           "cooldown": 40,
+          "omen": "능선 위로 큰 그림자가 도는 걸 봤다는 사람이 있다. 들새들이 조용하다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 75 - hardship * 0.3 and month >= 4 and month <= 9",
           "effects": [
             {
@@ -3636,6 +3658,7 @@
           "id": "orc_scout",
           "weight": 2,
           "cooldown": 45,
+          "omen": "남쪽 평원 먼 곳에서 연기 몇 줄이 올랐다가 사라졌다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 80 - hardship * 0.25",
           "effects": [
             {
@@ -3653,6 +3676,7 @@
           "id": "nest_near",
           "weight": 2,
           "cooldown": 40,
+          "omen": "밤에 숲 쪽에서 들어 본 적 없는 소리가 난다. 덫에 걸리던 짐승이 줄었다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 50 - hardship * 0.2",
           "effects": [
             {
@@ -3666,6 +3690,7 @@
           "id": "bumper",
           "weight": 3,
           "cooldown": 60,
+          "omen": "올해 이삭이 유난히 무겁게 고개를 숙였다. 늙은이들이 밭둑에 오래 서 있다.",
           "when": "disaster == \"\" and route == \"없음\" and month >= 9 and month <= 10 and sum(farms) >= 2 + hardship * 0.06 and blight <= 0",
           "effects": [
             {
@@ -3687,6 +3712,7 @@
           "id": "wanderer",
           "weight": 3,
           "cooldown": 30,
+          "omen": "연장 꾸러미를 멘 낯선 이가 이웃 마을에서 여기 이야기를 묻고 갔다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and fame >= 4 + hardship * 0.18 and crowd < 110",
           "effects": [],
           "notify": "[손을 가진 사람이 왔다] 떠돌던 장인 하나가 여기서 겨울을 나겠다고 한다. 무엇을 다루는 사람이고 왜 떠돌았는지 이번 장면에서 정하고, 눌러앉기로 하면 현지 고용인에 올려라."
@@ -3695,6 +3721,7 @@
           "id": "pilgrims",
           "weight": 2,
           "cooldown": 45,
+          "omen": "인근 마을에서 이번 축일엔 여기로 가 볼까 하는 말이 들린다.",
           "when": "disaster == \"\" and route == \"없음\" and fest_in <= 3 and fame >= 0 + hardship * 0.12",
           "effects": [
             {
@@ -3716,6 +3743,7 @@
           "id": "windfall",
           "weight": 2,
           "cooldown": 60,
+          "omen": "터를 파던 인부들 삽 끝에 자꾸 옛 기와 조각이 걸린다.",
           "when": "disaster == \"\" and route == \"없음\" and build_men >= 2 + hardship * 0.14",
           "effects": [
             {
@@ -3729,6 +3757,7 @@
           "id": "envoy",
           "weight": 3,
           "cooldown": 40,
+          "omen": "왕도 쪽 말을 탄 사람이 인근 역참에서 쉬어 갔다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and my_weight >= 15 and stance == \"중립\"",
           "effects": [],
           "notify": "[사절이 왔다] 왕도에서 온 사람이 남작을 따로 청했다. 세 왕녀 중 누가 보냈고 무엇을 약속하는지, 그리고 그 대가로 무엇을 요구하는지는 이번 장면에서 정하라. 지금 판세와 이쪽의 무게를 보고 어울리는 쪽이 보냈을 것이다. 답을 그 자리에서 줄 필요는 없다."
@@ -3737,6 +3766,7 @@
           "id": "leak",
           "weight": 3,
           "cooldown": 30,
+          "omen": "궁정 쪽에서 온 사람들이 남작이 누구와 서신을 주고받는지 넌지시 묻는다.",
           "when": "disaster == \"\" and route == \"없음\" and stance != \"중립\" and exposed >= 25 and exposed < 75",
           "effects": [
             {
@@ -3750,6 +3780,7 @@
           "id": "court_turn",
           "weight": 2,
           "cooldown": 55,
+          "omen": "왕도에서 오는 소식이 뜸하다. 오는 사람마다 말을 아낀다.",
           "when": "disaster == \"\" and route == \"없음\" and day >= 40",
           "effects": [
             {
@@ -3771,6 +3802,7 @@
           "id": "summons",
           "weight": 2,
           "cooldown": 70,
+          "omen": "왕실 인장을 단 전령이 근처 가도를 지났다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and rel_cap >= 35 and my_weight >= 25",
           "effects": [
             {
@@ -3788,6 +3820,7 @@
           "id": "sister_visit",
           "weight": 2,
           "cooldown": 50,
+          "omen": "순회하는 자매가 이웃 마을에 머물고 있다는 말이 들린다.",
           "when": "disaster == \"\" and route == \"없음\" and health <= 55 and count(corps) <= 0 and rel_ch >= 0 + hardship * 0.1",
           "effects": [
             {
@@ -3805,6 +3838,7 @@
           "id": "church_crown",
           "weight": 2,
           "cooldown": 90,
+          "omen": "대성당 사람과 왕도 사람이 같은 주막에서 서로를 피해 앉았다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and rel_ch >= 40 and rel_cap >= 30",
           "effects": [],
           "notify": "[교단과 왕실 사이] 대성당과 왕도가 한 문제를 두고 맞섰다 — 의사 임명권, 고아원 기금, 이단 심문, 십일조 면제 중 무엇인지는 이번 장면에서 정하라. 양쪽 사람이 저마다 이 땅의 영주에게 어느 편인지 묻는다. 답을 미루는 것도 답이다.",
@@ -3858,6 +3892,7 @@
           "id": "horde",
           "weight": 2,
           "cooldown": 70,
+          "omen": "짐승들이 한 방향에서 도망쳐 온다. 척후가 돌아와 말을 아낀다.",
           "when": "disaster == \"\" and route == \"없음\" and threat >= 92 - hardship * 0.3 and pop >= 40",
           "effects": [
             {
@@ -3883,6 +3918,7 @@
           "id": "granary_rot",
           "weight": 2,
           "cooldown": 60,
+          "omen": "곳간 밑단에서 눅눅한 냄새가 올라온다. 쥐가 늘었다.",
           "when": "disaster == \"\" and route == \"없음\" and food >= 1400 - hardship * 8",
           "effects": [
             {
@@ -3900,6 +3936,7 @@
           "id": "deserters",
           "weight": 2,
           "cooldown": 45,
+          "omen": "몇 집이 짐을 싸 두었다는 말이 돈다. 저녁마다 남쪽 길을 오래 보는 사람들이 있다.",
           "when": "disaster == \"\" and route == \"없음\" and morale <= 6 + hardship * 0.22 and pop >= 40",
           "effects": [
             {
@@ -3917,6 +3954,7 @@
           "id": "settlers",
           "weight": 2,
           "cooldown": 45,
+          "omen": "연장을 짊어진 가족이 인근에서 빈집이 있느냐고 물었다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and fame >= 6 + hardship * 0.24 and pop < cap and health >= 25",
           "effects": [
             {
@@ -3934,6 +3972,7 @@
           "id": "patron",
           "weight": 2,
           "cooldown": 60,
+          "omen": "이웃 영지 인장을 단 짐마차가 인근 길에서 보였다.",
           "when": "disaster == \"\" and route == \"없음\" and rel_top >= 25 + hardship * 0.35",
           "effects": [
             {
@@ -3955,6 +3994,7 @@
           "id": "trouble_market",
           "weight": 2,
           "cooldown": 35,
+          "omen": "저잣거리 말소리가 날카롭다. 저울 이야기가 자주 나온다.",
           "when": "disaster == \"\" and route == \"없음\" and (deals >= 5 or gold >= 200)",
           "effects": [
             {
@@ -3968,6 +4008,7 @@
           "id": "trouble_folk",
           "weight": 2,
           "cooldown": 35,
+          "omen": "우물가에서 사람들이 편을 갈라 수군거린다.",
           "when": "disaster == \"\" and route == \"없음\" and pop >= 60",
           "effects": [
             {
@@ -3985,6 +4026,7 @@
           "id": "trouble_barracks",
           "weight": 2,
           "cooldown": 35,
+          "omen": "병영에서 밤늦게 웃음소리와 고함이 섞여 들린다.",
           "when": "disaster == \"\" and route == \"없음\" and army >= 5",
           "effects": [
             {
@@ -4002,6 +4044,7 @@
           "id": "first_baby",
           "weight": 2,
           "cooldown": 90,
+          "omen": "산파가 요즘 한 집을 자주 드나든다.",
           "when": "disaster == \"\" and route == \"없음\" and pop >= 40",
           "effects": [
             {
@@ -4079,6 +4122,7 @@
           "id": "bandit_raid",
           "weight": 3,
           "cooldown": 25,
+          "omen": "외곽 곳간 근처에 낯선 신발 자국이 찍혀 있었다.",
           "when": "disaster == \"\" and route == \"없음\" and bandits >= 50 - hardship * 0.2 and lure >= 35 - hardship * 0.2 and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)",
           "effects": [
             {
@@ -4104,6 +4148,7 @@
           "id": "bandit_lair",
           "weight": 2,
           "cooldown": 90,
+          "omen": "길 위 무리들이 한 사람의 이름을 입에 올리기 시작했다.",
           "when": "disaster == \"\" and route == \"없음\" and bandits >= 70",
           "effects": [
             {
@@ -4117,6 +4162,7 @@
           "id": "guild_brawl",
           "weight": 2,
           "cooldown": 30,
+          "omen": "주막에서 모험가 패거리끼리 눈을 흘기는 게 보인다.",
           "when": "disaster == \"\" and route == \"없음\" and guild >= 1",
           "effects": [
             {
@@ -4134,6 +4180,7 @@
           "id": "adv_rumor",
           "weight": 2,
           "cooldown": 30,
+          "omen": "사냥에서 돌아온 모험가들이 척후가 가는 쪽 길을 두고 수군거린다.",
           "when": "disaster == \"\" and route == \"없음\" and guild >= 1 and explore_dir != \"없음\"",
           "effects": [
             {
@@ -4159,6 +4206,7 @@
           "id": "suit_morwen",
           "weight": 2,
           "cooldown": 180,
+          "omen": "북쪽에서 온 병사 몇이 주막에서 남작의 나이와 성품을 묻고 갔다고 한다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_n >= 35 or b_morwen >= 25)",
           "effects": [
             {
@@ -4225,6 +4273,7 @@
           "id": "suit_liana",
           "weight": 2,
           "cooldown": 180,
+          "omen": "동쪽 뱃사람들이 요즘 남작 이야기를 자주 한다 — 누가 물어보라고 시킨 것처럼.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_e >= 35 or b_liana >= 25)",
           "effects": [
             {
@@ -4291,6 +4340,7 @@
           "id": "suit_valerius",
           "weight": 2,
           "cooldown": 180,
+          "omen": "남쪽 곡물상이 곳간 크기와 올해 수확을 유난히 꼼꼼히 묻고 갔다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and (rel_s >= 35 or b_valerius >= 25)",
           "effects": [
             {
@@ -4357,6 +4407,7 @@
           "id": "suit_silvana",
           "weight": 2,
           "cooldown": 180,
+          "omen": "서쪽 숲 쪽에서 매 한 마리가 며칠째 성채 위를 돈다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and b_silvana >= 30",
           "effects": [
             {
@@ -4423,6 +4474,7 @@
           "id": "suit_eleonora",
           "weight": 2,
           "cooldown": 180,
+          "omen": "공작가 문장을 단 기수 둘이 가도에서 성채를 한참 올려다보고 갔다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and my_weight >= 25 and (rel_cap >= 30 or b_eleonora >= 25)",
           "effects": [
             {
@@ -4481,6 +4533,7 @@
           "id": "suit_cassandra",
           "weight": 2,
           "cooldown": 180,
+          "omen": "왕도에서 온 서기 하나가 남작의 이력을 적어 갔다는 말이 돈다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"카산드라\" or b_cassandra >= 25 or (stance == \"중립\" and frontrunner == \"카산드라\"))",
           "effects": [
             {
@@ -4555,6 +4608,7 @@
           "id": "suit_orelia",
           "weight": 2,
           "cooldown": 180,
+          "omen": "고아원 수녀들이 남작을 위해 기도했다는 소식이 닿았다 — 누가 청했는지는 모른다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"오렐리아\" or b_orelia >= 25 or (stance == \"중립\" and frontrunner == \"오렐리아\"))",
           "effects": [
             {
@@ -4629,6 +4683,7 @@
           "id": "suit_liliana",
           "weight": 2,
           "cooldown": 180,
+          "omen": "왕도 사교계에서 남작 이름으로 내기가 걸렸다는 소문이 돈다.",
           "when": "disaster == \"\" and route == \"없음\" and spouse == \"없음\" and suit == \"없음\" and day >= suit_next and fame >= 30 and rel_cap >= 35 and my_weight >= 30 and (stance == \"릴리아나\" or b_liliana >= 25 or (stance == \"중립\" and frontrunner == \"릴리아나\"))",
           "effects": [
             {

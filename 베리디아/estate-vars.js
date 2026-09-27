@@ -104,7 +104,7 @@ const HINTS = {
 const QUIET = 'disaster == "" and route == "없음"';
 
 // ── 난이도 ──
-// 프리셋은 변수 초기값만 바꾼다. chancePerTurn 같은 스키마 상수는 못 건드린다.
+// 프리셋은 변수 초기값만 바꾼다. 사건 게이지 속도 같은 스키마 상수는 못 건드린다.
 // 그래서 "나쁜 일이 얼마나 자주 오나"를 변수 하나(hardship)로 옮긴다.
 //
 // ⚠ 사건을 켜고 끄는 게 아니라 **문턱을 민다.** 노말에서도 역병은 온다 — 정말 앓아누웠을 때만 올 뿐이다.
@@ -1396,17 +1396,19 @@ const S = {
     ]),
 
     // ── 굴러 들어오는 것 ──
-    // 매 턴 한 번 굴려서, 걸리면 조건을 통과한 것 중 하나만 터진다. 엔진이 하나 뽑고 끝낸다.
+    // 보이지 않는 게이지가 작중 하루마다 차고, 100이 되면 조건을 통과한 것 중 하나가 터진다 (v1.14.0 사건 게이지 — §14-7).
     // 조건에 QUIET(재해도 없고 길도 열려 있을 때)를 전부 붙였다 — 곤경이 겹쳐 쌓이면 서사가 수습을 못 한다.
+    //   게이지는 후보가 하나도 없으면 안 찬다 — 재해·길 막힘이 이어지는 동안 멈췄다가 끝나면 이어서 찬다(끝나자마자 터지지 않는다).
     // 여기 있는 건 전부 "밖에서 오는 것"이다. 안에서 나는 일(곳간이 빈다, 사람이 앓는다)은
     // 이미 onTurn 정산이 만들어 낸다. 그걸 여기 또 넣으면 같은 불행이 두 배로 온다.
     randomEvents: {
-      // 발동 확률도 hardship이 민다 (v0.89.1 식 지원) — 희망(10) 4.4% / 보통(45) 5.8% / 리얼리티(100) 8%.
-      // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다.
-      // 상한 8%는 유저 확정(2026-08-15): 아이돌 실플에서 "20턴에 1번(5%)이 적당" 교훈 —
-      // 리얼리티도 대화 리듬을 부수지 않는 선. 랜디 맛은 빈도보다 창(thr 세 배)이 낸다.
-      // 명중해도 조건 맞는 사건이 없으면 불발이라(QUIET·계절·쿨다운) 체감은 이보다 낮다.
-      chancePerTurn: '0.04 + hardship * 0.0004',
+      // 옛 방식(턴마다 chancePerTurn 0.04 + 시련×0.0004로 굴림)은 채팅 속도가 빈도를 정했다 — 보통 기준 하루 세 턴이면
+      // 한 해 나쁜 일 26번, 한 턴이면 10번, 닷새에 한 턴이면 2번. 유저 판정(2026-09-27): 보이지 않는 게이지로, 서사나 확률로 차게.
+      //   하루에 차는 양 = 바탕(시련이 민다) + 서사가 만든 긴장(위협·불안이 민다). 개막 기준 희망 ≈5 · 보통 ≈7 · 리얼리티 ≈11 →
+      //   평균 23 · 17 · 12일에 한 번(쉬는 사흘 포함). 옛 방식을 하루 한 턴으로 놀던 빈도에 맞췄다 — 이제 하루에 몇 턴을 쓰든 그대로다.
+      //   흔들림 ±50%, 터진 뒤 사흘은 안 찬다. 항목 cooldown도 이제 날(日)이다 — 숫자는 옛 "하루 한 턴" 가정 그대로라 뜻이 같다.
+      // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다. 랜디 맛은 빈도보다 창(thr 세 배)이 낸다.
+      gauge: { perDay: '4 + hardship * 0.05 + (threat + unrest) * 0.02', jitter: 0.5, cooldown: 3 },
       table: [
         // ① 길 — 무역로는 목록이 아니라 사건이다. 얼고, 무너지고, 도적이 앉는다.
         { id: 'road_ice', weight: 2, cooldown: 40,
@@ -3409,7 +3411,7 @@ for (const t of S.party.tabs) {
   const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
   console.log('\n━━ 혼담 ━━');
   const { evaluate, truthy } = SC.require('expr');
-  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };   // 표는 두고(갈림길을 찾아야 한다) 굴림만 끈다
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 표는 두고(갈림길을 찾아야 한다) 굴림만 끈다
   const L = (st) => engine.makeLookup(S, st.vars);
   const base = (vars = {}) => { const s = engine.initState(S); s.meta.setupDone = true;
     Object.assign(s.vars, { gold: 1000, food: 3000, water: 3000, health: 60, fame: 40, day: 100, day_prev: 100 }, vars); atDay(s, s.vars.day); return s; };
@@ -3480,7 +3482,7 @@ for (const t of S.party.tabs) {
   const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
   console.log('\n━━ 위협은 탐낼 거리를 따라간다 ━━');
   const { evaluate, truthy } = SC.require('expr');
-  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 게이지를 걷고 굴림을 끈다
   const L = (st) => engine.makeLookup(S, st.vars);
   const pre = (id, vars = {}) => { let t = engine.initState(S); t.meta.setupDone = true; t = engine.applyPreset(S, t, id).state;
     Object.assign(t.vars, { route: '없음', route_days: 0 }, vars); return t; };
@@ -3553,7 +3555,7 @@ for (const t of S.party.tabs) {
 {
   const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
   console.log('\n━━ 하늘이 하는 일 — 이름값 ━━');
-  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, chancePerTurn: 0 } } };
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 게이지를 걷고 굴림을 끈다
   const only = (id) => { const ev = S.rules.randomEvents.table.find((e) => e.id === id);
     return { ...S, rules: { ...S.rules, randomEvents: { chancePerTurn: 1, table: [{ ...ev, when: undefined, cooldown: undefined }] } } }; };
   const L = (st) => engine.makeLookup(S, st.vars);

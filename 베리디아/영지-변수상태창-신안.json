@@ -3228,7 +3228,11 @@
       }
     ],
     "randomEvents": {
-      "chancePerTurn": "0.04 + hardship * 0.0004",
+      "gauge": {
+        "perDay": "4 + hardship * 0.05 + (threat + unrest) * 0.02",
+        "jitter": 0.5,
+        "cooldown": 3
+      },
       "table": [
         {
           "id": "road_ice",

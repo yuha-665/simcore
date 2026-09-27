@@ -4844,6 +4844,7 @@ function varReferenceIndex(schema) {
     if (!f || typeof f !== 'object') return;
     add(f.set, where, what); add(f.list, where, what);
     ex(f.expr, where, what); ex(f.expire, where, what);
+    if (f.gauge !== undefined) ex(String(f.gauge), where, what); // 사건 게이지 개입 (v1.14.0)
   });
   const evBlock = (e, where, what) => {
     ex(e.when, where, what); fx(e.effects, where, what);
@@ -4854,6 +4855,10 @@ function varReferenceIndex(schema) {
   (schema.rules?.events || []).forEach((e) => evBlock(e, '조건 이벤트', e.id));
   ex(typeof schema.rules?.randomEvents?.chancePerTurn === 'string' ? schema.rules.randomEvents.chancePerTurn : '',
     '랜덤 이벤트', '발동 확률식');
+  for (const k of ['perDay', 'perTurn']) { // 사건 게이지 (v1.14.0) — 차는 속도 식
+    const x = schema.rules?.randomEvents?.gauge?.[k];
+    ex(typeof x === 'string' ? x : '', '랜덤 이벤트', `게이지 ${k === 'perDay' ? '하루' : '턴'} 속도식`);
+  }
   (schema.rules?.randomEvents?.table || []).forEach((e) => evBlock(e, '랜덤 이벤트', e.id));
   (schema.directives || []).forEach((d) => { ex(d.when, '지시문', d.id); tpl(d.text, '지시문', d.id); });
   (schema.actions || []).forEach((a) => { ex(a.when, '액션', a.label ?? a.id); fx(a.effects, '액션', a.label ?? a.id); });
@@ -5613,6 +5618,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 조건식에서 `re_gauge`를 읽어 전조 지시문을 걸 수 있다.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -6409,6 +6415,15 @@ function frontEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
     gripEl);
 }
 
+// 사건 게이지 개입 줄 (v1.14.0) { gauge: 식 } — 다음 사건을 당기거나(+) 늦춘다(−). 게이지를 켠 봇만 추가 버튼
+const gaugeOn = (schema) => !!(schema.rules?.randomEvents?.gauge && typeof schema.rules.randomEvents.gauge === 'object');
+function gaugeEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-gauge`, title: '보이지 않는 사건 게이지(0~100)에 더한다 — 양수면 다음 랜덤 사건이 빨리 오고, 음수면 늦게 온다' },
+    h('span', {}, '⏳'),
+    pair('사건 게이지 더하기', bindInput(ef.gauge ?? '', (x) => { ef.gauge = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '+30' }), '음수면 늦춘다 (0~100으로 잘림)'),
+    gripEl);
+}
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -6418,6 +6433,7 @@ function effectRows(schema, effects, rerender) {
   effects.forEach((ef, i) => {
     if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.gauge !== undefined) { wrap.appendChild(gaugeEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -6460,6 +6476,12 @@ function effectRows(schema, effects, rerender) {
       effects.push({ front: frontIdsOf(schema)[0], add: '-10' });
       rerender();
     } }, '+ 🎭 무대 뒤'));
+  }
+  if (gaugeOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ gauge: '30' });
+      rerender();
+    } }, '+ ⏳ 사건 게이지'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -8497,6 +8519,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       effects.forEach((ef, i) => {
         if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.gauge !== undefined) { box.appendChild(gaugeEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -8566,6 +8589,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           class: 'sce-btn sce-add', style: 'flex:1',
           onclick: () => { effects.push({ front: frontIdsOf(schema)[0], add: '-10' }); rerender(); },
         }, '+ 🎭 무대 뒤'));
+      }
+      if (gaugeOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ gauge: '30' }); rerender(); },
+        }, '+ ⏳ 사건 게이지'));
       }
       box.appendChild(btnRow);
       return box;
@@ -8802,13 +8831,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (typeof chance === 'string') {
         try { chance = Number(evaluate(chance, lookup, null)); } catch { return null; }
       }
-      if (!isFinite(chance)) return null;
+      if (!isFinite(chance) && !engine.gaugeConfig(schema)) return null;
       const elig = re.table.map((ev) => {
         if (!ev.when) return true;
         try { return truthy(evaluate(ev.when, lookup, null)); } catch { return false; }
       });
       const total = re.table.reduce((s, ev, i) => s + (elig[i] ? (ev.weight ?? 1) : 0), 0);
-      return { chance: Math.max(0, Math.min(1, chance)), elig, total };
+      // 사건 게이지 (v1.14.0) — 확률 대신 "평균 며칠에 한 번" (시작 상태로 속도식을 평가, 후보가 늘 있다고 친 근사)
+      const gcfg = engine.gaugeConfig(schema);
+      const gauge = gcfg ? engine.gaugeMeanInterval(gcfg, lookup) : null;
+      return { chance: Math.max(0, Math.min(1, isFinite(chance) ? chance : 0)), elig, total, gauge, timed: !!timeConfig(schema) };
     })();
     const reProbLine = (ev, i) => {
       if (!reProb) return null;
@@ -8816,14 +8848,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         return h('div', { class: 'sce-derived-now sce-derived-now-err' },
           '시작 상태에선 조건 불충족 — 지금은 후보가 아니며 조건이 참이 되는 판에서만 추첨됩니다.');
       }
+      if (reProb.gauge) {
+        const share = reProb.total > 0 ? (ev.weight ?? 1) / reProb.total : 0;
+        const g = reProb.gauge, unit = reProb.timed ? '일' : '턴';
+        const every = g.days != null ? `평균 ${g.days.toFixed(1)}${unit}에 한 번` : (g.turns != null ? `평균 ${g.turns.toFixed(1)}턴에 한 번` : '게이지가 안 참 (효과로만)');
+        return h('div', { class: 'sce-derived-now' },
+          `시작 상태 기준 사건 ${every} · 그중 이 사건 ${(share * 100).toFixed(0)}% (weight ${ev.weight ?? 1}/${reProb.total}) · 쿨다운 제외`);
+      }
       const p = reProb.total > 0 ? reProb.chance * ((ev.weight ?? 1) / reProb.total) : 0;
       return h('div', { class: 'sce-derived-now' },
         `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% · 발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} · 쿨다운 제외`);
     };
 
     const randomList = h('div', { class: 'sce-rules-list' });
+    // 사건 게이지 (v1.14.0) — 발동 방식 둘: 턴마다 굴리는 확률 / 작중 시간으로 차는 숨은 게이지
+    const gOn = !!(re.gauge && typeof re.gauge === 'object' && !Array.isArray(re.gauge));
+    const cdUnit = gOn && timeConfig(schema) ? '일' : '턴';
+    const gRate = (k, ph) => bindInput(gOn ? (re.gauge[k] ?? '') : '', (x) => {
+      const t = String(x).trim(), n = Number(t);
+      if (!t) delete re.gauge[k]; else re.gauge[k] = isFinite(n) ? Math.max(0, n) : t;
+      rerender();
+    }, { cls: 'sce-w-l', ph });
     randomList.appendChild(h('div', { class: 'sce-rules-random-config' },
-      field('턴당 발동 확률',
+      field('발동 방식',
+        bindSelect(gOn ? 'gauge' : 'chance', [['chance', '🎲 확률 — 턴마다 굴린다'], ['gauge', '⏳ 게이지 — 작중 시간으로 차면 터진다']], (v) => {
+          if (v === 'gauge') { re.gauge = re.gauge || { perDay: 7, jitter: 0.5, cooldown: 3 }; delete re.chancePerTurn; }
+          else { delete re.gauge; if (re.chancePerTurn == null) re.chancePerTurn = 0.1; }
+          rerender();
+        }),
+        gOn ? '보이지 않는 게이지(0~100)가 작중 하루에 정한 양만큼 차고, 100이 되면 후보 중 하나가 터진 뒤 0으로 돌아가요. 채팅을 빨리 넘기든 한 날에 오래 머물든 작중 시간 기준으로 와요. 항목 쿨다운도 날 단위가 돼요.'
+          : '매 턴 이 확률로 굴려 후보 중 하나를 뽑아요. 하루에 턴을 많이 쓰면 사건도 그만큼 잦아져요 — 시간 체계가 있는 봇이면 게이지를 권해요.'),
+      gOn ? field('하루에 차는 양', gRate('perDay', '7 또는 식: 4 + hardship * 0.04'),
+        '100이 되면 터져요 — 7이면 평균 14일에 한 번. 식을 쓰면 매 턴 지금 상태로 계산해요(난이도·위협이 속도를 밀어요). 시간 체계가 없으면 한 턴 = 하루.') : null,
+      gOn ? field('턴마다 차는 양', gRate('perTurn', '0'),
+        '날이 안 가는 대화 턴에도 조금씩 — 보통 0 (날이 안 가면 사건도 안 오는 게 자연스러워요)') : null,
+      gOn ? field('흔들림 (%)',
+        bindInput(Math.round((re.gauge.jitter ?? 0.5) * 100), (x) => {
+          const n = Number(String(x).trim());
+          if (String(x).trim() === '' || !isFinite(n)) delete re.gauge.jitter; else re.gauge.jitter = Math.max(0, Math.min(100, n)) / 100;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '50' }),
+        '50이면 차는 양이 ×0.5~×1.5 — 박자는 있되 달력처럼 딱 맞지 않게') : null,
+      gOn ? field(`터진 뒤 쉬는 ${cdUnit === '일' ? '날' : '턴'}`,
+        bindInput(re.gauge.cooldown ?? '', (x) => { const n = numOrNull(x); if (n == null || n <= 0) delete re.gauge.cooldown; else re.gauge.cooldown = n; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }),
+        '이 동안은 게이지가 안 차요 — 사건이 연달아 붙지 않게') : null,
+      gOn ? null : field('턴당 발동 확률',
         bindInput(
           typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
           (x) => {
@@ -8845,7 +8915,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-rules-card-head' },
           h('div', {},
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
-            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
+            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}${cdUnit}` : ''}`),
           ),
           h('div', { class: 'sce-rules-card-actions' }, keepBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
@@ -8859,7 +8929,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                 { cls: 'sce-w-s' })),
             field('쿨다운',
               bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); },
-                { cls: 'sce-w-s', ph: '턴' })),
+                { cls: 'sce-w-s', ph: cdUnit })),
             field('후보 조건',
               bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
                 { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
@@ -12743,6 +12813,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (e == null || typeof e !== 'object') return String(e);
       if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
+      if (e.gauge !== undefined) return `사건 게이지 ${String(e.gauge)}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -12756,17 +12827,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const line = (icon, title, subs) => h('div', { class: 'sce-catalog-item' },
       h('div', { class: 'sce-catalog-item-title' }, `${icon} ${title}`),
       ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-catalog-item-detail' }, s)));
+    const rndGauge = engine.gaugeConfig(schema); // 사건 게이지 (v1.14.0) — 확률 대신 게이지로 온다
     const eventRow = (e, random, rndChance) => {
       const condition = [];
       if (e.when) condition.push(e.when);
       if (e.check) condition.push(`판정 ${e.check}`);
       if (e.once) condition.push('한 번만 발동');
-      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}턴`);
+      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}${random && rndGauge && timeConfig(schema) ? '일' : '턴'}`);
       if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
       const effects = (e.effects || []).map(fmtE);
       if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
       const kind = random
-        ? `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`
+        ? (rndGauge ? `랜덤 · 게이지 하루 +${rndGauge.perDay}${rndGauge.perTurn ? ` · 턴 +${rndGauge.perTurn}` : ''}`
+          : `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`)
         : '일반 이벤트';
       const fields = [
         ['추가된 항목', e.id || '(ID 없음)'],

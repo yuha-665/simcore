@@ -15,13 +15,13 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 **v1.10 🔒 비밀 — 모르는 건 말할 수 없다**(`core/secret.js`, v1.10.1 현황 탭 칩 ✕ 잘림 수리, v1.10.2 번역문 마커 되붙이기) →
 **v1.11 ⏪ 되감기 — 죽으면 그 아침으로**(`core/checkpoint.js`, 체크포인트 저장·되감기 효과, 조퇴악녀 사망회귀물 발단) →
 **v1.12 🎭 무대 뒤 — 안 봐도 세상은 움직인다**(`core/front.js`, 진영 시계·징후·밑작업·표면화) → **v1.13 🎲 능력치 판정**(보조 갈림길 여러 벌·섞기·선택지 성공률 칩). 얼헌(얼터헌터) 개조가
-v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **25개**.
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **26개**.
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **25개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **26개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
 | 테스트 | `simcore\테스트\test-*.js` (실측 **105종, 5,030+단언** — 2026-09-25) + `test\run-tests.js` (코어 단위 84, Node만 필요) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
@@ -96,7 +96,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 6. **`Risuai.alert/alertConfirm`을 패널이 떠 있을 때 쓰는 것.** 우리 iframe이 덮어 보이지도
    눌리지도 않고, `alertConfirm`은 조용히 falsy로 떨어져 "취소"와 구분이 안 된다.
    패널이 열린 동안의 확인은 **패널 자체 UI**로 받을 것(두 번 누르기 등). `테스트/test-layout.js`가 `if (!confirm(` 꼴을 잡는다.
-7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**·**`sec_<id>`**(v1.10.0, 비밀의 열린 최고 단계)는
+7. **엔진 예약 키를 스키마 변수처럼 다루는 것.** `time_epoch`·`scn_idx`·`scn_turns`·**`fight_max/gauge/round/foe/idle/check`**·**`sec_<id>`**(v1.10.0, 비밀의 열린 최고 단계)·**`re_gauge`·`re_cool`**(v1.14.0, 사건 게이지)는
    엔진이 `state.vars`에 직접 관리하는 키다 — 스키마 vars로 선언하거나 `updater.allow`에 넣으면 안 되고,
    검증이 이름 충돌을 err로 잡는다. 노출 이름(date/clock/scn_act/scn_label/**fight_on**/deployed)은 makeLookup 위임.
 8. **편집기 세그먼트에 모듈급 의존성을 추가하고 테스트 하니스를 안 고치는 것.** `테스트/` 여러

@@ -57,6 +57,8 @@ function snapshot(state) {
     vars: copy(state.vars),
     firedOnce: copy(state.meta.firedOnce || {}),
     eventLastFired: copy(state.meta.eventLastFired || {}),
+    // 사건 게이지(v1.14.0)의 날 단위 항목 쿨다운 — 게이지 봇만 가진다 (없으면 칸도 안 만든다: 옛 칸 모양 그대로)
+    ...(state.meta.eventLastAt ? { eventLastAt: copy(state.meta.eventLastAt) } : {}),
     turn: state.meta.turn,
   };
 }
@@ -80,6 +82,7 @@ function restore(schema, state, snap, isSecretKey = () => false) {
   state.vars = next;
   state.meta.firedOnce = copy(snap.firedOnce) || {};
   state.meta.eventLastFired = copy(snap.eventLastFired) || {};
+  if (snap.eventLastAt || state.meta.eventLastAt) state.meta.eventLastAt = copy(snap.eventLastAt) || {};
   // 되감기 전 세계가 내민 갈림길은 되감긴 세계에 없다
   state.meta.pendingChoice = null;
   state.meta.pendingChoicePick = null;

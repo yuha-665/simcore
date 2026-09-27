@@ -5,6 +5,7 @@ const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].figh
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
 const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
+const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -147,6 +148,16 @@ function validateSchema(schema) {
   // 무대 뒤 예약 이름 (v1.12.0) — fr_<id>(시계)·frs_<id>(열린 단계)
   for (const n of frontMod.frontExposedNames(schema)) allIds.add(n);
   const frontIds = new Set((frontMod.frontsConfig(schema) || []).map((f) => f.id));
+  // 사건 게이지 예약 이름 (v1.14.0) — re_gauge(0~100)·re_cool(남은 식힘). 조건식이 읽는다(`re_gauge >= 80` 전조 지시문).
+  // 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다 (전투 안무와 같은 규약)
+  const gaugeOn = !!gaugeMod.gaugeConfig(schema);
+  if (gaugeOn) {
+    const declared = new Set([...ids, ...derived.map((d) => d && d.id)]);
+    for (const rid of gaugeMod.RESERVED) {
+      if (declared.has(rid)) err('$.rules.randomEvents.gauge', `'${rid}'는 사건 게이지 예약 이름입니다 — 변수/파생에 쓸 수 없음`);
+      allIds.add(rid);
+    }
+  }
   // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
   // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
   // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
@@ -408,6 +419,15 @@ function validateSchema(schema) {
       else checkExpr(String(rule.add), p + '.add', exprIds, err, { allowRand: true });
       return;
     }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 더할 양(음수면 늦춘다)
+    if (rule && typeof rule === 'object' && rule.gauge !== undefined) {
+      if (!gaugeOn) err(p, 'gauge 효과를 쓰려면 rules.randomEvents.gauge(사건 게이지)가 켜져 있어야 함');
+      if (rule.set !== undefined || rule.list !== undefined || rule.checkpoint !== undefined || rule.front !== undefined)
+        err(p, 'gauge 효과에 set/list/checkpoint/front를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      if (rule.gauge == null || rule.gauge === '') err(p, 'gauge 효과엔 더할 양이 필요함 (음수면 늦춘다)');
+      else checkExpr(String(rule.gauge), p + '.gauge', exprIds, err, { allowRand: true });
+      return;
+    }
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -471,11 +491,30 @@ function validateSchema(schema) {
   });
   const re = rules.randomEvents;
   if (re) {
-    // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
-    if (typeof re.chancePerTurn === 'string') {
+    // 사건 게이지 (v1.14.0) — 있으면 chancePerTurn 대신 이것이 빈도를 정한다
+    const g = re.gauge;
+    if (g != null) {
+      const gp = '$.rules.randomEvents.gauge';
+      if (typeof g !== 'object' || Array.isArray(g)) err(gp, 'gauge는 객체여야 함 — { perDay, perTurn, jitter, cooldown }');
+      else {
+        const rateOk = (x, k) => {
+          if (x == null) return;
+          if (typeof x === 'string') { if (x.trim()) checkExpr(x, `${gp}.${k}`, allIds, err, { allowRand: false }); }
+          else if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) err(`${gp}.${k}`, `${k}는 0 이상 숫자 또는 식`);
+        };
+        rateOk(g.perDay, 'perDay'); rateOk(g.perTurn, 'perTurn');
+        if (g.jitter != null && (typeof g.jitter !== 'number' || g.jitter < 0 || g.jitter > 1)) err(`${gp}.jitter`, 'jitter는 0~1 (0.5면 차는 양이 ×0.5~×1.5)');
+        if (g.cooldown != null && (typeof g.cooldown !== 'number' || !Number.isFinite(g.cooldown) || g.cooldown < 0)) err(`${gp}.cooldown`, 'cooldown은 0 이상 숫자 (터진 뒤 안 차는 날 — 시간 체계가 없으면 턴)');
+        const zero = (x) => x == null || x === 0 || (typeof x === 'string' && !x.trim());
+        if (zero(g.perDay) && zero(g.perTurn)) warn(gp, '게이지가 영영 안 찹니다 — perDay·perTurn이 둘 다 0이면 gauge 효과로만 찹니다');
+        if (!tcfg && !zero(g.perDay)) warn(`${gp}.perDay`, '시간 체계(time)가 없는 봇이라 perDay는 한 턴 = 하루로 찹니다');
+        if (re.chancePerTurn != null && re.chancePerTurn !== 0) warn('$.rules.randomEvents.chancePerTurn', '게이지(gauge)가 켜져 있어 chancePerTurn은 안 쓰입니다');
+      }
+    } else if (typeof re.chancePerTurn === 'string') {
+      // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
       checkExpr(re.chancePerTurn, '$.rules.randomEvents.chancePerTurn', allIds, err, { allowRand: false });
     } else if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
-      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요');
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요 — 또는 gauge(사건 게이지)');
     (re.table || []).forEach((e, i) => {
       const p = `$.rules.randomEvents.table[${i}]`;
       if (!e.id) err(p, '이벤트 id 필요');

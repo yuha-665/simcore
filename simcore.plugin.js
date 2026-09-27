@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.13.4
-//@display-name SimCore (시뮬 엔진) v1.13.4 갈림길 뒤도 연쇄다
+//@version 1.14.0
+//@display-name SimCore (시뮬 엔진) v1.14.0 사건은 게이지로 온다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,16 +10,23 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.13.4 ──────────────────────────────────────────────
-// **갈림길 뒤도 연쇄다 — 진단.** 발단: 베리디아 혼담(2026-09-27). 청혼은 랜덤 갈림길이고 보조가 올리는 인식·호감이 문턱이라 시뮬에선 안 뜬다
-// (🔵 AI 담당 — 맞다). 그런데 그 뒤가 전부 결함으로 떴다: 받아들임(갈림길)이 세우는 배필·혼례일이 안 서니 혼례 여덟이 🟡 죽은 이벤트,
-// 혼례 전에만 열리는 💔 파기가 🔴 못 쓰는 액션, 답을 기다리는 청혼(enum)이 🟡 "설정 의존 — 바꿀 수단이 없다", 값 다섯이 🟡 안 움직임.
-// 연쇄는 "안 뜬 이벤트의 **효과**만이 세우는 값"만 봤다.
-// - [진단] 안 뜬 이벤트만이 세우는 값 = 이벤트 효과 + **그 이벤트의 갈림길 효과 · 랜덤 이벤트 효과 · 한 번도 안 열린 버튼의 효과**.
-//   쓰는 곳에 매 턴 처리·보조·명령·편성 같은 다른 길이 하나라도 있으면 아니다(좁게), 보조 갈림길 태그가 쓰는 값은 뺀다(발동 기록이 없다).
-//   그 값에 막힌 이벤트 → 🔵 연쇄, 그 값은 "설정"이 아니다(설정 의존 판정에서 뺀다), 그 값에 막힌 버튼 → 🔵 연쇄(새 갈래).
-//   연쇄 문구가 "그 값을 세우는 이벤트"로 **되돌리기만 하는 효과**(혼례가 혼례일을 0으로)는 안 댄다.
-//   전후: 템플릿 16 동일 · 새 mid/high 0 · 조퇴악녀 안 뜬 줄기의 카운터 아홉 🟡 → 연쇄 묶음 · 얼헌 문구만 · 전체 mid/high 268 → 243.
+// ── v1.14.0 ──────────────────────────────────────────────
+// **사건은 게이지로 온다 — 사건 게이지 `rules.randomEvents.gauge`.** 발단: 베리디아 사건 빈도 실측(2026-09-27). 랜덤 사건은 턴마다
+// chancePerTurn으로 굴려서 **작중 시간이 아니라 채팅 속도가 빈도를 정했다** — 보통 난이도 한 해 나쁜 일이 하루 세 턴이면 26번,
+// 한 턴이면 10번, 닷새에 한 턴이면 2번. 항목 쿨다운도 턴이라 같은 사건이 하루 세 턴 판에선 세 배 자주 돌아왔다.
+// 유저 제안: "정해진 턴수로 하지 말고 보이지 않는 게이지로 — 서사나 확률로 차고 100이면 발동, 0으로 초기화 + 쿨다운".
+// - [코어] core/gauge.js (새 모듈, 옵트인 — gauge가 없으면 옛 굴림이 한 알도 안 바뀐다: 베리디아 시드 산출 전체 동일로 확인).
+//   숨은 게이지 re_gauge(0~100)가 **작중 하루마다** perDay씩(turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치) + 턴마다 perTurn,
+//   흔들림 jitter(0.5면 ×0.5~×1.5)를 곱해 찬다. 100이면 후보 중 weight 비례로 하나 터지고 0으로, cooldown(날) 동안 쉰다(re_cool).
+//   식힘이 턴 도중에 끝나면 남은 날은 찬다. **후보가 없으면 안 찬다** — 재해 중 채워 두었다가 풀리자마자 터뜨리지 않는다.
+//   게이지 모드에선 항목 cooldown도 **날**(meta.eventLastAt, 체크포인트가 같이 되감는다). 시간 체계가 없으면 한 턴 = 하루.
+// - [코어] 서사의 개입 = 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 다음 사건을 당기거나(+) 늦춘다(−). 터진 사건의 효과면 여진
+//   (비운 뒤 얹힌다). perDay·perTurn은 식 — 서사가 만든 상태(위협·불안·난이도)가 속도를 민다.
+// - 보이지 않는다: 변화 원장·보조 원장·상태창·메인·보조 프롬프트 어디에도 없다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80` 전조 지시문.
+// - [검증] 예약 이름 충돌·jitter·cooldown·속도식·gauge 효과(게이지 없이 쓰면 오류)·chancePerTurn과 같이 두면 경고. gauge면 chancePerTurn 불요.
+// - [편집기] 규칙 탭 발동 방식(🎲 확률 / ⏳ 게이지) + 하루·턴 속도·흔들림·쉬는 날 칸, 미리보기 "평균 N일에 한 번", 쿨다운 단위 표기(일),
+//   효과 줄 ⏳(두 효과 편집기 다) + 추가 버튼, 목록 보기, 참조 색인, AI 규격서 한 줄. [패치] 게이지는 조용히 버리지 않고 알린다 · 작업본 비교 한 칸.
+// - 베리디아가 첫 사용처(perDay = 4 + 시련×0.05 + (위협+불안)×0.02) — 보통 한 해 나쁜 일: 하루 한 턴 9.2 · 세 턴 9.4 · 닷새에 한 턴 8.9.
 
 
 const SimCore = (() => {
@@ -955,6 +962,7 @@ const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].figh
 const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
 const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
+const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -1097,6 +1105,16 @@ function validateSchema(schema) {
   // 무대 뒤 예약 이름 (v1.12.0) — fr_<id>(시계)·frs_<id>(열린 단계)
   for (const n of frontMod.frontExposedNames(schema)) allIds.add(n);
   const frontIds = new Set((frontMod.frontsConfig(schema) || []).map((f) => f.id));
+  // 사건 게이지 예약 이름 (v1.14.0) — re_gauge(0~100)·re_cool(남은 식힘). 조건식이 읽는다(`re_gauge >= 80` 전조 지시문).
+  // 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다 (전투 안무와 같은 규약)
+  const gaugeOn = !!gaugeMod.gaugeConfig(schema);
+  if (gaugeOn) {
+    const declared = new Set([...ids, ...derived.map((d) => d && d.id)]);
+    for (const rid of gaugeMod.RESERVED) {
+      if (declared.has(rid)) err('$.rules.randomEvents.gauge', `'${rid}'는 사건 게이지 예약 이름입니다 — 변수/파생에 쓸 수 없음`);
+      allIds.add(rid);
+    }
+  }
   // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
   // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
   // 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다.
@@ -1358,6 +1376,15 @@ function validateSchema(schema) {
       else checkExpr(String(rule.add), p + '.add', exprIds, err, { allowRand: true });
       return;
     }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 더할 양(음수면 늦춘다)
+    if (rule && typeof rule === 'object' && rule.gauge !== undefined) {
+      if (!gaugeOn) err(p, 'gauge 효과를 쓰려면 rules.randomEvents.gauge(사건 게이지)가 켜져 있어야 함');
+      if (rule.set !== undefined || rule.list !== undefined || rule.checkpoint !== undefined || rule.front !== undefined)
+        err(p, 'gauge 효과에 set/list/checkpoint/front를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      if (rule.gauge == null || rule.gauge === '') err(p, 'gauge 효과엔 더할 양이 필요함 (음수면 늦춘다)');
+      else checkExpr(String(rule.gauge), p + '.gauge', exprIds, err, { allowRand: true });
+      return;
+    }
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -1421,11 +1448,30 @@ function validateSchema(schema) {
   });
   const re = rules.randomEvents;
   if (re) {
-    // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
-    if (typeof re.chancePerTurn === 'string') {
+    // 사건 게이지 (v1.14.0) — 있으면 chancePerTurn 대신 이것이 빈도를 정한다
+    const g = re.gauge;
+    if (g != null) {
+      const gp = '$.rules.randomEvents.gauge';
+      if (typeof g !== 'object' || Array.isArray(g)) err(gp, 'gauge는 객체여야 함 — { perDay, perTurn, jitter, cooldown }');
+      else {
+        const rateOk = (x, k) => {
+          if (x == null) return;
+          if (typeof x === 'string') { if (x.trim()) checkExpr(x, `${gp}.${k}`, allIds, err, { allowRand: false }); }
+          else if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) err(`${gp}.${k}`, `${k}는 0 이상 숫자 또는 식`);
+        };
+        rateOk(g.perDay, 'perDay'); rateOk(g.perTurn, 'perTurn');
+        if (g.jitter != null && (typeof g.jitter !== 'number' || g.jitter < 0 || g.jitter > 1)) err(`${gp}.jitter`, 'jitter는 0~1 (0.5면 차는 양이 ×0.5~×1.5)');
+        if (g.cooldown != null && (typeof g.cooldown !== 'number' || !Number.isFinite(g.cooldown) || g.cooldown < 0)) err(`${gp}.cooldown`, 'cooldown은 0 이상 숫자 (터진 뒤 안 차는 날 — 시간 체계가 없으면 턴)');
+        const zero = (x) => x == null || x === 0 || (typeof x === 'string' && !x.trim());
+        if (zero(g.perDay) && zero(g.perTurn)) warn(gp, '게이지가 영영 안 찹니다 — perDay·perTurn이 둘 다 0이면 gauge 효과로만 찹니다');
+        if (!tcfg && !zero(g.perDay)) warn(`${gp}.perDay`, '시간 체계(time)가 없는 봇이라 perDay는 한 턴 = 하루로 찹니다');
+        if (re.chancePerTurn != null && re.chancePerTurn !== 0) warn('$.rules.randomEvents.chancePerTurn', '게이지(gauge)가 켜져 있어 chancePerTurn은 안 쓰입니다');
+      }
+    } else if (typeof re.chancePerTurn === 'string') {
+      // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
       checkExpr(re.chancePerTurn, '$.rules.randomEvents.chancePerTurn', allIds, err, { allowRand: false });
     } else if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
-      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요');
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요 — 또는 gauge(사건 게이지)');
     (re.table || []).forEach((e, i) => {
       const p = `$.rules.randomEvents.table[${i}]`;
       if (!e.id) err(p, '이벤트 id 필요');
@@ -6269,6 +6315,8 @@ function snapshot(state) {
     vars: copy(state.vars),
     firedOnce: copy(state.meta.firedOnce || {}),
     eventLastFired: copy(state.meta.eventLastFired || {}),
+    // 사건 게이지(v1.14.0)의 날 단위 항목 쿨다운 — 게이지 봇만 가진다 (없으면 칸도 안 만든다: 옛 칸 모양 그대로)
+    ...(state.meta.eventLastAt ? { eventLastAt: copy(state.meta.eventLastAt) } : {}),
     turn: state.meta.turn,
   };
 }
@@ -6292,6 +6340,7 @@ function restore(schema, state, snap, isSecretKey = () => false) {
   state.vars = next;
   state.meta.firedOnce = copy(snap.firedOnce) || {};
   state.meta.eventLastFired = copy(snap.eventLastFired) || {};
+  if (snap.eventLastAt || state.meta.eventLastAt) state.meta.eventLastAt = copy(snap.eventLastAt) || {};
   // 되감기 전 세계가 내민 갈림길은 되감긴 세계에 없다
   state.meta.pendingChoice = null;
   state.meta.pendingChoicePick = null;
@@ -6564,6 +6613,107 @@ module.exports = {
 
 });
 
+SimCore.define("gauge", function (require, module, exports) {
+// 사건 게이지 (rules.randomEvents.gauge) — 보이지 않는 게이지가 차면 사건이 온다 (v1.14.0, 유저 제안 2026-09-27)
+//
+// 옛 방식(chancePerTurn)은 **턴마다** 한 번 굴린다. 그래서 작중 시간이 아니라 채팅 속도가 빈도를 정했다 —
+// 베리디아 실측(보통): 하루에 세 턴을 쓰면 한 해 나쁜 일 26번, 하루 한 턴이면 10번, 닷새에 한 턴이면 2번.
+// 항목 쿨다운도 턴이라 하루 세 턴 판에선 같은 사건이 세 배 자주 돌아왔다. 굴림이라 몰리고 비는 폭도 크다(기하 분포).
+//
+// 게이지 = 숨은 수치 하나(re_gauge, 0~100).
+//   - **작중 시간으로 찬다** — 하루당 perDay(시간 체계의 turn_min 기준: 대화만 한 턴은 0, "한 달 뒤"는 한 달치) + 턴당 perTurn.
+//     시간 체계가 없으면 한 턴 = 하루. 식이면 매 턴 현 상태로 평가한다 — 서사가 만든 상태(위협·불안·난이도)가 속도를 민다.
+//   - 흔들림 jitter — 차는 양에 ×(1−j ~ 1+j). 박자는 있되 달력처럼 딱 맞지는 않게.
+//   - **100이 되면 터진다** — 지금 후보(조건·항목 쿨다운 통과) 중 weight 비례로 하나. 게이지는 0으로,
+//     그리고 cooldown(날 — 시간 체계가 없으면 턴) 동안은 안 찬다(re_cool).
+//   - 후보가 하나도 없으면 **안 찬다** — 재해가 이어지는 동안 모든 사건을 막는 봇이면 그동안 멈췄다가 끝나면 이어서 찬다.
+//     막힌 사이에 100을 채워 두었다가 풀리자마자 터뜨리지 않는다.
+//   - 서사의 개입은 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 게이지를 당기거나(+) 늦춘다(−). 0~100으로 잘린다.
+//   - 항목 cooldown도 게이지 모드에선 **날** 단위(시간 체계가 있을 때) — 마지막 발동 시각(meta.eventLastAt, epoch 분)으로 잰다.
+//
+// 예약 키 (vars에 산다 — scn_idx·fr_*와 같은 계열. 패널 현황 탭은 스키마 vars만 그리므로 안 보이고,
+// 스냅샷·체크포인트 되감기가 같이 되감는다): re_gauge (0~100), re_cool (남은 식힘 — 날 또는 턴).
+// 보조 AI는 못 만진다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80`으로 전조 지시문을 걸 수 있다.
+// 변화 원장에는 안 남긴다 — 변화 로그·하이라이트·보조 원장 어디에도 게이지가 새지 않는다(보이지 않는 게 요점).
+
+const { evaluate } = require('./expr');
+
+const GAUGE_KEY = 're_gauge';
+const COOL_KEY = 're_cool';
+const GAUGE_MAX = 100;
+const DEFAULT_JITTER = 0.5;
+const RESERVED = [GAUGE_KEY, COOL_KEY];
+
+const isRate = (x) => typeof x === 'number' || (typeof x === 'string' && x.trim() !== '');
+// 부동소수 찌꺼기 정리 — 99.99999999 때문에 100 문턱이 한 턴 늦지 않게
+const tidy = (v) => Math.round(v * 1e6) / 1e6;
+
+/** 정규화된 게이지 설정 — 없으면 null (옛 방식 chancePerTurn). 검증은 validate 몫, 여기는 방어 정규화만 */
+function gaugeConfig(schema) {
+  const g = schema?.rules?.randomEvents?.gauge;
+  if (!g || typeof g !== 'object' || Array.isArray(g)) return null;
+  const j = Number(g.jitter);
+  const cd = Number(g.cooldown);
+  return {
+    perDay: isRate(g.perDay) ? g.perDay : 0,
+    perTurn: isRate(g.perTurn) ? g.perTurn : 0,
+    jitter: g.jitter == null ? DEFAULT_JITTER : (Number.isFinite(j) ? Math.max(0, Math.min(1, j)) : DEFAULT_JITTER),
+    cooldown: Number.isFinite(cd) && cd > 0 ? cd : 0,
+  };
+}
+
+/** 예약 이름들 — 검증이 조건식 이름표에 등록하고 변수 id 충돌을 막는다 */
+function gaugeExposedNames(schema) { return gaugeConfig(schema) ? RESERVED.slice() : []; }
+
+/** 진행 중 세이브에 나중에 켜도 안전하게 — 없는 키만 0으로 */
+function ensureGaugeKeys(schema, vars) {
+  if (!gaugeConfig(schema)) return;
+  if (typeof vars[GAUGE_KEY] !== 'number') vars[GAUGE_KEY] = 0;
+  if (typeof vars[COOL_KEY] !== 'number') vars[COOL_KEY] = 0;
+}
+
+const isGaugeEffect = (rule) => !!rule && typeof rule === 'object' && rule.gauge !== undefined;
+
+const rateOf = (r, lookup) => {
+  let n = 0;
+  try { n = Number(typeof r === 'number' ? r : evaluate(r, lookup, null)); } catch { n = 0; } // 깨진 식은 0 (검증이 미리 잡는다)
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** 효과 `{ gauge: 식 }` — applySets가 부른다. 0~100으로 자른다. 원장엔 안 남긴다(보이지 않는 게 요점) */
+function applyGaugeEffect(schema, vars, rule, lookup, rng) {
+  if (!gaugeConfig(schema)) return;
+  let d;
+  try { d = Number(evaluate(String(rule.gauge), lookup, rng)); } catch { return; }
+  if (!Number.isFinite(d) || d === 0) return;
+  vars[GAUGE_KEY] = tidy(Math.max(0, Math.min(GAUGE_MAX, (Number(vars[GAUGE_KEY]) || 0) + d)));
+}
+
+/**
+ * 이번 턴에 차는 양 — perDay × 흐른 날 + perTurn, 흔들림을 곱한다. 음수는 0 (게이지를 되돌리는 건 효과의 몫).
+ * @param days 이번 정산에서 흐른 작중 일수 (시간 체계 없으면 1) — 식힘이 도중에 끝난 턴이면 남은 날만
+ * @param withTurn perTurn을 얹나 — 식힘으로 시작한 턴은 안 얹는다 (그 턴은 식힘의 몫)
+ */
+function fillAmount(cfg, lookup, days, rng, withTurn = true) {
+  const base = rateOf(cfg.perDay, lookup) * Math.max(0, Number(days) || 0) + (withTurn ? rateOf(cfg.perTurn, lookup) : 0);
+  if (!(base > 0)) return 0;
+  const k = cfg.jitter > 0 && typeof rng === 'function' ? 1 - cfg.jitter + 2 * cfg.jitter * rng() : 1;
+  return base * k;
+}
+
+/** 평균 며칠(턴)에 한 번 터지나 — 식이 아닌 숫자 설정일 때만 (편집기 미리보기용). 후보가 늘 있다고 친 근사 */
+function meanInterval(cfg, lookup = () => 0) {
+  const perDay = rateOf(cfg.perDay, lookup), perTurn = rateOf(cfg.perTurn, lookup);
+  return { perDay, perTurn, days: perDay > 0 ? GAUGE_MAX / perDay + cfg.cooldown : null, turns: perTurn > 0 ? GAUGE_MAX / perTurn : null };
+}
+
+module.exports = {
+  GAUGE_KEY, COOL_KEY, GAUGE_MAX, DEFAULT_JITTER, RESERVED,
+  gaugeConfig, gaugeExposedNames, ensureGaugeKeys, isGaugeEffect, applyGaugeEffect, fillAmount, meanInterval, tidy,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -6719,6 +6869,8 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
       const re = v.randomEvents;
       put('randomEvents', Array.isArray(re) ? re : (re && re.table), 'rules.randomEvents.table');
       if (re && !Array.isArray(re) && takeChance) takeChance(re.chancePerTurn, `${opName}.rules.randomEvents.chancePerTurn`);
+      // 사건 게이지(v1.14.0)는 패치 병합 미지원 — 조용히 버리면 "보냈는데 안 켜졌다"가 된다. 알려서 통 교체·편집기로 보낸다
+      if (re && !Array.isArray(re) && re.gauge != null) err(`${opName}.rules.randomEvents.gauge: 사건 게이지는 패치로 못 옮깁니다 — 편집기 [규칙·이벤트] 탭의 발동 방식에서 켜거나 통 교체 경로를 쓰세요`);
       for (const rk of Object.keys(v)) {
         if (rk === 'onTurn') err(`${opName}.rules.onTurn: onTurn은 id가 없어 패치 병합 미지원 — 통 교체 경로를 쓰세요`);
         else if (!['events', 'randomEvents'].includes(rk)) err(`${opName}.rules.${rk}: 알 수 없는 섹션`);
@@ -7076,6 +7228,7 @@ const DIFF_AREAS = [
   ['meta', (s) => s?.meta, '이름·설명(meta)'], ['promptState', (s) => s?.promptState, '메인 프롬프트(promptState)'],
   ['statusUI', (s) => s?.statusUI, '상태창(statusUI)'], ['onTurn', (s) => s?.rules?.onTurn, '매 턴 정산(onTurn)'],
   ['randomEventsChance', (s) => s?.rules?.randomEvents?.chancePerTurn, '랜덤 이벤트 발동률'],
+  ['randomEventsGauge', (s) => s?.rules?.randomEvents?.gauge, '사건 게이지'],
   ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
@@ -7163,6 +7316,7 @@ const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].f
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
 const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
+const gaugeMod = require('./gauge');    // 사건 게이지 (v1.14.0) — 랜덤 사건이 작중 시간으로 차는 숨은 게이지로 온다, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -7262,6 +7416,8 @@ function initState(schema, opts = {}) {
   secretMod.ensureSecretKeys(schema, vars);
   // 무대 뒤(v1.12.0)도 같은 계열 — fr_<id> = 시작값, frs_<id> = -1
   frontMod.ensureFrontKeys(schema, vars);
+  // 사건 게이지(v1.14.0)도 같은 계열 — re_gauge·re_cool = 0
+  gaugeMod.ensureGaugeKeys(schema, vars);
   const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -7342,6 +7498,7 @@ function reconcileState(schema, state) {
   // 비밀 (v1.10.0) — 진행 중 세이브에 나중에 켜면 "아직 하나도"에서 시작한다 (밝혀진 것은 소급하지 않는다)
   secretMod.ensureSecretKeys(schema, state.vars);
   frontMod.ensureFrontKeys(schema, state.vars); // 무대 뒤 (v1.12.0) — 같은 규약 (나중에 켜면 시작값에서)
+  gaugeMod.ensureGaugeKeys(schema, state.vars); // 사건 게이지 (v1.14.0) — 같은 규약 (나중에 켜면 빈 게이지에서)
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
@@ -7623,6 +7780,11 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
     if (frontMod.isFrontEffect(rule)) {
       const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
       if (c) changeLog.push(c);
+      continue;
+    }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 서사가 다음 사건을 당기거나(+) 늦춘다(−). 원장엔 안 남긴다(보이지 않는 게 요점)
+    if (gaugeMod.isGaugeEffect(rule)) {
+      gaugeMod.applyGaugeEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng);
       continue;
     }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -8621,58 +8783,98 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     firedEvents.push(ev.id);
   }
 
-  // 8. 랜덤 이벤트 추첨
+  // 8. 랜덤 이벤트 추첨 — 옛 방식(턴마다 chancePerTurn으로 굴림) 또는 사건 게이지(v1.14.0, 작중 시간으로 차는 숨은 게이지).
   const re = schema.rules?.randomEvents;
-  // 발동 확률 — 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
-  // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
-  // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
-  // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
-  let reChance = 0;
-  if (re) {
+  const gcfg = re ? gaugeMod.gaugeConfig(schema) : null;
+  const tcfgR = gcfg ? timeConfig(schema) : null;
+  // 게이지 + 시간 체계면 항목 cooldown도 **날**로 잰다 — 턴으로 재면 같은 사건이 채팅 속도만큼 자주 돌아온다
+  const nowMin = tcfgR ? Number(state.vars[EPOCH_KEY]) || 0 : null;
+  const eligibleNow = () => (re.table || []).filter((ev) => {
+    // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
+    if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
+    if (ev.cooldown != null) {
+      if (tcfgR) {
+        const at = state.meta.eventLastAt?.[ev.id];
+        if (at != null && (nowMin - at) / MIN_PER_DAY < ev.cooldown) return false;
+      } else {
+        const last = state.meta.eventLastFired[ev.id];
+        if (last != null && state.meta.turn - last < ev.cooldown) return false;
+      }
+    }
+    if (ev.when) {
+      const lookup = makeLookup(schema, state.vars);
+      if (!truthy(evaluate(ev.when, lookup, null))) return false;
+    }
+    return true;
+  });
+  // weight 비례로 하나 뽑아 터뜨린다 — 두 방식이 같은 한 벌을 쓴다
+  const fireOne = (eligible) => {
+    const total = eligible.reduce((sum, e) => sum + (e.weight ?? 1), 0);
+    if (!(total > 0)) return false;
+    let roll = rng() * total;
+    for (const ev of eligible) {
+      roll -= ev.weight ?? 1;
+      if (roll <= 0) {
+        let checkResult = null;
+        if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
+        applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+        if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+        if (checkResult) {
+          state.meta.pendingNotifies.push(checkResult.line);
+          if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+        }
+        if (Array.isArray(ev.choices) && ev.choices.length) {
+          state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+          state.meta.pendingChoicePick = null;
+        }
+        triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
+        state.meta.eventLastFired[ev.id] = state.meta.turn;
+        if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
+        firedEvents.push(ev.id);
+        return true;
+      }
+    }
+    return false;
+  };
+  if (gcfg) {
+    if (rng) {
+      // 사건 게이지 — 식힘(re_cool) 중엔 안 차고, 후보가 하나도 없으면 안 찬다(막힌 동안 채워 두었다가 풀리자마자 터뜨리지 않게).
+      // 100이면 하나 터뜨리고 0으로, 식힘을 건다. 원장엔 안 남긴다 — 보이지 않는 게 요점이다.
+      const { GAUGE_KEY: GK, COOL_KEY: CK, GAUGE_MAX: GMAX } = gaugeMod;
+      const days = tcfgR ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : 1;
+      const eligible = eligibleNow();
+      // 식힘이 이번 턴 도중에 끝나면 남은 날만큼은 찬다 — "닷새 뒤" 한 턴이 식힘 사흘에 통째로 먹히지 않게
+      let cool = Number(state.vars[CK]) || 0, fillDays = days;
+      const cooling = cool > 0;
+      if (cooling) {
+        const used = Math.min(cool, days);
+        cool = gaugeMod.tidy(cool - used);
+        state.vars[CK] = cool;
+        fillDays = days - used;
+      }
+      if (!(cool > 0) && eligible.length) {
+        const add = gaugeMod.fillAmount(gcfg, makeLookup(schema, state.vars), fillDays, rng, !cooling);
+        if (add > 0) state.vars[GK] = gaugeMod.tidy(Math.min(GMAX, (Number(state.vars[GK]) || 0) + add));
+        if ((Number(state.vars[GK]) || 0) >= GMAX) {
+          // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
+          const prev = state.vars[GK];
+          state.vars[GK] = 0;
+          if (fireOne(eligible)) state.vars[CK] = gcfg.cooldown;
+          else state.vars[GK] = prev;
+        }
+      }
+    }
+  } else if (re) {
+    // 옛 방식 — 발동 확률은 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
+    // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
+    // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
+    // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
+    let reChance = 0;
     if (typeof re.chancePerTurn === 'string') {
       try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
       reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
     } else reChance = re.chancePerTurn ?? 0;
-  }
-  if (re && rng && rng() < reChance) {
-    const eligible = (re.table || []).filter((ev) => {
-      // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
-      if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
-      if (ev.cooldown != null) {
-        const last = state.meta.eventLastFired[ev.id];
-        if (last != null && state.meta.turn - last < ev.cooldown) return false;
-      }
-      if (ev.when) {
-        const lookup = makeLookup(schema, state.vars);
-        if (!truthy(evaluate(ev.when, lookup, null))) return false;
-      }
-      return true;
-    });
-    const total = eligible.reduce((s, e) => s + (e.weight ?? 1), 0);
-    if (total > 0) {
-      let roll = rng() * total;
-      for (const ev of eligible) {
-        roll -= ev.weight ?? 1;
-        if (roll <= 0) {
-          let checkResult = null;
-          if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
-          applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
-          if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
-          if (checkResult) {
-            state.meta.pendingNotifies.push(checkResult.line);
-            if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
-          }
-          if (Array.isArray(ev.choices) && ev.choices.length) {
-            state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
-            state.meta.pendingChoicePick = null;
-          }
-          triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
-          state.meta.eventLastFired[ev.id] = state.meta.turn;
-          firedEvents.push(ev.id);
-          break;
-        }
-      }
-    }
+    if (rng && rng() < reChance) fireOne(eligibleNow());
   }
 
   // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
@@ -9488,6 +9690,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
+  gaugeConfig: gaugeMod.gaugeConfig, gaugeMeanInterval: gaugeMod.meanInterval, // 사건 게이지 (v1.14.0) — 편집기 미리보기
   frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, checkOdds, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
@@ -16927,6 +17130,7 @@ function varReferenceIndex(schema) {
     if (!f || typeof f !== 'object') return;
     add(f.set, where, what); add(f.list, where, what);
     ex(f.expr, where, what); ex(f.expire, where, what);
+    if (f.gauge !== undefined) ex(String(f.gauge), where, what); // 사건 게이지 개입 (v1.14.0)
   });
   const evBlock = (e, where, what) => {
     ex(e.when, where, what); fx(e.effects, where, what);
@@ -16937,6 +17141,10 @@ function varReferenceIndex(schema) {
   (schema.rules?.events || []).forEach((e) => evBlock(e, '조건 이벤트', e.id));
   ex(typeof schema.rules?.randomEvents?.chancePerTurn === 'string' ? schema.rules.randomEvents.chancePerTurn : '',
     '랜덤 이벤트', '발동 확률식');
+  for (const k of ['perDay', 'perTurn']) { // 사건 게이지 (v1.14.0) — 차는 속도 식
+    const x = schema.rules?.randomEvents?.gauge?.[k];
+    ex(typeof x === 'string' ? x : '', '랜덤 이벤트', `게이지 ${k === 'perDay' ? '하루' : '턴'} 속도식`);
+  }
   (schema.rules?.randomEvents?.table || []).forEach((e) => evBlock(e, '랜덤 이벤트', e.id));
   (schema.directives || []).forEach((d) => { ex(d.when, '지시문', d.id); tpl(d.text, '지시문', d.id); });
   (schema.actions || []).forEach((a) => { ex(a.when, '액션', a.label ?? a.id); fx(a.effects, '액션', a.label ?? a.id); });
@@ -17696,6 +17904,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 조건식에서 `re_gauge`를 읽어 전조 지시문을 걸 수 있다.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -18492,6 +18701,15 @@ function frontEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
     gripEl);
 }
 
+// 사건 게이지 개입 줄 (v1.14.0) { gauge: 식 } — 다음 사건을 당기거나(+) 늦춘다(−). 게이지를 켠 봇만 추가 버튼
+const gaugeOn = (schema) => !!(schema.rules?.randomEvents?.gauge && typeof schema.rules.randomEvents.gauge === 'object');
+function gaugeEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-gauge`, title: '보이지 않는 사건 게이지(0~100)에 더한다 — 양수면 다음 랜덤 사건이 빨리 오고, 음수면 늦게 온다' },
+    h('span', {}, '⏳'),
+    pair('사건 게이지 더하기', bindInput(ef.gauge ?? '', (x) => { ef.gauge = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '+30' }), '음수면 늦춘다 (0~100으로 잘림)'),
+    gripEl);
+}
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -18501,6 +18719,7 @@ function effectRows(schema, effects, rerender) {
   effects.forEach((ef, i) => {
     if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.gauge !== undefined) { wrap.appendChild(gaugeEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -18543,6 +18762,12 @@ function effectRows(schema, effects, rerender) {
       effects.push({ front: frontIdsOf(schema)[0], add: '-10' });
       rerender();
     } }, '+ 🎭 무대 뒤'));
+  }
+  if (gaugeOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ gauge: '30' });
+      rerender();
+    } }, '+ ⏳ 사건 게이지'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -20580,6 +20805,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       effects.forEach((ef, i) => {
         if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.gauge !== undefined) { box.appendChild(gaugeEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -20649,6 +20875,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           class: 'sce-btn sce-add', style: 'flex:1',
           onclick: () => { effects.push({ front: frontIdsOf(schema)[0], add: '-10' }); rerender(); },
         }, '+ 🎭 무대 뒤'));
+      }
+      if (gaugeOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ gauge: '30' }); rerender(); },
+        }, '+ ⏳ 사건 게이지'));
       }
       box.appendChild(btnRow);
       return box;
@@ -20885,13 +21117,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (typeof chance === 'string') {
         try { chance = Number(evaluate(chance, lookup, null)); } catch { return null; }
       }
-      if (!isFinite(chance)) return null;
+      if (!isFinite(chance) && !engine.gaugeConfig(schema)) return null;
       const elig = re.table.map((ev) => {
         if (!ev.when) return true;
         try { return truthy(evaluate(ev.when, lookup, null)); } catch { return false; }
       });
       const total = re.table.reduce((s, ev, i) => s + (elig[i] ? (ev.weight ?? 1) : 0), 0);
-      return { chance: Math.max(0, Math.min(1, chance)), elig, total };
+      // 사건 게이지 (v1.14.0) — 확률 대신 "평균 며칠에 한 번" (시작 상태로 속도식을 평가, 후보가 늘 있다고 친 근사)
+      const gcfg = engine.gaugeConfig(schema);
+      const gauge = gcfg ? engine.gaugeMeanInterval(gcfg, lookup) : null;
+      return { chance: Math.max(0, Math.min(1, isFinite(chance) ? chance : 0)), elig, total, gauge, timed: !!timeConfig(schema) };
     })();
     const reProbLine = (ev, i) => {
       if (!reProb) return null;
@@ -20899,14 +21134,52 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         return h('div', { class: 'sce-derived-now sce-derived-now-err' },
           '시작 상태에선 조건 불충족 — 지금은 후보가 아니며 조건이 참이 되는 판에서만 추첨됩니다.');
       }
+      if (reProb.gauge) {
+        const share = reProb.total > 0 ? (ev.weight ?? 1) / reProb.total : 0;
+        const g = reProb.gauge, unit = reProb.timed ? '일' : '턴';
+        const every = g.days != null ? `평균 ${g.days.toFixed(1)}${unit}에 한 번` : (g.turns != null ? `평균 ${g.turns.toFixed(1)}턴에 한 번` : '게이지가 안 참 (효과로만)');
+        return h('div', { class: 'sce-derived-now' },
+          `시작 상태 기준 사건 ${every} · 그중 이 사건 ${(share * 100).toFixed(0)}% (weight ${ev.weight ?? 1}/${reProb.total}) · 쿨다운 제외`);
+      }
       const p = reProb.total > 0 ? reProb.chance * ((ev.weight ?? 1) / reProb.total) : 0;
       return h('div', { class: 'sce-derived-now' },
         `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% · 발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} · 쿨다운 제외`);
     };
 
     const randomList = h('div', { class: 'sce-rules-list' });
+    // 사건 게이지 (v1.14.0) — 발동 방식 둘: 턴마다 굴리는 확률 / 작중 시간으로 차는 숨은 게이지
+    const gOn = !!(re.gauge && typeof re.gauge === 'object' && !Array.isArray(re.gauge));
+    const cdUnit = gOn && timeConfig(schema) ? '일' : '턴';
+    const gRate = (k, ph) => bindInput(gOn ? (re.gauge[k] ?? '') : '', (x) => {
+      const t = String(x).trim(), n = Number(t);
+      if (!t) delete re.gauge[k]; else re.gauge[k] = isFinite(n) ? Math.max(0, n) : t;
+      rerender();
+    }, { cls: 'sce-w-l', ph });
     randomList.appendChild(h('div', { class: 'sce-rules-random-config' },
-      field('턴당 발동 확률',
+      field('발동 방식',
+        bindSelect(gOn ? 'gauge' : 'chance', [['chance', '🎲 확률 — 턴마다 굴린다'], ['gauge', '⏳ 게이지 — 작중 시간으로 차면 터진다']], (v) => {
+          if (v === 'gauge') { re.gauge = re.gauge || { perDay: 7, jitter: 0.5, cooldown: 3 }; delete re.chancePerTurn; }
+          else { delete re.gauge; if (re.chancePerTurn == null) re.chancePerTurn = 0.1; }
+          rerender();
+        }),
+        gOn ? '보이지 않는 게이지(0~100)가 작중 하루에 정한 양만큼 차고, 100이 되면 후보 중 하나가 터진 뒤 0으로 돌아가요. 채팅을 빨리 넘기든 한 날에 오래 머물든 작중 시간 기준으로 와요. 항목 쿨다운도 날 단위가 돼요.'
+          : '매 턴 이 확률로 굴려 후보 중 하나를 뽑아요. 하루에 턴을 많이 쓰면 사건도 그만큼 잦아져요 — 시간 체계가 있는 봇이면 게이지를 권해요.'),
+      gOn ? field('하루에 차는 양', gRate('perDay', '7 또는 식: 4 + hardship * 0.04'),
+        '100이 되면 터져요 — 7이면 평균 14일에 한 번. 식을 쓰면 매 턴 지금 상태로 계산해요(난이도·위협이 속도를 밀어요). 시간 체계가 없으면 한 턴 = 하루.') : null,
+      gOn ? field('턴마다 차는 양', gRate('perTurn', '0'),
+        '날이 안 가는 대화 턴에도 조금씩 — 보통 0 (날이 안 가면 사건도 안 오는 게 자연스러워요)') : null,
+      gOn ? field('흔들림 (%)',
+        bindInput(Math.round((re.gauge.jitter ?? 0.5) * 100), (x) => {
+          const n = Number(String(x).trim());
+          if (String(x).trim() === '' || !isFinite(n)) delete re.gauge.jitter; else re.gauge.jitter = Math.max(0, Math.min(100, n)) / 100;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '50' }),
+        '50이면 차는 양이 ×0.5~×1.5 — 박자는 있되 달력처럼 딱 맞지 않게') : null,
+      gOn ? field(`터진 뒤 쉬는 ${cdUnit === '일' ? '날' : '턴'}`,
+        bindInput(re.gauge.cooldown ?? '', (x) => { const n = numOrNull(x); if (n == null || n <= 0) delete re.gauge.cooldown; else re.gauge.cooldown = n; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }),
+        '이 동안은 게이지가 안 차요 — 사건이 연달아 붙지 않게') : null,
+      gOn ? null : field('턴당 발동 확률',
         bindInput(
           typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
           (x) => {
@@ -20928,7 +21201,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-rules-card-head' },
           h('div', {},
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
-            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
+            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}${cdUnit}` : ''}`),
           ),
           h('div', { class: 'sce-rules-card-actions' }, keepBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
@@ -20942,7 +21215,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                 { cls: 'sce-w-s' })),
             field('쿨다운',
               bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); },
-                { cls: 'sce-w-s', ph: '턴' })),
+                { cls: 'sce-w-s', ph: cdUnit })),
             field('후보 조건',
               bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
                 { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
@@ -24826,6 +25099,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (e == null || typeof e !== 'object') return String(e);
       if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
+      if (e.gauge !== undefined) return `사건 게이지 ${String(e.gauge)}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -24839,17 +25113,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const line = (icon, title, subs) => h('div', { class: 'sce-catalog-item' },
       h('div', { class: 'sce-catalog-item-title' }, `${icon} ${title}`),
       ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-catalog-item-detail' }, s)));
+    const rndGauge = engine.gaugeConfig(schema); // 사건 게이지 (v1.14.0) — 확률 대신 게이지로 온다
     const eventRow = (e, random, rndChance) => {
       const condition = [];
       if (e.when) condition.push(e.when);
       if (e.check) condition.push(`판정 ${e.check}`);
       if (e.once) condition.push('한 번만 발동');
-      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}턴`);
+      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}${random && rndGauge && timeConfig(schema) ? '일' : '턴'}`);
       if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
       const effects = (e.effects || []).map(fmtE);
       if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
       const kind = random
-        ? `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`
+        ? (rndGauge ? `랜덤 · 게이지 하루 +${rndGauge.perDay}${rndGauge.perTurn ? ` · 턴 +${rndGauge.perTurn}` : ''}`
+          : `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`)
         : '일반 이벤트';
       const fields = [
         ['추가된 항목', e.id || '(ID 없음)'],
@@ -32350,6 +32626,17 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.13.4 ──────────────────────────────────────────────
+// **갈림길 뒤도 연쇄다 — 진단.** 발단: 베리디아 혼담(2026-09-27). 청혼은 랜덤 갈림길이고 보조가 올리는 인식·호감이 문턱이라 시뮬에선 안 뜬다
+// (🔵 AI 담당 — 맞다). 그런데 그 뒤가 전부 결함으로 떴다: 받아들임(갈림길)이 세우는 배필·혼례일이 안 서니 혼례 여덟이 🟡 죽은 이벤트,
+// 혼례 전에만 열리는 💔 파기가 🔴 못 쓰는 액션, 답을 기다리는 청혼(enum)이 🟡 "설정 의존 — 바꿀 수단이 없다", 값 다섯이 🟡 안 움직임.
+// 연쇄는 "안 뜬 이벤트의 **효과**만이 세우는 값"만 봤다.
+// - [진단] 안 뜬 이벤트만이 세우는 값 = 이벤트 효과 + **그 이벤트의 갈림길 효과 · 랜덤 이벤트 효과 · 한 번도 안 열린 버튼의 효과**.
+//   쓰는 곳에 매 턴 처리·보조·명령·편성 같은 다른 길이 하나라도 있으면 아니다(좁게), 보조 갈림길 태그가 쓰는 값은 뺀다(발동 기록이 없다).
+//   그 값에 막힌 이벤트 → 🔵 연쇄, 그 값은 "설정"이 아니다(설정 의존 판정에서 뺀다), 그 값에 막힌 버튼 → 🔵 연쇄(새 갈래).
+//   연쇄 문구가 "그 값을 세우는 이벤트"로 **되돌리기만 하는 효과**(혼례가 혼례일을 0으로)는 안 댄다.
+//   전후: 템플릿 16 동일 · 새 mid/high 0 · 조퇴악녀 안 뜬 줄기의 카운터 아홉 🟡 → 연쇄 묶음 · 얼헌 문구만 · 전체 mid/high 268 → 243.
 
 // ── v1.13.3 ──────────────────────────────────────────────
 // **숫자도 연쇄다 — 진단.** 발단: 베리디아 광휘회(2026-09-27). 주교의 판단 셋은 `bishop_at > 0`(오는 날)을 보는데, 그 값을 세우는 건
@@ -40046,7 +40333,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
               <div class="sc-help-step">
                 <span class="sc-help-step-num">01</span>
                 <span class="sc-help-step-title">이번 턴에 발생하는가</span>
-                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span></span>
+                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span><br>
+                  시간이 흐르는 봇이면 <b>⏳ 게이지</b>(v1.14)를 권해요 — 보이지 않는 게이지가 작중 하루마다 차고 100이면 터져요. 채팅을 빨리 넘기든 한 날에 오래 머물든 작중 시간 기준이에요.</span>
               </div>
               <div class="sc-help-step">
                 <span class="sc-help-step-num">02</span>

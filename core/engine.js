@@ -28,6 +28,7 @@ const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].f
 const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
 const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
+const gaugeMod = require('./gauge');    // 사건 게이지 (v1.14.0) — 랜덤 사건이 작중 시간으로 차는 숨은 게이지로 온다, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -127,6 +128,8 @@ function initState(schema, opts = {}) {
   secretMod.ensureSecretKeys(schema, vars);
   // 무대 뒤(v1.12.0)도 같은 계열 — fr_<id> = 시작값, frs_<id> = -1
   frontMod.ensureFrontKeys(schema, vars);
+  // 사건 게이지(v1.14.0)도 같은 계열 — re_gauge·re_cool = 0
+  gaugeMod.ensureGaugeKeys(schema, vars);
   const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -207,6 +210,7 @@ function reconcileState(schema, state) {
   // 비밀 (v1.10.0) — 진행 중 세이브에 나중에 켜면 "아직 하나도"에서 시작한다 (밝혀진 것은 소급하지 않는다)
   secretMod.ensureSecretKeys(schema, state.vars);
   frontMod.ensureFrontKeys(schema, state.vars); // 무대 뒤 (v1.12.0) — 같은 규약 (나중에 켜면 시작값에서)
+  gaugeMod.ensureGaugeKeys(schema, state.vars); // 사건 게이지 (v1.14.0) — 같은 규약 (나중에 켜면 빈 게이지에서)
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
@@ -488,6 +492,11 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
     if (frontMod.isFrontEffect(rule)) {
       const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
       if (c) changeLog.push(c);
+      continue;
+    }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 서사가 다음 사건을 당기거나(+) 늦춘다(−). 원장엔 안 남긴다(보이지 않는 게 요점)
+    if (gaugeMod.isGaugeEffect(rule)) {
+      gaugeMod.applyGaugeEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng);
       continue;
     }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -1486,58 +1495,98 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     firedEvents.push(ev.id);
   }
 
-  // 8. 랜덤 이벤트 추첨
+  // 8. 랜덤 이벤트 추첨 — 옛 방식(턴마다 chancePerTurn으로 굴림) 또는 사건 게이지(v1.14.0, 작중 시간으로 차는 숨은 게이지).
   const re = schema.rules?.randomEvents;
-  // 발동 확률 — 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
-  // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
-  // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
-  // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
-  let reChance = 0;
-  if (re) {
+  const gcfg = re ? gaugeMod.gaugeConfig(schema) : null;
+  const tcfgR = gcfg ? timeConfig(schema) : null;
+  // 게이지 + 시간 체계면 항목 cooldown도 **날**로 잰다 — 턴으로 재면 같은 사건이 채팅 속도만큼 자주 돌아온다
+  const nowMin = tcfgR ? Number(state.vars[EPOCH_KEY]) || 0 : null;
+  const eligibleNow = () => (re.table || []).filter((ev) => {
+    // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
+    if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
+    if (ev.cooldown != null) {
+      if (tcfgR) {
+        const at = state.meta.eventLastAt?.[ev.id];
+        if (at != null && (nowMin - at) / MIN_PER_DAY < ev.cooldown) return false;
+      } else {
+        const last = state.meta.eventLastFired[ev.id];
+        if (last != null && state.meta.turn - last < ev.cooldown) return false;
+      }
+    }
+    if (ev.when) {
+      const lookup = makeLookup(schema, state.vars);
+      if (!truthy(evaluate(ev.when, lookup, null))) return false;
+    }
+    return true;
+  });
+  // weight 비례로 하나 뽑아 터뜨린다 — 두 방식이 같은 한 벌을 쓴다
+  const fireOne = (eligible) => {
+    const total = eligible.reduce((sum, e) => sum + (e.weight ?? 1), 0);
+    if (!(total > 0)) return false;
+    let roll = rng() * total;
+    for (const ev of eligible) {
+      roll -= ev.weight ?? 1;
+      if (roll <= 0) {
+        let checkResult = null;
+        if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
+        applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+        if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+        if (checkResult) {
+          state.meta.pendingNotifies.push(checkResult.line);
+          if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+        }
+        if (Array.isArray(ev.choices) && ev.choices.length) {
+          state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+          state.meta.pendingChoicePick = null;
+        }
+        triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
+        state.meta.eventLastFired[ev.id] = state.meta.turn;
+        if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
+        firedEvents.push(ev.id);
+        return true;
+      }
+    }
+    return false;
+  };
+  if (gcfg) {
+    if (rng) {
+      // 사건 게이지 — 식힘(re_cool) 중엔 안 차고, 후보가 하나도 없으면 안 찬다(막힌 동안 채워 두었다가 풀리자마자 터뜨리지 않게).
+      // 100이면 하나 터뜨리고 0으로, 식힘을 건다. 원장엔 안 남긴다 — 보이지 않는 게 요점이다.
+      const { GAUGE_KEY: GK, COOL_KEY: CK, GAUGE_MAX: GMAX } = gaugeMod;
+      const days = tcfgR ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : 1;
+      const eligible = eligibleNow();
+      // 식힘이 이번 턴 도중에 끝나면 남은 날만큼은 찬다 — "닷새 뒤" 한 턴이 식힘 사흘에 통째로 먹히지 않게
+      let cool = Number(state.vars[CK]) || 0, fillDays = days;
+      const cooling = cool > 0;
+      if (cooling) {
+        const used = Math.min(cool, days);
+        cool = gaugeMod.tidy(cool - used);
+        state.vars[CK] = cool;
+        fillDays = days - used;
+      }
+      if (!(cool > 0) && eligible.length) {
+        const add = gaugeMod.fillAmount(gcfg, makeLookup(schema, state.vars), fillDays, rng, !cooling);
+        if (add > 0) state.vars[GK] = gaugeMod.tidy(Math.min(GMAX, (Number(state.vars[GK]) || 0) + add));
+        if ((Number(state.vars[GK]) || 0) >= GMAX) {
+          // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
+          const prev = state.vars[GK];
+          state.vars[GK] = 0;
+          if (fireOne(eligible)) state.vars[CK] = gcfg.cooldown;
+          else state.vars[GK] = prev;
+        }
+      }
+    }
+  } else if (re) {
+    // 옛 방식 — 발동 확률은 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
+    // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
+    // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
+    // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
+    let reChance = 0;
     if (typeof re.chancePerTurn === 'string') {
       try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
       reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
     } else reChance = re.chancePerTurn ?? 0;
-  }
-  if (re && rng && rng() < reChance) {
-    const eligible = (re.table || []).filter((ev) => {
-      // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
-      if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
-      if (ev.cooldown != null) {
-        const last = state.meta.eventLastFired[ev.id];
-        if (last != null && state.meta.turn - last < ev.cooldown) return false;
-      }
-      if (ev.when) {
-        const lookup = makeLookup(schema, state.vars);
-        if (!truthy(evaluate(ev.when, lookup, null))) return false;
-      }
-      return true;
-    });
-    const total = eligible.reduce((s, e) => s + (e.weight ?? 1), 0);
-    if (total > 0) {
-      let roll = rng() * total;
-      for (const ev of eligible) {
-        roll -= ev.weight ?? 1;
-        if (roll <= 0) {
-          let checkResult = null;
-          if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
-          applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
-          if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
-          if (checkResult) {
-            state.meta.pendingNotifies.push(checkResult.line);
-            if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
-          }
-          if (Array.isArray(ev.choices) && ev.choices.length) {
-            state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
-            state.meta.pendingChoicePick = null;
-          }
-          triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
-          state.meta.eventLastFired[ev.id] = state.meta.turn;
-          firedEvents.push(ev.id);
-          break;
-        }
-      }
-    }
+    if (rng && rng() < reChance) fireOne(eligibleNow());
   }
 
   // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
@@ -2353,6 +2402,7 @@ function parseAuxResponse(text) {
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
   checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
+  gaugeConfig: gaugeMod.gaugeConfig, gaugeMeanInterval: gaugeMod.meanInterval, // 사건 게이지 (v1.14.0) — 편집기 미리보기
   frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
   sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, checkOdds, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,

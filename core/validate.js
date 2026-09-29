@@ -10,6 +10,10 @@ const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_E
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
+// 변수 정의가 읽는 키 전부 (v1.14.2) — 편집기 변수 카드·AI 요청서 규격표(editor.js VAR_FIELD_SPEC)와 같은 목록.
+// 여기 없는 키는 엔진이 안 읽는다. 밑줄로 시작하는 키(_note 등)는 제작자 메모로 보고 넘어간다.
+const VAR_KEYS = new Set(['id', 'label', 'type', 'init', 'min', 'max', 'enum', 'maxItems', 'maxLength',
+  'itemMaxLength', 'format', 'desc', 'cmd', 'group']);
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -77,6 +81,22 @@ function validateSchema(schema) {
     if (RESERVED.has(v.id)) err(p, `'${v.id}'는 예약어라 변수 id로 쓸 수 없음`);
     if (ids.has(v.id)) err(p, `중복된 id: '${v.id}'`);
     ids.add(v.id);
+    // 모르는 키 (v1.14.2) — 실제 제보: AI에게 변수 설명을 채우게 했더니 `description`을 지어 넣어 영문 설명이 통째로
+    // 버려졌는데 경고 한 줄이 없었다. 엔진은 desc 하나만 읽는다. description은 desc가 비었으면 옮겨 주고(설정 없이,
+    // 결정된 동작), 둘 다 있으면 desc를 지키며 알린다. 그 밖의 모르는 키(오타 discription 등)는 이름만 알린다.
+    if (v.description != null) {
+      if (!String(v.desc ?? '').trim()) {
+        v.desc = String(v.description);
+        delete v.description;
+        warn(p, `'description'은 읽지 않는 키라 desc로 옮겼습니다 — 변수 설명은 desc 하나만 봅니다`);
+      } else {
+        warn(p, `'description'은 읽지 않습니다 — 보조 AI는 desc만 봅니다. description을 지우거나 desc에 합치세요`);
+      }
+    }
+    for (const k of Object.keys(v)) {
+      if (VAR_KEYS.has(k) || k === 'description' || k.startsWith('_')) continue;
+      warn(p, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (변수가 쓰는 키: ${[...VAR_KEYS].join(', ')})`);
+    }
     if (!VAR_TYPES.includes(v.type)) err(p, `알 수 없는 type: '${v.type}'`);
     if (v.type === 'enum') {
       if (!Array.isArray(v.enum) || v.enum.length < 2) err(p, 'enum 타입은 enum 배열(2개 이상) 필요');

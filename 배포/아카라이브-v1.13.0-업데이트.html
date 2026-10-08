@@ -1,0 +1,381 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.9.27 &nbsp;→&nbsp; v1.13.0</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 <b style="color:#dbe2ea;">이야기를 다루는 새 기능 넷</b>과 화면 손질·수리 몇 가지입니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 10px;font-size:18px;line-height:1.7;">
+모델에게 <b style="color:#e0a94a;">부탁하던 넷</b>을 이제 <b style="color:#e0a94a;">시스템이 쥡니다.</b>
+</p>
+<p style="margin:0 0 8px;color:#a9b4c2;line-height:2;">
+🔒 <b style="color:#dbe2ea;">비밀</b> — "말하지 마라" 대신 <b style="color:#dbe2ea;">아직 안 알려 줍니다</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.10.0</span><br>
+⏪ <b style="color:#dbe2ea;">되감기</b> — 죽으면 <b style="color:#dbe2ea;">그날 아침으로</b>. 회귀물·타임루프 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.11.0</span><br>
+🎭 <b style="color:#dbe2ea;">무대 뒤</b> — 유저가 안 보는 사이에도 <b style="color:#dbe2ea;">세상이 움직입니다</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.12.0</span><br>
+🎲 <b style="color:#dbe2ea;">판정 성공률</b> — 고르기 전에 <b style="color:#dbe2ea;">무게를 잽니다</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.13.0</span>
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+넷 다 <b style="color:#dbe2ea;">회귀물 시나리오 봇을 하나 개조하다가</b> 줄줄이 나왔습니다 — 비밀을 지켜야 했고, 죽으면 되돌아가야 했고, 유저가 안 가 본 곳에서도 일이 벌어져야 했고, 선택지가 몇 %인지 보여야 했습니다.
+나머지는 <b style="color:#dbe2ea;">상태창 탭 묶기</b>, 커뮤니티에서 받은 <b style="color:#dbe2ea;">편집기 개편</b>, 그리고 수리입니다.
+<b style="color:#e0a94a;">LLM 번역을 켜고 쓰시는 분</b>은 아래 🔧 <b style="color:#dbe2ea;">번역문에 상태창이 안 뜨던 것</b>을 꼭 보세요.
+</p>
+
+<!-- ─────────── ① 비밀 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🔒 비밀 — 모르는 건 말할 수 없다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.10.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#c98a7a;">"LLM은 비밀 유지를 뭔 짓을 해도 못 한다."</b> 대문자로 쓰고, 별표를 치고, 시스템 프롬프트 맨 위에 박아도
+  결국 샙니다. 당연합니다 — <b style="color:#dbe2ea;">프롬프트에 적힌 건 전부 "아는 것"</b>이고,
+  <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">절대 말하지 마라</span>는 그 정보 <b style="color:#dbe2ea;">옆에 붙은 또 하나의 텍스트</b>일 뿐입니다.
+  확률을 낮출 뿐이고, 100턴이면 한 번은 샙니다. 한 번 새면 그 뒤론 모델이 자기가 쓴 글을 흉내 내니 되돌릴 수도 없습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  확실한 방법은 하나뿐입니다. <b style="color:#e0a94a;">프롬프트에 없으면 못 샌다.</b><br>
+  이제 비밀을 <b style="color:#dbe2ea;">단계</b>로 적습니다. 각 단계에는 여는 조건이 붙고,
+  <b style="color:#e0a94a;">조건이 열려야 그 글이 프롬프트에 실립니다.</b> 안 열린 단계의 글은 프롬프트 어디에도 없습니다 — 모델은 볼 방법이 없습니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">기본 rpg 템플릿에 들어 있는 실물 — "아린의 과거" (인물)</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    <b style="color:#dbe2ea;">1단계 · 낌새</b> <span style="font-size:12px;color:#8b98a9;">(처음부터 열림)</span><br>
+    <span style="color:#dbe2ea;">아린은 감시탑 문장을 보면 시선을 피한다. 봉인 이야기가 나오면 화제를 돌린다.</span><br><br>
+    <b style="color:#dbe2ea;">2단계</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act == "shadow"</span> 일 때<br>
+    <span style="color:#dbe2ea;">아린은 감시탑 출신이다. 탑을 떠난 이유는 아직 말하지 않는다.</span><br><br>
+    <b style="color:#dbe2ea;">3단계</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act == "clash"</span> 일 때<br>
+    <span style="color:#dbe2ea;">봉인을 삭게 만든 배신의 한복판에 아린의 스승이 있었다. 아린은 그것을 막지 못했고, 그 죄책감으로 탑을 떠났다.</span>
+    </p>
+  </div>
+  <p style="margin:0 0 16px;color:#a9b4c2;font-size:14px;">
+  1막을 도는 동안 <b style="color:#dbe2ea;">2·3단계의 저 문장들은 모델에게 한 글자도 가지 않습니다.</b>
+  세 번째 막에 들어가야 스승 이야기가 프롬프트에 붙습니다. 캐물어도, 유도해도, 탈옥을 해도 없는 걸 말할 수는 없습니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">숨기기만 하면 이야기가 밋밋해집니다 — 그래서 둘을 더 넣었습니다</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">① 복선은 "이유 없는 행동"으로.</b> 1단계에는 <b style="color:#dbe2ea;">왜인지를 빼고 행동만</b> 적습니다.
+  "감시탑 문장을 보면 시선을 피한다" — 모델은 <b style="color:#dbe2ea;">이유를 모른 채 그 행동을 합니다.</b>
+  배우는 극본 결말을 몰라도 "뭔가 숨기는 사람"을 연기할 수 있으니까요. 나중에 2단계가 열리면
+  플레이어가 이미 열 번쯤 본 그 장면들이 한꺼번에 의미를 갖습니다.
+  </p>
+  <p style="margin:0 0 16px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">② 존재는 알리되 내용은 안 줍니다.</b>
+  아무것도 안 알려 주면 모델이 빈칸을 <b style="color:#c98a7a;">자기 설정으로 메웁니다</b> — 캐물으면 그 자리에서 없는 과거를 지어내죠.
+  그래서 기본값은 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">"○○에게는 말 못 할 사정이 있다. 너도 그 내용은 모른다 — 숨기는 사람답게 굴되 지어내지 마라. 밝혀지는 순간이 오면 따로 알려 준다"</span>입니다.
+  모르는 상태를 <b style="color:#dbe2ea;">연기 지시로</b> 바꾼 것입니다. 단 <b style="color:#dbe2ea;">반전</b>은 반대입니다 — "뭔가 있다"는 신호 자체가 스포일러라 기본이 <b style="color:#dbe2ea;">안 알림</b>입니다.
+  </p>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">종류는 셋</b> — <b style="color:#dbe2ea;">인물</b>(누군가 숨기는 것) · <b style="color:#dbe2ea;">세계</b>(아직 드러나지 않은 사실) · <b style="color:#dbe2ea;">반전</b>(이야기의 진상).
+    기계는 하나이고 종류는 <b style="color:#dbe2ea;">어법과 기본값만</b> 가릅니다<br>
+  · <b style="color:#dbe2ea;">여는 조건은 아무거나</b> — 막(<span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">scn_act</span>)·호감도·턴 수·아이템·판정 결과·다른 비밀의 단계까지. 조건식 쓰는 자리는 전부 같습니다<br>
+  · <b style="color:#dbe2ea;">한 번 열리면 안 닫힙니다</b> — 호감도가 도로 떨어져도 밝혀진 진실은 잊히지 않습니다. 낮은 단계는 누적으로 실립니다<br>
+  · <b style="color:#dbe2ea;">상태창에 🔒 칩</b> — "아린의 과거 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;">0/2</span>" 처럼 <b style="color:#dbe2ea;">밝혀낸 개수만</b> 보입니다(수집 요소). <b style="color:#dbe2ea;">반전 비밀은 칩이 아예 안 뜹니다</b> — 유저 눈에도 은닉<br>
+  · <b style="color:#dbe2ea;">열리는 순간</b> 변화 로그에 🔓 카드가 뜨고, 적어 둔 알림 문구가 그 턴에 나갑니다<br>
+  · <b style="color:#dbe2ea;">조건식·상태창에서 읽을 수 있습니다</b> — <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">sec_arin</span> = 열린 최고 단계(−1이면 아직). "3단계까지 열렸으면 엔딩 분기" 같은 걸 이벤트로 짤 수 있습니다<br>
+  · <b style="color:#dbe2ea;">보조 모델에게는 아무것도 안 갑니다</b> — 변화 로그·🔓 카드에도 <b style="color:#dbe2ea;">라벨과 단계 번호만</b> 실립니다(로그는 보조도 봅니다)<br>
+  · <b style="color:#dbe2ea;">진단</b>에 "닫힌 비밀" — 마지막 단계까지 못 간 비밀이 있으면 왜인지(조건이 설정에 걸렸는지, 판이 짧아서인지, AI가 문턱을 못 넘는지) 짚어 줍니다
+  </p>
+
+  <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:4px;padding:14px 16px;margin-bottom:14px;">
+    <p style="margin:0;color:#dbe2ea;font-size:14px;line-height:1.85;">
+    <b style="color:#c98a7a;">⚠ 이것부터 하셔야 효과가 있습니다.</b>
+    <b style="color:#dbe2ea;">캐릭터 카드 설명·페르소나·로어북에 적힌 비밀은 모델이 이미 보고 있습니다.</b>
+    거기에 "정체는 실은 ○○이다. 절대 말하지 말 것"이라고 적어 두셨다면, 비밀 탭을 켜도 그건 그대로 샙니다.
+    <b style="color:#e0a94a;">그쪽에서 잘라 내고 여기로 옮겨야</b> 합니다. 막는 건 지시문이 아니라 <b style="color:#dbe2ea;">프롬프트에 없다는 사실</b>뿐입니다.
+    </p>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — 세부 편집기 <b style="color:#dbe2ea;">[진행] 묶음 → [비밀] 탭</b>. 카드마다 종류·대상·존재 알림·단계 사다리가 있고,
+  탭 맨 아래 AI 창구의 <b style="color:#dbe2ea;">AI로 비밀 만들기</b>로 통째로 만들거나 고칠 수 있습니다.
+  💬 어시스턴트에게 "아린이 사실은 감시탑 출신인 걸 3막에 밝혀지게 해줘"라고 말해도 됩니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">[스샷: [비밀] 탭 — 단계 사다리가 보이는 카드 하나]</p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  덧 — 시나리오레이터의 <b style="color:#a9b4c2;">막마다 붙이는 비밀</b>은 그대로 있습니다. 막에 딱 붙는 건 거기가 편하고,
+  막과 무관하거나 여러 단계로 나뉘는 건 [비밀] 탭입니다.
+  이 기능이 새지 않는다는 건 <b style="color:#a9b4c2;">테스트가 프롬프트 문자열을 통째로 뒤져 안 열린 단계의 글자가 없음을 확인</b>하는 방식으로 못 박혀 있습니다.
+  모델이 잘 참아 주길 비는 게 아니라, 애초에 실리지 않았다는 쪽입니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 되감기 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">⏪ 되감기 — 죽으면 그날 아침으로</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.11.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  회귀물·로그라이크·타임루프를 만들고 싶어도 <b style="color:#c98a7a;">지금까지는 스키마로 만들 수가 없었습니다.</b>
+  효과는 변수 값만 바꿀 수 있어서 <b style="color:#dbe2ea;">날짜·지금 몇 막인지·밝혀진 비밀</b>처럼 엔진이 쥔 값은 못 돌렸고,
+  막은 앞으로만 가고, 시간은 거꾸로 안 갑니다. "죽으면 처음으로"를 만들려면 결국 새 채팅이었죠.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  이제 효과 두 줄로 됩니다 — <b style="color:#e0a94a;">⏪ 체크포인트 저장</b>과 <b style="color:#e0a94a;">⏪ 체크포인트 되감기</b>.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">예 — 사망회귀 한 판</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    <b style="color:#dbe2ea;">장(막)에 들어갈 때</b> → ⏪ 저장<br>
+    <b style="color:#dbe2ea;">게임오버 이벤트</b>(죽음·면접 탈락·원작 결말 확정) → 회귀 횟수 +1, ⏪ 되감기<br>
+    <b style="color:#dbe2ea;">되감기 카드</b> → 남길 변수 = 회귀 횟수 · "회귀의 기억" 목록<br><br>
+    <span style="color:#dbe2ea;">결과: <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">[회귀 2회차] 눈을 뜨면 다시 그날이다</span> — 날짜·막·호감·소지품은 그 장이 시작되던 때로 돌아가고,
+    유저가 기억해 둔 것만 남습니다. 세상은 아무것도 기억하지 못합니다.</span>
+    </p>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">되감는 것</b> — 변수 전부(날짜·지금 막 포함) + "한 번만" 이벤트의 기록. 그래서 <b style="color:#dbe2ea;">그 사건이 다시 일어납니다</b><br>
+  · <b style="color:#dbe2ea;">남는 것</b> — 되감기 카드에서 고른 변수 + <b style="color:#dbe2ea;">이미 밝혀진 🔒 비밀</b>(끌 수 있음). 회귀자의 기억입니다<br>
+  · <b style="color:#dbe2ea;">앞으로만 가는 것</b> — 턴 번호·채팅·게시판·상점·메신저. 이야기 안의 시간을 되감는 것이지 채팅을 되돌리는 게 아닙니다<br>
+  · <b style="color:#dbe2ea;">선택지로 되감으면</b> 고른 그 턴에 바로 "눈을 뜨면 그 아침" 장면이 나갑니다 — 맨 끝 선택지(안 고르면 가는 곳)를 "받아들인다 = 처형 → 회귀"로 두는 식<br>
+  · <b style="color:#dbe2ea;">칸을 여럿</b> 둘 수 있습니다(세이브 슬롯처럼). 되감기 안내 문구는 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">{loop}</span>처럼 변수를 넣어 직접 씁니다<br>
+  · 체크포인트는 메시지마다 저장되는 상태에 같이 실려서 <b style="color:#dbe2ea;">리롤해도 흔들리지 않습니다</b>
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — <b style="color:#dbe2ea;">[진행] → [시나리오] 탭 맨 아래 "⏪ 되감기 (체크포인트)" 카드</b>에서 켜고 남길 변수를 고릅니다.
+  켜면 효과 편집기에 <b style="color:#dbe2ea;">[+ ⏪ 체크포인트]</b> 버튼이 생기니, 막 진입 효과에 저장을, 게임오버 이벤트·선택지에 되감기를 넣으세요.
+  </p>
+</div>
+
+<!-- ─────────── ③ 무대 뒤 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🎭 무대 뒤 — 안 보는 사이에도 세상은 움직인다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.12.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지금까지 이야기는 <b style="color:#c98a7a;">유저가 가는 곳에서만</b> 움직였습니다. 신전에 음모가 있다고 설정해 둬도 유저가 신전에 안 가면 음모는 영원히 "준비 중"이었죠.
+  그렇다고 "음모 진행도" 변수를 만들면 <b style="color:#c98a7a;">상태창·변화 로그에 숫자가 떠서 유저가 다 봅니다.</b>
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  무대 뒤는 <b style="color:#e0a94a;">숨은 시계</b>입니다. 진영 하나 = 시계 하나. <b style="color:#dbe2ea;">작중 시간으로</b> 흐르고(대화만 한 턴은 0, "한 달 뒤"면 한 달치),
+  문턱을 넘을 때마다 <b style="color:#dbe2ea;">세 겹으로</b> 드러납니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">예 — "신전의 암투" (하루 1.5씩)</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    <b style="color:#dbe2ea;">25 · 징후</b> — <span style="color:#dbe2ea;">대신전 앞 구호소가 요즘 자주 문을 닫는다.</span> <span style="font-size:12px;color:#8b98a9;">이유 없이 매 턴 모델에게 깔림</span><br>
+    <b style="color:#dbe2ea;">50 · 밑작업</b> — <span style="color:#dbe2ea;">대신관이 구호 자금을 빼돌려 추기경단의 표를 사고 있다.</span> <span style="font-size:12px;color:#8b98a9;">표면화 전엔 프롬프트 어디에도 없음</span><br>
+    <b style="color:#dbe2ea;">70 · 표면화</b> — <span style="color:#dbe2ea;">대신전이 성녀 이단 심문 공고를 붙였다.</span> <span style="font-size:12px;color:#8b98a9;">통지 + 그동안의 밑작업이 한꺼번에 열려 모델이 앞뒤를 맞춘다</span><br>
+    <b style="color:#dbe2ea;">100 · 결과</b> — <span style="color:#dbe2ea;">성녀가 쫓겨났다.</span> <span style="font-size:12px;color:#8b98a9;">되돌릴 수 없는 변화(효과)</span>
+    </p>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">유저는 시계를 못 봅니다</b> — 상태창·관리 패널·변화 로그·보조 모델 어디에도 안 나옵니다. 보이는 건 징후와 사건뿐입니다<br>
+  · <b style="color:#dbe2ea;">개입</b> — 선택지·액션의 효과 <b style="color:#dbe2ea;">🎭 줄</b>로 시계를 늦추거나 되돌립니다. 이미 열린 단계는 안 닫힙니다<br>
+  · <b style="color:#dbe2ea;">조건식에서 읽을 수 있습니다</b> — <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">fr_temple</span>(시계) · <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">frs_temple</span>(열린 단계). "표면화되면 그 진영 퀘스트가 열린다" 같은 걸 이벤트로 짤 수 있습니다<br>
+  · <b style="color:#dbe2ea;">⏪ 되감기와 같이 쓰면</b> 시계도 같이 되감깁니다<br>
+  · <b style="color:#dbe2ea;">🔒 비밀과 맞물립니다</b> — 비밀의 여는 조건이 같은 턴의 표면화를 읽습니다
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — <b style="color:#dbe2ea;">[진행] → [무대 뒤] 탭</b>. 진영마다 "방치하면 며칠째에 무엇이 터지는지"를 요약으로 보여 줍니다.
+  </p>
+</div>
+
+<!-- ─────────── ④ 판정 성공률 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🎲 고르기 전에 무게를 잰다 — 판정 성공률 · 보조 갈림길 여러 벌</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.13.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  판정(v0.40)과 선택지 판정(v1.8.0)은 전부터 있었습니다. 그런데 <b style="color:#c98a7a;">선택지만 보고는 이게 판정인지, 몇 %인지 알 수가 없었습니다.</b>
+  킹덤컴처럼 "화술 60%"를 보고 고르고 싶다는 요청에서 시작했습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">성공률 칩</b> — 판정이 걸린 선택지 옆에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">🎲 화술 60%</span>.
+    지금 능력치로 미리 굴려 본 값(600번, 5% 단위)이라 <b style="color:#dbe2ea;">굴림식이 무엇이든</b> 맞습니다. 스키마 갈림길·보조가 쓰는 갈림길 둘 다<br>
+  · <b style="color:#dbe2ea;">보조가 쓰는 갈림길을 여러 벌</b> — 예: <b style="color:#dbe2ea;">면접용</b>(이벤트가 부를 때만)과 <b style="color:#dbe2ea;">평소용</b>(턴당 10%, 태그 = 능력치)을 따로.
+    추첨은 순서대로 먼저 붙은 한 벌이고, 동시에 뜨는 건 여전히 하나입니다. <b style="color:#dbe2ea;">한 벌짜리 봇은 한 글자도 안 바뀝니다</b><br>
+  · <b style="color:#dbe2ea;">항목 순서 섞기</b> — 모델은 좋은 답을 먼저, 최악을 맨 끝에 쓰는 버릇이 있어서 <b style="color:#c98a7a;">자리만 보고 정답이 보였습니다</b>(실제 제보: "실언은 늘 3번, 정답은 늘 1번").
+    섞으면 안 고를 때 가는 곳도 자리가 아니라 <b style="color:#dbe2ea;">'최악' 태그를 단 항목</b>입니다<br>
+  · <b style="color:#dbe2ea;">새 시작 프리셋 값이 AI 최초 설정에 덮이던 것</b> — 최초 설정이 스키마 기본값을 "기본"으로 보고 되돌려 적어서, 프리셋마다 다르게 준 능력치·신분이 사라졌습니다. 이제 프리셋 값을 기본으로 봅니다
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">[스샷: 🎲 성공률 칩이 붙은 선택지]</p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — 칩은 판정 달린 선택지에 저절로 붙습니다. 여러 벌은 <b style="color:#dbe2ea;">[진행] → [규칙·이벤트] → 05 보조가 쓰는 갈림길</b>의
+  <b style="color:#dbe2ea;">[+ 갈림길 한 벌 더]</b>, 섞기는 벌마다 <b style="color:#dbe2ea;">"항목 순서 섞기"</b> 체크.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 상태창 탭 묶기 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 상태창</span>
+    <span style="font-size:19px;font-weight:600;">탭 한 장에 여러 그룹 — "내 캐릭터" 탭 따로 두기</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.12.1</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  탭 배치는 <b style="color:#dbe2ea;">그룹 하나 = 탭 하나</b>라서, "현황(관계·진행…) | 나(소지품·능력)" 두 장으로 나누려면
+  <b style="color:#c98a7a;">현황을 한 그룹에 몰아 이름표를 잃거나, HTML을 손으로 짜야</b> 했습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 그룹 설정의 <b style="color:#dbe2ea;">"묶을 장 이름"</b>이 같은 그룹끼리 <b style="color:#dbe2ea;">한 장 안에 제 이름표를 달고 쌓입니다</b>(탭·접기·팝업 배치)<br>
+  · 조건으로 다 숨은 장은 빠지고, 한 장만 남으면 탭바 없이 그냥 쌓입니다<br>
+  · 고른 탭의 색은 CSS 변수 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">--sim-tab-on-bg</span> · <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#7fc7d9;">--sim-tab-on-line</span>로 덮습니다
+  </p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 현황 | 나 두 장짜리 상태창]</p>
+</div>
+
+<!-- ─────────── ⑥ 편집기 — 커뮤니티 기여 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 편집기</span>
+    <span style="font-size:19px;font-weight:600;">의뢰판 · 메신저 탭 개편 + 검증 리포트 — 커뮤니티 기여</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.28</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">[기여자 닉네임]</b> 님이 편집기 UI 개조본을 보내 주셨습니다. 검토해서 이식했습니다 — 고맙습니다.
+  의뢰판·메신저 탭이 <b style="color:#c98a7a;">설정이 한 덩어리로 쏟아지던 화면</b>에서
+  <b style="color:#e0a94a;">번호 붙은 섹션</b>(01 기본 정보 ~ 06 화면 꾸미기)으로 나뉘고, 칸마다 무슨 뜻인지 한 줄씩 붙었습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 상단 <b style="color:#dbe2ea;">요약 칩</b> · 쓸 변수가 없으면 <b style="color:#dbe2ea;">빈 상태 카드 + [변수 탭으로 이동]</b> · <b style="color:#dbe2ea;">삭제는 맨 아래 위험 구역</b>으로<br>
+  · 이 두 탭의 AI 창구는 <b style="color:#dbe2ea;">생성 상자 하나만 크게</b>, 규격서 내보내기·가져오기는 "외부 AI로 만들기 · 직접 생성이 안 될 때만"으로 접혀 내려갑니다<br>
+  · <b style="color:#dbe2ea;">검증 리포트가 "어느 탭인지"를 말합니다</b> — 전엔 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#c98a7a;">$.questBoard[0].when</span>이라고만 떠서 처음 만드는 분은 어딘지 알 방법이 없었습니다.
+    이제 <b style="color:#e0a94a;">"의뢰판에서 확인이 필요해요"</b>, JSON 경로는 <b style="color:#dbe2ea;">[기술 위치 보기]</b> 뒤로<br>
+  · 변수가 하나도 없는 작업본에는 오류를 쏟는 대신 <b style="color:#dbe2ea;">[기본 변수 만들기]</b> 버튼
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  받은 그대로 얹지 않고 넷을 고쳐서 넣었습니다 — 경고·성공 카드 바탕색이 안 칠해지던 CSS 변수 누락, 검증 리포트가 새 시작·갈림길 영역을 "작업본"으로 뭉개던 것,
+  직결 생성 안내에서 빠진 보증 한 줄, 어시스턴트로 가는 버튼 한 개.
+  </p>
+</div>
+
+<!-- ─────────── ⑦ 변수 카드 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 편집기</span>
+    <span style="font-size:19px;font-weight:600;">변수 카드 — 접은 채로 기억 · 카드에서 🤖 보조 AI 허용</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.9.29</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">"변수 접고 다른 탭 보고 돌아오면 도로 펼쳐져 있다"</b> — 이제 접힘을 변수 이름으로 기억하고 <b style="color:#dbe2ea;">캐릭터별로 저장</b>합니다.
+    편집기를 닫았다 열어도, 어시스턴트가 고친 뒤에도 그대로. [모두 접기]를 누르면 앞으로도 접힌 채 시작합니다(새로 만든 카드만 펼쳐서 보여 줍니다)<br>
+  · <b style="color:#dbe2ea;">"AI 설정 탭이 필수인 줄 알고 변수마다 등록했다"</b> — 허용 목록은 필수가 아닙니다.
+    <b style="color:#dbe2ea;">서사를 보고 보조 AI가 값을 적어도 되는 변수</b>의 명단일 뿐이라, 규칙·이벤트·버튼만 움직이는 값은 없어도 됩니다
+    (단 이야기 흐름 따라 바뀌어야 하는 값이 명단에 없으면 영영 안 움직입니다). 탭 설명 문구를 고치고, <b style="color:#dbe2ea;">변수 카드에 🤖 체크</b>를 둬서 카드에서 바로 켜고 끕니다
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">둘 다 커뮤니티 제보입니다. 감사합니다.</p>
+</div>
+
+<!-- ─────────── ⑧ 번역문 상태창 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">번역문에 상태창이 안 뜨던 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.10.2</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  <b style="color:#dbe2ea;">해당하는 분</b> — 리수의 <b style="color:#dbe2ea;">LLM 번역</b>에 <b style="color:#dbe2ea;">[HTML 포맷 전 번역]</b>을 켜고 쓰시는 분.
+  "번역문에서는 상태창이 안 뜬다, 번역가의 노트에 마커를 넣으라고 적어도 안 된다"는 제보였습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  마커를 지운 건 번역 모델이 아니라 <b style="color:#c98a7a;">SimCore였습니다.</b> 상태창 자리표시가 번역문에 새지 않게 요청마다 떼던 것이 번역 요청에서도 떼고 있었고,
+  번역 모델은 마커를 본 적이 없으니 노트에 뭐라 적든 넣을 수가 없었습니다.
+  이제 <b style="color:#e0a94a;">번역 요청에서 뗀 마커를 번역 결과 끝에 도로 붙입니다.</b> 번역 캐시에 마커째 들어가 다음부터는 요청 없이 섭니다.
+  </p>
+  <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:4px;padding:12px 16px;margin-bottom:12px;">
+    <p style="margin:0;color:#dbe2ea;font-size:14px;line-height:1.85;">
+    <b style="color:#c98a7a;">⚠ 이미 번역된 메시지는 [다시 번역]을 한 번 눌러 주세요.</b> 예전 번역문이 마커 없이 캐시에 남아 있습니다 — 번역 캐시는 플러그인이 못 만집니다.
+    번역가의 노트에 적어 두신 "마커를 포함하라"는 지워도 됩니다.
+    </p>
+  </div>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  동시에 여러 메시지가 번역될 때는 어느 결과가 어느 메시지 것인지 숫자·태그 겹침으로 짝을 짓고, <b style="color:#a9b4c2;">애매하면 안 붙입니다</b> — 틀린 마커를 붙이면 남의 시점 상태창이 서니까요.
+  번역을 안 쓰시는 분께는 아무 영향이 없습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑨ 현황 탭 목록 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">현황 탭에서 목록 항목을 지울 수 없던 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.10.1</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  관리 패널 <b style="color:#dbe2ea;">[현황]</b>에서 목록 변수(소지품·계약·관계 같은 것)는 항목마다 칩과 <b style="color:#dbe2ea;">✕</b>로 뜹니다.
+  그런데 <b style="color:#c98a7a;">항목 글자가 칸보다 조금만 길면 ✕가 칸 밖으로 밀려 잘렸고</b>, 가로 스크롤도 없어서 <b style="color:#c98a7a;">그 항목은 지울 방법이 아예 없었습니다.</b>
+  이제 <b style="color:#e0a94a;">칩이 접힙니다</b> — 긴 항목은 여러 줄로 내려가고, ✕·숫자·기한은 안 쪼개져 항상 보입니다.
+  목록 줄은 현재값 칸이 넓어졌고, [항목 추가] 칸은 칩 아래로 내려갔습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  제보 감사합니다. 서사로 맺은 계약을 서사로 파기했을 때 손으로 지우는 자리라, 긴 항목일수록 지울 일이 많은데 하필 그게 막혀 있었습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑩ 그 밖의 수리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 픽스</span>
+    <span style="font-size:19px;font-weight:600;">그 밖의 수리</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">하이라이트에 "📊 분 진행 +5 (현재 5)" 카드가 서던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.12.2</span> —
+    보조 AI가 적은 시간 진행이 스탯 오른 것처럼 카드로 떴습니다. 그 값은 같은 턴에 시각으로 넘어가 0이 되니 "현재 5"도 거짓이었습니다. 이번 턴 변화 목록에는 그대로 남습니다<br>
+  · <b style="color:#dbe2ea;">AI 규격서에 여유</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.13.0</span> —
+    규격서가 붙여넣기 상한(128KB)에 거의 닿아 있었습니다. 동봉하는 검증기에서 주석 줄만 빼서 117KB로 줄였습니다(동작은 그대로)<br>
+  · <b style="color:#dbe2ea;">접힌 AI 창구에 "눌러서 펼치기"</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.9.28</span> —
+    꺾쇠(⌄) 하나로는 접혀 있다는 걸 못 알아채서 지나치던 창구가 있었습니다. <b style="color:#dbe2ea;">14곳 전부</b>에 붙였습니다<br>
+  · <b style="color:#dbe2ea;">편집기 카드</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.9.28</span> —
+    경고·성공 카드 바탕색이 안 칠해지던 것, 성공 카드 제목과 본문이 한 줄로 붙던 것, 편집기 글자에 <span style="font-family:ui-monospace,Consolas,monospace;">**별표**</span>가 그대로 보이던 것
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.13.0 능력치 판정 — 고르기 전에 무게를 잰다</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 번들 교체는 필요 없습니다</b> — 이번 것은 <b style="color:#dbe2ea;">플러그인만</b> 갈면 끝입니다.
+  얼터헌터 개조판·아틀리에 SimCore판 쓰시는 분도 번들은 그대로 두세요.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다.
+  비밀·되감기·무대 뒤·여러 벌은 <b style="color:#dbe2ea;">안 만들면 아무 일도 안 일어납니다</b>(없음 = 꺼짐).<br>
+  <b style="color:#c98a7a;">④ LLM 번역 쓰시는 분</b> — 이미 번역된 메시지는 <b style="color:#dbe2ea;">[다시 번역]</b>을 한 번. 새로 번역되는 것부터는 저절로 상태창이 섭니다.<br>
+  <b style="color:#c98a7a;">⑤ 비밀을 쓰실 제작자 분께 — 이 순서로 하세요.</b>
+  <b style="color:#dbe2ea;">(1)</b> 캐릭터 카드 설명·페르소나·로어북에서 <b style="color:#dbe2ea;">비밀을 잘라 내고</b>,
+  <b style="color:#dbe2ea;">(2)</b> 세부 편집기 [진행] → [비밀] 탭에 단계로 나눠 붙이고,
+  <b style="color:#dbe2ea;">(3)</b> 1단계에는 <b style="color:#dbe2ea;">이유 없이 행동만</b> 적으세요.
+  <b style="color:#c98a7a;">(1)을 건너뛰면 켜도 샙니다.</b> 이미 진행 중인 채팅에 비밀을 새로 다는 경우엔 앞서 샌 내용이 대화에 남아 있을 수 있으니 새 채팅으로 보세요.<br>
+  <b style="color:#c98a7a;">⑥ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화·외부 접속이 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  이번 넷도 전부 <b style="color:#a9b4c2;">"이게 안 된다"는 이야기</b>에서 나왔습니다.
+  </p>
+</div>
+
+</div>

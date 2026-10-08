@@ -3,12 +3,16 @@
 //
 // 순수 함수라 DOM이 필요 없다 — 편집기·테스트·플레이그라운드 어디서든 같은 결과가 나온다.
 
+// 보조 갈림길 태그 전부 — 한 벌(객체)·여러 벌(배열, v1.13.0) 공용
+const liveTags = (schema) => (Array.isArray(schema.liveChoices) ? schema.liveChoices : [schema.liveChoices]).flatMap((L) => L?.tags || []);
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig } = require('./scenario');
+const { secretsConfig, secKey } = require('./secret'); // 비밀 (v1.10.0) — 영영 안 열리는 단계 진단
 const { evaluate, truthy, referencedVars } = require('./expr');
+const choiceMod = require('./choice'); // 놀이 판 갈림길 고르기 — 타임아웃이 고를 자리(fallbackIndex)를 빼고 고른다 (v1.13.1)
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
 // `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
@@ -43,8 +47,11 @@ function writerMap(schema) {
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
     for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
-  for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
+  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
+  // 채팅 명령(v.cmd) — 유저가 /수위 0 처럼 직접 바꾼다. 시뮬은 못 움직이지만 "바꾸는 곳이 없다"는 거짓이다
+  // (v1.13.1 — 베리디아 nsfw_on이 🔴 고정 변수로 오탐. 편성표·달력과 같은 이유로 쓰기 경로에 넣는다)
+  for (const v of (schema.vars || [])) if (v && v.cmd) add(v.id, '명령');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
   // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만
@@ -60,6 +67,13 @@ function writerMap(schema) {
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
+  }
+  // 의뢰판(v1.7.9) — [수락]이 목록에 줄을 넣고, 수락·취소 효과(accept/cancel)가 값을 움직인다. 패널 버튼이라 시뮬은 못 누른다
+  // (v1.13.2 — 베리디아 청원함의 pet_n이 "바꾸는 곳: onTurn"만 보여 🟡 안 움직임으로)
+  const qb = schema.questBoard;
+  if (qb && typeof qb === 'object' && !Array.isArray(qb)) {
+    if (qb.listVar) add(qb.listVar, '의뢰판');
+    for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
   }
   return w;
 }
@@ -219,11 +233,12 @@ function numericTermsAllReached(when, obs) {
  *   이벤트가 안 뜨면 그 플래그도 안 움직인다. 그걸 근거로 "이 플래그 때문에 안 뜬다"고 하면
  *   원인과 결과가 뒤집힌 채 순환한다. 그 플래그는 false로 시작하므로 막고 있는 게 아니다.
  */
-function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null) {
+function gatedBySetting(when, schema, writers, moved, selfSets = null, states = null, skip = null) {
   if (!when) return null;
   for (const v of schema.vars) {
     if (v.type !== 'enum' && v.type !== 'bool') continue;
     if (moved.has(v.id)) continue;                       // 실제로 값이 변했다면 게이트가 아니다
+    if (skip && skip.has(v.id)) continue;                // 안 뜬 이벤트 뒤의 값 — 설정이 아니라 연쇄 (v1.13.4)
     if (selfSets && selfSets.has(v.id)) continue;        // 자기가 세우는 플래그는 자기를 막지 못한다
     if (!new RegExp(`\\b${v.id}\\b`).test(when)) continue;
     // 극성 — 이름이 조건에 있다고 다 게이트가 아니다. `not unit_over`처럼 **시작값이 이미
@@ -326,7 +341,7 @@ function diagnose(schema, opts = {}) {
       for (const f of (e.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
       for (const c of (e.choices || [])) for (const f of (c.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
     }
-    for (const t of (schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) openSites.add(f.set ?? f.list); // 보조 갈림길(v1.8.0)은 편성표 게이트 밖
+    for (const t of liveTags(schema)) for (const f of (t?.effects || [])) openSites.add(f.set ?? f.list); // 보조 갈림길(v1.8.0)은 편성표 게이트 밖
     for (const c of (schema.checks || [])) {
       const open = ckOpen.has(c.id) ? ckOpen.get(c.id) : true; // 아무 액션도 안 여는 판정은 열림으로 친다(보수적)
       for (const g of (c.grades || [])) for (const f of (g.effects || [])) (open ? openSites : partySites).add(f.set ?? f.list);
@@ -390,8 +405,10 @@ function diagnose(schema, opts = {}) {
   // 한 효과 묶음 안에서 세웠다가 **같은 묶음에서 시작값으로 되돌리는** 계산용 임시 변수.
   // (맨션봇 `pay_tmp`: 여덟 집을 도는 수금 액션이 min(미납, 소지금)을 담았다가 마지막에 0으로.)
   // 턴이 끝난 뒤의 스냅샷에는 되돌린 값만 남으므로 '안 움직임'이 원리적으로 오탐이다.
+  // 매 턴 정산(onTurn)도 한 묶음이다 (v1.13.1 — 베리디아 lack_*: 정산 구간 중 곳간이 빈 날 수를 세어 쓰고 끝에 0으로).
   const SCRATCH = new Set();
   for (const g of [
+    schema.rules?.onTurn || [],
     ...(schema.rules?.events || []).map((e) => e.effects || []),
     ...(schema.rules?.randomEvents?.table || []).map((e) => e.effects || []),
     ...(schema.actions || []).map((a) => a.effects || []),
@@ -439,7 +456,9 @@ function diagnose(schema, opts = {}) {
   const trackIds = [...schema.vars.map((x) => x.id), ...(schema.derived || []).map((d) => d.id),
     ...(TCFG ? TCFG.expose : []),
     // 시나리오 노출 — scn_turns를 관측해야 그걸 읽는 조건의 병목(bottleneck)을 짚을 수 있다
-    ...(SCN ? ['scn_turns'] : [])];
+    ...(SCN ? ['scn_turns'] : []),
+    // 비밀 노출 (v1.10.0) — sec_<id>(열린 최고 단계)를 관측해야 "마지막 단계가 열렸나"를 판마다 읽을 수 있다
+    ...(secretsConfig(schema) || []).map((s) => secKey(s.id))];
   const note = (id, n) => {
     if (typeof n !== 'number' || !isFinite(n)) return;
     const o = obs[id] || (obs[id] = { min: Infinity, max: -Infinity });
@@ -481,6 +500,25 @@ function diagnose(schema, opts = {}) {
       for (const a of avail) everAvail[a.id] = true;
       const pick = policy ? policy(avail, st, i, seed) : null;
       if (pick) { const t = engine.toggleAction(schema, st, pick.id); if (t.armed) st = t.state; }
+      // 갈림길 (v1.13.1) — 놀이 판(policy 있음)은 사람처럼 고른다: 걸린 갈림길의 열린 선택지 중 시드로 하나.
+      // 전엔 아무 판도 안 골라 타임아웃(맨 끝 = "외면한다")만 났다 — 허가·수락 같은 앞 선택지로만 열리는 상태가
+      // 시뮬에 영영 안 와서, 그 뒤에 달린 액션·이벤트가 전부 "못 쓴다·죽었다"로 오탐됐다 (베리디아 길드 허가).
+      // 방치 판(policy 없음)은 그대로 안 고른다 — 방치가 곧 타임아웃이다. 기록만 하고 집행은 전송 단계(/선택과 같은 길).
+      // ⚠ 놀이 판도 **절반만** 고른다(시드 끝자리 짝수). 전부 고르게 했더니 "안 고르면 최악"으로만 가는 길(회귀·몸 소모)이
+      //   시뮬에서 사라져 반대쪽 오탐이 났다(조퇴악녀 loop 안 움직임, 좀비 함정 액션). 두 갈래를 다 남겨 합집합으로 본다.
+      if (policy && opts.pickChoices !== false && /[02468]$/.test(String(seed))
+          && st.meta?.pendingChoice && st.meta.pendingChoicePick == null) {
+        const ev = engine.pendingChoiceEvent(schema, st);
+        const open = (ev?.choices || []).map((c, k) => k).filter((k) => engine.pickChoice(schema, st, k).ok);
+        // 타임아웃이 고를 자리(맨 끝 · 섞인 보조 갈림길은 worst 태그)는 안 고르는 판이 이미 맡는다 — 여기선 그 나머지에서.
+        // 동전 던지기로 두면 고르는 판 둘이 다 "거절"을 뽑아 앞 선택지 길이 또 안 열렸다 (test-diag 허가 갈림길)
+        const fb = choiceMod.fallbackIndex(ev, open);
+        const pool = open.length > 1 ? open.filter((k) => k !== fb) : open;
+        if (pool.length) {
+          const r = seededRng(seed, i, 'choice')();
+          st.meta.pendingChoicePick = pool[Math.min(pool.length - 1, Math.floor(r * pool.length))];
+        }
+      }
       st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
       const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
       st = o.state;
@@ -750,24 +788,66 @@ function diagnose(schema, opts = {}) {
   const laterNote = `${turns}턴 안에는 여기까지 가지 않을 뿐이고, ${longTurns}턴으로 늘리면 실제로 뜹니다 — `
     + '판이 짧아서지 결함이 아닙니다. 이 봇의 후반부까지 보려면 진단 턴 수를 올리세요.';
 
+  // 시뮬이 실제로 굴릴 수 있는 쓰기 자리 — 6. 수치의 움직임이 먼저 쓰던 것을 3. 죽은 이벤트도 쓴다 (v1.13.2 옮겨 세는 값)
+  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
+  const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
+  // 옮겨 세는 값 (v1.13.2) — 시뮬이 쓰는 자리가 onTurn의 식뿐이고, 그 식이 읽는 변수가 전부 이 판에서 안 움직였고,
+  // 그중 하나라도 시뮬 밖(보조 AI·명령·의뢰판·편성·달력)이 움직이는 값이면 — 이 값의 정지는 입력의 정지를 옮겨 적은 것이다.
+  // 베리디아 pet_n = count(petitions): 맡은 청원은 청원함 버튼과 보조만 넣고 뺀다. 결함이 아니라 잴 수 없는 것.
+  // 목록 규칙(expire 등)이 섞이거나 파생·이벤트가 끼면 판단하지 않는다 (좁게 — 진짜 결함을 덮지 않게).
+  const OUTSIDE = new Set(['AI', '명령', '의뢰판', '편성', '달력']);
+  const isStill = (id) => new Set([...idle, ...play].flatMap((r) => r.hist.map((h) => JSON.stringify(h[id])))).size === 1;
+  const followsOutside = (id) => {
+    const w = [...(writers[id] || [])].filter((who) => IN_PLAY.has(who));
+    if (!w.length || w.some((who) => who !== 'onTurn')) return false;
+    const rules = (schema.rules?.onTurn || []).filter((r) => r && (r.set === id || r.list === id));
+    if (!rules.length || rules.some((r) => !r.set || typeof r.expr !== 'string')) return false;
+    const refs = new Set();
+    for (const r of rules) {
+      let got;
+      try { got = referencedVars(r.expr); } catch { return false; }
+      for (const n of got) if (n !== id) refs.add(n);
+    }
+    if (!refs.size) return false;
+    for (const n of refs) if (!varIds.has(n) || !isStill(n)) return false;
+    return [...refs].some((n) => [...(writers[n] || [])].some((who) => OUTSIDE.has(who)));
+  };
+
   // ── 3. 죽은 이벤트 ──
   const everFired = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
   // 안 뜬 이벤트**만이** 세우는 값 — 그 값에 걸린 것들은 별개의 문제가 아니라 같은 문제의 그림자다.
   // 래치 짝을 제대로 만든 봇일수록 손해를 본다: 위기가 안 뜨면 → 경보가 안 켜지고 → 회복도 안 뜨고
   // → 경보 변수도 '안 움직임'. 하나짜리 원인이 지적 셋이 된다 (실측: 맨션봇 시설 4종 = 12건).
   const finalStates = [...idle, ...play].map((r) => r.st.vars);
+  // v1.13.4 — 이벤트 효과만이 아니라 **그 이벤트의 갈림길 효과·랜덤 이벤트 효과**, 그리고 **한 번도 안 열린 버튼**의 효과도
+  // 같은 그늘이다 (베리디아 혼담: 청혼(랜덤·보조 문턱)이 안 뜨면 → 받아들임(선택)이 세우는 배필·혼례일이 안 서고 → 혼례 여덟이 🟡,
+  // 혼례 전에만 열리는 💔 파기 버튼이 🔴). 쓰는 곳이 전부 이벤트 계열(+ 안 열린 버튼)이고 그게 다 안 떴을 때만 — 매 턴 처리·보조·
+  // 명령·편성 같은 다른 길이 하나라도 있으면 아니다. 보조 갈림길(liveChoices) 태그가 쓰는 값은 발동 기록이 없어 빼 둔다.
+  const everAvailAct = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail || {})));
+  const setsVar = (fx, id) => (fx || []).some((f) => (f.set ?? f.list) === id);
+  // 연쇄 문구에 "그 값을 세우는" 이벤트로 이름을 댈 것 — 시작값으로 되돌리기만 하는 효과(혼례가 혼례일을 0으로)는 뺀다
+  const startOf = (id) => schema.vars.find((x) => x.id === id)?.init;
+  const raises = (fx, id) => (fx || []).some((f) => (f.set ?? f.list) === id
+    && !(f.set && [String(startOf(id)), JSON.stringify(startOf(id))].includes(String(f.expr).trim())));
+  const raisersOf = (id, exceptId = null) => allEv.filter((o) => o.id !== exceptId
+    && (raises(o.effects, id) || (o.choices || []).some((c) => raises(c.effects, id))));
+  const liveWritten = new Set(liveTags(schema).flatMap((t) => (t?.effects || []).map((f) => f.set ?? f.list)));
+  const EV_WRITERS = new Set(['이벤트', '랜덤', '선택']);
   const deadOnlyVars = new Set(schema.vars.filter((x) => {
     const w = writers[x.id];
-    if (!w || w.size !== 1 || !w.has('이벤트')) return false;
-    const setters = allEv.filter((o) => (o.effects || []).some((f) => (f.set ?? f.list) === x.id));
-    return setters.length > 0 && setters.every((o) => !everFired.has(o.id));
+    if (!w || liveWritten.has(x.id)) return false;
+    if (![...w].some((s) => EV_WRITERS.has(s)) || [...w].some((s) => !EV_WRITERS.has(s) && s !== '액션')) return false;
+    const setters = allEv.filter((o) => setsVar(o.effects, x.id) || (o.choices || []).some((c) => setsVar(c.effects, x.id)));
+    const acts = ACT.filter((a) => setsVar(a.effects, x.id));
+    return setters.length > 0 && setters.every((o) => !everFired.has(o.id)) && acts.every((a) => !everAvailAct.has(a.id));
   }).map((x) => x.id));
   stats.deadEvents = 0;
   for (const e of allEv) {
     if (everFired.has(e.id)) continue;
     stats.deadEvents++;
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
-    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates);
+    // 안 뜬 이벤트 뒤의 값은 "설정"이 아니다 — 아래 연쇄가 받는다 (v1.13.4)
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates, deadOnlyVars);
     if (gate) {
       const excused = gate.byPlayer || gate.byAI;
       add(excused ? 'low' : 'mid', '설정 의존',
@@ -779,17 +859,20 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     // 안 뜬 이벤트가 세워 줘야 하는 플래그에 막혀 있다 — 원인은 그쪽 하나다.
-    const via = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
+    // 플래그(bool·enum)는 뒤집어 보고(blockedBy), 숫자는 문턱의 병목이 곧 그 값이면 같은 사정이다 (v1.13.3 — 베리디아 주교:
+    // 예고 이벤트만이 bishop_at(오는 날)을 세우니, 예고가 안 뜬 판에선 판단 셋이 `bishop_at > 0`에 막혀 "죽은 이벤트"로)
+    const b = bottleneck(e.when, obs);
+    const flagVia = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
+    const via = flagVia || (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null);
     if (via) {
       stats.deadEvents--;
       stats.cascadeEvents = (stats.cascadeEvents ?? 0) + 1;
-      const src = allEv.filter((o) => o.id !== e.id && (o.effects || []).some((f) => (f.set ?? f.list) === via.id));
-      add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) 켜져야 뜨는데, 그 값을 세우는 `
-        + `${src.length ? `이벤트(${src.map((o) => `'${o.id}'`).join(', ')})가` : '이벤트가'} 안 떴습니다 — `
+      const src = raisersOf(via.id, e.id);   // 갈림길로 세우는 것도, 되돌리기만 하는 건 빼고 (v1.13.4)
+      add('low', '연쇄', `'${e.id}'는 ${via.label ?? via.id}이(가) ${flagVia ? '켜져야' : `\`${b.op} ${b.need}\`이 돼야`} 뜨는데, 그 값을 세우는 `
+        + `${src.length ? `이벤트(${src.slice(0, 4).map((o) => `'${o.id}'`).join(', ')}${src.length > 4 ? ' …' : ''})가` : '이벤트가'} 안 떴습니다 — `
         + '따로 고칠 것이 아니라 그쪽 하나가 원인입니다.', null);
       continue;
     }
-    const b = bottleneck(e.when, obs);
     const where = b
       ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
         + (b.pct != null ? ` (${b.pct}%)` : '')
@@ -843,6 +926,16 @@ function diagnose(schema, opts = {}) {
       add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 `
         + '서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — '
         + '**문턱을 내리지 마세요.** 실제 플레이에서 정말 안 뜨는지는 채팅을 몇 턴 돌려서 보세요.', null);
+      continue;
+    }
+    // 옮겨 세는 값에 걸린 문턱 (v1.13.2) — 조건의 값이 시뮬 밖(보조 AI·명령·패널 버튼)이 움직이는 값을 옮겨 센 것이라
+    // 시뮬에선 영영 시작값이다 (베리디아 pet_done: pet_kept > 0 — 청원을 맡는 건 청원함 [수락]). 6.과 같은 판정.
+    if (b && followsOutside(b.id)) {
+      stats.deadEvents--;
+      stats.aiGated = (stats.aiGated ?? 0) + 1;
+      add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI·명령·패널 버튼이 움직이는 값을 `
+        + '옮겨 세는 값이라, 그걸 누르지 않는 이 진단에서는 시작값에 머뭅니다 — **문턱을 내리지 마세요.** '
+        + '실제로 뜨는지는 채팅에서 그 패널을 써 보고 확인하세요.', null);
       continue;
     }
     add('mid', '죽은 이벤트', `'${e.id}' 미발동 — ${where}`
@@ -915,6 +1008,44 @@ function diagnose(schema, opts = {}) {
     }
   }
 
+  // ── 3.5 닫힌 비밀 (v1.10.0) — 마지막 단계가 판 안에 한 번도 안 열린 비밀. 은닉 설계라 결함의 값이 크다:
+  // 그 단계의 내용은 플레이어가 영영 못 본다. 변명 사다리는 닫힌 막과 같다 (설정 게이트 → 긴 판 → AI 문턱 → 진짜 결함).
+  // 단계는 누적 사다리라 **첫 안 열린 단계 하나만** 짚는다 — 뒤는 같은 문제의 그림자다.
+  for (const s of (secretsConfig(schema) || [])) {
+    const last = s.tiers.length - 1;
+    if (last < 1) continue;                                   // 단계 하나(=복선뿐)면 열릴 것이 없다
+    const o = obs[secKey(s.id)];
+    const reached = o && isFinite(o.max) ? o.max : -1;
+    if (reached >= last) continue;
+    const next = reached + 1;
+    const tier = s.tiers[next];
+    const name = s.label || s.about || s.id;
+    const rest = last - next;
+    const restNote = rest > 0 ? ` (그 뒤 ${rest}개 단계도 함께 잠겨 있습니다 — 원인은 이쪽 하나)` : '';
+    const b = bottleneck(tier.when, obs);
+    const where = b
+      ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
+        + (b.pct != null ? ` (${b.pct}%)` : '')
+      : `여는 조건: ${tier.when || '(없음)'}`;
+    const gate = gatedBySetting(tier.when, schema, writers, moved, null, finalStates);
+    if (gate && (gate.byPlayer || gate.byAI)) {
+      add('low', '설정 의존', `비밀 '${name}'의 ${next + 1}단계는 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 안 열립니다`
+        + (gate.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
+          : ' — 이 값은 보조 AI가 서사를 보고 세웁니다. 시뮬레이션에는 AI가 없어 영영 시작값인 것이고, 결함이 아닐 수 있습니다')
+        + restNote, null);
+    } else if (onlyLonger(`secret:${s.id}:${next}`, 'event')) {
+      add('low', '후반부 비밀', `비밀 '${name}'의 ${next + 1}단계는 ${turns}턴 안에 안 열렸습니다 — ${where}. ${laterNote}${restNote}`, null);
+    } else if (aiGated(schema, b, turns)) {
+      add('low', 'AI 담당 문턱', `비밀 '${name}'의 ${next + 1}단계 미공개 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 서사에 따라 `
+        + '움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — **문턱을 내리지 마세요.** '
+        + `실제로 열리는지는 채팅을 몇 턴 돌려서 보세요.${restNote}`, null);
+    } else {
+      add('mid', '닫힌 비밀', `비밀 '${name}'의 ${next + 1}단계가 영영 안 열립니다 — ${where}. `
+        + '여는 조건이 읽는 값을 올릴 경로(이벤트·판정·액션)를 주거나 문턱을 내리세요. '
+        + `이 단계부터의 내용은 플레이어가 영영 못 봅니다.${restNote}`, 'secrets');
+    }
+  }
+
   // ── 4. 도배되는 이벤트 ──
   for (const e of EV) {
     if (e.once) continue;
@@ -964,6 +1095,18 @@ function diagnose(schema, opts = {}) {
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
           + `다만 '${b.id}'은(는) 보조 AI가 서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 `
           + '시작값 근처에 머뭅니다 — **여는 조건을 낮추지 마세요.**', null);
+        continue;
+      }
+      // 안 뜬 이벤트만이 세우는 값에 막힌 버튼 (v1.13.4) — 이벤트 쪽의 연쇄와 같다: 원인은 그 이벤트 하나
+      //   (베리디아 💔 혼약 파기: 혼례일은 청혼을 받아들여야 선다 — 청혼이 안 뜬 판에선 🔴 못 쓰는 액션으로)
+      const actVia = (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null)
+        || schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(a.when, finalStates, schema, x));
+      if (actVia) {
+        stats.cascadeActions = (stats.cascadeActions ?? 0) + 1;
+        const src = raisersOf(actVia.id);
+        add('low', '연쇄', `'${a.label ?? a.id}'는 ${actVia.label ?? actVia.id}이(가) 서야 열리는데, 그 값을 세우는 `
+          + `${src.length ? `이벤트(${src.slice(0, 4).map((o) => `'${o.id}'`).join(', ')}${src.length > 4 ? ' …' : ''})가` : '이벤트가'} 안 떴습니다 — `
+          + '따로 고칠 것이 아니라 그쪽이 원인입니다.', null);
         continue;
       }
       // 조건 하나하나는 닿았는데 **동시에** 안 맞은 경우 (v0.83.3) — "못 쓰는 액션"이 아니다.
@@ -1030,8 +1173,10 @@ function diagnose(schema, opts = {}) {
         try {
           paired = Array.from({ length: impactRuns }, (_, k) => {
             const seed = `on${k}`;
-            const on = sim(seed, onPick(a));
-            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i));
+            // 짝비교는 갈림길을 안 고른다 (v1.13.1) — 무작위 고르기가 끼면 버튼의 몫과 고른 운이 섞여 좀비 '뒤진다'가
+            // 함정으로 오탐됐다. 버튼 하나의 기여만 재는 자리라 예전 기준(타임아웃)을 그대로 쓴다.
+            const on = sim(seed, onPick(a), turns, { pickChoices: false });
+            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false });
             return (on.lost ?? turns) - (off.lost ?? turns);
           });
         } catch (e) { continue; }
@@ -1071,9 +1216,7 @@ function diagnose(schema, opts = {}) {
   // ⚠ '새 시작'(시작 프리셋)도 여기서 빼야 한다. 최초설정과 똑같이 **시작값만** 정하는 곳이지
   // 플레이 중에 값을 움직이는 곳이 아니다. 남겨 두면 프리셋에서 한 번 정하고 그 뒤로는 AI만
   // 만지는 값(장소·장비·능력치)이 전부 "안 움직임"으로 신고된다 — 실측 6개 템플릿 12개 변수.
-  // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다.
-  const IN_PLAY = new Set(['onTurn', '이벤트', '랜덤', '액션', '판정', '선택']);
-  const simCanMove = (id) => [...(writers[id] || [])].some((who) => IN_PLAY.has(who));
+  // 시뮬레이션이 실제로 굴릴 수 있는 건 매 턴 처리·이벤트·랜덤·액션뿐이다. (IN_PLAY·simCanMove·followsOutside는 3. 앞에 있다)
   let aiOnlyStill = 0, cascadeStill = 0, partyGatedStill = 0;
   for (const x of schema.vars) {
     if (frozenIds.has(x.id)) continue;
@@ -1085,6 +1228,7 @@ function diagnose(schema, opts = {}) {
     const series = [...idle, ...play].flatMap((r) => r.hist.map((h) => h[x.id]));
     if (new Set(series.map((s) => JSON.stringify(s))).size === 1) {
       if (!simCanMove(x.id)) { aiOnlyStill++; continue; }
+      if (followsOutside(x.id)) { aiOnlyStill++; continue; }
       // 안 뜬 이벤트만이 세우는 플래그 — 원인은 그 이벤트 쪽이고 이미 3번에서 말했다.
       if (deadOnlyVars.has(x.id)) { cascadeStill++; continue; }
       // 쓰는 자리가 전부 편성 게이트 뒤 — 시뮬은 편성을 못 하니 시작값인 게 당연하다 (v0.84)
@@ -1127,7 +1271,7 @@ function diagnose(schema, opts = {}) {
   stats.aiOnlyVars = aiOnlyStill;
   if (aiOnlyStill) {
     add('low', '측정 불가',
-      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하거나 효과 안에서만 쓰이는 항목이라 `
+      `변수 ${aiOnlyStill}개는 보조 AI·최초설정·시작 프리셋만 값을 정하거나, 효과 안에서만 쓰이거나, 그런 값을 옮겨 세는 항목이라 `
       + '이 진단으로는 움직임을 잴 수 없습니다 (시뮬레이션에는 AI가 없습니다). '
       + '결함이라는 뜻이 아니라 확인 대상이 아니라는 뜻입니다 — '
       + '실제로 갱신되는지는 채팅을 몇 턴 돌려서 눈으로 보세요.', null);

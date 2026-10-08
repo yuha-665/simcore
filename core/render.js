@@ -1,11 +1,12 @@
 // 상태창 렌더 (auto 모드) + 커스텀 CSS 스코핑
 // 산출물은 리스 표시 파이프라인(DOMPurify)을 통과하므로 표준 태그 + 인라인/클래스 스타일만 사용.
 
-const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent } = require('./engine');
+const { makeLookup, renderTemplate, quoteSafe, dueClock, dueText, commandSpecs: engineCommandSpecs, pendingChoiceEvent, checkOdds } = require('./engine');
 const { evaluate, truthy } = require('./expr');
-const { exposedDefs } = require('./time');
+const { exposedDefs, SKIP_DAY, SKIP_MIN } = require('./time');
 const { scenarioConfig, currentActIndex } = require('./scenario');
 const { fightChipHtml } = require('./fight'); // 전투 안무 칩 (v1.6.0) — 교전 중일 때만 그려진다
+const { secretChipHtml } = require('./secret'); // 비밀 자물쇠 칩 (v1.10.0) — 반전은 아예 안 그린다
 
 // 내장 테마 — .sim-status 하위 오버라이드
 const THEMES = {
@@ -75,9 +76,13 @@ const BASE_CSS = `
 .sim-choice{padding:2px 0;font-size:.92em}
 .sim-choice.sim-locked{opacity:.45}
 .sim-choices-hint{margin-top:4px;font-size:.8em;opacity:.6}
-.sim-choice-tag{font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
+.sim-choice-tag{display:inline-block;white-space:nowrap;font-style:normal;font-size:.78em;opacity:.65;margin-left:4px;padding:0 5px;border:1px solid rgba(128,128,128,.4);border-radius:8px}
 .sim-scn{display:inline-flex;align-items:baseline;gap:6px;padding:2px 10px;border-radius:8px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.22);font-size:.86em}
 .sim-scn-prog{opacity:.55;font-size:.9em}
+.sim-secs{display:inline-flex;flex-wrap:wrap;gap:6px}
+.sim-sec{display:inline-flex;align-items:baseline;gap:5px;padding:2px 9px;border-radius:8px;background:rgba(128,128,128,.12);border:1px dashed rgba(128,128,128,.35);font-size:.84em;opacity:.85}
+.sim-sec.is-open{border-style:solid;opacity:1}
+.sim-sec-prog{opacity:.55;font-size:.9em}
 .sim-cards{display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
 .sim-card{padding:7px 11px;border:1px solid rgba(128,128,160,.35);border-left:3px solid rgba(128,140,220,.9);border-radius:8px;font-size:.93em;line-height:1.45}
 .sim-card.good{border-left-color:rgba(80,180,120,.95)}
@@ -214,6 +219,7 @@ function choicesHtml(schema, state) {
   const ev = pendingChoiceEvent(schema, state);
   if (!ev) return '';
   const lookup = makeLookup(schema, state.vars);
+  const checkById = Object.fromEntries((schema.checks || []).map((k) => [k.id, k]));
   const title = ev.live ? `${ev.icon} ${ev.label}` : '⌛ 선택의 순간';
   let out = `<div class="sim-choices${ev.live ? ' sim-choices-live' : ''}"><div class="sim-choices-title">${esc(title)}</div>`;
   // 무엇에 대한 선택인지 — 발동 순간의 notify를 다시 보여준다. 알림은 그 턴에 흘러가 버려서
@@ -224,15 +230,21 @@ function choicesHtml(schema, state) {
     if (c.when) { try { locked = !truthy(evaluate(c.when, lookup, null)); } catch { locked = true; } }
     // 잠긴 항목에는 히트 클래스를 안 붙인다 — 눌러도 안 되는 걸 버튼처럼 보이게 하지 않는다
     const hit = locked ? '' : ` sim-hit sim-hitchoice-${i}`;
+    // 판정 달린 항목 (v1.13.0) — 무슨 판정이고 지금 몇 %인지. 킹덤컴식: 고르기 전에 무게를 잰다. 이 칩이 있으면 태그 꼬리표는 안 단다
+    // (보조 갈림길의 태그가 곧 판정 이름이라 두 번 말하게 된다)
+    const odds = c.check ? checkOdds(schema, state, checkById[c.check]) : null;
+    const chk = odds ? ` <em class="sim-choice-tag sim-choice-check">🎲 ${esc(String(odds.label))} ${odds.pct}%</em>` : '';
     // 보조 갈림길의 태그 꼬리표 — 결과(판정·효과)는 태그가 정하니 유저가 무게를 잴 근거다 (showTags로 숨김)
-    const tag = ev.live && ev.showTags !== false && c.tag ? ` <em class="sim-choice-tag">${esc(String(c.tag))}</em>` : '';
-    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${tag}${locked ? ' 🔒' : ''}</div>`;
+    const tag = !chk && ev.live && ev.showTags !== false && c.tag ? ` <em class="sim-choice-tag">${esc(String(c.tag))}</em>` : '';
+    out += `<div class="sim-choice${locked ? ' sim-locked' : ''}${hit}">${i + 1}. ${esc(String(c.label ?? ''))}${chk}${tag}${locked ? ' 🔒' : ''}</div>`;
   });
   // 강제(strict, v1.8.0): 고르지 않고 보내면 그 자리에서 시스템이 정한다 — 타임아웃 안내 대신 이 말이 맞다
   const strict = ev.strict === true || ev.strict === 'last' ? 'last' : ev.strict === 'random' ? 'random' : null;
+  // (v1.13.0) 섞는 보조 갈림길(worst 태그)은 떨어질 곳이 "마지막"이 아니다 — 태그를 보이는 벌이면 그 태그로, 숨기는 벌이면 뭉뚱그린다
+  const fall = ev.live && ev.worst && ev.shuffle ? (ev.showTags !== false ? `'${ev.worst}' 항목` : '시스템이 정한 항목') : '마지막 항목';
   const tail = strict
-    ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : '마지막 항목'}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
-    : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 마지막 항목으로 흘러간다` : '');
+    ? ` · 고르지 않고 보내면 ${strict === 'random' ? '아무 항목' : fall}으로 흘러간다 — 선택지 밖의 행동은 없었던 일이 된다`
+    : (ev.timeout != null ? ` · ${ev.timeout}턴 안에 안 고르면 ${fall}으로 흘러간다` : '');
   out += `<div class="sim-choices-hint">눌러서 고르거나, 채팅에 /선택 번호 (예: /선택 1) — 항목 글을 그대로 보내도 된다${tail}</div></div>`;
   return out;
 }
@@ -296,10 +308,13 @@ function scenarioChipHtml(schema, vars) {
 function highlightCards(schema, changeLog, varById, dueNow = null) {
   if (schema.statusUI?.highlights === 'off') return '';
   if (!changeLog || !changeLog.length) return '';
-  const keep = changeLog.filter((c) => c.source === 'llm' || c.source?.startsWith('action:')
+  const keep = changeLog.filter((c) => (c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:'));
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'))
+    // 시간 우편함(skip_day/skip_min)은 보조가 적어도 카드가 아니다 — 같은 턴에 시각으로 굳고 0이 된다 (v1.12.2,
+    // 조퇴악녀 실기 "📊 분 진행 +5 (현재 5)": 현재는 이미 0인데 스탯 오른 것처럼 섰다. 보조 원장 changeMemoLines와 같은 규칙)
+    && c.id !== SKIP_DAY && c.id !== SKIP_MIN);
   if (!keep.length) return '';
   const cards = [];
   // 막 전환 — 이야기가 다음 막으로 넘어간 순간은 이번 턴의 머리기사다 (§6 미결 3: notify는
@@ -309,6 +324,11 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
   for (const c of keep) {
     if (!c.source?.startsWith('scenario:') || varById[c.id]) continue;
     cards.push(`<div class="sim-card">📖 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
+  }
+  // 비밀 단계 열림 (v1.10.0) — 밝혀지는 순간도 머리기사다. 원장엔 라벨·단계 번호만 있어 내용은 카드에도 안 샌다.
+  for (const c of keep) {
+    if (!c.source?.startsWith('secret:') || varById[c.id]) continue;
+    cards.push(`<div class="sim-card good">🔓 <b>${esc(String(c.id))}</b> ${esc(String(c.from ?? ''))} → <b>${esc(String(c.to ?? ''))}</b></div>`);
   }
   // 판정 요약줄 — 성패가 색을 정한다 (성공 계열 초록 / 실패 계열 붉음).
   // ⚠ 등급 효과의 변수 변화도 source가 check:라서, "요약줄 = id가 변수가 아닌 것"으로 가른다
@@ -378,6 +398,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '',
     choices: choicesHtml(schema, state),
     scenario: scenarioChipHtml(schema, state.vars),
+    secrets: secretChipHtml(schema, state.vars, esc), // {secrets} = 비밀 자물쇠 칩 (v1.10.0, 없으면 빈 문자열)
     fight: fightChipHtml(state.vars, esc) };   // {fight} = 교전 게이지 칩 (교전 없으면 빈 문자열)
   // 파생 변수 + 시간 노출 파생(날짜·시각·요일…)도 포함 (표시 이름·포맷 조회용)
   const varById = Object.fromEntries(
@@ -436,12 +457,14 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         }
         rows += `<div class="sim-row"><span class="sim-label">${label}</span>${barHtml}${valueHtml}</div>`;
       }
-      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed' });
+      panes.push({ label: g.label ?? `그룹 ${panes.length + 1}`, rows, collapsed: visibility === 'collapsed',
+        tab: typeof g.tab === 'string' && g.tab.trim() ? g.tab.trim() : null });
     }
     // 그룹 모드는 배치를 플러그인이 정한다 — 자리표시자를 박을 데가 없으니 여기서 붙인다.
     // (템플릿 모드는 반대다: 제작자가 {scenario}/{commands}/{choices}를 박은 자리에만 나온다)
     if (extras.scenario) inner += `<div>${extras.scenario}</div>`; // 이야기 진행은 머리에
     if (extras.fight) inner += `<div>${extras.fight}</div>`;       // 교전 게이지도 머리에 (v1.6.0)
+    if (extras.secrets) inner += `<div>${extras.secrets}</div>`;   // 비밀 자물쇠도 머리에 (v1.10.0) — 수집 요소
     inner += layoutGroups(panes, ui.layout ?? 'stack', extras.uid);
     inner += extras.choices;
     inner += extras.commands;
@@ -621,42 +644,68 @@ function scopeCss(css, prefix = '.sim-status') {
 function layoutGroups(panes, layout, uid) {
   if (!panes.length) return '';
   const u = String(uid ?? 'x').replace(/[^A-Za-z0-9_-]/g, '') || 'x';
+  // 한 장에 여러 그룹 (v1.12.1) — 같은 `tab` 이름의 그룹은 한 장 안에 쌓여 들어간다. 쌓기는 장이 없으니 무시.
+  const sheets = layout === 'stack' ? panes : mergeTabs(panes);
 
   // 탭·팝업은 두 장 이상일 때만 의미가 있다 — 한 장짜리 탭바는 잡음이라 쌓기로 되돌린다.
-  if (layout === 'tabs' && panes.length > 1) {
+  if (layout === 'tabs' && sheets.length > 1) {
     let h = '<div class="sim-tabs">';
     // 입력·탭바·패널이 모두 형제여야 `:checked ~`가 닿는다 (그래서 input을 앞에 몰아 둔다)
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<input class="sim-tabin sim-tabin-${i}" type="radio" name="simtab-${u}"`
         + ` id="simtab-${u}-${i}"${i === 0 ? ' checked' : ''}>`;
     });
     h += '<div class="sim-tabbar">';
-    panes.forEach((p, i) => {
+    sheets.forEach((p, i) => {
       h += `<label class="sim-tab sim-tab-${i}" for="simtab-${u}-${i}">${esc(p.label)}</label>`;
     });
     h += '</div><div class="sim-panels">';
-    panes.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
+    sheets.forEach((p, i) => { h += `<div class="sim-panel sim-panel-${i}">${p.rows}</div>`; });
     return h + '</div></div>';
   }
 
   if (layout === 'accordion') {
     // 첫 장만 펼쳐 둔다. 여러 장을 동시에 펼쳐 볼 수 있는 게 탭과 다른 점이다.
-    return panes.map((p, i) =>
+    return sheets.map((p, i) =>
       `<details class="sim-group sim-acc"${i === 0 ? ' open' : ''}>`
       + `<summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`).join('');
   }
 
-  if (layout === 'popover' && panes.length > 1) {
-    return '<div class="sim-pops">' + panes.map((p) =>
+  if (layout === 'popover' && sheets.length > 1) {
+    return '<div class="sim-pops">' + sheets.map((p) =>
       `<div class="sim-pop" tabindex="0"><span class="sim-pop-btn">${esc(p.label)}</span>`
       + `<div class="sim-pop-body">${p.rows}</div></div>`).join('') + '</div>';
   }
 
-  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다)
-  return panes.map((p) => p.collapsed
+  // stack — 예전 동작 그대로 (collapsed 그룹은 개별로 접힌다). 한 장으로 줄어든 탭도 여기로 — 묶기 전 그룹으로 쌓는다.
+  return panes.map(stackGroup).join('');
+}
+
+/** 쌓기 한 칸 — 탭 한 장 안에 묶인 그룹도 같은 모양으로 쌓인다 */
+function stackGroup(p) {
+  return p.collapsed
     ? `<details class="sim-group"><summary class="sim-group-label">${esc(p.label)}</summary>${p.rows}</details>`
-    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`
-  ).join('');
+    : `<div class="sim-group">${p.label ? `<div class="sim-group-label">${esc(p.label)}</div>` : ''}${p.rows}</div>`;
+}
+
+/**
+ * 같은 `tab` 이름의 그룹을 한 장으로 (v1.12.1). 장 순서 = 그 이름이 처음 나온 자리.
+ * `tab`이 없는 그룹은 예전처럼 제 이름으로 한 장. 한 장에 묶인 그룹은 제 이름표를 달고 쌓인다 —
+ * 탭 "현황" 안에 "로제타"·"관계"가 나뉘어 보이게. 조건(showWhen)으로 다 숨은 이름은 장째로 빠진다.
+ */
+function mergeTabs(panes) {
+  if (!panes.some((p) => p.tab)) return panes;
+  const out = [];
+  const byName = new Map();
+  for (const p of panes) {
+    if (!p.tab) { out.push(p); continue; }
+    const sheet = byName.get(p.tab);
+    if (sheet) { sheet.rows += stackGroup(p); continue; }
+    const fresh = { label: p.tab, rows: stackGroup(p) };
+    byName.set(p.tab, fresh);
+    out.push(fresh);
+  }
+  return out;
 }
 
 /**
@@ -666,10 +715,11 @@ function layoutGroups(panes, layout, uid) {
  */
 function layoutCss(ui) {
   if ((ui.layout ?? 'stack') !== 'tabs') return '';
-  const n = (ui.groups || []).length;
+  const n = (ui.groups || []).length; // 묶인 탭(v1.12.1)은 장이 그룹보다 적다 — 남는 규칙은 닿을 데가 없을 뿐
   let css = '';
   for (let i = 0; i < n; i++) {
-    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:rgba(128,128,128,.14);border-color:rgba(128,128,128,.28)}\n`;
+    // 고른 탭의 색은 봇 CSS가 --sim-tab-on-bg / --sim-tab-on-line으로 덮는다 (v1.12.1) — 자리별 규칙을 손으로 안 찍게
+    css += `.sim-tabin-${i}:checked ~ .sim-tabbar .sim-tab-${i}{opacity:1;background:var(--sim-tab-on-bg,rgba(128,128,128,.14));border-color:var(--sim-tab-on-line,rgba(128,128,128,.28))}\n`;
     css += `.sim-tabin-${i}:checked ~ .sim-panels .sim-panel-${i}{display:block}\n`;
   }
   return css;
@@ -814,6 +864,7 @@ function renderPanelTemplate(schema, state, tpl) {
   const extras = { commands: commandsHtml(schema), uid: 'scg',
     lastcheck: lc ? esc(`${lc.label}: ${lc.summary}`) : '', choices: '',
     scenario: scenarioChipHtml(schema, state.vars),
+    secrets: secretChipHtml(schema, state.vars, esc), // {secrets} = 비밀 자물쇠 칩 (v1.10.0, 없으면 빈 문자열)
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';

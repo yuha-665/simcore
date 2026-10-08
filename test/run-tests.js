@@ -103,6 +103,28 @@ test('enum init 오류 / 중복 id / when의 rand 금지', () => {
   assert.ok(r.errors.some((e) => e.msg.includes('rand')));
 });
 
+test('변수 description 키: desc가 비면 옮기고, 둘 다 있으면 desc 유지 + 경고, 모르는 키 경고 (v1.14.2)', () => {
+  const s = fx();
+  s.vars.push({ id: 'k1', type: 'int', init: 0, label: '옮김', description: '영문 설명' });
+  s.vars.push({ id: 'k2', type: 'int', init: 0, label: '둘 다', description: '무시될 글', desc: '실제 설명란' });
+  s.vars.push({ id: 'k3', type: 'int', init: 0, label: '오타', discription: 'x', _note: '메모는 통과' });
+  const r = validateSchema(s);
+  eq(r.ok, true, '전부 경고이지 오류가 아니다');
+  const k1 = s.vars.find((v) => v.id === 'k1');
+  eq(k1.desc, '영문 설명', 'desc가 비면 description을 desc로 옮긴다');
+  eq('description' in k1, false, '옮긴 뒤 description은 지운다');
+  assert.ok(r.warnings.some((w) => w.path === '$.vars[' + (s.vars.length - 3) + ']' && w.msg.includes('옮겼습니다')));
+  const k2 = s.vars.find((v) => v.id === 'k2');
+  eq(k2.desc, '실제 설명란', '둘 다 있으면 desc를 지킨다');
+  eq(k2.description, '무시될 글', '둘 다 있으면 description은 손대지 않는다');
+  assert.ok(r.warnings.some((w) => w.path === '$.vars[' + (s.vars.length - 2) + ']' && w.msg.includes('읽지 않습니다')));
+  const p3 = '$.vars[' + (s.vars.length - 1) + ']';
+  assert.ok(r.warnings.some((w) => w.path === p3 && w.msg.includes("'discription'")), '오타 키는 알 수 없는 키 경고');
+  assert.ok(!r.warnings.some((w) => w.path === p3 && w.msg.includes("'_note'")), '밑줄 키는 메모로 보고 넘어간다');
+  // 픽스처의 정상 변수들엔 모르는 키 경고가 하나도 없어야 한다
+  assert.ok(!r.warnings.some((w) => w.msg.includes('알 수 없는 키') && w.path !== p3), '정상 변수 오탐 없음');
+});
+
 test('허용 목록 캡 누락: 범위(min/max)가 있으면 경고 없음, 둘 다 없으면 경고', () => {
   // v0.38 동작: min/max 범위나 maxDelta 중 하나라도 있으면 통제 가능으로 본다
   const s = fx();

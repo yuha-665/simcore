@@ -30,7 +30,7 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time']);
+const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time', 'checkpoint', 'fronts']); // checkpoint(v1.11.0): 시나리오 탭 되감기 카드·JSON / fronts(v1.12.0): [무대 뒤] 탭
 
 function getList(schema, key) {
   switch (key) {
@@ -152,6 +152,8 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
       const re = v.randomEvents;
       put('randomEvents', Array.isArray(re) ? re : (re && re.table), 'rules.randomEvents.table');
       if (re && !Array.isArray(re) && takeChance) takeChance(re.chancePerTurn, `${opName}.rules.randomEvents.chancePerTurn`);
+      // 사건 게이지(v1.14.0)는 패치 병합 미지원 — 조용히 버리면 "보냈는데 안 켜졌다"가 된다. 알려서 통 교체·편집기로 보낸다
+      if (re && !Array.isArray(re) && re.gauge != null) err(`${opName}.rules.randomEvents.gauge: 사건 게이지는 패치로 못 옮깁니다 — 편집기 [규칙·이벤트] 탭의 발동 방식에서 켜거나 통 교체 경로를 쓰세요`);
       for (const rk of Object.keys(v)) {
         if (rk === 'onTurn') err(`${opName}.rules.onTurn: onTurn은 id가 없어 패치 병합 미지원 — 통 교체 경로를 쓰세요`);
         else if (!['events', 'randomEvents'].includes(rk)) err(`${opName}.rules.${rk}: 알 수 없는 섹션`);
@@ -509,11 +511,14 @@ const DIFF_AREAS = [
   ['meta', (s) => s?.meta, '이름·설명(meta)'], ['promptState', (s) => s?.promptState, '메인 프롬프트(promptState)'],
   ['statusUI', (s) => s?.statusUI, '상태창(statusUI)'], ['onTurn', (s) => s?.rules?.onTurn, '매 턴 정산(onTurn)'],
   ['randomEventsChance', (s) => s?.rules?.randomEvents?.chancePerTurn, '랜덤 이벤트 발동률'],
+  ['randomEventsGauge', (s) => s?.rules?.randomEvents?.gauge, '사건 게이지'],
   ['setup', (s) => s?.setup, '새 시작(setup)'], ['updater', (s) => { const u = { ...(s?.updater || {}) }; delete u.allow; return u; }, '보조 AI 설정(updater, allow 제외)'],
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
   ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
+  ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
+  ['fronts', (s) => s?.fronts, '무대 뒤(fronts)'],
 ];
 const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
 function diffSchemas(a, b) {

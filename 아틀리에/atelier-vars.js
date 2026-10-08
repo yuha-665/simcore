@@ -1954,7 +1954,9 @@ const S = {
   // ══════════ P3 — 서신 (아틀리에엔 단말기가 없다) ══════════
   // 메신저 모듈을 편지 왕래로 쓴다. 방은 유저만 열고, AI는 방을 만들지도 없애지도 못한다.
   messenger: {
-    label: '서신', icon: '✉', css: PANEL_CSS,
+    // medium 'letter' (플러그인 v1.13.2) — 엔진이 보조에게 "단말기·문자 말투로 짧게"라고 먼저 말하던 것을 편지 말로 바꾼다.
+    // 아래 guide의 "단말기가 아니라 편지다"는 그 전의 덧칠이었다 — 이제 두 지시가 부딪히지 않는다.
+    label: '서신', icon: '✉', medium: 'letter', css: PANEL_CSS,
     contactsVar: 'allies',
     notesVar: 'ally_notes',
     firstChance: 0.2, cooldown: 4,

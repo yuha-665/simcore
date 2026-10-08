@@ -1,0 +1,36 @@
+/* 로제타 — 분홍 머리와 루비 눈동자, 리본 머리띠 */
+.sim-status{background:#fff6f7;color:#40262c;border:1px solid #f0c2cb;border-radius:14px;padding:12px 14px;
+  box-shadow:0 3px 14px rgba(142,27,46,.14);
+  font-family:'Pretendard','Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;line-height:1.55}
+.sim-status>details>summary{background:linear-gradient(100deg,#8e1b2e,#c23b54 60%,#e27a8f);color:#fff;font-weight:700;
+  letter-spacing:.04em;opacity:1;list-style:none;text-align:center;padding:7px 12px;border-radius:10px;margin-bottom:4px;
+  box-shadow:0 2px 6px rgba(142,27,46,.25)}
+.sim-status>details>summary::-webkit-details-marker{display:none}
+.sim-status>details>summary::before{content:'✿ '}
+.sim-status>details>summary::after{content:' ✿'}
+.sim-group{margin-top:12px;background:#fff;border:1px solid #f6d6dd;border-radius:12px;padding:8px 11px}
+.sim-group-label{color:#b0304a;font-size:.82em;font-weight:700;opacity:1;margin-bottom:4px}
+.sim-group-label::before{content:'♦ ';color:#e27a8f}
+.sim-label{color:#8a5a64;opacity:1;min-width:6.5em;font-size:.93em}
+.sim-value{color:#40262c;font-weight:700}
+.sim-bar{height:7px;background:#fbe0e6;border-radius:99px}
+.sim-bar-fill{border-radius:99px;background:linear-gradient(90deg,#f08aa0,#b01f3c)}
+.sim-badge{background:#fde8ec;color:#7a2034;border-radius:99px}
+.sim-tag{background:#fff;color:#9c2440;border:1px solid #f3b8c4;border-radius:99px}
+.sim-empty{color:#b8959d;opacity:1}
+.sim-scn{background:#fde2e8;color:#8e1b2e;border:1px solid #f3b8c4;border-radius:99px;padding:3px 12px}
+.sim-scn-prog{color:#c0667a;opacity:1}
+.sim-secs{margin-top:6px}
+.sim-sec{background:#fff;border:1px dashed #eaa3b3;color:#8a4a58;border-radius:99px;opacity:1}
+.sim-sec.is-open{border-style:solid;background:#fde8ec}
+.sim-choices{background:#fff;border:1.5px solid #f3b8c4;border-radius:12px;padding:10px 12px;margin-top:12px}
+.sim-choices-title{color:#b0304a;opacity:1}
+.sim-choices-desc{color:#7a5961;opacity:1}
+.sim-choice{padding:5px 8px;margin:3px 0;border-radius:8px;background:#fff6f7;color:#40262c}
+.sim-choices-hint{color:#a88891;opacity:1}
+.sim-card{background:#fff;color:#40262c;border:1px solid #f6d0d8;border-left:3px solid #c23b54;border-radius:10px}
+.sim-card.good{border-left-color:#5aa27a}
+.sim-card.bad{border-left-color:#b01f3c}
+.sim-card .d-up{color:#3e8a5f}
+.sim-card .d-down{color:#b01f3c}
+.sim-log,.sim-cmds{color:#8a5a64;border-top-color:#f6d6dd}

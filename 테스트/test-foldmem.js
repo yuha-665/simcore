@@ -45,7 +45,9 @@ console.log('── (2) 변수 카드 🤖 보조 AI 허용');
 
 console.log('── 버전');
 {
-  ck('버전 1.9.29', src.includes('//@version 1.9.29'), '');
+  // 버전 핀은 test-bundle.js 한 곳에서만 — 여기선 v1.9.29 이상인지만 본다 (master 머지 뒤 v1.14.2에서 이 핀이 깨졌다, 2026-10-08).
+  const ver = (src.match(/^\/\/@version (\d+)\.(\d+)\.(\d+)/m) || []).slice(1).map(Number);
+  ck('버전 1.9.29 이상', ver.length === 3 && (ver[0] > 1 || (ver[0] === 1 && (ver[1] > 9 || (ver[1] === 9 && ver[2] >= 29)))), ver.join('.'));
   ck('체인지로그 v1.9.29', src.includes('// ── v1.9.29 ──'), '');
 }
 

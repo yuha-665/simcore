@@ -201,8 +201,9 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     r.findings.filter((f) => f.tag === '함정 액션').every((f) => /±[\d.]+/.test(f.text)),
     r.findings.filter((f) => f.tag === '함정 액션').map((f) => f.text).join(' / '));
   ck('소스에 신뢰구간 게이팅이 실제로 들어감', src.includes('it.delta + it.ci < -trapLine'), '');
-  ck('★ 짝지은 시드(공통 난수)를 쓴다 — 두 판이 같은 시드', src.includes('const on = sim(seed, onPick(a));')
-    && src.includes('const off = sim(seed, (av, st, i, s) => rest(av, a, s, i));'), '');
+  // v1.13.1 — 짝비교는 갈림길을 안 고른다(pickChoices: false). 두 판이 같은 시드인 것은 그대로
+  ck('★ 짝지은 시드(공통 난수)를 쓴다 — 두 판이 같은 시드', src.includes('const on = sim(seed, onPick(a), turns, { pickChoices: false });')
+    && src.includes('const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false });'), '');
 
   // 의도적으로 대가를 치르게 만든 버튼은 제외할 수 있어야 한다
   const s2 = cp(TEMPLATES.survival.schema);
@@ -431,6 +432,164 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
   ck('편집기가 비교를 배선함', src.includes('compareDiagnoses(diagPrev, diagResult)') && src.includes('직전 진단과 비교'), ''); // v0.66에서 📊 떨어짐
   ck('턴/시드가 다르면 비교하지 않음', src.includes('before.stats.turns === diagTurns && before.stats.runs === diagRuns'), '');
   ck('★ 🔵는 AI 수정 요청에서 빠진다', src.includes("f.tab === tabKey && f.sev !== 'low'"), '');
+}
+
+// ── v1.13.1 놀이 판은 갈림길을 고른다 (절반) ──
+// 계기: 베리디아 길드 — "허가한다"(앞 선택지)로만 열리는 값이 시뮬에서 영영 안 와서, 거기 달린 액션이 🔴 "못 쓰는 액션"으로.
+// 전엔 어느 판도 안 골라 타임아웃(맨 끝 = 외면한다)만 났다. 방치 판은 그대로 안 고르고, 놀이 판은 시드 짝수만 고른다
+// (전부 고르면 "안 고르면 최악"으로만 가는 길이 사라져 반대쪽 오탐 — 조퇴악녀 회귀 카운터).
+{
+  const s = {
+    simcore: '0.1', meta: { name: '허가 갈림길' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'permit', label: '허가', type: 'bool', init: false },
+      { id: 'asked', label: '물음', type: 'bool', init: false },
+      { id: 'shops', label: '가게', type: 'int', init: 0, min: 0 },
+    ],
+    rules: { events: [{ id: 'ask', when: 'not asked', effects: [{ set: 'asked', expr: 'true' }], notify: '허가를 청한다',
+      timeout: 2, choices: [{ label: '허가한다', effects: [{ set: 'permit', expr: 'true' }] }, { label: '거절한다' }] }] },
+    actions: [
+      { id: 'build', label: '가게 짓기', mode: 'oneshot', when: 'permit and gold >= 10', effects: [{ set: 'gold', expr: 'gold - 10' }, { set: 'shops', expr: 'shops + 1' }] },
+      { id: 'save', label: '아끼기', mode: 'oneshot', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+    ],
+    statusUI: { mode: 'auto', groups: [{ label: '영지', items: [{ var: 'gold' }, { var: 'permit' }, { var: 'shops' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const r = diagnose(s, { turns: 20, runs: 4 });
+  ck('★ 앞 선택지로만 열리는 액션을 "못 쓰는 액션"으로 신고하지 않는다', !r.findings.some((f) => f.tag === '못 쓰는 액션'),
+    r.findings.filter((f) => f.tag === '못 쓰는 액션').map((f) => f.text).join(' / '));
+  ck('소스: 놀이 판 절반만 고른다 (시드 짝수) · 타임아웃 자리는 빼고', src.includes("/[02468]$/.test(String(seed))")
+    && src.includes('choiceMod.fallbackIndex(ev, open)') && src.includes('st.meta.pendingChoicePick = pool['), '');
+}
+
+// ── v1.13.2 옮겨 세는 값 · 의뢰판 쓰기 경로 ──
+// 계기: 베리디아 청원함 — pet_n = count(petitions)는 onTurn이 쓰지만, petitions는 청원함 [수락]과 보조만 넣고 뺀다.
+// 시뮬은 버튼을 못 누르니 pet_n·pet_kept·pet_lost가 🟡 안 움직임, 그걸 읽는 통지 이벤트가 🟡 죽은 이벤트로.
+{
+  const base = {
+    simcore: '0.1', meta: { name: '청원 장부' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'asks', label: '맡은 청원', type: 'list', init: [] },
+      { id: 'ask_n', label: '청원 수', type: 'int', init: 0, min: 0 },
+      { id: 'ask_lost', label: '놓친 청원', type: 'int', init: 0, min: 0 },
+      // 반대쪽 — 시뮬 안에서만 움직이는(그런데 이 판엔 안 뜬) 값을 옮겨 센 것은 여전히 신고돼야 한다
+      { id: 'stuck', label: '막힘', type: 'int', init: 0, min: 0 },
+      { id: 'copy', label: '막힘 사본', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [
+        { set: 'ask_lost', expr: 'max(ask_n - count(asks), 0)' },
+        { set: 'ask_n', expr: 'count(asks)' },
+        { set: 'copy', expr: 'stuck' },
+        { set: 'gold', expr: 'gold + 1' },
+      ],
+      events: [
+        { id: 'lost', when: 'ask_lost > 0', notify: '청원을 놓쳤다' },
+        { id: 'jam', when: 'gold > 99999', effects: [{ set: 'stuck', expr: 'stuck + 1' }], notify: '막혔다' },
+      ],
+    },
+    updater: { model: 'aux', allow: [{ id: 'asks' }] },
+    questBoard: { label: '청원함', listVar: 'asks', guide: '마을 청원', accept: [{ set: 'ask_n', expr: 'ask_n + 1' }] },
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'asks' }, { var: 'ask_n' }, { var: 'copy' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const w = writerMap(base);
+  ck('★ 의뢰판 목록은 쓰기 경로 "의뢰판"이 있다', w.asks?.has('의뢰판'), JSON.stringify([...(w.asks || [])]));
+  ck('★ 의뢰판 수락 효과도 쓰기 경로', w.ask_n?.has('의뢰판'), JSON.stringify([...(w.ask_n || [])]));
+  const r = diagnose(base, { turns: 20, runs: 4 });
+  const still = (id) => r.findings.find((f) => f.tag === '안 움직임' && f.text.startsWith(`'${id}'`));
+  ck('★ 버튼·보조 값을 옮겨 센 변수는 🟡 안 움직임이 아니다', !still('ask_n') && !still('ask_lost'),
+    r.findings.filter((f) => f.tag === '안 움직임').map((f) => f.text.slice(0, 40)).join(' / '));
+  ck('★ 그 값을 읽는 이벤트는 🟡 죽은 이벤트가 아니라 🔵 담당 문턱', !r.findings.some((f) => f.tag === '죽은 이벤트' && f.text.startsWith("'lost'"))
+    && r.findings.some((f) => f.sev === 'low' && f.text.startsWith("'lost'")), r.findings.filter((f) => f.text.startsWith("'lost'")).map((f) => `${f.sev} ${f.tag}`).join(','));
+  ck('★ 시뮬 안 값만 옮겨 센 사본은 여전히 신고 (좁은 면제)', still('copy')?.sev === 'mid', JSON.stringify(still('copy')));
+}
+
+// ── v1.13.3 숫자 병목의 연쇄 ──
+// 계기: 베리디아 주교 — 예고 이벤트만이 bishop_at(오는 날, 숫자)을 세우는데, 예고가 안 뜬 판에선 판단 셋이 `bishop_at > 0`에
+// 막혀 🟡 죽은 이벤트로. 연쇄는 플래그(bool·enum)만 뒤집어 봤다 — 숫자는 병목이 곧 그 값이면 같은 사정이다.
+{
+  const s = {
+    simcore: '0.1', meta: { name: '예고와 판단' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'at', label: '오는 날', type: 'int', init: 0, min: 0 },
+      { id: 'seen', label: '본 횟수', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [{ set: 'gold', expr: 'gold + 1' }],
+      events: [
+        { id: 'notice', when: 'at == 0 and gold > 99999', effects: [{ set: 'at', expr: '5' }], notify: '온다' },
+        { id: 'judge', when: 'at > 0', effects: [{ set: 'at', expr: '0' }, { set: 'seen', expr: 'seen + 1' }], notify: '보고 갔다' },
+        // 반대쪽 — 시뮬 안에서 움직이는 값에 막힌 건 여전히 죽은 이벤트
+        { id: 'rich', when: 'gold > 99999', notify: '부자' },
+      ],
+    },
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'at' }, { var: 'seen' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const r = diagnose(s, { turns: 20, runs: 4 });
+  const of = (id) => r.findings.filter((f) => f.text.startsWith(`'${id}'`));
+  ck('★ 안 뜬 예고만이 세우는 숫자에 막힌 판단은 🔵 연쇄', of('judge').some((f) => f.tag === '연쇄' && f.sev === 'low')
+    && !of('judge').some((f) => f.tag === '죽은 이벤트'), of('judge').map((f) => `${f.sev} ${f.tag}`).join(','));
+  ck('연쇄 문구 — 숫자면 문턱을 말한다', of('judge').some((f) => f.text.includes('`> 0`이 돼야')), of('judge').map((f) => f.text.slice(0, 60)).join(' / '));
+  ck('★ 원인(예고)은 여전히 죽은 이벤트 · 시뮬 안 값에 막힌 것도', of('notice').some((f) => f.tag === '죽은 이벤트') && of('rich').some((f) => f.tag === '죽은 이벤트'),
+    [...of('notice'), ...of('rich')].map((f) => `${f.sev} ${f.tag}`).join(','));
+}
+
+// ── v1.13.4 갈림길 뒤도 연쇄다 ──
+// 계기: 베리디아 혼담 — 청혼(랜덤)이 안 뜨면 받아들임(갈림길)이 세우는 배필(enum)·혼례일(숫자)이 안 서고, 혼례 이벤트가 🟡,
+// 혼례 전에만 열리는 파기 버튼이 🔴, 답을 기다리는 청혼(enum)이 "설정 의존 — 바꿀 수단이 없다" 🟡로. 연쇄는 이벤트 **효과**만 봤다.
+{
+  const s = {
+    simcore: '0.1', meta: { name: '청혼과 혼례' },
+    vars: [
+      { id: 'gold', label: '금', type: 'int', init: 100, min: 0 },
+      { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100 },
+      { id: 'spouse', label: '배필', type: 'enum', enum: ['없음', '갑', '을'], init: '없음' },
+      { id: 'suit', label: '청혼', type: 'enum', enum: ['없음', '갑'], init: '없음' },
+      { id: 'wed_at', label: '혼례일', type: 'int', init: 0, min: 0 },
+      { id: 'turn_n', label: '턴', type: 'int', init: 0, min: 0 },
+      // 반대쪽 — 매 턴 처리도 쓰는 값은 연쇄가 아니다 (다른 길이 있다)
+      { id: 'mixed', label: '섞임', type: 'int', init: 0, min: 0 },
+    ],
+    rules: {
+      onTurn: [{ set: 'gold', expr: 'gold + 1' }, { set: 'turn_n', expr: 'turn_n + 1' }, { set: 'mixed', expr: 'gold > 99999 ? 1 : mixed' }],
+      events: [
+        { id: 'ask_again', when: 'suit != "없음" and turn_n >= 0', notify: '다시 묻는다', timeout: 2,
+          choices: [{ label: '받는다', effects: [{ set: 'spouse', expr: 'suit' }, { set: 'wed_at', expr: 'turn_n + 5' }, { set: 'suit', expr: '"없음"' }] },
+            { label: '안 받는다', effects: [{ set: 'suit', expr: '"없음"' }] }] },
+        { id: 'wedding', when: 'spouse == "갑" and wed_at > 0 and turn_n >= wed_at', effects: [{ set: 'wed_at', expr: '0' }], notify: '혼례' },
+        { id: 'mixed_ev', when: 'mixed > 0', notify: '섞임' },
+      ],
+      randomEvents: { chancePerTurn: 1, table: [
+        { id: 'suit_ev', weight: 1, cooldown: 99, when: 'fame >= 99', effects: [], notify: '청혼', timeout: 2,
+          choices: [{ label: '받는다', effects: [{ set: 'spouse', expr: '"갑"' }, { set: 'wed_at', expr: 'turn_n + 5' }] },
+            { label: '미룬다', effects: [{ set: 'suit', expr: '"갑"' }] }] },
+      ] },
+    },
+    actions: [
+      { id: 'break', label: '파기', mode: 'oneshot', when: 'spouse != "없음" and wed_at > 0', effects: [{ set: 'spouse', expr: '"없음"' }] },
+      { id: 'save', label: '아끼기', mode: 'oneshot', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+    ],
+    statusUI: { mode: 'auto', groups: [{ label: '장부', items: [{ var: 'gold' }, { var: 'spouse' }, { var: 'suit' }, { var: 'wed_at' }, { var: 'mixed' }] }] },
+    promptState: { template: '금 {gold}' },
+  };
+  const r = diagnose(s, { turns: 20, runs: 4 });
+  const of = (id) => r.findings.filter((f) => f.text.startsWith(`'${id}'`));
+  const tags = (id) => of(id).map((f) => `${f.sev} ${f.tag}`).join(',');
+  ck('★ 갈림길이 세우는 숫자에 막힌 이벤트 → 🔵 연쇄', of('wedding').some((f) => f.tag === '연쇄') && !of('wedding').some((f) => f.sev !== 'low'), tags('wedding'));
+  ck('★ 갈림길이 세우는 enum 게이트 → "설정 의존" 🟡가 아니라 🔵 연쇄', of('ask_again').some((f) => f.tag === '연쇄') && !of('ask_again').some((f) => f.tag === '설정 의존'), tags('ask_again'));
+  ck('★ 그 값에 막힌 버튼 → 🔴 못 쓰는 액션이 아니라 🔵 연쇄', of('파기').some((f) => f.tag === '연쇄') && !of('파기').some((f) => f.tag === '못 쓰는 액션'), tags('파기'));
+  const srcList = (f) => (f.text.split('세우는 이벤트(')[1] || '').split(')')[0];
+  ck('연쇄 문구는 되돌리기만 하는 효과를 "세우는 이벤트"로 안 댄다', of('wedding').some((f) => !srcList(f).includes("'wedding'") && srcList(f).includes("'suit_ev'")),
+    of('wedding').map((f) => f.text.slice(0, 90)).join(' / '));
+  ck('★ 안 움직인 배필·혼례일·청혼은 🟡 안 움직임이 아니라 연쇄 묶음', !r.findings.some((f) => f.tag === '안 움직임' && /^'(spouse|wed_at|suit)'/.test(f.text)),
+    r.findings.filter((f) => f.tag === '안 움직임').map((f) => f.text.slice(0, 30)).join(' / '));
+  ck('★ 원인(청혼)은 여전히 신고된다', of('suit_ev').some((f) => f.tag === '죽은 이벤트'), tags('suit_ev'));
+  ck('매 턴 처리도 쓰는 값은 연쇄가 아니다 (좁은 면제)', of('mixed_ev').some((f) => f.tag === '죽은 이벤트'), tags('mixed_ev'));
 }
 
 let p = 0, f = 0;

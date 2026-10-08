@@ -2,10 +2,18 @@
 
 const { compile, referencedVars, ExprError } = require('./expr');
 const fightMod = require('./fight'); // 전투 안무 (v1.6.0) — checks[].fight 검증·예약 이름
+const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec_<id>·종류·단계 검증
+const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
+const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
+const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
+// 변수 정의가 읽는 키 전부 (v1.14.2) — 편집기 변수 카드·AI 요청서 규격표(editor.js VAR_FIELD_SPEC)와 같은 목록.
+// 여기 없는 키는 엔진이 안 읽는다. 밑줄로 시작하는 키(_note 등)는 제작자 메모로 보고 넘어간다.
+const VAR_KEYS = new Set(['id', 'label', 'type', 'init', 'min', 'max', 'enum', 'maxItems', 'maxLength',
+  'itemMaxLength', 'format', 'desc', 'cmd', 'group']);
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -30,6 +38,8 @@ function varFreeWork(schema) {
   if (schema.suggest) return true;
   return false;
 }
+// 상태창 그룹이 묶일 장 이름 (v1.12.1) — render.mergeTabs와 같은 판정
+const tabName = (g) => (typeof g?.tab === 'string' && g.tab.trim()) || '';
 
 function validateSchema(schema) {
   const errors = [];
@@ -71,6 +81,22 @@ function validateSchema(schema) {
     if (RESERVED.has(v.id)) err(p, `'${v.id}'는 예약어라 변수 id로 쓸 수 없음`);
     if (ids.has(v.id)) err(p, `중복된 id: '${v.id}'`);
     ids.add(v.id);
+    // 모르는 키 (v1.14.2) — 실제 제보: AI에게 변수 설명을 채우게 했더니 `description`을 지어 넣어 영문 설명이 통째로
+    // 버려졌는데 경고 한 줄이 없었다. 엔진은 desc 하나만 읽는다. description은 desc가 비었으면 옮겨 주고(설정 없이,
+    // 결정된 동작), 둘 다 있으면 desc를 지키며 알린다. 그 밖의 모르는 키(오타 discription 등)는 이름만 알린다.
+    if (v.description != null) {
+      if (!String(v.desc ?? '').trim()) {
+        v.desc = String(v.description);
+        delete v.description;
+        warn(p, `'description'은 읽지 않는 키라 desc로 옮겼습니다 — 변수 설명은 desc 하나만 봅니다`);
+      } else {
+        warn(p, `'description'은 읽지 않습니다 — 보조 AI는 desc만 봅니다. description을 지우거나 desc에 합치세요`);
+      }
+    }
+    for (const k of Object.keys(v)) {
+      if (VAR_KEYS.has(k) || k === 'description' || k.startsWith('_')) continue;
+      warn(p, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (변수가 쓰는 키: ${[...VAR_KEYS].join(', ')})`);
+    }
     if (!VAR_TYPES.includes(v.type)) err(p, `알 수 없는 type: '${v.type}'`);
     if (v.type === 'enum') {
       if (!Array.isArray(v.enum) || v.enum.length < 2) err(p, 'enum 타입은 enum 배열(2개 이상) 필요');
@@ -95,7 +121,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight') {
+    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight' || v.id === 'secrets') {
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -135,6 +161,22 @@ function validateSchema(schema) {
   // 규칙·파생 검사보다 먼저 등록해야 `scn_act == "act2"` 같은 조건이 통과한다.
   if (schema.scenario != null && typeof schema.scenario === 'object' && !Array.isArray(schema.scenario)) {
     for (const n of ['scn_act', 'scn_label', 'scn_turns']) allIds.add(n);
+  }
+  // 비밀 예약 이름 (v1.10.0) — sec_<id> = 열린 최고 단계(-1=아직). 조건식·상태창이 읽는다 (`sec_lina >= 1`).
+  // 같은 id의 변수/파생이 있으면 조건이 비밀이 아니라 그 변수를 읽는다 — 아래 secrets 절에서 오류로 잡는다.
+  for (const n of secretMod.secretExposedNames(schema)) allIds.add(n);
+  // 무대 뒤 예약 이름 (v1.12.0) — fr_<id>(시계)·frs_<id>(열린 단계)
+  for (const n of frontMod.frontExposedNames(schema)) allIds.add(n);
+  const frontIds = new Set((frontMod.frontsConfig(schema) || []).map((f) => f.id));
+  // 사건 게이지 예약 이름 (v1.14.0) — re_gauge(0~100)·re_cool(남은 식힘). 조건식이 읽는다(`re_gauge >= 80` 전조 지시문).
+  // 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은 이름을 쓰면 오류 — 덮어쓰기 사고를 구조로 막는다 (전투 안무와 같은 규약)
+  const gaugeOn = !!gaugeMod.gaugeConfig(schema);
+  if (gaugeOn) {
+    const declared = new Set([...ids, ...derived.map((d) => d && d.id)]);
+    for (const rid of gaugeMod.RESERVED) {
+      if (declared.has(rid)) err('$.rules.randomEvents.gauge', `'${rid}'는 사건 게이지 예약 이름입니다 — 변수/파생에 쓸 수 없음`);
+      allIds.add(rid);
+    }
   }
   // 전투 안무 예약 이름 (v1.6.0) — fight 달린 판정이 있으면 fight_*·fight_on을 조건식·자리표시자에서
   // 쓸 수 있다 (`when: 'fight_on'`, `{fight_gauge}`). 엔진이 vars에 직접 쓰는 키라 변수/파생이 같은
@@ -332,10 +374,16 @@ function validateSchema(schema) {
   // strict(v1.8.0) 어휘 — true/'last'(맨 끝 = 최악 규약) · 'random' · false/없음
   const strictOk = (v) => v == null || v === true || v === false || v === 'last' || v === 'random';
   // 보조 갈림길 트리거 (v1.8.0) — events[].liveChoices: true. 설정(liveChoices)이 없으면 깃발은 안 선다
+  // 여러 벌(v1.13.0): 배열이면 벌마다 id — 트리거는 true(첫 벌) 또는 그 id
+  const liveSets = Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices != null ? [schema.liveChoices] : [];
   const checkLiveTrigger = (e, p) => {
     if (e.liveChoices == null) return;
-    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false (보조 갈림길 트리거)'); return; }
-    if (e.liveChoices && !schema.liveChoices) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
+    if (typeof e.liveChoices === 'string') {
+      if (!liveSets.some((L) => L?.id === e.liveChoices)) err(p, `liveChoices '${e.liveChoices}' — 그 id의 보조 갈림길 벌이 없습니다`);
+      return;
+    }
+    if (typeof e.liveChoices !== 'boolean') { err(p, 'liveChoices는 true/false 또는 벌 id (보조 갈림길 트리거)'); return; }
+    if (e.liveChoices && !liveSets.length) warn(p, 'liveChoices: true인데 최상위 liveChoices 설정이 없습니다 — 트리거가 무시됩니다');
     if (e.liveChoices && Array.isArray(e.choices) && e.choices.length) warn(p, '이 이벤트는 스키마 갈림길(choices)이라 보조 갈림길 트리거는 그 갈림길이 풀린 뒤에야 듣습니다 (동시 1개)');
   };
   const checkChoices = (e, p) => {
@@ -373,6 +421,33 @@ function validateSchema(schema) {
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
   const checkSet = (rule, p, exprIds = allIds) => {
+    // 체크포인트 (v1.11.0)
+    if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
+      if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
+      if (rule.slot != null && (typeof rule.slot !== 'string' || !cpMod.SLOT_RE.test(rule.slot)))
+        err(p, `checkpoint slot은 영문 식별자 24자 이내 (현재: '${rule.slot}')`);
+      if (rule.set !== undefined || rule.list !== undefined)
+        err(p, 'checkpoint 효과에 set/list를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      return;
+    }
+    // 무대 뒤 개입 (v1.12.0)
+    if (rule && typeof rule === 'object' && rule.front !== undefined) {
+      if (!frontIds.has(rule.front)) err(p, `front 효과 대상 '${rule.front}'이 fronts에 없음`);
+      if (rule.set !== undefined || rule.list !== undefined || rule.checkpoint !== undefined)
+        err(p, 'front 효과에 set/list/checkpoint를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      if (rule.add == null || rule.add === '') err(p, 'front 효과엔 add(더할 양 — 음수면 늦춘다)가 필요함');
+      else checkExpr(String(rule.add), p + '.add', exprIds, err, { allowRand: true });
+      return;
+    }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 더할 양(음수면 늦춘다)
+    if (rule && typeof rule === 'object' && rule.gauge !== undefined) {
+      if (!gaugeOn) err(p, 'gauge 효과를 쓰려면 rules.randomEvents.gauge(사건 게이지)가 켜져 있어야 함');
+      if (rule.set !== undefined || rule.list !== undefined || rule.checkpoint !== undefined || rule.front !== undefined)
+        err(p, 'gauge 효과에 set/list/checkpoint/front를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요');
+      if (rule.gauge == null || rule.gauge === '') err(p, 'gauge 효과엔 더할 양이 필요함 (음수면 늦춘다)');
+      else checkExpr(String(rule.gauge), p + '.gauge', exprIds, err, { allowRand: true });
+      return;
+    }
     // 목록 효과 { list, add, remove, expire }
     if (rule.list !== undefined) {
       if (!listIds.has(rule.list)) err(p, `list 효과 대상 '${rule.list}'이 목록(list) 변수가 아님`);
@@ -381,6 +456,11 @@ function validateSchema(schema) {
       if (rule.expire != null) {
         if (typeof rule.expire !== 'string') err(p, 'expire는 수식 문자열이어야 함 (예: "day")');
         else checkExpr(rule.expire, p + '.expire', exprIds, err, { allowRand: false });
+      }
+      if (rule.keepOverdue != null) {
+        if (typeof rule.keepOverdue !== 'boolean') err(p, 'keepOverdue는 true/false');
+        else if (rule.keepOverdue && rule.expire == null)
+          warn(p, 'keepOverdue는 expire(기한 시계)와 같이 써야 뜻이 있음 — 시계가 없으면 @기한을 셀 수 없다');
       }
       if (rule.add == null && rule.remove == null && rule.expire == null)
         warn(p, 'add/remove/expire가 모두 없는 list 효과');
@@ -393,7 +473,10 @@ function validateSchema(schema) {
 
   // ── rules ──
   const rules = schema.rules || {};
-  (rules.onTurn || []).forEach((r, i) => checkSet(r, `$.rules.onTurn[${i}]`));
+  (rules.onTurn || []).forEach((r, i) => {
+    checkSet(r, `$.rules.onTurn[${i}]`);
+    if (r && r.checkpoint === 'load') err(`$.rules.onTurn[${i}]`, 'onTurn에서 되감기(load)를 하면 매 턴 되감겨 이야기가 영영 제자리입니다 — 게임오버 이벤트·선택지에 두세요');
+  });
   // 시간 등호 + 래치 없음 — 명시적 진행에서는 하루가 여러 턴이라 `dom == 급여일`이 래치 없이는
   // 그 날 내내 매 턴 발동한다 (실측: 맨션봇 급여일 중복 지급). 진단 시뮬은 하루=1턴을 가정해
   // 이 사고를 못 보므로 정적 린트가 유일한 방어선이다. 랜덤 표는 추첨+쿨다운이 빈도를 이미
@@ -428,11 +511,35 @@ function validateSchema(schema) {
   });
   const re = rules.randomEvents;
   if (re) {
-    // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
-    if (typeof re.chancePerTurn === 'string') {
+    // 사건 게이지 (v1.14.0) — 있으면 chancePerTurn 대신 이것이 빈도를 정한다
+    const g = re.gauge;
+    if (g != null) {
+      const gp = '$.rules.randomEvents.gauge';
+      if (typeof g !== 'object' || Array.isArray(g)) err(gp, 'gauge는 객체여야 함 — { perDay, perTurn, jitter, cooldown }');
+      else {
+        const rateOk = (x, k) => {
+          if (x == null) return;
+          if (typeof x === 'string') { if (x.trim()) checkExpr(x, `${gp}.${k}`, allIds, err, { allowRand: false }); }
+          else if (typeof x !== 'number' || !Number.isFinite(x) || x < 0) err(`${gp}.${k}`, `${k}는 0 이상 숫자 또는 식`);
+        };
+        rateOk(g.perDay, 'perDay'); rateOk(g.perTurn, 'perTurn');
+        if (g.jitter != null && (typeof g.jitter !== 'number' || g.jitter < 0 || g.jitter > 1)) err(`${gp}.jitter`, 'jitter는 0~1 (0.5면 차는 양이 ×0.5~×1.5)');
+        if (g.cooldown != null && (typeof g.cooldown !== 'number' || !Number.isFinite(g.cooldown) || g.cooldown < 0)) err(`${gp}.cooldown`, 'cooldown은 0 이상 숫자 (터진 뒤 안 차는 날 — 시간 체계가 없으면 턴)');
+        const zero = (x) => x == null || x === 0 || (typeof x === 'string' && !x.trim());
+        if (zero(g.perDay) && zero(g.perTurn)) warn(gp, '게이지가 영영 안 찹니다 — perDay·perTurn이 둘 다 0이면 gauge 효과로만 찹니다');
+        if (!tcfg && !zero(g.perDay)) warn(`${gp}.perDay`, '시간 체계(time)가 없는 봇이라 perDay는 한 턴 = 하루로 찹니다');
+        if (re.chancePerTurn != null && re.chancePerTurn !== 0) warn('$.rules.randomEvents.chancePerTurn', '게이지(gauge)가 켜져 있어 chancePerTurn은 안 쓰입니다');
+        // 징조 선 (v1.14.1) — 1~99, 끄려면 0/false. 비우면 표에 omen이 있을 때 80
+        if (g.omenAt != null && g.omenAt !== false && (typeof g.omenAt !== 'number' || g.omenAt < 0 || g.omenAt >= 100))
+          err(`${gp}.omenAt`, 'omenAt은 1~99 (게이지가 이 선을 넘으면 다음 사건의 징조가 비친다) — 끄려면 0');
+        const omens = (re.table || []).filter((e) => e && typeof e.omen === 'string' && e.omen.trim()).length;
+        if ((g.omenAt === 0 || g.omenAt === false) && omens) warn(`${gp}.omenAt`, `징조가 꺼져 있어 omen ${omens}개가 안 비칩니다`);
+      }
+    } else if (typeof re.chancePerTurn === 'string') {
+      // 숫자 또는 식 (v0.89.1) — 식은 0~1 스케일. 난이도 변수를 읽어 프리셋마다 빈도가 달라진다.
       checkExpr(re.chancePerTurn, '$.rules.randomEvents.chancePerTurn', allIds, err, { allowRand: false });
     } else if (typeof re.chancePerTurn !== 'number' || re.chancePerTurn < 0 || re.chancePerTurn > 1)
-      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요');
+      err('$.rules.randomEvents.chancePerTurn', '0~1 사이 숫자 또는 식(0~1 스케일) 필요 — 또는 gauge(사건 게이지)');
     (re.table || []).forEach((e, i) => {
       const p = `$.rules.randomEvents.table[${i}]`;
       if (!e.id) err(p, '이벤트 id 필요');
@@ -440,6 +547,11 @@ function validateSchema(schema) {
       else eventIds.add(e.id);
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
+      // 징조 글 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건이면 메인에 이유 없는 징후로 깔린다. 게이지가 없으면 비칠 자리가 없다
+      if (e.omen != null) {
+        if (typeof e.omen !== 'string') err(p + '.omen', 'omen은 문자열 (그 사건이 오기 전 주변에 비치는 겉모습)');
+        else if (e.omen.trim() && !gaugeOn) warn(p + '.omen', 'omen(징조)은 사건 게이지(gauge)에서만 비칩니다 — 확률 방식에선 다음 사건을 미리 모른다');
+      }
       (e.effects || []).forEach((r, j) => checkSet(r, `${p}.effects[${j}]`));
       checkRef(e, p);
       checkChoices(e, p);
@@ -663,12 +775,15 @@ function validateSchema(schema) {
       warn('$.statusUI.layout', '템플릿 모드에서는 배치를 제작자가 정하므로 layout이 무시됩니다');
     else if (['tabs', 'popover'].includes(ui.layout)) {
       const shown = (ui.groups || []).filter((g) => (g.visibility ?? 'show') !== 'hidden');
-      if (shown.length < 2)
-        warn('$.statusUI.layout', `${ui.layout}는 보이는 그룹이 둘 이상일 때 동작합니다 (현재 ${shown.length}개) — 지금은 그냥 쌓입니다`);
-      if (shown.some((g) => !g.label))
+      const sheets = new Set(shown.map((g, i) => (tabName(g) ? 't:' + tabName(g) : i))).size; // 같은 tab은 한 장
+      if (sheets < 2)
+        warn('$.statusUI.layout', `${ui.layout}는 보이는 장이 둘 이상일 때 동작합니다 (현재 ${sheets}장) — 지금은 그냥 쌓입니다`);
+      if (shown.some((g) => !g.label && !tabName(g)))
         warn('$.statusUI.layout', '이름 없는 그룹이 있습니다 — 탭·버튼에 "그룹 N"으로 나옵니다');
     }
   }
+  if ((ui.layout ?? 'stack') === 'stack' && ui.mode !== 'template' && (ui.groups || []).some(tabName))
+    warn('$.statusUI.layout', '그룹에 tab이 있지만 배치가 쌓기라 안 묶입니다 — tabs·accordion·popover에서 한 장이 됩니다');
   // 위치 (v1.0.2) — 렌더 위치만 바꾼다 (저장 마커는 항상 끝). 값이 틀리면 조용히 하단이 된다
   if (ui.position != null && !['top', 'bottom'].includes(ui.position))
     err('$.statusUI.position', `position은 top|bottom (현재: '${ui.position}')`);
@@ -679,6 +794,7 @@ function validateSchema(schema) {
     if (g.visibility != null && !['show', 'collapsed', 'hidden'].includes(g.visibility))
       err(`$.statusUI.groups[${i}]`, `visibility는 show|collapsed|hidden (현재: '${g.visibility}')`);
     if (g.showWhen != null) checkExpr(g.showWhen, `$.statusUI.groups[${i}].showWhen`, allIds, err, { allowRand: false });
+    if (g.tab != null && !tabName(g)) err(`$.statusUI.groups[${i}].tab`, 'tab은 장 이름(글자) — 안 묶으려면 칸을 지운다');
     (g.items || []).forEach((it, j) => {
       const p = `$.statusUI.groups[${i}].items[${j}]`;
       if (!allIds.has(it.var)) err(p, `표시 대상 '${it.var}'이 정의되지 않음`);
@@ -1274,6 +1390,10 @@ function validateSchema(schema) {
       if (M.cooldown != null && (!Number.isInteger(M.cooldown) || M.cooldown < 0 || M.cooldown > 20)) {
         err('$.messenger.cooldown', '선톡 쿨다운은 0~20턴 정수 (기본 3)');
       }
+      // v1.13.2 — 매체. 'letter'면 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말로 바뀐다
+      if (M.medium != null && M.medium !== 'text' && M.medium !== 'letter') {
+        err('$.messenger.medium', "매체(medium)는 'text'(단말기 문자, 기본) 또는 'letter'(편지)");
+      }
       if (M.when != null) {
         if (typeof M.when !== 'string') err('$.messenger.when', 'when은 표현식 문자열이어야 함');
         else if (M.when.trim()) checkExpr(M.when, '$.messenger.when', allIds, err, { allowRand: false });
@@ -1515,10 +1635,18 @@ function validateSchema(schema) {
   }
 
   // ── liveChoices (보조가 쓰는 갈림길 v1.8.0 — 옵트인. 라벨은 보조가 즉석에서, 결과는 태그가 정한다 — docs/design-갈림길-확장.md) ──
-  if (schema.liveChoices != null) {
-    const L = schema.liveChoices; const P = '$.liveChoices';
-    if (typeof L !== 'object' || Array.isArray(L)) err(P, 'liveChoices는 객체여야 함');
+  const liveIds = new Set();
+  liveSets.forEach((L, li) => {
+    const multi = Array.isArray(schema.liveChoices);
+    const P = multi ? `$.liveChoices[${li}]` : '$.liveChoices';
+    if (!L || typeof L !== 'object' || Array.isArray(L)) err(P, multi ? '벌마다 { id, … } 객체' : 'liveChoices는 객체(한 벌) 또는 배열(여러 벌)');
     else {
+      if (multi || L.id != null) {
+        if (typeof L.id !== 'string' || !ID_RE.test(L.id)) err(`${P}.id`, '벌 id 필요 (영문 식별자 — 이벤트 트리거가 부른다)');
+        else if (liveIds.has(L.id)) err(`${P}.id`, `중복 벌 id '${L.id}'`);
+        else liveIds.add(L.id);
+      }
+      if (L.shuffle != null && typeof L.shuffle !== 'boolean') err(`${P}.shuffle`, 'shuffle은 true/false');
       const exprIds = new Set([...allIds, ...exposedNames]);
       for (const [k, name] of [['label', '이름'], ['guide', '지침'], ['desc', '기본 설명']]) {
         if (L[k] != null && typeof L[k] !== 'string') err(`${P}.${k}`, `${name}(${k})은 문자열이어야 함`);
@@ -1527,7 +1655,8 @@ function validateSchema(schema) {
       if (L.when != null) checkExpr(L.when, `${P}.when`, exprIds, err, { allowRand: false });
       if (typeof L.chance === 'string') checkExpr(L.chance, `${P}.chance`, exprIds, err, { allowRand: false });
       else if (L.chance != null && (typeof L.chance !== 'number' || L.chance < 0 || L.chance > 1)) err(`${P}.chance`, 'chance는 0~1 사이 숫자 또는 식(0~1 스케일)');
-      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])].some((e) => e && e.liveChoices === true);
+      const hasTrigger = [...(rules.events || []), ...(rules.randomEvents?.table || [])]
+        .some((e) => e && ((e.liveChoices === true && li === 0) || (L.id != null && e.liveChoices === L.id)));
       if ((L.chance == null || L.chance === 0) && !hasTrigger)
         warn(`${P}.chance`, 'chance가 없고(0) 트리거(events[].liveChoices: true)도 없습니다 — 선택지가 영영 안 옵니다');
       if (L.count != null && (!Array.isArray(L.count) || L.count.length !== 2 || !L.count.every((n) => Number.isInteger(n) && n >= 2 && n <= 4) || L.count[0] > L.count[1]))
@@ -1565,8 +1694,11 @@ function validateSchema(schema) {
       if (L.timeout == null && !strict)
         warn(`${P}.timeout`, 'timeout이 없고 strict도 아닙니다 — 고를 때까지 다른 갈림길이 전부 막힙니다. timeout 2~4턴 또는 strict를 권합니다');
       if (!tagIds.size) warn(`${P}.tags`, '태그가 없습니다 — 선택지는 라벨뿐이라 판정·효과 없이 서사만 갈립니다 (그게 의도면 그대로 두세요)');
+      if (L.shuffle === true && !L.worst && (L.timeout != null || strict))
+        warn(`${P}.shuffle`, '섞는데 worst가 없습니다 — 안 고르면 섞인 순서의 맨 끝(아무 항목)으로 흘러갑니다');
     }
-  }
+  });
+  if (Array.isArray(schema.liveChoices) && !liveSets.length) warn('$.liveChoices', '빈 배열 — 보조 갈림길이 없습니다');
 
   // ── scenario (시나리오레이터 v0.90 — 설계 docs/design-시나리오레이터.md) ──
   // 이야기의 척추: 선형 acts, 조건식 해금, minTurns 페이스 바닥.
@@ -1657,6 +1789,160 @@ function validateSchema(schema) {
     }
   }
 
+  // ── checkpoint (v1.11.0) ──
+  {
+    const used = cpMod.slotsUsed(schema);
+    const C = schema.checkpoint;
+    if (C != null) {
+      if (typeof C !== 'object' || Array.isArray(C)) err('$.checkpoint', 'checkpoint는 객체여야 함 ({ keep, keepSecrets, notify })');
+      else {
+        if (C.keep != null && !Array.isArray(C.keep)) err('$.checkpoint.keep', 'keep은 변수 id 배열이어야 함');
+        else (C.keep || []).forEach((id, i) => {
+          if (typeof id !== 'string' || !vars.some((v) => v && v.id === id)) err(`$.checkpoint.keep[${i}]`, `keep의 '${id}'가 vars에 없음 (derived·예약 키는 못 남긴다)`);
+        });
+        if (C.keepSecrets != null && typeof C.keepSecrets !== 'boolean') err('$.checkpoint.keepSecrets', 'keepSecrets는 true/false');
+        if (C.notify != null) {
+          if (typeof C.notify !== 'string') err('$.checkpoint.notify', 'notify는 문자열이어야 함');
+          else checkTemplateRefs(C.notify, '$.checkpoint.notify', allIds, err);
+        }
+        if (!used.save.size && !used.load.size)
+          warn('$.checkpoint', '체크포인트 설정은 있는데 저장·되감기 효과가 하나도 없습니다 — 막 onEnter에 저장, 게임오버 이벤트에 되감기를 두세요');
+      }
+    }
+    for (const slot of used.load) {
+      if (!used.save.has(slot)) warn('$.checkpoint', `되감기 칸 '${slot}'을 저장하는 효과가 없습니다 — 저장된 적 없는 칸으로는 되감기가 아무 일도 안 합니다`);
+    }
+  }
+
+  // ── fronts (무대 뒤 v1.12.0) ──
+  if (schema.fronts != null) {
+    if (!Array.isArray(schema.fronts)) err('$.fronts', 'fronts는 배열이어야 함');
+    else {
+      const seen = new Set();
+      const touched = new Set();
+      for (const { effects } of cpMod.allEffectLists(schema)) for (const f of effects) if (f && f.front !== undefined) touched.add(f.front);
+      schema.fronts.forEach((f, i) => {
+        const p = `$.fronts[${i}]`;
+        if (!f || typeof f !== 'object') { err(p, '진영은 객체여야 함'); return; }
+        if (f.id != null && !ID_RE.test(f.id)) err(p, `잘못된 진영 id: '${f.id}' (영문자로 시작, 영문·숫자·_만)`);
+        const fid = f.id || `front${i + 1}`;
+        if (seen.has(fid)) err(p, `중복 진영 id: '${fid}'`);
+        seen.add(fid);
+        for (const rn of [frontMod.frKey(fid), frontMod.frsKey(fid)]) {
+          if (ids.has(rn) || derived.some((d) => d && d.id === rn)) err(p, `'${rn}'는 이 진영이 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+        for (const k of ['about', 'label']) if (f[k] != null && typeof f[k] !== 'string') err(p, `${k}는 문자열이어야 함`);
+        if (f.when != null) {
+          if (typeof f.when !== 'string') err(p, 'when(흐르는 조건)은 수식 문자열이어야 함');
+          else if (f.when.trim()) checkExpr(f.when, p + '.when', allIds, err, { allowRand: false });
+        }
+        const max = f.max == null ? frontMod.DEFAULT_MAX : Number(f.max);
+        if (f.max != null && !(typeof f.max === 'number' && f.max > 0)) err(p, 'max는 양수여야 함');
+        if (f.init != null && !(typeof f.init === 'number' && f.init >= 0 && f.init <= max)) err(p, `init은 0~${max} 숫자여야 함`);
+        if (f.rate != null) {
+          if (typeof f.rate === 'string') { if (f.rate.trim()) checkExpr(f.rate, p + '.rate', allIds, err, { allowRand: false }); }
+          else if (typeof f.rate !== 'number' || !Number.isFinite(f.rate)) err(p, 'rate(흐르는 속도)는 숫자 또는 수식이어야 함');
+        }
+        const rateZero = f.rate == null || f.rate === 0 || (typeof f.rate === 'string' && !f.rate.trim());
+        if (rateZero && !touched.has(fid)) warn(p, `'${fid}' 시계가 영영 안 흐릅니다 — rate가 0이고 이 시계를 건드리는 효과({ front, add })도 없습니다`);
+        const stages = Array.isArray(f.stages) ? f.stages : null;
+        if (!stages || !stages.length) { err(p, '문턱(stages)이 최소 1개 필요합니다'); return; }
+        let prev = -Infinity;
+        let lastSurface = -1;
+        stages.forEach((st, j) => { if (st && typeof st === 'object' && typeof st.surface === 'string' && st.surface.trim()) lastSurface = j; });
+        stages.forEach((st, j) => {
+          const sp = `${p}.stages[${j}]`;
+          if (!st || typeof st !== 'object') { err(sp, '문턱은 객체여야 함'); return; }
+          if (typeof st.at !== 'number' || !Number.isFinite(st.at) || st.at <= 0 || st.at > max) err(sp, `at(문턱)은 0 초과 ${max} 이하의 숫자여야 함`);
+          else if (st.at <= prev) err(sp, `문턱은 앞 단계보다 커야 함 (${prev} 다음에 ${st.at})`);
+          else prev = st.at;
+          for (const k of ['hint', 'backstage', 'surface']) {
+            if (st[k] == null) continue;
+            if (typeof st[k] !== 'string') err(sp, `${k}는 문자열이어야 함`);
+            else checkTemplateRefs(st[k], `${sp}.${k}`, allIds, err);
+          }
+          if (st.effects != null) {
+            if (!Array.isArray(st.effects)) err(sp, 'effects는 효과 배열이어야 함');
+            else st.effects.forEach((r, k) => checkSet(r, `${sp}.effects[${k}]`));
+          }
+          const has = ['hint', 'backstage', 'surface'].some((k) => typeof st[k] === 'string' && st[k].trim()) || (Array.isArray(st.effects) && st.effects.length);
+          if (!has) warn(sp, '이 문턱엔 징후·밑작업·표면화·효과가 하나도 없습니다 — 넘어도 아무 일도 안 일어납니다');
+          if (typeof st.backstage === 'string' && st.backstage.trim() && j > lastSurface) {
+            warn(sp, '이 밑작업 뒤로 표면화(surface) 단계가 없습니다 — 밑작업은 표면화될 때 열리므로 이 글은 영영 모델에게 안 갑니다');
+          }
+        });
+      });
+    }
+  }
+  {
+    const frNames = frontMod.frontExposedNames(schema);
+    const tpl = String(schema.promptState?.template || '');
+    const hit = frNames.find((n) => tpl.includes(`{${n}}`));
+    if (hit) warn('$.promptState.template', `메인 프롬프트에 무대 뒤 시계 {${hit}}가 실립니다 — 모델이 숨은 진행을 알게 됩니다`);
+    for (const [gi, g] of (Array.isArray(schema.statusUI?.groups) ? schema.statusUI.groups : []).entries()) {
+      for (const it of (Array.isArray(g?.items) ? g.items : [])) {
+        if (it && frNames.includes(it.var)) warn(`$.statusUI.groups[${gi}]`, `상태창에 무대 뒤 시계 '${it.var}'가 보입니다 — 유저가 숨은 진행을 봅니다`);
+      }
+    }
+  }
+
+  // ── secrets (비밀 v1.10.0 — 설계 docs/design-비밀.md) ──
+  // 모르는 건 말할 수 없다: 단계(tiers)가 열려야 text가 프롬프트에 실린다. 은닉이 요점이라 검증도 그 축이다 —
+  // 예약 이름 충돌(조건이 비밀 대신 변수를 읽는다)·영영 안 열리는 단계(when 없음)·빈 text(열려도 줄 게 없다)를 잡는다.
+  if (schema.secrets != null) {
+    if (!Array.isArray(schema.secrets)) err('$.secrets', 'secrets는 배열이어야 함');
+    else {
+      const secIds = new Set();
+      schema.secrets.forEach((s, i) => {
+        const p = `$.secrets[${i}]`;
+        if (!s || typeof s !== 'object') { err(p, '비밀은 객체여야 함'); return; }
+        if (s.id != null && !ID_RE.test(s.id)) err(p, `잘못된 비밀 id: '${s.id}' (영문자로 시작, 영문·숫자·_만)`);
+        const sid = s.id || `secret${i + 1}`;
+        if (secIds.has(sid)) err(p, `중복 비밀 id: '${sid}'`);
+        secIds.add(sid);
+        // 예약 이름 충돌 — sec_<id>는 세이브 예약 키이자 조건식 노출 이름
+        const rn = secretMod.secKey(sid);
+        if (ids.has(rn) || derived.some((d) => d && d.id === rn)) {
+          err(p, `'${rn}'는 이 비밀이 쓰는 예약 이름입니다 — 그 변수/파생의 id를 바꾸세요`);
+        }
+        if (s.kind != null && !secretMod.KINDS.includes(s.kind)) {
+          err(p, `kind는 ${secretMod.KINDS.join('/')} 중 하나 (현재: '${s.kind}')`);
+        }
+        if (s.tell != null && !secretMod.TELLS.includes(s.tell)) {
+          err(p, `tell은 ${secretMod.TELLS.join('/')} 중 하나 (현재: '${s.tell}')`);
+        }
+        if (s.about != null && typeof s.about !== 'string') err(p, 'about(누구·무엇의 비밀인가)은 문자열이어야 함');
+        if (s.label != null && typeof s.label !== 'string') err(p, 'label은 문자열이어야 함');
+        const kind = secretMod.KINDS.includes(s.kind) ? s.kind : 'person';
+        const tell = secretMod.TELLS.includes(s.tell) ? s.tell : secretMod.defaultTell(kind);
+        // 존재를 알리는데 누구의 비밀인지 없으면 모델이 "누가 숨기는지"를 모른다
+        if (tell === 'exists' && !String(s.about || '').trim() && !String(s.label || '').trim()) {
+          warn(p, '존재를 알리는(tell: exists) 비밀인데 about(누구·무엇)이 비어 있습니다 — 모델이 누가 숨기는지 모릅니다');
+        }
+        // 반전에 존재 신호는 스포일러다 — 막지는 않되 알린다 (제작자가 일부러 그럴 수도 있다)
+        if (kind === 'plot' && s.tell === 'exists') {
+          warn(p, '반전(plot) 비밀에 tell: exists — "숨긴 게 있다"는 신호 자체가 반전을 예고합니다. 의도가 아니면 tell을 지우세요');
+        }
+        const tiers = Array.isArray(s.tiers) ? s.tiers : null;
+        if (!tiers || !tiers.length) { err(p, '단계(tiers)가 최소 1개 필요합니다'); return; }
+        tiers.forEach((t, j) => {
+          const tp = `${p}.tiers[${j}]`;
+          if (!t || typeof t !== 'object') { err(tp, '단계는 객체여야 함'); return; }
+          // 0단계는 when 생략 = 처음부터(복선). 그 뒤 단계는 when이 없으면 영영 안 열린다
+          if (j > 0 && (typeof t.when !== 'string' || !t.when.trim())) {
+            err(tp, `${j + 1}단계에 조건(when)이 없습니다 — 이 단계부터 영영 안 열립니다`);
+          } else if (typeof t.when === 'string' && t.when.trim()) {
+            // rand() 금지 — 공개는 결정적이어야 진단·리롤·세이브가 어긋나지 않는다 (시나리오와 같은 이유)
+            checkExpr(t.when, tp + '.when', allIds, err, { allowRand: false });
+          }
+          if (typeof t.text !== 'string' || !t.text.trim()) err(tp, '단계의 text(밝혀지는 내용)가 비어 있습니다');
+          else checkTemplateRefs(t.text, tp + '.text', allIds, err);
+          if (t.notify != null && typeof t.notify !== 'string') err(tp, 'notify는 문자열이어야 함');
+        });
+      });
+    }
+  }
+
   // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
   {
     const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
@@ -1698,7 +1984,7 @@ function checkExpr(src, path, knownIds, err, { allowRand }) {
 // uid = 이 상태창이 그려진 메시지의 꼬리표. 템플릿에서 라디오 id·name에 섞어 쓴다.
 // lastcheck = 마지막 판정 한 줄 (판정 전에는 빈 문자열). choices = 걸린 갈림길의 선택지 목록.
 // scenario = 시나리오 진행 칩(현재 막 라벨 + i/N막, v0.93 — 시나리오가 없으면 빈 문자열).
-const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight']); // fight: 교전 게이지 칩 (v1.6.0)
+const RESERVED_SLOTS = new Set(['commands', 'uid', 'lastcheck', 'choices', 'scenario', 'fight', 'secrets']); // fight: 교전 게이지 칩 (v1.6.0) / secrets: 비밀 자물쇠 칩 (v1.10.0)
 
 // {id} / {expr ? a : b} 템플릿 참조 검사
 function checkTemplateRefs(tpl, path, knownIds, err) {

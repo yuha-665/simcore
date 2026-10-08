@@ -230,6 +230,54 @@ const draw = (sch, uid) => renderStatusHtml(sch, engine.initState(sch), null, nu
     src.includes("statusField('상태창 제목'") && src.includes('schema.meta.name = x.trim() || undefined'), '');
 }
 
+// ── 한 장에 여러 그룹 (v1.12.1) — groups[].tab. 조퇴악녀 "현황 | 빙의자" 두 탭 ──
+{
+  const mkT = (layout, tabs, extra = {}) => {
+    const s = mk(layout, 3);
+    s.vars.push({ id: 'bag', label: '소지품', type: 'list', init: ['손수건'] });
+    s.statusUI.groups.push({ label: '소지품', items: [{ var: 'bag' }] });
+    s.statusUI.groups.forEach((g, i) => { if (tabs[i] !== undefined) g.tab = tabs[i]; });
+    Object.assign(s.statusUI, extra);
+    return s;
+  };
+  const T = mkT('tabs', ['현황', '현황', '현황', '나']);
+  const html = draw(T, 5);
+  ck('★ 묶인 탭: 그룹 넷 → 장 둘', (html.match(/<input /g) || []).length === 2 && (html.match(/sim-panel sim-panel-/g) || []).length === 2, '');
+  ck('묶인 탭: 장 이름이 탭 이름', html.includes('>현황</label>') && html.includes('>나</label>') && !html.includes('>영지</label>'), '');
+  const p0 = html.slice(html.indexOf('sim-panel-0'), html.indexOf('sim-panel-1'));
+  ck('★ 한 장 안의 그룹은 제 이름표를 달고 쌓인다',
+    p0.includes('>영지</div>') && p0.includes('>인물</div>') && p0.includes('>탐사</div>') && !p0.includes('손수건'), p0.slice(0, 200));
+  ck('둘째 장에 소지품', html.slice(html.indexOf('sim-panel-1')).includes('손수건'), '');
+  const mixed = draw(mkT('tabs', [undefined, '묶음', undefined, '묶음']), 5);
+  ck('★ tab 없는 그룹은 제 이름으로 한 장, 순서 = 처음 나온 자리',
+    /영지<\/label><label[^>]*>묶음<\/label><label[^>]*>탐사<\/label>/.test(mixed), (mixed.match(/<label[^>]*>[^<]*<\/label>/g) || []).join(''));
+  // 둘째 장 그룹이 조건으로 다 숨으면 한 장 → 탭바 없이 묶기 전 그룹으로 쌓기
+  const hid = mkT('tabs', ['현황', '현황', '현황', '나']);
+  hid.statusUI.groups[3].showWhen = 'hp > 999';
+  const h1 = draw(hid, 5);
+  ck('★ 한 장만 남으면 탭 없이 그룹째 쌓는다', !h1.includes('sim-tabs') && (h1.match(/sim-group-label/g) || []).length === 3, '');
+  ck('tab 없는 탭 배치는 예전 그대로 (그룹 하나 = 한 장)', (draw(mkT('tabs', []), 7).match(/<input /g) || []).length === 4, '');
+  const acc = draw(mkT('accordion', ['현황', '현황', '현황', '나']), 5);
+  ck('아코디언도 묶인다 (장 둘)', (acc.match(/sim-group sim-acc/g) || []).length === 2 && acc.includes('>현황</summary>'), '');
+  const pop = draw(mkT('popover', ['현황', '현황', '현황', '나']), 5);
+  ck('팝업도 묶인다 (버튼 둘)', (pop.match(/sim-pop-btn/g) || []).length === 2, '');
+  ck('쌓기는 tab을 무시한다', draw(mkT('stack', ['현황', '현황', '현황', '나']), 5) === draw(mkT('stack', []), 5), '');
+  // 고른 탭 색 손잡이
+  ck('★ 고른 탭 배경·테두리를 봇 CSS 변수로 덮을 수 있다',
+    /sim-tab-0\{opacity:1;background:var\(--sim-tab-on-bg,[^)]*\)\);border-color:var\(--sim-tab-on-line,/.test(buildStatusCss(T)), '');
+  // 검증
+  const W = (s) => validateSchema(s);
+  ck('묶인 탭 스키마는 오류·배치 경고 0', W(T).errors.length === 0 && !W(T).warnings.some((w) => w.path === '$.statusUI.layout'),
+    JSON.stringify([W(T).errors, W(T).warnings]));
+  const oneSheet = mkT('tabs', ['다', '다', '다', '다']);
+  ck('★ 전부 한 장이면 "두 장 이상" 경고', W(oneSheet).warnings.some((w) => /보이는 장이 둘 이상.*현재 1장/.test(w.msg)), '');
+  ck('★ 빈 tab은 오류', W(mkT('tabs', ['  '])).errors.some((e) => e.path === '$.statusUI.groups[0].tab'), '');
+  ck('글자 아닌 tab도 오류', W(mkT('tabs', [3])).errors.some((e) => e.path === '$.statusUI.groups[0].tab'), '');
+  ck('쌓기인데 tab이면 경고', W(mkT('stack', ['현황'])).warnings.some((w) => /안 묶입니다/.test(w.msg)), '');
+  ck('편집기에 묶을 장 이름 칸', src.includes("statusField('묶을 장 이름'") && src.includes('g.tab = x.trim() || undefined'), '');
+  ck('규격서가 tab을 가르친다', src.includes('`"tab": "장 이름"`'), '');
+}
+
 // ── 배선 (어댑터가 메시지 번호를 실제로 넘기는가) ──
 {
   ck('★ 표시 핸들러가 마커의 메시지 번호를 uid로 넘긴다', /includeStyle: true, uid: idxStr/.test(src), '');

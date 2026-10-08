@@ -25,6 +25,10 @@ const msgrMod = require('./messenger'); // 메신저 (v1.2.0) — 옵트인
 const questMod = require('./quest');    // 의뢰판 (v1.7.9) — 옵트인
 const choiceMod = require('./choice');  // 보조가 쓰는 갈림길 (v1.8.0) — 옵트인
 const fightMod = require('./fight');    // 전투 안무 (v1.6.0) — checks[].fight, 옵트인
+const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다, 옵트인
+const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
+const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
+const gaugeMod = require('./gauge');    // 사건 게이지 (v1.14.0) — 랜덤 사건이 작중 시간으로 차는 숨은 게이지로 온다, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -120,6 +124,12 @@ function initState(schema, opts = {}) {
   }
   // 시나리오(v0.90)도 같은 계열의 예약 키 — 1막·0턴에서 시작한다
   if (scenarioConfig(schema)) { vars[SCN_IDX] = 0; vars[SCN_TURNS] = 0; }
+  // 비밀(v1.10.0)도 같은 계열 — sec_<id> = -1 (아직 하나도 안 열림)
+  secretMod.ensureSecretKeys(schema, vars);
+  // 무대 뒤(v1.12.0)도 같은 계열 — fr_<id> = 시작값, frs_<id> = -1
+  frontMod.ensureFrontKeys(schema, vars);
+  // 사건 게이지(v1.14.0)도 같은 계열 — re_gauge·re_cool = 0
+  gaugeMod.ensureGaugeKeys(schema, vars);
   const st = {
     vars,
     meta: { turn: 0, setupDone: false, armed: {}, actionLastUsed: {}, eventLastFired: {}, firedOnce: {}, pendingNotifies: [] },
@@ -197,6 +207,10 @@ function reconcileState(schema, state) {
     if (typeof state.vars[SCN_IDX] !== 'number') state.vars[SCN_IDX] = 0;
     if (typeof state.vars[SCN_TURNS] !== 'number') state.vars[SCN_TURNS] = 0;
   }
+  // 비밀 (v1.10.0) — 진행 중 세이브에 나중에 켜면 "아직 하나도"에서 시작한다 (밝혀진 것은 소급하지 않는다)
+  secretMod.ensureSecretKeys(schema, state.vars);
+  frontMod.ensureFrontKeys(schema, state.vars); // 무대 뒤 (v1.12.0) — 같은 규약 (나중에 켜면 시작값에서)
+  gaugeMod.ensureGaugeKeys(schema, state.vars); // 사건 게이지 (v1.14.0) — 같은 규약 (나중에 켜면 빈 게이지에서)
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
@@ -236,6 +250,8 @@ function changeMemoLines(schema, changeLog) {
   for (const c of changeLog || []) {
     if (out.length >= CHANGE_MEMO_MAX) break;
     if (c.source === 'onTurn') continue;
+    // 무대 뒤 (v1.12.0) — 시계·문턱·결과는 보조 원장에도 안 싣는다 (보조는 기록자고, 무대 뒤는 아무도 모르는 일이다)
+    if (String(c.source || '').startsWith(frontMod.SOURCE_PREFIX)) continue;
     // 시간 우편함(skip_day/skip_min)은 건너뛴다 — 소비 결과가 아래 '시각' 줄이라 두 번 말하게 된다
     if (c.id === SKIP_DAY || c.id === SKIP_MIN) continue;
     if (c.id === EPOCH_KEY) {
@@ -292,6 +308,13 @@ function findChoiceEvent(schema, id) {
   const all = [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])];
   const ev = all.find((e) => e.id === id);
   return ev && Array.isArray(ev.choices) && ev.choices.length ? ev : null;
+}
+
+/** 이벤트의 보조 갈림길 트리거 — liveChoices: true = 첫 벌, 'id' = 그 벌 (v1.13.0 여러 벌). 없는 벌이면 조용히 무시 (검증이 잡는다) */
+function triggerLive(schema, state, ev) {
+  if (!ev?.liveChoices) return;
+  const cfg = choiceMod.liveConfig(schema, ev.liveChoices === true ? null : ev.liveChoices);
+  if (cfg) state.meta.liveAsk = choiceMod.askValue(schema, cfg);
 }
 
 /**
@@ -463,6 +486,19 @@ function applyListOps(varDef, current, ops) {
 function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   for (const rule of rules || []) {
+    // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
+    if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
+    // 무대 뒤 개입 (v1.12.0) { front, add } — 시계를 늦추거나 되돌린다. 문턱 판정은 응답 단계 8.55 한 곳에서만
+    if (frontMod.isFrontEffect(rule)) {
+      const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
+      if (c) changeLog.push(c);
+      continue;
+    }
+    // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 서사가 다음 사건을 당기거나(+) 늦춘다(−). 원장엔 안 남긴다(보이지 않는 게 요점)
+    if (gaugeMod.isGaugeEffect(rule)) {
+      gaugeMod.applyGaugeEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng);
+      continue;
+    }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];
@@ -470,8 +506,10 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       const from = state.vars[rule.list];
       // expire: 항목의 `@숫자`가 이 값보다 작아지면 만료 — 기한이 다한 계약·부역이 스스로 빠진다.
       // (`@`가 없는 항목은 무기한이라 건드리지 않는다)
+      // keepOverdue (v1.13.1): 시계로만 쓰고 지우지 않는다 — 빚·약속처럼 기한이 지나도 이행·파기 전엔 남아야 하는 목록.
+      //   `@+N` 굳히기·`(N일)` 환산은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다.
       let base = from;
-      if (rule.expire) {
+      if (rule.expire && !rule.keepOverdue) {
         const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
         if (isFinite(now) && Array.isArray(from)) {
           base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });
@@ -594,6 +632,33 @@ function rollCheck(schema, state, check, rng, changeLog) {
   return { line: `[판정] ${label}: ${summary}`, inject: grade?.inject || null, grade: grade ? grade.label : null };
 }
 
+/**
+ * 판정 성공 확률 (v1.13.0) — 선택지 옆 "🎲 화술 60%" 칩용. 성공 = total ≥ vs (vs 없는 판정은 null).
+ * 굴림식이 무엇이든(이점 굴림 포함) 같은 시드 표본 600번으로 잰다 — 렌더마다 같은 숫자, 5% 단위로 반올림.
+ * 상태를 안 건드린다 (applySets 없음 · 게임 rng 안 씀).
+ */
+function checkOdds(schema, state, check) {
+  if (!check || check.vs == null) return null;
+  const lookup = makeLookup(schema, state.vars);
+  let mod, vs;
+  try {
+    mod = check.mod != null ? Number(evaluate(String(check.mod), lookup, null)) : 0;
+    vs = typeof check.vs === 'number' ? check.vs : Number(evaluate(String(check.vs), lookup, null));
+  } catch { return null; }
+  if (!isFinite(mod) || !isFinite(vs)) return null;
+  let seed = 0x9e3779b9;
+  const rng = () => { seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0; return (seed >>> 8) / 16777216; };
+  const N = 600;
+  let ok = 0;
+  for (let i = 0; i < N; i++) {
+    let roll;
+    try { roll = Number(evaluate(check.roll, lookup, rng)); } catch { return null; }
+    if (!isFinite(roll)) return null;
+    if (roll + mod >= vs) ok++;
+  }
+  return { label: check.label ?? check.id, pct: Math.round((ok / N) * 20) * 5 };
+}
+
 // ── 전투 안무 — 라운드 하나 (v1.6.0, checks[].fight; 배경·규약은 core/fight.js 머리말) ──
 // 공격 비트 = 그 판정을 그대로 굴린다(등급 effects·기록 그대로) + 등급 gain을 상대 게이지에.
 // 반격 비트 = fight.reply 판정(회피 등)을 굴린다 — 주인공 피해는 그 판정의 등급 effects가 낸다
@@ -695,6 +760,25 @@ function offstageFired(schema, state) {
   return (schema?.actions || []).some((a) => a && a.offstage === true && fired[a.id]);
 }
 
+/**
+ * 체크포인트 처리 (v1.11.0) — applySets가 세운 줄(meta.cpQueue)을 순서대로. 되감겼으면 안내 한 줄을 돌려준다.
+ * 원장에는 칸 이름만 — 수십 개 변수가 한꺼번에 바뀐 것을 줄마다 적지 않는다 (하이라이트 카드·보조 원장이 한 줄로 본다).
+ */
+function flushCheckpoints(schema, state, changeLog) {
+  if (!state.meta.cpQueue?.length) return [];
+  const secIds = new Set((secretMod.secretsConfig(schema) || []).map((s) => secretMod.secKey(s.id)));
+  const r = cpMod.flush(schema, state, (k) => secIds.has(k));
+  for (const slot of r.saved) changeLog.push({ id: '체크포인트', from: null, to: `저장 (${slot})`, source: `checkpoint:${slot}` });
+  for (const slot of r.missing) changeLog.push({ id: '체크포인트', from: null, to: `되감기 실패 — 저장된 칸 없음 (${slot})`, source: `checkpoint:${slot}` });
+  if (!r.loaded) return [];
+  reconcileState(schema, state); // 저장 뒤에 스키마에 생긴 변수는 init으로 (옛 칸이 새 스키마를 만났을 때)
+  const back = state.meta.turn - (Number(r.loaded.turn) || 0);
+  changeLog.push({ id: '체크포인트', from: null, to: `되감기 (${r.loaded.slot}) — ${back}턴 전으로`, source: `checkpoint:${r.loaded.slot}` });
+  const cfg = cpMod.checkpointConfig(schema);
+  const text = cfg.notify.trim() ? cfg.notify : cpMod.DEFAULT_LOAD_NOTIFY;
+  return [renderTemplate(text, makeLookup(schema, state.vars))];
+}
+
 // userText (v1.6.0): 이번 전송의 유저 입력 원문 — 전투 안무의 맡김/내 수 판단에만 쓴다 (굴림엔 무관)
 function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const state = reconcileState(schema, clone(prevState));
@@ -739,7 +823,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
       if (idx == null && mode) {
         const open = ev.choices.map((c, i) => i).filter((i) => choiceOpen(schema, state.vars, ev.choices[i]));
         if (open.length) {
-          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : open[open.length - 1];
+          idx = mode === 'random' ? open[Math.floor(rng() * open.length) % open.length] : choiceMod.fallbackIndex(ev, open); // v1.13.0 worst 태그 우선
           forcedChoice = { idx, label: String(ev.choices[idx].label ?? ''), mode };
           changeLog.push({ id: '갈림길', from: null, to: `시스템 결정 — ${forcedChoice.label}`, source: `choice:${ev.id}` });
         } else {
@@ -812,6 +896,10 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     }
   }
 
+  // 1.3 체크포인트 (v1.11.0) — 선택지·액션이 세운 저장·되감기를 지금 처리한다. 되감겼으면 이번 프롬프트가 되감긴 상태로
+  // 나가고, 안내는 이번 턴 서사에 (고른 그 턴에 "눈을 뜨면 그 아침"을 쓴다). 시간 소비(1.5)보다 먼저 — 되감긴 날짜 위에 진행을 얹는다.
+  for (const line of flushCheckpoints(schema, state, changeLog)) injects.push(line);
+
   // 1.4 시간 고정표 — 액션 항목 (v1.9.11). 눌린 액션에 고정 시간이 있으면 효과가 적은 skip_min을 덮거나(set) 더한다(add).
   // set이면 응답 단계의 보조 추정도 버려야 하므로 깃발(meta.timePin)을 세워 둔다 — 보조 프롬프트도 이 깃발을 본다.
   {
@@ -881,6 +969,26 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   if (!isSetupPending(schema, state)) {
     const scnBlock = scenarioInjectionText(schema, state.vars, rt);
     if (scnBlock) lines.push(scnBlock);
+  }
+
+  // 3.5.6 비밀 (v1.10.0) — 열린 단계의 text + 존재 알림만. 안 열린 단계는 프롬프트 어디에도 없다.
+  // 은닉은 구조가 보장한다 (design-비밀 §3). 시나리오와 같은 층·같은 제외 규칙.
+  // ⚠ 보조 프롬프트(buildAuxPrompt)에는 아무것도 안 간다 — 보조는 변수만 세우면 되고 내용을 볼 이유가 없다.
+  if (!isSetupPending(schema, state)) {
+    const secBlock = secretMod.secretInjectionText(schema, state.vars, rt);
+    if (secBlock) lines.push(secBlock);
+  }
+
+  // 3.5.7 무대 뒤 (v1.12.0) — 징후(이유 없이) + 표면화된 단계까지의 밑작업만. 시계 값·표면화 전 밑작업은 어디에도 없다.
+  if (!isSetupPending(schema, state)) {
+    const frBlock = frontMod.frontInjectionText(schema, state.vars, rt);
+    if (frBlock) lines.push(frBlock);
+  }
+
+  // 3.5.8 징조 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건의 omen 글만. 게이지 값·사건 이름은 어디에도 없다.
+  if (!isSetupPending(schema, state)) {
+    const omBlock = gaugeMod.omenInjectionText(schema, state.vars, rt);
+    if (omBlock) lines.push(omBlock);
   }
 
   // 3.6 갈림길 대기 줄 — 걸려 있는 동안 매 전송 (모델이 대신 골라 버리는 것을 막는다)
@@ -990,8 +1098,12 @@ function buildSetupPrompt(schema, state, narrative) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   const ids = schema.setup?.ai?.vars ?? schema.vars.map((v) => v.id);
   const specs = ids.map((id) => {
-    const v = varById[id];
-    if (!v) return null;
+    const v0 = varById[id];
+    if (!v0) return null;
+    // 기본값 = 지금 값 (v1.13.0) — 프리셋이 정한 값이 여기 있다. 스키마 init을 보이면 보조가 그걸 "기본"으로 되돌려 적어
+    // 프리셋마다 다른 칸(시점별 능력치·신분)이 덮였다 (조퇴악녀 — 값은 절대값으로 적용된다)
+    const cur = state?.vars?.[id];
+    const v = cur === undefined ? v0 : { ...v0, init: cur };
     const d = v.desc ? ` — ${v.desc}` : '';
     const base = `- ${id} (${v.label ?? id}`;
     if (v.type === 'int' || v.type === 'float') {
@@ -1326,8 +1438,8 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 5.96 보조 갈림길 (v1.8.0) — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
   // 이벤트(7·8)보다 먼저라 이번 턴 스키마 갈림길은 "동시 1개" 규약대로 미뤄진다.
   if (choiceMod.liveConfig(schema)) {
-    const lr = choiceMod.applyLive(schema, state, choices);
-    if (lr.posted) changeLog.push({ id: choiceMod.liveConfig(schema).label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
+    const lr = choiceMod.applyLive(schema, state, choices, rng);
+    if (lr.posted) changeLog.push({ id: lr.cfg.label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
   }
 
   // 6. 정기 틱
@@ -1341,7 +1453,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoice = null; // 스키마에서 사라진 갈림길 — 방어
       state.meta.pendingChoicePick = null;
     } else if (pcEv.timeout != null && state.meta.turn - state.meta.pendingChoice.turn >= pcEv.timeout) {
-      const last = pcEv.choices[pcEv.choices.length - 1];
+      const last = pcEv.choices[choiceMod.fallbackIndex(pcEv)]; // v1.13.0 — 섞인 보조 갈림길은 worst 태그 항목
       const ok = choiceOpen(schema, state.vars, last);
       if (ok) {
         // 판정 달린 선택지(v1.8.0)는 여기서도 굴린다 — 이벤트 판정과 같이 [판정] 줄은 통지로 다음 전송에
@@ -1383,64 +1495,116 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       state.meta.pendingChoicePick = null;
     }
     // 보조 갈림길 트리거 (v1.8.0) — 깃발만 세운다. 보조 호출은 이미 지났으니 다음 턴 응답 뒤에 선택지가 온다
-    if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true;
+    triggerLive(schema, state, ev);
     if (ev.once) state.meta.firedOnce[ev.id] = true;
     state.meta.eventLastFired[ev.id] = state.meta.turn;
     firedEvents.push(ev.id);
   }
 
-  // 8. 랜덤 이벤트 추첨
+  // 8. 랜덤 이벤트 추첨 — 옛 방식(턴마다 chancePerTurn으로 굴림) 또는 사건 게이지(v1.14.0, 작중 시간으로 차는 숨은 게이지).
   const re = schema.rules?.randomEvents;
-  // 발동 확률 — 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
-  // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
-  // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
-  // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
-  let reChance = 0;
-  if (re) {
+  const gcfg = re ? gaugeMod.gaugeConfig(schema) : null;
+  const tcfgR = gcfg ? timeConfig(schema) : null;
+  // 게이지 + 시간 체계면 항목 cooldown도 **날**로 잰다 — 턴으로 재면 같은 사건이 채팅 속도만큼 자주 돌아온다
+  const nowMin = tcfgR ? Number(state.vars[EPOCH_KEY]) || 0 : null;
+  const eligibleNow = () => (re.table || []).filter((ev) => {
+    // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
+    if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
+    if (ev.cooldown != null) {
+      if (tcfgR) {
+        const at = state.meta.eventLastAt?.[ev.id];
+        if (at != null && (nowMin - at) / MIN_PER_DAY < ev.cooldown) return false;
+      } else {
+        const last = state.meta.eventLastFired[ev.id];
+        if (last != null && state.meta.turn - last < ev.cooldown) return false;
+      }
+    }
+    if (ev.when) {
+      const lookup = makeLookup(schema, state.vars);
+      if (!truthy(evaluate(ev.when, lookup, null))) return false;
+    }
+    return true;
+  });
+  // weight 비례로 하나 뽑는다 — 두 방식이 같은 한 벌을 쓴다 (옛 방식의 굴림 순서 그대로: 합계가 0보다 클 때만 rng 한 알)
+  const pickOne = (eligible) => {
+    const total = eligible.reduce((sum, e) => sum + (e.weight ?? 1), 0);
+    if (!(total > 0)) return null;
+    let roll = rng() * total;
+    for (const ev of eligible) {
+      roll -= ev.weight ?? 1;
+      if (roll <= 0) return ev;
+    }
+    return null;
+  };
+  const fireEv = (ev) => {
+    let checkResult = null;
+    if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
+    applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
+    if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
+    if (checkResult) {
+      state.meta.pendingNotifies.push(checkResult.line);
+      if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
+    }
+    if (Array.isArray(ev.choices) && ev.choices.length) {
+      state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
+      state.meta.pendingChoicePick = null;
+    }
+    triggerLive(schema, state, ev); // (v1.8.0) 위 7과 같은 깃발
+    state.meta.eventLastFired[ev.id] = state.meta.turn;
+    if (tcfgR) (state.meta.eventLastAt = state.meta.eventLastAt || {})[ev.id] = nowMin;
+    firedEvents.push(ev.id);
+  };
+  if (gcfg) {
+    if (rng) {
+      // 사건 게이지 — 식힘(re_cool) 중엔 안 차고, 후보가 하나도 없으면 안 찬다(막힌 동안 채워 두었다가 풀리자마자 터뜨리지 않게).
+      // 100이면 하나 터뜨리고 0으로, 식힘을 건다. 원장엔 안 남긴다 — 보이지 않는 게 요점이다.
+      const { GAUGE_KEY: GK, COOL_KEY: CK, NEXT_KEY: NK, GAUGE_MAX: GMAX } = gaugeMod;
+      const days = tcfgR ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : 1;
+      const eligible = eligibleNow();
+      // 식힘이 이번 턴 도중에 끝나면 남은 날만큼은 찬다 — "닷새 뒤" 한 턴이 식힘 사흘에 통째로 먹히지 않게
+      let cool = Number(state.vars[CK]) || 0, fillDays = days;
+      const cooling = cool > 0;
+      if (cooling) {
+        const used = Math.min(cool, days);
+        cool = gaugeMod.tidy(cool - used);
+        state.vars[CK] = cool;
+        fillDays = days - used;
+      }
+      if (!(cool > 0) && eligible.length) {
+        const add = gaugeMod.fillAmount(gcfg, makeLookup(schema, state.vars), fillDays, rng, !cooling);
+        if (add > 0) state.vars[GK] = gaugeMod.tidy(Math.min(GMAX, (Number(state.vars[GK]) || 0) + add));
+      }
+      // 징조 (v1.14.1) — 선(omenAt)을 넘으면 다음 사건을 미리 하나 뽑아 둔다(re_next). 그새 못 오게 됐거나(조건·쿨다운) 게이지가
+      // 선 아래로 내려가면(서사의 { gauge: -N }) 거둔다. 뽑아 둔 사건의 omen 글이 메인 프롬프트에 징후로 깔린다(3.5.8).
+      const g = Number(state.vars[GK]) || 0;
+      let next = typeof state.vars[NK] === 'string' ? state.vars[NK] : '';
+      let nextEv = next ? eligible.find((e) => e.id === next) || null : null;
+      if (next && (!nextEv || gcfg.omenAt == null || g < gcfg.omenAt)) { state.vars[NK] = ''; next = ''; nextEv = null; }
+      if (!(cool > 0) && eligible.length && g >= GMAX) {
+        // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
+        const ev = nextEv || pickOne(eligible);
+        if (ev) {
+          state.vars[GK] = 0;
+          state.vars[NK] = '';
+          fireEv(ev);
+          state.vars[CK] = gcfg.cooldown;
+        }
+      } else if (!next && gcfg.omenAt != null && !(cool > 0) && eligible.length && g >= gcfg.omenAt) {
+        const ev = pickOne(eligible);
+        if (ev) state.vars[NK] = ev.id;
+      }
+    }
+  } else if (re) {
+    // 옛 방식 — 발동 확률은 숫자 또는 식 (v0.89.1). 식이면 지금 상태로 평가한다: 난이도 변수(hardship 등)를
+    // 읽게 짜면 프리셋이 초기값 하나만 바꿔도 사건 빈도가 따라 움직인다 — "난이도로 조절할 값은
+    // 변수로 빼고 수식이 읽게 한다" 원칙의 마지막 조각 (chancePerTurn만 상수로 남아 있었다).
+    // 깨진 식은 0으로 낮춘다 (검증이 미리 잡는다 — 여기서 던지면 턴 전체가 죽는다).
+    let reChance = 0;
     if (typeof re.chancePerTurn === 'string') {
       try { reChance = Number(evaluate(re.chancePerTurn, makeLookup(schema, state.vars), null)); } catch { reChance = 0; }
       reChance = isFinite(reChance) ? Math.max(0, Math.min(1, reChance)) : 0;
     } else reChance = re.chancePerTurn ?? 0;
-  }
-  if (re && rng && rng() < reChance) {
-    const eligible = (re.table || []).filter((ev) => {
-      // 갈림길이 걸려 있는 동안 랜덤 갈림길도 후보에서 빠진다 (동시 1개 상한)
-      if (Array.isArray(ev.choices) && ev.choices.length && state.meta.pendingChoice) return false;
-      if (ev.cooldown != null) {
-        const last = state.meta.eventLastFired[ev.id];
-        if (last != null && state.meta.turn - last < ev.cooldown) return false;
-      }
-      if (ev.when) {
-        const lookup = makeLookup(schema, state.vars);
-        if (!truthy(evaluate(ev.when, lookup, null))) return false;
-      }
-      return true;
-    });
-    const total = eligible.reduce((s, e) => s + (e.weight ?? 1), 0);
-    if (total > 0) {
-      let roll = rng() * total;
-      for (const ev of eligible) {
-        roll -= ev.weight ?? 1;
-        if (roll <= 0) {
-          let checkResult = null;
-          if (ev.check && checkById[ev.check]) checkResult = rollCheck(schema, state, checkById[ev.check], rng, changeLog);
-          applySets(schema, state, ev.effects, rng, changeLog, `random:${ev.id}`);
-          if (ev.notify) state.meta.pendingNotifies.push(ev.notify);
-          if (checkResult) {
-            state.meta.pendingNotifies.push(checkResult.line);
-            if (checkResult.inject) state.meta.pendingNotifies.push(checkResult.inject);
-          }
-          if (Array.isArray(ev.choices) && ev.choices.length) {
-            state.meta.pendingChoice = { id: ev.id, turn: state.meta.turn };
-            state.meta.pendingChoicePick = null;
-          }
-          if (ev.liveChoices === true && choiceMod.liveConfig(schema)) state.meta.liveAsk = true; // (v1.8.0) 위 7과 같은 깃발
-          state.meta.eventLastFired[ev.id] = state.meta.turn;
-          firedEvents.push(ev.id);
-          break;
-        }
-      }
-    }
+    if (rng && rng() < reChance) { const ev = pickOne(eligibleNow()); if (ev) fireEv(ev); }
   }
 
   // 8.5 시나리오 막 전환 (v0.90) — 이번 턴을 현재 막에 얹고, 다음 막의 해금을 본다.
@@ -1465,8 +1629,47 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     }
   }
 
+  // 8.55 무대 뒤 (v1.12.0) — 진영 시계를 작중 시간만큼 흘리고, 넘은 문턱을 연다. 막 전환(8.5) 뒤라 막이 읽히고,
+  // 비밀(8.6) 앞이라 비밀의 여는 조건이 이번 턴 표면화(fr_·frs_·결과 플래그)를 바로 읽는다.
+  // 시간 체계가 있으면 흐른 시간(turn_min, 8.9에서 소진)만큼 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치. 없으면 턴당.
+  {
+    const tcfgF = timeConfig(schema);
+    const days = tcfgF ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : null;
+    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days)) {
+      const f = r.front, src = frontMod.SOURCE_PREFIX + f.id;
+      if (r.tick) changeLog.push({ id: frontMod.frKey(f.id), from: r.from, to: r.to, source: src });
+      for (const { index, stage } of r.stages) {
+        changeLog.push({ id: '무대 뒤', from: null, to: `${f.label || f.about || f.id} ${index + 1}/${f.stages.length}단계`, source: src });
+        applySets(schema, state, stage.effects, rng, changeLog, src);
+        if (stage.surface) state.meta.pendingNotifies.push(renderTemplate(stage.surface, makeLookup(schema, state.vars)));
+        firedEvents.push(`${src}:${index}`); // 진단·로그가 이벤트와 같은 창구로 본다
+      }
+    }
+  }
+
+  // 8.6 비밀 단계 열기 (v1.10.0) — 이벤트(⑦·⑧)·막 전환(8.5) 뒤라 이번 턴이 세운 변수·막을 조건이 바로 읽는다.
+  // 참인 가장 높은 단계까지 한 번에 연다 (편지를 찾았으면 낌새 단계는 지나갔다). 열린 건 안 내려간다.
+  // 전환은 원장(changeLog)에 남긴다 — 하이라이트 카드(🔓)·변화 로그·보조 원장이 한 줄에서 그려진다 (시나리오와 같은 길).
+  // ⚠ 원장에 남기는 것은 라벨·단계 번호뿐 — 내용(text)은 여기서도 안 샌다 (원장은 보조 AI에게도 간다).
+  {
+    const lookupS = makeLookup(schema, state.vars);
+    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS)) {
+      const s = tr.secret;
+      changeLog.push({ id: s.label || s.about || s.id, from: tr.from < 0 ? '아직' : `${tr.from + 1}단계`,
+        to: `${tr.to + 1}/${s.tiers.length}단계`, source: `secret:${s.id}` });
+      for (const n of tr.notifies) state.meta.pendingNotifies.push(n);
+      firedEvents.push(`secret:${s.id}`); // 진단·로그가 이벤트와 같은 창구로 본다
+      // 단계별 키도 — 진단의 "긴 판이면 열리나" 재확인은 어느 단계가 열렸는지를 알아야 한다 (1단계 낌새는 첫 턴에 늘 열린다)
+      for (let k = tr.from + 1; k <= tr.to; k++) firedEvents.push(`secret:${s.id}:${k}`);
+    }
+  }
+
   // 8.9 이번 정산에서 흐른 시간(turn_min) 소진 (v1.9.11) — onTurn·이벤트가 다 읽었다. 다음 전송부터 다시 쌓인다.
   if (typeof state.vars[TURN_MIN_KEY] === 'number' && state.vars[TURN_MIN_KEY] !== 0) state.vars[TURN_MIN_KEY] = 0;
+
+  // 8.95 체크포인트 (v1.11.0) — 이벤트·막 전환·비밀까지 다 끝난 뒤. 막 onEnter의 저장이 그 턴의 전환·진입 효과·열린 비밀까지 담고,
+  // 게임오버 이벤트의 되감기가 이번 턴에 벌어진 모든 것을 되돌린다. 안내는 다음 전송에 (통지).
+  for (const line of flushCheckpoints(schema, state, changeLog)) state.meta.pendingNotifies.push(line);
 
   // 9. 턴 카운터
   state.meta.turn += 1;
@@ -2216,7 +2419,10 @@ function parseAuxResponse(text) {
 
 module.exports = {
   initState, clone, reconcileState, makeLookup, coerce, applyListOps, applyChangesToState, resolveRelativeExpiry, sanitizeSuggestions, sanitizeConflicts, sanitizeDetected, consumeTimeSkips,
-  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
+  checkpointSlots: cpMod.slotsUsed, // 체크포인트 (v1.11.0) — 편집기 되감기 카드가 쓰는 칸 요약
+  gaugeConfig: gaugeMod.gaugeConfig, gaugeMeanInterval: gaugeMod.meanInterval, // 사건 게이지 (v1.14.0) — 편집기 미리보기
+  frontIdleSchedule: (f) => frontMod.idleSchedule(frontMod.frontsConfig({ fronts: [f] })?.[0] || { stages: [] }), // 무대 뒤 (v1.12.0) — 편집기 "방치하면"
+  sendPhase, outputPhase, toggleAction, autoArmActions, actionAvailability, rollCheck, checkOdds, rollFightRound, findChoiceEvent, pendingChoiceEvent, pickChoice, offstageFired, dayCloseAction,
   renderTemplate, quoteSafe, listClockNow, dueClock, dueText, buildAuxPrompt, auxAllowList, auxOutputBudget, auxHasWork, actionGateOpen, parseAuxResponse, extractJsonObject, salvageTruncatedJson, formatHistory, applyChatCommands, commandSpecs,
   isSetupPending, applyPreset, setupPhase, buildSetupPrompt, parseSetupResponse,
   DEFAULT_TEXT_MAXLEN, DEFAULT_LIST_MAX_ITEMS, DEFAULT_LIST_ITEM_MAXLEN,

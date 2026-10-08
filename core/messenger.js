@@ -14,7 +14,10 @@
 //
 // 스키마 (옵트인):
 //   messenger: { contactsVar(필수), label?, icon?, notesVar?, firstChance?, cooldown?,
-//                guide?, when?, css? }
+//                medium?('text'|'letter'), guide?, when?, css? }
+//   · medium 'letter' (v1.13.2) — 단말기 문자가 아니라 편지. 보조에게 가는 말("문자 말투로 짧게"·"단말기")이
+//     편지 말로 바뀌고 한 통 길이가 600자까지 는다. 아틀리에·베리디아처럼 폰이 없는 세계가 guide로
+//     "단말기가 아니라 편지다"라고 덧칠하던 것 — 엔진 문장이 "문자 말투로 짧게"라고 먼저 말하니 서로 부딪혔다.
 //
 // 상태: state.msgr = { seq, active, rooms: [{ id, kind:'dm'|'group', name, members,
 //   msgs: [{from('me'=주인공), body, time}], unread, lastIn }] } — 스냅샷에 실려
@@ -27,7 +30,11 @@ const CAPS = {
   DM_MAX: 5, GROUP_MAX: 2, GROUP_MEMBERS: 4,     // 단체방 NPC 4 + 유저 = 파티 5인 캡
   MSGS_PER_ROOM: 60, MSG_LEN: 300, ROOM_NAME: 20,
   IN_PER_TURN: 3, INJECT_N: 10, INJECT_LEN: 120,
+  LETTER_LEN: 600, LETTER_INJECT_N: 6, LETTER_INJECT_LEN: 240,   // medium 'letter' — 한 통이 길고 통수는 적다
 };
+const isLetter = (cfg) => cfg?.medium === 'letter';
+/** 한 통 길이 상한 — 문자 300 / 편지 600 */
+const msgLen = (cfg) => (isLetter(cfg) ? CAPS.LETTER_LEN : CAPS.MSG_LEN);
 const DEFAULTS = { firstChance: 0.25, cooldown: 3 };
 
 function msgrConfig(schema) {
@@ -43,6 +50,7 @@ function msgrConfig(schema) {
       ? m.firstChance : DEFAULTS.firstChance,
     cooldown: Number.isInteger(m.cooldown) && m.cooldown >= 0 && m.cooldown <= 20
       ? m.cooldown : DEFAULTS.cooldown,
+    medium: m.medium === 'letter' ? 'letter' : 'text',
     guide: typeof m.guide === 'string' ? m.guide : '',
     when: typeof m.when === 'string' ? m.when : '',
     css: typeof m.css === 'string' ? m.css : '',
@@ -145,7 +153,7 @@ function pushMsg(schema, state, room, from, body) {
 /** 주인공 발신 — 즉시 등록 (답장은 전용 보조 호출이 이어 받는다) */
 function userMsg(schema, state, roomId, body) {
   const room = ensureMsgr(state).rooms.find((r) => r.id === roomId);
-  const b = cut(body, CAPS.MSG_LEN);
+  const b = cut(body, msgLen(msgrConfig(schema)));
   if (!room || !b) return false;
   pushMsg(schema, state, room, 'me', b);
   return true;
@@ -168,7 +176,7 @@ function applyDelta(schema, state, rawDelta) {
     for (const m of Array.isArray(d.msgs) ? d.msgs : []) {
       if (n >= CAPS.IN_PER_TURN) break;
       const from = cut(m?.from, CAPS.ROOM_NAME);
-      const body = cut(m?.body, CAPS.MSG_LEN);
+      const body = cut(m?.body, msgLen(cfg));
       if (!body || !room.members.includes(from)) continue;   // 'me'·비멤버 위조 차단
       pushMsg(schema, state, room, from, body);
       n++;
@@ -213,6 +221,16 @@ function auxSpec(schema, state, makeLookup) {
   if (!msgrOpen(cfg, schema, state.vars, makeLookup)) return '';
   const room = firstContactRoom(cfg, state);
   if (!room) return '';
+  if (isLetter(cfg)) {
+    return [
+      '',
+      `[${cfg.label} — 주인공에게 오는 편지] (선택 항목)`,
+      `- 이번 턴, "${room.name}"(${room.members.join(', ')}) 쪽에서 주인공에게 먼저 편지를 보낼 만한 때다. 서사 흐름상 어색하면 안 보내도 된다.`,
+      room.msgs.length ? `- 지금까지 오간 편지: ${tail(room, 3, 120)}` : '- 아직 오간 편지가 없다 — 첫 편지다.',
+      cfg.guide ? `- ${cfg.guide}` : null,
+      `- msgr 형식: {"msgr":[{"id":${room.id},"msgs":[{"from":"이름","body":"내용"}]}]} — 편지 1통${room.kind === 'group' ? '(여럿에게 온 서신이면 쓸 사람만)' : ''}. 짧은 전갈에서 한 문단까지, 그 사람의 격식과 서명대로. from은 멤버 이름만.`,
+    ].filter((x) => x !== null).join('\n');
+  }
   return [
     '',
     `[${cfg.label} — 주인공의 단말기] (선택 항목)`,
@@ -233,8 +251,16 @@ function mainLine(schema, state) {
   const msgr = state?.msgr;
   const room = msgr?.rooms?.find((r) => r.id === msgr.active);
   if (!room || !room.msgs.length) return null;
-  const lines = room.msgs.slice(-CAPS.INJECT_N)
-    .map((m) => `  ${m.from === 'me' ? '나' : m.from}: ${cut(m.body, CAPS.INJECT_LEN)}`);
+  const letter = isLetter(cfg);
+  const lines = room.msgs.slice(-(letter ? CAPS.LETTER_INJECT_N : CAPS.INJECT_N))
+    .map((m) => `  ${m.from === 'me' ? '나' : m.from}: ${cut(m.body, letter ? CAPS.LETTER_INJECT_LEN : CAPS.INJECT_LEN)}`);
+  if (letter) {
+    return [
+      `[${cfg.label}] 주인공이 주고받은 최근 서신 — "${room.name}"${room.kind === 'group' ? ` (${room.members.join(', ')})` : ''}:`,
+      ...lines,
+      '— 이 편지들은 이미 오간 사실이다. 서사에 자연스럽게 반영하되, 원문을 본문에 옮겨 적지 마라.',
+    ].join('\n');
+  }
   return [
     `[${cfg.label}] 주인공이 단말기로 나눈 최근 대화 — "${room.name}"${room.kind === 'group' ? ` (단체방: ${room.members.join(', ')})` : ''}:`,
     ...lines,
@@ -255,6 +281,25 @@ function interactionPrompt(schema, state, roomId, payload = {}) {
   const notes = cfg.notesVar && Array.isArray(state.vars?.[cfg.notesVar])
     ? state.vars[cfg.notesVar].filter((x) => room.members.some((m) => String(x).includes(m)))
     : [];
+  if (isLetter(cfg)) {
+    return [
+      `너는 "${cfg.label}" 서신 시뮬레이터다. 주인공이 방금 "${room.name}"에게 편지를 보냈다. 상대의 답장만 JSON으로 출력하라.`,
+      `받는 사람 (주인공 제외): ${room.members.join(', ')}`,
+      payload.persona ? `[인물 정보 — 이 말투와 설정 그대로]\n${String(payload.persona).slice(0, 2800)}` : null,
+      notes.length ? `[인물 최근 변화] ${notes.slice(0, 8).join(' · ')}` : null,
+      cfg.guide ? cfg.guide : null,
+      payload.narrative ? `[최근 이야기 맥락]\n${String(payload.narrative).slice(0, 1600)}` : null,
+      '',
+      '[지금까지 오간 편지]',
+      tail(room, 8, CAPS.LETTER_LEN) || '(첫 편지)',
+      '',
+      `- 답장 편지 1통${room.kind === 'group' ? ' — 여럿에게 보낸 서신이니 답할 사람만 쓴다 (전원 답장 강제 아님)' : ''}. from은 받는 사람 이름 중에서만.`,
+      '- 편지다 — 실시간 대화처럼 주고받지 마라. 받은 편지에 답하고, 할 말을 한 통에 담는다. 짧은 전갈에서 한 문단까지, 그 사람의 격식과 서명대로.',
+      '- 답장은 편지가 오가는 시간만큼 뒤에 도착한 것이다 — 그사이 상대 쪽 사정이 움직였을 수 있다.',
+      '- 상대는 주인공을 전지적으로 알지 못한다 — 직접 겪었거나 들은 것까지만. 모르는 사이면 모르는 사람에게 쓰듯 쓴다.',
+      `출력 형식 (JSON만, 다른 텍스트 금지): {"msgr":[{"id":${room.id},"msgs":[{"from":"이름","body":"내용"}]}]}`,
+    ].filter((x) => x !== null).join('\n');
+  }
   return [
     `너는 "${cfg.label}" 메신저 시뮬레이터다. 주인공이 방금 "${room.name}" 방에 메시지를 보냈다. 상대의 답장만 JSON으로 출력하라.`,
     `방 멤버 (주인공 제외): ${room.members.join(', ')}`,
@@ -279,8 +324,25 @@ function parseInteraction(text, extractJsonObject) {
   return Array.isArray(obj?.msgr) ? obj.msgr : null;
 }
 
+/**
+ * 인물 이름 → 답장 인격을 뽑을 로어북 문항 (v1.13.2, 어댑터 buildMsgrPersona가 부른다).
+ * 정확히 맞는 것부터 — 부분 일치만 보면 "리아나"가 앞에 있는 "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의
+ * 인격으로 썼다 (베리디아). 제목 = 이름 → 키워드 칸 하나 = 이름 → 이름의 한 낱말(「알라릭 여왕」→ 알라릭·여왕)로
+ * 같은 두 단계 → 마지막에만 옛 부분 일치. pool = 심코어 스키마 문항을 뺀 로어북 배열.
+ */
+function personaEntry(pool, name) {
+  const list = Array.isArray(pool) ? pool.filter(Boolean) : [];
+  const n0 = String(name ?? '').trim();
+  if (!n0) return null;
+  const keysOf = (l) => String(l.key || '').split(',').map((k) => k.trim()).filter(Boolean);
+  const exact = (n) => list.find((l) => String(l.comment || '').trim() === n) || list.find((l) => keysOf(l).includes(n));
+  let hit = exact(n0);
+  for (const w of n0.split(/\s+/).filter((x) => x.length >= 2 && x !== n0)) { if (hit) break; hit = exact(w); }
+  return hit || list.find((l) => String(l.key || '').includes(n0) || String(l.comment || '').includes(n0)) || null;
+}
+
 module.exports = {
-  CAPS, msgrConfig, initMsgr, ensureMsgr, msgrOpen, contacts,
+  CAPS, msgLen, msgrConfig, initMsgr, ensureMsgr, msgrOpen, contacts,
   createRoom, leaveRoom, setActive, markRead, userMsg,
-  applyDelta, firstContactRoom, auxSpec, mainLine, interactionPrompt, parseInteraction,
+  applyDelta, firstContactRoom, auxSpec, mainLine, interactionPrompt, parseInteraction, personaEntry,
 };

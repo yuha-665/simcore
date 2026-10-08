@@ -25,6 +25,7 @@ const patchMod = require('./patch');
 const { composeName, renderTag, resolveInPack, auxImageSpec, mainInjectionText } = require('./assets');
 const { timeConfig, exposedValues, EXPOSABLE, EXPOSED_LABELS, SKIP_DAY, SKIP_MIN } = require('./time');
 const { INTENSITIES } = require('./scenario');
+const secretMod = require('./secret'); // 비밀 (v1.10.0) — 종류·존재 알림 상수
 
 // 편집기 크롬 CSS — v1.7.13: 커뮤니티 UI 개조본(v1.0.7 기준, 그래파이트·얇은 선·파란 강조·반응형)의 CSS 층을 이식.
 // 개조본 DOM 전용 셀렉터(우리 DOM에 없는 클래스 1,233규칙)는 걸러냈고, 기존 클래스 재스타일·토큰·@media만 남겼다.
@@ -3981,6 +3982,7 @@ const SCHEMA_BOARD_RULES = [
 // 메신저(messenger, v1.2.0) — 단말기 문자.
 const SCHEMA_MSGR_RULES = [
   '- 메신저는 **주인공의 단말기 문자 패널**입니다 (헌터 단말기·스마트폰이 있는 세계에만). 방·대화는 세이브에 살고, 방은 **유저만** 팝니다 — AI가 만들거나 없애지 않습니다.',
+  '- 폰이 없는 세계면 `medium: "letter"`(v1.13.2) — 같은 패널을 **편지 왕래**로 씁니다. 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말(한 통에 할 말을 담는다·격식과 서명·오가는 시간만큼 늦은 답장)로 바뀌고 한 통이 600자까지 늡니다.',
   '- `contactsVar`(필수)가 연락처 풀입니다 — 동료 명부 같은 **이름 list 변수**를 연결하세요. "파티를 맺을 정도면 연락처는 안다"는 개념이라 별도 연락처 변수를 만들지 않습니다.',
   '- 1:1 방 최대 5개, 단체방 최대 2개 (상대 4명 + 본인 = 5인). 선톡은 `firstChance`(0~1, 기본 0.25) 확률 + `cooldown`(기본 3턴) — 뜬 턴만 보조 요청에 얹혀 평턴 비용 0.',
   '- **활성 방 하나만** 다음 인풋에 대화가 실립니다 — 비활성 방은 순수 패널 전용 (서사가 모름). 토큰 설계의 핵심이니 바꾸지 마세요.',
@@ -4037,6 +4039,42 @@ const SCHEMA_SCENARIO_RULES = [
   '- `onEnter` = 전환 순간 1회 효과(이벤트 효과와 같은 형식), `notify` = 전환 통지 한 줄.',
   '- **주인공(유저)의 행동·선택·결말을 정해 두지 마세요.** 시나리오는 무대를 옮기는 것이지 배우를 조종하는 것이 아닙니다.',
   '- 조건식에서 `scn_act`(현재 막 id)·`scn_turns`(현재 막 경과 턴)를 쓸 수 있습니다 — 지시문·이벤트를 막에 연동할 때.',
+  '- **되감기(회귀물)**: 효과 `{ "checkpoint": "save" }`를 막 onEnter에, `{ "checkpoint": "load" }`를 게임오버 이벤트·선택지에 두면 '
+  + '날짜·막·변수가 저장 시점으로 돌아갑니다. 되감아도 남길 변수는 최상위 `checkpoint.keep` (예: 회귀 횟수). 유저가 원할 때만 쓰세요.',
+];
+
+// 비밀(secrets, v1.10.0) — "모르는 건 말할 수 없다". 규격의 요점은 단계 나누기와 복선 어법이다 —
+// 여기서 AI가 0단계에 이유를 적으면 그 순간 복선이 스포일러가 된다.
+const SCHEMA_SECRET_RULES = [
+  '- 비밀(`secrets`)은 **밝혀지기 전엔 모델이 몰라야 하는 것**입니다. 단계(`tiers`)가 열려야 그 `text`가 프롬프트에 실리고, '
+  + '안 열린 단계는 프롬프트 어디에도 없습니다 — "말하지 마라"가 아니라 **모르니까 말할 수 없다**입니다.',
+  '- `kind` = `person`(인물이 숨기는 것) / `world`(아직 드러나지 않은 사실) / `plot`(이야기의 반전). 기계는 같고 어법·기본값만 다릅니다.',
+  '- `about` = 누구·무엇의 비밀인가 (인물 이름·장소). `label` = 상태창·로그에 보이는 이름 — **스포일러 없이**.',
+  '- `tell` = 존재 알림. `exists`면 "X에겐 말 못 할 사정이 있다 — 너도 내용은 모른다, 지어내지 마라"가 나가 모델이 숨기는 사람을 연기합니다. '
+  + '`none`이면 신호도 없습니다. 기본: 인물·세계 = exists, 반전 = none (**반전에 존재 신호는 예고입니다**).',
+  '- `tiers[0]` = 낌새(복선). when 생략 = 처음부터 열림. **이유 없는 행동만 쓰세요** — "왕가 문장을 보면 움찔한다"까지만, 왜는 다음 단계에. '
+  + '모델은 이유를 모른 채 그 행동을 합니다.',
+  '- `tiers[1..]` = `when`(조건식 — 플레이가 세우는 변수·`scn_act`·판정 결과, rand() 금지) + `text`(그 단계에서 밝혀지는 내용) '
+  + '+ `notify`(선택, 열리는 순간 한 줄). 공개는 누적 — 높은 단계가 열리면 아래도 함께, 한 번 열리면 안 닫힙니다.',
+  '- 조건식·상태창에서 `sec_<id>`(열린 최고 단계, -1=아직)를 읽을 수 있습니다 — `sec_lina >= 1`이면 지시문을 바꾸는 식으로.',
+  '- **카드·페르소나·로어북에 적힌 비밀은 이미 새고 있습니다.** 그쪽에서 빼고 여기에만 두세요 — 이 창구는 그 이동을 돕는 것이지 대체가 아닙니다.',
+  '- 유저 자신의 비밀(잠입 설정)도 됩니다 — `about`을 유저로, 여는 조건을 "들켰다" 변수로.',
+];
+
+// 무대 뒤(fronts, v1.12.0) — 유저가 안 봐도 흐르는 진영 시계. 규격의 요점은 세 겹(징후·밑작업·표면화)의 어법이다 —
+// 징후에 이유를 적으면 그 순간 밑작업이 샌다.
+const SCHEMA_FRONT_RULES = [
+  '- 무대 뒤(`fronts`)는 **유저가 안 보는 사이에도 움직이는 세력**입니다. 진영 하나 = 숨은 시계 하나(0~`max`, 기본 100). '
+  + '시계 값은 유저·모델·보조 AI 누구에게도 안 보이고, 문턱(`stages[].at`)을 넘을 때만 결과가 드러납니다.',
+  '- `rate` = 작중 **하루당** 오르는 양(시간 체계가 없으면 턴당). 숫자 또는 식(난이도 변수를 읽게). `when`이 거짓인 동안은 멈춥니다 — '
+  + '"이 세력이 움직이기 시작하는 조건"(예: 권능이 드러난 뒤부터).',
+  '- 문턱의 세 겹: `hint`(징후 — 모델에게 **이유 없이** 매 턴 깔림. "구호소가 자주 닫힌다"까지만) / `backstage`(밑작업 — 무대 뒤에서 벌어진 일. '
+  + '**표면화가 올 때까지 프롬프트에 없음**) / `surface`(표면화 — 사건이 터지는 통지 한 줄. 그 순간 그 단계까지의 밑작업이 모델에게 열림). '
+  + '`effects` = 문턱을 넘는 턴에 한 번 적용되는 결과(다른 줄기가 읽을 플래그).',
+  '- 유저의 개입은 효과 `{ "front": "진영id", "add": "-15" }` — 선택지·액션이 시계를 늦춥니다. 이미 열린 단계는 안 닫힙니다.',
+  '- 조건식에서 `fr_<id>`(시계 값)·`frs_<id>`(열린 최고 단계, -1=아직)를 읽을 수 있습니다 — 다른 줄기가 결과를 양념으로 읽을 때. '
+  + '**상태창·promptState.template에는 넣지 마세요** — 숨긴 의미가 없어집니다.',
+  '- 방치하면 언제 터지는지를 먼저 정하고(예: 한 달) 거꾸로 rate를 잡으세요. 표면화 단계가 없는 진영은 밑작업이 영영 안 열립니다.',
 ];
 
 // 상태창 구조(statusUI.groups/layout) — 꾸미기(CSS·커스텀 템플릿)와 창구를 나눈 쪽의 규격.
@@ -4048,7 +4086,8 @@ const SCHEMA_STATUS_RULES = [
   + '골드·일수처럼 상한이 없는 값에 달면 눈금이 거짓말을 합니다.',
   '- `"showWhen"`은 그 줄의 표시 조건입니다. 평소엔 0이고 사건이 있을 때만 의미가 생기는 값(질투·부상·수배)에 쓰세요.',
   '- 그룹 `"visibility"`: `show`(기본) / `collapsed`(접어둠 — 자주 안 보는 묶음) / `hidden`(화면에서 감춤 — 규칙만 쓰는 내부 수치).',
-  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 그룹이 둘 이상일 때만** 동작합니다.',
+  '- `"layout"`: `stack`(기본, 쌓기) / `tabs` / `accordion` / `popover`. **탭·팝업은 보이는 장이 둘 이상일 때만** 동작합니다. '
+  + '그룹에 `"tab": "장 이름"`을 주면 같은 이름끼리 한 장에 쌓입니다(없으면 그룹 하나가 한 장).',
   '- `"position"`: `bottom`(기본, 본문 아래) / `top`(본문 위 — 수치부터). 상태창이 메시지 어디에 그려질지입니다.',
   '- 색은 조건식으로 줍니다: `"color": "hp < max_hp * 0.3 ? \'#c0392b\' : \'#2e8b57\'"`. '
   + '**색 코드는 작은따옴표**로 감싸세요 — 편집기의 색 고르개가 그 형태만 되읽습니다.',
@@ -4077,7 +4116,7 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
@@ -4108,6 +4147,12 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '## 시나리오(scenario) — 중심 이야기를 막 단위로 끌고 가는 봇이면 (선택)',
     ...SCHEMA_SCENARIO_RULES,
     '',
+    '## 비밀(secrets) — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇이면 (선택)',
+    ...SCHEMA_SECRET_RULES,
+    '',
+    '## 무대 뒤(fronts) — 유저가 안 봐도 움직이는 세력이 있는 봇이면 (선택)',
+    ...SCHEMA_FRONT_RULES,
+    '',
     '## 시간 진행',
     ...SCHEMA_TIME_RULES,
     '',
@@ -4119,9 +4164,11 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   if (includeValidator) {
     parts.push('',
       '## 부록: 검증기 원문',
-      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다.',
+      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다 (주석 줄만 뺐습니다).',
       '```js',
-      String(validateSchema),
+      // 주석만 있는 줄은 뺀다 (v1.13.0) — 코드는 한 글자도 안 바뀐다. 개발 경위 주석이 검증기의 1할이 넘어
+      // 128KB 붙여넣기 상한에 닿았다 (test-aischema: 닿으면 상한을 올리지 말고 검증기 원문 동봉을 재고할 것)
+      String(validateSchema).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n'),
       '```');
   }
   // 대화형(v1.9.0) 꼬리 — "JSON 하나만"은 코드펜스 안의 규칙이지 답 전체의 규칙이 아니다
@@ -4244,9 +4291,37 @@ function patchIdDigest(schema) {
       const J = (v) => JSON.stringify(v);
       out.push('', '### 매 턴 정산 (rules.onTurn) — 응답마다 위에서부터 이 순서로 실행됩니다. **패치로 못 다룹니다**(id 없는 순서 목록이라 부분 패치가 없음) — 참조만. 이 공식이 있는데 "없다"고 하지 마세요. 고쳐야 하면 "[규칙·이벤트] 탭 첫 절(매 턴 자동 처리)에서 N번째 줄을 이렇게"라고 말로 안내하세요',
         ...ot.map((r, i) => r.list != null
-          ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`` : ''].filter(Boolean).join(' · ')}`
+          ? `${i + 1}. 목록 \`${r.list}\`: ${[r.add != null ? `add ${J(r.add)}` : '', r.remove != null ? `remove ${J(r.remove)}` : '', r.expire != null ? `expire \`${r.expire}\`${r.keepOverdue ? ' (keepOverdue — 지나도 안 지움)' : ''}` : ''].filter(Boolean).join(' · ')}`
           : `${i + 1}. \`${r.set}\` = \`${r.expr}\``));
     }
+  }
+  // 비밀(v1.10.0) — 패치 대상이 아니지만 참조를 알아야 한다: 조건식이 sec_<id>를 읽고, 단계 when이 변수를 읽는다.
+  // ⚠ 내용(text)은 여기 안 싣는다 — 이 다이제스트는 제작 어시스턴트에게 가지만, 다른 프롬프트에 습관적으로 복사되면
+  //   그게 곧 유출이다. 무엇이 있는지·몇 단계인지·무슨 변수를 읽는지까지만. (인라인 구간 — 모듈을 못 부른다)
+  if (Array.isArray(schema.secrets) && schema.secrets.length) {
+    out.push('', '### 비밀 (secrets) — 패치로 못 다룹니다 ([비밀] 탭 또는 탭 단위 내보내기/가져오기). 참조만 알아 두세요',
+      ...schema.secrets.filter((s) => s && typeof s === 'object').map((s, i) => {
+        const id = s.id || `secret${i + 1}`;
+        const refs = new Set();
+        for (const t of (Array.isArray(s.tiers) ? s.tiers : [])) {
+          if (typeof t?.when !== 'string') continue;
+          for (const m of t.when.replace(/"[^"]*"|'[^']*'/g, '').matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+            if (!/^(and|or|not|true|false)$/.test(m[0])) refs.add(m[0]);
+          }
+        }
+        return `- \`${id}\` (${s.kind || 'person'}${s.about ? `, ${s.about}` : ''}) — 단계 ${(s.tiers || []).length}개, `
+          + `조건이 읽는 변수: ${[...refs].map((r) => `\`${r}\``).join(' ') || '(없음)'} — **remove 금지**. `
+          + `조건식에서 \`sec_${id}\`(열린 최고 단계, -1=아직)를 읽을 수 있습니다`;
+      }));
+  }
+  // 무대 뒤 (v1.12.0) — 비밀과 같은 규약: 패치로 못 다루고, 참조만 싣는다 (징후·밑작업 글은 안 싣는다)
+  if (Array.isArray(schema.fronts) && schema.fronts.length) {
+    out.push('', '### 무대 뒤 (fronts) — 패치로 못 다룹니다 ([무대 뒤] 탭 또는 탭 단위 내보내기/가져오기). 참조만 알아 두세요',
+      ...schema.fronts.filter((f) => f && typeof f === 'object').map((f, i) => {
+        const id = f.id || `front${i + 1}`;
+        return `- \`${id}\`${f.about ? ` (${f.about})` : ''} — 문턱 ${(f.stages || []).length}개. 조건식에서 \`fr_${id}\`(시계)·\`frs_${id}\`(열린 단계)를 읽고, `
+          + `효과 \`{ "front": "${id}", "add": "-10" }\`로 시계를 늦출 수 있습니다 — **remove 금지**`;
+      }));
   }
   // 달력(v0.61) — 같은 이유: 일정 목록 변수를 지우면 달력이 깨지는데 AI가 원인을 모른다
   if (schema.calendar && typeof schema.calendar === 'object' && schema.calendar.list) {
@@ -4429,7 +4504,7 @@ function chatRules(blank) {
     ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
       '- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
       '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
-      + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭.']),
+      + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭, 비밀(밝혀지기 전엔 모델이 몰라야 하는 것 — 단계·여는 조건·존재 알림)은 [비밀] 탭.']),
     '',
   ];
 }
@@ -4582,7 +4657,9 @@ const EVENT_PATTERNS = [
     + 'onTurn에 한 줄 둬도 되고, 예시처럼 목록이 비어 있지 않을 때만 도는 이벤트로 둬도 된다.\n'
     + '기준은 **이 턴이 끝나는 시점**이어야 한다. 시간 체계(time)를 켰다면 `"elapsed"`가 그대로 정답이다 — '
     + '엔진이 onTurn·이벤트보다 **먼저** 시간을 굳히므로 이미 이번 턴이 반영된 값이다. '
-    + '(시간 체계 없이 직접 만든 카운터라면 아직 안 올라간 값이라 `"day + 1"`처럼 더해 줘야 한 턴 늦게 빠지지 않는다.)',
+    + '(시간 체계 없이 직접 만든 카운터라면 아직 안 올라간 값이라 `"day + 1"`처럼 더해 줘야 한 턴 늦게 빠지지 않는다.)\n'
+    + '기한이 지나도 **지우면 안 되는** 목록(빚·약속 — 이행·파기 전엔 남아야 하는 것)은 `"keepOverdue": true`를 같이 둔다 — '
+    + '시계로만 쓰여 `@+N` 굳히기와 `(N일)` 표시는 그대로 돌고, 지난 항목은 `(지남)`으로 남는다.',
     '{ "id": "law_expiry", "when": "count(laws) > 0",\n'
     + '  "effects": [{ "list": "laws", "expire": "elapsed" }] }'],
   ['값 자르기', '범위를 벗어난 값을 되돌린다. 플레이어에게 알릴 게 없으므로 notify를 넣지 않는다.',
@@ -4696,7 +4773,9 @@ const VAR_PATTERNS = [
     + '미니 표현식엔 반복문이 없어 불가능하고, 절대값이면 날짜를 며칠씩 건너뛰어도 저절로 맞기 때문입니다.\n'
     + '단 **보조 AI에게는 `@+기간`으로 쓰게 하세요**(`"@+1080"`). 추가되는 순간 시스템이 '
     + '위 expire 식으로 절대값을 계산해 굳힙니다. "지금 경과일 + 1080"을 모델에게 시키면 틀리고, '
-    + '틀려도 조용합니다 — 3000년에 끝나는 계약이 생겨도 아무도 모릅니다.',
+    + '틀려도 조용합니다 — 3000년에 끝나는 계약이 생겨도 아무도 모릅니다. '
+    + '**expire 규칙이 없는 목록에선 `@+N`이 안 굳어** `(N일)`이 영영 안 줄어듭니다 — 기한이 지나도 지우면 안 되는 목록(빚·약속)이면 '
+    + '`{"list":"favors","expire":"day","keepOverdue":true}`로 시계만 거세요.',
     '{ "id": "contracts", "label": "지속 계약", "type": "list", "init": [], "maxItems": 8,\n'
     + '  "desc": "매일 들어오는 수입원. \\"이름 +숫자\\" 형태로 끝에 일당을 적는다. 기한이 있으면 \\"@끝나는경과일\\"을 앞에 넣는다." }'],
   ['예고 (두 개가 한 쌍)', '"무엇이 오나" + "몇 턴 뒤". 다가오는 위협을 미리 알려 준비할 시간을 주는 장치. 도착하면 이벤트에서 처리하고 둘 다 초기화합니다.',
@@ -4727,7 +4806,7 @@ const VAR_FIELD_SPEC = [
   '| `maxItems` | list 전용, 최대 개수 |',
   '| `maxLength` | text 전용, 최대 글자수 |',
   '| `format` | 상태창 표시 형식. `{v}` 자리에 값이 들어갑니다 (예: `{v}G`, `{v}°C`, `{v}명`) |',
-  '| `desc` | (선택) 이 항목이 무슨 뜻인지 AI에게 알려주는 한 줄 |',
+  '| `desc` | (선택) 이 항목이 무슨 뜻인지 AI에게 알려주는 한 줄. **키 이름은 `desc`** — `description`은 읽지 않습니다 |',
   '| `group` | (선택) 편집기에서 묶어 보여 주는 그룹 이름 — 새 변수는 **가장 가까운 기존 그룹**을 붙이세요 (예: 경제, 인물-리아나). 순서·동작엔 영향 없음. 파생 변수에도 붙습니다 |',
   '',
   '파생 변수(`derived`)는 `{ "id", "label", "expr" }`(+ 선택 `format`)만 씁니다.',
@@ -4770,6 +4849,7 @@ function varReferenceIndex(schema) {
     if (!f || typeof f !== 'object') return;
     add(f.set, where, what); add(f.list, where, what);
     ex(f.expr, where, what); ex(f.expire, where, what);
+    if (f.gauge !== undefined) ex(String(f.gauge), where, what); // 사건 게이지 개입 (v1.14.0)
   });
   const evBlock = (e, where, what) => {
     ex(e.when, where, what); fx(e.effects, where, what);
@@ -4780,6 +4860,10 @@ function varReferenceIndex(schema) {
   (schema.rules?.events || []).forEach((e) => evBlock(e, '조건 이벤트', e.id));
   ex(typeof schema.rules?.randomEvents?.chancePerTurn === 'string' ? schema.rules.randomEvents.chancePerTurn : '',
     '랜덤 이벤트', '발동 확률식');
+  for (const k of ['perDay', 'perTurn']) { // 사건 게이지 (v1.14.0) — 차는 속도 식
+    const x = schema.rules?.randomEvents?.gauge?.[k];
+    ex(typeof x === 'string' ? x : '', '랜덤 이벤트', `게이지 ${k === 'perDay' ? '하루' : '턴'} 속도식`);
+  }
   (schema.rules?.randomEvents?.table || []).forEach((e) => evBlock(e, '랜덤 이벤트', e.id));
   (schema.directives || []).forEach((d) => { ex(d.when, '지시문', d.id); tpl(d.text, '지시문', d.id); });
   (schema.actions || []).forEach((a) => { ex(a.when, '액션', a.label ?? a.id); fx(a.effects, '액션', a.label ?? a.id); });
@@ -4836,10 +4920,11 @@ function varReferenceIndex(schema) {
     for (const k of ['accept', 'cancel']) for (const e of (Array.isArray(schema.questBoard[k]) ? schema.questBoard[k] : [])) add(e?.set, '의뢰판', `${k} 효과`);
     ex(schema.questBoard.when, '의뢰판', 'when');
   }
-  if (schema.liveChoices) { // 보조 갈림길 (v1.8.0)
-    ex(schema.liveChoices.when, '보조 갈림길', 'when');
-    if (typeof schema.liveChoices.chance === 'string') ex(schema.liveChoices.chance, '보조 갈림길', 'chance');
-    for (const t of (Array.isArray(schema.liveChoices.tags) ? schema.liveChoices.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
+  for (const L of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) { // 보조 갈림길 (v1.8.0, 여러 벌 v1.13.0)
+    if (!L || typeof L !== 'object') continue;
+    ex(L.when, '보조 갈림길', 'when');
+    if (typeof L.chance === 'string') ex(L.chance, '보조 갈림길', 'chance');
+    for (const t of (Array.isArray(L.tags) ? L.tags : [])) fx(t?.effects, '보조 갈림길', `태그 ${t?.id ?? '?'}`);
   }
   (schema.scenario?.acts || []).forEach((a) => {
     ex(a?.unlock, '시나리오', a?.id ?? '막'); tpl(a?.direct, '시나리오', a?.id ?? '막');
@@ -5135,6 +5220,10 @@ const TAB_SLICES = {
   // 시나리오(v0.91) — scenario 객체 통째 교체. 막의 선형 사슬이라 부분 교체가 오히려
   // 어긋난다 (unlock이 앞막의 흔적을 읽는 구조 — 한 막만 갈면 사슬이 끊긴다).
   scenario: { keys: ['scenario'], label: '시나리오' },
+  // 비밀(v1.10.0) — secrets 배열 통째 교체. 단계는 누적 사다리라 부분 교체가 어긋난다 (시나리오와 같은 이유).
+  secrets: { keys: ['secrets'], label: '비밀' },
+  // 무대 뒤(v1.12.0) — fronts 배열 통째 교체. 문턱은 오름차순 사다리라 부분 교체가 어긋난다 (비밀과 같은 이유).
+  fronts: { keys: ['fronts'], label: '무대 뒤' },
   // 시간(v1.0 #7) — time 객체 통째 교체. 일반 패치는 계속 금지 (예약 이름·달력 전환 위험)
   // 지만 탭 왕복은 [시간] 탭 손편집과 같은 위험 수준이라 연다 — 요청서가 달력 전환 경고 동봉.
   time: { keys: ['time'], label: '시간' },
@@ -5157,6 +5246,8 @@ const TAB_WANT_PH = {
   quest: '예: 길드 의뢰판 — 등급은 F~A, 보수는 등급별 밴드, 취소하면 평판 -3, 던전 안에선 안 보임',
   shop: '예: 코인으로 사는 시스템 상점 — 포션·스킬북·장비, 등급은 일반/레어/유니크만',
   scenario: '예: 흑막이 문파를 잠식하는 5막 — 처음엔 옅게, 조각 2개 모이면 전개로',
+  secrets: '예: 동료 리나의 정체 — 호감 60에 사정을, 편지를 찾으면 전모를',
+  fronts: '예: 신전의 암투 — 한 달 방치하면 성녀가 이단 심문에 회부, 그 전엔 구호소가 닫히는 징후만',
   time: '예: 현대 서울, 3월 개학 아침 시작 — 분 시계 + 요일·계절 노출',
 };
 
@@ -5194,6 +5285,15 @@ function tabItemCounts(schema, tabKey) {
   else if (tabKey === 'quest') { if (schema.questBoard) out.push(['questBoard', 1]); }
   else if (tabKey === 'time') { if (schema.time) out.push(['time', 1]); }
   else if (tabKey === 'scenario') push('scenario.acts', schema.scenario?.acts);
+  else if (tabKey === 'secrets') {
+    push('secrets', schema.secrets);
+    // 비밀 수만으로는 부족하다 — AI가 비밀은 남기고 단계만 솎아내면 전모가 사라진다
+    out.push(['단계(전체)', (schema.secrets || []).reduce((n, s) => n + ((s && s.tiers) || []).length, 0)]);
+  }
+  else if (tabKey === 'fronts') {
+    push('fronts', schema.fronts);
+    out.push(['문턱(전체)', (schema.fronts || []).reduce((n, f) => n + ((f && f.stages) || []).length, 0)]);
+  }
   else if (tabKey === 'rules') {
     push('rules.onTurn', schema.rules?.onTurn);
     push('rules.events', schema.rules?.events);
@@ -5305,6 +5405,22 @@ const FEATURE_RECIPES = [
       + '막마다 표면에서 보이는 것은 direct에, 아직 숨겨진 진상은 secret에 나눠 담고, '
       + '막 전환 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
   },
+  {
+    id: 'secrets', icon: '🔒', label: '비밀',
+    desc: '밝혀지기 전엔 모델이 몰라야 하는 것 — 낌새 → 부분 → 전모, 조건이 열 때까지 프롬프트에 없음',
+    // 여는 조건이 읽을 흔적이 있어야 한다 — 변수가 하나도 없으면 단계가 열릴 계기가 없다
+    needs: (s) => ((s.vars || []).length >= 1 ? null : '여는 조건이 읽을 변수가 최소 1개 필요합니다'),
+    steps: [{ tab: 'secrets', want: '이 봇의 설정에서 밝혀지기 전엔 모델이 몰라야 하는 것(인물의 과거·세계의 진상·반전)을 1~3개 골라 '
+      + '낌새 → 부분 → 전모의 단계로 짜 주세요. 낌새는 이유 없는 행동만, 여는 조건은 플레이가 실제로 움직이는 변수로 잡아 주세요.' }],
+  },
+  {
+    id: 'fronts', icon: '🎭', label: '무대 뒤',
+    desc: '유저가 안 봐도 움직이는 세력 — 숨은 시계가 작중 시간으로 흐르다 문턱에서 표면화',
+    // 흐르는 조건·결과 플래그가 읽을 흔적 — 변수가 하나도 없으면 결과를 남길 자리가 없다
+    needs: (s) => ((s.vars || []).length >= 1 ? null : '결과를 남길 변수가 최소 1개 필요합니다'),
+    steps: [{ tab: 'fronts', want: '이 봇의 세계에서 유저가 안 보는 사이에도 움직이는 세력을 1~3개 골라 무대 뒤 시계로 짜 주세요. '
+      + '방치하면 언제 터지는지를 먼저 정하고, 징후(이유 없이) → 밑작업 → 표면화 순서로 문턱을 잡아 주세요.' }],
+  },
 ];
 
 /**
@@ -5341,6 +5457,10 @@ function tabItemIds(schema, tabKey) {
     add('기념일', schema.calendar?.marks, 'label');
     // 일정 목록 연결은 스칼라지만 잃어버리면 등록 기능이 통째로 죽는다 — 신원으로 취급해 지킨다
     if (schema.calendar?.list) out.push(`일정 목록 ${schema.calendar.list}`);
+  } else if (tabKey === 'secrets') {
+    (schema.secrets || []).forEach((s, i) => out.push(`비밀 ${s?.label || s?.about || s?.id || `#${i + 1}`}`));
+  } else if (tabKey === 'fronts') {
+    (schema.fronts || []).forEach((f, i) => out.push(`진영 ${f?.label || f?.about || f?.id || `#${i + 1}`}`));
   } else if (tabKey === 'scenario') {
     (schema.scenario?.acts || []).forEach((a, i) => out.push(`막 ${a?.label || a?.id || `#${i + 1}`}`));
   } else if (tabKey === 'rules') {
@@ -5503,6 +5623,7 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
     body.push('## 나머지 두 종류',
       '- `rules.onTurn` — 매 턴 무조건 실행되는 정산. 순서가 중요합니다(위에서부터, 매번 파생 재계산).',
       '- `rules.randomEvents` — `chancePerTurn`(0~1 숫자 또는 같은 스케일의 식 — 식은 난이도 변수를 읽어 프리셋마다 빈도를 바꾼다) 확률로 `table`에서 `weight` 비례 추첨. 각 항목에 `cooldown`을 꼭 주세요.',
+      '  - 시간 체계가 있는 봇은 `gauge`(사건 게이지)를 권장: `{ "perDay": 7, "jitter": 0.5, "cooldown": 3 }` — 보이지 않는 게이지(`re_gauge` 0~100)가 작중 하루에 perDay씩 차고 100이면 후보 하나가 터진 뒤 0으로, cooldown일 동안 쉰다. 턴마다 굴리는 확률과 달리 **채팅 속도와 무관**하다. 게이지가 켜지면 항목 `cooldown`도 날 단위. perDay·perTurn은 식 가능(난이도·위협이 속도를 민다). 효과 `{ "gauge": "30" }`로 서사가 다음 사건을 당기거나(+) 늦춘다(−). 항목에 `omen`(징조 글 — 그 사건이 오기 전 주변의 겉모습, 무엇의 징조인지는 쓰지 않는다)을 주면 게이지가 80(`omenAt`)을 넘을 때 다음 사건을 미리 정하고 그 글을 메인에 이유 없는 징후로 깐다 — 좋은 일에도 달 수 있다.',
       '- `directives` — 조건이 참일 때 **메인 모델에게 가는 서술 지시문**. 수치가 아니라 분위기를 바꿉니다. `when`은 필수 — 항상 켜 둘 지시문은 `"when": "true"`.',
       '  예: `{ "id": "deadly_cold", "when": "indoor < -15", "text": "[상태] 실내조차 {indoor}°C다. 입김과 성에가 장면 전면에 나와야 한다." }`',
       '',
@@ -5531,7 +5652,9 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '  "guide": "둘 다 개막장이어야 한다 — 멀쩡한 길은 열에 하나." } }',
       '```',
       '- `chance` 확률(숫자 또는 식)로 매 전송 추첨하거나, 이벤트에 `"liveChoices": true`를 달아 트리거합니다. `when`이 거짓이면 닫힙니다 (온오프 변수를 넣으세요).',
-      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다.',
+      '- `worst` 태그 항목은 맨 끝 — 타임아웃·strict "last"의 "안 고르면 최악" 규약과 맞물립니다. `"shuffle": true`면 순서를 섞고, 안 고르면 여전히 worst 항목으로 갑니다.',
+      '- (v1.13.0) 성격이 다른 갈림길이 둘이면 **배열**로: `"liveChoices": [{ "id": "interview", … }, { "id": "stat", … }]`. 이벤트 트리거는 `"liveChoices": "interview"` (true = 첫 벌). 추첨은 배열 순서대로.',
+      '- 태그에 `check`를 달면 상태창 선택지 옆에 "🎲 판정이름 성공%"가 뜹니다 (vs가 있는 판정만).',
       '');
   } else if (tabKey === 'commands') {
     body.push('## 채팅 명령이 뭔가',
@@ -5810,6 +5933,56 @@ function buildTabExportPrompt(schema, tabKey, opts = {}) {
       '    { "id": "act3", "label": "절정", "unlock": "threat >= 60", "minTurns": 8, "intensity": "절정",',
       '      "direct": "더 이상 숨길 것이 없다 — 정면 충돌을 무대 중앙에 세워라." }',
       '  ] } }',
+      '```',
+      '');
+  } else if (tabKey === 'fronts') {
+    body.push('## 무대 뒤 규격', ...SCHEMA_FRONT_RULES, '',
+      '## 쓰는 순서',
+      '1. 이 세계에서 유저가 안 보는 사이에도 움직이는 세력을 고른다 (음모·거래·재난·경쟁자).',
+      '2. 방치하면 결국 무엇이 터지는지(표면화)를 먼저 쓰고, 언제쯤 터질지로 rate를 정한다 (예: 100을 한 달에 → 하루 3).',
+      '3. 거꾸로 앞 문턱에 징후(이유 없는 겉모습)와 밑작업(아무도 모르는 진행)을 나눠 담는다.',
+      '4. 유저가 막을 수 있는 길을 규칙·이벤트 탭의 선택지 효과 { "front": id, "add": 음수 }로 따로 연결한다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "fronts": [',
+      '  { "id": "temple", "about": "대신전", "label": "신전의 암투", "when": "power_known", "rate": 3,',
+      '    "stages": [',
+      '      { "at": 20, "hint": "신전 앞 구호소가 요즘 자주 문을 닫는다." },',
+      '      { "at": 50, "backstage": "대신관이 구호 자금을 빼돌려 추기경단을 매수했다." },',
+      '      { "at": 80, "surface": "성녀를 이단 심문에 회부한다는 공고가 붙었다.", "backstage": "증거는 대신관이 꾸민 것이다.",',
+      '        "effects": [{ "set": "saintess_exiled", "expr": "true" }] }',
+      '    ] }',
+      '] }',
+      '```',
+      '');
+  } else if (tabKey === 'secrets') {
+    body.push('## 비밀 규격', ...SCHEMA_SECRET_RULES, '',
+      '## 쓰는 순서 — 이 순서로 생각하면 안 새는 비밀이 나옵니다',
+      '1. 이 봇에서 **밝혀지기 전엔 모델이 몰라야 하는 것**을 고른다 (인물의 과거·세계의 진상·반전). 이미 카드에 적혀 있으면 그건 새는 중이다.',
+      '2. 비밀마다 끝(전모)을 먼저 쓰고, 거꾸로 낌새 → 부분 → 전모로 잘라 단계에 담는다.',
+      '3. 낌새 단계엔 이유 없는 행동만. 부분·전모의 조건은 위 계약표의 변수로 — 플레이가 실제로 움직이는 값이어야 합니다.',
+      '4. 종류를 고른다 — 인물·세계는 존재를 알리고, 반전은 알리지 않는다.',
+      '',
+      '## 이런 모양으로 주세요',
+      '⚠ 아래 예시는 **다른 봇의 변수 이름**입니다. 형태만 보고, 이름은 반드시 위 계약표의 것으로 바꿔 쓰세요.',
+      '```json',
+      '{ "secrets": [',
+      '  { "id": "lina_origin", "kind": "person", "about": "리나", "label": "리나의 과거",',
+      '    "tiers": [',
+      '      { "text": "궁정 예법에 익숙하다. 왕가 문장을 보면 움찔한다." },',
+      '      { "when": "affinity >= 60", "text": "수도를 나쁜 사정으로 떠났다.", "notify": "[비밀] 리나가 수도를 떠난 사정을 조금 털어놓았다." },',
+      '      { "when": "letter_found", "text": "추방된 왕녀다. 동생이 왕위를 찬탈했다.", "notify": "[비밀] 리나의 정체가 밝혀졌다." }',
+      '    ] },',
+      '  { "id": "ruins", "kind": "world", "about": "고대 유적", "label": "유적의 정체",',
+      '    "tiers": [',
+      '      { "text": "유적 근처에서 나침반이 돈다는 소문이 있다." },',
+      '      { "when": "explored >= 3", "text": "유적은 신전이 아니라 봉인 장치다." }',
+      '    ] },',
+      '  { "id": "twist", "kind": "plot", "label": "진상",',
+      '    "tiers": [ { "when": "scn_act == \\"act3\\"", "text": "의뢰인이 곧 범인이다." } ] }',
+      '] }',
       '```',
       '');
   } else {
@@ -6225,6 +6398,37 @@ function colorBuilder(it, varId, rerender) {
 }
 
 // 효과 행 목록 — 수식 효과 {set, expr} + 아이템 효과 {list, add, remove}
+// 체크포인트 효과 줄 (v1.11.0) — 효과 편집기 둘(effectRows·규칙 탭 ruleEffectRows)이 같이 쓴다. 규칙 #3: 엔진 기능엔 편집기 칸
+const CP_OP_OPTS = [['save', '⏪ 체크포인트 저장'], ['load', '⏪ 체크포인트 되감기']];
+function checkpointEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-checkpoint`, title: '저장 = 지금 상태를 칸에 적는다 · 되감기 = 그 칸의 시점으로 날짜·막·변수를 돌린다 (되감아도 남는 변수는 [시나리오] 탭 되감기 카드)' },
+    bindSelect(ef.checkpoint, CP_OP_OPTS, (v) => { ef.checkpoint = v; rerender(); }),
+    pair('칸', bindInput(ef.slot ?? '', (x) => { const t = x.trim(); if (t && t !== 'main') ef.slot = t; else delete ef.slot; rerender(); },
+      { cls: 'sce-w-s', ph: 'main' }), '칸 이름 (영문) — 비우면 main. 챕터마다 칸을 나눌 때만 씁니다'),
+    gripEl);
+}
+// 체크포인트 추가 버튼은 되감기를 켠 봇에만 (시나리오 탭 카드) — 이미 있는 줄은 언제나 그린다
+const checkpointOn = (schema) => !!schema.checkpoint && typeof schema.checkpoint === 'object';
+// 무대 뒤 개입 줄 (v1.12.0) { front, add } — 진영 시계를 늦추거나(음수) 당긴다. 진영이 있는 봇만 추가 버튼
+const frontIdsOf = (schema) => (Array.isArray(schema.fronts) ? schema.fronts : []).filter((f) => f && f.id).map((f) => f.id);
+function frontEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
+  const ids = frontIdsOf(schema);
+  return h('div', { class: `${cls} sce-effect-front`, title: '무대 뒤 진영 시계를 민다 — 음수면 늦추고, 양수면 당긴다. 이미 열린 단계는 안 닫힌다' },
+    h('span', {}, '🎭'),
+    bindSelect(ef.front, ids.length ? ids.map((x) => [x, `무대 뒤: ${x}`]) : [['', '(진영 없음)']], (v) => { ef.front = v; rerender(); }),
+    pair('더하기', bindInput(ef.add ?? '', (x) => { ef.add = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '-15' }), '음수면 늦춘다 (0~최대로 잘림)'),
+    gripEl);
+}
+
+// 사건 게이지 개입 줄 (v1.14.0) { gauge: 식 } — 다음 사건을 당기거나(+) 늦춘다(−). 게이지를 켠 봇만 추가 버튼
+const gaugeOn = (schema) => !!(schema.rules?.randomEvents?.gauge && typeof schema.rules.randomEvents.gauge === 'object');
+function gaugeEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
+  return h('div', { class: `${cls} sce-effect-gauge`, title: '보이지 않는 사건 게이지(0~100)에 더한다 — 양수면 다음 랜덤 사건이 빨리 오고, 음수면 늦게 온다' },
+    h('span', {}, '⏳'),
+    pair('사건 게이지 더하기', bindInput(ef.gauge ?? '', (x) => { ef.gauge = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: '+30' }), '음수면 늦춘다 (0~100으로 잘림)'),
+    gripEl);
+}
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -6232,6 +6436,9 @@ function effectRows(schema, effects, rerender) {
   const varOpts = nonListVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
   effects.forEach((ef, i) => {
+    if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.gauge !== undefined) { wrap.appendChild(gaugeEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -6262,6 +6469,24 @@ function effectRows(schema, effects, rerender) {
       effects.push({ list: listVars[0].id, add: [], remove: [] });
       rerender();
     } }, '+ 아이템 효과'));
+  }
+  if (checkpointOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ checkpoint: 'save' });
+      rerender();
+    } }, '+ ⏪ 체크포인트'));
+  }
+  if (frontIdsOf(schema).length) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ front: frontIdsOf(schema)[0], add: '-10' });
+      rerender();
+    } }, '+ 🎭 무대 뒤'));
+  }
+  if (gaugeOn(schema)) {
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+      effects.push({ gauge: '30' });
+      rerender();
+    } }, '+ ⏳ 사건 게이지'));
   }
   wrap.appendChild(btnRow);
   return wrap;
@@ -6436,6 +6661,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (schema.assets && !(schema.assets.packs || []).length && schema.assets.moduleManifests !== true) delete schema.assets;
     // 막을 다 지우면 scenario도 걷는다 — 같은 불변식
     if (schema.scenario && !(schema.scenario.acts || []).length) delete schema.scenario;
+    // 비밀을 다 지우면 secrets도 걷는다 — 같은 불변식 (v1.10.0)
+    if (Array.isArray(schema.secrets) && !schema.secrets.length) delete schema.secrets;
+    if (Array.isArray(schema.fronts) && !schema.fronts.length) delete schema.fronts;
   }
   normalize();
   let firstInstallGuideDismissed = false;
@@ -6454,7 +6682,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
   // 3층(심층 편집)의 탭들 — 진단은 1층(AI에게 맡기기 곁)으로, JSON은 2층(독립 작업대)으로 올라갔다
   const TABS = [
-    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'],
+    ['vars', '변수'], ['commands', '명령'], ['status', '상태창'], ['party', '편성표'], ['calendar', '달력'], ['board', '보드'], ['msgr', '메신저'], ['shop', '상점'], ['quest', '의뢰판'], ['rules', '규칙·이벤트'], ['scenario', '시나리오'], ['secrets', '비밀'], ['fronts', '무대 뒤'],
     ['actions', '액션'], ['checks', '판정'], ['time', '시간'], ['setup', '새 시작'], ['ai', 'AI 설정'],
   ];
 
@@ -7026,7 +7254,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 탭 내비 묶음 (v1.7.13 개조본 이식) — 메신저·의뢰판은 우리 쪽 탭.
   // v1.9.0: 기본 → 진행 → 세계 순. 세계 묶음은 전부 선택 모듈인데 필수 흐름(변수 → 규칙) 한가운데 앉아 있어서
   // 처음 만드는 사람이 [규칙·이벤트]를 못 보고 규칙을 변수 설명에 적었다 (실기 제보 — 얼추 돌다가 정산에서 깨짐).
-  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
+  const TAB_GROUPS = [['기본', ['vars', 'commands', 'status']], ['진행', ['rules', 'scenario', 'secrets', 'fronts', 'actions', 'checks', 'time', 'setup']], ['세계', ['party', 'calendar', 'board', 'msgr', 'shop', 'quest']], ['자동화', ['ai']]];
   // 만드는 순서 띠 (v1.9.0) — 3층 머리에. 처음 설치 순서(1층)와 같은 모양으로 "변수 → AI 설정 → 규칙 → 상태창"
   const DEEP_FLOW = [
     ['vars', '① 변수', '추적할 값을 만들어요 — 설명(desc)에는 뜻만, 언제 어떻게 바뀌는지는 ③에'],
@@ -7463,7 +7691,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-status-group-identity' }, groupDragHandle,
           h('div', { class: 'sce-status-group-title' },
             h('strong', {}, `${String(gi + 1).padStart(2, '0')}  ${groupLabel}`),
-            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}`))),
+            h('span', {}, `항목 ${g.items.length}개 · ${visibilityLabel}${g.showWhen ? ' · 조건부 표시' : ''}${g.tab ? ` · 장 '${g.tab}'` : ''}`))),
         h('div', { class: 'sce-status-group-actions' },
           groupMoveFeedback ? h('span', { class: 'sce-status-move-feedback', role: 'status', 'aria-live': 'polite' },
             `✓ ${groupMoveFeedback.position}번째로 이동`) : null,
@@ -7483,6 +7711,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ], (x) => { g.visibility = x === 'show' ? undefined : x; rerender(); })),
           statusField('그룹 표시 조건', bindInput(g.showWhen, (x) => { g.showWhen = x || undefined; rerender(); },
             { cls: 'sce-w-m', ph: '비우면 항상 표시' })),
+          // 한 장에 여러 그룹 (v1.12.1) — 쌓기엔 장이 없어 칸을 안 보인다 (값은 남는다)
+          ['tabs', 'accordion', 'popover'].includes(ui.layout)
+            ? statusField('묶을 장 이름', bindInput(g.tab, (x) => { g.tab = x.trim() || undefined; rerender(); },
+              { cls: 'sce-w-m', ph: '비우면 이 그룹만 한 장' }), '같은 이름끼리 한 탭에 쌓여요') : null,
         ));
         if (ui.groups.length >= 2) {
           body.appendChild(h('div', { class: 'sce-status-layout' },
@@ -7774,6 +8006,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     [/^\$\.questBoard\b/, '의뢰판', false],
     [/^\$\.time\b/, '시간', false],
     [/^\$\.scenario\b/, '시나리오', true],
+    [/^\$\.secrets\b/, '비밀', true],
+    [/^\$\.checkpoint\b/, '시나리오', true], // 되감기 카드 (v1.11.0)
+    [/^\$\.fronts\b/, '무대 뒤', true], // v1.12.0
     // 상태창은 v0.62부터 슬라이스가 생겨 [내보내기]로 다시 만들 수 있다.
     // promptState(AI에게 가는 상태 요약)는 같은 슬라이스가 아니라 따로 안내한다.
     [/^\$\.statusUI\b/, '상태창', true],
@@ -8339,6 +8574,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
 
       effects.forEach((ef, i) => {
+        if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.gauge !== undefined) { box.appendChild(gaugeEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -8350,7 +8588,19 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               }, { cls: 'sce-w-m', ph: '회복약' })),
               pair('제거', bindInput((ef.remove || []).join(', '), (x) => {
                 ef.remove = x.split(',').map((s) => s.trim()).filter(Boolean); rerender();
-              }, { cls: 'sce-w-m', ph: '녹슨 검' }))),
+              }, { cls: 'sce-w-m', ph: '녹슨 검' })),
+              // 기한 시계(expire) — 항목의 `@끝나는날`을 재는 식. 엔진·검증엔 처음부터 있었는데 칸이 없어 JSON으로만 넣었다 (규칙 #3)
+              pair('기한 시계', bindInput(ef.expire ?? '', (x) => {
+                const v = x.trim();
+                if (v) ef.expire = v; else { delete ef.expire; delete ef.keepOverdue; }
+                rerender();
+              }, { cls: 'sce-w-m', ph: 'day · elapsed (비우면 기한 안 셈)',
+                title: '항목의 @기한을 재는 식. 이 값보다 지난 항목은 스스로 빠진다 — @+N 굳히기와 (N일) 표시도 이 식을 쓴다' })),
+              // keepOverdue (v1.13.1) — 빚·약속처럼 지나도 이행·파기 전엔 남아야 하는 목록
+              ef.expire ? bindCheck(ef.keepOverdue, (x) => {
+                if (x) ef.keepOverdue = true; else delete ef.keepOverdue;
+                rerender();
+              }, '지나도 안 지움 — (지남)으로 남김') : null),
             ruleGrip(effects, i),
           ));
           return;
@@ -8384,6 +8634,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           },
         }, '+ 아이템 효과'));
+      }
+      if (checkpointOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ checkpoint: 'load' }); rerender(); },
+        }, '+ ⏪ 체크포인트'));
+      }
+      if (frontIdsOf(schema).length) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ front: frontIdsOf(schema)[0], add: '-10' }); rerender(); },
+        }, '+ 🎭 무대 뒤'));
+      }
+      if (gaugeOn(schema)) {
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1',
+          onclick: () => { effects.push({ gauge: '30' }); rerender(); },
+        }, '+ ⏳ 사건 게이지'));
       }
       box.appendChild(btnRow);
       return box;
@@ -8620,13 +8888,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (typeof chance === 'string') {
         try { chance = Number(evaluate(chance, lookup, null)); } catch { return null; }
       }
-      if (!isFinite(chance)) return null;
+      if (!isFinite(chance) && !engine.gaugeConfig(schema)) return null;
       const elig = re.table.map((ev) => {
         if (!ev.when) return true;
         try { return truthy(evaluate(ev.when, lookup, null)); } catch { return false; }
       });
       const total = re.table.reduce((s, ev, i) => s + (elig[i] ? (ev.weight ?? 1) : 0), 0);
-      return { chance: Math.max(0, Math.min(1, chance)), elig, total };
+      // 사건 게이지 (v1.14.0) — 확률 대신 "평균 며칠에 한 번" (시작 상태로 속도식을 평가, 후보가 늘 있다고 친 근사)
+      const gcfg = engine.gaugeConfig(schema);
+      const gauge = gcfg ? engine.gaugeMeanInterval(gcfg, lookup) : null;
+      return { chance: Math.max(0, Math.min(1, isFinite(chance) ? chance : 0)), elig, total, gauge, timed: !!timeConfig(schema) };
     })();
     const reProbLine = (ev, i) => {
       if (!reProb) return null;
@@ -8634,14 +8905,60 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         return h('div', { class: 'sce-derived-now sce-derived-now-err' },
           '시작 상태에선 조건 불충족 — 지금은 후보가 아니며 조건이 참이 되는 판에서만 추첨됩니다.');
       }
+      if (reProb.gauge) {
+        const share = reProb.total > 0 ? (ev.weight ?? 1) / reProb.total : 0;
+        const g = reProb.gauge, unit = reProb.timed ? '일' : '턴';
+        const every = g.days != null ? `평균 ${g.days.toFixed(1)}${unit}에 한 번` : (g.turns != null ? `평균 ${g.turns.toFixed(1)}턴에 한 번` : '게이지가 안 참 (효과로만)');
+        return h('div', { class: 'sce-derived-now' },
+          `시작 상태 기준 사건 ${every} · 그중 이 사건 ${(share * 100).toFixed(0)}% (weight ${ev.weight ?? 1}/${reProb.total}) · 쿨다운 제외`);
+      }
       const p = reProb.total > 0 ? reProb.chance * ((ev.weight ?? 1) / reProb.total) : 0;
       return h('div', { class: 'sce-derived-now' },
         `시작 상태 실효 확률 ≈ 턴당 ${(p * 100).toFixed(1)}% · 발동 ${(reProb.chance * 100).toFixed(0)}% × weight ${ev.weight ?? 1}/${reProb.total} · 쿨다운 제외`);
     };
 
     const randomList = h('div', { class: 'sce-rules-list' });
+    // 사건 게이지 (v1.14.0) — 발동 방식 둘: 턴마다 굴리는 확률 / 작중 시간으로 차는 숨은 게이지
+    const gOn = !!(re.gauge && typeof re.gauge === 'object' && !Array.isArray(re.gauge));
+    const cdUnit = gOn && timeConfig(schema) ? '일' : '턴';
+    const gRate = (k, ph) => bindInput(gOn ? (re.gauge[k] ?? '') : '', (x) => {
+      const t = String(x).trim(), n = Number(t);
+      if (!t) delete re.gauge[k]; else re.gauge[k] = isFinite(n) ? Math.max(0, n) : t;
+      rerender();
+    }, { cls: 'sce-w-l', ph });
     randomList.appendChild(h('div', { class: 'sce-rules-random-config' },
-      field('턴당 발동 확률',
+      field('발동 방식',
+        bindSelect(gOn ? 'gauge' : 'chance', [['chance', '🎲 확률 — 턴마다 굴린다'], ['gauge', '⏳ 게이지 — 작중 시간으로 차면 터진다']], (v) => {
+          if (v === 'gauge') { re.gauge = re.gauge || { perDay: 7, jitter: 0.5, cooldown: 3 }; delete re.chancePerTurn; }
+          else { delete re.gauge; if (re.chancePerTurn == null) re.chancePerTurn = 0.1; }
+          rerender();
+        }),
+        gOn ? '보이지 않는 게이지(0~100)가 작중 하루에 정한 양만큼 차고, 100이 되면 후보 중 하나가 터진 뒤 0으로 돌아가요. 채팅을 빨리 넘기든 한 날에 오래 머물든 작중 시간 기준으로 와요. 항목 쿨다운도 날 단위가 돼요.'
+          : '매 턴 이 확률로 굴려 후보 중 하나를 뽑아요. 하루에 턴을 많이 쓰면 사건도 그만큼 잦아져요 — 시간 체계가 있는 봇이면 게이지를 권해요.'),
+      gOn ? field('하루에 차는 양', gRate('perDay', '7 또는 식: 4 + hardship * 0.04'),
+        '100이 되면 터져요 — 7이면 평균 14일에 한 번. 식을 쓰면 매 턴 지금 상태로 계산해요(난이도·위협이 속도를 밀어요). 시간 체계가 없으면 한 턴 = 하루.') : null,
+      gOn ? field('턴마다 차는 양', gRate('perTurn', '0'),
+        '날이 안 가는 대화 턴에도 조금씩 — 보통 0 (날이 안 가면 사건도 안 오는 게 자연스러워요)') : null,
+      gOn ? field('흔들림 (%)',
+        bindInput(Math.round((re.gauge.jitter ?? 0.5) * 100), (x) => {
+          const n = Number(String(x).trim());
+          if (String(x).trim() === '' || !isFinite(n)) delete re.gauge.jitter; else re.gauge.jitter = Math.max(0, Math.min(100, n)) / 100;
+          rerender();
+        }, { cls: 'sce-w-s', ph: '50' }),
+        '50이면 차는 양이 ×0.5~×1.5 — 박자는 있되 달력처럼 딱 맞지 않게') : null,
+      gOn ? field(`터진 뒤 쉬는 ${cdUnit === '일' ? '날' : '턴'}`,
+        bindInput(re.gauge.cooldown ?? '', (x) => { const n = numOrNull(x); if (n == null || n <= 0) delete re.gauge.cooldown; else re.gauge.cooldown = n; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }),
+        '이 동안은 게이지가 안 차요 — 사건이 연달아 붙지 않게') : null,
+      // 징조 선 (v1.14.1) — 비우면 표에 징조 글이 있을 때 80, 0이면 끔
+      gOn ? field('징조가 비치는 선',
+        bindInput(re.gauge.omenAt ?? '', (x) => {
+          const t = String(x).trim(), n = Number(t);
+          if (!t) delete re.gauge.omenAt; else if (isFinite(n)) re.gauge.omenAt = Math.max(0, Math.min(99, n));
+          rerender();
+        }, { cls: 'sce-w-s', ph: '80' }),
+        '게이지가 이 선을 넘으면 다음에 올 사건을 미리 하나 정하고, 그 사건의 "징조" 글을 메인에 이유 없는 징후로 깔아요. 비우면 80, 0이면 꺼요') : null,
+      gOn ? null : field('턴당 발동 확률',
         bindInput(
           typeof re.chancePerTurn === 'string' ? re.chancePerTurn : Math.round((re.chancePerTurn ?? 0) * 100),
           (x) => {
@@ -8663,7 +8980,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-rules-card-head' },
           h('div', {},
             h('strong', {}, ev.id || `랜덤 이벤트 ${i + 1}`),
-            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}턴` : ''}`),
+            h('span', {}, `weight ${ev.weight ?? 1}${ev.cooldown ? ` · 쿨다운 ${ev.cooldown}${cdUnit}` : ''}`),
           ),
           h('div', { class: 'sce-rules-card-actions' }, keepBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), foldBtn(ev, ev.id || `랜덤 이벤트 ${i + 1}`), ruleGrip(re.table, i)),
         ),
@@ -8677,10 +8994,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
                 { cls: 'sce-w-s' })),
             field('쿨다운',
               bindInput(ev.cooldown, (x) => { ev.cooldown = numOrNull(x) ?? undefined; rerender(); },
-                { cls: 'sce-w-s', ph: '턴' })),
+                { cls: 'sce-w-s', ph: cdUnit })),
             field('후보 조건',
               bindInput(ev.when, (x) => { ev.when = x || undefined; rerender(); },
                 { cls: 'sce-w-l', ph: '(비우면 항상 후보) military < 150' })),
+            // 징조 (v1.14.1) — 게이지 모드에서만 비친다. 이유 없는 겉모습만 (무엇의 징조인지 말하면 스포일러)
+            gOn || ev.omen ? field('징조',
+              bindInput(ev.omen ?? '', (x) => { const t = String(x).trim(); if (t) ev.omen = t; else delete ev.omen; rerender(); },
+                { cls: 'sce-w-l', ph: '(비우면 징조 없이 온다) 서쪽 하늘이 저녁마다 누렇게 탄다.' }),
+              '게이지가 선을 넘어 이 사건이 다음 차례로 정해지면 메인에 깔려요 — 무엇의 징조인지는 말하지 말고 겉모습만') : null,
           ),
           h('div', { class: 'sce-rules-effect-block' },
             h('div', { class: 'sce-rules-subtitle' }, '발동 효과'),
@@ -8746,10 +9068,18 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function choiceEditor(ev) {
     const box = h('div', { class: 'sce-sub' });
     // 보조 갈림길 트리거 (v1.8.0) — liveChoices 설정이 있는 봇에서만 보인다 (설정이 없으면 깃발이 안 선다)
-    const liveTrigger = () => (schema.liveChoices
-      ? h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
-        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`))
-      : null);
+    const liveTrigger = () => {
+      if (!schema.liveChoices) return null;
+      if (Array.isArray(schema.liveChoices)) { // 여러 벌 (v1.13.0) — 어느 벌을 열지 고른다
+        const sets = schema.liveChoices.filter((L) => L && L.id);
+        const cur = ev.liveChoices === true ? (sets[0]?.id ?? '') : (typeof ev.liveChoices === 'string' ? ev.liveChoices : '');
+        return h('div', { class: 'sce-row' }, pair('발동하면 여는 보조 갈림길', bindSelect(cur, [['', '(안 연다)'],
+          ...sets.map((L) => [L.id, `${L.icon ?? '⌛'} ${L.label ?? L.id} (${L.id})`])],
+        (x) => { if (x) ev.liveChoices = x; else delete ev.liveChoices; rerender(); }), '다음 턴 응답 뒤에 선택지가 와요'));
+      }
+      return h('div', { class: 'sce-row' }, bindCheck(ev.liveChoices === true, (v) => { if (v) ev.liveChoices = true; else delete ev.liveChoices; rerender(); },
+        `${schema.liveChoices.icon ?? '⌛'} 발동하면 보조가 쓰는 갈림길(${schema.liveChoices.label ?? '선택지'})을 연다 — 다음 턴 응답 뒤에 선택지가 와요`));
+    };
     if (!Array.isArray(ev.choices)) {
       box.appendChild(h('div', { class: 'sce-choice-enable' },
         h('button', { class: 'sce-btn sce-mini', onclick: () => {
@@ -8821,8 +9151,30 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }));
       return box;
     }
-    const L = schema.liveChoices;
+    // 여러 벌 (v1.13.0) — 면접용·평소용처럼 성격이 다른 갈림길을 따로. 한 벌이면 객체 그대로 둔다 (옛 스키마 무변화)
+    const multi = Array.isArray(schema.liveChoices);
+    const sets = multi ? schema.liveChoices : [schema.liveChoices];
+    sets.forEach((L, si) => { if (L && typeof L === 'object') box.appendChild(liveSetEditor(L, si, multi)); });
+    box.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
+        const arr = multi ? schema.liveChoices : [schema.liveChoices];
+        arr.forEach((x, i) => { if (!x.id) x.id = i === 0 ? 'main' : `set${i + 1}`; });
+        let n = arr.length + 1;
+        while (arr.some((x) => x.id === `set${n}`)) n++;
+        arr.push({ id: `set${n}`, label: '선택지', icon: '⌛', chance: 0.1, count: [2, 3], timeout: 2, tags: [] });
+        schema.liveChoices = arr; rerender();
+      } }, '+ 갈림길 한 벌 더 (예: 면접용·평소용을 따로)')));
+    return box;
+  }
+
+  function liveSetEditor(L, si, multi) {
+    const box = h('div', { class: 'sce-live-set' });
     L.tags = Array.isArray(L.tags) ? L.tags : [];
+    if (multi) {
+      box.appendChild(h('div', { class: 'sce-row' },
+        pair(`${si + 1}번째 벌 id`, bindInput(L.id, (x) => { L.id = String(x).trim() || undefined; rerender(); }, { cls: 'sce-w-s', ph: 'interview' }),
+          si === 0 ? '이벤트 트리거가 이 id로 불러요 — 첫 벌은 "켜기"(true)로도 불려요' : '이벤트 트리거가 이 id로 불러요. 추첨은 위 벌부터 차례로')));
+    }
     const checkOpts = [['', '(없음)'], ...(schema.checks || []).map((k) => [k.id, `${k.label ?? k.id} (${k.id})`])];
     const tagOpts = [['', '(없음 — 마지막 항목이 그냥 마지막)'], ...L.tags.filter((t) => t && t.id).map((t) => [t.id, t.id])];
     box.appendChild(h('div', { class: 'sce-block' },
@@ -8844,10 +9196,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           (x) => { if (x) L.strict = x; else delete L.strict; rerender(); }),
           '켜면 선택지 밖의 글을 보내도 그 턴에 시스템이 정해요 — 플레이어 글은 AI에게 안 가요'),
         pair('타임아웃', bindInput(L.timeout ?? '', (x) => { const n = parseInt(x, 10); if (isFinite(n) && n >= 1) L.timeout = n; else delete L.timeout; rerender(); }, { cls: 'sce-w-s', ph: '턴' }),
-          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목'),
+          '강제가 아닐 때 — 이 턴 수 안 고르면 마지막 항목 (최악 태그가 있으면 그 항목)'),
         pair('최악 태그', bindSelect(L.worst ?? '', tagOpts, (x) => { if (x) L.worst = x; else delete L.worst; rerender(); }),
-          '보조가 이 태그를 하나 꼭 쓰고, 시스템이 그 항목을 맨 끝에 둬요 — 안 고르면 그리로'),
+          '보조가 이 태그를 하나 꼭 쓰고, 안 고르면 그 항목으로 흘러가요 (섞지 않으면 맨 끝에 둬요)'),
         bindCheck(L.showTags !== false, (v) => { L.showTags = v ? undefined : false; rerender(); }, '상태창 선택지에 태그 꼬리표 표시'),
+        // 섞기 (v1.13.0) — 모델은 좋은 답을 먼저 쓰고, 최악은 늘 끝이라 자리만 봐도 답이 보인다 (조퇴악녀 면접)
+        bindCheck(L.shuffle === true, (v) => { if (v) L.shuffle = true; else delete L.shuffle; rerender(); }, '항목 순서 섞기 (자리로 답이 안 보이게)'),
       ),
       pair('노출 조건', bindInput(L.when, (x) => { L.when = x || undefined; rerender(); }, { cls: 'sce-w-full', ph: '예: curse_on and not fight_on (비우면 항상)' }),
         '거짓이면 추첨도 부탁도 안 해요 — 온오프 변수를 하나 두고 여기 넣으면 플레이어가 /명령·버튼으로 끄고 켤 수 있어요'),
@@ -8876,8 +9230,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     box.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => { L.tags.push({ id: '', effects: [] }); rerender(); } }, '+ 태그'),
       h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
-        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) { delete schema.liveChoices; rerender(); }
-      } }, '떼기'),
+        if (confirm('보조가 쓰는 갈림길을 지울까요? (걸려 있던 선택지는 다음 전송에 풀립니다)')) {
+          if (multi) { schema.liveChoices.splice(si, 1); if (!schema.liveChoices.length) delete schema.liveChoices; }
+          else delete schema.liveChoices;
+          rerender();
+        }
+      } }, multi ? '이 벌 떼기' : '떼기'),
     ));
     return box;
   }
@@ -9823,6 +10181,40 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 탭: 시나리오 (v0.91, 설계 docs/design-시나리오레이터.md) ──────
   // 배포자가 이야기의 척추를 표로 적는 자리. 은닉이 요점이라 UI도 그 축이다 —
   // secret 칸에 "모델은 이 막부터 본다"를 계속 상기시킨다.
+  // 되감기 카드 (v1.11.0 체크포인트) — 회귀물·타임루프. 효과 줄(저장·되감기)은 막 진입 효과·이벤트·선택지에 두고,
+  // 여기선 "되감아도 남는 것"과 안내 한 줄만 정한다. 설계 docs/design-조퇴악녀.md §12
+  function checkpointCard(field) {
+    const sec = h('section', { class: 'sce-scenario-act-section sce-scenario-checkpoint', 'data-sce-validation-path': '$.checkpoint' },
+      h('div', { class: 'sce-scenario-group-title' }, '⏪ 되감기 (체크포인트)'),
+      h('div', { class: 'sce-scenario-note' },
+        '회귀물·타임루프용이에요. 막의 진입 효과에 "체크포인트 저장", 게임오버 이벤트·선택지에 "체크포인트 되감기"를 넣으면 '
+        + '날짜·현재 막·변수가 저장 시점으로 돌아가요. 이벤트의 1회 기록도 되감겨 그 사건이 다시 일어나요. 턴 번호와 채팅은 그대로예요.'));
+    const C = schema.checkpoint;
+    if (!C || typeof C !== 'object') {
+      sec.appendChild(addBtn('되감기 켜기', () => { schema.checkpoint = { keep: [] }; rerender(); }));
+      return sec;
+    }
+    const used = engine.checkpointSlots(schema);
+    const keep = new Set(Array.isArray(C.keep) ? C.keep : []);
+    const setKeep = (id, on) => { if (on) keep.add(id); else keep.delete(id); C.keep = schema.vars.map((v) => v.id).filter((x) => keep.has(x)); rerender(); };
+    sec.appendChild(h('div', { class: 'sce-scenario-field is-wide' }, h('span', {}, '되감아도 남는 변수'),
+      h('div', { class: 'sce-row', style: 'flex-wrap:wrap' }, ...schema.vars.map((v) => bindCheck(keep.has(v.id), (on) => setKeep(v.id, on), ` ${v.label ?? v.id}`))),
+      h('small', {}, '회귀자의 기억 — 회귀 횟수·기억 목록 같은 것. 체크하지 않은 변수는 전부 저장 시점 값으로 돌아가요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, bindCheck(C.keepSecrets !== false, (on) => {
+      if (on) delete C.keepSecrets; else C.keepSecrets = false; rerender();
+    }, ' 열린 비밀은 되감아도 안 닫힘 (끄면 비밀도 저장 시점 단계로)')));
+    sec.appendChild(field('되감긴 턴 안내', bindArea(C.notify, (x) => { if (x && x.trim()) C.notify = x; else delete C.notify; rerender(); },
+      '비우면 기본 안내("시간이 체크포인트 시점으로 되돌아갔다…"). {변수} 가능 — 예: [회귀 {loop}회차] 눈을 뜨면 다시 그 아침이다.'),
+      '되감긴 턴에 모델에게 한 번 가는 줄이에요. 선택지로 되감으면 그 턴, 이벤트로 되감으면 다음 턴에 실려요.', true));
+    const fmt = (set) => (set.size ? [...set].join(', ') : '없음');
+    sec.appendChild(h('div', { class: 'sce-scenario-note is-diagnostic' },
+      `쓰는 칸 — 저장: ${fmt(used.save)} · 되감기: ${fmt(used.load)}`
+      + (used.save.size || used.load.size ? '' : ' — 아직 효과가 없어요. 효과 목록의 [+ ⏪ 체크포인트] 버튼으로 넣으세요.')));
+    sec.appendChild(h('div', { class: 'sce-row' }, h('button', { class: 'sce-btn sce-danger', onclick: () => { delete schema.checkpoint; rerender(); } },
+      '되감기 설정 지우기 (효과 줄은 남음)')));
+    return sec;
+  }
+
   function tabScenario() {
     const wrap = h('div', { class: 'sce-scenario-editor' });
     const field = (label, control, help = '', wide = false) => h('label',
@@ -9943,12 +10335,219 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       S.acts.push({ id: `act${S.acts.length + 1}`, label: '', unlock: '', direct: '', secret: '' });
       rerender();
     })));
+    wrap.appendChild(checkpointCard(field));
     wrap.appendChild(h('section', { class: 'sce-scenario-danger' },
       h('div', {}, h('strong', {}, '시나리오 설정 삭제'),
         h('span', {}, '진행 중인 세이브의 막 위치는 남으며, 다시 켜면 1막부터 시작합니다.')),
       h('button', { class: 'sce-btn sce-danger', onclick: () => {
         delete schema.scenario; rerender();
       } }, '시나리오 삭제')));
+    wrap.appendChild(aiTools());
+    return wrap;
+  }
+
+  // 비밀 (v1.10.0) — 모르는 건 말할 수 없다. 규칙 #3: 엔진 기능엔 편집기 칸. 설계 docs/design-비밀.md
+  // 의뢰판·메신저와 같은 번호 섹션 골격(sce-board-*)을 그대로 쓴다 — 비밀 하나 = 카드 하나, 단계는 카드 안의 사다리.
+  function tabSecrets() {
+    const wrap = h('div', { class: 'sce-board-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 비밀 만들기'),
+          h('small', {}, '비밀의 단계·여는 조건·존재 알림 설정을 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-ai-fold-more' },
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('secrets')));
+    const KIND_OPTS = [['person', '인물 — 누군가 숨기는 것'], ['world', '세계 — 아직 드러나지 않은 사실'], ['plot', '반전 — 이야기의 진상']];
+    const TELL_OPTS = [['', '(종류 기본 — 인물·세계는 알림, 반전은 안 알림)'], ['exists', '알림 — "숨기는 게 있다"만'], ['none', '안 알림 — 신호도 없음']];
+    const list = Array.isArray(schema.secrets) ? schema.secrets : [];
+    const newSecret = (n) => ({ id: `secret${n}`, kind: 'person', about: '', tiers: [{ text: '' }, { when: '', text: '' }] });
+
+    wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+      h('h3', {}, '비밀'),
+      h('p', {}, '밝혀지기 전엔 모델이 몰라야 하는 것. 단계의 조건이 열려야 그 글이 프롬프트에 실리고, 안 열린 글은 프롬프트 어디에도 없어요 — 모르는 건 말할 수 없으니까요.')),
+      list.length ? h('div', { class: 'sce-board-summary' },
+        h('span', {}, `비밀 ${list.length}개`),
+        h('span', {}, `단계 ${list.reduce((n, s) => n + ((s && s.tiers) || []).length, 0)}개`)) : null));
+    // 기능의 절반 — 카드·페르소나에 적힌 비밀은 심코어 밖이라 이미 새고 있다. 옮기라고 말해 주지 않으면 "켰는데 왜 새냐"가 된다
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '⚠ 캐릭터 카드·페르소나·로어북에 적힌 비밀은 모델이 이미 봅니다. 그쪽에서 잘라 내고 여기로 옮겨야 효과가 있어요. '
+      + '"말하지 마라"는 지시가 막는 게 아니라, 프롬프트에 없는 것이 유일한 보장입니다.'));
+
+    if (!list.length) {
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '🔒'),
+        h('div', {}, h('h4', {}, '아직 비밀이 없어요'),
+          h('p', {}, '인물의 과거, 세계의 진상, 이야기의 반전 — 조건이 맞을 때까지 모델이 몰라야 하는 것을 낌새 → 부분 → 전모로 적어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => { schema.secrets = [newSecret(1)]; rerender(); } }, '비밀 만들기')));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
+
+    list.forEach((s, i) => {
+      if (!s || typeof s !== 'object') return;
+      s.tiers = Array.isArray(s.tiers) ? s.tiers : [];
+      const kind = secretMod.KINDS.includes(s.kind) ? s.kind : 'person';
+      const sid = s.id || `secret${i + 1}`;
+      const card = h('article', { class: 'sce-board-section', 'data-sce-validation-path': `$.secrets[${i}]` });
+      card.appendChild(h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, String(i + 1).padStart(2, '0')),
+        h('div', { class: 'sce-board-section-title' }, s.label || s.about || sid),
+        h('div', { class: 'sce-board-section-copy' }, `조건식·상태창에서 sec_${sid} = 열린 최고 단계 (−1이면 아직)`),
+        grip(list, i, rerender)));
+      const body = h('div', { class: 'sce-board-section-body' });
+      body.appendChild(h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('ID', bindInput(s.id, (x) => { s.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `secret${i + 1}` }),
+          '영문 식별자. 예약 이름 sec_<ID>가 생겨요.'),
+        field('종류', bindSelect(kind, KIND_OPTS, (x) => { s.kind = x; rerender(); }),
+          '기계는 같아요 — 어법과 기본값만 달라요.'),
+        field('누구·무엇의 비밀', bindInput(s.about, (x) => { s.about = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '리나 / 고대 유적 / (반전은 비워도)' }), '존재를 알릴 때 "누가 숨기는지"로 쓰여요.'),
+        field('표시 이름', bindInput(s.label, (x) => { s.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '리나의 과거' }), '상태창 자물쇠 칩·변화 로그에 보이는 이름 — 스포일러 없이.'),
+        field('존재 알림', bindSelect(s.tell ?? '', TELL_OPTS, (x) => { if (x) s.tell = x; else delete s.tell; rerender(); }),
+          kind === 'plot'
+            ? '반전은 "숨긴 게 있다"는 신호 자체가 예고예요 — 기본은 안 알림.'
+            : '알리면 모델이 "숨기는 사람"을 연기하되, 내용은 못 지어내요.')));
+
+      const tiersBox = h('div', { class: 'sce-board-stack sce-board-workgroup' });
+      tiersBox.appendChild(h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '밝혀지는 순서'),
+        h('span', {}, '낮은 단계부터 누적으로 공개돼요. 높은 단계 조건이 먼저 참이 되면 그 아래도 함께 열리고, 한 번 열리면 안 닫혀요.')));
+      s.tiers.forEach((t, j) => {
+        if (!t || typeof t !== 'object') return;
+        const row = h('div', { class: 'sce-board-field-grid', 'data-sce-validation-path': `$.secrets[${i}].tiers[${j}]` });
+        row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' },
+          h('strong', {}, j === 0 ? '1단계 — 낌새 (복선)' : `${j + 1}단계`),
+          h('span', {}, j === 0
+            ? '처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
+            : '조건이 참이 되는 순간 열려요.')));
+        if (j > 0) {
+          row.appendChild(field('여는 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
+            { cls: 'sce-w-l', ph: 'affinity >= 60 / letter_found / scn_act == "act3"' }),
+            '플레이가 세우는 변수로. rand()는 안 돼요 — 우연에 걸려면 랜덤 이벤트가 세운 변수를 읽게 하세요.', true));
+        }
+        row.appendChild(field('밝혀지는 내용', bindArea(t.text, (x) => { t.text = x; rerender(); },
+          j === 0 ? '궁정 예법에 익숙하다. 왕가 문장을 보면 움찔한다.' : '수도를 나쁜 사정으로 떠났다.'),
+          '이 단계가 열리면 모델에게 가는 글. 열리기 전엔 프롬프트 어디에도 없어요.', true));
+        row.appendChild(field('열릴 때 통지', bindInput(t.notify, (x) => { t.notify = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '[비밀] 리나가 과거를 조금 털어놓았다.' }), '다음 전송에 한 줄로 실려요. 비워도 돼요.', true));
+        row.appendChild(h('div', { class: 'is-wide' }, grip(s.tiers, j, rerender)));
+        tiersBox.appendChild(row);
+      });
+      tiersBox.appendChild(addBtn('단계 추가', () => { s.tiers.push({ when: '', text: '' }); rerender(); }));
+      body.appendChild(tiersBox);
+      card.appendChild(body);
+      wrap.appendChild(card);
+    });
+    wrap.appendChild(h('div', {}, addBtn('비밀 추가', () => { list.push(newSecret(list.length + 1)); schema.secrets = list; rerender(); })));
+    wrap.appendChild(aiTools());
+    return wrap;
+  }
+
+  // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계. 규칙 #3: 엔진 기능엔 편집기 칸. 설계 docs/design-조퇴악녀.md §15
+  // 비밀 탭과 같은 번호 섹션 골격(sce-board-*) — 진영 하나 = 카드 하나, 문턱은 카드 안의 사다리.
+  function tabFronts() {
+    const wrap = h('div', { class: 'sce-board-editor' });
+    const field = (label, control, help = '', wide = false) => h('label',
+      { class: `sce-board-field${wide ? ' is-wide' : ''}` },
+      h('span', {}, label), control, help ? h('small', {}, help) : null);
+    const aiTools = () => h('details', { class: 'sce-board-ai' },
+      h('summary', {},
+        h('span', {}, h('strong', {}, 'AI로 무대 뒤 만들기'),
+          h('small', {}, '진영 시계의 속도·문턱·징후·표면화를 만들거나 고칠 때 사용해요.')),
+        h('span', { class: 'sce-ai-fold-more' },
+          h('span', { class: 'sce-ai-fold-hint', 'aria-hidden': 'true' }),
+          h('span', { class: 'sce-board-ai-chevron', 'aria-hidden': 'true' }, '⌄'))),
+      h('div', { class: 'sce-board-ai-body' }, tabAiTools('fronts')));
+    const list = Array.isArray(schema.fronts) ? schema.fronts : [];
+    const unit = timeConfig(schema) ? '일' : '턴';
+    const newFront = (n) => ({ id: `front${n}`, about: '', rate: 3, stages: [{ at: 30, hint: '' }, { at: 60, backstage: '' }, { at: 90, surface: '' }] });
+    const numOrExpr = (x) => { const t = String(x ?? '').trim(); if (!t) return undefined; const n = Number(t); return Number.isFinite(n) ? n : t; };
+
+    wrap.appendChild(h('header', { class: 'sce-board-head' }, h('div', {},
+      h('h3', {}, '무대 뒤'),
+      h('p', {}, '유저가 안 보는 사이에도 움직이는 세력이에요. 숨은 시계가 작중 시간으로 흐르다가, 문턱을 넘으면 징후가 깔리고 결국 사건으로 터져요. '
+        + '시계 값은 유저·모델·보조 AI 누구에게도 안 보여요.')),
+      list.length ? h('div', { class: 'sce-board-summary' },
+        h('span', {}, `진영 ${list.length}개`),
+        h('span', {}, `문턱 ${list.reduce((n, f) => n + ((f && f.stages) || []).length, 0)}개`)) : null));
+    wrap.appendChild(h('div', { class: 'sce-hint' },
+      '유저가 막을 길은 [규칙·이벤트]의 선택지나 [액션] 효과에 "+ 🎭 무대 뒤"(시계 −N)로 연결해요. 이미 열린 문턱은 안 닫혀요. '
+      + '⏪ 되감기(체크포인트)를 쓰면 시계도 함께 되감겨요.'));
+
+    if (!list.length) {
+      wrap.appendChild(h('section', { class: 'sce-board-empty' },
+        h('div', { class: 'sce-board-empty-icon', 'aria-hidden': 'true' }, '🎭'),
+        h('div', {}, h('h4', {}, '아직 진영이 없어요'),
+          h('p', {}, '음모·거래·재난·경쟁자 — 유저가 손 놓고 있으면 결국 터지는 것을 징후 → 밑작업 → 표면화로 적어요.')),
+        h('button', { type: 'button', class: 'sce-btn', onclick: () => { schema.fronts = [newFront(1)]; rerender(); } }, '진영 만들기')));
+      wrap.appendChild(aiTools());
+      return wrap;
+    }
+
+    list.forEach((f, i) => {
+      if (!f || typeof f !== 'object') return;
+      f.stages = Array.isArray(f.stages) ? f.stages : [];
+      const fid = f.id || `front${i + 1}`;
+      const sched = engine.frontIdleSchedule(f);
+      const card = h('article', { class: 'sce-board-section', 'data-sce-validation-path': `$.fronts[${i}]` });
+      card.appendChild(h('div', { class: 'sce-board-section-head' },
+        h('div', { class: 'sce-board-step' }, String(i + 1).padStart(2, '0')),
+        h('div', { class: 'sce-board-section-title' }, f.label || f.about || fid),
+        h('div', { class: 'sce-board-section-copy' }, `조건식에서 fr_${fid} = 시계 값 · frs_${fid} = 열린 최고 단계 (−1이면 아직)`),
+        grip(list, i, rerender)));
+      const body = h('div', { class: 'sce-board-section-body' });
+      body.appendChild(h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
+        field('ID', bindInput(f.id, (x) => { f.id = x.trim(); rerender(); }, { cls: 'sce-w-s', ph: `front${i + 1}` }),
+          '영문 식별자. 예약 이름 fr_<ID>·frs_<ID>가 생겨요.'),
+        field('무엇 (모델에게 보이는 이름)', bindInput(f.about, (x) => { f.about = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '대신전 / 뒷골목 / 북부' }), '징후·드러난 일 앞에 붙어요. 음모라는 말은 쓰지 마세요 — 그 자체가 스포일러예요.'),
+        field('편집용 이름', bindInput(f.label, (x) => { f.label = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '신전의 암투' }), '편집기·진단에만 보여요.'),
+        field(`속도 (${unit}당)`, bindInput(f.rate ?? '', (x) => { const v = numOrExpr(x); if (v === undefined) delete f.rate; else f.rate = v; rerender(); },
+          { cls: 'sce-w-s', ph: '3' }), `작중 ${unit}마다 오르는 양. 숫자 또는 식(난이도 변수).`),
+        field('흐르는 조건', bindInput(f.when, (x) => { f.when = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '(비우면 처음부터) power_known and met_dianne' }), '거짓인 동안은 멈춰요. rand()는 안 돼요.', true),
+        field('최대', bindInput(f.max ?? '', (x) => { const n = Number(x); if (x !== '' && Number.isFinite(n) && n > 0) f.max = n; else delete f.max; rerender(); },
+          { cls: 'sce-w-s', ph: '100' }), '시계 상한.'),
+        field('시작값', bindInput(f.init ?? '', (x) => { const n = Number(x); if (x !== '' && Number.isFinite(n) && n >= 0) f.init = n; else delete f.init; rerender(); },
+          { cls: 'sce-w-s', ph: '0' }), '이미 진행 중인 음모면 올려 두세요.')));
+
+      const stagesBox = h('div', { class: 'sce-board-stack sce-board-workgroup' });
+      stagesBox.appendChild(h('div', { class: 'sce-board-toggle-copy' }, h('strong', {}, '문턱'),
+        h('span', {}, '시계가 문턱을 넘으면 그 단계가 열려요(안 닫힘). 징후는 이유 없이 깔리고, 밑작업은 표면화가 올 때까지 숨어 있다가 그때 한꺼번에 열려요.')));
+      f.stages.forEach((st, j) => {
+        if (!st || typeof st !== 'object') return;
+        const when = sched && sched[j] != null ? ` — 방치하면 ${sched[j]}${unit}째` : '';
+        const row = h('div', { class: 'sce-board-field-grid', 'data-sce-validation-path': `$.fronts[${i}].stages[${j}]` });
+        row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' }, h('strong', {}, `${j + 1}단계${when}`)));
+        row.appendChild(field('문턱', bindInput(st.at ?? '', (x) => { const n = Number(x); if (Number.isFinite(n)) st.at = n; rerender(); },
+          { cls: 'sce-w-s', ph: '30' }), '시계가 이 값에 닿으면 열려요.'));
+        row.appendChild(field('징후', bindArea(st.hint, (x) => { st.hint = x || undefined; rerender(); },
+          '신전 앞 구호소가 요즘 자주 문을 닫는다.'), '모델에게 매 턴 깔리는 겉모습 — 이유는 쓰지 마세요.', true));
+        row.appendChild(field('밑작업', bindArea(st.backstage, (x) => { st.backstage = x || undefined; rerender(); },
+          '대신관이 구호 자금을 빼돌려 추기경단을 매수했다.'), '무대 뒤에서 벌어진 일. 표면화가 올 때까지 프롬프트 어디에도 없어요.', true));
+        row.appendChild(field('표면화', bindInput(st.surface, (x) => { st.surface = x || undefined; rerender(); },
+          { cls: 'sce-w-l', ph: '성녀를 이단 심문에 회부한다는 공고가 붙었다.' }), '사건이 터지는 통지 한 줄 — 이때 밑작업이 모델에게 열려요.', true));
+        st.effects = Array.isArray(st.effects) ? st.effects : [];
+        row.appendChild(h('div', { class: 'is-wide' }, h('small', {}, '결과 (문턱을 넘는 턴에 한 번 — 다른 줄기가 읽을 플래그)'),
+          effectRows(schema, st.effects, rerender)));
+        row.appendChild(h('div', { class: 'is-wide' }, grip(f.stages, j, rerender)));
+        stagesBox.appendChild(row);
+      });
+      stagesBox.appendChild(addBtn('문턱 추가', () => {
+        const last = f.stages.length ? Number(f.stages[f.stages.length - 1].at) || 0 : 0;
+        f.stages.push({ at: Math.min(Number(f.max) || 100, last + 20) });
+        rerender();
+      }));
+      body.appendChild(stagesBox);
+      card.appendChild(body);
+      wrap.appendChild(card);
+    });
+    wrap.appendChild(h('div', {}, addBtn('진영 추가', () => { list.push(newFront(list.length + 1)); schema.fronts = list; rerender(); })));
     wrap.appendChild(aiTools());
     return wrap;
   }
@@ -10561,7 +11160,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('span', {}, `${M.icon || '📱'} ${M.label || '메신저'}`),
         h('span', {}, `연락처 ${M.contactsVar || '미연결'}`),
         h('span', {}, `선톡 ${M.firstChance ?? 0.25}`),
-        h('span', {}, `쿨 ${M.cooldown ?? 3}턴`))));
+        h('span', {}, `쿨 ${M.cooldown ?? 3}턴`),
+        M.medium === 'letter' ? h('span', {}, '✉ 편지') : null)));
 
     wrap.appendChild(section('01', '기본 정보', '채팅에 보이는 이름과 대화 상대가 되는 목록을 연결해요.',
       h('div', { class: 'sce-board-field-grid sce-board-workgroup' },
@@ -10589,6 +11189,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     wrap.appendChild(section('03', '문자 말투', '메신저에서만 사용할 문장 길이와 표현 습관을 정해요.',
       h('div', { class: 'sce-board-stack sce-board-workgroup' },
+        // v1.13.2 — 폰이 없는 세계(아틀리에·베리디아)는 편지. 보조에게 가는 말이 "문자 말투로 짧게"에서 편지 말로 바뀐다
+        field('매체', bindSelect(M.medium ?? 'text', [['text', '문자 — 단말기 (기본)'], ['letter', '편지 — 한 통 600자, 격식·서명']],
+          (x) => { if (x === 'letter') M.medium = 'letter'; else delete M.medium; rerender(); }),
+          '편지로 두면 답장이 "실시간 대화"가 아니라 한 통의 편지로 오고, 서사에도 "오간 서신"으로 전달돼요.'),
         field('말투 지침', bindArea(M.guide, (x) => { M.guide = x || undefined; rerender(); },
           '예: 짧고 용건 위주, 이모티콘·초성체(ㅇㅋ, ㄱㄱ) 섞임. 인물별 말투는 로어북·명단 프로필대로.'),
           '인물 고유 말투는 캐릭터 설정을 따르고, 여기에는 문자 대화에서 공통으로 지킬 규칙을 적어요.', true))));
@@ -12278,12 +12882,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const wrap = h('div');
     const fmtE = (e) => {
       if (e == null || typeof e !== 'object') return String(e);
+      if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
+      if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
+      if (e.gauge !== undefined) return `사건 게이지 ${String(e.gauge)}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
         if (e.add) ops.push(`추가 ${JSON.stringify(e.add)}`);
         if (e.remove) ops.push(`제거 ${JSON.stringify(e.remove)}`);
-        if (e.expire) ops.push(`기한만료 기준 ${e.expire}`);
+        if (e.expire) ops.push(`기한만료 기준 ${e.expire}${e.keepOverdue ? ' (지나도 안 지움)' : ''}`);
         return `목록 ${e.list}: ${ops.join(', ') || '(변경 없음)'}`;
       }
       return JSON.stringify(e);
@@ -12291,23 +12898,26 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const line = (icon, title, subs) => h('div', { class: 'sce-catalog-item' },
       h('div', { class: 'sce-catalog-item-title' }, `${icon} ${title}`),
       ...subs.filter(Boolean).map((s) => h('div', { class: 'sce-catalog-item-detail' }, s)));
+    const rndGauge = engine.gaugeConfig(schema); // 사건 게이지 (v1.14.0) — 확률 대신 게이지로 온다
     const eventRow = (e, random, rndChance) => {
       const condition = [];
       if (e.when) condition.push(e.when);
       if (e.check) condition.push(`판정 ${e.check}`);
       if (e.once) condition.push('한 번만 발동');
-      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}턴`);
+      if (e.cooldown != null) condition.push(`쿨다운 ${e.cooldown}${random && rndGauge && timeConfig(schema) ? '일' : '턴'}`);
       if (random && e.weight != null) condition.push(`가중치 ${e.weight}`);
       const effects = (e.effects || []).map(fmtE);
       if ((e.choices || []).length) effects.push(`갈림길 ${e.choices.length}개`);
       const kind = random
-        ? `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`
+        ? (rndGauge ? `랜덤 · 게이지 하루 +${rndGauge.perDay}${rndGauge.perTurn ? ` · 턴 +${rndGauge.perTurn}` : ''}`
+          : `랜덤 · 턴당 ${typeof rndChance === 'string' ? `식(${rndChance})` : `${Math.round(rndChance * 100)}%`}`)
         : '일반 이벤트';
       const fields = [
         ['추가된 항목', e.id || '(ID 없음)'],
         ['발동·조건', condition.join(' · ') || '조건 없음'],
         ['효과·변수 변경', effects.join(' · ') || '변경 없음'],
         ['통지', e.notify || '통지 없음'],
+        ...(random && e.omen ? [['징조', e.omen]] : []),
       ];
       return h('article', { class: 'sce-event-row' },
         h('div', { class: 'sce-event-head' },
@@ -14485,7 +15095,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 블록마다 숫자를 박던 방식이라 820·960·1040·680이 섞여 한 탭 안에서 오른쪽 끝이
   // 네 군데로 갈라져 있었다 (실측 제보). 새 블록이 늘어도 이 상자를 못 넘어간다.
   function deepBody() {
-    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, rules: tabRules, actions: tabActions,
+    const body = { vars: tabVars, commands: tabCommands, status: tabStatus, party: tabParty, calendar: tabCalendar, board: tabBoard, msgr: tabMessenger, shop: tabShop, quest: tabQuest, scenario: tabScenario, secrets: tabSecrets, fronts: tabFronts, rules: tabRules, actions: tabActions,
       checks: tabChecks, time: tabTime, setup: tabSetup, ai: tabAi }[activeTab]();
     return h('div', { class: 'sce-deep-body' }, deepFlowStrip(), body);
   }
@@ -14513,6 +15123,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (p.startsWith('$.actions')) return '액션';
       if (p.startsWith('$.checks')) return '판정';
       if (p.startsWith('$.scenario')) return '시나리오';
+      if (p.startsWith('$.secrets')) return '비밀';
+      if (p.startsWith('$.checkpoint')) return '시나리오'; // 되감기 카드 (v1.11.0)
+      if (p.startsWith('$.fronts')) return '무대 뒤';
       return '작업본';
     };
     const issueHtml = (e, warning = false) => `<div class="sce-validation-issue${warning ? ' is-warning' : ''}">`

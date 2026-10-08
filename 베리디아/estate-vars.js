@@ -104,7 +104,7 @@ const HINTS = {
 const QUIET = 'disaster == "" and route == "없음"';
 
 // ── 난이도 ──
-// 프리셋은 변수 초기값만 바꾼다. chancePerTurn 같은 스키마 상수는 못 건드린다.
+// 프리셋은 변수 초기값만 바꾼다. 사건 게이지 속도 같은 스키마 상수는 못 건드린다.
 // 그래서 "나쁜 일이 얼마나 자주 오나"를 변수 하나(hardship)로 옮긴다.
 //
 // ⚠ 사건을 켜고 끄는 게 아니라 **문턱을 민다.** 노말에서도 역병은 온다 — 정말 앓아누웠을 때만 올 뿐이다.
@@ -117,6 +117,14 @@ const thr = (v, op, at0, at100) => {
   const k = +((at100 - at0) / 100).toFixed(4);
   return `${v} ${op} ${at0} ${k < 0 ? '-' : '+'} hardship * ${Math.abs(k)}`;
 };
+
+// ── 이번 정산에서 재고가 빈 날 수 (2026-09-27, 도약 캡 철폐의 짝) ──
+// 재고 x, 하루 증감 s, 흐른 날 span. s < 0이면 k일째 끝에 x + s·k <= 0이 되는 날부터 끝까지가 빈 날이다 —
+//   첫 빈 날 = ceil(x / -s) (x가 0이면 첫날부터), 그래서 span - ceil(x / -s) + 1 을 [0, span]으로 자른다.
+// s >= 0이면 재고가 안 준다 — x도 0이고 s도 0일 때만 내내 빈다 (옛 식 "깎은 뒤 0인가"와 같은 판정).
+// span이 1이면 "x + s <= 0"과 정확히 같다 → 하루씩 가는 평소 턴은 옛 식과 값이 한 끗도 안 다르다.
+const lackDays = (x, s) => `${s} >= 0 ? (${x} <= 0 and ${s} == 0 ? span : 0)`
+  + ` : clamp(span - ceil(${x} / (0 - ${s})) + 1, 0, span)`;
 
 const SPOTS = EXPLORE[0][4].length;
 const SPOT_TOTAL = EXPLORE.reduce((a, e) => a + e[4].length, 0);
@@ -146,6 +154,9 @@ const NEIGH = [
   ['rel_cap', '왕도', '알라릭 여왕',   '14일',   10],   // 세무서와 메이드 학원만, 그것도 서류상
 ];
 const REL_STEPS = [[85, '동맹'], [65, '우호'], [45, '거래 상대'], [25, '관망'], [10, '이름만 앎'], [0, '미인지']];
+// 광휘회(§14-3)의 시선은 이웃과 같은 눈금에 다른 말 — 교단은 거래 상대가 아니라 "빛 아래 두는가"를 본다.
+// 10 = 장부에만: 왕국의 모든 영지는 대성당 장부에 있다(국교). 모르는 게 아니라 볼 이유가 없는 것.
+const CH_STEPS = [[85, '축복'], [65, '신임'], [45, '인정'], [25, '지켜봄'], [10, '장부에만'], [0, '모름']];
 
 // ── 인물 호감도 ──
 // rel_*(영지)와 다른 축이다. 모르웬의 병사들이 베리디아를 인정해도 모르웬 본인은 남작을 싫어할 수 있다.
@@ -194,6 +205,8 @@ const TIER = [
   ['S', '상급', 3000, 50, 15], ['E', '정예', 8000, 75, 30],
 ];
 const CAST_ALL = Object.values(CAST).flat();
+// 고용할 수 있는 자매 셋 (주교는 빼고) — 머무는 자매 수(sis_n)와 교단의 등급 문턱(sis_open)이 이 이름으로 corps를 센다
+const SISTERS = CAST['광휘회'].filter(([, , , rank]) => rank).map(([, name]) => name);
 const RANKNAME = Object.fromEntries(TIER.map(([k, label]) => [k, label]));
 
 // ── 직무 배치 (리메이크 P3, docs/design-베리디아-리메이크.md §4-1) ──
@@ -239,6 +252,93 @@ const bondLine = (rows) => rows.map(([id, name, , rank]) =>
 // 상수로 박아 두면 프리셋이 못 건드린다(프리셋은 변수 초기값만 바꾼다). 그래서 변수로 둔다.
 const hireCost = (base) => `round(${base} * hire_mult * 0.01 * (1.3 - fame * 0.006))`;
 const hireWage = (w) => `round(${w} * hire_mult * 0.01)`;
+
+// ── 서신 상대 (§14-2) ── 영지 밖의 이름 있는 사람들: 왕가 넷 + 귀족 다섯 + 주교. 메이드·수녀는 고용 풀이라 뺀다(오면 곁에 있다).
+// 여왕은 CAST 표기("알라릭 여왕")를 그대로 — 어댑터가 이름의 한 낱말(알라릭·여왕)로도 로어북 문항을 찾는다 (v1.13.2).
+const PEN = [...CAST['왕가와 동행'].slice(1), ...CAST['귀족'], ['beatrix', '베아트릭스']].map(([, name]) => name);
+
+// ── 청원인 무리 (§14-2) ── 청원함의 등급 = 누가 청하나. 사례 밴드가 무리마다 다르다 — 영지민에게 금화를 바라는 영주는 없다.
+//   [무리, 사례 최소, 최대, 언제 청하나(보조 게시 지침)]
+const PET_CIRCLES = [
+  ['영지민', 0, 30, '언제나 — 우물·다리·밭 경계 다툼·혼례·장례·아픈 식구·겨울 땔감. 사례는 대개 달걀 한 바구니, 아니면 마음이다'],
+  ['유랑민', 0, 20, '관문 앞에 사람이 기다릴 때만(drifters) — 들여 달라, 일자리, 빵, 흩어진 식구 찾기, 병든 아이'],
+  ['상단', 60, 500, '거래가 텄거나 이름이 났을 때 — 곡물·목재를 사겠다, 짐수레 호위(도적이 많을수록), 장터 자리, 창고 빌리기'],
+  ['길드', 40, 300, '모험가 길드 연락소가 들어와 있을 때만 — 현상금 반씩 대기, 다친 모험가 치료, 사냥터 출입, 소란 뒷수습'],
+  ['광휘회', 0, 200, '교단이 지켜볼 때(rel_ch 25↑)나 예배당·자매·역병과 얽혔을 때 — 예배당 손보기, 순례자 재워 주기, 구호 곡식, 십일조, 이단 소문 조사'],
+  ['이웃 영지', 100, 800, '그 영지가 이쪽을 "관망" 이상으로 알 때만(rel_* 25↑) — 이웃은 저마다 세는 것을 청한다'],
+  ['왕도', 0, 400, '왕도가 이쪽을 볼 때만(rel_cap 35↑) — 호구 조사, 징발 명단, 감찰관 접대, 세납 앞당기기, 왕녀 쪽 부탁'],
+];
+
+// ── 혼담 (§14-4) ── 정조역전 [원본]: 여자가 원하는 남자를 "차지"하고 책임진다 — 남자에게 가장 큰 영예는 강한 여자에게 선택받아
+// 보호받는 것. 그래서 혼담은 남작이 청하는 게 아니라 가문(대개 그 집의 여자 본인)이 **차지하러 오는 것**이다. 번영할수록 온다.
+// 여왕은 없다 — "외교 혼담은 책상에서 밀어낸다" [원본 여왕]. 실바나는 가문의 뜻으로는 안 온다 — "누구와 혼인해야 하는지 정해 주는 것"을
+// 싫어한다 [원본 실바나]: 개인 호감으로만. 왕녀 셋은 계승 판세와 맞물린다 — 받아들이면 지지가 공개로 굳는다.
+//   { k: enum 값(= 사람 이름), label: 화면 이름, bond: 호감 변수, rel: 영지 인식 변수(없으면 null), gate: 청혼 조건,
+//     pw: 왕녀면 세력 변수, gift: 혼례 예물 효과, giftList: 목록 예물, gift_txt: 예물 한 줄, ask: 청혼 통지,
+//     omen: 청혼이 다음 차례로 정해졌을 때 주변에 비치는 징조 (§14-7 — 누가 무엇 하러 오는지는 말하지 않는다) }
+const SUITORS = [
+  { k: '모르웬', label: '모르웬 백작', bond: 'b_morwen', rel: 'rel_n', gate: '(rel_n >= 35 or b_morwen >= 25)',
+    gift: [{ set: 'army', expr: 'army + 20' }, { set: 'threat', expr: 'clamp(threat - 10, 0, 100)' }], gift_txt: '북부 병사 스물과 몬스터 전선의 칼',
+    omen: '북쪽에서 온 병사 몇이 주막에서 남작의 나이와 성품을 묻고 갔다고 한다.',
+    ask: '[혼담 — 북에서] 모르웬 백작 쪽에서 사람이 왔다. 정치에 서툰 사람답게 돌려 말하지 않는다 — 모르웬 가문이 이 땅의 남작을 차지하고 '
+      + '책임지겠다는 것. 백작 본인이 나섰는지 가문의 누구를 내세웠는지는 이번 장면에서 정하라.' },
+  { k: '리아나', label: '리아나 백작', bond: 'b_liana', rel: 'rel_e', gate: '(rel_e >= 35 or b_liana >= 25)',
+    gift: [], giftList: ['리아나 가문 뱃길 +12'], gift_txt: '강 아래 뱃길 — 하루 +12',
+    omen: '동쪽 뱃사람들이 요즘 남작 이야기를 자주 한다 — 누가 물어보라고 시킨 것처럼.',
+    ask: '[혼담 — 동에서] 리아나 백작의 혼담이 왔다. 계산이 붙어 있다는 걸 숨기지 않는다 — 무너진 부두, 쌓인 빚, 그걸 일으킬 사람과 땅. '
+      + '그래도 청은 청이고, 이 세계에서 여자가 남자를 차지하겠다는 건 책임지겠다는 말이다. 누가 나섰는지는 이번 장면에서 정하라.' },
+  { k: '발레리우스', label: '발레리우스 백작', bond: 'b_valerius', rel: 'rel_s', gate: '(rel_s >= 35 or b_valerius >= 25)',
+    gift: [{ set: 'food', expr: 'food + 2000' }], giftList: ['발레리우스 가문 곡물 거래 +8'], gift_txt: '곡물 2000과 곡물 거래 하루 +8',
+    omen: '남쪽 곡물상이 곳간 크기와 올해 수확을 유난히 꼼꼼히 묻고 갔다.',
+    ask: '[혼담 — 남에서] 발레리우스 가문이 혼담을 보냈다. 효율을 보는 집이다 — 이 땅의 수확, 그리고 그걸 거둔 남자. '
+      + '혼인이 흡수의 다른 이름일 수 있다는 걸 모두 안다. 백작 본인인지 가문의 누구인지는 이번 장면에서 정하라.' },
+  { k: '실바나', label: '실바나 후작', bond: 'b_silvana', rel: 'rel_w', gate: 'b_silvana >= 30',
+    gift: [{ set: 'fame', expr: 'clamp(fame + 3, 0, 100)' }], giftList: ['실바나 가문 숲 물산 +10'], gift_txt: '서쪽 숲의 물산 하루 +10',
+    omen: '서쪽 숲 쪽에서 매 한 마리가 며칠째 성채 위를 돈다.',
+    ask: '[혼담 — 서에서] 가문이 아니라 실바나 본인이다. 정해 주는 혼인을 누구보다 싫어하던 그녀가 제 뜻으로 — 묶이는 걸 제일 싫어하는 '
+      + '사람이 먼저 이 남자를 차지하겠다고 한다. 바람 같은 청혼이다.' },
+  { k: '엘레오노라', label: '엘레오노라 공작', bond: 'b_eleonora', rel: null, gate: 'my_weight >= 25 and (rel_cap >= 30 or b_eleonora >= 25)',
+    gift: [{ set: 'gold', expr: 'gold + 3000' }, { set: 'unrest', expr: 'clamp(unrest - 15, 0, 100)' }], gift_txt: '금화 3000과 중앙 공작가의 질서',
+    omen: '공작가 문장을 단 기수 둘이 가도에서 성채를 한참 올려다보고 갔다.',
+    ask: '[혼담 — 중앙 공작가] 엘레오노라 공작은 묻지 않는다 — 청이라기보다 통보에 가깝다. "남자를 데려가는 건 협상이 아니라 차지하는 것." '
+      + '공작가가 이 땅을 발밑에 두겠다는 뜻이기도 하다.' },
+  ...[['카산드라', 'b_cassandra', 'pw_cass', '제1왕녀 카산드라의 사람이 은밀히 왔다 — 판 위의 모든 말을 확인해야 직성이 풀리는 그녀가 이 땅의 남작을 제 판에 올리려 한다.',
+      '왕도에서 온 서기 하나가 남작의 이력을 적어 갔다는 말이 돈다.'],
+    ['오렐리아', 'b_orelia', 'pw_orel', '제2왕녀 오렐리아가 다정한 편지로 청혼했다 — 고아원의 성녀. 그 얼굴 뒤를 아는 사람은 드물다.',
+      '고아원 수녀들이 남작을 위해 기도했다는 소식이 닿았다 — 누가 청했는지는 모른다.'],
+    ['릴리아나', 'b_liliana', 'pw_lili', '제3왕녀 릴리아나가 — 규칙을 싫어하는 그녀답게 — 느닷없이 청혼했다. 장난인지 진심인지는 장면이 정한다.',
+      '왕도 사교계에서 남작 이름으로 내기가 걸렸다는 소문이 돈다.'],
+  ].map(([k, bond, pw, line, omen]) => ({
+    k, label: `${k} 왕녀`, bond, rel: 'rel_cap', pw, omen,
+    gate: `rel_cap >= 35 and my_weight >= 30 and (stance == "${k}" or ${bond} >= 25 or (stance == "중립" and frontrunner == "${k}"))`,
+    gift: [{ set: 'gold', expr: 'gold + 2000' }, { set: pw, expr: `clamp(${pw} + 8, 5, 100)` }], gift_txt: `금화 2000과 궁정의 자리 (${k} 세력 +8)`,
+    ask: `[혼담 — 왕도에서] ${line} 받아들이면 계승 다툼에서 더는 숨을 수 없다 — 왕녀의 배필은 곧 그 왕녀의 편이다.`,
+  })),
+];
+const SUIT_KEYS = SUITORS.map((s) => s.k);
+const suitId = (s) => s.bond.slice(2);   // 이벤트 id 꼬리 — b_morwen → morwen
+// 받아들임 = 혼약. 그 가문의 인식 +10 · 그 사람의 호감 +12 · 예순 날 뒤 혼례. 왕녀면 지지가 그 왕녀로 굳고 전부 드러난다(혼약은 못 숨긴다).
+const acceptFx = (s) => [
+  ...(s.rel ? [{ set: s.rel, expr: `clamp(${s.rel} + 10, 0, 100)` }] : []),
+  { set: s.bond, expr: `clamp(${s.bond} + 12, -50, 100)` },
+  ...(s.pw ? [{ set: 'stance', expr: JSON.stringify(s.k) }, { set: 'exposed', expr: '100' }] : []),
+  { set: 'spouse', expr: JSON.stringify(s.k) }, { set: 'wed_at', expr: 'day + 60' },
+];
+// 물림 = 원한. 엘레오노라는 더 — 그녀에겐 물음이 아니었다
+const refuseFx = (s, rel, bond) => [
+  ...(s.rel ? [{ set: s.rel, expr: `clamp(${s.rel} - ${rel}, 0, 100)` }] : []),
+  { set: s.bond, expr: `clamp(${s.bond} - ${s.k === '엘레오노라' ? bond + 4 : bond}, -50, 100)` },
+];
+// 누가 청했는지가 변수(suit·spouse)에 있을 때 — 같은 효과를 청혼인마다 갈래로 (답을 들으러 온 턴·혼약 파기)
+const byWho = (who, varId, per) => {
+  const arms = SUITORS.map((s) => [s.k, per(s)]).filter(([, e]) => e != null);
+  return { set: varId, expr: arms.reduceRight((acc, [k, e]) => `${who} == ${JSON.stringify(k)} ? ${e} : (${acc})`, varId) };
+};
+const RELS = [...new Set(SUITORS.map((s) => s.rel).filter(Boolean))];
+const fxByWho = (who, fx) => [
+  ...RELS.map((rv) => byWho(who, rv, (s) => { const e = fx(s).find((f) => f.set === rv); return e ? e.expr : null; })),
+  ...SUITORS.map((s) => byWho(who, s.bond, (x) => (x === s ? fx(s).find((f) => f.set === s.bond).expr : null))),
+];
 
 const FEST = [
   [1, 15, '한밤절', '한 해에서 밤이 가장 긴 무렵. 불을 끄지 않고 새운다. 이 밤에 화로가 꺼진 집은 한 해 내내 입에 오른다.'],
@@ -320,8 +420,12 @@ const S = {
     // 시계(time_epoch)에 굳힌다. 옛 days_passed와 결정적 차이: **0이면 날짜가 안 흐른다.**
     // 같은 날 안의 장면 여러 턴이 며칠씩 흐르던 "1아웃풋=1일" 왜곡(design-시간.md)이 사라진다.
     // ⚠ 진행 규칙은 이 desc에 적는다 — 지시문은 메인 전용이라 보조가 못 읽는다.
-    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 14,
-      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, next week = 7. '
+    // 도약 캡 철폐 (2026-09-27, 플러그인 규칙 #10 "달력은 서사를 따라간다"): 옛 max 14는 "석 달 뒤"를 14일로 깎아
+    //   달력·정산이 서사에 뒤처지게 했다. 3650은 한계가 아니라 날짜 오기입(20260305) 백스톱 — 내장 템플릿과 같은 값.
+    //   긴 도약에서 곳간이 도중에 비는 경우는 아래 lack_* 가 굶은 날만큼만 벌한다.
+    { id: 'skip_day', label: '흐른 날', type: 'int', init: 0, min: 0, max: 3650,
+      desc: 'Days that passed in this response. Next morning = 1, three days later = 3, next week = 7, a month later = 30, '
+        + 'a whole winter = 90 — write the full number the narration covers; there is no cap. '
         + 'Leave it at 0 while the scene stays within the same day — the date, daily consumption and '
         + 'harvest all move only with this.' },
     // 시각·날씨는 종류가 유한하다 → text로 두면 AI가 매번 다른 표기를 만든다. enum이면 못 벗어난다.
@@ -344,6 +448,19 @@ const S = {
       desc: '부임 후 며칠째. 시계(elapsed)에서 매 턴 동기화된다. 시스템이 센다. 손대지 말 것.' },
     { id: 'day_prev', label: '(내부) 지난 정산일', type: 'int', init: 0, min: 0,
       desc: '지난 턴 정산 시점의 경과일. 시스템 전용이니 직접 바꾸지 마라.' },
+    // 이번 정산(span일) 중 곳간·물·금고가 빈 날 수 (2026-09-27). 정산은 span배로 몰아 하는데, 옛 식은 "도약이 끝난
+    //   뒤 바닥인가"만 보고 span일 전부를 굶은 날로 쳤다 — 90일을 건너뛰다 85일째 비어도 90일치 벌. 도약 캡(14)이
+    //   그걸 가려 주고 있었다. 하루씩 가는 평소 턴(span 1)에선 옛 식과 값이 한 끗도 안 다르다 (생성기 대조로 확인).
+    // 성인 이미지 팩(nsfw) 게이트 — 원본 모듈 토글 toggle_TerritoryNSFW 승계. 심코어 식은 리수 전역 변수를 못 읽어서
+    //   얼헌(alter_on)·아틀리에(nsfw_on)처럼 봇 변수로 옮긴다. 유저가 /수위 0·1로 켜고 끈다 — 보조 계약표(allow)엔 없다.
+    { id: 'nsfw_on', label: '수위', type: 'bool', init: true, cmd: '수위',
+      desc: '성행위 장면 이미지(<🏰💕|…>) 허용. 유저가 /수위 로 끈다 — 보조는 손대지 않는다.' },
+    { id: 'lack_food', label: '(내부) 이번 정산의 굶은 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 곳간이 빈 날 수.' },
+    { id: 'lack_water', label: '(내부) 이번 정산의 목마른 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 물이 빈 날 수.' },
+    { id: 'lack_gold', label: '(내부) 이번 정산의 빈 금고 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 이번 정산 기간 중 금고가 빈 날 수.' },
 
     // ── 달력에 적어 두는 예정 하나 ──
     // "사흘 뒤 백작의 사자가 온다"를 AI가 기억하고 있을 거라 기대하면 안 된다.
@@ -422,8 +539,12 @@ const S = {
 
     // 밭이 상한 정도. arable이 목록의 합이 된 뒤로 재해가 농지를 때릴 방법이 없어졌다 —
     // 목록에서 항목을 빼려면 문자열을 글자까지 맞춰야 하니 이벤트가 못 한다. 그래서 감산 변수를 둔다.
-    // 하루 1씩 저절로 아문다. 밭 자체는 그대로 있고 그 해 소출만 죽는 것이다.
+    // 밭 자체는 그대로 있고 그 철 소출만 죽는 것이다 — 그래서 **그 철이 끝나는 날**(blight_until)에 한꺼번에 아문다 (§14-6).
+    //   옛 판은 하루 1씩 아물어 우박이 사흘~엿새면 원상이었다("올해 나올 것이 크게 줄었다"가 거짓말). 서서히 아물게 하려면
+    //   거듭제곱이 필요한데 식에 없다 — 선형으로 깎으면 한 턴에 열흘 넘기는 판과 하루씩 넘기는 판이 달라진다. 날짜는 둘 다 같다.
     { id: 'blight', label: '농지 피해', type: 'int', init: 0, min: 0, max: 8 },
+    { id: 'blight_until', label: '(내부) 밭이 아무는 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용 — 우박·늦서리·들불이 세운다. 이 날이 오면 농지 피해가 0이 된다.' },
     { id: 'wells', label: '식수원', type: 'int', init: 0, min: 0, max: 5,
       desc: 'How many usable wells and channels stand. At 0, water must be hauled from the river. '
         + 'Raise it only together with a matching entry in infra.' },
@@ -467,9 +588,46 @@ const S = {
     { id: 'rations', label: '배급', type: 'enum', init: '평시', enum: ['평시', '절약'],
       desc: '식량 배급 수위. 액션 버튼(배급 축소/복구)으로만 바꾼다.' },
     { id: 'unrest', label: '내부 불안', type: 'int', init: 15, min: 0, max: 100 },
-    { id: 'threat', label: '외부 위협', type: 'int', init: 40, min: 0, max: 100 },
+    // 위협은 탐낼 거리를 따라간다 (§14-5, 유저 2026-09-27: "아무것도 없는 마을에 도적도 몬스터도 굳이 오지 않는다").
+    //   시스템이 매일 0.5씩 threat_goal 쪽으로 민다 — 하루 1 미만이라 소수로 둔다 (bandits와 같은 이유).
+    { id: 'threat', label: '외부 위협', type: 'float', init: 40, min: 0, max: 100,
+      desc: 'How much the wild and the lawless around Veridia are turned toward it. The system drifts it every day toward how much '
+        + 'the holding has worth taking — an empty village is left alone, a thriving one is watched. Raise it only when the narration '
+        + 'finds a new danger close by; lower it only when one is actually cleared. It settles back on its own afterwards.' },
     { id: 'fame', label: '명성', type: 'int', init: 0, min: 0, max: 100,
       desc: 'Standing among the folk of Veridia itself. What other domains think is rel_* — do not move both for the same event.' },
+
+    // ── 흘러드는 사람들 · 모험가 길드 (2026-09-27, 설계 §14 — 생존 이후 콘텐츠 1차) ──
+    // 전쟁이 끝나고 풀려난 사람들(난민·퇴역병·일거리 잃은 용병)은 한 흐름이다 [유저 소재]. 명성이 끌어당기고,
+    // 들어오는 길은 남쪽 가도 하나뿐이라 [원본 영지 구역] 남쪽 관문 앞에 모인다. 무엇이 될지는 영주의 관문 방침이 정한다 [초안]:
+    // 들이면 주민·일손(대신 거처·식량·불안), 돌려보내면 갈 곳 없는 이의 일부가 길 위의 도적이 된다.
+    { id: 'drift_policy', label: '관문 방침', type: 'enum', cmd: '관문', init: '가려 받음',
+      enum: ['받아들임', '가려 받음', '돌려보냄'],
+      desc: "The Baron's standing order at the south gate for drifters (war refugees, discharged soldiers, masterless mercenaries). "
+        + '받아들임 = let everyone in / 가려 받음 = only as many as there are beds, the rest wait or drift off / 돌려보냄 = nobody. '
+        + 'Change it ONLY when the narration shows him giving that order. The system admits and turns people away every day.' },
+    { id: 'drifters', label: '관문 앞 유랑민', type: 'int', init: 0, min: 0, max: 400, format: '{v}명',
+      desc: 'People camped outside the south gate waiting to be let in. The system adds arrivals and admits or turns them away by '
+        + 'the gate order — never move them into pop yourself. Lower it only when the narration sends a specific group elsewhere '
+        + '(hired as soldiers → also raise army; sent on with bread → just lower).' },
+    // 소수로 둔다 — 하루 증감이 1 미만(떠난 이 3명 × 0.3 − 경비 0.75)이라 정수면 반올림이 증가분을 매 턴 먹는다
+    // 시작 15 = "소문이 돈다" — 전쟁 직후 길 위가 비어 있을 리 없다 (희망적 프리셋만 0). 경비가 있으면 곧 잦아든다.
+    { id: 'bandits', label: '도적 세력', type: 'float', init: 15, min: 0, max: 100,
+      desc: 'How strong the bandit bands on the roads around Veridia are (0 = none). The system moves it: people turned away with '
+        + 'nowhere to go feed it, the guard and the army wear it down. Lower it only when the narration actually breaks a band — '
+        + 'a fight won, a camp burned. Never raise it.' },
+    // 모험가 길드 — 전쟁 용병이 몬스터 사냥으로 돌아서는 시기 [유저 소재]. 0 없음 / 1 연락소 / 2 지부 / 3 큰 지부. 시스템만 움직인다.
+    { id: 'guild', label: '모험가 길드', type: 'int', init: 0, min: 0, max: 3 },
+    { id: 'guild_since', label: '(내부) 길드 연 날', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용. 연락소를 허가한 날의 경과일 — 지부 승격이 이걸로 잰다.' },
+    // 조건 이벤트엔 쿨다운이 없다 — 거절하면 이 날짜까지 다시 안 온다 (래치). 첫 달은 조용히.
+    { id: 'guild_ask', label: '(내부) 길드가 다시 올 날', type: 'int', init: 30, min: 0,
+      desc: '시스템 전용. 길드 사람이 다시 찾아올 수 있는 가장 이른 경과일.' },
+    // 이번 정산에 들인·떠난 유랑민 — 정산 안에서만 뜻이 있어 끝에 0 (lack_*와 같은 임시 변수)
+    { id: 'drift_adm', label: '(내부) 이번 정산에 들인 유랑민', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용.' },
+    { id: 'drift_out', label: '(내부) 이번 정산에 떠난 유랑민', type: 'int', init: 0, min: 0,
+      desc: '시스템 전용.' },
 
     // ── 바깥 ──
     // 이 봇의 진짜 진행도다. 폐허를 일으키는 것보다 "아무도 모르는 땅"에서 벗어나는 쪽이 어렵다.
@@ -478,6 +636,31 @@ const S = {
     ...NEIGH.map(([id, dir, name, , init]) => ({
       id, label: `${dir} ${name}`, type: 'int', init, min: 0, max: 100,
     })),
+    // ── 광휘회 (§14-3) ── 왕국의 유일한 국교이자 유일한 의사 [원본] — 왕실과 나란한 또 하나의 권력 [유저: 어머니회].
+    //   이웃(rel_*)과 같은 "저쪽이 이 땅을 어떻게 보나"지만 소수다: 십일조·자매·예배당이 하루 0.05~0.25씩 민다 (정수면 반올림에 먹힌다).
+    //   70부터는 저절로 안 오른다 — 그 위는 주교의 판단과 교단·왕실 사이의 선택이 올린다.
+    { id: 'rel_ch', label: '광휘회', type: 'float', init: 10, min: 0, max: 100,
+      desc: 'How the Sisterhood of Luminous Grace — the High Church — regards Veridia. The system moves it slowly by the tithe, '
+        + 'the sisters serving here and the chapel. Move it yourself only when something the Church hears of actually happens: '
+        + 'a donation delivered, a Luminary honoured or mistreated, a heresy sheltered, a vow kept before a priestess.' },
+    { id: 'tithe', label: '십일조', type: 'enum', enum: ['바치지 않음', '1할', '2할'], init: '바치지 않음', cmd: '십일조',
+      desc: 'The Baron\'s standing order on the Church\'s tenth of the daily income (paid every day by the system). '
+        + 'Change it only when the narration shows him giving that order.' },
+    // 예배당 — 0 폐허 · 1 다시 선 예배당(⛪ 버튼) · 2 광휘회 분원(교단이 인정). 로어북 "폐허 예배당" 항목의 결 그대로 [원본]
+    { id: 'chapel', label: '예배당', type: 'int', init: 0, min: 0, max: 2,
+      desc: '시스템 전용. 0 폐허 · 1 다시 선 예배당 · 2 광휘회 분원.' },
+    { id: 'chapel_at', label: '(내부) 예배당 완공일', type: 'int', init: 0, min: 0, desc: '시스템 전용. 0이면 공사 중이 아니다.' },
+    // 주교 — "파견되지 않는다, 보러 온다" [원본]. 오는 날(bishop_at)과 다시 볼 수 있는 날(bishop_next, 래치 — 조건 이벤트엔 쿨다운이 없다)
+    { id: 'bishop_at', label: '(내부) 주교가 오는 날', type: 'int', init: 0, min: 0, desc: '시스템 전용. 0이면 오는 중이 아니다.' },
+    { id: 'bishop_next', label: '(내부) 주교가 다시 볼 날', type: 'int', init: 60, min: 0, desc: '시스템 전용.' },
+    // ── 혼담 (§14-4) ── 전부 시스템 것 — 청혼(랜덤 갈림길) → 받아들임·물림·시간을 청함(30일 뒤 답을 들으러 온다) → 혼약 → 예순 날 뒤 혼례.
+    //   청혼은 한 번에 하나(suit), 오면 75일은 다른 청혼이 없다(suit_next 래치). 차지된 뒤(spouse)엔 아무도 안 온다.
+    { id: 'suit', label: '답을 기다리는 청혼', type: 'enum', enum: ['없음', ...SUIT_KEYS], init: '없음', desc: '시스템 전용.' },
+    { id: 'suit_until', label: '(내부) 답을 들으러 오는 날', type: 'int', init: 0, min: 0, desc: '시스템 전용.' },
+    { id: 'suit_next', label: '(내부) 다음 청혼이 올 수 있는 날', type: 'int', init: 90, min: 0, desc: '시스템 전용.' },
+    { id: 'spouse', label: '배필', type: 'enum', enum: ['없음', ...SUIT_KEYS], init: '없음',
+      desc: '시스템 전용. 이 남작을 차지한 쪽 — 혼약이든 혼인이든.' },
+    { id: 'wed_at', label: '(내부) 혼례일', type: 'int', init: 0, min: 0, desc: '시스템 전용. 혼례가 지나면 0.' },
 
     // ── 동행자 ──
     // 캐릭터 시트는 로어북에 있다. 스키마가 들고 있어야 할 것은 로어북이 못 담는 것뿐 —
@@ -556,7 +739,29 @@ const S = {
     // ⚠ 자동 만료를 걸지 않는다 — 빚은 만기가 오는 순간이 제일 중요한데, expire는 그날
     //   조용히 지운다. 기한은 @절대일로 굳혀 표시만 하고, 정리(이행·파기)는 서사가 한다.
     { id: 'favors', label: '빚·약속', type: 'list', init: [], maxItems: 10, itemMaxLength: 40, cmd: '약속',
-      desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists.' },
+      desc: 'Debts and promises between the Baron and named parties. One line each; deadline as @+days when one exists. '
+        + 'Past the deadline the line stays (shown overdue) until it is settled or broken.' },
+    // ── 청원함 (§14-2) ── 집무실 청원함(의뢰판)에서 영주가 [수락]으로 맡은 청원. 줄은 버튼이 넣고, 이행은 서사가, 셈은 시스템이.
+    //   빚·약속(favors)과 가른 이유: 저쪽은 지나도 남는 약속(keepOverdue), 이쪽은 기한을 넘기면 떨어지고 실망이 세진다.
+    //   이행과 기한 넘김은 개수 차로 가른다 (onTurn) — 사례 0짜리 영지민 청원도 헷갈리지 않는다.
+    { id: 'petitions', label: '맡은 청원', type: 'list', init: [], maxItems: 4, itemMaxLength: 96, cmd: '청원',
+      desc: 'Petitions the Baron took up from the petition box. The box\'s [accept] button writes these lines — never add one yourself; '
+        + 'a request the Baron grants in person during a scene is a promise and goes in favors. Format "청원인 · 무엇 (무리) @기한 +사례". '
+        + 'When the narration shows one actually done, remove its line exactly as stored and copy the number at its end into pet_pay. '
+        + 'Past the deadline the system drops it by itself — do not remove it for that.' },
+    { id: 'pet_pay', label: '(내부) 청원 사례 정산', type: 'int', init: 0, min: 0, max: 2000,
+      desc: 'When a petition is fulfilled, copy the number at the end of its line here (+0 means 0). Never decide the amount yourself. '
+        + 'The system pays it into gold and resets it — do not also add it to gold.' },
+    { id: 'pet_n', label: '(내부) 맡은 청원 수', type: 'int', init: 0, min: 0, max: 4,
+      desc: '시스템 전용. 지난 정산 때의 맡은 청원 수 — 수락·취소 버튼이 같이 움직인다.' },
+    // 이번 정산에 이행한·기한 넘긴 청원 — onTurn이 매 턴 새로 세고 조건 이벤트가 읽는다 (다음 정산에 다시 센다)
+    { id: 'pet_kept', label: '(내부) 이번에 이행한 청원', type: 'int', init: 0, min: 0, max: 4, desc: '시스템 전용.' },
+    { id: 'pet_lost', label: '(내부) 이번에 기한 넘긴 청원', type: 'int', init: 0, min: 0, max: 4, desc: '시스템 전용.' },
+    // ── 서신 (§14-2) ── 메신저를 편지로 (플러그인 v1.13.2 medium 'letter'). 방은 유저가 연다.
+    //   ⚠ 이름은 로어북 문항 제목·키워드와 맞아야 답장에 그 사람의 인격이 실린다 (어댑터가 이름으로 문항을 찾는다).
+    //   만나기 전에도 쓸 수 있다 — 남작은 누구에게든 인장을 찍어 보낼 수 있고, 모르는 사이의 답장은 모르는 사람의 답장이다.
+    { id: 'pen', label: '서신 상대', type: 'list', init: PEN, maxItems: 14, itemMaxLength: 12, cmd: '서신',
+      desc: 'People the Baron can exchange letters with. The system keeps it; change it only by the user\'s command.' },
     // 건설 큐 (P4-2) — 공사 중인 것들. "@+일수"가 완공일이 되고, 그날 시스템이 목록에서
     // 내리며 완공 이벤트가 "무엇이 완성됐는지 옮겨 적어라"를 통지한다.
     { id: 'projects', label: '공사 중', type: 'list', init: [], maxItems: 6, itemMaxLength: 40, cmd: '공사',
@@ -636,7 +841,8 @@ const S = {
     // 폐허 남작의 지지는 아무도 안 찾지만(시작값 2), 주민 400에 상비군을 세운 남작이
     // 어느 편에 서느냐는 판세를 흔든다. 두 판을 한 봇으로 묶는 이유가 이 한 줄이다.
     { id: 'my_weight', label: '내 지지의 무게',
-      expr: 'min(100, round(fame * 0.45 + min(army, 120) * 0.25 + min(gold, 3000) * 0.006 + rel_cap * 0.15))' },
+      // + 광휘회(§14-3) — 교단이 뒤에 있는 남작은 궁정도 무게를 잰다 (왕실과 나란한 권력 [유저])
+      expr: 'min(100, round(fame * 0.45 + min(army, 120) * 0.25 + min(gold, 3000) * 0.006 + rel_cap * 0.15 + rel_ch * 0.1))' },
     { id: 'weight_txt', label: '조정에서의 무게',
       expr: scale('my_weight', [[70, '판을 흔든다'], [45, '셈에 들어간다'], [22, '이름은 나온다'], [8, '변방 하나'], [0, '아무도 안 찾는다']]) },
     { id: 'exposed_txt', label: '알려진 정도',
@@ -701,7 +907,8 @@ const S = {
     // 유저가 /경작지- 로 하나 빼면 수확이 바로 준다. 상한 12는 수확 공식이 견디는 범위라 남긴다.
     { id: 'arable', label: '경작 적성', expr: 'max(0, min(12, sum(farms)) - blight)' },
     { id: 'farm_txt', label: '경작지 상태',
-      expr: 'blight > 0 ? "적성 " + arable + " — 밭이 상했다(-" + blight + ")" : "적성 " + arable' },
+      expr: '(blight > 0 ? "적성 " + arable + " — 밭이 상했다(-" + blight + ", " + max(0, blight_until - day) + "일 뒤 아묾)" : "적성 " + arable)'
+        + ' + (dis_farm < 1 ? " · " + disaster + "(수확 -" + round((1 - dis_farm) * 100) + "%)" : "")' },
     { id: 'extract', label: '자원지 산출', expr: 'sum(sites)' },
     // 인구 상한. 이게 없으면 "마을을 늘려야 한다"는 동기가 서사에 안 생긴다.
     { id: 'cap', label: '수용 한계', expr: 'sum(houses)', format: '{v}명' },
@@ -726,12 +933,16 @@ const S = {
       expr: 'season == "⛄겨울" ? 0.4 : (season == "🍂가을" ? 1.35 : (season == "🌻여름" ? 1.05 : 0.85))' },
     { id: 'weather_water', label: '날씨 영향(취수)',
       expr: 'weather == "🌧비" or weather == "⛈폭풍우" ? 1.35 : (weather == "🔥폭염" ? 0.8 : 1)' },
+    // 재해가 수급을 친다 (§14-6 이름값) — 옛 판의 가뭄은 이름만 가뭄이었다(사기 −2/일뿐, 물도 소출도 그대로).
+    //   가뭄: 밭 ×0.6 · 강에서 길어 오는 물 ×0.5 · 우물 ×0.8 — 우물이 곧 가뭄 보험이다(가뭄 자체도 우물이 적어야 온다).
+    //   들불: 불을 끊는 동안 일손이 밭에 없다 ×0.8.
+    { id: 'dis_farm', label: '재해 영향(경작)', expr: 'disaster == "가뭄" ? 0.6 : (disaster == "들불" ? 0.8 : 1)' },
 
     // ── 수급: 이게 이 봇의 심장. AI가 절대 손으로 계산하면 안 되는 부분 ──
     { id: 'harvest', label: '일 수확',
-      expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm)' },
+      expr: 'round((farm_men * (2.2 + arable * 0.55) + scout_men * 1.2) * efficiency * 0.01 * weather_farm * season_farm * dis_farm)' },
     { id: 'draw_water', label: '일 취수',
-      expr: 'round((wells * 60 * efficiency * 0.01 + pop * 0.9) * weather_water)' },
+      expr: 'round((wells * 60 * efficiency * 0.01 * (disaster == "가뭄" ? 0.8 : 1) + pop * 0.9 * (disaster == "가뭄" ? 0.5 : 1)) * weather_water)' },
     // 가사 담당이 곳간 낭비를 줄인다 (라라의 빙결 보존이 대표 서사) — E 주특기 기준 -6/일.
     // 배급 절약은 25% 절감 — 대신 onTurn에서 사기·보건이 매일 샌다 (버튼의 대가).
     { id: 'eaten', label: '일 소비', expr: 'max(0, round((pop + army) * (rations == "절약" ? 0.75 : 1)) - round(d_home * 1.5))' },
@@ -769,17 +980,52 @@ const S = {
     // 길이 막히면 짐이 안 움직인다. 계약서가 살아 있어도 들어오는 건 절반 아래다 —
     // 계약을 지우지 않는 게 중요하다. 길이 뚫리면 그대로 되살아나야 하니까.
     { id: 'deals_net', label: '실수령 계약', expr: 'route == "없음" ? deals : round(deals * 0.4)' },
-    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract' },
+    // ④ 길드 (§14) — 모험가가 쓰고 가는 돈(여관·술집·수리) / 도적 통행세 — 계약 짐수레가 뜯기는 몫 (도적 100이면 절반)
+    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract + guild_income - bandit_toll' },
+    { id: 'guild_income', label: '길드 수입', expr: 'guild <= 0 ? 0 : guild * 2 + round(adv_n * 0.3)' },
+    { id: 'bandit_toll', label: '도적 통행세', expr: 'round(max(0, deals_net) * bandits / 200)' },
     { id: 'route_txt', label: '길',
       expr: 'route == "없음" ? "모두 열림" : route + " 막힘 (" + route_days + "일)"' },
     // 군대는 공짜가 아니다. 식량만 먹던 army에 급료가 붙는다.
-    { id: 'upkeep', label: '일 지출', expr: 'round(army * 1.2) + round(pop * 0.05) + payroll + import_cost' },
+    { id: 'upkeep', label: '일 지출', expr: 'round(army * 1.2) + round(pop * 0.05) + payroll + import_cost + tithe_amt' },
     { id: 'net_gold', label: '재정 수지', expr: 'income - upkeep' },
     // 세납일에 바칠 액수 — 이것도 AI가 어림잡을 게 아니라 시스템이 정한다.
     { id: 'tribute', label: '세납액', expr: 'round(pop * 1.5 + fame * 2 + 30)' },
     { id: 'gold_txt', label: '재정 사정',
       expr: 'net_gold < 0 and gold <= 0 ? "빈 금고 — 급료가 밀린다"'
         + ' : (net_gold < 0 ? "축내는 중" : (net_gold > 0 ? "쌓이는 중" : "겨우 맞는다"))' },
+
+    // ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+    // 하루 유입 — "여기 가면 살 수 있다"(명성)가 끌어당기고 잉여가 소문을 키운다. 리얼리티는 갈 곳 없는 이가 더 많다.
+    //   남쪽 가도가 막히면 아무도 못 온다(유일한 입구). 명성 25마다 +1 → 중반(명성 50·잉여) 하루 3명 = 한 달 90명.
+    //   과밀이면 발길이 준다 — 거처 단계(crowd_txt) 그대로: 포화(105%↑) 절반, 터져 나감(130%↑) 끊김.
+    //   ⚠ 이게 없으면 받아들임이 한 해 만에 수용 120에 주민 1080이 됐다 (수확이 일손에 비례해 먹을 게 모자라지 않으므로).
+    { id: 'drift_rate', label: '하루 유입',
+      expr: 'route == "남 가도" or fame < 5 or crowd >= 130 ? 0'
+        + ' : floor((floor(fame / 25) + (surplus > 4 ? 1 : 0) + (hardship >= 60 ? 1 : 0)) / (crowd >= 105 ? 2 : 1))' },
+    { id: 'gate_txt', label: '관문',
+      expr: '(drifters > 0 ? drifters + "명 대기" : "조용함") + " — 방침 " + drift_policy' },
+    // 모험가 수 — 길드 규모 + 사냥감(몬스터 위협·도적 현상금)이 사람을 부른다
+    { id: 'adv_n', label: '모험가', expr: 'guild <= 0 ? 0 : guild * 8 + round(threat / 8) + round(bandits / 10)' },
+    { id: 'guild_txt', label: '길드',
+      expr: 'guild <= 0 ? "없음" : (guild == 1 ? "연락소" : (guild == 2 ? "지부" : "큰 지부")) + " · 모험가 " + adv_n + "명"' },
+    { id: 'bounty_cost', label: '현상금', expr: '40 + guild * 20' },
+    { id: 'bandit_txt', label: '도적',
+      expr: scale('bandits', [[70, '횡행 — 소굴이 있다'], [40, '출몰 — 길이 위험하다'], [15, '소문이 돈다'], [0, '잠잠함']]) },
+    // ⑤ 탐낼 거리 (§14-5) — 밖에서 보이는 이 땅의 값. 도적도 몬스터도 털 것이 있는 곳으로 온다.
+    //   세운 것(거처·밭·우물·새로 지은 인프라·길드·예배당) + 오가는 돈(계약·자원지) + 쌓인 것(곳간·금고, 각 10까지).
+    //   쌓인 것은 작게 — 곳간은 일손만큼 불어나서(경제 미결) 크게 두면 아무것도 안 지은 판이 곡식만으로 눈에 띈다. 유저 기준은 "시설".
+    //   인프라는 이름뿐이라 폐허도 한 줄로 센다 — 그래서 개막 네 줄을 빼고 "새로 선 것"만 센다.
+    //   프리셋 개막: 희망 42 · 보통 28 · 리얼리티 9. 거처 400·밭 12·우물 3·인프라 열 줄이면 100에 닿는다.
+    { id: 'lure', label: '탐낼 거리',
+      expr: 'clamp(round(cap * 0.12 + min(12, sum(farms)) * 1.5 + wells * 3 + max(0, count(infra) - 4) * 3'
+        + ' + max(0, sum(sites)) * 0.5 + max(0, deals) * 0.4 + guild * 4 + chapel * 3'
+        + ' + min(max(food, 0), 6000) / 600 + min(max(gold, 0), 5000) / 500), 0, 100)' },
+    { id: 'lure_txt', label: '눈길',
+      expr: scale('lure', [[70, '노리는 눈이 많다'], [45, '눈에 띈다'], [20, '지나가다 볼 만하다'], [0, '털 것이 없다']]) },
+    // 위협이 따라가는 곳 — 같은 값이어도 시련이 셀수록 더 많이 끈다 (희망 ×0.55 · 보통 ×0.73 · 리얼리티 ×1.0)
+    { id: 'threat_goal', label: '위협이 향하는 곳', expr: 'clamp(round(lure * (0.5 + hardship * 0.005)), 0, 100)' },
+    { id: 'threat_n', label: '외부 위협(표시)', expr: 'round(threat)' },
 
     // ── 표시용 척도: 지금 쓰던 말투 그대로 ──
     { id: 'morale_txt', label: '사기',
@@ -810,6 +1056,48 @@ const S = {
         `${JSON.stringify(`${dir} ${name} ${dist} `)} + ${id}_txt`).join(' + " | " + ') },
     { id: 'rel_top', label: '가장 아는 쪽',
       expr: `max(max(max(rel_n, rel_e), max(rel_s, rel_w)), rel_cap)` },
+
+    // ── 광휘회 (§14-3) ──
+    { id: 'rel_ch_txt', label: '교단의 시선', expr: scale('rel_ch', CH_STEPS) },
+    { id: 'chapel_txt', label: '예배당',
+      expr: 'chapel >= 2 ? "광휘회 분원" : (chapel == 1 ? "다시 선 예배당" : (chapel_at > 0 ? "다시 짓는 중 (" + max(0, chapel_at - day) + "일)" : "폐허"))' },
+    { id: 'sis_n', label: '머무는 자매', expr: SISTERS.map((n) => `(sum(corps, ${JSON.stringify(n)}) > 0 ? 1 : 0)`).join(' + '), format: '{v}명' },
+    // 교단은 제 눈으로 사람을 보낸다 — 아카데미 문턱(명성)과 별개로. 오지엔 신참이 신심을 증명하러 온다 [원본]
+    { id: 'sis_open', label: '교단이 보내는 자매',
+      expr: `rel_ch >= 45 ? "${SISTERS.join('·')}까지" : (rel_ch >= 25 ? "${SISTERS.slice(0, 2).join('·')}까지" : "${SISTERS[0]}(신참)만 — 오지는 신참이 신심을 증명하는 자리다")` },
+    // 십일조 — 그날 수입의 1할·2할. 지출에 붙는다(upkeep). 수입이 없는 날은 없다
+    { id: 'tithe_amt', label: '십일조', expr: 'tithe == "바치지 않음" ? 0 : round(max(0, income) * (tithe == "2할" ? 0.2 : 0.1))' },
+    // 교단의 시선이 저절로 움직이는 폭(하루) [초안]. 예배당을 세워 놓고 십일조를 안 내면 식는다 — 교구가 제 몫을 기다린다.
+    //   식는 건 장부(10)까지 — 괘씸한 것과 잊은 것은 다르다 (한 해 두면 "모름"까지 떨어지던 것)
+    { id: 'ch_drift',
+      expr: '(rel_ch < 70 ? (tithe == "2할" ? 0.25 : (tithe == "1할" ? 0.1 : 0)) + sis_n * 0.05 + chapel * 0.05 : 0)'
+        + ' - (chapel >= 1 and tithe == "바치지 않음" and rel_ch > 10 ? 0.1 : 0)' },
+    { id: 'chapel_cost', label: '예배당 재건비', expr: 'round(400 * hire_mult / 100)' },
+    { id: 'chapel_days', label: '예배당 공기', expr: 'clamp(36 - build_men * 2, 10, 36)' },
+    // 열병 구호 헌금 — 광휘회는 이 나라의 유일한 의사다 [원본]. 머무는 자매가 있으면 덜 청한다
+    { id: 'plague_cost', label: '구호 헌금', expr: 'max(50, round(100 + pop * 1.5) - sis_n * 50)' },
+    // 주교가 볼 것 — 앓는 이를 어떻게 두었나 · 영주가 무엇을 감추나 · 자매 · 분원. **돈은 없다**: 그녀의 인정은 살 수 없다 [원본].
+    // 숨김이 -2로 제일 무겁다 — "빛을 피해 숨는 것이 첫째 죄" [원본 베아트릭스]. 중립은 숨김이 아니다(감출 편이 없다).
+    { id: 'bish_care', expr: 'health >= 50 ? 1 : (health < 30 ? -1 : 0)' },
+    { id: 'bish_truth', expr: 'stance != "중립" and exposed < 40 ? -2 : 0' },
+    { id: 'bish_score', label: '주교의 판단', expr: 'bish_care + bish_truth + (sis_n > 0 ? 1 : 0) + (chapel >= 2 ? 1 : 0)' },
+    { id: 'bish_txt', label: '주교가 볼 것',
+      expr: '"앓는 이 " + (bish_care > 0 ? "잘 돌봄" : (bish_care < 0 ? "버려짐" : "그럭저럭"))'
+        + ' + " · 영주의 속 " + (bish_truth < 0 ? "감춘 편이 있다(" + stance + ")" : "감출 것이 없다")'
+        + ' + " · 자매 " + (sis_n > 0 ? sis_n + "명 머묾" : "없음") + " · 예배당 " + chapel_txt' },
+    { id: 'bishop_txt', label: '주교',
+      expr: 'bishop_at > 0 ? (bishop_at - day <= 0 ? "오늘 온다" : (bishop_at - day) + "일 뒤 온다") : "오는 길이 아니다"' },
+    { id: 'bish_in', expr: 'bishop_at - day <= 0 ? "today" : "in " + (bishop_at - day) + " days"' },
+    // ── 혼담 (§14-4) ──
+    { id: 'suit_label', expr: SUITORS.reduceRight((acc, s) => `suit == "${s.k}" ? "${s.label}" : (${acc})`, '"없음"') },
+    { id: 'spouse_label', expr: SUITORS.reduceRight((acc, s) => `spouse == "${s.k}" ? "${s.label}" : (${acc})`, '"없음"') },
+    { id: 'suit_txt', label: '청혼',
+      expr: 'suit == "없음" ? "없음" : suit_label + " — 답을 기다린다 (" + max(0, suit_until - day) + "일 뒤 답을 들으러 온다)"' },
+    { id: 'spouse_txt', label: '배필',
+      expr: 'spouse == "없음" ? "없음" : spouse_label + (wed_at > 0 ? " — 혼약, 혼례 " + (wed_at - day <= 0 ? "오늘" : (wed_at - day) + "일 뒤") : " — 혼인")' },
+    { id: 'ch_txt', label: '광휘회',
+      expr: 'rel_ch_txt + " · 예배당 " + chapel_txt + " · 십일조 " + tithe + (tithe_amt > 0 ? "(" + tithe_amt + "/일)" : "")'
+        + ' + " · 자매 " + sis_n + "명" + (bishop_at > 0 ? " · 주교 " + bishop_txt : "")' },
     { id: 'food_txt', label: '식량 사정',
       expr: 'food <= 0 ? "바닥 — 오늘 굶는다" : (food_days <= 3 ? "사흘치도 없다" : (surplus >= 0 ? "자급된다" : "축내는 중"))' },
     { id: 'water_txt', label: '식수 사정',
@@ -831,8 +1119,53 @@ const S = {
       // 공사 완공 (P4-2) — 완공일이 지난 항목이 목록에서 내려간다. "무엇이 완성됐나"의 통지는
       // 아래 proj_done 이벤트 몫 (onTurn ⑥ → 조건 이벤트 ⑦ 순서라 같은 턴에 감지된다).
       { list: 'projects', expire: 'day' },
+      // 빚·약속 — 기한은 세되 지우지 않는다 (v1.13.1 keepOverdue, 2026-09-27). 약속은 이행·파기 전엔 안 사라지는 게 설계라
+      // 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않아 상태창·프롬프트에 "(30일)"이 영영 멈춰 있었다.
+      // 이제 같은 시계로 굳고 줄어들며, 지나면 "(지남)"으로 남아 서사가 독촉·파기를 쓸 거리가 된다.
+      { list: 'favors', expire: 'day', keepOverdue: true },
+      // ── 맡은 청원 (§14-2) ── 이행과 기한 넘김을 **개수 차**로 가른다. 보조가 지운 줄(⑤ 보조 델타)은 여기 오기 전에 이미 빠져 있고
+      //   (= 이행), 기한 넘긴 줄은 바로 아래 expire가 떨군다 (= 실망). expire 앞뒤로 세면 둘이 안 섞인다 — 사례 0짜리 청원도.
+      //   pet_n은 지난 정산의 개수이고 [수락]·[취소] 버튼이 같이 움직인다(청원함 accept/cancel) — 패널이 넣고 뺀 건 이행이 아니다.
+      { set: 'pet_kept', expr: 'max(pet_n - count(petitions), 0)' },
+      { set: 'gold', expr: 'gold + (pet_kept > 0 ? pet_pay : 0)' },   // 지운 줄 없이 적힌 사례는 안 준다 (지어낸 수입 차단)
+      { set: 'pet_pay', expr: '0' },
+      { set: 'pet_lost', expr: 'count(petitions)' },
+      { list: 'petitions', expire: 'day' },
+      { set: 'pet_lost', expr: 'pet_lost - count(petitions)' },
+      // 말을 지킨 영주 / 잊은 영주 — 명성은 소문, 사기는 영지민이 보는 얼굴 [초안]
+      { set: 'fame', expr: 'clamp(fame + pet_kept - pet_lost * 3, 0, 100)' },
+      { set: 'morale', expr: 'clamp(morale + pet_kept - pet_lost * 2, 0, 100)' },
+      { set: 'pet_n', expr: 'count(petitions)' },
+      // ── 광휘회 (§14-3) ── 교단의 시선이 십일조·자매·예배당만큼 흐른다 (ch_drift). 십일조 돈은 지출(upkeep)이 이미 뺐다
+      { set: 'rel_ch', expr: 'clamp(rel_ch + ch_drift * span, 0, 100)' },
+      // ── 혼인한 가문 (§14-4) ── 차지한 쪽은 이 남작을 제 사람으로 센다 — 그 가문의 인식은 50(거래 상대↑) 밑으로 안 떨어진다
+      ...RELS.map((rv) => {
+        const ks = SUITORS.filter((s) => s.rel === rv).map((s) => `spouse == "${s.k}"`);
+        return { set: rv, expr: `(${ks.join(' or ')}) and wed_at == 0 ? max(${rv}, 50) : ${rv}` };
+      }),
+      // ── 흘러드는 사람들 (§14) ── 도착 → 관문 방침대로 들이기·떠나보내기 → 떠난 이의 일부가 도적으로.
+      // 식량 정산(아래 lack_*·food)보다 먼저 — 오늘 들어온 입도 오늘 먹는다.
+      { set: 'drifters', expr: 'min(400, drifters + drift_rate * span)' },
+      // 가려 받음 = 빈 잠자리만큼 (거처를 지어야 더 받는다)
+      { set: 'drift_adm', expr: 'drift_policy == "받아들임" ? drifters : (drift_policy == "가려 받음" ? min(drifters, max(0, cap - pop)) : 0)' },
+      // 돌려보냄 = 남은 이 전부가 떠난다 / 가려 받음 = 못 들어간 이 중 하루 10%가 기다리다 떠난다
+      { set: 'drift_out', expr: 'drift_policy == "돌려보냄" ? drifters - drift_adm : round((drifters - drift_adm) * min(1, 0.1 * span))' },
+      { set: 'pop', expr: 'pop + drift_adm' },
+      { set: 'drifters', expr: 'drifters - drift_adm - drift_out' },
+      // 새 얼굴은 마찰을 부른다 — 들인 열 명마다 불안 +1 (거처가 모자라면 아래 unrest 정산의 pop > cap이 또 민다)
+      { set: 'unrest', expr: 'clamp(unrest + floor(drift_adm / 10), 0, 100)' },
+      // 도적 — 갈 곳 없이 떠난 이의 일부가 길 위로(길드가 있으면 칼 든 이들이 모험가로 빠져 덜 간다) + 전후의 바탕(시련)
+      //   − 경비·상비군이 매일 깎는다: 경비 15·상비군 0이면 하루 0.75, 상비군 30이면 1.75. 가만두면 저절로 잦아든다.
+      { set: 'bandits', expr: 'clamp(bandits + drift_out * (0.3 - guild * 0.07) + (hardship * 0.004 - 0.5 - (guard_men + army * 2) / 60) * span, 0, 100)' },
+      // 위협 (§14-5) — 하루 0.5씩 탐낼 거리가 정한 곳으로. 몬스터가 올려 놓은 것도, 현상금이 깎은 것도 이 줄이 되돌린다
+      //   (옛 판은 위협을 내리는 길이 현상금뿐이라 리얼리티가 한 해 만에 100에 붙었다 — 몬스터가 위협을 올려 다시 몬스터를 불렀다)
+      { set: 'threat', expr: 'clamp(threat + clamp(threat_goal - threat, -0.5 * span, 0.5 * span), 0, 100)' },
       // ⚠ 아래 정산은 전부 span배(=흐른 날수)로 몰아서 이뤄진다.
       //   "사흘 뒤"로 넘어갔으면 사흘치 곡식이 사라져야 서사와 수치가 안 어긋난다.
+      // 빈 날 세기는 재고를 깎기 **전에** — 깎은 뒤엔 "언제 비었나"를 알 수 없다 (lackDays 주석 참고).
+      { set: 'lack_food', expr: lackDays('food', 'surplus') },
+      { set: 'lack_water', expr: lackDays('water', 'water_bal') },
+      { set: 'lack_gold', expr: lackDays('gold', 'net_gold') },
       { set: 'food', expr: 'max(0, food + surplus * span)' },
       { set: 'water', expr: 'max(0, water + water_bal * span)' },
       { set: 'gold', expr: 'max(0, gold + net_gold * span)' },
@@ -840,19 +1173,23 @@ const S = {
       // (잉여가 나야 회복되게 짜면 교착이다 — 보건이 낮아 잉여가 안 나는데 잉여가 없어 보건도 안 오른다)
       // 의무·가사 담당의 회복 보정 (P3) — E 주특기 기준 +2/일. 굶는 날의 -7은 못 이긴다 (의도).
       // 배급 절약(P4)은 사기·보건을 매일 1씩 깎는다 — 소비 25% 절감의 대가.
-      { set: 'health', expr: 'clamp(health + ((food <= 0 or water <= 0 ? -7 : (surplus > 0 ? 2 : 1)) + round(d_care * 0.5) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },
-      { set: 'morale', expr: 'clamp(morale + ((food <= 0 ? -6 : 1) + round(d_home * 0.5) + min(floor(duty_idle / 3), 2) - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
+      // 굶은 날(곳간·물 둘 중 하나라도 빈 날)만 -7, 나머지 날은 회복 — 둘 다 뒤꼬리 구간이라 합집합은 큰 쪽이다.
+      { set: 'health', expr: 'clamp(health - 7 * max(lack_food, lack_water) + (surplus > 0 ? 2 : 1) * (span - max(lack_food, lack_water))'
+        + ' + (round(d_care * 0.5) + (chapel >= 2 ? 1 : 0) - (rations == "절약" ? 1 : 0)) * span, 0, 100)' },   // 분원 = 앓는 이를 들이는 방 (§14-3)
+      { set: 'morale', expr: 'clamp(morale - 6 * lack_food + (span - lack_food) + (round(d_home * 0.5) + min(floor(duty_idle / 3), 2)'
+        + ' - (rations == "절약" ? 1 : 0) - (unrest >= 55 ? 3 : 0) - (disaster != "" ? 2 : 0)) * span, 0, 100)' },
       // 사람이 늘수록 경비가 더 필요하다 — 성장이 곧 새 문제
       // 급료를 못 준 병사가 얌전할 리 없다 — 군대를 키우는 데 재정이 물린다
       // 호위 담당은 경비 인력 몫으로(d_guard×2명), 행정 담당은 회복 보정으로 (P3)
-      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3) + (food <= 0 ? 5 : 0)'
-        + ' + (gold <= 0 and (army > 0 or count(corps) > 0) ? 3 : 0) + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span, 0, 100)' },
+      { set: 'unrest', expr: 'clamp(unrest + ((guard_men + army + d_guard * 2 < round(pop * 0.10) ? 2 : -3)'
+        + ' + (pop > cap ? 3 : 0) - round(d_admin * 0.5)) * span'
+        + ' + 5 * lack_food + (army > 0 or count(corps) > 0 ? 3 * lack_gold : 0), 0, 100)' },
       // 명성은 "여기 가면 살 수 있다"는 소문
       { set: 'fame', expr: 'clamp(fame + ((surplus > 4 ? 2 : 0) - (unrest >= 60 ? 2 : 0)) * span, 0, 100)' },
       // 굶으면 사람이 줄고, 먹이고 이름이 나면 흘러든다.
       // 인구 변동은 비율이라 열흘치를 한 번에 곱하면 몰살이 된다 — 닷새분까지만 몰아서 친다.
       { set: 'pop', expr: 'max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0)'
-        + ' - (food <= 0 ? round(pop * 0.04) : 0) - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5))' },
+        + ' - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5) - round(pop * 0.04) * min(lack_food, 5))' },
       // ── 탐사 진척 ──
       // 한 줄이 세 가지를 겸한다: ① 끝난 방향은 손대지 않음 ② 100에 닿으면 결과를 굴림
       // 시작점 굴림. 반드시 진척도 규칙보다 **먼저** — 같은 턴에 진척도가 이 값을 읽는다.
@@ -877,7 +1214,7 @@ const S = {
       // (day 증가는 사라졌다 — 시계는 엔진이 skip_day 소비로 굴리고, day는 elapsed 별칭이다)
       // 재해는 저절로 끝난다. AI가 "언제 끝났더라"를 기억할 필요가 없다.
       { set: 'disaster_days', expr: 'max(0, disaster_days - span)' },
-      { set: 'blight', expr: 'max(0, blight - span)' },   // 밭은 저절로 아문다
+      { set: 'blight', expr: 'day >= blight_until ? 0 : blight' },   // 그 철이 끝나는 날 한꺼번에 아문다 (§14-6)
       { set: 'disaster', expr: 'disaster_days <= 0 ? "" : disaster' },
       // 길도 같은 방식으로 저절로 뚫린다. 다만 AI가 route를 "없음"으로 바꾸면 그 즉시 열린다 —
       // 도적을 쳐내는 것도 길을 여는 방법이고, 그건 기다리는 것보다 나은 선택이어야 한다.
@@ -926,6 +1263,9 @@ const S = {
 
       // 반드시 마지막. 위 정산이 전부 span(=day - day_prev)을 읽은 뒤에 박자를 당겨야 한다.
       { set: 'day_prev', expr: 'day' },
+      // 빈 날 수는 이번 정산 안에서만 뜻이 있다 — 끝에 0으로 돌려 상태에 흔적을 안 남긴다 (진단도 임시 변수로 읽는다)
+      { set: 'lack_food', expr: '0' }, { set: 'lack_water', expr: '0' }, { set: 'lack_gold', expr: '0' },
+      { set: 'drift_adm', expr: '0' }, { set: 'drift_out', expr: '0' },
     ],
     // ── 발견 ──
     // 어느 자리가 열렸는지는 onTurn이 이미 정했다. 여기는 그걸 서사에게 넘기는 자리다.
@@ -962,57 +1302,179 @@ const S = {
         notify: '[공사가 끝났다] 공사 목록에서 기한이 찬 것이 내려갔다. 무엇이 완성되었는지 이번 장면에서'
           + ' 보여주고, 완성된 것을 인프라·경작지·식수원 중 맞는 자리에 옮겨 적어라 — 옮겨 적지 않으면'
           + ' 지은 것이 수치에 잡히지 않는다.' },
+
+      // ── 모험가 길드 (§14) ── 전쟁 용병이 몬스터 사냥으로 돌아서는 시기 [유저]. 몬스터가 들끓는 이 땅은 그들에게 일터다.
+      // 갈림길 — 허가는 영주의 결단이라 버튼으로 묻는다. 안 고르면(3턴) 마지막 "아직은"이 된다. 거절해도 60일 뒤 다시 온다.
+      //   §14-5: 문턱은 위협 + 도적 (옛 위협 25) — 위협이 탐낼 거리를 따라 내려가면서 몬스터만으로는 못 넘게 됐다.
+      //   현상금 일감은 몬스터든 도적이든 같다 (grow2의 threat + bandits와 같은 셈)
+      { id: 'guild_offer',
+        when: 'guild == 0 and day >= guild_ask and pop >= 80 and fame >= 15 and threat + bandits >= 25 and route == "없음"',
+        effects: [{ set: 'guild_ask', expr: 'day + 60' }],
+        notify: '[길드에서 사람이 왔다] 모험가 길드의 사람이 영주를 찾아왔다. 전쟁이 끝나 칼 쓸 데를 잃은 용병들이 이제 '
+          + '몬스터 사냥과 현상금으로 먹고산다 — 숲의 것이든 길 위의 도적이든, 목에 값을 걸 일이 있는 이 땅은 그들에게 일터다. '
+          + '연락소 하나 둘 자리와 영주의 허가를 청한다. '
+          + '누가 왔는지·어떤 사람인지는 이번 장면에서 정하라.',
+        timeout: 3,
+        choices: [
+          { label: '연락소를 허가한다',
+            effects: [{ set: 'guild', expr: '1' }, { set: 'guild_since', expr: 'day' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' }],
+            inject: 'The Baron grants the Guild a house by the south gate. Adventurers will start drifting in — and the Baron can now post bounties there.' },
+          { label: '아직은 안 된다',
+            inject: 'The Baron turns the Guild down for now. The envoy leaves politely; the Guild will ask again in a season or two.' },
+        ] },
+      // 승격 — 사냥감(몬스터·도적)과 사람이 있으면 커진다. 되돌아가지 않는다.
+      { id: 'guild_grow2', once: true,
+        when: 'guild == 1 and day - guild_since >= 60 and pop >= 150 and threat + bandits >= 30',
+        effects: [{ set: 'guild', expr: '2' }],
+        notify: '[연락소가 지부가 됐다] 길드 본부가 이곳을 지부로 올렸다. 게시판이 두 배가 되고, 제 무기를 고치러 대장간을 '
+          + '찾는 사람이 늘었다. 사냥감이 있는 한 모험가는 모인다.' },
+      { id: 'guild_grow3', once: true,
+        when: 'guild == 2 and day - guild_since >= 180 and pop >= 280 and fame >= 45',
+        effects: [{ set: 'guild', expr: '3' }],
+        notify: '[큰 지부] 이름 있는 파티들이 이곳을 거점으로 삼기 시작했다. 다른 영지의 모험가가 여기 소문을 듣고 온다 — '
+          + '돈과 말썽이 같이 온다.' },
+
+      // ── 청원 (§14-2) ── 셈은 onTurn이 끝냈다 (금고·명성·사기). 여기는 서사에 건네는 말뿐.
+      { id: 'pet_done', when: 'pet_kept > 0',
+        notify: '[청원을 들어줬다] 맡았던 청원이 이행돼 장부에서 내려갔다 — 사례가 있었다면 금고에 들었다. '
+          + '말이 돈다: 이 영주는 청을 들어준다. 청원인의 반응은 다음에 마주칠 때 짧게 비추면 된다 — 따로 장면을 만들지 마라.' },
+      { id: 'pet_expired', when: 'pet_lost > 0',
+        notify: '[청원 기한이 지났다] 맡아 놓고 기한 안에 못 한 청원이 장부에서 떨어졌다 — 어제까지 맡은 청원 목록에 (오늘)로 떠 있던 줄이다. '
+          + '청원인은 영주가 잊었다고 여긴다. 실망이 어떤 모양으로 돌아오는지(원망, 체념, 다른 데 가서 하는 말)를 짧게.' },
+
+      // ── 광휘회 (§14-3) ── 예배당: ⛪ 버튼(재건비·공기) → 완공 → 교단이 인정하면 분원. 인프라 줄은 시스템이 직접 적는다
+      { id: 'chapel_done', when: 'chapel == 0 and chapel_at > 0 and day >= chapel_at',
+        effects: [{ set: 'chapel', expr: '1' }, { set: 'chapel_at', expr: '0' },
+          { set: 'rel_ch', expr: 'clamp(rel_ch + 5, 0, 100)' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
+          { list: 'infra', add: ['다시 세운 예배당'] }],
+        notify: '[예배당이 다시 섰다] 언덕 위 무너진 예배당에 지붕이 다시 얹혔고, 더럽혀진 제단을 닦아 냈다. 아직 머무는 자매는 없다 — '
+          + '빈 예배당이 대성당에 닿는 소식이 되고, 교단이 이 땅을 장부 밖에서 보기 시작한다. 인프라 목록엔 시스템이 올렸다.' },
+      // 분원 — "다시 세우고 헌금이 대성당에 닿으면 교단이 자매를 보낸다. 이름을 가진 사람으로 와서 머문다" [원본 영지 구역 5].
+      //   그래서 자매가 있어야 분원이 되는 게 아니라, 분원이 되면 자매가 온다 (재건비 + 교단의 인정 = 청과 헌금). 봉급은 영지가 댄다.
+      { id: 'chapel_branch', once: true, when: 'chapel == 1 and rel_ch >= 50',
+        effects: [{ set: 'chapel', expr: '2' }, { set: 'fame', expr: 'clamp(fame + 3, 0, 100)' },
+          { list: 'infra', remove: ['다시 세운 예배당'], add: ['광휘회 분원'] }],
+        notify: '[분원이 되었다] 대성당이 이 예배당을 광휘회의 분원으로 올리고 자매 한 사람을 보냈다 — 아직 이 땅에 없는 자매 중 '
+          + '교단이 보내는 등급 안에서 한 사람이 이름을 가진 사람으로 와서 머문다(셋 다 이미 있으면 새로 오지 않는다). '
+          + '누가 왔는지를 장면으로 보여라. 앓는 이를 들이는 방이 생겼고, 순례자가 들르는 길목이 된다.' },
+      // 주교 — "파견되지 않는다, 보러 온다. 판단하고 떠난다" [원본]. 예고(이레) → 그동안 지시문이 "무엇을 볼지"를 서사에 건넨다 → 판단 셋.
+      //   교단이 이 땅을 지켜보기 시작해야(35) 그리고 볼 예배당이 있어야 온다. 한 번 오면 150일은 안 온다.
+      { id: 'bishop_notice', when: 'bishop_at == 0 and day >= bishop_next and rel_ch >= 35 and chapel >= 1 and route != "남 가도"',
+        effects: [{ set: 'bishop_at', expr: 'day + 7' }, { set: 'bishop_next', expr: 'day + 150' }],
+        notify: '[주교가 온다] 대성당에서 전갈이 왔다 — 베아트릭스 주교가 이레 뒤 이 땅을 보러 온다. 돕는 걸음이 아니라 판단하는 걸음이다. '
+          + '무엇을 볼지는 상태 블록의 지시에 있다 — 영주에게 준비할 이레가 있다.' },
+      // 판단 셋 — 띠가 겹치지 않는다(bish_score 2↑ / 0~1 / 음수). 돈이 들어가는 항목이 없다: 그녀의 인정은 살 수 없다
+      { id: 'bishop_pleased', when: 'bishop_at > 0 and day >= bishop_at and bish_score >= 2',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 12, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix + 6, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 흡족] 베아트릭스 주교가 앓는 이들을 보고, 영주와 마주 앉고, 떠났다. 판단은 좋은 쪽이다 — '
+          + '대성당 장부에 이 땅이 "빛 아래 있는 곳"으로 적힌다. 그녀가 무엇을 보고 그렇게 여겼는지를 장면으로.' },
+      { id: 'bishop_even', when: 'bishop_at > 0 and day >= bishop_at and bish_score >= 0 and bish_score < 2',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 4, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix + 2, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 보류] 베아트릭스 주교는 판단을 미뤘다. 나쁘지 않으나 아직 모자란다 — 다음에 다시 볼 것이다. '
+          + '그녀가 무엇이 모자라다고 짚었는지를 짧게.' },
+      { id: 'bishop_cold', when: 'bishop_at > 0 and day >= bishop_at and bish_score < 0',
+        effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch - 10, 0, 100)' }, { set: 'b_beatrix', expr: 'clamp(b_beatrix - 5, -50, 100)' },
+          { set: 'bishop_at', expr: '0' }],
+        notify: '[주교가 보고 갔다 — 차갑게] 베아트릭스 주교는 빛 아래 두지 못한 것을 보았다 — 버려진 앓는 이, 혹은 영주가 감춘 속. '
+          + '그녀는 돌려 말하지 않는다. 짚은 것을 그 자리에서 말하고 떠난다.' },
+
+      // ── 혼담 (§14-4) ── 시간을 청한 혼담 — 서른 날 뒤 답을 들으러 온다. 이번엔 미룰 수 없다(안 고르면 물린 것 — 기다리게 하고 물렸으니 더 아프다)
+      { id: 'suit_ask', when: 'suit != "없음" and day >= suit_until',
+        notify: '[답을 들으러 왔다] 시간을 청했던 혼담의 가문이 답을 들으러 왔다 — 누구인지는 상태 블록 "혼담" 줄에 있다. 이번엔 미룰 수 없다.',
+        timeout: 3,
+        choices: [
+          { label: '받아들인다',
+            effects: [...fxByWho('suit', (s) => acceptFx(s).filter((f) => f.set === s.rel || f.set === s.bond)),
+              byWho('suit', 'stance', (s) => (s.pw ? JSON.stringify(s.k) : null)), byWho('suit', 'exposed', (s) => (s.pw ? '100' : null)),
+              { set: 'spouse', expr: 'suit' }, { set: 'wed_at', expr: 'day + 60' }, { set: 'suit', expr: '"없음"' }],
+            inject: 'After taking time to think, the Baron accepts the suit — that house claims him. Betrothal now; the wedding in sixty days.' },
+          { label: '물린다',
+            effects: [...fxByWho('suit', (s) => refuseFx(s, 8, 10)), { set: 'suit', expr: '"없음"' }],
+            inject: 'After making them wait, the Baron declines the suit. Being kept waiting and then refused stings more than a quick no.' },
+        ] },
+      // 혼례 — 차지한 쪽이 책임의 예물을 가져온다 (정조역전: 여자가 남자를 차지하고 책임진다 [원본]). 명성·사기는 공통
+      ...SUITORS.map((s) => ({
+        id: `wedding_${suitId(s)}`, when: `spouse == "${s.k}" and wed_at > 0 and day >= wed_at`,
+        effects: [{ set: 'wed_at', expr: '0' }, { set: 'fame', expr: 'clamp(fame + 8, 0, 100)' }, { set: 'morale', expr: 'clamp(morale + 10, 0, 100)' },
+          ...s.gift, ...(s.giftList ? [{ list: 'contracts', add: s.giftList }] : [])],
+        notify: `[혼례] ${s.label} 쪽과의 혼례가 치러졌다 — 이제 이 남작은 차지된 사람이다. 차지한 쪽이 책임의 예물을 가져왔다: ${s.gift_txt}`
+          + (s.giftList ? ' (지속 수입엔 시스템이 올렸다)' : '') + '. 영지 사람들이 잔치를 기억할 것이다. 누가 와서 어떻게 치렀는지를 장면으로.',
+      })),
     ]),
 
     // ── 굴러 들어오는 것 ──
-    // 매 턴 한 번 굴려서, 걸리면 조건을 통과한 것 중 하나만 터진다. 엔진이 하나 뽑고 끝낸다.
+    // 보이지 않는 게이지가 작중 하루마다 차고, 100이 되면 조건을 통과한 것 중 하나가 터진다 (v1.14.0 사건 게이지 — §14-7).
     // 조건에 QUIET(재해도 없고 길도 열려 있을 때)를 전부 붙였다 — 곤경이 겹쳐 쌓이면 서사가 수습을 못 한다.
+    //   게이지는 후보가 하나도 없으면 안 찬다 — 재해·길 막힘이 이어지는 동안 멈췄다가 끝나면 이어서 찬다(끝나자마자 터지지 않는다).
     // 여기 있는 건 전부 "밖에서 오는 것"이다. 안에서 나는 일(곳간이 빈다, 사람이 앓는다)은
     // 이미 onTurn 정산이 만들어 낸다. 그걸 여기 또 넣으면 같은 불행이 두 배로 온다.
     randomEvents: {
-      // 발동 확률도 hardship이 민다 (v0.89.1 식 지원) — 희망(10) 4.4% / 보통(45) 5.8% / 리얼리티(100) 8%.
-      // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다.
-      // 상한 8%는 유저 확정(2026-08-15): 아이돌 실플에서 "20턴에 1번(5%)이 적당" 교훈 —
-      // 리얼리티도 대화 리듬을 부수지 않는 선. 랜디 맛은 빈도보다 창(thr 세 배)이 낸다.
-      // 명중해도 조건 맞는 사건이 없으면 불발이라(QUIET·계절·쿨다운) 체감은 이보다 낮다.
-      chancePerTurn: '0.04 + hardship * 0.0004',
+      // 옛 방식(턴마다 chancePerTurn 0.04 + 시련×0.0004로 굴림)은 채팅 속도가 빈도를 정했다 — 보통 기준 하루 세 턴이면
+      // 한 해 나쁜 일 26번, 한 턴이면 10번, 닷새에 한 턴이면 2번. 유저 판정(2026-09-27): 보이지 않는 게이지로, 서사나 확률로 차게.
+      //   하루에 차는 양 = 바탕(시련이 민다) + 서사가 만든 긴장(위협·불안이 민다). 개막 기준 희망 ≈5 · 보통 ≈7 · 리얼리티 ≈11 →
+      //   평균 23 · 17 · 12일에 한 번(쉬는 사흘 포함). 옛 방식을 하루 한 턴으로 놀던 빈도에 맞췄다 — 이제 하루에 몇 턴을 쓰든 그대로다.
+      //   흔들림 ±50%, 터진 뒤 사흘은 안 찬다. 항목 cooldown도 이제 날(日)이다 — 숫자는 옛 "하루 한 턴" 가정 그대로라 뜻이 같다.
+      // when 문턱이 "어떤 사건이 들어오나"를 밀고, 이 식은 "세상이 얼마나 자주 두드리나"를 민다. 랜디 맛은 빈도보다 창(thr 세 배)이 낸다.
+      //   징조(v1.14.1, 유저 "주변에 징조가 있으면 갑자기 터지는 것보다 자연스럽다") — 게이지가 80을 넘으면 다음 사건이 미리 정해지고,
+      //   그 사건의 omen 글이 메인에 이유 없는 징후로 깔린다(보통 사나흘). 글은 겉모습만 — 무엇이 오는지 말하면 스포일러다.
+      //   작은 순풍 넷(꿀·술통·고양이·감사 편지)은 징조 없이 갑자기 온다 — 작은 기쁨은 갑자기 와야 맛이다.
+      gauge: { perDay: '4 + hardship * 0.05 + (threat + unrest) * 0.02', jitter: 0.5, cooldown: 3, omenAt: 80 },
       table: [
         // ① 길 — 무역로는 목록이 아니라 사건이다. 얼고, 무너지고, 도적이 앉는다.
         { id: 'road_ice', weight: 2, cooldown: 40,
+          omen: '강가 얕은 데 살얼음이 끼기 시작했다. 뱃사공들이 물빛을 오래 들여다본다.',
           when: `${QUIET} and (month >= 12 or month <= 2)`,
           effects: [{ set: 'route', expr: '"동 강길"' }, { set: 'route_days', expr: '10 + rand(0, 8)' }],
           notify: '[강이 얼었다] 나루에 배가 얼어붙었다. 하류에서 오던 것이 이제 안 온다. '
             + '녹기 전까지는 어느 쪽으로도 짐이 못 움직인다.' },
         { id: 'road_snow', weight: 2, cooldown: 40,
+          omen: '북쪽 고개 위 구름이 며칠째 내려오지 않는다. 산 쪽 바람이 무겁다.',
           when: `${QUIET} and (month >= 11 or month <= 3)`,
           effects: [{ set: 'route', expr: '"북 산길"' }, { set: 'route_days', expr: '8 + rand(0, 10)' }],
           notify: '[고개가 닫혔다] 밤새 눈이 고개를 메웠다. 북쪽은 봄까지 남의 나라다.' },
         // 로어북의 WorldReactivity 그대로 — 살 만해지면 눈이 붙는다
+        // §14: 도적 세력이 크면 번 게 없어도 앉고, 경비 문턱도 그만큼 높아진다 (bandits 0이면 옛 조건 그대로)
+        //   §14-5: 단, 오가는 짐이 있을 만한 땅이어야 — 털 것 없는 길목엔 무리가 크든 작든 앉지 않는다
         { id: 'road_bandit', weight: 3, cooldown: 30,
-          when: `${QUIET} and (deals >= 15 or gold >= 300)`
-            + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012))',
+          omen: '남쪽 가도로 오는 짐수레가 줄었다. 오던 행상들이 길에서 본 얼굴들 이야기를 흐린다.',
+          when: `${QUIET} and (deals >= 15 or gold >= 300 or (bandits >= 35 and ${thr('lure', '>=', 35, 15)}))`
+            + ' and guard_men + army * 2 < round(pop * (0.1 + hardship * 0.0012)) + round(bandits * 0.3)',
           effects: [{ set: 'route', expr: '"남 가도"' }, { set: 'route_days', expr: '4 + rand(0, 6)' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }],
           notify: '[가도에 앉았다] 짐수레가 털렸다. 한 무리가 포장도로 길목을 잡고 통행세를 받는다. '
             + '이건 저절로 안 풀린다 — 쫓아내면 그날로 길이 열린다.' },
         { id: 'road_wood', weight: 2, cooldown: 36,
+          omen: '서쪽 숲길에서 돌아오는 짐꾼이 자꾸 늦는다. 숲 가장자리가 이상하게 조용하다.',
           when: `${QUIET} and ${thr('threat', '>=', 68, 45)}`,
           effects: [{ set: 'route', expr: '"서 숲길"' }, { set: 'route_days', expr: '5 + rand(0, 8)' }],
           notify: '[숲길이 삼켜졌다] 서쪽으로 간 짐꾼이 돌아오지 않았다. 숲이 길을 지운 건지 무언가가 지키는 건지 모른다.' },
         { id: 'road_flood', weight: 2, cooldown: 40,
+          omen: '상류 쪽에서 흙탕물이 섞여 내려온다. 강 냄새가 달라졌다.',
           when: `${QUIET} and month >= 4 and month <= 8 and weather != "☀️맑음"`,
           effects: [{ set: 'route', expr: '"동 강길"' }, { set: 'route_days', expr: '4 + rand(0, 6)' }],
           notify: '[강이 넘쳤다] 물이 둔치를 삼키고 갈대밭까지 올라왔다. 나루 자리를 다시 찾아야 한다.' },
 
         // ② 밖에서 오는 사람 — 수용 한계가 있어야 이게 축복이자 부담이 된다
         { id: 'refugees', weight: 3, cooldown: 25,
+          omen: '남쪽 길에서 온 사람마다 같은 말을 한다 — 저 아래 마을들이 비어 간다고.',
           // 터져 나가는 게 눈에 보이면 발길이 끊긴다 — 그래도 수용 한계까진 밀고 들어온다
           when: `${QUIET} and ${thr('fame', '>=', 2, 18)} and food > 200 and crowd < 125`,
-          effects: [{ set: 'pop', expr: 'pop + min(round(cap * 0.12) + rand(0, 8), 30)' },
-            { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' }],
-          notify: '[사람이 들어왔다] 남쪽 길로 한 무리가 걸어 들어왔다. 여기가 사람을 받는다는 말을 듣고 왔다고 한다. '
-            + '재울 자리가 있는지는 그들이 알 바 아니다.' },
+          // §14: 곧장 주민이 되지 않는다 — 관문 앞에 서고, 들일지는 관문 방침이 다음 정산에서 정한다
+          effects: [{ set: 'drifters', expr: 'min(400, drifters + min(round(cap * 0.12) + rand(0, 8), 30))' }],
+          notify: '[관문 앞에 무리가 섰다] 남쪽 가도로 한 무리가 걸어 와 관문 앞에 멈췄다. 여기가 사람을 받는다는 말을 듣고 '
+            + '왔다고 한다 — 전쟁에 집을 잃은 식구, 제대한 병사, 일거리를 잃은 칼잡이가 섞여 있다. 재울 자리가 있는지는 '
+            + '그들이 알 바 아니다. 들일지는 관문 방침이 정한다.' },
+        // 칼 든 이들이 섞여 있다 — 병사로 사거나(서사가 army를 올리고 drifters를 내린다) 돌려보내면 길 위로 간다
+        { id: 'merc_band', weight: 2, cooldown: 40,
+          omen: '관문 앞 무리 속에 칼 찬 이들이 따로 뭉쳐 다닌다. 서로 누구 눈치를 보는지가 보인다.',
+          when: `${QUIET} and drifters >= 20 and guild == 0`,
+          effects: [],
+          notify: '[칼잡이 한 패] 관문 앞 무리 속에 무장한 한 패가 있다 — 전쟁이 끝나 일거리를 잃은 용병단이다. '
+            + '병사로 사겠다면 지금이고, 돌려보내면 그 칼은 길 위로 간다. 몇 명이고 누가 이끄는지는 이번 장면에서 정하라.' },
         { id: 'peddler', weight: 3, cooldown: 20,
+          omen: '길 쪽에서 방울 소리를 들었다는 아이가 있다.',
           when: `${QUIET} and rel_top >= 15`,
           effects: [],
           notify: '[봇짐장수가 들렀다] 길을 잘못 든 장사치 하나가 하룻밤 묵어 간다. '
@@ -1020,6 +1482,7 @@ const S = {
 
         // ③ 밖에서 오는 위협
         { id: 'raid', weight: 3, cooldown: 22,
+          omen: '변두리 울타리 밖에 낯선 발자국이 찍혀 있었다. 개들이 밤새 한쪽을 보고 짖는다.',
           // 보건이 오르면 가용 노동력이 늘어 경비 인원도 같이 는다 — 예전 기준(pop*0.10)은
           // 자리를 잡은 순간 영원히 안 걸렸다. 상비군을 두 배로 세는 건 훈련된 병사가 척후 몇보다 낫기 때문.
           when: `${QUIET} and ${thr('threat', '>=', 80, 45)} and guard_men + army * 2 < round(pop * 0.15)`,
@@ -1028,17 +1491,33 @@ const S = {
           notify: '[변두리가 털렸다] 외곽 집 몇 채가 밤사이 비었다. 사람이 상했는지 도망친 건지는 아침에 안다. '
             + '경비가 모자라다는 걸 저쪽이 먼저 알아챘다.' },
         { id: 'plague', weight: 2, cooldown: 45,
+          omen: '기침하는 집이 하나둘 늘었다. 열이 올랐다 내렸다 한다는 말이 우물가에서 돈다.',
           when: `${QUIET} and ${thr('health', '<=', 20, 60)} and crowd >= 85`,
           effects: [{ set: 'disaster', expr: '"열병"' }, { set: 'disaster_days', expr: '8 + rand(0, 10)' },
             { set: 'health', expr: 'clamp(health - 10, 0, 100)' }],
-          notify: '[열이 돈다] 한 집에서 시작한 것이 사흘 만에 옆집으로 갔다. 사람이 붙어 자니 막을 방법이 없다.' },
+          notify: '[열이 돈다] 한 집에서 시작한 것이 사흘 만에 옆집으로 갔다. 사람이 붙어 자니 막을 방법이 없다. '
+            + '이 나라의 의사는 광휘회의 자매뿐이다 — 교단에 손을 벌릴지는 영주가 정한다.',
+          // §14-3 치료 독점 — 교단은 오되 교단으로 온다: 헌금을 받고, 빚을 남긴다. 교단이 이 땅을 장부에서라도 알아야 온다
+          timeout: 2,
+          choices: [
+            { label: '광휘회에 구호를 청한다', when: 'rel_ch >= 10 and gold >= plague_cost',
+              effects: [{ set: 'gold', expr: 'max(0, gold - plague_cost)' }, { set: 'health', expr: 'clamp(health + 15, 0, 100)' },
+                { set: 'disaster_days', expr: 'max(1, disaster_days - 6)' }, { set: 'rel_ch', expr: 'clamp(rel_ch + 3, 0, 100)' },
+                { list: 'favors', add: ['광휘회에 열병 구호의 빚'] }],
+              inject: 'The Baron sends to the Sisterhood for help and pays the donation. Luminaries come and lay hands on the sick — '
+                + 'they come as the Church, not as hired hands, and the Church will remember that Veridia asked.' },
+            { label: '우리 손으로 버틴다',
+              inject: 'The Baron keeps the Church out of it. The village nurses its own with what it has.' },
+          ] },
         { id: 'drought', weight: 2, cooldown: 60,
+          omen: '비가 올 듯하다 그치는 날이 이어진다. 개울 물소리가 작아졌다.',
           when: `${QUIET} and month >= 6 and month <= 8 and ${thr('wells', '<=', 0, 2)}`,
           effects: [{ set: 'disaster', expr: '"가뭄"' }, { set: 'disaster_days', expr: '12 + rand(0, 14)' }],
           notify: '[비가 그쳤다] 논둑이 갈라지기 시작했다. 강까지 물을 이고 나르는 줄이 길어진다.' },
 
         // ④ 밖에서 오는 눈길 — 이웃이 이쪽을 처음 쳐다보는 순간
         { id: 'assessor', weight: 3, cooldown: 50,
+          omen: '낯선 사람이 인근 마을에서 여기 곳간과 병영을 묻고 다녔다고 한다.',
           when: `${QUIET} and rel_top >= 30 and rel_top < 70`,
           effects: [],
           notify: '[누가 보러 왔다] 이웃 영지 사람이 볼일 없이 마을을 한 바퀴 돌고 갔다. 세는 눈이었다. '
@@ -1047,6 +1526,7 @@ const S = {
         // ⑤ 하늘이 하는 일 — 막을 수 없고 지나가기를 기다리는 것들.
         //    밭을 때리는 건 blight로, 곳간을 때리는 건 food로 간다. 목록에서 밭을 빼는 건 이벤트가 못 한다.
         { id: 'storm', weight: 3, cooldown: 30,
+          omen: '서쪽 하늘이 저녁마다 누렇게 탄다. 제비가 낮게 난다.',
           when: `${QUIET} and (month >= 3 and month <= 5 or month >= 9 and month <= 11)`,
           effects: [{ set: 'disaster', expr: '"큰바람"' }, { set: 'disaster_days', expr: '2 + rand(0, 3)' },
             { set: 'food', expr: 'max(0, food - round(pop * 0.6))' },
@@ -1054,22 +1534,34 @@ const S = {
           notify: '[밤새 바람이 불었다] 사람은 상하지 않았지만 세워 둔 것 몇 가지가 견디지 못했다. '
             + '무엇이 무너지고 무엇이 젖었는지는 이 영지에 실제로 서 있는 것들 중에서 골라라 — '
             + '물길을 냈다면 물길이 넘칠 수도 있고, 아직 아무것도 없다면 없는 대로 무너질 것이 있다.' },
+        // §14-6 이름값 — 밭 피해는 가진 밭의 몫으로(옛 판은 3~6 고정이라 밭 다섯이면 태반, 열둘이면 티끌), 아무는 날까지 간다.
+        //   우박 40~60% · 40~60일(여름 소출과 가을걷이 앞머리) / 늦서리 20~40% · 25~35일(다시 뿌려 올라올 때까지) / 들불 10~20% · 20일
         { id: 'hail', weight: 3, cooldown: 45,
+          omen: '한낮인데 공기가 이상하게 차다. 먹구름 밑이 푸르스름하다.',
           when: `${QUIET} and month >= 5 and month <= 8 and sum(farms) > 0`,
-          effects: [{ set: 'blight', expr: 'min(8, blight + 3 + rand(0, 3))' }],
+          effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(4, 6) / 10)))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 40 + rand(0, 20))' }],
           notify: '[우박이 왔다] 한나절 만에 이삭이 다 누웠다. 밭이 없어진 건 아니지만 올해 그 자리에서 '
             + '나올 것은 크게 줄었다. 몇 이랑이 살아남았는지는 이번 장면에서 정하라.' },
         { id: 'frost', weight: 2, cooldown: 60,
+          omen: '해가 지면 바람이 갑자기 맵다. 늙은이들이 모종 덮을 거적을 찾는다.',
           when: `${QUIET} and month >= 3 and month <= 4 and sum(farms) > 0`,
-          effects: [{ set: 'blight', expr: 'min(8, blight + 2 + rand(0, 3))' }],
-          notify: '[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다.' },
+          effects: [{ set: 'blight', expr: 'min(8, blight + max(1, round(min(12, sum(farms)) * rand(2, 4) / 10)))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 25 + rand(0, 10))' }],
+          notify: '[늦서리가 내렸다] 파종이 끝난 뒤에 서리가 왔다. 막 나온 싹이 하룻밤에 검게 죽었다. '
+            + '다시 뿌려야 하고, 다시 올라올 때까지 그 자리는 빈 밭이다.' },
+        // 불을 끊는 동안은 일손이 밭에 없다 — 들불이 타는 날은 수확 ×0.8 (dis_farm). 탄 자리는 밭 피해로 남는다.
         { id: 'wildfire', weight: 2, cooldown: 50,
+          omen: '마른 풀 냄새가 짙다. 먼 능선에 옅은 연기가 오른 날이 있었다.',
           when: `${QUIET} and month >= 6 and month <= 8 and weather == "☀️맑음"`,
           effects: [{ set: 'disaster', expr: '"들불"' }, { set: 'disaster_days', expr: '3 + rand(0, 4)' },
-            { set: 'threat', expr: 'clamp(threat - 6, 0, 100)' }],
+            { set: 'threat', expr: 'clamp(threat - 6, 0, 100)' },
+            { set: 'blight', expr: 'min(8, blight + round(min(12, sum(farms)) * rand(1, 2) / 10))' },
+            { set: 'blight_until', expr: 'max(blight_until, day + 20)' }],
           notify: '[들에 불이 붙었다] 마른 풀을 타고 번진다. 사람을 붙여 불길을 끊어야 한다. '
             + '탄 자리에서 무엇이 쫓겨 나왔는지는 이번 장면에서 정하라 — 짐승도 불은 피한다.' },
         { id: 'coldsnap', weight: 2, cooldown: 50,
+          omen: '밤마다 한기가 한 겹씩 더 내려온다. 장작 값을 묻는 사람이 늘었다.',
           when: `${QUIET} and (month >= 12 or month <= 2) and crowd >= 90`,
           effects: [{ set: 'disaster', expr: '"한파"' }, { set: 'disaster_days', expr: '4 + rand(0, 5)' },
             { set: 'health', expr: 'clamp(health - 8, 0, 100)' }],
@@ -1077,12 +1569,14 @@ const S = {
 
         // ⑥ 병 — 여건이 나빠서 나는 것들이라 조건이 곧 원인이다.
         { id: 'foul_water', weight: 3, cooldown: 35,
+          omen: '강물에서 비린내가 난다. 배를 쓸어내리는 사람이 보인다.',
           when: `${QUIET} and wells <= 0 and ${thr('health', '<=', 25, 70)}`,
           effects: [{ set: 'disaster', expr: '"배앓이"' }, { set: 'disaster_days', expr: '5 + rand(0, 6)' },
             { set: 'health', expr: 'clamp(health - 7, 0, 100)' }],
           notify: '[강물 탓이다] 마을 절반이 같은 날 배를 잡았다. 오염된 우물을 두고 강물을 길어 온 대가다. '
             + '끓여 먹으라는 말은 지키는 사람만 지킨다.' },
         { id: 'murrain', weight: 2, cooldown: 55,
+          omen: '짐승들이 여물을 남긴다. 눈이 흐린 놈이 한둘 보인다.',
           when: `${QUIET} and sum(farms) >= 4`,
           effects: [{ set: 'food', expr: 'max(0, food - round(pop * 0.8))' },
             { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' }],
@@ -1092,24 +1586,28 @@ const S = {
         // ⑦ 짐승과 그보다 나쁜 것 — 방향마다 사는 게 다르다(로어북).
         //    경비가 모자랄 때만 온다. 저쪽이 그걸 먼저 안다.
         { id: 'goblin_raid', weight: 2, cooldown: 24,
+          omen: '북쪽 숲 가장자리에서 작은 발자국과 이빨 자국 난 뼈가 나왔다.',
           when: `${QUIET} and ${thr('threat', '>=', 70, 40)} and guard_men + army * 2 < round(pop * 0.18)`,
           effects: [{ set: 'food', expr: 'max(0, food - round(pop * 0.5))' },
             { set: 'threat', expr: 'clamp(threat + 6, 0, 100)' }],
           notify: '[북쪽에서 내려왔다] 고블린 한 떼가 밤에 곳간을 뒤졌다. 싸움이랄 것도 없이 지고 갔다. '
             + '한 번 성공한 자리는 다시 온다.' },
         { id: 'harpy', weight: 2, cooldown: 40,
+          omen: '능선 위로 큰 그림자가 도는 걸 봤다는 사람이 있다. 들새들이 조용하다.',
           when: `${QUIET} and ${thr('threat', '>=', 75, 45)} and month >= 4 and month <= 9`,
           effects: [{ set: 'pop', expr: 'max(0, pop - (1 + rand(0, 2)))' },
             { set: 'morale', expr: 'clamp(morale - 6, 0, 100)' }],
           notify: '[하늘에서 왔다] 능선 쪽에서 그림자가 돌더니 들에 있던 사람을 채 갔다. 활이 닿지 않는 높이였다. '
             + '누가 없어졌는지는 이번 장면에서 정하라.' },
         { id: 'orc_scout', weight: 2, cooldown: 45,
+          omen: '남쪽 평원 먼 곳에서 연기 몇 줄이 올랐다가 사라졌다.',
           when: `${QUIET} and ${thr('threat', '>=', 80, 55)}`,
           effects: [{ set: 'threat', expr: 'clamp(threat + 10, 0, 100)' },
             { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }],
           notify: '[재 너머에서 봤다] 남쪽 평원에 오크 척후가 다녀갔다. 약탈이 아니라 세러 온 것이다. '
             + '세고 갔다는 건 뒤에 본대가 있다는 뜻이다.' },
         { id: 'nest_near', weight: 2, cooldown: 40,
+          omen: '밤에 숲 쪽에서 들어 본 적 없는 소리가 난다. 덫에 걸리던 짐승이 줄었다.',
           when: `${QUIET} and ${thr('threat', '>=', 50, 30)}`,
           effects: [{ set: 'threat', expr: 'clamp(threat + 12, 0, 100)' }],
           notify: '[가까이에 자리를 잡았다] 마을에서 반나절도 안 되는 곳에 무언가가 둥지를 틀었다. '
@@ -1120,17 +1618,20 @@ const S = {
         //    문턱이 나쁜 일과 반대로 움직인다. 하드에서 행운이 사라지는 게 아니라,
         //    행운이 걸릴 만큼 뭔가를 세워 놓아야 걸린다.
         { id: 'bumper', weight: 3, cooldown: 60,
+          omen: '올해 이삭이 유난히 무겁게 고개를 숙였다. 늙은이들이 밭둑에 오래 서 있다.',
           when: `${QUIET} and month >= 9 and month <= 10 and ${thr('sum(farms)', '>=', 2, 8)} and blight <= 0`,
           effects: [{ set: 'food', expr: 'food + round(pop * 2.5)' },
             { set: 'morale', expr: 'clamp(morale + 8, 0, 100)' },
             { set: 'fame', expr: 'clamp(fame + 3, 0, 100)' }],
           notify: '[올해는 잘 됐다] 걷어 보니 예상보다 훨씬 많다. 이런 해는 자주 오지 않는다는 걸 늙은이들이 안다.' },
         { id: 'wanderer', weight: 3, cooldown: 30,
+          omen: '연장 꾸러미를 멘 낯선 이가 이웃 마을에서 여기 이야기를 묻고 갔다고 한다.',
           when: `${QUIET} and ${thr('fame', '>=', 4, 22)} and crowd < 110`,
           effects: [],
           notify: '[손을 가진 사람이 왔다] 떠돌던 장인 하나가 여기서 겨울을 나겠다고 한다. 무엇을 다루는 사람이고 '
             + '왜 떠돌았는지 이번 장면에서 정하고, 눌러앉기로 하면 현지 고용인에 올려라.' },
         { id: 'pilgrims', weight: 2, cooldown: 45,
+          omen: '인근 마을에서 이번 축일엔 여기로 가 볼까 하는 말이 들린다.',
           when: `${QUIET} and fest_in <= 3 and ${thr('fame', '>=', 0, 12)}`,
           effects: [{ set: 'morale', expr: 'clamp(morale + 6, 0, 100)' },
             { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
@@ -1138,24 +1639,28 @@ const S = {
           notify: '[축일을 쇠러 왔다] 인근에서 사람들이 걸어 들어왔다. 폐허라도 축일은 축일이라고. '
             + '쓰고 간 돈보다, 여기가 사람 사는 곳으로 보였다는 게 크다.' },
         { id: 'windfall', weight: 2, cooldown: 60,
+          omen: '터를 파던 인부들 삽 끝에 자꾸 옛 기와 조각이 걸린다.',
           when: `${QUIET} and ${thr('build_men', '>=', 2, 16)}`,
           effects: [{ set: 'gold', expr: 'gold + 120 + rand(0, 260)' }],
           notify: '[땅에서 나왔다] 터를 파던 인부가 항아리를 깼는데 안에 옛 주화가 들어 있었다. '
             + '누가 왜 묻었는지는 아무도 모른다.' },
         // ⑨ 왕도가 이쪽을 보기 시작할 때 — 계승 다툼이 영지까지 닿는다
         { id: 'envoy', weight: 3, cooldown: 40,
+          omen: '왕도 쪽 말을 탄 사람이 인근 역참에서 쉬어 갔다고 한다.',
           when: `${QUIET} and my_weight >= 15 and stance == "중립"`,
           effects: [],
           notify: '[사절이 왔다] 왕도에서 온 사람이 남작을 따로 청했다. 세 왕녀 중 누가 보냈고 무엇을 약속하는지, '
             + '그리고 그 대가로 무엇을 요구하는지는 이번 장면에서 정하라. 지금 판세와 이쪽의 무게를 보고 '
             + '어울리는 쪽이 보냈을 것이다. 답을 그 자리에서 줄 필요는 없다.' },
         { id: 'leak', weight: 3, cooldown: 30,
+          omen: '궁정 쪽에서 온 사람들이 남작이 누구와 서신을 주고받는지 넌지시 묻는다.',
           when: `${QUIET} and stance != "중립" and exposed >= 25 and exposed < 75`,
           effects: [{ set: 'exposed', expr: 'clamp(exposed + 20, 0, 100)' }],
           notify: '[말이 돌았다] 남작이 누구 편인지가 이제 궁정 밖에서도 오르내린다. 누구 입에서 나갔는지는 '
             + '이번 장면에서 정하라 — 밀서를 나른 자일 수도, 자랑을 한 식솔일 수도 있다. '
             + '반대편에 선 쪽이 이걸 모를 리 없다.' },
         { id: 'court_turn', weight: 2, cooldown: 55,
+          omen: '왕도에서 오는 소식이 뜸하다. 오는 사람마다 말을 아낀다.',
           when: `${QUIET} and day >= 40`,
           effects: [{ set: 'pw_cass', expr: 'clamp(pw_cass + rand(0, 16) - 8, 5, 100)' },
             { set: 'pw_orel', expr: 'clamp(pw_orel + rand(0, 16) - 8, 5, 100)' },
@@ -1164,22 +1669,46 @@ const S = {
             + '무엇 때문인지는 여기까지 정확히 오지 않는다. 어느 쪽이 웃고 어느 쪽이 다쳤는지는 '
             + '위 세력 수치를 보고 읽어라 — 이유는 지어내되 숫자와 어긋나면 안 된다.' },
         { id: 'summons', weight: 2, cooldown: 70,
+          omen: '왕실 인장을 단 전령이 근처 가도를 지났다고 한다.',
           when: `${QUIET} and rel_cap >= 35 and my_weight >= 25`,
           effects: [{ set: 'appt', expr: '"왕도 소환 — 알현"' }, { set: 'appt_in', expr: '14 + rand(0, 7)' }],
           notify: '[부름을 받았다] 왕도에서 소환장이 왔다. 길이 십사 일이니 떠날 채비를 해야 하고, '
             + '떠나 있는 동안 영지는 누가 볼 것인지도 정해야 한다. 왜 지금 부르는지는 이번 장면에서 정하라.' },
 
+        // 문턱이 왕도(rel_cap)였던 것을 교단(rel_ch)으로 (§14-3) — 순회 자매를 보내는 건 대성당이다. 시작값에선 같은 판정
         { id: 'sister_visit', weight: 2, cooldown: 50,
-          when: `${QUIET} and health <= 55 and count(corps) <= 0 and ${thr('rel_cap', '>=', 0, 10)}`,
+          omen: '순회하는 자매가 이웃 마을에 머물고 있다는 말이 들린다.',
+          when: `${QUIET} and health <= 55 and count(corps) <= 0 and ${thr('rel_ch', '>=', 0, 10)}`,
           effects: [{ set: 'health', expr: 'clamp(health + 10, 0, 100)' },
             { set: 'b_stella', expr: 'clamp(b_stella + 4, -50, 100)' }],
           notify: '[광휘회에서 지나갔다] 순회 중이던 자매 하나가 하루 묵으며 앓는 이들을 봐 주었다. '
             + '고용이 아니라 지나는 길이었고, 내일이면 간다.' },
+        // 교단과 왕실 — 왕국과 나란한 교단 [유저]. 두 권력이 한 문제로 맞서고 이 땅의 영주에게 편을 묻는다.
+        //   무엇을 두고 맞섰는지는 서사가 — 시스템은 "누가 무엇을 원하나"까지. 안 고르면(3턴) 말을 아낀 것 = 양쪽이 조금씩 식는다
+        { id: 'church_crown', weight: 2, cooldown: 90,
+          omen: '대성당 사람과 왕도 사람이 같은 주막에서 서로를 피해 앉았다고 한다.',
+          when: `${QUIET} and rel_ch >= 40 and rel_cap >= 30`,
+          effects: [],
+          notify: '[교단과 왕실 사이] 대성당과 왕도가 한 문제를 두고 맞섰다 — 의사 임명권, 고아원 기금, 이단 심문, 십일조 면제 중 '
+            + '무엇인지는 이번 장면에서 정하라. 양쪽 사람이 저마다 이 땅의 영주에게 어느 편인지 묻는다. 답을 미루는 것도 답이다.',
+          timeout: 3,
+          choices: [
+            { label: '교단 편에 선다',
+              effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch + 8, 0, 100)' }, { set: 'rel_cap', expr: 'clamp(rel_cap - 6, 0, 100)' }],
+              inject: 'The Baron sides with the Sisterhood. The Cathedral will remember it — and so will the court.' },
+            { label: '왕실 편에 선다',
+              effects: [{ set: 'rel_cap', expr: 'clamp(rel_cap + 8, 0, 100)' }, { set: 'rel_ch', expr: 'clamp(rel_ch - 6, 0, 100)' }],
+              inject: 'The Baron sides with the Crown. The court will remember it — and so will the Cathedral.' },
+            { label: '말을 아낀다',
+              effects: [{ set: 'rel_ch', expr: 'clamp(rel_ch - 2, 0, 100)' }, { set: 'rel_cap', expr: 'clamp(rel_cap - 2, 0, 100)' }],
+              inject: 'The Baron gives neither side an answer. Both notice the silence.' },
+          ] },
 
         // ── ⑧ 등급 사건 (난이도 프리셋 재설계, 2026-08-15) ──
         // 혈전급은 리얼리티에서 창이 세 배 넓지만 어느 판에도 있다 — 켜고 끄지 않는다(원칙).
         // 반대로 순풍급은 시련이 낮을수록 창이 넓다: thr의 기울기를 뒤집으면 된다.
         { id: 'horde', weight: 2, cooldown: 70,
+          omen: '짐승들이 한 방향에서 도망쳐 온다. 척후가 돌아와 말을 아낀다.',
           when: `${QUIET} and ${thr('threat', '>=', 92, 62)} and pop >= 40`,
           effects: [
             { set: 'pop', expr: 'max(pop - 6 - rand(0, 8), 20)' },
@@ -1190,24 +1719,28 @@ const S = {
           notify: '[무리가 내려왔다] 척후가 봤다던 것들이 한꺼번에 왔다. 밤새 싸웠고, 아침에 세어 보니 '
             + '빈자리가 있다. 저들은 물러난 것이지 사라진 게 아니다.' },
         { id: 'granary_rot', weight: 2, cooldown: 60,
+          omen: '곳간 밑단에서 눅눅한 냄새가 올라온다. 쥐가 늘었다.',
           when: `${QUIET} and ${thr('food', '>=', 1400, 600)}`,
           effects: [{ set: 'food', expr: 'max(food - round(food * (0.08 + hardship * 0.0012)), 0)' },
             { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' }],
           notify: '[곳간이 상했다] 밑단 가마니에서 쉰내가 올라왔다. 젖은 채로 쌓은 것이 속에서 썩었다. '
             + '상한 것을 골라내는 데 하루가 갔고, 골라낸 만큼이 줄었다.' },
         { id: 'deserters', weight: 2, cooldown: 45,
+          omen: '몇 집이 짐을 싸 두었다는 말이 돈다. 저녁마다 남쪽 길을 오래 보는 사람들이 있다.',
           when: `${QUIET} and ${thr('morale', '<=', 6, 28)} and pop >= 40`,
           effects: [{ set: 'pop', expr: 'max(pop - 3 - rand(0, 5), 20)' },
             { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' }],
           notify: '[사람이 떠났다] 새벽에 남쪽 길로 몇 집이 조용히 나갔다. 말리는 사람이 없었다는 것이 '
             + '더 나쁜 소식이다. 남은 이들이 그 빈집을 하루 종일 쳐다봤다.' },
         { id: 'settlers', weight: 2, cooldown: 45,
+          omen: '연장을 짊어진 가족이 인근에서 빈집이 있느냐고 물었다고 한다.',
           when: `${QUIET} and ${thr('fame', '>=', 6, 30)} and pop < cap and health >= 25`,
           effects: [{ set: 'pop', expr: 'pop + 3 + rand(0, 4)' },
             { set: 'morale', expr: 'clamp(morale + 4, 0, 100)' }],
           notify: '[가족이 정착했다] 손에 연장이 있는 가족이 들어와 빈집을 골랐다. 도망 온 것이 아니라 '
             + '골라서 온 것이다 — 이 땅 이야기가 밖에서 그렇게 돈다는 뜻이다.' },
         { id: 'patron', weight: 2, cooldown: 60,
+          omen: '이웃 영지 인장을 단 짐마차가 인근 길에서 보였다.',
           when: `${QUIET} and ${thr('rel_top', '>=', 25, 60)}`,
           effects: [{ set: 'gold', expr: 'gold + 80 + rand(0, 60)' },
             { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
@@ -1221,17 +1754,20 @@ const S = {
         // 그래서 같은 사건이 여러 번 와도 판마다 다른 이야기가 된다. 숫자는 가볍게만 민다 —
         // 진짜 결과는 서사가 정하고 보조 AI 상한이 받아 적는다.
         { id: 'trouble_market', weight: 2, cooldown: 35,
+          omen: '저잣거리 말소리가 날카롭다. 저울 이야기가 자주 나온다.',
           when: `${QUIET} and (deals >= 5 or gold >= 200)`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' }],
           notify: '[장터가 시끄럽다] 저잣거리에서 다툼이 났다. 저울인지 셈인지 자리싸움인지 — '
             + '무엇이 불씨인지는 현장이 안다. 남작이 나서기 전에는 안 가라앉을 크기다.' },
         { id: 'trouble_folk', weight: 2, cooldown: 35,
+          omen: '우물가에서 사람들이 편을 갈라 수군거린다.',
           when: `${QUIET} and pop >= 60`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 3, 0, 100)' },
             { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
           notify: '[마을에 말썽이 났다] 집과 집 사이의 일이다. 혼사인지 빚인지 금 넘은 울타리인지 — '
             + '사정은 당사자들이 말할 것이다. 사람들이 편을 갈라 서기 시작했다는 게 문제다.' },
         { id: 'trouble_barracks', weight: 2, cooldown: 35,
+          omen: '병영에서 밤늦게 웃음소리와 고함이 섞여 들린다.',
           when: `${QUIET} and army >= 5`,
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 2, 0, 100)' },
             { set: 'morale', expr: 'clamp(morale - 2, 0, 100)' }],
@@ -1242,6 +1778,7 @@ const S = {
         // 숫자는 티끌(사기 +2~5, 식량 한 줌)이고 난이도 문턱을 안 건다 — 리얼리티의
         // 가뭄에도 단비는 온다. 그래서 쿨다운만 길게.
         { id: 'first_baby', weight: 2, cooldown: 90,
+          omen: '산파가 요즘 한 집을 자주 드나든다.',
           when: `${QUIET} and pop >= 40`,
           effects: [{ set: 'pop', expr: 'pop + 1' }, { set: 'morale', expr: 'clamp(morale + 5, 0, 100)' }],
           notify: '[아이가 태어났다] 부임 뒤 태어난 아이다. 이 땅에서 아이를 낳기로 한 집이 있다는 뜻이다. '
@@ -1267,6 +1804,56 @@ const S = {
             { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
           notify: '[감사가 닿았다] 지난날 거둬 준 사람이 자리 잡은 곳에서 소식을 보내왔다. '
             + '별것 아닌 물건이 같이 왔는데, 별것이 아니라서 좋다.' },
+
+        // ⑥ 도적 (§14) — 몬스터가 아니라 사람. 돌려보낸 이들이 굶다 칼을 든 것이다.
+        //   §14-5: 굶는 자도 빈 마을은 안 턴다 — 탐낼 거리가 문턱을 넘어야 온다 (문턱은 시련이 낮춘다: 희망 33 · 보통 26 · 리얼리티 15)
+        { id: 'bandit_raid', weight: 3, cooldown: 25,
+          omen: '외곽 곳간 근처에 낯선 신발 자국이 찍혀 있었다.',
+          when: `${QUIET} and ${thr('bandits', '>=', 50, 30)} and ${thr('lure', '>=', 35, 15)}`
+            + ' and guard_men + army * 2 < round(pop * 0.12) + round(bandits * 0.2)',
+          effects: [{ set: 'food', expr: 'max(0, food - 40 - rand(0, 40))' }, { set: 'gold', expr: 'max(0, gold - 30 - rand(0, 30))' },
+            { set: 'unrest', expr: 'clamp(unrest + 6, 0, 100)' }, { set: 'bandits', expr: 'min(100, bandits + 3)' }],
+          notify: '[도적이 변두리를 쳤다] 밤사이 외곽 곳간과 짐수레가 털렸다. 몬스터 짓이 아니다 — 발자국이 신발을 신었다. '
+            + '누구 무리인지, 어디로 갔는지는 이번 장면에서 정하라. 한 번 재미를 본 자들은 또 온다.' },
+        { id: 'bandit_lair', weight: 2, cooldown: 90,
+          omen: '길 위 무리들이 한 사람의 이름을 입에 올리기 시작했다.',
+          when: `${QUIET} and bandits >= 70`,
+          effects: [{ set: 'bandits', expr: 'min(100, bandits + 5)' }],
+          notify: '[소굴이 생겼다] 흩어져 있던 무리가 한 사람 밑으로 모였다. 두목의 이름과 소굴 자리를 이번 장면에서 정하라 — '
+            + '전쟁 때 같은 깃발 아래 있던 얼굴일 수도 있다. 그대로 두면 길목마다 통행세를 걷기 시작한다.' },
+        // ⑦ 모험가 (§14) — 돈과 말썽이 같이 온다
+        { id: 'guild_brawl', weight: 2, cooldown: 30,
+          omen: '주막에서 모험가 패거리끼리 눈을 흘기는 게 보인다.',
+          when: `${QUIET} and guild >= 1`,
+          effects: [{ set: 'unrest', expr: 'clamp(unrest + 4, 0, 100)' }, { set: 'gold', expr: 'max(0, gold - 10 - rand(0, 20))' }],
+          notify: '[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 '
+            + '나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라.' },
+        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (자리가 열리기 직전(100↑)은 안 건드림)
+        { id: 'adv_rumor', weight: 2, cooldown: 30,
+          omen: '사냥에서 돌아온 모험가들이 척후가 가는 쪽 길을 두고 수군거린다.',
+          when: `${QUIET} and guild >= 1 and explore_dir != "없음"`,
+          effects: EXPLORE.map(([dir, v]) => ({ set: v, expr: `${v} < 100 and explore_dir == ${JSON.stringify(dir)} ? min(100, ${v} + 15) : ${v}` })),
+          notify: '[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, '
+            + '피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라.' },
+
+        // ── 혼담 (§14-4) ── 번영할수록 차지하러 온다 [유저]. 명성 30 · 90일 이후 · 한 번 오면 75일은 조용 · 차지된 뒤엔 안 온다.
+        //   누가 오나는 그 가문의 인식·그 사람의 호감·계승 판세가 가른다 (SUITORS.gate). 안 고르면(3턴) "시간을 청한다" — 서른 날 뒤 다시 온다.
+        ...SUITORS.map((s) => ({
+          id: `suit_${suitId(s)}`, weight: 2, cooldown: 180, omen: s.omen,
+          when: `${QUIET} and spouse == "없음" and suit == "없음" and day >= suit_next and fame >= 30 and ${s.gate}`,
+          effects: [{ set: 'suit_next', expr: 'day + 75' }],
+          notify: s.ask + ' 이 세계에서 남자에게 가장 큰 영예는 강한 여자에게 선택받아 보호받는 것이다 — 받아들이면 혼약, 예순 날 뒤 혼례다.',
+          timeout: 3,
+          choices: [
+            { label: '받아들인다', effects: acceptFx(s),
+              inject: `The Baron accepts — ${s.label}'s side claims him. Betrothal now; the wedding in sixty days.` },
+            { label: '정중히 물린다', effects: refuseFx(s, 6, 8),
+              inject: `The Baron declines ${s.label}'s suit with courtesy. It will be remembered.` },
+            { label: '생각할 시간을 청한다',
+              effects: [{ set: 'suit', expr: JSON.stringify(s.k) }, { set: 'suit_until', expr: 'day + 30' }],
+              inject: `The Baron asks for time. ${s.label}'s side will come back for an answer in thirty days.` },
+          ],
+        })),
       ],
     },
   },
@@ -1354,7 +1941,17 @@ const S = {
       text: '[RECRUITMENT] The treasury could cover a request to the Academy now — {hire_txt} in gold, and at this '
         + 'reputation they will release {hire_open}. Only the named graduates exist; the Corps does not send nameless '
         + 'girls, and nobody arrives until the Baron actually sends the request and the fee. '
-        + 'The Sisterhood works the same way but calls the fee a donation.' },
+        + 'The Sisterhood works the same way but calls the fee a donation — and it weighs its own regard, not the Academy\'s: '
+        + 'right now the Cathedral would send {sis_open}.' },
+    // 주교가 오는 이레 — 시스템만 아는 "그녀가 무엇을 볼지"를 서사에 건넨다 (§14-3). 영주가 준비할 수 있게 (공개된 채점표)
+    // 차지된 남작 (§14-4) — 정조역전에서 혼약·혼인이 무엇을 뜻하는지는 시스템만 안다(상태 블록엔 이름뿐). 매 턴 짧게
+    { id: 'claimed', when: 'spouse != "없음"',
+      text: '[CLAIMED] The Baron has been claimed — {spouse_txt}. In this world a woman claims a man and takes responsibility for him: '
+        + 'her side now counts him as its own, other houses no longer court him, and what he does reflects on her.' },
+    { id: 'bishop_coming', when: 'bishop_at > 0',
+      text: '[THE BISHOP IS COMING] Bishop Beatrix arrives {bish_in} to look at this place — she comes to judge, not to help, '
+        + 'and her regard cannot be bought. What she would see as things stand: {bish_txt}. She holds concealment to be the '
+        + 'first sin; a hidden allegiance or hidden suffering is what she looks for.' },
     // 급료가 밀리는 건 시스템만 아는 사실이다. 그리고 이 사람들은 갈 데가 있다.
     { id: 'wages_unpaid', when: 'gold <= 0 and count(corps) > 0',
       text: '[UNPAID] The treasury is empty and {payroll} a day in wages is owed to trained professionals with '
@@ -1374,8 +1971,25 @@ const S = {
     // ── 거처 ──
     // 수용 한계는 시스템만 아는 숫자다. 이 줄이 없으면 모델은 사람이 계속 흘러드는 것처럼 쓴다.
     { id: 'housing_full', when: 'pop >= cap',
-      text: '[HOUSING] Every roof is taken — {pop} people to {cap} places. Nobody new stays, whatever draws them here. '
-        + 'The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out.' },
+      // §14: 누가 더 들어오나는 이제 관문 방침이 정한다 — 받아들임이면 거처가 없어도 들어와 남의 바닥에서 잔다
+      text: '[HOUSING] Every roof is taken — {pop} people to {cap} places. Anyone let in through the gate now sleeps on '
+        + "someone else's floor. The crowding is a daily fact: shared floors, short tempers, sickness moving fast. Building more is the only way out." },
+
+    // ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+    // 시스템만 아는 것: 관문 앞에 몇이 있고 방침이 무엇인지 — 모델은 이걸 모르면 관문 장면을 텅 비게 쓰거나 멋대로 들인다.
+    { id: 'gate_waiting', when: 'drifters >= 15',
+      text: '[AT THE GATE] {drifters} drifters are camped outside the south gate — families who lost their homes in the war, '
+        + 'discharged soldiers, sellswords with no war left to sell to. The gate order stands at "{drift_policy}"; the system lets '
+        + 'people in or sends them on each day by that order, so never settle them yourself. They belong in any scene at the gate '
+        + 'or on the south road — hunger, bargaining, someone asking for the Baron by name.' },
+    { id: 'bandits_out', when: 'bandits >= 40',   // bandit_txt "출몰"과 같은 문턱 — "소문"(15~39)엔 이 줄이 과하다
+      text: '[BANDITS] Bandits on the roads: {bandit_txt}. Most of them are people who had nowhere to go after the war. '
+        + 'Caravans hire guards or stay away; travellers arrive robbed or not at all. Whose band it is and who leads it is yours '
+        + 'to decide — keep it consistent once named.' },
+    { id: 'guild_here', when: 'guild >= 1',
+      text: "[ADVENTURERS] The Adventurers' Guild keeps a {guild_txt} here — ex-mercenaries turned monster hunters who drink, "
+        + 'brag, pick fights and spend money in town. They clear land only for posted bounties; a bounty is posted only on the '
+        + "Baron's order, so they do not sweep the country on their own." },
 
     // ── 바깥 ──
     // 모델의 제일 센 버릇을 거스르는 줄이다. 곤경에 빠뜨려 두면 모델은 누군가를 보낸다 —
@@ -1471,6 +2085,40 @@ const S = {
             { set: 'health', expr: 'clamp(health - 1, 0, 100)' }],
           inject: 'The push goes badly — lost trails, a scare, someone hurt. They came back with little.' },
       ] },
+    // ── 현상금 (§14) — 메이드를 보내는 대신 돈으로 치우는 길. 길드가 없으면 관문 게시판에 붙이고 관문 앞 칼잡이 떠돌이가 받는다
+    //   (떠돌이 20명마다 +1, 최대 +3). 길드가 있으면 전문가가 받아 크게 오른다(규모당 +3, 모험가 10명당 +1). 상대가 셀수록 어렵다.
+    // 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본 공작령 지도] — 성공하면 모르웬 쪽(rel_n)에 닿는다.
+    { id: 'chk_bounty_beast', label: '몬스터 현상금 판정',
+      roll: 'rand(1, 20)',
+      mod: 'guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))',
+      vs: '10 + round(threat / 12)',
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 14, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 3, 0, 100)' },
+            { set: 'fame', expr: 'clamp(fame + 1, 0, 100)' }],
+          inject: 'The adventurers bring back proof of a whole nest cleared — heads, hides, a map mark. The report travels north.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 9, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' }],
+          inject: 'The bounty is claimed — a pack thinned out near the holding.' },
+        { label: '실패',
+          effects: [{ set: 'threat', expr: 'clamp(threat - 3, 0, 100)' }],
+          inject: 'The adventurers come back with little and a wounded man — the money is mostly gone.' },
+      ] },
+    { id: 'chk_bounty_bandit', label: '도적 현상금 판정',
+      roll: 'rand(1, 20)',
+      mod: 'guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))',
+      vs: '10 + round(bandits / 12)',
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 25)' }, { set: 'unrest', expr: 'clamp(unrest - 3, 0, 100)' }],
+          inject: 'The band is broken — its leader brought back in chains or not at all. The roads are quiet for a while.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 15)' }],
+          inject: 'A bandit camp is burned out; the rest scatter.' },
+        { label: '실패',
+          effects: [{ set: 'bandits', expr: 'max(0, bandits - 4)' }],
+          inject: 'The bandits knew the ground better. A skirmish, a few caught, the band itself untouched.' },
+      ] },
   ],
 
   // ── 액션 (P4) — 보편 행정 스위치만, 사업 종류는 영구 금지 (개방 원칙 §1-4) ──
@@ -1500,6 +2148,33 @@ const S = {
       check: 'chk_survey',
       effects: [{ set: 'food', expr: 'max(0, food - 20)' }],
       inject: 'The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food.' },
+    // ── 현상금 (§14) — 길드가 없어도 건다(관문 게시판 — 칼잡이 떠돌이가 받는다). 돈은 거는 순간 나간다(결과와 무관).
+    { id: 'act_bounty_beast', label: '🗡️ 몬스터 현상금', mode: 'oneshot', cooldown: 7,
+      when: 'threat >= 10 and gold >= bounty_cost',
+      check: 'chk_bounty_beast',
+      effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
+      inject: "The Baron posts a monster bounty — at the Adventurers' Guild if there is one, otherwise on the board by the "
+        + 'south gate where drifting sellswords read it — and pays it out of the treasury.' },
+    { id: 'act_bounty_bandit', label: '🪓 도적 현상금', mode: 'oneshot', cooldown: 7,
+      when: 'bandits >= 10 and gold >= bounty_cost',
+      check: 'chk_bounty_bandit',
+      effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
+      inject: "The Baron posts a bounty on the road bandits — at the Adventurers' Guild if there is one, otherwise on the "
+        + 'board by the south gate — and pays it out of the treasury.' },
+    // §14-3 — 폐허 예배당 재건. 공사는 보통 서사(projects)지만 이건 교단 줄기의 문이라 버튼으로 — 값·공기·완공 통지가 시스템 몫
+    { id: 'act_chapel', label: '⛪ 예배당 재건', mode: 'oneshot',
+      when: 'chapel == 0 and chapel_at == 0 and gold >= chapel_cost',
+      effects: [{ set: 'gold', expr: 'max(0, gold - chapel_cost)' }, { set: 'chapel_at', expr: 'day + chapel_days' }],
+      inject: 'The Baron orders the ruined chapel on the hill rebuilt — timber, a mason, the defiled altar scrubbed clean — and pays '
+        + 'for it out of the treasury. It will take some weeks; the system announces when the roof is on.' },
+    // §14-4 — 혼약 파기. 혼례 전까지만 (혼인은 못 무른다). 차지하겠다던 쪽을 물린 것 — 그 가문과 그 사람에게 큰 원한, 소문도 난다.
+    //   버튼은 무장(다음 전송에 집행)이라 누른 채 보내기 전엔 되돌릴 수 있다.
+    { id: 'act_break_troth', label: '💔 혼약을 깬다', mode: 'oneshot',
+      when: 'spouse != "없음" and wed_at > 0',
+      effects: [...fxByWho('spouse', (s) => refuseFx(s, 25, 25)), { set: 'fame', expr: 'clamp(fame - 8, 0, 100)' },
+        { set: 'suit_next', expr: 'day + 120' }, { set: 'spouse', expr: '"없음"' }],
+      inject: 'The Baron breaks off the betrothal. In this world a woman who claimed a man has been refused after the fact — '
+        + 'her house takes it as an insult, and the story travels.' },
   ],
 
   // ── AI 관할과 그 상한 ──
@@ -1515,6 +2190,10 @@ const S = {
       // 빚·약속과 공사는 계약과 같은 전사(옮겨 적기) 규율 — guide의 FAVORS/PROJECTS 항목이 선을 긋는다.
       // projects_n은 절대 열지 않는다 (완공 감지 내부 카운터).
       { id: 'favors' }, { id: 'projects' },
+      // §14-2 맡은 청원 — 보조는 **지우기만** (이행). 넣는 건 청원함 버튼. 사례는 줄 끝 숫자를 옮겨 적는다 (두 건 한 턴까지)
+      { id: 'petitions' }, { id: 'pet_pay', maxGain: 1600 },
+      // §14-3 광휘회 — 교단의 시선은 이웃처럼 "소식이 닿았을 때"만, 십일조는 영주의 명령일 때만. 예배당·주교는 시스템 것
+      { id: 'rel_ch', maxDelta: 6 }, { id: 'tithe' },
       // 이웃의 인식. 거리가 있으니 하루에 크게 움직일 수 없다 — 상한이 그걸 대신 지킨다.
       ...NEIGH.map(([id]) => ({ id, maxDelta: 8 })),
       { id: 'ally' }, { id: 'ally_role' },
@@ -1531,7 +2210,7 @@ const S = {
       //   전사  유저가 "매일 12골드씩 60일"이라 씀 → 옮겨 적음      ← 이건 받아쓰기다
       // guide의 STANDING INCOME 항목이 "숫자가 명시됐을 때만"으로 그 선을 긋는다.
       // 그래도 틀리면 /계약- 이나 패널 ✕로 뺀다 — 목록이라 눈에 보이는 게 이 설계의 이점이다.
-      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'skip_day', maxGain: 14 },
+      { id: 'labor_policy' }, { id: 'disaster_days', maxDelta: 14 }, { id: 'skip_day', maxGain: 3650 },
       { id: 'route' }, { id: 'route_days', maxDelta: 40 },
       { id: 'stance' }, { id: 'exposed', maxDelta: 15 },   // 유저가 배분을 지시하면 반영
       // 방향은 열어 둔다. 계약과 달리 틀려도 복리로 어긋나지 않는다 —
@@ -1550,6 +2229,10 @@ const S = {
       { id: 'health', maxDelta: 12 }, { id: 'morale', maxDelta: 15 },
       { id: 'unrest', maxDelta: 20 }, { id: 'threat', maxDelta: 20 },
       { id: 'fame', maxDelta: 10 },
+      // §14 — 관문 방침은 영주의 명령이라 서사로 받는다. 유랑민·도적은 시스템이 굴리고 보조는 **내리기만** (고용해 간 무리, 깨뜨린 도당)
+      { id: 'drift_policy' },
+      { id: 'drifters', maxGain: 0, maxLoss: 200 },
+      { id: 'bandits', maxGain: 0, maxLoss: 30 },
     ],
     // 이 문장은 보조 모델 호출마다 **무조건** 나간다 — 조건부인 지시문보다 더 자주 든다.
     // 그래서 여기가 영어화 이득이 제일 크다. 유저는 이 글을 볼 일이 없다.
@@ -1557,7 +2240,8 @@ const S = {
       + 'change are already settled by the system — never touch them. You change only what the story created as an '
       + 'exception: trade, raids, relief, accidents, consequences. If nothing happened, change nothing.\n'
       + 'TIME: when time moves forward in the narration, put the number of days in skip_day (next morning = 1, '
-      + 'three days later = 3, next week = 7). Leave it at 0 while the scene stays within the same day — nothing is '
+      + 'three days later = 3, next week = 7, a month later = 30, a whole winter = 90 — the full number, there is no cap). '
+      + 'Leave it at 0 while the scene stays within the same day — nothing is '
       + 'consumed and no date passes until you write it. Consumption and harvest settle for exactly that many days and '
       + 'the date and season advance with it — the date is not yours to write. Do not skip past a feast day or a '
       + 'scheduled appointment; pass through it as a scene.\n'
@@ -1566,6 +2250,11 @@ const S = {
       + 'ROADS: route is whichever road is shut. Set it back to "없음" the moment the narration clears it — bandits '
       + 'driven off, a thaw, another ford found — it does not have to run its term, and clearing it early is the '
       + 'point. Never shut a road yourself; only a system notice does that.\n'
+      + 'THE GATE: drift_policy is the Baron\'s standing order at the south gate — change it only when the narration shows him '
+      + 'giving that order. The system brings drifters in or sends them on every day by that order; never add them to pop yourself. '
+      + 'Lower drifters only when a specific group is taken off the road in the narration — hired as soldiers (raise army by the '
+      + 'same number), sent on with bread. Lower bandits only when the narration actually breaks a band. Never touch guild — '
+      + 'the Guild comes and grows on its own, and bounties go through the Baron\'s buttons.\n'
       + 'APPOINTMENTS: when something is set to happen, write one line in appt and how many days off in appt_in '
       + '(tomorrow = 1). The system counts it down and deletes it once past.\n'
       + 'IMPORTS: supply is for goods arriving on a standing arrangement, one line each, beginning with 식량 or 식수 '
@@ -1590,6 +2279,8 @@ const S = {
       + 'in progress puts nothing in the list. On arrival do three things together: add "Name wage" to corps taking '
       + 'the wage for her rank from the figures above, subtract the one-off fee from gold, and give her a small first '
       + 'regard. Never invent a maid or a sister who is not on the roster, and never let one turn up unpaid for. '
+      + 'The one exception is a [분원] notice: the Cathedral itself sends a sister to the new branch house — when the narration '
+      + 'shows her arrive, add her line with her wage but take no fee (the chapel and the Church\'s regard were the donation). '
       + 'If one leaves, remove her line — the wage stops with her.\n'
       + 'PROJECTS: when construction actually begins in the narration, add one line to projects as "무엇 @+days" — '
       + 'set a realistic duration from the build crew figures above (more builders and a build overseer mean fewer days). '
@@ -1597,7 +2288,22 @@ const S = {
       + 'A project merely proposed or funded registers nothing.\n'
       + 'FAVORS: favors is the ledger of debts and promises between the Baron and named parties — one line each '
       + '("모르웬에게 곡물 200 상환 @+30"), the deadline as @+days when one exists. Register only what is actually '
-      + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently.\n'
+      + 'concluded, and remove the line when it is settled or clearly void — a promise must never vanish silently. '
+      + 'The system dates the deadline and counts it down; a line past its deadline stays, shown as overdue, until you '
+      + 'remove it — an overdue debt is something the narration should press on or break.\n'
+      + 'PETITIONS: petitions holds what the Baron took up from the petition box on his desk — the box\'s buttons write those lines, '
+      + 'never you. When the narration shows one actually done, remove its line exactly as stored and copy the number at its end '
+      + 'into pet_pay (the system pays it — do not also add it to gold). If it asked for goods or hands — grain sold, timber, '
+      + 'soldiers lent — take those out as the narration hands them over. When a neighbouring domain\'s petition is done, move '
+      + 'that domain\'s rel_* up once word reaches it. Past its deadline the system drops the line and counts the disappointment — '
+      + 'do not remove it for that. A request the Baron grants in person during a scene is a promise: favors, not petitions.\n'
+      + 'THE SISTERHOOD: rel_ch is how the High Church regards Veridia. It drifts by itself with the tithe, the sisters serving '
+      + 'here and the chapel — move it only for what the Church actually hears of: a donation delivered, a Luminary honoured or '
+      + 'mistreated, a heresy sheltered. tithe is the Baron\'s standing order on the Church\'s tenth; change it only when he gives '
+      + 'that order — the system pays it daily. The chapel, the Bishop\'s visits and her judgement belong to the system; never write '
+      + 'them. The Sisterhood is the kingdom\'s only physicians: they come as the Church, never as hired hands.\n'
+      + 'MARRIAGE: in this world women claim men. Suits, betrothals and weddings are the system\'s — they arrive as notices and '
+      + 'choices; never write them yourself or record one in favors. What follows from them (regard, a visit, a letter) you record as usual.\n'
       + 'PEOPLE: in staff write only "Name · role" — never appearance or personality, and spell names exactly as the '
       + 'narration spells them (to remove someone the string must match character for character). '
       + 'contacts is the same format but for parties OUTSIDE the holding, added on the first real dealing. '
@@ -1651,12 +2357,15 @@ const S = {
       + '식량 {food} ({food_txt}, 수지 {surplus}/일, 배급 {rations}) | 식수 {water} ({water_txt}, 수지 {water_bal}/일)\n'
       + '재정 {gold} ({gold_txt}, 수지 {net_gold}/일 — 세 {tax}·판매 {sold}·계약 {deals} vs 지출 {upkeep})\n'
       + '지속 수입 {contracts} | 길 {route_txt}\n'
-      + '공사 중 {projects} | 빚·약속 {favors}\n'
+      + '공사 중 {projects} | 빚·약속 {favors} | 맡은 청원 {petitions}\n'
       + '수입 {supply} (식량 +{sup_food}·식수 +{sup_water}, 대금 {import_cost}/일)\n'
       + '사기 {morale_txt} | 보건 {health_txt} | 군사 {army_txt} | 외부보안 {sec_out_txt} | 내부보안 {sec_in_txt} | 명성 {fame_txt}\n'
+      + '관문 {gate_txt} | 도적 {bandit_txt} | 모험가 길드 {guild_txt}\n'
       + '탐사 {explore_dir} ({scouting}) · 영토 파악 {survey} — 북 {found_n} · 서 {found_w} · 남 {found_s} · 동 {found_e}\n'
       + '계승 {court_txt}\n'
       + '이웃 {neighbors}\n'
+      + '광휘회 {ch_txt}\n'
+      + '혼담 청혼 {suit_txt} | 배필 {spouse_txt}\n'
       + '동행 {ally}({ally_role}, 유대 {bond_txt})\n'
       + '군단·수녀 {corps} (봉급 {payroll}/일) | 현지 고용인 {staff}\n'
       + '호감 왕가·동행 {bond0} | 귀족 {bond1} | 광휘회 {bond2} | 메이드 {bond3}\n'
@@ -1668,6 +2377,55 @@ const S = {
     includeEvents: true,
   },
   statusUI: { mode: 'template', collapsible: false, templates: [] },
+  // ── 에셋 팩 — 모듈 로어북의 이미지 지침 두 항목을 이식 (2026-09-27, 유저 제공 원문) ──
+  // 원본: <🏰|인물_상태_감정> (감정 에셋 모듈) · <🏰💕|인물_nsfw_행위> (NSFW 에셋 모듈, toggle_TerritoryNSFW=1 게이트).
+  // 그리는 쪽은 카드 정규식 '에셋'·'야스에셋'이 그대로 한다 — 번들은 정규식을 안 건드린다.
+  // by:'main' — 원본이 "인물 대사 바로 앞에 한 장"이라 메인이 서사 자리에 여러 장을 낸다 (얼헌·아틀리에와 같은 결정).
+  // ⚠ 원본 지침은 casual을 "그 역할의 기본 복장"이라고만 해서 메이드에게도 casual을 쓰게 뒀는데, 카드 에셋을 세어 보면
+  //   메이드는 casual이 없고 bunny뿐이다 (아데레는 cow_bikini뿐, 클라리스만 둘 다). main 모드는 실존 대조가 안 되니
+  //   **있는 조합만 보이게** 인물 묶음마다 팩을 나눈다 — 메릴에게 casual이 아예 안 보이면 Meryl_casual_happy를 못 쓴다.
+  //   카드 실측(2026-09-27, 1995장): 귀족·수녀 13명 casual·nude·pregnancy / 메이드 11명 bunny·nude·pregnancy /
+  //   클라리스 bunny·casual·nude·pregnancy / 아데레 cow_bikini·nude·pregnancy / 26명 전원 nsfw 10종. 감정 22종 공통.
+  assets: (() => {
+    const EMO = ['admiring', 'ahegao', 'angry', 'aroused', 'bored', 'confused', 'crying', 'despair', 'determined',
+      'disgust', 'embarrassed', 'excited', 'happy', 'jealous', 'orgasm', 'sad', 'scared', 'shy', 'smug', 'surprised',
+      'thinking', 'worried'];
+    const NOBLE = ['Alaric', 'Cassandra', 'Orelia', 'Liliana', 'Eleonora', 'Silvana', 'Valerius', 'Liana', 'Morwen',
+      'Beatrix', 'Lapis', 'Celestia', 'Stella'];
+    const MAID = ['Yustina', 'Algeria', 'Lirica', 'Cassia', 'Lulu', 'Lara', 'Fiora', 'Livia', 'Meryl', 'Serie', 'Philia'];
+    const ACT = ['cowgirl_position_sex', 'cowgirl_position_sex_cum', 'doggystyle_sex', 'doggystyle_sex_cum', 'fellatio',
+      'fellatio_cum', 'missionary_sex', 'missionary_sex_cum', 'paizuri', 'paizuri_cum'].map((a) => 'nsfw_' + a);
+    const SRC = '베리디아 감정 에셋 모듈 — Veridian Project Integrated Image System';
+    const USE = '인물이 말할 때마다 그 대사 바로 앞에 1장 — 인물마다 따로. ';
+    const emoPack = (id, who, states, dress, ex) => ({
+      id, source: SRC, sep: '_', format: '<🏰|{name}>',
+      usage: USE + dress + ' 알몸이면 nude, 임신·배가 부푼 상태면 pregnancy. 예: ' + ex,
+      slots: [
+        { id: 'who', label: '인물', values: who },
+        { id: 'state', label: '복장·상태', values: states, fallback: states[0] },
+        { id: 'emo', label: '감정', values: EMO, fallback: 'happy' },
+      ],
+    });
+    return {
+      by: 'main',
+      packs: [
+        emoPack('noble', NOBLE, ['casual', 'nude', 'pregnancy'], '평소 복장은 casual(왕가 드레스·귀족 드레스·수녀복).', '<🏰|Alaric_casual_smug>'),
+        emoPack('maid', MAID, ['bunny', 'nude', 'pregnancy'], '메이드의 평소 복장은 bunny(왕립 메이드단 근무복) — casual은 없다.', '<🏰|Philia_bunny_shy>'),
+        emoPack('clarice', ['Clarice'], ['bunny', 'casual', 'nude', 'pregnancy'], '근무 중엔 bunny, 사복이면 casual.', '<🏰|Clarice_casual_happy>'),
+        emoPack('adere', ['Adere'], ['cow_bikini', 'nude', 'pregnancy'], '아데레의 평소 복장은 cow_bikini — casual은 없다.', '<🏰|Adere_cow_bikini_aroused>'),
+        {
+          id: 'nsfw', source: '베리디아 NSFW 에셋 모듈 — Veridian NSFW Image System',
+          sep: '_', format: '<🏰💕|{name}>',
+          when: 'nsfw_on',   // 원본 toggle_TerritoryNSFW 승계 — /수위 0이면 팩째 닫혀 프롬프트에서 빠진다
+          usage: '성행위 장면에서만 — 그 행위를 하는 인물 이름_행위 1장. 행위 이름은 목록 그대로(숫자·변형 금지). 장면 밖에선 감정 팩을 쓴다. 예: <🏰💕|Yustina_nsfw_fellatio>',
+          slots: [
+            { id: 'who', label: '인물', values: [...NOBLE, ...MAID, 'Clarice', 'Adere'] },
+            { id: 'act', label: '행위', values: ACT, fallback: 'nsfw_missionary_sex' },
+          ],
+        },
+      ],
+    };
+  })(),
   // ── 시작 프리셋 ──
   // 새 채팅에서 한 번 누르는 버튼. 수식은 못 쓰고 값만 쓴다. 안 적은 변수는 스키마 시작값 그대로 간다.
   //
@@ -1701,7 +2459,9 @@ const S = {
           infra: ['낡은 병영', '연병장', '대장간', '마을 우물', '돌다리'],
           stock: ['목재 150', '보리 씨 40'],
           route: '없음', route_days: 0, rel_cap: 20, fame: 26,
+          rel_ch: 20,                                   // §14-3 — 스텔라가 곁에 있다: 대성당이 이 땅을 지켜보기 직전
           hardship: 10, hire_mult: 60,
+          bandits: 0,                                   // §14 — 길 위가 조용한 판
           // 카드 시작 옵션(난이도 0): "중급메이드 메릴과 주니어 수녀 스텔라와 함께 시작" —
           // 프리셋이 corps를 안 심으면 가이드("none of them is here")와 모순되어 보조가 영영 안 올린다 (실사고 2026-08-17)
           corps: ['메릴 8', '스텔라 4'], b_meryl: 20, b_stella: 20,
@@ -1720,7 +2480,9 @@ const S = {
           infra: ['무너진 병영', '잡초 연병장', '폐허 대장간', '마을 우물'],
           stock: ['목재 100', '보리 씨 20'],
           route: '없음', route_days: 0, rel_cap: 10, fame: 0,
+          rel_ch: 10,                                   // §14-3 — 대성당 장부에만 있는 땅
           hardship: 45, hire_mult: 100,                // "일반적으로 어려움" — 구 35/80에서 올림
+          bandits: 12,                                  // §14 — 전쟁이 남긴 떠돌이 무리가 소문으로는 있다
           corps: ['메릴 8'], b_meryl: 20,              // 카드 시작 옵션(난이도 1): 메릴과 함께 시작
           focus: '겨울이 오기 전에 밭을 늘리는 것',
         },
@@ -1743,7 +2505,9 @@ const S = {
           // 그동안 랜덤 사건이 안 겹치는 게 오히려 낫다 — 길이 열리는 날부터 세상이 때리기 시작한다.
           route: '북 산길', route_days: 14,
           rel_cap: 5, fame: 0,                          // 왕도조차 서류로만 안다
+          rel_ch: 5,                                    // §14-3 — 교단도 잊었다 (순회 자매도 안 들른다)
           hardship: 100, hire_mult: 180,
+          bandits: 30,                                  // §14 — 갈 곳 없는 칼잡이가 이미 길 위에 있다
           // 카드 시작 옵션(난이도 2)도 메릴 동행 — 금고 0에 봉급 8/일이 첫날부터 밀린다.
           // wages_unpaid 지시문이 개막부터 붙는데, 그게 리얼리티의 맛이다 (의도)
           corps: ['메릴 8'], b_meryl: 20,
@@ -1767,6 +2531,9 @@ const oldCss = fs.readFileSync(__P('ledger.css'), 'utf8');
 S.statusUI.templates = [{
   id: 'estate',
   template: `<style>${oldCss}</style>`
+    // 갈림길(§14 길드 허가 등) — 보고서 모달 **밖**에 둔다. 안에 두면 "영지 보고서 확인"을 눌러야 보여 못 보고 지나친다.
+    // 걸린 갈림길이 없으면 빈 문자열이라 자리를 안 먹는다.
+    + '{choices}'
     + '<input type="checkbox" id="sim_status_toggle" class="status-checkbox">'
     + '<label for="sim_status_toggle" class="status-open-label">영지 보고서 확인</label>'
     + '<div class="status-full-overlay"><div class="status-modal-window">'
@@ -1816,6 +2583,24 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>군사:</span> <span class="val">{army_txt}</span></div>'
     + '<div class="status-entry"><span>외부보안:</span> <span class="val">{sec_out_txt}</span></div>'
     + '<div class="status-entry"><span>내부보안:</span> <span class="val">{sec_in_txt}</span></div>'
+    + '<div class="status-section-title">🚪 관문과 길</div>'
+    + '<div class="status-entry status-span2"><span>관문:</span> <span class="val">{gate_txt}</span></div>'
+    + '<div class="status-entry"><span>도적:</span> <span class="val">{bandit_txt}</span></div>'
+    + '<div class="status-entry"><span>모험가 길드:</span> <span class="val">{guild_txt}</span></div>'
+    // §14-2 — 영주의 책상. 청원은 📜 청원함에서 맡고, 약속은 서사가 적는다
+    + '<div class="status-section-title">📜 집무실</div>'
+    + '<div class="status-entry status-span2"><span>맡은 청원:</span> <span class="val">{petitions} — 청원함은 📜</span></div>'
+    + '<div class="status-entry status-span2"><span>빚·약속:</span> <span class="val">{favors}</span></div>'
+    // §14-3 — 교단. 예배당은 ⛪ 버튼, 십일조는 /십일조
+    + '<div class="status-section-title">⛪ 광휘회</div>'
+    + '<div class="status-entry"><span>교단의 시선:</span> <span class="val">{rel_ch_txt}</span></div>'
+    + '<div class="status-entry"><span>예배당:</span> <span class="val">{chapel_txt}</span></div>'
+    + '<div class="status-entry"><span>십일조:</span> <span class="val">{tithe} ({tithe_amt}/일)</span></div>'
+    + '<div class="status-entry"><span>주교:</span> <span class="val">{bishop_txt}</span></div>'
+    // §14-4 — 혼담. 청혼은 갈림길로 온다(보고서 밖 {choices}), 혼약 파기는 💔 버튼
+    + '<div class="status-section-title">💍 혼담</div>'
+    + '<div class="status-entry status-span2"><span>청혼:</span> <span class="val">{suit_txt}</span></div>'
+    + '<div class="status-entry status-span2"><span>배필:</span> <span class="val">{spouse_txt}</span></div>'
     + '<div class="status-section-title">👯 곁에 있는 사람</div>'
     + '<div class="status-entry"><span>동행:</span> <span class="val">{ally} ({ally_role})</span></div>'
     + '<div class="status-entry"><span>유대:</span> <span class="val">{bond_txt}</span></div>'
@@ -1885,6 +2670,13 @@ S.party = {
       + sec('지속 수입 — +{deals}/일') + '{contracts:tags}'
       + sec('정기 수입 — 식량 +{sup_food} · 식수 +{sup_water} (대금 {import_cost}/일)') + '{supply:tags}'
       + row('통행', '{route_txt}')
+      // §14 — 관문·도적·길드. 현상금은 액션 버튼, 방침은 /관문 명령
+      + sec('관문과 길 — 방침은 /관문, 현상금은 🗡️·🪓')
+      + row('관문', '{gate_txt} · 하루 {drift_rate}명 옴')
+      + row('도적', '{bandit_txt} · 통행세 {bandit_toll}/일')
+      // §14-5 — 왜 위협이 오르내리는지. 세운 만큼 눈길이 붙고, 위협은 하루 0.5씩 그쪽으로 간다
+      + row('탐낼 거리', '{lure_txt} ({lure}) · 외부 위협 {threat_n} → {threat_goal}')
+      + row('모험가 길드', '{guild_txt} · 수입 {guild_income}/일 · 현상금 {bounty_cost}')
       + sec('보유 물자') + '{stock:tags}'
       + sec('주거 — 수용 {cap} ({crowd_txt} {crowd}%)') + '{houses:tags}'
       + sec('경작지 — {farm_txt} · 일 수확 {harvest}') + '{farms:tags}'
@@ -1933,8 +2725,96 @@ S.party = {
       + row('내 지지', '{stance} ({weight_txt})')
       + sec('주변 영지')
       + NEIGH.map(([id, dir, name, dist]) => row(`${dir} · ${name} (${dist})`, `{${id}_txt}`)).join('')
-      + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}' },
+      + sec('빚·약속 — 이행하거나 파기하기 전엔 안 사라진다') + '{favors:tags}'
+      + sec('맡은 청원 — 📜 청원함에서 맡는다, 기한을 넘기면 떨어진다') + '{petitions:tags}'
+      // §14-3 — 왕실과 나란한 또 하나의 권력
+      + sec('광휘회 — {rel_ch_txt}')
+      + row('예배당', '{chapel_txt}')
+      + row('십일조 (/십일조)', '{tithe} · {tithe_amt}/일')
+      + row('머무는 자매', '{sis_n} — 교단이 보내는 자매: {sis_open}')
+      + row('주교', '{bishop_txt} · 호감 {b_beatrix}')
+      + '<div class="vled-p">주교가 볼 것 — {bish_txt}</div>'
+      // §14-4 — 혼담
+      + sec('혼담 — 이 세계에선 여자가 남자를 차지한다')
+      + row('청혼', '{suit_txt}') + row('배필', '{spouse_txt}') },
   ],
+};
+
+// ── 청원함 · 서신 (§14-2) — 패널 스킨 ──
+// 패널 css는 "지금 열린 패널"의 것만 주입된다 — 대장(party)의 양피지를 청원함·서신에도 같이 단다.
+// 기본 스킨이 색을 박은 클래스(.sch-* 상점 공용 / .scq-* 의뢰판 / .scb-* 버튼·목록 / .scm-* 말풍선)만 덮는다.
+const PARCH_PANEL = `
+.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
+  font-family:'Noto Serif KR','Nanum Myeongjo',serif; }
+.scg-card.scb-wide { width:min(580px,100%); }
+.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }
+.scg-title .scg-x { color:#4a2c2a; }
+.scg-title .scg-x:hover { background:#e2d3b6; color:#4a2c2a; }
+.scg-note { color:#6b5744; }
+.scg-notice { color:#8a3a2a; }
+.scb-btn { background:#f0e5d1; border:1px solid #bda27e; color:#3d352a; border-radius:3px; }
+.scb-btn:hover { background:#e2d3b6; border-color:#4a2c2a; }
+.scb-empty { color:#8a7a60; }
+.scb-row { border-bottom:1px dashed #d8c6a4; }
+.scb-row:hover { background:rgba(74,44,42,.06); }
+.scb-row .scb-num { color:#8a7a60; } .scb-row .scb-title { color:#3d352a; } .scb-row .scb-meta { color:#6b5744; }
+.scb-input, .scb-ta { background:rgba(255,255,255,.45); border:1px solid #bda27e; color:#3d352a; border-radius:3px; }
+.sch-tab { background:#f0e5d1; border:1px solid #bda27e; color:#6b5744; }
+.sch-tab.sch-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }
+.sch-item { border-bottom:1px dashed #d8c6a4; }
+.sch-item .sch-name { color:#3d352a; } .sch-item .sch-name small { color:#6b5744; }
+.sch-grade { border-color:#bda27e; color:#4a2c2a; background:rgba(74,44,42,.06); }
+.sch-price { color:#7a5a10; }
+.sch-log { border-top:1px dashed #bda27e; color:#6b5744; }
+.scq-days { color:#a12a2a; } .scq-left { color:#6b5744; } .scq-cap { color:#4a2c2a; }
+.scm-bubble { background:#fbf5e8; border:1px solid #bda27e; border-radius:2px; box-shadow:1px 1px 0 #d8c6a4; }
+.scm-mine .scm-bubble { background:#e9dbbf; border-color:#a0845c; border-radius:2px; }
+.scm-from { color:#4a2c2a; } .scm-body { color:#3d352a; } .scm-time { color:#8a7a60; } .scm-head { color:#4a2c2a; }
+.scm-pick { border:1px solid #bda27e; color:#3d352a; }
+.scm-pick.scm-on { background:#4a2c2a; border-color:#bda27e; color:#f0e5d1; }`;
+
+// 청원함 = 의뢰판(v1.7.9). 영주 집무실에 영지 안팎의 청이 쌓인다 — "세상이 이 땅에 무엇을 원하나"의 전달면 [§14 전달면].
+// 이웃·교단·길드·마을·유랑민이 한 상자에 모인다 (의뢰판은 봇당 하나 — 무리는 등급으로 가른다).
+// 명성 10(미미함) 전엔 닫혀 있다 — 아무도 모르는 땅엔 청하러 오는 사람도 없다. 초반은 생존 루프가 할 일이다.
+S.questBoard = {
+  label: '영주 집무실 청원함', icon: '📜', listVar: 'petitions', unit: 'G', css: PARCH_PANEL,
+  format: '{client} · {title} ({grade}) @+{days} +{pay}',
+  grades: PET_CIRCLES.map(([g]) => g),
+  bands: Object.fromEntries(PET_CIRCLES.map(([g, lo, hi]) => [g, [lo, hi]])),
+  days: [5, 45], postDays: [6, 15], maxOffers: 5, minOffers: 2, refillEvery: 4,
+  when: 'fame >= 10',
+  // pet_n — 이행 판별의 기준 개수를 버튼이 같이 움직인다 (패널이 넣고 뺀 건 이행도 실망도 아니다)
+  accept: [{ set: 'pet_n', expr: 'pet_n + 1' }],
+  // 맡았다 물리면 말을 거둔 것 — 사례가 클수록 소문도 크다 [초안]. 기한 넘김(-3)보다는 가볍다: 미리 말한 것이니까
+  cancel: [{ set: 'pet_n', expr: 'max(pet_n - 1, 0)' }, { set: 'fame', expr: 'max(fame - 1 - floor(pay / 200), 0)' }],
+  guide: '베리디아 남작 집무실의 청원함에 들어오는 청원이다 — 영지 안팎의 누군가가 영주에게 해 달라는 일. '
+    + '의뢰인(client)은 누가 청하나(이름이나 무리 — "물레방앗간 한스", "관문 앞 유랑민 대표", "헤세 상단", "모르웬 백작"), '
+    + '등급(grade)은 청원인의 무리다. 무리마다 청하러 오는 때가 있다 — 지금 영지 사정(명성·이웃의 인식 rel_*·관문 앞 drifters·도적 bandits·위협 threat)을 보고 고른다: '
+    + PET_CIRCLES.map(([g, , , when]) => `${g} = ${when}`).join(' / ') + '. '
+    + '이웃은 저마다 세는 것을 청한다 — 북 모르웬 백작은 몬스터를 치운 땅(능선의 둥지·길목), 동 리아나 백작은 강과 부두(뱃길·짐·빚에 쫓긴다), '
+    + '남 발레리우스 백작은 수확(곡물을 사겠다·흉년에 나눠 달라), 서 실바나 후작은 숲의 희귀물(약초·단단한 목재·짐승). '
+    + '청원은 영주가 무언가를 해 주는 것이다 — 사람을 보내 달라, 곡식을 팔아 달라, 길을 치워 달라, 다툼을 가려 달라, 자리를 허락해 달라. '
+    + '물건을 청하면 사례(pay)가 그 값이다. 기한은 급한 일 5~10일, 보통 15~25일, 공사·먼 길 30일 이상. '
+    + '제목(title)은 20자 안으로 짧게, note에는 청하는 사정 한 줄(왜 지금인지, 무엇이 걸렸는지). '
+    + '한 번에 같은 무리만 내지 마라 — 섞여야 상자다.',
+};
+
+// 서신 = 메신저를 편지로 (플러그인 v1.13.2 medium 'letter'). 멀리 있는 인물과 닿는 길 [§14 전달면, 아틀리에 선례].
+// 활성 방 하나만 서사로 간다 — 편지가 오간 사실을 메인이 알고, 보조가 이웃 인식(rel_*)·호감(b_*)을 옮겨 적는다.
+// 길이 막히면(남 가도) 전령도 못 다닌다. 들어오는 길은 남쪽 가도 하나뿐이다 [원본].
+// 인물 최근 변화 = 빚·약속(favors) — 그 사람 이름이 걸린 채무·언약이 답장에 묻어난다 (포함 일치라 "모르웬에게 …"가 걸린다).
+S.messenger = {
+  label: '서신', icon: '✉', medium: 'letter', css: PARCH_PANEL,
+  contactsVar: 'pen', notesVar: 'favors',
+  firstChance: 0.15, cooldown: 5,
+  when: 'route != "남 가도"',
+  guide: '베리디아 남작과 바깥 사람들 사이에 오가는 편지다 — 인장 찍은 서신이 전령·상단 짐수레·광휘회 순례자 편으로 남쪽 가도를 오간다. '
+    + '귀족의 편지는 격식과 수사를 갖추고 본론을 뒤에 둔다. 서명은 그 사람의 직함대로. 줄임말·이모티콘 금지. '
+    + '거리가 있다 — 북 모르웬 5일, 동 리아나 강 4일·길 7일, 남 발레리우스 3일, 서 실바나 6일, 왕도 14일. 답장은 그만큼 늦게 온 것이다. '
+    + '편지는 그 사람이 지금 아는 것까지만 담는다 — 베리디아를 아직 모르는 이는 모르는 사람에게 쓰듯 쓰거나 비서가 대신 쓴다. '
+    + '이웃은 저마다 세는 것이 있다: 모르웬은 몬스터를 치운 땅, 리아나는 부두와 뱃길(그리고 빚), 발레리우스는 수확, 실바나는 숲의 희귀물. '
+    + '엘레오노라 공작은 중앙의 질서와 충성을 본다. 세 왕녀는 편지 한 통도 계승 다툼의 수로 읽는다 — 누구와 서신을 트는지가 곧 입장이 된다. '
+    + '여왕은 겉치레를 싫어하고 짧고 결단력 있게 쓴다. 베아트릭스 주교는 돌려 말하지 않는다.',
 };
 
 const v = validateSchema(S);
@@ -2295,6 +3175,575 @@ for (const t of S.party.tabs) {
   ok('구세이브 → day 스냅 · 하루치만 정산 (172일치 폭주 없음)',
     r.state.vars.day === engine.makeLookup(S, r.state.vars)('elapsed') && (fOld - r.state.vars.food) < 120,
     `day ${r.state.vars.day} · 식량 ${fOld} → ${r.state.vars.food}`);
+
+  // ④ 도약 캡 철폐 (2026-09-27) — "한 겨울이 지났다" = 90일이 그대로 90일. 옛 max 14는 14일로 깎았다
+  t = engine.initState(S); t.meta.setupDone = true;
+  r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('tm', 4, 's') }).state, { skip_day: 90 }, {}, { rng: seededRng('tm', 4, 'o') });
+  const L4 = engine.makeLookup(S, r.state.vars);
+  ok('skip 90 → 날짜 +90 (캡에 안 깎임)', L4('elapsed') === 90 && r.state.vars.day === 90, `${d0} → ${L4('date')} · 경과 ${L4('elapsed')}일`);
+
+  // ⑤ 긴 도약 중 곳간이 비면 **빈 날만** 굶는다. 보건 40이면 하루 -29(보건이 수확을 좌우 — 80이면 흑자라 안 빈다),
+  //   곳간 29×8 → 8일째 끝에 바닥, 10일 도약이면 굶은 날 3일: 보건 40 -7×3 +1×7 = 26.
+  //   옛 식은 "끝에 바닥이니 10일 내내 굶음"으로 40-70 → 0이었다.
+  //   onTurn만 재려고 이벤트·랜덤을 걷은 사본으로 굴린다 (재해·역병이 보건을 건드리면 식이 흔들린다).
+  const S0 = { ...S, rules: { ...S.rules, events: [], randomEvents: undefined } };
+  const base = () => { const s = engine.initState(S0); s.meta.setupDone = true; Object.assign(s.vars, { water: 5000, health: 40 }); return s; };
+  const leap = (food) => {
+    const s = base(); s.vars.food = food;
+    return _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('tm', 5, 's') }).state, { skip_day: 10 }, {}, { rng: seededRng('tm', 5, 'o') }).state;
+  };
+  const per = -engine.makeLookup(S0, base().vars)('surplus');
+  const a = leap(per * 8), b = leap(0);
+  ok(`10일 도약 · 8일째 곳간 바닥(하루 -${per}) → 굶은 3일만 벌 (보건 40→26)`, a.vars.health === 26 && a.vars.food === 0, `보건 ${a.vars.health} · 식량 ${a.vars.food}`);
+  ok('처음부터 바닥이면 10일 내내 (보건 40→0, 옛 식과 같음)', b.vars.health === 0, `보건 ${b.vars.health}`);
+  ok('빈 날 수는 정산 끝에 0으로 (상태에 흔적 없음)', a.vars.lack_food === 0 && a.vars.lack_water === 0 && a.vars.lack_gold === 0,
+    `${a.vars.lack_food}/${a.vars.lack_water}/${a.vars.lack_gold}`);
+
+  // ⑥ 빚·약속 — 기한은 세되 지우지 않는다 (v1.13.1 keepOverdue). 옛 판은 @+5가 안 굳어 "(5일)"로 영영 멈춰 있었다
+  t = engine.initState(S); t.meta.setupDone = true;
+  const due = (st) => (engine.sendPhase(S, st, { rng: seededRng('tm', 6, 's') }).promptBlock.match(/모르웬에게 곡물 200 상환[^|\n]*/) || ['(없음)'])[0].trim();
+  r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('tm', 6, 's') }).state, { favors: { add: ['모르웬에게 곡물 200 상환 @+5'] } }, {}, { rng: seededRng('tm', 6, 'o') });
+  const saved = r.state.vars.favors[0];
+  ok('약속 @+5 → 날짜로 굳음', /@\d+$/.test(saved), saved);
+  r = _outputPhase(S, r.state, { skip_day: 3 }, {}, { rng: seededRng('tm', 7, 'o') });
+  ok('사흘 뒤 → (2일)로 줄어든다', due(r.state).endsWith('(2일)'), due(r.state));
+  r = _outputPhase(S, r.state, { skip_day: 4 }, {}, { rng: seededRng('tm', 8, 'o') });
+  ok('기한 지남 → 목록에 남고 (지남)', r.state.vars.favors.includes(saved) && due(r.state).endsWith('(지남)'), due(r.state));
+}
+
+// ── 흘러드는 사람들 · 모험가 길드 (§14) ──
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 흘러드는 사람들 · 모험가 길드 ━━');
+  // 이벤트·랜덤을 걷은 사본 — 정산 식만 잰다
+  const S0 = { ...S, rules: { ...S.rules, events: [], randomEvents: undefined } };
+  const gate = (policy, extra = {}) => {
+    const s = engine.initState(S0); s.meta.setupDone = true;
+    // 명성 0 → 하루 유입 0 (관문 앞 30명만 본다) · 빈 잠자리 10 · 도적 0 · 경비 효과를 보려고 그대로
+    Object.assign(s.vars, { fame: 0, drifters: 30, drift_policy: policy, bandits: 0, pop: 100, houses: ['오두막 110'], ...extra });
+    return _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('dr', 1, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('dr', 1, 'o') }).state;
+  };
+  const acc = gate('받아들임'), sel = gate('가려 받음'), rej = gate('돌려보냄');
+  ok('받아들임 → 30명 전부 들어온다', acc.vars.drifters === 0 && acc.vars.pop >= 128, `주민 ${acc.vars.pop} · 대기 ${acc.vars.drifters}`);
+  ok('가려 받음 → 빈 잠자리 10만큼, 남은 20 중 2명(10%)이 떠남', sel.vars.drifters === 18 && sel.vars.pop >= 108 && sel.vars.pop < 115,
+    `주민 ${sel.vars.pop} · 대기 ${sel.vars.drifters}`);
+  ok('돌려보냄 → 아무도 안 들이고 전부 떠나 도적이 는다', rej.vars.drifters === 0 && rej.vars.pop < 105 && rej.vars.bandits > 7,
+    `주민 ${rej.vars.pop} · 도적 ${rej.vars.bandits.toFixed(1)}`);
+  ok('들인·떠난 수는 정산 끝에 0 (임시 변수)', [acc, sel, rej].every((t) => t.vars.drift_adm === 0 && t.vars.drift_out === 0), '');
+  const L = (t) => engine.makeLookup(S0, t.vars);
+  const busy = gate('가려 받음', { fame: 60, drifters: 0 });
+  const shut = gate('가려 받음', { fame: 60, drifters: 0, route: '남 가도', route_days: 5 });
+  ok('명성이 끌어당긴다 (명성 60 → 하루 2~4명)', L(busy)('drift_rate') >= 2, `하루 ${L(busy)('drift_rate')}명`);
+  ok('남쪽 가도가 막히면 아무도 못 온다', L(shut)('drift_rate') === 0, `하루 ${L(shut)('drift_rate')}명`);
+  // 도적은 경비·상비군이 깎는다
+  const calm = gate('가려 받음', { drifters: 0, bandits: 40, army: 30 });
+  ok('상비군 30이면 도적이 하루 1 넘게 준다', 40 - calm.vars.bandits > 1, `40 → ${calm.vars.bandits.toFixed(2)}`);
+  const packed = gate('받아들임', { fame: 60, drifters: 0, pop: 150 });
+  ok('터져 나가면(130%↑) 발길이 끊긴다', engine.makeLookup(S0, packed.vars)('drift_rate') === 0, `거처 ${engine.makeLookup(S0, packed.vars)('crowd')}%`);
+
+  // 길드 — 사람이 오고(갈림길), 허가하면 연락소, 현상금이 전문가 몫으로
+  let t = engine.initState(S); t.meta.setupDone = true;
+  Object.assign(t.vars, { fame: 30, threat: 40, pop: 120, day: 40, day_prev: 39, guild_ask: 30, route: '없음' });
+  t.vars.time_epoch = EP0 + 40 * 1440;
+  let r = _outputPhase(S, engine.sendPhase(S, t, { rng: seededRng('gd', 1, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('gd', 1, 'o') });
+  ok('길드 사람이 온다 → 갈림길', r.state.meta.pendingChoice?.id === 'guild_offer' && r.state.vars.guild_ask > 40,
+    `${r.state.meta.pendingChoice?.id ?? '없음'} · 다시 올 날 ${r.state.vars.guild_ask}`);
+  const tpl = String(SC.require('render').renderStatusHtml(S, r.state, {}));
+  ok('상태창에 갈림길이 보고서 밖에 뜬다', tpl.indexOf('연락소를 허가한다') >= 0 && tpl.indexOf('연락소를 허가한다') < tpl.indexOf('status-full-overlay'), '');
+  r.state.meta.pendingChoicePick = 0;
+  r = _outputPhase(S, engine.sendPhase(S, r.state, { rng: seededRng('gd', 2, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('gd', 2, 'o') });
+  const Lg = engine.makeLookup(S, r.state.vars);
+  ok('허가 → 연락소 · 모험가 · 길드 수입', r.state.vars.guild === 1 && Lg('adv_n') > 0 && Lg('guild_income') > 0,
+    `${Lg('guild_txt')} · 수입 ${Lg('guild_income')}/일`);
+  const bare = engine.initState(S); bare.meta.setupDone = true; Object.assign(bare.vars, { threat: 40, gold: 500, drifters: 60 });
+  ok('현상금은 길드 없이도 건다 (관문 게시판)', engine.actionAvailability(S, bare, S.actions.find((a) => a.id === 'act_bounty_beast')).ok, '');
+  const modOf = (vars) => engine.makeLookup(S, vars)('guild') * 3 + Math.round(engine.makeLookup(S, vars)('adv_n') / 10) + Math.min(3, Math.floor(vars.drifters / 20));
+  ok('길드가 있으면 판정이 크게 오른다', modOf({ ...r.state.vars, drifters: 0 }) > modOf({ ...bare.vars, drifters: 0 }), `보정 ${modOf({ ...bare.vars, drifters: 0 })} → ${modOf({ ...r.state.vars, drifters: 0 })}`);
+  // 몬스터 현상금 한 번 — 돈이 나가고 위협이 는 적은 없다
+  let b = { ...r.state, vars: { ...r.state.vars, gold: 500, threat: 60 } };
+  const cost = engine.makeLookup(S, b.vars)('bounty_cost');
+  const tg = engine.toggleAction(S, b, 'act_bounty_beast'); b = tg.state;
+  const sp = engine.sendPhase(S, b, { rng: seededRng('gd', 3, 's') });
+  ok('몬스터 현상금 → 돈이 나가고 판정이 굴러 위협이 준다', sp.state.vars.gold <= 500 - cost && sp.state.vars.threat < 60 && /현상금/.test(sp.promptBlock),
+    `금 500 → ${sp.state.vars.gold} (현상금 ${cost}) · 위협 60 → ${sp.state.vars.threat}`);
+
+  // 한 해 — 관문 방침별로 (명성 50 고정 · 보통 프리셋 · 이벤트 걷음). 숫자는 참고용, 판정 없음.
+  console.log('  · 한 해(360일) 방침별 — 보통 프리셋, 명성 50 고정, 이벤트 없이');
+  for (const policy of ['받아들임', '가려 받음', '돌려보냄']) {
+    let s = engine.applyPreset(S0, engine.initState(S0), 'normal').state; s.meta.setupDone = true;
+    s.vars.drift_policy = policy;
+    for (let d = 0; d < 360; d++) {
+      s.vars.fame = 50;
+      s = _outputPhase(S0, engine.sendPhase(S0, s, { rng: seededRng('yr', d, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('yr', d, 'o') }).state;
+    }
+    const Ly = engine.makeLookup(S0, s.vars);
+    console.log(`    ${policy.padEnd(5)} 주민 ${String(s.vars.pop).padStart(3)}/${String(Ly('cap')).padStart(3)}  대기 ${String(s.vars.drifters).padStart(3)}`
+      + `  도적 ${s.vars.bandits.toFixed(0).padStart(3)} (${Ly('bandit_txt')})  불안 ${String(s.vars.unrest).padStart(3)}  식량 ${s.vars.food}`);
+  }
+}
+
+// ── 청원함 · 서신 (§14-2) ──
+// 청원: 게시(보조) → [수락](버튼) → 이행(보조가 줄을 지우고 사례를 옮겨 적음) / 기한 넘김(시스템) / [취소](버튼).
+// 이행과 기한 넘김을 개수 차로 가르는 게 핵심이라 둘을 한 판에서 다 굴려 본다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 청원함 · 서신 ━━');
+  const questMod = SC.require('quest'); const msgrMod = SC.require('messenger');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: undefined } };   // 조건 이벤트(통지)는 두고 랜덤만 걷는다
+  const qc = questMod.questConfig(S0);
+  let t = engine.initState(S0); t.meta.setupDone = true;
+  ok('명성 10 전엔 청원함이 닫혀 있다 (아무도 모르는 땅)', !questMod.questOpen(qc, S0, t.vars, engine.makeLookup), `명성 ${t.vars.fame}`);
+  t.vars.fame = 30; t.vars.gold = 1000;
+  ok('명성 10부터 열린다', questMod.questOpen(qc, S0, t.vars, engine.makeLookup), '');
+  const posted = questMod.applyOffers(S0, t, { new: [
+    { client: '모르웬 백작', title: '능선 고블린 길목 막기', grade: '이웃 영지', pay: 5000, days: 20, note: '겨울 전에 길목을 막아 달라' },
+    { client: '물레방앗간 한스', title: '방앗간 둑 고치기', grade: '영지민', pay: 0, days: 10, note: '물이 새서 방아가 안 돈다' },
+    { client: '떠돌이 기사', title: '수상한 부탁', grade: '용병', pay: 100, days: 5 },
+  ] }, { now: questMod.nowOf(S0, t, engine.makeLookup), rng: seededRng('pt', 0, 'q') });
+  const offers = t.questBoard.offers;
+  ok('어휘 밖 무리는 거부 · 사례는 무리 밴드로 (이웃 영지 5000 → 800)', offers.length === 2 && offers[0].pay === 800 && posted.rejected.length === 1,
+    offers.map((o) => `${o.grade} ${o.pay}`).join(' · '));
+  ok('메인은 붙은 청원을 원문으로 안다', (questMod.mainLine(S0, t, engine.makeLookup) || '').includes('능선 고블린 길목 막기'), '');
+  questMod.accept(S0, t, offers[0].id, engine.makeLookup);
+  questMod.accept(S0, t, t.questBoard.offers[0].id, engine.makeLookup);
+  ok('[수락] → 맡은 청원 두 줄 · pet_n 2 · 기한이 굳는다', t.vars.petitions.length === 2 && t.vars.pet_n === 2
+    && t.vars.petitions.every((x) => /\(.+\) @\d+ \+\d+$/.test(x)), JSON.stringify(t.vars.petitions));
+  const [morwen, hans] = t.vars.petitions;
+  // 이행 — 보조가 모르웬 줄을 지우고 사례 800을 옮겨 적는다. 같은 씨앗의 대조 판과 차이만 본다
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('pt', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('pt', k, 'o') });
+  const done = step(engine.clone(t), { petitions: { remove: [morwen] }, pet_pay: 800 }, 1);
+  const ctrl = step(engine.clone(t), {}, 1);
+  ok('이행 → 사례가 금고로 · 명성 +1 · 사기 +1 · 통지', done.state.vars.gold - ctrl.state.vars.gold === 800
+    && done.state.vars.fame - ctrl.state.vars.fame === 1 && done.state.vars.morale - ctrl.state.vars.morale === 1
+    && done.firedEvents.includes('pet_done') && !ctrl.firedEvents.includes('pet_done'),
+    `금 ${done.state.vars.gold - ctrl.state.vars.gold} · 명성 ${done.state.vars.fame - ctrl.state.vars.fame} · 사기 ${done.state.vars.morale - ctrl.state.vars.morale}`);
+  ok('사례 정산은 0으로 · 기준 개수 1', done.state.vars.pet_pay === 0 && done.state.vars.pet_n === 1, '');
+  const stray = step(engine.clone(t), { pet_pay: 800 }, 1);
+  ok('줄을 안 지우고 적은 사례는 안 준다 (지어낸 수입 차단)', stray.state.vars.gold === ctrl.state.vars.gold && stray.state.vars.pet_pay === 0,
+    `금 차이 ${stray.state.vars.gold - ctrl.state.vars.gold}`);
+  // 기한 넘김 — 한스의 둑(10일)을 넘겨 12일로 건너뛴다. 이행과 섞이지 않고 실망으로 세진다
+  const late = step(engine.clone(done.state), { skip_day: 11 }, 2);
+  const lateCtrl = step(engine.clone({ ...done.state, vars: { ...done.state.vars, petitions: [], pet_n: 0 } }), { skip_day: 11 }, 2);
+  ok('기한 넘김 → 떨어지고 명성 -3 · 사기 -2 · 통지 (이행으로 안 셈)', late.state.vars.petitions.length === 0 && late.state.vars.pet_lost === 1
+    && late.state.vars.pet_kept === 0 && late.firedEvents.includes('pet_expired')
+    && lateCtrl.state.vars.fame - late.state.vars.fame === 3 && lateCtrl.state.vars.morale - late.state.vars.morale === 2,
+    `놓침 ${late.state.vars.pet_lost} · 명성 ${late.state.vars.fame - lateCtrl.state.vars.fame} · 사기 ${late.state.vars.morale - lateCtrl.state.vars.morale}`);
+  // 기한 당일은 살아 있다 ((오늘)) — 넘긴 다음 날 떨어진다 (done은 1일째라 9일을 건너 10일째 = 한스의 기한 날)
+  const eve = step(engine.clone(done.state), { skip_day: 9 }, 3);
+  ok('기한 당일까지는 남아 (오늘)으로 보인다', eve.state.vars.petitions.includes(hans)
+    && engine.dueText(hans, engine.listClockNow(S0, eve.state, 'petitions')).endsWith('(오늘)'), engine.dueText(hans, engine.listClockNow(S0, eve.state, 'petitions')));
+  // [취소] — 말을 거둔다: 기준 개수도 같이 내려가 다음 정산이 이행으로 안 센다
+  const c = engine.clone(t);
+  const f0 = c.vars.fame;
+  const cr = questMod.cancel(S0, c, morwen, engine.makeLookup);
+  const after = step(c, {}, 4);
+  const afterCtrl = step(engine.clone({ ...t, vars: { ...t.vars, petitions: [hans], pet_n: 1 } }), {}, 4);
+  ok('[취소] → 명성 -(1 + 사례/200) · 다음 정산이 이행으로 안 센다', cr.ok && c.vars.fame === f0 - 5 && c.vars.pet_n === 1
+    && after.state.vars.pet_kept === 0 && !after.firedEvents.includes('pet_done') && after.state.vars.fame === afterCtrl.state.vars.fame - 5,
+    `명성 ${f0} → ${c.vars.fame} · 이행 ${after.state.vars.pet_kept}`);
+
+  // 서신 — 상대 열 명이 카드 로어북의 제 문항에 닿나 (어댑터 buildMsgrPersona가 쓰는 personaEntry 그대로)
+  const card = JSON.parse(fs.readFileSync(__P('simcore-bundle-베리디아_남작령.json'), 'utf8'));
+  const pool = (card.lorebook || []).filter((l) => l && l.comment !== '⚙simcore');
+  const want = { '알라릭 여왕': '여왕' };
+  const miss = PEN.filter((n) => msgrMod.personaEntry(pool, n)?.comment !== (want[n] ?? n));
+  ok(`서신 상대 ${PEN.length}명이 전부 제 로어북 문항에 닿는다`, miss.length === 0,
+    miss.length ? miss.map((n) => `${n}→${msgrMod.personaEntry(pool, n)?.comment}`).join(', ') : PEN.join('·'));
+  ok('리아나 ≠ 릴리아나 (부분 일치 사고)', msgrMod.personaEntry(pool, '리아나')?.comment === '리아나', '');
+  const mc = msgrMod.msgrConfig(S0);
+  const road = engine.initState(S0); road.vars.route = '남 가도';
+  ok('편지는 편지 — 매체 letter · 남쪽 가도가 막히면 전령도 못 간다', mc.medium === 'letter'
+    && msgrMod.msgrOpen(mc, S0, engine.initState(S0).vars, engine.makeLookup) && !msgrMod.msgrOpen(mc, S0, road.vars, engine.makeLookup), '');
+}
+
+// ── 광휘회 (§14-3) ──
+// 교단의 시선(rel_ch)이 십일조·자매·예배당으로 흐르고, 예배당은 버튼 → 완공 → 분원, 주교는 예고 → 이레 → 판단 셋,
+// 열병엔 교단에 손을 벌리는 갈림길, 교단과 왕실 사이의 갈림길. 전부 한 판씩 굴려 본다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 광휘회 ━━');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: undefined } };
+  const L = (st) => engine.makeLookup(S0, st.vars);
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('ch', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('ch', k, 'o') });
+  const base = () => { const s = engine.initState(S0); s.meta.setupDone = true; Object.assign(s.vars, { gold: 2000, food: 3000, water: 3000, health: 60 }); return s; };
+
+  // 십일조 — 지출에 붙고, 시선을 민다 (예배당·자매 없이 1할이면 하루 +0.1)
+  let t = base(); t.vars.tithe = '1할';
+  const inc = L(t)('income');
+  ok('십일조 1할 = 그날 수입의 1할이 지출로', L(t)('tithe_amt') === Math.round(Math.max(0, inc) * 0.1)
+    && L(t)('upkeep') - L({ vars: { ...t.vars, tithe: '바치지 않음' } })('upkeep') === L(t)('tithe_amt'), `수입 ${inc} → 십일조 ${L(t)('tithe_amt')}/일`);
+  let r = step(engine.clone(t), { skip_day: 10 }, 1);
+  ok('1할을 열흘 → 교단의 시선 +1', Math.abs(r.state.vars.rel_ch - 11) < 0.01, `10 → ${r.state.vars.rel_ch.toFixed(2)}`);
+
+  // 예배당 — ⛪ 버튼(값·공기) → 완공 이벤트가 인프라에 적고 시선 +5
+  t = base();
+  const cost = L(t)('chapel_cost'), days = L(t)('chapel_days');
+  const tg = engine.toggleAction(S0, t, 'act_chapel'); t = tg.state;
+  const sp = engine.sendPhase(S0, t, { rng: seededRng('ch', 2, 's') });
+  ok('⛪ 재건 → 재건비가 나가고 완공일이 잡힌다', sp.state.vars.gold === 2000 - cost && sp.state.vars.chapel_at === sp.state.vars.day + days,
+    `재건비 ${cost} · 공기 ${days}일 · ${L(sp.state)('chapel_txt')}`);
+  r = _outputPhase(S0, sp.state, { skip_day: days }, {}, { rng: seededRng('ch', 2, 'o') });
+  ok('완공 → 예배당 1 · 인프라에 시스템이 적는다 · 시선 +5 · 통지', r.state.vars.chapel === 1 && r.state.vars.infra.includes('다시 세운 예배당')
+    && r.firedEvents.includes('chapel_done') && r.state.vars.rel_ch >= 15, `${L(r.state)('chapel_txt')} · 시선 ${r.state.vars.rel_ch.toFixed(1)}`);
+  ok('예배당만 세우고 십일조를 안 내면 식는다 (교구가 제 몫을 기다린다)', L(r.state)('ch_drift') < 0, `하루 ${L(r.state)('ch_drift')}`);
+  ok('예배당이 서면 재건 버튼은 닫힌다', !engine.actionAvailability(S0, r.state, S0.actions.find((a) => a.id === 'act_chapel')).ok, '');
+
+  // 분원 — 교단의 인정(50)이면 분원으로 올리고 자매를 보낸다. 분원은 보건 +1/일
+  const b1 = engine.clone(r.state); b1.vars.rel_ch = 50; b1.vars.tithe = '1할';
+  const br = step(b1, {}, 3);
+  ok('인정 50 → 분원 · 인프라 교체 · 자매를 보낸다는 통지', br.state.vars.chapel === 2 && br.state.vars.infra.includes('광휘회 분원')
+    && !br.state.vars.infra.includes('다시 세운 예배당') && br.firedEvents.includes('chapel_branch'), JSON.stringify(br.state.vars.infra.slice(-2)));
+  const h2 = step(engine.clone(br.state), { skip_day: 5 }, 4), h1 = step(engine.clone({ ...br.state, vars: { ...br.state.vars, chapel: 1 } }), { skip_day: 5 }, 4);
+  ok('분원 = 앓는 이를 들이는 방 (보건 +1/일)', h2.state.vars.health - h1.state.vars.health === 5, `닷새 차이 ${h2.state.vars.health - h1.state.vars.health}`);
+
+  // 주교 — 예고(이레) 동안 지시문이 "무엇을 볼지"를 건넨다 → 판단은 돈 없이: 돌봄·숨김·자매·분원
+  const visit = (vars, k) => {
+    // day_prev도 같이 — 안 두면 첫 정산이 60일치(span 60)라 막힌 길이 그 안에 뚫린다
+    let s = base(); Object.assign(s.vars, { chapel: 1, rel_ch: 40, day: 60, day_prev: 60, bishop_next: 60 }, vars);
+    atDay(s, 60);
+    const a = step(s, {}, k);
+    const pb = engine.sendPhase(S0, engine.clone(a.state), { rng: seededRng('ch', k, 'p') }).promptBlock;
+    const b = step(a.state, { skip_day: 7 }, k + 1);
+    return { a, pb, b };
+  };
+  const v1 = visit({ stance: '중립', health: 60, corps: ['스텔라 4'] }, 10);
+  ok('예고 → 이레 뒤로 잡히고 다음 방문은 150일 뒤', v1.a.firedEvents.includes('bishop_notice') && v1.a.state.vars.bishop_at === v1.a.state.vars.day + 7
+    && v1.a.state.vars.bishop_next === v1.a.state.vars.day + 150, `오는 날 ${v1.a.state.vars.bishop_at} · 다음 ${v1.a.state.vars.bishop_next}`);
+  ok('이레 동안 지시문이 주교가 볼 것을 건넨다', /THE BISHOP IS COMING/.test(v1.pb) && /앓는 이 잘 돌봄/.test(v1.pb), (v1.pb.match(/\[THE BISHOP[^\n]*/) || [''])[0].slice(0, 140));
+  ok('돌봄 + 자매 → 흡족 (시선 +12 · 주교 호감 +6)', v1.b.firedEvents.includes('bishop_pleased') && v1.b.state.vars.bishop_at === 0
+    && v1.b.state.vars.b_beatrix === 6, `${v1.b.firedEvents.filter((x) => x.startsWith('bishop')).join(',')} · 호감 ${v1.b.state.vars.b_beatrix}`);
+  const v2 = visit({ stance: '카산드라', exposed: 10, health: 60 }, 20);
+  ok('★ 편을 감춘 영주 → 차갑게 (숨김이 첫째 죄 — 돌봄으로도 못 덮는다)', v2.b.firedEvents.includes('bishop_cold') && v2.b.state.vars.b_beatrix === -5,
+    `${L(v2.a.state)('bish_txt')}`);
+  const v3 = visit({ stance: '카산드라', exposed: 70, health: 40 }, 30);
+  ok('드러낸 지지는 숨김이 아니다 → 보류', v3.b.firedEvents.includes('bishop_even'), `점수 ${L(v3.a.state)('bish_score')}`);
+  const v4 = visit({ stance: '중립', health: 60, gold: 99999 }, 40);
+  ok('금고가 가득해도 판단은 그대로 (그녀의 인정은 살 수 없다)', L(v4.a.state)('bish_score') === L({ vars: { ...v4.a.state.vars, gold: 0 } })('bish_score'), '');
+  const shut = visit({ route: '남 가도', route_days: 5 }, 50);
+  ok('남쪽 가도가 막히면 주교도 못 온다', !shut.a.firedEvents.includes('bishop_notice'), '');
+
+  // 열병 — 교단에 손을 벌리는 갈림길 (광휘회는 이 나라의 유일한 의사다)
+  const plague = S.rules.randomEvents.table.find((e) => e.id === 'plague');
+  let p = base(); Object.assign(p.vars, { disaster: '열병', disaster_days: 12, health: 30, rel_ch: 10 });
+  p.meta.pendingChoice = { id: 'plague', turn: p.meta.turn };
+  const pc = L(p)('plague_cost');
+  ok('열병 갈림길 — 둘째(버틴다)는 늘 열림 · 교단이 모르면 첫째가 잠긴다', engine.pickChoice(S, p, 0).ok
+    && !engine.pickChoice(S, { ...p, vars: { ...p.vars, rel_ch: 5 } }, 0).ok && engine.pickChoice(S, p, 1).ok && plague.timeout === 2, `헌금 ${pc}`);
+  p.meta.pendingChoicePick = 0;
+  const ps = engine.sendPhase(S, p, { rng: seededRng('ch', 60, 's') });
+  ok('구호를 청하면 → 헌금 · 보건 +15 · 열병이 짧아진다 · 교단에 빚', ps.state.vars.gold === 2000 - pc && ps.state.vars.health === 45
+    && ps.state.vars.disaster_days === 6 && ps.state.vars.favors.includes('광휘회에 열병 구호의 빚'), `금 ${ps.state.vars.gold} · 보건 ${ps.state.vars.health} · 남은 날 ${ps.state.vars.disaster_days}`);
+
+  // 교단과 왕실 사이 — 편을 들면 한쪽이 오르고 한쪽이 식는다, 말을 아끼면 둘 다 조금
+  const cc = S.rules.randomEvents.table.find((e) => e.id === 'church_crown');
+  const pick = (k) => { const s = base(); Object.assign(s.vars, { rel_ch: 50, rel_cap: 40 }); s.meta.pendingChoice = { id: 'church_crown', turn: 0 }; s.meta.pendingChoicePick = k;
+    return engine.sendPhase(S, s, { rng: seededRng('ch', 70 + k, 's') }).state.vars; };
+  const [c0, c1, c2] = [0, 1, 2].map(pick);
+  ok('교단 편 +8/−6 · 왕실 편 −6/+8 · 말을 아낌 −2/−2', c0.rel_ch === 58 && c0.rel_cap === 34 && c1.rel_ch === 44 && c1.rel_cap === 48
+    && c2.rel_ch === 48 && c2.rel_cap === 38 && cc.timeout === 3, `${c0.rel_ch}/${c0.rel_cap} · ${c1.rel_ch}/${c1.rel_cap} · ${c2.rel_ch}/${c2.rel_cap}`);
+  const w0 = L({ vars: { ...base().vars, rel_ch: 0 } })('my_weight'), w1 = L({ vars: { ...base().vars, rel_ch: 80 } })('my_weight');
+  ok('교단이 뒤에 있으면 궁정의 셈에 든다 (지지의 무게)', w1 - w0 === 8, `${w0} → ${w1}`);
+  // 교단이 보내는 자매는 교단의 눈으로 — 아카데미 명성 문턱과 별개
+  ok('교단이 보내는 자매 — 지켜봄 전엔 신참만', /스텔라\(신참\)만/.test(L({ vars: { ...base().vars, rel_ch: 10 } })('sis_open'))
+    && /라피스/.test(L({ vars: { ...base().vars, rel_ch: 50 } })('sis_open')), L({ vars: { ...base().vars, rel_ch: 30 } })('sis_open'));
+
+  // 한 해 — 1할 · 예배당 세우고 · 자매 없이 (보통 프리셋, 이벤트 없이): 교단의 시선이 어디까지 가나. 참고용
+  console.log('  · 한 해(360일) 십일조별 — 보통 프리셋, 첫날 예배당 완공, 자매 없이, 이벤트 없이');
+  for (const tithe of ['바치지 않음', '1할', '2할']) {
+    let s = engine.applyPreset(S0, engine.initState(S0), 'normal').state; s.meta.setupDone = true;
+    Object.assign(s.vars, { tithe, chapel: 1 });
+    const S1 = { ...S0, rules: { ...S0.rules, events: [] } };
+    let paid = 0;
+    for (let d = 0; d < 360; d++) {
+      paid += engine.makeLookup(S1, s.vars)('tithe_amt');
+      s = _outputPhase(S1, engine.sendPhase(S1, s, { rng: seededRng('ty', d, 's') }).state, { skip_day: 1 }, {}, { rng: seededRng('ty', d, 'o') }).state;
+    }
+    console.log(`    ${tithe.padEnd(6)} 시선 ${s.vars.rel_ch.toFixed(1).padStart(5)} (${engine.makeLookup(S1, s.vars)('rel_ch_txt')})  낸 십일조 ${paid}  금고 ${s.vars.gold}`);
+  }
+}
+
+// ── 혼담 (§14-4) ──
+// 청혼(랜덤 갈림길) → 받아들임·물림·시간을 청함 → (서른 날 뒤 답을 들으러 옴) → 혼약 → 예순 날 뒤 혼례(책임의 예물) → 혼인한 가문은 우호 밑으로 안 떨어짐.
+// 왕녀의 청혼은 계승 판세와 맞물린다. 혼례 전엔 💔 파기.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 혼담 ━━');
+  const { evaluate, truthy } = SC.require('expr');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 표는 두고(갈림길을 찾아야 한다) 굴림만 끈다
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const base = (vars = {}) => { const s = engine.initState(S); s.meta.setupDone = true;
+    Object.assign(s.vars, { gold: 1000, food: 3000, water: 3000, health: 60, fame: 40, day: 100, day_prev: 100 }, vars); atDay(s, s.vars.day); return s; };
+  const ev = (id) => S.rules.randomEvents.table.find((e) => e.id === id);
+  const open = (id, st) => truthy(evaluate(ev(id).when, L(st), null));
+  const pick = (st, id, k, n) => { const s = engine.clone(st); s.meta.pendingChoice = { id, turn: s.meta.turn }; s.meta.pendingChoicePick = k;
+    return engine.sendPhase(S, s, { rng: seededRng('mr', n, 's') }).state; };
+  const step = (st, ch, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('mr', k, 's') }).state, { skip_day: 1, ...ch }, {}, { rng: seededRng('mr', k, 'o') });
+
+  ok('번영해야 온다 — 명성 30 · 90일 · 그 가문이 관망(35) 이상', open('suit_morwen', base({ rel_n: 35 }))
+    && !open('suit_morwen', base({ rel_n: 35, fame: 20 })) && !open('suit_morwen', base({ rel_n: 20 })) && !open('suit_morwen', base({ rel_n: 35, day: 60, day_prev: 60 })), '');
+  ok('실바나는 가문의 뜻으로는 안 온다 — 제 호감으로만 [원본]', !open('suit_silvana', base({ rel_w: 90 })) && open('suit_silvana', base({ b_silvana: 30 })), '');
+  ok('왕녀 — 중립이면 선두가, 지지하면 그 왕녀가, 호감이면 누구든', open('suit_cassandra', base({ rel_cap: 35, army: 60 }))
+    && !open('suit_orelia', base({ rel_cap: 35, army: 60 })) && open('suit_orelia', base({ rel_cap: 35, army: 60, stance: '오렐리아' })),
+    `무게 ${L(base({ rel_cap: 35, army: 60 }))('my_weight')} · 선두 ${L(base())('frontrunner')}`);
+  ok('차지된 뒤엔 아무도 안 온다 · 답을 기다리는 청혼이 있어도', !open('suit_morwen', base({ rel_n: 35, spouse: '리아나' })) && !open('suit_morwen', base({ rel_n: 35, suit: '리아나' })), '');
+
+  // 받아들임 = 혼약
+  let t = pick(base({ rel_n: 40 }), 'suit_morwen', 0, 1);
+  ok('받아들인다 → 혼약 · 모르웬 인식 +10 · 호감 +12 · 예순 날 뒤 혼례', t.vars.spouse === '모르웬' && t.vars.wed_at === t.vars.day + 60
+    && t.vars.rel_n === 50 && t.vars.b_morwen === 12, `${L(t)('spouse_txt')}`);
+  const ps = engine.sendPhase(S, engine.clone(t), { rng: seededRng('mr', 2, 'p') }).promptBlock;
+  ok('차지된 남작 — 지시문이 정조역전의 뜻을 건넨다', /\[CLAIMED\]/.test(ps) && ps.includes('모르웬 백작'), (ps.match(/\[CLAIMED[^\n]*/) || [''])[0].slice(0, 90));
+  const royal = pick(base({ rel_cap: 40, army: 60 }), 'suit_cassandra', 0, 3);
+  ok('★ 왕녀의 청혼을 받으면 지지가 그 왕녀로 굳고 전부 드러난다', royal.vars.stance === '카산드라' && royal.vars.exposed === 100 && royal.vars.spouse === '카산드라', '');
+  // 물림 = 원한
+  const no = pick(base({ rel_n: 40 }), 'suit_morwen', 1, 4), noE = pick(base({ rel_cap: 40, b_eleonora: 30, army: 60 }), 'suit_eleonora', 1, 5);
+  ok('정중히 물린다 → 인식 -6 · 호감 -8 (엘레오노라는 -12 — 그녀에겐 물음이 아니었다)', no.vars.rel_n === 34 && no.vars.b_morwen === -8 && noE.vars.b_eleonora === 18
+    && no.vars.spouse === '없음', `${no.vars.rel_n}/${no.vars.b_morwen} · 엘레오노라 ${noE.vars.b_eleonora}`);
+  // 시간을 청한다 → 서른 날 뒤 답을 들으러 온다 (조건 이벤트 갈림길)
+  // 길드 사람(guild_offer)도 갈림길이라 같은 턴이면 먼저 자리를 차지한다(동시 1개) — 여기선 길드를 멀리 둔다
+  let d = pick(base({ rel_e: 40, guild_ask: 9999 }), 'suit_liana', 2, 6);
+  ok('시간을 청한다 → 답을 기다리는 청혼 · 서른 날', d.vars.suit === '리아나' && d.vars.suit_until === d.vars.day + 30 && d.vars.spouse === '없음', L(d)('suit_txt'));
+  const back = step(engine.clone(d), { skip_day: 30 }, 7);
+  ok('서른 날 뒤 → 답을 들으러 온다 (갈림길)', back.state.meta.pendingChoice?.id === 'suit_ask' && back.firedEvents.includes('suit_ask'), back.state.meta.pendingChoice?.id ?? '없음');
+  const yes = pick(back.state, 'suit_ask', 0, 8), late = pick(back.state, 'suit_ask', 1, 9);
+  ok('답 — 받아들이면 리아나와 혼약', yes.vars.spouse === '리아나' && yes.vars.suit === '없음' && yes.vars.rel_e === back.state.vars.rel_e + 10 && yes.vars.b_liana === 12, L(yes)('spouse_txt'));
+  ok('답 — 기다리게 하고 물리면 더 아프다 (-8 · -10)', late.vars.spouse === '없음' && late.vars.suit === '없음'
+    && late.vars.rel_e === back.state.vars.rel_e - 8 && late.vars.b_liana === -10, `${late.vars.rel_e} · ${late.vars.b_liana}`);
+  const dRoyal = pick(pick(base({ rel_cap: 40, army: 60, stance: '오렐리아' }), 'suit_orelia', 2, 10), 'suit_ask', 0, 11);
+  ok('답을 들으러 온 왕녀를 받아들여도 지지가 굳는다', dRoyal.vars.spouse === '오렐리아' && dRoyal.vars.stance === '오렐리아' && dRoyal.vars.exposed === 100, '');
+
+  // 혼례 — 책임의 예물
+  const w = base({ spouse: '발레리우스', wed_at: 101, contracts: [] });
+  const wr = step(w, {}, 12);
+  ok('혼례 → 책임의 예물 (발레리우스: 곡물 2000 · 곡물 거래 +8) · 명성 +8 · 혼인', wr.firedEvents.includes('wedding_valerius') && wr.state.vars.wed_at === 0
+    && wr.state.vars.contracts.includes('발레리우스 가문 곡물 거래 +8') && L(wr.state)('spouse_txt').endsWith('혼인'), `${L(wr.state)('spouse_txt')} · ${JSON.stringify(wr.state.vars.contracts)}`);
+  const wm = step(base({ spouse: '모르웬', wed_at: 101, army: 10, threat: 50 }), {}, 13);
+  ok('모르웬의 예물은 칼 — 병사 +20 · 위협 -10', wm.state.vars.army >= 30 && wm.state.vars.threat <= 45, `상비군 ${wm.state.vars.army} · 위협 ${wm.state.vars.threat}`);
+  const fl = step(base({ spouse: '모르웬', wed_at: 0, rel_n: 20 }), {}, 14), fl2 = step(base({ spouse: '카산드라', wed_at: 0, rel_cap: 10 }), {}, 15);
+  ok('혼인한 가문은 우호 밑으로 안 떨어진다 (50)', fl.state.vars.rel_n === 50 && fl2.state.vars.rel_cap === 50, `${fl.state.vars.rel_n} · 왕도 ${fl2.state.vars.rel_cap}`);
+  ok('혼약 중(혼례 전)엔 바닥이 없다 — 아직 차지된 게 아니다', step(base({ spouse: '모르웬', wed_at: 150, rel_n: 20 }), {}, 16).state.vars.rel_n === 20, '');
+
+  // 💔 파기 — 혼례 전에만
+  let bk = base({ spouse: '리아나', wed_at: 150, rel_e: 60, b_liana: 30 });
+  const act = S.actions.find((a) => a.id === 'act_break_troth');
+  ok('💔 파기는 혼례 전에만 열린다', engine.actionAvailability(S, bk, act).ok && !engine.actionAvailability(S, base({ spouse: '리아나', wed_at: 0 }), act).ok, '');
+  bk = engine.toggleAction(S, bk, 'act_break_troth').state;
+  const bs = engine.sendPhase(S, bk, { rng: seededRng('mr', 17, 's') }).state;
+  ok('파기 → 인식 -25 · 호감 -25 · 명성 -8 · 120일은 청혼도 없다', bs.vars.spouse === '없음' && bs.vars.rel_e === 35 && bs.vars.b_liana === 5
+    && bs.vars.fame === 32 && bs.vars.suit_next === bs.vars.day + 120, `${bs.vars.rel_e} · ${bs.vars.b_liana} · 명성 ${bs.vars.fame}`);
+}
+
+// ── 위협은 탐낼 거리를 따라간다 (§14-5, 2026-09-27) ──
+// 유저: "아무것도 없는 마을에 도적도 몬스터도 굳이 오지 않는다 — 시설이 늘면 쳐들어오는 게 맞다".
+// 옛 판: 위협이 저절로 안 움직여 희망·보통은 한 해 몬스터 0번, 리얼리티는 몬스터가 위협을 올려 한 해 만에 100에 붙었다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 위협은 탐낼 거리를 따라간다 ━━');
+  const { evaluate, truthy } = SC.require('expr');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 게이지를 걷고 굴림을 끈다
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const pre = (id, vars = {}) => { let t = engine.initState(S); t.meta.setupDone = true; t = engine.applyPreset(S, t, id).state;
+    Object.assign(t.vars, { route: '없음', route_days: 0 }, vars); return t; };
+  const open = (id, st) => truthy(evaluate(S.rules.randomEvents.table.find((e) => e.id === id).when, L(st), null));
+  const run = (st, days, k) => _outputPhase(S0, engine.sendPhase(S0, st, { rng: seededRng('lu', k, 's') }).state, { skip_day: days }, {}, { rng: seededRng('lu', k, 'o') }).state;
+  const RICH = { farms: ['묵은 밭 4', '개간지 4', '개간지 4'], wells: 3, houses: ['장옥 200', '오두막 200'], infra: Array.from({ length: 10 }, (_, i) => `시설 ${i + 1}`),
+    contracts: ['헤세 상단 곡물 30'], sites: ['채석장 20'], guild: 2, chapel: 1, food: 6000, gold: 3000 };
+
+  const [h, n, r] = ['hope', 'normal', 'reality'].map((id) => L(pre(id))('lure'));
+  ok('개막 — 세워 둔 만큼 눈에 띈다 (희망 > 보통 > 리얼리티, 리얼리티는 털 것이 없다)', h > n && n > r && L(pre('reality'))('lure_txt') === '털 것이 없다', `${h} · ${n} · ${r}`);
+  const steps = [{}, { farms: ['묵은 밭 4', '개간지 2', '개간지 2'], wells: 2 }, { houses: ['장옥 120', '오두막 80'], infra: ['무너진 병영', '잡초 연병장', '폐허 대장간', '마을 우물', '목책', '곡물 창고'] }, RICH];
+  let acc = {}; const ladder = steps.map((v) => { acc = { ...acc, ...v }; return L(pre('normal', acc))('lure'); });
+  ok('밭·우물 → 거처·인프라 → 번영: 세울수록 탐낼 거리가 는다', ladder.every((x, i) => i === 0 || x > ladder[i - 1]) && ladder[3] === 100, ladder.join(' → '));
+  const g = ['hope', 'normal', 'reality'].map((id) => L(pre(id, RICH))('threat_goal'));
+  ok('같은 번영이어도 시련이 셀수록 더 끈다 (×0.55 · ×0.73 · ×1.0)', g[0] < g[1] && g[1] < g[2] && g[2] === 100, g.join(' · '));
+
+  const t1 = run(pre('normal'), 10, 1);
+  ok('하루 0.5씩 따라간다 — 보통 개막 34는 열흘에 29 (목표 20)', Math.abs(t1.vars.threat - 29) < 0.01, `${t1.vars.threat} (목표 ${L(pre('normal'))('threat_goal')})`);
+  let rt = pre('reality', { threat: 100 }); for (let i = 0; i < 6; i++) rt = run(rt, 10, 10 + i);
+  ok('리얼리티의 100도 풀린다 — 털 것이 없으면 예순 날에 30 내려간다 (옛 판은 한 번 붙으면 영영)', Math.abs(rt.vars.threat - 70) < 0.01, `${rt.vars.threat}`);
+  let bt = pre('normal', { ...RICH, threat: 22 });
+  const shut = ['nest_near', 'goblin_raid'].filter((id) => !open(id, bt));
+  for (let i = 0; i < 10; i++) bt = run({ ...bt, vars: { ...bt.vars, ...RICH } }, 10, 20 + i);
+  ok('번영한 보통 — 백 날이면 위협이 올라 둥지·고블린 문이 열린다', shut.length === 2 && open('nest_near', bt) && open('goblin_raid', bt),
+    `위협 22 → ${bt.vars.threat.toFixed(1)} (${L(bt)('sec_out_txt')})`);
+  const bounty = pre('normal', { ...RICH, threat: 73 }); bounty.vars.threat -= 9;
+  const back = run(bounty, 4, 40);
+  ok('현상금이 깎은 것은 잠깐이다 — 목표가 위면 하루 0.5씩 되돌아온다', Math.abs(back.vars.threat - 66) < 0.01, `73 → 현상금 64 → 나흘 뒤 ${back.vars.threat}`);
+
+  // 도적 — 굶는 자도 빈 마을은 안 턴다
+  const lean = { bandits: 45, army: 0, pop: 70, labor_policy: '생존 우선' };
+  const empty = pre('reality', lean), built = pre('reality', { ...lean, farms: ['개간지 3', '개간지 3'], wells: 2 });
+  ok('도적 습격 — 리얼리티 개막(털 것 9)은 안 오고, 밭 여섯·우물 둘이면 온다', !open('bandit_raid', empty) && open('bandit_raid', built),
+    `털 것 ${L(empty)('lure')} → ${L(built)('lure')} (문턱 15)`);
+  const road0 = pre('normal', { bandits: 40, deals: 0, gold: 0, contracts: [], army: 0, food: 0, houses: ['움막 20'], farms: [], wells: 0, pop: 60 });
+  const road1 = pre('normal', { bandits: 40, gold: 0, contracts: [], army: 0, pop: 60 });
+  ok('가도 점거 — 무리가 커도 짐이 오갈 만한 땅이어야 앉는다', !open('road_bandit', road0) && open('road_bandit', road1),
+    `털 것 ${L(road0)('lure')} → ${L(road1)('lure')} (문턱 26)`);
+  const gd = S.rules.events.find((e) => e.id === 'guild_offer').when;
+  ok('길드는 현상금 일감(위협 + 도적)을 보고 온다', /threat \+ bandits >= 25/.test(gd), '');
+
+  // 한 해에 무엇이 쳐들어오나 — 곳간은 8일치 아래로 안 떨어지게 채운다(굶어 무너진 판은 이 질문의 답이 아니다)
+  const MON = new Set(['raid', 'goblin_raid', 'harpy', 'orc_scout', 'nest_near', 'horde', 'road_wood']);
+  const BAN = new Set(['road_bandit', 'bandit_raid']);
+  const year = (id, vars, tag) => {
+    let mon = 0, ban = 0, end = 0; const SEEDS = 6;
+    for (let s = 0; s < SEEDS; s++) {
+      let t = pre(id, vars);
+      for (let d = 0; d < 360; d++) {
+        t.vars.food = Math.max(t.vars.food, t.vars.pop * 8); t.vars.water = Math.max(t.vars.water, t.vars.pop * 8);
+        if (vars.houses) Object.assign(t.vars, { houses: vars.houses, farms: vars.farms, infra: vars.infra });   // 번영은 유지된다고 둔다
+        const o = engine.outputPhase(S, engine.sendPhase(S, t, { rng: seededRng(`yr-${id}-${tag}-${s}`, d, 's') }).state, {}, {},
+          { rng: seededRng(`yr-${id}-${tag}-${s}`, d, 'o') });
+        t = o.state; mon += o.firedEvents.filter((e) => MON.has(e)).length; ban += o.firedEvents.filter((e) => BAN.has(e)).length;
+      }
+      end += t.vars.threat;
+    }
+    return { mon: mon / SEEDS, ban: ban / SEEDS, end: end / SEEDS };
+  };
+  console.log('  한 해(하루 한 턴) · 곳간 채움     몬스터   도적   위협 끝값');
+  for (const id of ['hope', 'normal', 'reality']) for (const [tag, v] of [['개막 그대로', {}], ['번영', RICH]]) {
+    const y = year(id, v, tag);
+    console.log(`  ${(S.setup.presets.find((p) => p.id === id).label.split(' — ')[0] + ' ' + tag).padEnd(20)} ${y.mon.toFixed(1).padStart(6)}  ${y.ban.toFixed(1).padStart(5)}  ${y.end.toFixed(0).padStart(6)}`);
+  }
+}
+
+// ── 하늘이 하는 일 — 이름값 (§14-6, 2026-09-27) ──
+// 옛 판: 우박·늦서리 밭 피해가 하루 1씩 아물어 사흘~엿새면 원상(90일 수확의 1%), 가뭄은 물·소출을 직접 안 건드렸다(사기만).
+// 이제 밭 피해는 가진 밭의 몫 · 아무는 날까지, 가뭄은 밭 ×0.6 · 강물 ×0.5 · 우물 ×0.8, 들불은 타는 동안 ×0.8 + 탄 자리.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 하늘이 하는 일 — 이름값 ━━');
+  const S0 = { ...S, rules: { ...S.rules, randomEvents: { ...S.rules.randomEvents, gauge: undefined, chancePerTurn: 0 } } };   // 게이지를 걷고 굴림을 끈다
+  const only = (id) => { const ev = S.rules.randomEvents.table.find((e) => e.id === id);
+    return { ...S, rules: { ...S.rules, randomEvents: { chancePerTurn: 1, table: [{ ...ev, when: undefined, cooldown: undefined }] } } }; };
+  const L = (st) => engine.makeLookup(S, st.vars);
+  const at = (d, vars = {}) => { let t = engine.initState(S); t.meta.setupDone = true; t = engine.applyPreset(S, t, 'normal').state;
+    Object.assign(t.vars, { route: '없음', route_days: 0, weather: '☀️맑음', food: 8000, water: 8000, gold: 2000, health: 60, morale: 50 }, vars);
+    atDay(t, d); t.vars.day_prev = d; return t; };
+  const turn = (Sx, st, k, days = 1) => _outputPhase(Sx, engine.sendPhase(Sx, st, { rng: seededRng('sky', k, 's') }).state, { skip_day: days }, {}, { rng: seededRng('sky', k, 'o') });
+  const F12 = { farms: ['묵은 밭 4', '개간지 4', '개간지 4'], houses: ['장옥 200'] };
+
+  // 밭 피해 — 가진 밭의 몫, 아무는 날까지
+  const hits = (id, vars) => Array.from({ length: 12 }, (_, k) => { const o = turn(only(id), at(90, vars), 100 + k, 0).state;
+    return { b: o.vars.blight, left: o.vars.blight_until - o.vars.day }; });
+  const h5 = hits('hail', {}), h12 = hits('hail', F12);
+  const rng = (xs, f) => `${Math.min(...xs.map(f))}~${Math.max(...xs.map(f))}`;
+  ok('우박 — 가진 밭의 40~60% (밭 5 → 2~3 · 밭 12 → 5~7)', h5.every((x) => x.b >= 2 && x.b <= 3) && h12.every((x) => x.b >= 5 && x.b <= 7),
+    `밭 5: ${rng(h5, (x) => x.b)} · 밭 12: ${rng(h12, (x) => x.b)}`);
+  ok('우박 — 40~60일 간다 (여름 소출과 가을걷이 앞머리)', h12.every((x) => x.left >= 40 && x.left <= 60), `${rng(h12, (x) => x.left)}일`);
+  const f12 = hits('frost', F12);
+  ok('늦서리 — 20~40% · 25~35일 (다시 뿌려 올라올 때까지)', f12.every((x) => x.b >= 2 && x.b <= 5 && x.left >= 25 && x.left <= 35),
+    `${rng(f12, (x) => x.b)} · ${rng(f12, (x) => x.left)}일`);
+  let hs = turn(only('hail'), at(90, F12), 120, 0).state; const b0 = hs.vars.blight, until = hs.vars.blight_until;
+  hs = turn(S0, hs, 121, 30).state; const mid = hs.vars.blight;
+  hs = turn(S0, hs, 122, until - hs.vars.day).state;
+  ok('서른 날 뒤에도 그대로, 아무는 날에 한꺼번에 0 (옛 판: 하루 1씩 — 엿새면 원상)', mid === b0 && hs.vars.blight === 0, `${b0} → 30일 ${mid} → ${until}일째 ${hs.vars.blight}`);
+  const shown = L(turn(only('hail'), at(90, F12), 123, 0).state)('farm_txt');
+  ok('경작지 줄에 "며칠 뒤 아묾"이 보인다', /밭이 상했다\(-\d, \d+일 뒤 아묾\)/.test(shown), shown);
+
+  // 가뭄 — 밭 ×0.6 · 강물 ×0.5 · 우물 ×0.8
+  const dry = (vars) => { const a = at(120, vars), b = at(120, { ...vars, disaster: '가뭄', disaster_days: 20 });
+    return { h: [L(a)('harvest'), L(b)('harvest')], w: [L(a)('draw_water'), L(b)('draw_water')], txt: L(b)('farm_txt') }; };
+  const d0 = dry({ wells: 0 }), d2 = dry({ wells: 2 });
+  ok('가뭄 → 수확 ×0.6', Math.abs(d0.h[1] / d0.h[0] - 0.6) < 0.02, `${d0.h[0]} → ${d0.h[1]} · ${d0.txt}`);
+  ok('가뭄 → 강에서 길어 오는 물이 반 — 우물이 없으면 취수 반토막', Math.abs(d0.w[1] / d0.w[0] - 0.5) < 0.02, `우물 0: ${d0.w[0]} → ${d0.w[1]}`);
+  ok('우물이 곧 가뭄 보험 — 우물 둘이면 덜 준다', d2.w[1] / d2.w[0] > d0.w[1] / d0.w[0] + 0.1, `우물 2: ${d2.w[0]} → ${d2.w[1]} (${Math.round(d2.w[1] * 100 / d2.w[0])}%)`);
+  const fire = turn(only('wildfire'), at(120, F12), 130, 0).state;
+  ok('들불 → 타는 동안 수확 ×0.8 · 탄 자리는 밭 피해로 스무 날', L(fire)('dis_farm') === 0.8 && fire.vars.blight >= 1 && fire.vars.blight_until - fire.vars.day === 20,
+    `${L(fire)('farm_txt')}`);
+
+  // 한 번이 가져가는 것 — 사건 없는 판과 90일을 나란히 굴린 차이 (곳간·물은 넉넉히, 날씨 맑음, 하루 한 턴)
+  const loss = (id, d, vars) => {
+    let hc = 0, he = 0, df = 0, dw = 0, eaten = 0; const SEEDS = 4;   // 피해 폭·기간이 굴림이라 네 판 평균
+    for (let s = 0; s < SEEDS; s++) {
+      let c = at(d, vars), e = at(d, vars);
+      for (let i = 0; i < 90; i++) {
+        hc += L(c)('harvest'); he += L(e)('harvest');
+        c = turn(S0, c, 1000 * s + 200 + i).state; e = turn(i === 0 ? only(id) : S0, e, 1000 * s + 200 + i).state;
+      }
+      eaten += L(c)('eaten'); df += c.vars.food - e.vars.food; dw += c.vars.water - e.vars.water;
+    }
+    return `수확 -${String(Math.round((hc - he) * 100 / hc)).padStart(2)}% (${String(Math.round(df / eaten)).padStart(2)}일치) · 식수 ${(dw / eaten).toFixed(1)}일치`;
+  };
+  console.log('  한 번이 가져가는 것 (90일, 사건 없는 판과의 차이 · 네 판 평균 — 일치 = 하루 소비 기준)');
+  for (const [id, d, lab] of [['hail', 90, '우박 6월'], ['frost', 20, '늦서리 3월'], ['drought', 120, '가뭄 7월'], ['wildfire', 120, '들불 7월'], ['storm', 190, '큰바람 9월']]) {
+    console.log(`  ${lab.padEnd(8)} 보통 개막: ${loss(id, d, {})}   밭 12: ${loss(id, d, F12)}`);
+  }
+}
+
+// ── 사건 게이지와 징조 (§14-7, 플러그인 v1.14.0~1) ──
+// 게이지가 80을 넘으면 다음 사건이 미리 정해지고 그 사건의 징조가 메인에 깔린다. 여기서 재는 것: 징조가 빠짐없이 달렸나,
+// 한 해를 굴리면 사건의 몇 할이 징조를 먼저 보이고 오나, 며칠 앞서 보이나 — 하루 한 턴·세 턴·닷새 턴.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  console.log('\n━━ 사건 게이지와 징조 ━━');
+  const T = S.rules.randomEvents.table;
+  const SUDDEN = ['honey_find', 'old_cask', 'cat_hero', 'thanks_letter'];   // 작은 기쁨은 갑자기 온다
+  const bare = T.filter((e) => !(typeof e.omen === 'string' && e.omen.trim())).map((e) => e.id);
+  ok(`징조 — ${T.length - bare.length}/${T.length}개 사건 (작은 순풍 넷만 갑자기)`, JSON.stringify(bare.sort()) === JSON.stringify([...SUDDEN].sort()), bare.join(','));
+  ok('징조 글은 짧고 이름을 안 댄다 (90자 이내 · 대괄호 없음)', T.every((e) => !e.omen || (e.omen.length <= 90 && !/[[\]]/.test(e.omen))),
+    T.filter((e) => e.omen && (e.omen.length > 90 || /[[\]]/.test(e.omen))).map((e) => e.id).join(','));
+  ok('선 80 · 하루 속도는 시련·위협·불안이 민다', engine.gaugeConfig(S).omenAt === 80 && /hardship/.test(S.rules.randomEvents.gauge.perDay) && /threat/.test(S.rules.randomEvents.gauge.perDay), '');
+  const pre = (id) => { let t = engine.initState(S); t.meta.setupDone = true; return engine.applyPreset(S, t, id).state; };
+  const lead = (pid, skipOf, turns) => {
+    let fired = 0, warned = 0, leadDays = 0; const SEEDS = 4;
+    for (let s = 0; s < SEEDS; s++) {
+      let t = pre(pid); Object.assign(t.vars, { route: '없음', route_days: 0 }); let since = null;
+      for (let i = 0; i < turns; i++) {
+        t.vars.food = Math.max(t.vars.food, t.vars.pop * 8); t.vars.water = Math.max(t.vars.water, t.vars.pop * 8);
+        const sp = engine.sendPhase(S, t, { rng: seededRng(`om-${pid}-${s}`, i, 's') });
+        if (sp.promptBlock.includes('[징조') && since == null) since = t.vars.day;
+        const o = _outputPhase(S, sp.state, { skip_day: skipOf(i) }, {}, { rng: seededRng(`om-${pid}-${s}`, i, 'o') });
+        t = o.state;
+        const ev = o.firedEvents.find((x) => T.some((e) => e.id === x));
+        if (ev) {
+          fired++;
+          if (since != null) { warned++; leadDays += t.vars.day - since; }
+          since = null;
+        }
+      }
+    }
+    return `${String(Math.round(warned * 100 / Math.max(1, fired))).padStart(3)}% 징조 먼저 · 평균 ${(leadDays / Math.max(1, warned)).toFixed(1)}일 앞`;
+  };
+  console.log('  한 해(보통) — 사건 중 징조가 먼저 보인 몫 · 앞선 날');
+  for (const [lab, f, n] of [['하루 한 턴', () => 1, 360], ['하루 세 턴', (i) => (i % 3 === 2 ? 1 : 0), 1080], ['닷새에 한 턴', () => 5, 72]]) {
+    console.log(`  ${lab.padEnd(8)} ${lead('normal', f, n)}`);
+  }
+}
+
+// ── 에셋 팩 — 카드 실측 대조 (2026-09-27) ──
+// main 모드는 런타임 실존 대조가 없다(메인이 태그를 직접 쓴다). 그래서 **팩이 보여 주는 조합이 카드에 실제로 있나**를
+// 여기서 잰다. 이름 목록은 카드(jpeg 653MB)에서 떠 둔 카드-에셋-이름.json — 카드 에셋을 고치면 다시 뜬다.
+{
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  const warn = (n, got) => console.log(`  ⚠ ${n} → ${got}`);
+  console.log('\n━━ 에셋 팩 — 카드 실측 대조 ━━');
+  const assetsMod = SC.require('assets');
+  const strip = (s) => String(s).replace(/\.(png|jpe?g|gif|webp|avif|bmp)$/i, '');
+  const CARD = JSON.parse(fs.readFileSync(__P('카드-에셋-이름.json'), 'utf8'));
+  const have = new Set(CARD.names.map(strip));
+  const reach = new Set();
+  const combos = (p) => p.slots.reduce((acc, s) => acc.flatMap((a) => s.values.map((v) => (a ? a + (p.sep ?? '_') : '') + v)), ['']);
+  for (const p of S.assets.packs) {
+    const all = combos(p); const miss = all.filter((n) => !have.has(n)); all.forEach((n) => reach.add(n));
+    (miss.length ? warn : (n, g) => ok(n, true, g))(`팩 ${p.id.padEnd(7)} ${all.length}조합 중 카드에 ${all.length - miss.length}`,
+      miss.length ? `없음 ${miss.length}: ${miss.join(', ')}` : '전부 있음');
+  }
+  // 원본 지침의 26명이 어느 팩에든 다 있나 (감정 팩 묶음 + 성인 팩)
+  const ROSTER = ['Alaric', 'Cassia', 'Cassandra', 'Algeria', 'Adere', 'Beatrix', 'Meryl', 'Livia', 'Lirica', 'Lulu', 'Lara', 'Yustina',
+    'Valerius', 'Stella', 'Silvana', 'Serie', 'Philia', 'Orelia', 'Morwen', 'Liliana', 'Liana', 'Lapis', 'Fiora', 'Eleonora', 'Celestia', 'Clarice'];
+  const emoWho = S.assets.packs.filter((p) => p.id !== 'nsfw').flatMap((p) => p.slots[0].values);
+  ok('원본 26명 — 감정 팩에 한 번씩', ROSTER.every((w) => emoWho.filter((x) => x === w).length === 1) && emoWho.length === 26, `${emoWho.length}명`);
+  ok('원본 26명 — 성인 팩에 전원', ROSTER.every((w) => S.assets.packs.find((p) => p.id === 'nsfw').slots[0].values.includes(w)), '');
+  // 어느 팩으로도 닿지 않는 카드 에셋 = 이름이 틀렸거나 지침 밖 (아이콘 등 제외)
+  const orphan = [...have].filter((n) => !reach.has(n) && !/^(iconx|main)$/.test(n));
+  (orphan.length ? warn : (n, g) => ok(n, true, g))('어느 팩으로도 안 닿는 카드 에셋', orphan.length ? orphan.join(', ') + ' — 이름을 고치면 닿는다' : '없음');
+  // 주입문 — 수위를 끄면 성인 팩이 통째로 빠진다
+  const inj = (on) => { const t = engine.initState(S); t.vars.nsfw_on = on; return assetsMod.mainInjectionText(S, engine.makeLookup(S, t.vars)); };
+  const on = inj(true), off = inj(false);
+  ok('주입문 — 수위 켬: 팩 다섯 · 성인 형식 실림', (on.match(/- pack "/g) || []).length === 5 && on.includes('<🏰💕|{name}>'), `${on.length}자`);
+  ok('주입문 — 수위 끔: 성인 팩이 프롬프트에서 빠짐', (off.match(/- pack "/g) || []).length === 4 && !off.includes('🏰💕'), `${off.length}자`);
+  ok('메이드 팩에 casual이 안 보인다', !/pack "maid"[^]*?state: [^\n]*casual/.test(on.split('- pack "clarice"')[0]), '');
 }
 
 const d = diagnose(S, { turns: 60, runs: 6 });

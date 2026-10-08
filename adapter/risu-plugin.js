@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.9.29
-//@display-name SimCore (시뮬 엔진) v1.9.29 변수 접기 기억 + 변수 카드에서 보조 AI 허용
+//@version 1.14.2
+//@display-name SimCore (시뮬 엔진) v1.14.2 변수 키는 desc
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,222 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.14.2 ──────────────────────────────────────────────
+// **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
+// 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
+// - [검증] 변수에 `description`이 있고 desc가 비었으면 **desc로 옮기고** 경고로 알린다(설정 없이 결정된 동작 — 켜고 끌 취향이 아니라
+//   형식의 사실). 둘 다 있으면 desc를 지키고 "description은 읽지 않는다"고 경고. 그 밖의 모르는 키(오타 discription 등)는
+//   "알 수 없는 키" 경고 — 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다. JSON 붙여넣기·AI 응답·패치 세 입구가
+//   같은 검증기를 지나므로 한 자리로 다 걸린다.
+// - [요청서] 변수 규격표 desc 줄에 "키 이름은 desc — description은 읽지 않습니다" 명시 (규격에 없던 키를 AI가 관행으로 지어낸 사례).
+
+// ── v1.14.1 ──────────────────────────────────────────────
+// **징조가 먼저 온다 — 사건 게이지의 징조.** 유저: "주변에 뭔가 징조가 있으면 서사적으로 갑자기 터지는 것보다 자연스러울 테니".
+// "무언가 온다"를 두루뭉술하게 흘리면 안 된다 — 표에는 좋은 일도 섞여 있어 불길한 전조 뒤에 아기가 태어나면 서사가 어긋난다.
+// - [코어] 게이지가 omenAt(기본 80 — 표에 omen이 하나라도 있을 때, 0이면 끔)을 넘으면 **다음 사건을 미리 하나 뽑아 둔다**(예약 키 re_next).
+//   100이 되면 그 사건이 터진다. 그새 못 오게 됐으면(조건·쿨다운·갈림길 대기) 거두고 오는 것 중에서 다시 뽑고, 서사가 게이지를
+//   선 아래로 내리면({ gauge: -N }) 징조가 걷힌다. 한 턴에 선과 100을 한꺼번에 넘으면 징조 없이 터진다(며칠 사이의 일).
+// - [코어] 메인 프롬프트 3.5.8 [징조] 블록 — 뽑아 둔 사건의 `omen` 글만(사건 이름·게이지 숫자 없음), "무엇의 징조인지 너도 모른다 —
+//   이유를 짓지 말고 일이 벌어지게 하지도 말고 배경에 스치듯". omen이 없는 사건은 징조 없이 온다. 보조 프롬프트엔 아무것도 안 간다.
+// - [검증] omenAt 1~99 · omen 문자열 · 확률 방식에 omen이면 경고(다음 사건을 미리 모른다) · 징조를 끄면 경고.
+// - [편집기] 게이지 설정에 "징조가 비치는 선", 사건 카드마다 "징조" 칸(게이지 모드), 목록 보기에 징조 줄, AI 규격서 한 줄.
+// - 옛 굴림은 여전히 한 알도 안 바뀐다 (pick/fire를 둘로 나눴지만 rng 순서 그대로 — 베리디아 옛 생성기 산출 전체 동일로 재확인).
+// - 베리디아: 58개 중 54개에 징조(작은 순풍 넷 — 꿀·술통·고양이·감사 편지 — 만 갑자기). 보통 한 해: 하루 한 턴·세 턴이면 사건의
+//   약 90%가 평균 3일 앞서 징조를 보이고, 닷새에 한 턴이면 46%(한 턴에 선을 건너뛴다).
+
+// ── v1.14.0 ──────────────────────────────────────────────
+// **사건은 게이지로 온다 — 사건 게이지 `rules.randomEvents.gauge`.** 발단: 베리디아 사건 빈도 실측(2026-09-27). 랜덤 사건은 턴마다
+// chancePerTurn으로 굴려서 **작중 시간이 아니라 채팅 속도가 빈도를 정했다** — 보통 난이도 한 해 나쁜 일이 하루 세 턴이면 26번,
+// 한 턴이면 10번, 닷새에 한 턴이면 2번. 항목 쿨다운도 턴이라 같은 사건이 하루 세 턴 판에선 세 배 자주 돌아왔다.
+// 유저 제안: "정해진 턴수로 하지 말고 보이지 않는 게이지로 — 서사나 확률로 차고 100이면 발동, 0으로 초기화 + 쿨다운".
+// - [코어] core/gauge.js (새 모듈, 옵트인 — gauge가 없으면 옛 굴림이 한 알도 안 바뀐다: 베리디아 시드 산출 전체 동일로 확인).
+//   숨은 게이지 re_gauge(0~100)가 **작중 하루마다** perDay씩(turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치) + 턴마다 perTurn,
+//   흔들림 jitter(0.5면 ×0.5~×1.5)를 곱해 찬다. 100이면 후보 중 weight 비례로 하나 터지고 0으로, cooldown(날) 동안 쉰다(re_cool).
+//   식힘이 턴 도중에 끝나면 남은 날은 찬다. **후보가 없으면 안 찬다** — 재해 중 채워 두었다가 풀리자마자 터뜨리지 않는다.
+//   게이지 모드에선 항목 cooldown도 **날**(meta.eventLastAt, 체크포인트가 같이 되감는다). 시간 체계가 없으면 한 턴 = 하루.
+// - [코어] 서사의 개입 = 효과 `{ gauge: 식 }` — 선택지·액션·이벤트가 다음 사건을 당기거나(+) 늦춘다(−). 터진 사건의 효과면 여진
+//   (비운 뒤 얹힌다). perDay·perTurn은 식 — 서사가 만든 상태(위협·불안·난이도)가 속도를 민다.
+// - 보이지 않는다: 변화 원장·보조 원장·상태창·메인·보조 프롬프트 어디에도 없다(allow에 못 올린다). 조건식은 읽는다 — `re_gauge >= 80` 전조 지시문.
+// - [검증] 예약 이름 충돌·jitter·cooldown·속도식·gauge 효과(게이지 없이 쓰면 오류)·chancePerTurn과 같이 두면 경고. gauge면 chancePerTurn 불요.
+// - [편집기] 규칙 탭 발동 방식(🎲 확률 / ⏳ 게이지) + 하루·턴 속도·흔들림·쉬는 날 칸, 미리보기 "평균 N일에 한 번", 쿨다운 단위 표기(일),
+//   효과 줄 ⏳(두 효과 편집기 다) + 추가 버튼, 목록 보기, 참조 색인, AI 규격서 한 줄. [패치] 게이지는 조용히 버리지 않고 알린다 · 작업본 비교 한 칸.
+// - 베리디아가 첫 사용처(perDay = 4 + 시련×0.05 + (위협+불안)×0.02) — 보통 한 해 나쁜 일: 하루 한 턴 9.2 · 세 턴 9.4 · 닷새에 한 턴 8.9.
+
+// ── v1.13.4 ──────────────────────────────────────────────
+// **갈림길 뒤도 연쇄다 — 진단.** 발단: 베리디아 혼담(2026-09-27). 청혼은 랜덤 갈림길이고 보조가 올리는 인식·호감이 문턱이라 시뮬에선 안 뜬다
+// (🔵 AI 담당 — 맞다). 그런데 그 뒤가 전부 결함으로 떴다: 받아들임(갈림길)이 세우는 배필·혼례일이 안 서니 혼례 여덟이 🟡 죽은 이벤트,
+// 혼례 전에만 열리는 💔 파기가 🔴 못 쓰는 액션, 답을 기다리는 청혼(enum)이 🟡 "설정 의존 — 바꿀 수단이 없다", 값 다섯이 🟡 안 움직임.
+// 연쇄는 "안 뜬 이벤트의 **효과**만이 세우는 값"만 봤다.
+// - [진단] 안 뜬 이벤트만이 세우는 값 = 이벤트 효과 + **그 이벤트의 갈림길 효과 · 랜덤 이벤트 효과 · 한 번도 안 열린 버튼의 효과**.
+//   쓰는 곳에 매 턴 처리·보조·명령·편성 같은 다른 길이 하나라도 있으면 아니다(좁게), 보조 갈림길 태그가 쓰는 값은 뺀다(발동 기록이 없다).
+//   그 값에 막힌 이벤트 → 🔵 연쇄, 그 값은 "설정"이 아니다(설정 의존 판정에서 뺀다), 그 값에 막힌 버튼 → 🔵 연쇄(새 갈래).
+//   연쇄 문구가 "그 값을 세우는 이벤트"로 **되돌리기만 하는 효과**(혼례가 혼례일을 0으로)는 안 댄다.
+//   전후: 템플릿 16 동일 · 새 mid/high 0 · 조퇴악녀 안 뜬 줄기의 카운터 아홉 🟡 → 연쇄 묶음 · 얼헌 문구만 · 전체 mid/high 268 → 243.
+
+// ── v1.13.3 ──────────────────────────────────────────────
+// **숫자도 연쇄다 — 진단.** 발단: 베리디아 광휘회(2026-09-27). 주교의 판단 셋은 `bishop_at > 0`(오는 날)을 보는데, 그 값을 세우는 건
+// 예고 이벤트 하나뿐이다. 예고가 안 뜬 판에선 판단 셋이 🟡 죽은 이벤트로 셋 다 신고됐다 — 원인은 예고 하나인데.
+// 연쇄(안 뜬 이벤트만이 세우는 값에 막힌 이벤트 → 🔵)는 플래그(bool·enum)를 뒤집어 보는 것뿐이라 숫자는 못 잡았다.
+// - [진단] 문턱의 병목이 곧 "안 뜬 이벤트만이 세우는 값"이면 숫자도 연쇄다. 문구는 "켜져야" 대신 "`> 0`이 돼야".
+//   내장 템플릿 16·다른 봇 셋 전후 동일, 베리디아만 mid 4 → low (지적을 줄이기만).
+
+// ── v1.13.2 ──────────────────────────────────────────────
+// **편지는 편지답게 — 메신저 `medium: 'letter'`.** 발단: 베리디아 서신(2026-09-27). 폰이 없는 세계(아틀리에·베리디아)는 메신저를
+// 편지 왕래로 쓰면서 guide에 "단말기가 아니라 편지다"라고 덧칠했는데, 엔진이 보조에게 먼저 "주인공의 단말기"·"문자 말투로 짧게"·
+// "즉답이 어색하면 뜸 들인 한 통"이라고 말하니 두 지시가 부딪혔다 — 귀족의 답장이 두 줄짜리 문자로 왔다.
+// - [엔진] messenger.medium 'text'(기본, 옛 동작 그대로) | 'letter'. 편지면 선톡·답장·메인 주입 세 곳의 말이 편지 말로
+//   (받은 편지에 답한다·한 통에 할 말을 담는다·격식과 서명·오가는 시간만큼 늦게 온 답장·모르는 사이면 모르는 사람에게 쓰듯),
+//   한 통 상한 300 → 600자, 메인 주입은 최근 6통 × 240자. 패널 문구("답장이 오는 중…"·"보내기")와 출력 상한(+700)도 따라간다.
+// - [어댑터] 답장 인격 발췌가 **정확히 맞는 것부터** (messenger.personaEntry, 순수 함수로 빼 테스트) — 부분 일치만 보다가
+//   "리아나"가 앞에 있는 "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의 인격으로 썼다.
+//   제목 = 이름 → 키워드 칸 = 이름 → 이름의 한 낱말(「알라릭 여왕」→ 알라릭·여왕) → 마지막에만 옛 부분 일치.
+// - [검증] medium은 text|letter. [편집기] [메신저] 03 말투 절에 "매체" 선택 + 요약 칩 ✉, 규격서 한 줄.
+// - [진단] 오탐 둘 — 지적을 줄이기만 한다 (베리디아 청원함이 계기). ① 의뢰판 [수락]이 목록에 줄을 넣고 accept/cancel 효과가 값을
+//   움직이는 것도 쓰기 경로 '의뢰판'. ② **옮겨 세는 값** — 시뮬이 쓰는 자리가 onTurn 식뿐이고 그 식이 읽는 변수가 전부 안 움직였고
+//   그중 하나라도 시뮬 밖(보조·명령·의뢰판·편성·달력)이 움직이는 값이면, 그 정지는 입력의 정지를 옮겨 적은 것 → 🟡 안 움직임이 아니라
+//   측정 불가, 그 값을 읽는 이벤트는 🟡 죽은 이벤트가 아니라 🔵 담당 문턱 (pet_n = count(petitions)). 목록 규칙·이벤트·파생이 끼면
+//   판단하지 않는다(좁게). 내장 템플릿 16 전후 동일, 봇 4는 줄기만 (아틀리에 진열대 shelf_sold·quest_n도 같은 오탐이었다).
+
+// ── v1.13.1 ──────────────────────────────────────────────
+// **기한은 세되 지우지 않는다 — 목록 규칙 `keepOverdue`.** 발단: 베리디아 점검(2026-09-27). 빚·약속(favors)은 "이행하거나 파기하기
+// 전엔 안 사라진다"가 설계라 만료 규칙을 일부러 안 달았는데, 그러면 `@+30`이 굳지 않는다 — v1.7.1부터 그게 화면·프롬프트에
+// `(30일)`로 환산돼 **영영 안 줄어드는 남은 일수**로 읽혔다. 엔진엔 "재기만 하고 안 지우는" 길이 없었다.
+// - [엔진] onTurn(과 효과)의 `{ list, expire, keepOverdue: true }` — expire 식을 시계로만 쓰고 지난 항목을 안 거른다. 지우는 곳 한 군데만
+//   바뀌고, 시계를 읽는 나머지(@+N 굳히기·(N일) 환산·달력 점·의뢰판)는 expire를 그대로 보니 저절로 따라온다. 지난 항목은 `(지남)`.
+// - [검증] 불린 아니면 오류, expire 없이 쓰면 경고.
+// - [편집기] [규칙·이벤트] 목록 효과 줄에 "기한 시계" 칸(expire — 엔진·검증엔 처음부터 있었는데 **칸이 없어 JSON으로만** 넣던 것, 규칙 #3)
+//   + 시계가 있을 때 "지나도 안 지움" 체크. 다이제스트·작업본 요약·규격서(기한 만료 패턴·지속 효과 등록부)에 한 줄씩.
+// - [진단] 오탐 둘 — 지적을 줄이기만 한다. ① 임시 변수(세웠다 같은 묶음에서 시작값으로 되돌림) 판별에 onTurn 묶음도
+//   (베리디아 lack_*가 "늘기만 한다"로). ② 채팅 명령(`cmd`)이 달린 변수는 쓰기 경로가 있다 (`/수위`로만 켜고 끄는
+//   성인 팩 게이트 nsfw_on이 🔴 고정 변수로).
+// - [진단] **놀이 판이 갈림길을 고른다** — 전엔 어느 판도 안 골라 타임아웃(맨 끝 = 외면한다)만 났다. "허가한다"처럼 앞 선택지로만
+//   열리는 값이 시뮬에 영영 안 와서 거기 달린 액션·이벤트가 🔴 못 쓰는 액션·죽은 이벤트로 (베리디아 모험가 길드 허가). 방치 판은 그대로,
+//   놀이 판은 시드 짝수만 고르고 타임아웃이 고를 자리(fallbackIndex)는 뺀다 — 전부 고르게 하면 "안 고르면 최악"으로만 가는 길이
+//   사라져 반대쪽 오탐(조퇴악녀 회귀 카운터 안 움직임), 동전 던지기면 고르는 판이 다 "거절"을 뽑는다. 버튼 짝비교는 안 고른다
+//   (좀비 '뒤진다' 함정 오탐). 내장 템플릿 16 + 배포 봇 4 전후 대조: 지적이 줄기만 했다 (조퇴악녀 low 하나가 다른 low로).
+// ⚠ 이미 `@+N`으로 적혀 있던 항목은 굳을 기회를 놓쳐 그대로다 — 한 번 지우고 다시 적어야 세기 시작한다.
+//
+// ── v1.13.0 ──────────────────────────────────────────────
+// **능력치 판정 — 고르기 전에 무게를 잰다.** 발단: 조퇴악녀 "시종에도 스테이터스(검술·마법·화술·매력·가사) — 가끔 선택지가 수치 판정으로
+// 성공·실패하게, 킹덤컴처럼" + 면접 실기 "실언은 늘 3번, 정답은 늘 1번" (2026-09-26 유저). 판정·선택지 판정은 v0.40·v1.8.0에 있었다 —
+// 모자랐던 건 넷: 보조 갈림길이 한 벌뿐(면접이 차지), 순서가 답을 흘림, 선택지만 보고는 판정인지·몇 %인지 모름, 최초 설정이 프리셋 값을 못 봄.
+// - [여러 벌] `liveChoices`가 **배열**이면 벌마다 `{ id, … }`. 추첨은 배열 순서대로 먼저 붙은 한 벌(동시 1개 상한 그대로). 깃발 meta.liveAsk =
+//   true(첫 벌 — 옛 세이브·한 벌 봇과 같은 값) | 'id'. 이벤트 트리거 `liveChoices: true | 'id'`. 걸린 것엔 벌 id(pendingChoice.live.cfg).
+//   한 벌(객체) 봇은 한 글자도 안 바뀐다. 편집기 [규칙·이벤트] 05에 "+ 갈림길 한 벌 더"·벌 id·트리거 고르기.
+// - [섞기] `shuffle: true` — 정제 뒤 시드 rng로 순서를 섞는다(리롤 안정). 안 고르면(타임아웃·strict last) **자리 대신 worst 태그 항목**
+//   (choice.fallbackIndex). 안 섞는 벌은 예전처럼 worst 맨 끝·"마지막 항목" 안내. 섞고 태그를 숨긴 벌은 안내가 자리를 말하지 않는다.
+// - [확률 칩] 판정 달린 선택지(스키마 갈림길 check·보조 갈림길 태그 check) 옆에 "🎲 화술 60%" — 성공 = total ≥ vs(vs 없는 판정은 안 뜸).
+//   engine.checkOdds: 굴림식이 무엇이든 고정 시드 표본 600번, 5% 단위, 상태를 안 건드린다. 칩이 있으면 태그 꼬리표는 안 단다.
+// - [최초 설정] 보조 창구의 "기본값"이 스키마 init이 아니라 **지금 값(프리셋이 정한 값)** — init을 보이면 보조가 그걸 절대값으로 되돌려
+//   적어 시점별 능력치·신분이 덮였다.
+// - [규격서] 동봉 검증기에서 **주석만 있는 줄**을 뺀다(코드는 그대로) — 127.3KB로 128KB 상한에 닿아 있었다 → 116.7KB.
+// - [검증] 배열 벌 id 필수·중복·ID 형식, 트리거가 없는 벌 id를 부르면 오류, shuffle 불, 섞는데 worst 없으면 경고, 빈 배열 경고.
+//
+// ── v1.12.2 ──────────────────────────────────────────────
+// **하이라이트에 "📊 분 진행 +5 (현재 5)"가 서던 것** (조퇴악녀 실기, 2026-09-25). 보조가 적은 시간 진행(skip_day/skip_min)은 출처가 llm이라
+// 하이라이트 허용 목록을 통과해 스탯이 오른 것처럼 카드로 섰다 — 그 값은 같은 턴에 시각으로 굳고 0이 되므로 "현재 5"도 거짓이었다.
+// 보조 원장(changeMemoLines)은 v1.x부터 우편함을 건너뛰었는데 하이라이트만 빠져 있었다. 이제 같은 규칙. 전체 영수증(이번 턴 변화)은 그대로.
+//
+// ── v1.12.1 ──────────────────────────────────────────────
+// **상태창 탭 한 장에 여러 그룹** — "상태창 두 번째 탭으로 페르소나 전용 탭 하나 있는 게 좋지 않을까, 소지품이나 능력 관리하기엔
+// 그게 제일 좋아 보인다" (조퇴악녀, 2026-09-25 유저). 탭 배치는 그룹 하나 = 탭 하나라, 현황 그룹 넷 + 페르소나를 두 장으로
+// 나누려면 현황을 한 그룹에 몰아 이름표를 잃거나 템플릿 모드로 HTML을 손으로 짜야 했다.
+// - [묶기] `statusUI.groups[].tab: "장 이름"` — 같은 이름의 그룹이 한 장 안에 제 이름표를 달고 쌓인다. 장 순서 = 그 이름이 처음 나온 자리,
+//   tab 없는 그룹은 예전처럼 한 장. tabs·accordion·popover 공통, 쌓기(stack)는 장이 없어 무시(경고). 조건으로 다 숨은 장은 빠지고,
+//   한 장만 남으면 탭바 없이 묶기 전 그룹으로 쌓인다.
+// - [색] 고른 탭의 배경·테두리를 봇 CSS가 `--sim-tab-on-bg` / `--sim-tab-on-line`으로 덮는다 — 자리별 :checked 규칙을 손으로 안 찍게.
+// - [검증] tab이 빈 글자·글자 아님 오류, 쌓기인데 tab 경고, 탭·팝업 "두 장 이상" 경고가 묶인 장 수로 센다.
+// - [편집기] 그룹 설정에 "묶을 장 이름" 칸(탭·접기·팝업 배치일 때), 그룹 머리 요약에 장 이름. 규격서 상태창 규칙 한 줄.
+//
+// ── v1.12.0 ──────────────────────────────────────────────
+// **무대 뒤 — 유저가 안 봐도 세상은 움직인다** (core/front.js 25호, 설계 docs/design-조퇴악녀.md §15). 발단: 조퇴악녀 2부 설계 —
+// "스토리는 유저만 움직인다고 되는 게 아니다. 아웃풋에 안 나와도 밑작업·NPC들이 움직이다가 표면으로 나올 때 이벤트가 터지게"
+// (2026-09-25 유저). 변수+onTurn+이벤트+비밀로 손조립은 됐지만 두 군데로 샜다 — 패널 현황 탭이 스키마 변수를 전부 보여 주고,
+// 이벤트·선택지가 시계를 건드리면 변화 로그·하이라이트에 찍혔다.
+// - [진영] `fronts: [{ id, about, label, when, rate, max, init, stages: [{ at, hint, backstage, surface, effects }] }]` — 숨은 시계가
+//   **작중 시간**으로 흐른다(하루당 rate, turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치. 시간 체계 없으면 턴당). when 거짓이면 멈춤.
+// - [세 겹] 문턱을 넘으면 열린다(안 닫힘, 한 번에 여러 개면 낮은 순서대로 전부). hint = 이유 없는 징후(매 턴, 다음 표면화가 오면 걷힘) /
+//   backstage = 밑작업(**표면화 전엔 프롬프트 어디에도 없다**) / surface = 사건 통지 + 그 단계까지의 밑작업 누적 공개 / effects = 결과 한 번.
+// - [예약 키] fr_<id>(시계)·frs_<id>(열린 단계) — vars에 살아 조건식이 읽고, 패널(스키마 vars만 그린다)엔 안 보이고, 체크포인트 되감기가 같이 되감는다.
+// - [개입] 효과 `{ front: id, add: 식 }` — 선택지·액션이 시계를 늦춘다(0~max). 원장 출처 `front:` — 변화 로그·하이라이트(허용 목록)와
+//   보조 원장(changeMemoLines에서 제외)에 안 실린다. ⚠ 채팅 변수 미러(mirrorVars)엔 예약 키가 같이 간다(sec_*와 같은 기존 동작).
+// - [시점] 응답 단계 8.55 — 막 전환 뒤(막을 읽는다), 비밀 앞(비밀의 여는 조건이 같은 턴 표면화를 읽는다). 프롬프트는 3.5.7(비밀 다음).
+// - [검증] id·예약 이름 충돌·문턱 오름차순·0<at≤max·rand 금지 오류, 안 흐르는 시계·표면화 없는 밑작업·빈 문턱·프롬프트/상태창 노출 경고.
+// - [편집기] [무대 뒤] 탭(진행 묶음, 🎭 기능 카드) — 방치하면 N일째 요약, 효과 편집기 둘에 🎭 개입 줄. 규격서·다이제스트 참조 절·작업본 비교.
+//
+// ── v1.11.0 ──────────────────────────────────────────────
+// **체크포인트 — 되감기** (core/checkpoint.js 24호, 설계 docs/design-조퇴악녀.md §12). 회귀물·로그라이크·타임루프의
+// "죽으면 그 아침으로"를 스키마로 만들 수 없었다 — 효과(set)는 스키마 vars만 대상이라 예약 키(time_epoch 날짜·scn_idx 막·
+// sec_* 비밀)를 못 돌리고, 막은 앞으로만 가고, 시간은 음수 진행을 무시한다. 발단: 조퇴악녀 개조("시종 면접에 떨어지면 사망
+// 반복 — 사실상 사망회귀물", 2026-09-25 유저).
+// - [효과] `{ checkpoint: 'save'|'load', slot? }` — 효과를 받는 곳이면 어디든(이벤트·선택지·액션·판정 등급·막 onEnter·보조 갈림길
+//   태그). 정석은 막 onEnter에 저장, 게임오버 이벤트·선택지(강제 갈림길의 최악)에 되감기. 칸은 slot(기본 main)으로 여럿.
+// - [되감기] 변수 **전부**(예약 키 포함)와 이벤트 once·쿨다운 기록을 저장 시점으로. 남는 것 = `checkpoint.keep` 변수 + (기본)
+//   열린 비밀 — 회귀자의 기억. 턴 번호·채팅·보드·상점·메신저는 앞으로만 간다(이야기 안의 시간을 되감는 것이지 채팅 되돌리기가 아니다).
+//   걸린 갈림길은 걷힌다(되감기 전 세계가 내민 것). 저장 뒤 스키마에 생긴 변수는 init으로.
+// - [시점] applySets는 줄만 세우고(meta.cpQueue) 단계 끝에서 처리 — 전송 단계는 액션·선택지 뒤(고른 그 턴 프롬프트가 되감긴 날짜로
+//   나가고 안내도 그 턴에), 응답 단계는 이벤트·막 전환·비밀 뒤(onEnter 저장이 그 턴의 전환까지 담는다, 안내는 다음 턴 통지).
+//   그래서 같은 목록의 `loop + 1`은 되감기 앞이든 뒤든 산다. 칸은 state.checkpoints — 메시지 스냅샷에 실려 리롤에 안정.
+// - [안내] `checkpoint.notify`({변수} 가능, 비우면 기본 "시간이 체크포인트 시점으로 되돌아갔다…"). 원장엔 칸 이름 한 줄만.
+// - [검증] 동작·칸 이름·set 겸용 오류, onTurn 되감기 오류(매 턴 제자리), 저장 없는 칸 되감기 경고, keep 없는 변수 오류.
+// - [편집기] 효과 편집기 둘에 ⏪ 체크포인트 줄(되감기를 켠 봇만 추가 버튼), [시나리오] 탭 끝에 "⏪ 되감기" 카드(남길 변수·
+//   비밀 유지·안내·쓰는 칸 요약). 작업본 비교 영역에 합류, 일반 패치는 미지원(통 교체·JSON).
+//
+// ── v1.10.2 ──────────────────────────────────────────────
+// **번역문에 상태창이 안 뜨던 것** (커뮤니티 제보, 2026-09-21). "번역문에는 ⟦simcore:14⟧가 누락돼 상태창이 안 뜬다.
+// 번역문을 손으로 고쳐 넣으면 뜬다. 번역가의 노트에 포함하라고 적어도 안 된다."
+// 마커를 지운 건 번역가가 아니라 **우리**였다. 리수의 LLM 번역 + [HTML 포맷 전 번역]은 저장 원문(마커 포함)을 그대로
+// 번역 요청에 넣는데, 그 요청이 우리 beforeRequest를 지나고 — v0.37.2부터 마커 제거는 전 타입 공통이다("번역문에 새면
+// 안 된다"). 번역가는 마커를 본 적이 없으니 노트에 뭐라 적든 넣을 번호가 없다. 결과는 마커 없이 번역 캐시에 들어가고,
+// 상태창(display)은 그 **뒤에** 그려지므로 설 자리가 없다. "새면 안 된다"가 "있어야 할 자리에서도 없앤다"가 돼 있었다.
+// - [되붙이기] 떼는 건 그대로 둔다(모델이 기호를 보존해 주길 기대하지 않는다). 대신 번역 요청에서 뗀 번호를 기억했다가
+//   리수의 **afterRequest** 리플레이서(성공 응답마다 `(result, type)`)에서 번역 결과 끝에 도로 붙인다. 저장 마커가 원래
+//   끝 고정이라 자리도 같다. 결과는 마커째로 번역 캐시에 들어가 다음부터는 요청 없이 선다.
+// - [짝짓기] 리수는 두 훅 사이에 요청 식별자를 안 준다. 떠 있는 번역이 하나면 그게 짝이다. 여럿이면(채팅을 열 때 동시
+//   번역) 번역을 거쳐도 남는 것 — 숫자와 태그 — 의 겹침으로 고르고, **애매하면 안 붙인다**. 틀린 마커는 남의 시점 상태창을
+//   세우지만 안 붙이면 예전과 같을 뿐이다. 마커 없는 번역(유저 글·HTML 번역 모드)도 대기열에 센다 — 안 세면 어긋남을 모른다.
+// - [안전] 실패한 요청은 afterRequest가 안 불린다 — 3분 지난 대기는 버린다. 재시도 루프·[다시 번역]은 같은 원문이라
+//   같은 대기로 합친다. afterRequest도 호출부에 try/catch가 없다 — 타입이 translate가 아니면 글자 하나 안 건드리고,
+//   안에서 던지지 않는다. 훅이 없는 옛 리수면 등록만 조용히 건너뛴다.
+// ⚠ 이미 마커 없이 캐시된 번역은 그대로다 — 그 메시지는 [다시 번역]을 한 번 눌러야 한다(번역 캐시는 플러그인이 못 만진다).
+// ⚠ 교훈: **"새면 안 된다"로 지운 것이 누군가에겐 있어야 하는 것이다.** 뗄 때는 돌려줄 자리도 같이 정한다.
+//
+// ── v1.10.1 ──────────────────────────────────────────────
+// **현황 탭에서 목록 변수의 ✕가 잘려 항목을 지울 수 없던 것** (커뮤니티 제보, 2026-09-17). 항목이 칸보다 조금만 길면
+// 지울 방법이 아예 없었다 — 보이지 않는 버튼은 없는 버튼이다.
+// 두 가지가 겹쳐 있었다. ① 칩이 `white-space:nowrap`이라 길이에 맞춰 칸 밖으로 자란다. ② 칩을 감싼 .sc-var-current가
+// `overflow-x:hidden`이라 칸 밖을 잘라 낸다 — 가로 스크롤조차 없다. ✕는 칩의 **맨 끝**이라 가장 먼저 잘린다.
+// - [칩] white-space:normal + max-width:100% — 글자만 접는다. 숫자·기한·✕는 flex:0 0 auto로 안 쪼개지고 항상 보인다.
+//   반지름 999px → 14px (한 줄일 땐 같아 보이고, 두 줄이 되면 999px가 옆구리를 뭉갠다).
+// - [칸] 목록 행의 현재값 칸을 colSpan 3으로 — 표가 table-layout:fixed라 현재값 열이 18% 고정인데, 칩을 그 폭에 접어
+//   넣으면 두세 글자마다 줄이 바뀐다. 추가 입력은 칩 아래 .sc-var-add 한 줄로 내렸다(가로로 나눌 폭이 없다).
+// - [구조] .sc-var-current를 td에서 안쪽 div로 내렸다 — 스칼라 행과 같은 모양. 안 그러면 max-height:132px 스크롤 상자에
+//   추가 입력까지 갇힌다. 목록 행만 td에 클래스를 달고 있던 예외를 없앴다.
+// ⚠ 교훈: **잘라 내는 상자 안에 조작 버튼을 두지 마라.** overflow:hidden은 보기 좋으라고 넣지만, 그 안에 누를 것이
+//   있으면 기능이 조용히 사라진다. 잘려도 되는 건 글자뿐이다.
+//
+// ── v1.10.0 ──────────────────────────────────────────────
+// **비밀 — 모르는 건 말할 수 없다** (core/secret.js 23호, 설계 docs/design-비밀.md). 유저 제안(2026-09-17): "사람들이 가장
+// 힘들어하는 게 LLM은 비밀유지를 뭔 짓을 해도 못 한다". 진단: 프롬프트에 있는 건 전부 "아는 것"이고 "말하지 마라"는 그 옆에
+// 붙은 텍스트일 뿐 — 확률을 낮출 뿐 100턴이면 한 번은 샌다. 확실한 건 하나, **프롬프트에 없으면 못 샌다.** 시나리오레이터의
+// secret이 이미 그 원칙(은닉=구조)인데 막에 묶여 있고 켜짐/꺼짐 둘뿐이었다 → 막 없이·단계별로 일반화.
+// - [스키마] secrets[] = { id, kind(person/world/plot), about, label, tell(exists/none), tiers[{when, text, notify}] }.
+//   열린 단계까지의 text만 프롬프트에(sendPhase 3.5.6). 안 열린 text는 프롬프트 어디에도 없다. 보조 프롬프트엔 아무것도 안 간다.
+// - [두 발명] ① 복선 = 이유 없는 행동(1단계, 왜는 안 준다 — 배우는 결말을 몰라도 숨기는 사람을 연기한다) ② 존재는 알리되
+//   내용은 안 준다(tell:exists — "너도 내용은 모른다, 지어내지 마라"). 반전(plot)은 반대로 신호가 스포일러라 기본 none.
+// - [상태] vars 예약 키 sec_<id> = 열린 최고 단계(-1=아직). outputPhase 8.6이 참인 가장 높은 단계까지 연다(누적, 안 내려감).
+//   조건식·상태창이 읽는다. 원장(🔓 카드·로그)엔 라벨·단계 번호만 — 내용은 원장으로도 안 샌다(원장은 보조에게도 간다).
+// - [종류 = 어법] 기계는 하나. kind가 기본 tell·존재 알림 문구·상태창 표시(인물·세계 = 🔒 칩, 수집 요소 / 반전 = 표시 없음)만 가른다.
+// - [편집기] [비밀] 탭([진행] 묶음, 의뢰판·메신저와 같은 sce-board-* 골격) — 카드 = 종류·about·존재 알림·단계 사다리.
+//   TAB_SLICES.secrets(통째 교체) + SCHEMA_SECRET_RULES + 🔒 기능 카드 + 통짜 규격서 절 + 다이제스트 참조 절(내용은 안 싣는다)
+//   + areaLabel·PATH_TABS·대화 편집기 지도. 안내 = "카드·페르소나·로어북에 적힌 비밀은 이미 새고 있다 — 그쪽에서 빼고 여기로".
+//   이게 기능의 절반이다.
+// - [검증] 예약 이름 충돌·when 없는 뒷단계(영영 안 열림)·빈 text·rand() 금지·plot+exists 경고·exists인데 about 없음 경고.
+// - [진단] 닫힌 비밀(mid) — 마지막 단계 미도달, 변명 사다리는 닫힌 막과 같다(설정 게이트 → 긴 판 → AI 문턱).
+// - [시나리오] 막의 secret은 시나리오 탭 그대로 — 쓰는 자리는 둘, 보장은 한 벌("미공개 = 거짓이 아니라 아직" 어법 공유).
+// - [증명] test-secret.js — 안 열린 단계 text가 프롬프트 문자열 어디에도 없음을 grep으로 단언. 모델 확률이 아니라 구조.
+//   rpg 템플릿에 '아린의 과거'(인물, scn_act로 여는 단계) 실물 예시 — 시나리오와 맞물리는 본보기.
 //
 // ── v1.9.29 ──────────────────────────────────────────────
 // **변수 카드 접힘 기억 + 변수 카드에서 보조 AI 허용** — 커뮤니티 제보 둘(2026-09-17).
@@ -2691,6 +2907,86 @@
   const stripMarkers = (t) => (typeof t === 'string'
     ? t.replace(MARKER_RE, '').replace(MARKER_TAIL_RE, '').trimEnd()
     : t);
+  // ── 번역문에 마커 되붙이기 (v1.10.2) ────────────────────────
+  // beforeRequest는 번역 요청에서도 마커를 뗀다 → 번역 결과에 마커가 없다 → 번역문엔 상태창이 안 선다.
+  // 떼는 건 그대로 두고, 뗀 번호를 기억했다가 afterRequest에서 결과 끝에 도로 붙인다.
+  // 리수가 두 훅을 이어 주지 않으므로 짝은 우리가 맞춘다: 하나면 그것, 여럿이면 숫자·태그 겹침, 애매하면 포기.
+  const TR_TTL_MS = 180000;          // 실패한 요청은 afterRequest가 안 온다 — 이만큼 지나면 버린다
+  const trPending = [];              // { key, idx: number|null, fp, at }
+  let trUnmatched = 0;               // 짝을 못 찾고 지나간 결과 수 — 대기 수를 따라잡으면 전부 끝난 것이라 비운다
+  const trHash = (t) => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36) + ':' + t.length; };
+  const trFingerprint = (t) => {
+    const body = String(t ?? '');
+    return { nums: body.match(/\d+/g) ?? [], tags: body.match(/<[^<>\n]{1,120}>/g) ?? [] };
+  };
+  const trOverlap = (a, b) => {       // 다중집합 겹침 / 큰 쪽 크기. 둘 다 비면 null (잴 게 없다)
+    if (!a.length && !b.length) return null;
+    const bag = new Map();
+    for (const x of a) bag.set(x, (bag.get(x) ?? 0) + 1);
+    let hit = 0;
+    for (const x of b) { const n = bag.get(x) ?? 0; if (n > 0) { hit++; bag.set(x, n - 1); } }
+    return hit / Math.max(a.length, b.length);
+  };
+  const trScore = (src, out) => {
+    const parts = [trOverlap(src.nums, out.nums), trOverlap(src.tags, out.tags)].filter((v) => v != null);
+    return parts.length ? parts.reduce((x, y) => x + y, 0) / parts.length : null;
+  };
+  const trExpire = (now) => {
+    for (let i = trPending.length - 1; i >= 0; i--) if (now - trPending[i].at > TR_TTL_MS) trPending.splice(i, 1);
+    if (!trPending.length) trUnmatched = 0;
+  };
+  /** 떼기 **전에** 부른다 — 이 요청이 실어 온 마커 번호(마지막 것)와 그걸 실은 메시지 */
+  function trFindMarker(messages) {
+    let idx = null, carrier = null;
+    for (const m of messages ?? []) {
+      if (!m || typeof m.content !== 'string') continue;
+      const all = [...m.content.matchAll(MARKER_RE)];
+      if (all.length) { idx = Number(all[all.length - 1][1]); carrier = m; }
+    }
+    return { idx, carrier };
+  }
+  /** 뗀 **뒤에** 부른다 — 대기열에 올린다. 마커 없는 번역도 올린다(안 세면 어긋남을 모른다) */
+  function trRemember(messages, found) {
+    const now = Date.now();
+    trExpire(now);
+    const texts = (messages ?? []).map((m) => (m && typeof m.content === 'string' ? m.content : ''));
+    const key = trHash(texts.join('\u0001'));
+    // 같은 원문 = 같은 요청의 재시도(리수 재시도 루프는 이미 뗀 배열로 다시 온다)거나 [다시 번역] — 합친다.
+    // 재시도 때는 마커가 이미 없으니 번호를 null로 덮지 않는다.
+    const old = trPending.find((p) => p.key === key);
+    if (old) { old.at = now; if (found.idx != null) old.idx = found.idx; return; }
+    const body = found.carrier ? found.carrier.content : (texts[texts.length - 1] ?? '');
+    trPending.push({ key, idx: found.idx, fp: trFingerprint(body), at: now });
+    if (trPending.length > 40) trPending.shift();
+  }
+  /** 번역 결과에 제 마커를 도로 붙인다. 짝이 애매하면 손대지 않는다 */
+  function trRestore(content) {
+    const now = Date.now();
+    trExpire(now);
+    if (!trPending.length) return content;
+    const out = trFingerprint(stripMarkers(content));
+    let pick = null;
+    if (trPending.length === 1) {
+      // 하나뿐이면 그게 짝이다. 단 양쪽에 잴 것이 넉넉한데 전혀 안 겹치면 남의 것(제 대기가 만료된 드문 경우)
+      const only = trPending[0];
+      const s = trScore(only.fp, out);
+      const rich = (only.fp.nums.length + only.fp.tags.length >= 3) && (out.nums.length + out.tags.length >= 3);
+      if (!(rich && s != null && s < 0.2)) pick = only;
+    } else if (out.nums.length + out.tags.length >= 2) {
+      const scored = trPending.map((p) => ({ p, s: trScore(p.fp, out) ?? 0 })).sort((a, b) => b.s - a.s);
+      if (scored[0].s >= 0.7 && scored[0].s - scored[1].s >= 0.3) pick = scored[0].p;
+    }
+    if (!pick) {
+      trUnmatched++;
+      console.log(`[simcore] 번역 결과의 짝을 못 정함 (대기 ${trPending.length}) — 마커를 안 붙입니다. 상태창이 필요하면 [다시 번역]`);
+      if (trUnmatched >= trPending.length) { trPending.length = 0; trUnmatched = 0; }   // 떠 있던 번역이 전부 돌아왔다
+      return content;
+    }
+    trPending.splice(trPending.indexOf(pick), 1);
+    if (!trPending.length) trUnmatched = 0;
+    if (pick.idx == null) return content;
+    return stripMarkers(content) + `\n\n⟦simcore:${pick.idx}⟧`;
+  }
   const SCHEMA_LORE_COMMENT = '⚙simcore';
 
   // ── 개조 번들 (v1.0.5) — 로어북+정규식을 한 파일로 배포하고 한 번에 교체 적용 ──
@@ -3622,9 +3918,14 @@
   await Risuai.addRisuReplacer('beforeRequest', async (messages, type) => {
     // 마커 제거만 전 타입 공통 — ⟦simcore:N⟧이 모듈의 줄번호 계산이나 번역문에 새면 안 된다.
     // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
+    // 번역 요청만은 뗀 번호를 기억해 둔다 — afterRequest가 결과 끝에 도로 붙인다 (v1.10.2).
+    // 떼기 전에 찾고, 뗀 뒤에 올린다(대기열의 열쇠·지문은 뗀 글 기준 — 재시도는 뗀 배열로 다시 온다).
+    let trFound = null;
+    if (type === 'translate') { try { trFound = trFindMarker(messages); } catch { trFound = null; } }
     for (const m of messages ?? []) {
       if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);
     }
+    if (trFound) { try { trRemember(messages, trFound); } catch (e) { console.log('[simcore] 번역 마커 기억 실패:', e?.message ?? e); } }
     if (type !== 'model') return messages;   // 우리 턴이 아닌 요청엔 아무것도 얹지 않는다
 
     // 내장 AI 생성의 메인 모델 경로(callGenLLM 'main') — 우리가 만든 요청이다.
@@ -3678,6 +3979,22 @@
     }
     return messages;
   });
+
+  // ── 번역 결과에 마커 되붙이기 (v1.10.2) ───────────────────
+  // ⚠ 이 훅도 **모든** 성공 응답에 걸린다(메인 비스트리밍·보조·요약·남의 플러그인) — translate가 아니면 글자 하나
+  // 안 건드린다. 호출부(request.ts)에 try/catch가 없으니 안에서 던지지 않는다. 옛 리수엔 이 훅 이름이 없어
+  // 등록이 던질 수 있다 — 그러면 되붙이기만 조용히 포기한다(나머지 기능은 그대로).
+  try {
+    await Risuai.addRisuReplacer('afterRequest', async (content, type) => {
+      if (type !== 'translate' || typeof content !== 'string') return content;
+      try { return trRestore(content); } catch (e) {
+        console.log('[simcore] 번역 마커 되붙이기 실패:', e?.message ?? e);
+        return content;
+      }
+    });
+  } catch (e) {
+    console.log('[simcore] afterRequest 훅을 못 걸었습니다 — 번역문 마커 되붙이기 생략:', e?.message ?? e);
+  }
 
   // ── 에셋 이미지 (v0.48) ─────────────────────────────────
   // 보조가 고른 {who, 감정…}을 팩 규약으로 조합해 실물과 대조한 뒤 본문 맨 앞에 1장 삽입.
@@ -4170,6 +4487,7 @@
         if (auxPrompt.includes('게시판은 세계와 함께 굴러간다')) auxCap += 800;
         if (auxPrompt.includes('주기 기사]')) auxCap += 400;
         if (auxPrompt.includes('먼저 메시지를 보낼')) auxCap += 300;   // 메신저 선톡 (v1.2.0)
+        if (auxPrompt.includes('먼저 편지를 보낼')) auxCap += 700;     // 편지 선톡 (v1.13.2 medium 'letter' — 한 통 600자)
         if (auxPrompt.includes('의뢰판 첫 게시]') || auxPrompt.includes('의뢰판 보충 게시]')) auxCap += 900; // 의뢰판 (v1.7.9)
         auxText = await callAuxLLM(auxPrompt, auxCap);
         if (auxText && auxText.blocked) {
@@ -5537,9 +5855,11 @@
       const char = await Risuai.getCharacter();
       const lore = Array.isArray(char?.globalLore) ? char.globalLore : [];
       const parts = [];
+      // v1.13.2 — 정확히 맞는 것부터 (messenger.personaEntry). 부분 일치만 보면 "리아나"가 앞에 있는
+      // "릴리아나" 문항에 걸려 리아나의 답장을 릴리아나의 인격으로 썼다 (베리디아).
+      const pool = lore.filter((l) => l && l.comment !== SCHEMA_LORE_COMMENT);
       for (const name of members) {
-        const hit = lore.find((l) => l && l.comment !== SCHEMA_LORE_COMMENT
-          && (String(l.key || '').includes(name) || String(l.comment || '').includes(name)));
+        const hit = msgrMod.personaEntry(pool, name);
         if (hit) parts.push(`◆ ${name}\n${String(hit.content || '').trim().slice(0, 700)}`);
       }
       return parts.join('\n').slice(0, 2800);
@@ -5551,15 +5871,17 @@
     if (turnBusy) { gameNotice = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 시도'; renderGamePanel(); return; }
     const room = session.current.msgr?.rooms?.find((r) => r.id === roomId);
     if (!room) return;
+    const cfg = msgrMod.msgrConfig(schema);
     msgrBusy = true;
-    gameNotice = '⏳ 상대가 입력 중…';
+    gameNotice = cfg?.medium === 'letter' ? '⏳ 답장이 오는 중…' : '⏳ 상대가 입력 중…';
     renderGamePanel();
     try {
       const prompt = msgrMod.interactionPrompt(schema, session.current, roomId, {
         persona: await buildMsgrPersona(room.members),
         narrative: await boardNarrative(),
       });
-      const res = await callAuxLLM(prompt, room.kind === 'group' ? 1000 : 800);
+      const letter = cfg?.medium === 'letter';   // v1.13.2 — 편지 한 통은 600자까지
+      const res = await callAuxLLM(prompt, (room.kind === 'group' ? 1000 : 800) + (letter ? 700 : 0));
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 메신저 답장은 쓸 수 없어요';
       } else if (typeof res === 'string') {
@@ -5568,7 +5890,7 @@
           const r = msgrMod.applyDelta(schema, session.current, delta);
           msgrMod.markRead(session.current, roomId);   // 보고 있는 방 — 안읽음 즉시 소거
           await boardSaveNow('메신저 답장');
-          gameNotice = r.received ? null : '읽씹이네요 — 답이 없어요';
+          gameNotice = r.received ? null : (cfg?.medium === 'letter' ? '답장이 오지 않았어요' : '읽씹이네요 — 답이 없어요');
         } else {
           gameNotice = '⚠ 응답을 알아듣지 못했어요 — 다시 시도해 보세요';
           console.log('[simcore] 메신저 파싱 실패:', res.slice(0, 200));
@@ -5694,7 +6016,8 @@
         ? '이 방의 최근 대화가 다음 인풋에 서사로 전달됩니다 (활성은 한 방만).'
         : '패널 전용 대화예요 — 서사는 이 대화를 모릅니다. 전달하려면 활성으로.'));
       const log = el('div', 'scm-log');
-      if (!room.msgs.length) log.appendChild(el('div', 'scb-empty', '첫 메시지를 보내 보세요.'));
+      const letter = cfg.medium === 'letter';   // v1.13.2
+      if (!room.msgs.length) log.appendChild(el('div', 'scb-empty', letter ? '첫 편지를 보내 보세요.' : '첫 메시지를 보내 보세요.'));
       for (const m of room.msgs) {
         const mine = m.from === 'me';
         const row = el('div', `scm-row${mine ? ' scm-mine' : ''}`);
@@ -5707,8 +6030,9 @@
       }
       card.appendChild(log);
       const ta = el('textarea', 'scb-ta scm-input');
-      ta.placeholder = msgrBusy ? '상대가 입력 중…' : '메시지 (Enter 전송, Shift+Enter 줄바꿈)';
-      ta.maxLength = msgrMod.CAPS.MSG_LEN;
+      ta.placeholder = msgrBusy ? (letter ? '답장을 기다리는 중…' : '상대가 입력 중…')
+        : (letter ? '편지 (Enter 보내기, Shift+Enter 줄바꿈)' : '메시지 (Enter 전송, Shift+Enter 줄바꿈)');
+      ta.maxLength = msgrMod.msgLen(cfg);
       ta.value = msgrView.draft || '';
       ta.oninput = () => { msgrView.draft = ta.value; };
       const doSend = async () => {
@@ -5722,7 +6046,7 @@
       ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); } };
       card.appendChild(ta);
       const sendBar = el('div', 'scb-toolbar');
-      sendBar.appendChild(btn('전송', doSend));
+      sendBar.appendChild(btn(letter ? '보내기' : '전송', doSend));
       card.appendChild(sendBar);
       // 새 메시지가 보이게 스크롤 바닥으로 (렌더 뒤 한 틱)
       setTimeout(() => { try { log.scrollTop = log.scrollHeight; } catch {} }, 0);
@@ -6668,13 +6992,21 @@
       #sc-root button:active:not(:disabled) { transform:translateY(1px); }
       #sc-root button:disabled { opacity:.5 !important; cursor:not-allowed !important; }
       #sc-root button[aria-busy="true"] { cursor:progress !important; }
-      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; }
+      #sc-root .chips { display:flex; flex-wrap:wrap; gap:5px; min-width:0; }
+      /* 칩은 접힌다 (v1.10.1). nowrap이면 항목이 칸보다 조금만 길어도 칩이 칸 밖으로 자라고,
+         감싼 .sc-var-current의 overflow-x:hidden이 그 바깥을 잘라 낸다 — ✕는 칩의 맨 끝에 있으니
+         가장 먼저 잘린다. 보이지도 않고 누를 수도 없어 목록 항목을 지울 방법이 사라졌다(실기 제보).
+         글자만 접고 숫자·기한·✕는 flex:0 0 auto로 안 쪼갠다. 반지름 999px → 14px: 한 줄일 땐
+         같아 보이고, 여러 줄이 되면 999px가 옆구리를 뭉갠다. */
       #sc-root .chip { display:inline-flex; align-items:center; gap:5px; padding:2px 4px 2px 8px;
-        border:1px solid var(--sc-line-strong); border-radius:999px; background:var(--sc-surface-soft);
-        font-size:12.5px; white-space:nowrap; }
-      #sc-root .chip .num { color:var(--sc-success); font-variant-numeric:tabular-nums; }
-      #sc-root .chip .nonum { color:var(--sc-muted-soft); font-size:11.5px; }
-      #sc-root .chip button { min-height:28px; padding:0 6px !important; font-size:12px !important;
+        border:1px solid var(--sc-line-strong); border-radius:14px; background:var(--sc-surface-soft);
+        font-size:12.5px; white-space:normal; max-width:100%; min-width:0; }
+      #sc-root .chip > span:first-child { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+      #sc-root .chip .num { flex:0 0 auto; white-space:nowrap;
+        color:var(--sc-success); font-variant-numeric:tabular-nums; }
+      #sc-root .chip .nonum { flex:0 0 auto; white-space:nowrap;
+        color:var(--sc-muted-soft); font-size:11.5px; }
+      #sc-root .chip button { flex:0 0 auto; min-height:28px; padding:0 6px !important; font-size:12px !important;
         line-height:1.4 !important; border:none !important; background:transparent !important;
         color:var(--sc-muted) !important; border-radius:999px !important; }
       #sc-root .chip-sum { color:var(--sc-text); font-size:12.5px; margin-left:2px; }
@@ -6956,7 +7288,12 @@
       #sc-root #sc-vars input, #sc-root #sc-vars select { width:100%; min-width:0; }
       #sc-root #sc-vars td:nth-child(2) { font-variant-numeric:tabular-nums; }
       #sc-root #sc-vars .sc-var-current { max-height:132px; overflow-y:auto; overflow-x:hidden;
-        overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; scrollbar-gutter:stable; }
+        overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; scrollbar-gutter:stable;
+        min-width:0; }
+      /* 목록 행: 칩 아래 한 줄 (v1.10.1). 칸을 가로로 나눌 폭이 없어 추가 입력을 밑으로 내렸다 */
+      #sc-root #sc-vars .sc-var-add { display:flex; gap:6px; align-items:center; margin-top:8px; min-width:0; }
+      #sc-root #sc-vars .sc-var-add input { flex:1 1 auto; min-width:0; width:auto; }
+      #sc-root #sc-vars .sc-var-add button { flex:0 0 auto; }
       #sc-root #sc-vars td:nth-child(4) button { width:100%; min-width:48px; padding-left:7px !important;
         padding-right:7px !important; }
       #sc-root #sc-actions { display:flex; gap:9px; flex-wrap:wrap; align-items:flex-start; }
@@ -7432,7 +7769,8 @@
               <div class="sc-help-step">
                 <span class="sc-help-step-num">01</span>
                 <span class="sc-help-step-title">이번 턴에 발생하는가</span>
-                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span></span>
+                <span class="sc-help-step-desc"><b>chancePerTurn</b>이 턴당 발생률이에요.<br><span class="sc-code-i">0.3 → 매 턴 30%</span><br>
+                  시간이 흐르는 봇이면 <b>⏳ 게이지</b>(v1.14)를 권해요 — 보이지 않는 게이지가 작중 하루마다 차고 100이면 터져요. 채팅을 빨리 넘기든 한 날에 오래 머물든 작중 시간 기준이에요.</span>
               </div>
               <div class="sc-help-step">
                 <span class="sc-help-step-num">02</span>
@@ -8397,10 +8735,15 @@ count(목록)  has(목록, "항목")</pre>
       if (v.type === 'list') {
         const items = Array.isArray(cur) ? cur : [];
         tr.innerHTML = nameCell;
+        // 목록 행은 현재값 칸이 나머지 열을 다 쓴다 (v1.10.1). 표가 table-layout:fixed라
+        // 현재값 열이 18%로 고정인데, 칩을 그 폭에 욱여넣으면 항목이 조금만 길어도 ✕가
+        // 칸 밖으로 밀려 잘린다. 추가 칸은 칩 아래로 내린다 — 가로로 나눌 폭이 없다.
         const tdCur = document.createElement('td');
-        tdCur.className = 'sc-var-current';
-        tdCur.tabIndex = 0;
-        tdCur.setAttribute('aria-label', `${v.label ?? v.id} 현재값`);
+        tdCur.colSpan = 3;
+        const curBox = document.createElement('div');
+        curBox.className = 'sc-var-current';
+        curBox.tabIndex = 0;
+        curBox.setAttribute('aria-label', `${v.label ?? v.id} 현재값`);
         const chips = document.createElement('div');
         chips.className = 'chips';
         if (!items.length) chips.innerHTML = '<span class="muted">(비어 있음)</span>';
@@ -8425,25 +8768,24 @@ count(목록)  has(목록, "항목")</pre>
           chip.appendChild(x);
           chips.appendChild(chip);
         });
-        tdCur.appendChild(chips);
+        curBox.appendChild(chips);
         if (items.some((it) => itemValue(it) !== null)) {
           const s = items.reduce((a, it) => a + (itemValue(it) ?? 0), 0);
           const tot = document.createElement('div');
           tot.className = 'chip-sum';
           tot.textContent = `sum() = ${s}`;
-          tdCur.appendChild(tot);
+          curBox.appendChild(tot);
         }
-        tr.appendChild(tdCur);
+        tdCur.appendChild(curBox);
 
-        const tdAdd = document.createElement('td');
+        const addRow = document.createElement('div');
+        addRow.className = 'sc-var-add';
         const addIn = document.createElement('input');
         addIn.placeholder = '항목 추가 (끝에 숫자)';
-        tdAdd.appendChild(addIn);
+        addRow.appendChild(addIn);
         const addError = document.createElement('div');
         addError.className = 'status-bad'; addError.setAttribute('role', 'status');
         addError.hidden = true;
-        tdAdd.appendChild(addError);
-        const tdAddBtn = document.createElement('td');
         const addBtn = document.createElement('button');
         addBtn.textContent = '추가';
         addBtn.disabled = true;
@@ -8460,9 +8802,10 @@ count(목록)  has(목록, "항목")</pre>
           session.current.vars[v.id] = to;
           await commitVars();
         };
-        tdAddBtn.appendChild(addBtn);
-        tr.appendChild(tdAdd);
-        tr.appendChild(tdAddBtn);
+        addRow.appendChild(addBtn);
+        tdCur.appendChild(addRow);
+        tdCur.appendChild(addError);
+        tr.appendChild(tdCur);
         table.appendChild(tr);
         continue;
       }

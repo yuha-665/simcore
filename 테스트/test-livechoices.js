@@ -243,7 +243,7 @@ console.log('━━ 편집기 · 어댑터 배선 ━━');
   ck('AI 내보내기 안내', src.includes('## 보조가 쓰는 갈림길 (최상위 liveChoices'), '');
   ck('오류 경로 → 탭 매핑', src.includes('(rules|directives|liveChoices)'), '');
   ck('어댑터 조작줄이 pendingChoiceEvent를 쓴다', src.includes('engine.pendingChoiceEvent(schema, session.current)'), '');
-  ck('진단 writerMap에 태그 효과', src.includes("schema.liveChoices?.tags || [])) for (const f of (t?.effects || [])) add("), '');
+  ck('진단 writerMap에 태그 효과', src.includes("liveTags(schema)) for (const f of (t?.effects || [])) add("), '');
   ck('빌드 순서에 choice 모듈', src.includes('SimCore.define("choice"'), '');
 }
 

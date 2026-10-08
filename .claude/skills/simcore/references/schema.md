@@ -1,14 +1,14 @@
 # SimCore 스키마 레퍼런스
 
-**v0.93.1 기준.** 진실의 원천은 `core/validate.js`(검증 규칙 전부).
+**v1.10.1 기준.** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
-· `party` · `assets` · `scenario` · `liveChoices`(v1.8.0) · `rerollStableRng`
+· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng`
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
 - **엔진 예약 키** (세이브 vars에 살지만 스키마 vars로 만들면 오류): `time_epoch`(시간),
-  `scn_idx`·`scn_turns`(시나리오)
+  `scn_idx`·`scn_turns`(시나리오), `fight_max/gauge/round/foe/idle/check`(전투 안무 v1.6), **`sec_<id>`**(비밀 v1.10 — 열린 최고 단계, −1 = 아직)
 
 ---
 
@@ -79,6 +79,32 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 `chancePerTurn` + `table[]`. `chancePerTurn`은 **0~1 숫자 또는 식** (v0.89.1 — 식도 0~1 스케일,
 난이도 변수를 읽어 프리셋마다 빈도를 달리한다. rand 금지).
 표 항목은 events와 같고 `weight`(양수) · `cooldown`(턴) 추가. `when`을 비우면 항상 후보.
+
+#### 사건 게이지 — `gauge` (v1.14.0, `core/gauge.js`, 옵트인)
+턴마다 굴리는 확률은 **채팅 속도가 빈도를 정한다** (베리디아 보통: 하루 세 턴이면 한 해 나쁜 일 26번, 한 턴이면 10번,
+닷새에 한 턴이면 2번). 시간 체계가 있는 봇은 게이지를 쓴다 — 있으면 `chancePerTurn`은 필요 없고(같이 두면 경고) 안 쓰인다.
+
+| 필드 | | |
+|---|---|---|
+| `perDay` | 숫자 ≥0 또는 식 | 작중 하루에 차는 양 (turn_min 기준 — 대화만 한 턴은 0, "한 달 뒤"는 한 달치). 시간 체계가 없으면 한 턴 = 하루 (경고) |
+| `perTurn` | 숫자 ≥0 또는 식 | 턴마다 차는 양 (기본 0 — 날이 안 가면 사건도 안 오는 게 자연스럽다) |
+| `jitter` | 0~1 (기본 0.5) | 차는 양 × (1−j ~ 1+j) |
+| `cooldown` | 숫자 ≥0 (기본 0) | 터진 뒤 안 차는 날 (시간 없으면 턴). 턴 도중에 끝나면 남은 날은 찬다 |
+| `omenAt` | 1~99 (v1.14.1) | 징조 선 — 넘으면 다음 사건을 미리 뽑아 둔다(`re_next`). 비우면 표에 `omen`이 있을 때 80, 0이면 끔 |
+
+- 숨은 게이지 `re_gauge`(0~100) — 100이면 후보 중 weight 비례로 하나 터지고 0으로, `re_cool`에 cooldown. 둘 다 **예약 키**
+  (`re_next`도 — vars에 산다, 변수/파생 id로 쓰면 오류, allow에 못 올린다, 현황 탭·상태창·변화 원장·보조 원장·프롬프트 어디에도 없다).
+  조건식은 읽는다 — `re_gauge >= 80`으로 전조 지시문.
+- **후보가 하나도 없으면 안 찬다** — 재해 중 모든 사건을 막는 봇이면 그동안 멈췄다가 이어서 찬다(끝나자마자 터지지 않는다).
+- 게이지 모드 + 시간 체계면 **항목 `cooldown`이 날** (`meta.eventLastAt`, epoch 분 — 체크포인트가 같이 되감는다).
+- 효과 `{ "gauge": "30" }` — 서사가 다음 사건을 당기거나(+) 늦춘다(−, 0~100으로 잘림). 터진 사건의 효과면 **여진**(비운 뒤 얹힌다).
+  set/list/checkpoint/front와 한 줄에 못 쓴다. 게이지가 없는 봇에서 쓰면 오류. 원장에 안 남는다.
+- **징조** (v1.14.1) — 표 항목 `omen`(그 사건이 오기 전 주변의 겉모습 — 무엇의 징조인지는 쓰지 않는다). 선을 넘어 그 사건이 다음 차례로
+  정해지면 메인 프롬프트에 [징조] 블록(글만, 이름·숫자 없음, "이유를 짓지 말고 배경에 스치듯")으로 깔린다. 100이면 그 사건이 터진다 —
+  그새 못 오게 됐으면 거두고 다시 뽑고, 게이지가 선 아래로 내려가면 걷힌다. 한 턴에 선과 100을 한꺼번에 넘으면 징조 없이 온다.
+  두루뭉술한 "뭔가 온다" 전조를 지시문으로 걸지 말 것 — 표에 좋은 일이 섞여 있으면 불길한 전조 뒤에 경사가 온다.
+- 패치 병합 미지원(`rules.randomEvents.gauge`를 실어 오면 오류로 알린다 — 편집기 [규칙·이벤트] 발동 방식이나 통 교체로).
+- 편집기: 규칙 탭 발동 방식 🎲/⏳, 미리보기 "평균 N일에 한 번"(시작 상태로 속도식 평가, 후보가 늘 있다고 친 근사).
 
 ### 갈림길 — `choices[]` (v0.41, 조건·랜덤 이벤트 공통)
 
@@ -351,7 +377,8 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `changeLog` | 변화 로그 표시 (v0.72): `open`(펼침) \| `collapsed`(기본, 접힘) \| `off`(숨김). 다른 값은 오류 |
 | `highlights` | 하이라이트 카드 (v0.86.4): 기본 켜짐, `'off'`로만 끈다. 이번 턴의 체감 나는 변화(판정 성패·돈·소지품·enum 전환)를 접힌 상자 **바깥** 맨 위에 게임 알림처럼 세운다. bool 변수·onTurn 틱·시간 소비는 안 세운다 |
 | `customCSS` | 자동으로 `.sim-status` 하위로 스코핑됨 |
-| `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, items[] }` |
+| `groups[]` | `{ label, visibility: show\|collapsed\|hidden, showWhen, tab, items[] }` |
+| `groups[].tab` | (v1.12.1) 묶을 장 이름 — `tabs`·`accordion`·`popover`에서 같은 이름의 그룹이 **한 장 안에 제 이름표를 달고 쌓인다**. 장 순서 = 그 이름이 처음 나온 자리, tab 없는 그룹은 예전처럼 한 장. `stack`은 무시(경고), 빈 글자는 오류. 고른 탭 색은 봇 CSS의 `--sim-tab-on-bg`·`--sim-tab-on-line`으로 (조퇴악녀 "현황 \| 빙의자"가 본보기) |
 | `groups[].items[]` | `{ var, label, bar: {max}, color, showWhen }` — bar.max·color는 수식 가능 (rand 불가) |
 | `template` | HTML + 임베드 `<style>`. `{변수id}` · `{id:tags}` · `{id:tags:필터}`(그 문자열을 품은 항목만 — 지도 대장의 구역별 칸, v0.98) · 예약 자리표시자(아래) |
 | `templates[]` | `{ id, when, template }` — 조건이 참인 **첫 번째만** 그린다. CSS는 `.sim-tpl-<id>`로 격리. id는 영문 식별자 (CSS 클래스가 됨). 조건 없는 템플릿 뒤의 항목은 도달 불가 경고, 전부 조건부면 "빈 상태창" 경고 |
@@ -616,6 +643,7 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 | `contactsVar` | **필수** — 연락처 풀 (이름 list 변수, 얼헌은 동료 명부 `allies`). "파티를 맺을 정도면 연락처는 안다" — 별도 연락처 변수를 만들지 않는다 (유저 결정) |
 | `notesVar` | "이름 — 변화" 꼴 list 변수 — 답장 생성 프롬프트에 방 멤버 것만 발췌돼 실린다 |
 | `firstChance` / `cooldown` | 선톡(상대가 먼저 문자) 턴당 확률 0~1 (기본 0.25, 0=끔) / 방별 쿨턴 (기본 3). **시드 해시**라 같은 턴 = 같은 결과 (리롤 안정). 뜬 턴만 보조 요청에 얹힘 (평턴 비용 0) |
+| `medium` (v1.13.2) | `'text'`(기본 — 단말기 문자) 또는 `'letter'`(편지). 편지면 선톡·답장·메인 주입 세 곳의 보조 지시가 편지 말로 바뀐다(받은 편지에 답한다·한 통에 할 말·격식과 서명·오가는 시간만큼 늦은 답장·모르는 사이면 모르는 사람에게 쓰듯), 한 통 상한 300 → 600자, 메인 주입 최근 6통 × 240자. 폰이 없는 세계(아틀리에·베리디아) — guide로 "단말기가 아니라 편지다"를 덧칠하던 것은 엔진 문장("문자 말투로 짧게")과 부딪혔다 |
 | `guide` | 문자 말투 지침 (없으면 경고). 인물별 말투는 로어북·명단이 근거 |
 | `when` | 거짓 턴엔 선톡·발신 정지 (통신 두절). 열람은 항상 |
 | `label` / `icon` / `css` | 패널 제목·버튼·스킨 (`.scm-*`) |
@@ -625,7 +653,8 @@ int/float 라벨에 "계절 (0겨울 1봄 2여름 3가을)"처럼 **한 자리 �
 - **활성 방 하나만** 다음 인풋에 대화 원문(최근 10개)이 실린다 — 비활성 방은 순수 패널
   전용, 서사가 모른다 (토큰 설계의 핵심 — 유저 안).
 - 패널 발신 → 채팅 턴 없는 전용 보조 호출. 인격 컨텍스트 = 어댑터가 캐릭터 **로어북에서
-  멤버 이름이 걸리는 문항 발췌**(buildMsgrPersona, 인물당 700자·총 2800자) + notesVar 델타 +
+  멤버 이름이 걸리는 문항 발췌**(buildMsgrPersona → `personaEntry`, 인물당 700자·총 2800자 — v1.13.2부터 **정확 일치 우선**:
+  제목 = 이름 → 키워드 칸 = 이름 → 이름의 한 낱말 → 마지막에만 부분 일치. 부분 일치만 보면 "리아나"가 "릴리아나"에 걸린다) + notesVar 델타 +
   최근 서사. 델타 형식: `{"msgr":[{"id":방번호,"msgs":[{"from":"이름","body"}]}]}` — from이
   멤버가 아니면(me 위조 포함) 버린다.
 - 편집기 [메신저] 탭 (TAB_SLICES.msgr — messenger 통째 교체).
@@ -734,6 +763,18 @@ liveChoices: {
   템플릿 모드 `{choices}` 없음 경고는 liveChoices만 있어도 뜬다
 - 편집기 [규칙·이벤트] 05 "보조가 쓰는 갈림길" (1턴 시험은 06으로). 이벤트 블록 갈림길 칸에 판정·강제 드롭다운 + 트리거 체크
 
+### 여러 벌 · 섞기 · 확률 칩 (v1.13.0, 조퇴악녀 "면접 + 킹덤컴식 능력치 선택지")
+- **여러 벌**: `liveChoices: [{ id: 'interview', … }, { id: 'stat', … }]` — 벌마다 id(영문 식별자) 필수. 추첨은 **배열 순서대로** 먼저 열리고
+  붙은 한 벌. 깃발 `meta.liveAsk` = `true`(첫 벌 — 한 벌 봇·옛 세이브와 같은 값) | `'id'`. 이벤트 트리거 `liveChoices: true | 'id'`.
+  걸린 것은 `pendingChoice.live.cfg`에 벌 id — 합성·집행이 그 벌의 태그를 쓴다. choice.js `liveConfigs`·`liveConfig(schema, id?)`·`askedConfig`
+- **섞기** `shuffle: true`: 정제 뒤 시드 rng로 순서를 섞는다(리롤 안정). worst를 끝에 두지 않는 대신 타임아웃·strict `'last'`가
+  **자리 대신 worst 태그 항목**으로 떨어진다(`fallbackIndex`). 섞고 `showTags: false`면 안내가 "시스템이 정한 항목", 태그를 보이면 "'그냥' 항목"
+- **확률 칩**: 판정 달린 선택지(스키마 갈림길 `check`·태그 `check`) 옆에 `🎲 판정라벨 N%` — 성공 = total ≥ vs(vs 없는 판정은 없음).
+  `engine.checkOdds(schema, state, check)`: 고정 시드 표본 600번 · 5% 단위 · 상태 불변. 칩이 있으면 태그 꼬리표는 생략
+- **판정 성패로 선택지 결과 가르기**: 등급 effects가 bool(예 `chk_ok`)을 세우고 선택지 effects가 `doom + (chk_ok ? -10 : 5)`로 읽는다
+  (순서: 굴림 → 등급 effects → 선택지 effects)
+- 검증: 배열 벌 id 필수·중복·형식 · 없는 벌 id 트리거 오류 · shuffle 불 · 섞는데 worst 없으면 경고 · 빈 배열 경고
+
 ---
 
 ## scenario — 시나리오레이터 (v0.90, 옵트인)
@@ -789,6 +830,131 @@ liveChoices: {
 
 ---
 
+## secrets — 비밀 (v1.10.0, 옵트인)
+
+**모르는 건 말할 수 없다.** 설계: `docs/design-비밀.md`. 단계(tiers)의 조건이 열려야 그 `text`가 프롬프트에
+실리고, 안 열린 단계는 프롬프트 **어디에도** 없다 — "말하지 마라"(지시)가 아니라 구조. 시나리오레이터의
+`acts[].secret`(막에 묶임, 켜짐/꺼짐)을 막 없이·단계별로 일반화한 것. 막의 secret은 시나리오 탭에 그대로 두고,
+비밀의 여는 조건에 `scn_act == "act3"`를 걸어 맞물린다. `test-secret.js`가 은닉을 grep으로 증명한다.
+
+```json
+"secrets": [
+  { "id": "lina", "kind": "person", "about": "리나", "label": "리나의 과거",
+    "tiers": [
+      { "text": "궁정 예법에 익숙하다. 왕가 문장을 보면 움찔한다." },
+      { "when": "affinity >= 60", "text": "수도를 나쁜 사정으로 떠났다.", "notify": "[비밀] 리나가 사정을 조금 털어놓았다." },
+      { "when": "letter_found", "text": "추방된 왕녀다.", "notify": "[비밀] 리나의 정체가 밝혀졌다." }
+    ] },
+  { "id": "twist", "kind": "plot", "label": "진상", "tiers": [ { "when": "scn_act == \"act3\"", "text": "의뢰인이 범인이다." } ] }
+]
+```
+
+| 필드 | |
+|---|---|
+| `id` | 영문 식별자(생략 시 `secretN`), 중복 불가. 예약 이름 **`sec_<id>`**가 생긴다 |
+| `kind` | `person`(인물이 숨기는 것, 기본) / `world`(드러나지 않은 사실) / `plot`(반전). **기계는 같고 어법·기본값만 다르다** |
+| `about` / `label` | 누구·무엇의 비밀인가 / 상태창·로그에 보이는 이름(스포일러 없이) |
+| `tell` | 존재 알림 — `exists`: "X에겐 말 못 할 사정이 있다, 너도 내용은 모른다, 지어내지 마라" / `none`: 신호도 없음. 기본 인물·세계 = exists, 반전 = none |
+| `tiers[]` | `when`(조건식, rand() 금지, 1단계는 생략 = 처음부터 열린 낌새) + `text`(밝혀지는 내용, `{변수}` 가능) + `notify`(선택, 열리는 순간 한 줄) |
+
+- **1단계 = 낌새(복선) — 이유 없는 행동만.** "왕가 문장을 보면 움찔한다"까지만, 왜는 뒷단계에. 모델은
+  이유를 모른 채 그 행동을 한다(배우는 결말을 몰라도 숨기는 사람을 연기한다). AI가 1단계에 이유를 적으면
+  그 순간 복선이 스포일러다.
+- 열기 = outputPhase 8.6(이벤트·막 전환 뒤). **참인 가장 높은 단계까지 누적**으로(3단계 조건이 먼저 참이면
+  2단계도 함께), **한 번 열리면 안 내려간다**. 턴당 한 단계 제한은 없다.
+- 예약 키 `sec_<id>` = 열린 최고 단계(−1 = 아직) — vars에 살아 조건식·상태창이 읽는다(`sec_lina >= 1`).
+  스키마 vars가 아니라 allow에 못 올린다(보조가 못 만진다). 진행 중 세이브에 나중에 켜면 −1에서 시작.
+- 프롬프트 블록 `[비밀 — 밝혀진 만큼만]` — 열린 단계 text(누적) + 하나도 안 열린 exists 비밀의 존재 알림.
+  전부 none이고 안 열렸으면 블록 자체가 없다(신호도 스포일러). **보조 프롬프트엔 아무것도 안 간다.**
+  원장(changeLog)·🔓 카드·변화 로그엔 라벨·단계 번호만(원장은 보조에게도 간다).
+- 상태창 `{secrets}` 자리표시자 / 그룹 모드 머리 자동 — 인물·세계는 🔒 `이름 n/m`(수집 요소), 전부 열리면 🔓,
+  반전은 안 그린다, none이고 안 열린 것도 안 그린다.
+- **카드·페르소나·로어북에 적힌 비밀은 이미 새고 있다** — 그쪽에서 빼고 여기로. 기능의 절반이 이 안내다.
+- 유저 자신의 비밀(잠입)도 같은 기계 — `about: 유저`, 여는 조건 = "들켰다" 변수.
+
+### 검증 규칙 요약
+
+- 예약 이름 충돌(`sec_<id>`와 같은 변수/파생 id) 오류 · 뒷단계 when 없음 오류(영영 안 열림) · 빈 text 오류 ·
+  when의 `rand()` 오류 · kind/tell 오타 오류 · 변수 id `secrets`는 자리표시자 경고
+- 반전(plot) + `tell: exists` 경고("숨긴 게 있다"가 곧 예고) · exists인데 about·label 없음 경고
+- 진단 **닫힌 비밀(mid)**: 판 안에 마지막 단계가 안 열린 비밀 — 변명 사다리(설정 게이트/긴 판/AI 문턱)는 닫힌 막과 같다
+- 일반 패치(SECTIONS) 미지원 — [비밀] 탭 또는 탭 단위 내보내기/가져오기(통째). 다이제스트엔 참조 절만(내용 안 실음)
+
+---
+
+## checkpoint — 되감기 (v1.11.0, 옵트인)
+
+코어 모듈 24호 `core/checkpoint.js`. 설계 `docs/design-조퇴악녀.md` §12 (발단: 조퇴악녀 사망회귀물). 회귀물·로그라이크·타임루프의
+"죽으면 그 아침으로". 효과(set)로는 예약 키(날짜·막·비밀)를 못 돌려서 스키마로 만들 수 없던 것.
+
+```json
+"scenario": { "acts": [ …, { "id": "ch1", "unlock": "cleared >= 1", "onEnter": [{ "checkpoint": "save" }] } ] },
+"rules": { "events": [ { "id": "gameover", "when": "dead",
+  "effects": [{ "set": "loop", "expr": "loop + 1" }, { "checkpoint": "load" }], "notify": "당신은 죽었다." } ] },
+"checkpoint": { "keep": ["loop", "memories"], "keepSecrets": true, "notify": "[회귀 {loop}회차] 눈을 뜨면 다시 그 아침이다." }
+```
+
+| | |
+|---|---|
+| 효과 `{ checkpoint: 'save'\|'load', slot? }` | 효과를 받는 곳 어디든 — 이벤트·선택지·액션·판정 등급·막 `onEnter`·보조 갈림길 태그(choice.js `effectsOf`가 통과시킨다). slot 기본 `main`, 영문 식별자 24자. 의뢰판 accept/cancel은 미지원(자체 효과 루프) |
+| `checkpoint.keep` | 되감아도 **지금 값**을 들고 가는 변수 (회귀 횟수·기억 목록). 스키마 vars만 |
+| `checkpoint.keepSecrets` | 기본 true — 열린 비밀(`sec_*`)은 안 닫힌다(둘 중 큰 단계). false면 비밀도 저장 시점 |
+| `checkpoint.notify` | 되감긴 턴 안내({변수} 가능). 비우면 `DEFAULT_LOAD_NOTIFY` |
+
+- **되감는 것** = `state.vars` 전부(예약 키 time_epoch·scn_idx·scn_turns·fight_*·sec_* 포함) + `meta.firedOnce`·`eventLastFired`
+  (once 사건이 다시 일어난다). 걸린 갈림길은 걷힌다. **안 되감는 것** = `meta.turn`(앞으로만)·채팅·보드·상점·메신저·의뢰판.
+  저장 뒤 스키마에 생긴 변수는 `reconcileState`가 init으로
+- **시점**: `applySets`는 `meta.cpQueue`에 줄만 세우고 엔진 `flushCheckpoints`가 단계 끝에 처리 — 전송 단계 1.3(액션·선택지 뒤,
+  시간 소비 앞: 고른 그 턴 프롬프트가 되감긴 날짜로 나가고 안내도 injects로 그 턴에), 응답 단계 8.95(이벤트·막 전환·비밀·turn_min
+  소진 뒤, 턴 +1 앞: onEnter 저장이 그 턴의 전환까지 담고, 안내는 pendingNotifies로 다음 턴). 같은 목록의 `loop + 1`은 순서 무관하게 산다
+- 칸은 `state.checkpoints[slot] = { vars, firedOnce, eventLastFired, turn }` — 메시지 스냅샷에 실려 리롤·삭제에 같이 되감긴다
+- 원장: `{ id: '체크포인트', from: null, to: '저장 (main)' | '되감기 (main) — N턴 전으로' | '되감기 실패 — 저장된 칸 없음 (x)' }` — 변수별 줄은 안 쓴다
+- **게임오버는 보조에게 판단시키지 않는다** — `dead` 같은 사실 기록, 강제 갈림길(strict)의 최악 항목, 판정 등급에서만 되감는다 (설계 원칙 "보조는 기록자")
+
+### 검증 규칙 요약
+
+- 동작이 save/load 아님 오류 · slot 식별자 오류 · 한 효과에 set/list 겸용 오류 · **onTurn의 load 오류**(매 턴 제자리 — save는 자동 저장으로 허용)
+- keep의 없는 변수 오류 · notify `{변수}` 참조 검사 · 저장하는 효과가 없는 칸의 load 경고 · 설정만 있고 효과 0 경고
+- 일반 패치 UNSUPPORTED(통 교체·JSON), 작업본 비교 DIFF_AREAS 합류. 오류 경로 `$.checkpoint` → [시나리오] 탭
+- 편집기: 효과 편집기 둘(`effectRows`·규칙 탭 `ruleEffectRows`)이 `checkpointEffectRow` 공용 — 기존 줄은 늘 그리고, **추가 버튼은
+  `schema.checkpoint`가 있는 봇만**. [시나리오] 탭 끝 "⏪ 되감기" 카드(`checkpointCard` — 켜기·남길 변수 체크·비밀 유지·안내·쓰는 칸 요약 `engine.checkpointSlots`)
+- 테스트 `테스트/test-checkpoint.js` (63단언)
+
+---
+
+## fronts — 무대 뒤 (v1.12.0, 옵트인)
+
+코어 모듈 25호 `core/front.js`. 설계 `docs/design-조퇴악녀.md` §15 (발단: 조퇴악녀 2부 — "유저가 안 봐도 NPC가 움직이다가 표면으로 나올 때
+이벤트가 터지게"). 손조립(변수+onTurn+이벤트+비밀)은 패널 현황 탭(스키마 vars 전부)·변화 로그(이벤트·선택지 효과)로 샜다.
+
+```json
+"fronts": [{ "id": "temple", "about": "대신전", "label": "신전의 암투", "when": "power_known", "rate": 3,
+  "stages": [
+    { "at": 20, "hint": "신전 앞 구호소가 자주 문을 닫는다." },
+    { "at": 50, "backstage": "대신관이 구호 자금을 빼돌려 추기경단을 매수했다." },
+    { "at": 80, "surface": "성녀 이단 심문 공고가 붙었다.", "backstage": "증거는 꾸민 것이다.", "effects": [{ "set": "exiled", "expr": "true" }] } ] }]
+개입 효과: { "front": "temple", "add": "-15" }
+```
+
+| 필드 | |
+|---|---|
+| `id` / `about` / `label` | 영문 식별자(예약 키 `fr_<id>` 시계·`frs_<id>` 열린 단계 −1) / 모델에게 보이는 이름(징후·드러난 일 머리 — "음모"라고 쓰지 말 것) / 편집기·진단 전용 |
+| `rate` / `when` | 작중 **하루당**(시간 체계, `turn_min` 기준 — 대화만 한 턴 0, 한 달 도약은 한 달치) 또는 턴당 증가량, 숫자·식 / 흐르는 조건(거짓이면 멈춤). 둘 다 rand 금지 |
+| `max` / `init` | 기본 100 / 0 — 시계는 0~max로 잘린다 |
+| `stages[]` | `at`(0<at≤max, 오름차순) + `hint`(징후 — 이유 없이 매 턴, 다음 표면화가 오면 걷힘) + `backstage`(밑작업 — **표면화 전엔 프롬프트에 없음**) + `surface`(통지 한 줄 + 그 단계까지 밑작업 누적 공개) + `effects`(결과 한 번) |
+
+- 흐름·문턱 = 응답 단계 **8.55**(막 전환 8.5 뒤, 비밀 8.6 앞 — 비밀 when이 같은 턴 표면화를 읽는다). 넘은 문턱은 낮은 순서대로 전부 열리고 안 닫힌다
+- 개입 `{ front, add }`는 `applySets`가 즉시 반영(0~max 클램프), 문턱 판정은 8.55 한 곳. 열린 단계는 안 닫힌다
+- 프롬프트 블록 `[무대 뒤 — 세상은 유저와 상관없이 움직인다]`(sendPhase 3.5.7, 비밀 다음) — 징후(진영마다 최근 하나) + 드러난 일. `frontInjectionText`가 은닉 보장의 실체(`test-front.js` grep)
+- 원장 출처 `front:<id>…` — 변화 로그·하이라이트는 허용 목록이라 안 그리고, `changeMemoLines`가 보조 원장에서 뺀다. fired = `front:<id>:<단계>`
+- 예약 키는 vars에 살아 체크포인트 되감기가 같이 되감는다. ⚠ `mirrorVars`(채팅 변수 미러)엔 실린다 — sec_*와 같은 기존 동작
+- 검증: id·예약 이름 충돌·문턱 순서/범위·when/rate rand·없는 진영 개입·add 없음 오류 / 안 흐르는 시계(rate 0 + 개입 효과 없음)·표면화 없는 밑작업·빈 문턱·promptState.template·statusUI 노출 경고
+- 편집기 [무대 뒤] 탭(진행 묶음, 🎭 기능 카드, `tabFronts` — 방치하면 N일째 `engine.frontIdleSchedule`), 효과 편집기 둘에 `frontEffectRow`(진영이 있는 봇만 추가 버튼).
+  TAB_SLICES·규격서(`SCHEMA_FRONT_RULES`)·다이제스트 참조 절·DIFF_AREAS·UNSUPPORTED(일반 패치 미지원)
+- ⚠ **규격서 크기**: 검증기 원문(`String(validateSchema)`)이 주석째 실린다 — v1.12.0 기준 최대 126.8KB / 상한 128KB. 다음 검증 추가 전에 규격서에서 뺄 것을 찾을 것
+
+---
+
 ## 표현식 문법
 
 - 산술: `+ - * / %` (0 나눗셈·0 나머지는 0 — 봇이 죽는 것보다 낫다)
@@ -822,7 +988,11 @@ add/remove/expire 셋 다 없으면 경고.
   작으면 만료돼 빠진다. `@` 없는 항목은 무기한
 - **상대 기한 `@+N`** — add 항목에 쓰면 그 목록의 onTurn expire 규칙과 같은 시계로
   **절대값으로 굳혀** 들어간다 (모델은 "3일 뒤"만 알면 된다). expire 규칙이 없으면 안 굳고
-  무기한이 된다 (안전한 실패)
+  무기한이 된다 (안전한 실패 — 단 화면·프롬프트엔 `(N일)`이 **영영 안 줄어든 채** 보인다)
+- **`keepOverdue: true`** (v1.13.1) — expire를 **시계로만** 쓰고 지나간 항목을 안 지운다. `@+N` 굳히기·`(N일)` 환산·
+  달력 점은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다. 빚·약속처럼 "이행하거나 파기하기
+  전엔 안 사라진다"가 설계인 목록용 — 베리디아 favors가 expire 규칙 없이 `@+30`을 받아 `(30일)`이 영영 멈춰 있던 것이
+  계기. expire 없이 쓰면 경고. 편집기: [규칙·이벤트] 목록 효과 줄의 "기한 시계" 칸 + "지나도 안 지움" 체크
 
 ### 목록 항목의 규약
 - **기한 `@숫자`** — 남은 일수가 아니라 **끝나는 시점**(절대 경과값). 미니 표현식엔 반복문이 없어

@@ -138,7 +138,8 @@ const calOf = (S, chat) => time.calendarOf(epochOf(S, chat), time.timeConfig(S).
   ck('★ 새 판 시작에 rng를 넘긴다', src.includes("engine.initState(this.schema, { rng: this._rng(-1, 'start') })"), '');
   ck('★ 판 초기화는 새로 굴린다', src.includes('engine.initState(this.schema, { rng: makeUnstableRng(this.random) })'), '');
   ck('미러 복구는 안 굴린다 (진행 중인 판의 날짜를 새로 지어내면 안 된다)',
-    src.includes("require('./engine').initState(this.schema);"), '');
+    // v1.14.7 — 모듈 별칭만 바뀜, rng 없이 호출하는 건 그대로
+    src.includes('eng.initState(this.schema);'), '');
 }
 
 let p = 0, f = 0;

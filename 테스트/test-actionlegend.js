@@ -27,7 +27,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // 앵커가 뒤처져도 마지막 메시지에는 범례가 남아야 한다 (켤 자리가 사라지지 않게)
   ck("'과거'는 앵커보다 작은 번호만 (idx < lastIdx)", src.includes('&& idx < lastIdx) {'), '');
   ck('버튼 토글도 스냅샷에 저장 (/액션 명령과 같은 규약)',
-    src.includes("await session.store.save('out', lastOutIndex, session.current); // 무장 유지"), '');
+    // v1.14.7 — 저장은 persistCurrent(앵커 -1이면 boot 슬롯)로
+    src.includes('await persistCurrent(); // 무장 유지'), '');
 }
 
 const SCHEMA = {

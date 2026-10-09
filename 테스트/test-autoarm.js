@@ -90,7 +90,8 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
 
 // ── 어댑터·편집기 배선 (소스 정적) ──
 {
-  ck('input 훅이 낱말 무장을 부른다', src.includes('engine.autoArmActions(schema, session.current, content)'), '');
+  // v1.14.10 — 명령 줄(/액션 X)은 낱말 판정에서 뺀 글을 넘긴다
+  ck('input 훅이 낱말 무장을 부른다', src.includes('engine.autoArmActions(schema, session.current, content.split('), '');
   ck("'/' 없는 글도 보되 keywords 없는 스키마면 바로 돌려준다", src.includes("if (!hasCmd) { await loadForCurrentChar(); if (!(schema?.actions || []).some((a) => Array.isArray(a.keywords) && a.keywords.length)) return content; }"), '');
   ck('무장만 됐어도 저장·미러·패널 갱신', src.includes('if (!hasCmd) { if (touched) await persist(); return content; }'), '');
   ck('편집기 액션 칸에 자동 무장 낱말', /(?:pair|field)\('자동 무장 낱말'/.test(src), '');   // v1.7.13 개조본 field()

@@ -128,7 +128,8 @@ const keysOf = (ses) => (ses.store.b.keys()).filter((k) => k.startsWith(ses.stor
   console.log('\n━━ 어댑터 — 램 캐시(histStates)의 세 번째 출처 ━━');
   {
     const src = fs.readFileSync(__P('../adapter/risu-plugin.js'), 'utf8');
-    ok('pruneFrom 래퍼가 캐시를 같이 비운다', src.includes('session.store.pruneFrom = async (index) =>') && src.includes('histStates.delete(k)'), '');
+    // v1.14.10 — 세션은 다 만든 뒤 공개하므로 래퍼는 지역 변수 sess에 건다
+    ok('pruneFrom 래퍼가 캐시를 같이 비운다', src.includes('sess.store.pruneFrom = async (index) =>') && src.includes('histStates.delete(k)'), '');
     ok('완전 초기화 뒤 캐시 비움', /session\.resetAll\(progress\)\);\n\s*histStates = new Map\(\); histPending\.clear\(\);/.test(src), '');
     ok('세이브 가져오기 뒤 캐시 비움', /data\.lastOutIndex : anchor;\n(.*\n){0,3}\s*histStates = new Map\(\); histPending\.clear\(\);/.test(src), '');
     ok('v1.7.3 체인지로그 블록', src.includes('// ── v1.7.3 ──'), '');

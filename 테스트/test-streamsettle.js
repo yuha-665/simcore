@@ -18,7 +18,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 {
   ck('스트리밍 확정 기계 존재', src.includes('scheduleOutputSettle') && src.includes('finalizeOutputSettle'), '');
   ck('★ 부분 호출은 아무것도 안 굴린다 (스트리밍 판정 → settle만)', src.includes('scheduleOutputSettle(chaIdx, chatIdx, outIndex, content)'), '');
-  ck('★ 다음 턴이 미확정분을 먼저 정산한다 (beforeRequest flush)', src.includes('await flushOutputSettle();\n      lastSettledKey = null;'), '');
+  // v1.14.10 — flush는 turnBusy를 세우기 전에 돈다 (확정의 finally가 새 턴의 가드를 내리지 않게)
+  ck('★ 다음 턴이 미확정분을 먼저 정산한다 (beforeRequest flush)', src.includes('try { await flushOutputSettle(); } catch (e) { console.log(\'[simcore] 확정 정산 실패:\', e.message); }\n    turnBusy = true; turnBusyAt = Date.now();'), '');
   ck('★ 보조 출력 상한 클램프 존재 (runLLMModel엔 maxTokens가 없다)', src.includes('auxCapInFlight') && src.includes('clampAuxBody'), '');
   ck('클램프는 이중 걸쇠 (호출 진행 중 + AUX_NUDGE 실존)', src.includes('auxCapInFlight == null || body == null') && src.includes('body.includes(AUX_NUDGE)'), '');
   ck('클램프 실패해도 원본 유지 (남의 요청을 죽이면 안 된다)', src.includes('catch { return body; }'), '');

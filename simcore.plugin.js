@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.9
-//@display-name SimCore (시뮬 엔진) v1.14.9 점검 5차
+//@version 1.14.10
+//@display-name SimCore (시뮬 엔진) v1.14.10 점검 6차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,18 +10,24 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.9 ──────────────────────────────────────────────
-// **전체 점검 5차 — 패치·가져오기 + 편집기↔스키마 (영역 5·6).** 읽기 감사 후보를 코드로 재확인한 것.
-// - [패치] 미지원 섹션 전부에 "어느 탭에서"를 안내(전엔 열둘이 "알 수 없는 섹션"). updater의 guide·contextTurns를 말없이 버리던 것 → 오류.
-//   첫 랜덤 이벤트 발동률 가드가 편집기 normalize의 빈 표 때문에 죽어 있던 것(표·게이지·발동률 전부 없으면 "처음"). 병합 원자성을
-//   "오류 0"에서 "새 오류 없음"으로(기존 오류 하나가 무관한 패치를 전부 막았다). diffSchemas에 비밀·다상점·보조 갈림길·리롤 안정.
-//   ```JSON 펜스(대문자)도 읽는다(편집기 네 곳 같이).
-// - [탭 가져오기] 규칙 탭이 liveChoices를 왕복에서 버리던 것(요청서는 다룬다고 말했다). onTurn 줄·보조 갈림길이 신원에 들어가 손실이
-//   확인창에 뜬다. **🔒 보호 항목을 탭 가져오기에서도 되살린다** — 탭별 ✨ 생성·🧩 기능 추가가 AI 통 교체의 실제 경로인데 무방비였다.
-// - [정리 마법사] 새 오류만 본다(작성 중인 다른 항목의 오류가 모든 삭제를 막았다). 중복 id의 사본은 그것만 지운다(둘 다 날리던 것).
-// - [편집기↔엔진] 달력 "1회 지정"의 year를 엔진이 읽는다(매년 반복되던 것). 상태창 "액션 사용 안내 — 숨김"이 작동. 프리셋의 list 값
-//   (늘 검증 오류). 비밀 0단계 여는 조건 칸. 상점·의뢰 밴드 칸 소수. 이벤트 카드에 판정 칸, 파생 카드에 표시 형식 칸(둘 다 JSON 전용이었다).
-// - [번들] 적용 전에 "⚙simcore 없음 → 현재 시스템 제거"·"동봉 스키마 검증 실패"를 알리고, 결과 문구가 사실과 반대이던 것을 고쳤다.
+// ── v1.14.10 ──────────────────────────────────────────────
+// **전체 점검 6차 — 어댑터의 리수 통합 (영역 7).** 리수 번들(포켓리스 1.8.1)로 호출 경로를 확인한 읽기 감사 후보 중 코드로 재확인한 것.
+// - [턴 판정] type 'model' 요청을 전부 턴으로 처리했다 — 루아 LLM()·이어쓰기·요청 본문 미리보기에도 전송 단계가 돌아 유령 턴(무장 소비·
+//   이벤트 발동·턴 +1)이 생기고 다음 진짜 턴이 그 위에 또 돌았다. 이제 채팅 마지막 메시지가 user일 때만 턴이고, 그 밖의 응답(output)은
+//   건드리지 않는다. 유저 글은 프롬프트 배열이 아니라 채팅 메시지에서 읽는다(프리셋 후첨 블록을 대체문으로 덮던 것).
+// - [스트리밍 확정] 리수 isStreaming 깃발을 본다 — 숨은 탭에서 타이머만 돌아 앞부분으로 확정하고 꼬리를 잃던 것. 재무장으로 끝난 확정은
+//   turnBusy를 내리지 않는다. beforeRequest의 flush를 turnBusy를 세우기 전에(새 턴 내내 가드가 꺼지던 것). 리수 재시도마다 상태 블록이
+//   겹겹이 붙던 것. 루아 브리지 seq는 전송 시점에 잡는다(빠른 보조의 델타를 '응답 없음'으로 잃던 것).
+// - [로드] 포켓리스 지연 로딩 자리표시(_placeholder)를 빈 채팅으로 믿고 initState로 고정하던 것. 로드가 겹치면 반쯤 만든 세션이 보이던 것
+//   (하나의 로드 약속, 세션은 다 만든 뒤 공개). 전환 때 다른 채팅의 변화 로그가 남던 것.
+// - [시간선 재정렬 v3] v1.14.8의 전송 경로가 마커를 못 고친 채 다시 불리면 옛 번호로 남의 자리 스냅샷을 집던 회귀 — 이동 기록으로 멱등.
+//   마커 재작성 직전에 채팅을 다시 읽어 그새 바뀌었으면 보류.
+// - [입력] 응답 없이 끝난 턴(생성 실패) 뒤 새 입력이 전송 단계 상태 위에 얹히고 직전 out을 덮던 것 — 직전 응답 상태로 되돌린 뒤 받는다.
+//   '/액션 X'의 라벨 낱말이 먼저 켜고 명령이 도로 끄던 것(명령 줄은 낱말 판정에서 제외). 새 입력은 새 턴(replacer 거부 환경).
+// - [패널] 보드·메신저·상점·의뢰 보조 결과를 적용 전에 세션·턴을 다시 확인. 관리 패널 액션 토글에 가드·저장·차단 처리. 턴 중 변수 수정은
+//   저장하지 않는다. aux_model_mode 값 공백·대소문자 정규화.
+// - 보류: 복사·분기 채팅의 초기 상태(새 chat.id — 미러에서 복원 안내로 대응), removeIncompleteResponse가 마커를 자르는 것(복구가 있다),
+//   생성 중 채팅 전환의 output 오판(리수 전환 자체가 doingChat을 안 본다), getModelIds(늘 null — 별도).
 
 
 const SimCore = (() => {
@@ -33087,6 +33093,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.9 ──────────────────────────────────────────────
+// **전체 점검 5차 — 패치·가져오기 + 편집기↔스키마 (영역 5·6).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [패치] 미지원 섹션 전부에 "어느 탭에서"를 안내(전엔 열둘이 "알 수 없는 섹션"). updater의 guide·contextTurns를 말없이 버리던 것 → 오류.
+//   첫 랜덤 이벤트 발동률 가드가 편집기 normalize의 빈 표 때문에 죽어 있던 것(표·게이지·발동률 전부 없으면 "처음"). 병합 원자성을
+//   "오류 0"에서 "새 오류 없음"으로(기존 오류 하나가 무관한 패치를 전부 막았다). diffSchemas에 비밀·다상점·보조 갈림길·리롤 안정.
+//   ```JSON 펜스(대문자)도 읽는다(편집기 네 곳 같이).
+// - [탭 가져오기] 규칙 탭이 liveChoices를 왕복에서 버리던 것(요청서는 다룬다고 말했다). onTurn 줄·보조 갈림길이 신원에 들어가 손실이
+//   확인창에 뜬다. **🔒 보호 항목을 탭 가져오기에서도 되살린다** — 탭별 ✨ 생성·🧩 기능 추가가 AI 통 교체의 실제 경로인데 무방비였다.
+// - [정리 마법사] 새 오류만 본다(작성 중인 다른 항목의 오류가 모든 삭제를 막았다). 중복 id의 사본은 그것만 지운다(둘 다 날리던 것).
+// - [편집기↔엔진] 달력 "1회 지정"의 year를 엔진이 읽는다(매년 반복되던 것). 상태창 "액션 사용 안내 — 숨김"이 작동. 프리셋의 list 값
+//   (늘 검증 오류). 비밀 0단계 여는 조건 칸. 상점·의뢰 밴드 칸 소수. 이벤트 카드에 판정 칸, 파생 카드에 표시 형식 칸(둘 다 JSON 전용이었다).
+// - [번들] 적용 전에 "⚙simcore 없음 → 현재 시스템 제거"·"동봉 스키마 검증 실패"를 알리고, 결과 문구가 사실과 반대이던 것을 고쳤다.
+
 // ── v1.14.8 ──────────────────────────────────────────────
 // **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
 // - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
@@ -36388,7 +36407,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
    * @returns 'aux' | 'lua' | 'off'
    */
   async function resolveAuxMode() {
-    const arg = (await Risuai.getArgument('aux_model_mode')) || 'auto';
+    const arg = String((await Risuai.getArgument('aux_model_mode')) || 'auto').trim().toLowerCase(); // 'Lua '·' lua' 도 (v1.14.10)
     if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }
@@ -36819,6 +36838,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
   // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
   let turnBusy = false;
+  let nonTurnRequest = false;   // (v1.14.10) 마지막 메시지가 user가 아닌 'model' 요청(루아 LLM()·이어쓰기·미리보기) — 턴이 아니다. output도 건드리지 않는다
+  let placeholderRetry = false; // (v1.14.10) 포켓리스가 채팅 본문을 아직 안 채운 자리(_placeholder)를 잡았다 — 다음 전환 틱에 다시 읽는다
+  let bridgeSeqAtSend = null;   // (v1.14.10) 루아 브리지 seq를 전송 시점에 잡아 둔다 — 확정 시점에 읽으면 빠른 보조가 이미 올려 둔 뒤라 놓쳤다
+  let lastPromptBlock = null;   // (v1.14.10) 리수가 같은 요청을 재시도하면 replacer가 또 돌아 상태 블록이 두세 벌 붙던 것 — 지난 블록은 걷어낸다
+  let loadingPromise = null;    // (v1.14.10) 로드가 겹치면 반쯤 만든 세션이 노출되던 것 — 하나로 묶는다
   // 현재 상태 저장 (v1.14.7) — 턴 사이 조작(토글·패널·상점·의뢰·프리셋·명령)은 out:lastOutIndex에, char 메시지가 아직 없으면
   // 첫 전송 전 슬롯(boot:0)에. 전엔 앵커가 -1이면 전부 건너뛰어 새 채팅·빈 채팅의 조작이 재로드에서 증발했다
   async function persistCurrent() {
@@ -36870,7 +36894,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   // 어느 경로로 빠져나가든(캐릭터 없음/스키마 없음/검증 실패 포함) 조작줄·유틸 버튼을 현재 상태에 맞춘다
   async function loadForCurrentChar() {
-    try { await loadForCurrentCharInner(); }
+    if (loadingPromise) { await loadingPromise; return; } // 겹친 호출은 진행 중인 로드를 기다린다 (v1.14.10)
+    loadingPromise = (async () => { try { await loadForCurrentCharInner(); } finally { loadingPromise = null; } })();
+    try { await loadingPromise; }
     finally {
       try { await syncControls(); }
       catch (e) { console.log('[simcore] 조작 UI 갱신 실패:', e.message); }
@@ -36885,10 +36911,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // (점검 영역 3 #1). 마지막 char 메시지의 ⟦simcore:N⟧이 가리키는 out:N이 진짜 현재 상태 — 지금 번호 자리로 옮기고 그 뒤를 지운다.
   // 그 메시지보다 뒤였던 과거 메시지들의 상태창은 현재값 폴백으로 그려진다(스냅샷을 잃는다) — 되감김보다 낫다.
   async function realignTimeline(chat, lastCharIdx, where, opts = {}) {
+    const sess = opts.sess || session;
     try {
-      if (!session || lastCharIdx < 0) return false;
+      if (!sess || lastCharIdx < 0) return false;
       const msgs = chat?.message || [];
-      // char 메시지 전부의 (자리 번호, 마커 번호) — 하나라도 어긋나면 번호 체계가 낡은 것
       const pairs = [];
       for (let i = 0; i < msgs.length; i++) {
         const m = msgs[i]; if (!m || m.role !== 'char' || typeof m.data !== 'string') continue;
@@ -36897,22 +36923,39 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         pairs.push({ i, n });
       }
       if (!pairs.some((p) => p.n !== p.i)) return false;
-      // 스냅샷을 전부 먼저 읽어 둔다 (옮기다 덮어쓰지 않게) — 그 다음 옛 번호 체계(pre/send/out)를 걷어내고 새 자리로 저장
-      const loaded = new Map();
-      for (const p of pairs) { const st = await session.store.load('out', p.n); if (st) loaded.set(p.i, st); }
-      await session.store.pruneFrom(0);
-      for (const [i, st] of loaded) await session.store.save('out', i, st);
-      // 마커 번호도 자리 번호로 (v1.14.8 — 번호를 그대로 두면 다음 출력이 옛 번호와 겹쳐 탭 라디오·id가 충돌하고 범례가 여러 창에 섰다).
-      // 로드 경로만 채팅을 다시 쓴다 — 전송 중엔 리수가 요청을 만드는 중이라 건드리지 않는다 (다음 로드에서 맞춘다)
-      if (opts.rewrite !== false && opts.chaIdx != null && opts.chatIdx != null) {
-        for (const p of pairs) if (p.n !== p.i) msgs[p.i].data = msgs[p.i].data.replace(/⟦simcore:\d+⟧/g, `⟦simcore:${p.i}⟧`);
-        await Risuai.setChatToIndex(opts.chaIdx, opts.chatIdx, chat);
+      // 이동 기록 (v1.14.10) — 마커를 못 고친 채(전송 경로·리수가 되돌림) 다시 불리면 전엔 옛 번호로 다시 읽어 남의 자리 스냅샷을
+      // 집거나 못 찾아 과거 스냅샷이 매 전송마다 밀렸다. 어느 마커의 스냅샷이 지금 어디 있는지를 저장해 두고 그 자리에서 읽는다
+      const mapKey = sess.store.p + ':realign';
+      let rmap = {};
+      try { rmap = JSON.parse((await sess.store.b.get(mapKey)) || '{}') || {}; } catch { rmap = {}; }
+      const srcOf = (n) => (Number.isInteger(rmap[String(n)]) ? rmap[String(n)] : n);
+      const moves = pairs.filter((p) => srcOf(p.n) !== p.i);
+      if (moves.length) {
+        const loaded = new Map();
+        for (const p of pairs) { const st = await sess.store.load('out', srcOf(p.n)); if (st) loaded.set(p.i, st); }
+        await sess.store.pruneFrom(0);
+        for (const [i, st] of loaded) await sess.store.save('out', i, st);
+        const next = {};
+        for (const p of pairs) if (p.n !== p.i) next[String(p.n)] = p.i;
+        await sess.store.b.set(mapKey, JSON.stringify(next));
+        const cur = loaded.get(lastCharIdx);
+        if (cur) sess.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(cur)));
+        histStates = new Map(); histPending.clear();
+        console.log('[simcore] 시간선 재정렬:', moves.map((p) => `${srcOf(p.n)}→${p.i}`).join(' '), '(' + where + ')');
       }
-      const cur = loaded.get(lastCharIdx);
-      if (cur) session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(cur)));
-      histStates = new Map(); histPending.clear();
-      console.log('[simcore] 시간선 재정렬:', pairs.filter((p) => p.n !== p.i).map((p) => `${p.n}→${p.i}`).join(' '), '(' + where + ')');
-      return true;
+      // 마커 번호도 자리 번호로 — 로드 경로만, 그리고 쓰기 직전에 채팅을 다시 읽어 그새 바뀌었으면 건드리지 않는다 (v1.14.10)
+      if (opts.rewrite !== false && opts.chaIdx != null && opts.chatIdx != null) {
+        const fresh = await Risuai.getChatFromIndex(opts.chaIdx, opts.chatIdx);
+        const fm = fresh?.message || [];
+        const same = fm.length === msgs.length && pairs.every((p) => typeof fm[p.i]?.data === 'string' && fm[p.i].data.includes(`⟦simcore:${p.n}⟧`));
+        if (same) {
+          for (const p of pairs) if (p.n !== p.i) fm[p.i].data = fm[p.i].data.replace(/⟦simcore:\d+⟧/g, `⟦simcore:${p.i}⟧`);
+          await Risuai.setChatToIndex(opts.chaIdx, opts.chatIdx, fresh);
+          await sess.store.b.set(mapKey, '{}'); // 마커가 자리와 같아졌으니 이동 기록은 끝
+          console.log('[simcore] 마커 번호 재작성:', pairs.filter((p) => p.n !== p.i).map((p) => `${p.n}→${p.i}`).join(' '));
+        } else console.log('[simcore] 마커 재작성 보류 — 읽는 사이 채팅이 바뀜 (다음 로드에서)');
+      }
+      return moves.length > 0;
     } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
 
@@ -36949,10 +36992,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const chatIdx = await Risuai.getCurrentChatIndex();
     const chaIdx = await Risuai.getCurrentCharacterIndex();
     const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
+    // 포켓리스 지연 로딩 (v1.14.10) — 전환 직후 채팅 본문이 비어 있는 자리표시 사본을 빈 채팅으로 믿으면 initState로 고정되고
+    // 다음 전송이 그 초기 상태 위에 저장된다. 다음 틱에 다시 읽는다
+    if (chat && chat._placeholder) { placeholderRetry = true; console.log('[simcore] 채팅 본문 적재 전(placeholder) — 다음 틱에 다시'); return; }
     const chatId = chat?.id ?? `${char.chaId}:${chatIdx}`;
     const key = `${char.chaId}:${chatId}`;
     if (session && charKey === key) return; // 이미 로드됨
     charKey = key;
+    session = null;          // 새 세션이 다 만들어지기 전엔 "로드 안 됨"으로 보인다 (v1.14.10 — 반쯤 만든 세션 노출 방지)
+    lastChangeLog = [];      // 다른 채팅의 변화 로그·카드가 새 채팅 최신 상태창에 뜨던 것 (v1.14.10)
     personaCache = null;   // 페르소나는 캐릭터·채팅마다 다를 수 있다 (v1.5.0 막간)
     schema = parsed;
     mentionGate = { turns: 0, opened: {} }; // 세션 단위 통계 리셋
@@ -36966,19 +37014,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       remove: (k) => Risuai.pluginStorage.removeItem(k),
       keys: () => Risuai.pluginStorage.keys(),
     };
-    session = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
+    const sess = new SimSession(schema, backend, { chatId, prefix: `sim:${key}` });
     // 과거 상태창 캐시 (v1.0 #1) — out 저장을 한 군데서 가로채 램 캐시를 같이 갱신한다.
     // 저장 지점이 여럿(턴·패널 커밋·보드·수동 설정)이라 개별 배선 대신 저장 자체를 감싼다.
     histStates = new Map(); histPending.clear();
-    const origStoreSave = session.store.save.bind(session.store);
-    session.store.save = async (phase, index, state) => {
+    const origStoreSave = sess.store.save.bind(sess.store);
+    sess.store.save = async (phase, index, state) => {
       await origStoreSave(phase, index, state);
       if (phase === 'out') histPut(index, state);
     };
     // 유령 시간선 정리(v1.7.3)가 저장소에서 옛 미래를 지우면 램 캐시도 같이 비운다 — 안 비우면
     // display 훅이 지워진 out:N을 캐시에서 꺼내 옛 상태창을 그대로 그린다
-    const origPruneFrom = session.store.pruneFrom.bind(session.store);
-    session.store.pruneFrom = async (index) => {
+    const origPruneFrom = sess.store.pruneFrom.bind(sess.store);
+    sess.store.pruneFrom = async (index) => {
       const n = await origPruneFrom(index);
       for (const k of [...histStates.keys()]) if (k >= index) histStates.delete(k);
       return n;
@@ -36990,8 +37038,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
-    await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx });
-    try { await session.init(lastCharIdx); }
+    await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx, sess });
+    try { await sess.init(lastCharIdx); }
     catch (e) {
       // 반쯤 초기화된 세션을 남기지 않는다 (v1.14.7) — 전엔 current가 null인 세션이 남아 다음 전송이 initState로 조용히 시작했다 (점검 영역 3 #10)
       console.log('[simcore] 상태 복원 실패:', e.message);
@@ -37013,6 +37061,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     startPresetKey = `sim:start-preset:${currentChaId}`;
     try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
     catch { startPresetId = null; }
+    session = sess; // 여기서부터 바깥에 보인다 (v1.14.10)
     if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
       if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
         session.applyPreset(startPresetId);
@@ -37049,6 +37098,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     // 부팅이 리스보다 빨라 캐릭터를 못 읽은 경우엔 위치가 그대로여도 다시 시도한다.
     // ('스키마 없음'은 정착된 상태라 재시도하지 않는다 — 안 그러면 대부분의 캐릭터에서
     //  1.5초마다 무거운 로드가 계속 돈다.)
+    if (placeholderRetry) { placeholderRetry = false; lastSwitchSig = null; } // 본문 적재 전이었다 — 같은 자리라도 다시 읽는다 (v1.14.10)
     if (sig === lastSwitchSig && panelStatus.state !== 'no-char') return;
     lastSwitchSig = sig;
     try { charKey = null; await loadForCurrentChar(); }  // 채팅이 바뀌면 세션도 새로 잡아야 한다
@@ -37070,6 +37120,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       else await loadForCurrentChar();
       if (!session || !schema) return content;
       await flushOutputSettle();   // 미확정 스트리밍 턴이 있으면 그 결과 위에 명령을 얹는다
+      // 생성이 실패해 응답이 안 온 턴 (v1.14.10) — current는 전송 단계 상태(유령)다. 직전 응답 상태로 되돌린 뒤 새 입력을 받는다.
+      // 전엔 그 위에 명령·무장을 얹고 직전 out을 그 상태로 덮어 쓴 뒤 다음 전송이 전송 단계를 두 번 돌았다
+      if (turnBusy && lastOutIndex >= 0) {
+        try { const back = await session.store.load('out', lastOutIndex); if (back) session.current = engine.reconcileState(schema, back); } catch {}
+        turnBusy = false;
+        console.log('[simcore] 응답 없이 끝난 턴 폐기 — 직전 응답 상태에서 다시');
+      }
+      turnProcessedKey = null;     // 새 유저 글 = 새 턴 (v1.14.10 — replacer 권한이 거부된 환경에선 beforeRequest가 안 돌아 영영 안 풀렸다)
       const persist = async () => {
         await persistCurrent();
         const chaIdx = await Risuai.getCurrentCharacterIndex();
@@ -37079,7 +37137,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       };
       // ⓪-1 낱말 자동 무장 (v1.7.7) — 유저 글에 액션 낱말이 있으면 버튼 없이 그 턴에 켠다
       let touched = false;
-      const kw = engine.autoArmActions(schema, session.current, content);
+      // 명령 줄(/액션 X 등)은 낱말 판정에서 뺀다 (v1.14.10 — '/액션 X'의 라벨 낱말이 먼저 켜고 명령이 도로 껐다)
+      const kw = engine.autoArmActions(schema, session.current, content.split('\n').filter((l) => !/^[ \t]*\//.test(l)).join('\n'));
       if (kw.armed.length) { session.current = kw.state; touched = true; console.log('[simcore] 낱말 무장', kw.armed.join(', ')); }
       if (kw.skipped.length) console.log('[simcore] 낱말 무장 건너뜀', kw.skipped.map((x) => `${x.id}(${x.reason})`).join(', '));
       if (!hasCmd) { if (touched) await persist(); return content; }
@@ -37177,11 +37236,12 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       return messages;
     }
 
+    // 직전 턴의 스트리밍 확정이 남아 있으면 먼저 정산한다 — onSend가 그 위에 서야 한다.
+    // turnBusy를 세우기 **전에** (v1.14.10 — 확정의 finally가 turnBusy를 내려 새 턴 내내 가드가 꺼졌다)
+    try { await flushOutputSettle(); } catch (e) { console.log('[simcore] 확정 정산 실패:', e.message); }
     turnBusy = true; turnBusyAt = Date.now();
     try {
       // 호출부(리수 request.ts)에 try/catch가 없다 — 여기서 던지면 요청 자체가 죽는다
-      // 직전 턴의 스트리밍 확정이 남아 있으면 먼저 정산한다 — onSend가 그 위에 서야 한다
-      await flushOutputSettle();
       lastSettledKey = null;   // 새 턴 — 리롤이 같은 자리(outIndex)를 다시 쓸 수 있게 걸쇠 해제
       turnProcessedKey = null; // 턴당 1회 정산 가드도 새 턴에 푼다 (v1.7.5) — 리롤이 같은 자리를 다시 굴릴 수 있게
       await loadForCurrentChar();
@@ -37193,11 +37253,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const chatIdx = await Risuai.getCurrentChatIndex();
       const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
       const sendIndex = Math.max(0, (chat?.message?.length ?? 1) - 1);
+      // 진짜 턴은 "채팅 마지막 메시지가 user"일 때뿐 (v1.14.10) — 루아 LLM()·이어쓰기·요청 미리보기도 type 'model'로 여기를 지난다.
+      // 전엔 그것들에 전송 단계를 돌려 유령 턴(무장 소비·이벤트 발동·턴 +1)이 생기고 다음 진짜 턴이 그 위에 또 돌았다
+      const userMsg = chat?.message?.[sendIndex];
+      if (!userMsg || userMsg.role !== 'user') {
+        nonTurnRequest = true; turnBusy = false;
+        console.log('[simcore] 턴이 아닌 model 요청(마지막 메시지가 ' + (userMsg?.role ?? '없음') + ') — 정산·상태 블록 없이 통과');
+        return messages;
+      }
+      nonTurnRequest = false;
 
       // 전투 안무 (v1.6.0) — 유저 입력 길이로 맡김/내 수를 가른다. 굴림에는 안 쓰인다 (리롤 안정)
-      const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
-      const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
-      // 마지막 char 메시지의 마커가 번호와 어긋나면(중간 삭제) 전송 전에 시간선을 맞춘다 (v1.14.7)
+      // 유저 글은 채팅 메시지에서 (v1.14.10 — 프롬프트 배열의 마지막 user는 프리셋의 후첨·탈옥 블록일 수 있어 본문 선택을 놓치고 그 블록을 대체문으로 덮었다)
+      const userText = typeof userMsg.data === 'string' ? stripMarkers(userMsg.data) : '';
+      const lastUser = [...messages].reverse().find((m) => m && m.role === 'user' && typeof m.content === 'string' && m.content.trim() === userText.trim())
+        || [...messages].reverse().find((m) => m && m.role === 'user');
+      // 마지막 char 메시지의 마커가 번호와 어긋나면(중간 삭제) 전송 전에 시간선을 맞춘다 (v1.14.7, v1.14.10 멱등)
       if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송', { rewrite: false });
       const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
@@ -37208,11 +37279,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         lastUser.content = r.userTextOverride;
         console.log('[simcore] 강제 갈림길 — 유저 글 대체:', r.forcedChoice?.label);
       }
+      // 리수 재시도(requestRetrys·금지어)마다 replacer가 또 돌아 상태 블록이 겹겹이 붙던 것 (v1.14.10) — 지난 블록을 걷어낸다
+      if (lastPromptBlock) messages = messages.filter((m) => !(m && m.role === 'system' && m.content === lastPromptBlock));
+      lastPromptBlock = r.promptBlock;
       messages.push({ role: 'system', content: r.promptBlock });
       // 막간 (v1.5.0) — 이 턴만 페르소나 칸을 걷어낸다 (지시문은 promptBlock 끝에 이미 실렸다)
       if (r.offstage) messages = await stripPersona(messages);
       await mirrorVars(chaIdx, chatIdx);
       await writeBridgeControl(chaIdx, chatIdx);
+      try { const c3 = await Risuai.getChatFromIndex(chaIdx, chatIdx); bridgeSeqAtSend = c3?.scriptstate?.['$simcore_aux_seq'] ?? null; } catch { bridgeSeqAtSend = null; } // (v1.14.10)
     } catch (e) {
       console.log('[simcore] beforeRequest 오류:', e.message);
     }
@@ -37513,11 +37588,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     if (!s) { if (outSettleRunning) await outSettleRunning; return; }
     outSettle = null;                      // 선점 — 같은 턴이 두 번 돌지 않는다
     clearTimeout(s.timer);
+    let rearmed = false;                   // 재무장으로 끝난 확정은 turnBusy를 내리지 않는다 (v1.14.10)
     const run = (async () => {
       try {
         if (!session || s.sess !== session) return;   // 확정 전에 캐릭터가 바뀜 — 이 턴은 버린다
         let text = await readSavedOutText(s);
         if (!immediate) {
+          // 리수 깃발이 으뜸 (v1.14.10) — 숨은 탭에선 rAF가 멈춰 저장 글도 editoutput도 멎지만 우리 타이머는 돌아, 생성 중인데
+          // 앞부분만으로 확정하고 꼬리를 영영 잃었다(이미지 봇은 부분 글로 덮어 소실). 아직 스트리밍이면 재무장만
+          try {
+            const c0 = await Risuai.getChatFromIndex(s.chaIdx, s.chatIdx);
+            if (c0?.isStreaming === true) {
+              if (!outSettle) outSettle = { ...s, timer: setTimeout(() => finalizeOutputSettle(false), SETTLE_MS) };
+              rearmed = true;
+              return;
+            }
+          } catch { /* 깃발을 못 읽으면 종전 방식 */ }
           // 안정성 이중 확인: 생성이 잠깐 쉰 것일 수 있다 — 더 기다려 같은 값일 때만 확정
           await sleep(400);
           const again = await readSavedOutText(s);
@@ -37525,6 +37611,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             if (!outSettle) {   // 아직 자라는 중 — 재무장 (핸들러 호출이 더 안 와도 다시 본다)
               outSettle = { ...s, content: again ?? s.content, timer: setTimeout(() => finalizeOutputSettle(false), SETTLE_MS) };
             }
+            rearmed = true;
             return;
           }
         }
@@ -37546,8 +37633,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       } catch (e) {
         console.log('[simcore] 스트리밍 턴 확정 오류:', e.message);
       } finally {
-        turnBusy = false;                  // 이 턴의 busy는 여기서 푼다 (핸들러가 아니라)
-        scheduleMarkerHeal(s.outIndex);
+        if (!rearmed) {
+          turnBusy = false;                // 이 턴의 busy는 여기서 푼다 (핸들러가 아니라)
+          scheduleMarkerHeal(s.outIndex);
+        }
       }
     })();
     outSettleRunning = run;
@@ -37569,6 +37658,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // ── ②③ 응답: 보조 모델 → 상태 갱신 → 마커 부착 ────────────
   await Risuai.addRisuScriptHandler('output', async (content) => {
     if (!session) { turnBusy = false; return content; }
+    if (nonTurnRequest) return content; // 이어쓰기·루아 LLM()·미리보기의 응답 — 정산하면 send 스냅샷 재계산으로 그 뒤 조작이 사라진다 (v1.14.10)
     let outIndexRef = null;   // catch·finally에서도 마커 자리를 알아야 한다
     let deferred = false;     // 스트리밍 — 확정은 settle이 한다
     try {
@@ -37643,7 +37733,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
       turnProcessedKey = turnKey;
       const mode = await resolveAuxMode();
-      const baseSeq = chat?.scriptstate?.['$simcore_aux_seq'] ?? null;
+      // 전송 시점의 seq가 기준 (v1.14.10) — 확정 시점(마지막 조각 1.6초 뒤)에 읽으면 빠른 보조가 이미 올려 둔 뒤라 30초 '응답 없음'으로 델타를 잃었다
+      const baseSeq = bridgeSeqAtSend ?? (chat?.scriptstate?.['$simcore_aux_seq'] ?? null);
 
       // 최초설정 턴: 절대값 세팅 경로 (정기 틱·이벤트 없음)
       if (await session.isSetupTurn(outIndex)) {
@@ -38859,7 +38950,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const prompt = boardMod.interactionPrompt(schema, session.current, kind,
         { ...payload, narrative: await boardNarrative() });
       // [새 소식]은 자율형이면 새 글 4~5개를 통째로 받는다 — 800으론 잘린다 (v1.1.0)
+      const sess0 = session;
       const res = await callAuxLLM(prompt, kind === 'refresh' ? 1600 : 800);
+      if (sess0 !== session || turnBusy) { gameNotice = '⚠ 기다리는 사이 턴이 시작됐거나 채팅이 바뀌어 결과를 버렸어요'; return; } // (v1.14.10)
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 보드 실시간 반응은 쓸 수 없고, 턴 갱신만 돌아요';
       } else if (typeof res === 'string') {
@@ -39154,7 +39247,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         narrative: await boardNarrative(),
       });
       const letter = cfg?.medium === 'letter';   // v1.13.2 — 편지 한 통은 600자까지
+      const sess0 = session;
       const res = await callAuxLLM(prompt, (room.kind === 'group' ? 1000 : 800) + (letter ? 700 : 0));
+      if (sess0 !== session || turnBusy) { gameNotice = '⚠ 기다리는 사이 턴이 시작됐거나 채팅이 바뀌어 결과를 버렸어요'; return; } // (v1.14.10)
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 메신저 답장은 쓸 수 없어요';
       } else if (typeof res === 'string') {
@@ -39362,7 +39457,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         { ...payload, shopId: shopView.shopId ?? undefined, narrative: await boardNarrative() });
       // 새로고침(물갈이)도 재고 전체를 다시 받는다 — 900(1800토큰)은 빠듯했다 (v1.0.8).
       // v1.0.9: perCat 도입으로 최대 36개 JSON — 1400도 부족해 2400으로.
+      const sess0 = session;
       const res = await callAuxLLM(prompt, 2400);
+      if (sess0 !== session || turnBusy) { gameNotice = '⚠ 기다리는 사이 턴이 시작됐거나 채팅이 바뀌어 결과를 버렸어요'; return null; } // (v1.14.10)
       if (res && res.blocked) {
         gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 상점 물갈이·감정은 쓸 수 없어요';
         return null;
@@ -39594,7 +39691,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     renderGamePanel();
     try {
       const prompt = questMod.interactionPrompt(schema, session.current, 'refresh', { narrative: await boardNarrative() });
+      const sess0 = session;
       const res = await callAuxLLM(prompt, 1200);
+      if (sess0 !== session || turnBusy) { gameNotice = '⚠ 기다리는 사이 턴이 시작됐거나 채팅이 바뀌어 결과를 버렸어요'; return; } // (v1.14.10)
       if (res && res.blocked) { gameNotice = '⚠ 이 환경은 플러그인의 직접 보조 호출이 차단돼 있어요 — 새로고침은 쓸 수 없어요 (게시는 턴마다 채워져요)'; return; }
       if (typeof res !== 'string') { gameNotice = '⚠ 보조 모델 호출 실패 — 콘솔을 확인하세요'; return; }
       const parsed = questMod.parseInteraction(res, engine.extractJsonObject);
@@ -42020,7 +42119,7 @@ count(목록)  has(목록, "항목")</pre>
     table.innerHTML = '<tr><th>변수</th><th>현재값</th><th>수정</th><th></th></tr>';
     // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 + 다시 그리기
     const commitVars = async () => {
-      if (turnBusy) console.log('[simcore] 턴 진행 중 패널 수정 — 응답 처리가 send 스냅샷 기준이라 덮일 수 있음 (v1.14.6)');
+      if (turnBusy) { console.log('[simcore] 턴 진행 중 패널 수정 — 저장하지 않는다 (응답 처리가 send 스냅샷 기준이라 덮인다)'); renderPanel(); return; } // (v1.14.10)
       await persistCurrent();
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
@@ -42274,7 +42373,13 @@ count(목록)  has(목록, "항목")</pre>
       } else {
         item.appendChild(btn);
       }
-      btn.onclick = () => { session.toggle(a.id); syncControls(); renderPanel(); };
+      btn.onclick = async () => { // 가드·저장 (v1.14.10 — 전엔 turnBusy 무시, 저장 없음, blocked 무시)
+        if (turnBusy) { renderPanel(); return; }
+        const r = session.toggle(a.id);
+        if (r.blocked) console.log('[simcore] 액션 차단:', a.id, r.blocked);
+        else { try { await persistCurrent(); } catch (e) { console.log('[simcore] 무장 저장 실패:', e.message); } }
+        await syncControls(); renderPanel();
+      };
       actionsDiv.appendChild(item);
     }
 

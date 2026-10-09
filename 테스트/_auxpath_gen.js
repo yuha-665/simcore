@@ -37,7 +37,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
    * @returns 'aux' | 'lua' | 'off'
    */
   async function resolveAuxMode() {
-    const arg = (await Risuai.getArgument('aux_model_mode')) || 'auto';
+    const arg = String((await Risuai.getArgument('aux_model_mode')) || 'auto').trim().toLowerCase(); // 'Lua '·' lua' 도 (v1.14.10)
     if (arg === 'aux' || arg === 'lua' || arg === 'off') return arg;
     return (await getAuxPath()) === 'bridge' ? 'lua' : 'aux';
   }

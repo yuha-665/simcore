@@ -202,8 +202,9 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
     r.findings.filter((f) => f.tag === '함정 액션').map((f) => f.text).join(' / '));
   ck('소스에 신뢰구간 게이팅이 실제로 들어감', src.includes('it.delta + it.ci < -trapLine'), '');
   // v1.13.1 — 짝비교는 갈림길을 안 고른다(pickChoices: false). 두 판이 같은 시드인 것은 그대로
-  ck('★ 짝지은 시드(공통 난수)를 쓴다 — 두 판이 같은 시드', src.includes('const on = sim(seed, onPick(a), turns, { pickChoices: false });')
-    && src.includes('const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false });'), '');
+  // v1.14.11 — 기여도 판은 quiet(관측 생략)로 돈다. 짝지은 시드는 그대로
+  ck('★ 짝지은 시드(공통 난수)를 쓴다 — 두 판이 같은 시드', src.includes('const on = sim(seed, onPick(a), turns, { pickChoices: false, quiet: true });')
+    && src.includes('const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false, quiet: true });'), '');
 
   // 의도적으로 대가를 치르게 만든 버튼은 제외할 수 있어야 한다
   const s2 = cp(TEMPLATES.survival.schema);

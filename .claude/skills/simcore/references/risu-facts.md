@@ -289,6 +289,30 @@ DOM에 뜨는데 `showContainer('fullscreen')`한 플러그인 iframe이 그 위
 (v0.54.6부터 반복 관측) — 그 경로는 느리기만 하고 아무것도 못 읽으니, SimCore는
 모듈 에셋 읽기를 기본 꺼짐(`module_assets` 인자)으로 둔다.
 
+## ★ type 'model' 요청은 메인 전송만이 아니다 (2026-10 점검, 포켓리스 1.8.1 번들 확인)
+
+`requestChatData(…, 'model')`을 부르는 곳이 다섯이다: 메인 전송(이어쓰기 포함) · 루아 `LLM()` · 루아 `simpleLLM()` · 트리거 효과
+`runLLM` · **요청 본문 미리보기**(`previewRequest`). 전부 `beforeRequest` replacer를 지난다. 그래서 "type === 'model'이면 우리 턴"은
+틀린 전제였다 — 루아 onOutput의 요약 `LLM()`이나 미리보기에 전송 단계가 돌아 유령 턴(무장 소비·이벤트 발동·턴 +1)이 생겼다(v1.14.10).
+**진짜 턴은 채팅 마지막 메시지가 user일 때뿐**으로 가른다. 루아 onInput은 user push 전에 돌고, onOutput·미리보기·이어쓰기는 마지막이
+char라 전부 걸러진다. (`runLLMModel`은 1.8.1에선 replacer 루프가 없는 `requestChatDataMain`으로 바로 가므로 `GEN_SENTINEL` 분기는 이
+판본에서 죽은 코드다 — 해는 없다.)
+
+- **이어쓰기(계속·autoContinueChat)**: 비스트리밍은 editoutput을 **두 번** 부른다 — 이어 쓴 조각만(길이 = length), 그 다음 기존 글+조각
+  (length−1). 턴으로 처리하면 교환 하나에 턴이 두 번 넘어간다. 위 규칙(마지막이 char)으로 같이 걸러지고 output도 건드리지 않는다.
+- **포켓리스 지연 로딩**: 채팅·캐릭터 전환은 `chatPage`를 먼저 바꾸고 본문을 비동기로 채운다. 그동안 `getChatFromIndex`는
+  `{ message: [], id: <진짜 id>, _placeholder: true }`를 준다. 이걸 빈 채팅으로 믿으면 initState로 고정된다 — `_placeholder`면 다음 틱에 다시.
+- **removeIncompleteResponse** 설정은 비스트리밍 저장 글을 끝 글자가 문장부호일 때까지 한 글자씩 자른다. `⟧`·숫자는 목록 밖, `:`는 안이라
+  `⟦simcore:12⟧`가 `⟦simcore:`로 남는다 — v1.9.27 "꼬리만 남는다" 제보의 실제 원인 후보. 마커 자가 복구(4초·12초)가 메운다.
+- **replacer 권한 거부**는 예외 없이 등록만 빠진다(`addRisuReplacer`가 `await AR(...) && add`). 그래서 beforeRequest가 안 도는 환경이
+  있고, 거기에 기대는 상태(턴당 1회 가드 해제 등)는 input 훅에서도 풀어야 한다.
+- **채팅 복사·분기**는 새 `chat.id`를 받는다 — 스냅샷 접두가 `sim:<chaId>:<chat.id>`라 상태가 초기값으로 시작한다. 분기 채팅 끝에는
+  role 'char'인 숨김 주석(`{{specialcomment::branchedfrom::…}}`)이 붙는다. [미러에서 복원]으로 값만은 살릴 수 있다.
+- **리수 요청 재시도**(`requestRetrys`·금지어)는 replacer를 다시 돌린다 — 매 시도마다 상태 블록을 push하면 겹겹이 쌓인다. 지난 블록을
+  걷어내고 붙인다(v1.14.10).
+- **스트리밍 flush는 `setTimeout(125)` → `requestAnimationFrame`** — 숨은 탭에선 rAF가 멈춰 저장 글도 editoutput도 멎지만 플러그인
+  타이머는 돈다. 확정은 `chat.isStreaming` 깃발을 봐야 한다(v1.14.10).
+
 ## 기타 확정 사실
 
 - `Risuai.setCharacter(char)`는 **현재 선택된 슬롯**(`db.characters[selectedCharID]`)에 통째로 덮어쓴다

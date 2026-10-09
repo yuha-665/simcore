@@ -6548,7 +6548,7 @@ function runTrialTurns(schema, { preset = '', action = '', actionEvery = false, 
   const rows = [];
   let send = null, out = null;
   for (let t = 1; t <= N; t++) {
-    if (action && (t === 1 || actionEvery)) {
+    if (action && (t === 1 || actionEvery) && !st.meta?.armed?.[action]) { // 이미 무장된 hold를 또 토글하면 꺼진다 (v1.14.11)
       const tg = engine.toggleAction(schema, st, action);
       if (tg.blocked) { if (t === 1) blocked = tg.blocked; } else st = tg.state;
     }

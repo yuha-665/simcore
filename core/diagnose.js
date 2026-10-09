@@ -8,7 +8,7 @@ const liveTags = (schema) => (Array.isArray(schema.liveChoices) ? schema.liveCho
 const engine = require('./engine');
 const { validateSchema } = require('./validate');
 const { seededRng } = require('./rng');
-const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN } = require('./time');
+const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN, TURN_MIN_KEY } = require('./time');
 const { scenarioConfig } = require('./scenario');
 const { secretsConfig, secKey } = require('./secret'); // 비밀 (v1.10.0) — 영영 안 열리는 단계 진단
 const { evaluate, truthy, referencedVars } = require('./expr');
@@ -39,7 +39,8 @@ function pickLoseVar(schema) {
 function writerMap(schema) {
   const w = {};
   const add = (id, who) => { if (id) (w[id] = w[id] || new Set()).add(who); };
-  for (const r of (schema.rules?.onTurn || [])) add(r.set ?? r.list, 'onTurn');
+  // expire만 있는 정리 규칙은 쓰기 자리가 아니다 (v1.14.11 — 빼기만 하고 keepOverdue면 아무것도 안 바꾼다)
+  for (const r of (schema.rules?.onTurn || [])) { if (r && r.list && r.add == null && r.remove == null) continue; add(r.set ?? r.list, 'onTurn'); }
   for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '이벤트');
   for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
   for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
@@ -47,11 +48,14 @@ function writerMap(schema) {
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
     for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
-  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '선택');
+  // 보조 갈림길은 보조 AI가 항목을 써야만 걸린다 — 시뮬 밖 (v1.14.11, 전엔 '선택'으로 섞여 '안 움직임' 오탐)
+  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '보조선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   // 채팅 명령(v.cmd) — 유저가 /수위 0 처럼 직접 바꾼다. 시뮬은 못 움직이지만 "바꾸는 곳이 없다"는 거짓이다
   // (v1.13.1 — 베리디아 nsfw_on이 🔴 고정 변수로 오탐. 편성표·달력과 같은 이유로 쓰기 경로에 넣는다)
   for (const v of (schema.vars || [])) if (v && v.cmd) add(v.id, '명령');
+  // 최초설정 범위 (v1.14.11): 목록이 없으면 엔진은 **모든 변수**를 허용한다 (engine setupPhase)
+  if (schema.setup?.ai?.enabled && !Array.isArray(schema.setup.ai.vars)) for (const v of (schema.vars || [])) add(v.id, '최초설정');
   for (const id of (schema.setup?.ai?.vars || [])) add(id, '최초설정');
   for (const p of (schema.setup?.presets || [])) for (const id of Object.keys(p.set || {})) add(id, '새 시작');
   // 편성표(v0.55) — 슬롯 변수는 유저가 팝업에서 바꾼다. 시뮬은 못 움직이지만
@@ -74,6 +78,13 @@ function writerMap(schema) {
   if (qb && typeof qb === 'object' && !Array.isArray(qb)) {
     if (qb.listVar) add(qb.listVar, '의뢰판');
     for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
+  }
+  // 무대 뒤 단계 효과·전투 결착 효과·상점 거래 (v1.14.11 — 빠져 있어 '고정 변수' 오탐)
+  for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) add(e.set ?? e.list, '무대 뒤');
+  for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) add(e.set ?? e.list, '판정');
+  for (const sh of require('./shop').shopConfigs(schema)) {
+    add(sh.currency, '상점'); add(sh.buyTo, '상점'); add(sh.sellFrom, '상점');
+    for (const ex of (Array.isArray(sh.exchange) ? sh.exchange : [])) add(ex?.var, '상점');
   }
   return w;
 }
@@ -102,10 +113,27 @@ function inRange(schema, id, op, need) {
   return true;
 }
 
-function aiGated(schema, b, turns) {
+function aiGated(schema, b, turns, ctx = null) {
   if (!b) return false;
-  const a = (schema.updater?.allow || []).find((x) => x.id === b.id);
-  if (!a) return false;
+  const allow = schema.updater?.allow || [];
+  const a = allow.find((x) => x.id === b.id);
+  if (!a) {
+    // 파생 투과 (v1.14.11) — 문턱 변수가 AI 변수들의 파생(rel_top = max(rel_n, …))이면 AI가 움직이는 것이다
+    const d = (schema.derived || []).find((x) => x.id === b.id);
+    if (d) {
+      let refs = [];
+      try { refs = referencedVars(d.expr).filter((id) => schema.vars.some((v) => v.id === id)); } catch { refs = []; }
+      if (refs.length && refs.every((id) => allow.some((x) => x.id === id))) return true;
+    }
+    return false;
+  }
+  // 게이트 (v1.14.11) — 액션 잠금은 그 액션이 한 번이라도 쓸 수 있어야, 조건 잠금은 조건이 한 번이라도 참이어야 AI가 움직인다.
+  // 전엔 allow에 있기만 하면 면책해 잠긴 변수 뒤의 죽은 콘텐츠가 숨었다
+  if (ctx) {
+    if (a.whenArmed && ![].concat(a.whenArmed).some((id) => ctx.everAvail[id])) return false;
+    if (typeof a.when === 'string' && a.when.trim()
+        && !ctx.states.some((vars) => { try { return truthy(evaluate(a.when, engine.makeLookup(schema, vars), null)); } catch { return false; } })) return false;
+  }
   const up = b.op === '>=' || b.op === '>';
   const cap = (up ? a.maxGain : a.maxLoss) ?? a.maxDelta;
   if (cap === 0) return false;
@@ -442,11 +470,14 @@ function diagnose(schema, opts = {}) {
   // 월세(dom == 1)·계절 이벤트가 전부 "죽은 이벤트"로 오탐된다 (설계 문서의 가장 중요한 함정).
   // 그래서 진단은 **턴마다 하루**가 지난다고 가정하고 굴린다.
   const TCFG = timeConfig(schema);
+  const DC_ACTION = engine.dayCloseAction(schema); // 하루 닫기 버튼 (v1.14.11 — 있으면 매 턴 '서사가 하루를 넘긴 것'으로 대리 정산)
+  const HAS_SKIP_DAY = schema.vars.some((v) => v.id === SKIP_DAY);
+  let gateCtx = null; // aiGated가 보는 게이트 문맥 (v1.14.11) — 판을 다 굴린 뒤 채운다
   if (TCFG && TCFG.advance === 'explicit') {
     stats.timeAssumed = '1일/턴';
     add('low', '시간 가정',
       '시간 진행이 명시적(explicit)이라 시뮬레이션에서는 시간이 저절로 안 흐릅니다 — '
-      + '이 진단은 턴마다 하루가 지난다고 가정하고 굴렸습니다. 실제 플레이 속도가 다르면 '
+      + '이 진단은 턴마다 하루가 지난다고 가정하고 굴렸습니다(하루 닫기 버튼이 있으면 매 턴 그 정산을, 없으면 skip_day=1을 실어). 실제 플레이 속도가 다르면 '
       + '날짜 조건 이벤트의 발동 시점도 그만큼 다릅니다.', null);
   }
 
@@ -499,7 +530,7 @@ function diagnose(schema, opts = {}) {
       try { avail = ACT.filter((a) => engine.actionAvailability(schema, st, a).ok); } catch (e) { /* 조건 평가 실패는 무시 */ }
       for (const a of avail) everAvail[a.id] = true;
       const pick = policy ? policy(avail, st, i, seed) : null;
-      if (pick) { const t = engine.toggleAction(schema, st, pick.id); if (t.armed) st = t.state; }
+      if (pick) { const t = engine.toggleAction(schema, st, pick.id); if (!t.blocked) st = t.state; } // 끄는 토글도 받는다 (v1.14.11 — hold가 영영 무장이던 것)
       // 갈림길 (v1.13.1) — 놀이 판(policy 있음)은 사람처럼 고른다: 걸린 갈림길의 열린 선택지 중 시드로 하나.
       // 전엔 아무 판도 안 골라 타임아웃(맨 끝 = "외면한다")만 났다 — 허가·수락 같은 앞 선택지로만 열리는 상태가
       // 시뮬에 영영 안 와서, 그 뒤에 달린 액션·이벤트가 전부 "못 쓴다·죽었다"로 오탐됐다 (베리디아 길드 허가).
@@ -520,11 +551,26 @@ function diagnose(schema, opts = {}) {
         }
       }
       st = engine.sendPhase(schema, st, { rng: seededRng(seed, i, 'send') }).state;
-      const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out') });
+      // 하루/턴 가정 (v1.14.11) — 전엔 outputPhase **뒤에** epoch만 올려 turn_min이 늘 0이었다: 게이지 랜덤 사건(perDay)·무대 뒤 시계가
+      // 진단에서 영영 안 움직여 베리디아에서 '죽은 이벤트' 59건이 났다. 이제 응답 단계 **전에** 하루를 싣는다 — 하루 닫기 버튼이 있는
+      // 봇은 서사가 하루를 넘긴 것으로(dayPassed → 대리 정산이 효과·시간을 돌린다), 없으면 skip_day=1을 넣어 consumeTimeSkips가 소비한다.
+      // 전송 단계가 이미 시간을 굳힌 턴(액션 핀·버튼)이면 더 싣지 않는다 — 이중 진행 방지
+      let dayPassed = false;
+      if (TCFG && TCFG.advance === 'explicit' && !((Number(st.vars[TURN_MIN_KEY]) || 0) > 0)) {
+        if (DC_ACTION) { if (!st.meta?.firedThisSend?.[DC_ACTION.id]) dayPassed = true; }
+        else if (HAS_SKIP_DAY) st.vars[SKIP_DAY] = Math.max(1, Number(st.vars[SKIP_DAY]) || 0);
+      }
+      const o = engine.outputPhase(schema, st, {}, {}, { rng: seededRng(seed, i, 'out'), dayPassed });
       st = o.state;
-      // 명시적 시간 진행의 하루/턴 가정 — outputPhase 뒤에 굳혀야 다음 턴의 이벤트가 새 날짜를 본다
-      if (TCFG && TCFG.advance === 'explicit') {
+      // 하루 닫기도 skip_day도 없는 명시적 봇 — 옛 방식대로 날짜만 올린다 (turn_min은 못 채운다)
+      if (TCFG && TCFG.advance === 'explicit' && !DC_ACTION && !HAS_SKIP_DAY) {
         st.vars[EPOCH_KEY] = (typeof st.vars[EPOCH_KEY] === 'number' ? st.vars[EPOCH_KEY] : TCFG.startEpoch) + MIN_PER_DAY;
+      }
+      // 되감기 = 패배 (v1.14.11) — 회귀물 봇은 게임오버가 dead 플래그가 아니라 checkpoint load다. 전엔 "아무것도 안 해도 전부 생존"
+      if (lost === null && o.changeLog.some((c) => c.source?.startsWith('checkpoint:') && String(c.to).startsWith('되감기 ('))) {
+        lost = i + 1;
+        lostBy = o.firedEvents.find((id) => loseSetters.has(id)) ?? o.firedEvents[0] ?? '되감기';
+        lostAt = [];
       }
       // once 재교차 관측 — 발동 후 조건이 거짓→참으로 다시 넘어오는 순간을 센다 (기준 판만)
       if (!opts.quiet && ONCE_EVS.length) {
@@ -569,7 +615,7 @@ function diagnose(schema, opts = {}) {
   // 국면 전환은 가끔 하는 것이므로 5턴에 한 번만 후보에 넣는다.
   const NUMERIC_IDS = new Set(schema.vars.filter((x) => x.type !== 'enum' && x.type !== 'bool').map((x) => x.id));
   const isPolicySwitch = (a) => (a.effects || []).length > 0
-    && (a.effects || []).every((f) => !NUMERIC_IDS.has(f.set ?? f.list));
+    && (a.effects || []).every((f) => (f.set ?? f.list) != null && !NUMERIC_IDS.has(f.set ?? f.list)); // {gauge}·{front}·{checkpoint}만 있는 액션은 정책 전환이 아니다 (v1.14.11)
   const POLICY_IDS = new Set(ACT.filter(isPolicySwitch).map((a) => a.id));
   const randomPolicy = (av, st, i, seed) => {
     const pool = (i % 5 === 0) ? av : av.filter((a) => !POLICY_IDS.has(a.id));
@@ -614,7 +660,8 @@ function diagnose(schema, opts = {}) {
     const byDrain = tally((r) => (r.lostAt?.length ? `${r.lostAt.slice(0, 2).join('·')} 바닥` : '원인 불명'));
     stats.lossCauses = byDrain.length > byEvent.length ? byDrain : byEvent;
 
-    const everFiredAll = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired)));
+    const evIdSet = new Set(allEv.map((e) => e.id));
+    const everFiredAll = new Set([...idle, ...play].flatMap((r) => Object.keys(r.fired).filter((id) => evIdSet.has(id)))); // 막·비밀·무대 뒤 id는 뺀다 (v1.14.11)
     stats.eventCoverage = allEv.length ? [everFiredAll.size, allEv.length] : null;
 
     // 한 원인이 8할이면 나머지 위협은 장식이다.
@@ -819,6 +866,8 @@ function diagnose(schema, opts = {}) {
   // 래치 짝을 제대로 만든 봇일수록 손해를 본다: 위기가 안 뜨면 → 경보가 안 켜지고 → 회복도 안 뜨고
   // → 경보 변수도 '안 움직임'. 하나짜리 원인이 지적 셋이 된다 (실측: 맨션봇 시설 4종 = 12건).
   const finalStates = [...idle, ...play].map((r) => r.st.vars);
+  // aiGated 게이트 문맥 (v1.14.11) — 쓸 수 있었던 액션·지나온 상태 표본
+  gateCtx = { everAvail: Object.assign({}, ...[...idle, ...play].map((r) => r.everAvail)), states: [...idle, ...play].flatMap((r) => r.hist.filter((_, k) => k % 5 === 0)) };
   // v1.13.4 — 이벤트 효과만이 아니라 **그 이벤트의 갈림길 효과·랜덤 이벤트 효과**, 그리고 **한 번도 안 열린 버튼**의 효과도
   // 같은 그늘이다 (베리디아 혼담: 청혼(랜덤·보조 문턱)이 안 뜨면 → 받아들임(선택)이 세우는 배필·혼례일이 안 서고 → 혼례 여덟이 🟡,
   // 혼례 전에만 열리는 💔 파기 버튼이 🔴). 쓰는 곳이 전부 이벤트 계열(+ 안 열린 버튼)이고 그게 다 안 떴을 때만 — 매 턴 처리·보조·
@@ -920,7 +969,7 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
-    if (aiGated(schema, b, turns)) {
+    if (aiGated(schema, b, turns, gateCtx)) {
       stats.deadEvents--;
       stats.aiGated = (stats.aiGated ?? 0) + 1;
       add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 `
@@ -985,7 +1034,7 @@ function diagnose(schema, opts = {}) {
           + restNote, null);
       } else if (onlyLonger(`scenario:${act.id}`, 'event')) {
         add('low', '후반부 막', `'${aname}' 막은 ${turns}턴 안에 안 열렸습니다 — ${where}. ${laterNote}${restNote}`, null);
-      } else if (aiGated(schema, b, turns)) {
+      } else if (aiGated(schema, b, turns, gateCtx)) {
         add('low', 'AI 담당 문턱', `'${aname}' 막 미해금 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 서사에 따라 `
           + '움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — **문턱을 내리지 마세요.** '
           + `실제로 열리는지는 채팅을 몇 턴 돌려서 보세요.${restNote}`, null);
@@ -1035,7 +1084,7 @@ function diagnose(schema, opts = {}) {
         + restNote, null);
     } else if (onlyLonger(`secret:${s.id}:${next}`, 'event')) {
       add('low', '후반부 비밀', `비밀 '${name}'의 ${next + 1}단계는 ${turns}턴 안에 안 열렸습니다 — ${where}. ${laterNote}${restNote}`, null);
-    } else if (aiGated(schema, b, turns)) {
+    } else if (aiGated(schema, b, turns, gateCtx)) {
       add('low', 'AI 담당 문턱', `비밀 '${name}'의 ${next + 1}단계 미공개 — ${where}. 다만 '${b.id}'은(는) 보조 AI가 서사에 따라 `
         + '움직이는 값이라, AI 없이 굴리는 이 진단에서는 시작값 근처에 머뭅니다 — **문턱을 내리지 마세요.** '
         + `실제로 열리는지는 채팅을 몇 턴 돌려서 보세요.${restNote}`, null);
@@ -1090,7 +1139,7 @@ function diagnose(schema, opts = {}) {
           + '실제로 열리는지는 채팅에서 편성한 뒤 확인하세요.', null);
         continue;
       }
-      if (aiGated(schema, b, turns)) {
+      if (aiGated(schema, b, turns, gateCtx)) {
         stats.aiGated = (stats.aiGated ?? 0) + 1;
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
           + `다만 '${b.id}'은(는) 보조 AI가 서사에 따라 움직이는 값이라, AI 없이 굴리는 이 진단에서는 `
@@ -1166,26 +1215,32 @@ function diagnose(schema, opts = {}) {
       };
 
       const impact = [];
+      // 시간 예산 (v1.14.11) — 액션 수의 제곱으로 자라 아이돌 템플릿이 2분 동안 편집기를 멈췄다. 예산을 넘기면 나머지는 건너뛰고 표시한다
+      const impactT0 = Date.now();
+      const impactBudget = opts.impactBudgetMs ?? 8000;
+      const impactSkipped = [];
       for (const a of ACT) {
         if (ACT.length < 2) break;
         if (isPolicySwitch(a)) continue;
+        if (Date.now() - impactT0 > impactBudget) { impactSkipped.push(a.label ?? a.id); continue; }
         let paired;
         try {
           paired = Array.from({ length: impactRuns }, (_, k) => {
             const seed = `on${k}`;
             // 짝비교는 갈림길을 안 고른다 (v1.13.1) — 무작위 고르기가 끼면 버튼의 몫과 고른 운이 섞여 좀비 '뒤진다'가
             // 함정으로 오탐됐다. 버튼 하나의 기여만 재는 자리라 예전 기준(타임아웃)을 그대로 쓴다.
-            const on = sim(seed, onPick(a), turns, { pickChoices: false });
-            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false });
+            const on = sim(seed, onPick(a), turns, { pickChoices: false, quiet: true });
+            const off = sim(seed, (av, st, i, s) => rest(av, a, s, i), turns, { pickChoices: false, quiet: true });
             return (on.lost ?? turns) - (off.lost ?? turns);
           });
-        } catch (e) { continue; }
+        } catch (e) { impactSkipped.push((a.label ?? a.id) + ' (오류)'); continue; }
         impact.push({ id: a.id, label: a.label ?? a.id, delta: mean(paired), ci: ci95(paired),
           n: impactRuns, exempt: !!a.impactExempt });
       }
       impact.sort((p, q) => q.delta - p.delta);
       stats.actionImpact = impact;
       stats.impactRuns = impactRuns;
+      if (impactSkipped.length) stats.impactSkipped = impactSkipped;
       // 전부 끝까지 살아남으면 두 판의 수명이 똑같이 `turns`라 차이가 0으로 깔린다.
       // 표가 전부 "구분 안 됨"으로 나오는 게 액션 탓이 아니라 판이 짧아서라는 걸 알려야 한다.
       stats.impactSaturated = stats.playSurvive === runs
@@ -1368,7 +1423,7 @@ function diagnose(schema, opts = {}) {
 /** 지적 하나를 회차 사이에서 같은 것으로 알아보기 위한 열쇠 (수치는 매번 달라지므로 뺀다) */
 function findingKey(f) {
   const id = /'([^']+)'/.exec(f.text);
-  return `${f.tag}|${id ? id[1] : f.text.slice(0, 30)}`;
+  return `${f.tag}|${id ? id[1] : f.text.replace(/\d+/g, '#').slice(0, 30)}`; // 수치가 바뀌어도 같은 지적 (v1.14.11)
 }
 
 /**

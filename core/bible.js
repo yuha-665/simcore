@@ -27,7 +27,8 @@ const SECTION_KEYS = ['id', 'kind', 'name', 'keys', 'always', 'body', 'order'];
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const clip = (s, n) => (s.length > n ? s.slice(0, n) : s);
 const str = (v, n) => clip(typeof v === 'string' ? v : (v == null ? '' : String(v)), n);
-const byteLen = (s) => Buffer.byteLength(String(s), 'utf8');
+// ⚠ 브라우저에는 Buffer가 없다 (v1.16.1 실사고 — 봇 제작 층이 ReferenceError로 비었다). TextEncoder는 노드·브라우저 둘 다 있다.
+const byteLen = (s) => new TextEncoder().encode(String(s)).length;
 
 function slugify(name, fallback = 'sec') {
   const s = String(name ?? '').toLowerCase().replace(/[^a-z0-9가-힣_-]+/g, '-').replace(/^-+|-+$/g, '');

@@ -21,6 +21,7 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 설정집 저장 통로 — 캐릭터별 pluginStorage (카드·번들에 안 실림)', src.includes('sim:bible:${currentChaId}') && src.includes('loadBible: async') && src.includes('saveBible: async'), '');
   ck('★ 내보내기 버튼 셋', ['📋 로어북 JSON 복사', '⬇ lorebook.json', '📋 캐릭터 시트 복사'].every((t) => src.includes(t)), '');
   ck('★ 💬 어시스턴트에게 보내기 — sim 요청문을 💬 입력칸에', src.includes("'💬 어시스턴트에게 보내기'") && src.includes('chat.draft = bibleMod.simRequestText(bible)'), '');
+  ck('★ 번들에 Node 전용 Buffer 참조 없음 (v1.16.2 실사고 — 브라우저엔 Buffer가 없어 봇 제작 층이 비었다)', !/\bBuffer\s*\./.test(src) && src.includes('new TextEncoder().encode(String(s)).length'), '');
   ck('★ 버전 1.16.x + display-name', src.includes('//@version 1.16.') && /\/\/@display-name .*v1\.16\./.test(src), '');
 }
 

@@ -905,7 +905,15 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
 
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
-    if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
+    if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) {
+      // oneshot은 그 턴에 무장을 푼다 (v1.14.12) — 전엔 무장이 남아 몇 턴 뒤 조건이 맞는 순간 유저가 잊은 액션이 터졌다.
+      // hold는 상태라 둔다(조건이 돌아오면 다시 효과를 낸다). 원장에 남겨 패널 로그·보조 원장이 "취소"를 본다.
+      if ((action.mode || 'oneshot') === 'oneshot') {
+        delete state.meta.armed[action.id];
+        changeLog.push({ id: '액션', from: null, to: `${action.label || action.id} 취소 — 조건 미충족`, source: `action:${action.id}` });
+      }
+      continue;
+    }
     // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
     // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
     let checkResult = null;
@@ -1678,8 +1686,12 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
       const g = Number(state.vars[GK]) || 0;
       let next = typeof state.vars[NK] === 'string' ? state.vars[NK] : '';
       let nextEv = next ? eligible.find((e) => e.id === next) || null : null;
+      // 뽑아 둔 사건이 그새 후보에서 빠졌으면(조건·쿨다운) 이번 턴엔 **안 터뜨린다** (v1.14.12) — 전엔 딴 사건이 징조 없이
+      // 터졌다(징조를 깔아 놓고 다른 일이 벌어지면 서사가 어긋난다). 징조를 새로 뽑아 한 턴 깔고 다음 턴에 터뜨린다.
+      // 게이지는 가득 찬 채 기다린다(채움은 상한에서 멈춘다).
+      const dropped = !!(next && !nextEv && gcfg.omenAt != null && g >= gcfg.omenAt);
       if (next && (!nextEv || gcfg.omenAt == null || g < gcfg.omenAt)) { state.vars[NK] = ''; next = ''; nextEv = null; }
-      if (!(cool > 0) && eligible.length && g >= GMAX) {
+      if (!(cool > 0) && eligible.length && g >= GMAX && !dropped) {
         // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
         const ev = nextEv || pickOne(eligible);
         if (ev) {
@@ -1787,11 +1799,13 @@ function toggleAction(schema, prevState, actionId) {
   if (!action) return { state, armed: false, blocked: '알 수 없는 액션' };
   if (state.meta.armed[actionId]) {
     delete state.meta.armed[actionId];
+    if (state.meta.autoArmed) delete state.meta.autoArmed[actionId];   // 손으로 끈 것 — 낱말 창 판정에서 빠진다 (v1.14.12)
     return { state, armed: false };
   }
   const avail = actionAvailability(schema, state, action);
   if (!avail.ok) return { state, armed: false, blocked: avail.reason };
   state.meta.armed[actionId] = true;
+  if (state.meta.autoArmed) delete state.meta.autoArmed[actionId];     // 손으로 켠 hold는 낱말이 사라져도 안 끈다
   return { state, armed: true };
 }
 
@@ -1799,19 +1813,40 @@ function toggleAction(schema, prevState, actionId) {
 // 판정(채집·조합·납품·교전)은 버튼이 유일한 통로였다 — "버튼 안 누르면 서사로만 지나가 주사위가 안 구른다"
 // (아틀리에 실기). 유저가 글로 의도를 밝히면 그게 곧 버튼이다. 이미 무장이면 손대지 않고(끄지 않는다),
 // when·쿨다운은 toggleAction이 그대로 본다 — 조건 미충족이면 skipped에 이유가 남는다.
-function autoArmActions(schema, prevState, text) {
+// hold 모드 (v1.14.12) — 로어북 스캔 깊이처럼 **최근 메시지 창**(이번 글 + 앞 4개) 안에 낱말이 있는 동안만 켜 둔다. 창에서 낱말이
+// 사라지면 끈다(released). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다. 버튼·명령으로 켠 hold는 건드리지 않는다
+// (낱말로 켠 것만 meta.autoArmed에 적는다). 켜는 쪽은 여전히 이번 글만 본다 — 손으로 끈 직후 옛 글의 낱말로 도로 켜지지 않게.
+// 창을 모르면(opts.recent 없음 — 채팅을 못 읽은 어댑터·진단) 끄지 않는다.
+const HOLD_KEYWORD_DEPTH = 5;
+function autoArmActions(schema, prevState, text, opts = {}) {
   const acts = (schema?.actions || []).filter((a) => a && Array.isArray(a.keywords) && a.keywords.length);
   const t = String(text || '');
-  if (!acts.length || !t.trim()) return { state: prevState, armed: [], skipped: [] };
+  const recent = Array.isArray(opts.recent) ? opts.recent.slice(-(HOLD_KEYWORD_DEPTH - 1)).map((x) => String(x || '')) : null;
+  const auto = prevState?.meta?.autoArmed || {};
+  const liveAuto = !!recent && acts.some((a) => a.mode === 'hold' && auto[a.id] && prevState?.meta?.armed?.[a.id]);
+  if (!acts.length || (!t.trim() && !liveAuto)) return { state: prevState, armed: [], skipped: [], released: [] };
+  const hit = (a, str) => a.keywords.some((k) => k && str.includes(String(k)));
   let state = prevState;
-  const armed = [], skipped = [];
+  const armed = [], skipped = [], released = [];
   for (const a of acts) {
-    if (!a.keywords.some((k) => k && t.includes(String(k)))) continue;
-    if (state.meta?.armed?.[a.id]) continue;
+    const isHold = a.mode === 'hold';
+    const inNow = hit(a, t);
+    if (state.meta?.armed?.[a.id]) {
+      if (isHold && state.meta.autoArmed?.[a.id] && !inNow && recent && !recent.some((m) => hit(a, m))) {
+        state = toggleAction(schema, state, a.id).state;   // 켜져 있으니 끈다 (autoArmed도 같이 지운다)
+        released.push(a.id);
+      }
+      continue;
+    }
+    if (!inNow) continue;
     const r = toggleAction(schema, state, a.id);
-    if (r.armed) { state = r.state; armed.push(a.id); } else skipped.push({ id: a.id, reason: r.blocked || '?' });
+    if (r.armed) {
+      state = r.state;
+      if (isHold) state.meta.autoArmed = { ...(state.meta.autoArmed || {}), [a.id]: true };
+      armed.push(a.id);
+    } else skipped.push({ id: a.id, reason: r.blocked || '?' });
   }
-  return { state, armed, skipped };
+  return { state, armed, skipped, released };
 }
 
 function actionAvailability(schema, state, action) {

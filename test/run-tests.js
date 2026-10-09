@@ -1450,6 +1450,77 @@ test('customCSS 스코핑', () => {
 });
 
 // ═══════════════════════ 실행 & 결과 ═══════════════════════
+test('oneshot 무장이 조건 미충족이면 그 턴에 풀린다, hold는 남는다 (v1.14.12)', () => {
+  const S = {
+    simcore: '0.1', meta: { name: 'x' },
+    vars: [{ id: 'place', label: '위치', type: 'enum', enum: ['마을', '들판'], init: '마을' }, { id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100 }],
+    actions: [
+      { id: 'gather', label: '채집', mode: 'oneshot', when: "place == '들판'", effects: [{ set: 'hp', expr: 'hp - 5' }] },
+      { id: 'sneak', label: '잠입', mode: 'hold', when: "place == '들판'", inject: '[잠입 중]', effects: [] },
+    ],
+  };
+  assert.ok(validateSchema(S).ok, JSON.stringify(validateSchema(S).errors));
+  let st = engine.initState(S); st.meta.setupDone = true; st.vars.place = '들판';
+  st = engine.toggleAction(S, st, 'gather').state; st = engine.toggleAction(S, st, 'sneak').state;
+  st.vars.place = '마을';
+  const r = engine.sendPhase(S, st, {});
+  assert.strictEqual(r.state.meta.armed.gather, undefined, 'oneshot 해제');
+  assert.strictEqual(r.state.meta.armed.sneak, true, 'hold 유지');
+  assert.strictEqual(r.state.vars.hp, 50);
+  assert.ok(r.changeLog.some((c) => c.id === '액션' && c.source === 'action:gather' && /취소/.test(c.to)), JSON.stringify(r.changeLog));
+  assert.ok(!r.promptBlock.includes('[잠입 중]'));
+  const html = renderStatusHtml({ ...S, statusUI: { mode: 'auto', changeLog: 'open', groups: [{ label: '상태', items: [{ var: 'hp' }] }] } }, r.state, r.changeLog);
+  assert.ok(html.includes('🧭') && html.includes('취소'), html);
+});
+
+test('징조로 뽑아 둔 사건이 후보에서 빠지면 그 턴은 안 터뜨리고 다시 뽑는다 (v1.14.12)', () => {
+  const S = {
+    simcore: '0.1', meta: { name: 'x' },
+    vars: [{ id: 'calm', label: '잠잠', type: 'bool', init: true }, { id: 'gold', label: '금', type: 'int', init: 0, min: 0 }],
+    rules: { randomEvents: { gauge: { perTurn: 100, jitter: 0, omenAt: 50 }, table: [
+      { id: 'rain', weight: 1, when: 'calm', omen: '구름이 낀다', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+      { id: 'wind', weight: 1, omen: '바람이 분다', effects: [{ set: 'gold', expr: 'gold + 10' }] },
+    ] } },
+  };
+  assert.ok(validateSchema(S).ok, JSON.stringify(validateSchema(S).errors));
+  let st = engine.initState(S); st.meta.setupDone = true;
+  st.vars.re_gauge = 100; st.vars.re_next = 'rain'; st.vars.calm = false;
+  const o1 = engine.outputPhase(S, st, {}, {}, { rng: seededRng('om', 1, 'o') });
+  assert.deepStrictEqual(o1.firedEvents, [], '빠진 사건 대신 딴 사건이 터지면 안 된다');
+  assert.strictEqual(o1.state.vars.re_next, 'wind', '징조를 다시 뽑는다');
+  assert.strictEqual(o1.state.vars.re_gauge, 100, '게이지는 가득 찬 채 기다린다');
+  const o2 = engine.outputPhase(S, o1.state, {}, {}, { rng: seededRng('om', 2, 'o') });
+  assert.deepStrictEqual(o2.firedEvents, ['wind'], '다음 턴에 새 징조의 사건이 터진다');
+  assert.strictEqual(o2.state.vars.gold, 10);
+});
+
+test('hold 낱말 무장은 최근 창에서 낱말이 사라지면 풀린다; 손으로 켠 hold는 그대로 (v1.14.12)', () => {
+  const S = { simcore: '0.1', meta: { name: 'x' }, vars: [{ id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100 }],
+    actions: [
+      { id: 'sneak', label: '잠입', mode: 'hold', keywords: ['잠입'], inject: '[잠입 중]', effects: [] },
+      { id: 'gather', label: '채집', mode: 'oneshot', keywords: ['채집'], effects: [{ set: 'hp', expr: 'hp - 1' }] },
+    ] };
+  assert.ok(validateSchema(S).ok, JSON.stringify(validateSchema(S).errors));
+  const st = engine.initState(S); st.meta.setupDone = true;
+  const r1 = engine.autoArmActions(S, st, '몰래 잠입한다', { recent: [] });
+  assert.deepStrictEqual(r1.armed, ['sneak']); assert.strictEqual(r1.state.meta.autoArmed.sneak, true);
+  const r2 = engine.autoArmActions(S, r1.state, '안쪽으로 간다', { recent: ['…', '몰래 잠입한다', '경비가 지나간다'] });
+  assert.deepStrictEqual(r2.released, []); assert.strictEqual(r2.state.meta.armed.sneak, true, '창 안에 낱말 — 유지');
+  const r3 = engine.autoArmActions(S, r2.state, '밖으로 나온다', { recent: ['a', 'b', 'c', 'd'] });
+  assert.deepStrictEqual(r3.released, ['sneak']); assert.strictEqual(r3.state.meta.armed.sneak, undefined); assert.strictEqual(r3.state.meta.autoArmed.sneak, undefined);
+  const r4 = engine.autoArmActions(S, r1.state, '밖으로 나온다');
+  assert.deepStrictEqual(r4.released, []); assert.strictEqual(r4.state.meta.armed.sneak, true, '창을 모르면 끄지 않는다');
+  const r5 = engine.autoArmActions(S, st, '그냥 걷는다', { recent: ['몰래 잠입한다'] });
+  assert.deepStrictEqual(r5.armed, [], '켜는 쪽은 이번 글만');
+  const manual = engine.toggleAction(S, st, 'sneak').state;
+  const r6 = engine.autoArmActions(S, manual, '밖으로 나온다', { recent: [] });
+  assert.deepStrictEqual(r6.released, []); assert.strictEqual(r6.state.meta.armed.sneak, true, '손으로 켠 hold는 그대로');
+  const off = engine.toggleAction(S, r1.state, 'sneak').state;
+  assert.strictEqual(off.meta.autoArmed.sneak, undefined, '손으로 끄면 autoArmed도 지운다');
+  const r7 = engine.autoArmActions(S, st, '채집한다', { recent: [] });
+  assert.deepStrictEqual(r7.armed, ['gather']); assert.strictEqual(r7.state.meta.autoArmed?.gather, undefined, 'oneshot은 창과 무관');
+});
+
 (async () => {
   let passed = 0, failed = 0;
   const failures = [];

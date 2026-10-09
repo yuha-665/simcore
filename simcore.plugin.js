@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.11
-//@display-name SimCore (시뮬 엔진) v1.14.11 점검 7차
+//@version 1.14.12
+//@display-name SimCore (시뮬 엔진) v1.14.12 보류 후속 1차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,18 +10,14 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.11 ──────────────────────────────────────────────
-// **전체 점검 7차 — 진단 (영역 9).** 진단이 엔진을 따라오지 못한 자리들. 읽기 감사 후보를 node로 재현한 것만.
-// - [시간] 하루/턴 가정을 응답 단계 **전에** 싣는다 — 전엔 뒤에 epoch만 올려 turn_min이 늘 0이라 게이지 랜덤 사건·무대 뒤 시계가 진단에서
-//   영영 안 움직였다(베리디아 '죽은 이벤트' 59건). 하루 닫기 버튼이 있는 봇은 매 턴 dayPassed로 그 정산을, 없으면 skip_day=1.
-// - [패배] 체크포인트 되감기를 패배로 센다(회귀물 봇이 "전부 생존"으로 나오던 것). [기여도] 액션 수의 제곱으로 자라 2분 동안 편집기를
-//   멈추던 것 — 시간 예산 8초(넘기면 건너뛰고 표시)·quiet·예외 기록.
-// - [AI 면책] allow의 액션 잠금·조건 잠금을 존중(잠긴 변수 뒤의 죽은 콘텐츠가 숨던 것), AI 변수들의 파생은 AI로 본다.
-// - [쓰기 자리] 무대 뒤 단계 효과·전투 결착·상점 거래·목록 없는 최초설정 추가('고정 변수' 오탐). 보조 갈림길은 시뮬 밖, expire만 있는
-//   정리 규칙은 쓰기 아님('안 움직임' 오탐). {gauge}·{front}만 있는 액션은 정책 전환이 아니다. 커버리지 분자에서 막·비밀·무대 뒤 id 제외.
-// - [열쇠] 지적 열쇠에서 수치 제거(비교 잡음). [🧪 시험] "매 턴"이 이미 무장된 hold를 끄던 것.
-// - 보류(알고리즘 재설계): bottleneck의 중첩 or·좌변 산술·not·우변 식(AST 필요), 극성 판정을 판 끝 상태로만 보는 것, 게이지 후보였던 사건을
-//   '죽은 이벤트'로 보고하는 것·달력 문턱 처방.
+// ── v1.14.12 ──────────────────────────────────────────────
+// **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**
+// - [징조] 뽑아 둔 사건이 터질 때 후보에서 빠져 있으면(조건·쿨다운) 그 턴은 안 터뜨리고 징조를 새로 뽑는다 — 전엔 딴 사건이 징조 없이 터졌다.
+// - [낱말 무장] hold 액션은 로어북 스캔 깊이처럼 최근 메시지 창(이번 글 + 앞 4개)에 낱말이 있는 동안만 켜 둔다. 창에서 사라지면 끈다.
+//   버튼·명령으로 켠 hold는 그대로(낱말로 켠 것만 meta.autoArmed). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다.
+// - [oneshot] 무장한 채 조건 미충족으로 못 쏜 턴에 무장을 풀고 원장에 "취소 — 조건 미충족"을 남긴다 — 전엔 남아 몇 턴 뒤 터졌다.
+// - [초기화] 상태 완전 초기화 뒤 첫 전송 전 슬롯에 바로 저장 — 전엔 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다.
+// - [문구] 턴 진행 중 안내에 "응답이 오지 않고 끝났다면 새 글을 보내면 풀려요".
 
 
 const SimCore = (() => {
@@ -8334,7 +8330,15 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
 
   for (const action of schema.actions || []) {
     if (!state.meta.armed[action.id]) continue;
-    if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) continue;
+    if (action.when && !truthy(evaluate(action.when, makeLookup(schema, state.vars), null))) {
+      // oneshot은 그 턴에 무장을 푼다 (v1.14.12) — 전엔 무장이 남아 몇 턴 뒤 조건이 맞는 순간 유저가 잊은 액션이 터졌다.
+      // hold는 상태라 둔다(조건이 돌아오면 다시 효과를 낸다). 원장에 남겨 패널 로그·보조 원장이 "취소"를 본다.
+      if ((action.mode || 'oneshot') === 'oneshot') {
+        delete state.meta.armed[action.id];
+        changeLog.push({ id: '액션', from: null, to: `${action.label || action.id} 취소 — 조건 미충족`, source: `action:${action.id}` });
+      }
+      continue;
+    }
     // 판정 달린 액션: 먼저 굴린다 — 굴림식이 이점(adv) 같은 소모성 변수를 읽기 때문이다.
     // 순서: 굴림+등급 효과 → 액션 자체 효과. "이점 끄기" 같은 정리는 액션 effects에 둔다.
     let checkResult = null;
@@ -9107,8 +9111,12 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
       const g = Number(state.vars[GK]) || 0;
       let next = typeof state.vars[NK] === 'string' ? state.vars[NK] : '';
       let nextEv = next ? eligible.find((e) => e.id === next) || null : null;
+      // 뽑아 둔 사건이 그새 후보에서 빠졌으면(조건·쿨다운) 이번 턴엔 **안 터뜨린다** (v1.14.12) — 전엔 딴 사건이 징조 없이
+      // 터졌다(징조를 깔아 놓고 다른 일이 벌어지면 서사가 어긋난다). 징조를 새로 뽑아 한 턴 깔고 다음 턴에 터뜨린다.
+      // 게이지는 가득 찬 채 기다린다(채움은 상한에서 멈춘다).
+      const dropped = !!(next && !nextEv && gcfg.omenAt != null && g >= gcfg.omenAt);
       if (next && (!nextEv || gcfg.omenAt == null || g < gcfg.omenAt)) { state.vars[NK] = ''; next = ''; nextEv = null; }
-      if (!(cool > 0) && eligible.length && g >= GMAX) {
+      if (!(cool > 0) && eligible.length && g >= GMAX && !dropped) {
         // 비우고 나서 터뜨린다 — 터진 사건의 효과가 { gauge: +N }(여진)이면 다음 게이지에 얹혀야 한다
         const ev = nextEv || pickOne(eligible);
         if (ev) {
@@ -9216,11 +9224,13 @@ function toggleAction(schema, prevState, actionId) {
   if (!action) return { state, armed: false, blocked: '알 수 없는 액션' };
   if (state.meta.armed[actionId]) {
     delete state.meta.armed[actionId];
+    if (state.meta.autoArmed) delete state.meta.autoArmed[actionId];   // 손으로 끈 것 — 낱말 창 판정에서 빠진다 (v1.14.12)
     return { state, armed: false };
   }
   const avail = actionAvailability(schema, state, action);
   if (!avail.ok) return { state, armed: false, blocked: avail.reason };
   state.meta.armed[actionId] = true;
+  if (state.meta.autoArmed) delete state.meta.autoArmed[actionId];     // 손으로 켠 hold는 낱말이 사라져도 안 끈다
   return { state, armed: true };
 }
 
@@ -9228,19 +9238,40 @@ function toggleAction(schema, prevState, actionId) {
 // 판정(채집·조합·납품·교전)은 버튼이 유일한 통로였다 — "버튼 안 누르면 서사로만 지나가 주사위가 안 구른다"
 // (아틀리에 실기). 유저가 글로 의도를 밝히면 그게 곧 버튼이다. 이미 무장이면 손대지 않고(끄지 않는다),
 // when·쿨다운은 toggleAction이 그대로 본다 — 조건 미충족이면 skipped에 이유가 남는다.
-function autoArmActions(schema, prevState, text) {
+// hold 모드 (v1.14.12) — 로어북 스캔 깊이처럼 **최근 메시지 창**(이번 글 + 앞 4개) 안에 낱말이 있는 동안만 켜 둔다. 창에서 낱말이
+// 사라지면 끈다(released). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다. 버튼·명령으로 켠 hold는 건드리지 않는다
+// (낱말로 켠 것만 meta.autoArmed에 적는다). 켜는 쪽은 여전히 이번 글만 본다 — 손으로 끈 직후 옛 글의 낱말로 도로 켜지지 않게.
+// 창을 모르면(opts.recent 없음 — 채팅을 못 읽은 어댑터·진단) 끄지 않는다.
+const HOLD_KEYWORD_DEPTH = 5;
+function autoArmActions(schema, prevState, text, opts = {}) {
   const acts = (schema?.actions || []).filter((a) => a && Array.isArray(a.keywords) && a.keywords.length);
   const t = String(text || '');
-  if (!acts.length || !t.trim()) return { state: prevState, armed: [], skipped: [] };
+  const recent = Array.isArray(opts.recent) ? opts.recent.slice(-(HOLD_KEYWORD_DEPTH - 1)).map((x) => String(x || '')) : null;
+  const auto = prevState?.meta?.autoArmed || {};
+  const liveAuto = !!recent && acts.some((a) => a.mode === 'hold' && auto[a.id] && prevState?.meta?.armed?.[a.id]);
+  if (!acts.length || (!t.trim() && !liveAuto)) return { state: prevState, armed: [], skipped: [], released: [] };
+  const hit = (a, str) => a.keywords.some((k) => k && str.includes(String(k)));
   let state = prevState;
-  const armed = [], skipped = [];
+  const armed = [], skipped = [], released = [];
   for (const a of acts) {
-    if (!a.keywords.some((k) => k && t.includes(String(k)))) continue;
-    if (state.meta?.armed?.[a.id]) continue;
+    const isHold = a.mode === 'hold';
+    const inNow = hit(a, t);
+    if (state.meta?.armed?.[a.id]) {
+      if (isHold && state.meta.autoArmed?.[a.id] && !inNow && recent && !recent.some((m) => hit(a, m))) {
+        state = toggleAction(schema, state, a.id).state;   // 켜져 있으니 끈다 (autoArmed도 같이 지운다)
+        released.push(a.id);
+      }
+      continue;
+    }
+    if (!inNow) continue;
     const r = toggleAction(schema, state, a.id);
-    if (r.armed) { state = r.state; armed.push(a.id); } else skipped.push({ id: a.id, reason: r.blocked || '?' });
+    if (r.armed) {
+      state = r.state;
+      if (isHold) state.meta.autoArmed = { ...(state.meta.autoArmed || {}), [a.id]: true };
+      armed.push(a.id);
+    } else skipped.push({ id: a.id, reason: r.blocked || '?' });
   }
-  return { state, armed, skipped };
+  return { state, armed, skipped, released };
 }
 
 function actionAvailability(schema, state, action) {
@@ -10512,6 +10543,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         // 갈림길 결정·되감기 줄 (v1.14.8) — 변수 변화가 아니라 사건 요약 (from 없음, to = 요약). 효과의 변수 변화는 아래 diff로
         if ((c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:')) && c.from == null && typeof c.to === 'string') {
           return `<div class="sim-log-item">${c.source.startsWith('choice:') ? '🔀' : '⏪'} ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
+        }
+        // 액션 취소 줄 (v1.14.12) — 조건 미충족으로 풀린 oneshot (id '액션', to = 요약). 효과는 안 돌았으니 변수 변화도 없다
+        if (c.source?.startsWith('action:') && c.id === '액션' && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">🧭 ${esc(String(c.to))}</div>`;
         }
         // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
         if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
@@ -33142,6 +33177,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.11 ──────────────────────────────────────────────
+// **전체 점검 7차 — 진단 (영역 9).** 진단이 엔진을 따라오지 못한 자리들. 읽기 감사 후보를 node로 재현한 것만.
+// - [시간] 하루/턴 가정을 응답 단계 **전에** 싣는다 — 전엔 뒤에 epoch만 올려 turn_min이 늘 0이라 게이지 랜덤 사건·무대 뒤 시계가 진단에서
+//   영영 안 움직였다(베리디아 '죽은 이벤트' 59건). 하루 닫기 버튼이 있는 봇은 매 턴 dayPassed로 그 정산을, 없으면 skip_day=1.
+// - [패배] 체크포인트 되감기를 패배로 센다(회귀물 봇이 "전부 생존"으로 나오던 것). [기여도] 액션 수의 제곱으로 자라 2분 동안 편집기를
+//   멈추던 것 — 시간 예산 8초(넘기면 건너뛰고 표시)·quiet·예외 기록.
+// - [AI 면책] allow의 액션 잠금·조건 잠금을 존중(잠긴 변수 뒤의 죽은 콘텐츠가 숨던 것), AI 변수들의 파생은 AI로 본다.
+// - [쓰기 자리] 무대 뒤 단계 효과·전투 결착·상점 거래·목록 없는 최초설정 추가('고정 변수' 오탐). 보조 갈림길은 시뮬 밖, expire만 있는
+//   정리 규칙은 쓰기 아님('안 움직임' 오탐). {gauge}·{front}만 있는 액션은 정책 전환이 아니다. 커버리지 분자에서 막·비밀·무대 뒤 id 제외.
+// - [열쇠] 지적 열쇠에서 수치 제거(비교 잡음). [🧪 시험] "매 턴"이 이미 무장된 hold를 끄던 것.
+// - 보류(알고리즘 재설계): bottleneck의 중첩 or·좌변 산술·not·우변 식(AST 필요), 극성 판정을 판 끝 상태로만 보는 것, 게이지 후보였던 사건을
+//   '죽은 이벤트'로 보고하는 것·달력 문턱 처방.
+
 // ── v1.14.10 ──────────────────────────────────────────────
 // **전체 점검 6차 — 어댑터의 리수 통합 (영역 7).** 리수 번들(포켓리스 1.8.1)로 호출 경로를 확인한 읽기 감사 후보 중 코드로 재확인한 것.
 // - [턴 판정] type 'model' 요청을 전부 턴으로 처리했다 — 루아 LLM()·이어쓰기·요청 본문 미리보기에도 전송 단계가 돌아 유령 턴(무장 소비·
@@ -36920,7 +36968,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   }
   // 생성 중 조작 금지 문구 (v1.14.6) — 턴 진행 중의 패널·버튼 조작은 응답 처리가 send 스냅샷에서 다시 계산해 사라지고,
   // 직전 out 스냅샷(lastOutIndex)까지 전송 단계 상태로 덮어 리롤 프롬프트에서 [이벤트]·액션 줄이 빠졌다 (점검 영역 2·3)
-  const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요';
+  const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요 (응답이 오지 않고 끝났다면 새 글을 하나 보내면 풀려요)';
   let turnBusyAt = 0;
   // 마지막 out 스냅샷 인덱스 = 패널 쓰기의 저장 앵커. ⚠ 최초 loadForCurrentChar()가
   // v1.0.4부터 이 값을 쓰므로 선언이 그보다 앞에 있어야 한다 (TDZ — utilBtn류와 같은 사연).
@@ -37206,8 +37254,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       // ⓪-1 낱말 자동 무장 (v1.7.7) — 유저 글에 액션 낱말이 있으면 버튼 없이 그 턴에 켠다
       let touched = false;
       // 명령 줄(/액션 X 등)은 낱말 판정에서 뺀다 (v1.14.10 — '/액션 X'의 라벨 낱말이 먼저 켜고 명령이 도로 껐다)
-      const kw = engine.autoArmActions(schema, session.current, content.split('\n').filter((l) => !/^[ \t]*\//.test(l)).join('\n'));
-      if (kw.armed.length) { session.current = kw.state; touched = true; console.log('[simcore] 낱말 무장', kw.armed.join(', ')); }
+      // hold 낱말 창 (v1.14.12) — 로어북 스캔 깊이처럼 최근 메시지(앞 4개 + 이번 글)에 낱말이 있는 동안만 hold를 켜 둔다.
+      // 채팅을 못 읽으면(placeholder·오류) 창을 모르는 것으로 넘겨 끄지 않는다
+      let recent = null;
+      if ((schema.actions || []).some((a) => a && a.mode === 'hold' && Array.isArray(a.keywords) && a.keywords.length)) {
+        try {
+          const c0 = await Risuai.getChatFromIndex(await Risuai.getCurrentCharacterIndex(), await Risuai.getCurrentChatIndex());
+          if (c0 && !c0._placeholder && Array.isArray(c0.message)) recent = c0.message.slice(-4).map((m) => stripMarkers(String(m?.data ?? '')));
+        } catch {}
+      }
+      const kw = engine.autoArmActions(schema, session.current, content.split('\n').filter((l) => !/^[ \t]*\//.test(l)).join('\n'), { recent });
+      if (kw.armed.length || kw.released.length) { session.current = kw.state; touched = true; }
+      if (kw.armed.length) console.log('[simcore] 낱말 무장', kw.armed.join(', '));
+      if (kw.released.length) console.log('[simcore] 낱말 창에서 사라져 hold 해제', kw.released.join(', '));
       if (kw.skipped.length) console.log('[simcore] 낱말 무장 건너뜀', kw.skipped.map((x) => `${x.id}(${x.reason})`).join(', '));
       if (!hasCmd) { if (touched) await persist(); return content; }
       const r = engine.applyChatCommands(schema, session.current, content);
@@ -41338,6 +41397,7 @@ count(목록)  has(목록, "항목")</pre>
       histStates = new Map(); histPending.clear();   // 램 캐시도 비운다 (v1.7.3) — 옛 out:N이 상태창으로 되살아나지 않게
       lastOutIndex = -1;
       lastChangeLog = [];
+      await persistCurrent();   // 첫 전송 전 슬롯에 저장 (v1.14.12) — 전엔 초기화 직후 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);

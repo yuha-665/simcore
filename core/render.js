@@ -530,6 +530,10 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         if ((c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:')) && c.from == null && typeof c.to === 'string') {
           return `<div class="sim-log-item">${c.source.startsWith('choice:') ? '🔀' : '⏪'} ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
         }
+        // 액션 취소 줄 (v1.14.12) — 조건 미충족으로 풀린 oneshot (id '액션', to = 요약). 효과는 안 돌았으니 변수 변화도 없다
+        if (c.source?.startsWith('action:') && c.id === '액션' && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">🧭 ${esc(String(c.to))}</div>`;
+        }
         // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
         if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
           return `<div class="sim-log-item">⚔ ${esc(String(c.to))}</div>`;

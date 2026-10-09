@@ -27,6 +27,7 @@ const S = {
       effects: [{ set: 'hp', expr: 'hp - 1' }] },
     { id: 'rest', label: '😴 휴식', mode: 'oneshot', keywords: ['쉰다'], effects: [{ set: 'hp', expr: 'hp + 10' }] },
     { id: 'plain', label: '버튼만', mode: 'oneshot', effects: [{ set: 'hp', expr: 'hp + 1' }] },
+    { id: 'sneak', label: '🕶 잠입', mode: 'hold', keywords: ['잠입'], inject: '[잠입 중]', effects: [] },   // v1.14.12 hold 낱말 창
   ],
   statusUI: { mode: 'auto', groups: [{ label: '상태', items: [{ var: 'hp' }] }] },
 };
@@ -88,8 +89,28 @@ const fresh = () => { const t = engine.initState(S); t.meta.setupDone = true; re
   ck('keywords 없는 스키마는 그대로 통과', validateSchema(none).ok, '');
 }
 
+// ── hold 낱말 창 (v1.14.12) — 로어북 스캔 깊이처럼 최근 메시지 창에 낱말이 있는 동안만 ──
+{
+  const t = fresh();
+  const r1 = engine.autoArmActions(S, t, '몰래 잠입한다', { recent: [] });
+  ck('hold도 이번 글의 낱말로 켜진다 (autoArmed 표시)', r1.armed.join(',') === 'sneak' && r1.state.meta.autoArmed?.sneak === true, JSON.stringify(r1));
+  const r2 = engine.autoArmActions(S, r1.state, '안쪽으로 간다', { recent: ['몰래 잠입한다', '경비가 지나간다'] });
+  ck('창 안에 낱말이 있으면 유지', r2.released.length === 0 && r2.state.meta.armed.sneak === true, JSON.stringify(r2.released));
+  const r3 = engine.autoArmActions(S, r2.state, '밖으로 나온다', { recent: ['a', 'b', 'c', 'd'] });
+  ck('창에서 낱말이 사라지면 끈다', r3.released.join(',') === 'sneak' && !r3.state.meta.armed.sneak, JSON.stringify(r3));
+  const r4 = engine.autoArmActions(S, r1.state, '밖으로 나온다');
+  ck('창을 모르면(recent 없음) 끄지 않는다', r4.released.length === 0 && r4.state.meta.armed.sneak === true, '');
+  const manual = engine.toggleAction(S, t, 'sneak').state;
+  const r5 = engine.autoArmActions(S, manual, '밖으로 나온다', { recent: [] });
+  ck('손으로 켠 hold는 낱말이 없어도 그대로', r5.released.length === 0 && r5.state.meta.armed.sneak === true, '');
+  const r6 = engine.autoArmActions(S, t, '그냥 걷는다', { recent: ['몰래 잠입한다'] });
+  ck('켜는 쪽은 이번 글만 본다', r6.armed.length === 0, JSON.stringify(r6.armed));
+}
+
 // ── 어댑터·편집기 배선 (소스 정적) ──
 {
+  ck('input 훅이 최근 메시지 창을 넘긴다 (v1.14.12)', src.includes("recent = c0.message.slice(-4).map((m) => stripMarkers(String(m?.data ?? '')));") && src.includes(", { recent });"), '');
+  ck('완전 초기화 뒤 첫 전송 전 슬롯 저장 (v1.14.12)', src.includes('await persistCurrent();   // 첫 전송 전 슬롯에 저장 (v1.14.12)'), '');
   // v1.14.10 — 명령 줄(/액션 X)은 낱말 판정에서 뺀 글을 넘긴다
   ck('input 훅이 낱말 무장을 부른다', src.includes('engine.autoArmActions(schema, session.current, content.split('), '');
   ck("'/' 없는 글도 보되 keywords 없는 스키마면 바로 돌려준다", src.includes("if (!hasCmd) { await loadForCurrentChar(); if (!(schema?.actions || []).some((a) => Array.isArray(a.keywords) && a.keywords.length)) return content; }"), '');

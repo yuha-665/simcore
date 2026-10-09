@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.11
-//@display-name SimCore (시뮬 엔진) v1.14.11 점검 7차
+//@version 1.14.12
+//@display-name SimCore (시뮬 엔진) v1.14.12 보류 후속 1차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,15 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.12 ──────────────────────────────────────────────
+// **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**
+// - [징조] 뽑아 둔 사건이 터질 때 후보에서 빠져 있으면(조건·쿨다운) 그 턴은 안 터뜨리고 징조를 새로 뽑는다 — 전엔 딴 사건이 징조 없이 터졌다.
+// - [낱말 무장] hold 액션은 로어북 스캔 깊이처럼 최근 메시지 창(이번 글 + 앞 4개)에 낱말이 있는 동안만 켜 둔다. 창에서 사라지면 끈다.
+//   버튼·명령으로 켠 hold는 그대로(낱말로 켠 것만 meta.autoArmed). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다.
+// - [oneshot] 무장한 채 조건 미충족으로 못 쏜 턴에 무장을 풀고 원장에 "취소 — 조건 미충족"을 남긴다 — 전엔 남아 몇 턴 뒤 터졌다.
+// - [초기화] 상태 완전 초기화 뒤 첫 전송 전 슬롯에 바로 저장 — 전엔 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다.
+// - [문구] 턴 진행 중 안내에 "응답이 오지 않고 끝났다면 새 글을 보내면 풀려요".
+
 // ── v1.14.11 ──────────────────────────────────────────────
 // **전체 점검 7차 — 진단 (영역 9).** 진단이 엔진을 따라오지 못한 자리들. 읽기 감사 후보를 node로 재현한 것만.
 // - [시간] 하루/턴 가정을 응답 단계 **전에** 싣는다 — 전엔 뒤에 epoch만 올려 turn_min이 늘 0이라 게이지 랜덤 사건·무대 뒤 시계가 진단에서
@@ -3801,7 +3810,7 @@
   }
   // 생성 중 조작 금지 문구 (v1.14.6) — 턴 진행 중의 패널·버튼 조작은 응답 처리가 send 스냅샷에서 다시 계산해 사라지고,
   // 직전 out 스냅샷(lastOutIndex)까지 전송 단계 상태로 덮어 리롤 프롬프트에서 [이벤트]·액션 줄이 빠졌다 (점검 영역 2·3)
-  const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요';
+  const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요 (응답이 오지 않고 끝났다면 새 글을 하나 보내면 풀려요)';
   let turnBusyAt = 0;
   // 마지막 out 스냅샷 인덱스 = 패널 쓰기의 저장 앵커. ⚠ 최초 loadForCurrentChar()가
   // v1.0.4부터 이 값을 쓰므로 선언이 그보다 앞에 있어야 한다 (TDZ — utilBtn류와 같은 사연).
@@ -4087,8 +4096,19 @@
       // ⓪-1 낱말 자동 무장 (v1.7.7) — 유저 글에 액션 낱말이 있으면 버튼 없이 그 턴에 켠다
       let touched = false;
       // 명령 줄(/액션 X 등)은 낱말 판정에서 뺀다 (v1.14.10 — '/액션 X'의 라벨 낱말이 먼저 켜고 명령이 도로 껐다)
-      const kw = engine.autoArmActions(schema, session.current, content.split('\n').filter((l) => !/^[ \t]*\//.test(l)).join('\n'));
-      if (kw.armed.length) { session.current = kw.state; touched = true; console.log('[simcore] 낱말 무장', kw.armed.join(', ')); }
+      // hold 낱말 창 (v1.14.12) — 로어북 스캔 깊이처럼 최근 메시지(앞 4개 + 이번 글)에 낱말이 있는 동안만 hold를 켜 둔다.
+      // 채팅을 못 읽으면(placeholder·오류) 창을 모르는 것으로 넘겨 끄지 않는다
+      let recent = null;
+      if ((schema.actions || []).some((a) => a && a.mode === 'hold' && Array.isArray(a.keywords) && a.keywords.length)) {
+        try {
+          const c0 = await Risuai.getChatFromIndex(await Risuai.getCurrentCharacterIndex(), await Risuai.getCurrentChatIndex());
+          if (c0 && !c0._placeholder && Array.isArray(c0.message)) recent = c0.message.slice(-4).map((m) => stripMarkers(String(m?.data ?? '')));
+        } catch {}
+      }
+      const kw = engine.autoArmActions(schema, session.current, content.split('\n').filter((l) => !/^[ \t]*\//.test(l)).join('\n'), { recent });
+      if (kw.armed.length || kw.released.length) { session.current = kw.state; touched = true; }
+      if (kw.armed.length) console.log('[simcore] 낱말 무장', kw.armed.join(', '));
+      if (kw.released.length) console.log('[simcore] 낱말 창에서 사라져 hold 해제', kw.released.join(', '));
       if (kw.skipped.length) console.log('[simcore] 낱말 무장 건너뜀', kw.skipped.map((x) => `${x.id}(${x.reason})`).join(', '));
       if (!hasCmd) { if (touched) await persist(); return content; }
       const r = engine.applyChatCommands(schema, session.current, content);
@@ -8219,6 +8239,7 @@ count(목록)  has(목록, "항목")</pre>
       histStates = new Map(); histPending.clear();   // 램 캐시도 비운다 (v1.7.3) — 옛 out:N이 상태창으로 되살아나지 않게
       lastOutIndex = -1;
       lastChangeLog = [];
+      await persistCurrent();   // 첫 전송 전 슬롯에 저장 (v1.14.12) — 전엔 초기화 직후 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);

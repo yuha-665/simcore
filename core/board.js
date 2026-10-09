@@ -135,7 +135,7 @@ function sanitizeDelta(raw, cfg) {
   }
   for (const r of Array.isArray(raw.re) ? raw.re : []) {
     if (!r || typeof r !== 'object') continue;
-    const id = Number(r.id);
+    const id = Number(String(r.id ?? '').trim().replace(/^#/, '')); // 다이제스트가 '#12'로 보여 주니 '#12'로 답하는 모델을 받는다 (v1.14.5)
     const replies = (Array.isArray(r.re) ? r.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5);
     if (!isFinite(id) || !replies.length) continue;
     out.replies.push({ id, re: replies });

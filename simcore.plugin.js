@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.4
-//@display-name SimCore (시뮬 엔진) v1.14.4 필드 사전
+//@version 1.14.5
+//@display-name SimCore (시뮬 엔진) v1.14.5 점검 1차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,19 +10,25 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.4 ──────────────────────────────────────────────
-// **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
-// 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
-// 대조 — 대화·요청서에 이름이 없는 키가 열몇 개. allow `maxGain`·`maxLoss`(편집기 주력 UI, 13개 스키마), vars `cmd`,
-// actions `keywords`·`dayClose`·`impactExempt`·`fightEnd`·`offstage`, checks `roll`·`mod`·`vs`(판정이 없는 봇이면 AI가
-// 모양을 지어냄), events `timeout`·`strict`·`check`, randomEvents `cooldown`·`weight`·`omen`. 탭 내보내기만 규격표가 있었고,
-// 대화·패치는 "기존 항목 전문을 보고 배워라"에 기댔는데 그 봇에 아직 없는 기능은 배울 전문이 없다. 모르는 키 경고도 변수뿐이었다.
-// - [검증] validate.js `KNOWN_KEYS` — 섹션(vars·derived·events·randomEvents·actions·checks·directives·allow + choices·grades)마다
-//   키와 한 줄 뜻. 검증기 끝 통합 패스가 모든 섹션에 "알 수 없는 키 'X' (…이 쓰는 키: …)" 경고. 밑줄 키는 메모로 통과.
-// - [요청서] 같은 표를 "필드 사전" 절로 패치 요청서·어시스턴트 대화에 실음(섹션당 한 줄, 약 1.5K자). 한 표에서 둘이 나오니
-//   "검증기가 잡는 건 요청서에도 같은 말로"(ai-mistakes)가 구조로 지켜진다. 편집기 구간은 하네스가 validateSchema만 주입하므로
-//   함수에 매단 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
-// - 오타 쪽은 깨끗했다 — 코드가 읽는데 어떤 스키마에도 없는 키는 maxLen 식구(v1.14.3) 말고 없음.
+// ── v1.14.5 ──────────────────────────────────────────────
+// **전체 점검 1차 — 보조 왕복·턴 정산 (docs/점검-2026-10-전체리뷰.md 영역 2·4).** 읽기 감사로 후보를 받고 코드로 재확인한 것만 고쳤다.
+// - [목록] 항목 자르기가 꼬리표(`@기한`·`+합산값`)를 살린다 — `@+30`이 `@1530`으로 굳으며 길어진 항목이 `@153`으로 잘려 같은 턴
+//   만료로 사라지던 것. remove는 완전일치가 안 되면 채팅 명령과 같은 부분 일치(하나만 걸릴 때). 가득 찬 목록의 add는 사유를 남긴다.
+//   보조 프롬프트에 "항목 N자 이내"를 알린다.
+// - [거부 원장] 보조 제안 중 안 받은 것(허용 밖·숫자 아님·선택지 밖·목록 통째 교체·가득 참·remove 불일치·text 잘림·상점/의뢰/갈림길
+//   거부)이 outputPhase.rejected로 돌아오고, 패널 현황줄에 "⛔ 거부 N건 / ✂ 손질 N건"으로 보인다. 전엔 건수뿐이었다.
+// - [파서] 아는 최상위 키가 하나도 없는 객체({"delta":…})는 실패로 → 어댑터가 재시도한다(전엔 "변화 없음"으로 삼킴). changes 안에
+//   넣은 day_passed·conflicts를 끌어올린다. {"msgr":{"msgr":[…]}} 겹포장을 받는다. 첫 코드펜스가 딴 객체여도 뒤의 진짜 JSON을 본다.
+// - [rng 갈래] 보드 글·의뢰·갈림길 섞기가 output 줄기 하나를 보조 응답 양만큼 먹어 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다 —
+//   리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐. 하위 시스템마다 제 갈래('output:board' 등).
+// - [등급 효과] 판정 등급의 {front,add:'-total'}·{gauge}·list expire가 roll/mod/total/vs를 못 읽고 조용히 무시됐다 — overlay를 모든 식에.
+// - [보조 갈림길] 깃발을 정제 전에 꺼서 보조 실패·빈 응답이면 once 트리거의 부탁이 영영 사라졌다 — 걸릴 때까지 산다(설계대로).
+// - [하루 닫기 대리] dayPassed 대리 정산이 효과만 돌려 판정·전달문·쿨다운 기록·액션 시간 고정이 빠졌다 — 버튼 경로와 같게.
+// - [갈림길] 예약해 둔 선택이 같은 글의 /명령으로 잠기면 무효(본문 일치 경로와 같은 기준). [시간] skip_min 핀 쓰기도 coerce.
+//   최초설정 턴의 turn_min·timePin 정리. 무대 뒤·비밀은 항목마다 새 lookup(앞 항목이 바꾼 값을 파생이 바로 읽게).
+// - [검증] 조건 이벤트 cooldown은 "아는 이름이지만 안 읽는 키"로 따로 알린다(v1.14.4 표에 잘못 넣었던 것). 랜덤 표 cooldown 타입,
+//   allow 중복 id. [보드] 댓글 id '#12'를 받는다. [상점] 다상점 라우팅이 열린 빈 상점 먼저. [메신저] 형식 문구가 겹포장을 유도하지 않게.
+//   [예산] allow가 늘린 text 상한 반영.
 
 
 const SimCore = (() => {
@@ -977,7 +983,7 @@ const KNOWN_KEYS = {
   derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
   events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
     ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
-    ['cooldown', '재발동 간격'], ['keep', '🔒']],
+    ['keep', '🔒']],
   randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
     ['omen', '징조 글(게이지)'], ['check', '판정 id'], ['choices', ''], ['timeout', ''], ['strict', ''], ['liveChoices', ''], ['keep', '🔒']],
   actions: [['id', ''], ['label', '맨 앞 이모지가 아이콘'], ['mode', 'oneshot|hold'], ['when', '사용 조건'], ['effects', ''], ['cooldown', '턴'],
@@ -992,6 +998,11 @@ const KNOWN_KEYS = {
   grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
 };
 const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
+// 아는 이름이지만 그 섹션에선 안 읽는 키 (v1.14.5) — 점검에서 드러남: 조건 이벤트에 cooldown을 표에 넣었는데 엔진은
+// 랜덤 표·액션에서만 읽는다(조건 이벤트는 참인 동안 매 턴). 일반 "알 수 없는 키" 대신 왜 안 되는지와 대안을 말한다.
+const KNOWN_BUT_IGNORED = {
+  events: { cooldown: '조건 이벤트엔 쿨다운이 없습니다 — 조건이 참인 동안 매 턴 발동합니다. 반복을 막으려면 once(일회성)나 래치 짝(경보 변수)을 쓰세요' },
+};
 const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
   directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -1523,6 +1534,8 @@ function validateSchema(schema) {
       else if (eventIds.has(e.id)) err(p, `중복 이벤트 id: '${e.id}'`);
       else eventIds.add(e.id);
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
+      // cooldown 타입 (v1.14.5) — 문자열이면 엔진 비교가 NaN이 되어 쿨다운이 조용히 꺼진다
+      if (e.cooldown != null && (typeof e.cooldown !== 'number' || !Number.isFinite(e.cooldown) || e.cooldown < 0)) err(p + '.cooldown', 'cooldown은 0 이상의 숫자');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       // 징조 글 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건이면 메인에 이유 없는 징후로 깔린다. 게이지가 없으면 비칠 자리가 없다
       if (e.omen != null) {
@@ -1547,10 +1560,14 @@ function validateSchema(schema) {
   if (up.wordDetect != null && typeof up.wordDetect !== 'boolean')
     err('$.updater.wordDetect', `wordDetect는 true/false여야 함 (현재: '${up.wordDetect}')`);
   const varById = Object.fromEntries(vars.map((v) => [v.id, v]));
+  const allowSeen = new Set();
   (up.allow || []).forEach((a, i) => {
     const p = `$.updater.allow[${i}]`;
     const v = varById[a.id];
     if (!v) { err(p, `allow 대상 '${a.id}'이 vars에 없음`); return; }
+    // 중복 id (v1.14.5) — 둘 다 열리면 프롬프트엔 상한이 다른 두 줄, 적용은 마지막 항목의 상한
+    if (allowSeen.has(a.id)) err(p, `allow에 '${a.id}'이 두 번 있음 — 하나로 합치세요`);
+    allowSeen.add(a.id);
     // 한도를 거는 쪽이 오히려 드물다. 변수 자체에 min/max가 있으면 값이 이미 묶여 있으므로
     // 경고하지 않는다 — 안 그러면 숫자 변수 수만큼 경고가 쏟아져 진짜 지적이 묻힌다.
     // 위아래 어느 쪽으로도 막혀 있지 않은 변수만 남긴다.
@@ -2933,6 +2950,8 @@ function validateSchema(schema) {
     const known = KNOWN_SET[sec];
     for (const k of Object.keys(obj)) {
       if (known.has(k) || k.startsWith('_') || (sec === 'vars' && k === 'description')) continue; // description은 변수 루프가 따로 알렸다
+      const ignored = KNOWN_BUT_IGNORED[sec]?.[k];
+      if (ignored) { warn(path, `'${k}' — ${ignored}`); continue; }
       warn(path, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (${KNOWN_LABEL[sec]}이 쓰는 키: ${[...known].join(', ')})`);
     }
   };
@@ -4243,7 +4262,7 @@ function sanitizeDelta(raw, cfg) {
   }
   for (const r of Array.isArray(raw.re) ? raw.re : []) {
     if (!r || typeof r !== 'object') continue;
-    const id = Number(r.id);
+    const id = Number(String(r.id ?? '').trim().replace(/^#/, '')); // 다이제스트가 '#12'로 보여 주니 '#12'로 답하는 모델을 받는다 (v1.14.5)
     const replies = (Array.isArray(r.re) ? r.re : []).map(sanitizeReply).filter(Boolean).slice(0, 5);
     if (!isFinite(id) || !replies.length) continue;
     out.replies.push({ id, re: replies });
@@ -5167,16 +5186,15 @@ function sanitizeStock(cfg, raw) {
 
 /** 재고 통째 교체 (물갈이) — 상점 진열창은 델타가 아니라 교체가 맞다.
  *  대상 상점: shopId 지정(패널 새로고침) > raw.id 에코(다상점 피기백) > 재고 빈 첫 상점 > 첫 상점 */
-function applyStock(schema, state, raw, shopId) {
+function applyStock(schema, state, raw, shopId, makeLookupFn = null) {
   const list = shopConfigs(schema);
   if (!list.length) return { stocked: 0 };
   let cfg = shopId != null ? list.find((c) => c.id === shopId)
     : (raw && typeof raw.id === 'string') ? list.find((c) => c.id === raw.id) : null;
   if (!cfg) {
-    cfg = list.find((c) => {
-      const s = c.id == null ? state.shop : state.shops?.[c.id];
-      return !s?.stocked && !s?.stock?.length;
-    }) ?? list[0];
+    const empty = (c) => { const s = c.id == null ? state.shop : state.shops?.[c.id]; return !s?.stocked && !s?.stock?.length; };
+    // 열린(when) 빈 상점 먼저 (v1.14.5) — auxSpec이 요청한 곳과 같아야 한다. 전엔 닫힌 빈 상점에 들어갔다
+    cfg = list.find((c) => empty(c) && (!makeLookupFn || shopOpen(c, schema, state.vars, makeLookupFn))) ?? list.find(empty) ?? list[0];
   }
   const shop = shopStateOf(state, cfg);
   const clean = sanitizeStock(cfg, raw);
@@ -6043,9 +6061,10 @@ function applyLive(schema, state, raw, rng = null) {
   const cfg = askedConfig(schema, m);
   if (!cfg) { m.liveAsk = false; return { posted: 0 }; } // 스키마에서 사라진 벌 — 깃발만 치운다
   if (m.pendingChoice) return { posted: 0, deferred: true };
-  m.liveAsk = false;
   const clean = sanitizeItems(cfg, raw, rng);
+  // 깃발은 걸릴 때까지 산다 (v1.14.5, design-갈림길-확장) — 전엔 정제 전에 껐다. 보조 실패·빈 응답·항목 미달이면 once 트리거의 부탁이 영영 사라졌다
   if (!clean.items.length) return { posted: 0, rejected: clean.rejected, cfg };
+  m.liveAsk = false;
   m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { cfg: cfg.id, desc: clean.desc || cfg.desc || '', items: clean.items } };
   m.pendingChoicePick = null;
   return { posted: clean.items.length, rejected: clean.rejected, cfg };
@@ -6226,18 +6245,19 @@ function ensureSecretKeys(schema, vars) {
  * 한 번 열린 건 절대 안 내려간다. 돌아오는 것은 전환 목록 — 원장·통지·fired 창구가 쓴다.
  * @param lookup 조건식 변수 조회 (engine.makeLookup)
  */
-function advanceSecrets(schema, vars, lookup) {
+function advanceSecrets(schema, vars, lookup, fresh = null) {
   const cfg = secretsConfig(schema);
   if (!cfg) return [];
   const out = [];
   for (const s of cfg) {
+    const lk = fresh ? fresh() : lookup; // 항목마다 새 lookup (v1.14.5)
     const cur = openedTier(s, vars);
     let top = cur;
     for (let i = s.tiers.length - 1; i > cur; i--) {
       const w = s.tiers[i].when;
       if (!w) continue;
       let ok = false;
-      try { ok = truthy(evaluate(w, lookup, null)); } catch { ok = false; } // 깨진 식은 검증이 미리 잡는다
+      try { ok = truthy(evaluate(w, lk, null)); } catch { ok = false; } // 깨진 식은 검증이 미리 잡는다
       if (ok) { top = i; break; }
     }
     if (top > cur) {
@@ -6589,20 +6609,21 @@ function applyFrontEffect(schema, vars, rule, lookup, rng, source) {
  * @param elapsedDays 이번 정산에서 흐른 작중 일수 (시간 체계 없으면 null → 턴당 1)
  * @returns {Array<{ front, from, to, stages: [{ index, stage }], tick }>}
  */
-function advanceFronts(schema, vars, lookup, elapsedDays) {
+function advanceFronts(schema, vars, lookup, elapsedDays, fresh = null) {
   const cfg = frontsConfig(schema);
   if (!cfg) return [];
   const out = [];
   for (const f of cfg) {
+    const lk = fresh ? fresh() : lookup; // 항목마다 새 lookup (v1.14.5) — 앞 진영이 바꾼 fr_*를 읽는 파생이 memo에 낡아 있었다
     const k = frKey(f.id), ks = frsKey(f.id);
     const before = Number(vars[k]) || 0;
     // 1. 흘리기 — when이 거짓이면 멈춤, 깨진 식은 멈춤 (검증이 미리 잡는다 — 여기서 던지면 턴이 죽는다)
     let flowing = true;
-    if (f.when) { try { flowing = truthy(evaluate(f.when, lookup, null)); } catch { flowing = false; } }
+    if (f.when) { try { flowing = truthy(evaluate(f.when, lk, null)); } catch { flowing = false; } }
     let tick = 0;
     if (flowing) {
       let rate = 0;
-      try { rate = Number(typeof f.rate === 'number' ? f.rate : evaluate(f.rate, lookup, null)); } catch { rate = 0; }
+      try { rate = Number(typeof f.rate === 'number' ? f.rate : evaluate(f.rate, lk, null)); } catch { rate = 0; }
       const span = elapsedDays == null ? 1 : Number(elapsedDays) || 0;
       if (Number.isFinite(rate) && rate !== 0 && span > 0) {
         const to = tidy(clampVal(f, before + rate * span));
@@ -7804,6 +7825,16 @@ function makeLookup(schema, vars) {
 
 // ── 값 강제(coerce) & set 규칙 적용 ─────────────────────────
 
+// 목록 항목 자르기 (v1.14.5) — 끝의 꼬리표(`@기한`·`+합산값`)는 살리고 본문만 자른다. 점검: `@+30`이 `@1530`으로 굳으며
+// 길어진 항목을 그냥 slice하면 `@153`이 남아 같은 턴 만료로 사라지거나, 꼬리표가 통째로 잘려 무기한·0이 됐다.
+function clipListItem(s, cap) {
+  if (s.length <= cap) return s;
+  const m = s.match(/((?:\s*(?:@-?\d+(?:\.\d+)?|[+-]?\d+(?:\.\d+)?)){1,2})\s*$/);
+  const tail = m ? m[1] : '';
+  if (!tail || tail.length >= cap) return s.slice(0, cap);
+  return s.slice(0, Math.max(1, cap - tail.length)).trimEnd() + tail;
+}
+
 function coerce(varDef, value) {
   switch (varDef.type) {
     case 'int': {
@@ -7834,7 +7865,7 @@ function coerce(varDef, value) {
       else return undefined;
       const itemCap = varDef.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN;
       const maxItems = varDef.maxItems ?? DEFAULT_LIST_MAX_ITEMS;
-      return arr.map((x) => String(x).slice(0, itemCap)).filter(Boolean).slice(0, maxItems);
+      return arr.map((x) => clipListItem(String(x), itemCap)).filter(Boolean).slice(0, maxItems);
     }
   }
 }
@@ -7864,14 +7895,23 @@ function resolveRelativeExpiry(schema, state, listId, items, rng) {
 }
 
 /** 목록 add/remove 연산 적용 (중복 추가 허용 — '회복약'을 2개 가질 수 있음) */
-function applyListOps(varDef, current, ops) {
+function applyListOps(varDef, current, ops, notes = null) {
   let arr = Array.isArray(current) ? [...current] : [];
   for (const item of [].concat(ops?.remove ?? [])) {
-    const idx = arr.indexOf(String(item));
+    const key = String(item).trim();
+    let idx = arr.indexOf(key);
+    // 완전일치가 안 되면 채팅 명령과 같은 앞부분·부분 일치로 하나만 걸릴 때 그것 (v1.14.5) — "회복약"으로 "회복약 @452"를 뺀다.
+    // 둘 이상 걸리면 모호하니 안 뺀다 (사유를 남긴다)
+    if (idx < 0 && key) { const m = matchListItem(arr, key); if (typeof m === 'string') idx = arr.indexOf(m); else if (Array.isArray(m) && notes) notes.push(`remove '${key}' — 여러 항목에 걸림(${m.length})`); }
     if (idx >= 0) arr.splice(idx, 1);
+    else if (notes && key) notes.push(`remove '${key}' — 목록에 없음`);
   }
+  const maxItems = varDef.maxItems ?? DEFAULT_LIST_MAX_ITEMS;
   for (const item of [].concat(ops?.add ?? [])) {
-    if (item != null && String(item).trim()) arr.push(String(item).trim());
+    if (item == null || !String(item).trim()) continue;
+    // 가득 찬 목록 (v1.14.5) — 전엔 coerce의 slice가 새 항목을 말없이 버렸다. 버리는 건 같되 사유를 남긴다
+    if (arr.length >= maxItems) { if (notes) notes.push(`add '${String(item).trim().slice(0, 30)}' — 가득 참(최대 ${maxItems}개)`); continue; }
+    arr.push(String(item).trim());
   }
   return coerce(varDef, arr);
 }
@@ -7879,18 +7919,20 @@ function applyListOps(varDef, current, ops) {
 // overlay: 판정 등급 효과에서 roll/mod/total/vs를 임시 식별자로 여는 데 쓴다 (변수보다 우선)
 function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  // overlay를 모든 식 평가에 (v1.14.5) — 전엔 set 분기만 받아서 등급 효과의 {front,add:'-total'}·{gauge}·list expire가 roll/total을 못 읽고 조용히 무시됐다
+  const lk = () => { const base = makeLookup(schema, state.vars); return overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base; };
   for (const rule of rules || []) {
     // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
     if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
     // 무대 뒤 개입 (v1.12.0) { front, add } — 시계를 늦추거나 되돌린다. 문턱 판정은 응답 단계 8.55 한 곳에서만
     if (frontMod.isFrontEffect(rule)) {
-      const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
+      const c = frontMod.applyFrontEffect(schema, state.vars, rule, lk(), rng, source);
       if (c) changeLog.push(c);
       continue;
     }
     // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 서사가 다음 사건을 당기거나(+) 늦춘다(−). 원장엔 안 남긴다(보이지 않는 게 요점)
     if (gaugeMod.isGaugeEffect(rule)) {
-      gaugeMod.applyGaugeEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng);
+      gaugeMod.applyGaugeEffect(schema, state.vars, rule, lk(), rng);
       continue;
     }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -7904,7 +7946,7 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       //   `@+N` 굳히기·`(N일)` 환산은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다.
       let base = from;
       if (rule.expire && !rule.keepOverdue) {
-        const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
+        const now = Number(evaluate(rule.expire, lk(), rng));
         if (isFinite(now) && Array.isArray(from)) {
           base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });
         }
@@ -7922,8 +7964,7 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
     const def = varById[rule.set];
     if (!def) continue; // 검증 단계에서 걸러지지만 방어
     if (def.type === 'list') continue; // 목록은 수식 set 불가 (list 효과 사용)
-    const base = makeLookup(schema, state.vars);
-    const lookup = overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base;
+    const lookup = lk();
     const raw = evaluate(rule.expr, lookup, rng);
     const from = state.vars[rule.set];
     const to = coerce(def, def.type === 'bool' ? truthy(raw) : raw);
@@ -7956,7 +7997,11 @@ function applyTimePins(schema, state, pins, changeLog, source) {
   let setPin = null;
   if (sets.length) { setPin = sets.reduce((a, b) => (b.min > a.min ? b : a)); to = setPin.min; }
   for (const p of adds) to += p.min;
-  if (to !== from) { state.vars[SKIP_MIN] = to; changeLog.push({ id: SKIP_MIN, from, to, source }); }
+  if (to !== from) {
+    const defS = schema.vars.find((v) => v.id === SKIP_MIN); // 모든 쓰기는 coerce를 거친다 (v1.14.5 — 유일한 예외였다)
+    const toC = defS ? coerce(defS, to) : to;
+    state.vars[SKIP_MIN] = toC; changeLog.push({ id: SKIP_MIN, from, to: toC, source });
+  }
   const name = (p) => (p.label || p.action || p.mentions[0]) + ' ' + (p.mode === 'add' ? '+' : '') + p.min + '분';
   changeLog.push({ id: '시간 고정', from: null, to: pins.map(name).join(' · '), source });
   return setPin;
@@ -8202,6 +8247,11 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (!ev) { state.meta.pendingChoice = null; state.meta.pendingChoicePick = null; } // 스키마에서 사라진 갈림길 — 방어
     else {
       let idx = state.meta.pendingChoicePick;
+      // 예약해 둔 선택이 그새 잠겼으면(같은 글의 /명령이 조건 변수를 바꿈 등) 안 고른 것으로 — 본문 일치 경로와 같은 기준 (v1.14.5)
+      if (idx != null && !(ev.choices[idx] && choiceOpen(schema, state.vars, ev.choices[idx]))) {
+        injects.push(`[선택] 예약했던 항목이 잠겨 무효 — ${String(ev.choices[idx]?.label ?? idx)}`);
+        idx = null; state.meta.pendingChoicePick = null;
+      }
       // 본문으로 고르기 (v1.9.4): 예약이 없고 이번 유저 글이 열린 항목 그대로(번호·'N. 라벨'·라벨)면 그걸 고른 것으로.
       // 리수는 클릭이 입력창을 못 채워 라벨을 복사해 보내는 습관이 있다 (실기) — 강제 갈림길에서 그 글이 "안 고른 것"으로
       // 최악에 떠밀리면 안 된다. 완전일치만 — 잠긴 항목·덧붙인 말은 안 받는다 (그건 여전히 안 고른 것). 리롤은 같은 글이라 같은 결정.
@@ -8484,6 +8534,8 @@ function setupPhase(schema, prevState, values, reasons) {
     changeLog.push({ id, from, to, source: 'setup', reason: reasons?.[id] });
   }
   state.meta.setupDone = true; // 값이 비어도 설정 단계는 소비됨 (재시도는 리롤로)
+  if (TURN_MIN_KEY in state.vars) state.vars[TURN_MIN_KEY] = 0; // 최초설정 턴에 흐른 시간은 다음 정규 응답에 더하지 않는다 (v1.14.5)
+  state.meta.timePin = null;
   return { state, changeLog, firedEvents: [] };
 }
 
@@ -8535,11 +8587,13 @@ function extractJsonObject(text, requiredKey) {
   // 추론(thinking) 블록 제거 — Gemini 등이 JSON 앞에 사고 과정을 뱉는 경우
   let src = text.replace(/<Thoughts>[\s\S]*?<\/Thoughts>/gi, '')
                 .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
-  // 코드펜스 안 JSON 우선
-  const fence = src.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidates = fence ? [fence[1], src, text] : [src, text];
+  // 코드펜스 안 JSON 우선 — 펜스가 여럿이면 전부 (v1.14.5: 첫 펜스가 {"note":…} 같은 딴 객체여도 뒤 펜스의 진짜를 본다).
+  // 추론 블록까지 든 원문(text)은 최후의 후보 — 깨끗한 후보에서 뭐라도 건졌으면 원문은 안 본다 (가짜 {"changes":"생각중"} 방지)
+  const fences = [...src.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1]);
+  const candidates = [...fences, src, text];
   let fallback = null;
   for (const cand of candidates) {
+    if (cand === text && src !== text && fallback) break;
     // 균형 잡힌 { } 블록 스캔 (문자열/이스케이프 인지)
     for (let start = cand.indexOf('{'); start !== -1; start = cand.indexOf('{', start + 1)) {
       let depth = 0, inStr = false, esc = false;
@@ -8568,12 +8622,12 @@ function extractJsonObject(text, requiredKey) {
         }
       }
     }
-    if (fallback) break; // 이 후보 텍스트에서 뭐라도 건졌으면 다음 후보는 안 봄
   }
   // 필수 키를 가진 객체가 없다 = 출력 상한에 잘렸을 가능성이 크다 (v1.9.8). 완성된 항목까지만 살린다.
   // (폴백은 잘린 바깥 객체 안의 균형 잡힌 조각 — {"hp":-5,"gold":10} — 일 때가 많아 구제가 먼저다)
   if (fallback && (!requiredKey || requiredKey in fallback)) return fallback;
-  return salvageTruncatedJson(fence ? fence[1] : src, requiredKey) || fallback;
+  for (const f of fences) { const sv = salvageTruncatedJson(f, requiredKey); if (sv) return sv; }
+  return salvageTruncatedJson(src, requiredKey) || fallback;
 }
 
 /**
@@ -8643,7 +8697,7 @@ function parseSetupResponse(text) {
 function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
-  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
@@ -8655,7 +8709,7 @@ function applyChangesToState(schema, prevState, changes, reasons, seenText = nul
   }
   // 지연·브리지 소급 경로 — outputPhase가 이미 자기 몫을 쓴 뒤라 이어 붙인다
   recordChangeMemo(schema, state, changeLog, true);
-  return { state, changeLog };
+  return { state, changeLog, rejected };
 }
 
 /**
@@ -8700,20 +8754,24 @@ function consumeDetected(schema, state, detected) {
 }
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
+/** @returns 거부 원장 [{id, why}] (v1.14.5) — 전엔 허용 밖·숫자 아님·선택지 밖·목록 통째 교체가 전부 말없이 버려져 "왜 안 바뀌었나"를 알 길이 없었다 */
 function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const rejected = [];
+  const short = (x) => JSON.stringify(x ?? null).slice(0, 24);
   // state를 같이 넘겨 whenArmed 게이트를 적용 시점에도 강제한다 —
   // 브리지·지연 소급(seenText 없음)에서도 액션 잠금만은 결정적으로 걸린다
   const allowById = Object.fromEntries(auxAllowList(schema, seenText, state).map((a) => [a.id, a]));
   for (const [id, proposed] of Object.entries(changes || {})) {
     const def = varById[id];
     const allow = allowById[id];
-    if (!def || !allow) continue; // 허용 목록 밖 → 무시
+    if (!def || !allow) { rejected.push({ id, why: !def ? '없는 변수' : '이번 턴 닫힘(허용 밖·게이트)' }); continue; }
     const from = state.vars[id];
     let to;
     if (def.type === 'int' || def.type === 'float') {
       let delta = Number(proposed);
-      if (!isFinite(delta) || delta === 0) continue;
+      if (!isFinite(delta)) { rejected.push({ id, why: `숫자 아님(${short(proposed)})` }); continue; }
+      if (delta === 0) continue;
       const gainCap = allow.maxGain ?? allow.maxDelta;
       const lossCap = allow.maxLoss ?? allow.maxDelta;
       if (delta > 0 && gainCap != null) delta = Math.min(gainCap, delta);
@@ -8722,33 +8780,38 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
     } else if (def.type === 'text') {
       const cap = allow.maxLength ?? def.maxLength ?? DEFAULT_TEXT_MAXLEN;
       to = coerce({ ...def, maxLength: cap }, proposed);
+      if (String(proposed ?? '').length > cap) rejected.push({ id, why: `${cap}자로 잘림`, soft: true });
     } else if (def.type === 'list') {
       // {"add": [...], "remove": [...]} 연산만 허용 (전체 교체 금지 — 아이템 증발 방지)
-      if (typeof proposed !== 'object' || proposed === null || Array.isArray(proposed)) continue;
+      if (typeof proposed !== 'object' || proposed === null || Array.isArray(proposed)) { rejected.push({ id, why: '목록은 {"add","remove"} 연산만' }); continue; }
       // 보조 모델이 "@+1080"(3년)이라고만 써도 여기서 실제 날짜로 굳는다 — 산술은 시스템 몫
       const ops = proposed.add
         ? { ...proposed, add: resolveRelativeExpiry(schema, state, id, [].concat(proposed.add)) }
         : proposed;
-      to = applyListOps(def, from, ops);
+      const notes = [];
+      to = applyListOps(def, from, ops, notes);
+      for (const n of notes) rejected.push({ id, why: n, soft: true });
     } else {
       to = coerce(def, proposed); // enum(목록 밖 거부) / bool
+      if (to === undefined) { rejected.push({ id, why: `선택지 밖(${short(proposed)})` }); continue; }
     }
     if (to === undefined || to === from) continue;
     if (def.type === 'list' && JSON.stringify(to) === JSON.stringify(from)) continue;
     state.vars[id] = to;
     changeLog.push({ id, from, to, source: 'llm', reason: reasons?.[id] });
   }
+  return rejected;
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
   // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
   // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
-  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 5.2 서사-시스템 불일치 신고 (v0.71) — **신고 전용, 변수에는 절대 반영하지 않는다.**
@@ -8780,7 +8843,23 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       catch { gateOpen = false; }
     }
     if (!firedNow && !skipBumped && gateOpen) {
+      // 버튼 경로(sendPhase)와 같은 일을 한다 (v1.14.5) — 전엔 효과만 돌려 판정 보너스·전달문이 빠지고 쿨다운이 안 걸려
+      // 이틀 연속 하루 닫기가 됐다 ("두 입구가 갈라질 수 없다"는 약속 위반). 전투 안무 판정은 라운드 입력이 없어 대리 불가 — 건너뛴다.
+      const chkD = dcAction.check ? (schema.checks || []).find((c) => c.id === dcAction.check) : null;
+      const dcCheck = chkD && !(chkD.fight && typeof chkD.fight === 'object') ? rollCheck(schema, state, chkD, rng, changeLog) : null;
       applySets(schema, state, dcAction.effects, rng, changeLog, `action:${dcAction.id}`);
+      if (dcAction.inject) state.meta.pendingNotifies.push(dcAction.inject);
+      if (dcCheck) { state.meta.pendingNotifies.push(dcCheck.line); if (dcCheck.inject) state.meta.pendingNotifies.push(dcCheck.inject); }
+      state.meta.firedThisSend[dcAction.id] = true;
+      if ((dcAction.mode || 'oneshot') === 'oneshot') state.meta.actionLastUsed[dcAction.id] = state.meta.turn;
+      {
+        const tcfgD = timeConfig(schema);
+        const pinsD = tcfgD ? tcfgD.pins.filter((p) => p.action === dcAction.id) : [];
+        const setPinD = pinsD.find((p) => p.mode === 'set');
+        // set은 5.45에서 보조 추정을 이 값으로 갈아끼운다(proxy 표식), add는 지금 얹는다
+        if (setPinD) state.meta.timePin = { min: setPinD.min, label: setPinD.label || setPinD.action, proxy: true };
+        applyTimePins(schema, state, pinsD.filter((p) => p.mode === 'add'), changeLog, 'timePin');
+      }
       const ps = schema.promptState || {};
       if (ps.dayCloseGuide !== false) {
         state.meta.pendingNotifies.push(typeof ps.dayCloseGuide === 'string' && ps.dayCloseGuide.trim()
@@ -8799,9 +8878,11 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, seenText));
       if (state.meta.timePin) {
         const from = Number(state.vars[SKIP_MIN]) || 0;
-        if (from !== 0 && schema.vars.some((v) => v.id === SKIP_MIN)) {
-          state.vars[SKIP_MIN] = 0;
-          changeLog.push({ id: SKIP_MIN, from, to: 0, source: 'timePin' });
+        // 전송 단계 set은 이미 굳었으니 0으로(보조 추정 버림). 대리 정산(proxy)의 set은 아직이라 그 값으로 갈아끼운다 (v1.14.5)
+        const target = state.meta.timePin.proxy ? Number(state.meta.timePin.min) || 0 : 0;
+        if (from !== target && schema.vars.some((v) => v.id === SKIP_MIN)) {
+          state.vars[SKIP_MIN] = target;
+          changeLog.push({ id: SKIP_MIN, from, to: target, source: 'timePin' });
         }
         applyTimePins(schema, state, hit.filter((p) => p.mode === 'add'), changeLog, 'timePin');
       } else {
@@ -8817,9 +8898,15 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 5.7 커뮤니티 보드 (v0.95) — 보조가 실어 온 델타 적용 + 지표 표류(매 턴, 시드 rng).
   // 시간 소비 뒤여야 새 글의 날짜 도장이 이번 턴의 새 날짜로 찍힌다.
-  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
+  // rng 갈래 (v1.14.5) — 보드 글·의뢰·갈림길 섞기는 보조 응답 양만큼 난수를 먹어 그 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다
+  // (리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐). 하위 시스템마다 제 갈래를 쓴다. 호스트가 안 주면 옛 방식.
+  const subRng = (label) => (rngSub ? rngSub(label) : rng);
+  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng: subRng('board') });
   // 5.8 상점 첫 입고 (v0.96) — 재고가 비어 있을 때만 요청했으므로, 온 것만 채운다
-  if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
+  if (shop != null && shopMod.shopConfig(schema)) {
+    const sr = shopMod.applyStock(schema, state, shop, undefined, makeLookup);
+    if (sr?.rejected?.length) rejected.push({ id: '상점', why: `입고 ${sr.rejected.length}건 거부 — ${[].concat(sr.rejected).slice(0, 2).map(String).join('; ').slice(0, 80)}` });
+  }
   // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
   if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
   // 5.95 의뢰판 (v1.7.9) — 게시 마감은 매 턴 시스템이 걷고(시간 소비 뒤라 새 날짜 기준), 온 게시만 얹는다
@@ -8827,13 +8914,17 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     const qnow = questMod.nowOf(schema, state, makeLookup);
     const gone = questMod.pruneExpired(schema, state, qnow);
     if (gone) changeLog.push({ id: 'questBoard', from: '게시', to: `마감 ${gone}건`, source: 'system' });
-    if (quests != null) questMod.applyOffers(schema, state, quests, { now: qnow, rng });
+    if (quests != null) {
+      const qr = questMod.applyOffers(schema, state, quests, { now: qnow, rng: subRng('quest') });
+      if (qr?.rejected?.length) rejected.push({ id: '의뢰판', why: `게시 ${qr.rejected.length}건 거부` });
+    }
   }
   // 5.96 보조 갈림길 (v1.8.0) — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
   // 이벤트(7·8)보다 먼저라 이번 턴 스키마 갈림길은 "동시 1개" 규약대로 미뤄진다.
   if (choiceMod.liveConfig(schema)) {
-    const lr = choiceMod.applyLive(schema, state, choices, rng);
+    const lr = choiceMod.applyLive(schema, state, choices, subRng('live'));
     if (lr.posted) changeLog.push({ id: lr.cfg.label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
+    if (lr.rejected?.length) rejected.push({ id: lr.cfg?.label || '갈림길', why: `선택지 ${lr.rejected.length}건 거부 — ${[].concat(lr.rejected).slice(0, 2).map(String).join('; ').slice(0, 80)}`, soft: !!lr.posted });
   }
 
   // 6. 정기 틱
@@ -9029,7 +9120,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   {
     const tcfgF = timeConfig(schema);
     const days = tcfgF ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : null;
-    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days)) {
+    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days, () => makeLookup(schema, state.vars))) {
       const f = r.front, src = frontMod.SOURCE_PREFIX + f.id;
       if (r.tick) changeLog.push({ id: frontMod.frKey(f.id), from: r.from, to: r.to, source: src });
       for (const { index, stage } of r.stages) {
@@ -9047,7 +9138,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // ⚠ 원장에 남기는 것은 라벨·단계 번호뿐 — 내용(text)은 여기서도 안 샌다 (원장은 보조 AI에게도 간다).
   {
     const lookupS = makeLookup(schema, state.vars);
-    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS)) {
+    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS, () => makeLookup(schema, state.vars))) {
       const s = tr.secret;
       changeLog.push({ id: s.label || s.about || s.id, from: tr.from < 0 ? '아직' : `${tr.from + 1}단계`,
         to: `${tr.to + 1}/${s.tiers.length}단계`, source: `secret:${s.id}` });
@@ -9071,7 +9162,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이번 사이클의 원장을 새로 쓴다 (전송 단계 몫은 보조가 이미 봤으니 여기서 교체).
   recordChangeMemo(schema, state, changeLog, false);
 
-  return { state, changeLog, firedEvents, dayClosed };
+  return { state, changeLog, firedEvents, dayClosed, rejected };
 }
 
 // ── 액션 토글 ───────────────────────────────────────────────
@@ -9359,7 +9450,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     if (v.type === 'bool')
       return `- ${a.id} (${v.label ?? a.id}, 참/거짓): 현재 ${cur}. true 또는 false로 제시${desc}`;
     if (v.type === 'list')
-      return `- ${a.id} (${v.label ?? a.id}, 목록): 현재 ${cur}. {"add": ["얻은 것"], "remove": ["잃은 것"]} 연산으로만 제시 (전체 교체 금지, 최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개)${desc}`;
+      return `- ${a.id} (${v.label ?? a.id}, 목록): 현재 ${cur}. {"add": ["얻은 것"], "remove": ["잃은 것"]} 연산으로만 제시 (전체 교체 금지, 최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개, 항목 ${v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN}자 이내)${desc}`;
     return `- ${a.id} (${v.label ?? a.id}, 텍스트): 현재 ${cur}. 새 값 전체를 제시 (${a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내)${desc}`;
   }).filter(Boolean).join('\n');
 
@@ -9517,7 +9608,7 @@ function auxOutputBudget(schema, state, text) {
       const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
       sum += n ? n * per * 2 + 30 : per * 3 + 30;
     } else if (v.type === 'text') {
-      sum += tok('x'.repeat(Math.min(v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+      sum += tok('x'.repeat(Math.min(a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
     } else {
       sum += 30;
     }
@@ -9803,8 +9894,19 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
-    conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
+  // (함수 안에 두는 이유: test-parse가 이 함수를 단독 추출해 평가한다)
+  const KNOWN_AUX_KEYS = ['changes', 'reasons', 'suggest', 'conflicts', 'detected', 'image', 'images', 'board', 'hot', 'shop', 'quests', 'choices', 'msgr', 'day_passed'];
+  // (v1.14.5) 아는 최상위 키가 하나도 없는 객체({"delta":…})는 형식 위반 — "변화 없음"으로 삼키면 어댑터의 재시도 기회를 잃는다
+  if (!KNOWN_AUX_KEYS.some((k) => k in obj)) return null;
+  const changes = (obj.changes && typeof obj.changes === 'object' && !Array.isArray(obj.changes)) ? { ...obj.changes } : {};
+  // day_passed·conflicts를 changes 안에 넣는 모델이 있다 — 변수로 오해해 버리지 말고 끌어올린다 (v1.14.5)
+  const dayNested = changes.day_passed; delete changes.day_passed;
+  const confNested = Array.isArray(changes.conflicts) ? changes.conflicts : null; delete changes.conflicts;
+  const dayRaw = obj.day_passed ?? dayNested;
+  const conflicts = Array.isArray(obj.conflicts) ? obj.conflicts : confNested;
+  const msgr = Array.isArray(obj.msgr) ? obj.msgr : (Array.isArray(obj.msgr?.msgr) ? obj.msgr.msgr : null); // {"msgr":{"msgr":[…]}} 겹포장도 받는다
+  return { changes, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
+    conflicts,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
     // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이. 현재 화제 기사(v1.1.0)는 board 안의
@@ -9815,10 +9917,10 @@ function parseAuxResponse(text) {
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
     quests: (obj.quests && typeof obj.quests === 'object') ? obj.quests : null,  // 의뢰판 게시 (v1.7.9) — 정제는 quest 모듈이
     choices: (obj.choices && typeof obj.choices === 'object') ? obj.choices : null, // 보조 갈림길 (v1.8.0) — 정제는 choice 모듈이
-    msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    msgr,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
-    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1,
+    dayPassed: dayRaw === true || dayRaw === 'true' || dayRaw === 1,
     truncated: obj.__truncated === true };  // 잘린 응답을 구제한 것 (v1.9.8) — 어댑터가 상태줄·콘솔에 알린다
 }
 
@@ -10846,6 +10948,7 @@ class SimSession {
     const parsed = engine.parseAuxResponse(auxText) ?? { changes: {}, reasons: {} };
     const r = engine.outputPhase(this.schema, sendState, parsed.changes, parsed.reasons, {
       rng: this._rng(outIndex, 'output'),
+      rngSub: (label) => this._rng(outIndex, 'output:' + label), // 하위 시스템 갈래 (v1.14.5) — 보드·의뢰·갈림길 섞기가 본 굴림을 밀어내지 않게
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
@@ -32867,6 +32970,20 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.4 ──────────────────────────────────────────────
+// **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
+// 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
+// 대조 — 대화·요청서에 이름이 없는 키가 열몇 개. allow `maxGain`·`maxLoss`(편집기 주력 UI, 13개 스키마), vars `cmd`,
+// actions `keywords`·`dayClose`·`impactExempt`·`fightEnd`·`offstage`, checks `roll`·`mod`·`vs`(판정이 없는 봇이면 AI가
+// 모양을 지어냄), events `timeout`·`strict`·`check`, randomEvents `cooldown`·`weight`·`omen`. 탭 내보내기만 규격표가 있었고,
+// 대화·패치는 "기존 항목 전문을 보고 배워라"에 기댔는데 그 봇에 아직 없는 기능은 배울 전문이 없다. 모르는 키 경고도 변수뿐이었다.
+// - [검증] validate.js `KNOWN_KEYS` — 섹션(vars·derived·events·randomEvents·actions·checks·directives·allow + choices·grades)마다
+//   키와 한 줄 뜻. 검증기 끝 통합 패스가 모든 섹션에 "알 수 없는 키 'X' (…이 쓰는 키: …)" 경고. 밑줄 키는 메모로 통과.
+// - [요청서] 같은 표를 "필드 사전" 절로 패치 요청서·어시스턴트 대화에 실음(섹션당 한 줄, 약 1.5K자). 한 표에서 둘이 나오니
+//   "검증기가 잡는 건 요청서에도 같은 말로"(ai-mistakes)가 구조로 지켜진다. 편집기 구간은 하네스가 validateSchema만 주입하므로
+//   함수에 매단 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
+// - 오타 쪽은 깨끗했다 — 코드가 읽는데 어떤 스키마에도 없는 키는 maxLen 식구(v1.14.3) 말고 없음.
+
 // ── v1.14.3 ──────────────────────────────────────────────
 // **allow 조건 잠금 + 어시스턴트가 변수 필드 이름을 안다.** 커뮤니티 제보 둘.
 // - [코어] `allow[].when` — 변수 상태로 여닫는 세 번째 게이트. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시
@@ -37435,6 +37552,14 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const names = dets.map((id) => schema.vars.find((v) => v.id === id)?.label ?? id).join(', ');
         lastAux.status = `${lastAux.status || ''} · 🔎 잠긴 변수 감지 ${dets.length}건: ${names} — 다음 턴 열림`;
         console.log('[simcore] 잠긴 변수 감지 신고 (다음 턴 개방):', dets.join(', '));
+      }
+      // 거부 원장 (v1.14.5) — 보조 제안 중 안 받은 것과 그 이유. 전엔 "N개 제안 / M건 적용" 건수뿐이라 왜 빠졌는지 알 길이 없었다
+      if (r.rejected?.length) {
+        const hard = r.rejected.filter((x) => !x.soft), soft = r.rejected.filter((x) => x.soft);
+        const txt = (xs) => xs.slice(0, 6).map((x) => `${x.id}(${x.why})`).join(', ');
+        if (hard.length) lastAux.status = `${lastAux.status || ''} · ⛔ 거부 ${hard.length}건: ${txt(hard)}`;
+        if (soft.length) lastAux.status = `${lastAux.status || ''} · ✂ 손질 ${soft.length}건: ${txt(soft)}`;
+        console.log('[simcore] 보조 제안 거부·손질:', txt(r.rejected));
       }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',

@@ -31,8 +31,8 @@ const tests = [
   // 8. Thoughts 닫힘 태그 없이 잘린 서두 + JSON (스트리밍 잘림 대비)
   ['thoughts-unclosed', '<Thoughts>생각 중... {메모}\n실제 출력:\n{"changes":{"hp":2},"reasons":{}}',
     { changes: { hp: 2 }, reasons: {} }],
-  // 9. changes 키 없는 JSON만 있음 → fallback으로라도 잡되 changes는 빈 객체
-  ['no-changes-key', '{"values":{"hp":5}}', { changes: {}, reasons: {} }],
+  // 9. 아는 최상위 키가 하나도 없는 JSON → 실패(null) — 어댑터가 재시도한다 (v1.14.5, 전엔 '변화 없음'으로 삼켰다)
+  ['no-changes-key', '{"values":{"hp":5}}', null],
   // 10. 다음 행동 제안(v0.43) — 같은 응답에 suggest 배열이 실려 온다
   ['with-suggest', '{"changes":{"hp":1},"reasons":{},"suggest":["쉰다","싸운다"]}',
     { changes: { hp: 1 }, reasons: {}, suggest: ['쉰다', '싸운다'] }],

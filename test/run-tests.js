@@ -231,7 +231,8 @@ test('whenArmed: hold 무장 중엔 계속 개방, 해제하면 폐쇄', () => {
 test('알 수 없는 키: 섹션마다 경고, 아는 키·밑줄 키는 조용, 내장 템플릿 전부 오탐 0', () => {
   const { KNOWN_KEYS } = require('../core/validate');
   const s = fx();
-  s.updater.allow.push({ id: 'gold', maxIncrease: 5, _memo: 'x' });
+  s.vars.push({ id: 'k_allow', type: 'int', init: 0, label: '허용 실험' });
+  s.updater.allow.push({ id: 'k_allow', maxIncrease: 5, _memo: 'x' }); // (v1.14.5부터 같은 id 중복은 오류라 새 변수로)
   s.rules.events.push({ id: 'ev_bad', when: 'gold > 1', effects: [], cooldownTurns: 3, choices: [{ label: '가', effects: [], pick: 1 }] });
   s.actions.push({ id: 'act_bad', label: '테스트', mode: 'oneshot', keyword: ['x'] });
   s.checks = (s.checks || []).concat([{ id: 'chk_bad', label: '판정', roll: 'rand(1,20)', dice: 'd20', grades: [{ label: '성공', effects: [], bonus: 1 }] }]);
@@ -260,6 +261,114 @@ test('알 수 없는 키: 섹션마다 경고, 아는 키·밑줄 키는 조용,
     const bad = validateSchema(sch).warnings.filter((w) => w.msg.includes('알 수 없는 키'));
     deep(bad, [], name + ': ' + JSON.stringify(bad));
   }
+});
+
+// ── 전체 점검 1차 (v1.14.5) — 보조 왕복·턴 정산 ──
+test('목록 자르기: 꼬리표(@기한·+값)는 살리고 본문만 자른다 / remove 부분 일치 / 가득 참 사유', () => {
+  const def = { id: 'l', type: 'list', itemMaxLength: 20, maxItems: 2 };
+  const notes = [];
+  const r = engine.applyListOps(def, [], { add: ['북부 성채 보급 계약 매주 밀가루 열 포대 +12 @1530'] }, notes);
+  eq(r.length, 1); assert.ok(r[0].length <= 20 && / \+12 @1530$/.test(r[0]), r[0]);
+  eq(engine.applyListOps(def, [], { add: ['아주아주아주아주아주아주아주 긴 이름의 물건'] })[0].length, 20, '꼬리표 없으면 그냥 자른다');
+  const r2 = engine.applyListOps(def, ['회복약 @452', '단검'], { remove: ['회복약'] });
+  deep(r2, ['단검'], '완전일치가 안 되면 앞부분 일치 하나');
+  const n3 = [];
+  const r3 = engine.applyListOps(def, ['회복약 A', '회복약 B'], { remove: ['회복약'] }, n3);
+  eq(r3.length, 2, '둘 이상 걸리면 안 뺀다'); assert.ok(n3[0].includes('여러 항목'), n3.join());
+  const n4 = [];
+  const r4 = engine.applyListOps(def, ['a', 'b'], { add: ['c'] }, n4);
+  deep(r4, ['a', 'b']); assert.ok(n4[0].includes('가득 참'), n4.join());
+});
+
+test('거부 원장: 허용 밖·숫자 아님·선택지 밖·목록 통째 교체·text 잘림이 rejected로 돌아온다', () => {
+  const s = fx();
+  s.vars.push({ id: 'mood', type: 'enum', enum: ['좋음', '나쁨'], init: '좋음' }, { id: 'memo', type: 'text', init: '', maxLength: 5 }, { id: 'bag', type: 'list', init: [] });
+  s.updater.allow.push({ id: 'mood' }, { id: 'memo' }, { id: 'bag' });
+  const st = engine.sendPhase(s, engine.initState(s), {}).state;
+  const out = engine.outputPhase(s, st, { ghost: 1, gold: 'abc', mood: '애매', memo: '열두글자짜리긴메모', bag: ['통째'] }, {});
+  const why = Object.fromEntries(out.rejected.map((x) => [x.id, x.why]));
+  assert.ok(/없는 변수/.test(why.ghost), JSON.stringify(why));
+  assert.ok(/숫자 아님/.test(why.gold), JSON.stringify(why));
+  assert.ok(/선택지 밖/.test(why.mood), JSON.stringify(why));
+  assert.ok(/잘림/.test(why.memo) && out.state.vars.memo.length === 5, JSON.stringify(why));
+  assert.ok(/연산만/.test(why.bag), JSON.stringify(why));
+});
+
+test('rng 갈래: 보드·의뢰·갈림길용 라벨이 따로 요청되고, 없으면 옛 줄기', () => {
+  const s = fx();
+  const st = engine.sendPhase(s, engine.initState(s), {}).state;
+  const labels = [];
+  engine.outputPhase(s, st, {}, {}, { rng: seededRng('c', 1, 'output'), rngSub: (l) => { labels.push(l); return seededRng('c', 1, 'output:' + l); } });
+  assert.ok(!labels.includes('board'), '보드가 없는 봇은 안 부른다');
+  const r = engine.outputPhase(s, st, {}, {}, { rng: seededRng('c', 1, 'output') });
+  assert.ok(r.state, 'rngSub 없이도 돈다');
+});
+
+test('보조 갈림길 깃발은 걸릴 때까지 산다: 빈 응답이면 liveAsk 유지, 걸리면 소비', () => {
+  const choice = require('../core/choice');
+  const s = { ...fx(), liveChoices: { label: '선택', tags: [{ id: 'A' }, { id: 'B' }], count: [2, 2] } };
+  const st = engine.initState(s); st.meta.liveAsk = true;
+  const r0 = choice.applyLive(s, st, null, seededRng('c', 1, 'x'));
+  eq(r0.posted, 0); eq(st.meta.liveAsk, true, '빈 응답엔 깃발 유지');
+  const r1 = choice.applyLive(s, st, [{ label: '가', tag: 'A' }, { label: '나', tag: 'B' }], seededRng('c', 1, 'x'));
+  assert.ok(r1.posted === 2 && st.meta.liveAsk === false, JSON.stringify(r1));
+});
+
+test('하루 닫기 대리 정산: 판정·전달문·쿨다운 기록이 버튼 경로와 같다', () => {
+  const s = fx();
+  s.vars.push({ id: 'hp', type: 'int', init: 10, min: 0, max: 99 });
+  s.checks = [{ id: 'sleep', label: '수면', roll: '10', grades: [{ label: '푹', effects: [{ set: 'hp', expr: 'hp + 5' }], inject: '[잘 잤다]' }] }];
+  s.actions.push({ id: 'end_day', label: '🌙', mode: 'oneshot', dayClose: true, cooldown: 2, check: 'sleep', inject: '[하루 끝]', effects: [] });
+  const st = engine.sendPhase(s, engine.initState(s), {}).state;
+  const out = engine.outputPhase(s, st, {}, {}, { dayPassed: true });
+  eq(out.state.vars.hp, 15, '판정 등급 효과 반영');
+  assert.ok(out.state.meta.pendingNotifies.some((n) => n.includes('[하루 끝]')) && out.state.meta.pendingNotifies.some((n) => n.includes('[잘 잤다]')), JSON.stringify(out.state.meta.pendingNotifies));
+  eq(typeof out.state.meta.actionLastUsed.end_day, 'number', '쿨다운 기록');
+  eq(out.dayClosed, true);
+});
+
+test('예약한 갈림길 선택이 그새 잠기면 무효 (본문 일치 경로와 같은 기준)', () => {
+  const s = fx();
+  s.rules.events.push({ id: 'fork', when: 'gold >= 0', once: true, choices: [
+    { label: '산다', when: 'gold >= 100', effects: [{ set: 'gold', expr: 'gold - 100' }] },
+    { label: '외면', effects: [] },
+  ] });
+  let st = engine.initState(s); st.vars.gold = 150;
+  st = engine.outputPhase(s, engine.sendPhase(s, st, {}).state, {}, {}).state;
+  assert.ok(st.meta.pendingChoice && st.meta.pendingChoice.id === 'fork', '갈림길이 걸림');
+  st.meta.pendingChoicePick = 0; st.vars.gold = 0; // 예약 뒤 조건 변수가 바뀜
+  const send = engine.sendPhase(s, st, {});
+  eq(send.state.vars.gold, 0, '잠긴 선택지 효과가 집행되지 않는다');
+  assert.ok(send.promptBlock.includes('잠겨 무효'), send.promptBlock);
+});
+
+test('검증: 조건 이벤트 cooldown은 안 읽는 키로 따로 알림 / 랜덤 표 cooldown 타입 / allow 중복 id', () => {
+  const s = fx();
+  s.rules.events.push({ id: 'cd', when: 'gold > 1', effects: [], cooldown: 3 });
+  const r = validateSchema(s);
+  assert.ok(r.warnings.some((w) => w.path.includes('events') && w.msg.includes('쿨다운이 없습니다')), JSON.stringify(r.warnings));
+  assert.ok(!r.warnings.some((w) => w.msg.includes("알 수 없는 키 'cooldown'")), '일반 경고로 겹치지 않는다');
+  const s2 = fx();
+  s2.rules.randomEvents = { chancePerTurn: 0.1, table: [{ id: 'r', effects: [], cooldown: '3일' }] };
+  assert.ok(validateSchema(s2).errors.some((e) => e.path.includes('cooldown')), 'cooldown 문자열은 오류');
+  const s3 = fx();
+  s3.updater.allow.push({ ...s3.updater.allow[0] });
+  assert.ok(validateSchema(s3).errors.some((e) => e.msg.includes('두 번')), 'allow 중복');
+});
+
+test('판정 등급 효과의 front·gauge·expire 식도 roll/total을 읽는다 (overlay)', () => {
+  const s = fx();
+  s.vars.push({ id: 'hp', type: 'int', init: 10, min: 0, max: 99 }, { id: 'todo', type: 'list', init: ['a @1', 'b @100'] });
+  s.rules.onTurn = s.rules.onTurn || [];
+  s.checks = [{ id: 'c', label: '판정', roll: '10', grades: [{ label: 'g', effects: [
+    { list: 'todo', expire: 'total' },  // total(=10)보다 작은 기한 항목이 빠져야 한다
+    { set: 'hp', expr: 'hp + total' },
+  ] }] }];
+  const st = engine.initState(s);
+  const log = [];
+  engine.rollCheck(s, st, s.checks[0], seededRng('c', 1, 'x'), log);
+  eq(st.vars.hp, 20, 'set은 전부터 됐다');
+  deep(st.vars.todo, ['b @100'], 'expire 식이 total을 읽어 @1을 만료시킨다 (전엔 예외로 무시)');
 });
 
 // ── when (조건 잠금) — v1.14.3 ──

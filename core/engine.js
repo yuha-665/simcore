@@ -410,6 +410,16 @@ function makeLookup(schema, vars) {
 
 // ── 값 강제(coerce) & set 규칙 적용 ─────────────────────────
 
+// 목록 항목 자르기 (v1.14.5) — 끝의 꼬리표(`@기한`·`+합산값`)는 살리고 본문만 자른다. 점검: `@+30`이 `@1530`으로 굳으며
+// 길어진 항목을 그냥 slice하면 `@153`이 남아 같은 턴 만료로 사라지거나, 꼬리표가 통째로 잘려 무기한·0이 됐다.
+function clipListItem(s, cap) {
+  if (s.length <= cap) return s;
+  const m = s.match(/((?:\s*(?:@-?\d+(?:\.\d+)?|[+-]?\d+(?:\.\d+)?)){1,2})\s*$/);
+  const tail = m ? m[1] : '';
+  if (!tail || tail.length >= cap) return s.slice(0, cap);
+  return s.slice(0, Math.max(1, cap - tail.length)).trimEnd() + tail;
+}
+
 function coerce(varDef, value) {
   switch (varDef.type) {
     case 'int': {
@@ -440,7 +450,7 @@ function coerce(varDef, value) {
       else return undefined;
       const itemCap = varDef.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN;
       const maxItems = varDef.maxItems ?? DEFAULT_LIST_MAX_ITEMS;
-      return arr.map((x) => String(x).slice(0, itemCap)).filter(Boolean).slice(0, maxItems);
+      return arr.map((x) => clipListItem(String(x), itemCap)).filter(Boolean).slice(0, maxItems);
     }
   }
 }
@@ -470,14 +480,23 @@ function resolveRelativeExpiry(schema, state, listId, items, rng) {
 }
 
 /** 목록 add/remove 연산 적용 (중복 추가 허용 — '회복약'을 2개 가질 수 있음) */
-function applyListOps(varDef, current, ops) {
+function applyListOps(varDef, current, ops, notes = null) {
   let arr = Array.isArray(current) ? [...current] : [];
   for (const item of [].concat(ops?.remove ?? [])) {
-    const idx = arr.indexOf(String(item));
+    const key = String(item).trim();
+    let idx = arr.indexOf(key);
+    // 완전일치가 안 되면 채팅 명령과 같은 앞부분·부분 일치로 하나만 걸릴 때 그것 (v1.14.5) — "회복약"으로 "회복약 @452"를 뺀다.
+    // 둘 이상 걸리면 모호하니 안 뺀다 (사유를 남긴다)
+    if (idx < 0 && key) { const m = matchListItem(arr, key); if (typeof m === 'string') idx = arr.indexOf(m); else if (Array.isArray(m) && notes) notes.push(`remove '${key}' — 여러 항목에 걸림(${m.length})`); }
     if (idx >= 0) arr.splice(idx, 1);
+    else if (notes && key) notes.push(`remove '${key}' — 목록에 없음`);
   }
+  const maxItems = varDef.maxItems ?? DEFAULT_LIST_MAX_ITEMS;
   for (const item of [].concat(ops?.add ?? [])) {
-    if (item != null && String(item).trim()) arr.push(String(item).trim());
+    if (item == null || !String(item).trim()) continue;
+    // 가득 찬 목록 (v1.14.5) — 전엔 coerce의 slice가 새 항목을 말없이 버렸다. 버리는 건 같되 사유를 남긴다
+    if (arr.length >= maxItems) { if (notes) notes.push(`add '${String(item).trim().slice(0, 30)}' — 가득 참(최대 ${maxItems}개)`); continue; }
+    arr.push(String(item).trim());
   }
   return coerce(varDef, arr);
 }
@@ -485,18 +504,20 @@ function applyListOps(varDef, current, ops) {
 // overlay: 판정 등급 효과에서 roll/mod/total/vs를 임시 식별자로 여는 데 쓴다 (변수보다 우선)
 function applySets(schema, state, rules, rng, changeLog, source, overlay = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  // overlay를 모든 식 평가에 (v1.14.5) — 전엔 set 분기만 받아서 등급 효과의 {front,add:'-total'}·{gauge}·list expire가 roll/total을 못 읽고 조용히 무시됐다
+  const lk = () => { const base = makeLookup(schema, state.vars); return overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base; };
   for (const rule of rules || []) {
     // 체크포인트 (v1.11.0) — 여기선 줄만 세운다. 적용은 단계 끝 flushCheckpoints (같은 목록의 다른 효과가 순서와 무관하게 산다)
     if (cpMod.isCheckpointEffect(rule)) { cpMod.queueOp(state, rule, source); continue; }
     // 무대 뒤 개입 (v1.12.0) { front, add } — 시계를 늦추거나 되돌린다. 문턱 판정은 응답 단계 8.55 한 곳에서만
     if (frontMod.isFrontEffect(rule)) {
-      const c = frontMod.applyFrontEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng, source);
+      const c = frontMod.applyFrontEffect(schema, state.vars, rule, lk(), rng, source);
       if (c) changeLog.push(c);
       continue;
     }
     // 사건 게이지 개입 (v1.14.0) { gauge: 식 } — 서사가 다음 사건을 당기거나(+) 늦춘다(−). 원장엔 안 남긴다(보이지 않는 게 요점)
     if (gaugeMod.isGaugeEffect(rule)) {
-      gaugeMod.applyGaugeEffect(schema, state.vars, rule, makeLookup(schema, state.vars), rng);
+      gaugeMod.applyGaugeEffect(schema, state.vars, rule, lk(), rng);
       continue;
     }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
@@ -510,7 +531,7 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       //   `@+N` 굳히기·`(N일)` 환산은 expire 식을 그대로 읽으니 따라 돌고, 지난 항목은 `(지남)`으로 남는다.
       let base = from;
       if (rule.expire && !rule.keepOverdue) {
-        const now = Number(evaluate(rule.expire, makeLookup(schema, state.vars), rng));
+        const now = Number(evaluate(rule.expire, lk(), rng));
         if (isFinite(now) && Array.isArray(from)) {
           base = from.filter((it) => { const e = itemExpiry(it); return e === null || e >= now; });
         }
@@ -528,8 +549,7 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
     const def = varById[rule.set];
     if (!def) continue; // 검증 단계에서 걸러지지만 방어
     if (def.type === 'list') continue; // 목록은 수식 set 불가 (list 효과 사용)
-    const base = makeLookup(schema, state.vars);
-    const lookup = overlay ? (n) => (n in overlay ? overlay[n] : base(n)) : base;
+    const lookup = lk();
     const raw = evaluate(rule.expr, lookup, rng);
     const from = state.vars[rule.set];
     const to = coerce(def, def.type === 'bool' ? truthy(raw) : raw);
@@ -562,7 +582,11 @@ function applyTimePins(schema, state, pins, changeLog, source) {
   let setPin = null;
   if (sets.length) { setPin = sets.reduce((a, b) => (b.min > a.min ? b : a)); to = setPin.min; }
   for (const p of adds) to += p.min;
-  if (to !== from) { state.vars[SKIP_MIN] = to; changeLog.push({ id: SKIP_MIN, from, to, source }); }
+  if (to !== from) {
+    const defS = schema.vars.find((v) => v.id === SKIP_MIN); // 모든 쓰기는 coerce를 거친다 (v1.14.5 — 유일한 예외였다)
+    const toC = defS ? coerce(defS, to) : to;
+    state.vars[SKIP_MIN] = toC; changeLog.push({ id: SKIP_MIN, from, to: toC, source });
+  }
   const name = (p) => (p.label || p.action || p.mentions[0]) + ' ' + (p.mode === 'add' ? '+' : '') + p.min + '분';
   changeLog.push({ id: '시간 고정', from: null, to: pins.map(name).join(' · '), source });
   return setPin;
@@ -808,6 +832,11 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
     if (!ev) { state.meta.pendingChoice = null; state.meta.pendingChoicePick = null; } // 스키마에서 사라진 갈림길 — 방어
     else {
       let idx = state.meta.pendingChoicePick;
+      // 예약해 둔 선택이 그새 잠겼으면(같은 글의 /명령이 조건 변수를 바꿈 등) 안 고른 것으로 — 본문 일치 경로와 같은 기준 (v1.14.5)
+      if (idx != null && !(ev.choices[idx] && choiceOpen(schema, state.vars, ev.choices[idx]))) {
+        injects.push(`[선택] 예약했던 항목이 잠겨 무효 — ${String(ev.choices[idx]?.label ?? idx)}`);
+        idx = null; state.meta.pendingChoicePick = null;
+      }
       // 본문으로 고르기 (v1.9.4): 예약이 없고 이번 유저 글이 열린 항목 그대로(번호·'N. 라벨'·라벨)면 그걸 고른 것으로.
       // 리수는 클릭이 입력창을 못 채워 라벨을 복사해 보내는 습관이 있다 (실기) — 강제 갈림길에서 그 글이 "안 고른 것"으로
       // 최악에 떠밀리면 안 된다. 완전일치만 — 잠긴 항목·덧붙인 말은 안 받는다 (그건 여전히 안 고른 것). 리롤은 같은 글이라 같은 결정.
@@ -1090,6 +1119,8 @@ function setupPhase(schema, prevState, values, reasons) {
     changeLog.push({ id, from, to, source: 'setup', reason: reasons?.[id] });
   }
   state.meta.setupDone = true; // 값이 비어도 설정 단계는 소비됨 (재시도는 리롤로)
+  if (TURN_MIN_KEY in state.vars) state.vars[TURN_MIN_KEY] = 0; // 최초설정 턴에 흐른 시간은 다음 정규 응답에 더하지 않는다 (v1.14.5)
+  state.meta.timePin = null;
   return { state, changeLog, firedEvents: [] };
 }
 
@@ -1141,11 +1172,13 @@ function extractJsonObject(text, requiredKey) {
   // 추론(thinking) 블록 제거 — Gemini 등이 JSON 앞에 사고 과정을 뱉는 경우
   let src = text.replace(/<Thoughts>[\s\S]*?<\/Thoughts>/gi, '')
                 .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
-  // 코드펜스 안 JSON 우선
-  const fence = src.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidates = fence ? [fence[1], src, text] : [src, text];
+  // 코드펜스 안 JSON 우선 — 펜스가 여럿이면 전부 (v1.14.5: 첫 펜스가 {"note":…} 같은 딴 객체여도 뒤 펜스의 진짜를 본다).
+  // 추론 블록까지 든 원문(text)은 최후의 후보 — 깨끗한 후보에서 뭐라도 건졌으면 원문은 안 본다 (가짜 {"changes":"생각중"} 방지)
+  const fences = [...src.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].map((m) => m[1]);
+  const candidates = [...fences, src, text];
   let fallback = null;
   for (const cand of candidates) {
+    if (cand === text && src !== text && fallback) break;
     // 균형 잡힌 { } 블록 스캔 (문자열/이스케이프 인지)
     for (let start = cand.indexOf('{'); start !== -1; start = cand.indexOf('{', start + 1)) {
       let depth = 0, inStr = false, esc = false;
@@ -1174,12 +1207,12 @@ function extractJsonObject(text, requiredKey) {
         }
       }
     }
-    if (fallback) break; // 이 후보 텍스트에서 뭐라도 건졌으면 다음 후보는 안 봄
   }
   // 필수 키를 가진 객체가 없다 = 출력 상한에 잘렸을 가능성이 크다 (v1.9.8). 완성된 항목까지만 살린다.
   // (폴백은 잘린 바깥 객체 안의 균형 잡힌 조각 — {"hp":-5,"gold":10} — 일 때가 많아 구제가 먼저다)
   if (fallback && (!requiredKey || requiredKey in fallback)) return fallback;
-  return salvageTruncatedJson(fence ? fence[1] : src, requiredKey) || fallback;
+  for (const f of fences) { const sv = salvageTruncatedJson(f, requiredKey); if (sv) return sv; }
+  return salvageTruncatedJson(src, requiredKey) || fallback;
 }
 
 /**
@@ -1249,7 +1282,7 @@ function parseSetupResponse(text) {
 function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
-  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
@@ -1261,7 +1294,7 @@ function applyChangesToState(schema, prevState, changes, reasons, seenText = nul
   }
   // 지연·브리지 소급 경로 — outputPhase가 이미 자기 몫을 쓴 뒤라 이어 붙인다
   recordChangeMemo(schema, state, changeLog, true);
-  return { state, changeLog };
+  return { state, changeLog, rejected };
 }
 
 /**
@@ -1306,20 +1339,24 @@ function consumeDetected(schema, state, detected) {
 }
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
+/** @returns 거부 원장 [{id, why}] (v1.14.5) — 전엔 허용 밖·숫자 아님·선택지 밖·목록 통째 교체가 전부 말없이 버려져 "왜 안 바뀌었나"를 알 길이 없었다 */
 function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
+  const rejected = [];
+  const short = (x) => JSON.stringify(x ?? null).slice(0, 24);
   // state를 같이 넘겨 whenArmed 게이트를 적용 시점에도 강제한다 —
   // 브리지·지연 소급(seenText 없음)에서도 액션 잠금만은 결정적으로 걸린다
   const allowById = Object.fromEntries(auxAllowList(schema, seenText, state).map((a) => [a.id, a]));
   for (const [id, proposed] of Object.entries(changes || {})) {
     const def = varById[id];
     const allow = allowById[id];
-    if (!def || !allow) continue; // 허용 목록 밖 → 무시
+    if (!def || !allow) { rejected.push({ id, why: !def ? '없는 변수' : '이번 턴 닫힘(허용 밖·게이트)' }); continue; }
     const from = state.vars[id];
     let to;
     if (def.type === 'int' || def.type === 'float') {
       let delta = Number(proposed);
-      if (!isFinite(delta) || delta === 0) continue;
+      if (!isFinite(delta)) { rejected.push({ id, why: `숫자 아님(${short(proposed)})` }); continue; }
+      if (delta === 0) continue;
       const gainCap = allow.maxGain ?? allow.maxDelta;
       const lossCap = allow.maxLoss ?? allow.maxDelta;
       if (delta > 0 && gainCap != null) delta = Math.min(gainCap, delta);
@@ -1328,33 +1365,38 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
     } else if (def.type === 'text') {
       const cap = allow.maxLength ?? def.maxLength ?? DEFAULT_TEXT_MAXLEN;
       to = coerce({ ...def, maxLength: cap }, proposed);
+      if (String(proposed ?? '').length > cap) rejected.push({ id, why: `${cap}자로 잘림`, soft: true });
     } else if (def.type === 'list') {
       // {"add": [...], "remove": [...]} 연산만 허용 (전체 교체 금지 — 아이템 증발 방지)
-      if (typeof proposed !== 'object' || proposed === null || Array.isArray(proposed)) continue;
+      if (typeof proposed !== 'object' || proposed === null || Array.isArray(proposed)) { rejected.push({ id, why: '목록은 {"add","remove"} 연산만' }); continue; }
       // 보조 모델이 "@+1080"(3년)이라고만 써도 여기서 실제 날짜로 굳는다 — 산술은 시스템 몫
       const ops = proposed.add
         ? { ...proposed, add: resolveRelativeExpiry(schema, state, id, [].concat(proposed.add)) }
         : proposed;
-      to = applyListOps(def, from, ops);
+      const notes = [];
+      to = applyListOps(def, from, ops, notes);
+      for (const n of notes) rejected.push({ id, why: n, soft: true });
     } else {
       to = coerce(def, proposed); // enum(목록 밖 거부) / bool
+      if (to === undefined) { rejected.push({ id, why: `선택지 밖(${short(proposed)})` }); continue; }
     }
     if (to === undefined || to === from) continue;
     if (def.type === 'list' && JSON.stringify(to) === JSON.stringify(from)) continue;
     state.vars[id] = to;
     changeLog.push({ id, from, to, source: 'llm', reason: reasons?.[id] });
   }
+  return rejected;
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
   // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
   // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
-  applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 5.2 서사-시스템 불일치 신고 (v0.71) — **신고 전용, 변수에는 절대 반영하지 않는다.**
@@ -1386,7 +1428,23 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       catch { gateOpen = false; }
     }
     if (!firedNow && !skipBumped && gateOpen) {
+      // 버튼 경로(sendPhase)와 같은 일을 한다 (v1.14.5) — 전엔 효과만 돌려 판정 보너스·전달문이 빠지고 쿨다운이 안 걸려
+      // 이틀 연속 하루 닫기가 됐다 ("두 입구가 갈라질 수 없다"는 약속 위반). 전투 안무 판정은 라운드 입력이 없어 대리 불가 — 건너뛴다.
+      const chkD = dcAction.check ? (schema.checks || []).find((c) => c.id === dcAction.check) : null;
+      const dcCheck = chkD && !(chkD.fight && typeof chkD.fight === 'object') ? rollCheck(schema, state, chkD, rng, changeLog) : null;
       applySets(schema, state, dcAction.effects, rng, changeLog, `action:${dcAction.id}`);
+      if (dcAction.inject) state.meta.pendingNotifies.push(dcAction.inject);
+      if (dcCheck) { state.meta.pendingNotifies.push(dcCheck.line); if (dcCheck.inject) state.meta.pendingNotifies.push(dcCheck.inject); }
+      state.meta.firedThisSend[dcAction.id] = true;
+      if ((dcAction.mode || 'oneshot') === 'oneshot') state.meta.actionLastUsed[dcAction.id] = state.meta.turn;
+      {
+        const tcfgD = timeConfig(schema);
+        const pinsD = tcfgD ? tcfgD.pins.filter((p) => p.action === dcAction.id) : [];
+        const setPinD = pinsD.find((p) => p.mode === 'set');
+        // set은 5.45에서 보조 추정을 이 값으로 갈아끼운다(proxy 표식), add는 지금 얹는다
+        if (setPinD) state.meta.timePin = { min: setPinD.min, label: setPinD.label || setPinD.action, proxy: true };
+        applyTimePins(schema, state, pinsD.filter((p) => p.mode === 'add'), changeLog, 'timePin');
+      }
       const ps = schema.promptState || {};
       if (ps.dayCloseGuide !== false) {
         state.meta.pendingNotifies.push(typeof ps.dayCloseGuide === 'string' && ps.dayCloseGuide.trim()
@@ -1405,9 +1463,11 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
       const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, seenText));
       if (state.meta.timePin) {
         const from = Number(state.vars[SKIP_MIN]) || 0;
-        if (from !== 0 && schema.vars.some((v) => v.id === SKIP_MIN)) {
-          state.vars[SKIP_MIN] = 0;
-          changeLog.push({ id: SKIP_MIN, from, to: 0, source: 'timePin' });
+        // 전송 단계 set은 이미 굳었으니 0으로(보조 추정 버림). 대리 정산(proxy)의 set은 아직이라 그 값으로 갈아끼운다 (v1.14.5)
+        const target = state.meta.timePin.proxy ? Number(state.meta.timePin.min) || 0 : 0;
+        if (from !== target && schema.vars.some((v) => v.id === SKIP_MIN)) {
+          state.vars[SKIP_MIN] = target;
+          changeLog.push({ id: SKIP_MIN, from, to: target, source: 'timePin' });
         }
         applyTimePins(schema, state, hit.filter((p) => p.mode === 'add'), changeLog, 'timePin');
       } else {
@@ -1423,9 +1483,15 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
 
   // 5.7 커뮤니티 보드 (v0.95) — 보조가 실어 온 델타 적용 + 지표 표류(매 턴, 시드 rng).
   // 시간 소비 뒤여야 새 글의 날짜 도장이 이번 턴의 새 날짜로 찍힌다.
-  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng });
+  // rng 갈래 (v1.14.5) — 보드 글·의뢰·갈림길 섞기는 보조 응답 양만큼 난수를 먹어 그 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다
+  // (리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐). 하위 시스템마다 제 갈래를 쓴다. 호스트가 안 주면 옛 방식.
+  const subRng = (label) => (rngSub ? rngSub(label) : rng);
+  if (boardMod.boardConfig(schema)) boardMod.applyDelta(schema, state, board, { rng: subRng('board') });
   // 5.8 상점 첫 입고 (v0.96) — 재고가 비어 있을 때만 요청했으므로, 온 것만 채운다
-  if (shop != null && shopMod.shopConfig(schema)) shopMod.applyStock(schema, state, shop);
+  if (shop != null && shopMod.shopConfig(schema)) {
+    const sr = shopMod.applyStock(schema, state, shop, undefined, makeLookup);
+    if (sr?.rejected?.length) rejected.push({ id: '상점', why: `입고 ${sr.rejected.length}건 거부 — ${[].concat(sr.rejected).slice(0, 2).map(String).join('; ').slice(0, 80)}` });
+  }
   // 5.9 메신저 선톡 (v1.2.0) — 선톡이 뜬 턴만 요청했으므로, 온 것만 붙인다
   if (msgr != null && msgrMod.msgrConfig(schema)) msgrMod.applyDelta(schema, state, msgr);
   // 5.95 의뢰판 (v1.7.9) — 게시 마감은 매 턴 시스템이 걷고(시간 소비 뒤라 새 날짜 기준), 온 게시만 얹는다
@@ -1433,13 +1499,17 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
     const qnow = questMod.nowOf(schema, state, makeLookup);
     const gone = questMod.pruneExpired(schema, state, qnow);
     if (gone) changeLog.push({ id: 'questBoard', from: '게시', to: `마감 ${gone}건`, source: 'system' });
-    if (quests != null) questMod.applyOffers(schema, state, quests, { now: qnow, rng });
+    if (quests != null) {
+      const qr = questMod.applyOffers(schema, state, quests, { now: qnow, rng: subRng('quest') });
+      if (qr?.rejected?.length) rejected.push({ id: '의뢰판', why: `게시 ${qr.rejected.length}건 거부` });
+    }
   }
   // 5.96 보조 갈림길 (v1.8.0) — 부탁했던 턴(liveAsk)에 온 것을 건다. 깃발은 여기서 소비된다.
   // 이벤트(7·8)보다 먼저라 이번 턴 스키마 갈림길은 "동시 1개" 규약대로 미뤄진다.
   if (choiceMod.liveConfig(schema)) {
-    const lr = choiceMod.applyLive(schema, state, choices, rng);
+    const lr = choiceMod.applyLive(schema, state, choices, subRng('live'));
     if (lr.posted) changeLog.push({ id: lr.cfg.label, from: null, to: `선택지 ${lr.posted}개`, source: 'liveChoices' });
+    if (lr.rejected?.length) rejected.push({ id: lr.cfg?.label || '갈림길', why: `선택지 ${lr.rejected.length}건 거부 — ${[].concat(lr.rejected).slice(0, 2).map(String).join('; ').slice(0, 80)}`, soft: !!lr.posted });
   }
 
   // 6. 정기 틱
@@ -1635,7 +1705,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   {
     const tcfgF = timeConfig(schema);
     const days = tcfgF ? (Number(state.vars[TURN_MIN_KEY]) || 0) / MIN_PER_DAY : null;
-    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days)) {
+    for (const r of frontMod.advanceFronts(schema, state.vars, makeLookup(schema, state.vars), days, () => makeLookup(schema, state.vars))) {
       const f = r.front, src = frontMod.SOURCE_PREFIX + f.id;
       if (r.tick) changeLog.push({ id: frontMod.frKey(f.id), from: r.from, to: r.to, source: src });
       for (const { index, stage } of r.stages) {
@@ -1653,7 +1723,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // ⚠ 원장에 남기는 것은 라벨·단계 번호뿐 — 내용(text)은 여기서도 안 샌다 (원장은 보조 AI에게도 간다).
   {
     const lookupS = makeLookup(schema, state.vars);
-    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS)) {
+    for (const tr of secretMod.advanceSecrets(schema, state.vars, lookupS, () => makeLookup(schema, state.vars))) {
       const s = tr.secret;
       changeLog.push({ id: s.label || s.about || s.id, from: tr.from < 0 ? '아직' : `${tr.from + 1}단계`,
         to: `${tr.to + 1}/${s.tiers.length}단계`, source: `secret:${s.id}` });
@@ -1677,7 +1747,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, seenText = null
   // 이번 사이클의 원장을 새로 쓴다 (전송 단계 몫은 보조가 이미 봤으니 여기서 교체).
   recordChangeMemo(schema, state, changeLog, false);
 
-  return { state, changeLog, firedEvents, dayClosed };
+  return { state, changeLog, firedEvents, dayClosed, rejected };
 }
 
 // ── 액션 토글 ───────────────────────────────────────────────
@@ -1965,7 +2035,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     if (v.type === 'bool')
       return `- ${a.id} (${v.label ?? a.id}, 참/거짓): 현재 ${cur}. true 또는 false로 제시${desc}`;
     if (v.type === 'list')
-      return `- ${a.id} (${v.label ?? a.id}, 목록): 현재 ${cur}. {"add": ["얻은 것"], "remove": ["잃은 것"]} 연산으로만 제시 (전체 교체 금지, 최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개)${desc}`;
+      return `- ${a.id} (${v.label ?? a.id}, 목록): 현재 ${cur}. {"add": ["얻은 것"], "remove": ["잃은 것"]} 연산으로만 제시 (전체 교체 금지, 최대 ${v.maxItems ?? DEFAULT_LIST_MAX_ITEMS}개, 항목 ${v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN}자 이내)${desc}`;
     return `- ${a.id} (${v.label ?? a.id}, 텍스트): 현재 ${cur}. 새 값 전체를 제시 (${a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN}자 이내)${desc}`;
   }).filter(Boolean).join('\n');
 
@@ -2123,7 +2193,7 @@ function auxOutputBudget(schema, state, text) {
       const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
       sum += n ? n * per * 2 + 30 : per * 3 + 30;
     } else if (v.type === 'text') {
-      sum += tok('x'.repeat(Math.min(v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+      sum += tok('x'.repeat(Math.min(a.maxLength ?? v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
     } else {
       sum += 30;
     }
@@ -2409,8 +2479,19 @@ function applyChatCommands(schema, state, text, rng) {
 function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
-  return { changes: obj.changes || {}, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
-    conflicts: Array.isArray(obj.conflicts) ? obj.conflicts : null,
+  // (함수 안에 두는 이유: test-parse가 이 함수를 단독 추출해 평가한다)
+  const KNOWN_AUX_KEYS = ['changes', 'reasons', 'suggest', 'conflicts', 'detected', 'image', 'images', 'board', 'hot', 'shop', 'quests', 'choices', 'msgr', 'day_passed'];
+  // (v1.14.5) 아는 최상위 키가 하나도 없는 객체({"delta":…})는 형식 위반 — "변화 없음"으로 삼키면 어댑터의 재시도 기회를 잃는다
+  if (!KNOWN_AUX_KEYS.some((k) => k in obj)) return null;
+  const changes = (obj.changes && typeof obj.changes === 'object' && !Array.isArray(obj.changes)) ? { ...obj.changes } : {};
+  // day_passed·conflicts를 changes 안에 넣는 모델이 있다 — 변수로 오해해 버리지 말고 끌어올린다 (v1.14.5)
+  const dayNested = changes.day_passed; delete changes.day_passed;
+  const confNested = Array.isArray(changes.conflicts) ? changes.conflicts : null; delete changes.conflicts;
+  const dayRaw = obj.day_passed ?? dayNested;
+  const conflicts = Array.isArray(obj.conflicts) ? obj.conflicts : confNested;
+  const msgr = Array.isArray(obj.msgr) ? obj.msgr : (Array.isArray(obj.msgr?.msgr) ? obj.msgr.msgr : null); // {"msgr":{"msgr":[…]}} 겹포장도 받는다
+  return { changes, reasons: obj.reasons || {}, suggest: obj.suggest ?? null,
+    conflicts,
     detected: Array.isArray(obj.detected) ? obj.detected : null, // 감지 신고 (v0.74) — 다음 턴 1회 해제
     image: obj.image ?? null, images: Array.isArray(obj.images) ? obj.images : null,
     // 커뮤니티 보드 델타 (v0.95) — 정제는 board 모듈이. 현재 화제 기사(v1.1.0)는 board 안의
@@ -2421,10 +2502,10 @@ function parseAuxResponse(text) {
     shop: obj.shop ?? null,    // 상점 입고 (v0.96) — 정제는 shop 모듈이
     quests: (obj.quests && typeof obj.quests === 'object') ? obj.quests : null,  // 의뢰판 게시 (v1.7.9) — 정제는 quest 모듈이
     choices: (obj.choices && typeof obj.choices === 'object') ? obj.choices : null, // 보조 갈림길 (v1.8.0) — 정제는 choice 모듈이
-    msgr: Array.isArray(obj.msgr) ? obj.msgr : null,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
+    msgr,  // 메신저 선톡 (v1.2.0) — 정제는 messenger 모듈이
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
-    dayPassed: obj.day_passed === true || obj.day_passed === 'true' || obj.day_passed === 1,
+    dayPassed: dayRaw === true || dayRaw === 'true' || dayRaw === 1,
     truncated: obj.__truncated === true };  // 잘린 응답을 구제한 것 (v1.9.8) — 어댑터가 상태줄·콘솔에 알린다
 }
 

@@ -79,7 +79,11 @@ console.log('── 잘린 JSON 구제');
   const r6 = engine.parseAuxResponse('```json\n' + full.slice(0, full.indexOf('"suggest"') + 25));
   ck('닫히지 않은 코드펜스 안의 잘림도 살린다', r6 && r6.truncated && r6.changes.hp === -5, JSON.stringify(r6));
   const r7 = engine.parseAuxResponse('{"values":{"hp":5}}');
-  ck('균형 잡힌 다른 객체는 구제 대상이 아니다 (기존 폴백 유지)', r7 && r7.truncated === false && Object.keys(r7.changes).length === 0, JSON.stringify(r7));
+  ck('균형 잡힌 다른 객체(아는 키 없음)는 실패 — 어댑터가 재시도 (v1.14.5, 전엔 "변화 없음"으로 삼켰다)', r7 === null, JSON.stringify(r7));
+  const r7b = engine.parseAuxResponse('```json\n{"note":"생각"}\n```\n```json\n{"changes":{"hp":2},"reasons":{}}\n```');
+  ck('첫 코드펜스가 딴 객체여도 뒤 펜스의 진짜를 본다 (v1.14.5)', r7b && r7b.changes.hp === 2, JSON.stringify(r7b));
+  const r7c = engine.parseAuxResponse('{"changes":{"gold":3,"day_passed":true,"conflicts":["x"]},"msgr":{"msgr":[]}}');
+  ck('changes 안의 day_passed·conflicts는 끌어올리고 변수로 안 본다 (v1.14.5)', r7c && r7c.dayPassed === true && !('day_passed' in r7c.changes) && !('conflicts' in r7c.changes) && Array.isArray(r7c.conflicts) && Array.isArray(r7c.msgr), JSON.stringify(r7c));
   ck('salvageTruncatedJson 단독: requiredKey 없으면 아무 완성 객체', engine.salvageTruncatedJson('{"a":1,"b":{"c":2},"d":"잘', null)?.b?.c === 2, '');
   ck('salvageTruncatedJson: 문자열 안의 괄호에 안 속는다', engine.salvageTruncatedJson('{"changes":{"note":"괄호} 포함","hp":1},"reasons":{"note":"잘', 'changes')?.changes?.hp === 1, '');
   // 구제된 델타가 실제로 적용되는가 (session과 같은 길)

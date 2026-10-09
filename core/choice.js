@@ -216,9 +216,10 @@ function applyLive(schema, state, raw, rng = null) {
   const cfg = askedConfig(schema, m);
   if (!cfg) { m.liveAsk = false; return { posted: 0 }; } // 스키마에서 사라진 벌 — 깃발만 치운다
   if (m.pendingChoice) return { posted: 0, deferred: true };
-  m.liveAsk = false;
   const clean = sanitizeItems(cfg, raw, rng);
+  // 깃발은 걸릴 때까지 산다 (v1.14.5, design-갈림길-확장) — 전엔 정제 전에 껐다. 보조 실패·빈 응답·항목 미달이면 once 트리거의 부탁이 영영 사라졌다
   if (!clean.items.length) return { posted: 0, rejected: clean.rejected, cfg };
+  m.liveAsk = false;
   m.pendingChoice = { id: LIVE_ID, turn: m.turn, live: { cfg: cfg.id, desc: clean.desc || cfg.desc || '', items: clean.items } };
   m.pendingChoicePick = null;
   return { posted: clean.items.length, rejected: clean.rejected, cfg };

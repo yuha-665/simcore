@@ -24,7 +24,7 @@ const KNOWN_KEYS = {
   derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
   events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
     ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
-    ['cooldown', '재발동 간격'], ['keep', '🔒']],
+    ['keep', '🔒']],
   randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
     ['omen', '징조 글(게이지)'], ['check', '판정 id'], ['choices', ''], ['timeout', ''], ['strict', ''], ['liveChoices', ''], ['keep', '🔒']],
   actions: [['id', ''], ['label', '맨 앞 이모지가 아이콘'], ['mode', 'oneshot|hold'], ['when', '사용 조건'], ['effects', ''], ['cooldown', '턴'],
@@ -39,6 +39,11 @@ const KNOWN_KEYS = {
   grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
 };
 const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
+// 아는 이름이지만 그 섹션에선 안 읽는 키 (v1.14.5) — 점검에서 드러남: 조건 이벤트에 cooldown을 표에 넣었는데 엔진은
+// 랜덤 표·액션에서만 읽는다(조건 이벤트는 참인 동안 매 턴). 일반 "알 수 없는 키" 대신 왜 안 되는지와 대안을 말한다.
+const KNOWN_BUT_IGNORED = {
+  events: { cooldown: '조건 이벤트엔 쿨다운이 없습니다 — 조건이 참인 동안 매 턴 발동합니다. 반복을 막으려면 once(일회성)나 래치 짝(경보 변수)을 쓰세요' },
+};
 const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
   directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -570,6 +575,8 @@ function validateSchema(schema) {
       else if (eventIds.has(e.id)) err(p, `중복 이벤트 id: '${e.id}'`);
       else eventIds.add(e.id);
       if (e.weight != null && (typeof e.weight !== 'number' || e.weight <= 0)) err(p, 'weight는 양수');
+      // cooldown 타입 (v1.14.5) — 문자열이면 엔진 비교가 NaN이 되어 쿨다운이 조용히 꺼진다
+      if (e.cooldown != null && (typeof e.cooldown !== 'number' || !Number.isFinite(e.cooldown) || e.cooldown < 0)) err(p + '.cooldown', 'cooldown은 0 이상의 숫자');
       if (e.when != null) checkExpr(e.when, p + '.when', allIds, err, { allowRand: false });
       // 징조 글 (v1.14.1) — 사건 게이지가 미리 뽑아 둔 다음 사건이면 메인에 이유 없는 징후로 깔린다. 게이지가 없으면 비칠 자리가 없다
       if (e.omen != null) {
@@ -594,10 +601,14 @@ function validateSchema(schema) {
   if (up.wordDetect != null && typeof up.wordDetect !== 'boolean')
     err('$.updater.wordDetect', `wordDetect는 true/false여야 함 (현재: '${up.wordDetect}')`);
   const varById = Object.fromEntries(vars.map((v) => [v.id, v]));
+  const allowSeen = new Set();
   (up.allow || []).forEach((a, i) => {
     const p = `$.updater.allow[${i}]`;
     const v = varById[a.id];
     if (!v) { err(p, `allow 대상 '${a.id}'이 vars에 없음`); return; }
+    // 중복 id (v1.14.5) — 둘 다 열리면 프롬프트엔 상한이 다른 두 줄, 적용은 마지막 항목의 상한
+    if (allowSeen.has(a.id)) err(p, `allow에 '${a.id}'이 두 번 있음 — 하나로 합치세요`);
+    allowSeen.add(a.id);
     // 한도를 거는 쪽이 오히려 드물다. 변수 자체에 min/max가 있으면 값이 이미 묶여 있으므로
     // 경고하지 않는다 — 안 그러면 숫자 변수 수만큼 경고가 쏟아져 진짜 지적이 묻힌다.
     // 위아래 어느 쪽으로도 막혀 있지 않은 변수만 남긴다.
@@ -1980,6 +1991,8 @@ function validateSchema(schema) {
     const known = KNOWN_SET[sec];
     for (const k of Object.keys(obj)) {
       if (known.has(k) || k.startsWith('_') || (sec === 'vars' && k === 'description')) continue; // description은 변수 루프가 따로 알렸다
+      const ignored = KNOWN_BUT_IGNORED[sec]?.[k];
+      if (ignored) { warn(path, `'${k}' — ${ignored}`); continue; }
       warn(path, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (${KNOWN_LABEL[sec]}이 쓰는 키: ${[...known].join(', ')})`);
     }
   };

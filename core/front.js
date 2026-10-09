@@ -102,20 +102,21 @@ function applyFrontEffect(schema, vars, rule, lookup, rng, source) {
  * @param elapsedDays 이번 정산에서 흐른 작중 일수 (시간 체계 없으면 null → 턴당 1)
  * @returns {Array<{ front, from, to, stages: [{ index, stage }], tick }>}
  */
-function advanceFronts(schema, vars, lookup, elapsedDays) {
+function advanceFronts(schema, vars, lookup, elapsedDays, fresh = null) {
   const cfg = frontsConfig(schema);
   if (!cfg) return [];
   const out = [];
   for (const f of cfg) {
+    const lk = fresh ? fresh() : lookup; // 항목마다 새 lookup (v1.14.5) — 앞 진영이 바꾼 fr_*를 읽는 파생이 memo에 낡아 있었다
     const k = frKey(f.id), ks = frsKey(f.id);
     const before = Number(vars[k]) || 0;
     // 1. 흘리기 — when이 거짓이면 멈춤, 깨진 식은 멈춤 (검증이 미리 잡는다 — 여기서 던지면 턴이 죽는다)
     let flowing = true;
-    if (f.when) { try { flowing = truthy(evaluate(f.when, lookup, null)); } catch { flowing = false; } }
+    if (f.when) { try { flowing = truthy(evaluate(f.when, lk, null)); } catch { flowing = false; } }
     let tick = 0;
     if (flowing) {
       let rate = 0;
-      try { rate = Number(typeof f.rate === 'number' ? f.rate : evaluate(f.rate, lookup, null)); } catch { rate = 0; }
+      try { rate = Number(typeof f.rate === 'number' ? f.rate : evaluate(f.rate, lk, null)); } catch { rate = 0; }
       const span = elapsedDays == null ? 1 : Number(elapsedDays) || 0;
       if (Number.isFinite(rate) && rate !== 0 && span > 0) {
         const to = tidy(clampVal(f, before + rate * span));

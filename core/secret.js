@@ -96,18 +96,19 @@ function ensureSecretKeys(schema, vars) {
  * 한 번 열린 건 절대 안 내려간다. 돌아오는 것은 전환 목록 — 원장·통지·fired 창구가 쓴다.
  * @param lookup 조건식 변수 조회 (engine.makeLookup)
  */
-function advanceSecrets(schema, vars, lookup) {
+function advanceSecrets(schema, vars, lookup, fresh = null) {
   const cfg = secretsConfig(schema);
   if (!cfg) return [];
   const out = [];
   for (const s of cfg) {
+    const lk = fresh ? fresh() : lookup; // 항목마다 새 lookup (v1.14.5)
     const cur = openedTier(s, vars);
     let top = cur;
     for (let i = s.tiers.length - 1; i > cur; i--) {
       const w = s.tiers[i].when;
       if (!w) continue;
       let ok = false;
-      try { ok = truthy(evaluate(w, lookup, null)); } catch { ok = false; } // 깨진 식은 검증이 미리 잡는다
+      try { ok = truthy(evaluate(w, lk, null)); } catch { ok = false; } // 깨진 식은 검증이 미리 잡는다
       if (ok) { top = i; break; }
     }
     if (top > cur) {

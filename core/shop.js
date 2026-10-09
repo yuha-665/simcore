@@ -288,16 +288,15 @@ function sanitizeStock(cfg, raw) {
 
 /** 재고 통째 교체 (물갈이) — 상점 진열창은 델타가 아니라 교체가 맞다.
  *  대상 상점: shopId 지정(패널 새로고침) > raw.id 에코(다상점 피기백) > 재고 빈 첫 상점 > 첫 상점 */
-function applyStock(schema, state, raw, shopId) {
+function applyStock(schema, state, raw, shopId, makeLookupFn = null) {
   const list = shopConfigs(schema);
   if (!list.length) return { stocked: 0 };
   let cfg = shopId != null ? list.find((c) => c.id === shopId)
     : (raw && typeof raw.id === 'string') ? list.find((c) => c.id === raw.id) : null;
   if (!cfg) {
-    cfg = list.find((c) => {
-      const s = c.id == null ? state.shop : state.shops?.[c.id];
-      return !s?.stocked && !s?.stock?.length;
-    }) ?? list[0];
+    const empty = (c) => { const s = c.id == null ? state.shop : state.shops?.[c.id]; return !s?.stocked && !s?.stock?.length; };
+    // 열린(when) 빈 상점 먼저 (v1.14.5) — auxSpec이 요청한 곳과 같아야 한다. 전엔 닫힌 빈 상점에 들어갔다
+    cfg = list.find((c) => empty(c) && (!makeLookupFn || shopOpen(c, schema, state.vars, makeLookupFn))) ?? list.find(empty) ?? list[0];
   }
   const shop = shopStateOf(state, cfg);
   const clean = sanitizeStock(cfg, raw);

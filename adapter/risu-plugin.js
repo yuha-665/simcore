@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.4
-//@display-name SimCore (시뮬 엔진) v1.14.4 필드 사전
+//@version 1.14.5
+//@display-name SimCore (시뮬 엔진) v1.14.5 점검 1차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,26 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.5 ──────────────────────────────────────────────
+// **전체 점검 1차 — 보조 왕복·턴 정산 (docs/점검-2026-10-전체리뷰.md 영역 2·4).** 읽기 감사로 후보를 받고 코드로 재확인한 것만 고쳤다.
+// - [목록] 항목 자르기가 꼬리표(`@기한`·`+합산값`)를 살린다 — `@+30`이 `@1530`으로 굳으며 길어진 항목이 `@153`으로 잘려 같은 턴
+//   만료로 사라지던 것. remove는 완전일치가 안 되면 채팅 명령과 같은 부분 일치(하나만 걸릴 때). 가득 찬 목록의 add는 사유를 남긴다.
+//   보조 프롬프트에 "항목 N자 이내"를 알린다.
+// - [거부 원장] 보조 제안 중 안 받은 것(허용 밖·숫자 아님·선택지 밖·목록 통째 교체·가득 참·remove 불일치·text 잘림·상점/의뢰/갈림길
+//   거부)이 outputPhase.rejected로 돌아오고, 패널 현황줄에 "⛔ 거부 N건 / ✂ 손질 N건"으로 보인다. 전엔 건수뿐이었다.
+// - [파서] 아는 최상위 키가 하나도 없는 객체({"delta":…})는 실패로 → 어댑터가 재시도한다(전엔 "변화 없음"으로 삼킴). changes 안에
+//   넣은 day_passed·conflicts를 끌어올린다. {"msgr":{"msgr":[…]}} 겹포장을 받는다. 첫 코드펜스가 딴 객체여도 뒤의 진짜 JSON을 본다.
+// - [rng 갈래] 보드 글·의뢰·갈림길 섞기가 output 줄기 하나를 보조 응답 양만큼 먹어 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다 —
+//   리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐. 하위 시스템마다 제 갈래('output:board' 등).
+// - [등급 효과] 판정 등급의 {front,add:'-total'}·{gauge}·list expire가 roll/mod/total/vs를 못 읽고 조용히 무시됐다 — overlay를 모든 식에.
+// - [보조 갈림길] 깃발을 정제 전에 꺼서 보조 실패·빈 응답이면 once 트리거의 부탁이 영영 사라졌다 — 걸릴 때까지 산다(설계대로).
+// - [하루 닫기 대리] dayPassed 대리 정산이 효과만 돌려 판정·전달문·쿨다운 기록·액션 시간 고정이 빠졌다 — 버튼 경로와 같게.
+// - [갈림길] 예약해 둔 선택이 같은 글의 /명령으로 잠기면 무효(본문 일치 경로와 같은 기준). [시간] skip_min 핀 쓰기도 coerce.
+//   최초설정 턴의 turn_min·timePin 정리. 무대 뒤·비밀은 항목마다 새 lookup(앞 항목이 바꾼 값을 파생이 바로 읽게).
+// - [검증] 조건 이벤트 cooldown은 "아는 이름이지만 안 읽는 키"로 따로 알린다(v1.14.4 표에 잘못 넣었던 것). 랜덤 표 cooldown 타입,
+//   allow 중복 id. [보드] 댓글 id '#12'를 받는다. [상점] 다상점 라우팅이 열린 빈 상점 먼저. [메신저] 형식 문구가 겹포장을 유도하지 않게.
+//   [예산] allow가 늘린 text 상한 반영.
+
 // ── v1.14.4 ──────────────────────────────────────────────
 // **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
 // 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
@@ -4592,6 +4612,14 @@
         const names = dets.map((id) => schema.vars.find((v) => v.id === id)?.label ?? id).join(', ');
         lastAux.status = `${lastAux.status || ''} · 🔎 잠긴 변수 감지 ${dets.length}건: ${names} — 다음 턴 열림`;
         console.log('[simcore] 잠긴 변수 감지 신고 (다음 턴 개방):', dets.join(', '));
+      }
+      // 거부 원장 (v1.14.5) — 보조 제안 중 안 받은 것과 그 이유. 전엔 "N개 제안 / M건 적용" 건수뿐이라 왜 빠졌는지 알 길이 없었다
+      if (r.rejected?.length) {
+        const hard = r.rejected.filter((x) => !x.soft), soft = r.rejected.filter((x) => x.soft);
+        const txt = (xs) => xs.slice(0, 6).map((x) => `${x.id}(${x.why})`).join(', ');
+        if (hard.length) lastAux.status = `${lastAux.status || ''} · ⛔ 거부 ${hard.length}건: ${txt(hard)}`;
+        if (soft.length) lastAux.status = `${lastAux.status || ''} · ✂ 손질 ${soft.length}건: ${txt(soft)}`;
+        console.log('[simcore] 보조 제안 거부·손질:', txt(r.rejected));
       }
       console.log('[simcore] 이번 턴 적용된 변화:', r.changeLog.length + '건',
         r.changeLog.map((c) => c.id).join(', ') || '(없음)',

@@ -53,7 +53,8 @@ ck('★ 지시문·상태 블록에는 &quot; 없음 (원문 따옴표)',
 // ── 정적: 두 HTML 렌더 자리만 quoteSafe를 받는다 ──
 // 꼬리를 열어 둔다 — renderTemplate은 뒤로 인자가 더 붙는다 (v1.7.1의 dueNow). 지키려는 건
 // "HTML 렌더 두 자리만 quoteSafe를 받는다"는 것이지 인자 개수가 아니다.
-ck('render의 HTML 치환 두 자리에 quoteSafe', (src.match(/lookup, extras, quoteSafe[,)]/g) || []).length === 2, '');
+// v1.14.8 — 게임 패널(플러그인 iframe, 새니타이저 없음)은 panelSafe(전체 이스케이프)로 갈라졌다. 채팅 상태창만 quoteSafe
+ck('render의 HTML 치환: 채팅 상태창 quoteSafe 1곳 + 게임 패널 panelSafe 1곳', (src.match(/lookup, extras, quoteSafe[,)]/g) || []).length === 1 && (src.match(/lookup, extras, panelSafe[,)]/g) || []).length === 1, '');
 
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }

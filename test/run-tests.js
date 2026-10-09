@@ -475,6 +475,52 @@ test('reconcileState: fight 판정을 뺀 스키마에선 열린 교전을 닫�
   eq(fight.fightActive(r.vars), false);
 });
 
+// ── 전체 점검 4차 (v1.14.8) — 렌더 ──
+test('scopeCss: 문장형 at-rule은 그대로, 다음 규칙은 스코프, :root는 상자, 템플릿 접두 아래 .sim-status', () => {
+  const r1 = scopeCss('@import url(x.css); *{margin:0} :root{--a:1}');
+  assert.ok(r1.includes('@import url(x.css);') && r1.includes('.sim-status *{margin:0}') && r1.includes('.sim-status{--a:1}'), r1);
+  const r2 = scopeCss('.sim-status{background:#000} .box{color:red}', '.sim-status .sim-tpl-A');
+  assert.ok(r2.includes('.sim-status .sim-tpl-A{background:#000}') && r2.includes('.sim-status .sim-tpl-A .box{color:red}'), r2);
+});
+
+test('게임 패널 템플릿은 값을 전부 이스케이프한다 (플러그인 iframe엔 새니타이저가 없다)', () => {
+  const { renderPanelTemplate } = require('../core/render');
+  const s = fx();
+  s.vars.push({ id: 'note', type: 'text', init: '' });
+  const st = engine.initState(s);
+  st.vars.note = '<img src=x onerror=alert(1)> "q" \'s\'';
+  const html = renderPanelTemplate(s, st, "<p title='{note}'>{note}</p>");
+  assert.ok(!html.includes('<img'), html);
+  assert.ok(html.includes('&lt;img') && html.includes('&#39;s&#39;') && html.includes('&quot;q&quot;'), html);
+});
+
+test('하이라이트 카드: 목록 다중집합 차 — 같은 물건 둘째 개도 카드에 선다 / 로그 집계는 constructor 항목도', () => {
+  const s = fx();
+  s.vars.push({ id: 'bag', label: '가방', type: 'list', init: [] });
+  const st = engine.initState(s);
+  st.vars.bag = ['포션', '포션'];
+  const html = renderStatusHtml(s, st, [{ id: 'bag', from: ['포션'], to: ['포션', '포션'], source: 'llm' }, { id: 'bag', from: [], to: ['constructor'], source: 'llm' }], null, { includeStyle: false });
+  assert.ok(html.includes('+포션'), html);
+  assert.ok(html.includes('constructor'), html);
+});
+
+test('그룹 모드: 파생 하나의 런타임 오류가 상태창 전체를 비우지 않는다', () => {
+  const s = fx();
+  s.vars.push({ id: 'mood', type: 'enum', enum: ['a', 'b'], init: 'a' });
+  s.derived.push({ id: 'bad', label: '나쁜 파생', expr: 'mood > 3' });
+  s.statusUI.groups.push({ label: '시험', items: [{ var: 'bad' }, { var: 'gold' }] });
+  const st = engine.initState(s);
+  const html = renderStatusHtml(s, st, null, null, { includeStyle: false });
+  assert.ok(html.includes('시험') && html.includes('?'), html.slice(0, 300));
+});
+
+test('검증: 변수 id가 uid·choices면 자리표시자 충돌 경고', () => {
+  const s = fx();
+  s.vars.push({ id: 'uid', type: 'int', init: 0 }, { id: 'choices', type: 'int', init: 0 });
+  const r = validateSchema(s);
+  assert.ok(r.warnings.some((w) => w.msg.includes("'uid'")) && r.warnings.some((w) => w.msg.includes("'choices'")), JSON.stringify(r.warnings));
+});
+
 // ── when (조건 잠금) — v1.14.3 ──
 function whenFx() {
   return {

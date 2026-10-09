@@ -311,7 +311,7 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
   const keep = changeLog.filter((c) => (c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'))
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:') || c.source?.startsWith('fight:') || c.source?.startsWith('checkpoint:'))
     // 시간 우편함(skip_day/skip_min)은 보조가 적어도 카드가 아니다 — 같은 턴에 시각으로 굳고 0이 된다 (v1.12.2,
     // 조퇴악녀 실기 "📊 분 진행 +5 (현재 5)": 현재는 이미 0인데 스탯 오른 것처럼 섰다. 보조 원장 changeMemoLines와 같은 규칙)
     && c.id !== SKIP_DAY && c.id !== SKIP_MIN);
@@ -356,8 +356,12 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
     const label = esc(def.label ?? id);
     if (Array.isArray(from) || Array.isArray(to)) {
       const fa = Array.isArray(from) ? from : []; const ta = Array.isArray(to) ? to : [];
-      const added = ta.filter((x) => !fa.includes(x));
-      const removed = fa.filter((x) => !ta.includes(x));
+      // 다중집합 차 (v1.14.8) — 전엔 집합 차집합이라 '포션' 하나 더 얻은 것·하나 쓴 것이 카드에서 빠졌다 (목록은 중복을 허용한다)
+      const cnt = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; };
+      const fc = cnt(fa), tc = cnt(ta);
+      const added = [], removed = [];
+      for (const [k, n] of tc) for (let i = (fc.get(k) || 0); i < n; i++) added.push(k);
+      for (const [k, n] of fc) for (let i = (tc.get(k) || 0); i < n; i++) removed.push(k);
       if (!added.length && !removed.length) continue;
       // 차집합은 저장된 원문끼리 낸 뒤, 글자만 환산해 보여준다 (v1.7.1)
       const show = dueNow ? (x) => dueText(String(x), dueNow(id)) : String;
@@ -425,7 +429,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       for (const it of g.items || []) {
         if (it.showWhen && !truthy(evalSafe(it.showWhen, lookup) ?? 0)) continue; // 조건부 항목
         const def = varById[it.var];
-        const val = lookup(it.var);
+        let val;
+        try { val = lookup(it.var); } catch { val = '?'; } // 파생 하나의 런타임 오류가 상태창 전체를 비우지 않게 (v1.14.8)
         if (val === undefined) continue;
         const label = esc(it.label || def?.label || it.var); // 빈 문자열 라벨은 id로 폴백
         let valueHtml;
@@ -451,7 +456,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
           let color = '';
           if (it.color) {
             const c = evalSafe(it.color, lookup);
-            if (typeof c === 'string') color = `;background:${esc(c)}`;
+            if (typeof c === 'string') color = `;background:${esc(c).replace(/[;{}]/g, '')}`; // ';position:fixed…' 같은 스타일 탈출 차단 (v1.14.8)
           }
           barHtml = `<span class="sim-bar"><span class="sim-bar-fill" style="width:${pct.toFixed(1)}%${color}"></span></span>`;
         }
@@ -519,8 +524,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
         || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:')
-        || c.source?.startsWith('fight:'))
+        || c.source?.startsWith('fight:') || c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:'))
       .map((c) => {
+        // 갈림길 결정·되감기 줄 (v1.14.8) — 변수 변화가 아니라 사건 요약 (from 없음, to = 요약). 효과의 변수 변화는 아래 diff로
+        if ((c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:')) && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">${c.source.startsWith('choice:') ? '🔀' : '⏪'} ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
+        }
         // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
         if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
           return `<div class="sim-log-item">⚔ ${esc(String(c.to))}</div>`;
@@ -540,12 +549,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         } else if (Array.isArray(c.to) || Array.isArray(c.from)) {
           const fromArr = Array.isArray(c.from) ? c.from : [];
           const toArr = Array.isArray(c.to) ? c.to : [];
-          const counted = (arr) => arr.reduce((m, x) => (m[x] = (m[x] || 0) + 1, m), {});
+          const counted = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; }; // Map — 'constructor' 같은 항목이 프로토타입 이름과 부딪히던 것 (v1.14.8)
           const fc = counted(fromArr), tc = counted(toArr);
           const parts = [];
           const shown = (k) => esc(dueText(String(k), dueNow(c.id)));
           for (const k of new Set([...fromArr, ...toArr])) {
-            const d = (tc[k] || 0) - (fc[k] || 0);
+            const d = (tc.get(k) || 0) - (fc.get(k) || 0);
             if (d > 0) parts.push(`+${shown(k)}${d > 1 ? '×' + d : ''}`);
             if (d < 0) parts.push(`-${shown(k)}${d < -1 ? '×' + -d : ''}`);
           }
@@ -595,6 +604,11 @@ function scopeCss(css, prefix = '.sim-status') {
     s = s.trim();
     if (!s) return s;
     if (s.startsWith(prefix)) return s;
+    // :root는 상자 자신 (v1.14.8 — 전엔 '.sim-status :root'가 되어 변수 선언이 죽었다)
+    if (s === ':root') return prefix;
+    // templates[] 접두('.sim-status .sim-tpl-X') 아래에서 '.sim-status …'로 쓴 셀렉터는 접두가 그 자리를 대신한다 (v1.14.8 —
+    // 전엔 '.sim-status .sim-tpl-X .sim-status …'가 되어 상자·제목줄 스타일이 조용히 사라졌다)
+    if (s.startsWith('.sim-status') && prefix.startsWith('.sim-status ') ) return prefix + s.slice('.sim-status'.length);
     return `${prefix} ${s}`;
   }).filter(Boolean).join(', ');
 
@@ -619,6 +633,11 @@ function scopeCss(css, prefix = '.sim-status') {
       out += buf.trim() + '}';
       buf = '';
       stack.pop();
+    } else if (c === ';' && !stack.length) {
+      // 블록 밖의 문장형 at-rule(@import …; @layer base; @charset) — 그대로 내보낸다 (v1.14.8). 전엔 다음 규칙의 머리에 붙어
+      // '@import url(x); *{…}'가 통째로 at-rule로 취급돼 '*'가 스코프 없이 채팅 전체에 샜다
+      out += buf.trim() + ';';
+      buf = '';
     } else {
       buf += c;
     }
@@ -858,6 +877,7 @@ function extractTemplateParts(template) {
  *     안 눌리는 버튼을 그리면 고장으로 보이므로 아예 안 그린다.
  * 임베드 <style>은 #sc-game 범위로 가둬 함께 돌려준다 (party.css와 같은 안전 규약).
  */
+const panelSafe = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 function renderPanelTemplate(schema, state, tpl) {
   const lookup = makeLookup(schema, state.vars);
   const lc = state.meta?.lastCheck;
@@ -868,7 +888,9 @@ function renderPanelTemplate(schema, state, tpl) {
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
-  return styleTag + renderTemplate(parts.html, lookup, extras, quoteSafe, dueClock(schema, state));
+  // 값은 전부 이스케이프 (v1.14.8) — 게임 패널은 플러그인 iframe이라 DOMPurify가 없다. 전엔 quoteSafe(큰따옴표만)라 보조가 text·목록에
+  // 쓴 값이 날것으로 꽂혔다(점검 영역 8 F1 — 서사 주입으로 보조가 <img onerror>를 쓰게 하면 플러그인 권한이 넘어간다). 템플릿 HTML 자체는 제작자 신뢰
+  return styleTag + renderTemplate(parts.html, lookup, extras, panelSafe, dueClock(schema, state));
 }
 
 function evalSafe(src, lookup) {

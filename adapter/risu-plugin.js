@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.7
-//@display-name SimCore (시뮬 엔진) v1.14.7 점검 3차
+//@version 1.14.8
+//@display-name SimCore (시뮬 엔진) v1.14.8 점검 4차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,21 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.8 ──────────────────────────────────────────────
+// **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
+//   꽂혀 서사 주입으로 플러그인 권한이 넘어갈 수 있었다 → 값 전부 이스케이프. 관리 패널의 캐릭터 이름·스키마 이름·변수 라벨도.
+//   escapeText가 따옴표까지 바꾼다. 막대 색 식의 ';' 스타일 탈출 차단.
+// - [scopeCss] 블록 밖 문장형 at-rule(@import …;)이 다음 규칙 머리에 붙어 '*{…}'가 스코프 없이 채팅 전체에 새던 것. ':root'는 상자 자신.
+//   templates[] 접두 아래 '.sim-status …' 셀렉터가 '.sim-status .sim-tpl-X .sim-status …'가 되어 죽던 것.
+// - [시간선 재정렬 v2] v1.14.7은 마지막 메시지의 스냅샷만 옮겼다 — 옛 마커 번호가 남아 다음 출력과 번호가 겹치면 탭 라디오·id가 충돌하고
+//   범례가 여러 창에 섰다. 이제 char 메시지 전부의 스냅샷을 새 자리로 옮기고 마커 번호도 자리 번호로 고친다(로드 경로).
+// - [즉시 갱신] refreshStatusDom이 과거 창에 현재 값·현재 갈림길을 칠하던 것 — 과거 창은 건드리지 않는다(창마다 RPC 6왕복도 준다).
+//   템플릿 탭(mp-in)의 선택이 칩을 누를 때마다 첫 탭으로 튕기던 것.
+// - [그룹 모드] 파생 하나의 런타임 오류가 상태창 전체를 비우던 것 → 그 칸만 '?'. [변화 로그·카드] 갈림길·되감기·교전 출처 누락.
+//   목록 카드가 집합 차집합이라 같은 물건 둘째 개를 놓치던 것(다중집합). 로그 집계가 'constructor' 항목에 걸리던 것(Map).
+// - [검증] 변수 id가 uid·choices면 자리표시자 충돌 경고. [편성] 음수 레벨 점 RangeError.
+
 // ── v1.14.7 ──────────────────────────────────────────────
 // **전체 점검 3차 — 상태 저장·복원 (영역 3).** 읽기 감사 19건 중 코드로 재확인한 것.
 // - [시간선 재정렬] 중간 메시지를 지우면 번호로 찾는 스냅샷이 낡은 시간선이 되어 다음 전송·재로드에 k/2턴 되감겼다(짝수 삭제는 옛
@@ -3792,21 +3807,34 @@
   // 전엔 짝수 개를 지우면 옛 pre:U가 혈통 검사를 통과해 k/2턴 전으로 되감겼고, 홀수 개면 재로드에서 옛 out으로 되감겼다
   // (점검 영역 3 #1). 마지막 char 메시지의 ⟦simcore:N⟧이 가리키는 out:N이 진짜 현재 상태 — 지금 번호 자리로 옮기고 그 뒤를 지운다.
   // 그 메시지보다 뒤였던 과거 메시지들의 상태창은 현재값 폴백으로 그려진다(스냅샷을 잃는다) — 되감김보다 낫다.
-  async function realignTimeline(chat, lastCharIdx, where) {
+  async function realignTimeline(chat, lastCharIdx, where, opts = {}) {
     try {
       if (!session || lastCharIdx < 0) return false;
-      const msg = chat?.message?.[lastCharIdx];
-      const m = typeof msg?.data === 'string' ? msg.data.match(/⟦simcore:(\d+)⟧/) : null;
-      if (!m) return false;
-      const n = parseInt(m[1], 10);
-      if (!Number.isFinite(n) || n === lastCharIdx) return false;
-      const real = await session.store.load('out', n);
-      if (!real) { console.log('[simcore] 시간선 재정렬 불가 — out:' + n + ' 없음 (' + where + ')'); return false; }
-      await session.store.pruneFrom(lastCharIdx + 1);
-      await session.store.save('out', lastCharIdx, real);
-      session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(real)));
+      const msgs = chat?.message || [];
+      // char 메시지 전부의 (자리 번호, 마커 번호) — 하나라도 어긋나면 번호 체계가 낡은 것
+      const pairs = [];
+      for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]; if (!m || m.role !== 'char' || typeof m.data !== 'string') continue;
+        const mk = m.data.match(/⟦simcore:(\d+)⟧/); if (!mk) continue;
+        const n = parseInt(mk[1], 10); if (!Number.isFinite(n)) continue;
+        pairs.push({ i, n });
+      }
+      if (!pairs.some((p) => p.n !== p.i)) return false;
+      // 스냅샷을 전부 먼저 읽어 둔다 (옮기다 덮어쓰지 않게) — 그 다음 옛 번호 체계(pre/send/out)를 걷어내고 새 자리로 저장
+      const loaded = new Map();
+      for (const p of pairs) { const st = await session.store.load('out', p.n); if (st) loaded.set(p.i, st); }
+      await session.store.pruneFrom(0);
+      for (const [i, st] of loaded) await session.store.save('out', i, st);
+      // 마커 번호도 자리 번호로 (v1.14.8 — 번호를 그대로 두면 다음 출력이 옛 번호와 겹쳐 탭 라디오·id가 충돌하고 범례가 여러 창에 섰다).
+      // 로드 경로만 채팅을 다시 쓴다 — 전송 중엔 리수가 요청을 만드는 중이라 건드리지 않는다 (다음 로드에서 맞춘다)
+      if (opts.rewrite !== false && opts.chaIdx != null && opts.chatIdx != null) {
+        for (const p of pairs) if (p.n !== p.i) msgs[p.i].data = msgs[p.i].data.replace(/⟦simcore:\d+⟧/g, `⟦simcore:${p.i}⟧`);
+        await Risuai.setChatToIndex(opts.chaIdx, opts.chatIdx, chat);
+      }
+      const cur = loaded.get(lastCharIdx);
+      if (cur) session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(cur)));
       histStates = new Map(); histPending.clear();
-      console.log('[simcore] 시간선 재정렬: 마커', n, '→ 메시지', lastCharIdx, '(' + where + ')');
+      console.log('[simcore] 시간선 재정렬:', pairs.filter((p) => p.n !== p.i).map((p) => `${p.n}→${p.i}`).join(' '), '(' + where + ')');
       return true;
     } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
@@ -3885,7 +3913,7 @@
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
-    await realignTimeline(chat, lastCharIdx, '로드');
+    await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx });
     try { await session.init(lastCharIdx); }
     catch (e) {
       // 반쯤 초기화된 세션을 남기지 않는다 (v1.14.7) — 전엔 current가 null인 세션이 남아 다음 전송이 initState로 조용히 시작했다 (점검 영역 3 #10)
@@ -4093,7 +4121,7 @@
       const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
       // 마지막 char 메시지의 마커가 번호와 어긋나면(중간 삭제) 전송 전에 시간선을 맞춘다 (v1.14.7)
-      if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송');
+      if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송', { rewrite: false });
       const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
       // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
@@ -5484,7 +5512,7 @@
         if (it.max != null && it.max <= 10) {
           const pips = document.createElement('span');
           pips.className = 'scg-pips';
-          pips.innerHTML = '●'.repeat(it.level) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`;
+          pips.innerHTML = '●'.repeat(Math.max(0, Math.min(it.max, it.level))) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`; // 음수·초과 레벨에 RangeError 나던 것 (v1.14.8)
           row.appendChild(pips);
         }
         if (it.maxed) {
@@ -6696,7 +6724,7 @@
         try {
           const cur = await el.querySelector('input:checked');
           if (cur) {
-            const tm = /sim-tabin-(\d+)/.exec(String(await safeCall(cur, 'getClassName', 'className') ?? ''));
+            const tm = /(?:sim-tabin|mp-in)-(\d+)/.exec(String(await safeCall(cur, 'getClassName', 'className') ?? '')); // 템플릿 탭(mp-in)도 (v1.14.8 — 전엔 칩을 누를 때마다 첫 탭으로 튕겼다)
             if (tm) tabIdx = +tm[1];
           }
         } catch {}
@@ -6707,6 +6735,9 @@
         const lastIdxNow = lastOutIndex >= 0 ? lastOutIndex
           : (histStates.size ? Math.max(...histStates.keys()) : -1);
         const isLast = !(isFinite(uidNum) && lastIdxNow >= 0 && uidNum < lastIdxNow);
+        // 과거 창은 건드리지 않는다 (v1.14.8) — 전엔 과거 창에도 현재 값·현재 갈림길을 칠해 리수가 다시 그릴 때까지 값이 왔다 갔다 했고,
+        // 창마다 RPC 6왕복이라 클릭이 몇 초씩 걸렸다. display 훅의 스냅샷 렌더가 과거 창의 진실이다
+        if (!isLast) continue;
         const html = renderStatusHtml(schema, session.current,
           isLast ? lastChangeLog : null, isLast ? currentActionStates() : null,
           { includeStyle: false, uid: m[1] });
@@ -6722,9 +6753,9 @@
             .map((c) => /^(x-risu-|hljs)/.test(c) ? c : 'x-risu-' + c).join(' ')}"`);
         // 붙잡아 둔 탭을 되살린다 — 새 렌더의 checked(첫 탭)를 지우고 그 자리 라디오에 단다.
         // 탭 수가 줄어 자리가 사라졌으면(게이트 변화) 그냥 기본 첫 탭으로 둔다.
-        if (tabIdx > 0 && new RegExp(`sim-tabin-${tabIdx}[" ]`).test(inner)) {
-          inner = inner.replace(/(<input[^>]*sim-tabin-\d+[^>]*?) checked(>| )/g, '$1$2');
-          inner = inner.replace(new RegExp(`(<input[^>]*sim-tabin-${tabIdx}"[^>]*?)>`), '$1 checked>');
+        if (tabIdx > 0 && new RegExp(`(?:sim-tabin|mp-in)-${tabIdx}[" ]`).test(inner)) {
+          inner = inner.replace(/(<input[^>]*(?:sim-tabin|mp-in)-\d+[^>]*?) checked(>| )/g, '$1$2');
+          inner = inner.replace(new RegExp(`(<input[^>]*(?:sim-tabin|mp-in)-${tabIdx}"[^>]*?)>`), '$1 checked>');
         }
         // 되읽기 검증 표식 — setInnerHTML은 기본 DOMPurify를 타서 마크업이 정규화된다
         // (실측: <details open> → open="") — 원문 앞부분 비교는 항상 어긋난다 (v0.87.1에서
@@ -8672,7 +8703,7 @@ count(목록)  has(목록, "항목")</pre>
   }
 
   function escapeText(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // 속성 안에서도 안전하게 (v1.14.8)
   }
 
   /**
@@ -8721,14 +8752,15 @@ count(목록)  has(목록, "항목")</pre>
     buildPanelSkeleton();
     const st = document.getElementById('sc-status');
     const charName = String(panelStatus.charName || '').trim();
-    const namedCharacter = charName ? `'${charName}' 캐릭터` : '현재 캐릭터';
-    const loadedPrefix = charName ? `'${charName}' — ` : '';
+    // 캐릭터 이름·스키마 이름은 카드에서 온 글 — 플러그인 iframe엔 새니타이저가 없다 (v1.14.8)
+    const namedCharacter = charName ? `'${escapeText(charName)}' 캐릭터` : '현재 캐릭터';
+    const loadedPrefix = charName ? `'${escapeText(charName)}' — ` : '';
     const stateMsg = {
       'no-char': ['선택된 캐릭터 없음', 'status-warn'],
       'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI 어시스턴트나 JSON 관리자에서 작업본을 연 뒤 [편집 작업공간]에서 설치하세요`, 'status-warn'],
       'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
       'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
-      'ok': [`${loadedPrefix}${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'ok': [`${loadedPrefix}${escapeText(schema?.meta?.name ?? '스키마')} 로드됨`, 'status-ok'],
       'init': ['초기화 중', 'muted'],
     }[panelStatus.state] || ['?', 'muted'];
     const panelTone = (panelStatus.report || []).length
@@ -8912,7 +8944,7 @@ count(목록)  has(목록, "항목")</pre>
     for (const v of schema.vars) {
       const tr = document.createElement('tr');
       const cur = session.current.vars[v.id];
-      const nameCell = `<td>${v.label ?? v.id} <span class="muted">(${v.id})</span></td>`;
+      const nameCell = `<td>${escapeText(v.label ?? v.id)} <span class="muted">(${escapeText(v.id)})</span></td>`;
 
       // 목록은 통짜 텍스트로 못 고친다(coerce가 배열만 받는다). 항목별 ✕ + 추가 칸으로 낸다.
       // 서사로 맺은 계약을 서사로 파기했을 때 사용자가 직접 지우는 자리이기도 하다.

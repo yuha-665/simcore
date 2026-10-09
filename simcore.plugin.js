@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.7
-//@display-name SimCore (시뮬 엔진) v1.14.7 점검 3차
+//@version 1.14.8
+//@display-name SimCore (시뮬 엔진) v1.14.8 점검 4차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,20 +10,20 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.7 ──────────────────────────────────────────────
-// **전체 점검 3차 — 상태 저장·복원 (영역 3).** 읽기 감사 19건 중 코드로 재확인한 것.
-// - [시간선 재정렬] 중간 메시지를 지우면 번호로 찾는 스냅샷이 낡은 시간선이 되어 다음 전송·재로드에 k/2턴 되감겼다(짝수 삭제는 옛
-//   pre:U가 혈통 검사를 통과, 홀수는 옛 out). 이제 마지막 char 메시지의 마커 ⟦simcore:N⟧이 가리키는 out:N을 진짜로 보고, 번호와
-//   어긋나면 지금 자리로 옮기고 그 뒤를 지운다 — 로드·전송 두 지점에서. 그 뒤였던 과거 메시지의 상태창은 현재값 폴백.
-// - [첫 전송 전 슬롯] char 메시지가 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)의 조작·가져온 상태가 boot:0에 저장되고 로드에서
-//   복원된다 — 전엔 앵커 -1 가드에 걸려 전부 램에만 살았다. 저장 7곳을 persistCurrent 하나로.
-// - [최초설정] AI 최초설정이 끝난 턴 0에 재로드하면 시작 프리셋이 AI 값을 덮던 것 — setupDone이면 안 덮는다.
-// - [미러 복원] 예약 키(날짜·막·비밀·진영·게이지·교전)까지 복원하고, setup.ai 봇이면 최초설정이 지난 것으로 보며, 스냅샷에 저장한다.
-// - [reconcileState] 타입·범위 정리 — 편집기 타입 변경·다른 스키마 세이브로 남은 옛 값이 evaluate를 던져 정산 전체가 매 턴 죽던 것.
-//   fight 판정을 스키마에서 뺐는데 교전이 열려 있던 세이브는 교전을 닫는다.
-// - [부팅] 로드가 던져도 훅은 등록된다. 상태 복원이 던지면 반쯤 초기화된 세션을 남기지 않는다.
-// - [세이브 가져오기] 먼저 쓰고 파일에 없는 것만 지운다(원자성). [체크포인트] __proto__·constructor·prototype 칸 거부.
-//   [마커 복구] 부른 세션에서만.
+// ── v1.14.8 ──────────────────────────────────────────────
+// **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
+//   꽂혀 서사 주입으로 플러그인 권한이 넘어갈 수 있었다 → 값 전부 이스케이프. 관리 패널의 캐릭터 이름·스키마 이름·변수 라벨도.
+//   escapeText가 따옴표까지 바꾼다. 막대 색 식의 ';' 스타일 탈출 차단.
+// - [scopeCss] 블록 밖 문장형 at-rule(@import …;)이 다음 규칙 머리에 붙어 '*{…}'가 스코프 없이 채팅 전체에 새던 것. ':root'는 상자 자신.
+//   templates[] 접두 아래 '.sim-status …' 셀렉터가 '.sim-status .sim-tpl-X .sim-status …'가 되어 죽던 것.
+// - [시간선 재정렬 v2] v1.14.7은 마지막 메시지의 스냅샷만 옮겼다 — 옛 마커 번호가 남아 다음 출력과 번호가 겹치면 탭 라디오·id가 충돌하고
+//   범례가 여러 창에 섰다. 이제 char 메시지 전부의 스냅샷을 새 자리로 옮기고 마커 번호도 자리 번호로 고친다(로드 경로).
+// - [즉시 갱신] refreshStatusDom이 과거 창에 현재 값·현재 갈림길을 칠하던 것 — 과거 창은 건드리지 않는다(창마다 RPC 6왕복도 준다).
+//   템플릿 탭(mp-in)의 선택이 칩을 누를 때마다 첫 탭으로 튕기던 것.
+// - [그룹 모드] 파생 하나의 런타임 오류가 상태창 전체를 비우던 것 → 그 칸만 '?'. [변화 로그·카드] 갈림길·되감기·교전 출처 누락.
+//   목록 카드가 집합 차집합이라 같은 물건 둘째 개를 놓치던 것(다중집합). 로그 집계가 'constructor' 항목에 걸리던 것(Map).
+// - [검증] 변수 id가 uid·choices면 자리표시자 충돌 경고. [편성] 음수 레벨 점 RangeError.
 
 
 const SimCore = (() => {
@@ -1104,7 +1104,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight' || v.id === 'secrets') {
+    if (['commands', 'lastcheck', 'scenario', 'fight', 'secrets', 'uid', 'choices'].includes(v.id)) { // uid·choices도 예약 자리 (v1.14.8)
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {
@@ -10275,7 +10275,7 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
   const keep = changeLog.filter((c) => (c.source === 'llm' || c.source?.startsWith('action:')
     || c.source?.startsWith('check:') || c.source?.startsWith('event:')
     || c.source?.startsWith('random:') || c.source?.startsWith('choice')
-    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:'))
+    || c.source?.startsWith('scenario:') || c.source?.startsWith('secret:') || c.source?.startsWith('fight:') || c.source?.startsWith('checkpoint:'))
     // 시간 우편함(skip_day/skip_min)은 보조가 적어도 카드가 아니다 — 같은 턴에 시각으로 굳고 0이 된다 (v1.12.2,
     // 조퇴악녀 실기 "📊 분 진행 +5 (현재 5)": 현재는 이미 0인데 스탯 오른 것처럼 섰다. 보조 원장 changeMemoLines와 같은 규칙)
     && c.id !== SKIP_DAY && c.id !== SKIP_MIN);
@@ -10320,8 +10320,12 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
     const label = esc(def.label ?? id);
     if (Array.isArray(from) || Array.isArray(to)) {
       const fa = Array.isArray(from) ? from : []; const ta = Array.isArray(to) ? to : [];
-      const added = ta.filter((x) => !fa.includes(x));
-      const removed = fa.filter((x) => !ta.includes(x));
+      // 다중집합 차 (v1.14.8) — 전엔 집합 차집합이라 '포션' 하나 더 얻은 것·하나 쓴 것이 카드에서 빠졌다 (목록은 중복을 허용한다)
+      const cnt = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; };
+      const fc = cnt(fa), tc = cnt(ta);
+      const added = [], removed = [];
+      for (const [k, n] of tc) for (let i = (fc.get(k) || 0); i < n; i++) added.push(k);
+      for (const [k, n] of fc) for (let i = (tc.get(k) || 0); i < n; i++) removed.push(k);
       if (!added.length && !removed.length) continue;
       // 차집합은 저장된 원문끼리 낸 뒤, 글자만 환산해 보여준다 (v1.7.1)
       const show = dueNow ? (x) => dueText(String(x), dueNow(id)) : String;
@@ -10389,7 +10393,8 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
       for (const it of g.items || []) {
         if (it.showWhen && !truthy(evalSafe(it.showWhen, lookup) ?? 0)) continue; // 조건부 항목
         const def = varById[it.var];
-        const val = lookup(it.var);
+        let val;
+        try { val = lookup(it.var); } catch { val = '?'; } // 파생 하나의 런타임 오류가 상태창 전체를 비우지 않게 (v1.14.8)
         if (val === undefined) continue;
         const label = esc(it.label || def?.label || it.var); // 빈 문자열 라벨은 id로 폴백
         let valueHtml;
@@ -10415,7 +10420,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
           let color = '';
           if (it.color) {
             const c = evalSafe(it.color, lookup);
-            if (typeof c === 'string') color = `;background:${esc(c)}`;
+            if (typeof c === 'string') color = `;background:${esc(c).replace(/[;{}]/g, '')}`; // ';position:fixed…' 같은 스타일 탈출 차단 (v1.14.8)
           }
           barHtml = `<span class="sim-bar"><span class="sim-bar-fill" style="width:${pct.toFixed(1)}%${color}"></span></span>`;
         }
@@ -10483,8 +10488,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     const items = changeLog
       .filter((c) => c.source === 'llm' || c.source?.startsWith('event:') || c.source?.startsWith('random:')
         || c.source?.startsWith('action:') || c.source?.startsWith('check:') || c.source?.startsWith('scenario:')
-        || c.source?.startsWith('fight:'))
+        || c.source?.startsWith('fight:') || c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:'))
       .map((c) => {
+        // 갈림길 결정·되감기 줄 (v1.14.8) — 변수 변화가 아니라 사건 요약 (from 없음, to = 요약). 효과의 변수 변화는 아래 diff로
+        if ((c.source?.startsWith('choice:') || c.source?.startsWith('checkpoint:')) && c.from == null && typeof c.to === 'string') {
+          return `<div class="sim-log-item">${c.source.startsWith('choice:') ? '🔀' : '⏪'} ${esc(String(c.id))} ${esc(String(c.to))}</div>`;
+        }
         // 교전 줄 (v1.6.0) — 개전·결착·이탈은 굴림 결과와 같은 꼴 (from 없음, to = 요약). win effects의 변수 변화는 아래 diff로
         if (c.source?.startsWith('fight:') && c.from == null && typeof c.to === 'string') {
           return `<div class="sim-log-item">⚔ ${esc(String(c.to))}</div>`;
@@ -10504,12 +10513,12 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
         } else if (Array.isArray(c.to) || Array.isArray(c.from)) {
           const fromArr = Array.isArray(c.from) ? c.from : [];
           const toArr = Array.isArray(c.to) ? c.to : [];
-          const counted = (arr) => arr.reduce((m, x) => (m[x] = (m[x] || 0) + 1, m), {});
+          const counted = (arr) => { const m = new Map(); for (const x of arr) m.set(x, (m.get(x) || 0) + 1); return m; }; // Map — 'constructor' 같은 항목이 프로토타입 이름과 부딪히던 것 (v1.14.8)
           const fc = counted(fromArr), tc = counted(toArr);
           const parts = [];
           const shown = (k) => esc(dueText(String(k), dueNow(c.id)));
           for (const k of new Set([...fromArr, ...toArr])) {
-            const d = (tc[k] || 0) - (fc[k] || 0);
+            const d = (tc.get(k) || 0) - (fc.get(k) || 0);
             if (d > 0) parts.push(`+${shown(k)}${d > 1 ? '×' + d : ''}`);
             if (d < 0) parts.push(`-${shown(k)}${d < -1 ? '×' + -d : ''}`);
           }
@@ -10559,6 +10568,11 @@ function scopeCss(css, prefix = '.sim-status') {
     s = s.trim();
     if (!s) return s;
     if (s.startsWith(prefix)) return s;
+    // :root는 상자 자신 (v1.14.8 — 전엔 '.sim-status :root'가 되어 변수 선언이 죽었다)
+    if (s === ':root') return prefix;
+    // templates[] 접두('.sim-status .sim-tpl-X') 아래에서 '.sim-status …'로 쓴 셀렉터는 접두가 그 자리를 대신한다 (v1.14.8 —
+    // 전엔 '.sim-status .sim-tpl-X .sim-status …'가 되어 상자·제목줄 스타일이 조용히 사라졌다)
+    if (s.startsWith('.sim-status') && prefix.startsWith('.sim-status ') ) return prefix + s.slice('.sim-status'.length);
     return `${prefix} ${s}`;
   }).filter(Boolean).join(', ');
 
@@ -10583,6 +10597,11 @@ function scopeCss(css, prefix = '.sim-status') {
       out += buf.trim() + '}';
       buf = '';
       stack.pop();
+    } else if (c === ';' && !stack.length) {
+      // 블록 밖의 문장형 at-rule(@import …; @layer base; @charset) — 그대로 내보낸다 (v1.14.8). 전엔 다음 규칙의 머리에 붙어
+      // '@import url(x); *{…}'가 통째로 at-rule로 취급돼 '*'가 스코프 없이 채팅 전체에 샜다
+      out += buf.trim() + ';';
+      buf = '';
     } else {
       buf += c;
     }
@@ -10822,6 +10841,7 @@ function extractTemplateParts(template) {
  *     안 눌리는 버튼을 그리면 고장으로 보이므로 아예 안 그린다.
  * 임베드 <style>은 #sc-game 범위로 가둬 함께 돌려준다 (party.css와 같은 안전 규약).
  */
+const panelSafe = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 function renderPanelTemplate(schema, state, tpl) {
   const lookup = makeLookup(schema, state.vars);
   const lc = state.meta?.lastCheck;
@@ -10832,7 +10852,9 @@ function renderPanelTemplate(schema, state, tpl) {
     fight: fightChipHtml(state.vars, esc) };
   const parts = extractTemplateParts(tpl);
   const styleTag = parts.css.trim() ? `<style>${scopeCss(parts.css, '#sc-game')}</style>` : '';
-  return styleTag + renderTemplate(parts.html, lookup, extras, quoteSafe, dueClock(schema, state));
+  // 값은 전부 이스케이프 (v1.14.8) — 게임 패널은 플러그인 iframe이라 DOMPurify가 없다. 전엔 quoteSafe(큰따옴표만)라 보조가 text·목록에
+  // 쓴 값이 날것으로 꽂혔다(점검 영역 8 F1 — 서사 주입으로 보조가 <img onerror>를 쓰게 하면 플러그인 권한이 넘어간다). 템플릿 HTML 자체는 제작자 신뢰
+  return styleTag + renderTemplate(parts.html, lookup, extras, panelSafe, dueClock(schema, state));
 }
 
 function evalSafe(src, lookup) {
@@ -33017,6 +33039,21 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.7 ──────────────────────────────────────────────
+// **전체 점검 3차 — 상태 저장·복원 (영역 3).** 읽기 감사 19건 중 코드로 재확인한 것.
+// - [시간선 재정렬] 중간 메시지를 지우면 번호로 찾는 스냅샷이 낡은 시간선이 되어 다음 전송·재로드에 k/2턴 되감겼다(짝수 삭제는 옛
+//   pre:U가 혈통 검사를 통과, 홀수는 옛 out). 이제 마지막 char 메시지의 마커 ⟦simcore:N⟧이 가리키는 out:N을 진짜로 보고, 번호와
+//   어긋나면 지금 자리로 옮기고 그 뒤를 지운다 — 로드·전송 두 지점에서. 그 뒤였던 과거 메시지의 상태창은 현재값 폴백.
+// - [첫 전송 전 슬롯] char 메시지가 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)의 조작·가져온 상태가 boot:0에 저장되고 로드에서
+//   복원된다 — 전엔 앵커 -1 가드에 걸려 전부 램에만 살았다. 저장 7곳을 persistCurrent 하나로.
+// - [최초설정] AI 최초설정이 끝난 턴 0에 재로드하면 시작 프리셋이 AI 값을 덮던 것 — setupDone이면 안 덮는다.
+// - [미러 복원] 예약 키(날짜·막·비밀·진영·게이지·교전)까지 복원하고, setup.ai 봇이면 최초설정이 지난 것으로 보며, 스냅샷에 저장한다.
+// - [reconcileState] 타입·범위 정리 — 편집기 타입 변경·다른 스키마 세이브로 남은 옛 값이 evaluate를 던져 정산 전체가 매 턴 죽던 것.
+//   fight 판정을 스키마에서 뺐는데 교전이 열려 있던 세이브는 교전을 닫는다.
+// - [부팅] 로드가 던져도 훅은 등록된다. 상태 복원이 던지면 반쯤 초기화된 세션을 남기지 않는다.
+// - [세이브 가져오기] 먼저 쓰고 파일에 없는 것만 지운다(원자성). [체크포인트] __proto__·constructor·prototype 칸 거부.
+//   [마커 복구] 부른 세션에서만.
+
 // ── v1.14.6 ──────────────────────────────────────────────
 // **전체 점검 2차 — 어댑터 묶음 (영역 2·3·4의 리수 통합 쪽).** 읽기 감사 후보를 코드로 재확인한 것만.
 // - [턴 중 조작 가드] 액션 버튼·상점 구매/환전/판매·의뢰 수락/취소·갈림길 클릭·프리셋이 turnBusy 중엔 거부된다(보드·메신저·새로고침과
@@ -36784,21 +36821,34 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 전엔 짝수 개를 지우면 옛 pre:U가 혈통 검사를 통과해 k/2턴 전으로 되감겼고, 홀수 개면 재로드에서 옛 out으로 되감겼다
   // (점검 영역 3 #1). 마지막 char 메시지의 ⟦simcore:N⟧이 가리키는 out:N이 진짜 현재 상태 — 지금 번호 자리로 옮기고 그 뒤를 지운다.
   // 그 메시지보다 뒤였던 과거 메시지들의 상태창은 현재값 폴백으로 그려진다(스냅샷을 잃는다) — 되감김보다 낫다.
-  async function realignTimeline(chat, lastCharIdx, where) {
+  async function realignTimeline(chat, lastCharIdx, where, opts = {}) {
     try {
       if (!session || lastCharIdx < 0) return false;
-      const msg = chat?.message?.[lastCharIdx];
-      const m = typeof msg?.data === 'string' ? msg.data.match(/⟦simcore:(\d+)⟧/) : null;
-      if (!m) return false;
-      const n = parseInt(m[1], 10);
-      if (!Number.isFinite(n) || n === lastCharIdx) return false;
-      const real = await session.store.load('out', n);
-      if (!real) { console.log('[simcore] 시간선 재정렬 불가 — out:' + n + ' 없음 (' + where + ')'); return false; }
-      await session.store.pruneFrom(lastCharIdx + 1);
-      await session.store.save('out', lastCharIdx, real);
-      session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(real)));
+      const msgs = chat?.message || [];
+      // char 메시지 전부의 (자리 번호, 마커 번호) — 하나라도 어긋나면 번호 체계가 낡은 것
+      const pairs = [];
+      for (let i = 0; i < msgs.length; i++) {
+        const m = msgs[i]; if (!m || m.role !== 'char' || typeof m.data !== 'string') continue;
+        const mk = m.data.match(/⟦simcore:(\d+)⟧/); if (!mk) continue;
+        const n = parseInt(mk[1], 10); if (!Number.isFinite(n)) continue;
+        pairs.push({ i, n });
+      }
+      if (!pairs.some((p) => p.n !== p.i)) return false;
+      // 스냅샷을 전부 먼저 읽어 둔다 (옮기다 덮어쓰지 않게) — 그 다음 옛 번호 체계(pre/send/out)를 걷어내고 새 자리로 저장
+      const loaded = new Map();
+      for (const p of pairs) { const st = await session.store.load('out', p.n); if (st) loaded.set(p.i, st); }
+      await session.store.pruneFrom(0);
+      for (const [i, st] of loaded) await session.store.save('out', i, st);
+      // 마커 번호도 자리 번호로 (v1.14.8 — 번호를 그대로 두면 다음 출력이 옛 번호와 겹쳐 탭 라디오·id가 충돌하고 범례가 여러 창에 섰다).
+      // 로드 경로만 채팅을 다시 쓴다 — 전송 중엔 리수가 요청을 만드는 중이라 건드리지 않는다 (다음 로드에서 맞춘다)
+      if (opts.rewrite !== false && opts.chaIdx != null && opts.chatIdx != null) {
+        for (const p of pairs) if (p.n !== p.i) msgs[p.i].data = msgs[p.i].data.replace(/⟦simcore:\d+⟧/g, `⟦simcore:${p.i}⟧`);
+        await Risuai.setChatToIndex(opts.chaIdx, opts.chatIdx, chat);
+      }
+      const cur = loaded.get(lastCharIdx);
+      if (cur) session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(cur)));
       histStates = new Map(); histPending.clear();
-      console.log('[simcore] 시간선 재정렬: 마커', n, '→ 메시지', lastCharIdx, '(' + where + ')');
+      console.log('[simcore] 시간선 재정렬:', pairs.filter((p) => p.n !== p.i).map((p) => `${p.n}→${p.i}`).join(' '), '(' + where + ')');
       return true;
     } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
@@ -36877,7 +36927,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
-    await realignTimeline(chat, lastCharIdx, '로드');
+    await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx });
     try { await session.init(lastCharIdx); }
     catch (e) {
       // 반쯤 초기화된 세션을 남기지 않는다 (v1.14.7) — 전엔 current가 null인 세션이 남아 다음 전송이 initState로 조용히 시작했다 (점검 영역 3 #10)
@@ -37085,7 +37135,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
       // 마지막 char 메시지의 마커가 번호와 어긋나면(중간 삭제) 전송 전에 시간선을 맞춘다 (v1.14.7)
-      if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송');
+      if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송', { rewrite: false });
       const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
       // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
@@ -38476,7 +38526,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (it.max != null && it.max <= 10) {
           const pips = document.createElement('span');
           pips.className = 'scg-pips';
-          pips.innerHTML = '●'.repeat(it.level) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`;
+          pips.innerHTML = '●'.repeat(Math.max(0, Math.min(it.max, it.level))) + `<span class="off">${'●'.repeat(Math.max(0, it.max - it.level))}</span>`; // 음수·초과 레벨에 RangeError 나던 것 (v1.14.8)
           row.appendChild(pips);
         }
         if (it.maxed) {
@@ -39688,7 +39738,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         try {
           const cur = await el.querySelector('input:checked');
           if (cur) {
-            const tm = /sim-tabin-(\d+)/.exec(String(await safeCall(cur, 'getClassName', 'className') ?? ''));
+            const tm = /(?:sim-tabin|mp-in)-(\d+)/.exec(String(await safeCall(cur, 'getClassName', 'className') ?? '')); // 템플릿 탭(mp-in)도 (v1.14.8 — 전엔 칩을 누를 때마다 첫 탭으로 튕겼다)
             if (tm) tabIdx = +tm[1];
           }
         } catch {}
@@ -39699,6 +39749,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         const lastIdxNow = lastOutIndex >= 0 ? lastOutIndex
           : (histStates.size ? Math.max(...histStates.keys()) : -1);
         const isLast = !(isFinite(uidNum) && lastIdxNow >= 0 && uidNum < lastIdxNow);
+        // 과거 창은 건드리지 않는다 (v1.14.8) — 전엔 과거 창에도 현재 값·현재 갈림길을 칠해 리수가 다시 그릴 때까지 값이 왔다 갔다 했고,
+        // 창마다 RPC 6왕복이라 클릭이 몇 초씩 걸렸다. display 훅의 스냅샷 렌더가 과거 창의 진실이다
+        if (!isLast) continue;
         const html = renderStatusHtml(schema, session.current,
           isLast ? lastChangeLog : null, isLast ? currentActionStates() : null,
           { includeStyle: false, uid: m[1] });
@@ -39714,9 +39767,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             .map((c) => /^(x-risu-|hljs)/.test(c) ? c : 'x-risu-' + c).join(' ')}"`);
         // 붙잡아 둔 탭을 되살린다 — 새 렌더의 checked(첫 탭)를 지우고 그 자리 라디오에 단다.
         // 탭 수가 줄어 자리가 사라졌으면(게이트 변화) 그냥 기본 첫 탭으로 둔다.
-        if (tabIdx > 0 && new RegExp(`sim-tabin-${tabIdx}[" ]`).test(inner)) {
-          inner = inner.replace(/(<input[^>]*sim-tabin-\d+[^>]*?) checked(>| )/g, '$1$2');
-          inner = inner.replace(new RegExp(`(<input[^>]*sim-tabin-${tabIdx}"[^>]*?)>`), '$1 checked>');
+        if (tabIdx > 0 && new RegExp(`(?:sim-tabin|mp-in)-${tabIdx}[" ]`).test(inner)) {
+          inner = inner.replace(/(<input[^>]*(?:sim-tabin|mp-in)-\d+[^>]*?) checked(>| )/g, '$1$2');
+          inner = inner.replace(new RegExp(`(<input[^>]*(?:sim-tabin|mp-in)-${tabIdx}"[^>]*?)>`), '$1 checked>');
         }
         // 되읽기 검증 표식 — setInnerHTML은 기본 DOMPurify를 타서 마크업이 정규화된다
         // (실측: <details open> → open="") — 원문 앞부분 비교는 항상 어긋난다 (v0.87.1에서
@@ -41664,7 +41717,7 @@ count(목록)  has(목록, "항목")</pre>
   }
 
   function escapeText(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); // 속성 안에서도 안전하게 (v1.14.8)
   }
 
   /**
@@ -41713,14 +41766,15 @@ count(목록)  has(목록, "항목")</pre>
     buildPanelSkeleton();
     const st = document.getElementById('sc-status');
     const charName = String(panelStatus.charName || '').trim();
-    const namedCharacter = charName ? `'${charName}' 캐릭터` : '현재 캐릭터';
-    const loadedPrefix = charName ? `'${charName}' — ` : '';
+    // 캐릭터 이름·스키마 이름은 카드에서 온 글 — 플러그인 iframe엔 새니타이저가 없다 (v1.14.8)
+    const namedCharacter = charName ? `'${escapeText(charName)}' 캐릭터` : '현재 캐릭터';
+    const loadedPrefix = charName ? `'${escapeText(charName)}' — ` : '';
     const stateMsg = {
       'no-char': ['선택된 캐릭터 없음', 'status-warn'],
       'no-schema': [`${namedCharacter}에 SimCore 스키마가 없어요.<br>AI 어시스턴트나 JSON 관리자에서 작업본을 연 뒤 [편집 작업공간]에서 설치하세요`, 'status-warn'],
       'parse-error': [`${namedCharacter}의 스키마 JSON 파싱 실패`, 'status-bad'],
       'invalid': [`${namedCharacter}의 스키마 검증 실패`, 'status-bad'],
-      'ok': [`${loadedPrefix}${schema?.meta?.name ?? '스키마'} 로드됨`, 'status-ok'],
+      'ok': [`${loadedPrefix}${escapeText(schema?.meta?.name ?? '스키마')} 로드됨`, 'status-ok'],
       'init': ['초기화 중', 'muted'],
     }[panelStatus.state] || ['?', 'muted'];
     const panelTone = (panelStatus.report || []).length
@@ -41904,7 +41958,7 @@ count(목록)  has(목록, "항목")</pre>
     for (const v of schema.vars) {
       const tr = document.createElement('tr');
       const cur = session.current.vars[v.id];
-      const nameCell = `<td>${v.label ?? v.id} <span class="muted">(${v.id})</span></td>`;
+      const nameCell = `<td>${escapeText(v.label ?? v.id)} <span class="muted">(${escapeText(v.id)})</span></td>`;
 
       // 목록은 통짜 텍스트로 못 고친다(coerce가 배열만 받는다). 항목별 ✕ + 추가 칸으로 낸다.
       // 서사로 맺은 계약을 서사로 파기했을 때 사용자가 직접 지우는 자리이기도 하다.

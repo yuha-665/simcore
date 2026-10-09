@@ -150,7 +150,7 @@ function validateSchema(schema) {
     }
     // 채팅 명령 이름 — 공백/'-'가 들어가면 파서가 인자와 구분을 못 한다
     // 상태창 자리표시자와 이름이 겹치면 {commands}가 그 변수로 잡혀 명령 목록이 안 나온다.
-    if (v.id === 'commands' || v.id === 'lastcheck' || v.id === 'scenario' || v.id === 'fight' || v.id === 'secrets') {
+    if (['commands', 'lastcheck', 'scenario', 'fight', 'secrets', 'uid', 'choices'].includes(v.id)) { // uid·choices도 예약 자리 (v1.14.8)
       warn(p, `'${v.id}'는 상태창 자리표시자 {${v.id}}가 쓰는 이름입니다 — 변수 id를 바꾸세요`);
     }
     if (v.cmd != null) {

@@ -252,6 +252,7 @@ let startDate;
     && src.indexOf('SimCore.define("checkpoint"') < src.indexOf('SimCore.define("engine"'), '');
   ck('편집기: 체크포인트 효과 줄', src.includes('sce-effect-checkpoint'), '');
   ck('편집기: 시나리오 탭 되감기 카드', src.includes('sce-scenario-checkpoint'), '');
+  ck('편집기: 시나리오 없는 봇도 되감기 카드 (v1.14.15)', src.includes('wrap.appendChild(checkpointCard(field)); // 시나리오 없는 봇도'), '');
   ck('다이제스트/카탈로그 표기', src.includes('체크포인트 저장') && src.includes('체크포인트 되감기'), '');
 }
 

@@ -10373,7 +10373,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('div', { class: 'sce-scenario-group-title' }, '⏪ 되감기 (체크포인트)'),
       h('div', { class: 'sce-scenario-note' },
         '회귀물·타임루프용이에요. 막의 진입 효과에 "체크포인트 저장", 게임오버 이벤트·선택지에 "체크포인트 되감기"를 넣으면 '
-        + '날짜·현재 막·변수가 저장 시점으로 돌아가요. 이벤트의 1회 기록도 되감겨 그 사건이 다시 일어나요. 턴 번호와 채팅은 그대로예요.'));
+        + '날짜·현재 막·변수가 저장 시점으로 돌아가요. 이벤트의 1회 기록도 되감겨 그 사건이 다시 일어나요. 턴 번호와 채팅은 그대로예요. '
+        + '시나리오가 없는 봇은 이벤트·액션의 효과에 저장을 두면 돼요 (막은 필요 없어요).'));
     const C = schema.checkpoint;
     if (!C || typeof C !== 'object') {
       sec.appendChild(addBtn('되감기 켜기', () => { schema.checkpoint = { keep: [] }; rerender(); }));
@@ -10431,6 +10432,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           };
           rerender();
         })));
+      wrap.appendChild(checkpointCard(field)); // 시나리오 없는 봇도 (v1.14.15 — 점검 영역 6 보류: 되감기는 이벤트·선택지만으로도 돈다)
       wrap.appendChild(aiTools());
       return wrap;
     }
@@ -11835,6 +11837,68 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             { when: 'total >= vs', label: '성공' }, { label: '실패' }] });
         rerender();
       })));
+    // ⚔ 전투 안무 (v1.14.15 — 점검 영역 6 보류: v1.6.0부터 JSON 관리자로만 짤 수 있던 자리). 규약은 core/fight.js 머리말 —
+    // 결착은 게이지가 정하고 라운드 입구는 ⚔ 액션 하나. 여기선 설정만: 게이지 크기·반격 판정·상대·개시 비트·방치·규칙/대기 줄·승리/패배.
+    const fightOn = (c) => !!(c.fight && typeof c.fight === 'object' && !Array.isArray(c.fight));
+    const fightSection = (c) => {
+      const sec = h('section', { class: 'sce-check-card-section sce-check-fight' },
+        h('div', { class: 'sce-check-group-title' }, '⚔ 전투 안무'),
+        h('div', { class: 'sce-check-group-copy' }, '이 판정을 교전 라운드로 굴려요. 등급의 유효량(gain)이 상대 게이지에 쌓이고, 게이지가 차야 결착 비트가 나와요 — '
+          + '모델이 혼자 전투를 끝낼 길이 없어요. 라운드 입구는 이 판정을 단 ⚔ 액션 버튼 하나예요.'));
+      if (!fightOn(c)) {
+        sec.appendChild(addBtn('⚔ 전투 안무 켜기', () => {
+          c.fight = { gauge: 30 };
+          // 등급 중 하나는 gain > 0이어야 결착이 난다 — 조건 있는 첫 등급(대개 성공)에 10
+          if (!(c.grades || []).some((g) => g && Number(g.gain) > 0)) { const g0 = (c.grades || []).find((g) => g && g.when) || (c.grades || [])[0]; if (g0) g0.gain = 10; }
+          rerender();
+        }));
+        return sec;
+      }
+      const f = c.fight;
+      const others = schema.checks.filter((o) => o && o.id && o !== c && !fightOn(o));
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-roll' },
+        checkField('상대 게이지 크기', bindInput(f.gauge ?? '', (x) => {
+          const t = String(x).trim(); if (!t) delete f.gauge; else { const n = Number(t); f.gauge = Number.isFinite(n) && String(n) === t ? n : t; } rerender();
+        }, { cls: 'sce-w-m', ph: '30 + opp_n * 25' }), '숫자 또는 식. 등급 gain이 여기까지 쌓이면 결착 — 클수록 라운드가 길어져요.'),
+        checkField('반격 판정', bindSelect(f.reply ?? '', [['', '(없음 — 주인공만 때림)'], ...others.map((o) => [o.id, `${o.label || o.id} (${o.id})`])],
+          (v) => { if (v) f.reply = v; else delete f.reply; rerender(); }), '상대가 되받아치는 비트를 굴릴 평판정(회피·방어). 전투 안무가 달린 판정은 못 써요.'),
+        checkField('방치 턴', bindInput(f.idleTurns ?? '', (x) => { const n = parseInt(String(x).trim(), 10); if (Number.isInteger(n) && n >= 1) f.idleTurns = n; else delete f.idleTurns; rerender(); },
+          { cls: 'sce-w-s', ph: '8' }), '⚔ 없이 이만큼 지나면 교전을 정리해요 (기본 8).')));
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-grade' },
+        checkField('상대 이름', bindInput(f.foe ?? '', (x) => { if (x && x.trim()) f.foe = x; else delete f.foe; rerender(); }, { cls: 'sce-w-l', ph: '(선택) {변수} 가능 — 예: {target} 또는 산적 두목' }),
+          '개전 때 굳어 상태창 칩과 대기 줄에 실려요. 비우면 유저 글에서 짐작해요.', 'is-wide'),
+        checkField('개시 비트 후보 (한 줄에 하나)', bindArea((Array.isArray(f.flavor) ? f.flavor : []).join('\n'), (x) => {
+          const arr = String(x).split('\n').map((t) => t.trim()).filter(Boolean); if (arr.length) f.flavor = arr; else delete f.flavor; rerender();
+        }, '(비우면 기본 5종) 상대의 기술·습성이 드러나는 수 하나 / 지형·주변 사물을 쓰는 수 / …'),
+          '유저가 "대충 싸웠다"처럼 짧게 쓰고 ⚔를 누르면 시스템이 이 중 하나를 골라 개시 비트까지 써 줘요.', 'is-wide'),
+        checkField('시트 규칙 줄', bindArea(f.rule ?? '', (x) => { if (x && x.trim()) f.rule = x; else delete f.rule; rerender(); }, '(비우면 기본) 시스템이 굴린 결과다. 순서대로, 비트마다 한 문단 이상 …'),
+          '안무 시트 머리에 붙는 지시예요.', 'is-wide'),
+        checkField('대기 줄 (⚔ 없는 턴)', bindArea(f.hold ?? '', (x) => { if (x && x.trim()) f.hold = x; else delete f.hold; rerender(); }, '(비우면 기본) [교전 중 — 상대: {fight_foe} · 누적 {fight_gauge}/{fight_max}] 공방 없이 …'),
+          '교전이 열린 채 ⚔ 없이 보내는 턴마다 끝에 실려요. {fight_foe}·{fight_gauge}·{fight_max}·{fight_round} 사용 가능.', 'is-wide')));
+      f.win = f.win && typeof f.win === 'object' && !Array.isArray(f.win) ? f.win : {};
+      sec.appendChild(h('div', { class: 'sce-check-effect-group' }, h('div', { class: 'sce-check-subtitle' }, '🏆 승리 — 상태 효과 (게이지가 찬 라운드)'),
+        effectRows(schema, f.win.effects = f.win.effects || [], rerender)));
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-grade' },
+        checkField('승리 연출 지시', bindInput(f.win.inject ?? '', (x) => { if (x && x.trim()) f.win.inject = x; else delete f.win.inject; rerender(); },
+          { cls: 'sce-w-l', ph: '(비우면 기본) 결착 — 상대는 더 싸울 수 없다. 도주·항복·전투 불능 중 하나로 …' }), '', 'is-wide'),
+        checkField('패배 조건', bindInput(f.lose && typeof f.lose === 'object' ? f.lose.when ?? '' : '', (x) => {
+          const t = String(x).trim(); if (t) { if (!f.lose || typeof f.lose !== 'object') f.lose = {}; f.lose.when = t; } else delete f.lose; rerender();
+        }, { cls: 'sce-w-m', ph: '(선택) hp <= 0' }), '참이 되면 주인공 쪽 결착(패배) 비트. 비우면 패배 결착 없음.'),
+        checkField('패배 연출 지시', bindInput(f.lose && typeof f.lose === 'object' ? f.lose.inject ?? '' : '', (x) => {
+          if (!f.lose || typeof f.lose !== 'object') return; if (x && x.trim()) f.lose.inject = x; else delete f.lose.inject; rerender();
+        }, { cls: 'sce-w-l', ph: '(비우면 기본) 결착 — 주인공 쪽이 무너진다 …' }), '패배 조건이 있을 때만 써요.', 'is-wide')));
+      const hasLeave = (schema.actions || []).some((a) => a && (a.fightEnd === true || (typeof a.fightEnd === 'string' && a.fightEnd.trim())));
+      sec.appendChild(h('div', { class: 'sce-check-grade-actions' },
+        h('button', { class: 'sce-btn', style: 'flex:1', disabled: hasLeave || undefined, onclick: () => {
+          if ((schema.actions || []).some((a) => a && a.fightEnd)) return;
+          const taken = new Set(schema.actions.map((a) => a.id));
+          let id = 'leave_fight', n = 2; while (taken.has(id)) id = 'leave_fight' + (n++);
+          schema.actions.push({ id, label: '🚪 이탈', mode: 'oneshot', fightEnd: true, effects: [] });
+          rerender();
+        } }, hasLeave ? '✓ 이탈 버튼 있음' : '🚪 이탈 버튼 만들기 (교전만 닫음)'),
+        h('button', { class: 'sce-btn sce-danger', style: 'flex:1', onclick: () => { delete c.fight; rerender(); } }, '전투 안무 끄기 (등급 gain은 남음)')));
+      return sec;
+    };
     appendFoldBar(wrap, schema.checks);
     schema.checks.forEach((c, i) => {
       const hasBtn = (schema.actions || []).some((a) => a.check === c.id);
@@ -11844,7 +11908,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       block.appendChild(h('div', { class: 'sce-check-card-head' },
         h('div', { class: 'sce-check-identity' }, h('span', { class: 'sce-check-index' }, String(i + 1).padStart(2, '0')),
           h('div', {}, h('strong', {}, c.label || '이름 없는 판정'),
-            h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}`))),
+            h('small', {}, `${c.id || 'ID 없음'} · ${c.roll || '굴림식 없음'}${c.vs != null && c.vs !== '' ? ` · 목표 ${c.vs}` : ''}${c.fight && typeof c.fight === 'object' ? ' · ⚔ 전투 안무' : ''}`))),
         keepBtn(c, c.label || c.id || `판정 ${i + 1}`),
         foldBtn(c, c.label || c.id || `판정 ${i + 1}`),
         grip(schema.checks, i, rerender)));
@@ -11884,7 +11948,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               { cls: 'sce-w-m', ph: '(비우면 항상 — 기본 등급) roll == 20' }),
               'roll · mod · total · vs를 사용할 수 있습니다.'),
             checkField('등급 이름', bindInput(g.label, (x) => { g.label = x; rerender(); }, { cls: 'sce-w-s', ph: '등급 이름' }),
-              '판정 결과에 표시할 이름입니다.')),
+              '판정 결과에 표시할 이름입니다.'),
+            // 유효량 (v1.14.15) — 전투 안무가 켜진 판정만. 이 등급이 상대 게이지에 쌓는 양. 0이면 빗나감
+            c.fight && typeof c.fight === 'object' ? checkField('유효량 (gain)', bindInput(g.gain ?? '', (x) => {
+              const n = Number(String(x).trim()); if (String(x).trim() && Number.isFinite(n) && n >= 0) g.gain = n; else delete g.gain; rerender();
+            }, { cls: 'sce-w-s', ph: '0' }), '이 등급이 상대 게이지에 쌓는 양. 0·빈칸이면 빗나감. 하나는 0보다 커야 결착이 나요.') : null),
           h('div', { class: 'sce-check-effect-group' },
             h('div', { class: 'sce-check-subtitle' }, '상태 효과'),
             effectRows(schema, g.effects = g.effects || [], rerender)),
@@ -11903,11 +11971,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           const taken = new Set(schema.actions.map((a) => a.id));
           let id = 'roll_' + (c.id || 'check'), n = 2;
           while (taken.has(id)) id = 'roll_' + (c.id || 'check') + (n++);
-          schema.actions.push({ id, label: '🎲 ' + (c.label || c.id || '판정'), mode: 'oneshot', check: c.id, effects: [] });
+          schema.actions.push({ id, label: (c.fight && typeof c.fight === 'object' ? '⚔ ' : '🎲 ') + (c.label || c.id || '판정'), mode: 'oneshot', check: c.id, effects: [] });
           rerender();
-        } }, hasBtn ? '✓ 액션 버튼 있음' : '🎲 액션 버튼 만들기'),
+        } }, hasBtn ? '✓ 액션 버튼 있음' : (c.fight && typeof c.fight === 'object' ? '⚔ 액션 버튼 만들기' : '🎲 액션 버튼 만들기')),
       ));
       body.appendChild(grades);
+      body.appendChild(fightSection(c));
       if (!ckFold) block.appendChild(body);
       wrap.appendChild(block);
     });

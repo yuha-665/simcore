@@ -198,6 +198,16 @@ const press = (st, actionId, i, userText = '') => {
   ck('예약 키 없던 세이브 → reconcile이 채우고 개전', r.st.vars[K.max] === 80 && r.st.vars[K.round] === 1, J(r.st.vars));
 }
 
+// ── 편집기 칸 (v1.14.15, 정적) — 전엔 JSON 관리자로만 ──
+{
+  ck('편집기: 판정 카드에 전투 안무 절', src.includes('sce-check-fight') && src.includes("addBtn('⚔ 전투 안무 켜기'"), '');
+  ck('편집기: 켜면 gain 없는 등급에 10을 준다 (결착 보장)', src.includes('if (g0) g0.gain = 10;'), '');
+  ck('편집기: 등급 유효량(gain) 칸은 전투 안무 판정만', src.includes("checkField('유효량 (gain)'"), '');
+  ck('편집기: 반격 판정 셀렉트는 전투 안무 없는 판정만', src.includes('o !== c && !fightOn(o)'), '');
+  ck('편집기: 승리 효과·패배 조건·이탈 버튼·끄기', src.includes("'🏆 승리 — 상태 효과") && src.includes("checkField('패배 조건'") && src.includes("'🚪 이탈 버튼 만들기 (교전만 닫음)'") && src.includes('delete c.fight; rerender();'), '');
+  ck('편집기: ⚔ 액션 버튼 라벨', src.includes("'⚔ 액션 버튼 만들기'"), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

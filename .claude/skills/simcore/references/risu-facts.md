@@ -344,3 +344,11 @@ char라 전부 걸러진다. (`runLLMModel`은 1.8.1에선 replacer 루프가 �
   둘이 어긋나면 "있다고 보는데 지우지는 못하는" 구멍이 생긴다. 붙일 땐 있던 것을 걷어내고 새로 붙인다(멱등).
   같은 꼴의 위험: `⚙simcore` 로어 주석 · `⟦simcore:gen⟧` 센티널 · 에셋 태그 — 전부 완성형으로 볼 것.
 - **리수 권한 팝업 z-index = 50** (커뮤니티 제보 2026-09-06). 메인 DOM에 그 이상을 얹는 플러그인은 권한 동의를 막는다. SimCore는 메인 DOM에 요소를 안 넣고(상태창은 메시지 안, z-index ≤5), 패널·편집기는 플러그인 iframe 안이라 무관. 컨테이너가 떠 있는 동안 alertConfirm이 가려지는 건 별개 문제(규칙 #6).
+
+## ★ 로어북 가져오기 파일 형식 (포켓리스 1.8.1 소스 — v1.16.0 봇 제작이 쓴다)
+
+`src/ts/process/lorebook.svelte.ts importLoreBook(mode)` — 캐릭터(global = `char.globalLore`)·채팅(local = `chat.localLore`)·전역 페이지(sglobal)와
+모듈 메뉴(ModuleMenu.svelte) 전부 **같은 형식**: `{ type:'risu', ver:1, data: loreBook[] }` 또는 CCv3 `{ entries: {…} }`(convertExternalLorebook).
+항목 필드 = `key`(쉼표 문자열)·`comment`(제목)·`content`·`mode:'normal'`·`insertorder:100`·`alwaysActive`·`secondkey:''`·`selective:false`.
+폴더는 `mode:'folder'` + `key:'\uf000folder:<uuid>'`. 파일 선택은 `selectSingleFile(['json','lorebook'])` — 플러그인이 클립보드로 준 JSON은
+유저가 파일로 저장해야 들어간다(그래서 ⬇ 내려받기 버튼이 있다). 가져오기는 **덧붙임**(push)이라 같은 제목이 있어도 교체하지 않는다.

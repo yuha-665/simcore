@@ -10,6 +10,7 @@ const { SimSession } = require('../core/session');
 const { MapBackend } = require('../core/store');
 const { renderStatusHtml, scopeCss, buildStatusCss } = require('../core/render');
 const FIXTURE = require('./fixture-estate');
+const bibleMod = require('../core/bible');
 
 // 큐 기반 하네스 — async 테스트를 순차 실행
 const queue = [];
@@ -1550,6 +1551,57 @@ test('복사·분기 채팅 상속: 원본 찾기 + 스냅샷 베끼기 (v1.14.1
   assert.strictEqual(b.current.meta.turn, 1);
   assert.ok(await a.store.load('out', 3), '원본은 그대로');
   assert.strictEqual(await b.inheritFrom('sim:ch:B', 1), 0, '자기 접두는 거부');
+});
+
+// ═══════════════════════ 봇 제작 설정집 (v1.16.0, core/bible) ═══════════════════════
+section('봇 제작 설정집 (core/bible)');
+
+test('정규화 — 쓰레기 입력은 빈 설정집, 종류 모르면 other, id 중복은 접미', () => {
+  deep(bibleMod.normalizeBible(null), bibleMod.emptyBible());
+  const b = bibleMod.normalizeBible({ sections: [{ name: '아린', kind: 'hero', body: 1 }, { id: '아린', name: '아린2' }], sim: [{ what: 'x', how: '마법' }] });
+  eq(b.sections[0].kind, 'other'); eq(b.sections[0].id, '아린'); eq(b.sections[1].id, '아린-2'); eq(b.sim[0].how, '기타');
+});
+
+test('수정안 적용 — id 덮어쓰기·추가·remove·sheet 칸만·sim 통째', () => {
+  let r = bibleMod.applyBibleUpdate(bibleMod.emptyBible(), { bible: { premise: 'p', sections: [{ id: 'a', kind: 'character', name: 'A', keys: 'A, 에이', body: 'b1' }], sheet: { desc: 'd' }, sim: [{ what: 'w', how: '변수' }] } });
+  eq(r.ok, true); eq(r.bible.sections[0].keys.join('|'), 'A|에이'); eq(r.bible.sheet.desc, 'd'); eq(r.bible.sim.length, 1);
+  r = bibleMod.applyBibleUpdate(r.bible, { bible: { sections: [{ id: 'a', body: 'b2' }, { name: '새 항목', body: 'x' }], sheet: { first: 'f' } } });
+  eq(r.ok, true); eq(r.bible.sections[0].body, 'b2'); eq(r.bible.sections[0].name, 'A'); eq(r.bible.sections.length, 2);
+  eq(r.bible.sheet.desc, 'd'); eq(r.bible.sheet.first, 'f'); eq(r.bible.sim.length, 1);
+  r = bibleMod.applyBibleUpdate(r.bible, { bible: { remove: ['새-항목'] } });
+  eq(r.ok, true); eq(r.bible.sections.length, 1);
+});
+
+test('수정안 거부 — 모르는 키·없는 kind·없는 remove id·배열 아님은 거부되고 설정집은 안 변한다', () => {
+  const b0 = bibleMod.applyBibleUpdate(bibleMod.emptyBible(), { bible: { sections: [{ id: 'a', name: 'A', body: 'x' }] } }).bible;
+  const r = bibleMod.applyBibleUpdate(b0, { bible: { foo: 1, sections: [{ id: 'a', kind: 'villain' }], remove: ['zzz'], sim: {} } });
+  eq(r.ok, false); eq(r.errors.length, 4); eq(r.bible, b0);
+  eq(bibleMod.applyBibleUpdate(b0, 'x').ok, false);
+});
+
+test('로어북 컴파일 — 리수 가져오기 형식, 본문 없는 항목 제외, order → insertorder', () => {
+  const b = bibleMod.normalizeBible({ sections: [{ id: 'a', name: 'A', keys: ['A', '에이'], always: true, body: 'x', order: 5 }, { id: 'e', name: 'E', body: '' }] });
+  const l = bibleMod.compileLorebook(b);
+  eq(l.type, 'risu'); eq(l.ver, 1); eq(l.data.length, 1);
+  deep(l.data[0], { key: 'A, 에이', comment: 'A', content: 'x', mode: 'normal', insertorder: 105, alwaysActive: true, secondkey: '', selective: false });
+});
+
+test('다이제스트 — 머리줄은 전부, 본문은 상한 안에서, 넘친 항목은 생략 표시', () => {
+  const b = bibleMod.normalizeBible({ sections: [{ id: 'a', name: 'A', body: 'x'.repeat(3000) }, { id: 'b', name: 'B', body: 'y'.repeat(3000) }] });
+  const d = bibleMod.bibleDigest(b, 3500);
+  eq(d.omitted, 1); eq(d.text.includes('#### [b]'), true); eq(d.text.includes('(본문 생략 — 상한)'), true);
+});
+
+test('응답 가르기 — 마지막 json 펜스, 추론 블록 제거, 펜스 없으면 산문', () => {
+  deep(bibleMod.splitBibleResponse('<thinking>t</thinking>말\n```json\n{"bible":{}}\n```'), { prose: '말', json: '{"bible":{}}' });
+  deep(bibleMod.splitBibleResponse('그냥 말'), { prose: '그냥 말', json: null });
+});
+
+test('규약·요청문 — 분담 규칙과 형식 설명이 실린다, sim 없으면 요청문 없음', () => {
+  const t = bibleMod.bibleRules().join('\n');
+  eq(t.includes('로어북 = 안 변하는 것'), true); eq(t.includes('"bible"'), true); eq(t.includes('how="비밀"'), true);
+  eq(bibleMod.simRequestText(bibleMod.emptyBible()), '');
+  eq(bibleMod.simRequestText(bibleMod.normalizeBible({ sim: [{ what: '호감', how: '변수', why: 'w' }] })).includes('- [변수] 호감 — w'), true);
 });
 
 (async () => {

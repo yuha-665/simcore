@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.15.0
-//@display-name SimCore (시뮬 엔진) v1.15.0 전투 안무 수 유형
+//@version 1.16.0
+//@display-name SimCore (시뮬 엔진) v1.16.0 봇 제작 — 설정집 대화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,24 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.16.0 ───────────────────────────────────────────────
+// **봇 제작 — 설정집 대화 (1단계, 쓰기 없음).** 유저: "봇 제작 보조 유틸인데 아예 봇 제작에 쓸 수 없냐는 사람들이 있다 — 로어북·캐릭터 시트를
+// 손작업하고, 제작 위치가 리수 봇 컨텍스트에서 OOC로 주고받는 식뿐". 설계 docs/design-봇제작-대화.md (3단계 중 1단계 — 유저가 순서를 정했다).
+// - [사이드바] 작업도구에 '봇 제작'(data-floor="bible") — 편집기 bibleFloor: 왼쪽 설정집(종류별 카드 손편집·📋·✕·🪪 시트·🧩 심코어로 갈 것),
+//   오른쪽 전용 대화(모델 선택·캐릭터 정보 동봉·토큰 미터·말풍선 지우기). 스택형 폴백(플레이그라운드)은 접기 하나 더.
+// - [코어] core/bible.js — 설정집 = 구조화된 중간 작업본 { title, premise, sections[id·kind·name·keys·always·body], sheet{name,desc,first},
+//   sim[what,how,why] }. 대화 이력에 설정을 누적하면 컨텍스트가 터지므로 스키마 작업본처럼 객체로 들고 매 턴 다이제스트(24KB 상한)로 싣는다.
+//   AI 수정안은 { "bible": … } 패치(sections는 id로 덮어쓰기·remove·sheet는 칸만·sim은 통째). 모르는 키·없는 kind·없는 remove id는 거부 →
+//   오류 첨부 2회(💬과 같은 규율). 적용은 자동(우리 작업본일 뿐 캐릭터엔 안 쓴다) + ↩ 되돌리기 10단계.
+// - [규약] 심코어식 분담을 프롬프트에 — 로어북 = 안 변하는 것, 플레이가 바꾸는 값은 sim(변수·이벤트·액션·판정·비밀·무대 뒤·시나리오·갈림길)으로.
+//   밝혀지기 전엔 몰라야 하는 것은 로어북에 적으면 샌다 → sim '비밀'. keys는 장면에 실제로 나올 말 2~6개, always는 늘 필요한 것에만.
+//   작업본 변수 목록을 같이 실어 이미 시스템이 쥔 값을 다시 적지 않게. 📌 작업 지침(meta.notes)은 여기서도 맨 앞.
+// - [내보내기] 📋 로어북 JSON 복사 / ⬇ lorebook.json — 리수 로어북 [가져오기] 형식 { type:'risu', ver:1, data } (캐릭터·채팅·전역·모듈 공통,
+//   포켓리스 1.8.1 lorebook.svelte.ts importLoreBook 확인). 📋 캐릭터 시트 복사. 💬 어시스턴트에게 보내기 — sim 목록을 요청문으로 💬 입력칸에.
+// - [저장] 설정집은 pluginStorage sim:bible:<chaId>(기기 로컬 — 카드·번들에 안 실림). 대화는 💬처럼 편집기를 닫으면 사라진다.
+// - 캐릭터 객체에는 글자 하나 안 쓴다(test-bible이 bibleFloor 구간에 setCharacter·globalLore 없음을 핀). 2단계(허가 체크 + 로어북 항목 단위
+//   diff 적용·백업·재읽기)·3단계(설명·첫 메시지·정규식)는 설계 문서 §5.
+
 // ── v1.15.0 ───────────────────────────────────────────────
 // **전투 안무 "수 유형".** 유저 제보: 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받는 그림이 됐다 —
 // 원한 건 막고 피하고 때리는 상호작용이 전투 주체에 따라 적절히 이루어지는 것.
@@ -7389,7 +7407,7 @@
         --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
         --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
         --sc-nav-play:#78a9ff; --sc-nav-ai:#c9a6ff; --sc-nav-json:#f1cb72; --sc-nav-assets:#79d99a;
-        --sc-nav-deep:#7fd3e8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
+        --sc-nav-deep:#7fd3e8; --sc-nav-bible:#f2a5c8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
         --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
           'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
         --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
@@ -7479,6 +7497,7 @@
       #sc-root .sc-maintab[data-floor="json"] { --nav:var(--sc-nav-json); }
       #sc-root .sc-maintab[data-floor="assets"] { --nav:var(--sc-nav-assets); }
       #sc-root .sc-maintab[data-floor="deep"] { --nav:var(--sc-nav-deep); }
+      #sc-root .sc-maintab[data-floor="bible"] { --nav:var(--sc-nav-bible); }
       #sc-root .sc-maintab[data-page="work"] { --nav:var(--sc-nav-work); }
       #sc-root .sc-maintab[data-page="save"] { --nav:var(--sc-nav-save); }
       #sc-root .sc-maintab[data-page="help"] { --nav:var(--sc-nav-help); }
@@ -7838,6 +7857,7 @@
             <button class="sc-maintab" data-page="edit" data-floor="json"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg><span>JSON 관리자</span></button>
             <button class="sc-maintab" data-page="edit" data-floor="assets"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.4"/><path d="m4 17 4.5-4.5 3.5 3.5 2.5-2.5L20 19"/></svg><span>에셋 관리자</span></button>
             <button class="sc-maintab" data-page="edit" data-floor="deep"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6M14 7h6M10 4v6M4 17h2M10 17h10M6 14v6"/></svg><span>세부 편집기</span></button>
+            <button class="sc-maintab" data-page="edit" data-floor="bible"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6.5a1.5 1.5 0 0 1 1.5 1.5V20a1.5 1.5 0 0 0-1.5-1.5H4zM20 5h-6.5a1.5 1.5 0 0 0-1.5 1.5V20a1.5 1.5 0 0 1 1.5-1.5H20zM7 9h3M14 9h3M7 12.5h3M14 12.5h3"/></svg><span>봇 제작</span></button>
             <div class="sc-navcat">파일관리</div>
             <button class="sc-maintab" data-page="work"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3zM3 7V5h7l2 2"/></svg><span>편집 작업공간</span></button>
             <button class="sc-maintab" data-page="save"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7"/></svg><span>세이브</span></button>
@@ -8285,6 +8305,7 @@ count(목록)  has(목록, "항목")</pre>
       json: ['JSON 관리자', 'JSON을 통째로 붙여 넣거나 패치를 검사해 작업본에 적용해요.'],
       assets: ['에셋 관리자', '캐릭터 에셋을 팩으로 묶어 상황에 맞는 이미지가 서사에 실리게 해요.'],
       deep: ['세부 편집기', '변수·규칙·이벤트·상태창을 항목별로 직접 편집해요.'],
+      bible: ['봇 제작', '봇 설정을 대화로 정리해 설정집을 만들고, 로어북·캐릭터 시트 초안을 복사해 가요. 캐릭터엔 아무것도 쓰지 않아요.'],
     };
     const FLOOR_HEAD_TAIL = ' 어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.';
     for (const tab of root.querySelectorAll('.sc-maintab')) {
@@ -8877,6 +8898,15 @@ count(목록)  has(목록, "항목")</pre>
         saveWorkLog: async (list) => {
           try { await Risuai.pluginStorage.setItem(`sim:worklog:${currentChaId}`, JSON.stringify(list || [])); }
           catch (e) { console.log('[simcore] 작업 내역 저장 실패:', e.message); }
+        },
+        // 🧑‍🎨 봇 제작 설정집 (v1.16.0) — 캐릭터별 pluginStorage(기기 로컬). 카드·번들에 안 실린다. 편집기는 리수를 모르니 읽기·쓰기만 준다.
+        loadBible: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:bible:${currentChaId}`); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        saveBible: async (bible) => {
+          try { await Risuai.pluginStorage.setItem(`sim:bible:${currentChaId}`, JSON.stringify(bible || {})); }
+          catch (e) { console.log('[simcore] 설정집 저장 실패:', e.message); }
         },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },

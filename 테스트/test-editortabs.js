@@ -324,7 +324,7 @@ if (ed) {
     try { fed = createSchemaEditor(box, schema, { onChange: () => {}, floor: 'deep' }); } catch (e) { fe = e; }
     ck(`★ [${name}] 층 모드(deep)로 편집기가 뜬다`, !fe && !!fed, fe && fe.message);
     if (!fed) continue;
-    for (const floor of ['deep', 'json', 'assets', 'top', 'deep']) {
+    for (const floor of ['deep', 'json', 'assets', 'top', 'bible', 'deep']) {   // bible = 🧑‍🎨 봇 제작 (v1.16.0)
       let err = null; try { fed.setFloor(floor); } catch (e) { err = e; }
       ck(`★ [${name}] setFloor(${floor}) 예외 없음`, !err, err && (err.message + ' | ' + (err.stack || '').split('\n')[1]));
     }

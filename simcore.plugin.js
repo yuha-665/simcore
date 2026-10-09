@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.15.0
-//@display-name SimCore (시뮬 엔진) v1.15.0 전투 안무 수 유형
+//@version 1.16.0
+//@display-name SimCore (시뮬 엔진) v1.16.0 봇 제작 — 설정집 대화
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,17 +10,23 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.15.0 ───────────────────────────────────────────────
-// **전투 안무 "수 유형".** 유저 제보: 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받는 그림이 됐다 —
-// 원한 건 막고 피하고 때리는 상호작용이 전투 주체에 따라 적절히 이루어지는 것.
-// - 주인공의 수는 유저 글의 낱말로 읽는다(공격·기술·수비·견제, 가장 뒤의 낱말이 이긴다). 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고, 긴 글에
-//   없으면 '자유 수'(글대로, 먹힘만 굴림). 수비는 공격을 굴리지 않고 상대가 들어올 때 반응 판정(reply)에 이점(굴림 폭 15%: d20 → +3), 견제는
-//   반값 누적 + 다음 공격에 이점, 기술은 누적 ×1.5(빗나가면 빈틈 — 상대가 들어온다).
-// - 상대의 수는 시스템이 판세(몰림·주인공의 수·라운드)를 보고 가중치로 뽑는다(공격·밀어붙이기·수세·탐색) — 리롤 안정·진단 가능. 밀어붙이기는
-//   반응 판정에 불리, 수세는 다음 공격 반감, 탐색은 공방 없는 라운드. 반응 판정이 없는 봇은 상대 공격을 서사에 맡긴다(치명상 금지).
-// - 규칙 줄: "결과는 바꾸지 마라, 어떻게 이르는지는 네 몫 — 공방을 꼭 번갈아 주고받을 필요는 없다". 예약 키 fight_edge·fight_guard 추가.
-// - 스키마: checks[].fight.moves { attack, skill, guard, probe: [낱말…] } / fight.foeMoves { attack, press, guard, probe: 가중치 } — 둘 다 선택,
-//   비우면 기본표. 편집기 ⚔ 절에 칸. {lastcheck}·meta.lastCheck.fight에 move·foeMove.
+// ── v1.16.0 ───────────────────────────────────────────────
+// **봇 제작 — 설정집 대화 (1단계, 쓰기 없음).** 유저: "봇 제작 보조 유틸인데 아예 봇 제작에 쓸 수 없냐는 사람들이 있다 — 로어북·캐릭터 시트를
+// 손작업하고, 제작 위치가 리수 봇 컨텍스트에서 OOC로 주고받는 식뿐". 설계 docs/design-봇제작-대화.md (3단계 중 1단계 — 유저가 순서를 정했다).
+// - [사이드바] 작업도구에 '봇 제작'(data-floor="bible") — 편집기 bibleFloor: 왼쪽 설정집(종류별 카드 손편집·📋·✕·🪪 시트·🧩 심코어로 갈 것),
+//   오른쪽 전용 대화(모델 선택·캐릭터 정보 동봉·토큰 미터·말풍선 지우기). 스택형 폴백(플레이그라운드)은 접기 하나 더.
+// - [코어] core/bible.js — 설정집 = 구조화된 중간 작업본 { title, premise, sections[id·kind·name·keys·always·body], sheet{name,desc,first},
+//   sim[what,how,why] }. 대화 이력에 설정을 누적하면 컨텍스트가 터지므로 스키마 작업본처럼 객체로 들고 매 턴 다이제스트(24KB 상한)로 싣는다.
+//   AI 수정안은 { "bible": … } 패치(sections는 id로 덮어쓰기·remove·sheet는 칸만·sim은 통째). 모르는 키·없는 kind·없는 remove id는 거부 →
+//   오류 첨부 2회(💬과 같은 규율). 적용은 자동(우리 작업본일 뿐 캐릭터엔 안 쓴다) + ↩ 되돌리기 10단계.
+// - [규약] 심코어식 분담을 프롬프트에 — 로어북 = 안 변하는 것, 플레이가 바꾸는 값은 sim(변수·이벤트·액션·판정·비밀·무대 뒤·시나리오·갈림길)으로.
+//   밝혀지기 전엔 몰라야 하는 것은 로어북에 적으면 샌다 → sim '비밀'. keys는 장면에 실제로 나올 말 2~6개, always는 늘 필요한 것에만.
+//   작업본 변수 목록을 같이 실어 이미 시스템이 쥔 값을 다시 적지 않게. 📌 작업 지침(meta.notes)은 여기서도 맨 앞.
+// - [내보내기] 📋 로어북 JSON 복사 / ⬇ lorebook.json — 리수 로어북 [가져오기] 형식 { type:'risu', ver:1, data } (캐릭터·채팅·전역·모듈 공통,
+//   포켓리스 1.8.1 lorebook.svelte.ts importLoreBook 확인). 📋 캐릭터 시트 복사. 💬 어시스턴트에게 보내기 — sim 목록을 요청문으로 💬 입력칸에.
+// - [저장] 설정집은 pluginStorage sim:bible:<chaId>(기기 로컬 — 카드·번들에 안 실림). 대화는 💬처럼 편집기를 닫으면 사라진다.
+// - 캐릭터 객체에는 글자 하나 안 쓴다(test-bible이 bibleFloor 구간에 setCharacter·globalLore 없음을 핀). 2단계(허가 체크 + 로어북 항목 단위
+//   diff 적용·백업·재읽기)·3단계(설명·첫 메시지·정규식)는 설계 문서 §5.
 
 
 const SimCore = (() => {
@@ -6937,6 +6943,330 @@ module.exports = {
 
 });
 
+SimCore.define("bible", function (require, module, exports) {
+'use strict';
+// ── 봇 제작 설정집 (v1.16.0) ─────────────────────────────────────────────
+// 설계: docs/design-봇제작-대화.md. 발단(유저, 2026-10-10): "봇 제작 보조 유틸인데 아예 봇 제작에 쓸 수 없냐고 하는 사람들이
+// 있다 — 로어북·캐릭터 시트를 일일이 손작업하고, 제작 위치가 리수 봇 컨텍스트에서 OOC로 주고받는 식뿐이라".
+//
+// 설정집(bible) = 대화로 정리해 가는 **구조화된 중간 작업본**. 로어북·캐릭터 시트는 이것을 컴파일한 결과다.
+// 대화 이력에 설정을 누적하면 몇 턴 안에 컨텍스트가 터지므로, 스키마 작업본처럼 설정집을 객체로 들고 매 턴 다이제스트로 싣는다.
+//
+// 1단계(이 판)는 **쓰기 없음** — 로어북 JSON(리수 가져오기 형식)·캐릭터 시트를 복사/내려받기로 내보낸다. 캐릭터 객체에는 글자 하나
+// 안 쓴다. 2단계(항목 단위 적용·백업)·3단계(설명·정규식)는 설계 문서 §단계.
+//
+// 심코어식 분담이 이 도구의 차별점이다 (memory simcore-bot-design): 로어북 = 안 변하는 것(설정·이유·어휘), 변수 = 플레이가 남긴 흔적.
+// 설정집을 받으면 로어북에 갈 것과 심코어(변수·이벤트·비밀…)로 갈 것을 `sim` 목록으로 나눠 준다 — 그 목록은 💬 어시스턴트에게
+// 요청문으로 넘긴다.
+//
+// 이 모듈은 순수 함수만 — 리수도, DOM도, 다른 코어 모듈도 모른다 (편집기가 쓰고 테스트가 단독으로 부른다).
+
+const BIBLE_V = 1;
+const KINDS = ['world', 'character', 'place', 'faction', 'rule', 'term', 'plot', 'style', 'other'];
+const KIND_LABEL = { world: '세계', character: '인물', place: '장소', faction: '세력', rule: '규칙', term: '용어', plot: '줄거리', style: '문체', other: '기타' };
+const SIM_HOW = ['변수', '이벤트', '액션', '판정', '비밀', '무대 뒤', '시나리오', '갈림길', '기타'];
+const LIMITS = { sections: 80, keys: 24, keyChars: 40, nameChars: 80, bodyChars: 6000, sheetChars: 8000, sim: 40, simChars: 300, premiseChars: 600 };
+const DIGEST_CAP = 24 * 1024;   // 바이트 — 시스템 프롬프트에 싣는 설정집 상한 (본문은 앞 항목부터, 넘치면 id만)
+const UPDATE_KEYS = ['title', 'premise', 'sections', 'remove', 'sheet', 'sim'];
+const SECTION_KEYS = ['id', 'kind', 'name', 'keys', 'always', 'body', 'order'];
+
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const clip = (s, n) => (s.length > n ? s.slice(0, n) : s);
+const str = (v, n) => clip(typeof v === 'string' ? v : (v == null ? '' : String(v)), n);
+const byteLen = (s) => Buffer.byteLength(String(s), 'utf8');
+
+function slugify(name, fallback = 'sec') {
+  const s = String(name ?? '').toLowerCase().replace(/[^a-z0-9가-힣_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || fallback;
+}
+
+function emptyBible() {
+  return { v: BIBLE_V, title: '', premise: '', sections: [], sheet: { name: '', desc: '', first: '' }, sim: [] };
+}
+
+/** 낱말 목록 — 배열이든 쉼표 문자열이든 받는다. 빈 것·중복 제거, 상한 */
+function normKeys(v) {
+  const arr = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(/[,\n]/) : []);
+  const out = [];
+  for (const k of arr) {
+    const t = str(k, LIMITS.keyChars).trim();
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= LIMITS.keys) break;
+  }
+  return out;
+}
+
+function normSection(raw, used) {
+  if (!isObj(raw)) return null;
+  const name = str(raw.name, LIMITS.nameChars).trim();
+  let id = slugify(raw.id != null && String(raw.id).trim() ? raw.id : name, '');
+  if (!id) return null;
+  if (used) { let base = id, n = 2; while (used.has(id)) id = `${base}-${n++}`; used.add(id); }
+  const order = Number.isInteger(raw.order) ? raw.order : undefined;
+  return {
+    id, kind: KINDS.includes(raw.kind) ? raw.kind : 'other', name: name || id,
+    keys: normKeys(raw.keys), always: raw.always === true, body: str(raw.body, LIMITS.bodyChars),
+    ...(order !== undefined ? { order } : {}),
+  };
+}
+
+function normSim(raw) {
+  if (!isObj(raw)) return null;
+  const what = str(raw.what, LIMITS.simChars).trim();
+  if (!what) return null;
+  return { what, how: SIM_HOW.includes(raw.how) ? raw.how : '기타', why: str(raw.why, LIMITS.simChars).trim() };
+}
+
+/** 저장소·AI에서 온 것을 믿지 않는다 — 모양을 맞추고 상한을 자른다. 절대 던지지 않는다 */
+function normalizeBible(raw) {
+  const b = emptyBible();
+  if (!isObj(raw)) return b;
+  b.title = str(raw.title, LIMITS.nameChars).trim();
+  b.premise = str(raw.premise, LIMITS.premiseChars).trim();
+  const used = new Set();
+  for (const s of Array.isArray(raw.sections) ? raw.sections : []) {
+    const sec = normSection(s, used);
+    if (sec) b.sections.push(sec);
+    if (b.sections.length >= LIMITS.sections) break;
+  }
+  if (isObj(raw.sheet)) {
+    b.sheet.name = str(raw.sheet.name, LIMITS.nameChars).trim();
+    b.sheet.desc = str(raw.sheet.desc, LIMITS.sheetChars);
+    b.sheet.first = str(raw.sheet.first, LIMITS.sheetChars);
+  }
+  for (const s of Array.isArray(raw.sim) ? raw.sim : []) {
+    const it = normSim(s);
+    if (it) b.sim.push(it);
+    if (b.sim.length >= LIMITS.sim) break;
+  }
+  return b;
+}
+
+function bibleIsBlank(b) {
+  return !b || (!b.sections.length && !b.premise && !b.title && !b.sheet.desc && !b.sheet.first && !b.sim.length);
+}
+
+/**
+ * AI가 붙인 수정안을 설정집에 적용 — 패치 규율(섹션은 id로 덮어쓰기, 안 보낸 것은 그대로). 거부되면 설정집은 안 변한다.
+ * upd = { bible: {...} } 또는 {...} 직접. 돌려주는 것: { ok, bible, errors, summary }
+ */
+function applyBibleUpdate(bible, upd) {
+  const errors = [];
+  let u = upd;
+  if (isObj(u) && isObj(u.bible)) u = u.bible;
+  if (!isObj(u)) return { ok: false, errors: ['수정안은 { "bible": { … } } 객체여야 합니다'], bible, summary: '' };
+  for (const k of Object.keys(u)) if (!UPDATE_KEYS.includes(k)) errors.push(`알 수 없는 키 '${k}' (쓸 수 있는 키: ${UPDATE_KEYS.join(', ')})`);
+  const next = normalizeBible(bible);
+  const stats = { add: 0, upd: 0, del: 0, sheet: false, sim: null, head: false };
+
+  if (u.title !== undefined) { if (typeof u.title !== 'string') errors.push('title은 문자열'); else { next.title = str(u.title, LIMITS.nameChars).trim(); stats.head = true; } }
+  if (u.premise !== undefined) { if (typeof u.premise !== 'string') errors.push('premise는 문자열'); else { next.premise = str(u.premise, LIMITS.premiseChars).trim(); stats.head = true; } }
+
+  if (u.sections !== undefined) {
+    if (!Array.isArray(u.sections)) errors.push('sections는 배열');
+    else u.sections.forEach((raw, i) => {
+      if (!isObj(raw)) { errors.push(`sections[${i}]는 객체여야 합니다`); return; }
+      for (const k of Object.keys(raw)) if (!SECTION_KEYS.includes(k)) errors.push(`sections[${i}] 알 수 없는 키 '${k}' (쓸 수 있는 키: ${SECTION_KEYS.join(', ')})`);
+      if (raw.kind !== undefined && !KINDS.includes(raw.kind)) errors.push(`sections[${i}] kind '${raw.kind}'는 없는 종류 (${KINDS.join(' | ')})`);
+      if (raw.body !== undefined && typeof raw.body !== 'string') errors.push(`sections[${i}] body는 문자열`);
+      if (raw.keys !== undefined && !Array.isArray(raw.keys) && typeof raw.keys !== 'string') errors.push(`sections[${i}] keys는 문자열 배열`);
+      if (raw.always !== undefined && typeof raw.always !== 'boolean') errors.push(`sections[${i}] always는 true/false`);
+      const id = raw.id != null && String(raw.id).trim() ? slugify(raw.id, '') : slugify(raw.name, '');
+      if (!id) { errors.push(`sections[${i}]에 id도 name도 없습니다`); return; }
+      const cur = next.sections.find((s) => s.id === id);
+      if (cur) {
+        if (raw.name !== undefined) cur.name = str(raw.name, LIMITS.nameChars).trim() || cur.name;
+        if (raw.kind !== undefined && KINDS.includes(raw.kind)) cur.kind = raw.kind;
+        if (raw.keys !== undefined) cur.keys = normKeys(raw.keys);
+        if (raw.always !== undefined) cur.always = raw.always === true;
+        if (typeof raw.body === 'string') cur.body = str(raw.body, LIMITS.bodyChars);
+        if (Number.isInteger(raw.order)) cur.order = raw.order;
+        stats.upd++;
+      } else {
+        if (!String(raw.name ?? '').trim()) { errors.push(`sections[${i}] 새 항목 '${id}'에 name이 없습니다`); return; }
+        if (next.sections.length >= LIMITS.sections) { errors.push(`항목이 ${LIMITS.sections}개를 넘습니다`); return; }
+        const sec = normSection({ ...raw, id }, null);
+        if (sec) { next.sections.push(sec); stats.add++; }
+      }
+    });
+  }
+  if (u.remove !== undefined) {
+    if (!Array.isArray(u.remove)) errors.push('remove는 id 배열');
+    else for (const r of u.remove) {
+      const id = slugify(r, '');
+      const i = next.sections.findIndex((s) => s.id === id);
+      if (i < 0) errors.push(`remove: 없는 항목 '${r}'`);
+      else { next.sections.splice(i, 1); stats.del++; }
+    }
+  }
+  if (u.sheet !== undefined) {
+    if (!isObj(u.sheet)) errors.push('sheet는 객체 { name, desc, first }');
+    else {
+      for (const k of Object.keys(u.sheet)) if (!['name', 'desc', 'first'].includes(k)) errors.push(`sheet 알 수 없는 키 '${k}' (name, desc, first)`);
+      for (const k of ['name', 'desc', 'first']) if (u.sheet[k] !== undefined) {
+        if (typeof u.sheet[k] !== 'string') errors.push(`sheet.${k}는 문자열`);
+        else { next.sheet[k] = k === 'name' ? str(u.sheet[k], LIMITS.nameChars).trim() : str(u.sheet[k], LIMITS.sheetChars); stats.sheet = true; }
+      }
+    }
+  }
+  if (u.sim !== undefined) {
+    if (!Array.isArray(u.sim)) errors.push('sim은 { what, how, why } 배열');
+    else {
+      const list = [];
+      u.sim.forEach((raw, i) => {
+        if (!isObj(raw)) { errors.push(`sim[${i}]는 객체`); return; }
+        if (raw.how !== undefined && !SIM_HOW.includes(raw.how)) errors.push(`sim[${i}] how '${raw.how}'는 없는 종류 (${SIM_HOW.join(' | ')})`);
+        const it = normSim(raw);
+        if (!it) { errors.push(`sim[${i}]에 what이 없습니다`); return; }
+        if (list.length < LIMITS.sim) list.push(it);
+      });
+      next.sim = list; stats.sim = list.length;
+    }
+  }
+  if (errors.length) return { ok: false, errors, bible, summary: '' };
+  const parts = [];
+  if (stats.add) parts.push(`항목 추가 ${stats.add}`);
+  if (stats.upd) parts.push(`교체 ${stats.upd}`);
+  if (stats.del) parts.push(`삭제 ${stats.del}`);
+  if (stats.head) parts.push('제목·전제');
+  if (stats.sheet) parts.push('캐릭터 시트');
+  if (stats.sim != null) parts.push(`심코어 분담 ${stats.sim}`);
+  return { ok: true, errors: [], bible: next, summary: parts.join(' · ') || '변화 없음' };
+}
+
+/** 설정집 다이제스트 — 시스템 프롬프트에 매 턴 싣는다. 머리·항목 머리줄은 전부, 본문은 상한 안에서 앞 항목부터 */
+function bibleDigest(bible, cap = DIGEST_CAP) {
+  const b = normalizeBible(bible);
+  const out = ['## 설정집 — 지금까지 정리된 것 (이것이 작업본입니다. 수정안은 이 id를 기준으로)'];
+  if (b.title) out.push(`제목: ${b.title}`);
+  if (b.premise) out.push(`전제: ${b.premise}`);
+  if (!b.sections.length) out.push('(항목 없음 — 아직 아무것도 정리되지 않았습니다)');
+  let used = byteLen(out.join('\n'));
+  const bodies = [];
+  let omitted = 0;
+  for (const s of b.sections) {
+    const head = `#### [${s.id}] ${KIND_LABEL[s.kind]} · ${s.name}${s.keys.length ? ` · 낱말: ${s.keys.join(', ')}` : ''}${s.always ? ' · 상시' : ''}`;
+    const body = s.body.trim() ? s.body.trim() : '(본문 없음)';
+    const cost = byteLen(head) + byteLen(body) + 2;
+    if (used + cost > cap) { bodies.push(head + '\n(본문 생략 — 상한)'); omitted++; used += byteLen(head) + 16; continue; }
+    bodies.push(head + '\n' + body); used += cost;
+  }
+  if (b.sections.length) out.push('', '### 항목', ...bodies.flatMap((x) => [x, '']));
+  out.push('### 캐릭터 시트',
+    `이름: ${b.sheet.name || '(없음)'}`,
+    `설명(desc): ${b.sheet.desc.trim() ? (used + byteLen(b.sheet.desc) > cap ? '(있음 — 상한으로 생략)' : '\n' + b.sheet.desc.trim()) : '(없음)'}`,
+    `첫 메시지(first): ${b.sheet.first.trim() ? (used + byteLen(b.sheet.first) > cap * 1.2 ? '(있음 — 상한으로 생략)' : '\n' + b.sheet.first.trim()) : '(없음)'}`,
+    '', '### 심코어로 갈 것 (sim — 로어북이 아니라 시스템이 쥘 것)',
+    ...(b.sim.length ? b.sim.map((x) => `- [${x.how}] ${x.what}${x.why ? ` — ${x.why}` : ''}`) : ['(없음)']));
+  return { text: out.join('\n'), omitted };
+}
+
+/** 봇 제작 대화 규약 — 시스템 프롬프트 머리 (📌 작업 지침 뒤). 출력 형식과 로어북·분담 규칙 */
+function bibleRules() {
+  return [
+    '## 대화 규약 — 이 대화에서 답하는 방식',
+    '- 당신은 RisuAI 캐릭터 봇 제작 어시스턴트입니다. 사용자와 **대화하며** 봇의 설정집을 함께 정리합니다. 답은 먼저 **사람에게 하는 말**(제안·되묻기·정리)입니다.',
+    '- 설정집을 **바꿔야 할 때만** 답 끝에 JSON 코드펜스(```json … ```) **하나**를 붙입니다. 논의·질문만이면 붙이지 마세요. 사용자가 "정리해줘·반영해·넣어줘·만들어줘"라고 하면 붙입니다.',
+    '- 코드펜스 앞에 무엇을 왜 정리했는지 짧게 적고, 코드펜스 뒤에는 아무 말도 쓰지 않습니다. 모르는 설정은 지어내지 말고 묻되, 한 턴에 질문은 셋 이내.',
+    '',
+    '### 수정안 형식 (코드펜스 안)',
+    '{ "bible": { "title"?: "…", "premise"?: "한 줄 전제", "sections"?: [ { "id": "슬러그", "kind": "world|character|place|faction|rule|term|plot|style|other", "name": "이름", "keys": ["낱말", …], "always": false, "body": "본문" } ], "remove"?: ["id"], "sheet"?: { "name"?: "…", "desc"?: "캐릭터 설명란 글", "first"?: "첫 메시지" }, "sim"?: [ { "what": "무엇", "how": "변수|이벤트|액션|판정|비밀|무대 뒤|시나리오|갈림길|기타", "why": "왜" } ] } }',
+    '- sections는 **id로 덮어쓰기**입니다 — 있는 id면 보낸 필드만 교체, 없는 id면 추가. 안 보낸 항목은 그대로 남습니다. 설정집 전체를 다시 보내지 마세요. 지울 때만 remove.',
+    '- sim은 보낼 때마다 목록 전체로 교체됩니다. sheet는 보낸 칸만 교체.',
+    `- kind: ${KINDS.map((k) => `${k}=${KIND_LABEL[k]}`).join(' · ')}`,
+    '',
+    '### 로어북 항목 쓰는 법 (sections → 리수 로어북 한 항목씩)',
+    '- 항목 하나 = 주제 하나(인물 하나·장소 하나·규칙 하나). 본문은 모델이 장면을 쓸 때 읽는 **정보**입니다 — 현재형 사실·관계·말투·금기를 간결하게. 독자용 설명 산문이나 "이 항목은…" 같은 메타 문장은 넣지 않습니다.',
+    '- keys(낱말)는 그 본문이 필요한 장면에 **실제로 등장할 말**(이름·별칭·장소명·물건) 2~6개. "그", "집"처럼 흔한 말은 안 됩니다 — 매 턴 걸립니다.',
+    '- always(상시)는 세계 전제·문체·핵심 규칙처럼 **늘** 필요한 것에만 true. 상시 항목은 매 턴 토큰을 먹습니다.',
+    '- 이미 있는 캐릭터 정보(아래 "현재 캐릭터")가 있으면 그것을 기준으로 보완·정리하고, 같은 내용을 새 항목으로 복제하지 않습니다.',
+    '',
+    '### 심코어식 분담 — 로어북에 적으면 안 되는 것',
+    '- **로어북 = 안 변하는 것**(설정·이유·어휘·관계의 바탕). **플레이가 바꾸는 것**(호감·소지금·체력·관계 단계·진행도·날짜·"현재 ~한 상태")은 로어북에 적지 말고 sim 목록에 { what, how, why }로 올립니다 — 심코어가 변수·이벤트·액션·판정으로 쥐고 상태창에 보여 줍니다.',
+    '- 본문에 "At the start…", "처음엔…", "현재…"가 들어가면 그건 변수 자리입니다. 문장으로 적지 말고 sim으로 보내세요.',
+    '- **밝혀지기 전엔 모델이 몰라야 하는 것**(정체·반전·숨은 과거)은 로어북에 적으면 샙니다. sim에 how="비밀"로 올리고 로어북 본문에는 "숨기는 사람"의 행동만 적습니다.',
+    '- 유저가 안 보는 사이 진행되는 음모·세력의 움직임은 how="무대 뒤", 장(막) 단위 전개는 how="시나리오", 상황별 선택지는 how="갈림길".',
+    '',
+    '### 캐릭터 시트 (sheet)',
+    '- desc = 리수 캐릭터 설명란에 넣을 글: 인물 핵심·외양·말투·관계·금기. 상태 숫자·현재 상황은 적지 않습니다(심코어 상태창이 보여 줍니다). first = 첫 메시지 초안(장면·말투 견본). 사용자가 달라고 할 때 채웁니다.',
+    '',
+  ];
+}
+
+/** 로어북 컴파일 — 리수 로어북 가져오기 형식 { type:'risu', ver:1, data:[…] }. 본문 없는 항목은 뺀다 */
+function compileLorebook(bible) {
+  const b = normalizeBible(bible);
+  const data = b.sections.filter((s) => s.body.trim()).map((s, i) => ({
+    key: s.keys.join(', '), comment: s.name, content: s.body.trim(), mode: 'normal',
+    insertorder: Number.isInteger(s.order) ? 100 + s.order : 100 + i,
+    alwaysActive: s.always, secondkey: '', selective: false,
+  }));
+  return { type: 'risu', ver: 1, data };
+}
+
+/** 항목 하나를 손으로 붙여 넣을 때의 글 */
+function sectionText(sec) {
+  const s = normSection(sec, null);
+  if (!s) return '';
+  return [`# ${s.name} (${KIND_LABEL[s.kind]})`, `낱말: ${s.keys.join(', ') || '(없음)'}${s.always ? ' · 상시' : ''}`, '', s.body.trim()].join('\n');
+}
+
+/** 캐릭터 시트 — 설명란·첫 메시지에 붙여 넣을 글 */
+function compileSheet(bible) {
+  const b = normalizeBible(bible);
+  const out = [];
+  if (b.sheet.name) out.push(`## 이름\n${b.sheet.name}`);
+  out.push(`## 캐릭터 설명 (description)\n${b.sheet.desc.trim() || '(아직 없음 — 대화에서 "캐릭터 시트 정리해줘"라고 하세요)'}`);
+  out.push(`## 첫 메시지\n${b.sheet.first.trim() || '(아직 없음)'}`);
+  return out.join('\n\n');
+}
+
+/** 💬 어시스턴트에게 넘길 요청문 — 심코어로 갈 것(sim)을 작업본 반영 요청으로 */
+function simRequestText(bible) {
+  const b = normalizeBible(bible);
+  if (!b.sim.length) return '';
+  return ['봇 제작 설정집에서 "심코어로 갈 것"으로 분류한 항목들이에요. 작업본에 어떻게 넣을지 제안하고, 합의되면 반영해 주세요.',
+    ...(b.premise ? [`(봇 전제: ${b.premise})`] : []),
+    ...b.sim.map((x) => `- [${x.how}] ${x.what}${x.why ? ` — ${x.why}` : ''}`)].join('\n');
+}
+
+/** 응답을 사람 말 + JSON(마지막 ```json 펜스, 없으면 통째 JSON)으로 — 추론 블록은 뗀다 (편집기 splitChatResponse와 같은 규율) */
+const THOUGHT_TAG_RE = /<(thoughts?|thinking|think|reasoning)>[\s\S]*?<\/\1>\s*/gi;
+function splitBibleResponse(raw) {
+  const text = String(raw ?? '').replace(THOUGHT_TAG_RE, '').trim();
+  const re = /```(?:json|JSON)?[ \t]*\r?\n?([\s\S]*?)```/g;
+  let m, last = null;
+  while ((m = re.exec(text))) {
+    const body = m[1].trim();
+    if (body.startsWith('{')) last = { index: m.index, len: m[0].length, body };
+  }
+  if (last) {
+    const before = text.slice(0, last.index).trim(), after = text.slice(last.index + last.len).trim();
+    return { prose: before && after ? before + '\n' + after : before || after, json: last.body };
+  }
+  if (text.startsWith('{') && text.endsWith('}')) {
+    try { JSON.parse(text); return { prose: '', json: text }; } catch (_) { /* 산문 취급 */ }
+  }
+  return { prose: text, json: null };
+}
+
+function bibleStats(bible) {
+  const b = normalizeBible(bible);
+  return {
+    sections: b.sections.length, always: b.sections.filter((s) => s.always).length,
+    bodyBytes: b.sections.reduce((a, s) => a + byteLen(s.body), 0), sim: b.sim.length,
+    sheet: !!(b.sheet.desc.trim() || b.sheet.first.trim()),
+  };
+}
+
+module.exports = {
+  BIBLE_V, KINDS, KIND_LABEL, SIM_HOW, LIMITS, DIGEST_CAP, UPDATE_KEYS, SECTION_KEYS,
+  emptyBible, normalizeBible, bibleIsBlank, applyBibleUpdate, bibleDigest, bibleRules,
+  compileLorebook, compileSheet, sectionText, simRequestText, splitBibleResponse, bibleStats, slugify,
+};
+
+});
+
 SimCore.define("patch", function (require, module, exports) {
 // AI 왕복 패치 — 부분 수정 가져오기의 엔진 코어 (설계: docs/design-ai-왕복-패치.md)
 //
@@ -13029,6 +13359,7 @@ const { seededRng } = require('./rng');
 const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
 const { monthView } = require('./calendar');
 const fightMod = require('./fight');   // 전투 안무 수 유형 기본표 (v1.15.0)
+const bibleMod = require('./bible');   // 🧑‍🎨 봇 제작 설정집 (v1.16.0)
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
@@ -13656,6 +13987,25 @@ const CSS = `
 .sce .sce-chat-input { width:100% !important; min-height:72px !important; font-family:inherit; line-height:1.6; }
 .sce .sce-chat-input-actions { display:flex; align-items:center; gap:8px; }
 .sce .sce-chat-input-actions .sce-ai-action-hint { margin-left:auto; }
+/* 🧑‍🎨 봇 제작 (v1.16.0) — 왼쪽 설정집 · 오른쪽 대화. 좁으면 위아래 */
+.sce .sce-bible-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:start; margin-top:10px; }
+@media (max-width: 900px) { .sce .sce-bible-cols { grid-template-columns:1fr; } }
+.sce .sce-bible-book { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.sce .sce-bible-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.sce .sce-bible-meta { display:flex; flex-direction:column; gap:6px; }
+.sce .sce-bible-premise { min-height:44px !important; font-family:inherit; }
+.sce .sce-bible-group { border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; }
+.sce .sce-bible-group-title { font-weight:700; font-size:12px; color:var(--sce-muted); margin-bottom:4px; }
+.sce .sce-bible-card { border-top:1px dashed var(--sce-line); padding:6px 0; }
+.sce .sce-bible-card > summary { cursor:pointer; font-size:13px; }
+.sce .sce-bible-card-keys { color:var(--sce-muted); font-size:11.5px; margin-left:6px; }
+.sce .sce-bible-card-body { display:flex; flex-direction:column; gap:5px; margin-top:6px; }
+.sce .sce-bible-card-body textarea { min-height:90px !important; font-family:inherit; line-height:1.55; }
+.sce .sce-bible-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.sce .sce-bible-export { border-top:1px solid var(--sce-line); padding-top:8px; }
+.sce .sce-bible-chat .sce-chat-log { max-height:52vh; }
+.sce .sce-bible-sim-item { padding:4px 0; border-top:1px dashed var(--sce-line); font-size:12.5px; }
+.sce .sce-bible-sim-how { display:inline-block; padding:0 6px; border-radius:4px; background:color-mix(in srgb, var(--sce-accent) 14%, transparent); font-size:11px; margin-right:6px; }
 /* 작업 내역 (v1.9.7) */
 .sce .sce-worklog { margin:10px 0; }
 .sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
@@ -19722,7 +20072,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // uiPrefs = { load()→Promise<obj|null>, save(obj)→Promise } — 편집 화면 취향(변수 카드 접힘 등)을 호스트가 캐릭터별로 보관.
   // 스키마가 아니라 "이 사람의 편집 화면" 상태다 — 어댑터는 pluginStorage(기기 로컬)에 둔다 (v1.9.29). // ai = { generate(prompt)→Promise<text|null|{blocked}>, getBotContext()→Promise } — 어댑터 주입
   // onRequestFloor(f): 편집기 안에서 층 이동이 필요할 때 호스트에게 부탁 — 사이드바 하이라이트까지 같이 옮기라고
-  // floor: 'top'|'json'|'assets'|'deep' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
+  // floor: 'top'|'json'|'assets'|'deep'|'bible' — 호스트가 층을 사이드 내비로 직접 고르는 모드 (층 하나만 그림).
   // 안 주면 스택형(1층 + 2·3층 접기) — 플레이그라운드처럼 층 내비가 없는 호스트용 폴백.
   let floorView = floor ?? null;
   let schema = JSON.parse(JSON.stringify(initialSchema));
@@ -25785,6 +26135,23 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 💬 대화 상태 (v1.9.0) — 편집기 인스턴스에만 산다(닫으면 사라진다). msgs[]: { role:'user'|'ai', text, json?, pending?, applied?, jsonError? }
   // sent/got = 이 대화에서 보낸·받은 토큰 추정 누적 — 리수 호출 결과에 사용량이 안 실려 와서 추정이 한계다.
   let chat = { msgs: [], busy: false, seq: 0, note: null, sent: 0, got: 0, draft: '' };
+  // 🧑‍🎨 봇 제작 (v1.16.0) — 설정집(캐릭터별 저장) + 전용 대화(편집기를 닫으면 사라짐). 설계 docs/design-봇제작-대화.md
+  let bible = bibleMod.emptyBible();
+  let bibleChat = { msgs: [], busy: false, seq: 0, note: null, sent: 0, got: 0, draft: '' };
+  let bibleUndo = [];           // 수정안 적용·지우기 전 설정집 (최근 10)
+  let bibleClearArm = false;
+  let bibleOpen = false;        // 스택형 폴백의 접기
+  let bibleSaveTimer = null;
+  const biblePersist = () => {
+    if (!(ai && typeof ai.saveBible === 'function')) return;
+    clearTimeout(bibleSaveTimer);
+    bibleSaveTimer = setTimeout(() => { try { Promise.resolve(ai.saveBible(bible)).catch(() => {}); } catch { /* 방어 */ } }, 250);
+  };
+  if (ai && typeof ai.loadBible === 'function') {
+    try {
+      Promise.resolve(ai.loadBible()).then((raw) => { if (destroyed || !raw) return; bible = bibleMod.normalizeBible(raw); if (!bibleMod.bibleIsBlank(bible)) render(); }).catch(() => {});
+    } catch { /* 방어 */ }
+  }
   // 템플릿에서 시작 (v1.9.1) — 1층 창작·대화 탭 안에서도 내장 템플릿을 연다. 패널의 [편집 작업공간 → 템플릿에서 시작]과 같은 일.
   // 실기 제보: "대화는 AI 어시스턴트에 있는데 템플릿은 다른 메뉴라 찾기 불편하다" + 빈 작업본은 통짜 규격서(42K)가 나가고
   // 빈 템플릿만 열어도 패치 경로(8.6K)로 떨어진다 — 대화로 새 봇을 만들 때 첫 수가 템플릿이어야 싸다.
@@ -26625,6 +26992,304 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     } }, '🧹 대화 초기화');
     box.appendChild(h('div', { class: 'sce-chat-input-row' }, area,
       h('div', { class: 'sce-chat-input-actions' }, resetBtn, h('span', { class: 'sce-ai-action-hint' }, 'Ctrl+Enter로 보내기'), sendBtn)));
+    return box;
+  }
+
+  // ── 🧑‍🎨 봇 제작 (v1.16.0) — 설정집을 대화로 정리하고 로어북·캐릭터 시트를 컴파일한다. 설계 docs/design-봇제작-대화.md ──
+  // 1단계: 캐릭터에는 아무것도 쓰지 않는다 — 로어북 JSON(리수 [가져오기] 형식)·시트를 복사/내려받기로 내보낸다.
+  // 수정안은 자동 적용(우리 작업본일 뿐이라 계획 상자 없음) + ↩ 되돌리기 10단계. 설정집은 어댑터가 캐릭터별로 저장(ai.loadBible/saveBible).
+  // ⚠ 이 구간에서 setCharacter·globalLore·customscript를 부르지 말 것 — 2단계(허가 체크·항목 단위 diff)가 그 자리다 (test-bible이 핀).
+  function buildBibleSystemPrompt(botCtxText) {
+    const lines = [...notesLines(schema), ...bibleMod.bibleRules(), bibleMod.bibleDigest(bible).text, ''];
+    const vars = (schema.vars || []).map((v) => `${v.id}${v.label ? `(${v.label})` : ''}`);
+    if (vars.length) lines.push('## 심코어 작업본이 이미 쥔 값 (변수) — 이것들은 로어북 본문에도 sim에도 다시 적지 마세요', clipText(vars.join(', '), 1500), '');
+    if (botCtxText) lines.push('## 현재 캐릭터 — 리수에 저장된 설명·로어북 (보완·정리의 기준. 같은 내용을 새 항목으로 복제하지 마세요)', botCtxText, '');
+    return lines.join('\n');
+  }
+  async function bibleCopy(text) {
+    try { if (typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(text); return true; } } catch { /* 샌드박스 차단 */ }
+    try {
+      const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return !!ok;
+    } catch { return false; }
+  }
+  function bibleDownload(name, text) {
+    try {
+      const blob = new Blob([text], { type: 'application/json' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+      return true;
+    } catch { return false; }
+  }
+  function bibleSnapshot() { bibleUndo.push(JSON.parse(JSON.stringify(bible))); if (bibleUndo.length > 10) bibleUndo.shift(); }
+
+  async function runBibleSend() {
+    if (!ai || !ai.generate || bibleChat.busy) return;
+    const text = bibleChat.draft.trim();
+    if (!text) return;
+    const mySeq = ++bibleChat.seq;
+    bibleChat.msgs.push({ role: 'user', text, ts: Date.now() });
+    bibleChat.draft = ''; bibleChat.busy = true; bibleChat.note = null;
+    rerender();
+    let ctxText = '';
+    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (bibleChat.seq !== mySeq || destroyed) return;
+    const system = buildBibleSystemPrompt(ctxText);
+    const messages = [...chatHistoryMessages(bibleChat.msgs.slice(0, -1)), { role: 'user', content: text }];
+    bibleChat.sent += chatTurnEstimate(system, messages);
+    const modelLabel = aiGenModel?.choice === 'main' ? '메인 모델' : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
+    let res = null, split = null, got = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const msgs = attempt === 0 ? messages
+        // 붙은 JSON이 형식 불합격 — 오류를 첨부해 한 번 더 (💬과 같은 규율). 설명은 이미 받았으니 JSON만
+        : [...messages, { role: 'assistant', content: res }, { role: 'user', content:
+            '방금 붙인 JSON이 형식 검사에서 거부되었습니다:\n' + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
+            + '\n\n앞의 설명은 반복하지 말고, 고친 JSON 코드펜스 하나만 다시 붙이세요.' }];
+      if (attempt) bibleChat.sent += chatTurnEstimate(system, msgs);
+      let r = null;
+      try { r = await ai.generate({ system, messages: msgs }); } catch (e) { r = { error: '호출 예외: ' + e.message }; }
+      if (bibleChat.seq !== mySeq || destroyed) return; // 취소 — 결과를 버린다
+      if (typeof r !== 'string' || !r.trim()) {
+        bibleChat.busy = false;
+        bibleChat.note = r && r.blocked
+          ? `⚠ ${modelLabel} 호출이 이 환경에서 차단됐어요 — 봇 제작 대화는 직결 호출이 되는 환경에서만 됩니다.`
+          : `⚠ ${modelLabel} 호출 실패 — ${(r && r.error) || '원인 불명 — 콘솔(F12)의 [simcore] 생성 호출 로그를 확인하세요'}`;
+        rerender();
+        return;
+      }
+      bibleChat.got += estTokens(r);
+      res = r;
+      split = bibleMod.splitBibleResponse(r);
+      if (!split.json) break;          // 논의 턴 — 검사할 JSON이 없다
+      try { got = bibleMod.applyBibleUpdate(bible, JSON.parse(split.json)); }
+      catch (e) { got = { ok: false, errors: [`JSON 문법 오류 — ${e.message}`] }; }
+      if (got.ok) break;
+    }
+    const msg = { role: 'ai', ts: Date.now(), text: split.prose || (split.json ? '(설명 없이 수정안만 보냈어요)' : res.trim()) };
+    if (split.json && got && got.ok) {
+      bibleSnapshot();
+      bible = got.bible; biblePersist();
+      msg.json = split.json; msg.applied = got.summary;   // chatHistoryMessages가 "[적용됨 — 요약]"으로 접는다
+    } else if (split.json) {
+      msg.jsonError = got.errors[0] + (got.errors.length > 1 ? ` (외 ${got.errors.length - 1}건)` : '');
+      msg.jsonRaw = split.json;
+    }
+    bibleChat.msgs.push(msg);
+    bibleChat.busy = false;
+    rerender();
+  }
+
+  function bibleCard(s) {
+    const det = h('details', { class: 'sce-bible-card' },
+      h('summary', {}, h('b', {}, s.name), h('span', { class: 'sce-bible-card-keys' },
+        (s.keys.length ? s.keys.join(', ') : '낱말 없음') + (s.always ? ' · 상시' : '') + (!s.body.trim() ? ' · 본문 없음' : ''))));
+    const name = h('input', { placeholder: '이름 (로어북 항목 제목)', 'aria-label': '항목 이름' }); name.value = s.name;
+    name.onchange = () => { s.name = name.value.trim().slice(0, bibleMod.LIMITS.nameChars) || s.name; biblePersist(); rerender(); };
+    const kind = h('select', { 'aria-label': '종류' }, ...bibleMod.KINDS.map((k) => { const o = h('option', { value: k }, bibleMod.KIND_LABEL[k]); if (k === s.kind) o.selected = true; return o; }));
+    kind.onchange = () => { s.kind = kind.value; biblePersist(); rerender(); };
+    const keys = h('input', { placeholder: '낱말 — 쉼표로 (장면에 실제로 나올 말 2~6개)', 'aria-label': '낱말' }); keys.value = s.keys.join(', ');
+    keys.onchange = () => { s.keys = bibleMod.normalizeBible({ sections: [{ id: s.id, name: s.name, keys: keys.value }] }).sections[0].keys; biblePersist(); rerender(); };
+    const always = h('input', { type: 'checkbox' }); always.checked = s.always;
+    always.onchange = () => { s.always = always.checked; biblePersist(); rerender(); };
+    const body = h('textarea', { placeholder: '본문 — 모델이 읽는 정보. 현재형 사실·관계·말투·금기', 'aria-label': '본문' }); body.value = s.body;
+    body.onchange = () => { s.body = body.value.slice(0, bibleMod.LIMITS.bodyChars); biblePersist(); rerender(); };
+    const note = h('span', { class: 'sce-hint', style: 'margin:0' });
+    const copyBtn = h('button', { class: 'sce-btn sce-mini', onclick: async () => {
+      note.textContent = (await bibleCopy(bibleMod.sectionText(s))) ? '✓ 복사됨 — 리수 로어북 항목에 붙이세요' : '복사 실패 — 본문을 직접 선택하세요';
+    } }, '📋 이 항목 복사');
+    const delBtn = h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => {
+      bibleSnapshot(); bible.sections = bible.sections.filter((x) => x !== s); biblePersist(); rerender();
+    } }, '✕ 지우기');
+    det.appendChild(h('div', { class: 'sce-bible-card-body' },
+      h('div', { class: 'sce-bible-row' }, name, kind, h('label', { class: 'sce-bible-row' }, always, h('span', {}, '상시'))),
+      keys, body, h('div', { class: 'sce-bible-row' }, copyBtn, delBtn, note)));
+    return det;
+  }
+
+  function bibleBook() {
+    const side = h('div', { class: 'sce-bible-book' });
+    const st = bibleMod.bibleStats(bible);
+    side.appendChild(h('div', { class: 'sce-bible-head' },
+      h('b', {}, `📚 설정집 ${st.sections ? `— 항목 ${st.sections}개` : '(비어 있음)'}`),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, st.sections ? `상시 ${st.always} · 본문 ${(st.bodyBytes / 1024).toFixed(1)}KB · 심코어로 ${st.sim}` : '')));
+    const titleIn = h('input', { class: 'sce-bible-title', placeholder: '제목 (봇 이름·작업명)', 'aria-label': '설정집 제목' }); titleIn.value = bible.title;
+    titleIn.onchange = () => { bible.title = titleIn.value.trim().slice(0, bibleMod.LIMITS.nameChars); biblePersist(); };
+    const premIn = h('textarea', { class: 'sce-bible-premise', placeholder: '한 줄 전제 — 어떤 봇인지', 'aria-label': '전제' }); premIn.value = bible.premise;
+    premIn.onchange = () => { bible.premise = premIn.value.trim().slice(0, bibleMod.LIMITS.premiseChars); biblePersist(); };
+    side.appendChild(h('div', { class: 'sce-bible-meta' }, titleIn, premIn));
+    if (!bible.sections.length) side.appendChild(h('div', { class: 'sce-chat-empty' }, '아직 비어 있어요. 오른쪽에서 봇 이야기를 시작하고 "정리해줘"라고 하면 여기에 항목이 쌓여요. 손으로 고쳐도 되고, 고친 것은 다음 턴부터 어시스턴트가 봐요.'));
+    for (const kind of bibleMod.KINDS) {
+      const list = bible.sections.filter((s) => s.kind === kind);
+      if (!list.length) continue;
+      const grp = h('div', { class: 'sce-bible-group' }, h('div', { class: 'sce-bible-group-title' }, `${bibleMod.KIND_LABEL[kind]} · ${list.length}`));
+      for (const s of list) grp.appendChild(bibleCard(s));
+      side.appendChild(grp);
+    }
+    { // 🪪 캐릭터 시트 — 설명란·첫 메시지 초안 (손편집 가능)
+      const nm = h('input', { placeholder: '이름', 'aria-label': '캐릭터 이름' }); nm.value = bible.sheet.name;
+      nm.onchange = () => { bible.sheet.name = nm.value.trim().slice(0, bibleMod.LIMITS.nameChars); biblePersist(); };
+      const desc = h('textarea', { placeholder: '캐릭터 설명란(description)에 넣을 글 — 인물 핵심·외양·말투·관계·금기. 상태 숫자는 적지 않아요', 'aria-label': '캐릭터 설명' }); desc.value = bible.sheet.desc;
+      desc.onchange = () => { bible.sheet.desc = desc.value.slice(0, bibleMod.LIMITS.sheetChars); biblePersist(); rerender(); };
+      const first = h('textarea', { placeholder: '첫 메시지 초안', 'aria-label': '첫 메시지' }); first.value = bible.sheet.first;
+      first.onchange = () => { bible.sheet.first = first.value.slice(0, bibleMod.LIMITS.sheetChars); biblePersist(); rerender(); };
+      const sheetFold = h('details', { class: 'sce-fold sce-bible-sheet' },
+        h('summary', {}, `🪪 캐릭터 시트 ${st.sheet ? '' : '(비어 있음 — "캐릭터 시트 정리해줘"라고 하세요)'}`),
+        h('div', { class: 'sce-bible-card-body' }, nm, desc, first));
+      if (st.sheet) sheetFold.open = true;
+      side.appendChild(sheetFold);
+    }
+    { // 🧩 심코어로 갈 것 — 로어북이 아니라 시스템이 쥘 것. 💬 어시스턴트에게 요청문으로 넘긴다
+      const items = bible.sim.map((x) => h('div', { class: 'sce-bible-sim-item' }, h('span', { class: 'sce-bible-sim-how' }, x.how), h('b', {}, x.what), x.why ? h('span', { class: 'sce-hint', style: 'margin:0 0 0 6px' }, '— ' + x.why) : null));
+      const sendBtn = h('button', { class: 'sce-btn sce-mini', disabled: bible.sim.length ? null : 'disabled', onclick: () => {
+        chat.draft = bibleMod.simRequestText(bible); topTab = 'chat';
+        if (floorView && onRequestFloor) { onRequestFloor('top'); return; } // 호스트가 사이드바와 함께 전환
+        if (floorView) floorView = 'top';
+        rerender();
+      } }, '💬 어시스턴트에게 보내기');
+      const simFold = h('details', { class: 'sce-fold sce-bible-sim' },
+        h('summary', {}, `🧩 심코어로 갈 것 (${bible.sim.length}) — 로어북이 아니라 변수·이벤트·비밀로`),
+        h('div', { class: 'sce-hint' }, '플레이가 바꾸는 값(호감·소지금·상태·진행)과 밝혀지기 전엔 모델이 몰라야 하는 것은 로어북에 적으면 안 돼요. 어시스턴트가 여기로 나눠 두면, 💬 대화 탭에 요청문으로 넘겨 작업본에 넣어요.'),
+        ...(items.length ? items : [h('div', { class: 'sce-hint' }, '아직 없어요.')]),
+        h('div', { class: 'sce-row' }, sendBtn));
+      if (bible.sim.length) simFold.open = true;
+      side.appendChild(simFold);
+    }
+    { // 내보내기·되돌리기·비우기 — 1단계는 여기까지. 캐릭터엔 아무것도 안 쓴다
+      const note = h('div', { class: 'sce-hint', style: 'margin:4px 0 0' });
+      const lore = bibleMod.compileLorebook(bible);
+      const loreJson = JSON.stringify(lore, null, 2);
+      const fname = `lorebook-${(bible.title || bible.sheet.name || 'simcore').replace(/[^\w가-힣-]/g, '_')}.json`;
+      const row = h('div', { class: 'sce-bible-row' },
+        h('button', { class: 'sce-btn sce-ai-primary', disabled: lore.data.length ? null : 'disabled', onclick: async () => {
+          note.textContent = (await bibleCopy(loreJson)) ? `✓ 로어북 JSON 복사됨 (항목 ${lore.data.length}) — 파일로 저장해 리수 로어북 [가져오기]에 넣으세요` : '복사 실패 — ⬇ 내려받기를 쓰세요';
+        } }, '📋 로어북 JSON 복사'),
+        h('button', { class: 'sce-btn', disabled: lore.data.length ? null : 'disabled', onclick: () => {
+          note.textContent = bibleDownload(fname, loreJson) ? `✓ ${fname} 내려받음 (항목 ${lore.data.length}) — 리수 캐릭터 로어북의 [가져오기]로 넣으세요` : '이 환경에선 내려받기가 안 돼요 — 복사를 쓰세요';
+        } }, '⬇ lorebook.json'),
+        h('button', { class: 'sce-btn', disabled: st.sheet ? null : 'disabled', onclick: async () => {
+          note.textContent = (await bibleCopy(bibleMod.compileSheet(bible))) ? '✓ 캐릭터 시트 복사됨 — 리수 캐릭터 설명란·첫 메시지에 붙이세요' : '복사 실패';
+        } }, '📋 캐릭터 시트 복사'),
+        h('button', { class: 'sce-btn sce-mini', disabled: bibleUndo.length ? null : 'disabled', onclick: () => {
+          const prev = bibleUndo.pop(); if (!prev) return; bible = bibleMod.normalizeBible(prev); biblePersist(); rerender();
+        } }, `↩ 되돌리기${bibleUndo.length ? ` (${bibleUndo.length})` : ''}`));
+      const clearBtn = h('button', { class: 'sce-btn sce-mini' + (bibleClearArm ? ' sce-danger' : ''), disabled: bibleMod.bibleIsBlank(bible) ? 'disabled' : null, onclick: () => {
+        if (!bibleClearArm) { bibleClearArm = true; rerender(); return; }
+        bibleSnapshot(); bible = bibleMod.emptyBible(); bibleClearArm = false; biblePersist(); rerender();
+      } }, bibleClearArm ? '한 번 더 누르면 설정집을 비워요 (되돌리기 가능)' : '🧹 설정집 비우기');
+      row.appendChild(clearBtn);
+      side.appendChild(h('div', { class: 'sce-bible-export' },
+        h('div', { class: 'sce-hint' }, '리수 로어북 [가져오기]가 받는 형식(type: risu)이에요. 지금 단계는 캐릭터에 아무것도 쓰지 않아요 — 받은 파일을 리수에서 직접 넣고, 설명란은 시트를 붙여 넣으세요.'),
+        row, note));
+    }
+    return side;
+  }
+
+  function bibleChatPane() {
+    const box = h('div', { class: 'sce-chat sce-bible-chat' });
+    const grid = h('div', { class: 'sce-ai-settings-grid' });
+    box.appendChild(grid);
+    {
+      const gmLine = buildGenModelRow(true);
+      if (gmLine) {
+        const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine);
+        if (!aiGenModel || aiGenModel.choice === 'aux') {
+          card.appendChild(h('div', { class: 'sce-warn sce-chat-model-warn' },
+            '봇 제작은 메인급 모델을 권해요 — 보조 자리엔 보통 번역·요약용 싼 모델이 꽂혀 있어 설정이 얕아요.'));
+        }
+        grid.appendChild(card);
+      }
+    }
+    const meter = h('div', { class: 'sce-ai-context-meta sce-chat-meter' });
+    let baseTok = null;
+    const renderMeter = () => {
+      meter.replaceChildren();
+      if (baseTok == null) {
+        const ctxText = aiCtxOn && aiBotCtx ? assembleBotContext(aiBotCtx).text : '';
+        baseTok = chatTurnEstimate(buildBibleSystemPrompt(ctxText), chatHistoryMessages(bibleChat.msgs));
+      }
+      meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(bibleChat.draft)).toLocaleString()} 토큰`));
+      meter.appendChild(h('span', {}, `이 대화 누적 보낸 약 ${bibleChat.sent.toLocaleString()} · 받은 약 ${bibleChat.got.toLocaleString()}`));
+    };
+    {
+      const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
+      const a = assembleBotContext(aiBotCtx);
+      if (a.text) {
+        const ctxCheck = h('input', { type: 'checkbox' });
+        ctxCheck.checked = aiCtxOn;
+        ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
+        card.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
+          h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, `설명·로어북 ${(a.bytes / 1024).toFixed(1)}KB — 있는 봇을 정리할 때 켜 두세요`))));
+      }
+      card.appendChild(meter);
+      const dg = bibleMod.bibleDigest(bible);
+      card.appendChild(h('div', { class: 'sce-ai-context-note' },
+        '봇 제작 규약과 설정집이 매 턴 함께 가요(±30% 추정). 💬 대화 탭의 📌 작업 지침도 맨 앞에 실려요. 대화는 편집기를 닫으면 사라지고 설정집만 캐릭터에 남아요.'
+        + (dg.omitted ? ` ⚠ 설정집이 상한을 넘어 항목 ${dg.omitted}개의 본문이 생략돼요 — 항목을 합치거나 지우세요.` : '')));
+      grid.appendChild(card);
+    }
+    renderMeter();
+    if (aiBotCtx === undefined) fetchBotCtx().then(() => { if (!destroyed) { baseTok = null; renderMeter(); } });
+
+    const log = h('div', { class: 'sce-chat-log', 'aria-live': 'polite' });
+    if (!bibleChat.msgs.length) {
+      log.appendChild(h('div', { class: 'sce-chat-empty' }, bibleMod.bibleIsBlank(bible)
+        ? '예: "북쪽 변경 마을에서 살아남는 생존 봇을 만들고 싶어. 마을엔 감시탑이 있고, 경비대장 아린이 뭔가 숨기고 있어" → 이야기하다 "정리해줘"'
+        : '예: "아린 항목을 더 자세히" · "세력 하나 추가하자" · "캐릭터 시트 정리해줘" · "지금 설정에서 변수로 빼야 할 게 뭐야?"'));
+    }
+    const drop = (idx, count) => { if (bibleChat.busy) return; bibleChat.msgs.splice(idx, count); rerender(); };
+    bibleChat.msgs.forEach((m, i) => {
+      const tools = bibleChat.busy ? null : h('span', { class: 'sce-chat-tools' },
+        h('button', { class: 'sce-btn sce-mini sce-chat-del', title: '이 말풍선만 지우기 — 다음 전송부터 안 실려요', 'aria-label': '이 말풍선 지우기', onclick: () => drop(i, 1) }, '✕'),
+        i < bibleChat.msgs.length - 1
+          ? h('button', { class: 'sce-btn sce-mini sce-chat-del', title: '여기부터 아래 전부 지우기', 'aria-label': '여기부터 아래 지우기', onclick: () => drop(i, bibleChat.msgs.length - i) }, '⌫ 여기부터')
+          : null);
+      const bubble = h('div', { class: 'sce-chat-msg ' + (m.role === 'ai' ? 'is-ai' : 'is-user') },
+        h('div', { class: 'sce-chat-who' }, h('span', {}, m.role === 'ai' ? '🤖 어시스턴트' : '🙂 나'), tools),
+        h('div', { class: 'sce-chat-text' }, m.text));
+      if (m.role === 'ai' && m.applied) bubble.appendChild(h('div', { class: 'sce-ok sce-chat-tag' }, `✅ 설정집 반영 — ${m.applied}`));
+      if (m.role === 'ai' && m.jsonError) {
+        const rawArea = h('textarea', { style: 'height:90px', readonly: 'readonly' });
+        rawArea.value = m.jsonRaw || '';
+        bubble.appendChild(h('div', { class: 'sce-warn sce-chat-tag' }, `⚠ 붙은 JSON이 두 번 모두 형식 검사를 통과하지 못해 버렸어요 — ${m.jsonError}`));
+        bubble.appendChild(h('details', { class: 'sce-fold' }, h('summary', {}, '거부된 JSON 원문'), rawArea));
+      }
+      log.appendChild(bubble);
+    });
+    if (bibleChat.busy) log.appendChild(h('div', { class: 'sce-generation-state' }, '답을 기다리고 있어요… 다른 탭을 봐도 결과는 여기에 남아요.'));
+    if (bibleChat.note) log.appendChild(h('div', { class: 'sce-warn' }, bibleChat.note));
+    box.appendChild(log);
+    if (bibleChat.msgs.length) {
+      const toBottom = () => { try { log.scrollTop = log.scrollHeight; } catch { /* 가짜 DOM */ } };
+      (typeof window !== 'undefined' && window.requestAnimationFrame) ? window.requestAnimationFrame(toBottom) : setTimeout(toBottom, 0);
+    }
+    const area = h('textarea', { class: 'sce-chat-input', 'aria-label': '봇 제작 어시스턴트에게 보낼 말', placeholder: '봇 이야기를 하거나, "정리해줘"라고 하세요' });
+    area.value = bibleChat.draft;
+    const sendBtn = bibleChat.busy
+      ? h('button', { class: 'sce-btn', onclick: () => { bibleChat.seq++; bibleChat.busy = false; rerender(); } }, '취소')
+      : h('button', { class: 'sce-btn sce-ai-primary', onclick: () => runBibleSend() }, '보내기');
+    const refresh = () => { if (!bibleChat.busy) sendBtn.disabled = !bibleChat.draft.trim(); };
+    area.oninput = () => { bibleChat.draft = area.value; renderMeter(); refresh(); };
+    area.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runBibleSend(); } };
+    refresh();
+    const resetBtn = h('button', { class: 'sce-btn sce-mini', disabled: bibleChat.msgs.length ? null : 'disabled', onclick: () => {
+      bibleChat.seq++;
+      bibleChat = { msgs: [], busy: false, seq: bibleChat.seq, note: null, sent: 0, got: 0, draft: bibleChat.draft };
+      rerender();
+    } }, '🧹 대화 초기화');
+    box.appendChild(h('div', { class: 'sce-chat-input-row' }, area,
+      h('div', { class: 'sce-chat-input-actions' }, resetBtn, h('span', { class: 'sce-ai-action-hint' }, 'Ctrl+Enter로 보내기'), sendBtn)));
+    return box;
+  }
+
+  function bibleFloor() {
+    const box = h('div', { class: 'sce-block sce-top sce-bible' });
+    const chatOn = !!(ai && ai.generate);
+    box.appendChild(h('div', { class: 'sce-top-head' }, h('h4', { style: 'margin:0' }, '🧑‍🎨 봇 제작 — 설정집')));
+    box.appendChild(h('div', { class: 'sce-hint' },
+      '봇의 설정을 어시스턴트와 대화로 정리해요. 정리된 것은 설정집에 쌓이고, 로어북 JSON과 캐릭터 시트로 내보내 리수에 붙여요. '
+      + '플레이로 변하는 값(호감·소지금·상태)과 밝혀지기 전엔 몰라야 하는 것은 로어북이 아니라 "심코어로 갈 것"으로 나뉘어요 — 그게 OOC로 짜는 것과의 차이예요. '
+      + '이 화면은 캐릭터에 아무것도 쓰지 않아요(1단계).'));
+    if (!chatOn) box.appendChild(h('div', { class: 'sce-warn' }, '이 환경엔 직결 호출이 없어 대화는 안 돼요 — 설정집 손편집과 내보내기만 됩니다.'));
+    box.appendChild(h('div', { class: 'sce-bible-cols' }, bibleBook(), chatOn ? bibleChatPane() : null));
     return box;
   }
 
@@ -28491,6 +29156,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       } else if (floorView === 'deep') {
         // v1.7.15: 한 기둥(.sce-deep-side)에 묶는다 — 넓은 화면에서 탭 묶음이 오른쪽 sticky 사이드로 간다
         root.appendChild(h('div', { class: 'sce-deep sce-deep-side' }, deepTabs(), deepBody(), reportEl));
+      } else if (floorView === 'bible') {
+        root.appendChild(bibleFloor());   // 🧑‍🎨 봇 제작 (v1.16.0)
       } else {
         root.appendChild(topFloor());
       }
@@ -28513,6 +29180,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     assetFold.open = assetsOpen;
     assetFold.addEventListener('toggle', () => { assetsOpen = assetFold.open; });
     root.appendChild(assetFold);
+
+    const bibleFold = h('details', { class: 'sce-lower' },
+      h('summary', {}, '🧑‍🎨 봇 제작 — 설정집 대화 (로어북·캐릭터 시트 초안)'),
+      bibleFloor());
+    bibleFold.open = bibleOpen;
+    bibleFold.addEventListener('toggle', () => { bibleOpen = bibleFold.open; });
+    root.appendChild(bibleFold);
 
     // 탭 바·본문·오류줄을 한 기둥에 넣는다. 폭 상한은 본문이 아니라 **이 기둥**에 걸린다 —
     // 본문만 좁히면 탭 바 밑줄이 혼자 패널 끝까지 가서 탭마다 오른쪽이 어긋나 보인다 (실측 제보).
@@ -28544,7 +29218,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   return {
     getSchema: () => JSON.parse(JSON.stringify(schema)),
     setSchema: (s) => { schema = JSON.parse(JSON.stringify(s)); rerender(); },
-    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'assets'|'deep'|null(스택형)
+    setFloor: (f) => { floorView = f || null; render(); }, // 'top'|'json'|'assets'|'deep'|'bible'|null(스택형)
     validateNow: () => validateSchema(schema),
     destroy: () => { destroyed = true; container.innerHTML = ''; },
   };
@@ -33709,6 +34383,18 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.15.0 ───────────────────────────────────────────────
+// **전투 안무 "수 유형".** 유저 제보: 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받는 그림이 됐다 —
+// 원한 건 막고 피하고 때리는 상호작용이 전투 주체에 따라 적절히 이루어지는 것.
+// - 주인공의 수는 유저 글의 낱말로 읽는다(공격·기술·수비·견제, 가장 뒤의 낱말이 이긴다). 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고, 긴 글에
+//   없으면 '자유 수'(글대로, 먹힘만 굴림). 수비는 공격을 굴리지 않고 상대가 들어올 때 반응 판정(reply)에 이점(굴림 폭 15%: d20 → +3), 견제는
+//   반값 누적 + 다음 공격에 이점, 기술은 누적 ×1.5(빗나가면 빈틈 — 상대가 들어온다).
+// - 상대의 수는 시스템이 판세(몰림·주인공의 수·라운드)를 보고 가중치로 뽑는다(공격·밀어붙이기·수세·탐색) — 리롤 안정·진단 가능. 밀어붙이기는
+//   반응 판정에 불리, 수세는 다음 공격 반감, 탐색은 공방 없는 라운드. 반응 판정이 없는 봇은 상대 공격을 서사에 맡긴다(치명상 금지).
+// - 규칙 줄: "결과는 바꾸지 마라, 어떻게 이르는지는 네 몫 — 공방을 꼭 번갈아 주고받을 필요는 없다". 예약 키 fight_edge·fight_guard 추가.
+// - 스키마: checks[].fight.moves { attack, skill, guard, probe: [낱말…] } / fight.foeMoves { attack, press, guard, probe: 가중치 } — 둘 다 선택,
+//   비우면 기본표. 편집기 ⚔ 절에 칸. {lastcheck}·meta.lastCheck.fight에 move·foeMove.
 
 // ── v1.14.16 ──────────────────────────────────────────────
 // **전체 점검 후속 5차 — 진단 알고리즘 재설계 (영역 9 보류).**
@@ -41077,7 +41763,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         --sc-muted:#b6bec8; --sc-muted-soft:#98a2ad; --sc-accent:#78a9ff; --sc-accent-strong:#4f7fe8;
         --sc-focus:#9ac2ff; --sc-success:#79d99a; --sc-warning:#f1cb72; --sc-danger:#ff9292;
         --sc-nav-play:#78a9ff; --sc-nav-ai:#c9a6ff; --sc-nav-json:#f1cb72; --sc-nav-assets:#79d99a;
-        --sc-nav-deep:#7fd3e8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
+        --sc-nav-deep:#7fd3e8; --sc-nav-bible:#f2a5c8; --sc-nav-work:#ffb37a; --sc-nav-save:#8fd8c9; --sc-nav-help:#b6bec8;
         --sc-danger-bg:#3a2225; --sc-font-body:'Pretendard Variable',Pretendard,'SUIT Variable',
           'Noto Sans KR',system-ui,'Apple SD Gothic Neo',sans-serif;
         --sc-font-mono:'D2Coding','JetBrains Mono',ui-monospace,monospace;
@@ -41167,6 +41853,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       #sc-root .sc-maintab[data-floor="json"] { --nav:var(--sc-nav-json); }
       #sc-root .sc-maintab[data-floor="assets"] { --nav:var(--sc-nav-assets); }
       #sc-root .sc-maintab[data-floor="deep"] { --nav:var(--sc-nav-deep); }
+      #sc-root .sc-maintab[data-floor="bible"] { --nav:var(--sc-nav-bible); }
       #sc-root .sc-maintab[data-page="work"] { --nav:var(--sc-nav-work); }
       #sc-root .sc-maintab[data-page="save"] { --nav:var(--sc-nav-save); }
       #sc-root .sc-maintab[data-page="help"] { --nav:var(--sc-nav-help); }
@@ -41526,6 +42213,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             <button class="sc-maintab" data-page="edit" data-floor="json"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg><span>JSON 관리자</span></button>
             <button class="sc-maintab" data-page="edit" data-floor="assets"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.4"/><path d="m4 17 4.5-4.5 3.5 3.5 2.5-2.5L20 19"/></svg><span>에셋 관리자</span></button>
             <button class="sc-maintab" data-page="edit" data-floor="deep"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6M14 7h6M10 4v6M4 17h2M10 17h10M6 14v6"/></svg><span>세부 편집기</span></button>
+            <button class="sc-maintab" data-page="edit" data-floor="bible"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6.5a1.5 1.5 0 0 1 1.5 1.5V20a1.5 1.5 0 0 0-1.5-1.5H4zM20 5h-6.5a1.5 1.5 0 0 0-1.5 1.5V20a1.5 1.5 0 0 1 1.5-1.5H20zM7 9h3M14 9h3M7 12.5h3M14 12.5h3"/></svg><span>봇 제작</span></button>
             <div class="sc-navcat">파일관리</div>
             <button class="sc-maintab" data-page="work"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3zM3 7V5h7l2 2"/></svg><span>편집 작업공간</span></button>
             <button class="sc-maintab" data-page="save"><svg class="sc-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7"/></svg><span>세이브</span></button>
@@ -41973,6 +42661,7 @@ count(목록)  has(목록, "항목")</pre>
       json: ['JSON 관리자', 'JSON을 통째로 붙여 넣거나 패치를 검사해 작업본에 적용해요.'],
       assets: ['에셋 관리자', '캐릭터 에셋을 팩으로 묶어 상황에 맞는 이미지가 서사에 실리게 해요.'],
       deep: ['세부 편집기', '변수·규칙·이벤트·상태창을 항목별로 직접 편집해요.'],
+      bible: ['봇 제작', '봇 설정을 대화로 정리해 설정집을 만들고, 로어북·캐릭터 시트 초안을 복사해 가요. 캐릭터엔 아무것도 쓰지 않아요.'],
     };
     const FLOOR_HEAD_TAIL = ' 어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.';
     for (const tab of root.querySelectorAll('.sc-maintab')) {
@@ -42565,6 +43254,15 @@ count(목록)  has(목록, "항목")</pre>
         saveWorkLog: async (list) => {
           try { await Risuai.pluginStorage.setItem(`sim:worklog:${currentChaId}`, JSON.stringify(list || [])); }
           catch (e) { console.log('[simcore] 작업 내역 저장 실패:', e.message); }
+        },
+        // 🧑‍🎨 봇 제작 설정집 (v1.16.0) — 캐릭터별 pluginStorage(기기 로컬). 카드·번들에 안 실린다. 편집기는 리수를 모르니 읽기·쓰기만 준다.
+        loadBible: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:bible:${currentChaId}`); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        saveBible: async (bible) => {
+          try { await Risuai.pluginStorage.setItem(`sim:bible:${currentChaId}`, JSON.stringify(bible || {})); }
+          catch (e) { console.log('[simcore] 설정집 저장 실패:', e.message); }
         },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },

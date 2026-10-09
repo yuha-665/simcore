@@ -223,7 +223,12 @@
 - 자리표시자: 산문(`promptState`·지시문 text)은 **값이 안 남는 줄째** 버리고,
   상태창 HTML은 **토큰만** 걷는다 (줄을 버리면 여는 태그만 남아 깨진다)
 - 적용은 **원자적** — 정리 후 `validateSchema` 실패면 거부하고 이유 표시 · 되돌리기 1슬롯
-- 아무 데도 안 쓰이면 계획 없이 그냥 지운다
+- 아무 데도 안 쓰이면 계획 없이 그냥 지운다 — "쓰임" 판정(`idsUsedElsewhere`)은 v1.14.14부터 **전 구간**(전엔 일곱 섹션만)
+- **v1.14.14 신설 섹션 커버리지**: 게이지 속도식·개입 효과, 무대 뒤(when·rate·문턱 글·효과), 비밀(1단계 조건은 풀고 뒷단계는 통째),
+  보조 갈림길(when·chance·태그 효과·check), 되감기(keep·notify), 시나리오(onEnter·direct·secret), 편성표(when·슬롯·업그레이드·cost·requires·
+  template), 상점(exchange·when·priceMul), 게시판·메신저·의뢰판·에셋 when, 상태창 color, 교전(reply·win·lose·foe), 선택지 check.
+  **차단(blockers)**: 시나리오 unlock·지갑/목록/포인트 변수(`roster`·`points`·`currency`·`buyTo`·`sellFrom`·`listVar`·`contactsVar`·
+  `notesVar`·`calendar.list`) — 지우면 뜻이 바뀌어 "먼저 바꿔 주세요"로 거부
 - **이게 없으면 변수 삭제가 원천 불가능하다**: 참조가 `onTurn`·`promptState`·`setup`에도 있는데
   그 셋은 왕복 패치 미지원 영역이라, 패치로는 지울 수 없고 검증이 계속 거부한다 (실전 사고)
 

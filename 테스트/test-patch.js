@@ -176,6 +176,38 @@ const baseJson = JSON.stringify(BASE);
   ck('개명 id 형식 검사', !badId.ok, '');
 }
 
+// ── ★ 개명 파급 — 중첩 참조 (v1.14.14): {id:형식}·통지문·inject·무대 뒤·게이지·전투 안무·선택지 check·fight.reply·whenArmed ──
+{
+  const patch = {
+    add: {
+      vars: [{ id: 'hope', label: '사기', type: 'int', init: 0 }],
+      events: [{ id: 'e1', when: 'hope > 1', notify: '사기 {hope:bar} · {hopeful}', check: 'c1',
+        effects: [{ front: 'war', add: 'hope * 2' }, { gauge: 'hope + 1' }],
+        choices: [{ label: 'a', check: 'c1', inject: '지금 {hope}', effects: [] }] }],
+      checks: [{ id: 'c1', roll: 'rand(1,6)', mod: 'hope', fight: { gauge: 'hope * 10', reply: 'c1', foe: '적 {hope}', win: { effects: [{ set: 'hope', expr: 'hope + 1' }], inject: '{hope}' }, lose: { when: 'hope <= 0', inject: '{hope:x}' } },
+        grades: [{ when: 'roll >= 4', label: '성공', inject: '{hope}', effects: [] }] }],
+      directives: [{ id: 'd1', when: 'hope > 0', text: '{hope:tags} / {hope} / {hopeful}' }],
+      allow: [{ id: 'hope', whenArmed: 'act1' }],
+      actions: [{ id: 'act1', label: '행동', effects: [] }],
+    }, update: {}, remove: {},
+  };
+  const p1 = JSON.parse(JSON.stringify(patch));
+  P.renameInPatch(p1, 'vars', 'hope', 'morale');
+  const ev = p1.add.events[0], ch = p1.add.checks[0], dr = p1.add.directives[0];
+  ck('{id:형식} 자리표시자 개명 (통지문)', ev.notify === '사기 {morale:bar} · {hopeful}', ev.notify);
+  ck('지시문 {id:tags}·{id} 개명, 비슷한 다른 id는 그대로', dr.text === '{morale:tags} / {morale} / {hopeful}', dr.text);
+  ck('무대 뒤 add 식·게이지 식 개명', ev.effects[0].add === 'morale * 2' && ev.effects[1].gauge === 'morale + 1', JSON.stringify(ev.effects));
+  ck('선택지 inject 개명', ev.choices[0].inject === '지금 {morale}', '');
+  ck('전투 안무: 게이지 식·상대 글·승리 효과·패배 조건·inject 개명', ch.fight.gauge === 'morale * 10' && ch.fight.foe === '적 {morale}' && ch.fight.win.effects[0].set === 'morale' && ch.fight.lose.when === 'morale <= 0' && ch.fight.lose.inject === '{morale:x}' && ch.grades[0].inject === '{morale}', JSON.stringify(ch.fight));
+  ck('allow 항목 id 개명', p1.add.allow[0].id === 'morale', '');
+  const p2 = JSON.parse(JSON.stringify(patch));
+  P.renameInPatch(p2, 'checks', 'c1', 'c9');
+  ck('판정 개명 → 이벤트 check·선택지 check·반격 판정(fight.reply)', p2.add.events[0].check === 'c9' && p2.add.events[0].choices[0].check === 'c9' && p2.add.checks[0].fight.reply === 'c9' && p2.add.checks[0].id === 'c9', JSON.stringify(p2.add.events[0]));
+  const p3 = JSON.parse(JSON.stringify(patch));
+  P.renameInPatch(p3, 'actions', 'act1', 'act2');
+  ck('액션 개명 → allow whenArmed', p3.add.allow[0].whenArmed === 'act2' && p3.add.actions[0].id === 'act2', '');
+}
+
 // ── ★ 원자성: 하나라도 틀리면 전무 ──
 {
   const S = snap();

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.13
-//@display-name SimCore (시뮬 엔진) v1.14.13 보류 후속 2차
+//@version 1.14.14
+//@display-name SimCore (시뮬 엔진) v1.14.14 보류 후속 3차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,12 +10,15 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.13 ──────────────────────────────────────────────
-// **전체 점검 후속 2차 — 복사·분기 채팅 상속.** 리수가 채팅을 복사·분기하면 새 chat.id를 줘 스냅샷 접두가 달라지고 상태가 초기값으로
-// 시작했다([미러에서 복원]으로 값만 살리던 자리). 스냅샷이 하나도 없는데 메시지가 있는 채팅을 로드할 때 원본을 찾아 스냅샷을 잘라 베낀다:
-// - 분기: 리수가 끝에 붙이는 숨김 주석 {{specialcomment::branchedfrom::<원본 chat.id>::…}} — 주석 앞까지(메시지 번호 보존).
-// - 복사: 표식이 없어 스냅샷이 있는 형제 채팅 중 메시지가 글자 그대로 같은 것(마커 포함). 마커가 있는 채팅만 형제를 읽는다.
-// - 베낀 뒤 재정렬·복원이 그 위에서 돌고 미러를 그 자리 값으로 다시 쓴다. 이미 스냅샷이 생긴(분기 뒤 대화를 이어 간) 채팅은 건드리지 않는다.
+// ── v1.14.14 ──────────────────────────────────────────────
+// **전체 점검 후속 3차 — 정리 마법사·패치 개명·참조 색인.** 편집기 쪽 보류 둘.
+// - [정리 마법사] 신설 섹션까지 걷는다: 게이지(속도식·개입 효과)·무대 뒤(흐르는 조건·속도식·문턱 글·효과)·비밀(단계 조건·글)·보조 갈림길(조건·
+//   확률식·태그 효과·판정 연결)·되감기(keep·안내문)·시나리오(진입 효과·연출 글)·편성표·상점·게시판·메신저·의뢰판·달력·에셋·상태창 색 식·
+//   교전(반격 연결·승리 효과·패배 조건·상대 글)·선택지 판정 연결. 지우면 뜻이 바뀌는 정체성 참조(시나리오 해금 조건·지갑·목록 변수·포인트)는
+//   차단 사유로 돌려준다 — 전엔 전부 "새 오류"로 거부돼 손으로 고쳐야 했다.
+// - [패치 개명] 중첩 참조까지 따라간다: {id:형식} 자리표시자·통지문·inject·징조 글·무대 뒤 add 식·게이지 식·전투 안무(게이지·상대 글·승리·
+//   패배)·갈림길 선택지의 check·반격 판정(fight.reply)·액션 개명 → allow whenArmed. 전엔 지시문의 {id}와 식만 따라가 개명이 곧 참조 파손이었다.
+// - [참조 색인] 변수 탭의 "다른 곳에서 쓰임" 판정을 전 구간으로 — 전엔 일곱 섹션만 봐서 무대 뒤·비밀·편성표에만 쓰인 변수가 계획 없이 바로 지워졌다.
 
 
 const SimCore = (() => {
@@ -7188,39 +7191,58 @@ function planPatch(schema, patch) {
 
 // 섹션별 식(expr) 필드 자리 — 검증기가 아는 자리와 같은 목록.
 // 새 필드가 생기면 여기도 늘려야 한다 (안 늘리면 개명이 그 자리만 빼먹는다).
+/** {id}·{id:형식} 자리표시자 개명 — 정확 일치 (v1.14.14: 전엔 지시문의 {id}만 봐서 {id:fmt}·통지문·inject가 빠졌다) */
+function renamePlaceholders(text, from, to) {
+  if (typeof text !== 'string') return text;
+  return text.replace(new RegExp('\\{' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[:}])', 'g'), '{' + to);
+}
+
 function renameEffects(effects, from, to) {
   for (const r of (effects || [])) {
+    if (!r || typeof r !== 'object') continue;
     if (r.set === from) r.set = to;
     if (r.list === from) r.list = to;
     if (typeof r.expr === 'string') r.expr = renameVar(r.expr, from, to);
     if (typeof r.expire === 'string') r.expire = renameVar(r.expire, from, to);
+    if (r.front !== undefined && typeof r.add === 'string') r.add = renameVar(r.add, from, to); // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
+    if (typeof r.gauge === 'string') r.gauge = renameVar(r.gauge, from, to);                     // 사건 게이지 개입 { gauge: 식 }
   }
 }
 
 function renameVarRefsInEntry(section, e, from, to) {
   if (typeof e.when === 'string') e.when = renameVar(e.when, from, to);
   renameEffects(e.effects, from, to);
+  // 산문 자리표시자 — 통지문·inject·징조·지시문 본문 (v1.14.14: 지시문 밖에도 {id}가 산다)
+  for (const k of ['notify', 'inject', 'omen', 'text']) if (typeof e[k] === 'string') e[k] = renamePlaceholders(e[k], from, to);
   switch (section) {
     case 'derived':
       if (typeof e.expr === 'string') e.expr = renameVar(e.expr, from, to);
       break;
     case 'events': case 'randomEvents':
       for (const c of (e.choices || [])) {
+        if (!c || typeof c !== 'object') continue;
         if (typeof c.when === 'string') c.when = renameVar(c.when, from, to);
         renameEffects(c.effects, from, to);
+        if (typeof c.inject === 'string') c.inject = renamePlaceholders(c.inject, from, to);
       }
-      break;
-    case 'directives':
-      // 지시문 본문은 {변수id} 자리표시자 — 식이 아니라 정확 일치 치환
-      if (typeof e.text === 'string') e.text = e.text.split(`{${from}}`).join(`{${to}}`);
       break;
     case 'checks':
       if (typeof e.roll === 'string') e.roll = renameVar(e.roll, from, to);
       if (typeof e.mod === 'string') e.mod = renameVar(e.mod, from, to);
       if (typeof e.vs === 'string') e.vs = renameVar(e.vs, from, to);
       for (const g of (e.grades || [])) {
+        if (!g || typeof g !== 'object') continue;
         if (typeof g.when === 'string') g.when = renameVar(g.when, from, to);
         renameEffects(g.effects, from, to);
+        if (typeof g.inject === 'string') g.inject = renamePlaceholders(g.inject, from, to);
+      }
+      // 전투 안무 (v1.14.14) — 게이지 식·상대 글·승리 효과·패배 조건
+      if (e.fight && typeof e.fight === 'object') {
+        const f = e.fight;
+        if (typeof f.gauge === 'string') f.gauge = renameVar(f.gauge, from, to);
+        if (typeof f.foe === 'string') f.foe = renamePlaceholders(f.foe, from, to);
+        if (f.win && typeof f.win === 'object') { renameEffects(f.win.effects, from, to); if (typeof f.win.inject === 'string') f.win.inject = renamePlaceholders(f.win.inject, from, to); }
+        if (f.lose && typeof f.lose === 'object') { if (typeof f.lose.when === 'string') f.lose.when = renameVar(f.lose.when, from, to); if (typeof f.lose.inject === 'string') f.lose.inject = renamePlaceholders(f.lose.inject, from, to); }
       }
       break;
   }
@@ -7238,10 +7260,15 @@ function renameInPatch(patch, section, from, to) {
           renameVarRefsInEntry(key, e, from, to);
           if (key === 'allow' && e.id === from) e.id = to;
         } else if (section === 'checks') {
-          // 판정 개명 → 이벤트·액션의 check 참조만
+          // 판정 개명 → 이벤트·액션의 check + 갈림길 선택지의 check + 전투 안무의 반격 판정(fight.reply) (v1.14.14)
           if (e.check === from) e.check = to;
+          for (const c of (Array.isArray(e.choices) ? e.choices : [])) if (c && c.check === from) c.check = to;
+          if (e.fight && typeof e.fight === 'object' && e.fight.reply === from) e.fight.reply = to;
+        } else if (section === 'actions') {
+          // 액션 개명 → AI 허용 변수의 액션 잠금(whenArmed) (v1.14.14). 시간 고정표(time.pins[].action)는 패치 밖 — 검증이 잡는다
+          if (key === 'allow' && e.whenArmed === from) e.whenArmed = to;
         }
-        // 이벤트·액션·지시문 id는 다른 항목이 참조하지 않는다
+        // 이벤트·지시문 id는 다른 항목이 참조하지 않는다
       }
     }
   }
@@ -17715,15 +17742,16 @@ function varReferenceIndex(schema) {
 
 /** 다른 탭이 실제로 참조 중인 변수 id — 변수 탭에서 지우면 그쪽이 깨진다 */
 function idsUsedElsewhere(schema) {
-  const rest = JSON.stringify({
-    rules: schema.rules, directives: schema.directives, actions: schema.actions,
-    updater: schema.updater, promptState: schema.promptState,
-    statusUI: schema.statusUI, setup: schema.setup,
-  });
+  // 전 구간 (v1.14.14 — 점검 영역 5 보류) — 전엔 rules·directives·actions·updater·promptState·statusUI·setup만 봐서 판정·무대 뒤·비밀·
+  // 보조 갈림길·편성표·상점·시나리오·되감기·파생의 참조가 "아무 데도 안 쓰임"으로 나와 정리 계획 없이 바로 지워졌다.
+  // 변수·파생의 정의 자체(id·label·desc)는 뺀다 — 파생은 계산식만 남긴다.
+  const { vars, derived, meta, ...rest } = schema || {};
+  rest.derived = (Array.isArray(derived) ? derived : []).map((d) => ({ expr: d?.expr }));
+  const text = JSON.stringify(rest);
   const out = [];
-  for (const v of [...(schema.vars || []), ...(schema.derived || [])]) {
+  for (const v of [...(vars || []), ...(derived || [])]) {
     if (!v || !EDITOR_ID_RE.test(v.id || '')) continue; // id가 성하지 않으면 정규식을 만들지 않는다
-    if (new RegExp(`\\b${v.id}\\b`).test(rest)) out.push(v.id);
+    if (new RegExp(`\\b${v.id}\\b`).test(text)) out.push(v.id);
   }
   return out;
 }
@@ -17782,12 +17810,16 @@ function planVarPurge(schema0, rootIds) {
   // 판정은 굴림식이 무너지면 통째로 못 쓴다 — 그 판정을 가리키던 곳도 뒤에서 정리한다
   const deadChecks = new Set();
   for (const c of (schema.checks || [])) {
-    if (exprHits(c.roll, doomed) || exprHits(c.mod, doomed) || exprHits(c.vs, doomed)) deadChecks.add(c.id);
+    if (exprHits(c.roll, doomed) || exprHits(c.mod, doomed) || exprHits(c.vs, doomed)
+      || (c.fight && typeof c.fight === 'object' && exprHits(String(c.fight.gauge ?? ''), doomed))) deadChecks.add(c.id); // 교전 게이지 식도 (v1.14.14)
   }
 
   const dropEffects = (arr, where) => (arr || []).filter((f) => {
-    const hit = doomed.has(f.set) || doomed.has(f.list) || exprHits(f.expr, doomed) || exprHits(f.expire, doomed);
-    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list})`);
+    if (!f || typeof f !== 'object') return true;
+    const hit = doomed.has(f.set) || doomed.has(f.list) || exprHits(f.expr, doomed) || exprHits(f.expire, doomed)
+      || (f.front !== undefined && typeof f.add === 'string' && exprHits(f.add, doomed))   // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
+      || (f.gauge !== undefined && exprHits(String(f.gauge), doomed));                      // 사건 게이지 개입 { gauge: 식 }
+    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list ?? (f.front !== undefined ? '무대 뒤 ' + f.front : f.gauge !== undefined ? '게이지' : '?')})`);
     return !hit;
   });
 
@@ -17828,6 +17860,7 @@ function planVarPurge(schema0, rootIds) {
       e.choices = e.choices.filter((c) => {
         if (exprHits(c.when, doomed)) { note(where, `'${e.id}'의 선택지 '${c.label}'`); return false; }
         c.effects = dropEffects(c.effects, `${where} '${e.id}' 선택지`);
+        if (deadChecks.has(c.check)) { delete c.check; note(where, `'${e.id}' 선택지 '${c.label}'의 판정 연결`); } // (v1.14.14)
         return true;
       });
       if (!e.choices.length) delete e.choices;
@@ -17860,6 +17893,14 @@ function planVarPurge(schema0, rootIds) {
       g.effects = dropEffects(g.effects, `판정 '${c.id}' 등급`);
       return true;
     });
+    // 전투 안무 (v1.14.14) — 반격 판정 연결·승리 효과·패배 조건·상대 글 자리표시자
+    if (c.fight && typeof c.fight === 'object') {
+      const f = c.fight;
+      if (deadChecks.has(f.reply)) { delete f.reply; note('판정', `'${c.label ?? c.id}' 교전의 반격 판정 연결`); }
+      if (f.win && Array.isArray(f.win.effects)) f.win.effects = dropEffects(f.win.effects, `판정 '${c.id}' 교전 승리`);
+      if (f.lose && exprHits(f.lose.when, doomed)) { delete f.lose; note('판정', `'${c.label ?? c.id}' 교전의 패배 조건 — 지울 값을 봄`); }
+      if (typeof f.foe === 'string') { const fo = stripPlaceholders(f.foe, doomed); if (fo.hit) { f.foe = fo.text; note('판정', `'${c.label ?? c.id}' 교전 상대 글의 자리표시자`); } }
+    }
     return true;
   });
 
@@ -17872,6 +17913,7 @@ function planVarPurge(schema0, rootIds) {
         if (doomed.has(it.var)) return false;
         if (exprHits(it.showWhen, doomed)) { delete it.showWhen; note('상태창', `'${it.var}' 항목의 표시 조건`); }
         if (it.bar && exprHits(String(it.bar.max), doomed)) { delete it.bar; note('상태창', `'${it.var}' 항목의 게이지 최대값`); }
+        if (exprHits(it.color, doomed)) { delete it.color; note('상태창', `'${it.var}' 항목의 색 식`); } // (v1.14.14)
         return true;
       });
       if (g.items.length !== before) note('상태창', `'${g.label || '이름 없는 그룹'}'에서 항목 ${before - g.items.length}개`);
@@ -17898,10 +17940,132 @@ function planVarPurge(schema0, rootIds) {
     if (r.hit) { schema.promptState.template = r.text; note('AI 설정', '상태 요약의 자리표시자 (값이 안 남는 줄은 줄째)'); }
   }
 
+  // 7) 신설 섹션 (v1.14.14 — 점검 영역 5 보류): 게이지·무대 뒤·비밀·보조 갈림길·되감기·시나리오·편성표·상점·게시판·메신저·의뢰판·달력·에셋.
+  // 전엔 여기 참조가 남아 '새 오류'로 거부되고 유저가 손으로 고쳐야 했다. 지울 수 있는 것은 지우고(조건·식·효과 한 줄·자리표시자),
+  // 지우면 뜻이 바뀌는 '정체성' 참조(시나리오 해금·지갑·목록 변수·포인트)는 막는다(blockers) — 먼저 바꿔 달라고.
+  const blockers = [];
+  const block = (where, what) => blockers.push(`${where}: ${what} — 지우기 전에 먼저 바꿔 주세요`);
+  const dropWhen = (obj, key, where, what) => { if (obj && typeof obj === 'object' && exprHits(obj[key], doomed)) { delete obj[key]; note(where, what); } };
+  const stripTpl = (obj, key, where, what, dropEmpty = false) => {
+    if (!obj || typeof obj !== 'object' || typeof obj[key] !== 'string') return;
+    const r = stripPlaceholders(obj[key], doomed, dropEmpty);
+    if (r.hit) { obj[key] = r.text; note(where, what); }
+  };
+  if (rules.randomEvents && typeof rules.randomEvents === 'object') {
+    const re = rules.randomEvents;
+    if (typeof re.chancePerTurn === 'string' && exprHits(re.chancePerTurn, doomed)) { re.chancePerTurn = 0; note('규칙 · 랜덤 이벤트', '발동 확률식이 지울 값을 봄 — 0으로'); }
+    if (re.gauge && typeof re.gauge === 'object') for (const k of ['perDay', 'perTurn']) {
+      if (typeof re.gauge[k] === 'string' && exprHits(re.gauge[k], doomed)) { delete re.gauge[k]; note('규칙 · 랜덤 이벤트', `게이지 ${k} 속도식이 지울 값을 봄 — 빼냄`); }
+    }
+  }
+  stripTpl(schema.promptState, 'eventPriority', 'AI 설정', '이벤트 우선순위 글의 자리표시자');
+  stripTpl(schema.promptState, 'checkGuide', 'AI 설정', '판정 안내 글의 자리표시자');
+  for (const a of (Array.isArray(schema.scenario?.acts) ? schema.scenario.acts : [])) {
+    if (!a || typeof a !== 'object') continue;
+    const tag = `'${a.id ?? '막'}' 막`;
+    if (exprHits(a.unlock, doomed)) block('시나리오', `${tag}의 해금 조건(unlock)이 지울 값을 봄`);
+    if (Array.isArray(a.onEnter)) a.onEnter = dropEffects(a.onEnter, `시나리오 ${tag} 진입 효과`);
+    stripTpl(a, 'direct', '시나리오', `${tag} 연출 지시의 자리표시자`, true);
+    stripTpl(a, 'secret', '시나리오', `${tag} 숨은 글의 자리표시자`, true);
+  }
+  if (schema.checkpoint && typeof schema.checkpoint === 'object') {
+    const C = schema.checkpoint;
+    if (Array.isArray(C.keep)) { const b4 = C.keep.length; C.keep = C.keep.filter((id) => !doomed.has(id)); if (C.keep.length !== b4) note('되감기', `유지 목록(keep)에서 ${b4 - C.keep.length}개`); }
+    stripTpl(C, 'notify', '되감기', '안내문의 자리표시자');
+  }
+  for (const f of (Array.isArray(schema.fronts) ? schema.fronts : [])) {
+    if (!f || typeof f !== 'object') continue;
+    const tag = `'${f.label ?? f.id}'`;
+    dropWhen(f, 'when', '무대 뒤', `${tag}의 흐르는 조건 — 늘 흐르게`);
+    if (typeof f.rate === 'string' && exprHits(f.rate, doomed)) { delete f.rate; note('무대 뒤', `${tag}의 속도식 — 빼냄(시계가 멈춤)`); }
+    for (const st of (Array.isArray(f.stages) ? f.stages : [])) {
+      if (!st || typeof st !== 'object') continue;
+      for (const k of ['hint', 'backstage', 'surface']) stripTpl(st, k, '무대 뒤', `${tag} 문턱 ${st.at ?? ''} ${k}의 자리표시자`);
+      if (Array.isArray(st.effects)) st.effects = dropEffects(st.effects, `무대 뒤 ${tag} 문턱 ${st.at ?? ''}`);
+    }
+  }
+  for (const sc of (Array.isArray(schema.secrets) ? schema.secrets : [])) {
+    if (!sc || typeof sc !== 'object' || !Array.isArray(sc.tiers)) continue;
+    const tag = `'${sc.label ?? sc.id}'`;
+    sc.tiers = sc.tiers.filter((t, j) => {
+      if (!t || typeof t !== 'object') return true;
+      if (exprHits(t.when, doomed)) {
+        if (j === 0) { delete t.when; note('비밀', `${tag} 1단계 조건 — 처음부터 열림으로`); }
+        else { note('비밀', `${tag} ${j + 1}단계 통째로 — 조건이 지울 값을 봄`); return false; }
+      }
+      stripTpl(t, 'text', '비밀', `${tag} ${j + 1}단계 글의 자리표시자`);
+      return true;
+    });
+  }
+  for (const Lc of (Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [])) {
+    if (!Lc || typeof Lc !== 'object') continue;
+    const tag = `'${Lc.label ?? Lc.id ?? '보조 갈림길'}'`;
+    dropWhen(Lc, 'when', '보조 갈림길', `${tag}의 조건`);
+    if (typeof Lc.chance === 'string' && exprHits(Lc.chance, doomed)) { delete Lc.chance; note('보조 갈림길', `${tag}의 확률식 — 빼냄`); }
+    for (const t of (Array.isArray(Lc.tags) ? Lc.tags : [])) {
+      if (!t || typeof t !== 'object') continue;
+      if (Array.isArray(t.effects)) t.effects = dropEffects(t.effects, `보조 갈림길 ${tag} 태그 '${t.id}'`);
+      if (deadChecks.has(t.check)) { delete t.check; note('보조 갈림길', `${tag} 태그 '${t.id}'의 판정 연결`); }
+    }
+  }
+  if (schema.party && typeof schema.party === 'object') {
+    const pt = schema.party;
+    const tabs = Array.isArray(pt.tabs) && pt.tabs.length ? pt.tabs : [pt];
+    for (const t of tabs) {
+      if (!t || typeof t !== 'object') continue;
+      const tag = t === pt ? '편성표' : `'${t.label ?? '탭'}' 탭`;
+      for (const [k, nm] of [['roster', '보유 목록'], ['points', '포인트']]) if (doomed.has(t[k])) block('편성표', `${tag}의 ${nm} 변수 '${t[k]}'`);
+      dropWhen(t, 'when', '편성표', `${tag}의 표시 조건`);
+      if (Array.isArray(t.slots)) { const b4 = t.slots.length; t.slots = t.slots.filter((sl) => !doomed.has(sl?.var)); if (t.slots.length !== b4) note('편성표', `${tag} 슬롯 ${b4 - t.slots.length}개`); }
+      if (Array.isArray(t.items)) {
+        const b4 = t.items.length; t.items = t.items.filter((it) => !doomed.has(it?.var)); if (t.items.length !== b4) note('편성표', `${tag} 업그레이드 ${b4 - t.items.length}개`);
+        for (const it of t.items) {
+          if (!it || typeof it !== 'object') continue;
+          if (typeof it.cost === 'string' && exprHits(it.cost, doomed)) { delete it.cost; note('편성표', `${tag} '${it.var}'의 비용식 — 빼냄`); }
+          dropWhen(it, 'requires', '편성표', `${tag} '${it.var}'의 요구 조건`);
+          dropWhen(it, 'when', '편성표', `${tag} '${it.var}'의 표시 조건`);
+        }
+      }
+      stripTpl(t, 'template', '편성표', `${tag} 템플릿의 자리표시자`);
+    }
+    if (tabs[0] !== pt) for (const [k, nm] of [['roster', '보유 목록'], ['points', '포인트']]) if (doomed.has(pt[k])) block('편성표', `${nm} 변수 '${pt[k]}'`);
+  }
+  const shopList = [...(schema.shop && typeof schema.shop === 'object' ? [[schema.shop, '상점']] : []),
+    ...(Array.isArray(schema.shops) ? schema.shops.map((x) => [x, `상점(${x?.id ?? '?'})`]) : [])];
+  for (const [sh, tag] of shopList) {
+    if (!sh || typeof sh !== 'object') continue;
+    for (const [k, nm] of [['currency', '지갑'], ['buyTo', '구매 목록'], ['sellFrom', '매입 목록']]) if (doomed.has(sh[k])) block(tag, `${nm} 변수 '${sh[k]}'`);
+    const sx = Array.isArray(sh.exchange) ? sh.exchange : sh.exchange ? [sh.exchange] : [];
+    if (sx.some((e) => doomed.has(e?.var))) {
+      const kept = sx.filter((e) => !doomed.has(e?.var));
+      if (!kept.length) delete sh.exchange; else sh.exchange = Array.isArray(sh.exchange) ? kept : kept[0];
+      note(tag, '환전 지갑');
+    }
+    dropWhen(sh, 'when', tag, '여는 조건');
+    if (typeof sh.priceMul === 'string' && exprHits(sh.priceMul, doomed)) { delete sh.priceMul; note(tag, '시세식 — 빼냄'); }
+    else if (sh.priceMul && typeof sh.priceMul === 'object') {
+      for (const k of Object.keys(sh.priceMul)) if (exprHits(sh.priceMul[k], doomed)) { delete sh.priceMul[k]; note(tag, `시세식 '${k}' — 빼냄`); }
+      if (!Object.keys(sh.priceMul).length) delete sh.priceMul;
+    }
+  }
+  dropWhen(schema.board, 'when', '게시판', '여는 조건');
+  if (schema.messenger && typeof schema.messenger === 'object') {
+    dropWhen(schema.messenger, 'when', '메신저', '여는 조건');
+    for (const [k, nm] of [['contactsVar', '연락처 목록'], ['notesVar', '인물 변화 목록']]) if (doomed.has(schema.messenger[k])) block('메신저', `${nm} 변수 '${schema.messenger[k]}'`);
+  }
+  if (schema.questBoard && typeof schema.questBoard === 'object') {
+    const Q = schema.questBoard;
+    if (doomed.has(Q.listVar)) block('의뢰판', `수락 목록 변수 '${Q.listVar}'`);
+    for (const k of ['accept', 'cancel']) if (Array.isArray(Q[k])) Q[k] = dropEffects(Q[k], `의뢰판 ${k}`);
+    dropWhen(Q, 'when', '의뢰판', '여는 조건');
+  }
+  if (schema.calendar && typeof schema.calendar === 'object' && doomed.has(schema.calendar.list)) block('달력', `일정 목록 변수 '${schema.calendar.list}'`);
+  for (const pk of (Array.isArray(schema.assets?.packs) ? schema.assets.packs : [])) dropWhen(pk, 'when', '에셋', `팩 '${pk?.id ?? ''}'의 여는 조건`);
+
   // 새 오류만 (v1.14.9) — 작성 중인 다른 항목의 오류가 아무 데도 안 쓰는 변수 삭제까지 막았다
   const before = new Set(validateSchema(schema0).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(schema);
-  return { schema, notes, doomed: [...doomed], errors: v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`) };
+  return { schema, notes, doomed: [...doomed], errors: [...blockers, ...v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`)] };
 }
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
@@ -33233,6 +33397,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.13 ──────────────────────────────────────────────
+// **전체 점검 후속 2차 — 복사·분기 채팅 상속.** 리수가 채팅을 복사·분기하면 새 chat.id를 줘 스냅샷 접두가 달라지고 상태가 초기값으로
+// 시작했다([미러에서 복원]으로 값만 살리던 자리). 스냅샷이 하나도 없는데 메시지가 있는 채팅을 로드할 때 원본을 찾아 스냅샷을 잘라 베낀다:
+// - 분기: 리수가 끝에 붙이는 숨김 주석 {{specialcomment::branchedfrom::<원본 chat.id>::…}} — 주석 앞까지(메시지 번호 보존).
+// - 복사: 표식이 없어 스냅샷이 있는 형제 채팅 중 메시지가 글자 그대로 같은 것(마커 포함). 마커가 있는 채팅만 형제를 읽는다.
+// - 베낀 뒤 재정렬·복원이 그 위에서 돌고 미러를 그 자리 값으로 다시 쓴다. 이미 스냅샷이 생긴(분기 뒤 대화를 이어 간) 채팅은 건드리지 않는다.
 
 // ── v1.14.12 ──────────────────────────────────────────────
 // **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**

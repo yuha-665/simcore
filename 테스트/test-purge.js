@@ -197,6 +197,63 @@ const baseJson = JSON.stringify(BASE);
   ck('정리 결과가 검증을 통과', plan.errors.length === 0, plan.errors.join(' / '));
 }
 
+
+// ── 신설 섹션 커버리지 (v1.14.14): 게이지·무대 뒤·비밀·보조 갈림길·되감기·시나리오(차단)·게시판·에셋·상태창 색·교전 ──
+{
+  const S2 = {
+    simcore: '0.1', meta: { name: '신설 섹션' },
+    vars: [
+      { id: 'mood', label: '기분', type: 'int', init: 5, min: 0, max: 10 },
+      { id: 'hp', label: '체력', type: 'int', init: 50, min: 0, max: 100 },
+      { id: 'flag', label: '깃발', type: 'bool', init: false },
+    ],
+    checks: [{ id: 'dodge', label: '회피', roll: 'rand(1,6)', grades: [{ when: 'roll >= 4', label: '성공', gain: 1 }, { label: '실패' }] },
+      { id: 'brawl', label: '난투', roll: 'rand(1,6)', fight: { gauge: '20', reply: 'dodge', foe: '적 (기분 {mood})', win: { effects: [{ set: 'mood', expr: 'mood + 1' }, { set: 'hp', expr: 'hp + 1' }] }, lose: { when: 'mood <= 0' } },
+        grades: [{ when: 'roll >= 4', label: '명중', gain: 10 }, { label: '빗나감' }] }],
+    rules: { randomEvents: { gauge: { perDay: 'mood', perTurn: 1, omenAt: 0 }, table: [{ id: 'r', weight: 1, effects: [{ gauge: 'mood' }, { set: 'hp', expr: 'hp - 1' }] }] },
+      events: [{ id: 'cp', when: 'hp < 10', effects: [{ checkpoint: 'save', slot: 'main' }] }] },
+    checkpoint: { keep: ['mood', 'hp'], notify: '되감김 {mood}' },
+    fronts: [{ id: 'war', label: '전운', when: 'mood > 2', rate: 'mood', max: 10, stages: [{ at: 5, hint: '구름 {mood}', effects: [{ set: 'mood', expr: 'mood - 1' }, { set: 'hp', expr: 'hp - 1' }] }, { at: 10, surface: '터졌다' }] }],
+    secrets: [{ id: 'past', label: '과거', tiers: [{ when: 'mood > 1', text: '복선' }, { when: 'mood > 8', text: '진실 {mood}' }, { when: 'flag', text: '끝' }] }],
+    liveChoices: { chance: 'mood / 10', when: 'mood > 0', timeout: 2, tags: [{ id: 'bold', effects: [{ set: 'mood', expr: 'mood + 1' }, { set: 'hp', expr: 'hp - 1' }] }] },
+    scenario: { acts: [{ id: 'a1', label: '1막' }, { id: 'a2', label: '2막', unlock: 'mood > 7', direct: '기분 {mood} 연출' }] },
+    board: { when: 'mood > 0', guide: '게시판' },
+    assets: { packs: [{ id: 'p1', format: '<img {name}_{pose}>', source: 'x', when: 'mood > 3', slots: [{ id: 'pose', values: ['idle', 'smile'] }] }] },
+    statusUI: { mode: 'auto', groups: [{ label: '상태', items: [{ var: 'hp', color: "mood > 5 ? 'red' : 'blue'" }] }] },
+  };
+  const v0 = validateSchema(S2);
+  ck('신설 섹션 실험대 검증 통과', v0.ok, JSON.stringify(v0.errors));
+  const plan = P.planVarPurge(S2, ['mood']);
+  const o = plan.schema;
+  ck('시나리오 해금 조건은 차단(blocker)으로 — 뜻이 바뀌는 참조', plan.errors.some((e) => /시나리오.*a2.*unlock/.test(e)), JSON.stringify(plan.errors));
+  ck('차단 말고 다른 새 오류는 없다 (검증의 unlock 오류는 같은 자리)', plan.errors.every((e) => /unlock/.test(e)), JSON.stringify(plan.errors));
+  ck('게이지 perDay 식 빼냄, perTurn 숫자는 그대로', o.rules.randomEvents.gauge.perDay === undefined && o.rules.randomEvents.gauge.perTurn === 1, JSON.stringify(o.rules.randomEvents.gauge));
+  ck('게이지 개입 효과 한 줄만 지움', o.rules.randomEvents.table[0].effects.length === 1 && o.rules.randomEvents.table[0].effects[0].set === 'hp', JSON.stringify(o.rules.randomEvents.table[0].effects));
+  ck('되감기 keep에서 빼고 안내문 자리표시자 걷음', o.checkpoint.keep.join() === 'hp' && !o.checkpoint.notify.includes('{mood}'), JSON.stringify(o.checkpoint));
+  const fr = o.fronts[0];
+  ck('무대 뒤 when·rate 빼냄, 문턱 글 자리표시자·효과 한 줄', fr.when === undefined && fr.rate === undefined && !fr.stages[0].hint.includes('{mood}') && fr.stages[0].effects.length === 1, JSON.stringify(fr));
+  const sc = o.secrets[0];
+  ck('비밀: 1단계 조건은 풀고, 2단계는 통째로, 3단계는 그대로', sc.tiers.length === 2 && sc.tiers[0].when === undefined && sc.tiers[1].when === 'flag', JSON.stringify(sc.tiers));
+  ck('보조 갈림길 chance·when 빼내고 태그 효과 한 줄', o.liveChoices.chance === undefined && o.liveChoices.when === undefined && o.liveChoices.tags[0].effects.length === 1, JSON.stringify(o.liveChoices));
+  ck('시나리오 연출 자리표시자 줄째', !String(o.scenario.acts[1].direct || '').includes('{mood}'), JSON.stringify(o.scenario.acts[1]));
+  ck('게시판·에셋 팩 여는 조건 빼냄', o.board.when === undefined && o.assets.packs[0].when === undefined, '');
+  ck('상태창 색 식 빼냄', o.statusUI.groups[0].items[0].color === undefined, '');
+  const br = o.checks.find((c) => c.id === 'brawl');
+  ck('교전: 승리 효과 한 줄·패배 조건·상대 글 자리표시자', br.fight.win.effects.length === 1 && br.fight.lose === undefined && !br.fight.foe.includes('{mood}'), JSON.stringify(br.fight));
+  ck('안내(notes)가 섹션마다 남는다', ['무대 뒤', '비밀', '보조 갈림길', '되감기', '게시판', '에셋', '상태창', '판정'].every((w) => plan.notes.some((n) => n.startsWith(w))), plan.notes.join(' | '));
+  // 정체성 참조 차단: 교전 게이지 식이 무너지면 판정 통째 + 반격 연결 해제
+  const S3 = JSON.parse(JSON.stringify(S2)); S3.checks[0].roll = 'rand(1, mood)'; delete S3.scenario;
+  const plan3 = P.planVarPurge(S3, ['mood']);
+  ck('굴림식이 무너진 반격 판정 → 판정 통째 + fight.reply 연결 해제', !plan3.schema.checks.some((c) => c.id === 'dodge') && plan3.schema.checks.find((c) => c.id === 'brawl').fight.reply === undefined, JSON.stringify(plan3.schema.checks.map((c) => c.id)));
+  ck('차단 없는 정리는 오류 없음', plan3.errors.length === 0, JSON.stringify(plan3.errors));
+  // 참조 색인 전 구간 — 무대 뒤·비밀에만 쓰인 변수도 '쓰임'으로
+  const idsSeg = src.slice(src.indexOf('function idsUsedElsewhere'), src.indexOf('// ── 변수 정리 (v0.45)'));
+  const idsUsedElsewhere = new Function('EDITOR_ID_RE', idsSeg + '\nreturn idsUsedElsewhere;')(/^[a-zA-Z_][a-zA-Z0-9_]*$/);
+  const S4 = { vars: [{ id: 'mood' }, { id: 'lonely' }, { id: 'hp' }], derived: [{ id: 'dd', expr: 'hp + 1' }], fronts: [{ id: 'w', when: 'mood > 1', stages: [] }] };
+  const used = idsUsedElsewhere(S4);
+  ck('참조 색인: 무대 뒤·파생 식의 참조도 잡고, 안 쓰인 변수는 빠진다', used.includes('mood') && used.includes('hp') && !used.includes('lonely') && !used.includes('dd'), used.join(','));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

@@ -355,39 +355,58 @@ function planPatch(schema, patch) {
 
 // 섹션별 식(expr) 필드 자리 — 검증기가 아는 자리와 같은 목록.
 // 새 필드가 생기면 여기도 늘려야 한다 (안 늘리면 개명이 그 자리만 빼먹는다).
+/** {id}·{id:형식} 자리표시자 개명 — 정확 일치 (v1.14.14: 전엔 지시문의 {id}만 봐서 {id:fmt}·통지문·inject가 빠졌다) */
+function renamePlaceholders(text, from, to) {
+  if (typeof text !== 'string') return text;
+  return text.replace(new RegExp('\\{' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[:}])', 'g'), '{' + to);
+}
+
 function renameEffects(effects, from, to) {
   for (const r of (effects || [])) {
+    if (!r || typeof r !== 'object') continue;
     if (r.set === from) r.set = to;
     if (r.list === from) r.list = to;
     if (typeof r.expr === 'string') r.expr = renameVar(r.expr, from, to);
     if (typeof r.expire === 'string') r.expire = renameVar(r.expire, from, to);
+    if (r.front !== undefined && typeof r.add === 'string') r.add = renameVar(r.add, from, to); // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
+    if (typeof r.gauge === 'string') r.gauge = renameVar(r.gauge, from, to);                     // 사건 게이지 개입 { gauge: 식 }
   }
 }
 
 function renameVarRefsInEntry(section, e, from, to) {
   if (typeof e.when === 'string') e.when = renameVar(e.when, from, to);
   renameEffects(e.effects, from, to);
+  // 산문 자리표시자 — 통지문·inject·징조·지시문 본문 (v1.14.14: 지시문 밖에도 {id}가 산다)
+  for (const k of ['notify', 'inject', 'omen', 'text']) if (typeof e[k] === 'string') e[k] = renamePlaceholders(e[k], from, to);
   switch (section) {
     case 'derived':
       if (typeof e.expr === 'string') e.expr = renameVar(e.expr, from, to);
       break;
     case 'events': case 'randomEvents':
       for (const c of (e.choices || [])) {
+        if (!c || typeof c !== 'object') continue;
         if (typeof c.when === 'string') c.when = renameVar(c.when, from, to);
         renameEffects(c.effects, from, to);
+        if (typeof c.inject === 'string') c.inject = renamePlaceholders(c.inject, from, to);
       }
-      break;
-    case 'directives':
-      // 지시문 본문은 {변수id} 자리표시자 — 식이 아니라 정확 일치 치환
-      if (typeof e.text === 'string') e.text = e.text.split(`{${from}}`).join(`{${to}}`);
       break;
     case 'checks':
       if (typeof e.roll === 'string') e.roll = renameVar(e.roll, from, to);
       if (typeof e.mod === 'string') e.mod = renameVar(e.mod, from, to);
       if (typeof e.vs === 'string') e.vs = renameVar(e.vs, from, to);
       for (const g of (e.grades || [])) {
+        if (!g || typeof g !== 'object') continue;
         if (typeof g.when === 'string') g.when = renameVar(g.when, from, to);
         renameEffects(g.effects, from, to);
+        if (typeof g.inject === 'string') g.inject = renamePlaceholders(g.inject, from, to);
+      }
+      // 전투 안무 (v1.14.14) — 게이지 식·상대 글·승리 효과·패배 조건
+      if (e.fight && typeof e.fight === 'object') {
+        const f = e.fight;
+        if (typeof f.gauge === 'string') f.gauge = renameVar(f.gauge, from, to);
+        if (typeof f.foe === 'string') f.foe = renamePlaceholders(f.foe, from, to);
+        if (f.win && typeof f.win === 'object') { renameEffects(f.win.effects, from, to); if (typeof f.win.inject === 'string') f.win.inject = renamePlaceholders(f.win.inject, from, to); }
+        if (f.lose && typeof f.lose === 'object') { if (typeof f.lose.when === 'string') f.lose.when = renameVar(f.lose.when, from, to); if (typeof f.lose.inject === 'string') f.lose.inject = renamePlaceholders(f.lose.inject, from, to); }
       }
       break;
   }
@@ -405,10 +424,15 @@ function renameInPatch(patch, section, from, to) {
           renameVarRefsInEntry(key, e, from, to);
           if (key === 'allow' && e.id === from) e.id = to;
         } else if (section === 'checks') {
-          // 판정 개명 → 이벤트·액션의 check 참조만
+          // 판정 개명 → 이벤트·액션의 check + 갈림길 선택지의 check + 전투 안무의 반격 판정(fight.reply) (v1.14.14)
           if (e.check === from) e.check = to;
+          for (const c of (Array.isArray(e.choices) ? e.choices : [])) if (c && c.check === from) c.check = to;
+          if (e.fight && typeof e.fight === 'object' && e.fight.reply === from) e.fight.reply = to;
+        } else if (section === 'actions') {
+          // 액션 개명 → AI 허용 변수의 액션 잠금(whenArmed) (v1.14.14). 시간 고정표(time.pins[].action)는 패치 밖 — 검증이 잡는다
+          if (key === 'allow' && e.whenArmed === from) e.whenArmed = to;
         }
-        // 이벤트·액션·지시문 id는 다른 항목이 참조하지 않는다
+        // 이벤트·지시문 id는 다른 항목이 참조하지 않는다
       }
     }
   }

@@ -3908,6 +3908,18 @@ const SCHEMA_EVENT_PATTERN_RULES = [
 ];
 
 // 시간 진행 — onTurn day+1 복제는 규격서에 참고할 패턴이 없어서 생긴 사고다 (설계: docs/design-시간.md)
+// 필드 사전 (v1.14.4) — 검증기의 아는 키 표(validate.js KNOWN_KEYS)를 섹션당 한 줄로. 같은 표에서 "알 수 없는 키" 경고가
+// 나오니 요청서와 검증기가 어긋날 수 없다. 감사(2026-10-09): 어시스턴트 프롬프트에 allow maxGain/maxLoss·actions keywords·
+// checks roll/mod/vs·vars cmd 같은 키 이름이 없어 AI가 지어내고 있었다 — 탭 내보내기만 규격표가 있었다.
+// 테스트 하네스가 이 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매달린 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
+const FIELD_DICT_SECTIONS = [['vars', '변수'], ['derived', '파생 변수'], ['events', '조건 이벤트'], ['randomEvents', '랜덤 이벤트'],
+  ['choices', '갈림길 선택지 choices[]'], ['actions', '액션'], ['checks', '판정'], ['grades', '판정 등급 grades[]'], ['directives', '지시문'], ['allow', 'allow']];
+function fieldDictLines() {
+  const K = validateSchema.KNOWN_KEYS || {};
+  return FIELD_DICT_SECTIONS.filter(([sec]) => Array.isArray(K[sec])).map(([sec, label]) =>
+    `- **${label}** (\`${sec}\`): ` + K[sec].map(([k, m]) => '`' + k + '`' + (m ? `(${m})` : '')).join(' '));
+}
+
 const SCHEMA_TIME_RULES = [
   '- **onTurn에 `day + 1`을 넣지 마세요** — 출력 하나가 하루가 되어 장면 단위 RP를 부숩니다.',
   '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
@@ -4377,7 +4389,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, **보낸 필드만 덮고 나머지 필드는 그대로** 남습니다 — 바꿀 필드만 주면 됩니다.',
     '  필드를 없애려면 `"max": null`처럼 null을 주세요. 단 `effects`·`choices`·`grades`·`mentions` 같은 배열·객체 필드는 **통째로** 바뀌니 그 배열은 전문을 다시 쓰세요 (아래 다이제스트에 전문이 있습니다).',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
-    '- 변수 필드 이름은 정해져 있습니다: 숫자 `min`·`max`, text `maxLength`, list `maxItems`·`itemMaxLength`, 선택지 `enum`, AI용 설명 `desc`, 표시 형식 `format`. 다른 이름(`maxLen`·`limit`·`description`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
+    '- 쓸 수 있는 키 이름은 아래 **필드 사전**에 있는 것뿐입니다 — 다른 이름(`maxLen`·`limit`·`description`·`maxIncrease`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
@@ -4389,6 +4401,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
     '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
+    '',
+    '## 필드 사전 — 섹션마다 쓸 수 있는 키 (여기 없는 이름은 엔진이 무시하고 가져오기가 경고합니다)',
+    ...fieldDictLines(),
     '',
     '## 낱말 게이트 — `allow`의 `mentions`, 변수를 등장한 턴에만 열기',
     ...SCHEMA_ALLOW_RULES,

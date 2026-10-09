@@ -10,10 +10,37 @@ const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_E
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
-// 변수 정의가 읽는 키 전부 (v1.14.2) — 편집기 변수 카드·AI 요청서 규격표(editor.js VAR_FIELD_SPEC)와 같은 목록.
-// 여기 없는 키는 엔진이 안 읽는다. 밑줄로 시작하는 키(_note 등)는 제작자 메모로 보고 넘어간다.
-const VAR_KEYS = new Set(['id', 'label', 'type', 'init', 'min', 'max', 'enum', 'maxItems', 'maxLength',
-  'itemMaxLength', 'format', 'desc', 'cmd', 'group']);
+// 섹션별 "아는 키" 표 (v1.14.4) — 엔진·편집기·검증기가 읽는 키 전부와 한 줄 뜻. 두 군데가 이 표에서 나온다:
+//   ① 검증기 끝의 "알 수 없는 키" 경고 (모든 섹션)   ② AI 요청서·어시스턴트의 "필드 사전" (editor.js fieldDictLines)
+// 제보로 드러난 구멍(v1.14.2~3): 어시스턴트가 text 최대 글자를 고치랬더니 `maxLen`을 지어냈고, 패치 병합은 보낸 필드를
+// 그대로 얹으니 효과 없는 키만 붙었다 — 값은 보였지만 키 이름이 프롬프트 어디에도 없었고, 검증기도 변수 말고는 모르는 키를
+// 말없이 통과시켰다. 감사(2026-10-09)로 allow maxGain/maxLoss·actions keywords·checks roll/mod/vs 등 같은 구멍 열몇 개가 더 나왔다.
+// 한 표에서 경고와 요청서가 같이 나오면 둘이 어긋날 수 없다. 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다.
+// 새 필드를 엔진에 넣으면 여기 한 줄을 같이 적는다 — 안 적으면 그 필드를 쓴 봇마다 경고가 뜬다 (테스트가 템플릿 전부로 잡는다).
+const KNOWN_KEYS = {
+  vars: [['id', ''], ['label', '화면 이름'], ['type', 'int|float|text|bool|enum|list'], ['init', '시작값'], ['min', ''], ['max', '숫자 범위'],
+    ['enum', '선택지 배열'], ['maxLength', 'text 글자 상한, 기본 200'], ['maxItems', ''], ['itemMaxLength', 'list 상한'], ['format', '표시 형식 {v}'],
+    ['desc', 'AI용 설명 — 보조 계약표에 실림'], ['cmd', '채팅 명령 이름'], ['group', '편집기 묶음'], ['keep', '🔒 보호']],
+  derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
+  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
+    ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
+    ['cooldown', '재발동 간격'], ['keep', '🔒']],
+  randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
+    ['omen', '징조 글(게이지)'], ['check', '판정 id'], ['choices', ''], ['timeout', ''], ['strict', ''], ['liveChoices', ''], ['keep', '🔒']],
+  actions: [['id', ''], ['label', '맨 앞 이모지가 아이콘'], ['mode', 'oneshot|hold'], ['when', '사용 조건'], ['effects', ''], ['cooldown', '턴'],
+    ['keywords', '자동 무장 낱말 배열'], ['check', '판정 id'], ['inject', '발동 시 AI에게'], ['offstage', '막간'], ['dayClose', '하루 닫기 정산'],
+    ['fightEnd', '교전 이탈'], ['impactExempt', '진단 지적 끄기'], ['keep', '🔒']],
+  checks: [['id', ''], ['label', ''], ['roll', '굴림식, rand 가능'], ['mod', '보정식'], ['vs', '목표치'], ['grades', '[{when?,label,effects,inject?}]'],
+    ['fight', '전투 안무'], ['keep', '🔒']],
+  directives: [['id', ''], ['when', '조건식'], ['text', '지시문'], ['keep', '🔒']],
+  allow: [['id', '변수 id'], ['maxDelta', '증감 한도 양쪽'], ['maxGain', '증가 한도'], ['maxLoss', '감소 한도'], ['maxLength', 'text 글자 상한'],
+    ['mentions', '낱말 게이트'], ['whenArmed', '액션 잠금'], ['when', '조건 잠금'], ['keep', '🔒']],
+  choices: [['id', '(선택) 표식'], ['label', ''], ['when', '선택지 조건'], ['effects', ''], ['inject', ''], ['check', '판정 id']],
+  grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
+};
+const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
+const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
+  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -93,10 +120,7 @@ function validateSchema(schema) {
         warn(p, `'description'은 읽지 않습니다 — 보조 AI는 desc만 봅니다. description을 지우거나 desc에 합치세요`);
       }
     }
-    for (const k of Object.keys(v)) {
-      if (VAR_KEYS.has(k) || k === 'description' || k.startsWith('_')) continue;
-      warn(p, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (변수가 쓰는 키: ${[...VAR_KEYS].join(', ')})`);
-    }
+    // (그 밖의 모르는 키는 검증기 끝의 통합 패스가 모든 섹션에 대해 경고한다 — v1.14.4)
     if (!VAR_TYPES.includes(v.type)) err(p, `알 수 없는 type: '${v.type}'`);
     if (v.type === 'enum') {
       if (!Array.isArray(v.enum) || v.enum.length < 2) err(p, 'enum 타입은 enum 배열(2개 이상) 필요');
@@ -1949,6 +1973,16 @@ function validateSchema(schema) {
   }
 
   // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
+  const SEC_OF_BASE = { '$.vars': 'vars', '$.derived': 'derived', '$.checks': 'checks', '$.rules.events': 'events',
+    '$.rules.randomEvents.table': 'randomEvents', '$.directives': 'directives', '$.actions': 'actions', '$.updater.allow': 'allow' };
+  const unknownKeys = (obj, sec, path) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !KNOWN_SET[sec]) return;
+    const known = KNOWN_SET[sec];
+    for (const k of Object.keys(obj)) {
+      if (known.has(k) || k.startsWith('_') || (sec === 'vars' && k === 'description')) continue; // description은 변수 루프가 따로 알렸다
+      warn(path, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (${KNOWN_LABEL[sec]}이 쓰는 키: ${[...known].join(', ')})`);
+    }
+  };
   {
     const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
       ['$.rules.events', schema.rules && schema.rules.events],
@@ -1956,8 +1990,15 @@ function validateSchema(schema) {
       ['$.directives', schema.directives], ['$.actions', schema.actions], ['$.updater.allow', schema.updater && schema.updater.allow]];
     for (const [base, arr] of lists) {
       if (!Array.isArray(arr)) continue;
+      const sec = SEC_OF_BASE[base];
       arr.forEach((e, i) => {
         if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식');
+        // 알 수 없는 키 (v1.14.4) — 모든 섹션 + 갈림길 선택지·판정 등급. 변수만 보던 v1.14.2 경고의 확장.
+        unknownKeys(e, sec, `${base}[${i}]`);
+        if ((sec === 'events' || sec === 'randomEvents') && e && Array.isArray(e.choices))
+          e.choices.forEach((c, j) => unknownKeys(c, 'choices', `${base}[${i}].choices[${j}]`));
+        if (sec === 'checks' && e && Array.isArray(e.grades))
+          e.grades.forEach((g, j) => unknownKeys(g, 'grades', `${base}[${i}].grades[${j}]`));
         // 변수 그룹 (v1.9.14) — 변수·파생만. 편집기 묶음 이름이라 짧은 문자열
         if ((base === '$.vars' || base === '$.derived') && e && e.group != null) {
           if (typeof e.group !== 'string') err(`${base}[${i}].group`, 'group은 문자열 — 편집기 묶음 이름');
@@ -2012,4 +2053,6 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema, varFreeWork };
+// 편집기의 필드 사전(fieldDictLines)이 읽는다 — 테스트 하네스가 편집기 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매단다
+validateSchema.KNOWN_KEYS = KNOWN_KEYS;
+module.exports = { validateSchema, varFreeWork, KNOWN_KEYS };

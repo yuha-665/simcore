@@ -227,6 +227,41 @@ test('whenArmed: hold 무장 중엔 계속 개방, 해제하면 폐쇄', () => {
   eq(engine.outputPhase(s, send3.state, { money: -10 }, {}).state.vars.money, 80, '해제 후 폐쇄');
 });
 
+// ── 알 수 없는 키 — 모든 섹션 (v1.14.4) ──
+test('알 수 없는 키: 섹션마다 경고, 아는 키·밑줄 키는 조용, 내장 템플릿 전부 오탐 0', () => {
+  const { KNOWN_KEYS } = require('../core/validate');
+  const s = fx();
+  s.updater.allow.push({ id: 'gold', maxIncrease: 5, _memo: 'x' });
+  s.rules.events.push({ id: 'ev_bad', when: 'gold > 1', effects: [], cooldownTurns: 3, choices: [{ label: '가', effects: [], pick: 1 }] });
+  s.actions.push({ id: 'act_bad', label: '테스트', mode: 'oneshot', keyword: ['x'] });
+  s.checks = (s.checks || []).concat([{ id: 'chk_bad', label: '판정', roll: 'rand(1,20)', dice: 'd20', grades: [{ label: '성공', effects: [], bonus: 1 }] }]);
+  s.directives.push({ id: 'dir_bad', when: 'true', text: 'x', prompt: 'y' });
+  s.derived.push({ id: 'der_bad', expr: 'gold * 2', formula: 'x' });
+  const r = validateSchema(s);
+  eq(r.ok, true, JSON.stringify(r.errors));
+  const has = (path, key) => r.warnings.some((w) => w.path === path && w.msg.includes("'" + key + "'") && w.msg.includes('알 수 없는 키'));
+  const ai = s.updater.allow.length - 1, ei = s.rules.events.length - 1, ci = s.rules.events[ei].choices.length - 1;
+  assert.ok(has('$.updater.allow[' + ai + ']', 'maxIncrease'), 'allow');
+  assert.ok(!has('$.updater.allow[' + ai + ']', '_memo'), '밑줄 키는 메모');
+  assert.ok(has('$.rules.events[' + ei + ']', 'cooldownTurns'), 'events');
+  assert.ok(has('$.rules.events[' + ei + '].choices[' + ci + ']', 'pick'), 'choices');
+  assert.ok(has('$.actions[' + (s.actions.length - 1) + ']', 'keyword'), 'actions');
+  assert.ok(has('$.checks[' + (s.checks.length - 1) + ']', 'dice'), 'checks');
+  assert.ok(has('$.checks[' + (s.checks.length - 1) + '].grades[0]', 'bonus'), 'grades');
+  assert.ok(has('$.directives[' + (s.directives.length - 1) + ']', 'prompt'), 'directives');
+  assert.ok(has('$.derived[' + (s.derived.length - 1) + ']', 'formula'), 'derived');
+  // 아는 키 표에 적힌 키는 어떤 섹션에서도 경고가 없다
+  for (const [sec, keys] of Object.entries(KNOWN_KEYS)) assert.ok(keys.every(([k]) => typeof k === 'string' && k), sec + ' 표 모양');
+  // 내장 템플릿 전부 — 오탐 0
+  const { TEMPLATES } = require('../core/templates');
+  for (const [name, t] of Object.entries(TEMPLATES)) {
+    const sch = JSON.parse(JSON.stringify(t.schema || t));
+    if (!sch || !sch.vars) continue;
+    const bad = validateSchema(sch).warnings.filter((w) => w.msg.includes('알 수 없는 키'));
+    deep(bad, [], name + ': ' + JSON.stringify(bad));
+  }
+});
+
 // ── when (조건 잠금) — v1.14.3 ──
 function whenFx() {
   return {

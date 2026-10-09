@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.3
-//@display-name SimCore (시뮬 엔진) v1.14.3 조건 잠금
+//@version 1.14.4
+//@display-name SimCore (시뮬 엔진) v1.14.4 필드 사전
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,20 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.4 ──────────────────────────────────────────────
+// **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
+// 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
+// 대조 — 대화·요청서에 이름이 없는 키가 열몇 개. allow `maxGain`·`maxLoss`(편집기 주력 UI, 13개 스키마), vars `cmd`,
+// actions `keywords`·`dayClose`·`impactExempt`·`fightEnd`·`offstage`, checks `roll`·`mod`·`vs`(판정이 없는 봇이면 AI가
+// 모양을 지어냄), events `timeout`·`strict`·`check`, randomEvents `cooldown`·`weight`·`omen`. 탭 내보내기만 규격표가 있었고,
+// 대화·패치는 "기존 항목 전문을 보고 배워라"에 기댔는데 그 봇에 아직 없는 기능은 배울 전문이 없다. 모르는 키 경고도 변수뿐이었다.
+// - [검증] validate.js `KNOWN_KEYS` — 섹션(vars·derived·events·randomEvents·actions·checks·directives·allow + choices·grades)마다
+//   키와 한 줄 뜻. 검증기 끝 통합 패스가 모든 섹션에 "알 수 없는 키 'X' (…이 쓰는 키: …)" 경고. 밑줄 키는 메모로 통과.
+// - [요청서] 같은 표를 "필드 사전" 절로 패치 요청서·어시스턴트 대화에 실음(섹션당 한 줄, 약 1.5K자). 한 표에서 둘이 나오니
+//   "검증기가 잡는 건 요청서에도 같은 말로"(ai-mistakes)가 구조로 지켜진다. 편집기 구간은 하네스가 validateSchema만 주입하므로
+//   함수에 매단 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
+// - 오타 쪽은 깨끗했다 — 코드가 읽는데 어떤 스키마에도 없는 키는 maxLen 식구(v1.14.3) 말고 없음.
+
 // ── v1.14.3 ──────────────────────────────────────────────
 // **allow 조건 잠금 + 어시스턴트가 변수 필드 이름을 안다.** 커뮤니티 제보 둘.
 // - [코어] `allow[].when` — 변수 상태로 여닫는 세 번째 게이트. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시

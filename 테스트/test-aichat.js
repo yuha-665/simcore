@@ -409,6 +409,15 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
     ck('저장 통로 없고 내역 없으면 카드 없음', !findAll(c6, (e) => e.tagName === 'DETAILS' && String(e.className).includes('sce-worklog')).length, '');
   }
 
+  // ── v1.14.4 필드 사전 — 어시스턴트가 키 이름을 안다 (감사: maxGain·keywords·roll·cmd가 프롬프트에 없었다) ──
+  {
+    const sys = M.buildChatSystemPrompt(BASE, '');
+    ck('★ 필드 사전 절이 실린다', sys.includes('## 필드 사전'), '');
+    for (const k of ['maxGain', 'maxLoss', 'keywords', 'roll', 'mod', 'vs', 'cmd', 'maxLength', 'timeout', 'weight', 'omen', 'impactExempt', 'gain'])
+      ck(`필드 사전: \`${k}\``, sys.includes('`' + k + '`'), '');
+    ck('필드 사전은 섹션당 한 줄 (10줄)', (sys.match(/^- \*\*.*\*\* \(`\w+`\): /gm) || []).length === 10, String((sys.match(/^- \*\*.*\*\* \(`\w+`\): /gm) || []).length));
+  }
+
   finish();
 })().catch((e) => { ck('★ 비동기 왕복 예외 없음', false, e.stack.split('\n').slice(0, 3).join(' | ')); finish(); });
 

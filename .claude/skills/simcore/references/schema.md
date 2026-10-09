@@ -7,6 +7,7 @@
 · `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng`
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
+- **알 수 없는 키 경고 (v1.14.4)** — vars·derived·events·randomEvents·actions·checks·directives·allow(+ choices·grades) 항목에 `validate.js KNOWN_KEYS` 표에 없는 키가 있으면 경고(비차단). 밑줄로 시작하는 키(`_note`)는 메모로 통과. 같은 표가 AI 요청서·어시스턴트의 "필드 사전" 절이 된다 — **엔진에 필드를 추가하면 그 표에 한 줄 같이 적을 것**
 - **엔진 예약 키** (세이브 vars에 살지만 스키마 vars로 만들면 오류): `time_epoch`(시간),
   `scn_idx`·`scn_turns`(시나리오), `fight_max/gauge/round/foe/idle/check`(전투 안무 v1.6), **`sec_<id>`**(비밀 v1.10 — 열린 최고 단계, −1 = 아직)
 

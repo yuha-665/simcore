@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.3
-//@display-name SimCore (시뮬 엔진) v1.14.3 조건 잠금
+//@version 1.14.4
+//@display-name SimCore (시뮬 엔진) v1.14.4 필드 사전
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,18 +10,19 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.3 ──────────────────────────────────────────────
-// **allow 조건 잠금 + 어시스턴트가 변수 필드 이름을 안다.** 커뮤니티 제보 둘.
-// - [코어] `allow[].when` — 변수 상태로 여닫는 세 번째 게이트. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시
-//   토큰이라, 이벤트로 낱말을 흘리게 해 낱말 게이트로 받는 우회를 쓴다". 조건이 참인 턴에만 계약표에 실리고 적용된다(프롬프트=적용
-//   같은 함수). 닫힌 동안 토큰 0, 언어 무관, 결정적. whenArmed와 같은 결 — 브리지 템플릿은 전부 싣고 적용 때 거른다.
-//   옛 주석 "allow에 when을 못 단다"는 등장 여부를 변수로 못 재서 낱말을 **대체**할 수 없다는 뜻이었다 — 인물 변수는 여전히 mentions.
-// - [검증] when은 조건식 문자열·변수 참조·rand 금지. [편집기] allow 카드에 "조건 잠금" 칸. [정리 마법사] 지울 값을 보는 잠금만 푼다.
-// - [어시스턴트] 제보: "text 최대 글자를 고치랬더니 효과 없는 패치를 낸다". 변수 표에 값("80자 이내")만 있고 키 이름이 프롬프트
-//   어디에도 없어 `maxLen`·`limit` 같은 이름을 지어냈고, update 병합은 보낸 필드를 그대로 얹으니 쓰레기 키만 붙었다.
-//   → 계약표 머리글에 필드 이름(min·max / enum / maxLength / maxItems·itemMaxLength), 비어 있던 text 기본 "200자 이내"를 적고,
-//   패치 규칙에 "변수 필드 이름은 이것뿐" 한 줄. (런타임은 원래 멀쩡했다 — 보조 프롬프트의 "N자 이내"와 적용 때 자르기)
-// - [버그] 보조 출력 예산이 `v.maxLen`·`itemMaxLen`·`v.max`라는 없는 키를 읽어 text·list 예산이 항상 기본값이었다 → 바른 키로.
+// ── v1.14.4 ──────────────────────────────────────────────
+// **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
+// 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
+// 대조 — 대화·요청서에 이름이 없는 키가 열몇 개. allow `maxGain`·`maxLoss`(편집기 주력 UI, 13개 스키마), vars `cmd`,
+// actions `keywords`·`dayClose`·`impactExempt`·`fightEnd`·`offstage`, checks `roll`·`mod`·`vs`(판정이 없는 봇이면 AI가
+// 모양을 지어냄), events `timeout`·`strict`·`check`, randomEvents `cooldown`·`weight`·`omen`. 탭 내보내기만 규격표가 있었고,
+// 대화·패치는 "기존 항목 전문을 보고 배워라"에 기댔는데 그 봇에 아직 없는 기능은 배울 전문이 없다. 모르는 키 경고도 변수뿐이었다.
+// - [검증] validate.js `KNOWN_KEYS` — 섹션(vars·derived·events·randomEvents·actions·checks·directives·allow + choices·grades)마다
+//   키와 한 줄 뜻. 검증기 끝 통합 패스가 모든 섹션에 "알 수 없는 키 'X' (…이 쓰는 키: …)" 경고. 밑줄 키는 메모로 통과.
+// - [요청서] 같은 표를 "필드 사전" 절로 패치 요청서·어시스턴트 대화에 실음(섹션당 한 줄, 약 1.5K자). 한 표에서 둘이 나오니
+//   "검증기가 잡는 건 요청서에도 같은 말로"(ai-mistakes)가 구조로 지켜진다. 편집기 구간은 하네스가 validateSchema만 주입하므로
+//   함수에 매단 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
+// - 오타 쪽은 깨끗했다 — 코드가 읽는데 어떤 스키마에도 없는 키는 maxLen 식구(v1.14.3) 말고 없음.
 
 
 const SimCore = (() => {
@@ -962,10 +963,37 @@ const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_E
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
 const VAR_TYPES = ['int', 'float', 'text', 'bool', 'enum', 'list'];
-// 변수 정의가 읽는 키 전부 (v1.14.2) — 편집기 변수 카드·AI 요청서 규격표(editor.js VAR_FIELD_SPEC)와 같은 목록.
-// 여기 없는 키는 엔진이 안 읽는다. 밑줄로 시작하는 키(_note 등)는 제작자 메모로 보고 넘어간다.
-const VAR_KEYS = new Set(['id', 'label', 'type', 'init', 'min', 'max', 'enum', 'maxItems', 'maxLength',
-  'itemMaxLength', 'format', 'desc', 'cmd', 'group']);
+// 섹션별 "아는 키" 표 (v1.14.4) — 엔진·편집기·검증기가 읽는 키 전부와 한 줄 뜻. 두 군데가 이 표에서 나온다:
+//   ① 검증기 끝의 "알 수 없는 키" 경고 (모든 섹션)   ② AI 요청서·어시스턴트의 "필드 사전" (editor.js fieldDictLines)
+// 제보로 드러난 구멍(v1.14.2~3): 어시스턴트가 text 최대 글자를 고치랬더니 `maxLen`을 지어냈고, 패치 병합은 보낸 필드를
+// 그대로 얹으니 효과 없는 키만 붙었다 — 값은 보였지만 키 이름이 프롬프트 어디에도 없었고, 검증기도 변수 말고는 모르는 키를
+// 말없이 통과시켰다. 감사(2026-10-09)로 allow maxGain/maxLoss·actions keywords·checks roll/mod/vs 등 같은 구멍 열몇 개가 더 나왔다.
+// 한 표에서 경고와 요청서가 같이 나오면 둘이 어긋날 수 없다. 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다.
+// 새 필드를 엔진에 넣으면 여기 한 줄을 같이 적는다 — 안 적으면 그 필드를 쓴 봇마다 경고가 뜬다 (테스트가 템플릿 전부로 잡는다).
+const KNOWN_KEYS = {
+  vars: [['id', ''], ['label', '화면 이름'], ['type', 'int|float|text|bool|enum|list'], ['init', '시작값'], ['min', ''], ['max', '숫자 범위'],
+    ['enum', '선택지 배열'], ['maxLength', 'text 글자 상한, 기본 200'], ['maxItems', ''], ['itemMaxLength', 'list 상한'], ['format', '표시 형식 {v}'],
+    ['desc', 'AI용 설명 — 보조 계약표에 실림'], ['cmd', '채팅 명령 이름'], ['group', '편집기 묶음'], ['keep', '🔒 보호']],
+  derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
+  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
+    ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
+    ['cooldown', '재발동 간격'], ['keep', '🔒']],
+  randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
+    ['omen', '징조 글(게이지)'], ['check', '판정 id'], ['choices', ''], ['timeout', ''], ['strict', ''], ['liveChoices', ''], ['keep', '🔒']],
+  actions: [['id', ''], ['label', '맨 앞 이모지가 아이콘'], ['mode', 'oneshot|hold'], ['when', '사용 조건'], ['effects', ''], ['cooldown', '턴'],
+    ['keywords', '자동 무장 낱말 배열'], ['check', '판정 id'], ['inject', '발동 시 AI에게'], ['offstage', '막간'], ['dayClose', '하루 닫기 정산'],
+    ['fightEnd', '교전 이탈'], ['impactExempt', '진단 지적 끄기'], ['keep', '🔒']],
+  checks: [['id', ''], ['label', ''], ['roll', '굴림식, rand 가능'], ['mod', '보정식'], ['vs', '목표치'], ['grades', '[{when?,label,effects,inject?}]'],
+    ['fight', '전투 안무'], ['keep', '🔒']],
+  directives: [['id', ''], ['when', '조건식'], ['text', '지시문'], ['keep', '🔒']],
+  allow: [['id', '변수 id'], ['maxDelta', '증감 한도 양쪽'], ['maxGain', '증가 한도'], ['maxLoss', '감소 한도'], ['maxLength', 'text 글자 상한'],
+    ['mentions', '낱말 게이트'], ['whenArmed', '액션 잠금'], ['when', '조건 잠금'], ['keep', '🔒']],
+  choices: [['id', '(선택) 표식'], ['label', ''], ['when', '선택지 조건'], ['effects', ''], ['inject', ''], ['check', '판정 id']],
+  grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
+};
+const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
+const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
+  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -1045,10 +1073,7 @@ function validateSchema(schema) {
         warn(p, `'description'은 읽지 않습니다 — 보조 AI는 desc만 봅니다. description을 지우거나 desc에 합치세요`);
       }
     }
-    for (const k of Object.keys(v)) {
-      if (VAR_KEYS.has(k) || k === 'description' || k.startsWith('_')) continue;
-      warn(p, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (변수가 쓰는 키: ${[...VAR_KEYS].join(', ')})`);
-    }
+    // (그 밖의 모르는 키는 검증기 끝의 통합 패스가 모든 섹션에 대해 경고한다 — v1.14.4)
     if (!VAR_TYPES.includes(v.type)) err(p, `알 수 없는 type: '${v.type}'`);
     if (v.type === 'enum') {
       if (!Array.isArray(v.enum) || v.enum.length < 2) err(p, 'enum 타입은 enum 배열(2개 이상) 필요');
@@ -2901,6 +2926,16 @@ function validateSchema(schema) {
   }
 
   // 🔒 보호 표식 (v1.9.13) — 있으면 불린이어야 한다. 엔진은 안 읽고 패치·통짜 교체만 본다
+  const SEC_OF_BASE = { '$.vars': 'vars', '$.derived': 'derived', '$.checks': 'checks', '$.rules.events': 'events',
+    '$.rules.randomEvents.table': 'randomEvents', '$.directives': 'directives', '$.actions': 'actions', '$.updater.allow': 'allow' };
+  const unknownKeys = (obj, sec, path) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !KNOWN_SET[sec]) return;
+    const known = KNOWN_SET[sec];
+    for (const k of Object.keys(obj)) {
+      if (known.has(k) || k.startsWith('_') || (sec === 'vars' && k === 'description')) continue; // description은 변수 루프가 따로 알렸다
+      warn(path, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (${KNOWN_LABEL[sec]}이 쓰는 키: ${[...known].join(', ')})`);
+    }
+  };
   {
     const lists = [['$.vars', schema.vars], ['$.derived', schema.derived], ['$.checks', schema.checks],
       ['$.rules.events', schema.rules && schema.rules.events],
@@ -2908,8 +2943,15 @@ function validateSchema(schema) {
       ['$.directives', schema.directives], ['$.actions', schema.actions], ['$.updater.allow', schema.updater && schema.updater.allow]];
     for (const [base, arr] of lists) {
       if (!Array.isArray(arr)) continue;
+      const sec = SEC_OF_BASE[base];
       arr.forEach((e, i) => {
         if (e && e.keep != null && typeof e.keep !== 'boolean') err(`${base}[${i}].keep`, 'keep은 true/false — 🔒 보호 표식');
+        // 알 수 없는 키 (v1.14.4) — 모든 섹션 + 갈림길 선택지·판정 등급. 변수만 보던 v1.14.2 경고의 확장.
+        unknownKeys(e, sec, `${base}[${i}]`);
+        if ((sec === 'events' || sec === 'randomEvents') && e && Array.isArray(e.choices))
+          e.choices.forEach((c, j) => unknownKeys(c, 'choices', `${base}[${i}].choices[${j}]`));
+        if (sec === 'checks' && e && Array.isArray(e.grades))
+          e.grades.forEach((g, j) => unknownKeys(g, 'grades', `${base}[${i}].grades[${j}]`));
         // 변수 그룹 (v1.9.14) — 변수·파생만. 편집기 묶음 이름이라 짧은 문자열
         if ((base === '$.vars' || base === '$.derived') && e && e.group != null) {
           if (typeof e.group !== 'string') err(`${base}[${i}].group`, 'group은 문자열 — 편집기 묶음 이름');
@@ -2964,7 +3006,9 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema, varFreeWork };
+// 편집기의 필드 사전(fieldDictLines)이 읽는다 — 테스트 하네스가 편집기 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매단다
+validateSchema.KNOWN_KEYS = KNOWN_KEYS;
+module.exports = { validateSchema, varFreeWork, KNOWN_KEYS };
 
 });
 
@@ -16285,6 +16329,18 @@ const SCHEMA_EVENT_PATTERN_RULES = [
 ];
 
 // 시간 진행 — onTurn day+1 복제는 규격서에 참고할 패턴이 없어서 생긴 사고다 (설계: docs/design-시간.md)
+// 필드 사전 (v1.14.4) — 검증기의 아는 키 표(validate.js KNOWN_KEYS)를 섹션당 한 줄로. 같은 표에서 "알 수 없는 키" 경고가
+// 나오니 요청서와 검증기가 어긋날 수 없다. 감사(2026-10-09): 어시스턴트 프롬프트에 allow maxGain/maxLoss·actions keywords·
+// checks roll/mod/vs·vars cmd 같은 키 이름이 없어 AI가 지어내고 있었다 — 탭 내보내기만 규격표가 있었다.
+// 테스트 하네스가 이 구간을 validateSchema만 주입해 단독 평가하므로 함수에 매달린 사본(validateSchema.KNOWN_KEYS)으로 읽는다.
+const FIELD_DICT_SECTIONS = [['vars', '변수'], ['derived', '파생 변수'], ['events', '조건 이벤트'], ['randomEvents', '랜덤 이벤트'],
+  ['choices', '갈림길 선택지 choices[]'], ['actions', '액션'], ['checks', '판정'], ['grades', '판정 등급 grades[]'], ['directives', '지시문'], ['allow', 'allow']];
+function fieldDictLines() {
+  const K = validateSchema.KNOWN_KEYS || {};
+  return FIELD_DICT_SECTIONS.filter(([sec]) => Array.isArray(K[sec])).map(([sec, label]) =>
+    `- **${label}** (\`${sec}\`): ` + K[sec].map(([k, m]) => '`' + k + '`' + (m ? `(${m})` : '')).join(' '));
+}
+
 const SCHEMA_TIME_RULES = [
   '- **onTurn에 `day + 1`을 넣지 마세요** — 출력 하나가 하루가 되어 장면 단위 RP를 부숩니다.',
   '  날짜·요일·시각은 스키마 `time` 섹션(편집기 [시간] 탭)이 담당합니다. 켜져 있으면',
@@ -16754,7 +16810,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, **보낸 필드만 덮고 나머지 필드는 그대로** 남습니다 — 바꿀 필드만 주면 됩니다.',
     '  필드를 없애려면 `"max": null`처럼 null을 주세요. 단 `effects`·`choices`·`grades`·`mentions` 같은 배열·객체 필드는 **통째로** 바뀌니 그 배열은 전문을 다시 쓰세요 (아래 다이제스트에 전문이 있습니다).',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
-    '- 변수 필드 이름은 정해져 있습니다: 숫자 `min`·`max`, text `maxLength`, list `maxItems`·`itemMaxLength`, 선택지 `enum`, AI용 설명 `desc`, 표시 형식 `format`. 다른 이름(`maxLen`·`limit`·`description`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
+    '- 쓸 수 있는 키 이름은 아래 **필드 사전**에 있는 것뿐입니다 — 다른 이름(`maxLen`·`limit`·`description`·`maxIncrease`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
@@ -16766,6 +16822,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
     '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
+    '',
+    '## 필드 사전 — 섹션마다 쓸 수 있는 키 (여기 없는 이름은 엔진이 무시하고 가져오기가 경고합니다)',
+    ...fieldDictLines(),
     '',
     '## 낱말 게이트 — `allow`의 `mentions`, 변수를 등장한 턴에만 열기',
     ...SCHEMA_ALLOW_RULES,
@@ -32807,6 +32866,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.3 ──────────────────────────────────────────────
+// **allow 조건 잠금 + 어시스턴트가 변수 필드 이름을 안다.** 커뮤니티 제보 둘.
+// - [코어] `allow[].when` — 변수 상태로 여닫는 세 번째 게이트. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시
+//   토큰이라, 이벤트로 낱말을 흘리게 해 낱말 게이트로 받는 우회를 쓴다". 조건이 참인 턴에만 계약표에 실리고 적용된다(프롬프트=적용
+//   같은 함수). 닫힌 동안 토큰 0, 언어 무관, 결정적. whenArmed와 같은 결 — 브리지 템플릿은 전부 싣고 적용 때 거른다.
+//   옛 주석 "allow에 when을 못 단다"는 등장 여부를 변수로 못 재서 낱말을 **대체**할 수 없다는 뜻이었다 — 인물 변수는 여전히 mentions.
+// - [검증] when은 조건식 문자열·변수 참조·rand 금지. [편집기] allow 카드에 "조건 잠금" 칸. [정리 마법사] 지울 값을 보는 잠금만 푼다.
+// - [어시스턴트] 제보: "text 최대 글자를 고치랬더니 효과 없는 패치를 낸다". 변수 표에 값("80자 이내")만 있고 키 이름이 프롬프트
+//   어디에도 없어 `maxLen`·`limit` 같은 이름을 지어냈고, update 병합은 보낸 필드를 그대로 얹으니 쓰레기 키만 붙었다.
+//   → 계약표 머리글에 필드 이름(min·max / enum / maxLength / maxItems·itemMaxLength), 비어 있던 text 기본 "200자 이내"를 적고,
+//   패치 규칙에 "변수 필드 이름은 이것뿐" 한 줄. (런타임은 원래 멀쩡했다 — 보조 프롬프트의 "N자 이내"와 적용 때 자르기)
+// - [버그] 보조 출력 예산이 `v.maxLen`·`itemMaxLen`·`v.max`라는 없는 키를 읽어 text·list 예산이 항상 기본값이었다 → 바른 키로.
 
 // ── v1.14.2 ──────────────────────────────────────────────
 // **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,

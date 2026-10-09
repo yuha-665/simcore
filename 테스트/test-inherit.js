@@ -53,7 +53,7 @@ const mk = (role, data) => ({ role, data });
   ck('어댑터가 detectInheritSource를 받는다', src.includes("const { SimSession, detectInheritSource } = SimCore.require('session');"), '');
   ck('로드에서 재정렬·복원보다 먼저 상속', src.indexOf('inherited = await inheritFromSibling(sess, chat, chaIdx, char.chaId)') < src.indexOf("await realignTimeline(chat, lastCharIdx, '로드'"), '');
   ck('스냅샷이 있으면 손대지 않는다', src.includes('if (!msgs.length || !chaId || await sess.hasSnapshots()) return false;'), '');
-  ck('형제는 마커가 있는 채팅에서만, 스냅샷 있는 id만', src.includes("if (!found && msgs.some((m) => typeof m?.data === 'string' && m.data.includes('⟦simcore:')))"), '');
+  ck('형제는 마커가 있는 채팅에서만, 스냅샷 있는 id만', src.includes('if (!found && msgs.some((m) => hasMarker(m?.data)))'), '');
   ck('상속했으면 미러를 그 자리 값으로', src.includes('if (inherited) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }'), '');
 
   console.log(`\n${pass} passed, ${fail} failed`);

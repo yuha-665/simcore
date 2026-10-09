@@ -722,56 +722,96 @@ function rollFightRound(schema, state, check, rng, changeLog, userText) {
     if (typeof cfg.foe === 'string' && cfg.foe.trim()) {
       try { foe = String(renderTemplate(cfg.foe, lookup0)).trim() || '상대'; } catch { /* 방어 */ }
     }
-    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id;
+    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id; v[K.edge] = 0; v[K.guard] = 0;
     changeLog.push({ id: '교전', from: null, to: `개전 — ${foe} (게이지 ${v[K.max]})`, source: `fight:${check.id}` });
   }
   v[K.round] += 1;
   v[K.idle] = 0;
-  // 공격 비트
-  const atk = rollCheck(schema, state, check, rng, changeLog);
-  if (!atk) return null;
-  const atkRec = state.meta.lastCheck;
-  const grade = (check.grades || []).find((g) => g.label === atk.grade);
-  const gain = Math.max(0, Number(grade?.gain) || 0);
+  // 수 유형 (v1.15.0, core/fight.js 머리말) — 유저 글의 낱말로 주인공의 수를 읽는다. 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고,
+  // 긴 글에 없으면 '자유 수'(글대로 쓰되 먹힘만 굴림). 전엔 무조건 "공격 → 반격"이라 턴제처럼 주고받는 그림이 고정됐다.
+  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
+  let myMove = fightMod.classifyMove(cfg, userText);
+  if (!myMove) myMove = delegated ? fightMod.pickWeighted(fightMod.DELEGATE_MOVES, rng) : 'free';
+  const adv = fightMod.advantageOf(check);
+  const edge = (Number(v[K.edge]) || 0) > 0;      // 지난 견제가 준 이점 — 다음 공격·기술·자유 수에 한 번
+  const foeGuard = (Number(v[K.guard]) || 0) > 0; // 상대가 지난 라운드에 자세를 잡았다 — 이번 공격 반감
   const before = v[K.gauge];
-  v[K.gauge] = Math.min(v[K.max], before + gain);
-  const won = v[K.gauge] >= v[K.max];
-  // 반격 비트 — 상대가 아직 서 있을 때만
-  let rep = null, repRec = null;
   const replyCheck = typeof cfg.reply === 'string' ? (schema.checks || []).find((c) => c.id === cfg.reply) : null;
-  if (replyCheck && !won) {
-    rep = rollCheck(schema, state, replyCheck, rng, changeLog);
-    repRec = rep ? state.meta.lastCheck : null;
+  // 주인공 비트 — 수비는 공격을 굴리지 않는다 (상대가 들어올 때 반응 판정만)
+  let atk = null, atkRec = null, gain = 0;
+  const useEdge = edge && myMove !== 'probe' && myMove !== 'guard';
+  if (myMove !== 'guard') {
+    atk = rollCheck(schema, state, useEdge ? fightMod.withMod(check, adv) : check, rng, changeLog);
+    if (!atk) return null;
+    atkRec = state.meta.lastCheck;
+    const grade = (check.grades || []).find((g) => g.label === atk.grade);
+    const raw = Math.max(0, Number(grade?.gain) || 0);
+    gain = myMove === 'skill' ? Math.round(raw * 1.5) : myMove === 'probe' ? (raw > 0 ? Math.max(1, Math.round(raw * 0.5)) : 0) : raw;
+    if (foeGuard && gain > 0) gain = Math.max(1, Math.round(gain * 0.5));
+    v[K.gauge] = Math.min(v[K.max], before + gain);
   }
-  // 주인공 붕괴 — 반격 효과(피해)까지 적용된 뒤에 본다
+  if (useEdge) v[K.edge] = 0;
+  v[K.guard] = 0;
+  if (myMove === 'probe' && gain > 0) v[K.edge] = 1;
+  const won = v[K.gauge] >= v[K.max];
+  // 상대 비트 — 시스템이 판세를 보고 가중치로 뽑는다 (리롤 안정·진단 가능). 상대가 아직 서 있을 때만
+  let foeMove = null, rep = null, repRec = null, repDelta = 0;
+  if (!won) {
+    foeMove = fightMod.pickFoeMove(cfg, { round: v[K.round], ratio: v[K.max] > 0 ? v[K.gauge] / v[K.max] : 0, myMove,
+      skillFailed: myMove === 'skill' && gain === 0, bigHit: gain > 0 && gain >= v[K.max] * 0.25 }, rng);
+    if ((foeMove === 'attack' || foeMove === 'press') && replyCheck) {
+      repDelta = (myMove === 'guard' ? adv : 0) - (foeMove === 'press' ? adv : 0);
+      rep = rollCheck(schema, state, fightMod.withMod(replyCheck, repDelta), rng, changeLog);
+      repRec = rep ? state.meta.lastCheck : null;
+    }
+    if (foeMove === 'guard') v[K.guard] = 1;
+  }
+  // 주인공 붕괴 — 상대 공격 효과(피해)까지 적용된 뒤에 본다
   let lost = false;
   if (cfg.lose && typeof cfg.lose.when === 'string') {
     try { lost = truthy(evaluate(cfg.lose.when, makeLookup(schema, v), null)); } catch { /* 방어 */ }
   }
   const round = v[K.round], max = v[K.max], gauge = v[K.gauge], foe = v[K.foe];
   const done = won || lost;
-  // 마지막 판정 기록 = 공격 굴림 + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
-  state.meta.lastCheck = { ...atkRec, summary: atkRec.summary + (rep ? ` · 반격: ${rep.grade ?? '?'}` : ''),
-    fight: { round, gauge, max, foe, gain, reply: rep ? rep.grade : null, won, lost } };
+  // 마지막 판정 기록 = 공격 굴림(없으면 반응 굴림) + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
+  const base = atkRec || repRec || { id: check.id, label: check.label ?? check.id, roll: null, mod: null, total: null, vs: null, grade: null, summary: '굴림 없음', turn: state.meta.turn };
+  state.meta.lastCheck = { ...base, summary: base.summary + (rep && atkRec ? ` · 상대 공격: ${rep.grade ?? '?'}` : ''),
+    fight: { round, gauge, max, foe, gain, move: myMove, foeMove, reply: rep ? rep.grade : null, won, lost } };
   // 시트
-  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
   const lines = [];
   lines.push(`[전투 안무 — ${round}라운드 · 상대: ${foe} · 누적 ${before}→${gauge}/${max}`
     + `${won ? ' → 결착' : lost ? ' → 주인공 붕괴' : ' → 아직 선다'}]`);
   lines.push(typeof cfg.rule === 'string' && cfg.rule.trim() ? cfg.rule : fightMod.DEFAULT_FIGHT_RULE);
   let n = 0;
-  const beat = (s) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${s}`);
+  const beat = (str) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${str}`);
   if (delegated) {
     const pool = Array.isArray(cfg.flavor) && cfg.flavor.length ? cfg.flavor : fightMod.DEFAULT_FIGHT_FLAVOR;
     beat(`개시 — ${pool[Math.floor(rng() * pool.length) % pool.length]}`);
   }
   // 눈금만 괄호에 — 요약의 "→ 등급" 꼬리는 비트 머리에 이미 있다 (같은 말 두 번 금지)
   const dice = (rec) => String(rec.summary).replace(/\s*→[^→]*$/, '');
-  beat(`주인공의 공격 — ${atk.grade ?? '판정'} (${dice(atkRec)})`
-    + (delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다')
-    + (gain ? ` · 상대 누적 +${gain}` : ' · 상대에겐 먹히지 않았다')
-    + (atk.inject ? ` — ${atk.inject}` : ''));
-  if (rep) beat(`상대의 반격 — ${rep.grade ?? '판정'} (${dice(repRec)})${rep.inject ? ` — ${rep.inject}` : ''}`);
+  const ML = fightMod.MOVE_LABEL[myMove] || myMove;
+  if (myMove === 'guard') {
+    beat(`주인공 — 수비: 받아칠 자세, 이번엔 공격이 없다 (굴림 없음${replyCheck ? ` — 상대가 들어오면 ${replyCheck.label ?? replyCheck.id}에 이점 +${adv}` : ''})`);
+  } else {
+    const asIs = delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다';
+    const head = `주인공 — ${ML}: ${atk.grade ?? '판정'} (${dice(atkRec)}${useEdge ? `, 견제 이점 +${adv}` : ''})${asIs}`;
+    const tail = gain
+      ? ` · 상대 누적 +${gain}${myMove === 'skill' ? ' (기술 ×1.5)' : myMove === 'probe' ? ' (견제 ×0.5) · 다음 공격에 이점' : ''}${foeGuard ? ' (상대가 자세를 잡고 있어 반감)' : ''}`
+      : myMove === 'skill' ? ' — 먹히지 않았고 빈틈이 생겼다' : myMove === 'probe' ? ' — 틈을 못 찾았다' : ' · 상대에겐 먹히지 않았다';
+    beat(head + tail + (atk.inject ? ` — ${atk.inject}` : ''));
+  }
+  if (foeMove) {
+    const FL = fightMod.FOE_LABEL[foeMove] || foeMove;
+    if (foeMove === 'attack' || foeMove === 'press') {
+      const lead = foeMove === 'press' ? '연이어 들어온다' : '들어온다';
+      if (rep) {
+        const note = repDelta > 0 ? `, 수비 이점 +${repDelta}` : repDelta < 0 ? `, 불리 ${repDelta}` : '';
+        beat(`상대 — ${FL}: ${lead} — ${replyCheck.label ?? replyCheck.id} ${rep.grade ?? '판정'} (${dice(repRec)}${note})${rep.inject ? ` — ${rep.inject}` : ''}`);
+      } else beat(`상대 — ${FL}: ${lead} (판정 없음 — 받아내거나 맞는 쪽은 서사가 정하되 치명상은 아니다)`);
+    } else if (foeMove === 'guard') beat('상대 — 수세: 물러서며 자세를 잡는다 (다음 라운드 주인공의 공격은 덜 먹힌다)');
+    else beat('상대 — 탐색: 거리를 재며 틈을 본다 (이번 라운드 공방 없음)');
+  }
   if (won) beat(fightMod.DEFAULT_FIGHT_WIN + (cfg.win?.inject ? ` ${cfg.win.inject}` : ''));
   else if (lost) beat(fightMod.DEFAULT_FIGHT_LOSE + (cfg.lose?.inject ? ` ${cfg.lose.inject}` : ''));
   else beat(fightMod.DEFAULT_FIGHT_ROUND_END);
@@ -782,7 +822,7 @@ function rollFightRound(schema, state, check, rng, changeLog, userText) {
       to: won ? `결착 — ${foe} 전투 불능 (${round}라운드)` : `결착 — 주인공 붕괴 (${round}라운드)`, source: `fight:${check.id}` });
     fightMod.clearFight(state);
   }
-  return { lines, done, won, lost, round, gauge, max };
+  return { lines, done, won, lost, round, gauge, max, move: myMove, foeMove };
 }
 
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────

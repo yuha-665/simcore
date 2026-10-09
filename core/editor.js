@@ -18,6 +18,7 @@ const { referencedVars, evaluate, truthy } = require('./expr');
 const { seededRng } = require('./rng');
 const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
 const { monthView } = require('./calendar');
+const fightMod = require('./fight');   // 전투 안무 수 유형 기본표 (v1.15.0)
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
@@ -11887,6 +11888,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         checkField('패배 연출 지시', bindInput(f.lose && typeof f.lose === 'object' ? f.lose.inject ?? '' : '', (x) => {
           if (!f.lose || typeof f.lose !== 'object') return; if (x && x.trim()) f.lose.inject = x; else delete f.lose.inject; rerender();
         }, { cls: 'sce-w-l', ph: '(비우면 기본) 결착 — 주인공 쪽이 무너진다 …' }), '패배 조건이 있을 때만 써요.', 'is-wide')));
+      // 수 유형 (v1.15.0) — 주인공 수 낱말(비우면 기본표)·상대 수 가중치
+      sec.appendChild(h('div', { class: 'sce-check-group-copy' }, '수 유형: 유저 글의 낱말로 주인공의 수(공격·기술·수비·견제)를 읽고, 상대의 수(공격·밀어붙이기·수세·탐색)는 '
+        + '판세(몰림·주인공의 수·라운드)를 보고 시스템이 뽑아요. 낱말 칸을 비우면 기본 낱말표, 가중치를 비우면 기본 비율이에요.'));
+      if (f.moves && (typeof f.moves !== 'object' || Array.isArray(f.moves))) delete f.moves;
+      if (f.foeMoves && (typeof f.foeMoves !== 'object' || Array.isArray(f.foeMoves))) delete f.foeMoves;
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-grade' }, ...fightMod.MOVE_TYPES.map((k) => checkField(`주인공 수 낱말 — ${fightMod.MOVE_LABEL[k]}`,
+        bindInput((Array.isArray(f.moves?.[k]) ? f.moves[k] : []).join(', '), (x) => {
+          const arr = String(x).split(',').map((t) => t.trim()).filter(Boolean);
+          if (arr.length) { f.moves = f.moves || {}; f.moves[k] = arr; } else if (f.moves) { delete f.moves[k]; if (!Object.keys(f.moves).length) delete f.moves; }
+          rerender();
+        }, { cls: 'sce-w-l', ph: `(기본) ${fightMod.DEFAULT_MOVES[k].slice(0, 6).join(', ')} …` }),
+        '쉼표로 구분, 활용형으로("막는, 막아"). 글에서 가장 뒤에 나온 낱말의 유형이 그 턴의 수예요.', 'is-wide'))));
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-roll' }, ...fightMod.FOE_MOVES.map((k) => checkField(`상대 수 가중치 — ${fightMod.FOE_LABEL[k]}`,
+        bindInput(f.foeMoves?.[k] ?? '', (x) => {
+          const t = String(x).trim(); const n = Number(t);
+          if (t && Number.isFinite(n) && n >= 0) { f.foeMoves = f.foeMoves || {}; f.foeMoves[k] = n; } else if (f.foeMoves) { delete f.foeMoves[k]; if (!Object.keys(f.foeMoves).length) delete f.foeMoves; }
+          rerender();
+        }, { cls: 'sce-w-s', ph: String(fightMod.DEFAULT_FOE_MOVES[k]) }), k === 'attack' ? '기본 비율 위에 판세가 얹혀요 — 전부 탐색이면 공방 없는 전투가 돼요.' : ''))));
       const hasLeave = (schema.actions || []).some((a) => a && (a.fightEnd === true || (typeof a.fightEnd === 'string' && a.fightEnd.trim())));
       sec.appendChild(h('div', { class: 'sce-check-grade-actions' },
         h('button', { class: 'sce-btn', style: 'flex:1', disabled: hasLeave || undefined, onclick: () => {

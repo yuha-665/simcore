@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.16
-//@display-name SimCore (시뮬 엔진) v1.14.16 보류 후속 5차
+//@version 1.15.0
+//@display-name SimCore (시뮬 엔진) v1.15.0 전투 안무 수 유형
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.15.0 ───────────────────────────────────────────────
+// **전투 안무 "수 유형".** 유저 제보: 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받는 그림이 됐다 —
+// 원한 건 막고 피하고 때리는 상호작용이 전투 주체에 따라 적절히 이루어지는 것.
+// - 주인공의 수는 유저 글의 낱말로 읽는다(공격·기술·수비·견제, 가장 뒤의 낱말이 이긴다). 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고, 긴 글에
+//   없으면 '자유 수'(글대로, 먹힘만 굴림). 수비는 공격을 굴리지 않고 상대가 들어올 때 반응 판정(reply)에 이점(굴림 폭 15%: d20 → +3), 견제는
+//   반값 누적 + 다음 공격에 이점, 기술은 누적 ×1.5(빗나가면 빈틈 — 상대가 들어온다).
+// - 상대의 수는 시스템이 판세(몰림·주인공의 수·라운드)를 보고 가중치로 뽑는다(공격·밀어붙이기·수세·탐색) — 리롤 안정·진단 가능. 밀어붙이기는
+//   반응 판정에 불리, 수세는 다음 공격 반감, 탐색은 공방 없는 라운드. 반응 판정이 없는 봇은 상대 공격을 서사에 맡긴다(치명상 금지).
+// - 규칙 줄: "결과는 바꾸지 마라, 어떻게 이르는지는 네 몫 — 공방을 꼭 번갈아 주고받을 필요는 없다". 예약 키 fight_edge·fight_guard 추가.
+// - 스키마: checks[].fight.moves { attack, skill, guard, probe: [낱말…] } / fight.foeMoves { attack, press, guard, probe: 가중치 } — 둘 다 선택,
+//   비우면 기본표. 편집기 ⚔ 절에 칸. {lastcheck}·meta.lastCheck.fight에 move·foeMove.
+
 // ── v1.14.16 ──────────────────────────────────────────────
 // **전체 점검 후속 5차 — 진단 알고리즘 재설계 (영역 9 보류).**
 // - [병목 AST] 조건식을 파서로 읽어 부정 정규형으로 편 뒤 접는다 — 중첩 or((a>=60 or b>=60) and c>=10)·not (hp < 10)·좌변 산술(gold + silver
@@ -3960,7 +3972,7 @@
     const msgs = chat?.message || [];
     if (!msgs.length || !chaId || await sess.hasSnapshots()) return false;
     let found = detectInheritSource(chat, []);   // 분기 주석 — 형제를 안 읽어도 된다
-    if (!found && msgs.some((m) => typeof m?.data === 'string' && m.data.includes('⟦simcore:'))) {
+    if (!found && msgs.some((m) => hasMarker(m?.data))) {   // 완성형 마커만 (test-marker 규약 — 잘린 꼬리는 마커가 아니다)
       const head = `sim:${chaId}:`;
       const ids = new Set();
       for (const k of await sess.store.b.keys()) {

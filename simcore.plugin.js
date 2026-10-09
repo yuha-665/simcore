@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.16
-//@display-name SimCore (시뮬 엔진) v1.14.16 보류 후속 5차
+//@version 1.15.0
+//@display-name SimCore (시뮬 엔진) v1.15.0 전투 안무 수 유형
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,17 +10,17 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.16 ──────────────────────────────────────────────
-// **전체 점검 후속 5차 — 진단 알고리즘 재설계 (영역 9 보류).**
-// - [병목 AST] 조건식을 파서로 읽어 부정 정규형으로 편 뒤 접는다 — 중첩 or((a>=60 or b>=60) and c>=10)·not (hp < 10)·좌변 산술(gold + silver
-//   >= 100)·우변 식(gold >= cost * 2)·== 수치(dom == 1)를 읽는다. 전엔 `id op 숫자` 정규식과 깊이 0의 or 쪼개기라 틀리거나 못 봤다.
-//   복합 좌변은 표본 상태에서 양변을 평가해 가장 가까웠던 순간을 쓰고, 그 안의 변수들(ids)로 AI 담당·연쇄·옮겨 세는 값 면책을 본다.
-// - [극성 궤적] 설정 게이트·플래그 연쇄 판정을 판 끝 상태가 아니라 5턴마다의 궤적 표본으로 — 판 중간에만 막던 플래그를 못 짚던 것.
-// - [랜덤 후보] 랜덤 표의 후보였는데(조건이 참인 순간이 있었는데) 추첨에서 밀린 사건은 '죽은 이벤트'가 아니라 🔵 랜덤 후보. 표가 한 번도
-//   안 돌았으면 🟡 랜덤 표 정지 하나로 묶는다.
-// - [시간 조건] hour >= 20·영업 시간처럼 시간 체계가 주는 값의 문턱은 "턴마다 하루(같은 시각)" 가정이 못 맞춘다 — 🔵 시간 조건, 문턱을
-//   내리지 말라고. dom == 1은 이제 ==를 읽어 실제 발동으로 잡힌다.
-// - [긴 판] 갈림길을 고르는 시드(long2)도 돌린다 — 놀이 판은 짝수 시드만 고르므로 long1만으론 선택지 뒤의 길이 긴 판에서 영영 안 보였다.
+// ── v1.15.0 ───────────────────────────────────────────────
+// **전투 안무 "수 유형".** 유저 제보: 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받는 그림이 됐다 —
+// 원한 건 막고 피하고 때리는 상호작용이 전투 주체에 따라 적절히 이루어지는 것.
+// - 주인공의 수는 유저 글의 낱말로 읽는다(공격·기술·수비·견제, 가장 뒤의 낱말이 이긴다). 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고, 긴 글에
+//   없으면 '자유 수'(글대로, 먹힘만 굴림). 수비는 공격을 굴리지 않고 상대가 들어올 때 반응 판정(reply)에 이점(굴림 폭 15%: d20 → +3), 견제는
+//   반값 누적 + 다음 공격에 이점, 기술은 누적 ×1.5(빗나가면 빈틈 — 상대가 들어온다).
+// - 상대의 수는 시스템이 판세(몰림·주인공의 수·라운드)를 보고 가중치로 뽑는다(공격·밀어붙이기·수세·탐색) — 리롤 안정·진단 가능. 밀어붙이기는
+//   반응 판정에 불리, 수세는 다음 공격 반감, 탐색은 공방 없는 라운드. 반응 판정이 없는 봇은 상대 공격을 서사에 맡긴다(치명상 금지).
+// - 규칙 줄: "결과는 바꾸지 마라, 어떻게 이르는지는 네 몫 — 공방을 꼭 번갈아 주고받을 필요는 없다". 예약 키 fight_edge·fight_guard 추가.
+// - 스키마: checks[].fight.moves { attack, skill, guard, probe: [낱말…] } / fight.foeMoves { attack, press, guard, probe: 가중치 } — 둘 다 선택,
+//   비우면 기본표. 편집기 ⚔ 절에 칸. {lastcheck}·meta.lastCheck.fight에 move·foeMove.
 
 
 const SimCore = (() => {
@@ -817,9 +817,14 @@ SimCore.define("fight", function (require, module, exports) {
 // 결착은 시트에 박지 않는다 (유저 판정: 한 응답에 전투가 끝나 버린다). 공격 등급의 gain이 상대
 // 게이지에 쌓이고, 찼을 때만 결착 비트가 뜬다 — 라운드 수는 등급 대 굴림에서 저절로(육성 체감).
 // 라운드 입구는 ⚔ 액션을 매 라운드 누르는 것 하나뿐 (hold ❌):
-//   ⚔ + 짧은 입력("대충 싸웠다")  → 개시 비트까지 시스템이 씀 (맡김)
-//   ⚔ + 긴 입력                  → 유저 수는 그대로, 얼마나 먹혔는지(등급)만 굴림
+//   ⚔ + 짧은 입력("대충 싸웠다")  → 개시 비트까지 시스템이 씀 (맡김 — 낱말이 없으면 주인공 수도 시스템이 뽑는다)
+//   ⚔ + 긴 입력                  → 유저 수는 그대로, 얼마나 먹혔는지(등급)만 굴림 (낱말이 없으면 '자유 수')
 //   ⚔ 없음                       → 자유 장면. 게이지 불변 + "쓰러뜨리지 마라" 상시 줄
+// 수 유형 (v1.15.0): 라운드가 "주인공의 공격 → 상대의 반격 → 끝"으로 고정돼 턴제 게임처럼 무조건 주고받았다 (유저: "막고 피하고 때리는
+// 상호작용이 주체에 따라 적절히"). 이제 유저 글의 낱말로 주인공의 수(공격·기술·수비·견제)를 읽고, 상대의 수(공격·밀어붙이기·수세·탐색)는
+// 시스템이 판세(몰림·주인공의 수·라운드)를 보고 가중치로 뽑는다 — 리롤에 안정적이고 진단이 굴릴 수 있다. 수비는 공격을 굴리지 않고 상대가
+// 들어올 때 반응 판정(reply)에 이점, 견제는 반값 누적 + 다음 공격에 이점, 기술은 ×1.5 (빗나가면 빈틈), 상대 수세는 다음 공격 반감.
+// 결과(먹힘·막힘·피함)는 시스템이, 묘사는 모델이 — 시트는 각본이 아니라 결과 제약이다.
 // 결착은 ⚔에서만 나온다 — 모델이 혼자 전투를 끝낼 길이 구조적으로 없다.
 //
 // 상태는 예약 키(fight_*)로 vars에 산다 — time_epoch·scn_idx와 같은 계열: when·상태창·지시문이
@@ -832,6 +837,8 @@ const FIGHT_KEYS = {
   foe: 'fight_foe',       // 상대 라벨 (개전 때 굳음)
   idle: 'fight_idle',     // ⚔ 없이 지나간 전송 수 — idleTurns에 닿으면 정리
   check: 'fight_check',   // 개전한 판정 id
+  edge: 'fight_edge',     // 견제가 준 이점 — 다음 공격·기술·자유 수에 한 번 (v1.15.0)
+  guard: 'fight_guard',   // 상대가 자세를 잡았다 — 다음 공격 반감 (v1.15.0)
 };
 // 노출 이름 fight_on(엔진 lookup이 계산)까지 예약 — 변수/파생이 이 이름을 쓰면 검증 오류
 const FIGHT_RESERVED = [...Object.values(FIGHT_KEYS), 'fight_on'];
@@ -847,8 +854,9 @@ const DEFAULT_FIGHT_FLAVOR = [
   '한순간의 정적 — 서로를 재는 호흡, 그 뒤에야 움직임',
   '주인공의 몸 상태가 수에 묻어난다 — 숨·다리·쥔 손, 지친 만큼 거칠게',
 ];
-const DEFAULT_FIGHT_RULE = '시스템이 굴린 결과다. 순서대로, 비트마다 한 문단 이상 — 결과를 바꾸거나 비트를 건너뛰거나 '
-  + '합치지 마라. 번호·기호·표는 본문에 쓰지 마라. 기술·무기는 실명으로 써라.';
+const DEFAULT_FIGHT_RULE = '시스템이 굴린 결과다. 비트의 결과(먹힘·막힘·피함·빗나감·공방 없음)는 바꾸거나 건너뛰지 마라 — 그 결과에 '
+  + '어떻게 이르는지는 네가 쓴다, 비트마다 한 문단 이상. 공방을 꼭 번갈아 주고받을 필요는 없다: 시트에 없는 공격·피해를 보태지 마라. '
+  + '번호·기호·표는 본문에 쓰지 마라. 기술·무기는 실명으로 써라.';
 const DEFAULT_FIGHT_ROUND_END = '라운드 끝 — 상대는 아직 쓰러지지 않는다. 다음 수는 유저가 정한다. 여기서 멈춰라.';
 const DEFAULT_FIGHT_WIN = '결착 — 상대는 더 싸울 수 없다. 도주·항복·전투 불능 중 하나로 이 라운드 안에서 마무리하라. '
   + '전리품·정산은 다음 장면의 몫이다.';
@@ -863,6 +871,82 @@ const DEFAULT_FIGHT_IDLE_END = '[교전 종료] 공방 없이 오래 이어져 �
 const DEFAULT_FIGHT_LEAVE = '[교전 종료] 유저가 교전에서 이탈했다 — 상대와의 공방은 여기서 끝난다. '
   + '어떻게 빠져나갔는지는 위 판정을 따르라.';
 
+// ── 수 유형 (v1.15.0) ─────────────────────────────────────
+const MOVE_TYPES = ['attack', 'skill', 'guard', 'probe'];
+const MOVE_LABEL = { attack: '공격', skill: '기술', guard: '수비', probe: '견제', free: '자유 수' };
+// 부분 일치 — 활용형으로 적는다('막는'·'막아'·'막고'). 글에서 **가장 뒤에 나온** 낱말의 유형이 그 턴의 수 ("막고 반격한다" = 공격)
+const DEFAULT_MOVES = {
+  attack: ['공격', '벤다', '베어', '베고', '베기', '찌른', '찔러', '찌르', '때린', '때려', '내리친', '내려친', '후려', '휘두', '쏜다', '쏘아', '쏴',
+    '가격', '반격', '일격', '주먹', '발길', '걷어차', '덤빈', '덤벼', '달려든', '달려들', '내지른', '내질러', '꽂'],
+  skill: ['기술', '필살', '비기', '오의', '절기', '마법', '주문', '시전', '스킬', '검기', '장풍'],
+  guard: ['막는', '막아', '막고', '막았', '받아낸', '받아내', '방어', '가드', '피한', '피했', '피하', '회피', '물러', '빠져나', '버틴', '버티', '튕겨',
+    '흘린', '흘려', '흘리', '웅크', '방패'],
+  probe: ['견제', '거리', '탐색', '살핀', '살피', '노린', '노려', '틈을', '간을', '잰다', '재며', '재면서', '흔든', '흔들어', '페인트', '속임', '유인',
+    '도발', '위협', '겨눈', '겨누'],
+};
+const FOE_MOVES = ['attack', 'press', 'guard', 'probe'];
+const FOE_LABEL = { attack: '공격', press: '밀어붙이기', guard: '수세', probe: '탐색' };
+const DEFAULT_FOE_MOVES = { attack: 50, press: 10, guard: 15, probe: 25 };
+const DELEGATE_MOVES = { attack: 60, probe: 20, skill: 10, guard: 10 };   // 맡김(짧은 글에 낱말 없음) — 주인공 수도 시스템이
+
+function movesTable(cfg) {
+  const t = {};
+  for (const k of MOVE_TYPES) {
+    const own = Array.isArray(cfg?.moves?.[k]) ? cfg.moves[k].filter((x) => typeof x === 'string' && x.trim()) : null;
+    t[k] = own && own.length ? own : DEFAULT_MOVES[k];
+  }
+  return t;
+}
+/** 유저 글 → 주인공의 수 ('attack'|'skill'|'guard'|'probe') | null. 가장 뒤의 낱말이 이긴다 — 마지막 동작이 그 턴의 수다 */
+function classifyMove(cfg, text) {
+  const str = String(text || '');
+  if (!str.trim()) return null;
+  const table = movesTable(cfg);
+  let best = null;
+  for (const type of MOVE_TYPES) for (const kw of table[type]) {
+    const i = str.lastIndexOf(kw);
+    if (i >= 0 && (!best || i > best.i)) best = { type, i };
+  }
+  return best ? best.type : null;
+}
+/** 가중 추첨 — { 키: 가중치 }에서 하나. 전부 0이면 첫 키 */
+function pickWeighted(weights, rng) {
+  const keys = Object.keys(weights);
+  const total = keys.reduce((a, k) => a + Math.max(0, Number(weights[k]) || 0), 0);
+  if (!(total > 0)) return keys[0];
+  let r = rng() * total;
+  for (const k of keys) { r -= Math.max(0, Number(weights[k]) || 0); if (r < 0) return k; }
+  return keys[keys.length - 1];
+}
+/**
+ * 상대의 수 — 기본 비율(cfg.foeMoves로 대체 가능)에 판세를 얹는다.
+ * ctx: { round, ratio(누적/최대), myMove, skillFailed, bigHit }
+ */
+function pickFoeMove(cfg, ctx, rng) {
+  const w = {};
+  for (const k of FOE_MOVES) w[k] = Math.max(0, Number(cfg?.foeMoves?.[k] ?? DEFAULT_FOE_MOVES[k]) || 0);
+  const add = (k, n) => { w[k] = Math.max(0, w[k] + n); };
+  if (ctx.round === 1) add('probe', 15);                                   // 첫 라운드는 서로 잰다
+  if (ctx.ratio >= 0.7) { add('guard', 15); add('press', 10); add('probe', -15); } // 몰리면 수세 아니면 필사
+  if (ctx.myMove === 'guard') { add('attack', 20); add('probe', -10); }     // 주인공이 자세를 잡으면 들어온다
+  if (ctx.myMove === 'probe') { add('probe', 15); add('attack', -10); }     // 견제엔 견제
+  if (ctx.skillFailed) { add('attack', 25); add('press', 10); }             // 빗나간 기술 = 빈틈
+  if (ctx.bigHit) { add('guard', 15); add('attack', -10); }                 // 크게 맞으면 물러선다
+  return pickWeighted(w, rng);
+}
+/** 이점·불리의 크기 — 굴림 폭의 15% (d20 → 3, d6 → 1, d100 → 15). rand()가 없으면 1 */
+function advantageOf(check) {
+  const m = /rand\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/.exec(String(check?.roll || ''));
+  if (!m) return 1;
+  return Math.max(1, Math.round((Math.abs(Number(m[2]) - Number(m[1])) + 1) * 0.15));
+}
+/** 판정 사본에 보정을 얹는다 — rollCheck는 mod 식을 그대로 평가한다 */
+function withMod(check, delta) {
+  if (!delta) return check;
+  const has = check.mod != null && String(check.mod).trim() !== '';
+  return { ...check, mod: has ? `(${check.mod}) + (${delta})` : String(delta) };
+}
+
 function fightChecks(schema) {
   return (schema?.checks || []).filter((c) => c && c.fight && typeof c.fight === 'object' && !Array.isArray(c.fight));
 }
@@ -872,11 +956,12 @@ function clearFight(state) {
   const v = state.vars;
   v[FIGHT_KEYS.max] = 0; v[FIGHT_KEYS.gauge] = 0; v[FIGHT_KEYS.round] = 0;
   v[FIGHT_KEYS.foe] = ''; v[FIGHT_KEYS.idle] = 0; v[FIGHT_KEYS.check] = '';
+  v[FIGHT_KEYS.edge] = 0; v[FIGHT_KEYS.guard] = 0;
 }
 // 구세이브·중간에 켠 스키마 — 교전 없음으로 채운다 (reconcileState 규약)
 function ensureFightKeys(state) {
   const v = state.vars;
-  for (const k of [FIGHT_KEYS.max, FIGHT_KEYS.gauge, FIGHT_KEYS.round, FIGHT_KEYS.idle]) if (typeof v[k] !== 'number') v[k] = 0;
+  for (const k of [FIGHT_KEYS.max, FIGHT_KEYS.gauge, FIGHT_KEYS.round, FIGHT_KEYS.idle, FIGHT_KEYS.edge, FIGHT_KEYS.guard]) if (typeof v[k] !== 'number') v[k] = 0;
   for (const k of [FIGHT_KEYS.foe, FIGHT_KEYS.check]) if (typeof v[k] !== 'string') v[k] = '';
 }
 
@@ -904,6 +989,21 @@ function checkFightConfig(c, p, { err, warn, checkExpr, checkSet, checkIds, allI
     err(`${fp}.flavor`, 'flavor는 비어있지 않은 문자열 배열 (맡김 모드의 개시 비트 후보)');
   if (f.idleTurns != null && (!Number.isInteger(f.idleTurns) || f.idleTurns < 1)) err(`${fp}.idleTurns`, 'idleTurns는 1 이상의 정수');
   for (const k of ['rule', 'hold']) if (f[k] != null && typeof f[k] !== 'string') err(`${fp}.${k}`, `${k}는 문자열`);
+  // 수 유형 (v1.15.0)
+  if (f.moves != null) {
+    if (typeof f.moves !== 'object' || Array.isArray(f.moves)) err(`${fp}.moves`, 'moves는 { attack, skill, guard, probe: [낱말…] } — 비우면 기본 낱말표');
+    else for (const [k, arr] of Object.entries(f.moves)) {
+      if (!MOVE_TYPES.includes(k)) err(`${fp}.moves.${k}`, `모르는 수 유형 '${k}' — attack(공격)/skill(기술)/guard(수비)/probe(견제)`);
+      else if (!Array.isArray(arr) || arr.some((x) => typeof x !== 'string' || !x.trim())) err(`${fp}.moves.${k}`, '낱말은 비어 있지 않은 문자열 배열');
+    }
+  }
+  if (f.foeMoves != null) {
+    if (typeof f.foeMoves !== 'object' || Array.isArray(f.foeMoves)) err(`${fp}.foeMoves`, 'foeMoves는 { attack, press, guard, probe: 가중치(0 이상 숫자) }');
+    else for (const [k, n] of Object.entries(f.foeMoves)) {
+      if (!FOE_MOVES.includes(k)) err(`${fp}.foeMoves.${k}`, `모르는 상대 수 '${k}' — attack(공격)/press(밀어붙이기)/guard(수세)/probe(탐색)`);
+      else if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) err(`${fp}.foeMoves.${k}`, '가중치는 0 이상 숫자');
+    }
+  }
   if (f.win != null) {
     if (typeof f.win !== 'object' || f.win === null || Array.isArray(f.win)) err(`${fp}.win`, 'win은 { effects?, inject? }');
     else {
@@ -944,6 +1044,8 @@ module.exports = {
   DEFAULT_FIGHT_FLAVOR, DEFAULT_FIGHT_RULE, DEFAULT_FIGHT_ROUND_END, DEFAULT_FIGHT_WIN, DEFAULT_FIGHT_LOSE,
   DEFAULT_FIGHT_HOLD, DEFAULT_FIGHT_IDLE_END, DEFAULT_FIGHT_LEAVE,
   fightChecks, fightActive, clearFight, ensureFightKeys, checkFightConfig, fightChipHtml,
+  MOVE_TYPES, MOVE_LABEL, DEFAULT_MOVES, FOE_MOVES, FOE_LABEL, DEFAULT_FOE_MOVES, DELEGATE_MOVES,
+  classifyMove, pickWeighted, pickFoeMove, advantageOf, withMod,
 };
 
 });
@@ -8174,56 +8276,96 @@ function rollFightRound(schema, state, check, rng, changeLog, userText) {
     if (typeof cfg.foe === 'string' && cfg.foe.trim()) {
       try { foe = String(renderTemplate(cfg.foe, lookup0)).trim() || '상대'; } catch { /* 방어 */ }
     }
-    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id;
+    v[K.max] = Math.round(max); v[K.gauge] = 0; v[K.round] = 0; v[K.foe] = foe; v[K.check] = check.id; v[K.edge] = 0; v[K.guard] = 0;
     changeLog.push({ id: '교전', from: null, to: `개전 — ${foe} (게이지 ${v[K.max]})`, source: `fight:${check.id}` });
   }
   v[K.round] += 1;
   v[K.idle] = 0;
-  // 공격 비트
-  const atk = rollCheck(schema, state, check, rng, changeLog);
-  if (!atk) return null;
-  const atkRec = state.meta.lastCheck;
-  const grade = (check.grades || []).find((g) => g.label === atk.grade);
-  const gain = Math.max(0, Number(grade?.gain) || 0);
+  // 수 유형 (v1.15.0, core/fight.js 머리말) — 유저 글의 낱말로 주인공의 수를 읽는다. 짧은 글(맡김)에 낱말이 없으면 시스템이 뽑고,
+  // 긴 글에 없으면 '자유 수'(글대로 쓰되 먹힘만 굴림). 전엔 무조건 "공격 → 반격"이라 턴제처럼 주고받는 그림이 고정됐다.
+  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
+  let myMove = fightMod.classifyMove(cfg, userText);
+  if (!myMove) myMove = delegated ? fightMod.pickWeighted(fightMod.DELEGATE_MOVES, rng) : 'free';
+  const adv = fightMod.advantageOf(check);
+  const edge = (Number(v[K.edge]) || 0) > 0;      // 지난 견제가 준 이점 — 다음 공격·기술·자유 수에 한 번
+  const foeGuard = (Number(v[K.guard]) || 0) > 0; // 상대가 지난 라운드에 자세를 잡았다 — 이번 공격 반감
   const before = v[K.gauge];
-  v[K.gauge] = Math.min(v[K.max], before + gain);
-  const won = v[K.gauge] >= v[K.max];
-  // 반격 비트 — 상대가 아직 서 있을 때만
-  let rep = null, repRec = null;
   const replyCheck = typeof cfg.reply === 'string' ? (schema.checks || []).find((c) => c.id === cfg.reply) : null;
-  if (replyCheck && !won) {
-    rep = rollCheck(schema, state, replyCheck, rng, changeLog);
-    repRec = rep ? state.meta.lastCheck : null;
+  // 주인공 비트 — 수비는 공격을 굴리지 않는다 (상대가 들어올 때 반응 판정만)
+  let atk = null, atkRec = null, gain = 0;
+  const useEdge = edge && myMove !== 'probe' && myMove !== 'guard';
+  if (myMove !== 'guard') {
+    atk = rollCheck(schema, state, useEdge ? fightMod.withMod(check, adv) : check, rng, changeLog);
+    if (!atk) return null;
+    atkRec = state.meta.lastCheck;
+    const grade = (check.grades || []).find((g) => g.label === atk.grade);
+    const raw = Math.max(0, Number(grade?.gain) || 0);
+    gain = myMove === 'skill' ? Math.round(raw * 1.5) : myMove === 'probe' ? (raw > 0 ? Math.max(1, Math.round(raw * 0.5)) : 0) : raw;
+    if (foeGuard && gain > 0) gain = Math.max(1, Math.round(gain * 0.5));
+    v[K.gauge] = Math.min(v[K.max], before + gain);
   }
-  // 주인공 붕괴 — 반격 효과(피해)까지 적용된 뒤에 본다
+  if (useEdge) v[K.edge] = 0;
+  v[K.guard] = 0;
+  if (myMove === 'probe' && gain > 0) v[K.edge] = 1;
+  const won = v[K.gauge] >= v[K.max];
+  // 상대 비트 — 시스템이 판세를 보고 가중치로 뽑는다 (리롤 안정·진단 가능). 상대가 아직 서 있을 때만
+  let foeMove = null, rep = null, repRec = null, repDelta = 0;
+  if (!won) {
+    foeMove = fightMod.pickFoeMove(cfg, { round: v[K.round], ratio: v[K.max] > 0 ? v[K.gauge] / v[K.max] : 0, myMove,
+      skillFailed: myMove === 'skill' && gain === 0, bigHit: gain > 0 && gain >= v[K.max] * 0.25 }, rng);
+    if ((foeMove === 'attack' || foeMove === 'press') && replyCheck) {
+      repDelta = (myMove === 'guard' ? adv : 0) - (foeMove === 'press' ? adv : 0);
+      rep = rollCheck(schema, state, fightMod.withMod(replyCheck, repDelta), rng, changeLog);
+      repRec = rep ? state.meta.lastCheck : null;
+    }
+    if (foeMove === 'guard') v[K.guard] = 1;
+  }
+  // 주인공 붕괴 — 상대 공격 효과(피해)까지 적용된 뒤에 본다
   let lost = false;
   if (cfg.lose && typeof cfg.lose.when === 'string') {
     try { lost = truthy(evaluate(cfg.lose.when, makeLookup(schema, v), null)); } catch { /* 방어 */ }
   }
   const round = v[K.round], max = v[K.max], gauge = v[K.gauge], foe = v[K.foe];
   const done = won || lost;
-  // 마지막 판정 기록 = 공격 굴림 + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
-  state.meta.lastCheck = { ...atkRec, summary: atkRec.summary + (rep ? ` · 반격: ${rep.grade ?? '?'}` : ''),
-    fight: { round, gauge, max, foe, gain, reply: rep ? rep.grade : null, won, lost } };
+  // 마지막 판정 기록 = 공격 굴림(없으면 반응 굴림) + 교전 요약 ({lastcheck}·변화 로그가 읽는다)
+  const base = atkRec || repRec || { id: check.id, label: check.label ?? check.id, roll: null, mod: null, total: null, vs: null, grade: null, summary: '굴림 없음', turn: state.meta.turn };
+  state.meta.lastCheck = { ...base, summary: base.summary + (rep && atkRec ? ` · 상대 공격: ${rep.grade ?? '?'}` : ''),
+    fight: { round, gauge, max, foe, gain, move: myMove, foeMove, reply: rep ? rep.grade : null, won, lost } };
   // 시트
-  const delegated = String(userText ?? '').trim().length < fightMod.FIGHT_SHORT_INPUT;
   const lines = [];
   lines.push(`[전투 안무 — ${round}라운드 · 상대: ${foe} · 누적 ${before}→${gauge}/${max}`
     + `${won ? ' → 결착' : lost ? ' → 주인공 붕괴' : ' → 아직 선다'}]`);
   lines.push(typeof cfg.rule === 'string' && cfg.rule.trim() ? cfg.rule : fightMod.DEFAULT_FIGHT_RULE);
   let n = 0;
-  const beat = (s) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${s}`);
+  const beat = (str) => lines.push(`${FIGHT_CIRCLED[Math.min(n++, FIGHT_CIRCLED.length - 1)]} ${str}`);
   if (delegated) {
     const pool = Array.isArray(cfg.flavor) && cfg.flavor.length ? cfg.flavor : fightMod.DEFAULT_FIGHT_FLAVOR;
     beat(`개시 — ${pool[Math.floor(rng() * pool.length) % pool.length]}`);
   }
   // 눈금만 괄호에 — 요약의 "→ 등급" 꼬리는 비트 머리에 이미 있다 (같은 말 두 번 금지)
   const dice = (rec) => String(rec.summary).replace(/\s*→[^→]*$/, '');
-  beat(`주인공의 공격 — ${atk.grade ?? '판정'} (${dice(atkRec)})`
-    + (delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다')
-    + (gain ? ` · 상대 누적 +${gain}` : ' · 상대에겐 먹히지 않았다')
-    + (atk.inject ? ` — ${atk.inject}` : ''));
-  if (rep) beat(`상대의 반격 — ${rep.grade ?? '판정'} (${dice(repRec)})${rep.inject ? ` — ${rep.inject}` : ''}`);
+  const ML = fightMod.MOVE_LABEL[myMove] || myMove;
+  if (myMove === 'guard') {
+    beat(`주인공 — 수비: 받아칠 자세, 이번엔 공격이 없다 (굴림 없음${replyCheck ? ` — 상대가 들어오면 ${replyCheck.label ?? replyCheck.id}에 이점 +${adv}` : ''})`);
+  } else {
+    const asIs = delegated ? '' : ': 유저가 쓴 수를 그대로 쓰되, 얼마나 먹혔는지는 이 결과다';
+    const head = `주인공 — ${ML}: ${atk.grade ?? '판정'} (${dice(atkRec)}${useEdge ? `, 견제 이점 +${adv}` : ''})${asIs}`;
+    const tail = gain
+      ? ` · 상대 누적 +${gain}${myMove === 'skill' ? ' (기술 ×1.5)' : myMove === 'probe' ? ' (견제 ×0.5) · 다음 공격에 이점' : ''}${foeGuard ? ' (상대가 자세를 잡고 있어 반감)' : ''}`
+      : myMove === 'skill' ? ' — 먹히지 않았고 빈틈이 생겼다' : myMove === 'probe' ? ' — 틈을 못 찾았다' : ' · 상대에겐 먹히지 않았다';
+    beat(head + tail + (atk.inject ? ` — ${atk.inject}` : ''));
+  }
+  if (foeMove) {
+    const FL = fightMod.FOE_LABEL[foeMove] || foeMove;
+    if (foeMove === 'attack' || foeMove === 'press') {
+      const lead = foeMove === 'press' ? '연이어 들어온다' : '들어온다';
+      if (rep) {
+        const note = repDelta > 0 ? `, 수비 이점 +${repDelta}` : repDelta < 0 ? `, 불리 ${repDelta}` : '';
+        beat(`상대 — ${FL}: ${lead} — ${replyCheck.label ?? replyCheck.id} ${rep.grade ?? '판정'} (${dice(repRec)}${note})${rep.inject ? ` — ${rep.inject}` : ''}`);
+      } else beat(`상대 — ${FL}: ${lead} (판정 없음 — 받아내거나 맞는 쪽은 서사가 정하되 치명상은 아니다)`);
+    } else if (foeMove === 'guard') beat('상대 — 수세: 물러서며 자세를 잡는다 (다음 라운드 주인공의 공격은 덜 먹힌다)');
+    else beat('상대 — 탐색: 거리를 재며 틈을 본다 (이번 라운드 공방 없음)');
+  }
   if (won) beat(fightMod.DEFAULT_FIGHT_WIN + (cfg.win?.inject ? ` ${cfg.win.inject}` : ''));
   else if (lost) beat(fightMod.DEFAULT_FIGHT_LOSE + (cfg.lose?.inject ? ` ${cfg.lose.inject}` : ''));
   else beat(fightMod.DEFAULT_FIGHT_ROUND_END);
@@ -8234,7 +8376,7 @@ function rollFightRound(schema, state, check, rng, changeLog, userText) {
       to: won ? `결착 — ${foe} 전투 불능 (${round}라운드)` : `결착 — 주인공 붕괴 (${round}라운드)`, source: `fight:${check.id}` });
     fightMod.clearFight(state);
   }
-  return { lines, done, won, lost, round, gauge, max };
+  return { lines, done, won, lost, round, gauge, max, move: myMove, foeMove };
 }
 
 // ── ① 전송 단계 (beforeRequest) ──────────────────────────────
@@ -12886,6 +13028,7 @@ const { referencedVars, evaluate, truthy } = require('./expr');
 const { seededRng } = require('./rng');
 const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
 const { monthView } = require('./calendar');
+const fightMod = require('./fight');   // 전투 안무 수 유형 기본표 (v1.15.0)
 const engine = require('./engine');
 const { TEMPLATES } = require('./templates');
 const { diagnose, compareDiagnoses } = require('./diagnose');
@@ -24755,6 +24898,24 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         checkField('패배 연출 지시', bindInput(f.lose && typeof f.lose === 'object' ? f.lose.inject ?? '' : '', (x) => {
           if (!f.lose || typeof f.lose !== 'object') return; if (x && x.trim()) f.lose.inject = x; else delete f.lose.inject; rerender();
         }, { cls: 'sce-w-l', ph: '(비우면 기본) 결착 — 주인공 쪽이 무너진다 …' }), '패배 조건이 있을 때만 써요.', 'is-wide')));
+      // 수 유형 (v1.15.0) — 주인공 수 낱말(비우면 기본표)·상대 수 가중치
+      sec.appendChild(h('div', { class: 'sce-check-group-copy' }, '수 유형: 유저 글의 낱말로 주인공의 수(공격·기술·수비·견제)를 읽고, 상대의 수(공격·밀어붙이기·수세·탐색)는 '
+        + '판세(몰림·주인공의 수·라운드)를 보고 시스템이 뽑아요. 낱말 칸을 비우면 기본 낱말표, 가중치를 비우면 기본 비율이에요.'));
+      if (f.moves && (typeof f.moves !== 'object' || Array.isArray(f.moves))) delete f.moves;
+      if (f.foeMoves && (typeof f.foeMoves !== 'object' || Array.isArray(f.foeMoves))) delete f.foeMoves;
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-grade' }, ...fightMod.MOVE_TYPES.map((k) => checkField(`주인공 수 낱말 — ${fightMod.MOVE_LABEL[k]}`,
+        bindInput((Array.isArray(f.moves?.[k]) ? f.moves[k] : []).join(', '), (x) => {
+          const arr = String(x).split(',').map((t) => t.trim()).filter(Boolean);
+          if (arr.length) { f.moves = f.moves || {}; f.moves[k] = arr; } else if (f.moves) { delete f.moves[k]; if (!Object.keys(f.moves).length) delete f.moves; }
+          rerender();
+        }, { cls: 'sce-w-l', ph: `(기본) ${fightMod.DEFAULT_MOVES[k].slice(0, 6).join(', ')} …` }),
+        '쉼표로 구분, 활용형으로("막는, 막아"). 글에서 가장 뒤에 나온 낱말의 유형이 그 턴의 수예요.', 'is-wide'))));
+      sec.appendChild(h('div', { class: 'sce-check-field-grid is-roll' }, ...fightMod.FOE_MOVES.map((k) => checkField(`상대 수 가중치 — ${fightMod.FOE_LABEL[k]}`,
+        bindInput(f.foeMoves?.[k] ?? '', (x) => {
+          const t = String(x).trim(); const n = Number(t);
+          if (t && Number.isFinite(n) && n >= 0) { f.foeMoves = f.foeMoves || {}; f.foeMoves[k] = n; } else if (f.foeMoves) { delete f.foeMoves[k]; if (!Object.keys(f.foeMoves).length) delete f.foeMoves; }
+          rerender();
+        }, { cls: 'sce-w-s', ph: String(fightMod.DEFAULT_FOE_MOVES[k]) }), k === 'attack' ? '기본 비율 위에 판세가 얹혀요 — 전부 탐색이면 공방 없는 전투가 돼요.' : ''))));
       const hasLeave = (schema.actions || []).some((a) => a && (a.fightEnd === true || (typeof a.fightEnd === 'string' && a.fightEnd.trim())));
       sec.appendChild(h('div', { class: 'sce-check-grade-actions' },
         h('button', { class: 'sce-btn', style: 'flex:1', disabled: hasLeave || undefined, onclick: () => {
@@ -33549,6 +33710,18 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.16 ──────────────────────────────────────────────
+// **전체 점검 후속 5차 — 진단 알고리즘 재설계 (영역 9 보류).**
+// - [병목 AST] 조건식을 파서로 읽어 부정 정규형으로 편 뒤 접는다 — 중첩 or((a>=60 or b>=60) and c>=10)·not (hp < 10)·좌변 산술(gold + silver
+//   >= 100)·우변 식(gold >= cost * 2)·== 수치(dom == 1)를 읽는다. 전엔 `id op 숫자` 정규식과 깊이 0의 or 쪼개기라 틀리거나 못 봤다.
+//   복합 좌변은 표본 상태에서 양변을 평가해 가장 가까웠던 순간을 쓰고, 그 안의 변수들(ids)로 AI 담당·연쇄·옮겨 세는 값 면책을 본다.
+// - [극성 궤적] 설정 게이트·플래그 연쇄 판정을 판 끝 상태가 아니라 5턴마다의 궤적 표본으로 — 판 중간에만 막던 플래그를 못 짚던 것.
+// - [랜덤 후보] 랜덤 표의 후보였는데(조건이 참인 순간이 있었는데) 추첨에서 밀린 사건은 '죽은 이벤트'가 아니라 🔵 랜덤 후보. 표가 한 번도
+//   안 돌았으면 🟡 랜덤 표 정지 하나로 묶는다.
+// - [시간 조건] hour >= 20·영업 시간처럼 시간 체계가 주는 값의 문턱은 "턴마다 하루(같은 시각)" 가정이 못 맞춘다 — 🔵 시간 조건, 문턱을
+//   내리지 말라고. dom == 1은 이제 ==를 읽어 실제 발동으로 잡힌다.
+// - [긴 판] 갈림길을 고르는 시드(long2)도 돌린다 — 놀이 판은 짝수 시드만 고르므로 long1만으론 선택지 뒤의 길이 긴 판에서 영영 안 보였다.
+
 // ── v1.14.15 ──────────────────────────────────────────────
 // **전체 점검 후속 4차 — 편집기 칸 둘.** 영역 6 보류였던 "JSON으로만 짤 수 있던 자리".
 // - [전투 안무] 판정 카드에 ⚔ 절: 켜기(게이지 30 + gain 없는 등급에 10)·상대 게이지 크기·반격 판정 셀렉트(전투 안무 없는 판정만)·방치 턴·
@@ -37487,7 +37660,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     const msgs = chat?.message || [];
     if (!msgs.length || !chaId || await sess.hasSnapshots()) return false;
     let found = detectInheritSource(chat, []);   // 분기 주석 — 형제를 안 읽어도 된다
-    if (!found && msgs.some((m) => typeof m?.data === 'string' && m.data.includes('⟦simcore:'))) {
+    if (!found && msgs.some((m) => hasMarker(m?.data))) {   // 완성형 마커만 (test-marker 규약 — 잘린 꼬리는 마커가 아니다)
       const head = `sim:${chaId}:`;
       const ids = new Set();
       for (const k of await sess.store.b.keys()) {

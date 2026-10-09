@@ -129,9 +129,7 @@ const baseJson = JSON.stringify(BASE);
 
 // ── OR 병목 (v0.45): 갈래는 하나만 되면 되므로 가장 가까운 갈래가 병목이다 ──
 {
-  const dseg = fs.readFileSync(__P('../core/diagnose.js'), 'utf8');
-  const D = new Function(dseg.slice(dseg.indexOf('const CMP ='), dseg.indexOf('/** 이 조건이'))
-    + '\nreturn { bottleneck, orBranches };')();
+  const D = SC.require('diagnose');   // v1.14.16부터 AST — 옛 CMP 정규식 추출은 없다
   const obs = { noz_aff: { min: 25, max: 25 }, shi_aff: { min: 30, max: 30 }, hei_aff: { min: 5, max: 5 } };
   const or = D.bottleneck('noz_aff >= 60 or shi_aff >= 60 or hei_aff >= 60', obs);
   ck('★ or는 가장 가까운 갈래를 짚는다 (제일 먼 갈래를 짚던 실측 오판)',
@@ -139,7 +137,8 @@ const baseJson = JSON.stringify(BASE);
   const and = D.bottleneck('noz_aff >= 60 and hei_aff >= 60', obs);
   ck('and는 가장 안 닿은 항 (기존 동작 유지)', and.id === 'hei_aff' && !and.ofBranches, JSON.stringify(and));
   ck('★ 이미 닿은 갈래가 있으면 병목이 아니다', D.bottleneck('noz_aff >= 10 or hei_aff >= 60', obs) === null, '');
-  ck('괄호 안의 or는 가르지 않는다', D.orBranches('(a or b) and c >= 5').length === 1, '');
+  const nested = D.bottleneck('(a >= 60 or b >= 60) and c >= 5', { a: { min: 0, max: 30 }, b: { min: 0, max: 45 }, c: { min: 0, max: 10 } });
+  ck('괄호 안의 or는 그 안에서만 가른다 (AST, v1.14.16)', nested && nested.id === 'b' && nested.ofBranches === 2, JSON.stringify(nested));
 }
 
 // ── 진단 → AI 요청이 패치 경로로 (v0.45) ──

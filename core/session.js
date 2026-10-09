@@ -64,6 +64,10 @@ class SimSession {
       const found = await this.store.latestAtOrBelow('out', latestOutIndex);
       if (found) { this.current = engine.reconcileState(this.schema, found.state); return this.current; }
     }
+    // 첫 전송 전 슬롯 (v1.14.7) — char 메시지가 아직 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)에서 한 조작·가져온 상태.
+    // 전엔 앵커가 -1이라 저장을 전부 건너뛰어 재로드·전환이면 증발했다 (점검 영역 3 #7·#8)
+    const boot = await this.store.load('boot', 0);
+    if (boot) { this.current = engine.reconcileState(this.schema, boot); return this.current; }
     // 시작 시각 무작위(v0.80)용 rng — 인덱스를 -1로 둬 어느 턴과도 안 겹치는 시드를 쓴다.
     // 리롤 안정이 켜져 있으면 chatId로만 갈리므로 **이 채팅은 늘 같은 시각**, 새 채팅은 새 시각.
     this.current = engine.initState(this.schema, { rng: this._rng(-1, 'start') });
@@ -228,16 +232,19 @@ class SimSession {
       // 파일이 진실이다 (v1.7.3) — 파일에 없는 스냅샷은 지운다. 병합이면 유저가 파일에서 지운 턴이
       // 저장소에 그대로 남아 채팅이 그 번호에 닿는 순간 되살아난다 (실기 제보: "세이브 내보내서
       // 456 지워도 또 어디서 똑같은 거 긁어온다" — 완전 초기화 뒤 가져와야 비로소 먹혔다).
-      const stale = (await this.store.b.keys())
-        .filter((k) => k.startsWith(prefix) && /:(pre|send|out):\d+$/.test(k));
-      onProgress?.(0, stale.length, '기존 스냅샷 정리 중');
-      await mapLimited(stale, IO_CONCURRENCY, (k) => this.store.b.remove(k),
-        (d, t) => onProgress?.(d, t, '기존 스냅샷 정리 중'));
+      // 먼저 쓰고 나서 파일에 없는 것만 지운다 (v1.14.7) — 전엔 전부 지운 뒤 썼다. 중간에 저장이 실패하면 스냅샷이 비거나
+      // 일부만 남아 재로드 때 유실됐다(점검 영역 3 #11)
       const entries = Object.entries(data.snapshots || {})
         .filter(([suffix]) => /^(pre|send|out):\d+$/.test(suffix));
       onProgress?.(0, entries.length, '스냅샷 복원 중');
       await mapLimited(entries, IO_CONCURRENCY, ([suffix, raw]) => this.store.b.set(prefix + suffix, raw),
         (d, t) => onProgress?.(d, t, '스냅샷 복원 중'));
+      const keep = new Set(entries.map(([suffix]) => prefix + suffix));
+      const stale = (await this.store.b.keys())
+        .filter((k) => k.startsWith(prefix) && /:(pre|send|out):\d+$/.test(k) && !keep.has(k));
+      onProgress?.(0, stale.length, '기존 스냅샷 정리 중');
+      await mapLimited(stale, IO_CONCURRENCY, (k) => this.store.b.remove(k),
+        (d, t) => onProgress?.(d, t, '기존 스냅샷 정리 중'));
       this.current = engine.reconcileState(this.schema, JSON.parse(JSON.stringify(data.current)));
     } else {
       onProgress?.(0, 1, '기존 스냅샷 정리 중');
@@ -246,7 +253,8 @@ class SimSession {
         (d, t) => onProgress?.(d, t, '기존 스냅샷 정리 중'));
       this.current = engine.reconcileState(this.schema, JSON.parse(JSON.stringify(data.current)));
       onProgress?.(0, 1, '상태 앵커 저장 중');
-      await this.store.save('out', Math.max(0, anchorIndex), this.current);
+      if (anchorIndex >= 0) await this.store.save('out', anchorIndex, this.current);
+      else await this.store.save('boot', 0, this.current); // char 메시지가 없는 채팅 — 첫 전송 전 슬롯 (v1.14.7)
       onProgress?.(1, 1, '상태 앵커 저장 중');
     }
     return { ok: true, sameChat };
@@ -257,22 +265,36 @@ class SimSession {
    * 가져온 채팅 등)용 최후 수단. 변수 값만 복원되고 쿨다운·대기 이벤트는 초기화된다.
    */
   restoreFromMirror(scriptstate) {
-    const state = require('./engine').initState(this.schema);
+    const eng = require('./engine');
+    const state = eng.initState(this.schema);
     let restored = 0;
-    for (const v of this.schema.vars) {
-      const raw = scriptstate?.['$' + v.id];
+    const byId = Object.fromEntries(this.schema.vars.map((v) => [v.id, v]));
+    // 스키마 변수 + 예약 키(time_epoch·scn_*·sec_*·fr_*·re_*·fight_*) 전부 (v1.14.7) — 전엔 스키마 변수만 돌려 날짜·막·비밀·
+    // 진영·게이지·교전이 전부 시작값으로 돌아갔다(점검 영역 3 #6). 미러에는 vars 전부가 실린다
+    for (const id of Object.keys(state.vars)) {
+      const raw = scriptstate?.['$' + id];
       if (raw == null || raw === 'null') continue;
-      let val = raw;
-      if (v.type === 'int' || v.type === 'float') { val = Number(raw); if (!isFinite(val)) continue; }
-      else if (v.type === 'bool') val = raw === 'true' || raw === '1';
-      const to = require('./engine').coerce(v, val);
-      if (to === undefined) continue;
-      state.vars[v.id] = to;
+      const v = byId[id];
+      if (v) {
+        let val = raw;
+        if (v.type === 'int' || v.type === 'float') { val = Number(raw); if (!isFinite(val)) continue; }
+        else if (v.type === 'bool') val = raw === 'true' || raw === '1';
+        const to = eng.coerce(v, val);
+        if (to === undefined) continue;
+        state.vars[id] = to;
+      } else {
+        const cur = state.vars[id];
+        if (typeof cur === 'number') { const n = Number(raw); if (!isFinite(n)) continue; state.vars[id] = n; }
+        else if (typeof cur === 'boolean') state.vars[id] = raw === 'true' || raw === '1';
+        else state.vars[id] = String(raw);
+      }
       restored++;
     }
     // 엔진 턴 근사: turn 계열 변수가 있으면 그걸 따라감 (없으면 0에서 재시작)
     if (typeof state.vars.turn === 'number') state.meta.turn = Math.max(0, state.vars.turn - 1);
-    this.current = state;
+    // 미러가 있다 = 첫 응답은 이미 지났다. AI 최초설정 봇에서 이걸 안 세우면 다음 전송이 최초설정으로 돌아 복원한 값을 덮는다 (v1.14.7)
+    if (restored && this.schema.setup?.ai?.enabled) state.meta.setupDone = true;
+    this.current = eng.reconcileState(this.schema, state);
     return restored;
   }
 

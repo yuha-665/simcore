@@ -22,7 +22,7 @@
 
 const CP_OPS = ['save', 'load'];
 const DEFAULT_SLOT = 'main';
-const SLOT_RE = /^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
+const SLOT_RE = /^(?!(?:__proto__|constructor|prototype)$)[A-Za-z_][A-Za-z0-9_]{0,23}$/; // __proto__ 칸은 프로토타입만 바꿔 JSON에 안 실린다 (v1.14.7)
 const QUEUE_MAX = 16; // 한 단계에 쌓일 줄 상한 — 식이 이상해도 무한히 늘지 않게
 
 const DEFAULT_LOAD_NOTIFY = '[되감기] 시간이 체크포인트 시점으로 되돌아갔다. 세상과 사람들은 그때 그대로다 — 그 뒤에 벌어진 일은 '

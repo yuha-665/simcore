@@ -398,6 +398,83 @@ test('낱말 시간 고정표는 pinText로 판정한다 (seenText가 없는 루
   assert.ok(out.changeLog.some((c) => c.id === '시간 고정' && String(c.to).includes('수업')), JSON.stringify(out.changeLog));
 });
 
+// ── 전체 점검 3차 (v1.14.7) — 저장·복원 ──
+test('reconcileState: 타입이 바뀐 옛 값은 coerce, 못 고치면 시작값, 범위 밖은 클램프', () => {
+  const s = fx();
+  s.vars.push({ id: 'rank', type: 'int', init: 1, min: 0, max: 5 }, { id: 'mood', type: 'enum', enum: ['좋음', '나쁨'], init: '좋음' }, { id: 'bag', type: 'list', init: [] });
+  const st = engine.initState(s);
+  st.vars.rank = '평범'; st.vars.mood = '애매'; st.vars.bag = 'a,b'; st.vars.gold = 99999;
+  const r = engine.reconcileState(s, st);
+  eq(r.vars.rank, 0, '문자열 → 숫자 실패 → 0(min)으로 클램프');
+  eq(r.vars.mood, '좋음', '선택지 밖 → 시작값');
+  deep(r.vars.bag, ['a', 'b'], '문자열 → 목록');
+  assert.ok(typeof r.vars.gold === 'number', 'gold는 숫자 유지');
+  // 맞는 값은 그대로
+  const st2 = engine.initState(s); st2.vars.rank = 3;
+  eq(engine.reconcileState(s, st2).vars.rank, 3);
+});
+
+test('체크포인트 칸 이름 __proto__·constructor·prototype은 거부', () => {
+  const cp = require('../core/checkpoint');
+  for (const bad of ['__proto__', 'constructor', 'prototype']) assert.ok(!cp.SLOT_RE.test(bad), bad);
+  assert.ok(cp.SLOT_RE.test('main') && cp.SLOT_RE.test('_a1'));
+});
+
+test('세션: 첫 전송 전 슬롯(boot) — char 메시지가 없어도 저장·복원된다, out이 생기면 out이 이긴다', async () => {
+  const s = fx();
+  const backend = new MapBackend();
+  const a = new SimSession(s, backend, { chatId: 'c1' });
+  await a.init(-1);
+  a.current.vars.gold = 777;
+  await a.store.save('boot', 0, a.current);
+  const b = new SimSession(s, backend, { chatId: 'c1' });
+  await b.init(-1);
+  eq(b.current.vars.gold, 777, 'boot 슬롯에서 복원');
+  await b.onSend(0, '');
+  await b.onOutput(1, null);
+  const c = new SimSession(s, backend, { chatId: 'c1' });
+  await c.init(1);
+  eq(c.current.meta.turn, b.current.meta.turn, 'out:1이 있으면 그걸로');
+});
+
+test('세션: 미러 복원이 예약 키를 살리고 setup.ai 봇은 최초설정이 지난 것으로 본다', () => {
+  const s = fx();
+  s.setup = { ...(s.setup || {}), ai: { enabled: true, vars: ['gold'] } };
+  s.time = { start: '2026-01-01 09:00', advance: 'explicit', expose: ['date', 'clock'] };
+  s.vars.push({ id: 'skip_min', type: 'int', init: 0, min: 0, max: 1440 }, { id: 'skip_day', type: 'int', init: 0, min: 0, max: 365 });
+  const v = validateSchema(s); eq(v.ok, true, JSON.stringify(v.errors));
+  const ses = new SimSession(s, new MapBackend(), { chatId: 'c2' });
+  const n = ses.restoreFromMirror({ '$gold': '42', '$time_epoch': '123456' });
+  assert.ok(n >= 2, String(n));
+  eq(ses.current.vars.gold, 42);
+  eq(ses.current.vars.time_epoch, 123456, '예약 키 복원');
+  eq(ses.current.meta.setupDone, true, '최초설정 지남');
+  eq(engine.isSetupPending(s, ses.current), false);
+});
+
+test('세션: 세이브 가져오기(같은 채팅)는 먼저 쓰고 파일에 없는 것만 지운다', async () => {
+  const s = fx();
+  const backend = new MapBackend();
+  const a = new SimSession(s, backend, { chatId: 'c3' });
+  await a.init(-1); await a.onSend(0, ''); await a.onOutput(1, null); await a.onSend(2, ''); await a.onOutput(3, null);
+  const data = await a.exportData(3);
+  delete data.snapshots['out:3']; // 파일에서 한 턴을 지웠다
+  const r = await a.importData(data, 3);
+  eq(r.sameChat, true);
+  eq(await a.store.load('out', 3), null, '파일에 없는 스냅샷은 지워진다');
+  assert.ok(await a.store.load('out', 1), '파일에 있는 것은 남는다');
+});
+
+test('reconcileState: fight 판정을 뺀 스키마에선 열린 교전을 닫는다', () => {
+  const fight = require('../core/fight');
+  const s = fx();
+  const st = engine.initState(s);
+  st.vars[fight.FIGHT_KEYS.max] = 30; st.vars[fight.FIGHT_KEYS.gauge] = 5; st.vars[fight.FIGHT_KEYS.check] = 'gone';
+  assert.ok(fight.fightActive(st.vars));
+  const r = engine.reconcileState(s, st);
+  eq(fight.fightActive(r.vars), false);
+});
+
 // ── when (조건 잠금) — v1.14.3 ──
 function whenFx() {
   return {

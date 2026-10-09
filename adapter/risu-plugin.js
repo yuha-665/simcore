@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.6
-//@display-name SimCore (시뮬 엔진) v1.14.6 점검 2차
+//@version 1.14.7
+//@display-name SimCore (시뮬 엔진) v1.14.7 점검 3차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,21 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.7 ──────────────────────────────────────────────
+// **전체 점검 3차 — 상태 저장·복원 (영역 3).** 읽기 감사 19건 중 코드로 재확인한 것.
+// - [시간선 재정렬] 중간 메시지를 지우면 번호로 찾는 스냅샷이 낡은 시간선이 되어 다음 전송·재로드에 k/2턴 되감겼다(짝수 삭제는 옛
+//   pre:U가 혈통 검사를 통과, 홀수는 옛 out). 이제 마지막 char 메시지의 마커 ⟦simcore:N⟧이 가리키는 out:N을 진짜로 보고, 번호와
+//   어긋나면 지금 자리로 옮기고 그 뒤를 지운다 — 로드·전송 두 지점에서. 그 뒤였던 과거 메시지의 상태창은 현재값 폴백.
+// - [첫 전송 전 슬롯] char 메시지가 없는 채팅(새 채팅·빈 채팅에 세이브 가져오기)의 조작·가져온 상태가 boot:0에 저장되고 로드에서
+//   복원된다 — 전엔 앵커 -1 가드에 걸려 전부 램에만 살았다. 저장 7곳을 persistCurrent 하나로.
+// - [최초설정] AI 최초설정이 끝난 턴 0에 재로드하면 시작 프리셋이 AI 값을 덮던 것 — setupDone이면 안 덮는다.
+// - [미러 복원] 예약 키(날짜·막·비밀·진영·게이지·교전)까지 복원하고, setup.ai 봇이면 최초설정이 지난 것으로 보며, 스냅샷에 저장한다.
+// - [reconcileState] 타입·범위 정리 — 편집기 타입 변경·다른 스키마 세이브로 남은 옛 값이 evaluate를 던져 정산 전체가 매 턴 죽던 것.
+//   fight 판정을 스키마에서 뺐는데 교전이 열려 있던 세이브는 교전을 닫는다.
+// - [부팅] 로드가 던져도 훅은 등록된다. 상태 복원이 던지면 반쯤 초기화된 세션을 남기지 않는다.
+// - [세이브 가져오기] 먼저 쓰고 파일에 없는 것만 지운다(원자성). [체크포인트] __proto__·constructor·prototype 칸 거부.
+//   [마커 복구] 부른 세션에서만.
+
 // ── v1.14.6 ──────────────────────────────────────────────
 // **전체 점검 2차 — 어댑터 묶음 (영역 2·3·4의 리수 통합 쪽).** 읽기 감사 후보를 코드로 재확인한 것만.
 // - [턴 중 조작 가드] 액션 버튼·상점 구매/환전/판매·의뢰 수락/취소·갈림길 클릭·프리셋이 turnBusy 중엔 거부된다(보드·메신저·새로고침과
@@ -3712,6 +3727,13 @@
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
   // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
   let turnBusy = false;
+  // 현재 상태 저장 (v1.14.7) — 턴 사이 조작(토글·패널·상점·의뢰·프리셋·명령)은 out:lastOutIndex에, char 메시지가 아직 없으면
+  // 첫 전송 전 슬롯(boot:0)에. 전엔 앵커가 -1이면 전부 건너뛰어 새 채팅·빈 채팅의 조작이 재로드에서 증발했다
+  async function persistCurrent() {
+    if (!session || !session.current) return;
+    if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+    else await session.store.save('boot', 0, session.current);
+  }
   // 생성 중 조작 금지 문구 (v1.14.6) — 턴 진행 중의 패널·버튼 조작은 응답 처리가 send 스냅샷에서 다시 계산해 사라지고,
   // 직전 out 스냅샷(lastOutIndex)까지 전송 단계 상태로 덮어 리롤 프롬프트에서 [이벤트]·액션 줄이 빠졌다 (점검 영역 2·3)
   const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요';
@@ -3764,6 +3786,29 @@
       // 심코어를 안 쓰는 유저에게까지 뜨면 안 된다
       if (session) { try { await initClickControls(); } catch (e) { console.log('[simcore] 클릭 조작 초기화 실패:', e.message); } }
     }
+  }
+
+  // 시간선 재정렬 (v1.14.7) — 마커 번호와 메시지 번호가 어긋나면(중간 메시지 삭제·삽입) 번호로 찾는 스냅샷이 낡은 시간선이다.
+  // 전엔 짝수 개를 지우면 옛 pre:U가 혈통 검사를 통과해 k/2턴 전으로 되감겼고, 홀수 개면 재로드에서 옛 out으로 되감겼다
+  // (점검 영역 3 #1). 마지막 char 메시지의 ⟦simcore:N⟧이 가리키는 out:N이 진짜 현재 상태 — 지금 번호 자리로 옮기고 그 뒤를 지운다.
+  // 그 메시지보다 뒤였던 과거 메시지들의 상태창은 현재값 폴백으로 그려진다(스냅샷을 잃는다) — 되감김보다 낫다.
+  async function realignTimeline(chat, lastCharIdx, where) {
+    try {
+      if (!session || lastCharIdx < 0) return false;
+      const msg = chat?.message?.[lastCharIdx];
+      const m = typeof msg?.data === 'string' ? msg.data.match(/⟦simcore:(\d+)⟧/) : null;
+      if (!m) return false;
+      const n = parseInt(m[1], 10);
+      if (!Number.isFinite(n) || n === lastCharIdx) return false;
+      const real = await session.store.load('out', n);
+      if (!real) { console.log('[simcore] 시간선 재정렬 불가 — out:' + n + ' 없음 (' + where + ')'); return false; }
+      await session.store.pruneFrom(lastCharIdx + 1);
+      await session.store.save('out', lastCharIdx, real);
+      session.current = engine.reconcileState(schema, JSON.parse(JSON.stringify(real)));
+      histStates = new Map(); histPending.clear();
+      console.log('[simcore] 시간선 재정렬: 마커', n, '→ 메시지', lastCharIdx, '(' + where + ')');
+      return true;
+    } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
 
   async function loadForCurrentCharInner() {
@@ -3840,7 +3885,15 @@
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
-    await session.init(lastCharIdx);
+    await realignTimeline(chat, lastCharIdx, '로드');
+    try { await session.init(lastCharIdx); }
+    catch (e) {
+      // 반쯤 초기화된 세션을 남기지 않는다 (v1.14.7) — 전엔 current가 null인 세션이 남아 다음 전송이 initState로 조용히 시작했다 (점검 영역 3 #10)
+      console.log('[simcore] 상태 복원 실패:', e.message);
+      session = null; charKey = null;
+      panelStatus = { state: 'parse-error', charName: char.name, report: [{ path: '$', msg: '상태 복원 실패: ' + e.message }] };
+      return;
+    }
     // 패널 쓰기의 저장 앵커 (v1.0.4) — 로드 직후 lastOutIndex가 -1이면 boardSaveNow·
     // commitPanelChanges·수동 설정이 전부 조용히 저장을 건너뛰어, 턴 없이 패널만 만진
     // 변화(게시글·거래·보정)가 램에만 살았다. 그러다 리로드(신안 재적용·재부팅·전환)가
@@ -3855,7 +3908,7 @@
     startPresetKey = `sim:start-preset:${currentChaId}`;
     try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
     catch { startPresetId = null; }
-    if (startPresetId && session.current.meta.turn === 0) {
+    if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
       if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
         session.applyPreset(startPresetId);
         console.log('[simcore] 새 시작 프리셋 자동 적용:', startPresetId);
@@ -3865,7 +3918,8 @@
     histPrefetch(); // 과거 상태창 (v1.0 #1) — 배경 적재, 실패해도 무해 (현재 상태 폴백)
   }
 
-  await loadForCurrentChar();
+  // 부팅 로드 (v1.14.7: 던져도 아래 훅 등록은 계속 — 전엔 여기서 던지면 input·beforeRequest·output·display 훅이 하나도 안 붙었다)
+  try { await loadForCurrentChar(); } catch (e) { console.log('[simcore] 부팅 로드 실패:', e.message); }
 
   // ── 캐릭터/채팅 전환 감지 ─────────────────────────────────
   // API v3에는 전환 이벤트가 없다. 그래서 v0.28까지는 로드 시점이 셋뿐이었다:
@@ -3912,7 +3966,7 @@
       if (!session || !schema) return content;
       await flushOutputSettle();   // 미확정 스트리밍 턴이 있으면 그 결과 위에 명령을 얹는다
       const persist = async () => {
-        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+        await persistCurrent();
         const chaIdx = await Risuai.getCurrentCharacterIndex();
         const chatIdx = await Risuai.getCurrentChatIndex();
         await mirrorVars(chaIdx, chatIdx);
@@ -4038,6 +4092,8 @@
       // 전투 안무 (v1.6.0) — 유저 입력 길이로 맡김/내 수를 가른다. 굴림에는 안 쓰인다 (리롤 안정)
       const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
       const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
+      // 마지막 char 메시지의 마커가 번호와 어긋나면(중간 삭제) 전송 전에 시간선을 맞춘다 (v1.14.7)
+      if (chat?.message?.[sendIndex - 1]?.role === 'char') await realignTimeline(chat, sendIndex - 1, '전송');
       const r = await session.onSend(sendIndex, userText);
       lastChangeLog = r.changeLog;
       // 강제 갈림길 (v1.8.0 strict) — 유저가 선택지 밖의 글을 보냈으면 모델은 원문을 못 본다. 대체문으로 바꾼다
@@ -4291,9 +4347,10 @@
   //   · turnBusy 중엔 손대지 않는다 (다음 턴 파이프라인이 도는 중 — 다음 기회에 본다)
   //   · 그 자리에 char 메시지가 없으면 손대지 않는다 (리롤로 지워진 중)
   function scheduleMarkerHeal(outIndex) {
+    const sess0 = session; // 다른 채팅으로 옮긴 뒤 그 채팅의 메시지에 마커를 붙이지 않는다 (v1.14.7, 영역 3 #16)
     const attempt = async (label) => {
       try {
-        if (turnBusy || !session) return;
+        if (turnBusy || !session || session !== sess0) return;
         const ca = await Risuai.getCurrentCharacterIndex();
         const ci = await Risuai.getCurrentChatIndex();
         const chat = await Risuai.getChatFromIndex(ca, ci);
@@ -4901,7 +4958,7 @@
       // 무장은 램에만 있었다 (v1.5.1) — /액션 명령 경로는 저장하는데 버튼 경로만 안 했다.
       // 리로드·전환이 오면 세션이 스냅샷에서 복원되며 무장이 조용히 풀린다.
       try {
-        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current); // 무장 유지
+        await persistCurrent(); // 무장 유지
       } catch (e) { console.log('[simcore] 무장 저장 실패:', e.message); }
     }
     await syncControls();
@@ -5650,7 +5707,7 @@
   async function commitPanelChanges(changes, what) {
     Object.assign(session.current.vars, changes);
     try {
-      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      await persistCurrent();
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);
@@ -5672,7 +5729,7 @@
   // 규약: turnBusy 중엔 호출 안 함 (턴 파이프라인의 보조 호출과 경합 금지). 적용 후에는
   // out:lastOutIndex 스냅샷을 덮어써 리롤과 정합 유지 (manualSet·commitPanelChanges와 같은 규약).
   async function boardSaveNow(what) {
-    try { if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current); }
+    try { await persistCurrent(); }
     catch (e) { console.log(`[simcore] ${what} 저장 실패:`, e.message); }
   }
 
@@ -6809,7 +6866,7 @@
     const v = engine.pickChoice(schema, session.current, idx);
     if (!v.ok) { try { await Risuai.alert(`선택 — ${v.reason}`); } catch {} return; }
     session.current.meta = { ...session.current.meta, pendingChoicePick: idx };
-    if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+    await persistCurrent();
     console.log('[simcore] 갈림길 클릭 선택:', idx + 1, v.label);
     await syncControls();
     if (panelBuilt) renderPanel();
@@ -8226,8 +8283,9 @@ count(목록)  has(목록, "항목")</pre>
       const chatIdx = await Risuai.getCurrentChatIndex();
       const chat = await Risuai.getChatFromIndex(chaIdx, chatIdx);
       const n = session.restoreFromMirror(chat?.scriptstate || {});
+      if (n > 0) { try { await persistCurrent(); } catch (e) { console.log('[simcore] 미러 복원 저장 실패:', e.message); } } // 복원분을 스냅샷에 (v1.14.7)
       rep.innerHTML = n > 0
-        ? `<span class="status-ok">✓ 변수 ${n}개 복원 (쿨다운·대기 이벤트는 초기화됨)</span>`
+        ? `<span class="status-ok">✓ 값 ${n}개 복원 — 날짜·막·비밀·진영·게이지·교전 키 포함, 쿨다운·대기 이벤트는 초기화됨</span>`
         : '<span class="status-warn">미러에 복원할 값이 없음</span>';
       renderPanel();
     };
@@ -8820,7 +8878,7 @@ count(목록)  has(목록, "항목")</pre>
         try { if (startPresetKey) await Risuai.pluginStorage.setItem(startPresetKey, p.id); } catch {}
         // ⚠ 스냅샷 저장을 빼먹으면 프리셋이 메모리에만 남는다 — 채팅을 옮겼다 돌아오면
         // 마지막 저장본으로 되돌아가 조용히 사라진다 (v0.85.1, 변수 수동 보정과 같은 규약)
-        if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+        await persistCurrent();
         const chaIdx = await Risuai.getCurrentCharacterIndex();
         const chatIdx = await Risuai.getCurrentChatIndex();
         await mirrorVars(chaIdx, chatIdx);
@@ -8843,7 +8901,7 @@ count(목록)  has(목록, "항목")</pre>
     // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 + 다시 그리기
     const commitVars = async () => {
       if (turnBusy) console.log('[simcore] 턴 진행 중 패널 수정 — 응답 처리가 send 스냅샷 기준이라 덮일 수 있음 (v1.14.6)');
-      if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
+      await persistCurrent();
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();
       await mirrorVars(chaIdx, chatIdx);

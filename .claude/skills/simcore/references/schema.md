@@ -904,7 +904,7 @@ liveChoices: {
 | `checkpoint.notify` | 되감긴 턴 안내({변수} 가능). 비우면 `DEFAULT_LOAD_NOTIFY` |
 
 - **되감는 것** = `state.vars` 전부(예약 키 time_epoch·scn_idx·scn_turns·fight_*·sec_* 포함) + `meta.firedOnce`·`eventLastFired`
-  (once 사건이 다시 일어난다). 걸린 갈림길은 걷힌다. **안 되감는 것** = `meta.turn`(앞으로만)·채팅·보드·상점·메신저·의뢰판.
+  (once 사건이 다시 일어난다). 걸린 갈림길은 걷힌다. **안 되감는 것** = `meta.turn`(앞으로만)·`actionLastUsed`(쿨다운)·`lastCheck`·`liveAsk`·`pendingNotifies`·채팅·보드·상점·메신저·의뢰판.
   저장 뒤 스키마에 생긴 변수는 `reconcileState`가 init으로
 - **시점**: `applySets`는 `meta.cpQueue`에 줄만 세우고 엔진 `flushCheckpoints`가 단계 끝에 처리 — 전송 단계 1.3(액션·선택지 뒤,
   시간 소비 앞: 고른 그 턴 프롬프트가 되감긴 날짜로 나가고 안내도 injects로 그 턴에), 응답 단계 8.95(이벤트·막 전환·비밀·turn_min

@@ -197,6 +197,21 @@ function reconcileState(schema, state) {
   for (const v of schema.vars) {
     if (!(v.id in state.vars)) state.vars[v.id] = v.init !== undefined ? v.init : defaultInit(v);
   }
+  // 타입·범위 정리 (v1.14.7) — 전엔 없는 키만 채웠다. 편집기에서 타입을 바꾸거나(text→int) 다른 스키마의 세이브를 가져오면
+  // 옛 값("평범", [...])이 그대로 남아 evaluate가 던져 정산 전체가 매 턴 죽었다(점검 영역 3 #9). 맞지 않는 값은 coerce로
+  // 고치고, 못 고치면(선택지 밖) 시작값. 범위 밖 숫자는 클램프. 맞는 값은 손대지 않는다.
+  for (const v of schema.vars) {
+    const cur = state.vars[v.id];
+    const num = v.type === 'int' || v.type === 'float';
+    const okType = num ? (typeof cur === 'number' && Number.isFinite(cur))
+      : v.type === 'bool' ? typeof cur === 'boolean'
+      : v.type === 'list' ? Array.isArray(cur)
+      : v.type === 'enum' ? (typeof cur === 'string' && Array.isArray(v.enum) && v.enum.includes(cur))
+      : typeof cur === 'string';
+    if (okType && (!num || ((v.min == null || cur >= v.min) && (v.max == null || cur <= v.max)))) continue;
+    const fixed = coerce(v, cur);
+    state.vars[v.id] = fixed === undefined ? (v.init !== undefined ? v.init : defaultInit(v)) : fixed;
+  }
   // 시간 체계를 나중에 켠 진행 중 세이브 — 시작 시점부터 흐른 것으로 친다
   const tcfg = timeConfig(schema);
   if (tcfg && typeof state.vars[EPOCH_KEY] !== 'number') state.vars[EPOCH_KEY] = tcfg.startEpoch;
@@ -213,6 +228,7 @@ function reconcileState(schema, state) {
   gaugeMod.ensureGaugeKeys(schema, state.vars); // 사건 게이지 (v1.14.0) — 같은 규약 (나중에 켜면 빈 게이지에서)
   // 전투 안무 예약 키 (v1.6.0) — fight 달린 판정이 있는 봇만. 같은 계열(vars에 살아 when·상태창이 읽는다)
   if (fightMod.fightChecks(schema).length) fightMod.ensureFightKeys(state);
+  else if (fightMod.fightActive(state.vars)) fightMod.clearFight(state); // fight 판정을 스키마에서 뺐는데 교전이 열려 있던 세이브 — 상시 줄이 영영 남는다 (v1.14.7)
   // 커뮤니티 보드 (v0.95) — 옵트인 봇만. 구세이브·중간에 켠 스키마엔 빈 보드가 붙는다.
   if (boardMod.boardConfig(schema)) boardMod.ensureBoard(state);
   shopMod.ensureShops(schema, state); // 상점 (v0.96) — 같은 규약. v1.4.0: 단수→배열 전환 이관 포함

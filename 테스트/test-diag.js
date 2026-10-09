@@ -593,6 +593,71 @@ for (const key of ['survival', 'politics', 'business', 'rpg']) {
   ck('매 턴 처리도 쓰는 값은 연쇄가 아니다 (좁은 면제)', of('mixed_ev').some((f) => f.tag === '죽은 이벤트'), tags('mixed_ev'));
 }
 
+// ── v1.14.16 — 병목 AST · 랜덤 후보 · 시간 조건 · 긴 판 시드 ──
+{
+  const b1 = bottleneck('(a >= 60 or b >= 60) and c >= 10', { a: { min: 0, max: 30 }, b: { min: 0, max: 45 }, c: { min: 0, max: 50 } });
+  ck('★ 중첩 or — 닿은 c는 빼고, or 갈래 중 가장 가까운 b', b1 && b1.id === 'b' && b1.pct === 75 && b1.ofBranches === 2, JSON.stringify(b1));
+  ck('not (hp < 10) = hp >= 10 — 닿았으면 null', bottleneck('not (hp < 10)', { hp: { min: 20, max: 30 } }) === null, '');
+  const b2 = bottleneck('not (gold > 100)', { gold: { min: 200, max: 300 } });
+  ck('not (gold > 100) = gold <= 100 — 최저 200으로 못 닿음', b2 && b2.id === 'gold' && b2.op === '<=' && b2.need === 100 && b2.got === 200, JSON.stringify(b2));
+  const b3 = bottleneck('not (a >= 5 and b >= 5)', { a: { min: 0, max: 9 }, b: { min: 7, max: 9 } });
+  ck('not (a and b) = (not a) or (not b) — a < 5는 닿았으니 null', b3 === null, JSON.stringify(b3));
+  const CS = { simcore: '0.1', meta: { name: 'bn' }, vars: [
+    { id: 'gold', label: 'g', type: 'int', init: 0, min: 0 }, { id: 'silver', label: 's', type: 'int', init: 0, min: 0 },
+    { id: 'cost', label: 'c', type: 'int', init: 40, min: 0 }, { id: 'dom', label: 'd', type: 'int', init: 1, min: 1 },
+    { id: 'place', label: 'p', type: 'enum', enum: ['마을', '들판'], init: '마을' }] };
+  ck('병목 실험대 검증', validateSchema(CS).ok, JSON.stringify(validateSchema(CS).errors));
+  const st = (o) => ({ gold: 0, silver: 0, cost: 40, dom: 1, place: '마을', ...o });
+  const ctx = { schema: CS, states: [st({ gold: 10, silver: 20 }), st({ gold: 30, silver: 40 })] };
+  const b4 = bottleneck('gold + silver >= 100', {}, ctx);
+  ck('★ 좌변 산술 — 표본에서 양변을 재 가장 가까운 순간', b4 && b4.id === 'gold + silver' && b4.got === 70 && b4.need === 100 && b4.pct === 70 && b4.ids.join() === 'gold,silver', JSON.stringify(b4));
+  const b5 = bottleneck('gold >= cost * 2', {}, { schema: CS, states: [st({ gold: 50, cost: 40 })] });
+  ck('★ 우변 식 — need가 상태마다 계산된다', b5 && b5.need === 80 && b5.got === 50 && b5.pct === 63, JSON.stringify(b5));
+  const b6 = bottleneck('dom == 1', {}, { schema: CS, states: [st({ dom: 5 }), st({ dom: 3 })] });
+  ck('★ == 수치 — 가장 가까운 값', b6 && b6.op === '==' && b6.need === 1 && b6.got === 3 && b6.pct === null, JSON.stringify(b6));
+  ck('== 수치 — 닿았으면 null', bottleneck('dom == 1', {}, { schema: CS, states: [st({ dom: 5 }), st({ dom: 1 })] }) === null, '');
+  const b7 = bottleneck("place == '마을' and gold >= 10", { gold: { min: 0, max: 5 } }, ctx);
+  ck('문자열 비교는 건너뛰고 수치 항만', b7 && b7.id === 'gold', JSON.stringify(b7));
+  ck('문맥 없이 복합 식은 정보 없음(null)', bottleneck('gold + silver >= 100', { gold: { min: 0, max: 5 } }) === null, '');
+  ck('깨진 식은 null', bottleneck('gold >= ', { gold: { min: 0, max: 5 } }) === null, '');
+  ck('옛 단순형은 그대로 (gold 25%)', bottleneck('gold >= 1000 and hp >= 5', { gold: { min: 0, max: 250 }, hp: { min: 1, max: 9 } }).pct === 25, '');
+
+  // 랜덤 후보 — 추첨에서 밀린 사건은 죽은 이벤트가 아니다
+  const RS = { simcore: '0.1', meta: { name: 'rand' }, vars: [{ id: 'gold', label: '금', type: 'int', init: 0, min: 0 }],
+    rules: { randomEvents: { chancePerTurn: 1, table: [
+      { id: 'common', weight: 1000, notify: '흔한 일', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+      { id: 'rare', weight: 1, notify: '드문 일', effects: [{ set: 'gold', expr: 'gold + 100' }] },
+      { id: 'never', weight: 1000, when: 'gold >= 100000', notify: '영영', effects: [] } ] } } };
+  ck('랜덤 실험대 검증', validateSchema(RS).ok, JSON.stringify(validateSchema(RS).errors));
+  const rr = diagnose(RS, { turns: 20, runs: 2, actionImpact: false });
+  const fr = rr.findings.find((f) => /'rare'/.test(f.text));
+  ck('★ 후보였는데 안 뽑힌 사건은 🔵 랜덤 후보', fr && fr.tag === '랜덤 후보' && fr.sev === 'low', fr ? `${fr.tag}: ${fr.text}` : '언급 없음');
+  const fn = rr.findings.find((f) => /'never'/.test(f.text));
+  ck('조건이 한 번도 참이 아닌 랜덤 사건은 여전히 사다리를 탄다(죽은 이벤트)', fn && fn.tag === '죽은 이벤트', fn ? `${fn.tag}: ${fn.text}` : '언급 없음');
+  ck('랜덤 표가 돌았으니 표 정지 지적은 없다', !rr.findings.some((f) => f.tag === '랜덤 표 정지'), '');
+  const RS0 = JSON.parse(JSON.stringify(RS)); RS0.rules.randomEvents.chancePerTurn = 0;
+  const r0 = diagnose(RS0, { turns: 20, runs: 2, actionImpact: false });
+  ck('★ 한 번도 안 돈 표는 🟡 랜덤 표 정지 하나 + 후보는 🔵', r0.findings.some((f) => f.tag === '랜덤 표 정지') && r0.findings.filter((f) => f.tag === '랜덤 후보').length === 2, r0.findings.map((f) => f.tag).join(','));
+
+  // 시간 조건 — hour >= 20은 턴마다 하루(같은 시각) 가정으로 못 맞춘다
+  const TS = { simcore: '0.1', meta: { name: 'time' }, time: { start: '2026-04-01 08:00', advance: 'explicit', expose: ['hour', 'dom'] },
+    vars: [{ id: 'gold', label: '금', type: 'int', init: 0, min: 0 }],
+    rules: { onTurn: [{ set: 'gold', expr: 'gold + 1' }], events: [
+      { id: 'night', when: 'hour >= 20', notify: '밤이다', effects: [] },
+      { id: 'rent', when: 'dom == 1', notify: '월세', effects: [] } ] },
+    actions: [{ id: 'shop', label: '가게', when: 'hour >= 9 and hour < 18', effects: [{ set: 'gold', expr: 'gold + 1' }] },
+      { id: 'night_walk', label: '밤 산책', when: 'hour >= 21', effects: [] }] };
+  ck('시간 실험대 검증', validateSchema(TS).ok, JSON.stringify(validateSchema(TS).errors));
+  const tr = diagnose(TS, { turns: 40, runs: 2, actionImpact: false });
+  const fnight = tr.findings.find((f) => /'night'/.test(f.text));
+  ck('★ hour >= 20 이벤트는 🔵 시간 조건 (문턱을 내리지 마세요)', fnight && fnight.tag === '시간 조건', fnight ? `${fnight.tag}: ${fnight.text}` : '언급 없음');
+  ck('★ dom == 1 이벤트는 1일/턴 가정으로 실제로 뜬다 (==를 읽는다)', !tr.findings.some((f) => /'rent'/.test(f.text) && ['죽은 이벤트', '시간 조건'].includes(f.tag)), tr.findings.filter((f) => /'rent'/.test(f.text)).map((f) => f.tag).join(','));
+  const fwalk = tr.findings.find((f) => /밤 산책/.test(f.text));
+  ck('★ hour >= 21 액션은 🔵 시간 조건', fwalk && fwalk.tag === '시간 조건', fwalk ? `${fwalk.tag}: ${fwalk.text}` : '언급 없음');
+  ck('소스: 긴 판에 갈림길을 고르는 시드(long2)도', src.includes("sim('long2', randomPolicy, longTurns, { quiet: true })"), '');
+  ck('소스: 극성·게이트 판정은 궤적 표본(polStates)으로', !src.includes('finalStates') && src.includes('const polStates = [...idle, ...play].flatMap((r) => r.hist.filter((_, k) => k % 5 === 0));'), '');
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

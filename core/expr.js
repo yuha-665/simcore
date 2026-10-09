@@ -335,4 +335,4 @@ function renameVar(src, oldId, newId) {
   return out + s.slice(last);
 }
 
-module.exports = { compile, evaluate, referencedVars, renameVar, ExprError, truthy, itemValue, itemExpiry };
+module.exports = { compile, evaluate, referencedVars, renameVar, ExprError, truthy, itemValue, itemExpiry, parse, evalAst }; // parse·evalAst: 진단의 AST 병목 (v1.14.16)

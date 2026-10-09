@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.15
-//@display-name SimCore (시뮬 엔진) v1.14.15 보류 후속 4차
+//@version 1.14.16
+//@display-name SimCore (시뮬 엔진) v1.14.16 보류 후속 5차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,12 +10,17 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.15 ──────────────────────────────────────────────
-// **전체 점검 후속 4차 — 편집기 칸 둘.** 영역 6 보류였던 "JSON으로만 짤 수 있던 자리".
-// - [전투 안무] 판정 카드에 ⚔ 절: 켜기(게이지 30 + gain 없는 등급에 10)·상대 게이지 크기·반격 판정 셀렉트(전투 안무 없는 판정만)·방치 턴·
-//   상대 이름·개시 비트 후보·시트 규칙/대기 줄·승리 효과·승리/패배 연출·패배 조건·🚪 이탈 버튼 만들기·끄기. 등급 행에 유효량(gain) 칸.
-//   ⚔ 액션 버튼 만들기 라벨.
-// - [되감기] 시나리오가 없는 봇에도 시나리오 탭에 되감기 카드가 보인다 — 되감기는 이벤트·선택지의 효과만으로도 돌아서 막이 필요 없다.
+// ── v1.14.16 ──────────────────────────────────────────────
+// **전체 점검 후속 5차 — 진단 알고리즘 재설계 (영역 9 보류).**
+// - [병목 AST] 조건식을 파서로 읽어 부정 정규형으로 편 뒤 접는다 — 중첩 or((a>=60 or b>=60) and c>=10)·not (hp < 10)·좌변 산술(gold + silver
+//   >= 100)·우변 식(gold >= cost * 2)·== 수치(dom == 1)를 읽는다. 전엔 `id op 숫자` 정규식과 깊이 0의 or 쪼개기라 틀리거나 못 봤다.
+//   복합 좌변은 표본 상태에서 양변을 평가해 가장 가까웠던 순간을 쓰고, 그 안의 변수들(ids)로 AI 담당·연쇄·옮겨 세는 값 면책을 본다.
+// - [극성 궤적] 설정 게이트·플래그 연쇄 판정을 판 끝 상태가 아니라 5턴마다의 궤적 표본으로 — 판 중간에만 막던 플래그를 못 짚던 것.
+// - [랜덤 후보] 랜덤 표의 후보였는데(조건이 참인 순간이 있었는데) 추첨에서 밀린 사건은 '죽은 이벤트'가 아니라 🔵 랜덤 후보. 표가 한 번도
+//   안 돌았으면 🟡 랜덤 표 정지 하나로 묶는다.
+// - [시간 조건] hour >= 20·영업 시간처럼 시간 체계가 주는 값의 문턱은 "턴마다 하루(같은 시각)" 가정이 못 맞춘다 — 🔵 시간 조건, 문턱을
+//   내리지 말라고. dom == 1은 이제 ==를 읽어 실제 발동으로 잡힌다.
+// - [긴 판] 갈림길을 고르는 시드(long2)도 돌린다 — 놀이 판은 짝수 시드만 고르므로 long1만으론 선택지 뒤의 길이 긴 판에서 영영 안 보였다.
 
 
 const SimCore = (() => {
@@ -372,7 +377,7 @@ function renameVar(src, oldId, newId) {
   return out + s.slice(last);
 }
 
-module.exports = { compile, evaluate, referencedVars, renameVar, ExprError, truthy, itemValue, itemExpiry };
+module.exports = { compile, evaluate, referencedVars, renameVar, ExprError, truthy, itemValue, itemExpiry, parse, evalAst }; // parse·evalAst: 진단의 AST 병목 (v1.14.16)
 
 });
 
@@ -11337,12 +11342,11 @@ const { seededRng } = require('./rng');
 const { timeConfig, MIN_PER_DAY, EPOCH_KEY, SKIP_DAY, SKIP_MIN, TURN_MIN_KEY } = require('./time');
 const { scenarioConfig } = require('./scenario');
 const { secretsConfig, secKey } = require('./secret'); // 비밀 (v1.10.0) — 영영 안 열리는 단계 진단
-const { evaluate, truthy, referencedVars } = require('./expr');
+const { evaluate, truthy, referencedVars, parse, evalAst } = require('./expr');
 const choiceMod = require('./choice'); // 놀이 판 갈림길 고르기 — 타임아웃이 고를 자리(fallbackIndex)를 빼고 고른다 (v1.13.1)
 
 const ID_TOKEN = /[a-zA-Z_][a-zA-Z0-9_]*/g;
-// `wealth >= 2000` 같은 "수치 문턱"만 뽑는다. 문자열 비교(enum)는 별도로 다룬다.
-const CMP = /([a-zA-Z_][a-zA-Z0-9_]*)\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)/g;
+// 수치 문턱은 AST로 읽는다 (v1.14.16, 아래 bottleneck) — 전엔 `id op 숫자` 정규식이라 중첩 or·not·좌변 산술·우변 식·==를 못 봤다.
 
 /** 검증 오류 경로 → 그 문제를 고칠 탭 */
 function tabOfPath(path) {
@@ -11442,14 +11446,17 @@ function inRange(schema, id, op, need) {
 function aiGated(schema, b, turns, ctx = null) {
   if (!b) return false;
   const allow = schema.updater?.allow || [];
-  const a = allow.find((x) => x.id === b.id);
+  // 좌변이 식이면(gold + silver >= 100) 그 안의 변수 하나라도 AI 몫이면 AI가 미는 값이다 (v1.14.16, b.ids)
+  const ids = Array.isArray(b.ids) && b.ids.length ? b.ids : [b.id];
+  const a = allow.find((x) => ids.includes(x.id));
   if (!a) {
     // 파생 투과 (v1.14.11) — 문턱 변수가 AI 변수들의 파생(rel_top = max(rel_n, …))이면 AI가 움직이는 것이다
-    const d = (schema.derived || []).find((x) => x.id === b.id);
-    if (d) {
+    for (const id of ids) {
+      const d = (schema.derived || []).find((x) => x.id === id);
+      if (!d) continue;
       let refs = [];
-      try { refs = referencedVars(d.expr).filter((id) => schema.vars.some((v) => v.id === id)); } catch { refs = []; }
-      if (refs.length && refs.every((id) => allow.some((x) => x.id === id))) return true;
+      try { refs = referencedVars(d.expr).filter((vid) => schema.vars.some((v) => v.id === vid)); } catch { refs = []; }
+      if (refs.length && refs.every((vid) => allow.some((x) => x.id === vid))) return true;
     }
     return false;
   }
@@ -11463,7 +11470,7 @@ function aiGated(schema, b, turns, ctx = null) {
   const up = b.op === '>=' || b.op === '>';
   const cap = (up ? a.maxGain : a.maxLoss) ?? a.maxDelta;
   if (cap === 0) return false;
-  if (!inRange(schema, b.id, b.op, b.need)) return false;
+  if (!inRange(schema, a.id, b.op, b.need)) return false;
   if (typeof cap === 'number' && isFinite(cap) && Math.abs(b.need - b.got) > Math.abs(cap) * turns) return false;
   return true;
 }
@@ -11495,65 +11502,107 @@ function blockedBy(when, states, schema, v) {
   return false;
 }
 
-/** 괄호 깊이 0의 ` or `로 조건을 갈라낸다 — 서로 대안인 갈래들 */
-function orBranches(when) {
-  const out = [];
-  let depth = 0, start = 0;
-  for (let i = 0; i < when.length; i++) {
-    const c = when[i];
-    if (c === '(') depth++;
-    else if (c === ')') depth--;
-    else if (depth === 0 && when.startsWith(' or ', i)) {
-      out.push(when.slice(start, i));
-      i += 3; start = i + 1;
-    }
+// ── 수치 병목 (v1.14.16 — AST) ──────────────────────────────
+// 조건식을 파서로 읽어 부정 정규형(not을 안으로)으로 편 뒤, and는 '가장 안 닿은 항', or는 '가장 가까운 갈래'로 접는다.
+// 전엔 `id op 숫자` 정규식과 깊이 0의 ` or ` 쪼개기라 (a >= 60 or b >= 60) and c >= 10 같은 중첩, not (hp < 10), gold + silver >= 100,
+// gold >= cost * 2, dom == 1을 못 읽거나 틀리게 읽었다(점검 영역 9 보류). 좌변이 변수 하나·우변이 숫자면 관측 범위(obs)로 빠르게, 그 밖의
+// 비교는 표본 상태(ctx.states)에서 양변을 평가해 가장 가까웠던 순간을 쓴다. 문자열 비교(enum)는 여기 몫이 아니다(gatedBySetting).
+const CMP_OPS = new Set(['<', '<=', '>', '>=', '==', '!=']);
+const FLIP_OP = { '<': '>=', '<=': '>', '>': '<=', '>=': '<', '==': '!=', '!=': '==' };
+const REACHED = Symbol('reached');
+function astText(n) {
+  const wrap = (x) => (x.t === 'bin' || x.t === 'ternary' ? `(${astText(x)})` : astText(x));
+  switch (n?.t) {
+    case 'num': return String(n.v);
+    case 'str': return JSON.stringify(n.v);
+    case 'var': return n.name;
+    case 'un': return n.op === 'not' ? `not ${wrap(n.e)}` : `-${wrap(n.e)}`;
+    case 'call': return `${n.fn}(${n.args.map(astText).join(', ')})`;
+    case 'ternary': return `${wrap(n.c)} ? ${wrap(n.a)} : ${wrap(n.b)}`;
+    case 'bin': return `${wrap(n.l)} ${n.op} ${wrap(n.r)}`;
   }
-  out.push(when.slice(start));
-  return out.map((s) => s.trim()).filter(Boolean);
+  return '?';
 }
-
-/**
- * 조건이 왜 안 걸렸는지 수치로 설명한다.
- * `wealth >= 2000` 인데 관측 최고가 1833이면 "92%까지만 도달" 이라고 말해 준다.
- *
- * `and`로 묶인 항은 전부 만족해야 하므로 **가장 안 닿은 항**이 병목이다.
- * 반대로 `or`로 갈린 갈래는 하나만 되면 되므로 **가장 가까운 갈래**가 병목이다 —
- * 여기를 구분하지 않으면 8인 봇의 `a >= 60 or b >= 60 or …`에서 제일 먼 사람을 짚고
- * "얘 호감을 올리세요"라고 엉뚱한 처방을 낸다 (실측 사고, v0.45).
- */
-function bottleneck(when, obs) {
-  if (!when) return null;
-  const branches = orBranches(when);
-  if (branches.length > 1) {
-    let best = null;
-    for (const b of branches) {
-      const r = bottleneck(b, obs);
-      if (!r) return null;                       // 이미 닿은 갈래가 있다 — 병목이 아니다
-      if (!best || (r.pct != null && (best.pct == null || r.pct > best.pct))) best = r;
-    }
-    if (best) best.ofBranches = branches.length;
-    return best;
+function astVars(n, out = new Set()) {
+  if (!n) return out;
+  if (n.t === 'var') out.add(n.name);
+  if (n.t === 'bin') { astVars(n.l, out); astVars(n.r, out); }
+  if (n.t === 'un') astVars(n.e, out);
+  if (n.t === 'ternary') { astVars(n.c, out); astVars(n.a, out); astVars(n.b, out); }
+  if (n.t === 'call') n.args.forEach((a) => astVars(a, out));
+  return out;
+}
+/** 부정 정규형 — { kind: 'and'|'or', items } | { kind: 'cmp', op, l, r } | { kind: 'other' } */
+function normalizeCond(n, neg = false) {
+  if (n.t === 'bin' && (n.op === 'and' || n.op === 'or')) {
+    const kind = (n.op === 'and') !== neg ? 'and' : 'or';     // not (a and b) = (not a) or (not b)
+    const items = [normalizeCond(n.l, neg), normalizeCond(n.r, neg)].flatMap((it) => (it.kind === kind ? it.items : [it]));
+    return { kind, items };
   }
-  let worst = null;
-  CMP.lastIndex = 0;
-  let m;
-  while ((m = CMP.exec(when))) {
-    const [, id, op, numS] = m;
-    const o = obs[id];
-    if (!o || !isFinite(o.max)) continue;
-    const need = Number(numS);
+  if (n.t === 'un' && n.op === 'not') return normalizeCond(n.e, !neg);
+  if (n.t === 'bin' && CMP_OPS.has(n.op)) return { kind: 'cmp', op: neg ? FLIP_OP[n.op] : n.op, l: n.l, r: n.r };
+  return { kind: 'other' };                                    // bool 플래그·함수 결과 — 설정 게이트(gatedBySetting) 몫
+}
+const cmpOk = (op, l, r) => (op === '>=' ? l >= r : op === '>' ? l > r : op === '<=' ? l <= r : op === '<' ? l < r : op === '==' ? l === r : l !== r);
+const pctOf = (op, got, need) => ((op === '>=' || op === '>') ? (need === 0 ? 0 : Math.max(0, Math.round((got / need) * 100))) : null);
+/** 비교 잎 하나 — REACHED(닿은 적 있음) | null(정보 없음) | { id, ids, op, need, got, pct } */
+function cmpLeaf(leaf, obs, ctx) {
+  const { op, l, r } = leaf;
+  if (op === '!=') return null;                                // 거의 늘 닿는다 — 병목으로 셀 정보가 없다
+  const id = l.t === 'var' ? l.name : astText(l);
+  const ids = [...astVars(l)];
+  if (l.t === 'var' && r.t === 'num' && op !== '==') {         // 빠른 길 — 관측 범위
+    const o = obs?.[l.name];
+    if (!o || !isFinite(o.max)) return null;
+    const need = r.v;
     const got = (op === '>=' || op === '>') ? o.max : o.min;
-    const reached = (op === '>=') ? got >= need : (op === '>') ? got > need
-      : (op === '<=') ? got <= need : got < need;
-    if (reached) continue;
-    // 진행률: 큰 값을 향하는 조건은 got/need, 작은 값을 향하는 조건은 여유분 기준
-    const pct = (op === '>=' || op === '>')
-      ? (need === 0 ? 0 : Math.max(0, Math.round((got / need) * 100)))
-      : null;
-    const cand = { id, op, need, got, pct };
-    if (!worst || (pct != null && worst.pct != null && pct < worst.pct) || worst.pct == null) worst = cand;
+    return cmpOk(op, got, need) ? REACHED : { id, ids, op, need, got, pct: pctOf(op, got, need) };
   }
-  return worst;
+  if (!ctx || !ctx.schema || !Array.isArray(ctx.states) || !ctx.states.length) return null;
+  let best = null;
+  for (const vars of ctx.states) {
+    let look; try { look = engine.makeLookup(ctx.schema, vars); } catch { continue; }
+    let lv, rv; try { lv = evalAst(l, { lookup: look, rng: null }); rv = evalAst(r, { lookup: look, rng: null }); } catch { continue; }
+    if (typeof lv !== 'number' || typeof rv !== 'number' || !isFinite(lv) || !isFinite(rv)) continue; // 문자열 비교는 설정 게이트 몫
+    if (cmpOk(op, lv, rv)) return REACHED;
+    const gap = (op === '>=' || op === '>') ? rv - lv : (op === '<=' || op === '<') ? lv - rv : Math.abs(lv - rv);
+    if (!best || gap < best.gap) best = { gap, got: lv, need: rv };
+  }
+  if (!best) return null;
+  return { id, ids, op, need: best.need, got: best.got, pct: pctOf(op, best.got, best.need) };
+}
+function foldCond(t, obs, ctx) {
+  if (t.kind === 'cmp') return cmpLeaf(t, obs, ctx);
+  if (t.kind === 'other') return null;
+  if (t.kind === 'and') {
+    let worst = null;
+    for (const it of t.items) {
+      const r = foldCond(it, obs, ctx);
+      if (!r || r === REACHED) continue;
+      if (!worst || (r.pct != null && worst.pct != null && r.pct < worst.pct) || (worst.pct == null && r.pct != null)) worst = r;
+    }
+    return worst;                                              // null = 안 닿은 수치 항이 없다(닿았거나 정보 없음)
+  }
+  let best = null;                                             // or — 갈래 하나가 닿았거나 정보가 없으면 병목이 아니다
+  for (const it of t.items) {
+    const r = foldCond(it, obs, ctx);
+    if (!r || r === REACHED) return null;
+    if (!best || (r.pct != null && (best.pct == null || r.pct > best.pct))) best = r;
+  }
+  if (best) best = { ...best, ofBranches: t.items.length };
+  return best;
+}
+/**
+ * 조건이 왜 안 걸렸는지 수치로 설명한다. `wealth >= 2000`인데 관측 최고가 1833이면 "92%까지만 도달".
+ * and로 묶인 항은 전부 만족해야 하므로 **가장 안 닿은 항**이 병목, or로 갈린 갈래는 하나만 되면 되므로 **가장 가까운 갈래**가 병목
+ * (8인 봇의 `a >= 60 or b >= 60 or …`에서 제일 먼 사람을 짚던 실측 사고, v0.45). 반환: null(병목 아님) | { id, ids, op, need, got, pct, ofBranches? }
+ * @param ctx { schema, states } — 좌변 산술·우변 식·==를 표본 상태로 재려면 필요. 없으면 변수-숫자 비교만 본다.
+ */
+function bottleneck(when, obs, ctx = null) {
+  if (!when || typeof when !== 'string' || !when.trim()) return null;
+  let ast; try { ast = parse(when); } catch { return null; }
+  const r = foldCond(normalizeCond(ast), obs || {}, ctx);
+  return r && r !== REACHED ? r : null;
 }
 
 /**
@@ -11561,20 +11610,16 @@ function bottleneck(when, obs) {
  * 참이면 못 여는 이유가 문턱이 아니라 **타이밍**이다 — 자금이 찼을 땐 이름값이 모자라고
  * 이름값이 찼을 땐 자금을 다 쓴, 같은 시점에 안 겹치는 흐름. 하나뿐이면 그냥 못 닿은 것이다.
  */
-function numericTermsAllReached(when, obs) {
-  if (!when) return false;
+function numericTermsAllReached(when, obs, ctx = null) {
+  if (!when || typeof when !== 'string' || !when.trim()) return false;
+  let ast; try { ast = parse(when); } catch { return false; }
+  const leaves = [];
+  (function walk(t) { if (t.kind === 'cmp') leaves.push(t); else if (t.items) t.items.forEach(walk); })(normalizeCond(ast));
   let n = 0;
-  CMP.lastIndex = 0;
-  let m;
-  while ((m = CMP.exec(when))) {
-    const [, id, op, numS] = m;
-    const o = obs[id];
-    if (!o || !isFinite(o.max)) continue;
-    const need = Number(numS);
-    const got = (op === '>=' || op === '>') ? o.max : o.min;
-    const reached = (op === '>=') ? got >= need : (op === '>') ? got > need
-      : (op === '<=') ? got <= need : got < need;
-    if (!reached) return false;
+  for (const leaf of leaves) {
+    const r = cmpLeaf(leaf, obs || {}, ctx);
+    if (r == null) continue;
+    if (r !== REACHED) return false;
     n++;
   }
   return n >= 2;
@@ -12146,7 +12191,8 @@ function diagnose(schema, opts = {}) {
     firedLong = new Set(); availLong = new Set();
     try {
       const rs = [sim('long0', null, longTurns, { quiet: true }),
-        ...(ACT.length ? [sim('long1', randomPolicy, longTurns, { quiet: true })] : [])];
+        // long2 = 갈림길을 고르는 판 (v1.14.16) — 놀이 판은 짝수 시드만 고르므로 long1(홀수)만으론 선택지 뒤의 길이 긴 판에서 영영 안 보였다
+        ...(ACT.length ? [sim('long1', randomPolicy, longTurns, { quiet: true }), sim('long2', randomPolicy, longTurns, { quiet: true })] : [])];
       for (const r of rs) {
         for (const id of Object.keys(r.fired)) firedLong.add(id);
         for (const id of Object.keys(r.everAvail)) availLong.add(id);
@@ -12191,9 +12237,21 @@ function diagnose(schema, opts = {}) {
   // 안 뜬 이벤트**만이** 세우는 값 — 그 값에 걸린 것들은 별개의 문제가 아니라 같은 문제의 그림자다.
   // 래치 짝을 제대로 만든 봇일수록 손해를 본다: 위기가 안 뜨면 → 경보가 안 켜지고 → 회복도 안 뜨고
   // → 경보 변수도 '안 움직임'. 하나짜리 원인이 지적 셋이 된다 (실측: 맨션봇 시설 4종 = 12건).
-  const finalStates = [...idle, ...play].map((r) => r.st.vars);
   // aiGated 게이트 문맥 (v1.14.11) — 쓸 수 있었던 액션·지나온 상태 표본
-  gateCtx = { everAvail: Object.assign({}, ...[...idle, ...play].map((r) => r.everAvail)), states: [...idle, ...play].flatMap((r) => r.hist.filter((_, k) => k % 5 === 0)) };
+  // 극성·게이트 판정은 **궤적 표본**으로 (v1.14.16) — 전엔 판 끝 상태만 봐서, 판 중간에만 막던 플래그(위기 뒤 경보처럼 끝엔
+  // 풀려 있는 것)를 못 짚고 '죽은 이벤트'로 떨어뜨렸다. 5턴마다 한 표본 — blockedBy가 변수×표본만큼 돌아 너무 촘촘하면 느리다
+  const polStates = [...idle, ...play].flatMap((r) => r.hist.filter((_, k) => k % 5 === 0));
+  gateCtx = { everAvail: Object.assign({}, ...[...idle, ...play].map((r) => r.everAvail)), states: polStates };
+  // 병목 문맥 (v1.14.16) — 좌변 산술·우변 식·== 비교를 전 궤적에서 잰다 (변수-숫자 비교는 obs로 빠르게)
+  const bnCtx = { schema, states: [...idle, ...play].flatMap((r) => r.hist) };
+  const bnVar = (b, pred) => (b ? (Array.isArray(b.ids) && b.ids.length ? b.ids : [b.id]).find(pred) : undefined);
+  const whereOf = (b) => `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : b.op === '==' ? '가장 가까운 값' : '최저'} ${b.got}`
+    + (b.pct != null ? ` (${b.pct}%)` : '') + (b.ofBranches ? ` — ${b.ofBranches}갈래(or) 중 가장 가까운 것` : '');
+  // 시간 체계가 주는 이름 (v1.14.16) — hour >= 20 같은 시각·요일 문턱은 턴마다 하루(같은 시각)로 굴리는 진단이 못 맞춘다. 문턱을 내리라는 처방은 틀렸다
+  const TIME_NAMES = new Set([...(TCFG ? TCFG.expose : []), 'turn_min', 'turn_hour', 'turn_day']);
+  // 랜덤 표 후보 (v1.14.16) — 후보에 올랐는데 뽑히지 않은 사건은 죽은 게 아니라 추첨에서 밀린 것이다(게이지는 한 번에 하나만 터뜨린다)
+  const RANDOM_IDS = new Set((schema.rules?.randomEvents?.table || []).map((e) => e?.id).filter(Boolean));
+  const randomEligible = (e) => !e.when || polStates.some((vars) => { try { return truthy(evaluate(e.when, engine.makeLookup(schema, vars), null)); } catch { return false; } });
   // v1.13.4 — 이벤트 효과만이 아니라 **그 이벤트의 갈림길 효과·랜덤 이벤트 효과**, 그리고 **한 번도 안 열린 버튼**의 효과도
   // 같은 그늘이다 (베리디아 혼담: 청혼(랜덤·보조 문턱)이 안 뜨면 → 받아들임(선택)이 세우는 배필·혼례일이 안 서고 → 혼례 여덟이 🟡,
   // 혼례 전에만 열리는 💔 파기 버튼이 🔴). 쓰는 곳이 전부 이벤트 계열(+ 안 열린 버튼)이고 그게 다 안 떴을 때만 — 매 턴 처리·보조·
@@ -12216,13 +12274,26 @@ function diagnose(schema, opts = {}) {
     const acts = ACT.filter((a) => setsVar(a.effects, x.id));
     return setters.length > 0 && setters.every((o) => !everFired.has(o.id)) && acts.every((a) => !everAvailAct.has(a.id));
   }).map((x) => x.id));
+  if (RANDOM_IDS.size && ![...RANDOM_IDS].some((id) => everFired.has(id))) {
+    add('mid', '랜덤 표 정지', `랜덤 이벤트 ${RANDOM_IDS.size}개가 ${turns}턴 × ${idle.length + play.length}판에서 한 번도 안 떴습니다 — 발동률(chancePerTurn)이나 `
+      + '사건 게이지 속도(perDay·perTurn), 후보 조건(when)을 보세요. 아래 \'랜덤 후보\'들은 이 하나의 그림자입니다.', 'rules');
+  }
   stats.deadEvents = 0;
   for (const e of allEv) {
     if (everFired.has(e.id)) continue;
     stats.deadEvents++;
+    // 랜덤 표의 후보였던 사건 (v1.14.16) — 조건이 참인 순간이 있었는데 추첨에서 밀렸을 뿐이다. 전엔 '죽은 이벤트, 문턱을 내리세요'로
+    if (RANDOM_IDS.has(e.id) && randomEligible(e)) {
+      stats.deadEvents--;
+      stats.randomUnpicked = (stats.randomUnpicked ?? 0) + 1;
+      add('low', '랜덤 후보', `'${e.id}'는 후보에 올랐지만 ${turns}턴 안에 뽑히지 않았습니다 (weight ${e.weight ?? 1})`
+        + (e.when ? ` — 조건 \`${e.when}\`은 참인 순간이 있었습니다` : '') + '. 랜덤 표의 다른 사건이 뽑혔을 뿐 결함이 아닙니다 — '
+        + '더 자주 보이게 하려면 weight를 올리거나 표를 줄이세요.', null);
+      continue;
+    }
     const selfSets = new Set((e.effects || []).map((f) => f.set ?? f.list).filter(Boolean));
     // 안 뜬 이벤트 뒤의 값은 "설정"이 아니다 — 아래 연쇄가 받는다 (v1.13.4)
-    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, finalStates, deadOnlyVars);
+    const gate = gatedBySetting(e.when, schema, writers, moved, selfSets, polStates, deadOnlyVars);
     if (gate) {
       const excused = gate.byPlayer || gate.byAI;
       add(excused ? 'low' : 'mid', '설정 의존',
@@ -12236,9 +12307,10 @@ function diagnose(schema, opts = {}) {
     // 안 뜬 이벤트가 세워 줘야 하는 플래그에 막혀 있다 — 원인은 그쪽 하나다.
     // 플래그(bool·enum)는 뒤집어 보고(blockedBy), 숫자는 문턱의 병목이 곧 그 값이면 같은 사정이다 (v1.13.3 — 베리디아 주교:
     // 예고 이벤트만이 bishop_at(오는 날)을 세우니, 예고가 안 뜬 판에선 판단 셋이 `bishop_at > 0`에 막혀 "죽은 이벤트"로)
-    const b = bottleneck(e.when, obs);
-    const flagVia = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, finalStates, schema, x));
-    const via = flagVia || (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null);
+    const b = bottleneck(e.when, obs, bnCtx);
+    const flagVia = schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(e.when, polStates, schema, x));
+    const bDead = bnVar(b, (id) => deadOnlyVars.has(id));
+    const via = flagVia || (bDead ? schema.vars.find((x) => x.id === bDead) : null);
     if (via) {
       stats.deadEvents--;
       stats.cascadeEvents = (stats.cascadeEvents ?? 0) + 1;
@@ -12249,9 +12321,7 @@ function diagnose(schema, opts = {}) {
       continue;
     }
     const where = b
-      ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
-        + (b.pct != null ? ` (${b.pct}%)` : '')
-        + (b.ofBranches ? ` — ${b.ofBranches}갈래(or) 중 가장 가까운 것` : '')
+      ? whereOf(b)
       : `조건: ${e.when ?? '(없음)'}`;
     if (onlyLonger(e.id, 'event')) {
       stats.deadEvents--;                        // 죽은 게 아니라 아직 안 온 것
@@ -12294,6 +12364,15 @@ function diagnose(schema, opts = {}) {
         + '**문턱을 내리지 마세요.** 실제로 뜨는지는 채팅에서 편성하고 굴려 보세요.', null);
       continue;
     }
+    // 시간 조건 (v1.14.16) — hour >= 20·weekday == 6처럼 시간 체계가 주는 값에 걸린 문턱. 진단은 턴마다 하루(같은 시각)라 못 맞춘다
+    const tnE = TCFG ? bnVar(b, (id) => TIME_NAMES.has(id)) : undefined;
+    if (tnE) {
+      stats.deadEvents--;
+      stats.timeGated = (stats.timeGated ?? 0) + 1;
+      add('low', '시간 조건', `'${e.id}' 미발동 — ${where}. 다만 '${tnE}'은(는) 시간 체계가 주는 값이라, 턴마다 하루(같은 시각)로 굴리는 `
+        + '이 진단에서는 시각·요일 조건을 못 맞출 수 있습니다 — **문턱을 내리지 마세요.** 실제 플레이에서 시간이 그 자리에 오면 뜹니다.', null);
+      continue;
+    }
     // 안전장치·후반부 판정 뒤에 둔다: 그쪽이 더 구체적인 설명이고, 여기서 가로채면 안 된다.
     if (aiGated(schema, b, turns, gateCtx)) {
       stats.deadEvents--;
@@ -12305,10 +12384,11 @@ function diagnose(schema, opts = {}) {
     }
     // 옮겨 세는 값에 걸린 문턱 (v1.13.2) — 조건의 값이 시뮬 밖(보조 AI·명령·패널 버튼)이 움직이는 값을 옮겨 센 것이라
     // 시뮬에선 영영 시작값이다 (베리디아 pet_done: pet_kept > 0 — 청원을 맡는 건 청원함 [수락]). 6.과 같은 판정.
-    if (b && followsOutside(b.id)) {
+    const bOut = bnVar(b, (id) => followsOutside(id));
+    if (bOut) {
       stats.deadEvents--;
       stats.aiGated = (stats.aiGated ?? 0) + 1;
-      add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${b.id}'은(는) 보조 AI·명령·패널 버튼이 움직이는 값을 `
+      add('low', 'AI 담당 문턱', `'${e.id}' 미발동 — ${where}. 다만 '${bOut}'은(는) 보조 AI·명령·패널 버튼이 움직이는 값을 `
         + '옮겨 세는 값이라, 그걸 누르지 않는 이 진단에서는 시작값에 머뭅니다 — **문턱을 내리지 마세요.** '
         + '실제로 뜨는지는 채팅에서 그 패널을 써 보고 확인하세요.', null);
       continue;
@@ -12347,12 +12427,11 @@ function diagnose(schema, opts = {}) {
       const rest = SCN.acts.length - 2 - maxReach; // 이 막 뒤에 같이 잠긴 막 수
       const restNote = rest > 0 ? ` (그 뒤 ${rest}개 막도 함께 잠겨 있습니다 — 원인은 이쪽 하나)` : '';
       const aname = act.label || act.id;
-      const b = bottleneck(act.unlock, obs);
+      const b = bottleneck(act.unlock, obs, bnCtx);
       const where = b
-        ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
-          + (b.pct != null ? ` (${b.pct}%)` : '')
+        ? whereOf(b)
         : `해금 조건: ${act.unlock ?? '(없음)'}`;
-      const gate = gatedBySetting(act.unlock, schema, writers, moved, null, finalStates);
+      const gate = gatedBySetting(act.unlock, schema, writers, moved, null, polStates);
       if (gate && (gate.byPlayer || gate.byAI)) {
         add('low', '설정 의존', `'${aname}' 막은 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 안 열립니다`
           + (gate.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
@@ -12397,12 +12476,11 @@ function diagnose(schema, opts = {}) {
     const name = s.label || s.about || s.id;
     const rest = last - next;
     const restNote = rest > 0 ? ` (그 뒤 ${rest}개 단계도 함께 잠겨 있습니다 — 원인은 이쪽 하나)` : '';
-    const b = bottleneck(tier.when, obs);
+    const b = bottleneck(tier.when, obs, bnCtx);
     const where = b
-      ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
-        + (b.pct != null ? ` (${b.pct}%)` : '')
+      ? whereOf(b)
       : `여는 조건: ${tier.when || '(없음)'}`;
-    const gate = gatedBySetting(tier.when, schema, writers, moved, null, finalStates);
+    const gate = gatedBySetting(tier.when, schema, writers, moved, null, polStates);
     if (gate && (gate.byPlayer || gate.byAI)) {
       add('low', '설정 의존', `비밀 '${name}'의 ${next + 1}단계는 ${gate.label}이(가) ${JSON.stringify(gate.init)}인 동안 안 열립니다`
         + (gate.byPlayer ? ' (다른 설정에서는 열립니다 — 정상)'
@@ -12446,11 +12524,9 @@ function diagnose(schema, opts = {}) {
     const everAvail = new Set([...idle, ...play].flatMap((r) => Object.keys(r.everAvail)));
     for (const a of ACT) {
       if (everAvail.has(a.id)) continue;
-      const b = bottleneck(a.when, obs);
+      const b = bottleneck(a.when, obs, bnCtx);
       const where = b
-        ? `\`${b.id} ${b.op} ${b.need}\` 인데 관측 ${b.op === '>=' || b.op === '>' ? '최고' : '최저'} ${b.got}`
-          + (b.pct != null ? ` (${b.pct}%)` : '')
-          + (b.ofBranches ? ` — ${b.ofBranches}갈래(or) 중 가장 가까운 것` : '')
+        ? whereOf(b)
         : `조건: ${a.when ?? '(없음)'}`;
       if (onlyLonger(a.id, 'action')) {
         stats.lateActions = (stats.lateActions ?? 0) + 1;
@@ -12465,6 +12541,13 @@ function diagnose(schema, opts = {}) {
           + '실제로 열리는지는 채팅에서 편성한 뒤 확인하세요.', null);
         continue;
       }
+      const tnA = TCFG ? bnVar(b, (id) => TIME_NAMES.has(id)) : undefined;
+      if (tnA) {   // 영업 시간 같은 시각 조건 (v1.14.16)
+        stats.timeGated = (stats.timeGated ?? 0) + 1;
+        add('low', '시간 조건', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. 다만 '${tnA}'은(는) 시간 체계가 주는 값이라, `
+          + '턴마다 하루(같은 시각)로 굴리는 이 진단에서는 시각·요일 조건을 못 맞출 수 있습니다 — **여는 조건을 낮추지 마세요.**', null);
+        continue;
+      }
       if (aiGated(schema, b, turns, gateCtx)) {
         stats.aiGated = (stats.aiGated ?? 0) + 1;
         add('low', 'AI 담당 문턱', `'${a.label ?? a.id}'가 한 번도 안 열렸습니다 — ${where}. `
@@ -12474,8 +12557,9 @@ function diagnose(schema, opts = {}) {
       }
       // 안 뜬 이벤트만이 세우는 값에 막힌 버튼 (v1.13.4) — 이벤트 쪽의 연쇄와 같다: 원인은 그 이벤트 하나
       //   (베리디아 💔 혼약 파기: 혼례일은 청혼을 받아들여야 선다 — 청혼이 안 뜬 판에선 🔴 못 쓰는 액션으로)
-      const actVia = (b && deadOnlyVars.has(b.id) ? schema.vars.find((x) => x.id === b.id) : null)
-        || schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(a.when, finalStates, schema, x));
+      const bDeadA = bnVar(b, (id) => deadOnlyVars.has(id));
+      const actVia = (bDeadA ? schema.vars.find((x) => x.id === bDeadA) : null)
+        || schema.vars.find((x) => deadOnlyVars.has(x.id) && blockedBy(a.when, polStates, schema, x));
       if (actVia) {
         stats.cascadeActions = (stats.cascadeActions ?? 0) + 1;
         const src = raisersOf(actVia.id);
@@ -12487,7 +12571,7 @@ function diagnose(schema, opts = {}) {
       // 조건 하나하나는 닿았는데 **동시에** 안 맞은 경우 (v0.83.3) — "못 쓰는 액션"이 아니다.
       // 자금이 찼을 땐 이름값이 모자라고 이름값이 찼을 땐 자금을 다 썼다는 식의 흐름 문제라,
       // 문턱을 내리라는 처방이 엉뚱하다. 실측으로 두 번 밟았다(시민회관·케이블 음악방송).
-      if (!b && numericTermsAllReached(a.when, obs)) {
+      if (!b && numericTermsAllReached(a.when, obs, bnCtx)) {
         add('mid', '조건 동시 불충족',
           `'${a.label ?? a.id}'는 조건이 하나하나는 만족된 적이 있는데 **동시에** 맞은 적이 없습니다 — `
           + `${a.when}. 서로 배타적인 조건이거나, 한쪽이 차면 다른 쪽이 비는 흐름입니다. `
@@ -12672,12 +12756,13 @@ function diagnose(schema, opts = {}) {
   // ── 7. 시작값 = 조건 경계 ──
   const initOf = Object.fromEntries(schema.vars.map((x) => [x.id, x.init]));
   const scan = (when, where, tab) => {
-    if (!when) return;
-    CMP.lastIndex = 0;
-    let m;
-    while ((m = CMP.exec(when))) {
-      const [, id, op, numS] = m;
-      const n = Number(numS);
+    if (!when || typeof when !== 'string') return;
+    // AST로 (v1.14.16) — `id op 숫자` 잎만 본다. not 아래의 비교는 정규형이 뒤집어 준다(not (x <= 0) = x > 0도 같은 함정)
+    let leaves = [];
+    try { (function walk(t) { if (t.kind === 'cmp') leaves.push(t); else if (t.items) t.items.forEach(walk); })(normalizeCond(parse(when))); } catch { return; }
+    for (const leaf of leaves) {
+      if (leaf.l.t !== 'var' || leaf.r.t !== 'num') continue;
+      const id = leaf.l.name, op = leaf.op, n = leaf.r.v;
       if (typeof initOf[id] !== 'number' || initOf[id] !== n) continue;
       if ((op !== '<' && op !== '>')) continue;                 // <= / >= 는 경계에서 참이라 함정이 아니다
       // 바꾸는 곳이 있으면 "첫 턴에만 거짓"일 뿐이다. `prisoners > 0`에 시작값 0처럼
@@ -33463,6 +33548,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.15 ──────────────────────────────────────────────
+// **전체 점검 후속 4차 — 편집기 칸 둘.** 영역 6 보류였던 "JSON으로만 짤 수 있던 자리".
+// - [전투 안무] 판정 카드에 ⚔ 절: 켜기(게이지 30 + gain 없는 등급에 10)·상대 게이지 크기·반격 판정 셀렉트(전투 안무 없는 판정만)·방치 턴·
+//   상대 이름·개시 비트 후보·시트 규칙/대기 줄·승리 효과·승리/패배 연출·패배 조건·🚪 이탈 버튼 만들기·끄기. 등급 행에 유효량(gain) 칸.
+//   ⚔ 액션 버튼 만들기 라벨.
+// - [되감기] 시나리오가 없는 봇에도 시나리오 탭에 되감기 카드가 보인다 — 되감기는 이벤트·선택지의 효과만으로도 돌아서 막이 필요 없다.
 
 // ── v1.14.14 ──────────────────────────────────────────────
 // **전체 점검 후속 3차 — 정리 마법사·패치 개명·참조 색인.** 편집기 쪽 보류 둘.

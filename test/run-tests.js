@@ -1521,6 +1521,37 @@ test('hold 낱말 무장은 최근 창에서 낱말이 사라지면 풀린다; �
   assert.deepStrictEqual(r7.armed, ['gather']); assert.strictEqual(r7.state.meta.autoArmed?.gather, undefined, 'oneshot은 창과 무관');
 });
 
+test('복사·분기 채팅 상속: 원본 찾기 + 스냅샷 베끼기 (v1.14.13)', async () => {
+  const { detectInheritSource } = require('../core/session');
+  const mk = (role, data) => ({ role, data });
+  const src = { id: 'A', message: [mk('user', 'u0'), mk('char', 'c1 ⟦simcore:1⟧'), mk('user', 'u2'), mk('char', 'c3 ⟦simcore:3⟧')] };
+  const branch = { id: 'B', message: [...src.message.slice(0, 2), mk('char', '{{specialcomment::branchedfrom::A::이름::msgid::}}')] };
+  assert.deepStrictEqual(detectInheritSource(branch, []), { srcId: 'A', cut: 1, how: '분기' });
+  const copy = { id: 'C', message: src.message.map((m) => ({ ...m })) };
+  assert.deepStrictEqual(detectInheritSource(copy, [{ id: 'A', _placeholder: true, message: [] }, src]), { srcId: 'A', cut: 3, how: '복사' });
+  assert.strictEqual(detectInheritSource(copy, [{ ...src, id: 'C' }]), null, '자기 자신은 원본이 아니다');
+  assert.strictEqual(detectInheritSource({ id: 'D', message: [mk('user', 'x')] }, [src]), null);
+  assert.strictEqual(detectInheritSource({ id: 'E', message: [] }, [src]), null);
+  const S = { simcore: '0.1', meta: { name: 'x' }, vars: [{ id: 'gold', label: '금', type: 'int', init: 1000, min: 0 }],
+    rules: { onTurn: [{ set: 'gold', expr: 'gold - 10' }] }, updater: { allow: [{ id: 'gold', maxDelta: 1000 }] } };
+  const be = new MapBackend();
+  const a = new SimSession(S, be, { chatId: 'A', prefix: 'sim:ch:A' });
+  await a.init(-1); a.current.meta.setupDone = true;
+  await a.onSend(0); await a.onOutput(1, '{"changes":{"gold":-100},"reasons":{"gold":"x"}}');
+  await a.onSend(2); await a.onOutput(3, '{"changes":{"gold":-100},"reasons":{"gold":"x"}}');
+  const b = new SimSession(S, be, { chatId: 'B', prefix: 'sim:ch:B' });
+  assert.strictEqual(await b.hasSnapshots(), false);
+  const n = await b.inheritFrom('sim:ch:A', 1);
+  assert.ok(n >= 3, String(n));   // pre:0 send:0 out:1
+  assert.strictEqual(await b.hasSnapshots(), true);
+  assert.ok(await b.store.load('out', 1)); assert.strictEqual(await b.store.load('out', 3), null, 'cut 뒤는 안 베낀다');
+  await b.init(2);
+  assert.strictEqual(b.current.vars.gold, (await a.store.load('out', 1)).vars.gold);
+  assert.strictEqual(b.current.meta.turn, 1);
+  assert.ok(await a.store.load('out', 3), '원본은 그대로');
+  assert.strictEqual(await b.inheritFrom('sim:ch:B', 1), 0, '자기 접두는 거부');
+});
+
 (async () => {
   let passed = 0, failed = 0;
   const failures = [];

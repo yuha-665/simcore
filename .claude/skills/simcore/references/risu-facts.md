@@ -306,8 +306,11 @@ char라 전부 걸러진다. (`runLLMModel`은 1.8.1에선 replacer 루프가 �
   `⟦simcore:12⟧`가 `⟦simcore:`로 남는다 — v1.9.27 "꼬리만 남는다" 제보의 실제 원인 후보. 마커 자가 복구(4초·12초)가 메운다.
 - **replacer 권한 거부**는 예외 없이 등록만 빠진다(`addRisuReplacer`가 `await AR(...) && add`). 그래서 beforeRequest가 안 도는 환경이
   있고, 거기에 기대는 상태(턴당 1회 가드 해제 등)는 input 훅에서도 풀어야 한다.
-- **채팅 복사·분기**는 새 `chat.id`를 받는다 — 스냅샷 접두가 `sim:<chaId>:<chat.id>`라 상태가 초기값으로 시작한다. 분기 채팅 끝에는
-  role 'char'인 숨김 주석(`{{specialcomment::branchedfrom::…}}`)이 붙는다. [미러에서 복원]으로 값만은 살릴 수 있다.
+- **채팅 복사·분기**는 새 `chat.id`(`v4()`)를 받고 메시지 id도 `reissueMessageIds`로 전부 새로 — 스냅샷 접두가 `sim:<chaId>:<chat.id>`라
+  전엔 상태가 초기값으로 시작했다. 분기(Chat.svelte)는 `message.slice(0, idx+1)` 뒤에 role 'char'·`isComment`·`disabled`인 숨김 주석
+  `{{specialcomment::branchedfrom::<원본 chat.id>::<원본 이름>::<원본 메시지 chatId>::}}`를 붙인다(메시지 번호 보존, 새 채팅은 목록 0번).
+  복사(SideChatList.svelte)는 표식이 없고 메시지가 글자 그대로 같다(마커 포함, 원본은 복사 직전 hydrate됨). **v1.14.13**부터 스냅샷 없는
+  채팅을 로드할 때 원본을 찾아 스냅샷을 잘라 베낀다(`detectInheritSource` + `SimSession.inheritFrom`). [미러에서 복원]은 그대로 남는다.
 - **리수 요청 재시도**(`requestRetrys`·금지어)는 replacer를 다시 돌린다 — 매 시도마다 상태 블록을 push하면 겹겹이 쌓인다. 지난 블록을
   걷어내고 붙인다(v1.14.10).
 - **스트리밍 flush는 `setTimeout(125)` → `requestAnimationFrame`** — 숨은 탭에선 rAF가 멈춰 저장 글도 editoutput도 멎지만 플러그인

@@ -176,6 +176,38 @@ class SimSession {
     return r.applied;
   }
 
+  /** 이 채팅의 스냅샷(pre/send/out/boot)이 하나라도 있는가 (v1.14.13) */
+  async hasSnapshots() {
+    const p = this.store.p + ':';
+    return (await this.store.b.keys()).some((k) => k.startsWith(p));
+  }
+
+  /**
+   * 복사·분기 채팅 상속 (v1.14.13) — 원본 채팅(같은 캐릭터, 접두만 다름)의 pre/send/out 스냅샷을 cut 번호까지 베껴 온다.
+   * 리수의 복사·분기는 새 chat.id를 주고 메시지 번호는 보존하므로 같은 번호 자리에 그대로 둔다. realign 이동 기록도 같이 —
+   * 원본이 마커를 아직 못 고친 상태였으면 그 기록이 있어야 재정렬이 자리를 맞춘다. keepN 상한은 최근 것부터. 반환: 베낀 키 수
+   */
+  async inheritFrom(srcPrefix, cut) {
+    if (!srcPrefix || srcPrefix === this.store.p || !Number.isInteger(cut) || cut < 0) return 0;
+    const re = new RegExp('^' + escapeRe(srcPrefix) + ':(pre|send|out):(\\d+)$');
+    const picks = [];
+    for (const k of await this.store.b.keys()) {
+      const m = k.match(re);
+      if (m && parseInt(m[2], 10) <= cut) picks.push({ k, phase: m[1], index: parseInt(m[2], 10) });
+    }
+    picks.sort((a, b) => b.index - a.index);
+    const take = picks.slice(0, this.store.keepN * 3);
+    await mapLimited(take, IO_CONCURRENCY, async ({ k, phase, index }) => {
+      const raw = await this.store.b.get(k);
+      if (raw) await this.store.b.set(this.store._k(phase, index), raw);
+    });
+    try {
+      const rm = await this.store.b.get(srcPrefix + ':realign');
+      if (rm && rm !== '{}') await this.store.b.set(this.store.p + ':realign', rm);
+    } catch {}
+    return take.length;
+  }
+
   /** 완전 초기화: 이 채팅의 스냅샷 전부 삭제 + 초기 상태로 */
   async resetAll(onProgress = null) {
     const prefix = this.store.p + ':';
@@ -310,4 +342,31 @@ class SimSession {
   }
 }
 
-module.exports = { SimSession };
+function escapeRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/**
+ * 복사·분기 채팅의 원본 찾기 (v1.14.13, 포켓리스 1.8.1 소스 확인).
+ * 분기: 리수가 `message.slice(0, idx+1)` 뒤에 role 'char'·isComment·disabled인 숨김 주석
+ *   `{{specialcomment::branchedfrom::<원본 chat.id>::<원본 이름>::<원본 메시지 chatId>::}}`를 붙인다 — 주석 앞까지가 원본의 0..idx 그대로.
+ * 복사: 표식이 없고 메시지 전부가 다른 채팅과 글자 그대로 같다(마커 포함). siblings = 같은 캐릭터의 다른 채팅들
+ *   [{ id, message, _placeholder }] — 호스트는 스냅샷이 있는 chatId만 넘기면 싸다. 자리표시 사본(_placeholder)은 비교 불가라 건너뛴다.
+ * 반환 { srcId, cut, how } | null — cut = 베낄 마지막 메시지 번호
+ */
+function detectInheritSource(chat, siblings = []) {
+  const msgs = Array.isArray(chat?.message) ? chat.message : [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const d = typeof msgs[i]?.data === 'string' ? msgs[i].data : '';
+    const m = d.match(/^\{\{specialcomment::branchedfrom::([^:}]+)::/);
+    if (m) return i > 0 ? { srcId: m[1], cut: i - 1, how: '분기' } : null;
+  }
+  if (!msgs.length) return null;
+  const same = (a, b) => a.length === b.length
+    && a.every((m, i) => (m?.role ?? null) === (b[i]?.role ?? null) && String(m?.data ?? '') === String(b[i]?.data ?? ''));
+  for (const sb of siblings) {
+    if (!sb || sb._placeholder || sb.id == null || String(sb.id) === String(chat?.id) || !Array.isArray(sb.message)) continue;
+    if (same(msgs, sb.message)) return { srcId: String(sb.id), cut: msgs.length - 1, how: '복사' };
+  }
+  return null;
+}
+
+module.exports = { SimSession, detectInheritSource };

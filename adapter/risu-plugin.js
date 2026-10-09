@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.12
-//@display-name SimCore (시뮬 엔진) v1.14.12 보류 후속 1차
+//@version 1.14.13
+//@display-name SimCore (시뮬 엔진) v1.14.13 보류 후속 2차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,13 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.13 ──────────────────────────────────────────────
+// **전체 점검 후속 2차 — 복사·분기 채팅 상속.** 리수가 채팅을 복사·분기하면 새 chat.id를 줘 스냅샷 접두가 달라지고 상태가 초기값으로
+// 시작했다([미러에서 복원]으로 값만 살리던 자리). 스냅샷이 하나도 없는데 메시지가 있는 채팅을 로드할 때 원본을 찾아 스냅샷을 잘라 베낀다:
+// - 분기: 리수가 끝에 붙이는 숨김 주석 {{specialcomment::branchedfrom::<원본 chat.id>::…}} — 주석 앞까지(메시지 번호 보존).
+// - 복사: 표식이 없어 스냅샷이 있는 형제 채팅 중 메시지가 글자 그대로 같은 것(마커 포함). 마커가 있는 채팅만 형제를 읽는다.
+// - 베낀 뒤 재정렬·복원이 그 위에서 돌고 미러를 그 자리 값으로 다시 쓴다. 이미 스냅샷이 생긴(분기 뒤 대화를 이어 간) 채팅은 건드리지 않는다.
+
 // ── v1.14.12 ──────────────────────────────────────────────
 // **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**
 // - [징조] 뽑아 둔 사건이 터질 때 후보에서 빠져 있으면(조건·쿨다운) 그 턴은 안 터뜨리고 징조를 새로 뽑는다 — 전엔 딴 사건이 징조 없이 터졌다.
@@ -3022,7 +3029,7 @@
 
 (async () => {
   const { validateSchema } = SimCore.require('validate');
-  const { SimSession } = SimCore.require('session');
+  const { SimSession, detectInheritSource } = SimCore.require('session');
   const { renderStatusHtml, renderPanelTemplate, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
@@ -3917,6 +3924,35 @@
     } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
 
+  // 복사·분기 채팅 상속 (v1.14.13) — 리수가 채팅을 복사·분기하면 새 chat.id를 받아 스냅샷 접두가 달라져 상태가 초기값으로 시작했다
+  // (점검 영역 7 보류). 스냅샷이 하나도 없는데 메시지가 있는 채팅이면 원본을 찾아(분기 주석 / 글자 그대로 같은 형제 채팅) 그 스냅샷을
+  // 잘라 베낀다. 형제는 스냅샷이 있는 chatId만, 그리고 이 채팅에 마커가 있을 때만 읽는다(심코어 전부터 있던 채팅은 형제를 안 뒤진다).
+  async function inheritFromSibling(sess, chat, chaIdx, chaId) {
+    const msgs = chat?.message || [];
+    if (!msgs.length || !chaId || await sess.hasSnapshots()) return false;
+    let found = detectInheritSource(chat, []);   // 분기 주석 — 형제를 안 읽어도 된다
+    if (!found && msgs.some((m) => typeof m?.data === 'string' && m.data.includes('⟦simcore:'))) {
+      const head = `sim:${chaId}:`;
+      const ids = new Set();
+      for (const k of await sess.store.b.keys()) {
+        if (!k.startsWith(head)) continue;
+        const rest = k.slice(head.length); const id = rest.slice(0, rest.indexOf(':'));
+        if (id && id !== String(chat.id)) ids.add(id);
+      }
+      const sibs = [];
+      for (let i = 0; i < 400 && ids.size; i++) {
+        const c = await Risuai.getChatFromIndex(chaIdx, i);
+        if (!c) break;
+        if (c.id != null && ids.has(String(c.id))) { sibs.push(c); ids.delete(String(c.id)); }
+      }
+      found = detectInheritSource(chat, sibs);
+    }
+    if (!found) return false;
+    const n = await sess.inheritFrom(`sim:${chaId}:${found.srcId}`, found.cut);
+    console.log(`[simcore] ${found.how} 채팅 상속: ${String(found.srcId).slice(0, 8)}… → ${found.cut}번까지 스냅샷 ${n}개`);
+    return n > 0;
+  }
+
   async function loadForCurrentCharInner() {
     const char = await Risuai.getCharacter();
     if (!char) { session = null; schema = null; currentChaId = null; panelStatus = { state: 'no-char' }; return; }
@@ -3996,6 +4032,9 @@
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
+    // 복사·분기 채팅 상속 (v1.14.13) — 재정렬·복원보다 먼저 (베낀 스냅샷을 그 둘이 읽는다)
+    let inherited = false;
+    try { inherited = await inheritFromSibling(sess, chat, chaIdx, char.chaId); } catch (e) { console.log('[simcore] 채팅 상속 실패:', e.message); }
     await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx, sess });
     try { await sess.init(lastCharIdx); }
     catch (e) {
@@ -4020,6 +4059,7 @@
     try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
     catch { startPresetId = null; }
     session = sess; // 여기서부터 바깥에 보인다 (v1.14.10)
+    if (inherited) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }   // 미러는 복사 시점의 원본 최신값 — 상속한 자리의 값으로 (v1.14.13)
     if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
       if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
         session.applyPreset(startPresetId);

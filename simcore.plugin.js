@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.12
-//@display-name SimCore (시뮬 엔진) v1.14.12 보류 후속 1차
+//@version 1.14.13
+//@display-name SimCore (시뮬 엔진) v1.14.13 보류 후속 2차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,14 +10,12 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.12 ──────────────────────────────────────────────
-// **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**
-// - [징조] 뽑아 둔 사건이 터질 때 후보에서 빠져 있으면(조건·쿨다운) 그 턴은 안 터뜨리고 징조를 새로 뽑는다 — 전엔 딴 사건이 징조 없이 터졌다.
-// - [낱말 무장] hold 액션은 로어북 스캔 깊이처럼 최근 메시지 창(이번 글 + 앞 4개)에 낱말이 있는 동안만 켜 둔다. 창에서 사라지면 끈다.
-//   버튼·명령으로 켠 hold는 그대로(낱말로 켠 것만 meta.autoArmed). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다.
-// - [oneshot] 무장한 채 조건 미충족으로 못 쏜 턴에 무장을 풀고 원장에 "취소 — 조건 미충족"을 남긴다 — 전엔 남아 몇 턴 뒤 터졌다.
-// - [초기화] 상태 완전 초기화 뒤 첫 전송 전 슬롯에 바로 저장 — 전엔 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다.
-// - [문구] 턴 진행 중 안내에 "응답이 오지 않고 끝났다면 새 글을 보내면 풀려요".
+// ── v1.14.13 ──────────────────────────────────────────────
+// **전체 점검 후속 2차 — 복사·분기 채팅 상속.** 리수가 채팅을 복사·분기하면 새 chat.id를 줘 스냅샷 접두가 달라지고 상태가 초기값으로
+// 시작했다([미러에서 복원]으로 값만 살리던 자리). 스냅샷이 하나도 없는데 메시지가 있는 채팅을 로드할 때 원본을 찾아 스냅샷을 잘라 베낀다:
+// - 분기: 리수가 끝에 붙이는 숨김 주석 {{specialcomment::branchedfrom::<원본 chat.id>::…}} — 주석 앞까지(메시지 번호 보존).
+// - 복사: 표식이 없어 스냅샷이 있는 형제 채팅 중 메시지가 글자 그대로 같은 것(마커 포함). 마커가 있는 채팅만 형제를 읽는다.
+// - 베낀 뒤 재정렬·복원이 그 위에서 돌고 미러를 그 자리 값으로 다시 쓴다. 이미 스냅샷이 생긴(분기 뒤 대화를 이어 간) 채팅은 건드리지 않는다.
 
 
 const SimCore = (() => {
@@ -11104,6 +11102,38 @@ class SimSession {
     return r.applied;
   }
 
+  /** 이 채팅의 스냅샷(pre/send/out/boot)이 하나라도 있는가 (v1.14.13) */
+  async hasSnapshots() {
+    const p = this.store.p + ':';
+    return (await this.store.b.keys()).some((k) => k.startsWith(p));
+  }
+
+  /**
+   * 복사·분기 채팅 상속 (v1.14.13) — 원본 채팅(같은 캐릭터, 접두만 다름)의 pre/send/out 스냅샷을 cut 번호까지 베껴 온다.
+   * 리수의 복사·분기는 새 chat.id를 주고 메시지 번호는 보존하므로 같은 번호 자리에 그대로 둔다. realign 이동 기록도 같이 —
+   * 원본이 마커를 아직 못 고친 상태였으면 그 기록이 있어야 재정렬이 자리를 맞춘다. keepN 상한은 최근 것부터. 반환: 베낀 키 수
+   */
+  async inheritFrom(srcPrefix, cut) {
+    if (!srcPrefix || srcPrefix === this.store.p || !Number.isInteger(cut) || cut < 0) return 0;
+    const re = new RegExp('^' + escapeRe(srcPrefix) + ':(pre|send|out):(\\d+)$');
+    const picks = [];
+    for (const k of await this.store.b.keys()) {
+      const m = k.match(re);
+      if (m && parseInt(m[2], 10) <= cut) picks.push({ k, phase: m[1], index: parseInt(m[2], 10) });
+    }
+    picks.sort((a, b) => b.index - a.index);
+    const take = picks.slice(0, this.store.keepN * 3);
+    await mapLimited(take, IO_CONCURRENCY, async ({ k, phase, index }) => {
+      const raw = await this.store.b.get(k);
+      if (raw) await this.store.b.set(this.store._k(phase, index), raw);
+    });
+    try {
+      const rm = await this.store.b.get(srcPrefix + ':realign');
+      if (rm && rm !== '{}') await this.store.b.set(this.store.p + ':realign', rm);
+    } catch {}
+    return take.length;
+  }
+
   /** 완전 초기화: 이 채팅의 스냅샷 전부 삭제 + 초기 상태로 */
   async resetAll(onProgress = null) {
     const prefix = this.store.p + ':';
@@ -11238,7 +11268,34 @@ class SimSession {
   }
 }
 
-module.exports = { SimSession };
+function escapeRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/**
+ * 복사·분기 채팅의 원본 찾기 (v1.14.13, 포켓리스 1.8.1 소스 확인).
+ * 분기: 리수가 `message.slice(0, idx+1)` 뒤에 role 'char'·isComment·disabled인 숨김 주석
+ *   `{{specialcomment::branchedfrom::<원본 chat.id>::<원본 이름>::<원본 메시지 chatId>::}}`를 붙인다 — 주석 앞까지가 원본의 0..idx 그대로.
+ * 복사: 표식이 없고 메시지 전부가 다른 채팅과 글자 그대로 같다(마커 포함). siblings = 같은 캐릭터의 다른 채팅들
+ *   [{ id, message, _placeholder }] — 호스트는 스냅샷이 있는 chatId만 넘기면 싸다. 자리표시 사본(_placeholder)은 비교 불가라 건너뛴다.
+ * 반환 { srcId, cut, how } | null — cut = 베낄 마지막 메시지 번호
+ */
+function detectInheritSource(chat, siblings = []) {
+  const msgs = Array.isArray(chat?.message) ? chat.message : [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const d = typeof msgs[i]?.data === 'string' ? msgs[i].data : '';
+    const m = d.match(/^\{\{specialcomment::branchedfrom::([^:}]+)::/);
+    if (m) return i > 0 ? { srcId: m[1], cut: i - 1, how: '분기' } : null;
+  }
+  if (!msgs.length) return null;
+  const same = (a, b) => a.length === b.length
+    && a.every((m, i) => (m?.role ?? null) === (b[i]?.role ?? null) && String(m?.data ?? '') === String(b[i]?.data ?? ''));
+  for (const sb of siblings) {
+    if (!sb || sb._placeholder || sb.id == null || String(sb.id) === String(chat?.id) || !Array.isArray(sb.message)) continue;
+    if (same(msgs, sb.message)) return { srcId: String(sb.id), cut: msgs.length - 1, how: '복사' };
+  }
+  return null;
+}
+
+module.exports = { SimSession, detectInheritSource };
 
 });
 
@@ -33177,6 +33234,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.12 ──────────────────────────────────────────────
+// **전체 점검 후속 1차 — 보류 항목 중 유저가 정한 것.**
+// - [징조] 뽑아 둔 사건이 터질 때 후보에서 빠져 있으면(조건·쿨다운) 그 턴은 안 터뜨리고 징조를 새로 뽑는다 — 전엔 딴 사건이 징조 없이 터졌다.
+// - [낱말 무장] hold 액션은 로어북 스캔 깊이처럼 최근 메시지 창(이번 글 + 앞 4개)에 낱말이 있는 동안만 켜 둔다. 창에서 사라지면 끈다.
+//   버튼·명령으로 켠 hold는 그대로(낱말로 켠 것만 meta.autoArmed). 전엔 단어가 한 번 스치면 유저 모르게 끌 때까지 켜져 있었다.
+// - [oneshot] 무장한 채 조건 미충족으로 못 쏜 턴에 무장을 풀고 원장에 "취소 — 조건 미충족"을 남긴다 — 전엔 남아 몇 턴 뒤 터졌다.
+// - [초기화] 상태 완전 초기화 뒤 첫 전송 전 슬롯에 바로 저장 — 전엔 전송 없이 재로드하면 채팅 시드의 시작 시각으로 돌아갔다.
+// - [문구] 턴 진행 중 안내에 "응답이 오지 않고 끝났다면 새 글을 보내면 풀려요".
+
 // ── v1.14.11 ──────────────────────────────────────────────
 // **전체 점검 7차 — 진단 (영역 9).** 진단이 엔진을 따라오지 못한 자리들. 읽기 감사 후보를 node로 재현한 것만.
 // - [시간] 하루/턴 가정을 응답 단계 **전에** 싣는다 — 전엔 뒤에 epoch만 올려 turn_min이 늘 0이라 게이지 랜덤 사건·무대 뒤 시계가 진단에서
@@ -36180,7 +36246,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 (async () => {
   const { validateSchema } = SimCore.require('validate');
-  const { SimSession } = SimCore.require('session');
+  const { SimSession, detectInheritSource } = SimCore.require('session');
   const { renderStatusHtml, renderPanelTemplate, actionGlyph, decodeHitClass, scopeCss } = SimCore.require('render');
   const { createSchemaEditor } = SimCore.require('editor');
   const { TEMPLATES } = SimCore.require('templates');
@@ -37075,6 +37141,35 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     } catch (e) { console.log('[simcore] 시간선 재정렬 실패:', e.message); return false; }
   }
 
+  // 복사·분기 채팅 상속 (v1.14.13) — 리수가 채팅을 복사·분기하면 새 chat.id를 받아 스냅샷 접두가 달라져 상태가 초기값으로 시작했다
+  // (점검 영역 7 보류). 스냅샷이 하나도 없는데 메시지가 있는 채팅이면 원본을 찾아(분기 주석 / 글자 그대로 같은 형제 채팅) 그 스냅샷을
+  // 잘라 베낀다. 형제는 스냅샷이 있는 chatId만, 그리고 이 채팅에 마커가 있을 때만 읽는다(심코어 전부터 있던 채팅은 형제를 안 뒤진다).
+  async function inheritFromSibling(sess, chat, chaIdx, chaId) {
+    const msgs = chat?.message || [];
+    if (!msgs.length || !chaId || await sess.hasSnapshots()) return false;
+    let found = detectInheritSource(chat, []);   // 분기 주석 — 형제를 안 읽어도 된다
+    if (!found && msgs.some((m) => typeof m?.data === 'string' && m.data.includes('⟦simcore:'))) {
+      const head = `sim:${chaId}:`;
+      const ids = new Set();
+      for (const k of await sess.store.b.keys()) {
+        if (!k.startsWith(head)) continue;
+        const rest = k.slice(head.length); const id = rest.slice(0, rest.indexOf(':'));
+        if (id && id !== String(chat.id)) ids.add(id);
+      }
+      const sibs = [];
+      for (let i = 0; i < 400 && ids.size; i++) {
+        const c = await Risuai.getChatFromIndex(chaIdx, i);
+        if (!c) break;
+        if (c.id != null && ids.has(String(c.id))) { sibs.push(c); ids.delete(String(c.id)); }
+      }
+      found = detectInheritSource(chat, sibs);
+    }
+    if (!found) return false;
+    const n = await sess.inheritFrom(`sim:${chaId}:${found.srcId}`, found.cut);
+    console.log(`[simcore] ${found.how} 채팅 상속: ${String(found.srcId).slice(0, 8)}… → ${found.cut}번까지 스냅샷 ${n}개`);
+    return n > 0;
+  }
+
   async function loadForCurrentCharInner() {
     const char = await Risuai.getCharacter();
     if (!char) { session = null; schema = null; currentChaId = null; panelStatus = { state: 'no-char' }; return; }
@@ -37154,6 +37249,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'char') { lastCharIdx = i; break; }
     }
+    // 복사·분기 채팅 상속 (v1.14.13) — 재정렬·복원보다 먼저 (베낀 스냅샷을 그 둘이 읽는다)
+    let inherited = false;
+    try { inherited = await inheritFromSibling(sess, chat, chaIdx, char.chaId); } catch (e) { console.log('[simcore] 채팅 상속 실패:', e.message); }
     await realignTimeline(chat, lastCharIdx, '로드', { chaIdx, chatIdx, sess });
     try { await sess.init(lastCharIdx); }
     catch (e) {
@@ -37178,6 +37276,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     try { startPresetId = (await Risuai.pluginStorage.getItem(startPresetKey)) || null; }
     catch { startPresetId = null; }
     session = sess; // 여기서부터 바깥에 보인다 (v1.14.10)
+    if (inherited) { try { await mirrorVars(chaIdx, chatIdx); } catch {} }   // 미러는 복사 시점의 원본 최신값 — 상속한 자리의 값으로 (v1.14.13)
     if (startPresetId && session.current.meta.turn === 0 && !session.current.meta.setupDone) { // 최초설정이 끝난 턴 0엔 다시 안 덮는다 (v1.14.7, 영역 3 #3)
       if ((schema.setup?.presets || []).some((p) => p.id === startPresetId)) {
         session.applyPreset(startPresetId);

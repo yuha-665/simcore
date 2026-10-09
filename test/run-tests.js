@@ -1604,6 +1604,31 @@ test('규약·요청문 — 분담 규칙과 형식 설명이 실린다, sim 없
   eq(bibleMod.simRequestText(bibleMod.normalizeBible({ sim: [{ what: '호감', how: '변수', why: 'w' }] })).includes('- [변수] 호감 — w'), true);
 });
 
+test('폴더(v1.17.0) — folders 덮어쓰기, sections.folder 검증(없는 폴더 거부·빈 값은 폴더 밖), 컴파일에 폴더 항목·자식 folder key', () => {
+  let r = bibleMod.applyBibleUpdate(bibleMod.emptyBible(), { bible: { folders: [{ name: '기초 설정집' }], sections: [{ id: 'a', name: 'A', body: 'x', folder: '기초-설정집' }, { id: 'b', name: 'B', body: 'y' }] } });
+  eq(r.ok, true); eq(r.bible.folders[0].id, '기초-설정집'); eq(r.bible.sections[0].folder, '기초-설정집'); eq(r.bible.sections[1].folder, undefined); eq(r.summary.includes('폴더 1'), true);
+  eq(bibleMod.applyBibleUpdate(r.bible, { bible: { sections: [{ id: 'b', folder: 'nope' }] } }).ok, false);
+  eq(bibleMod.applyBibleUpdate(r.bible, { bible: { folders: [{ id: 'x', name: 'X', key: 'k' }] } }).ok, false);   // key는 AI가 못 정한다
+  r = bibleMod.applyBibleUpdate(r.bible, { bible: { sections: [{ id: 'a', folder: '' }] } });
+  eq(r.ok, true); eq(r.bible.sections[0].folder, undefined);
+  const b = bibleMod.normalizeBible({ folders: [{ id: 'f', name: 'F' }, { id: 'k', name: 'K', key: bibleMod.FOLDER_KEY_PREFIX + 'zzz' }, { id: 'e', name: '빈' }], sections: [{ id: 'a', name: 'A', body: 'x', folder: 'f' }, { id: 'b', name: 'B', body: 'y', folder: 'k' }, { id: 'c', name: 'C', body: 'z' }] });
+  const l = bibleMod.compileLorebook(b);
+  eq(l.data.length, 4); eq(l.data[0].mode, 'folder'); eq(l.data[0].comment, 'F'); eq(l.data[0].key.startsWith(bibleMod.FOLDER_KEY_PREFIX), true); eq(l.data[0].content, '');
+  eq(l.data[1].folder, l.data[0].key); eq(l.data[2].folder, bibleMod.FOLDER_KEY_PREFIX + 'zzz'); eq('folder' in l.data[3], false);
+  eq(bibleMod.normalizeBible({ folders: [{ name: 'f', key: 'junk' }], sections: [{ name: 's', folder: 'zzz', body: 'b' }] }).sections[0].folder, undefined);
+  eq(bibleMod.bibleDigest(b).text.includes('로어북 폴더'), true); eq(bibleMod.bibleDigest(b).text.includes('· 폴더: f'), true);
+});
+
+test('원문·시트 형식(v1.17.0) — 수정안 밖, 사용자 블록은 다이제스트 뒤에, 동봉 끄기·상한', () => {
+  eq(bibleMod.applyBibleUpdate(bibleMod.emptyBible(), { bible: { source: 'x' } }).ok, false);
+  eq(bibleMod.bibleIsBlank(bibleMod.normalizeBible({ source: '원문' })), false);
+  const ub = bibleMod.bibleUserBlocks(bibleMod.normalizeBible({ source: '원문' }), '양식');
+  eq(ub.lines.join('\n').includes('## 캐릭터 시트 형식'), true); eq(ub.lines.join('\n').includes('\n양식\n'), true); eq(ub.lines.join('\n').includes('## 적재한 원문'), true);
+  eq(ub.source.on, true); eq(ub.source.truncated, false);
+  eq(bibleMod.bibleUserBlocks(bibleMod.normalizeBible({ source: '원문', sourceOn: false }), '').lines.length, 0);
+  eq(bibleMod.bibleUserBlocks(bibleMod.normalizeBible({ source: 'x'.repeat(60000) }), '', 1024).source.truncated, true);
+});
+
 (async () => {
   let passed = 0, failed = 0;
   const failures = [];

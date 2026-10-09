@@ -143,12 +143,17 @@ let schema = null, currentChaId = null;
   async function getBotContextForEditor() {
     const char = await Risuai.getCharacter();
     if (!char) throw new Error('현재 선택된 캐릭터를 찾지 못했습니다.');
+    const all = (char.globalLore || []).filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
+    // 📁 폴더 (v1.17.0) — 리수 폴더 = mode:'folder' 항목(key가 폴더 id), 자식은 folder: <그 key>. 봇 제작이 "리수에 있는 폴더"로 보여 주고
+    // 그 key로 내보내면 같은 캐릭터로 가져올 때 그 폴더 안으로 들어간다. 폴더 항목은 로어북 목록에서 뺀다(본문이 없다).
+    const folders = all.filter((l) => l.mode === 'folder').map((l) => ({ key: String(l.key || ''), name: l.comment || '' })).filter((f) => f.key);
+    const nameOf = new Map(folders.map((f) => [f.key, f.name]));
     return {
       name: char.name || '',
       desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
-      lore: (char.globalLore || [])
-        .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
-        .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+      folders,
+      lore: all.filter((l) => l.mode !== 'folder')
+        .map((l) => ({ name: l.comment || '', content: l.content || '', ...(l.folder && nameOf.has(l.folder) ? { folder: nameOf.get(l.folder) } : {}) })),
     };
   }
 

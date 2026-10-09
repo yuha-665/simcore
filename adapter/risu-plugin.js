@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.16.3
-//@display-name SimCore (시뮬 엔진) v1.16.3 봇 제작 — 설정집 대화 · 보낼 로어북 고르기
+//@version 1.17.0
+//@display-name SimCore (시뮬 엔진) v1.17.0 봇 제작 — 로어북 폴더 · 시트 형식 · 원문 적재
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,24 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.17.0 ───────────────────────────────────────────────
+// **봇 제작 2차 — 📁 로어북 폴더 · 🪪 시트 형식(OOC 명령어) · 📥 캐릭 설정집 원문 적재.** 유저 제안(2026-10-10, v1.16.3 실기 "흠 잘 불러오네" 뒤):
+// "캐릭터 시트 — 원하는 시트 OOC 명령어를 붙여 넣는 곳을 만들고 그 아래 캐릭 설정집 적재를 만들고. 로어북이 그룹 기능도 지원하니 어떤 그룹을
+// 만들지, 어떤 그룹에 로어북을 생성할지 정할 수 있으면 봇 제작이 더 수월할 것".
+// - [코어 bible] 설정집에 folders[{ id, name, key? }] + sections[].folder. 리수 폴더(포켓리스 1.8.1 database.svelte.ts) = mode:'folder' 항목
+//   (key 머리 '\uf000folder:' + uuid) + 자식의 folder(=그 key). importLoreBook은 data를 그대로 push하니 JSON에 폴더째 실린다 —
+//   compileLorebook이 쓰이는 폴더만 폴더 항목으로 만들고(빈 폴더 X) 자식에 folder를 적는다. key가 있는 폴더(리수에 이미 있는 것)는 항목을 만들지
+//   않고 자식만 그 key로 — 같은 캐릭터로 가져올 때 그 폴더 안으로. 새 폴더 key는 내보낼 때마다 새 uuid(가져오기가 덧붙임이라 두 번 넣으면 둘).
+// - [편집기] 📁 로어북 폴더 칸(설정집 머리 아래): 칩(이름·항목 수·리수에 있음·✕) · 새 폴더 만들기 · "리수에 있는 폴더" [+ 이름] 버튼(캐릭터 정보의
+//   folders에서). 카드마다 폴더 고르기(폴더가 있을 때만). 폴더가 있으면 카드 묶음이 종류별 → 폴더별. 📚 보낼 것 고르기 목록엔 "폴더 › 이름".
+// - [규약] folders(id 덮어쓰기, key는 AI가 못 정함)·sections[].folder(없는 폴더 id 거부). 폴더가 있으면 새 항목은 알맞은 폴더에, 없으면 폴더를 억지로 안 만든다.
+// - [편집기] 🪪 캐릭터 시트 접기 = 시트 형식(OOC 명령어 — 기기 공통 prefs sim:bible:prefs, 모든 봇이 같이 씀) → 📥 캐릭 설정집 적재(봇별 설정집
+//   source, 동봉 체크 + KB, 48KB 위는 앞부분만 + ⚠) → [🪪 시트 써 달라기](요청문을 입력칸에) → 결과(이름·desc·first). 시트 형식·원문은 AI 수정안으로
+//   못 바꾼다(UPDATE_KEYS 밖). 프롬프트는 설정집 다이제스트 뒤에 '## 캐릭터 시트 형식'·'## 적재한 원문' 블록(bibleUserBlocks).
+// - [어댑터] getBotContextForEditor: folders[{ key, name }] + lore[].folder(폴더 이름). 폴더 항목(mode:'folder')은 lore 목록에서 뺀다.
+//   ai.loadBiblePrefs/saveBiblePrefs — pluginStorage sim:bible:prefs(캐릭터 무관).
+// - 여전히 캐릭터엔 아무것도 안 쓴다(1단계). 2단계(허가 체크·항목 단위 적용)는 그대로 미구현.
+
 // ── v1.16.3 ───────────────────────────────────────────────
 // **캐릭터가 바뀌면 편집기를 새로 만든다.** 유저 실기(2026-10-10): 새 봇(로어북 없음)을 만들었다가 로어북 있는 봇으로 옮겨 오니 📚 보낼 것 고르기가
 // "로어북 0/0 · 보낼 설명·로어북이 없어요"로 남고 다시 읽을 버튼도 없었다. 편집기는 전역 인스턴스라 캐릭터 전환 때 setSchema로 스키마만 갈았고,
@@ -8332,7 +8350,7 @@ count(목록)  has(목록, "항목")</pre>
       json: ['JSON 관리자', 'JSON을 통째로 붙여 넣거나 패치를 검사해 작업본에 적용해요.'],
       assets: ['에셋 관리자', '캐릭터 에셋을 팩으로 묶어 상황에 맞는 이미지가 서사에 실리게 해요.'],
       deep: ['세부 편집기', '변수·규칙·이벤트·상태창을 항목별로 직접 편집해요.'],
-      bible: ['봇 제작', '봇 설정을 대화로 정리해 설정집을 만들고, 로어북·캐릭터 시트 초안을 복사해 가요. 캐릭터엔 아무것도 쓰지 않아요.'],
+      bible: ['봇 제작', '봇 설정을 대화로 정리해 설정집을 만들고, 로어북(폴더째)·캐릭터 시트 초안을 복사해 가요. 캐릭터엔 아무것도 쓰지 않아요.'],
     };
     const FLOOR_HEAD_TAIL = ' 어느 도구에서 수정해도 같은 작업본이고, 캐릭터 반영은 [파일관리 → 편집 작업공간]에서 해요.';
     for (const tab of root.querySelectorAll('.sc-maintab')) {
@@ -8889,12 +8907,17 @@ count(목록)  has(목록, "항목")</pre>
   async function getBotContextForEditor() {
     const char = await Risuai.getCharacter();
     if (!char) throw new Error('현재 선택된 캐릭터를 찾지 못했습니다.');
+    const all = (char.globalLore || []).filter((l) => l.comment !== SCHEMA_LORE_COMMENT);
+    // 📁 폴더 (v1.17.0) — 리수 폴더 = mode:'folder' 항목(key가 폴더 id), 자식은 folder: <그 key>. 봇 제작이 "리수에 있는 폴더"로 보여 주고
+    // 그 key로 내보내면 같은 캐릭터로 가져올 때 그 폴더 안으로 들어간다. 폴더 항목은 로어북 목록에서 뺀다(본문이 없다).
+    const folders = all.filter((l) => l.mode === 'folder').map((l) => ({ key: String(l.key || ''), name: l.comment || '' })).filter((f) => f.key);
+    const nameOf = new Map(folders.map((f) => [f.key, f.name]));
     return {
       name: char.name || '',
       desc: char.desc ?? char.description ?? '', // [live-test] 리수 캐릭터의 설명 필드명
-      lore: (char.globalLore || [])
-        .filter((l) => l.comment !== SCHEMA_LORE_COMMENT)
-        .map((l) => ({ name: l.comment || '', content: l.content || '' })),
+      folders,
+      lore: all.filter((l) => l.mode !== 'folder')
+        .map((l) => ({ name: l.comment || '', content: l.content || '', ...(l.folder && nameOf.has(l.folder) ? { folder: nameOf.get(l.folder) } : {}) })),
     };
   }
 
@@ -8943,6 +8966,15 @@ count(목록)  has(목록, "항목")</pre>
         saveBible: async (bible) => {
           try { await Risuai.pluginStorage.setItem(`sim:bible:${currentChaId}`, JSON.stringify(bible || {})); }
           catch (e) { console.log('[simcore] 설정집 저장 실패:', e.message); }
+        },
+        // 🪪 시트 형식(OOC 명령어) 같은 기기 공통 취향 (v1.17.0) — 캐릭터 무관 pluginStorage. 카드·번들에 안 실린다.
+        loadBiblePrefs: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem('sim:bible:prefs'); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        saveBiblePrefs: async (prefs) => {
+          try { await Risuai.pluginStorage.setItem('sim:bible:prefs', JSON.stringify(prefs || {})); }
+          catch (e) { console.log('[simcore] 봇 제작 취향 저장 실패:', e.message); }
         },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },

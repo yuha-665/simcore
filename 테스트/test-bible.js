@@ -24,7 +24,11 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 번들에 Node 전용 Buffer 참조 없음 (v1.16.2 실사고 — 브라우저엔 Buffer가 없어 봇 제작 층이 비었다)', !/\bBuffer\s*\./.test(src) && src.includes('new TextEncoder().encode(String(s)).length'), '');
   ck('★ 캐릭터가 바뀌면 편집기를 새로 만든다 (v1.16.3 — 캐릭터별 상태가 이전 봇 것으로 남던 것)', src.includes("if (editor && editorChaId !== null && editorChaId !== currentChaId) {") && src.includes("editor = null;\n      ensureEditor();") && src.includes("editor.setFloor(floorBtn.dataset.floor || 'top')"), '');
   ck('★ 고르기 칸에 ↻ 다시 읽기, 이름뿐이어도 칸을 그린다', src.includes("'↻ 다시 읽기'") && (src.match(/if \(aiBotCtx\) \{   \/\/ 이름뿐이어도/g) || []).length === 2, '');
-  ck('★ 버전 1.16.x + display-name', src.includes('//@version 1.16.') && /\/\/@display-name .*v1\.16\./.test(src), '');
+  ck('★ 📁 로어북 폴더 칸 + 카드 폴더 고르기 + 폴더별 묶음 (v1.17.0)', src.includes('📁 로어북 폴더') && src.includes("'+ 폴더 만들기'") && src.includes("'리수에 있는 폴더:'") && src.includes("'aria-label': '폴더'") && src.includes("group('폴더 없음', loose)"), '');
+  ck('★ 🪪 시트 형식(OOC) + 📥 원문 적재 + 시트 써 달라기 (v1.17.0)', src.includes("'aria-label': '캐릭터 시트 형식'") && src.includes("'aria-label': '캐릭 설정집 원문'") && src.includes("'🪪 시트 써 달라기'") && src.includes('bibleMod.bibleUserBlocks(bible, bibleSheetFormat).lines'), '');
+  ck('★ 어댑터: 캐릭터 정보에 폴더(folders + lore[].folder), 폴더 항목은 목록에서 뺌', src.includes("all.filter((l) => l.mode === 'folder')") && src.includes("all.filter((l) => l.mode !== 'folder')") && src.includes('folders,'), '');
+  ck('★ 어댑터: 시트 형식은 기기 공통 prefs (sim:bible:prefs)', src.includes("'sim:bible:prefs'") && src.includes('loadBiblePrefs: async') && src.includes('saveBiblePrefs: async'), '');
+  ck('★ 버전 1.17.x + display-name', src.includes('//@version 1.17.') && /\/\/@display-name .*v1\.17\./.test(src), '');
 }
 
 // ── ② 1단계 = 쓰기 없음 — bibleFloor 구간은 캐릭터 객체를 건드리지 않는다 ──
@@ -77,6 +81,30 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('상한 — 항목 80·낱말 24', (() => { const many = B.normalizeBible({ sections: Array.from({ length: 100 }, (_, i) => ({ name: 'n' + i })) }); const keys = B.normalizeBible({ sections: [{ name: 'k', keys: Array.from({ length: 40 }, (_, i) => 'k' + i) }] }); return many.sections.length === 80 && keys.sections[0].keys.length === 24; })(), '');
   ck('응답 가르기 — 추론 블록 제거 + 마지막 json 펜스', (() => { const s = B.splitBibleResponse('<thoughts>x</thoughts>정리했어요.\n```json\n{"bible":{"premise":"p"}}\n```'); return s.prose === '정리했어요.' && JSON.parse(s.json).bible.premise === 'p'; })(), '');
   ck('비어 있음 판정', B.bibleIsBlank(B.emptyBible()) && !B.bibleIsBlank(b1), '');
+
+  // 📁 폴더 (v1.17.0)
+  r = B.applyBibleUpdate(b1, { bible: { folders: [{ id: 'base', name: '기초 설정집' }], sections: [{ id: 'arin', folder: 'base' }, { name: '길드', kind: 'faction', folder: 'nope', body: 'x' }] } });
+  ck('폴더 — 없는 폴더 id는 거부 (있는 폴더를 알려 준다)', !r.ok && r.errors.some((e) => e.includes("folder 'nope'") && e.includes('base')), r.errors.join('|'));
+  r = B.applyBibleUpdate(b1, { bible: { folders: [{ id: 'base', name: '기초 설정집' }, { name: '지역 설정집' }], sections: [{ id: 'arin', folder: 'base' }, { id: '감시탑', folder: '지역-설정집' }] } });
+  ck('폴더 — 추가·배정, 요약에 폴더', r.ok && r.bible.folders.length === 2 && r.bible.sections.find((x) => x.id === 'arin').folder === 'base' && r.summary.includes('폴더 2'), r.errors.join('|') + ' ' + r.summary);
+  const withKey = B.normalizeBible({ ...r.bible, folders: [{ id: 'base', name: '기초 설정집', key: B.FOLDER_KEY_PREFIX + 'abc' }, { id: '지역-설정집', name: '지역 설정집' }, { id: 'empty', name: '빈 폴더' }] });
+  const l2 = B.compileLorebook(withKey);
+  const fold = l2.data.filter((e) => e.mode === 'folder');
+  ck('컴파일 — 새 폴더는 mode folder 항목(uuid key), 리수에 있는 폴더(key)는 항목 없이 자식 folder에 key, 빈 폴더는 안 만든다',
+    fold.length === 1 && fold[0].comment === '지역 설정집' && /^[0-9a-f-]{36}$/.test(fold[0].key.slice(B.FOLDER_KEY_PREFIX.length))
+    && l2.data.find((e) => e.comment === '아린').folder === B.FOLDER_KEY_PREFIX + 'abc' && l2.data.find((e) => e.comment === '감시탑').folder === fold[0].key
+    && l2.data.find((e) => e.comment === '문체').folder === undefined, JSON.stringify(l2.data.map((e) => [e.comment, e.mode, e.folder])));
+  ck('컴파일 — 순서: 폴더 → 자식 → 폴더 없는 항목', l2.data.map((e) => e.comment).join('|') === '아린|지역 설정집|감시탑|문체', l2.data.map((e) => e.comment).join('|'));
+  ck('컴파일 — 새 폴더 key는 내보낼 때마다 새 uuid', B.compileLorebook(withKey).data.find((e) => e.mode === 'folder').key !== fold[0].key, '');
+  ck('다이제스트 — 폴더 목록과 항목의 폴더', B.bibleDigest(withKey).text.includes('로어북 폴더') && B.bibleDigest(withKey).text.includes('기초 설정집(base) · 리수에 있음') && B.bibleDigest(withKey).text.includes('· 폴더: base'), '');
+  ck('규약 — folders·folder 설명', B.bibleRules().join('\n').includes('"folders"?:') && B.bibleRules().join('\n').includes('없는 폴더 id는 거부') && B.bibleRules().join('\n').includes('캐릭터 시트 형식'), '');
+  ck('정규화 — 없는 폴더를 가리키는 항목은 폴더 밖으로, key는 리수 머리일 때만', (() => { const n = B.normalizeBible({ folders: [{ name: 'f', key: 'junk' }], sections: [{ name: 's', folder: 'zzz', body: 'b' }] }); return n.folders[0].key === undefined && n.sections[0].folder === undefined; })(), '');
+  // 🪪 시트 형식 · 📥 원문 적재 (v1.17.0) — AI 수정안으로는 못 바꾼다
+  const r3 = B.applyBibleUpdate(b1, { bible: { source: 'x' } });
+  ck('원문·시트 형식은 수정안 밖 (알 수 없는 키)', !r3.ok && r3.errors.some((e) => e.includes("'source'")), '');
+  const ub = B.bibleUserBlocks(B.normalizeBible({ source: '원문 한 덩이' }), '## 시트 양식\n이름/나이/말투');
+  ck('사용자 블록 — 시트 형식·적재한 원문', ub.lines.join('\n').includes('## 캐릭터 시트 형식') && ub.lines.join('\n').includes('이름/나이/말투') && ub.lines.join('\n').includes('## 적재한 원문') && ub.lines.join('\n').includes('원문 한 덩이') && ub.source.on && !ub.source.truncated, '');
+  ck('사용자 블록 — 동봉 끄면 원문 빠짐, 상한 넘으면 잘림 표시', !B.bibleUserBlocks(B.normalizeBible({ source: 'x', sourceOn: false })).lines.join('\n').includes('## 적재한 원문') && B.bibleUserBlocks(B.normalizeBible({ source: '가'.repeat(30000) })).source.truncated, '');
 }
 
 // ── ④ 실제로 그려지는가 — 가짜 DOM에 봇 제작 층을 띄워 대화 한 턴(적용·거부)·되돌리기·내보내기·💬 넘기기를 누른다 ──
@@ -142,11 +170,14 @@ const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
   const replies = [];   // 다음 generate가 돌려줄 답 (앞에서부터)
   let lastSystem = '';
   const prefsSaved = [];
+  const prefsBible = [];   // 🪪 시트 형식 — 기기 공통 prefs (v1.17.0)
   const ai = {
     generate: async (input) => { lastSystem = String(input && input.system || ''); return replies.length ? replies.shift() : '그냥 말이에요.'; },
     getBotContext: async () => ({ name: '테스트', desc: '설명', lore: [{ name: '옛 항목', content: '옛 로어 본문 (설정집의 옛 본문과 다른 글)' }] }),
     loadBible: async () => ({ title: '불러온 설정집', sections: [{ id: 'old', kind: 'world', name: '옛 세계', keys: ['옛'], body: '옛 본문' }] }),
     saveBible: async (b) => { saved.push(JSON.parse(JSON.stringify(b))); },
+    loadBiblePrefs: async () => null,
+    saveBiblePrefs: async (p) => { prefsBible.push(JSON.parse(JSON.stringify(p))); },
   };
   const box = document.createElement('div');
   let bootErr = null, ed = null;
@@ -214,6 +245,39 @@ const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
   ck('비우기 1회는 무장만', has('sce-bible-card') === 1 && !!btn('한 번 더 누르면 설정집을 비워요'), '');
   btn('한 번 더 누르면 설정집을 비워요').click(); await tick();
   ck('★ 비우기 2회 — 빈 설정집, 되돌리기 가능', has('sce-bible-card') === 0 && !!btn('↩ 되돌리기') && !btn('↩ 되돌리기').disabled, '');
+
+  // ── v1.17.0 — 📁 폴더 · 🪪 시트 형식 · 📥 원문 적재 (비운 설정집에서 시작) ──
+  ai.getBotContext = async () => ({ name: '테스트', desc: '설명', folders: [{ key: B.FOLDER_KEY_PREFIX + 'abc', name: '기초 설정집' }], lore: [{ name: '옛 항목', content: '옛 로어 본문', folder: '기초 설정집' }] });
+  btn('↻ 다시 읽기').click(); for (let i = 0; i < 10; i++) await tick();
+  ck('★ 고르기 목록에 폴더 이름이 앞에 붙는다', findAll(box, (e) => String(e.className).includes('sce-ctx-pick-row') && e.textContent.includes('기초 설정집 › 옛 항목')).length === 1, '');
+  ck('★ 📁 폴더 칸 + 리수에 있는 폴더 버튼', has('sce-bible-folders') === 1 && !!btn('+ 기초 설정집') && !!btn('+ 폴더 만들기'), '');
+  btn('+ 기초 설정집').click(); await tick();
+  ck('★ 리수 폴더 가져오기 — key 달린 폴더 칩, 버튼은 ✓로 잠김', has('sce-bible-folder-chip') === 1 && box.textContent.includes('기초 설정집 · 0 · 리수에 있음') && !!btn('✓ 기초 설정집') && btn('✓ 기초 설정집').disabled, '');
+  { const inp = findAll(box, (e) => e.tagName === 'INPUT' && e.getAttribute('aria-label') === '새 폴더 이름')[0]; inp.value = '지역 설정집'; inp.oninput(); btn('+ 폴더 만들기').click(); await tick(); }
+  ck('★ 새 폴더 만들기 — 칩 2', has('sce-bible-folder-chip') === 2 && box.textContent.includes('지역 설정집 · 0'), '');
+  replies.push('넣었어요.\n```json\n{"bible":{"sections":[{"id":"arin","kind":"character","name":"아린","keys":["아린"],"folder":"기초-설정집","body":"경비대장."},{"id":"tower","kind":"place","name":"감시탑","keys":["감시탑"],"folder":"지역-설정집","body":"북쪽 탑."},{"id":"style","kind":"style","name":"문체","always":true,"body":"3인칭."}]}}\n```');
+  await say('아린·감시탑·문체를 넣어줘');
+  ck('★ 폴더별 묶음으로 그려진다 (📁 기초 설정집 · 1 / 📁 지역 설정집 · 1 / 폴더 없음 · 1)', has('sce-bible-group') === 3 && box.textContent.includes('📁 기초 설정집 · 1') && box.textContent.includes('폴더 없음 · 1'), String(has('sce-bible-group')) + ' ' + box.textContent.slice(0, 200));
+  ck('★ 카드마다 폴더 고르기', findAll(box, (e) => e.tagName === 'SELECT' && e.getAttribute('aria-label') === '폴더').length === 3, '');
+  btn('📋 로어북 JSON 복사').click(); await tick();
+  ck('★ 내보낸 JSON — 새 폴더 항목 1(지역 설정집) + 아린은 리수 폴더 key로 + 문체는 폴더 없음', (() => { try { const j = JSON.parse(clip[clip.length - 1]); const f = j.data.filter((e) => e.mode === 'folder'); return f.length === 1 && f[0].comment === '지역 설정집' && j.data.find((e) => e.comment === '아린').folder === B.FOLDER_KEY_PREFIX + 'abc' && j.data.find((e) => e.comment === '감시탑').folder === f[0].key && !('folder' in j.data.find((e) => e.comment === '문체')); } catch { return false; } })(), String(clip.length));
+  ck('★ 내보내기 안내에 새 폴더 수', box.textContent.includes('항목 3 · 새 폴더 1'), '');
+  // 🪪 시트 형식(기기 공통 prefs) + 📥 원문 적재(캐릭터별 설정집) → 다음 턴 프롬프트에 실린다
+  { const f = findAll(box, (e) => e.tagName === 'TEXTAREA' && e.getAttribute('aria-label') === '캐릭터 시트 형식')[0]; f.value = '## 시트 양식\n이름/나이/말투'; f.onchange(); await tick(); }
+  { const sa = findAll(box, (e) => e.tagName === 'TEXTAREA' && e.getAttribute('aria-label') === '캐릭 설정집 원문')[0]; sa.value = '원문: 아린은 스물여섯.'; sa.onchange(); await tick(); }
+  await tick(400);
+  ck('★ 시트 형식은 기기 공통 prefs로 저장', prefsBible.length >= 1 && prefsBible[prefsBible.length - 1].sheetFormat.includes('이름/나이/말투'), String(prefsBible.length));
+  ck('★ 원문은 캐릭터별 설정집에 저장', saved[saved.length - 1].source === '원문: 아린은 스물여섯.' && saved[saved.length - 1].sourceOn === true, JSON.stringify(saved[saved.length - 1]).slice(0, 200));
+  ck('★ 시트 접기 머리에 형식 ✓ · 원문 KB', box.textContent.includes('형식 ✓') && box.textContent.includes('원문 0.0KB'), '');
+  btn('🪪 시트 써 달라기').click(); await tick();
+  ck('★ 시트 써 달라기 — 입력칸에 요청문', area().value.startsWith('시트 형식대로 캐릭터 시트'), area().value);
+  await say('시트 써줘');
+  ck('★ 프롬프트에 시트 형식·적재한 원문 (설정집 다이제스트 뒤)', lastSystem.includes('## 캐릭터 시트 형식') && lastSystem.includes('이름/나이/말투') && lastSystem.includes('## 적재한 원문') && lastSystem.includes('아린은 스물여섯') && lastSystem.indexOf('## 설정집') < lastSystem.indexOf('## 캐릭터 시트 형식'), '');
+  { const cb = findAll(box, (e) => e.tagName === 'INPUT' && e.getAttribute('aria-label') === '원문 동봉')[0]; cb.checked = false; cb.onchange(); await tick(); }
+  await say('한 번 더');
+  ck('★ 동봉을 끄면 원문이 빠진다 (시트 형식은 남는다)', !lastSystem.includes('## 적재한 원문') && lastSystem.includes('## 캐릭터 시트 형식'), '');
+  { const x = findAll(box, (e) => e.tagName === 'BUTTON' && e.getAttribute('aria-label') === '폴더 지역 설정집 지우기')[0]; x.click(); await tick(); }
+  ck('★ 폴더 지우기 — 항목은 폴더 밖으로 (칩 1, 폴더 없음 · 2)', has('sce-bible-folder-chip') === 1 && box.textContent.includes('폴더 없음 · 2'), '');
 
   // 직결 호출이 없는 호스트 — 설정집만
   const box2 = document.createElement('div');

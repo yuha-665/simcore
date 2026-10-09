@@ -350,5 +350,8 @@ char라 전부 걸러진다. (`runLLMModel`은 1.8.1에선 replacer 루프가 �
 `src/ts/process/lorebook.svelte.ts importLoreBook(mode)` — 캐릭터(global = `char.globalLore`)·채팅(local = `chat.localLore`)·전역 페이지(sglobal)와
 모듈 메뉴(ModuleMenu.svelte) 전부 **같은 형식**: `{ type:'risu', ver:1, data: loreBook[] }` 또는 CCv3 `{ entries: {…} }`(convertExternalLorebook).
 항목 필드 = `key`(쉼표 문자열)·`comment`(제목)·`content`·`mode:'normal'`·`insertorder:100`·`alwaysActive`·`secondkey:''`·`selective:false`.
-폴더는 `mode:'folder'` + `key:'\uf000folder:<uuid>'`. 파일 선택은 `selectSingleFile(['json','lorebook'])` — 플러그인이 클립보드로 준 JSON은
+**폴더**(v1.17.0 봇 제작이 쓴다): 폴더 = `mode:'folder'` 항목 + `key:'\uf000folder:<uuid>'`(`addLorebookFolder`, content ''), 자식은 `loreBook.folder = <그 key>`
+(인터페이스 `folder?:string`). 가져오기는 `data`를 그대로 push하므로 **폴더 항목·folder 필드가 그대로 들어간다**. 폴더의 ☀(상시) 토글은 자식 전부의
+alwaysActive를 바꾸는 UI 동작일 뿐(프롬프트 조립엔 폴더 의미 없음). 폴더를 못 찾는 `folder`는 정렬에서 최상위에 남는다(드래그 정렬 코드).
+파일 선택은 `selectSingleFile(['json','lorebook'])` — 플러그인이 클립보드로 준 JSON은
 유저가 파일로 저장해야 들어간다(그래서 ⬇ 내려받기 버튼이 있다). 가져오기는 **덧붙임**(push)이라 같은 제목이 있어도 교체하지 않는다.

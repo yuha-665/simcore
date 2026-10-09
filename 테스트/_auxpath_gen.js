@@ -162,11 +162,18 @@ let lastAux = { status: '', raw: '', applied: 0 };
   }
 
 
-  const BRIDGE_GEN = 2;
+  const BRIDGE_GEN = 3;
 
   function schemaFingerprint(sch) {
+    // 지문은 구워지는 것 전부를 덮어야 한다 (v1.14.6) — 전엔 id·type·label·allow·contextTurns뿐이라 enum·desc·상한·guide·suggest를
+    // 바꾼 스키마가 노후로 안 잡혀 옛 선택지로 보조를 불렀고, 보조가 고른 옛 값은 coerce에서 조용히 거부됐다. 템플릿 자체를 해시한다
+    let t = '';
+    try {
+      const fake = { vars: Object.fromEntries((sch.vars || []).map((v) => [v.id, '⟦cur:' + v.id + '⟧'])), meta: {} };
+      t = engine.buildAuxPrompt(sch, fake, '⟦NARR⟧', '⟦USER⟧', '⟦HIST⟧', { allowAll: true }) + '\n' + engine.buildSetupPrompt(sch, fake, '⟦NARR⟧');
+    } catch { t = ''; }
     const src = JSON.stringify({ g: BRIDGE_GEN, v: (sch.vars || []).map((v) => [v.id, v.type, v.label]),
-      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1 });
+      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1, t });
     let h = 2166136261 >>> 0;
     for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(36);

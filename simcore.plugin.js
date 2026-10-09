@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.5
-//@display-name SimCore (시뮬 엔진) v1.14.5 점검 1차
+//@version 1.14.6
+//@display-name SimCore (시뮬 엔진) v1.14.6 점검 2차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,25 +10,22 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.5 ──────────────────────────────────────────────
-// **전체 점검 1차 — 보조 왕복·턴 정산 (docs/점검-2026-10-전체리뷰.md 영역 2·4).** 읽기 감사로 후보를 받고 코드로 재확인한 것만 고쳤다.
-// - [목록] 항목 자르기가 꼬리표(`@기한`·`+합산값`)를 살린다 — `@+30`이 `@1530`으로 굳으며 길어진 항목이 `@153`으로 잘려 같은 턴
-//   만료로 사라지던 것. remove는 완전일치가 안 되면 채팅 명령과 같은 부분 일치(하나만 걸릴 때). 가득 찬 목록의 add는 사유를 남긴다.
-//   보조 프롬프트에 "항목 N자 이내"를 알린다.
-// - [거부 원장] 보조 제안 중 안 받은 것(허용 밖·숫자 아님·선택지 밖·목록 통째 교체·가득 참·remove 불일치·text 잘림·상점/의뢰/갈림길
-//   거부)이 outputPhase.rejected로 돌아오고, 패널 현황줄에 "⛔ 거부 N건 / ✂ 손질 N건"으로 보인다. 전엔 건수뿐이었다.
-// - [파서] 아는 최상위 키가 하나도 없는 객체({"delta":…})는 실패로 → 어댑터가 재시도한다(전엔 "변화 없음"으로 삼킴). changes 안에
-//   넣은 day_passed·conflicts를 끌어올린다. {"msgr":{"msgr":[…]}} 겹포장을 받는다. 첫 코드펜스가 딴 객체여도 뒤의 진짜 JSON을 본다.
-// - [rng 갈래] 보드 글·의뢰·갈림길 섞기가 output 줄기 하나를 보조 응답 양만큼 먹어 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다 —
-//   리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐. 하위 시스템마다 제 갈래('output:board' 등).
-// - [등급 효과] 판정 등급의 {front,add:'-total'}·{gauge}·list expire가 roll/mod/total/vs를 못 읽고 조용히 무시됐다 — overlay를 모든 식에.
-// - [보조 갈림길] 깃발을 정제 전에 꺼서 보조 실패·빈 응답이면 once 트리거의 부탁이 영영 사라졌다 — 걸릴 때까지 산다(설계대로).
-// - [하루 닫기 대리] dayPassed 대리 정산이 효과만 돌려 판정·전달문·쿨다운 기록·액션 시간 고정이 빠졌다 — 버튼 경로와 같게.
-// - [갈림길] 예약해 둔 선택이 같은 글의 /명령으로 잠기면 무효(본문 일치 경로와 같은 기준). [시간] skip_min 핀 쓰기도 coerce.
-//   최초설정 턴의 turn_min·timePin 정리. 무대 뒤·비밀은 항목마다 새 lookup(앞 항목이 바꾼 값을 파생이 바로 읽게).
-// - [검증] 조건 이벤트 cooldown은 "아는 이름이지만 안 읽는 키"로 따로 알린다(v1.14.4 표에 잘못 넣었던 것). 랜덤 표 cooldown 타입,
-//   allow 중복 id. [보드] 댓글 id '#12'를 받는다. [상점] 다상점 라우팅이 열린 빈 상점 먼저. [메신저] 형식 문구가 겹포장을 유도하지 않게.
-//   [예산] allow가 늘린 text 상한 반영.
+// ── v1.14.6 ──────────────────────────────────────────────
+// **전체 점검 2차 — 어댑터 묶음 (영역 2·3·4의 리수 통합 쪽).** 읽기 감사 후보를 코드로 재확인한 것만.
+// - [턴 중 조작 가드] 액션 버튼·상점 구매/환전/판매·의뢰 수락/취소·갈림길 클릭·프리셋이 turnBusy 중엔 거부된다(보드·메신저·새로고침과
+//   같은 규약). 전엔 생성 중 조작이 프롬프트엔 실리고 응답 처리(send 스냅샷 재계산)에서 사라졌으며, 직전 out 스냅샷을 전송 단계
+//   상태로 덮어 그 턴 리롤 프롬프트에서 [이벤트]·액션·[선택] 줄이 빠졌다.
+// - [소급 적용 상관 표식] 지연 호출·루아 브리지 결과는 부른 채팅(세션)·그 턴(outIndex)에서만 적용되고, 채팅 전환·다음 전송·리롤
+//   뒤에 오면 버린다(표시). 브리지 폴링은 "현재 채팅" 대신 부른 채팅을 읽는다 — 전환하면 다른 채팅의 묵은 결과를 재적용하던 것.
+// - [프롬프트가 연 집합] outputPhase가 auxAllowList 결과(meta.auxOpen)를 기록하고 소급 적용(applyChangesToState)은 그 집합을 쓴다 —
+//   전엔 적용 시점에 다시 판정해 감지 해제·시간 고정·갈림길 동결이 지난 뒤라 지연·브리지 경로에서 프롬프트와 적용이 어긋났다
+//   (브리지에서 액션 set 핀 뒤 보조 추정이 또 흐르던 것도 여기서 막힌다). 지연 경로가 보조 갈림길(choices)도 건다.
+// - [시간 고정표] 낱말 항목 판정 글(pinText)을 모드와 무관하게 서사+유저 글로 — 루아·off 모드에서 고정표가 영영 안 걸렸다.
+// - [잘림] 보조 응답이 잘렸으면 상한 곱절로 한 번 더 받아 온전한 쪽을 쓴다(구제는 거래 반쪽을 낳을 수 있다). 지연·브리지 경로도
+//   잘림·거부를 현황줄에 알린다. [history] 보조에게 가는 최근 대화에서 마커·이미지 태그 제거(브리지와 같은 규약).
+// - [브리지 지문] 구워지는 템플릿 자체를 해시(enum·desc·상한·guide·suggest 변경이 노후로 잡힌다, BRIDGE_GEN 3 — 설치된 브리지는 한 번
+//   노후 경고가 뜨니 다시 설치). 번들 교체 뒤 브리지가 노후면 자동으로 다시 굽는다.
+// - [교전] 방치 정리 판정을 상태 블록·지시문 앞으로 — 같은 프롬프트에 "교전 중" 지시문과 "흐지부지 끝났다"가 같이 실리던 것.
 
 
 const SimCore = (() => {
@@ -8225,6 +8222,9 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const injects = [];
   const consumedActions = [];
   let fightRoundFired = false;
+  // 프롬프트가 연 집합(meta.auxOpen)은 응답 단계가 새로 기록한다 (v1.14.6) — 전송 상태에는 없어야 소급 적용이
+  // 지난 응답의 집합을 잘못 쓰지 않고, 집합이 없을 땐 적용 시점 판정(갈림길 동결 등)으로 돌아간다
+  delete state.meta.auxOpen;
 
   // 1. 무장 액션 effects (결정적) + inject 수집
   // firedThisSend: whenArmed 게이트의 기준. oneshot은 여기서 무장이 풀리므로 armed만으로는
@@ -8357,6 +8357,23 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 아래 상태 블록의 날짜가 새 날로 나가고, AI가 이튿날 장면을 쓴다
   consumeTimeSkips(schema, state, changeLog);
 
+  // 1.7 교전 방치 판정 (v1.14.6 — 3.93에서 앞당김) — 상태 블록·지시문이 fight_on을 읽기 **전에** 정리한다. 전엔 지시문이
+  // "교전 중"을 보고 난 뒤에 정리돼 같은 프롬프트에 "교전 중" 지시문과 "흐지부지 끝났다"가 같이 실렸다. 줄은 3.93 자리에 싣는다.
+  let fightIdle = null;
+  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
+    const K = fightMod.FIGHT_KEYS;
+    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
+    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
+    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
+    if (state.vars[K.idle] >= idleMax) {
+      fightMod.clearFight(state);
+      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
+      fightIdle = { end: true };
+    } else {
+      fightIdle = { hold: typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD };
+    }
+  }
+
   // 2. 직전 턴 이벤트 통지 합류
   const notifies = state.meta.pendingNotifies.splice(0);
 
@@ -8474,20 +8491,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 3.93 교전 중 상시 줄 (v1.6.0) — 교전이 열려 있는데 이번 전송에 라운드가 안 굴려졌으면.
   // 유저가 자기 구도를 쓰는 턴이다: 게이지는 그대로, 모델이 혼자 결착을 내지 못하게 막는다.
   // ⚔ 없이 너무 오래 가면(idleTurns) 정리한다 — 상시 줄이 영영 남아 "교전 중"을 우기는 사고 방지.
-  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
-    const K = fightMod.FIGHT_KEYS;
-    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
-    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
-    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
-    if (state.vars[K.idle] >= idleMax) {
-      fightMod.clearFight(state);
-      lines.push(fightMod.DEFAULT_FIGHT_IDLE_END);
-      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
-    } else {
-      const hold = typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD;
-      lines.push(rt(hold));
-    }
-  }
+  if (fightIdle) lines.push(fightIdle.end ? fightMod.DEFAULT_FIGHT_IDLE_END : rt(fightIdle.hold));
 
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
@@ -8697,7 +8701,8 @@ function parseSetupResponse(text) {
 function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
-  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const openIds = Array.isArray(prevState?.meta?.auxOpen) ? new Set(prevState.meta.auxOpen) : null; // 프롬프트가 연 집합 (v1.14.6)
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText, openIds);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
@@ -8755,13 +8760,15 @@ function consumeDetected(schema, state, detected) {
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
 /** @returns 거부 원장 [{id, why}] (v1.14.5) — 전엔 허용 밖·숫자 아님·선택지 밖·목록 통째 교체가 전부 말없이 버려져 "왜 안 바뀌었나"를 알 길이 없었다 */
-function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
+function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null, openIds = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   const rejected = [];
   const short = (x) => JSON.stringify(x ?? null).slice(0, 24);
   // state를 같이 넘겨 whenArmed 게이트를 적용 시점에도 강제한다 —
   // 브리지·지연 소급(seenText 없음)에서도 액션 잠금만은 결정적으로 걸린다
-  const allowById = Object.fromEntries(auxAllowList(schema, seenText, state).map((a) => [a.id, a]));
+  const allowById = Object.fromEntries((openIds
+    ? (schema.updater?.allow || []).filter((a) => openIds.has(a.id)) // 소급 경로: 프롬프트가 연 집합 그대로 (v1.14.6)
+    : auxAllowList(schema, seenText, state)).map((a) => [a.id, a]));
   for (const [id, proposed] of Object.entries(changes || {})) {
     const def = varById[id];
     const allow = allowById[id];
@@ -8804,13 +8811,16 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, pinText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
   // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
   // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
+  // 프롬프트가 연 집합을 기록 (v1.14.6) — 지연·브리지 소급 적용이 "그때 열렸던 변수"를 그대로 쓰게. 전엔 적용 시점 상태로 다시
+  // 판정해 감지 해제(wordUnlock)·시간 고정(timePin)·갈림길 동결이 이미 지난 뒤라 프롬프트와 적용이 어긋났다 (점검 영역 2).
+  state.meta.auxOpen = auxAllowList(schema, seenText, state).map((a) => a.id);
   const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
@@ -8875,7 +8885,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
   {
     const tcfgP = timeConfig(schema);
     if (tcfgP && tcfgP.pins.length) {
-      const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, seenText));
+      const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, pinText ?? seenText)); // 루아·off 모드도 서사+유저 글로 판정 (v1.14.6)
       if (state.meta.timePin) {
         const from = Number(state.vars[SKIP_MIN]) || 0;
         // 전송 단계 set은 이미 굳었으니 0으로(보조 추정 버림). 대리 정산(proxy)의 set은 아직이라 그 값으로 갈아끼운다 (v1.14.5)
@@ -10943,13 +10953,14 @@ class SimSession {
    * auxText: 보조 모델의 원문 응답 (null이면 변화 없음으로 처리)
    * 반환 { state, changeLog, firedEvents, auxParsed }
    */
-  async onOutput(outIndex, auxText, seenText = null) {
+  async onOutput(outIndex, auxText, seenText = null, pinText = null) {
     const sendState = (await this.store.load('send', outIndex - 1)) ?? this.current;
     const parsed = engine.parseAuxResponse(auxText) ?? { changes: {}, reasons: {} };
     const r = engine.outputPhase(this.schema, sendState, parsed.changes, parsed.reasons, {
       rng: this._rng(outIndex, 'output'),
       rngSub: (label) => this._rng(outIndex, 'output:' + label), // 하위 시스템 갈래 (v1.14.5) — 보드·의뢰·갈림길 섞기가 본 굴림을 밀어내지 않게
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
+      pinText,    // 낱말 시간 고정표 판정 글 (v1.14.6) — 루아·off 모드에서도 서사+유저 글
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
       detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제
@@ -32970,6 +32981,26 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.5 ──────────────────────────────────────────────
+// **전체 점검 1차 — 보조 왕복·턴 정산 (docs/점검-2026-10-전체리뷰.md 영역 2·4).** 읽기 감사로 후보를 받고 코드로 재확인한 것만 고쳤다.
+// - [목록] 항목 자르기가 꼬리표(`@기한`·`+합산값`)를 살린다 — `@+30`이 `@1530`으로 굳으며 길어진 항목이 `@153`으로 잘려 같은 턴
+//   만료로 사라지던 것. remove는 완전일치가 안 되면 채팅 명령과 같은 부분 일치(하나만 걸릴 때). 가득 찬 목록의 add는 사유를 남긴다.
+//   보조 프롬프트에 "항목 N자 이내"를 알린다.
+// - [거부 원장] 보조 제안 중 안 받은 것(허용 밖·숫자 아님·선택지 밖·목록 통째 교체·가득 참·remove 불일치·text 잘림·상점/의뢰/갈림길
+//   거부)이 outputPhase.rejected로 돌아오고, 패널 현황줄에 "⛔ 거부 N건 / ✂ 손질 N건"으로 보인다. 전엔 건수뿐이었다.
+// - [파서] 아는 최상위 키가 하나도 없는 객체({"delta":…})는 실패로 → 어댑터가 재시도한다(전엔 "변화 없음"으로 삼킴). changes 안에
+//   넣은 day_passed·conflicts를 끌어올린다. {"msgr":{"msgr":[…]}} 겹포장을 받는다. 첫 코드펜스가 딴 객체여도 뒤의 진짜 JSON을 본다.
+// - [rng 갈래] 보드 글·의뢰·갈림길 섞기가 output 줄기 하나를 보조 응답 양만큼 먹어 뒤 onTurn·이벤트·랜덤 굴림을 밀어냈다 —
+//   리롤해도 같은 눈이라는 약속이 보드 글 수에 따라 깨짐. 하위 시스템마다 제 갈래('output:board' 등).
+// - [등급 효과] 판정 등급의 {front,add:'-total'}·{gauge}·list expire가 roll/mod/total/vs를 못 읽고 조용히 무시됐다 — overlay를 모든 식에.
+// - [보조 갈림길] 깃발을 정제 전에 꺼서 보조 실패·빈 응답이면 once 트리거의 부탁이 영영 사라졌다 — 걸릴 때까지 산다(설계대로).
+// - [하루 닫기 대리] dayPassed 대리 정산이 효과만 돌려 판정·전달문·쿨다운 기록·액션 시간 고정이 빠졌다 — 버튼 경로와 같게.
+// - [갈림길] 예약해 둔 선택이 같은 글의 /명령으로 잠기면 무효(본문 일치 경로와 같은 기준). [시간] skip_min 핀 쓰기도 coerce.
+//   최초설정 턴의 turn_min·timePin 정리. 무대 뒤·비밀은 항목마다 새 lookup(앞 항목이 바꾼 값을 파생이 바로 읽게).
+// - [검증] 조건 이벤트 cooldown은 "아는 이름이지만 안 읽는 키"로 따로 알린다(v1.14.4 표에 잘못 넣었던 것). 랜덤 표 cooldown 타입,
+//   allow 중복 id. [보드] 댓글 id '#12'를 받는다. [상점] 다상점 라우팅이 열린 빈 상점 먼저. [메신저] 형식 문구가 겹포장을 유도하지 않게.
+//   [예산] allow가 늘린 text 상한 반영.
+
 // ── v1.14.4 ──────────────────────────────────────────────
 // **섹션별 "아는 키" 표 하나 → 모든 섹션 모르는 키 경고 + 요청서 필드 사전.** v1.14.3 제보(text maxLength)가 한 군데가 아니었다.
 // 감사(2026-10-09): 스키마 25종(템플릿 16 + 봇 9)이 쓰는 키를 전부 모아 어시스턴트 대화·통짜 요청서·탭 내보내기 세 프롬프트와
@@ -35875,6 +35906,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const shopMod = SimCore.require('shop');         // 상점 (v0.96)
   const msgrMod = SimCore.require('messenger');    // 메신저 (v1.2.0)
   const questMod = SimCore.require('quest');       // 의뢰판 (v1.7.9)
+  const choiceMod = SimCore.require('choice');     // 보조 갈림길 (v1.8.0) — 지연 경로 적용 (v1.14.6)
   const { makeUnstableRng } = SimCore.require('rng');
 
   const MARKER_RE = /⟦simcore:(\d+)⟧/g;
@@ -36380,11 +36412,19 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 생성되는 루아 코드 자체가 바뀌면 올린다. 지문은 스키마만 해싱하므로 이게 없으면
   // 스키마가 그대로인 한 이미 설치된 (낡은) 브리지가 영영 노후로 안 잡힌다.
   //   2 — axLLM에 user 턴 추가 (버텍스에서 system 한 통만 보내면 죽는 문제)
-  const BRIDGE_GEN = 2;
+  //   3 — 지문이 템플릿까지 덮음 (v1.14.6)
+  const BRIDGE_GEN = 3;
 
   function schemaFingerprint(sch) {
+    // 지문은 구워지는 것 전부를 덮어야 한다 (v1.14.6) — 전엔 id·type·label·allow·contextTurns뿐이라 enum·desc·상한·guide·suggest를
+    // 바꾼 스키마가 노후로 안 잡혀 옛 선택지로 보조를 불렀고, 보조가 고른 옛 값은 coerce에서 조용히 거부됐다. 템플릿 자체를 해시한다
+    let t = '';
+    try {
+      const fake = { vars: Object.fromEntries((sch.vars || []).map((v) => [v.id, '⟦cur:' + v.id + '⟧'])), meta: {} };
+      t = engine.buildAuxPrompt(sch, fake, '⟦NARR⟧', '⟦USER⟧', '⟦HIST⟧', { allowAll: true }) + '\n' + engine.buildSetupPrompt(sch, fake, '⟦NARR⟧');
+    } catch { t = ''; }
     const src = JSON.stringify({ g: BRIDGE_GEN, v: (sch.vars || []).map((v) => [v.id, v.type, v.label]),
-      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1 });
+      a: sch.updater?.allow ?? [], c: sch.updater?.contextTurns ?? 1, t });
     let h = 2166136261 >>> 0;
     for (let i = 0; i < src.length; i++) { h ^= src.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(36);
@@ -36524,20 +36564,22 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   // 루아 브리지 결과 폴링 → 상태 소급 적용 (지연 호출과 같은 멱등 규약: out 스냅샷 덮어쓰기)
   let luaPollTimer = null;
-  function pollLuaBridge(outIndex, isSetup, baseSeq) {
+  function pollLuaBridge(outIndex, isSetup, baseSeq, ca0 = null, ci0 = null, sess0 = null) {
     if (luaPollTimer) clearInterval(luaPollTimer);
     let tries = 0;
     lastAux = { status: '루아 브리지 응답 대기 중...', raw: '', applied: 0 };
     luaPollTimer = setInterval(async () => {
       tries++;
       try {
-        const ca = await Risuai.getCurrentCharacterIndex();
-        const ci = await Risuai.getCurrentChatIndex();
+        // 부른 채팅을 본다 (v1.14.6) — 전엔 매 틱 "현재 채팅"을 읽어 전환하면 다른 채팅의 묵은 결과를 적용했다
+        const ca = ca0 ?? await Risuai.getCurrentCharacterIndex();
+        const ci = ci0 ?? await Risuai.getCurrentChatIndex();
         const chat = await Risuai.getChatFromIndex(ca, ci);
         const ss = chat?.scriptstate || {};
         const seq = ss['$simcore_aux_seq'] ?? null;
         if (seq !== baseSeq) {
           clearInterval(luaPollTimer); luaPollTimer = null;
+          if ((sess0 && sess0 !== session) || lastOutIndex !== outIndex) { console.log('[simcore] 브리지 결과 폐기 — 채팅이 바뀌었거나 다음 턴이 진행됨'); return; }
           const text = ss['$simcore_aux_result'] || '';
           const err = ss['$simcore_aux_err'] || '';
           if (!text) {
@@ -36558,7 +36600,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
-            lastAux = { status: '루아 브리지 델타 적용', raw: text.slice(0, 200), applied: amended.changeLog.length };
+            lastAux = { status: '루아 브리지 델타 적용' + (parsed.truncated ? ' · ⚠ 응답이 잘려 완성된 항목만' : '') + (amended.rejected?.length ? ` · ⛔ 거부 ${amended.rejected.length}건: ${amended.rejected.slice(0, 4).map((x) => `${x.id}(${x.why})`).join(', ')}` : ''), raw: text.slice(0, 200), applied: amended.changeLog.length };
             console.log('[simcore] 루아 브리지 적용:', amended.changeLog.length + '건',
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
           }
@@ -36624,6 +36666,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 턴이 도는 중(beforeRequest ~ output)에는 전환 감지가 세션을 갈아끼우면 안 된다.
   // 생성이 취소되면 output이 안 오므로, 시각을 같이 남겨 오래되면 스스로 풀리게 한다.
   let turnBusy = false;
+  // 생성 중 조작 금지 문구 (v1.14.6) — 턴 진행 중의 패널·버튼 조작은 응답 처리가 send 스냅샷에서 다시 계산해 사라지고,
+  // 직전 out 스냅샷(lastOutIndex)까지 전송 단계 상태로 덮어 리롤 프롬프트에서 [이벤트]·액션 줄이 빠졌다 (점검 영역 2·3)
+  const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요 — 응답이 끝난 뒤 다시 해 주세요';
   let turnBusyAt = 0;
   // 마지막 out 스냅샷 인덱스 = 패널 쓰기의 저장 앵커. ⚠ 최초 loadForCurrentChar()가
   // v1.0.4부터 이 값을 쓰므로 선언이 그보다 앞에 있어야 한다 (TDZ — utilBtn류와 같은 사연).
@@ -37397,7 +37442,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (mode === 'lua') {
           // 루아 브리지가 setup 프롬프트로 호출 중 — 결과를 폴링해 적용 (설정 소비는 그때)
           lastOutIndex = outIndex;
-          pollLuaBridge(outIndex, true, baseSeq);
+          pollLuaBridge(outIndex, true, baseSeq, chaIdx, chatIdx, session);
           return { content };
         }
         let setupText = null;
@@ -37407,13 +37452,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (setupText && setupText.blocked) {
           // 차단됨: 설정을 소비하지 않고 파이프라인 밖에서 재시도
           const setupPrompt = session.getSetupPrompt(content);
+          const sess0 = session, ca0 = chaIdx, ci0 = chatIdx; // 상관 표식 (v1.14.6) — 채팅이 바뀌었거나 다음 턴이 진행됐으면 버린다
           scheduleDeferredAux(setupPrompt, 500, async (text) => {
+            if (sess0 !== session || lastOutIndex !== outIndex) { console.log('[simcore] 최초설정 지연 결과 폐기 — 채팅·턴이 바뀜'); return; }
             const r = await session.onSetupOutput(outIndex, text);
             lastChangeLog = r.changeLog;
             lastAux.applied = r.changeLog.length;
-            const ca = await Risuai.getCurrentCharacterIndex();
-            const ci = await Risuai.getCurrentChatIndex();
-            await mirrorVars(ca, ci);
+            await mirrorVars(ca0, ci0);
             console.log('[simcore] 최초설정 지연 적용:', r.changeLog.length, '개 변수');
           }, '최초설정');
           lastOutIndex = outIndex;
@@ -37443,6 +37488,11 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           ? '호출 건너뜀 — 허용 변수 목록이 비어 있음 ([세부 편집기]→[AI 설정]에서 추가 필요)'
           : '호출 건너뜀 — 시킬 일이 없음 (변수도 에셋 팩도 없는 봇)', raw: '', applied: 0 };
       }
+      // 낱말 시간 고정표 판정 글 (v1.14.6) — 모드와 무관하게 서사+이번 유저 글. 전엔 aux 경로에서만 채워져 루아·off 모드에선
+      // "수업"→50분 같은 고정이 영영 안 걸렸다 (seenText가 v1.9.11부터 두 번째 쓰임새를 얻었는데 어댑터는 그대로였다)
+      let pinUserText = null;
+      { const ms = chat?.message ?? []; for (let i = ms.length - 1; i >= 0; i--) if (ms[i].role === 'user') { pinUserText = ms[i].data; break; } }
+      const pinText = [content, pinUserText].filter(Boolean).join('\n');
       if (mode === 'aux' && hasWork) {
         // 유저의 이번 입력도 델타 판정 근거에 포함 ("500골드를 기부한다" 같은 의지 반영)
         const msgs = chat?.message ?? [];
@@ -37457,7 +37507,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           const back = (ctxTurns - 1) * 2;
           historyText = engine.formatHistory(
             msgs.slice(Math.max(0, lastUserIdx - back), lastUserIdx)
-              .map((m) => ({ role: m.role, text: m.data })));
+              .map((m) => ({ role: m.role, text: stripMarkers(String(m.data ?? '')).replace(/<m?img="[^"]*">/g, '') }))); // 마커·이미지 태그는 보조에게 안 샌다 (v1.14.6, 브리지와 같은 규약)
         }
         // 프롬프트를 만들 때 본 글과 델타를 받을 때 보는 글이 같아야 한다 (mentions 필터 기준)
         seenText = [content, lastUserText, historyText].filter(Boolean).join('\n');
@@ -37480,7 +37530,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
         if (auxText && auxText.blocked) {
           // 차단됨: 델타를 파이프라인 밖에서 받아 소급 적용.
           // 이미지는 소급 삽입 안 한다 — 본문은 이미 확정돼 나갔다 (다음 턴부터 정상)
+          const sess0 = session, ca0 = chaIdx, ci0 = chatIdx; // 상관 표식 (v1.14.6)
           scheduleDeferredAux(auxPrompt, auxCap, async (text) => {
+            if (sess0 !== session || lastOutIndex !== outIndex) { console.log('[simcore] 지연 결과 폐기 — 채팅이 바뀌었거나 다음 턴이 진행됨 (out', outIndex, '/ 지금', lastOutIndex + ')'); lastAux.status = `${lastAux.status || ''} · 지연 결과가 늦게 와서 버림`; return; }
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
             if (parsed.truncated) console.log('[simcore] 지연 응답 잘림 — 완성된 항목만 반영');
@@ -37502,12 +37554,18 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
             if (parsed.quests && questMod.questConfig(schema)) {
               questMod.applyOffers(schema, session.current, parsed.quests, { now: questMod.nowOf(schema, session.current, engine.makeLookup) });
             }
+            // 보조 갈림길 (v1.8.0) — 지연 경로에서도 건다 (깃발은 즉시 경로의 빈 응답에서 살아남는다, v1.14.5)
+            if (parsed.choices && choiceMod.liveConfig(schema)) {
+              const lr = choiceMod.applyLive(schema, session.current, parsed.choices, makeUnstableRng(Math.random));
+              if (lr.posted) console.log('[simcore] 지연 경로 보조 갈림길 게시:', lr.posted + '개');
+            }
+            if (parsed.dayPassed) console.log('[simcore] 지연 응답의 하루 넘김 신고는 소급 정산하지 않는다 — 다음 턴 버튼으로');
+            if (parsed.truncated) lastAux.status = `${lastAux.status || ''} · ⚠ 지연 응답이 잘려 완성된 항목만 반영`;
+            if (amended.rejected?.length) lastAux.status = `${lastAux.status || ''} · ⛔ 거부 ${amended.rejected.length}건: ${amended.rejected.slice(0, 4).map((x) => `${x.id}(${x.why})`).join(', ')}`;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
             lastAux.applied = amended.changeLog.length;
-            const ca = await Risuai.getCurrentCharacterIndex();
-            const ci = await Risuai.getCurrentChatIndex();
-            await mirrorVars(ca, ci);
+            await mirrorVars(ca0, ci0);
             try { await syncControls(); } catch {} // 소급 적용분(제안 포함)을 조작줄에 반영
             console.log('[simcore] 델타 지연 적용:', amended.changeLog.length + '건',
               amended.changeLog.map((c) => c.id).join(', ') || '(없음)');
@@ -37520,10 +37578,18 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           const retry = await callAuxLLM(auxPrompt + '\n\n주의: 반드시 {"changes":{...},"reasons":{...}} 형식의 JSON만 출력하라. 다른 텍스트 금지.', retryCap);
           auxText = typeof retry === 'string' ? retry : null;
         }
+        if (typeof auxText === 'string' && engine.parseAuxResponse(auxText)?.truncated) {
+          // 잘린 응답 (v1.14.6) — 구제는 거래 반쪽(gold −300만 들어가고 검은 없음)을 낳을 수 있다. 상한을 곱절로 한 번 더 받아 보고
+          // 온전하면 그걸 쓴다. 그래도 잘리면 구제본 그대로 (경고는 아래에서).
+          console.log('[simcore] 보조 응답 잘림 — 상한 곱절(' + (auxCap * 2) + ')로 재시도');
+          const retry2 = await callAuxLLM(auxPrompt + '\n\n주의: 직전 출력이 상한에 잘렸다. reasons를 더 짧게, JSON만 다시 출력하라.', auxCap * 2);
+          const p2 = typeof retry2 === 'string' ? engine.parseAuxResponse(retry2) : null;
+          if (p2 && !p2.truncated) auxText = retry2;
+        }
         if (!auxText) console.log('[simcore] 즉시 경로 변화 없음 (지연 적용 대기 중이거나 응답 없음)');
       }
 
-      const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText);
+      const r = await session.onOutput(outIndex, typeof auxText === 'string' ? auxText : null, seenText, pinText);
       // 이미지 게이트(when)는 갱신 후 상태로 판단 — 이번 턴 서사가 반영된 값이 기준이다
       let imgTag = null;
       if (mode === 'aux') {
@@ -37567,7 +37633,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       await mirrorVars(chaIdx, chatIdx);
       await syncControls(); // 턴이 지나며 쿨다운·조건이 바뀌었으므로 조작 UI 갱신
       // 루아 브리지 모드: 틱·이벤트는 위에서 즉시 처리, 델타는 브리지 결과 폴링으로 소급
-      if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq);
+      if (mode === 'lua' && allowCount > 0) pollLuaBridge(outIndex, false, baseSeq, chaIdx, chatIdx, session);
       return { content: (imgTag ? imgTag + '\n\n' : '') + content };
   }
 
@@ -37756,6 +37822,10 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onActionButton(actionId) {
     if (!session) return;
+    if (turnBusy) {
+      if (gameVisible) { gameNotice = TURN_BUSY_MSG; try { renderGamePanel(); } catch {} } else { try { await Risuai.alert(TURN_BUSY_MSG); } catch {} }
+      return;
+    }
     const r = session.toggle(actionId);
     console.log('[simcore] 액션', actionId, r.armed ? '무장 ●' : '해제', r.blocked ? `(차단: ${r.blocked})` : '');
     if (r.blocked) {
@@ -39119,6 +39189,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onShopBuy(itemId) {
     if (!session || !schema) return;
+    if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
     const r = shopMod.buy(schema, session.current, itemId, shopView.shopId ?? undefined, engine.makeLookup);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) await commitPanelChanges({}, '상점 구매'); // 지갑·소지품이 바뀌었다 — 저장·미러·상태창 갱신
@@ -39128,6 +39199,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 환전 (v0.97, v1.3.0 다짝) — 결정적: 환율·수수료 계산은 엔진, 보조 호출 없음
   async function onShopExchange(dir, exVar) {
     if (!session || !schema) return;
+    if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
     const qty = parseInt(shopView.exchQty, 10);
     const r = shopMod.exchange(schema, session.current, qty, dir, exVar, shopView.shopId ?? undefined);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
@@ -39137,6 +39209,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onShopSell(itemText) {
     if (!session || !schema) return;
+    if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
     const sid = shopView.shopId ?? undefined;
     let r = shopMod.sell(schema, session.current, itemText, null, sid, engine.makeLookup);
     if (!r.ok && r.needAppraisal) {
@@ -39332,6 +39405,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onQuestAccept(offerId) {
     if (!session || !schema) return;
+    if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
     const r = questMod.accept(schema, session.current, offerId, engine.makeLookup);
     gameNotice = r.ok ? `✓ ${r.line}` : `⚠ ${r.reason}`;
     if (r.ok) { questView.tab = 'mine'; await commitPanelChanges(r.changes, '의뢰 수락'); }
@@ -39340,6 +39414,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
   async function onQuestCancel(itemText) {
     if (!session || !schema) return;
+    if (turnBusy) { gameNotice = TURN_BUSY_MSG; renderGamePanel(); return; }
     // 되돌릴 수 없는 조작 — 패널 안에서 두 번 누르기 (규칙 #6: alertConfirm은 패널에 가려진다)
     if (questView.confirm !== itemText) { questView.confirm = itemText; gameNotice = '⚠ 한 번 더 누르면 의뢰를 포기해요'; renderGamePanel(); return; }
     questView.confirm = null;
@@ -39684,6 +39759,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 클릭으로 갈림길 고르기 — /선택 명령과 같은 검증(pickChoice)·같은 기록 경로.
   // 기록만 하고 집행은 다음 전송이 한다 (효과식 rand·변화 로그·리롤 안정이 거기 있다).
   async function onChoiceClick(idx) {
+    if (turnBusy) { try { await Risuai.alert(TURN_BUSY_MSG); } catch {} return; }
     const v = engine.pickChoice(schema, session.current, idx);
     if (!v.ok) { try { await Risuai.alert(`선택 — ${v.reason}`); } catch {} return; }
     session.current.meta = { ...session.current.meta, pendingChoicePick: idx };
@@ -41208,6 +41284,13 @@ count(목록)  has(목록, "항목")</pre>
           // 작업본이 더티 배너로 남아 [지금 적용]이 방금 넣은 스키마를 도로 지우려 든다.
           if (editor) loadIntoEditor(bundled);
         }
+        // 브리지 재굽기 (v1.14.6) — 번들이 스키마를 바꿨는데 브리지는 옛 템플릿이면 옛 선택지·옛 변수로 보조를 부른다
+        if (bundled) {
+          try {
+            const c2 = await Risuai.getCharacter();
+            if (c2 && hasLuaBridge(c2) && bridgeIsStale(c2, bundled)) { installLuaBridgeOn(c2, bundled); await Risuai.setCharacter(c2); console.log('[simcore] 번들 교체 뒤 루아 브리지 다시 구움'); }
+          } catch (e) { console.log('[simcore] 번들 교체 뒤 브리지 재굽기 실패:', e.message); }
+        }
         const settled = bundled && sig(schema ?? {}) === sig(bundled);
         rep.innerHTML = `<span class="status-ok">✓ 교체 완료 — 로어북 ${data.lorebook.length}개`
           + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개로 교체` : ''}`
@@ -41684,6 +41767,7 @@ count(목록)  has(목록, "항목")</pre>
       // 저장된 선택엔 ✓ — 새 채팅마다 자동 적용되는 것이 무엇인지 보여야 한다 (v0.85.2)
       btn.textContent = (p.id === startPresetId ? '✓ ' : '') + (p.label ?? p.id);
       btn.onclick = async () => {
+        if (turnBusy) { try { await Risuai.alert(TURN_BUSY_MSG); } catch {} return; }
         session.applyPreset(p.id);
         // 선택을 캐릭터에 저장 — 이후 새 채팅은 턴 0 로드 때 이 프리셋으로 시작한다 (v0.85.2)
         startPresetId = p.id;
@@ -41712,6 +41796,7 @@ count(목록)  has(목록, "항목")</pre>
     table.innerHTML = '<tr><th>변수</th><th>현재값</th><th>수정</th><th></th></tr>';
     // 값을 고친 뒤 항상 같이 해야 하는 것들 — 스냅샷 저장 + CBS 미러 + 다시 그리기
     const commitVars = async () => {
+      if (turnBusy) console.log('[simcore] 턴 진행 중 패널 수정 — 응답 처리가 send 스냅샷 기준이라 덮일 수 있음 (v1.14.6)');
       if (lastOutIndex >= 0) await session.store.save('out', lastOutIndex, session.current);
       const chaIdx = await Risuai.getCurrentCharacterIndex();
       const chatIdx = await Risuai.getCurrentChatIndex();

@@ -115,13 +115,14 @@ class SimSession {
    * auxText: 보조 모델의 원문 응답 (null이면 변화 없음으로 처리)
    * 반환 { state, changeLog, firedEvents, auxParsed }
    */
-  async onOutput(outIndex, auxText, seenText = null) {
+  async onOutput(outIndex, auxText, seenText = null, pinText = null) {
     const sendState = (await this.store.load('send', outIndex - 1)) ?? this.current;
     const parsed = engine.parseAuxResponse(auxText) ?? { changes: {}, reasons: {} };
     const r = engine.outputPhase(this.schema, sendState, parsed.changes, parsed.reasons, {
       rng: this._rng(outIndex, 'output'),
       rngSub: (label) => this._rng(outIndex, 'output:' + label), // 하위 시스템 갈래 (v1.14.5) — 보드·의뢰·갈림길 섞기가 본 굴림을 밀어내지 않게
       seenText,   // 프롬프트에 안 실린 변수는 여기서도 안 받는다
+      pinText,    // 낱말 시간 고정표 판정 글 (v1.14.6) — 루아·off 모드에서도 서사+유저 글
       suggest: parsed.suggest ?? null, // 다음 행동 제안 (v0.43) — 같은 응답에 실려 온다
       conflicts: parsed.conflicts ?? null, // 서사-시스템 불일치 신고 (v0.71) — 통지로만
       detected: parsed.detected ?? null, // 감지 신고 (v0.74) — 다음 전송 1회 낱말 해제

@@ -371,6 +371,33 @@ test('판정 등급 효과의 front·gauge·expire 식도 roll/total을 읽는�
   deep(st.vars.todo, ['b @100'], 'expire 식이 total을 읽어 @1을 만료시킨다 (전엔 예외로 무시)');
 });
 
+// ── 전체 점검 2차 (v1.14.6) — 프롬프트가 연 집합·시간 고정표 글 ──
+test('소급 적용은 프롬프트가 연 집합(meta.auxOpen)을 쓴다 — 감지 해제로 열린 변수가 지연 적용에서도 산다', () => {
+  const s = fx();
+  s.vars.push({ id: 'aff', type: 'int', init: 0, min: 0, max: 100, label: '리아나 호감' });
+  s.updater.allow.push({ id: 'aff', maxDelta: 10, mentions: ['리아나'] });
+  const st = engine.sendPhase(s, engine.initState(s), {}).state;
+  st.meta.wordUnlock = { aff: true }; // 지난 턴 감지 신고로 이번 전송 한 번 열림
+  const out = engine.outputPhase(s, st, {}, {}, { seenText: '리아나는 없다' });
+  assert.ok(Array.isArray(out.state.meta.auxOpen) && out.state.meta.auxOpen.includes('aff'), JSON.stringify(out.state.meta.auxOpen));
+  // 지연 경로: outputPhase가 wordUnlock을 이미 지웠고 글에도 이름이 없다 — 전엔 여기서 조용히 폐기됐다
+  const late = engine.applyChangesToState(s, out.state, { aff: 3 }, {}, '리아나는 없다');
+  eq(late.state.vars.aff, 3, '프롬프트가 연 집합으로 적용');
+  // 집합 밖은 여전히 거부
+  const late2 = engine.applyChangesToState(s, out.state, { ghost: 1 }, {}, null);
+  assert.ok(late2.rejected.some((x) => x.id === 'ghost'));
+});
+
+test('낱말 시간 고정표는 pinText로 판정한다 (seenText가 없는 루아·off 모드)', () => {
+  const s = fx();
+  s.time = { start: '2026-01-01 09:00', advance: 'explicit', expose: ['date', 'clock'], format: { date: 'YYYY-MM-DD', clock: 'HH:mm' }, pins: [{ label: '수업', mentions: ['수업'], min: 50 }] }; // 픽스처의 season 변수와 노출 이름이 겹치지 않게
+  s.vars.push({ id: 'skip_min', type: 'int', init: 0, min: 0, max: 1440, label: '진행(분)' }, { id: 'skip_day', type: 'int', init: 0, min: 0, max: 365, label: '진행(일)' });
+  const v = validateSchema(s); eq(v.ok, true, JSON.stringify(v.errors));
+  const st = engine.sendPhase(s, engine.initState(s), {}).state;
+  const out = engine.outputPhase(s, st, {}, {}, { seenText: null, pinText: '오전 수업이 끝났다' });
+  assert.ok(out.changeLog.some((c) => c.id === '시간 고정' && String(c.to).includes('수업')), JSON.stringify(out.changeLog));
+});
+
 // ── when (조건 잠금) — v1.14.3 ──
 function whenFx() {
   return {

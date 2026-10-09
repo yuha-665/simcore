@@ -53,6 +53,8 @@ let gameVisible = false;
 let gameKind = null;
 let gameNotice = null;
 let gameOpenSlot = null;
+let turnBusy = false; // v1.14.6 — 생성 중 조작 가드가 읽는다 (여기선 늘 유휴)
+const TURN_BUSY_MSG = '⚠ 턴이 진행 중이에요';
 
 eval(body);
 

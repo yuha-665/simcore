@@ -810,6 +810,9 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   const injects = [];
   const consumedActions = [];
   let fightRoundFired = false;
+  // 프롬프트가 연 집합(meta.auxOpen)은 응답 단계가 새로 기록한다 (v1.14.6) — 전송 상태에는 없어야 소급 적용이
+  // 지난 응답의 집합을 잘못 쓰지 않고, 집합이 없을 땐 적용 시점 판정(갈림길 동결 등)으로 돌아간다
+  delete state.meta.auxOpen;
 
   // 1. 무장 액션 effects (결정적) + inject 수집
   // firedThisSend: whenArmed 게이트의 기준. oneshot은 여기서 무장이 풀리므로 armed만으로는
@@ -942,6 +945,23 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 아래 상태 블록의 날짜가 새 날로 나가고, AI가 이튿날 장면을 쓴다
   consumeTimeSkips(schema, state, changeLog);
 
+  // 1.7 교전 방치 판정 (v1.14.6 — 3.93에서 앞당김) — 상태 블록·지시문이 fight_on을 읽기 **전에** 정리한다. 전엔 지시문이
+  // "교전 중"을 보고 난 뒤에 정리돼 같은 프롬프트에 "교전 중" 지시문과 "흐지부지 끝났다"가 같이 실렸다. 줄은 3.93 자리에 싣는다.
+  let fightIdle = null;
+  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
+    const K = fightMod.FIGHT_KEYS;
+    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
+    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
+    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
+    if (state.vars[K.idle] >= idleMax) {
+      fightMod.clearFight(state);
+      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
+      fightIdle = { end: true };
+    } else {
+      fightIdle = { hold: typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD };
+    }
+  }
+
   // 2. 직전 턴 이벤트 통지 합류
   const notifies = state.meta.pendingNotifies.splice(0);
 
@@ -1059,20 +1079,7 @@ function sendPhase(schema, prevState, { rng, userText = '' } = {}) {
   // 3.93 교전 중 상시 줄 (v1.6.0) — 교전이 열려 있는데 이번 전송에 라운드가 안 굴려졌으면.
   // 유저가 자기 구도를 쓰는 턴이다: 게이지는 그대로, 모델이 혼자 결착을 내지 못하게 막는다.
   // ⚔ 없이 너무 오래 가면(idleTurns) 정리한다 — 상시 줄이 영영 남아 "교전 중"을 우기는 사고 방지.
-  if (fightMod.fightActive(state.vars) && !fightRoundFired) {
-    const K = fightMod.FIGHT_KEYS;
-    const fchk = (schema.checks || []).find((c) => c.id === state.vars[K.check]);
-    const idleMax = Number.isInteger(fchk?.fight?.idleTurns) ? fchk.fight.idleTurns : fightMod.FIGHT_IDLE_DEFAULT;
-    state.vars[K.idle] = (Number(state.vars[K.idle]) || 0) + 1;
-    if (state.vars[K.idle] >= idleMax) {
-      fightMod.clearFight(state);
-      lines.push(fightMod.DEFAULT_FIGHT_IDLE_END);
-      changeLog.push({ id: '교전', from: null, to: '방치 정리', source: 'fight:idle' });
-    } else {
-      const hold = typeof fchk?.fight?.hold === 'string' && fchk.fight.hold.trim() ? fchk.fight.hold : fightMod.DEFAULT_FIGHT_HOLD;
-      lines.push(rt(hold));
-    }
-  }
+  if (fightIdle) lines.push(fightIdle.end ? fightMod.DEFAULT_FIGHT_IDLE_END : rt(fightIdle.hold));
 
   if (isSetupPending(schema, state)) {
     lines.push(schema.setup.ai.instruction ||
@@ -1282,7 +1289,8 @@ function parseSetupResponse(text) {
 function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
-  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
+  const openIds = Array.isArray(prevState?.meta?.auxOpen) ? new Set(prevState.meta.auxOpen) : null; // 프롬프트가 연 집합 (v1.14.6)
+  const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText, openIds);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
@@ -1340,13 +1348,15 @@ function consumeDetected(schema, state, detected) {
 
 /** @param seenText 이번 턴 글. 주면 그때 열어 준 변수만 받는다 (auxAllowList와 같은 기준) */
 /** @returns 거부 원장 [{id, why}] (v1.14.5) — 전엔 허용 밖·숫자 아님·선택지 밖·목록 통째 교체가 전부 말없이 버려져 "왜 안 바뀌었나"를 알 길이 없었다 */
-function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null) {
+function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText = null, openIds = null) {
   const varById = Object.fromEntries(schema.vars.map((v) => [v.id, v]));
   const rejected = [];
   const short = (x) => JSON.stringify(x ?? null).slice(0, 24);
   // state를 같이 넘겨 whenArmed 게이트를 적용 시점에도 강제한다 —
   // 브리지·지연 소급(seenText 없음)에서도 액션 잠금만은 결정적으로 걸린다
-  const allowById = Object.fromEntries(auxAllowList(schema, seenText, state).map((a) => [a.id, a]));
+  const allowById = Object.fromEntries((openIds
+    ? (schema.updater?.allow || []).filter((a) => openIds.has(a.id)) // 소급 경로: 프롬프트가 연 집합 그대로 (v1.14.6)
+    : auxAllowList(schema, seenText, state)).map((a) => [a.id, a]));
   for (const [id, proposed] of Object.entries(changes || {})) {
     const def = varById[id];
     const allow = allowById[id];
@@ -1389,13 +1399,16 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, pinText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
 
   // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
   // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
+  // 프롬프트가 연 집합을 기록 (v1.14.6) — 지연·브리지 소급 적용이 "그때 열렸던 변수"를 그대로 쓰게. 전엔 적용 시점 상태로 다시
+  // 판정해 감지 해제(wordUnlock)·시간 고정(timePin)·갈림길 동결이 이미 지난 뒤라 프롬프트와 적용이 어긋났다 (점검 영역 2).
+  state.meta.auxOpen = auxAllowList(schema, seenText, state).map((a) => a.id);
   const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText);
   // 5.1 다음 행동 제안 (v0.43) — 보조 응답에 실려 오면 여기서 갈아끼운다 (변수가 아니라 meta)
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
@@ -1460,7 +1473,7 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
   {
     const tcfgP = timeConfig(schema);
     if (tcfgP && tcfgP.pins.length) {
-      const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, seenText));
+      const hit = tcfgP.pins.filter((p) => !p.action && pinMatchesText(p, pinText ?? seenText)); // 루아·off 모드도 서사+유저 글로 판정 (v1.14.6)
       if (state.meta.timePin) {
         const from = Number(state.vars[SKIP_MIN]) || 0;
         // 전송 단계 set은 이미 굳었으니 0으로(보조 추정 버림). 대리 정산(proxy)의 set은 아직이라 그 값으로 갈아끼운다 (v1.14.5)

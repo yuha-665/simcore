@@ -13,7 +13,7 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
 // 편집기 계층 추출 — test-patch와 같은 방식
 const seg = src.slice(src.indexOf('const SCHEMA_HARD_RULES = ['), src.indexOf('// 행 이동/삭제 버튼 묶음'));
 const M = new Function('validateSchema', 'TEMPLATES', 'timeConfig',
-  seg + '\nreturn { schemaIsBlank, assembleBotContext, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt, looksTruncatedJson };')(
+  seg + '\nreturn { schemaIsBlank, assembleBotContext, filterBotCtx, loreKey, buildAiRequestPrompt, buildPatchExportPrompt, buildSchemaSpecPrompt, looksTruncatedJson };')(
   validateSchema, TEMPLATES, SC.require('time').timeConfig);
 
 // 실험대 — 항목이 있는 스키마 (패치 모드 판별용)
@@ -69,16 +69,24 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
 
   // 상한 방어 — 수십 KB 로어북 봇
   const big = { name: 'X', desc: 'D', lore: [
-    { name: '큰책1', content: 'ㄱ'.repeat(9000) },  // 한글 3바이트 → 27KB
-    { name: '큰책2', content: 'ㄴ'.repeat(9000) },
+    { name: '큰책1', content: 'ㄱ'.repeat(12000) },  // 한글 3바이트 → 36KB
+    { name: '큰책2', content: 'ㄴ'.repeat(12000) },
   ] };
   const b = M.assembleBotContext(big);
-  ck('★ 상한(20KB) 초과분은 잘리고 표시됨', b.truncated && b.bytes <= 20 * 1024, `${b.bytes}`);
+  ck('★ 최후 상한(64KB — v1.16.1, 전엔 20KB) 초과분은 잘리고 표시됨', b.truncated && b.bytes <= 64 * 1024 && b.bytes > 30 * 1024, `${b.bytes}`);
   ck('상한 안에서 앞 항목은 살아있음', b.text.includes('### 봇 이름'), '');
 
   // 설명 혼자 상한 초과 — 앞부분만 싣는다
-  const hugeDesc = M.assembleBotContext({ desc: 'ㄷ'.repeat(12000), lore: [] });
-  ck('설명 혼자 초과 → 앞부분만 + truncated', hugeDesc.truncated && hugeDesc.bytes <= 20 * 1024 && hugeDesc.text.includes('ㄷ'), `${hugeDesc.bytes}`);
+  const hugeDesc = M.assembleBotContext({ desc: 'ㄷ'.repeat(24000), lore: [] });
+  ck('설명 혼자 초과 → 앞부분만 + truncated', hugeDesc.truncated && hugeDesc.bytes <= 64 * 1024 && hugeDesc.text.includes('ㄷ'), `${hugeDesc.bytes}`);
+
+  // 📚 보낼 것 고르기 (v1.16.1) — 자르지 않고 사용자가 정한다
+  const f1 = M.assembleBotContext(M.filterBotCtx(ctx, { desc: false, off: new Set(['세계관']) }));
+  ck('★ 고르기 — 설명 끄기·항목 이름으로 빼기', !f1.text.includes('### 봇 설명') && !f1.text.includes('### 로어북: 세계관') && f1.text.includes('### 로어북: 인물') && f1.text.includes('### 봇 이름'), '');
+  ck('★ 고르기 — off는 배열로 와도 된다 (저장소에서 복원)', !M.assembleBotContext(M.filterBotCtx(ctx, { desc: true, off: ['인물'] })).text.includes('로렌츠'), '');
+  ck('고르기 — pick 없으면 그대로', M.assembleBotContext(M.filterBotCtx(ctx, null)).text === a.text, '');
+  ck('열쇠 — 이름 없는 항목은 자리 번호', M.loreKey({ name: '' }, 3) === '#3' && M.loreKey({ name: ' 세계관 ' }, 0) === '세계관', '');
+  ck('★ 고르기로 상한 아래로 내려간다 (잘리지 않는다)', !M.assembleBotContext(M.filterBotCtx(big, { desc: true, off: new Set(['큰책2']) })).truncated, '');
 }
 
 // ── 생성 프롬프트 조합: 요청·컨텍스트 주입 ──
@@ -120,6 +128,7 @@ ck('실험대 스키마 자체가 유효', validateSchema(BASE).ok,
   ck('번들: 형식 불합격 1회 재시도 문구', src.includes('방금 응답이 형식 검사에서 거부되었습니다'), '');
   ck('번들: 차단 환경 → 옆문 안내', src.includes('LLM 직접 호출이 차단되어'), '');
   ck('번들: 통짜 반영 확인·되돌리기', src.includes('편집기에 넣기') && src.includes('↩ 되돌리기 (반영 전으로)'), '');
+  ck('★ 편집기: 세 창구 + 규격서 복사가 고른 것만 조립 (assembleCtx)', (src.match(/assembleCtx\(/g) || []).length >= 9 && src.includes('function botCtxPicker(') && src.includes('sce-ctx-pick'), String((src.match(/assembleCtx\(/g) || []).length));
   ck('★ 어댑터: getBotContext 배선 + ⚙simcore 제외', src.includes('getBotContextForEditor')
     && src.includes('.filter((l) => l.comment !== SCHEMA_LORE_COMMENT)'), '');
   ck('★ 어댑터: 생성은 callGenLLM 경유 — 자기 정산 함정 가드',

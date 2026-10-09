@@ -24,7 +24,7 @@ console.log('── (1) 접힘 기억');
   ck('그룹 접힘 토글도 저장한다', src.includes("collapsedVarGroups.add(name || ''); saveFoldPrefs(); rerender();"), '');
   ck('저장은 디바운스 (연타에 저장소 안 두드린다)', src.includes('foldSaveTimer = setTimeout(() => {') && src.includes('}, 250);'), '');
   ck('불러오기 — mode·except·groups 복원 뒤 다시 그린다', src.includes("if (f[k]?.mode === 'closed' || f[k]?.mode === 'open') foldPrefs[k].mode = f[k].mode;") && src.includes('if (Array.isArray(f.groups)) for (const g of f.groups) collapsedVarGroups.add(String(g));'), '');
-  ck('불러오기는 편집기가 이미 닫혔으면 무시 (destroyed)', src.includes('if (destroyed || !f) return;'), '');
+  ck('불러오기는 편집기가 이미 닫혔으면 무시 (destroyed) — v1.16.1부터 ctx 선택도 같이 읽으므로 가드가 saved 전체에', src.includes('if (destroyed || !saved) return;') && src.includes('if (!f) { rerender(); return; }'), '');
   ck('검증 리포트 점프(folded?.delete)는 새 API와 호환', src.includes("? collapsedVariableCards\n") && src.includes('folded?.delete(target.item);'), '');
   ck('어댑터: uiPrefs 훅 — 캐릭터별 pluginStorage', src.includes('sim:ui:editor:${currentChaId}') && src.includes('uiPrefs: {'), '');
   ck('편집기: opts.uiPrefs 수용', src.includes('getFirstInstallGuideDismissed, setFirstInstallGuideDismissed, uiPrefs } = opts;'), '');

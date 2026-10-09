@@ -647,6 +647,14 @@ const CSS = `
 .sce .sce-chat-input { width:100% !important; min-height:72px !important; font-family:inherit; line-height:1.6; }
 .sce .sce-chat-input-actions { display:flex; align-items:center; gap:8px; }
 .sce .sce-chat-input-actions .sce-ai-action-hint { margin-left:auto; }
+/* 📚 보낼 것 고르기 (v1.16.1) */
+.sce .sce-ctx-pick { margin:6px 0 2px; }
+.sce .sce-ctx-pick > summary { font-size:12.5px; cursor:pointer; }
+.sce .sce-ctx-pick-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow:auto; margin-top:4px; }
+.sce .sce-ctx-pick-row { display:flex; align-items:center; gap:6px; font-size:12.5px; padding:1px 0; }
+.sce .sce-ctx-pick-row input { width:auto !important; margin:0; }
+.sce .sce-ctx-pick-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.sce .sce-ctx-pick-kb { margin-left:auto; color:var(--sce-muted); font-size:11px; font-variant-numeric:tabular-nums; }
 /* 🧑‍🎨 봇 제작 (v1.16.0) — 왼쪽 설정집 · 오른쪽 대화. 좁으면 위아래 */
 .sce .sce-bible-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; align-items:start; margin-top:10px; }
 @media (max-width: 900px) { .sce .sce-bible-cols { grid-template-columns:1fr; } }
@@ -4472,7 +4480,8 @@ function schemaIsBlank(s) {
     + n(s.setup && s.setup.presets) === 0;
 }
 
-const BOT_CTX_CAP = 20 * 1024; // 바이트 — 로어북이 수십 KB인 봇 방어
+const BOT_CTX_WARN = 20 * 1024; // 바이트 — 이 위면 ⚠ (v1.16.1: 자르지 않고 고르게 한다)
+const BOT_CTX_CAP = 64 * 1024;  // 바이트 — 최후 상한. 로어북이 수십 KB인 봇 방어 (전엔 20KB에서 앞에서부터 잘랐다 — 로어북 순서가 제각각이라 뭐가 잘리는지 알 수 없었다)
 
 function byteLen(s) { return new TextEncoder().encode(String(s)).length; }
 
@@ -4509,6 +4518,19 @@ function assembleBotContext(ctx, cap = BOT_CTX_CAP) {
   }
   const text = pieces.join('\n\n');
   return { text, bytes: byteLen(text), truncated };
+}
+
+/** 로어북 항목 열쇠 — 이름이 있으면 이름(리수에서 순서를 바꿔도 유지), 없으면 자리 번호 */
+function loreKey(l, i) { const n = String(l?.name || '').trim(); return n || `#${i}`; }
+/**
+ * 📚 보낼 것 고르기 (v1.16.1) — pick = { desc: bool, off: Set<key> }. 유저 제안: "로어북 위치는 봇마다 제각각이라 앞에서부터
+ * 잘라 보내는 것보다 사용자가 정해서 보내는 게 낫다". 설명·로어북 항목마다 체크하고, 선택은 캐릭터별 uiPrefs(ctx)에 남는다.
+ * 세 창구(✨ 창작·💬 대화·🧑‍🎨 봇 제작)와 규격서 복사가 같은 선택을 쓴다. pick이 없으면 그대로.
+ */
+function filterBotCtx(ctx, pick) {
+  if (!ctx || !pick) return ctx;
+  const off = pick.off instanceof Set ? pick.off : new Set(Array.isArray(pick.off) ? pick.off : []);
+  return { ...ctx, desc: pick.desc === false ? '' : ctx.desc, lore: (ctx.lore || []).filter((l, i) => !off.has(loreKey(l, i))) };
 }
 
 /** 위층 생성 프롬프트 — 스키마가 비어 있으면 통짜 생성, 있으면 부분 패치. 유저는 구분을 몰라도 된다 */
@@ -6750,13 +6772,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   const collapsedVarGroups = new Set();   // 변수 그룹 접힘 (v1.9.14) — 이름 키, 다시 그려도 유지
   const foldListOf = (it) => (it && typeof it === 'object' && 'expr' in it ? 'derived' : 'vars');
   const foldKey = (it) => String(it?.id ?? '');
+  const botCtxPick = { desc: true, off: new Set() };   // 📚 보낼 것 고르기 (v1.16.1) — 캐릭터별 uiPrefs.ctx
   let foldSaveTimer = null;
   const saveFoldPrefs = () => {
     if (!uiPrefs?.save) return;
     clearTimeout(foldSaveTimer);
     foldSaveTimer = setTimeout(() => {
       const pack = (p) => ({ mode: p.mode, except: [...p.except] });
-      Promise.resolve(uiPrefs.save({ fold: { vars: pack(foldPrefs.vars), derived: pack(foldPrefs.derived), groups: [...collapsedVarGroups] } })).catch(() => {});
+      Promise.resolve(uiPrefs.save({ fold: { vars: pack(foldPrefs.vars), derived: pack(foldPrefs.derived), groups: [...collapsedVarGroups] },
+        ctx: { desc: botCtxPick.desc, off: [...botCtxPick.off] } })).catch(() => {});
     }, 250);
   };
   const collapsedVariableCards = {
@@ -6769,8 +6793,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   };
   if (uiPrefs?.load) {
     Promise.resolve(uiPrefs.load()).then((saved) => {
-      const f = saved?.fold;
-      if (destroyed || !f) return;
+      if (destroyed || !saved) return;
+      if (saved.ctx && typeof saved.ctx === 'object') {   // 📚 보낼 것 고르기 (v1.16.1)
+        if (saved.ctx.desc === false) botCtxPick.desc = false;
+        if (Array.isArray(saved.ctx.off)) for (const k of saved.ctx.off) botCtxPick.off.add(String(k));
+      }
+      const f = saved.fold;
+      if (!f) { rerender(); return; }
       for (const k of ['vars', 'derived']) {
         if (f[k]?.mode === 'closed' || f[k]?.mode === 'open') foldPrefs[k].mode = f[k].mode;
         if (Array.isArray(f[k]?.except)) foldPrefs[k].except = new Set(f[k].except.map(String));
@@ -12721,6 +12750,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // ── 위층 (AI에게 맡기기) 상태 — docs/design-내장-AI-생성.md ──
   let aiReq = '';           // 요청 문구
   let aiCtxOn = true;       // 봇 설명·로어북 동봉 여부
+  const assembleCtx = (ctx) => assembleBotContext(filterBotCtx(ctx, botCtxPick));   // 📚 고른 것만 (v1.16.1)
   let aiBotCtx;             // getBotContext 결과 캐시 (undefined = 아직 안 읽음, null = 못 읽음)
   let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
@@ -12886,6 +12916,45 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     return aiBotCtx;
   }
 
+  // 📚 보낼 것 고르기 (v1.16.1) — 설명·로어북 항목마다 체크. 선택은 캐릭터별 uiPrefs(ctx)에 남고 세 창구가 같이 쓴다.
+  // 체크 하나는 다시 그리지 않고(접힘 유지) 요약줄·미터만 갱신, [모두 켜기/끄기]는 다시 그린다.
+  let ctxPickOpen = false;
+  function botCtxPicker(onChange) {
+    const ctx = aiBotCtx;
+    if (!ctx) return null;
+    const lore = (ctx.lore || []).map((l, i) => ({ l, key: loreKey(l, i), bytes: byteLen(String(l.content || '').trim()),
+      skip: String(l.name || '').includes('⚙simcore') || !String(l.content || '').trim() })).filter((x) => !x.skip);
+    const descBytes = byteLen(String(ctx.desc || '').trim());
+    const det = h('details', { class: 'sce-fold sce-ctx-pick' });
+    det.open = ctxPickOpen;
+    det.addEventListener('toggle', () => { ctxPickOpen = det.open; });
+    const sum = h('summary', {});
+    const refreshSum = () => {
+      const a = assembleCtx(ctx);
+      const on = lore.filter((x) => !botCtxPick.off.has(x.key)).length;
+      sum.textContent = `📚 보낼 것 고르기 — 설명 ${botCtxPick.desc && descBytes ? '✓' : '✗'} · 로어북 ${on}/${lore.length} · ${(a.bytes / 1024).toFixed(1)}KB${a.truncated ? ' ⚠ 64KB에서 잘림' : a.bytes > BOT_CTX_WARN ? ' ⚠ 20KB 넘음' : ''}`;
+    };
+    refreshSum();
+    det.appendChild(sum);
+    det.appendChild(h('div', { class: 'sce-hint' },
+      '로어북 위치는 봇마다 제각각이라 앞에서부터 자르지 않아요 — 체크한 것만 보내고, 선택은 이 캐릭터에 기억해요. 20KB를 넘으면 ⚠, 64KB에서는 잘려요.'));
+    const changed = () => { saveFoldPrefs(); refreshSum(); if (onChange) onChange(); };
+    const row = (checked, label, bytes, onToggle) => {
+      const cb = h('input', { type: 'checkbox' }); cb.checked = checked;
+      cb.onchange = () => { onToggle(cb.checked); changed(); };
+      return h('label', { class: 'sce-ctx-pick-row' }, cb, h('span', { class: 'sce-ctx-pick-name' }, label), h('span', { class: 'sce-ctx-pick-kb' }, `${(bytes / 1024).toFixed(1)}KB`));
+    };
+    det.appendChild(h('div', { class: 'sce-row' },
+      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = true; botCtxPick.off.clear(); changed(); rerender(); } }, '모두 켜기'),
+      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = false; for (const x of lore) botCtxPick.off.add(x.key); changed(); rerender(); } }, '모두 끄기')));
+    const list = h('div', { class: 'sce-ctx-pick-list' });
+    if (descBytes) list.appendChild(row(botCtxPick.desc, '봇 설명 (description)', descBytes, (on) => { botCtxPick.desc = on; }));
+    for (const x of lore) list.appendChild(row(!botCtxPick.off.has(x.key), x.l.name || '(이름 없음)', x.bytes, (on) => { if (on) botCtxPick.off.delete(x.key); else botCtxPick.off.add(x.key); }));
+    if (!descBytes && !lore.length) list.appendChild(h('div', { class: 'sce-hint' }, '보낼 설명·로어북이 없어요.'));
+    det.appendChild(list);
+    return det;
+  }
+
   // diag = { findings, stats } — 진단 결과에서 바로 부를 때. 요청 문구 대신 문제 목록이 실린다.
   async function runAiGenerate(diag = null) {
     if (!ai || !ai.generate || aiGen.busy) return;
@@ -12897,7 +12966,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
 
     let ctxText = '';
-    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (aiCtxOn) ctxText = assembleCtx(await fetchBotCtx()).text;
     if (aiGen.seq !== mySeq || destroyed) return;
 
     const blank = !diag && schemaIsBlank(schema); // 진단은 스키마가 있어야 돌았으니 항상 패치 모드
@@ -13374,7 +13443,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     rerender();
 
     let ctxText = '';
-    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (aiCtxOn) ctxText = assembleCtx(await fetchBotCtx()).text;
     if (chat.seq !== mySeq || destroyed) return;
 
     const blank = schemaIsBlank(schema);
@@ -13552,7 +13621,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const renderMeter = () => {
       meter.replaceChildren();
       if (baseTok == null) {
-        const ctxText = aiCtxOn && aiBotCtx ? assembleBotContext(aiBotCtx).text : '';
+        const ctxText = aiCtxOn && aiBotCtx ? assembleCtx(aiBotCtx).text : '';
         baseTok = chatTurnEstimate(buildChatSystemPrompt(schema, ctxText, workLog), chatHistoryMessages(chat.msgs));
       }
       meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(chat.draft)).toLocaleString()} 토큰`));
@@ -13560,13 +13629,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
-      const a = assembleBotContext(aiBotCtx);
+      const a = assembleCtx(aiBotCtx);
       if (a.text) {
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
         card.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
           h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, `설명·로어북 ${(a.bytes / 1024).toFixed(1)}KB`))));
+        const pk = botCtxPicker(() => { baseTok = null; renderMeter(); }); if (pk) card.appendChild(pk);
       }
       card.appendChild(meter);
       card.appendChild(h('div', { class: 'sce-ai-context-note' },
@@ -13691,7 +13761,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     bibleChat.draft = ''; bibleChat.busy = true; bibleChat.note = null;
     rerender();
     let ctxText = '';
-    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (aiCtxOn) ctxText = assembleCtx(await fetchBotCtx()).text;
     if (bibleChat.seq !== mySeq || destroyed) return;
     const system = buildBibleSystemPrompt(ctxText);
     const messages = [...chatHistoryMessages(bibleChat.msgs.slice(0, -1)), { role: 'user', content: text }];
@@ -13863,7 +13933,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const renderMeter = () => {
       meter.replaceChildren();
       if (baseTok == null) {
-        const ctxText = aiCtxOn && aiBotCtx ? assembleBotContext(aiBotCtx).text : '';
+        const ctxText = aiCtxOn && aiBotCtx ? assembleCtx(aiBotCtx).text : '';
         baseTok = chatTurnEstimate(buildBibleSystemPrompt(ctxText), chatHistoryMessages(bibleChat.msgs));
       }
       meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(bibleChat.draft)).toLocaleString()} 토큰`));
@@ -13871,13 +13941,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
-      const a = assembleBotContext(aiBotCtx);
+      const a = assembleCtx(aiBotCtx);
       if (a.text) {
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
         card.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
           h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, `설명·로어북 ${(a.bytes / 1024).toFixed(1)}KB — 있는 봇을 정리할 때 켜 두세요`))));
+        const pk = botCtxPicker(() => { baseTok = null; renderMeter(); }); if (pk) card.appendChild(pk);
       }
       card.appendChild(meter);
       const dg = bibleMod.bibleDigest(bible);
@@ -14145,7 +14216,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           `캐릭터 정보를 읽지 못했어요 — ${aiBotCtxError}`));
         ctxLine.appendChild(reconnect());
       }
-      const a = assembleBotContext(aiBotCtx);
+      const a = assembleCtx(aiBotCtx);
       if (!aiBotCtxError && a.text) {
         const descBytes = byteLen(String(aiBotCtx?.desc || '').trim());
         const loreCount = (aiBotCtx?.lore || []).filter((l) => (l.content || '').trim()).length;
@@ -14155,7 +14226,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         ctxLine.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
           h('span', {}, '현재 캐릭터 정보 포함',
             h('span', { class: 'sce-ai-context-note' },
-              a.truncated ? '20KB를 넘는 내용은 생략해서 보내요.' : '설명과 로어북을 생성 요청에 함께 보내요.'))));
+              a.truncated ? '⚠ 64KB 상한에서 잘렸어요 — 아래에서 항목을 줄이세요' : a.bytes > BOT_CTX_WARN ? '⚠ 20KB가 넘어요 — 아래에서 필요한 항목만 고르세요' : '체크한 설명·로어북을 생성 요청에 함께 보내요.'))));
+        { const pk = botCtxPicker(() => renderCtxLine()); if (pk) ctxLine.appendChild(pk); }
         const total = byteLen(buildAiRequestPrompt(schema, aiReq, aiCtxOn ? a.text : ''));
         ctxLine.appendChild(h('div', { class: 'sce-ai-context-meta' },
           h('span', {}, `캐릭터 ${(a.bytes / 1024).toFixed(1)}KB`),
@@ -14244,7 +14316,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + 'AI 호출이 차단됐거나 API 없이 웹 AI(공홈)를 쓸 때만: 규격서를 복사해 다른 AI에 붙여넣고, '
       + '받은 JSON을 🧾 JSON 관리자에 넣으면 돼요 (패치는 ②, 전체 작업본은 ④).',
       () => {
-        const a = aiCtxOn ? assembleBotContext(aiBotCtx) : { text: '' };
+        const a = aiCtxOn ? assembleCtx(aiBotCtx) : { text: '' };
         return buildAiRequestPrompt(schema, aiReq, a.text);
       }, [], { collapsible: true }).mount(aiAlt);
 

@@ -21,7 +21,7 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 설정집 저장 통로 — 캐릭터별 pluginStorage (카드·번들에 안 실림)', src.includes('sim:bible:${currentChaId}') && src.includes('loadBible: async') && src.includes('saveBible: async'), '');
   ck('★ 내보내기 버튼 셋', ['📋 로어북 JSON 복사', '⬇ lorebook.json', '📋 캐릭터 시트 복사'].every((t) => src.includes(t)), '');
   ck('★ 💬 어시스턴트에게 보내기 — sim 요청문을 💬 입력칸에', src.includes("'💬 어시스턴트에게 보내기'") && src.includes('chat.draft = bibleMod.simRequestText(bible)'), '');
-  ck('★ 버전 1.16.0 + display-name', src.includes('//@version 1.16.0') && /\/\/@display-name .*v1\.16\.0/.test(src), '');
+  ck('★ 버전 1.16.x + display-name', src.includes('//@version 1.16.') && /\/\/@display-name .*v1\.16\./.test(src), '');
 }
 
 // ── ② 1단계 = 쓰기 없음 — bibleFloor 구간은 캐릭터 객체를 건드리지 않는다 ──
@@ -137,16 +137,18 @@ const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
 
   const saved = []; let floorReq = null;
   const replies = [];   // 다음 generate가 돌려줄 답 (앞에서부터)
+  let lastSystem = '';
+  const prefsSaved = [];
   const ai = {
-    generate: async () => replies.length ? replies.shift() : '그냥 말이에요.',
-    getBotContext: async () => ({ name: '테스트', desc: '설명', lore: [{ name: '옛 항목', content: '옛 본문' }] }),
+    generate: async (input) => { lastSystem = String(input && input.system || ''); return replies.length ? replies.shift() : '그냥 말이에요.'; },
+    getBotContext: async () => ({ name: '테스트', desc: '설명', lore: [{ name: '옛 항목', content: '옛 로어 본문 (설정집의 옛 본문과 다른 글)' }] }),
     loadBible: async () => ({ title: '불러온 설정집', sections: [{ id: 'old', kind: 'world', name: '옛 세계', keys: ['옛'], body: '옛 본문' }] }),
     saveBible: async (b) => { saved.push(JSON.parse(JSON.stringify(b))); },
   };
   const box = document.createElement('div');
   let bootErr = null, ed = null;
   try { ed = createSchemaEditor(box, { simcore: '0.1', meta: { name: 'b' }, vars: [{ id: 'gold', label: '재정', type: 'int', init: 1 }], statusUI: { mode: 'auto', groups: [] } },
-    { onChange: () => {}, ai, floor: 'bible', onRequestFloor: (f) => { floorReq = f; } }); } catch (e) { bootErr = e; }
+    { onChange: () => {}, ai, floor: 'bible', onRequestFloor: (f) => { floorReq = f; }, uiPrefs: { load: async () => null, save: async (p) => { prefsSaved.push(JSON.parse(JSON.stringify(p))); } } }); } catch (e) { bootErr = e; }
   ck('★ 봇 제작 층으로 편집기가 뜬다', !bootErr && !!ed, bootErr && (bootErr.message + ' | ' + (bootErr.stack || '').split('\n')[1]));
   await tick();
   const btn = (label) => findAll(box, (e) => e.tagName === 'BUTTON' && e.textContent.startsWith(label))[0];
@@ -172,6 +174,16 @@ const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
   // 논의 턴 — JSON 없음
   await say('아린은 어떤 사람이야?');
   ck('★ 논의 턴은 말풍선만', box.textContent.includes('그냥 말이에요.') && has('sce-bible-card') === 2, '');
+
+  // 📚 보낼 것 고르기 (v1.16.1) — 로어북 항목을 끄면 다음 턴 프롬프트에서 빠지고 선택이 캐릭터별로 저장된다
+  ck('★ 전송 정보 카드에 보낼 것 고르기', has('sce-ctx-pick') === 1 && has('sce-ctx-pick-row') === 2, String(has('sce-ctx-pick-row')));
+  ck('★ 고르기 전엔 로어북이 프롬프트에 실린다', lastSystem.includes('### 로어북: 옛 항목') && lastSystem.includes('옛 로어 본문') && lastSystem.includes('### 봇 설명'), '');
+  { const rowEl = findAll(box, (e) => String(e.className).includes('sce-ctx-pick-row') && e.textContent.includes('옛 항목'))[0];
+    const cb = rowEl && rowEl.children[0]; if (cb) { cb.checked = false; cb.onchange(); } }
+  await say('한 번 더');
+  ck('★ 끈 항목은 프롬프트에서 빠진다 (설명은 그대로 — 설정집의 옛 본문은 다이제스트라 남는다)', !lastSystem.includes('### 로어북: 옛 항목') && !lastSystem.includes('옛 로어 본문') && lastSystem.includes('### 봇 설명') && lastSystem.includes('[old]'), '');
+  await tick(400);
+  ck('★ 선택이 캐릭터별 uiPrefs(ctx)에 저장된다', prefsSaved.some((p) => p.ctx && p.ctx.desc === true && Array.isArray(p.ctx.off) && p.ctx.off.includes('옛 항목')), JSON.stringify(prefsSaved.slice(-1)));
 
   // 내보내기 — 클립보드에 리수 형식
   btn('📋 로어북 JSON 복사').click(); await tick();

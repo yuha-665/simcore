@@ -227,6 +227,65 @@ test('whenArmed: hold 무장 중엔 계속 개방, 해제하면 폐쇄', () => {
   eq(engine.outputPhase(s, send3.state, { money: -10 }, {}).state.vars.money, 80, '해제 후 폐쇄');
 });
 
+// ── when (조건 잠금) — v1.14.3 ──
+function whenFx() {
+  return {
+    simcore: '0.1', meta: { name: '조건잠금' },
+    vars: [
+      { id: 'pregnant', label: '임신', type: 'bool', init: false },
+      { id: 'progress', label: '진행도', type: 'int', init: 0, min: 0, max: 100 },
+      { id: 'scene', label: '장면', type: 'enum', enum: ['일상', '협상'], init: '일상' },
+      { id: 'offer', label: '제안가', type: 'int', init: 0, min: 0 },
+    ],
+    updater: { allow: [
+      { id: 'progress', maxDelta: 20, when: 'pregnant' },
+      { id: 'offer', maxDelta: 100, when: "scene == '협상'" },
+    ] },
+    statusUI: { mode: 'auto', groups: [] },
+  };
+}
+
+test('when: 검증 — 조건식 통과, 없는 변수·rand·비문자열은 오류', () => {
+  const s = whenFx();
+  eq(validateSchema(s).ok, true, JSON.stringify(validateSchema(s).errors));
+  s.updater.allow[0].when = 'ghost > 1';
+  assert.ok(validateSchema(s).errors.some((e) => e.path === '$.updater.allow[0].when' && e.msg.includes('ghost')));
+  s.updater.allow[0].when = 'rand(1,2) > 1';
+  assert.ok(validateSchema(s).errors.some((e) => e.path === '$.updater.allow[0].when' && e.msg.includes('rand')));
+  s.updater.allow[0].when = 5;
+  assert.ok(validateSchema(s).errors.some((e) => e.path === '$.updater.allow[0].when'));
+});
+
+test('when: 조건이 거짓이면 프롬프트에서 빠지고 적용도 거부, 참이면 둘 다 열림', () => {
+  const s = whenFx();
+  const st = engine.initState(s);
+  const closedPrompt = engine.buildAuxPrompt(s, engine.sendPhase(s, st, {}).state, '서사', null);
+  assert.ok(!closedPrompt.includes('- progress'), '닫힌 변수는 계약표에 없음');
+  assert.ok(!closedPrompt.includes('- offer'), '다른 닫힌 변수도 없음');
+  const out = engine.outputPhase(s, engine.sendPhase(s, st, {}).state, { progress: 20, offer: 50 }, {});
+  eq(out.state.vars.progress, 0, '닫힌 변수는 안 움직임');
+  eq(out.state.vars.offer, 0, '닫힌 변수는 안 움직임');
+  st.vars.pregnant = true;
+  st.vars.scene = '협상';
+  const openPrompt = engine.buildAuxPrompt(s, engine.sendPhase(s, st, {}).state, '서사', null);
+  assert.ok(openPrompt.includes('- progress'), '열린 변수는 계약표에 실림');
+  assert.ok(openPrompt.includes('- offer'), 'enum 비교 조건도 열림');
+  const out2 = engine.outputPhase(s, engine.sendPhase(s, st, {}).state, { progress: 20, offer: 50 }, {});
+  eq(out2.state.vars.progress, 20, '열린 턴엔 적용');
+  eq(out2.state.vars.offer, 50, '열린 턴엔 적용');
+});
+
+test('when: 브리지 템플릿(allowAll)은 전부 싣고, 보조 예산은 열린 변수만 센다', () => {
+  const s = whenFx();
+  const st = engine.initState(s);
+  const baked = engine.buildAuxPrompt(s, st, '{{narrative}}', null, null, { allowAll: true });
+  assert.ok(baked.includes('- progress') && baked.includes('- offer'), '설치 시점 템플릿은 조건을 안 거른다');
+  const closed = engine.auxOutputBudget(s, st, '서사');
+  st.vars.pregnant = true; st.vars.scene = '협상';
+  const open = engine.auxOutputBudget(s, st, '서사');
+  assert.ok(open >= closed, '열리면 예산이 줄지 않는다');
+});
+
 test('whenArmed: 닫힌 턴에는 보조 프롬프트에서도 빠짐 (프롬프트=적용 동일 기준)', () => {
   const s = armFx();
   const st = engine.initState(s);

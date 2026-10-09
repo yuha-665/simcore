@@ -1873,6 +1873,17 @@ function auxAllowList(schema, text, state = null) {
   let allow = schema.updater?.allow || [];
   // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
   if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
+  // 조건 잠금 (v1.14.3) — 변수 상태로 여닫는다. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시 토큰"
+  // → 이벤트로 낱말을 흘리게 해 낱말 게이트로 받는 우회를 쓰고 있었다. 위 주석의 "when을 못 단다"는 등장 여부를
+  // 변수로 못 재서 낱말을 **대체**할 수 없다는 뜻이고, 상태로 여닫는 건 whenArmed와 같은 결의 결정적 잠금이다.
+  // 닫힌 동안 토큰 0. 판정은 보조 호출 직전 상태. 브리지 템플릿(allowAll, state 없음)은 전부 싣고 적용 때 거른다.
+  if (state) {
+    const lookup = makeLookup(schema, state.vars || {});
+    allow = allow.filter((a) => {
+      if (typeof a.when !== 'string' || !a.when.trim()) return true;
+      try { return truthy(evaluate(a.when, lookup, null)); } catch { return false; } // 검증이 거르지만 방어 — 못 재면 닫힌다
+    });
+  }
   // 시간 고정 턴 (v1.9.11) — 액션 set 항목이 굳힌 턴엔 보조 추정을 받아도 버리니 창구를 아예 닫는다
   if (state?.meta?.timePin) allow = allow.filter((a) => a.id !== SKIP_MIN);
   // 갈림길 대기 중엔 그 선택지들이 만질 변수만 잠깐 뺀다 — 서사가 결과를 앞질러 굳히는 것을 막는다.
@@ -2108,11 +2119,11 @@ function auxOutputBudget(schema, state, text) {
     if (!v) continue;
     if (v.type === 'list') {
       const cur = Array.isArray(state?.vars?.[a.id]) ? state.vars[a.id] : [];
-      const n = Math.min(v.max ?? DEFAULT_LIST_MAX_ITEMS, cur.length);
-      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLen ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
+      const n = Math.min(v.maxItems ?? DEFAULT_LIST_MAX_ITEMS, cur.length); // v1.14.3 — v.max·itemMaxLen·maxLen은 없는 키였다 (항상 기본값으로 잡혔다)
+      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
       sum += n ? n * per * 2 + 30 : per * 3 + 30;
     } else if (v.type === 'text') {
-      sum += tok('x'.repeat(Math.min(v.maxLen ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+      sum += tok('x'.repeat(Math.min(v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
     } else {
       sum += 30;
     }

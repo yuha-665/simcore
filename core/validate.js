@@ -636,6 +636,11 @@ function validateSchema(schema) {
         }
       }
     }
+    // 조건 잠금 (v1.14.3) — 변수 상태로 여닫는 조건식. rand 금지: 턴마다 흔들리면 열림이 복권이 된다
+    if (a.when != null) {
+      if (typeof a.when !== 'string') err(p + '.when', 'when(조건 잠금)은 조건식 문자열이어야 함');
+      else checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
+    }
     // (text의 maxLength 미지정은 기본 200자가 적용되는 정상 동작이라 경고하지 않음)
   });
 

@@ -172,6 +172,31 @@ const baseJson = JSON.stringify(BASE);
   ck('어댑터 버전은 0.48 이상', /\/\/@version (0\.(4[89]|[5-9]\d)|[1-9]\d*\.)/.test(src), '');
 }
 
+// ── v1.14.3 allow 조건 잠금(when) — 지울 값을 보는 잠금만 푼다 (항목째 지우면 변수가 영영 안 움직인다) ──
+{
+  const S = {
+    simcore: '0.1', meta: { name: '조건잠금 정리' },
+    vars: [
+      { id: 'pregnant', label: '임신', type: 'bool', init: false },
+      { id: 'progress', label: '진행도', type: 'int', init: 0, min: 0, max: 100 },
+      { id: 'scene', label: '장면', type: 'enum', enum: ['일상', '협상'], init: '일상' },
+      { id: 'offer', label: '제안가', type: 'int', init: 0, min: 0 },
+    ],
+    updater: { allow: [
+      { id: 'progress', maxDelta: 20, when: 'pregnant' },
+      { id: 'offer', maxDelta: 100, when: "scene == '협상'" },
+    ] },
+    statusUI: { mode: 'auto', groups: [] },
+  };
+  ck('조건 잠금 실험대 유효', validateSchema(S).ok, validateSchema(S).errors.map((e) => e.msg).join(' / '));
+  const plan = P.planVarPurge(S, ['pregnant']);
+  ck('★ when이 지울 값을 보면 "조건 잠금 해제" 노트', plan.notes.some((n) => n.includes('조건 잠금 해제')), plan.notes.join(' | '));
+  const prog = plan.schema.updater.allow.find((a) => a.id === 'progress');
+  ck('★ 항목은 남고 when만 사라짐', !!prog && prog.when === undefined && prog.maxDelta === 20, JSON.stringify(prog));
+  ck('무관한 잠금은 그대로', plan.schema.updater.allow.find((a) => a.id === 'offer')?.when === "scene == '협상'", '');
+  ck('정리 결과가 검증을 통과', plan.errors.length === 0, plan.errors.join(' / '));
+}
+
 let p = 0, f = 0;
 for (const [ok, n, x] of R) { console.log(ok ? 'PASS' : 'FAIL', n, ok ? '' : `→ ${x}`); ok ? p++ : f++; }
 console.log(`\n${p} passed, ${f} failed`);

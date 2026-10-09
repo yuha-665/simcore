@@ -298,6 +298,7 @@ stamina를 회복시킴), 문턱 변수를 올린다(smith noble_offer — 모�
 | `allow[].maxLength` | text 최대 글자 (기본 200) |
 | `allow[].mentions` | `true`(label을 낱말로) 또는 문자열/배열. **이번 턴 서사에 그 말이 있을 때만 열린다** |
 | `allow[].whenArmed` | 액션 id 또는 배열 (v0.39). **그 액션이 무장 중(hold)이거나 이번 전송에서 발동(oneshot)된 턴에만 열린다.** 여러 개면 하나만 열려도 개방. mentions와 같이 걸면 둘 다 만족해야. id가 actions에 없으면 검증 오류 |
+| `allow[].when` | 조건식 (v1.14.3). **변수 상태가 참인 턴에만 열린다** — 보조 호출 직전 상태로 평가, 프롬프트와 적용이 같은 판정. 닫힌 동안 토큰 0·언어 무관·결정적. rand 금지·변수 참조 검사. 셋(mentions·whenArmed·when)을 같이 걸면 전부 만족해야. 브리지 템플릿(allowAll)은 전부 싣고 적용 때 거른다. 등장 여부는 변수에 없으니 인물 변수는 여전히 mentions |
 | `contextTurns` | 보조 AI에게 함께 보낼 최근 대화 (1~5 정수, 기본 1) |
 | `wordDetect` | 낱말 감지 신고 (v0.74) — true/false, 기본 켜짐. 다른 값은 오류 |
 | `guide` | 보조 AI 추가 지시 |

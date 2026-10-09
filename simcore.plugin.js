@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.2
-//@display-name SimCore (시뮬 엔진) v1.14.2 변수 키는 desc
+//@version 1.14.3
+//@display-name SimCore (시뮬 엔진) v1.14.3 조건 잠금
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,14 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.2 ──────────────────────────────────────────────
-// **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
-// 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
-// - [검증] 변수에 `description`이 있고 desc가 비었으면 **desc로 옮기고** 경고로 알린다(설정 없이 결정된 동작 — 켜고 끌 취향이 아니라
-//   형식의 사실). 둘 다 있으면 desc를 지키고 "description은 읽지 않는다"고 경고. 그 밖의 모르는 키(오타 discription 등)는
-//   "알 수 없는 키" 경고 — 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다. JSON 붙여넣기·AI 응답·패치 세 입구가
-//   같은 검증기를 지나므로 한 자리로 다 걸린다.
-// - [요청서] 변수 규격표 desc 줄에 "키 이름은 desc — description은 읽지 않습니다" 명시 (규격에 없던 키를 AI가 관행으로 지어낸 사례).
+// ── v1.14.3 ──────────────────────────────────────────────
+// **allow 조건 잠금 + 어시스턴트가 변수 필드 이름을 안다.** 커뮤니티 제보 둘.
+// - [코어] `allow[].when` — 변수 상태로 여닫는 세 번째 게이트. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시
+//   토큰이라, 이벤트로 낱말을 흘리게 해 낱말 게이트로 받는 우회를 쓴다". 조건이 참인 턴에만 계약표에 실리고 적용된다(프롬프트=적용
+//   같은 함수). 닫힌 동안 토큰 0, 언어 무관, 결정적. whenArmed와 같은 결 — 브리지 템플릿은 전부 싣고 적용 때 거른다.
+//   옛 주석 "allow에 when을 못 단다"는 등장 여부를 변수로 못 재서 낱말을 **대체**할 수 없다는 뜻이었다 — 인물 변수는 여전히 mentions.
+// - [검증] when은 조건식 문자열·변수 참조·rand 금지. [편집기] allow 카드에 "조건 잠금" 칸. [정리 마법사] 지울 값을 보는 잠금만 푼다.
+// - [어시스턴트] 제보: "text 최대 글자를 고치랬더니 효과 없는 패치를 낸다". 변수 표에 값("80자 이내")만 있고 키 이름이 프롬프트
+//   어디에도 없어 `maxLen`·`limit` 같은 이름을 지어냈고, update 병합은 보낸 필드를 그대로 얹으니 쓰레기 키만 붙었다.
+//   → 계약표 머리글에 필드 이름(min·max / enum / maxLength / maxItems·itemMaxLength), 비어 있던 text 기본 "200자 이내"를 적고,
+//   패치 규칙에 "변수 필드 이름은 이것뿐" 한 줄. (런타임은 원래 멀쩡했다 — 보조 프롬프트의 "N자 이내"와 적용 때 자르기)
+// - [버그] 보조 출력 예산이 `v.maxLen`·`itemMaxLen`·`v.max`라는 없는 키를 읽어 text·list 예산이 항상 기본값이었다 → 바른 키로.
 
 
 const SimCore = (() => {
@@ -1583,6 +1587,11 @@ function validateSchema(schema) {
           if (!actionIds.has(k)) err(p, `whenArmed의 '${k}'가 actions에 없음`);
         }
       }
+    }
+    // 조건 잠금 (v1.14.3) — 변수 상태로 여닫는 조건식. rand 금지: 턴마다 흔들리면 열림이 복권이 된다
+    if (a.when != null) {
+      if (typeof a.when !== 'string') err(p + '.when', 'when(조건 잠금)은 조건식 문자열이어야 함');
+      else checkExpr(a.when, p + '.when', allIds, err, { allowRand: false });
     }
     // (text의 maxLength 미지정은 기본 200자가 적용되는 정상 동작이라 경고하지 않음)
   });
@@ -9214,6 +9223,17 @@ function auxAllowList(schema, text, state = null) {
   let allow = schema.updater?.allow || [];
   // 액션 잠금 — 낱말 필터보다 먼저, 상태만 있으면 텍스트 없이도(브리지 소급 적용) 작동한다
   if (state) allow = allow.filter((a) => !a.whenArmed || actionGateOpen(state, a.whenArmed));
+  // 조건 잠금 (v1.14.3) — 변수 상태로 여닫는다. 제보: "낱말은 메인 모델이 그 말을 안 쓰면 끊기고, 비우면 상시 토큰"
+  // → 이벤트로 낱말을 흘리게 해 낱말 게이트로 받는 우회를 쓰고 있었다. 위 주석의 "when을 못 단다"는 등장 여부를
+  // 변수로 못 재서 낱말을 **대체**할 수 없다는 뜻이고, 상태로 여닫는 건 whenArmed와 같은 결의 결정적 잠금이다.
+  // 닫힌 동안 토큰 0. 판정은 보조 호출 직전 상태. 브리지 템플릿(allowAll, state 없음)은 전부 싣고 적용 때 거른다.
+  if (state) {
+    const lookup = makeLookup(schema, state.vars || {});
+    allow = allow.filter((a) => {
+      if (typeof a.when !== 'string' || !a.when.trim()) return true;
+      try { return truthy(evaluate(a.when, lookup, null)); } catch { return false; } // 검증이 거르지만 방어 — 못 재면 닫힌다
+    });
+  }
   // 시간 고정 턴 (v1.9.11) — 액션 set 항목이 굳힌 턴엔 보조 추정을 받아도 버리니 창구를 아예 닫는다
   if (state?.meta?.timePin) allow = allow.filter((a) => a.id !== SKIP_MIN);
   // 갈림길 대기 중엔 그 선택지들이 만질 변수만 잠깐 뺀다 — 서사가 결과를 앞질러 굳히는 것을 막는다.
@@ -9449,11 +9469,11 @@ function auxOutputBudget(schema, state, text) {
     if (!v) continue;
     if (v.type === 'list') {
       const cur = Array.isArray(state?.vars?.[a.id]) ? state.vars[a.id] : [];
-      const n = Math.min(v.max ?? DEFAULT_LIST_MAX_ITEMS, cur.length);
-      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLen ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
+      const n = Math.min(v.maxItems ?? DEFAULT_LIST_MAX_ITEMS, cur.length); // v1.14.3 — v.max·itemMaxLen·maxLen은 없는 키였다 (항상 기본값으로 잡혔다)
+      const per = cur.length ? tok(cur.join('')) / cur.length + 4 : (v.itemMaxLength ?? DEFAULT_LIST_ITEM_MAXLEN) / 1.6 + 4;
       sum += n ? n * per * 2 + 30 : per * 3 + 30;
     } else if (v.type === 'text') {
-      sum += tok('x'.repeat(Math.min(v.maxLen ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
+      sum += tok('x'.repeat(Math.min(v.maxLength ?? DEFAULT_TEXT_MAXLEN, 400))) + 30;
     } else {
       sum += 30;
     }
@@ -16247,6 +16267,7 @@ const SCHEMA_ALLOW_RULES = [
   '- **매 턴 움직이는 핵심 수치**(돈·피로·시각류)에는 mentions를 달지 마세요 — 낱말을 놓친 턴의 변화가 통째로 사라집니다.',
   '- 상태창이 매 턴 찍는 단위 말("골드"처럼 어떤 변수의 `format`에 든 말)은 낱말로 금지 — 매 턴 화면에 찍혀 항상 열리므로 게이트가 무의미해집니다.',
   '- 낱말을 놓쳐도 안전망이 있습니다: 서사가 잠긴 변수의 변화를 서술하면 보조 AI가 신고하고 그 변수가 다음 턴 한 번 열립니다(감지 신고, 기본 켜짐). 그래도 유의어를 잘 갖출수록 반영이 한 턴 빠릅니다.',
+  '- **변수 상태로 여닫으려면 `when`(조건식)** — `"when": "pregnant"`, `"when": "scene == \'협상\'"`처럼 적으면 **그 조건이 참인 턴에만** 열립니다. 낱말과 달리 언어 무관·결정적이고 닫힌 동안 토큰이 들지 않습니다. "이 국면에서만 움직이는 값"(진행도·협상치)에 쓰고, 등장 여부는 변수에 없으니 인물 변수는 여전히 mentions입니다. mentions·whenArmed와 같이 걸면 전부 만족해야 열립니다.',
 ];
 
 // 반복 이벤트 패턴 — once 오남용은 실측 사고다 (맨션봇 시설 위기: once라 두 번째 고장부터 침묵).
@@ -16733,6 +16754,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, **보낸 필드만 덮고 나머지 필드는 그대로** 남습니다 — 바꿀 필드만 주면 됩니다.',
     '  필드를 없애려면 `"max": null`처럼 null을 주세요. 단 `effects`·`choices`·`grades`·`mentions` 같은 배열·객체 필드는 **통째로** 바뀌니 그 배열은 전문을 다시 쓰세요 (아래 다이제스트에 전문이 있습니다).',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
+    '- 변수 필드 이름은 정해져 있습니다: 숫자 `min`·`max`, text `maxLength`, list `maxItems`·`itemMaxLength`, 선택지 `enum`, AI용 설명 `desc`, 표시 형식 `format`. 다른 이름(`maxLen`·`limit`·`description`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
@@ -17228,7 +17250,7 @@ function varReferenceIndex(schema) {
     ex(c.roll, '판정', c.label ?? c.id); ex(c.mod, '판정', c.label ?? c.id); ex(c.vs, '판정', c.label ?? c.id);
     (Array.isArray(c.grades) ? c.grades : []).forEach((g) => fx(g.effects, '판정', c.label ?? c.id));
   });
-  (schema.updater?.allow || []).forEach((a) => add(a?.id, 'AI 계약표', 'allow'));
+  (schema.updater?.allow || []).forEach((a) => { add(a?.id, 'AI 계약표', 'allow'); ex(a?.when, 'AI 계약표 조건 잠금', a?.id); });
   tpl(schema.promptState?.template, 'AI 상태요약', 'template');
   (schema.statusUI?.groups || []).forEach((g) => (g.items || []).forEach((it) => {
     if (!it || typeof it !== 'object') return;
@@ -17381,6 +17403,10 @@ function planVarPurge(schema0, rootIds) {
     const before = schema.updater.allow.length;
     schema.updater.allow = schema.updater.allow.filter((a) => !doomed.has(a.id));
     if (schema.updater.allow.length !== before) note('AI 설정', `허용 변수 ${before - schema.updater.allow.length}개`);
+    // 조건 잠금이 지울 값을 보면 잠금만 푼다 (v1.14.3) — 항목째 지우면 변수가 영영 안 움직인다
+    for (const a of schema.updater.allow) {
+      if (exprHits(a.when, doomed)) { delete a.when; note('AI 설정', `'${a.id}' 조건 잠금 해제 — 지울 값을 봄`); }
+    }
   }
   if (schema.setup?.ai?.vars) {
     const before = schema.setup.ai.vars.length;
@@ -17481,15 +17507,17 @@ function planVarPurge(schema0, rootIds) {
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
 function varContractTable(schema) {
-  const rows = ['| id | 이름 | 타입 | 범위 / 선택지 | 시작값 |', '|---|---|---|---|---|'];
+  // 범위 칸에 필드 이름을 같이 적는다 (v1.14.3) — 제보: 어시스턴트가 text 최대 글자를 고치랬더니 `maxLen` 같은 이름을 지어내
+  // 효과 없는 패치를 냈다. 값만 보이고 키 이름이 프롬프트 어디에도 없어서다. 비어 있던 text 기본 200자도 적는다.
+  const rows = ['| id | 이름 | 타입 | 범위 / 선택지 (필드: 숫자 `min`·`max` / `enum` / text `maxLength` / list `maxItems`·`itemMaxLength`) | 시작값 |', '|---|---|---|---|---|'];
   for (const v of (schema.vars || [])) {
     let range = '';
     if (v.type === 'enum') range = (v.enum || []).join(' / ');
     else if (v.type === 'int' || v.type === 'float') {
       range = v.min != null && v.max != null ? `${v.min} ~ ${v.max}`
         : v.min != null ? `${v.min} 이상` : v.max != null ? `${v.max} 이하` : '제한 없음';
-    } else if (v.type === 'list') range = `최대 ${v.maxItems ?? 20}개`;
-    else if (v.type === 'text') range = v.maxLength ? `${v.maxLength}자 이내` : '';
+    } else if (v.type === 'list') range = `최대 ${v.maxItems ?? 20}개 · 항목 ${v.itemMaxLength ?? 40}자`;
+    else if (v.type === 'text') range = v.maxLength ? `${v.maxLength}자 이내` : '200자 이내 (기본 — `maxLength`로 변경)';
     rows.push(`| \`${v.id}\` | ${v.label ?? v.id} | ${v.type} | ${range} | ${JSON.stringify(v.init)} |`);
   }
   const out = [rows.join('\n')];
@@ -24723,6 +24751,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + '돈처럼 AI가 자꾸 임의로 바꾸는 변수에 걸어두면, 유저가 버튼을 켠 턴에만 움직여요.'
           + (actionOpts ? ` 현재 액션: ${actionOpts}` : ' (⚠ 아직 액션이 없다 — [액션] 탭에서 먼저 만들 것)'))));
       }
+      // 조건 잠금(when, v1.14.3) — 변수 상태로 여닫는다. 낱말(어휘 규약·확률)·액션(버튼)과 다른 세 번째 결.
+      row.append(h('div', { class: 'sce-ai-settings-gate' },
+        h('div', { class: 'sce-ai-settings-gate-head' },
+          h('strong', {}, '조건 잠금'),
+          h('small', {}, '조건식이 참인 턴에만 이 변수를 엽니다.')),
+        pair('조건식', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '예: pregnant / scene == "협상" (비우면 잠금 없음)' }),
+          '변수 상태로 여닫아요. "이 국면에서만 움직이는 값"(임신 진행도·협상치처럼)에 걸면 그 밖의 턴엔 보조 AI에게 보이지도 않아 토큰도 안 들어요. '
+          + '어떤 언어로 채팅해도 똑같고, 메인 모델이 특정 말을 써 주길 기다릴 필요가 없어요. 낱말·액션 잠금과 같이 걸면 전부 만족해야 열려요. '
+          + '루아 브리지 모드에선 프롬프트엔 실리고 적용할 때만 걸러요.')));
       row.prepend(h('div', { class: 'sce-ai-settings-allow-head' },
         h('div', {}, h('strong', {}, def?.label || a.id || '변수 미선택'), h('small', {}, a.id || 'ID 없음')),
         grip(allow, i, rerender)));
@@ -32769,6 +32807,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.2 ──────────────────────────────────────────────
+// **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
+// 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
+// - [검증] 변수에 `description`이 있고 desc가 비었으면 **desc로 옮기고** 경고로 알린다(설정 없이 결정된 동작 — 켜고 끌 취향이 아니라
+//   형식의 사실). 둘 다 있으면 desc를 지키고 "description은 읽지 않는다"고 경고. 그 밖의 모르는 키(오타 discription 등)는
+//   "알 수 없는 키" 경고 — 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다. JSON 붙여넣기·AI 응답·패치 세 입구가
+//   같은 검증기를 지나므로 한 자리로 다 걸린다.
+// - [요청서] 변수 규격표 desc 줄에 "키 이름은 desc — description은 읽지 않습니다" 명시 (규격에 없던 키를 AI가 관행으로 지어낸 사례).
 
 // ── v1.14.1 ──────────────────────────────────────────────
 // **징조가 먼저 온다 — 사건 게이지의 징조.** 유저: "주변에 뭔가 징조가 있으면 서사적으로 갑자기 터지는 것보다 자연스러울 테니".

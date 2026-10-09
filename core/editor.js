@@ -3890,6 +3890,7 @@ const SCHEMA_ALLOW_RULES = [
   '- **매 턴 움직이는 핵심 수치**(돈·피로·시각류)에는 mentions를 달지 마세요 — 낱말을 놓친 턴의 변화가 통째로 사라집니다.',
   '- 상태창이 매 턴 찍는 단위 말("골드"처럼 어떤 변수의 `format`에 든 말)은 낱말로 금지 — 매 턴 화면에 찍혀 항상 열리므로 게이트가 무의미해집니다.',
   '- 낱말을 놓쳐도 안전망이 있습니다: 서사가 잠긴 변수의 변화를 서술하면 보조 AI가 신고하고 그 변수가 다음 턴 한 번 열립니다(감지 신고, 기본 켜짐). 그래도 유의어를 잘 갖출수록 반영이 한 턴 빠릅니다.',
+  '- **변수 상태로 여닫으려면 `when`(조건식)** — `"when": "pregnant"`, `"when": "scene == \'협상\'"`처럼 적으면 **그 조건이 참인 턴에만** 열립니다. 낱말과 달리 언어 무관·결정적이고 닫힌 동안 토큰이 들지 않습니다. "이 국면에서만 움직이는 값"(진행도·협상치)에 쓰고, 등장 여부는 변수에 없으니 인물 변수는 여전히 mentions입니다. mentions·whenArmed와 같이 걸면 전부 만족해야 열립니다.',
 ];
 
 // 반복 이벤트 패턴 — once 오남용은 실측 사고다 (맨션봇 시설 위기: once라 두 번째 고장부터 침묵).
@@ -4376,6 +4377,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- `update` = 기존 항목 수정. **기존 id만** 쓸 수 있고, **보낸 필드만 덮고 나머지 필드는 그대로** 남습니다 — 바꿀 필드만 주면 됩니다.',
     '  필드를 없애려면 `"max": null`처럼 null을 주세요. 단 `effects`·`choices`·`grades`·`mentions` 같은 배열·객체 필드는 **통째로** 바뀌니 그 배열은 전문을 다시 쓰세요 (아래 다이제스트에 전문이 있습니다).',
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
+    '- 변수 필드 이름은 정해져 있습니다: 숫자 `min`·`max`, text `maxLength`, list `maxItems`·`itemMaxLength`, 선택지 `enum`, AI용 설명 `desc`, 표시 형식 `format`. 다른 이름(`maxLen`·`limit`·`description`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
@@ -4871,7 +4873,7 @@ function varReferenceIndex(schema) {
     ex(c.roll, '판정', c.label ?? c.id); ex(c.mod, '판정', c.label ?? c.id); ex(c.vs, '판정', c.label ?? c.id);
     (Array.isArray(c.grades) ? c.grades : []).forEach((g) => fx(g.effects, '판정', c.label ?? c.id));
   });
-  (schema.updater?.allow || []).forEach((a) => add(a?.id, 'AI 계약표', 'allow'));
+  (schema.updater?.allow || []).forEach((a) => { add(a?.id, 'AI 계약표', 'allow'); ex(a?.when, 'AI 계약표 조건 잠금', a?.id); });
   tpl(schema.promptState?.template, 'AI 상태요약', 'template');
   (schema.statusUI?.groups || []).forEach((g) => (g.items || []).forEach((it) => {
     if (!it || typeof it !== 'object') return;
@@ -5024,6 +5026,10 @@ function planVarPurge(schema0, rootIds) {
     const before = schema.updater.allow.length;
     schema.updater.allow = schema.updater.allow.filter((a) => !doomed.has(a.id));
     if (schema.updater.allow.length !== before) note('AI 설정', `허용 변수 ${before - schema.updater.allow.length}개`);
+    // 조건 잠금이 지울 값을 보면 잠금만 푼다 (v1.14.3) — 항목째 지우면 변수가 영영 안 움직인다
+    for (const a of schema.updater.allow) {
+      if (exprHits(a.when, doomed)) { delete a.when; note('AI 설정', `'${a.id}' 조건 잠금 해제 — 지울 값을 봄`); }
+    }
   }
   if (schema.setup?.ai?.vars) {
     const before = schema.setup.ai.vars.length;
@@ -5124,15 +5130,17 @@ function planVarPurge(schema0, rootIds) {
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
 function varContractTable(schema) {
-  const rows = ['| id | 이름 | 타입 | 범위 / 선택지 | 시작값 |', '|---|---|---|---|---|'];
+  // 범위 칸에 필드 이름을 같이 적는다 (v1.14.3) — 제보: 어시스턴트가 text 최대 글자를 고치랬더니 `maxLen` 같은 이름을 지어내
+  // 효과 없는 패치를 냈다. 값만 보이고 키 이름이 프롬프트 어디에도 없어서다. 비어 있던 text 기본 200자도 적는다.
+  const rows = ['| id | 이름 | 타입 | 범위 / 선택지 (필드: 숫자 `min`·`max` / `enum` / text `maxLength` / list `maxItems`·`itemMaxLength`) | 시작값 |', '|---|---|---|---|---|'];
   for (const v of (schema.vars || [])) {
     let range = '';
     if (v.type === 'enum') range = (v.enum || []).join(' / ');
     else if (v.type === 'int' || v.type === 'float') {
       range = v.min != null && v.max != null ? `${v.min} ~ ${v.max}`
         : v.min != null ? `${v.min} 이상` : v.max != null ? `${v.max} 이하` : '제한 없음';
-    } else if (v.type === 'list') range = `최대 ${v.maxItems ?? 20}개`;
-    else if (v.type === 'text') range = v.maxLength ? `${v.maxLength}자 이내` : '';
+    } else if (v.type === 'list') range = `최대 ${v.maxItems ?? 20}개 · 항목 ${v.itemMaxLength ?? 40}자`;
+    else if (v.type === 'text') range = v.maxLength ? `${v.maxLength}자 이내` : '200자 이내 (기본 — `maxLength`로 변경)';
     rows.push(`| \`${v.id}\` | ${v.label ?? v.id} | ${v.type} | ${range} | ${JSON.stringify(v.init)} |`);
   }
   const out = [rows.join('\n')];
@@ -12366,6 +12374,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           + '돈처럼 AI가 자꾸 임의로 바꾸는 변수에 걸어두면, 유저가 버튼을 켠 턴에만 움직여요.'
           + (actionOpts ? ` 현재 액션: ${actionOpts}` : ' (⚠ 아직 액션이 없다 — [액션] 탭에서 먼저 만들 것)'))));
       }
+      // 조건 잠금(when, v1.14.3) — 변수 상태로 여닫는다. 낱말(어휘 규약·확률)·액션(버튼)과 다른 세 번째 결.
+      row.append(h('div', { class: 'sce-ai-settings-gate' },
+        h('div', { class: 'sce-ai-settings-gate-head' },
+          h('strong', {}, '조건 잠금'),
+          h('small', {}, '조건식이 참인 턴에만 이 변수를 엽니다.')),
+        pair('조건식', bindInput(a.when, (x) => { a.when = x || undefined; rerender(); },
+          { cls: 'sce-w-m', ph: '예: pregnant / scene == "협상" (비우면 잠금 없음)' }),
+          '변수 상태로 여닫아요. "이 국면에서만 움직이는 값"(임신 진행도·협상치처럼)에 걸면 그 밖의 턴엔 보조 AI에게 보이지도 않아 토큰도 안 들어요. '
+          + '어떤 언어로 채팅해도 똑같고, 메인 모델이 특정 말을 써 주길 기다릴 필요가 없어요. 낱말·액션 잠금과 같이 걸면 전부 만족해야 열려요. '
+          + '루아 브리지 모드에선 프롬프트엔 실리고 적용할 때만 걸러요.')));
       row.prepend(h('div', { class: 'sce-ai-settings-allow-head' },
         h('div', {}, h('strong', {}, def?.label || a.id || '변수 미선택'), h('small', {}, a.id || 'ID 없음')),
         grip(allow, i, rerender)));

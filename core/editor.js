@@ -5139,8 +5139,10 @@ function planVarPurge(schema0, rootIds) {
     if (r.hit) { schema.promptState.template = r.text; note('AI 설정', '상태 요약의 자리표시자 (값이 안 남는 줄은 줄째)'); }
   }
 
+  // 새 오류만 (v1.14.9) — 작성 중인 다른 항목의 오류가 아무 데도 안 쓰는 변수 삭제까지 막았다
+  const before = new Set(validateSchema(schema0).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(schema);
-  return { schema, notes, doomed: [...doomed], errors: v.errors.map((e) => `${e.path}: ${e.msg}`) };
+  return { schema, notes, doomed: [...doomed], errors: v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`) };
 }
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
@@ -5218,7 +5220,7 @@ const TAB_SLICES = {
   commands: { keys: ['vars'], merge: 'cmd', label: '명령' },
   actions: { keys: ['actions'], label: '액션' },
   checks: { keys: ['checks'], label: '판정' },
-  rules: { keys: ['rules', 'directives'], label: '규칙·이벤트' },
+  rules: { keys: ['rules', 'directives', 'liveChoices'], label: '규칙·이벤트' }, // liveChoices도 왕복 (v1.14.9 — 요청서는 다룬다고 말하면서 가져오기가 버렸다)
   // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
   // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
   presets: { keys: ['setup'], sub: 'presets', label: '시작 프리셋' },
@@ -5490,6 +5492,10 @@ function tabItemIds(schema, tabKey) {
     add('이벤트', schema.rules?.events);
     add('랜덤', schema.rules?.randomEvents?.table);
     add('지시문', schema.directives);
+    // 매 턴 정산 줄도 신원으로 (v1.14.9 — 전엔 AI가 onTurn 세 줄을 빼먹어도 확인 없이 사라졌다). 대상 변수가 이름이다
+    add('정산', (schema.rules?.onTurn || []).map((r) => ({ id: r && (r.set ?? r.list) })));
+    const lcs = Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [];
+    add('보조 갈림길', lcs.map((L, i) => ({ id: L?.id ?? L?.label ?? `#${i + 1}` })));
   }
   return out;
 }
@@ -7223,6 +7229,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       varCards.push(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
         [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description), aiAllowRow], issues, () => {
           if (!v.id) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
+          // 중복 id의 사본 하나는 그냥 지운다 (v1.14.9) — 정리 마법사는 id로 지워 둘 다, 참조까지 날렸다
+          if (schema.vars.filter((x) => x.id === v.id).length > 1) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           const plan = planVarPurge(schema, [v.id]);
           if (!plan.notes.length && !plan.errors.length) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           purge = { id: v.id, label: v.label ?? v.id, plan };
@@ -7263,7 +7271,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             { cls: 'sce-w-l', ph: '영문 ID' }), { issues: fieldIssues(path, 'id') }),
           variableField('계산식', bindInput(d.expr, (x) => { d.expr = x; rerender(); },
             { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
-            { issues: fieldIssues(path, 'expr', 'card') }), groupField(d)), derivedNow(d), referenceNote(d)], issues,
+            { issues: fieldIssues(path, 'expr', 'card') }),
+          variableField('표시 형식', bindInput(d.format, (x) => { d.format = x || undefined; rerender(); },
+            { cls: 'sce-w-s', ph: '{v}% (비우면 숫자 그대로)' }), { issues: [] }), // 상태창이 읽는 format — 전엔 JSON으로만 (v1.14.9)
+          groupField(d)), derivedNow(d), referenceNote(d)], issues,
         () => deleteWithUndo('derived', i, `파생 변수 ${i + 1}`), variableSummary(d, true)));
     });
     groupedAppend(derivedList, schema.derived, derivedCards);
@@ -8063,7 +8074,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!text) { tabAiMsg = { tabKey, text: '붙여넣은 내용이 없습니다.', warn: true }; return false; }
 
     let frag = null, why = '';
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     try { frag = JSON.parse(fenced ? fenced[1] : text); }
     catch (e) {
       why = e.message;
@@ -8102,6 +8113,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const beforeCounts = tabItemCounts(schema, tabKey);
     tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
     Object.assign(schema, JSON.parse(JSON.stringify(picked)));
+    // 🔒 보호 항목 되살리기 (v1.14.9) — 탭별 ✨ 생성·🧩 기능 추가·진단 요청서가 AI 통 교체의 실제 경로인데 keep 검사가 없었다.
+    // 패치 경로와 같은 규율: 같은 id면 원본 전문으로, 지웠으면 다시 붙인다
+    const rk = patchMod.restoreKept(tabUndo.before, schema);
+    const keptTouched = rk.restored.length + rk.reverted.length;
+    if (keptTouched) schema = rk.schema;
     normalize();
     tabPending = null;
     const afterCounts = tabItemCounts(schema, tabKey);
@@ -8110,6 +8126,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     let warn = false;
     // 계획을 보고 눌렀다면 무엇을 지웠는지 결과에도 남긴다 (되돌리기 판단 재료)
     if (plan?.lost?.length) msg += ` ${plan.lost.length}개를 지웠습니다 (${plan.lost.slice(0, 6).join(', ')}${plan.lost.length > 6 ? ' 외' : ''}).`;
+    if (keptTouched) msg += ` 🔒 보호 항목 ${keptTouched}개는 원본으로 되돌렸습니다 (${[...rk.reverted, ...rk.restored].slice(0, 4).join(', ')}).`;
 
     // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
     const lost = afterCounts
@@ -8880,6 +8897,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               { cls: 'sce-w-l', ph: '다음 턴에 전달할 문장 — 예: 기근이 시작되었다…' }),
             '이벤트가 일어났다는 사실을 다음 장면의 AI에게 알려줘요.',
             'is-wide'),
+          field('판정', bindSelect(ev.check ?? '',
+            [['', '(없음)'], ...(schema.checks || []).map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) ev.check = x; else delete ev.check; rerender(); }),
+            '발동할 때 굴려요 — [판정] 줄과 등급 효과가 이벤트 효과보다 먼저 (v1.14.9: 전엔 JSON으로만 넣을 수 있었어요)'),
           choiceEditor(ev),
         ),
       ));
@@ -9036,6 +9057,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               { cls: 'sce-w-l', ph: '산적이 상단을 습격했다…' }),
             '사건이 실제로 일어났을 때 다음 장면의 AI에게 알려줄 문장이에요.',
             'is-wide'),
+          field('판정', bindSelect(ev.check ?? '',
+            [['', '(없음)'], ...(schema.checks || []).map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) ev.check = x; else delete ev.check; rerender(); }),
+            '발동할 때 굴려요 — [판정] 줄과 등급 효과가 이벤트 효과보다 먼저 (v1.14.9: 전엔 JSON으로만 넣을 수 있었어요)'),
           reProbLine(ev, i),
           choiceEditor(ev),
         ),
@@ -10445,9 +10470,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' },
           h('strong', {}, j === 0 ? '1단계 — 낌새 (복선)' : `${j + 1}단계`),
           h('span', {}, j === 0
-            ? '처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
+            ? '여는 조건이 비면 처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
             : '조건이 참이 되는 순간 열려요.')));
-        if (j > 0) {
+        { // 0단계도 when을 가질 수 있다 — 엔진은 존중하는데 편집기가 숨겨 고칠 수 없었다 (v1.14.9)
           row.appendChild(field('여는 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
             { cls: 'sce-w-l', ph: 'affinity >= 60 / letter_found / scn_act == "act3"' }),
             '플레이가 세우는 변수로. rand()는 안 돼요 — 우연에 걸려면 랜덤 이벤트가 세운 변수를 읽게 하세요.', true));
@@ -10782,7 +10807,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             (x) => {
               const bands = {};
               for (const seg of x.split(',')) {
-                const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+                const m = seg.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)$/); // 소수 밴드도 (v1.14.9 — 전엔 0.5~3이 안 걸려 조용히 삭제됐다)
                 if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
               }
               if (Object.keys(bands).length) SH.bands = bands; else delete SH.bands; rerender();
@@ -10931,7 +10956,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         field('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '', (x) => {
           const bands = {};
           for (const seg of x.split(',')) {
-            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+            const m = seg.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)$/); // 소수 밴드도 (v1.14.9 — 전엔 0.5~3이 안 걸려 조용히 삭제됐다)
             if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
           }
           if (Object.keys(bands).length) Q.bands = bands; else delete Q.bands; rerender();
@@ -12615,7 +12640,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     const blank = !diag && schemaIsBlank(schema); // 진단은 스키마가 있어야 돌았으니 항상 패치 모드
     const stripFence = (raw) => {
-      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/i);
       return (m ? m[1] : String(raw)).trim();
     };
     const jsonParseFailure = (raw, error) => {
@@ -13097,7 +13122,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     const stripFence = (raw) => {
-      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/i);
       return (m ? m[1] : String(raw)).trim();
     };
     // 붙어 온 JSON 검사 — 통짜는 validateSchema, 패치는 parsePatch+planPatch. 불합격이면 스키마는 안 변한다
@@ -14095,7 +14120,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('button', { class: 'sce-btn', onclick: () => {
         // AI가 코드펜스를 붙여 주는 일이 잦다 — 벗겨내고 파싱한다
         const raw = String(area.value).trim();
-        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
         const src = fenced ? fenced[1] : raw;
         try {
           const candidate = JSON.parse(src);
@@ -15272,6 +15297,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!def) return raw;
     if (def.type === 'int' || def.type === 'float') return num(raw);
     if (def.type === 'bool') return raw === 'true' || raw === '1' || raw === 'ON';
+    if (def.type === 'list') { // 프리셋의 list 값 (v1.14.9 — 전엔 문자열 그대로 저장돼 늘 검증 오류)
+      try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.map(String); } catch { /* 쉼표 목록으로 */ }
+      return String(raw).split(',').map((x) => x.trim()).filter(Boolean);
+    }
     return raw;
   }
 

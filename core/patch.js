@@ -30,7 +30,16 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time', 'checkpoint', 'fronts']); // checkpoint(v1.11.0): 시나리오 탭 되감기 카드·JSON / fronts(v1.12.0): [무대 뒤] 탭
+// 패치 병합 미지원 섹션과 그 자리 (v1.14.9 — 전엔 assets·party·liveChoices·secrets 등 실재 섹션 열둘이 "알 수 없는 섹션"으로 떨어져
+// 다이제스트의 "패치로 못 다룹니다"와 말이 엇갈렸다)
+const UNSUPPORTED_HINT = {
+  statusUI: '[상태창] 탭', onTurn: '[규칙·이벤트] 탭 첫 절(매 턴 정산)', setup: '[새 시작] 탭', meta: '[상태창] 탭 제목 칸·📌 작업 지침',
+  promptState: '[AI 설정] 탭', suggest: '[AI 설정] 탭', simcore: '(버전 표식 — 손대지 않음)', time: '[시간] 탭',
+  checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋] 가져오기', party: '[편성표] 탭',
+  calendar: '[달력] 탭', board: '[게시판] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
+  liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
+};
+const UNSUPPORTED = new Set(Object.keys(UNSUPPORTED_HINT));
 
 function getList(schema, key) {
   switch (key) {
@@ -72,7 +81,7 @@ function parsePatch(raw) {
   let obj = raw;
   if (typeof raw === 'string') {
     const s = raw.trim();
-    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i); // ```JSON 펜스도 (v1.14.9)
     try { obj = JSON.parse(fence ? fence[1] : s); }
     catch (e) { return { ok: false, errors: [`패치 JSON 파싱 실패: ${e.message}`] }; }
   }
@@ -162,10 +171,11 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
       if (takeChance) takeChance(v, `${opName}.randomEventsChance`);
     } else if (k === 'updater' && v && typeof v === 'object') {
       put('allow', v.allow, 'updater.allow');
+      for (const uk of Object.keys(v)) if (uk !== 'allow') err(`${opName}.updater.${uk}: 패치 병합 미지원 — [AI 설정] 탭에서 고치세요`); // 전엔 guide·contextTurns가 조용히 사라졌다 (v1.14.9)
     } else if (SECTION_KEYS.includes(k)) {
       put(k, v, k);
     } else if (UNSUPPORTED.has(k)) {
-      err(`${opName}.${k}: 이 섹션은 패치 병합 미지원 — 기존 통 교체 가져오기를 쓰세요`);
+      err(`${opName}.${k}: 이 섹션은 패치 병합 미지원 — ${UNSUPPORTED_HINT[k]}에서 고치거나 탭 단위 가져오기를 쓰세요`);
     } else {
       err(`${opName}.${k}: 알 수 없는 섹션 (가능: ${SECTION_KEYS.join(', ')})`);
     }
@@ -328,8 +338,10 @@ function planPatch(schema, patch) {
   }
 
   // 첫 랜덤 이벤트인데 발동률이 없으면 병합 결과가 검증에서 무조건 죽는다 — 여기서 먼저, 해법과 함께
-  if (((patch.add || {}).randomEvents || []).length
-      && !(schema.rules && schema.rules.randomEvents) && patch.randomEventsChance == null)
+  const reNow = schema.rules && schema.rules.randomEvents;
+  // "처음"의 기준 (v1.14.9): 표가 비고 게이지도 없고 발동률이 0·없음 — 편집기 normalize가 빈 표를 미리 채워 두어 전엔 가드가 죽어 있었다
+  const reFresh = !reNow || (!(reNow.table || []).length && !reNow.gauge && !(typeof reNow.chancePerTurn === 'string' || Number(reNow.chancePerTurn) > 0));
+  if (((patch.add || {}).randomEvents || []).length && reFresh && patch.randomEventsChance == null)
     err('이 스키마엔 랜덤 이벤트가 처음이라 발동률이 없음 — 패치 최상위에 "randomEventsChance": 0.1 처럼 턴당 발동률(0~1)을 함께 주세요');
 
   const count = (op) => ops.filter((o) => o.op === op).length;
@@ -491,16 +503,21 @@ function applyPatch(schema, patch0, resolutions = {}) {
     applied.updated.push(`randomEvents 발동률 → ${patch.randomEventsChance}`);
   }
 
-  // 원자성의 마지막 관문 — 병합 결과가 통짜 검증을 못 넘으면 아무것도 적용하지 않는다
+  // 원자성의 마지막 관문 — 병합이 **새 오류**를 만들면 아무것도 적용하지 않는다. 작업본에 이미 있던 오류(패치 불가 섹션의 오타 등)는
+  // 이 패치의 잘못이 아니니 막지 않는다 (v1.14.9 — 전엔 "오류 0"이 조건이라 기존 오류 하나가 무관한 패치를 전부 거부했고,
+  // 사용자는 AI 패치가 틀린 줄 알았다). 🎨 배치 적용의 증분 규율과 같다
+  const before = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(merged);
-  if (!v.ok) {
+  const fresh = v.errors.filter((e) => !before.has(e.path + '|' + e.msg));
+  if (fresh.length) {
     return {
       ok: false, warnings: plan.warnings,
       errors: ['병합 결과가 검증에 실패 — 아무것도 적용되지 않음',
-        ...v.errors.map((e) => `${e.path}: ${e.msg}`)],
+        ...fresh.map((e) => `${e.path}: ${e.msg}`)],
     };
   }
   applied.warnings = plan.warnings.concat(v.warnings.map((w) => `${w.path}: ${w.msg}`));
+  if (v.errors.length) applied.warnings.push(`작업본에 원래 있던 오류 ${v.errors.length}건은 그대로입니다 (이 패치와 무관) — 라이브 검증 보고를 보세요`);
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
@@ -516,6 +533,8 @@ const DIFF_AREAS = [
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
   ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['secrets', (s) => s?.secrets, '비밀'], ['shops', (s) => s?.shops, '상점(여러)'], ['liveChoices', (s) => s?.liveChoices, '보조 갈림길'],
+  ['rerollStableRng', (s) => s?.rerollStableRng, '리롤 안정'], // (v1.14.9 — 전엔 비밀만 바뀐 판이 "같습니다"로 나왔다)
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
   ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
   ['fronts', (s) => s?.fronts, '무대 뒤(fronts)'],

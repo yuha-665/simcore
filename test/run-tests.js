@@ -521,6 +521,45 @@ test('검증: 변수 id가 uid·choices면 자리표시자 충돌 경고', () =>
   assert.ok(r.warnings.some((w) => w.msg.includes("'uid'")) && r.warnings.some((w) => w.msg.includes("'choices'")), JSON.stringify(r.warnings));
 });
 
+// ── 전체 점검 5차 (v1.14.9) — 패치·가져오기 ──
+test('패치: 미지원 섹션은 탭 안내, updater의 guide는 오류, JSON 대문자 펜스', () => {
+  const patch = require('../core/patch');
+  const p1 = patch.parsePatch('{"update":{"secrets":[{"id":"x"}]}}');
+  assert.ok(!p1.ok && p1.errors.some((e) => e.includes('[비밀] 탭')), JSON.stringify(p1));
+  const p2 = patch.parsePatch('{"update":{"updater":{"guide":"새 지침"},"vars":[{"id":"gold","max":500}]}}');
+  assert.ok(!p2.ok && p2.errors.some((e) => e.includes('updater.guide')), JSON.stringify(p2));
+  const p3 = patch.parsePatch('```JSON\n{"update":{"vars":[{"id":"gold","max":500}]}}\n```');
+  assert.ok(p3.ok, JSON.stringify(p3));
+});
+
+test('패치: 기존 오류는 막지 않고 새 오류만 막는다 / 첫 랜덤 이벤트 가드는 빈 표·발동률 0에도 걸린다', () => {
+  const patch = require('../core/patch');
+  const s = fx();
+  s.rules.randomEvents = { chancePerTurn: 0, table: [] }; // 편집기 normalize가 채워 두는 빈 표
+  s.directives.push({ id: 'broken', when: 'ghost > 1', text: 'x' }); // 작업본에 원래 있던 오류
+  const r1 = patch.applyPatch(s, { add: {}, update: { vars: [{ id: 'gold', max: 99999 }] }, remove: {} }, {});
+  assert.ok(r1.ok && r1.schema.vars.find((v) => v.id === 'gold').max === 99999, JSON.stringify(r1.errors));
+  assert.ok(r1.warnings.some((w) => w.includes('원래 있던 오류')), JSON.stringify(r1.warnings));
+  const r2 = patch.applyPatch(s, { add: {}, update: { vars: [{ id: 'gold', type: 'enum' }] }, remove: {} }, {});
+  assert.ok(!r2.ok, '새 오류는 막는다');
+  const plan = patch.planPatch(s, { add: { randomEvents: [{ id: 'raid', weight: 1, effects: [] }] }, update: {}, remove: {} });
+  assert.ok(plan.errors.some((e) => e.includes('발동률')), JSON.stringify(plan.errors));
+});
+
+test('달력: year가 있는 기념일은 그 해에만', () => {
+  const s = fx();
+  s.time = { start: '2026-05-10 09:00', advance: 'explicit', expose: ['date', 'clock'] };
+  s.vars.push({ id: 'skip_min', type: 'int', init: 0, min: 0, max: 1440 }, { id: 'skip_day', type: 'int', init: 0, min: 0, max: 365 });
+  s.calendar = { marks: [{ label: '한 번뿐', year: 2026, month: 5, dom: 14 }, { label: '매년', month: 5, dom: 20 }] };
+  const v = validateSchema(s); eq(v.ok, true, JSON.stringify(v.errors));
+  const cal = require('../core/calendar');
+  const st = engine.initState(s);
+  const now = cal.monthView(s, st, { year: 2026, month: 5 });
+  const next = cal.monthView(s, st, { year: 2027, month: 5 });
+  const has = (view, label) => view.cells.some((c) => c.marks.some((m) => m.label === label));
+  assert.ok(has(now, '한 번뿐') && !has(next, '한 번뿐') && has(next, '매년'), JSON.stringify({ now: now.cells.filter((c) => c.marks.length) }));
+});
+
 // ── when (조건 잠금) — v1.14.3 ──
 function whenFx() {
   return {

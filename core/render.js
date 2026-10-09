@@ -506,7 +506,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     const open = actionStates.filter((a) => !a.disabled);
     const locked = actionStates.filter((a) => a.disabled);
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
+    if (schema.statusUI?.actionHint !== 'off') inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`; // 상태창 탭 '액션 사용 안내 — 숨김'이 아무 일도 안 하던 것 (v1.14.9)
     for (const a of open) inner += actionChip(a);
     if (locked.length) {
       inner += `<details class="sim-actlocked"><summary>🔒 잠긴 액션 ${locked.length}개 — 해금 조건 보기</summary>`

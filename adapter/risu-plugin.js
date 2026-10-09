@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.8
-//@display-name SimCore (시뮬 엔진) v1.14.8 점검 4차
+//@version 1.14.9
+//@display-name SimCore (시뮬 엔진) v1.14.9 점검 5차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,19 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.14.9 ──────────────────────────────────────────────
+// **전체 점검 5차 — 패치·가져오기 + 편집기↔스키마 (영역 5·6).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [패치] 미지원 섹션 전부에 "어느 탭에서"를 안내(전엔 열둘이 "알 수 없는 섹션"). updater의 guide·contextTurns를 말없이 버리던 것 → 오류.
+//   첫 랜덤 이벤트 발동률 가드가 편집기 normalize의 빈 표 때문에 죽어 있던 것(표·게이지·발동률 전부 없으면 "처음"). 병합 원자성을
+//   "오류 0"에서 "새 오류 없음"으로(기존 오류 하나가 무관한 패치를 전부 막았다). diffSchemas에 비밀·다상점·보조 갈림길·리롤 안정.
+//   ```JSON 펜스(대문자)도 읽는다(편집기 네 곳 같이).
+// - [탭 가져오기] 규칙 탭이 liveChoices를 왕복에서 버리던 것(요청서는 다룬다고 말했다). onTurn 줄·보조 갈림길이 신원에 들어가 손실이
+//   확인창에 뜬다. **🔒 보호 항목을 탭 가져오기에서도 되살린다** — 탭별 ✨ 생성·🧩 기능 추가가 AI 통 교체의 실제 경로인데 무방비였다.
+// - [정리 마법사] 새 오류만 본다(작성 중인 다른 항목의 오류가 모든 삭제를 막았다). 중복 id의 사본은 그것만 지운다(둘 다 날리던 것).
+// - [편집기↔엔진] 달력 "1회 지정"의 year를 엔진이 읽는다(매년 반복되던 것). 상태창 "액션 사용 안내 — 숨김"이 작동. 프리셋의 list 값
+//   (늘 검증 오류). 비밀 0단계 여는 조건 칸. 상점·의뢰 밴드 칸 소수. 이벤트 카드에 판정 칸, 파생 카드에 표시 형식 칸(둘 다 JSON 전용이었다).
+// - [번들] 적용 전에 "⚙simcore 없음 → 현재 시스템 제거"·"동봉 스키마 검증 실패"를 알리고, 결과 문구가 사실과 반대이던 것을 고쳤다.
+
 // ── v1.14.8 ──────────────────────────────────────────────
 // **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
 // - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
@@ -8369,8 +8382,17 @@ count(목록)  has(목록, "항목")</pre>
         if (bad) { rep.innerHTML = `<span class="status-bad">${escapeText(bad)}</span>`; return; }
         bundlePending = { data, until: Date.now() + 60000 };
         const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
+        // 적용 전에 알린다 (v1.14.9) — 전엔 ⚙simcore 없는 번들이 현재 시스템까지 지우고 "시스템은 그대로"라고 했고, 검증 실패 스키마도 그대로 설치됐다
+        let schemaWarn = '';
+        if (hasSchema) {
+          try {
+            const p = JSON.parse(data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT).content);
+            const v = validateSchema(p);
+            if (!v.ok) schemaWarn = ` · <b>⚠ 동봉 ⚙simcore가 검증 실패(${v.errors.length}건)</b> — 적용하면 시스템이 꺼집니다`;
+          } catch { schemaWarn = ' · <b>⚠ 동봉 ⚙simcore JSON 손상</b> — 적용하면 시스템이 꺼집니다'; }
+        } else if (schema) schemaWarn = ' · <b>⚠ 번들에 ⚙simcore가 없어 현재 시스템 로어북이 제거</b>됩니다';
         rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
-          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}.<br>`
+          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}${schemaWarn}.<br>`
           + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
           + '[번들 가져와 교체]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
       } catch (e) {
@@ -8432,7 +8454,9 @@ count(목록)  has(목록, "항목")</pre>
           + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
           + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
             : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
-              : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;
+              : data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT)
+                ? ' · ⚠ 동봉 ⚙simcore가 검증을 못 넘어 시스템이 꺼졌습니다 — [교체 되돌리기]로 복구'
+                : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}</span>`;
         renderPanel();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;

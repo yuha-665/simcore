@@ -57,7 +57,7 @@ const baseJson = JSON.stringify(BASE);
   ck('★ updater.allow도 평평한 allow로', nested.ok && nested.patch.add.allow.length === 1, '');
 
   const bad = P.parsePatch({ add: { statusUI: [{ id: 'g' }] } });
-  ck('statusUI는 병합 미지원 안내', !bad.ok && bad.errors[0].includes('통 교체'), bad.errors.join(' / '));
+  ck('statusUI는 병합 미지원 안내', !bad.ok && bad.errors[0].includes('[상태창] 탭'), bad.errors.join(' / '));
   const unk = P.parsePatch({ add: { evnets: [{ id: 'e' }] } });
   ck('오타 섹션은 가능 목록과 함께 거부', !unk.ok && unk.errors[0].includes('가능:'), unk.errors.join(' / '));
   const onTurn = P.parsePatch({ add: { rules: { onTurn: [{ set: 'gold', expr: '1' }] } } });

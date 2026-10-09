@@ -165,7 +165,8 @@ const kb = (s) => (s.length / 1024).toFixed(1) + 'KB';
   ck('★ 앞뒤에 설명이 붙어와도 파싱',
     JSON.parse(strip('여기 스키마입니다:\n```json\n' + bare + '\n```\n필요하면 말씀하세요')).simcore === '0.1', '');
   ck('소스에 펜스 벗기기가 실제로 들어감',
-    src.includes('const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/);'), '');
+    // v1.14.9 — ```JSON 펜스(대문자)도 읽도록 i 플래그가 붙었다
+    src.includes('const fenced = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/i);'), '');
 }
 
 // ── 왕복이 실제로 수렴하는가 (AI 대신 우리가 고쳐본다) ──

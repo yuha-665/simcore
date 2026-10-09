@@ -1328,6 +1328,7 @@ function validateSchema(schema) {
               + '(month+dom=매년, dom만=매달, weekday만=매주)');
           }
           if (mk.month != null && (!Number.isInteger(mk.month) || mk.month < 1 || mk.month > 12)) err(p, 'month는 1~12 정수');
+          if (mk.year != null && !Number.isInteger(mk.year)) err(p, 'year는 정수 (1회 지정 — 그 해에만 표시)');
           const maxDom = ct?.calendar === 'flat30' ? 30 : 31;
           if (mk.dom != null && (!Number.isInteger(mk.dom) || mk.dom < 1 || mk.dom > maxDom)) err(p, `dom은 1~${maxDom} 정수`);
           // 존재하지 않는 날짜(2월 30일 등)는 영영 안 오는 기념일이다 — 윤년 2/29는 허용

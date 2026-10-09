@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.8
-//@display-name SimCore (시뮬 엔진) v1.14.8 점검 4차
+//@version 1.14.9
+//@display-name SimCore (시뮬 엔진) v1.14.9 점검 5차
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,20 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.8 ──────────────────────────────────────────────
-// **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
-// - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
-//   꽂혀 서사 주입으로 플러그인 권한이 넘어갈 수 있었다 → 값 전부 이스케이프. 관리 패널의 캐릭터 이름·스키마 이름·변수 라벨도.
-//   escapeText가 따옴표까지 바꾼다. 막대 색 식의 ';' 스타일 탈출 차단.
-// - [scopeCss] 블록 밖 문장형 at-rule(@import …;)이 다음 규칙 머리에 붙어 '*{…}'가 스코프 없이 채팅 전체에 새던 것. ':root'는 상자 자신.
-//   templates[] 접두 아래 '.sim-status …' 셀렉터가 '.sim-status .sim-tpl-X .sim-status …'가 되어 죽던 것.
-// - [시간선 재정렬 v2] v1.14.7은 마지막 메시지의 스냅샷만 옮겼다 — 옛 마커 번호가 남아 다음 출력과 번호가 겹치면 탭 라디오·id가 충돌하고
-//   범례가 여러 창에 섰다. 이제 char 메시지 전부의 스냅샷을 새 자리로 옮기고 마커 번호도 자리 번호로 고친다(로드 경로).
-// - [즉시 갱신] refreshStatusDom이 과거 창에 현재 값·현재 갈림길을 칠하던 것 — 과거 창은 건드리지 않는다(창마다 RPC 6왕복도 준다).
-//   템플릿 탭(mp-in)의 선택이 칩을 누를 때마다 첫 탭으로 튕기던 것.
-// - [그룹 모드] 파생 하나의 런타임 오류가 상태창 전체를 비우던 것 → 그 칸만 '?'. [변화 로그·카드] 갈림길·되감기·교전 출처 누락.
-//   목록 카드가 집합 차집합이라 같은 물건 둘째 개를 놓치던 것(다중집합). 로그 집계가 'constructor' 항목에 걸리던 것(Map).
-// - [검증] 변수 id가 uid·choices면 자리표시자 충돌 경고. [편성] 음수 레벨 점 RangeError.
+// ── v1.14.9 ──────────────────────────────────────────────
+// **전체 점검 5차 — 패치·가져오기 + 편집기↔스키마 (영역 5·6).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [패치] 미지원 섹션 전부에 "어느 탭에서"를 안내(전엔 열둘이 "알 수 없는 섹션"). updater의 guide·contextTurns를 말없이 버리던 것 → 오류.
+//   첫 랜덤 이벤트 발동률 가드가 편집기 normalize의 빈 표 때문에 죽어 있던 것(표·게이지·발동률 전부 없으면 "처음"). 병합 원자성을
+//   "오류 0"에서 "새 오류 없음"으로(기존 오류 하나가 무관한 패치를 전부 막았다). diffSchemas에 비밀·다상점·보조 갈림길·리롤 안정.
+//   ```JSON 펜스(대문자)도 읽는다(편집기 네 곳 같이).
+// - [탭 가져오기] 규칙 탭이 liveChoices를 왕복에서 버리던 것(요청서는 다룬다고 말했다). onTurn 줄·보조 갈림길이 신원에 들어가 손실이
+//   확인창에 뜬다. **🔒 보호 항목을 탭 가져오기에서도 되살린다** — 탭별 ✨ 생성·🧩 기능 추가가 AI 통 교체의 실제 경로인데 무방비였다.
+// - [정리 마법사] 새 오류만 본다(작성 중인 다른 항목의 오류가 모든 삭제를 막았다). 중복 id의 사본은 그것만 지운다(둘 다 날리던 것).
+// - [편집기↔엔진] 달력 "1회 지정"의 year를 엔진이 읽는다(매년 반복되던 것). 상태창 "액션 사용 안내 — 숨김"이 작동. 프리셋의 list 값
+//   (늘 검증 오류). 비밀 0단계 여는 조건 칸. 상점·의뢰 밴드 칸 소수. 이벤트 카드에 판정 칸, 파생 카드에 표시 형식 칸(둘 다 JSON 전용이었다).
+// - [번들] 적용 전에 "⚙simcore 없음 → 현재 시스템 제거"·"동봉 스키마 검증 실패"를 알리고, 결과 문구가 사실과 반대이던 것을 고쳤다.
 
 
 const SimCore = (() => {
@@ -2282,6 +2280,7 @@ function validateSchema(schema) {
               + '(month+dom=매년, dom만=매달, weekday만=매주)');
           }
           if (mk.month != null && (!Number.isInteger(mk.month) || mk.month < 1 || mk.month > 12)) err(p, 'month는 1~12 정수');
+          if (mk.year != null && !Number.isInteger(mk.year)) err(p, 'year는 정수 (1회 지정 — 그 해에만 표시)');
           const maxDom = ct?.calendar === 'flat30' ? 30 : 31;
           if (mk.dom != null && (!Number.isInteger(mk.dom) || mk.dom < 1 || mk.dom > maxDom)) err(p, `dom은 1~${maxDom} 정수`);
           // 존재하지 않는 날짜(2월 30일 등)는 영영 안 오는 기념일이다 — 윤년 2/29는 허용
@@ -3903,6 +3902,7 @@ function monthView(schema, state, opts = {}) {
     // ③ 제작자 기념일 — 적힌 성분이 전부 맞아야 그 칸 (month+dom=매년, dom만=매달, weekday만=매주)
     for (const mk of marks) {
       if (!mk || !mk.label) continue;
+      if (mk.year != null && mk.year !== y) continue; // 1회 지정(연도) — 편집기가 쓰는데 엔진이 안 읽어 매년 반복되던 것 (v1.14.9)
       if (mk.month != null && mk.month !== m) continue;
       if (mk.dom != null && mk.dom !== d) continue;
       if (mk.weekday != null && cfg.weekdays[wd] !== mk.weekday) continue;
@@ -6869,7 +6869,16 @@ const SECTIONS = {
   allow:        { label: 'AI 허용 변수', ns: 'allow', noRename: true },
 };
 const SECTION_KEYS = Object.keys(SECTIONS);
-const UNSUPPORTED = new Set(['statusUI', 'onTurn', 'setup', 'meta', 'promptState', 'suggest', 'simcore', 'time', 'checkpoint', 'fronts']); // checkpoint(v1.11.0): 시나리오 탭 되감기 카드·JSON / fronts(v1.12.0): [무대 뒤] 탭
+// 패치 병합 미지원 섹션과 그 자리 (v1.14.9 — 전엔 assets·party·liveChoices·secrets 등 실재 섹션 열둘이 "알 수 없는 섹션"으로 떨어져
+// 다이제스트의 "패치로 못 다룹니다"와 말이 엇갈렸다)
+const UNSUPPORTED_HINT = {
+  statusUI: '[상태창] 탭', onTurn: '[규칙·이벤트] 탭 첫 절(매 턴 정산)', setup: '[새 시작] 탭', meta: '[상태창] 탭 제목 칸·📌 작업 지침',
+  promptState: '[AI 설정] 탭', suggest: '[AI 설정] 탭', simcore: '(버전 표식 — 손대지 않음)', time: '[시간] 탭',
+  checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋] 가져오기', party: '[편성표] 탭',
+  calendar: '[달력] 탭', board: '[게시판] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
+  liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
+};
+const UNSUPPORTED = new Set(Object.keys(UNSUPPORTED_HINT));
 
 function getList(schema, key) {
   switch (key) {
@@ -6911,7 +6920,7 @@ function parsePatch(raw) {
   let obj = raw;
   if (typeof raw === 'string') {
     const s = raw.trim();
-    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i); // ```JSON 펜스도 (v1.14.9)
     try { obj = JSON.parse(fence ? fence[1] : s); }
     catch (e) { return { ok: false, errors: [`패치 JSON 파싱 실패: ${e.message}`] }; }
   }
@@ -7001,10 +7010,11 @@ function normalizeSectionMap(rawOp, opName, err, takeChance) {
       if (takeChance) takeChance(v, `${opName}.randomEventsChance`);
     } else if (k === 'updater' && v && typeof v === 'object') {
       put('allow', v.allow, 'updater.allow');
+      for (const uk of Object.keys(v)) if (uk !== 'allow') err(`${opName}.updater.${uk}: 패치 병합 미지원 — [AI 설정] 탭에서 고치세요`); // 전엔 guide·contextTurns가 조용히 사라졌다 (v1.14.9)
     } else if (SECTION_KEYS.includes(k)) {
       put(k, v, k);
     } else if (UNSUPPORTED.has(k)) {
-      err(`${opName}.${k}: 이 섹션은 패치 병합 미지원 — 기존 통 교체 가져오기를 쓰세요`);
+      err(`${opName}.${k}: 이 섹션은 패치 병합 미지원 — ${UNSUPPORTED_HINT[k]}에서 고치거나 탭 단위 가져오기를 쓰세요`);
     } else {
       err(`${opName}.${k}: 알 수 없는 섹션 (가능: ${SECTION_KEYS.join(', ')})`);
     }
@@ -7167,8 +7177,10 @@ function planPatch(schema, patch) {
   }
 
   // 첫 랜덤 이벤트인데 발동률이 없으면 병합 결과가 검증에서 무조건 죽는다 — 여기서 먼저, 해법과 함께
-  if (((patch.add || {}).randomEvents || []).length
-      && !(schema.rules && schema.rules.randomEvents) && patch.randomEventsChance == null)
+  const reNow = schema.rules && schema.rules.randomEvents;
+  // "처음"의 기준 (v1.14.9): 표가 비고 게이지도 없고 발동률이 0·없음 — 편집기 normalize가 빈 표를 미리 채워 두어 전엔 가드가 죽어 있었다
+  const reFresh = !reNow || (!(reNow.table || []).length && !reNow.gauge && !(typeof reNow.chancePerTurn === 'string' || Number(reNow.chancePerTurn) > 0));
+  if (((patch.add || {}).randomEvents || []).length && reFresh && patch.randomEventsChance == null)
     err('이 스키마엔 랜덤 이벤트가 처음이라 발동률이 없음 — 패치 최상위에 "randomEventsChance": 0.1 처럼 턴당 발동률(0~1)을 함께 주세요');
 
   const count = (op) => ops.filter((o) => o.op === op).length;
@@ -7330,16 +7342,21 @@ function applyPatch(schema, patch0, resolutions = {}) {
     applied.updated.push(`randomEvents 발동률 → ${patch.randomEventsChance}`);
   }
 
-  // 원자성의 마지막 관문 — 병합 결과가 통짜 검증을 못 넘으면 아무것도 적용하지 않는다
+  // 원자성의 마지막 관문 — 병합이 **새 오류**를 만들면 아무것도 적용하지 않는다. 작업본에 이미 있던 오류(패치 불가 섹션의 오타 등)는
+  // 이 패치의 잘못이 아니니 막지 않는다 (v1.14.9 — 전엔 "오류 0"이 조건이라 기존 오류 하나가 무관한 패치를 전부 거부했고,
+  // 사용자는 AI 패치가 틀린 줄 알았다). 🎨 배치 적용의 증분 규율과 같다
+  const before = new Set(validateSchema(schema).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(merged);
-  if (!v.ok) {
+  const fresh = v.errors.filter((e) => !before.has(e.path + '|' + e.msg));
+  if (fresh.length) {
     return {
       ok: false, warnings: plan.warnings,
       errors: ['병합 결과가 검증에 실패 — 아무것도 적용되지 않음',
-        ...v.errors.map((e) => `${e.path}: ${e.msg}`)],
+        ...fresh.map((e) => `${e.path}: ${e.msg}`)],
     };
   }
   applied.warnings = plan.warnings.concat(v.warnings.map((w) => `${w.path}: ${w.msg}`));
+  if (v.errors.length) applied.warnings.push(`작업본에 원래 있던 오류 ${v.errors.length}건은 그대로입니다 (이 패치와 무관) — 라이브 검증 보고를 보세요`);
   return { ok: true, schema: merged, errors: [], warnings: applied.warnings, applied };
 }
 
@@ -7355,6 +7372,8 @@ const DIFF_AREAS = [
   ['time', (s) => s?.time, '시간(time)'], ['calendar', (s) => s?.calendar, '달력'], ['party', (s) => s?.party, '편성표'],
   ['scenario', (s) => s?.scenario, '시나리오'], ['board', (s) => s?.board, '게시판'], ['shop', (s) => s?.shop, '상점'],
   ['messenger', (s) => s?.messenger, '메신저'], ['questBoard', (s) => s?.questBoard, '의뢰판'], ['assets', (s) => s?.assets, '에셋'],
+  ['secrets', (s) => s?.secrets, '비밀'], ['shops', (s) => s?.shops, '상점(여러)'], ['liveChoices', (s) => s?.liveChoices, '보조 갈림길'],
+  ['rerollStableRng', (s) => s?.rerollStableRng, '리롤 안정'], // (v1.14.9 — 전엔 비밀만 바뀐 판이 "같습니다"로 나왔다)
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
   ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
   ['fronts', (s) => s?.fronts, '무대 뒤(fronts)'],
@@ -10470,7 +10489,7 @@ function renderStatusHtml(schema, state, changeLog = null, actionStates = null, 
     const open = actionStates.filter((a) => !a.disabled);
     const locked = actionStates.filter((a) => a.disabled);
     inner += `<div class="sim-actions">`;
-    inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`;
+    if (schema.statusUI?.actionHint !== 'off') inner += `<span class="sim-action-hint">눌러서 무장 (안 눌리면 /액션 이름 으로도 된다)</span>`; // 상태창 탭 '액션 사용 안내 — 숨김'이 아무 일도 안 하던 것 (v1.14.9)
     for (const a of open) inner += actionChip(a);
     if (locked.length) {
       inner += `<details class="sim-actlocked"><summary>🔒 잠긴 액션 ${locked.length}개 — 해금 조건 보기</summary>`
@@ -17732,8 +17751,10 @@ function planVarPurge(schema0, rootIds) {
     if (r.hit) { schema.promptState.template = r.text; note('AI 설정', '상태 요약의 자리표시자 (값이 안 남는 줄은 줄째)'); }
   }
 
+  // 새 오류만 (v1.14.9) — 작성 중인 다른 항목의 오류가 아무 데도 안 쓰는 변수 삭제까지 막았다
+  const before = new Set(validateSchema(schema0).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(schema);
-  return { schema, notes, doomed: [...doomed], errors: v.errors.map((e) => `${e.path}: ${e.msg}`) };
+  return { schema, notes, doomed: [...doomed], errors: v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`) };
 }
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
@@ -17811,7 +17832,7 @@ const TAB_SLICES = {
   commands: { keys: ['vars'], merge: 'cmd', label: '명령' },
   actions: { keys: ['actions'], label: '액션' },
   checks: { keys: ['checks'], label: '판정' },
-  rules: { keys: ['rules', 'directives'], label: '규칙·이벤트' },
+  rules: { keys: ['rules', 'directives', 'liveChoices'], label: '규칙·이벤트' }, // liveChoices도 왕복 (v1.14.9 — 요청서는 다룬다고 말하면서 가져오기가 버렸다)
   // 새 시작 탭은 setup을 통째로 갈아끼우면 AI 최초설정(setup.ai)의 지침·가이드까지 날아간다.
   // sub를 주면 그 키 하나만 바꾸고 나머지 setup은 그대로 둔다.
   presets: { keys: ['setup'], sub: 'presets', label: '시작 프리셋' },
@@ -18083,6 +18104,10 @@ function tabItemIds(schema, tabKey) {
     add('이벤트', schema.rules?.events);
     add('랜덤', schema.rules?.randomEvents?.table);
     add('지시문', schema.directives);
+    // 매 턴 정산 줄도 신원으로 (v1.14.9 — 전엔 AI가 onTurn 세 줄을 빼먹어도 확인 없이 사라졌다). 대상 변수가 이름이다
+    add('정산', (schema.rules?.onTurn || []).map((r) => ({ id: r && (r.set ?? r.list) })));
+    const lcs = Array.isArray(schema.liveChoices) ? schema.liveChoices : schema.liveChoices ? [schema.liveChoices] : [];
+    add('보조 갈림길', lcs.map((L, i) => ({ id: L?.id ?? L?.label ?? `#${i + 1}` })));
   }
   return out;
 }
@@ -19816,6 +19841,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       varCards.push(variableCard(v, `변수 ${i + 1}`, schema.vars, i,
         [identity, referenceNote(v), typeHelp, detail, preview, h('div', { class: 'sce-variable-description' }, description), aiAllowRow], issues, () => {
           if (!v.id) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
+          // 중복 id의 사본 하나는 그냥 지운다 (v1.14.9) — 정리 마법사는 id로 지워 둘 다, 참조까지 날렸다
+          if (schema.vars.filter((x) => x.id === v.id).length > 1) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           const plan = planVarPurge(schema, [v.id]);
           if (!plan.notes.length && !plan.errors.length) return deleteWithUndo('vars', i, `변수 ${i + 1}`);
           purge = { id: v.id, label: v.label ?? v.id, plan };
@@ -19856,7 +19883,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             { cls: 'sce-w-l', ph: '영문 ID' }), { issues: fieldIssues(path, 'id') }),
           variableField('계산식', bindInput(d.expr, (x) => { d.expr = x; rerender(); },
             { cls: 'sce-w-l', ph: 'round(population * 0.3) - military * 2' }),
-            { issues: fieldIssues(path, 'expr', 'card') }), groupField(d)), derivedNow(d), referenceNote(d)], issues,
+            { issues: fieldIssues(path, 'expr', 'card') }),
+          variableField('표시 형식', bindInput(d.format, (x) => { d.format = x || undefined; rerender(); },
+            { cls: 'sce-w-s', ph: '{v}% (비우면 숫자 그대로)' }), { issues: [] }), // 상태창이 읽는 format — 전엔 JSON으로만 (v1.14.9)
+          groupField(d)), derivedNow(d), referenceNote(d)], issues,
         () => deleteWithUndo('derived', i, `파생 변수 ${i + 1}`), variableSummary(d, true)));
     });
     groupedAppend(derivedList, schema.derived, derivedCards);
@@ -20656,7 +20686,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!text) { tabAiMsg = { tabKey, text: '붙여넣은 내용이 없습니다.', warn: true }; return false; }
 
     let frag = null, why = '';
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     try { frag = JSON.parse(fenced ? fenced[1] : text); }
     catch (e) {
       why = e.message;
@@ -20695,6 +20725,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const beforeCounts = tabItemCounts(schema, tabKey);
     tabUndo = { tabKey, label: slice.label, before: JSON.parse(JSON.stringify(schema)) };
     Object.assign(schema, JSON.parse(JSON.stringify(picked)));
+    // 🔒 보호 항목 되살리기 (v1.14.9) — 탭별 ✨ 생성·🧩 기능 추가·진단 요청서가 AI 통 교체의 실제 경로인데 keep 검사가 없었다.
+    // 패치 경로와 같은 규율: 같은 id면 원본 전문으로, 지웠으면 다시 붙인다
+    const rk = patchMod.restoreKept(tabUndo.before, schema);
+    const keptTouched = rk.restored.length + rk.reverted.length;
+    if (keptTouched) schema = rk.schema;
     normalize();
     tabPending = null;
     const afterCounts = tabItemCounts(schema, tabKey);
@@ -20703,6 +20738,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     let warn = false;
     // 계획을 보고 눌렀다면 무엇을 지웠는지 결과에도 남긴다 (되돌리기 판단 재료)
     if (plan?.lost?.length) msg += ` ${plan.lost.length}개를 지웠습니다 (${plan.lost.slice(0, 6).join(', ')}${plan.lost.length > 6 ? ' 외' : ''}).`;
+    if (keptTouched) msg += ` 🔒 보호 항목 ${keptTouched}개는 원본으로 되돌렸습니다 (${[...rk.reverted, ...rk.restored].slice(0, 4).join(', ')}).`;
 
     // AI가 "고친 것만" 돌려주는 일이 잦다. 통째로 갈아끼우는 구조라 그러면 나머지가 조용히 날아간다.
     const lost = afterCounts
@@ -21473,6 +21509,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               { cls: 'sce-w-l', ph: '다음 턴에 전달할 문장 — 예: 기근이 시작되었다…' }),
             '이벤트가 일어났다는 사실을 다음 장면의 AI에게 알려줘요.',
             'is-wide'),
+          field('판정', bindSelect(ev.check ?? '',
+            [['', '(없음)'], ...(schema.checks || []).map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) ev.check = x; else delete ev.check; rerender(); }),
+            '발동할 때 굴려요 — [판정] 줄과 등급 효과가 이벤트 효과보다 먼저 (v1.14.9: 전엔 JSON으로만 넣을 수 있었어요)'),
           choiceEditor(ev),
         ),
       ));
@@ -21629,6 +21669,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
               { cls: 'sce-w-l', ph: '산적이 상단을 습격했다…' }),
             '사건이 실제로 일어났을 때 다음 장면의 AI에게 알려줄 문장이에요.',
             'is-wide'),
+          field('판정', bindSelect(ev.check ?? '',
+            [['', '(없음)'], ...(schema.checks || []).map((c) => [c.id, `${c.label || c.id} (${c.id})`])],
+            (x) => { if (x) ev.check = x; else delete ev.check; rerender(); }),
+            '발동할 때 굴려요 — [판정] 줄과 등급 효과가 이벤트 효과보다 먼저 (v1.14.9: 전엔 JSON으로만 넣을 수 있었어요)'),
           reProbLine(ev, i),
           choiceEditor(ev),
         ),
@@ -23038,9 +23082,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         row.appendChild(h('div', { class: 'sce-board-toggle-copy is-wide' },
           h('strong', {}, j === 0 ? '1단계 — 낌새 (복선)' : `${j + 1}단계`),
           h('span', {}, j === 0
-            ? '처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
+            ? '여는 조건이 비면 처음부터 열려 있어요. 이유 없는 행동만 적으세요 — 왜는 다음 단계에. 모델은 이유를 모른 채 그 행동을 해요.'
             : '조건이 참이 되는 순간 열려요.')));
-        if (j > 0) {
+        { // 0단계도 when을 가질 수 있다 — 엔진은 존중하는데 편집기가 숨겨 고칠 수 없었다 (v1.14.9)
           row.appendChild(field('여는 조건', bindInput(t.when, (x) => { t.when = x || undefined; rerender(); },
             { cls: 'sce-w-l', ph: 'affinity >= 60 / letter_found / scn_act == "act3"' }),
             '플레이가 세우는 변수로. rand()는 안 돼요 — 우연에 걸려면 랜덤 이벤트가 세운 변수를 읽게 하세요.', true));
@@ -23375,7 +23419,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             (x) => {
               const bands = {};
               for (const seg of x.split(',')) {
-                const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+                const m = seg.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)$/); // 소수 밴드도 (v1.14.9 — 전엔 0.5~3이 안 걸려 조용히 삭제됐다)
                 if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
               }
               if (Object.keys(bands).length) SH.bands = bands; else delete SH.bands; rerender();
@@ -23524,7 +23568,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         field('보수 밴드', bindInput(Q.bands ? Object.entries(Q.bands).map(([g, [a, b]]) => `${g} ${a}~${b}`).join(', ') : '', (x) => {
           const bands = {};
           for (const seg of x.split(',')) {
-            const m = seg.trim().match(/^(.+?)\s+(\d+)\s*~\s*(\d+)$/);
+            const m = seg.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*~\s*(\d+(?:\.\d+)?)$/); // 소수 밴드도 (v1.14.9 — 전엔 0.5~3이 안 걸려 조용히 삭제됐다)
             if (m) bands[m[1]] = [Number(m[2]), Number(m[3])];
           }
           if (Object.keys(bands).length) Q.bands = bands; else delete Q.bands; rerender();
@@ -25208,7 +25252,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 
     const blank = !diag && schemaIsBlank(schema); // 진단은 스키마가 있어야 돌았으니 항상 패치 모드
     const stripFence = (raw) => {
-      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/i);
       return (m ? m[1] : String(raw)).trim();
     };
     const jsonParseFailure = (raw, error) => {
@@ -25690,7 +25734,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     const stripFence = (raw) => {
-      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
+      const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/i);
       return (m ? m[1] : String(raw)).trim();
     };
     // 붙어 온 JSON 검사 — 통짜는 validateSchema, 패치는 parsePatch+planPatch. 불합격이면 스키마는 안 변한다
@@ -26688,7 +26732,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       h('button', { class: 'sce-btn', onclick: () => {
         // AI가 코드펜스를 붙여 주는 일이 잦다 — 벗겨내고 파싱한다
         const raw = String(area.value).trim();
-        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
         const src = fenced ? fenced[1] : raw;
         try {
           const candidate = JSON.parse(src);
@@ -27865,6 +27909,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!def) return raw;
     if (def.type === 'int' || def.type === 'float') return num(raw);
     if (def.type === 'bool') return raw === 'true' || raw === '1' || raw === 'ON';
+    if (def.type === 'list') { // 프리셋의 list 값 (v1.14.9 — 전엔 문자열 그대로 저장돼 늘 검증 오류)
+      try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.map(String); } catch { /* 쉼표 목록으로 */ }
+      return String(raw).split(',').map((x) => x.trim()).filter(Boolean);
+    }
     return raw;
   }
 
@@ -33038,6 +33086,21 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.14.8 ──────────────────────────────────────────────
+// **전체 점검 4차 — 렌더·상태창 (영역 8).** 읽기 감사 후보를 코드로 재확인한 것.
+// - [이스케이프] 게임 패널 대장 탭은 플러그인 iframe이라 DOMPurify가 없는데 값을 quoteSafe(큰따옴표만)로 넣었다 — 보조가 쓴 값이 날것으로
+//   꽂혀 서사 주입으로 플러그인 권한이 넘어갈 수 있었다 → 값 전부 이스케이프. 관리 패널의 캐릭터 이름·스키마 이름·변수 라벨도.
+//   escapeText가 따옴표까지 바꾼다. 막대 색 식의 ';' 스타일 탈출 차단.
+// - [scopeCss] 블록 밖 문장형 at-rule(@import …;)이 다음 규칙 머리에 붙어 '*{…}'가 스코프 없이 채팅 전체에 새던 것. ':root'는 상자 자신.
+//   templates[] 접두 아래 '.sim-status …' 셀렉터가 '.sim-status .sim-tpl-X .sim-status …'가 되어 죽던 것.
+// - [시간선 재정렬 v2] v1.14.7은 마지막 메시지의 스냅샷만 옮겼다 — 옛 마커 번호가 남아 다음 출력과 번호가 겹치면 탭 라디오·id가 충돌하고
+//   범례가 여러 창에 섰다. 이제 char 메시지 전부의 스냅샷을 새 자리로 옮기고 마커 번호도 자리 번호로 고친다(로드 경로).
+// - [즉시 갱신] refreshStatusDom이 과거 창에 현재 값·현재 갈림길을 칠하던 것 — 과거 창은 건드리지 않는다(창마다 RPC 6왕복도 준다).
+//   템플릿 탭(mp-in)의 선택이 칩을 누를 때마다 첫 탭으로 튕기던 것.
+// - [그룹 모드] 파생 하나의 런타임 오류가 상태창 전체를 비우던 것 → 그 칸만 '?'. [변화 로그·카드] 갈림길·되감기·교전 출처 누락.
+//   목록 카드가 집합 차집합이라 같은 물건 둘째 개를 놓치던 것(다중집합). 로그 집계가 'constructor' 항목에 걸리던 것(Map).
+// - [검증] 변수 id가 uid·choices면 자리표시자 충돌 경고. [편성] 음수 레벨 점 RangeError.
 
 // ── v1.14.7 ──────────────────────────────────────────────
 // **전체 점검 3차 — 상태 저장·복원 (영역 3).** 읽기 감사 19건 중 코드로 재확인한 것.
@@ -41383,8 +41446,17 @@ count(목록)  has(목록, "항목")</pre>
         if (bad) { rep.innerHTML = `<span class="status-bad">${escapeText(bad)}</span>`; return; }
         bundlePending = { data, until: Date.now() + 60000 };
         const hasSchema = data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT);
+        // 적용 전에 알린다 (v1.14.9) — 전엔 ⚙simcore 없는 번들이 현재 시스템까지 지우고 "시스템은 그대로"라고 했고, 검증 실패 스키마도 그대로 설치됐다
+        let schemaWarn = '';
+        if (hasSchema) {
+          try {
+            const p = JSON.parse(data.lorebook.find((l) => l.comment === SCHEMA_LORE_COMMENT).content);
+            const v = validateSchema(p);
+            if (!v.ok) schemaWarn = ` · <b>⚠ 동봉 ⚙simcore가 검증 실패(${v.errors.length}건)</b> — 적용하면 시스템이 꺼집니다`;
+          } catch { schemaWarn = ' · <b>⚠ 동봉 ⚙simcore JSON 손상</b> — 적용하면 시스템이 꺼집니다'; }
+        } else if (schema) schemaWarn = ' · <b>⚠ 번들에 ⚙simcore가 없어 현재 시스템 로어북이 제거</b>됩니다';
         rep.innerHTML = `<span class="status-warn">'${escapeText(data.name)}' — 로어북 ${data.lorebook.length}개`
-          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}.<br>`
+          + `${Array.isArray(data.regex) ? ` · 정규식 ${data.regex.length}개` : ''}${hasSchema ? ' · ⚙simcore 동봉' : ''}${schemaWarn}.<br>`
           + '이 캐릭터의 <b>로어북 전체와 정규식이 교체</b>됩니다 (이전 상태는 자동 백업). '
           + '[번들 가져와 교체]를 한 번 더 누르면 적용해요 (60초 안에).</span>';
       } catch (e) {
@@ -41446,7 +41518,9 @@ count(목록)  has(목록, "항목")</pre>
           + `${Array.isArray(data.regexAdd) && data.regexAdd.length ? ` · 정규식 ${data.regexAdd.length}개 덧붙임 (카드 정규식 ${(char.customscript || []).length - data.regexAdd.length}개 유지)` : ''}`
           + `${settled ? ' · 시스템 인식됨 — 새 채팅에서 [새 시작]으로 시작하세요'
             : bundled ? ' · ⚠ 리수 반영이 늦어요 — 패널을 닫았다 다시 열어 확인해 주세요'
-              : ' · ⚠ 번들에 ⚙simcore가 없어 시스템은 그대로'}</span>`;
+              : data.lorebook.some((l) => l.comment === SCHEMA_LORE_COMMENT)
+                ? ' · ⚠ 동봉 ⚙simcore가 검증을 못 넘어 시스템이 꺼졌습니다 — [교체 되돌리기]로 복구'
+                : ' · ⚠ 번들에 ⚙simcore가 없어 시스템 로어북이 제거되었습니다 — [교체 되돌리기]로 복구'}</span>`;
         renderPanel();
       } catch (e) {
         rep.innerHTML = `<span class="status-bad">교체 실패: ${escapeText(e.message)}</span>`;

@@ -110,6 +110,7 @@ function monthView(schema, state, opts = {}) {
     // ③ 제작자 기념일 — 적힌 성분이 전부 맞아야 그 칸 (month+dom=매년, dom만=매달, weekday만=매주)
     for (const mk of marks) {
       if (!mk || !mk.label) continue;
+      if (mk.year != null && mk.year !== y) continue; // 1회 지정(연도) — 편집기가 쓰는데 엔진이 안 읽어 매년 반복되던 것 (v1.14.9)
       if (mk.month != null && mk.month !== m) continue;
       if (mk.dom != null && mk.dom !== d) continue;
       if (mk.weekday != null && cfg.weekdays[wd] !== mk.weekday) continue;

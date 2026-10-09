@@ -32,6 +32,15 @@ let schema = null, currentChaId = null;
   }
   /** 편집기에 스키마를 싣고 기준선을 갱신 */
   function loadIntoEditor(next) {
+    // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
+    // 대화·작업 내역·접힘)가 이전 봇 것으로 남던 것. 사이드바가 가리키는 층은 그대로 복원한다.
+    if (editor && editorChaId !== null && editorChaId !== currentChaId) {
+      const floorBtn = typeof document !== 'undefined' ? document.querySelector('#sc-root .sc-maintab.on[data-page="edit"]') : null;
+      try { editor.destroy(); } catch (e) { console.log('[simcore] 편집기 정리 실패:', e.message); }
+      editor = null;
+      ensureEditor();
+      if (floorBtn && editor) { try { editor.setFloor(floorBtn.dataset.floor || 'top'); } catch { /* 층 복원 실패는 치명적이지 않다 */ } }
+    }
     ensureEditor();
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);

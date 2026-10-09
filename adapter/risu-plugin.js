@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.16.2
-//@display-name SimCore (시뮬 엔진) v1.16.2 봇 제작 — 설정집 대화 · 보낼 로어북 고르기
+//@version 1.16.3
+//@display-name SimCore (시뮬 엔진) v1.16.3 봇 제작 — 설정집 대화 · 보낼 로어북 고르기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,16 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.16.3 ───────────────────────────────────────────────
+// **캐릭터가 바뀌면 편집기를 새로 만든다.** 유저 실기(2026-10-10): 새 봇(로어북 없음)을 만들었다가 로어북 있는 봇으로 옮겨 오니 📚 보낼 것 고르기가
+// "로어북 0/0 · 보낼 설명·로어북이 없어요"로 남고 다시 읽을 버튼도 없었다. 편집기는 전역 인스턴스라 캐릭터 전환 때 setSchema로 스키마만 갈았고,
+// 캐릭터별 상태 — 캐릭터 정보 캐시(aiBotCtx)·보낼 것 선택·🧑‍🎨 설정집·💬/봇 제작 대화·작업 내역·카드 접힘 — 는 이전 봇 것으로 남았다
+// (v1.9.7 작업 내역·v1.9.29 접힘 저장도 같은 구멍이었다 — 편집기를 닫지 않고 캐릭터를 바꾸면 전 봇 것을 들고 있었다).
+// - [어댑터] loadIntoEditor: editorChaId !== currentChaId면 destroy → 새로 생성 → 사이드바가 가리키는 층 복원. 캐릭터별 상태가 전부 새 봇 기준으로
+//   다시 읽힌다 (설정집·작업 내역·접힘·보낼 것 선택은 pluginStorage, 캐릭터 정보는 getCharacter).
+// - [편집기] 📚 보낼 것 고르기에 [↻ 다시 읽기] — 리수에서 로어북을 고친 뒤 편집기를 닫지 않고 다시 읽는다. 💬·봇 제작 카드는 캐릭터 정보가
+//   이름뿐이어도 고르기 칸(과 다시 읽기)을 그린다 — 전엔 설명·로어북이 하나도 없으면 칸 자체가 없어 다시 읽을 길이 없었다.
+
 // ── v1.16.2 ───────────────────────────────────────────────
 // **핫픽스 — 봇 제작 층이 리수에서 비어 있던 것.** 유저 실기(2026-10-10 스샷): 사이드바 '봇 제작'을 누르면 본문이 비고 머리글이 'AI 어시스턴트'로
 // 남았다. core/bible.js의 바이트 재기가 Node 전용 Buffer(byteLength)를 써서 브라우저에서 ReferenceError — 층을 그리다 던져 본문이 비고
@@ -8768,6 +8778,15 @@ count(목록)  has(목록, "항목")</pre>
   }
   /** 편집기에 스키마를 싣고 기준선을 갱신 */
   function loadIntoEditor(next) {
+    // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
+    // 대화·작업 내역·접힘)가 이전 봇 것으로 남던 것. 사이드바가 가리키는 층은 그대로 복원한다.
+    if (editor && editorChaId !== null && editorChaId !== currentChaId) {
+      const floorBtn = typeof document !== 'undefined' ? document.querySelector('#sc-root .sc-maintab.on[data-page="edit"]') : null;
+      try { editor.destroy(); } catch (e) { console.log('[simcore] 편집기 정리 실패:', e.message); }
+      editor = null;
+      ensureEditor();
+      if (floorBtn && editor) { try { editor.setFloor(floorBtn.dataset.floor || 'top'); } catch { /* 층 복원 실패는 치명적이지 않다 */ } }
+    }
     ensureEditor();
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);

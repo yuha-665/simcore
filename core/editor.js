@@ -12946,7 +12946,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     det.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = true; botCtxPick.off.clear(); changed(); rerender(); } }, '모두 켜기'),
-      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = false; for (const x of lore) botCtxPick.off.add(x.key); changed(); rerender(); } }, '모두 끄기')));
+      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = false; for (const x of lore) botCtxPick.off.add(x.key); changed(); rerender(); } }, '모두 끄기'),
+      // 리수에서 로어북을 고쳤거나 캐릭터 정보가 묵었을 때 — 캐시를 비우고 다시 읽는다 (v1.16.3)
+      h('button', { class: 'sce-btn sce-mini', title: '리수에서 설명·로어북을 고친 뒤 편집기를 닫지 않고 다시 읽어요', onclick: async () => {
+        aiBotCtx = undefined; aiBotCtxError = null; rerender();
+        await fetchBotCtx(true);
+        if (!destroyed) rerender();
+      } }, '↻ 다시 읽기')));
     const list = h('div', { class: 'sce-ctx-pick-list' });
     if (descBytes) list.appendChild(row(botCtxPick.desc, '봇 설명 (description)', descBytes, (on) => { botCtxPick.desc = on; }));
     for (const x of lore) list.appendChild(row(!botCtxPick.off.has(x.key), x.l.name || '(이름 없음)', x.bytes, (on) => { if (on) botCtxPick.off.delete(x.key); else botCtxPick.off.add(x.key); }));
@@ -13630,7 +13636,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
       const a = assembleCtx(aiBotCtx);
-      if (a.text) {
+      if (aiBotCtx) {   // 이름뿐이어도 고르기 칸(↻ 다시 읽기)은 그린다 (v1.16.3)
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
@@ -13942,7 +13948,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
       const a = assembleCtx(aiBotCtx);
-      if (a.text) {
+      if (aiBotCtx) {   // 이름뿐이어도 고르기 칸(↻ 다시 읽기)은 그린다 (v1.16.3)
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };

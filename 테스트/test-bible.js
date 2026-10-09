@@ -22,6 +22,8 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 내보내기 버튼 셋', ['📋 로어북 JSON 복사', '⬇ lorebook.json', '📋 캐릭터 시트 복사'].every((t) => src.includes(t)), '');
   ck('★ 💬 어시스턴트에게 보내기 — sim 요청문을 💬 입력칸에', src.includes("'💬 어시스턴트에게 보내기'") && src.includes('chat.draft = bibleMod.simRequestText(bible)'), '');
   ck('★ 번들에 Node 전용 Buffer 참조 없음 (v1.16.2 실사고 — 브라우저엔 Buffer가 없어 봇 제작 층이 비었다)', !/\bBuffer\s*\./.test(src) && src.includes('new TextEncoder().encode(String(s)).length'), '');
+  ck('★ 캐릭터가 바뀌면 편집기를 새로 만든다 (v1.16.3 — 캐릭터별 상태가 이전 봇 것으로 남던 것)', src.includes("if (editor && editorChaId !== null && editorChaId !== currentChaId) {") && src.includes("editor = null;\n      ensureEditor();") && src.includes("editor.setFloor(floorBtn.dataset.floor || 'top')"), '');
+  ck('★ 고르기 칸에 ↻ 다시 읽기, 이름뿐이어도 칸을 그린다', src.includes("'↻ 다시 읽기'") && (src.match(/if \(aiBotCtx\) \{   \/\/ 이름뿐이어도/g) || []).length === 2, '');
   ck('★ 버전 1.16.x + display-name', src.includes('//@version 1.16.') && /\/\/@display-name .*v1\.16\./.test(src), '');
 }
 
@@ -185,6 +187,12 @@ const tick = (ms = 15) => new Promise((r) => setTimeout(r, ms));
   ck('★ 끈 항목은 프롬프트에서 빠진다 (설명은 그대로 — 설정집의 옛 본문은 다이제스트라 남는다)', !lastSystem.includes('### 로어북: 옛 항목') && !lastSystem.includes('옛 로어 본문') && lastSystem.includes('### 봇 설명') && lastSystem.includes('[old]'), '');
   await tick(400);
   ck('★ 선택이 캐릭터별 uiPrefs(ctx)에 저장된다', prefsSaved.some((p) => p.ctx && p.ctx.desc === true && Array.isArray(p.ctx.off) && p.ctx.off.includes('옛 항목')), JSON.stringify(prefsSaved.slice(-1)));
+
+  // ↻ 다시 읽기 (v1.16.3) — 리수에서 로어북이 늘었으면 목록이 따라온다
+  ai.getBotContext = async () => ({ name: '테스트', desc: '설명', lore: [{ name: '옛 항목', content: '옛 로어 본문' }, { name: '새 항목', content: '새 로어 본문' }] });
+  btn('↻ 다시 읽기').click(); for (let i = 0; i < 10; i++) await tick();
+  ck('★ ↻ 다시 읽기 — 바뀐 로어북 목록을 다시 불러온다 (끈 선택은 유지)', has('sce-ctx-pick-row') === 3 && box.textContent.includes('새 항목')
+    && findAll(box, (e) => String(e.className).includes('sce-ctx-pick-row') && e.textContent.includes('옛 항목'))[0].children[0].checked === false, String(has('sce-ctx-pick-row')));
 
   // 내보내기 — 클립보드에 리수 형식
   btn('📋 로어북 JSON 복사').click(); await tick();

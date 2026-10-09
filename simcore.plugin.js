@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.16.2
-//@display-name SimCore (시뮬 엔진) v1.16.2 봇 제작 — 설정집 대화 · 보낼 로어북 고르기
+//@version 1.16.3
+//@display-name SimCore (시뮬 엔진) v1.16.3 봇 제작 — 설정집 대화 · 보낼 로어북 고르기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,12 +10,15 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.16.2 ───────────────────────────────────────────────
-// **핫픽스 — 봇 제작 층이 리수에서 비어 있던 것.** 유저 실기(2026-10-10 스샷): 사이드바 '봇 제작'을 누르면 본문이 비고 머리글이 'AI 어시스턴트'로
-// 남았다. core/bible.js의 바이트 재기가 Node 전용 Buffer(byteLength)를 써서 브라우저에서 ReferenceError — 층을 그리다 던져 본문이 비고
-// (root.innerHTML을 비운 뒤였다) 클릭 핸들러의 머리글 갱신까지 못 갔다. 테스트는 전부 Node라 Buffer가 있어 못 잡았다.
-// - TextEncoder(노드·브라우저 공통)로. test-bible이 번들 전체에 Buffer 호출이 없음을 핀 — 코어는 브라우저에서 돈다.
-// - v1.16.0·1.16.1을 받으신 분은 이 판으로 다시 임포트.
+// ── v1.16.3 ───────────────────────────────────────────────
+// **캐릭터가 바뀌면 편집기를 새로 만든다.** 유저 실기(2026-10-10): 새 봇(로어북 없음)을 만들었다가 로어북 있는 봇으로 옮겨 오니 📚 보낼 것 고르기가
+// "로어북 0/0 · 보낼 설명·로어북이 없어요"로 남고 다시 읽을 버튼도 없었다. 편집기는 전역 인스턴스라 캐릭터 전환 때 setSchema로 스키마만 갈았고,
+// 캐릭터별 상태 — 캐릭터 정보 캐시(aiBotCtx)·보낼 것 선택·🧑‍🎨 설정집·💬/봇 제작 대화·작업 내역·카드 접힘 — 는 이전 봇 것으로 남았다
+// (v1.9.7 작업 내역·v1.9.29 접힘 저장도 같은 구멍이었다 — 편집기를 닫지 않고 캐릭터를 바꾸면 전 봇 것을 들고 있었다).
+// - [어댑터] loadIntoEditor: editorChaId !== currentChaId면 destroy → 새로 생성 → 사이드바가 가리키는 층 복원. 캐릭터별 상태가 전부 새 봇 기준으로
+//   다시 읽힌다 (설정집·작업 내역·접힘·보낼 것 선택은 pluginStorage, 캐릭터 정보는 getCharacter).
+// - [편집기] 📚 보낼 것 고르기에 [↻ 다시 읽기] — 리수에서 로어북을 고친 뒤 편집기를 닫지 않고 다시 읽는다. 💬·봇 제작 카드는 캐릭터 정보가
+//   이름뿐이어도 고르기 칸(과 다시 읽기)을 그린다 — 전엔 설명·로어북이 하나도 없으면 칸 자체가 없어 다시 읽을 길이 없었다.
 
 
 const SimCore = (() => {
@@ -26276,7 +26279,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     det.appendChild(h('div', { class: 'sce-row' },
       h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = true; botCtxPick.off.clear(); changed(); rerender(); } }, '모두 켜기'),
-      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = false; for (const x of lore) botCtxPick.off.add(x.key); changed(); rerender(); } }, '모두 끄기')));
+      h('button', { class: 'sce-btn sce-mini', onclick: () => { botCtxPick.desc = false; for (const x of lore) botCtxPick.off.add(x.key); changed(); rerender(); } }, '모두 끄기'),
+      // 리수에서 로어북을 고쳤거나 캐릭터 정보가 묵었을 때 — 캐시를 비우고 다시 읽는다 (v1.16.3)
+      h('button', { class: 'sce-btn sce-mini', title: '리수에서 설명·로어북을 고친 뒤 편집기를 닫지 않고 다시 읽어요', onclick: async () => {
+        aiBotCtx = undefined; aiBotCtxError = null; rerender();
+        await fetchBotCtx(true);
+        if (!destroyed) rerender();
+      } }, '↻ 다시 읽기')));
     const list = h('div', { class: 'sce-ctx-pick-list' });
     if (descBytes) list.appendChild(row(botCtxPick.desc, '봇 설명 (description)', descBytes, (on) => { botCtxPick.desc = on; }));
     for (const x of lore) list.appendChild(row(!botCtxPick.off.has(x.key), x.l.name || '(이름 없음)', x.bytes, (on) => { if (on) botCtxPick.off.delete(x.key); else botCtxPick.off.add(x.key); }));
@@ -26960,7 +26969,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
       const a = assembleCtx(aiBotCtx);
-      if (a.text) {
+      if (aiBotCtx) {   // 이름뿐이어도 고르기 칸(↻ 다시 읽기)은 그린다 (v1.16.3)
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
@@ -27272,7 +27281,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
       const a = assembleCtx(aiBotCtx);
-      if (a.text) {
+      if (aiBotCtx) {   // 이름뿐이어도 고르기 칸(↻ 다시 읽기)은 그린다 (v1.16.3)
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
@@ -34445,6 +34454,13 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.16.2 ───────────────────────────────────────────────
+// **핫픽스 — 봇 제작 층이 리수에서 비어 있던 것.** 유저 실기(2026-10-10 스샷): 사이드바 '봇 제작'을 누르면 본문이 비고 머리글이 'AI 어시스턴트'로
+// 남았다. core/bible.js의 바이트 재기가 Node 전용 Buffer(byteLength)를 써서 브라우저에서 ReferenceError — 층을 그리다 던져 본문이 비고
+// (root.innerHTML을 비운 뒤였다) 클릭 핸들러의 머리글 갱신까지 못 갔다. 테스트는 전부 Node라 Buffer가 있어 못 잡았다.
+// - TextEncoder(노드·브라우저 공통)로. test-bible이 번들 전체에 Buffer 호출이 없음을 핀 — 코어는 브라우저에서 돈다.
+// - v1.16.0·1.16.1을 받으신 분은 이 판으로 다시 임포트.
 
 // ── v1.16.1 ───────────────────────────────────────────────
 // **📚 보낼 것 고르기 — 설명·로어북 항목을 사용자가 체크해서 보낸다.** 유저 제안(2026-10-10): "원래 있던 봇 로어북 목록을 불러와 사용자가 체크하면
@@ -43197,6 +43213,15 @@ count(목록)  has(목록, "항목")</pre>
   }
   /** 편집기에 스키마를 싣고 기준선을 갱신 */
   function loadIntoEditor(next) {
+    // 캐릭터가 바뀌었으면 편집기를 새로 만든다 (v1.16.3) — 인스턴스가 전역이라 캐릭터별 상태(캐릭터 정보 캐시·보낼 것 선택·설정집·
+    // 대화·작업 내역·접힘)가 이전 봇 것으로 남던 것. 사이드바가 가리키는 층은 그대로 복원한다.
+    if (editor && editorChaId !== null && editorChaId !== currentChaId) {
+      const floorBtn = typeof document !== 'undefined' ? document.querySelector('#sc-root .sc-maintab.on[data-page="edit"]') : null;
+      try { editor.destroy(); } catch (e) { console.log('[simcore] 편집기 정리 실패:', e.message); }
+      editor = null;
+      ensureEditor();
+      if (floorBtn && editor) { try { editor.setFloor(floorBtn.dataset.floor || 'top'); } catch { /* 층 복원 실패는 치명적이지 않다 */ } }
+    }
     ensureEditor();
     const copy = JSON.parse(JSON.stringify(next));
     editor.setSchema(copy);

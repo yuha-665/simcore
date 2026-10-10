@@ -661,6 +661,9 @@ const CSS = `
 .sce .sce-bible-book { display:flex; flex-direction:column; gap:10px; min-width:0; }
 .sce .sce-bible-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .sce .sce-bible-meta { display:flex; flex-direction:column; gap:6px; }
+.sce .sce-bible-meta-row { display:flex; gap:6px; align-items:center; } /* 제목 + 되돌리기·비우기 (v1.18.2) */
+.sce .sce-bible-meta-row > input { flex:1; min-width:0; }
+.sce .sce-bible-meta-row > .sce-btn { flex:none; white-space:nowrap; }
 .sce .sce-bible-premise { min-height:44px !important; font-family:inherit; }
 .sce .sce-bible-group { border-top:1px dashed var(--sce-line); padding:6px 0; }
 .sce .sce-bible-group-title { font-weight:700; font-size:12px; color:var(--sce-muted); margin-bottom:4px; }
@@ -680,9 +683,8 @@ const CSS = `
 .sce .sce-bible-sec-count { color:var(--sce-muted); font-size:12px; }
 .sce .sce-bible-sec-body { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
 .sce .sce-bible-sec-body > .sce-bible-group:first-child { border-top:0; padding-top:0; }
-.sce .sce-bible-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.sce .sce-bible-bar-l { display:flex; gap:6px; flex-wrap:wrap; }
-.sce .sce-bible-bar-r { display:flex; gap:6px; margin-left:auto; }
+.sce .sce-bible-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; } /* 내보내기 셋만 (v1.18.2 — 되돌리기·비우기는 제목 줄) */
+.sce .sce-bible-bar .sce-btn { white-space:nowrap; }
 .sce .sce-bible-note:empty { display:none; }
 .sce .sce-bible-chatbar { display:flex; flex-direction:column; gap:6px; border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; margin-bottom:8px; }
 .sce .sce-bible-chatbar-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -14041,7 +14043,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   }
 
   // 설정집 기둥 — v1.18.1 UI 정리(유저: "난잡하다"): 구역 넷(📚 항목·📁 폴더·🪪 시트·🧩 심코어로 갈 것)을 같은 모양의 접기 카드로, 설명 글은 ⓘ 접기와 툴팁으로,
-  // 내보내기는 바닥 도구 막대 한 줄. 접힘은 편집기 인스턴스 안에서 기억한다(bibleSecOpen).
+  // 되돌리기·비우기는 제목 줄 오른쪽(v1.18.2 — 막대에 다섯을 두면 열 폭이 모자라 둘째 줄로 밀려 어긋나 보였다). 내보내기는 바닥 도구 막대 한 줄(셋뿐이라 안 감긴다). 접힘은 편집기 인스턴스 안에서 기억한다(bibleSecOpen).
   function bibleBook() {
     const side = h('div', { class: 'sce-bible-book' });
     const st = bibleMod.bibleStats(bible);
@@ -14057,7 +14059,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     titleIn.onchange = () => { bible.title = titleIn.value.trim().slice(0, bibleMod.LIMITS.nameChars); biblePersist(); };
     const premIn = h('textarea', { class: 'sce-bible-premise', placeholder: '한 줄 전제 — 어떤 봇인지', 'aria-label': '전제' }); premIn.value = bible.premise;
     premIn.onchange = () => { bible.premise = premIn.value.trim().slice(0, bibleMod.LIMITS.premiseChars); biblePersist(); };
-    side.appendChild(h('div', { class: 'sce-bible-meta' }, titleIn, premIn));
+    const undoBtn = h('button', { class: 'sce-btn', disabled: bibleUndo.length ? null : 'disabled', title: '수정안 적용·지우기 전으로 (최근 10단계)', onclick: () => {
+      const prev = bibleUndo.pop(); if (!prev) return; bible = bibleMod.normalizeBible(prev); biblePersist(); rerender();
+    } }, `↩ 되돌리기${bibleUndo.length ? ` (${bibleUndo.length})` : ''}`);
+    const clearBtn = h('button', { class: 'sce-btn' + (bibleClearArm ? ' sce-danger' : ''), disabled: bibleMod.bibleIsBlank(bible) ? 'disabled' : null, title: '설정집을 비워요 (두 번 누르기 · 되돌리기 가능)', onclick: () => {
+      if (!bibleClearArm) { bibleClearArm = true; rerender(); return; }
+      bibleSnapshot(); bible = bibleMod.emptyBible(); bibleClearArm = false; biblePersist(); rerender();
+    } }, bibleClearArm ? '한 번 더 누르면 설정집을 비워요' : '🧹 설정집 비우기');
+    side.appendChild(h('div', { class: 'sce-bible-meta' }, h('div', { class: 'sce-bible-meta-row' }, titleIn, undoBtn, clearBtn), premIn)); // v1.18.2: 설정집 전체에 작용하는 둘은 제목 줄 오른쪽 — 입력칸과 같은 높이
 
     { // 📚 항목 — 폴더가 있으면 폴더별, 없으면 종류별 묶음
       const body = h('div', { class: 'sce-bible-sec-body' });
@@ -14124,14 +14133,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-row' }, sendBtn));
       side.appendChild(section('sim', '🧩 심코어로 갈 것', bible.sim.length ? `${bible.sim.length} — 로어북이 아니라 변수·이벤트·비밀로` : '0', body, bible.sim.length > 0));
     }
-    { // 내보내기 도구 막대 — 1단계는 여기까지. 캐릭터엔 아무것도 안 쓴다. 왼쪽 내보내기 셋, 오른쪽 끝 되돌리기·비우기
+    { // 내보내기 도구 막대 — 1단계는 여기까지. 캐릭터엔 아무것도 안 쓴다. 셋뿐 (되돌리기·비우기는 제목 줄, v1.18.2)
       const note = h('div', { class: 'sce-hint sce-bible-note' });
       const lore = bibleMod.compileLorebook(bible);
       const loreJson = JSON.stringify(lore, null, 2);
       const nFold = lore.data.filter((e) => e.mode === 'folder').length;
       const cnt = `항목 ${lore.data.length - nFold}${nFold ? ` · 새 폴더 ${nFold}` : ''}`;
       const fname = `lorebook-${(bible.title || bible.sheet.name || 'simcore').replace(/[^\w가-힣-]/g, '_')}.json`;
-      const left = h('div', { class: 'sce-bible-bar-l' },
+      const bar = h('div', { class: 'sce-bible-bar' },
         h('button', { class: 'sce-btn sce-ai-primary', disabled: lore.data.length ? null : 'disabled', title: '리수 로어북 [가져오기]가 받는 형식(type: risu). 폴더도 같이 실려요 — 리수에 있는 폴더로 보낸 항목은 같은 캐릭터로 가져올 때 그 폴더 안으로. 캐릭터엔 아무것도 쓰지 않아요', onclick: async () => {
           note.textContent = (await bibleCopy(loreJson)) ? `✓ 로어북 JSON 복사됨 (${cnt}) — 파일로 저장해 리수 로어북 [가져오기]에 넣으세요` : '복사 실패 — ⬇ 내려받기를 쓰세요';
         } }, '📋 로어북 JSON 복사'),
@@ -14141,16 +14150,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('button', { class: 'sce-btn', disabled: st.sheet ? null : 'disabled', title: '리수 캐릭터 설명란·첫 메시지에 붙여 넣을 글', onclick: async () => {
           note.textContent = (await bibleCopy(bibleMod.compileSheet(bible))) ? '✓ 캐릭터 시트 복사됨 — 리수 캐릭터 설명란·첫 메시지에 붙이세요' : '복사 실패';
         } }, '📋 캐릭터 시트 복사'));
-      const clearBtn = h('button', { class: 'sce-btn sce-mini' + (bibleClearArm ? ' sce-danger' : ''), disabled: bibleMod.bibleIsBlank(bible) ? 'disabled' : null, title: '설정집을 비워요 (두 번 누르기 · 되돌리기 가능)', onclick: () => {
-        if (!bibleClearArm) { bibleClearArm = true; rerender(); return; }
-        bibleSnapshot(); bible = bibleMod.emptyBible(); bibleClearArm = false; biblePersist(); rerender();
-      } }, bibleClearArm ? '한 번 더 누르면 설정집을 비워요 (되돌리기 가능)' : '🧹 설정집 비우기');
-      const right = h('div', { class: 'sce-bible-bar-r' },
-        h('button', { class: 'sce-btn sce-mini', disabled: bibleUndo.length ? null : 'disabled', title: '수정안 적용·지우기 전으로 (최근 10단계)', onclick: () => {
-          const prev = bibleUndo.pop(); if (!prev) return; bible = bibleMod.normalizeBible(prev); biblePersist(); rerender();
-        } }, `↩ 되돌리기${bibleUndo.length ? ` (${bibleUndo.length})` : ''}`),
-        clearBtn);
-      side.appendChild(h('div', { class: 'sce-bible-export' }, h('div', { class: 'sce-bible-bar' }, left, right), note));
+      side.appendChild(h('div', { class: 'sce-bible-export' }, bar, note));
     }
     return side;
   }

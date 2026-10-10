@@ -1,6 +1,6 @@
 # SimCore 스키마 레퍼런스
 
-**v1.18.1 기준 (2026-10 전체 점검 반영 — 뒤쪽 버전별 절이 최신).** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
+**v1.18.2 기준 (2026-10 전체 점검 반영 — 뒤쪽 버전별 절이 최신).** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`

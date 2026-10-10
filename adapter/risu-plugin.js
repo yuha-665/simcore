@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.18.0
-//@display-name SimCore (시뮬 엔진) v1.18.0 🎲 추첨 효과 — 후보 풀에서 N명 뽑기 · 리롤 고정/새로
+//@version 1.18.1
+//@display-name SimCore (시뮬 엔진) v1.18.1 🎲 추첨 효과 · 봇 제작 화면 정리
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.18.1 ───────────────────────────────────────────────
+// **봇 제작 층 UI 정리.** 유저 스샷(2026-10-10): "난잡하다 — 어떻게 해야 덜 난잡하고 깔끔하게 정리한 느낌을 줄 수 있을까". 원인 셋: 같은 설명을
+// 다섯 군데서(머리글·카드 안 4줄·빈 상태·내보내기 아래·대화 예시), 구역마다 상자 모양이 달라 위계가 안 보임, 폴더 21개 봇에선 "리수에 있는 폴더"가 버튼 벽.
+// - [편집기] 글 줄이기: 카드 안 설명은 "ⓘ 이 화면은?" 접기로, 구역 힌트는 placeholder·툴팁으로, 빈 상태 안내는 대화 입력칸 placeholder 한 곳만.
+// - 왼쪽 설정집 = 같은 모양의 접기 구역 넷(📚 항목 · 📁 폴더 · 🪪 캐릭터 시트 · 🧩 심코어로 갈 것) — 머리줄에 숫자 요약, 접힘은 편집기 안에서 기억.
+//   제목·전제는 맨 위 한 묶음. 점선 상자는 전부 없앴다.
+// - 📁 리수에 있는 폴더: 버튼 벽 → 셀렉트 한 칸 + [가져오기]. 이미 가져온 건 목록에서 빠지고 칩으로만 보인다.
+// - 내보내기 = 바닥 도구 막대 한 줄(왼쪽 📋 JSON·⬇ 파일·📋 시트, 오른쪽 끝 ↩ 되돌리기·🧹 비우기). 설명은 툴팁으로.
+// - 오른쪽 대화: 모델·캐릭터 정보·토큰 미터를 위쪽 설정 띠 하나로 압축, 로그가 바로 아래서 넓게, "예:" 상자 제거(placeholder로).
+// - [어댑터] 봇 제작 층에선 머리글 꼬리("어느 도구에서 수정해도 같은 작업본…")와 "스키마가 없어요" 경고 배너를 안 보인다 — 이 층과 무관.
+// - 버튼 이름·클래스는 그대로(test-bible 스모크가 같은 이름을 누른다). 동작 변화 없음.
+
 // ── v1.18.0 ───────────────────────────────────────────────
 // **🎲 추첨 효과 — 후보 풀에서 N개를 중복 없이 목록 변수에.** 커뮤니티 피드백(2026-10-10, 유저 전달): "일상용 봇에 NPC 목록·캐릭터 풀을 두고 거주지
 // N명·장소 이동 때 몇 명·등장 인물 4명 제한을 변수로 하는데, 로스터를 처음 만들 때 가챠풀(랜덤 이벤트 표)에 같은 이름을 수백 번 넣게 된다 —
@@ -7558,6 +7570,7 @@
       #sc-root .sc-maintab[data-floor="assets"] { --nav:var(--sc-nav-assets); }
       #sc-root .sc-maintab[data-floor="deep"] { --nav:var(--sc-nav-deep); }
       #sc-root .sc-maintab[data-floor="bible"] { --nav:var(--sc-nav-bible); }
+#sc-root.sc-floor-bible #sc-status.sc-panel-status-warn { display:none; } /* 봇 제작 층 — 스키마 없음·경고 배너는 이 층과 무관 (v1.18.1). 오류(bad)는 그대로 */
       #sc-root .sc-maintab[data-page="work"] { --nav:var(--sc-nav-work); }
       #sc-root .sc-maintab[data-page="save"] { --nav:var(--sc-nav-save); }
       #sc-root .sc-maintab[data-page="help"] { --nav:var(--sc-nav-help); }
@@ -8372,13 +8385,14 @@ count(목록)  has(목록, "항목")</pre>
       tab.onclick = () => {
         for (const t of root.querySelectorAll('.sc-maintab')) t.classList.toggle('on', t === tab);
         for (const p of root.querySelectorAll('.sc-page')) p.classList.toggle('on', p.id === 'sc-page-' + tab.dataset.page);
+        root.classList.toggle('sc-floor-bible', tab.dataset.page === 'edit' && tab.dataset.floor === 'bible'); // 봇 제작 층엔 스키마 경고 배너를 안 보인다 (v1.18.1)
         if (tab.dataset.page === 'edit') {
           ensureEditor();
           editor.setFloor(tab.dataset.floor || 'top'); // 층 = 사이드 내비 항목 (v0.47.4)
           const head = FLOOR_HEADS[tab.dataset.floor || 'top'];
           if (head) {
             document.getElementById('sc-edit-title').textContent = head[0];
-            document.getElementById('sc-edit-desc').textContent = head[1] + FLOOR_HEAD_TAIL;
+            document.getElementById('sc-edit-desc').textContent = head[1] + (tab.dataset.floor === 'bible' ? '' : FLOOR_HEAD_TAIL); // 봇 제작은 작업본과 무관 (v1.18.1)
           }
         }
         // 작업공간의 [캐릭터에 적용]은 편집기의 작업본을 읽는다 — 편집 도구를 안 거치고

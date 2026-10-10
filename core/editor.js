@@ -662,7 +662,7 @@ const CSS = `
 .sce .sce-bible-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .sce .sce-bible-meta { display:flex; flex-direction:column; gap:6px; }
 .sce .sce-bible-premise { min-height:44px !important; font-family:inherit; }
-.sce .sce-bible-group { border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; }
+.sce .sce-bible-group { border-top:1px dashed var(--sce-line); padding:6px 0; }
 .sce .sce-bible-group-title { font-weight:700; font-size:12px; color:var(--sce-muted); margin-bottom:4px; }
 .sce .sce-bible-card { border-top:1px dashed var(--sce-line); padding:6px 0; }
 .sce .sce-bible-card > summary { cursor:pointer; font-size:13px; }
@@ -674,7 +674,20 @@ const CSS = `
 .sce .sce-bible-chat .sce-chat-log { max-height:52vh; }
 .sce .sce-bible-sim-item { padding:4px 0; border-top:1px dashed var(--sce-line); font-size:12.5px; }
 .sce .sce-bible-sim-how { display:inline-block; padding:0 6px; border-radius:4px; background:color-mix(in srgb, var(--sce-accent) 14%, transparent); font-size:11px; margin-right:6px; }
-.sce .sce-bible-folders { border:1px dashed var(--sce-line); border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; }
+.sce .sce-bible-info > summary { font-size:12px; color:var(--sce-muted); cursor:pointer; }
+.sce .sce-bible-sec { border:1px solid var(--sce-line); border-radius:8px; padding:6px 10px; }
+.sce .sce-bible-sec > summary { cursor:pointer; display:flex; align-items:baseline; gap:8px; font-size:13px; }
+.sce .sce-bible-sec-count { color:var(--sce-muted); font-size:12px; }
+.sce .sce-bible-sec-body { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+.sce .sce-bible-sec-body > .sce-bible-group:first-child { border-top:0; padding-top:0; }
+.sce .sce-bible-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.sce .sce-bible-bar-l { display:flex; gap:6px; flex-wrap:wrap; }
+.sce .sce-bible-bar-r { display:flex; gap:6px; margin-left:auto; }
+.sce .sce-bible-note:empty { display:none; }
+.sce .sce-bible-chatbar { display:flex; flex-direction:column; gap:6px; border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+.sce .sce-bible-chatbar-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.sce .sce-bible-chatbar-lbl { font-size:12px; color:var(--sce-muted); }
+.sce .sce-bible-meter { font-size:11.5px; color:var(--sce-muted); margin-left:auto; }
 .sce .sce-bible-folder-chip { display:inline-flex; align-items:center; gap:6px; padding:2px 4px 2px 9px; border:1px solid var(--sce-line-strong); border-radius:999px; font-size:12px; }
 .sce .sce-bible-folder-chip .sce-btn { padding:0 6px; min-height:0; line-height:1.6; }
 .sce .sce-bible-sheet-format, .sce .sce-bible-source { min-height:70px !important; font-family:inherit; line-height:1.5; }
@@ -12951,7 +12964,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let bibleOpen = false;        // 스택형 폴백의 접기
   let bibleSheetFormat = '';    // 🪪 시트 형식(OOC 명령어) — 기기 공통(ai.loadBiblePrefs/saveBiblePrefs), 모든 봇이 같이 쓴다 (v1.17.0)
   let bibleFolderDraft = '';    // 📁 새 폴더 이름 입력칸 (다시 그려도 남게)
-  let bibleSheetOpen = null;    // 🪪 시트 접기 — 처음은 내용이 있으면 열고, 그 뒤는 유저가 접은 대로 (시트 형식은 기기 공통이라 매번 열리면 성가시다)
+  const bibleSecOpen = {};      // 구역 접힘 기억 (v1.18.1) — 📚 항목·📁 폴더·🪪 시트·🧩 심코어로 갈 것. 처음은 내용이 있으면 열고, 그 뒤는 유저가 접은 대로
   let biblePrefsTimer = null;
   const biblePrefsPersist = () => {
     if (!(ai && typeof ai.saveBiblePrefs === 'function')) return;
@@ -13981,11 +13994,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   // 📁 로어북 폴더 (v1.17.0) — 유저 제안: "로어북이 그룹 기능도 지원하니 어떤 그룹을 만들지, 어떤 그룹에 로어북을 생성할지 정할 수 있으면 봇 제작이 더 수월".
   // 리수 폴더 = mode:'folder' 항목 + 자식의 folder(=폴더 key). 가져오기가 그대로 push하니 JSON에 폴더째 실린다(compileLorebook). 리수에 이미 있는 폴더는
   // 캐릭터 정보(getBotContext.folders)에서 가져오면 key가 붙어 — 같은 캐릭터로 가져올 때 — 그 폴더 안으로 들어간다. 폴더가 있으면 어시스턴트도 새 항목을 폴더에 넣는다.
+  // v1.18.1 UI 정리: "리수에 있는 폴더" 버튼 벽(폴더 21개 봇에서 화면 절반 — 유저 스샷) → 셀렉트 한 칸 + [가져오기]. 가져온 것만 칩으로.
+  let bibleFolderPickKey = '';   // 리수 폴더 셀렉트에서 고른 key (다시 그려도 남게)
   function bibleFolderBox() {
-    const box = h('div', { class: 'sce-bible-folders' });
+    const box = h('div', { class: 'sce-bible-sec-body' });
     const count = (f) => bible.sections.filter((s) => s.folder === f.id).length;
-    box.appendChild(h('div', { class: 'sce-bible-head' }, h('b', {}, `📁 로어북 폴더${bible.folders.length ? ` · ${bible.folders.length}` : ''}`),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, '폴더를 정해 두면 어시스턴트가 새 항목을 알맞은 폴더에 넣고, 내보낸 JSON에 폴더째 실려요.')));
     if (bible.folders.length) {
       const chips = h('div', { class: 'sce-chips' });
       for (const f of bible.folders) {
@@ -14006,47 +14019,64 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (next.folders.length === bible.folders.length) return;   // 상한
       bibleSnapshot(); bible = next; bibleFolderDraft = ''; biblePersist(); rerender();
     };
-    const nameIn = h('input', { placeholder: '새 폴더 이름 (예: 기초 설정집)', 'aria-label': '새 폴더 이름' }); nameIn.value = bibleFolderDraft;
+    const nameIn = h('input', { placeholder: '새 폴더 이름 (예: 기초 설정집)', 'aria-label': '새 폴더 이름', title: '폴더를 정해 두면 어시스턴트가 새 항목을 알맞은 폴더에 넣고, 내보낸 JSON에 폴더째 실려요' }); nameIn.value = bibleFolderDraft;
     nameIn.oninput = () => { bibleFolderDraft = nameIn.value; };
     nameIn.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(nameIn.value); } };
-    box.appendChild(h('div', { class: 'sce-bible-row' }, nameIn, h('button', { class: 'sce-btn sce-mini', onclick: () => add(nameIn.value) }, '+ 폴더 만들기')));
+    const row = h('div', { class: 'sce-bible-row' }, nameIn, h('button', { class: 'sce-btn sce-mini', onclick: () => add(nameIn.value) }, '+ 폴더 만들기'));
     const have = aiBotCtx && Array.isArray(aiBotCtx.folders) ? aiBotCtx.folders.filter((f) => f && f.key && String(f.name || '').trim()) : [];
     if (have.length) {
-      const row = h('div', { class: 'sce-bible-row' }, h('span', { class: 'sce-hint', style: 'margin:0' }, '리수에 있는 폴더:'));
-      for (const f of have) {
-        const used = bible.folders.some((x) => x.key === f.key);
-        row.appendChild(h('button', { class: 'sce-btn sce-mini', disabled: used ? 'disabled' : null, title: '이 폴더 안에 새 항목을 넣어요 (같은 캐릭터로 가져올 때)', onclick: () => add(f.name, f.key) }, `${used ? '✓' : '+'} ${f.name}`));
-      }
-      box.appendChild(row);
+      const avail = have.filter((f) => !bible.folders.some((x) => x.key === f.key));
+      const pick = h('select', { 'aria-label': '리수에 있는 폴더', title: '리수 로어북에 이미 있는 폴더 — 가져오면 새 항목이 그 폴더 안으로 들어가요 (같은 캐릭터로 가져올 때)' },
+        h('option', { value: '' }, avail.length ? `리수에 있는 폴더 고르기… (${avail.length})` : '리수 폴더는 전부 가져왔어요'),
+        ...avail.map((f) => { const o = h('option', { value: f.key }, f.name); if (f.key === bibleFolderPickKey) o.selected = true; return o; }));
+      const importBtn = h('button', { class: 'sce-btn sce-mini', disabled: avail.some((f) => f.key === bibleFolderPickKey) ? null : 'disabled', onclick: () => {
+        const f = avail.find((x) => x.key === pick.value); if (!f) return;
+        bibleFolderPickKey = ''; add(f.name, f.key);
+      } }, '가져오기');
+      pick.onchange = () => { bibleFolderPickKey = pick.value; importBtn.disabled = !avail.some((f) => f.key === pick.value); };
+      row.appendChild(pick); row.appendChild(importBtn);
     }
+    box.appendChild(row);
     return box;
   }
 
+  // 설정집 기둥 — v1.18.1 UI 정리(유저: "난잡하다"): 구역 넷(📚 항목·📁 폴더·🪪 시트·🧩 심코어로 갈 것)을 같은 모양의 접기 카드로, 설명 글은 ⓘ 접기와 툴팁으로,
+  // 내보내기는 바닥 도구 막대 한 줄. 접힘은 편집기 인스턴스 안에서 기억한다(bibleSecOpen).
   function bibleBook() {
     const side = h('div', { class: 'sce-bible-book' });
     const st = bibleMod.bibleStats(bible);
-    side.appendChild(h('div', { class: 'sce-bible-head' },
-      h('b', {}, `📚 설정집 ${st.sections ? `— 항목 ${st.sections}개` : '(비어 있음)'}`),
-      h('span', { class: 'sce-hint', style: 'margin:0' }, st.sections ? `상시 ${st.always} · 본문 ${(st.bodyBytes / 1024).toFixed(1)}KB · 심코어로 ${st.sim}` : '')));
+    const section = (key, title, count, body, defaultOpen) => {
+      const det = h('details', { class: `sce-fold sce-bible-sec sce-bible-sec-${key}` });
+      const open = bibleSecOpen[key]; det.open = open == null ? !!defaultOpen : open;
+      det.addEventListener('toggle', () => { bibleSecOpen[key] = det.open; });
+      det.appendChild(h('summary', {}, h('b', {}, title), h('span', { class: 'sce-bible-sec-count' }, count)));
+      det.appendChild(body);
+      return det;
+    };
     const titleIn = h('input', { class: 'sce-bible-title', placeholder: '제목 (봇 이름·작업명)', 'aria-label': '설정집 제목' }); titleIn.value = bible.title;
     titleIn.onchange = () => { bible.title = titleIn.value.trim().slice(0, bibleMod.LIMITS.nameChars); biblePersist(); };
     const premIn = h('textarea', { class: 'sce-bible-premise', placeholder: '한 줄 전제 — 어떤 봇인지', 'aria-label': '전제' }); premIn.value = bible.premise;
     premIn.onchange = () => { bible.premise = premIn.value.trim().slice(0, bibleMod.LIMITS.premiseChars); biblePersist(); };
     side.appendChild(h('div', { class: 'sce-bible-meta' }, titleIn, premIn));
-    side.appendChild(bibleFolderBox());
-    if (!bible.sections.length) side.appendChild(h('div', { class: 'sce-chat-empty' }, '아직 비어 있어요. 오른쪽에서 봇 이야기를 시작하고 "정리해줘"라고 하면 여기에 항목이 쌓여요. 손으로 고쳐도 되고, 고친 것은 다음 턴부터 어시스턴트가 봐요.'));
-    const group = (title, list) => {
-      const grp = h('div', { class: 'sce-bible-group' }, h('div', { class: 'sce-bible-group-title' }, `${title} · ${list.length}`));
-      for (const s of list) grp.appendChild(bibleCard(s));
-      side.appendChild(grp);
-    };
-    if (bible.folders.length) {   // 폴더가 있으면 폴더별로 (v1.17.0) — 리수 로어북에 들어갈 모양 그대로
-      for (const f of bible.folders) { const list = bible.sections.filter((s) => s.folder === f.id); if (list.length) group(`📁 ${f.name}`, list); }
-      const loose = bible.sections.filter((s) => !s.folder);
-      if (loose.length) group('폴더 없음', loose);
-    } else {
-      for (const kind of bibleMod.KINDS) { const list = bible.sections.filter((s) => s.kind === kind); if (list.length) group(bibleMod.KIND_LABEL[kind], list); }
+
+    { // 📚 항목 — 폴더가 있으면 폴더별, 없으면 종류별 묶음
+      const body = h('div', { class: 'sce-bible-sec-body' });
+      const group = (title, list) => {
+        const grp = h('div', { class: 'sce-bible-group' }, h('div', { class: 'sce-bible-group-title' }, `${title} · ${list.length}`));
+        for (const s of list) grp.appendChild(bibleCard(s));
+        body.appendChild(grp);
+      };
+      if (!bible.sections.length) body.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' }, '아직 없어요 — 오른쪽에서 봇 이야기를 하고 "정리해줘"라고 하면 여기에 쌓여요. 손으로 고쳐도 되고, 고친 것은 다음 턴부터 어시스턴트가 봐요.'));
+      else if (bible.folders.length) {   // 폴더가 있으면 폴더별로 (v1.17.0) — 리수 로어북에 들어갈 모양 그대로
+        for (const f of bible.folders) { const list = bible.sections.filter((s) => s.folder === f.id); if (list.length) group(`📁 ${f.name}`, list); }
+        const loose = bible.sections.filter((s) => !s.folder);
+        if (loose.length) group('폴더 없음', loose);
+      } else {
+        for (const kind of bibleMod.KINDS) { const list = bible.sections.filter((s) => s.kind === kind); if (list.length) group(bibleMod.KIND_LABEL[kind], list); }
+      }
+      side.appendChild(section('items', '📚 항목', st.sections ? `${st.sections} · 상시 ${st.always} · ${(st.bodyBytes / 1024).toFixed(1)}KB` : '0', body, true));
     }
+    side.appendChild(section('folders', '📁 폴더', bible.folders.length ? String(bible.folders.length) : '0 — 정하면 어시스턴트가 알맞은 폴더에 넣어요', bibleFolderBox(), bible.folders.length > 0));
     { // 🪪 캐릭터 시트 — 시트 형식(OOC 명령어) → 📥 캐릭 설정집 원문 적재 → 설명란·첫 메시지 초안 (손편집 가능).
       // v1.17.0 유저 제안: "원하는 캐릭터 시트 OOC 명령어를 붙여 넣는 곳을 만들고, 그 아래 캐릭 설정집 적재를 만들고".
       const fmt = h('textarea', { class: 'sce-bible-sheet-format', placeholder: '시트 형식 — 원하는 캐릭터 시트 양식·OOC 명령어를 붙여 넣으세요. 어시스턴트가 이 형식 그대로 시트를 써요', 'aria-label': '캐릭터 시트 형식' });
@@ -14071,121 +14101,101 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       desc.onchange = () => { bible.sheet.desc = desc.value.slice(0, bibleMod.LIMITS.sheetChars); biblePersist(); rerender(); };
       const first = h('textarea', { placeholder: '첫 메시지 초안', 'aria-label': '첫 메시지' }); first.value = bible.sheet.first;
       first.onchange = () => { bible.sheet.first = first.value.slice(0, bibleMod.LIMITS.sheetChars); biblePersist(); rerender(); };
-      const sheetFold = h('details', { class: 'sce-fold sce-bible-sheet' },
-        h('summary', {}, `🪪 캐릭터 시트${st.sheet ? '' : ' (비어 있음)'}${bibleSheetFormat.trim() ? ' · 형식 ✓' : ''}${ub.source.bytes ? ` · 원문 ${srcKb}KB${ub.source.on ? '' : ' (동봉 안 함)'}` : ''}`),
-        h('div', { class: 'sce-bible-card-body' },
-          h('div', { class: 'sce-bible-sub' }, '시트 형식 (OOC 명령어) — 모든 봇에서 같이 써요 (기기 로컬)'), fmt,
-          h('div', { class: 'sce-bible-sub' }, '📥 캐릭 설정집 적재 — 이 봇에만'),
-          h('div', { class: 'sce-bible-row' }, h('label', { class: 'sce-bible-row' }, srcOn,
-            h('span', {}, `원문 동봉 ${srcKb}KB${ub.source.truncated ? ' ⚠ 48KB에서 잘려요 — 줄이거나 나눠 넣으세요' : ub.source.bytes > BOT_CTX_WARN ? ' ⚠ 20KB 넘음' : ''}`)), askBtn),
-          srcArea,
-          h('div', { class: 'sce-bible-sub' }, '결과 — 설명란(desc)·첫 메시지 ("🪪 시트 써 달라기" 또는 대화에서 "캐릭터 시트 정리해줘")'), nm, desc, first));
-      if (bibleSheetOpen === null) bibleSheetOpen = !!(st.sheet || ub.source.bytes || bibleSheetFormat.trim());
-      sheetFold.open = bibleSheetOpen;
-      sheetFold.addEventListener('toggle', () => { bibleSheetOpen = sheetFold.open; });
-      side.appendChild(sheetFold);
+      const body = h('div', { class: 'sce-bible-card-body' },
+        h('div', { class: 'sce-bible-sub', title: '유저 취향이라 모든 봇에서 같이 써요 (기기 로컬)' }, '시트 형식 (OOC 명령어)'), fmt,
+        h('div', { class: 'sce-bible-sub', title: '이 봇에만 — 이미 있는 설정집·메모 원문을 붙여 넣으면 정리와 시트의 재료가 돼요' }, '📥 캐릭 설정집 적재'),
+        h('div', { class: 'sce-bible-row' }, h('label', { class: 'sce-bible-row' }, srcOn,
+          h('span', {}, `원문 동봉 ${srcKb}KB${ub.source.truncated ? ' ⚠ 48KB에서 잘려요 — 줄이거나 나눠 넣으세요' : ub.source.bytes > BOT_CTX_WARN ? ' ⚠ 20KB 넘음' : ''}`)), askBtn),
+        srcArea,
+        h('div', { class: 'sce-bible-sub', title: '"🪪 시트 써 달라기" 또는 대화에서 "캐릭터 시트 정리해줘"' }, '결과 — 설명란(desc) · 첫 메시지'), nm, desc, first);
+      const cnt = `${st.sheet ? '✓' : '비어 있음'}${bibleSheetFormat.trim() ? ' · 형식 ✓' : ''}${ub.source.bytes ? ` · 원문 ${srcKb}KB${ub.source.on ? '' : ' (동봉 안 함)'}` : ''}`;
+      side.appendChild(section('sheet', '🪪 캐릭터 시트', cnt, body, !!(st.sheet || ub.source.bytes || bibleSheetFormat.trim())));
     }
     { // 🧩 심코어로 갈 것 — 로어북이 아니라 시스템이 쥘 것. 💬 어시스턴트에게 요청문으로 넘긴다
       const items = bible.sim.map((x) => h('div', { class: 'sce-bible-sim-item' }, h('span', { class: 'sce-bible-sim-how' }, x.how), h('b', {}, x.what), x.why ? h('span', { class: 'sce-hint', style: 'margin:0 0 0 6px' }, '— ' + x.why) : null));
-      const sendBtn = h('button', { class: 'sce-btn sce-mini', disabled: bible.sim.length ? null : 'disabled', onclick: () => {
+      const sendBtn = h('button', { class: 'sce-btn sce-mini', disabled: bible.sim.length ? null : 'disabled', title: '이 목록을 요청문으로 만들어 💬 대화 탭 입력칸에 넣어요 — 작업본(변수·이벤트·비밀)에 넣는 건 거기서', onclick: () => {
         chat.draft = bibleMod.simRequestText(bible); topTab = 'chat';
         if (floorView && onRequestFloor) { onRequestFloor('top'); return; } // 호스트가 사이드바와 함께 전환
         if (floorView) floorView = 'top';
         rerender();
       } }, '💬 어시스턴트에게 보내기');
-      const simFold = h('details', { class: 'sce-fold sce-bible-sim' },
-        h('summary', {}, `🧩 심코어로 갈 것 (${bible.sim.length}) — 로어북이 아니라 변수·이벤트·비밀로`),
-        h('div', { class: 'sce-hint' }, '플레이가 바꾸는 값(호감·소지금·상태·진행)과 밝혀지기 전엔 모델이 몰라야 하는 것은 로어북에 적으면 안 돼요. 어시스턴트가 여기로 나눠 두면, 💬 대화 탭에 요청문으로 넘겨 작업본에 넣어요.'),
-        ...(items.length ? items : [h('div', { class: 'sce-hint' }, '아직 없어요.')]),
+      const body = h('div', { class: 'sce-bible-sec-body' },
+        ...(items.length ? items : [h('div', { class: 'sce-hint', style: 'margin:0' }, '아직 없어요 — 플레이가 바꾸는 값(호감·소지금·상태)과 밝혀지기 전엔 몰라야 하는 것은 어시스턴트가 로어북 대신 여기로 나눠요.')]),
         h('div', { class: 'sce-row' }, sendBtn));
-      if (bible.sim.length) simFold.open = true;
-      side.appendChild(simFold);
+      side.appendChild(section('sim', '🧩 심코어로 갈 것', bible.sim.length ? `${bible.sim.length} — 로어북이 아니라 변수·이벤트·비밀로` : '0', body, bible.sim.length > 0));
     }
-    { // 내보내기·되돌리기·비우기 — 1단계는 여기까지. 캐릭터엔 아무것도 안 쓴다
-      const note = h('div', { class: 'sce-hint', style: 'margin:4px 0 0' });
+    { // 내보내기 도구 막대 — 1단계는 여기까지. 캐릭터엔 아무것도 안 쓴다. 왼쪽 내보내기 셋, 오른쪽 끝 되돌리기·비우기
+      const note = h('div', { class: 'sce-hint sce-bible-note' });
       const lore = bibleMod.compileLorebook(bible);
       const loreJson = JSON.stringify(lore, null, 2);
       const nFold = lore.data.filter((e) => e.mode === 'folder').length;
       const cnt = `항목 ${lore.data.length - nFold}${nFold ? ` · 새 폴더 ${nFold}` : ''}`;
       const fname = `lorebook-${(bible.title || bible.sheet.name || 'simcore').replace(/[^\w가-힣-]/g, '_')}.json`;
-      const row = h('div', { class: 'sce-bible-row' },
-        h('button', { class: 'sce-btn sce-ai-primary', disabled: lore.data.length ? null : 'disabled', onclick: async () => {
+      const left = h('div', { class: 'sce-bible-bar-l' },
+        h('button', { class: 'sce-btn sce-ai-primary', disabled: lore.data.length ? null : 'disabled', title: '리수 로어북 [가져오기]가 받는 형식(type: risu). 폴더도 같이 실려요 — 리수에 있는 폴더로 보낸 항목은 같은 캐릭터로 가져올 때 그 폴더 안으로. 캐릭터엔 아무것도 쓰지 않아요', onclick: async () => {
           note.textContent = (await bibleCopy(loreJson)) ? `✓ 로어북 JSON 복사됨 (${cnt}) — 파일로 저장해 리수 로어북 [가져오기]에 넣으세요` : '복사 실패 — ⬇ 내려받기를 쓰세요';
         } }, '📋 로어북 JSON 복사'),
-        h('button', { class: 'sce-btn', disabled: lore.data.length ? null : 'disabled', onclick: () => {
+        h('button', { class: 'sce-btn', disabled: lore.data.length ? null : 'disabled', title: '파일로 내려받아 리수 캐릭터 로어북의 [가져오기]에 넣어요', onclick: () => {
           note.textContent = bibleDownload(fname, loreJson) ? `✓ ${fname} 내려받음 (${cnt}) — 리수 캐릭터 로어북의 [가져오기]로 넣으세요` : '이 환경에선 내려받기가 안 돼요 — 복사를 쓰세요';
         } }, '⬇ lorebook.json'),
-        h('button', { class: 'sce-btn', disabled: st.sheet ? null : 'disabled', onclick: async () => {
+        h('button', { class: 'sce-btn', disabled: st.sheet ? null : 'disabled', title: '리수 캐릭터 설명란·첫 메시지에 붙여 넣을 글', onclick: async () => {
           note.textContent = (await bibleCopy(bibleMod.compileSheet(bible))) ? '✓ 캐릭터 시트 복사됨 — 리수 캐릭터 설명란·첫 메시지에 붙이세요' : '복사 실패';
-        } }, '📋 캐릭터 시트 복사'),
-        h('button', { class: 'sce-btn sce-mini', disabled: bibleUndo.length ? null : 'disabled', onclick: () => {
-          const prev = bibleUndo.pop(); if (!prev) return; bible = bibleMod.normalizeBible(prev); biblePersist(); rerender();
-        } }, `↩ 되돌리기${bibleUndo.length ? ` (${bibleUndo.length})` : ''}`));
-      const clearBtn = h('button', { class: 'sce-btn sce-mini' + (bibleClearArm ? ' sce-danger' : ''), disabled: bibleMod.bibleIsBlank(bible) ? 'disabled' : null, onclick: () => {
+        } }, '📋 캐릭터 시트 복사'));
+      const clearBtn = h('button', { class: 'sce-btn sce-mini' + (bibleClearArm ? ' sce-danger' : ''), disabled: bibleMod.bibleIsBlank(bible) ? 'disabled' : null, title: '설정집을 비워요 (두 번 누르기 · 되돌리기 가능)', onclick: () => {
         if (!bibleClearArm) { bibleClearArm = true; rerender(); return; }
         bibleSnapshot(); bible = bibleMod.emptyBible(); bibleClearArm = false; biblePersist(); rerender();
       } }, bibleClearArm ? '한 번 더 누르면 설정집을 비워요 (되돌리기 가능)' : '🧹 설정집 비우기');
-      row.appendChild(clearBtn);
-      side.appendChild(h('div', { class: 'sce-bible-export' },
-        h('div', { class: 'sce-hint' }, '리수 로어북 [가져오기]가 받는 형식(type: risu)이에요. 폴더도 같이 실려요 — 리수에 있는 폴더로 보낸 항목은 같은 캐릭터로 가져올 때 그 폴더 안으로 들어가요. 지금 단계는 캐릭터에 아무것도 쓰지 않아요 — 받은 파일을 리수에서 직접 넣고, 설명란은 시트를 붙여 넣으세요.'),
-        row, note));
+      const right = h('div', { class: 'sce-bible-bar-r' },
+        h('button', { class: 'sce-btn sce-mini', disabled: bibleUndo.length ? null : 'disabled', title: '수정안 적용·지우기 전으로 (최근 10단계)', onclick: () => {
+          const prev = bibleUndo.pop(); if (!prev) return; bible = bibleMod.normalizeBible(prev); biblePersist(); rerender();
+        } }, `↩ 되돌리기${bibleUndo.length ? ` (${bibleUndo.length})` : ''}`),
+        clearBtn);
+      side.appendChild(h('div', { class: 'sce-bible-export' }, h('div', { class: 'sce-bible-bar' }, left, right), note));
     }
     return side;
   }
 
+  // 대화 기둥 — v1.18.1: 모델·캐릭터 정보·미터를 위쪽 설정 띠 하나로 압축하고 로그가 바로 아래서 넓게. 빈 상태 예시는 입력칸 placeholder로
   function bibleChatPane() {
     const box = h('div', { class: 'sce-chat sce-bible-chat' });
-    const grid = h('div', { class: 'sce-ai-settings-grid' });
-    box.appendChild(grid);
+    const bar = h('div', { class: 'sce-bible-chatbar' });
+    box.appendChild(bar);
     {
       const gmLine = buildGenModelRow(true);
-      if (gmLine) {
-        const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '모델 선택'), gmLine);
-        if (!aiGenModel || aiGenModel.choice === 'aux') {
-          card.appendChild(h('div', { class: 'sce-warn sce-chat-model-warn' },
-            '봇 제작은 메인급 모델을 권해요 — 보조 자리엔 보통 번역·요약용 싼 모델이 꽂혀 있어 설정이 얕아요.'));
-        }
-        grid.appendChild(card);
-      }
+      if (gmLine) bar.appendChild(h('div', { class: 'sce-bible-chatbar-row' }, h('span', { class: 'sce-bible-chatbar-lbl' }, '모델'), gmLine));
     }
-    const meter = h('div', { class: 'sce-ai-context-meta sce-chat-meter' });
+    const meter = h('span', { class: 'sce-bible-meter', title: '봇 제작 규약과 설정집이 매 턴 함께 가요 (±30% 추정). 💬 대화 탭의 📌 작업 지침도 맨 앞에 실려요' });
     let baseTok = null;
     const renderMeter = () => {
-      meter.replaceChildren();
       if (baseTok == null) {
         const ctxText = aiCtxOn && aiBotCtx ? assembleCtx(aiBotCtx).text : '';
         baseTok = chatTurnEstimate(buildBibleSystemPrompt(ctxText), chatHistoryMessages(bibleChat.msgs));
       }
-      meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(bibleChat.draft)).toLocaleString()} 토큰`));
-      meter.appendChild(h('span', {}, `이 대화 누적 보낸 약 ${bibleChat.sent.toLocaleString()} · 받은 약 ${bibleChat.got.toLocaleString()}`));
+      meter.textContent = `이번 전송 약 ${(baseTok + estTokens(bibleChat.draft)).toLocaleString()} 토큰 · 누적 보낸 ${bibleChat.sent.toLocaleString()} · 받은 ${bibleChat.got.toLocaleString()}`;
     };
     {
-      const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
+      const row = h('div', { class: 'sce-bible-chatbar-row' });
       const a = assembleCtx(aiBotCtx);
       if (aiBotCtx) {   // 이름뿐이어도 고르기 칸(↻ 다시 읽기)은 그린다 (v1.16.3)
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
-        card.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
-          h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, `설명·로어북 ${(a.bytes / 1024).toFixed(1)}KB — 있는 봇을 정리할 때 켜 두세요`))));
-        const pk = botCtxPicker(() => { baseTok = null; renderMeter(); }); if (pk) card.appendChild(pk);
+        row.appendChild(h('label', { class: 'sce-ai-context-toggle', title: '리수에 저장된 설명·로어북을 같이 보내요 — 있는 봇을 정리할 때 켜 두세요' }, ctxCheck,
+          h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, ` ${(a.bytes / 1024).toFixed(1)}KB`))));
       }
-      card.appendChild(meter);
+      row.appendChild(meter);
+      bar.appendChild(row);
+      if (aiBotCtx) { const pk = botCtxPicker(() => { baseTok = null; renderMeter(); }); if (pk) bar.appendChild(pk); }
+      if (!aiGenModel || aiGenModel.choice === 'aux') {
+        bar.appendChild(h('div', { class: 'sce-warn sce-chat-model-warn' }, '봇 제작은 메인급 모델을 권해요 — 보조 자리엔 보통 번역·요약용 싼 모델이 꽂혀 있어 설정이 얕아요.'));
+      }
       const dg = bibleMod.bibleDigest(bible);
-      card.appendChild(h('div', { class: 'sce-ai-context-note' },
-        '봇 제작 규약과 설정집이 매 턴 함께 가요(±30% 추정). 💬 대화 탭의 📌 작업 지침도 맨 앞에 실려요. 대화는 편집기를 닫으면 사라지고 설정집만 캐릭터에 남아요.'
-        + (dg.omitted ? ` ⚠ 설정집이 상한을 넘어 항목 ${dg.omitted}개의 본문이 생략돼요 — 항목을 합치거나 지우세요.` : '')));
-      grid.appendChild(card);
+      if (dg.omitted) bar.appendChild(h('div', { class: 'sce-warn' }, `⚠ 설정집이 상한을 넘어 항목 ${dg.omitted}개의 본문이 생략돼요 — 항목을 합치거나 지우세요.`));
     }
     renderMeter();
     if (aiBotCtx === undefined) fetchBotCtx().then(() => { if (!destroyed) { baseTok = null; renderMeter(); } });
 
     const log = h('div', { class: 'sce-chat-log', 'aria-live': 'polite' });
-    if (!bibleChat.msgs.length) {
-      log.appendChild(h('div', { class: 'sce-chat-empty' }, bibleMod.bibleIsBlank(bible)
-        ? '예: "북쪽 변경 마을에서 살아남는 생존 봇을 만들고 싶어. 마을엔 감시탑이 있고, 경비대장 아린이 뭔가 숨기고 있어" → 이야기하다 "정리해줘"'
-        : '예: "아린 항목을 더 자세히" · "세력 하나 추가하자" · "캐릭터 시트 정리해줘" · "지금 설정에서 변수로 빼야 할 게 뭐야?"'));
-    }
     const drop = (idx, count) => { if (bibleChat.busy) return; bibleChat.msgs.splice(idx, count); rerender(); };
     bibleChat.msgs.forEach((m, i) => {
       const tools = bibleChat.busy ? null : h('span', { class: 'sce-chat-tools' },
@@ -14212,7 +14222,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       const toBottom = () => { try { log.scrollTop = log.scrollHeight; } catch { /* 가짜 DOM */ } };
       (typeof window !== 'undefined' && window.requestAnimationFrame) ? window.requestAnimationFrame(toBottom) : setTimeout(toBottom, 0);
     }
-    const area = h('textarea', { class: 'sce-chat-input', 'aria-label': '봇 제작 어시스턴트에게 보낼 말', placeholder: '봇 이야기를 하거나, "정리해줘"라고 하세요' });
+    const area = h('textarea', { class: 'sce-chat-input', 'aria-label': '봇 제작 어시스턴트에게 보낼 말',
+      placeholder: bibleMod.bibleIsBlank(bible)
+        ? '어떤 봇을 만들지 이야기해 보세요 — 예: "북쪽 변경 마을 생존 봇. 마을엔 감시탑이 있고, 경비대장 아린이 뭔가 숨기고 있어". 정리가 됐다 싶으면 "정리해줘"'
+        : '물어보거나 바꿀 것을 말하세요 — "아린 항목을 더 자세히" · "세력 하나 추가하자" · "캐릭터 시트 정리해줘" · "변수로 빼야 할 게 뭐야?"' });
     area.value = bibleChat.draft;
     const sendBtn = bibleChat.busy
       ? h('button', { class: 'sce-btn', onclick: () => { bibleChat.seq++; bibleChat.busy = false; rerender(); } }, '취소')
@@ -14221,7 +14234,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     area.oninput = () => { bibleChat.draft = area.value; renderMeter(); refresh(); };
     area.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runBibleSend(); } };
     refresh();
-    const resetBtn = h('button', { class: 'sce-btn sce-mini', disabled: bibleChat.msgs.length ? null : 'disabled', onclick: () => {
+    const resetBtn = h('button', { class: 'sce-btn sce-mini', disabled: bibleChat.msgs.length ? null : 'disabled', title: '말풍선을 전부 지워요 — 설정집은 그대로', onclick: () => {
       bibleChat.seq++;
       bibleChat = { msgs: [], busy: false, seq: bibleChat.seq, note: null, sent: 0, got: 0, draft: bibleChat.draft };
       rerender();
@@ -14234,11 +14247,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   function bibleFloor() {
     const box = h('div', { class: 'sce-block sce-top sce-bible' });
     const chatOn = !!(ai && ai.generate);
-    box.appendChild(h('div', { class: 'sce-top-head' }, h('h4', { style: 'margin:0' }, '🧑‍🎨 봇 제작 — 설정집')));
-    box.appendChild(h('div', { class: 'sce-hint' },
-      '봇의 설정을 어시스턴트와 대화로 정리해요. 정리된 것은 설정집에 쌓이고, 로어북 JSON과 캐릭터 시트로 내보내 리수에 붙여요. '
-      + '플레이로 변하는 값(호감·소지금·상태)과 밝혀지기 전엔 몰라야 하는 것은 로어북이 아니라 "심코어로 갈 것"으로 나뉘어요 — 그게 OOC로 짜는 것과의 차이예요. '
-      + '로어북 폴더를 정해 두면 폴더째 내보내고, 시트 형식(OOC 명령어)과 설정집 원문을 적재하면 그대로 재료가 돼요. 이 화면은 캐릭터에 아무것도 쓰지 않아요(1단계).'));
+    // 설명은 접어 둔다 (v1.18.1) — 머리글 한 줄(호스트 FLOOR_HEADS)이면 충분하고, 자세한 건 열어 본다
+    box.appendChild(h('details', { class: 'sce-fold sce-bible-info' }, h('summary', {}, 'ⓘ 이 화면은?'),
+      h('div', { class: 'sce-hint' },
+        '봇의 설정을 어시스턴트와 대화로 정리해요. 정리된 것은 설정집에 쌓이고, 로어북 JSON과 캐릭터 시트로 내보내 리수에 붙여요. '
+        + '플레이로 변하는 값(호감·소지금·상태)과 밝혀지기 전엔 몰라야 하는 것은 로어북이 아니라 "심코어로 갈 것"으로 나뉘어요 — 그게 OOC로 짜는 것과의 차이예요. '
+        + '로어북 폴더를 정해 두면 폴더째 내보내고, 시트 형식(OOC 명령어)과 설정집 원문을 적재하면 그대로 재료가 돼요. '
+        + '대화는 편집기를 닫으면 사라지고 설정집만 캐릭터에 남아요. 이 화면은 캐릭터에 아무것도 쓰지 않아요(1단계).')));
     if (!chatOn) box.appendChild(h('div', { class: 'sce-warn' }, '이 환경엔 직결 호출이 없어 대화는 안 돼요 — 설정집 손편집과 내보내기만 됩니다.'));
     box.appendChild(h('div', { class: 'sce-bible-cols' }, bibleBook(), chatOn ? bibleChatPane() : null));
     return box;

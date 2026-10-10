@@ -1,0 +1,263 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.15.0 &nbsp;→&nbsp; v1.18.2</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 <b style="color:#dbe2ea;">플러그인 안에서 봇을 만드는 자리</b>와 <b style="color:#dbe2ea;">명단을 엔진이 뽑는 추첨 효과</b>입니다.
+  지난 글보다 짧습니다 — 바쁘시면 "한 줄로"만 보셔도 됩니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 10px;font-size:18px;line-height:1.7;">
+플러그인 안에 <b style="color:#e0a94a;">봇을 만드는 자리</b>가 생겼고, 등장인물 명단은 <b style="color:#e0a94a;">엔진이 뽑습니다.</b>
+</p>
+<p style="margin:0 0 8px;color:#a9b4c2;line-height:2;">
+🧑‍🎨 <b style="color:#dbe2ea;">봇 제작</b> — 대화로 설정집을 정리해 <b style="color:#dbe2ea;">로어북·캐릭터 시트</b>로 내보냅니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.0</span><br>
+📚 <b style="color:#dbe2ea;">보낼 것 고르기</b> — 어시스턴트에게 어떤 로어북을 보낼지 <b style="color:#dbe2ea;">직접 체크</b>합니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.1</span><br>
+📁 <b style="color:#dbe2ea;">폴더 · 🪪 시트 형식 · 📥 원문 적재</b> — 폴더째 내보내고, <b style="color:#dbe2ea;">내 시트 양식과 메모</b>가 재료가 됩니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.17.0</span><br>
+🎲 <b style="color:#dbe2ea;">추첨 효과</b> — 후보 풀에서 <b style="color:#dbe2ea;">N명을 중복 없이</b>, 가중치·그룹 보정까지 엔진이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.0</span><br>
+🎨 <b style="color:#dbe2ea;">봇 제작 화면 정리</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.1 · 1.18.2</span><br>
+🔧 <b style="color:#dbe2ea;">수리</b> — 편집기를 닫지 않고 봇을 바꾸면 <b style="color:#dbe2ea;">전 봇 것이 남던 것</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.3</span>
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+발단은 둘입니다. "봇 제작 <b style="color:#dbe2ea;">보조</b> 도구인데, 아예 봇 제작에 쓸 수는 없나"라는 말과,
+"등장인물 명단을 처음 만들 때 <b style="color:#dbe2ea;">랜덤 표에 같은 이름을 수백 번</b> 넣고 있다"는 제보.
+이번엔 ⚠ 먼저 상자가 없습니다 — 쓰시는 분이 모르는 채로 틀리고 있던 것은 없었습니다.
+</p>
+
+<!-- ─────────── ① 봇 제작 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🧑‍🎨 봇 제작 — 설정집을 대화로 정리해 로어북·캐릭터 시트로</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.0</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지금까지 SimCore의 AI 어시스턴트는 <b style="color:#c98a7a;">상태창·변수·규칙을 만드는 도구</b>였습니다. 로어북과 캐릭터 시트는 여전히 손작업이었고,
+  AI를 쓰더라도 봇 채팅 안에서 OOC로 주고받는 길뿐이었죠. "아예 봇 제작에 쓸 수 없나"는 말이 여럿 있었습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  편집기 사이드바에 <b style="color:#e0a94a;">[봇 제작]</b>이 생겼습니다. 왼쪽은 <b style="color:#dbe2ea;">설정집</b>, 오른쪽은 <b style="color:#dbe2ea;">전용 대화</b>입니다.
+  "북쪽 변경 마을 생존 봇. 마을엔 감시탑이 있고, 경비대장 아린이 뭔가 숨기고 있어" — 이렇게 이야기하다가 <b style="color:#dbe2ea;">"정리해줘"</b>라고 하면
+  어시스턴트가 설정집에 항목(세계·인물·장소·세력·규칙·용어·줄거리·문체)으로 쌓고, 그걸 <b style="color:#dbe2ea;">리수 로어북 JSON</b>과 <b style="color:#dbe2ea;">캐릭터 시트</b>로 내보냅니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">설정집은 대화 이력이 아니라 작업본입니다</div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  대화에 설정을 쌓아 가면 몇 턴 안에 컨텍스트가 터집니다. 그래서 설정집은 스키마 작업본과 같은 방식입니다 — 객체로 들고, 매 턴 <b style="color:#dbe2ea;">요약(24KB)</b>만 실리고,
+  어시스턴트는 <b style="color:#dbe2ea;">바뀐 항목만</b> 보냅니다(같은 이름이면 덮어쓰기). 항목은 손으로도 고칠 수 있고, 어시스턴트가 고친 건 <b style="color:#dbe2ea;">[↩ 되돌리기]</b>로 열 단계까지 돌아갑니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">OOC로 짜는 것과 뭐가 다른가 — 심코어식 분담</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    <b style="color:#dbe2ea;">로어북 = 안 변하는 것</b>입니다. 플레이가 바꾸는 값 — 호감·소지금·상태·진행도 — 은 로어북이 아니라
+    <b style="color:#dbe2ea;">🧩 심코어로 갈 것</b> 목록으로 나뉩니다(변수·이벤트·액션·판정·비밀·무대 뒤·시나리오·갈림길).
+    본문에 "처음엔…", "현재…"가 들어가면 그건 변수 자리고, <b style="color:#dbe2ea;">밝혀지기 전엔 몰라야 하는 것</b>은 로어북에 적으면 새니까 비밀로 갑니다.
+    규약이 어시스턴트에게 그렇게 시킵니다 — 낱말(키워드)은 장면에 실제로 나올 말 2~6개, 상시는 늘 필요한 것에만, 모르는 설정은 지어내지 말고 묻되 한 턴에 셋 이내.<br>
+    그 목록 밑의 <b style="color:#dbe2ea;">[💬 어시스턴트에게 보내기]</b>를 누르면 요청문이 되어 AI 어시스턴트 입력칸에 들어갑니다. 거기서 변수·이벤트가 되고요.
+    </p>
+  </div>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">내보내기</b> — <b style="color:#dbe2ea;">[📋 로어북 JSON 복사]</b>·<b style="color:#dbe2ea;">[⬇ lorebook.json]</b>은 리수 로어북 <b style="color:#dbe2ea;">[가져오기]</b>가 받는 형식 그대로입니다(캐릭터·채팅·전역·모듈 로어북 공통).
+    <b style="color:#dbe2ea;">[📋 캐릭터 시트 복사]</b>는 설명란·첫 메시지에 붙일 글<br>
+  · <b style="color:#dbe2ea;">캐릭터엔 글자 하나 안 씁니다</b> — 1단계입니다. 설정집은 이 기기에만 남고(카드·번들·세이브에 안 실림), 대화는 편집기를 닫으면 사라집니다<br>
+  · <b style="color:#dbe2ea;">모델</b> — 💬 어시스턴트와 같은 통로라 생성 모델을 고릅니다. 보조 모델로 하면 품질이 떨어집니다 — 메인급을 권합니다. 직결 호출이 없는 환경은 손편집·내보내기만 됩니다<br>
+  · <b style="color:#dbe2ea;">설정집이 커지면</b> 요약 상한에서 본문이 생략됩니다(머리줄은 전부). 항목을 지우거나 합치세요
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">[스샷: 봇 제작 층 — 왼쪽 설정집(📚 항목·📁 폴더·🪪 캐릭터 시트·🧩 심코어로 갈 것)과 오른쪽 대화]</p>
+  <p style="margin:0 0 10px;color:#8b98a9;font-size:13px;">
+  <b style="color:#dbe2ea;">쓰는 곳</b> — 편집기 왼쪽 사이드바 작업도구의 <b style="color:#dbe2ea;">[봇 제작]</b>. 화면 위 "ⓘ 이 화면은?"을 펴면 같은 설명이 있습니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  <b style="color:#dbe2ea;">다음</b> — 2단계는 허가 체크를 켠 봇에 한해 로어북을 <b style="color:#dbe2ea;">항목 단위로 직접</b> 넣는 것(같은 제목만 교체, 나머지 보존, 백업·되돌리기), 3단계는 설명·첫 메시지·정규식입니다.
+  쓰기 없이 먼저 내는 건 수요부터 보려는 것이고, 캐릭터를 건드리는 쪽은 사고 이력(정규식 통째 교체)이 있어 천천히 갑니다.
+  </p>
+</div>
+
+<!-- ─────────── ② 보낼 것 고르기 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">📚 보낼 것 고르기 — 어시스턴트에게 어떤 로어북을 보낼지 직접</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.1 · 1.16.3</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  어시스턴트에 "현재 캐릭터 정보 포함"을 켜면 설명과 로어북을 같이 보냈는데, <b style="color:#c98a7a;">20KB에서 앞에서부터 잘랐습니다.</b>
+  로어북 순서는 봇마다 제각각이라 뭐가 빠지는지 알 길이 없었죠. "일부만 잘라 보내는 것보단 사용자가 정해서 보내는 게 낫다"는 제안에서 바꿨습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 전송 정보 카드의 "현재 캐릭터 정보 포함" 아래 <b style="color:#dbe2ea;">📚 보낼 것 고르기</b> — 설명·로어북 항목마다 <b style="color:#dbe2ea;">체크와 KB</b>, [모두 켜기]·[모두 끄기]. 폴더가 있으면 "폴더 › 이름"으로 보입니다<br>
+  · <b style="color:#dbe2ea;">한 번 고르면 네 곳이 같이 씁니다</b> — ✨ 창작·💬 대화·🧑‍🎨 봇 제작·규격서 복사. 선택은 캐릭터별로 기억합니다<br>
+  · <b style="color:#dbe2ea;">자르지 않습니다.</b> 20KB를 넘으면 ⚠로 알리고, 64KB가 최후 상한입니다(거기선 잘리고 표시). 빈 항목과 ⚙simcore 항목은 목록에 안 뜹니다(전부터 안 보냈습니다)<br>
+  · <b style="color:#dbe2ea;">[↻ 다시 읽기]</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.16.3</span> — 리수에서 로어북을 고친 뒤 편집기를 닫지 않고 다시 읽습니다
+  </p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 📚 보낼 것 고르기 — 체크 목록과 KB, 머리줄의 "로어북 N/N · KB"]</p>
+</div>
+
+<!-- ─────────── ③ 폴더 · 시트 형식 · 원문 적재 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">📁 로어북 폴더 · 🪪 시트 형식 · 📥 캐릭 설정집 적재</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.17.0</span>
+  </div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  봇 제작을 처음 돌려 본 날 바로 나온 요청 셋입니다 — "내 시트 양식을 그대로 쓰고 싶다", "이미 써 둔 설정집을 재료로 넣고 싶다", "리수 로어북에 폴더가 있는데 어디에 만들지 정하고 싶다".
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">📁 폴더 — 리수 로어북 폴더째 내보냅니다</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  설정집에서 폴더를 <b style="color:#dbe2ea;">새로 만들거나</b>, 리수에 <b style="color:#dbe2ea;">이미 있는 폴더</b>를 골라 가져옵니다. 항목마다 폴더를 배정하고,
+  어시스턴트도 폴더가 있으면 알맞은 폴더에 넣고 맞는 게 없으면 새 폴더를 제안합니다. 내보내는 JSON에 <b style="color:#dbe2ea;">폴더가 같이 실리고</b> 리수 [가져오기]가 그대로 받습니다.
+  리수에 있는 폴더로 보낸 항목은 <b style="color:#dbe2ea;">같은 캐릭터로 가져올 때 그 폴더 안으로</b> 들어갑니다.
+  </p>
+  <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:12px 16px;margin-bottom:16px;">
+    <p style="margin:0;color:#dbe2ea;font-size:14px;line-height:1.9;">
+    <b style="color:#c98a7a;">가져오기는 덧붙임입니다.</b> 같은 JSON을 두 번 넣으면 항목도 둘, 새 폴더도 둘입니다(같은 제목을 교체하지 않습니다 — 리수 쪽 동작).
+    <b style="color:#c98a7a;">"리수에 있는 폴더"는 그 캐릭터 안에서만</b> 뜻이 있어, 다른 캐릭터·전역·모듈 로어북으로 가져오면 폴더 밖(맨 위)에 놓입니다.
+    </p>
+  </div>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">🪪 시트 형식 — 쓰시던 OOC 명령어를 그대로</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  🪪 캐릭터 시트 구역 맨 위에 <b style="color:#dbe2ea;">시트 형식(OOC 명령어)</b> 칸이 있습니다. 쓰시던 캐릭터 시트 양식이나 OOC 명령어를 붙여 넣으면
+  어시스턴트가 설명란(desc)을 쓸 때 <b style="color:#dbe2ea;">그 형식의 항목·순서·어조를 그대로</b> 따릅니다. 유저 취향이라 <b style="color:#dbe2ea;">기기 공통</b>입니다 — 모든 봇에서 같이 씁니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">📥 캐릭 설정집 적재 — 써 둔 원문이 재료가 됩니다</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  그 아래 칸에 이미 있는 설정집·메모 원문을 <b style="color:#dbe2ea;">봇별로</b> 붙여 넣습니다. 동봉 체크를 켜면 정리와 시트의 재료가 됩니다 — 설정집에 없는 것은 항목으로, 겹치면 설정집 기준.
+  48KB 위는 앞부분만 실리고 ⚠로 알립니다. 시트 형식과 원문 둘 다 <b style="color:#dbe2ea;">어시스턴트가 못 바꿉니다</b> — 재료지 결과가 아니니까요.
+  <b style="color:#dbe2ea;">[🪪 시트 써 달라기]</b>를 누르면 요청문이 입력칸에 들어갑니다. 상태 숫자·현재 상황은 시트에서 뺍니다(상태창이 보여 주니까요).
+  </p>
+</div>
+
+<!-- ─────────── ④ 추첨 효과 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🎲 추첨 효과 — 후보 풀에서 N명을 중복 없이 목록 변수에</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "일상용 봇에 NPC 목록과 캐릭터 풀을 두고 — 거주지에 N명, 장소를 옮기면 그 자리에 몇 명, 등장 인물 4명 제한 — 변수로 하는데,
+  명단을 처음 만들 때 <b style="color:#c98a7a;">랜덤 이벤트 표에 같은 이름을 수백 번</b> 넣게 된다." 목록 효과의 추가는 글자 그대로라 식도 추첨도 없었고,
+  <b style="color:#dbe2ea;">중복 없이 N명</b>은 아예 길이 없었습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  이제 <b style="color:#e0a94a;">[변수] 탭 맨 아래 🎲 후보 풀</b>에 이름을 적어 두고, 규칙·이벤트·액션의 효과에 <b style="color:#e0a94a;">[+ 🎲 추첨]</b>을 둡니다.
+  풀은 한 줄에 하나 — <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">이름 | 가중치 | 그룹</span>(가중치·그룹은 생략 가능),
+  그룹 보정은 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">그룹 | 같이 뽑힐 배수 | 최대 인원</span>.
+  효과 줄은 <b style="color:#dbe2ea;">어디서</b>(풀 또는 목록 변수) · <b style="color:#dbe2ea;">몇 개</b>(숫자 또는 식) · <b style="color:#dbe2ea;">어디로</b>(목록 변수) · <b style="color:#dbe2ea;">대표</b>(첫 당첨을 text/enum 변수에) · <b style="color:#dbe2ea;">빼고</b>(이 목록에 있는 이름은 제외) · <b style="color:#dbe2ea;">난수</b> · <b style="color:#dbe2ea;">덧붙임</b>입니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">어떻게 뽑나 — 강제 묶음이 아니라 확률 보정</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    하나 뽑을 때마다 남은 후보의 가중치를 다시 셉니다. 같은 그룹이 이미 뽑혀 있으면 <b style="color:#dbe2ea;">× 배수</b>, 그 그룹이 최대 인원에 닿으면 <b style="color:#dbe2ea;">0</b>.
+    총 가중치에 비례해 하나 뽑고 후보에서 뺍니다. 배수 1.5면 같은 그룹(경비대·같은 반)이 같이 올 확률이 오르고, 0.5면 흩어집니다.
+    가중치 0은 안 뽑히고, 뽑을 수 있는 게 다 떨어지면 N보다 적게 끝납니다.<br>
+    <b style="color:#dbe2ea;">이름은 풀에 있는 것만, 난수는 엔진이</b> — LLM은 한 글자도 안 낍니다. 첫 당첨(이미 무작위)을 대표 변수에 넣으면 촌장·반장·첫 대상이 됩니다.
+    </p>
+  </div>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">난수 — 효과마다 고정 / 새로</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "가챠에 쓸 거면 변하는 게 좋고, 명단이면 고정이 맞다." 그래서 효과마다 정합니다 — <b style="color:#dbe2ea;">고정</b>은 리롤해도 같은 명단, <b style="color:#dbe2ea;">새로</b>는 리롤마다 다른 명단,
+  비우면 [규칙·이벤트]의 리롤 안정 설정을 따릅니다. 주민 명단은 고정, 오늘 시장에서 마주칠 넷은 새로 — 이런 식으로요.
+  </p>
+
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 14px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">"pools": [ { "id": "npc_pool", "label": "마을 주민 후보",
+  "items": [ { "name": "아린", "weight": 2, "group": "경비대" }, "브란", { "name": "세실", "group": "상인" } ],
+  "groups": { "경비대": { "affinity": 1.5, "max": 2 }, "상인": { "affinity": 0.5 } } } ]
+
+이벤트 (새 채팅에서 한 번만):  when "count(residents) == 0", once
+  효과 { "sample": "npc_pool", "into": "residents", "n": 8, "leader": "mayor", "stable": true }
+
+액션 🏪 시장에 간다:
+  효과 { "sample": "residents", "into": "present", "n": 4, "stable": false }</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">새 채팅에서 한 번만</b> = 이벤트에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">once</span> + 조건 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">count(목록) == 0</span>. 리롤하면 그 턴을 다시 계산하니 "새로"면 명단이 바뀌고 "고정"이면 그대로입니다<br>
+  · <b style="color:#dbe2ea;">장소를 옮기면 그 자리에 넷</b> = 액션 효과에 어디서 → 주민 목록, 어디로 → 지금 자리 목록. 목록 변수도 풀처럼 쓸 수 있습니다(가중치·그룹은 풀에서 이름으로 찾습니다)<br>
+  · <b style="color:#dbe2ea;">죽은 사람·떠난 사람</b>은 "빼고"에 그 목록을. <b style="color:#dbe2ea;">상한</b>은 목록 변수의 최대 항목 수 — 넘는 만큼은 안 뽑습니다<br>
+  · <b style="color:#dbe2ea;">보조 AI가 이 명단을 고쳐야 하면</b> AI 설정 허용에 두고, 아니면 잠그세요. 추첨은 엔진이 하는 일이라 허용과 무관하게 돕니다<br>
+  · 풀은 <b style="color:#dbe2ea;">[변수] 탭에서 줄로</b> 적습니다. 💬 어시스턴트의 패치로는 아직 안 들어가고, JSON을 통째로 넣는 길로는 됩니다(규격서에 실려 있습니다)
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">[스샷: [변수] 탭 🎲 후보 풀 접기와 효과의 🎲 줄(어디서·몇 개·어디로·대표·빼고·난수)]</p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  <b style="color:#dbe2ea;">[제보자 닉네임]</b> 님이 보내 주신 긴 피드백이 설계 그대로입니다 — 풀·중복 없이 N·가중치·그룹 보정·대표 변수·엔진 난수·한 번만. 감사합니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 봇 제작 화면 정리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#a8d5a2;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🎨 편집기</span>
+    <span style="font-size:19px;font-weight:600;">봇 제작 화면 정리 — 덜 난잡하게</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.1 · 1.18.2</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 같은 설명이 다섯 군데 있던 것을 <b style="color:#dbe2ea;">"ⓘ 이 화면은?" 접기 하나</b>와 입력칸 안내문·버튼 툴팁으로. 점선 상자는 전부 뺐습니다<br>
+  · 왼쪽 설정집은 같은 모양의 <b style="color:#dbe2ea;">접기 구역 넷</b>(📚 항목 · 📁 폴더 · 🪪 캐릭터 시트 · 🧩 심코어로 갈 것) — 머리줄에 숫자 요약만, 접은 상태는 편집기를 닫기 전까지 기억<br>
+  · 리수에 있는 폴더 가져오기는 버튼 벽 대신 <b style="color:#dbe2ea;">셀렉트 한 칸 + [가져오기]</b>. 폴더가 스물이 넘어도 두 줄입니다<br>
+  · 내보내기는 바닥 한 줄, <b style="color:#dbe2ea;">되돌리기·비우기는 제목 줄 오른쪽</b>으로(한 막대에 다섯을 두니 둘째 줄로 밀려 어긋나 보였습니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.18.2</span>)<br>
+  · 오른쪽 대화는 모델 선택·캐릭터 정보 포함·토큰 미터를 <b style="color:#dbe2ea;">위쪽 띠 하나</b>로, 로그는 그 아래서 넓게. 봇 제작 층에선 "스키마가 없어요" 배너가 안 뜹니다 — 이 층과 무관하니까요<br>
+  · 버튼 이름과 동작은 그대로입니다
+  </p>
+</div>
+
+<!-- ─────────── ⑥ 수리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 수리</span>
+    <span style="font-size:19px;font-weight:600;">편집기를 닫지 않고 다른 봇으로 옮기면 전 봇 것이 남던 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.16.3 · 1.16.2</span>
+  </div>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 편집기를 띄운 채 다른 캐릭터로 넘어가면 스키마만 갈리고 <b style="color:#dbe2ea;">캐릭터 정보·보낼 것 선택·설정집·대화·작업 내역·카드 접힘</b>은 전 봇 것으로 남았습니다.
+    작업 내역·접힘 기억이 생긴 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.9.7 · 1.9.29</span>부터 있던 구멍입니다. 이제 캐릭터가 바뀌면 <b style="color:#dbe2ea;">편집기를 새로 만듭니다</b> — 전부 새 봇 기준으로 다시 읽습니다<br>
+  · <b style="color:#dbe2ea;">v1.16.0·1.16.1을 미리 받아 보신 분</b> — 리수에서 봇 제작 층이 비어 있던 것(<span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.16.2</span>)은 이 판에서 고쳐졌습니다. 이걸로 다시 임포트하세요
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.18.2 🎲 추첨 효과 · 봇 제작 화면 정리</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 번들 교체는 필요 없습니다</b> — 이번 것은 <b style="color:#dbe2ea;">플러그인만</b> 갈면 끝입니다.
+  얼터헌터 개조판·아틀리에 SimCore판 쓰시는 분도 번들은 그대로 두세요.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다.
+  추첨은 <b style="color:#dbe2ea;">안 만들면 아무 일도 안 일어납니다</b>(없음 = 꺼짐). 봇 제작은 플레이와 무관한 제작 화면이라 세이브를 건드리지 않습니다.<br>
+  <b style="color:#c98a7a;">④ 봇 제작을 쓰실 분께</b> —
+  <b style="color:#dbe2ea;">(1)</b> 설정집은 <b style="color:#dbe2ea;">이 기기에만</b> 남습니다. 카드·번들·세이브에 안 실리니 다른 기기로 옮기려면 JSON을 내려받아 두세요.
+  <b style="color:#dbe2ea;">(2)</b> 로어북은 리수 캐릭터 로어북의 <b style="color:#dbe2ea;">[가져오기]</b>로 넣습니다 — 가져오기는 덧붙임이라 같은 JSON을 두 번 넣으면 둘이 됩니다.
+  <b style="color:#dbe2ea;">(3)</b> 리수에 있는 폴더로 보낸 항목은 <b style="color:#dbe2ea;">같은 캐릭터</b>로 가져오세요.
+  <b style="color:#dbe2ea;">(4)</b> 모델은 메인급을 — 보조 모델로 돌리면 정리 품질이 떨어집니다.<br>
+  <b style="color:#c98a7a;">⑤ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화·외부 접속이 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  이번 것도 전부 <b style="color:#a9b4c2;">"이게 됐으면 좋겠다"는 이야기</b>에서 나왔습니다 — 제안해 주신 분들께 감사합니다.
+  </p>
+</div>
+
+</div>

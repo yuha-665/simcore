@@ -38,17 +38,19 @@ function pickLoseVar(schema) {
 function writerMap(schema) {
   const w = {};
   const add = (id, who) => { if (id) (w[id] = w[id] || new Set()).add(who); };
+  // 효과 한 줄의 쓰기 대상 — set/list + 추첨(into·leader, v1.18.0)
+  const effTargets = (f) => (f && typeof f === 'object' ? [f.set ?? f.list, ...require('./sample').effectTargets(f)].filter(Boolean) : []);
   // expire만 있는 정리 규칙은 쓰기 자리가 아니다 (v1.14.11 — 빼기만 하고 keepOverdue면 아무것도 안 바꾼다)
-  for (const r of (schema.rules?.onTurn || [])) { if (r && r.list && r.add == null && r.remove == null) continue; add(r.set ?? r.list, 'onTurn'); }
-  for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '이벤트');
-  for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
-  for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
-  for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
+  for (const r of (schema.rules?.onTurn || [])) { if (r && r.list && r.add == null && r.remove == null) continue; for (const _w of effTargets(r)) add(_w, 'onTurn'); }
+  for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) for (const _w of effTargets(f)) add(_w, '이벤트');
+  for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) for (const _w of effTargets(f)) add(_w, '랜덤');
+  for (const a of (schema.actions || [])) for (const f of (a.effects || [])) for (const _w of effTargets(f)) add(_w, '액션');
+  for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) for (const _w of effTargets(f)) add(_w, '판정');
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
-    for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
+    for (const c of (e.choices || [])) for (const f of (c.effects || [])) for (const _w of effTargets(f)) add(_w, '선택');
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
   // 보조 갈림길은 보조 AI가 항목을 써야만 걸린다 — 시뮬 밖 (v1.14.11, 전엔 '선택'으로 섞여 '안 움직임' 오탐)
-  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '보조선택');
+  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) for (const _w of effTargets(f)) add(_w, '보조선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   // 채팅 명령(v.cmd) — 유저가 /수위 0 처럼 직접 바꾼다. 시뮬은 못 움직이지만 "바꾸는 곳이 없다"는 거짓이다
   // (v1.13.1 — 베리디아 nsfw_on이 🔴 고정 변수로 오탐. 편성표·달력과 같은 이유로 쓰기 경로에 넣는다)
@@ -66,7 +68,7 @@ function writerMap(schema) {
   // 시나리오(v0.92) — 막 전환의 onEnter도 어엿한 쓰기 경로다. 빠지면 전환 효과만 받는
   // 변수가 "고정 변수"로 오탐된다
   for (const a of (scenarioConfig(schema)?.acts || []))
-    for (const f of (a.onEnter || [])) add(f.set ?? f.list, '시나리오');
+    for (const f of (a.onEnter || [])) for (const _w of effTargets(f)) add(_w, '시나리오');
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
@@ -79,8 +81,8 @@ function writerMap(schema) {
     for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
   }
   // 무대 뒤 단계 효과·전투 결착 효과·상점 거래 (v1.14.11 — 빠져 있어 '고정 변수' 오탐)
-  for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) add(e.set ?? e.list, '무대 뒤');
-  for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) add(e.set ?? e.list, '판정');
+  for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) for (const _w of effTargets(e)) add(_w, '무대 뒤');
+  for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) for (const _w of effTargets(e)) add(_w, '판정');
   for (const sh of require('./shop').shopConfigs(schema)) {
     add(sh.currency, '상점'); add(sh.buyTo, '상점'); add(sh.sellFrom, '상점');
     for (const ex of (Array.isArray(sh.exchange) ? sh.exchange : [])) add(ex?.var, '상점');

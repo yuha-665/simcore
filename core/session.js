@@ -55,7 +55,12 @@ class SimSession {
   }
 
   _rng(index, label) {
-    return this.stableRng ? seededRng(this.chatId, index, label) : makeUnstableRng(this.random);
+    const stable = seededRng(this.chatId, index, label);
+    const free = makeUnstableRng(this.random);
+    const rng = this.stableRng ? stable : free;
+    // 추첨 효과(v1.18.0)의 stable 칸 — 효과마다 "고정(시드)" / "리롤마다 새로(자유)"를 고른다. 둘 다 달아 두면 전역 설정과 무관하게 고를 수 있다
+    rng.stable = stable; rng.free = free;
+    return rng;
   }
 
   /** 채팅 로드/최초 시작. latestOutIndex = 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) */

@@ -29,6 +29,7 @@ const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 �
 const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
 const gaugeMod = require('./gauge');    // 사건 게이지 (v1.14.0) — 랜덤 사건이 작중 시간으로 차는 숨은 게이지로 온다, 옵트인
+const sampleMod = require('./sample');  // 추첨 (v1.18.0) — 후보 풀에서 N개를 중복 없이 목록 변수에, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -536,6 +537,9 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       gaugeMod.applyGaugeEffect(schema, state.vars, rule, lk(), rng);
       continue;
     }
+    // 추첨 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? } — 후보 풀(또는 목록)에서 N개를 중복 없이 목록 변수에.
+    // 이름은 풀에 있는 것만, 난수는 엔진(stable 칸이 고정/새로를 고른다 — 세션이 rng.stable/rng.free를 달아 준다)
+    if (sampleMod.isSampleEffect(rule)) { sampleMod.applySampleEffect(schema, state, rule, lk(), rng, changeLog, source); continue; }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];

@@ -1,10 +1,10 @@
 # SimCore 스키마 레퍼런스
 
-**v1.17.0 기준 (2026-10 전체 점검 반영 — 뒤쪽 버전별 절이 최신).** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
+**v1.18.0 기준 (2026-10 전체 점검 반영 — 뒤쪽 버전별 절이 최신).** 진실의 원천은 `core/validate.js`(검증 규칙 전부) — 모듈 검증은 각 `core/<모듈>.js`가 내보내 validate가 부른다 (fight·secret 꼴).
 
 최상위 키: `simcore`("0.1") · `meta` · `vars` · `derived` · `rules` · `directives` · `actions`
 · `checks` · `suggest` · `updater` · `promptState` · `statusUI` · `setup` · `time` · `calendar`
-· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng`
+· `party` · `assets` · `board`(v0.95) · `messenger`(v1.2) · `shop`·`shops`(v0.96·v1.4) · `questBoard`(v1.7.9) · `scenario` · `liveChoices`(v1.8.0) · **`secrets`**(v1.10.0) · `rerollStableRng` · **`pools`**(v1.18.0 추첨 후보 풀)
 
 - `rerollStableRng` — true/false (기본 true, 리롤해도 같은 눈). 다른 값은 검증 오류
 - **알 수 없는 키 경고 (v1.14.4)** — vars·derived·events·randomEvents·actions·checks·directives·allow(+ choices·grades) 항목에 `validate.js KNOWN_KEYS` 표에 없는 키가 있으면 경고(비차단). 밑줄로 시작하는 키(`_note`)는 메모로 통과. 같은 표가 AI 요청서·어시스턴트의 "필드 사전" 절이 된다 — **엔진에 필드를 추가하면 그 표에 한 줄 같이 적을 것**
@@ -963,6 +963,31 @@ liveChoices: {
 - ⚠ **규격서 크기**: 검증기 원문(`String(validateSchema)`)이 주석째 실린다 — v1.12.0 기준 최대 126.8KB / 상한 128KB. 다음 검증 추가 전에 규격서에서 뺄 것을 찾을 것
 
 ---
+
+## pools — 후보 풀 · 🎲 추첨 효과 (v1.18.0, 옵트인)
+
+설계 `docs/design-추첨.md`. 코어 `core/sample.js`. 발단: 커뮤니티 피드백 "거주지 N명 로스터를 처음 만들 때 가챠풀(랜덤 이벤트 표)에 같은 이름을 수백 번".
+
+최상위 `pools[]` = `{ id, label?, items: [{ name, weight?, group? } | '이름'], groups?: { 그룹: { affinity?, max? } } }`
+- `id` 영문 식별자, **변수·파생 id와 못 겹침**(효과의 sample이 풀인지 목록인지 가르려고). 풀 40·후보 400 상한, 중복 후보 오류, weight는 0 이상(0은 안 뽑힘)
+- `groups` — `affinity`(같은 그룹이 이미 뽑혔을 때 가중치 배수: 1 위면 같이, 아래면 흩어짐) · `max`(그 그룹 상한). 후보가 없는 그룹은 경고
+
+효과 `{ sample, into, n, leader?, exclude?, stable?, append? }` — onTurn·events·randomEvents·actions·choices·grades·시나리오 onEnter 어디든(checkSet)
+
+| 칸 | |
+|---|---|
+| `sample` | 풀 id **또는 list 변수 id** (목록이면 그 항목이 후보 — 가중치·그룹은 풀들에서 이름으로. "로스터 30명 중 지금 자리에 4명") |
+| `into` | 뽑힌 이름이 들어갈 list 변수. `append`가 아니면 통째로 새 명단. `maxItems`를 넘지 않는다 |
+| `n` | 0 이상 정수 또는 식(`count(residents) - 1`, rand 허용) |
+| `leader` | 첫 당첨을 text/enum 변수에 — enum이면 검증이 풀 후보 전부를 enum과 대조 |
+| `exclude` | 그 list 변수의 이름은 안 뽑는다 (떠난 사람·죽은 사람) |
+| `append` | 있는 항목 뒤에 — 이미 있는 이름은 안 뽑는다 |
+| `stable` | `true` 고정(시드, 리롤해도 같은 명단) · `false` 리롤마다 새로 · 없으면 전역 `rerollStableRng`. 세션이 rng에 `.stable`/`.free`를 달아 둔다 |
+
+- 추첨 = 가중 비복원 순차: 하나 뽑을 때마다 남은 후보 가중치 = weight × (같은 그룹이 뽑혔으면 affinity) → max에 닿은 그룹 0. 총 0이면 멈춘다(n보다 적을 수 있다)
+- 이름은 풀에 있는 것만 — 엔진이 쓰고 LLM은 안 낀다. "새 채팅에서 한 번만" = `once: true` + `when: "count(목록) == 0"`. 리롤하면 once도 다시 돈다
+- 패치 병합 미지원(pools는 [변수] 탭 🎲 후보 풀) · 변수 이름 바꾸기는 sample·into·leader·exclude·n을 따라간다 · 진단 writerMap은 into·leader를 쓰기 경로로
+- 다른 효과 키(set·list·front·gauge·checkpoint)와 한 줄에 못 쓴다. KNOWN_KEYS `pools` 행이 AI 필드 사전에 실린다
 
 ## 표현식 문법
 

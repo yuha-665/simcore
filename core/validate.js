@@ -6,6 +6,7 @@ const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec
 const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
 const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
+const sampleMod = require('./sample'); // 추첨 (v1.18.0) — 후보 풀(pools)·추첨 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -22,7 +23,7 @@ const KNOWN_KEYS = {
     ['enum', '선택지 배열'], ['maxLength', 'text 글자 상한, 기본 200'], ['maxItems', ''], ['itemMaxLength', 'list 상한'], ['format', '표시 형식 {v}'],
     ['desc', 'AI용 설명 — 보조 계약표에 실림'], ['cmd', '채팅 명령 이름'], ['group', '편집기 묶음'], ['keep', '🔒 보호']],
   derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
-  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
+  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire} | {sample,into,n,leader?,exclude?,stable?,append?}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
     ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
     ['keep', '🔒']],
   randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
@@ -37,6 +38,8 @@ const KNOWN_KEYS = {
     ['mentions', '낱말 게이트'], ['whenArmed', '액션 잠금'], ['when', '조건 잠금'], ['keep', '🔒']],
   choices: [['id', '(선택) 표식'], ['label', ''], ['when', '선택지 조건'], ['effects', ''], ['inject', ''], ['check', '판정 id']],
   grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
+  // 추첨 후보 풀 (v1.18.0) — 최상위 pools[]. 검증은 sample.validatePools(알 수 없는 키도 거기서), 이 줄은 AI 필드 사전용
+  pools: [['id', ''], ['label', '편집기 이름'], ['items', '[{name,weight?,group?}] 또는 이름 문자열'], ['groups', '{ 그룹: { affinity, max } }']],
 };
 const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
 // 아는 이름이지만 그 섹션에선 안 읽는 키 (v1.14.5) — 점검에서 드러남: 조건 이벤트에 cooldown을 표에 넣었는데 엔진은
@@ -45,7 +48,7 @@ const KNOWN_BUT_IGNORED = {
   events: { cooldown: '조건 이벤트엔 쿨다운이 없습니다 — 조건이 참인 동안 매 턴 발동합니다. 반복을 막으려면 once(일회성)나 래치 짝(경보 변수)을 쓰세요' },
 };
 const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
-  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
+  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급', pools: '후보 풀' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -449,7 +452,17 @@ function validateSchema(schema) {
     }
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
+  // 추첨 (v1.18.0) — 풀 id·풀별 이름·변수 정의 (checkSet의 sample 분기가 쓴다)
+  const poolIds = new Set(sampleMod.poolsConfig(schema).map((x) => x.id));
+  const poolNamesById = sampleMod.poolNames(schema);
+  const varDefs = new Map(vars.filter((v) => v && typeof v === 'object').map((v) => [v.id, v]));
   const checkSet = (rule, p, exprIds = allIds) => {
+    // 추첨 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? }
+    if (rule && typeof rule === 'object' && rule.sample !== undefined) {
+      sampleMod.validateSampleEffect(rule, p, { err, warn, listIds, poolIds, poolNames: poolNamesById, varDefs,
+        checkExpr: (src, pp) => checkExpr(src, pp, exprIds, err, { allowRand: true }) });
+      return;
+    }
     // 체크포인트 (v1.11.0)
     if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
       if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
@@ -2022,6 +2035,9 @@ function validateSchema(schema) {
       });
     }
   }
+
+  // ── pools (추첨 후보 풀 v1.18.0) — 풀 id·후보·그룹 보정. 효과 쪽 참조는 checkSet의 sample 분기
+  sampleMod.validatePools(schema, { err, warn, ids: allIds });
 
   return { ok: errors.length === 0, errors, warnings };
 }

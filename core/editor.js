@@ -679,6 +679,9 @@ const CSS = `
 .sce .sce-bible-folder-chip .sce-btn { padding:0 6px; min-height:0; line-height:1.6; }
 .sce .sce-bible-sheet-format, .sce .sce-bible-source { min-height:70px !important; font-family:inherit; line-height:1.5; }
 .sce .sce-bible-sub { font-weight:700; font-size:12px; color:var(--sce-muted); margin-top:4px; }
+.sce .sce-pool-card { border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; margin:6px 0; display:flex; flex-direction:column; gap:5px; }
+.sce .sce-pool-items, .sce .sce-pool-groups { min-height:70px !important; font-family:inherit; line-height:1.5; }
+.sce .sce-effect-sample { flex-wrap:wrap; }
 /* 작업 내역 (v1.9.7) */
 .sce .sce-worklog { margin:10px 0; }
 .sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
@@ -3874,6 +3877,11 @@ const SCHEMA_HARD_RULES = [
   '- `enum`은 `enum` 배열이 2개 이상이어야 하고 `init`이 그 목록 안에 있어야 합니다.',
   '- `int`/`float`은 `init`이 숫자여야 하고 `min` ≤ `init` ≤ `max` 여야 합니다.',
   '- `list`의 `init`은 문자열 배열입니다. **수식으로 대입할 수 없고** `{ "list": "아이디", "add": [...], "remove": [...] }` 형태로만 바꿉니다.',
+  '- 목록을 **무작위로 채우려면** 추첨 효과 `{ "sample": "풀id 또는 목록 변수", "into": "목록 변수", "n": 4 }`를 씁니다 (v1.18.0). 후보는 최상위 `pools`: '
+  + '`[{ "id": "npc_pool", "items": [{ "name": "아린", "weight": 2, "group": "경비대" }, "브란"], "groups": { "경비대": { "affinity": 1.5, "max": 2 } } }]` — '
+  + '중복 없이 뽑고, 이름은 풀에 있는 것만, 난수는 엔진이 굴립니다. 선택: `leader`(첫 당첨을 text/enum 변수에), `exclude`(그 목록의 이름은 안 뽑음), '
+  + '`append`(덧붙임 — 아니면 통째 교체), `stable`(true 고정 / false 리롤마다 새로 / 없으면 전역). 주민·학급·길드·등장인물 후보처럼 '
+  + '"이 중에서 N명"은 보조 AI에게 이름을 지어내게 하지 말고 이걸 쓰세요. 한 번만 뽑으려면 `once: true` 이벤트에 `"when": "count(목록) == 0"`.',
   '- `derived`는 계산 전용입니다. 효과의 `set` 대상이 될 수 없습니다.',
   '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다. '
   + '(예외: 편성표 `party`가 있으면 `deployed` — 편성 슬롯에 앉은 이름들의 읽기 전용 목록 — 를 쓸 수 있습니다)',
@@ -4915,6 +4923,11 @@ function varReferenceIndex(schema) {
     add(f.set, where, what); add(f.list, where, what);
     ex(f.expr, where, what); ex(f.expire, where, what);
     if (f.gauge !== undefined) ex(String(f.gauge), where, what); // 사건 게이지 개입 (v1.14.0)
+    if (f.sample !== undefined) {   // 추첨 (v1.18.0) — sample은 풀 id일 수 있어 변수일 때만
+      if ((schema.vars || []).some((v) => v && v.id === f.sample)) add(f.sample, where, what);
+      add(f.into, where, what); add(f.leader, where, what); add(f.exclude, where, what);
+      if (typeof f.n === 'string') ex(f.n, where, what);
+    }
   });
   const evBlock = (e, where, what) => {
     ex(e.when, where, what); fx(e.effects, where, what);
@@ -5080,8 +5093,9 @@ function planVarPurge(schema0, rootIds) {
     if (!f || typeof f !== 'object') return true;
     const hit = doomed.has(f.set) || doomed.has(f.list) || exprHits(f.expr, doomed) || exprHits(f.expire, doomed)
       || (f.front !== undefined && typeof f.add === 'string' && exprHits(f.add, doomed))   // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
-      || (f.gauge !== undefined && exprHits(String(f.gauge), doomed));                      // 사건 게이지 개입 { gauge: 식 }
-    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list ?? (f.front !== undefined ? '무대 뒤 ' + f.front : f.gauge !== undefined ? '게이지' : '?')})`);
+      || (f.gauge !== undefined && exprHits(String(f.gauge), doomed))                       // 사건 게이지 개입 { gauge: 식 }
+      || (f.sample !== undefined && (doomed.has(f.sample) || doomed.has(f.into) || doomed.has(f.leader) || doomed.has(f.exclude) || (typeof f.n === 'string' && exprHits(f.n, doomed))));   // 추첨 (v1.18.0)
+    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list ?? (f.front !== undefined ? '무대 뒤 ' + f.front : f.gauge !== undefined ? '게이지' : f.sample !== undefined ? '추첨 → ' + f.into : '?')})`);
     return !hit;
   });
 
@@ -6643,6 +6657,92 @@ function gaugeEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
     gripEl);
 }
 
+// 추첨 줄 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? } — 후보 풀(또는 목록)에서 N개를 중복 없이 목록 변수에.
+// 커뮤니티 피드백: "거주지 N명 로스터를 처음 만들 때 가챠풀에 같은 이름을 수백 번" — 목록 변수가 있는 봇이면 추가 버튼(풀이 없어도 목록→목록은 된다)
+const poolsOf = (schema) => (Array.isArray(schema.pools) ? schema.pools : []).filter((p) => p && typeof p.id === 'string' && p.id);
+const STABLE_OPTS = [['', '난수: 전역 따름'], ['true', '고정 — 리롤해도 같은 명단'], ['false', '리롤마다 새로']];
+function sampleEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
+  const listVars = schema.vars.filter((v) => v.type === 'list');
+  const srcOpts = [...poolsOf(schema).map((p) => [p.id, `🎲 풀: ${p.label || p.id}`]), ...listVars.map((v) => [v.id, `📜 목록: ${v.label ?? v.id} (${v.id})`])];
+  const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+  const leadOpts = [['', '(대표 없음)'], ...schema.vars.filter((v) => v.type === 'text' || v.type === 'enum').map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])];
+  const wrap = h('div', { class: `${cls} sce-effect-sample`, title: '후보 풀에서 N개를 중복 없이 뽑아 목록 변수에 넣는다 — 이름은 풀에 있는 것만, 난수는 엔진' });
+  wrap.appendChild(h('span', {}, '🎲'));
+  wrap.appendChild(pair('어디서', bindSelect(ef.sample, srcOpts.length ? srcOpts : [['', '(풀·목록 없음)']], (v) => { ef.sample = v; rerender(); }), '후보 풀([변수] 탭 🎲 후보 풀) 또는 목록 변수'));
+  wrap.appendChild(pair('몇 개', bindInput(ef.n ?? '', (x) => { const t = x.trim(); ef.n = /^\d+$/.test(t) ? Number(t) : t; rerender(); }, { cls: 'sce-w-s', ph: '4' }), '숫자 또는 식 (예: 4, count(residents) - 1)'));
+  wrap.appendChild(pair('어디로', bindSelect(ef.into, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.into = v; rerender(); }), '뽑힌 이름이 들어갈 목록 변수 — 덧붙임이 아니면 통째로 새 명단'));
+  wrap.appendChild(pair('대표', bindSelect(ef.leader ?? '', leadOpts, (v) => { if (v) ef.leader = v; else delete ef.leader; rerender(); }), '첫 당첨 이름을 넣을 text/enum 변수 — 리더·첫 대상'));
+  wrap.appendChild(pair('빼고', bindSelect(ef.exclude ?? '', [['', '(없음)'], ...listOpts], (v) => { if (v) ef.exclude = v; else delete ef.exclude; rerender(); }), '이 목록에 있는 이름은 안 뽑는다'));
+  wrap.appendChild(pair('난수', bindSelect(ef.stable === true ? 'true' : ef.stable === false ? 'false' : '', STABLE_OPTS, (v) => { if (v === 'true') ef.stable = true; else if (v === 'false') ef.stable = false; else delete ef.stable; rerender(); }), '로스터처럼 한 번 정해지면 그대로면 고정, 가챠처럼 다시 뽑고 싶으면 리롤마다 새로. 비우면 [규칙·이벤트] 리롤 안정 설정을 따른다'));
+  wrap.appendChild(bindCheck(!!ef.append, (x) => { if (x) ef.append = true; else delete ef.append; rerender(); }, '덧붙임 (있는 이름은 안 뽑고 뒤에)'));
+  wrap.appendChild(gripEl);
+  return wrap;
+}
+
+// 🎲 후보 풀 편집 (v1.18.0) — [변수] 탭 맨 아래. 후보 줄 = "이름 | 가중치 | 그룹"(가중치·그룹 생략 가능), 그룹 줄 = "그룹 | 같이 뽑힐 배수 | 최대 인원"
+let poolsFoldOpen = false;
+const poolItemLine = (it) => {
+  if (typeof it === 'string') return it;
+  const name = String(it?.name ?? ''); const w = it?.weight != null ? String(it.weight) : ''; const g = it?.group ? String(it.group) : '';
+  if (g) return `${name} | ${w || '1'} | ${g}`;
+  return w && w !== '1' ? `${name} | ${w}` : name;
+};
+const parsePoolItems = (text) => String(text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+  const [name, w, g] = l.split('|').map((x) => x.trim());
+  const it = { name };
+  if (w !== undefined && w !== '' && Number.isFinite(Number(w))) it.weight = Number(w);
+  if (g) it.group = g;
+  return it;
+});
+const poolGroupLines = (groups) => Object.entries(groups && typeof groups === 'object' ? groups : {}).map(([g, c]) => `${g} | ${c?.affinity ?? ''} | ${c?.max ?? ''}`).join('\n');
+const parsePoolGroups = (text) => {
+  const out = {};
+  for (const l of String(text).split('\n').map((x) => x.trim()).filter(Boolean)) {
+    const [g, a, m] = l.split('|').map((x) => x.trim());
+    if (!g) continue;
+    const cfg = {};
+    if (a !== undefined && a !== '' && Number.isFinite(Number(a))) cfg.affinity = Number(a);
+    if (m !== undefined && m !== '' && Number.isFinite(Number(m))) cfg.max = Math.floor(Number(m));
+    out[g] = cfg;
+  }
+  return Object.keys(out).length ? out : undefined;
+};
+function poolsSection(schema, rerender) {
+  const pools = poolsOf(schema);
+  const det = h('details', { class: 'sce-fold sce-pools' });
+  det.open = poolsFoldOpen; det.addEventListener('toggle', () => { poolsFoldOpen = det.open; });
+  det.appendChild(h('summary', {}, `🎲 후보 풀 (${pools.length}) — 추첨 효과가 뽑는 이름 목록`));
+  det.appendChild(h('div', { class: 'sce-hint' },
+    '주민·학급·길드·등장인물 후보처럼 "이 중에서 N명"을 뽑을 이름 목록이에요. 규칙·이벤트·액션의 효과에 [+ 🎲 추첨]을 두면 여기서 중복 없이 뽑아 목록 변수에 넣어요 — '
+    + '이름은 풀에 있는 것만, 난수는 엔진이. 한 줄에 하나: 이름 | 가중치 | 그룹 (가중치·그룹은 생략 가능). 그룹 보정은 "그룹 | 같이 뽑힐 배수 | 최대 인원" — 1보다 큰 배수는 '
+    + '같은 그룹이 같이 뽑히기 쉽게, 작은 배수는 어렵게, 최대 인원은 상한이에요. 강제 묶음이 아니라 확률 보정이에요.'));
+  pools.forEach((p, i) => {
+    const card = h('div', { class: 'sce-pool-card' });
+    const itemsArea = h('textarea', { class: 'sce-pool-items', 'aria-label': `풀 ${p.id} 후보`, placeholder: '아린 | 2 | 경비대\n브란\n세실 | 1 | 상인' });
+    itemsArea.value = (Array.isArray(p.items) ? p.items : []).map(poolItemLine).join('\n');
+    itemsArea.onchange = () => { p.items = parsePoolItems(itemsArea.value); rerender(); };
+    const groupsArea = h('textarea', { class: 'sce-pool-groups', 'aria-label': `풀 ${p.id} 그룹`, placeholder: '경비대 | 1.5 | 2\n상인 | 0.5 |' });
+    groupsArea.value = poolGroupLines(p.groups);
+    groupsArea.onchange = () => { const g = parsePoolGroups(groupsArea.value); if (g) p.groups = g; else delete p.groups; rerender(); };
+    card.appendChild(h('div', { class: 'sce-row' },
+      pair('풀 ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: 'residents_pool' }), '영문 식별자 — 효과의 "어디서"에 뜬다'),
+      pair('이름', bindInput(p.label ?? '', (x) => { if (x.trim()) p.label = x.trim(); else delete p.label; rerender(); }, { cls: 'sce-w-m', ph: '마을 주민 후보' })),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, `후보 ${(Array.isArray(p.items) ? p.items : []).length}`),
+      h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { schema.pools.splice(i, 1); if (!schema.pools.length) delete schema.pools; rerender(); } }, '✕ 풀 지우기')));
+    card.appendChild(h('div', { class: 'sce-hint' }, '후보 — 한 줄에 하나 (이름 | 가중치 | 그룹)'));
+    card.appendChild(itemsArea);
+    card.appendChild(h('div', { class: 'sce-hint' }, '그룹 보정 — 한 줄에 하나 (그룹 | 같이 뽑힐 배수 | 최대 인원). 비우면 보정 없음'));
+    card.appendChild(groupsArea);
+    det.appendChild(card);
+  });
+  det.appendChild(h('div', { class: 'sce-row' }, h('button', { class: 'sce-btn sce-add', onclick: () => {
+    if (!Array.isArray(schema.pools)) schema.pools = [];
+    let n = schema.pools.length + 1; while (schema.pools.some((x) => x && x.id === `pool${n}`)) n++;
+    schema.pools.push({ id: `pool${n}`, items: [] }); poolsFoldOpen = true; rerender();
+  } }, '+ 후보 풀 추가')));
+  return det;
+}
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -6653,6 +6753,7 @@ function effectRows(schema, effects, rerender) {
     if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.gauge !== undefined) { wrap.appendChild(gaugeEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.sample !== undefined) { wrap.appendChild(sampleEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -6683,6 +6784,11 @@ function effectRows(schema, effects, rerender) {
       effects.push({ list: listVars[0].id, add: [], remove: [] });
       rerender();
     } }, '+ 아이템 효과'));
+    // 추첨 (v1.18.0) — 풀이 없어도 목록에서 목록으로 뽑을 수 있다
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', title: '후보 풀에서 N개를 중복 없이 목록 변수에', onclick: () => {
+      effects.push({ sample: poolsOf(schema)[0]?.id ?? listVars[0].id, into: listVars[0].id, n: 4 });
+      rerender();
+    } }, '+ 🎲 추첨'));
   }
   if (checkpointOn(schema)) {
     btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
@@ -7471,6 +7577,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     });
     groupedAppend(derivedList, schema.derived, derivedCards);
     wrap.appendChild(derivedList);
+    wrap.appendChild(poolsSection(schema, rerender));   // 🎲 후보 풀 (v1.18.0)
     return wrap;
   }
 
@@ -8809,6 +8916,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.gauge !== undefined) { box.appendChild(gaugeEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.sample !== undefined) { box.appendChild(sampleEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -8866,6 +8974,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           },
         }, '+ 아이템 효과'));
+        // 추첨 (v1.18.0)
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1', title: '후보 풀에서 N개를 중복 없이 목록 변수에',
+          onclick: () => { effects.push({ sample: poolsOf(schema)[0]?.id ?? listVars[0].id, into: listVars[0].id, n: 4 }); rerender(); },
+        }, '+ 🎲 추첨'));
       }
       if (checkpointOn(schema)) {
         btnRow.appendChild(h('button', {
@@ -13299,6 +13412,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
       if (e.gauge !== undefined) return `사건 게이지 ${String(e.gauge)}`;
+      if (e.sample !== undefined) return `추첨 ${e.sample} → ${e.into} ×${String(e.n ?? '')}${e.leader ? ` (대표 ${e.leader})` : ''}${e.append ? ' 덧붙임' : ''}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];

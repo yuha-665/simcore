@@ -11,6 +11,8 @@ const { MapBackend } = require('../core/store');
 const { renderStatusHtml, scopeCss, buildStatusCss } = require('../core/render');
 const FIXTURE = require('./fixture-estate');
 const bibleMod = require('../core/bible');
+const sampleMod = require('../core/sample');
+const rngMod = require('../core/rng');
 
 // 큐 기반 하네스 — async 테스트를 순차 실행
 const queue = [];
@@ -1627,6 +1629,58 @@ test('원문·시트 형식(v1.17.0) — 수정안 밖, 사용자 블록은 다�
   eq(ub.source.on, true); eq(ub.source.truncated, false);
   eq(bibleMod.bibleUserBlocks(bibleMod.normalizeBible({ source: '원문', sourceOn: false }), '').lines.length, 0);
   eq(bibleMod.bibleUserBlocks(bibleMod.normalizeBible({ source: 'x'.repeat(60000) }), '', 1024).source.truncated, true);
+});
+
+// ═══════════════════════ 추첨 효과 (v1.18.0, core/sample) ═══════════════════════
+section('추첨 효과 (core/sample)');
+
+test('추첨 — 중복 없이 n개, 가중치 0은 안 뽑힘, 같은 시드면 같은 명단, 모자라면 있는 만큼', () => {
+  const cands = [{ name: 'a', weight: 1 }, { name: 'b', weight: 1 }, { name: 'c', weight: 0 }, { name: 'd', weight: 5 }];
+  const r1 = sampleMod.drawSample(cands, 3, {}, rngMod.seededRng('c', 1, 's')), r2 = sampleMod.drawSample(cands, 3, {}, rngMod.seededRng('c', 1, 's'));
+  deep(r1, r2); eq(r1.length, 3); eq(new Set(r1).size, 3); eq(r1.includes('c'), false);
+  eq(sampleMod.drawSample(cands, 10, {}, rngMod.seededRng('c', 2, 's')).length, 3);
+});
+
+test('추첨 — 그룹 max 상한, affinity로 같은 그룹이 같이(>1)·흩어짐(<1)', () => {
+  const grp = [{ name: 'g1', group: 'g' }, { name: 'g2', group: 'g' }, { name: 'g3', group: 'g' }, { name: 'h1', group: 'h' }, { name: 'h2', group: 'h' }];
+  for (let i = 0; i < 30; i++) { const r = sampleMod.drawSample(grp, 4, { g: { max: 1 } }, rngMod.seededRng('m', i, 's')); eq(r.filter((x) => x[0] === 'g').length <= 1, true); eq(r.length, 3); }
+  let together = 0, apart = 0;
+  for (let i = 0; i < 200; i++) {
+    if (sampleMod.drawSample(grp, 2, { g: { affinity: 100 }, h: { affinity: 100 } }, rngMod.seededRng('a', i, 's')).map((x) => x[0]).join('') .match(/^(.)\1$/)) together++;
+    if (!sampleMod.drawSample(grp, 2, { g: { affinity: 0.01 }, h: { affinity: 0.01 } }, rngMod.seededRng('b', i, 's')).map((x) => x[0]).join('').match(/^(.)\1$/)) apart++;
+  }
+  eq(together > 180, true); eq(apart > 180, true);
+});
+
+test('추첨 효과 — 풀→목록(leader·exclude·maxItems), 목록 변수가 후보, append, stable 고르기', () => {
+  const schema = { vars: [{ id: 'res', type: 'list', init: [], maxItems: 3 }, { id: 'here', type: 'list', init: [] }, { id: 'ban', type: 'list', init: [] }, { id: 'lead', type: 'text', init: '' }, { id: 'pick', type: 'enum', enum: ['a', 'b', 'c', 'd'], init: 'a' }],
+    pools: [{ id: 'npc', items: ['a', 'b', { name: 'c', weight: 2, group: 'x' }, { name: 'd', group: 'x' }], groups: { x: { max: 1 } } }] };
+  const state = { vars: { res: [], here: [], ban: ['a'], lead: '', pick: 'a' } };
+  const lk = (n) => state.vars[n]; const log = [];
+  sampleMod.applySampleEffect(schema, state, { sample: 'npc', into: 'res', n: 10, leader: 'lead', exclude: 'ban' }, lk, rngMod.seededRng('e', 1, 's'), log, 'test');
+  // 후보 b·c·d (a는 exclude) 중 그룹 x(c·d)는 최대 1 → b + (c|d) = 2명에서 멈춘다 (n·maxItems보다 그룹 상한이 먼저)
+  eq(state.vars.res.length, 2); eq(state.vars.res.includes('a'), false); eq(state.vars.lead, state.vars.res[0]); eq(log.length, 2);
+  eq(state.vars.res.filter((x) => x === 'c' || x === 'd').length, 1);
+  sampleMod.applySampleEffect(schema, state, { sample: 'res', into: 'here', n: 'count(res) - 1' }, lk, rngMod.seededRng('e', 2, 's'), log, 'test');
+  eq(state.vars.here.length, 1); eq(state.vars.here.every((x) => state.vars.res.includes(x)), true);
+  state.vars.here = ['zz'];
+  sampleMod.applySampleEffect(schema, state, { sample: 'npc', into: 'here', n: 1, append: true, leader: 'pick' }, lk, rngMod.seededRng('e', 3, 's'), log, 'test');
+  eq(state.vars.here.length, 2); eq(state.vars.here[0], 'zz'); eq(state.vars.pick, state.vars.here[1]);
+  const base = () => 0.1, st = () => 0.2, fr = () => 0.3; base.stable = st; base.free = fr; const bare = () => 0.5;
+  eq(sampleMod.pickRng(base, true), st); eq(sampleMod.pickRng(base, false), fr); eq(sampleMod.pickRng(base, undefined), base); eq(sampleMod.pickRng(bare, false), bare);
+  eq(sampleMod.effectTargets({ sample: 'npc', into: 'res', leader: 'lead' }).join(','), 'res,lead'); eq(sampleMod.effectTargets({ set: 'x' }).length, 0);
+});
+
+test('추첨 검증 — 풀·효과 오류와 경고', () => {
+  const base = () => ({ simcore: '0.1', meta: { name: 't' }, vars: [{ id: 'res', type: 'list', init: [] }, { id: 'g', type: 'int', init: 0 }, { id: 'e', type: 'enum', enum: ['a', 'zz'], init: 'a' }],
+    pools: [{ id: 'p', items: ['a', 'b'] }], rules: { events: [{ id: 'x', when: 'count(res) == 0', once: true, effects: [{ sample: 'p', into: 'res', n: 2 }] }] }, statusUI: { mode: 'auto', groups: [] } });
+  eq(validateSchema(base()).ok, true);
+  let s = base(); s.rules.events[0].effects = [{ sample: 'zz', into: 'g', stable: 1 }];
+  let r = validateSchema(s); eq(r.ok, false); eq(['.sample', '.into', '.n', '.stable'].every((k) => r.errors.some((x) => x.path.endsWith(k))), true);
+  s = base(); s.rules.events[0].effects[0].leader = 'e'; r = validateSchema(s); eq(r.errors.some((x) => x.msg.includes("'e'에 풀 'p'의 후보가 없음")), true);
+  s = base(); s.pools[0].id = 'g'; eq(validateSchema(s).errors.some((x) => x.msg.includes('겹칩니다')), true);
+  s = base(); s.pools[0].items.push('a'); eq(validateSchema(s).errors.some((x) => x.msg.includes("중복 후보: 'a'")), true);
+  s = base(); s.pools = 'x'; eq(validateSchema(s).errors.some((x) => x.path === '$.pools'), true);
 });
 
 (async () => {

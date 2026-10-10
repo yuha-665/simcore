@@ -38,6 +38,7 @@ const UNSUPPORTED_HINT = {
   checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋] 가져오기', party: '[편성표] 탭',
   calendar: '[달력] 탭', board: '[게시판] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
   liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
+  pools: '[변수] 탭 🎲 후보 풀 (v1.18.0)',
 };
 const UNSUPPORTED = new Set(Object.keys(UNSUPPORTED_HINT));
 
@@ -370,6 +371,10 @@ function renameEffects(effects, from, to) {
     if (typeof r.expire === 'string') r.expire = renameVar(r.expire, from, to);
     if (r.front !== undefined && typeof r.add === 'string') r.add = renameVar(r.add, from, to); // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
     if (typeof r.gauge === 'string') r.gauge = renameVar(r.gauge, from, to);                     // 사건 게이지 개입 { gauge: 식 }
+    if (r.sample !== undefined) {   // 추첨 (v1.18.0) — 목록 변수 참조 셋 + n 식 (sample이 풀 id면 변수 이름과 안 겹친다 — 검증이 막는다)
+      for (const k of ['sample', 'into', 'leader', 'exclude']) if (r[k] === from) r[k] = to;
+      if (typeof r.n === 'string') r.n = renameVar(r.n, from, to);
+    }
   }
 }
 
@@ -562,6 +567,7 @@ const DIFF_AREAS = [
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
   ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
   ['fronts', (s) => s?.fronts, '무대 뒤(fronts)'],
+  ['pools', (s) => s?.pools, '후보 풀(pools)'],
 ];
 const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
 function diffSchemas(a, b) {

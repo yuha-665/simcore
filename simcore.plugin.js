@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.17.0
-//@display-name SimCore (시뮬 엔진) v1.17.0 봇 제작 — 로어북 폴더 · 시트 형식 · 원문 적재
+//@version 1.18.0
+//@display-name SimCore (시뮬 엔진) v1.18.0 🎲 추첨 효과 — 후보 풀에서 N명 뽑기 · 리롤 고정/새로
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,23 +10,20 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.17.0 ───────────────────────────────────────────────
-// **봇 제작 2차 — 📁 로어북 폴더 · 🪪 시트 형식(OOC 명령어) · 📥 캐릭 설정집 원문 적재.** 유저 제안(2026-10-10, v1.16.3 실기 "흠 잘 불러오네" 뒤):
-// "캐릭터 시트 — 원하는 시트 OOC 명령어를 붙여 넣는 곳을 만들고 그 아래 캐릭 설정집 적재를 만들고. 로어북이 그룹 기능도 지원하니 어떤 그룹을
-// 만들지, 어떤 그룹에 로어북을 생성할지 정할 수 있으면 봇 제작이 더 수월할 것".
-// - [코어 bible] 설정집에 folders[{ id, name, key? }] + sections[].folder. 리수 폴더(포켓리스 1.8.1 database.svelte.ts) = mode:'folder' 항목
-//   (key 머리 '\uf000folder:' + uuid) + 자식의 folder(=그 key). importLoreBook은 data를 그대로 push하니 JSON에 폴더째 실린다 —
-//   compileLorebook이 쓰이는 폴더만 폴더 항목으로 만들고(빈 폴더 X) 자식에 folder를 적는다. key가 있는 폴더(리수에 이미 있는 것)는 항목을 만들지
-//   않고 자식만 그 key로 — 같은 캐릭터로 가져올 때 그 폴더 안으로. 새 폴더 key는 내보낼 때마다 새 uuid(가져오기가 덧붙임이라 두 번 넣으면 둘).
-// - [편집기] 📁 로어북 폴더 칸(설정집 머리 아래): 칩(이름·항목 수·리수에 있음·✕) · 새 폴더 만들기 · "리수에 있는 폴더" [+ 이름] 버튼(캐릭터 정보의
-//   folders에서). 카드마다 폴더 고르기(폴더가 있을 때만). 폴더가 있으면 카드 묶음이 종류별 → 폴더별. 📚 보낼 것 고르기 목록엔 "폴더 › 이름".
-// - [규약] folders(id 덮어쓰기, key는 AI가 못 정함)·sections[].folder(없는 폴더 id 거부). 폴더가 있으면 새 항목은 알맞은 폴더에, 없으면 폴더를 억지로 안 만든다.
-// - [편집기] 🪪 캐릭터 시트 접기 = 시트 형식(OOC 명령어 — 기기 공통 prefs sim:bible:prefs, 모든 봇이 같이 씀) → 📥 캐릭 설정집 적재(봇별 설정집
-//   source, 동봉 체크 + KB, 48KB 위는 앞부분만 + ⚠) → [🪪 시트 써 달라기](요청문을 입력칸에) → 결과(이름·desc·first). 시트 형식·원문은 AI 수정안으로
-//   못 바꾼다(UPDATE_KEYS 밖). 프롬프트는 설정집 다이제스트 뒤에 '## 캐릭터 시트 형식'·'## 적재한 원문' 블록(bibleUserBlocks).
-// - [어댑터] getBotContextForEditor: folders[{ key, name }] + lore[].folder(폴더 이름). 폴더 항목(mode:'folder')은 lore 목록에서 뺀다.
-//   ai.loadBiblePrefs/saveBiblePrefs — pluginStorage sim:bible:prefs(캐릭터 무관).
-// - 여전히 캐릭터엔 아무것도 안 쓴다(1단계). 2단계(허가 체크·항목 단위 적용)는 그대로 미구현.
+// ── v1.18.0 ───────────────────────────────────────────────
+// **🎲 추첨 효과 — 후보 풀에서 N개를 중복 없이 목록 변수에.** 커뮤니티 피드백(2026-10-10, 유저 전달): "일상용 봇에 NPC 목록·캐릭터 풀을 두고 거주지
+// N명·장소 이동 때 몇 명·등장 인물 4명 제한을 변수로 하는데, 로스터를 처음 만들 때 가챠풀(랜덤 이벤트 표)에 같은 이름을 수백 번 넣게 된다 —
+// 목록 랜덤 샘플링·가중치·그룹 보정·대표 변수·엔진 RNG·한 번만". 설계 docs/design-추첨.md. 유저 결정: 노브는 affinity·max 둘, 난수는 효과마다 고정/새로.
+// - [코어] core/sample.js — 최상위 pools[{ id, label?, items[{ name, weight?, group? } | '이름'], groups{ 그룹: { affinity, max } } }](스키마 = 안 변하는 것)
+//   + 효과 { sample: 풀id|목록변수, into: 목록변수, n: 수|식, leader?: text/enum, exclude?: 목록, append?, stable? }. 가중 비복원 순차 추첨 —
+//   하나 뽑을 때마다 같은 그룹 × affinity, max에 닿으면 0(확률 보정, 강제 묶음 아님). 이름은 풀에 있는 것만, LLM은 안 낀다. into.maxItems 존중.
+// - [난수] stable true = 고정(시드, 리롤해도 같은 명단) / false = 리롤마다 새로 / 없으면 전역 rerollStableRng. 세션이 rng에 .stable/.free를 둘 다 달아
+//   효과마다 고른다 — "가챠면 변하는 게, 로스터면 고정이 맞다"(유저). 진단 시뮬은 받은 rng 그대로(결정적).
+// - [검증] checkSet의 sample 분기(없는 풀·목록 아님·n·leader 타입·enum 대조·exclude·stable·같이 못 쓰는 키) + validatePools(id 규칙·변수와 겹침·중복 후보·
+//   가중치·그룹). KNOWN_KEYS에 pools 행 — AI 필드 사전·규격서에 실린다.
+// - [편집기] 두 효과 편집기에 🎲 줄(어디서·몇 개·어디로·대표·빼고·난수 셋 중 하나·덧붙임) + [+ 🎲 추첨](목록 변수가 있으면). [변수] 탭 맨 아래
+//   🎲 후보 풀 접기(줄 편집 "이름 | 가중치 | 그룹", "그룹 | 배수 | 최대"). 변수 역색인·삭제 영향·카탈로그·패치 이름 바꾸기·진단 쓰기 경로에 반영.
+// - 한 번만 뽑기 = once 이벤트 + when "count(목록) == 0". 장소 이동 때 "지금 자리에 4명"은 액션 효과에 sample: 로스터 목록.
 
 
 const SimCore = (() => {
@@ -1065,6 +1062,7 @@ const secretMod = require('./secret'); // 비밀 (v1.10.0) — 예약 이름 sec
 const cpMod = require('./checkpoint'); // 체크포인트 (v1.11.0) — 되감기 효과·칸 짝 검증
 const frontMod = require('./front'); // 무대 뒤 (v1.12.0) — 예약 이름 fr_·frs_·문턱·개입 효과 검증
 const gaugeMod = require('./gauge'); // 사건 게이지 (v1.14.0) — 예약 이름 re_gauge·re_cool·설정·개입 효과 검증
+const sampleMod = require('./sample'); // 추첨 (v1.18.0) — 후보 풀(pools)·추첨 효과 검증
 const { parseStart, timeConfig, EXPOSABLE, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_EXPOSED,
   RANDOM_BOUNDS: TIME_RANDOM_BOUNDS } = require('./time');
 
@@ -1081,7 +1079,7 @@ const KNOWN_KEYS = {
     ['enum', '선택지 배열'], ['maxLength', 'text 글자 상한, 기본 200'], ['maxItems', ''], ['itemMaxLength', 'list 상한'], ['format', '표시 형식 {v}'],
     ['desc', 'AI용 설명 — 보조 계약표에 실림'], ['cmd', '채팅 명령 이름'], ['group', '편집기 묶음'], ['keep', '🔒 보호']],
   derived: [['id', ''], ['label', ''], ['expr', '계산식'], ['format', ''], ['group', ''], ['keep', '🔒']],
-  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
+  events: [['id', ''], ['when', '조건식'], ['effects', '[{set,expr} | {list,add,remove,expire} | {sample,into,n,leader?,exclude?,stable?,append?}]'], ['notify', '다음 턴 서술'], ['once', '한 번만'],
     ['check', '판정 id'], ['choices', '갈림길 선택지'], ['timeout', '갈림길 자동 결정 턴'], ['strict', '갈림길 엄격'], ['liveChoices', '보조 갈림길'],
     ['keep', '🔒']],
   randomEvents: [['id', ''], ['when', '조건식(선택)'], ['effects', ''], ['notify', ''], ['weight', '가중치'], ['cooldown', '재발동 간격 — 턴, 게이지면 일'],
@@ -1096,6 +1094,8 @@ const KNOWN_KEYS = {
     ['mentions', '낱말 게이트'], ['whenArmed', '액션 잠금'], ['when', '조건 잠금'], ['keep', '🔒']],
   choices: [['id', '(선택) 표식'], ['label', ''], ['when', '선택지 조건'], ['effects', ''], ['inject', ''], ['check', '판정 id']],
   grades: [['id', '(선택) 표식'], ['label', ''], ['when', 'roll·mod·total·vs 식'], ['effects', ''], ['inject', ''], ['gain', '전투 게이지 유효량']],
+  // 추첨 후보 풀 (v1.18.0) — 최상위 pools[]. 검증은 sample.validatePools(알 수 없는 키도 거기서), 이 줄은 AI 필드 사전용
+  pools: [['id', ''], ['label', '편집기 이름'], ['items', '[{name,weight?,group?}] 또는 이름 문자열'], ['groups', '{ 그룹: { affinity, max } }']],
 };
 const KNOWN_SET = Object.fromEntries(Object.entries(KNOWN_KEYS).map(([k, v]) => [k, new Set(v.map(([n]) => n))]));
 // 아는 이름이지만 그 섹션에선 안 읽는 키 (v1.14.5) — 점검에서 드러남: 조건 이벤트에 cooldown을 표에 넣었는데 엔진은
@@ -1104,7 +1104,7 @@ const KNOWN_BUT_IGNORED = {
   events: { cooldown: '조건 이벤트엔 쿨다운이 없습니다 — 조건이 참인 동안 매 턴 발동합니다. 반복을 막으려면 once(일회성)나 래치 짝(경보 변수)을 쓰세요' },
 };
 const KNOWN_LABEL = { vars: '변수', derived: '파생 변수', events: '이벤트', randomEvents: '랜덤 이벤트', actions: '액션', checks: '판정',
-  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급' };
+  directives: '지시문', allow: 'allow 항목', choices: '선택지', grades: '등급', pools: '후보 풀' };
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // 숫자 대응표 라벨 감지 — "계절 (0겨울 1봄 2여름 3가을)"처럼 코드북을 라벨에 넣는 AI 상습 실수.
@@ -1508,7 +1508,17 @@ function validateSchema(schema) {
     }
   };
   // exprIds: 판정 등급의 when/effects는 roll/mod/total(/vs)을 임시 식별자로 쓸 수 있다
+  // 추첨 (v1.18.0) — 풀 id·풀별 이름·변수 정의 (checkSet의 sample 분기가 쓴다)
+  const poolIds = new Set(sampleMod.poolsConfig(schema).map((x) => x.id));
+  const poolNamesById = sampleMod.poolNames(schema);
+  const varDefs = new Map(vars.filter((v) => v && typeof v === 'object').map((v) => [v.id, v]));
   const checkSet = (rule, p, exprIds = allIds) => {
+    // 추첨 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? }
+    if (rule && typeof rule === 'object' && rule.sample !== undefined) {
+      sampleMod.validateSampleEffect(rule, p, { err, warn, listIds, poolIds, poolNames: poolNamesById, varDefs,
+        checkExpr: (src, pp) => checkExpr(src, pp, exprIds, err, { allowRand: true }) });
+      return;
+    }
     // 체크포인트 (v1.11.0)
     if (rule && typeof rule === 'object' && rule.checkpoint !== undefined) {
       if (!cpMod.CP_OPS.includes(rule.checkpoint)) err(p, `checkpoint는 'save' 또는 'load' (현재: '${rule.checkpoint}')`);
@@ -3081,6 +3091,9 @@ function validateSchema(schema) {
       });
     }
   }
+
+  // ── pools (추첨 후보 풀 v1.18.0) — 풀 id·후보·그룹 보정. 효과 쪽 참조는 checkSet의 sample 분기
+  sampleMod.validatePools(schema, { err, warn, ids: allIds });
 
   return { ok: errors.length === 0, errors, warnings };
 }
@@ -6943,6 +6956,279 @@ module.exports = {
 
 });
 
+SimCore.define("sample", function (require, module, exports) {
+'use strict';
+// ── 추첨 효과 (v1.18.0) ─────────────────────────────────────────────────────
+// 발단(커뮤니티 피드백, 2026-10-10): "일상용 봇에 NPC 목록·캐릭터 풀을 두고 거주지에 N명, 장소 이동 때 몇 명, 등장 인물 4명 제한 같은 걸
+// 변수로 하는데, 거주지 N명 로스터를 처음 만들 때 기존 방식은 가챠풀(랜덤 이벤트 표)이라 같은 이름을 수백 번 넣게 된다".
+// 목록 효과의 add는 글자 그대로라 추첨이 없었다 — 이 모듈이 그 자리다. 설계 docs/design-추첨.md.
+//
+// - 후보 풀 = 최상위 pools[] { id, label?, items: [{ name, weight?, group? } | '이름'], groups?: { 그룹: { affinity?, max? } } } — 스키마(안 변하는 것).
+//   뽑힌 목록 = list 변수(플레이 흔적). 이름은 풀에 있는 것만 — 엔진이 쓰고 LLM은 안 낀다.
+// - 효과 { sample: 풀id | list 변수id, into: list 변수, n: 수|식, leader?: text/enum 변수, exclude?: list 변수, append?: bool, stable?: bool }
+//   sample이 list 변수면 그 목록의 항목이 후보(가중치·그룹은 풀들에서 이름으로 찾는다 — "로스터 30명 중 지금 자리에 4명").
+// - 추첨 = 가중 비복원 순차. 하나 뽑을 때마다 같은 그룹 후보의 가중치 × affinity(1 위면 함께 뽑히기 쉽고 아래면 어렵다), 그룹 max에 닿으면
+//   그 그룹은 0. 확률 보정이지 강제 묶음이 아니다. 총 가중치가 0이면 거기서 멈춘다(n보다 적게 뽑힐 수 있다). 가중치 0은 안 뽑힌다.
+// - 난수: stable true = 고정(시드 — 리롤해도 같은 명단), false = 리롤마다 새로(자유), 없음 = 전역 rerollStableRng를 따른다.
+//   세션이 rng에 .stable/.free를 달아 준다(session._rng). 안 달려 있으면(진단 시뮬·직접 호출) 받은 rng 그대로 — 진단은 결정적이어야 한다.
+// - leader = 첫 당첨(이미 무작위)을 text/enum 변수에. enum이면 그 값이 enum에 있을 때만 쓴다(검증이 풀 이름 전부를 대조).
+// - append = 있는 항목 뒤에 덧붙인다(이미 있는 이름·exclude 목록의 이름은 안 뽑는다). 아니면 into를 통째로 새 명단으로 바꾼다.
+// - into의 maxItems를 넘지 않는다(append면 남은 칸만큼).
+// 이 모듈은 리수도 DOM도 모른다 — expr만 쓴다.
+
+const { evaluate } = require('./expr');
+
+const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const EFFECT_KEYS = ['sample', 'into', 'n', 'leader', 'exclude', 'stable', 'append'];
+const POOL_KEYS = ['id', 'label', 'items', 'groups'];
+const ITEM_KEYS = ['name', 'weight', 'group'];
+const GROUP_KEYS = ['affinity', 'max'];
+const LIMITS = { pools: 40, items: 400, nameChars: 60 };
+
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const isSampleEffect = (rule) => isObj(rule) && rule.sample !== undefined;
+
+/** 후보 하나 — 문자열이면 이름만(가중치 1). 이름이 없으면 null */
+function normItem(raw) {
+  if (typeof raw === 'string') { const name = raw.trim(); return name ? { name, weight: 1 } : null; }
+  if (!isObj(raw)) return null;
+  const name = String(raw.name ?? '').trim();
+  if (!name) return null;
+  const w = raw.weight == null ? 1 : Number(raw.weight);
+  const it = { name, weight: Number.isFinite(w) && w >= 0 ? w : 1 };
+  const g = raw.group == null ? '' : String(raw.group).trim();
+  if (g) it.group = g;
+  return it;
+}
+
+/** 풀 설정 — 너그럽게(엔진·편집기용). 엄격한 검사는 validatePools */
+function poolsConfig(schema) {
+  const raw = Array.isArray(schema?.pools) ? schema.pools : [];
+  const out = [];
+  for (const p of raw) {
+    if (!isObj(p) || typeof p.id !== 'string' || !ID_RE.test(p.id)) continue;
+    const items = (Array.isArray(p.items) ? p.items : []).map(normItem).filter(Boolean);
+    const groups = {};
+    if (isObj(p.groups)) {
+      for (const [g, cfg] of Object.entries(p.groups)) {
+        if (!isObj(cfg)) continue;
+        const o = {};
+        if (cfg.affinity != null && Number.isFinite(Number(cfg.affinity)) && Number(cfg.affinity) >= 0) o.affinity = Number(cfg.affinity);
+        if (cfg.max != null && Number.isFinite(Number(cfg.max)) && Number(cfg.max) >= 0) o.max = Math.floor(Number(cfg.max));
+        groups[g] = o;
+      }
+    }
+    out.push({ id: p.id, label: typeof p.label === 'string' ? p.label : '', items, groups });
+  }
+  return out;
+}
+
+/** 풀별 이름 목록 (검증용) */
+function poolNames(schema) {
+  return new Map(poolsConfig(schema).map((p) => [p.id, p.items.map((it) => it.name)]));
+}
+
+/** 후보와 그룹 설정 — sample이 풀 id면 그 풀, list 변수면 그 목록의 항목(가중치·그룹은 풀들에서 이름으로) */
+function candidatesFor(schema, vars, rule) {
+  const pools = poolsConfig(schema);
+  const pool = pools.find((p) => p.id === rule.sample);
+  if (pool) return { cands: pool.items.slice(), groups: pool.groups };
+  const list = Array.isArray(vars?.[rule.sample]) ? vars[rule.sample] : [];
+  const byName = new Map();
+  const groups = {};
+  for (const p of pools) {
+    for (const it of p.items) if (!byName.has(it.name)) byName.set(it.name, it);
+    Object.assign(groups, p.groups);
+  }
+  const seen = new Set();
+  const cands = [];
+  for (const raw of list) {
+    const name = String(raw ?? '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    cands.push(byName.get(name) || { name, weight: 1 });
+  }
+  return { cands, groups };
+}
+
+/** 가중 비복원 순차 추첨 — 같은 그룹이 이미 뽑혔으면 × affinity, max에 닿으면 0. 총 가중치 0이면 멈춘다 */
+function drawSample(cands, n, groups, rng) {
+  const picked = [];
+  const count = {};
+  const left = cands.slice();
+  while (picked.length < n && left.length) {
+    const ws = left.map((c) => {
+      let w = Math.max(0, Number(c.weight ?? 1) || 0);
+      const cfg = c.group ? groups?.[c.group] : null;
+      if (cfg) {
+        const have = count[c.group] || 0;
+        if (cfg.max != null && have >= cfg.max) w = 0;
+        else if (have > 0 && cfg.affinity != null) w *= cfg.affinity;
+      }
+      return w;
+    });
+    const total = ws.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) break;
+    let r = rng() * total;
+    let i = 0;
+    for (; i < ws.length; i++) { r -= ws[i]; if (r < 0) break; }
+    if (i >= ws.length) { i = ws.length - 1; while (i > 0 && !(ws[i] > 0)) i--; }
+    const c = left.splice(i, 1)[0];
+    picked.push(c.name);
+    if (c.group) count[c.group] = (count[c.group] || 0) + 1;
+  }
+  return picked;
+}
+
+/** stable 칸에 따라 난수 고르기 — 세션이 rng.stable/rng.free를 달아 준다. 없으면 받은 것 */
+function pickRng(rng, stable) {
+  if (stable === true) return (rng && rng.stable) || rng;
+  if (stable === false) return (rng && rng.free) || rng;
+  return rng;
+}
+
+/** 효과 적용 — 바뀐 것은 changeLog에 { id, from, to, source }. 대상이 목록 변수가 아니면 아무것도 안 한다(검증 몫) */
+function applySampleEffect(schema, state, rule, lookup, rng, changeLog, source) {
+  const varById = Object.fromEntries((schema.vars || []).map((v) => [v.id, v]));
+  const into = varById[rule.into];
+  if (!into || into.type !== 'list') return;
+  const r = pickRng(rng, rule.stable) || Math.random;
+  let n;
+  if (typeof rule.n === 'number') n = rule.n;
+  else { try { n = Number(evaluate(String(rule.n ?? 1), lookup, r)); } catch { n = 0; } }
+  n = Number.isFinite(n) ? Math.floor(n) : 0;
+  const current = Array.isArray(state.vars[rule.into]) ? state.vars[rule.into] : [];
+  const excl = new Set();
+  if (rule.exclude && Array.isArray(state.vars[rule.exclude])) for (const x of state.vars[rule.exclude]) excl.add(String(x));
+  if (rule.append) for (const x of current) excl.add(String(x));
+  const { cands, groups } = candidatesFor(schema, state.vars, rule);
+  const pool = cands.filter((c) => !excl.has(c.name));
+  if (into.maxItems != null) n = Math.min(n, Math.max(0, Number(into.maxItems) - (rule.append ? current.length : 0)));
+  const picked = n > 0 ? drawSample(pool, n, groups, r) : [];
+  const to = rule.append ? [...current, ...picked] : picked;
+  if (JSON.stringify(to) !== JSON.stringify(current)) {
+    state.vars[rule.into] = to;
+    if (changeLog) changeLog.push({ id: rule.into, from: current, to, source });
+  }
+  if (rule.leader && picked.length) {
+    const def = varById[rule.leader];
+    if (def && (def.type === 'text' || def.type === 'enum')) {
+      const v = picked[0];
+      if (def.type !== 'enum' || (Array.isArray(def.enum) && def.enum.includes(v))) {
+        const from = state.vars[rule.leader];
+        if (v !== from) { state.vars[rule.leader] = v; if (changeLog) changeLog.push({ id: rule.leader, from, to: v, source }); }
+      }
+    }
+  }
+}
+
+/** 효과 한 줄이 건드리는 변수 — 진단(writerMap)·편집기 삭제 영향 */
+function effectTargets(rule) {
+  if (!isSampleEffect(rule)) return [];
+  return [rule.into, rule.leader].filter((x) => typeof x === 'string' && x);
+}
+
+/** 검증 — pools (엄격). ctx = { err, warn, ids(변수·파생 id Set) } */
+function validatePools(schema, ctx) {
+  const { err, warn, ids } = ctx;
+  if (schema.pools == null) return;
+  if (!Array.isArray(schema.pools)) { err('$.pools', 'pools는 배열이어야 함 — [{ id, items: [{ name, weight?, group? }], groups? }]'); return; }
+  const seen = new Set();
+  if (schema.pools.length > LIMITS.pools) err('$.pools', `후보 풀은 ${LIMITS.pools}개까지`);
+  schema.pools.forEach((p, i) => {
+    const pp = `$.pools[${i}]`;
+    if (!isObj(p)) { err(pp, '후보 풀은 객체여야 함'); return; }
+    if (typeof p.id !== 'string' || !ID_RE.test(p.id)) err(pp, `잘못된 풀 id: '${p.id}' (영문자로 시작, 영문·숫자·_만)`);
+    else {
+      if (seen.has(p.id)) err(pp, `중복 풀 id: '${p.id}'`);
+      seen.add(p.id);
+      if (ids && ids.has(p.id)) err(pp, `풀 id '${p.id}'가 변수·파생 id와 겹칩니다 — 추첨 효과의 sample이 풀인지 목록인지 가를 수 없습니다`);
+    }
+    for (const k of Object.keys(p)) if (!POOL_KEYS.includes(k) && !k.startsWith('_')) warn(pp, `알 수 없는 키 '${k}' — 엔진이 읽지 않습니다 (후보 풀이 쓰는 키: ${POOL_KEYS.join(', ')})`);
+    if (p.label != null && typeof p.label !== 'string') err(pp, 'label은 문자열');
+    if (!Array.isArray(p.items)) { err(pp, 'items는 배열이어야 함 — [{ name, weight?, group? }] 또는 이름 문자열'); return; }
+    if (!p.items.length) warn(pp, '후보가 없습니다 — 이 풀로는 아무것도 안 뽑힙니다');
+    if (p.items.length > LIMITS.items) err(pp, `후보는 ${LIMITS.items}개까지`);
+    const names = new Set();
+    const groupsUsed = new Set();
+    p.items.forEach((it, j) => {
+      const ip = `${pp}.items[${j}]`;
+      if (typeof it === 'string') {
+        const nm = it.trim();
+        if (!nm) err(ip, '이름이 비어 있습니다');
+        else if (names.has(nm)) err(ip, `중복 후보: '${nm}'`);
+        names.add(nm);
+        return;
+      }
+      if (!isObj(it)) { err(ip, '후보는 { name, weight?, group? } 또는 이름 문자열'); return; }
+      for (const k of Object.keys(it)) if (!ITEM_KEYS.includes(k) && !k.startsWith('_')) warn(ip, `알 수 없는 키 '${k}' (후보가 쓰는 키: ${ITEM_KEYS.join(', ')})`);
+      const name = String(it.name ?? '').trim();
+      if (!name) { err(ip, 'name(이름)이 비어 있습니다'); return; }
+      if (name.length > LIMITS.nameChars) warn(ip, `이름이 ${LIMITS.nameChars}자를 넘습니다 — 목록 항목으로 길어요`);
+      if (names.has(name)) err(ip, `중복 후보: '${name}'`);
+      names.add(name);
+      if (it.weight != null && (!Number.isFinite(Number(it.weight)) || Number(it.weight) < 0)) err(ip, `weight는 0 이상 숫자 (현재: '${it.weight}')`);
+      if (it.group != null) { if (typeof it.group !== 'string' || !it.group.trim()) err(ip, 'group은 비지 않은 문자열'); else groupsUsed.add(it.group.trim()); }
+    });
+    if (p.groups != null) {
+      if (!isObj(p.groups)) err(pp, 'groups는 { 그룹이름: { affinity?, max? } } 객체');
+      else {
+        for (const [g, cfg] of Object.entries(p.groups)) {
+          const gp = `${pp}.groups.${g}`;
+          if (!isObj(cfg)) { err(gp, '그룹 설정은 { affinity?, max? } 객체'); continue; }
+          for (const k of Object.keys(cfg)) if (!GROUP_KEYS.includes(k) && !k.startsWith('_')) warn(gp, `알 수 없는 키 '${k}' (그룹이 쓰는 키: ${GROUP_KEYS.join(', ')})`);
+          if (cfg.affinity != null && (!Number.isFinite(Number(cfg.affinity)) || Number(cfg.affinity) < 0))
+            err(gp, `affinity는 0 이상 숫자 — 1보다 크면 함께 뽑히기 쉽고, 작으면 어렵다 (현재: '${cfg.affinity}')`);
+          if (cfg.max != null && (!Number.isInteger(Number(cfg.max)) || Number(cfg.max) < 0))
+            err(gp, `max는 0 이상 정수 — 그 그룹에서 뽑히는 상한 (현재: '${cfg.max}')`);
+          if (!groupsUsed.has(g)) warn(gp, `'${g}' 그룹에 속한 후보가 없습니다`);
+        }
+      }
+    }
+  });
+}
+
+/** 검증 — 효과 한 줄. ctx = { err, warn, listIds, poolIds, poolNames(Map), varDefs(Map id→def), checkExpr(src, path) } */
+function validateSampleEffect(rule, p, ctx) {
+  const { err, warn, listIds, poolIds, varDefs, checkExpr } = ctx;
+  for (const k of Object.keys(rule)) {
+    if (EFFECT_KEYS.includes(k) || k.startsWith('_')) continue;
+    if (['set', 'list', 'front', 'gauge', 'checkpoint'].includes(k)) err(p, `sample 효과에 ${k}를 같이 쓸 수 없음 — 효과를 두 줄로 나누세요`);
+    else warn(p, `알 수 없는 키 '${k}' (추첨 효과가 쓰는 키: ${EFFECT_KEYS.join(', ')})`);
+  }
+  const src = rule.sample;
+  const fromPool = typeof src === 'string' && poolIds.has(src);
+  const fromList = typeof src === 'string' && listIds.has(src);
+  if (!fromPool && !fromList) {
+    err(p + '.sample', `sample '${src}'은 후보 풀(pools) id도 목록(list) 변수도 아님${poolIds.size ? ` (풀: ${[...poolIds].join(', ')})` : ' — 최상위 pools[]에 풀을 만드세요'}`);
+  }
+  if (typeof rule.into !== 'string' || !listIds.has(rule.into)) err(p + '.into', `into '${rule.into}'은 목록(list) 변수가 아님 — 뽑힌 이름이 들어갈 list 변수`);
+  else if (fromList && rule.into === src && rule.append) warn(p, 'sample과 into가 같은 목록인데 append — 이미 있는 이름은 안 뽑으니 아무것도 안 늘어납니다');
+  if (rule.n == null || rule.n === '') err(p + '.n', 'n(뽑을 개수)이 필요함 — 숫자 또는 식');
+  else if (typeof rule.n === 'number') { if (!Number.isInteger(rule.n) || rule.n < 0) err(p + '.n', `n은 0 이상 정수 (현재: ${rule.n})`); }
+  else if (typeof rule.n === 'string') checkExpr(rule.n, p + '.n');
+  else err(p + '.n', 'n은 숫자 또는 식 문자열');
+  if (rule.leader != null) {
+    const def = varDefs.get(rule.leader);
+    if (!def || !['text', 'enum'].includes(def.type)) err(p + '.leader', `leader '${rule.leader}'은 text 또는 enum 변수여야 함 (첫 당첨 이름이 들어간다)`);
+    else if (def.type === 'enum' && fromPool && ctx.poolNames) {
+      const miss = (ctx.poolNames.get(src) || []).filter((nm) => !(def.enum || []).includes(nm));
+      if (miss.length) err(p + '.leader', `leader enum '${rule.leader}'에 풀 '${src}'의 후보가 없음: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ' …' : ''}`);
+    } else if (def.type === 'enum' && fromList) warn(p + '.leader', 'leader가 enum인데 후보가 목록 변수라 값이 enum에 있는지 미리 못 봅니다 — 없으면 그 턴엔 안 바뀝니다');
+  }
+  if (rule.exclude != null && (typeof rule.exclude !== 'string' || !listIds.has(rule.exclude))) err(p + '.exclude', `exclude '${rule.exclude}'은 목록(list) 변수가 아님`);
+  if (rule.stable != null && typeof rule.stable !== 'boolean') err(p + '.stable', 'stable은 true(고정)/false(리롤마다 새로) — 비우면 전역 설정');
+  if (rule.append != null && typeof rule.append !== 'boolean') err(p + '.append', 'append는 true/false');
+}
+
+module.exports = {
+  EFFECT_KEYS, POOL_KEYS, ITEM_KEYS, GROUP_KEYS, LIMITS,
+  isSampleEffect, normItem, poolsConfig, poolNames, candidatesFor, drawSample, pickRng, applySampleEffect, effectTargets,
+  validatePools, validateSampleEffect,
+};
+
+});
+
 SimCore.define("bible", function (require, module, exports) {
 'use strict';
 // ── 봇 제작 설정집 (v1.16.0) ─────────────────────────────────────────────
@@ -7415,6 +7701,7 @@ const UNSUPPORTED_HINT = {
   checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋] 가져오기', party: '[편성표] 탭',
   calendar: '[달력] 탭', board: '[게시판] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
   liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
+  pools: '[변수] 탭 🎲 후보 풀 (v1.18.0)',
 };
 const UNSUPPORTED = new Set(Object.keys(UNSUPPORTED_HINT));
 
@@ -7747,6 +8034,10 @@ function renameEffects(effects, from, to) {
     if (typeof r.expire === 'string') r.expire = renameVar(r.expire, from, to);
     if (r.front !== undefined && typeof r.add === 'string') r.add = renameVar(r.add, from, to); // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
     if (typeof r.gauge === 'string') r.gauge = renameVar(r.gauge, from, to);                     // 사건 게이지 개입 { gauge: 식 }
+    if (r.sample !== undefined) {   // 추첨 (v1.18.0) — 목록 변수 참조 셋 + n 식 (sample이 풀 id면 변수 이름과 안 겹친다 — 검증이 막는다)
+      for (const k of ['sample', 'into', 'leader', 'exclude']) if (r[k] === from) r[k] = to;
+      if (typeof r.n === 'string') r.n = renameVar(r.n, from, to);
+    }
   }
 }
 
@@ -7939,6 +8230,7 @@ const DIFF_AREAS = [
   ['liveChoices', (s) => s?.liveChoices, '갈림길 설정'], ['suggest', (s) => s?.suggest, '행동 제안'],
   ['checkpoint', (s) => s?.checkpoint, '되감기(checkpoint)'],
   ['fronts', (s) => s?.fronts, '무대 뒤(fronts)'],
+  ['pools', (s) => s?.pools, '후보 풀(pools)'],
 ];
 const nameOfEntry = (e) => (e && (e.label ?? e.notify ?? e.text ?? e.title)) || '';
 function diffSchemas(a, b) {
@@ -8020,6 +8312,7 @@ const secretMod = require('./secret');  // 비밀 (v1.10.0) — 모르는 건 �
 const cpMod = require('./checkpoint');  // 체크포인트 (v1.11.0) — 되감기, 옵트인 (효과가 쓰면 켜진다)
 const frontMod = require('./front');    // 무대 뒤 (v1.12.0) — 유저가 안 봐도 흐르는 진영 시계, 옵트인
 const gaugeMod = require('./gauge');    // 사건 게이지 (v1.14.0) — 랜덤 사건이 작중 시간으로 차는 숨은 게이지로 온다, 옵트인
+const sampleMod = require('./sample');  // 추첨 (v1.18.0) — 후보 풀에서 N개를 중복 없이 목록 변수에, 옵트인
 
 const DEFAULT_TEXT_MAXLEN = 200;
 const DEFAULT_SYSTEM_GUIDE =
@@ -8527,6 +8820,9 @@ function applySets(schema, state, rules, rng, changeLog, source, overlay = null)
       gaugeMod.applyGaugeEffect(schema, state.vars, rule, lk(), rng);
       continue;
     }
+    // 추첨 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? } — 후보 풀(또는 목록)에서 N개를 중복 없이 목록 변수에.
+    // 이름은 풀에 있는 것만, 난수는 엔진(stable 칸이 고정/새로를 고른다 — 세션이 rng.stable/rng.free를 달아 준다)
+    if (sampleMod.isSampleEffect(rule)) { sampleMod.applySampleEffect(schema, state, rule, lk(), rng, changeLog, source); continue; }
     // 목록 효과: { list: 'inventory', add: [...], remove: [...], expire: '수식' }
     if (rule.list) {
       const def = varById[rule.list];
@@ -11589,7 +11885,12 @@ class SimSession {
   }
 
   _rng(index, label) {
-    return this.stableRng ? seededRng(this.chatId, index, label) : makeUnstableRng(this.random);
+    const stable = seededRng(this.chatId, index, label);
+    const free = makeUnstableRng(this.random);
+    const rng = this.stableRng ? stable : free;
+    // 추첨 효과(v1.18.0)의 stable 칸 — 효과마다 "고정(시드)" / "리롤마다 새로(자유)"를 고른다. 둘 다 달아 두면 전역 설정과 무관하게 고를 수 있다
+    rng.stable = stable; rng.free = free;
+    return rng;
   }
 
   /** 채팅 로드/최초 시작. latestOutIndex = 현재 채팅의 마지막 char 메시지 인덱스 (없으면 -1) */
@@ -11948,17 +12249,19 @@ function pickLoseVar(schema) {
 function writerMap(schema) {
   const w = {};
   const add = (id, who) => { if (id) (w[id] = w[id] || new Set()).add(who); };
+  // 효과 한 줄의 쓰기 대상 — set/list + 추첨(into·leader, v1.18.0)
+  const effTargets = (f) => (f && typeof f === 'object' ? [f.set ?? f.list, ...require('./sample').effectTargets(f)].filter(Boolean) : []);
   // expire만 있는 정리 규칙은 쓰기 자리가 아니다 (v1.14.11 — 빼기만 하고 keepOverdue면 아무것도 안 바꾼다)
-  for (const r of (schema.rules?.onTurn || [])) { if (r && r.list && r.add == null && r.remove == null) continue; add(r.set ?? r.list, 'onTurn'); }
-  for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '이벤트');
-  for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) add(f.set ?? f.list, '랜덤');
-  for (const a of (schema.actions || [])) for (const f of (a.effects || [])) add(f.set ?? f.list, '액션');
-  for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) add(f.set ?? f.list, '판정');
+  for (const r of (schema.rules?.onTurn || [])) { if (r && r.list && r.add == null && r.remove == null) continue; for (const _w of effTargets(r)) add(_w, 'onTurn'); }
+  for (const e of (schema.rules?.events || [])) for (const f of (e.effects || [])) for (const _w of effTargets(f)) add(_w, '이벤트');
+  for (const e of (schema.rules?.randomEvents?.table || [])) for (const f of (e.effects || [])) for (const _w of effTargets(f)) add(_w, '랜덤');
+  for (const a of (schema.actions || [])) for (const f of (a.effects || [])) for (const _w of effTargets(f)) add(_w, '액션');
+  for (const c of (schema.checks || [])) for (const g of (c.grades || [])) for (const f of (g.effects || [])) for (const _w of effTargets(f)) add(_w, '판정');
   for (const e of [...(schema.rules?.events || []), ...(schema.rules?.randomEvents?.table || [])])
-    for (const c of (e.choices || [])) for (const f of (c.effects || [])) add(f.set ?? f.list, '선택');
+    for (const c of (e.choices || [])) for (const f of (c.effects || [])) for (const _w of effTargets(f)) add(_w, '선택');
   // 보조 갈림길(v1.8.0) — 태그의 효과가 곧 선택지의 효과다
   // 보조 갈림길은 보조 AI가 항목을 써야만 걸린다 — 시뮬 밖 (v1.14.11, 전엔 '선택'으로 섞여 '안 움직임' 오탐)
-  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) add(f.set ?? f.list, '보조선택');
+  for (const t of liveTags(schema)) for (const f of (t?.effects || [])) for (const _w of effTargets(f)) add(_w, '보조선택');
   for (const a of (schema.updater?.allow || [])) add(a.id, 'AI');
   // 채팅 명령(v.cmd) — 유저가 /수위 0 처럼 직접 바꾼다. 시뮬은 못 움직이지만 "바꾸는 곳이 없다"는 거짓이다
   // (v1.13.1 — 베리디아 nsfw_on이 🔴 고정 변수로 오탐. 편성표·달력과 같은 이유로 쓰기 경로에 넣는다)
@@ -11976,7 +12279,7 @@ function writerMap(schema) {
   // 시나리오(v0.92) — 막 전환의 onEnter도 어엿한 쓰기 경로다. 빠지면 전환 효과만 받는
   // 변수가 "고정 변수"로 오탐된다
   for (const a of (scenarioConfig(schema)?.acts || []))
-    for (const f of (a.onEnter || [])) add(f.set ?? f.list, '시나리오');
+    for (const f of (a.onEnter || [])) for (const _w of effTargets(f)) add(_w, '시나리오');
   // 업그레이드(v0.58) — 항목 레벨과 포인트 소비도 팝업 몫이다
   for (const t of require('./party').partyTabs(schema)) {
     for (const it of t.items) { add(it.var, '편성'); if (t.points) add(t.points, '편성'); }
@@ -11989,8 +12292,8 @@ function writerMap(schema) {
     for (const f of [...(Array.isArray(qb.accept) ? qb.accept : []), ...(Array.isArray(qb.cancel) ? qb.cancel : [])]) add(f?.set, '의뢰판');
   }
   // 무대 뒤 단계 효과·전투 결착 효과·상점 거래 (v1.14.11 — 빠져 있어 '고정 변수' 오탐)
-  for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) add(e.set ?? e.list, '무대 뒤');
-  for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) add(e.set ?? e.list, '판정');
+  for (const f of (require('./front').frontsConfig(schema) || [])) for (const st of (f.stages || [])) for (const e of (st.effects || [])) for (const _w of effTargets(e)) add(_w, '무대 뒤');
+  for (const c of (schema.checks || [])) for (const e of (c.fight?.win?.effects || [])) for (const _w of effTargets(e)) add(_w, '판정');
   for (const sh of require('./shop').shopConfigs(schema)) {
     add(sh.currency, '상점'); add(sh.buyTo, '상점'); add(sh.sellFrom, '상점');
     for (const ex of (Array.isArray(sh.exchange) ? sh.exchange : [])) add(ex?.var, '상점');
@@ -14126,6 +14429,9 @@ const CSS = `
 .sce .sce-bible-folder-chip .sce-btn { padding:0 6px; min-height:0; line-height:1.6; }
 .sce .sce-bible-sheet-format, .sce .sce-bible-source { min-height:70px !important; font-family:inherit; line-height:1.5; }
 .sce .sce-bible-sub { font-weight:700; font-size:12px; color:var(--sce-muted); margin-top:4px; }
+.sce .sce-pool-card { border:1px solid var(--sce-line); border-radius:8px; padding:8px 10px; margin:6px 0; display:flex; flex-direction:column; gap:5px; }
+.sce .sce-pool-items, .sce .sce-pool-groups { min-height:70px !important; font-family:inherit; line-height:1.5; }
+.sce .sce-effect-sample { flex-wrap:wrap; }
 /* 작업 내역 (v1.9.7) */
 .sce .sce-worklog { margin:10px 0; }
 .sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
@@ -17321,6 +17627,11 @@ const SCHEMA_HARD_RULES = [
   '- `enum`은 `enum` 배열이 2개 이상이어야 하고 `init`이 그 목록 안에 있어야 합니다.',
   '- `int`/`float`은 `init`이 숫자여야 하고 `min` ≤ `init` ≤ `max` 여야 합니다.',
   '- `list`의 `init`은 문자열 배열입니다. **수식으로 대입할 수 없고** `{ "list": "아이디", "add": [...], "remove": [...] }` 형태로만 바꿉니다.',
+  '- 목록을 **무작위로 채우려면** 추첨 효과 `{ "sample": "풀id 또는 목록 변수", "into": "목록 변수", "n": 4 }`를 씁니다 (v1.18.0). 후보는 최상위 `pools`: '
+  + '`[{ "id": "npc_pool", "items": [{ "name": "아린", "weight": 2, "group": "경비대" }, "브란"], "groups": { "경비대": { "affinity": 1.5, "max": 2 } } }]` — '
+  + '중복 없이 뽑고, 이름은 풀에 있는 것만, 난수는 엔진이 굴립니다. 선택: `leader`(첫 당첨을 text/enum 변수에), `exclude`(그 목록의 이름은 안 뽑음), '
+  + '`append`(덧붙임 — 아니면 통째 교체), `stable`(true 고정 / false 리롤마다 새로 / 없으면 전역). 주민·학급·길드·등장인물 후보처럼 '
+  + '"이 중에서 N명"은 보조 AI에게 이름을 지어내게 하지 말고 이걸 쓰세요. 한 번만 뽑으려면 `once: true` 이벤트에 `"when": "count(목록) == 0"`.',
   '- `derived`는 계산 전용입니다. 효과의 `set` 대상이 될 수 없습니다.',
   '- 수식에서 참조하는 이름은 반드시 `vars` 또는 `derived`에 정의돼 있어야 합니다. 없는 이름을 쓰면 거부됩니다. '
   + '(예외: 편성표 `party`가 있으면 `deployed` — 편성 슬롯에 앉은 이름들의 읽기 전용 목록 — 를 쓸 수 있습니다)',
@@ -18362,6 +18673,11 @@ function varReferenceIndex(schema) {
     add(f.set, where, what); add(f.list, where, what);
     ex(f.expr, where, what); ex(f.expire, where, what);
     if (f.gauge !== undefined) ex(String(f.gauge), where, what); // 사건 게이지 개입 (v1.14.0)
+    if (f.sample !== undefined) {   // 추첨 (v1.18.0) — sample은 풀 id일 수 있어 변수일 때만
+      if ((schema.vars || []).some((v) => v && v.id === f.sample)) add(f.sample, where, what);
+      add(f.into, where, what); add(f.leader, where, what); add(f.exclude, where, what);
+      if (typeof f.n === 'string') ex(f.n, where, what);
+    }
   });
   const evBlock = (e, where, what) => {
     ex(e.when, where, what); fx(e.effects, where, what);
@@ -18527,8 +18843,9 @@ function planVarPurge(schema0, rootIds) {
     if (!f || typeof f !== 'object') return true;
     const hit = doomed.has(f.set) || doomed.has(f.list) || exprHits(f.expr, doomed) || exprHits(f.expire, doomed)
       || (f.front !== undefined && typeof f.add === 'string' && exprHits(f.add, doomed))   // 무대 뒤 개입 { front, add: 식 } (v1.14.14)
-      || (f.gauge !== undefined && exprHits(String(f.gauge), doomed));                      // 사건 게이지 개입 { gauge: 식 }
-    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list ?? (f.front !== undefined ? '무대 뒤 ' + f.front : f.gauge !== undefined ? '게이지' : '?')})`);
+      || (f.gauge !== undefined && exprHits(String(f.gauge), doomed))                       // 사건 게이지 개입 { gauge: 식 }
+      || (f.sample !== undefined && (doomed.has(f.sample) || doomed.has(f.into) || doomed.has(f.leader) || doomed.has(f.exclude) || (typeof f.n === 'string' && exprHits(f.n, doomed))));   // 추첨 (v1.18.0)
+    if (hit) note(where, `효과 한 줄 (${f.set ?? f.list ?? (f.front !== undefined ? '무대 뒤 ' + f.front : f.gauge !== undefined ? '게이지' : f.sample !== undefined ? '추첨 → ' + f.into : '?')})`);
     return !hit;
   });
 
@@ -20090,6 +20407,92 @@ function gaugeEffectRow(ef, gripEl, rerender, cls = 'sce-row') {
     gripEl);
 }
 
+// 추첨 줄 (v1.18.0) { sample, into, n, leader?, exclude?, stable?, append? } — 후보 풀(또는 목록)에서 N개를 중복 없이 목록 변수에.
+// 커뮤니티 피드백: "거주지 N명 로스터를 처음 만들 때 가챠풀에 같은 이름을 수백 번" — 목록 변수가 있는 봇이면 추가 버튼(풀이 없어도 목록→목록은 된다)
+const poolsOf = (schema) => (Array.isArray(schema.pools) ? schema.pools : []).filter((p) => p && typeof p.id === 'string' && p.id);
+const STABLE_OPTS = [['', '난수: 전역 따름'], ['true', '고정 — 리롤해도 같은 명단'], ['false', '리롤마다 새로']];
+function sampleEffectRow(schema, ef, gripEl, rerender, cls = 'sce-row') {
+  const listVars = schema.vars.filter((v) => v.type === 'list');
+  const srcOpts = [...poolsOf(schema).map((p) => [p.id, `🎲 풀: ${p.label || p.id}`]), ...listVars.map((v) => [v.id, `📜 목록: ${v.label ?? v.id} (${v.id})`])];
+  const listOpts = listVars.map((v) => [v.id, `${v.label ?? v.id} (${v.id})`]);
+  const leadOpts = [['', '(대표 없음)'], ...schema.vars.filter((v) => v.type === 'text' || v.type === 'enum').map((v) => [v.id, `${v.label ?? v.id} (${v.id})`])];
+  const wrap = h('div', { class: `${cls} sce-effect-sample`, title: '후보 풀에서 N개를 중복 없이 뽑아 목록 변수에 넣는다 — 이름은 풀에 있는 것만, 난수는 엔진' });
+  wrap.appendChild(h('span', {}, '🎲'));
+  wrap.appendChild(pair('어디서', bindSelect(ef.sample, srcOpts.length ? srcOpts : [['', '(풀·목록 없음)']], (v) => { ef.sample = v; rerender(); }), '후보 풀([변수] 탭 🎲 후보 풀) 또는 목록 변수'));
+  wrap.appendChild(pair('몇 개', bindInput(ef.n ?? '', (x) => { const t = x.trim(); ef.n = /^\d+$/.test(t) ? Number(t) : t; rerender(); }, { cls: 'sce-w-s', ph: '4' }), '숫자 또는 식 (예: 4, count(residents) - 1)'));
+  wrap.appendChild(pair('어디로', bindSelect(ef.into, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.into = v; rerender(); }), '뽑힌 이름이 들어갈 목록 변수 — 덧붙임이 아니면 통째로 새 명단'));
+  wrap.appendChild(pair('대표', bindSelect(ef.leader ?? '', leadOpts, (v) => { if (v) ef.leader = v; else delete ef.leader; rerender(); }), '첫 당첨 이름을 넣을 text/enum 변수 — 리더·첫 대상'));
+  wrap.appendChild(pair('빼고', bindSelect(ef.exclude ?? '', [['', '(없음)'], ...listOpts], (v) => { if (v) ef.exclude = v; else delete ef.exclude; rerender(); }), '이 목록에 있는 이름은 안 뽑는다'));
+  wrap.appendChild(pair('난수', bindSelect(ef.stable === true ? 'true' : ef.stable === false ? 'false' : '', STABLE_OPTS, (v) => { if (v === 'true') ef.stable = true; else if (v === 'false') ef.stable = false; else delete ef.stable; rerender(); }), '로스터처럼 한 번 정해지면 그대로면 고정, 가챠처럼 다시 뽑고 싶으면 리롤마다 새로. 비우면 [규칙·이벤트] 리롤 안정 설정을 따른다'));
+  wrap.appendChild(bindCheck(!!ef.append, (x) => { if (x) ef.append = true; else delete ef.append; rerender(); }, '덧붙임 (있는 이름은 안 뽑고 뒤에)'));
+  wrap.appendChild(gripEl);
+  return wrap;
+}
+
+// 🎲 후보 풀 편집 (v1.18.0) — [변수] 탭 맨 아래. 후보 줄 = "이름 | 가중치 | 그룹"(가중치·그룹 생략 가능), 그룹 줄 = "그룹 | 같이 뽑힐 배수 | 최대 인원"
+let poolsFoldOpen = false;
+const poolItemLine = (it) => {
+  if (typeof it === 'string') return it;
+  const name = String(it?.name ?? ''); const w = it?.weight != null ? String(it.weight) : ''; const g = it?.group ? String(it.group) : '';
+  if (g) return `${name} | ${w || '1'} | ${g}`;
+  return w && w !== '1' ? `${name} | ${w}` : name;
+};
+const parsePoolItems = (text) => String(text).split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+  const [name, w, g] = l.split('|').map((x) => x.trim());
+  const it = { name };
+  if (w !== undefined && w !== '' && Number.isFinite(Number(w))) it.weight = Number(w);
+  if (g) it.group = g;
+  return it;
+});
+const poolGroupLines = (groups) => Object.entries(groups && typeof groups === 'object' ? groups : {}).map(([g, c]) => `${g} | ${c?.affinity ?? ''} | ${c?.max ?? ''}`).join('\n');
+const parsePoolGroups = (text) => {
+  const out = {};
+  for (const l of String(text).split('\n').map((x) => x.trim()).filter(Boolean)) {
+    const [g, a, m] = l.split('|').map((x) => x.trim());
+    if (!g) continue;
+    const cfg = {};
+    if (a !== undefined && a !== '' && Number.isFinite(Number(a))) cfg.affinity = Number(a);
+    if (m !== undefined && m !== '' && Number.isFinite(Number(m))) cfg.max = Math.floor(Number(m));
+    out[g] = cfg;
+  }
+  return Object.keys(out).length ? out : undefined;
+};
+function poolsSection(schema, rerender) {
+  const pools = poolsOf(schema);
+  const det = h('details', { class: 'sce-fold sce-pools' });
+  det.open = poolsFoldOpen; det.addEventListener('toggle', () => { poolsFoldOpen = det.open; });
+  det.appendChild(h('summary', {}, `🎲 후보 풀 (${pools.length}) — 추첨 효과가 뽑는 이름 목록`));
+  det.appendChild(h('div', { class: 'sce-hint' },
+    '주민·학급·길드·등장인물 후보처럼 "이 중에서 N명"을 뽑을 이름 목록이에요. 규칙·이벤트·액션의 효과에 [+ 🎲 추첨]을 두면 여기서 중복 없이 뽑아 목록 변수에 넣어요 — '
+    + '이름은 풀에 있는 것만, 난수는 엔진이. 한 줄에 하나: 이름 | 가중치 | 그룹 (가중치·그룹은 생략 가능). 그룹 보정은 "그룹 | 같이 뽑힐 배수 | 최대 인원" — 1보다 큰 배수는 '
+    + '같은 그룹이 같이 뽑히기 쉽게, 작은 배수는 어렵게, 최대 인원은 상한이에요. 강제 묶음이 아니라 확률 보정이에요.'));
+  pools.forEach((p, i) => {
+    const card = h('div', { class: 'sce-pool-card' });
+    const itemsArea = h('textarea', { class: 'sce-pool-items', 'aria-label': `풀 ${p.id} 후보`, placeholder: '아린 | 2 | 경비대\n브란\n세실 | 1 | 상인' });
+    itemsArea.value = (Array.isArray(p.items) ? p.items : []).map(poolItemLine).join('\n');
+    itemsArea.onchange = () => { p.items = parsePoolItems(itemsArea.value); rerender(); };
+    const groupsArea = h('textarea', { class: 'sce-pool-groups', 'aria-label': `풀 ${p.id} 그룹`, placeholder: '경비대 | 1.5 | 2\n상인 | 0.5 |' });
+    groupsArea.value = poolGroupLines(p.groups);
+    groupsArea.onchange = () => { const g = parsePoolGroups(groupsArea.value); if (g) p.groups = g; else delete p.groups; rerender(); };
+    card.appendChild(h('div', { class: 'sce-row' },
+      pair('풀 ID', bindInput(p.id, (x) => { p.id = x.trim(); rerender(); }, { cls: 'sce-w-m', ph: 'residents_pool' }), '영문 식별자 — 효과의 "어디서"에 뜬다'),
+      pair('이름', bindInput(p.label ?? '', (x) => { if (x.trim()) p.label = x.trim(); else delete p.label; rerender(); }, { cls: 'sce-w-m', ph: '마을 주민 후보' })),
+      h('span', { class: 'sce-hint', style: 'margin:0' }, `후보 ${(Array.isArray(p.items) ? p.items : []).length}`),
+      h('button', { class: 'sce-btn sce-mini sce-danger', onclick: () => { schema.pools.splice(i, 1); if (!schema.pools.length) delete schema.pools; rerender(); } }, '✕ 풀 지우기')));
+    card.appendChild(h('div', { class: 'sce-hint' }, '후보 — 한 줄에 하나 (이름 | 가중치 | 그룹)'));
+    card.appendChild(itemsArea);
+    card.appendChild(h('div', { class: 'sce-hint' }, '그룹 보정 — 한 줄에 하나 (그룹 | 같이 뽑힐 배수 | 최대 인원). 비우면 보정 없음'));
+    card.appendChild(groupsArea);
+    det.appendChild(card);
+  });
+  det.appendChild(h('div', { class: 'sce-row' }, h('button', { class: 'sce-btn sce-add', onclick: () => {
+    if (!Array.isArray(schema.pools)) schema.pools = [];
+    let n = schema.pools.length + 1; while (schema.pools.some((x) => x && x.id === `pool${n}`)) n++;
+    schema.pools.push({ id: `pool${n}`, items: [] }); poolsFoldOpen = true; rerender();
+  } }, '+ 후보 풀 추가')));
+  return det;
+}
+
 function effectRows(schema, effects, rerender) {
   const wrap = h('div', { class: 'sce-sub' });
   const nonListVars = schema.vars.filter((v) => v.type !== 'list');
@@ -20100,6 +20503,7 @@ function effectRows(schema, effects, rerender) {
     if (ef.checkpoint !== undefined) { wrap.appendChild(checkpointEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.front !== undefined) { wrap.appendChild(frontEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.gauge !== undefined) { wrap.appendChild(gaugeEffectRow(ef, grip(effects, i, rerender), rerender)); return; }
+    if (ef.sample !== undefined) { wrap.appendChild(sampleEffectRow(schema, ef, grip(effects, i, rerender), rerender)); return; }
     if (ef.list !== undefined) {
       wrap.appendChild(h('div', { class: 'sce-row' },
         bindSelect(ef.list, listOpts.length ? listOpts : [['', '(목록 변수 없음)']], (v) => { ef.list = v; rerender(); }),
@@ -20130,6 +20534,11 @@ function effectRows(schema, effects, rerender) {
       effects.push({ list: listVars[0].id, add: [], remove: [] });
       rerender();
     } }, '+ 아이템 효과'));
+    // 추첨 (v1.18.0) — 풀이 없어도 목록에서 목록으로 뽑을 수 있다
+    btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', title: '후보 풀에서 N개를 중복 없이 목록 변수에', onclick: () => {
+      effects.push({ sample: poolsOf(schema)[0]?.id ?? listVars[0].id, into: listVars[0].id, n: 4 });
+      rerender();
+    } }, '+ 🎲 추첨'));
   }
   if (checkpointOn(schema)) {
     btnRow.appendChild(h('button', { class: 'sce-btn sce-add', style: 'flex:1', onclick: () => {
@@ -20918,6 +21327,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     });
     groupedAppend(derivedList, schema.derived, derivedCards);
     wrap.appendChild(derivedList);
+    wrap.appendChild(poolsSection(schema, rerender));   // 🎲 후보 풀 (v1.18.0)
     return wrap;
   }
 
@@ -22256,6 +22666,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (ef.checkpoint !== undefined) { box.appendChild(checkpointEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.front !== undefined) { box.appendChild(frontEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.gauge !== undefined) { box.appendChild(gaugeEffectRow(ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
+        if (ef.sample !== undefined) { box.appendChild(sampleEffectRow(schema, ef, ruleGrip(effects, i), rerender, 'sce-row sce-rules-effect-row')); return; }
         if (ef.list !== undefined) {
           box.appendChild(h('div', { class: 'sce-row sce-rules-effect-row is-list' },
             h('span', { class: 'sce-rules-effect-var' },
@@ -22313,6 +22724,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             rerender();
           },
         }, '+ 아이템 효과'));
+        // 추첨 (v1.18.0)
+        btnRow.appendChild(h('button', {
+          class: 'sce-btn sce-add', style: 'flex:1', title: '후보 풀에서 N개를 중복 없이 목록 변수에',
+          onclick: () => { effects.push({ sample: poolsOf(schema)[0]?.id ?? listVars[0].id, into: listVars[0].id, n: 4 }); rerender(); },
+        }, '+ 🎲 추첨'));
       }
       if (checkpointOn(schema)) {
         btnRow.appendChild(h('button', {
@@ -26746,6 +27162,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       if (e.checkpoint !== undefined) return `${e.checkpoint === 'load' ? '체크포인트 되감기' : '체크포인트 저장'} (${e.slot || 'main'})`;
       if (e.front !== undefined) return `무대 뒤 ${e.front} 시계 ${String(e.add ?? '')}`;
       if (e.gauge !== undefined) return `사건 게이지 ${String(e.gauge)}`;
+      if (e.sample !== undefined) return `추첨 ${e.sample} → ${e.into} ×${String(e.n ?? '')}${e.leader ? ` (대표 ${e.leader})` : ''}${e.append ? ' 덧붙임' : ''}`;
       if (e.set) return `${e.set} ← ${e.expr}`;
       if (e.list) {
         const ops = [];
@@ -34668,6 +35085,24 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 
 });
 
+
+// ── v1.17.0 ───────────────────────────────────────────────
+// **봇 제작 2차 — 📁 로어북 폴더 · 🪪 시트 형식(OOC 명령어) · 📥 캐릭 설정집 원문 적재.** 유저 제안(2026-10-10, v1.16.3 실기 "흠 잘 불러오네" 뒤):
+// "캐릭터 시트 — 원하는 시트 OOC 명령어를 붙여 넣는 곳을 만들고 그 아래 캐릭 설정집 적재를 만들고. 로어북이 그룹 기능도 지원하니 어떤 그룹을
+// 만들지, 어떤 그룹에 로어북을 생성할지 정할 수 있으면 봇 제작이 더 수월할 것".
+// - [코어 bible] 설정집에 folders[{ id, name, key? }] + sections[].folder. 리수 폴더(포켓리스 1.8.1 database.svelte.ts) = mode:'folder' 항목
+//   (key 머리 '\uf000folder:' + uuid) + 자식의 folder(=그 key). importLoreBook은 data를 그대로 push하니 JSON에 폴더째 실린다 —
+//   compileLorebook이 쓰이는 폴더만 폴더 항목으로 만들고(빈 폴더 X) 자식에 folder를 적는다. key가 있는 폴더(리수에 이미 있는 것)는 항목을 만들지
+//   않고 자식만 그 key로 — 같은 캐릭터로 가져올 때 그 폴더 안으로. 새 폴더 key는 내보낼 때마다 새 uuid(가져오기가 덧붙임이라 두 번 넣으면 둘).
+// - [편집기] 📁 로어북 폴더 칸(설정집 머리 아래): 칩(이름·항목 수·리수에 있음·✕) · 새 폴더 만들기 · "리수에 있는 폴더" [+ 이름] 버튼(캐릭터 정보의
+//   folders에서). 카드마다 폴더 고르기(폴더가 있을 때만). 폴더가 있으면 카드 묶음이 종류별 → 폴더별. 📚 보낼 것 고르기 목록엔 "폴더 › 이름".
+// - [규약] folders(id 덮어쓰기, key는 AI가 못 정함)·sections[].folder(없는 폴더 id 거부). 폴더가 있으면 새 항목은 알맞은 폴더에, 없으면 폴더를 억지로 안 만든다.
+// - [편집기] 🪪 캐릭터 시트 접기 = 시트 형식(OOC 명령어 — 기기 공통 prefs sim:bible:prefs, 모든 봇이 같이 씀) → 📥 캐릭 설정집 적재(봇별 설정집
+//   source, 동봉 체크 + KB, 48KB 위는 앞부분만 + ⚠) → [🪪 시트 써 달라기](요청문을 입력칸에) → 결과(이름·desc·first). 시트 형식·원문은 AI 수정안으로
+//   못 바꾼다(UPDATE_KEYS 밖). 프롬프트는 설정집 다이제스트 뒤에 '## 캐릭터 시트 형식'·'## 적재한 원문' 블록(bibleUserBlocks).
+// - [어댑터] getBotContextForEditor: folders[{ key, name }] + lore[].folder(폴더 이름). 폴더 항목(mode:'folder')은 lore 목록에서 뺀다.
+//   ai.loadBiblePrefs/saveBiblePrefs — pluginStorage sim:bible:prefs(캐릭터 무관).
+// - 여전히 캐릭터엔 아무것도 안 쓴다(1단계). 2단계(허가 체크·항목 단위 적용)는 그대로 미구현.
 
 // ── v1.16.3 ───────────────────────────────────────────────
 // **캐릭터가 바뀌면 편집기를 새로 만든다.** 유저 실기(2026-10-10): 새 봇(로어북 없음)을 만들었다가 로어북 있는 봇으로 옮겨 오니 📚 보낼 것 고르기가

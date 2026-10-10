@@ -28,7 +28,7 @@ const R = []; const ck = (n, c, x = '') => R.push([c, n, x]);
   ck('★ 🪪 시트 형식(OOC) + 📥 원문 적재 + 시트 써 달라기 (v1.17.0)', src.includes("'aria-label': '캐릭터 시트 형식'") && src.includes("'aria-label': '캐릭 설정집 원문'") && src.includes("'🪪 시트 써 달라기'") && src.includes('bibleMod.bibleUserBlocks(bible, bibleSheetFormat).lines'), '');
   ck('★ 어댑터: 캐릭터 정보에 폴더(folders + lore[].folder), 폴더 항목은 목록에서 뺌', src.includes("all.filter((l) => l.mode === 'folder')") && src.includes("all.filter((l) => l.mode !== 'folder')") && src.includes('folders,'), '');
   ck('★ 어댑터: 시트 형식은 기기 공통 prefs (sim:bible:prefs)', src.includes("'sim:bible:prefs'") && src.includes('loadBiblePrefs: async') && src.includes('saveBiblePrefs: async'), '');
-  ck('★ 버전 1.17.x + display-name', src.includes('//@version 1.17.') && /\/\/@display-name .*v1\.17\./.test(src), '');
+  ck('★ 버전 1.17 이상 + display-name', /\/\/@version 1\.(1[7-9]|[2-9][0-9])\./.test(src) && /\/\/@display-name .*v1\.(1[7-9]|[2-9][0-9])\./.test(src), '');
 }
 
 // ── ② 1단계 = 쓰기 없음 — bibleFloor 구간은 캐릭터 객체를 건드리지 않는다 ──

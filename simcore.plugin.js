@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.2
-//@display-name SimCore (시뮬 엔진) v1.14.2 변수 키는 desc
+//@version 1.15.0
+//@display-name SimCore (시뮬 엔진) v1.15.0 이 PC의 Claude Code·Codex로 만들기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,14 +10,23 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.14.2 ──────────────────────────────────────────────
-// **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
-// 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
-// - [검증] 변수에 `description`이 있고 desc가 비었으면 **desc로 옮기고** 경고로 알린다(설정 없이 결정된 동작 — 켜고 끌 취향이 아니라
-//   형식의 사실). 둘 다 있으면 desc를 지키고 "description은 읽지 않는다"고 경고. 그 밖의 모르는 키(오타 discription 등)는
-//   "알 수 없는 키" 경고 — 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다. JSON 붙여넣기·AI 응답·패치 세 입구가
-//   같은 검증기를 지나므로 한 자리로 다 걸린다.
-// - [요청서] 변수 규격표 desc 줄에 "키 이름은 desc — description은 읽지 않습니다" 명시 (규격에 없던 키를 AI가 관행으로 지어낸 사례).
+// ── v1.15.0 ──────────────────────────────────────────────
+// **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
+// 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
+// 심코어에 — 단 플러그인은 리수 샌드박스라 프로세스를 못 띄우므로, PC에서 켜 두는 다리 하나를 거친다.
+// - [tools/cli-bridge] `simcore-cli-bridge.js` + `cli-bridge.bat` — 의존 없음. OpenAI 호환(`/v1/chat/completions`·`/v1/models`·`/health`).
+//   Claude Code는 노벨 스튜디오와 같은 격리(`--tools "" --setting-sources "" --strict-mcp-config --no-session-persistence
+//   --disable-slash-commands`, system은 파일·본문은 stdin, CLAUDE*·ANTHROPIC_* 환경변수 제거) / Codex는 빈 임시 폴더
+//   읽기 전용·`--ephemeral`. 본문은 어디에도 안 남긴다. 127.0.0.1에만 연다.
+// - [어댑터] 생성 모델 선택에 `cli` — `callGenLLM`만 이 길을 탄다(단발 생성·💬 대화·에셋 변환·꾸미기). RP 채팅·상태 갱신은
+//   그대로 리수 모델. `Risuai.nativeFetch`로 다리에 묻는다 — 리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시, 웹은
+//   plain fetch 설정을 켜야 localhost에 닿는다(리수 `globalApi` 실사: 웹의 `globalFetch`는 localhost를 **아예 막고**,
+//   `fetchNative`는 프록시를 거친다). 포켓리스는 불가 — 안내문이 말한다.
+// - [편집기] 생성 모델 줄에 [이 PC의 Claude Code · Codex (구독)] → 주소 → [🔌 연결 확인] → 다리가 준 모델 목록에서 고르기.
+//   확인 결과는 편집기 인스턴스에만 산다. 다리가 꺼져 있으면 "cli-bridge.bat을 켰는지" 안내.
+// - [증명] test-clibridge.js — 가짜 `claude`·`codex`로 다리를 띄워 격리 플래그·평탄화·오류 문구·스트리밍·CORS를 보고,
+//   번들의 생성 모델 절을 잘라 가짜 Risuai(nativeFetch = 진짜 fetch)로 다리에 실제로 꽂는다. 구독 할당량 0.
+// - 규정: 개인 PC에서 본인 구독을 쓰는 자리다(노벨 스튜디오와 같음). 공식 기능으로 배포할지는 유저 결정 — 배포글엔 아직 없다.
 
 
 const SimCore = (() => {
@@ -24779,6 +24788,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
+  let aiCli;                // 이 PC 다리 연결 확인 결과 (undefined = 미시도, null = 확인 중, { ok, models, backends } | { error })
   // 생성 모델 선택 줄 (v0.78) — 예전엔 [AI 어시스턴트] 탭 안에만 있었다. 그런데 생성은
   // 거기서만 일어나지 않는다: 에셋 팩 변환도, 상태창 꾸미기도 같은 `ai.generate`를 탄다.
   // 설정은 전역이라 이미 적용되고 있었는데 **고르는 자리가 안 보여서** 늘 보조 모델로
@@ -24793,12 +24803,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델 읽는 중…'));
         return;
       }
-      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId, cliUrl: aiGenModel.cliUrl, cliModel: aiGenModel.cliModel });
       gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
       gmLine.appendChild(bindSelect(aiGenModel.choice, [
         ['aux', '보조 모델 (기본)'],
         ['main', '메인 모델 (대화용 그대로)'],
         ['static', '직접 지정 (실험적)'],
+        ['cli', '이 PC의 Claude Code · Codex (구독)'],
       ], (x) => { aiGenModel.choice = x; save(); rerender(); }));
       if (aiGenModel.choice === 'static') {
         gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
@@ -24823,12 +24834,47 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
         }
       }
+      if (aiGenModel.choice === 'cli') {
+        // 이 PC 다리 (v1.15.0) — 주소 → [연결 확인] → 다리가 준 모델 목록. 확인 결과는 이 편집기 인스턴스에만 산다.
+        const CLI_URL = 'http://127.0.0.1:5181';
+        if (!aiGenModel.cliUrl) aiGenModel.cliUrl = CLI_URL;
+        gmLine.appendChild(bindInput(aiGenModel.cliUrl, (x) => { aiGenModel.cliUrl = x.trim() || CLI_URL; aiCli = undefined; save(); renderGmLine(); },
+          { cls: 'sce-w-m', ph: CLI_URL, title: '이 PC에서 cli-bridge.bat이 켜진 주소' }));
+        const probe = () => {
+          if (!ai.probeCli) { aiCli = { error: '이 플러그인 판은 연결 확인이 없어요 — 플러그인을 다시 임포트해 주세요' }; renderGmLine(); return; }
+          aiCli = null; renderGmLine();
+          Promise.resolve(ai.probeCli(aiGenModel.cliUrl))
+            .then((v) => { aiCli = v && (v.ok || v.error) ? v : { error: '응답 없음' }; })
+            .catch((e) => { aiCli = { error: e.message }; })
+            .then(() => { if (!destroyed) renderGmLine(); });
+        };
+        if (aiCli === undefined) {
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '🔌 연결 확인'));
+        } else if (aiCli === null) {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '확인 중…'));
+        } else if (aiCli.ok) {
+          const models = aiCli.models && aiCli.models.length ? aiCli.models : [{ id: 'claude-code', label: 'Claude Code (기본 모델)' }];
+          if (!models.some((m) => m.id === aiGenModel.cliModel)) { aiGenModel.cliModel = models[0].id; save(); }
+          gmLine.appendChild(bindSelect(aiGenModel.cliModel, models.map((m) => [m.id, m.label || m.id]), (x) => { aiGenModel.cliModel = x; save(); }));
+          const b = aiCli.backends || {};
+          const cc = b['claude-code']; const cx = b.codex;
+          const parts = [cc && cc.found ? ('Claude Code ' + (cc.version || '')).trim() : 'Claude Code 없음',
+            cx && cx.found ? (cx.loggedIn === false ? 'Codex 로그인 안 됨' : 'Codex') : 'Codex 없음'];
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '✓ ' + parts.join(' · ')));
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '다시 확인'));
+        } else {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '✗ ' + (aiCli.error || '연결 실패')));
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '다시 확인'));
+        }
+      }
       const copy = aiGenModel.choice === 'aux'
         ? (compact ? '보조 모델로 변환해요 — 결과가 부실하면 메인 모델로 바꿔 보세요.'
           : '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.')
         : aiGenModel.choice === 'main'
           ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
-          : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
+          : aiGenModel.choice === 'cli'
+            ? '이 PC에서 켜 둔 다리(tools/cli-bridge)를 거쳐 Claude Code·Codex 구독으로 생성해요. 리수 데스크톱·셀프호스트용이고 포켓리스·웹 리수에서는 안 돼요. RP 채팅은 그대로 리수 모델이에요.'
+            : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
       gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' }, copy));
     };
     renderGmLine();
@@ -24991,6 +25037,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ? buildPatchExportPrompt(schema, { findings: diag.findings, stats: diag.stats, botCtx: ctxText })
       : buildAiRequestPrompt(schema, req, ctxText);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'cli' ? '이 PC의 Claude Code·Codex'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     let fatal = null, text = null, got = null;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -25419,6 +25466,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const messages = [...chatHistoryMessages(chat.msgs.slice(0, -1)), { role: 'user', content: text }];
     chat.sent += chatTurnEstimate(system, messages);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'cli' ? '이 PC의 Claude Code·Codex'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     const stripFence = (raw) => {
       const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -32770,6 +32818,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.14.2 ──────────────────────────────────────────────
+// **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
+// 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
+// - [검증] 변수에 `description`이 있고 desc가 비었으면 **desc로 옮기고** 경고로 알린다(설정 없이 결정된 동작 — 켜고 끌 취향이 아니라
+//   형식의 사실). 둘 다 있으면 desc를 지키고 "description은 읽지 않는다"고 경고. 그 밖의 모르는 키(오타 discription 등)는
+//   "알 수 없는 키" 경고 — 밑줄로 시작하는 키(_note)는 제작자 메모로 보고 넘어간다. JSON 붙여넣기·AI 응답·패치 세 입구가
+//   같은 검증기를 지나므로 한 자리로 다 걸린다.
+// - [요청서] 변수 규격표 desc 줄에 "키 이름은 desc — description은 읽지 않습니다" 명시 (규격에 없던 키를 AI가 관행으로 지어낸 사례).
+
 // ── v1.14.1 ──────────────────────────────────────────────
 // **징조가 먼저 온다 — 사건 게이지의 징조.** 유저: "주변에 뭔가 징조가 있으면 서사적으로 갑자기 터지는 것보다 자연스러울 테니".
 // "무언가 온다"를 두루뭉술하게 흘리면 안 된다 — 표에는 좋은 일도 섞여 있어 불길한 전조 뒤에 아기가 태어나면 서사가 어긋난다.
@@ -35976,7 +36033,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   // 보조 모델(submodel)은 번역·요약용 싼 모델이 꽂혀 있는 자리인데, 스키마 생성은 이
   // 생태계에서 가장 길고 어려운 출력이다 — 첫 시도가 쓰레기면 기능이 거기서 죽는다 (공홈 피드백).
   // 어느 모델로 생성할지는 봇이 아니라 기기·유저의 속성이므로 pluginStorage(로컬)에 둔다.
-  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static', staticId }
+  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static'|'cli', staticId, cliUrl, cliModel }
   // 메인 모델 경로의 자기 요청 식별표 — beforeRequest가 이걸 보면 주입·정산 없이 통과시킨다.
   // (⟦simcore:N⟧ 마커와 다른 꼴이라 기존 MARKER_RE 제거에 안 걸린다 — 전용 분기에서 지운다)
   const GEN_SENTINEL = '⟦simcore:gen⟧';
@@ -35985,18 +36042,64 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     try {
       const raw = await Risuai.pluginStorage.getItem(GEN_MODEL_KEY);
       const v = raw ? JSON.parse(raw) : null;
-      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static')) {
-        return { choice: v.choice, staticId: String(v.staticId || '') };
+      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static' || v.choice === 'cli')) {
+        return { choice: v.choice, staticId: String(v.staticId || ''),
+          cliUrl: String(v.cliUrl || CLI_DEFAULT_URL), cliModel: String(v.cliModel || 'claude-code') };
       }
     } catch { /* 깨진 저장값은 기본값으로 */ }
-    return { choice: 'aux', staticId: '' };
+    return { choice: 'aux', staticId: '', cliUrl: CLI_DEFAULT_URL, cliModel: 'claude-code' };
   }
 
   async function setGenModel(v) {
     try {
       await Risuai.pluginStorage.setItem(GEN_MODEL_KEY,
-        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '' }));
+        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '',
+          cliUrl: (v && v.cliUrl) || '', cliModel: (v && v.cliModel) || '' }));
     } catch (e) { console.log('[simcore] 생성 모델 저장 실패:', e.message); }
+  }
+
+  // ── 이 PC의 Claude Code · Codex (v1.15.0) ─────────────────────────────
+  // 편집기 생성을 리수 모델 대신 PC에서 켜 둔 다리(tools/cli-bridge)로 보낸다. 플러그인은 샌드박스라 프로세스를
+  // 못 띄우므로 HTTP 한 번이 전부다 — Risuai.nativeFetch (리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시,
+  // 웹은 plain fetch 설정을 켜야 localhost에 닿는다. 포켓리스는 불가). RP 채팅·상태 갱신은 건드리지 않는다 —
+  // callGenLLM만 이 길을 탄다. 다리는 본문을 어디에도 안 남기고, 이쪽도 인증 정보를 모른다.
+  const CLI_DEFAULT_URL = 'http://127.0.0.1:5181';
+  const cliBase = (url) => String(url || CLI_DEFAULT_URL).trim().replace(/\/+$/, '');
+  async function cliFetch(url, init) {
+    if (typeof Risuai.nativeFetch !== 'function') throw new Error('이 리수 버전엔 nativeFetch가 없어요 — 리수를 업데이트해 주세요');
+    const res = await Risuai.nativeFetch(url, init);
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { body = null; }
+    return { status: res.status, body, text };
+  }
+  const cliErr = (e) => {
+    const m = String(e?.message ?? e);
+    if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat이 켜져 있는지, 주소가 맞는지 확인해 주세요. 포켓리스·웹 리수에서는 쓸 수 없어요.`;
+    }
+    return m;
+  };
+  // 연결 확인 — 편집기의 [🔌 연결 확인]. 백엔드 상태와 고를 수 있는 모델 목록을 돌려준다.
+  async function probeCli(url) {
+    try {
+      const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
+      if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
+      return { ok: true, version: r.body.version, backends: r.body.backends || {},
+        models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
+    } catch (e) { return { error: cliErr(e) }; }
+  }
+  async function callCliLLM(gm, messages) {
+    try {
+      const r = await cliFetch(cliBase(gm.cliUrl) + '/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: gm.cliModel || 'claude-code', messages, stream: false }),
+      });
+      const text = r.body?.choices?.[0]?.message?.content;
+      if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
+      const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
+      return { error: `이 PC의 Claude Code·Codex: ${msg}` };
+    } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }
   }
 
   /**
@@ -36033,6 +36136,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
           role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))]
       : [{ role: 'system', content: sys }, { role: 'user', content: AUX_NUDGE }];
     const gm = await getGenModel();
+    if (gm.choice === 'cli') return callCliLLM(gm, buildMessages(promptText)); // 이 PC 다리 (v1.15.0) — 리수 모델 안 거침
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
       const r = await callAuxLLM(promptText, 8000, chatIn ? buildMessages(promptText) : null);
       if (r === null) return { error: `보조 경로: ${lastAux.status}` };
@@ -41168,6 +41272,7 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        probeCli: (url) => probeCli(url), // 이 PC 다리 연결 확인 (v1.15.0)
         // 작업 내역 (v1.9.7) — 캐릭터별 pluginStorage(기기 로컬). 편집기는 리수를 모르니 읽기·쓰기만 준다.
         // 대화는 안 남긴다 — 적용된 변경의 요약만 (유저 결정 2026-09-10).
         loadWorkLog: async () => {

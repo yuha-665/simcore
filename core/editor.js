@@ -12422,6 +12422,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let aiBotCtxError = null; // 캐릭터 연결 실패를 실제 빈 컨텍스트와 구분
   let aiGenModel;           // 생성 모델 선택 캐시 { choice, staticId } (undefined = 아직 안 읽음)
   let aiModelIds;           // 리수 DB의 모델 id { main, sub } (undefined = 미시도, null = 못 읽음)
+  let aiCli;                // 이 PC 다리 연결 확인 결과 (undefined = 미시도, null = 확인 중, { ok, models, backends } | { error })
   // 생성 모델 선택 줄 (v0.78) — 예전엔 [AI 어시스턴트] 탭 안에만 있었다. 그런데 생성은
   // 거기서만 일어나지 않는다: 에셋 팩 변환도, 상태창 꾸미기도 같은 `ai.generate`를 탄다.
   // 설정은 전역이라 이미 적용되고 있었는데 **고르는 자리가 안 보여서** 늘 보조 모델로
@@ -12436,12 +12437,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델 읽는 중…'));
         return;
       }
-      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId });
+      const save = () => ai.setGenModel({ choice: aiGenModel.choice, staticId: aiGenModel.staticId, cliUrl: aiGenModel.cliUrl, cliModel: aiGenModel.cliModel });
       gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '생성 모델:'));
       gmLine.appendChild(bindSelect(aiGenModel.choice, [
         ['aux', '보조 모델 (기본)'],
         ['main', '메인 모델 (대화용 그대로)'],
         ['static', '직접 지정 (실험적)'],
+        ['cli', '이 PC의 Claude Code · Codex (구독)'],
       ], (x) => { aiGenModel.choice = x; save(); rerender(); }));
       if (aiGenModel.choice === 'static') {
         gmLine.appendChild(bindInput(aiGenModel.staticId, (x) => { aiGenModel.staticId = x.trim(); save(); },
@@ -12466,12 +12468,47 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             'id를 못 읽는 리수 버전입니다 — 보조 모델을 상위로 교체하는 우회를 쓰세요'));
         }
       }
+      if (aiGenModel.choice === 'cli') {
+        // 이 PC 다리 (v1.15.0) — 주소 → [연결 확인] → 다리가 준 모델 목록. 확인 결과는 이 편집기 인스턴스에만 산다.
+        const CLI_URL = 'http://127.0.0.1:5181';
+        if (!aiGenModel.cliUrl) aiGenModel.cliUrl = CLI_URL;
+        gmLine.appendChild(bindInput(aiGenModel.cliUrl, (x) => { aiGenModel.cliUrl = x.trim() || CLI_URL; aiCli = undefined; save(); renderGmLine(); },
+          { cls: 'sce-w-m', ph: CLI_URL, title: '이 PC에서 cli-bridge.bat이 켜진 주소' }));
+        const probe = () => {
+          if (!ai.probeCli) { aiCli = { error: '이 플러그인 판은 연결 확인이 없어요 — 플러그인을 다시 임포트해 주세요' }; renderGmLine(); return; }
+          aiCli = null; renderGmLine();
+          Promise.resolve(ai.probeCli(aiGenModel.cliUrl))
+            .then((v) => { aiCli = v && (v.ok || v.error) ? v : { error: '응답 없음' }; })
+            .catch((e) => { aiCli = { error: e.message }; })
+            .then(() => { if (!destroyed) renderGmLine(); });
+        };
+        if (aiCli === undefined) {
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '🔌 연결 확인'));
+        } else if (aiCli === null) {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '확인 중…'));
+        } else if (aiCli.ok) {
+          const models = aiCli.models && aiCli.models.length ? aiCli.models : [{ id: 'claude-code', label: 'Claude Code (기본 모델)' }];
+          if (!models.some((m) => m.id === aiGenModel.cliModel)) { aiGenModel.cliModel = models[0].id; save(); }
+          gmLine.appendChild(bindSelect(aiGenModel.cliModel, models.map((m) => [m.id, m.label || m.id]), (x) => { aiGenModel.cliModel = x; save(); }));
+          const b = aiCli.backends || {};
+          const cc = b['claude-code']; const cx = b.codex;
+          const parts = [cc && cc.found ? ('Claude Code ' + (cc.version || '')).trim() : 'Claude Code 없음',
+            cx && cx.found ? (cx.loggedIn === false ? 'Codex 로그인 안 됨' : 'Codex') : 'Codex 없음'];
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '✓ ' + parts.join(' · ')));
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '다시 확인'));
+        } else {
+          gmLine.appendChild(h('span', { class: 'sce-hint', style: 'margin:0' }, '✗ ' + (aiCli.error || '연결 실패')));
+          gmLine.appendChild(h('button', { class: 'sce-btn sce-mini', onclick: probe }, '다시 확인'));
+        }
+      }
       const copy = aiGenModel.choice === 'aux'
         ? (compact ? '보조 모델로 변환해요 — 결과가 부실하면 메인 모델로 바꿔 보세요.'
           : '보조 모델로 생성해요. 품질이 낮으면 더 높은 성능의 모델로 바꿔 보세요.')
         : aiGenModel.choice === 'main'
           ? '대화 모델로 보내요. 일부 환경에서는 인증 문제로 실패할 수 있어요.'
-          : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
+          : aiGenModel.choice === 'cli'
+            ? '이 PC에서 켜 둔 다리(tools/cli-bridge)를 거쳐 Claude Code·Codex 구독으로 생성해요. 리수 데스크톱·셀프호스트용이고 포켓리스·웹 리수에서는 안 돼요. RP 채팅은 그대로 리수 모델이에요.'
+            : '입력한 모델 id로 보내요. Risu 모델 설정에 표시된 id를 사용해 주세요.';
       gmLine.appendChild(h('div', { class: 'sce-ai-model-copy' }, copy));
     };
     renderGmLine();
@@ -12634,6 +12671,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       ? buildPatchExportPrompt(schema, { findings: diag.findings, stats: diag.stats, botCtx: ctxText })
       : buildAiRequestPrompt(schema, req, ctxText);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'cli' ? '이 PC의 Claude Code·Codex'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     let fatal = null, text = null, got = null;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -13062,6 +13100,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const messages = [...chatHistoryMessages(chat.msgs.slice(0, -1)), { role: 'user', content: text }];
     chat.sent += chatTurnEstimate(system, messages);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'cli' ? '이 PC의 Claude Code·Codex'
       : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
     const stripFence = (raw) => {
       const m = String(raw).trim().match(/```(?:json)?\s*([\s\S]*?)```/);

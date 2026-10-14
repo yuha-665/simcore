@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.14.2
-//@display-name SimCore (시뮬 엔진) v1.14.2 변수 키는 desc
+//@version 1.15.0
+//@display-name SimCore (시뮬 엔진) v1.15.0 이 PC의 Claude Code·Codex로 만들기
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,24 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.15.0 ──────────────────────────────────────────────
+// **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
+// 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
+// 심코어에 — 단 플러그인은 리수 샌드박스라 프로세스를 못 띄우므로, PC에서 켜 두는 다리 하나를 거친다.
+// - [tools/cli-bridge] `simcore-cli-bridge.js` + `cli-bridge.bat` — 의존 없음. OpenAI 호환(`/v1/chat/completions`·`/v1/models`·`/health`).
+//   Claude Code는 노벨 스튜디오와 같은 격리(`--tools "" --setting-sources "" --strict-mcp-config --no-session-persistence
+//   --disable-slash-commands`, system은 파일·본문은 stdin, CLAUDE*·ANTHROPIC_* 환경변수 제거) / Codex는 빈 임시 폴더
+//   읽기 전용·`--ephemeral`. 본문은 어디에도 안 남긴다. 127.0.0.1에만 연다.
+// - [어댑터] 생성 모델 선택에 `cli` — `callGenLLM`만 이 길을 탄다(단발 생성·💬 대화·에셋 변환·꾸미기). RP 채팅·상태 갱신은
+//   그대로 리수 모델. `Risuai.nativeFetch`로 다리에 묻는다 — 리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시, 웹은
+//   plain fetch 설정을 켜야 localhost에 닿는다(리수 `globalApi` 실사: 웹의 `globalFetch`는 localhost를 **아예 막고**,
+//   `fetchNative`는 프록시를 거친다). 포켓리스는 불가 — 안내문이 말한다.
+// - [편집기] 생성 모델 줄에 [이 PC의 Claude Code · Codex (구독)] → 주소 → [🔌 연결 확인] → 다리가 준 모델 목록에서 고르기.
+//   확인 결과는 편집기 인스턴스에만 산다. 다리가 꺼져 있으면 "cli-bridge.bat을 켰는지" 안내.
+// - [증명] test-clibridge.js — 가짜 `claude`·`codex`로 다리를 띄워 격리 플래그·평탄화·오류 문구·스트리밍·CORS를 보고,
+//   번들의 생성 모델 절을 잘라 가짜 Risuai(nativeFetch = 진짜 fetch)로 다리에 실제로 꽂는다. 구독 할당량 0.
+// - 규정: 개인 PC에서 본인 구독을 쓰는 자리다(노벨 스튜디오와 같음). 공식 기능으로 배포할지는 유저 결정 — 배포글엔 아직 없다.
+
 // ── v1.14.2 ──────────────────────────────────────────────
 // **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
 // 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
@@ -3225,7 +3243,7 @@
   // 보조 모델(submodel)은 번역·요약용 싼 모델이 꽂혀 있는 자리인데, 스키마 생성은 이
   // 생태계에서 가장 길고 어려운 출력이다 — 첫 시도가 쓰레기면 기능이 거기서 죽는다 (공홈 피드백).
   // 어느 모델로 생성할지는 봇이 아니라 기기·유저의 속성이므로 pluginStorage(로컬)에 둔다.
-  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static', staticId }
+  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static'|'cli', staticId, cliUrl, cliModel }
   // 메인 모델 경로의 자기 요청 식별표 — beforeRequest가 이걸 보면 주입·정산 없이 통과시킨다.
   // (⟦simcore:N⟧ 마커와 다른 꼴이라 기존 MARKER_RE 제거에 안 걸린다 — 전용 분기에서 지운다)
   const GEN_SENTINEL = '⟦simcore:gen⟧';
@@ -3234,18 +3252,64 @@
     try {
       const raw = await Risuai.pluginStorage.getItem(GEN_MODEL_KEY);
       const v = raw ? JSON.parse(raw) : null;
-      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static')) {
-        return { choice: v.choice, staticId: String(v.staticId || '') };
+      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static' || v.choice === 'cli')) {
+        return { choice: v.choice, staticId: String(v.staticId || ''),
+          cliUrl: String(v.cliUrl || CLI_DEFAULT_URL), cliModel: String(v.cliModel || 'claude-code') };
       }
     } catch { /* 깨진 저장값은 기본값으로 */ }
-    return { choice: 'aux', staticId: '' };
+    return { choice: 'aux', staticId: '', cliUrl: CLI_DEFAULT_URL, cliModel: 'claude-code' };
   }
 
   async function setGenModel(v) {
     try {
       await Risuai.pluginStorage.setItem(GEN_MODEL_KEY,
-        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '' }));
+        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '',
+          cliUrl: (v && v.cliUrl) || '', cliModel: (v && v.cliModel) || '' }));
     } catch (e) { console.log('[simcore] 생성 모델 저장 실패:', e.message); }
+  }
+
+  // ── 이 PC의 Claude Code · Codex (v1.15.0) ─────────────────────────────
+  // 편집기 생성을 리수 모델 대신 PC에서 켜 둔 다리(tools/cli-bridge)로 보낸다. 플러그인은 샌드박스라 프로세스를
+  // 못 띄우므로 HTTP 한 번이 전부다 — Risuai.nativeFetch (리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시,
+  // 웹은 plain fetch 설정을 켜야 localhost에 닿는다. 포켓리스는 불가). RP 채팅·상태 갱신은 건드리지 않는다 —
+  // callGenLLM만 이 길을 탄다. 다리는 본문을 어디에도 안 남기고, 이쪽도 인증 정보를 모른다.
+  const CLI_DEFAULT_URL = 'http://127.0.0.1:5181';
+  const cliBase = (url) => String(url || CLI_DEFAULT_URL).trim().replace(/\/+$/, '');
+  async function cliFetch(url, init) {
+    if (typeof Risuai.nativeFetch !== 'function') throw new Error('이 리수 버전엔 nativeFetch가 없어요 — 리수를 업데이트해 주세요');
+    const res = await Risuai.nativeFetch(url, init);
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { body = null; }
+    return { status: res.status, body, text };
+  }
+  const cliErr = (e) => {
+    const m = String(e?.message ?? e);
+    if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat이 켜져 있는지, 주소가 맞는지 확인해 주세요. 포켓리스·웹 리수에서는 쓸 수 없어요.`;
+    }
+    return m;
+  };
+  // 연결 확인 — 편집기의 [🔌 연결 확인]. 백엔드 상태와 고를 수 있는 모델 목록을 돌려준다.
+  async function probeCli(url) {
+    try {
+      const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
+      if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
+      return { ok: true, version: r.body.version, backends: r.body.backends || {},
+        models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
+    } catch (e) { return { error: cliErr(e) }; }
+  }
+  async function callCliLLM(gm, messages) {
+    try {
+      const r = await cliFetch(cliBase(gm.cliUrl) + '/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: gm.cliModel || 'claude-code', messages, stream: false }),
+      });
+      const text = r.body?.choices?.[0]?.message?.content;
+      if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
+      const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
+      return { error: `이 PC의 Claude Code·Codex: ${msg}` };
+    } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }
   }
 
   /**
@@ -3282,6 +3346,7 @@
           role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))]
       : [{ role: 'system', content: sys }, { role: 'user', content: AUX_NUDGE }];
     const gm = await getGenModel();
+    if (gm.choice === 'cli') return callCliLLM(gm, buildMessages(promptText)); // 이 PC 다리 (v1.15.0) — 리수 모델 안 거침
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
       const r = await callAuxLLM(promptText, 8000, chatIn ? buildMessages(promptText) : null);
       if (r === null) return { error: `보조 경로: ${lastAux.status}` };
@@ -8417,6 +8482,7 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        probeCli: (url) => probeCli(url), // 이 PC 다리 연결 확인 (v1.15.0)
         // 작업 내역 (v1.9.7) — 캐릭터별 pluginStorage(기기 로컬). 편집기는 리수를 모르니 읽기·쓰기만 준다.
         // 대화는 안 남긴다 — 적용된 변경의 요약만 (유저 결정 2026-09-10).
         loadWorkLog: async () => {

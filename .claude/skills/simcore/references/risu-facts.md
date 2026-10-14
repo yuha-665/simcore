@@ -317,3 +317,21 @@ DOM에 뜨는데 `showContainer('fullscreen')`한 플러그인 iframe이 그 위
   둘이 어긋나면 "있다고 보는데 지우지는 못하는" 구멍이 생긴다. 붙일 땐 있던 것을 걷어내고 새로 붙인다(멱등).
   같은 꼴의 위험: `⚙simcore` 로어 주석 · `⟦simcore:gen⟧` 센티널 · 에셋 태그 — 전부 완성형으로 볼 것.
 - **리수 권한 팝업 z-index = 50** (커뮤니티 제보 2026-09-06). 메인 DOM에 그 이상을 얹는 플러그인은 권한 동의를 막는다. SimCore는 메인 DOM에 요소를 안 넣고(상태창은 메시지 안, z-index ≤5), 패널·편집기는 플러그인 iframe 안이라 무관. 컨테이너가 떠 있는 동안 alertConfirm이 가려지는 건 별개 문제(규칙 #6).
+
+---
+
+## ★ nativeFetch · globalFetch와 localhost — 웹 리수는 PC에 못 닿는다 (v1.15.0 실사, RisuAI main 2026-10-14)
+
+- `Risuai.nativeFetch(url, init)` (v3, `v3.svelte.ts` → `globalApi.fetchNative`): 블랙리스트는 risuai.xyz·risuai.net·sionyw.com뿐.
+  **Tauri 데스크톱 = 네이티브 `streamed_fetch`** / 노드 셀프호스트 = 서버의 `/proxy2` / **웹 = 리수 프록시 서버를 거친다**
+  (`throughProxy = !isTauri && !isNodeServer && !db.usePlainFetch`) → localhost는 설정 **plain fetch**를 켠 웹에서만 브라우저가 직접 부른다.
+  POST·PUT은 body 필수(문자열·Uint8Array), method 기본 POST. 응답은 `factory.ts`가 `Response`를 `{__specialType:'Response', value: body stream, init}`로
+  넘겨 게스트에서 `new Response(...)`로 복원 — `res.text()`·`res.json()` 그대로 된다. 본문은 `logFetch` 기본 true라 리수 fetch 로그에 남는다.
+- 리수 모델 시스템이 쓰는 `globalFetch`는 **웹에서 localhost·127.0.0.1·0.0.0.0을 아예 막는다**(`knownHostes` → "This is not allowed due to browser
+  security policy. Use the desktop version"). "커스텀 모델 주소를 localhost로"는 데스크톱·셀프호스트 전용이다.
+- 커스텀 엔드포인트 세 길: `reverse_proxy`(설정의 `forceReplaceUrl` + `customAPIFormat`), `xcustom:::<id>`(`db.customModels[].url/key`),
+  `pluginmodel:::`(플러그인 `addProvider` — 리수가 "강력하고 위험, 바뀔 수 있다"고 경고하는 API). `runLLMModel({ mode:'submodel', staticModel })`는
+  `targ.aiModel = staticModel`로 그대로 꽂힌다(`request.ts`) — 직접 지정에 커스텀 모델 id도 들어간다.
+- SimCore v1.15.0은 이 위에 선다: **편집기 생성만** `nativeFetch`로 PC 다리(`tools/cli-bridge`, OpenAI 호환)에 보낸다. Claude Code는
+  messages 배열이 아니라 프롬프트 하나라 system은 파일·나머지는 `<user>/<assistant>` 태그로 평탄화된다 — 다턴 RP엔 둔하고 단발 생성·💬 대화엔 맞다.
+  실기(회사PC, claude 2.1.296 VS Code 확장): 연결 확인 → 짧은 요청 3.1초, prompt 625 토큰(Claude Code 자체 머리말 포함).

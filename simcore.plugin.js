@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.18.2
-//@display-name SimCore (시뮬 엔진) v1.18.2 🎲 추첨 효과 · 봇 제작 화면 정리
+//@version 1.18.3
+//@display-name SimCore (시뮬 엔진) v1.18.3 🎲 추첨 효과 · ⏱ 장기기억 요약에 이야기 시각
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,18 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.18.3 ───────────────────────────────────────────────
+// **장기기억 요약에 이야기 속 시각.** 커뮤니티 제보(2026-10-17): HypaPlus(20~30턴마다 요약)가 만든 기억의 "시간"이 "미정"이거나 모델이 지어낸 날짜.
+// 뿌리: 요약기는 채팅 **원문**을 모아 'memory' 요청으로 보낸다 — HypaPlus·HypaMinus = getChatFromIndex 원문 + runLLMModel memory,
+// 내장 HypaV3 = requestChatData memory. 원문엔 날짜가 없다(상태창은 화면 전용, 상태 블록은 그 턴의 메인 요청에만 실린다).
+// 게다가 우리 beforeRequest가 전 타입에서 ⟦simcore:N⟧을 지워, 응답마다 붙은 유일한 단서(그 시점 스냅샷 번호)까지 요약기에 안 갔다.
+// - [어댑터] 'memory' 요청에서만 ⟦simcore:N⟧을 지우는 대신 그 응답의 시각 도장으로 바꾼다 — `[Story time: 1499-03-14 08:00 → 11:30]`
+//   (시작 = pre:N-1, 끝 = out:N · 날짜가 바뀌면 `→ MM-DD HH:mm` · 시계가 앞으로 안 갔으면 끝 시각 하나). 시계를 안 보이는 봇(expose에
+//   clock·hour·minute 없음)은 **날짜만** — 하루 단위로 넘기는 봇의 시계는 종일 시작 시각이라, 베리디아 실측에서 밤 장면에도 08:00이 찍혔다. 서식은 봇의 날짜 표기와 무관하게
+//   YYYY-MM-DD HH:mm 고정 — 요약 플러그인 서식이 그 꼴을 요구한다. 시간 체계가 없거나 스냅샷이 정리됐으면(keepN 60 밖) 종전대로 지운다.
+//   요약 요청은 여러 메시지를 한 통으로 이으므로, 그 요청에선 가운데 마커를 앞 빈 줄째 지우고 가운데의 잘린 꼬리도 지운다.
+// - 메인·번역·보조·감정 요청은 종전대로 지운다 — 메인 히스토리에 도장이 있으면 모델이 흉내 내 제 응답 끝에 찍는다.
+// - 요약 모델을 플러그인 안에서 따로 연결해 리수 요청 길을 안 거치는 기억 플러그인에는 안 닿는다.
 // ── v1.18.2 ───────────────────────────────────────────────
 // **봇 제작 층 — 왼쪽 버튼 정렬.** 유저 스샷(2026-10-10): 내보내기 막대에 다섯(복사·파일·시트 / 되돌리기·비우기)을 두니 열 폭(≈640px)이 모자라
 // 되돌리기·비우기가 둘째 줄 오른쪽으로 밀려 어긋나 보였다. 왼쪽 셋은 38px, 오른쪽 둘은 32px이라 높이도 달랐다.
@@ -39006,6 +39018,62 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       }
     } catch (e) { console.log('[simcore] 과거 스냅샷 프리페치 실패:', e.message); }
   }
+  // ── 장기기억 요약에 이야기 속 시각 (v1.18.3) ───────────────
+  // 요약기(HypaV3·HypaPlus·HypaMinus)는 채팅 원문을 'memory' 요청으로 보낸다. 원문엔 날짜가 없어 요약본의 "시간:"이 "미정"이 되거나
+  // 지어낸 날짜가 됐다. 그 요청에서만 ⟦simcore:N⟧을 그 응답의 시각으로 바꾼다 — 시작 = pre:N-1(그 턴 전송 직전), 끝 = out:N.
+  // 서식은 봇의 날짜 표기와 무관하게 고정(요약 플러그인 서식이 YYYY-MM-DD HH:mm을 요구한다). 스냅샷이 없으면 도장 없이 지운다.
+  function storyStamp(cfg, startEpoch, endEpoch) {
+    // 시계를 안 보이는 봇(expose에 clock·hour·minute 없음 — 하루 단위로 넘기는 영지물 등)은 날짜만. 그 봇의 시계는 하루 종일
+    // 시작 시각(08:00)에 서 있어 밤 장면에도 08:00이 찍힌다 — 봇이 안 세는 시각을 넘기면 그게 지어낸 시각이다 (베리디아 실측)
+    const clock = cfg.expose.some((n) => n === 'clock' || n === 'hour' || n === 'minute');
+    const unit = clock ? 1 : timeMod.MIN_PER_DAY;
+    const at = (e) => {
+      const c = timeMod.calendarOf(e, cfg.calendar);
+      const hm = clock ? ' ' + timeMod.formatClock('HH:mm', c) : '';
+      return { ymd: timeMod.formatDate('YYYY-MM-DD', c), md: timeMod.formatDate('MM-DD', c), y: c.y, hm };
+    };
+    const b = at(endEpoch);
+    // 앞으로 안 갔으면(같은 시각·같은 날·⏪ 되감기) 끝 하나 — 뒤로 가는 범위는 요약 서식에 없다
+    if (startEpoch == null || Math.floor(startEpoch / unit) >= Math.floor(endEpoch / unit)) return `[Story time: ${b.ymd}${b.hm}]`;
+    const a = at(startEpoch);
+    const tail = a.ymd === b.ymd ? b.hm.trim() : a.y === b.y ? `${b.md}${b.hm}` : `${b.ymd}${b.hm}`;
+    return `[Story time: ${a.ymd}${a.hm} → ${tail}]`;
+  }
+  async function snapshotEpoch(phase, idx) {
+    if (!session || !(idx >= 0)) return null;
+    let st = phase === 'out' ? histStates.get(idx) : null;
+    if (!st) { try { st = await session.store.load(phase, idx); } catch { st = null; } }
+    const e = st?.vars?.[timeMod.EPOCH_KEY];
+    return typeof e === 'number' && isFinite(e) ? e : null;
+  }
+  /** 'memory' 요청의 마커를 시각 도장으로 바꾸고, 못 바꾼 것은 지운다. 반환: 바꾼 수 */
+  async function stampMemoryRequest(messages) {
+    const cfg = session && schema ? timeMod.timeConfig(schema) : null;
+    const stamps = new Map();
+    let n = 0;
+    for (const m of messages ?? []) {
+      if (!m || typeof m.content !== 'string') continue;
+      if (cfg) {
+        for (const [, k] of m.content.matchAll(MARKER_RE)) {
+          const idx = Number(k);
+          if (stamps.has(idx)) continue;
+          const end = await snapshotEpoch('out', idx);
+          stamps.set(idx, end == null ? null : storyStamp(cfg, await snapshotEpoch('pre', idx - 1), end));
+        }
+      }
+      // 요약 요청은 여러 메시지를 한 통으로 잇는다 — 가운데 마커를 그냥 지우면 앞뒤 빈 줄이 겹치고,
+      // 잘린 꼬리(`⟦simcore:` · `⟦simcore:12`)는 끝이 아니라 가운데에 있어 공통 제거(끝 고정)에 안 걸린다
+      m.content = m.content
+        .replace(/(\n*)⟦simcore:(\d+)⟧/g, (all, nl, k) => {
+          const s = stamps.get(Number(k));
+          if (!s) return '';
+          n++;
+          return nl + s;
+        })
+        .replace(/\n*⟦simcore:\d*(?![\d⟧])/g, '');
+    }
+    return n;
+  }
   let charKey = null;
   // 막간(v1.5.0)이 걷어낼 페르소나 원문 캐시 — db 접근이 느려 한 번만 읽는다.
   // ⚠ 선언은 여기(상태 선언부)에 둘 것: loadForCurrentChar가 부팅 중 먼저 불리므로
@@ -39437,8 +39505,15 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     // try 바깥이므로 여기서 던지면 앱의 모든 요청이 죽는다. 타입을 확인하고 만진다.
     // 번역 요청만은 뗀 번호를 기억해 둔다 — afterRequest가 결과 끝에 도로 붙인다 (v1.10.2).
     // 떼기 전에 찾고, 뗀 뒤에 올린다(대기열의 열쇠·지문은 뗀 글 기준 — 재시도는 뗀 배열로 다시 온다).
+    // 장기기억 요약만은 떼기 전에 그 응답의 시각 도장으로 바꾼다 (v1.18.3) — 못 바꾼 마커는 거기서 같이 지운다(여러 메시지를 이은 글이라).
     let trFound = null;
     if (type === 'translate') { try { trFound = trFindMarker(messages); } catch { trFound = null; } }
+    if (type === 'memory') {
+      try {
+        const n = await stampMemoryRequest(messages);
+        if (n) console.log(`[simcore] 장기기억 요약 요청에 이야기 시각 ${n}개`);
+      } catch (e) { console.log('[simcore] 요약 시각 도장 실패:', e?.message ?? e); }
+    }
     for (const m of messages ?? []) {
       if (m && typeof m.content === 'string') m.content = stripMarkers(m.content);
     }

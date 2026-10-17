@@ -68,6 +68,26 @@ RisuAI main 소스로 확인 (`ChatBody.svelte` · `translator.ts`, 2026-09-21. 
   DOM 번역기만 존중). 상태창 라벨이 번역돼 나온다는 제보가 오면 이 경로다.
 - ⚠ 교훈: **"새면 안 된다"로 지운 것이 누군가에겐 있어야 하는 것이다.** 뗄 때는 돌려줄 자리도 같이 정한다.
 
+## ★ 장기기억 요약기는 채팅 원문을 'memory' 요청으로 보낸다 (v1.18.3)
+
+포켓리스 1.8.1 소스(`process/memory/hypav3.ts`·`index.svelte.ts`) + 커뮤니티 플러그인 원본(HypaPlus v1.0.2·1.0.7·1.0.9 · HypaMinus v1.1.0,
+이 PC `E:\0.Risu\플러그인`)으로 확인 (2026-10-17). 리스바드는 HypaV3 호출부를 자체 기억(위키) 쪽으로 크게 고쳐 놓아 기준으로 삼지 않았다.
+
+| 요약기 | 읽는 것 | 요약 호출 |
+|---|---|---|
+| 내장 HypaV3 | `sendChat`이 만든 히스토리 — `msg.data` → `risuChatParser` → `editprocess` | `requestChatData(…, 'memory')` (로컬 Qwen 경로만 `chatCompletion` 직행 — 훅 안 거침) |
+| HypaPlus·HypaMinus (플러그인) | `getChatFromIndex` → `message.data` **원문** (자기 정규식·HTML 제외만) | `runLLMModel({ mode: 'memory', allowPlugins: true })` → `requestChatDataMain` = beforeRequest를 지난다 |
+
+- 요약 서식이 날짜를 요구한다 (HypaPlus·HypaMinus `시간: YYYY-MM-DD HH:mm → (날짜가 바뀌면 MM-DD) HH:mm`). 심코어 원문엔 날짜가 없다 —
+  상태창은 display 산물, 상태 블록은 그 턴의 메인 요청에만 실린다. 그래서 "미정"이거나 지어낸 날짜가 됐다 (커뮤니티 제보).
+- HypaPlus의 beforeRequest는 `type !== 'main' && type !== 'model'`이면 그냥 통과한다 — 우리 memory 처리와 부딪지 않는다.
+- 해법(v1.18.3): 'memory'에서만 ⟦simcore:N⟧을 `[Story time: …]` 도장으로 바꾼다(시작 pre:N-1, 끝 out:N, 시계를 안 보이는 봇은 날짜만).
+  메인 요청엔 안 넣는다 — 히스토리에 도장이 있으면 모델이 흉내 내 제 응답에 찍는다.
+- 스냅샷 보존은 keepN 60(≈ 최근 60턴). HypaPlus 30개·HypaMinus 22개 묶음 자동 요약엔 넉넉하지만, 오래된 채팅을 통째로 "기억하기"하면
+  앞부분은 도장 없이 나간다(틀린 날짜 < 없는 날짜).
+- 플러그인이 `nativeFetch`로 제 API를 직접 부르면(요약 모델을 플러그인 안에서 따로 연결하는 종류) beforeRequest를 안 지나 도장이 안 닿는다.
+- 여러 메시지를 한 통으로 이으므로 마커·잘린 꼬리가 **글 가운데** 있다 — 끝 고정 제거(`stripMarkers`)만으로는 빈 줄이 겹치고 꼬리가 샌다.
+
 ## runLLMModel / axLLM
 
 - `Risuai.runLLMModel({ mode, messages, staticModel?, allowPlugins? })` → `{ type:'success'|'fail', result }`

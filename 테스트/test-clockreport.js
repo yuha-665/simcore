@@ -15,6 +15,11 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 //   · 변화 카드: 보조의 skip_min 줄을 "시각 보고 HH:mm" 한 줄로 / 보조 원장엔 시각 줄 하나(중복 없음)
 //   · 지연(소급) 경로도 시각을 받는다 · 세션·어댑터가 clock을 넘긴다
 //   · 실제 템플릿(로맨스·일상)의 하루 마치기 흐름이 시각이 같이 와도 종전과 같다 · 좀비는 상한(4시간) 안에서 시각을 따른다
+// v1.19.1 — 날짜가 하루 더 가는 두 자리:
+//   · 새벽잠: 날짜 문구는 달력 기준("자고 일어남" 예시 삭제) + 자정~05:00의 "이튿날"(시각이 지금보다 뒤)은 같은 날로 받는다
+//   · 🌙 메아리: 하루 닫기 버튼이 넘긴 밤을 보조가 skip_day로 또 세면 하루를 뺀다 — 로맨스(깃발 + 동기화)·아틀리에 꼴(시계를 바로 옮김)
+//     둘 다, 지연 경로도. 깃발이 서 있는 동안은 시각 보고를 안 묻고 안 받는다(그 밤은 동기화 몫). 동기화 턴엔 보조의 분도 버린다
+//     (아침을 넘긴 분 = 하루가 두 번 가는 두 번째 길). 대조: 버튼을 모르는 엔진이면 이틀 뒤
 const fs = require('fs');
 const engine = require(__P('../core/engine.js'));
 const { validateSchema } = require(__P('../core/validate.js'));
@@ -176,7 +181,9 @@ console.log('── 프롬프트');
   const st = engine.sendPhase(S, fresh(), { rng: R }).state;
   const p = engine.buildAuxPrompt(S, st, '성에 닿았다.', '간다', '');
   ck('★ 시계 봇 — 시각 규칙', p.includes('"clock"에 "HH:mm"(24시간)으로 적어라') && p.includes('회상·약속·대사 속 시각이 아니라'), p);
-  ck('★ 날짜 창구가 열린 봇 — 날짜는 skip_day, 시각은 그날의 시각', p.includes('skip_day에 넘어간 날 수를 적고, clock에는 그날의 시각을'), '');
+  ck('★ 날짜 창구가 열린 봇 — 날짜는 skip_day, 시각은 그날의 시각', p.includes('skip_day에 [지금]의 날짜에서 넘어간 날 수를 적고, clock에는 그날의 시각을'), '');
+  ck('★ v1.19.1 날짜는 달력 기준 — 새벽에 잠들어 같은 날 깨면 0', p.includes('날짜는 달력 기준이다: 밤에 자고 이튿날 깼으면 1, 자정을 넘긴 새벽에 잠들어 같은 날 아침에 깼으면 0'), '');
+  ck('v1.19.1 옛 예시 "자고 일어남"은 없다 (새벽잠에도 하루를 넘기게 했다)', !p.includes('자고 일어남'), '');
   ck('형식 줄에 clock 예시', p.includes('"clock": "18:30"'), '');
   ck('skip_min 줄에 "시각을 정할 수 없을 때만" 주석', /- skip_min \(흐른 분, 숫자\): 현재 0\. ※ 시간은 아래 규칙대로 "clock"/.test(p), '');
   ck('종전 분 규칙은 안 실린다 (한 가지를 두 방법으로 시키지 않는다)', !p.includes('새로** 흐른 만큼만 보고하라'), '');
@@ -234,11 +241,120 @@ console.log('── 실제 템플릿');
   ck('★ zombie: 상한 4시간 — "15:00"이 와도 13:00까지 (생존물 템포 존중)', when(Z, st) === '2026-04-01 13:00', when(Z, st));
 }
 
+console.log('── v1.19.1 새벽잠은 같은 날');
+{
+  let r = turn(S, fresh(S, '2026-03-02 01:00'), { clock: '07:00', changes: { skip_day: 1 } });
+  ck('★ 01:00에 "이튿날 07:00" → 같은 날 07:00 (새벽의 이튿날은 달력으로 같은 날)', when(S, r.st) === '2026-03-02 07:00', when(S, r.st));
+  const log = r.out.changeLog.filter((c) => c.id === 'skip_min' || c.id === 'skip_day');
+  ck('변화 카드 — 흐른 분 0 → 360 한 줄, 사유에 "새벽의 이튿날은 같은 날" (skip_day 줄 없음)',
+    log.length === 1 && log[0].id === 'skip_min' && log[0].to === 360 && log[0].reason === '시각 보고 07:00 · 새벽의 이튿날은 같은 날', J(log));
+  r = turn(S, fresh(S, '2026-03-02 01:00'), { clock: '07:00' });
+  ck('날짜 신고 없이 오면 그대로 같은 날 07:00', when(S, r.st) === '2026-03-02 07:00', when(S, r.st));
+  r = turn(S, fresh(S, '2026-03-02 01:00'), { clock: '00:30', changes: { skip_day: 1 } });
+  ck('시각이 지금보다 앞이면 하루를 그대로 받는다 (01:00 → 이튿날 00:30)', when(S, r.st) === '2026-03-03 00:30', when(S, r.st));
+  r = turn(S, fresh(S, '2026-03-02 01:00'), { clock: '07:00', changes: { skip_day: 2 } });
+  ck('며칠 뒤(2 이상)는 그대로 (01:00 → 03-04 07:00)', when(S, r.st) === '2026-03-04 07:00', when(S, r.st));
+  r = turn(S, fresh(S, '2026-03-02 06:00'), { clock: '07:00', changes: { skip_day: 1 } });
+  ck('05:00 뒤엔 종전대로 하루 (06:00 → 이튿날 07:00)', when(S, r.st) === '2026-03-03 07:00', when(S, r.st));
+  r = turn(S, fresh(S, '2026-03-02 04:59'), { clock: '08:00', changes: { skip_day: 1 } });
+  ck('경계 직전 04:59 → 같은 날 08:00', when(S, r.st) === '2026-03-02 08:00', when(S, r.st));
+  r = turn(S, fresh(S, '2026-03-02 23:00'), { clock: '07:00', changes: { skip_day: 1 } });
+  ck('밤에 자고 이튿날은 그대로 하루 (23:00 → 03-03 07:00)', when(S, r.st) === '2026-03-03 07:00', when(S, r.st));
+}
+
+console.log('── v1.19.1 🌙 메아리 — 로맨스 (버튼이 깃발을 세우고 동기화가 아침으로)');
+{
+  const T = TEMPLATES.romance.schema || TEMPLATES.romance;
+  const endId = T.actions.find((a) => a.dayClose).id;
+  // 🌙 턴 → 다음 전송까지 (동기화가 굳힌 분이 다음 전송에서 소비된다)
+  const night = (at, changes, clock = null, sch = T) => {
+    const a = turn(sch, fresh(sch, at), { press: endId, changes, clock });
+    return { a, at: when(sch, engine.sendPhase(sch, a.st, { rng: R }).state) };
+  };
+  let n = night('2026-04-01 22:40', { wake_at: '아침', skip_day: 1 });
+  ck('★ 22:40 🌙 + "이튿날 아침"(skip_day 1, desc 그대로) → 04-02 08:00 (이틀 뒤가 아니다)', n.at === '2026-04-02 08:00', n.at);
+  ck('변화 카드에 skip_day 줄이 안 남는다 (1 → 0으로 빠졌다)', !n.a.out.changeLog.some((c) => c.id === 'skip_day'), J(n.a.out.changeLog.filter((c) => c.id === 'skip_day')));
+  // 대조 — 하루 닫기 표시를 떼면(엔진이 버튼을 모르면) 종전대로 이틀 뒤. 이 수리가 막는 그 자리
+  const T0 = clone(T); T0.actions.find((a) => a.id === endId).dayClose = false;
+  const n0 = night('2026-04-01 22:40', { wake_at: '아침', skip_day: 1 }, null, T0);
+  ck('(대조) 버튼을 모르는 엔진이면 04-03 08:00 — 하루가 두 번 갔다', n0.at === '2026-04-03 08:00', n0.at);
+  n = night('2026-04-01 22:40', { wake_at: '아침', skip_day: 1 }, '08:00');
+  ck('★ 시각("08:00")까지 같이 와도 04-02 08:00', n.at === '2026-04-02 08:00', n.at);
+  n = night('2026-04-01 22:40', { wake_at: '아침', skip_day: 3 });
+  ck('★ "사흘 뒤 아침"(3) → 04-04 08:00 (3 → 2 + 버튼의 하루)', n.at === '2026-04-04 08:00', n.at);
+  const l3 = n.a.out.changeLog.find((c) => c.id === 'skip_day');
+  ck('그때 변화 카드 — 0 → 2, 사유에 버튼 몫', l3 && l3.to === 2 && /그 밤은 \[🌙 하루를 마친다\] 몫/.test(l3.reason || ''), J(l3));
+  n = night('2026-04-01 03:00', { wake_at: '아침', skip_day: 1 });
+  ck('★ 새벽 3시 🌙 + skip_day 1 → 같은 날 04-01 08:00', n.at === '2026-04-01 08:00', n.at);
+  n = night('2026-04-01 22:40', { wake_at: '아침' });
+  ck('skip_day 없이 오면 종전과 같다 (04-02 08:00)', n.at === '2026-04-02 08:00', n.at);
+  // 두 번째 길 — 동기화 턴에 보조가 일어난 시각까지의 분을 크게 적으면 "다음으로 돌아오는 아침"을 넘겨 동기화가 이튿날 아침으로 또 간다
+  n = night('2026-04-01 22:40', { wake_at: '아침', skip_min: 600 });
+  ck('★ 동기화 턴에 "10시 기상"을 600분으로 적어도 04-02 08:00', n.at === '2026-04-02 08:00', n.at);
+  ck('그 턴 변화 카드에 보조의 skip_min 줄이 안 남는다', !n.a.out.changeLog.some((c) => c.id === 'skip_min' && c.source === 'llm'), J(n.a.out.changeLog.filter((c) => c.id === 'skip_min')));
+  const n600 = night('2026-04-01 22:40', { wake_at: '아침', skip_min: 600 }, null, T0);
+  ck('(대조) 버튼을 모르는 엔진이면 04-03 08:00', n600.at === '2026-04-03 08:00', n600.at);
+  n = night('2026-04-01 22:40', { wake_at: '아침', skip_min: 30 });
+  ck('아침을 안 넘긴 분(30)은 어차피 흡수 — 04-02 08:00', n.at === '2026-04-02 08:00', n.at);
+  // 보조가 wake_at을 빠뜨린 🌙 턴 — 날짜만 적어 와도 깃발이 서 있는 동안 그 밤은 동기화 몫
+  let a = turn(T, fresh(T, '2026-04-01 22:40'), { press: endId, changes: { skip_day: 1 }, clock: '08:30' });
+  ck('★ wake_at을 빠뜨리고 skip_day 1 + "08:30" → 시계는 그대로 22:40 (깃발 중엔 시각을 안 받는다)', when(T, a.st) === '2026-04-01 22:40' && a.st.vars.day_break === true, `${when(T, a.st)} day_break=${a.st.vars.day_break}`);
+  let b = turn(T, a.st, { changes: { wake_at: '아침', skip_day: 1 } });
+  let at = when(T, engine.sendPhase(T, b.st, { rng: R }).state);
+  ck('★ 다음 턴 wake_at(+또 skip_day 1) → 04-02 08:00', at === '2026-04-02 08:00', at);
+  // 새벽 🌙에 시각만 먼저 온 턴 — 받으면 08:30으로 간 시계에 동기화가 "다음 08:00"(이튿날)을 또 더한다
+  a = turn(T, fresh(T, '2026-04-01 02:00'), { press: endId, clock: '08:30' });
+  b = turn(T, a.st, { changes: { wake_at: '아침' } });
+  at = when(T, engine.sendPhase(T, b.st, { rng: R }).state);
+  ck('★ 새벽 2시 🌙 — 시각이 wake_at보다 먼저 와도 같은 날 08:00', at === '2026-04-01 08:00', at);
+  // 버튼 턴엔 밤 장면만, 아침은 다음 턴 (늦게 넘어감)
+  a = turn(T, fresh(T, '2026-04-01 22:40'), { press: endId, changes: { skip_min: 30 } });
+  b = turn(T, a.st, { changes: { wake_at: '아침', skip_day: 1 } });
+  at = when(T, engine.sendPhase(T, b.st, { rng: R }).state);
+  ck('★ 버튼 턴엔 밤 장면, 다음 턴에 아침(+skip_day 1) → 04-02 08:00', at === '2026-04-02 08:00', at);
+  // 깃발 중 프롬프트 — 시각을 안 묻는다(종전 분 규칙). 동기화 뒤엔 다시 묻는다
+  const stF = engine.sendPhase(T, engine.toggleAction(T, fresh(T, '2026-04-01 22:40'), endId).state, { rng: R }).state;
+  const pf = engine.buildAuxPrompt(T, stF, '둘은 인사를 나눴다.', '', '');
+  ck('★ 깃발 중 프롬프트 — 시각 규칙 없음, 종전 분 규칙', !pf.includes('"clock"에') && pf.includes('새로** 흐른 만큼만 보고하라'), pf);
+  const stAfter = engine.sendPhase(T, n.a.st, { rng: R }).state;
+  const pa = engine.buildAuxPrompt(T, stAfter, '아침이 밝았다.', '', '');
+  ck('동기화 뒤(깃발 내림) — 시각 규칙이 돌아온다', stAfter.vars.day_break === false && pa.includes('"clock"에 "HH:mm"'), `day_break=${stAfter.vars.day_break}`);
+  // 버튼과 무관한 평소 턴 — 하루를 그대로 받는다
+  const r = turn(T, fresh(T, '2026-04-01 10:00'), { changes: { skip_day: 1 }, clock: '09:00' });
+  ck('평소 턴 skip_day 1 + "09:00" → 04-02 09:00 (빼지 않는다)', when(T, r.st) === '2026-04-02 09:00', when(T, r.st));
+  // 지연(소급) 경로 — 보조가 늦게 와도 같은 출력의 보고라 같게 뺀다
+  const late = turn(T, fresh(T, '2026-04-01 22:40'), { press: endId });
+  const am = engine.applyChangesToState(T, late.st, { wake_at: '아침', skip_day: 1 }, {}, null, null, null, null, { clock: '08:00' });
+  ck('★ 소급 경로 — skip_day 1 → 0, 시각은 깃발 중이라 안 받는다', am.state.vars.skip_day === 0 && am.state.vars.skip_min === 0, `skip_day=${am.state.vars.skip_day} skip_min=${am.state.vars.skip_min}`);
+  b = turn(T, am.state, {});
+  at = when(T, engine.sendPhase(T, b.st, { rng: R }).state);
+  ck('소급 뒤 다음 턴 동기화 → 04-02 08:00', at === '2026-04-02 08:00', at);
+}
+
+console.log('── v1.19.1 🌙 메아리 — 버튼이 시계를 바로 옮기는 봇 (아틀리에 꼴)');
+{
+  const SA = clone(S); SA.time.pins = [];
+  SA.actions = [{ id: 'sleep', label: '🌙 잔다', mode: 'oneshot', dayClose: true,
+    effects: [{ set: 'skip_min', expr: '((7 * 60 - (hour * 60 + minute)) + 1439) % 1440 + 1' }] }];
+  ck('표본 통과', validateSchema(SA).ok, J(validateSchema(SA).errors));
+  let r = turn(SA, fresh(SA, '2026-03-02 23:00'), { press: 'sleep', changes: { skip_day: 1 }, clock: '07:20' });
+  ck('★ 23:00 🌙(→ 07:00) + 보조가 그 밤을 또 셈(skip_day 1, "07:20") → 03-03 07:20 (03-04가 아니다)', when(SA, r.st) === '2026-03-03 07:20', when(SA, r.st));
+  r = turn(SA, fresh(SA, '2026-03-02 23:00'), { press: 'sleep', clock: '07:20' });
+  ck('날짜를 안 세면 그대로 03-03 07:20', when(SA, r.st) === '2026-03-03 07:20', when(SA, r.st));
+  r = turn(SA, r.st, { changes: { skip_day: 1 }, clock: '09:00' });
+  ck('다음 턴(버튼 안 누름)의 skip_day 1은 그대로 → 03-04 09:00', when(SA, r.st) === '2026-03-04 09:00', when(SA, r.st));
+  const st0 = engine.sendPhase(SA, engine.toggleAction(SA, fresh(SA, '2026-03-02 23:00'), 'sleep').state, { rng: R }).state;
+  ck('깃발 없는 봇 — 🌙 턴에도 시각을 묻는다 ([지금]이 이미 아침)', engine.buildAuxPrompt(SA, st0, '아침이 밝았다.', '', '').includes('"clock"에 "HH:mm"'), '');
+}
+
 console.log('── 정적');
 {
   const i535 = src.indexOf('// 5.35 시각 보고'), i54 = src.indexOf('// 5.4 하루 넘김 대리 정산'), i545 = src.indexOf('// 5.45 시간 고정표');
   ck('엔진: 5.35 시각 보고가 하루 넘김(5.4)·고정표(5.45)보다 앞', i535 > 0 && i535 < i54 && i54 < i545, `${i535} ${i54} ${i545}`);
   ck('자정 넘김 한도 6시간', /const CLOCK_CROSS_MAX = 360;/.test(src), '');
+  const i533 = src.indexOf('// 5.33 🌙 메아리');
+  ck('엔진: 5.33 🌙 메아리가 시각 보고(5.35)보다 앞', i533 > 0 && i533 < i535, `${i533} ${i535}`);
+  ck('소급 경로도 메아리를 뺀다', /applyLLMChangesInto\(schema, state, changes, reasons, changeLog, seenText, openIds\);\n  trimDayCloseEcho\(/.test(src), '');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

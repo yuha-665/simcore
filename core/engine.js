@@ -649,6 +649,7 @@ function consumeTimeSkips(schema, state, changeLog, { perTurnTick = false } = {}
 // 시각은 두 번 적어도 같은 시각이다 — 같은 "18:00"이 다시 오면 0분. design-시간.md §열린 문제 "목표 시각으로 받기"의 이행.
 // 받은 시각은 skip_day/skip_min으로 옮겨 종전 길(시간 고정표 5.45 · 소비 5.5)을 그대로 탄다.
 const CLOCK_CROSS_MAX = 360;  // 날짜 신고 없이 시각이 거꾸로 오면 자정을 넘긴 것으로 치는 한도(분) — 넘으면 회상·약속 속 시각을 잘못 옮겨 온 것으로 본다
+const SMALL_HOURS_END = 300;  // 새벽 05:00 — 이 앞(자정 넘긴 새벽)의 "이튿날"은 달력으로 같은 날이다 (v1.19.1, 시간대 '새벽'과 같은 경계)
 
 /** 이번 턴 보조가 시각으로 보고하나 — 시계를 보이는 봇 + skip_min이 그 턴 열림 (액션이 시간을 굳힌 턴은 auxAllowList가 이미 닫았다) */
 function clockReportOpen(schema, openIds) {
@@ -682,12 +683,18 @@ function applyClockReport(schema, state, clockText, changeLog, dayPassed = false
   const cm = parseClockText(String(clockText));
   const now = state.vars[EPOCH_KEY];
   if (cm == null || typeof now !== 'number') return null;
-  if (timeEventDue(schema, state)) return null;
+  // 시간을 정하는 이벤트가 걸린 턴, 그리고 🌙 깃발이 서 있는 동안(그 밤은 동기화 이벤트 몫 — v1.19.1)은 비킨다.
+  // 깃발 중에 시각을 받으면 아침으로 옮긴 시계에 동기화가 "다음으로 돌아오는 아침"을 또 더한다
+  if (timeEventDue(schema, state) || dayBreakPending(schema, state)) return null;
   const defD = schema.vars.find((v) => v.id === SKIP_DAY);
   const defM = schema.vars.find((v) => v.id === SKIP_MIN);
   const dayOpen = !!defD && openIds.includes(SKIP_DAY);
-  const d = dayOpen ? Math.max(0, Math.floor(Number(state.vars[SKIP_DAY]) || 0)) : 0;
+  let d = dayOpen ? Math.max(0, Math.floor(Number(state.vars[SKIP_DAY]) || 0)) : 0;
   const dayStart = Math.floor(now / MIN_PER_DAY) * MIN_PER_DAY;
+  // 새벽의 "이튿날"은 달력으로는 같은 날이다 (v1.19.1) — 01:00에 잠들어 "이튿날 07:00"이라 적어 온 보조는 오늘 07:00을 뜻한다.
+  // 자정~05:00에 하루만 넘겼다고 하고 시각이 지금보다 뒤(오늘 안에 닿는 시각)일 때만 거둔다. 며칠 뒤(2 이상)는 그대로 받는다
+  let note = '';
+  if (d === 1 && now - dayStart < SMALL_HOURS_END && cm > now - dayStart) { d = 0; note = ' · 새벽의 이튿날은 같은 날'; }
   let total = dayStart + d * MIN_PER_DAY + cm - now;
   if (d === 0) {
     if (total < 0) {
@@ -710,11 +717,74 @@ function applyClockReport(schema, state, clockText, changeLog, dayPassed = false
     const from = i >= 0 ? changeLog[i].from : (Number(state.vars[def.id]) || 0);
     state.vars[def.id] = toC;
     if (i >= 0) changeLog.splice(i, 1);
-    if (toC !== from) changeLog.push({ id: def.id, from, to: toC, source: 'llm', reason: `시각 보고 ${hm}` });
+    if (toC !== from) changeLog.push({ id: def.id, from, to: toC, source: 'llm', reason: `시각 보고 ${hm}${note}` });
   };
   if (defD) put(defD, days);
   put(defM, total - days * MIN_PER_DAY);
   return total;
+}
+
+// ── 🌙 메아리 (v1.19.1) ─────────────────────────────────────
+// 하루 닫기 버튼(dayClose)이 넘긴 밤을 보조가 skip_day로 또 넘기는 일 — day_passed 유령 밤 빗장(5.4 ①)의 숫자판이다.
+// 버튼은 두 꼴로 밤을 넘긴다: 시계를 바로 옮기거나(아틀리에 — 다음으로 돌아오는 07:00), 깃발만 세우고 동기화 이벤트가
+// "다음으로 돌아오는 그 시간대"로 옮긴다(로맨스 — day_break + wake_at). 어느 쪽이든 그 밤은 버튼 몫인데, 보조가 "자고 일어나
+// 이튿날이면 1"(로맨스 skip_day desc 그대로)을 적으면 같은 밤이 두 번 넘어간다 — 다음 날 같은 시각으로 간 시계에 동기화가
+// "다음으로 돌아오는 아침"을 또 더한다 (2026-10-17 확인). 템플릿 desc를 고쳐도 이미 만든 봇은 옛 사본을 들고 있어 엔진에서 막는다.
+// 버튼이 이번 전송에 발동했거나 그 깃발이 서 있는 동안, 보조가 올린 skip_day에서 하루를 뺀다 — "사흘 뒤"는 3 → 2 + 버튼의 하루.
+// 동기화가 도는 턴엔 보조가 적은 skip_min도 버린다 (그 턴 시각은 동기화가 정한다). 거두는 건 이번 보조 몫뿐이다 (효과·이벤트가 세운 값은 그대로).
+
+/** 하루 닫기 버튼이 세우고 시간 이벤트가 내리는 깃발(bool) — 로맨스·일상의 day_break 꼴. 버튼이 시계를 바로 옮기는 봇엔 없다 */
+function dayCloseFlags(schema, dc = dayCloseAction(schema)) {
+  if (!dc) return [];
+  const bools = new Set(schema.vars.filter((v) => v.type === 'bool').map((v) => v.id));
+  const timeEvs = (schema.rules?.events || []).filter((ev) => (ev.effects || []).some((e) => e && (e.set === SKIP_MIN || e.set === SKIP_DAY)));
+  return [...new Set((dc.effects || []).map((e) => e?.set)
+    .filter((id) => bools.has(id) && timeEvs.some((ev) => ev.effects.some((e) => e?.set === id))))];
+}
+
+/** 🌙 깃발이 서 있나 — 그 밤은 동기화 이벤트가 맡는다 (시각 보고가 비키고, 보조는 종전대로 분으로 답한다) */
+function dayBreakPending(schema, state) {
+  return dayCloseFlags(schema).some((id) => truthy(state?.vars?.[id]));
+}
+
+/** 깃발을 내리는 시간 이벤트(동기화)가 지금 걸리나 — 걸리면 이번 턴 시각은 그 이벤트가 "다음으로 돌아오는 그 시간대"로 정한다 */
+function dayBreakSyncDue(schema, state) {
+  const flags = dayCloseFlags(schema).filter((id) => truthy(state?.vars?.[id]));
+  if (!flags.length) return false;
+  const lk = makeLookup(schema, state.vars);
+  return (schema.rules?.events || []).some((ev) => {
+    const eff = ev.effects || [];
+    if (!eff.some((e) => e && (e.set === SKIP_MIN || e.set === SKIP_DAY)) || !eff.some((e) => flags.includes(e?.set))) return false;
+    if (!ev.when) return true;
+    try { return truthy(evaluate(ev.when, lk, null)); } catch { return false; }
+  });
+}
+
+/**
+ * 버튼이 넘긴 밤을 보조가 또 센 몫을 거둔다. ① 보조가 이번에 올린 skip_day에서 하루 ② 동기화가 도는 턴이면 보조가 적은 skip_min을 버린다 —
+ * 그 분은 "다음으로 돌아오는 그 시간대"를 넘겼을 때만 결과를 바꾸는데(넘기면 동기화가 그다음 날 그 시간대로 또 간다), 그게 바로
+ * 하루가 두 번 가는 자리다(22:40에 자고 "10시 기상"을 600분으로 적음 → 08:40 → 동기화가 이튿날 08:00). 안 넘긴 분은 어차피 흡수된다
+ */
+function trimDayCloseEcho(schema, state, changeLog) {
+  const dc = dayCloseAction(schema);
+  if (!dc || (!state.meta.firedThisSend?.[dc.id] && !dayBreakPending(schema, state))) return;
+  const note = `그 밤은 [${dc.label ?? dc.id}] 몫`;
+  const i = schema.vars.some((v) => v.id === SKIP_DAY) ? changeLog.findIndex((c) => c.id === SKIP_DAY && c.source === 'llm') : -1;
+  if (i >= 0) {
+    const c = changeLog[i];
+    const from = Number(c.from) || 0;
+    const to = (Number(state.vars[SKIP_DAY]) || 0) - 1;
+    if (to >= from) {   // 보조가 올렸을 때만
+      state.vars[SKIP_DAY] = to;
+      if (to === from) changeLog.splice(i, 1);
+      else changeLog[i] = { ...c, to, reason: [c.reason, note].filter(Boolean).join(' · ') };
+    }
+  }
+  const j = changeLog.findIndex((c) => c.id === SKIP_MIN && c.source === 'llm');
+  if (j >= 0 && dayBreakSyncDue(schema, state)) {
+    state.vars[SKIP_MIN] = changeLog[j].from;
+    changeLog.splice(j, 1);
+  }
 }
 
 /** changes 안에 clock을 넣어 오는 모델도 받는다 — 단 봇에 clock이라는 변수가 없을 때만 (있으면 그건 그 봇의 변수다) */
@@ -1445,6 +1515,7 @@ function applyChangesToState(schema, prevState, changes, reasons, seenText = nul
   const openIds = Array.isArray(prevState?.meta?.auxOpen) ? new Set(prevState.meta.auxOpen) : null; // 프롬프트가 연 집합 (v1.14.6)
   ({ changes, clock } = liftClock(schema, changes, clock));
   const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText, openIds);
+  trimDayCloseEcho(schema, state, changeLog);   // 🌙 메아리 (v1.19.1) — 소급 경로도 그 출력의 보고다 (firedThisSend·깃발은 그 턴 것 그대로)
   // 시각 보고 (v1.19.0) — 지연 경로도 시각 보고 프롬프트로 물었다. 안 받으면 보조가 분을 안 적었으니 시간이 통째로 멈춘다.
   // 옮긴 skip_day/skip_min은 다음 전송 단계의 소비가 굳힌다 (소급 경로의 다른 시간 보고와 같다)
   applyClockReport(schema, state, clock, changeLog, dayPassed);
@@ -1578,6 +1649,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
   // (다음 전송 한 번만 유효). 이 턴의 changes에 신고 변수가 섞여 있어도 5에서 이미
   // 게이트에 걸러졌다 — 신고와 반영이 같은 턴에 겹치는 일은 구조적으로 없다.
   consumeDetected(schema, state, detected);
+
+  // 5.33 🌙 메아리 (v1.19.1) — 하루 닫기 버튼이 넘긴 밤을 보조가 skip_day로 또 넘겼으면 하루를 뺀다 (유령 밤 빗장의 숫자판).
+  // 동기화가 도는 턴이면 보조의 skip_min도 버린다. 시각 보고(5.35)보다 앞이라 시각의 날짜 계산도 뺀 값을 쓴다
+  trimDayCloseEcho(schema, state, changeLog);
 
   // 5.35 시각 보고 (v1.19.0) — 보조가 "장면이 끝난 시각"을 적어 왔으면 [지금]과의 차이를 skip_day/skip_min으로 옮긴다.
   // 하루 넘김 신고(5.4)·시간 고정표(5.45)보다 앞이라, 두 쪽이 이 값 위에서 종전대로 이긴다 (신고면 아예 안 옮긴다).
@@ -2221,8 +2296,9 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     opts.allowAll ? null : state);
   // 시각 보고 (v1.19.0) — 시계를 보이는 봇 + skip_min이 열린 턴이면 분 대신 "장면이 끝난 시각"을 받는다.
   // 루아 브리지 굽기(allowAll)는 제외 — [지금]이 안 실려 시각을 비교할 기준이 없다(그쪽은 종전대로 분)
+  // 🌙 깃발이 서 있는 동안도 제외 (v1.19.1) — 그 밤은 동기화 이벤트가 맡아 시각 보고가 비키므로, 시각을 물으면 시계가 멈춘다
   const clockAsk = !opts.allowAll && !!state && typeof state.vars?.[EPOCH_KEY] === 'number'
-    && clockReportOpen(schema, allow.map((a) => a.id));
+    && clockReportOpen(schema, allow.map((a) => a.id)) && !dayBreakPending(schema, state);
   const specs = allow.map((a) => {
     const v = varById[a.id];
     if (!v) return null;
@@ -2332,7 +2408,8 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     clockAsk
       ? `- 시간은 분으로 계산하지 말고 시각으로 보고하라: 이번 서사가 끝난 시점의 시각을 최상위(changes 바깥) "clock"에 "HH:mm"(24시간)으로 적어라 — 흐른 분은 시스템이 [지금]과 비교해 계산한다. 시간이 흐르지 않았으면 clock을 넣지 마라. 회상·약속·대사 속 시각이 아니라, 장면이 끝난 지금의 시각이다.`
         + (allow.some((a) => a.id === SKIP_DAY)
-          ? ` 날짜가 바뀌었으면(자정을 넘김·자고 일어남·며칠 뒤) ${SKIP_DAY}에 넘어간 날 수를 적고, clock에는 그날의 시각을 적어라.`
+          // 날짜는 달력 기준 (v1.19.1) — 옛 예시 "자고 일어남"은 새벽에 잠들어 같은 날 아침에 깬 장면에도 하루를 넘기게 했다
+          ? ` 날짜가 바뀌었으면 ${SKIP_DAY}에 [지금]의 날짜에서 넘어간 날 수를 적고, clock에는 그날의 시각을 적어라 — 날짜는 달력 기준이다: 밤에 자고 이튿날 깼으면 1, 자정을 넘긴 새벽에 잠들어 같은 날 아침에 깼으면 0.`
           : (dayCloseSpec ? ' 날짜가 넘어갔으면 clock 대신 아래 day_passed 규칙을 따라라.' : ''))
         + ` ${SKIP_MIN}은 비워 두라 — 시각을 정할 수 없을 때만 흐른 분을 적어라.`
       : timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,

@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.18.3
-//@display-name SimCore (시뮬 엔진) v1.18.3 🎲 추첨 효과 · ⏱ 장기기억 요약에 이야기 시각
+//@version 1.19.0
+//@display-name SimCore (시뮬 엔진) v1.19.0 ⏱ 시각 보고 — 시계가 서사를 따라간다 · 장기기억 요약에 이야기 시각
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,22 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.19.0 ───────────────────────────────────────────────
+// **⏱ 시각 보고 — 보조는 시각을 읽고, 빼기는 시스템이.** 커뮤니티 제보(2026-10-17): "심코어 타임이랑 LLM이 인식하는 타임이 안 맞는다."
+// 뿌리: 시계를 미는 보조가 "몇 분 흘렀나"를 [지금]에서 직접 빼서 적었다 — "저녁이 되었다"면 570을 계산, 자정을 넘기면 일·분으로 쪼개기.
+// skip_day는 시각을 보존해 22:00에 자고 07:00에 깨는 것은 둘로 적을 수조차 없었다(다음 날 22:00이 된다). 분 델타는 두 번 세면 두 배라
+// (v0.65 500분 폭주) 상한(템플릿 4~12시간)을 걸었고, 그 상한이 "저녁까지 잤다"를 잘라 서사와 시계가 갈라졌다. v1.18.3 요약 도장도 이 시계에서 나온다.
+// - [엔진] 시계를 보이는 봇(expose에 clock·hour·minute) + 보조에게 skip_min이 열린 턴 → 보조는 최상위 "clock": "HH:mm"(장면이 끝난 시각)과
+//   (날짜가 바뀌었으면) skip_day만 적는다. 엔진이 [지금]과 비교해 skip_day/skip_min으로 옮기고 종전 길(고정표 5.45 · 소비 5.5)을 탄다(5.35).
+//   같은 시각이 다시 오면 0분 — 쌓이지 않는다. 날짜 신고 없이 시각이 거꾸로 오면 6시간 안에서만 자정 넘김으로 본다(밖이면 회상·약속 속 시각).
+//   보조에게 날짜 창구가 없고 하루 닫기 버튼이 있는 봇은 시각으로 자정을 안 넘긴다 — 그건 버튼·day_passed의 몫.
+//   같은 날 몫엔 봇의 maxGain을 그대로 — 넘으면 그만큼만 가고 다음 턴의 같은 시각이 나머지를 메운다(생존물 템포 같은 의도는 지킨다).
+// - 양보하는 자리: day_passed 신고 · 액션이 시간을 굳힌 턴(timePin) · 낱말 고정표(set) · 봇이 시간을 정하는 이벤트가 걸린 턴
+//   (하루 경계 동기화 day_break_sync 꼴 — 비키지 않으면 새벽 3시에 자고 "08:30"이 오면 동기화가 이튿날 08:00을 또 더한다).
+// - 예전처럼 분으로 답하는 보조도 받는다(시각이 없을 때만). changes 안에 넣어 온 clock도 끌어올린다(봇에 clock 변수가 없을 때).
+//   지연(차단 뒤 소급) 경로도 시각을 받는다 — 시각 보고 프롬프트로 물었으니 안 받으면 시간이 통째로 멈춘다. 루아 브리지는 [지금]이 없어 종전대로 분.
+// - 대상: 템플릿 일상·로맨스·좀비 + 조퇴악녀. 베리디아·얼헌(시계 없음)·아이돌(보조가 시간을 안 만짐)은 그대로. 스키마 칸은 없다(시계 봇이면 자동).
+// - [어댑터] v1.18.3 요약 도장의 "시계를 보이는 봇" 판정을 time.clockExposed 하나로.
 // ── v1.18.3 ───────────────────────────────────────────────
 // **장기기억 요약에 이야기 속 시각.** 커뮤니티 제보(2026-10-17): HypaPlus(20~30턴마다 요약)가 만든 기억의 "시간"이 "미정"이거나 모델이 지어낸 날짜.
 // 뿌리: 요약기는 채팅 **원문**을 모아 'memory' 요청으로 보낸다 — HypaPlus·HypaMinus = getChatFromIndex 원문 + runLLMModel memory,
@@ -3881,7 +3897,8 @@
               lastAux = { status: '루아 브리지 응답 JSON 파싱 실패', raw: text.slice(0, 200), applied: 0 };
               return;
             }
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts, parsed.detected);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, null, parsed.suggest, parsed.conflicts, parsed.detected,
+              { clock: parsed.clock, dayPassed: parsed.dayPassed }); // 브리지 프롬프트는 시각을 안 묻지만, 와 있으면 정규 경로와 같게 (v1.19.0)
             session.current = amended.state;
             await session.store.save('out', outIndex, amended.state);
             lastChangeLog = [...lastChangeLog, ...amended.changeLog];
@@ -3949,7 +3966,7 @@
   function storyStamp(cfg, startEpoch, endEpoch) {
     // 시계를 안 보이는 봇(expose에 clock·hour·minute 없음 — 하루 단위로 넘기는 영지물 등)은 날짜만. 그 봇의 시계는 하루 종일
     // 시작 시각(08:00)에 서 있어 밤 장면에도 08:00이 찍힌다 — 봇이 안 세는 시각을 넘기면 그게 지어낸 시각이다 (베리디아 실측)
-    const clock = cfg.expose.some((n) => n === 'clock' || n === 'hour' || n === 'minute');
+    const clock = timeMod.clockExposed(cfg);
     const unit = clock ? 1 : timeMod.MIN_PER_DAY;
     const at = (e) => {
       const c = timeMod.calendarOf(e, cfg.calendar);
@@ -5055,7 +5072,8 @@
             const parsed = engine.parseAuxResponse(text);
             if (!parsed) { console.log('[simcore] 지연 응답 JSON 파싱 실패:', text.slice(0, 150)); return; }
             if (parsed.truncated) console.log('[simcore] 지연 응답 잘림 — 완성된 항목만 반영');
-            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected);
+            const amended = engine.applyChangesToState(schema, session.current, parsed.changes, parsed.reasons, seenText, parsed.suggest, parsed.conflicts, parsed.detected,
+              { clock: parsed.clock, dayPassed: parsed.dayPassed }); // 지연 경로도 시각 보고 프롬프트로 물었다 — 안 넘기면 시간이 멈춘다 (v1.19.0)
             session.current = amended.state;
             // 보드 델타 (v0.95) — 지연 경로에서도 적용. 표류 rng는 비시드(소급이라 리롤 정합 무관)
             if (parsed.board && boardMod.boardConfig(schema)) {

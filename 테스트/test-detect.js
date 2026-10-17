@@ -122,7 +122,7 @@ const st = (S) => engine.initState(S);
   ck('★ 편집기 AI 설정 탭에 감지 신고 토글 (규칙 #3)', src.includes('잠긴 변수 감지 신고')
     && src.includes("schema.updater.wordDetect = on ? undefined : false"), '');
   ck('★ 어댑터: 패널 요약 + 소급 2경로 전달', src.includes('잠긴 변수 감지')
-    && (src.match(/parsed\.suggest, parsed\.conflicts, parsed\.detected\)/g) || []).length === 2, '');
+    && (src.match(/parsed\.suggest, parsed\.conflicts, parsed\.detected[,)]/g) || []).length === 2, ''); // v1.19.0부터 뒤에 { clock, dayPassed }가 붙는다
   ck('규격서: 안전망 한 줄', src.includes('낱말을 놓쳐도 안전망이 있습니다'), '');
 }
 

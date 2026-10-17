@@ -141,6 +141,7 @@ class SimSession {
       choices: parsed.choices ?? null, // 보조 갈림길 (v1.8.0) — 부탁한 턴에만 실려 온다
       msgr: parsed.msgr ?? null,   // 메신저 선톡 (v1.2.0) — 같은 응답에 실려 온다
       dayPassed: parsed.dayPassed === true, // 하루 넘김 신고 (v1.7.0) — dayClose 액션을 대신 돌린다
+      clock: parsed.clock ?? null,          // 시각 보고 (v1.19.0) — 장면이 끝난 시각. 빼기는 엔진이
     });
     await this.store.save('out', outIndex, r.state);
     this.current = r.state;

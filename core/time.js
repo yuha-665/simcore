@@ -159,6 +159,29 @@ function formatClock(fmt, cal) {
   });
 }
 
+/**
+ * 보조가 적어 온 시각 글자 → 하루 안의 분(0~1439), 못 읽으면 null (v1.19.0 시각 보고).
+ * "18:00" · "8:05" · "18:00:00" · "18시" · "18시 30분" · "18시 반" · "오후 6시" · "6:30 PM". "24:00"은 자정(0).
+ * 숫자만("18")은 받지 않는다 — 시인지 분인지 모른다.
+ */
+function parseClockText(s) {
+  if (typeof s !== 'string') return null;
+  let t = s.trim().toLowerCase().replace(/\s+/g, ' ');
+  let pm = null;
+  const pre = t.match(/^(오전|오후|am|pm) ?/);
+  if (pre) { pm = pre[1] === '오후' || pre[1] === 'pm'; t = t.slice(pre[0].length); }
+  const post = t.match(/ ?(am|pm)$/);
+  if (post && pm == null) { pm = post[1] === 'pm'; t = t.slice(0, t.length - post[0].length); }
+  let h, mi, m;
+  if ((m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/))) { h = Number(m[1]); mi = Number(m[2]); }
+  else if ((m = t.match(/^(\d{1,2}) ?시(?: ?(\d{1,2}) ?분| ?반)?$/))) { h = Number(m[1]); mi = m[2] != null ? Number(m[2]) : (t.endsWith('반') ? 30 : 0); }
+  else return null;
+  if (pm != null) { if (h < 1 || h > 12) return null; h = (h % 12) + (pm ? 12 : 0); }
+  if (h === 24 && mi === 0) h = 0;
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
 // ── 스키마 time 섹션 해석 ───────────────────────────────────
 
 /** 스키마의 time 섹션을 기본값 채워 돌려준다. time이 없으면 null — 아무것도 안 바뀐다. */
@@ -258,6 +281,14 @@ function exposedValues(cfg, epoch) {
   return out;
 }
 
+/**
+ * 시계를 보이는 봇인가 (v1.19.0) — expose에 clock·hour·minute 중 하나라도. 하루 단위로만 넘기는 봇(영지물)은 시계를 안 보이고,
+ * 그 시계는 종일 시작 시각(08:00)에 서 있다 — 그런 봇에 시각을 받거나 찍으면 그게 지어낸 시각이다.
+ */
+function clockExposed(cfg) {
+  return !!cfg && Array.isArray(cfg.expose) && cfg.expose.some((n) => n === 'clock' || n === 'hour' || n === 'minute');
+}
+
 /** 상태창·편집기용 노출 파생 의사 정의 — label과 type만 있으면 렌더러가 나머지를 안다 */
 const EXPOSED_LABELS = {
   date: '날짜', clock: '시각', weekday: '요일', season: '계절', year: '연도',
@@ -278,5 +309,5 @@ module.exports = {
   MIN_PER_DAY, EXPOSABLE, DEFAULT_EXPOSE, DEFAULT_WEEKDAYS, DEFAULT_SEASONS,
   DEFAULT_DATE_FMT, DEFAULT_CLOCK_FMT, SKIP_DAY, SKIP_MIN, EPOCH_KEY, EXPOSED_LABELS, TURN_MIN_KEY, TURN_EXPOSED, normPins,
   parseStart, epochFrom, calendarOf, isLeap, daysInMonth, seasonIndex, rollStart, normStartRandom, RANDOM_BOUNDS,
-  formatDate, formatClock, timeConfig, exposedValues, exposedDefs,
+  formatDate, formatClock, timeConfig, exposedValues, exposedDefs, clockExposed, parseClockText,
 };

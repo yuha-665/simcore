@@ -307,11 +307,16 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   ck('★ 루아 브리지 굽기에는 [지금]을 안 싣는다 (치환 안 되는 자리)', !baked.includes('[지금]'), '');
 
   // ② 시간 규칙 — 보조가 실제로 시간을 만질 수 있을 때만
-  ck('skip 우편함이 열려 있으면 시간 규칙이 붙는다', p0.includes('[지금] 시각 이후로'), '');
+  // v1.19.0 — 시계를 보이는 봇은 분 대신 "장면이 끝난 시각"을 받는다 (빼기는 엔진이 — test-clockreport.js). 분 규칙은 시계 없는 봇의 몫
+  ck('skip 우편함이 열려 있으면 시간 규칙이 붙는다 (시계 봇 = 시각 보고)',
+    p0.includes('"clock"에 "HH:mm"(24시간)으로 적어라') && !p0.includes('[지금] 시각 이후로'), '');
+  const R4 = JSON.parse(J(R2)); R4.time.expose = ['date', 'weekday', 'season', 'elapsed'];
+  const s4 = engine.initState(R4); s4.meta.setupDone = true;
+  ck('시계를 안 보이는 봇은 종전 분 규칙', engine.buildAuxPrompt(R4, s4, '창밖이 어둑하다.', null, '').includes('[지금] 시각 이후로'), '');
   const R3 = JSON.parse(J(R2));
   R3.updater.allow = R3.updater.allow.filter((a) => !/^skip_/.test(a.id));
-  ck('보조가 시간을 못 만지는 봇엔 시간 규칙을 안 붙인다',
-    !engine.buildAuxPrompt(R3, boot(), '창밖이 어둑하다.', null, '').includes('[지금] 시각 이후로'), '');
+  const p3 = engine.buildAuxPrompt(R3, boot(), '창밖이 어둑하다.', null, '');
+  ck('보조가 시간을 못 만지는 봇엔 시간 규칙을 안 붙인다', !p3.includes('[지금] 시각 이후로') && !p3.includes('"clock"에'), '');
 
   // ③ 원장 — 이미 반영된 변화
   let st = boot();

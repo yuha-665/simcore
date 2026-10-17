@@ -17,7 +17,7 @@ const { compile, evaluate, truthy, itemExpiry, itemValue } = require('./expr');
 const { mainInjectionText, auxImageSpec } = require('./assets');
 const { SCN_IDX, SCN_TURNS, scenarioConfig, currentActIndex, scenarioExposedVal, scenarioTransition,
   scenarioInjectionText } = require('./scenario');
-const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock,
+const { timeConfig, exposedValues, parseStart, epochFrom, calendarOf, formatDate, formatClock, clockExposed, parseClockText,
   MIN_PER_DAY, SKIP_DAY, SKIP_MIN, EPOCH_KEY, TURN_MIN_KEY, rollStart } = require('./time');
 const boardMod = require('./board'); // 커뮤니티 보드 (v0.95) — 옵트인
 const shopMod = require('./shop');   // 상점 (v0.96) — 옵트인
@@ -638,6 +638,91 @@ function consumeTimeSkips(schema, state, changeLog, { perTurnTick = false } = {}
   }
   if (hasDay && state.vars[SKIP_DAY] !== 0) state.vars[SKIP_DAY] = 0;
   if (hasMin && state.vars[SKIP_MIN] !== 0) state.vars[SKIP_MIN] = 0;
+}
+
+// ── 시각 보고 (v1.19.0) ─────────────────────────────────────
+// 시계를 보이는 봇에서 보조가 "흐른 분"(skip_min) 대신 "이 장면이 끝난 시각"(최상위 "clock": "HH:mm")을 적는다.
+// 빼기는 시스템이 한다 — 원칙 3 "날짜 산술은 절대 안 시킨다"의 분 판. 커뮤니티 제보(2026-10-17): 심코어 시각과 메인이 인식하는
+// 시각이 어긋난다. 뿌리는 보조의 분 델타였다 — "저녁이 되었다"를 [지금]에서 직접 빼 570을 적어야 했고, 자정을 넘기면 일·분으로
+// 쪼개야 했다(skip_day는 시각을 보존하니 22:00에 자고 07:00에 깨는 것을 그 둘로는 적을 수조차 없었다). 게다가 델타는 두 번 세면
+// 두 배라(500분 폭주) 상한을 걸었고, 그 상한이 "저녁까지 잤다"를 잘라 서사는 저녁인데 시계는 오후에 남았다.
+// 시각은 두 번 적어도 같은 시각이다 — 같은 "18:00"이 다시 오면 0분. design-시간.md §열린 문제 "목표 시각으로 받기"의 이행.
+// 받은 시각은 skip_day/skip_min으로 옮겨 종전 길(시간 고정표 5.45 · 소비 5.5)을 그대로 탄다.
+const CLOCK_CROSS_MAX = 360;  // 날짜 신고 없이 시각이 거꾸로 오면 자정을 넘긴 것으로 치는 한도(분) — 넘으면 회상·약속 속 시각을 잘못 옮겨 온 것으로 본다
+
+/** 이번 턴 보조가 시각으로 보고하나 — 시계를 보이는 봇 + skip_min이 그 턴 열림 (액션이 시간을 굳힌 턴은 auxAllowList가 이미 닫았다) */
+function clockReportOpen(schema, openIds) {
+  return clockExposed(timeConfig(schema)) && schema.vars.some((v) => v.id === SKIP_MIN)
+    && Array.isArray(openIds) && openIds.includes(SKIP_MIN);
+}
+
+/**
+ * 봇이 시간을 직접 정하는 이벤트(효과가 skip_min·skip_day를 세움)가 지금 조건이 참인가 — 하루 경계 동기화(day_break_sync) 꼴.
+ * 참이면 시각 보고가 양보한다(고정표가 보조 추정을 이기는 것과 같은 자리). 안 그러면 시각 보고가 다음 날 아침으로 옮긴 시계에
+ * 그 이벤트가 "다음으로 돌아오는 아침까지"를 또 더해 하루가 두 번 간다.
+ */
+function timeEventDue(schema, state) {
+  const evs = (schema.rules?.events || []).filter((ev) => (ev.effects || []).some((e) => e && (e.set === SKIP_MIN || e.set === SKIP_DAY)));
+  if (!evs.length) return null;
+  const lk = makeLookup(schema, state.vars);
+  return evs.find((ev) => {
+    if (!ev.when) return true;
+    try { return truthy(evaluate(ev.when, lk, null)); } catch { return false; }
+  }) || null;
+}
+
+/**
+ * 보조의 시각 보고를 skip_day/skip_min으로 옮긴다. 보조가 적은 분(skip_min)은 시각이 있으면 버린다.
+ * 반환: 옮긴 분 / 안 옮겼으면 null (그때는 보조의 분 보고가 있으면 그것이 남는다 — 예전 방식으로 답하는 보조도 받는다)
+ */
+function applyClockReport(schema, state, clockText, changeLog, dayPassed = false) {
+  if (clockText == null || dayPassed === true) return null;          // 하루 넘김 신고 = 하루 닫기 정산이 시간을 정한다
+  const openIds = state.meta.auxOpen || [];
+  if (!clockReportOpen(schema, openIds)) return null;
+  const cm = parseClockText(String(clockText));
+  const now = state.vars[EPOCH_KEY];
+  if (cm == null || typeof now !== 'number') return null;
+  if (timeEventDue(schema, state)) return null;
+  const defD = schema.vars.find((v) => v.id === SKIP_DAY);
+  const defM = schema.vars.find((v) => v.id === SKIP_MIN);
+  const dayOpen = !!defD && openIds.includes(SKIP_DAY);
+  const d = dayOpen ? Math.max(0, Math.floor(Number(state.vars[SKIP_DAY]) || 0)) : 0;
+  const dayStart = Math.floor(now / MIN_PER_DAY) * MIN_PER_DAY;
+  let total = dayStart + d * MIN_PER_DAY + cm - now;
+  if (d === 0) {
+    if (total < 0) {
+      // 시각이 거꾸로 왔다 = 자정을 넘겼다. 날짜를 정할 창구가 보조에게 있을 때만(skip_day가 열렸거나 하루 닫기 버튼이 없는 봇) 6시간 안에서.
+      // 하루 닫기 버튼이 있는 봇에서 날짜를 넘기는 건 그 정산(버튼·day_passed)의 몫이다
+      if (!(dayOpen || !dayCloseAction(schema)) || total + MIN_PER_DAY > CLOCK_CROSS_MAX) return null;
+      total += MIN_PER_DAY;
+    }
+    // 같은 날 안의 몫엔 봇이 건 상한(maxGain)을 그대로 — 넘으면 그만큼만 간다. 시각 보고라 다음 턴이 나머지를 메운다 (쌓이지 않고 수렴)
+    const a = (schema.updater?.allow || []).find((x) => x.id === SKIP_MIN);
+    const cap = a ? (a.maxGain ?? a.maxDelta) : null;
+    if (typeof cap === 'number' && total > cap) total = cap;
+  }
+  const days = defD ? Math.floor(total / MIN_PER_DAY) : 0;
+  const hm = `${String(Math.floor(cm / 60)).padStart(2, '0')}:${String(cm % 60).padStart(2, '0')}`;
+  // 보조가 적어 둔 같은 변수의 줄은 갈아 끼운다 — 변화 카드에 "흐른 시간 0 → 570 — 시각 보고 18:00" 한 줄로
+  const put = (def, to) => {
+    const toC = coerce(def, to);
+    const i = changeLog.findIndex((c) => c.id === def.id && c.source === 'llm');
+    const from = i >= 0 ? changeLog[i].from : (Number(state.vars[def.id]) || 0);
+    state.vars[def.id] = toC;
+    if (i >= 0) changeLog.splice(i, 1);
+    if (toC !== from) changeLog.push({ id: def.id, from, to: toC, source: 'llm', reason: `시각 보고 ${hm}` });
+  };
+  if (defD) put(defD, days);
+  put(defM, total - days * MIN_PER_DAY);
+  return total;
+}
+
+/** changes 안에 clock을 넣어 오는 모델도 받는다 — 단 봇에 clock이라는 변수가 없을 때만 (있으면 그건 그 봇의 변수다) */
+function liftClock(schema, changes, clock) {
+  if (!changes || typeof changes !== 'object' || !('clock' in changes) || schema.vars.some((v) => v.id === 'clock')) return { changes, clock };
+  const rest = { ...changes };
+  delete rest.clock;
+  return { changes: rest, clock: clock ?? changes.clock };
 }
 
 // ── 판정 (checks) — "완벽 주사위" ────────────────────────────
@@ -1354,11 +1439,15 @@ function parseSetupResponse(text) {
 // 반환: { state, changeLog, firedEvents }
 
 /** 보조 모델 델타만 적용 (캡·검증) — outputPhase 내부와 지연 소급 적용에서 공용 */
-function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null) {
+function applyChangesToState(schema, prevState, changes, reasons, seenText = null, suggest = null, conflicts = null, detected = null, { clock = null, dayPassed = false } = {}) {
   const state = reconcileState(schema, clone(prevState));
   const changeLog = [];
   const openIds = Array.isArray(prevState?.meta?.auxOpen) ? new Set(prevState.meta.auxOpen) : null; // 프롬프트가 연 집합 (v1.14.6)
+  ({ changes, clock } = liftClock(schema, changes, clock));
   const rejected = applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenText, openIds);
+  // 시각 보고 (v1.19.0) — 지연 경로도 시각 보고 프롬프트로 물었다. 안 받으면 보조가 분을 안 적었으니 시간이 통째로 멈춘다.
+  // 옮긴 skip_day/skip_min은 다음 전송 단계의 소비가 굳힌다 (소급 경로의 다른 시간 보고와 같다)
+  applyClockReport(schema, state, clock, changeLog, dayPassed);
   if (suggest != null) state.meta.suggestions = sanitizeSuggestions(schema, suggest);
   // 불일치 신고 — 소급 경로에서도 통지로만. 다음 전송에 실린다 (한 턴 늦지만 안 실리는 것보단 낫다)
   pushConflictNotifies(state, conflicts);
@@ -1467,10 +1556,11 @@ function applyLLMChangesInto(schema, state, changes, reasons, changeLog, seenTex
 }
 
 // ── ② 응답 단계 (afterRequest/output) ────────────────────────
-function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, pinText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false } = {}) {
+function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, seenText = null, pinText = null, suggest = null, conflicts = null, detected = null, board = null, shop = null, msgr = null, quests = null, choices = null, dayPassed = false, clock = null } = {}) {
   const state = reconcileState(schema, clone(sendState));
   const changeLog = [];
   const firedEvents = [];
+  ({ changes, clock } = liftClock(schema, changes, clock));   // 시각 보고 (v1.19.0) — changes 안에 넣어 온 것도
 
   // 5. 보조 모델 델타 적용 — 지난 턴 신고(wordUnlock)가 있으면 여기서 소비된다
   // (auxAllowList가 state로 읽는다). 그래서 해제 표 교체(5.3)는 반드시 이 뒤여야 한다.
@@ -1488,6 +1578,10 @@ function outputPhase(schema, sendState, changes, reasons, { rng, rngSub = null, 
   // (다음 전송 한 번만 유효). 이 턴의 changes에 신고 변수가 섞여 있어도 5에서 이미
   // 게이트에 걸러졌다 — 신고와 반영이 같은 턴에 겹치는 일은 구조적으로 없다.
   consumeDetected(schema, state, detected);
+
+  // 5.35 시각 보고 (v1.19.0) — 보조가 "장면이 끝난 시각"을 적어 왔으면 [지금]과의 차이를 skip_day/skip_min으로 옮긴다.
+  // 하루 넘김 신고(5.4)·시간 고정표(5.45)보다 앞이라, 두 쪽이 이 값 위에서 종전대로 이긴다 (신고면 아예 안 옮긴다).
+  applyClockReport(schema, state, clock, changeLog, dayPassed);
 
   // 5.4 하루 넘김 대리 정산 (v1.7.0) — 버튼을 안 눌렀는데 서사가 하루를 넘겼을 때.
   // 돌리는 것은 **그 버튼과 똑같은 effects 한 벌**이라 두 입구가 갈라지지 않는다.
@@ -2125,6 +2219,10 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
   const allow = auxAllowList(schema,
     opts.allowAll ? null : [narrative, userText, historyText].filter(Boolean).join('\n'),
     opts.allowAll ? null : state);
+  // 시각 보고 (v1.19.0) — 시계를 보이는 봇 + skip_min이 열린 턴이면 분 대신 "장면이 끝난 시각"을 받는다.
+  // 루아 브리지 굽기(allowAll)는 제외 — [지금]이 안 실려 시각을 비교할 기준이 없다(그쪽은 종전대로 분)
+  const clockAsk = !opts.allowAll && !!state && typeof state.vars?.[EPOCH_KEY] === 'number'
+    && clockReportOpen(schema, allow.map((a) => a.id));
   const specs = allow.map((a) => {
     const v = varById[a.id];
     if (!v) return null;
@@ -2136,6 +2234,9 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
       const capDesc = (gainCap != null || lossCap != null)
         ? `증가 최대 +${gainCap ?? '무제한'}, 감소 최대 -${lossCap ?? '무제한'}`
         : '한도 무제한';
+      if (clockAsk && a.id === SKIP_MIN) {
+        return `- ${a.id} (${v.label ?? a.id}, 숫자): 현재 ${cur}. ※ 시간은 아래 규칙대로 "clock"(시각)으로 보고한다 — 이 칸은 시각을 정할 수 없을 때만 변화량(델타)으로. ${capDesc}${desc}`;
+      }
       return `- ${a.id} (${v.label ?? a.id}, 숫자): 현재 ${cur}. 변화량(델타)으로 제시. ${capDesc}${desc}`;
     }
     if (v.type === 'enum')
@@ -2227,7 +2328,14 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
     historyText ? '- 앞선 대화는 맥락 파악용이다. 거기서 이미 반영된 변화를 다시 세지 마라. 이번 턴 서사에서 새로 일어난 것만 반영하라.' : null,
     // 시간 — 절대 시점 서술("저녁이 되었다")을 [지금] 기준의 델타로 바꾸게 한다
     state?.meta?.timePin ? `- 이번 턴에 흐르는 시간은 시스템이 "${state.meta.timePin.label}" ${state.meta.timePin.min}분으로 굳혔다 — ${SKIP_MIN}은 적지 마라.` : null,
-    timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
+    // 시각 보고 (v1.19.0) — 빼기를 시키지 않는다. 시각은 두 번 적어도 같은 시각이라 "밤이 되었다"를 다시 읽어도 시계가 더 안 밀린다
+    clockAsk
+      ? `- 시간은 분으로 계산하지 말고 시각으로 보고하라: 이번 서사가 끝난 시점의 시각을 최상위(changes 바깥) "clock"에 "HH:mm"(24시간)으로 적어라 — 흐른 분은 시스템이 [지금]과 비교해 계산한다. 시간이 흐르지 않았으면 clock을 넣지 마라. 회상·약속·대사 속 시각이 아니라, 장면이 끝난 지금의 시각이다.`
+        + (allow.some((a) => a.id === SKIP_DAY)
+          ? ` 날짜가 바뀌었으면(자정을 넘김·자고 일어남·며칠 뒤) ${SKIP_DAY}에 넘어간 날 수를 적고, clock에는 그날의 시각을 적어라.`
+          : (dayCloseSpec ? ' 날짜가 넘어갔으면 clock 대신 아래 day_passed 규칙을 따라라.' : ''))
+        + ` ${SKIP_MIN}은 비워 두라 — 시각을 정할 수 없을 때만 흐른 분을 적어라.`
+      : timeRule ? `- 시간은 [지금] 시각 이후로 **새로** 흐른 만큼만 보고하라. [지금]이 이미 밤이면 "밤이 되었다"는 서술에 시간을 더 밀지 마라. 자정을 넘길 때만 ${SKIP_DAY}를 올리고, ${SKIP_MIN}에는 그날 안에서 흐른 분만 담아라.` : null,
     // 하루 넘김 신고 (v1.7.0) — skip_day를 안 준 봇의 유일한 날짜 입구. 숫자 창구가 열려 있으면
     // 안 붙인다 (한 가지를 두 가지 방법으로 말하게 하면 둘 다 틀린다).
     dayCloseSpec
@@ -2269,6 +2377,7 @@ function buildAuxPrompt(schema, state, narrative, userText, historyText, opts = 
         : '{"changes": {"변수id": 값}, "reasons": {"변수id": "한 줄 사유"}}'),
     noVars ? null
       : (schema.suggest ? '변화가 없으면 changes와 reasons는 빈 객체로 두되 suggest는 항상 채워라' : '변화가 없으면 {"changes": {}, "reasons": {}}'),
+    clockAsk ? '시간이 흘렀으면 최상위에 "clock"을 더하라 — 예: {"changes": {…}, "reasons": {…}, "clock": "18:30"}' : null,
     imgSpec ? '' : null,
     imgSpec || null,
   ].filter((x) => x !== null).join('\n');
@@ -2588,7 +2697,7 @@ function parseAuxResponse(text) {
   const obj = extractJsonObject(text, 'changes');
   if (!obj) return null;
   // (함수 안에 두는 이유: test-parse가 이 함수를 단독 추출해 평가한다)
-  const KNOWN_AUX_KEYS = ['changes', 'reasons', 'suggest', 'conflicts', 'detected', 'image', 'images', 'board', 'hot', 'shop', 'quests', 'choices', 'msgr', 'day_passed'];
+  const KNOWN_AUX_KEYS = ['changes', 'reasons', 'suggest', 'conflicts', 'detected', 'image', 'images', 'board', 'hot', 'shop', 'quests', 'choices', 'msgr', 'day_passed', 'clock'];
   // (v1.14.5) 아는 최상위 키가 하나도 없는 객체({"delta":…})는 형식 위반 — "변화 없음"으로 삼키면 어댑터의 재시도 기회를 잃는다
   if (!KNOWN_AUX_KEYS.some((k) => k in obj)) return null;
   const changes = (obj.changes && typeof obj.changes === 'object' && !Array.isArray(obj.changes)) ? { ...obj.changes } : {};
@@ -2614,6 +2723,9 @@ function parseAuxResponse(text) {
     // 하루 넘김 신고 (v1.7.0) — 참인 값만 받는다. 'true'·1처럼 헐겁게 쓰는 보조 모델이 잦아
     // 세 형태를 다 참으로 친다. 정산은 dayClose 액션의 effects가 (여기선 신고만).
     dayPassed: dayRaw === true || dayRaw === 'true' || dayRaw === 1,
+    // 시각 보고 (v1.19.0) — 장면이 끝난 시각 글자 그대로. 읽기·적용은 엔진(outputPhase)이 스키마를 보고 한다
+    // (changes 안에 넣어 온 것은 거기서 끌어올린다 — clock이라는 봇 변수가 있을 수 있어 여기선 못 가른다)
+    clock: (typeof obj.clock === 'string' && obj.clock.trim()) ? obj.clock.trim().slice(0, 24) : null,
     truncated: obj.__truncated === true };  // 잘린 응답을 구제한 것 (v1.9.8) — 어댑터가 상태줄·콘솔에 알린다
 }
 

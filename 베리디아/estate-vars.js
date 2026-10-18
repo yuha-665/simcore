@@ -35,71 +35,79 @@ const share = (col) => POLICY.slice(0, -1).reduceRight(
   (acc, p, i) => `labor_policy == ${JSON.stringify(p[0])} ? ${p[col]} : (${acc})`,
   String(POLICY[POLICY.length - 1][col]));
 
-// ── 탐사 ──
-// 무엇이 발견되는지는 시스템이 정하지 않는다. 계약과 같은 구조다 —
-// 시스템은 '이번에 무엇이 나올 차례인가'만 말하고, 그게 구체적으로 뭔지는 서사가 짓고 목록에 얹는다.
-// 표로 박아 두면 판마다 같은 것이 나오고, 20개를 다 쓰면 더 나올 게 없다. 개수만 정하면 둘 다 안 걸린다.
-//
-// 구역마다 다섯 자리. 그 다섯이 어떤 종류인지가 그 방향의 정체성이다 —
-// 남쪽은 땅 자체가 자산이라 '지형'이 둘, 북쪽은 험해서 '위협'이 둘.
-//   [방향키, 변수, 지역명, 눈에 보이는 것, [자리 종류 × 5]]
+// ── 탐사 v2 (2026-10-18, 설계 §16 — 유저 결정: 위협·자원·지형을 따로) ──
+// 무엇이 발견되는지는 여전히 시스템이 정하지 않는다. 계약과 같은 구조다 — 시스템은 '이번에 어느 종류가 나올 차례인가'까지,
+// 그게 구체적으로 뭔지는 서사가 짓고 보조가 목록에 얹는다.
+// 옛 판은 방향마다 자리 5개를 넷(자원·위협·지형·숨은 장소)이 나눠 써서, 위협이 하나 나오면 자원이 하나 덜 나오고 다섯을 다 쓰면
+// 그 방향이 끝났다. 위협 발견은 위치 메모 한 줄뿐이라 치울 대상도 없었다. 이제 셋을 따로 센다 [유저]:
+//   위협 = 치울 거리 — 방향마다 둥지 한 자리, 치우면 더 깊은 곳의 다음 것이 나온다(순환).
+//   자원 = 특산품이 될 재료 — 땅에 묻힌 수가 정해져 있다(한정·영구). 탐사로 찾은 것만 특산품이 된다 — 서사로 찾은 건 자원지(sites).
+//   지형 = 활용할 땅 — 땅은 무한하지 않다(한정·영구). 숨은 장소(폐허·나루터·옛 수로)는 "고쳐 쓰는 땅"이라 여기에 합쳤다.
+//   [방향키, 변수, 지역명, 눈에 보이는 것, 가중치 [자원, 지형, 위협]] — 가중치가 그 방향의 정체성이다
+//   (북은 험해서 위협, 서는 숲이라 자원, 남은 땅 자체가 자산이라 지형, 동은 반반).
 const EXPLORE = [
-  ['북 산맥', 'exp_n', '칼날 능선', '가파른 맨바위와 녹지 않는 눈. 몬스터가 내려오는 길이다.',
-    ['자원', '위협', '숨은 장소', '자원', '위협']],
-  ['서 숲', 'exp_w', '속삭이는 숲', '빛이 바닥까지 닿지 않는 원시림.',
-    ['자원', '자원', '숨은 장소', '위협', '지형']],
-  ['남 평원', 'exp_s', '잿빛 평원', '지평선까지 굳은 잿빛 껍질. 평평한 것 하나는 확실하다.',
-    ['지형', '자원', '지형', '숨은 장소', '위협']],
-  ['동 강가', 'exp_e', '강가', '흙탕이 섞여 빠르게 흐르는 물. 배를 댈 자리는 없다.',
-    ['지형', '자원', '자원', '위협', '숨은 장소']],
+  ['북 산맥', 'exp_n', '칼날 능선', '가파른 맨바위와 녹지 않는 눈. 몬스터가 내려오는 길이다.', [2, 1, 3]],
+  ['서 숲', 'exp_w', '속삭이는 숲', '빛이 바닥까지 닿지 않는 원시림.', [3, 2, 1]],
+  ['남 평원', 'exp_s', '잿빛 평원', '지평선까지 굳은 잿빛 껍질. 평평한 것 하나는 확실하다.', [1, 3, 1]],
+  ['동 강가', 'exp_e', '강가', '흙탕이 섞여 빠르게 흐르는 물. 배를 댈 자리는 없다.', [2, 2, 1]],
 ];
-// 자리 종류가 뭘 뜻하는지 — 통지에 실려 서사에게 건네진다.
-// 목록에 옮기는 건 보조 모델 몫이라 여기선 말하지 않는다. 여기는 "무엇을 지어낼 차례인가"만.
-//   [무슨 일이 있었나, 무엇을 정해야 하나, 덧붙일 말]
-const CAT = {
-  '자원': ['캐거나 베거나 걷어 낼 것이 나왔다', '무엇이고 어디에 쓰는 것인지', ''],
-  '지형': ['땅 자체가 쓸모인 자리를 찾았다', '고갯길인지 여울인지 바람 막힌 골짜기인지', ''],
-  '숨은 장소': ['사람 손이 닿았던 자리가 나왔다', '누가 만들었고 왜 버려졌는지', ' 버려진 이유가 이 발견의 절반이다.'],
-  '위협': ['거기 사는 것과 마주쳤다', '무엇이 몇이나 있는지', ' 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다.'],
+// ── 자원 자리 — 특산품이 될 것 (방향마다 수가 정해져 있다) ──
+// 예시는 강제가 아니다 (2026-08-17 유저 선택: 고정 대신 예시) — 통지가 "어디까지나 예시, 더 어울리는 게 있으면 그쪽"을 명시한다.
+// 쏠림 완화: 자리마다 2개씩, 자리 간 겹침 없음 + "이미 나온 것과 겹치지 말라".
+const RES = {
+  n: ['드러난 화강암 노두(성벽 쌓을 돌), 바위산의 산양 떼(모피와 젖)',
+    '한여름에도 얼음이 안 녹는 동굴(천연 얼음 곳간), 쇠 냄새 나는 붉은 흙(철광 징후)'],
+  w: ['도끼날이 튕기는 은빛 나무 군락(쇠처럼 단단한 목재), 꿀벌이 든 큰 고목',
+    '볕 드는 골짜기 하나가 통째로 약초밭, 송진 많은 수지 숲(횃불·방수)'],
+  s: ['바람에 마른 소금 껍질 평원(먹을 건 못 돼도 팔 것은 된다), 이탄층(캐서 때는 흙)'],
+  e: ['구우면 벽돌이 되는 차진 점토층, 지붕 이엉과 바구니 감이 되는 갈대밭',
+    '물고기가 회유하는 여울(어장), 강자갈 무더기(골재)'],
 };
+// ── 지형 자리 — [쓰임, 예시] (방향마다 수가 정해져 있다) ──
+// 쓰임이 '개간'이면 찾는 순간 경작 상한이 오른다 — 밭으로 일구는 건 서사의 몫이고, 상한은 "일굴 땅이 있느냐"다.
+// 유저 배치 (2026-10-18): 수원지(정본) = 서쪽 숲 초입 북서쪽 — 현 서사가 찾은 자리다. 나루터 = 동 강가. 폐허 = 북쪽.
+const TER = {
+  n: [['유적', '무너진 옛 산성 터(성벽 돌이 그대로 남은 자리), 버려진 광부 마을(갱도 입구와 빈집들)']],
+  w: [['수원', null], ['개간', '숲이 갈라진 볕 든 빈터, 쓰러진 고목들 아래 두껍게 쌓인 부엽토']],
+  s: [['개간', '재를 걷어내면 나오는 기름진 검은 흙(이 땅은 죽은 게 아니라 덮여 있었다), 재가 얕게 덮여 먼저 갈 수 있는 띠'],
+    ['부지', '큰 건물 앉힐 단단한 반석 지대, 바람을 막아 주는 낮은 언덕 자락'],
+    ['유적', '재 아래 옛 전장(쓸 만한 무구, 그리고 파낸 자들이 앓는 무언가), 무너진 파수탑']],
+  e: [['물길', '자갈밭에 걸러진 맑은 지류(떠 마셔도 되는 물), 걸어 건널 여울목'],
+    ['유적', '무너진 옛 나루터의 말뚝 잔해, 가라앉은 짐배']],
+};
+//   쓰임 → [무슨 일이 있었나, 덧붙일 말]
+const TER_USE = {
+  '개간': ['갈아서 밭으로 만들 수 있는 땅이 나왔다', ' 찾은 것만으로 영지의 경작 상한이 늘어난다 — 밭으로 일구는 것은 서사의 몫이다.'],
+  '부지': ['큰 것을 앉힐 수 있는 터가 나왔다', ''],
+  '물길': ['물이나 길이 되는 자리가 나왔다', ''],
+  '유적': ['사람 손이 닿았던 자리가 나왔다', ' 누가 만들었고 왜 버려졌는지가 이 발견의 절반이다.'],
+  '수원': ['물이 나는 자리를 찾았다', ''],
+};
+const LAND_FARM_GAIN = 2;   // 개간지 하나 = 경작 상한 +2 (12 → 최대 16) [초안]
 // ── 정본 발견 (로어북 다이어트, 2026-08-17) ──
 // 로어북에 적혀 있던 "정답"들 — 방향마다 뭐가 사는지, 수맥이 어디 갇혀 있는지 — 을 여기로 옮겼다.
 // 로어북에 적히면 모델이 0턴부터 안다: 실제 사고로, 아데레가 첫 장면에서 "마력 감응으로 느껴진다"며
 // 수맥 위치를 불어 버렸다. 탐사도 고민도 없이 정답이 나오면 운영 놀이가 통째로 죽는다.
-// 여기 있으면 해당 자리의 find 이벤트가 터지는 턴에만 통지로 실린다 — 그 전엔 프롬프트 어디에도 없다.
+// 여기 있으면 그 자리의 발견 이벤트가 터지는 턴에만 통지로 실린다 — 그 전엔 프롬프트 어디에도 없다.
 // (스키마 JSON은 모델이 못 본다. 시나리오레이터 secret과 같은 은닉 논리.)
-// 정본이 없는 자리는 지금처럼 서사가 짓는다 — 개방 원칙은 그대로다. 정본은 로어북 유산 여섯 개뿐.
-const CANON = {
-  find_n_2: '고블린 부족들이다 — 능선 곳곳에 퍼져 살고, 수가 많다. 밤에 내려오는 길목이 이제 지도에 잡혔다.',
-  find_n_3: '무너진 옛 수로의 취수구다 — 능선 뒤 암반 안에 맑은 수맥이 갇혀 있고, 옛 사람들은 여기서 물을 끌었다. '
-    + '손이 모자라 버려졌을 뿐이다. 바위를 깨고 수로를 다시 잇는 큰 공사감이지만, 뚫으면 물 문제가 뿌리부터 풀린다.',
-  find_n_5: '하피들이다 — 상승기류를 타고 봉우리 사이를 돈다. 높은 둥지 자리가 잡혔다.',
-  find_w_4: '거대 거미들이다 — 그리고 숲 안쪽에는 식물이라고만 하기 어려운 것들이 자란다.',
-  find_s_5: '오크 습격대다 — 여기 사는 것이 아니라 남쪽 저편에서 온다. 이 평원이 그들의 내습로다.',
-  find_e_4: '리자드맨이다 — 갈대밭에 살고, 제 영역을 넘는 것을 가만히 지켜보고 있다.',
+// 지형 정본 — 서쪽 첫 지형. 북(옛 find_n_3)에서 옮겼다 [유저 2026-10-18: 현 서사가 찾은 수원지가 서쪽 숲 초입 북서쪽].
+//   서사가 먼저 찾아 쓰고 있을 수 있다(현 세이브가 그렇다) — 그때는 같은 것을 두 번 발견하지 않게 "그 위쪽의 본줄기"로 받는다.
+const TER_CANON = {
+  w: ['숲 초입 북서쪽, 산맥에서 내려온 지하수가 암반 아래 갇힌 자리 — 무너진 옛 수로의 취수구다. 옛 사람들은 여기서 마을까지 물을 끌었다. '
+    + '손이 모자라 버려졌을 뿐이다. 바위를 깨고 수로를 다시 잇는 큰 공사감이지만, 뚫으면 물 문제가 뿌리부터 풀린다. '
+    + '이미 서사에서 이 취수구를 찾아 쓰고 있다면, 이번에 척후가 찾은 것은 그 위쪽에서 갈라져 나오는 수맥의 본줄기다 — 더 깊고 물이 많다. '
+    + '같은 것을 두 번 발견하지 마라.'],
 };
-// ── 예시 풀 (2026-08-17, 유저 선택: 고정 대신 예시) ──
-// 열린 자리 14개에 실리는 참고 후보. 정본(CANON)과 달리 강제가 아니다 — 통지가 "예시일 뿐,
-// 더 어울리는 게 있으면 그쪽을 써라"를 명시한다. 옛 열거 12종(git d0b1139)의 비전투 9종을
-// 여기로 살려 왔고, 모자란 자리는 방향 정체성에 맞게 새로 지었다.
-// 가중치 쏠림 완화책 둘: ① 자리마다 2개씩, 자리 간 겹침 없음 — 같은 예시가 두 번 안 보인다
-// ② "이미 나온 것과 겹치지 말라"를 통지에 박음. 그래도 예시 쪽으로 기울 것은 감수한다(유저 승인).
-const HINTS = {
-  find_n_1: '드러난 화강암 노두(성벽 쌓을 돌), 바위산의 산양 떼(모피와 젖)',
-  find_n_4: '한여름에도 얼음이 안 녹는 동굴(천연 곳간), 쇠 냄새 나는 붉은 흙(철광 징후)',
-  find_w_1: '도끼날이 튕기는 은빛 나무 군락(쇠처럼 단단한 목재), 꿀벌이 든 큰 고목',
-  find_w_2: '볕 드는 골짜기 하나가 통째로 약초밭, 송진 많은 수지 숲(횃불·방수)',
-  find_w_3: '버려진 숯가마 터, 옛 사냥꾼의 오두막',
-  find_w_5: '숲이 갈라진 볕 든 빈터(개간 후보), 수레가 지날 만한 완만한 능선길',
-  find_s_1: '재를 걷어내면 나오는 기름진 검은 흙 — 이 땅은 죽은 게 아니라 덮여 있었다',
-  find_s_2: '바람에 마른 소금 껍질 평원(먹을 건 못 돼도 팔 것은 된다), 이탄층(캐서 때는 흙)',
-  find_s_3: '큰 건물 앉힐 단단한 반석 지대, 재가 얕게 덮인 띠(먼저 갈 수 있는 땅)',
-  find_s_4: '재 아래 옛 전장(쓸 만한 무구, 그리고 파낸 자들이 앓는 무언가), 무너진 파수탑',
-  find_e_1: '자갈밭에 걸러진 맑은 지류(떠 마셔도 되는 물), 걸어 건널 여울목',
-  find_e_2: '구우면 벽돌이 되는 차진 점토층, 지붕 이엉과 바구니 감이 되는 갈대밭',
-  find_e_3: '물고기가 회유하는 여울(어장), 강자갈 무더기(골재)',
-  find_e_5: '무너진 옛 나루터의 말뚝 잔해, 가라앉은 짐배',
+// 둥지 정본 — 방향마다 처음 나오는 것(북은 둘째까지). 그 뒤는 "이 방향에 사는 것" 가운데 서사가 정한다.
+const LAIR_CANON = {
+  n: ['고블린 부족들이다 — 능선 곳곳에 퍼져 살고, 수가 많다. 밤에 내려오는 길목이 이제 지도에 잡혔다.',
+    '하피들이다 — 상승기류를 타고 봉우리 사이를 돈다. 높은 둥지 자리가 잡혔다.'],
+  w: ['거대 거미들이다 — 그리고 숲 안쪽에는 식물이라고만 하기 어려운 것들이 자란다.'],
+  s: ['오크 습격대다 — 여기 사는 것이 아니라 남쪽 저편에서 온다. 이 평원이 그들의 내습로다.'],
+  e: ['리자드맨이다 — 갈대밭에 살고, 제 영역을 넘는 것을 가만히 지켜보고 있다.'],
 };
+const LAIR_KIN = { n: '고블린·하피·산짐승', w: '거대 거미·숲의 짐승·이상한 식물', s: '오크 습격대·떠도는 짐승', e: '리자드맨·물가의 짐승' };
+const LAIR_MAX = 10;
 // 랜덤 사건이 겹치지 않게 하는 공통 조건 — 이미 곤경 중이면 새 곤경은 안 온다.
 const QUIET = 'disaster == "" and route == "없음"';
 
@@ -126,14 +134,37 @@ const thr = (v, op, at0, at100) => {
 const lackDays = (x, s) => `${s} >= 0 ? (${x} <= 0 and ${s} == 0 ? span : 0)`
   + ` : clamp(span - ceil(${x} / (0 - ${s})) + 1, 0, span)`;
 
-const SPOTS = EXPLORE[0][4].length;
-const SPOT_TOTAL = EXPLORE.reduce((a, e) => a + e[4].length, 0);
-// 방향 → 그 방향의 발견물 이름(미탐사/탐사중 포함)을 돌려주는 조회식
-// 방향 하나의 현황 — 몇 곳 건졌고 지금 얼마나 훑었는지.
-// 무엇을 찾았는지는 여기 안 적는다. 그건 이미 자원·시설 목록에 있고, 여러 개라 한 칸에 안 들어간다.
-const foundExpr = (v, f, n) =>
-  `${f} >= ${n} ? "다 훑음 (${n}곳)" : ((${f} == 0 ? "미탐사" : ${f} + "곳 발견")`
-  + ` + (${v} >= 100 ? " · 정리 중" : (${v} > 0 ? " · 훑는 중 " + ${v} + "%" : "")))`;
+// 한정 자리 총수 (자원 7 + 지형 8) — 영토 파악 %의 분모. 둥지는 순환이라 안 센다
+const FINITE_TOTAL = EXPLORE.reduce((a, [, v]) => a + RES[v.slice(4)].length + TER[v.slice(4)].length, 0);
+// 방향 하나의 현황 — 자원·지형을 얼마나 건졌고, 둥지가 살아 있는지, 지금 얼마나 훑었는지.
+// 무엇을 찾았는지(이름)는 특산품·개척지 목록에 있다 — 여러 개라 한 칸에 안 들어간다.
+const foundExpr = (k) => `"자원 " + res_${k} + "/${RES[k].length} · 지형 " + ter_${k} + "/${TER[k].length}"`
+  + ` + (lair_on_${k} ? " · 둥지 " + (lairname_${k} != "" ? lairname_${k} : "이름 없음") + "(세력 " + lair_${k} + ")" : "")`
+  + ` + (exp_${k} >= 100 ? " · 정리 중" : (exp_${k} > 0 ? " · 훑는 중 " + exp_${k} + "%" : ""))`;
+// 100%에 닿은 방향이 무엇을 내놓나 — 그 방향에 **남은 것** 중에서 가중치로 고른다.
+//   자원·지형은 다 나오면 빠지고, 위협은 그 방향에 살아 있는 둥지가 없을 때만 — 그래서 한정 자리가 다 나온 뒤에도 척후가 할 일이 남는다.
+//   부호화: 110 + 자원 자리 · 120 + 지형 자리 · 130 둥지 · 140 막힘(남은 것 없음 + 둥지가 살아 있음)
+//   굴림은 xroll 하나를 나눠 쓴다 — 식 안에서 rand()를 여러 번 부르면 갈래마다 따로 굴러 확률이 어긋난다.
+const pickExpr = (k, [wr, wt, wh]) => {
+  const WR = `(res_${k} < ${RES[k].length} ? ${wr} : 0)`;
+  const WT = `(ter_${k} < ${TER[k].length} ? ${wt} : 0)`;
+  const WH = `(lair_on_${k} ? 0 : ${wh})`;
+  const TOT = `(${WR} + ${WT} + ${WH})`;
+  const R = `((xroll - 1) % max(1, ${TOT}))`;
+  return `${TOT} == 0 ? 140 : (${R} < ${WR} ? 110 + res_${k} : (${R} < ${WR} + ${WT} ? 120 + ter_${k} : 130))`;
+};
+// 찾은 지형 중 개간지 수 — 자리 순서가 고정이라 "몇 개 찾았나"로 어느 쓰임까지 나왔는지 안다
+const landFarmExpr = EXPLORE.flatMap(([, v]) => {
+  const k = v.slice(4);
+  return TER[k].map(([use], i) => (use === '개간' ? `(ter_${k} > ${i} ? 1 : 0)` : null)).filter(Boolean);
+}).join(' + ') || '0';
+// 현상금·출정이 가장 센 둥지를 dmg만큼 깎는 효과 — 대상을 먼저 굳힌다(hunt_target). 효과는 차례로 적용되므로
+//   lair_top을 그때그때 읽으면 첫 방향을 깎는 순간 "가장 센 것"이 바뀌어 둘을 깎는다.
+const huntFx = (dmg) => [{ set: 'hunt_target', expr: 'lair_top' },
+  ...EXPLORE.map(([, v]) => {
+    const k = v.slice(4);
+    return { set: `lair_${k}`, expr: `hunt_target == "${k}" ? max(0, lair_${k} - ${dmg}) : lair_${k}` };
+  })];
 
 // ── 연중행사 ──
 // 판타지니 모든 달을 30일로 통일했다. 12달 × 30일 = 360일.
@@ -572,6 +603,12 @@ const S = {
       desc: 'Places that yield goods to SELL — mines, quarries, salt flats, clay beds, silk groves. '
         + 'The number MUST come last: gold per day once it is actually being worked, 0 while it is only known about. '
         + 'Their sum is added to daily income.' },
+    // 탐사 v2 (§16) — 탐사로 찾은 것만 들어가는 목록 둘. 숫자를 안 적는다: 특산품 값은 시스템이 매기고(가동 수 × 단가),
+    //   개척지는 그 위에 무엇을 짓느냐가 밭·거처·인프라 목록으로 간다. 서사로만 찾은 것은 자원지(sites) 단서로 — 이게 둘을 가르는 선이다.
+    { id: 'specials', label: '특산품', type: 'list', init: [], maxItems: 8, itemMaxLength: 28, cmd: '특산품',
+      desc: 'ONLY from a [탐사 · 자원] notice — "이름 · 방향", no number (see DISCOVERIES).' },
+    { id: 'lands', label: '개척지', type: 'list', init: [], maxItems: 10, itemMaxLength: 28, cmd: '개척지',
+      desc: 'ONLY from a [탐사 · 지형] notice — "이름 · 방향", no number (see DISCOVERIES).' },
     // ── 길 ──
     // 무역로를 목록으로 두면 "길이 있다"만 적히고 정작 중요한 "지금 막혔나"가 안 잡힌다.
     // 길은 상태가 아니라 사건이다 — 얼고, 무너지고, 도적이 앉고, 다시 뚫린다.
@@ -595,37 +632,46 @@ const S = {
       desc: 'How many usable wells and channels stand. At 0, water must be hauled from the river. '
         + 'Raise it only together with a matching entry in infra.' },
 
-    // ── 탐사 ──
+    // ── 탐사 (v2, §16) ──
     // 지형 자체(북=산, 서=숲, 남=평원, 동=강)는 영지 중앙에서 눈으로 보인다. 그건 고정이다.
     // 변주되는 것은 그 안에서 "무엇이 나오느냐"다. 그래야 매 판 같은 전개가 안 된다.
     //
     // ⚠ 진척도 변수 하나가 세 가지 일을 겸한다.
     //     0~99    한 번 훑는 중 (척후가 쌓는 값)
-    //     100     발견 직전 (다음 정산에서 굴림)
-    //     110~114 이번에 나온 결과. 이벤트가 이 값을 보고 딱 한 턴 터진 뒤 0으로 돌아간다.
-    //   한 방향을 계속 파도 된다 — 백작령만 한 땅이라 한 번 훑고 끝날 리가 없다.
-    //
-    // ⚠ 매 회차 새로 굴리면 이미 나온 게 또 걸려서 그 회차가 통째로 빈손이 된다.
-    //   실측: 넷째 발견 중앙값 195턴, 다섯째 330턴 — 뒤로 갈수록 못 견디게 늘어졌다.
-    //   그래서 굴림은 **첫 회차 한 번뿐**이다(o_*). 그게 그 방향의 시작점이 되고,
-    //   나머지는 남은 것을 차례로 채운다. 회차가 헛돌지 않고, 판마다 순서는 여전히 다르다.
-    //     o=2 → 2, 0, 1, 3, 4   (대표가 두 번째로 나온다)
-    //     o=0 → 0, 1, 2, 3, 4   (33% 확률로 대표부터)
+    //     100     발견 직전 (다음 정산에서 남은 것 중에 고른다 — pickExpr)
+    //     110+i 자원 자리 i · 120+i 지형 자리 i · 130 둥지 · 140 막힘 — 그 턴의 발견 이벤트가 보고 0으로 되돌린다.
+    //   ⚠ 되돌리기는 이벤트 효과에서 한다 — 이벤트는 앞 이벤트의 효과를 보고 평가되므로, 안 되돌리면 같은 턴에
+    //     다음 자리(자원 개수 +1 → 110 + 다음 i)가 연달아 터진다. onTurn의 ">= 110 → 0"은 안전망이다.
+    //   한 방향을 계속 파도 된다 — 자원·지형이 다 나와도 둥지가 순환한다. 옛 판의 "다 훑음"(척후가 영영 할 일 없음)은 없다.
+    //   자리 순서는 고정이다(옛 판의 시작점 굴림 o_*는 폐지) — 판마다 다른 건 "어느 종류가 먼저 나오느냐"(가중치 굴림)다.
     { id: 'explore_dir', label: '탐사 방향', type: 'enum', cmd: '탐사',
       enum: ['없음', '북 산맥', '서 숲', '남 평원', '동 강가'], init: '없음',
       desc: 'Where the scouts are currently working. Set it when the narration sends them somewhere; '
         + '"없음" means they are kept home.' },
     ...EXPLORE.map(([dir, v]) => ({
-      id: v, label: `${dir.slice(0, 1)} 탐사`, type: 'int', init: 0, min: 0, max: 109 + SPOTS,
+      id: v, label: `${dir.slice(0, 1)} 탐사`, type: 'int', init: 0, min: 0, max: 140,
     })),
-    // 방향별 누적 발견 수. 이게 있어야 "몇 곳 건졌나"가 보이고, 다 훑은 방향을 알 수 있다.
-    ...EXPLORE.map(([dir, v]) => ({
-      id: `f_${v.slice(4)}`, label: `${dir.slice(0, 1)} 발견`, type: 'int', init: 0, min: 0, max: SPOTS,
-    })),
-    // 그 방향의 시작점. -1 = 아직 안 굴림. 첫 회차에 한 번 정해지고 그 뒤로 안 변한다.
-    ...EXPLORE.map(([dir, v]) => ({
-      id: `o_${v.slice(4)}`, label: `${dir.slice(0, 1)} 시작점`, type: 'int', init: -1, min: -1, max: SPOTS - 1,
-    })),
+    ...EXPLORE.flatMap(([dir, v]) => {
+      const k = v.slice(4), d = dir.slice(0, 1);
+      return [
+        // 자원: 찾은 수 / 가동 수 — 가동은 서사가 실제로 캐기 시작할 때 보조가 올린다 (찾은 수를 못 넘는다 — onTurn이 깎는다)
+        //   desc는 짧게 — 규칙은 guide의 SPECIALTIES·LAIRS·DISCOVERIES에 한 번만 (방향 넷이라 desc에 쓰면 보조 프롬프트에 네 벌)
+        { id: `res_${k}`, label: `${d} 자원 발견`, type: 'int', init: 0, min: 0, max: RES[k].length },
+        { id: `resw_${k}`, label: `${d} 특산 가동`, type: 'int', init: 0, min: 0, max: RES[k].length,
+          desc: `Worked specialties in the ${dir} (see SPECIALTIES).` },
+        { id: `ter_${k}`, label: `${d} 지형 발견`, type: 'int', init: 0, min: 0, max: TER[k].length },
+        // 둥지: 세력(0 = 없음) — 보조는 깎기만 한다(실제 전투). 두면 자란다(onTurn). 0이 되면 토벌 이벤트가 깃발을 내린다
+        { id: `lair_${k}`, label: `${d} 둥지 세력`, type: 'int', init: 0, min: 0, max: LAIR_MAX,
+          desc: `Known lair strength in the ${dir}, 0 = none (see LAIRS — lower only).` },
+        { id: `lairs_${k}`, label: `${d} 둥지 발견 수`, type: 'int', init: 0, min: 0, max: 99 },
+        { id: `lair_on_${k}`, label: `(내부) ${d} 둥지 있음`, type: 'bool', init: false },
+        { id: `lairname_${k}`, label: `${d} 둥지`, type: 'text', init: '', maxLength: 24,
+          desc: `Name of the ${dir} lair (see DISCOVERIES).` },
+      ];
+    }),
+    // 종류 고르기 굴림 (탐사 정산이 매 턴 새로 굴린다) · 현상금·출정이 노리는 둥지 — 등급 효과가 차례로 적용되는 동안 대상이 안 바뀌게 먼저 굳힌다
+    { id: 'xroll', label: '(내부) 탐사 굴림', type: 'int', init: 1, min: 1, max: 1000 },
+    { id: 'hunt_target', label: '(내부) 토벌 대상', type: 'text', init: '', maxLength: 2 },
 
     // ── 안전 ──
     { id: 'army', label: '상비군', type: 'int', init: 0, min: 0, format: '{v}명' },
@@ -846,20 +892,38 @@ const S = {
     { id: 'doy', label: '(내부) 올해 몇째 날', expr: '(month - 1) * 30 + dom' },
     { id: 'bday_who', label: '다가오는 생일', expr: bdayChain((name) => JSON.stringify(name), '""') },
     { id: 'bday_in', label: '생일까지', expr: bdayChain((name, m, d) => bdayLeft(m, d), '-1') },
-    // ── 탐사 현황 ──
-    ...EXPLORE.map(([, v, label, , slots]) => ({
-      id: 'found_' + v.slice(4), label, expr: foundExpr(v, `f_${v.slice(4)}`, slots.length),
-    })),
-    // 영지를 얼마나 알아냈나. 백작령만 한 땅이라 다 채우는 건 긴 이야기가 된다.
+    // ── 탐사 현황 (v2, §16) ──
+    ...EXPLORE.map(([, v, label]) => ({ id: 'found_' + v.slice(4), label, expr: foundExpr(v.slice(4)) })),
+    // 영지를 얼마나 알아냈나 — 한정 자리(자원·지형)만 센다. 둥지는 순환이라 분모에 없다.
     // format은 자리표시자 치환에 안 먹는다 — 프롬프트·상태창 둘 다 template이라 문자열로 만들어 둔다.
-    { id: 'finds', label: '발견 총계', expr: EXPLORE.map(([, v]) => `f_${v.slice(4)}`).join(' + ') },
-    { id: 'survey', label: '영토 파악', expr: `round(finds * 100 / ${SPOT_TOTAL}) + "%"` },
+    { id: 'finds', label: '발견 총계', expr: EXPLORE.map(([, v]) => `res_${v.slice(4)} + ter_${v.slice(4)}`).join(' + ') },
+    { id: 'survey', label: '영토 파악', expr: `round(finds * 100 / ${FINITE_TOTAL}) + "%"` },
     { id: 'scouting', label: '탐사 진척',
       expr: EXPLORE.reduceRight(
-        (acc, [dir, v]) => `explore_dir == ${JSON.stringify(dir)}`
-          + ` ? (f_${v.slice(4)} >= ${SPOTS} ? "훑을 만큼 훑은 곳" : (${v} >= 100 ? "정리 중" : ${v} + "%"))`
-          + ` : (${acc})`,
+        (acc, [dir, v]) => `explore_dir == ${JSON.stringify(dir)} ? (${v} >= 100 ? "정리 중" : ${v} + "%") : (${acc})`,
         '"보내지 않음"') },
+    // 둥지 — 세력 합이 위협 목표에 얹히고(threat_goal), 현상금·출정은 가장 센 것을 노린다(같으면 북·서·남·동 순)
+    { id: 'lair_sum', label: '둥지 세력 합', expr: EXPLORE.map(([, v]) => `lair_${v.slice(4)}`).join(' + ') },
+    { id: 'lair_top', label: '가장 센 둥지',
+      expr: 'lair_n > 0 and lair_n >= max(lair_w, lair_s, lair_e) ? "n" : (lair_w > 0 and lair_w >= max(lair_s, lair_e) ? "w"'
+        + ' : (lair_s > 0 and lair_s >= lair_e ? "s" : (lair_e > 0 ? "e" : "")))' },
+    { id: 'lair_top_str', label: '가장 센 둥지 세력', expr: 'max(lair_n, lair_w, lair_s, lair_e)' },
+    // "북 능선 고블린 굴(세력 4) · 남 오크 내습로(세력 3)" — 구분자는 앞에 살아 있는 둥지가 있을 때만 (식에 trim이 없다)
+    { id: 'lairs_txt', label: '알려진 둥지',
+      expr: `lair_sum <= 0 ? "알려진 둥지 없음" : (`
+        + EXPLORE.map(([dir, v], i) => {
+          const k = v.slice(4);
+          const before = EXPLORE.slice(0, i).map(([, v2]) => `lair_${v2.slice(4)} > 0`).join(' or ');
+          return `(lair_${k} > 0 ? ${before ? `(${before} ? " · " : "") + ` : ''}"${dir.slice(0, 1)} " + (lairname_${k} != "" ? lairname_${k} : "둥지") + "(세력 " + lair_${k} + ")" : "")`;
+        }).join(' + ') + ')' },
+    // 특산품 — 가동 1곳당 하루 단가. 이름이 알려질수록(명성) 값이 붙는다 [초안: 6 + 2 × ⌊명성/25⌋]
+    { id: 'spec_found', label: '찾은 특산품', expr: EXPLORE.map(([, v]) => `res_${v.slice(4)}`).join(' + ') },
+    { id: 'spec_worked', label: '가동 특산품', expr: EXPLORE.map(([, v]) => `resw_${v.slice(4)}`).join(' + ') },
+    { id: 'spec_unit', label: '특산품 한 곳 산출', expr: '6 + 2 * floor(fame / 25)' },
+    { id: 'spec_income', label: '특산품 산출', expr: 'spec_worked * spec_unit' },
+    // 지형 — 개간지가 경작 상한을 민다. 12는 옛 고정 상한(수확 공식이 견디는 범위) — 거기서 찾은 땅만큼만 넓어진다
+    { id: 'land_farm', label: '찾은 개간지', expr: landFarmExpr },
+    { id: 'arable_cap', label: '경작 상한', expr: `12 + land_farm * ${LAND_FARM_GAIN}` },
 
     // 지금 곁에 있는 사람의 호감도를 배역표에서 끌어온다. 이름이 배역에 없으면(고용인 등) 0.
     { id: 'ally_bond', label: '유대',
@@ -954,8 +1018,9 @@ const S = {
     // 노인·여자·부상병이 태반이라 처음엔 절반도 일을 못 한다. 보건이 오르면 나아진다.
     // ── 지은 것이 곧 수치다 ──
     // 예전엔 arable이 AI가 눈대중으로 밀던 정수였다. 이제 밭 목록의 합이라 서사와 어긋날 수가 없고,
-    // 유저가 /경작지- 로 하나 빼면 수확이 바로 준다. 상한 12는 수확 공식이 견디는 범위라 남긴다.
-    { id: 'arable', label: '경작 적성', expr: 'max(0, min(12, sum(farms)) - blight)' },
+    // 유저가 /경작지- 로 하나 빼면 수확이 바로 준다. 상한 12는 수확 공식이 견디는 범위라 남긴다 —
+    // 탐사로 개간지를 찾으면 그만큼만 넓어진다(arable_cap, §16: 땅은 무한하지 않다).
+    { id: 'arable', label: '경작 적성', expr: 'max(0, min(arable_cap, sum(farms)) - blight)' },
     { id: 'farm_txt', label: '경작지 상태',
       expr: '(blight > 0 ? "적성 " + arable + " — 밭이 상했다(-" + blight + ", " + max(0, blight_until - day) + "일 뒤 아묾)" : "적성 " + arable)'
         + ' + (dis_farm < 1 ? " · " + disaster + "(수확 -" + round((1 - dis_farm) * 100) + "%)" : "")' },
@@ -1031,7 +1096,8 @@ const S = {
     // 계약을 지우지 않는 게 중요하다. 길이 뚫리면 그대로 되살아나야 하니까.
     { id: 'deals_net', label: '실수령 계약', expr: 'route == "없음" ? deals : round(deals * 0.4)' },
     // ④ 길드 (§14) — 모험가가 쓰고 가는 돈(여관·술집·수리) / 도적 통행세 — 계약 짐수레가 뜯기는 몫 (도적 100이면 절반)
-    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract + guild_income - bandit_toll' },
+    // ⑤ 특산품 (§16) — 탐사로 찾고 서사가 캐기 시작한 것. 값은 시스템이 매긴다(보조가 숫자를 안 적는다 — 자원지와 가르는 선)
+    { id: 'income', label: '일 수입', expr: 'tax + sold + deals_net + extract + spec_income + guild_income - bandit_toll' },
     { id: 'guild_income', label: '길드 수입', expr: 'guild <= 0 ? 0 : guild * 2 + round(adv_n * 0.3)' },
     { id: 'bandit_toll', label: '도적 통행세', expr: 'round(max(0, deals_net) * bandits / 200)' },
     { id: 'route_txt', label: '길',
@@ -1068,13 +1134,14 @@ const S = {
     //   인프라는 이름뿐이라 폐허도 한 줄로 센다 — 그래서 개막 네 줄을 빼고 "새로 선 것"만 센다.
     //   프리셋 개막: 희망 42 · 보통 28 · 리얼리티 9. 거처 400·밭 12·우물 3·인프라 열 줄이면 100에 닿는다.
     { id: 'lure', label: '탐낼 거리',
-      expr: 'clamp(round(cap * 0.12 + min(12, sum(farms)) * 1.5 + wells * 3 + max(0, count(infra) - 4) * 3'
-        + ' + max(0, sum(sites)) * 0.5 + max(0, deals) * 0.4 + guild * 4 + chapel * 3'
+      expr: 'clamp(round(cap * 0.12 + min(arable_cap, sum(farms)) * 1.5 + wells * 3 + max(0, count(infra) - 4) * 3'
+        + ' + max(0, sum(sites)) * 0.5 + spec_income * 0.5 + max(0, deals) * 0.4 + guild * 4 + chapel * 3'
         + ' + min(max(food, 0), 6000) / 600 + min(max(gold, 0), 5000) / 500), 0, 100)' },
     { id: 'lure_txt', label: '눈길',
       expr: scale('lure', [[70, '노리는 눈이 많다'], [45, '눈에 띈다'], [20, '지나가다 볼 만하다'], [0, '털 것이 없다']]) },
     // 위협이 따라가는 곳 — 같은 값이어도 시련이 셀수록 더 많이 끈다 (희망 ×0.55 · 보통 ×0.73 · 리얼리티 ×1.0)
-    { id: 'threat_goal', label: '위협이 향하는 곳', expr: 'clamp(round(lure * (0.5 + hardship * 0.005)), 0, 100)' },
+    //   알려진 둥지는 세력 × 2를 얹는다 (§16) — 치우지 않은 둥지가 곧 습격이 오는 자리다. 치우면 목표가 내려가 위협도 따라 내려간다
+    { id: 'threat_goal', label: '위협이 향하는 곳', expr: 'clamp(round(lure * (0.5 + hardship * 0.005)) + lair_sum * 2, 0, 100)' },
     { id: 'threat_n', label: '외부 위협(표시)', expr: 'round(threat)' },
 
     // ── 표시용 척도: 지금 쓰던 말투 그대로 ──
@@ -1240,27 +1307,28 @@ const S = {
       // 인구 변동은 비율이라 열흘치를 한 번에 곱하면 몰살이 된다 — 닷새분까지만 몰아서 친다.
       { set: 'pop', expr: 'max(0, pop + ((surplus > 4 and fame >= 12 and pop < cap ? round(min(surplus * 0.2, 5)) : 0)'
         + ' - (health <= 10 ? round(pop * 0.03) : 0)) * min(span, 5) - round(pop * 0.04) * min(lack_food, 5))' },
-      // ── 탐사 진척 ──
-      // 한 줄이 세 가지를 겸한다: ① 끝난 방향은 손대지 않음 ② 100에 닿으면 결과를 굴림
-      // 시작점 굴림. 반드시 진척도 규칙보다 **먼저** — 같은 턴에 진척도가 이 값을 읽는다.
-      //   max(0, rand(0, SPOTS) - 1) → 0이 1/3, 나머지가 각 1/6.
-      //   대표 결과에 무게를 주지 않으면 "남쪽은 농사 땅"이라는 정체성이 사라진다.
-      ...EXPLORE.map(([, v]) => ({
-        set: `o_${v.slice(4)}`,
-        expr: `o_${v.slice(4)} >= 0 ? o_${v.slice(4)} : (${v} >= 100 ? max(0, rand(0, ${SPOTS}) - 1) : -1)`,
-      })),
-      // ① 결과가 나온 다음 턴엔 0으로 — 척후가 돌아와 보고하고 다시 나간다. 방향이 소진되지 않는다.
-      // ② 100에 닿으면 다음 자리를 연다. 굴림이 아니라 "시작점에서 이어가기"다(위 ⚠ 참고).
-      // ③ 그 외에는 척후 인원만큼 쌓음. 건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다.
-      ...EXPLORE.map(([dir, v]) => {
-        const [f, o] = [`f_${v.slice(4)}`, `o_${v.slice(4)}`];
+      // ── 탐사 진척 (v2, §16) ──
+      // 종류 고르기 굴림 — 반드시 진척도 규칙보다 **먼저** (같은 턴에 pickExpr가 이 값을 읽는다)
+      { set: 'xroll', expr: 'rand(1, 1000)' },
+      // ① 결과 구간(>= 110)은 0으로 — 발견 이벤트가 이미 되돌렸어야 한다. 안전망이다.
+      // ② 100에 닿으면 그 방향에 남은 것 중에서 고른다(pickExpr) — 같은 턴에 발견 이벤트가 그 값을 보고 터진다.
+      // ③ 그 외에는 척후 인원만큼 쌓음. 건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다(다섯 번까지).
+      ...EXPLORE.map(([dir, v, , , w]) => {
+        const k = v.slice(4);
         return {
           set: v,
-          expr: `${v} >= 110 ? 0 : (${v} >= 100 ? 110 + (${f} == 0 ? ${o} : (${f} - 1 < ${o} ? ${f} - 1 : ${f}))`
+          expr: `${v} >= 110 ? 0 : (${v} >= 100 ? ${pickExpr(k, w)}`
             + ` : (explore_dir == ${JSON.stringify(dir)}`
-            + ` ? min(100, ${v} + round(scout_men * (0.6 + ${f} * 0.1)) * span) : ${v}))`,
+            + ` ? min(100, ${v} + round(scout_men * (0.6 + min(5, res_${k} + ter_${k} + lairs_${k}) * 0.1)) * span) : ${v}))`,
         };
       }),
+      // 둥지는 두면 자란다 — 하루 1/20 확률로 +1 (며칠을 건너뛰면 그만큼 높게, 스무 날이면 확실히). 천장 LAIR_MAX
+      ...EXPLORE.map(([, v]) => {
+        const k = v.slice(4);
+        return { set: `lair_${k}`, expr: `lair_on_${k} and lair_${k} > 0 and lair_${k} < ${LAIR_MAX} and rand(1, 20) <= span ? lair_${k} + 1 : lair_${k}` };
+      }),
+      // 가동 특산품은 찾은 수를 못 넘는다 (보조가 앞서 나가도 여기서 깎인다)
+      ...EXPLORE.map(([, v]) => ({ set: `resw_${v.slice(4)}`, expr: `min(resw_${v.slice(4)}, res_${v.slice(4)})` })),
       // (day 증가는 사라졌다 — 시계는 엔진이 skip_day 소비로 굴리고, day는 elapsed 별칭이다)
       // 재해는 저절로 끝난다. AI가 "언제 끝났더라"를 기억할 필요가 없다.
       { set: 'disaster_days', expr: 'max(0, disaster_days - span)' },
@@ -1317,29 +1385,66 @@ const S = {
       { set: 'lack_food', expr: '0' }, { set: 'lack_water', expr: '0' }, { set: 'lack_gold', expr: '0' },
       { set: 'drift_adm', expr: '0' }, { set: 'drift_out', expr: '0' },
     ],
-    // ── 발견 ──
-    // 어느 자리가 열렸는지는 onTurn이 이미 정했다. 여기는 그걸 서사에게 넘기는 자리다.
-    // 물건 이름도, 수치 변화도 여기서 안 정한다 — 계약과 같다. 시스템은 "무엇이 나올 차례"까지,
-    // 그게 구체적으로 뭔지는 서사가 짓고 보조 모델이 목록에 옮긴다.
-    // once: true — 한 자리는 한 번만 열린다. 자리 수를 넘으면 그 방향은 더 나올 게 없다.
-    events: EXPLORE.flatMap(([dir, v, place, , slots]) => slots.map((cat, i) => {
-      const id = `find_${v.slice(4)}_${i + 1}`;
-      // 정본 자리: 무엇인지가 이미 정해져 있다 (로어북에서 옮겨 온 여섯 개 — CANON 참조).
-      // 열린 자리: 서사가 짓는다 (개방 원칙).
-      return {
-        id,
-        once: true,
-        when: `${v} == ${110 + i}`,
-        effects: [{ set: `f_${v.slice(4)}`, expr: `f_${v.slice(4)} + 1` }],
-        notify: CANON[id]
-          ? `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. 정체는 이미 정해져 있다 — ${CANON[id]} `
-            + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
-          : `[탐사 · ${dir}] ${place}에서 ${CAT[cat][0]}. ${CAT[cat][1]}를 이번 장면에서 정하고`
-            + ` 이름을 붙여라 — 이름이 붙지 않으면 기록에 남지 않는다.${CAT[cat][2]}`
-            + (HINTS[id] ? ` 예컨대 ${HINTS[id]} — 어디까지나 예시다. 이 땅에 더 어울리는 것이`
-              + ' 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라.' : ''),
+    // ── 발견 (v2, §16) ──
+    // 어느 종류의 어느 자리가 열렸는지는 onTurn이 이미 정했다(exp_* 부호). 여기는 그걸 서사에게 넘기는 자리다.
+    // 물건 이름은 여기서 안 정한다 — 계약과 같다. 시스템은 "무엇이 나올 차례"까지, 그게 뭔지는 서사가 짓고 보조가 목록에 옮긴다.
+    // 효과는 개수와 부호 되돌리기뿐이다(⚠ 되돌리기가 없으면 같은 턴에 다음 자리 이벤트가 연달아 터진다 — 변수 블록 ⚠ 참고).
+    // 자원·지형: once — 한 자리는 한 번만. 둥지: 정본(방향마다 첫 것 — 북은 둘째까지)은 once, 그 뒤는 몇 번이고.
+    events: EXPLORE.flatMap(([dir, v, place]) => {
+      const k = v.slice(4);
+      const back = { set: v, expr: '0' };
+      const tail = ' 이름이 붙지 않으면 기록에 남지 않는다.';
+      const hint = (h) => ` 예컨대 ${h} — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라.`;
+      const res = RES[k].map((h, i) => ({
+        id: `find_${k}_res_${i + 1}`, once: true, when: `${v} == ${110 + i}`,
+        effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, back],
+        notify: `[탐사 · ${dir} · 자원] ${place}에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. `
+          + `무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라.${tail} 캐거나 거두기 시작하면 그 값은 시스템이 매긴다.${hint(h)}`,
+      }));
+      const ter = TER[k].map(([use, h], i) => {
+        const canon = TER_CANON[k]?.[i];
+        return {
+          id: `find_${k}_ter_${i + 1}`, once: true, when: `${v} == ${120 + i}`,
+          effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, back],
+          notify: canon
+            ? `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 정체는 이미 정해져 있다 — ${canon} `
+              + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
+            : `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 어떤 자리인지 이번 장면에서 정하고 이름을 붙여라.${tail}`
+              + `${TER_USE[use][1]}${hint(h)}`,
+        };
+      });
+      // 둥지 — 세력은 3~4에서 시작해 그 방향에서 앞서 나온 수만큼 세진다(깊은 곳의 것). 이름은 서사가 짓고 보조가 lairname_*에
+      const lairFx = [{ set: `lair_${k}`, expr: `clamp(3 + lairs_${k} + rand(0, 1), 3, ${LAIR_MAX})` },
+        { set: `lair_on_${k}`, expr: 'true' }, { set: `lairs_${k}`, expr: `lairs_${k} + 1` }, { set: `lairname_${k}`, expr: '""' }, back];
+      const lairTail = ' 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다.';
+      const lairs = LAIR_CANON[k].map((canon, j) => ({
+        id: `find_${k}_lair_${j + 1}`, once: true, when: `${v} == 130 and lairs_${k} == ${j}`,
+        effects: lairFx,
+        notify: `[탐사 · ${dir} · 위협] ${place}에서 거기 사는 것과 마주쳤다. 정체는 이미 정해져 있다 — ${canon} `
+          + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라. 그 무리나 둥지에 이름을 붙여라.' + lairTail,
+      }));
+      // 정본 뒤 — 정본 이벤트가 이미 터졌으면 부호를 되돌려 놓아서 여기는 같은 턴에 안 걸린다
+      lairs.push({
+        id: `find_${k}_lair_more`, when: `${v} == 130`,
+        effects: lairFx,
+        notify: `[탐사 · ${dir} · 위협] ${place}에서 또 다른 것이 자리를 잡은 것을 찾았다 — 앞서 나온 것보다 깊은 곳의 것이다. `
+          + `이 방향에 사는 것(${LAIR_KIN[k]}) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라.` + lairTail,
+      });
+      const blocked = {
+        id: `find_${k}_blocked`, when: `${v} == 140`, effects: [back],
+        notify: `[탐사 · ${dir}] 척후가 더 깊이 들어가지 못했다 — 알려진 둥지가 길목을 막고 있다. 그것을 치워야 그 너머를 훑을 수 있다.`,
       };
-    })).concat([
+      // 토벌 — 세력이 0이 된 턴(현상금·출정·서사 속 전투 어느 쪽이든). 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본]
+      const cleared = {
+        id: `lair_clear_${k}`, when: `lair_on_${k} and lair_${k} <= 0`,
+        effects: [{ set: `lair_on_${k}`, expr: 'false' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
+          { set: 'threat', expr: 'clamp(threat - 8, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' },
+          { set: 'morale', expr: 'clamp(morale + 3, 0, 100)' }],
+        notify: `[토벌 · ${dir}] ${place}의 둥지가 무너졌다 — 남은 것은 흩어졌고 그 자리는 비었다. 어떻게 끝났고 무엇을 거뒀는지는 이번 장면에서 정하라. `
+          + '척후가 다시 나가면 더 깊은 곳의 것이 나올 수 있다.',
+      };
+      return [...res, ...ter, ...lairs, blocked, cleared];
+    }).concat([
       // ── 공사 완공 감지 (P4-2) — 개수 카운터 비교, 목록 내용은 안 읽는다 ──
       // proj_track: 새 공사가 등록되면 조용히 따라간다 (통지 없음 — 등록은 서사가 이미 그렸다).
       // proj_done: 만기 정리(위 onTurn expire)로 개수가 줄면 "완공"으로 친다.
@@ -1984,6 +2089,12 @@ const S = {
         + 'own eyes may stand as a lead — a thing noted in the ledger, not yet a discovery.' },
     { id: 'scouting_close', when: 'explore_dir != "없음" and (exp_n >= 80 or exp_w >= 80 or exp_s >= 80 or exp_e >= 80)',
       text: '[SCOUTING] They are close to whatever is out there. The fragments are starting to line up.' },
+    // 둥지 (§16) — 시스템만 아는 사실이다: 세력과 자라는 속도는 서사 어디에도 안 적혀 있다.
+    //   세력 척도를 말로 준다 — 없으면 "고블린 굴 하나쯤"을 셋이서 한 장면에 쓸어 버린다(치울 거리가 사라진다).
+    { id: 'lairs_known', when: 'lair_sum > 0',
+      text: '[THREATS] Known lairs: {lairs_txt}. Each grows if left alone, and the raids come from where they sit. '
+        + 'Strength runs 1–10: a 3 is a pack a few armed men can break, a 7 needs a real force or several fights. '
+        + 'Show what clearing one actually costs.' },
 
     // ── 길 ──
     // 시스템만 아는 사실이다: 어느 길이 며칠째 막혀 있는지는 서사 어디에도 안 적혀 있다.
@@ -2146,21 +2257,44 @@ const S = {
     // ── 현상금 (§14) — 메이드를 보내는 대신 돈으로 치우는 길. 길드가 없으면 관문 게시판에 붙이고 관문 앞 칼잡이 떠돌이가 받는다
     //   (떠돌이 20명마다 +1, 최대 +3). 길드가 있으면 전문가가 받아 크게 오른다(규모당 +3, 모험가 10명당 +1). 상대가 셀수록 어렵다.
     // 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본 공작령 지도] — 성공하면 모르웬 쪽(rel_n)에 닿는다.
+    // 탐사 v2 (§16): 알려진 둥지가 있으면 가장 센 것을 노린다 — 난이도는 그 세력(8 + 세력), 결과는 세력을 깎는다(0이면 토벌 이벤트).
+    //   둥지가 없으면 종전대로 근처를 어슬렁대는 것들을 쳐서 위협 수치만 깎는다.
     { id: 'chk_bounty_beast', label: '몬스터 현상금 판정',
       roll: 'rand(1, 20)',
       mod: 'guild * 3 + round(adv_n / 10) + min(3, floor(drifters / 20))',
-      vs: '10 + round(threat / 12)',
+      vs: 'lair_top != "" ? 8 + lair_top_str : 10 + round(threat / 12)',
       grades: [
         { when: 'total >= vs + 5', label: '대성공',
-          effects: [{ set: 'threat', expr: 'clamp(threat - 14, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 3, 0, 100)' },
-            { set: 'fame', expr: 'clamp(fame + 1, 0, 100)' }],
-          inject: 'The adventurers bring back proof of a whole nest cleared — heads, hides, a map mark. The report travels north.' },
+          effects: [...huntFx(5), { set: 'threat', expr: 'hunt_target != "" ? clamp(threat - 8, 0, 100) : clamp(threat - 14, 0, 100)' },
+            { set: 'rel_n', expr: 'clamp(rel_n + 3, 0, 100)' }, { set: 'fame', expr: 'clamp(fame + 1, 0, 100)' }],
+          inject: 'The adventurers bring back proof of a nest broken — heads, hides, a map mark. If a lair was known, it was the worst '
+            + 'of them, and it is badly hurt. The report travels north.' },
         { when: 'total >= vs', label: '성공',
-          effects: [{ set: 'threat', expr: 'clamp(threat - 9, 0, 100)' }, { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' }],
-          inject: 'The bounty is claimed — a pack thinned out near the holding.' },
+          effects: [...huntFx(3), { set: 'threat', expr: 'hunt_target != "" ? clamp(threat - 5, 0, 100) : clamp(threat - 9, 0, 100)' },
+            { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' }],
+          inject: 'The bounty is claimed — the worst known lair (or whatever prowls near the holding) is thinned out.' },
         { label: '실패',
-          effects: [{ set: 'threat', expr: 'clamp(threat - 3, 0, 100)' }],
+          effects: [...huntFx(1), { set: 'threat', expr: 'hunt_target != "" ? clamp(threat - 2, 0, 100) : clamp(threat - 3, 0, 100)' }],
           inject: 'The adventurers come back with little and a wounded man — the money is mostly gone.' },
+      ] },
+    // ⚔️ 토벌 출정 (§16 신설) — 현상금이 돈으로 치우는 길이면 이건 상비군으로 치우는 길. 가장 센 둥지를 노린다.
+    //   상비군 6명당 +1, 호위 직무(d_guard) 그대로 — 병력은 실패할수록 많이 잃는다.
+    { id: 'chk_sortie', label: '토벌 출정 판정',
+      roll: 'rand(1, 20)',
+      mod: 'round(army / 6) + round(d_guard)',
+      vs: '8 + lair_top_str',
+      grades: [
+        { when: 'total >= vs + 5', label: '대성공',
+          effects: [...huntFx(6), { set: 'army', expr: 'max(0, army - 1)' }, { set: 'fame', expr: 'clamp(fame + 2, 0, 100)' },
+            { set: 'rel_n', expr: 'clamp(rel_n + 2, 0, 100)' }],
+          inject: 'The column breaks the lair in one hard day — few losses, and the ground around it falls quiet.' },
+        { when: 'total >= vs', label: '성공',
+          effects: [...huntFx(4), { set: 'army', expr: 'max(0, army - 2)' }, { set: 'morale', expr: 'clamp(morale + 1, 0, 100)' }],
+          inject: 'A hard fight — the lair is badly hurt but not finished, and the column brings back its wounded.' },
+        { label: '실패',
+          effects: [...huntFx(1), { set: 'army', expr: 'max(0, army - 3)' }, { set: 'morale', expr: 'clamp(morale - 4, 0, 100)' },
+            { set: 'health', expr: 'clamp(health - 1, 0, 100)' }],
+          inject: 'The assault goes wrong — an ambush, bad ground or plain numbers. The column falls back with losses.' },
       ] },
     { id: 'chk_bounty_bandit', label: '도적 현상금 판정',
       roll: 'rand(1, 20)',
@@ -2208,7 +2342,7 @@ const S = {
       inject: 'The Baron sends the scouts on a hard push into the current survey direction, provisioned with 20 food.' },
     // ── 현상금 (§14) — 길드가 없어도 건다(관문 게시판 — 칼잡이 떠돌이가 받는다). 돈은 거는 순간 나간다(결과와 무관).
     { id: 'act_bounty_beast', label: '🗡️ 몬스터 현상금', mode: 'oneshot', cooldown: 7,
-      when: 'threat >= 10 and gold >= bounty_cost',
+      when: '(threat >= 10 or lair_sum > 0) and gold >= bounty_cost',
       check: 'chk_bounty_beast',
       effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
       inject: "The Baron posts a monster bounty — at the Adventurers' Guild if there is one, otherwise on the board by the "
@@ -2219,6 +2353,13 @@ const S = {
       effects: [{ set: 'gold', expr: 'max(0, gold - bounty_cost)' }],
       inject: "The Baron posts a bounty on the road bandits — at the Adventurers' Guild if there is one, otherwise on the "
         + 'board by the south gate — and pays it out of the treasury.' },
+    // §16 — 상비군으로 둥지를 친다. 현상금과 달리 돈이 아니라 사람이 든다(병력 손실은 판정 등급이).
+    { id: 'act_sortie', label: '⚔️ 토벌 출정', mode: 'oneshot', cooldown: 10,
+      when: 'army >= 5 and lair_sum > 0 and food >= 20',
+      check: 'chk_sortie',
+      effects: [{ set: 'food', expr: 'max(0, food - 20)' }],
+      inject: 'The Baron marches the standing troops against the strongest of the known lairs (see THREATS), '
+        + 'with 20 food for the column.' },
     // §14-3 — 폐허 예배당 재건. 공사는 보통 서사(projects)지만 이건 교단 줄기의 문이라 버튼으로 — 값·공기·완공 통지가 시스템 몫
     { id: 'act_chapel', label: '⛪ 예배당 재건', mode: 'oneshot',
       when: 'chapel == 0 and chapel_at == 0 and gold >= chapel_cost',
@@ -2274,6 +2415,11 @@ const S = {
       // 방향은 열어 둔다. 계약과 달리 틀려도 복리로 어긋나지 않는다 —
       // 잘못 가리키면 척후 몇 턴을 버리는 게 전부고, 다음 턴에 고치면 그만이다.
       { id: 'explore_dir' },
+      // 탐사 v2 (§16) — 탐사로 찾은 것의 이름(목록 둘 · 둥지 이름), 특산품 가동(한 턴 ±1), 둥지 세력(깎기만 — 올리는 건 시스템의 자람)
+      { id: 'specials' }, { id: 'lands' },
+      ...EXPLORE.map(([, v]) => ({ id: `resw_${v.slice(4)}`, maxGain: 1, maxLoss: 1 })),
+      ...EXPLORE.map(([, v]) => ({ id: `lair_${v.slice(4)}`, maxGain: 0, maxLoss: 5 })),
+      ...EXPLORE.map(([, v]) => ({ id: `lairname_${v.slice(4)}`, maxLength: 24 })),
       { id: 'food', maxGain: 400, maxLoss: 300 },   // 거래·약탈·구호·화재
       { id: 'water', maxGain: 300, maxLoss: 200 },
       // ⚠ 금화만 상한이 비대칭이다. 정예 메이드 몸값이 6800인데 손실 상한이 500이면
@@ -2390,11 +2536,17 @@ const S = {
       + 'stock. At most one lead per turn, only for things the scene actually showed — never things merely guessed or '
       + 'talked about. A lead is a note, not a find: it yields nothing and opens nothing until real work begins or a '
       + '[탐사] notice makes it real.\n'
-      + 'DISCOVERIES: when a [탐사] notice did appear, the narration names the thing. Copy that name — one short '
-      + 'line, the words the narration used — into the list it belongs to (see BUILDING). A found threat is not a '
-      + 'place you own: put it in stock as a location note ("고블린 둥지 위치도") and raise threat. Nothing else '
-      + 'moves unless the narration says work has begun. If the narration named nothing concrete, add nothing — '
-      + 'do not invent a name to fill the slot.\n'
+      + 'DISCOVERIES: a [탐사] notice says which kind was found — 자원, 지형 or 위협 — and where. The narration names the thing; '
+      + 'copy that name, one short line in the narration\'s words: 자원 → specials as "이름 · 방향" (no number — the system '
+      + 'prices it), 지형 → lands as "이름 · 방향" (no number), 위협 → lairname_n/w/s/e of that direction. Do not raise threat '
+      + 'for a found lair — the system does. If the narration named nothing concrete, add nothing — do not invent a name '
+      + 'to fill the slot. If the find is a lead already noted (a sites "이름 0" line or a stock note), move it: remove the '
+      + 'lead line and add the entry. Nothing found without a [탐사] notice ever goes into specials or lands — that stays a lead.\n'
+      + 'SPECIALTIES: raise resw_<dir> by 1 only when the narration shows real work starting on a specialty already in '
+      + 'specials from that direction (a pit opened, a crew sent to cut or gather); lower it by 1 if that work is abandoned. '
+      + 'What gets built on a land goes to farms/houses/infra as usual, when the narration builds it.\n'
+      + 'LAIRS: lower lair_<dir> only when the narration shows real force against THAT lair — 1–2 for a skirmish or a hunt '
+      + 'that kills a few, up to 5 for a decisive battle. Never raise it; it grows by itself. At 0 the system announces it cleared.\n'
       + 'BUILDING: five separate lists, and the split is fixed. houses = anywhere people sleep, number last = how '
       + 'many it holds. farms = ground that FEEDS (fields, orchards, pasture, fishing water, mushroom caves), '
       + 'number last = how much farmland quality it adds, 1 for a cleared plot and 4 for a whole valley. '
@@ -2430,6 +2582,7 @@ const S = {
       + '아는 사람 {contacts}\n'
       + '주거 {houses} — 주민 {pop}/{cap} ({crowd_txt})\n'
       + '경작지 {farms} ({farm_txt}) | 자원지 {sites} (산출 {extract}/일)\n'
+      + '특산품 {specials} (가동 {spec_worked}/{spec_found}, {spec_income}/일) | 개척지 {lands} (경작 상한 {arable_cap})\n'
       + '인프라 {infra} | 물자 {stock}\n'
       + '목표 {focus}{disaster}{alert}',
     includeEvents: true,
@@ -2633,7 +2786,7 @@ S.statusUI.templates = [{
     + '<div class="status-entry"><span>일 수확:</span> <span class="val">{harvest} (+수입 {sup_food}) / 소비 {eaten}</span></div>'
     + '<div class="status-entry"><span>식량 수지:</span> <span class="val">{surplus}/일</span></div>'
     + '<div class="status-entry status-span2"><span>기반:</span> '
-    + '<span class="val">경작 {farm_txt} · 자원 산출 {extract}/일 · 식수원 {wells} — 목록은 📖</span></div>'
+    + '<span class="val">경작 {farm_txt} · 자원 산출 {extract}/일 · 특산품 {spec_income}/일 · 식수원 {wells} — 목록은 📖</span></div>'
     + '<div class="status-section-title">민생 및 보안</div>'
     + '<div class="status-entry"><span>사기:</span> <span class="val">{morale_txt}</span></div>'
     + '<div class="status-entry"><span>보건:</span> <span class="val">{health_txt}</span></div>'
@@ -2771,8 +2924,11 @@ S.party = {
       + sec('현지 고용인') + '{staff:tags}'
       + sec('인맥 · 교역 상대') + '{contacts:tags}' },
     { id: 'survey', label: '탐사', fab: '🗺️', template: ''
-      + '<div class="vled-h">탐사 지도<small>영토 파악 {survey} ({finds})</small></div>'
+      + `<div class="vled-h">탐사 지도<small>영토 파악 {survey} ({finds}/${FINITE_TOTAL})</small></div>`
       + row('척후 파견', '{explore_dir} ({scouting}) — 인원 {scout_men}')
+      + row('알려진 둥지', '{lairs_txt}')
+      + sec('특산품 — 가동 {spec_worked}/{spec_found} · {spec_income}/일') + '{specials:tags}'
+      + sec('개척지 — 경작 상한 {arable_cap}') + '{lands:tags}'
       + EXPLORE.map(([d, v2, name, desc]) =>
         sec(`${d.slice(0, 1)} · ${name}`) + `<div class="vled-p">${desc}</div>`
         + row('진행', `{found_${v2.slice(4)}}`)).join('') },
@@ -2975,98 +3131,197 @@ for (const [n, ch, why] of script) {
     + `\n         ← ${why}`);
 }
 
-// ── 탐사 검증 ──
+// ── 탐사 검증 (v2, §16 — 위협·자원·지형을 따로) ──
 console.log('\n━━ 탐사 ━━');
 {
-  // 속도: 배분에 따라 몇 턴 걸리나
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  const fresh = (vars = {}) => { const t = engine.initState(S); t.meta.setupDone = true; Object.assign(t.vars, vars); return t; };
+  const step = (t, changes = {}, tag = 'x', i = 0) => engine.outputPhase(S, engine.sendPhase(S, t, { rng: seededRng(tag, i, 's') }).state,
+    changes, {}, { rng: seededRng(tag, i, 'o') });
+  const notes = (o) => o.state.meta.pendingNotifies;
+  const look = (t) => engine.makeLookup(S, t.vars);
+
+  // 속도: 배분에 따라 몇 턴 걸리나 (옛 판과 같은 식 — 바뀐 건 100에 닿은 뒤다)
   for (const pol of POLICY.map((p) => p[0])) {
-    let t = engine.initState(S); t.meta.setupDone = true;
-    t.vars.labor_policy = pol; t.vars.explore_dir = '남 평원';
-    const men = engine.makeLookup(S, t.vars)('scout_men');   // 붕괴 전 시작 시점 기준
+    let t = fresh({ labor_policy: pol, explore_dir: '남 평원' });
+    const men = look(t)('scout_men');   // 붕괴 전 시작 시점 기준
     let turns = 0;
-    while (t.vars.exp_s < 100 && turns < 120) {
-      t = engine.outputPhase(S, engine.sendPhase(S, t).state, {}, {}, { rng: seededRng('x', turns, 'o') }).state;
-      turns++;
-    }
+    while (t.vars.exp_s < 100 && turns < 120) { t = step(t, {}, 'x', turns).state; turns++; }
     console.log(`  ${pol}  척후 ${String(men).padStart(2)}명 → 남쪽 답사에 ${turns >= 120 ? '120턴+' : turns + '턴'}`);
   }
-  // 첫 자리 분포: 그 방향의 대표 종류가 눈에 띄게 자주 먼저 나오는가
-  const NAMES = EXPLORE.find(([d]) => d === '남 평원')[4];
-  const tally = {};
-  for (let seed = 0; seed < 400; seed++) {
-    let t = engine.initState(S); t.meta.setupDone = true;
-    t.vars.explore_dir = '남 평원'; t.vars.exp_s = 100;
-    t = engine.outputPhase(S, engine.sendPhase(S, t).state, {}, {}, { rng: seededRng('r', seed, 'o') }).state;
-    const name = NAMES[t.vars.exp_s - 110] || '(굴림 실패)';
-    tally[name] = (tally[name] || 0) + 1;
-  }
-  console.log('  남쪽 첫 발견 400회:', Object.entries(tally).map(([k, v]) => `${k} ${Math.round(v / 4)}%`).join(' · '));
 
-  // 한 방향을 끝까지 파면 몇 턴이 드는가 — 같은 것이 또 걸리는 회차가 늘어난다
-  let t = engine.initState(S); t.meta.setupDone = true;
-  t.vars.explore_dir = '남 평원'; t.vars.labor_policy = '개척 우선';
-  const marks = [];
-  for (let i = 1; i <= 400 && t.vars.f_s < SPOTS; i++) {
-    const was = t.vars.f_s;
-    t = engine.outputPhase(S, engine.sendPhase(S, t).state, {}, {}, { rng: seededRng('f', i, 'o') }).state;
-    if (t.vars.f_s > was) marks.push(`${t.vars.f_s}번째 ${i}턴`);
+  // 종류 분포 — 남쪽 첫 발견 400회. 가중치 [자원 1 · 지형 3 · 위협 1] → 20 · 60 · 20%
+  const tally = { 자원: 0, 지형: 0, 위협: 0, 없음: 0 };
+  for (let seed = 0; seed < 400; seed++) {
+    const v = step(fresh({ explore_dir: '남 평원', exp_s: 100 }), {}, 'r', seed).state.vars;
+    tally[v.res_s ? '자원' : v.ter_s ? '지형' : v.lairs_s ? '위협' : '없음']++;
   }
-  console.log('  남쪽 하나만 계속 파기:', marks.join(' · ') || '(못 채움)');
-}
-{
-  // 전체 흐름: 남쪽을 끝내고 동쪽으로 옮긴다
-  let t = engine.initState(S); t.meta.setupDone = true;
-  t.vars.labor_policy = '개척 우선'; t.vars.explore_dir = '남 평원';
-  const log = [];
-  for (let i = 0; i < 30; i++) {
-    const sp = engine.sendPhase(S, t, { rng: seededRng('f', i, 's') });
-    const out = engine.outputPhase(S, sp.state, {}, {}, { rng: seededRng('f', i, 'o') });
-    t = out.state;
-    for (const n of t.meta.pendingNotifies) log.push(`  ${String(engine.makeLookup(S, t.vars)("day")).padStart(2)}일  ${n}`);
-    if (t.vars.exp_s >= 110 && t.vars.explore_dir === '남 평원') t.vars.explore_dir = '동 강가';
+  const pct = (n) => Math.round(n / 4);
+  ok('남쪽 첫 발견 400회 — 가중치대로 지형이 대표', !tally.없음 && pct(tally.지형) >= 50 && pct(tally.지형) <= 70
+    && pct(tally.자원) >= 12 && pct(tally.위협) >= 12, `자원 ${pct(tally.자원)}% · 지형 ${pct(tally.지형)}% · 위협 ${pct(tally.위협)}%`);
+
+  // 한 턴에 하나만 — 이벤트가 부호를 안 되돌리면 자원 +1 → 다음 자리 이벤트가 같은 턴에 연달아 터진다
+  let one = true;
+  for (let seed = 0; seed < 60; seed++) {
+    const v = step(fresh({ explore_dir: '서 숲', exp_w: 100 }), {}, 'one', seed).state.vars;
+    if (v.res_w + v.ter_w + v.lairs_w !== 1 || v.exp_w !== 0) one = false;
   }
-  console.log(log.join('\n') || '  (30턴 내 발견 없음)');
-  const L = engine.makeLookup(S, t.vars);
-  console.log(`  30턴 후 — 답사 ${L('survey')} · 남 ${L('found_s')} · 동 ${L('found_e')}`);
-  console.log(`  경작 적성 ${engine.makeLookup(S,t.vars)("arable")} · 식수원 ${t.vars.wells} · 외부 위협 ${t.vars.threat}`);
-  console.log(`  보유 자원 ${JSON.stringify(t.vars.stock)}`);
-  console.log(`  경작지 ${JSON.stringify(t.vars.farms)} · 자원지 ${JSON.stringify(t.vars.sites)}`);
-  console.log(`  인프라 ${JSON.stringify(t.vars.infra.slice(4))}`);
-}
-{
-  // ── 정본 발견 (로어북 다이어트) 검증 ──
-  console.log('\n━━ 정본 발견 검증 ━━');
-  // ① CANON 키가 전부 실존하는 find 이벤트인가 (슬롯 재배열 시 오타로 조용히 죽는 것 방지)
-  const findIds = new Set(S.rules.events.map((e) => e.id));
-  const orphan = Object.keys(CANON).filter((k) => !findIds.has(k));
-  console.log(`  CANON ${Object.keys(CANON).length}개 — 실존 이벤트 매칭: ${orphan.length ? '❗ 고아 ' + orphan.join(', ') : '✓ 전부 일치'}`);
-  // 예시 풀: 고아 없음 + 정본과 자리 안 겹침 + 열린 자리 전부 커버 (20 = 정본 6 + 예시 14)
-  const hOrphan = Object.keys(HINTS).filter((k) => !findIds.has(k));
-  const clash = Object.keys(HINTS).filter((k) => CANON[k]);
-  const bare = [...findIds].filter((k) => k.startsWith('find_') && !CANON[k] && !HINTS[k]);
-  console.log(`  HINTS ${Object.keys(HINTS).length}개 — ${hOrphan.length ? '❗ 고아 ' + hOrphan.join(', ')
-    : clash.length ? '❗ 정본과 겹침 ' + clash.join(', ')
-    : bare.length ? '❗ 맨몸 자리 ' + bare.join(', ') : '✓ 고아 없음 · 정본과 안 겹침 · 열린 자리 전부 커버'}`);
-  // ② 정본 자리가 열리면 통지에 정본이 그대로 실리는가 + 사전 유출이 없는가
-  //    (탐사 전 프롬프트에 '고블린' 등 정본 어휘가 없어야 한다 — 랜덤 사건 통지는 별개)
-  const KEY_WORDS = ['고블린', '수맥', '하피', '거미', '리자드맨'];
-  let t = engine.initState(S); t.meta.setupDone = true;
-  const pre = engine.sendPhase(S, t, { rng: seededRng('cn', 0, 's') }).promptBlock;
-  const leak = KEY_WORDS.filter((w) => pre.includes(w));
-  console.log(`  0턴 프롬프트 정본 유출: ${leak.length ? '❗ ' + leak.join(', ') : '✓ 없음'}`);
-  //    exp를 110+i로 직접 박으면 onTurn 리셋(>= 110 ? 0)이 먼저 먹는다 — 정석 경로로 간다:
-  //    exp=100 + 시작점 굴림(o_*)을 고정하면 onTurn이 그 턴에 110+o로 열고 find가 같은 턴에 발화한다.
-  const openSlot = (slot) => {
-    let s = engine.initState(S); s.meta.setupDone = true;
-    s.vars.exp_n = 100; s.vars.o_n = slot;
-    s = engine.outputPhase(S, s, {}, {}, { rng: seededRng('cn', slot, 'o') }).state;
-    // 랜덤 사건 통지에도 '고블린'이 나올 수 있다(horde) — 정본 통지 문구로만 찾는다
-    return s.meta.pendingNotifies.find((n) => n.includes('정체는 이미 정해져 있다'));
-  };
-  const gob = openSlot(1);   // o_n=1 → exp_n=111 → find_n_2 (고블린)
-  console.log(`  find_n_2 발화 통지: ${gob && gob.includes('고블린') ? '✓ 정본 실림 — ' + gob.slice(0, 60) + '…' : '❗ 정본 없음'}`);
-  const vein = openSlot(2);  // o_n=2 → exp_n=112 → find_n_3 (수맥)
-  console.log(`  find_n_3 발화 통지: ${vein && vein.includes('수맥') ? '✓ 수맥 실림' : '❗ 수맥 없음'}`);
+  ok('한 번에 하나 — 60회 모두 찾은 수 합 1 · 진척 0', one, one ? '연달아 터짐 없음' : '같은 턴에 둘 이상');
+
+  // 한 방향을 끝까지 — 자원·지형이 다 나와도 척후 일이 남는다(둥지). 둥지가 살아 있고 남은 것도 없으면 막힘
+  {
+    let t = fresh({ explore_dir: '남 평원', labor_policy: '개척 우선' });
+    const kinds = []; let blocked = 0;
+    for (let i = 1; i <= 600 && !blocked; i++) {
+      const [r0, t0, l0] = [t.vars.res_s, t.vars.ter_s, t.vars.lairs_s];
+      const o = step(t, {}, 'f', i); t = o.state;
+      if (notes(o).some((n) => n.includes('길목을 막고'))) blocked = i;
+      if (t.vars.res_s > r0) kinds.push(`자원 ${i}턴`);
+      if (t.vars.ter_s > t0) kinds.push(`지형 ${i}턴`);
+      if (t.vars.lairs_s > l0) kinds.push(`둥지 ${i}턴`);
+    }
+    console.log('  남쪽 하나만 계속 파기:', kinds.join(' · '), blocked ? `· 막힘 ${blocked}턴` : '');
+    ok(`남쪽 자원 ${RES.s.length}·지형 ${TER.s.length}을 다 건지고 둥지도 나온다`,
+      t.vars.res_s === RES.s.length && t.vars.ter_s === TER.s.length && t.vars.lairs_s >= 1,
+      `자원 ${t.vars.res_s} · 지형 ${t.vars.ter_s} · 둥지 ${t.vars.lairs_s}`);
+    ok('다 건진 뒤 둥지가 살아 있으면 "길목을 막고" 통지', blocked > 0 && t.vars.lair_on_s, blocked ? `${blocked}턴` : '없음');
+  }
+
+  // 개간지 → 경작 상한 (12 → 14 → 16)
+  {
+    const cap = (vars) => look(fresh(vars))('arable_cap');
+    ok('개간지 없으면 경작 상한 12', cap({}) === 12, cap({}));
+    ok('남쪽 첫 지형(개간)을 찾으면 14', cap({ ter_s: 1 }) === 14, cap({ ter_s: 1 }));
+    ok('서쪽은 둘째 지형이 개간 — 수원지만이면 12, 둘 다면 14', cap({ ter_w: 1 }) === 12 && cap({ ter_w: 2 }) === 14, `${cap({ ter_w: 1 })} / ${cap({ ter_w: 2 })}`);
+    const ar = look(fresh({ ter_s: 3, ter_w: 2, farms: ['묵은 밭 4', '검은 흙 개간지 8', '숲 빈터 밭 4'] }))('arable');
+    ok('둘 다 찾고 밭이 넉넉하면 적성 16 (옛 판은 12에서 멈췄다)', ar === 16, ar);
+  }
+
+  // 특산품 — 탐사로 찾은 것만, 서사가 캐기 시작하면(보조 +1) 시스템이 값을 매긴다. 찾은 수를 못 넘는다
+  {
+    let t = step(fresh({ res_w: 1, specials: ['은빛 목재 · 서'] }), { resw_w: 1 }, 'sp', 0).state;
+    const L1 = look(t);
+    ok('가동 +1 → 특산품 단가만큼 수입', t.vars.resw_w === 1 && L1('spec_income') === L1('spec_unit') && L1('spec_unit') >= 6,
+      `가동 ${t.vars.resw_w} · 산출 ${L1('spec_income')}/일 (단가 ${L1('spec_unit')})`);
+    t = step(t, { resw_w: 1 }, 'sp', 1).state;
+    ok('찾은 수(1)를 못 넘는다', t.vars.resw_w === 1, `가동 ${t.vars.resw_w}`);
+    const z = step(fresh(), { resw_n: 1 }, 'sp', 2).state;
+    ok('찾은 게 없으면 가동도 0', z.vars.resw_n === 0, `가동 ${z.vars.resw_n}`);
+    ok('명성이 오르면 단가가 붙는다 (명성 50 → 10)', look(fresh({ fame: 50 }))('spec_unit') === 10, look(fresh({ fame: 50 }))('spec_unit'));
+  }
+
+  // 둥지 — 발견(세력 3~4) → 보조는 못 올림 → 깎이면 토벌 → 다음 것은 더 세다
+  {
+    // 북쪽 자원·지형이 다 나왔다 치고 100 → 반드시 둥지 (정본: 고블린)
+    let o = step(fresh({ explore_dir: '북 산맥', exp_n: 100, res_n: RES.n.length, ter_n: TER.n.length }), {}, 'lr', 0);
+    let t = o.state;
+    const gob = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
+    ok('북 첫 둥지 = 정본 고블린 · 세력 3~4 · 깃발', gob && gob.includes('고블린') && t.vars.lair_on_n && t.vars.lair_n >= 3 && t.vars.lair_n <= 4,
+      `세력 ${t.vars.lair_n} · ${gob ? gob.slice(0, 48) + '…' : '(통지 없음)'}`);
+    const g0 = look(fresh({}))('threat_goal'), g1 = look(fresh({ lair_n: 4, lair_on_n: true }))('threat_goal');
+    ok('위협 목표에 세력 × 2', g1 - g0 === 8, `${g0} → ${g1}`);
+    o = step(t, { lair_n: 5 }, 'lr', 1);
+    ok('보조는 세력을 못 올린다 (maxGain 0)', !o.changeLog.some((c) => c.id === 'lair_n' && c.source === 'llm' && c.to > c.from),
+      `세력 ${t.vars.lair_n} → ${o.state.vars.lair_n}`);
+    t = o.state;
+    const fame0 = t.vars.fame, rel0 = t.vars.rel_n;
+    o = step(t, { lair_n: -9 }, 'lr', 2); t = o.state;
+    const clr = notes(o).find((n) => n.includes('[토벌 · 북 산맥]'));
+    ok('서사 속 전투 −5(상한) → 세력 0 → 토벌 통지 · 깃발 내림 · 명성 +2 · 모르웬 +2',
+      clr && !t.vars.lair_on_n && t.vars.lair_n === 0 && t.vars.fame >= fame0 + 2 && t.vars.rel_n >= rel0 + 2,
+      `깃발 ${t.vars.lair_on_n} · 명성 ${fame0}→${t.vars.fame} · 모르웬 ${rel0}→${t.vars.rel_n}`);
+    t.vars.exp_n = 100; t.vars.explore_dir = '북 산맥';
+    o = step(t, {}, 'lr', 3); t = o.state;
+    const har = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
+    ok('북 둘째 둥지 = 정본 하피 · 세력 4~5 (깊은 곳)', har && har.includes('하피') && t.vars.lair_n >= 4 && t.vars.lair_n <= 5,
+      `세력 ${t.vars.lair_n} · ${har ? har.slice(0, 40) + '…' : '(통지 없음)'}`);
+    t.vars.lair_n = 0; t.vars.lair_on_n = false; t.vars.exp_n = 100;
+    o = step(t, {}, 'lr', 4); t = o.state;
+    const more = notes(o).find((n) => n.includes('[탐사 · 북 산맥 · 위협]'));
+    ok('셋째부터는 서사가 정한다 ("이 방향에 사는 것") · 세력 5~6', more && more.includes('또 다른 것') && more.includes('고블린·하피')
+      && t.vars.lair_n >= 5 && t.vars.lair_n <= 6, `세력 ${t.vars.lair_n}`);
+    // 두면 자란다 — 하루 1/20
+    let g = fresh({ lair_e: 3, lair_on_e: true });
+    for (let i = 0; i < 100; i++) g = step(g, {}, 'gr', i).state;
+    ok('두면 자란다 — 백 날 동안', g.vars.lair_e > 3 && g.vars.lair_e <= LAIR_MAX, `3 → ${g.vars.lair_e}`);
+  }
+
+  // 현상금 · 토벌 출정 — 가장 센 둥지를 노린다
+  {
+    let b = fresh({ lair_n: 3, lair_on_n: true, lair_s: 6, lair_on_s: true, gold: 1000, threat: 50 });
+    b = engine.toggleAction(S, b, 'act_bounty_beast').state;
+    let sp = engine.sendPhase(S, b, { rng: seededRng('bt', 0, 's') });
+    ok('현상금은 가장 센 둥지(남 6)만 깎는다', sp.state.vars.lair_n === 3 && sp.state.vars.lair_s < 6,
+      `북 ${sp.state.vars.lair_n} · 남 6→${sp.state.vars.lair_s} (${sp.state.meta.lastCheck?.grade})`);
+    const sortie = S.actions.find((a) => a.id === 'act_sortie');
+    ok('출정은 상비군 5명부터', !engine.actionAvailability(S, fresh({ army: 0, lair_n: 4, lair_on_n: true }), sortie).ok
+      && engine.actionAvailability(S, fresh({ army: 30, lair_n: 4, lair_on_n: true, food: 500 }), sortie).ok, '상비군 0 → 못 누름 · 30 → 누름');
+    ok('둥지가 없으면 출정도 없다', !engine.actionAvailability(S, fresh({ army: 30, food: 500 }), sortie).ok, '');
+    let a = engine.toggleAction(S, fresh({ army: 30, lair_n: 4, lair_on_n: true, lair_w: 2, lair_on_w: true, food: 500 }), 'act_sortie').state;
+    sp = engine.sendPhase(S, a, { rng: seededRng('so', 0, 's') });
+    ok('출정 → 판정 · 가장 센 둥지(북)가 깎이고 병력이 준다', sp.state.vars.lair_n < 4 && sp.state.vars.lair_w === 2 && sp.state.vars.army < 30,
+      `북 4→${sp.state.vars.lair_n} · 서 ${sp.state.vars.lair_w} · 상비군 30→${sp.state.vars.army} (${sp.state.meta.lastCheck?.grade})`);
+  }
+
+  // 정본 · 자리 — 이벤트가 표대로 다 있나 + 0턴 유출 없음 + 서쪽 첫 지형 = 수원지(서사가 먼저 찾았으면 본줄기)
+  {
+    console.log('\n━━ 정본 발견 검증 ━━');
+    const evIds = new Set(S.rules.events.map((e) => e.id));
+    const want = EXPLORE.flatMap(([, v]) => {
+      const k = v.slice(4);
+      return [...RES[k].map((_, i) => `find_${k}_res_${i + 1}`), ...TER[k].map((_, i) => `find_${k}_ter_${i + 1}`),
+        ...LAIR_CANON[k].map((_, j) => `find_${k}_lair_${j + 1}`), `find_${k}_lair_more`, `find_${k}_blocked`, `lair_clear_${k}`];
+    });
+    const miss = want.filter((id) => !evIds.has(id));
+    ok(`발견 이벤트 ${want.length}개 (자원 ${FINITE_TOTAL - EXPLORE.reduce((a, [, v]) => a + TER[v.slice(4)].length, 0)} · 지형 `
+      + `${EXPLORE.reduce((a, [, v]) => a + TER[v.slice(4)].length, 0)} · 둥지 정본 ${Object.values(LAIR_CANON).flat().length})`, !miss.length, miss.join(', ') || '전부 있음');
+    const KEY_WORDS = ['고블린', '수맥', '하피', '거미', '리자드맨', '취수구'];
+    const pre = engine.sendPhase(S, fresh(), { rng: seededRng('cn', 0, 's') }).promptBlock;
+    const leak = KEY_WORDS.filter((w) => pre.includes(w));
+    ok('0턴 프롬프트 정본 유출 없음', !leak.length, leak.join(', ') || '없음');
+    // 서쪽 — 자원이 다 나오고 둥지가 살아 있으면 반드시 지형 → 첫 지형은 정본 수원지
+    const o = step(fresh({ explore_dir: '서 숲', exp_w: 100, res_w: RES.w.length, lair_on_w: true, lair_w: 3 }), {}, 'cn', 1);
+    const vein = notes(o).find((n) => n.includes('[탐사 · 서 숲 · 지형]'));
+    ok('서쪽 첫 지형 = 정본 취수구(수맥) · 서사가 먼저 찾았으면 본줄기', vein && vein.includes('취수구') && vein.includes('수맥')
+      && vein.includes('본줄기') && o.state.vars.ter_w === 1, vein ? vein.slice(0, 64) + '…' : '(통지 없음)');
+    for (const [dir, k, word] of [['남 평원', 's', '오크'], ['서 숲', 'w', '거미'], ['동 강가', 'e', '리자드맨']]) {
+      const o2 = step(fresh({ explore_dir: dir, [`exp_${k}`]: 100, [`res_${k}`]: RES[k].length, [`ter_${k}`]: TER[k].length }), {}, 'cn', 2);
+      const n2 = notes(o2).find((n) => n.includes(`[탐사 · ${dir} · 위협]`));
+      ok(`${dir} 첫 둥지 = 정본 ${word}`, n2 && n2.includes(word), n2 ? n2.slice(0, 44) + '…' : '(통지 없음)');
+    }
+    const ruin = notes(step(fresh({ explore_dir: '북 산맥', exp_n: 100, res_n: RES.n.length, lair_on_n: true, lair_n: 3 }), {}, 'cn', 3))
+      .find((n) => n.includes('[탐사 · 북 산맥 · 지형]'));
+    ok('북 지형 = 폐허 (유저 배치)', ruin && ruin.includes('사람 손이 닿았던 자리') && ruin.includes('산성'), ruin ? ruin.slice(0, 40) + '…' : '(통지 없음)');
+    const ferry = notes(step(fresh({ explore_dir: '동 강가', exp_e: 100, res_e: RES.e.length, ter_e: 1, lair_on_e: true, lair_e: 3 }), {}, 'cn', 4))
+      .find((n) => n.includes('[탐사 · 동 강가 · 지형]'));
+    ok('동 둘째 지형 = 옛 나루터 (유저 배치)', ferry && ferry.includes('나루터'), ferry ? ferry.slice(0, 40) + '…' : '(통지 없음)');
+  }
+
+  // 30턴 흐름 — 남쪽을 보내고, 하나 찾으면 동쪽으로
+  {
+    let t = fresh({ labor_policy: '개척 우선', explore_dir: '남 평원' });
+    const log = [];
+    for (let i = 0; i < 30; i++) {
+      const o = step(t, {}, 'flow', i); t = o.state;
+      for (const n of notes(o)) if (n.startsWith('[탐사') || n.startsWith('[토벌')) log.push(`  ${String(look(t)('day')).padStart(2)}일  ${n.slice(0, 100)}…`);
+      if (t.vars.res_s + t.vars.ter_s + t.vars.lairs_s > 0 && t.vars.explore_dir === '남 평원') t.vars.explore_dir = '동 강가';
+    }
+    console.log(log.join('\n') || '  (30턴 내 발견 없음)');
+    const L = look(t);
+    console.log(`  30턴 후 — 영토 파악 ${L('survey')} · 남 ${L('found_s')} · 동 ${L('found_e')}`);
+    console.log(`  둥지 ${L('lairs_txt')} · 경작 상한 ${L('arable_cap')} · 외부 위협 ${t.vars.threat}`);
+  }
+
+  // 메인 프롬프트 — 방향별 현황·특산품 줄·둥지 지시문
+  {
+    const t = fresh({ lair_n: 4, lair_on_n: true, lairname_n: '능선 고블린 굴', lair_s: 3, lair_on_s: true,
+      res_w: 1, resw_w: 1, specials: ['은빛 목재 · 서'] });
+    const pb = engine.sendPhase(S, t, { rng: seededRng('pp', 0, 's') }).promptBlock;
+    ok('상태 블록 — 방향별 현황에 둥지 이름·세력', pb.includes('둥지 능선 고블린 굴(세력 4)'), (pb.match(/탐사 [^\n]*/) || [''])[0].slice(0, 110));
+    ok('상태 블록 — 특산품 줄', /특산품 은빛 목재 · 서 \(가동 1\/1, \d+\/일\)/.test(pb), (pb.match(/특산품 [^\n]*/) || [''])[0]);
+    ok('[THREATS] 지시문 — 둥지가 있을 때만 · 구분자', pb.includes('[THREATS] Known lairs: 북 능선 고블린 굴(세력 4) · 남 둥지(세력 3). ')
+      && !engine.sendPhase(S, fresh(), { rng: seededRng('pp', 1, 's') }).promptBlock.includes('[THREATS]'), (pb.match(/\[THREATS\][^\n]*/) || [''])[0].slice(0, 90));
+  }
 }
 {
   // ── 생일 (2026-10-17) — 표가 지켜야 할 셋 + 알림이 알 만한 사이에게만 가는가 ──

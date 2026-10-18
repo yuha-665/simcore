@@ -153,6 +153,20 @@ const pickExpr = (k, [wr, wt, wh]) => {
   const R = `((xroll - 1) % max(1, ${TOT}))`;
   return `${TOT} == 0 ? 140 : (${R} < ${WR} ? 110 + res_${k} : (${R} < ${WR} + ${WT} ? 120 + ter_${k} : 130))`;
 };
+// 이월 (2026-10-18, 유저 결정) — 100을 넘친 진척은 버리지 않고 exb_*에 둔다. "한 달 뒤"(7%×30 = 210%)는 발견 둘에 10%가 남는다.
+//   발견은 여전히 한 턴에 하나라(이벤트가 한 번씩만 돈다) 이월 칸에 100이 남으면 진척을 100으로 세워 다음 턴에 마저 고른다.
+//   천장은 백스톱일 뿐이다 — 한 방향에서 나올 것은 유한하고, 막힘이 이월 칸을 비운다.
+const EXB_MAX = 1000;
+// 이번 정산에 그 방향 척후가 쌓는 진척 — 건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다(다섯 번까지)
+const gainExpr = (dir, k) => `(explore_dir == ${JSON.stringify(dir)}`
+  + ` ? round(scout_men * (0.6 + min(5, res_${k} + ter_${k} + lairs_${k}) * 0.1)) * span : 0)`;
+// 판정·소문이 지금 훑는 방향을 n만큼 민다 — 넘친 몫은 이월 칸으로. 발견 부호(100↑)는 안 건드린다.
+//   이월 칸을 먼저 — 효과는 차례로 적용되므로 진척을 먼저 밀면 넘친 몫을 셀 옛 값이 사라진다.
+const pushFx = (n) => EXPLORE.flatMap(([d, v2]) => {
+  const k = v2.slice(4), on = `explore_dir == ${JSON.stringify(d)} and ${v2} < 100`;
+  return [{ set: `exb_${k}`, expr: `${on} ? min(${EXB_MAX}, exb_${k} + max(0, ${v2} + ${n} - 100)) : exb_${k}` },
+    { set: v2, expr: `${on} ? min(100, ${v2} + ${n}) : ${v2}` }];
+});
 // 찾은 지형 중 개간지 수 — 자리 순서가 고정이라 "몇 개 찾았나"로 어느 쓰임까지 나왔는지 안다
 const landFarmExpr = EXPLORE.flatMap(([, v]) => {
   const k = v.slice(4);
@@ -638,8 +652,8 @@ const S = {
     //
     // ⚠ 진척도 변수 하나가 세 가지 일을 겸한다.
     //     0~99    한 번 훑는 중 (척후가 쌓는 값)
-    //     100     발견 직전 (다음 정산에서 남은 것 중에 고른다 — pickExpr)
-    //     110+i 자원 자리 i · 120+i 지형 자리 i · 130 둥지 · 140 막힘 — 그 턴의 발견 이벤트가 보고 0으로 되돌린다.
+    //     100     보고 대기 — 이월 칸에 한 번 더 찾을 몫이 남았다 (다음 턴에 고른다). 100에 닿는 턴에는 바로 고르므로 머물지 않는다
+    //     110+i 자원 자리 i · 120+i 지형 자리 i · 130 둥지 · 140 막힘 — 그 턴의 발견 이벤트가 보고 이월 몫(exb_*)으로 되돌린다.
     //   ⚠ 되돌리기는 이벤트 효과에서 한다 — 이벤트는 앞 이벤트의 효과를 보고 평가되므로, 안 되돌리면 같은 턴에
     //     다음 자리(자원 개수 +1 → 110 + 다음 i)가 연달아 터진다. onTurn의 ">= 110 → 0"은 안전망이다.
     //   한 방향을 계속 파도 된다 — 자원·지형이 다 나와도 둥지가 순환한다. 옛 판의 "다 훑음"(척후가 영영 할 일 없음)은 없다.
@@ -650,6 +664,10 @@ const S = {
         + '"없음" means they are kept home.' },
     ...EXPLORE.map(([dir, v]) => ({
       id: v, label: `${dir.slice(0, 1)} 탐사`, type: 'int', init: 0, min: 0, max: 140,
+    })),
+    // 100을 넘친 진척 (이월) — 시스템 전용. 보조 계약표(allow)에 없다
+    ...EXPLORE.map(([dir, v]) => ({
+      id: `exb_${v.slice(4)}`, label: `(내부) ${dir.slice(0, 1)} 이월 진척`, type: 'int', init: 0, min: 0, max: EXB_MAX,
     })),
     ...EXPLORE.flatMap(([dir, v]) => {
       const k = v.slice(4), d = dir.slice(0, 1);
@@ -1311,16 +1329,15 @@ const S = {
       // 종류 고르기 굴림 — 반드시 진척도 규칙보다 **먼저** (같은 턴에 pickExpr가 이 값을 읽는다)
       { set: 'xroll', expr: 'rand(1, 1000)' },
       // ① 결과 구간(>= 110)은 0으로 — 발견 이벤트가 이미 되돌렸어야 한다. 안전망이다.
-      // ② 100에 닿으면 그 방향에 남은 것 중에서 고른다(pickExpr) — 같은 턴에 발견 이벤트가 그 값을 보고 터진다.
-      // ③ 그 외에는 척후 인원만큼 쌓음. 건진 게 있는 방향은 지리를 아니까 조금씩 빨라진다(다섯 번까지).
-      ...EXPLORE.map(([dir, v, , , w]) => {
-        const k = v.slice(4);
-        return {
-          set: v,
-          expr: `${v} >= 110 ? 0 : (${v} >= 100 ? ${pickExpr(k, w)}`
-            + ` : (explore_dir == ${JSON.stringify(dir)}`
-            + ` ? min(100, ${v} + round(scout_men * (0.6 + min(5, res_${k} + ter_${k} + lairs_${k}) * 0.1)) * span) : ${v}))`,
-        };
+      // ② 척후 인원만큼 쌓고(gainExpr), 100을 넘친 몫은 이월 칸에 — 이월 칸을 먼저 센다(진척 규칙이 옛 값을 바꾸기 전에).
+      // ③ 쌓은 값이 100에 닿으면 **그 턴에** 남은 것 중에서 고른다(pickExpr) — 같은 턴의 발견 이벤트가 그 값을 보고 터진다.
+      //   (옛 판은 100에 세워 두고 다음 턴에 골랐다 — 발견 장면이 두 응답 뒤로 밀렸다. 2026-10-18 유저 결정으로 당김)
+      ...EXPLORE.flatMap(([dir, v, , , w]) => {
+        const k = v.slice(4), g = gainExpr(dir, k);
+        return [
+          { set: `exb_${k}`, expr: `${v} >= 110 ? exb_${k} : min(${EXB_MAX}, exb_${k} + max(0, ${v} + ${g} - 100))` },
+          { set: v, expr: `${v} >= 110 ? 0 : (${v} + ${g} >= 100 ? ${pickExpr(k, w)} : ${v} + ${g})` },
+        ];
       }),
       // 둥지는 두면 자란다 — 하루 1/20 확률로 +1 (며칠을 건너뛰면 그만큼 높게, 스무 날이면 확실히). 천장 LAIR_MAX
       ...EXPLORE.map(([, v]) => {
@@ -1392,12 +1409,13 @@ const S = {
     // 자원·지형: once — 한 자리는 한 번만. 둥지: 정본(방향마다 첫 것 — 북은 둘째까지)은 once, 그 뒤는 몇 번이고.
     events: EXPLORE.flatMap(([dir, v, place]) => {
       const k = v.slice(4);
-      const back = { set: v, expr: '0' };
+      // 되돌리기 = 이월 몫 꺼내기. 100 이상 남았으면 진척을 100(보고 대기)에 세워 다음 턴에 하나 더 — 부호(110↑)는 다시 안 생긴다
+      const back = [{ set: v, expr: `min(100, exb_${k})` }, { set: `exb_${k}`, expr: `max(0, exb_${k} - 100)` }];
       const tail = ' 이름이 붙지 않으면 기록에 남지 않는다.';
       const hint = (h) => ` 예컨대 ${h} — 어디까지나 예시다. 이 땅에 더 어울리는 것이 떠오르면 그쪽을 써라. 이미 나온 것과 겹치지만 마라.`;
       const res = RES[k].map((h, i) => ({
         id: `find_${k}_res_${i + 1}`, once: true, when: `${v} == ${110 + i}`,
-        effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, back],
+        effects: [{ set: `res_${k}`, expr: `res_${k} + 1` }, ...back],
         notify: `[탐사 · ${dir} · 자원] ${place}에서 캐거나 베거나 걷어 낼 것이 나왔다 — 이 영지의 특산품이 될 만한 것이다. `
           + `무엇이고 어디에 쓰는 것인지 이번 장면에서 정하고 이름을 붙여라.${tail} 캐거나 거두기 시작하면 그 값은 시스템이 매긴다.${hint(h)}`,
       }));
@@ -1405,7 +1423,7 @@ const S = {
         const canon = TER_CANON[k]?.[i];
         return {
           id: `find_${k}_ter_${i + 1}`, once: true, when: `${v} == ${120 + i}`,
-          effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, back],
+          effects: [{ set: `ter_${k}`, expr: `ter_${k} + 1` }, ...back],
           notify: canon
             ? `[탐사 · ${dir} · 지형] ${place}에서 ${TER_USE[use][0]}. 정체는 이미 정해져 있다 — ${canon} `
               + '이 사실 그대로 이번 장면에 그리고 기록에 올려라. 다른 것으로 바꾸지 마라.'
@@ -1415,7 +1433,7 @@ const S = {
       });
       // 둥지 — 세력은 3~4에서 시작해 그 방향에서 앞서 나온 수만큼 세진다(깊은 곳의 것). 이름은 서사가 짓고 보조가 lairname_*에
       const lairFx = [{ set: `lair_${k}`, expr: `clamp(3 + lairs_${k} + rand(0, 1), 3, ${LAIR_MAX})` },
-        { set: `lair_on_${k}`, expr: 'true' }, { set: `lairs_${k}`, expr: `lairs_${k} + 1` }, { set: `lairname_${k}`, expr: '""' }, back];
+        { set: `lair_on_${k}`, expr: 'true' }, { set: `lairs_${k}`, expr: `lairs_${k} + 1` }, { set: `lairname_${k}`, expr: '""' }, ...back];
       const lairTail = ' 위치를 알아낸 것이 이번 성과다 — 당장 쳐들어오지는 않는다. 두면 커지고, 습격은 거기서 온다.';
       const lairs = LAIR_CANON[k].map((canon, j) => ({
         id: `find_${k}_lair_${j + 1}`, once: true, when: `${v} == 130 and lairs_${k} == ${j}`,
@@ -1431,7 +1449,7 @@ const S = {
           + `이 방향에 사는 것(${LAIR_KIN[k]}) 가운데 무엇이 몇이나 되는지 이번 장면에서 정하고 이름을 붙여라.` + lairTail,
       });
       const blocked = {
-        id: `find_${k}_blocked`, when: `${v} == 140`, effects: [back],
+        id: `find_${k}_blocked`, when: `${v} == 140`, effects: [{ set: v, expr: '0' }, { set: `exb_${k}`, expr: '0' }],   // 막힘은 이월도 비운다 — 안 비우면 매 턴 막힘 통지
         notify: `[탐사 · ${dir}] 척후가 더 깊이 들어가지 못했다 — 알려진 둥지가 길목을 막고 있다. 그것을 치워야 그 너머를 훑을 수 있다.`,
       };
       // 토벌 — 세력이 0이 된 턴(현상금·출정·서사 속 전투 어느 쪽이든). 몬스터를 치운 땅은 북쪽 변경이 세는 단 하나의 보고다 [원본]
@@ -1983,11 +2001,11 @@ const S = {
           effects: [{ set: 'unrest', expr: 'clamp(unrest + 4, 0, 100)' }, { set: 'gold', expr: 'max(0, gold - 10 - rand(0, 20))' }],
           notify: '[주막이 부서졌다] 모험가 패거리끼리 술값인지 전리품 몫인지로 붙었다. 탁자 몇 개와 누군가의 이 몇 개가 '
             + '나갔다. 수리비는 영주 앞으로 청구서가 왔다 — 누가 먼저 칼을 뽑았는지는 이번 장면에서 정하라.' },
-        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (자리가 열리기 직전(100↑)은 안 건드림)
+        // 사냥에서 돌아온 모험가가 척후가 가는 쪽 이야기를 푼다 — 그 방향 답사가 한 걸음 빨라진다 (넘친 몫은 이월 — pushFx)
         { id: 'adv_rumor', weight: 2, cooldown: 30,
           omen: '사냥에서 돌아온 모험가들이 척후가 가는 쪽 길을 두고 수군거린다.',
           when: `${QUIET} and guild >= 1 and explore_dir != "없음"`,
-          effects: EXPLORE.map(([dir, v]) => ({ set: v, expr: `${v} < 100 and explore_dir == ${JSON.stringify(dir)} ? min(100, ${v} + 15) : ${v}` })),
+          effects: pushFx(15),
           notify: '[모험가가 들은 이야기] 사냥에서 돌아온 모험가가 척후들이 가는 쪽 이야기를 풀어놓았다 — 지름길 하나, '
             + '피할 자리 하나. 척후가 그만큼 빨라진다. 무슨 이야기였는지는 이번 장면에서 정하라.' },
 
@@ -2236,20 +2254,20 @@ const S = {
       roll: 'rand(1, 20)',
       mod: 'round(d_scout) + round(scout_men * 0.2)',
       vs: 13,
-      // 진척은 지금 훑는 방향(explore_dir)에만 붙는다. 이미 다 훑은 방향(>=100)은 안 건드린다 —
-      // exp_*의 100 이상은 발견 정산용 부호화 구간이라 밀면 깨진다.
+      // 진척은 지금 훑는 방향(explore_dir)에만 붙는다. 보고 대기(100)·부호(110↑)는 안 건드린다 — exp_*의 100 이상은
+      // 발견 정산용 부호화 구간이라 밀면 깨진다. 넘친 몫은 이월 칸으로 (pushFx) — 그 턴 정산에서 바로 발견이 고른다.
       grades: [
         { when: 'total >= vs + 5', label: '대성공',
           effects: [
-            ...EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 30) : ${v2}` })),
+            ...pushFx(30),
             { set: 'morale', expr: 'clamp(morale + 2, 0, 100)' }],
           inject: 'The survey party finds far more than expected — let the land itself surprise them.' },
         { when: 'total >= vs', label: '성공',
-          effects: EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 18) : ${v2}` })),
+          effects: pushFx(18),
           inject: 'Steady progress through rough country.' },
         { label: '실패',
           effects: [
-            ...EXPLORE.map(([d, v2]) => ({ set: v2, expr: `explore_dir == ${JSON.stringify(d)} and ${v2} < 100 ? min(100, ${v2} + 5) : ${v2}` })),
+            ...pushFx(5),
             { set: 'morale', expr: 'clamp(morale - 3, 0, 100)' },
             { set: 'health', expr: 'clamp(health - 1, 0, 100)' }],
           inject: 'The push goes badly — lost trails, a scare, someone hurt. They came back with little.' },
@@ -3141,13 +3159,14 @@ console.log('\n━━ 탐사 ━━');
   const notes = (o) => o.state.meta.pendingNotifies;
   const look = (t) => engine.makeLookup(S, t.vars);
 
-  // 속도: 배분에 따라 몇 턴 걸리나 (옛 판과 같은 식 — 바뀐 건 100에 닿은 뒤다)
+  // 속도: 배분에 따라 첫 발견까지 몇 턴(하루씩) 걸리나 — 100에 닿는 그 턴에 발견이 나온다(2026-10-18)
+  const finds = (v, k) => v[`res_${k}`] + v[`ter_${k}`] + v[`lairs_${k}`];
   for (const pol of POLICY.map((p) => p[0])) {
     let t = fresh({ labor_policy: pol, explore_dir: '남 평원' });
     const men = look(t)('scout_men');   // 붕괴 전 시작 시점 기준
     let turns = 0;
-    while (t.vars.exp_s < 100 && turns < 120) { t = step(t, {}, 'x', turns).state; turns++; }
-    console.log(`  ${pol}  척후 ${String(men).padStart(2)}명 → 남쪽 답사에 ${turns >= 120 ? '120턴+' : turns + '턴'}`);
+    while (!finds(t.vars, 's') && turns < 120) { t = step(t, {}, 'x', turns).state; turns++; }
+    console.log(`  ${pol}  척후 ${String(men).padStart(2)}명 → 남쪽 첫 발견 ${turns >= 120 ? '120턴+' : turns + '턴째'}`);
   }
 
   // 종류 분포 — 남쪽 첫 발견 400회. 가중치 [자원 1 · 지형 3 · 위협 1] → 20 · 60 · 20%
@@ -3164,9 +3183,58 @@ console.log('\n━━ 탐사 ━━');
   let one = true;
   for (let seed = 0; seed < 60; seed++) {
     const v = step(fresh({ explore_dir: '서 숲', exp_w: 100 }), {}, 'one', seed).state.vars;
-    if (v.res_w + v.ter_w + v.lairs_w !== 1 || v.exp_w !== 0) one = false;
+    if (finds(v, 'w') !== 1 || v.exp_w >= 100 || v.exb_w !== 0) one = false;
   }
-  ok('한 번에 하나 — 60회 모두 찾은 수 합 1 · 진척 0', one, one ? '연달아 터짐 없음' : '같은 턴에 둘 이상');
+  ok('한 번에 하나 — 60회 모두 찾은 수 합 1 · 남은 진척 100 미만', one, one ? '연달아 터짐 없음' : '같은 턴에 둘 이상');
+
+  // 100에 닿는 그 턴에 발견 (옛 판은 100에 세워 두고 다음 턴에 골랐다 — 발견 장면이 두 응답 뒤로 밀렸다)
+  {
+    const o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', exp_s: 95 }), {}, 'now', 0);
+    const n = notes(o).find((x) => x.startsWith('[탐사 · 남 평원'));
+    ok('95% + 하루 → 그 턴에 발견 · 통지 · 넘친 몫은 남음', finds(o.state.vars, 's') === 1 && n && o.state.vars.exp_s > 0 && o.state.vars.exp_s < 100,
+      `찾은 수 ${finds(o.state.vars, 's')} · 남은 진척 ${o.state.vars.exp_s}% · ${n ? n.slice(0, 24) + '…' : '(통지 없음)'}`);
+  }
+
+  // 한 달 뒤 — 넘친 몫은 이월 칸에 남아 다음 턴에 하나씩 마저 나온다. 그 사이 척후를 불러들여도 이미 찾은 건 보고된다
+  {
+    // 곳간을 채워 둔다 — 빈 곳간으로 30일을 건너뛰면 그 사이 사람이 줄어 척후가 쌓는 몫 자체가 준다(이월과 무관)
+    let o = step(fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', food: 5000, water: 5000, gold: 2000 }), { skip_day: 30 }, 'mo', 0);
+    let t = o.state;
+    const total = 100 + t.vars.exp_s + t.vars.exb_s;   // 그 턴에 하나(100)를 꺼냈다
+    const first = finds(t.vars, 's');
+    t.vars.explore_dir = '없음';
+    const per = [first];
+    for (let i = 1; i <= 8; i++) {
+      const before = finds(t.vars, 's');
+      t = step(t, { skip_day: 0 }, 'mo', i).state;
+      per.push(finds(t.vars, 's') - before);
+    }
+    const got = finds(t.vars, 's');
+    ok('한 달(30일) 뒤 — 쌓인 만큼 발견이 나온다 (옛 판은 100%에서 잘려 하나뿐)', total >= 200 && first === 1
+      && got === Math.floor(total / 100) && t.vars.exp_s === total % 100 && t.vars.exb_s === 0 && per.every((x) => x <= 1),
+      `쌓인 진척 ${total}% → 발견 ${got}개 (턴별 ${per.join('·')}) · 남은 ${t.vars.exp_s}%`);
+  }
+
+  // 막힘은 이월 칸을 비운다 — 안 비우면 매 턴 "길목을 막고" 통지
+  {
+    const o = step(fresh({ explore_dir: '남 평원', exp_s: 100, exb_s: 250, res_s: RES.s.length, ter_s: TER.s.length, lair_on_s: true, lair_s: 3 }),
+      { skip_day: 0 }, 'bl', 0);
+    ok('막힘 → 진척·이월 모두 0', notes(o).some((n) => n.includes('길목을 막고')) && o.state.vars.exp_s === 0 && o.state.vars.exb_s === 0,
+      `진척 ${o.state.vars.exp_s} · 이월 ${o.state.vars.exb_s}`);
+  }
+
+  // 🧭 집중 답사가 100을 넘기면 넘친 몫도 남고 발견은 그 턴에 (같은 날 — 척후 하루치 없이 판정 몫만)
+  {
+    let pass = true; const seen = [];
+    for (let seed = 0; seed < 12; seed++) {
+      const a = engine.toggleAction(S, fresh({ labor_policy: '개척 우선', explore_dir: '남 평원', exp_s: 96, food: 500 }), 'act_survey').state;
+      const o = step(a, { skip_day: 0 }, 'sv', seed);
+      const g = { 대성공: 30, 성공: 18, 실패: 5 }[o.state.meta.lastCheck?.grade];
+      seen.push(o.state.meta.lastCheck?.grade);
+      if (!g || finds(o.state.vars, 's') !== 1 || o.state.vars.exp_s !== 96 + g - 100) pass = false;
+    }
+    ok('집중 답사 96% + 판정 → 그 턴에 발견 · 넘친 몫 보존', pass, [...new Set(seen)].join('·'));
+  }
 
   // 한 방향을 끝까지 — 자원·지형이 다 나와도 척후 일이 남는다(둥지). 둥지가 살아 있고 남은 것도 없으면 막힘
   {

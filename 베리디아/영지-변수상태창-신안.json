@@ -28,7 +28,7 @@
   "calendar": {
     "label": "달력",
     "icon": "🕐",
-    "note": "축일과 기한(계약·공사)이 날짜에 걸린다.",
+    "note": "축일·생일과 기한(계약·공사)이 날짜에 걸린다.",
     "marks": [
       {
         "month": 1,
@@ -101,6 +101,156 @@
         "dom": 28,
         "label": "긴밤제",
         "note": "한 해의 끝. 남은 것을 헤아리고 겨울을 셈한다. 이날 곳간을 열어 보이는 것이 관례다."
+      },
+      {
+        "month": 1,
+        "dom": 8,
+        "label": "🎂 룰루·라라",
+        "note": "룰루·라라의 생일"
+      },
+      {
+        "month": 1,
+        "dom": 27,
+        "label": "🎂 모르웬",
+        "note": "모르웬의 생일"
+      },
+      {
+        "month": 2,
+        "dom": 9,
+        "label": "🎂 카산드라",
+        "note": "카산드라의 생일"
+      },
+      {
+        "month": 2,
+        "dom": 20,
+        "label": "🎂 유스티나",
+        "note": "유스티나의 생일"
+      },
+      {
+        "month": 3,
+        "dom": 16,
+        "label": "🎂 리비아",
+        "note": "리비아의 생일"
+      },
+      {
+        "month": 3,
+        "dom": 24,
+        "label": "🎂 스텔라",
+        "note": "스텔라의 생일"
+      },
+      {
+        "month": 4,
+        "dom": 7,
+        "label": "🎂 피오라",
+        "note": "피오라의 생일"
+      },
+      {
+        "month": 4,
+        "dom": 18,
+        "label": "🎂 메릴",
+        "note": "메릴의 생일"
+      },
+      {
+        "month": 5,
+        "dom": 19,
+        "label": "🎂 오렐리아",
+        "note": "오렐리아의 생일"
+      },
+      {
+        "month": 5,
+        "dom": 27,
+        "label": "🎂 실바나",
+        "note": "실바나의 생일"
+      },
+      {
+        "month": 6,
+        "dom": 14,
+        "label": "🎂 알라릭 여왕",
+        "note": "알라릭 여왕의 생일"
+      },
+      {
+        "month": 6,
+        "dom": 24,
+        "label": "🎂 필리아",
+        "note": "필리아의 생일"
+      },
+      {
+        "month": 7,
+        "dom": 9,
+        "label": "🎂 베아트릭스",
+        "note": "베아트릭스의 생일"
+      },
+      {
+        "month": 7,
+        "dom": 16,
+        "label": "🎂 라피스",
+        "note": "라피스의 생일"
+      },
+      {
+        "month": 7,
+        "dom": 27,
+        "label": "🎂 셀레스티아",
+        "note": "셀레스티아의 생일"
+      },
+      {
+        "month": 8,
+        "dom": 3,
+        "label": "🎂 릴리아나",
+        "note": "릴리아나의 생일"
+      },
+      {
+        "month": 8,
+        "dom": 21,
+        "label": "🎂 리리카",
+        "note": "리리카의 생일"
+      },
+      {
+        "month": 9,
+        "dom": 8,
+        "label": "🎂 발레리우스",
+        "note": "발레리우스의 생일"
+      },
+      {
+        "month": 9,
+        "dom": 17,
+        "label": "🎂 알제리아",
+        "note": "알제리아의 생일"
+      },
+      {
+        "month": 10,
+        "dom": 3,
+        "label": "🎂 엘레오노라",
+        "note": "엘레오노라의 생일"
+      },
+      {
+        "month": 10,
+        "dom": 19,
+        "label": "🎂 세리에",
+        "note": "세리에의 생일"
+      },
+      {
+        "month": 11,
+        "dom": 7,
+        "label": "🎂 아데레",
+        "note": "아데레의 생일"
+      },
+      {
+        "month": 11,
+        "dom": 22,
+        "label": "🎂 클라리스",
+        "note": "클라리스의 생일"
+      },
+      {
+        "month": 12,
+        "dom": 9,
+        "label": "🎂 카시아",
+        "note": "카시아의 생일"
+      },
+      {
+        "month": 12,
+        "dom": 16,
+        "label": "🎂 리아나",
+        "note": "리아나의 생일"
       }
     ],
     "css": "\n.scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;\n  width:min(520px,100%); font-family:'Noto Serif KR','Nanum Myeongjo',serif; }\n.scg-title { color:#4a2c2a; border-bottom:2px double #bda27e; padding-bottom:6px; }\n.scg-title .scg-x { color:#4a2c2a; }\n.scg-note { color:#6b5744; }\n.scc-nav .scc-month { color:#4a2c2a; }\n.scc-nav button { background:#f0e5d1; border:1px solid #bda27e; color:#3d352a; }\n.scc-nav button:hover { background:#e2d3b6; border-color:#4a2c2a; }\n.scc-wd { color:#6b5744; }\n.scc-day { background:rgba(255,255,255,.35); border-color:#d8c6a4; color:#3d352a; }\n.scc-day:hover { background:rgba(74,44,42,.08); border-color:#bda27e; }\n.scc-day.scc-today { border-color:#a12a2a; background:#f5e3e3; }\n.scc-day.scc-sel { border-color:#4a2c2a; box-shadow:0 0 0 1px #4a2c2a inset; }\n.scc-dot.scc-mark { background:#bda27e; }\n.scc-dot.scc-due { background:#a12a2a; }\n.scc-detail { background:rgba(255,255,255,.35); border-color:#bda27e; }\n.scc-detail-date { color:#4a2c2a; }\n.scc-entry .scc-kind { color:#6b5744; }\n.scc-legend { color:#6b5744; }"
@@ -1459,6 +1609,21 @@
       "id": "fest_when",
       "label": "축일 일자",
       "expr": "fest_month + \"월 \" + fest_dom + \"일\""
+    },
+    {
+      "id": "doy",
+      "label": "(내부) 올해 몇째 날",
+      "expr": "(month - 1) * 30 + dom"
+    },
+    {
+      "id": "bday_who",
+      "label": "다가오는 생일",
+      "expr": "((8 - doy + 360) % 360 <= 3 and (b_lulu != 0 or sum(corps, \"룰루\") > 0 or b_lara != 0 or sum(corps, \"라라\") > 0)) ? \"룰루·라라\" : (((27 - doy + 360) % 360 <= 3 and (b_morwen != 0)) ? \"모르웬\" : (((39 - doy + 360) % 360 <= 3 and (b_cassandra != 0)) ? \"카산드라\" : (((50 - doy + 360) % 360 <= 3 and (b_yustina != 0 or sum(corps, \"유스티나\") > 0)) ? \"유스티나\" : (((76 - doy + 360) % 360 <= 3 and (b_livia != 0 or sum(corps, \"리비아\") > 0)) ? \"리비아\" : (((84 - doy + 360) % 360 <= 3 and (b_stella != 0 or sum(corps, \"스텔라\") > 0)) ? \"스텔라\" : (((97 - doy + 360) % 360 <= 3 and (b_fiora != 0 or sum(corps, \"피오라\") > 0)) ? \"피오라\" : (((108 - doy + 360) % 360 <= 3 and (b_meryl != 0 or sum(corps, \"메릴\") > 0)) ? \"메릴\" : (((139 - doy + 360) % 360 <= 3 and (b_orelia != 0)) ? \"오렐리아\" : (((147 - doy + 360) % 360 <= 3 and (b_silvana != 0)) ? \"실바나\" : (((164 - doy + 360) % 360 <= 3 and (b_alaric != 0)) ? \"알라릭 여왕\" : (((174 - doy + 360) % 360 <= 3 and (b_philia != 0 or sum(corps, \"필리아\") > 0)) ? \"필리아\" : (((189 - doy + 360) % 360 <= 3 and (b_beatrix != 0)) ? \"베아트릭스\" : (((196 - doy + 360) % 360 <= 3 and (b_lapis != 0 or sum(corps, \"라피스\") > 0)) ? \"라피스\" : (((207 - doy + 360) % 360 <= 3 and (b_celestia != 0 or sum(corps, \"셀레스티아\") > 0)) ? \"셀레스티아\" : (((213 - doy + 360) % 360 <= 3 and (b_liliana != 0)) ? \"릴리아나\" : (((231 - doy + 360) % 360 <= 3 and (b_lirica != 0 or sum(corps, \"리리카\") > 0)) ? \"리리카\" : (((248 - doy + 360) % 360 <= 3 and (b_valerius != 0)) ? \"발레리우스\" : (((257 - doy + 360) % 360 <= 3 and (b_algeria != 0 or sum(corps, \"알제리아\") > 0)) ? \"알제리아\" : (((273 - doy + 360) % 360 <= 3 and (b_eleonora != 0)) ? \"엘레오노라\" : (((289 - doy + 360) % 360 <= 3 and (b_serie != 0 or sum(corps, \"세리에\") > 0)) ? \"세리에\" : (((307 - doy + 360) % 360 <= 3 and (ally == \"아데레\")) ? \"아데레\" : (((322 - doy + 360) % 360 <= 3 and (b_clarice != 0 or sum(corps, \"클라리스\") > 0)) ? \"클라리스\" : (((339 - doy + 360) % 360 <= 3 and (b_cassia != 0 or sum(corps, \"카시아\") > 0)) ? \"카시아\" : (((346 - doy + 360) % 360 <= 3 and (b_liana != 0)) ? \"리아나\" : (\"\")))))))))))))))))))))))))"
+    },
+    {
+      "id": "bday_in",
+      "label": "생일까지",
+      "expr": "((8 - doy + 360) % 360 <= 3 and (b_lulu != 0 or sum(corps, \"룰루\") > 0 or b_lara != 0 or sum(corps, \"라라\") > 0)) ? (8 - doy + 360) % 360 : (((27 - doy + 360) % 360 <= 3 and (b_morwen != 0)) ? (27 - doy + 360) % 360 : (((39 - doy + 360) % 360 <= 3 and (b_cassandra != 0)) ? (39 - doy + 360) % 360 : (((50 - doy + 360) % 360 <= 3 and (b_yustina != 0 or sum(corps, \"유스티나\") > 0)) ? (50 - doy + 360) % 360 : (((76 - doy + 360) % 360 <= 3 and (b_livia != 0 or sum(corps, \"리비아\") > 0)) ? (76 - doy + 360) % 360 : (((84 - doy + 360) % 360 <= 3 and (b_stella != 0 or sum(corps, \"스텔라\") > 0)) ? (84 - doy + 360) % 360 : (((97 - doy + 360) % 360 <= 3 and (b_fiora != 0 or sum(corps, \"피오라\") > 0)) ? (97 - doy + 360) % 360 : (((108 - doy + 360) % 360 <= 3 and (b_meryl != 0 or sum(corps, \"메릴\") > 0)) ? (108 - doy + 360) % 360 : (((139 - doy + 360) % 360 <= 3 and (b_orelia != 0)) ? (139 - doy + 360) % 360 : (((147 - doy + 360) % 360 <= 3 and (b_silvana != 0)) ? (147 - doy + 360) % 360 : (((164 - doy + 360) % 360 <= 3 and (b_alaric != 0)) ? (164 - doy + 360) % 360 : (((174 - doy + 360) % 360 <= 3 and (b_philia != 0 or sum(corps, \"필리아\") > 0)) ? (174 - doy + 360) % 360 : (((189 - doy + 360) % 360 <= 3 and (b_beatrix != 0)) ? (189 - doy + 360) % 360 : (((196 - doy + 360) % 360 <= 3 and (b_lapis != 0 or sum(corps, \"라피스\") > 0)) ? (196 - doy + 360) % 360 : (((207 - doy + 360) % 360 <= 3 and (b_celestia != 0 or sum(corps, \"셀레스티아\") > 0)) ? (207 - doy + 360) % 360 : (((213 - doy + 360) % 360 <= 3 and (b_liliana != 0)) ? (213 - doy + 360) % 360 : (((231 - doy + 360) % 360 <= 3 and (b_lirica != 0 or sum(corps, \"리리카\") > 0)) ? (231 - doy + 360) % 360 : (((248 - doy + 360) % 360 <= 3 and (b_valerius != 0)) ? (248 - doy + 360) % 360 : (((257 - doy + 360) % 360 <= 3 and (b_algeria != 0 or sum(corps, \"알제리아\") > 0)) ? (257 - doy + 360) % 360 : (((273 - doy + 360) % 360 <= 3 and (b_eleonora != 0)) ? (273 - doy + 360) % 360 : (((289 - doy + 360) % 360 <= 3 and (b_serie != 0 or sum(corps, \"세리에\") > 0)) ? (289 - doy + 360) % 360 : (((307 - doy + 360) % 360 <= 3 and (ally == \"아데레\")) ? (307 - doy + 360) % 360 : (((322 - doy + 360) % 360 <= 3 and (b_clarice != 0 or sum(corps, \"클라리스\") > 0)) ? (322 - doy + 360) % 360 : (((339 - doy + 360) % 360 <= 3 and (b_cassia != 0 or sum(corps, \"카시아\") > 0)) ? (339 - doy + 360) % 360 : (((346 - doy + 360) % 360 <= 3 and (b_liana != 0)) ? (346 - doy + 360) % 360 : (-1)))))))))))))))))))))))))"
     },
     {
       "id": "found_n",
@@ -4797,6 +4962,16 @@
       "id": "fest_soon",
       "when": "fest_in >= 1 and fest_in <= 10",
       "text": "[UPCOMING] {fest_when} is {fest} — {fest_in} days out. {fest_desc}"
+    },
+    {
+      "id": "bday_today",
+      "when": "bday_who != \"\" and bday_in == 0",
+      "text": "[TODAY — {bday_who}'s birthday] Whether the Baron knows, and whether anyone marks it, follows from the story so far — a word from someone close, a quiet gesture, or nothing at all. Let it touch the day; it takes over the scene only if the Baron makes it so."
+    },
+    {
+      "id": "bday_soon",
+      "when": "bday_who != \"\" and bday_in >= 1",
+      "text": "[UPCOMING] {bday_who}'s birthday — {bday_in} days out. Those close to {bday_who} would know; the Baron knows only if he was told or already knew."
     },
     {
       "id": "tribute_due",

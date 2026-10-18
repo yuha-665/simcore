@@ -359,6 +359,49 @@ const festAt = (monthExpr, col) => FEST.slice(0, -1).reduceRight(
   (acc, f) => `${monthExpr} == ${f[0]} ? ${JSON.stringify(f[col])} : (${acc})`,
   JSON.stringify(FEST[FEST.length - 1][col]));
 
+// ── 생일 (2026-10-17) ──
+// 카드·로어북 어디에도 생일이 없어 새로 정했다. 날짜는 안 변하는 설정이라 표에 두고,
+// 알릴지는 변하는 것(고용·호감·동행)이 정한다 — 모르는 귀족 생일까지 매번 떠들면 소음이다.
+// 날짜는 그 사람의 계열(원소·자리)에 맞췄다. 축일 날과 안 겹치고, 생일끼리 6일 이상 떨어져
+// 사흘 전 예고가 서로 안 겹친다 (생일 검증이 지킨다). 룰루·라라는 쌍둥이라 한 날 한 줄.
+//   [호감 꼬리(b_*) 목록, 표시 이름, 달, 일]
+const BDAY = [
+  [['lulu', 'lara'], '룰루·라라', 1, 8],     // 쌍둥이 — 라라가 얼음 술사, 한겨울
+  [['morwen'], '모르웬', 1, 27],             // 북방 방어선 사령관 — 회색 변경의 한겨울
+  [['cassandra'], '카산드라', 2, 9],         // 번개·감시망의 방첩 수장 — 늦겨울
+  [['yustina'], '유스티나', 2, 20],          // 수석 메이드 — 겨울의 끝
+  [['livia'], '리비아', 3, 16],              // 바람 궁수 — 봄바람
+  [['stella'], '스텔라', 3, 24],             // 갓 서품된 막내 수녀 — 시작 동행(희망)이면 부임 3주 뒤 첫 생일
+  [['fiora'], '피오라', 4, 7],               // 짐승 돌봄 — 새끼들이 나는 철
+  [['meryl'], '메릴', 4, 18],                // 물 마법 — 강신제(봄비) 나흘 전
+  [['orelia'], '오렐리아', 5, 19],           // 고아원 후원자 — 초록절(나누는 날) 나흘 뒤
+  [['silvana'], '실바나', 5, 27],            // 바람 대마도사 — 늦봄
+  [['alaric'], '알라릭 여왕', 6, 14],        // 대륙을 통일한 군주 — 성 알드릭 축일(무인의 날) 엿새 뒤
+  [['philia'], '필리아', 6, 24],             // 불 마법 — 초여름
+  [['beatrix'], '베아트릭스', 7, 9],         // 광휘회 주교 — 빛의 계절
+  [['lapis'], '라피스', 7, 16],              // 태양 합성 — 화톳날(낮이 가장 긴 날) 나흘 전
+  [['celestia'], '셀레스티아', 7, 27],       // 광휘회 — 화톳날 이레 뒤
+  [['liliana'], '릴리아나', 8, 3],           // 화염술사 — 한여름
+  [['lirica'], '리리카', 8, 21],             // 번개 — 늦여름 뇌우 철
+  [['valerius'], '발레리우스', 9, 8],        // 수확을 세는 남부 백작 — 수확철 첫머리
+  [['algeria'], '알제리아', 9, 17],          // 흙 연금 — 가을
+  [['eleonora'], '엘레오노라', 10, 3],       // 대지·중력, 왕국의 곡창 — 세납일 이레 전
+  [['serie'], '세리에', 10, 19],             // 흙 마법 — 가을
+  [['adere'], '아데레', 11, 7],              // 망국의 공주 — 위령절(전쟁 망자의 밤) 엿새 뒤
+  [['clarice'], '클라리스', 11, 22],         // 무너진 명문가 출신 — 늦가을
+  [['cassia'], '카시아', 12, 9],             // 그림자·정신 술사 — 긴 밤
+  [['liana'], '리아나', 12, 16],             // 물·얼음 건축, 빚진 해안 — 겨울 바다
+];
+// 알 만한 사이인가 — 아데레는 곁에 있을 때(동행), 고용 대상은 고용 중이거나 아는 사이, 나머지는 만난 적 있을 때(b_* ≠ 0).
+const HIRE_NAME = Object.fromEntries(HIRE.map(([tail, name]) => [tail, name]));
+const bdayKnown = (tails) => '(' + tails.map((tail) => (tail === 'adere' ? 'ally == "아데레"'
+  : HIRE_NAME[tail] ? `b_${tail} != 0 or sum(corps, ${JSON.stringify(HIRE_NAME[tail])}) > 0` : `b_${tail} != 0`)).join(' or ') + ')';
+// 오늘(doy)부터 그 생일까지 며칠 — 해를 넘겨도 맞게 360으로 돈다.
+const bdayLeft = (m, d) => `(${(m - 1) * 30 + d} - doy + 360) % 360`;
+// 사흘 안에 든, 알 만한 사이의 생일 하나 (생일끼리 6일 이상 떨어져 있어 둘이 같이 걸리지 않는다).
+const bdayChain = (hit, miss) => BDAY.reduceRight((acc, [tails, name, m, d]) =>
+  `(${bdayLeft(m, d)} <= 3 and ${bdayKnown(tails)}) ? ${hit(name, m, d)} : (${acc})`, miss);
+
 // 부임일(day=0)이 1499년 3월 1일. 3월 1일 = 그 해의 60번째 날.
 const BASE_YEAR = 1499;
 const EPOCH = (3 - 1) * 30 + (1 - 1);
@@ -378,12 +421,15 @@ const S = {
     seasons: ['🍀봄', '🌻여름', '🍂가을', '⛄겨울'],   // seasonIndex: 3~5월=봄 — 기존 매핑과 동일
     expose: ['date', 'season', 'year', 'month', 'dom', 'elapsed'],
   },
-  // 달력 패널 (🕐) — 축일 12종이 기념일로, 계약·공사 기한이 점으로 걸린다.
+  // 달력 패널 (🕐) — 축일 12종과 생일(BDAY)이 기념일로, 계약·공사 기한이 점으로 걸린다.
   // 일정 목록(list)은 안 단다 — 예정(appt) 체계가 이미 그 자리를 맡고 있다.
   calendar: {
     label: '달력', icon: '🕐',
-    note: '축일과 기한(계약·공사)이 날짜에 걸린다.',
-    marks: FEST.map(([m, d, name, note]) => ({ month: m, dom: d, label: name, note })),
+    note: '축일·생일과 기한(계약·공사)이 날짜에 걸린다.',
+    marks: [
+      ...FEST.map(([m, d, name, note]) => ({ month: m, dom: d, label: name, note })),
+      ...BDAY.map(([, name, m, d]) => ({ month: m, dom: d, label: `🎂 ${name}`, note: `${name}의 생일` })),
+    ],
     // 양피지 팔레트 — party.css와 같은 결 (달력 패널이 열릴 때만 이 CSS로 갈아끼워진다)
     css: `
 .scg-card { background:#f0e5d1; border:5px solid #4a2c2a; border-radius:4px; color:#3d352a;
@@ -796,6 +842,10 @@ const S = {
     { id: 'fest', label: '다음 축일', expr: festAt('fest_month', 2) },
     { id: 'fest_desc', label: '축일 설명', expr: festAt('fest_month', 3) },
     { id: 'fest_when', label: '축일 일자', expr: 'fest_month + "월 " + fest_dom + "일"' },
+    // ── 다가오는 생일 (BDAY) ── 사흘 안에 든, 알 만한 사이의 생일 하나. 없으면 "" / -1.
+    { id: 'doy', label: '(내부) 올해 몇째 날', expr: '(month - 1) * 30 + dom' },
+    { id: 'bday_who', label: '다가오는 생일', expr: bdayChain((name) => JSON.stringify(name), '""') },
+    { id: 'bday_in', label: '생일까지', expr: bdayChain((name, m, d) => bdayLeft(m, d), '-1') },
     // ── 탐사 현황 ──
     ...EXPLORE.map(([, v, label, , slots]) => ({
       id: 'found_' + v.slice(4), label, expr: foundExpr(v, `f_${v.slice(4)}`, slots.length),
@@ -1909,6 +1959,14 @@ const S = {
       text: '[TODAY — {fest}] {fest_desc} Build the scene around this day. If the holding is in a bad way, it is observed badly.' },
     { id: 'fest_soon', when: 'fest_in >= 1 and fest_in <= 10',
       text: '[UPCOMING] {fest_when} is {fest} — {fest_in} days out. {fest_desc}' },
+    // 생일 — 시스템은 날짜만 안다. 남작이 그걸 아는지, 누가 챙기는지는 서사가 정한다 (BDAY).
+    { id: 'bday_today', when: 'bday_who != "" and bday_in == 0',
+      text: '[TODAY — {bday_who}\'s birthday] Whether the Baron knows, and whether anyone marks it, follows from the story '
+        + 'so far — a word from someone close, a quiet gesture, or nothing at all. Let it touch the day; it takes over '
+        + 'the scene only if the Baron makes it so.' },
+    { id: 'bday_soon', when: 'bday_who != "" and bday_in >= 1',
+      text: '[UPCOMING] {bday_who}\'s birthday — {bday_in} days out. Those close to {bday_who} would know; '
+        + 'the Baron knows only if he was told or already knew.' },
     // 세납액은 시스템이 계산한다. 모델은 이 숫자를 알 방법이 없다.
     { id: 'tribute_due', when: 'fest == "세납일" and fest_in <= 12',
       text: '[TRIBUTE] Tribute day is {fest_in} days off. {tribute} is owed; the treasury holds {gold}.' },
@@ -3009,6 +3067,44 @@ console.log('\n━━ 탐사 ━━');
   console.log(`  find_n_2 발화 통지: ${gob && gob.includes('고블린') ? '✓ 정본 실림 — ' + gob.slice(0, 60) + '…' : '❗ 정본 없음'}`);
   const vein = openSlot(2);  // o_n=2 → exp_n=112 → find_n_3 (수맥)
   console.log(`  find_n_3 발화 통지: ${vein && vein.includes('수맥') ? '✓ 수맥 실림' : '❗ 수맥 없음'}`);
+}
+{
+  // ── 생일 (2026-10-17) — 표가 지켜야 할 셋 + 알림이 알 만한 사이에게만 가는가 ──
+  console.log('\n━━ 생일 ━━');
+  const ok = (n, c, got) => console.log(`  ${c ? '✓' : '❗'} ${n} → ${got}`);
+  const castTails = CAST_ALL.map(([tail]) => tail);
+  const bTails = BDAY.flatMap(([tails]) => tails);
+  const missing = castTails.filter((tail) => !bTails.includes(tail));
+  const orphan = bTails.filter((tail) => !castTails.includes(tail));
+  ok('인물 전원에게 생일 하나씩', !missing.length && !orphan.length && new Set(bTails).size === bTails.length,
+    `${bTails.length}명` + (missing.length ? ` · 누락 ${missing.join(',')}` : '') + (orphan.length ? ` · 고아 ${orphan.join(',')}` : ''));
+  const festDay = new Set(FEST.map(([m, d]) => `${m}/${d}`));
+  const onFest = BDAY.filter(([, , m, d]) => festDay.has(`${m}/${d}`)).map(([, name]) => name);
+  ok('축일 날과 안 겹침', !onFest.length, onFest.join(', ') || '없음');
+  const doys = BDAY.map(([, , m, d]) => (m - 1) * 30 + d).sort((a, b) => a - b);
+  const gap = Math.min(...doys.map((x, i) => (doys[(i + 1) % doys.length] - x + 360) % 360 || 360));
+  ok('생일끼리 4일 이상 — 사흘 전 예고가 안 겹침', gap >= 4, `최소 ${gap}일`);
+  ok('달력 기념일 = 축일 + 생일', S.calendar.marks.length === FEST.length + BDAY.length, `${S.calendar.marks.length}개`);
+  // 부임일(0일째) = 3월 1일. 스텔라 3/24 = 23일째 · 아데레 11/7 = 246일째 · 쌍둥이 1/8 = 307일째(해 넘김)
+  const at = (d, patch) => { const t = atDay(engine.initState(S), d); Object.assign(t.vars, patch); return engine.makeLookup(S, t.vars); };
+  const hired = at(20, { corps: ['스텔라 4'] });
+  ok('고용 중인 스텔라 — 사흘 전 예고', hired('bday_who') === '스텔라' && hired('bday_in') === 3, `${hired('bday_who')} ${hired('bday_in')}일`);
+  const stranger = at(20, { corps: [], b_stella: 0 });
+  ok('고용도 안 했고 만난 적도 없으면 안 알림', stranger('bday_who') === '', JSON.stringify(stranger('bday_who')));
+  const met = at(23, { corps: [], b_stella: 5 });
+  ok('만난 적만 있어도 당일 알림', met('bday_who') === '스텔라' && met('bday_in') === 0, `${met('bday_who')} ${met('bday_in')}일`);
+  const withAdere = at(246, { ally: '아데레' }), noAdere = at(246, { ally: '' });
+  ok('아데레는 동행 중일 때만', withAdere('bday_who') === '아데레' && noAdere('bday_who') === '', `동행 ${withAdere('bday_who')} · 없음 ${JSON.stringify(noAdere('bday_who'))}`);
+  const twins = at(305, { b_lara: 12 });
+  ok('해 넘김 · 쌍둥이는 한쪽만 알아도 한 줄', twins('bday_who') === '룰루·라라' && twins('bday_in') === 2, `${twins('bday_who')} ${twins('bday_in')}일`);
+  // 지시문이 실제 프롬프트에 실리는가 (당일 / 사흘 전)
+  const promptAt = (d, patch) => {
+    const t = atDay(engine.initState(S), d); t.meta.setupDone = true; Object.assign(t.vars, patch);
+    return engine.sendPhase(S, t, { rng: seededRng('bd', d, 's') }).promptBlock;
+  };
+  const pToday = promptAt(23, { corps: ['스텔라 4'] }), pSoon = promptAt(20, { corps: ['스텔라 4'] });
+  ok('프롬프트 — 당일·예고 지시문', pToday.includes("[TODAY — 스텔라's birthday]") && pSoon.includes("스텔라's birthday — 3 days out"),
+    (pToday.match(/\[TODAY — [^\]]+\]/) || ['(당일 없음)'])[0] + ' / ' + ((pSoon.match(/\[UPCOMING\] 스텔라[^.]+/) || ['(예고 없음)'])[0]));
 }
 {
   // ── 시작 동행 검증 — 카드 시작 옵션(난이도 0: 메릴+스텔라 / 1·2: 메릴)과 일치해야 한다 ──

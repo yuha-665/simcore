@@ -645,6 +645,46 @@ const CSS = `
 .sce .sce-chat-input { width:100% !important; min-height:72px !important; font-family:inherit; line-height:1.6; }
 .sce .sce-chat-input-actions { display:flex; align-items:center; gap:8px; }
 .sce .sce-chat-input-actions .sce-ai-action-hint { margin-left:auto; }
+/* 💬 OOC 막대 · ⚙ 접이식 설정 · 🗂 제안 상자 (v1.16.0 — 노벨 스튜디오 OOC·설정 정리 이식) */
+.sce .sce-ooc-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; margin-bottom:8px;
+  border:1px solid var(--sce-line); border-radius:8px; background:var(--sce-surface); }
+.sce .sce-ooc-icon { font-size:15px; }
+.sce .sce-ooc-title { flex:1 1 160px; min-width:120px; min-height:34px !important; padding:4px 8px; font-weight:650;
+  border:1px solid transparent; background:transparent; }
+.sce .sce-ooc-title:hover, .sce .sce-ooc-title:focus { border-color:var(--sce-line); background:var(--sce-field); }
+.sce .sce-ooc-spacer { flex:1 1 auto; }
+.sce .sce-ooc-list { width:100%; display:flex; flex-direction:column; gap:4px; padding-top:6px; border-top:1px solid var(--sce-line); }
+.sce .sce-ooc-item { display:flex; align-items:center; gap:8px; }
+.sce .sce-ooc-open { flex:1; display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; min-height:40px; }
+.sce .sce-ooc-open b { font-size:13px; }
+.sce .sce-chat-settings { margin:0 0 8px; }
+.sce .sce-chat-settings > summary { cursor:pointer; color:var(--sce-muted); font-size:12.5px; }
+.sce .sce-chat-log { min-height:240px; }
+.sce .sce-chat-msg.is-extract { border-style:dashed; }
+.sce .sce-chat-input-actions .sce-ooc-spacer { flex:1 1 auto; }
+.sce .sce-proposal { border-left-color:var(--sce-accent); }
+.sce .sce-proposal-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+.sce .sce-proposal-sum { color:var(--sce-muted); font-size:12px; }
+.sce .sce-proposal-note { margin:4px 0 8px; }
+.sce .sce-prop-item { margin:6px 0; padding:8px 10px; border:1px solid var(--sce-line); border-radius:6px; background:var(--sce-surface); }
+.sce .sce-prop-item.is-off { opacity:.55; }
+.sce .sce-prop-item.is-conflict { border-color:var(--sce-warning); }
+.sce .sce-prop-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.sce .sce-prop-head input[type=checkbox] { min-height:0; width:16px; height:16px; margin:0; }
+.sce .sce-prop-badge { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; background:var(--sce-surface-soft); color:var(--sce-muted); }
+.sce .sce-prop-badge.is-add { background:var(--sce-success-bg); color:var(--sce-success); }
+.sce .sce-prop-badge.is-update { background:color-mix(in srgb, var(--sce-accent) 18%, transparent); color:var(--sce-accent); }
+.sce .sce-prop-badge.is-remove { background:var(--sce-danger-bg); color:var(--sce-danger); }
+.sce .sce-prop-badge.is-conflict { background:var(--sce-warning-bg); color:var(--sce-warning); }
+.sce .sce-prop-reason { margin-top:4px; color:var(--sce-muted); font-size:12.5px; }
+.sce .sce-prop-body { margin-top:6px; }
+.sce .sce-prop-code { margin:0; padding:8px; max-height:220px; overflow:auto; font-size:11.5px; line-height:1.45;
+  background:var(--sce-field); border-radius:4px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.sce .sce-prop-diff { display:flex; flex-direction:column; gap:2px; font-size:12px; }
+.sce .sce-prop-diff .k { color:var(--sce-text-strong); font-weight:650; }
+.sce .sce-prop-diff .b { color:var(--sce-danger); text-decoration:line-through; opacity:.8; }
+.sce .sce-prop-diff .a { color:var(--sce-success); }
+.sce .sce-proposal-foot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:8px; border-top:1px solid var(--sce-line); }
 /* 작업 내역 (v1.9.7) */
 .sce .sce-worklog { margin:10px 0; }
 .sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
@@ -4499,11 +4539,12 @@ function chatRules(blank) {
     '## 대화 규약 — 이 대화에서 답하는 방식 (아래 출력 형식보다 우선)',
     '- 당신은 SimCore 시뮬레이션 스키마 설계 어시스턴트입니다. 사용자와 **대화하며** 작업본을 함께 설계합니다.',
     '- 답은 먼저 **사람에게 하는 말**(설명·이유·되묻기)입니다. 심코어의 구조·동작 질문에는 아래 규격을 근거로 답하세요.',
+    // v1.16.0 — 대화는 상담(OOC)만. 반영은 [🗂 정리해서 반영]이 대화 전체를 받아 따로 정리한다 (노벨 스튜디오의 OOC·설정 정리).
+    '- **이 대화에서는 JSON을 붙이지 않습니다.** 작업본에 넣는 일은 사용자가 [🗂 정리해서 반영]을 누를 때 따로 요청됩니다 — 그때 대화 전체가 패치로 정리됩니다.',
     blank
-      ? '- 작업본이 아직 비어 있습니다. 무엇을 만들지 합의되면 답 끝에 규격에 맞는 **스키마 JSON 코드펜스(```json … ```) 하나**를 붙입니다. 논의·질문만이면 붙이지 마세요.'
-      : '- 작업본을 **바꿔야 할 때만** 답 끝에 **패치 JSON 코드펜스(```json … ```) 하나**를 붙입니다. 논의·질문·설명만이면 붙이지 마세요.',
-    '- 바꾸기 전에 확인이 필요하면 먼저 묻고, 그 턴에는 JSON을 붙이지 마세요. 사용자가 "해줘·반영해·넣어줘"라고 하면 붙입니다.',
-    '- JSON을 붙일 때는 **무엇을 왜 바꾸는지** 사람 말로 짧게 요약한 뒤 코드펜스를 둡니다. 코드펜스 뒤에는 아무 말도 쓰지 않습니다.',
+      ? '- 작업본이 아직 비어 있습니다. 무엇을 만들지(변수·규칙·상태창의 큰 그림)를 대화로 정하세요. 정해진 것을 항목으로 요약해 두면 정리 때 그대로 반영됩니다.'
+      : '- 사용자가 "해줘·반영해·넣어줘"라고 하면, 무엇을 어떻게 바꿀지 **항목별로 짧게 정리**한 뒤 "[🗂 정리해서 반영]을 누르면 작업본에 넣을 수 있어요"라고 알려 주세요. 합의가 덜 됐으면 먼저 물으세요.',
+    '- 답은 짧고 구체적으로 — 변수 id·조건식·수치는 실제 규격 어휘로 적어야 정리 때 그대로 옮겨집니다.',
     '- 이력의 "[적용됨 …]"은 사용자가 그 JSON을 작업본에 넣었다는 뜻, "[적용되지 않음]"은 버렸다는 뜻입니다. '
       + (blank ? '' : '아래 "이미 있는 항목"이 지금의 작업본이니 그것을 기준으로 답하세요.'),
     ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
@@ -4624,6 +4665,123 @@ function splitChatResponse(raw) {
 /** 이번 전송 토큰 추정 (±30%) — 시스템 + 이력 + 이번 메시지 */
 function chatTurnEstimate(system, messages) {
   return estTokens(system) + (messages || []).reduce((a, m) => a + estTokens(m.content), 0);
+}
+
+// ── 🗂 정리해서 반영 (v1.16.0) — 대화는 상담, 반영은 버튼 ─────────────────────
+// 노벨 스튜디오를 직접 써 본 유저: "OOC로 대화하기도 편하고, 설정 정리 버튼으로 설정집을 만드는 것 자체가 쓰기 좋더라".
+// 옮긴 것: 말풍선에는 JSON이 없다. [🗂 정리해서 반영]이 대화 전체(+입력창의 추가 요청)를 받아 패치로 정리하고,
+// 항목마다 체크·이유·칸별 비교가 있는 제안 상자로 낸다. 어시스턴트가 규약을 어기고 JSON을 붙이면 버리지 않고 같은 상자로.
+const EXTRACT_TRANSCRIPT_BYTES = 48 * 1024;
+const CHAT_PERSIST_MSGS = 80, CHAT_PERSIST_SHELF = 12, CHAT_PERSIST_BYTES = 400 * 1024;
+const chatUid = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const chatName = (title, msgs) => (title && String(title).trim()) || clipText((msgs || []).find((m) => m.role === 'user')?.text || '', 30) || '새 채팅';
+
+/** 대화 → 정리 요청에 실을 기록. 적용됨/안 됨 표식은 남기고(이미 들어간 것을 또 내지 않게) JSON 원문은 뺀다. 뒤에서부터 bytes 안 */
+function chatTranscript(msgs, bytes = EXTRACT_TRANSCRIPT_BYTES) {
+  const lines = [];
+  let used = 0;
+  for (let i = (msgs || []).length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    let body = String(m.text || '').trim();
+    if (!body) continue;
+    if (m.role === 'ai' && m.applied) body += `\n[이 수정안은 작업본에 적용됨 — ${m.applied}]`;
+    else if (m.role === 'ai' && m.json && !m.pending) body += '\n[이 수정안은 적용되지 않음]';
+    const line = `${m.role === 'ai' ? '어시스턴트' : '제작자'}: ${body}`;
+    const b = byteLen(line);
+    if (lines.length && used + b > bytes) break;
+    lines.unshift(line); used += b;
+  }
+  return lines.join('\n\n');
+}
+
+function extractRules(blank) {
+  return [
+    '## 정리 규약 — 이번 답은 대화가 아니라 정리입니다',
+    '- 아래 <대화>는 제작자와 어시스턴트가 작업본을 두고 나눈 상담입니다. 거기서 **반영하기로 합의된 것**을 전부 골라 '
+      + (blank ? '규격에 맞는 **스키마 JSON 하나**' : '**패치 JSON 하나**') + '로 정리하세요.',
+    '- 합의되지 않은 아이디어·검토만 한 것·"나중에"라고 한 것은 넣지 마세요. 이미 "[적용됨]" 표식이 붙은 것은 다시 내지 마세요.',
+    '- 대화에 없는 내용을 지어내지 마세요. 애매하면 넣지 말고 note에 적으세요.',
+    ...(blank ? [] : [
+      '- 항목마다 왜 넣는지 한 줄 — 최상위 `"reasons": { "섹션:id": "이유" }` (섹션은 vars/derived/checks/events/randomEvents/directives/actions/allow).',
+      '- 패치로 못 다루는 것(상태창·onTurn·setup·meta·편성표·달력)은 JSON에 넣지 말고 note에 "어느 탭에서 어떻게"로 적으세요.',
+    ]),
+    '- 반영할 것이 없으면 add/update/remove 없이 `{"note": "이유"}` 하나만.',
+    '- 출력은 **JSON 하나**(코드펜스 가능)이고 그 앞뒤에 다른 말을 쓰지 마세요. 최상위 `"note"`에 반영 안 한 것·확인할 것을 적으세요.',
+    '',
+  ];
+}
+
+/** 정리 요청 — 시스템(📌 지침 + 정리 규약 + 규격서 + 작업 내역)과 메시지 하나(<대화> + 추가 요청) */
+function buildExtractRequest(schema, msgs, instruction, botCtxText, workLog = null) {
+  const blank = schemaIsBlank(schema);
+  const extra = String(instruction || '').trim();
+  const request = '아래 <대화>에서 작업본에 반영하기로 합의된 것 전부' + (extra ? ` — 특히: ${extra}` : '');
+  const spec = blank
+    ? buildSchemaSpecPrompt('business', true, { request, botCtx: botCtxText })
+    : buildPatchExportPrompt(schema, { request, botCtx: botCtxText, notes: false });
+  const system = notesLines(schema).join('\n') + (notesLines(schema).length ? '\n' : '') + extractRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
+  const user = ['<대화>', chatTranscript(msgs) || '(대화 없음)', '</대화>', '',
+    extra ? `제작자의 추가 요청: ${extra}` : null,
+    blank ? '위 대화에서 정한 대로 스키마 JSON 하나를 출력하세요.' : '위 대화에서 반영하기로 한 것을 패치 JSON 하나로 출력하세요 (reasons·note 포함).']
+    .filter((l) => l != null).join('\n');
+  return { system, messages: [{ role: 'user', content: user }] };
+}
+
+/** 정리 응답의 JSON에서 reasons·note를 떼어 패치 본문만 남긴다 (parsePatch는 모르는 최상위 키를 거부한다) */
+function splitProposal(jsonText) {
+  let obj;
+  try { obj = JSON.parse(String(jsonText)); } catch (e) { return { ok: false, error: `JSON 문법 오류 — ${e.message}` }; }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, error: 'JSON 객체가 아님' };
+  const reasons = {};
+  if (obj.reasons && typeof obj.reasons === 'object' && !Array.isArray(obj.reasons)) {
+    for (const [k, v] of Object.entries(obj.reasons)) if (typeof v === 'string' && v.trim()) reasons[String(k).trim()] = clipText(v, 200);
+  }
+  const note = typeof obj.note === 'string' ? clipText(obj.note, 600) : '';
+  const body = { ...obj }; delete body.reasons; delete body.note;
+  const empty = !Object.keys(body).filter((k) => k !== 'patchVersion').length;
+  return { ok: true, reasons, note, body: empty ? null : body };
+}
+
+/** 제안 상자의 체크대로 패치를 자른다 — picks['add:vars:hp'] === false 면 뺀다. remove는 체크한 것만(기본 해제) */
+function pickPatch(patch, picks) {
+  const p2 = JSON.parse(JSON.stringify(patch));
+  for (const op of ['add', 'update']) {
+    for (const [sec, list] of Object.entries(p2[op] || {})) {
+      p2[op][sec] = list.filter((e) => picks[`${op}:${sec}:${e.id}`] !== false);
+      if (!p2[op][sec].length) delete p2[op][sec];
+    }
+  }
+  for (const [sec, ids] of Object.entries(p2.remove || {})) {
+    p2.remove[sec] = ids.filter((id) => picks[`remove:${sec}:${id}`] === true);
+    if (!p2.remove[sec].length) delete p2.remove[sec];
+  }
+  return p2;
+}
+
+/** 수정 항목의 칸별 변화 — [{ key, before, after }] (planPatch의 update op: previous = 기존, entry = 병합 결과) */
+function entryDiffLines(before, after) {
+  const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])].filter((k) => k !== 'id');
+  const J = (v) => JSON.stringify(v);
+  return keys.filter((k) => J(before?.[k]) !== J(after?.[k])).map((k) => ({ key: k, before: before?.[k], after: after?.[k] }));
+}
+
+/** 저장소에서 온 대화를 믿지 않는다 — 모양·상한. JSON 원문·대기 표식은 안 남긴다(편집기를 닫으면 계획 상자도 없다) */
+function sanitizeChatMsgs(list, max = CHAT_PERSIST_MSGS) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((m) => m && typeof m === 'object' && (m.role === 'user' || m.role === 'ai') && typeof m.text === 'string' && m.text)
+    .slice(-max).map((m) => ({ role: m.role, text: m.text.slice(0, 20000), ts: Number(m.ts) || 0,
+      ...(typeof m.applied === 'string' && m.applied ? { applied: clipText(m.applied, 200) } : {}),
+      ...(m.kind === 'extract' ? { kind: 'extract' } : {}) }));
+}
+function sanitizeChats(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  const cur = o.current && typeof o.current === 'object' ? o.current : {};
+  const current = { id: typeof cur.id === 'string' ? cur.id : '', title: clipText(cur.title, 60), msgs: sanitizeChatMsgs(cur.msgs) };
+  let shelf = (Array.isArray(o.shelf) ? o.shelf : []).filter((c) => c && typeof c === 'object')
+    .map((c) => ({ id: typeof c.id === 'string' && c.id ? c.id : chatUid(), title: clipText(c.title, 60), msgs: sanitizeChatMsgs(c.msgs), at: Number(c.at) || 0 }))
+    .filter((c) => c.msgs.length).slice(0, CHAT_PERSIST_SHELF);
+  while (shelf.length && byteLen(JSON.stringify({ current, shelf })) > CHAT_PERSIST_BYTES) shelf.pop();
+  return { current, shelf };
 }
 
 // ── 탭 단위로 AI에게 맡기기 ──────────────────────────────────
@@ -12538,7 +12696,55 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let patchSource = 'json'; // 패치 계획·적용 UI를 어느 층에 그릴까: 'top'(위층 생성) | 'json'(② 붙여넣기) | 'chat'(💬 대화)
   // 💬 대화 상태 (v1.9.0) — 편집기 인스턴스에만 산다(닫으면 사라진다). msgs[]: { role:'user'|'ai', text, json?, pending?, applied?, jsonError? }
   // sent/got = 이 대화에서 보낸·받은 토큰 추정 누적 — 리수 호출 결과에 사용량이 안 실려 와서 추정이 한계다.
-  let chat = { msgs: [], busy: false, seq: 0, note: null, sent: 0, got: 0, draft: '' };
+  let chat = { id: '', title: '', msgs: [], busy: false, seq: 0, note: null, sent: 0, got: 0, draft: '' };
+  // 📂 여러 채팅 + 저장 (v1.16.0) — 지금 채팅과 지난 채팅을 캐릭터별로 남긴다(어댑터 ai.loadChats/saveChats). 노벨 스튜디오의
+  // 새 채팅·지난 채팅. "대화는 안 남긴다"(2026-09-10)를 뒤집는 결정 — 유저가 노벨 스튜디오를 써 보고 그쪽 모양을 원했다.
+  let chatShelf = [];            // { id, title, msgs, at } — 새것부터
+  let chatListOpen = false;      // 📂 목록 펼침
+  let chatDelArm = false;        // 🗑 두 번 누르기 (규칙 #6 — 패널 위 confirm 금지)
+  let chatSettingsOpen = false;  // ⚙ 모델·전송·지침 접이식
+  let chatProposal = null;       // 🗂 제안 상자 부가 { reasons, note, picks, fresh } — patchPlan·patchChoices·aiFull은 창작 탭과 공유
+  let chatPersistTimer = null;
+  const chatPersist = () => {
+    if (!(ai && typeof ai.saveChats === 'function')) return;
+    if (chatPersistTimer) clearTimeout(chatPersistTimer);
+    chatPersistTimer = setTimeout(() => {
+      chatPersistTimer = null;
+      try { Promise.resolve(ai.saveChats({ current: { id: chat.id, title: chat.title, msgs: sanitizeChatMsgs(chat.msgs) }, shelf: chatShelf })).catch(() => {}); } catch { /* 방어 */ }
+    }, 400);
+  };
+  const dropChatProposal = () => { if (patchSource === 'chat') { patchPlan = null; patchChoices = {}; aiFull = null; chatProposal = null; } };
+  /** 지금 채팅을 지난 채팅 맨 앞에 (비었으면 안 넣는다) */
+  const shelveChat = () => {
+    if (!chat.msgs.length) return;
+    chatShelf.unshift({ id: chat.id || chatUid(), title: chat.title, msgs: sanitizeChatMsgs(chat.msgs), at: Date.now() });
+    chatShelf = sanitizeChats({ shelf: chatShelf }).shelf;
+  };
+  const freshChat = (keepDraft = true) => ({ id: chatUid(), title: '', msgs: [], busy: false, seq: chat.seq + 1, note: null, sent: 0, got: 0, draft: keepDraft ? chat.draft : '' });
+  function newChat() { if (chat.busy) return; dropChatProposal(); for (const m of chat.msgs) if (m.pending) m.pending = false; shelveChat(); chat = freshChat(); chatListOpen = false; chatDelArm = false; chatPersist(); rerender(); }
+  function clearChat() { if (chat.busy) return; dropChatProposal(); chat = freshChat(); chatDelArm = false; chatPersist(); rerender(); }
+  function openChat(id) {
+    if (chat.busy) return;
+    const x = chatShelf.find((c) => c.id === id);
+    if (!x) return;
+    dropChatProposal();
+    chatShelf = chatShelf.filter((c) => c.id !== id);
+    shelveChat();
+    chat = { ...freshChat(), id: x.id, title: x.title, msgs: x.msgs.map((m) => ({ ...m })) };
+    chatListOpen = false; chatPersist(); rerender();
+  }
+  function deleteShelved(id) { chatShelf = chatShelf.filter((c) => c.id !== id); if (!chatShelf.length) chatListOpen = false; chatPersist(); rerender(); }
+  if (ai && typeof ai.loadChats === 'function') {
+    try {
+      Promise.resolve(ai.loadChats()).then((raw) => {
+        if (destroyed) return;
+        const s = sanitizeChats(raw);
+        if (!chat.msgs.length && s.current.msgs.length) { chat.id = s.current.id || chatUid(); chat.title = s.current.title; chat.msgs = s.current.msgs; }
+        chatShelf = s.shelf;
+        if (s.current.msgs.length || s.shelf.length) render();
+      }).catch(() => {});
+    } catch { /* 방어 */ }
+  }
   // 템플릿에서 시작 (v1.9.1) — 1층 창작·대화 탭 안에서도 내장 템플릿을 연다. 패널의 [편집 작업공간 → 템플릿에서 시작]과 같은 일.
   // 실기 제보: "대화는 AI 어시스턴트에 있는데 템플릿은 다른 메뉴라 찾기 불편하다" + 빈 작업본은 통짜 규격서(42K)가 나가고
   // 빈 템플릿만 열어도 패치 경로(8.6K)로 떨어진다 — 대화로 새 봇을 만들 때 첫 수가 템플릿이어야 싸다.
@@ -13096,11 +13302,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (!text) return;
     syncChatPending();
     // 계획 상자에 뜬 채 다음 말을 하면 그 수정안은 지나간 것 — 적용 안 됨으로 접고 상자를 치운다
-    if (patchSource === 'chat') { patchPlan = null; patchChoices = {}; aiFull = null; }
+    dropChatProposal();
     for (const m of chat.msgs) if (m.pending) m.pending = false;
     const mySeq = ++chat.seq;
+    if (!chat.id) chat.id = chatUid();
     chat.msgs.push({ role: 'user', text, ts: Date.now() });
-    chat.draft = ''; chat.busy = true; chat.note = null;
+    chat.draft = ''; chat.busy = true; chat.note = null; chatDelArm = false;
+    chatPersist();
     rerender();
 
     let ctxText = '';
@@ -13164,8 +13372,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const msg = { role: 'ai', ts: Date.now(),
       text: split.prose || (split.json ? (blank ? '(설명 없이 스키마만 보냈어요)' : '(설명 없이 수정안만 보냈어요)') : res.trim()) };
     if (split.json && got && got.ok) {
+      // 규약상 대화엔 JSON이 없지만, 그래도 오면 버리지 않고 🗂 제안 상자로 (v1.16.0)
       msg.json = split.json; msg.pending = true;
       patchSource = 'chat';
+      chatProposal = { reasons: {}, note: '', picks: {}, fresh: false };
       if (blank) { aiFull = got.full; aiFullReport = null; }
       else { patchText = split.json; patchPlan = { patch: got.patch, plan: got.plan }; patchChoices = {}; }
     } else if (split.json) {
@@ -13174,7 +13384,229 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     }
     chat.msgs.push(msg);
     chat.busy = false;
+    chatPersist();
     rerender();
+  }
+
+  // ── 🗂 정리해서 반영 (v1.16.0) — 대화 전체(+입력창의 추가 요청)를 패치로 정리해 제안 상자로 ──
+  async function runChatExtract() {
+    if (!ai || !ai.generate || chat.busy) return;
+    const instruction = chat.draft.trim();
+    if (!chat.msgs.length && !instruction) return;
+    syncChatPending();
+    dropChatProposal();
+    for (const m of chat.msgs) if (m.pending) m.pending = false;
+    const mySeq = ++chat.seq;
+    if (!chat.id) chat.id = chatUid();
+    chat.msgs.push({ role: 'user', kind: 'extract', text: instruction ? `🗂 정리해서 반영 — ${instruction}` : '🗂 정리해서 반영', ts: Date.now() });
+    chat.draft = ''; chat.busy = true; chat.note = null; chatDelArm = false;
+    chatPersist();
+    rerender();
+
+    let ctxText = '';
+    if (aiCtxOn) ctxText = assembleBotContext(await fetchBotCtx()).text;
+    if (chat.seq !== mySeq || destroyed) return;
+
+    const blank = schemaIsBlank(schema);
+    const req = buildExtractRequest(schema, chat.msgs.slice(0, -1), instruction, ctxText, workLog);
+    chat.sent += chatTurnEstimate(req.system, req.messages);
+    const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
+      : aiGenModel?.choice === 'cli' ? '이 PC의 Claude Code·Codex'
+      : aiGenModel?.choice === 'static' ? '직접 지정 모델' : '보조 모델';
+    // 붙어 온 JSON 검사 — reasons·note를 떼고 통짜는 validateSchema, 패치는 parsePatch+planPatch
+    const inspect = (json) => {
+      const sp = splitProposal(json);
+      if (!sp.ok) return { ok: false, errors: [sp.error] };
+      if (!sp.body) return { ok: true, empty: true, note: sp.note };
+      if (blank) {
+        const v = validateSchema(sp.body);
+        if (!v.ok) return { ok: false, errors: v.errors.map((e) => `${e.path} — ${e.msg}`) };
+        return { ok: true, full: { schema: sp.body, warnings: v.warnings }, note: sp.note, reasons: sp.reasons };
+      }
+      const p = patchMod.parsePatch(sp.body);
+      if (!p.ok) return { ok: false, errors: p.errors };
+      const plan = patchMod.planPatch(schema, p.patch);
+      if (plan.errors.length) return { ok: false, errors: plan.errors };
+      return { ok: true, patch: p.patch, plan, note: sp.note, reasons: sp.reasons };
+    };
+
+    let res = null, split = null, got = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const msgs = attempt === 0 ? req.messages
+        : [...req.messages, { role: 'assistant', content: res }, { role: 'user', content:
+            '방금 출력한 JSON이 형식 검사에서 거부되었습니다:\n' + got.errors.slice(0, 8).map((e) => '- ' + e).join('\n')
+            + '\n\n설명 없이, 고친 JSON 하나만 다시 출력하세요.' }];
+      if (attempt) chat.sent += chatTurnEstimate(req.system, msgs);
+      let r = null;
+      try { r = await ai.generate({ system: req.system, messages: msgs }); } catch (e) { r = { error: '호출 예외: ' + e.message }; }
+      if (chat.seq !== mySeq || destroyed) return;
+      if (typeof r !== 'string' || !r.trim()) {
+        chat.busy = false;
+        chat.note = r && r.blocked
+          ? `⚠ ${selectedModelLabel} 호출이 이 환경에서 차단됐어요 — 정리는 직결 호출이 되는 환경에서만 됩니다.`
+          : `⚠ ${selectedModelLabel} 호출 실패 — ${(r && r.error) || '원인 불명 — 콘솔(F12)의 [simcore] 생성 호출 로그를 확인하세요'}`;
+        chatPersist(); rerender();
+        return;
+      }
+      chat.got += estTokens(r);
+      res = r;
+      split = splitChatResponse(r);
+      if (!split.json) { got = { ok: false, errors: ['JSON이 없음 — 정리 결과는 JSON 하나여야 합니다'] }; continue; }
+      got = inspect(split.json);
+      if (got.ok) break;
+    }
+
+    const msg = { role: 'ai', kind: 'extract', ts: Date.now(), text: '' };
+    if (got && got.ok && got.empty) {
+      msg.text = '🗂 반영할 것이 없대요' + (got.note ? ` — ${got.note}` : '.');
+    } else if (got && got.ok) {
+      msg.text = got.note ? `🗂 정리했어요 — ${got.note}` : '🗂 정리했어요. 아래에서 확인하고 반영할 것만 고르세요.';
+      msg.json = split.json; msg.pending = true;
+      patchSource = 'chat';
+      chatProposal = { reasons: got.reasons || {}, note: got.note || '', picks: {}, fresh: false };
+      if (blank) { aiFull = got.full; aiFullReport = null; }
+      else { patchText = split.json; patchPlan = { patch: got.patch, plan: got.plan }; patchChoices = {}; }
+    } else if (split && split.json) {
+      msg.text = split.prose || '(정리 결과가 형식 검사를 통과하지 못했어요)';
+      msg.jsonError = got.errors[0] + (got.errors.length > 1 ? ` (외 ${got.errors.length - 1}건)` : '');
+      msg.jsonRaw = split.json;
+    } else {
+      msg.text = (split && split.prose) || String(res || '').trim() || '(빈 답)';
+    }
+    chat.msgs.push(msg);
+    chat.busy = false;
+    chatPersist();
+    rerender();
+  }
+
+  /**
+   * 🗂 제안 상자 (v1.16.0) — 노벨 스튜디오 설정 정리 제안처럼 항목마다 체크·이유·비교. 창작·JSON 경로의 변경 계획(planBoxUI)과
+   * 같은 patchPlan 위에서 돌되 모양만 다르다: 새 항목은 본문, 수정은 칸별 전/후, 삭제는 기본 해제, 충돌은 기본 해제 + 교체/새 id.
+   */
+  function proposalReviewUI() {
+    const wrap = h('div');
+    const renderBox = () => {
+      wrap.replaceChildren();
+      if (!patchPlan) return;
+      const { patch, plan } = patchPlan;
+      const meta = chatProposal || (chatProposal = { reasons: {}, note: '', picks: {}, fresh: false });
+      const picks = meta.picks;
+      const box = h('div', { class: 'sce-block sce-proposal' });
+      if (plan.errors.length) {
+        box.append(h('div', { class: 'sce-err' }, '제안을 적용할 수 없습니다:'), ...plan.errors.map((e) => h('div', { class: 'sce-err' }, `- ${e}`)));
+        wrap.appendChild(box); return;
+      }
+      const secLabel = (s) => patchMod.SECTIONS[s]?.label ?? s;
+      const entryName = (e) => e?.label ?? e?.notify ?? e?.text ?? '';
+      const conflictByKey = new Map(plan.conflicts.map((c) => [`${c.section}:${c.id}`, c]));
+      const items = plan.ops.map((o) => ({ o, key: `${o.op}:${o.section}:${o.id}`, conflict: o.op === 'add' ? conflictByKey.get(`${o.section}:${o.id}`) ?? null : null }));
+      const isOn = (it) => picks[it.key] ?? (it.o.op !== 'remove' && !it.conflict); // 삭제·충돌은 기본 해제 — 조용한 교체가 없게
+      const chosen = () => items.filter(isOn);
+
+      box.appendChild(h('div', { class: 'sce-proposal-head' },
+        h('div', { class: 'sce-patch-title' }, '🗂 정리 제안'),
+        h('div', { class: 'sce-proposal-sum' }, `추가 ${plan.summary.add} · 수정 ${plan.summary.update} · 삭제 ${plan.summary.remove}${plan.conflicts.length ? ` · 충돌 ${plan.conflicts.length}` : ''}`)));
+      box.appendChild(h('div', { class: 'sce-hint', style: 'margin:0 0 6px' }, '체크한 것만 반영돼요. 반영하기 전엔 작업본이 안 바뀝니다.'));
+      if (meta.note) box.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + meta.note));
+      if (patch.randomEventsChance != null) box.appendChild(h('div', {}, `랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
+      for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
+      if (items.length >= 4) {
+        box.appendChild(h('div', { class: 'sce-row' },
+          h('button', { class: 'sce-btn sce-mini', onclick: () => { for (const it of items) if (it.o.op !== 'remove' && !it.conflict) picks[it.key] = true; renderBox(); } }, '추가·수정 전체 선택'),
+          h('button', { class: 'sce-btn sce-mini', onclick: () => { for (const it of items) picks[it.key] = false; renderBox(); } }, '전체 해제')));
+      }
+
+      const V = (v) => { const s = JSON.stringify(v); return s === undefined ? '(없음)' : s.length > 90 ? s.slice(0, 89) + '…' : s; };
+      for (const it of items) {
+        const { o } = it;
+        const on = isOn(it);
+        const card = h('div', { class: 'sce-prop-item' + (on ? '' : ' is-off') + (it.conflict ? ' is-conflict' : '') });
+        const cb = h('input', { type: 'checkbox', 'aria-label': '이 항목 반영' });
+        cb.checked = on;
+        cb.onchange = () => { picks[it.key] = !!cb.checked; renderBox(); };
+        const badge = it.conflict ? '충돌' : o.op === 'add' ? '새 항목' : o.op === 'update' ? '수정' : '삭제';
+        const name = entryName(o.entry) || entryName(o.previous);
+        card.appendChild(h('div', { class: 'sce-prop-head' }, cb,
+          h('span', { class: 'sce-prop-badge is-' + (it.conflict ? 'conflict' : o.op) }, badge),
+          h('b', {}, `${secLabel(o.section)} · ${o.id}`),
+          name ? h('span', { class: 'sce-hint', style: 'margin:0' }, String(name).slice(0, 60)) : null));
+        const reason = meta.reasons[`${o.section}:${o.id}`] || meta.reasons[o.id];
+        if (reason) card.appendChild(h('div', { class: 'sce-prop-reason' }, '💡 ' + reason));
+        if (on) {
+          const body = h('div', { class: 'sce-prop-body' });
+          if (it.conflict) {
+            const c = it.conflict, cf = `cf:${c.key}`, rn = `rn:${c.key}`;
+            const mode = patchChoices[cf] ?? (c.options.includes('replace') ? 'replace' : 'rename');
+            patchChoices[cf] = mode;
+            const OPT_LABEL = { replace: '기존을 교체', rename: '새 id로 추가', skip: '건너뛰기' };
+            body.appendChild(h('div', { class: 'sce-row' }, h('span', { class: 'sce-warn' }, `⚠ ${c.reason}`),
+              bindSelect(mode, c.options.map((x) => [x, OPT_LABEL[x]]), (x) => { patchChoices[cf] = x; renderBox(); })));
+            if (mode === 'rename') {
+              const suggested = patchChoices[rn] ?? patchMod.suggestFreeId(schema, patch, c.section, c.id);
+              patchChoices[rn] = suggested;
+              body.appendChild(h('div', { class: 'sce-row' }, h('span', { class: 'sce-hint', style: 'margin:0' }, '새 id'),
+                bindInput(suggested, (x) => { patchChoices[rn] = x.trim(); }, { cls: 'sce-w-m' })));
+            }
+            body.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+              `기존: ${entryName(c.existing) || '(이름 없음)'} ↔ 새것: ${entryName(c.incoming) || '(이름 없음)'}`));
+          } else if (o.op === 'add') {
+            const txt = JSON.stringify(o.entry, null, 1);
+            body.appendChild(h('pre', { class: 'sce-prop-code' }, txt.length > 700 ? txt.slice(0, 699) + '…' : txt));
+          } else if (o.op === 'update') {
+            const lines = entryDiffLines(o.previous, o.entry);
+            if (!lines.length) body.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' }, '본문은 그대로예요 — 바뀌는 칸이 없어요.'));
+            else body.appendChild(h('div', { class: 'sce-prop-diff' }, ...lines.map((d) => h('div', {},
+              h('span', { class: 'k' }, d.key + ': '), h('span', { class: 'b' }, V(d.before)), ' → ', h('span', { class: 'a' }, V(d.after))))));
+          } else {
+            body.appendChild(h('div', { class: 'sce-hint', style: 'margin:0' },
+              `지우면 '${entryName(o.previous) || o.id}' 항목이 작업본에서 사라져요 — 반영 뒤 [적용 전으로 되돌리기]가 돼요.`));
+          }
+          card.appendChild(body);
+        }
+        box.appendChild(card);
+      }
+      for (const e of (patchPlan.applyErrors || [])) box.appendChild(h('div', { class: 'sce-err' }, `✖ ${e}`));
+
+      const n = chosen().length;
+      const freshCb = h('input', { type: 'checkbox' });
+      freshCb.checked = !!meta.fresh;
+      freshCb.onchange = () => { meta.fresh = !!freshCb.checked; };
+      box.appendChild(h('div', { class: 'sce-proposal-foot' },
+        h('label', { class: 'sce-chip', style: 'cursor:pointer' }, freshCb, '반영한 뒤 새 채팅으로 (지금 채팅은 📂 지난 채팅에 남아요)'),
+        h('span', { class: 'sce-ooc-spacer' }),
+        h('button', { class: 'sce-btn', onclick: () => { dropChatProposal(); for (const m of chat.msgs) if (m.pending) m.pending = false; chatPersist(); rerender(); } }, '버리기'),
+        h('button', { class: 'sce-btn sce-ai-primary', disabled: n ? null : 'disabled', onclick: () => {
+          const eff = {};
+          for (const it of items) eff[it.key] = isOn(it);
+          const p2 = pickPatch(patch, eff);
+          const resolutions = {};
+          for (const c of plan.conflicts) {
+            const on = eff[`add:${c.section}:${c.id}`];
+            const m = on ? (patchChoices[`cf:${c.key}`] ?? 'skip') : 'skip';
+            resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
+          }
+          const r = patchMod.applyPatch(schema, p2, resolutions);
+          if (!r.ok) { patchPlan.applyErrors = r.errors; renderBox(); return; }
+          patchBackup = JSON.parse(JSON.stringify(schema));
+          patchReport = r.applied;
+          const a = r.applied;
+          chatMarkApplied([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
+            .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음');
+          recordWork({ via: 'chat', req: lastChatUserText(), why: meta.note || lastChatAiWhy(),
+            sum: [['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, k]) => k).map(([k, c]) => `${k} ${c}`).join(' · ') || '변화 없음',
+            ids: [...a.added, ...a.updated, ...a.removed] });
+          patchText = ''; patchPlan = null; patchChoices = {};
+          schema = r.schema;
+          const fresh = !!meta.fresh;
+          chatProposal = null;
+          if (fresh) { shelveChat(); chat = freshChat(); chatListOpen = false; }
+          chatPersist();
+          rerender();
+        } }, `선택한 ${n}개 반영`)));
+      wrap.appendChild(box);
+    };
+    renderBox();
+    return wrap;
   }
 
   /** 🗂 작업 내역 카드 (v1.9.7) — 적용한 것만, 새것부터. 저장 통로가 없고(플레이그라운드) 내역도 없으면 안 그린다 */
@@ -13239,14 +13671,55 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     syncChatPending();
     const box = h('div', { class: 'sce-chat' });
     const blank = schemaIsBlank(schema);
-    box.appendChild(h('div', { class: 'sce-hint' },
-      '규격서와 지금 작업본을 든 채 대화해요. 심코어 구조를 묻거나 설계를 논의할 수 있고, 바꾸기로 하면 수정안이 아래 변경 계획으로 와요 — '
-      + '적용을 누르기 전엔 작업본이 안 바뀝니다. 편집기를 닫으면 대화는 사라져요. 끝난 곁가지는 말풍선의 ✕로 지우면 다음 전송부터 안 실려 토큰을 아껴요.'));
-    { // 📌 작업 지침 (v1.9.18) — 답하기 전에 먼저 읽는 상시 규칙. 봇 JSON(meta.notes)에 저장, 요청서에도 동봉
-      const notes = String(schema.meta?.notes ?? '');
-      const n = notes.trim().length;
+    const canStore = !!(ai && typeof ai.saveChats === 'function');
+    const modelLabel = !aiGenModel || aiGenModel.choice === 'aux' ? '보조 모델'
+      : aiGenModel.choice === 'main' ? '메인 모델' : aiGenModel.choice === 'cli' ? '이 PC의 Claude Code·Codex' : '직접 지정 모델';
+
+    // ── 💬 채팅 막대 (v1.16.0) — 노벨 스튜디오 OOC처럼: 이름 · 개수 · [＋ 새 채팅] · [📂 지난 채팅] · [🗑] ──
+    const bar = h('div', { class: 'sce-ooc-bar' });
+    const titleIn = h('input', { class: 'sce-ooc-title', placeholder: chatName('', chat.msgs), 'aria-label': '채팅 이름',
+      title: '이 채팅 이름 — 비워 두면 첫 질문이 이름이 돼요' });
+    titleIn.value = chat.title || '';
+    titleIn.onchange = () => { chat.title = titleIn.value.trim().slice(0, 60); chatPersist(); };
+    const busyOrEmpty = (chat.busy || !chat.msgs.length) ? 'disabled' : null;
+    const delBtn = h('button', { class: 'sce-btn sce-mini' + (chatDelArm ? ' sce-danger' : ''), disabled: busyOrEmpty,
+      title: '지금 채팅 지우기 (되돌릴 수 없어요) — 남겨 두려면 [＋ 새 채팅]',
+      onclick: () => { if (!chatDelArm) { chatDelArm = true; rerender(); return; } clearChat(); } },
+      chatDelArm ? '한 번 더 누르면 지워요' : '🗑 지우기');
+    bar.append(h('span', { class: 'sce-ooc-icon', title: '지금 채팅' }, '💬'), titleIn,
+      h('span', { class: 'sce-hint', style: 'margin:0' }, chat.msgs.length ? `메시지 ${chat.msgs.length}개` : '빈 채팅'),
+      h('span', { class: 'sce-ooc-spacer' }),
+      h('button', { class: 'sce-btn sce-mini', disabled: busyOrEmpty, title: '지금 채팅은 📂 지난 채팅에 넣어 두고 새로 시작해요',
+        onclick: () => newChat() }, '＋ 새 채팅'),
+      h('button', { class: 'sce-btn sce-mini' + (chatListOpen ? ' is-on' : ''), disabled: chatShelf.length ? null : 'disabled',
+        title: '넣어 둔 채팅 — 열면 지금 채팅과 자리를 바꿔요', onclick: () => { chatListOpen = !chatListOpen; rerender(); } },
+        `📂 지난 채팅 ${chatShelf.length}`),
+      delBtn);
+    if (chatListOpen && chatShelf.length) {
+      const list = h('div', { class: 'sce-ooc-list' },
+        h('div', { class: 'sce-hint', style: 'margin:0' }, '이 캐릭터의 지난 채팅 — 열면 지금 채팅은 이 목록으로 들어와요'));
+      for (const c of chatShelf) {
+        list.appendChild(h('div', { class: 'sce-ooc-item' },
+          h('button', { class: 'sce-btn sce-ooc-open', disabled: chat.busy ? 'disabled' : null, onclick: () => openChat(c.id) },
+            h('b', {}, chatName(c.title, c.msgs)),
+            h('span', { class: 'sce-hint', style: 'margin:0' }, `메시지 ${c.msgs.length}개${c.at ? ' · ' + workLogStamp(c.at) : ''}`)),
+          h('button', { class: 'sce-btn sce-mini', title: '이 채팅 지우기 (되돌릴 수 없어요)', 'aria-label': '이 채팅 지우기',
+            onclick: () => deleteShelved(c.id) }, '🗑')));
+      }
+      bar.appendChild(list);
+    }
+    box.appendChild(bar);
+    if (!canStore) box.appendChild(h('div', { class: 'sce-hint' }, '이 환경엔 저장 통로가 없어 편집기를 닫으면 대화가 사라져요.'));
+
+    // ── ⚙ 모델·전송·지침 — 접이식. 대화가 주인공이라 설정은 한 줄로 접는다 (v1.16.0) ──
+    const notes = String(schema.meta?.notes ?? '');
+    const notesN = notes.trim().length;
+    const settings = h('details', { class: 'sce-fold sce-chat-settings', open: chatSettingsOpen ? 'open' : null },
+      h('summary', {}, `⚙ 모델·전송·지침 — ${modelLabel}${notesN ? ` · 📌 지침 ${notesN}자` : ''}${workLog.length ? ` · 🗂 작업 내역 ${workLog.length}건` : ''}`));
+    settings.ontoggle = () => { chatSettingsOpen = !!settings.open; };
+    { // 📌 작업 지침 (v1.9.18) — 답하기 전에 먼저 읽는 상시 규칙. 봇 JSON(meta.notes)에 저장, 요청서·정리 요청에도 동봉
       const ta = h('textarea', { class: 'sce-chat-notes-input', 'aria-label': '작업 지침',
-        placeholder: '예)\n- 실제 제작(JSON)은 상담이 끝나고 내가 "반영해줘"라고 할 때만.\n- 질문에는 추론 말고 다이제스트의 실제 데이터를 확인하고 답할 것. 모르면 지어내지 말고 모른다고 할 것.\n- 이번 작업: 시간에 따라 변하는 생존 스테이터스. HP는 구상 중이라 손대지 말 것.\n- 장기: HTML 봇을 심코어로 이식 중 — 심코어 데이터 밖의 로어북 설정은 "개편 이전" 정보로 볼 것.' });
+        placeholder: '예)\n- 질문에는 추론 말고 다이제스트의 실제 데이터를 확인하고 답할 것. 모르면 지어내지 말고 모른다고 할 것.\n- 이번 작업: 시간에 따라 변하는 생존 스테이터스. HP는 구상 중이라 손대지 말 것.\n- 장기: HTML 봇을 심코어로 이식 중 — 심코어 데이터 밖의 로어북 설정은 "개편 이전" 정보로 볼 것.' });
       ta.value = notes;
       ta.onchange = () => {
         const v = ta.value;
@@ -13254,19 +13727,17 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         if (v.trim()) schema.meta.notes = v; else delete schema.meta.notes;
         rerender();
       };
-      box.appendChild(h('details', { class: 'sce-fold sce-chat-notes', open: n ? null : null },
-        h('summary', {}, `📌 작업 지침 ${n ? `(켜짐 · ${n}자 — 매 턴 맨 앞에 실려요)` : '(비어 있음)'}`),
+      settings.appendChild(h('details', { class: 'sce-fold sce-chat-notes', open: notesN ? null : null },
+        h('summary', {}, `📌 작업 지침 ${notesN ? `(켜짐 · ${notesN}자 — 매 턴 맨 앞에 실려요)` : '(비어 있음)'}`),
         h('div', { class: 'sce-hint' },
-          '어시스턴트가 답하기 전에 먼저 읽는 상시 규칙이에요. 대화 방식(언제 JSON을 붙일지, 모르면 모른다고), 이번 작업 범위, 장기 방향 같은 걸 적어 두면 매번 다시 설명할 필요가 없어요. '
-          + '규격 내보내기 요청서에도 같이 실리고, 봇 JSON에 저장되며 개조 번들에는 안 실려요.'),
+          '어시스턴트가 답하기 전에 먼저 읽는 상시 규칙이에요. 이번 작업 범위, 장기 방향, 답하는 태도 같은 걸 적어 두면 매번 다시 설명할 필요가 없어요. '
+          + '정리 요청과 규격 내보내기 요청서에도 같이 실리고, 봇 JSON에 저장되며 개조 번들에는 안 실려요.'),
         ta));
     }
-    box.appendChild(templateStartBlock('chat'));
-    { const wl = workLogBlock(); if (wl) box.appendChild(wl); }
-
-    // 설정 — 모델(메인급 권장) + 전송 정보(캐릭터 동봉·토큰 추정)
+    settings.appendChild(templateStartBlock('chat'));
+    { const wl = workLogBlock(); if (wl) settings.appendChild(wl); }
     const grid = h('div', { class: 'sce-ai-settings-grid' });
-    box.appendChild(grid);
+    settings.appendChild(grid);
     {
       const gmLine = buildGenModelRow(true);
       if (gmLine) {
@@ -13301,27 +13772,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }
       card.appendChild(meter);
       card.appendChild(h('div', { class: 'sce-ai-context-note' },
-        '규격서와 작업본이 매 턴 함께 가요(±30% 추정, 리수가 실제 사용량을 안 알려줘요). 대화가 길어지면 초기화가 비용을 줄여요 — 앞부분 캐시가 되는 모델은 추정보다 덜 나가요.'));
+        '규격서와 작업본이 매 턴 함께 가요(±30% 추정, 리수가 실제 사용량을 안 알려줘요). 대화가 길어지면 [＋ 새 채팅]이 비용을 줄여요 — 앞부분 캐시가 되는 모델은 추정보다 덜 나가요.'));
       grid.appendChild(card);
     }
     renderMeter();
     if (aiBotCtx === undefined) fetchBotCtx().then(() => { if (!destroyed) { baseTok = null; renderMeter(); } });
+    box.appendChild(settings);
 
-    // 말풍선
+    // ── 말풍선 ──
     const log = h('div', { class: 'sce-chat-log', 'aria-live': 'polite' });
     if (!chat.msgs.length) {
       log.appendChild(h('div', { class: 'sce-chat-empty' },
-        blank
+        h('div', {}, h('b', {}, '작업본 밖 상담이에요.'), ' 규격서와 지금 작업본을 든 채 이야기해요 — 심코어 구조를 묻거나 설계를 논의할 수 있어요. 여기서 나눈 말은 작업본을 바로 바꾸지 않아요.'),
+        h('div', { style: 'margin-top:6px' }, '넣기로 정한 게 생기면 ', h('b', {}, '[🗂 정리해서 반영]'), '을 누르세요. 대화에서 정한 것을 패치로 정리해 보여 주고, 체크한 것만 작업본에 들어가요. 입력창에 쓴 글은 추가 요청으로 같이 가요.'),
+        h('div', { style: 'margin-top:6px' }, '대화가 길어지면 위의 ', h('b', {}, '[＋ 새 채팅]'), ' — 지금 채팅은 📂 지난 채팅에 남아 언제든 다시 열 수 있어요. 끝난 곁가지는 말풍선의 ✕로 지우면 다음 전송부터 안 실려요.'),
+        h('div', { style: 'margin-top:6px', class: 'sce-hint' }, blank
           ? '예: "학원 러브코메 봇인데 머릿속 선택지가 주인공을 괴롭히는 구조로 만들고 싶어. 변수는 뭘 두면 좋을까?"'
-          : '예: "지금 이벤트들이 왜 이렇게 짜였는지 설명해줘" · "산적 습격을 넣고 싶은데 어느 탭에 뭘 두면 돼?" · "그럼 그렇게 반영해줘"'));
+          : '예: "지금 이벤트들이 왜 이렇게 짜였는지 설명해줘" · "산적 습격을 넣고 싶은데 어느 탭에 뭘 두면 돼?" → 정하고 나서 [🗂 정리해서 반영]')));
     }
-    // 말풍선 지우기 (v1.9.19) — 커뮤니티 제보(에렌샤): "A를 논의하다 파생된 B를 풀고 A로 돌아오면 B는 이미 끝난 불필요한
-    // 데이터. 리수처럼 특정 질문·답만 지우고 올릴 내용만 보내고 싶다". 이력은 chat.msgs가 곧 프롬프트라 빼면 다음 전송부터
-    // 안 실린다. 계획 상자에 떠 있던 수정안(pending)을 지우면 상자도 같이 치운다 — 근거 말풍선 없는 계획은 남기지 않는다.
+    // 말풍선 지우기 (v1.9.19) — 이력은 chat.msgs가 곧 프롬프트라 빼면 다음 전송부터 안 실린다.
+    // 제안 상자에 떠 있던 수정안(pending)을 지우면 상자도 같이 치운다 — 근거 말풍선 없는 제안은 남기지 않는다.
     const chatDrop = (idx, count) => {
       if (chat.busy) return;
       const removed = chat.msgs.splice(idx, count);
-      if (removed.some((m) => m.pending) && patchSource === 'chat') { patchPlan = null; patchChoices = {}; aiFull = null; }
+      if (removed.some((m) => m.pending)) dropChatProposal();
+      chatPersist();
       rerender();
     };
     chat.msgs.forEach((m, i) => {
@@ -13332,13 +13807,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           ? h('button', { class: 'sce-btn sce-mini sce-chat-del', title: '여기부터 아래 전부 지우기',
             'aria-label': '여기부터 아래 지우기', onclick: () => chatDrop(i, chat.msgs.length - i) }, '⌫ 여기부터')
           : null);
-      const bubble = h('div', { class: 'sce-chat-msg ' + (m.role === 'ai' ? 'is-ai' : 'is-user') },
-        h('div', { class: 'sce-chat-who' }, h('span', {}, m.role === 'ai' ? '🤖 어시스턴트' : '🙂 나'), tools),
+      const who = m.role === 'ai' ? (m.kind === 'extract' ? '🗂 정리' : '🤖 어시스턴트') : '🙂 나';
+      const bubble = h('div', { class: 'sce-chat-msg ' + (m.role === 'ai' ? 'is-ai' : 'is-user') + (m.kind === 'extract' ? ' is-extract' : '') },
+        h('div', { class: 'sce-chat-who' }, h('span', {}, who), tools),
         h('div', { class: 'sce-chat-text' }, m.text));
       if (m.role === 'ai') {
         if (m.applied) bubble.appendChild(h('div', { class: 'sce-ok sce-chat-tag' }, `✅ 적용됨 — ${m.applied}`));
         else if (m.json && !m.pending) bubble.appendChild(h('div', { class: 'sce-hint sce-chat-tag' }, '수정안이 있었지만 적용하지 않았어요.'));
-        else if (m.pending) bubble.appendChild(h('div', { class: 'sce-hint sce-chat-tag' }, '📦 수정안이 아래 변경 계획에 떠 있어요 — 적용하거나 다음 말로 넘기면 버려져요.'));
+        else if (m.pending) bubble.appendChild(h('div', { class: 'sce-hint sce-chat-tag' }, '📦 수정안이 아래 제안 상자에 떠 있어요 — 반영하거나 다음 말로 넘기면 버려져요.'));
         if (m.jsonError) {
           const rawArea = h('textarea', { style: 'height:90px', readonly: 'readonly' });
           rawArea.value = m.jsonRaw || '';
@@ -13347,42 +13823,46 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
       }
       log.appendChild(bubble);
-      // 마지막 AI 말풍선 아래 — 계획 상자·통짜 확인·적용 내역 (창작 탭과 같은 UI, 같은 규율)
+      // 마지막 AI 말풍선 아래 — 적용 내역 · 🗂 제안 상자 · 통짜 확인 (같은 안전망, 모양만 제안 상자)
       if (i === chat.msgs.length - 1 && m.role === 'ai' && patchSource === 'chat') {
         const rb = patchReportBox();
         if (rb) log.appendChild(rb);
-        if (patchPlan) log.appendChild(planBoxUI());
+        if (patchPlan) log.appendChild(proposalReviewUI());
         for (const el of aiFullBoxes()) log.appendChild(el);
       }
     });
-    if (chat.busy) log.appendChild(h('div', { class: 'sce-generation-state' }, '답을 기다리고 있어요… 다른 탭을 봐도 결과는 여기에 남아요.'));
+    if (chat.busy) log.appendChild(h('div', { class: 'sce-generation-state' },
+      chat.msgs.at(-1)?.kind === 'extract' ? '🗂 정리하고 있어요… 대화에서 정한 것을 패치로 모아요.' : '답을 기다리고 있어요… 다른 탭을 봐도 결과는 여기에 남아요.'));
     if (chat.note) log.appendChild(h('div', { class: 'sce-warn' }, chat.note));
     box.appendChild(log);
-    // 새 말풍선·계획 상자가 붙었으면 로그를 맨 아래로 (v1.9.6). 붙은 뒤 레이아웃이 잡혀야 scrollHeight가 맞는다
+    // 새 말풍선·제안 상자가 붙었으면 로그를 맨 아래로 (v1.9.6). 붙은 뒤 레이아웃이 잡혀야 scrollHeight가 맞는다
     if (chat.msgs.length) {
       const toBottom = () => { try { log.scrollTop = log.scrollHeight; } catch { /* 가짜 DOM */ } };
       (typeof window !== 'undefined' && window.requestAnimationFrame) ? window.requestAnimationFrame(toBottom) : setTimeout(toBottom, 0);
     }
 
-    // 입력줄
+    // ── 입력줄 — [보내기]는 상담, [🗂 정리해서 반영]은 반영 ──
     const area = h('textarea', { class: 'sce-chat-input', 'aria-label': '어시스턴트에게 보낼 말',
-      placeholder: blank ? '무엇을 만들지 이야기해 보세요' : '물어보거나, 바꿀 것을 이야기해 보세요' });
+      placeholder: blank ? '무엇을 만들지 이야기해 보세요' : '물어보거나, 바꿀 것을 이야기해 보세요 — 정했으면 [🗂 정리해서 반영]' });
     area.value = chat.draft;
     const sendBtn = chat.busy
       ? h('button', { class: 'sce-btn', onclick: () => { chat.seq++; chat.busy = false; rerender(); } }, '취소')
       : h('button', { class: 'sce-btn sce-ai-primary', onclick: () => runChatSend() }, '보내기');
-    const refresh = () => { if (!chat.busy) sendBtn.disabled = !chat.draft.trim(); };
+    const extractBtn = h('button', { class: 'sce-btn', disabled: chat.busy ? 'disabled' : null,
+      title: '대화에서 정한 것을 패치로 정리해 제안 상자로 — 체크한 것만 반영돼요. 입력창에 쓴 글은 추가 요청으로 같이 가요',
+      onclick: () => runChatExtract() }, '🗂 정리해서 반영');
+    const refresh = () => {
+      if (chat.busy) return;
+      sendBtn.disabled = !chat.draft.trim();
+      extractBtn.disabled = !(chat.msgs.length || chat.draft.trim());
+    };
     area.oninput = () => { chat.draft = area.value; renderMeter(); refresh(); };
     area.onkeydown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runChatSend(); } };
     refresh();
-    const resetBtn = h('button', { class: 'sce-btn sce-mini', disabled: chat.msgs.length ? null : 'disabled', onclick: () => {
-      chat.seq++;
-      if (patchSource === 'chat') { patchPlan = null; patchChoices = {}; aiFull = null; }
-      chat = { msgs: [], busy: false, seq: chat.seq, note: null, sent: 0, got: 0, draft: chat.draft };
-      rerender();
-    } }, '🧹 대화 초기화');
     box.appendChild(h('div', { class: 'sce-chat-input-row' }, area,
-      h('div', { class: 'sce-chat-input-actions' }, resetBtn, h('span', { class: 'sce-ai-action-hint' }, 'Ctrl+Enter로 보내기'), sendBtn)));
+      h('div', { class: 'sce-chat-input-actions' },
+        h('span', { class: 'sce-ai-action-hint', style: 'margin-left:0' }, 'Ctrl+Enter로 보내기'),
+        h('span', { class: 'sce-ooc-spacer' }), extractBtn, sendBtn)));
     return box;
   }
 
@@ -15306,4 +15786,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 }
 
 module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost,
-  activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt, runTrialTurns };
+  activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt, runTrialTurns,
+  // 🗂 정리해서 반영·채팅 저장 (v1.16.0) — 테스트가 순수 함수로 본다
+  chatTranscript, extractRules, buildExtractRequest, splitProposal, pickPatch, entryDiffLines, sanitizeChats, sanitizeChatMsgs, chatName };

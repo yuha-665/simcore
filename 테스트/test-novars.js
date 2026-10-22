@@ -128,7 +128,8 @@ const base = (extra) => ({ simcore: '0.1', meta: { name: '변수 없음' }, vars
     ck('소스: 위치 top에서 빈 블록은 빈 줄을 안 남긴다', src.includes('const b = renderFor(idxStr); if (b) blocks.push(b);'), '');
   }
 
-  ck('버전 1.15.1 + 체인지로그', src.includes('//@version 1.15.1') && src.includes('// ── v1.15.1 ──'), '');
+  // 버전 핀은 test-bundle.js 한 곳에서만 — 여기선 v1.15.1 이상 + 체인지로그 항목만
+  ck('버전 1.15.1 이상 + 체인지로그', /\/\/@version (1\.(1[5-9]|[2-9]\d)\.\d+|[2-9]\.\d+\.\d+)/.test(src) && src.includes('// ── v1.15.1 ──'), '');
   console.log(`\n[test-novars] ${pass}/${pass + fail} 통과`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.log('FAIL 예외:', e.stack || e); process.exit(1); });

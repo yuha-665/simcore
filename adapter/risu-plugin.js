@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.15.1
-//@display-name SimCore (시뮬 엔진) v1.15.1 변수·상태창은 필수가 아니다
+//@version 1.16.0
+//@display-name SimCore (시뮬 엔진) v1.16.0 대화는 상담, 반영은 정리 버튼
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,22 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.16.0 ──────────────────────────────────────────────
+// **💬 대화는 상담, 반영은 [🗂 정리해서 반영] — 노벨 스튜디오 OOC·설정 정리 이식.** 유저가 노벨 스튜디오를 만들어 써 보니
+// "OOC로 대화하기도 편하고, 설정 정리 버튼으로 설정집을 만드는 기능 자체가 쓰기 좋더라. UI도 보기 낫더라". 심코어 편집기의
+// 💬 대화는 매 턴 JSON을 붙일지 말지를 모델이 판단하는 구조라 말풍선이 무겁고, 적용은 창작 탭과 같은 변경 계획 상자였다.
+// - [대화] 규약을 상담 전용으로: **이 대화에서는 JSON을 붙이지 않는다.** "반영해줘"엔 항목으로 정리하고 버튼을 안내한다.
+//   그래도 JSON이 오면 버리지 않고 같은 제안 상자로 (안전망 그대로).
+// - [🗂 정리해서 반영] 입력줄의 새 버튼 — 대화 전체(적용됨 표식 포함, 48KB까지) + 입력창의 글(추가 요청)을 정리 규약과 함께
+//   보내 패치 JSON 하나(최상위 reasons·note 동봉)를 받는다. 빈 작업본이면 통짜 스키마. 형식 불합격은 1회 재요청.
+// - [제안 상자] 변경 계획 대신 항목마다 체크 — 새 항목은 본문, 수정은 칸별 전/후, 삭제·충돌은 기본 해제(조용한 교체 없음),
+//   항목 이유(💡 reasons)·AI 소감(note)·[반영한 뒤 새 채팅으로]. 적용은 기존 applyPatch — 되돌리기·작업 내역·🔒 보호 그대로.
+// - [여러 채팅 + 저장] 채팅 막대(이름·[＋ 새 채팅]·[📂 지난 채팅]·[🗑 두 번]) — 캐릭터별 pluginStorage `sim:chats:<chaId>`
+//   (지금 채팅 80개·지난 채팅 12개·400KB 상한). "대화는 안 남긴다"(2026-09-10)를 뒤집음 — 유저가 그쪽 모양을 원했다.
+// - [UI] 모델·전송·📌 지침·템플릿·작업 내역은 ⚙ 한 줄로 접고, 말풍선이 주인공. 입력줄 오른쪽에 [🗂 정리해서 반영] [보내기].
+// - [증명] test-ooc.js — 정리 요청 조립(대화 기록·표식·추가 요청)·reasons/note 가르기·체크대로 자르기·칸별 비교·저장 모양·
+//   가짜 DOM으로 막대(새 채팅·지난 채팅·열기·지우기)와 정리→제안→선택 반영→새 채팅. test-aichat·test-chatdel은 새 모양으로.
+
 // ── v1.15.1 ──────────────────────────────────────────────
 // **변수·상태창은 필수가 아니다 — 끄고 빼는 길.** 커뮤니티: "심코어 상태창이나 변수를 안 쓰고 싶어졌을 때, 한번 만들어지면
 // 제거하는 법이 없다". 유저: 초기엔 기능이 변수에 집중돼 안전장치로 막아 뒀는데 기능이 많아져 변수 상태창이 필수가 아니게 됐다.
@@ -8512,6 +8528,16 @@ count(목록)  has(목록, "항목")</pre>
         saveWorkLog: async (list) => {
           try { await Risuai.pluginStorage.setItem(`sim:worklog:${currentChaId}`, JSON.stringify(list || [])); }
           catch (e) { console.log('[simcore] 작업 내역 저장 실패:', e.message); }
+        },
+        // 💬 대화 저장 (v1.16.0) — 지금 채팅 + 📂 지난 채팅을 캐릭터별 pluginStorage에. 편집기가 모양·상한을 맞춰 준다.
+        // ("대화는 안 남긴다" 2026-09-10 결정을 뒤집음 — 노벨 스튜디오의 새 채팅·지난 채팅을 유저가 원했다)
+        loadChats: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:chats:${currentChaId}`); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        saveChats: async (obj) => {
+          try { await Risuai.pluginStorage.setItem(`sim:chats:${currentChaId}`, JSON.stringify(obj || {})); }
+          catch (e) { console.log('[simcore] 대화 저장 실패:', e.message); }
         },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },

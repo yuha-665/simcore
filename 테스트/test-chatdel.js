@@ -120,9 +120,9 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   reply = () => '넣을게요.\n\n```json\n{"patchVersion":1,"add":{"vars":[{"id":"tax","label":"세금","type":"int","init":5,"min":0}]}}\n```';
   await send('세금 변수 넣어줘');
   const plan = () => findAll(container, (e) => (e.className || '').includes('sce-patch-plan') || (e.textContent || '').includes('패치 적용'))[0];
-  ck('계획 상자가 떴다', !!btn(container, '패치 적용'), '');
+  ck('제안 상자가 떴다', !!btn(container, '개 반영'), '');
   delBtns(bubbles().length - 1)[0].click();
-  ck('★ 그 말풍선을 지우면 계획 상자도 없다', !btn(container, '패치 적용') && bubbles().length === 3, String(bubbles().length));
+  ck('★ 그 말풍선을 지우면 제안 상자도 없다', !btn(container, '개 반영') && bubbles().length === 3, String(bubbles().length));
   ck('작업본은 안 바뀌었다', !ed.getSchema().vars.some((v) => v.id === 'tax'), '');
 
   // 소스 확인

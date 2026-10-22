@@ -6,7 +6,7 @@ description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의
 # SimCore — 시뮬 엔진 플러그인
 
 봇에 **숫자로 굴러가는 상태**를 붙이는 RisuAI 플러그인. 스키마 하나로 변수·파생·규칙·이벤트·상태창을
-정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.15.1 기준, 2026-10-22**)
+정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.16.0 기준, 2026-10-22**)
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
@@ -16,7 +16,8 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 **v1.11 ⏪ 되감기 — 죽으면 그 아침으로**(`core/checkpoint.js`, 체크포인트 저장·되감기 효과, 조퇴악녀 사망회귀물 발단) →
 **v1.12 🎭 무대 뒤 — 안 봐도 세상은 움직인다**(`core/front.js`, 진영 시계·징후·밑작업·표면화) → **v1.13 🎲 능력치 판정**(보조 갈림길 여러 벌·섞기·선택지 성공률 칩) → **v1.14 사건 게이지·징조**(`core/gauge.js`, v1.14.2 변수 키는 desc) →
 **v1.15 이 PC의 Claude Code·Codex로 만들기**(`tools/cli-bridge` 다리 + 편집기 생성 모델 `cli` — 편집기 생성만, RP·보조 갱신은 리수 모델) →
-**v1.15.1 변수·상태창은 필수가 아니다**(validate `activeSections` = 변수 없이 도는 절의 이름표, `statusUI.mode:'off'` 실동작, [캐릭터에서 제거] 뒤 마커 숨김). 얼헌(얼터헌터) 개조가
+**v1.15.1 변수·상태창은 필수가 아니다**(validate `activeSections` = 변수 없이 도는 절의 이름표, `statusUI.mode:'off'` 실동작, [캐릭터에서 제거] 뒤 마커 숨김) →
+**v1.16 💬 대화는 상담, 반영은 [🗂 정리해서 반영]**(노벨 스튜디오 OOC·설정 정리 이식 — 말풍선에 JSON 없음, 정리 버튼이 대화 전체를 패치로, 항목 체크 제안 상자, 새 채팅·지난 채팅 저장 `sim:chats:<chaId>`). 얼헌(얼터헌터) 개조가
 v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **26개**.
 
 ## 파일 위치 (실수 잦음)
@@ -25,7 +26,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 |---|---|
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **26개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **112종** — 2026-10-22) + `test\run-tests.js` (코어 단위 85, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **113종** — 2026-10-22) + `test\run-tests.js` (코어 단위 85, Node만 필요) |
 | 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.15.0). 가짜 실행 파일로 도는 `테스트/test-clibridge.js` |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |

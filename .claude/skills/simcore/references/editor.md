@@ -34,7 +34,7 @@
 
 ## 1층 — ✨ AI 어시스턴트 (`topFloor`)
 
-내부 탭 3개 (빈 스키마면 창작만): **✍ 창작 / 👁 결과 / 🔬 진단**
+내부 탭 4개 (빈 스키마면 창작·대화만): **✍ 창작 / 💬 대화 / 👁 결과 / 🔬 진단** — 💬 대화는 v1.16.0부터 상담 전용 + [🗂 정리해서 반영] (아래 "💬 대화 = 상담" 절)
 
 - **✍ 창작**: [템플릿에서 시작] 카드(v1.9.1 — 빈 작업본이면 펼침, 있으면 접힌 칸 + 두 번 누르기 덮어쓰기) → 🗂 작업 내역 접이 카드(v1.9.7 — 적용한 변경만 캐릭터별 pluginStorage `sim:worklog:<chaId>`, 50건, 되돌리면 표식, 비우기 두 번 누르기; 대화 탭에도 같은 카드, 대화 시스템 프롬프트 끝에 최근 10건) → 🧩 기능 카드 → 자유 입력. 기존 작업본이 있으면 부분 패치 생성
   (변경 계획 확인 → 적용 — JSON 관리자의 패치 검사와 같은 UI·같은 규율).
@@ -367,16 +367,27 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 `variableCard`이고 절은 카드를 담는 통일 뿐이라 접기·🔒·순서 손잡이 전부 그대로. 새 카드 종류를 변수 탭에 더할 땐
 `varCards.push(...)` 뒤 `groupedAppend`를 거쳐야 그룹 절에 든다. 동작은 schema.md "변수 그룹" 절.
 
+## 💬 대화 = 상담, [🗂 정리해서 반영] = 반영 (v1.16.0 — 노벨 스튜디오 OOC·설정 정리 이식)
+
+`chatPane()` 순서: **채팅 막대** `.sce-ooc-bar`(💬 · 이름 칸 `.sce-ooc-title`(비면 첫 질문) · 메시지 n개 · [＋ 새 채팅] · [📂 지난 채팅 n](펼치면 `.sce-ooc-list`, 줄마다 [열기 `.sce-ooc-open`]·[🗑]) · [🗑 지우기](두 번 누르기))
+→ **⚙ 모델·전송·지침** `details.sce-chat-settings`(접힘 — 📌 작업 지침 · 템플릿에서 시작 · 🗂 작업 내역 · 모델 선택 · 전송 정보) → 말풍선 `.sce-chat-log` → 입력줄([Ctrl+Enter] · [🗂 정리해서 반영] · [보내기]).
+
+- **규약**(`chatRules`): 이 대화에서는 JSON을 붙이지 않는다. "반영해줘"엔 항목별로 정리하고 버튼을 안내. 그래도 JSON이 오면 버리지 않고 제안 상자로.
+- **정리**(`runChatExtract` → `buildExtractRequest`): 시스템 = 📌 지침 + `extractRules` + 패치/통짜 규격서(단발 마감 그대로) + 작업 내역 꼬리, 메시지 하나 = `<대화>`(`chatTranscript` — 제작자/어시스턴트 줄, 적용됨·안 됨 표식, JSON 원문 없음, 48KB) + 입력창 글(추가 요청). 응답 JSON의 최상위 `reasons`·`note`는 `splitProposal`이 떼고 나머지만 parsePatch. note만 오면 "반영할 것이 없대요". 형식 불합격 1회 재요청.
+- **제안 상자**(`proposalReviewUI` — chat 경로만, 창작·JSON은 그대로 `planBoxUI`): `patchPlan.plan.ops`마다 `.sce-prop-item`(체크 `aria-label="이 항목 반영"` · 배지 새 항목/수정/삭제/충돌 · 💡 reasons[`섹션:id`] · 새 항목은 JSON 본문, 수정은 `entryDiffLines(previous, entry)` 칸별 전/후, 삭제·충돌은 **기본 해제**, 충돌은 교체(기본)/새 id/건너뛰기). 4개↑면 [추가·수정 전체 선택]·[전체 해제]. 발은 [반영한 뒤 새 채팅으로]·[버리기]·[선택한 N개 반영] — `pickPatch`로 자르고 기존 `applyPatch`(되돌리기·작업 내역·🔒 보호·chatMarkApplied 그대로).
+- **저장**(`chatPersist` 400ms 디바운스 → `ai.saveChats({ current:{id,title,msgs}, shelf })`, 시작 때 `ai.loadChats` → `sanitizeChats`): 지금 채팅 80개·지난 채팅 12개·400KB. 말풍선은 role·text·ts·applied·kind만(pending·json은 안 남는다). 어댑터 키 `sim:chats:<chaId>`. 저장 통로 없으면 안내 한 줄.
+- 테스트 `테스트/test-ooc.js`(순수 함수 + 가짜 DOM 왕복), `test-aichat.js`·`test-chatdel.js`는 새 모양 기준(적용 버튼 "선택한 N개 반영", 지우기는 🗑 두 번).
+
 ## 📌 작업 지침 칸 (v1.9.18)
 
-[AI 어시스턴트] 대화 탭 머리, 안내문 바로 아래 `details.sce-chat-notes` — textarea는 `onchange`(포커스 빠질 때)에만
+[AI 어시스턴트] 대화 탭의 ⚙ 모델·전송·지침 접이식 안(v1.16.0부터 — 그 전엔 안내문 바로 아래) `details.sce-chat-notes` — textarea는 `onchange`(포커스 빠질 때)에만
 `schema.meta.notes`를 쓰고 rerender (키 입력마다 그리면 포커스를 잃는다). 빈 값이면 필드를 지운다. 동작은 schema.md "작업 지침" 절.
 
 ## 대화 말풍선 지우기 (v1.9.19)
 
 [💬 대화] 말풍선 머리 `.sce-chat-tools` — [✕] 하나, [⌫ 여기부터] 아래 전부(마지막 말풍선엔 없음). `chatDrop(idx, count)`가
 `chat.msgs.splice` — 이력이 곧 프롬프트라 지우면 다음 전송부터 안 실린다. pending(계획 상자에 뜬 수정안) 말풍선을 지우면
-patchPlan·patchChoices·aiFull도 비운다. chat.busy면 버튼을 안 그린다. 테스트 `테스트/test-chatdel.js`.
+patchPlan·patchChoices·aiFull도 비운다(v1.16.0: `dropChatProposal()` — chatProposal도). chat.busy면 버튼을 안 그린다. 테스트 `테스트/test-chatdel.js`.
 
 ## 🧪 N턴 시험 (v1.9.20)
 

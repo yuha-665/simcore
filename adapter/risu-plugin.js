@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.15.0
-//@display-name SimCore (시뮬 엔진) v1.15.0 이 PC의 Claude Code·Codex로 만들기
+//@version 1.15.1
+//@display-name SimCore (시뮬 엔진) v1.15.1 변수·상태창은 필수가 아니다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,24 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.15.1 ──────────────────────────────────────────────
+// **변수·상태창은 필수가 아니다 — 끄고 빼는 길.** 커뮤니티: "심코어 상태창이나 변수를 안 쓰고 싶어졌을 때, 한번 만들어지면
+// 제거하는 법이 없다". 유저: 초기엔 기능이 변수에 집중돼 안전장치로 막아 뒀는데 기능이 많아져 변수 상태창이 필수가 아니게 됐다.
+// 확인해 보니 셋이 막고 있었다.
+// - [검증] 변수 0개 통과 조건이 v0.64의 "에셋 팩 또는 행동 제안"에 멈춰 있었다 — 시나리오·비밀·게시판·메신저·상점·의뢰판·달력·
+//   편성표·무대 뒤·되감기·보조 갈림길·시간·지시문·판정·액션·이벤트·랜덤 사건이 생긴 뒤에도. `activeSections(schema)`(켜진 절의
+//   이름표)가 validate·설치 경고·편집기 빈 변수 탭이 보는 한 목록. 변수도 켜진 절도 없는 스키마만 막고, 그 오류문이
+//   [캐릭터에서 제거]를 가리킨다.
+// - [상태창] `statusUI.mode: 'off'`가 검증 한 줄에만 있고 어디서도 안 읽혔다 — 편집기 선택지에도 없고 render도 몰랐다. 이제
+//   구성 방식 [표시하지 않기]: 채팅에 상태창을 안 그린다(마커는 그대로 — 상태·되감기·과거 스냅샷은 산다). 변수·규칙·모델용
+//   상태 블록·액션 버튼·게임 패널은 그대로. 미리보기와 표시 방식 문구가 그렇다고 말한다.
+// - [제거] [캐릭터에서 제거] 뒤 옛 대화마다 ⟦simcore:N⟧이 날것으로 보였다 — display 훅이 설치본 없는 캐릭터에선 그냥 지나쳤다.
+//   이제 숨긴다(저장본은 안 건드린다 — 다시 설치하면 과거 상태가 그 번호로 돌아온다). 위치 top일 때 빈 블록이 빈 줄을 남기던 것도.
+// - [편집기] 빈 변수 탭 "게임에서 기억할 값 하나를 먼저 만들어 주세요" → 켜진 절을 이름으로 부르고 "변수는 필수가 아니에요".
+//   검증 리포트의 [기본 변수 만들기] 블록도 같은 말. schemaIsBlank가 시나리오·게시판·비밀만 있는 봇을 빈 봇으로 보던 것도.
+// - [증명] test-novars.js — 절마다 변수 0개 설치 통과, 빈 스키마는 제거 안내와 함께 오류, mode off면 render가 빈 문자열,
+//   설치본 없는 캐릭터의 display가 마커를 숨김, 편집기 문구·선택지.
+
 // ── v1.15.0 ──────────────────────────────────────────────
 // **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
 // 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
@@ -4652,7 +4670,9 @@
       content = content.replace(/<(m?img)="([^"\n]+)">/g,
         (_, t, n) => `<${t}="${n.replace(/\s+/g, ' ').trim()}">`);
     }
-    if (!session) return content;
+    // 설치본이 없는 캐릭터(제거했거나 애초에 없던)에서도 지난 메시지의 ⟦simcore:N⟧은 숨긴다 (v1.15.1) —
+    // [캐릭터에서 제거] 뒤 옛 대화마다 표식이 날것으로 보이던 것. 저장본은 안 건드린다(다시 설치하면 그 번호로 과거 상태가 돌아온다).
+    if (!session) return hasMarker(content) ? stripMarkers(content.replace(MARKER_TAIL_RE, '')) : content;
     // 잘린 마커 꼬리는 화면에서도 치운다 (v1.9.27 포켓리스 — 답변 끝에 `⟦simcore:`가 덩그러니).
     // 상태창 자체는 유실 복구가 성한 마커를 도로 붙인 다음 렌더부터 선다.
     content = content.replace(MARKER_TAIL_RE, '');
@@ -4702,8 +4722,8 @@
     // 전부 "끝에 있다"를 전제) — 옮기는 건 렌더 시점의 이 분기뿐이다.
     if (schema?.statusUI?.position === 'top') {
       const blocks = [];
-      const stripped = content.replace(MARKER_RE, (_, idxStr) => { blocks.push(renderFor(idxStr)); return ''; });
-      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped;
+      const stripped = content.replace(MARKER_RE, (_, idxStr) => { const b = renderFor(idxStr); if (b) blocks.push(b); return ''; });
+      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped; // 빈 블록(mode off)은 빈 줄도 안 남긴다
     }
     return content.replace(MARKER_RE, (_, idxStr) => renderFor(idxStr));
   });

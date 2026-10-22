@@ -11,7 +11,7 @@ core/  adapter/          소스 (엔진 모듈 11개 + 리수 어댑터 — 버�
 build.js  tools/         번들러 + 역추출기(unbundle.js) — 워크플로는 SOURCES.md
 tools/cli-bridge/        이 PC의 Claude Code·Codex로 편집기 생성 — 다리 서버 + cli-bridge.bat (README 참고)
 test/                    코어 단위 테스트 (node test/run-tests.js — Node만 있으면 됨)
-테스트/                   회귀 테스트 111종 (로컬 실측 — 번들을 직접 물고 돈다)
+테스트/                   회귀 테스트 112종 (로컬 실측 — 번들을 직접 물고 돈다)
 베리디아/                 "베리디아 남작령" 봇 (생성기 + 산출물)
 배포/                     아카라이브 패치글·가이드 시리즈 HTML
 docs/                    설계 문서 (미구현 초안 포함)
@@ -166,7 +166,7 @@ node estate-vars.js        # → 영지-변수상태창-신안.json 재생성 + 
 node build.js && cmp dist/simcore.plugin.js simcore.plugin.js   # 소스↔번들 바이트 일치
 node test/run-tests.js                                          # 코어 단위 (통과 85)
 cd 테스트
-for f in test-*.js; do node "$f"; done      # 111개 파일 (test-clibridge.js는 가짜 claude·codex로 다리를 띄운다 — 구독 할당량 0)
+for f in test-*.js; do node "$f"; done      # 112개 파일 (test-clibridge.js는 가짜 claude·codex로 다리를 띄운다 — 구독 할당량 0)
 node npc-check.js                            # 배역·고용 흐름 눈으로 확인
 ```
 

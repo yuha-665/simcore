@@ -33,11 +33,38 @@ const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
  * 변수 하나 없이도 실제로 뭔가를 하는 기능이 켜져 있나 — 에셋 전용 설치의 통과 조건.
  * 나머지 기능(상태창·이벤트·시간·편성·달력·판정)은 전부 변수를 읽거나 쓰므로 여기 없다.
  */
-function varFreeWork(schema) {
-  if (Array.isArray(schema.assets?.packs) && schema.assets.packs.length) return true;
-  if (schema.suggest) return true;
-  return false;
+// 변수 없이도 도는 절 (v1.15.1) — 켜진 것의 이름표. 변수 0개 판정·설치 경고·편집기 빈 변수 탭이 같은 목록을 본다.
+// v0.64엔 에셋 팩 하나였고 v0.7x에 행동 제안이 붙었다. 그 뒤 게시판·메신저·상점·의뢰판·시나리오·비밀·무대 뒤·되감기·
+// 사건 게이지…가 생겨 "변수가 없으면 할 일이 없다"가 거짓이 됐는데 판정은 그대로라, 변수를 안 쓰는 봇에 껍데기 변수를
+// 강요했다 (커뮤니티: "한번 만들어지면 제거하는 법이 없다"). 변수에 기대는 절(onTurn·명령·허용 목록·상태창 그룹)은
+// 여기 없다 — 그것들은 변수가 없으면 각자의 검증이 따로 잡는다.
+function activeSections(schema) {
+  const s = schema && typeof schema === 'object' ? schema : {};
+  const n = (a) => (Array.isArray(a) ? a.length : 0);
+  const obj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+  const out = [];
+  if (n(s.assets?.packs)) out.push('에셋 팩');
+  if (s.suggest) out.push('행동 제안');
+  if (obj(s.board)) out.push('게시판');
+  if (obj(s.messenger)) out.push('메신저');
+  if (obj(s.shop) || n(s.shops)) out.push('상점');
+  if (obj(s.questBoard)) out.push('의뢰판');
+  if (n(s.scenario?.acts)) out.push('시나리오');
+  if (n(s.secrets)) out.push('비밀');
+  if (obj(s.calendar)) out.push('달력');
+  if (obj(s.party)) out.push('편성표');
+  if (n(s.fronts)) out.push('무대 뒤');
+  if (obj(s.checkpoint)) out.push('되감기');
+  if (obj(s.liveChoices) || n(s.liveChoices)) out.push('보조 갈림길');
+  if (obj(s.time)) out.push('시간');
+  if (n(s.directives)) out.push('지시문');
+  if (n(s.checks)) out.push('판정');
+  if (n(s.actions)) out.push('액션');
+  if (n(s.rules?.events)) out.push('이벤트');
+  if (n(s.rules?.randomEvents?.table)) out.push('랜덤 사건');
+  return out;
 }
+function varFreeWork(schema) { return activeSections(schema).length > 0; }
 // 상태창 그룹이 묶일 장 이름 (v1.12.1) — render.mergeTabs와 같은 판정
 const tabName = (g) => (typeof g?.tab === 'string' && g.tab.trim()) || '';
 
@@ -66,11 +93,15 @@ function validateSchema(schema) {
   if (!Array.isArray(schema.vars)) {
     err('$.vars', 'vars는 배열이어야 합니다 (변수를 안 쓰더라도 빈 배열 []은 있어야 함)');
   } else if (!vars.length) {
-    if (varFreeWork(schema)) {
-      warn('$.vars', '변수가 없습니다 — 에셋(이미지 태그)만 쓰는 봇으로 설치됩니다. '
-        + '상태창·명령·이벤트·시간은 뜨지 않습니다');
+    const on = activeSections(schema);
+    if (on.length) {
+      warn('$.vars', `변수가 없습니다 — 변수·변수 상태창 없이 ${on.join('·')}만으로 설치됩니다. `
+        + '수치 갱신·채팅 명령·변수 상태창은 뜨지 않습니다 (기억할 수치가 생기면 그때 만들면 됩니다)');
     } else {
-      err('$.vars', '변수가 하나도 정의되지 않음 — 변수 없이 도는 기능(에셋 팩)이라도 하나는 켜져 있어야 합니다');
+      // 편집기 검증 리포트가 이 문구('변수도 켜진 기능도 없음')로 첫 안내 블록을 세운다 — 바꾸면 같이
+      err('$.vars', '변수도 켜진 기능도 없음 — 아무 일도 안 하는 스키마라 설치하지 않습니다. 변수를 하나 만들거나 '
+        + '다른 탭에서 기능(시나리오·게시판·에셋 팩…)을 켜 주세요. 심코어를 이 캐릭터에서 빼려는 거라면 '
+        + '[편집 작업공간 → 캐릭터 설치 관리 → 캐릭터에서 제거]입니다');
     }
   }
   const ids = new Set();
@@ -2007,4 +2038,4 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema, varFreeWork };
+module.exports = { validateSchema, varFreeWork, activeSections };

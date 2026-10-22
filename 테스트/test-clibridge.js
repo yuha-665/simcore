@@ -170,7 +170,8 @@ module.exports = { getGenModel, setGenModel, callGenLLM, probeCli, _auxCalls: ()
       ck('생성 라벨에 cli (두 곳)', (src.match(/aiGenModel\?\.choice === 'cli' \? '이 PC의 Claude Code·Codex'/g) || []).length === 2, '');
       ck('안내문: RP는 그대로 리수 모델', src.includes('RP 채팅은 그대로 리수 모델이에요'), '');
       ck('nativeFetch 없는 리수 → 안내', src.includes("이 리수 버전엔 nativeFetch가 없어요"), '');
-      ck('버전 1.15.0 + 체인지로그', src.includes('//@version 1.15.0') && src.includes('// ── v1.15.0 ──'), '');
+      // 버전 핀은 test-bundle.js 한 곳에서만 — 여기선 v1.15.0 이상 + 체인지로그 항목만 (v1.15.1에서 핀이 깨졌다)
+      ck('버전 1.15.0 이상 + 체인지로그', /\/\/@version (1\.(1[5-9]|[2-9]\d)\.\d+|[2-9]\.\d+\.\d+)/.test(src) && src.includes('// ── v1.15.0 ──'), '');
     }
   } finally {
     br.child.kill();

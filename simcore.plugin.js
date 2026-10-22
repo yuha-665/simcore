@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.15.0
-//@display-name SimCore (시뮬 엔진) v1.15.0 이 PC의 Claude Code·Codex로 만들기
+//@version 1.15.1
+//@display-name SimCore (시뮬 엔진) v1.15.1 변수·상태창은 필수가 아니다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,23 +10,23 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
-// ── v1.15.0 ──────────────────────────────────────────────
-// **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
-// 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
-// 심코어에 — 단 플러그인은 리수 샌드박스라 프로세스를 못 띄우므로, PC에서 켜 두는 다리 하나를 거친다.
-// - [tools/cli-bridge] `simcore-cli-bridge.js` + `cli-bridge.bat` — 의존 없음. OpenAI 호환(`/v1/chat/completions`·`/v1/models`·`/health`).
-//   Claude Code는 노벨 스튜디오와 같은 격리(`--tools "" --setting-sources "" --strict-mcp-config --no-session-persistence
-//   --disable-slash-commands`, system은 파일·본문은 stdin, CLAUDE*·ANTHROPIC_* 환경변수 제거) / Codex는 빈 임시 폴더
-//   읽기 전용·`--ephemeral`. 본문은 어디에도 안 남긴다. 127.0.0.1에만 연다.
-// - [어댑터] 생성 모델 선택에 `cli` — `callGenLLM`만 이 길을 탄다(단발 생성·💬 대화·에셋 변환·꾸미기). RP 채팅·상태 갱신은
-//   그대로 리수 모델. `Risuai.nativeFetch`로 다리에 묻는다 — 리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시, 웹은
-//   plain fetch 설정을 켜야 localhost에 닿는다(리수 `globalApi` 실사: 웹의 `globalFetch`는 localhost를 **아예 막고**,
-//   `fetchNative`는 프록시를 거친다). 포켓리스는 불가 — 안내문이 말한다.
-// - [편집기] 생성 모델 줄에 [이 PC의 Claude Code · Codex (구독)] → 주소 → [🔌 연결 확인] → 다리가 준 모델 목록에서 고르기.
-//   확인 결과는 편집기 인스턴스에만 산다. 다리가 꺼져 있으면 "cli-bridge.bat을 켰는지" 안내.
-// - [증명] test-clibridge.js — 가짜 `claude`·`codex`로 다리를 띄워 격리 플래그·평탄화·오류 문구·스트리밍·CORS를 보고,
-//   번들의 생성 모델 절을 잘라 가짜 Risuai(nativeFetch = 진짜 fetch)로 다리에 실제로 꽂는다. 구독 할당량 0.
-// - 규정: 개인 PC에서 본인 구독을 쓰는 자리다(노벨 스튜디오와 같음). 공식 기능으로 배포할지는 유저 결정 — 배포글엔 아직 없다.
+// ── v1.15.1 ──────────────────────────────────────────────
+// **변수·상태창은 필수가 아니다 — 끄고 빼는 길.** 커뮤니티: "심코어 상태창이나 변수를 안 쓰고 싶어졌을 때, 한번 만들어지면
+// 제거하는 법이 없다". 유저: 초기엔 기능이 변수에 집중돼 안전장치로 막아 뒀는데 기능이 많아져 변수 상태창이 필수가 아니게 됐다.
+// 확인해 보니 셋이 막고 있었다.
+// - [검증] 변수 0개 통과 조건이 v0.64의 "에셋 팩 또는 행동 제안"에 멈춰 있었다 — 시나리오·비밀·게시판·메신저·상점·의뢰판·달력·
+//   편성표·무대 뒤·되감기·보조 갈림길·시간·지시문·판정·액션·이벤트·랜덤 사건이 생긴 뒤에도. `activeSections(schema)`(켜진 절의
+//   이름표)가 validate·설치 경고·편집기 빈 변수 탭이 보는 한 목록. 변수도 켜진 절도 없는 스키마만 막고, 그 오류문이
+//   [캐릭터에서 제거]를 가리킨다.
+// - [상태창] `statusUI.mode: 'off'`가 검증 한 줄에만 있고 어디서도 안 읽혔다 — 편집기 선택지에도 없고 render도 몰랐다. 이제
+//   구성 방식 [표시하지 않기]: 채팅에 상태창을 안 그린다(마커는 그대로 — 상태·되감기·과거 스냅샷은 산다). 변수·규칙·모델용
+//   상태 블록·액션 버튼·게임 패널은 그대로. 미리보기와 표시 방식 문구가 그렇다고 말한다.
+// - [제거] [캐릭터에서 제거] 뒤 옛 대화마다 ⟦simcore:N⟧이 날것으로 보였다 — display 훅이 설치본 없는 캐릭터에선 그냥 지나쳤다.
+//   이제 숨긴다(저장본은 안 건드린다 — 다시 설치하면 과거 상태가 그 번호로 돌아온다). 위치 top일 때 빈 블록이 빈 줄을 남기던 것도.
+// - [편집기] 빈 변수 탭 "게임에서 기억할 값 하나를 먼저 만들어 주세요" → 켜진 절을 이름으로 부르고 "변수는 필수가 아니에요".
+//   검증 리포트의 [기본 변수 만들기] 블록도 같은 말. schemaIsBlank가 시나리오·게시판·비밀만 있는 봇을 빈 봇으로 보던 것도.
+// - [증명] test-novars.js — 절마다 변수 0개 설치 통과, 빈 스키마는 제거 안내와 함께 오류, mode off면 render가 빈 문자열,
+//   설치본 없는 캐릭터의 display가 마커를 숨김, 편집기 문구·선택지.
 
 
 const SimCore = (() => {
@@ -990,11 +990,38 @@ const RESERVED = new Set(['true', 'false', 'and', 'or', 'not',
  * 변수 하나 없이도 실제로 뭔가를 하는 기능이 켜져 있나 — 에셋 전용 설치의 통과 조건.
  * 나머지 기능(상태창·이벤트·시간·편성·달력·판정)은 전부 변수를 읽거나 쓰므로 여기 없다.
  */
-function varFreeWork(schema) {
-  if (Array.isArray(schema.assets?.packs) && schema.assets.packs.length) return true;
-  if (schema.suggest) return true;
-  return false;
+// 변수 없이도 도는 절 (v1.15.1) — 켜진 것의 이름표. 변수 0개 판정·설치 경고·편집기 빈 변수 탭이 같은 목록을 본다.
+// v0.64엔 에셋 팩 하나였고 v0.7x에 행동 제안이 붙었다. 그 뒤 게시판·메신저·상점·의뢰판·시나리오·비밀·무대 뒤·되감기·
+// 사건 게이지…가 생겨 "변수가 없으면 할 일이 없다"가 거짓이 됐는데 판정은 그대로라, 변수를 안 쓰는 봇에 껍데기 변수를
+// 강요했다 (커뮤니티: "한번 만들어지면 제거하는 법이 없다"). 변수에 기대는 절(onTurn·명령·허용 목록·상태창 그룹)은
+// 여기 없다 — 그것들은 변수가 없으면 각자의 검증이 따로 잡는다.
+function activeSections(schema) {
+  const s = schema && typeof schema === 'object' ? schema : {};
+  const n = (a) => (Array.isArray(a) ? a.length : 0);
+  const obj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+  const out = [];
+  if (n(s.assets?.packs)) out.push('에셋 팩');
+  if (s.suggest) out.push('행동 제안');
+  if (obj(s.board)) out.push('게시판');
+  if (obj(s.messenger)) out.push('메신저');
+  if (obj(s.shop) || n(s.shops)) out.push('상점');
+  if (obj(s.questBoard)) out.push('의뢰판');
+  if (n(s.scenario?.acts)) out.push('시나리오');
+  if (n(s.secrets)) out.push('비밀');
+  if (obj(s.calendar)) out.push('달력');
+  if (obj(s.party)) out.push('편성표');
+  if (n(s.fronts)) out.push('무대 뒤');
+  if (obj(s.checkpoint)) out.push('되감기');
+  if (obj(s.liveChoices) || n(s.liveChoices)) out.push('보조 갈림길');
+  if (obj(s.time)) out.push('시간');
+  if (n(s.directives)) out.push('지시문');
+  if (n(s.checks)) out.push('판정');
+  if (n(s.actions)) out.push('액션');
+  if (n(s.rules?.events)) out.push('이벤트');
+  if (n(s.rules?.randomEvents?.table)) out.push('랜덤 사건');
+  return out;
 }
+function varFreeWork(schema) { return activeSections(schema).length > 0; }
 // 상태창 그룹이 묶일 장 이름 (v1.12.1) — render.mergeTabs와 같은 판정
 const tabName = (g) => (typeof g?.tab === 'string' && g.tab.trim()) || '';
 
@@ -1023,11 +1050,15 @@ function validateSchema(schema) {
   if (!Array.isArray(schema.vars)) {
     err('$.vars', 'vars는 배열이어야 합니다 (변수를 안 쓰더라도 빈 배열 []은 있어야 함)');
   } else if (!vars.length) {
-    if (varFreeWork(schema)) {
-      warn('$.vars', '변수가 없습니다 — 에셋(이미지 태그)만 쓰는 봇으로 설치됩니다. '
-        + '상태창·명령·이벤트·시간은 뜨지 않습니다');
+    const on = activeSections(schema);
+    if (on.length) {
+      warn('$.vars', `변수가 없습니다 — 변수·변수 상태창 없이 ${on.join('·')}만으로 설치됩니다. `
+        + '수치 갱신·채팅 명령·변수 상태창은 뜨지 않습니다 (기억할 수치가 생기면 그때 만들면 됩니다)');
     } else {
-      err('$.vars', '변수가 하나도 정의되지 않음 — 변수 없이 도는 기능(에셋 팩)이라도 하나는 켜져 있어야 합니다');
+      // 편집기 검증 리포트가 이 문구('변수도 켜진 기능도 없음')로 첫 안내 블록을 세운다 — 바꾸면 같이
+      err('$.vars', '변수도 켜진 기능도 없음 — 아무 일도 안 하는 스키마라 설치하지 않습니다. 변수를 하나 만들거나 '
+        + '다른 탭에서 기능(시나리오·게시판·에셋 팩…)을 켜 주세요. 심코어를 이 캐릭터에서 빼려는 거라면 '
+        + '[편집 작업공간 → 캐릭터 설치 관리 → 캐릭터에서 제거]입니다');
     }
   }
   const ids = new Set();
@@ -2964,7 +2995,7 @@ function checkTemplateRefs(tpl, path, knownIds, err) {
   }
 }
 
-module.exports = { validateSchema, varFreeWork };
+module.exports = { validateSchema, varFreeWork, activeSections };
 
 });
 
@@ -10170,6 +10201,9 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
 
 function renderStatusHtml(schema, state, changeLog = null, actionStates = null, opts = {}) {
   const ui = schema.statusUI || {};
+  // 표시하지 않기 (v1.15.1) — statusUI.mode 'off'는 검증 한 줄에만 있고 아무도 안 읽었다. 채팅에 상태창을
+  // 안 그린다. 마커는 그대로 박힌다(상태·되감기·과거 스냅샷은 산다) — display 훅이 빈 문자열로 바꿀 뿐.
+  if (ui.mode === 'off') return '';
   const lookup = makeLookup(schema, state.vars);
   const dueNow = dueClock(schema, state);   // 목록 기한 환산용 시계 (목록마다 1회 평가)
   // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.
@@ -12379,7 +12413,7 @@ SimCore.define("editor", function (require, module, exports) {
 // 지금은 그 자리를 flex로 바꿔 둬서 꺼도 안 무너진다.
 const CARD_DRAG = true;
 
-const { validateSchema } = require('./validate');
+const { validateSchema, activeSections } = require('./validate');
 const { referencedVars, evaluate, truthy } = require('./expr');
 const { seededRng } = require('./rng');
 const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
@@ -16797,7 +16831,12 @@ function schemaIsBlank(s) {
     // 에셋 팩 (v0.64) — 변수 0개여도 팩이 있으면 빈 봇이 아니다. 여기서 빠뜨리면
     // 에셋 전용 봇이 "아직 스키마가 없습니다" 취급을 받아 기능 카드도 패치 경로도 안 열린다.
     + n(s.assets && s.assets.packs)
-    + n(s.setup && s.setup.presets) === 0;
+    + n(s.setup && s.setup.presets)
+    // 변수 없이 도는 절 (v1.15.1) — 시나리오·게시판·비밀만 있는 봇도 빈 봇이 아니다. validate.activeSections와 같은 목록을
+    // 여기 다시 적는 건 테스트 하니스가 이 함수를 잘라 쓰기 때문(금지 #8) — 절이 늘면 둘 다 고친다.
+    + [s.board, s.messenger, s.shop, s.questBoard, s.calendar, s.party, s.checkpoint, s.liveChoices, s.time, s.suggest]
+      .filter((o) => o && typeof o === 'object' && !Array.isArray(o)).length
+    + n(s.shops) + n(s.scenario && s.scenario.acts) + n(s.secrets) + n(s.fronts) + n(s.liveChoices) === 0;
 }
 
 const BOT_CTX_CAP = 20 * 1024; // 바이트 — 로어북이 수십 KB인 봇 방어
@@ -19458,14 +19497,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('span', { class: 'sce-tag' }, `${schema.vars.length}개`),
         ...bulkControls(schema.vars, '$.vars'),
         schema.vars.length ? h('button', { class: 'sce-btn sce-mini', onclick: addVariable }, '+ 변수 추가') : null)));
-    // 에셋 전용 설치 (v0.64) — 변수 탭이 비어 있어도 되는 유일한 경우.
-    // 안 알려주면 "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
-    const assetOnly = !schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0;
+    // 변수 없이 도는 봇 (v0.64 에셋 전용 → v1.15.1 켜진 절 전부) — 켜진 절이 있으면 변수 탭은 비워 둬도 된다.
+    // 안 알려주면 "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다 (그 껍데기는 상태창·보조 프롬프트에 평생 따라다닌다).
+    const sections = schema.vars.length ? [] : activeSections(schema);
     if (!schema.vars.length) wrap.appendChild(h('div', { class: 'sce-vars-empty' },
-      h('strong', {}, assetOnly ? '변수 없이 에셋만 쓰는 봇이에요' : '아직 기본 변수가 없어요'),
-      h('span', {}, assetOnly
-        ? '이 봇은 이미지 태그만 씁니다. 변수는 비워 둬도 그대로 설치되니 억지로 만들 필요 없어요.'
-        : '게임에서 기억할 값 하나를 먼저 만들어 주세요.'),
+      h('strong', {}, sections.length ? `변수 없이 ${sections.join('·')}만 쓰는 봇이에요` : '아직 변수가 없어요'),
+      h('span', {}, sections.length
+        ? '변수는 비워 둬도 그대로 설치돼요. 기억할 수치가 생기면 그때 만들면 됩니다.'
+        : '변수는 필수가 아니에요 — 기억할 값을 만들거나, 다른 탭에서 기능(시나리오·게시판·에셋 팩…)을 켜면 설치할 수 있어요.'),
       h('button', { class: 'sce-btn', onclick: addVariable }, '변수 만들기')));
 
     const variableList = h('div', { class: 'sce-variable-list sce-variable-list-root' });
@@ -19636,7 +19675,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       strip.appendChild(h('button', { type: 'button', class: 'sce-deep-flow-step' + (activeTab === key ? ' on' : ''), title,
         onclick: () => { activeTab = key; render(); } }, label));
     });
-    strip.appendChild(h('span', { class: 'sce-deep-flow-note' }, '세계 묶음(편성표·달력·상점…)은 필요할 때만'));
+    strip.appendChild(h('span', { class: 'sce-deep-flow-note' }, '세계 묶음(편성표·달력·상점…)은 필요할 때만 · 변수는 필수가 아니에요'));
     return strip;
   }
   const collapsedAssetPackSettings = new WeakSet();
@@ -19833,10 +19872,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     const themeKey = Object.hasOwn(themeInfo, ui.theme) ? ui.theme : 'clean';
     const layoutKey = Object.hasOwn(layoutInfo, ui.layout) ? ui.layout : 'stack';
-    const displayModeLabel = ui.mode === 'template' ? 'HTML 직접 작성' : layoutInfo[layoutKey].label;
-    const displayModeCopy = ui.mode === 'template'
-      ? '작성한 HTML 구조를 그대로 표시합니다.'
-      : layoutInfo[layoutKey].copy;
+    const displayModeLabel = ui.mode === 'off' ? '표시 안 함' : ui.mode === 'template' ? 'HTML 직접 작성' : layoutInfo[layoutKey].label;
+    const displayModeCopy = ui.mode === 'off'
+      ? '채팅에 상태창을 그리지 않아요. 변수·규칙·모델용 상태 블록은 그대로 돌아요.'
+      : ui.mode === 'template'
+        ? '작성한 HTML 구조를 그대로 표시합니다.'
+        : layoutInfo[layoutKey].copy;
     const themeSelect = bindSelect(themeKey, Object.entries(themeInfo).map(([key, info]) => [key, info.label]),
       (x) => { ui.theme = x === 'clean' ? undefined : x; rerender(); });
     const themePreview = h('div', { class: `sce-status-theme-preview sce-status-options-theme-preview is-${themeKey}` },
@@ -19859,8 +19900,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }, { cls: 'sce-w-m', ph: '비우면 상태' }), '', 'sce-status-field-title'),
       statusField('구성 방식', bindSelect(ui.mode ?? 'auto', [
         ['auto', '그룹으로 구성 (권장)'], ['template', 'HTML 직접 작성 (고급)'],
+        ['off', '표시하지 않기 — 채팅에 상태창을 안 그려요'],
       ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
-      '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다.', 'sce-status-field-mode'),
+      ui.mode === 'off'
+        ? '상태창을 채팅에 그리지 않아요. 변수·규칙·모델용 상태 블록·액션 버튼·게임 패널은 그대로 돌고, 그룹 설정도 남아 있어 다시 켜면 그대로예요.'
+        : '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다. 상태창이 필요 없으면 [표시하지 않기].', 'sce-status-field-mode'),
       statusField('기본 테마', themeSelect, '', 'sce-status-field-theme'), // 래퍼 없이 — 형제 칸과 같은 40px (v1.9.3)
       statusField('상태창 출력 위치', bindSelect(ui.position ?? 'bottom', [
         ['bottom', '최하단 — 답변 뒤에 표시 (기본)'],
@@ -25107,7 +25151,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const pv = h('div', { class: 'sce-preview' });
     try {
       const v = validateSchema(schema);
-      if (v.ok) {
+      if (schema.statusUI?.mode === 'off') {
+        pv.textContent = '상태창을 표시하지 않기로 했어요 — 채팅에 아무것도 안 그려요. 변수·규칙·모델용 상태 블록은 그대로 돌아요.';
+      } else if (v.ok) {
         pv.innerHTML = renderStatusHtml(schema, engine.initState(schema), null,
           (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
           { includeStyle: true, uid });
@@ -27539,15 +27585,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + `<span>${escText(e.msg)}</span></div>`
       + `<details class="sce-validation-tech"><summary>기술 위치 보기</summary><code>${escText(e.path)}</code></details></div>`;
     const needsFirstVariable = v.errors.some((e) => e.path === '$.vars'
-      && String(e.msg || '').includes('변수가 하나도 정의되지 않음'));
+      && String(e.msg || '').includes('변수도 켜진 기능도 없음'));
     const visibleErrors = needsFirstVariable
-      ? v.errors.filter((e) => !(e.path === '$.vars' && String(e.msg || '').includes('변수가 하나도 정의되지 않음')))
+      ? v.errors.filter((e) => !(e.path === '$.vars' && String(e.msg || '').includes('변수도 켜진 기능도 없음')))
       : v.errors;
     let html = '<div class="sce-validation-report">';
     if (needsFirstVariable) html += '<div class="sce-validation-start">'
       + '<span class="sce-validation-start-mark" aria-hidden="true">1</span>'
-      + '<div><strong>기본 변수를 하나 만들어 주세요</strong>'
-      + '<span>체력·호감도·돈처럼 시뮬레이션이 기억할 값을 먼저 정하면 나머지 기능을 연결할 수 있어요.</span></div>'
+      + '<div><strong>변수를 만들거나 기능을 켜 주세요</strong>'
+      + '<span>변수는 필수가 아니지만, 변수도 켜진 기능도 없으면 심코어가 할 일이 없어요. 체력·호감도·돈 같은 값을 하나 만들거나, '
+      + '시나리오·게시판·에셋 팩 같은 기능을 켜 주세요. 심코어를 이 캐릭터에서 빼려는 거라면 [캐릭터 설치 관리]의 [캐릭터에서 제거]예요.</span></div>'
       + '<button type="button" class="sce-btn" data-sce-create-first-var>기본 변수 만들기</button></div>';
     if (visibleErrors.length) html += `<div class="sce-validation-head"><strong>고칠 항목 ${visibleErrors.length}개</strong><span>수정하면 바로 다시 확인돼요</span></div>`
       + visibleErrors.map((e) => issueHtml(e, false)).join('');
@@ -32818,6 +32865,24 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
 });
 
 
+// ── v1.15.0 ──────────────────────────────────────────────
+// **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
+// 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
+// 심코어에 — 단 플러그인은 리수 샌드박스라 프로세스를 못 띄우므로, PC에서 켜 두는 다리 하나를 거친다.
+// - [tools/cli-bridge] `simcore-cli-bridge.js` + `cli-bridge.bat` — 의존 없음. OpenAI 호환(`/v1/chat/completions`·`/v1/models`·`/health`).
+//   Claude Code는 노벨 스튜디오와 같은 격리(`--tools "" --setting-sources "" --strict-mcp-config --no-session-persistence
+//   --disable-slash-commands`, system은 파일·본문은 stdin, CLAUDE*·ANTHROPIC_* 환경변수 제거) / Codex는 빈 임시 폴더
+//   읽기 전용·`--ephemeral`. 본문은 어디에도 안 남긴다. 127.0.0.1에만 연다.
+// - [어댑터] 생성 모델 선택에 `cli` — `callGenLLM`만 이 길을 탄다(단발 생성·💬 대화·에셋 변환·꾸미기). RP 채팅·상태 갱신은
+//   그대로 리수 모델. `Risuai.nativeFetch`로 다리에 묻는다 — 리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시, 웹은
+//   plain fetch 설정을 켜야 localhost에 닿는다(리수 `globalApi` 실사: 웹의 `globalFetch`는 localhost를 **아예 막고**,
+//   `fetchNative`는 프록시를 거친다). 포켓리스는 불가 — 안내문이 말한다.
+// - [편집기] 생성 모델 줄에 [이 PC의 Claude Code · Codex (구독)] → 주소 → [🔌 연결 확인] → 다리가 준 모델 목록에서 고르기.
+//   확인 결과는 편집기 인스턴스에만 산다. 다리가 꺼져 있으면 "cli-bridge.bat을 켰는지" 안내.
+// - [증명] test-clibridge.js — 가짜 `claude`·`codex`로 다리를 띄워 격리 플래그·평탄화·오류 문구·스트리밍·CORS를 보고,
+//   번들의 생성 모델 절을 잘라 가짜 Risuai(nativeFetch = 진짜 fetch)로 다리에 실제로 꽂는다. 구독 할당량 0.
+// - 규정: 개인 PC에서 본인 구독을 쓰는 자리다(노벨 스튜디오와 같음). 공식 기능으로 배포할지는 유저 결정 — 배포글엔 아직 없다.
+
 // ── v1.14.2 ──────────────────────────────────────────────
 // **변수 설명 키는 desc 하나 — 모르는 키 경고.** 제보: AI에게 변수 설명란을 채우게 했더니 `description` 키를 따로 지어 넣었고,
 // 확인용으로 desc에 다른 글을 넣으니 그쪽만 먹었다. 엔진은 desc만 읽는데 검증기가 모르는 키를 말없이 통과시켜 알 길이 없었다.
@@ -37442,7 +37507,9 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       content = content.replace(/<(m?img)="([^"\n]+)">/g,
         (_, t, n) => `<${t}="${n.replace(/\s+/g, ' ').trim()}">`);
     }
-    if (!session) return content;
+    // 설치본이 없는 캐릭터(제거했거나 애초에 없던)에서도 지난 메시지의 ⟦simcore:N⟧은 숨긴다 (v1.15.1) —
+    // [캐릭터에서 제거] 뒤 옛 대화마다 표식이 날것으로 보이던 것. 저장본은 안 건드린다(다시 설치하면 그 번호로 과거 상태가 돌아온다).
+    if (!session) return hasMarker(content) ? stripMarkers(content.replace(MARKER_TAIL_RE, '')) : content;
     // 잘린 마커 꼬리는 화면에서도 치운다 (v1.9.27 포켓리스 — 답변 끝에 `⟦simcore:`가 덩그러니).
     // 상태창 자체는 유실 복구가 성한 마커를 도로 붙인 다음 렌더부터 선다.
     content = content.replace(MARKER_TAIL_RE, '');
@@ -37492,8 +37559,8 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
     // 전부 "끝에 있다"를 전제) — 옮기는 건 렌더 시점의 이 분기뿐이다.
     if (schema?.statusUI?.position === 'top') {
       const blocks = [];
-      const stripped = content.replace(MARKER_RE, (_, idxStr) => { blocks.push(renderFor(idxStr)); return ''; });
-      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped;
+      const stripped = content.replace(MARKER_RE, (_, idxStr) => { const b = renderFor(idxStr); if (b) blocks.push(b); return ''; });
+      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped; // 빈 블록(mode off)은 빈 줄도 안 남긴다
     }
     return content.replace(MARKER_RE, (_, idxStr) => renderFor(idxStr));
   });

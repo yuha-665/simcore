@@ -13,7 +13,7 @@
 // 지금은 그 자리를 flex로 바꿔 둬서 꺼도 안 무너진다.
 const CARD_DRAG = true;
 
-const { validateSchema } = require('./validate');
+const { validateSchema, activeSections } = require('./validate');
 const { referencedVars, evaluate, truthy } = require('./expr');
 const { seededRng } = require('./rng');
 const { renderStatusHtml, THEMES, multiPanelTemplate, scopeCss: scopeCssFn, pickTemplate } = require('./render');
@@ -4431,7 +4431,12 @@ function schemaIsBlank(s) {
     // 에셋 팩 (v0.64) — 변수 0개여도 팩이 있으면 빈 봇이 아니다. 여기서 빠뜨리면
     // 에셋 전용 봇이 "아직 스키마가 없습니다" 취급을 받아 기능 카드도 패치 경로도 안 열린다.
     + n(s.assets && s.assets.packs)
-    + n(s.setup && s.setup.presets) === 0;
+    + n(s.setup && s.setup.presets)
+    // 변수 없이 도는 절 (v1.15.1) — 시나리오·게시판·비밀만 있는 봇도 빈 봇이 아니다. validate.activeSections와 같은 목록을
+    // 여기 다시 적는 건 테스트 하니스가 이 함수를 잘라 쓰기 때문(금지 #8) — 절이 늘면 둘 다 고친다.
+    + [s.board, s.messenger, s.shop, s.questBoard, s.calendar, s.party, s.checkpoint, s.liveChoices, s.time, s.suggest]
+      .filter((o) => o && typeof o === 'object' && !Array.isArray(o)).length
+    + n(s.shops) + n(s.scenario && s.scenario.acts) + n(s.secrets) + n(s.fronts) + n(s.liveChoices) === 0;
 }
 
 const BOT_CTX_CAP = 20 * 1024; // 바이트 — 로어북이 수십 KB인 봇 방어
@@ -7092,14 +7097,14 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('span', { class: 'sce-tag' }, `${schema.vars.length}개`),
         ...bulkControls(schema.vars, '$.vars'),
         schema.vars.length ? h('button', { class: 'sce-btn sce-mini', onclick: addVariable }, '+ 변수 추가') : null)));
-    // 에셋 전용 설치 (v0.64) — 변수 탭이 비어 있어도 되는 유일한 경우.
-    // 안 알려주면 "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다.
-    const assetOnly = !schema.vars.length && (schema.assets?.packs?.length ?? 0) > 0;
+    // 변수 없이 도는 봇 (v0.64 에셋 전용 → v1.15.1 켜진 절 전부) — 켜진 절이 있으면 변수 탭은 비워 둬도 된다.
+    // 안 알려주면 "쓰지도 않을 변수를 하나 만들어 두는" 우회를 하게 된다 (그 껍데기는 상태창·보조 프롬프트에 평생 따라다닌다).
+    const sections = schema.vars.length ? [] : activeSections(schema);
     if (!schema.vars.length) wrap.appendChild(h('div', { class: 'sce-vars-empty' },
-      h('strong', {}, assetOnly ? '변수 없이 에셋만 쓰는 봇이에요' : '아직 기본 변수가 없어요'),
-      h('span', {}, assetOnly
-        ? '이 봇은 이미지 태그만 씁니다. 변수는 비워 둬도 그대로 설치되니 억지로 만들 필요 없어요.'
-        : '게임에서 기억할 값 하나를 먼저 만들어 주세요.'),
+      h('strong', {}, sections.length ? `변수 없이 ${sections.join('·')}만 쓰는 봇이에요` : '아직 변수가 없어요'),
+      h('span', {}, sections.length
+        ? '변수는 비워 둬도 그대로 설치돼요. 기억할 수치가 생기면 그때 만들면 됩니다.'
+        : '변수는 필수가 아니에요 — 기억할 값을 만들거나, 다른 탭에서 기능(시나리오·게시판·에셋 팩…)을 켜면 설치할 수 있어요.'),
       h('button', { class: 'sce-btn', onclick: addVariable }, '변수 만들기')));
 
     const variableList = h('div', { class: 'sce-variable-list sce-variable-list-root' });
@@ -7270,7 +7275,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       strip.appendChild(h('button', { type: 'button', class: 'sce-deep-flow-step' + (activeTab === key ? ' on' : ''), title,
         onclick: () => { activeTab = key; render(); } }, label));
     });
-    strip.appendChild(h('span', { class: 'sce-deep-flow-note' }, '세계 묶음(편성표·달력·상점…)은 필요할 때만'));
+    strip.appendChild(h('span', { class: 'sce-deep-flow-note' }, '세계 묶음(편성표·달력·상점…)은 필요할 때만 · 변수는 필수가 아니에요'));
     return strip;
   }
   const collapsedAssetPackSettings = new WeakSet();
@@ -7467,10 +7472,12 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     };
     const themeKey = Object.hasOwn(themeInfo, ui.theme) ? ui.theme : 'clean';
     const layoutKey = Object.hasOwn(layoutInfo, ui.layout) ? ui.layout : 'stack';
-    const displayModeLabel = ui.mode === 'template' ? 'HTML 직접 작성' : layoutInfo[layoutKey].label;
-    const displayModeCopy = ui.mode === 'template'
-      ? '작성한 HTML 구조를 그대로 표시합니다.'
-      : layoutInfo[layoutKey].copy;
+    const displayModeLabel = ui.mode === 'off' ? '표시 안 함' : ui.mode === 'template' ? 'HTML 직접 작성' : layoutInfo[layoutKey].label;
+    const displayModeCopy = ui.mode === 'off'
+      ? '채팅에 상태창을 그리지 않아요. 변수·규칙·모델용 상태 블록은 그대로 돌아요.'
+      : ui.mode === 'template'
+        ? '작성한 HTML 구조를 그대로 표시합니다.'
+        : layoutInfo[layoutKey].copy;
     const themeSelect = bindSelect(themeKey, Object.entries(themeInfo).map(([key, info]) => [key, info.label]),
       (x) => { ui.theme = x === 'clean' ? undefined : x; rerender(); });
     const themePreview = h('div', { class: `sce-status-theme-preview sce-status-options-theme-preview is-${themeKey}` },
@@ -7493,8 +7500,11 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       }, { cls: 'sce-w-m', ph: '비우면 상태' }), '', 'sce-status-field-title'),
       statusField('구성 방식', bindSelect(ui.mode ?? 'auto', [
         ['auto', '그룹으로 구성 (권장)'], ['template', 'HTML 직접 작성 (고급)'],
+        ['off', '표시하지 않기 — 채팅에 상태창을 안 그려요'],
       ], (x) => { ui.mode = x; if (x === 'template' && !ui.template) ui.template = ''; rerender(); }),
-      '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다.', 'sce-status-field-mode'),
+      ui.mode === 'off'
+        ? '상태창을 채팅에 그리지 않아요. 변수·규칙·모델용 상태 블록·액션 버튼·게임 패널은 그대로 돌고, 그룹 설정도 남아 있어 다시 켜면 그대로예요.'
+        : '그룹 편집 또는 HTML 직접 작성 중 하나를 고릅니다. 상태창이 필요 없으면 [표시하지 않기].', 'sce-status-field-mode'),
       statusField('기본 테마', themeSelect, '', 'sce-status-field-theme'), // 래퍼 없이 — 형제 칸과 같은 40px (v1.9.3)
       statusField('상태창 출력 위치', bindSelect(ui.position ?? 'bottom', [
         ['bottom', '최하단 — 답변 뒤에 표시 (기본)'],
@@ -12741,7 +12751,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     const pv = h('div', { class: 'sce-preview' });
     try {
       const v = validateSchema(schema);
-      if (v.ok) {
+      if (schema.statusUI?.mode === 'off') {
+        pv.textContent = '상태창을 표시하지 않기로 했어요 — 채팅에 아무것도 안 그려요. 변수·규칙·모델용 상태 블록은 그대로 돌아요.';
+      } else if (v.ok) {
         pv.innerHTML = renderStatusHtml(schema, engine.initState(schema), null,
           (schema.actions || []).map((a) => ({ id: a.id, label: a.label ?? a.id, armed: false })),
           { includeStyle: true, uid });
@@ -15173,15 +15185,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       + `<span>${escText(e.msg)}</span></div>`
       + `<details class="sce-validation-tech"><summary>기술 위치 보기</summary><code>${escText(e.path)}</code></details></div>`;
     const needsFirstVariable = v.errors.some((e) => e.path === '$.vars'
-      && String(e.msg || '').includes('변수가 하나도 정의되지 않음'));
+      && String(e.msg || '').includes('변수도 켜진 기능도 없음'));
     const visibleErrors = needsFirstVariable
-      ? v.errors.filter((e) => !(e.path === '$.vars' && String(e.msg || '').includes('변수가 하나도 정의되지 않음')))
+      ? v.errors.filter((e) => !(e.path === '$.vars' && String(e.msg || '').includes('변수도 켜진 기능도 없음')))
       : v.errors;
     let html = '<div class="sce-validation-report">';
     if (needsFirstVariable) html += '<div class="sce-validation-start">'
       + '<span class="sce-validation-start-mark" aria-hidden="true">1</span>'
-      + '<div><strong>기본 변수를 하나 만들어 주세요</strong>'
-      + '<span>체력·호감도·돈처럼 시뮬레이션이 기억할 값을 먼저 정하면 나머지 기능을 연결할 수 있어요.</span></div>'
+      + '<div><strong>변수를 만들거나 기능을 켜 주세요</strong>'
+      + '<span>변수는 필수가 아니지만, 변수도 켜진 기능도 없으면 심코어가 할 일이 없어요. 체력·호감도·돈 같은 값을 하나 만들거나, '
+      + '시나리오·게시판·에셋 팩 같은 기능을 켜 주세요. 심코어를 이 캐릭터에서 빼려는 거라면 [캐릭터 설치 관리]의 [캐릭터에서 제거]예요.</span></div>'
       + '<button type="button" class="sce-btn" data-sce-create-first-var>기본 변수 만들기</button></div>';
     if (visibleErrors.length) html += `<div class="sce-validation-head"><strong>고칠 항목 ${visibleErrors.length}개</strong><span>수정하면 바로 다시 확인돼요</span></div>`
       + visibleErrors.map((e) => issueHtml(e, false)).join('');

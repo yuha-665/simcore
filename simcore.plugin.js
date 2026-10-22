@@ -26158,23 +26158,31 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(chat.draft)).toLocaleString()} 토큰`));
       meter.appendChild(h('span', {}, `이 대화 누적 보낸 약 ${chat.sent.toLocaleString()} · 받은 약 ${chat.got.toLocaleString()}`));
     };
+    let renderCtx = () => {};
     {
       const card = h('div', { class: 'sce-ai-setting-card' }, h('div', { class: 'sce-ai-setting-name' }, '전송 정보'));
-      const a = assembleBotContext(aiBotCtx);
-      if (a.text) {
+      // 캐릭터 정보(설명·로어북) 포함 토글 — 봇 컨텍스트는 비동기로 오므로 자리를 비워 두고 도착하면 채운다
+      // (대화 탭을 먼저 열면 첫 렌더에 토글이 없어 "로어북 가져오던 게 없어졌나" 싶었다 — 유저 실기 2026-10-22)
+      const ctxSlot = h('div');
+      renderCtx = () => {
+        ctxSlot.replaceChildren();
+        const a = assembleBotContext(aiBotCtx);
+        if (!a.text) return;
         const ctxCheck = h('input', { type: 'checkbox' });
         ctxCheck.checked = aiCtxOn;
         ctxCheck.onchange = () => { aiCtxOn = ctxCheck.checked; baseTok = null; renderMeter(); };
-        card.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
+        ctxSlot.appendChild(h('label', { class: 'sce-ai-context-toggle' }, ctxCheck,
           h('span', {}, '현재 캐릭터 정보 포함', h('span', { class: 'sce-ai-context-note' }, `설명·로어북 ${(a.bytes / 1024).toFixed(1)}KB`))));
-      }
+      };
+      renderCtx();
+      card.appendChild(ctxSlot);
       card.appendChild(meter);
       card.appendChild(h('div', { class: 'sce-ai-context-note' },
         '규격서와 작업본이 매 턴 함께 가요(±30% 추정, 리수가 실제 사용량을 안 알려줘요). 대화가 길어지면 [＋ 새 채팅]이 비용을 줄여요 — 앞부분 캐시가 되는 모델은 추정보다 덜 나가요.'));
       grid.appendChild(card);
     }
     renderMeter();
-    if (aiBotCtx === undefined) fetchBotCtx().then(() => { if (!destroyed) { baseTok = null; renderMeter(); } });
+    if (aiBotCtx === undefined) fetchBotCtx().then(() => { if (!destroyed) { baseTok = null; renderCtx(); renderMeter(); } });
     box.appendChild(settings);
 
     // ── 말풍선 ──

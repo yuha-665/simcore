@@ -1,0 +1,282 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.18.2 &nbsp;→&nbsp; v1.20.0</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 <b style="color:#dbe2ea;">이야기 속 시계</b>와 <b style="color:#dbe2ea;">편집기 어시스턴트를 쓰는 방식</b>입니다.
+  </p>
+</div>
+
+<!-- ─────────── ⚠ 먼저 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:26px;">
+  <div style="font-size:19px;font-weight:700;color:#c98a7a;margin-bottom:10px;">⚠ 먼저 — 🌙 버튼으로 밤을 넘기면 날짜가 이틀 가던 것</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">해당하는 봇</b> — 하루를 닫는 버튼이 있는 봇입니다. 템플릿 "연애 — 관계 시뮬"의 <b style="color:#dbe2ea;">[🌙 하루를 마친다]</b>,
+  "아포칼립스 생존 기록"의 <b style="color:#dbe2ea;">[🌙 밤을 넘긴다]</b>, 아틀리에 SimCore판처럼 버튼으로 밤을 넘기는 봇 전부요. <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.19.1</span><br>
+  <b style="color:#c98a7a;">증상</b> — 버튼을 누르고 "자고 일어났다"를 쓰면, 버튼이 하루를 넘긴 위에 <b style="color:#dbe2ea;">보조 모델이 그 밤을 하루로 또 셌습니다.</b>
+  보조가 받는 안내가 "자고 일어나 이튿날이면 1"이었으니 시킨 대로 적은 거죠. 그래서 아침이 아니라 <b style="color:#dbe2ea;">이틀 뒤</b>가 됐습니다.
+  연애 템플릿에선 기상 시각을 맞추는 턴에 보조가 적은 "10시 기상"(분)이 그 시각을 넘어가 하루가 더 가는 길도 있었습니다.<br>
+  <b style="color:#c98a7a;">이제</b> — 버튼이 이번에 넘긴 밤(또는 넘기기로 예약해 둔 밤)이 있으면, 보조가 적은 날 수에서 <b style="color:#e0a94a;">그 하루를 뺍니다.</b>
+  "사흘 뒤"는 버튼의 하루 + 보조의 이틀입니다. 기상 시각을 맞추는 턴엔 보조가 적은 분을 쓰지 않습니다.<br>
+  <b style="color:#c98a7a;">봇은 손대지 않아도 됩니다</b> — 엔진에서 막았으니 플러그인만 다시 임포트하시면 됩니다.
+  이미 하루씩 앞서 간 날짜는 그대로 남습니다. 최근 턴이면 그 턴을 리롤하면 새 계산으로 다시 갑니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  "날짜가 가끔 하루씩 튄다"로만 보이고 원인은 알 수 없던 종류였습니다. 아래 ⏱ 시각 보고를 설명하다가 찾았습니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 10px;font-size:18px;line-height:1.7;">
+이야기 속 시계를 <b style="color:#e0a94a;">모델의 계산에서 떼어냈고</b>, 편집기의 💬 대화는 <b style="color:#e0a94a;">상담하고 버튼으로 반영합니다.</b>
+</p>
+<p style="margin:0 0 8px;color:#a9b4c2;line-height:2;">
+⏱ <b style="color:#dbe2ea;">시각 보고</b> — 보조 모델은 <b style="color:#dbe2ea;">장면이 끝난 시각</b>만 적고, 몇 분 흘렀는지는 엔진이 셉니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.19.0 · 1.19.1</span><br>
+🗓 <b style="color:#dbe2ea;">장기기억 요약에 이야기 시각</b> — 요약본의 <b style="color:#dbe2ea;">"시간: 미정"</b>을 막습니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.3</span><br>
+💬 <b style="color:#dbe2ea;">대화는 상담, 반영은 [🗂 정리해서 반영]</b> — 채팅도 <b style="color:#dbe2ea;">여러 개 남습니다</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span><br>
+🧩 <b style="color:#dbe2ea;">변수·상태창 없이도</b> — 변수 0개로 설치, 상태창 끄기, 제거한 뒤 깔끔하게 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span><br>
+🔌 <b style="color:#dbe2ea;">(실험) 이 PC의 Claude Code · Codex로 봇 만들기</b> <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span><br>
+🔧 <b style="color:#dbe2ea;">수리</b> — [현재 캐릭터 정보 포함]이 <b style="color:#dbe2ea;">처음 열 때 안 보이던 것</b>
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+발단은 셋 다 커뮤니티 제보입니다. "심코어 시간이랑 LLM이 인식하는 시간이 안 맞는다", "장기기억 요약의 시간이 미정으로 찍힌다",
+"상태창이나 변수를 안 쓰고 싶어졌을 때 빼는 법이 없다".
+</p>
+
+<!-- ─────────── ① 시각 보고 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">⏱ 시각 보고 — 보조는 시각을 읽고, 빼기는 엔진이</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.19.0 · 1.19.1</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "심코어 시간이랑 LLM이 인식하는 시간이 안 맞는다." 원인은 시계를 미는 방식에 있었습니다.
+  보조 모델이 <b style="color:#c98a7a;">"몇 분 흘렀나"를 [지금] 시각에서 직접 빼서</b> 적었거든요 — "저녁이 되었다"면 570분을 계산하고, 자정을 넘기면 일과 분으로 쪼개고.
+  계산이 틀리면 시계가 서사와 갈라졌고, 22:00에 자고 07:00에 깨는 장면은 <b style="color:#dbe2ea;">적을 방법조차 없었습니다</b>(날 수 1은 시각을 그대로 두니 다음 날 22:00이 됩니다).
+  분을 두 번 세면 두 배가 되니 한 번에 흐를 시간에 상한(봇마다 4~12시간)을 걸었는데, 그 상한이 다시 "저녁까지 잤다"를 잘랐습니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">이제 보조는 시각만 적습니다</div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  시계가 보이는 봇이면 보조 모델은 <b style="color:#dbe2ea;">이 장면이 끝난 시각</b>과, 날짜가 바뀌었으면 <b style="color:#dbe2ea;">넘어간 날 수</b>만 적습니다.
+  [지금]과 비교해 몇 분이 흘렀는지는 <b style="color:#e0a94a;">엔진이 계산합니다.</b> 모델이 잘하는 것(글을 읽고 시각을 짚기)만 맡기고, 못하는 것(시각 빼기)은 시스템이 합니다.
+  </p>
+
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 14px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">[지금] 3일차 22:00 — 장면: 잠들었다가 아침 일곱 시에 눈을 뜬다
+
+전   보조가 분을 계산 → 540분 → 상한에 잘리면 새벽에서 멈춤
+     날 수 1로 적으면 → 4일차 22:00
+이제 보조: "07:00" + 하루 → 엔진이 4일차 07:00으로</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">같은 시각이 다시 오면 0분</b> — 쌓이지 않습니다. 분을 두 번 세서 시간이 두 배로 흐르던 일이 구조적으로 없어집니다<br>
+  · <b style="color:#dbe2ea;">날짜 없이 시각이 거꾸로 오면</b>(23:30 → 01:10) 6시간 안이면 자정을 넘긴 것으로, 그보다 멀면 회상이나 약속 속 시각으로 보고 시계를 안 움직입니다<br>
+  · <b style="color:#dbe2ea;">날 수는 달력 기준</b> — 밤에 자고 이튿날 깼으면 1, 자정 넘긴 새벽에 잠들어 같은 날 아침에 깼으면 0.
+    새벽에 "이튿날"이라 적어 와도 시각이 지금보다 뒤면 같은 날로 받습니다 <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#8b98a9;">v1.19.1</span><br>
+  · <b style="color:#dbe2ea;">시간을 정하는 쪽이 따로 있는 턴엔 비켜섭니다</b> — 액션이 시간을 정한 턴, 하루 경계를 맞추는 이벤트가 도는 턴, 🌙 버튼으로 넘긴 밤<br>
+  · <b style="color:#dbe2ea;">봇의 상한은 그대로 지킵니다</b> — 한 턴에 상한보다 많이 흐르면 그만큼만 가고, 다음 턴에 같은 시각이 오면 나머지를 메웁니다<br>
+  · <b style="color:#dbe2ea;">대상</b> — 시계를 보이는 봇 전부. 템플릿으로는 "일상 — 하루의 기록"·"연애 — 관계 시뮬"·"아포칼립스 생존 기록"입니다.
+    설정 칸은 없습니다(시계 봇이면 자동). 시계 없이 하루 단위로 넘기는 봇은 그대로입니다<br>
+  · 루아 브리지로 보조를 돌리는 환경은 종전대로 분으로 셉니다 — 브리지 쪽엔 [지금] 시각이 없어서요
+  </p>
+</div>
+
+<!-- ─────────── ② 장기기억 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🗓 장기기억 요약에 이야기 속 시각</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.18.3</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  장기기억 요약(HypaV3·HypaPlus처럼 몇십 턴마다 요약하는 것)이 만든 기억의 "시간"이 <b style="color:#c98a7a;">미정이거나 모델이 지어낸 날짜</b>였습니다.
+  요약기는 채팅 원문을 모아 보내는데, 원문엔 날짜가 없습니다 — 상태창은 화면 전용이고, 상태 블록은 그 턴의 메인 요청에만 실리니까요.
+  게다가 SimCore가 모든 요청에서 메시지 끝의 표식(⟦simcore:N⟧)을 지워서, "이 응답이 몇 번째 상태인가"라는 유일한 단서마저 요약기에 안 갔습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  이제 <b style="color:#e0a94a;">장기기억 요약 요청에서만</b> 그 표식을 그 응답의 이야기 시각으로 바꿉니다.
+  </p>
+
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 14px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">[Story time: 1499-03-14 08:00 → 11:30]     같은 날
+[Story time: 1499-03-14 22:10 → 03-15 07:00]  날짜가 바뀜
+[Story time: 1499-03-14]                     시계를 안 보이는 봇</pre>
+
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 시작 = 그 턴 직전 상태, 끝 = 그 응답 뒤 상태. 시계가 안 갔으면 시각 하나만<br>
+  · <b style="color:#dbe2ea;">시계를 안 보이는 봇은 날짜만</b> — 하루 단위로 넘기는 봇의 시계는 종일 아침에 서 있어서, 밤 장면에 08:00이 찍히면 그게 지어낸 시각이 됩니다<br>
+  · 서식은 봇의 날짜 표기와 무관하게 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">YYYY-MM-DD HH:mm</span> 고정 — 요약 쪽 서식이 그 꼴을 요구합니다<br>
+  · <b style="color:#dbe2ea;">메인·번역·보조 요청엔 안 붙습니다</b> — 메인 히스토리에 도장이 있으면 모델이 흉내 내서 제 답 끝에 찍습니다<br>
+  · <b style="color:#dbe2ea;">안 닿는 곳</b> — 시간 체계가 없는 봇, 상태 보관 범위(최근 60턴) 밖의 옛 메시지,
+    요약 모델을 플러그인 안에서 따로 연결해 리수 요청 길을 안 거치는 기억 플러그인. 이미 만들어진 요약은 그대로이고, 새로 만드는 요약부터입니다
+  </p>
+</div>
+
+<!-- ─────────── ③ 대화는 상담 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">💬 대화는 상담, 반영은 [🗂 정리해서 반영]</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span>
+  </div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  편집기 AI 어시스턴트의 💬 대화는 답할 때마다 "JSON을 붙일까"를 모델이 판단하는 구조였습니다.
+  말풍선이 무거워지고, 설계를 의논만 하고 싶은데 <b style="color:#c98a7a;">패치가 붙어 오곤</b> 했죠.
+  써 보니 "의논은 의논대로 하고, 정리는 버튼 한 번"이 낫더라는 경험에서 바꿨습니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">대화는 JSON을 붙이지 않습니다</div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  💬 대화는 이제 <b style="color:#dbe2ea;">상담 전용</b>입니다. 구조를 묻고, 설계를 의논하고, "이렇게 하자"를 정하는 자리예요.
+  "반영해줘"라고 하면 무엇을 어떻게 바꿀지 항목으로 정리해 보여 주고 버튼을 안내합니다.
+  (그래도 JSON이 붙어 오면 버리지 않고 아래 제안 상자로 받습니다.)
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">[🗂 정리해서 반영] — 대화 전체를 패치 하나로</div>
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  입력줄 오른쪽 <b style="color:#e0a94a;">[🗂 정리해서 반영]</b>을 누르면 대화 전체(48KB까지)를 정리해 <b style="color:#dbe2ea;">패치 하나</b>로 받아 옵니다.
+  입력창에 쓴 글은 추가 요청으로 같이 갑니다("호감도는 빼고" 같은). 작업본이 비어 있으면 봇 전체를 통째로 만듭니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">제안 상자 — 항목마다 체크</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    · 새 항목은 본문을, 수정은 <b style="color:#dbe2ea;">칸별 전 → 후</b>를 보여 줍니다<br>
+    · <b style="color:#dbe2ea;">삭제·충돌은 기본 해제</b> — 체크해야 들어갑니다. 조용히 덮어쓰는 일은 없습니다<br>
+    · 항목마다 💡 이유, 맨 위에 AI의 메모<br>
+    · <b style="color:#dbe2ea;">체크한 것만</b> 작업본에 들어갑니다. 적용은 지금까지와 같은 길이라 되돌리기·작업 내역·🔒 보호가 그대로 듭니다<br>
+    · "반영한 뒤 새 채팅으로"를 켜 두면 반영하고 깨끗한 채팅에서 이어 갑니다(지금 채팅은 지난 채팅에 남습니다)
+    </p>
+  </div>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">채팅이 남습니다 — 여러 개</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  지금까지는 편집기를 닫으면 대화가 사라졌습니다. 이제 남습니다. 맨 위 막대에 채팅 이름 · <b style="color:#dbe2ea;">[＋ 새 채팅]</b> · <b style="color:#dbe2ea;">[📂 지난 채팅 N]</b> · <b style="color:#dbe2ea;">[🗑 지우기]</b>(두 번 눌러야 지워짐).
+  지난 채팅을 열면 지금 채팅과 자리를 바꿉니다. <b style="color:#dbe2ea;">캐릭터별로, 이 기기에만</b> 저장되고, 지금 채팅은 메시지 80개 · 지난 채팅은 12개까지입니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 모델·전송 정보·📌 작업 지침은 <b style="color:#dbe2ea;">⚙ 접기 하나</b>로 들어가고, 말풍선 자리가 넓어졌습니다<br>
+  · 대화가 길어지면 [＋ 새 채팅]이 비용을 줄입니다 — 지금 채팅은 📂에 남아 언제든 다시 열 수 있어요<br>
+  · 🛠 봇 제작의 대화는 그대로입니다(설정집 쪽은 원래 "정리해줘"로 쌓는 방식)
+  </p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 💬 대화 — 위 채팅 막대와 입력줄의 [🗂 정리해서 반영], 제안 상자의 체크 항목]</p>
+</div>
+
+<!-- ─────────── ④ 변수·상태창 없이도 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🧩 변수·상태창은 필수가 아닙니다 — 끄고 빼는 길</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  "상태창이나 변수를 안 쓰고 싶어졌을 때, 한번 만들어지면 제거하는 법이 없다." 처음엔 SimCore 기능이 변수에 몰려 있어서 변수 없는 설치를 막아 뒀는데,
+  그사이 시나리오·비밀·게시판·메신저 같은 기능이 늘어 <b style="color:#dbe2ea;">변수 없이 쓰는 봇</b>도 말이 되게 됐습니다. 막고 있던 셋을 풀었습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">변수 0개로 설치</b> — 시나리오·비밀·게시판·메신저·상점·의뢰판·달력·편성표·무대 뒤·되감기·보조 갈림길·시간·지시문·판정·액션·이벤트 중
+    하나라도 켜져 있으면 설치됩니다. [변수] 탭이 비어 있으면 "변수는 필수가 아니에요"라고 안내합니다. 아무것도 없는 봇만 막고, 그땐 제거 버튼을 가리킵니다<br>
+  · <b style="color:#dbe2ea;">상태창 끄기</b> — <b style="color:#dbe2ea;">[상태창] 탭 → 구성 방식 → [표시하지 않기]</b>. 채팅에 상태창만 안 그리고,
+    변수·규칙·모델에게 가는 상태 블록·액션 버튼·게임 패널은 그대로 돕니다. 그룹 설정도 남아 있어서 다시 켜면 그대로입니다<br>
+  · <b style="color:#dbe2ea;">제거한 뒤</b> — <b style="color:#dbe2ea;">[편집 작업공간 → 캐릭터 설치 관리 → 캐릭터에서 제거]</b>를 하면 옛 대화마다 ⟦simcore:N⟧ 표식이 날것으로 보였습니다.
+    이제 숨깁니다. 저장된 상태는 지우지 않아서, 다시 설치하면 과거 상태창이 제자리로 돌아옵니다
+  </p>
+</div>
+
+<!-- ─────────── ⑤ 이 PC의 Claude Code · Codex ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🧪 실험</span>
+    <span style="font-size:19px;font-weight:600;">🔌 이 PC의 Claude Code · Codex로 봇 만들기</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  편집기 어시스턴트는 지금까지 리수에 연결한 API 모델로만 돌았습니다. Claude Code(구독)나 Codex(ChatGPT 로그인)를 쓰는 분도 봇을 만들려면 API 비용을 따로 내야 했죠.
+  이제 PC에서 작은 <b style="color:#e0a94a;">다리</b>를 켜 두면 편집기의 생성이 그쪽으로 갑니다.
+  플러그인은 리수 안에서 돌아서 PC 프로그램을 직접 못 띄우기 때문에, 다리가 중간에 섭니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">쓰이는 곳</b> — 편집기 어시스턴트의 생성(✨ 창작·💬 대화·🛠 봇 제작 등). <b style="color:#dbe2ea;">RP 채팅과 상태 갱신은 그대로 리수 모델</b>입니다<br>
+  · <b style="color:#dbe2ea;">되는 곳</b> — ✅ 리수 데스크톱 앱 · ✅ 리수 셀프호스트(같은 PC) · ⚠ 웹 리수는 설정의 <b style="color:#dbe2ea;">plain fetch</b>를 켜야 PC에 닿습니다 · ❌ 포켓리스·폰
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">켜는 법</div>
+  <p style="margin:0 0 14px;color:#dbe2ea;font-size:14px;line-height:2;">
+  <b style="color:#e0a94a;">1.</b> 이 PC에 Claude Code(VS Code 확장이든 CLI든)가 설치되고 <b style="color:#dbe2ea;">로그인</b>돼 있어야 합니다. Codex는 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">codex login</span>. Node.js도 필요합니다(없으면 다리가 알려 줍니다)<br>
+  <b style="color:#e0a94a;">2.</b> 받은 다리 폴더에서 <b style="color:#dbe2ea;">cli-bridge.bat</b> 더블클릭 — 검은 창에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">LISTENING http://127.0.0.1:5181</span>이 뜨면 켜진 겁니다<br>
+  <b style="color:#e0a94a;">3.</b> 편집기 → <b style="color:#dbe2ea;">생성 모델</b> → <b style="color:#dbe2ea;">[이 PC의 Claude Code · Codex (구독)]</b> → 주소(기본 그대로) → <b style="color:#dbe2ea;">[🔌 연결 확인]</b> → 모델 고르기<br>
+  <b style="color:#e0a94a;">4.</b> 창을 닫으면 꺼집니다. 봇 만들 때만 켜 두시면 됩니다
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #7fc7d9;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">다리가 하지 않는 것</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    · 요청·응답 본문을 <b style="color:#dbe2ea;">어디에도 남기지 않습니다</b>(창에는 시각·소요 시간·토큰 수만)<br>
+    · 로그인 정보를 읽지도 저장하지도 않습니다 — Claude Code·Codex가 하던 로그인을 그대로 씁니다<br>
+    · Claude Code는 <b style="color:#dbe2ea;">내 환경과 떼어서</b> 띄웁니다 — 도구 없음, 내 설정·CLAUDE.md·MCP·훅 안 읽음, 세션 기록 안 남김. Codex는 빈 임시 폴더에서 읽기 전용으로<br>
+    · <b style="color:#dbe2ea;">이 PC(127.0.0.1)에만</b> 엽니다. 다른 기기에서 쓰려고 바깥에 열면 같은 네트워크의 누구나 내 구독을 쓰게 되니 권하지 않습니다
+    </p>
+  </div>
+
+  <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:12px 16px;margin-bottom:14px;">
+    <p style="margin:0;color:#dbe2ea;font-size:14px;line-height:1.9;">
+    <b style="color:#c98a7a;">내 구독 사용량을 씁니다</b> — Claude Code의 5시간·7일 한도가 차면 생성이 멈춥니다. 그땐 기다리거나 생성 모델을 보조 모델로 돌리세요.
+    본인 PC에서 본인 구독으로 쓰는 용도입니다. <b style="color:#c98a7a;">실험 기능이라</b> 환경에 따라 안 될 수 있습니다 — 안 되면 [🔌 연결 확인] 옆의 ✗ 문구와 리수 종류(데스크톱·웹)를 댓글로 남겨 주세요.
+    </p>
+  </div>
+  <p style="margin:0 0 10px;color:#dbe2ea;">[다리 파일 링크: cli-bridge 폴더 — cli-bridge.bat · simcore-cli-bridge.js · README.md]</p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  다리는 플러그인과 별개 파일입니다. 안 쓰시면 안 받으셔도 되고, 생성 모델 목록에 선택지가 보여도 고르지 않으면 아무 일도 없습니다.
+  </p>
+</div>
+
+<!-- ─────────── ⑥ 수리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 수리</span>
+    <span style="font-size:19px;font-weight:600;">[현재 캐릭터 정보 포함]이 처음 열 때 안 보이던 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.20.0</span>
+  </div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 💬 대화나 🛠 봇 제작을 편집기에서 <b style="color:#dbe2ea;">처음 열면</b> [현재 캐릭터 정보 포함]과 📚 보낼 것 고르기가 안 보였습니다.
+    캐릭터의 설명·로어북은 조금 늦게 읽혀 오는데, 첫 화면이 그걸 기다리지 않고 그려졌거든요. "로어북 가져오던 게 없어졌나" 싶게 만들던 것입니다.
+    이제 정보가 도착하면 그 자리에 채워집니다
+  </p>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.20.0 🔌 이 PC의 클코·코덱스 · 💬 대화는 상담 · 변수 없이도</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 번들 교체는 필요 없습니다</b> — 이번 것은 <b style="color:#dbe2ea;">플러그인만</b> 갈면 끝입니다.
+  얼터헌터 개조판·아틀리에 SimCore판 쓰시는 분도 번들은 그대로 두세요.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 하던 채팅 이어서 하시면 됩니다.
+  🌙 수리·⏱ 시각 보고·🗓 요약 도장은 켜는 칸 없이 자동입니다. 이미 지나간 턴의 날짜는 그대로 남습니다(최근 턴은 리롤하면 새 계산으로).<br>
+  <b style="color:#c98a7a;">④ 💬 대화를 쓰시던 분께</b> —
+  <b style="color:#dbe2ea;">(1)</b> 대화는 이제 JSON을 붙이지 않습니다. 정한 걸 넣으려면 <b style="color:#dbe2ea;">[🗂 정리해서 반영]</b>을 누르세요.
+  <b style="color:#dbe2ea;">(2)</b> 대화가 <b style="color:#dbe2ea;">이 기기에 남습니다</b>(캐릭터별). 여럿이 쓰는 PC라면 [🗑 지우기]로 정리하세요.<br>
+  <b style="color:#c98a7a;">⑤ 루아 브리지를 쓰시는 분</b> — 이번엔 다시 설치할 것이 없습니다.<br>
+  <b style="color:#c98a7a;">⑥ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화가 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  이번 것도 전부 <b style="color:#a9b4c2;">"이게 이상하다", "이게 됐으면 좋겠다"는 이야기</b>에서 나왔습니다 — 제보해 주신 분들께 감사합니다.
+  </p>
+</div>
+
+</div>

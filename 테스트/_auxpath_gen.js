@@ -89,14 +89,21 @@ let lastAux = { status: '', raw: '', applied: 0 };
   const cliErr = (e) => {
     const m = String(e?.message ?? e);
     if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
-      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat이 켜져 있는지, 주소가 맞는지 확인해 주세요. 포켓리스·웹 리수에서는 쓸 수 없어요.`;
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat 창이 켜져 있는지, 주소가 맞는지 확인해 주세요. 웹 리수는 설정의 plain fetch를 켜야 닿고, 포켓리스에서는 쓸 수 없어요.`;
     }
     return m;
   };
+  // 리수 서버가 대신 접속하는 환경(셀프호스트·RisuBard의 /proxy2, 웹의 리수 프록시)에선 다리에 못 닿은 것이 예외가 아니라
+  // 서버의 5xx 응답으로 온다 — {"error":"fetch failed"}(서버 쪽 Node fetch의 ECONNREFUSED). 다리 자신의 오류는 늘 {error:{message}}
+  // 객체라 문자열 error로 가른다. 전엔 이게 "다리가 이상한 답을 했어요 (HTTP 500)"로 떠 다리를 의심하게 했다 (v1.20.2 실기 — RisuBard에서 다리를 안 켠 채 확인)
+  const cliUnreached = (r) => r.status >= 500 && r.body && typeof r.body.error === 'string'
+    && /fetch failed|ECONNREFUSED|refused|connect|timed out|aborted|network/i.test(r.body.error);
+  const cliUnreachedMsg = (r) => cliErr(new Error(`리수 서버가 대신 접속하다 실패 — ${r.body.error}`));
   // 연결 확인 — 편집기의 [🔌 연결 확인]. 백엔드 상태와 고를 수 있는 모델 목록을 돌려준다.
   async function probeCli(url) {
     try {
       const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
+      if (cliUnreached(r)) return { error: cliUnreachedMsg(r) };
       if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
       return { ok: true, version: r.body.version, backends: r.body.backends || {},
         models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
@@ -110,6 +117,7 @@ let lastAux = { status: '', raw: '', applied: 0 };
       });
       const text = r.body?.choices?.[0]?.message?.content;
       if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
+      if (cliUnreached(r)) return { error: `이 PC의 Claude Code·Codex: ${cliUnreachedMsg(r)}` };
       const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
       return { error: `이 PC의 Claude Code·Codex: ${msg}` };
     } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }

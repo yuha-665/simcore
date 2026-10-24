@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.20.1
-//@display-name SimCore (시뮬 엔진) v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리
+//@version 1.20.2
+//@display-name SimCore (시뮬 엔진) v1.20.2 🔌 다리에 못 닿으면 못 닿았다고
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,18 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.20.2 ───────────────────────────────────────────────
+// **🔌 다리에 못 닿으면 못 닿았다고.** 유저 실기(2026-10-25, RisuBard = Node 셀프호스트): 다리를 안 켠 채 [🔌 연결 확인] →
+// "✗ 다리가 이상한 답을 했어요 (HTTP 500): {"error":"fetch failed"}". 그 500은 다리가 아니라 **리수 서버**가 낸 것이다 —
+// nativeFetch가 셀프호스트에선 서버의 /proxy2로 가고, 서버의 Node fetch가 127.0.0.1:5181에서 ECONNREFUSED를 맞으면
+// 예외가 아니라 `next(err)` → 500 {"error":"fetch failed"} 응답으로 돌아온다(RisuBard server.cjs reverseProxyFunc 실사). 데스크톱의 직접
+// fetch처럼 던지지 않으니 cliErr의 "닿지 못했어요" 안내를 비껴가 다리를 의심하게 했다.
+// - [어댑터] cliUnreached — 5xx + 문자열 error(fetch failed·ECONNREFUSED·timed out…)는 "다리에 닿지 못했어요 (리수 서버가 대신 접속하다
+//   실패 — …) — cli-bridge.bat 창이 켜져 있는지…". 다리 자신의 오류는 늘 {error:{message}} 객체라 섞이지 않는다. 연결 확인·생성 호출 둘 다.
+// - [어댑터] 안내 꼬리 "포켓리스·웹 리수에서는 쓸 수 없어요" → "웹 리수는 설정의 plain fetch를 켜야 닿고, 포켓리스에서는 쓸 수 없어요" (웹은 된다).
+// - [증명] test-clibridge.js — nativeFetch를 /proxy2 흉내(못 닿으면 500 {"error": e.message})로 돌려 안내·생성 호출·켜진 다리 ok·
+//   다리 자신의 오류 구분. 실기: 다리를 켜니 /health ok (Claude Code 2.1.310 · Codex 로그인).
 //
 // ── v1.20.1 ───────────────────────────────────────────────
 // **🧹 패치로 지운 변수의 참조도 같이 정리.** 커뮤니티 제보(2026-10-24): "대화칸에서 삭제를 체크해도 삭제가 안 된다 — 뭔가 지울 때만
@@ -39629,14 +39641,21 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
   const cliErr = (e) => {
     const m = String(e?.message ?? e);
     if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
-      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat이 켜져 있는지, 주소가 맞는지 확인해 주세요. 포켓리스·웹 리수에서는 쓸 수 없어요.`;
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat 창이 켜져 있는지, 주소가 맞는지 확인해 주세요. 웹 리수는 설정의 plain fetch를 켜야 닿고, 포켓리스에서는 쓸 수 없어요.`;
     }
     return m;
   };
+  // 리수 서버가 대신 접속하는 환경(셀프호스트·RisuBard의 /proxy2, 웹의 리수 프록시)에선 다리에 못 닿은 것이 예외가 아니라
+  // 서버의 5xx 응답으로 온다 — {"error":"fetch failed"}(서버 쪽 Node fetch의 ECONNREFUSED). 다리 자신의 오류는 늘 {error:{message}}
+  // 객체라 문자열 error로 가른다. 전엔 이게 "다리가 이상한 답을 했어요 (HTTP 500)"로 떠 다리를 의심하게 했다 (v1.20.2 실기 — RisuBard에서 다리를 안 켠 채 확인)
+  const cliUnreached = (r) => r.status >= 500 && r.body && typeof r.body.error === 'string'
+    && /fetch failed|ECONNREFUSED|refused|connect|timed out|aborted|network/i.test(r.body.error);
+  const cliUnreachedMsg = (r) => cliErr(new Error(`리수 서버가 대신 접속하다 실패 — ${r.body.error}`));
   // 연결 확인 — 편집기의 [🔌 연결 확인]. 백엔드 상태와 고를 수 있는 모델 목록을 돌려준다.
   async function probeCli(url) {
     try {
       const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
+      if (cliUnreached(r)) return { error: cliUnreachedMsg(r) };
       if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
       return { ok: true, version: r.body.version, backends: r.body.backends || {},
         models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
@@ -39650,6 +39669,7 @@ module.exports = { TEMPLATES, IDOL, DELVE, ZOMBIE, BLANK, RPG, ESTATE, MYSTERY, 
       });
       const text = r.body?.choices?.[0]?.message?.content;
       if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
+      if (cliUnreached(r)) return { error: `이 PC의 Claude Code·Codex: ${cliUnreachedMsg(r)}` };
       const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
       return { error: `이 PC의 Claude Code·Codex: ${msg}` };
     } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }

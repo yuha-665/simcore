@@ -120,7 +120,13 @@ const echoOf = (text) => JSON.parse(String(text).replace(/^echo:/, ''));
 const store = new Map();
 const Risuai = {
   pluginStorage: { getItem: async (k) => (store.has(k) ? store.get(k) : null), setItem: async (k, v) => { store.set(k, v); } },
-  nativeFetch: (url, init) => { globalThis.__lastFetch = { url, init }; return fetch(url, init); },
+  nativeFetch: async (url, init) => {
+    globalThis.__lastFetch = { url, init };
+    if (!globalThis.__viaProxy) return fetch(url, init);
+    // 셀프호스트·RisuBard의 /proxy2 흉내 — 서버가 대신 fetch하다 못 닿으면 예외가 아니라 500 {"error": err.message} (v1.20.2 실기)
+    try { return await fetch(url, init); }
+    catch (e) { return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' } }); }
+  },
   runLLMModel: async () => ({ type: 'success', result: 'from-risu-model' }),
 };
 const AUX_NUDGE = '위 지시에 따라 답하라.';
@@ -157,6 +163,19 @@ module.exports = { getGenModel, setGenModel, callGenLLM, probeCli, _auxCalls: ()
       ck('다리가 꺼져 있으면 켜라는 안내', down && /cli-bridge\.bat/.test(down.error), JSON.stringify(down));
       const pdown = await M.probeCli('http://127.0.0.1:1');
       ck('연결 확인도 같은 안내', pdown.error && /cli-bridge\.bat/.test(pdown.error), JSON.stringify(pdown));
+      // 리수 서버가 대신 접속하는 환경 (v1.20.2 실기 — RisuBard에서 다리를 안 켠 채 확인하니 "다리가 이상한 답을 했어요 (HTTP 500): {"error":"fetch failed"}")
+      globalThis.__viaProxy = true;
+      const pp = await M.probeCli('http://127.0.0.1:1');
+      ck('★ 프록시 환경 — 500 {"error":"fetch failed"}도 "닿지 못했어요" + 켜라는 안내 (다리를 의심하게 하던 "이상한 답" 아님)',
+        pp.error && /닿지 못했어요/.test(pp.error) && /리수 서버가 대신 접속하다 실패/.test(pp.error) && /cli-bridge\.bat/.test(pp.error) && !/이상한 답/.test(pp.error), JSON.stringify(pp));
+      const cp = await M.callGenLLM('p');
+      ck('프록시 환경 — 생성 호출도 같은 안내', cp && /닿지 못했어요/.test(cp.error) && /리수 서버가 대신/.test(cp.error), JSON.stringify(cp));
+      await M.setGenModel({ choice: 'cli', cliUrl: B + '/', cliModel: 'claude-code' });
+      const okp = await M.probeCli(B + '/');
+      ck('프록시 환경 — 켜진 다리는 그대로 ok', okp.ok === true, JSON.stringify(okp).slice(0, 120));
+      const badp = await M.callGenLLM({ system: 'S', messages: [{ role: 'user', content: 'FAIL_LOGIN' }] });
+      ck('다리 자신의 오류({error:{message}})는 못 닿음으로 오인하지 않는다', badp && /로그인되어 있지 않아요/.test(badp.error) && !/닿지 못했어요/.test(badp.error), JSON.stringify(badp));
+      globalThis.__viaProxy = false;
       try { fs.unlinkSync(out); } catch { }
     }
 

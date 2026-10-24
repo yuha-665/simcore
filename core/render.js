@@ -391,6 +391,9 @@ function highlightCards(schema, changeLog, varById, dueNow = null) {
 
 function renderStatusHtml(schema, state, changeLog = null, actionStates = null, opts = {}) {
   const ui = schema.statusUI || {};
+  // 표시하지 않기 (v1.15.1) — statusUI.mode 'off'는 검증 한 줄에만 있고 아무도 안 읽었다. 채팅에 상태창을
+  // 안 그린다. 마커는 그대로 박힌다(상태·되감기·과거 스냅샷은 산다) — display 훅이 빈 문자열로 바꿀 뿐.
+  if (ui.mode === 'off') return '';
   const lookup = makeLookup(schema, state.vars);
   const dueNow = dueClock(schema, state);   // 목록 기한 환산용 시계 (목록마다 1회 평가)
   // uid — 이 상태창이 그려진 메시지를 가리키는 꼬리표. 템플릿에서 {uid}로 쓴다.

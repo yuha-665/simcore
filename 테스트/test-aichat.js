@@ -30,11 +30,11 @@ ck('실험대 스키마 유효', validateSchema(BASE).ok, validateSchema(BASE).e
 {
   const full = M.chatRules(false).join('\n'), blank = M.chatRules(true).join('\n');
   ck('규약 제목 + 우선 선언', full.includes('## 대화 규약') && full.includes('출력 형식보다 우선'), '');
-  ck('★ 바꿀 때만 JSON — 논의 턴엔 붙이지 마라', full.includes('바꿔야 할 때만') && full.includes('붙이지 마세요'), '');
-  ck('확인이 필요하면 먼저 묻는다', full.includes('먼저 묻고'), '');
+  ck('★ 대화에선 JSON을 붙이지 않는다 — 반영은 [🗂 정리해서 반영] (v1.16.0)', full.includes('JSON을 붙이지 않습니다') && full.includes('🗂 정리해서 반영'), '');
+  ck('확인이 필요하면 먼저 묻는다', full.includes('먼저 물으세요'), '');
   ck('적용됨/적용되지 않음 표식 설명', full.includes('[적용됨') && full.includes('[적용되지 않음]'), '');
   ck('패치 못 다루는 절은 말로 안내', full.includes('statusUI') && full.includes('말로 안내'), '');
-  ck('★ 빈 작업본 규약은 스키마 JSON (패치 아님)', blank.includes('스키마 JSON 코드펜스') && !blank.includes('패치 JSON 코드펜스'), '');
+  ck('★ 빈 작업본 규약은 큰 그림 상담 (JSON 없음)', blank.includes('큰 그림') && blank.includes('JSON을 붙이지 않습니다') && !blank.includes('패치 JSON 코드펜스'), '');
   ck('빈 작업본엔 "이미 있는 항목" 언급 없음', !blank.includes('이미 있는 항목') && !blank.includes('statusUI'), '');
 }
 
@@ -262,7 +262,7 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   ck('메시지는 이번 말 하나 (user)', calls[0].messages.length === 1 && calls[0].messages[0].role === 'user' && calls[0].messages[0].content === '금화가 뭐야?', JSON.stringify(calls[0].messages));
   let bubbles = findAll(container, (e) => e.className.startsWith('sce-chat-msg'));
   ck('★ 말풍선 둘 (나·어시스턴트)', bubbles.length === 2 && bubbles[1].className.includes('is-ai') && bubbles[1].textContent.includes('설명만 하는 턴'), `${bubbles.length}`);
-  ck('논의 턴엔 계획 상자 없음', !btn(container, '패치 적용'), '');
+  ck('논의 턴엔 제안 상자 없음', !btn(container, '개 반영'), '');
   ck('누적 토큰 표시가 0이 아니다', /누적 보낸 약 [1-9]/.test(pane().textContent), '');
   ck('작업본은 안 변함', ed.getSchema().vars.length === 1, '');
 
@@ -274,10 +274,10 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   ck('이력이 실린다 (앞 왕복 2개 + 이번 말)', calls[1].messages.length === 3 && calls[1].messages[1].role === 'assistant', JSON.stringify(calls[1].messages.map((m) => m.role)));
   bubbles = findAll(container, (e) => e.className.startsWith('sce-chat-msg'));
   ck('★ 산문은 말풍선에 (JSON은 안 보임)', bubbles[3].textContent.includes('산적 경계 변수를 넣었어요') && !bubbles[3].textContent.includes('patchVersion'), '');
-  ck('★ 수정안 대기 표식 + 계획 상자(변경 계획·패치 적용)', bubbles[3].textContent.includes('수정안이 아래 변경 계획에') && !!btn(container, '패치 적용') && (pane().textContent || '').includes('변경 계획'), '');
+  ck('★ 수정안 대기 표식 + 🗂 제안 상자(정리 제안·선택한 N개 반영)', bubbles[3].textContent.includes('수정안이 아래 제안 상자에') && !!btn(container, '개 반영') && (pane().textContent || '').includes('정리 제안'), '');
   ck('★ 대화 탭 표식 ●', (btn(container, '💬 대화').textContent || '').includes('●'), '');
   ck('적용 전엔 작업본 그대로', ed.getSchema().vars.length === 1, '');
-  btn(container, '패치 적용').click();
+  btn(container, '개 반영').click();
   await settle();
   ck('★ 적용 → 작업본에 raid_alert', ed.getSchema().vars.some((v) => v.id === 'raid_alert'), '');
   bubbles = findAll(container, (e) => e.className.startsWith('sce-chat-msg'));
@@ -302,24 +302,26 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
   await settle();
   ck('★ 불합격 1회 재요청 (호출 2회) — 재요청 메시지에 오류 첨부', n === 2 && calls[calls.length - 1].messages.at(-1).content.includes('형식 검사에서 거부'), `${n}`);
   bubbles = findAll(container, (e) => e.className.startsWith('sce-chat-msg'));
-  ck('★ 두 번 다 실패 → 말풍선에 사유 + 원문 접기, 계획 상자 없음', bubbles.at(-1).textContent.includes('형식 검사를 통과하지 못해') && !btn(container, '패치 적용'), bubbles.at(-1).textContent.slice(0, 120));
+  ck('★ 두 번 다 실패 → 말풍선에 사유 + 원문 접기, 제안 상자 없음', bubbles.at(-1).textContent.includes('형식 검사를 통과하지 못해') && !btn(container, '개 반영'), bubbles.at(-1).textContent.slice(0, 120));
   ck('작업본은 그대로 (gold 하나)', ed.getSchema().vars.filter((v) => v.id === 'gold').length === 1, '');
 
   // ⑤ 떠 있는 수정안을 두고 다음 말 → "적용하지 않았어요"로 접힘
   reply = () => '또 넣을게요.\n\n```json\n{"patchVersion":1,"add":{"vars":[{"id":"fame","label":"명성","type":"int","init":0}]}}\n```';
   area().value = '명성도'; area().oninput(); btn(container, '보내기').click(); await settle();
-  ck('수정안 대기', !!btn(container, '패치 적용'), '');
+  ck('수정안 대기', !!btn(container, '개 반영'), '');
   reply = () => '알겠어요.';
   area().value = '아니 됐어'; area().oninput(); btn(container, '보내기').click(); await settle();
   bubbles = findAll(container, (e) => e.className.startsWith('sce-chat-msg'));
-  ck('★ 지나간 수정안은 "적용하지 않았어요" + 계획 상자 치움', bubbles.some((b) => b.textContent.includes('적용하지 않았어요')) && !btn(container, '패치 적용'), '');
+  ck('★ 지나간 수정안은 "적용하지 않았어요" + 제안 상자 치움', bubbles.some((b) => b.textContent.includes('적용하지 않았어요')) && !btn(container, '개 반영'), '');
   ck('이력엔 [적용되지 않음]', calls.at(-1).messages.some((m) => m.content.includes('[적용되지 않음]')), '');
   ck('fame은 안 들어감', !ed.getSchema().vars.some((v) => v.id === 'fame'), '');
 
-  // ⑥ 초기화
-  btn(container, '대화 초기화').click();
+  // ⑥ 지우기 — 🗑 두 번 (v1.16.0: 초기화 버튼 대신 채팅 막대의 🗑)
+  btn(container, '🗑 지우기').click();
   await settle();
-  ck('★ 초기화 → 말풍선 0, 누적 0', findAll(container, (e) => e.className.startsWith('sce-chat-msg')).length === 0 && /누적 보낸 약 0 /.test(pane().textContent), '');
+  btn(container, '한 번 더 누르면 지워요').click();
+  await settle();
+  ck('★ 지우기 → 말풍선 0, 누적 0', findAll(container, (e) => e.className.startsWith('sce-chat-msg')).length === 0 && /누적 보낸 약 0 /.test(pane().textContent), '');
 
   // ⑦ 빈 작업본 — 통짜 스키마가 오면 확인 상자, [편집기에 넣기]로 반영
   const c2 = document.createElement('div');
@@ -388,7 +390,7 @@ const settle = async () => { for (let i = 0; i < 12; i++) await tick(); };
     const a5 = findAll(c5, (e) => e.tagName === 'TEXTAREA' && e.className.includes('sce-chat-input'))[0];
     a5.value = '산적 경계 넣어줘'; a5.oninput(); btn(c5, '보내기').click(); await settle();
     ck('★ 시스템 프롬프트 끝에 지난 작업 (tax_due)', calls2.length === 1 && calls2[0].system.includes('지금까지 한 작업') && calls2[0].system.includes('tax_due'), '');
-    btn(c5, '패치 적용').click(); await settle();
+    btn(c5, '개 반영').click(); await settle();
     ck('★ 적용 → 저장 통로로 2건 (새것이 앞) · 통로 대화 · 요청·이유·id', !!saved && saved.length === 2 && saved[0].via === 'chat' && saved[0].req === '산적 경계 넣어줘' && saved[0].why.startsWith('산적 경계를 넣었어요') && saved[0].ids.some((x) => x.includes('raid_alert')) && saved[0].sum === '추가 1', JSON.stringify(saved && saved[0]));
     ck('카드가 2건으로', (wl().textContent || '').includes('작업 내역 2건') && (wl().textContent || '').includes('raid_alert'), '');
     btn(c5, '적용 전으로 되돌리기').click(); await settle();

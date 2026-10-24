@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.19.1
-//@display-name SimCore (시뮬 엔진) v1.19.1 ⏱ 시각 보고 — 🌙 밤은 한 번만 넘어간다 · 새벽잠은 같은 날
+//@version 1.20.0
+//@display-name SimCore (시뮬 엔진) v1.20.0 🔌 이 PC의 클코·코덱스 · 💬 대화는 상담 · 변수 없이도
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -10,6 +10,67 @@
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
 //
+// ── v1.20.0 ───────────────────────────────────────────────
+// **feat/cli-bridge 합류 — 🔌 이 PC의 Claude Code·Codex · 변수·상태창 없이도 · 💬 대화는 상담, 반영은 [🗂 정리해서 반영].**
+// 그 브랜치는 2026-10-08 master(v1.14.2)에서 갈라져 자기 번호 v1.15.0·v1.15.1·v1.16.0을 매겼는데, 그 사이 이 줄기(feat/checkpoint)가
+// v1.15.0~v1.19.1을 먼저 썼다 — 번호가 겹쳐 셋을 v1.20.0 한 판으로 싣는다. 아래 ①②③은 그 브랜치의 기록 그대로(번호만 바꿈).
+// 합치며 맞춘 것:
+// - [🗂 정리해서 반영] 캐릭터 정보가 📚 보낼 것 고르기(v1.16.1)를 거친다 — 그 브랜치엔 고르기가 없어 설명·로어북을 통째로 보냈다.
+// - 대화 탭 [현재 캐릭터 정보 포함]이 늦게 도착해도 그려지는 자리(그 브랜치의 수리)에 📚 고르기·↻ 다시 읽기(v1.16.3)도 같이 든다.
+// - 어댑터: 🛠 봇 제작 설정집 저장(loadBible·loadBiblePrefs)과 💬 대화 저장(loadChats) 자리를 둘 다.
+
+// ── v1.20.0 ③ (cli-bridge의 v1.16.0) ─────────────────────────────
+// **💬 대화는 상담, 반영은 [🗂 정리해서 반영] — 노벨 스튜디오 OOC·설정 정리 이식.** 유저가 노벨 스튜디오를 만들어 써 보니
+// "OOC로 대화하기도 편하고, 설정 정리 버튼으로 설정집을 만드는 기능 자체가 쓰기 좋더라. UI도 보기 낫더라". 심코어 편집기의
+// 💬 대화는 매 턴 JSON을 붙일지 말지를 모델이 판단하는 구조라 말풍선이 무겁고, 적용은 창작 탭과 같은 변경 계획 상자였다.
+// - [대화] 규약을 상담 전용으로: **이 대화에서는 JSON을 붙이지 않는다.** "반영해줘"엔 항목으로 정리하고 버튼을 안내한다.
+//   그래도 JSON이 오면 버리지 않고 같은 제안 상자로 (안전망 그대로).
+// - [🗂 정리해서 반영] 입력줄의 새 버튼 — 대화 전체(적용됨 표식 포함, 48KB까지) + 입력창의 글(추가 요청)을 정리 규약과 함께
+//   보내 패치 JSON 하나(최상위 reasons·note 동봉)를 받는다. 빈 작업본이면 통짜 스키마. 형식 불합격은 1회 재요청.
+// - [제안 상자] 변경 계획 대신 항목마다 체크 — 새 항목은 본문, 수정은 칸별 전/후, 삭제·충돌은 기본 해제(조용한 교체 없음),
+//   항목 이유(💡 reasons)·AI 소감(note)·[반영한 뒤 새 채팅으로]. 적용은 기존 applyPatch — 되돌리기·작업 내역·🔒 보호 그대로.
+// - [여러 채팅 + 저장] 채팅 막대(이름·[＋ 새 채팅]·[📂 지난 채팅]·[🗑 두 번]) — 캐릭터별 pluginStorage `sim:chats:<chaId>`
+//   (지금 채팅 80개·지난 채팅 12개·400KB 상한). "대화는 안 남긴다"(2026-09-10)를 뒤집음 — 유저가 그쪽 모양을 원했다.
+// - [UI] 모델·전송·📌 지침·템플릿·작업 내역은 ⚙ 한 줄로 접고, 말풍선이 주인공. 입력줄 오른쪽에 [🗂 정리해서 반영] [보내기].
+// - [증명] test-ooc.js — 정리 요청 조립(대화 기록·표식·추가 요청)·reasons/note 가르기·체크대로 자르기·칸별 비교·저장 모양·
+//   가짜 DOM으로 막대(새 채팅·지난 채팅·열기·지우기)와 정리→제안→선택 반영→새 채팅. test-aichat·test-chatdel은 새 모양으로.
+
+// ── v1.20.0 ② (cli-bridge의 v1.15.1) ─────────────────────────────
+// **변수·상태창은 필수가 아니다 — 끄고 빼는 길.** 커뮤니티: "심코어 상태창이나 변수를 안 쓰고 싶어졌을 때, 한번 만들어지면
+// 제거하는 법이 없다". 유저: 초기엔 기능이 변수에 집중돼 안전장치로 막아 뒀는데 기능이 많아져 변수 상태창이 필수가 아니게 됐다.
+// 확인해 보니 셋이 막고 있었다.
+// - [검증] 변수 0개 통과 조건이 v0.64의 "에셋 팩 또는 행동 제안"에 멈춰 있었다 — 시나리오·비밀·게시판·메신저·상점·의뢰판·달력·
+//   편성표·무대 뒤·되감기·보조 갈림길·시간·지시문·판정·액션·이벤트·랜덤 사건이 생긴 뒤에도. `activeSections(schema)`(켜진 절의
+//   이름표)가 validate·설치 경고·편집기 빈 변수 탭이 보는 한 목록. 변수도 켜진 절도 없는 스키마만 막고, 그 오류문이
+//   [캐릭터에서 제거]를 가리킨다.
+// - [상태창] `statusUI.mode: 'off'`가 검증 한 줄에만 있고 어디서도 안 읽혔다 — 편집기 선택지에도 없고 render도 몰랐다. 이제
+//   구성 방식 [표시하지 않기]: 채팅에 상태창을 안 그린다(마커는 그대로 — 상태·되감기·과거 스냅샷은 산다). 변수·규칙·모델용
+//   상태 블록·액션 버튼·게임 패널은 그대로. 미리보기와 표시 방식 문구가 그렇다고 말한다.
+// - [제거] [캐릭터에서 제거] 뒤 옛 대화마다 ⟦simcore:N⟧이 날것으로 보였다 — display 훅이 설치본 없는 캐릭터에선 그냥 지나쳤다.
+//   이제 숨긴다(저장본은 안 건드린다 — 다시 설치하면 과거 상태가 그 번호로 돌아온다). 위치 top일 때 빈 블록이 빈 줄을 남기던 것도.
+// - [편집기] 빈 변수 탭 "게임에서 기억할 값 하나를 먼저 만들어 주세요" → 켜진 절을 이름으로 부르고 "변수는 필수가 아니에요".
+//   검증 리포트의 [기본 변수 만들기] 블록도 같은 말. schemaIsBlank가 시나리오·게시판·비밀만 있는 봇을 빈 봇으로 보던 것도.
+// - [증명] test-novars.js — 절마다 변수 0개 설치 통과, 빈 스키마는 제거 안내와 함께 오류, mode off면 render가 빈 문자열,
+//   설치본 없는 캐릭터의 display가 마커를 숨김, 편집기 문구·선택지.
+
+// ── v1.20.0 ① (cli-bridge의 v1.15.0) ─────────────────────────────
+// **이 PC의 Claude Code · Codex로 봇 만들기.** 유저: "심코어 제작할 때 AI 어시스턴트가 리수 API를 쓰게 해 뒀는데,
+// 클코·코덱스 구독자에겐 좋은 방법이 아니다". 노벨 스튜디오·오토QA에서 쓴 길(PC의 `claude -p` · `codex exec`)을
+// 심코어에 — 단 플러그인은 리수 샌드박스라 프로세스를 못 띄우므로, PC에서 켜 두는 다리 하나를 거친다.
+// - [tools/cli-bridge] `simcore-cli-bridge.js` + `cli-bridge.bat` — 의존 없음. OpenAI 호환(`/v1/chat/completions`·`/v1/models`·`/health`).
+//   Claude Code는 노벨 스튜디오와 같은 격리(`--tools "" --setting-sources "" --strict-mcp-config --no-session-persistence
+//   --disable-slash-commands`, system은 파일·본문은 stdin, CLAUDE*·ANTHROPIC_* 환경변수 제거) / Codex는 빈 임시 폴더
+//   읽기 전용·`--ephemeral`. 본문은 어디에도 안 남긴다. 127.0.0.1에만 연다.
+// - [어댑터] 생성 모델 선택에 `cli` — `callGenLLM`만 이 길을 탄다(단발 생성·💬 대화·에셋 변환·꾸미기). RP 채팅·상태 갱신은
+//   그대로 리수 모델. `Risuai.nativeFetch`로 다리에 묻는다 — 리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시, 웹은
+//   plain fetch 설정을 켜야 localhost에 닿는다(리수 `globalApi` 실사: 웹의 `globalFetch`는 localhost를 **아예 막고**,
+//   `fetchNative`는 프록시를 거친다). 포켓리스는 불가 — 안내문이 말한다.
+// - [편집기] 생성 모델 줄에 [이 PC의 Claude Code · Codex (구독)] → 주소 → [🔌 연결 확인] → 다리가 준 모델 목록에서 고르기.
+//   확인 결과는 편집기 인스턴스에만 산다. 다리가 꺼져 있으면 "cli-bridge.bat을 켰는지" 안내.
+// - [증명] test-clibridge.js — 가짜 `claude`·`codex`로 다리를 띄워 격리 플래그·평탄화·오류 문구·스트리밍·CORS를 보고,
+//   번들의 생성 모델 절을 잘라 가짜 Risuai(nativeFetch = 진짜 fetch)로 다리에 실제로 꽂는다. 구독 할당량 0.
+// - 규정: 개인 PC에서 본인 구독을 쓰는 자리다(노벨 스튜디오와 같음). 공식 기능으로 배포할지는 유저 결정 — 배포글엔 아직 없다.
+
 // ── v1.19.1 ───────────────────────────────────────────────
 // **🌙 밤은 한 번만 넘어간다 · 새벽잠은 같은 날.** v1.19.0 시각 보고를 설명하다 찾은 두 군데 — 둘 다 날짜가 하루 더 가는 쪽이다.
 // - [엔진] 🌙 메아리(5.33) — 하루 닫기 버튼이 넘긴 밤을 보조가 skip_day로 또 넘기면 하루를 뺀다(day_passed 유령 밤 빗장의 숫자판).
@@ -3561,7 +3622,7 @@
   // 보조 모델(submodel)은 번역·요약용 싼 모델이 꽂혀 있는 자리인데, 스키마 생성은 이
   // 생태계에서 가장 길고 어려운 출력이다 — 첫 시도가 쓰레기면 기능이 거기서 죽는다 (공홈 피드백).
   // 어느 모델로 생성할지는 봇이 아니라 기기·유저의 속성이므로 pluginStorage(로컬)에 둔다.
-  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static', staticId }
+  const GEN_MODEL_KEY = 'sim:genmodel'; // JSON { choice:'aux'|'main'|'static'|'cli', staticId, cliUrl, cliModel }
   // 메인 모델 경로의 자기 요청 식별표 — beforeRequest가 이걸 보면 주입·정산 없이 통과시킨다.
   // (⟦simcore:N⟧ 마커와 다른 꼴이라 기존 MARKER_RE 제거에 안 걸린다 — 전용 분기에서 지운다)
   const GEN_SENTINEL = '⟦simcore:gen⟧';
@@ -3570,18 +3631,64 @@
     try {
       const raw = await Risuai.pluginStorage.getItem(GEN_MODEL_KEY);
       const v = raw ? JSON.parse(raw) : null;
-      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static')) {
-        return { choice: v.choice, staticId: String(v.staticId || '') };
+      if (v && (v.choice === 'aux' || v.choice === 'main' || v.choice === 'static' || v.choice === 'cli')) {
+        return { choice: v.choice, staticId: String(v.staticId || ''),
+          cliUrl: String(v.cliUrl || CLI_DEFAULT_URL), cliModel: String(v.cliModel || 'claude-code') };
       }
     } catch { /* 깨진 저장값은 기본값으로 */ }
-    return { choice: 'aux', staticId: '' };
+    return { choice: 'aux', staticId: '', cliUrl: CLI_DEFAULT_URL, cliModel: 'claude-code' };
   }
 
   async function setGenModel(v) {
     try {
       await Risuai.pluginStorage.setItem(GEN_MODEL_KEY,
-        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '' }));
+        JSON.stringify({ choice: v && v.choice ? v.choice : 'aux', staticId: (v && v.staticId) || '',
+          cliUrl: (v && v.cliUrl) || '', cliModel: (v && v.cliModel) || '' }));
     } catch (e) { console.log('[simcore] 생성 모델 저장 실패:', e.message); }
+  }
+
+  // ── 이 PC의 Claude Code · Codex (v1.15.0) ─────────────────────────────
+  // 편집기 생성을 리수 모델 대신 PC에서 켜 둔 다리(tools/cli-bridge)로 보낸다. 플러그인은 샌드박스라 프로세스를
+  // 못 띄우므로 HTTP 한 번이 전부다 — Risuai.nativeFetch (리수 데스크톱은 네이티브, 셀프호스트는 서버 프록시,
+  // 웹은 plain fetch 설정을 켜야 localhost에 닿는다. 포켓리스는 불가). RP 채팅·상태 갱신은 건드리지 않는다 —
+  // callGenLLM만 이 길을 탄다. 다리는 본문을 어디에도 안 남기고, 이쪽도 인증 정보를 모른다.
+  const CLI_DEFAULT_URL = 'http://127.0.0.1:5181';
+  const cliBase = (url) => String(url || CLI_DEFAULT_URL).trim().replace(/\/+$/, '');
+  async function cliFetch(url, init) {
+    if (typeof Risuai.nativeFetch !== 'function') throw new Error('이 리수 버전엔 nativeFetch가 없어요 — 리수를 업데이트해 주세요');
+    const res = await Risuai.nativeFetch(url, init);
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { body = null; }
+    return { status: res.status, body, text };
+  }
+  const cliErr = (e) => {
+    const m = String(e?.message ?? e);
+    if (/fetch|network|ECONNREFUSED|refused|load failed|closed|timeout|timed out/i.test(m)) {
+      return `다리에 닿지 못했어요 (${m.slice(0, 80)}) — 이 PC에서 cli-bridge.bat이 켜져 있는지, 주소가 맞는지 확인해 주세요. 포켓리스·웹 리수에서는 쓸 수 없어요.`;
+    }
+    return m;
+  };
+  // 연결 확인 — 편집기의 [🔌 연결 확인]. 백엔드 상태와 고를 수 있는 모델 목록을 돌려준다.
+  async function probeCli(url) {
+    try {
+      const r = await cliFetch(cliBase(url) + '/health?refresh=1', { method: 'GET', headers: {} });
+      if (!r.body || !r.body.ok) return { error: `다리가 이상한 답을 했어요 (HTTP ${r.status}): ${r.text.slice(0, 80)}` };
+      return { ok: true, version: r.body.version, backends: r.body.backends || {},
+        models: Array.isArray(r.body.models) ? r.body.models.map((m) => ({ id: m.id, label: m.label || m.id })) : [] };
+    } catch (e) { return { error: cliErr(e) }; }
+  }
+  async function callCliLLM(gm, messages) {
+    try {
+      const r = await cliFetch(cliBase(gm.cliUrl) + '/v1/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: gm.cliModel || 'claude-code', messages, stream: false }),
+      });
+      const text = r.body?.choices?.[0]?.message?.content;
+      if (r.status === 200 && typeof text === 'string' && text.trim()) return text;
+      const msg = r.body?.error?.message || r.text.slice(0, 160) || `HTTP ${r.status}`;
+      return { error: `이 PC의 Claude Code·Codex: ${msg}` };
+    } catch (e) { return { error: `이 PC의 Claude Code·Codex: ${cliErr(e)}` }; }
   }
 
   /**
@@ -3618,6 +3725,7 @@
           role: m.role === 'ai' || m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))]
       : [{ role: 'system', content: sys }, { role: 'user', content: AUX_NUDGE }];
     const gm = await getGenModel();
+    if (gm.choice === 'cli') return callCliLLM(gm, buildMessages(promptText)); // 이 PC 다리 (v1.15.0) — 리수 모델 안 거침
     if (gm.choice === 'aux' || (gm.choice === 'static' && !gm.staticId.trim())) {
       const r = await callAuxLLM(promptText, 8000, chatIn ? buildMessages(promptText) : null);
       if (r === null) return { error: `보조 경로: ${lastAux.status}` };
@@ -5201,7 +5309,9 @@
       content = content.replace(/<(m?img)="([^"\n]+)">/g,
         (_, t, n) => `<${t}="${n.replace(/\s+/g, ' ').trim()}">`);
     }
-    if (!session) return content;
+    // 설치본이 없는 캐릭터(제거했거나 애초에 없던)에서도 지난 메시지의 ⟦simcore:N⟧은 숨긴다 (v1.15.1) —
+    // [캐릭터에서 제거] 뒤 옛 대화마다 표식이 날것으로 보이던 것. 저장본은 안 건드린다(다시 설치하면 그 번호로 과거 상태가 돌아온다).
+    if (!session) return hasMarker(content) ? stripMarkers(content.replace(MARKER_TAIL_RE, '')) : content;
     // 잘린 마커 꼬리는 화면에서도 치운다 (v1.9.27 포켓리스 — 답변 끝에 `⟦simcore:`가 덩그러니).
     // 상태창 자체는 유실 복구가 성한 마커를 도로 붙인 다음 렌더부터 선다.
     content = content.replace(MARKER_TAIL_RE, '');
@@ -5251,8 +5361,8 @@
     // 전부 "끝에 있다"를 전제) — 옮기는 건 렌더 시점의 이 분기뿐이다.
     if (schema?.statusUI?.position === 'top') {
       const blocks = [];
-      const stripped = content.replace(MARKER_RE, (_, idxStr) => { blocks.push(renderFor(idxStr)); return ''; });
-      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped;
+      const stripped = content.replace(MARKER_RE, (_, idxStr) => { const b = renderFor(idxStr); if (b) blocks.push(b); return ''; });
+      return blocks.length ? blocks.join('\n\n') + '\n\n' + stripped.trimEnd() : stripped; // 빈 블록(mode off)은 빈 줄도 안 남긴다
     }
     return content.replace(MARKER_RE, (_, idxStr) => renderFor(idxStr));
   });
@@ -9091,6 +9201,7 @@ count(목록)  has(목록, "항목")</pre>
         getGenModel,
         setGenModel,
         getModelIds,
+        probeCli: (url) => probeCli(url), // 이 PC 다리 연결 확인 (v1.15.0)
         // 작업 내역 (v1.9.7) — 캐릭터별 pluginStorage(기기 로컬). 편집기는 리수를 모르니 읽기·쓰기만 준다.
         // 대화는 안 남긴다 — 적용된 변경의 요약만 (유저 결정 2026-09-10).
         loadWorkLog: async () => {
@@ -9118,6 +9229,16 @@ count(목록)  has(목록, "항목")</pre>
         saveBiblePrefs: async (prefs) => {
           try { await Risuai.pluginStorage.setItem('sim:bible:prefs', JSON.stringify(prefs || {})); }
           catch (e) { console.log('[simcore] 봇 제작 취향 저장 실패:', e.message); }
+        },
+        // 💬 대화 저장 (v1.16.0) — 지금 채팅 + 📂 지난 채팅을 캐릭터별 pluginStorage에. 편집기가 모양·상한을 맞춰 준다.
+        // ("대화는 안 남긴다" 2026-09-10 결정을 뒤집음 — 노벨 스튜디오의 새 채팅·지난 채팅을 유저가 원했다)
+        loadChats: async () => {
+          try { const raw = await Risuai.pluginStorage.getItem(`sim:chats:${currentChaId}`); return raw ? JSON.parse(raw) : null; }
+          catch { return null; }
+        },
+        saveChats: async (obj) => {
+          try { await Risuai.pluginStorage.setItem(`sim:chats:${currentChaId}`, JSON.stringify(obj || {})); }
+          catch (e) { console.log('[simcore] 대화 저장 실패:', e.message); }
         },
         // 🎨 에셋 층의 자동 감지·실존 대조용 — output 삽입과 같은 읽기 경로를 쓴다
         getAssetNames: async () => { const s = await getAssetNameSet(); return s ? [...s] : null; },

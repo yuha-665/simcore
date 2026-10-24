@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.20.0
-//@display-name SimCore (시뮬 엔진) v1.20.0 🔌 이 PC의 클코·코덱스 · 💬 대화는 상담 · 변수 없이도
+//@version 1.20.1
+//@display-name SimCore (시뮬 엔진) v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,21 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.20.1 ───────────────────────────────────────────────
+// **🧹 패치로 지운 변수의 참조도 같이 정리.** 커뮤니티 제보(2026-10-24): "대화칸에서 삭제를 체크해도 삭제가 안 된다 — 뭔가 지울 때만
+// ✖ $.promptState.template: 템플릿의 알 수 없는 변수 'pop_goblin'이 뜬다. 새 방식(🗂 정리해서 반영)이면 괜찮나?" — 아니었다, 같은 문이다.
+// 뿌리: 상태 요약(promptState)·상태창·새 시작은 패치로 못 고치는 자리라 AI가 같이 지울 길이 없고, 거기 남은 {id} 하나가 applyPatch의
+// 마지막 관문에서 '새 오류'가 되어 패치 전체(삭제 말고 함께 온 추가·수정까지)를 거부했다. [변수] 탭 🧹 정리하고 지우기는 v0.45부터 되던 일.
+// - [patch] applyPatch(schema, patch, resolutions, opts) — opts.purge(병합본, 지운 변수·파생 id들)가 있으면 관문 전에 참조를 걷는다.
+//   결과는 applied.purged(정리한 자리 목록). 정리기가 못 걷는 정체성 참조(시나리오 해금·편성표·메신저·의뢰판·달력의 목록 변수)나
+//   🔒 보호 항목을 건드려야 하면 통째로 거부(purgeBlocked) — 정리기가 보호를 넘지 않게. 정리기를 안 주면 종전과 같다.
+// - [편집기] 정리기 = planVarPurge(🧹와 같은 것). 🗂 제안 상자·변경 계획 상자(✨ 창작·② 붙여넣기·💬 대화의 JSON) 두 반영 경로가 넘긴다.
+//   삭제를 체크하면 지금 체크대로 시험 반영해 "🧹 지운 변수를 쓰던 자리도 같이 정리돼요 — N곳"을 반영 전에 보이고(막히면 그 사유),
+//   반영 뒤 보고·말풍선 표식·작업 내역에 "참조 정리 N곳". 같은 패치에서 AI가 고친 항목(조건을 바꾼 이벤트 등)은 정리 대상이 아니다.
+// - [AI 규칙] 패치 규칙에 한 줄 — 변수를 지우면 편집기가 참조를 정리하니 우회하지 말 것, 단 계속 써야 하는 항목은 update로 먼저 고칠 것.
+// - [증명] test-patchpurge.js — 제보 재현(정리기 없으면 거부) → 정리기로 반영(상태 요약 줄째·상태창·지시문·이벤트), AI가 고친 항목 보존,
+//   지울 변수 없으면 안 부름, 시나리오 해금·🔒 보호는 거부, 가짜 DOM으로 체크 → 미리보기 → 반영 → 말풍선 표식.
 //
 // ── v1.20.0 ───────────────────────────────────────────────
 // **feat/cli-bridge 합류 — 🔌 이 PC의 Claude Code·Codex · 변수·상태창 없이도 · 💬 대화는 상담, 반영은 [🗂 정리해서 반영].**
@@ -8186,9 +8201,10 @@ function suggestFreeId(schema, patch, section, base) {
 /**
  * 충돌 해소안까지 받아 병합. 성공 시에만 새 스키마 반환 — 원본은 절대 안 바뀐다.
  * @param resolutions { 'events:bandit_raid': 'replace' | 'skip' | { rename: 'bandit_raid2' } }
- * @returns { ok, schema?, errors[], warnings[], applied? }
+ * @param opts { purge?: (schema, ids) => { schema, notes[], blockers[] } } — 지운 변수의 참조 정리기 (v1.20.1, 편집기가 planVarPurge로 준다)
+ * @returns { ok, schema?, errors[], warnings[], applied?, purgeBlocked? }
  */
-function applyPatch(schema, patch0, resolutions = {}) {
+function applyPatch(schema, patch0, resolutions = {}, opts = {}) {
   // 개명이 패치를 바꾸므로 사본으로 작업 — 호출자의 패치도 원본 유지
   const patch = JSON.parse(JSON.stringify(patch0));
   let plan = planPatch(schema, patch);
@@ -8221,9 +8237,10 @@ function applyPatch(schema, patch0, resolutions = {}) {
     return { ok: false, errors: unresolved.map((c) => `충돌 미해결: ${c.reason} (${c.key})${decided.has(c.key) ? '' : ' — 개명한 id가 또 겹친 것일 수 있음'}`), warnings: plan.warnings };
 
   // 병합 — 깊은 사본에만 쓴다
-  const merged = JSON.parse(JSON.stringify(schema));
-  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings,
+  let merged = JSON.parse(JSON.stringify(schema));
+  const applied = { added: [], updated: [], removed: [], skipped: [], purged: [], warnings: plan.warnings,
     protected: plan.protected.map((p) => `${p.section}:${p.id} (${p.op})`) };   // 🔒 건너뛴 것 (v1.9.13)
+  const gone = [];   // 지운 변수·파생 id — 참조 정리 대상 (v1.20.1)
   for (const o of plan.ops) {
     const list = (getList(merged, o.section) || []).slice();
     const idx = list.findIndex((e) => e && e.id === o.id);
@@ -8238,6 +8255,7 @@ function applyPatch(schema, patch0, resolutions = {}) {
     } else {
       list.splice(idx, 1);
       applied.removed.push(`${o.section}:${o.id}`);
+      if (o.section === 'vars' || o.section === 'derived') gone.push(o.id);
     }
     setList(merged, o.section, list);
   }
@@ -8249,6 +8267,30 @@ function applyPatch(schema, patch0, resolutions = {}) {
     re.chancePerTurn = patch.randomEventsChance;
     if (!Array.isArray(re.table)) re.table = [];
     applied.updated.push(`randomEvents 발동률 → ${patch.randomEventsChance}`);
+  }
+
+  // 지운 변수의 참조 정리 (v1.20.1) — 커뮤니티 제보: 💬 대화로 변수를 지우면 "$.promptState.template: 템플릿의 알 수 없는 변수"로
+  // 아무것도 안 들어갔다. 상태 요약(promptState)·상태창·새 시작은 패치로 못 고치는 자리라 AI가 같이 지울 길이 없고, 그 {id} 하나가
+  // 아래 관문에서 '새 오류'가 되어 패치 전체를 거부했다. 호출자가 정리기를 주면(편집기 = [변수] 탭 🧹 정리하고 지우기와 같은 planVarPurge)
+  // 병합본에서 그 참조를 걷는다. 정리기가 못 걷는 정체성 참조(시나리오 해금 등)와 🔒 보호 항목을 건드려야 하는 경우는 통째로 거부.
+  if (gone.length && opts && typeof opts.purge === 'function') {
+    const pr = opts.purge(merged, gone) || {};
+    const stop = (head, list) => ({ ok: false, purgeBlocked: true, warnings: plan.warnings, errors: [head, ...list] });
+    if (pr.blockers && pr.blockers.length) return stop('지운 변수를 쓰는 자리 중 자동으로 못 걷는 곳이 있어 아무것도 적용되지 않음', pr.blockers);
+    if (pr.schema) {
+      const keptHit = [];
+      for (const key of SECTION_KEYS) {
+        const after = new Map((getList(pr.schema, key) || []).filter((e) => e && e.id != null).map((e) => [e.id, e]));
+        for (const e of (getList(merged, key) || [])) {
+          if (!e || e.id == null || !isKept(merged, key, e.id)) continue;
+          const a = after.get(e.id);
+          if (!a || JSON.stringify(a) !== JSON.stringify(e)) keptHit.push(`🔒 ${SECTIONS[key].label} '${e.id}'가 지운 변수를 씀 — 보호를 풀거나 그 항목을 먼저 고치세요`);
+        }
+      }
+      if (keptHit.length) return stop('지운 변수를 🔒 보호된 항목이 쓰고 있어 아무것도 적용되지 않음', keptHit);
+      merged = pr.schema;
+      applied.purged = Array.isArray(pr.notes) ? pr.notes : [];
+    }
   }
 
   // 원자성의 마지막 관문 — 병합이 **새 오류**를 만들면 아무것도 적용하지 않는다. 작업본에 이미 있던 오류(패치 불가 섹션의 오타 등)는
@@ -14736,6 +14778,9 @@ const CSS = `
 .sce .sce-prop-diff .b { color:var(--sce-danger); text-decoration:line-through; opacity:.8; }
 .sce .sce-prop-diff .a { color:var(--sce-success); }
 .sce .sce-proposal-foot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:8px; border-top:1px solid var(--sce-line); }
+/* 🧹 패치가 지운 변수의 참조 정리 미리보기 (v1.20.1) */
+.sce .sce-purge-preview { margin:8px 0 4px; font-size:12.5px; }
+.sce .sce-purge-preview > summary { cursor:pointer; }
 /* 작업 내역 (v1.9.7) */
 .sce .sce-worklog { margin:10px 0; }
 .sce .sce-worklog > .sce-hint { margin:6px 0 8px; }
@@ -18487,6 +18532,7 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- **같은 id를 `remove`와 `add`에 함께 넣지 마세요** — 가져오기가 거부합니다. 항목을 갈아엎을 때도 `update`에 전문을 쓰면 됩니다.',
     '- 쓸 수 있는 키 이름은 아래 **필드 사전**에 있는 것뿐입니다 — 다른 이름(`maxLen`·`limit`·`description`·`maxIncrease`…)은 엔진이 읽지 않아 패치가 "적용은 됐는데 효과가 없는" 상태가 되고 가져오기가 경고합니다.',
     '- `remove` = 삭제. **사용자가 명시적으로 지워달라고 한 것만** 넣으세요. 정리 차원의 임의 삭제 금지.',
+    '- 변수·파생을 `remove`하면 그 값을 쓰던 자리(상태 요약·상태창·새 시작처럼 패치로 못 다루는 곳 포함)는 **편집기가 같이 정리**합니다 — 그 자리 때문에 삭제를 망설이거나 우회하지 마세요. 단 이벤트·액션·지시문·파생처럼 패치로 다루는 항목이 그 값을 계속 써야 하면 `update`로 먼저 고쳐 주세요(안 고치면 그 조건·효과가 같이 지워집니다).',
     '- **🔒 보호 항목은 절대 update/remove 하지 마세요.** 다이제스트 맨 위 보호 목록의 id는 사용자가 잠근 것입니다 — 가져오기가 그 작업을 건너뛰고 경고합니다. 바꿔야 할 것 같으면 옆에 새 id로 add 하거나, 사용자에게 잠금 해제를 청하세요.',
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
@@ -19518,7 +19564,7 @@ function planVarPurge(schema0, rootIds) {
   // 새 오류만 (v1.14.9) — 작성 중인 다른 항목의 오류가 아무 데도 안 쓰는 변수 삭제까지 막았다
   const before = new Set(validateSchema(schema0).errors.map((e) => e.path + '|' + e.msg));
   const v = validateSchema(schema);
-  return { schema, notes, doomed: [...doomed], errors: [...blockers, ...v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`)] };
+  return { schema, notes, doomed: [...doomed], blockers, errors: [...blockers, ...v.errors.filter((e) => !before.has(e.path + '|' + e.msg)).map((e) => `${e.path}: ${e.msg}`)] };
 }
 
 /** AI에게 "이 변수들만 써라"고 넘기는 계약표 — 탭 분할의 핵심 이득 */
@@ -27041,6 +27087,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
   let patchChoices = {};   // 충돌 해소 선택('cf:키'), 개명 id('rn:키'), 삭제 체크('rm:섹션:id')
   let patchBackup = null;  // 적용 직전 스키마 — 되돌리기 1슬롯
   let patchReport = null;  // 마지막 적용 내역 (rerender를 넘어 보여줘야 해서 상태로)
+  // 패치가 지운 변수의 참조 정리 (v1.20.1) — [변수] 탭 🧹 정리하고 지우기와 같은 planVarPurge를 applyPatch에 넘긴다.
+  // 💬 대화·🗂 정리해서 반영·✨ 창작·② 붙여넣기가 다 이 문으로 들어온다 (제보: 상태 요약의 {id} 하나가 삭제 패치 전체를 막았다)
+  const patchPurgeOpts = { purge: (s, ids) => { const p = planVarPurge(s, ids); return { schema: p.schema, notes: p.notes, blockers: p.blockers }; } };
+  /** 지금 체크대로 시험 반영해 보고 — 지운 변수를 쓰던 자리가 같이 걷히면 반영 전에 보인다. 지울 변수가 없으면 시험도 안 한다 */
+  function purgePreviewBox(p2, resolutions) {
+    const ids = [...((p2.remove || {}).vars || []), ...((p2.remove || {}).derived || [])];
+    if (!ids.length) return null;
+    let r;
+    try { r = patchMod.applyPatch(schema, p2, resolutions, patchPurgeOpts); } catch { return null; }
+    if (!r.ok) {   // 충돌 미선택 같은 실패는 [반영]을 누를 때 뜬다 — 여기선 정리가 막힌 것만 미리
+      return r.purgeBlocked ? h('div', { class: 'sce-purge-preview' }, ...r.errors.map((e) => h('div', { class: 'sce-err' }, `✖ ${e}`))) : null;
+    }
+    const notes = r.applied.purged || [];
+    if (!notes.length) return null;
+    return h('details', { class: 'sce-fold sce-purge-preview', open: notes.length <= 6 ? 'open' : null },
+      h('summary', {}, `🧹 지운 변수를 쓰던 자리도 같이 정리돼요 — ${notes.length}곳`),
+      ...notes.map((n) => h('div', { class: 'sce-hint', style: 'margin:0' }, '· ' + n)));
+  }
+  const purgedTail = (a) => (a && a.purged && a.purged.length ? ` · 참조 정리 ${a.purged.length}곳` : '');
   let jsonDraft = null;    // 원본 JSON 편집 중 내용 (null = 현재 작업본과 같음)
   let jsonDraftDirty = false;
   let jsonImportPreview = null; // 전체 교체 전 검사 결과
@@ -28107,6 +28172,20 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
         box.appendChild(card);
       }
+      // 체크대로 고른 패치 + 충돌 해소안 — 미리보기와 [반영]이 같은 것을 쓴다
+      const build = () => {
+        const eff = {};
+        for (const it of items) eff[it.key] = isOn(it);
+        const p2 = pickPatch(patch, eff);
+        const resolutions = {};
+        for (const c of plan.conflicts) {
+          const on = eff[`add:${c.section}:${c.id}`];
+          const m = on ? (patchChoices[`cf:${c.key}`] ?? 'skip') : 'skip';
+          resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
+        }
+        return { p2, resolutions };
+      };
+      { const b = build(); const pv = purgePreviewBox(b.p2, b.resolutions); if (pv) box.appendChild(pv); }
       for (const e of (patchPlan.applyErrors || [])) box.appendChild(h('div', { class: 'sce-err' }, `✖ ${e}`));
 
       const n = chosen().length;
@@ -28118,24 +28197,16 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('span', { class: 'sce-ooc-spacer' }),
         h('button', { class: 'sce-btn', onclick: () => { dropChatProposal(); for (const m of chat.msgs) if (m.pending) m.pending = false; chatPersist(); rerender(); } }, '버리기'),
         h('button', { class: 'sce-btn sce-ai-primary', disabled: n ? null : 'disabled', onclick: () => {
-          const eff = {};
-          for (const it of items) eff[it.key] = isOn(it);
-          const p2 = pickPatch(patch, eff);
-          const resolutions = {};
-          for (const c of plan.conflicts) {
-            const on = eff[`add:${c.section}:${c.id}`];
-            const m = on ? (patchChoices[`cf:${c.key}`] ?? 'skip') : 'skip';
-            resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
-          }
-          const r = patchMod.applyPatch(schema, p2, resolutions);
+          const { p2, resolutions } = build();
+          const r = patchMod.applyPatch(schema, p2, resolutions, patchPurgeOpts);
           if (!r.ok) { patchPlan.applyErrors = r.errors; renderBox(); return; }
           patchBackup = JSON.parse(JSON.stringify(schema));
           patchReport = r.applied;
           const a = r.applied;
-          chatMarkApplied([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
-            .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음');
+          chatMarkApplied(([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
+            .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음') + purgedTail(a));
           recordWork({ via: 'chat', req: lastChatUserText(), why: meta.note || lastChatAiWhy(),
-            sum: [['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, k]) => k).map(([k, c]) => `${k} ${c}`).join(' · ') || '변화 없음',
+            sum: ([['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, k]) => k).map(([k, c]) => `${k} ${c}`).join(' · ') || '변화 없음') + purgedTail(a),
             ids: [...a.added, ...a.updated, ...a.removed] });
           patchText = ''; patchPlan = null; patchChoices = {};
           schema = r.schema;
@@ -29306,10 +29377,25 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         }
         for (const o of removeOps) {
           const key = `rm:${o.section}:${o.id}`;
-          body.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; },
+          // 체크가 바뀌면 다시 그린다 — 아래 🧹 정리 미리보기가 체크를 따라간다 (v1.20.1)
+          body.appendChild(h('div', {}, bindCheck(patchChoices[key], (x) => { patchChoices[key] = x; renderPlanBox(); },
             `삭제: ${secLabel(o.section)} ${o.id} ${entryName(o.previous)}`)));
         }
       }
+
+      // 체크 안 된 remove를 뺀 패치 + 충돌 해소안 — 미리보기와 [패치 적용]이 같은 것을 쓴다
+      const build = () => {
+        const p2 = JSON.parse(JSON.stringify(patch));
+        for (const [sec, ids] of Object.entries(p2.remove || {}))
+          p2.remove[sec] = ids.filter((id) => patchChoices[`rm:${sec}:${id}`]);
+        const resolutions = {};
+        for (const c of plan.conflicts) {
+          const m = patchChoices[`cf:${c.key}`] ?? 'skip';
+          resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
+        }
+        return { p2, resolutions };
+      };
+      { const b = build(); const pv = purgePreviewBox(b.p2, b.resolutions); if (pv) body.appendChild(pv); }
 
       // 직전 적용 시도의 실패 사유 — 계획·충돌 선택 UI는 남겨서 고르고 다시 시도할 수 있게
       for (const e of (patchPlan.applyErrors || []))
@@ -29318,16 +29404,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       box.appendChild(h('div', { class: 'sce-patch-actions' },
         h('button', { class: 'sce-btn', onclick: () => { patchPlan = null; patchChoices = {}; rerender(); } }, '취소'),
         h('button', { class: 'sce-btn sce-ai-primary', onclick: () => {
-          // 체크 안 된 remove는 패치에서 뺀다
-          const p2 = JSON.parse(JSON.stringify(patch));
-          for (const [sec, ids] of Object.entries(p2.remove || {}))
-            p2.remove[sec] = ids.filter((id) => patchChoices[`rm:${sec}:${id}`]);
-          const resolutions = {};
-          for (const c of plan.conflicts) {
-            const m = patchChoices[`cf:${c.key}`] ?? 'skip';
-            resolutions[c.key] = m === 'rename' ? { rename: patchChoices[`rn:${c.key}`] } : m;
-          }
-          const r = patchMod.applyPatch(schema, p2, resolutions);
+          const { p2, resolutions } = build();
+          const r = patchMod.applyPatch(schema, p2, resolutions, patchPurgeOpts);
           if (!r.ok) {
             patchPlan.applyErrors = r.errors;
             renderPlanBox();
@@ -29337,15 +29415,15 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
           patchReport = r.applied;
           if (patchSource === 'chat') { // 💬 대화가 낸 패치 — 이력에 "[적용됨 — …]"으로 접힌다
             const a = r.applied;
-            chatMarkApplied([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
-              .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음');
+            chatMarkApplied(([['추가', a.added], ['교체', a.updated], ['삭제', a.removed]]
+              .filter(([, l]) => l.length).map(([k, l]) => `${k} ${l.join(', ')}`).join(' · ') || '변화 없음') + purgedTail(a));
           }
           { // 작업 내역 (v1.9.7) — 통로가 무엇이든 적용된 것은 남긴다
             const a = r.applied;
             recordWork({ via: patchSource === 'chat' ? 'chat' : patchSource === 'top' ? 'make' : 'json',
               req: patchSource === 'chat' ? lastChatUserText() : patchSource === 'top' ? aiReq : '',
               why: patchSource === 'chat' ? lastChatAiWhy() : '',
-              sum: [['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(' · ') || '변화 없음',
+              sum: ([['추가', a.added.length], ['교체', a.updated.length], ['삭제', a.removed.length]].filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(' · ') || '변화 없음') + purgedTail(a),
               ids: [...a.added, ...a.updated, ...a.removed] });
           }
           patchText = ''; patchPlan = null; patchChoices = {};
@@ -29368,9 +29446,13 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (rep.updated.length) lines.push(`교체 ${rep.updated.length} (${rep.updated.join(', ')})`);
     if (rep.removed.length) lines.push(`삭제 ${rep.removed.length} (${rep.removed.join(', ')})`);
     if (rep.skipped.length) lines.push(`건너뜀 ${rep.skipped.length} (${rep.skipped.join(', ')})`);
+    const purged = rep.purged || [];   // 지운 변수의 참조 정리 (v1.20.1)
+    if (purged.length) lines.push(`참조 정리 ${purged.length}곳`);
     const repWarns = (rep.warnings || []).map((w) => h('div', { class: 'sce-warn' }, `⚠ ${w}`));
     return h('div', { class: 'sce-block sce-patch-report' },
       h('div', { class: 'sce-ok' }, `패치 적용 완료 — ${lines.join(' · ') || '변화 없음'}`),
+      purged.length ? h('details', { class: 'sce-fold' }, h('summary', {}, `🧹 지운 변수를 쓰던 자리 ${purged.length}곳을 같이 정리했어요`),
+        ...purged.map((n) => h('div', { class: 'sce-hint', style: 'margin:0' }, '· ' + n))) : null,
       ...(repWarns.length > 3
         ? [h('details', { class: 'sce-fold' },
             h('summary', { class: 'sce-warn' }, `⚠ 경고 ${repWarns.length}건 — 눌러서 펼치기`),

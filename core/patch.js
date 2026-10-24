@@ -467,9 +467,10 @@ function suggestFreeId(schema, patch, section, base) {
 /**
  * 충돌 해소안까지 받아 병합. 성공 시에만 새 스키마 반환 — 원본은 절대 안 바뀐다.
  * @param resolutions { 'events:bandit_raid': 'replace' | 'skip' | { rename: 'bandit_raid2' } }
- * @returns { ok, schema?, errors[], warnings[], applied? }
+ * @param opts { purge?: (schema, ids) => { schema, notes[], blockers[] } } — 지운 변수의 참조 정리기 (v1.20.1, 편집기가 planVarPurge로 준다)
+ * @returns { ok, schema?, errors[], warnings[], applied?, purgeBlocked? }
  */
-function applyPatch(schema, patch0, resolutions = {}) {
+function applyPatch(schema, patch0, resolutions = {}, opts = {}) {
   // 개명이 패치를 바꾸므로 사본으로 작업 — 호출자의 패치도 원본 유지
   const patch = JSON.parse(JSON.stringify(patch0));
   let plan = planPatch(schema, patch);
@@ -502,9 +503,10 @@ function applyPatch(schema, patch0, resolutions = {}) {
     return { ok: false, errors: unresolved.map((c) => `충돌 미해결: ${c.reason} (${c.key})${decided.has(c.key) ? '' : ' — 개명한 id가 또 겹친 것일 수 있음'}`), warnings: plan.warnings };
 
   // 병합 — 깊은 사본에만 쓴다
-  const merged = JSON.parse(JSON.stringify(schema));
-  const applied = { added: [], updated: [], removed: [], skipped: [], warnings: plan.warnings,
+  let merged = JSON.parse(JSON.stringify(schema));
+  const applied = { added: [], updated: [], removed: [], skipped: [], purged: [], warnings: plan.warnings,
     protected: plan.protected.map((p) => `${p.section}:${p.id} (${p.op})`) };   // 🔒 건너뛴 것 (v1.9.13)
+  const gone = [];   // 지운 변수·파생 id — 참조 정리 대상 (v1.20.1)
   for (const o of plan.ops) {
     const list = (getList(merged, o.section) || []).slice();
     const idx = list.findIndex((e) => e && e.id === o.id);
@@ -519,6 +521,7 @@ function applyPatch(schema, patch0, resolutions = {}) {
     } else {
       list.splice(idx, 1);
       applied.removed.push(`${o.section}:${o.id}`);
+      if (o.section === 'vars' || o.section === 'derived') gone.push(o.id);
     }
     setList(merged, o.section, list);
   }
@@ -530,6 +533,30 @@ function applyPatch(schema, patch0, resolutions = {}) {
     re.chancePerTurn = patch.randomEventsChance;
     if (!Array.isArray(re.table)) re.table = [];
     applied.updated.push(`randomEvents 발동률 → ${patch.randomEventsChance}`);
+  }
+
+  // 지운 변수의 참조 정리 (v1.20.1) — 커뮤니티 제보: 💬 대화로 변수를 지우면 "$.promptState.template: 템플릿의 알 수 없는 변수"로
+  // 아무것도 안 들어갔다. 상태 요약(promptState)·상태창·새 시작은 패치로 못 고치는 자리라 AI가 같이 지울 길이 없고, 그 {id} 하나가
+  // 아래 관문에서 '새 오류'가 되어 패치 전체를 거부했다. 호출자가 정리기를 주면(편집기 = [변수] 탭 🧹 정리하고 지우기와 같은 planVarPurge)
+  // 병합본에서 그 참조를 걷는다. 정리기가 못 걷는 정체성 참조(시나리오 해금 등)와 🔒 보호 항목을 건드려야 하는 경우는 통째로 거부.
+  if (gone.length && opts && typeof opts.purge === 'function') {
+    const pr = opts.purge(merged, gone) || {};
+    const stop = (head, list) => ({ ok: false, purgeBlocked: true, warnings: plan.warnings, errors: [head, ...list] });
+    if (pr.blockers && pr.blockers.length) return stop('지운 변수를 쓰는 자리 중 자동으로 못 걷는 곳이 있어 아무것도 적용되지 않음', pr.blockers);
+    if (pr.schema) {
+      const keptHit = [];
+      for (const key of SECTION_KEYS) {
+        const after = new Map((getList(pr.schema, key) || []).filter((e) => e && e.id != null).map((e) => [e.id, e]));
+        for (const e of (getList(merged, key) || [])) {
+          if (!e || e.id == null || !isKept(merged, key, e.id)) continue;
+          const a = after.get(e.id);
+          if (!a || JSON.stringify(a) !== JSON.stringify(e)) keptHit.push(`🔒 ${SECTIONS[key].label} '${e.id}'가 지운 변수를 씀 — 보호를 풀거나 그 항목을 먼저 고치세요`);
+        }
+      }
+      if (keptHit.length) return stop('지운 변수를 🔒 보호된 항목이 쓰고 있어 아무것도 적용되지 않음', keptHit);
+      merged = pr.schema;
+      applied.purged = Array.isArray(pr.notes) ? pr.notes : [];
+    }
   }
 
   // 원자성의 마지막 관문 — 병합이 **새 오류**를 만들면 아무것도 적용하지 않는다. 작업본에 이미 있던 오류(패치 불가 섹션의 오타 등)는

@@ -1,12 +1,12 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.18.2 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.20.2 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
 
 봇에 **숫자로 굴러가는 상태**를 붙이는 RisuAI 플러그인. 스키마 하나로 변수·파생·규칙·이벤트·상태창을
-정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.16.0 기준, 2026-10-22**)
+정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.20.2 기준, 2026-10-26**)
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
@@ -15,19 +15,24 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 **v1.10 🔒 비밀 — 모르는 건 말할 수 없다**(`core/secret.js`, v1.10.1 현황 탭 칩 ✕ 잘림 수리, v1.10.2 번역문 마커 되붙이기) →
 **v1.11 ⏪ 되감기 — 죽으면 그 아침으로**(`core/checkpoint.js`, 체크포인트 저장·되감기 효과, 조퇴악녀 사망회귀물 발단) →
 **v1.12 🎭 무대 뒤 — 안 봐도 세상은 움직인다**(`core/front.js`, 진영 시계·징후·밑작업·표면화) → **v1.13 🎲 능력치 판정**(보조 갈림길 여러 벌·섞기·선택지 성공률 칩) → **v1.14 사건 게이지·징조**(`core/gauge.js`, v1.14.2 변수 키는 desc) →
-**v1.15 이 PC의 Claude Code·Codex로 만들기**(`tools/cli-bridge` 다리 + 편집기 생성 모델 `cli` — 편집기 생성만, RP·보조 갱신은 리수 모델) →
-**v1.15.1 변수·상태창은 필수가 아니다**(validate `activeSections` = 변수 없이 도는 절의 이름표, `statusUI.mode:'off'` 실동작, [캐릭터에서 제거] 뒤 마커 숨김) →
-**v1.16 💬 대화는 상담, 반영은 [🗂 정리해서 반영]**(노벨 스튜디오 OOC·설정 정리 이식 — 말풍선에 JSON 없음, 정리 버튼이 대화 전체를 패치로, 항목 체크 제안 상자, 새 채팅·지난 채팅 저장 `sim:chats:<chaId>`). 얼헌(얼터헌터) 개조가
-v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **26개**.
+**v1.15 전투 안무 수 유형**(주인공 공격/기술/수비/견제 · 상대 수 가중치) → **v1.16~1.17 🧑‍🎨 봇 제작**(`core/bible.js` 설정집 대화 · v1.16.1 📚 보낼 것 고르기 · v1.17 📁 로어북 폴더·🪪 시트 형식·📥 원문 적재) →
+**v1.18 🎲 추첨 효과**(`core/sample.js`, 후보 풀에서 N개를 중복 없이 목록 변수에 · v1.18.3 장기기억 요약에 이야기 속 시각) → **v1.19 ⏱ 시각 보고**(보조는 시각을 읽고 빼기는 시스템이 · v1.19.1 🌙 밤은 한 번만) →
+**v1.20 feat/cli-bridge 합류** — 그 갈래가 v1.14.2에서 갈라져 매긴 v1.15.0·v1.15.1·v1.16.0이 이 줄기 번호와 겹쳐 **v1.20.0 ①②③** 한 판으로 실었다
+(문서에서는 v1.20.0으로 부른다 — 갈래 번호는 그 브랜치 커밋에만 남는다):
+① **이 PC의 Claude Code·Codex로 만들기**(`tools/cli-bridge` 다리 + 편집기 생성 모델 `cli` — 편집기 생성만, RP·보조 갱신은 리수 모델) ·
+② **변수·상태창은 필수가 아니다**(validate `activeSections` = 변수 없이 도는 절의 이름표, `statusUI.mode:'off'` 실동작, [캐릭터에서 제거] 뒤 마커 숨김) ·
+③ **💬 대화는 상담, 반영은 [🗂 정리해서 반영]**(노벨 스튜디오 OOC·설정 정리 이식 — 말풍선에 JSON 없음, 정리 버튼이 대화 전체를 패치로, 항목 체크 제안 상자, 새 채팅·지난 채팅 저장 `sim:chats:<chaId>`) →
+**v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리** → **v1.20.2 🔌 다리에 못 닿으면 못 닿았다고**. 얼헌(얼터헌터) 개조가
+v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **28개**.
 
 ## 파일 위치 (실수 잦음)
 
 | | |
 |---|---|
-| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **26개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
+| **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **28개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **113종** — 2026-10-22) + `test\run-tests.js` (코어 단위 85, Node만 필요) |
-| 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.15.0). 가짜 실행 파일로 도는 `테스트/test-clibridge.js` |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **119종** — 2026-10-26) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
+| 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js` |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
@@ -50,7 +55,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 ```bash
 cd /c/claude/simcore   # Git Bash — 작업 디렉터리가 호출마다 초기화되므로 매 명령 앞에 붙인다
 node build.js && cp dist/simcore.plugin.js simcore.plugin.js && cmp dist/simcore.plugin.js simcore.plugin.js && echo BYTE-MATCH-OK
-node test/run-tests.js | tail -1                                   # 통과 84 / 실패 0
+node test/run-tests.js | tail -1                                   # 통과 130 / 실패 0
 # 스위프 — 집계 형식이 둘이다: "N passed, 0 failed" 와 "[test-x] N/N 통과"
 for f in 테스트/test-*.js; do out=$(node "$f" 2>&1); rc=$?; line=$(echo "$out" | grep -E "[0-9]+ failed|[0-9]+/[0-9]+ 통과" | tail -1); ok=0; echo "$line" | grep -qE " 0 failed" && ok=1; echo "$line" | grep -qE "([0-9]+)/\1 통과" && ok=1; [ $rc -ne 0 -o $ok -ne 1 ] && echo "FAIL $f :: $line"; done
 node 베리디아/estate-vars.js | tail -3                              # 검증: 통과 / 미치환 없음
@@ -138,7 +143,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
 
 ## 설계 원칙 (봇 스키마를 만들 때)
 
-- **변수는 필수가 아니다 (v1.15.1).** 변수 0개 설치는 켜진 절이 하나라도 있으면 통과한다 — 목록은 `validate.activeSections`
+- **변수는 필수가 아니다 (v1.20.0 ②).** 변수 0개 설치는 켜진 절이 하나라도 있으면 통과한다 — 목록은 `validate.activeSections`
   (에셋 팩·행동 제안·게시판·메신저·상점·의뢰판·시나리오·비밀·달력·편성표·무대 뒤·되감기·보조 갈림길·시간·지시문·판정·액션·이벤트·랜덤 사건)
   하나뿐이다. 절을 새로 만들면 거기 넣고 편집기 `schemaIsBlank`(하니스 때문에 따로 적힘)도 같이. "변수부터 만들어라"는 문구를 되살리지 말 것.
   상태창은 `statusUI.mode:'off'`로 끈다(마커는 남는다 — 상태·되감기의 열쇠). 심코어 자체를 빼는 길은 [캐릭터 설치 관리 → 캐릭터에서 제거]

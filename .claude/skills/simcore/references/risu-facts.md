@@ -378,7 +378,7 @@ alwaysActive를 바꾸는 UI 동작일 뿐(프롬프트 조립엔 폴더 의미 
 
 ---
 
-## ★ nativeFetch · globalFetch와 localhost — 웹 리수는 PC에 못 닿는다 (v1.15.0 실사, RisuAI main 2026-10-14)
+## ★ nativeFetch · globalFetch와 localhost — 웹 리수는 PC에 못 닿는다 (v1.20.0 ① 다리 실사, RisuAI main 2026-10-14)
 
 - `Risuai.nativeFetch(url, init)` (v3, `v3.svelte.ts` → `globalApi.fetchNative`): 블랙리스트는 risuai.xyz·risuai.net·sionyw.com뿐.
   **Tauri 데스크톱 = 네이티브 `streamed_fetch`** / 노드 셀프호스트 = 서버의 `/proxy2` / **웹 = 리수 프록시 서버를 거친다**
@@ -390,6 +390,6 @@ alwaysActive를 바꾸는 UI 동작일 뿐(프롬프트 조립엔 폴더 의미 
 - 커스텀 엔드포인트 세 길: `reverse_proxy`(설정의 `forceReplaceUrl` + `customAPIFormat`), `xcustom:::<id>`(`db.customModels[].url/key`),
   `pluginmodel:::`(플러그인 `addProvider` — 리수가 "강력하고 위험, 바뀔 수 있다"고 경고하는 API). `runLLMModel({ mode:'submodel', staticModel })`는
   `targ.aiModel = staticModel`로 그대로 꽂힌다(`request.ts`) — 직접 지정에 커스텀 모델 id도 들어간다.
-- SimCore v1.15.0은 이 위에 선다: **편집기 생성만** `nativeFetch`로 PC 다리(`tools/cli-bridge`, OpenAI 호환)에 보낸다. Claude Code는
+- SimCore v1.20.0 ①(다리)은 이 위에 선다: **편집기 생성만** `nativeFetch`로 PC 다리(`tools/cli-bridge`, OpenAI 호환)에 보낸다. Claude Code는
   messages 배열이 아니라 프롬프트 하나라 system은 파일·나머지는 `<user>/<assistant>` 태그로 평탄화된다 — 다턴 RP엔 둔하고 단발 생성·💬 대화엔 맞다.
   실기(회사PC, claude 2.1.296 VS Code 확장): 연결 확인 → 짧은 요청 3.1초, prompt 625 토큰(Claude Code 자체 머리말 포함).

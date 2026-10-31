@@ -328,7 +328,7 @@ const baseJson = JSON.stringify(BASE);
   ck('평평한 섹션 키 안내', pr.includes('`randomEvents`') && pr.includes('`allow`'), '');
   ck('allow 판단 기준 경고 (판정값·플래그 금지)', pr.includes('allow에 넣지 마세요'), '');
   ck('수식·절대 규칙 동봉', pr.includes('수식 언어') && pr.includes('절대 규칙'), '');
-  ck('통짜 규격서보다 가벼움', pr.length < 12 * 1024, (pr.length / 1024).toFixed(1) + 'KB');
+  ck('통짜 규격서보다 가벼움', pr.length < 14 * 1024, (pr.length / 1024).toFixed(1) + 'KB'); // 기능 지도 +2.6KB (v1.21.0)
 
   const dg = M.patchIdDigest(S);
   ck('다이제스트: 랜덤·갈림길 표기 준비', typeof dg === 'string' && dg.includes('### 변수'), '');

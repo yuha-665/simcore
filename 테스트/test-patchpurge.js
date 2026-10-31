@@ -190,7 +190,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ck('정리기 = planVarPurge (변수 탭 🧹와 같은 정리)', src.includes('const patchPurgeOpts = { purge: (s, ids) => { const p = planVarPurge(s, ids);'), '');
   ck('결과 보고에 참조 정리 접기', src.includes('지운 변수를 쓰던 자리 ${purged.length}곳을 같이 정리했어요'), '');
   ck('AI 패치 규칙 — 지우면 편집기가 같이 정리', src.includes('**편집기가 같이 정리**합니다'), '');
-  ck('버전 1.20.1 이상 + 체인지로그', /\/\/@version (1\.(2\d)\.([1-9]\d*)|1\.([3-9]\d)\.\d+|[2-9]\.\d+\.\d+)/.test(src) && src.includes('// ── v1.20.1 ──'), '');
+  ck('버전 1.20.1 이상 + 체인지로그', /\/\/@version (1\.20\.[1-9]\d*|1\.2[1-9]\.\d+|1\.([3-9]\d)\.\d+|[2-9]\.\d+\.\d+)/.test(src) && src.includes('// ── v1.20.1 ──'), '');
 
   console.log(`\n[test-patchpurge] ${pass}/${pass + fail} 통과`);
   process.exit(fail ? 1 : 0);

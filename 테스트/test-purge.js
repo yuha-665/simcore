@@ -156,7 +156,7 @@ const baseJson = JSON.stringify(BASE);
   ck('★ 🔵(low)는 안 보낸다 (멀쩡한 설계 보호 — v0.28 원칙)', !p.includes('ZZZ_LOW_MARKER'), '');
   ck('턴·시드 수가 실린다', p.includes('120턴 × 6시드'), '');
   ck('★ 보조 AI 없이 굴린 한계를 알려준다', p.includes('안 움직임'), '');
-  ck('패치 미지원 영역 안내', p.includes('onTurn') && p.includes('말로 알려주세요'), '');
+  ck('패치 미지원 영역 안내', p.includes('onTurn') && p.includes('패치 최상위 `"note"`에 적으세요'), ''); // v1.21.0 — 말로 답하면 ✨ 경로가 형식 실패로 받던 자리
   ck('패치 형식·다이제스트는 그대로', p.includes('patchVersion') && p.includes('이미 있는 항목'), '');
   const plain = M.buildPatchExportPrompt(BASE);
   ck('평소(진단 아닌) 모드는 안 바뀜', plain.includes('## 내가 원하는 것') && !plain.includes('진단에서 나온'), '');

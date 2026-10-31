@@ -4211,6 +4211,111 @@ const SCHEMA_STATUS_RULES = [
   '- 한 그룹에 항목을 열 개 넘게 몰지 마세요. 주제별로 나누고, 자주 안 보는 묶음은 `collapsed`로 접어 두세요.',
 ];
 
+// ── 심코어 기능 지도 (v1.21.0) ──────────────────────────────
+// 커뮤니티 제보(2026-10-31): "대화 단위에선 자기 기능을 잘 모르나요 — 자체 상점이나 보드가 있어도 어떻게든 액션 버튼에 상태창을 연동하려 하고,
+// 물어보면 모르는 것처럼 말한다." 모델 탓이 아니었다. 작업본이 있는 봇의 대화·🗂 정리·✨ 창작이 받는 패치 규격서엔 패치 8섹션의 세계만 있었고
+// 상점·보드·메신저·의뢰판은 이름조차 없었다(경영 템플릿 실측 0건, 넷이 다 켜진 얼헌도 그 설정값 0건). 규칙은 SCHEMA_*_RULES로 다 써 있는데
+// 탭별 요청서만 쓰고 있었다. 이 표 하나가 세 곳을 먹인다 — 지도(featureMapLines) · 켜진 기능 현황(featureDigestLines) · 대화에 나온 기능의 규격(featureRuleLines).
+// 새 기능은 여기 한 줄. 빠뜨리면 모델은 그 기능을 모른다 — test-featuremap이 patch.js UNSUPPORTED_HINT·validate.activeSections와 대조한다.
+// (인라인 구간 — 테스트가 단독 평가하므로 모듈을 못 부른다. 금지 #8)
+const fmObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+const fmN = (a) => (Array.isArray(a) ? a.length : 0);
+const FEATURE_MAP = [
+  { id: 'shop', name: '상점', keys: ['shop', 'shops'], where: '[상점] 탭',
+    what: '돈으로 사고파는 일 — 진열·결제·매입·환전을 시스템이 처리',
+    need: '지갑(숫자 변수)·구매품 목록(list 변수)', on: (s) => fmObj(s.shop) || fmN(s.shops) > 0,
+    words: /상점|가게|구매|판매|매입|사고\s?팔|환전|진열|재고|\bshops?\b|\bstore\b/i, rules: SCHEMA_SHOP_RULES },
+  { id: 'board', name: '보드(게시판)', keys: ['board'], where: '[보드] 탭',
+    what: '세계 안 커뮤니티 게시판 — 글·댓글은 보조가 쓰고 메인엔 화제 한 줄만',
+    on: (s) => fmObj(s.board), words: /보드|게시판|게시글|커뮤니티|여론|\bboard\b/i, rules: SCHEMA_BOARD_RULES },
+  { id: 'messenger', name: '메신저', keys: ['messenger'], where: '[메신저] 탭',
+    what: '주인공의 문자·편지 패널 — 선톡·답장을 보조 턴에 얹음',
+    need: '연락처로 쓸 이름 목록(list 변수)', on: (s) => fmObj(s.messenger),
+    words: /메신저|문자(?!열)|카톡|단톡|선톡|연락처|편지|\bmessenger\b/i, rules: SCHEMA_MSGR_RULES },
+  { id: 'quest', name: '의뢰판', keys: ['questBoard'], where: '[의뢰판] 탭',
+    what: '보조가 의뢰를 게시, 수락·취소는 버튼 — 보수 밴드·기한을 시스템이 처리',
+    need: '수락한 의뢰가 들어갈 목록(list 변수)', on: (s) => fmObj(s.questBoard),
+    words: /의뢰|퀘스트|일감|\bquests?\b/i, rules: SCHEMA_QUEST_RULES },
+  { id: 'party', name: '편성표', keys: ['party'], where: '[편성표] 탭',
+    what: '인물을 자리에 앉히는 편성·포인트로 올리는 스킬 탭·대장 화면',
+    on: (s) => fmObj(s.party), words: /편성|파티|스킬\s?트리|\bparty\b/i, rules: SCHEMA_PARTY_RULES },
+  { id: 'calendar', name: '달력', keys: ['calendar'], where: '[달력] 탭',
+    what: '기념일 달력·날짜 클릭 일정 (시간 체계 필요)',
+    on: (s) => fmObj(s.calendar), words: /달력|기념일|일정|\bcalendar\b/i, rules: SCHEMA_CALENDAR_RULES },
+  { id: 'scenario', name: '시나리오', keys: ['scenario'], where: '[시나리오] 탭',
+    what: '중심 이야기를 막 단위로 — 조건 해금, 숨은 글은 그 막까지 프롬프트에 안 감',
+    on: (s) => fmN(s.scenario?.acts) > 0, words: /시나리오|기승전결|\bscenario\b/i, rules: SCHEMA_SCENARIO_RULES },
+  { id: 'secrets', name: '비밀', keys: ['secrets'], where: '[비밀] 탭',
+    what: '밝혀지기 전엔 모델이 몰라야 하는 것 — 조건이 열릴 때까지 프롬프트에서 뺌',
+    on: (s) => fmN(s.secrets) > 0, words: /비밀|복선|정체|반전|스포일러|\bsecrets?\b/i, rules: SCHEMA_SECRET_RULES },
+  { id: 'fronts', name: '무대 뒤', keys: ['fronts'], where: '[무대 뒤] 탭',
+    what: '유저가 안 봐도 움직이는 세력 — 숨은 시계가 문턱을 넘으면 표면화',
+    on: (s) => fmN(s.fronts) > 0, words: /무대 뒤|세력|음모|\bfronts?\b/i, rules: SCHEMA_FRONT_RULES },
+  { id: 'checkpoint', name: '되감기', keys: ['checkpoint'], where: '[시나리오] 탭 되감기 카드',
+    what: '회귀물·타임루프 — 저장한 시점으로 되돌림 (켠 뒤 저장·되감기 효과는 패치로 됨)',
+    on: (s) => fmObj(s.checkpoint), words: /되감기|회귀|타임루프|체크포인트|\bcheckpoint\b/i, rules: SCHEMA_SCENARIO_RULES },
+  { id: 'liveChoices', name: '보조 갈림길', keys: ['liveChoices'], where: '[규칙·이벤트] 탭 보조 갈림길 절',
+    what: '선택지를 보조가 즉석에서 쓰고 결과는 태그가 정함 (미리 적는 `choices`는 패치로 됨)',
+    on: (s) => fmObj(s.liveChoices) || fmN(s.liveChoices) > 0 },
+  { id: 'gauge', name: '사건 게이지', keys: [], where: '[규칙·이벤트] 탭 발동 방식',
+    what: '랜덤 사건을 작중 시간으로 차는 게이지로 — 며칠을 건너뛰어도 사건 수가 맞음',
+    on: (s) => fmObj(s.rules?.randomEvents?.gauge) },
+  { id: 'pools', name: '후보 풀·추첨', keys: ['pools'], where: '[변수] 탭 🎲 후보 풀',
+    what: '후보에서 N개를 중복 없이 뽑아 목록에 (풀은 탭에서, 효과 `sample`은 패치로 됨)',
+    on: (s) => fmN(s.pools) > 0 },
+  { id: 'assets', name: '에셋 팩', keys: ['assets'], where: '[에셋 관리자]',
+    what: '상황에 맞는 캐릭터 이미지를 서사에 싣기', on: (s) => fmN(s.assets?.packs) > 0 },
+  { id: 'suggest', name: '행동 제안', keys: ['suggest'], where: '[AI 설정] 탭',
+    what: '다음 행동 칩을 조작줄에 표시', on: (s) => !!s.suggest },
+  { id: 'time', name: '시간 체계', keys: ['time'], where: '[시간] 탭',
+    what: '날짜·시각을 시스템이 셈 — `date` `clock` 등을 조건식에서 읽음', on: (s) => fmObj(s.time) },
+  { id: 'fight', name: '전투 안무', keys: [], where: '[판정] 탭 ⚔ 전투 안무 절',
+    what: '교전을 라운드·게이지로 굴려 결착 (판정의 `fight` 필드라 패치로 됨)',
+    on: (s) => Array.isArray(s.checks) && s.checks.some((c) => fmObj(c) && fmObj(c.fight)) },
+];
+// 기능은 아니지만 패치로 못 고치는 자리 — FEATURE_MAP과 합치면 UNSUPPORTED_HINT 전부다 (simcore 표식 제외)
+const PATCH_OFF_SPOTS = [
+  ['statusUI', '상태창', '[상태창] 탭'], ['onTurn', '매 턴 정산', '[규칙·이벤트] 탭 첫 절'], ['setup', '시작 프리셋·첫 장면', '[새 시작] 탭'],
+  ['meta', '봇 이름·📌 작업 지침', '[상태창] 탭 제목 칸·📌 작업 지침'], ['promptState', '매 턴 보낼 상태 요약', '[AI 설정] 탭'], ['rerollStableRng', '리롤 안정', '[규칙·이벤트] 탭'],
+];
+
+/** 규격서에 싣는 지도 — schema를 주면 이 봇에 켜진 기능에 ✅. 빈 작업본 규격서는 안 준다 */
+function featureMapLines(schema = null) {
+  return [
+    '## 심코어 기능 지도 — 이미 있는 시스템 기능 (이 목록이 곧 "심코어가 할 수 있는 일"입니다)',
+    '- **시스템 기능이 맞는 일은 그 기능을 먼저 제안하세요.** 사고파는 일을 구매 액션으로, 게시판·문자를 변수와 상태창으로 흉내 내지 마세요 — 결제·보존·프롬프트 주입을 엔진이 이미 합니다. 사용자가 그래도 액션으로 하겠다면 따르세요.',
+    '- "없다"·"모른다"고 답하기 전에 이 지도를 보세요.' + (schema ? ' ✅ = 이 봇에 켜짐, 표시가 없으면 꺼져 있음.' : ''),
+    ...FEATURE_MAP.map((f) => `- ${schema && f.on(schema) ? '✅ ' : ''}**${f.name}** (${[...f.keys.map((k) => '`' + k + '`'), f.where].join(' · ')}): ${f.what}.${f.need ? ` 준비물: ${f.need}.` : ''}`),
+  ];
+}
+
+// 패치 규격서 전용 — 지도 바로 밑. "못 넣는다"와 "아무것도 안 한다"는 다르다 (제보: "대화 단위에서 안 된다 그러면 준비만 해 줄 줄 알았다")
+const PATCH_FEATURE_RULES = [
+  '### 패치로 못 넣는 기능 — 준비와 안내',
+  '- 패치 섹션은 위 8개뿐입니다. `shop`·`board` 같은 기능 키를 패치에 쓰면 **패치 전체가 거부**됩니다.',
+  '- 그래도 "못 한다"로 끝내지 마세요. 그 기능의 **준비물**(지갑·목록 변수 등)은 패치로 만들고, 나머지는 패치 최상위 `"note"`에 **어느 탭에서 무엇을 채울지** 적으세요 — 사용자에게 그대로 보입니다. 패치로 할 일이 없으면 `{"note": "…"}` 하나만.',
+  '- 탭마다 그 기능만 맡는 AI 창구가 있습니다 (`AI로 상점 만들기`·`🤖 편성표만 AI에게 맡기기` 같은 칸) — 규격을 아는 AI가 그 자리에서 만들어 주니 함께 알려 주세요.',
+  `- 그 밖에 패치로 못 고치는 자리: ${PATCH_OFF_SPOTS.map(([k, n, w]) => `${n}(\`${k}\`) → ${w}`).join(' · ')}.`,
+];
+
+/**
+ * 대화에 나온 기능의 규격 — 다 실으면 16KB가 매 턴 나가므로 말한 것만, 최근에 말한 순으로 셋까지 (기능을 줄줄이 나열한 답 하나가 다음 턴들을 불리지 않게).
+ * 켜져 있기만 한 기능은 안 싣는다 — 현황 줄이 실제 설정값을 주고, 얼헌처럼 다 켠 봇에서 언급도 없는 턴마다 9KB를 더 내게 된다 (실측). 같은 규격은 한 번만.
+ */
+function featureRuleLines(talk = '') {
+  const t = String(talk || '');
+  const lastAt = (re) => { let at = -1; for (const m of t.matchAll(new RegExp(re.source, 'gi'))) at = m.index; return at; };
+  const said = FEATURE_MAP.filter((f) => f.rules && f.words)
+    .map((f) => [f, lastAt(f.words)]).filter(([, at]) => at >= 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f]) => f);
+  const seen = new Set(), body = [];
+  for (const f of said) {
+    if (seen.has(f.rules)) continue;
+    seen.add(f.rules);
+    body.push(`### ${f.name} 규격`, ...f.rules, '');
+  }
+  return body.length ? ['## 이 대화에 나온 기능의 규격 — 탭에서 채울 내용을 안내할 때 이것을 근거로 하세요', ...body] : [];
+}
+
 function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   // gen = { request, botCtx } — 내장 AI 생성(위층)이 채워 보낼 때. 복붙 경로는 placeholder 유지.
   const ex = TEMPLATES[exampleKey] ?? TEMPLATES.business;
@@ -4229,8 +4334,10 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 출력 형식',
     '- **JSON 하나만** 출력하세요. 코드펜스 바깥에 설명을 덧붙이지 마세요.',
-    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
+    '- 최상위 키: `simcore`("0.1"), `meta`, `vars`, `derived`, `rules`, `directives`, `actions`, `updater`, `promptState`, `statusUI`, `setup`, `shop`·`shops`(선택 — 사고파는 일이 있는 봇만), `board`(선택 — 세계 안 게시판이 어울리는 봇만), `messenger`(선택 — 문자·편지가 오가는 봇만), `questBoard`(선택 — 의뢰를 받아 수행하는 봇만), `party`(선택 — 편성표가 어울리는 봇만), `calendar`(선택 — 시간 체계 켠 봇만), `scenario`(선택 — 중심 이야기를 막 단위로 끌고 가는 봇만), `secrets`(선택 — 밝혀지기 전엔 모델이 몰라야 하는 것이 있는 봇만), `fronts`(선택 — 유저가 안 봐도 움직이는 세력이 있는 봇만)',
     '- 변수는 8~16개가 적당합니다. 너무 많으면 플레이어도 모델도 못 따라갑니다.',
+    '',
+    ...featureMapLines(),
     '',
     '## 언어 규칙 — 필드마다 읽는 사람이 다릅니다',
     schemaLanguageTable(),
@@ -4250,6 +4357,18 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
     '',
     '## 반복 이벤트 — once인가 래치인가',
     ...SCHEMA_EVENT_PATTERN_RULES,
+    '',
+    '## 상점(shop·shops) — 사고파는 일이 있는 봇이면 (선택)',
+    ...SCHEMA_SHOP_RULES,
+    '',
+    '## 보드(board) — 세계 안 커뮤니티 게시판이 어울리는 봇이면 (선택)',
+    ...SCHEMA_BOARD_RULES,
+    '',
+    '## 메신저(messenger) — 문자·편지가 오가는 봇이면 (선택)',
+    ...SCHEMA_MSGR_RULES,
+    '',
+    '## 의뢰판(questBoard) — 의뢰를 받아 수행하는 봇이면 (선택)',
+    ...SCHEMA_QUEST_RULES,
     '',
     '## 편성표(party) — 인물을 자리에 앉히는 봇이면 (선택)',
     ...SCHEMA_PARTY_RULES,
@@ -4277,11 +4396,11 @@ function buildSchemaSpecPrompt(exampleKey, includeValidator, gen = null) {
   if (includeValidator) {
     parts.push('',
       '## 부록: 검증기 원문',
-      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다 (주석 줄만 뺐습니다).',
+      '위 설명과 어긋나는 부분이 있으면 **이 코드가 정답**입니다. 플러그인이 실제로 돌리는 검사입니다 (주석 줄과 들여쓰기만 뺐습니다).',
       '```js',
-      // 주석만 있는 줄은 뺀다 (v1.13.0) — 코드는 한 글자도 안 바뀐다. 개발 경위 주석이 검증기의 1할이 넘어
+      // 주석만 있는 줄과 들여쓰기는 뺀다 (v1.13.0 · v1.21.0) — 코드는 한 글자도 안 바뀐다. 개발 경위 주석이 검증기의 1할이 넘어
       // 128KB 붙여넣기 상한에 닿았다 (test-aischema: 닿으면 상한을 올리지 말고 검증기 원문 동봉을 재고할 것)
-      String(validateSchema).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n'),
+      String(validateSchema).split('\n').filter((l) => !/^\s*\/\//.test(l)).map((l) => l.trimStart()).join('\n'),
       '```');
   }
   // 대화형(v1.9.0) 꼬리 — "JSON 하나만"은 코드펜스 안의 규칙이지 답 전체의 규칙이 아니다
@@ -4442,7 +4561,46 @@ function patchIdDigest(schema) {
       `- 일정 목록 \`${schema.calendar.list}\` — **remove 금지** (달력 일정 등록이 이 목록에 삽니다). `
       + '항목의 `@숫자`는 날짜 기한 표기이니 지우지 마세요.');
   }
+  out.push(...featureDigestLines(schema));
   return out.join('\n');
+}
+
+/**
+ * 이 봇에 켜진 기능의 현황 — 설정 요약만 (css 제외, 긴 글은 자른다). 패치 대상이 아니지만 모르면 "없다"고 답하고 없는 것을 또 만든다.
+ * (인라인 구간 — 테스트가 patchIdDigest부터 buildPatchExportPrompt 앞까지만 잘라 쓰므로 밖의 것을 못 부른다. 금지 #8)
+ * 편성표·달력·비밀·무대 뒤·시간은 위에 자기 절이 있다. 막 본문·숨은 글은 안 싣는다 — 비밀 절과 같은 규율 (다이제스트는 습관적으로 복사된다).
+ */
+function featureDigestLines(s) {
+  const fmObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+  const fmN = (a) => (Array.isArray(a) ? a.length : 0);
+  const brief = (o, drop = []) => {
+    const t = JSON.stringify(o, (k, v) => (k === 'css' || drop.includes(k) ? undefined
+      : typeof v === 'string' && v.length > 80 ? v.slice(0, 79) + '…' : v)) ?? '';
+    return '`' + (t.length > 700 ? t.slice(0, 699) + '…' : t) + '`';
+  };
+  const held = (...ids) => {
+    const list = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
+    return list.length ? ` — 쓰는 변수 ${list.map((x) => '`' + x + '`').join(' ')} **remove 금지** (지우면 가져오기가 막습니다)` : '';
+  };
+  const lines = [];
+  for (const sh of [...(fmObj(s.shop) ? [s.shop] : []), ...(Array.isArray(s.shops) ? s.shops.filter(fmObj) : [])]) {
+    lines.push(`- **상점**: ${brief({ label: sh.label, guide: sh.guide, ...sh })}${held(sh.currency, sh.buyTo, sh.sellFrom)}`); // 등급표가 길어 지침이 잘리지 않게 앞으로
+  }
+  if (fmObj(s.board)) lines.push(`- **보드**: ${brief(s.board)}`);
+  if (fmObj(s.messenger)) lines.push(`- **메신저**: ${brief(s.messenger)}${held(s.messenger.contactsVar, s.messenger.notesVar)}`);
+  if (fmObj(s.questBoard)) lines.push(`- **의뢰판**: ${brief(s.questBoard)}${held(s.questBoard.listVar)}`);
+  const acts = Array.isArray(s.scenario?.acts) ? s.scenario.acts.filter(fmObj) : [];
+  if (acts.length) {
+    lines.push(`- **시나리오**: 막 ${acts.length}개 — ${acts.map((a) => `\`${a.id}\`${a.label ? `(${a.label})` : ''}${a.unlock ? ` ← \`${a.unlock}\`` : ''}`).join(' → ')}. `
+      + '해금 조건이 읽는 변수는 **remove 금지**. 조건식에서 `scn_act`·`scn_turns`를 읽을 수 있습니다');
+  }
+  if (fmObj(s.checkpoint)) lines.push(`- **되감기**: ${brief(s.checkpoint, ['notify'])}`);
+  for (const lc of (Array.isArray(s.liveChoices) ? s.liveChoices.filter(fmObj) : fmObj(s.liveChoices) ? [s.liveChoices] : [])) lines.push(`- **보조 갈림길**: ${brief(lc)}`);
+  if (fmObj(s.rules?.randomEvents?.gauge)) lines.push(`- **사건 게이지**: ${brief(s.rules.randomEvents.gauge)}`);
+  if (fmN(s.pools)) lines.push(`- **후보 풀**: ${s.pools.filter(fmObj).map((p) => `\`${p.id}\`${p.label ? `(${p.label})` : ''} 후보 ${fmN(p.items)}개`).join(' · ')}`);
+  if (fmN(s.assets?.packs)) lines.push(`- **에셋 팩**: ${s.assets.packs.filter(fmObj).map((p) => '`' + (p.id ?? p.label ?? '?') + '`').join(' ')}`);
+  if (s.suggest) lines.push(`- **행동 제안**: ${brief(s.suggest)}`);
+  return lines.length ? ['', '### 이 봇에 켜진 시스템 기능 — 패치로 못 다룹니다. 지금 설정을 참조만 하세요 (고칠 자리는 기능 지도)', ...lines] : [];
 }
 
 function buildPatchExportPrompt(schema, opts = {}) {
@@ -4455,9 +4613,9 @@ function buildPatchExportPrompt(schema, opts = {}) {
       ...fixes.map((f, i) => `${i + 1}. ${f.sev === 'high' ? '🔴' : '🟡'} **[${f.tag}]** ${f.text}`),
       '',
       '- 한 지적이 여러 탭에 걸쳐도 됩니다 — 패치는 섹션을 자유롭게 넘나듭니다.',
-      '- **고칠 자리가 상태창·매 턴 정산(onTurn)·새 시작이면 패치로 못 다룹니다** — 그 사실을 JSON 대신 말로 알려주세요.',
+      '- **고칠 자리가 상태창·매 턴 정산(onTurn)·새 시작이거나 기능 지도의 시스템 기능이면 패치로 못 다룹니다** — 그 사실을 패치 최상위 `"note"`에 적으세요.',
       '- 진단은 보조 AI를 안 돌리고 굴린 결과라, **AI가 바꾸는 변수는 "안 움직임"으로 잘못 나옵니다.**',
-      '  그런 지적은 고치지 말고 그렇다고 말해 주세요.']
+      '  그런 지적은 고치지 말고 `"note"`에 그렇다고 적어 주세요.']
     : opts.request
       ? ['## 내가 원하는 것', opts.request]
       : ['## 내가 원하는 것',
@@ -4496,12 +4654,16 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '- 섹션 키는 전부 평평하게: `vars` `derived` `checks` `events` `randomEvents` `directives` `actions` `allow`',
     '- `directives` 항목은 `id`·`when`·`text` 셋이 **전부 필수**입니다. 항상 켜 둘 지시문은 `"when": "true"`로 쓰세요 — 빠뜨리면 가져오기가 true로 채우고 경고합니다. 이벤트의 `when`은 채워 주지 않으니 반드시 쓰세요.',
     '- 랜덤 이벤트를 **이 봇에 처음** 넣을 때는 최상위에 `"randomEventsChance": 0.1` 처럼 턴당 발동률(0~1)을 함께 주세요.',
-    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)은 패치로 못 다룹니다. 그쪽 수정이 필요하면 JSON 대신 그 사실을 알려주세요. 단 onTurn(매 턴 정산)의 전문은 아래 다이제스트에 있으니 읽고 답하세요 — 거기 있는 공식을 "없다"고 하면 안 됩니다.',
+    '- 상태창(statusUI)·onTurn·setup·meta·편성표(party)·달력(calendar)과 아래 기능 지도의 시스템 기능은 패치로 못 다룹니다. 그쪽 수정이 필요하면 `"note"`에 어느 탭에서 무엇을 고칠지 적으세요. 단 onTurn(매 턴 정산)의 전문은 아래 다이제스트에 있으니 읽고 답하세요 — 거기 있는 공식을 "없다"고 하면 안 됩니다.',
     '- 새 변수·파생에는 `group`을 붙이세요 — 아래 변수 표의 그룹 중 가장 가까운 것, 없으면 새 이름. update는 기존 `group`을 자동으로 유지합니다.',
     '- 새 변수를 AI(보조 모델)가 서사에 따라 움직여야 하면 `allow`에도 같이 추가하세요.',
     '  단 **판정값·이벤트 플래그·날짜류 카운터·숨긴 정답은 allow에 넣지 마세요** — 시스템이 굴리는 값입니다.',
     '- 한 인물의 변수 여러 개(호감·기분·위치…)가 같은 mentions 낱말을 공유하는 것은 **정상 설계**입니다',
     '  (그 인물 장면에서 함께 열림). 경고를 지우려고 낱말을 억지로 나누지 마세요.',
+    '',
+    ...featureMapLines(schema),
+    '',
+    ...PATCH_FEATURE_RULES,
     '',
     '## 필드 사전 — 섹션마다 쓸 수 있는 키 (여기 없는 이름은 엔진이 무시하고 가져오기가 경고합니다)',
     ...fieldDictLines(),
@@ -4525,6 +4687,8 @@ function buildPatchExportPrompt(schema, opts = {}) {
     '## 수식 언어',
     ...SCHEMA_EXPR_RULES.map((s) => '- ' + s),
     '',
+    // 나온 기능의 규격은 뒤쪽에 — 대화마다 달라지는 몫이라 앞부분 캐시를 안 깨게
+    ...featureRuleLines(opts.talk ?? opts.request ?? ''),
     opts.chat
       // 대화형(v1.9.0) — 패치는 바꾸는 턴의 코드펜스 안에서만 "하나만"이다
       ? '## 대화 규약이 우선 — 패치 JSON은 작업본을 바꾸는 턴의 답 끝에 **코드펜스 하나**로만. 그 앞은 사람에게 하는 말이고, 논의만인 턴에는 붙이지 마세요.'
@@ -4630,17 +4794,17 @@ function chatRules(blank) {
   return [
     '## 대화 규약 — 이 대화에서 답하는 방식 (아래 출력 형식보다 우선)',
     '- 당신은 SimCore 시뮬레이션 스키마 설계 어시스턴트입니다. 사용자와 **대화하며** 작업본을 함께 설계합니다.',
-    '- 답은 먼저 **사람에게 하는 말**(설명·이유·되묻기)입니다. 심코어의 구조·동작 질문에는 아래 규격을 근거로 답하세요.',
+    '- 답은 먼저 **사람에게 하는 말**(설명·이유·되묻기)입니다. 심코어의 구조·동작 질문에는 아래 규격을 근거로 답하세요. **어떤 기능이 있는지는 아래 "심코어 기능 지도"가 정답입니다.**',
     // v1.16.0 — 대화는 상담(OOC)만. 반영은 [🗂 정리해서 반영]이 대화 전체를 받아 따로 정리한다 (노벨 스튜디오의 OOC·설정 정리).
     '- **이 대화에서는 JSON을 붙이지 않습니다.** 작업본에 넣는 일은 사용자가 [🗂 정리해서 반영]을 누를 때 따로 요청됩니다 — 그때 대화 전체가 패치로 정리됩니다.',
     blank
-      ? '- 작업본이 아직 비어 있습니다. 무엇을 만들지(변수·규칙·상태창의 큰 그림)를 대화로 정하세요. 정해진 것을 항목으로 요약해 두면 정리 때 그대로 반영됩니다.'
+      ? '- 작업본이 아직 비어 있습니다. 무엇을 만들지(변수·규칙·상태창과 쓸 시스템 기능의 큰 그림)를 대화로 정하세요. 정해진 것을 항목으로 요약해 두면 정리 때 그대로 반영됩니다.'
       : '- 사용자가 "해줘·반영해·넣어줘"라고 하면, 무엇을 어떻게 바꿀지 **항목별로 짧게 정리**한 뒤 "[🗂 정리해서 반영]을 누르면 작업본에 넣을 수 있어요"라고 알려 주세요. 합의가 덜 됐으면 먼저 물으세요.',
     '- 답은 짧고 구체적으로 — 변수 id·조건식·수치는 실제 규격 어휘로 적어야 정리 때 그대로 옮겨집니다.',
     '- 이력의 "[적용됨 …]"은 사용자가 그 JSON을 작업본에 넣었다는 뜻, "[적용되지 않음]"은 버렸다는 뜻입니다. '
       + (blank ? '' : '아래 "이미 있는 항목"이 지금의 작업본이니 그것을 기준으로 답하세요.'),
     ...(blank ? [] : ['- 🔒 보호 항목(아래 다이제스트 맨 위 목록)은 손대지 말고 참조만 하세요. 사용자가 그걸 고쳐 달라고 하면 먼저 "잠겨 있으니 편집기에서 🔒를 풀어 달라"고 말하고 JSON은 붙이지 마세요.',
-      '- 상태창(statusUI)·onTurn·setup·meta·편성표·달력은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요.',
+      '- 상태창(statusUI)·onTurn·setup·meta와 기능 지도의 시스템 기능은 패치로 못 다룹니다 — 그쪽은 세부 편집기의 어느 탭에서 어떻게 고치는지 말로 안내하세요. **그 기능 자체는 [🗂 정리해서 반영]으로 안 들어갑니다** — 위 문구 대신 그 탭의 AI 창구에 적을 내용을 정리해 주고, 🗂 버튼은 준비물(지갑·목록 변수 등)이 있을 때 그 준비물에 대해서만 말하세요.',
       '- 그때 쓰는 세부 편집기 지도 (자리를 정확히 대세요, "옵션 메뉴" 같은 뭉뚱그림 금지): [상태창] 탭 → "상태창 기본 설정"에 상태창 제목 · 구성 방식(그룹/HTML 직접) · 기본 테마 · 상태창 출력 위치(최상단/최하단) · **이번 턴 변화**(접어 두기/항상 펼치기/표시하지 않기 — 매 턴 상태창 아래에 붙는 변화 로그) · 그룹 표시 방식(쌓기/탭/접기/팝업) · 중요 변화 강조, 그 아래가 그룹·항목 편집. '
       + '매 턴 자동 규칙(onTurn)은 [규칙·이벤트] 탭 첫 절, 시작 프리셋·첫 장면 설정(setup)은 [새 시작] 탭, 봇 이름(meta)은 [상태창] 탭의 제목 칸, 편성표는 [편성표] 탭, 달력은 [달력] 탭, 비밀(밝혀지기 전엔 모델이 몰라야 하는 것 — 단계·여는 조건·존재 알림)은 [비밀] 탭.']),
     '',
@@ -4692,11 +4856,11 @@ function notesLines(schema) {
 }
 
 /** 대화 시스템 프롬프트 — 📌 작업 지침 + 규약 + 기존 규격서(통짜/패치, 대화용 꼬리) + 작업 내역 꼬리. 매 턴 새로 조립한다 */
-function buildChatSystemPrompt(schema, botCtxText, workLog = null) {
+function buildChatSystemPrompt(schema, botCtxText, workLog = null, talk = '') {
   const blank = schemaIsBlank(schema);
   const spec = blank
     ? buildSchemaSpecPrompt('business', true, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true })
-    : buildPatchExportPrompt(schema, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true, notes: false });
+    : buildPatchExportPrompt(schema, { request: '(대화 이력과 마지막 메시지에 있습니다 — 위 대화 규약을 보세요)', botCtx: botCtxText, chat: true, notes: false, talk });
   return notesLines(schema).join('\n') + (notesLines(schema).length ? '\n' : '') + chatRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
 }
 
@@ -4726,6 +4890,11 @@ function chatHistoryMessages(msgs, opts = {}) {
   }
   while (out.length && out[0].role !== 'user') out.shift();
   return out;
+}
+
+/** 나온 기능의 규격을 고르는 재료 (v1.21.0) — 이번 전송에 실제로 실리는 이력만 본다 */
+function chatTalkText(msgs) {
+  return chatHistoryMessages(msgs).map((m) => m.content).join('\n');
 }
 
 /** 추론 블록 떼기 (v1.9.2) — 직결 호출은 리수의 후처리를 안 거쳐 제미니의 <Thoughts>…</Thoughts>가 본문에 그대로 온다
@@ -4795,7 +4964,7 @@ function extractRules(blank) {
     '- 대화에 없는 내용을 지어내지 마세요. 애매하면 넣지 말고 note에 적으세요.',
     ...(blank ? [] : [
       '- 항목마다 왜 넣는지 한 줄 — 최상위 `"reasons": { "섹션:id": "이유" }` (섹션은 vars/derived/checks/events/randomEvents/directives/actions/allow).',
-      '- 패치로 못 다루는 것(상태창·onTurn·setup·meta·편성표·달력)은 JSON에 넣지 말고 note에 "어느 탭에서 어떻게"로 적으세요.',
+      '- 패치로 못 다루는 것(상태창·onTurn·setup·meta와 기능 지도의 시스템 기능)은 JSON에 넣지 마세요 — `shop` 같은 키를 쓰면 패치 전체가 거부됩니다. 그 기능의 준비물(지갑·목록 변수 등)만 패치에 넣고, 나머지는 note에 "어느 탭에서 어떻게"로 적으세요.',
     ]),
     '- 반영할 것이 없으면 add/update/remove 없이 `{"note": "이유"}` 하나만.',
     '- 출력은 **JSON 하나**(코드펜스 가능)이고 그 앞뒤에 다른 말을 쓰지 마세요. 최상위 `"note"`에 반영 안 한 것·확인할 것을 적으세요.',
@@ -4810,7 +4979,7 @@ function buildExtractRequest(schema, msgs, instruction, botCtxText, workLog = nu
   const request = '아래 <대화>에서 작업본에 반영하기로 합의된 것 전부' + (extra ? ` — 특히: ${extra}` : '');
   const spec = blank
     ? buildSchemaSpecPrompt('business', true, { request, botCtx: botCtxText })
-    : buildPatchExportPrompt(schema, { request, botCtx: botCtxText, notes: false });
+    : buildPatchExportPrompt(schema, { request, botCtx: botCtxText, notes: false, talk: `${chatTranscript(msgs)}\n${extra}` });
   const system = notesLines(schema).join('\n') + (notesLines(schema).length ? '\n' : '') + extractRules(blank).join('\n') + '\n' + spec + workLogPromptText(workLog);
   const user = ['<대화>', chatTranscript(msgs) || '(대화 없음)', '</대화>', '',
     extra ? `제작자의 추가 요청: ${extra}` : null,
@@ -5731,14 +5900,15 @@ const FEATURE_RECIPES = [
   },
   {
     id: 'shop', icon: '🛒', label: '상점',
-    desc: '돈을 쓰는 구매 액션 묶음 — 못 살 땐 버튼이 잠김',
+    desc: '진열·결제·매입·환전을 시스템이 처리하는 상점 패널 — 가격 밴드 밖 진열은 거부',
     needs: (s) => {
       if (!(s.vars || []).some((v) => v.type === 'int' || v.type === 'float')) return '돈으로 쓸 숫자 변수가 필요합니다';
       if (!(s.vars || []).some((v) => v.type === 'list')) return '소지품으로 쓸 목록 변수가 필요합니다';
       return null;
     },
-    steps: [{ tab: 'actions', want: '돈을 소모해 물건을 사는 상점 액션을 몇 개 만들어 주세요. '
-      + '살 돈이 모자라면 버튼이 잠기게 조건을 걸고, 산 물건은 소지품 목록에 들어가게 해 주세요.' }],
+    // v0.63 카드는 "구매 액션 묶음"을 시켰고 자체 상점(v0.96)이 생긴 뒤에도 그대로였다 — 제보 "자체 상점이 있어도 어떻게든 액션 버튼으로"의 한 뿌리 (v1.21.0)
+    steps: [{ tab: 'shop', want: '지금 있는 숫자 변수를 지갑(currency)으로, 목록 변수를 구매품 목록(buyTo)으로 쓰는 시스템 상점을 만들어 주세요. '
+      + '이 세계에 맞는 등급 어휘와 등급별 가격 밴드, 카테고리, 무엇을 파는 곳인지 적은 guide까지 넣어 주세요.' }],
   },
   {
     id: 'quest_board', icon: '📜', label: '의뢰판',
@@ -13429,6 +13599,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       let parsedJson;
       try { parsedJson = JSON.parse(stripFence(text)); }
       catch (e) {
+        // 패치로 못 하는 일을 말로 알려 온 답 (v1.21.0) — "[상점] 탭에서…"는 규격이 시킨 대로 한 것이지 형식 실패가 아니다.
+        // 재시도하면 "JSON 하나만"에 떠밀려 액션으로 흉내 낸 패치가 온다. 중괄호 없이 탭을 가리키는 답만 — 그 밖의 산문은 종전대로 재시도
+        if (!blank && !String(text).includes('{') && /\[[^\]\n]{1,24}\]/.test(text)) return { ok: false, guide: String(text).trim() };
         const failure = jsonParseFailure(text, e);
         // 잘림 감지 — 짧은 출력의 문법 오류는 모델 실수(재시도가 약)지만, 길게 쓰다
         // 안 닫힌 채 끝난 건 응답 길이 한계(재시도가 무익)다. 갈래를 나눠 안내한다.
@@ -13440,6 +13613,10 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         const v = validateSchema(parsedJson);
         if (!v.ok) return { ok: false, errors: v.errors.map((e) => `${e.path} — ${e.msg}`) };
         return { ok: true, full: { schema: parsedJson, warnings: v.warnings } };
+      }
+      // 패치로 할 일이 없고 안내만 있는 답 (v1.21.0) — 규격의 { "note": "…" } 꼴
+      if (parsedJson && typeof parsedJson.note === 'string' && parsedJson.note.trim() && !parsedJson.add && !parsedJson.update && !parsedJson.remove) {
+        return { ok: false, guide: parsedJson.note.trim() };
       }
       const p = patchMod.parsePatch(text);
       if (!p.ok) return { ok: false, errors: p.errors };
@@ -13474,7 +13651,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       text = res;
       got = inspect(res);
       if (got.ok) break;
-      if (got.truncated) break; // 잘린 출력은 재시도해도 같은 자리에서 잘린다 — 안내로 직행
+      if (got.truncated || got.guide) break; // 잘린 출력은 재시도해도 같은 자리에서 잘린다 — 안내로 직행. 말로 온 안내도 그대로 보여 준다
     }
 
     aiGen.busy = false;
@@ -13483,6 +13660,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     } else if (fatal) {
       aiGen.note = `⚠ ${selectedModelLabel} 호출 실패 — ${fatal.msg}`
         + ' · 생성 모델을 바꾸거나 [규격서 복사]를 이용해 주세요.';
+    } else if (!got.ok && got.guide) {
+      aiGen.note = `💬 ${selectedModelLabel}의 답 — ${got.guide}`;
     } else if (!got.ok && got.truncated) {
       aiGen.note = `⚠ ${selectedModelLabel} 응답이 중간에 잘렸어요 — JSON이 닫히지 않은 채 `
         + `${Math.max(1, Math.round(text.length / 1024))}KB에서 끊겼습니다. 보통 모델의 **응답 최대 길이** 한계라 `
@@ -13882,7 +14061,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
     if (chat.seq !== mySeq || destroyed) return;
 
     const blank = schemaIsBlank(schema);
-    const system = buildChatSystemPrompt(schema, ctxText, workLog);
+    const system = buildChatSystemPrompt(schema, ctxText, workLog, chatTalkText(chat.msgs));
     const messages = [...chatHistoryMessages(chat.msgs.slice(0, -1)), { role: 'user', content: text }];
     chat.sent += chatTurnEstimate(system, messages);
     const selectedModelLabel = aiGenModel?.choice === 'main' ? '메인 모델'
@@ -14327,7 +14506,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       meter.replaceChildren();
       if (baseTok == null) {
         const ctxText = aiCtxOn && aiBotCtx ? assembleCtx(aiBotCtx).text : '';
-        baseTok = chatTurnEstimate(buildChatSystemPrompt(schema, ctxText, workLog), chatHistoryMessages(chat.msgs));
+        baseTok = chatTurnEstimate(buildChatSystemPrompt(schema, ctxText, workLog, chatTalkText(chat.msgs)), chatHistoryMessages(chat.msgs));
       }
       meter.appendChild(h('span', {}, `이번 전송 약 ${(baseTok + estTokens(chat.draft)).toLocaleString()} 토큰`));
       meter.appendChild(h('span', {}, `이 대화 누적 보낸 약 ${chat.sent.toLocaleString()} · 받은 약 ${chat.got.toLocaleString()}`));
@@ -15259,6 +15438,7 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
             h('span', {}, label), h('strong', {}, String(value))))));
       const body = h('div', { class: 'sce-patch-body' });
       box.appendChild(body);
+      if (patch.note) body.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + patch.note)); // 패치로 못 넣는 것의 안내 (v1.21.0)
       if (patch.randomEventsChance != null)
         body.appendChild(h('div', {}, `랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
       for (const w of plan.warnings) body.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
@@ -16783,4 +16963,6 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
 module.exports = { createSchemaEditor, schemaIsBlank, detectSlotsFromNames, packDraftFromDetect, packCoverage, buildPackImportPrompt, estTokens, estAssetCost,
   activeTemplateSlot, buildLayoutSpecPrompt, buildTabExportPrompt, runTrialTurns,
   // 🗂 정리해서 반영·채팅 저장 (v1.16.0) — 테스트가 순수 함수로 본다
-  chatTranscript, extractRules, buildExtractRequest, splitProposal, pickPatch, entryDiffLines, sanitizeChats, sanitizeChatMsgs, chatName };
+  chatTranscript, extractRules, buildExtractRequest, splitProposal, pickPatch, entryDiffLines, sanitizeChats, sanitizeChatMsgs, chatName,
+  // 기능 지도 (v1.21.0) — test-featuremap이 UNSUPPORTED_HINT·activeSections와 대조한다
+  FEATURE_MAP, PATCH_OFF_SPOTS };

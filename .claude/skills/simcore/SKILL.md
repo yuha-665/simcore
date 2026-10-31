@@ -1,12 +1,12 @@
 ---
 name: simcore
-description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.20.2 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
+description: RisuAI/PocketRisu용 시뮬레이션 엔진 플러그인 SimCore의 개발·유지보수 레퍼런스 (v1.21.0 기준). 스키마 전 필드(전투 안무·상점·보드·메신저·의뢰판·시나리오·🔒 비밀·⏪ 되감기·🎭 무대 뒤·🎲 보조 갈림길 여러 벌 포함), 편집기 18탭 UI 구조, 내장 템플릿 16종 실측표, 리수 내부 확정 사실, 아카라이브 배포글 규격, 얼헌(이식 봇) 개조 번들 규약, 이 PC의 Claude Code·Codex 다리(tools/cli-bridge)를 담는다. simcore.plugin.js를 고치거나, 베리디아·얼헌 같은 SimCore 봇 스키마를 만들거나, SimCore 가이드/패치글을 쓸 때 사용.
 ---
 
 # SimCore — 시뮬 엔진 플러그인
 
 봇에 **숫자로 굴러가는 상태**를 붙이는 RisuAI 플러그인. 스키마 하나로 변수·파생·규칙·이벤트·상태창을
-정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.20.2 기준, 2026-10-26**)
+정의하면, 메인 모델에는 상태 블록을, 보조 모델에는 갱신 지시를 내보낸다. (이 문서 **v1.21.0 기준, 2026-10-31**)
 
 v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정식 출시**(제작 도구 일괄·과거 상태창·개조 번들) →
 **v1.1 자율형 게시판** → **v1.2 메신저** → **v1.3~1.4 표기 단위·환전 다짝·다중 상점** → **v1.5 막간·상태 블록 경고·
@@ -22,7 +22,8 @@ v0.93 이후 큰 줄기: **v0.95~0.98 게시판·상점·환전** → **v1.0 정
 ① **이 PC의 Claude Code·Codex로 만들기**(`tools/cli-bridge` 다리 + 편집기 생성 모델 `cli` — 편집기 생성만, RP·보조 갱신은 리수 모델) ·
 ② **변수·상태창은 필수가 아니다**(validate `activeSections` = 변수 없이 도는 절의 이름표, `statusUI.mode:'off'` 실동작, [캐릭터에서 제거] 뒤 마커 숨김) ·
 ③ **💬 대화는 상담, 반영은 [🗂 정리해서 반영]**(노벨 스튜디오 OOC·설정 정리 이식 — 말풍선에 JSON 없음, 정리 버튼이 대화 전체를 패치로, 항목 체크 제안 상자, 새 채팅·지난 채팅 저장 `sim:chats:<chaId>`) →
-**v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리** → **v1.20.2 🔌 다리에 못 닿으면 못 닿았다고**. 얼헌(얼터헌터) 개조가
+**v1.20.1 🧹 패치로 지운 변수의 참조도 같이 정리** → **v1.20.2 🔌 다리에 못 닿으면 못 닿았다고** →
+**v1.21 🗺 대화가 자기 기능을 안다**(편집기 `FEATURE_MAP` 표 하나가 기능 지도·켜진 기능 현황·대화에 나온 기능의 규격을 먹인다, 패치 `note`). 얼헌(얼터헌터) 개조가
 v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기를 견인했다. 코어 모듈은 **28개**.
 
 ## 파일 위치 (실수 잦음)
@@ -31,7 +32,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 |---|---|
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **28개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
-| 테스트 | `simcore\테스트\test-*.js` (실측 **119종** — 2026-10-26) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
+| 테스트 | `simcore\테스트\test-*.js` (실측 **120종** — 2026-10-31) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
 | 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js` |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
@@ -140,6 +141,11 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
     남긴다. 턴마다 프로세스를 띄우면 2~4초씩 붙고, 구독 할당량이 RP에 새고, "개인 PC에서 본인 구독"이라는 전제가 무너진다(규정 판단은 유저 몫, 배포글엔 아직 없다).
     `Risuai.nativeFetch`는 웹 리수에서 프록시를 거쳐 localhost에 못 가고 리수 모델 시스템의 `globalFetch`는 localhost를 아예 막는다 —
     안내문에서 "데스크톱·셀프호스트용, 포켓리스·웹 불가"를 빼지 말 것 (risu-facts "nativeFetch · globalFetch와 localhost").
+18. **새 기능을 넣고 `FEATURE_MAP`에 줄을 안 넣는 것.** 편집기 어시스턴트(💬 대화·🗂 정리·✨ 창작)가 아는 기능은 프롬프트에 적힌 것뿐이다 — #3의 모델판이다. 패치 규격서엔 패치 8섹션의 세계만 있어서,
+    상점·보드·메신저·의뢰판은 이름도 없었고 모델은 "게시판이라는 기능이 따로 있는 건 아니고"라며 목록 변수로 조립했다 (v1.21.0 실제 모델 시험, 커뮤니티 제보). 🧩 카드도 같은 병이었다(상점 카드가 v0.96 뒤에도 액션 묶음을 시켰다).
+    표 한 줄이면 지도(`featureMapLines`)·현황(`featureDigestLines`, 설정 요약은 여기 손으로 한 줄)·규격(`featureRuleLines`)에 실린다. 빠뜨리면 `test-featuremap`이 `UNSUPPORTED_HINT`·`activeSections`와 대조해 잡는다.
+    ⚠ `featureDigestLines`는 `patchIdDigest`~`buildPatchExportPrompt` 사이에 두고 밖의 것을 부르지 말 것 — 테스트 셋이 그 구간만 잘라 돌린다(금지 #8). 막 본문·숨은 글을 현황에 싣지 말 것(비밀 절과 같은 규율).
+    프롬프트 문구를 고치면 글자 검사로 끝내지 말고 전·후 프롬프트로 실제 모델 답을 비교할 것 — 규약의 기본 문구("🗂를 누르면 넣을 수 있어요")가 기능 안내 끝에 그대로 붙는 일은 단언으로 못 잡았다.
 
 ## 설계 원칙 (봇 스키마를 만들 때)
 

@@ -272,6 +272,9 @@ const P = TEMPLATES.politics.schema;
   ck('★ 퀘스트 보드는 시간 켜진 봇에선 열림', by('quest_board').needs(RM) === null, String(by('quest_board').needs(RM)));
   ck('★ 상점은 돈·소지품 없으면 막힘', typeof by('shop').needs(BLANK) === 'string', '');
   ck('상점은 survival(골드+목록)에선 열림', by('shop').needs(S) === null, String(by('shop').needs(S)));
+  // v1.21.0 — 제보 "자체 상점이 있어도 어떻게든 액션 버튼으로"의 한 뿌리. 자체 상점(v0.96) 뒤에도 카드가 액션 묶음을 시키고 있었다
+  ck('★ 상점 카드는 시스템 상점 탭으로 간다 (액션 묶음이 아니다)', by('shop').steps.every((s) => s.tab === 'shop') && !/액션/.test(by('shop').steps.map((s) => s.want).join(' ') + by('shop').desc),
+    JSON.stringify(by('shop').steps));
   ck('★ 편성표는 enum·목록 없으면 막힘', typeof by('party').needs(BLANK) === 'string', '');
   ck('상태창 한 벌은 변수 2개 미만이면 막힘',
     typeof by('status_set').needs({ vars: [{ id: 'a' }] }) === 'string', '');

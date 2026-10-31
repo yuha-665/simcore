@@ -71,7 +71,7 @@ setCharacter·globalLore 없음을 핀). 코어는 `core/bible.js`(순수 함수
   (변수/이벤트/액션/판정/지시문 개수 + 세부 목록 접기).
 - **🔬 진단**: 아래 진단 절 참조.
 
-### 🧩 기능 추가 카드 (`FEATURE_RECIPES`, 10종)
+### 🧩 기능 추가 카드 (`FEATURE_RECIPES`, 11종)
 
 카드 = 고정 패치가 아니라 **요청서** — `tabWant[슬라이스]`를 채우고 그 탭의 직결 생성을 부른다.
 검사·계획 확인·되돌리기 전부 탭별 도구의 것을 그대로 탄다. steps 여럿이면 **순차** (변수부터
@@ -80,7 +80,7 @@ setCharacter·globalLore 없음을 핀). 코어는 `core/bible.js`(순수 함수
 | 카드 | 단계(탭 순서) | 전제 (`needs`) |
 |---|---|---|
 | 📊 상태창 한 벌 | status | 변수 2개 이상 |
-| 🛒 상점 | actions | 숫자 변수 + 목록 변수 |
+| 🛒 상점 | shop | 숫자 변수 + 목록 변수 (v1.21.0 — 시스템 상점으로 재지정, 전엔 actions의 구매 액션 묶음) |
 | 📜 의뢰판 | vars → quest → rules | 시간 체계 (v1.7.9 — 의뢰판 모듈로 재지정, 전엔 vars → rules 액션형) |
 | 📈 레벨·성장 | vars → rules | — |
 | 💕 호감도 인물 | vars → rules | — |
@@ -223,7 +223,7 @@ setCharacter·globalLore 없음을 핀). 코어는 `core/bible.js`(순수 함수
 통짜 재생성 없이 **바꿀 부분만** 패치 JSON으로 받는 경로. 1층 ✍ 창작의 내장 생성과
 2층 붙여넣기가 **같은 계획·충돌·적용 UI를 공유**한다.
 
-- 패치 형식: `{ patchVersion: 1, add, update, remove, randomEventsChance }` — 섹션 키는 평평
+- 패치 형식: `{ patchVersion: 1, add, update, remove, randomEventsChance, note }` — `note`(v1.21.0, 800자)는 패치로 못 넣는 것의 안내로 변경 계획 상자에 💡, 병합엔 안 든다. 섹션 키는 평평
   (`vars`/`derived`/`checks`/`events`/`randomEvents`/`directives`/`actions`/`allow`)
 - **add가 기존 id와 겹치면 정지** → 항목별 3지선다 (교체 / 새 id로 추가=패치 내 참조 일괄 개명 / 건너뛰기·기본)
 - **같은 id를 remove+add에 같이 넣으면 거부** — 갈아엎기도 update(전문 다시 쓰기)로
@@ -419,6 +419,18 @@ h4 `보조 AI가 조정할 수 있는 변수와 한도` — `증가 한도`·`�
 - **제안 상자**(`proposalReviewUI` — chat 경로만, 창작·JSON은 그대로 `planBoxUI`): `patchPlan.plan.ops`마다 `.sce-prop-item`(체크 `aria-label="이 항목 반영"` · 배지 새 항목/수정/삭제/충돌 · 💡 reasons[`섹션:id`] · 새 항목은 JSON 본문, 수정은 `entryDiffLines(previous, entry)` 칸별 전/후, 삭제·충돌은 **기본 해제**, 충돌은 교체(기본)/새 id/건너뛰기). 4개↑면 [추가·수정 전체 선택]·[전체 해제]. 발은 [반영한 뒤 새 채팅으로]·[버리기]·[선택한 N개 반영] — `pickPatch`로 자르고 기존 `applyPatch`(되돌리기·작업 내역·🔒 보호·chatMarkApplied 그대로).
 - **저장**(`chatPersist` 400ms 디바운스 → `ai.saveChats({ current:{id,title,msgs}, shelf })`, 시작 때 `ai.loadChats` → `sanitizeChats`): 지금 채팅 80개·지난 채팅 12개·400KB. 말풍선은 role·text·ts·applied·kind만(pending·json은 안 남는다). 어댑터 키 `sim:chats:<chaId>`. 저장 통로 없으면 안내 한 줄.
 - 테스트 `테스트/test-ooc.js`(순수 함수 + 가짜 DOM 왕복), `test-aichat.js`·`test-chatdel.js`는 새 모양 기준(적용 버튼 "선택한 N개 반영", 지우기는 🗑 두 번).
+
+## 🗺 기능 지도 — 어시스턴트가 아는 기능 (v1.21.0)
+
+`FEATURE_MAP`(`core/editor.js`, 규칙 상수 뒤) 표 하나 — 기능 17종의 `keys`·`where`(탭)·`what`·`need`(준비물)·`on(schema)`·`words`·`rules`(SCHEMA_*_RULES). `PATCH_OFF_SPOTS` = 기능은 아니지만 패치로 못 고치는 자리 6곳. 합치면 patch.js `UNSUPPORTED_HINT` 전부(simcore 제외).
+
+- **지도**(`featureMapLines(schema)`): 패치·통짜 규격서에 실린다. schema를 주면 켜진 기능에 ✅. 머리 규칙 = 시스템 기능이 맞는 일은 그 기능을 먼저, 흉내 내지 말 것(사용자가 액션을 고르면 따른다).
+- **준비와 안내**(`PATCH_FEATURE_RULES`, 패치 규격서만): 패치 섹션은 8개뿐, 기능의 준비물(지갑·목록 변수)은 패치로, 나머지는 `note`에 어느 탭에서 무엇을. 할 일이 없으면 `{"note":"…"}` 하나.
+- **현황**(`featureDigestLines`, 다이제스트 끝): 켜진 기능의 설정 요약(css 제외, 글 80자·줄 700자) + 쓰는 변수 remove 금지. 편성표·달력·비밀·무대 뒤·시간은 자기 절이 있고, 막은 이름·해금만.
+- **규격**(`featureRuleLines(talk)`, 규격서 끝): 대화에 나온 기능만 최근 순 셋까지. 켜져 있기만 하면 안 싣는다(현황이 값을 준다 — 얼헌이면 매 턴 9KB). talk = 대화는 실리는 이력(`chatTalkText`), 🗂는 대화록 + 추가 요청, ✨는 요청문.
+- **✨ 창작**: 중괄호 없이 탭을 가리키는 산문·`note`만 온 답은 형식 실패가 아니라 안내(`got.guide`, 재시도 없이 `💬 …의 답 —`). 그 밖의 산문은 종전대로 재시도.
+- 크기(대화 시스템, 말 안 한 턴): 경영 23.3 → 28.0KB · 얼헌 73.6 → 81.6KB · 빈 작업본 147.9KB 그대로(규격 네 절이 늘고 검증기 들여쓰기를 뺐다). 지도 + 준비·안내 4.3KB.
+- 테스트 `테스트/test-featuremap.js` — 표 대조·진짜 편집기 프롬프트·현황·빈 작업본·note·✨ 안내·봇 제작 분류. 🛠 봇 제작의 `SIM_HOW`에도 상점·보드·메신저·의뢰판.
 
 ## 📌 작업 지침 칸 (v1.9.18)
 

@@ -22,7 +22,7 @@
 const BIBLE_V = 1;
 const KINDS = ['world', 'character', 'place', 'faction', 'rule', 'term', 'plot', 'style', 'other'];
 const KIND_LABEL = { world: '세계', character: '인물', place: '장소', faction: '세력', rule: '규칙', term: '용어', plot: '줄거리', style: '문체', other: '기타' };
-const SIM_HOW = ['변수', '이벤트', '액션', '판정', '비밀', '무대 뒤', '시나리오', '갈림길', '기타'];
+const SIM_HOW = ['변수', '이벤트', '액션', '판정', '비밀', '무대 뒤', '시나리오', '갈림길', '상점', '보드', '메신저', '의뢰판', '기타'];
 const LIMITS = { sections: 80, keys: 24, keyChars: 40, nameChars: 80, bodyChars: 6000, sheetChars: 8000, sim: 40, simChars: 300, premiseChars: 600, folders: 24, sourceChars: 40000, sheetFormatChars: 6000 };
 const SOURCE_CAP = 48 * 1024;   // 바이트 — 적재한 원문을 프롬프트에 싣는 상한 (넘치면 앞부분만 + 표시. v1.17.0)
 const FOLDER_KEY_PREFIX = String.fromCharCode(0xf000) + 'folder:';   // 리수 로어북 폴더 항목의 key 머리 (database.svelte.ts addLorebookFolder — 자식은 folder: <그 key>)
@@ -276,7 +276,7 @@ function bibleRules() {
     '- 코드펜스 앞에 무엇을 왜 정리했는지 짧게 적고, 코드펜스 뒤에는 아무 말도 쓰지 않습니다. 모르는 설정은 지어내지 말고 묻되, 한 턴에 질문은 셋 이내.',
     '',
     '### 수정안 형식 (코드펜스 안)',
-    '{ "bible": { "title"?: "…", "premise"?: "한 줄 전제", "folders"?: [ { "id": "슬러그", "name": "폴더 이름" } ], "sections"?: [ { "id": "슬러그", "kind": "world|character|place|faction|rule|term|plot|style|other", "name": "이름", "keys": ["낱말", …], "always": false, "folder": "폴더 id (없으면 생략)", "body": "본문" } ], "remove"?: ["id"], "sheet"?: { "name"?: "…", "desc"?: "캐릭터 설명란 글", "first"?: "첫 메시지" }, "sim"?: [ { "what": "무엇", "how": "변수|이벤트|액션|판정|비밀|무대 뒤|시나리오|갈림길|기타", "why": "왜" } ] } }',
+    '{ "bible": { "title"?: "…", "premise"?: "한 줄 전제", "folders"?: [ { "id": "슬러그", "name": "폴더 이름" } ], "sections"?: [ { "id": "슬러그", "kind": "world|character|place|faction|rule|term|plot|style|other", "name": "이름", "keys": ["낱말", …], "always": false, "folder": "폴더 id (없으면 생략)", "body": "본문" } ], "remove"?: ["id"], "sheet"?: { "name"?: "…", "desc"?: "캐릭터 설명란 글", "first"?: "첫 메시지" }, "sim"?: [ { "what": "무엇", "how": "' + SIM_HOW.join('|') + '", "why": "왜" } ] } }',
     '- sections는 **id로 덮어쓰기**입니다 — 있는 id면 보낸 필드만 교체, 없는 id면 추가. 안 보낸 항목은 그대로 남습니다. 설정집 전체를 다시 보내지 마세요. 지울 때만 remove.',
     '- sim은 보낼 때마다 목록 전체로 교체됩니다. sheet는 보낸 칸만 교체.',
     '- folders는 **로어북 폴더**(리수 로어북의 그룹)입니다 — id로 덮어쓰기(이름만 바뀝니다). 설정집에 폴더가 있으면 새 항목은 알맞은 폴더 id를 folder에 적고, 맞는 폴더가 없으면 folders에 새 폴더를 같이 제안하세요. 없는 폴더 id는 거부됩니다. 사용자가 폴더를 하나도 안 만들었으면 억지로 만들지 마세요.',
@@ -293,6 +293,7 @@ function bibleRules() {
     '- 본문에 "At the start…", "처음엔…", "현재…"가 들어가면 그건 변수 자리입니다. 문장으로 적지 말고 sim으로 보내세요.',
     '- **밝혀지기 전엔 모델이 몰라야 하는 것**(정체·반전·숨은 과거)은 로어북에 적으면 샙니다. sim에 how="비밀"로 올리고 로어북 본문에는 "숨기는 사람"의 행동만 적습니다.',
     '- 유저가 안 보는 사이 진행되는 음모·세력의 움직임은 how="무대 뒤", 장(막) 단위 전개는 how="시나리오", 상황별 선택지는 how="갈림길".',
+    '- 심코어에는 전용 패널이 있습니다 — 사고파는 곳은 how="상점", 세계 안 게시판·커뮤니티는 how="보드", 문자·편지는 how="메신저", 의뢰·퀘스트 게시는 how="의뢰판". 액션으로 흉내 내도록 분류하지 마세요.',
     '',
     '### 캐릭터 시트 (sheet)',
     '- desc = 리수 캐릭터 설명란에 넣을 글: 인물 핵심·외양·말투·관계·금기. 상태 숫자·현재 상황은 적지 않습니다(심코어 상태창이 보여 줍니다). first = 첫 메시지 초안(장면·말투 견본). 사용자가 달라고 할 때 채웁니다.',

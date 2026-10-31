@@ -35,8 +35,8 @@ const SECTION_KEYS = Object.keys(SECTIONS);
 const UNSUPPORTED_HINT = {
   statusUI: '[상태창] 탭', onTurn: '[규칙·이벤트] 탭 첫 절(매 턴 정산)', setup: '[새 시작] 탭', meta: '[상태창] 탭 제목 칸·📌 작업 지침',
   promptState: '[AI 설정] 탭', suggest: '[AI 설정] 탭', simcore: '(버전 표식 — 손대지 않음)', time: '[시간] 탭',
-  checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋] 가져오기', party: '[편성표] 탭',
-  calendar: '[달력] 탭', board: '[게시판] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
+  checkpoint: '[시나리오] 탭 되감기 카드 또는 JSON 관리자', fronts: '[무대 뒤] 탭', assets: '[에셋 관리자]', party: '[편성표] 탭',
+  calendar: '[달력] 탭', board: '[보드] 탭', messenger: '[메신저] 탭', shop: '[상점] 탭', shops: '[상점] 탭', questBoard: '[의뢰판] 탭',
   liveChoices: '[규칙·이벤트] 탭 보조 갈림길 절', scenario: '[시나리오] 탭', secrets: '[비밀] 탭', rerollStableRng: '[규칙·이벤트] 탭',
   pools: '[변수] 탭 🎲 후보 풀 (v1.18.0)',
 };
@@ -92,12 +92,14 @@ function parsePatch(raw) {
     return { ok: false, errors: [`지원하지 않는 patchVersion: ${obj.patchVersion} (지원: 1)`] };
 
   for (const k of Object.keys(obj)) {
-    if (!['patchVersion', 'add', 'update', 'remove', 'randomEventsChance'].includes(k))
+    if (!['patchVersion', 'add', 'update', 'remove', 'randomEventsChance', 'note'].includes(k))
       err(`패치 최상위에는 add/update/remove만 옵니다 — '${k}'는 알 수 없음`
         + (SECTION_KEYS.includes(k) ? ` (새 항목이면 add 안에, 기존 수정이면 update 안에 넣으세요)` : ''));
   }
 
   const patch = { add: {}, update: {}, remove: {} };
+  // 패치로 못 넣는 일의 안내 (v1.21.0) — 변경 계획 상자에 그대로 보인다. 병합과는 무관한 말이라 계획·적용은 이 칸을 안 읽는다
+  if (typeof obj.note === 'string' && obj.note.trim()) patch.note = obj.note.trim().slice(0, 800);
   // 랜덤 이벤트 발동률 — 섹션이 아니라 randomEvents의 설정값이다. 첫 랜덤 이벤트를
   // 패치로 추가할 때 이게 없으면 병합 결과가 검증(0~1 필요)에서 무조건 죽으므로 받아준다.
   const takeChance = (v, where) => {
@@ -640,4 +642,4 @@ function patchNotePrompt(d, opts = {}) {
 }
 
 module.exports = {
-  diffSchemas, diffText, patchNotePrompt, DIFF_AREAS, mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, isKept, keptEntries, restoreKept };
+  diffSchemas, diffText, patchNotePrompt, DIFF_AREAS, mergeUpdate, parsePatch, planPatch, applyPatch, renameInPatch, suggestFreeId, SECTIONS, UNSUPPORTED_HINT, isKept, keptEntries, restoreKept };

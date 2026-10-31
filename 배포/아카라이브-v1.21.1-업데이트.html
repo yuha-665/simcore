@@ -1,0 +1,161 @@
+<div style="background:#0d1117;color:#dbe2ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic','맑은 고딕',sans-serif;font-size:15px;line-height:1.8;padding:28px 22px;border-radius:6px;max-width:860px;margin:0 auto;">
+
+<!-- ─────────── 머리 ─────────── -->
+<div style="border-bottom:2px solid #e0a94a;padding-bottom:16px;margin-bottom:26px;">
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:12px;letter-spacing:.18em;color:#8b98a9;margin-bottom:6px;">RISUAI / POCKETRISU PLUGIN</div>
+  <div style="font-size:30px;font-weight:700;letter-spacing:-.01em;line-height:1.2;">SimCore <span style="color:#8b98a9;font-weight:400;">시뮬레이션 엔진</span> <span style="font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;vertical-align:middle;">업데이트</span></div>
+  <div style="font-family:ui-monospace,Consolas,monospace;font-size:19px;color:#e0a94a;margin-top:10px;">v1.20.2 &nbsp;→&nbsp; v1.21.1</div>
+</div>
+
+<!-- ─────────── 처음 보는 사람용 ─────────── -->
+<div style="background:#161b22;border-left:3px solid #8b98a9;border-radius:0 4px 4px 0;padding:14px 18px;margin-bottom:26px;">
+  <div style="font-size:13px;color:#8b98a9;margin-bottom:6px;">처음 보시는 분께</div>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.75;">
+  SimCore는 봇에 <b style="color:#dbe2ea;">숫자로 굴러가는 상태</b>를 붙여 주는 플러그인입니다.
+  식량·호감도·소지금 같은 걸 AI에게 세라고 시키는 대신 시스템이 직접 계산하고, 그 결과를 상태창과 프롬프트로 내보냅니다.
+  이번 글은 봇을 만들 때 쓰는 <b style="color:#dbe2ea;">편집기 어시스턴트</b> 이야기입니다. 채팅과 상태창은 바뀌지 않았습니다.
+  </p>
+</div>
+
+<!-- ─────────── 한 줄 ─────────── -->
+<div style="font-size:22px;font-weight:700;margin-bottom:6px;">이번 업데이트를 한 줄로</div>
+<p style="margin:0 0 10px;font-size:18px;line-height:1.7;">
+편집기 어시스턴트가 <b style="color:#e0a94a;">심코어의 자체 기능을 알게 됐습니다.</b> 상점·보드를 액션으로 흉내 내는 대신 먼저 권합니다.
+</p>
+<p style="margin:0 0 8px;color:#a9b4c2;line-height:2;">
+🗺 <b style="color:#dbe2ea;">기능 지도</b> — 상점·보드·메신저·의뢰판을 포함한 17개 기능과 <b style="color:#dbe2ea;">이 봇의 실제 설정</b>을 어시스턴트가 봅니다<br>
+📦 <b style="color:#dbe2ea;">준비와 안내</b> — 바로 못 넣는 기능은 필요한 변수를 준비하고, <b style="color:#dbe2ea;">어느 탭에서 무엇을 채울지</b> 알려 줍니다<br>
+🧩 <b style="color:#dbe2ea;">상점 카드 · 봇 제작</b> — 🧩 [상점] 카드가 이제 시스템 상점을 만듭니다
+</p>
+<p style="margin:0 0 24px;color:#a9b4c2;">
+발단은 커뮤니티 제보입니다. "자체 상점이나 보드 기능이 있는데도 어떻게든 액션 버튼에 상태창을 연동하려 한다. 물어보면 모르는 것처럼 말한다."
+</p>
+
+<!-- ─────────── ① 기능 지도 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">🗺 어시스턴트가 자기 기능을 압니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.21</span>
+  </div>
+
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  모델 탓이 아니었습니다. 어시스턴트가 실제로 받는 프롬프트를 열어 봤더니 제보 그대로였습니다.
+  </p>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">기능의 이름조차 없었습니다</b> — 작업본이 있는 봇의 프롬프트에 상점·보드·메신저·의뢰판이 한 번도 나오지 않았습니다. 모르는 기능을 권할 수는 없으니, 아는 도구인 액션과 상태창으로 만든 겁니다<br>
+  · <b style="color:#dbe2ea;">켜진 기능도 보지 못했습니다</b> — 네 기능을 다 켠 봇에서도 설정값이 프롬프트에 없었습니다. "모른다"는 답이 사실이었습니다<br>
+  · <b style="color:#dbe2ea;">🧩 [상점] 카드도 같았습니다</b> — 자체 상점이 나오기 전 방식 그대로 구매 액션 묶음을 만들고 있었습니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">이제 어시스턴트가 보는 것</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;">
+  💬 대화 · 🗂 정리해서 반영 · ✨ 창작이 모두 아래 셋을 받습니다.
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">기능 지도</b> — 상점·보드·메신저·의뢰판·편성표·달력·시나리오·비밀·무대 뒤·되감기 등 17개 기능이 무슨 일을 하고, 어느 탭에 있고, 무엇이 필요한지<br>
+  · <b style="color:#dbe2ea;">이 봇의 현황</b> — 켜진 기능의 ✅ 표시와 실제 설정값. 그 기능이 쓰는 변수는 지우지 말라고도 알려 줍니다. 막의 본문과 숨겨 둔 글은 싣지 않습니다<br>
+  · <b style="color:#dbe2ea;">대화에 나온 기능의 규격</b> — 말을 꺼낸 기능의 상세 규칙만, 최근 것부터 셋까지
+  </p>
+  <p style="margin:0 0 16px;color:#dbe2ea;">
+  시스템 기능이 맞는 일은 <b style="color:#e0a94a;">그 기능을 먼저 권합니다.</b> 그래도 액션으로 하겠다고 하면 그대로 따릅니다.
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">같은 질문, 고치기 전과 후</div>
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0 0 12px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">"손님한테 물건을 사고팔 수 있게 하고 싶어"
+전    구매 액션과 판정으로 조립
+이제  상점 기능을 권함 · 지갑은 기존 변수, 구매품 목록만 새로
+      상점 자체는 [상점] 탭으로 안내
+
+"이 봇에 자체 상점 기능 켜져 있어?"  (상점을 켠 봇)
+전    "품목 목록이 없고 어디서 고치는지도 알 수 없습니다"
+이제  상점 이름 · 지갑 · 구매품 목록 · 가격 밴드를 답함
+
+"익명 게시판 같은 걸 넣고 싶은데 이 대화에서 해 줄 수 있어?"
+전    "게시판이라는 기능이 따로 있는 건 아니고" + 목록 변수로 조립
+이제  보드 기능을 안내 · [보드] 탭에 넣을 초안을 써 줌</pre>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  가벼운 모델(Claude Haiku)로 확인한 결과입니다. 모델마다 표현이 다르고 틀릴 때도 있으니, 탭 이름이나 변수는 한 번 확인해 주세요.
+  </p>
+</div>
+
+<!-- ─────────── ② 준비와 안내 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#e0a94a;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">✨ 새 기능</span>
+    <span style="font-size:19px;font-weight:600;">📦 바로 못 넣는 기능은 준비하고 안내합니다</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.21</span>
+  </div>
+
+  <p style="margin:0 0 14px;color:#dbe2ea;">
+  제보에는 이런 말도 있었습니다. "대화에서 안 된다고 하면 준비만 해 줄 줄 알았다." 그렇게 동작하도록 맞췄습니다.
+  </p>
+
+  <div style="background:#0d1117;border-left:3px solid #e0a94a;border-radius:0 4px 4px 0;padding:14px 16px;margin-bottom:16px;">
+    <div style="font-size:13px;color:#8b98a9;margin-bottom:8px;">먼저 알아 두실 점</div>
+    <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:1.95;">
+    작업본이 있는 봇에서 [🗂 정리해서 반영]과 ✨ 창작으로 넣을 수 있는 것은 여전히
+    <b style="color:#dbe2ea;">변수 · 파생 변수 · 판정 · 이벤트 · 랜덤 이벤트 · 지시문 · 액션 · AI 허용 변수</b>입니다.
+    상점·보드 같은 기능 자체는 <b style="color:#dbe2ea;">각자의 탭에서 만듭니다.</b><br>
+    작업본이 비어 있으면 봇을 통째로 만드는 길이라, 상점·보드·메신저·의뢰판까지 한 번에 넣을 수 있습니다.
+    </p>
+  </div>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">상점을 예로 들면</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:2;">
+  <b style="color:#e0a94a;">1.</b> 💬 대화에서 "사고팔게 하고 싶어" → 상점을 권하고, 지갑과 구매품 목록으로 쓸 변수를 짚어 줍니다<br>
+  <b style="color:#e0a94a;">2.</b> <b style="color:#dbe2ea;">[🗂 정리해서 반영]</b> → 없는 변수만 제안 상자에 올라오고, 상자의 💡에 어느 탭에서 무엇을 채울지 적혀 있습니다<br>
+  <b style="color:#e0a94a;">3.</b> <b style="color:#dbe2ea;">[상점] 탭 → AI로 상점 만들기</b> → 대화에서 정한 내용을 적으면 규격대로 만들어 줍니다
+  </p>
+  <p style="margin:0 0 12px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · 다른 탭에도 같은 칸이 있습니다 — [보드] 탭 <b style="color:#dbe2ea;">AI로 보드 만들기</b>, [메신저] 탭 <b style="color:#dbe2ea;">AI로 메신저 설정 만들기</b>, [의뢰판] 탭 <b style="color:#dbe2ea;">AI로 의뢰판 설정 만들기</b><br>
+  · ✨ 창작에 "상점 만들어 줘"라고 쓰면 전에는 형식 오류로 처리되거나 액션으로 흉내 낸 결과가 왔습니다. 이제 안내를 그대로 보여 주고, 변경 계획 상자에도 💡로 표시합니다
+  </p>
+  <p style="margin:0;color:#dbe2ea;">[스샷: 💬 대화가 상점을 권하는 답, 또는 제안 상자의 💡 안내]</p>
+</div>
+
+<!-- ─────────── ③ 같이 바뀐 것 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 손질</span>
+    <span style="font-size:19px;font-weight:600;">같이 바뀐 것</span>
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#8b98a9;">v1.21</span>
+  </div>
+  <p style="margin:0 0 14px;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">🧩 [상점] 카드</b> — 구매 액션 묶음 대신 <b style="color:#dbe2ea;">시스템 상점</b>을 만듭니다. 전제는 그대로입니다(돈으로 쓸 숫자 변수, 소지품으로 쓸 목록 변수). 전에 이 카드로 만든 액션은 건드리지 않습니다<br>
+  · <b style="color:#dbe2ea;">🛠 봇 제작</b> — <b style="color:#dbe2ea;">🧩 심코어로 갈 것</b>의 분류에 상점·보드·메신저·의뢰판이 생겼습니다. 전에는 액션이나 기타로 적을 수밖에 없었습니다<br>
+  · <b style="color:#dbe2ea;">없는 탭을 가리키던 안내</b> — 패치가 거부될 때 [게시판] 탭, [에셋]으로 나오던 것을 실제 이름인 [보드] 탭, [에셋 관리자]로 고쳤습니다
+  </p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">어시스턴트 프롬프트가 조금 커졌습니다</div>
+  <p style="margin:0 0 10px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  💬 대화에서 기능 이름을 말하지 않은 턴의 시스템 프롬프트입니다. <b style="color:#dbe2ea;">편집기 어시스턴트에만 해당하고, RP 채팅의 프롬프트는 그대로입니다.</b>
+  </p>
+<pre style="background:#0d1117;border:1px solid #2a323d;border-radius:4px;padding:14px 16px;margin:0;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.7;color:#a9b4c2;overflow-x:auto;white-space:pre;">경영 템플릿            23.3KB → 28.0KB
+기능을 많이 켠 큰 봇   73.6KB → 81.6KB
+빈 작업본             147.9KB 그대로
+기능 이름을 말한 턴    기능마다 약 2KB 추가, 셋까지</pre>
+</div>
+
+<!-- ─────────── 받는 법 ─────────── -->
+<div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
+  <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:1.9;">
+  <b style="color:#c98a7a;">① 플러그인 다시 임포트</b> — 파일만 받으면 옛 빌드가 계속 돕니다.
+  플러그인 목록에서 이름이 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">v1.21.1 🗺 대화가 자기 기능을 안다</span>인지 확인하세요.<br>
+  <b style="color:#c98a7a;">② 번들 교체는 필요 없습니다</b> — 이번 것은 <b style="color:#dbe2ea;">플러그인만</b> 갈면 끝입니다.
+  얼터헌터 개조판·아틀리에 SimCore판 쓰시는 분도 번들은 그대로 두세요.<br>
+  <b style="color:#c98a7a;">③ 진행 중 세이브는 그대로</b> — 채팅·상태창·보조 모델의 동작은 바뀌지 않았습니다.<br>
+  <b style="color:#c98a7a;">④ 💬 대화를 쓰시던 분께</b> — 전에 "그런 기능은 없다"고 답한 채팅은 <b style="color:#dbe2ea;">[＋ 새 채팅]</b>에서 다시 시작하세요.
+  모델은 앞선 대화를 따라가는 경향이 있습니다. 지금 채팅은 📂 지난 채팅에 남습니다.<br>
+  <b style="color:#c98a7a;">⑤ 루아 브리지를 쓰시는 분</b> — 이번엔 다시 설치할 것이 없습니다.<br>
+  <b style="color:#c98a7a;">⑥ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화가 없습니다.
+  보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
+  </p>
+  <p style="margin:0;color:#8b98a9;font-size:13px;">
+  파일은 본문 하단 링크에서. 문제가 있으면 플러그인 목록의 이름과 스샷을 같이 댓글로 남겨 주세요.
+  이번 것은 <b style="color:#a9b4c2;">댓글 하나</b>에서 나왔습니다 — 제보해 주신 분께 감사합니다.
+  </p>
+</div>
+
+</div>

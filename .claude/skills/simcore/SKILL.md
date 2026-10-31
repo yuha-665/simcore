@@ -33,7 +33,7 @@ v1.6까지를, **아틀리에**(Atelier Resleriana 이식) 실기가 v1.7 줄기
 | **소스** | `E:\0.리수봇\simcore\core\*.js` (엔진 모듈 **28개** — build.js `CORE` 순서: expr·rng·store·time·**fight**·validate·assets·party·calendar·scenario·board·messenger·shop·**quest**·**choice**·**secret**·**checkpoint**·**front**·**gauge**·**sample**·**bible**·patch·engine·render·session·diagnose·editor·templates) + `adapter\risu-plugin.js` (헤더·버전·체인지로그) |
 | 번들 = 빌드 산출물 | `E:\0.리수봇\simcore\simcore.plugin.js` — 리수에 임포트하는 것. `node build.js` 산출물과 **바이트 일치** 유지 |
 | 테스트 | `simcore\테스트\test-*.js` (실측 **120종** — 2026-10-31) + `test\run-tests.js` (코어 단위 130, Node만 필요) |
-| 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js` |
+| 이 PC 다리 | `simcore\tools\cli-bridge\simcore-cli-bridge.js` (+ `cli-bridge.bat`·README) — 편집기 생성을 이 PC의 Claude Code·Codex 구독으로. 플러그인 쪽은 어댑터 `probeCli`·`callCliLLM`, 편집기 `buildGenModelRow`의 `cli` 가지 (v1.20.0 ①). 가짜 실행 파일로 도는 `테스트/test-clibridge.js`. 배포판 = `node tools/cli-bridge/pack.js` → `배포\SimCore-bridge.zip`(bat·js·사용법 README.txt, 고치면 다시 만들 것) |
 | 베리디아 봇 | `simcore\베리디아\estate-vars.js` (생성기 — **여기만 고친다**) |
 | **얼헌 봇** (이식·개조) | `simcore\얼헌\hunter-vars.js` (생성기 + 자체 테스트 — **여기만 고친다**, 실행하면 `헌터-신안.json` 재생성) · `convert-import.js` (원본 로어북·정규식 → 심코어판 JSON) · 설계 `docs/design-얼헌-개조.md` |
 | 배포글 | `simcore\배포\*.html` (패치 공지·가이드 11탄·후기·설치 안내) |
@@ -138,7 +138,7 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
     (가로 스크롤이 생겨 ✕가 화면 밖으로 간다) **넘칠 일을 없앤다** — 글자만 접고 버튼·숫자는 `flex:0 0 auto`. `#sc-vars table`은 `table-layout:fixed`라
     행마다 열 폭을 못 바꾼다(넓혀야 하면 `colSpan`뿐). 패널 스타일시트엔 같은 선택자가 **세 번**(옛 팔레트·v1.9 토큰·`@media`) 나오니 테스트는 캐스케이드로 본다 (`test-varchip.js`). 상세: risu-facts.md.
 17. **이 PC 다리(생성 모델 `cli`)를 `callGenLLM` 밖으로 넓히는 것.** 다리는 편집기 생성 전용이다 — 보조 갱신(`callAuxLLM`)·RP는 리수 모델로
-    남긴다. 턴마다 프로세스를 띄우면 2~4초씩 붙고, 구독 할당량이 RP에 새고, "개인 PC에서 본인 구독"이라는 전제가 무너진다(규정 판단은 유저 몫, 배포글엔 아직 없다).
+    남긴다. 턴마다 프로세스를 띄우면 2~4초씩 붙고, 구독 할당량이 RP에 새고, "개인 PC에서 본인 구독"이라는 전제가 무너진다. 다리는 구독을 앱에 연결하는 것이 아니라 공식 CLI를 터미널처럼 실행한다(노벨 스튜디오·AutoQA와 같은 구조) — 배포 근거 세 조건은 `tools/cli-bridge/README.md`, 깨지 말 것.
     `Risuai.nativeFetch`는 웹 리수에서 프록시를 거쳐 localhost에 못 가고 리수 모델 시스템의 `globalFetch`는 localhost를 아예 막는다 —
     안내문에서 "데스크톱·셀프호스트용, 포켓리스·웹 불가"를 빼지 말 것 (risu-facts "nativeFetch · globalFetch와 localhost").
 18. **새 기능을 넣고 `FEATURE_MAP`에 줄을 안 넣는 것.** 편집기 어시스턴트(💬 대화·🗂 정리·✨ 창작)가 아는 기능은 프롬프트에 적힌 것뿐이다 — #3의 모델판이다. 패치 규격서엔 패치 8섹션의 세계만 있어서,

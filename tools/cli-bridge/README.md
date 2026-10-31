@@ -58,6 +58,25 @@ OpenAI 호환이라 리수 데스크톱의 **커스텀 모델**(주소 `http://1
 - **포트를 못 열었어요** — 다른 다리가 이미 켜져 있다. 그 창을 쓰면 된다.
 - **더블클릭해도 창이 바로 닫힌다** — 2026-10-31 이전의 `cli-bridge.bat`이다(LF 줄바꿈 + 한글을 cmd.exe가 잘못 읽고 죽는다). 새 파일로 바꾸거나 이 폴더에서 `node simcore-cli-bridge.js`를 직접 실행한다. 이 배치 파일은 ASCII + CRLF로 둘 것.
 
+## 배포
+
+리포가 비공개라 플러그인 옆에 zip을 같이 올린다. `node tools/cli-bridge/pack.js` → `배포/SimCore-bridge.zip` (`cli-bridge.bat` · `simcore-cli-bridge.js` · 사용법 `README.txt`).
+`.bat`만으로는 안 돈다 — js가 같은 폴더에 있어야 한다. zip은 gitignore라 리포에 안 들어가니 올리기 전에 만든다. 파일을 고치면 다시 만들 것 (zip이 있으면 `test-clibridge`가 안의 파일이 소스와 같은지 본다).
+
+## 배포해도 되는 근거 — 깨지 말 것
+
+구독을 앱에 연결하는 것이 아니라 터미널에서 `claude -p`·`codex exec`를 실행하는 것과 같은 구조다. 노벨 스튜디오·AutoQA는 앱 안에서 이 CLI를 실행하고, 플러그인은 프로세스를 못 띄우니 다리가 그 몫을 한다.
+Anthropic [legal-and-compliance](https://code.claude.com/docs/en/legal-and-compliance) 기준 (2026-10-31 다시 확인, 노벨 스튜디오와 같은 조건):
+
+1. Claude Code 바이너리를 고치지 않는다 — 설치된 그대로 실행만 하고, 인증 방법을 막거나 빼지 않는다.
+2. 사용량을 대신 내거나 되팔거나 중개하지 않는다 — 사용자마다 자기 PC의 자기 로그인으로 돈다. 그래서 기본이 `127.0.0.1`이고, 바깥에 열어 남이 쓰게 하면 안 된다.
+3. 로그인 정보·토큰을 읽지도 보관하지도 중개하지도 않는다 — 인증 파일을 열지 말 것. 토큰을 꺼내 API를 직접 부르면 문서가 금지하는 길이다.
+
+- 문서는 제품 안에서 Claude Code를 돌릴 때 상업용 약관 동의도 조건으로 둔다. 판단은 노벨 스튜디오와 같다.
+- `Claude Code` 이름은 설명으로만 쓴다("Claude Code를 실행한다"). 제품·기능 이름이나 파일 이름에 넣지 않는다 — zip이 `SimCore-bridge`인 이유다.
+- ⚠ 문서에 `--bare`가 앞으로 `-p`의 기본이 된다고 예고돼 있다. bare는 구독 로그인을 읽지 않으니 그 판이 나오면 구독 길이 멈출 수 있다. 공지가 "업데이트로 갑자기 안 될 수 있다"고 말하는 이유다.
+- Codex는 `codex exec`가 공식 비대화 명령이다. 제3자 프로그램이 실행하는 경우를 직접 다룬 OpenAI 문구는 찾지 못했다.
+
 ## 테스트
 
 `테스트/test-clibridge.js` — 가짜 Claude Code·Codex(`테스트/_fake-claude.js`, `_fake-codex.js`)로 다리를 띄워 엔드포인트·격리 플래그·평탄화·오류 문구·스트리밍·플러그인 쪽 호출 경로를 본다. 진짜 구독 할당량은 안 쓴다.

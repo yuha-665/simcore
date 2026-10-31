@@ -29,6 +29,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const r = spawnSync('cmd.exe', ['/c', `"${tmp}"`], { encoding: 'latin1', windowsHide: true, windowsVerbatimArguments: true });
     fs.unlinkSync(tmp);
     ck('★ 실제 cmd.exe가 마지막 줄까지 읽는다', r.status === 0 && r.stdout.includes('REACHED-END'), `${r.status} ${r.stdout}${r.stderr}`.slice(0, 200));
+
+    // 배포판 — 옛 파일이 다시 나가면 위 사고가 그대로 되풀이된다. zip은 gitignore라 만들어 둔 PC에서만 본다
+    const zip = __P('../배포/SimCore-bridge.zip');
+    if (fs.existsSync(zip)) {
+      const tar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+      const inZip = (f) => spawnSync(tar, ['-xOf', zip, `SimCore-bridge/${f}`], { maxBuffer: 1 << 24 }).stdout;
+      ck('★ 배포 zip의 파일이 소스와 같다 (다르면 node tools/cli-bridge/pack.js)', ['cli-bridge.bat', 'simcore-cli-bridge.js'].every((f) => Buffer.compare(inZip(f) || Buffer.alloc(0), fs.readFileSync(__P('../tools/cli-bridge', f))) === 0), '');
+      const usage = (inZip('README.txt') || Buffer.alloc(0)).toString('utf8');
+      ck('배포 zip에 사용법 — 메모장용 BOM + CRLF', usage.startsWith('\ufeff') && usage.includes('쓰는 법') && !/(^|[^\r])\n/.test(usage), usage.slice(0, 40));
+    }
   }
 }
 

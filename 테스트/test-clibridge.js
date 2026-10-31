@@ -7,13 +7,30 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 //   ③ 편집기 배선: 선택지·연결 확인·모델 고르기·라벨이 소스에 있는가
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const os = require('os');
 const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
 const BRIDGE = __P('../tools/cli-bridge/simcore-cli-bridge.js');
 
 let pass = 0, fail = 0;
 const ck = (name, ok, got) => { console.log((ok ? 'PASS' : 'FAIL'), name, ok ? '' : `→ ${got}`); ok ? pass++ : fail++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// cli-bridge.bat — 유저 실기(2026-10-31): LF + 한글이면 cmd.exe가 줄을 잘못 읽어 '?리'를 명령으로 실행하고 pause 전에 죽는다.
+// 더블클릭하면 창만 깜빡이고 다리는 안 켜진다. 아래 startBridge는 js를 직접 띄워서 이 길을 못 본다 — 그래서 실제 cmd.exe로 읽힌다
+{
+  const bat = fs.readFileSync(__P('../tools/cli-bridge/cli-bridge.bat'));
+  ck('★ cli-bridge.bat은 ASCII뿐', bat.every((b) => b < 0x80), '');
+  ck('★ cli-bridge.bat은 CRLF', !/(^|[^\r])\n/.test(bat.toString('latin1')), '');
+  ck('.gitattributes가 배치를 CRLF로 고정', /^\*\.bat\s+text\s+eol=crlf/m.test(fs.readFileSync(__P('../.gitattributes'), 'utf8')), '');
+  if (process.platform === 'win32') {
+    const tmp = path.join(os.tmpdir(), `simcore-bat-${process.pid}.bat`);
+    fs.writeFileSync(tmp, bat.toString('latin1').replace('node simcore-cli-bridge.js', 'echo REACHED-END'), 'latin1');
+    const r = spawnSync('cmd.exe', ['/c', `"${tmp}"`], { encoding: 'latin1', windowsHide: true, windowsVerbatimArguments: true });
+    fs.unlinkSync(tmp);
+    ck('★ 실제 cmd.exe가 마지막 줄까지 읽는다', r.status === 0 && r.stdout.includes('REACHED-END'), `${r.status} ${r.stdout}${r.stderr}`.slice(0, 200));
+  }
+}
 
 function startBridge(extraEnv = {}) {
   return new Promise((resolve, reject) => {

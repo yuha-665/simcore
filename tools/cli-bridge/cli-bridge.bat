@@ -1,10 +1,12 @@
 @echo off
+rem Keep this file ASCII with CRLF line endings. cmd.exe misreads multibyte text in an LF batch file,
+rem cuts a line in half and exits before reaching pause, so a double-click only flashes a window.
 chcp 65001 >nul
-title SimCore CLI 다리 (Claude Code / Codex)
+title SimCore CLI bridge (Claude Code / Codex)
 cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (
-  echo Node.js가 없어요. https://nodejs.org 에서 LTS를 설치한 뒤 다시 실행해 주세요.
+  echo Node.js not found. Install the LTS version from https://nodejs.org and run this again.
   pause
   exit /b 1
 )

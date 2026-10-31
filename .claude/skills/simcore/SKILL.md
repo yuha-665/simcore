@@ -146,6 +146,8 @@ node 얼헌/hunter-vars.js | grep -E "❗|검증:|저장:"                  # �
     표 한 줄이면 지도(`featureMapLines`)·현황(`featureDigestLines`, 설정 요약은 여기 손으로 한 줄)·규격(`featureRuleLines`)에 실린다. 빠뜨리면 `test-featuremap`이 `UNSUPPORTED_HINT`·`activeSections`와 대조해 잡는다.
     ⚠ `featureDigestLines`는 `patchIdDigest`~`buildPatchExportPrompt` 사이에 두고 밖의 것을 부르지 말 것 — 테스트 셋이 그 구간만 잘라 돌린다(금지 #8). 막 본문·숨은 글을 현황에 싣지 말 것(비밀 절과 같은 규율).
     프롬프트 문구를 고치면 글자 검사로 끝내지 말고 전·후 프롬프트로 실제 모델 답을 비교할 것 — 규약의 기본 문구("🗂를 누르면 넣을 수 있어요")가 기능 안내 끝에 그대로 붙는 일은 단언으로 못 잡았다.
+19. **배치 파일에 한글을 넣거나 LF로 두는 것.** `cmd.exe`는 LF 배치 파일의 멀티바이트 글자를 잘못 읽어 줄 중간(`'?리'`)을 명령으로 실행하고 `pause`에 닿기 전에 죽는다 — 더블클릭하면 창만 깜빡이고 다리가 안 켜졌다 (`cli-bridge.bat`, v1.20.0 공지부터 2026-10-31까지, 유저 실기). 리포의 `* text=auto eol=lf`가 LF로 만들었고, `chcp 65001`을 빼도 죽고 CRLF나 ASCII 한쪽만 맞으면 산다(실측).
+    안내 문구를 고치고 끝내면 안 된다 — v1.20.2는 "못 닿았다"는 말만 바로잡았고 켜지지 않는 뿌리는 그대로였다. `cli-bridge.bat`은 ASCII + CRLF, `.gitattributes`가 `*.bat`을 CRLF로 고정, `test-clibridge`가 실제 cmd.exe로 마지막 줄까지 읽는지 본다. **사용자가 실행할 파일은 사용자가 실행하는 방식으로 시험할 것** — 이 테스트는 js를 직접 띄워서 .bat을 한 번도 안 지나갔다.
 
 ## 설계 원칙 (봇 스키마를 만들 때)
 

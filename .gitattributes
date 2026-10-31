@@ -1,1 +1,4 @@
 * text=auto eol=lf
+# cmd.exe는 LF 배치 파일의 멀티바이트 글자를 잘못 읽고 죽는다 — cli-bridge.bat이 더블클릭으로 안 켜지던 사고 (2026-10-31)
+*.bat text eol=crlf
+*.cmd text eol=crlf

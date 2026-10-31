@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const os = require('os');
+const http = require('http');
 const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
 const BRIDGE = __P('../tools/cli-bridge/simcore-cli-bridge.js');
 
@@ -62,6 +63,18 @@ function startBridge(extraEnv = {}) {
 const getJ = async (url) => { const r = await fetch(url); return { status: r.status, body: await r.json(), headers: r.headers }; };
 const postJ = async (url, body) => { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { } return { status: r.status, body: j, text: t }; };
 const echoOf = (text) => JSON.parse(String(text).replace(/^echo:/, ''));
+// 브라우저처럼 Origin·Host를 직접 싣는다 (fetch는 Host를 못 바꾼다)
+const rawReq = (base, method, p, headers, body) => new Promise((resolve, reject) => {
+  const u = new URL(base);
+  const data = body ? JSON.stringify(body) : undefined;
+  const req = http.request({ host: u.hostname, port: u.port, method, path: p, headers: { ...headers, ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
+    let text = '';
+    res.setEncoding('utf8').on('data', (c) => { text += c; });
+    res.on('end', () => resolve({ status: res.statusCode, acao: res.headers['access-control-allow-origin'] ?? null, text }));
+  });
+  req.on('error', reject);
+  req.end(data);
+});
 
 (async () => {
   const br = await startBridge();
@@ -74,13 +87,40 @@ const echoOf = (text) => JSON.parse(String(text).replace(/^echo:/, ''));
       ck('Claude Code 찾음 + 버전', h.body.backends['claude-code'].found && h.body.backends['claude-code'].version === '9.9.9', JSON.stringify(h.body.backends));
       ck('Codex 찾음 + 로그인됨', h.body.backends.codex.found && h.body.backends.codex.loggedIn === true, JSON.stringify(h.body.backends.codex));
       ck('실행 파일 경로는 바깥에 안 낸다', !JSON.stringify(h.body).includes('_fake-claude.js'), '');
-      ck('CORS 허용 헤더', h.headers.get('access-control-allow-origin') === '*', h.headers.get('access-control-allow-origin'));
+      ck('Origin 없는 호출엔 CORS 허용 헤더를 안 붙인다', h.headers.get('access-control-allow-origin') === null, h.headers.get('access-control-allow-origin'));
       const m = await getJ(B + '/v1/models');
       const ids = m.body.data.map((x) => x.id);
       ck('모델 목록: claude-code 기본 + opus/sonnet + codex 기본 + 보이는 codex 모델', ['claude-code', 'claude-code:opus', 'claude-code:sonnet', 'codex', 'codex:gpt-5-codex'].every((id) => ids.includes(id)), ids.join(','));
       ck('숨긴 codex 모델은 목록에 없다', !ids.includes('codex:secret-model'), '');
       const pre = await fetch(B + '/v1/chat/completions', { method: 'OPTIONS' });
       ck('프리플라이트 204 + 메서드 헤더', pre.status === 204 && /POST/.test(pre.headers.get('access-control-allow-methods') || ''), String(pre.status));
+    }
+    {
+      // 유저 PC 실측(2026-10-31): 허용 헤더가 *이고 호출자 검사가 없어 아무 사이트나 다리를 불렀고, Codex는 디스크의 미끼 파일을 읽어 돌려줬다
+      const post = (headers, base = B) => rawReq(base, 'POST', '/v1/chat/completions', headers, { model: 'claude-code', messages: [{ role: 'user', content: 'hi' }] });
+      for (const origin of ['https://evil.example', 'null', 'https://risuai.xyz.evil.example', 'https://evil-risuai.xyz', 'http://risuai.xyz', 'http://localhost.evil.example']) {
+        const r = await post({ Origin: origin });
+        ck(`★ ${origin} → 403, 허용 헤더 없음`, r.status === 403 && r.acao === null, `${r.status} ${r.acao}`);
+      }
+      const pf = await rawReq(B, 'OPTIONS', '/v1/chat/completions', { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' });
+      ck('★ 낯선 사이트의 프리플라이트도 거절', pf.status === 403 && pf.acao === null, `${pf.status} ${pf.acao}`);
+      const he = await rawReq(B, 'GET', '/health', { Origin: 'https://evil.example' });
+      ck('★ 낯선 사이트는 /health도 못 읽는다', he.status === 403 && he.acao === null, `${he.status} ${he.acao}`);
+      const reb = await rawReq(B, 'GET', '/health', { Host: 'evil.example:5181' });
+      ck('★ DNS 리바인딩 — Host가 이 PC가 아니면 거절', reb.status === 403, String(reb.status));
+      for (const origin of ['https://risuai.xyz', 'tauri://localhost', 'http://tauri.localhost', 'http://127.0.0.1:7777', 'http://localhost:6001']) {
+        const r = await post({ Origin: origin });
+        ck(`${origin} → 200, 그 주소만 허용`, r.status === 200 && r.acao === origin, `${r.status} ${r.acao}`);
+      }
+      const plain = await post({});
+      ck('Origin 없는 호출(데스크톱·셀프호스트 프록시) → 200', plain.status === 200 && plain.acao === null, `${plain.status} ${plain.acao}`);
+      const extra = await startBridge({ SIMCORE_CLI_ORIGINS: 'https://my-risu.example, https://other.example' });
+      try {
+        const ok = await post({ Origin: 'https://other.example' }, extra.base);
+        ck('SIMCORE_CLI_ORIGINS로 주소를 더한다', ok.status === 200 && ok.acao === 'https://other.example', `${ok.status} ${ok.acao}`);
+        const no = await post({ Origin: 'https://evil.example' }, extra.base);
+        ck('더한 주소 말고는 그대로 거절', no.status === 403, String(no.status));
+      } finally { extra.child.kill(); }
     }
     {
       const r = await postJ(B + '/v1/chat/completions', { model: 'claude-code', messages: [{ role: 'system', content: '너는 심코어 어시스턴트다' }, { role: 'user', content: '위 지시에 따라 답하라.' }] });
@@ -131,6 +171,10 @@ const echoOf = (text) => JSON.parse(String(text).replace(/^echo:/, ''));
       ck('Codex 채팅 200', r.status === 200 && /^codex-echo:/.test(r.body.choices[0].message.content), r.text.slice(0, 160));
       const e = JSON.parse(r.body.choices[0].message.content.replace(/^codex-echo:/, ''));
       ck('codex exec --json --ephemeral --sandbox read-only --skip-git-repo-check, 표준 입력', e.json && e.ephemeral && e.sandbox === 'read-only' && e.skipGit && e.stdinDash, JSON.stringify(e).slice(0, 160));
+      ck('★ Codex 도구를 끈다 — 셸·코드 실행·앱·컴퓨터 사용 (샌드박스는 읽기를 안 막는다)', ['shell_tool', 'unified_exec', 'code_mode_host', 'apps', 'plugins', 'computer_use', 'browser_use', 'multi_agent'].every((f) => e.off.includes(f)), e.off.join(','));
+      ck('★ Codex 사용자 설정·규칙을 안 읽고 웹 검색을 끈다', e.ignoreUserConfig && e.ignoreRules && e.webOff, JSON.stringify([e.ignoreUserConfig, e.ignoreRules, e.webOff]));
+      const old = await postJ(B + '/v1/chat/completions', { model: 'codex', messages: [{ role: 'user', content: 'FAIL_OLD' }] });
+      ck('옵션을 모르는 옛 Codex → 도구를 켠 채 돌지 않고 업데이트 안내', old.status === 502 && /업데이트/.test(old.body.error.message), old.text.slice(0, 160));
       ck('codex:<slug> → -m', e.model === 'gpt-5-codex', String(e.model));
       ck('지시문은 본문 앞에 --- 로', e.input === 'SYS\n\n---\n\nask', JSON.stringify(e.input));
       ck('빈 임시 폴더', /simcore-cli-codex-/.test(e.cwd), e.cwd);

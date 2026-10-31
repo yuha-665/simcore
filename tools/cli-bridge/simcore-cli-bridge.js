@@ -8,6 +8,7 @@
 // 사용: node simcore-cli-bridge.js   (또는 cli-bridge.bat 더블클릭)   — 의존 패키지 없음, Node 18 이상
 //   SIMCORE_CLI_PORT=5181  SIMCORE_CLI_HOST=127.0.0.1  (바깥에서 열고 싶으면 0.0.0.0 — 권장하지 않음)
 //   SIMCORE_CLI_CLAUDE_BIN / SIMCORE_CLI_CODEX_BIN  실행 파일 직접 지정 (테스트용 가짜도 여기로)
+//   SIMCORE_CLI_ORIGINS=https://내-리수-주소  웹에서 plain fetch로 부를 주소를 더한다 (쉼표로 여럿)
 //
 // 엔드포인트 (OpenAI 호환 — 리수 데스크톱의 커스텀 모델로도 그대로 꽂힌다):
 //   GET  /health                → { ok, backends: { 'claude-code': {found, from, version}, codex: {found, from, loggedIn} } }
@@ -19,7 +20,8 @@
 //   로그인은 Claude Code가 하던 그대로 쓴다. 이 파일은 인증 정보를 읽지도 저장하지도 않는다.
 //   --bare는 로그인(OAuth)까지 건너뛰어 "Not logged in"이 되므로 쓰지 않는다.
 //   시스템 프롬프트는 파일로, 본문은 표준 입력으로 (명령줄 길이 제한 회피).
-// Codex: 빈 임시 폴더에서 읽기 전용(--sandbox read-only)·기록 없이(--ephemeral). 지시문 옵션이 없어 본문 앞에 붙인다.
+// Codex: 빈 임시 폴더에서 읽기 전용(--sandbox read-only)·기록 없이(--ephemeral)·사용자 설정 없이·도구를 끄고(CODEX_TOOLS_OFF). 지시문 옵션이 없어 본문 앞에 붙인다.
+// 호출자: 웹페이지는 허용 주소만 받는다 (ORIGIN_OK). 다리에는 로그인이 없다.
 //
 // 이 다리는 요청·응답 본문을 어디에도 남기지 않는다. 콘솔에는 시각·백엔드·소요·토큰만 찍는다.
 
@@ -31,7 +33,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomBytes } = require('node:crypto');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PORT = Number(process.env.SIMCORE_CLI_PORT ?? 5181);
 const HOST = process.env.SIMCORE_CLI_HOST || '127.0.0.1';
 const WORK = path.join(os.tmpdir(), 'simcore-cli-bridge');
@@ -326,6 +328,11 @@ function runClaude({ system, prompt, model, onText, signal }) {
   });
 }
 
+// read-only 샌드박스는 쓰기만 막고 읽기는 안 막는다 — 도구가 켜져 있으면 프롬프트 하나로 디스크의 아무 파일이나 읽어 돌려준다 (2026-10-31 미끼 파일로 실측).
+// Claude Code의 --tools ""에 해당하는 옵션이 없어 낱낱이 끈다. --disable은 모르는 이름에서 바로 죽어 판이 다른 Codex를 못 쓰므로 -c로 준다.
+const CODEX_TOOLS_OFF = ['shell_tool', 'unified_exec', 'code_mode_host', 'view_image', 'image_generation', 'apps', 'plugins', 'remote_plugin',
+  'browser_use', 'browser_use_external', 'computer_use', 'in_app_browser', 'multi_agent', 'hooks', 'tool_suggest', 'skill_search', 'sleep_tool', 'goals'];
+
 function runCodex({ system, prompt, model, signal }) {
   const bin = state.codex?.bin;
   if (!bin) return Promise.reject(new BridgeError(503, '이 PC에서 Codex를 찾지 못했어요. codex CLI를 설치하고 codex login을 해 주세요.'));
@@ -334,7 +341,8 @@ function runCodex({ system, prompt, model, signal }) {
   const work = path.join(base, 'work'); const answerFile = path.join(base, 'answer.md');
   fs.mkdirSync(work);
   return new Promise((resolve, reject) => {
-    const args = ['exec', '--json', '--color', 'never', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '-C', work, '-o', answerFile];
+    const args = ['exec', '--json', '--color', 'never', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '--ignore-user-config', '--ignore-rules',
+      ...CODEX_TOOLS_OFF.flatMap((f) => ['-c', `features.${f}=false`]), '-c', 'web_search="disabled"', '-C', work, '-o', answerFile];
     if (model) args.push('-m', model);
     args.push('-'); // 지시문은 표준 입력으로
     const child = launch(bin, args, work);
@@ -365,6 +373,7 @@ function runCodex({ system, prompt, model, signal }) {
       const stderr = err.split('\n').map((l) => l.trim()).filter((l) => l && !/^WARNING:/.test(l)).slice(-3).join(' ');
       const detail = failure || lastError || stderr || '내용 없음';
       if (/401|unauthorized|not logged in/i.test(detail)) { finish(() => reject(new BridgeError(502, `Codex에 로그인되어 있지 않아요. 터미널에서 codex login을 한 번 실행해 주세요. (${clip(detail)})`))); return; }
+      if (/unexpected argument/i.test(detail)) { finish(() => reject(new BridgeError(502, `Codex가 오래돼서 설정을 끄는 옵션을 몰라요. Codex를 업데이트해 주세요. (${clip(detail)})`))); return; }
       finish(() => reject(new BridgeError(502, `Codex 오류 (종료 코드 ${code}): ${clip(detail, 300)}`)));
     });
     child.stdin?.on('error', () => {});
@@ -375,8 +384,24 @@ function runCodex({ system, prompt, model, signal }) {
 class BridgeError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
 // ── HTTP ──────────────────────────────────────────────────────────────
+// 다리에는 로그인이 없으니 누가 부르는지 여기서 거른다. 브라우저는 웹페이지의 요청에 Origin을 붙이고 페이지는 이 값을 못 고친다.
+// 안 거르면 다리를 켠 채 아무 사이트나 열어도 그 사이트가 내 구독을 쓰고, Codex 도구가 켜진 판에서는 디스크까지 읽어 갔다 (2026-10-31 실측).
+// 리수 데스크톱(네이티브)·셀프호스트(서버 프록시)는 브라우저가 부르는 것이 아니라 Origin이 없다. 웹 리수의 plain fetch만 Origin이 붙는다.
+// Host도 본다 — 사이트가 자기 도메인을 127.0.0.1로 돌리는 DNS 리바인딩을 막는다. 바깥으로 연 다리는 Host가 제 주소라 안 본다.
+const LOCAL_NAME = String.raw`(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?`;
+const ORIGIN_OK = new RegExp(String.raw`^(?:https://risuai\.xyz|tauri://localhost|https?://tauri\.localhost|https?://${LOCAL_NAME})$`, 'i');
+const HOST_OK = new RegExp(`^${LOCAL_NAME}$`, 'i');
+const LOOPBACK_ONLY = /^(?:127\.|localhost$|\[?::1\]?$)/i.test(HOST);
+const EXTRA_ORIGINS = (process.env.SIMCORE_CLI_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+/** @returns {string|null} 거절 사유 */
+function refuse(req) {
+  const { origin, host } = req.headers;
+  if (origin && !ORIGIN_OK.test(origin) && !EXTRA_ORIGINS.includes(origin)) return `이 주소에서 온 요청은 받지 않아요: ${clip(origin)}`;
+  if (LOOPBACK_ONLY && !HOST_OK.test(host ?? '')) return `이 PC 주소로 온 요청만 받아요: ${clip(String(host))}`;
+  return null;
+}
+
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
   'Access-Control-Max-Age': '86400',
@@ -446,6 +471,9 @@ async function handleChat(req, res) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
+    const refused = refuse(req);
+    if (refused) { log(`거절: ${refused}`); json(res, 403, { error: { message: refused, type: 'forbidden', code: 403 } }); return; }
+    if (req.headers.origin) { res.setHeader('Access-Control-Allow-Origin', req.headers.origin); res.setHeader('Vary', 'Origin'); }
     if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
     if (req.method === 'GET' && (url.pathname === '/health' || url.pathname === '/')) {
       if (url.searchParams.get('refresh') === '1' || !state.checkedAt) await refreshBackends();

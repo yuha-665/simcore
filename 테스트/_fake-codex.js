@@ -15,10 +15,14 @@ if (args[0] === 'exec') {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { input += c; });
   process.stdin.on('end', () => {
+    const conf = args.filter((a, i) => args[i - 1] === '-c');
     const echo = { json: args.includes('--json'), ephemeral: args.includes('--ephemeral'), sandbox: at('--sandbox'),
-      skipGit: args.includes('--skip-git-repo-check'), cwd: at('-C'), model: at('-m') ?? null, stdinDash: args[args.length - 1] === '-', input };
+      skipGit: args.includes('--skip-git-repo-check'), cwd: at('-C'), model: at('-m') ?? null, stdinDash: args[args.length - 1] === '-',
+      ignoreUserConfig: args.includes('--ignore-user-config'), ignoreRules: args.includes('--ignore-rules'),
+      off: conf.filter((c) => /^features\..+=false$/.test(c)).map((c) => c.slice(9, -6)), webOff: conf.includes('web_search="disabled"'), input };
     const text = 'codex-echo:' + JSON.stringify(echo);
     if (/FAIL_TURN/.test(input)) { process.stdout.write(JSON.stringify({ type: 'turn.failed', error: { message: '401 unauthorized' } }) + '\n'); process.exit(1); }
+    if (/FAIL_OLD/.test(input)) { process.stderr.write("error: unexpected argument '--ignore-user-config' found\n"); process.exit(2); }
     const outFile = at('-o');
     if (outFile) fs.writeFileSync(outFile, text, 'utf8');
     process.stdout.write(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } }) + '\n');

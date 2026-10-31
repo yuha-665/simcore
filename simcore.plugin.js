@@ -1,7 +1,7 @@
 //@name simcore
 //@api 3.0
-//@version 1.21.0
-//@display-name SimCore (시뮬 엔진) v1.21.0 🗺 대화가 자기 기능을 안다
+//@version 1.21.1
+//@display-name SimCore (시뮬 엔진) v1.21.1 🗺 대화가 자기 기능을 안다
 //@arg aux_model_mode string auto=환경 자동 판별(기본, 권장) / aux=직접 호출 강제 / lua=루아 브리지 강제 / off=상태 자동갱신 끄기
 //@arg module_assets string off=모듈 에셋 안 읽음(기본, 빠름) / on=활성 모듈의 추가 에셋까지 읽음(이미지가 모듈에 사는 봇용, 느림)
 //
@@ -9,6 +9,12 @@
 // 빌드: node build.js → dist/simcore.plugin.js
 //
 // ⚠ [live-test] 표시 지점은 웹리스에서 실제 배선 확인이 필요한 부분.
+//
+// ── v1.21.1 ───────────────────────────────────────────────
+// **💬 대화에 붙어 온 안내를 오류로 안 받는다.** v1.21.0의 패치 `note`는 ✨ 창작·🗂 정리 두 길만 챙겼다. 규약상 대화엔 JSON이 없지만 대화가 받는 규격서가 `{"note":"…"}`를 가르치니
+// 약한 모델은 붙일 수 있다 — 그러면 parsePatch가 "할 일 없음"으로 거부해 재시도가 한 번 더 나가고 안내는 ⚠ 밑에 묻혔다. 패치 + note로 오면 제안 상자가 패치 안의 note를 안 봐서 💡가 사라졌다.
+// - [대화] note만 든 JSON은 말풍선 글로, 재시도 없이 (앞의 설명은 같이 남는다). [제안 상자] meta.note가 없으면 패치 안의 note를 보여 준다.
+// - 공지를 쓰며 코드를 다시 읽다가 찾았다 — 실제 제보는 없다. test-featuremap ⑤ 4단언. v1.21.0 프롬프트는 그대로.
 //
 // ── v1.21.0 ───────────────────────────────────────────────
 // **🗺 대화가 자기 기능을 안다.** 커뮤니티 제보(2026-10-31): "대화 단위에선 자기 기능을 잘 모르나요 — 자체 상점이나 보드가 있어도 어떻게든 액션 버튼에
@@ -28186,6 +28192,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       res = r;
       split = splitChatResponse(r);
       if (!split.json) break;          // 논의 턴 — 검사할 JSON이 없다
+      // 안내만 든 JSON은 말이다 (v1.21.1) — 규격의 {"note":"…"} 꼴. 패치가 아니라서 형식 오류로 돌리면 재시도가 한 번 더 나가고 안내는 ⚠ 밑에 묻힌다
+      const said = splitProposal(split.json);
+      if (said.ok && !said.body && said.note) { split = { prose: [split.prose, said.note].filter(Boolean).join('\n'), json: null }; break; }
       got = inspect(split.json);
       if (got.ok) break;
     }
@@ -28328,7 +28337,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-patch-title' }, '🗂 정리 제안'),
         h('div', { class: 'sce-proposal-sum' }, `추가 ${plan.summary.add} · 수정 ${plan.summary.update} · 삭제 ${plan.summary.remove}${plan.conflicts.length ? ` · 충돌 ${plan.conflicts.length}` : ''}`)));
       box.appendChild(h('div', { class: 'sce-hint', style: 'margin:0 0 6px' }, '체크한 것만 반영돼요. 반영하기 전엔 작업본이 안 바뀝니다.'));
-      if (meta.note) box.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + meta.note));
+      const noteText = meta.note || patch.note; // 🗂는 note를 떼어 meta로 주고, 💬에 붙어 온 패치는 패치 안에 있다 (v1.21.1)
+      if (noteText) box.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + noteText));
       if (patch.randomEventsChance != null) box.appendChild(h('div', {}, `랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
       for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
       if (items.length >= 4) {

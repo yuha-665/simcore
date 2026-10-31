@@ -14110,6 +14110,9 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
       res = r;
       split = splitChatResponse(r);
       if (!split.json) break;          // 논의 턴 — 검사할 JSON이 없다
+      // 안내만 든 JSON은 말이다 (v1.21.1) — 규격의 {"note":"…"} 꼴. 패치가 아니라서 형식 오류로 돌리면 재시도가 한 번 더 나가고 안내는 ⚠ 밑에 묻힌다
+      const said = splitProposal(split.json);
+      if (said.ok && !said.body && said.note) { split = { prose: [split.prose, said.note].filter(Boolean).join('\n'), json: null }; break; }
       got = inspect(split.json);
       if (got.ok) break;
     }
@@ -14252,7 +14255,8 @@ function createSchemaEditor(container, initialSchema, opts = {}) {
         h('div', { class: 'sce-patch-title' }, '🗂 정리 제안'),
         h('div', { class: 'sce-proposal-sum' }, `추가 ${plan.summary.add} · 수정 ${plan.summary.update} · 삭제 ${plan.summary.remove}${plan.conflicts.length ? ` · 충돌 ${plan.conflicts.length}` : ''}`)));
       box.appendChild(h('div', { class: 'sce-hint', style: 'margin:0 0 6px' }, '체크한 것만 반영돼요. 반영하기 전엔 작업본이 안 바뀝니다.'));
-      if (meta.note) box.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + meta.note));
+      const noteText = meta.note || patch.note; // 🗂는 note를 떼어 meta로 주고, 💬에 붙어 온 패치는 패치 안에 있다 (v1.21.1)
+      if (noteText) box.appendChild(h('div', { class: 'sce-hint sce-proposal-note' }, '💡 ' + noteText));
       if (patch.randomEventsChance != null) box.appendChild(h('div', {}, `랜덤 이벤트 발동률 → ${patch.randomEventsChance}`));
       for (const w of plan.warnings) box.appendChild(h('div', { class: 'sce-warn' }, `⚠ ${w}`));
       if (items.length >= 4) {

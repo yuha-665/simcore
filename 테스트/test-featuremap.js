@@ -9,7 +9,7 @@ const __P = (...p) => require('path').resolve(__dirname, ...p);
 //   ② 지도 — 진짜 편집기에서 ai.generate로 가는 프롬프트에 기능·자리·준비 + 안내가 실린다. 규격은 대화에 나온 것만, 셋까지
 //   ③ 현황 — 켜진 기능의 설정값이 보이고, 숨은 글·css는 안 샌다
 //   ④ 빈 작업본 — 규격서에 네 기능의 설명이 있고, 검증기 들여쓰기를 빼도 코드는 그대로다
-//   ⑤ note — 패치에 안내 칸, ✨ 창작이 말로 온 안내를 형식 실패로 안 받는다
+//   ⑤ note — 패치에 안내 칸, ✨ 창작이 말로 온 안내를 형식 실패로 안 받는다 (v1.21.1 💬 대화에 붙어 온 안내도)
 //   ⑥ 봇 제작 — 상점·보드·메신저·의뢰판으로 분류된다
 const fs = require('fs');
 const src = fs.readFileSync(__P('../simcore.plugin.js'), 'utf8');
@@ -118,6 +118,17 @@ async function makeRun(schema, text, reply) {
   const area = findAll(c, (e) => e.className === 'sce-ai-request')[0];
   area.value = text; area.oninput(); btn(c, '수정안 생성').click(); await settle(); await settle();
   return { calls, text: c.textContent || '', warn: findAll(c, (e) => e.className === 'sce-warn').map((e) => e.textContent).join(' | '), c };
+}
+/** 💬 대화를 한 번 보내 호출 수와 화면을 본다 */
+async function chatRun(schema, text, reply) {
+  boot();
+  const { calls, ai } = makeAi(reply);
+  const c = document.createElement('div');
+  E.createSchemaEditor(c, clone(schema), { onChange: () => {}, ai });
+  btn(c, '💬 대화').click();
+  const area = findAll(c, (e) => e.tagName === 'TEXTAREA' && e.className.includes('sce-chat-input'))[0];
+  area.value = text; area.oninput(); btn(c, '보내기').click(); await settle(); await settle();
+  return { calls, text: c.textContent || '' };
 }
 
 (async () => {
@@ -261,6 +272,16 @@ async function makeRun(schema, text, reply) {
     ck('탭을 안 가리키는 산문은 종전대로 재시도', Bad.calls.length === 2 && Bad.warn.includes('형식 검사'), `${Bad.calls.length} ${Bad.warn}`);
     const W = await makeRun(BIZ, '상점 준비해 줘', () => '```json\n' + JSON.stringify({ patchVersion: 1, add: { vars: [{ id: 'bag', label: '가방', type: 'list', init: [] }] }, note: '[상점] 탭에서 지갑과 가방을 연결하세요' }) + '\n```');
     ck('★ 패치 + note → 변경 계획 상자에 💡', W.text.includes('💡 [상점] 탭에서 지갑과 가방을 연결하세요'), W.text.slice(0, 200));
+
+    // v1.21.1 — 규약상 대화엔 JSON이 없지만 규격서가 {"note":"…"}를 가르치니 약한 모델은 붙일 수 있다. v1.21.0은 ✨·🗂만 챙겼다
+    const CN = await chatRun(BIZ, '보드 켜 줘', () => '```json\n{"note":"[보드] 탭에서 켜 주세요"}\n```');
+    ck('★ 💬 note만 붙어 와도 말풍선으로 — 재시도·오류 없이', CN.calls.length === 1 && CN.text.includes('[보드] 탭에서 켜 주세요') && !CN.text.includes('수정안만 보냈어요'), `${CN.calls.length} ${CN.text.slice(0, 200)}`);
+    const CS = await chatRun(BIZ, '보드 켜 줘', () => '탭에서 켜는 기능이에요.\n```json\n{"note":"[보드] 탭에서 켜 주세요"}\n```');
+    ck('💬 앞의 설명도 같이 남는다', CS.calls.length === 1 && CS.text.includes('탭에서 켜는 기능이에요.') && CS.text.includes('[보드] 탭에서 켜 주세요'), CS.text.slice(0, 200));
+    const CP = await chatRun(BIZ, '상점 준비해 줘', () => '가방을 준비할게요.\n```json\n' + JSON.stringify({ patchVersion: 1, add: { vars: [{ id: 'bag', label: '가방', type: 'list', init: [] }] }, note: '[상점] 탭에서 지갑과 가방을 연결하세요' }) + '\n```');
+    ck('★ 💬 패치 + note → 제안 상자에 💡', CP.calls.length === 1 && CP.text.includes('💡 [상점] 탭에서 지갑과 가방을 연결하세요'), CP.text.slice(0, 300));
+    const CB = await chatRun(BIZ, '금화 변수 줄여 줘', () => '```json\n{"nonsense":true}\n```');
+    ck('💬 안내가 아닌 깨진 JSON은 종전대로 재시도', CB.calls.length === 2, String(CB.calls.length));
   }
 
   console.log('── ⑥ 봇 제작');

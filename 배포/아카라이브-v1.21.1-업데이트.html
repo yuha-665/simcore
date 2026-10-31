@@ -24,12 +24,10 @@
   <b style="color:#c98a7a;">해당하는 분</b> — 지난 공지의 🔌 이 PC의 Claude Code · Codex 다리를 받으신 분입니다.<br>
   <b style="color:#c98a7a;">증상</b> — cli-bridge.bat을 더블클릭하면 <b style="color:#dbe2ea;">창이 바로 닫히고</b>, 편집기의 [🔌 연결 확인]에 "다리에 닿지 못했어요"가 뜹니다.<br>
   <b style="color:#c98a7a;">원인</b> — 배포한 배치 파일의 줄바꿈 형식과 안에 든 한글이 겹쳐, 윈도우가 파일을 읽다가 중간에 멈췄습니다. 쓰시는 분의 설치나 환경 문제가 아니었습니다.<br>
-  <b style="color:#c98a7a;">이제</b> — <b style="color:#e0a94a;">고친 cli-bridge.bat을 받아 기존 파일에 덮어쓰세요.</b> 플러그인을 다시 임포트해도 이 파일은 바뀌지 않습니다. simcore-cli-bridge.js는 그대로 두시면 됩니다.<br>
-  <b style="color:#c98a7a;">확인</b> — 검은 창에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">LISTENING http://127.0.0.1:5181</span>이 뜨고 창이 그대로 있으면 켜진 겁니다. 그다음 [🔌 연결 확인]을 다시 누르세요.
+  <b style="color:#c98a7a;">이제</b> — <b style="color:#e0a94a;">새 다리 파일(SimCore-bridge.zip)을 받아 쓰세요.</b> 플러그인을 다시 임포트해도 다리 파일은 바뀌지 않습니다. 받는 곳과 쓰는 법은 아래 <b style="color:#dbe2ea;">🔌 다리</b> 카드에 있습니다.
   </p>
-  <p style="margin:0 0 10px;color:#dbe2ea;">[다리 파일 링크: cli-bridge.bat]</p>
   <p style="margin:0;color:#8b98a9;font-size:13px;">
-  다리 폴더에서 명령 프롬프트를 열고 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">node simcore-cli-bridge.js</span>를 실행해도 같습니다. 다리를 안 쓰시면 해당이 없습니다.
+  옛 폴더에서 명령 프롬프트를 열고 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">node simcore-cli-bridge.js</span>를 실행해도 켜집니다. 다리를 안 쓰시면 해당이 없습니다.
   </p>
 </div>
 
@@ -131,7 +129,7 @@
 </div>
 
 <!-- ─────────── ③ 같이 바뀐 것 ─────────── -->
-<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:14px;">
   <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
     <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#8b98a9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🔧 손질</span>
     <span style="font-size:19px;font-weight:600;">같이 바뀐 것</span>
@@ -153,6 +151,33 @@
 기능 이름을 말한 턴    기능마다 약 2KB 추가, 셋까지</pre>
 </div>
 
+<!-- ─────────── ④ 다리 ─────────── -->
+<div style="background:#161b22;border-radius:6px;padding:22px 20px;margin-bottom:26px;">
+  <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;">
+    <span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#0d1117;background:#7fc7d9;padding:2px 9px;border-radius:3px;font-weight:700;white-space:nowrap;">🧪 실험</span>
+    <span style="font-size:19px;font-weight:600;">🔌 다리 — 받는 곳과 쓰는 법</span>
+  </div>
+  <p style="margin:0 0 12px;color:#dbe2ea;">
+  편집기 어시스턴트를 리수의 API 모델 대신 <b style="color:#e0a94a;">이 PC에 설치된 Claude Code나 Codex</b>로 돌리는 선택 기능입니다. 안 쓰시면 받지 않아도 됩니다.
+  플러그인은 PC 프로그램을 직접 실행할 수 없어서, 다리가 터미널에서 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">claude -p</span>나 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">codex exec</span>를 실행하는 일을 대신합니다.
+  로그인 정보는 읽지 않고, 설치된 프로그램을 그대로 실행합니다. RP 채팅은 그대로 리수 모델입니다.
+  </p>
+  <p style="margin:0 0 14px;color:#dbe2ea;">[다리 파일 링크: SimCore-bridge.zip]</p>
+
+  <div style="font-size:16px;font-weight:700;color:#e0a94a;margin:0 0 8px;">쓰는 법</div>
+  <p style="margin:0 0 12px;color:#dbe2ea;font-size:14px;line-height:2;">
+  <b style="color:#e0a94a;">1.</b> 압축을 풀고 폴더 안의 <b style="color:#dbe2ea;">cli-bridge.bat</b>을 더블클릭합니다. 압축 파일 안에서 바로 실행하면 안 됩니다. 윈도우가 경고하면 [추가 정보] → [실행]<br>
+  <b style="color:#e0a94a;">2.</b> 검은 창에 <span style="font-family:ui-monospace,Consolas,monospace;font-size:13px;color:#7fc7d9;">LISTENING http://127.0.0.1:5181</span>이 뜨면 켜진 겁니다. 창은 열어 둡니다<br>
+  <b style="color:#e0a94a;">3.</b> 편집기 → <b style="color:#dbe2ea;">생성 모델</b> → <b style="color:#dbe2ea;">[이 PC의 Claude Code · Codex (구독)]</b> → <b style="color:#dbe2ea;">[🔌 연결 확인]</b> → 모델 고르기<br>
+  <b style="color:#e0a94a;">4.</b> 다 쓰면 창을 닫습니다. 봇을 만들 때만 켜 두면 됩니다
+  </p>
+  <p style="margin:0;color:#a9b4c2;font-size:14px;line-height:2;">
+  · <b style="color:#dbe2ea;">필요한 것</b> — Claude Code 또는 Codex 로그인, Node.js. 리수 데스크톱이나 같은 PC의 셀프호스트에서 됩니다. 웹 리수는 설정의 plain fetch를 켜야 하고, 포켓리스·폰에서는 쓸 수 없습니다<br>
+  · <b style="color:#dbe2ea;">내 구독 사용량을 씁니다</b> — 본인 PC에서 본인만 쓰는 용도입니다. 다른 사람이 쓰도록 열지 마세요<br>
+  · <b style="color:#dbe2ea;">실험 기능입니다</b> — Claude Code나 Codex가 업데이트되면서 갑자기 안 될 수 있습니다. 오류별 대처는 압축 파일의 README.txt에 있습니다
+  </p>
+</div>
+
 <!-- ─────────── 받는 법 ─────────── -->
 <div style="background:#2a1a1a;border:1px solid #c98a7a;border-radius:6px;padding:20px 20px;margin-bottom:8px;">
   <div style="font-size:19px;font-weight:700;margin-bottom:10px;">받는 법 · 적용법</div>
@@ -165,7 +190,7 @@
   <b style="color:#c98a7a;">④ 💬 대화를 쓰시던 분께</b> — 전에 "그런 기능은 없다"고 답한 채팅은 <b style="color:#dbe2ea;">[＋ 새 채팅]</b>에서 다시 시작하세요.
   모델은 앞선 대화를 따라가는 경향이 있습니다. 지금 채팅은 📂 지난 채팅에 남습니다.<br>
   <b style="color:#c98a7a;">⑤ 루아 브리지를 쓰시는 분</b> — 이번엔 다시 설치할 것이 없습니다.<br>
-  <b style="color:#c98a7a;">⑥ 🔌 다리를 쓰시는 분</b> — 맨 위 ⚠ 상자대로 <b style="color:#dbe2ea;">cli-bridge.bat만</b> 새 파일로 바꾸세요.<br>
+  <b style="color:#c98a7a;">⑥ 🔌 다리를 쓰시는 분</b> — 위 🔌 카드의 <b style="color:#dbe2ea;">새 다리 파일</b>을 받으세요. 플러그인과 따로 받아야 합니다.<br>
   <b style="color:#c98a7a;">⑦ 윈도우 디펜더가 플러그인 파일을 트로이잔으로 잡는다면</b> — 오탐입니다. 파일은 평문 자바스크립트 하나이고 eval·난독화가 없습니다.
   보안 센터에서 허용한 뒤 임포트하시고, 탐지명을 댓글로 남겨 주시면 오탐 신고에 씁니다.
   </p>
